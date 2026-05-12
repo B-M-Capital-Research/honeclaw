@@ -16,6 +16,8 @@ pub const DEFAULT_MIN_BUFFER_SIZE: usize = 100;
 pub const DEFAULT_MAX_SEGMENT_SIZE: usize = 400;
 const GENERIC_USER_ERROR_MESSAGE: &str = "抱歉，这次处理失败了。请稍后再试。";
 const TIMEOUT_USER_ERROR_MESSAGE: &str = "抱歉，处理超时了。请稍后再试。";
+const RUNNER_USAGE_LIMIT_USER_ERROR_MESSAGE: &str =
+    "当前执行额度已用尽，暂时无法继续处理。请稍后再试。";
 
 /// 流式处理结果
 #[derive(Debug, Clone)]
@@ -345,6 +347,10 @@ pub fn user_visible_error_message(raw: Option<&str>) -> String {
     }
 
     let lowered = sanitized.to_ascii_lowercase();
+    if looks_runner_usage_limit_error_lowered(&lowered) {
+        return RUNNER_USAGE_LIMIT_USER_ERROR_MESSAGE.to_string();
+    }
+
     if lowered.contains("timeout") || lowered.contains("timed out") {
         return TIMEOUT_USER_ERROR_MESSAGE.to_string();
     }
@@ -365,6 +371,9 @@ pub fn user_visible_error_message_or_none(raw: Option<&str>) -> Option<String> {
         return Some(message);
     }
     let lowered = sanitized.to_ascii_lowercase();
+    if looks_runner_usage_limit_error_lowered(&lowered) {
+        return Some(RUNNER_USAGE_LIMIT_USER_ERROR_MESSAGE.to_string());
+    }
     if looks_internal_error_detail(&sanitized, &lowered) {
         return None;
     }
@@ -379,6 +388,21 @@ fn quota_rejection_user_message(sanitized: &str) -> Option<String> {
     let rest = sanitized[start..].trim();
     let first_line = rest.lines().next().unwrap_or(rest).trim();
     (!first_line.is_empty()).then(|| first_line.to_string())
+}
+
+pub fn is_runner_usage_limit_error(raw: &str) -> bool {
+    looks_runner_usage_limit_error_lowered(&raw.to_ascii_lowercase())
+}
+
+fn looks_runner_usage_limit_error_lowered(lowered: &str) -> bool {
+    (lowered.contains("codex") || lowered.contains("runner") || lowered.contains("acp"))
+        && (lowered.contains("usage limit")
+            || lowered.contains("usage limits")
+            || lowered.contains("rate limit")
+            || lowered.contains("quota exceeded")
+            || lowered.contains("quota exhausted")
+            || lowered.contains("insufficient quota")
+            || lowered.contains("try again later"))
 }
 
 fn looks_internal_error_detail(sanitized: &str, lowered: &str) -> bool {
@@ -851,6 +875,15 @@ mod tests {
     }
 
     #[test]
+    fn user_visible_error_message_maps_codex_usage_limit_errors() {
+        let err = user_visible_error_message(Some(
+            "codex acp error: You've reached your usage limit. Try again later.",
+        ));
+        assert_eq!(err, RUNNER_USAGE_LIMIT_USER_ERROR_MESSAGE);
+        assert!(!err.contains("codex acp"));
+    }
+
+    #[test]
     fn user_visible_error_message_or_none_suppresses_internal_acp_errors() {
         let err = user_visible_error_message_or_none(Some(
             "codex acp prompt ended before tool completion: Searching the Web",
@@ -867,6 +900,14 @@ mod tests {
             err.as_deref(),
             Some("已达到今日对话上限（12/12，北京时间 2026-05-01），请明天再试")
         );
+    }
+
+    #[test]
+    fn user_visible_error_message_or_none_keeps_codex_usage_limit_errors() {
+        let err = user_visible_error_message_or_none(Some(
+            "LLM 错误: codex runner quota exceeded, please try again later",
+        ));
+        assert_eq!(err.as_deref(), Some(RUNNER_USAGE_LIMIT_USER_ERROR_MESSAGE));
     }
 
     #[test]

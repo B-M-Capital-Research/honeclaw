@@ -20,7 +20,9 @@ use hone_channels::ingress::{
 };
 use hone_channels::outbound::{ReasoningVisibility, attach_stream_activity_probe};
 use hone_channels::prompt::PromptOptions;
-use hone_channels::runtime::{sanitize_user_visible_output, user_visible_error_message};
+use hone_channels::runtime::{
+    is_runner_usage_limit_error, sanitize_user_visible_output, user_visible_error_message,
+};
 use hone_channels::think::{ThinkRenderStyle, ThinkStreamFormatter, render_think_blocks};
 use hone_core::{ActorIdentity, SessionIdentity};
 use serde_json::{Value, json};
@@ -93,9 +95,13 @@ fn build_failed_reply_text(
 }
 
 fn should_prefer_error_over_partial(error: Option<&str>) -> bool {
-    error
-        .map(|value| value.contains("已达到今日对话上限"))
-        .unwrap_or(false)
+    let Some(value) = error else {
+        return false;
+    };
+    if value.contains("已达到今日对话上限") {
+        return true;
+    }
+    is_runner_usage_limit_error(value)
 }
 
 fn sanitize_failed_partial_reply(text: &str) -> String {
@@ -1784,6 +1790,19 @@ mod tests {
                 Some("工具执行错误: 已达到今日对话上限（12/12，北京时间 2026-05-01），请明天再试"),
             ),
             "已达到今日对话上限（12/12，北京时间 2026-05-01），请明天再试"
+        );
+    }
+
+    #[test]
+    fn failed_reply_text_keeps_codex_usage_limit_over_partial_stream() {
+        assert_eq!(
+            build_failed_reply_text(
+                None,
+                true,
+                "阶段性草稿",
+                Some("codex acp error: You've reached your usage limit. Try again later."),
+            ),
+            "当前执行额度已用尽，暂时无法继续处理。请稍后再试。"
         );
     }
 

@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-12 11:02 CST
+最后更新：2026-05-12 11:04 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,15 +17,15 @@
 
 ## 当前概览
 
-- 活跃待修复：3
+- 活跃待修复：2
 - Later / 待复现：9
-- 已修复 / 已关闭：98
+- 已修复 / 已关闭：99
 - 历史分析 / 部分止血：5
 - 本轮不再保留 Web direct quota 拒绝为活跃缺陷：仓库代码已覆盖 Web actor 的 quota 拒绝 assistant transcript 与失败 `Done` 事件；当前机器 JSON 会话在 20:09 / 21:04 CST 仍新增孤立 heartbeat user turn，但按旧运行态 / 未重启进程证据处理，不重新打开。
 - 本轮复核后不再保留 `sessions.sqlite3` 会话镜像为活跃缺陷：仓库代码已覆盖 `runtime_backend=sqlite` 且 shadow 写开关为 `false` 的启动 JSON -> SQLite 回填路径；当前 `sessions/session_messages` 仍停在 2026-04-27、`cron_job_runs` 已推进到 23:01 CST，仍按当前机器旧运行态 / 未重启进程证据处理。
 - 本轮不重新打开 Heartbeat 直接交易指令缺陷：19:30 CST `run_id=18842` 的 CAI 破位预警仍送达 `建议动作：无条件止损`，但当前仓库代码已有出站 guard 修复；该证据按当前机器旧运行态 / 未确认重启进程处理，仅补充到已修复文档。
 - 本轮不重新打开观察池击球区缺陷：21:35 / 23:00 CST `run_id=18907/18940` 仍把除 LITE 外 24 支观察池统一写成 `击球区：待确认`，且持久化 user prompt 未出现 `【已恢复的本地击球区参考】`，说明当前 live 仍未跑到仓库内的恢复注入逻辑；该证据补充到已修复文档，待确认部署 / 重启后再复核。
-- 本轮新增 Feishu 直聊 Codex runner usage limit 缺陷：06:39 / 06:41 CST 同一 ASTS 财报分析请求连续两次进入 agent 主链路后命中 Codex ACP `usage_limit_exceeded`，系统已发送 failure fallback 但只给通用失败文案，没有把可解释的 runner 额度耗尽和恢复时间映射给用户；按 P1 活跃登记。
+- 本轮已修复 Feishu 直聊 Codex runner usage limit 缺陷：06:39 / 06:41 CST 同一 ASTS 财报分析请求连续两次命中 Codex ACP `usage_limit_exceeded`，共享错误净化层现会映射成可解释的“执行额度已用尽，请稍后再试”文案，Feishu direct 失败回复也会优先展示该错误；关联 Issue [#40](https://github.com/B-M-Capital-Research/honeclaw/issues/40)。
 - 本轮回退 Heartbeat 跨 job 预览去重缺陷：09:01 / 09:30 / 10:01 / 10:31 CST `DRAM 心跳监控` 已生成创上市以来新高触发正文，却连续误匹配到 08:30 Cerebras IPO preview 并落成 `noop + skipped_noop`；同一根因仍会漏发真实 heartbeat，按 P2 活跃恢复。
 - 本轮回退单标的 near-threshold guard 缺陷：11:00 CST `DRAM 心跳监控` 已返回 `JsonTriggered` 且正文写明“盘中创历史新高（满足条件2）”，但被 `near_threshold_suppressed=true` 压成 `noop + skipped_noop`；该缺陷从“近阈值误发”扩展为“真实触发误抑制”，按 P2 活跃恢复。
 - 本轮观察到若干旧运行态 / 已有修复相关噪声：04:02 / 04:31 / 07:00 CST heartbeat 空输出或非法 JSON 被显式落为 `execution_failed/skipped_error`，没有被伪装成 noop；`sessions/session_messages` 镜像仍停在 2026-04-27，继续按已知 fixed-but-live-old 证据处理。本轮不为这些单独建档。
@@ -40,7 +40,6 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Feishu 直聊命中 Codex usage limit 后只返回通用失败，用户请求连续无法完成 | P1 | New | 2026-05-12 07:03 新增：06:39 / 06:41 CST 同一 ASTS 财报分析请求连续两次命中 Codex ACP `usage_limit_exceeded`，Feishu 只发送通用 failure fallback；关联 Issue [#40](https://github.com/B-M-Capital-Research/honeclaw/issues/40) | [feishu_direct_codex_usage_limit_generic_failure.md](./feishu_direct_codex_usage_limit_generic_failure.md) |
 | Heartbeat 预览去重把不同标的或同标的不同事件误判为重复，导致真实触发被压成 noop 漏发 | P2 | New | 2026-05-12 11:02 回退：09:01 / 09:30 / 10:01 / 10:31 CST `DRAM 心跳监控` 连续把 `JsonTriggered` 的创上市以来新高提醒误匹配到 08:30 Cerebras IPO preview，最终 `noop + skipped_noop + delivered=0`；无关联 GitHub Issue | [scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md](./scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md) |
 | 单标的 heartbeat near-threshold guard 会误判触发状态并导致误发或漏发 | P2 | New | 2026-05-12 11:02 从归档恢复：11:00 CST `DRAM 心跳监控` 已返回 `JsonTriggered`，正文写明 `盘中创历史新高（满足条件2）`，但 `near_threshold_suppressed=true` 导致 `noop + skipped_noop + delivered=0`；无关联 GitHub Issue | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
 
@@ -62,6 +61,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Feishu direct 命中 Codex runner usage limit 后只返回通用失败兜底 | P1 | Fixed | 2026-05-12 11:04 共享错误净化层新增 Codex / runner / ACP usage-limit 识别，统一返回“当前执行额度已用尽，暂时无法继续处理。请稍后再试。”；Feishu direct 失败回复优先展示该错误，不再被 placeholder 或 partial stream 遮蔽。`cargo test -p hone-channels user_visible_error_message --lib -- --nocapture`、`cargo test -p hone-feishu failed_reply_text_keeps_codex_usage_limit_over_partial_stream -- --nocapture`、`cargo check -p hone-channels -p hone-feishu --tests` 通过；关联 Issue [#40](https://github.com/B-M-Capital-Research/honeclaw/issues/40) | [feishu_direct_codex_usage_limit_generic_failure.md](./feishu_direct_codex_usage_limit_generic_failure.md) |
 | Web direct 触发对话额度拒绝后只写入 user turn，没有可见额度回复 | P2 | Fixed | 2026-05-11 23:02 复核当前机器 20:09 / 21:04 CST 旧运行态仍有孤立 quota user turn，但当前代码已覆盖 Web actor 的 assistant quota 文案和失败 `Done`；该证据仅作为未重启 live 观察，不重新打开；无关联 GitHub Issue | [web_direct_quota_rejected_without_visible_reply.md](./web_direct_quota_rejected_without_visible_reply.md) |
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | Fixed | 2026-05-11 23:02 复核当前 sqlite 会话镜像仍停在 2026-04-27，但 `cron_job_runs` 已推进到 23:01 CST；当前代码已覆盖 `runtime_backend=sqlite + shadow_write=false` 的启动 JSON -> SQLite 回填，该证据仅作为未重启 live 观察，不重新打开；无关联 GitHub Issue | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | 核心观察池简报在本地击球区配置恢复后仍把多数标的降成“待确认” | P3 | Fixed | 2026-05-11 23:02 当前机器 21:35 / 23:00 CST 旧运行态仍批量输出 `击球区：待确认`，且持久化 user prompt 未出现 `【已恢复的本地击球区参考】`；仓库代码已包含恢复注入与回归测试，本轮仅补充未重启 live 证据，不回退状态；无关联 GitHub Issue | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
