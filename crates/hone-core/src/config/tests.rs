@@ -52,6 +52,10 @@ fn config_example_yaml_matches_current_schema() {
     assert!(config.agent.opencode.model.is_empty());
     assert!(config.agent.opencode.api_base_url.is_empty());
     assert!(config.agent.opencode.api_key.is_empty());
+    assert_eq!(
+        config.event_engine.news_importance_prompt,
+        "公司或潜在影响公司长期逻辑和宏观叙事的重大事件"
+    );
 }
 
 #[test]
@@ -1394,6 +1398,7 @@ fn config_example_avoids_stale_config_knobs() {
     assert!(has_key(fmp, "api_keys"));
 
     let event_engine = get_key(root, "event_engine").unwrap().as_mapping().unwrap();
+    assert!(has_key(event_engine, "news_importance_prompt"));
     let sources = get_key(event_engine, "sources")
         .unwrap()
         .as_mapping()

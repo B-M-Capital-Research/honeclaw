@@ -91,7 +91,7 @@ rm -rf ~/.honeclaw
 ## Installed Layout
 
 - Bundle root: `~/.honeclaw/current`
-- User config: `~/.honeclaw/config.yaml`
+- Canonical user config: `~/.honeclaw/config.yaml`
 - Generated effective config: `~/.honeclaw/data/runtime/effective-config.yaml`
 - Runtime data: `~/.honeclaw/data`
 - Skills dir: `~/.honeclaw/current/share/honeclaw/skills`
@@ -136,8 +136,9 @@ The onboarding flow will:
 - If you accidentally enable a channel and then hit a required field with no value to keep, the wizard offers:
   - retry the current field
   - go back and disable that channel
-- Require an explicit choice for `FMP` and `Tavily` API keys: configure now or skip for this run
-  - If you configure them now, the wizard writes `fmp.api_keys` and `search.api_keys`
+- Require an explicit choice for `OpenRouter`, `FMP`, and `Tavily` API keys: configure now or skip for this run
+  - OpenRouter writes `llm.providers.openrouter.api_keys` and clears legacy single-key fields
+  - FMP and Tavily write `fmp.api_keys` and `search.api_keys`
   - `FMP` onboarding also clears the legacy single-key field `fmp.api_key`
 
 Runner install references shown by onboarding:

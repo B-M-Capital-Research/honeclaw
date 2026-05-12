@@ -28,7 +28,8 @@ const ZH = {
   },
   agent: {
     title: "基础设置",
-    subtitle: "选择 Agent 引擎并配置相关参数，保存后立即写入运行时配置。",
+    subtitle:
+      "选择 Agent 引擎并配置相关参数，保存后写入 config.yaml 并刷新 effective config。",
     current_badge: "当前",
     hone_cloud: {
       name: "Hone Cloud",
@@ -291,7 +292,7 @@ const EN: typeof ZH = {
   agent: {
     title: "Core settings",
     subtitle:
-      "Pick the agent runner and configure its parameters. Saving writes to runtime config immediately.",
+      "Pick the agent runner and configure its parameters. Saving writes config.yaml and refreshes the effective config.",
     current_badge: "Active",
     hone_cloud: {
       name: "Hone Cloud",

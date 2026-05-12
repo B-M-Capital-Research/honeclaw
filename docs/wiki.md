@@ -119,11 +119,12 @@ Installed release defaults:
 | Path | Purpose |
 | --- | --- |
 | `~/.honeclaw/current` | Active release bundle symlink. |
-| `~/.honeclaw/config.yaml` | User config. |
+| `~/.honeclaw/config.yaml` | Canonical user config. |
 | `~/.honeclaw/data` | Runtime data. |
 | `~/.honeclaw/data/runtime/effective-config.yaml` | Generated runtime config. |
 | `~/.honeclaw/current/share/honeclaw/skills` | Bundled skills. |
-| `~/.honeclaw/current/share/honeclaw/web` | Bundled Web assets. |
+| `~/.honeclaw/current/share/honeclaw/web` | Bundled admin Web assets. |
+| `~/.honeclaw/current/share/honeclaw/web-public` | Bundled public/user Web assets. |
 
 ## Prerequisites
 

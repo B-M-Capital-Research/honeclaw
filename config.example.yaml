@@ -348,6 +348,9 @@ event_engine:
   # use real API only for manual live-quality checks.
   news_classifier_llm: news_classifier
   news_classifier_model: "x-ai/grok-4.1-fast"
+  # Global default phrase for judging whether uncertain-source news is important.
+  # Per-actor notif_prefs news_importance_prompt overrides this value.
+  news_importance_prompt: "公司或潜在影响公司长期逻辑和宏观叙事的重大事件"
 
 llm:
   provider: openrouter
