@@ -387,18 +387,18 @@ mod tests {
 
     #[test]
     fn default_prefs_allow_everything() {
-        let p = NotificationPrefs::default();
-        assert!(p.should_deliver(&ev(EventKind::NewsCritical, Severity::Low, vec!["AAPL"])));
-        assert!(p.should_deliver(&ev(EventKind::MacroEvent, Severity::Low, vec![])));
+        let prefs = NotificationPrefs::default();
+        assert!(prefs.should_deliver(&ev(EventKind::NewsCritical, Severity::Low, vec!["AAPL"])));
+        assert!(prefs.should_deliver(&ev(EventKind::MacroEvent, Severity::Low, vec![])));
     }
 
     #[test]
     fn disabled_blocks_all() {
-        let p = NotificationPrefs {
+        let prefs = NotificationPrefs {
             enabled: false,
             ..Default::default()
         };
-        assert!(!p.should_deliver(&ev(
+        assert!(!prefs.should_deliver(&ev(
             EventKind::EarningsReleased,
             Severity::High,
             vec!["AAPL"]
@@ -407,64 +407,68 @@ mod tests {
 
     #[test]
     fn portfolio_only_drops_symbol_less_events() {
-        let p = NotificationPrefs {
+        let prefs = NotificationPrefs {
             portfolio_only: true,
             ..Default::default()
         };
-        assert!(p.should_deliver(&ev(EventKind::NewsCritical, Severity::Low, vec!["AAPL"])));
-        assert!(!p.should_deliver(&ev(EventKind::MacroEvent, Severity::Low, vec![])));
+        assert!(prefs.should_deliver(&ev(EventKind::NewsCritical, Severity::Low, vec!["AAPL"])));
+        assert!(!prefs.should_deliver(&ev(EventKind::MacroEvent, Severity::Low, vec![])));
     }
 
     #[test]
     fn min_severity_filters_lower_tiers() {
-        let p = NotificationPrefs {
+        let prefs = NotificationPrefs {
             min_severity: Severity::High,
             ..Default::default()
         };
-        assert!(!p.should_deliver(&ev(EventKind::NewsCritical, Severity::Low, vec!["AAPL"])));
-        assert!(!p.should_deliver(&ev(EventKind::NewsCritical, Severity::Medium, vec!["AAPL"])));
-        assert!(p.should_deliver(&ev(EventKind::NewsCritical, Severity::High, vec!["AAPL"])));
+        assert!(!prefs.should_deliver(&ev(EventKind::NewsCritical, Severity::Low, vec!["AAPL"])));
+        assert!(!prefs.should_deliver(&ev(
+            EventKind::NewsCritical,
+            Severity::Medium,
+            vec!["AAPL"]
+        )));
+        assert!(prefs.should_deliver(&ev(EventKind::NewsCritical, Severity::High, vec!["AAPL"])));
     }
 
     #[test]
     fn allow_list_is_whitelist() {
-        let p = NotificationPrefs {
+        let prefs = NotificationPrefs {
             allow_kinds: Some(vec!["earnings_released".into()]),
             ..Default::default()
         };
-        assert!(p.should_deliver(&ev(
+        assert!(prefs.should_deliver(&ev(
             EventKind::EarningsReleased,
             Severity::High,
             vec!["AAPL"]
         )));
-        assert!(!p.should_deliver(&ev(EventKind::NewsCritical, Severity::High, vec!["AAPL"])));
+        assert!(!prefs.should_deliver(&ev(EventKind::NewsCritical, Severity::High, vec!["AAPL"])));
     }
 
     #[test]
     fn block_list_overrides_allow_list() {
-        let p = NotificationPrefs {
+        let prefs = NotificationPrefs {
             allow_kinds: Some(vec!["earnings_released".into(), "news_critical".into()]),
             blocked_kinds: vec!["news_critical".into()],
             ..Default::default()
         };
-        assert!(p.should_deliver(&ev(
+        assert!(prefs.should_deliver(&ev(
             EventKind::EarningsReleased,
             Severity::High,
             vec!["AAPL"]
         )));
-        assert!(!p.should_deliver(&ev(EventKind::NewsCritical, Severity::High, vec!["AAPL"])));
+        assert!(!prefs.should_deliver(&ev(EventKind::NewsCritical, Severity::High, vec!["AAPL"])));
     }
 
     #[test]
     fn file_storage_roundtrip() {
         let dir = tempdir().unwrap();
         let store = FilePrefsStorage::new(dir.path()).unwrap();
-        let a = actor();
+        let actor_id = actor();
         // 缺失文件 → 默认
-        let loaded = store.load(&a);
+        let loaded = store.load(&actor_id);
         assert!(loaded.enabled);
         // 写入 → 读回
-        let p = NotificationPrefs {
+        let prefs = NotificationPrefs {
             enabled: false,
             portfolio_only: true,
             min_severity: Severity::High,
@@ -483,9 +487,9 @@ mod tests {
             large_position_weight_pct: Some(20.0),
             mainline_style: Some("长期叙事派".into()),
             mainline_by_ticker: Some({
-                let mut m = HashMap::new();
-                m.insert("AAPL".into(), "看现金流 + 回购".into());
-                m
+                let mut mainlines_by_ticker = HashMap::new();
+                mainlines_by_ticker.insert("AAPL".into(), "看现金流 + 回购".into());
+                mainlines_by_ticker
             }),
             last_mainline_distilled_at: Some("2026-04-26T09:00:00Z".into()),
             mainline_distill_skipped: vec!["XYZ".into()],
@@ -495,8 +499,8 @@ mod tests {
                 exempt_kinds: vec!["earnings_released".into()],
             }),
         };
-        store.save(&a, &p).unwrap();
-        let loaded = store.load(&a);
+        store.save(&actor_id, &prefs).unwrap();
+        let loaded = store.load(&actor_id);
         assert!(!loaded.enabled);
         assert!(loaded.portfolio_only);
         assert_eq!(loaded.min_severity, Severity::High);
@@ -541,19 +545,19 @@ mod tests {
 
     #[test]
     fn new_per_actor_fields_default_to_none() {
-        let p = NotificationPrefs::default();
-        assert!(p.timezone.is_none());
-        assert!(p.digest_slots.is_none());
-        assert!(p.price_high_pct_override.is_none());
-        assert!(p.immediate_kinds.is_none());
-        assert!(!p.quiet_mode);
-        assert!(p.allow_sources.is_none());
-        assert!(p.blocked_sources.is_empty());
-        assert!(p.price_high_pct_up_override.is_none());
-        assert!(p.price_high_pct_down_override.is_none());
-        assert!(p.large_position_weight_pct.is_none());
-        assert!(p.mainline_style.is_none());
-        assert!(p.mainline_by_ticker.is_none());
+        let prefs = NotificationPrefs::default();
+        assert!(prefs.timezone.is_none());
+        assert!(prefs.digest_slots.is_none());
+        assert!(prefs.price_high_pct_override.is_none());
+        assert!(prefs.immediate_kinds.is_none());
+        assert!(!prefs.quiet_mode);
+        assert!(prefs.allow_sources.is_none());
+        assert!(prefs.blocked_sources.is_empty());
+        assert!(prefs.price_high_pct_up_override.is_none());
+        assert!(prefs.price_high_pct_down_override.is_none());
+        assert!(prefs.large_position_weight_pct.is_none());
+        assert!(prefs.mainline_style.is_none());
+        assert!(prefs.mainline_by_ticker.is_none());
     }
 
     #[test]
@@ -567,21 +571,22 @@ mod tests {
             "last_thesis_distilled_at": "2026-04-26T09:00:00Z",
             "thesis_distill_skipped": ["XYZ"]
         }"#;
-        let p: NotificationPrefs =
+        let prefs: NotificationPrefs =
             serde_json::from_str(json).expect("legacy prefs JSON should load");
-        assert_eq!(p.mainline_style.as_deref(), Some("长期叙事派"));
+        assert_eq!(prefs.mainline_style.as_deref(), Some("长期叙事派"));
         assert_eq!(
-            p.mainline_by_ticker
+            prefs
+                .mainline_by_ticker
                 .as_ref()
                 .and_then(|m| m.get("AAPL"))
                 .map(String::as_str),
             Some("看现金流 + 回购")
         );
         assert_eq!(
-            p.last_mainline_distilled_at.as_deref(),
+            prefs.last_mainline_distilled_at.as_deref(),
             Some("2026-04-26T09:00:00Z")
         );
-        assert_eq!(p.mainline_distill_skipped, vec!["XYZ".to_string()]);
+        assert_eq!(prefs.mainline_distill_skipped, vec!["XYZ".to_string()]);
     }
 
     #[test]
@@ -589,43 +594,43 @@ mod tests {
         // 老 prefs 文件没有这 4 个字段;serde(default) 应让加载继续走默认。
         let dir = tempdir().unwrap();
         let store = FilePrefsStorage::new(dir.path()).unwrap();
-        let a = actor();
+        let actor_id = actor();
         std::fs::write(
-            store.path_for(&a),
+            store.path_for(&actor_id),
             r#"{"enabled":true,"portfolio_only":false,"min_severity":"low","blocked_kinds":[]}"#,
         )
         .unwrap();
-        let p = store.load(&a);
-        assert!(p.timezone.is_none());
-        assert!(p.digest_slots.is_none());
-        assert!(p.price_high_pct_override.is_none());
-        assert!(p.immediate_kinds.is_none());
-        assert!(!p.quiet_mode);
-        assert!(p.allow_sources.is_none());
-        assert!(p.blocked_sources.is_empty());
-        assert!(p.price_high_pct_up_override.is_none());
-        assert!(p.price_high_pct_down_override.is_none());
-        assert!(p.large_position_weight_pct.is_none());
+        let loaded = store.load(&actor_id);
+        assert!(loaded.timezone.is_none());
+        assert!(loaded.digest_slots.is_none());
+        assert!(loaded.price_high_pct_override.is_none());
+        assert!(loaded.immediate_kinds.is_none());
+        assert!(!loaded.quiet_mode);
+        assert!(loaded.allow_sources.is_none());
+        assert!(loaded.blocked_sources.is_empty());
+        assert!(loaded.price_high_pct_up_override.is_none());
+        assert!(loaded.price_high_pct_down_override.is_none());
+        assert!(loaded.large_position_weight_pct.is_none());
     }
 
     #[test]
     fn source_allow_and_block_lists_filter_events() {
         let mut event = ev(EventKind::NewsCritical, Severity::High, vec!["AAPL"]);
         event.source = "fmp.stock_news:reuters.com".into();
-        let p = NotificationPrefs {
+        let prefs = NotificationPrefs {
             allow_sources: Some(vec!["reuters.com".into()]),
             ..Default::default()
         };
-        assert!(p.should_deliver(&event));
+        assert!(prefs.should_deliver(&event));
 
         event.source = "telegram.channel:watcherguru".into();
-        assert!(!p.should_deliver(&event));
+        assert!(!prefs.should_deliver(&event));
 
-        let p = NotificationPrefs {
+        let prefs = NotificationPrefs {
             blocked_sources: vec!["watcherguru".into()],
             ..Default::default()
         };
-        assert!(!p.should_deliver(&event));
+        assert!(!prefs.should_deliver(&event));
     }
 
     #[test]
@@ -633,12 +638,12 @@ mod tests {
         // 用户只写了 enabled=false，其他字段缺失；serde(default) 保证兼容。
         let dir = tempdir().unwrap();
         let store = FilePrefsStorage::new(dir.path()).unwrap();
-        let a = actor();
-        std::fs::write(store.path_for(&a), r#"{"enabled": false}"#).unwrap();
-        let p = store.load(&a);
-        assert!(!p.enabled);
-        assert_eq!(p.min_severity, Severity::Low);
-        assert!(!p.portfolio_only);
+        let actor_id = actor();
+        std::fs::write(store.path_for(&actor_id), r#"{"enabled": false}"#).unwrap();
+        let loaded = store.load(&actor_id);
+        assert!(!loaded.enabled);
+        assert_eq!(loaded.min_severity, Severity::Low);
+        assert!(!loaded.portfolio_only);
     }
 
     #[test]
@@ -685,7 +690,7 @@ mod tests {
 
     #[test]
     fn effective_digest_slots_returns_user_slots_when_set() {
-        let p = NotificationPrefs {
+        let prefs = NotificationPrefs {
             digest_slots: Some(vec![DigestSlot {
                 id: "premarket".into(),
                 time: "08:30".into(),
@@ -694,7 +699,7 @@ mod tests {
             }]),
             ..Default::default()
         };
-        let slots = p.effective_digest_slots().unwrap();
+        let slots = prefs.effective_digest_slots().unwrap();
         assert_eq!(slots.len(), 1);
         assert_eq!(slots[0].id, "premarket");
         assert_eq!(slots[0].time, "08:30");
@@ -702,18 +707,18 @@ mod tests {
 
     #[test]
     fn effective_digest_slots_returns_none_when_unset() {
-        let p = NotificationPrefs::default();
-        assert!(p.effective_digest_slots().is_none());
+        let prefs = NotificationPrefs::default();
+        assert!(prefs.effective_digest_slots().is_none());
     }
 
     #[test]
     fn effective_digest_slots_preserves_empty_disable_semantics() {
-        let p = NotificationPrefs {
+        let prefs = NotificationPrefs {
             digest_slots: Some(vec![]),
             ..Default::default()
         };
         // Some([]) 必须保留 —— 用户主动关 digest 的语义。
-        assert_eq!(p.effective_digest_slots(), Some(vec![]));
+        assert_eq!(prefs.effective_digest_slots(), Some(vec![]));
     }
 
     #[test]
@@ -729,9 +734,12 @@ mod tests {
     fn malformed_json_falls_back_without_panic() {
         let dir = tempdir().unwrap();
         let store = FilePrefsStorage::new(dir.path()).unwrap();
-        let a = actor();
-        std::fs::write(store.path_for(&a), "not json").unwrap();
-        let p = store.load(&a);
-        assert!(p.enabled, "解析失败时应回到默认（放行），不影响推送链路");
+        let actor_id = actor();
+        std::fs::write(store.path_for(&actor_id), "not json").unwrap();
+        let loaded = store.load(&actor_id);
+        assert!(
+            loaded.enabled,
+            "解析失败时应回到默认（放行），不影响推送链路"
+        );
     }
 }

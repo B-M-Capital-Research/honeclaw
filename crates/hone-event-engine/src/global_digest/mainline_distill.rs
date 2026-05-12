@@ -182,10 +182,10 @@ pub fn scan_profiles(
     }
     let holdings_set: Option<std::collections::HashSet<String>> =
         holdings_filter.map(|hs| hs.iter().map(|h| h.to_uppercase()).collect());
-    let mut out = Vec::new();
+    let mut profiles = Vec::new();
     let entries = match std::fs::read_dir(&cp_dir) {
-        Ok(e) => e,
-        Err(_) => return out,
+        Ok(entries) => entries,
+        Err(_) => return profiles,
     };
     for entry in entries.flatten() {
         let path = entry.path();
@@ -213,20 +213,20 @@ pub fn scan_profiles(
             continue;
         }
         // 一个 profile 可能含多个 ticker(GOOGL / GOOG),分别 emit
-        for t in tickers {
+        for ticker in tickers {
             if let Some(filter) = &holdings_set {
-                if !filter.contains(&t) {
+                if !filter.contains(&ticker) {
                     continue;
                 }
             }
-            out.push(ProfileSource {
-                ticker: t,
+            profiles.push(ProfileSource {
+                ticker,
                 dir_name: dir_name.clone(),
                 markdown: markdown.clone(),
             });
         }
     }
-    out
+    profiles
 }
 
 /// 从 profile.md 解析出 ticker 列表(可能 ≥1)。
@@ -317,9 +317,11 @@ pub async fn distill_for_actor(
     // 并发蒸主线(每个独立 LLM call)
     use futures::stream::{self, StreamExt};
     let results: Vec<(String, anyhow::Result<String>)> = stream::iter(profiles.iter().cloned())
-        .map(|p| async move {
-            let r = distiller.distill_mainline(&p.ticker, &p.markdown).await;
-            (p.ticker, r)
+        .map(|profile| async move {
+            let distill_result = distiller
+                .distill_mainline(&profile.ticker, &profile.markdown)
+                .await;
+            (profile.ticker, distill_result)
         })
         .buffer_unordered(6)
         .collect()
@@ -327,10 +329,10 @@ pub async fn distill_for_actor(
 
     let mut by_ticker: HashMap<String, String> = HashMap::new();
     let mut skipped: Vec<String> = Vec::new();
-    for (ticker, r) in results {
-        match r {
-            Ok(t) => {
-                by_ticker.insert(ticker, t);
+    for (ticker, distill_result) in results {
+        match distill_result {
+            Ok(mainline) => {
+                by_ticker.insert(ticker, mainline);
             }
             Err(e) => {
                 tracing::warn!(ticker = %ticker, "mainline distill failed: {e}");
@@ -436,9 +438,9 @@ mod tests {
     #[test]
     fn extract_tickers_from_yaml_frontmatter_multi() {
         let md = "# Alphabet / Google\n\nticker: GOOGL / GOOG\n";
-        let t = extract_tickers(md);
-        assert!(t.contains(&"GOOGL".into()));
-        assert!(t.contains(&"GOOG".into()));
+        let tickers = extract_tickers(md);
+        assert!(tickers.contains(&"GOOGL".into()));
+        assert!(tickers.contains(&"GOOG".into()));
     }
 
     #[test]
@@ -761,12 +763,12 @@ mod tests {
             "last_distilled_at": null,
             "skipped_tickers": []
         }"#;
-        let d: DistilledMainlines =
+        let distilled: DistilledMainlines =
             serde_json::from_str(json).expect("legacy DistilledTheses JSON should load");
         assert_eq!(
-            d.by_ticker.get("MU").map(String::as_str),
+            distilled.by_ticker.get("MU").map(String::as_str),
             Some("看 NAND 长期稀缺")
         );
-        assert_eq!(d.style.as_deref(), Some("长期叙事派"));
+        assert_eq!(distilled.style.as_deref(), Some("长期叙事派"));
     }
 }

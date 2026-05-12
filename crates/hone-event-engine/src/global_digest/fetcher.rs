@@ -510,8 +510,8 @@ mod tests {
 
     #[test]
     fn truncates_long_text_with_ellipsis() {
-        let p = "abc ".repeat(2000); // ~8000 chars
-        let html = format!("<article><p>{p}</p></article>");
+        let long_paragraph = "abc ".repeat(2000); // ~8000 chars
+        let html = format!("<article><p>{long_paragraph}</p></article>");
         let text = extract_article_text(&html, 100);
         assert_eq!(text.chars().count(), 101); // 100 chars + ellipsis
         assert!(text.ends_with('…'));

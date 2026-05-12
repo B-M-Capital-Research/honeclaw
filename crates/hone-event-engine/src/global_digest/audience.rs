@@ -291,18 +291,21 @@ mod tests {
     #[test]
     fn extract_one_liner_returns_full_text_when_short() {
         let desc = "Apple designs phones.";
-        let r = extract_one_liner(desc, 100);
-        assert_eq!(r, "Apple designs phones.");
+        let one_liner = extract_one_liner(desc, 100);
+        assert_eq!(one_liner, "Apple designs phones.");
     }
 
     #[test]
     fn extract_one_liner_truncates_at_period_when_long() {
         let desc = "Apple designs and sells phones, computers, tablets, watches, and services. \
                     The company also operates a chip business. Other ventures include AR/VR.";
-        let r = extract_one_liner(desc, 80);
+        let one_liner = extract_one_liner(desc, 80);
         // 应该在某个句号断开
-        assert!(r.ends_with('.') || r.ends_with('…'), "got: {r}");
-        assert!(r.chars().count() <= 100);
+        assert!(
+            one_liner.ends_with('.') || one_liner.ends_with('…'),
+            "got: {one_liner}"
+        );
+        assert!(one_liner.chars().count() <= 100);
     }
 
     #[test]
@@ -314,19 +317,19 @@ mod tests {
     #[test]
     fn extract_one_liner_truncates_with_ellipsis_when_no_period() {
         let desc = "a".repeat(300);
-        let r = extract_one_liner(&desc, 50);
-        assert!(r.ends_with('…'));
-        assert_eq!(r.chars().count(), 51);
+        let one_liner = extract_one_liner(&desc, 50);
+        assert!(one_liner.ends_with('…'));
+        assert_eq!(one_liner.chars().count(), 51);
     }
 
     #[test]
     fn profile_to_brief_falls_back_when_no_profile() {
         let dir = tempfile::tempdir().unwrap();
         let storage = PortfolioStorage::new(dir.path().join("portfolios"));
-        let cfg = hone_core::config::FmpConfig::default();
-        let fmp = FmpClient::from_config(&cfg);
-        let b = AudienceBuilder::new(&fmp, dir.path().join("cache"), &storage);
-        let brief = b.profile_to_brief("UNKNOWN", None, vec![]);
+        let fmp_config = hone_core::config::FmpConfig::default();
+        let fmp = FmpClient::from_config(&fmp_config);
+        let builder = AudienceBuilder::new(&fmp, dir.path().join("cache"), &storage);
+        let brief = builder.profile_to_brief("UNKNOWN", None, vec![]);
         assert_eq!(brief.ticker, "UNKNOWN");
         assert_eq!(brief.name, "UNKNOWN");
         assert_eq!(brief.one_liner, "(无 profile)");
@@ -337,9 +340,9 @@ mod tests {
     fn profile_to_brief_extracts_fmp_fields() {
         let dir = tempfile::tempdir().unwrap();
         let storage = PortfolioStorage::new(dir.path().join("portfolios"));
-        let cfg = hone_core::config::FmpConfig::default();
-        let fmp = FmpClient::from_config(&cfg);
-        let b = AudienceBuilder::new(&fmp, dir.path().join("cache"), &storage);
+        let fmp_config = hone_core::config::FmpConfig::default();
+        let fmp = FmpClient::from_config(&fmp_config);
+        let builder = AudienceBuilder::new(&fmp, dir.path().join("cache"), &storage);
         let profile = json!({
             "symbol": "CAI",
             "companyName": "Caris Life Sciences, Inc.",
@@ -347,7 +350,7 @@ mod tests {
             "industry": "Biotechnology",
             "description": "Caris Life Sciences, an AI TechBio company, provides molecular profiling services. Focused on precision oncology."
         });
-        let brief = b.profile_to_brief("CAI", Some(&profile), vec!["看 ctDNA 渗透率".into()]);
+        let brief = builder.profile_to_brief("CAI", Some(&profile), vec!["看 ctDNA 渗透率".into()]);
         assert_eq!(brief.name, "Caris Life Sciences, Inc.");
         assert_eq!(brief.sector, "Healthcare");
         assert_eq!(brief.industry, "Biotechnology");
@@ -441,10 +444,10 @@ mod tests {
         };
         storage.save(&actor_b, &portfolio_b).unwrap();
 
-        let cfg = hone_core::config::FmpConfig::default();
-        let fmp = FmpClient::from_config(&cfg);
-        let b = AudienceBuilder::new(&fmp, dir.path().join("cache"), &storage);
-        let (tickers, notes) = b.collect_tickers_and_notes();
+        let fmp_config = hone_core::config::FmpConfig::default();
+        let fmp = FmpClient::from_config(&fmp_config);
+        let builder = AudienceBuilder::new(&fmp, dir.path().join("cache"), &storage);
+        let (tickers, notes) = builder.collect_tickers_and_notes();
         // dedupe AAPL, 顺序保留(A 先,所以 AAPL/AMD/GOOGL)
         assert_eq!(tickers.len(), 3);
         assert!(tickers.contains(&"AAPL".to_string()));
@@ -461,13 +464,13 @@ mod tests {
     fn cache_roundtrip_within_ttl() {
         let dir = tempfile::tempdir().unwrap();
         let storage = PortfolioStorage::new(dir.path().join("portfolios"));
-        let cfg = hone_core::config::FmpConfig::default();
-        let fmp = FmpClient::from_config(&cfg);
-        let b = AudienceBuilder::new(&fmp, dir.path().join("cache"), &storage);
+        let fmp_config = hone_core::config::FmpConfig::default();
+        let fmp = FmpClient::from_config(&fmp_config);
+        let builder = AudienceBuilder::new(&fmp, dir.path().join("cache"), &storage);
         let now_ts = Utc::now().timestamp();
         let profile = json!({"symbol": "AAPL", "companyName": "Apple Inc."});
-        b.write_cache("AAPL", &profile, now_ts);
-        let read = b.read_cache("AAPL", now_ts).unwrap();
+        builder.write_cache("AAPL", &profile, now_ts);
+        let read = builder.read_cache("AAPL", now_ts).unwrap();
         assert_eq!(
             read.get("companyName").and_then(|v| v.as_str()),
             Some("Apple Inc.")
@@ -478,24 +481,24 @@ mod tests {
     fn cache_expires_after_ttl() {
         let dir = tempfile::tempdir().unwrap();
         let storage = PortfolioStorage::new(dir.path().join("portfolios"));
-        let cfg = hone_core::config::FmpConfig::default();
-        let fmp = FmpClient::from_config(&cfg);
-        let b = AudienceBuilder::new(&fmp, dir.path().join("cache"), &storage);
+        let fmp_config = hone_core::config::FmpConfig::default();
+        let fmp = FmpClient::from_config(&fmp_config);
+        let builder = AudienceBuilder::new(&fmp, dir.path().join("cache"), &storage);
         let old_ts = Utc::now().timestamp() - CACHE_TTL_SECS - 100;
         let profile = json!({"symbol": "AAPL"});
-        b.write_cache("AAPL", &profile, old_ts);
+        builder.write_cache("AAPL", &profile, old_ts);
         let now_ts = Utc::now().timestamp();
-        assert!(b.read_cache("AAPL", now_ts).is_none());
+        assert!(builder.read_cache("AAPL", now_ts).is_none());
     }
 
     #[tokio::test]
     async fn build_with_empty_portfolio_returns_empty_briefs() {
         let dir = tempfile::tempdir().unwrap();
         let storage = PortfolioStorage::new(dir.path().join("portfolios"));
-        let cfg = hone_core::config::FmpConfig::default();
-        let fmp = FmpClient::from_config(&cfg);
-        let b = AudienceBuilder::new(&fmp, dir.path().join("cache"), &storage);
-        let ctx = b.build().await;
+        let fmp_config = hone_core::config::FmpConfig::default();
+        let fmp = FmpClient::from_config(&fmp_config);
+        let builder = AudienceBuilder::new(&fmp, dir.path().join("cache"), &storage);
+        let ctx = builder.build().await;
         assert!(ctx.briefs.is_empty());
     }
 }

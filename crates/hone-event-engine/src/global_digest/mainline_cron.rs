@@ -121,8 +121,8 @@ pub async fn distill_tick(
             skipped += 1;
             continue;
         }
-        let p = prefs.load(&actor);
-        let reason = match should_trigger(&p, &holdings, now) {
+        let stored_prefs = prefs.load(&actor);
+        let reason = match should_trigger(&stored_prefs, &holdings, now) {
             Some(r) => r,
             None => {
                 skipped += 1;
@@ -289,7 +289,7 @@ mod tests {
         let distiller = CountingDistiller {
             calls: AtomicUsize::new(0),
         };
-        let (t, s) = distill_tick(
+        let (triggered_count, skipped_count) = distill_tick(
             &distiller,
             &prefs,
             &portfolios,
@@ -298,8 +298,8 @@ mod tests {
             DEFAULT_DISTILL_INTERVAL_HOURS,
         )
         .await;
-        assert_eq!(t, 0);
-        assert_eq!(s, 0); // 没 actor 就没 actor
+        assert_eq!(triggered_count, 0);
+        assert_eq!(skipped_count, 0); // 没 actor 就没 actor
         assert_eq!(distiller.calls.load(Ordering::SeqCst), 0);
     }
 
@@ -319,7 +319,7 @@ mod tests {
         let distiller = CountingDistiller {
             calls: AtomicUsize::new(0),
         };
-        let (t, _s) = distill_tick(
+        let (triggered_count, _skipped_count) = distill_tick(
             &distiller,
             &prefs,
             &portfolios,
@@ -328,10 +328,10 @@ mod tests {
             DEFAULT_DISTILL_INTERVAL_HOURS,
         )
         .await;
-        assert_eq!(t, 1, "actor 应被触发蒸馏");
-        let p = prefs.load(&actor);
-        assert!(p.last_mainline_distilled_at.is_some());
-        assert_eq!(p.mainline_by_ticker.as_ref().unwrap().len(), 2);
+        assert_eq!(triggered_count, 1, "actor 应被触发蒸馏");
+        let stored_prefs = prefs.load(&actor);
+        assert!(stored_prefs.last_mainline_distilled_at.is_some());
+        assert_eq!(stored_prefs.mainline_by_ticker.as_ref().unwrap().len(), 2);
     }
 
     #[tokio::test]
@@ -347,18 +347,18 @@ mod tests {
         write_profile(&sandbox_base, &actor, "MU");
 
         // 全覆盖 + 5 分钟前刚蒸过 → 应跳过
-        let mut p = NotificationPrefs::default();
+        let mut stored_prefs = NotificationPrefs::default();
         let mut by_ticker = std::collections::HashMap::new();
         by_ticker.insert("MU".to_string(), "existing mainline".to_string());
-        p.mainline_by_ticker = Some(by_ticker);
-        p.last_mainline_distilled_at =
+        stored_prefs.mainline_by_ticker = Some(by_ticker);
+        stored_prefs.last_mainline_distilled_at =
             Some((Utc::now() - chrono::Duration::minutes(5)).to_rfc3339());
-        prefs.save(&actor, &p).unwrap();
+        prefs.save(&actor, &stored_prefs).unwrap();
 
         let distiller = CountingDistiller {
             calls: AtomicUsize::new(0),
         };
-        let (t, _) = distill_tick(
+        let (triggered_count, _) = distill_tick(
             &distiller,
             &prefs,
             &portfolios,
@@ -367,7 +367,7 @@ mod tests {
             DEFAULT_DISTILL_INTERVAL_HOURS,
         )
         .await;
-        assert_eq!(t, 0, "全覆盖 + 5 分钟前蒸过应跳过");
+        assert_eq!(triggered_count, 0, "全覆盖 + 5 分钟前蒸过应跳过");
     }
 
     #[tokio::test]
@@ -384,18 +384,18 @@ mod tests {
         write_profile(&sandbox_base, &actor, "RKLB");
 
         // 只有 MU 有主线,RKLB 缺;距上次 12 小时(已过 MIN_RETRY=6h)
-        let mut p = NotificationPrefs::default();
+        let mut stored_prefs = NotificationPrefs::default();
         let mut by_ticker = std::collections::HashMap::new();
         by_ticker.insert("MU".to_string(), "existing".to_string());
-        p.mainline_by_ticker = Some(by_ticker);
-        p.last_mainline_distilled_at =
+        stored_prefs.mainline_by_ticker = Some(by_ticker);
+        stored_prefs.last_mainline_distilled_at =
             Some((Utc::now() - chrono::Duration::hours(12)).to_rfc3339());
-        prefs.save(&actor, &p).unwrap();
+        prefs.save(&actor, &stored_prefs).unwrap();
 
         let distiller = CountingDistiller {
             calls: AtomicUsize::new(0),
         };
-        let (t, _) = distill_tick(
+        let (triggered_count, _) = distill_tick(
             &distiller,
             &prefs,
             &portfolios,
@@ -404,7 +404,7 @@ mod tests {
             DEFAULT_DISTILL_INTERVAL_HOURS,
         )
         .await;
-        assert_eq!(t, 1, "RKLB 缺主线 应立即触发");
+        assert_eq!(triggered_count, 1, "RKLB 缺主线 应立即触发");
     }
 
     #[tokio::test]
@@ -421,18 +421,19 @@ mod tests {
         // AAPL 故意没画像
 
         // 1 小时前刚试过(< MIN_RETRY=6h),即使 AAPL missing 也应跳过避免循环
-        let mut p = NotificationPrefs::default();
+        let mut stored_prefs = NotificationPrefs::default();
         let mut by_ticker = std::collections::HashMap::new();
         by_ticker.insert("MU".to_string(), "x".to_string());
-        p.mainline_by_ticker = Some(by_ticker);
-        p.mainline_distill_skipped = vec!["AAPL".to_string()];
-        p.last_mainline_distilled_at = Some((Utc::now() - chrono::Duration::hours(1)).to_rfc3339());
-        prefs.save(&actor, &p).unwrap();
+        stored_prefs.mainline_by_ticker = Some(by_ticker);
+        stored_prefs.mainline_distill_skipped = vec!["AAPL".to_string()];
+        stored_prefs.last_mainline_distilled_at =
+            Some((Utc::now() - chrono::Duration::hours(1)).to_rfc3339());
+        prefs.save(&actor, &stored_prefs).unwrap();
 
         let distiller = CountingDistiller {
             calls: AtomicUsize::new(0),
         };
-        let (t, _) = distill_tick(
+        let (triggered_count, _) = distill_tick(
             &distiller,
             &prefs,
             &portfolios,
@@ -441,7 +442,7 @@ mod tests {
             DEFAULT_DISTILL_INTERVAL_HOURS,
         )
         .await;
-        assert_eq!(t, 0, "1 小时前刚试过应跳过(MIN_RETRY 节流)");
+        assert_eq!(triggered_count, 0, "1 小时前刚试过应跳过(MIN_RETRY 节流)");
     }
 
     #[tokio::test]
@@ -457,17 +458,18 @@ mod tests {
         write_profile(&sandbox_base, &actor, "MU");
 
         // 全覆盖 + 8 天前蒸过 → 周更新触发
-        let mut p = NotificationPrefs::default();
+        let mut stored_prefs = NotificationPrefs::default();
         let mut by_ticker = std::collections::HashMap::new();
         by_ticker.insert("MU".to_string(), "existing mainline".to_string());
-        p.mainline_by_ticker = Some(by_ticker);
-        p.last_mainline_distilled_at = Some((Utc::now() - chrono::Duration::days(8)).to_rfc3339());
-        prefs.save(&actor, &p).unwrap();
+        stored_prefs.mainline_by_ticker = Some(by_ticker);
+        stored_prefs.last_mainline_distilled_at =
+            Some((Utc::now() - chrono::Duration::days(8)).to_rfc3339());
+        prefs.save(&actor, &stored_prefs).unwrap();
 
         let distiller = CountingDistiller {
             calls: AtomicUsize::new(0),
         };
-        let (t, _) = distill_tick(
+        let (triggered_count, _) = distill_tick(
             &distiller,
             &prefs,
             &portfolios,
@@ -476,7 +478,7 @@ mod tests {
             DEFAULT_DISTILL_INTERVAL_HOURS,
         )
         .await;
-        assert_eq!(t, 1, "全覆盖 + 8 天前蒸过 → 周更新触发");
+        assert_eq!(triggered_count, 1, "全覆盖 + 8 天前蒸过 → 周更新触发");
     }
 
     #[test]
@@ -540,14 +542,14 @@ mod tests {
         let sandbox_base = dir.path().join("sandboxes");
         write_profile(&sandbox_base, &actor, "MU");
 
-        let mut p = NotificationPrefs::default();
-        p.last_mainline_distilled_at = Some("not-a-date".into());
-        prefs.save(&actor, &p).unwrap();
+        let mut stored_prefs = NotificationPrefs::default();
+        stored_prefs.last_mainline_distilled_at = Some("not-a-date".into());
+        prefs.save(&actor, &stored_prefs).unwrap();
 
         let distiller = CountingDistiller {
             calls: AtomicUsize::new(0),
         };
-        let (t, _) = distill_tick(
+        let (triggered_count, _) = distill_tick(
             &distiller,
             &prefs,
             &portfolios,
@@ -556,7 +558,7 @@ mod tests {
             DEFAULT_DISTILL_INTERVAL_HOURS,
         )
         .await;
-        assert_eq!(t, 1, "无效时间戳应按 due 处理");
+        assert_eq!(triggered_count, 1, "无效时间戳应按 due 处理");
         // 蒸馏后 last_distilled_at 应被覆盖成合法 RFC3339
         let reloaded = prefs.load(&actor);
         assert!(
