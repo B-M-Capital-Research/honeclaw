@@ -155,7 +155,7 @@ The next section’s screenshots show the full **model and channel** setup.
   </a>
 </p>
 <p align="center">
-  <em>Left: desktop home—main chat surface, start talking to Hone right away.</em>
+  <em>Left: desktop home—main chat interface, start talking to Hone right away.</em>
   &nbsp;&nbsp;
   <em>Right: Settings—inference backend (cloud or local) and channels such as Feishu, Discord, Telegram, and iMessage.</em>
 </p>
