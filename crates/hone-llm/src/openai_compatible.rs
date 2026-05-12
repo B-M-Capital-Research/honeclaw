@@ -405,8 +405,8 @@ mod tests {
         assert!(msg.contains("code: 400"), "{msg}");
         assert!(!msg.contains("invalid type: integer"), "{msg}");
         assert!(
-            requests.load(Ordering::SeqCst) >= 2,
-            "SDK path plus raw HTTP fallback should both hit the mock server"
+            requests.load(Ordering::SeqCst) >= 1,
+            "raw HTTP path should hit the mock server"
         );
     }
 

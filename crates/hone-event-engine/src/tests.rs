@@ -594,6 +594,7 @@ async fn live_portfolio_backtest_push() {
                      5) 不做投资建议，不加前缀。直接输出正文。"
                         .into(),
                 ),
+                reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 name: None,
@@ -601,6 +602,7 @@ async fn live_portfolio_backtest_push() {
             Message {
                 role: "user".into(),
                 content: Some(payload.to_string()),
+                reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 name: None,

@@ -360,7 +360,7 @@ llm:
     # Legacy config-only fallback. Prefer llm.providers.openrouter.api_key/api_keys.
     model: "moonshotai/kimi-k2.5"
     # Legacy auxiliary fallback model for heartbeats / session compression / other background checks.
-    # The default config uses llm.auxiliary_profile instead.
+    # This example uses llm.auxiliary_profile instead.
     sub_model: "moonshotai/kimi-k2.5"
     timeout: 120
     max_retries: 3
@@ -537,7 +537,8 @@ security:
       - "wget | sh"
 
 agent:
-  # Recommended: hone_cloud | codex_acp | opencode_acp. Legacy: multi-agent | function_calling | gemini_cli | codex_cli.
+  # Recommended: hone_cloud | codex_acp | opencode_acp.
+  # Other supported runners: multi-agent | function_calling | gemini_cli | codex_cli.
   # This example seeds hone_cloud for first-time installs; switch to codex_acp/opencode_acp when you want local runners.
   # gemini_acp is disabled at runtime and kept below only for migration/reference.
   runner: "hone_cloud"
@@ -554,6 +555,7 @@ agent:
 
   system_prompt_path: "./soul.md"
   gemini_acp:
+    # Deserializable legacy config only; do not set agent.runner=gemini_acp.
     command: "gemini"
     args: [ "--experimental-acp", "--sandbox", "--approval-mode", "plan" ]
     # Optional; if unset, reuse the local gemini-cli login state
@@ -586,7 +588,7 @@ agent:
     args: [ "acp" ]
     # Leave empty to inherit your local opencode global config (~/.config/opencode/opencode.json/jsonc)
     model: ""
-    # Optional; only used when Hone explicitly overrides the opencode model
+    # Optional; only used together with a Hone-side model override
     variant: ""
     # Optional Hone-side provider/base URL override; leave empty to inherit local opencode config
     api_base_url: ""
@@ -600,6 +602,8 @@ agent:
     # OpenAI-compatible model id placeholder used by the client request.
     model: "hone-cloud"
   multi_agent:
+    # Two-stage runner: direct OpenAI-compatible search, then opencode ACP answer.
+    # The answer stage can inherit llm.providers.openrouter.api_key when api_key is empty.
     search:
       base_url: "https://api.minimaxi.com/v1"
       api_key: ""

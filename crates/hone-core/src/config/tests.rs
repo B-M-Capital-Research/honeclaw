@@ -52,10 +52,17 @@ fn config_example_yaml_matches_current_schema() {
     assert!(config.agent.opencode.model.is_empty());
     assert!(config.agent.opencode.api_base_url.is_empty());
     assert!(config.agent.opencode.api_key.is_empty());
+    assert_eq!(config.llm.default_profile, "main");
+    assert_eq!(config.llm.auxiliary_profile, "aux");
+    assert!(config.llm.profiles.contains_key("main"));
+    assert!(config.llm.profiles.contains_key("aux"));
+    assert!(config.llm.profiles.contains_key("digest_fast"));
+    assert!(config.llm.profiles.contains_key("digest_strong"));
     assert_eq!(
         config.event_engine.news_importance_prompt,
         "公司或潜在影响公司长期逻辑和宏观叙事的重大事件"
     );
+    assert_eq!(config.event_engine.sources.rss_feeds.len(), 3);
 }
 
 #[test]
@@ -1404,6 +1411,7 @@ fn config_example_avoids_stale_config_knobs() {
         .as_mapping()
         .unwrap();
     assert!(has_key(sources, "extended_hours"));
+    assert!(has_key(sources, "rss_feeds"));
     assert!(has_key(sources, "telegram_channels"));
 
     let agent = get_key(root, "agent").unwrap().as_mapping().unwrap();
@@ -1415,6 +1423,10 @@ fn config_example_avoids_stale_config_knobs() {
     assert!(has_key(codex_acp, "sandbox_mode"));
     assert!(has_key(codex_acp, "approval_policy"));
     assert!(has_key(codex_acp, "sandbox_permissions"));
+    assert!(has_key(agent, "gemini_acp"));
+    assert!(has_key(agent, "opencode"));
+    assert!(has_key(agent, "hone_cloud"));
+    assert!(has_key(agent, "multi_agent"));
 
     let storage = get_key(root, "storage").unwrap().as_mapping().unwrap();
     assert!(!has_key(storage, "base_path"));
