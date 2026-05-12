@@ -93,7 +93,6 @@ impl AgentRunner for OpencodeAcpRunner {
 ///
 /// 用户可以按 OpenRouter 的标准写法配置模型（如 `google/gemini-3.1-pro-preview`），
 /// 本函数会自动补齐前缀。已经带 `openrouter/` 前缀的模型不会被重复添加。
-
 pub(crate) fn configured_opencode_model_id(config: &OpencodeAcpConfig) -> Option<String> {
     let model = config.model.trim();
     if model.is_empty() {
@@ -182,19 +181,18 @@ fn current_exe_search_dirs() -> Vec<PathBuf> {
     };
 
     dirs.push(parent.to_path_buf());
-    if parent.file_name().and_then(|value| value.to_str()) == Some("deps") {
-        if let Some(grandparent) = parent.parent() {
-            dirs.push(grandparent.to_path_buf());
-        }
+    if parent.file_name().and_then(|value| value.to_str()) == Some("deps")
+        && let Some(grandparent) = parent.parent()
+    {
+        dirs.push(grandparent.to_path_buf());
     }
     if cfg!(target_os = "macos")
         && parent.file_name().and_then(|value| value.to_str()) == Some("MacOS")
+        && let Some(contents) = parent.parent()
     {
-        if let Some(contents) = parent.parent() {
-            let resources = contents.join("Resources");
-            dirs.push(resources.clone());
-            dirs.push(resources.join("binaries"));
-        }
+        let resources = contents.join("Resources");
+        dirs.push(resources.clone());
+        dirs.push(resources.join("binaries"));
     }
 
     dirs
@@ -426,7 +424,7 @@ async fn run_opencode_acp(
     );
 
     let resolved_command = resolve_opencode_command_path(config);
-    if resolved_command != PathBuf::from(&config.command) {
+    if resolved_command.as_path() != Path::new(&config.command) {
         tracing::info!(
             "[AgentRunner/opencode] session={} resolved command '{}' -> '{}'",
             request.session_id,
@@ -859,10 +857,10 @@ fn truncate_opencode_detail(text: &str, max_chars: usize) -> String {
 }
 
 fn opencode_tool_name_for_update(state: &AcpPromptState, update: &Value) -> String {
-    if let Some(call_id) = tool_call_id(update) {
-        if let Some(existing) = state.pending_tool_calls.get(call_id) {
-            return existing.name.clone();
-        }
+    if let Some(call_id) = tool_call_id(update)
+        && let Some(existing) = state.pending_tool_calls.get(call_id)
+    {
+        return existing.name.clone();
     }
     opencode_tool_name_from_start(update)
 }
@@ -1264,41 +1262,42 @@ async fn process_opencode_payload(
     log_acp_payload(Some(log_ctx), "recv", &payload).await;
 
     if payload.get("id").and_then(|value| value.as_u64()) == Some(expected_id) {
-        if let Some(error) = payload.get("error") {
-            let message = error
-                .get("message")
-                .and_then(|value| value.as_str())
-                .unwrap_or("unknown acp error")
-                .to_string();
-            let stderr = stderr_buf.lock().await.clone();
-            let stderr = if stderr.trim().is_empty() {
-                String::new()
-            } else {
-                format!(" stderr={stderr}")
-            };
-            return Err(AgentSessionError {
-                kind: AgentSessionErrorKind::AgentFailed,
-                message: format!("opencode acp request failed: {message}{stderr}"),
-            });
-        }
-        return Ok(Some(payload.get("result").cloned().unwrap_or(Value::Null)));
+        let Some(error) = payload.get("error") else {
+            return Ok(Some(payload.get("result").cloned().unwrap_or(Value::Null)));
+        };
+        let message = error
+            .get("message")
+            .and_then(|value| value.as_str())
+            .unwrap_or("unknown acp error")
+            .to_string();
+        let stderr = stderr_buf.lock().await.clone();
+        let stderr = if stderr.trim().is_empty() {
+            String::new()
+        } else {
+            format!(" stderr={stderr}")
+        };
+        return Err(AgentSessionError {
+            kind: AgentSessionErrorKind::AgentFailed,
+            message: format!("opencode acp request failed: {message}{stderr}"),
+        });
     }
 
-    if let Some(method) = payload.get("method").and_then(|value| value.as_str()) {
-        match method {
-            "session/update" => {
-                handle_opencode_session_update(
-                    payload.get("params").unwrap_or(&Value::Null),
-                    emitter,
-                    state,
-                )
-                .await;
-            }
-            "session/request_permission" => {
-                handle_opencode_permission_request(stdin, &payload, emitter, log_ctx).await?;
-            }
-            _ => {}
+    let Some(method) = payload.get("method").and_then(|value| value.as_str()) else {
+        return Ok(None);
+    };
+    match method {
+        "session/update" => {
+            handle_opencode_session_update(
+                payload.get("params").unwrap_or(&Value::Null),
+                emitter,
+                state,
+            )
+            .await;
         }
+        "session/request_permission" => {
+            handle_opencode_permission_request(stdin, &payload, emitter, log_ctx).await?;
+        }
+        _ => {}
     }
 
     Ok(None)

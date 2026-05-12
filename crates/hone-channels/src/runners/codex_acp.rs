@@ -524,6 +524,8 @@ async fn run_codex_acp(
         ACP_PREV_PROMPT_PEAK_KEY.to_string(),
         Value::from(codex_state.current_prompt_peak_used),
     );
+    // Do not write `false` when compact was not detected: the prompt builder owns
+    // clearing a pending reseed flag after it has been consumed.
     if codex_state.compact_detected {
         tracing::info!(
             "[AgentRunner/codex] session={} ACP compact detected (peak_used={}); marking next turn for SP reseed",
@@ -531,10 +533,6 @@ async fn run_codex_acp(
             codex_state.current_prompt_peak_used
         );
         metadata_updates.insert(ACP_NEEDS_SP_RESEED_KEY.to_string(), Value::Bool(true));
-    } else {
-        // 显式清掉上一轮可能残留的 reseed 标志，确保只在 reseed 完成后才清
-        // —— 实际清理由 prompt 构建层负责（看到 true → 重塞 → 写 false）。
-        // 这里不主动写 false，避免覆盖 prompt 构建层尚未消费的 true。
     }
 
     let context_messages = finalize_context_messages(&mut codex_state);
@@ -578,13 +576,8 @@ pub(crate) fn render_codex_tool_status(
         };
     }
 
-    let rendered_command = render_codex_execute_command(update).unwrap_or_else(|| {
-        if is_codex_execute_update(update) {
-            "本地命令".to_string()
-        } else {
-            truncate_codex_execute_label(default_tool)
-        }
-    });
+    let rendered_command =
+        render_codex_execute_command(update).unwrap_or_else(|| "本地命令".to_string());
     let purpose_suffix = codex_execute_purpose(update)
         .map(|purpose| format!("；目的：{}", truncate_codex_purpose(&purpose)))
         .unwrap_or_default();
@@ -672,18 +665,6 @@ fn codex_execute_purpose(update: &Value) -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToString::to_string)
-}
-
-fn truncate_codex_execute_label(text: &str) -> String {
-    const MAX_CHARS: usize = 96;
-    let trimmed = text.trim();
-    let total = trimmed.chars().count();
-    if total <= MAX_CHARS {
-        return trimmed.to_string();
-    }
-    let keep = 56.min(MAX_CHARS.saturating_sub(1));
-    let prefix = trimmed.chars().take(keep).collect::<String>();
-    format!("{prefix} [truncated, {total} chars]")
 }
 
 fn truncate_codex_purpose(text: &str) -> String {

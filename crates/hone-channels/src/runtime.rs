@@ -671,43 +671,39 @@ pub fn find_split_point(text: &str, target_pos: usize) -> usize {
     let search_text = &text[..search_end];
 
     // 优先级 1: --- 分隔线
-    if let Some(pos) = search_text.rfind("---") {
-        if pos > 0 {
-            let mut end = pos + 3;
-            let bytes = text.as_bytes();
-            while end < text.len()
-                && (bytes[end] == b'\n' || bytes[end] == b'\r' || bytes[end] == b' ')
-            {
-                end += 1;
-            }
-            return end;
+    if let Some(pos) = search_text.rfind("---")
+        && pos > 0
+    {
+        let mut end = pos + 3;
+        let bytes = text.as_bytes();
+        while end < text.len() && (bytes[end] == b'\n' || bytes[end] == b'\r' || bytes[end] == b' ')
+        {
+            end += 1;
         }
+        return end;
     }
 
     // 优先级 2: 空行
-    if let Some(pos) = search_text.rfind("\n\n") {
-        if pos > 0 {
-            return pos + 2;
-        }
+    if let Some(pos) = search_text.rfind("\n\n")
+        && pos > 0
+    {
+        return pos + 2;
     }
 
     // 优先级 3: 换行
-    if let Some(pos) = search_text.rfind('\n') {
-        if pos > 0 {
-            return pos + 1;
-        }
+    if let Some(pos) = search_text.rfind('\n')
+        && pos > 0
+    {
+        return pos + 1;
     }
 
     // 优先级 4: 句末标点
-    let mut best = 0usize;
-    for &ch in DEFAULT_STOP_CHARS {
-        if let Some(pos) = search_text.rfind(ch) {
-            if pos > best {
-                best = pos;
-            }
-        }
-    }
-    if best > 0 {
+    if let Some(best) = DEFAULT_STOP_CHARS
+        .iter()
+        .filter_map(|ch| search_text.rfind(*ch))
+        .max()
+        .filter(|pos| *pos > 0)
+    {
         // Advance past the stop char (handle multi-byte)
         return best + ch_len_at(text, best);
     }

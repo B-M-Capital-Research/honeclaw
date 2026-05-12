@@ -30,6 +30,14 @@
 - risk: the run path currently owns quota/domain short-circuiting, persisted message repair, runner execution, stream delivery, final response persistence, and audit emission in one async function. A drive-by extraction could change message ordering, quota semantics, or streamed-vs-final delivery behavior.
 - suggested_fix: split behavior-preserving private helpers around pre-run guard decisions, execution request assembly, stream/final response delivery, and persistence/audit finalization. Add focused tests for domain short-circuit, streamed output, and final message persistence before moving side effects.
 
+### `crates/hone-channels/src/runners/opencode_acp.rs` runner loop mixes process setup, stream protocol, and transcript finalization
+
+- status: open
+- direction: 复杂度热点
+- evidence: `cargo clippy -p hone-channels --tests -- -W clippy::cognitive_complexity -W clippy::too_many_lines` reports `run_opencode_acp` at cognitive complexity `32/25` and `284/100` lines.
+- risk: the function currently resolves the bundled command, prepares environment and working directories, starts stdio JSON-RPC, streams ACP events, tracks session metadata, persists tool calls, and finalizes the runner response in one async path. A patrol-sized extraction could change startup diagnostics, event ordering, or tool-call transcript behavior.
+- suggested_fix: split behavior-preserving private helpers for command/process setup, ACP initialize/session-new handshakes, prompt send/wait, and response finalization. Keep event-state mutation centralized until tests cover resumed sessions, tool-call updates, and error exits.
+
 ## 2026-05-11 - 死代码与废弃路径
 
 ### `crates/hone-channels` exposes internal runner and execution types as unreachable `pub`

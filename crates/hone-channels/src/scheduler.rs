@@ -140,10 +140,10 @@ fn parse_heartbeat_json_payload(content: &str) -> Option<HeartbeatJsonResponse> 
                     continue;
                 }
                 depth -= 1;
-                if depth == 0 {
-                    if let Some(start_idx) = start.take() {
-                        candidates.push(&trimmed[start_idx..=idx]);
-                    }
+                if depth == 0
+                    && let Some(start_idx) = start.take()
+                {
+                    candidates.push(&trimmed[start_idx..=idx]);
                 }
             }
             _ => {}
@@ -308,10 +308,10 @@ fn unwrap_nested_json_message(text: &str) -> String {
     }
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(text) {
         for key in &["trigger", "message", "content", "text", "alert"] {
-            if let Some(s) = v.get(key).and_then(|v| v.as_str()) {
-                if !s.is_empty() {
-                    return s.to_string();
-                }
+            if let Some(s) = v.get(key).and_then(|v| v.as_str())
+                && !s.is_empty()
+            {
+                return s.to_string();
             }
         }
     }
@@ -1689,10 +1689,10 @@ fn recover_watchlist_hit_zone_context(core: &HoneBotCore, event: &SchedulerEvent
             sources.push(text);
         }
     }
-    if let Some(summary) = session.summary {
-        if !summary.content.trim().is_empty() {
-            sources.push(summary.content);
-        }
+    if let Some(summary) = session.summary
+        && !summary.content.trim().is_empty()
+    {
+        sources.push(summary.content);
     }
 
     let mut recovered = Vec::new();
@@ -1820,35 +1820,34 @@ pub async fn execute_scheduler_event(
 ) -> ScheduledTaskExecution {
     // quiet_hours 拦截:除非任务显式 bypass,否则在用户的勿扰区间内全部跳过执行,
     // 避免 cron 任务在半夜把模型唤醒推送。落 metadata.skipped='quiet_hours' 供巡检。
-    if !event.bypass_quiet_hours {
-        if let Some((qh, tz_name)) = load_actor_quiet_hours(&core, &event.actor) {
-            if hone_core::quiet::quiet_window_active(
-                tz_name.as_deref(),
-                8,
-                &qh.from,
-                &qh.to,
-                chrono::Utc::now(),
-            ) {
-                tracing::info!(
-                    job_id = %event.job_id,
-                    job = %event.job_name,
-                    quiet_from = %qh.from,
-                    quiet_to = %qh.to,
-                    "[SchedulerDiag] cron skipped by quiet_hours"
-                );
-                return ScheduledTaskExecution {
-                    should_deliver: false,
-                    content: String::new(),
-                    error: None,
-                    metadata: json!({
-                        "skipped": "quiet_hours",
-                        "quiet_from": qh.from,
-                        "quiet_to": qh.to,
-                    }),
-                    session_id: None,
-                };
-            }
-        }
+    if !event.bypass_quiet_hours
+        && let Some((qh, tz_name)) = load_actor_quiet_hours(&core, &event.actor)
+        && hone_core::quiet::quiet_window_active(
+            tz_name.as_deref(),
+            8,
+            &qh.from,
+            &qh.to,
+            chrono::Utc::now(),
+        )
+    {
+        tracing::info!(
+            job_id = %event.job_id,
+            job = %event.job_name,
+            quiet_from = %qh.from,
+            quiet_to = %qh.to,
+            "[SchedulerDiag] cron skipped by quiet_hours"
+        );
+        return ScheduledTaskExecution {
+            should_deliver: false,
+            content: String::new(),
+            error: None,
+            metadata: json!({
+                "skipped": "quiet_hours",
+                "quiet_from": qh.from,
+                "quiet_to": qh.to,
+            }),
+            session_id: None,
+        };
     }
     if !event.heartbeat {
         let result = run_scheduled_task(core.clone(), event, prompt_options, run_options).await;
