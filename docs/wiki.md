@@ -289,6 +289,9 @@ Important config areas:
 - `storage.*`: JSON/SQLite session backend and data paths.
 - `admins.*`: channel admin identities and runtime admin registration passphrase.
 - `event_engine.*`: market/news event monitoring and delivery.
+- `logging.*`: runtime log level, file output, console output, and optional UDP sink.
+- `security.*`: actor isolation and tool-guard policy.
+- `nano_banana.*`: OpenRouter-backed image generation defaults.
 - `search.*`, `fmp.*`: external data/search providers.
 - `language`: UI / CLI display language (`zh` or `en`).
 

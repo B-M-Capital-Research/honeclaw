@@ -279,7 +279,8 @@ pub(crate) struct LlmProfileSettings {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AgentSettings {
-    /// function_calling | gemini_cli | gemini_acp | codex_cli | codex_acp | opencode_acp | multi-agent | hone_cloud
+    /// function_calling | gemini_cli | codex_cli | codex_acp | opencode_acp | multi-agent | hone_cloud
+    /// gemini_acp remains parseable for legacy config migration but is disabled at runtime.
     runner: String,
     /// codex_cli 专用，其他 provider 忽略
     codex_model: String,
