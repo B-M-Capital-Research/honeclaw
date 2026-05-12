@@ -3,7 +3,19 @@
 - 发现时间：2026-05-04 23:10 CST
 - Bug Type：Business Error
 - 严重等级：P2
-- 状态：New
+- 状态：Fixed
+
+## 修复结论复核（2026-05-12 11:16 CST）
+
+- 本轮按当前自动化约束复核：当前机器旧运行态 / 未重启进程的 live 数据不再作为重新打开本单的依据。
+- 当前仓库代码已覆盖 `DRAM 心跳监控` 被上一窗 `Cerebras IPO` preview 误抑制的关键条件：
+  - `heartbeat_entity_anchors_compatible(...)` 会在两边存在明确英文实体且无交集时拒绝进入宽松 token overlap 判重。
+  - `heartbeat_duplicate_preview_match(...)` 对 `DRAM 盘中创历史新高（满足条件2）` 与 `Cerebras IPO 重大更新` 返回 `None`。
+- 本轮新增回归 `heartbeat_duplicate_preview_match_allows_dram_record_high_after_cerebras_ipo`，锁住 2026-05-12 09:01-10:31 CST 复发形态。
+- 验证：
+  - `cargo test -p hone-channels heartbeat_duplicate_preview_match_allows_dram_record_high_after_cerebras_ipo --lib -- --nocapture`
+  - `cargo test -p hone-channels heartbeat_record_high_trigger_is_not_near_threshold_suppressed --lib -- --nocapture`
+- 结论：本单维持 `Fixed`；后续只有在部署/重启到当前代码后，仍能用本地可复现测试或新代码路径证明不同实体 heartbeat 被 preview 判重时，才应重新打开。
 
 ## 修复记录（2026-05-10 23:11 CST）
 

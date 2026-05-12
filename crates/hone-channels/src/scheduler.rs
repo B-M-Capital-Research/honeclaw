@@ -2453,6 +2453,17 @@ mod tests {
     }
 
     #[test]
+    fn heartbeat_record_high_trigger_is_not_near_threshold_suppressed() {
+        let execution = heartbeat_execution_from_content(
+            r#"{"status":"triggered","message":"【DRAM 心跳监控】触发条件：DRAM 盘中创历史新高（满足条件2）。盘中最高 $56.38 = 上市以来历史最高价，本轮应发送提醒。"}"#,
+            "model-x",
+        );
+        assert!(execution.should_deliver);
+        assert_eq!(execution.error, None);
+        assert_ne!(execution.metadata["near_threshold_suppressed"], true);
+    }
+
+    #[test]
     fn heartbeat_prompt_rejects_direct_trade_instructions() {
         let event = SchedulerEvent {
             actor: ActorIdentity::new("feishu", "ou_cai", None::<String>).expect("actor"),
@@ -3186,6 +3197,18 @@ mod tests {
         let previews = vec![(
             "2026-05-10T18:30:00+08:00".to_string(),
             "【持仓重大事件】RKLB 与 TEM 本轮均有重要更新，持仓摘要已提醒。".to_string(),
+        )];
+
+        assert!(heartbeat_duplicate_preview_match(message, &previews).is_none());
+    }
+
+    #[test]
+    fn heartbeat_duplicate_preview_match_allows_dram_record_high_after_cerebras_ipo() {
+        let message = "【DRAM 心跳监控】触发条件：DRAM 盘中创历史新高（满足条件2）。盘中最高 $56.38 = 上市以来历史最高价。";
+        let previews = vec![(
+            "2026-05-12T08:30:00+08:00".to_string(),
+            "【Cerebras IPO 重大更新 | 2026-05-12 08:30 北京时间】Cerebras IPO 定价区间上修，上市时间线出现新进展。"
+                .to_string(),
         )];
 
         assert!(heartbeat_duplicate_preview_match(message, &previews).is_none());

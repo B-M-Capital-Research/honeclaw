@@ -3,7 +3,19 @@
 - **发现时间**: 2026-04-29 10:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
+
+## 修复结论复核（2026-05-12 11:16 CST）
+
+- 本轮按当前自动化约束复核：当前机器旧运行态 / 未重启进程的 live 数据不再作为重新打开本单的依据。
+- 当前仓库代码已覆盖 `DRAM 心跳监控` 创历史新高被 near-threshold guard 误抑制的关键条件：
+  - `heartbeat_near_threshold_without_crossing(...)` 只拦截“接近 / 未达 / 未触及 / 未触发 / 未超过阈值”等否认越线语义，`盘中创历史新高（满足条件2）` 不属于 near-threshold 否认文本。
+  - `heartbeat_execution_from_content(...)` 对 `DRAM 盘中创历史新高（满足条件2）` 保持 `should_deliver=true`，不会写入 `near_threshold_suppressed=true`。
+- 本轮新增回归 `heartbeat_record_high_trigger_is_not_near_threshold_suppressed`，锁住 2026-05-12 11:00 CST 复发形态。
+- 验证：
+  - `cargo test -p hone-channels heartbeat_record_high_trigger_is_not_near_threshold_suppressed --lib -- --nocapture`
+  - `cargo test -p hone-channels heartbeat_duplicate_preview_match_allows_dram_record_high_after_cerebras_ipo --lib -- --nocapture`
+- 结论：本单维持 `Fixed`；后续只有在部署/重启到当前代码后，仍能用本地可复现测试或新代码路径证明真实创新高触发被 near-threshold guard 抑制时，才应重新打开。
 
 ## 证据来源
 
