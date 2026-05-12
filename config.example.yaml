@@ -117,7 +117,8 @@ nano_banana:
   base_url: "https://openrouter.ai/api/v1"
   model: "google/gemini-2.0-flash-exp"
   default_image_count: 3
-  # API key is read from llm.providers.openrouter.api_key/api_keys
+  # API key prefers llm.providers.openrouter.api_key/api_keys; legacy
+  # llm.openrouter.api_key/api_keys is still readable during migration.
   # Request timeout, max_tokens, temperature, HTTP referrer, and title currently use fixed client defaults.
   download_dir: "gen_images"
 
@@ -421,8 +422,8 @@ llm:
         max_tokens: 1200
         temperature: 0.2
   auxiliary:
-    # Optional OpenAI-compatible auxiliary path for heartbeats / session compression.
-    # When configured, it overrides the legacy openrouter.sub_model route.
+    # Optional legacy OpenAI-compatible auxiliary path for heartbeats / session compression.
+    # Used only when llm.auxiliary_profile is empty; then it overrides openrouter.sub_model.
     base_url: ""
     api_key: ""
     model: ""

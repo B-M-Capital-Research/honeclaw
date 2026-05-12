@@ -259,8 +259,9 @@ fn channel_onboard_specs() -> &'static [ChannelOnboardSpec] {
 
 fn provider_onboard_specs() -> &'static [ProviderOnboardSpec] {
     &[
-        // OpenRouter 放最前。对 multi-agent / codex_acp / codex_cli / nano_banana 都是
-        // 硬依赖；hone_cloud 和已在 opencode 里配好 provider 的 opencode_acp 可以跳过。
+        // OpenRouter 放最前。它仍是 multi-agent / nano_banana / legacy
+        // function_calling 的默认依赖；hone_cloud、codex_* 和已在 opencode
+        // 里配好 provider 的 opencode_acp 可以跳过。
         // 早期版本的 onboard 完全没问这个 key,新用户跑完向导发消息立刻报
         // 「openrouter.api_key 为空」,体验很差。
         ProviderOnboardSpec {

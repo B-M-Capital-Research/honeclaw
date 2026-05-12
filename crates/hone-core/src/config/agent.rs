@@ -12,8 +12,8 @@ pub struct LlmConfig {
     pub auxiliary: AuxiliaryLlmConfig,
     #[serde(default)]
     pub kimi: KimiConfig,
-    /// Named LLM registry. Runtime consumers can reference profiles while legacy
-    /// OpenRouter/Auxiliary fields remain fallback-compatible.
+    /// Named LLM registry. Runtime consumers prefer profiles when configured;
+    /// legacy OpenRouter/Auxiliary fields remain fallback-compatible.
     #[serde(default)]
     pub providers: BTreeMap<String, LlmProviderEntryConfig>,
     #[serde(default)]

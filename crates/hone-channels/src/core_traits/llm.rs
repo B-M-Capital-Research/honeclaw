@@ -26,7 +26,7 @@ pub trait LlmProviderBundle: Send + Sync {
     /// 审计落盘 sink（启用时把 LLM 请求 / 响应保存到 SQLite）。
     fn llm_audit_sink(&self) -> Option<Arc<dyn LlmAuditSink>>;
 
-    /// 辅助 LLM 的显示用模型名称（降级时会回落到 `openrouter.sub_model`）。
+    /// 辅助 LLM 的显示用模型名称（profile -> direct auxiliary -> `openrouter.sub_model`）。
     fn auxiliary_model_name(&self) -> String;
 
     /// 辅助 LLM 的 `(provider_display, model_display)`,供前端展示。

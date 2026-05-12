@@ -6,14 +6,14 @@
 //! 验证目标：
 //!   1. `run_with_progress_ticks` 在 `run_fut` 仍在 pending 期间，会按 tick 间隔触发 `on_tick`；
 //!   2. 一旦 `run_fut` 返回，`on_tick` 不再继续触发；
-//!   3. 不依赖 mock —— `run_fut` 就是一次真实的 MiniMax `chat()` 调用，模拟生产里
-//!      `runner.run(...)` 的长阻塞场景。
+//!   3. 不依赖 mock —— `run_fut` 是一次真实的 direct `llm.auxiliary` `chat()`
+//!      调用，用来制造类似 `runner.run(...)` 的长阻塞场景。
 //!
 //! 之所以要这条 smoke：`docs/bugs/feishu_scheduler_run_stuck_without_cron_job_run.md`
 //! 的修复依赖「runner 卡住期间 watchdog 会定期发 heartbeat 到 sidecar.log」。
 //! 这条假设必须用真实 LLM 调用跨越 tick 窗口，单测里 mock 调用 0ms 就返回，验证不到。
 //!
-//! Tick 间隔默认 2 秒（smoke 自带常量，不经 env）。MiniMax `chat()` 通常 3-15 秒，
+//! Tick 间隔默认 2 秒（smoke 自带常量，不经 env）。外部 LLM `chat()` 通常 3-15 秒，
 //! 所以预期 tick >= 1（更常见 2-6）。如果某次真的只花 <2s 返回，视作样本无效，
 //! 允许 retry 一次更长的 prompt。
 
