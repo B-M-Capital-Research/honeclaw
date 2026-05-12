@@ -50,9 +50,9 @@ const ZH = {
     multi_agent: {
       name: "Multi-Agent",
       description:
-        "Search Agent 使用 MiniMax function calling，Answer Agent 使用 opencode ACP 收束回复",
+        "Search Agent 使用 MiniMax function calling，Answer Agent 使用 OpenAI-compatible 路由收束回复",
       search_title: "Search Agent (MiniMax / OpenAI-compatible)",
-      answer_title: "Answer Agent (OpenAI-compatible via opencode ACP)",
+      answer_title: "Answer Agent (OpenAI-compatible)",
       test_search: "测试 Search Agent",
       test_answer: "测试 Answer Agent",
       check_opencode: "检查 opencode",
@@ -62,9 +62,9 @@ const ZH = {
       show: "显示",
     },
     openai: {
-      name: "OpenAI 协议路由",
+      name: "OpenCode ACP",
       description:
-        "兼容 OpenRouter、OpenAI 及任意 OpenAI-compatible 端点（通过 opencode acp 驱动）",
+        "通过本机 opencode acp 启动 OpenCode；可留空继承本机 opencode 配置，或在 Hone 侧覆盖 OpenAI-compatible 端点。",
       base_url_label: "Base URL",
       model_label: "主模型",
       api_key_label: "API Key",
@@ -314,9 +314,9 @@ const EN: typeof ZH = {
     multi_agent: {
       name: "Multi-Agent",
       description:
-        "Search Agent uses MiniMax function calling; Answer Agent finalizes the reply via opencode ACP.",
+        "Search Agent uses MiniMax function calling; Answer Agent finalizes the reply through an OpenAI-compatible route.",
       search_title: "Search Agent (MiniMax / OpenAI-compatible)",
-      answer_title: "Answer Agent (OpenAI-compatible via opencode ACP)",
+      answer_title: "Answer Agent (OpenAI-compatible)",
       test_search: "Test Search Agent",
       test_answer: "Test Answer Agent",
       check_opencode: "Check opencode",
@@ -326,9 +326,9 @@ const EN: typeof ZH = {
       show: "Show",
     },
     openai: {
-      name: "OpenAI-compatible route",
+      name: "OpenCode ACP",
       description:
-        "Works with OpenRouter, OpenAI, and any OpenAI-compatible endpoint (driven by opencode acp).",
+        "Starts local OpenCode via opencode acp. Leave fields blank to inherit local opencode config, or override the OpenAI-compatible endpoint from Hone.",
       base_url_label: "Base URL",
       model_label: "Primary model",
       api_key_label: "API Key",
@@ -488,19 +488,19 @@ const EN: typeof ZH = {
     create: "Add to whitelist",
     creating: "Adding…",
     phone_required: "Enter a phone number",
-    created: "Added {phone} to the whitelist (compat invite {code})",
+    created: "Added {phone} to the whitelist (compatibility invite code {code})",
     created_copied:
-      "Added {phone} to the whitelist and copied compat invite {code}",
+      "Added {phone} to the whitelist and copied compatibility invite code {code}",
     created_with_api_key:
-      "Added {phone} to the whitelist with compat invite {code} and API key {apiKey}",
+      "Added {phone} to the whitelist with compatibility invite code {code} and API key {apiKey}",
     created_with_api_key_copied:
-      "Added {phone} to the whitelist with compat invite {code} and API key; both copied",
+      "Added {phone} to the whitelist with compatibility invite code {code} and API key; both copied",
     copied: "Copied invite code {code}",
     copy_unsupported: "Clipboard not available in this environment",
     disable_confirm:
       "Disabling the whitelist entry for {userId} will immediately log out the existing web session. Continue?",
     reset_confirm:
-      "This will issue a new compat invite code for {userId} and immediately invalidate the old code and any active web session. Continue?",
+      "This will issue a new compatibility invite code for {userId} and immediately invalidate the old code and any active web session. Continue?",
     api_key_reset_confirm:
       "This will issue a new API key for {userId}. The old API key stops working, but web sessions stay signed in. Continue?",
     reset_copied_suffix: "{message}; new invite code copied",

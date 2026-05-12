@@ -138,7 +138,7 @@ hone-cli onboard
 hone-cli configure --section agent --section channels --section providers
 ```
 
-Pick either a local CLI runner such as Codex/OpenCode/Gemini, or an OpenAI-compatible provider such as OpenRouter.
+Pick either a local CLI runner such as Codex, OpenCode, or Gemini, or an OpenAI-compatible provider such as OpenRouter.
 
 The next section’s screenshots show the full **model and channel** setup.
 

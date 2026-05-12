@@ -407,7 +407,7 @@ const CONTENT_ZH = {
       },
       {
         title: "Runner 层",
-        desc: "支持 OpenAI 兼容协议、Gemini CLI、Codex CLI / ACP、OpenCode ACP、multi-agent，以及 Hone Cloud 兼容 API 路由。",
+        desc: "支持 OpenAI-compatible 协议、Gemini CLI、Codex CLI / ACP、OpenCode ACP、multi-agent，以及 Hone Cloud API 兼容路由。",
       },
       {
         title: "事件与任务",
@@ -469,7 +469,7 @@ const CONTENT_ZH = {
           {
             name: "多 Runner 抽象",
             status: "stable",
-            note: "OpenAI · Gemini CLI · Codex CLI/ACP · OpenCode ACP · multi-agent",
+            note: "OpenAI-compatible · Gemini CLI · Codex CLI/ACP · OpenCode ACP · multi-agent",
           },
           {
             name: "Windows / Linux 桌面端",
@@ -609,7 +609,7 @@ const CONTENT_ZH = {
         "Cron 定时任务系统",
         "事件引擎推送质量收口：digest 去重 / min-gap / topic memory / 分类预算 / 方向性价格阈值",
         "ACP 自管上下文与 compact 防泄漏，支持 codex_acp / opencode_acp 长会话恢复",
-        "多 Runner 抽象：OpenAI / Gemini CLI / Codex CLI/ACP / OpenCode ACP / multi-agent",
+        "多 Runner 抽象：OpenAI-compatible / Gemini CLI / Codex CLI/ACP / OpenCode ACP / multi-agent",
       ],
     },
     next: {
@@ -1662,7 +1662,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         eyebrow: "§ 07 · OPEN SOURCE BOUNDARY",
         title: "Open Source Boundary",
         intro:
-          "MIT licensed. The repo contains a fully-working core; premium additions stay closed but don't block the main flow.",
+          "MIT licensed. The repo contains a fully working core; premium additions stay closed but don't block the main flow.",
         open_label: "Open source",
         closed_label: "Private / paid",
       },
@@ -1729,7 +1729,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         title: "Runner layer",
-        desc: "Supports OpenAI-compatible APIs, Gemini CLI, Codex CLI / ACP, OpenCode ACP, multi-agent, and a Hone Cloud compatible API route.",
+        desc: "Supports OpenAI-compatible APIs, Gemini CLI, Codex CLI / ACP, OpenCode ACP, multi-agent, and a Hone Cloud API-compatible route.",
       },
       {
         title: "Events and tasks",
@@ -1795,7 +1795,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           {
             name: "Multi-runner abstraction",
             status: "stable",
-            note: "OpenAI · Gemini CLI · Codex CLI/ACP · OpenCode ACP · multi-agent",
+            note: "OpenAI-compatible · Gemini CLI · Codex CLI/ACP · OpenCode ACP · multi-agent",
           },
           {
             name: "Windows / Linux desktop",
@@ -1972,7 +1972,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         "Cron-driven scheduled tasks",
         "Event-engine push-quality pass: digest dedupe / min-gap / topic memory / category budgets / directional price thresholds",
         "ACP self-managed context with compact-leak suppression for long codex_acp / opencode_acp sessions",
-        "Multi-runner: OpenAI / Gemini CLI / Codex CLI/ACP / OpenCode ACP / multi-agent",
+        "Multi-runner: OpenAI-compatible / Gemini CLI / Codex CLI/ACP / OpenCode ACP / multi-agent",
       ],
     },
     next: {
@@ -2102,7 +2102,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         q: "What license? Commercial use?",
-        a: "MIT, commercial use allowed. The repo ships a fully-working core engine, UI, desktop, all 16 public skills, and 7 channel integrations. Private premium skills and paid data sources live outside the repo and don't block the main flow.",
+        a: "MIT, commercial use allowed. The repo ships a fully working core engine, UI, desktop, all 16 public skills, and 7 channel integrations. Private premium skills and paid data sources live outside the repo and don't block the main flow.",
       },
       {
         q: "Where is data stored?",

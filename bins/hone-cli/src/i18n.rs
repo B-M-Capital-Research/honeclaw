@@ -286,8 +286,8 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "runner.codex_cli.note_2",
-        "优点：不需要单独填写 OpenAI-compatible base URL / API key。",
-        "Upside: no separate OpenAI-compatible base URL / API key to fill in.",
+        "优点：不需要单独填写 OpenAI-compatible Base URL / API key。",
+        "Upside: no separate OpenAI-compatible Base URL / API key to fill in.",
     ),
     (
         "runner.codex_cli.note_3",
@@ -341,8 +341,8 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "runner.opencode_acp.note_2",
-        "默认不在 Hone 首装里填写 provider / base URL / API key。",
-        "Hone onboarding doesn't ask for provider / base URL / API key for this runner.",
+        "默认不在 Hone 首装里填写 provider / Base URL / API key。",
+        "Hone onboarding doesn't ask for provider / Base URL / API key for this runner.",
     ),
     (
         "runner.opencode_acp.note_3",

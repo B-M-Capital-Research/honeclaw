@@ -3,10 +3,10 @@ import { makeContentProxy } from "../i18n"
 const ZH = {
   channels: {
     hone_cloud_desc: "使用 hone-claw.com 用户端服务",
-    multi_agent_desc: "MiniMax 搜索 + opencode ACP 回答",
+    multi_agent_desc: "MiniMax 搜索 + OpenAI-compatible 回答",
     codex_acp_desc: "通过 codex-acp 驱动当前会话",
-    opencode_acp_name: "自定义 OpenAI 协议",
-    opencode_acp_desc: "OpenAI-compatible / 推荐 OpenRouter",
+    opencode_acp_name: "OpenCode ACP",
+    opencode_acp_desc: "本机 opencode runner / 可继承本机配置",
     gemini_cli_desc: "复用本机 Gemini 命令行",
     codex_cli_desc: "复用本机 Codex 命令行",
   },
@@ -47,10 +47,10 @@ const ZH = {
 const EN: typeof ZH = {
   channels: {
     hone_cloud_desc: "Use the hone-claw.com user service",
-    multi_agent_desc: "MiniMax search + opencode ACP answer",
+    multi_agent_desc: "MiniMax search + OpenAI-compatible answer",
     codex_acp_desc: "Drive sessions via codex-acp",
-    opencode_acp_name: "Custom OpenAI protocol",
-    opencode_acp_desc: "OpenAI-compatible / OpenRouter recommended",
+    opencode_acp_name: "OpenCode ACP",
+    opencode_acp_desc: "Local opencode runner / can inherit local config",
     gemini_cli_desc: "Reuse local Gemini CLI",
     codex_cli_desc: "Reuse local Codex CLI",
   },
