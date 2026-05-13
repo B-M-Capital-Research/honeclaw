@@ -1,7 +1,8 @@
 //! 从 `<cli> --version` 的文本里解析出三段语义化版本号。
 //!
-//! 每个 ACP runner 都有自己的 CLI 版本下限(例:codex 要 ≥0.115,gemini-acp 要
-//! ≥0.30),连不上新字段时提前给人类可读的错误,而不是让 JSON-RPC 再挂。
+//! 启用中的 ACP runner 各有 CLI 版本下限(例:codex-acp 要 ≥0.12.0);legacy
+//! `gemini_acp` 模块仍复用这个 parser 做版本测试。连不上新字段时提前给人类
+//! 可读的错误,而不是让 JSON-RPC 再挂。
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct CliVersion {

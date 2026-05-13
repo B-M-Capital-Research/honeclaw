@@ -1,7 +1,8 @@
 //! ACP JSON session update 里抽字段的纯函数集。
 //!
-//! 各家 ACP runner(codex / gemini / opencode)对 tool call 的 key 命名
-//! 不一致:有的叫 `toolCallId`,有的叫 `callId`,有的藏在 `toolCall.id`。
+//! 各家 ACP runner 对 tool call 的 key 命名不一致:有的叫 `toolCallId`,
+//! 有的叫 `callId`,有的藏在 `toolCall.id`。这里同时保留 legacy
+//! `gemini_acp` 的历史字段兼容,避免测试夹具和旧事件样例漂移。
 //! 这里统一用「尝试一组候选 key」的方式,把分歧收敛到 caller 看不见的地方。
 
 use serde_json::{Value, json};

@@ -2,7 +2,7 @@
 //!
 //! 每个 trait 只做一件事：证明 `HoneBotCore` 可以被当成 `&dyn Trait` 使用。
 //! 构造真正的 `HoneBotCore` 需要完整配置,在这里意义不大;行为测试仍然由
-//! `core.rs` 覆盖。只要这几个函数能编译通过,就说明：
+//! `core/tests.rs` 和各 trait 实现模块覆盖。只要这几个函数能编译通过,就说明：
 //! 1. trait 本身是 object-safe 的
 //! 2. HoneBotCore 提供了完整的 trait 实现
 

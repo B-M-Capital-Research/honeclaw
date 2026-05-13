@@ -1,5 +1,8 @@
-//! ACP (Agent Client Protocol) 共享层 —— 把 `codex_acp` / `gemini_acp` /
-//! `opencode_acp` 三家 ACP runner 的公共管线按职责切成 7 个 sibling module:
+//! ACP (Agent Client Protocol) 共享层 —— 把 `codex_acp` / `opencode_acp`
+//! 的公共管线按职责切成 7 个 sibling module:
+//!
+//! `gemini_acp` 运行时已全局禁用,但其 legacy 模块仍复用这些 helper 作测试和
+//! 参考,所以部分抽取逻辑继续兼容 Gemini ACP 的历史字段形状。
 //!
 //! | 子 module     | 职责 |
 //! |---------------|------|
@@ -12,7 +15,8 @@
 //! | `version`     | `CliVersion` 解析(每个 runner 校版本下限用) |
 //!
 //! 外部 runner 原来通过 `super::acp_common::{...}` 消费本 module,切完之后
-//! 通过下面一整块 `pub(crate) use` 继续暴露同名符号,**不需要改任何 sibling runner**。
+//! 通过下面一整块 `pub(crate) use` 继续暴露同名符号,让 active runner 和
+//! legacy runner module 都不必关心内部文件拆分。
 
 mod extract;
 mod ingest;

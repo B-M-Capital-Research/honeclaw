@@ -6,8 +6,8 @@
 //! - **tracing warn**:在 prompt 超时 / stop 的时候打一条超紧凑的 summary,
 //!   把 reply 长度、finished/pending tool count、stderr tail 压到一行。
 //!
-//! 文件级 append 用 `ACP_EVENT_LOG_LOCK` 保护,避免三个 ACP runner 并发写
-//! 时互相踩到对方的行。
+//! 文件级 append 用 `ACP_EVENT_LOG_LOCK` 保护,避免多个 ACP runner 并发写时
+//! 互相踩到对方的行。
 
 use chrono::Utc;
 use hone_core::agent::ToolCallMade;

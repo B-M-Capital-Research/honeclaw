@@ -2,8 +2,10 @@
 //! `session/prompt` 的等待循环、`session/request_permission` 的自动决策、
 //! idle/overall 超时判定、`build_acp_prompt_text` 系统提示拼装。
 //!
-//! 所有 ACP runner(codex / gemini / opencode)都走这里的 `wait_for_response*`
-//! 入口;也就是说,`process_acp_payload` 是整个 ACP ingest 流的**唯一**驱动。
+//! `codex_acp` 以及 legacy `gemini_acp` 模块走这里的 `wait_for_response*`
+//! 入口;`opencode_acp` 因为 tool status 形状不同保留自定义 stream loop,但仍复用
+//! `ingest_acp_message_chunk` / `ingest_acp_usage_update`。
+//! 也就是说,`process_acp_payload` 是共享 wait loop 的 ACP ingest 驱动。
 //! 保持这里是「拿到一行 stdout → 分发 → 回 `Option<Value>`」的简单形状,
 //! 复杂的 tool/usage/summary 检测全部塞在 `super::ingest`。
 

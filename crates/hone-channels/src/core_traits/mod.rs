@@ -1,11 +1,11 @@
 //! HoneBotCore 的职责分组 trait（共 6 项）。
 //!
-//! 背景：`HoneBotCore` 是 1600+ 行的 "God Object"，同时承担 LLM provider 工厂、
+//! 背景：`HoneBotCore` 仍是跨渠道共享依赖的装配点,承担 LLM provider 工厂、
 //! 审计记录、管理员权限判定、路径解析、tool registry 生成、runner 创建、
-//! scheduler 创建、session 压缩等方向的职责。这样的对象有三个结构问题：
+//! scheduler 创建、session 压缩等方向的职责。直接到处传完整对象有三个结构问题：
 //!
-//! - **强耦合**：`Arc<HoneBotCore>` 被 workspace 48+ 处消费，任何一个子系统
-//!   都能调用所有能力，模块边界不清
+//! - **强耦合**：任何拿到 `Arc<HoneBotCore>` 的子系统都能调用所有能力,
+//!   模块边界不清
 //! - **测试困难**：测试一个 AgentSession stage 必须构造完整 HoneBotCore
 //! - **演化困难**：加新能力都挂在 core 上，面积只增不减
 //!

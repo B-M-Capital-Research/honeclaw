@@ -34,7 +34,8 @@ pub(crate) async fn handle_acp_session_update(
     handle_acp_session_update_with_renderer(params, emitter, state, None).await;
 }
 
-/// 处理一段 ACP `agent_message_chunk` 文本（codex / opencode / gemini 共用）。
+/// 处理一段 ACP `agent_message_chunk` 文本（codex / opencode 共用；
+/// legacy gemini_acp 模块也沿用此路径）。
 ///
 /// compact 发生后的文本现在按用户可见内容透传，不再在 ACP ingest 层做裁剪。
 /// 这里仍保留 compact 检测，用于 runner 在本轮结束时写回
