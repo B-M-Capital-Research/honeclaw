@@ -20,7 +20,10 @@ export type ChatShareCardProps = {
   registerRef?: (el: HTMLDivElement) => void;
 };
 
-const CARD_WIDTH = 600;
+// Portrait phone-screenshot aspect — narrower than a desktop card so the
+// long-form output keeps its mobile rhythm (a screenshot people will read
+// or forward inside IM).
+const CARD_WIDTH = 420;
 
 // Scoped markdown styling so the screenshot looks identical regardless of
 // viewport / chat-page CSS — only rules under .hf-share-card-md apply here.
@@ -152,8 +155,8 @@ export function ChatShareCard(props: ChatShareCardProps) {
           style={{
             display: "flex",
             "align-items": "center",
-            gap: "12px",
-            padding: "28px 32px 20px 32px",
+            gap: "10px",
+            padding: "22px 20px 16px 20px",
             "border-bottom": "1px solid #f1f5f9",
           }}
         >
@@ -161,12 +164,12 @@ export function ChatShareCard(props: ChatShareCardProps) {
             src="/logo.svg"
             alt=""
             crossorigin="anonymous"
-            style={{ width: "36px", height: "36px" }}
+            style={{ width: "30px", height: "30px" }}
           />
           <div style={{ display: "flex", "flex-direction": "column" }}>
             <span
               style={{
-                "font-size": "18px",
+                "font-size": "16px",
                 "font-weight": "800",
                 "letter-spacing": "0.02em",
                 color: "#0f172a",
@@ -174,7 +177,7 @@ export function ChatShareCard(props: ChatShareCardProps) {
             >
               {props.brandName}
             </span>
-            <span style={{ "font-size": "12px", color: "#64748b", "margin-top": "2px" }}>
+            <span style={{ "font-size": "11.5px", color: "#64748b", "margin-top": "1px" }}>
               {props.brandTagline}
             </span>
           </div>
@@ -183,10 +186,10 @@ export function ChatShareCard(props: ChatShareCardProps) {
         {/* Messages */}
         <div
           style={{
-            padding: "24px 32px",
+            padding: "18px 20px 22px 20px",
             display: "flex",
             "flex-direction": "column",
-            gap: "16px",
+            gap: "14px",
           }}
         >
           <For each={props.messages}>
@@ -204,23 +207,23 @@ export function ChatShareCard(props: ChatShareCardProps) {
             display: "flex",
             "align-items": "center",
             "justify-content": "space-between",
-            gap: "20px",
-            padding: "20px 32px 28px 32px",
+            gap: "16px",
+            padding: "16px 20px 22px 20px",
             "border-top": "1px solid #f1f5f9",
             background: "#fafbfc",
           }}
         >
-          <div style={{ display: "flex", "flex-direction": "column", gap: "6px" }}>
-            <div style={{ display: "flex", "align-items": "center", gap: "10px" }}>
+          <div style={{ display: "flex", "flex-direction": "column", gap: "6px", "min-width": "0", flex: "1" }}>
+            <div style={{ display: "flex", "align-items": "center", gap: "8px" }}>
               <img
                 src="/logo.svg"
                 alt=""
                 crossorigin="anonymous"
-                style={{ width: "28px", height: "28px" }}
+                style={{ width: "24px", height: "24px" }}
               />
               <span
                 style={{
-                  "font-size": "16px",
+                  "font-size": "14.5px",
                   "font-weight": "800",
                   color: "#0f172a",
                   "letter-spacing": "0.02em",
@@ -229,7 +232,7 @@ export function ChatShareCard(props: ChatShareCardProps) {
                 {props.brandName}
               </span>
             </div>
-            <span style={{ "font-size": "12px", color: "#64748b", "max-width": "360px" }}>
+            <span style={{ "font-size": "11.5px", color: "#64748b", "line-height": "1.4" }}>
               {props.qrCaption}
             </span>
           </div>
@@ -238,12 +241,13 @@ export function ChatShareCard(props: ChatShareCardProps) {
               src={qrDataUrl()}
               alt=""
               style={{
-                width: "84px",
-                height: "84px",
-                "border-radius": "10px",
+                width: "76px",
+                height: "76px",
+                "border-radius": "9px",
                 background: "#fff",
-                padding: "6px",
+                padding: "5px",
                 border: "1px solid #e2e8f0",
+                "flex-shrink": "0",
               }}
             />
           </Show>
@@ -259,13 +263,13 @@ function UserRow(props: { content: string }) {
     <div style={{ display: "flex", "justify-content": "flex-end" }}>
       <div
         style={{
-          "max-width": "82%",
+          "max-width": "86%",
           background: "#0f172a",
           color: "#f8fafc",
-          padding: "12px 16px",
-          "border-radius": "14px 14px 4px 14px",
-          "font-size": "14.5px",
-          "line-height": "1.6",
+          padding: "10px 14px",
+          "border-radius": "12px 12px 4px 12px",
+          "font-size": "13.5px",
+          "line-height": "1.55",
           "white-space": "pre-wrap",
           "word-break": "break-word",
         }}
@@ -281,14 +285,14 @@ function AssistantRow(props: { content: string }) {
     <div style={{ display: "flex", "justify-content": "flex-start" }}>
       <div
         style={{
-          "max-width": "92%",
+          "max-width": "94%",
           background: "#ffffff",
           color: "#1e293b",
-          padding: "14px 18px",
-          "border-radius": "4px 14px 14px 14px",
+          padding: "12px 14px",
+          "border-radius": "4px 12px 12px 12px",
           border: "1px solid #e2e8f0",
-          "font-size": "14.5px",
-          "line-height": "1.65",
+          "font-size": "13.5px",
+          "line-height": "1.6",
         }}
       >
         <Markdown

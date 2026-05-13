@@ -2176,7 +2176,7 @@ export default function PublicChatPage() {
         seedIndex={shareSeed() ?? 0}
         brandName={CONTENT.chat_page.share.brand_name}
         brandTagline={CONTENT.chat_page.share.brand_tagline}
-        qrUrl={typeof window !== "undefined" ? `${window.location.origin}/chat` : "https://hone-claw.com/chat"}
+        qrUrl="https://hone-claw.com/chat"
         qrCaption={CONTENT.chat_page.share.qr_caption}
         strings={CONTENT.chat_page.share.strings}
         onClose={() => setShareSeed(null)}
