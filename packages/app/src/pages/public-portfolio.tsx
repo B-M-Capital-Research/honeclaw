@@ -18,7 +18,7 @@ import { profileTickerSet } from "@/lib/mainline-context-model"
 import "./public-site.css"
 
 function formatTimestamp(iso: string | null): string {
-  if (!iso) return "尚未蒸馏"
+  if (!iso) return "从未"
   try {
     const dt = new Date(iso)
     const days = Math.floor((Date.now() - dt.getTime()) / (24 * 3600 * 1000))
@@ -90,13 +90,13 @@ function MainlineCard(props: {
               when={props.hasProfile}
               fallback={
                 <>
-                  <strong style={{ color: "#d97706" }}>没有公司画像</strong> —— 在 chat 里对 agent 说
-                  “建立 {props.ticker} 的公司画像”，蒸馏会在下次 cron 自动跑。
+                  <strong style={{ color: "#d97706" }}>暂无公司画像</strong> —— 跟 Hone 说
+                  “建立 {props.ticker} 的公司画像”，下次自动更新就会带上它。
                 </>
               }
             >
-              <strong style={{ color: "#d97706" }}>画像存在但投资主线蒸馏失败 / 跳过</strong>
-              {props.isSkipped ? "（上次跳过）" : ""}—— 点“立即刷新”重试。
+              <strong style={{ color: "#d97706" }}>画像存在，但投资主线生成失败 / 跳过</strong>
+              {props.isSkipped ? "（上次跳过）" : ""}—— 点"立即更新"重试。
             </Show>
           </div>
         }
@@ -239,7 +239,7 @@ function ProfileModal(props: { open: boolean; ticker: string | null; onClose: ()
               color: "#64748b",
             }}
           >
-            画像由 chat 里 company_portrait skill 维护。如需修改，请在 /chat 与 agent 对话。
+            画像由 Hone 维护。如需修改，请回到对话页跟 Hone 说一声。
           </div>
         </div>
       </div>
@@ -248,6 +248,7 @@ function ProfileModal(props: { open: boolean; ticker: string | null; onClose: ()
 }
 
 function PortfolioContextView() {
+  const navigate = useNavigate()
   const [digestContext, setDigestContext] = createSignal<DigestContext | null>(null)
   const [loading, setLoading] = createSignal(true)
   const [error, setError] = createSignal<string | null>(null)
@@ -277,11 +278,11 @@ function PortfolioContextView() {
     try {
       const refreshResult = await refreshDigestContext()
       setRefreshMsg(
-        `蒸馏完成：${refreshResult.mainline_count} 条投资主线，跳过 ${refreshResult.skipped_tickers.length} 只`,
+        `更新完成：${refreshResult.mainline_count} 条投资主线，跳过 ${refreshResult.skipped_tickers.length} 只`,
       )
       await load()
     } catch (e) {
-      setRefreshMsg(`蒸馏失败：${e instanceof Error ? e.message : String(e)}`)
+      setRefreshMsg(`更新失败：${e instanceof Error ? e.message : String(e)}`)
     } finally {
       setRefreshing(false)
     }
@@ -300,18 +301,6 @@ function PortfolioContextView() {
     <div style={{ "padding-top": "56px", "min-height": "100vh", background: "#f8fafc" }}>
       <div style={{ "max-width": "920px", margin: "0 auto", padding: "48px 32px" }}>
         <div style={{ "margin-bottom": "32px" }}>
-          <div
-            style={{
-              "font-size": "11px",
-              "font-weight": "700",
-              "letter-spacing": "0.30em",
-              "text-transform": "uppercase",
-              color: "#f59e0b",
-              "margin-bottom": "8px",
-            }}
-          >
-            DIGEST CONTEXT
-          </div>
           <h1
             style={{
               "font-size": "28px",
@@ -324,7 +313,7 @@ function PortfolioContextView() {
             投资上下文
           </h1>
           <p style={{ "font-size": "13px", color: "#64748b", "margin-top": "8px", "line-height": "1.7" }}>
-            系统每周自动从你的公司画像蒸馏投资主线，用于过滤全球 digest 的相关性。画像编辑请通过 /chat。
+            Hone 每周自动从你的公司画像里整理出投资主线，用来过滤每日推送的相关性。要修改画像，直接跟 Hone 对话即可。
           </p>
         </div>
 
@@ -362,7 +351,7 @@ function PortfolioContextView() {
                 }}
               >
                 <div style={{ "font-size": "13px", color: "#64748b" }}>
-                  上次蒸馏：<strong style={{ color: "#0f172a" }}>{formatTimestamp(context().last_mainline_distilled_at)}</strong>
+                  上次更新：<strong style={{ color: "#0f172a" }}>{formatTimestamp(context().last_mainline_distilled_at)}</strong>
                   <Show when={context().mainline_distill_skipped.length > 0}>
                     <span style={{ "margin-left": "16px" }}>
                       跳过 {context().mainline_distill_skipped.length} 只：
@@ -375,20 +364,31 @@ function PortfolioContextView() {
                 <button
                   type="button"
                   onClick={handleRefresh}
-                  disabled={refreshing()}
+                  disabled={refreshing() || context().profile_list.length === 0}
                   style={{
                     padding: "8px 16px",
                     "border-radius": "8px",
                     border: "1px solid #f59e0b",
-                    background: refreshing() ? "rgba(245,158,11,0.5)" : "#f59e0b",
+                    background:
+                      refreshing() || context().profile_list.length === 0
+                        ? "rgba(245,158,11,0.4)"
+                        : "#f59e0b",
                     color: "#fff",
-                    cursor: refreshing() ? "not-allowed" : "pointer",
+                    cursor:
+                      refreshing() || context().profile_list.length === 0
+                        ? "not-allowed"
+                        : "pointer",
                     "font-family": "inherit",
                     "font-size": "13px",
                     "font-weight": "600",
                   }}
+                  title={
+                    context().profile_list.length === 0
+                      ? "先建立至少 1 个公司画像才能更新"
+                      : ""
+                  }
                 >
-                  {refreshing() ? "蒸馏中…" : "立即刷新"}
+                  {refreshing() ? "更新中…" : "立即更新"}
                 </button>
               </div>
               <Show when={refreshMsg()}>
@@ -434,7 +434,7 @@ function PortfolioContextView() {
                     when={context().mainline_style}
                     fallback={
                       <span style={{ color: "#94a3b8" }}>
-                        尚未蒸馏 —— 至少要有 1 个公司画像才能产出整体风格。
+                        暂无数据 —— 需要先建立至少 1 个公司画像。
                       </span>
                     }
                   >
@@ -465,9 +465,30 @@ function PortfolioContextView() {
                       "text-align": "center",
                       color: "#94a3b8",
                       "font-size": "13px",
+                      display: "flex",
+                      "flex-direction": "column",
+                      "align-items": "center",
+                      gap: "14px",
                     }}
                   >
-                    持仓为空 —— 请在 /chat 里告诉 agent 你持有什么。
+                    <span>暂无持仓。跟 Hone 说一声你持有什么就行。</span>
+                    <button
+                      type="button"
+                      onClick={() => navigate("/chat")}
+                      style={{
+                        padding: "8px 18px",
+                        "border-radius": "999px",
+                        background: "#0f172a",
+                        color: "#fff",
+                        border: "none",
+                        "font-family": "inherit",
+                        "font-size": "13px",
+                        "font-weight": "600",
+                        cursor: "pointer",
+                      }}
+                    >
+                      去对话 →
+                    </button>
                   </div>
                 }
               >
@@ -493,7 +514,7 @@ function PortfolioContextView() {
                 </div>
               </Show>
 
-              {/* 画像 inventory */}
+              {/* 公司画像列表 */}
               <h2
                 style={{
                   "font-size": "16px",
@@ -502,7 +523,7 @@ function PortfolioContextView() {
                   margin: "32px 0 12px",
                 }}
               >
-                公司画像 inventory ({context().profile_list.length})
+                公司画像 ({context().profile_list.length})
               </h2>
               <Show
                 when={context().profile_list.length > 0}
@@ -515,9 +536,30 @@ function PortfolioContextView() {
                       "text-align": "center",
                       color: "#94a3b8",
                       "font-size": "13px",
+                      display: "flex",
+                      "flex-direction": "column",
+                      "align-items": "center",
+                      gap: "14px",
                     }}
                   >
-                    sandbox 里还没有任何公司画像。在 /chat 里说“建立 X 的公司画像”开始。
+                    <span>还没有公司画像。跟 Hone 说"建立 X 的公司画像"就能开始。</span>
+                    <button
+                      type="button"
+                      onClick={() => navigate("/chat")}
+                      style={{
+                        padding: "8px 18px",
+                        "border-radius": "999px",
+                        background: "#0f172a",
+                        color: "#fff",
+                        border: "none",
+                        "font-family": "inherit",
+                        "font-size": "13px",
+                        "font-weight": "600",
+                        cursor: "pointer",
+                      }}
+                    >
+                      去对话 →
+                    </button>
                   </div>
                 }
               >
