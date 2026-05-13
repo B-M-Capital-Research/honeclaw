@@ -104,8 +104,15 @@ export function NotificationPreferencesCard() {
     user_id: "",
     channel_scope: "",
   });
+  const updateManual = (patch: Partial<ActorRef>) => {
+    setManual((current) => ({ ...current, ...patch }));
+  };
 
   const currentActor = createMemo(() => parseActorKey(selectedKey()));
+  const currentActorKey = createMemo(() => {
+    const actor = currentActor();
+    return actor ? actorKey(actor) : "";
+  });
   const currentEntry = createMemo(() => {
     const a = currentActor();
     if (!a) return undefined;
@@ -242,6 +249,17 @@ export function NotificationPreferencesCard() {
     setDetailDirty(true);
   };
 
+  const updateCurrentPrefs = (
+    patch:
+      | Partial<NotificationPrefs>
+      | ((p: NotificationPrefs) => Partial<NotificationPrefs>),
+  ) => {
+    editCurrent((p) => ({
+      ...p,
+      ...(typeof patch === "function" ? patch(p) : patch),
+    }));
+  };
+
   const handleAllowToggle = (tag: string) => {
     editCurrent((p) => {
       const next = toggleTag(p.allow_kinds ?? [], tag);
@@ -283,16 +301,15 @@ export function NotificationPreferencesCard() {
     setSlotDraft("");
   };
   const removeSlot = (id: string) => {
-    editCurrent((p) => ({
-      ...p,
+    updateCurrentPrefs((p) => ({
       digest_slots: (p.digest_slots ?? []).filter((s) => s.id !== id),
     }));
   };
   const resetSlotsToGlobal = () => {
-    editCurrent((p) => ({ ...p, digest_slots: null }));
+    updateCurrentPrefs({ digest_slots: null });
   };
   const muteAllDigest = () => {
-    editCurrent((p) => ({ ...p, digest_slots: [] }));
+    updateCurrentPrefs({ digest_slots: [] });
   };
 
   // quiet_hours 操作:null = 关勿扰;{from,to,exempt_kinds} = 启用。from==to 等价于
@@ -329,7 +346,7 @@ export function NotificationPreferencesCard() {
     );
   };
   const clearQuiet = () => {
-    editCurrent((p) => ({ ...p, quiet_hours: null }));
+    updateCurrentPrefs({ quiet_hours: null });
   };
   const toggleQuietExempt = (tag: string) => {
     editCurrent((p) => {
@@ -341,7 +358,7 @@ export function NotificationPreferencesCard() {
 
   const handleTimezoneInput = (raw: string) => {
     const v = raw.trim();
-    editCurrent((p) => ({ ...p, timezone: v === "" ? null : v }));
+    updateCurrentPrefs({ timezone: v === "" ? null : v });
   };
 
   const handlePriceHighInput = (raw: string) => {
@@ -462,7 +479,7 @@ export function NotificationPreferencesCard() {
           placeholder={NOTIFICATIONS.prefs.manual_channel_placeholder}
           value={manual().channel}
           onInput={(e) =>
-            setManual({ ...manual(), channel: e.currentTarget.value })
+            updateManual({ channel: e.currentTarget.value })
           }
         />
         <input
@@ -470,7 +487,7 @@ export function NotificationPreferencesCard() {
           placeholder={NOTIFICATIONS.prefs.manual_user_placeholder}
           value={manual().user_id}
           onInput={(e) =>
-            setManual({ ...manual(), user_id: e.currentTarget.value })
+            updateManual({ user_id: e.currentTarget.value })
           }
         />
         <div class="flex gap-1">
@@ -479,7 +496,7 @@ export function NotificationPreferencesCard() {
             placeholder={NOTIFICATIONS.prefs.manual_scope_placeholder}
             value={manual().channel_scope ?? ""}
             onInput={(e) =>
-              setManual({ ...manual(), channel_scope: e.currentTarget.value })
+              updateManual({ channel_scope: e.currentTarget.value })
             }
           />
           <button
@@ -852,12 +869,10 @@ export function NotificationPreferencesCard() {
             <button
               type="button"
               class="rounded-md bg-[color:var(--accent)] px-3 py-1 text-xs font-bold text-white disabled:opacity-50"
-              disabled={
-                savingKey() === actorKey(currentActor()!) || !detailDirty()
-              }
+              disabled={savingKey() === currentActorKey() || !detailDirty()}
               onClick={() => void submitDetail()}
             >
-              {savingKey() === actorKey(currentActor()!)
+              {savingKey() === currentActorKey()
                 ? NOTIFICATIONS.prefs.save_detail_saving
                 : NOTIFICATIONS.prefs.save_detail_button}
             </button>

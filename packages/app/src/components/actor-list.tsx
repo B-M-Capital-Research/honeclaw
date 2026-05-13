@@ -37,6 +37,9 @@ export function ActorList(props: ActorListProps) {
     user_id: "",
     channel_scope: "",
   })
+  const updateDraft = (patch: Partial<ActorRef>) => {
+    setDraft((prev) => ({ ...prev, ...patch }))
+  }
 
   const merged = createMemo<ActorListItem[]>(() =>
     mergeActorSummaries({
@@ -108,7 +111,7 @@ export function ActorList(props: ActorListProps) {
               class="h-8 text-xs bg-[color:var(--surface)]"
               value={draft().channel}
               onInput={(e) =>
-                setDraft((prev) => ({ ...prev, channel: e.currentTarget.value.trim() }))
+                updateDraft({ channel: e.currentTarget.value.trim() })
               }
               placeholder={USERS.list.manual_channel_placeholder}
             />
@@ -116,7 +119,7 @@ export function ActorList(props: ActorListProps) {
               class="h-8 text-xs bg-[color:var(--surface)]"
               value={draft().user_id}
               onInput={(e) =>
-                setDraft((prev) => ({ ...prev, user_id: e.currentTarget.value.trim() }))
+                updateDraft({ user_id: e.currentTarget.value.trim() })
               }
               placeholder={USERS.list.manual_user_id_placeholder}
             />
@@ -124,10 +127,7 @@ export function ActorList(props: ActorListProps) {
               class="h-8 text-xs bg-[color:var(--surface)]"
               value={draft().channel_scope ?? ""}
               onInput={(e) =>
-                setDraft((prev) => ({
-                  ...prev,
-                  channel_scope: e.currentTarget.value.trim(),
-                }))
+                updateDraft({ channel_scope: e.currentTarget.value.trim() })
               }
               placeholder={USERS.list.manual_scope_placeholder}
             />

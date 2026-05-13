@@ -19,6 +19,7 @@ import {
 import type { ActorRef } from "@/lib/actors"
 import { USERS } from "@/lib/admin-content/users"
 import { tpl, useLocale } from "@/lib/i18n"
+import { profileTickerSet } from "@/lib/mainline-context-model"
 
 function formatTimestamp(iso: string | null): string {
   if (!iso) return USERS.mainline.not_distilled
@@ -165,13 +166,7 @@ export function UserMainlineView(props: { actor: ActorRef }) {
   }
 
   const profileTickers = () => {
-    const context = mainlineContext()
-    if (!context) return new Set<string>()
-    const tickers = new Set<string>()
-    for (const profile of context.profile_list) {
-      for (const ticker of profile.tickers) tickers.add(ticker)
-    }
-    return tickers
+    return profileTickerSet(mainlineContext())
   }
 
   const openProfile = (ticker: string) => {

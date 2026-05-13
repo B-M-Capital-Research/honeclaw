@@ -14,6 +14,7 @@ import {
   getPublicAuthMe,
   type DigestContext,
 } from "@/lib/api"
+import { profileTickerSet } from "@/lib/mainline-context-model"
 import "./public-site.css"
 
 function formatTimestamp(iso: string | null): string {
@@ -292,13 +293,7 @@ function PortfolioContextView() {
   }
 
   const profileTickers = () => {
-    const context = digestContext()
-    if (!context) return new Set<string>()
-    const tickers = new Set<string>()
-    for (const profile of context.profile_list) {
-      for (const ticker of profile.tickers) tickers.add(ticker)
-    }
-    return tickers
+    return profileTickerSet(digestContext())
   }
 
   return (

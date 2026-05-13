@@ -1,6 +1,11 @@
 import { describe, expect, it } from "bun:test"
 
-import { availableUsersTabs, resolveUsersTab, USER_TAB_CONFIG } from "./users-model"
+import {
+  availableUsersTabs,
+  resolveUsersTab,
+  uniqueSortedSymbols,
+  USER_TAB_CONFIG,
+} from "./users-model"
 
 describe("users-model", () => {
   it("resolves route tab params with portfolio fallback", () => {
@@ -29,5 +34,14 @@ describe("users-model", () => {
         (tab) => tab.id,
       ),
     ).toEqual(["portfolio", "mainline", "sessions", "research"])
+  })
+
+  it("derives a sorted unique symbol list for research shortcuts", () => {
+    expect(
+      uniqueSortedSymbols(
+        [{ symbol: " aapl " }, { symbol: "MSFT" }],
+        [{ symbol: "msft" }, { symbol: "" }, { symbol: "tsla" }],
+      ),
+    ).toEqual(["AAPL", "MSFT", "TSLA"])
   })
 })

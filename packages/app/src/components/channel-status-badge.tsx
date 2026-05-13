@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal } from "solid-js"
+import { For, Show, createMemo, createSignal, onCleanup } from "solid-js"
 import { useConsole } from "@/context/console"
 import { useBackend } from "@/context/backend"
 import { cleanupDesktopChannelProcesses } from "@/lib/backend"
@@ -82,27 +82,40 @@ export function ChannelStatusBadge() {
       status: "running",
     }
   })
+  const connectionStatuses = createMemo(() => [backendStatus(), frontendStatus()])
 
   let containerRef: HTMLDivElement | undefined
 
+  const closeDropdown = () => {
+    setOpen(false)
+    document.removeEventListener("click", onClickOutside)
+  }
+
+  const openDropdown = () => {
+    setOpen(true)
+    setTimeout(() => {
+      if (open()) document.addEventListener("click", onClickOutside)
+    }, 0)
+  }
+
   const onClickOutside = (e: MouseEvent) => {
     if (containerRef && !containerRef.contains(e.target as Node)) {
-      setOpen(false)
-      document.removeEventListener("click", onClickOutside)
+      closeDropdown()
     }
   }
 
   const toggle = (e: MouseEvent) => {
     e.stopPropagation()
     if (open()) {
-      setOpen(false)
-      document.removeEventListener("click", onClickOutside)
+      closeDropdown()
     } else {
-      setOpen(true)
-      // 延迟一个 tick，避免当前点击立即触发关闭
-      setTimeout(() => document.addEventListener("click", onClickOutside), 0)
+      openDropdown()
     }
   }
+
+  onCleanup(() => {
+    document.removeEventListener("click", onClickOutside)
+  })
 
   const cleanupDuplicates = async () => {
     if (!backend.state.isDesktop || cleanupBusy()) return
@@ -177,7 +190,7 @@ export function ChannelStatusBadge() {
               系统连接
             </div>
 
-            <For each={[backendStatus(), frontendStatus()]}>
+            <For each={connectionStatuses()}>
               {(item) => (
                 <div class="flex items-start justify-between gap-3">
                   <div class="min-w-0">

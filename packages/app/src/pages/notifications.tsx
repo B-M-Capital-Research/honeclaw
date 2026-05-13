@@ -21,6 +21,8 @@ import { tpl, useLocale } from "@/lib/i18n"
 
 // ── 状态映射(对齐 task-detail.tsx 的 sendStatusLabel/executionStatusLabel) ──
 
+const NOTIFICATION_QUERY_LIMIT = 200
+
 function sendStatusOptions(): Array<{ value: string; label: string }> {
   const labels = NOTIFICATIONS.send_status
   return [
@@ -161,7 +163,6 @@ export default function NotificationsPage() {
   const [execStatus, setExecStatus] = createSignal("")
   const [sendStatus, setSendStatus] = createSignal("")
   const [hours, setHours] = createSignal<number>(24)
-  const [limit] = createSignal<number>(200)
 
   const [records, setRecords] = createSignal<NotificationRecord[]>([])
   const [histogram, setHistogram] = createSignal<NotificationHistogramBucket[]>(
@@ -194,7 +195,7 @@ export default function NotificationsPage() {
         channel_scope: actor?.channel_scope,
         execution_status: execStatus() || undefined,
         message_send_status: sendStatus() || undefined,
-        limit: limit(),
+        limit: NOTIFICATION_QUERY_LIMIT,
       }
       const response = await getNotifications(query)
       setRecords(response.records)
@@ -400,7 +401,7 @@ export default function NotificationsPage() {
       {/* 推送列表 */}
       <section class="flex min-h-0 flex-col gap-2">
         <div class="flex items-center justify-between text-[10px] uppercase tracking-widest text-[color:var(--text-muted)]">
-          <span>{tpl(NOTIFICATIONS.page.list_caption, { limit: limit() })}</span>
+          <span>{tpl(NOTIFICATIONS.page.list_caption, { limit: NOTIFICATION_QUERY_LIMIT })}</span>
           <span>{tpl(NOTIFICATIONS.page.list_count, { count: records().length })}</span>
         </div>
         <div class="flex-1 overflow-auto rounded border border-[color:var(--border)]">

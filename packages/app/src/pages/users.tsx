@@ -16,6 +16,7 @@ import { tpl } from "@/lib/i18n"
 import {
   availableUsersTabs,
   resolveUsersTab,
+  uniqueSortedSymbols,
   type UsersTab,
 } from "@/pages/users-model"
 
@@ -116,10 +117,7 @@ function UserResearchView() {
   const research = useResearch()
 
   const symbols = createMemo(() => {
-    const set = new Set<string>()
-    for (const h of portfolio.holdingsList()) set.add(h.symbol.toUpperCase())
-    for (const w of portfolio.watchlist()) set.add(w.symbol.toUpperCase())
-    return Array.from(set).sort()
+    return uniqueSortedSymbols(portfolio.holdingsList(), portfolio.watchlist())
   })
 
   const relatedTasks = createMemo(() => {

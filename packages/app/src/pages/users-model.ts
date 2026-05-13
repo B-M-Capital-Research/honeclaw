@@ -32,3 +32,16 @@ export function availableUsersTabs(
     (tab) => !tab.capability || hasCapability(tab.capability),
   )
 }
+
+export function uniqueSortedSymbols(
+  ...lists: Array<Array<{ symbol: string }>>
+): string[] {
+  const set = new Set<string>()
+  for (const list of lists) {
+    for (const item of list) {
+      const symbol = item.symbol.trim()
+      if (symbol) set.add(symbol.toUpperCase())
+    }
+  }
+  return Array.from(set).sort()
+}
