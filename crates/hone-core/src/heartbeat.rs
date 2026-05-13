@@ -226,15 +226,15 @@ pub fn spawn_process_heartbeat(config: &HoneConfig, channel: &str) -> io::Result
                     }
                 }
             }
-            if let (Some(base_url), Some(client)) = (console_url.as_deref(), http_client.as_ref()) {
-                if let Err(err) = post_remote_heartbeat(client, base_url, &snapshot).await {
-                    tracing::warn!(
-                        channel = %channel,
-                        pid,
-                        url = %base_url,
-                        "failed to post heartbeat: {err}"
-                    );
-                }
+            if let (Some(base_url), Some(client)) = (console_url.as_deref(), http_client.as_ref())
+                && let Err(err) = post_remote_heartbeat(client, base_url, &snapshot).await
+            {
+                tracing::warn!(
+                    channel = %channel,
+                    pid,
+                    url = %base_url,
+                    "failed to post heartbeat: {err}"
+                );
             }
         }
     });

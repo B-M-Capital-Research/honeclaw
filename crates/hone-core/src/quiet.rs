@@ -58,11 +58,11 @@ pub fn is_kind_exempt(exempt_kinds: &[String], kind_tag: &str) -> bool {
 }
 
 fn local_hm(tz_name: Option<&str>, fallback_offset_hours: i32, now: DateTime<Utc>) -> (u32, u32) {
-    if let Some(name) = tz_name {
-        if let Ok(tz) = name.parse::<chrono_tz::Tz>() {
-            let local = tz.from_utc_datetime(&now.naive_utc());
-            return (local.hour(), local.minute());
-        }
+    if let Some(name) = tz_name
+        && let Ok(tz) = name.parse::<chrono_tz::Tz>()
+    {
+        let local = tz.from_utc_datetime(&now.naive_utc());
+        return (local.hour(), local.minute());
     }
     let offset = FixedOffset::east_opt(fallback_offset_hours * 3600)
         .unwrap_or(FixedOffset::east_opt(0).unwrap());

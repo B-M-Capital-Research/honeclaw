@@ -148,13 +148,13 @@ pub fn purge_old_task_runs(runtime_dir: &Path, retention_days: i64) {
             Ok(d) => d,
             Err(_) => continue,
         };
-        if date < cutoff {
-            if let Err(e) = fs::remove_file(entry.path()) {
-                warn!(
-                    file = %entry.path().display(),
-                    "task_runs purge: remove failed: {e:#}"
-                );
-            }
+        if date < cutoff
+            && let Err(e) = fs::remove_file(entry.path())
+        {
+            warn!(
+                file = %entry.path().display(),
+                "task_runs purge: remove failed: {e:#}"
+            );
         }
     }
 }

@@ -86,7 +86,7 @@ impl Locale {
 }
 
 /// 顶层配置结构
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct HoneConfig {
     #[serde(default)]
     pub llm: LlmConfig,
@@ -189,31 +189,6 @@ impl HoneConfig {
 
     pub fn ensure_runtime_dirs(&self) {
         self.storage.ensure_runtime_dirs();
-    }
-}
-
-impl Default for HoneConfig {
-    fn default() -> Self {
-        Self {
-            llm: LlmConfig::default(),
-            imessage: IMessageConfig::default(),
-            feishu: FeishuConfig::default(),
-            telegram: TelegramConfig::default(),
-            discord: DiscordConfig::default(),
-            group_context: GroupContextConfig::default(),
-            nano_banana: NanoBananaConfig::default(),
-            fmp: FmpConfig::default(),
-            search: SearchConfig::default(),
-            logging: LoggingConfig::default(),
-            storage: StorageConfig::default(),
-            language: Locale::default(),
-            agent: AgentConfig::default(),
-            admins: AdminConfig::default(),
-            web: WebConfig::default(),
-            security: SecurityConfig::default(),
-            event_engine: EventEngineConfig::default(),
-            extra: HashMap::new(),
-        }
     }
 }
 

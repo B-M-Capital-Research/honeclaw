@@ -31,6 +31,20 @@ pub fn canonical_config_candidate() -> PathBuf {
     PathBuf::from("config.yaml")
 }
 
+fn read_yaml_value_or_empty_mapping(path: &Path) -> crate::HoneResult<Value> {
+    let mut value = read_yaml_value(path)?;
+    if value.is_null() {
+        value = Value::Mapping(Mapping::new());
+    }
+    Ok(value)
+}
+
+fn write_yaml_value(path: &Path, value: &Value, config_label: &str) -> crate::HoneResult<()> {
+    let yaml = serde_yaml::to_string(value)
+        .map_err(|e| crate::HoneError::Config(format!("{config_label} 配置序列化失败: {e}")))?;
+    atomic_write_yaml(path, &yaml)
+}
+
 fn copy_relative_system_prompt_asset(
     base_config_path: &Path,
     runtime_config_path: &Path,
@@ -422,10 +436,7 @@ pub fn promote_legacy_runtime_agent_settings(
         return Ok(Vec::new());
     }
 
-    let mut canonical = read_yaml_value(canonical_config_path)?;
-    if canonical.is_null() {
-        canonical = Value::Mapping(Mapping::new());
-    }
+    let mut canonical = read_yaml_value_or_empty_mapping(canonical_config_path)?;
     let legacy = read_yaml_value(legacy_runtime_config_path)?;
     if legacy.is_null() {
         return Ok(Vec::new());
@@ -451,9 +462,7 @@ pub fn promote_legacy_runtime_agent_settings(
         return Ok(changed_paths);
     }
 
-    let yaml = serde_yaml::to_string(&canonical)
-        .map_err(|e| crate::HoneError::Config(format!("canonical 配置序列化失败: {e}")))?;
-    atomic_write_yaml(canonical_config_path, &yaml)?;
+    write_yaml_value(canonical_config_path, &canonical, "canonical")?;
     Ok(changed_paths)
 }
 
@@ -471,10 +480,7 @@ pub fn normalize_runtime_storage_rollout_settings(
         return Ok(Vec::new());
     }
 
-    let mut canonical = read_yaml_value(canonical_config_path)?;
-    if canonical.is_null() {
-        canonical = Value::Mapping(Mapping::new());
-    }
+    let mut canonical = read_yaml_value_or_empty_mapping(canonical_config_path)?;
 
     let mut changed_paths = Vec::new();
     if !matches!(
@@ -493,9 +499,7 @@ pub fn normalize_runtime_storage_rollout_settings(
         return Ok(changed_paths);
     }
 
-    let yaml = serde_yaml::to_string(&canonical)
-        .map_err(|e| crate::HoneError::Config(format!("canonical 配置序列化失败: {e}")))?;
-    atomic_write_yaml(canonical_config_path, &yaml)?;
+    write_yaml_value(canonical_config_path, &canonical, "canonical")?;
     Ok(changed_paths)
 }
 
@@ -505,9 +509,7 @@ pub fn generate_effective_config(
 ) -> crate::HoneResult<String> {
     let value = read_yaml_value(canonical_config_path)?;
     HoneConfig::from_merged_value(value.clone())?;
-    let yaml = serde_yaml::to_string(&value)
-        .map_err(|e| crate::HoneError::Config(format!("effective 配置序列化失败: {e}")))?;
-    atomic_write_yaml(effective_config_path, &yaml)?;
+    write_yaml_value(effective_config_path, &value, "effective")?;
     copy_relative_system_prompt_asset(canonical_config_path, effective_config_path)?;
     yaml_revision(&value)
 }

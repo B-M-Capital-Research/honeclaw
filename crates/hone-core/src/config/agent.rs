@@ -466,21 +466,12 @@ impl Default for HoneCloudConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct MultiAgentConfig {
     #[serde(default)]
     pub search: MultiAgentSearchConfig,
     #[serde(default)]
     pub answer: MultiAgentAnswerConfig,
-}
-
-impl Default for MultiAgentConfig {
-    fn default() -> Self {
-        Self {
-            search: MultiAgentSearchConfig::default(),
-            answer: MultiAgentAnswerConfig::default(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -731,40 +722,6 @@ fn default_multi_agent_answer_max_tool_calls() -> u32 {
     3
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{AgentRunnerKind, MultiAgentAnswerConfig};
-
-    #[test]
-    fn multi_agent_answer_default_tool_limit_is_three() {
-        assert_eq!(MultiAgentAnswerConfig::default().max_tool_calls, 3);
-    }
-
-    #[test]
-    fn agent_default_daily_conversation_limit_is_twelve() {
-        assert_eq!(super::AgentConfig::default().daily_conversation_limit, 12);
-    }
-
-    #[test]
-    fn agent_runner_kind_keeps_wire_values_and_probe_mapping() {
-        let kind = AgentRunnerKind::from_config_value("codex_acp");
-        assert_eq!(kind.as_str(), "codex_acp");
-        assert!(kind.manages_own_context());
-        let probe = kind.cli_probe().expect("codex acp probe");
-        assert_eq!(probe.binary, "codex-acp");
-        assert_eq!(probe.arg, "--help");
-        let cloud = AgentRunnerKind::from_config_value("hone_cloud");
-        assert_eq!(cloud.as_str(), "hone_cloud");
-        assert!(cloud.cli_probe().is_none());
-        assert_eq!(
-            serde_yaml::to_string(&AgentRunnerKind::MultiAgent)
-                .expect("serialize")
-                .trim(),
-            "multi-agent"
-        );
-    }
-}
-
 fn default_multi_agent_answer_api_base_url() -> String {
     "https://openrouter.ai/api/v1".to_string()
 }
@@ -799,4 +756,38 @@ fn default_codex_command() -> String {
 
 fn default_opencode_args() -> Vec<String> {
     vec!["acp".to_string()]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AgentRunnerKind, MultiAgentAnswerConfig};
+
+    #[test]
+    fn multi_agent_answer_default_tool_limit_is_three() {
+        assert_eq!(MultiAgentAnswerConfig::default().max_tool_calls, 3);
+    }
+
+    #[test]
+    fn agent_default_daily_conversation_limit_is_twelve() {
+        assert_eq!(super::AgentConfig::default().daily_conversation_limit, 12);
+    }
+
+    #[test]
+    fn agent_runner_kind_keeps_wire_values_and_probe_mapping() {
+        let kind = AgentRunnerKind::from_config_value("codex_acp");
+        assert_eq!(kind.as_str(), "codex_acp");
+        assert!(kind.manages_own_context());
+        let probe = kind.cli_probe().expect("codex acp probe");
+        assert_eq!(probe.binary, "codex-acp");
+        assert_eq!(probe.arg, "--help");
+        let cloud = AgentRunnerKind::from_config_value("hone_cloud");
+        assert_eq!(cloud.as_str(), "hone_cloud");
+        assert!(cloud.cli_probe().is_none());
+        assert_eq!(
+            serde_yaml::to_string(&AgentRunnerKind::MultiAgent)
+                .expect("serialize")
+                .trim(),
+            "multi-agent"
+        );
+    }
 }

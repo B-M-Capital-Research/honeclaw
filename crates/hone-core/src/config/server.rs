@@ -267,7 +267,7 @@ pub struct StorageConfig {
     /// * event-engine router / digest scheduler 读取
     /// * HTTP API / 管理端设置页 读写
     /// * NotificationPrefsTool (终端用户自然语言) 读写
-    /// 三者必须是同一份文件,否则改完不生效。
+    ///   三者必须是同一份文件,否则改完不生效。
     #[serde(default = "default_notif_prefs_dir")]
     pub notif_prefs_dir: String,
 }

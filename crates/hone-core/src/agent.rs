@@ -424,10 +424,10 @@ fn tool_result_to_content(part: &NormalizedConversationPart) -> String {
         Some(Value::String(text)) => text.clone(),
         Some(Value::Object(map)) => {
             for key in ["formatted_output", "aggregated_output", "stdout", "text"] {
-                if let Some(text) = map.get(key).and_then(|value| value.as_str()) {
-                    if !text.trim().is_empty() {
-                        return text.to_string();
-                    }
+                if let Some(text) = map.get(key).and_then(|value| value.as_str())
+                    && !text.trim().is_empty()
+                {
+                    return text.to_string();
                 }
             }
             serde_json::to_string(&Value::Object(map.clone()))
@@ -445,140 +445,137 @@ fn effective_part_metadata(
     part_metadata.clone().or_else(|| message_metadata.clone())
 }
 
+fn denormalized_text_from_parts(parts: &[NormalizedConversationPart]) -> String {
+    parts
+        .iter()
+        .filter_map(|part| part.text.as_deref())
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn first_part_metadata_or_message(
+    message: &NormalizedConversationMessage,
+) -> Option<HashMap<String, Value>> {
+    message
+        .content
+        .iter()
+        .find_map(|part| part.metadata.clone())
+        .or_else(|| message.metadata.clone())
+}
+
+fn denormalize_text_role(message: &NormalizedConversationMessage, role: &str) -> Vec<AgentMessage> {
+    let text = denormalized_text_from_parts(&message.content);
+    if text.is_empty() {
+        return Vec::new();
+    }
+
+    vec![AgentMessage {
+        role: role.to_string(),
+        content: Some(text),
+        tool_calls: None,
+        tool_call_id: None,
+        name: None,
+        metadata: first_part_metadata_or_message(message),
+    }]
+}
+
+#[derive(Default)]
+struct AssistantDenormalizationState {
+    out: Vec<AgentMessage>,
+    pending_text: String,
+    pending_tool_calls: Vec<Value>,
+    pending_metadata: Option<HashMap<String, Value>>,
+}
+
+impl AssistantDenormalizationState {
+    fn flush(&mut self, message_metadata: &Option<HashMap<String, Value>>) {
+        if self.pending_text.trim().is_empty() && self.pending_tool_calls.is_empty() {
+            return;
+        }
+
+        self.out.push(AgentMessage {
+            role: "assistant".to_string(),
+            content: Some(std::mem::take(&mut self.pending_text)),
+            tool_calls: if self.pending_tool_calls.is_empty() {
+                None
+            } else {
+                Some(std::mem::take(&mut self.pending_tool_calls))
+            },
+            tool_call_id: None,
+            name: None,
+            metadata: self
+                .pending_metadata
+                .take()
+                .or_else(|| message_metadata.clone()),
+        });
+    }
+
+    fn push_text_part(
+        &mut self,
+        part: &NormalizedConversationPart,
+        message_metadata: &Option<HashMap<String, Value>>,
+    ) {
+        if !self.pending_text.trim().is_empty() {
+            self.flush(message_metadata);
+        }
+        self.pending_text = part.text.clone().unwrap_or_default();
+        self.pending_metadata = effective_part_metadata(&part.metadata, message_metadata);
+    }
+
+    fn push_tool_call_part(
+        &mut self,
+        part: &NormalizedConversationPart,
+        message_metadata: &Option<HashMap<String, Value>>,
+    ) {
+        self.pending_tool_calls
+            .push(build_tool_call_value_from_part(part));
+        if self.pending_metadata.is_none() {
+            self.pending_metadata = effective_part_metadata(&part.metadata, message_metadata);
+        }
+    }
+
+    fn push_tool_result_part(
+        &mut self,
+        part: &NormalizedConversationPart,
+        message_metadata: &Option<HashMap<String, Value>>,
+    ) {
+        self.flush(message_metadata);
+        self.out.push(AgentMessage {
+            role: "tool".to_string(),
+            content: Some(tool_result_to_content(part)),
+            tool_calls: None,
+            tool_call_id: part.id.clone(),
+            name: part.name.clone(),
+            metadata: effective_part_metadata(&part.metadata, message_metadata),
+        });
+    }
+}
+
+fn denormalize_assistant_message(message: &NormalizedConversationMessage) -> Vec<AgentMessage> {
+    let mut state = AssistantDenormalizationState::default();
+
+    for part in &message.content {
+        match part.part_type.as_str() {
+            "text" | "progress" | "final" => state.push_text_part(part, &message.metadata),
+            "tool_call" => state.push_tool_call_part(part, &message.metadata),
+            "tool_result" => state.push_tool_result_part(part, &message.metadata),
+            _ => {}
+        }
+    }
+
+    state.flush(&message.metadata);
+    state.out
+}
+
 pub fn denormalize_normalized_message(
     message: &NormalizedConversationMessage,
 ) -> Vec<AgentMessage> {
     match message.role.as_str() {
-        "user" => {
-            let text = message
-                .content
-                .iter()
-                .filter_map(|part| part.text.as_deref())
-                .map(str::trim)
-                .filter(|text| !text.is_empty())
-                .collect::<Vec<_>>()
-                .join("\n");
-            if text.is_empty() {
-                Vec::new()
-            } else {
-                vec![AgentMessage {
-                    role: "user".to_string(),
-                    content: Some(text),
-                    tool_calls: None,
-                    tool_call_id: None,
-                    name: None,
-                    metadata: message
-                        .content
-                        .iter()
-                        .find_map(|part| part.metadata.clone())
-                        .or_else(|| message.metadata.clone()),
-                }]
-            }
-        }
-        "assistant" => {
-            let mut out = Vec::new();
-            let mut pending_text = String::new();
-            let mut pending_tool_calls: Vec<Value> = Vec::new();
-            let mut pending_metadata: Option<HashMap<String, Value>> = None;
-
-            let flush_assistant =
-                |out: &mut Vec<AgentMessage>,
-                 pending_text: &mut String,
-                 pending_tool_calls: &mut Vec<Value>,
-                 pending_metadata: &mut Option<HashMap<String, Value>>| {
-                    if pending_text.trim().is_empty() && pending_tool_calls.is_empty() {
-                        return;
-                    }
-                    out.push(AgentMessage {
-                        role: "assistant".to_string(),
-                        content: Some(std::mem::take(pending_text)),
-                        tool_calls: if pending_tool_calls.is_empty() {
-                            None
-                        } else {
-                            Some(std::mem::take(pending_tool_calls))
-                        },
-                        tool_call_id: None,
-                        name: None,
-                        metadata: pending_metadata.take().or_else(|| message.metadata.clone()),
-                    });
-                };
-
-            for part in &message.content {
-                match part.part_type.as_str() {
-                    "text" | "progress" | "final" => {
-                        if !pending_text.trim().is_empty() {
-                            flush_assistant(
-                                &mut out,
-                                &mut pending_text,
-                                &mut pending_tool_calls,
-                                &mut pending_metadata,
-                            );
-                        }
-                        pending_text = part.text.clone().unwrap_or_default();
-                        pending_metadata =
-                            effective_part_metadata(&part.metadata, &message.metadata);
-                    }
-                    "tool_call" => {
-                        pending_tool_calls.push(build_tool_call_value_from_part(part));
-                        if pending_metadata.is_none() {
-                            pending_metadata =
-                                effective_part_metadata(&part.metadata, &message.metadata);
-                        }
-                    }
-                    "tool_result" => {
-                        flush_assistant(
-                            &mut out,
-                            &mut pending_text,
-                            &mut pending_tool_calls,
-                            &mut pending_metadata,
-                        );
-                        out.push(AgentMessage {
-                            role: "tool".to_string(),
-                            content: Some(tool_result_to_content(part)),
-                            tool_calls: None,
-                            tool_call_id: part.id.clone(),
-                            name: part.name.clone(),
-                            metadata: effective_part_metadata(&part.metadata, &message.metadata),
-                        });
-                    }
-                    _ => {}
-                }
-            }
-
-            flush_assistant(
-                &mut out,
-                &mut pending_text,
-                &mut pending_tool_calls,
-                &mut pending_metadata,
-            );
-            out
-        }
-        other => {
-            let text = message
-                .content
-                .iter()
-                .filter_map(|part| part.text.as_deref())
-                .map(str::trim)
-                .filter(|text| !text.is_empty())
-                .collect::<Vec<_>>()
-                .join("\n");
-            if text.is_empty() {
-                Vec::new()
-            } else {
-                vec![AgentMessage {
-                    role: other.to_string(),
-                    content: Some(text),
-                    tool_calls: None,
-                    tool_call_id: None,
-                    name: None,
-                    metadata: message
-                        .content
-                        .iter()
-                        .find_map(|part| part.metadata.clone())
-                        .or_else(|| message.metadata.clone()),
-                }]
-            }
-        }
+        "user" => denormalize_text_role(message, "user"),
+        "assistant" => denormalize_assistant_message(message),
+        other => denormalize_text_role(message, other),
     }
 }
 
@@ -589,4 +586,81 @@ pub fn denormalize_normalized_message(
 pub trait Agent: Send + Sync {
     /// 运行单次交互
     async fn run(&self, user_input: &str, context: &mut AgentContext) -> AgentResponse;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn part(part_type: &str, text: Option<&str>) -> NormalizedConversationPart {
+        NormalizedConversationPart {
+            part_type: part_type.to_string(),
+            text: text.map(ToString::to_string),
+            id: None,
+            name: None,
+            args: None,
+            result: None,
+            metadata: None,
+        }
+    }
+
+    #[test]
+    fn denormalize_text_role_joins_non_empty_text_parts() {
+        let mut metadata = HashMap::new();
+        metadata.insert("source".to_string(), Value::String("part".to_string()));
+        let mut first = part("text", Some(" first "));
+        first.metadata = Some(metadata.clone());
+
+        let messages = denormalize_normalized_message(&NormalizedConversationMessage {
+            role: "user".to_string(),
+            content: vec![
+                first,
+                part("text", Some("  ")),
+                part("text", Some("second")),
+            ],
+            status: None,
+            metadata: None,
+        });
+
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].role, "user");
+        assert_eq!(messages[0].content.as_deref(), Some("first\nsecond"));
+        assert_eq!(messages[0].metadata, Some(metadata));
+    }
+
+    #[test]
+    fn denormalize_assistant_preserves_tool_call_and_result_order() {
+        let mut tool_call = part("tool_call", None);
+        tool_call.id = Some("call-1".to_string());
+        tool_call.name = Some("lookup".to_string());
+        tool_call.args = Some(serde_json::json!({ "ticker": "HONE" }));
+
+        let mut tool_result = part("tool_result", None);
+        tool_result.id = Some("call-1".to_string());
+        tool_result.name = Some("lookup".to_string());
+        tool_result.result = Some(Value::String("result text".to_string()));
+
+        let messages = denormalize_normalized_message(&NormalizedConversationMessage {
+            role: "assistant".to_string(),
+            content: vec![
+                part("text", Some("thinking")),
+                tool_call,
+                tool_result,
+                part("final", Some("done")),
+            ],
+            status: Some("completed".to_string()),
+            metadata: None,
+        });
+
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[0].role, "assistant");
+        assert_eq!(messages[0].content.as_deref(), Some("thinking"));
+        assert_eq!(messages[0].tool_calls.as_ref().unwrap().len(), 1);
+        assert_eq!(messages[1].role, "tool");
+        assert_eq!(messages[1].content.as_deref(), Some("result text"));
+        assert_eq!(messages[1].tool_call_id.as_deref(), Some("call-1"));
+        assert_eq!(messages[2].role, "assistant");
+        assert_eq!(messages[2].content.as_deref(), Some("done"));
+        assert!(messages[2].tool_calls.is_none());
+    }
 }
