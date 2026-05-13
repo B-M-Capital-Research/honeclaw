@@ -1379,7 +1379,7 @@ function Composer(props: {
               outline: "none",
               background: "transparent",
               padding: "6px 6px",
-              "font-size": "15px",
+              "font-size": "16px",
               "font-weight": "500",
               "line-height": "1.5",
               color: "#0f172a",
@@ -1559,29 +1559,6 @@ export default function PublicChatPage() {
     justFinishedTimer = window.setTimeout(() => setJustFinished(false), 2400);
   };
 
-  // Keep the chat page sized to the visible viewport. Mobile browsers resize
-  // visualViewport around the keyboard; using a height variable avoids composer
-  // transforms and prevents the outer page from becoming draggable.
-  createEffect(() => {
-    const vv =
-      typeof window !== "undefined" ? window.visualViewport : undefined;
-    if (!vv) return;
-    const update = () => {
-      document.documentElement.style.setProperty(
-        "--public-chat-vh",
-        `${Math.round(vv.height)}px`,
-      );
-    };
-    update();
-    vv.addEventListener("resize", update);
-    window.addEventListener("orientationchange", update);
-    onCleanup(() => {
-      vv.removeEventListener("resize", update);
-      window.removeEventListener("orientationchange", update);
-      document.documentElement.style.removeProperty("--public-chat-vh");
-    });
-  });
-
   // When the inner messages content grows (streaming, new message), keep the
   // viewport glued to the bottom unless the user has explicitly scrolled away.
   createEffect(() => {
@@ -1674,7 +1651,7 @@ export default function PublicChatPage() {
     const previousViewport = viewportMeta?.getAttribute("content") ?? null;
     viewportMeta?.setAttribute(
       "content",
-      "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+      "width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content",
     );
     const preventGesture = (event: Event) => event.preventDefault();
     document.addEventListener("gesturestart", preventGesture);
@@ -1993,11 +1970,13 @@ export default function PublicChatPage() {
         body.public-chat-scroll-lock,
         body.public-chat-scroll-lock #root {
           width: 100% !important;
-          height: var(--public-chat-vh, 100dvh) !important;
-          min-height: var(--public-chat-vh, 100dvh) !important;
-          max-height: var(--public-chat-vh, 100dvh) !important;
+          height: 100dvh !important;
+          min-height: 100dvh !important;
+          max-height: 100dvh !important;
           overflow: hidden !important;
           overscroll-behavior: none;
+          -webkit-text-size-adjust: 100%;
+          text-size-adjust: 100%;
         }
         body.public-chat-scroll-lock {
           position: fixed;
@@ -2008,8 +1987,8 @@ export default function PublicChatPage() {
         }
         .public-chat-page {
           width: 100vw;
-          height: var(--public-chat-vh, 100dvh) !important;
-          max-height: var(--public-chat-vh, 100dvh);
+          height: 100dvh !important;
+          max-height: 100dvh;
           overflow: hidden;
           overflow-anchor: none;
           overscroll-behavior: none;
@@ -2036,6 +2015,13 @@ export default function PublicChatPage() {
         .public-chat-composer-input {
           touch-action: pan-y;
           overflow-x: hidden;
+        }
+        @media (max-width: 768px) {
+          .public-chat-page input,
+          .public-chat-page textarea,
+          .public-chat-page select {
+            font-size: 16px !important;
+          }
         }
         .public-chat-composer-status {
           max-width: 900px;
