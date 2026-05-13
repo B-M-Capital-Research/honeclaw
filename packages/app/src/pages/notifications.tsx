@@ -11,149 +11,26 @@ import {
   getNotifications,
   type NotificationHistogramBucket,
   type NotificationRecord,
-  type NotificationsQuery,
   type NotificationsSummary,
 } from "@/lib/api"
 import { actorKey, type ActorRef } from "@/lib/actors"
 import { formatShanghaiDateTime } from "@/lib/time"
 import { NOTIFICATIONS } from "@/lib/admin-content/notifications"
 import { tpl, useLocale } from "@/lib/i18n"
-
-// ── 状态映射(对齐 task-detail.tsx 的 sendStatusLabel/executionStatusLabel) ──
-
-const NOTIFICATION_QUERY_LIMIT = 200
-
-function sendStatusOptions(): Array<{ value: string; label: string }> {
-  const labels = NOTIFICATIONS.send_status
-  return [
-    { value: "", label: labels.all },
-    { value: "sent", label: labels.sent },
-    { value: "dryrun", label: labels.dryrun },
-    { value: "queued", label: labels.queued },
-    { value: "quiet_held", label: labels.quiet_held },
-    { value: "filtered", label: labels.filtered },
-    { value: "capped", label: labels.capped },
-    { value: "cooled_down", label: labels.cooled_down },
-    { value: "price_capped", label: labels.price_capped },
-    { value: "price_cooled_down", label: labels.price_cooled_down },
-    { value: "omitted", label: labels.omitted },
-    { value: "skipped_noop", label: labels.skipped_noop },
-    { value: "skipped_error", label: labels.skipped_error },
-    { value: "send_failed", label: labels.send_failed },
-    { value: "failed", label: labels.failed },
-    { value: "target_resolution_failed", label: labels.target_resolution_failed },
-    { value: "duplicate_suppressed", label: labels.duplicate_suppressed },
-  ]
-}
-
-function execStatusOptions(): Array<{ value: string; label: string }> {
-  const labels = NOTIFICATIONS.exec_status
-  return [
-    { value: "", label: labels.all },
-    { value: "completed", label: labels.completed },
-    { value: "noop", label: labels.noop },
-    { value: "execution_failed", label: labels.execution_failed },
-  ]
-}
-
-function channelOptions(): Array<{ value: string; label: string }> {
-  return [
-    { value: "", label: NOTIFICATIONS.channel.all },
-    { value: "telegram", label: "Telegram" },
-    { value: "discord", label: "Discord" },
-    { value: "feishu", label: NOTIFICATIONS.channel.feishu },
-    { value: "imessage", label: "iMessage" },
-  ]
-}
-
-function sendLabel(status: string): string {
-  return sendStatusOptions().find((option) => option.value === status)?.label ?? status ?? "—"
-}
-function execLabel(status: string): string {
-  return execStatusOptions().find((option) => option.value === status)?.label ?? status ?? "—"
-}
-
-function sendBadgeClass(status: string): string {
-  switch (status) {
-    case "sent":
-    case "dryrun":
-      return "text-emerald-300 bg-emerald-500/15"
-    case "send_failed":
-    case "failed":
-    case "target_resolution_failed":
-    case "skipped_error":
-      return "text-rose-300 bg-rose-500/15"
-    case "duplicate_suppressed":
-    case "quiet_held":
-    case "queued":
-    case "capped":
-    case "cooled_down":
-    case "price_capped":
-    case "price_cooled_down":
-      return "text-amber-300 bg-amber-500/15"
-    case "filtered":
-    case "omitted":
-    case "skipped_noop":
-      return "text-[color:var(--text-muted)] bg-white/5"
-    default:
-      return "text-[color:var(--text-muted)] bg-white/5"
-  }
-}
-
-function bucketHourLabel(iso: string): string {
-  const date = new Date(iso)
-  if (isNaN(date.getTime())) return iso
-  const loc = useLocale() === "zh" ? "zh-CN" : "en-US"
-  return date.toLocaleString(loc, {
-    timeZone: "Asia/Shanghai",
-    hour: "2-digit",
-    hour12: false,
-  })
-}
-
-function recordSourceLabel(source: string): string {
-  switch (source) {
-    case "cron_job":
-      return NOTIFICATIONS.source.cron
-    case "event_engine":
-      return NOTIFICATIONS.source.event
-    default:
-      return source || "—"
-  }
-}
-
-function eventKindLabel(kind?: string | null): string {
-  switch (kind) {
-    case "earnings_upcoming":
-      return NOTIFICATIONS.event_kind.earnings_upcoming
-    case "earnings_released":
-      return NOTIFICATIONS.event_kind.earnings_released
-    case "earnings_call_transcript":
-      return NOTIFICATIONS.event_kind.earnings_call_transcript
-    case "news_critical":
-      return NOTIFICATIONS.event_kind.news_critical
-    case "price_alert":
-      return NOTIFICATIONS.event_kind.price_alert
-    case "weekly52_high":
-      return NOTIFICATIONS.event_kind.weekly52_high
-    case "weekly52_low":
-      return NOTIFICATIONS.event_kind.weekly52_low
-    case "dividend":
-      return NOTIFICATIONS.event_kind.dividend
-    case "split":
-      return NOTIFICATIONS.event_kind.split
-    case "sec_filing":
-      return NOTIFICATIONS.event_kind.sec_filing
-    case "analyst_grade":
-      return NOTIFICATIONS.event_kind.analyst_grade
-    case "macro_event":
-      return NOTIFICATIONS.event_kind.macro_event
-    case "social_post":
-      return NOTIFICATIONS.event_kind.social_post
-    default:
-      return kind || "—"
-  }
-}
+import {
+  NOTIFICATION_QUERY_LIMIT,
+  bucketHourLabel,
+  buildNotificationsQuery,
+  channelOptions,
+  eventKindLabel,
+  execLabel,
+  execStatusOptions,
+  notificationPeakBucket,
+  recordSourceLabel,
+  sendBadgeClass,
+  sendLabel,
+  sendStatusOptions,
+} from "./notifications-model"
 
 // ── 组件 ─────────────────────────────────────────────────────────────────────
 
@@ -186,17 +63,14 @@ export default function NotificationsPage() {
     setLoading(true)
     setLoadError(null)
     try {
-      const sinceDate = new Date(Date.now() - hours() * 3600 * 1000)
-      const actor = selectedActor()
-      const query: NotificationsQuery = {
-        since: sinceDate.toISOString(),
-        channel: actor?.channel ?? (channel() || undefined),
-        user_id: actor?.user_id,
-        channel_scope: actor?.channel_scope,
-        execution_status: execStatus() || undefined,
-        message_send_status: sendStatus() || undefined,
-        limit: NOTIFICATION_QUERY_LIMIT,
-      }
+      const query = buildNotificationsQuery({
+        now: new Date(),
+        hours: hours(),
+        selectedActor: selectedActor(),
+        channel: channel(),
+        execStatus: execStatus(),
+        sendStatus: sendStatus(),
+      })
       const response = await getNotifications(query)
       setRecords(response.records)
       setHistogram(response.histogram_24h)
@@ -214,13 +88,7 @@ export default function NotificationsPage() {
     onCleanup(() => window.clearInterval(timer))
   })
 
-  const peakBucket = createMemo(() => {
-    let max = 0
-    for (const bucket of histogram()) {
-      if (bucket.total > max) max = bucket.total
-    }
-    return max
-  })
+  const peakBucket = createMemo(() => notificationPeakBucket(histogram()))
 
   return (
     <div class="flex h-full min-h-0 flex-col gap-4 p-4 text-sm">
@@ -378,7 +246,7 @@ export default function NotificationsPage() {
           <div class="mt-1 flex items-center justify-between text-[9px] text-[color:var(--text-muted)]">
             <span>
               <Show when={histogram().length > 0}>
-                {bucketHourLabel(histogram()[0].bucket_start)}{NOTIFICATIONS.page.histogram_hour_suffix}
+                {bucketHourLabel(histogram()[0].bucket_start, useLocale())}{NOTIFICATIONS.page.histogram_hour_suffix}
               </Show>
             </span>
             <span class="flex items-center gap-3">
@@ -390,6 +258,7 @@ export default function NotificationsPage() {
               <Show when={histogram().length > 0}>
                 {bucketHourLabel(
                   histogram()[histogram().length - 1].bucket_start,
+                  useLocale(),
                 )}
                 {NOTIFICATIONS.page.histogram_hour_suffix}
               </Show>

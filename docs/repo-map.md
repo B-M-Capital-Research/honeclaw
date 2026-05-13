@@ -115,7 +115,7 @@ Last updated: 2026-05-13
 - Telegram scheduler split: `bins/hone-telegram/src/scheduler.rs`
 - Telegram outbound text/image interleave handling: `bins/hone-telegram/src/listener.rs`
 - Discord outbound text/image interleave handling: `bins/hone-discord/src/utils.rs`
-- Settings page pure state helpers: `packages/app/src/pages/settings-model.ts`
+- Page-level pure state/data helpers: `packages/app/src/pages/{settings,users,notifications,task-health}-model.ts`
 - Config sample: `config.example.yaml`
 - GitHub install script: `scripts/install_hone_cli.sh`
 
@@ -184,7 +184,7 @@ Last updated: 2026-05-13
 - Pages: `packages/app/src/pages/`
   - admin surface keeps `/start` and the management console routes
   - public surface exposes `/`, `/roadmap`, `/chat`, `/me`, `/portfolio`, `/terms`, and `/privacy`; `/chat` and account views use the phone + SMS-code whitelist login experience
-- Settings page state helpers: `packages/app/src/pages/settings-model.ts`
+- Page-level pure state/data helpers: `packages/app/src/pages/{settings,users,notifications,task-health}-model.ts`
 - Domain state: `packages/app/src/context/`
 - Composite components: `packages/app/src/components/`
 - API access and data transformation: `packages/app/src/lib/`

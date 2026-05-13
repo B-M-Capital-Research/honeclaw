@@ -8,60 +8,16 @@ import {
 import { getTaskRuns, type TaskRunRecord, type TaskSummary } from "@/lib/api"
 import { TASK_HEALTH } from "@/lib/admin-content/task-health"
 import { tpl, useLocale } from "@/lib/i18n"
-
-// ── 常量 ─────────────────────────────────────────────────────────────────────
-
-const DAYS_OPTIONS = [1, 3, 7, 14] as const
-
-// ── 工具 ─────────────────────────────────────────────────────────────────────
-
-function shortTime(iso: string | null | undefined): string {
-  if (!iso) return "—"
-  // "2026-04-26T12:34:56.789Z" → "12:34:56"
-  const date = new Date(iso)
-  if (isNaN(date.getTime())) return iso
-  const loc = useLocale() === "zh" ? "zh-CN" : "en-US"
-  return date.toLocaleTimeString(loc, { hour12: false })
-}
-
-function relativeTime(iso: string | null | undefined): string {
-  if (!iso) return "—"
-  const date = new Date(iso)
-  if (isNaN(date.getTime())) return iso
-  const secAgo = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000))
-  if (secAgo < 60) return tpl(TASK_HEALTH.relative.seconds_ago, { count: secAgo })
-  if (secAgo < 3600) return tpl(TASK_HEALTH.relative.minutes_ago, { count: Math.floor(secAgo / 60) })
-  if (secAgo < 86400) return tpl(TASK_HEALTH.relative.hours_ago, { count: Math.floor(secAgo / 3600) })
-  return tpl(TASK_HEALTH.relative.days_ago, { count: Math.floor(secAgo / 86400) })
-}
-
-function durationMs(start: string, end: string): number {
-  const startMs = new Date(start).getTime()
-  const endMs = new Date(end).getTime()
-  if (isNaN(startMs) || isNaN(endMs)) return 0
-  return Math.max(0, endMs - startMs)
-}
-
-function outcomeColor(outcome: string): string {
-  switch (outcome) {
-    case "ok":
-      return "text-emerald-300 bg-emerald-500/15"
-    case "skipped":
-      return "text-[color:var(--text-muted)] bg-white/5"
-    case "failed":
-      return "text-rose-300 bg-rose-500/15"
-    default:
-      return "text-[color:var(--text-muted)] bg-white/5"
-  }
-}
-
-function successRate(summary: TaskSummary): string {
-  // skipped 是"主动跳过",不算分母里的失败,只算 ok / (ok+failed)。
-  const denominator = summary.ok_24h + summary.failed_24h
-  if (denominator === 0) return "—"
-  const pct = (summary.ok_24h / denominator) * 100
-  return `${pct.toFixed(0)}%`
-}
+import {
+  TASK_HEALTH_DAYS_OPTIONS,
+  relativeTaskRunTime,
+  shortTaskRunTime,
+  taskFilterOptions,
+  taskRunDurationMs,
+  taskRunOutcomeClass,
+  taskSuccessRate,
+  taskSummaryRows,
+} from "./task-health-model"
 
 // ── 主组件 ────────────────────────────────────────────────────────────────────
 
@@ -100,17 +56,9 @@ export default function TaskHealthPage() {
     return () => window.clearInterval(timer)
   })
 
-  // 把 summary map 排成数组按 task 字典序
-  const summaryRows = createMemo(() => {
-    return Object.entries(summary())
-      .map(([task, taskSummary]) => ({ task, ...taskSummary }))
-      .sort((a, b) => a.task.localeCompare(b.task))
-  })
-
-  // task 下拉选项 = summary 里出现过的所有 task
-  const taskOptions = createMemo(() => {
-    return Object.keys(summary()).sort()
-  })
+  const now = () => new Date()
+  const summaryRows = createMemo(() => taskSummaryRows(summary()))
+  const taskOptions = createMemo(() => taskFilterOptions(summary()))
 
   return (
     <div class="flex h-full min-h-0 flex-col gap-4 p-4 text-sm">
@@ -129,7 +77,7 @@ export default function TaskHealthPage() {
             }}
             class="rounded border border-[color:var(--border)] bg-transparent px-2 py-1 text-xs text-[color:var(--text-primary)]"
           >
-            <For each={DAYS_OPTIONS}>{(optionDays) => <option value={optionDays}>{optionDays}d</option>}</For>
+            <For each={TASK_HEALTH_DAYS_OPTIONS}>{(optionDays) => <option value={optionDays}>{optionDays}d</option>}</For>
           </select>
         </div>
         <div class="flex items-center gap-1 text-xs text-[color:var(--text-muted)]">
@@ -212,7 +160,7 @@ export default function TaskHealthPage() {
                         class="px-3 py-2 text-right text-[color:var(--text-muted)]"
                         title={row.last_seen_at ?? ""}
                       >
-                        {relativeTime(row.last_seen_at)}
+                        {relativeTaskRunTime(row.last_seen_at, now())}
                       </td>
                       <td class="px-3 py-2 text-right">{row.runs_24h}</td>
                       <td class="px-3 py-2 text-right text-emerald-300">
@@ -224,7 +172,7 @@ export default function TaskHealthPage() {
                       <td class="px-3 py-2 text-right text-rose-300">
                         {row.failed_24h}
                       </td>
-                      <td class="px-3 py-2 text-right">{successRate(row)}</td>
+                      <td class="px-3 py-2 text-right">{taskSuccessRate(row)}</td>
                       <td
                         class="max-w-[24rem] px-3 py-2 text-left"
                         title={
@@ -241,7 +189,7 @@ export default function TaskHealthPage() {
                         >
                           <div class="flex items-center gap-2 text-[10px] uppercase tracking-wide">
                             <span class="text-[color:var(--text-muted)]">
-                              {relativeTime(row.last_failure_at)}
+                              {relativeTaskRunTime(row.last_failure_at, now())}
                             </span>
                             <Show
                               when={(row.runs_since_last_failure ?? 0) > 0}
@@ -308,19 +256,19 @@ export default function TaskHealthPage() {
                         class="px-3 py-1.5 font-mono text-[10px] text-[color:var(--text-muted)]"
                         title={run.started_at}
                       >
-                        {shortTime(run.started_at)}
+                        {shortTaskRunTime(run.started_at, useLocale())}
                       </td>
                       <td class="px-3 py-1.5 font-mono text-[11px]">{run.task}</td>
                       <td class="px-3 py-1.5">
                         <span
-                          class={`inline-block rounded px-1.5 py-0.5 text-[10px] uppercase ${outcomeColor(run.outcome)}`}
+                          class={`inline-block rounded px-1.5 py-0.5 text-[10px] uppercase ${taskRunOutcomeClass(run.outcome)}`}
                         >
                           {run.outcome}
                         </span>
                       </td>
                       <td class="px-3 py-1.5 text-right">{run.items}</td>
                       <td class="px-3 py-1.5 text-right text-[color:var(--text-muted)]">
-                        {durationMs(run.started_at, run.ended_at)}ms
+                        {taskRunDurationMs(run.started_at, run.ended_at)}ms
                       </td>
                       <td
                         class="max-w-[28rem] truncate px-3 py-1.5 text-rose-300/80"
