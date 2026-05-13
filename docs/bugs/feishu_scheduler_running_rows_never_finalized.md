@@ -9,6 +9,14 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-14 07:08 CST` 复核，started-row finalize 缺陷继续实时新增：
+    - 最近四小时窗口 `2026-05-14T03:00:00+08:00` 到 `2026-05-14T07:00:00+08:00` 内共有 `102` 条 `execution_status=running + message_send_status=pending + detail.phase=started` 残留。
+    - 其中 `99` 条为 heartbeat started 行，覆盖 03:00、03:30、04:00、04:30、05:00、05:30、06:00、06:30、07:00 等窗口；另有 `3` 条普通 scheduler started 行。
+    - 普通 scheduler 代表样本：`run_id=20228` 的 `Oil_Price_Monitor_Closing`、`run_id=20263` 的 `OWALERT_PostMarket`、`run_id=20282` 的 `科技成长赛道大盘极值与情绪监控` 先写入 `running + pending + phase=started`，随后分别另起 `run_id=20251/20275/20299` 作为 `completed + sent + delivered=1` 终态；原 started 行仍未被覆盖。
+    - Heartbeat 代表样本：03:00 同窗 `run_id=20184-20194` 先写入 11 条 started 行，随后 `run_id=20195-20205` 另起 11 条 `execution_failed + skipped_error + delivered=0` 终态；07:00 同窗也继续写入 11 条 started 行并另起 10 条失败终态与 1 条 `noop` 终态。
+  - 结论：
+    - 该缺陷在最近四小时继续扩大，不是只剩历史脏数据。
+    - 受损点仍是调度台账一致性，而不是用户可见投递主链路：同窗已有普通 scheduler 成功送达、heartbeat 也有明确失败或 noop 终态，因此严重等级维持 `P3`。
   - `2026-05-14 03:03 CST` 复核，started-row finalize 缺陷在 10:22 CST runtime 重启和 11:08 CST 关闭复核后再次实时新增，状态从 `Fixed` 调回 `New`：
     - 最近四小时窗口 `2026-05-13T23:02:00+08:00` 到 `2026-05-14T03:02:52+08:00` 内共有 `92` 条 `execution_status=running + message_send_status=pending + detail.phase=started` 残留。
     - 其中 `88` 条为 heartbeat started 行，覆盖 `00:30`、`01:00`、`01:30`、`02:00`、`02:30`、`03:00` 等窗口；另有 `4` 条普通 scheduler started 行。

@@ -9,6 +9,11 @@
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-14 07:08 CST` 复核：该缺陷继续保持活跃 `New`。03:00-07:00 CST 又新增 `90` 条同类 heartbeat 失败，覆盖 `11` 个 job；终态均为 `execution_failed + skipped_error + delivered=0`。
+  - 失败 job 覆盖 `Cerebras IPO与业务进展心跳监控`、`DRAM 心跳监控`、`Monitor_Watchlist_11`、`RKLB异动监控`、`TEM大事件心跳监控`、`TSLA 正负触发条件心跳监控`、`伦敦金跌破4500提醒`、`小米30港元破位预警`、`持仓重大事件心跳检测`、`TEM破位预警` 与 `全天原油价格3小时播报`。
+  - 代表性窗口：03:00 同窗 11 条失败；03:30 同窗 9 条失败并有 2 条正常 `noop`；04:00 同窗 9 条失败；04:30、05:00、05:30、06:30、07:00 各 10 条失败；06:00 同窗 11 条失败。
+  - `error_message` 继续为 `LLM 错误: : Param Incorrect (param: The reasoning_content in the thinking mode must be passed back to the API.) (code: 400)`。
+  - 同窗普通 scheduler 仍有 `Oil_Price_Monitor_Closing`、`OWALERT_PostMarket`、`科技成长赛道大盘极值与情绪监控` 以及 Feishu direct SOFI / AI 股票分析成功送达，说明故障仍集中在 heartbeat `mimo-v2.5-pro` function-calling 路径。
   - `2026-05-14 03:03 CST` 复核：该缺陷持续保持活跃 `New`。23:30-03:00 CST 再次新增 `82` 条同类 heartbeat 失败，覆盖 `11` 个 job；终态均为 `execution_failed + skipped_error + delivered=0`。
   - 失败 job 仍覆盖 `小米30港元破位预警`、`TEM破位预警`、`DRAM 心跳监控`、`RKLB异动监控`、`持仓重大事件心跳检测`、`伦敦金跌破4500提醒`、`TEM大事件心跳监控`、`Cerebras IPO与业务进展心跳监控`、`Monitor_Watchlist_11`、`TSLA 正负触发条件心跳监控` 与 `全天原油价格3小时播报`。
   - 代表性 run：`run_id=20029-20039` 在 23:30 CST 同窗失败；`run_id=20086-20095` 在 00:30 CST 同窗失败；`run_id=20107-20117` 在 01:00 CST 同窗失败；`run_id=20129-20139` 在 01:30 CST 同窗失败；`run_id=20151-20161` 在 02:00 CST 同窗失败；`run_id=20174-20183` 在 02:30 CST 同窗失败；`run_id=20195-20205` 在 03:00 CST 同窗失败。
@@ -54,7 +59,7 @@
 
 - 2026-05-13 23:04 CST 的最新复核显示，本单在 10:22 CST 重启后一度恢复，但 21:02-23:00 CST 又连续复发；因此关闭结论不再成立。
 - 2026-05-14 03:03 CST 的最新复核显示，复发继续扩大到 23:30-03:00 CST，新增 82 条同类 heartbeat 失败；普通 scheduler 同窗仍可送达。
-- 最新四小时内已累计 `82` 条 heartbeat 因同一 `mimo-v2.5-pro` 上游 `HTTP 400 Param Incorrect` 失败。
+- 2026-05-14 07:08 CST 的最新复核显示，03:00-07:00 CST 又新增 `90` 条 heartbeat 因同一 `mimo-v2.5-pro` 上游 `HTTP 400 Param Incorrect` 失败，覆盖 11 个 job；普通 scheduler 与 Feishu direct 同窗仍可送达。
 - 失败已被正确记为 `provider_http_error`，没有被伪装成 noop；但业务效果仍是本轮监控漏发。
 - 同窗普通 scheduler 仍可送达，故障集中在 heartbeat provider 参数 / 模型兼容路径。
 

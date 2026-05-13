@@ -3,7 +3,31 @@
 - **发现时间**: 2026-04-22 07:00 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Closed
+- **状态**: New
+
+## 最新进展（2026-05-14 07:08 CST）
+
+- 本轮巡检把本单从 `Closed` 调回 `New`：`2026-05-13 15:04 CST` 关闭结论只证明 `全天原油价格3小时播报` heartbeat guard 在 live 生效，但最近四小时内同类原油普通 scheduler 又成功外发无法从台账证明的价格口径与盘面归因，且 `detail_json.scheduler=null`，说明普通 scheduler 路径没有同等 guard / 审计元数据。
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - `run_id=20251`
+  - `job_name=Oil_Price_Monitor_Closing`
+  - `executed_at=2026-05-14T04:01:16.603792+08:00`
+  - `execution_status=completed`
+  - `message_send_status=sent`
+  - `delivered=1`
+  - `detail_json={"delivery_key":"j_355ba2f1:2026-05-14:04:00","receive_id":"...","scheduler":null}`
+  - `response_preview` 向用户发送 `WTI 约 101.02 美元`、`Brent 约 105.63 美元`、`WSJ 今日结算口径`，并把油价回落组织成“对今晚科技股不是压制项，反而是边际缓和；尾盘是否防守主要看 QQQ/COHR/RKLB 自身承接”的确定性判断。
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - `run_id=20275`
+  - `job_name=OWALERT_PostMarket`
+  - `executed_at=2026-05-14T04:33:09.396235+08:00`
+  - `execution_status=completed`
+  - `message_send_status=sent`
+  - `delivered=1`
+  - `detail_json.scheduler=null`
+  - `response_preview` 继续复用同一油价口径：`USO 收盘附近 142.07`、`WTI 跌 1.1% 至 101.02 美元`、`Brent 跌 2.0% 至 105.63 美元`，并将“能源通胀压力边际缓和”写成 AI 风险偏好修复的核心解释之一。
+- 最近四小时同名 `全天原油价格3小时播报` heartbeat 本身主要为 `noop` 或因 `mimo-v2.5-pro` `Param Incorrect` 失败，没有新增 heartbeat 原油坏播报；本轮复发点是非 heartbeat / 普通 scheduler 的原油收盘与盘后扫描路径。
+- 结论：这是同一“原油定时播报外发未核验价格 / 因果口径”的影响范围扩展，不新建重复文档。该问题会影响用户对油价、科技股尾盘防守与次日交易框架的判断，因此仍按功能性质量缺陷 `P2 / New` 跟踪。
 
 ## live 关闭复核（2026-05-13 15:04 CST）
 
