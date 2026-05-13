@@ -53,4 +53,10 @@ if [[ "$restart_usage" != *'scripts/restart_hone.sh <project_root> [old_pid]'* ]
   exit 1
 fi
 
+invalid_root_output="$(bash "$RESTART_SCRIPT" "$ROOT_DIR/does-not-exist" 2>&1 || true)"
+if [[ "$invalid_root_output" != *'[restart_hone] error: project root is not a directory:'* ]]; then
+  echo "[FAIL] restart_hone should reject invalid project roots before log setup" >&2
+  exit 1
+fi
+
 echo "[PASS] source CLI start contract regression passed"

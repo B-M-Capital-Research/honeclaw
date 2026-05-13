@@ -197,12 +197,50 @@ PY
 
 download_file
 
-TOP_DIR="$(
-  tar -tzf "$ARCHIVE_PATH" | {
-    IFS= read -r first_entry || true
-    printf '%s\n' "${first_entry%%/*}"
-  }
-)"
+validate_archive_layout() {
+  local archive_path="$1"
+  local listing
+  if ! listing="$(tar -tzf "$archive_path")"; then
+    echo "failed to inspect archive layout: $archive_path" >&2
+    exit 1
+  fi
+
+  local top_dir=""
+  local entry
+  while IFS= read -r entry; do
+    if [[ -z "$entry" ]]; then
+      continue
+    fi
+
+    case "$entry" in
+      /*|../*|*/../*|.|..)
+        echo "release asset contains unsafe archive path: $entry" >&2
+        echo "downloaded asset: $DOWNLOAD_URL" >&2
+        exit 1
+        ;;
+    esac
+
+    local entry_top="${entry%%/*}"
+    if [[ -z "$entry_top" || "$entry_top" == "." || "$entry_top" == ".." ]]; then
+      echo "release asset contains unsafe archive path: $entry" >&2
+      echo "downloaded asset: $DOWNLOAD_URL" >&2
+      exit 1
+    fi
+
+    if [[ -z "$top_dir" ]]; then
+      top_dir="$entry_top"
+    elif [[ "$entry_top" != "$top_dir" ]]; then
+      echo "release asset must contain exactly one top-level bundle directory" >&2
+      echo "found top-level entries: $top_dir and $entry_top" >&2
+      echo "downloaded asset: $DOWNLOAD_URL" >&2
+      exit 1
+    fi
+  done <<< "$listing"
+
+  printf '%s\n' "$top_dir"
+}
+
+TOP_DIR="$(validate_archive_layout "$ARCHIVE_PATH")"
 if [[ -z "$TOP_DIR" ]]; then
   echo "failed to inspect archive layout: $ARCHIVE_PATH" >&2
   exit 1

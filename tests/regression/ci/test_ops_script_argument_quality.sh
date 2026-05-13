@@ -208,6 +208,22 @@ EOF
   )
 }
 
+run_gitleaks_outside_repo_case() {
+  local outside_dir="$TMP_ROOT/outside-git-repo"
+  mkdir -p "$outside_dir"
+
+  local output
+  if output="$(
+    cd "$outside_dir"
+    bash "$ROOT_DIR/scripts/install_gitleaks.sh" 2>&1
+  )"; then
+    echo "[FAIL] install_gitleaks succeeded outside a git checkout" >&2
+    exit 1
+  fi
+
+  assert_contains "$output" "install_gitleaks.sh must be run from inside a git checkout" "gitleaks installer should explain the git checkout requirement"
+}
+
 run_build_desktop_home_bun_case() {
   local home_dir="$TMP_ROOT/build-desktop-home"
   local bun_log="$TMP_ROOT/build-desktop-bun.log"
@@ -245,6 +261,7 @@ run_homebrew_formula_version_normalization_case
 run_changed_fmt_bash3_compatible_case
 run_script_self_path_quality_case
 run_gitleaks_archive_layout_case
+run_gitleaks_outside_repo_case
 run_build_desktop_home_bun_case
 
 echo "[PASS] ops script argument quality regression passed"

@@ -2,7 +2,10 @@
 
 set -euo pipefail
 
-ROOT_DIR="$(git rev-parse --show-toplevel)"
+if ! ROOT_DIR="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+  echo "install_gitleaks.sh must be run from inside a git checkout" >&2
+  exit 1
+fi
 VERSION="${GITLEAKS_VERSION:-8.30.1}"
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH_RAW="$(uname -m)"
