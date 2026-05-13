@@ -1,6 +1,8 @@
 // public-roadmap.tsx — Hone Public Site Roadmap (content-driven)
 
+import { createResource } from "solid-js"
 import { useNavigate } from "@solidjs/router"
+import { fetchGithubStars } from "@/lib/github-stars"
 import { CONTENT } from "@/lib/public-content"
 import { setLocale, useLocale } from "@/lib/i18n"
 import "./public-site.css"
@@ -17,6 +19,7 @@ function AnimatedBackground() {
 
 function Header() {
   const navigate = useNavigate()
+  const [stars] = createResource(fetchGithubStars)
   const C = CONTENT.nav
 
   return (
@@ -46,6 +49,11 @@ function Header() {
           }}
         >
           <span class="header-contact-text">{C.contact_email}</span>
+        </a>
+
+        <a href={C.github_url} target="_blank" rel="noopener noreferrer" class="star-badge mobile-hide">
+          <span>GitHub</span>
+          <span>{stars() || "..."}</span>
         </a>
 
         <div class="lang-switch">

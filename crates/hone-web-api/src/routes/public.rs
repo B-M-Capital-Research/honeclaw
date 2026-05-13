@@ -19,7 +19,7 @@ use hone_channels::agent_session::{
 };
 use hone_channels::prompt::PromptOptions;
 use hone_channels::run_event::RunEvent;
-use hone_core::ActorIdentity;
+use hone_core::{ActorIdentity, HoneError};
 use hone_memory::WebSessionAuthResult;
 
 use crate::public_auth::PublicAuthLimitStatus;
@@ -108,9 +108,10 @@ pub(crate) async fn handle_sms_send_code(
         Ok(value) => value,
         Err(response) => return response,
     };
+    let sms_phone_number = aliyun_sms_phone_number(&phone_number);
 
     let ip_key = public_client_key(&headers);
-    let phone_key = format!("sms-send:{phone_number}");
+    let phone_key = format!("sms-send:{sms_phone_number}");
     for key in [&ip_key, &phone_key] {
         if let PublicAuthLimitStatus::Blocked { retry_after_secs } =
             state.public_auth_limiter.check(key)
@@ -119,10 +120,7 @@ pub(crate) async fn handle_sms_send_code(
         }
     }
 
-    let user = match state
-        .web_auth
-        .find_active_invite_user_by_phone(&phone_number)
-    {
+    let user = match find_active_invite_user_by_sms_phone(&state, &phone_number) {
         Ok(value) => value,
         Err(error) => {
             return crate::routes::json_error(
@@ -139,7 +137,7 @@ pub(crate) async fn handle_sms_send_code(
         );
     }
 
-    match crate::aliyun_sms::send_verify_code(&state.http_client, &phone_number).await {
+    match crate::aliyun_sms::send_verify_code(&state.http_client, &sms_phone_number).await {
         Ok(()) => {
             state.public_auth_limiter.record_success(&phone_key);
             Json(json!({ "ok": true })).into_response()
@@ -158,6 +156,7 @@ pub(crate) async fn handle_sms_login(
         Ok(value) => value,
         Err(response) => return response,
     };
+    let sms_phone_number = aliyun_sms_phone_number(&phone_number);
     let verify_code = request
         .verify_code
         .unwrap_or_default()
@@ -179,7 +178,7 @@ pub(crate) async fn handle_sms_login(
     }
 
     let ip_key = public_client_key(&headers);
-    let phone_key = format!("sms-login:{phone_number}");
+    let phone_key = format!("sms-login:{sms_phone_number}");
     for key in [&ip_key, &phone_key] {
         if let PublicAuthLimitStatus::Blocked { retry_after_secs } =
             state.public_auth_limiter.check(key)
@@ -188,10 +187,7 @@ pub(crate) async fn handle_sms_login(
         }
     }
 
-    let user = match state
-        .web_auth
-        .find_active_invite_user_by_phone(&phone_number)
-    {
+    let user = match find_active_invite_user_by_sms_phone(&state, &phone_number) {
         Ok(Some(user)) => user,
         Ok(None) => {
             let _ = state.public_auth_limiter.record_failure(&phone_key);
@@ -208,13 +204,16 @@ pub(crate) async fn handle_sms_login(
         }
     };
 
-    let verified =
-        match crate::aliyun_sms::check_verify_code(&state.http_client, &phone_number, &verify_code)
-            .await
-        {
-            Ok(value) => value,
-            Err(error) => return sms_provider_error_response("核验验证码失败", error),
-        };
+    let verified = match crate::aliyun_sms::check_verify_code(
+        &state.http_client,
+        &sms_phone_number,
+        &verify_code,
+    )
+    .await
+    {
+        Ok(value) => value,
+        Err(error) => return sms_provider_error_response("核验验证码失败", error),
+    };
     if !verified {
         return sms_login_failed(&state, &ip_key, &phone_key);
     }
@@ -279,6 +278,44 @@ pub(crate) async fn handle_sms_login(
         build_session_cookie(&session.session_token, &headers, max_age_secs),
     );
     response
+}
+
+fn aliyun_sms_phone_number(phone_number: &str) -> String {
+    strip_china_country_code(phone_number).unwrap_or_else(|| phone_number.to_string())
+}
+
+fn public_sms_phone_candidates(phone_number: &str) -> Vec<String> {
+    let mut candidates = Vec::with_capacity(2);
+    if let Some(local_number) = strip_china_country_code(phone_number) {
+        candidates.push(local_number);
+    }
+    if !candidates.iter().any(|candidate| candidate == phone_number) {
+        candidates.push(phone_number.to_string());
+    }
+    candidates
+}
+
+fn strip_china_country_code(phone_number: &str) -> Option<String> {
+    phone_number
+        .strip_prefix("+86")
+        .filter(|local_number| local_number.chars().all(|ch| ch.is_ascii_digit()))
+        .filter(|local_number| (6..=20).contains(&local_number.len()))
+        .map(ToString::to_string)
+}
+
+fn find_active_invite_user_by_sms_phone(
+    state: &AppState,
+    phone_number: &str,
+) -> Result<Option<hone_memory::WebInviteUser>, HoneError> {
+    for candidate in public_sms_phone_candidates(phone_number) {
+        if let Some(user) = state
+            .web_auth
+            .find_active_invite_user_by_phone(&candidate)?
+        {
+            return Ok(Some(user));
+        }
+    }
+    Ok(None)
 }
 
 fn sms_login_failed(state: &AppState, ip_key: &str, phone_key: &str) -> Response {
@@ -1150,8 +1187,8 @@ fn to_public_auth_user(
 #[cfg(test)]
 mod tests {
     use super::{
-        WEB_SESSION_MAX_AGE_LONG_SECS, WEB_SESSION_MAX_AGE_SHORT_SECS, build_session_cookie,
-        clear_session_cookie, public_client_key,
+        WEB_SESSION_MAX_AGE_LONG_SECS, WEB_SESSION_MAX_AGE_SHORT_SECS, aliyun_sms_phone_number,
+        build_session_cookie, clear_session_cookie, public_client_key, public_sms_phone_candidates,
     };
     use axum::http::{HeaderMap, HeaderValue, header};
     const SECURE_COOKIE_ENV: &str = "HONE_PUBLIC_SECURE_COOKIE";
@@ -1214,6 +1251,20 @@ mod tests {
             HeaderValue::from_static("203.0.113.9, 10.0.0.2"),
         );
         assert_eq!(public_client_key(&headers), "ip:203.0.113.9");
+    }
+
+    #[test]
+    fn sms_phone_candidates_accept_plus_86_and_local_numbers() {
+        assert_eq!(
+            public_sms_phone_candidates("+8613871396421"),
+            vec!["13871396421".to_string(), "+8613871396421".to_string()]
+        );
+        assert_eq!(
+            public_sms_phone_candidates("13871396421"),
+            vec!["13871396421".to_string()]
+        );
+        assert_eq!(aliyun_sms_phone_number("+8613871396421"), "13871396421");
+        assert_eq!(aliyun_sms_phone_number("13871396421"), "13871396421");
     }
 
     #[test]

@@ -1,7 +1,8 @@
 // public-nav.tsx — Navigation + Footer for Hone Public Site
 
-import { createSignal, For, onCleanup, onMount, Show } from "solid-js"
+import { createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { useNavigate, useLocation } from "@solidjs/router"
+import { fetchGithubStars } from "@/lib/github-stars"
 import { CONTENT } from "@/lib/public-content"
 import { setLocale, useLocale } from "@/lib/i18n"
 import "../pages/public-site.css"
@@ -9,6 +10,7 @@ import "../pages/public-site.css"
 export function PublicNav() {
   const [scrolled, setScrolled] = createSignal(false)
   const [menuOpen, setMenuOpen] = createSignal(false)
+  const [stars] = createResource(fetchGithubStars)
   const navigate = useNavigate()
   const location = useLocation()
   const C = CONTENT.nav
@@ -52,14 +54,16 @@ export function PublicNav() {
   ] as const
 
   const go = (path: string) => {
+    const current = page()
     navigate(path)
-    window.scrollTo(0, 0)
+    if (current !== path) window.scrollTo({ top: 0, left: 0, behavior: "auto" })
     setMenuOpen(false)
   }
 
   return (
     <>
       <nav
+        class="pub-nav"
         style={{
           position: "fixed",
           top: "0",
@@ -176,6 +180,7 @@ export function PublicNav() {
             href={C.github_url}
             target="_blank"
             rel="noopener noreferrer"
+            class="pub-github-star-link"
             style={{
               "margin-left": "10px",
               "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
@@ -186,11 +191,16 @@ export function PublicNav() {
               padding: "6px 10px",
               "border-radius": "6px",
               border: transparent() ? "1px solid rgba(255,255,255,0.15)" : "1px solid rgba(0,0,0,0.10)",
+              display: "inline-flex",
+              "align-items": "center",
+              gap: "6px",
               transition: "all 0.2s",
               "letter-spacing": "0.02em",
+              "white-space": "nowrap",
             }}
           >
-            GitHub ↗
+            <span>GitHub</span>
+            <span class="pub-github-star-count">{stars() || "..."}</span>
           </a>
 
           <div
@@ -293,12 +303,16 @@ export function PublicNav() {
       {/* Mobile dropdown menu */}
       <Show when={menuOpen()}>
         <div
+          class="pub-mobile-menu"
           style={{
             position: "fixed",
             top: "56px",
             left: "0",
             right: "0",
             "z-index": "199",
+            "max-height": "calc(100dvh - 56px)",
+            overflow: "auto",
+            "-webkit-overflow-scrolling": "touch",
             background: "#fff",
             "border-bottom": "1px solid rgba(0,0,0,0.08)",
             padding: "16px 24px 24px",
@@ -351,6 +365,7 @@ export function PublicNav() {
               href={C.github_url}
               target="_blank"
               rel="noopener noreferrer"
+              class="pub-github-star-link"
               style={{
                 padding: "11px 16px",
                 "border-radius": "8px",
@@ -360,9 +375,14 @@ export function PublicNav() {
                 "font-weight": "500",
                 color: "#64748b",
                 "text-decoration": "none",
+                display: "inline-flex",
+                "align-items": "center",
+                "justify-content": "center",
+                gap: "7px",
               }}
             >
-              GitHub ↗
+              <span>GitHub</span>
+              <span class="pub-github-star-count">{stars() || "..."}</span>
             </a>
           </div>
           <div
@@ -403,7 +423,7 @@ export function PublicFooter() {
 
   const go = (href: string) => {
     navigate(href)
-    window.scrollTo(0, 0)
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" })
   }
 
   const chipStyle = (active: boolean) => ({

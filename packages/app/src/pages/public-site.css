@@ -18,6 +18,10 @@ body {
   background-color: #fff;
 }
 
+html {
+  scroll-padding-top: 72px;
+}
+
 /* Public pages are content-heavy and include page-local style blocks. Keep
    padding and borders inside declared widths so mobile layouts cannot drift. */
 .pub-page *,
@@ -37,6 +41,12 @@ body {
   color: #0f172a;
 }
 
+.hone-landing-v4,
+.hone-roadmap-v4,
+.pub-page {
+  overflow-x: clip;
+}
+
 /* Headings inside public pages always dark unless overridden by inline style */
 .pub-page h1,
 .pub-page h2,
@@ -51,6 +61,21 @@ body {
 }
 .pub-nav-hamburger {
   display: none;
+}
+.pub-github-star-link {
+  min-height: 32px;
+}
+.pub-github-star-count {
+  min-width: 2.2em;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.12);
+  color: #b45309;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Shared public product header used by the home, roadmap, and chat pages. */
@@ -644,6 +669,18 @@ body {
 
 /* ── Mobile ── */
 @media (max-width: 768px) {
+  html {
+    scroll-padding-top: 56px;
+  }
+  body {
+    width: 100%;
+    max-width: 100vw;
+  }
+  img,
+  video,
+  iframe {
+    max-width: 100%;
+  }
   .page-header {
     height: 64px !important;
     padding: 0 16px !important;
@@ -715,6 +752,31 @@ body {
   }
   .pub-nav-hamburger {
     display: flex !important;
+  }
+  .pub-nav {
+    height: 56px !important;
+    padding-right: max(14px, env(safe-area-inset-right)) !important;
+    padding-left: max(14px, env(safe-area-inset-left)) !important;
+  }
+  .pub-nav > div:first-child {
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+  }
+  .pub-nav > div:first-child span {
+    max-width: min(46vw, 180px) !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+  .pub-mobile-menu {
+    overscroll-behavior: contain;
+  }
+  .pub-github-star-link {
+    min-width: 0;
+  }
+  .pub-github-star-count {
+    min-width: 2.6em;
+    padding: 2px 7px;
   }
 
   .pub-hero-grid {
@@ -816,6 +878,7 @@ body {
     width: 100%;
     max-width: 100vw;
     overflow-x: hidden;
+    overflow-x: clip;
   }
 
   .hone-landing-v4 .main-content {
@@ -842,12 +905,17 @@ body {
   .hone-landing-v4 .hero-btns {
     width: 100% !important;
     gap: 10px !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
   }
 
   .hone-landing-v4 .btn-primary.refined,
   .hone-landing-v4 .btn-secondary.refined {
     justify-content: center !important;
     max-width: 100% !important;
+    min-width: 0 !important;
+    padding-right: 16px !important;
+    padding-left: 16px !important;
   }
 
   .hone-landing-v4 .video-container,
@@ -895,6 +963,17 @@ body {
 
   .hone-landing-v4 .carousel-container {
     gap: 28px !important;
+    align-items: stretch !important;
+  }
+
+  .hone-landing-v4 .carousel-image {
+    aspect-ratio: 4 / 3 !important;
+    flex: none !important;
+  }
+
+  .hone-landing-v4 .feature-img {
+    object-fit: contain !important;
+    background: #f8fafc !important;
   }
 
   .hone-roadmap-v4 .main-content {
@@ -1012,6 +1091,10 @@ body {
   .btn-chat-nav {
     padding-right: 12px !important;
     padding-left: 12px !important;
+  }
+
+  .hone-landing-v4 .hero-btns {
+    grid-template-columns: minmax(0, 1fr) !important;
   }
 
   .hone-landing-v4 .hero-logo {

@@ -35,21 +35,34 @@ function stableHistoryId(index: number, role: string, content: string): string {
   return `h${index}_${(h >>> 0).toString(36)}`
 }
 
+function normalizeHistoryContent(content: unknown): string {
+  if (typeof content === "string") return content
+  if (content == null) return ""
+  try {
+    return JSON.stringify(content)
+  } catch {
+    return String(content)
+  }
+}
+
 export function historyToTimeline(messages: HistoryMsg[]): TimelineMessage[] {
   return messages
     .filter(
       (message) =>
         message.subtype === "compact_boundary" || !message.transcript_only,
     )
-    .map((message, index) => ({
-      id: stableHistoryId(index, message.role, message.content),
-      kind: message.role === "user" || message.role === "assistant" ? message.role : "system",
-      content: message.content,
-      subtype: message.subtype,
-      synthetic: message.synthetic,
-      transcriptOnly: message.transcript_only,
-      attachments: message.attachments ?? [],
-    }))
+    .map((message, index) => {
+      const content = normalizeHistoryContent(message.content)
+      return {
+        id: stableHistoryId(index, message.role, content),
+        kind: message.role === "user" || message.role === "assistant" ? message.role : "system",
+        content,
+        subtype: message.subtype,
+        synthetic: message.synthetic,
+        transcriptOnly: message.transcript_only,
+        attachments: Array.isArray(message.attachments) ? message.attachments : [],
+      }
+    })
 }
 
 export type ParseMessageOptions = {

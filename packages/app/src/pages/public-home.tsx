@@ -9,20 +9,10 @@ import {
   For,
 } from "solid-js"
 import { useNavigate } from "@solidjs/router"
+import { fetchGithubStars } from "@/lib/github-stars"
 import { CONTENT } from "@/lib/public-content"
 import { setLocale, useLocale } from "@/lib/i18n"
 import "./public-site.css"
-
-// ── GitHub Star Fetching ─────────────────────────────────────────────────────
-async function fetchGithubStars() {
-  try {
-    const res = await fetch("https://api.github.com/repos/B-M-Capital-Research/honeclaw")
-    const data = await res.json()
-    return data.stargazers_count || "..."
-  } catch (e) {
-    return "..."
-  }
-}
 
 // ── Icons ────────────────────────────────────────────────────────────────────
 const ICONS = {
@@ -69,7 +59,7 @@ function Header() {
 
       <div class="header-actions">
         <div class="header-socials mobile-hide">
-          <a href="https://www.youtube.com/@HoneFinancial" target="_blank" class="icon-btn-ghost" title="YouTube"><ICONS.Youtube /></a>
+          <a href="https://www.youtube.com/@巴芒投研美股频道" target="_blank" class="icon-btn-ghost" title="YouTube"><ICONS.Youtube /></a>
           <a href="https://www.bilibili.com/video/BV1ByXNBGET5/" target="_blank" class="icon-btn-ghost" title="Bilibili"><ICONS.Bilibili /></a>
           <a href="https://github.com/B-M-Capital-Research/honeclaw" target="_blank" class="star-badge">
             <ICONS.Github />
@@ -195,7 +185,7 @@ export default function PublicHomePage() {
               <ICONS.Bilibili />
               <span>Bilibili</span>
             </a>
-            <a href="https://www.youtube.com/@HoneFinancial" target="_blank" class="btn-secondary refined youtube-btn mobile-hide">
+            <a href="https://www.youtube.com/@巴芒投研美股频道" target="_blank" class="btn-secondary refined youtube-btn mobile-hide">
               <ICONS.Youtube />
               <span>YouTube</span>
             </a>
@@ -362,12 +352,17 @@ export default function PublicHomePage() {
         @media (max-width: 640px) {
           .hero-logo { height: 90px; }
           .hero-tagline { font-size: 26px; }
+          .hero-btns { display: grid; grid-template-columns: 1fr 1fr; width: 100%; gap: 10px; }
           .btn-primary.refined, .btn-secondary.refined { width: 100%; padding: 14px 24px; font-size: 16px; }
           .page-header { padding: 0 20px; }
           .carousel-nav { gap: 16px; }
           .nav-item { font-size: 13px; }
           .feature-title { font-size: 28px; }
           .feature-body { font-size: 16px; }
+        }
+        @media (max-width: 480px) {
+          .hero-btns { grid-template-columns: 1fr; }
+          .page-header { padding: 0 14px; }
         }
       `}</style>
     </div>

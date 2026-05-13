@@ -1,9 +1,11 @@
 import { describe, expect, it } from "bun:test";
+import { formatGithubStars } from "@/lib/github-stars";
 import {
   nextVisibleMessageCount,
   normalizePhoneNumber,
   resolvePublicChatView,
   selectVisibleRecentMessages,
+  stripAttachmentMarkers,
   toPublicChatMessages,
 } from "@/lib/public-chat";
 import type { HistoryMsg } from "@/lib/types";
@@ -11,6 +13,14 @@ import type { HistoryMsg } from "@/lib/types";
 describe("normalizePhoneNumber", () => {
   it("keeps a leading plus and strips non-digits", () => {
     expect(normalizePhoneNumber(" +86 138-0013-8000 ")).toBe("+8613800138000");
+  });
+});
+
+describe("formatGithubStars", () => {
+  it("formats compact star counts for the public nav", () => {
+    expect(formatGithubStars(42)).toBe("42");
+    expect(formatGithubStars(1250)).toBe("1.3k");
+    expect(formatGithubStars(12000)).toBe("12k");
   });
 });
 
@@ -57,6 +67,29 @@ describe("toPublicChatMessages", () => {
     expect(next.slice(0, base.length).map((message) => message.id)).toEqual(
       base.map((message) => message.id),
     );
+  });
+
+  it("tolerates legacy history rows with missing content or attachments", () => {
+    const messages = toPublicChatMessages([
+      { role: "user", attachments: [] },
+      { role: "assistant", content: { text: "ok" } },
+      { role: "assistant", content: "done", attachments: undefined },
+    ] as unknown as HistoryMsg[]);
+
+    expect(messages.map((message) => message.content)).toEqual([
+      "",
+      '{"text":"ok"}',
+      "done",
+    ]);
+    expect(messages.every((message) => Array.isArray(message.attachments))).toBe(
+      true,
+    );
+  });
+});
+
+describe("stripAttachmentMarkers", () => {
+  it("treats absent content as empty text", () => {
+    expect(stripAttachmentMarkers(undefined)).toBe("");
   });
 });
 

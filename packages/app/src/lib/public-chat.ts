@@ -84,11 +84,19 @@ export function nextVisibleMessageCount(
 function toPublicAttachments(
   items: HistoryAttachment[],
 ): PublicChatAttachment[] {
-  return items.map((item) => ({
-    path: item.path,
-    name: item.name,
-    kind: item.kind,
-  }));
+  return items
+    .filter(
+      (item) =>
+        item &&
+        typeof item.path === "string" &&
+        typeof item.name === "string" &&
+        typeof item.kind === "string",
+    )
+    .map((item) => ({
+      path: item.path,
+      name: item.name,
+      kind: item.kind,
+    }));
 }
 
 const ATTACHMENT_LINE = /^\[附件:\s*.+\]$/;
@@ -98,8 +106,8 @@ const ATTACHMENT_LINE = /^\[附件:\s*.+\]$/;
  * attachments) so we can render the text content without the raw marker.
  * Attachments are surfaced separately via `PublicChatMessage.attachments`.
  */
-export function stripAttachmentMarkers(content: string): string {
-  return content
+export function stripAttachmentMarkers(content: string | null | undefined): string {
+  return (content ?? "")
     .split("\n")
     .filter((line) => !ATTACHMENT_LINE.test(line.trim()))
     .join("\n")

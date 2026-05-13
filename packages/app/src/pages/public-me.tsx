@@ -22,55 +22,6 @@ function formatDate(iso: string | undefined): string {
   }
 }
 
-function StatCard(props: {
-  label: string;
-  value: string | number;
-  sub?: string;
-  accent?: boolean;
-}) {
-  return (
-    <div
-      style={{
-        padding: "24px",
-        "border-radius": "10px",
-        border: `1px solid ${props.accent ? "rgba(245,158,11,0.25)" : "rgba(0,0,0,0.08)"}`,
-        background: props.accent ? "rgba(245,158,11,0.04)" : "#fff",
-      }}
-    >
-      <div
-        style={{
-          "font-size": "11px",
-          "font-weight": "600",
-          "letter-spacing": "0.15em",
-          "text-transform": "uppercase",
-          color: props.accent ? "#d97706" : "#94a3b8",
-          "margin-bottom": "10px",
-        }}
-      >
-        {props.label}
-      </div>
-      <div
-        style={{
-          "font-family": "var(--font-mono, 'JetBrains Mono', monospace)",
-          "font-size": "28px",
-          "font-weight": "700",
-          color: props.accent ? "#f59e0b" : "#0f172a",
-          "line-height": "1",
-        }}
-      >
-        {props.value}
-      </div>
-      <Show when={props.sub}>
-        <div
-          style={{ "font-size": "12px", color: "#94a3b8", "margin-top": "6px" }}
-        >
-          {props.sub}
-        </div>
-      </Show>
-    </div>
-  );
-}
-
 function InfoRow(props: { label: string; value: string }) {
   return (
     <div
@@ -184,10 +135,6 @@ function LoggedInView(props: {
   const navigate = useNavigate();
   const C = CONTENT.me;
 
-  const usedToday = () => props.user.daily_limit - props.user.remaining_today;
-  const pct = () =>
-    Math.min(100, Math.round((usedToday() / props.user.daily_limit) * 100));
-
   return (
     <div
       style={{
@@ -253,86 +200,6 @@ function LoggedInView(props: {
             >
               ✦
             </span>
-          </div>
-        </div>
-
-        {/* Stats grid */}
-        <div class="pub-me-stats">
-          <StatCard
-            label={C.stats.remaining_today_label}
-            value={props.user.remaining_today}
-            sub={C.stats.remaining_today_sub_template.replace(
-              "{daily}",
-              String(props.user.daily_limit),
-            )}
-            accent
-          />
-          <StatCard
-            label={C.stats.total_label}
-            value={props.user.success_count}
-            sub={C.stats.total_sub}
-          />
-          <StatCard
-            label={C.stats.daily_limit_label}
-            value={props.user.daily_limit}
-            sub={C.stats.daily_limit_sub}
-          />
-        </div>
-
-        {/* Usage bar */}
-        <div
-          style={{
-            padding: "20px 24px",
-            "border-radius": "10px",
-            border: "1px solid rgba(0,0,0,0.08)",
-            background: "#fff",
-            "margin-bottom": "24px",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              "justify-content": "space-between",
-              "align-items": "center",
-              "margin-bottom": "10px",
-            }}
-          >
-            <span
-              style={{
-                "font-size": "13px",
-                "font-weight": "600",
-                color: "#0f172a",
-              }}
-            >
-              {C.usage_today_label}
-            </span>
-            <span
-              style={{
-                "font-family": "var(--font-mono, 'JetBrains Mono', monospace)",
-                "font-size": "13px",
-                color: "#64748b",
-              }}
-            >
-              {usedToday()} / {props.user.daily_limit}
-            </span>
-          </div>
-          <div
-            style={{
-              height: "6px",
-              "border-radius": "999px",
-              background: "#f1f5f9",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                height: "100%",
-                "border-radius": "999px",
-                background: pct() > 80 ? "#ef4444" : "#f59e0b",
-                width: `${pct()}%`,
-                transition: "width 0.6s ease",
-              }}
-            />
           </div>
         </div>
 

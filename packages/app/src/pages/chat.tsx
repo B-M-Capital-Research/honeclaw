@@ -16,6 +16,7 @@ import {
 import { createStore, reconcile } from "solid-js/store";
 import { useNavigate } from "@solidjs/router";
 import { PublicLoginForm } from "@/components/public-login-form";
+import { fetchGithubStars } from "@/lib/github-stars";
 import { CONTENT } from "@/lib/public-content";
 import { setLocale, useLocale } from "@/lib/i18n";
 import {
@@ -50,19 +51,6 @@ import type {
   PublicChatAuthState as AuthState,
   PublicChatMessage as ChatMessage,
 } from "@/lib/public-chat";
-
-// ── GitHub Star Fetching ─────────────────────────────────────────────────────
-async function fetchGithubStars() {
-  try {
-    const res = await fetch(
-      "https://api.github.com/repos/B-M-Capital-Research/honeclaw",
-    );
-    const data = await res.json();
-    return data.stargazers_count || "...";
-  } catch (e) {
-    return "...";
-  }
-}
 
 // ── Icons ────────────────────────────────────────────────────────────────────
 const ICONS = {
@@ -223,7 +211,7 @@ function Header() {
       <div class="header-actions">
         <div class="header-socials mobile-hide">
           <a
-            href="https://www.youtube.com/@HoneFinancial"
+            href="https://www.youtube.com/@巴芒投研美股频道"
             target="_blank"
             class="icon-btn-ghost"
           >
@@ -1641,7 +1629,16 @@ export default function PublicChatPage() {
           Math.max(c, Math.min(next.length, HISTORY_PAGE_SIZE)),
         );
       }
+      const previousScrollTop = scrollRef?.scrollTop;
       setMessages(reconcile(next, { key: "id" }));
+      if (!options.resetWindow && !stickToBottom && previousScrollTop !== undefined) {
+        requestAnimationFrame(() => {
+          if (scrollRef) {
+            scrollRef.scrollTop = previousScrollTop;
+            lastScrollTop = scrollRef.scrollTop;
+          }
+        });
+      }
       // If the server has a run in flight and we're not the one streaming
       // it (e.g. page was just refreshed mid-answer), surface a "思考中"
       // status until the reply lands.
@@ -1805,7 +1802,7 @@ export default function PublicChatPage() {
                   overflow: "hidden",
                 }}
               >
-                {/* Session Strip */}
+                {/* Session actions */}
                 <div
                   class="public-chat-session-strip"
                   style={{
@@ -1822,24 +1819,12 @@ export default function PublicChatPage() {
                       "border-radius": "100px",
                       border: "1.5px solid #f1f5f9",
                       display: "flex",
-                      gap: "20px",
+                      gap: "14px",
                       "align-items": "center",
                       "font-size": "13px",
                       "font-weight": "700",
                     }}
                   >
-                    <span style={{ color: "#64748b" }}>
-                      {sessionInfo()?.dailyLimit
-                        ? `今日剩余 ${sessionInfo()?.remainingToday}/${sessionInfo()?.dailyLimit}`
-                        : "无限额度"}
-                    </span>
-                    <div
-                      style={{
-                        width: "1px",
-                        height: "12px",
-                        background: "#e2e8f0",
-                      }}
-                    />
                     <button
                       onClick={() => navigate("/me")}
                       style={{
@@ -2001,14 +1986,18 @@ export default function PublicChatPage() {
           height: 100dvh !important;
           max-height: 100dvh;
           overflow: hidden;
+          overflow-anchor: none;
         }
         .public-chat-shell {
           min-height: 0;
+          overflow-anchor: none;
         }
         .public-chat-messages {
           min-height: 0;
           overscroll-behavior: contain;
           -webkit-overflow-scrolling: touch;
+          overflow-anchor: none;
+          touch-action: pan-y;
         }
         /* Keep the composer pinned to the visible viewport when the user
            pinch-zooms or the soft keyboard pushes the layout viewport up. */
