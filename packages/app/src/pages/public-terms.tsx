@@ -4,6 +4,7 @@ import { For, type ParentProps } from "solid-js"
 import { PublicNav, PublicFooter } from "@/components/public-nav"
 import { CONTENT, type LegalBlock, type LegalInline } from "@/lib/public-content"
 import { TOS_VERSION, TOS_EFFECTIVE_DATE } from "@/lib/tos"
+import { LegalToc, BackToTop, sectionAnchor } from "@/components/public-legal-toc"
 import "./public-site.css"
 
 function VersionBanner() {
@@ -60,9 +61,9 @@ function Block(props: { block: LegalBlock }) {
   )
 }
 
-function Section(props: ParentProps<{ title: string }>) {
+function Section(props: ParentProps<{ title: string; index: number }>) {
   return (
-    <section style={{ "margin-bottom": "32px" }}>
+    <section id={sectionAnchor(props.index)} style={{ "margin-bottom": "32px", "scroll-margin-top": "80px" }}>
       <h2
         style={{
           "font-size": "18px",
@@ -130,15 +131,18 @@ export default function PublicTermsPage() {
           {CONTENT.legal.terms.intro}
         </p>
 
+        <LegalToc sections={CONTENT.legal.terms.sections} />
+
         <For each={CONTENT.legal.terms.sections}>
-          {(s) => (
-            <Section title={s.title}>
+          {(s, i) => (
+            <Section title={s.title} index={i()}>
               <For each={s.body}>{(block) => <Block block={block} />}</For>
             </Section>
           )}
         </For>
       </div>
 
+      <BackToTop />
       <PublicFooter />
     </div>
   )
