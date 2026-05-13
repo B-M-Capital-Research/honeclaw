@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::agent_session::GeminiStreamOptions;
-pub use crate::run_event::RunEvent as AgentRunnerEvent;
+pub(crate) use crate::run_event::RunEvent as AgentRunnerEvent;
 
 #[async_trait]
 pub trait AgentRunnerEmitter: Send + Sync {
@@ -15,7 +15,7 @@ pub trait AgentRunnerEmitter: Send + Sync {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct RunnerTimeouts {
+pub(crate) struct RunnerTimeouts {
     pub step: Duration,
     pub overall: Duration,
 }

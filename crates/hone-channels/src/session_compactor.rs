@@ -14,16 +14,16 @@ use crate::runtime::sanitize_user_visible_output;
 const POST_COMPACT_MAX_SKILL_SNAPSHOT_CHARS: usize = 12_000;
 const POST_COMPACT_MAX_SKILL_SNAPSHOTS: usize = 4;
 
-pub struct SessionCompactor<'a> {
+pub(crate) struct SessionCompactor<'a> {
     core: &'a HoneBotCore,
 }
 
 impl<'a> SessionCompactor<'a> {
-    pub fn new(core: &'a HoneBotCore) -> Self {
+    pub(crate) fn new(core: &'a HoneBotCore) -> Self {
         Self { core }
     }
 
-    pub async fn compact_session(
+    pub(crate) async fn compact_session(
         &self,
         session_id: &str,
         trigger: &str,

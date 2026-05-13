@@ -16,14 +16,14 @@ use super::types::{
 
 const GEMINI_CLI_STDERR_DETAIL_CHARS: usize = 400;
 
-pub struct GeminiCliRunner {
+pub(crate) struct GeminiCliRunner {
     system_prompt: String,
     tool_registry: Arc<ToolRegistry>,
     timeouts: RunnerTimeouts,
 }
 
 impl GeminiCliRunner {
-    pub fn new(
+    pub(crate) fn new(
         system_prompt: String,
         tool_registry: Arc<ToolRegistry>,
         timeouts: RunnerTimeouts,

@@ -27,13 +27,13 @@ const MIN_GEMINI_ACP_VERSION: CliVersion = CliVersion {
     patch: 0,
 };
 
-pub struct GeminiAcpRunner {
+pub(super) struct GeminiAcpRunner {
     config: GeminiAcpConfig,
     timeouts: RunnerTimeouts,
 }
 
 impl GeminiAcpRunner {
-    pub fn new(config: GeminiAcpConfig, timeouts: RunnerTimeouts) -> Self {
+    pub(super) fn new(config: GeminiAcpConfig, timeouts: RunnerTimeouts) -> Self {
         Self { config, timeouts }
     }
 }

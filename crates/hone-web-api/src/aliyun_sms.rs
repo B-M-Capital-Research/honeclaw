@@ -51,7 +51,7 @@ const ALIYUN_ENCODE_SET: &AsciiSet = &CONTROLS
     .add(b'}');
 
 #[derive(Debug, Clone)]
-pub struct AliyunSmsConfig {
+pub(crate) struct AliyunSmsConfig {
     access_key_id: String,
     access_key_secret: String,
     endpoint: String,
@@ -62,7 +62,7 @@ pub struct AliyunSmsConfig {
 }
 
 impl AliyunSmsConfig {
-    pub fn from_env() -> Result<Self, AliyunSmsError> {
+    pub(crate) fn from_env() -> Result<Self, AliyunSmsError> {
         let access_key_id = env_first(&[
             "ALIBABA_CLOUD_ACCESS_KEY_ID",
             "ALIYUN_ACCESS_KEY_ID",
@@ -95,15 +95,15 @@ impl AliyunSmsConfig {
 }
 
 #[derive(Debug, Clone)]
-pub enum AliyunSmsErrorKind {
+pub(crate) enum AliyunSmsErrorKind {
     Config,
     Transport,
     Provider,
 }
 
 #[derive(Debug, Clone)]
-pub struct AliyunSmsError {
-    pub kind: AliyunSmsErrorKind,
+pub(crate) struct AliyunSmsError {
+    pub(crate) kind: AliyunSmsErrorKind,
     message: String,
 }
 
@@ -156,7 +156,7 @@ struct AliyunSmsModel {
     verify_result: Option<String>,
 }
 
-pub async fn send_verify_code(
+pub(crate) async fn send_verify_code(
     http: &reqwest::Client,
     phone_number: &str,
 ) -> Result<(), AliyunSmsError> {
@@ -164,7 +164,7 @@ pub async fn send_verify_code(
     send_verify_code_with_config(http, &config, phone_number).await
 }
 
-pub async fn check_verify_code(
+pub(crate) async fn check_verify_code(
     http: &reqwest::Client,
     phone_number: &str,
     verify_code: &str,

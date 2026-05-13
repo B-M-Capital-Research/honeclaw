@@ -20,7 +20,7 @@ use super::types::{
     RunnerTimeouts,
 };
 
-pub struct MultiAgentRunner {
+pub(crate) struct MultiAgentRunner {
     system_prompt: String,
     search_config: MultiAgentSearchConfig,
     answer_config: OpencodeAcpConfig,
@@ -31,7 +31,7 @@ pub struct MultiAgentRunner {
 }
 
 impl MultiAgentRunner {
-    pub fn new(
+    pub(crate) fn new(
         system_prompt: String,
         search_config: MultiAgentSearchConfig,
         answer_config: OpencodeAcpConfig,

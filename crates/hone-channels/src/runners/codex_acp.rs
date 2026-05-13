@@ -46,13 +46,13 @@ pub(crate) fn reusable_codex_acp_session_id(
     None
 }
 
-pub struct CodexAcpRunner {
+pub(crate) struct CodexAcpRunner {
     config: CodexAcpConfig,
     timeouts: RunnerTimeouts,
 }
 
 impl CodexAcpRunner {
-    pub fn new(config: CodexAcpConfig, timeouts: RunnerTimeouts) -> Self {
+    pub(crate) fn new(config: CodexAcpConfig, timeouts: RunnerTimeouts) -> Self {
         Self { config, timeouts }
     }
 }

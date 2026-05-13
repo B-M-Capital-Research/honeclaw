@@ -29,13 +29,13 @@ use super::types::{
 
 const OPENCODE_ACP_SESSION_KEY: &str = "opencode_acp_session_id";
 
-pub struct OpencodeAcpRunner {
+pub(crate) struct OpencodeAcpRunner {
     config: OpencodeAcpConfig,
     timeouts: RunnerTimeouts,
 }
 
 impl OpencodeAcpRunner {
-    pub fn new(config: OpencodeAcpConfig, timeouts: RunnerTimeouts) -> Self {
+    pub(crate) fn new(config: OpencodeAcpConfig, timeouts: RunnerTimeouts) -> Self {
         Self { config, timeouts }
     }
 }

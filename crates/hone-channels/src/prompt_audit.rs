@@ -3,12 +3,12 @@ use std::fs;
 use hone_core::{ActorIdentity, HoneConfig, SessionIdentity, runtime_heartbeat_dir};
 
 #[derive(Debug, Clone)]
-pub struct PromptAuditMetadata {
+pub(crate) struct PromptAuditMetadata {
     pub session_identity: SessionIdentity,
     pub message_id: Option<String>,
 }
 
-pub fn write_prompt_audit(
+pub(crate) fn write_prompt_audit(
     config: &HoneConfig,
     actor: &ActorIdentity,
     session_id: &str,

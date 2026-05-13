@@ -236,7 +236,7 @@ pub(crate) fn runner_context_messages(
     }
 }
 
-pub struct CodexCliReasoningRunner {
+pub(crate) struct CodexCliReasoningRunner {
     system_prompt: String,
     codex_model: Option<String>,
     tools: Arc<ToolRegistry>,
@@ -244,7 +244,7 @@ pub struct CodexCliReasoningRunner {
 }
 
 impl CodexCliReasoningRunner {
-    pub fn new(
+    pub(crate) fn new(
         system_prompt: String,
         codex_model: Option<String>,
         tools: Arc<ToolRegistry>,
@@ -295,7 +295,7 @@ impl AgentRunner for CodexCliReasoningRunner {
     }
 }
 
-pub struct FunctionCallingReasoningRunner {
+pub(crate) struct FunctionCallingReasoningRunner {
     llm: Arc<dyn LlmProvider>,
     tools: Arc<ToolRegistry>,
     system_prompt: String,
@@ -304,7 +304,7 @@ pub struct FunctionCallingReasoningRunner {
 }
 
 impl FunctionCallingReasoningRunner {
-    pub fn new(
+    pub(crate) fn new(
         llm: Arc<dyn LlmProvider>,
         tools: Arc<ToolRegistry>,
         system_prompt: String,

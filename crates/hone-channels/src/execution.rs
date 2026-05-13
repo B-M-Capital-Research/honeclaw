@@ -14,13 +14,13 @@ use crate::runners::{AgentRunner, AgentRunnerRequest, FunctionCallingReasoningRu
 use crate::sandbox::ensure_actor_sandbox;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExecutionMode {
+pub(crate) enum ExecutionMode {
     PersistentConversation,
     TransientTask,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExecutionRunnerSelection {
+pub(crate) enum ExecutionRunnerSelection {
     Configured,
     AuxiliaryFunctionCalling {
         max_iterations: u32,
@@ -29,7 +29,7 @@ pub enum ExecutionRunnerSelection {
 }
 
 #[derive(Clone)]
-pub struct ExecutionRequest {
+pub(crate) struct ExecutionRequest {
     pub mode: ExecutionMode,
     pub session_id: String,
     pub actor: ActorIdentity,
@@ -48,22 +48,22 @@ pub struct ExecutionRequest {
     pub prompt_audit: Option<PromptAuditMetadata>,
 }
 
-pub struct PreparedExecution {
+pub(crate) struct PreparedExecution {
     pub runner_name: &'static str,
     pub runner: Box<dyn AgentRunner>,
     pub runner_request: AgentRunnerRequest,
 }
 
-pub struct ExecutionService {
+pub(crate) struct ExecutionService {
     core: Arc<HoneBotCore>,
 }
 
 impl ExecutionService {
-    pub fn new(core: Arc<HoneBotCore>) -> Self {
+    pub(crate) fn new(core: Arc<HoneBotCore>) -> Self {
         Self { core }
     }
 
-    pub fn prepare(&self, request: ExecutionRequest) -> Result<PreparedExecution, String> {
+    pub(crate) fn prepare(&self, request: ExecutionRequest) -> Result<PreparedExecution, String> {
         if let Some(metadata) = request.prompt_audit.as_ref() {
             if let Err(err) = write_prompt_audit(
                 &self.core.config,

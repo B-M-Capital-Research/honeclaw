@@ -11,13 +11,13 @@ use super::{
 
 const HONE_CLOUD_ERROR_DETAIL_CHARS: usize = 500;
 
-pub struct HoneCloudRunner {
+pub(crate) struct HoneCloudRunner {
     config: HoneCloudConfig,
     timeouts: RunnerTimeouts,
 }
 
 impl HoneCloudRunner {
-    pub fn new(config: HoneCloudConfig, timeouts: RunnerTimeouts) -> Self {
+    pub(crate) fn new(config: HoneCloudConfig, timeouts: RunnerTimeouts) -> Self {
         Self { config, timeouts }
     }
 }
