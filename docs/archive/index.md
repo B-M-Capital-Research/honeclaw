@@ -1081,3 +1081,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: `docs/runbooks/desktop-release-app-runtime.md`, `bun --filter @hone-financial/app test -- chat.test.ts`, `cargo test -p hone-web-api routes::public::tests::sms_phone_candidates_accept_plus_86_and_local_numbers`, Chrome headless public chat smoke
 - Current conclusion: Public chat now tolerates legacy malformed history rows without crashing on `content.split`; public SMS login accepts `+86...` numbers against local-number whitelist rows and sends Aliyun requests in local-number form; production was switched to rebuilt `0.11.2` release app, with `web`, `discord`, and `feishu` reporting running.
 - Next entry point: `docs/handoffs/2026-05-13-public-login-prod-hotfix.md`
+
+### Web Direct Sandbox Isolation Hotfix
+
+- Status: done
+- Date: 2026-05-14
+- Plan: `docs/current-plans/active-bug-burn-down-2026-04-28.md`
+- Handoff: `docs/handoffs/2026-05-14-web-direct-sandbox-isolation-hotfix.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-channels sandbox --lib -- --nocapture`, `cargo test -p hone-channels prepare_ignores_repo_internal_sandbox_override --lib -- --nocapture`, `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop runtime_env -- --nocapture`, `cargo check -p hone-channels --tests`, `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo check -p hone-desktop`
+- Current conclusion: Actor sandboxes no longer default to repo `data/agent-sandboxes`; repo-internal sandbox roots now fall back to a repo-external temp directory, desktop sidecar propagates that explicit sandbox root, and sandbox initialization removes legacy portfolio files before native-file runners can read them.
+- Next entry point: `docs/handoffs/2026-05-14-web-direct-sandbox-isolation-hotfix.md`

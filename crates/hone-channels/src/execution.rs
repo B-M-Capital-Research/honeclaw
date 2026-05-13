@@ -335,4 +335,44 @@ mod tests {
         assert!(err.contains("auxiliary llm unavailable"));
         let _ = std::fs::remove_dir_all(root);
     }
+
+    #[test]
+    fn prepare_ignores_repo_internal_sandbox_override() {
+        let _guard = crate::sandbox::sandbox_env_test_lock()
+            .lock()
+            .expect("env lock");
+        let root = temp_root("execution_repo_internal_sandbox_override");
+        let repo_internal =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/agent-sandboxes-test");
+        unsafe {
+            std::env::set_var("HONE_AGENT_SANDBOX_DIR", &repo_internal);
+        }
+        let core = make_test_core(&root, "codex_cli", false);
+        let actor = ActorIdentity::new("web", "alice", None::<String>).expect("actor");
+        let prepared = ExecutionService::new(core)
+            .prepare(make_request(
+                actor,
+                ExecutionMode::PersistentConversation,
+                ExecutionRunnerSelection::Configured,
+            ))
+            .expect("prepare should succeed");
+
+        assert!(
+            prepared
+                .runner_request
+                .working_directory
+                .contains("hone-agent-sandboxes")
+        );
+        assert!(
+            !prepared
+                .runner_request
+                .working_directory
+                .contains("/data/agent-sandboxes-test")
+        );
+
+        unsafe {
+            std::env::remove_var("HONE_AGENT_SANDBOX_DIR");
+        }
+        let _ = std::fs::remove_dir_all(root);
+    }
 }

@@ -1,6 +1,6 @@
 # Repo Map
 
-Last updated: 2026-05-13
+Last updated: 2026-05-14
 
 ## Purpose
 
@@ -55,7 +55,7 @@ Last updated: 2026-05-13
   - LLM provider credentials are config-owned: prefer `llm.providers.<symbol>.api_key/api_keys`, with legacy `llm.openrouter.*` readable only as config fallback; runtime LLM paths do not read parent process API-key env vars
   - `data/runtime/effective-config.yaml` is the generated runtime snapshot for processes that want a materialized runtime config file
   - legacy `data/runtime/config_runtime.yaml` and sibling `.overrides.yaml` should not be recreated
-- Actor sandbox research docs live under `agent-sandboxes/<channel>/<scope__user>/company_profiles/<profile_id>/profile.md` plus `events/*.md`; this actor-local directory is the source of truth for company portraits and long-term fundamental tracking
+- Actor sandbox research docs live under a repo-external `agent-sandboxes/<channel>/<scope__user>/company_profiles/<profile_id>/profile.md` plus `events/*.md`; this actor-local directory is the source of truth for company portraits and long-term fundamental tracking. Portfolio JSON must stay in `storage.portfolio_dir`, never inside actor sandboxes.
 - `packages/`
   - `app`: SolidJS web console
   - `ui`: shared UI components and context

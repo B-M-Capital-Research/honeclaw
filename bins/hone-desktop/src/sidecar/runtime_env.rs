@@ -86,6 +86,33 @@ fn resource_or_repo_path(app: &AppHandle, resource: &str) -> PathBuf {
         .unwrap_or_else(|| repo_root().join(resource))
 }
 
+fn desktop_actor_sandbox_dir(app: &AppHandle, data_dir: &Path) -> Result<PathBuf, String> {
+    let app_cache_dir = app.path().app_cache_dir().map_err(|e| e.to_string())?;
+    Ok(desktop_actor_sandbox_dir_from_paths(
+        &repo_root(),
+        data_dir,
+        &app_cache_dir,
+    ))
+}
+
+fn desktop_actor_sandbox_dir_from_paths(
+    repo_root: &Path,
+    data_dir: &Path,
+    app_cache_dir: &Path,
+) -> PathBuf {
+    let resolved_data_dir = data_dir
+        .canonicalize()
+        .unwrap_or_else(|_| data_dir.to_path_buf());
+    if resolved_data_dir.starts_with(repo_root) {
+        return app_cache_dir.join("agent-sandboxes");
+    }
+
+    data_dir
+        .parent()
+        .map(|parent| parent.join("hone-agent-sandboxes"))
+        .unwrap_or_else(|| data_dir.join("agent-sandboxes"))
+}
+
 fn relative_system_prompt_asset(config_path: &Path) -> Result<Option<PathBuf>, String> {
     let value = read_yaml_value(config_path).map_err(|e| e.to_string())?;
     let prompt_path = value
@@ -370,10 +397,7 @@ pub(super) fn configure_desktop_runtime_env(app: &AppHandle, runtime: &RuntimePa
     set_process_env("HONE_DATA_DIR", &runtime.data_dir);
     set_process_env("HONE_RUNTIME_DIR", &runtime.runtime_dir);
     set_process_env("HONE_SKILLS_DIR", &runtime.skills_dir);
-    set_process_env(
-        "HONE_AGENT_SANDBOX_DIR",
-        runtime.data_dir.join("agent-sandboxes"),
-    );
+    set_process_env("HONE_AGENT_SANDBOX_DIR", &runtime.sandbox_dir);
 
     if let Some(mcp_path) = resolve_bundled_binary(app, "hone-mcp") {
         set_process_env("HONE_MCP_BIN", &mcp_path);
@@ -404,7 +428,7 @@ pub(super) fn ensure_runtime_paths(app: &AppHandle) -> Result<RuntimePaths, Stri
     let runtime_dir = data_dir.join("runtime");
     let logs_dir = runtime_dir.join("logs");
     let locks_dir = runtime_dir.join("locks");
-    let sandbox_dir = data_dir.join("agent-sandboxes");
+    let sandbox_dir = desktop_actor_sandbox_dir(app, &data_dir)?;
     fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
     fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
     fs::create_dir_all(&runtime_dir).map_err(|e| e.to_string())?;
@@ -468,6 +492,7 @@ pub(super) fn ensure_runtime_paths(app: &AppHandle) -> Result<RuntimePaths, Stri
         effective_config_path,
         data_dir,
         runtime_dir,
+        sandbox_dir,
         skills_dir,
     })
 }
@@ -586,5 +611,27 @@ agent:
                 .expect("config should parse")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn desktop_actor_sandbox_dir_moves_repo_checkout_out_of_data_dir() {
+        let repo_root = Path::new("/tmp/honeclaw");
+        let data_dir = repo_root.join("data");
+        let app_cache_dir = Path::new("/tmp/hone-cache");
+
+        let resolved = desktop_actor_sandbox_dir_from_paths(repo_root, &data_dir, app_cache_dir);
+
+        assert_eq!(resolved, app_cache_dir.join("agent-sandboxes"));
+    }
+
+    #[test]
+    fn desktop_actor_sandbox_dir_keeps_external_data_dir_sibling_root() {
+        let repo_root = Path::new("/tmp/honeclaw");
+        let data_dir = Path::new("/var/lib/hone/data");
+        let app_cache_dir = Path::new("/tmp/hone-cache");
+
+        let resolved = desktop_actor_sandbox_dir_from_paths(repo_root, data_dir, app_cache_dir);
+
+        assert_eq!(resolved, Path::new("/var/lib/hone/hone-agent-sandboxes"));
     }
 }

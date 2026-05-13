@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-14 03:03 CST
+最后更新：2026-05-14 04:24 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,10 +17,11 @@
 
 ## 当前概览
 
-- 活跃待修复：7
+- 活跃待修复：6
 - Later / 待复现：9
-- 已修复 / 已关闭：96
+- 已修复 / 已关闭：97
 - 历史分析 / 部分止血：5
+- 本轮 04:24 CST 已修复 Web direct 跨 session / 全局数据暴露缺陷：`sandbox_base_dir()` 不再从 `HONE_DATA_DIR` 派生 repo 内 `data/agent-sandboxes`，repo 内部 `HONE_AGENT_SANDBOX_DIR` 会退回 repo-external temp sandbox；desktop sidecar 也改为注入独立 `sandbox_dir`，并在 actor sandbox 初始化时清理误落入的 `portfolio_*.json` / `portfolio/` / `portfolios/`。`cargo test -p hone-channels sandbox --lib -- --nocapture`、`cargo test -p hone-channels prepare_ignores_repo_internal_sandbox_override --lib -- --nocapture`、`HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop runtime_env -- --nocapture`、`cargo check -p hone-channels --tests`、`HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo check -p hone-desktop` 通过；当前仅缺 live 进程重启后的运行态复核，因此先记 `Fixed`。
 - 本轮不再保留 Web direct quota 拒绝为活跃缺陷：仓库代码已覆盖 Web actor 的 quota 拒绝 assistant transcript 与失败 `Done` 事件；当前机器 JSON 会话在 20:09 / 21:04 CST 仍新增孤立 heartbeat user turn，但按旧运行态 / 未重启进程证据处理，不重新打开。
 - 本轮复核后不再保留 `sessions.sqlite3` 会话镜像为活跃缺陷：仓库代码已覆盖 `runtime_backend=sqlite` 且 shadow 写开关为 `false` 的启动 JSON -> SQLite 回填路径；当前 `sessions/session_messages` 仍停在 2026-04-27、`cron_job_runs` 已推进到 23:01 CST，仍按当前机器旧运行态 / 未重启进程证据处理。
 - 本轮不重新打开 Heartbeat 直接交易指令缺陷：19:30 CST `run_id=18842` 的 CAI 破位预警仍送达 `建议动作：无条件止损`，但当前仓库代码已有出站 guard 修复；该证据按当前机器旧运行态 / 未确认重启进程处理，仅补充到已修复文档。
@@ -69,7 +70,6 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Web direct 可读取并总结其它 web session / 本机 Codex 记录 / 全局持仓数据 | P1 | New | 2026-05-13 23:04 复发：20:24 CST `Actor_web__direct__web-user-028a885ded9b` 按用户要求读取 `~/.codex` session JSONL、回显本机 session 路径、全局 portfolio 文件路径与持仓摘要；关联 Issue [#41](https://github.com/B-M-Capital-Research/honeclaw/issues/41) | [web_direct_cross_session_sandbox_data_exposure.md](./web_direct_cross_session_sandbox_data_exposure.md) |
 | Heartbeat 监控使用 `mimo-v2.5-pro` 时批量命中 `Param Incorrect` 并漏发 | P2 | New | 2026-05-14 03:03 持续复发：23:30-03:00 CST 新增 82 条同类 `reasoning_content must be passed back` / `Param Incorrect` heartbeat 失败，覆盖 11 个 job；无关联 GitHub Issue | [scheduler_heartbeat_mimo_param_incorrect_batch_failures.md](./scheduler_heartbeat_mimo_param_incorrect_batch_failures.md) |
 | Heartbeat 预览去重会把同一 job 的实质性增量误判为重复，导致真实触发被压成 noop 漏发 | P2 | New | 2026-05-13 15:04 复发：10:22 CST runtime 重启后，14:30 / 15:00 CST Cerebras IPO 定价区间上调至 `$150-$160` 的新提醒仍被 13:00 `$115-$125` 旧 preview 抑制为 `noop + skipped_noop`；无关联 GitHub Issue | [scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md](./scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md) |
 | Feishu 直聊在工具尚未跑完时提前把工具进度 / 不完整错误当成最终回复 | P2 | New | 2026-05-13 03:02 复发：23:30 CST 用户要求为当前持仓未建画像公司建档，23:34 CST assistant final 只返回 `本地命令`、`Searching the Web`、`处理中发生错误，内容可能不完整`，没有交代建档结果；无关联 GitHub Issue | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
@@ -95,6 +95,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Web direct 可读取并总结其它 web session / 本机 Codex 记录 / 全局持仓数据 | P1 | Fixed | 2026-05-14 04:24 `sandbox_base_dir()` 改为拒绝 repo 内部 `HONE_AGENT_SANDBOX_DIR` / `HONE_DATA_DIR` 派生根目录并退回 repo-external temp sandbox，desktop sidecar 改为注入独立 `sandbox_dir`，actor sandbox 初始化会删除误落入的 portfolio 文件；`cargo test -p hone-channels sandbox --lib -- --nocapture`、`cargo test -p hone-channels prepare_ignores_repo_internal_sandbox_override --lib -- --nocapture`、`HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop runtime_env -- --nocapture`、`cargo check -p hone-channels --tests`、`HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo check -p hone-desktop` 通过。待下次正常部署/重启后再做 live 复核；关联 Issue [#41](https://github.com/B-M-Capital-Research/honeclaw/issues/41) | [web_direct_cross_session_sandbox_data_exposure.md](./web_direct_cross_session_sandbox_data_exposure.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixed | 2026-05-12 19:12 malformed-triggered 恢复扩展到 JSON-ish `status` 与智能引号 `message`；新增 `heartbeat_malformed_triggered_json_recovers_unquoted_status`、`heartbeat_malformed_triggered_json_recovers_smart_quoted_message`；`rustfmt --edition 2024 --check crates/hone-channels/src/scheduler.rs`、`cargo test -p hone-channels heartbeat_malformed --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | 原油定时播报在价格 / 日期 / 背景口径上继续输出未核验或错误事实 | P2 | Closed | 2026-05-13 15:04 复核：12:00 CST `全天原油价格3小时播报` 已命中 `commodity_causality_guarded=true` 并仅送达安全归因口径，15:00 CST 同安全说明被去重抑制，未再外发未核验价格 / 地缘归因；无关联 GitHub Issue | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Feishu direct 命中 Codex runner usage limit 后只返回通用失败兜底 | P1 | Fixed | 2026-05-12 11:04 共享错误净化层新增 Codex / runner / ACP usage-limit 识别，统一返回“当前执行额度已用尽，暂时无法继续处理。请稍后再试。”；Feishu direct 失败回复优先展示该错误，不再被 placeholder 或 partial stream 遮蔽。`cargo test -p hone-channels user_visible_error_message --lib -- --nocapture`、`cargo test -p hone-feishu failed_reply_text_keeps_codex_usage_limit_over_partial_stream -- --nocapture`、`cargo check -p hone-channels -p hone-feishu --tests` 通过；关联 Issue [#40](https://github.com/B-M-Capital-Research/honeclaw/issues/40) | [feishu_direct_codex_usage_limit_generic_failure.md](./feishu_direct_codex_usage_limit_generic_failure.md) |

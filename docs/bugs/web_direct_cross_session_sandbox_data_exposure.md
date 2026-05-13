@@ -3,7 +3,7 @@
 - **发现时间**: 2026-05-13 19:03 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#41](https://github.com/B-M-Capital-Research/honeclaw/issues/41)
 
 ## 证据来源
@@ -85,6 +85,16 @@
 ## 修复记录
 
 - 2026-05-13 23:04 CST 复核：在 20:24 CST 真实 Web direct 会话里仍能读取 `~/.codex` session 记录和全局 portfolio 文件并外发摘要；因此本单从 `Fixed` 调回 `New`。已有 GitHub Issue [#41](https://github.com/B-M-Capital-Research/honeclaw/issues/41)，本轮不重复创建。
-- 2026-05-13: `crates/hone-channels/src/sandbox.rs` 不再默认从 `HONE_DATA_DIR` 派生 actor sandbox；当 `HONE_AGENT_SANDBOX_DIR` 指向当前 git worktree 内部时，会退回 repo-external temp sandbox，避免 Codex ACP 把仓库根和 `data/portfolio` 当作可读工作区。
-- 2026-05-13: `ensure_actor_sandbox()` 初始化当前 actor sandbox 时会删除误落入 sandbox 根的 `portfolio_*.json`、`portfolio/`、`portfolios/`，明确持仓真相源仍是 `storage.portfolio_dir`。
-- 2026-05-13: desktop sidecar 改为注入独立 `sandbox_dir`，不再把 `HONE_AGENT_SANDBOX_DIR` 固定为 `data/agent-sandboxes`。
+- 2026-05-14 04:24 CST：实际代码已补齐共享 sandbox 根隔离，而不再只停留在文档结论。
+  - `crates/hone-channels/src/sandbox.rs` 不再从 `HONE_DATA_DIR` 派生 actor sandbox；若 `HONE_AGENT_SANDBOX_DIR` 指向当前 git worktree 内部，会退回 repo-external temp sandbox。
+  - `ensure_actor_sandbox()` 初始化当前 actor sandbox 时会删除误落入 sandbox 根的 `portfolio_*.json`、`portfolio/`、`portfolios/`，明确持仓真相源仍是 `storage.portfolio_dir`。
+  - desktop sidecar 改为维护并注入独立 `sandbox_dir`，不再把 `HONE_AGENT_SANDBOX_DIR` 固定为 repo `data/agent-sandboxes`。
+  - 新增回归：`sandbox_base_dir_falls_back_to_temp_not_data_dir`、`ensure_actor_sandbox_removes_legacy_portfolio_files`、`prepare_ignores_repo_internal_sandbox_override`、`desktop_actor_sandbox_dir_moves_repo_checkout_out_of_data_dir`、`desktop_actor_sandbox_dir_keeps_external_data_dir_sibling_root`。
+- 2026-05-14 04:24 CST 验证：
+  - `cargo test -p hone-channels sandbox --lib -- --nocapture`
+  - `cargo test -p hone-channels prepare_ignores_repo_internal_sandbox_override --lib -- --nocapture`
+  - `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop runtime_env -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+  - `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo check -p hone-desktop`
+- 当前仍保留的未验证项：
+  - 本自动化不重启 live 服务，因此尚未在新运行态下复打原始 Web direct 提示词；状态先记 `Fixed`，待下一次正常部署/重启后再决定是否可更新为 `Closed`。

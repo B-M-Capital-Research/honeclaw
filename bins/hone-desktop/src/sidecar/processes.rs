@@ -175,11 +175,7 @@ fn common_runtime_envs(runtime: &RuntimePaths) -> Vec<(&'static str, String)> {
         ),
         (
             "HONE_AGENT_SANDBOX_DIR",
-            runtime
-                .data_dir
-                .join("agent-sandboxes")
-                .to_string_lossy()
-                .to_string(),
+            runtime.sandbox_dir.to_string_lossy().to_string(),
         ),
     ];
 

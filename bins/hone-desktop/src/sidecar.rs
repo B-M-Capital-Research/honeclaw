@@ -431,6 +431,7 @@ struct RuntimePaths {
     effective_config_path: PathBuf,
     data_dir: PathBuf,
     runtime_dir: PathBuf,
+    sandbox_dir: PathBuf,
     skills_dir: PathBuf,
 }
 
