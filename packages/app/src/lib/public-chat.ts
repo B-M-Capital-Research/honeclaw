@@ -81,6 +81,24 @@ export function nextVisibleMessageCount(
   return Math.min(totalMessages, Math.max(0, currentVisibleCount) + pageSize);
 }
 
+export function shouldLoadOlderPublicMessages(input: {
+  scrollTop: number;
+  previousScrollTop: number;
+  distanceFromBottom: number;
+  hasOlderMessages: boolean;
+  loadingOlderMessages: boolean;
+  sendingOrStreaming: boolean;
+}) {
+  return (
+    input.hasOlderMessages &&
+    !input.loadingOlderMessages &&
+    !input.sendingOrStreaming &&
+    input.scrollTop <= 24 &&
+    input.scrollTop < input.previousScrollTop - 2 &&
+    input.distanceFromBottom > 120
+  );
+}
+
 function toPublicAttachments(
   items: HistoryAttachment[],
 ): PublicChatAttachment[] {

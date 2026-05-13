@@ -5,6 +5,7 @@ import {
   normalizePhoneNumber,
   resolvePublicChatView,
   selectVisibleRecentMessages,
+  shouldLoadOlderPublicMessages,
   stripAttachmentMarkers,
   toPublicChatMessages,
 } from "@/lib/public-chat";
@@ -113,5 +114,38 @@ describe("public chat history window", () => {
     expect(nextVisibleMessageCount(100, 24, 24)).toBe(48);
     expect(nextVisibleMessageCount(40, 24, 24)).toBe(40);
     expect(nextVisibleMessageCount(10, -1, 24)).toBe(10);
+  });
+
+  it("loads older messages only for explicit upward scroll near top", () => {
+    expect(
+      shouldLoadOlderPublicMessages({
+        scrollTop: 12,
+        previousScrollTop: 80,
+        distanceFromBottom: 600,
+        hasOlderMessages: true,
+        loadingOlderMessages: false,
+        sendingOrStreaming: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldLoadOlderPublicMessages({
+        scrollTop: 0,
+        previousScrollTop: 0,
+        distanceFromBottom: 900,
+        hasOlderMessages: true,
+        loadingOlderMessages: false,
+        sendingOrStreaming: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldLoadOlderPublicMessages({
+        scrollTop: 10,
+        previousScrollTop: 80,
+        distanceFromBottom: 600,
+        hasOlderMessages: true,
+        loadingOlderMessages: false,
+        sendingOrStreaming: true,
+      }),
+    ).toBe(false);
   });
 });

@@ -42,6 +42,7 @@ import { parseMessageContent, messageId } from "@/lib/messages";
 import {
   nextVisibleMessageCount,
   selectVisibleRecentMessages,
+  shouldLoadOlderPublicMessages,
   stripAttachmentMarkers,
   toPublicChatMessages,
 } from "@/lib/public-chat";
@@ -1463,14 +1464,17 @@ export default function PublicChatPage() {
   let sessionSyncGeneration = 0;
   let stickToBottom = true;
   let lastScrollTop = 0;
-  let suppressScrollDetect = 0;
+  let suppressScrollUntil = 0;
   let justFinishedTimer: number | undefined;
 
   const scrollToBottom = () => {
     requestAnimationFrame(() => {
       if (!scrollRef) return;
-      suppressScrollDetect = scrollRef.scrollHeight;
-      scrollRef.scrollTop = scrollRef.scrollHeight;
+      suppressScrollUntil = Date.now() + 180;
+      scrollRef.scrollTop = Math.max(
+        0,
+        scrollRef.scrollHeight - scrollRef.clientHeight,
+      );
       lastScrollTop = scrollRef.scrollTop;
     });
   };
@@ -1482,6 +1486,8 @@ export default function PublicChatPage() {
     selectVisibleRecentMessages(messages, visibleMessageCount()),
   );
   const hasOlderMessages = () => visibleMessageCount() < messages.length;
+  const isSendingOrStreaming = () =>
+    isSending() || !!pendingAssistantMessage() || !!backgroundPending();
   const pendingAssistantMessage = createMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i];
@@ -1520,6 +1526,7 @@ export default function PublicChatPage() {
     );
     requestAnimationFrame(() => {
       if (scrollRef) {
+        suppressScrollUntil = Date.now() + 180;
         scrollRef.scrollTop =
           previousScrollTop + (scrollRef.scrollHeight - previousScrollHeight);
         lastScrollTop = scrollRef.scrollTop;
@@ -1532,25 +1539,45 @@ export default function PublicChatPage() {
     if (!scrollRef) return;
     const top = scrollRef.scrollTop;
     const dist = distanceFromBottom();
-    // Skip the synthetic scroll event we just produced via scrollToBottom.
-    if (
-      suppressScrollDetect &&
-      Math.abs(scrollRef.scrollHeight - suppressScrollDetect) < 2 &&
-      dist < 4
-    ) {
+    // Ignore scroll events produced by our own bottom pinning/history
+    // compensation. Mobile browsers can emit these while keyboard/layout
+    // metrics settle; treating them as user scrolls can jump to older messages.
+    if (Date.now() < suppressScrollUntil) {
       lastScrollTop = top;
-      suppressScrollDetect = 0;
       return;
     }
-    suppressScrollDetect = 0;
+    suppressScrollUntil = 0;
+    const sendingOrStreaming = isSendingOrStreaming();
+    if (
+      sendingOrStreaming &&
+      stickToBottom &&
+      top <= 24 &&
+      top < lastScrollTop - 2 &&
+      dist > 120
+    ) {
+      scrollToBottom();
+      return;
+    }
     if (top < lastScrollTop - 2) {
       // user-initiated scroll up
       stickToBottom = dist < 80;
     } else if (dist < 80) {
       stickToBottom = true;
     }
+    const previousTop = lastScrollTop;
     lastScrollTop = top;
-    if (top <= 24) loadOlderMessages();
+    if (
+      shouldLoadOlderPublicMessages({
+        scrollTop: top,
+        previousScrollTop: previousTop,
+        distanceFromBottom: dist,
+        hasOlderMessages: hasOlderMessages(),
+        loadingOlderMessages: loadingOlderMessages(),
+        sendingOrStreaming,
+      })
+    ) {
+      loadOlderMessages();
+    }
   };
 
   const flashJustFinished = () => {
