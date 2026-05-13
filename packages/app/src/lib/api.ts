@@ -239,11 +239,28 @@ export async function connectEvents(actor: ActorRef) {
   return createEventSource(`/api/events?${actorQuery(actor)}`);
 }
 
-export async function publicSendSmsCode(phoneNumber: string) {
+export async function getPublicCaptchaConfig() {
+  const response = await apiFetch("/api/public/auth/captcha/config");
+  return parseJson<{
+    enabled: boolean;
+    region: string;
+    prefix: string;
+    scene_id: string;
+    script_url: string;
+  }>(response);
+}
+
+export async function publicSendSmsCode(
+  phoneNumber: string,
+  captchaVerifyParam?: string,
+) {
   const response = await apiFetch("/api/public/auth/sms/send", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ phone_number: phoneNumber }),
+    body: JSON.stringify({
+      phone_number: phoneNumber,
+      captcha_verify_param: captchaVerifyParam,
+    }),
   });
   await parseJson<{ ok: boolean }>(response);
 }

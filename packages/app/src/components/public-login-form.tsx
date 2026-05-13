@@ -5,10 +5,19 @@ import {
   createMemo,
   createSignal,
   onCleanup,
+  onMount,
   type ParentProps,
 } from "solid-js";
 import { PublicCheckbox } from "./public-checkbox";
-import { publicSendSmsCode, publicSmsLogin } from "@/lib/api";
+import {
+  getPublicCaptchaConfig,
+  publicSendSmsCode,
+  publicSmsLogin,
+} from "@/lib/api";
+import {
+  AliyunCaptchaController,
+  type PublicCaptchaConfig,
+} from "@/lib/aliyun-captcha";
 import { CONTENT } from "@/lib/public-content";
 import { normalizePhoneNumber } from "@/lib/public-chat";
 import { TOS_VERSION } from "@/lib/tos";
@@ -20,6 +29,8 @@ type Props = {
   subtitle?: string;
 };
 
+let captchaIdSeed = 0;
+
 export function PublicLoginForm(props: Props) {
   const [phoneNumber, setPhoneNumber] = createSignal("");
   const [verifyCode, setVerifyCode] = createSignal("");
@@ -30,6 +41,10 @@ export function PublicLoginForm(props: Props) {
   const [cooldown, setCooldown] = createSignal(0);
   const [error, setError] = createSignal("");
   const [notice, setNotice] = createSignal("");
+  const captchaElementId = `public-login-captcha-${++captchaIdSeed}`;
+  const captchaButtonId = `public-login-captcha-button-${captchaIdSeed}`;
+  let captchaConfigPromise: Promise<PublicCaptchaConfig> | undefined;
+  let captchaController: AliyunCaptchaController | undefined;
   const clearFeedback = () => {
     setError("");
     setNotice("");
@@ -52,6 +67,9 @@ export function PublicLoginForm(props: Props) {
   onCleanup(() => {
     if (cooldownTimer) clearInterval(cooldownTimer);
   });
+  onMount(() => {
+    void preloadCaptcha();
+  });
 
   const startCooldown = () => {
     setCooldown(60);
@@ -73,7 +91,11 @@ export function PublicLoginForm(props: Props) {
     setSending(true);
     clearFeedback();
     try {
-      await publicSendSmsCode(normalizePhoneNumber(phoneNumber()));
+      const captchaVerifyParam = await verifyCaptchaIfEnabled();
+      await publicSendSmsCode(
+        normalizePhoneNumber(phoneNumber()),
+        captchaVerifyParam,
+      );
       setNotice(CONTENT.auth.login.code_sent);
       startCooldown();
     } catch (err) {
@@ -81,6 +103,33 @@ export function PublicLoginForm(props: Props) {
     } finally {
       setSending(false);
     }
+  };
+
+  const verifyCaptchaIfEnabled = async () => {
+    const captcha = await ensureCaptchaController();
+    if (!captcha) return undefined;
+    return captcha.verify();
+  };
+
+  const preloadCaptcha = async () => {
+    try {
+      const captcha = await ensureCaptchaController();
+      await captcha?.prepare();
+    } catch {
+      // Surface initialization errors only when the user actively requests SMS.
+    }
+  };
+
+  const ensureCaptchaController = async () => {
+    captchaConfigPromise ??= getPublicCaptchaConfig();
+    const config = await captchaConfigPromise;
+    if (!config.enabled) return undefined;
+    captchaController ??= new AliyunCaptchaController(
+      config,
+      captchaElementId,
+      captchaButtonId,
+    );
+    return captchaController;
   };
 
   const submitLogin = async () => {
@@ -245,6 +294,26 @@ export function PublicLoginForm(props: Props) {
                   : CONTENT.auth.login.send_code}
             </button>
           </div>
+          <div
+            id={captchaElementId}
+            style={{ position: "relative", "z-index": "20" }}
+          />
+          <button
+            id={captchaButtonId}
+            type="button"
+            tabindex="-1"
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              width: "1px",
+              height: "1px",
+              padding: "0",
+              border: "0",
+              opacity: "0",
+              overflow: "hidden",
+              "pointer-events": "none",
+            }}
+          />
 
           <div style={{ "margin-bottom": "12px" }}>
             <PublicCheckbox checked={remember()} onChange={setRemember}>

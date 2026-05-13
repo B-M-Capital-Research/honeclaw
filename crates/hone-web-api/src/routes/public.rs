@@ -48,6 +48,10 @@ const SESSION_TTL_DAYS_SHORT: i64 = hone_memory::SESSION_TTL_DAYS_SHORT;
 /// 并让已登录用户重新勾选接受(可后续增强)。
 pub(crate) const TOS_VERSION: &str = "2.0";
 
+pub(crate) async fn handle_captcha_config() -> Response {
+    Json(crate::aliyun_captcha::AliyunCaptchaConfig::public_config_from_env()).into_response()
+}
+
 #[derive(Debug, Deserialize)]
 pub(crate) struct OpenAiChatCompletionRequest {
     pub model: Option<String>,
@@ -117,6 +121,22 @@ pub(crate) async fn handle_sms_send_code(
             state.public_auth_limiter.check(key)
         {
             return json_rate_limited(retry_after_secs);
+        }
+    }
+
+    if crate::aliyun_captcha::AliyunCaptchaConfig::public_config_from_env().enabled {
+        let captcha_verify_param = request.captcha_verify_param.unwrap_or_default();
+        match crate::aliyun_captcha::verify_captcha(&state.http_client, &captcha_verify_param).await
+        {
+            Ok(true) => {}
+            Ok(false) => {
+                let _ = state.public_auth_limiter.record_failure(&ip_key);
+                return crate::routes::json_error(StatusCode::FORBIDDEN, "请先完成图形验证");
+            }
+            Err(error) => {
+                warn!("aliyun captcha verification failed: {error}");
+                return captcha_provider_error_response("图形验证服务暂不可用", error);
+            }
         }
     }
 
@@ -341,6 +361,22 @@ fn sms_provider_error_response(prefix: &str, error: crate::aliyun_sms::AliyunSms
         }
         crate::aliyun_sms::AliyunSmsErrorKind::Provider => {
             crate::routes::json_error(StatusCode::BAD_GATEWAY, format!("{prefix}: {error}"))
+        }
+    }
+}
+
+fn captcha_provider_error_response(
+    prefix: &str,
+    error: crate::aliyun_captcha::AliyunCaptchaError,
+) -> Response {
+    match error.kind {
+        crate::aliyun_captcha::AliyunCaptchaErrorKind::Config => crate::routes::json_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            format!("{prefix}: 配置缺失"),
+        ),
+        crate::aliyun_captcha::AliyunCaptchaErrorKind::Transport
+        | crate::aliyun_captcha::AliyunCaptchaErrorKind::Provider => {
+            crate::routes::json_error(StatusCode::BAD_GATEWAY, prefix)
         }
     }
 }

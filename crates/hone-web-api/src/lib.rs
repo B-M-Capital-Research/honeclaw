@@ -3,6 +3,7 @@
 //! 将原 `hone-console-page` 二进制的服务逻辑提取为库，
 //! 供 `hone-desktop` 在 Tauri 主进程内直接嵌入启动，无需子进程 sidecar。
 
+mod aliyun_captcha;
 mod aliyun_sms;
 pub mod logging;
 mod public_auth;

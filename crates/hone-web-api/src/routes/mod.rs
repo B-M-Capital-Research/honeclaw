@@ -237,6 +237,7 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
         .allow_credentials(true);
 
     let public_api = Router::new()
+        .route("/auth/captcha/config", get(public::handle_captcha_config))
         .route("/auth/sms/send", post(public::handle_sms_send_code))
         .route("/auth/sms/login", post(public::handle_sms_login))
         .route("/auth/logout", post(public::handle_logout))

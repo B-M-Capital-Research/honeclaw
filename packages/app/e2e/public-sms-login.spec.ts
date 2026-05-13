@@ -91,6 +91,18 @@ async function installPublicAuthMocks(
       return;
     }
 
+    if (path === "/api/public/auth/captcha/config") {
+      await fulfillJson(route, {
+        enabled: false,
+        region: "cn",
+        prefix: "",
+        scene_id: "",
+        script_url:
+          "https://o.alicdn.com/captcha-frontend/aliyunCaptcha/AliyunCaptcha.js",
+      });
+      return;
+    }
+
     if (path === "/api/public/auth/sms/send") {
       state.sendCalls += 1;
       state.lastSendBody = request.postData() ?? "";

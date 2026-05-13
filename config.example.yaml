@@ -501,6 +501,11 @@ web:
   # - HONE_ALIYUN_SMS_TEMPLATE_CODE (default: 100001)
   # - HONE_ALIYUN_SMS_TEMPLATE_PARAM (default: {"code":"##code##","min":"5"})
   # Existing admin-created Web invite users are treated as the public login whitelist.
+  # Optional Aliyun Captcha 2.0 guard for public SMS sends is configured by env:
+  # - HONE_ALIYUN_CAPTCHA_PREFIX / HONE_ALIYUN_CAPTCHA_SCENE_ID (required to enable)
+  # - HONE_ALIYUN_CAPTCHA_REGION (default: cn; use sgp for Singapore)
+  # - HONE_ALIYUN_CAPTCHA_ENDPOINT (optional override)
+  # - HONE_ALIYUN_CAPTCHA_ENABLED=false disables the guard even when prefix/scene are set.
 
 security:
   # Whether KB queries are isolated by actor/session (recommended to avoid cross-user retrieval)

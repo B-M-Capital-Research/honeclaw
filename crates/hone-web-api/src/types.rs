@@ -27,6 +27,7 @@ pub struct CreateWebInviteRequest {
 #[derive(Deserialize)]
 pub struct PublicSmsSendRequest {
     pub phone_number: Option<String>,
+    pub captcha_verify_param: Option<String>,
 }
 
 #[derive(Deserialize)]
