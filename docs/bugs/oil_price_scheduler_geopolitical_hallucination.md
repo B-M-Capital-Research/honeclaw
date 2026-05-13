@@ -5,7 +5,7 @@
 - **严重等级**: P2
 - **状态**: New
 
-## 最新进展（2026-05-14 07:08 CST）
+## 最新进展（2026-05-14 07:06 CST）
 
 - 本轮巡检把本单从 `Closed` 调回 `New`：`2026-05-13 15:04 CST` 关闭结论只证明 `全天原油价格3小时播报` heartbeat guard 在 live 生效，但最近四小时内同类原油普通 scheduler 又成功外发无法从台账证明的价格口径与盘面归因，且 `detail_json.scheduler=null`，说明普通 scheduler 路径没有同等 guard / 审计元数据。
 - `data/sessions.sqlite3` -> `cron_job_runs`

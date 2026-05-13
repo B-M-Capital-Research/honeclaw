@@ -9,7 +9,7 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
-  - `2026-05-14 07:08 CST` 复核，started-row finalize 缺陷继续实时新增：
+  - `2026-05-14 07:06 CST` 复核，started-row finalize 缺陷继续实时新增：
     - 最近四小时窗口 `2026-05-14T03:00:00+08:00` 到 `2026-05-14T07:00:00+08:00` 内共有 `102` 条 `execution_status=running + message_send_status=pending + detail.phase=started` 残留。
     - 其中 `99` 条为 heartbeat started 行，覆盖 03:00、03:30、04:00、04:30、05:00、05:30、06:00、06:30、07:00 等窗口；另有 `3` 条普通 scheduler started 行。
     - 普通 scheduler 代表样本：`run_id=20228` 的 `Oil_Price_Monitor_Closing`、`run_id=20263` 的 `OWALERT_PostMarket`、`run_id=20282` 的 `科技成长赛道大盘极值与情绪监控` 先写入 `running + pending + phase=started`，随后分别另起 `run_id=20251/20275/20299` 作为 `completed + sent + delivered=1` 终态；原 started 行仍未被覆盖。
