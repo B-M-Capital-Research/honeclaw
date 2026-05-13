@@ -287,7 +287,7 @@ const CONTENT_ZH = {
       "透明、务实、长期主义。下面是 Hone 目前能做什么、接下来做什么、以及如何接入你的投研工作流。",
     hero_meta: "ROADMAP · DOCS · API",
     sidebar_title: "ON THIS PAGE",
-    version: "v0.11.2",
+    version: "v0.12.0",
 
     toc: [
       { id: "quick-start", label: "快速开始", sub: "Quick Start" },
@@ -307,7 +307,7 @@ const CONTENT_ZH = {
         eyebrow: "§ 01 · QUICK START",
         title: "快速开始",
         intro:
-          "三种方式接入 Hone：一键安装脚本、Homebrew、或源码开发。安装后可用 `hone-cli start` 跑完整运行时，也可用 `hone-cli web admin-ui` / `hone-cli web user-ui` 单独打开 Web 界面。",
+          "三种方式接入 Hone：一键安装脚本、Homebrew、或源码开发。安装后可用 `hone-cli start` 跑完整运行时，也可用 `hone-cli web admin-ui` / `hone-cli web user-ui` 单独打开管理端或公开用户端。",
       },
       capabilities: {
         eyebrow: "§ 02 · CAPABILITY MATRIX",
@@ -415,7 +415,7 @@ const CONTENT_ZH = {
       },
       {
         title: "公开 user-ui",
-        desc: "公开 user-ui 路由包含 `/`、`/roadmap`、`/chat`、`/me`、`/portfolio`、`/terms`、`/privacy`；`/chat` 使用手机号 + 短信验证码登录，管理端 Web 白名单是准入来源；`/portfolio` 只读展示 digest context 与公司画像入口，后端公开面收敛在 `/api/public/*`。",
+        desc: "公开 user-ui 路由包含 `/`、`/roadmap`、`/chat`、`/me`、`/portfolio`、`/terms`、`/privacy`；`/chat` 使用阿里云行为验证 + 手机短信验证码登录，管理端 Web 白名单是准入来源，并支持助手回答复制与图片分享；`/portfolio` 只读展示 digest context 与公司画像入口，后端公开面收敛在 `/api/public/*`。",
       },
       {
         title: "管理后台",
@@ -464,6 +464,11 @@ const CONTENT_ZH = {
             name: "图表 & 图像生成",
             status: "stable",
             note: "chart_visualization / image_generation",
+          },
+          {
+            name: "公开聊天分享长图",
+            status: "stable",
+            note: "html2canvas + qrcode + markdown 渲染",
           },
           { name: "向量检索增强记忆", status: "planned", note: "规划中" },
         ],
@@ -518,9 +523,9 @@ const CONTENT_ZH = {
             note: "hone-web-api 路由全开",
           },
           {
-            name: "公开用户 SMS 登录",
+            name: "公开用户 SMS 登录与验证码守门",
             status: "stable",
-            note: "Aliyun SMS + 管理端 Web 白名单",
+            note: "Aliyun Captcha + Aliyun SMS + 管理端 Web 白名单",
           },
           {
             name: "按用户细粒度推送偏好",
@@ -616,7 +621,9 @@ const CONTENT_ZH = {
     now: {
       label: "当前已有",
       items: [
-        "Web 聊天界面（手机号 + 短信验证码，管理端白名单准入）+ 公开门面站",
+        "Web 聊天界面（阿里云行为验证 + 手机短信验证码，管理端白名单准入）+ 公开门面站",
+        "公开 `/chat` 助手回答复制与分享：可选择消息，导出品牌长图、复制图片/文字或调用系统分享",
+        "公开 `/chat` markdown 渲染、移动输入框、滚动锚定与回到底部按钮已完成稳定性打磨",
         "Tauri macOS 桌面端 + 内置后端",
         "7 个渠道：Web / iMessage / Lark / Discord / Telegram / CLI / MCP",
         "16 个公开 Skill（个股、持仓、估值/筛选入口、图表、PDF、Cron、漏推回查、推送偏好…）",
@@ -747,7 +754,7 @@ const CONTENT_ZH = {
       },
       {
         q: "需要自己部署吗？",
-        a: "三种方式任选：①「curl | bash」一键装 hone-cli；② Homebrew tap；③ clone 仓库后用本地 CLI 构建启动。前两种共享同一份 GitHub release bundle，不需要自己编译 Rust。",
+        a: "三种方式任选：①「curl | bash」一键装 hone-cli；② Homebrew tap；③ clone 仓库后用本地 CLI 构建启动。前两种共享同一份 GitHub release bundle，不需要自己编译 Rust。公开 SMS 登录需要配置阿里云短信；如启用行为验证，还需要配置阿里云验证码环境变量。",
       },
       {
         q: "支持哪些 LLM？",
@@ -1713,7 +1720,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       "Transparent, pragmatic, long-term. Here's what Hone does today, what's next, and how to bring it into your research workflow.",
     hero_meta: "ROADMAP · DOCS · API",
     sidebar_title: "ON THIS PAGE",
-    version: "v0.11.2",
+    version: "v0.12.0",
 
     toc: [
       { id: "quick-start", label: "Quick Start", sub: "Quick Start" },
@@ -1733,7 +1740,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         eyebrow: "§ 01 · QUICK START",
         title: "Quick Start",
         intro:
-          "Three paths to run Hone: the one-line installer, Homebrew, or source. After install, use `hone-cli start` for the full runtime or `hone-cli web admin-ui` / `hone-cli web user-ui` to open a specific Web surface.",
+          "Three paths to run Hone: the one-line installer, Homebrew, or source. After install, use `hone-cli start` for the full runtime or `hone-cli web admin-ui` / `hone-cli web user-ui` to open the admin console or the public user surface.",
       },
       capabilities: {
         eyebrow: "§ 02 · CAPABILITY MATRIX",
@@ -1831,7 +1838,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         title: "Public user-ui",
-        desc: "The public user-ui routes `/`, `/roadmap`, `/chat`, `/me`, `/portfolio`, `/terms`, and `/privacy`; `/chat` signs users in with phone + SMS verification from the admin Web whitelist; `/portfolio` is a read-only investment context surface for digest context and company-profile entrypoints, and the public backend is scoped to `/api/public/*`.",
+        desc: "The public user-ui routes `/`, `/roadmap`, `/chat`, `/me`, `/portfolio`, `/terms`, and `/privacy`; `/chat` signs users in with Aliyun behavior captcha plus phone/SMS verification from the admin Web whitelist, and supports assistant-reply copy plus image sharing; `/portfolio` is a read-only investment context surface for digest context and company-profile entrypoints, and the public backend is scoped to `/api/public/*`.",
       },
       {
         title: "Admin console",
@@ -1880,6 +1887,11 @@ const CONTENT_EN: typeof CONTENT_ZH = {
             name: "Chart & image generation",
             status: "stable",
             note: "chart_visualization / image_generation",
+          },
+          {
+            name: "Public chat image sharing",
+            status: "stable",
+            note: "html2canvas + qrcode + markdown rendering",
           },
           {
             name: "Vector-augmented memory",
@@ -1938,9 +1950,9 @@ const CONTENT_EN: typeof CONTENT_ZH = {
             note: "hone-web-api fully exposed",
           },
           {
-            name: "Public SMS login",
+            name: "Public SMS login with captcha gate",
             status: "stable",
-            note: "Aliyun SMS + admin Web whitelist",
+            note: "Aliyun Captcha + Aliyun SMS + admin Web whitelist",
           },
           {
             name: "Per-actor notification prefs",
@@ -2073,7 +2085,9 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     now: {
       label: "Shipping today",
       items: [
-        "Web chat (phone + SMS verification, admitted by the admin whitelist) + public landing site",
+        "Web chat (Aliyun behavior captcha + phone/SMS verification, admitted by the admin whitelist) + public landing site",
+        "Public `/chat` assistant-reply copy and sharing: select messages, export a branded long image, copy image/text, or invoke native share",
+        "Public `/chat` markdown rendering, mobile composer, scroll anchoring, and jump-to-latest behavior have been stabilized",
         "Tauri macOS desktop with bundled backend",
         "7 channels: Web / iMessage / Lark / Discord / Telegram / CLI / MCP",
         "16 public skills (stocks, portfolio, valuation/screening entrypoints, charts, PDF, cron, missed-event recovery, notification prefs…)",
@@ -2204,7 +2218,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         q: "Do I have to self-host?",
-        a: "Three options: (1) the `curl | bash` installer for hone-cli; (2) a Homebrew tap; (3) clone the repo and start through the local CLI build path. The first two share the same GitHub release bundle — no Rust compile needed.",
+        a: "Three options: (1) the `curl | bash` installer for hone-cli; (2) a Homebrew tap; (3) clone the repo and start through the local CLI build path. The first two share the same GitHub release bundle — no Rust compile needed. Public SMS login requires Aliyun SMS configuration; if the behavior captcha gate is enabled, configure Aliyun Captcha environment variables too.",
       },
       {
         q: "Which LLMs are supported?",
