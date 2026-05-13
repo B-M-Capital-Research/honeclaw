@@ -17,6 +17,7 @@ import { createStore, reconcile } from "solid-js/store";
 import { useNavigate } from "@solidjs/router";
 import { PublicLoginForm } from "@/components/public-login-form";
 import { PublicContactMenu } from "@/components/public-contact-menu";
+import { ChatShareModal } from "@/components/chat-share-modal";
 import { displayGithubStars, fetchGithubStars } from "@/lib/github-stars";
 import { CONTENT } from "@/lib/public-content";
 import { setLocale, useLocale } from "@/lib/i18n";
@@ -656,6 +657,7 @@ function AssistantBubble(props: {
   content: string;
   attachments?: PublicChatAttachment[];
   isContinuation?: boolean;
+  onShare?: () => void;
 }) {
   const nonImageAttachments = createMemo(() =>
     (props.attachments ?? []).filter((a) => a.kind !== "image"),
@@ -738,21 +740,61 @@ function AssistantBubble(props: {
             </For>
           </div>
         </Show>
-        <button
-          type="button"
-          class="pub-msg-copy"
-          aria-label={CONTENT.chat_page.actions.copy_aria}
-          title={
-            copied()
-              ? CONTENT.chat_page.actions.copied
-              : CONTENT.chat_page.actions.copy_aria
-          }
-          onClick={handleCopy}
-          data-copied={copied() ? "true" : undefined}
-        >
-          <Show
-            when={copied()}
-            fallback={
+        <div class="pub-msg-actions">
+          <button
+            type="button"
+            class="pub-msg-action"
+            aria-label={CONTENT.chat_page.actions.copy_aria}
+            title={
+              copied()
+                ? CONTENT.chat_page.actions.copied
+                : CONTENT.chat_page.actions.copy_aria
+            }
+            onClick={handleCopy}
+            data-copied={copied() ? "true" : undefined}
+          >
+            <Show
+              when={copied()}
+              fallback={
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg>
+              }
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.4"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M20 6L9 17l-5-5" />
+              </svg>
+            </Show>
+          </button>
+          <Show when={props.onShare}>
+            <button
+              type="button"
+              class="pub-msg-action"
+              aria-label={CONTENT.chat_page.actions.share_aria}
+              title={CONTENT.chat_page.actions.share_aria}
+              onClick={() => props.onShare?.()}
+            >
               <svg
                 width="14"
                 height="14"
@@ -764,26 +806,15 @@ function AssistantBubble(props: {
                 stroke-linejoin="round"
                 aria-hidden="true"
               >
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                <circle cx="18" cy="5" r="3" />
+                <circle cx="6" cy="12" r="3" />
+                <circle cx="18" cy="19" r="3" />
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
               </svg>
-            }
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.4"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M20 6L9 17l-5-5" />
-            </svg>
+            </button>
           </Show>
-        </button>
+        </div>
       </div>
     </div>
   );
@@ -1526,6 +1557,10 @@ export default function PublicChatPage() {
     images: PublicChatAttachment[];
     index: number;
   } | null>(null);
+  // When set, the share modal is open and `seedIndex` is the index of the
+  // message the user clicked 分享 from (within visibleMessages()). The modal
+  // pre-selects that one and lets the user toggle the rest.
+  const [shareSeed, setShareSeed] = createSignal<number | null>(null);
   const [sessionInfo, setSessionInfo] = createSignal<{
     userId: string;
     remainingToday: number;
@@ -2040,6 +2075,7 @@ export default function PublicChatPage() {
                                 i() > 0 &&
                                 visibleMessages()[i() - 1]?.role === "assistant"
                               }
+                              onShare={() => setShareSeed(i())}
                             />
                           </Match>
                           <Match
@@ -2133,6 +2169,18 @@ export default function PublicChatPage() {
           <button class="lightbox-close">×</button>
         </div>
       </Show>
+
+      <ChatShareModal
+        open={shareSeed() !== null}
+        messages={visibleMessages()}
+        seedIndex={shareSeed() ?? 0}
+        brandName={CONTENT.chat_page.share.brand_name}
+        brandTagline={CONTENT.chat_page.share.brand_tagline}
+        qrUrl={typeof window !== "undefined" ? `${window.location.origin}/chat` : "https://hone-claw.com/chat"}
+        qrCaption={CONTENT.chat_page.share.qr_caption}
+        strings={CONTENT.chat_page.share.strings}
+        onClose={() => setShareSeed(null)}
+      />
 
       <style>{`
         html.public-chat-scroll-lock,
@@ -2362,14 +2410,20 @@ export default function PublicChatPage() {
         [data-theme="dark"] .public-chat-messages .hf-markdown .hf-markdown-code span {
           color: #e5e7eb !important;
         }
-        /* Copy button: tucks into the bottom-right corner of an assistant
-           bubble, faded by default and brighter on hover. On mobile (no
-           hover) it stays at a low-key visible opacity so long answers can
-           still be lifted out with one tap. */
-        .pub-msg-copy {
+        /* Action row (copy + share) sits in the bottom-right of an
+           assistant bubble. Desktop: faded until hover. Mobile: visible at
+           low-key opacity so long answers can be lifted out with one tap. */
+        .pub-msg-actions {
           position: absolute;
           right: 8px;
           bottom: 8px;
+          display: inline-flex;
+          gap: 4px;
+          opacity: 0;
+          transition: opacity 0.18s;
+        }
+        .pub-msg-bubble--assistant:hover .pub-msg-actions { opacity: 1; }
+        .pub-msg-action {
           width: 28px;
           height: 28px;
           display: inline-flex;
@@ -2380,19 +2434,16 @@ export default function PublicChatPage() {
           background: rgba(15, 23, 42, 0.04);
           color: #64748b;
           cursor: pointer;
-          opacity: 0;
-          transition: opacity 0.18s, background 0.18s, color 0.18s;
+          transition: background 0.18s, color 0.18s;
         }
-        .pub-msg-bubble--assistant:hover .pub-msg-copy { opacity: 1; }
-        .pub-msg-copy:hover { background: rgba(15, 23, 42, 0.08); color: #0f172a; }
-        .pub-msg-copy[data-copied="true"] {
-          opacity: 1;
+        .pub-msg-action:hover { background: rgba(15, 23, 42, 0.08); color: #0f172a; }
+        .pub-msg-action[data-copied="true"] {
           background: rgba(16, 185, 129, 0.12);
           color: #059669;
         }
         @media (hover: none), (max-width: 768px) {
-          .pub-msg-copy { opacity: 0.55; }
-          .pub-msg-copy:active { opacity: 1; }
+          .pub-msg-actions { opacity: 0.55; }
+          .pub-msg-actions:active { opacity: 1; }
         }
         /* Scroll-to-bottom: floats above the composer when the user has
            scrolled up enough to lose track of the latest reply. */
