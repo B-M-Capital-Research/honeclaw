@@ -2916,12 +2916,10 @@ dependencies = [
 name = "hone-core"
 version = "0.12.0"
 dependencies = [
- "anyhow",
  "async-trait",
  "chrono",
  "chrono-tz",
  "fs2",
- "futures",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -2994,7 +2992,6 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "tempfile",
- "thiserror 2.0.18",
  "tokio",
  "tracing",
 ]
@@ -3074,7 +3071,6 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
- "thiserror 2.0.18",
  "tokio",
  "tracing",
 ]
@@ -3103,8 +3099,6 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "sha2",
- "thiserror 2.0.18",
- "tokio",
  "tracing",
  "uuid",
  "zip",
@@ -3160,7 +3154,6 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "tempfile",
- "thiserror 2.0.18",
  "tokio",
  "tracing",
  "walkdir",

@@ -8,8 +8,10 @@ hone-core = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-tokio = { workspace = true }
 base64 = "0.22"
 uuid = { workspace = true }
 chrono = { workspace = true }
 regex = "1"
+
+[dev-dependencies]
+tokio = { workspace = true }

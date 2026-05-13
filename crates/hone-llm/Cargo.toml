@@ -13,7 +13,6 @@ reqwest = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 futures = { workspace = true }
-thiserror = { workspace = true }
 
 [dev-dependencies]
 serde_yaml = { workspace = true }

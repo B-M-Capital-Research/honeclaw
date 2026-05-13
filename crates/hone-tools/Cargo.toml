@@ -11,7 +11,6 @@ serde_json = { workspace = true }
 serde_yaml = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
-thiserror = { workspace = true }
 anyhow = { workspace = true }
 reqwest = { workspace = true }
 hone-memory = { workspace = true }

@@ -8,14 +8,12 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
 thiserror = { workspace = true }
-anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 chrono = { workspace = true }
 chrono-tz = { workspace = true }
 async-trait = { workspace = true }
 uuid = { workspace = true }
-futures.workspace = true
 tokio = { workspace = true }
 reqwest = { workspace = true }
 fs2 = "0.4"
