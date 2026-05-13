@@ -3,12 +3,18 @@
 - **发现时间**: 2026-05-12 23:03 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Closed
+- **状态**: New
 - **GitHub Issue**: 无
 
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-13 23:04 CST` 复核：该缺陷从 `Closed` 调回 `New`。21:02-23:00 CST 再次新增 `51` 条同类 heartbeat 失败，覆盖 `11` 个 job；终态均为 `execution_failed + skipped_error + delivered=0`。
+  - 失败 job 覆盖 `TEM破位预警`、`DRAM 心跳监控`、`小米30港元破位预警`、`全天原油价格3小时播报`、`TEM大事件心跳监控`、`RKLB异动监控`、`TSLA 正负触发条件心跳监控`、`伦敦金跌破4500提醒`、`Cerebras IPO与业务进展心跳监控`、`持仓重大事件心跳检测` 与 `Monitor_Watchlist_11`。
+  - 代表性 run：`run_id=19902` 到 `19912` 在 21:02 CST 同窗连续失败；`run_id=19937` 到 `19947` 在 21:30 CST 同窗失败；`run_id=19965` 到 `19975` 在 22:00 CST 同窗失败；`run_id=19987` 到 `19997` 在 22:30 CST 同窗失败；`run_id=20010` 到 `20020` 在 23:00 CST 同窗失败。
+  - `error_message` 均为 `LLM 错误: : Param Incorrect (param: The reasoning_content in the thinking mode must be passed back to the API.) (code: 400)`。
+  - 同窗普通 scheduler 仍有 `核心观察股池晚间快报`、`A股盘后高景气产业链推演`、`美股盘前宏观与财报日历梳理` 等 `completed + sent + delivered=1`，说明故障仍集中在 heartbeat `mimo-v2.5-pro` function-calling 路径。
+  - `data/runtime/logs/web.log.2026-05-13` 在 `21:02`、`21:30`、`22:00`、`22:30`、`23:00` 多次记录 `[HeartbeatDiag] runner_error ... model=mimo-v2.5-pro error="... reasoning_content ... Param Incorrect ..."`。
   - `2026-05-13 11:08 CST` 复核：该缺陷从 `Fixed` 更新为 `Closed`。本轮 07:30-10:00 CST 旧 live 运行态仍新增 `59` 条同类 heartbeat 失败，覆盖 `10` 个 job；错误均为 `LLM 错误: upstream HTTP 400: Param Incorrect (code: 400)`，终态仍为 `execution_failed + skipped_error + delivered=0`。
   - `2026-05-13 10:22 CST` Feishu runtime 重启后未再看到 `mimo-v2.5-pro` provider 400；10:30 CST heartbeat 窗口已有 `DRAM 心跳监控`、`持仓重大事件心跳检测`、`Cerebras IPO与业务进展心跳监控` 成功 `completed + sent + delivered=1`，其余同窗为正常 `noop + skipped_noop`；11:00 CST 窗口全部为正常 `noop + skipped_noop`。
   - `data/runtime/logs/sidecar.log` 在 10:22 CST 记录 Feishu scheduler 启动并连接，此后同窗仅看到 web_search key quota warning 与正常 heartbeat 收口，未再出现 `[HeartbeatDiag] runner_error ... model=mimo-v2.5-pro ... Param Incorrect`。
@@ -41,7 +47,8 @@
 
 ## 当前实现效果
 
-- 最新四小时内已累计 `82` 条 heartbeat 因同一 `mimo-v2.5-pro` 上游 `HTTP 400 Param Incorrect` 失败。
+- 2026-05-13 23:04 CST 的最新复核显示，本单在 10:22 CST 重启后一度恢复，但 21:02-23:00 CST 又连续复发；因此关闭结论不再成立。
+- 最新四小时内已累计 `51` 条 heartbeat 因同一 `mimo-v2.5-pro` 上游 `HTTP 400 Param Incorrect` 失败。
 - 失败已被正确记为 `provider_http_error`，没有被伪装成 noop；但业务效果仍是本轮监控漏发。
 - 同窗普通 scheduler 仍可送达，故障集中在 heartbeat provider 参数 / 模型兼容路径。
 
@@ -74,5 +81,6 @@
 
 ## 未验证项 / 后续建议
 
+- 2026-05-13 23:04 CST 已确认真实 heartbeat 窗口复发，应重新检查 live runtime 是否实际运行了 `d3dffd6` 后的修复代码，或是否仍存在另一条 auxiliary/tool transcript 路径没有回传 `reasoning_content`。
 - 2026-05-13 11:08 CST 已观察到 live 重启后的 10:30 / 11:00 heartbeat 窗口恢复，因此本单关闭。
 - 后续若部署后再次出现同一 `mimo-v2.5-pro` reasoning transcript / `Param Incorrect` 失败，应优先在本单追加复发证据，而不是新建重复文档。

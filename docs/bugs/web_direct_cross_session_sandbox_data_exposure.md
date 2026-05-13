@@ -10,6 +10,17 @@
 
 - `data/sessions.sqlite3` -> `session_messages`
   - `session_id=Actor_web__direct__web-user-028a885ded9b`
+  - `ordinal=22`
+  - `timestamp=2026-05-13T20:18:03.752307+08:00`
+  - 用户要求从 `fengming2` 目录和 `~/.codex` session 记录里搜索“某个人持仓说明记录”。
+  - `ordinal=23`
+  - `timestamp=2026-05-13T20:22:47.386373+08:00`
+  - 用户重复要求从 `~/.codex` session 记录搜索同一信息。
+  - `ordinal=24`
+  - `timestamp=2026-05-13T20:24:57.759144+08:00`
+  - assistant final 明确回显：`~/.codex` 下有 `1281` 个 session JSONL，列出本机 `~/.codex/sessions/...jsonl` 路径、全局 `data/portfolio/portfolio_...json` 路径，并总结持仓标的、股数和成本，还额外提到 Discord 用户持仓文件。
+- `data/sessions.sqlite3` -> `session_messages`
+  - `session_id=Actor_web__direct__web-user-028a885ded9b`
   - `ordinal=18`
   - `timestamp=2026-05-13T17:40:45.507081+08:00`
   - 用户要求查看本地文件，并要求不要只看当前工作目录。
@@ -49,6 +60,7 @@
 
 - 当前 web 用户可以通过自然语言请求诱导 runner 读取其它 web session 的 sandbox 数据。
 - assistant final 实际返回了其它 session 的画像摘要和全局持仓摘要。
+- 2026-05-13 20:24 CST 的复发样本进一步说明，读取范围不止 `data/agent-sandboxes/web`：同一 Web direct 会话还可以读取 `~/.codex` 历史会话记录，并通过其中线索继续访问全局 portfolio 文件。
 - 本轮日志显示底层 runner 多次执行本地文件读取命令，说明这不是单纯最终文本净化缺口，而是执行权限 / sandbox 隔离缺口。
 
 ## 用户影响
@@ -69,3 +81,10 @@
 - 对用户显式提供的 sandbox 外绝对路径做执行前拒绝，不能只依赖最终输出净化。
 - 增加回归测试：Web actor 请求读取 `data/agent-sandboxes/web/<other-session>`、`data/portfolio` 或任意 sandbox 外绝对路径时，应返回无权限说明，并且不执行底层读取。
 - 修复后复核最近真实 Web direct 会话，确认同类请求不会再返回其它 session 文件名、画像摘要或全局持仓摘要。
+
+## 修复记录
+
+- 2026-05-13 23:04 CST 复核：在 20:24 CST 真实 Web direct 会话里仍能读取 `~/.codex` session 记录和全局 portfolio 文件并外发摘要；因此本单从 `Fixed` 调回 `New`。已有 GitHub Issue [#41](https://github.com/B-M-Capital-Research/honeclaw/issues/41)，本轮不重复创建。
+- 2026-05-13: `crates/hone-channels/src/sandbox.rs` 不再默认从 `HONE_DATA_DIR` 派生 actor sandbox；当 `HONE_AGENT_SANDBOX_DIR` 指向当前 git worktree 内部时，会退回 repo-external temp sandbox，避免 Codex ACP 把仓库根和 `data/portfolio` 当作可读工作区。
+- 2026-05-13: `ensure_actor_sandbox()` 初始化当前 actor sandbox 时会删除误落入 sandbox 根的 `portfolio_*.json`、`portfolio/`、`portfolios/`，明确持仓真相源仍是 `storage.portfolio_dir`。
+- 2026-05-13: desktop sidecar 改为注入独立 `sandbox_dir`，不再把 `HONE_AGENT_SANDBOX_DIR` 固定为 `data/agent-sandboxes`。
