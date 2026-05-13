@@ -9,6 +9,11 @@
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-14 03:03 CST` 复核：该缺陷持续保持活跃 `New`。23:30-03:00 CST 再次新增 `82` 条同类 heartbeat 失败，覆盖 `11` 个 job；终态均为 `execution_failed + skipped_error + delivered=0`。
+  - 失败 job 仍覆盖 `小米30港元破位预警`、`TEM破位预警`、`DRAM 心跳监控`、`RKLB异动监控`、`持仓重大事件心跳检测`、`伦敦金跌破4500提醒`、`TEM大事件心跳监控`、`Cerebras IPO与业务进展心跳监控`、`Monitor_Watchlist_11`、`TSLA 正负触发条件心跳监控` 与 `全天原油价格3小时播报`。
+  - 代表性 run：`run_id=20029-20039` 在 23:30 CST 同窗失败；`run_id=20086-20095` 在 00:30 CST 同窗失败；`run_id=20107-20117` 在 01:00 CST 同窗失败；`run_id=20129-20139` 在 01:30 CST 同窗失败；`run_id=20151-20161` 在 02:00 CST 同窗失败；`run_id=20174-20183` 在 02:30 CST 同窗失败；`run_id=20195-20205` 在 03:00 CST 同窗失败。
+  - `error_message` 继续为 `LLM 错误: : Param Incorrect (param: The reasoning_content in the thinking mode must be passed back to the API.) (code: 400)`。
+  - 同窗普通 scheduler 仍有 `科技成长股持仓买卖点日内预警`、`AAOI 每日动态监控`、`TEM 每日动态监控`、`RKLB 每日动态监控` 等 `completed + sent + delivered=1`，说明故障仍集中在 heartbeat `mimo-v2.5-pro` function-calling 路径。
   - `2026-05-13 23:04 CST` 复核：该缺陷从 `Closed` 调回 `New`。21:02-23:00 CST 再次新增 `51` 条同类 heartbeat 失败，覆盖 `11` 个 job；终态均为 `execution_failed + skipped_error + delivered=0`。
   - 失败 job 覆盖 `TEM破位预警`、`DRAM 心跳监控`、`小米30港元破位预警`、`全天原油价格3小时播报`、`TEM大事件心跳监控`、`RKLB异动监控`、`TSLA 正负触发条件心跳监控`、`伦敦金跌破4500提醒`、`Cerebras IPO与业务进展心跳监控`、`持仓重大事件心跳检测` 与 `Monitor_Watchlist_11`。
   - 代表性 run：`run_id=19902` 到 `19912` 在 21:02 CST 同窗连续失败；`run_id=19937` 到 `19947` 在 21:30 CST 同窗失败；`run_id=19965` 到 `19975` 在 22:00 CST 同窗失败；`run_id=19987` 到 `19997` 在 22:30 CST 同窗失败；`run_id=20010` 到 `20020` 在 23:00 CST 同窗失败。
@@ -48,7 +53,8 @@
 ## 当前实现效果
 
 - 2026-05-13 23:04 CST 的最新复核显示，本单在 10:22 CST 重启后一度恢复，但 21:02-23:00 CST 又连续复发；因此关闭结论不再成立。
-- 最新四小时内已累计 `51` 条 heartbeat 因同一 `mimo-v2.5-pro` 上游 `HTTP 400 Param Incorrect` 失败。
+- 2026-05-14 03:03 CST 的最新复核显示，复发继续扩大到 23:30-03:00 CST，新增 82 条同类 heartbeat 失败；普通 scheduler 同窗仍可送达。
+- 最新四小时内已累计 `82` 条 heartbeat 因同一 `mimo-v2.5-pro` 上游 `HTTP 400 Param Incorrect` 失败。
 - 失败已被正确记为 `provider_http_error`，没有被伪装成 noop；但业务效果仍是本轮监控漏发。
 - 同窗普通 scheduler 仍可送达，故障集中在 heartbeat provider 参数 / 模型兼容路径。
 

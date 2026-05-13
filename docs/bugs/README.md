@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-13 23:04 CST
+最后更新：2026-05-14 03:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,9 +17,9 @@
 
 ## 当前概览
 
-- 活跃待修复：6
+- 活跃待修复：7
 - Later / 待复现：9
-- 已修复 / 已关闭：97
+- 已修复 / 已关闭：96
 - 历史分析 / 部分止血：5
 - 本轮不再保留 Web direct quota 拒绝为活跃缺陷：仓库代码已覆盖 Web actor 的 quota 拒绝 assistant transcript 与失败 `Done` 事件；当前机器 JSON 会话在 20:09 / 21:04 CST 仍新增孤立 heartbeat user turn，但按旧运行态 / 未重启进程证据处理，不重新打开。
 - 本轮复核后不再保留 `sessions.sqlite3` 会话镜像为活跃缺陷：仓库代码已覆盖 `runtime_backend=sqlite` 且 shadow 写开关为 `false` 的启动 JSON -> SQLite 回填路径；当前 `sessions/session_messages` 仍停在 2026-04-27、`cron_job_runs` 已推进到 23:01 CST，仍按当前机器旧运行态 / 未重启进程证据处理。
@@ -55,6 +55,9 @@
 - 本轮 23:04 CST 重新确认 Web direct 本地文件隔离缺陷仍活跃：20:18 / 20:22 CST 用户要求从 `~/.codex` session 记录里找“某个人持仓说明记录”，20:24 CST assistant final 回显 `~/.codex` JSONL 数量、本机 session 路径、全局 portfolio 文件路径与持仓摘要；同一 Issue [#41](https://github.com/B-M-Capital-Research/honeclaw/issues/41)，不重复创建。
 - 本轮 23:04 CST 重新打开 Heartbeat `mimo-v2.5-pro` reasoning transcript 兼容缺陷：21:02-23:00 CST 又新增 51 条同类 `reasoning_content must be passed back` / `Param Incorrect` heartbeat 失败，覆盖 11 个 job；普通 scheduler 同窗仍能送达，状态从 `Closed` 调回 `New`。
 - 本轮 23:04 CST 重新打开观察池击球区缺陷：23:00 CST `核心观察股池晚间快报` 在 10:22 runtime 重启后仍把 25 支观察池批量写成 `击球区：待确认`，不能再按重启前旧 live 证据处理；仍为不阻断投递链路的 `P3`。
+- 本轮 03:03 CST 确认 Heartbeat `mimo-v2.5-pro` reasoning transcript 兼容缺陷持续活跃：23:30-03:00 CST 又新增 82 条同类 `reasoning_content must be passed back` / `Param Incorrect` heartbeat 失败，覆盖 11 个 job；同窗普通 scheduler 有 5 条成功送达，故障仍集中在 heartbeat function-calling 路径。
+- 本轮 03:03 CST 重新打开 Feishu scheduler started-row 台账缺陷：23:30-03:00 CST 新增 92 条 `running + pending + detail.phase=started` 残留，其中 88 条 heartbeat、4 条普通 scheduler；同一 delivery_key 随后已有 `execution_failed/sent/noop` 终态另起行，说明 started 行仍未被终态覆盖，状态从 `Fixed` 调回 `New`。
+- 本轮 03:03 CST 未发现新的用户可见路径外泄、工具轨迹外泄、直聊半成品收口或 heartbeat duplicate suppression 样本；既有相关缺陷状态不变。
 
 ## 代码质量巡检发现
 
@@ -67,11 +70,12 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Web direct 可读取并总结其它 web session / 本机 Codex 记录 / 全局持仓数据 | P1 | New | 2026-05-13 23:04 复发：20:24 CST `Actor_web__direct__web-user-028a885ded9b` 按用户要求读取 `~/.codex` session JSONL、回显本机 session 路径、全局 portfolio 文件路径与持仓摘要；关联 Issue [#41](https://github.com/B-M-Capital-Research/honeclaw/issues/41) | [web_direct_cross_session_sandbox_data_exposure.md](./web_direct_cross_session_sandbox_data_exposure.md) |
-| Heartbeat 监控使用 `mimo-v2.5-pro` 时批量命中 `Param Incorrect` 并漏发 | P2 | New | 2026-05-13 23:04 复发：21:02-23:00 CST 新增 51 条同类 `reasoning_content must be passed back` / `Param Incorrect` heartbeat 失败，覆盖 11 个 job；无关联 GitHub Issue | [scheduler_heartbeat_mimo_param_incorrect_batch_failures.md](./scheduler_heartbeat_mimo_param_incorrect_batch_failures.md) |
+| Heartbeat 监控使用 `mimo-v2.5-pro` 时批量命中 `Param Incorrect` 并漏发 | P2 | New | 2026-05-14 03:03 持续复发：23:30-03:00 CST 新增 82 条同类 `reasoning_content must be passed back` / `Param Incorrect` heartbeat 失败，覆盖 11 个 job；无关联 GitHub Issue | [scheduler_heartbeat_mimo_param_incorrect_batch_failures.md](./scheduler_heartbeat_mimo_param_incorrect_batch_failures.md) |
 | Heartbeat 预览去重会把同一 job 的实质性增量误判为重复，导致真实触发被压成 noop 漏发 | P2 | New | 2026-05-13 15:04 复发：10:22 CST runtime 重启后，14:30 / 15:00 CST Cerebras IPO 定价区间上调至 `$150-$160` 的新提醒仍被 13:00 `$115-$125` 旧 preview 抑制为 `noop + skipped_noop`；无关联 GitHub Issue | [scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md](./scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md) |
 | Feishu 直聊在工具尚未跑完时提前把工具进度 / 不完整错误当成最终回复 | P2 | New | 2026-05-13 03:02 复发：23:30 CST 用户要求为当前持仓未建画像公司建档，23:34 CST assistant final 只返回 `本地命令`、`Searching the Web`、`处理中发生错误，内容可能不完整`，没有交代建档结果；无关联 GitHub Issue | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
 | Feishu 公司画像建档成功后向用户暴露本机绝对路径与内部文件落点 | P3 | New | 2026-05-13 03:02 复发：23:48 CST PDD 公司画像建档回复直接包含 `/Users/fengming2/Desktop/honeclaw/data/agent-sandboxes/.../company_profiles/pdd/profile.md` 本机路径；主功能完成但输出边界失守；无关联 GitHub Issue | [feishu_company_profile_absolute_path_leak.md](./feishu_company_profile_absolute_path_leak.md) |
 | 核心观察池简报在本地击球区配置恢复后仍把多数标的降成“待确认” | P3 | New | 2026-05-13 23:04 复发：23:00 CST `核心观察股池晚间快报` 在 10:22 runtime 重启后仍把 25 支观察池批量写成 `击球区：待确认`；不阻断投递链路；无关联 GitHub Issue | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
+| Feishu scheduler 预写的 `running/pending` started 行不会被终态覆盖，悬挂台账持续堆积 | P3 | New | 2026-05-14 03:03 复发：23:30-03:00 CST 新增 92 条 `phase=started` 残留；同窗终态已另起行为 `execution_failed/sent/noop`，说明台账仍保留悬挂运行中；无关联 GitHub Issue | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
 
 ## Later / 待复现
 
@@ -104,7 +108,6 @@
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒 | P3 | Fixed | 2026-05-08 11:06 当前 heartbeat 调度事件加载同 actor 最近送达历史，跨 job 重复由事实 token + 实体 anchor 抑制，同时保留不同实体/同 ticker 新事件通过路径。`cargo test -p hone-scheduler heartbeat_history_includes_actor_cross_job_deliveries -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-core -p hone-channels -p hone-scheduler --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Feishu 晨报在 `data_fetch` 连续失败后仍以成功态发送旧价格早报 | P3 | Fixed | 2026-05-08 非 heartbeat scheduler 成功路径新增 `stale_market_data_fallback`：关键行情 / 报价 / `data_fetch` 失败且继续复用旧价格或旧收盘口径时，回滚旧价格正文、投递失败提示并记录 `failure_kind=stale_market_data_fallback`；`cargo test -p hone-channels scheduler::tests::scheduler_detects_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [feishu_scheduler_stale_price_fallback_after_data_fetch_failure.md](./feishu_scheduler_stale_price_fallback_after_data_fetch_failure.md) |
 | Heartbeat 监控批量触发 OpenRouter `HTTP 402` 后整轮跳过并漏发告警 | P1 | Fixed | 2026-05-08 复核当前代码已将 heartbeat 专用 completion token 固定为 `4096` 并通过 `max_tokens_override` 进入 auxiliary provider；`provider_quota_exhausted` 仍显式记录。03:05 复活证据来自当前机器旧运行态 / 外部 credits，且 `can only afford 217` 低于可维护预算，不再作为当前活跃 bug；关联 Issue [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36) | [scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md](./scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md) |
-| Feishu scheduler 部分定时任务已进入执行和工具调用，但长期停在 `running/pending` 且无最终回复 | P1 | Closed | 2026-05-13 11:18 live 复核：10:22 CST Feishu scheduler 启动回收 4380 条历史 stale started row 为 `execution_failed + send_failed`，`detail.phase=recovered_stale_pending`；全库不再残留 running/pending；10:30 后新 heartbeat 正常收口；关联 Issue [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39) | [feishu_scheduler_run_stuck_without_cron_job_run.md](./feishu_scheduler_run_stuck_without_cron_job_run.md) |
 | Daily macOS build 在 `.app` 生成后 DMG bundling 失败，最终 `.dmg` 缺失 | P1 | Fixed | 2026-05-07 本机打包缓存已生成最终 `Hone Financial_0.7.0_aarch64.dmg`，`hdiutil verify` 返回 checksum valid；本轮未改代码，原阻断按当前本机验证链路关闭；无关联 GitHub Issue | [daily_macos_build_dmg_bundle_failed.md](./archive/daily_macos_build_dmg_bundle_failed.md) |
 | Feishu 直达定时任务已生成最终播报，但 event-engine / scheduler 发送阶段再次稳定返回 `open_id cross app` | P1 | Fixed | 2026-05-07 复核当前代码已覆盖 scheduler 历史 `ou_...` current-app open_id 重解析与 event-engine 单用户联系人唯一解析 fallback；不再以当前机器旧 live 日志作为活跃证据；`cargo test -p hone-feishu scheduler_resolution_target -- --nocapture` 通过；关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) | [feishu_scheduler_send_failed_http_400_after_generation.md](./archive/feishu_scheduler_send_failed_http_400_after_generation.md) |
 | SEC filing enrichment 复用全局 OpenRouter max_tokens 触发 `HTTP 402` | P2 | Fixed | 2026-05-07 SEC filing 摘要改用独立 capped OpenRouter provider，并追加 section-aware 摘抄修复 TEM 10-Q `54381 > 6713`；随后对 `5198/3956 > 3256` 增加 `10k -> 7k -> 4.5k -> 2.8k` 语义摘抄重试；定向 web-api / event-engine 测试和 `cargo check -p hone-web-api` 通过；无关联 GitHub Issue | [sec_enrichment_openrouter_max_tokens_402.md](./archive/sec_enrichment_openrouter_max_tokens_402.md) |
@@ -116,7 +119,7 @@
 | Feishu 定时任务目标解析链路再次失败，内容已生成但在 contact `batch_get_id` 阶段被拦截未送达 | P1 | Fixed | 2026-05-07 复核 2026-05-05 修复已覆盖 contact lookup 传输失败：`resolve_email` / `resolve_mobile` 的 `batch_get_id` 请求接入公共出站重试，传输错误、`429` 与 `5xx` 会短重试；本轮同步修正导航表旧 `New` 状态；关联 Issue [#32](https://github.com/B-M-Capital-Research/honeclaw/issues/32) | [feishu_scheduler_target_resolution_failed.md](./archive/feishu_scheduler_target_resolution_failed.md) |
 | Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | Fixed | 2026-05-07 复核当前 `hone-llm` 已覆盖 OpenAI-compatible / OpenRouter numeric provider error raw HTTP fallback，`numeric_provider_error_body` 回归通过；旧生产样本不再作为当前活跃判定 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./archive/scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
 | Feishu 定时任务 `schedule` / prompt 时间错配修复后，历史坏 job 仍持续 warning + skip | P2 | Fixed | 2026-05-07 复核当前 `CronJobStorage::get_due_jobs` 会修复历史 prompt/schedule 时间错配并持久化；`prompt_schedule_time_mismatch` 回归通过，旧进程日志不再维持活跃状态 | [feishu_scheduler_prompt_schedule_time_mismatch.md](./archive/feishu_scheduler_prompt_schedule_time_mismatch.md) |
-| Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | Fixed | 2026-05-07 复核当前 `record_execution_event` 会按 `delivery_key` 或最近 started row 覆盖终态；5 条 started-row 回归通过，后续若新终态仍另起行再重开 | [feishu_scheduler_running_rows_never_finalized.md](./archive/feishu_scheduler_running_rows_never_finalized.md) |
+| Feishu scheduler 部分定时任务已进入执行和工具调用，但长期停在 `running/pending` 且无最终回复 | P1 | Closed | 2026-05-13 11:18 live 复核：10:22 CST Feishu scheduler 启动回收 4380 条历史 stale started row 为 `execution_failed + send_failed`，`detail.phase=recovered_stale_pending`；全库不再残留 running/pending；10:30 后新 heartbeat 正常收口；关联 Issue [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39) | [feishu_scheduler_run_stuck_without_cron_job_run.md](./feishu_scheduler_run_stuck_without_cron_job_run.md) |
 | Feishu 直聊沿用旧证券上下文，图片问答后的追问再次被更早 `HROW` 旧话题劫持 | P3 | Fixed | 2026-05-07 multi-agent search-stage guidance 明确当前 user turn / 最近显式主题是首个工具目标真相源，行业请求先搜行业与代表公司，短承接追问优先最近主题；`search_input_guidance_allows_direct_replies_for_greetings` 回归通过 | [feishu_direct_stale_symbol_context_hijacks_new_query.md](./archive/feishu_direct_stale_symbol_context_hijacks_new_query.md) |
 | Feishu 定时任务内部失败仍会外发通用失败提示，且 direct session 不回写失败记录 | P1 | Fixed | 2026-05-07 修正 `user_visible_error_message_or_none(...)` 的判断顺序：`codex acp session/prompt idle timeout` 这类内部错误先走 `internal_error_suppressed`，不再被错误转成 `抱歉，处理超时了。请稍后再试。` 并登记为 `should_deliver=1`；`cargo test -p hone-channels user_visible_error_message_or_none --lib -- --nocapture`、`cargo test -p hone-channels suppressed_scheduler_failure_persists_single_transcript_marker --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；关联 Issue [#22](https://github.com/B-M-Capital-Research/honeclaw/issues/22) | [feishu_scheduler_codex_acp_unfinished_tool_generic_failure_unpersisted.md](./archive/feishu_scheduler_codex_acp_unfinished_tool_generic_failure_unpersisted.md) |
 | Feishu 直聊 `session/update` 会把系统提示、skill prompt、绝对路径与工具原始输出直接外发 | P1 | Fixed | 2026-05-06 07:07 Feishu live listener 不再把 ACP `StreamDelta` 草稿写入占位卡片；最终用户回复仍走 `response.content` 收口，placeholder / 工具进度缓冲不会被当作失败 partial 或成功 final 外发；`cargo test -p hone-feishu -- --nocapture`、`cargo check -p hone-feishu --tests`、`rustfmt --edition 2024 --check bins/hone-feishu/src/listener.rs bins/hone-feishu/src/handler.rs` 通过；关联 Issue [#31](https://github.com/B-M-Capital-Research/honeclaw/issues/31) | [feishu_direct_session_update_internal_prompt_and_tool_output_leak.md](./archive/feishu_direct_session_update_internal_prompt_and_tool_output_leak.md) |

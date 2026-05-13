@@ -3,12 +3,26 @@
 - **发现时间**: 2026-04-28 17:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P3
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无
 
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-14 03:03 CST` 复核，started-row finalize 缺陷在 10:22 CST runtime 重启和 11:08 CST 关闭复核后再次实时新增，状态从 `Fixed` 调回 `New`：
+    - 最近四小时窗口 `2026-05-13T23:02:00+08:00` 到 `2026-05-14T03:02:52+08:00` 内共有 `92` 条 `execution_status=running + message_send_status=pending + detail.phase=started` 残留。
+    - 其中 `88` 条为 heartbeat started 行，覆盖 `00:30`、`01:00`、`01:30`、`02:00`、`02:30`、`03:00` 等窗口；另有 `4` 条普通 scheduler started 行。
+    - 普通 scheduler 代表样本：
+      - `run_id=20028`，`科技成长股持仓买卖点日内预警`，`executed_at=2026-05-13T23:30:00.512396+08:00`，仍停在 `running + pending + phase=started`；同一 `delivery_key=j_8cffbb69:2026-05-13:23:30` 的终态 `run_id=20045` 已另起为 `completed + sent + delivered=1`。
+      - `run_id=20049`，`AAOI 每日动态监控`，`executed_at=2026-05-14T00:00:00.517367+08:00`，仍停在 `running + pending + phase=started`；同一 `delivery_key=j_101f5e64:2026-05-14:00:00` 的终态 `run_id=20071` 已另起为 `completed + sent + delivered=1`。
+      - `run_id=20055`，`TEM 每日动态监控`，`executed_at=2026-05-14T00:00:00.523077+08:00`，仍停在 `running + pending + phase=started`；同一 `delivery_key=j_379acc40:2026-05-14:00:00` 的终态 `run_id=20072` 已另起为 `completed + sent + delivered=1`。
+      - `run_id=20057`，`RKLB 每日动态监控`，`executed_at=2026-05-14T00:00:00.524667+08:00`，仍停在 `running + pending + phase=started`；同一 `delivery_key=j_5f0b686a:2026-05-14:00:00` 的终态 `run_id=20073` 已另起为 `completed + sent + delivered=1`。
+    - Heartbeat 代表样本：`run_id=20184-20194` 在 03:00 CST 先写入 11 条 started 行，随后 `run_id=20195-20205` 另起 11 条 `execution_failed + skipped_error + delivered=0` 终态；原 started 行仍全部保留 `running + pending`。
+    - 全库当前已有 `162` 条 `running + pending` 残留，最早从 `2026-05-13T21:02:00.473168+08:00` 开始重新堆积，说明 10:22 CST 启动回收虽然清掉历史脏行，但后续新执行仍会继续产生未覆盖 started 行。
+  - 结论：
+    - 这是同一根因 / 同一影响范围的复发，不新建重复文档。
+    - 这不是 P1 的“用户无最终回复”缺陷：本轮普通 scheduler 有成功送达终态，heartbeat 也有失败终态；受损点是调度台账同时保留悬挂 started 行，影响运维判断和后续 stale recovery 噪音。
+    - 仍按 `P3` 定级：它没有阻断本轮用户可见投递，也没有造成跨用户错投或数据破坏，但会持续污染 `cron_job_runs` 的运行中状态和巡检判断。
   - `2026-05-04 09:02 CST` 再次复核，started-row finalize 缺陷在最新 `08:30`、`08:45`、`09:00` 三个窗口继续实时新增：
     - `08:30` 窗口先写入 `run_id=15467-15484` 共 `18` 条 started 行，覆盖 `港股持仓与关注股早间行情研判`、`Hone_AI_Morning_Briefing`、`创新药持仓每日动态推送`、`闪迪(SNDK)每日行情与行业简报`、`每日有色化工标的新闻追踪` 等非 heartbeat 任务以及多条 heartbeat
     - 同窗终态随后另起为 `15485-15502`；其中 `15495`、`15497-15502` 已落成 `completed + sent + delivered=1`，其余多为 `noop + skipped_noop`
