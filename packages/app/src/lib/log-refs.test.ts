@@ -64,16 +64,29 @@ describe("extractLogRefs", () => {
       user_id: "ME",
       channel_scope: undefined,
     })
-    expect(refs.some((r) => r.kind === "actor")).toBe(true)
+    expect(refs).toContainEqual({
+      kind: "actor",
+      actor: { channel: "web", user_id: "ME", channel_scope: undefined },
+    })
   })
 
   it("extracts session ids from free-text message", () => {
     const refs = extractLogRefs(
       entry({ message: "failed to push notice for Actor_imessage__direct__alice" }),
     )
-    expect(refs.some((r) => r.kind === "session" && r.sessionId.includes("alice"))).toBe(
-      true,
+    const sessionRef = requireValue(
+      refs.find((r) => r.kind === "session"),
+      "session ref",
     )
+    expect(sessionRef).toEqual({
+      kind: "session",
+      sessionId: "Actor_imessage__direct__alice",
+      actor: {
+        channel: "imessage",
+        user_id: "alice",
+        channel_scope: undefined,
+      },
+    })
   })
 
   it("dedupes when extra and message reference the same session", () => {

@@ -41,7 +41,6 @@ describe("resolvePublicChatView", () => {
     expect(resolvePublicChatView("logged_out")).toBe("login");
     expect(resolvePublicChatView("logging_in")).toBe("login");
   });
-
 });
 
 describe("toPublicChatMessages", () => {
@@ -95,11 +94,38 @@ describe("toPublicChatMessages", () => {
       true,
     );
   });
+
+  it("keeps valid public attachment metadata and drops malformed rows", () => {
+    const messages = toPublicChatMessages([
+      {
+        role: "user",
+        content: "see attached",
+        attachments: [
+          { path: "/uploads/chart.png", name: "chart.png", kind: "image" },
+          { path: "/uploads/report.pdf", name: "report.pdf", kind: "pdf" },
+          { path: "/uploads/broken.bin", name: 42, kind: "file" },
+        ],
+      },
+    ] as unknown as HistoryMsg[]);
+
+    expect(messages[0]!.attachments).toEqual([
+      { path: "/uploads/chart.png", name: "chart.png", kind: "image" },
+      { path: "/uploads/report.pdf", name: "report.pdf", kind: "pdf" },
+    ]);
+  });
 });
 
 describe("stripAttachmentMarkers", () => {
   it("treats absent content as empty text", () => {
     expect(stripAttachmentMarkers(undefined)).toBe("");
+  });
+
+  it("removes server attachment marker lines without stripping inline text", () => {
+    expect(
+      stripAttachmentMarkers(
+        "问题正文\n[附件: /uploads/chart.png]\n正文里提到 [附件: label] 不应被删",
+      ),
+    ).toBe("问题正文\n正文里提到 [附件: label] 不应被删");
   });
 });
 

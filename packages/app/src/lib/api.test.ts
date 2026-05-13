@@ -7,15 +7,18 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
+function mockFetch(response: Response) {
+  globalThis.fetch = ((() => Promise.resolve(response)) as unknown) as typeof fetch;
+}
+
 describe("public API errors", () => {
   test("preserves status for auth restore decisions", async () => {
-    globalThis.fetch = ((() =>
-      Promise.resolve(
-        new Response(JSON.stringify({ error: "未登录" }), {
-          status: 401,
-          statusText: "Unauthorized",
-        }),
-      )) as unknown) as typeof fetch;
+    mockFetch(
+      new Response(JSON.stringify({ error: "未登录" }), {
+        status: 401,
+        statusText: "Unauthorized",
+      }),
+    );
 
     try {
       await getPublicAuthMe();
