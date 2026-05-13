@@ -180,7 +180,7 @@
 
 ## 关闭复核（2026-05-13）
 
-- **2026-05-13 11:18 CST 巡检结论**：本缺陷从 `Fixed` 更新为 `Closed`。最新 live 重启窗口证明 stale started row 回收逻辑已在真实 Feishu scheduler 启动路径生效。
+- **2026-05-13 11:08 CST 巡检结论**：本缺陷从 `Fixed` 更新为 `Closed`。最新 live 重启窗口证明 stale started row 回收逻辑已在真实 Feishu scheduler 启动路径生效。
 - **证据来源**：
   - `data/runtime/logs/sidecar.log`
     - `2026-05-13 10:22:39 CST` 记录 `[Feishu] 已回收上一进程遗留的 stale pending 定时任务: count=4380`。

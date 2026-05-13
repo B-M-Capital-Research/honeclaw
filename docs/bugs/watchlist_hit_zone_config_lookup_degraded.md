@@ -5,7 +5,7 @@
 - **严重等级**: P3
 - **状态**: Fixed
 - **修复结论复核**:
-  - `2026-05-13 11:18 CST` 本轮在当前机器 live 数据中继续看到一条旧运行态坏样本，但样本发生在 `2026-05-13 10:22 CST` Feishu runtime 重启前；仍不推翻仓库代码层面的 `Fixed` 结论：
+  - `2026-05-13 11:08 CST` 本轮在当前机器 live 数据中继续看到一条旧运行态坏样本，但样本发生在 `2026-05-13 10:22 CST` Feishu runtime 重启前；仍不推翻仓库代码层面的 `Fixed` 结论：
     - `data/sessions.sqlite3` -> `session_messages`
       - `session_id=Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773`
       - `ordinal=171`

@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-13 11:18 CST
+最后更新：2026-05-13 11:08 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -45,9 +45,9 @@
 - 本轮 04:36 CST 已修复 Heartbeat `mimo-v2.5-pro` thinking transcript 兼容缺陷：根因不是基础 `chat/completions` 参数无效，而是 auxiliary function-calling 第二轮未回传上一轮 assistant `reasoning_content`，被上游以 `The reasoning_content in the thinking mode must be passed back to the API` / `Param Incorrect` 拒绝；现已补 transcript 回传、OpenAI-compatible raw body 透传与 heartbeat 窄工具白名单回归。当前未重启 live 进程，先记为 `Fixed`。
 - 本轮 07:08 CST 继续观察到 Heartbeat `mimo-v2.5-pro` 旧 live 运行态失败：03:30-07:00 CST 新增 80 条 `Param Incorrect` heartbeat 失败，覆盖 11 个 job；HEAD 已是 `d3dffd6 Fix heartbeat mimo reasoning transcript replay`，本轮按“代码已修但 live 未重启 / 未部署”证据补充，不回退为活跃。
 - 本轮 07:08 CST 继续观察到原油播报旧 live 运行态坏样本：04:01 CST `Oil_Price_Monitor_Closing` 成功送达 Brent / WTI 区间、伊朗 / 霍尔木兹归因与高估值科技股压制判断，未见商品 guard 元数据；当前仓库代码已在 19:12 CST 修复 commodity guard，本轮仅补充到 fixed 文档，不回退为活跃。
-- 本轮 11:18 CST 确认 Heartbeat `mimo-v2.5-pro` 缺陷可关闭：07:30-10:00 CST 旧 live 仍新增 59 条 `Param Incorrect` 失败，但 10:22 CST Feishu runtime 重启后，10:30/11:00 CST heartbeat 已恢复为 `completed + sent` 或正常 `noop`，未再出现同类 provider 400。
-- 本轮 11:18 CST 确认 Feishu scheduler stale pending 回收修复在 live 生效：10:22 CST 启动时回收 4380 条历史 `running/pending` row 为 `execution_failed + send_failed`，全库不再残留 running/pending；10:30 后新 heartbeat 正常收口，本轮将该 P1 状态从 `Fixed` 更新为 `Closed`。
-- 本轮 11:18 CST 仅补充观察池击球区旧 live 证据：09:00 CST `核心观察池早间简报` 仍把 MSFT/NVDA/GOOGL/AAPL/AVGO/AMZN/META 等写成 `击球区：待确认`；该样本发生在 10:22 重启前，仓库代码已有恢复注入与回归，本轮不重新打开。
+- 本轮 11:08 CST 确认 Heartbeat `mimo-v2.5-pro` 缺陷可关闭：07:30-10:00 CST 旧 live 仍新增 59 条 `Param Incorrect` 失败，但 10:22 CST Feishu runtime 重启后，10:30/11:00 CST heartbeat 已恢复为 `completed + sent` 或正常 `noop`，未再出现同类 provider 400。
+- 本轮 11:08 CST 确认 Feishu scheduler stale pending 回收修复在 live 生效：10:22 CST 启动时回收 4380 条历史 `running/pending` row 为 `execution_failed + send_failed`，全库不再残留 running/pending；10:30 后新 heartbeat 正常收口，本轮将该 P1 状态从 `Fixed` 更新为 `Closed`。
+- 本轮 11:08 CST 仅补充观察池击球区旧 live 证据：09:00 CST `核心观察池早间简报` 仍把 MSFT/NVDA/GOOGL/AAPL/AVGO/AMZN/META 等写成 `击球区：待确认`；该样本发生在 10:22 重启前，仓库代码已有恢复注入与回归，本轮不重新打开。
 
 ## 代码质量巡检发现
 
