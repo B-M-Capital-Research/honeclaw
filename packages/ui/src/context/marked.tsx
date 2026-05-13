@@ -18,21 +18,29 @@ const parser = new Marked({
   gfm: true,
 }) as any
 
+// Pre-render code blocks via shiki in walkTokens (which marked awaits before
+// rendering) and stash the highlighted HTML on the token. The renderer then
+// reads it back synchronously — making the renderer itself async, as marked
+// only awaits walkTokens, will stringify the returned Promise to the literal
+// "[object Promise]" right inside the rendered HTML.
 parser.use({
-  renderer: {
-    async code(token: any) {
-      const language = token.lang?.trim() || "text"
-      const html = await codeToHtml(token.text, {
-        lang: language,
-        theme: "github-dark",
-      }).catch(async () => {
-        return codeToHtml(token.text, {
-          lang: "text",
-          theme: "github-dark",
-        })
+  async walkTokens(token: any) {
+    if (token.type !== "code") return
+    const language = token.lang?.trim() || "text"
+    const html = await codeToHtml(token.text, {
+      lang: language,
+      theme: "github-light-default",
+    }).catch(async () => {
+      return codeToHtml(token.text, {
+        lang: "text",
+        theme: "github-light-default",
       })
-
-      return `<div class="hf-markdown-code">${html}</div>`
+    })
+    token._highlightedHtml = `<div class="hf-markdown-code">${html}</div>`
+  },
+  renderer: {
+    code(token: any) {
+      return token._highlightedHtml ?? `<pre><code>${token.text}</code></pre>`
     },
   },
 })
