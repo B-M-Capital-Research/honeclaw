@@ -3,7 +3,26 @@
 - **发现时间**: 2026-04-22 07:00 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: Closed
+
+## live 关闭复核（2026-05-13 15:04 CST）
+
+- 本轮确认 `2026-05-13 10:22 CST` runtime 重启后，商品 heartbeat guard 已在 live 生效，本单从 `Fixed` 更新为 `Closed`。
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - `run_id=19814`
+  - `job_name=全天原油价格3小时播报`
+  - `executed_at=2026-05-13T12:00:38.857534+08:00`
+  - `execution_status=completed`
+  - `message_send_status=sent`
+  - `delivered=1`
+  - `detail_json.scheduler.commodity_causality_guarded=true`
+  - `raw_preview` 仍包含 WTI / Brent 价格与霍尔木兹、美伊紧张等未核验归因。
+  - `deliver_preview` / `response_preview` 已被改写为安全说明：本轮包含未完成同窗来源核验的原因归因，已移除原正文中的宏观、地缘、供需、库存等主因叙述，且未保留原正文中的价格或归因句。
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - `run_id=19875`
+  - `executed_at=2026-05-13T15:01:35.010128+08:00`
+  - 同一安全说明被 `duplicate_suppressed=true` 压成 `noop + skipped_noop`，没有新增用户可见坏播报。
+- 最近四小时同名原油 heartbeat 只有正常 `noop`、一次 guard 后安全送达和一次安全说明去重；未再看到未核验价格 / 地缘归因直接外发。因此本单关闭。后续若部署后重新出现未核验油价或地缘主因直接送达，应在本单追加复发证据并重新打开。
 
 ## 修复记录（2026-05-12 19:12 CST）
 

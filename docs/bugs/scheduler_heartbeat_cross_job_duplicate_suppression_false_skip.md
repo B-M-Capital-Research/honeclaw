@@ -3,7 +3,30 @@
 - 发现时间：2026-05-04 23:10 CST
 - Bug Type：Business Error
 - 严重等级：P2
-- 状态：Fixed
+- 状态：New
+
+## 最新进展（2026-05-13 15:04 CST）
+
+- 本轮巡检把本单从 `Fixed` 回退为 `New`。这次复发发生在 `2026-05-13 10:22 CST` Feishu runtime 重启之后，因此不再按旧运行态处理；同窗 `mimo-v2.5-pro` heartbeat 已恢复正常 `JsonNoop` / `completed + sent`，也没有继续出现 `Param Incorrect`。
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - `run_id=19860`
+  - `job_name=Cerebras IPO与业务进展心跳监控`
+  - `executed_at=2026-05-13T14:30:55.221156+08:00`
+  - `execution_status=noop`
+  - `message_send_status=skipped_noop`
+  - `detail_json.parse_kind=JsonTriggered`
+  - `detail_json.duplicate_suppressed=true`
+  - `suppressed_preview` 已生成实质性新提醒：Cerebras IPO 定价区间从 `$115-$125` 上调至 `$150-$160`，最终定价预计当晚或次日早间确定。
+  - `matched_preview` 却指向 `2026-05-13 13:00` 的旧提醒：Cerebras IPO “临门”、定价区间仍为 `$115-$125`。
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - `run_id=19870`
+  - `job_name=Cerebras IPO与业务进展心跳监控`
+  - `executed_at=2026-05-13T15:01:14.576970+08:00`
+  - 同样为 `JsonTriggered + duplicate_suppressed=true + noop + skipped_noop`
+  - `suppressed_preview` 明确写出 `定价区间上调 30%，今日定价`，并列出发行股数、募资额和估值增量；`matched_preview` 仍是 13:00 的旧 `$115-$125` preview。
+- `data/runtime/logs/sidecar.log`
+  - `2026-05-13 15:01:14 CST` 记录同一 job 先生成 `deliver_preview`，随后进入 `duplicate_suppressed`，最终 `[Feishu] 心跳任务未命中，本轮不发送`。
+- 结论：这仍属于 heartbeat preview 去重层把真实触发转成未发送的同一功能性缺陷，但复发形态从“跨 job / 跨 ticker”扩展到“同一 job 的重大事实增量”。用户会漏收本应送达的 IPO 定价区间上调提醒，因此维持 `P2`，无关联 GitHub Issue。
 
 ## 修复结论复核（2026-05-12 11:16 CST）
 
@@ -178,6 +201,7 @@
 - `2026-05-09 18:30-19:01` 最新真实窗口里，ASTS、TEM、持仓重大事件都先通过模型侧触发，日志已经记录 `parse_kind=JsonTriggered` 与可见 `deliver_preview`。
 - 但最终台账把这些任务落成 `noop + skipped_noop`，`matched_preview` 指向前一小时同 actor 的 `RKLB 单日暴涨34%`。
 - 这说明 2026-05-06 的实体 / ticker 锚点兼容检查仍存在漏网路径：不同标的的新触发仍可能被 actor 级 preview 去重误吞。
+- `2026-05-13 14:30 / 15:00` 最新复发显示，即使是同一 job / 同一实体，也会因为旧 preview 与新提醒共享足够多 IPO 语义而误抑制重大事实增量；当前去重缺少“定价区间、发行股数、募资额、估值、日期”等结构化事实变化判断。
 - `2026-05-04 23:00` 最新真实窗口里，`ORCL 大事件监控` 与 `持仓重大事件心跳检测` 都先通过模型侧触发，`detail_json.parse_kind` 明确为 `JsonTriggered`。
 - 但最终台账没有记录原始触发正文，只剩 `duplicate_suppressed=true` 和一个错误的 `matched_preview=Cerebras IPO重大进展`。
 - 这说明当前去重逻辑在 actor 级跨 job 复用时过于宽松，已经从“抑制旧事件重复提醒”退化成“误吞不同主题的新提醒”。
@@ -218,5 +242,6 @@
 ## 下一步建议
 
 - 优先复核 `heartbeat_duplicate_preview_match(...)` 在 `matched_preview=RKLB`、`suppressed_preview=ASTS/TEM/持仓ASTS` 时为什么仍返回 true，重点检查实体锚点抽取是否被通用 token、中文标题或聚合持仓文本稀释。
+- 增加同一 job 重大事实变化回归：`Cerebras IPO $115-$125 临门` 之后，`Cerebras IPO $150-$160 定价区间上调 30%` 不得被 duplicate suppression 吞掉；可优先抽取金额、百分比、发行股数、估值、日期等事实 token 做变化门槛。
 - 在回归里补入本轮 `RKLB -> ASTS`、`RKLB -> TEM`、`RKLB -> 持仓ASTS` 三类样本，并断言不同 ticker / 不同事件主题不得进入 duplicate suppression。
 - 部署后观察下一轮 heartbeat：若仍出现 `duplicate_suppressed=true` 且 `matched_preview` 与 `suppressed_preview` 属于不同 ticker / 主题，应继续扩展实体锚点或把去重键提升到更结构化的事件签名。

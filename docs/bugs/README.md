@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-13 11:08 CST
+最后更新：2026-05-13 15:04 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,9 +17,9 @@
 
 ## 当前概览
 
-- 活跃待修复：2
+- 活跃待修复：3
 - Later / 待复现：9
-- 已修复 / 已关闭：100
+- 已修复 / 已关闭：99
 - 历史分析 / 部分止血：5
 - 本轮不再保留 Web direct quota 拒绝为活跃缺陷：仓库代码已覆盖 Web actor 的 quota 拒绝 assistant transcript 与失败 `Done` 事件；当前机器 JSON 会话在 20:09 / 21:04 CST 仍新增孤立 heartbeat user turn，但按旧运行态 / 未重启进程证据处理，不重新打开。
 - 本轮复核后不再保留 `sessions.sqlite3` 会话镜像为活跃缺陷：仓库代码已覆盖 `runtime_backend=sqlite` 且 shadow 写开关为 `false` 的启动 JSON -> SQLite 回填路径；当前 `sessions/session_messages` 仍停在 2026-04-27、`cron_job_runs` 已推进到 23:01 CST，仍按当前机器旧运行态 / 未重启进程证据处理。
@@ -48,6 +48,9 @@
 - 本轮 11:08 CST 确认 Heartbeat `mimo-v2.5-pro` 缺陷可关闭：07:30-10:00 CST 旧 live 仍新增 59 条 `Param Incorrect` 失败，但 10:22 CST Feishu runtime 重启后，10:30/11:00 CST heartbeat 已恢复为 `completed + sent` 或正常 `noop`，未再出现同类 provider 400。
 - 本轮 11:08 CST 确认 Feishu scheduler stale pending 回收修复在 live 生效：10:22 CST 启动时回收 4380 条历史 `running/pending` row 为 `execution_failed + send_failed`，全库不再残留 running/pending；10:30 后新 heartbeat 正常收口，本轮将该 P1 状态从 `Fixed` 更新为 `Closed`。
 - 本轮 11:08 CST 仅补充观察池击球区旧 live 证据：09:00 CST `核心观察池早间简报` 仍把 MSFT/NVDA/GOOGL/AAPL/AVGO/AMZN/META 等写成 `击球区：待确认`；该样本发生在 10:22 重启前，仓库代码已有恢复注入与回归，本轮不重新打开。
+- 本轮 15:04 CST 重新打开 Heartbeat preview 去重缺陷：10:22 CST runtime 重启后 `mimo-v2.5-pro` 已恢复，但 14:30 / 15:00 CST `Cerebras IPO与业务进展心跳监控` 生成“定价区间从 $115-$125 上调至 $150-$160”的实质性更新后，仍被 13:00 “IPO 临门”旧 preview 压成 `noop + skipped_noop`；同根因复发，状态从 `Fixed` 调回 `New`。
+- 本轮 15:04 CST 确认原油定时播报修复在 live 生效：12:00 CST `全天原油价格3小时播报` 命中 `commodity_causality_guarded=true` 并只外发安全归因口径，15:00 CST 同安全说明被去重抑制，未再发送未核验价格 / 地缘归因；本轮将状态从 `Fixed` 更新为 `Closed`。
+- 本轮 15:04 CST 未新增 Feishu direct 输出边界复发证据：最近四小时 assistant final 未再命中 `/Users/`、`Searching the Web`、`本地命令` 或 `内容可能不完整` 等用户可见污染；两项既有活跃缺陷保持 `New`。
 
 ## 代码质量巡检发现
 
@@ -59,6 +62,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Heartbeat 预览去重会把同一 job 的实质性增量误判为重复，导致真实触发被压成 noop 漏发 | P2 | New | 2026-05-13 15:04 复发：10:22 CST runtime 重启后，14:30 / 15:00 CST Cerebras IPO 定价区间上调至 `$150-$160` 的新提醒仍被 13:00 `$115-$125` 旧 preview 抑制为 `noop + skipped_noop`；无关联 GitHub Issue | [scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md](./scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md) |
 | Feishu 直聊在工具尚未跑完时提前把工具进度 / 不完整错误当成最终回复 | P2 | New | 2026-05-13 03:02 复发：23:30 CST 用户要求为当前持仓未建画像公司建档，23:34 CST assistant final 只返回 `本地命令`、`Searching the Web`、`处理中发生错误，内容可能不完整`，没有交代建档结果；无关联 GitHub Issue | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
 | Feishu 公司画像建档成功后向用户暴露本机绝对路径与内部文件落点 | P3 | New | 2026-05-13 03:02 复发：23:48 CST PDD 公司画像建档回复直接包含 `/Users/fengming2/Desktop/honeclaw/data/agent-sandboxes/.../company_profiles/pdd/profile.md` 本机路径；主功能完成但输出边界失守；无关联 GitHub Issue | [feishu_company_profile_absolute_path_leak.md](./feishu_company_profile_absolute_path_leak.md) |
 
@@ -82,9 +86,8 @@
 | --- | --- | --- | --- | --- |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixed | 2026-05-12 19:12 malformed-triggered 恢复扩展到 JSON-ish `status` 与智能引号 `message`；新增 `heartbeat_malformed_triggered_json_recovers_unquoted_status`、`heartbeat_malformed_triggered_json_recovers_smart_quoted_message`；`rustfmt --edition 2024 --check crates/hone-channels/src/scheduler.rs`、`cargo test -p hone-channels heartbeat_malformed --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 监控使用 `mimo-v2.5-pro` 时批量命中 `Param Incorrect` 并漏发 | P2 | Closed | 2026-05-13 11:18 复核：07:30-10:00 CST 旧 live 仍新增 59 条 `Param Incorrect` 失败；10:22 CST Feishu runtime 重启后，10:30/11:00 CST heartbeat 已恢复为 `completed + sent` 或正常 `noop`，未再出现同类 provider 400；无关联 GitHub Issue | [scheduler_heartbeat_mimo_param_incorrect_batch_failures.md](./scheduler_heartbeat_mimo_param_incorrect_batch_failures.md) |
-| 原油定时播报在价格 / 日期 / 背景口径上继续输出未核验或错误事实 | P2 | Fixed | 2026-05-13 07:08 补充旧运行态证据：04:01 CST `Oil_Price_Monitor_Closing` 仍外发 Brent / WTI 区间、伊朗 / 霍尔木兹归因与科技股压制判断；当前仓库代码已在 19:12 CST 修复 commodity guard，本轮不回退为活跃。`commodity_heartbeat_guard_rewrites_unverified_price_and_war_claims` 等验证通过；无关联 GitHub Issue | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
+| 原油定时播报在价格 / 日期 / 背景口径上继续输出未核验或错误事实 | P2 | Closed | 2026-05-13 15:04 复核：12:00 CST `全天原油价格3小时播报` 已命中 `commodity_causality_guarded=true` 并仅送达安全归因口径，15:00 CST 同安全说明被去重抑制，未再外发未核验价格 / 地缘归因；无关联 GitHub Issue | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Feishu direct 命中 Codex runner usage limit 后只返回通用失败兜底 | P1 | Fixed | 2026-05-12 11:04 共享错误净化层新增 Codex / runner / ACP usage-limit 识别，统一返回“当前执行额度已用尽，暂时无法继续处理。请稍后再试。”；Feishu direct 失败回复优先展示该错误，不再被 placeholder 或 partial stream 遮蔽。`cargo test -p hone-channels user_visible_error_message --lib -- --nocapture`、`cargo test -p hone-feishu failed_reply_text_keeps_codex_usage_limit_over_partial_stream -- --nocapture`、`cargo check -p hone-channels -p hone-feishu --tests` 通过；关联 Issue [#40](https://github.com/B-M-Capital-Research/honeclaw/issues/40) | [feishu_direct_codex_usage_limit_generic_failure.md](./feishu_direct_codex_usage_limit_generic_failure.md) |
-| Heartbeat 预览去重把不同标的或同标的不同事件误判为重复，导致真实触发被压成 noop 漏发 | P2 | Fixed | 2026-05-12 19:03 补充旧运行态证据：16:00-19:00 CST ASTS Q1 财报提醒多次被 RKLB / Cerebras preview 抑制，19:00 CST `TSLA 负向触发` 被 17:00 `TSLA 正向触发` 抑制；当前仓库代码已有同 ticker / 跨实体回归覆盖，不回退为活跃；无关联 GitHub Issue | [scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md](./scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md) |
 | 单标的 heartbeat near-threshold guard 会误判触发状态并导致误发或漏发 | P2 | Fixed | 2026-05-12 11:16 复核当前仓库代码确认 `DRAM 盘中创历史新高（满足条件2）` 不会命中 near-threshold suppression；新增 `heartbeat_record_high_trigger_is_not_near_threshold_suppressed` 锁住真实创新高触发不被误抑制。当前机器旧运行态 / 未重启进程证据不再作为重新打开依据；无关联 GitHub Issue | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
 | Web direct 触发对话额度拒绝后只写入 user turn，没有可见额度回复 | P2 | Fixed | 2026-05-11 23:02 复核当前机器 20:09 / 21:04 CST 旧运行态仍有孤立 quota user turn，但当前代码已覆盖 Web actor 的 assistant quota 文案和失败 `Done`；该证据仅作为未重启 live 观察，不重新打开；无关联 GitHub Issue | [web_direct_quota_rejected_without_visible_reply.md](./web_direct_quota_rejected_without_visible_reply.md) |
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | Fixed | 2026-05-11 23:02 复核当前 sqlite 会话镜像仍停在 2026-04-27，但 `cron_job_runs` 已推进到 23:01 CST；当前代码已覆盖 `runtime_backend=sqlite + shadow_write=false` 的启动 JSON -> SQLite 回填，该证据仅作为未重启 live 观察，不重新打开；无关联 GitHub Issue | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
