@@ -1,11 +1,10 @@
 import { CONTENT } from "@/lib/public-content";
-import { useLocale } from "@/lib/i18n";
 
 export const PUBLIC_YOUTUBE_URL = "https://www.youtube.com/@巴芒投研美股频道";
 export const PUBLIC_BILIBILI_URL = "https://www.bilibili.com/video/BV1ByXNBGET5/";
 
 export function contactMenuTitle() {
-  return useLocale() === "zh" ? "联系我们" : "Contact us";
+  return CONTENT.nav.contact_title;
 }
 
 export function PublicContactCards() {
@@ -16,7 +15,7 @@ export function PublicContactCards() {
       <a class="pub-contact-card pub-contact-card--bilibili" href={PUBLIC_BILIBILI_URL} target="_blank" rel="noopener noreferrer">
         <span class="pub-contact-card-icon">B</span>
         <span>
-          <strong>B站</strong>
+          <strong>{C.bilibili_label}</strong>
           <small>Bilibili</small>
         </span>
       </a>
@@ -24,7 +23,7 @@ export function PublicContactCards() {
         <span class="pub-contact-card-icon">Y</span>
         <span>
           <strong>YouTube</strong>
-          <small>巴芒投研美股频道</small>
+          <small>{C.youtube_channel_name}</small>
         </span>
       </a>
       <a class="pub-contact-card" href={`mailto:${C.contact_email}`}>
@@ -37,8 +36,10 @@ export function PublicContactCards() {
       <div class="pub-contact-card">
         <span class="pub-contact-card-icon">微</span>
         <span>
-          <strong>{useLocale() === "zh" ? "微信社群" : "WeChat community"}</strong>
-          <small>联系 {C.contact_wechat}</small>
+          <strong>{C.contact_wechat_group}</strong>
+          <small>
+            {C.contact_wechat_hint_prefix} {C.contact_wechat}
+          </small>
         </span>
       </div>
     </div>

@@ -26,13 +26,19 @@ const CONTENT_ZH = {
     roadmap: "路线图与文档",
     me: "个人",
     chat: "对话",
+    back_home: "返回首页",
     menu_aria: "菜单",
     locale_zh: "中文",
     locale_en: "EN",
     contact_label: "联系",
+    contact_title: "联系我们",
     contact_wechat_label: "微信",
     contact_email_label: "邮箱",
     contact_wechat: "xiaobamang6677",
+    contact_wechat_group: "微信社群",
+    contact_wechat_hint_prefix: "联系",
+    bilibili_label: "B站",
+    youtube_channel_name: "巴芒投研美股频道",
     contact_email: "bm@hone-claw.com",
     github_url: "https://github.com/B-M-Capital-Research/honeclaw",
   },
@@ -49,6 +55,16 @@ const CONTENT_ZH = {
     stat_1: { value: "Rust", label: "核心引擎" },
     stat_2: { value: "7", label: "接入渠道" },
     stat_3: { value: "MIT", label: "开源协议" },
+  },
+
+  home_page: {
+    roadmap_button: "产品路线图",
+    roadmap_slide_tag: "路线图",
+    hero_slogan: "并非迎合你的聊天玩具，而是你投资纪律的无情捍卫者。",
+    start_trial: "开始试用",
+    video_demo: "视频演示",
+    view_full_roadmap: "完整路线图",
+    zoom_hint: "查看详情",
   },
 
   trust: {
@@ -792,6 +808,47 @@ const CONTENT_ZH = {
     },
   },
 
+  chat_page: {
+    prefs: {
+      aria_label: "字号与主题",
+      font_size: "字号",
+      theme: "主题",
+      theme_auto: "自动",
+      theme_light: "浅",
+      theme_dark: "深",
+    },
+    status: {
+      error: "HONE 出错了",
+      streaming: "HONE 输出中",
+      running: "HONE 执行中",
+      thinking: "HONE 思考中",
+      done: "本轮已完成",
+      fallback_error: "请求出错，请重试。",
+      stop: "停止",
+    },
+    attachments: {
+      image_title: "图片",
+      image_subtitle: "照片与截图",
+      file_title: "文件",
+      file_subtitle: "PDF · 文档 · 其他",
+    },
+    composer: {
+      quota_exhausted: "今日额度已用完",
+      placeholder: "向 Hone 提问…",
+    },
+    history: {
+      loading_older: "加载中...",
+      load_older: "上滑加载更早消息",
+    },
+    restoring: {
+      title: "正在恢复对话",
+      desc: "正在校验当前会话并恢复聊天历史",
+    },
+    actions: {
+      logout: "退出",
+    },
+  },
+
   auth: {
     login: {
       title: "登录 Hone",
@@ -1357,13 +1414,19 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     roadmap: "Roadmap & Docs",
     me: "Account",
     chat: "Chat",
+    back_home: "Home",
     menu_aria: "Menu",
     locale_zh: "中文",
     locale_en: "EN",
     contact_label: "Contact",
+    contact_title: "Contact us",
     contact_wechat_label: "WeChat",
     contact_email_label: "Email",
     contact_wechat: "xiaobamang6677",
+    contact_wechat_group: "WeChat community",
+    contact_wechat_hint_prefix: "Contact",
+    bilibili_label: "Bilibili",
+    youtube_channel_name: "B&M Capital Research",
     contact_email: "bm@hone-claw.com",
     github_url: "https://github.com/B-M-Capital-Research/honeclaw",
   },
@@ -1380,6 +1443,17 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     stat_1: { value: "Rust", label: "Core Engine" },
     stat_2: { value: "7", label: "Channels" },
     stat_3: { value: "MIT", label: "License" },
+  },
+
+  home_page: {
+    roadmap_button: "Roadmap",
+    roadmap_slide_tag: "ROADMAP",
+    hero_slogan:
+      "Not a chatbot that flatters you, but a ruthless defender of your investment discipline.",
+    start_trial: "Start Now",
+    video_demo: "VIDEO DEMO",
+    view_full_roadmap: "View Full Roadmap",
+    zoom_hint: "Zoom In",
   },
 
   trust: {
@@ -2152,6 +2226,47 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       daily_limit: "Access",
       used_today: "History",
       remaining: "Account status",
+    },
+  },
+
+  chat_page: {
+    prefs: {
+      aria_label: "Font size and theme",
+      font_size: "Size",
+      theme: "Theme",
+      theme_auto: "Auto",
+      theme_light: "Light",
+      theme_dark: "Dark",
+    },
+    status: {
+      error: "HONE hit an error",
+      streaming: "HONE is responding",
+      running: "HONE is working",
+      thinking: "HONE is thinking",
+      done: "Done",
+      fallback_error: "Request failed. Please try again.",
+      stop: "Stop",
+    },
+    attachments: {
+      image_title: "Image",
+      image_subtitle: "Photos and screenshots",
+      file_title: "File",
+      file_subtitle: "PDF · documents · other",
+    },
+    composer: {
+      quota_exhausted: "Today's quota is used up",
+      placeholder: "Ask Hone…",
+    },
+    history: {
+      loading_older: "Loading...",
+      load_older: "Swipe up for earlier messages",
+    },
+    restoring: {
+      title: "Restoring chat",
+      desc: "Checking the current session and restoring chat history",
+    },
+    actions: {
+      logout: "Log out",
     },
   },
 

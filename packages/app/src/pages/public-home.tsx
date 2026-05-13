@@ -81,7 +81,7 @@ function Header() {
 
         <div style={{ display: "flex", gap: "8px" }}>
           <button onClick={() => navigate("/roadmap")} class="btn-roadmap-nav mobile-hide">
-            {useLocale() === 'zh' ? '产品路线图' : 'Roadmap'}
+            {CONTENT.home_page.roadmap_button}
           </button>
           <button onClick={() => navigate("/chat")} class="btn-chat-nav">{C.chat}</button>
         </div>
@@ -104,7 +104,7 @@ export default function PublicHomePage() {
       link: null,
     })),
     {
-      tag: useLocale() === "zh" ? "路线图" : "ROADMAP",
+      tag: CONTENT.home_page.roadmap_slide_tag,
       title: CONTENT.roadmap.hero_title,
       body: CONTENT.roadmap.hero_sub,
       image: useLocale() === "zh" ? "/hone_solution_zh.jpg" : "/hone_solution.jpg",
@@ -150,16 +150,14 @@ export default function PublicHomePage() {
           <div class="hero-logo-tag">
             <img src="/logo.svg" class="hero-logo" />
             <h1 class="hero-tagline">
-              {useLocale() === "zh" 
-                ? "并非迎合你的聊天玩具，而是你投资纪律的无情捍卫者。" 
-                : "Not a chatbot that flatters you, but a ruthless defender of your investment discipline."}
+              {CONTENT.home_page.hero_slogan}
             </h1>
           </div>
 
           <div class="hero-btns">
             <button onClick={() => navigate("/chat")} class="btn-primary refined">
               <ICONS.Chat />
-              <span>{useLocale() === "zh" ? "开始试用" : "Start Now"}</span>
+              <span>{CONTENT.home_page.start_trial}</span>
             </button>
             <a href="https://github.com/B-M-Capital-Research/honeclaw" target="_blank" class="btn-secondary refined">
               <ICONS.Github />
@@ -176,7 +174,7 @@ export default function PublicHomePage() {
           </div>
 
           <div class="video-container">
-            <div class="video-label">{useLocale() === "zh" ? "视频演示" : "VIDEO DEMO"}</div>
+            <div class="video-label">{CONTENT.home_page.video_demo}</div>
             <div class="video-wrapper">
               <iframe src={videoUrl()} allowfullscreen />
             </div>
@@ -212,7 +210,7 @@ export default function PublicHomePage() {
                   onClick={() => navigate(current().link!)}
                   class="btn-feature-link"
                 >
-                  <span>{useLocale() === 'zh' ? '完整路线图' : 'View Full Roadmap'}</span>
+                  <span>{CONTENT.home_page.view_full_roadmap}</span>
                   <ICONS.ArrowRight />
                 </button>
               </Show>
@@ -224,7 +222,7 @@ export default function PublicHomePage() {
 
             <div class="carousel-image" onClick={() => current().image && setEnlargeImg(current().image)}>
               <img src={current().image || undefined} class="feature-img" />
-              <div class="zoom-hint">{useLocale() === 'zh' ? '查看详情' : 'Zoom In'}</div>
+              <div class="zoom-hint">{CONTENT.home_page.zoom_hint}</div>
             </div>
           </div>
         </section>

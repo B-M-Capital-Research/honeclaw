@@ -1,4 +1,4 @@
-# HoneClaw — Example cases (EN)
+# Honeclaw — Example cases (EN)
 
 Two columns: **Question** | **Hone’s answer**. The answer cells use `<pre>` so line breaks match the original text (easier to read and copy).
 

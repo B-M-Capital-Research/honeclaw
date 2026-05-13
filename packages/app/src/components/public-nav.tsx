@@ -373,7 +373,7 @@ export function PublicNav() {
             }}
           >
             <div style={{ "font-size": "12px", "font-weight": "700", color: "#64748b", "margin-bottom": "8px" }}>
-              {useLocale() === "zh" ? "联系我们" : "Contact us"}
+              {C.contact_title}
             </div>
             <PublicContactCards />
           </div>

@@ -4,7 +4,7 @@
 <p align="center">
   <strong> Hone </strong><br>
   <strong>“Not a chat toy designed to indulge you, but a ruthless defender of your investment discipline.”</strong><br>
-  <em>HoneClaw is dedicated to being a professional investment assistant that truly understands you.</em>
+  <em>Honeclaw is dedicated to being a professional investment assistant that truly understands you.</em>
 
 Why the name Hone:
 

@@ -102,11 +102,11 @@ function AnimatedBackground() {
 
 function PrefsButton() {
   const [open, setOpen] = createSignal(false);
-  const themeOptions: { value: PublicTheme; label: string }[] = [
-    { value: "auto", label: "自动" },
-    { value: "light", label: "浅" },
-    { value: "dark", label: "深" },
-  ];
+  const themeOptions = createMemo<{ value: PublicTheme; label: string }[]>(() => [
+    { value: "auto", label: CONTENT.chat_page.prefs.theme_auto },
+    { value: "light", label: CONTENT.chat_page.prefs.theme_light },
+    { value: "dark", label: CONTENT.chat_page.prefs.theme_dark },
+  ]);
   const close = () => setOpen(false);
   let rootRef: HTMLDivElement | undefined;
 
@@ -134,7 +134,7 @@ function PrefsButton() {
       <button
         type="button"
         class="hone-prefs-trigger"
-        aria-label="字号与主题"
+        aria-label={CONTENT.chat_page.prefs.aria_label}
         aria-expanded={open()}
         onClick={() => setOpen((v) => !v)}
       >
@@ -154,7 +154,9 @@ function PrefsButton() {
       <Show when={open()}>
         <div class="hone-prefs-panel" role="dialog">
           <div class="hone-prefs-row">
-            <span class="hone-prefs-label">字号</span>
+            <span class="hone-prefs-label">
+              {CONTENT.chat_page.prefs.font_size}
+            </span>
             <div class="hone-prefs-segmented">
               <For each={["s", "m", "l", "xl"] as const}>
                 {(size) => (
@@ -174,9 +176,11 @@ function PrefsButton() {
             </div>
           </div>
           <div class="hone-prefs-row">
-            <span class="hone-prefs-label">主题</span>
+            <span class="hone-prefs-label">
+              {CONTENT.chat_page.prefs.theme}
+            </span>
             <div class="hone-prefs-segmented">
-              <For each={themeOptions}>
+              <For each={themeOptions()}>
                 {(opt) => (
                   <button
                     type="button"
@@ -248,7 +252,7 @@ function Header() {
             onClick={() => navigate("/roadmap")}
             class="btn-roadmap-nav mobile-hide"
           >
-            {useLocale() === "zh" ? "产品路线图" : "Roadmap"}
+            {CONTENT.home_page.roadmap_button}
           </button>
           <button onClick={() => navigate("/chat")} class="btn-chat-nav">
             {C.chat}
@@ -345,7 +349,7 @@ function LoadingCard() {
               margin: "0 0 12px",
             }}
           >
-            正在恢复对话
+            {CONTENT.chat_page.restoring.title}
           </h1>
           <p
             style={{
@@ -355,7 +359,7 @@ function LoadingCard() {
               "line-height": "1.6",
             }}
           >
-            正在校验当前会话并恢复聊天历史
+            {CONTENT.chat_page.restoring.desc}
           </p>
         </div>
       </div>
@@ -747,13 +751,13 @@ function PendingBubble(props: {
   const labelText = () => {
     switch (props.message.phase) {
       case "error":
-        return "HONE 出错了";
+        return CONTENT.chat_page.status.error;
       case "streaming":
-        return "HONE 输出中";
+        return CONTENT.chat_page.status.streaming;
       case "running":
-        return "HONE 执行中";
+        return CONTENT.chat_page.status.running;
       default:
-        return "HONE 思考中";
+        return CONTENT.chat_page.status.thinking;
     }
   };
   return (
@@ -884,7 +888,7 @@ function PendingBubble(props: {
               "font-weight": "600",
             }}
           >
-            {props.message.statusText || "请求出错，请重试。"}
+            {props.message.statusText || CONTENT.chat_page.status.fallback_error}
           </div>
         </Show>
       </div>
@@ -1068,9 +1072,11 @@ function AttachMenu(props: {
               class="pub-attach-label-title"
               style={{ "font-size": "15px" }}
             >
-              图片
+              {CONTENT.chat_page.attachments.image_title}
             </span>
-            <span class="pub-attach-label-sub">照片与截图</span>
+            <span class="pub-attach-label-sub">
+              {CONTENT.chat_page.attachments.image_subtitle}
+            </span>
           </span>
         </button>
         <button
@@ -1102,9 +1108,11 @@ function AttachMenu(props: {
               class="pub-attach-label-title"
               style={{ "font-size": "15px" }}
             >
-              文件
+              {CONTENT.chat_page.attachments.file_title}
             </span>
-            <span class="pub-attach-label-sub">PDF · 文档 · 其他</span>
+            <span class="pub-attach-label-sub">
+              {CONTENT.chat_page.attachments.file_subtitle}
+            </span>
           </span>
         </button>
       </div>
@@ -1137,11 +1145,11 @@ function ComposerStatus(props: {
   const labelText = (m: ChatMessage) => {
     switch (m.phase) {
       case "streaming":
-        return "HONE 输出中";
+        return CONTENT.chat_page.status.streaming;
       case "running":
-        return "HONE 执行中";
+        return CONTENT.chat_page.status.running;
       default:
-        return "HONE 思考中";
+        return CONTENT.chat_page.status.thinking;
     }
   };
 
@@ -1159,7 +1167,9 @@ function ComposerStatus(props: {
           fallback={
             <>
               <span class="public-chat-composer-status-dot done" />
-              <span class="public-chat-composer-status-label">本轮已完成</span>
+              <span class="public-chat-composer-status-label">
+                {CONTENT.chat_page.status.done}
+              </span>
             </>
           }
         >
@@ -1175,7 +1185,7 @@ function ComposerStatus(props: {
                 class="public-chat-composer-status-stop"
                 onClick={props.onStop}
               >
-                停止
+                {CONTENT.chat_page.status.stop}
               </button>
             </>
           )}
@@ -1357,7 +1367,11 @@ function Composer(props: {
             ref={taRef}
             class="public-chat-composer-input"
             rows={1}
-            placeholder={quotaExhausted() ? "今日额度已用完" : "向 Hone 提问…"}
+            placeholder={
+              quotaExhausted()
+                ? CONTENT.chat_page.composer.quota_exhausted
+                : CONTENT.chat_page.composer.placeholder
+            }
             value={props.draft}
             disabled={props.isSending}
             onInput={(e) => {
@@ -1752,7 +1766,7 @@ export default function PublicChatPage() {
       role: "assistant",
       content: "",
       phase: "thinking",
-      statusText: "Hone 思考中",
+      statusText: CONTENT.chat_page.status.thinking,
       startedAt: Date.now(),
       steps: [],
     });
@@ -1887,7 +1901,7 @@ export default function PublicChatPage() {
                         color: "#ef4444",
                       }}
                     >
-                      退出
+                      {CONTENT.chat_page.actions.logout}
                     </button>
                   </div>
                 </div>
@@ -1918,8 +1932,8 @@ export default function PublicChatPage() {
                         }}
                       >
                         {loadingOlderMessages()
-                          ? "加载中..."
-                          : "上滑加载更早消息"}
+                          ? CONTENT.chat_page.history.loading_older
+                          : CONTENT.chat_page.history.load_older}
                       </div>
                     </Show>
                     <For each={visibleMessages()}>

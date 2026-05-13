@@ -45,7 +45,7 @@ function Header() {
 
         <div style={{ display: "flex", gap: "8px" }}>
           <button onClick={() => navigate("/")} class="btn-roadmap-nav mobile-hide">
-            {useLocale() === "zh" ? "返回首页" : "Home"}
+            {C.back_home}
           </button>
           <button onClick={() => navigate("/chat")} class="btn-chat-nav">{C.chat}</button>
         </div>
