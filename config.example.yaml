@@ -2,7 +2,8 @@
 #
 # Usage:
 # 1) Copy this file to config.yaml
-# 2) Fill in or adjust the values as needed; all API tokens are read from config.yaml
+# 2) Fill in or adjust the values as needed. Most provider tokens are config-owned;
+#    public SMS/Captcha and selected operational secrets use runtime env as noted below.
 
 # UI / CLI display language: zh or en
 language: zh
@@ -497,11 +498,16 @@ web:
   local_workflow_validate_code_env: "HONE_REPORT_VALIDATE_CODE"
   # Public SMS login uses Aliyun PNVS VerifyCode APIs and is configured by env:
   # - ALIBABA_CLOUD_ACCESS_KEY_ID / ALIBABA_CLOUD_ACCESS_KEY_SECRET (required)
+  #   Compat aliases: ALIYUN_ACCESS_KEY_* or HONE_ALIYUN_ACCESS_KEY_*
+  # - HONE_ALIYUN_SMS_ENDPOINT (default: dypnsapi.aliyuncs.com)
+  # - HONE_ALIYUN_SMS_COUNTRY_CODE (default: 86; backend sends local CN numbers)
   # - HONE_ALIYUN_SMS_SIGN_NAME (default: 速通互联验证码)
   # - HONE_ALIYUN_SMS_TEMPLATE_CODE (default: 100001)
   # - HONE_ALIYUN_SMS_TEMPLATE_PARAM (default: {"code":"##code##","min":"5"})
+  # - HONE_PUBLIC_SECURE_COOKIE=true/false may force the public session cookie Secure flag.
   # Existing admin-created Web invite users are treated as the public login whitelist.
   # Optional Aliyun Captcha 2.0 guard for public SMS sends is configured by env:
+  # - ALIBABA_CLOUD_ACCESS_KEY_ID / ALIBABA_CLOUD_ACCESS_KEY_SECRET (same AccessKey env as SMS)
   # - HONE_ALIYUN_CAPTCHA_PREFIX / HONE_ALIYUN_CAPTCHA_SCENE_ID (required to enable)
   # - HONE_ALIYUN_CAPTCHA_REGION (default: cn; use sgp for Singapore)
   # - HONE_ALIYUN_CAPTCHA_ENDPOINT (optional override)

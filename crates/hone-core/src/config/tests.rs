@@ -138,6 +138,40 @@ fn assert_config_example_storage_and_logging(root: &serde_yaml::Mapping) {
     assert!(yaml_has_key(logging, "udp_port"));
 }
 
+fn assert_config_example_public_auth_env_docs(example: &str) {
+    assert!(
+        !example.contains("all API tokens are read from config.yaml"),
+        "config.example.yaml should not claim every token is config-owned"
+    );
+    assert!(
+        example.contains("public SMS/Captcha"),
+        "config.example.yaml should call out public auth runtime env"
+    );
+
+    for env_name in [
+        "ALIBABA_CLOUD_ACCESS_KEY_ID",
+        "ALIBABA_CLOUD_ACCESS_KEY_SECRET",
+        "ALIYUN_ACCESS_KEY_*",
+        "HONE_ALIYUN_ACCESS_KEY_*",
+        "HONE_ALIYUN_SMS_ENDPOINT",
+        "HONE_ALIYUN_SMS_COUNTRY_CODE",
+        "HONE_ALIYUN_SMS_SIGN_NAME",
+        "HONE_ALIYUN_SMS_TEMPLATE_CODE",
+        "HONE_ALIYUN_SMS_TEMPLATE_PARAM",
+        "HONE_PUBLIC_SECURE_COOKIE",
+        "HONE_ALIYUN_CAPTCHA_PREFIX",
+        "HONE_ALIYUN_CAPTCHA_SCENE_ID",
+        "HONE_ALIYUN_CAPTCHA_REGION",
+        "HONE_ALIYUN_CAPTCHA_ENDPOINT",
+        "HONE_ALIYUN_CAPTCHA_ENABLED",
+    ] {
+        assert!(
+            example.contains(env_name),
+            "config.example.yaml should document public auth env {env_name}"
+        );
+    }
+}
+
 fn legacy_agent_migration_canonical_yaml() -> &'static str {
     r#"
 agent:
@@ -1484,4 +1518,5 @@ fn config_example_avoids_stale_config_knobs() {
     assert_config_example_event_sections(root);
     assert_config_example_agent_section(root);
     assert_config_example_storage_and_logging(root);
+    assert_config_example_public_auth_env_docs(&example);
 }

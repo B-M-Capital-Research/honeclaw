@@ -1,6 +1,6 @@
 # Runbook: Backend Deployment
 
-Last updated: 2026-04-26
+Last updated: 2026-05-13
 
 ## When to Use
 
@@ -84,6 +84,49 @@ curl -i https://origin.hone-claw.com/api/public/auth/me
 ```
 
 Expected unauthenticated result is `401` with an application JSON error. A Cloudflare error page, HTML SPA response, or connection failure means the origin path is not healthy.
+
+## Public Auth Runtime Env
+
+Public SMS login and optional captcha are runtime env configuration, not `config.yaml` fields. Keep real values in the backend host environment or supervisor, never in committed files.
+
+Required for SMS send/check:
+
+```text
+ALIBABA_CLOUD_ACCESS_KEY_ID
+ALIBABA_CLOUD_ACCESS_KEY_SECRET
+```
+
+The backend also accepts the compatibility aliases `ALIYUN_ACCESS_KEY_ID` / `ALIYUN_ACCESS_KEY_SECRET` and `HONE_ALIYUN_ACCESS_KEY_ID` / `HONE_ALIYUN_ACCESS_KEY_SECRET`. Prefer the `ALIBABA_CLOUD_*` names for new deployments.
+
+Optional SMS overrides:
+
+```text
+HONE_ALIYUN_SMS_ENDPOINT=dypnsapi.aliyuncs.com
+HONE_ALIYUN_SMS_COUNTRY_CODE=86
+HONE_ALIYUN_SMS_SIGN_NAME=速通互联验证码
+HONE_ALIYUN_SMS_TEMPLATE_CODE=100001
+HONE_ALIYUN_SMS_TEMPLATE_PARAM={"code":"##code##","min":"5"}
+```
+
+Optional Aliyun Captcha 2.0 guard for public SMS sends:
+
+```text
+HONE_ALIYUN_CAPTCHA_PREFIX=<captcha-prefix>
+HONE_ALIYUN_CAPTCHA_SCENE_ID=<scene-id>
+HONE_ALIYUN_CAPTCHA_REGION=cn
+HONE_ALIYUN_CAPTCHA_ENDPOINT=<optional-endpoint-override>
+HONE_ALIYUN_CAPTCHA_ENABLED=false
+```
+
+When `HONE_ALIYUN_CAPTCHA_PREFIX` and `HONE_ALIYUN_CAPTCHA_SCENE_ID` are both set, public SMS sends must pass server-side Aliyun captcha verification before the SMS provider is called. Captcha verification uses the same Aliyun AccessKey env variables as SMS.
+
+Optional cookie override:
+
+```text
+HONE_PUBLIC_SECURE_COOKIE=true
+```
+
+Use `HONE_PUBLIC_SECURE_COOKIE=true` when the backend origin cannot reliably infer HTTPS from proxy headers. Use `false` only for local HTTP diagnostics.
 
 ## Worker Route
 

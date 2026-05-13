@@ -3,7 +3,7 @@
 - title: Public SMS Verification Login
 - status: done
 - created_at: 2026-05-12
-- updated_at: 2026-05-12
+- updated_at: 2026-05-13
 - owner: Codex
 - related_files:
   - `crates/hone-web-api/src/aliyun_sms.rs`
@@ -40,10 +40,11 @@ Public user login now uses phone number + Aliyun SMS verification as the default
 - `bun run --cwd packages/app typecheck`
 - `bun run --cwd packages/app test:e2e -- --project=public public-sms-login.spec.ts`
 - Optional live smoke, sends a real SMS when credentials are set: `HONE_ALIYUN_SMS_LIVE_PHONE=13871396421 cargo test -p hone-web-api aliyun_sms::tests::live_send_verify_code_smoke -- --ignored --nocapture`
+- Runtime env reference: `config.example.yaml` and `docs/runbooks/backend-deployment.md`
 
 ## Risks / Follow-ups
 
-- Live SMS send/check is intentionally opt-in because it requires real Aliyun credentials and SMS spend. Production must set `ALIBABA_CLOUD_ACCESS_KEY_ID` and `ALIBABA_CLOUD_ACCESS_KEY_SECRET`; optional overrides are documented in `config.example.yaml`.
+- Live SMS send/check is intentionally opt-in because it requires real Aliyun credentials and SMS spend. Production must set `ALIBABA_CLOUD_ACCESS_KEY_ID` and `ALIBABA_CLOUD_ACCESS_KEY_SECRET` or the documented compatibility aliases; optional SMS/captcha/cookie overrides are documented in `config.example.yaml` and `docs/runbooks/backend-deployment.md`.
 - Admin APIs and type names still use `invite` internally for compatibility. A later cleanup can rename the surface more deeply once migration risk is lower.
 - The test phone `13871396421` must exist as an active web whitelist user before live SMS testing.
 
