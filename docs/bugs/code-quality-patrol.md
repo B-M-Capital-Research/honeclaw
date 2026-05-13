@@ -22,6 +22,14 @@
 
 ## 2026-05-13 - 复杂度热点
 
+### `memory/src/cron_job/storage.rs` cron job due-job selection mixes filtering and scheduling rules
+
+- status: open
+- direction: 复杂度热点
+- evidence: `cargo clippy -p hone-channels --tests -- -W clippy::cognitive_complexity -W clippy::too_many_lines` reports `CronJobStorage::get_due_jobs` at cognitive complexity `27/25` and `138/100` lines while checking `hone-memory` as a dependency.
+- risk: the function currently combines actor enumeration, per-job schedule matching, channel filtering, disabled-state filtering, and return shaping. A drive-by extraction could change scheduled delivery eligibility or make hidden cron jobs fire/skip unexpectedly.
+- suggested_fix: split the pure eligibility checks into private helpers for actor/job iteration, channel match, schedule match, and disabled-state filtering. Keep storage reads and final return order unchanged, then cover with focused tests for multi-actor jobs, channel-restricted jobs, disabled jobs, and day/hour/minute boundary matching.
+
 ### `crates/hone-channels/src/session_compactor.rs` session compaction orchestration is oversized
 
 - status: open
