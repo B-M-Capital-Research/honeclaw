@@ -117,6 +117,29 @@ fn assert_config_example_agent_section(root: &serde_yaml::Mapping) {
     assert!(yaml_has_key(agent, "multi_agent"));
 }
 
+fn assert_config_example_multi_agent_fallback_docs(example: &str) {
+    assert!(
+        example.contains("agent.multi_agent.search.api_key"),
+        "config.example.yaml should document the multi-agent search key source"
+    );
+    assert!(
+        example.contains("legacy llm.auxiliary.api_key"),
+        "config.example.yaml should document the legacy multi-agent search fallback"
+    );
+    assert!(
+        example.contains("answer.api_key"),
+        "config.example.yaml should document the multi-agent answer key override"
+    );
+    assert!(
+        example.contains("llm.providers.openrouter.api_key"),
+        "config.example.yaml should document the multi-agent answer provider-key fallback"
+    );
+    assert!(
+        example.contains("api_key/api_keys"),
+        "config.example.yaml should document that the multi-agent answer fallback accepts OpenRouter key pools"
+    );
+}
+
 fn assert_config_example_storage_and_logging(root: &serde_yaml::Mapping) {
     let storage = yaml_key(root, "storage").unwrap().as_mapping().unwrap();
     assert!(!yaml_has_key(storage, "base_path"));
@@ -1517,6 +1540,7 @@ fn config_example_avoids_stale_config_knobs() {
     assert_config_example_channel_sections(root);
     assert_config_example_event_sections(root);
     assert_config_example_agent_section(root);
+    assert_config_example_multi_agent_fallback_docs(&example);
     assert_config_example_storage_and_logging(root);
     assert_config_example_public_auth_env_docs(&example);
 }

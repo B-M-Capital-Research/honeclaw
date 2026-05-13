@@ -61,7 +61,7 @@ pub(crate) struct OnboardArgs {}
 pub(crate) enum OnboardRunnerKind {
     /// 默认推荐:托管 Hone Cloud 服务,不需要本机 CLI runner。
     HoneCloud,
-    /// 默认推荐:纯 OpenRouter 路由,不需要本机 CLI。
+    /// 进阶:HTTP search + OpenCode ACP answer 两段式。
     MultiAgent,
     CodexCli,
     CodexAcp,
@@ -82,7 +82,7 @@ impl OnboardRunnerKind {
     fn title(&self) -> &'static str {
         match self {
             Self::HoneCloud => "Hone Cloud",
-            Self::MultiAgent => "Multi-Agent (OpenRouter)",
+            Self::MultiAgent => "Multi-Agent",
             Self::CodexCli => "Codex CLI",
             Self::CodexAcp => "Codex ACP",
             Self::OpencodeAcp => "OpenCode ACP",
@@ -90,7 +90,7 @@ impl OnboardRunnerKind {
     }
 
     /// 对应 CLI 的 probe 指令（`codex --version` 等),用于在选择时判断本机是否已装。
-    /// 返回 `None` 表示该 runner 不依赖本机 binary(例如 multi-agent 纯走 HTTP)。
+    /// 返回 `None` 表示该 runner 不依赖本机 binary(例如 hone_cloud)。
     fn binary_probe(&self) -> Option<(&'static str, &'static str)> {
         match self {
             Self::HoneCloud | Self::MultiAgent => None,
@@ -259,9 +259,9 @@ fn channel_onboard_specs() -> &'static [ChannelOnboardSpec] {
 
 fn provider_onboard_specs() -> &'static [ProviderOnboardSpec] {
     &[
-        // OpenRouter 放最前。它仍是 multi-agent / nano_banana / legacy
-        // function_calling 的默认依赖；hone_cloud、codex_* 和已在 opencode
-        // 里配好 provider 的 opencode_acp 可以跳过。
+        // OpenRouter 放最前。它仍是 function_calling、multi-agent answer、
+        // nano_banana、以及 Hone-side OpenCode/OpenRouter 覆盖的默认依赖；
+        // hone_cloud、codex_* 和已在 opencode 里配好 provider 的 opencode_acp 可以跳过。
         // 早期版本的 onboard 完全没问这个 key,新用户跑完向导发消息立刻报
         // 「openrouter.api_key 为空」,体验很差。
         ProviderOnboardSpec {
@@ -616,7 +616,8 @@ pub(crate) fn prompt_onboard_runner(
             .collect::<Vec<_>>();
         print_onboard_block(selected.kind.title(), &notes);
 
-        // 不依赖 binary(如 multi-agent)直接通过。
+        // 不依赖 binary 的 runner 直接通过。multi-agent 目前也会走到这里,
+        // 但它和运行时 opencode probe 的不一致已记录到 code-quality patrol。
         let Some((binary, help_arg)) = selected.kind.binary_probe() else {
             return Ok(selected.kind);
         };
@@ -667,8 +668,8 @@ pub(crate) fn build_runner_onboard_mutations(
             }
         }
         OnboardRunnerKind::MultiAgent => {
-            // Multi-agent 不需要本机 binary,也不在这里填 OpenRouter key
-            // (留给统一的 Providers 环节处理,避免 key 散布在多个地方)。
+            // Multi-agent 的 search / answer 配置不在这里填;Providers 环节
+            // 只处理可复用的 OpenRouter answer key。
             let _ = theme;
             let _ = config;
             print_onboard_block(

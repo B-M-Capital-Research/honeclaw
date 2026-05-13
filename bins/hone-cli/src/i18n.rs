@@ -251,13 +251,13 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "runner.multi_agent.description",
-        "默认推荐：search + answer 两段式，纯 HTTP 走 OpenRouter，不需要本机 CLI。",
-        "Recommended default: two-stage search + answer over OpenRouter HTTP, no local CLI required.",
+        "进阶：HTTP search + OpenCode ACP answer 两段式。",
+        "Advanced: two-stage HTTP search + OpenCode ACP answer.",
     ),
     (
         "runner.multi_agent.note_1",
-        "前置：一把可用的 OpenRouter API key（后面 Providers 环节会让你填）。",
-        "Requires: one working OpenRouter API key (collected later in the Providers step).",
+        "前置：multi-agent search API key，以及本机可运行的 opencode；answer 可复用 OpenRouter key。",
+        "Requires: a multi-agent search API key plus local opencode; answer can reuse an OpenRouter key.",
     ),
     (
         "runner.multi_agent.note_2",
@@ -266,8 +266,8 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "runner.multi_agent.note_3",
-        "适合：只有 API key、不想装 CLI 的用户。",
-        "Best for: users who only have an API key and don't want to install a local CLI.",
+        "适合：想把证据搜索和最终回答拆成两段、并愿意维护两段配置的用户。",
+        "Best for: users who want separate evidence search and final answer stages, and can maintain both configs.",
     ),
     (
         "runner.multi_agent.note_4",
@@ -376,8 +376,8 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "runner.multi_agent.setup_note_2",
-        "实际跑起来需要一把 OpenRouter API key，Providers 环节会让你填。",
-        "It needs an OpenRouter API key to actually run — you'll fill it in during the Providers step.",
+        "实际跑起来还需要 `agent.multi_agent.search.api_key` 或 legacy `llm.auxiliary.api_key`，以及本机 opencode。",
+        "It also needs `agent.multi_agent.search.api_key` or legacy `llm.auxiliary.api_key`, plus local opencode.",
     ),
     (
         "runner.multi_agent.setup_note_3",
@@ -716,13 +716,13 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "provider.openrouter.note_1",
-        "LLM 主路由。multi-agent / codex_* / nano_banana 都默认走这里。",
-        "Primary LLM route. multi-agent / codex_* / nano_banana all default to this provider.",
+        "LLM 主路由。function_calling / multi-agent answer / nano_banana 默认走这里。",
+        "Primary LLM route. function_calling / multi-agent answer / nano_banana default to this provider.",
     ),
     (
         "provider.openrouter.note_2",
-        "如果你 runner=hone_cloud，或 runner=opencode_acp 且已在 opencode 里配好 provider，可以在下一步跳过。",
-        "If your runner is hone_cloud, or opencode_acp with the provider already configured inside opencode, you can skip this step.",
+        "如果你 runner=hone_cloud / codex_*，或 runner=opencode_acp 且已在 opencode 里配好 provider，可以在下一步跳过。",
+        "If your runner is hone_cloud / codex_*, or opencode_acp with the provider already configured inside opencode, you can skip this step.",
     ),
     (
         "provider.openrouter.note_3",

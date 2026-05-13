@@ -81,10 +81,10 @@ mod tests {
         hint_line("每个环节都可以跳过，之后再通过 `hone-cli onboard` 补配。");
 
         step_header(1, 5, "Runner");
-        subsection("Multi-Agent (OpenRouter)");
-        bullet("前置：一把可用的 OpenRouter API key。");
+        subsection("Multi-Agent");
+        bullet("前置：multi-agent search key；answer 可复用 OpenRouter key。");
         bullet("原理：第一段 search 用小模型拉证据，第二段 answer 用主模型总结。");
-        ok_line("codex 已检测到可用。");
+        ok_line("opencode 已检测到可用。");
 
         step_header(2, 5, "Channels");
         subsection("Feishu prerequisites");
@@ -97,7 +97,7 @@ mod tests {
 
         step_header(4, 5, "Providers");
         subsection("OpenRouter API keys");
-        bullet("LLM 主路由。multi-agent / codex_* / nano_banana 都默认走这里。");
+        bullet("LLM 主路由。function_calling / multi-agent answer / nano_banana 默认走这里。");
         ok_line("已保存 OpenRouter API keys。");
         fail_line("Token 必须是三段结构(长度=12)。");
 

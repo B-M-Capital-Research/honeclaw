@@ -1,5 +1,23 @@
 # Code Quality Patrol Findings
 
+## 2026-05-14 - 配置文档漂移
+
+### `hone-cli onboard` does not validate multi-agent's OpenCode answer dependency
+
+- status: open
+- direction: 配置文档漂移
+- evidence: `crates/hone-channels/src/core/bot_core.rs` builds the `multi-agent` answer stage from `agent.opencode` / `agent.multi_agent.answer.*` and runs it through `OpencodeAcpRunner`, while `crates/hone-core/src/config/agent.rs` maps `AgentRunnerKind::MultiAgent::cli_probe()` to `opencode --version`. In contrast, `bins/hone-cli/src/onboard.rs` currently returns `None` for `OnboardRunnerKind::MultiAgent::binary_probe()`, so selecting multi-agent does not check that `opencode` exists even though runtime needs it for the answer stage.
+- risk: new users can choose multi-agent, complete onboarding, and only discover the missing local `opencode` dependency at first runtime use. Changing the wizard probe directly alters onboarding behavior and should be handled with a focused CLI UX/test pass rather than a documentation-only patrol.
+- suggested_fix: align `OnboardRunnerKind::MultiAgent` with runtime runner requirements: probe `opencode --version`, show the same install/setup guidance used for OpenCode ACP, and add a CLI test that locks the multi-agent probe contract against `AgentRunnerKind::MultiAgent::cli_probe()`.
+
+### Event-engine admin writes still use config overlay files after canonical-config migration
+
+- status: open
+- direction: 配置文档漂移
+- evidence: `docs/invariants.md` says no steady-state runtime path should read or write sibling `.overrides.yaml` files anymore, and `docs/repo-map.md` says legacy `data/runtime/config_runtime.yaml` and sibling `.overrides.yaml` should not be recreated. But `crates/hone-web-api/src/routes/event_engine_admin.rs` still documents and implements PUT/POST/DELETE writes through `apply_overlay_mutations`, and its user-facing restart hint says changes were written to `config.overrides.yaml`. `crates/hone-web-api/src/routes/meta.rs` also uses `apply_overlay_mutations` for `PUT /api/meta/language`.
+- risk: operators can see two conflicting configuration contracts: most CLI/Desktop settings mutate canonical `config.yaml`, while event-engine admin changes still land in an overlay file that the long-term docs say should not exist. Moving these writes directly to canonical config could rewrite comments or change restart/apply behavior, so it needs a focused config-apply design pass.
+- suggested_fix: decide whether event-engine admin should migrate to canonical `config.yaml` mutations like other settings surfaces or whether the invariant needs an explicit, temporary exception. If migrating, update the route implementation, restart hint, config tests, and repo-map/invariants together; if retaining overlay semantics, document its bounded scope and ownership.
+
 ## 2026-05-13 - 用户文案
 
 ### Public portfolio page is not localized while the surrounding public site is bilingual

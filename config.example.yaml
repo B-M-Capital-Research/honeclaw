@@ -614,7 +614,9 @@ agent:
     model: "hone-cloud"
   multi_agent:
     # Two-stage runner: direct OpenAI-compatible search, then opencode ACP answer.
-    # The answer stage can inherit llm.providers.openrouter.api_key when api_key is empty.
+    # Search uses agent.multi_agent.search.api_key, with legacy llm.auxiliary.api_key
+    # as the only fallback when the search key is empty.
+    # The answer stage can inherit llm.providers.openrouter.api_key/api_keys when answer.api_key is empty.
     search:
       base_url: "https://api.minimaxi.com/v1"
       api_key: ""

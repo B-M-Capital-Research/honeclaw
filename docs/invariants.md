@@ -1,6 +1,6 @@
 # Invariants
 
-Last updated: 2026-05-12
+Last updated: 2026-05-14
 
 ## Source of Truth and Document Priority
 
@@ -96,6 +96,7 @@ Last updated: 2026-05-12
 - `opencode_acp` currently uses `opencode acp` over stdio / JSON-RPC; like `codex_acp`, it must seed each fresh ACP session from Hone's restored local transcript/context rather than relying on remote session replay for continuity.
 - When `agent.opencode.model` / `api_base_url` / `api_key` are empty, Hone must inherit the user's local OpenCode config instead of shadowing `~/.config/opencode/opencode.json` via a separate config home
 - If `agent.opencode.model` is non-empty, Hone must call ACP `session/set_model` before `session/prompt`; `agent.opencode.variant` should be appended to `modelId` through the same call (for example `openrouter/openai/gpt-5.4/medium`) instead of relying on temporary selection state in the local opencode UI
+- `multi-agent` has two credential paths by design: search uses `agent.multi_agent.search.api_key`, with only legacy `llm.auxiliary.api_key` as fallback; answer uses `agent.multi_agent.answer.*` and may inherit `llm.providers.openrouter.api_key/api_keys` when Hone manages that route and `answer.api_key` is empty
 - The auxiliary heartbeat / session-compression path must stay separate from the main dialogue model. Prefer `llm.auxiliary_profile` / `llm.profiles` for the default background route; direct `llm.auxiliary` remains the OpenAI-compatible fallback when no profile is configured, and `llm.openrouter.sub_model` remains only as the final legacy fallback. None of these may silently replace either the local OpenCode default model or the Hone-selected `agent.opencode.model`
 - Before Hone has its own ACP permission negotiation layer, `opencode_acp` must deny one `session/request_permission` request by default and must not silently allow file writes or terminal execution; the channel runtime may inject a minimal custom `OPENCODE_CONFIG`, but it must be a narrow permission overlay rather than a full replacement for the user's local OpenCode config
 - The system prompt must stay layered:
