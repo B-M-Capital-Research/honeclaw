@@ -1220,15 +1220,7 @@ fn conflict_reasons(left: &CompanyProfileDocument, right: &CompanyProfileDocumen
 
     let left_aliases = profile_identity_tokens(&left.metadata);
     let right_aliases = profile_identity_tokens(&right.metadata);
-    if left_aliases.intersection(&right_aliases).next().is_some()
-        && !reasons
-            .iter()
-            .any(|reason| reason == "公司名相同" || reason == "股票代码相同")
-    {
-        reasons.push("别名命中".to_string());
-    } else if left_aliases.intersection(&right_aliases).next().is_some()
-        && !reasons.iter().any(|reason| reason == "别名命中")
-    {
+    if left_aliases.intersection(&right_aliases).next().is_some() {
         reasons.push("别名命中".to_string());
     }
 

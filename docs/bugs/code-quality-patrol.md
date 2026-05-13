@@ -18,6 +18,24 @@
 - risk: operators can see two conflicting configuration contracts: most CLI/Desktop settings mutate canonical `config.yaml`, while event-engine admin changes still land in an overlay file that the long-term docs say should not exist. Moving these writes directly to canonical config could rewrite comments or change restart/apply behavior, so it needs a focused config-apply design pass.
 - suggested_fix: decide whether event-engine admin should migrate to canonical `config.yaml` mutations like other settings surfaces or whether the invariant needs an explicit, temporary exception. If migrating, update the route implementation, restart hint, config tests, and repo-map/invariants together; if retaining overlay semantics, document its bounded scope and ownership.
 
+## 2026-05-14 - 复杂度热点
+
+### Company profile import parsing and resolution orchestration are oversized
+
+- status: open
+- direction: 复杂度热点
+- evidence: `cargo clippy -p hone-memory --tests -- -W clippy::cognitive_complexity -W clippy::too_many_lines` reports `CompanyProfileStorage::apply_import_resolution` at `107/100` lines and `parse_company_profile_bundle` at `106/100` lines. The same module also had a duplicated conflict-reason branch that the 2026-05-14 patrol simplified, but the import orchestration remains broad.
+- risk: these paths own conflict preview reuse, bundle parsing, resolution strategy branching, profile writes, event import decisions, zip manifest validation, markdown parsing, and event sorting. A drive-by split could change import conflict semantics, overwrite behavior, or accepted bundle shape.
+- suggested_fix: split behavior-preserving private helpers around non-conflict resolution result construction, conflicted strategy application, manifest/profile entry validation, and parsed-event assembly. Keep the public result structs unchanged, then cover replace/merge/skip, plain markdown import, duplicate profile paths, and invalid manifest paths with the existing company profile test surface.
+
+### Cron execution history terminal-row reconciliation is oversized
+
+- status: open
+- direction: 复杂度热点
+- evidence: `cargo clippy -p hone-memory --tests -- -W clippy::cognitive_complexity -W clippy::too_many_lines` reports `CronJobStorage::record_execution_event` at `159/100` lines in `memory/src/cron_job/history.rs`.
+- risk: the function owns SQLite connection selection, preview truncation, delivery-key terminal update, recent-started fallback update, and insert fallback. A patrol-sized split could accidentally create duplicate cron run rows or fail to finalize legacy started rows.
+- suggested_fix: extract private helpers for terminal input detection, shared update parameters, delivery-key update, recent-started fallback update, and insert fallback. Preserve the current update-before-insert order, then rerun the existing heartbeat/terminal-row tests plus stale-started recovery coverage.
+
 ## 2026-05-13 - 用户文案
 
 ### Public portfolio page is not localized while the surrounding public site is bilingual
@@ -42,11 +60,12 @@
 
 ### `memory/src/cron_job/storage.rs` cron job due-job selection mixes filtering and scheduling rules
 
-- status: open
+- status: done
 - direction: 复杂度热点
 - evidence: `cargo clippy -p hone-channels --tests -- -W clippy::cognitive_complexity -W clippy::too_many_lines` reports `CronJobStorage::get_due_jobs` at cognitive complexity `27/25` and `138/100` lines while checking `hone-memory` as a dependency.
 - risk: the function currently combines actor enumeration, per-job schedule matching, channel filtering, disabled-state filtering, and return shaping. A drive-by extraction could change scheduled delivery eligibility or make hidden cron jobs fire/skip unexpectedly.
 - suggested_fix: split the pure eligibility checks into private helpers for actor/job iteration, channel match, schedule match, and disabled-state filtering. Keep storage reads and final return order unchanged, then cover with focused tests for multi-actor jobs, channel-restricted jobs, disabled jobs, and day/hour/minute boundary matching.
+- resolution: 2026-05-14 patrol extracted channel, due-window, repeat/day, already-ran, dedup-key, and actor-list helpers while preserving storage reads and return order. `cargo clippy -p hone-memory --tests -- -W clippy::cognitive_complexity -W clippy::too_many_lines` no longer reports `CronJobStorage::get_due_jobs`.
 
 ### `crates/hone-channels/src/session_compactor.rs` session compaction orchestration is oversized
 

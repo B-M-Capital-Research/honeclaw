@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use chrono::{Datelike, Timelike};
+use chrono::{Datelike, FixedOffset, NaiveDate, Timelike};
 use hone_core::ActorIdentity;
 use tracing::warn;
 use uuid::Uuid;
@@ -33,6 +33,95 @@ fn newer_optional_string(left: Option<String>, right: Option<String>) -> Option<
         (None, Some(right)) => Some(right),
         (None, None) => None,
     }
+}
+
+fn job_channel_allowed(job: &CronJob, channels: &[&str]) -> bool {
+    channels.is_empty() || channels.contains(&job.channel.as_str())
+}
+
+fn heartbeat_due_in_current_window(current_total: i32) -> bool {
+    let slot_minute = (current_total / 30) * 30;
+    slot_minute <= current_total && current_total <= slot_minute + DUE_WINDOW_MINUTES
+}
+
+fn scheduled_job_due_in_current_window(
+    job: &CronJob,
+    current_total: i32,
+    current_day: NaiveDate,
+) -> bool {
+    let job_total = (job.schedule.hour as i32) * 60 + (job.schedule.minute as i32);
+    let due_in_window =
+        current_total - DUE_WINDOW_MINUTES <= job_total && job_total <= current_total;
+    let due_by_catch_up = current_total > job_total && job_existed_before_slot(job, current_day);
+    due_in_window || due_by_catch_up
+}
+
+fn job_due_in_current_window(job: &CronJob, current_total: i32, current_day: NaiveDate) -> bool {
+    if job.is_heartbeat() {
+        heartbeat_due_in_current_window(current_total)
+    } else {
+        scheduled_job_due_in_current_window(job, current_total, current_day)
+    }
+}
+
+fn once_job_matches_current_day(job: &CronJob, current_day: NaiveDate) -> bool {
+    let Some(date) = job.schedule.date.as_deref() else {
+        return true;
+    };
+    chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d")
+        .map(|scheduled_day| scheduled_day == current_day)
+        .unwrap_or(false)
+}
+
+fn repeat_matches_current_day(
+    job: &CronJob,
+    repeat_kind: &str,
+    current_day: NaiveDate,
+    current_weekday: u32,
+) -> bool {
+    if repeat_kind == "once" && !once_job_matches_current_day(job, current_day) {
+        return false;
+    }
+
+    match repeat_kind {
+        "weekly" => job.schedule.weekday == Some(current_weekday),
+        "workday" => is_workday(current_day),
+        "trading_day" => is_trading_day(current_day),
+        "holiday" => is_holiday(current_day),
+        _ => true,
+    }
+}
+
+fn already_ran_in_current_period(
+    job: &CronJob,
+    repeat_kind: &str,
+    now: chrono::DateTime<FixedOffset>,
+    current_total: i32,
+) -> bool {
+    let Some(last_run) = job.last_run_at.as_deref() else {
+        return false;
+    };
+    let Ok(last_dt) = chrono::DateTime::parse_from_rfc3339(last_run) else {
+        return false;
+    };
+
+    match repeat_kind {
+        "heartbeat" => {
+            let current_slot_start_minute = (current_total / 30) * 30;
+            let current_slot_hour = current_slot_start_minute / 60;
+            let current_slot_minute = current_slot_start_minute % 60;
+            last_dt.date_naive() == now.date_naive()
+                && last_dt.hour() as i32 == current_slot_hour
+                && (last_dt.minute() as i32 / 30) == (current_slot_minute / 30)
+        }
+        "weekly" => last_dt.iso_week() == now.iso_week() && last_dt.year() == now.year(),
+        "once" => true,
+        _ => last_dt.date_naive() == now.date_naive(),
+    }
+}
+
+fn due_job_dedup_key(job: &CronJob) -> String {
+    format!("{}:{}:{}", job.channel, job.id, job.channel_target)
 }
 
 impl CronJobStorage {
@@ -397,15 +486,7 @@ impl CronJobStorage {
             return self.delete_job_for_actor(job_id, actor);
         }
 
-        let mut actors = self
-            .list_all_jobs()
-            .into_iter()
-            .map(|(actor, _)| actor)
-            .collect::<Vec<_>>();
-        actors.sort_by(|left, right| left.storage_key().cmp(&right.storage_key()));
-        actors.dedup_by(|left, right| left.storage_key() == right.storage_key());
-
-        for actor in actors {
+        for actor in self.list_unique_cron_actors() {
             if let Some(removed) = self.delete_job_for_actor(job_id, &actor)? {
                 return Ok(Some(removed));
             }
@@ -504,97 +585,24 @@ impl CronJobStorage {
                     continue;
                 }
 
-                // Channel 过滤：每个 scheduler 只处理属于自己渠道的任务，
-                // 避免多进程共享存储时跨渠道误标记（cross-process mark race）。
-                if !channels.is_empty() && !channels.contains(&job.channel.as_str()) {
+                if !job_channel_allowed(job, channels) {
                     continue;
                 }
 
-                let job_total = (job.schedule.hour as i32) * 60 + (job.schedule.minute as i32);
-                let is_heartbeat = job.is_heartbeat();
-                if is_heartbeat {
-                    // Heartbeat 任务按每半小时的整点槽触发；只在槽起点及其后的 DUE_WINDOW 分钟
-                    // 内视为「当前槽内」,其它时刻一律跳过。
-                    let slot_minute = (current_total / 30) * 30;
-                    if !(slot_minute <= current_total
-                        && current_total <= slot_minute + DUE_WINDOW_MINUTES)
-                    {
-                        continue;
-                    }
-                } else {
-                    // 普通任务：
-                    // - `due_in_window`: 处在计划时刻前 DUE_WINDOW 分钟到计划时刻之间
-                    // - `due_by_catch_up`: 已经过了计划时刻,但任务在当天的计划时刻之前就存在,
-                    //   说明是当天错过的那次调用,允许同日内补跑一次
-                    let due_in_window = current_total - DUE_WINDOW_MINUTES <= job_total
-                        && job_total <= current_total;
-                    let due_by_catch_up =
-                        current_total > job_total && job_existed_before_slot(job, current_day);
-                    if !(due_in_window || due_by_catch_up) {
-                        continue;
-                    }
+                if !job_due_in_current_window(job, current_total, current_day) {
+                    continue;
                 }
 
                 let repeat_kind = normalized_repeat(&job.schedule.repeat, &job.tags);
-                if repeat_kind == "once"
-                    && let Some(date) = job.schedule.date.as_deref()
-                    && chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d")
-                        .map(|scheduled_day| scheduled_day != current_day)
-                        .unwrap_or(true)
-                {
+                if !repeat_matches_current_day(job, repeat_kind, current_day, current_weekday) {
                     continue;
                 }
-                match repeat_kind {
-                    "weekly" => {
-                        if job.schedule.weekday != Some(current_weekday) {
-                            continue;
-                        }
-                    }
-                    "workday" => {
-                        if !is_workday(current_day) {
-                            continue;
-                        }
-                    }
-                    "trading_day" => {
-                        if !is_trading_day(current_day) {
-                            continue;
-                        }
-                    }
-                    "holiday" => {
-                        if !is_holiday(current_day) {
-                            continue;
-                        }
-                    }
-                    _ => {}
+
+                if already_ran_in_current_period(job, repeat_kind, now, current_total) {
+                    continue;
                 }
 
-                // 去抖：已经在当前周期内跑过一次就跳过。各 repeat 类型用不同的粒度比较：
-                // heartbeat 以「当日 + 同一 30 分钟槽」；weekly 以 ISO 周编号;
-                // once 跑完就永久视为已跑；其它(daily/workday/trading_day/holiday)以自然日。
-                if let Some(ref last_run) = job.last_run_at
-                    && let Ok(last_dt) = chrono::DateTime::parse_from_rfc3339(last_run)
-                {
-                    let already_ran = match repeat_kind {
-                        "heartbeat" => {
-                            let current_slot_start_minute = (current_total / 30) * 30;
-                            let current_slot_hour = current_slot_start_minute / 60;
-                            let current_slot_minute = current_slot_start_minute % 60;
-                            last_dt.date_naive() == now.date_naive()
-                                && last_dt.hour() as i32 == current_slot_hour
-                                && (last_dt.minute() as i32 / 30) == (current_slot_minute / 30)
-                        }
-                        "weekly" => {
-                            last_dt.iso_week() == now.iso_week() && last_dt.year() == now.year()
-                        }
-                        "once" => true,
-                        _ => last_dt.date_naive() == now.date_naive(),
-                    };
-                    if already_ran {
-                        continue;
-                    }
-                }
-
-                let dedup_key = format!("{}:{}:{}", job.channel, job.id, job.channel_target);
+                let dedup_key = due_job_dedup_key(job);
                 if !seen_due_keys.insert(dedup_key) {
                     warn!(
                         "skipping duplicate due cron job actor={} job_id={} target={}",
@@ -626,15 +634,7 @@ impl CronJobStorage {
             return self.mutate_job_for_actor(job_id, actor, bypass_limits, &mut mutator);
         }
 
-        let mut actors = self
-            .list_all_jobs()
-            .into_iter()
-            .map(|(actor, _)| actor)
-            .collect::<Vec<_>>();
-        actors.sort_by(|left, right| left.storage_key().cmp(&right.storage_key()));
-        actors.dedup_by(|left, right| left.storage_key() == right.storage_key());
-
-        for actor in actors {
+        for actor in self.list_unique_cron_actors() {
             if let Some(updated) =
                 self.mutate_job_for_actor(job_id, &actor, bypass_limits, &mut mutator)?
             {
@@ -643,6 +643,17 @@ impl CronJobStorage {
         }
 
         Ok(None)
+    }
+
+    fn list_unique_cron_actors(&self) -> Vec<ActorIdentity> {
+        let mut actors = self
+            .list_all_jobs()
+            .into_iter()
+            .map(|(actor, _)| actor)
+            .collect::<Vec<_>>();
+        actors.sort_by_key(|actor| actor.storage_key());
+        actors.dedup_by_key(|actor| actor.storage_key());
+        actors
     }
 
     fn mutate_job_for_actor<F>(

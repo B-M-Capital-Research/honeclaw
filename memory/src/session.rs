@@ -452,26 +452,26 @@ pub fn session_message_from_text(
     }
 }
 
-pub fn select_context_messages<'a>(
-    messages: &'a [SessionMessage],
+pub fn select_context_messages(
+    messages: &[SessionMessage],
     limit: Option<usize>,
-) -> Vec<&'a SessionMessage> {
+) -> Vec<&SessionMessage> {
     let mut filtered: Vec<_> = messages
         .iter()
         .filter(|message| session_message_in_context(&message.role))
         .collect();
 
-    if let Some(limit) = limit {
-        if filtered.len() > limit {
-            filtered = filtered
-                .into_iter()
-                .rev()
-                .take(limit)
-                .collect::<Vec<_>>()
-                .into_iter()
-                .rev()
-                .collect();
-        }
+    if let Some(limit) = limit
+        && filtered.len() > limit
+    {
+        filtered = filtered
+            .into_iter()
+            .rev()
+            .take(limit)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
     }
 
     filtered
@@ -638,10 +638,10 @@ pub fn find_last_compact_boundary_index(messages: &[SessionMessage]) -> Option<u
         .rposition(|message| message_is_compact_boundary(message.metadata.as_ref()))
 }
 
-pub fn select_messages_after_compact_boundary<'a>(
-    messages: &'a [SessionMessage],
+pub fn select_messages_after_compact_boundary(
+    messages: &[SessionMessage],
     limit: Option<usize>,
-) -> Vec<&'a SessionMessage> {
+) -> Vec<&SessionMessage> {
     let sliced = if let Some(index) = find_last_compact_boundary_index(messages) {
         &messages[index..]
     } else {
@@ -668,10 +668,10 @@ fn tool_result_text(part: &NormalizedConversationPart) -> String {
         Some(Value::String(text)) => text.clone(),
         Some(Value::Object(map)) => {
             for key in ["formatted_output", "aggregated_output", "stdout", "text"] {
-                if let Some(text) = map.get(key).and_then(|value| value.as_str()) {
-                    if !text.trim().is_empty() {
-                        return text.to_string();
-                    }
+                if let Some(text) = map.get(key).and_then(|value| value.as_str())
+                    && !text.trim().is_empty()
+                {
+                    return text.to_string();
                 }
             }
             serde_json::to_string(&Value::Object(map.clone()))
@@ -856,19 +856,19 @@ impl SessionStorage {
         match self.runtime_backend {
             SessionRuntimeBackend::Json => self.load_session_from_json(session_id),
             SessionRuntimeBackend::Sqlite => {
-                if let Some(storage) = &self.sqlite_storage {
-                    if let Some(session) = storage.load(session_id)? {
-                        return Ok(Some(session));
-                    }
+                if let Some(storage) = &self.sqlite_storage
+                    && let Some(session) = storage.load(session_id)?
+                {
+                    return Ok(Some(session));
                 }
 
                 // 索引未命中 → 回 JSON 找兜底；若命中就顺手回填索引。
                 // 回填失败只 warn 不抛，避免破坏主读路径。
                 let fallback = self.load_session_from_json(session_id)?;
-                if let Some(session) = &fallback {
-                    if let Ok(path) = self.session_json_path(session_id) {
-                        let _ = self.write_session_to_sqlite(&path, session);
-                    }
+                if let Some(session) = &fallback
+                    && let Ok(path) = self.session_json_path(session_id)
+                {
+                    let _ = self.write_session_to_sqlite(&path, session);
                 }
                 Ok(fallback)
             }

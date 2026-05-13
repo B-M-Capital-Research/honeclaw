@@ -224,20 +224,20 @@ impl PortfolioStorage {
             if !name.starts_with("portfolio_") {
                 continue;
             }
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                if let Ok(mut portfolio) = serde_json::from_str::<Portfolio>(&content) {
-                    // actor 字段优先使用 JSON 中的值；缺失时尝试从文件名解析
-                    // 文件名格式：portfolio_{channel}__{scope}__{user_id}.json
-                    if portfolio.actor.is_none() {
-                        let storage_key = name.trim_start_matches("portfolio_");
-                        portfolio.actor = actor_from_storage_key(storage_key);
+            if let Ok(content) = std::fs::read_to_string(&path)
+                && let Ok(mut portfolio) = serde_json::from_str::<Portfolio>(&content)
+            {
+                // actor 字段优先使用 JSON 中的值；缺失时尝试从文件名解析
+                // 文件名格式：portfolio_{channel}__{scope}__{user_id}.json
+                if portfolio.actor.is_none() {
+                    let storage_key = name.trim_start_matches("portfolio_");
+                    portfolio.actor = actor_from_storage_key(storage_key);
+                }
+                if let Some(actor) = portfolio.actor.clone() {
+                    if portfolio.user_id.is_empty() {
+                        portfolio.user_id = actor.user_id.clone();
                     }
-                    if let Some(actor) = portfolio.actor.clone() {
-                        if portfolio.user_id.is_empty() {
-                            portfolio.user_id = actor.user_id.clone();
-                        }
-                        results.push((actor, portfolio));
-                    }
+                    results.push((actor, portfolio));
                 }
             }
         }

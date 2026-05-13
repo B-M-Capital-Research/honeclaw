@@ -862,9 +862,7 @@ fn normalize_invite_code(invite_code: &str) -> String {
 fn normalize_phone_number(phone_number: &str) -> String {
     let mut normalized = String::new();
     for ch in phone_number.trim().chars() {
-        if ch.is_ascii_digit() {
-            normalized.push(ch);
-        } else if ch == '+' && normalized.is_empty() {
+        if ch.is_ascii_digit() || (ch == '+' && normalized.is_empty()) {
             normalized.push(ch);
         }
     }

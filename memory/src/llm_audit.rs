@@ -162,7 +162,7 @@ impl LlmAuditStorage {
 
     fn maybe_prune_after_write(&self) -> HoneResult<()> {
         let count = self.write_count.fetch_add(1, Ordering::Relaxed) + 1;
-        if count % 100 == 0 {
+        if count.is_multiple_of(100) {
             self.prune_expired()?;
         }
         Ok(())
@@ -242,7 +242,7 @@ impl LlmAuditStorage {
         query.push_str(" ORDER BY created_at DESC");
 
         let page = filter.page.unwrap_or(1).max(1);
-        let page_size = filter.page_size.unwrap_or(50).max(1).min(100);
+        let page_size = filter.page_size.unwrap_or(50).clamp(1, 100);
         query.push_str(&format!(
             " LIMIT {} OFFSET {}",
             page_size,
