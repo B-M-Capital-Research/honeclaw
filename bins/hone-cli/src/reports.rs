@@ -327,7 +327,8 @@ mod tests {
 }
 
 /// 根据 `agent.runner` 的配置值,查对应 CLI 二进制的 probe 指令。
-/// 本地 runner(function_calling / multi_agent) 不挂外部 CLI,返回 `None`。
+/// `function_calling` 与 `hone_cloud` 不挂本机 CLI,返回 `None`;
+/// `multi-agent` 的 answer 阶段复用 opencode ACP,因此返回 opencode 探针。
 pub(crate) fn runner_binary_name(runner: &str) -> Option<(&'static str, &'static str)> {
     hone_core::config::AgentRunnerKind::from_config_value(runner)
         .cli_probe()

@@ -248,13 +248,13 @@ export type CliCheckResult = {
   message: string;
 };
 
-/** FMP API Key 设置（保存在运行时覆盖层的 fmp.api_keys，支持多 Key fallback） */
+/** FMP API Key 设置（保存在 canonical config.yaml 的 fmp.api_keys，支持多 Key fallback） */
 export type FmpSettings = {
   /** 多 Key 列表，按顺序 fallback */
   apiKeys: string[];
 };
 
-/** Tavily API Key 设置（保存在运行时覆盖层的 search.api_keys，支持多 Key fallback） */
+/** Tavily API Key 设置（保存在 canonical config.yaml 的 search.api_keys，支持多 Key fallback） */
 export type TavilySettings = {
   /** 多 Key 列表，按顺序 fallback */
   apiKeys: string[];

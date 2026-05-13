@@ -93,15 +93,15 @@ Last updated: 2026-05-13
 - Shared ingress model: `crates/hone-channels/src/ingress.rs`
 - Shared outbound model: `crates/hone-channels/src/outbound.rs`
   - 同时也是 canonical 本地图片 marker 解析入口；Web 历史提取与外部通道图片投递都复用这里的 `file:///abs/path.png` 分段规则
-- Runtime config override source of truth: `crates/hone-core/src/config/{mod.rs,server.rs}`
+- Runtime config mutation/materialization source of truth: `crates/hone-core/src/config/{mutation.rs,materialize.rs,yaml.rs}`; `mod.rs` re-exports the public helpers
 - ACP MCP bridge: `crates/hone-channels/src/mcp_bridge.rs`
 - Actor sandbox: `crates/hone-channels/src/sandbox.rs`
 - Attachment ingest / preview helpers: `crates/hone-channels/src/attachments.rs` and `crates/hone-channels/src/attachments/{ingest,vision,vector_store}.rs`
   - Enforces shared attachment gates across channels: 5 MB for generic attachments, 3 MB for images, plus rejection of extreme aspect ratio, resolution, or pixel-count cases. Rejected attachments never enter the prompt.
 - Runner contract and ACP / Gemini execution layer: `crates/hone-channels/src/runners/`
-  - `mod.rs`: runner exports
+  - `crates/hone-channels/src/runners.rs`: runner module wiring and exports
   - `types.rs`: shared runner trait / request / event / result types
-  - `acp_common.rs`: shared helpers for ACP stdio / JSON-RPC
+  - `acp_common/`: shared helpers for ACP stdio / JSON-RPC
   - `gemini_cli.rs`, `codex_acp.rs`, `opencode_acp.rs`, `multi_agent.rs`, `hone_cloud.rs`: active runner implementations; `gemini_acp.rs` only keeps legacy argument/version test helpers and runtime creation rejects `agent.runner=gemini_acp`; `hone_cloud` calls the public user service through the OpenAI-compatible `/api/public/v1/chat/completions` shape
 - Prompt layering: `crates/hone-channels/src/prompt.rs`
   - Injects the global finance-domain constraints in one place: no stock-picking recommendations, reject non-finance questions, warn users not to blindly follow buy or sell advice, and keep greetings short

@@ -213,24 +213,24 @@ export async function testDesktopOpenAiChannel(url: string, model: string, apiKe
 
 // ── FMP API Key 设置 ────────────────────────────────────────────────────────
 
-/** 读取运行时覆盖层中的 FMP API Keys */
+/** 读取 canonical config.yaml 中的 FMP API Keys */
 export async function loadDesktopFmpSettings() {
   return invokeDesktop<FmpSettings>("get_fmp_settings")
 }
 
-/** 保存 FMP API Keys 到运行时覆盖层，内置后端模式下立即重启生效 */
+/** 保存 FMP API Keys 到 canonical config.yaml，内置后端模式下立即重启生效 */
 export async function saveDesktopFmpSettings(settings: FmpSettings) {
   return invokeDesktop<void>("set_fmp_settings", { settings })
 }
 
 // ── Tavily API Key 设置 ─────────────────────────────────────────────────────
 
-/** 读取运行时覆盖层中的 Tavily API Keys */
+/** 读取 canonical config.yaml 中的 Tavily API Keys */
 export async function loadDesktopTavilySettings() {
   return invokeDesktop<TavilySettings>("get_tavily_settings")
 }
 
-/** 保存 Tavily API Keys 到运行时覆盖层，内置后端模式下立即重启生效 */
+/** 保存 Tavily API Keys 到 canonical config.yaml，内置后端模式下立即重启生效 */
 export async function saveDesktopTavilySettings(settings: TavilySettings) {
   return invokeDesktop<void>("set_tavily_settings", { settings })
 }

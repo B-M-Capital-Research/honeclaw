@@ -2235,7 +2235,7 @@ async fn run_heartbeat_task(
         &Default::default(),
         &prompt_options,
     );
-    // 与 agent_session/core.rs::resolve_prompt_input 一致：self-managed-context runner
+    // 与 turn_builder::PromptTurnBuilder 保持一致：self-managed-context runner
     // 不需要 honeclaw 灌注 conversation_context，runner 自带 ACP session 管理。
     if core.config.agent.runner_kind().manages_own_context() {
         bundle.conversation_context = None;

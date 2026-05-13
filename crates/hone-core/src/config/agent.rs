@@ -340,7 +340,7 @@ pub enum AgentRunnerKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AgentRunnerProbe {
-    /// 本地 runner 启动前可快速探测的二进制。
+    /// 本机 CLI runner 启动前可快速探测的二进制。
     pub binary: &'static str,
     /// 用于轻量确认二进制存在且能运行的参数。
     pub arg: &'static str,
@@ -379,10 +379,11 @@ impl AgentRunnerKind {
         matches!(self, Self::CodexAcp | Self::OpencodeAcp)
     }
 
-    /// 返回本地 CLI runner 的快速探针。
+    /// 返回 runner 需要的本机 CLI 快速探针。
     ///
     /// `multi-agent` 的 answer 阶段由 opencode ACP 驱动，因此复用 opencode
-    /// 探针；`hone_cloud` 与 `function_calling` 不依赖本地 CLI，返回 `None`。
+    /// 探针；`hone_cloud` 与 `function_calling` 不依赖本机 CLI，返回 `None`。
+    /// `gemini_acp` 运行时已禁用，但旧配置检查仍复用 gemini 探针。
     pub fn cli_probe(self) -> Option<AgentRunnerProbe> {
         match self {
             Self::GeminiCli | Self::GeminiAcp => Some(AgentRunnerProbe {

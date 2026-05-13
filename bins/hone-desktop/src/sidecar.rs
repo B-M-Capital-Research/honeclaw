@@ -158,7 +158,7 @@ pub(crate) struct ChannelProcessCleanupResult {
     message: String,
 }
 
-/// Agent 设置 payload；保存时写入 canonical config.yaml 并重新生成 effective config。
+/// Multi-agent search-stage settings saved under `agent.multi_agent.search`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct MultiAgentSearchSettings {
@@ -172,6 +172,7 @@ pub(crate) struct MultiAgentSearchSettings {
     max_iterations: u32,
 }
 
+/// Multi-agent answer-stage settings saved under `agent.multi_agent.answer`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct MultiAgentAnswerSettings {
@@ -276,6 +277,7 @@ pub(crate) struct LlmProfileSettings {
     profiles: Vec<LlmProfileEntrySettings>,
 }
 
+/// Desktop Agent settings payload; saving writes canonical config.yaml and regenerates effective config.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AgentSettings {
@@ -319,7 +321,7 @@ pub(crate) struct OpenRouterSettings {
     api_keys: Vec<String>,
 }
 
-/// FMP API Key 设置（写入运行时覆盖层的 fmp.api_keys）
+/// FMP API Key 设置（写入 canonical config.yaml 的 fmp.api_keys）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct FmpSettings {
@@ -327,7 +329,7 @@ pub(crate) struct FmpSettings {
     api_keys: Vec<String>,
 }
 
-/// Tavily API Key 设置（写入运行时覆盖层的 search.api_keys）
+/// Tavily API Key 设置（写入 canonical config.yaml 的 search.api_keys）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct TavilySettings {
@@ -2060,8 +2062,8 @@ fmp:
     }
 }
 
-/// 检测本地 runner 依赖的 CLI 二进制是否可用。
-/// 仅运行 `AgentRunnerKind::cli_probe()` 提供的轻量参数，不发送真实请求。
+/// 检测 runner 对应的本机 CLI 二进制是否可用。
+/// 仅运行 `AgentRunnerKind::cli_probe()` 提供的轻量参数；不发送真实请求，也不启动 runner。
 pub(crate) async fn check_agent_cli_impl(runner: String) -> Result<CliCheckResult, String> {
     let probe = hone_core::config::AgentRunnerKind::from_config_value(&runner)
         .cli_probe()
@@ -2173,7 +2175,7 @@ pub(crate) async fn set_openrouter_settings_impl(
     Ok(())
 }
 
-/// 读取运行时覆盖层中的 FMP API Key 设置（多 Key）
+/// 读取 canonical config.yaml 中的 FMP API Key 设置（多 Key）
 pub(crate) fn get_fmp_settings_impl(app: AppHandle) -> Result<FmpSettings, String> {
     let runtime = ensure_runtime_paths(&app)?;
     let config = HoneConfig::from_file(&runtime.config_path).map_err(|e| e.to_string())?;
@@ -2183,7 +2185,7 @@ pub(crate) fn get_fmp_settings_impl(app: AppHandle) -> Result<FmpSettings, Strin
     })
 }
 
-/// 保存 FMP API Keys 到运行时覆盖层，并重启内置后端立即生效
+/// 保存 FMP API Keys 到 canonical config.yaml，并重启内置后端立即生效
 pub(crate) async fn set_fmp_settings_impl(
     app: AppHandle,
     state: State<'_, DesktopState>,
@@ -2235,7 +2237,7 @@ pub(crate) async fn set_fmp_settings_impl(
     Ok(())
 }
 
-/// 读取运行时覆盖层中的 Tavily API Key 设置（多 Key）
+/// 读取 canonical config.yaml 中的 Tavily API Key 设置（多 Key）
 pub(crate) fn get_tavily_settings_impl(app: AppHandle) -> Result<TavilySettings, String> {
     let runtime = ensure_runtime_paths(&app)?;
     let config = HoneConfig::from_file(&runtime.config_path).map_err(|e| e.to_string())?;
@@ -2251,7 +2253,7 @@ pub(crate) fn get_tavily_settings_impl(app: AppHandle) -> Result<TavilySettings,
     })
 }
 
-/// 保存 Tavily API Keys 到运行时覆盖层，并重启内置后端立即生效
+/// 保存 Tavily API Keys 到 canonical config.yaml，并重启内置后端立即生效
 pub(crate) async fn set_tavily_settings_impl(
     app: AppHandle,
     state: State<'_, DesktopState>,

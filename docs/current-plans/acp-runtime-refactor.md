@@ -3,17 +3,17 @@
 - title: ACP 对齐的 Agent Runtime 全栈重构
 - status: in_progress
 - created_at: 2026-03-17
-- updated_at: 2026-04-24
+- updated_at: 2026-05-13
 - owner: shared
 - related_files:
   - `docs/current-plan.md`
-  - `crates/hone-channels/src/runners/acp_common.rs`
-  - `crates/hone-channels/src/core.rs`
+  - `crates/hone-channels/src/runners/acp_common/`
+  - `crates/hone-channels/src/core/`
   - `crates/hone-channels/src/runners/codex_acp.rs`
   - `crates/hone-channels/src/runtime.rs`
   - `crates/hone-channels/src/scheduler.rs`
-  - `crates/hone-channels/src/agent_session.rs`
-  - `crates/hone-core/src/storage.rs`
+  - `crates/hone-channels/src/agent_session/`
+  - `memory/src/session.rs`
   - `crates/hone-channels/src/runners/gemini_acp.rs`
   - `crates/hone-channels/src/runners/opencode_acp.rs`
   - `crates/hone-core/src/config/agent.rs`
