@@ -25,6 +25,52 @@ export type ChatShareCardProps = {
 // or forward inside IM).
 const CARD_WIDTH = 420;
 
+// Inline SVG version of /logo.svg — html2canvas can't reliably rasterize
+// external SVG <img src="…"> sources (CORS / referrer / async-load races
+// all bite), so the brand mark has to live in the DOM as real SVG nodes.
+function HoneLogo(props: { size: number }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 500 450"
+      width={props.size}
+      height={props.size}
+      aria-hidden="true"
+    >
+      <defs>
+        <linearGradient id="hone-share-stone-top" x1="0%" y1="100%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="#ffaf45" />
+          <stop offset="100%" stop-color="#ff6b00" />
+        </linearGradient>
+        <linearGradient id="hone-share-stone-left" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#e85d04" />
+          <stop offset="100%" stop-color="#9d3c00" />
+        </linearGradient>
+        <linearGradient id="hone-share-stone-right" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#3a4047" />
+          <stop offset="100%" stop-color="#1d2024" />
+        </linearGradient>
+        <linearGradient id="hone-share-knife-top" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#ffb703" />
+          <stop offset="100%" stop-color="#f46000" />
+        </linearGradient>
+        <linearGradient id="hone-share-knife-blade" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#5a636e" />
+          <stop offset="50%" stop-color="#2c3136" />
+          <stop offset="100%" stop-color="#16191d" />
+        </linearGradient>
+      </defs>
+      <g>
+        <path d="M 175 220 L 265 110 L 325 140 L 235 250 Z" fill="url(#hone-share-stone-top)" />
+        <path d="M 175 220 L 175 250 L 235 280 L 235 250 Z" fill="url(#hone-share-stone-left)" />
+        <path d="M 235 250 L 235 280 L 325 170 L 325 140 Z" fill="url(#hone-share-stone-right)" />
+        <path d="M 175 140 L 335 210 L 325 220 L 165 150 Z" fill="url(#hone-share-knife-top)" />
+        <path d="M 165 150 L 325 220 L 325 245 L 165 190 Z" fill="url(#hone-share-knife-blade)" />
+      </g>
+    </svg>
+  );
+}
+
 // Scoped markdown styling so the screenshot looks identical regardless of
 // viewport / chat-page CSS — only rules under .hf-share-card-md apply here.
 const SHARE_CARD_CSS = `
@@ -160,12 +206,7 @@ export function ChatShareCard(props: ChatShareCardProps) {
             "border-bottom": "1px solid #f1f5f9",
           }}
         >
-          <img
-            src="/logo.svg"
-            alt=""
-            crossorigin="anonymous"
-            style={{ width: "30px", height: "30px" }}
-          />
+          <HoneLogo size={30} />
           <div style={{ display: "flex", "flex-direction": "column" }}>
             <span
               style={{
@@ -215,12 +256,7 @@ export function ChatShareCard(props: ChatShareCardProps) {
         >
           <div style={{ display: "flex", "flex-direction": "column", gap: "6px", "min-width": "0", flex: "1" }}>
             <div style={{ display: "flex", "align-items": "center", gap: "8px" }}>
-              <img
-                src="/logo.svg"
-                alt=""
-                crossorigin="anonymous"
-                style={{ width: "24px", height: "24px" }}
-              />
+              <HoneLogo size={24} />
               <span
                 style={{
                   "font-size": "14.5px",
