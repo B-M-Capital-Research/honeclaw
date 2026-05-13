@@ -3,12 +3,15 @@
 - **发现时间**: 2026-05-12 23:03 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: Closed
 - **GitHub Issue**: 无
 
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-13 11:18 CST` 复核：该缺陷从 `Fixed` 更新为 `Closed`。本轮 07:30-10:00 CST 旧 live 运行态仍新增 `59` 条同类 heartbeat 失败，覆盖 `10` 个 job；错误均为 `LLM 错误: upstream HTTP 400: Param Incorrect (code: 400)`，终态仍为 `execution_failed + skipped_error + delivered=0`。
+  - `2026-05-13 10:22 CST` Feishu runtime 重启后未再看到 `mimo-v2.5-pro` provider 400；10:30 CST heartbeat 窗口已有 `DRAM 心跳监控`、`持仓重大事件心跳检测`、`Cerebras IPO与业务进展心跳监控` 成功 `completed + sent + delivered=1`，其余同窗为正常 `noop + skipped_noop`；11:00 CST 窗口全部为正常 `noop + skipped_noop`。
+  - `data/runtime/logs/sidecar.log` 在 10:22 CST 记录 Feishu scheduler 启动并连接，此后同窗仅看到 web_search key quota warning 与正常 heartbeat 收口，未再出现 `[HeartbeatDiag] runner_error ... model=mimo-v2.5-pro ... Param Incorrect`。
   - `2026-05-13 07:08 CST` 复核：当前 HEAD 已是 `d3dffd6 Fix heartbeat mimo reasoning transcript replay`，但 live channel/backend 仍未确认重启到修复代码；本轮按旧运行态 / 未部署证据补充，不把状态从 `Fixed` 回退为 `New`。
   - 从 `2026-05-13T03:30:09+08:00` 到 `2026-05-13T07:00:18+08:00`，继续新增 `80` 条同类 heartbeat 失败，覆盖 `11` 个 job；终态均为 `execution_failed + skipped_error + delivered=0`，错误均为 `LLM 错误: upstream HTTP 400: Param Incorrect (code: 400)`。
   - 失败覆盖 `DRAM 心跳监控`、`TEM破位预警`、`Cerebras IPO与业务进展心跳监控`、`持仓重大事件心跳检测`、`TEM大事件心跳监控`、`Monitor_Watchlist_11`、`TSLA 正负触发条件心跳监控`、`伦敦金跌破4500提醒`、`小米30港元破位预警`、`RKLB异动监控` 与 `全天原油价格3小时播报`。
@@ -71,5 +74,5 @@
 
 ## 未验证项 / 后续建议
 
-- 本轮没有重启现有 live channel/backend 进程；03:30-07:00 CST 仍继续出现旧运行态 `Param Incorrect`，因此当前文档状态保持 `Fixed` 而非 `Closed`。
-- 下一轮允许观察运行态时，优先检查 `cron_job_runs` 与 `data/runtime/logs/web.log*` 中 heartbeat 窗口是否不再出现 `The reasoning_content in the thinking mode must be passed back to the API` / `Param Incorrect`。
+- 2026-05-13 11:18 CST 已观察到 live 重启后的 10:30 / 11:00 heartbeat 窗口恢复，因此本单关闭。
+- 后续若部署后再次出现同一 `mimo-v2.5-pro` reasoning transcript / `Param Incorrect` 失败，应优先在本单追加复发证据，而不是新建重复文档。

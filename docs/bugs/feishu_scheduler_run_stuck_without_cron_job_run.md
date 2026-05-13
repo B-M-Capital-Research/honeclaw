@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-24 09:03 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixed
+- **状态**: Closed
 
 ## 观测落地（2026-04-24）
 
@@ -177,3 +177,19 @@
 
 - 本轮没有重启 live Feishu runtime，也没有做人肉补跑；因此“真实 20:30 长任务在下一次窗口是否按 timeout/启动恢复闭环”仍需后续巡检确认。
 - 当前修复优先保证“started row 必有终态、direct session 至少有失败痕迹”；如果后续发现 timeout 取消后仍残留底层 runner 子进程或重复副作用，应另立缺陷继续收口。
+
+## 关闭复核（2026-05-13）
+
+- **2026-05-13 11:18 CST 巡检结论**：本缺陷从 `Fixed` 更新为 `Closed`。最新 live 重启窗口证明 stale started row 回收逻辑已在真实 Feishu scheduler 启动路径生效。
+- **证据来源**：
+  - `data/runtime/logs/sidecar.log`
+    - `2026-05-13 10:22:39 CST` 记录 `[Feishu] 已回收上一进程遗留的 stale pending 定时任务: count=4380`。
+    - 同一时间 Feishu runtime 重新注册 `im.message.receive_v1` handler 并随后连接飞书长连接。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 全库不再残留 `execution_status=running` 或 `message_send_status=pending` 的 row。
+    - 共 `4380` 条历史 started row 被统一改为 `execution_failed + send_failed`，`detail_json.phase=recovered_stale_pending`，`detail_json.recovered_by=feishu_scheduler_startup`，`recovered_at=2026-05-13T10:22:39.530610+08:00`。
+    - 样本包括 `run_id=16416/16418/16421/16423/16424` 这些 2026-05-07 20:30 CST 的复发证据行，均已补终态。
+    - 10:30 CST 后新 heartbeat 窗口已正常收口：`DRAM 心跳监控`、`持仓重大事件心跳检测`、`Cerebras IPO与业务进展心跳监控` 为 `completed + sent + delivered=1`，其余同窗为正常 `noop + skipped_noop`；11:00 CST 窗口也均正常收口。
+- **结论**：
+  - 本轮 10:22 CST 的 4380 条 `execution_failed + send_failed` 不是新的用户可见批量故障，而是既有修复对历史 `running/pending` 脏行的启动回收结果。
+  - 原 P1 关注点是“进入执行后长期无终态、台账停在 running/pending 或缺账”；当前 live 已证明启动恢复能补终态，且新窗口没有继续产生 pending 残留，因此关闭。
