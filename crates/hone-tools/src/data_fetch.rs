@@ -275,24 +275,40 @@ fn sanitize_fmp_error_detail(text: &str) -> String {
 fn redact_fmp_query_secrets(text: &str) -> String {
     let mut output = text.to_string();
     for key in ["apikey", "api_key", "apiKey"] {
-        output = redact_query_value(&output, key);
+        output = redact_delimited_fmp_secret_value(&output, &format!("{key}="));
+        output = redact_delimited_fmp_secret_value(&output, &format!("{key}:"));
     }
     output
 }
 
-fn redact_query_value(text: &str, key: &str) -> String {
-    let needle = format!("{key}=");
+fn redact_delimited_fmp_secret_value(text: &str, needle: &str) -> String {
     let mut remaining = text;
     let mut output = String::with_capacity(text.len());
-    while let Some(index) = remaining.find(&needle) {
+    while let Some(index) = remaining.find(needle) {
         let value_start = index + needle.len();
         output.push_str(&remaining[..value_start]);
+        let leading_whitespace = remaining[value_start..]
+            .chars()
+            .take_while(|ch| ch.is_whitespace())
+            .map(char::len_utf8)
+            .sum::<usize>();
+        output.push_str(&remaining[value_start..value_start + leading_whitespace]);
         output.push_str("<redacted>");
-        let value_tail = remaining[value_start..]
+        let value_tail = remaining[value_start + leading_whitespace..]
             .char_indices()
-            .find_map(|(idx, ch)| (ch == '&' || ch == ')' || ch == ' ').then_some(idx))
-            .unwrap_or(remaining[value_start..].len());
-        remaining = &remaining[value_start + value_tail..];
+            .find_map(|(idx, ch)| {
+                (ch == '&'
+                    || ch == ')'
+                    || ch == ','
+                    || ch == '"'
+                    || ch == '\''
+                    || ch == '}'
+                    || ch == ']'
+                    || ch.is_whitespace())
+                .then_some(idx)
+            })
+            .unwrap_or(remaining[value_start + leading_whitespace..].len());
+        remaining = &remaining[value_start + leading_whitespace + value_tail..];
     }
     output.push_str(remaining);
     output
@@ -475,11 +491,11 @@ mod tests {
     #[test]
     fn fmp_error_detail_redacts_api_key_aliases() {
         let detail = sanitize_fmp_error_detail(
-            "https://example.com/api/v3/quote/AAPL?api_key=one&apiKey=two&apikey=three",
+            "https://example.com/api/v3/quote/AAPL?api_key=one&apiKey=two&apikey=three apiKey: header-four",
         );
         assert_eq!(
             detail,
-            "https://example.com/api/v3/quote/AAPL?api_key=<redacted>&apiKey=<redacted>&apikey=<redacted>"
+            "https://example.com/api/v3/quote/AAPL?api_key=<redacted>&apiKey=<redacted>&apikey=<redacted> apiKey: <redacted>"
         );
     }
 

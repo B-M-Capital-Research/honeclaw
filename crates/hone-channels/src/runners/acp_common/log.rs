@@ -177,7 +177,7 @@ pub(crate) async fn log_acp_prompt_stop_diagnostics(
     let stderr_tail = if stderr_captured.trim().is_empty() {
         "<empty>".to_string()
     } else {
-        tail_for_log(&stderr_captured, ACP_STDERR_DETAIL_CHARS)
+        stderr_tail_for_log(&stderr_captured)
     };
     tracing::warn!(
         "[AgentRunner/{runner_label}] session={} stop_reason={} reply_chars={} prompt_result={} finished_tools={} pending_tools={} stderr_tail={}",
@@ -235,6 +235,8 @@ fn redact_common_stderr_secrets(text: &str) -> String {
         "password",
     ] {
         output = redact_key_value(&output, key);
+        output = redact_marker_value(&output, &format!("{key}:"));
+        output = redact_json_string_field(&output, key);
     }
     output
 }
@@ -253,13 +255,67 @@ fn redact_marker_value(text: &str, marker: &str) -> String {
     while let Some(index) = remaining.find(marker) {
         let value_start = index + marker.len();
         output.push_str(&remaining[..value_start]);
+        let leading_whitespace = remaining[value_start..]
+            .chars()
+            .take_while(|ch| ch.is_whitespace())
+            .map(char::len_utf8)
+            .sum::<usize>();
+        output.push_str(&remaining[value_start..value_start + leading_whitespace]);
+        output.push_str("<redacted>");
+        let value_tail = remaining[value_start + leading_whitespace..]
+            .char_indices()
+            .find_map(|(idx, ch)| {
+                (ch == '&'
+                    || ch == ')'
+                    || ch == ','
+                    || ch == '"'
+                    || ch == '\''
+                    || ch == '}'
+                    || ch == ']'
+                    || ch.is_whitespace())
+                .then_some(idx)
+            })
+            .unwrap_or(remaining[value_start + leading_whitespace..].len());
+        remaining = &remaining[value_start + leading_whitespace + value_tail..];
+    }
+    output.push_str(remaining);
+    output
+}
+
+fn redact_json_string_field(text: &str, key: &str) -> String {
+    let key_marker = format!("\"{key}\"");
+    let mut remaining = text;
+    let mut output = String::with_capacity(text.len());
+    while let Some(index) = remaining.find(&key_marker) {
+        let after_key = index + key_marker.len();
+        let tail = &remaining[after_key..];
+        let Some((colon_offset, _)) = tail.char_indices().find(|(_, ch)| !ch.is_whitespace())
+        else {
+            break;
+        };
+        if !tail[colon_offset..].starts_with(':') {
+            output.push_str(&remaining[..after_key]);
+            remaining = &remaining[after_key..];
+            continue;
+        }
+        let after_colon = &tail[colon_offset + 1..];
+        let Some((quote_offset, _)) = after_colon
+            .char_indices()
+            .find(|(_, ch)| !ch.is_whitespace())
+        else {
+            break;
+        };
+        if !after_colon[quote_offset..].starts_with('"') {
+            output.push_str(&remaining[..after_key]);
+            remaining = &remaining[after_key..];
+            continue;
+        }
+        let value_start = after_key + colon_offset + 1 + quote_offset + 1;
+        output.push_str(&remaining[..value_start]);
         output.push_str("<redacted>");
         let value_tail = remaining[value_start..]
             .char_indices()
-            .find_map(|(idx, ch)| {
-                (ch == '&' || ch == ')' || ch == ',' || ch == '"' || ch.is_whitespace())
-                    .then_some(idx)
-            })
+            .find_map(|(idx, ch)| (ch == '"').then_some(idx))
             .unwrap_or(remaining[value_start..].len());
         remaining = &remaining[value_start + value_tail..];
     }
@@ -293,6 +349,13 @@ fn tail_for_log(text: &str, max_chars: usize) -> String {
     }
     let tail = chars[chars.len() - max_chars..].iter().collect::<String>();
     format!("…{tail}")
+}
+
+fn stderr_tail_for_log(stderr: &str) -> String {
+    tail_for_log(
+        &redact_common_stderr_secrets(stderr.trim()),
+        ACP_STDERR_DETAIL_CHARS,
+    )
 }
 
 fn value_excerpt_for_log(value: &Value, max_chars: usize) -> String {
@@ -366,13 +429,27 @@ mod tests {
     #[tokio::test]
     async fn timeout_message_redacts_common_stderr_secrets() {
         let stderr = std::sync::Arc::new(tokio::sync::Mutex::new(
-            "request failed https://api.test/path?api_key=abc&token=def auth=Bearer bearer-secret"
+            r#"request failed https://api.test/path?api_key=abc&token=def auth=Bearer bearer-secret apiKey: header-secret {"secret":"json-secret"}"#
                 .to_string(),
         ));
         let message = timeout_message_with_stderr("codex acp request timed out", &stderr).await;
         assert_eq!(
             message,
-            "codex acp request timed out stderr=request failed https://api.test/path?api_key=<redacted>&token=<redacted> auth=Bearer <redacted>"
+            r#"codex acp request timed out stderr=request failed https://api.test/path?api_key=<redacted>&token=<redacted> auth=Bearer <redacted> apiKey: <redacted> {"secret":"<redacted>"}"#
         );
+    }
+
+    #[test]
+    fn stop_diagnostics_stderr_tail_redacts_common_secrets() {
+        let tail = stderr_tail_for_log(
+            r#"request failed token: header-secret auth=Bearer bearer-secret {"api_key":"json-secret"}"#,
+        );
+
+        assert!(tail.contains("token: <redacted>"));
+        assert!(tail.contains("Bearer <redacted>"));
+        assert!(tail.contains("\"api_key\":\"<redacted>\""));
+        assert!(!tail.contains("header-secret"));
+        assert!(!tail.contains("bearer-secret"));
+        assert!(!tail.contains("json-secret"));
     }
 }

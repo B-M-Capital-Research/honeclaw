@@ -397,6 +397,7 @@ fn redact_text_for_log(text: &str) -> String {
         "password",
     ] {
         output = redact_marker_value(&output, &format!("{key}="));
+        output = redact_marker_value(&output, &format!("{key}:"));
     }
     output
 }
@@ -407,15 +408,28 @@ fn redact_marker_value(text: &str, marker: &str) -> String {
     while let Some(index) = remaining.find(marker) {
         let value_start = index + marker.len();
         output.push_str(&remaining[..value_start]);
+        let leading_whitespace = remaining[value_start..]
+            .chars()
+            .take_while(|ch| ch.is_whitespace())
+            .map(char::len_utf8)
+            .sum::<usize>();
+        output.push_str(&remaining[value_start..value_start + leading_whitespace]);
         output.push_str("<redacted>");
-        let value_tail = remaining[value_start..]
+        let value_tail = remaining[value_start + leading_whitespace..]
             .char_indices()
             .find_map(|(idx, ch)| {
-                (ch == '&' || ch == ')' || ch == ',' || ch == '"' || ch.is_whitespace())
-                    .then_some(idx)
+                (ch == '&'
+                    || ch == ')'
+                    || ch == ','
+                    || ch == '"'
+                    || ch == '\''
+                    || ch == '}'
+                    || ch == ']'
+                    || ch.is_whitespace())
+                .then_some(idx)
             })
-            .unwrap_or(remaining[value_start..].len());
-        remaining = &remaining[value_start + value_tail..];
+            .unwrap_or(remaining[value_start + leading_whitespace..].len());
+        remaining = &remaining[value_start + leading_whitespace + value_tail..];
     }
     output.push_str(remaining);
     output
@@ -784,12 +798,12 @@ mod tests {
     #[test]
     fn text_excerpt_for_log_redacts_common_secrets() {
         let excerpt = text_excerpt_for_log(
-            "request failed https://api.test/path?api_key=abc&token=def auth=Bearer bearer-secret",
+            "request failed https://api.test/path?api_key=abc&token=def auth=Bearer bearer-secret apiKey: header-secret",
             320,
         );
         assert_eq!(
             excerpt,
-            "request failed https://api.test/path?api_key=<redacted>&token=<redacted> auth=Bearer <redacted>"
+            "request failed https://api.test/path?api_key=<redacted>&token=<redacted> auth=Bearer <redacted> apiKey: <redacted>"
         );
     }
 

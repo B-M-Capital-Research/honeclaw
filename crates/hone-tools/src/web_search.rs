@@ -70,6 +70,7 @@ impl WebSearchTool {
         ["detail", "error", "message"]
             .iter()
             .find_map(|key| data.get(*key).and_then(Self::extract_error_text))
+            .map(|message| sanitize_tavily_error_detail(&message))
     }
 
     fn interpret_response(status: reqwest::StatusCode, data: Value) -> Result<Value, String> {
@@ -170,6 +171,57 @@ impl WebSearchTool {
             )
         }
     }
+}
+
+fn sanitize_tavily_error_detail(text: &str) -> String {
+    let mut output = redact_tavily_marker_value(text, "Bearer ");
+    for key in [
+        "access_token",
+        "accessToken",
+        "api_key",
+        "apiKey",
+        "apikey",
+        "token",
+        "secret",
+        "password",
+    ] {
+        output = redact_tavily_marker_value(&output, &format!("{key}="));
+        output = redact_tavily_marker_value(&output, &format!("{key}:"));
+    }
+    output
+}
+
+fn redact_tavily_marker_value(text: &str, marker: &str) -> String {
+    let mut remaining = text;
+    let mut output = String::with_capacity(text.len());
+    while let Some(index) = remaining.find(marker) {
+        let value_start = index + marker.len();
+        output.push_str(&remaining[..value_start]);
+        let leading_whitespace = remaining[value_start..]
+            .chars()
+            .take_while(|ch| ch.is_whitespace())
+            .map(char::len_utf8)
+            .sum::<usize>();
+        output.push_str(&remaining[value_start..value_start + leading_whitespace]);
+        output.push_str("<redacted>");
+        let value_tail = remaining[value_start + leading_whitespace..]
+            .char_indices()
+            .find_map(|(idx, ch)| {
+                (ch == '&'
+                    || ch == ')'
+                    || ch == ','
+                    || ch == '"'
+                    || ch == '\''
+                    || ch == '}'
+                    || ch == ']'
+                    || ch.is_whitespace())
+                .then_some(idx)
+            })
+            .unwrap_or(remaining[value_start + leading_whitespace..].len());
+        remaining = &remaining[value_start + leading_whitespace + value_tail..];
+    }
+    output.push_str(remaining);
+    output
 }
 
 #[async_trait]
@@ -302,13 +354,13 @@ mod tests {
     fn response_error_message_reads_nested_detail_error() {
         let payload = serde_json::json!({
             "detail": {
-                "error": "This request exceeds your plan's set usage limit. Please upgrade your plan or contact support@tavily.com"
+                "error": "This request exceeds your plan's set usage limit. Please upgrade your plan or contact support@tavily.com apiKey: leaked-key"
             }
         });
         assert_eq!(
             WebSearchTool::response_error_message(&payload).as_deref(),
             Some(
-                "This request exceeds your plan's set usage limit. Please upgrade your plan or contact support@tavily.com"
+                "This request exceeds your plan's set usage limit. Please upgrade your plan or contact support@tavily.com apiKey: <redacted>"
             )
         );
     }

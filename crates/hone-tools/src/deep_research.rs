@@ -277,24 +277,40 @@ fn redact_query_secrets(text: &str) -> String {
         "secret",
         "password",
     ] {
-        output = redact_query_value(&output, key);
+        output = redact_delimited_secret_value(&output, &format!("{key}="));
+        output = redact_delimited_secret_value(&output, &format!("{key}:"));
     }
     output
 }
 
-fn redact_query_value(text: &str, key: &str) -> String {
-    let needle = format!("{key}=");
+fn redact_delimited_secret_value(text: &str, needle: &str) -> String {
     let mut remaining = text;
     let mut output = String::with_capacity(text.len());
-    while let Some(index) = remaining.find(&needle) {
+    while let Some(index) = remaining.find(needle) {
         let value_start = index + needle.len();
         output.push_str(&remaining[..value_start]);
+        let leading_whitespace = remaining[value_start..]
+            .chars()
+            .take_while(|ch| ch.is_whitespace())
+            .map(char::len_utf8)
+            .sum::<usize>();
+        output.push_str(&remaining[value_start..value_start + leading_whitespace]);
         output.push_str("<redacted>");
-        let value_tail = remaining[value_start..]
+        let value_tail = remaining[value_start + leading_whitespace..]
             .char_indices()
-            .find_map(|(idx, ch)| (ch == '&' || ch == ')' || ch == ' ').then_some(idx))
-            .unwrap_or(remaining[value_start..].len());
-        remaining = &remaining[value_start + value_tail..];
+            .find_map(|(idx, ch)| {
+                (ch == '&'
+                    || ch == ')'
+                    || ch == ','
+                    || ch == '"'
+                    || ch == '\''
+                    || ch == '}'
+                    || ch == ']'
+                    || ch.is_whitespace())
+                .then_some(idx)
+            })
+            .unwrap_or(remaining[value_start + leading_whitespace..].len());
+        remaining = &remaining[value_start + leading_whitespace + value_tail..];
     }
     output.push_str(remaining);
     output
@@ -375,6 +391,18 @@ mod tests {
             detail,
             "request failed with Authorization: Bearer <redacted>"
         );
+    }
+
+    #[test]
+    fn deep_research_error_detail_redacts_colon_credentials() {
+        let detail = sanitize_deep_research_error_detail(
+            "backend rejected request with apiKey: header-secret and token=token-secret",
+        );
+
+        assert!(detail.contains("apiKey: <redacted>"));
+        assert!(detail.contains("token=<redacted>"));
+        assert!(!detail.contains("header-secret"));
+        assert!(!detail.contains("token-secret"));
     }
 
     #[test]

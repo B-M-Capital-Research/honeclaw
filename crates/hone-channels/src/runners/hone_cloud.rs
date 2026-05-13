@@ -216,6 +216,7 @@ fn redact_common_hone_cloud_secrets(text: &str) -> String {
         "password",
     ] {
         output = redact_marker_value(&output, &format!("{key}="));
+        output = redact_marker_value(&output, &format!("{key}:"));
         output = redact_json_string_field(&output, key);
     }
     output
@@ -227,15 +228,28 @@ fn redact_marker_value(text: &str, marker: &str) -> String {
     while let Some(index) = remaining.find(marker) {
         let value_start = index + marker.len();
         output.push_str(&remaining[..value_start]);
+        let leading_whitespace = remaining[value_start..]
+            .chars()
+            .take_while(|ch| ch.is_whitespace())
+            .map(char::len_utf8)
+            .sum::<usize>();
+        output.push_str(&remaining[value_start..value_start + leading_whitespace]);
         output.push_str("<redacted>");
-        let value_tail = remaining[value_start..]
+        let value_tail = remaining[value_start + leading_whitespace..]
             .char_indices()
             .find_map(|(idx, ch)| {
-                (ch == '&' || ch == ')' || ch == ',' || ch == '"' || ch.is_whitespace())
-                    .then_some(idx)
+                (ch == '&'
+                    || ch == ')'
+                    || ch == ','
+                    || ch == '"'
+                    || ch == '\''
+                    || ch == '}'
+                    || ch == ']'
+                    || ch.is_whitespace())
+                .then_some(idx)
             })
-            .unwrap_or(remaining[value_start..].len());
-        remaining = &remaining[value_start + value_tail..];
+            .unwrap_or(remaining[value_start + leading_whitespace..].len());
+        remaining = &remaining[value_start + leading_whitespace + value_tail..];
     }
     output.push_str(remaining);
     output
@@ -305,15 +319,17 @@ mod tests {
     #[test]
     fn hone_cloud_error_detail_redacts_common_credentials() {
         let detail = sanitize_hone_cloud_error_detail(
-            r#"request failed for https://example.test/chat?api_key=abc&ok=1 Authorization: Bearer xyz {"token": "tok","safe":"kept"}"#,
+            r#"request failed for https://example.test/chat?api_key=abc&ok=1 Authorization: Bearer xyz apiKey: header-secret {"token": "tok","safe":"kept"}"#,
         );
 
         assert!(detail.contains("api_key=<redacted>"));
         assert!(detail.contains("Bearer <redacted>"));
+        assert!(detail.contains("apiKey: <redacted>"));
         assert!(detail.contains("\"token\": \"<redacted>\""));
         assert!(detail.contains("\"safe\":\"kept\""));
         assert!(!detail.contains("abc"));
         assert!(!detail.contains("xyz"));
+        assert!(!detail.contains("header-secret"));
         assert!(!detail.contains(":\"tok\""));
     }
 }
