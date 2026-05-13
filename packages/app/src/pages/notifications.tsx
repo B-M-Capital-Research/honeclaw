@@ -25,6 +25,7 @@ import {
   eventKindLabel,
   execLabel,
   execStatusOptions,
+  notificationBucketSegments,
   notificationPeakBucket,
   recordSourceLabel,
   sendBadgeClass,
@@ -209,10 +210,7 @@ export default function NotificationsPage() {
             <For each={histogram()}>
               {(bucket) => {
                 const peak = peakBucket()
-                const heightPct = peak > 0 ? (bucket.total / peak) * 100 : 0
-                const sentPct = bucket.total > 0 ? (bucket.sent / bucket.total) * 100 : 0
-                const failedPct =
-                  bucket.total > 0 ? (bucket.failed / bucket.total) * 100 : 0
+                const segments = notificationBucketSegments(bucket, peak)
                 return (
                   <div
                     class="group relative flex flex-1 flex-col justify-end"
@@ -226,15 +224,18 @@ export default function NotificationsPage() {
                   >
                     <div
                       class="flex w-full flex-col-reverse overflow-hidden rounded-sm bg-white/[0.04]"
-                      style={{ height: `${heightPct}%`, "min-height": bucket.total > 0 ? "2px" : "0" }}
+                      style={{
+                        height: `${segments.heightPct}%`,
+                        "min-height": segments.minHeight,
+                      }}
                     >
                       <div
                         class="bg-emerald-500/70"
-                        style={{ height: `${sentPct}%` }}
+                        style={{ height: `${segments.sentPct}%` }}
                       />
                       <div
                         class="bg-rose-500/70"
-                        style={{ height: `${failedPct}%` }}
+                        style={{ height: `${segments.failedPct}%` }}
                       />
                       <div class="flex-1 bg-[color:var(--text-muted)]/30" />
                     </div>

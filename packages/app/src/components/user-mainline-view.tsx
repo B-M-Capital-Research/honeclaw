@@ -19,7 +19,7 @@ import {
 import type { ActorRef } from "@/lib/actors"
 import { USERS } from "@/lib/admin-content/users"
 import { tpl, useLocale } from "@/lib/i18n"
-import { profileTickerSet } from "@/lib/mainline-context-model"
+import { firstProfileTicker, profileTickerSet } from "@/lib/mainline-context-model"
 
 function formatTimestamp(iso: string | null): string {
   if (!iso) return USERS.mainline.not_distilled
@@ -322,30 +322,35 @@ export function UserMainlineView(props: { actor: ActorRef }) {
             >
               <div class="space-y-2">
                 <For each={context().profile_list}>
-                  {(profile) => (
-                    <div class="flex items-center justify-between gap-3 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] p-3">
-                      <div class="flex-1 min-w-0">
-                        <div class="text-sm font-medium">
-                          {profile.title || profile.dir}
-                          <span class="ml-2 font-mono text-xs text-[color:var(--text-muted)]">
-                            {profile.tickers.join(" / ")}
-                          </span>
+                  {(profile) => {
+                    const viewTicker = () => firstProfileTicker(profile)
+                    return (
+                      <div class="flex items-center justify-between gap-3 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] p-3">
+                        <div class="flex-1 min-w-0">
+                          <div class="text-sm font-medium">
+                            {profile.title || profile.dir}
+                            <span class="ml-2 font-mono text-xs text-[color:var(--text-muted)]">
+                              {profile.tickers.join(" / ")}
+                            </span>
+                          </div>
+                          <div class="mt-0.5 text-[11px] text-[color:var(--text-muted)]">
+                            {(profile.bytes / 1024).toFixed(1)} KB · {profile.dir}
+                          </div>
                         </div>
-                        <div class="mt-0.5 text-[11px] text-[color:var(--text-muted)]">
-                          {(profile.bytes / 1024).toFixed(1)} KB · {profile.dir}
-                        </div>
+                        <Show when={viewTicker()}>
+                          {(ticker) => (
+                            <button
+                              type="button"
+                              class="rounded border border-[color:var(--border)] px-2 py-1 text-[11px]"
+                              onClick={() => openProfile(ticker())}
+                            >
+                              {USERS.mainline.view}
+                            </button>
+                          )}
+                        </Show>
                       </div>
-                      <Show when={profile.tickers.length > 0}>
-                        <button
-                          type="button"
-                          class="rounded border border-[color:var(--border)] px-2 py-1 text-[11px]"
-                          onClick={() => openProfile(profile.tickers[0])}
-                        >
-                          {USERS.mainline.view}
-                        </button>
-                      </Show>
-                    </div>
-                  )}
+                    )
+                  }}
                 </For>
               </div>
             </Show>
@@ -354,7 +359,10 @@ export function UserMainlineView(props: { actor: ActorRef }) {
               open={modalOpen()}
               actor={props.actor}
               ticker={modalTicker()}
-              onClose={() => setModalOpen(false)}
+              onClose={() => {
+                setModalOpen(false)
+                setModalTicker(null)
+              }}
             />
           </>
         )}

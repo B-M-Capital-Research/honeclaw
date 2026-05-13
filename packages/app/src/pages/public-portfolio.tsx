@@ -1,7 +1,7 @@
 // public-portfolio.tsx — 用户的"投资上下文"页:展示系统蒸馏的投资主线、整体投资风格、
 // sandbox 里的公司画像列表(read-only)。编辑画像走 /chat 与 agent 对话(company_portrait skill)。
 
-import { createSignal, For, onMount, Show } from "solid-js"
+import { createEffect, createSignal, For, onMount, Show } from "solid-js"
 import { useNavigate } from "@solidjs/router"
 import { marked } from "marked"
 import DOMPurify from "dompurify"
@@ -14,22 +14,13 @@ import {
   getPublicAuthMe,
   type DigestContext,
 } from "@/lib/api"
-import { profileTickerSet } from "@/lib/mainline-context-model"
+import { firstProfileTicker, profileTickerSet } from "@/lib/mainline-context-model"
+import {
+  canRefreshPublicMainline,
+  formatPublicMainlineTimestamp,
+  publicRefreshMessage,
+} from "./public-portfolio-model"
 import "./public-site.css"
-
-function formatTimestamp(iso: string | null): string {
-  if (!iso) return "从未"
-  try {
-    const dt = new Date(iso)
-    const days = Math.floor((Date.now() - dt.getTime()) / (24 * 3600 * 1000))
-    if (days === 0) return `今天 ${dt.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}`
-    if (days === 1) return "1 天前"
-    if (days < 7) return `${days} 天前`
-    return dt.toLocaleDateString("zh-CN", { year: "numeric", month: "short", day: "numeric" })
-  } catch {
-    return iso
-  }
-}
 
 function MainlineCard(props: {
   ticker: string
@@ -120,7 +111,6 @@ function ProfileModal(props: { open: boolean; ticker: string | null; onClose: ()
   const [loading, setLoading] = createSignal(false)
   const [error, setError] = createSignal<string | null>(null)
 
-  // 当 ticker 改变时拉数据
   const fetchProfile = async (ticker: string) => {
     setLoading(true)
     setError(null)
@@ -135,20 +125,18 @@ function ProfileModal(props: { open: boolean; ticker: string | null; onClose: ()
     }
   }
 
-  // 监听 ticker 变化(使用 createEffect 风格)
   let lastTicker = ""
-  const maybeFetch = () => {
+  createEffect(() => {
     const selectedTicker = props.ticker
-    if (props.open && selectedTicker && selectedTicker !== lastTicker) {
-      lastTicker = selectedTicker
-      fetchProfile(selectedTicker)
-    }
     if (!props.open) {
       lastTicker = ""
+      return
     }
-  }
-  // SolidJS reactivity:每次 render 都会调用,且 props 是 reactive
-  maybeFetch()
+    if (selectedTicker && selectedTicker !== lastTicker) {
+      lastTicker = selectedTicker
+      void fetchProfile(selectedTicker)
+    }
+  })
 
   const renderedHtml = () => {
     const md = markdown()
@@ -277,9 +265,7 @@ function PortfolioContextView() {
     setRefreshMsg(null)
     try {
       const refreshResult = await refreshDigestContext()
-      setRefreshMsg(
-        `更新完成：${refreshResult.mainline_count} 条投资主线，跳过 ${refreshResult.skipped_tickers.length} 只`,
-      )
+      setRefreshMsg(publicRefreshMessage(refreshResult))
       await load()
     } catch (e) {
       setRefreshMsg(`更新失败：${e instanceof Error ? e.message : String(e)}`)
@@ -351,7 +337,7 @@ function PortfolioContextView() {
                 }}
               >
                 <div style={{ "font-size": "13px", color: "#64748b" }}>
-                  上次更新：<strong style={{ color: "#0f172a" }}>{formatTimestamp(context().last_mainline_distilled_at)}</strong>
+                  上次更新：<strong style={{ color: "#0f172a" }}>{formatPublicMainlineTimestamp(context().last_mainline_distilled_at)}</strong>
                   <Show when={context().mainline_distill_skipped.length > 0}>
                     <span style={{ "margin-left": "16px" }}>
                       跳过 {context().mainline_distill_skipped.length} 只：
@@ -364,18 +350,18 @@ function PortfolioContextView() {
                 <button
                   type="button"
                   onClick={handleRefresh}
-                  disabled={refreshing() || context().profile_list.length === 0}
+                  disabled={refreshing() || !canRefreshPublicMainline(context().profile_list.length)}
                   style={{
                     padding: "8px 16px",
                     "border-radius": "8px",
                     border: "1px solid #f59e0b",
                     background:
-                      refreshing() || context().profile_list.length === 0
+                      refreshing() || !canRefreshPublicMainline(context().profile_list.length)
                         ? "rgba(245,158,11,0.4)"
                         : "#f59e0b",
                     color: "#fff",
                     cursor:
-                      refreshing() || context().profile_list.length === 0
+                      refreshing() || !canRefreshPublicMainline(context().profile_list.length)
                         ? "not-allowed"
                         : "pointer",
                     "font-family": "inherit",
@@ -383,7 +369,7 @@ function PortfolioContextView() {
                     "font-weight": "600",
                   }}
                   title={
-                    context().profile_list.length === 0
+                    !canRefreshPublicMainline(context().profile_list.length)
                       ? "先建立至少 1 个公司画像才能更新"
                       : ""
                   }
@@ -565,63 +551,68 @@ function PortfolioContextView() {
               >
                 <div style={{ display: "flex", "flex-direction": "column", gap: "10px" }}>
                   <For each={context().profile_list}>
-                    {(profile) => (
-                      <div
-                        style={{
-                          padding: "14px 18px",
-                          "border-radius": "10px",
-                          background: "#fff",
-                          border: "1px solid rgba(0,0,0,0.06)",
-                          display: "flex",
-                          "align-items": "center",
-                          "justify-content": "space-between",
-                          gap: "12px",
-                        }}
-                      >
-                        <div style={{ flex: "1" }}>
-                          <div style={{ "font-size": "14px", "font-weight": "600", color: "#0f172a" }}>
-                            {profile.title || profile.dir}
-                            <span
+                    {(profile) => {
+                      const viewTicker = () => firstProfileTicker(profile)
+                      return (
+                        <div
+                          style={{
+                            padding: "14px 18px",
+                            "border-radius": "10px",
+                            background: "#fff",
+                            border: "1px solid rgba(0,0,0,0.06)",
+                            display: "flex",
+                            "align-items": "center",
+                            "justify-content": "space-between",
+                            gap: "12px",
+                          }}
+                        >
+                          <div style={{ flex: "1" }}>
+                            <div style={{ "font-size": "14px", "font-weight": "600", color: "#0f172a" }}>
+                              {profile.title || profile.dir}
+                              <span
+                                style={{
+                                  "margin-left": "8px",
+                                  "font-family": "monospace",
+                                  "font-size": "12px",
+                                  color: "#64748b",
+                                }}
+                              >
+                                {profile.tickers.join(" / ")}
+                              </span>
+                            </div>
+                            <div
                               style={{
-                                "margin-left": "8px",
-                                "font-family": "monospace",
                                 "font-size": "12px",
-                                color: "#64748b",
+                                color: "#94a3b8",
+                                "margin-top": "4px",
                               }}
                             >
-                              {profile.tickers.join(" / ")}
-                            </span>
+                              {(profile.bytes / 1024).toFixed(1)} KB · {profile.dir}
+                            </div>
                           </div>
-                          <div
-                            style={{
-                              "font-size": "12px",
-                              color: "#94a3b8",
-                              "margin-top": "4px",
-                            }}
-                          >
-                            {(profile.bytes / 1024).toFixed(1)} KB · {profile.dir}
-                          </div>
+                          <Show when={viewTicker()}>
+                            {(ticker) => (
+                              <button
+                                type="button"
+                                onClick={() => openProfile(ticker())}
+                                style={{
+                                  padding: "6px 12px",
+                                  "border-radius": "6px",
+                                  border: "1px solid rgba(0,0,0,0.10)",
+                                  background: "#fff",
+                                  color: "#475569",
+                                  cursor: "pointer",
+                                  "font-family": "inherit",
+                                  "font-size": "12px",
+                                }}
+                              >
+                                查看
+                              </button>
+                            )}
+                          </Show>
                         </div>
-                        <Show when={profile.tickers.length > 0}>
-                          <button
-                            type="button"
-                            onClick={() => openProfile(profile.tickers[0])}
-                            style={{
-                              padding: "6px 12px",
-                              "border-radius": "6px",
-                              border: "1px solid rgba(0,0,0,0.10)",
-                              background: "#fff",
-                              color: "#475569",
-                              cursor: "pointer",
-                              "font-family": "inherit",
-                              "font-size": "12px",
-                            }}
-                          >
-                            查看
-                          </button>
-                        </Show>
-                      </div>
-                    )}
+                      )
+                    }}
                   </For>
                 </div>
               </Show>
@@ -629,7 +620,10 @@ function PortfolioContextView() {
               <ProfileModal
                 open={modalOpen()}
                 ticker={modalTicker()}
-                onClose={() => setModalOpen(false)}
+                onClose={() => {
+                  setModalOpen(false)
+                  setModalTicker(null)
+                }}
               />
             </>
           )}

@@ -6,6 +6,7 @@ import {
   bucketHourLabel,
   eventKindLabel,
   execLabel,
+  notificationBucketSegments,
   notificationPeakBucket,
   recordSourceLabel,
   sendBadgeClass,
@@ -86,6 +87,14 @@ describe("notifications-model", () => {
   })
 
   it("derives chart helper values from histogram data", () => {
+    const peakBucket = {
+      bucket_start: "2026-05-13T01:00:00.000Z",
+      total: 8,
+      sent: 7,
+      failed: 0,
+      skipped: 1,
+    }
+
     expect(
       notificationPeakBucket([
         {
@@ -95,15 +104,33 @@ describe("notifications-model", () => {
           failed: 1,
           skipped: 0,
         },
-        {
-          bucket_start: "2026-05-13T01:00:00.000Z",
-          total: 8,
-          sent: 7,
-          failed: 0,
-          skipped: 1,
-        },
+        peakBucket,
       ]),
     ).toBe(8)
+
+    expect(notificationBucketSegments(peakBucket, 8)).toEqual({
+      heightPct: 100,
+      sentPct: 87.5,
+      failedPct: 0,
+      minHeight: "2px",
+    })
+    expect(
+      notificationBucketSegments(
+        {
+          bucket_start: "2026-05-13T02:00:00.000Z",
+          total: 0,
+          sent: 0,
+          failed: 0,
+          skipped: 0,
+        },
+        8,
+      ),
+    ).toEqual({
+      heightPct: 0,
+      sentPct: 0,
+      failedPct: 0,
+      minHeight: "0",
+    })
 
     expect(bucketHourLabel("not-a-date", "zh")).toBe("not-a-date")
     expect(bucketHourLabel("2026-05-13T00:00:00.000Z", "zh")).toMatch(/08/)

@@ -4,6 +4,10 @@ export type ProfileTickerSource = {
   }>
 }
 
+export type ProfileTickerList = {
+  tickers: string[]
+}
+
 export function profileTickerSet(
   context: ProfileTickerSource | null | undefined,
 ): Set<string> {
@@ -13,4 +17,8 @@ export function profileTickerSet(
     for (const ticker of profile.tickers) tickers.add(ticker)
   }
   return tickers
+}
+
+export function firstProfileTicker(profile: ProfileTickerList): string | null {
+  return profile.tickers[0] ?? null
 }

@@ -158,6 +158,23 @@ export function notificationPeakBucket(
   return max
 }
 
+export function notificationBucketSegments(
+  bucket: NotificationHistogramBucket,
+  peak: number,
+): {
+  heightPct: number
+  sentPct: number
+  failedPct: number
+  minHeight: string
+} {
+  return {
+    heightPct: peak > 0 ? (bucket.total / peak) * 100 : 0,
+    sentPct: bucket.total > 0 ? (bucket.sent / bucket.total) * 100 : 0,
+    failedPct: bucket.total > 0 ? (bucket.failed / bucket.total) * 100 : 0,
+    minHeight: bucket.total > 0 ? "2px" : "0",
+  }
+}
+
 export function buildNotificationsQuery(options: {
   now: Date
   hours: number

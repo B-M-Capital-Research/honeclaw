@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
 
-import { profileTickerSet } from "./mainline-context-model"
+import { firstProfileTicker, profileTickerSet } from "./mainline-context-model"
 
 describe("mainline-context-model", () => {
   it("deduplicates profile tickers while preserving the ticker values", () => {
@@ -19,5 +19,10 @@ describe("mainline-context-model", () => {
   it("returns an empty set for missing context", () => {
     expect(profileTickerSet(null).size).toBe(0)
     expect(profileTickerSet(undefined).size).toBe(0)
+  })
+
+  it("selects the first ticker available for profile view actions", () => {
+    expect(firstProfileTicker({ tickers: ["AAPL", "MSFT"] })).toBe("AAPL")
+    expect(firstProfileTicker({ tickers: [] })).toBeNull()
   })
 })
