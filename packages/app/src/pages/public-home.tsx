@@ -261,9 +261,9 @@ export default function PublicHomePage() {
         .star-badge { display: flex; align-items: center; gap: 6px; color: #1e293b; text-decoration: none; font-size: 14px; font-weight: 700; background: #f1f5f9; padding: 6px 12px; border-radius: 8px; transition: all 0.2s; }
         .star-badge:hover { background: #e2e8f0; }
         .divider-v { width: 1px; height: 20px; background: #e2e8f0; }
-        .lang-switch { display: flex; background: #f1f5f9; padding: 3px; border-radius: 10px; }
-        .lang-switch button { padding: 4px 14px; border: none; background: transparent; cursor: pointer; font-size: 13px; font-weight: 700; color: #64748b; }
-        .lang-switch button.active { background: #fff; color: #000; border-radius: 7px; box-shadow: 0 2px 4px rgba(0,0,0,0.06); }
+        .lang-switch { display: inline-flex; align-items: center; background: rgba(255,255,255,0.72); border: 1px solid #e2e8f0; padding: 3px; border-radius: 999px; gap: 2px; }
+        .lang-switch button { min-width: 34px; min-height: 28px; padding: 0 12px; border: none; border-radius: 999px; background: transparent; cursor: pointer; font-size: 12px; font-weight: 700; color: #64748b; }
+        .lang-switch button.active { background: #000; color: #fff; border-radius: 999px; }
         .btn-chat-nav { background: #000; color: #fff; border: none; padding: 8px 20px; border-radius: 100px; font-size: 14px; font-weight: 700; cursor: pointer; }
         .btn-roadmap-nav { background: transparent; color: #64748b; border: 1.5px solid #e2e8f0; padding: 8px 20px; border-radius: 100px; font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
         .btn-roadmap-nav:hover { background: #f8fafc; border-color: #cbd5e1; color: #1e293b; }
@@ -286,14 +286,46 @@ export default function PublicHomePage() {
         .youtube-btn:hover { color: #ff0000; border-color: #ff0000; }
 
         .video-container { width: 100%; max-width: 960px; display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 20px; }
-        .video-label { font-size: 12px; font-weight: 800; color: #94a3b8; letter-spacing: 0.2em; text-transform: uppercase; }
+        .video-label {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 14px;
+          border-radius: 999px;
+          background: #0f172a;
+          color: #f8fafc;
+          font-size: 12px;
+          font-weight: 700;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+        }
+        .video-label::before {
+          content: '';
+          display: inline-block;
+          width: 0;
+          height: 0;
+          border-left: 7px solid #f59e0b;
+          border-top: 4px solid transparent;
+          border-bottom: 4px solid transparent;
+        }
         .video-wrapper { width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 28px; overflow: hidden; box-shadow: 0 30px 60px rgba(0,0,0,0.1); border: 1px solid #f1f5f9; }
         .video-wrapper iframe { width: 100%; height: 100%; border: none; }
 
         /* Carousel Nav */
         .section-separator { width: 100%; margin: 80px 0 48px; display: flex; align-items: center; gap: 32px; }
         .section-separator .line { flex: 1; height: 1px; background: #f1f5f9; }
-        .carousel-nav { display: flex; gap: 24px; overflow-x: auto; padding: 4px; }
+        .carousel-nav {
+          display: flex;
+          gap: 24px;
+          overflow-x: auto;
+          padding: 4px;
+          scrollbar-width: none;
+          scroll-snap-type: x proximity;
+          -webkit-mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 calc(100% - 24px), transparent 100%);
+          mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 calc(100% - 24px), transparent 100%);
+        }
+        .carousel-nav::-webkit-scrollbar { display: none; }
+        .nav-item { scroll-snap-align: center; }
         .nav-item { border: none; background: transparent; color: #94a3b8; font-size: 14px; font-weight: 800; cursor: pointer; white-space: nowrap; transition: all 0.2s; position: relative; padding: 4px 0; }
         .nav-item:hover { color: #64748b; }
         .nav-item.active { color: #000; }
