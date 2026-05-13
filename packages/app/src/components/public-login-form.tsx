@@ -104,17 +104,23 @@ export function PublicLoginForm(props: Props) {
 
   return (
     <div
+      class="public-login-screen"
       style={{
         "padding-top": "56px",
-        "min-height": "100vh",
+        "min-height": "100dvh",
         background: "#f8fafc",
         "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
         display: "flex",
         "align-items": "center",
         "justify-content": "center",
+        "box-sizing": "border-box",
+        "overflow-y": "auto",
+        "-webkit-overflow-scrolling": "touch",
+        width: "100%",
       }}
     >
       <div
+        class="public-login-card-wrap"
         style={{
           "max-width": "440px",
           width: "100%",
@@ -135,7 +141,7 @@ export function PublicLoginForm(props: Props) {
               "font-weight": "700",
               color: "#0f172a",
               margin: "0 0 8px",
-              "letter-spacing": "-0.01em",
+              "letter-spacing": "0",
             }}
           >
             {props.title ?? CONTENT.auth.login.title}
@@ -154,6 +160,7 @@ export function PublicLoginForm(props: Props) {
 
         {/* Card */}
         <div
+          class="public-login-card"
           style={{
             padding: "22px",
             "border-radius": "14px",
@@ -193,6 +200,7 @@ export function PublicLoginForm(props: Props) {
           </div>
 
           <div
+            class="public-login-code-row"
             style={{ display: "flex", gap: "10px", "margin-bottom": "12px" }}
           >
             <div
@@ -209,6 +217,7 @@ export function PublicLoginForm(props: Props) {
               />
             </div>
             <button
+              class="public-login-code-button"
               type="button"
               disabled={!sendReady()}
               onClick={sendCode}

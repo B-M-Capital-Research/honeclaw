@@ -1478,6 +1478,13 @@ export default function PublicChatPage() {
       lastScrollTop = scrollRef.scrollTop;
     });
   };
+  const settleAtBottom = () => {
+    stickToBottom = true;
+    suppressScrollUntil = Date.now() + 260;
+    scrollToBottom();
+    requestAnimationFrame(scrollToBottom);
+    window.setTimeout(scrollToBottom, 90);
+  };
   const distanceFromBottom = () =>
     scrollRef
       ? scrollRef.scrollHeight - scrollRef.scrollTop - scrollRef.clientHeight
@@ -1607,7 +1614,9 @@ export default function PublicChatPage() {
     setAuthState("ready");
   };
 
-  const restoreSession = async (options: { resetWindow?: boolean } = {}) => {
+  const restoreSession = async (
+    options: { resetWindow?: boolean; keepAtBottom?: boolean } = {},
+  ) => {
     const generation = ++sessionSyncGeneration;
     try {
       const user = await getPublicAuthMe();
@@ -1625,8 +1634,15 @@ export default function PublicChatPage() {
         );
       }
       const previousScrollTop = scrollRef?.scrollTop;
+      const shouldKeepBottom =
+        options.resetWindow ||
+        options.keepAtBottom ||
+        stickToBottom ||
+        distanceFromBottom() < 120;
       setMessages(reconcile(next, { key: "id" }));
-      if (!options.resetWindow && !stickToBottom && previousScrollTop !== undefined) {
+      if (shouldKeepBottom) {
+        settleAtBottom();
+      } else if (previousScrollTop !== undefined) {
         requestAnimationFrame(() => {
           if (scrollRef) {
             scrollRef.scrollTop = previousScrollTop;
@@ -1644,7 +1660,6 @@ export default function PublicChatPage() {
       } else {
         setBackgroundPending(null);
       }
-      if (options.resetWindow) scrollToBottom();
     } catch (error) {
       if (generation !== sessionSyncGeneration) return;
       if (isUnauthorizedApiError(error)) {
@@ -1684,8 +1699,6 @@ export default function PublicChatPage() {
     document.addEventListener("gesturestart", preventGesture);
     document.addEventListener("gesturechange", preventGesture);
     document.addEventListener("gestureend", preventGesture);
-    document.documentElement.classList.add("public-chat-scroll-lock");
-    document.body.classList.add("public-chat-scroll-lock");
     void restoreSession({ resetWindow: true });
     onCleanup(() => {
       if (viewportMeta) {
@@ -1699,6 +1712,11 @@ export default function PublicChatPage() {
       document.removeEventListener("gesturechange", preventGesture);
       document.removeEventListener("gestureend", preventGesture);
     });
+  });
+  createEffect(() => {
+    const locked = authState() === "ready";
+    document.documentElement.classList.toggle("public-chat-scroll-lock", locked);
+    document.body.classList.toggle("public-chat-scroll-lock", locked);
   });
   onCleanup(() => {
     activeController?.abort();
@@ -1783,16 +1801,17 @@ export default function PublicChatPage() {
       if (index >= 0)
         setMessages(index, { phase: "error", statusText: String(e) });
     } finally {
+      const shouldStayAtBottom = stickToBottom || distanceFromBottom() < 160;
       setIsSending(false);
       flashJustFinished();
-      void restoreSession();
+      void restoreSession({ keepAtBottom: shouldStayAtBottom });
     }
   };
 
   return (
     <div
-      class="hone-landing-v4 public-chat-page"
-      style={{ height: "100vh", display: "flex", "flex-direction": "column" }}
+      class={`hone-landing-v4 public-chat-page public-chat-page--${authState()}`}
+      style={{ height: "100dvh", display: "flex", "flex-direction": "column" }}
     >
       <AnimatedBackground />
       <Header />
@@ -2020,6 +2039,16 @@ export default function PublicChatPage() {
           overflow-anchor: none;
           overscroll-behavior: none;
         }
+        .public-chat-page--logged_out,
+        .public-chat-page--loading {
+          height: auto !important;
+          min-height: 100dvh !important;
+          max-height: none !important;
+          overflow-x: hidden !important;
+          overflow-y: auto !important;
+          overscroll-behavior-y: contain;
+          -webkit-overflow-scrolling: touch;
+        }
         .public-chat-shell {
           height: 100%;
           min-height: 0;
@@ -2044,6 +2073,29 @@ export default function PublicChatPage() {
           overflow-x: hidden;
         }
         @media (max-width: 768px) {
+          .public-chat-page--logged_out .public-login-screen {
+            min-height: 100svh !important;
+            height: auto !important;
+            align-items: flex-start !important;
+            justify-content: flex-start !important;
+            padding: 58px 0 max(18px, env(safe-area-inset-bottom)) !important;
+            overflow: visible !important;
+          }
+          .public-chat-page--logged_out .public-login-card-wrap {
+            max-width: none !important;
+            padding: 0 14px !important;
+          }
+          .public-chat-page--logged_out .public-login-card {
+            padding: 18px !important;
+            border-radius: 12px !important;
+          }
+          .public-chat-page--logged_out .public-login-code-row {
+            gap: 8px !important;
+          }
+          .public-chat-page--logged_out .public-login-code-button {
+            width: 104px !important;
+            font-size: 12px !important;
+          }
           .public-chat-page input,
           .public-chat-page textarea,
           .public-chat-page select {
@@ -2190,7 +2242,7 @@ export default function PublicChatPage() {
           border-radius: 7px;
           padding: 5px 0;
           font-weight: 700;
-          letter-spacing: -0.01em;
+          letter-spacing: 0;
           line-height: 1;
           display: inline-flex;
           align-items: center;
