@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test"
 import { filterUsers, hasUnread } from "./filters"
 import type { UserInfo } from "./types"
 
-function user(patch: Partial<UserInfo>): UserInfo {
+function userInfoFixture(patch: Partial<UserInfo>): UserInfo {
   return {
     user_id: "alice@example.com",
     channel: "direct",
@@ -20,8 +20,8 @@ function user(patch: Partial<UserInfo>): UserInfo {
 describe("filters", () => {
   it("filters users by query", () => {
     const users = [
-      user({ user_id: "alice@example.com", channel: "direct" }),
-      user({
+      userInfoFixture({ user_id: "alice@example.com", channel: "direct" }),
+      userInfoFixture({
         user_id: "bob@test.com",
         channel: "discord",
         session_id: "Actor_discord__direct__bob",

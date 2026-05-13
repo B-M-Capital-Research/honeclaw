@@ -184,7 +184,9 @@ function mergeLlmProfileSettings(settings: AgentSettings["llmProfiles"]) {
     ...(incomingProfiles.get(profile.id) ?? {}),
   }))
   for (const profile of settings.profiles ?? []) {
-    if (!mergedProfiles.some((item) => item.id === profile.id)) {
+    if (
+      !mergedProfiles.some((mergedProfile) => mergedProfile.id === profile.id)
+    ) {
       mergedProfiles.push(profile)
     }
   }
@@ -211,23 +213,23 @@ export function mergeAgentSettings(settings?: AgentSettings): AgentSettings {
 export function updateLlmProfileBinding(
   current: LlmProfileSettings,
   key: LlmProfileBindingKey,
-  value: string,
+  profileId: string,
 ): LlmProfileSettings {
   return {
     ...current,
-    [key]: value,
+    [key]: profileId,
   }
 }
 
 export function updateLlmProfileEntry(
   current: LlmProfileSettings,
-  index: number,
-  patch: Partial<LlmProfileSettings["profiles"][number]>,
+  targetIndex: number,
+  profilePatch: Partial<LlmProfileSettings["profiles"][number]>,
 ): LlmProfileSettings {
   return {
     ...current,
-    profiles: current.profiles.map((profile, i) =>
-      i === index ? { ...profile, ...patch } : profile,
+    profiles: current.profiles.map((profile, profileIndex) =>
+      profileIndex === targetIndex ? { ...profile, ...profilePatch } : profile,
     ),
   }
 }
@@ -307,7 +309,7 @@ export function formatCsv(values?: string[]): string {
 export function parseCsv(value: string): string[] {
   return value
     .split(",")
-    .map((item) => item.trim())
+    .map((csvEntry) => csvEntry.trim())
     .filter(Boolean)
 }
 
@@ -341,64 +343,86 @@ export function defaultTavilySettings(): TavilySettings {
   return { apiKeys: [""] }
 }
 
-export function normalizeApiKeys(keys?: string[]): string[] {
-  return keys && keys.length > 0 ? keys : [""]
+export function normalizeApiKeys(apiKeys?: string[]): string[] {
+  return apiKeys && apiKeys.length > 0 ? apiKeys : [""]
 }
 
-export function initialApiKeyVisibility(keys?: string[]): boolean[] {
-  return normalizeApiKeys(keys).map(() => false)
+export function initialApiKeyVisibility(apiKeys?: string[]): boolean[] {
+  return normalizeApiKeys(apiKeys).map(() => false)
 }
 
 export function updateApiKeyList<T extends { apiKeys: string[] }>(
-  prev: T,
-  index: number,
-  value: string,
+  currentSettings: T,
+  targetIndex: number,
+  apiKey: string,
 ): T {
-  const keys = [...prev.apiKeys]
-  keys[index] = value
-  return { ...prev, apiKeys: keys }
+  const nextApiKeys = [...currentSettings.apiKeys]
+  nextApiKeys[targetIndex] = apiKey
+  return { ...currentSettings, apiKeys: nextApiKeys }
 }
 
-export function appendApiKey<T extends { apiKeys: string[] }>(prev: T): T {
-  return { ...prev, apiKeys: [...prev.apiKeys, ""] }
+export function appendApiKey<T extends { apiKeys: string[] }>(
+  currentSettings: T,
+): T {
+  return { ...currentSettings, apiKeys: [...currentSettings.apiKeys, ""] }
 }
 
-export function removeApiKey<T extends { apiKeys: string[] }>(prev: T, index: number): T {
-  const keys = prev.apiKeys.filter((_, i) => i !== index)
-  return { ...prev, apiKeys: keys.length > 0 ? keys : [""] }
-}
-
-export function toggleApiKeyVisibility(prev: boolean[], index: number): boolean[] {
-  return prev.map((value, currentIndex) => (currentIndex === index ? !value : value))
-}
-
-export function removeApiKeyVisibility(prev: boolean[], index: number): boolean[] {
-  const next = prev.filter((_, currentIndex) => currentIndex !== index)
-  return next.length > 0 ? next : [false]
-}
-
-export function appendApiKeyVisibility(prev: boolean[]): boolean[] {
-  return [...prev, false]
-}
-
-export function toChannelDraft(settings: DesktopChannelSettings): DesktopChannelSettingsInput {
+export function removeApiKey<T extends { apiKeys: string[] }>(
+  currentSettings: T,
+  targetIndex: number,
+): T {
+  const nextApiKeys = currentSettings.apiKeys.filter(
+    (_, apiKeyIndex) => apiKeyIndex !== targetIndex,
+  )
   return {
-    imessageEnabled: settings.imessageEnabled,
-    imessageTargetHandle: settings.imessageTargetHandle || "",
-    feishuEnabled: settings.feishuEnabled,
-    feishuAppId: settings.feishuAppId || "",
-    feishuAppSecret: settings.feishuAppSecret || "",
-    feishuChatScope: settings.feishuChatScope || "DM_ONLY",
-    feishuAllowEmails: settings.feishuAllowEmails || [],
-    feishuAllowMobiles: settings.feishuAllowMobiles || [],
-    feishuAllowOpenIds: settings.feishuAllowOpenIds || [],
-    telegramEnabled: settings.telegramEnabled,
-    telegramBotToken: settings.telegramBotToken || "",
-    telegramChatScope: settings.telegramChatScope || "DM_ONLY",
-    telegramAllowFrom: settings.telegramAllowFrom || [],
-    discordEnabled: settings.discordEnabled,
-    discordBotToken: settings.discordBotToken || "",
-    discordChatScope: settings.discordChatScope || "DM_ONLY",
-    discordAllowFrom: settings.discordAllowFrom || [],
+    ...currentSettings,
+    apiKeys: nextApiKeys.length > 0 ? nextApiKeys : [""],
+  }
+}
+
+export function toggleApiKeyVisibility(
+  currentVisibility: boolean[],
+  targetIndex: number,
+): boolean[] {
+  return currentVisibility.map((isVisible, visibilityIndex) =>
+    visibilityIndex === targetIndex ? !isVisible : isVisible,
+  )
+}
+
+export function removeApiKeyVisibility(
+  currentVisibility: boolean[],
+  targetIndex: number,
+): boolean[] {
+  const nextVisibility = currentVisibility.filter(
+    (_, visibilityIndex) => visibilityIndex !== targetIndex,
+  )
+  return nextVisibility.length > 0 ? nextVisibility : [false]
+}
+
+export function appendApiKeyVisibility(currentVisibility: boolean[]): boolean[] {
+  return [...currentVisibility, false]
+}
+
+export function toChannelDraft(
+  persistedSettings: DesktopChannelSettings,
+): DesktopChannelSettingsInput {
+  return {
+    imessageEnabled: persistedSettings.imessageEnabled,
+    imessageTargetHandle: persistedSettings.imessageTargetHandle || "",
+    feishuEnabled: persistedSettings.feishuEnabled,
+    feishuAppId: persistedSettings.feishuAppId || "",
+    feishuAppSecret: persistedSettings.feishuAppSecret || "",
+    feishuChatScope: persistedSettings.feishuChatScope || "DM_ONLY",
+    feishuAllowEmails: persistedSettings.feishuAllowEmails || [],
+    feishuAllowMobiles: persistedSettings.feishuAllowMobiles || [],
+    feishuAllowOpenIds: persistedSettings.feishuAllowOpenIds || [],
+    telegramEnabled: persistedSettings.telegramEnabled,
+    telegramBotToken: persistedSettings.telegramBotToken || "",
+    telegramChatScope: persistedSettings.telegramChatScope || "DM_ONLY",
+    telegramAllowFrom: persistedSettings.telegramAllowFrom || [],
+    discordEnabled: persistedSettings.discordEnabled,
+    discordBotToken: persistedSettings.discordBotToken || "",
+    discordChatScope: persistedSettings.discordChatScope || "DM_ONLY",
+    discordAllowFrom: persistedSettings.discordAllowFrom || [],
   }
 }

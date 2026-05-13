@@ -1,9 +1,9 @@
 import type { UserInfo } from "./types";
 
 export function filterUsers(users: UserInfo[], query: string, channel = "all") {
-  const normalized = query.trim().toLowerCase();
+  const normalizedQuery = query.trim().toLowerCase();
   return users.filter((user) => {
-    const haystack = [
+    const searchableUserFields = [
       user.session_label,
       user.user_id,
       user.actor_user_id ?? "",
@@ -13,7 +13,8 @@ export function filterUsers(users: UserInfo[], query: string, channel = "all") {
     ]
       .join(" ")
       .toLowerCase();
-    const matchesQuery = !normalized || haystack.includes(normalized);
+    const matchesQuery =
+      !normalizedQuery || searchableUserFields.includes(normalizedQuery);
     const matchesChannel =
       channel === "all" || (user.channel || "direct") === channel;
     return matchesQuery && matchesChannel;
@@ -28,7 +29,7 @@ export function hasUnread(
   currentUserId?: string,
 ) {
   if (currentUserId === userId) return false;
-  const stamp = readAt[userId];
-  if (!stamp) return lastRole === "user";
-  return new Date(lastTime).getTime() > new Date(stamp).getTime();
+  const readStamp = readAt[userId];
+  if (!readStamp) return lastRole === "user";
+  return new Date(lastTime).getTime() > new Date(readStamp).getTime();
 }

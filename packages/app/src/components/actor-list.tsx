@@ -50,10 +50,10 @@ export function ActorList(props: ActorListProps) {
   )
 
   const filtered = createMemo(() => {
-    const q = search().trim().toLowerCase()
-    if (!q) return merged()
+    const normalizedQuery = search().trim().toLowerCase()
+    if (!normalizedQuery) return merged()
     return merged().filter((item) => {
-      const haystack = [
+      const searchableActorFields = [
         item.actor.user_id,
         item.actor.channel,
         item.actor.channel_scope ?? "",
@@ -61,7 +61,7 @@ export function ActorList(props: ActorListProps) {
       ]
         .join(" ")
         .toLowerCase()
-      return haystack.includes(q)
+      return searchableActorFields.includes(normalizedQuery)
     })
   })
 
@@ -69,12 +69,12 @@ export function ActorList(props: ActorListProps) {
     portfolio.actorsList.loading || companyProfiles.actorsList.loading
 
   const submitManual = () => {
-    const a = draft()
-    if (!a.channel || !a.user_id) return
+    const draftActor = draft()
+    if (!draftActor.channel || !draftActor.user_id) return
     props.onSelect({
-      channel: a.channel,
-      user_id: a.user_id,
-      channel_scope: a.channel_scope || undefined,
+      channel: draftActor.channel,
+      user_id: draftActor.user_id,
+      channel_scope: draftActor.channel_scope || undefined,
     })
     setShowManual(false)
   }

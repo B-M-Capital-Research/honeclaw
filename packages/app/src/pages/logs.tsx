@@ -67,23 +67,26 @@ export default function LogsPage() {
 
   // 用 createMemo 缓存过滤结果，避免每次渲染都重新扫描全部条目
   const filtered = createMemo(() => {
-    const lvl = filterLevel()
-    const q = search().trim().toLowerCase()
-    const u = userFilter().trim()
-    return entries().filter((e) => {
-      if (lvl !== "ALL" && e.level.toUpperCase() !== lvl) return false
-      if (q) {
-        const haystack = [
-          e.message,
-          e.target,
-          e.level,
-          e.timestamp,
-          e.message_id ?? "",
-          e.state ?? ""
+    const selectedLevel = filterLevel()
+    const normalizedQuery = search().trim().toLowerCase()
+    const selectedUser = userFilter().trim()
+    return entries().filter((entry) => {
+      if (
+        selectedLevel !== "ALL" &&
+        entry.level.toUpperCase() !== selectedLevel
+      ) return false
+      if (normalizedQuery) {
+        const searchableLogFields = [
+          entry.message,
+          entry.target,
+          entry.level,
+          entry.timestamp,
+          entry.message_id ?? "",
+          entry.state ?? ""
         ].join(" ").toLowerCase()
-        if (!haystack.includes(q)) return false
+        if (!searchableLogFields.includes(normalizedQuery)) return false
       }
-      if (u && !logMatchesUser(e, u)) return false
+      if (selectedUser && !logMatchesUser(entry, selectedUser)) return false
       return true
     })
   })

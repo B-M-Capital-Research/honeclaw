@@ -42,47 +42,64 @@ async function loadActorsList(): Promise<ActorRef[]> {
     getUsers().catch(() => [] as UserInfo[]),
   ]);
   const map = new Map<string, ActorRef>();
-  for (const s of portfolioList) {
-    const a: ActorRef = {
-      channel: s.channel,
-      user_id: s.user_id,
-      channel_scope: s.channel_scope,
+  for (const portfolioActor of portfolioList) {
+    const actor: ActorRef = {
+      channel: portfolioActor.channel,
+      user_id: portfolioActor.user_id,
+      channel_scope: portfolioActor.channel_scope,
     };
-    map.set(actorKey(a), a);
+    map.set(actorKey(actor), actor);
   }
-  for (const u of userList) {
-    const a: ActorRef = {
-      channel: u.channel,
-      user_id: u.user_id,
-      channel_scope: u.channel_scope,
+  for (const user of userList) {
+    const actor: ActorRef = {
+      channel: user.channel,
+      user_id: user.user_id,
+      channel_scope: user.channel_scope,
     };
-    if (!map.has(actorKey(a))) map.set(actorKey(a), a);
+    if (!map.has(actorKey(actor))) map.set(actorKey(actor), actor);
   }
   return Array.from(map.values());
 }
 
-function summarize(p: NotificationPrefs): string {
-  if (!p.enabled) return NOTIFICATIONS.prefs.summarize_disabled;
-  const parts: string[] = [p.min_severity];
-  if (p.portfolio_only) parts.push(NOTIFICATIONS.prefs.summarize_only_portfolio);
-  if (p.allow_kinds && p.allow_kinds.length)
-    parts.push(tpl(NOTIFICATIONS.prefs.summarize_allow, { count: p.allow_kinds.length }));
-  if (p.blocked_kinds && p.blocked_kinds.length)
-    parts.push(tpl(NOTIFICATIONS.prefs.summarize_block, { count: p.blocked_kinds.length }));
-  if (p.timezone) parts.push(tpl(NOTIFICATIONS.prefs.summarize_tz, { tz: p.timezone }));
-  if (p.digest_slots) {
+function summarize(prefs: NotificationPrefs): string {
+  if (!prefs.enabled) return NOTIFICATIONS.prefs.summarize_disabled;
+  const parts: string[] = [prefs.min_severity];
+  if (prefs.portfolio_only) parts.push(NOTIFICATIONS.prefs.summarize_only_portfolio);
+  if (prefs.allow_kinds && prefs.allow_kinds.length)
     parts.push(
-      p.digest_slots.length === 0
+      tpl(NOTIFICATIONS.prefs.summarize_allow, {
+        count: prefs.allow_kinds.length,
+      }),
+    );
+  if (prefs.blocked_kinds && prefs.blocked_kinds.length)
+    parts.push(
+      tpl(NOTIFICATIONS.prefs.summarize_block, {
+        count: prefs.blocked_kinds.length,
+      }),
+    );
+  if (prefs.timezone) parts.push(tpl(NOTIFICATIONS.prefs.summarize_tz, { tz: prefs.timezone }));
+  if (prefs.digest_slots) {
+    parts.push(
+      prefs.digest_slots.length === 0
         ? NOTIFICATIONS.prefs.summarize_digest_off
-        : tpl(NOTIFICATIONS.prefs.summarize_digest_count, { count: p.digest_slots.length }),
+        : tpl(NOTIFICATIONS.prefs.summarize_digest_count, { count: prefs.digest_slots.length }),
     );
   }
-  if (p.price_high_pct_override != null)
-    parts.push(tpl(NOTIFICATIONS.prefs.summarize_price, { value: p.price_high_pct_override }));
-  if (p.immediate_kinds && p.immediate_kinds.length)
-    parts.push(tpl(NOTIFICATIONS.prefs.summarize_immediate, { count: p.immediate_kinds.length }));
-  if (p.quiet_hours)
-    parts.push(tpl(NOTIFICATIONS.prefs.summarize_quiet, { from: p.quiet_hours.from, to: p.quiet_hours.to }));
+  if (prefs.price_high_pct_override != null)
+    parts.push(tpl(NOTIFICATIONS.prefs.summarize_price, { value: prefs.price_high_pct_override }));
+  if (prefs.immediate_kinds && prefs.immediate_kinds.length)
+    parts.push(
+      tpl(NOTIFICATIONS.prefs.summarize_immediate, {
+        count: prefs.immediate_kinds.length,
+      }),
+    );
+  if (prefs.quiet_hours)
+    parts.push(
+      tpl(NOTIFICATIONS.prefs.summarize_quiet, {
+        from: prefs.quiet_hours.from,
+        to: prefs.quiet_hours.to,
+      }),
+    );
   return `${NOTIFICATIONS.prefs.summarize_enabled_prefix} · ${parts.join(" · ")}`;
 }
 
@@ -114,9 +131,9 @@ export function NotificationPreferencesCard() {
     return actor ? actorKey(actor) : "";
   });
   const currentEntry = createMemo(() => {
-    const a = currentActor();
-    if (!a) return undefined;
-    return roster().find((e) => sameActor(e.actor, a));
+    const actor = currentActor();
+    if (!actor) return undefined;
+    return roster().find((entry) => sameActor(entry.actor, actor));
   });
   const currentPrefs = createMemo(
     () => currentEntry()?.prefs ?? DEFAULT_NOTIFICATION_PREFS,
@@ -125,31 +142,35 @@ export function NotificationPreferencesCard() {
 
   const patchEntry = (
     actor: ActorRef,
-    patch: Partial<RosterEntry> | ((e: RosterEntry) => RosterEntry),
+    patch: Partial<RosterEntry> | ((entry: RosterEntry) => RosterEntry),
   ) => {
     setRoster(
-      roster().map((e) =>
-        sameActor(e.actor, actor)
+      roster().map((entry) =>
+        sameActor(entry.actor, actor)
           ? typeof patch === "function"
-            ? patch(e)
-            : { ...e, ...patch }
-          : e,
+            ? patch(entry)
+            : { ...entry, ...patch }
+          : entry,
       ),
     );
   };
 
   const upsertEntry = (entry: RosterEntry) => {
-    const list = roster();
-    if (list.some((e) => sameActor(e.actor, entry.actor))) {
+    const currentRoster = roster();
+    if (
+      currentRoster.some((rosterEntry) =>
+        sameActor(rosterEntry.actor, entry.actor),
+      )
+    ) {
       patchEntry(entry.actor, entry);
     } else {
-      setRoster([...list, entry]);
+      setRoster([...currentRoster, entry]);
     }
   };
 
   const fetchEntry = async (actor: ActorRef): Promise<RosterEntry> => {
-    const b = await getNotificationPrefs(actor);
-    return { actor, prefs: b.prefs, kindTags: b.kind_tags };
+    const prefsBundle = await getNotificationPrefs(actor);
+    return { actor, prefs: prefsBundle.prefs, kindTags: prefsBundle.kind_tags };
   };
 
   const refreshRoster = async () => {
@@ -183,12 +204,12 @@ export function NotificationPreferencesCard() {
   });
 
   const savePrefs = async (actor: ActorRef, prefs: NotificationPrefs) => {
-    const k = actorKey(actor);
-    setSavingKey(k);
+    const savingActorKey = actorKey(actor);
+    setSavingKey(savingActorKey);
     clearFeedback();
     try {
       const saved = await putNotificationPrefs(actor, prefs);
-      patchEntry(actor, (e) => ({ ...e, prefs: saved }));
+      patchEntry(actor, (entry) => ({ ...entry, prefs: saved }));
       if (sameActor(actor, currentActor())) setDetailDirty(false);
       setMessage(
         tpl(NOTIFICATIONS.prefs.save_success, {
@@ -205,14 +226,16 @@ export function NotificationPreferencesCard() {
   };
 
   const toggleRosterEnabled = async (actor: ActorRef, enabled: boolean) => {
-    const entry = roster().find((e) => sameActor(e.actor, actor));
+    const entry = roster().find((rosterEntry) =>
+      sameActor(rosterEntry.actor, actor),
+    );
     if (!entry) return;
     const next = { ...entry.prefs, enabled };
-    patchEntry(actor, (e) => ({ ...e, prefs: next }));
+    patchEntry(actor, (rosterEntry) => ({ ...rosterEntry, prefs: next }));
     try {
       await savePrefs(actor, next);
     } catch {
-      patchEntry(actor, (e) => ({ ...e, prefs: entry.prefs }));
+      patchEntry(actor, (rosterEntry) => ({ ...rosterEntry, prefs: entry.prefs }));
     }
   };
 
@@ -220,7 +243,7 @@ export function NotificationPreferencesCard() {
     clearFeedback();
     setSelectedKey(actorKey(actor));
     setDetailDirty(false);
-    if (!roster().some((e) => sameActor(e.actor, actor))) {
+    if (!roster().some((rosterEntry) => sameActor(rosterEntry.actor, actor))) {
       try {
         upsertEntry(await fetchEntry(actor));
       } catch (e) {
@@ -231,53 +254,53 @@ export function NotificationPreferencesCard() {
   };
 
   const applyManual = () => {
-    const m = manual();
-    if (!m.channel.trim() || !m.user_id.trim()) return;
+    const manualActor = manual();
+    if (!manualActor.channel.trim() || !manualActor.user_id.trim()) return;
     void chooseActor({
-      channel: m.channel.trim(),
-      user_id: m.user_id.trim(),
-      channel_scope: m.channel_scope?.trim() || undefined,
+      channel: manualActor.channel.trim(),
+      user_id: manualActor.user_id.trim(),
+      channel_scope: manualActor.channel_scope?.trim() || undefined,
     });
   };
 
   const editCurrent = (
-    updater: (p: NotificationPrefs) => NotificationPrefs,
+    updater: (prefs: NotificationPrefs) => NotificationPrefs,
   ) => {
-    const a = currentActor();
-    if (!a) return;
-    patchEntry(a, (e) => ({ ...e, prefs: updater(e.prefs) }));
+    const actor = currentActor();
+    if (!actor) return;
+    patchEntry(actor, (entry) => ({ ...entry, prefs: updater(entry.prefs) }));
     setDetailDirty(true);
   };
 
   const updateCurrentPrefs = (
     patch:
       | Partial<NotificationPrefs>
-      | ((p: NotificationPrefs) => Partial<NotificationPrefs>),
+      | ((prefs: NotificationPrefs) => Partial<NotificationPrefs>),
   ) => {
-    editCurrent((p) => ({
-      ...p,
-      ...(typeof patch === "function" ? patch(p) : patch),
+    editCurrent((prefs) => ({
+      ...prefs,
+      ...(typeof patch === "function" ? patch(prefs) : patch),
     }));
   };
 
   const handleAllowToggle = (tag: string) => {
-    editCurrent((p) => {
-      const next = toggleTag(p.allow_kinds ?? [], tag);
-      return { ...p, allow_kinds: next.length === 0 ? null : next };
+    editCurrent((prefs) => {
+      const nextTags = toggleTag(prefs.allow_kinds ?? [], tag);
+      return { ...prefs, allow_kinds: nextTags.length === 0 ? null : nextTags };
     });
   };
 
   const handleBlockToggle = (tag: string) => {
-    editCurrent((p) => ({
-      ...p,
-      blocked_kinds: toggleTag(p.blocked_kinds ?? [], tag),
+    editCurrent((prefs) => ({
+      ...prefs,
+      blocked_kinds: toggleTag(prefs.blocked_kinds ?? [], tag),
     }));
   };
 
   const handleImmediateToggle = (tag: string) => {
-    editCurrent((p) => {
-      const next = toggleTag(p.immediate_kinds ?? [], tag);
-      return { ...p, immediate_kinds: next.length === 0 ? null : next };
+    editCurrent((prefs) => {
+      const nextTags = toggleTag(prefs.immediate_kinds ?? [], tag);
+      return { ...prefs, immediate_kinds: nextTags.length === 0 ? null : nextTags };
     });
   };
 
@@ -287,22 +310,25 @@ export function NotificationPreferencesCard() {
   // 如果是后端蒸馏出来的会原样透传不破坏。
   const [slotDraft, setSlotDraft] = createSignal("");
   const addSlot = () => {
-    const v = slotDraft().trim();
-    if (!isValidDigestSlotTime(v)) return;
-    editCurrent((p) => {
-      const existing = p.digest_slots ?? [];
-      if (existing.some((s) => s.time === v)) return p; // 同时刻去重
-      const id = `slot_${existing.length}`;
+    const slotTime = slotDraft().trim();
+    if (!isValidDigestSlotTime(slotTime)) return;
+    editCurrent((prefs) => {
+      const existingSlots = prefs.digest_slots ?? [];
+      if (existingSlots.some((slot) => slot.time === slotTime)) return prefs; // 同时刻去重
+      const slotId = `slot_${existingSlots.length}`;
       return {
-        ...p,
-        digest_slots: sortDigestSlots([...existing, { id, time: v }]),
+        ...prefs,
+        digest_slots: sortDigestSlots([
+          ...existingSlots,
+          { id: slotId, time: slotTime },
+        ]),
       };
     });
     setSlotDraft("");
   };
   const removeSlot = (id: string) => {
-    updateCurrentPrefs((p) => ({
-      digest_slots: (p.digest_slots ?? []).filter((s) => s.id !== id),
+    updateCurrentPrefs((prefs) => ({
+      digest_slots: (prefs.digest_slots ?? []).filter((slot) => slot.id !== id),
     }));
   };
   const resetSlotsToGlobal = () => {
@@ -315,71 +341,79 @@ export function NotificationPreferencesCard() {
   // quiet_hours 操作:null = 关勿扰;{from,to,exempt_kinds} = 启用。from==to 等价于
   // 全天静音的歧义形式,后端会拒绝(空区间永远 false),UI 提示用户避免。
   const setQuietFrom = (raw: string) => {
-    const v = raw.trim();
-    if (!isValidDigestSlotTime(v)) return;
-    editCurrent((p) => ({
-      ...p,
+    const quietStart = raw.trim();
+    if (!isValidDigestSlotTime(quietStart)) return;
+    editCurrent((prefs) => ({
+      ...prefs,
       quiet_hours: {
-        from: v,
-        to: p.quiet_hours?.to ?? "08:00",
-        exempt_kinds: p.quiet_hours?.exempt_kinds ?? [],
+        from: quietStart,
+        to: prefs.quiet_hours?.to ?? "08:00",
+        exempt_kinds: prefs.quiet_hours?.exempt_kinds ?? [],
       },
     }));
   };
   const setQuietTo = (raw: string) => {
-    const v = raw.trim();
-    if (!isValidDigestSlotTime(v)) return;
-    editCurrent((p) => ({
-      ...p,
+    const quietEnd = raw.trim();
+    if (!isValidDigestSlotTime(quietEnd)) return;
+    editCurrent((prefs) => ({
+      ...prefs,
       quiet_hours: {
-        from: p.quiet_hours?.from ?? "00:00",
-        to: v,
-        exempt_kinds: p.quiet_hours?.exempt_kinds ?? [],
+        from: prefs.quiet_hours?.from ?? "00:00",
+        to: quietEnd,
+        exempt_kinds: prefs.quiet_hours?.exempt_kinds ?? [],
       },
     }));
   };
   const enableQuiet = () => {
-    editCurrent((p) =>
-      p.quiet_hours
-        ? p
-        : { ...p, quiet_hours: { from: "00:00", to: "08:00", exempt_kinds: [] } },
+    editCurrent((prefs) =>
+      prefs.quiet_hours
+        ? prefs
+        : {
+            ...prefs,
+            quiet_hours: { from: "00:00", to: "08:00", exempt_kinds: [] },
+          },
     );
   };
   const clearQuiet = () => {
     updateCurrentPrefs({ quiet_hours: null });
   };
   const toggleQuietExempt = (tag: string) => {
-    editCurrent((p) => {
-      if (!p.quiet_hours) return p;
-      const next = toggleTag(p.quiet_hours.exempt_kinds, tag);
-      return { ...p, quiet_hours: { ...p.quiet_hours, exempt_kinds: next } };
+    editCurrent((prefs) => {
+      if (!prefs.quiet_hours) return prefs;
+      const nextTags = toggleTag(prefs.quiet_hours.exempt_kinds, tag);
+      return {
+        ...prefs,
+        quiet_hours: { ...prefs.quiet_hours, exempt_kinds: nextTags },
+      };
     });
   };
 
   const handleTimezoneInput = (raw: string) => {
-    const v = raw.trim();
-    updateCurrentPrefs({ timezone: v === "" ? null : v });
+    const timezone = raw.trim();
+    updateCurrentPrefs({ timezone: timezone === "" ? null : timezone });
   };
 
   const handlePriceHighInput = (raw: string) => {
-    const v = raw.trim();
-    if (v === "") {
-      editCurrent((p) => ({ ...p, price_high_pct_override: null }));
+    const priceThreshold = raw.trim();
+    if (priceThreshold === "") {
+      editCurrent((prefs) => ({ ...prefs, price_high_pct_override: null }));
       return;
     }
-    const n = Number(v);
-    editCurrent((p) => ({
-      ...p,
-      price_high_pct_override: Number.isFinite(n) ? n : p.price_high_pct_override,
+    const parsedThreshold = Number(priceThreshold);
+    editCurrent((prefs) => ({
+      ...prefs,
+      price_high_pct_override: Number.isFinite(parsedThreshold)
+        ? parsedThreshold
+        : prefs.price_high_pct_override,
     }));
   };
 
   const submitDetail = async () => {
-    const a = currentActor();
-    const e = currentEntry();
-    if (!a || !e) return;
+    const actor = currentActor();
+    const entry = currentEntry();
+    if (!actor || !entry) return;
     try {
-      await savePrefs(a, e.prefs);
+      await savePrefs(actor, entry.prefs);
     } catch {
       /* savePrefs 已把 error 落到 banner */
     }
@@ -528,8 +562,8 @@ export function NotificationPreferencesCard() {
                 type="checkbox"
                 checked={currentPrefs().portfolio_only}
                 onChange={(e) =>
-                  editCurrent((p) => ({
-                    ...p,
+                  editCurrent((prefs) => ({
+                    ...prefs,
                     portfolio_only: e.currentTarget.checked,
                   }))
                 }
@@ -542,8 +576,8 @@ export function NotificationPreferencesCard() {
                 class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-2 py-1 text-xs"
                 value={currentPrefs().min_severity}
                 onChange={(e) =>
-                  editCurrent((p) => ({
-                    ...p,
+                  editCurrent((prefs) => ({
+                    ...prefs,
                     min_severity: e.currentTarget
                       .value as NotificationPrefs["min_severity"],
                   }))
@@ -710,10 +744,12 @@ export function NotificationPreferencesCard() {
               </div>
               <Show
                 when={(() => {
-                  const slots = currentPrefs().digest_slots ?? [];
-                  const qh = currentPrefs().quiet_hours;
-                  if (!qh) return false;
-                  return slots.some((s) => timeFallsInQuiet(s.time, qh));
+                  const digestSlots = currentPrefs().digest_slots ?? [];
+                  const quietHours = currentPrefs().quiet_hours;
+                  if (!quietHours) return false;
+                  return digestSlots.some((digestSlot) =>
+                    timeFallsInQuiet(digestSlot.time, quietHours),
+                  );
                 })()}
               >
                 <span class="rounded-md border border-rose-500/50 bg-rose-500/10 px-2 py-1 text-[10px] text-rose-500">

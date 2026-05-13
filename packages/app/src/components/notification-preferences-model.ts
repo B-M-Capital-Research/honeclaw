@@ -21,42 +21,50 @@ export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
 const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/
 
 function timeToMinutes(value: string): number {
-  const [h, m] = value.split(":").map(Number)
-  if (Number.isNaN(h) || Number.isNaN(m)) return -1
-  return h * 60 + m
+  const [hours, minutes] = value.split(":").map(Number)
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return -1
+  return hours * 60 + minutes
 }
 
 /** Matches backend schedule_view::time_in_quiet semantics. */
 export function timeFallsInQuiet(
   hhmm: string,
-  qh: QuietHoursPrefs | null,
+  quietHours: QuietHoursPrefs | null,
 ): boolean {
-  if (!qh) return false
-  const t = timeToMinutes(hhmm)
-  const f = timeToMinutes(qh.from)
-  const o = timeToMinutes(qh.to)
-  if (t < 0 || f < 0 || o < 0) return false
-  if (f === o) return false
-  return f < o ? t >= f && t < o : t >= f || t < o
+  if (!quietHours) return false
+  const currentMinutes = timeToMinutes(hhmm)
+  const quietStartMinutes = timeToMinutes(quietHours.from)
+  const quietEndMinutes = timeToMinutes(quietHours.to)
+  if (currentMinutes < 0 || quietStartMinutes < 0 || quietEndMinutes < 0) {
+    return false
+  }
+  if (quietStartMinutes === quietEndMinutes) return false
+  return quietStartMinutes < quietEndMinutes
+    ? currentMinutes >= quietStartMinutes && currentMinutes < quietEndMinutes
+    : currentMinutes >= quietStartMinutes || currentMinutes < quietEndMinutes
 }
 
-export function sameActor(a?: ActorRef, b?: ActorRef): boolean {
-  if (!a || !b) return false
+export function sameActor(leftActor?: ActorRef, rightActor?: ActorRef): boolean {
+  if (!leftActor || !rightActor) return false
   return (
-    a.channel === b.channel &&
-    a.user_id === b.user_id &&
-    (a.channel_scope ?? "") === (b.channel_scope ?? "")
+    leftActor.channel === rightActor.channel &&
+    leftActor.user_id === rightActor.user_id &&
+    (leftActor.channel_scope ?? "") === (rightActor.channel_scope ?? "")
   )
 }
 
-export function toggleTag(list: string[], tag: string): string[] {
-  return list.includes(tag) ? list.filter((t) => t !== tag) : [...list, tag]
+export function toggleTag(currentTags: string[], tag: string): string[] {
+  return currentTags.includes(tag)
+    ? currentTags.filter((currentTag) => currentTag !== tag)
+    : [...currentTags, tag]
 }
 
 export function isValidDigestSlotTime(value: string): boolean {
   return HHMM_RE.test(value)
 }
 
-export function sortDigestSlots(list: DigestSlot[]): DigestSlot[] {
-  return [...list].sort((a, b) => a.time.localeCompare(b.time))
+export function sortDigestSlots(digestSlots: DigestSlot[]): DigestSlot[] {
+  return [...digestSlots].sort((leftSlot, rightSlot) =>
+    leftSlot.time.localeCompare(rightSlot.time),
+  )
 }

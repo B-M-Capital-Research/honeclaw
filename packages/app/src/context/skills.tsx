@@ -91,7 +91,7 @@ function createSkillsState() {
         if (!query) {
           return true
         }
-        const haystack = [
+        const searchableSkillFields = [
           skill.id,
           skill.display_name,
           skill.description,
@@ -100,7 +100,7 @@ function createSkillsState() {
         ]
           .join("\n")
           .toLowerCase()
-        return haystack.includes(query)
+        return searchableSkillFields.includes(query)
       })
     },
     counts() {

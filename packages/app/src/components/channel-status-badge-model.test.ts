@@ -9,7 +9,7 @@ import {
 } from "./channel-status-badge-model"
 import type { ChannelStatusInfo } from "@/lib/types"
 
-function channel(
+function channelStatusFixture(
   patch: Partial<ChannelStatusInfo> = {},
 ): ChannelStatusInfo {
   return {
@@ -47,8 +47,8 @@ describe("channel-status-badge-model", () => {
 
     expect(
       summarizeChannelStatuses([
-        channel({ processes: [{ pid: 1, running: true }] }),
-        channel({
+        channelStatusFixture({ processes: [{ pid: 1, running: true }] }),
+        channelStatusFixture({
           id: "telegram",
           enabled: true,
           running: false,
@@ -57,7 +57,7 @@ describe("channel-status-badge-model", () => {
             { pid: 3, running: false },
           ],
         }),
-        channel({ id: "feishu", enabled: false, running: false }),
+        channelStatusFixture({ id: "feishu", enabled: false, running: false }),
       ]),
     ).toEqual({
       hasData: true,
@@ -69,9 +69,9 @@ describe("channel-status-badge-model", () => {
 
   it("derives badge dot priority from backend and channel state", () => {
     const empty = summarizeChannelStatuses([])
-    const healthy = summarizeChannelStatuses([channel()])
+    const healthy = summarizeChannelStatuses([channelStatusFixture()])
     const failing = summarizeChannelStatuses([
-      channel({ running: false, enabled: true }),
+      channelStatusFixture({ running: false, enabled: true }),
     ])
 
     expect(

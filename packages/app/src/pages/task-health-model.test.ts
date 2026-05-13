@@ -13,7 +13,7 @@ import {
 } from "./task-health-model"
 import type { TaskSummary } from "@/lib/api"
 
-function summary(patch: Partial<TaskSummary> = {}): TaskSummary {
+function taskSummaryFixture(patch: Partial<TaskSummary> = {}): TaskSummary {
   return {
     runs_24h: 0,
     ok_24h: 0,
@@ -64,14 +64,18 @@ describe("task-health-model", () => {
       "text-[color:var(--text-muted)] bg-white/5",
     )
 
-    expect(taskSuccessRate(summary())).toBe("—")
-    expect(taskSuccessRate(summary({ ok_24h: 3, failed_24h: 1, skipped_24h: 8 }))).toBe("75%")
+    expect(taskSuccessRate(taskSummaryFixture())).toBe("—")
+    expect(
+      taskSuccessRate(
+        taskSummaryFixture({ ok_24h: 3, failed_24h: 1, skipped_24h: 8 }),
+      ),
+    ).toBe("75%")
   })
 
   it("sorts summary rows and task filter options consistently", () => {
     const input = {
-      zeta: summary({ runs_24h: 2 }),
-      alpha: summary({ runs_24h: 1 }),
+      zeta: taskSummaryFixture({ runs_24h: 2 }),
+      alpha: taskSummaryFixture({ runs_24h: 1 }),
     }
 
     expect(taskFilterOptions(input)).toEqual(["alpha", "zeta"])
