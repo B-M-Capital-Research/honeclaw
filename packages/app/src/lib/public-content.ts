@@ -107,8 +107,8 @@ const CONTENT_ZH = {
       },
       {
         tag: "定时任务",
-        title: "每周五自动触发复盘 Skill",
-        body: "用 Cron 任务把固定工作流交给 Hone 自动完成。每周复盘、月度总结——无需手动触发。",
+        title: "每周五自动触发投资复盘",
+        body: "把固定工作流交给 Hone：每周复盘、月度总结、关键节点检查——按你设定的时间自动跑，不用手动催。",
         image: "/hone_page.jpg" as string | null,
       },
       {
@@ -154,7 +154,7 @@ const CONTENT_ZH = {
       {
         symbol: "∞",
         title: "定时任务与自动提醒",
-        body: "Cron 驱动的定时工作流，让复盘、持仓检查、重要节点提醒全自动运行。",
+        body: "定时工作流自动运行：复盘、持仓检查、重要节点提醒，按你设定的时间触发。",
       },
       {
         symbol: "✦",
@@ -542,43 +542,43 @@ const CONTENT_ZH = {
         name: "Web",
         icon: "⚡",
         status: "stable",
-        desc: "手机号 + 短信验证码登录的白名单聊天页（hone-web-api）",
+        desc: "手机号 + 短信验证码登录的白名单聊天页",
       },
       {
         name: "iMessage",
         icon: "✦",
         status: "stable",
-        desc: "macOS 原生短信集成（hone-imessage）",
+        desc: "macOS 原生短信集成",
       },
       {
         name: "Lark / Feishu",
         icon: "◈",
         status: "stable",
-        desc: "飞书机器人双向通信（hone-feishu）",
+        desc: "飞书机器人双向通信",
       },
       {
         name: "Discord",
         icon: "∞",
         status: "stable",
-        desc: "Bot 应用集成（hone-discord）",
+        desc: "Bot 应用集成",
       },
       {
         name: "Telegram",
         icon: "⌘",
         status: "stable",
-        desc: "Bot API 接入（hone-telegram）",
+        desc: "Bot API 接入",
       },
       {
         name: "CLI",
         icon: "ℹ",
         status: "stable",
-        desc: "命令行流式对话（hone-cli）",
+        desc: "命令行流式对话",
       },
       {
         name: "MCP",
         icon: "✧",
         status: "stable",
-        desc: "作为 MCP server 嵌入 Claude / Cursor 等（hone-mcp）",
+        desc: "作为 MCP server 嵌入 Claude / Cursor 等",
       },
     ],
 
@@ -770,7 +770,7 @@ const CONTENT_ZH = {
 
   me: {
     logged_in_title: "账号中心",
-    logged_in_eyebrow: "账号中心",
+    logged_in_eyebrow: "",
     logged_out_title: "请先登录",
     logged_out_desc: "登录后查看你的历史记录和账号信息。",
     logged_out_cta: "前往对话页登录",
@@ -795,8 +795,8 @@ const CONTENT_ZH = {
       logout: "退出登录",
     },
     membership: {
-      title: "会员 / 高级功能（结构预留）",
-      desc: "付费体系、VIP 群、私域高级 Skill——即将推出。加入社群获取第一手信息。",
+      title: "会员 / 高级功能",
+      desc: "付费体系、VIP 群、专属能力——即将推出。加入社群获取第一手信息。",
     },
     fields: {
       user_id: "账号 ID",
@@ -1369,8 +1369,6 @@ const CONTENT_ZH = {
           { label: "路线图", href: "/roadmap" },
           { label: "对话", href: "/chat" },
           { label: "个人", href: "/me" },
-          { label: "用户协议", href: "/terms" },
-          { label: "隐私政策", href: "/privacy" },
         ],
       },
       resources: {
@@ -1401,6 +1399,13 @@ const CONTENT_ZH = {
           { label: "知识星球", href: "#" },
           { label: "微信群", href: "#" },
           { label: "内容号", href: "#" },
+        ],
+      },
+      legal: {
+        title: "条款",
+        items: [
+          { label: "用户协议", href: "/terms" },
+          { label: "隐私政策", href: "/privacy" },
         ],
       },
     },
@@ -1496,8 +1501,8 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         tag: "Scheduled tasks",
-        title: "Trigger a weekly review skill every Friday",
-        body: "Hand fixed workflows to Hone via cron. Weekly reviews, monthly summaries — all run themselves.",
+        title: "Trigger a weekly review every Friday",
+        body: "Hand fixed workflows to Hone. Weekly reviews, monthly summaries, key-moment checks — all run themselves at the time you set.",
         image: null as string | null,
       },
       {
@@ -1544,7 +1549,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       {
         symbol: "∞",
         title: "Scheduled tasks & alerts",
-        body: "Cron-driven workflows: reviews, portfolio checks, key-moment alerts — all running on their own.",
+        body: "Scheduled workflows that run themselves: reviews, portfolio checks, key-moment alerts — all on the timing you set.",
       },
       {
         symbol: "✦",
@@ -1930,43 +1935,43 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         name: "Web",
         icon: "⚡",
         status: "stable",
-        desc: "Whitelist chat with phone + SMS-code login (hone-web-api)",
+        desc: "Whitelist chat with phone + SMS-code login",
       },
       {
         name: "iMessage",
         icon: "✦",
         status: "stable",
-        desc: "Native macOS SMS integration (hone-imessage)",
+        desc: "Native macOS SMS integration",
       },
       {
         name: "Lark / Feishu",
         icon: "◈",
         status: "stable",
-        desc: "Two-way Feishu bot (hone-feishu)",
+        desc: "Two-way Feishu bot",
       },
       {
         name: "Discord",
         icon: "∞",
         status: "stable",
-        desc: "Bot application integration (hone-discord)",
+        desc: "Bot application integration",
       },
       {
         name: "Telegram",
         icon: "⌘",
         status: "stable",
-        desc: "Bot API integration (hone-telegram)",
+        desc: "Bot API integration",
       },
       {
         name: "CLI",
         icon: "ℹ",
         status: "stable",
-        desc: "Streaming CLI chat (hone-cli)",
+        desc: "Streaming CLI chat",
       },
       {
         name: "MCP",
         icon: "✧",
         status: "stable",
-        desc: "Run as MCP server inside Claude / Cursor, etc. (hone-mcp)",
+        desc: "Run as MCP server inside Claude / Cursor, etc.",
       },
     ],
 
@@ -2191,7 +2196,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
 
   me: {
     logged_in_title: "Account",
-    logged_in_eyebrow: "Account Center",
+    logged_in_eyebrow: "",
     logged_out_title: "Sign in first",
     logged_out_desc: "Sign in to see your history and account info.",
     logged_out_cta: "Go to chat to sign in",
@@ -2216,8 +2221,8 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       logout: "Sign out",
     },
     membership: {
-      title: "Membership / premium (placeholder)",
-      desc: "Billing, VIP group, private premium skills — coming soon. Join the community to hear first.",
+      title: "Membership / premium",
+      desc: "Billing, VIP group, premium capabilities — coming soon. Join the community to hear first.",
     },
     fields: {
       user_id: "Account ID",
@@ -2844,8 +2849,6 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           { label: "Roadmap", href: "/roadmap" },
           { label: "Chat", href: "/chat" },
           { label: "Account", href: "/me" },
-          { label: "Terms of Service", href: "/terms" },
-          { label: "Privacy Policy", href: "/privacy" },
         ],
       },
       resources: {
@@ -2876,6 +2879,13 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           { label: "Zhishixingqiu", href: "#" },
           { label: "WeChat group", href: "#" },
           { label: "Content channel", href: "#" },
+        ],
+      },
+      legal: {
+        title: "Legal",
+        items: [
+          { label: "Terms of Service", href: "/terms" },
+          { label: "Privacy Policy", href: "/privacy" },
         ],
       },
     },
