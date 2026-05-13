@@ -373,8 +373,9 @@ function assistantMarkdownClass(extra: string = "") {
     "[&_*]:max-w-full",
     "[&_p]:my-0 [&_p+*]:mt-3",
     "[&_strong]:text-[#0f172a] [&_strong]:font-bold",
-    "[&_pre]:mt-4 [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_pre]:rounded-2xl [&_pre]:border-0 [&_pre]:shadow-none",
-    "[&_code]:rounded-lg [&_code]:bg-black/[0.05] [&_code]:px-2 [&_code]:py-1 [&_code]:text-[14px] [&_code]:font-[var(--font-mono,'JetBrains_Mono',monospace)]",
+    "[&_pre]:mt-4 [&_pre]:max-w-full [&_pre]:rounded-2xl [&_pre]:border-0 [&_pre]:shadow-none",
+    "[&_pre_code]:!bg-transparent [&_pre_code]:!p-0 [&_pre_code]:!rounded-none",
+    "[&_:not(pre)>code]:rounded-md [&_:not(pre)>code]:bg-black/[0.05] [&_:not(pre)>code]:px-1.5 [&_:not(pre)>code]:py-0.5 [&_:not(pre)>code]:text-[0.92em] [&_:not(pre)>code]:font-[var(--font-mono,'JetBrains_Mono',monospace)]",
     // List bullets/numbers: Tailwind preflight strips them; put them back so
     // markdown lists actually look like lists instead of indented paragraphs.
     "[&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5",
@@ -2326,6 +2327,41 @@ export default function PublicChatPage() {
         .public-chat-messages .hf-markdown ol + ul {
           margin-top: -8px;
         }
+        /* Shiki code block: a single flat surface — the wrapper div is
+           invisible, the visible chip is the <pre> itself. Soft gray-50
+           background, no border (lets it sit gently against the bubble
+           without looking like a stacked card), small radius, wrapped lines
+           so long PE-style formulas don't spawn nested scrollbars. */
+        .public-chat-messages .hf-markdown .hf-markdown-code {
+          margin: 10px 0;
+        }
+        .public-chat-messages .hf-markdown .hf-markdown-code pre,
+        .public-chat-messages .hf-markdown .hf-markdown-code pre.shiki {
+          margin: 0 !important;
+          padding: 10px 12px !important;
+          background: #f3f4f6 !important;
+          border: 0 !important;
+          border-radius: 8px !important;
+          font-size: 13.5px;
+          line-height: 1.6;
+          white-space: pre-wrap;
+          word-break: break-word;
+          overflow-wrap: anywhere;
+        }
+        .public-chat-messages .hf-markdown .hf-markdown-code code {
+          background: transparent !important;
+          padding: 0 !important;
+          font-size: inherit !important;
+          font-family: var(--font-mono, "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+        }
+        [data-theme="dark"] .public-chat-messages .hf-markdown .hf-markdown-code pre,
+        [data-theme="dark"] .public-chat-messages .hf-markdown .hf-markdown-code pre.shiki {
+          background: #111827 !important;
+        }
+        [data-theme="dark"] .public-chat-messages .hf-markdown .hf-markdown-code code,
+        [data-theme="dark"] .public-chat-messages .hf-markdown .hf-markdown-code span {
+          color: #e5e7eb !important;
+        }
         /* Copy button: tucks into the bottom-right corner of an assistant
            bubble, faded by default and brighter on hover. On mobile (no
            hover) it stays at a low-key visible opacity so long answers can
@@ -2354,7 +2390,7 @@ export default function PublicChatPage() {
           background: rgba(16, 185, 129, 0.12);
           color: #059669;
         }
-        @media (hover: none) {
+        @media (hover: none), (max-width: 768px) {
           .pub-msg-copy { opacity: 0.55; }
           .pub-msg-copy:active { opacity: 1; }
         }
