@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-13 15:04 CST
+最后更新：2026-05-13 19:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,7 +17,7 @@
 
 ## 当前概览
 
-- 活跃待修复：3
+- 活跃待修复：4
 - Later / 待复现：9
 - 已修复 / 已关闭：99
 - 历史分析 / 部分止血：5
@@ -51,6 +51,7 @@
 - 本轮 15:04 CST 重新打开 Heartbeat preview 去重缺陷：10:22 CST runtime 重启后 `mimo-v2.5-pro` 已恢复，但 14:30 / 15:00 CST `Cerebras IPO与业务进展心跳监控` 生成“定价区间从 $115-$125 上调至 $150-$160”的实质性更新后，仍被 13:00 “IPO 临门”旧 preview 压成 `noop + skipped_noop`；同根因复发，状态从 `Fixed` 调回 `New`。
 - 本轮 15:04 CST 确认原油定时播报修复在 live 生效：12:00 CST `全天原油价格3小时播报` 命中 `commodity_causality_guarded=true` 并只外发安全归因口径，15:00 CST 同安全说明被去重抑制，未再发送未核验价格 / 地缘归因；本轮将状态从 `Fixed` 更新为 `Closed`。
 - 本轮 15:04 CST 未新增 Feishu direct 输出边界复发证据：最近四小时 assistant final 未再命中 `/Users/`、`Searching the Web`、`本地命令` 或 `内容可能不完整` 等用户可见污染；两项既有活跃缺陷保持 `New`。
+- 本轮 19:03 CST 新增 Web direct 跨 session sandbox 数据外泄缺陷：17:44 / 17:49 CST 同一 web direct 会话按用户请求读取并总结了其它 web session 的公司画像、全局 portfolio 持仓摘要和本机 sandbox 路径；该问题破坏 actor sandbox 私有数据隔离，定为 `P1 / New`，需创建脱敏 GitHub Issue。
 
 ## 代码质量巡检发现
 
@@ -62,6 +63,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Web direct 可读取并总结其它 web session 的 sandbox 数据与全局持仓摘要 | P1 | New | 2026-05-13 19:03 新增：17:44 / 17:49 CST `Actor_web__direct__web-user-028a885ded9b` 成功读取并外发其它 web session 公司画像、全局 portfolio 摘要与本机 sandbox 路径；关联 Issue [#41](https://github.com/B-M-Capital-Research/honeclaw/issues/41) | [web_direct_cross_session_sandbox_data_exposure.md](./web_direct_cross_session_sandbox_data_exposure.md) |
 | Heartbeat 预览去重会把同一 job 的实质性增量误判为重复，导致真实触发被压成 noop 漏发 | P2 | New | 2026-05-13 15:04 复发：10:22 CST runtime 重启后，14:30 / 15:00 CST Cerebras IPO 定价区间上调至 `$150-$160` 的新提醒仍被 13:00 `$115-$125` 旧 preview 抑制为 `noop + skipped_noop`；无关联 GitHub Issue | [scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md](./scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md) |
 | Feishu 直聊在工具尚未跑完时提前把工具进度 / 不完整错误当成最终回复 | P2 | New | 2026-05-13 03:02 复发：23:30 CST 用户要求为当前持仓未建画像公司建档，23:34 CST assistant final 只返回 `本地命令`、`Searching the Web`、`处理中发生错误，内容可能不完整`，没有交代建档结果；无关联 GitHub Issue | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
 | Feishu 公司画像建档成功后向用户暴露本机绝对路径与内部文件落点 | P3 | New | 2026-05-13 03:02 复发：23:48 CST PDD 公司画像建档回复直接包含 `/Users/fengming2/Desktop/honeclaw/data/agent-sandboxes/.../company_profiles/pdd/profile.md` 本机路径；主功能完成但输出边界失守；无关联 GitHub Issue | [feishu_company_profile_absolute_path_leak.md](./feishu_company_profile_absolute_path_leak.md) |
