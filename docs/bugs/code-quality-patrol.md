@@ -50,11 +50,12 @@
 
 ### ACP parse-error audit records keep full raw protocol lines
 
-- status: open
+- status: done
 - direction: 错误与日志质量
 - evidence: `crates/hone-channels/src/runners/acp_common/log.rs` documents `acp-events.log` as storing request/response/notification originals, and `log_acp_raw_parse_error` writes `"raw_line": raw_line` without redaction or length bounding. The same module already redacts and bounds stderr details for user-visible timeout/error messages through `redact_common_stderr_secrets` and `tail_for_log`.
 - risk: parse-error lines can include malformed JSON-RPC payloads, tool arguments, paths, or copied provider diagnostics; changing this directly would alter the operator audit contract and may reduce replay/debug value for ACP runner incidents.
 - suggested_fix: introduce an explicit audit policy for ACP event logs: either keep raw protocol payloads in a restricted artifact and add a separate redacted preview field, or replace parse-error `raw_line` with bounded/redacted text plus a documented opt-in raw capture mode. Cover with tests for Bearer/query/JSON secret redaction and long malformed lines.
+- resolution: 2026-05-14 patrol replaced parse-error `raw_line` with `raw_line_chars`, `raw_line_truncated`, and bounded/redacted `raw_line_preview`; the same pass redacted ACP stop-diagnostic `prompt_result` excerpts and ACP error-response messages.
 
 ## 2026-05-13 - 复杂度热点
 

@@ -20,8 +20,8 @@ use crate::runners::types::AgentRunnerEmitter;
 
 use super::ingest::handle_acp_session_update_with_renderer;
 use super::log::{
-    AcpEventLogContext, log_acp_payload, log_acp_raw_parse_error, message_with_bounded_stderr,
-    timeout_message_with_stderr,
+    AcpEventLogContext, acp_error_detail_for_message, log_acp_payload, log_acp_raw_parse_error,
+    message_with_bounded_stderr, timeout_message_with_stderr,
 };
 use super::state::{
     AcpPermissionDecision, AcpPromptState, AcpResponseTimeouts, AcpSessionUpdateTransformer,
@@ -376,7 +376,10 @@ pub(super) async fn process_acp_payload(
                 .and_then(|value| value.as_str())
                 .unwrap_or("unknown acp error")
                 .to_string();
-            let base = format!("{runner_label} acp request failed: {error_message}");
+            let base = format!(
+                "{runner_label} acp request failed: {}",
+                acp_error_detail_for_message(&error_message)
+            );
             let message = if let Some(captured_stderr) = stderr_buffer {
                 message_with_bounded_stderr(&base, captured_stderr).await
             } else {

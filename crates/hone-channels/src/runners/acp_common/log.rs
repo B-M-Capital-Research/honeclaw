@@ -159,7 +159,9 @@ pub(crate) async fn log_acp_raw_parse_error(
             "actor_user_id": log_ctx.actor_user_id,
             "actor_channel_scope": log_ctx.actor_channel_scope,
             "error": error,
-            "raw_line": raw_line,
+            "raw_line_chars": raw_line.chars().count(),
+            "raw_line_truncated": raw_line.chars().count() > ACP_STDERR_DETAIL_CHARS,
+            "raw_line_preview": acp_diagnostic_excerpt_for_log(raw_line, ACP_STDERR_DETAIL_CHARS),
         }),
     )
     .await;
@@ -214,10 +216,18 @@ fn stderr_detail_for_message(stderr: &str) -> Option<String> {
     if trimmed.is_empty() {
         return None;
     }
-    Some(tail_for_log(
-        &redact_common_stderr_secrets(trimmed),
+    Some(acp_diagnostic_tail_for_log(
+        trimmed,
         ACP_STDERR_DETAIL_CHARS,
     ))
+}
+
+pub(crate) fn acp_error_detail_for_message(message: &str) -> String {
+    let trimmed = message.trim();
+    if trimmed.is_empty() {
+        return "unknown acp error".to_string();
+    }
+    acp_diagnostic_excerpt_for_log(trimmed, ACP_STDERR_DETAIL_CHARS)
 }
 
 fn redact_common_stderr_secrets(text: &str) -> String {
@@ -352,15 +362,20 @@ fn tail_for_log(text: &str, max_chars: usize) -> String {
 }
 
 fn stderr_tail_for_log(stderr: &str) -> String {
-    tail_for_log(
-        &redact_common_stderr_secrets(stderr.trim()),
-        ACP_STDERR_DETAIL_CHARS,
-    )
+    acp_diagnostic_tail_for_log(stderr.trim(), ACP_STDERR_DETAIL_CHARS)
 }
 
 fn value_excerpt_for_log(value: &Value, max_chars: usize) -> String {
     let encoded = serde_json::to_string(value).unwrap_or_else(|_| value.to_string());
-    truncate_for_log(&encoded, max_chars)
+    acp_diagnostic_excerpt_for_log(&encoded, max_chars)
+}
+
+fn acp_diagnostic_excerpt_for_log(text: &str, max_chars: usize) -> String {
+    truncate_for_log(&redact_common_stderr_secrets(text), max_chars)
+}
+
+fn acp_diagnostic_tail_for_log(text: &str, max_chars: usize) -> String {
+    tail_for_log(&redact_common_stderr_secrets(text), max_chars)
 }
 
 pub(crate) fn summarize_finished_tool_calls_for_log(calls: &[ToolCallMade]) -> String {
@@ -451,5 +466,81 @@ mod tests {
         assert!(!tail.contains("header-secret"));
         assert!(!tail.contains("bearer-secret"));
         assert!(!tail.contains("json-secret"));
+    }
+
+    #[tokio::test]
+    async fn parse_error_log_records_bounded_redacted_raw_line_preview() {
+        let temp_root = std::env::temp_dir().join(format!(
+            "hone_acp_parse_error_log_{}_{}",
+            std::process::id(),
+            Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        let log_context = AcpEventLogContext {
+            runner_label: "codex",
+            log_path: acp_event_log_path(&temp_root.to_string_lossy()),
+            session_id: "session-1".to_string(),
+            identity: "Actor_discord__direct__alice".to_string(),
+            actor_channel: "discord".to_string(),
+            actor_user_id: "alice".to_string(),
+            actor_channel_scope: Some("direct".to_string()),
+        };
+        let raw_line = format!(
+            "{}{}",
+            r#"{"token":"json-secret","message":"auth=Bearer bearer-secret ","tail":""#,
+            "x".repeat(ACP_STDERR_DETAIL_CHARS + 20)
+        );
+
+        log_acp_raw_parse_error(Some(&log_context), "recv", &raw_line, "parse failed").await;
+
+        let content = tokio::fs::read_to_string(&log_context.log_path)
+            .await
+            .expect("read log");
+        let record = serde_json::from_str::<Value>(&content).expect("jsonl record");
+        assert_eq!(record["event_kind"], "parse_error");
+        assert_eq!(record["raw_line_chars"], raw_line.chars().count());
+        assert_eq!(record["raw_line_truncated"], true);
+        let preview = record["raw_line_preview"].as_str().expect("preview");
+        assert!(preview.contains("\"token\":\"<redacted>\""));
+        assert!(preview.contains("Bearer <redacted>"));
+        assert!(preview.ends_with('…'));
+        assert!(preview.chars().count() <= ACP_STDERR_DETAIL_CHARS);
+        assert!(!record.as_object().expect("record").contains_key("raw_line"));
+        assert!(!preview.contains("json-secret"));
+        assert!(!preview.contains("bearer-secret"));
+
+        let _ = tokio::fs::remove_dir_all(&temp_root).await;
+    }
+
+    #[test]
+    fn prompt_result_excerpt_redacts_common_secret_shapes() {
+        let detail = value_excerpt_for_log(
+            &json!({
+                "error": "request failed token=plain-secret auth=Bearer bearer-secret",
+                "api_key": "json-secret",
+                "safe": "kept"
+            }),
+            500,
+        );
+
+        assert!(detail.contains("token=<redacted>"));
+        assert!(detail.contains("Bearer <redacted>"));
+        assert!(detail.contains("\"api_key\":\"<redacted>\""));
+        assert!(detail.contains("\"safe\":\"kept\""));
+        assert!(!detail.contains("plain-secret"));
+        assert!(!detail.contains("bearer-secret"));
+        assert!(!detail.contains("json-secret"));
+    }
+
+    #[test]
+    fn acp_error_detail_redacts_and_bounds_message() {
+        let detail = acp_error_detail_for_message(&format!(
+            "failed token=plain-secret {}",
+            "x".repeat(ACP_STDERR_DETAIL_CHARS + 20)
+        ));
+
+        assert!(detail.contains("token=<redacted>"));
+        assert!(!detail.contains("plain-secret"));
+        assert!(detail.ends_with('…'));
+        assert!(detail.chars().count() <= ACP_STDERR_DETAIL_CHARS);
     }
 }

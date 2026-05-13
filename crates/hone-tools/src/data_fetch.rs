@@ -277,6 +277,7 @@ fn redact_fmp_query_secrets(text: &str) -> String {
     for key in ["apikey", "api_key", "apiKey"] {
         output = redact_delimited_fmp_secret_value(&output, &format!("{key}="));
         output = redact_delimited_fmp_secret_value(&output, &format!("{key}:"));
+        output = redact_fmp_json_string_field(&output, key);
     }
     output
 }
@@ -309,6 +310,47 @@ fn redact_delimited_fmp_secret_value(text: &str, needle: &str) -> String {
             })
             .unwrap_or(remaining[value_start + leading_whitespace..].len());
         remaining = &remaining[value_start + leading_whitespace + value_tail..];
+    }
+    output.push_str(remaining);
+    output
+}
+
+fn redact_fmp_json_string_field(text: &str, key: &str) -> String {
+    let key_marker = format!("\"{key}\"");
+    let mut remaining = text;
+    let mut output = String::with_capacity(text.len());
+    while let Some(index) = remaining.find(&key_marker) {
+        let after_key = index + key_marker.len();
+        let tail = &remaining[after_key..];
+        let Some((colon_offset, _)) = tail.char_indices().find(|(_, ch)| !ch.is_whitespace())
+        else {
+            break;
+        };
+        if !tail[colon_offset..].starts_with(':') {
+            output.push_str(&remaining[..after_key]);
+            remaining = &remaining[after_key..];
+            continue;
+        }
+        let after_colon = &tail[colon_offset + 1..];
+        let Some((quote_offset, _)) = after_colon
+            .char_indices()
+            .find(|(_, ch)| !ch.is_whitespace())
+        else {
+            break;
+        };
+        if !after_colon[quote_offset..].starts_with('"') {
+            output.push_str(&remaining[..after_key]);
+            remaining = &remaining[after_key..];
+            continue;
+        }
+        let value_start = after_key + colon_offset + 1 + quote_offset + 1;
+        output.push_str(&remaining[..value_start]);
+        output.push_str("<redacted>");
+        let value_tail = remaining[value_start..]
+            .char_indices()
+            .find_map(|(idx, ch)| (ch == '"').then_some(idx))
+            .unwrap_or(remaining[value_start..].len());
+        remaining = &remaining[value_start + value_tail..];
     }
     output.push_str(remaining);
     output
@@ -497,6 +539,21 @@ mod tests {
             detail,
             "https://example.com/api/v3/quote/AAPL?api_key=<redacted>&apiKey=<redacted>&apikey=<redacted> apiKey: <redacted>"
         );
+    }
+
+    #[test]
+    fn fmp_error_detail_redacts_json_api_key_aliases() {
+        let detail = sanitize_fmp_error_detail(
+            r#"backend failed {"api_key":"one","apiKey":"two","apikey":"three","safe":"kept"}"#,
+        );
+
+        assert!(detail.contains("\"api_key\":\"<redacted>\""));
+        assert!(detail.contains("\"apiKey\":\"<redacted>\""));
+        assert!(detail.contains("\"apikey\":\"<redacted>\""));
+        assert!(detail.contains("\"safe\":\"kept\""));
+        assert!(!detail.contains("\"one\""));
+        assert!(!detail.contains("\"two\""));
+        assert!(!detail.contains("\"three\""));
     }
 
     #[test]

@@ -11,6 +11,7 @@ use serde_json::Value;
 use crate::base::{Tool, ToolParameter};
 
 const DEFAULT_TAVILY_SEARCH_ENDPOINT: &str = "https://api.tavily.com/search";
+const MAX_TAVILY_ERROR_CHARS: usize = 300;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TavilyErrorKind {
@@ -187,8 +188,16 @@ fn sanitize_tavily_error_detail(text: &str) -> String {
     ] {
         output = redact_tavily_marker_value(&output, &format!("{key}="));
         output = redact_tavily_marker_value(&output, &format!("{key}:"));
+        output = redact_tavily_json_string_field(&output, key);
+    }
+    if output.chars().count() <= MAX_TAVILY_ERROR_CHARS {
+        return output;
     }
     output
+        .chars()
+        .take(MAX_TAVILY_ERROR_CHARS)
+        .collect::<String>()
+        + "..."
 }
 
 fn redact_tavily_marker_value(text: &str, marker: &str) -> String {
@@ -219,6 +228,47 @@ fn redact_tavily_marker_value(text: &str, marker: &str) -> String {
             })
             .unwrap_or(remaining[value_start + leading_whitespace..].len());
         remaining = &remaining[value_start + leading_whitespace + value_tail..];
+    }
+    output.push_str(remaining);
+    output
+}
+
+fn redact_tavily_json_string_field(text: &str, key: &str) -> String {
+    let key_marker = format!("\"{key}\"");
+    let mut remaining = text;
+    let mut output = String::with_capacity(text.len());
+    while let Some(index) = remaining.find(&key_marker) {
+        let after_key = index + key_marker.len();
+        let tail = &remaining[after_key..];
+        let Some((colon_offset, _)) = tail.char_indices().find(|(_, ch)| !ch.is_whitespace())
+        else {
+            break;
+        };
+        if !tail[colon_offset..].starts_with(':') {
+            output.push_str(&remaining[..after_key]);
+            remaining = &remaining[after_key..];
+            continue;
+        }
+        let after_colon = &tail[colon_offset + 1..];
+        let Some((quote_offset, _)) = after_colon
+            .char_indices()
+            .find(|(_, ch)| !ch.is_whitespace())
+        else {
+            break;
+        };
+        if !after_colon[quote_offset..].starts_with('"') {
+            output.push_str(&remaining[..after_key]);
+            remaining = &remaining[after_key..];
+            continue;
+        }
+        let value_start = after_key + colon_offset + 1 + quote_offset + 1;
+        output.push_str(&remaining[..value_start]);
+        output.push_str("<redacted>");
+        let value_tail = remaining[value_start..]
+            .char_indices()
+            .find_map(|(idx, ch)| (ch == '"').then_some(idx))
+            .unwrap_or(remaining[value_start..].len());
+        remaining = &remaining[value_start + value_tail..];
     }
     output.push_str(remaining);
     output
@@ -363,6 +413,36 @@ mod tests {
                 "This request exceeds your plan's set usage limit. Please upgrade your plan or contact support@tavily.com apiKey: <redacted>"
             )
         );
+    }
+
+    #[test]
+    fn response_error_message_redacts_json_secret_fields_in_detail() {
+        let payload = serde_json::json!({
+            "detail": {
+                "error": r#"backend rejected {"api_key":"json-key","token":"tok","safe":"kept"}"#
+            }
+        });
+
+        let message = WebSearchTool::response_error_message(&payload).expect("message");
+        assert!(message.contains("\"api_key\":\"<redacted>\""));
+        assert!(message.contains("\"token\":\"<redacted>\""));
+        assert!(message.contains("\"safe\":\"kept\""));
+        assert!(!message.contains("json-key"));
+        assert!(!message.contains("\"tok\""));
+    }
+
+    #[test]
+    fn response_error_message_bounds_provider_detail() {
+        let payload = serde_json::json!({
+            "detail": {
+                "error": format!("{} token=secret", "x".repeat(MAX_TAVILY_ERROR_CHARS + 20))
+            }
+        });
+
+        let message = WebSearchTool::response_error_message(&payload).expect("message");
+        assert!(message.ends_with("..."));
+        assert!(message.chars().count() <= MAX_TAVILY_ERROR_CHARS + 3);
+        assert!(!message.contains("secret"));
     }
 
     #[test]

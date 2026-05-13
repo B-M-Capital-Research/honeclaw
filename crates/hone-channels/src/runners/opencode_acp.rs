@@ -17,8 +17,8 @@ use crate::mcp_bridge::hone_mcp_servers;
 
 use super::acp_common::{
     ACP_NEEDS_SP_RESEED_KEY, ACP_PREV_PROMPT_PEAK_KEY, AcpEventLogContext, AcpPromptState,
-    AcpResponseTimeouts, AcpToolCallRecord, acp_prompt_succeeded, create_acp_session,
-    log_acp_payload, log_acp_prompt_stop_diagnostics, log_acp_raw_parse_error,
+    AcpResponseTimeouts, AcpToolCallRecord, acp_error_detail_for_message, acp_prompt_succeeded,
+    create_acp_session, log_acp_payload, log_acp_prompt_stop_diagnostics, log_acp_raw_parse_error,
     message_with_bounded_stderr, set_acp_session_model, timeout_message_with_stderr,
     wait_for_response, write_jsonrpc_request,
 };
@@ -1268,7 +1268,10 @@ async fn process_opencode_payload(
             .unwrap_or("unknown acp error")
             .to_string();
         let message = message_with_bounded_stderr(
-            &format!("opencode acp request failed: {message}"),
+            &format!(
+                "opencode acp request failed: {}",
+                acp_error_detail_for_message(&message)
+            ),
             stderr_buffer,
         )
         .await;
