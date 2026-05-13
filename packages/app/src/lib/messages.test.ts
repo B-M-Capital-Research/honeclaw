@@ -3,6 +3,10 @@ import { setBackendRuntime } from "./backend"
 import { parseMessageContent } from "./messages"
 import localImageMarkerFixtures from "../../../../tests/fixtures/local_image_markers.json"
 
+function parsedTypes(input: string): Array<"text" | "image"> {
+  return parseMessageContent(input).map((item) => item.type)
+}
+
 describe("parseMessageContent", () => {
   beforeEach(() => {
     setBackendRuntime({
@@ -15,15 +19,17 @@ describe("parseMessageContent", () => {
   })
 
   it("extracts local image links", () => {
-    const parts = parseMessageContent("before file:///tmp/a.png after")
-    expect(parts.map((item) => item.type)).toEqual(["text", "image", "text"])
+    expect(parsedTypes("before file:///tmp/a.png after")).toEqual([
+      "text",
+      "image",
+      "text",
+    ])
   })
 
   it("preserves interleaved text and multiple local images", () => {
-    const parts = parseMessageContent(
-      "alpha\nfile:///tmp/a.png\nbeta file:///tmp/b.webp gamma",
-    )
-    expect(parts.map((item) => item.type)).toEqual([
+    expect(
+      parsedTypes("alpha\nfile:///tmp/a.png\nbeta file:///tmp/b.webp gamma"),
+    ).toEqual([
       "text",
       "image",
       "text",
@@ -33,22 +39,25 @@ describe("parseMessageContent", () => {
   })
 
   it("extracts local image links wrapped in html anchors", () => {
-    const parts = parseMessageContent(
-      'before <a href="file:///tmp/a.png">file:///tmp/a.png</a> after',
-    )
-    expect(parts.map((item) => item.type)).toEqual(["text", "image", "text"])
+    expect(
+      parsedTypes(
+        'before <a href="file:///tmp/a.png">file:///tmp/a.png</a> after',
+      ),
+    ).toEqual(["text", "image", "text"])
   })
 
   it("extracts local image links wrapped in markdown links", () => {
-    const parts = parseMessageContent("before [图表](file:///tmp/a.png) after")
-    expect(parts.map((item) => item.type)).toEqual(["text", "image", "text"])
+    expect(parsedTypes("before [图表](file:///tmp/a.png) after")).toEqual([
+      "text",
+      "image",
+      "text",
+    ])
   })
 
   it("matches the shared local image marker fixture", () => {
     for (const fixture of localImageMarkerFixtures) {
-      const parts = parseMessageContent(fixture.input)
-      expect(parts.map((item) => item.type)).toEqual(
-        fixture.part_types as Array<"text" | "image">,
+      expect(parsedTypes(fixture.input)).toEqual(
+        fixture.part_types as ReturnType<typeof parsedTypes>,
       )
     }
   })

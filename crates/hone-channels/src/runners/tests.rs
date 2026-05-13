@@ -86,6 +86,37 @@ impl CaptureEmitter {
     }
 }
 
+fn assert_contains_all(haystack: &str, needles: &[&str]) {
+    for needle in needles {
+        assert!(
+            haystack.contains(needle),
+            "expected text to contain {needle:?}"
+        );
+    }
+}
+
+fn assert_contains_none(haystack: &str, needles: &[&str]) {
+    for needle in needles {
+        assert!(
+            !haystack.contains(needle),
+            "expected text not to contain {needle:?}"
+        );
+    }
+}
+
+fn json_fence_body<'a>(text: &'a str, label: &str) -> &'a str {
+    let marker = "```json\n";
+    let start = text
+        .find(marker)
+        .unwrap_or_else(|| panic!("{label} missing opening JSON fence"))
+        + marker.len();
+    let end = text[start..]
+        .find("\n```")
+        .unwrap_or_else(|| panic!("{label} missing closing JSON fence"))
+        + start;
+    &text[start..end]
+}
+
 #[test]
 fn configured_opencode_model_id_appends_variant() {
     let config = OpencodeAcpConfig {
@@ -671,11 +702,11 @@ fn summarize_finished_tool_calls_for_log_limits_output_to_count_and_recent_entri
     ];
 
     let summary = summarize_finished_tool_calls_for_log(&calls);
-    assert!(summary.contains("count=2"));
-    assert!(summary.contains("data_fetch#call_2"));
-    assert!(summary.contains("web_search#call_1"));
-    assert!(!summary.contains("AAOI"));
-    assert!(!summary.contains("COHR"));
+    assert_contains_all(
+        &summary,
+        &["count=2", "data_fetch#call_2", "web_search#call_1"],
+    );
+    assert_contains_none(&summary, &["AAOI", "COHR"]);
 }
 
 #[tokio::test]
@@ -772,10 +803,15 @@ fn codex_prompt_text_includes_restored_transcript_when_session_is_recreated() {
     context.add_assistant_message("我先查本地画像。", None);
 
     let prompt = build_codex_acp_prompt_text("SYSTEM", "新的问题", Some(&context));
-    assert!(prompt.contains("### Restored Conversation Transcript ###"));
-    assert!(prompt.contains("\"role\": \"user\""));
-    assert!(prompt.contains("AAOI 是什么公司"));
-    assert!(prompt.contains("### User Input ###\n新的问题"));
+    assert_contains_all(
+        &prompt,
+        &[
+            "### Restored Conversation Transcript ###",
+            "\"role\": \"user\"",
+            "AAOI 是什么公司",
+            "### User Input ###\n新的问题",
+        ],
+    );
 }
 
 #[test]
@@ -799,10 +835,15 @@ fn codex_prompt_text_serializes_message_metadata() {
     });
 
     let prompt = build_codex_acp_prompt_text("SYSTEM", "新的问题", Some(&context));
-    assert!(prompt.contains("\"metadata\""));
-    assert!(prompt.contains("\"codex_acp\""));
-    assert!(prompt.contains("\"segment_kind\": \"progress_note\""));
-    assert!(prompt.contains("\"stream_kind\": \"agent_message_chunk\""));
+    assert_contains_all(
+        &prompt,
+        &[
+            "\"metadata\"",
+            "\"codex_acp\"",
+            "\"segment_kind\": \"progress_note\"",
+            "\"stream_kind\": \"agent_message_chunk\"",
+        ],
+    );
 }
 
 #[test]
@@ -892,10 +933,15 @@ fn codex_prompt_text_uses_normalized_user_assistant_history() {
     context.add_assistant_message("AAOI 是做光模块的。", None);
 
     let prompt = build_codex_acp_prompt_text("SYSTEM", "新的问题", Some(&context));
-    assert!(prompt.contains("\"role\": \"assistant\""));
-    assert!(prompt.contains("\"type\": \"tool_call\""));
-    assert!(prompt.contains("\"type\": \"tool_result\""));
-    assert!(prompt.contains("\"type\": \"final\""));
+    assert_contains_all(
+        &prompt,
+        &[
+            "\"role\": \"assistant\"",
+            "\"type\": \"tool_call\"",
+            "\"type\": \"tool_result\"",
+            "\"type\": \"final\"",
+        ],
+    );
     assert!(!prompt.contains("\"role\": \"tool\""));
 }
 
@@ -931,27 +977,9 @@ fn codex_and_opencode_prompt_transcripts_share_the_same_normalized_history() {
     let codex_prompt = build_codex_acp_prompt_text("SYSTEM", "新的问题", Some(&context));
     let opencode_prompt = build_opencode_acp_prompt_text("SYSTEM", "新的问题", Some(&context));
 
-    let codex_marker = "```json\n";
-    let codex_start = codex_prompt
-        .find(codex_marker)
-        .expect("codex transcript start")
-        + codex_marker.len();
-    let codex_end = codex_prompt[codex_start..]
-        .find("\n```")
-        .expect("codex transcript end")
-        + codex_start;
-    let opencode_start = opencode_prompt
-        .find(codex_marker)
-        .expect("opencode transcript start")
-        + codex_marker.len();
-    let opencode_end = opencode_prompt[opencode_start..]
-        .find("\n```")
-        .expect("opencode transcript end")
-        + opencode_start;
-
     assert_eq!(
-        &codex_prompt[codex_start..codex_end],
-        &opencode_prompt[opencode_start..opencode_end]
+        json_fence_body(&codex_prompt, "codex transcript"),
+        json_fence_body(&opencode_prompt, "opencode transcript")
     );
 }
 
@@ -1086,8 +1114,10 @@ async fn codex_execute_completed_update_rehydrates_tool_result_from_raw_output()
     assert_eq!(messages[1].role, "tool");
     assert_eq!(messages[1].tool_call_id.as_deref(), Some("call_exec_1"));
     let tool_content = messages[1].content.as_deref().expect("tool content");
-    assert!(tool_content.contains("\"stdout\":\"rtk 0.35.0\\n\""));
-    assert!(tool_content.contains("\"exit_code\":0"));
+    assert_contains_all(
+        tool_content,
+        &["\"stdout\":\"rtk 0.35.0\\n\"", "\"exit_code\":0"],
+    );
 }
 
 #[tokio::test]
@@ -1382,12 +1412,19 @@ fn opencode_prompt_text_includes_restored_transcript_for_fresh_sessions() {
     context.add_assistant_message("runtime 目录是空的。", None);
 
     let prompt = build_opencode_acp_prompt_text("SYSTEM", "新的问题", Some(&context));
-    assert!(prompt.contains("### Restored Conversation Transcript ###"));
-    assert!(prompt.contains("\"role\": \"assistant\""));
-    assert!(prompt.contains("\"type\": \"tool_call\""));
-    assert!(prompt.contains("\"type\": \"tool_result\""));
-    assert!(prompt.contains("\"type\": \"final\""));
+    assert_contains_all(
+        &prompt,
+        &[
+            "### Restored Conversation Transcript ###",
+            "\"role\": \"assistant\"",
+            "\"type\": \"tool_call\"",
+            "\"type\": \"tool_result\"",
+            "\"type\": \"final\"",
+        ],
+    );
     assert!(!prompt.contains("\"role\": \"tool\""));
-    assert!(prompt.contains("我先检查 runtime。"));
-    assert!(prompt.contains("### User Input ###\n新的问题"));
+    assert_contains_all(
+        &prompt,
+        &["我先检查 runtime。", "### User Input ###\n新的问题"],
+    );
 }

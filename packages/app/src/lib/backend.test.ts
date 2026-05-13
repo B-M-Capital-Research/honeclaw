@@ -11,6 +11,13 @@ import {
   supportsApiVersion,
 } from "./backend"
 
+function requireValue<T>(value: T | null | undefined, label: string): T {
+  if (value == null) {
+    throw new Error(`${label} was not captured`)
+  }
+  return value
+}
+
 describe("backend runtime helpers", () => {
   beforeEach(() => {
     setBackendRuntime({
@@ -53,7 +60,25 @@ describe("backend runtime helpers", () => {
   })
 
   test("buildApiUrl resolves relative paths against current origin when no backend base URL exists", () => {
-    expect(buildApiUrl("/api/cron-jobs", "")).toBe("http://localhost/api/cron-jobs")
+    const originalWindow = globalThis.window
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: { location: { origin: "http://localhost" } },
+    })
+    try {
+      expect(buildApiUrl("/api/cron-jobs", "")).toBe(
+        "http://localhost/api/cron-jobs",
+      )
+    } finally {
+      if (originalWindow === undefined) {
+        delete (globalThis as { window?: Window }).window
+      } else {
+        Object.defineProperty(globalThis, "window", {
+          configurable: true,
+          value: originalWindow,
+        })
+      }
+    }
   })
 
   test("buildAuthHeaders injects bearer token", () => {
@@ -110,7 +135,7 @@ describe("backend runtime helpers", () => {
     }) as typeof fetch
     try {
       await apiFetch("/api/public/auth/me")
-      expect(captured?.credentials).toBe("include")
+      expect(requireValue(captured, "fetch init").credentials).toBe("include")
     } finally {
       globalThis.fetch = originalFetch
     }

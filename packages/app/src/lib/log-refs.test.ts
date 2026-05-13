@@ -12,6 +12,13 @@ function entry(partial: Partial<LogEntry>): LogEntry {
   }
 }
 
+function requireValue<T>(value: T | null | undefined, label: string): T {
+  if (value == null) {
+    throw new Error(`${label} was not found`)
+  }
+  return value
+}
+
 describe("extractLogRefs", () => {
   it("returns empty list when nothing structured or matched", () => {
     expect(extractLogRefs(entry({ message: "boom" }))).toEqual([])
@@ -43,16 +50,20 @@ describe("extractLogRefs", () => {
     const refs = extractLogRefs(
       entry({ extra: { session_id: "Actor_web__direct__ME" } }),
     )
-    const sessionRef = refs.find((r) => r.kind === "session")
-    expect(sessionRef).toBeDefined()
-    if (sessionRef && sessionRef.kind === "session") {
-      expect(sessionRef.sessionId).toBe("Actor_web__direct__ME")
-      expect(sessionRef.actor).toEqual({
-        channel: "web",
-        user_id: "ME",
-        channel_scope: undefined,
-      })
+    const sessionRef = requireValue(
+      refs.find((r) => r.kind === "session"),
+      "session ref",
+    )
+    expect(sessionRef.kind).toBe("session")
+    if (sessionRef.kind !== "session") {
+      throw new Error(`expected session ref, got ${sessionRef.kind}`)
     }
+    expect(sessionRef.sessionId).toBe("Actor_web__direct__ME")
+    expect(sessionRef.actor).toEqual({
+      channel: "web",
+      user_id: "ME",
+      channel_scope: undefined,
+    })
     expect(refs.some((r) => r.kind === "actor")).toBe(true)
   })
 

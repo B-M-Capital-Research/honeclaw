@@ -47,11 +47,23 @@ const skills: SkillInfo[] = [
   },
 ]
 
+function requireValue<T>(value: T | null | undefined, label: string): T {
+  if (value == null) {
+    throw new Error(`${label} was not found`)
+  }
+  return value
+}
+
 describe("skill slash command", () => {
   it("opens command mode on slash prefix", () => {
-    const result = resolveSkillSlashCommand(skills, "/")
-    expect(result?.command.stage).toBe("command")
-    expect(result?.matches[0]?.id).toBe("stock_research")
+    const result = requireValue(
+      resolveSkillSlashCommand(skills, "/"),
+      "slash command result",
+    )
+    expect(result.command.stage).toBe("command")
+    expect(requireValue(result.matches[0], "first slash match").id).toBe(
+      "stock_research",
+    )
   })
 
   it("keeps partial /skill prefixes in command mode", () => {
@@ -63,18 +75,28 @@ describe("skill slash command", () => {
   })
 
   it("resolves exact id matches", () => {
-    const result = resolveSkillSlashCommand(skills, "/skill stock_research")
-    expect(result?.exactMatch?.id).toBe("stock_research")
+    const result = requireValue(
+      resolveSkillSlashCommand(skills, "/skill stock_research"),
+      "exact id result",
+    )
+    expect(requireValue(result.exactMatch, "exact id match").id).toBe(
+      "stock_research",
+    )
   })
 
   it("normalizes surrounding whitespace for exact display-name matches", () => {
-    const result = resolveSkillSlashCommand(skills, "   /skill   个股研究   ")
-    expect(result?.exactMatch?.id).toBe("stock_research")
+    const result = requireValue(
+      resolveSkillSlashCommand(skills, "   /skill   个股研究   "),
+      "exact display-name result",
+    )
+    expect(requireValue(result.exactMatch, "exact display-name match").id).toBe(
+      "stock_research",
+    )
   })
 
   it("matches aliases", () => {
     const matches = searchSkillMatches(skills, "macro")
-    expect(matches[0]?.id).toBe("macro_watch")
+    expect(requireValue(matches[0], "first alias match").id).toBe("macro_watch")
   })
 
   it("hides disabled skills from slash search", () => {

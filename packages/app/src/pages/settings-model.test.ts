@@ -46,9 +46,19 @@ function metaWithLanguage(language?: "zh" | "en"): MetaInfo {
   }
 }
 
+function requireValue<T>(value: T | null | undefined, label: string): T {
+  if (value == null) {
+    throw new Error(`${label} was not found`)
+  }
+  return value
+}
+
 describe("settings-model", () => {
   it("defaults multi-agent answer tool limit to three", () => {
-    expect(defaultAgentSettings().multiAgent?.answer.maxToolCalls).toBe(3)
+    expect(
+      requireValue(defaultAgentSettings().multiAgent, "default multi-agent")
+        .answer.maxToolCalls,
+    ).toBe(3)
   })
 
   it("merges partial agent settings onto defaults", () => {
@@ -60,29 +70,43 @@ describe("settings-model", () => {
     })
 
     expect(merged.runner).toBe("multi-agent")
-    expect(merged.auxiliary?.baseUrl).toBe("https://api.minimaxi.com/v1")
-    expect(merged.honeCloud?.baseUrl).toBe("https://hone-claw.com")
-    expect(merged.multiAgent?.search.maxIterations).toBe(8)
+    expect(requireValue(merged.auxiliary, "auxiliary defaults").baseUrl).toBe(
+      "https://api.minimaxi.com/v1",
+    )
+    expect(requireValue(merged.honeCloud, "Hone Cloud defaults").baseUrl).toBe(
+      "https://hone-claw.com",
+    )
+    expect(
+      requireValue(merged.multiAgent, "multi-agent defaults").search
+        .maxIterations,
+    ).toBe(8)
   })
 
   it("defaults to Hone Cloud runner settings", () => {
     expect(defaultAgentSettings().runner).toBe("hone_cloud")
-    expect(defaultAgentSettings().honeCloud?.model).toBe("hone-cloud")
+    expect(
+      requireValue(defaultAgentSettings().honeCloud, "default Hone Cloud").model,
+    ).toBe("hone-cloud")
   })
 
   it("defaults and merges LLM profile settings", () => {
-    const defaults = defaultAgentSettings().llmProfiles
-    expect(defaults?.defaultProfile).toBe("main")
-    expect(defaults?.digestPass2Profile).toBe("digest_strong")
+    const defaults = requireValue(
+      defaultAgentSettings().llmProfiles,
+      "default LLM profiles",
+    )
+    expect(defaults.defaultProfile).toBe("main")
+    expect(defaults.digestPass2Profile).toBe("digest_strong")
     expect(
-      defaults?.profiles.find((profile) => profile.id === "digest_strong")
-        ?.reasoningEffort,
+      requireValue(
+        defaults.profiles.find((profile) => profile.id === "digest_strong"),
+        "default digest_strong profile",
+      ).reasoningEffort,
     ).toBe("low")
 
     const merged = mergeAgentSettings({
       ...defaultAgentSettings(),
       llmProfiles: {
-        ...defaultAgentSettings().llmProfiles!,
+        ...requireValue(defaultAgentSettings().llmProfiles, "default LLM profiles"),
         defaultProfile: "custom_main",
         profiles: [
           {
@@ -96,15 +120,24 @@ describe("settings-model", () => {
       },
     })
 
-    expect(merged.llmProfiles?.defaultProfile).toBe("custom_main")
+    const mergedProfiles = requireValue(
+      merged.llmProfiles,
+      "merged LLM profiles",
+    )
+    expect(mergedProfiles.defaultProfile).toBe("custom_main")
     expect(
-      merged.llmProfiles?.profiles.find((profile) => profile.id === "main")
-        ?.model,
+      requireValue(
+        mergedProfiles.profiles.find((profile) => profile.id === "main"),
+        "merged main profile",
+      ).model,
     ).toBe("openai/gpt-5.4")
     expect(
-      merged.llmProfiles?.profiles.find(
-        (profile) => profile.id === "digest_strong",
-      )?.model,
+      requireValue(
+        mergedProfiles.profiles.find(
+          (profile) => profile.id === "digest_strong",
+        ),
+        "merged digest_strong profile",
+      ).model,
     ).toBe("x-ai/grok-4.1-fast")
   })
 
@@ -266,7 +299,10 @@ describe("settings-model", () => {
   })
 
   it("updates LLM profile draft slices immutably", () => {
-    const current = defaultAgentSettings().llmProfiles!
+    const current = requireValue(
+      defaultAgentSettings().llmProfiles,
+      "default LLM profiles",
+    )
     const withBinding = updateLlmProfileBinding(current, "defaultProfile", "aux")
     expect(withBinding.defaultProfile).toBe("aux")
     expect(current.defaultProfile).toBe("main")
