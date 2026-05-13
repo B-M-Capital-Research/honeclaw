@@ -156,18 +156,20 @@ function LoggedInView(props: {
           }}
         >
           <div>
-            <div
-              style={{
-                "font-size": "11px",
-                "font-weight": "700",
-                "letter-spacing": "0.30em",
-                "text-transform": "uppercase",
-                color: "#f59e0b",
-                "margin-bottom": "8px",
-              }}
-            >
-              {C.logged_in_eyebrow}
-            </div>
+            <Show when={C.logged_in_eyebrow}>
+              <div
+                style={{
+                  "font-size": "11px",
+                  "font-weight": "700",
+                  "letter-spacing": "0.30em",
+                  "text-transform": "uppercase",
+                  color: "#f59e0b",
+                  "margin-bottom": "8px",
+                }}
+              >
+                {C.logged_in_eyebrow}
+              </div>
+            </Show>
             <h1
               style={{
                 "font-size": "28px",
@@ -179,27 +181,6 @@ function LoggedInView(props: {
             >
               {C.logged_in_title}
             </h1>
-          </div>
-          <div
-            style={{
-              width: "48px",
-              height: "48px",
-              "border-radius": "50%",
-              background: "#0f172a",
-              display: "flex",
-              "align-items": "center",
-              "justify-content": "center",
-            }}
-          >
-            <span
-              style={{
-                "font-family": "var(--font-mono, 'JetBrains Mono', monospace)",
-                color: "#f59e0b",
-                "font-size": "18px",
-              }}
-            >
-              ✦
-            </span>
           </div>
         </div>
 
@@ -231,20 +212,22 @@ function LoggedInView(props: {
               label={C.fields.created_at}
               value={formatDate(props.user.created_at)}
             />
-            <InfoRow
-              label={C.fields.last_login}
-              value={formatDate(props.user.last_login_at)}
-            />
+            <Show when={props.user.last_login_at}>
+              <InfoRow
+                label={C.fields.last_login}
+                value={formatDate(props.user.last_login_at)}
+              />
+            </Show>
           </div>
         </div>
 
-        {/* Actions */}
+        {/* Actions — primary + secondary */}
         <div
           style={{
             display: "flex",
             "flex-wrap": "wrap",
             gap: "10px",
-            "margin-bottom": "40px",
+            "margin-bottom": "16px",
           }}
         >
           <ActionBtn variant="primary" onClick={() => navigate("/chat")}>
@@ -256,6 +239,17 @@ function LoggedInView(props: {
           <ActionBtn variant="ghost" href="#">
             {C.actions.community}
           </ActionBtn>
+        </div>
+
+        {/* Destructive action sits on its own row so users don't tap it by accident. */}
+        <div
+          style={{
+            display: "flex",
+            "margin-bottom": "40px",
+            "padding-top": "16px",
+            "border-top": "1px solid rgba(0,0,0,0.06)",
+          }}
+        >
           <ActionBtn variant="danger" onClick={props.onLogout}>
             {C.actions.logout}
           </ActionBtn>
