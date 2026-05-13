@@ -1,9 +1,9 @@
 //! ACP JSON-RPC 线上协议:请求/响应串行化、`session/new` / `session/set_model` /
 //! `session/prompt` 的等待循环、`session/request_permission` 的自动决策、
-//! idle/overall 超时判定、`build_acp_prompt_text` 系统提示拼装。
+//! idle/overall 超时判定。
 //!
-//! `codex_acp` 以及 legacy `gemini_acp` 模块走这里的 `wait_for_response*`
-//! 入口;`opencode_acp` 因为 tool status 形状不同保留自定义 stream loop,但仍复用
+//! `codex_acp` 走这里的 `wait_for_response*` 入口;`opencode_acp` 因为 tool
+//! status 形状不同保留自定义 stream loop,但仍复用
 //! `ingest_acp_message_chunk` / `ingest_acp_usage_update`。
 //! 也就是说,`process_acp_payload` 是共享 wait loop 的 ACP ingest 驱动。
 //! 保持这里是「拿到一行 stdout → 分发 → 回 `Option<Value>`」的简单形状,
@@ -86,18 +86,6 @@ pub(crate) async fn create_acp_session(
             kind: AgentSessionErrorKind::AgentFailed,
             message: format!("{runner_label} acp session/new returned empty sessionId"),
         })
-}
-
-pub(crate) fn build_acp_prompt_text(system_prompt: &str, runtime_input: &str) -> String {
-    let system = system_prompt.trim();
-    let runtime = runtime_input.trim();
-    match (system.is_empty(), runtime.is_empty()) {
-        (true, _) => runtime.to_string(),
-        (_, true) => format!("### System Instructions ###\n{system}"),
-        (false, false) => {
-            format!("### System Instructions ###\n{system}\n\n### User Input ###\n{runtime}")
-        }
-    }
 }
 
 pub(crate) async fn set_acp_session_model(
@@ -225,34 +213,6 @@ pub(crate) async fn wait_for_response(
         kind: AgentSessionErrorKind::ExitFailure,
         message: format!("{runner_label} acp stream closed before response"),
     })
-}
-
-pub(crate) async fn wait_for_response_with_timeouts(
-    runner_label: &'static str,
-    reader: &mut tokio::io::Lines<tokio::io::BufReader<tokio::process::ChildStdout>>,
-    stdin: &mut tokio::process::ChildStdin,
-    expected_id: u64,
-    emitter: Option<Arc<dyn AgentRunnerEmitter>>,
-    state: Option<&mut AcpPromptState>,
-    stderr_buffer: Option<Arc<tokio::sync::Mutex<String>>>,
-    timeouts: AcpResponseTimeouts,
-    log_ctx: Option<&AcpEventLogContext>,
-) -> Result<Value, AgentSessionError> {
-    wait_for_response_with_timeouts_and_renderer(
-        runner_label,
-        reader,
-        stdin,
-        expected_id,
-        emitter,
-        state,
-        stderr_buffer,
-        timeouts,
-        None,
-        None,
-        AcpPermissionDecision::RejectOnce,
-        log_ctx,
-    )
-    .await
 }
 
 pub(crate) async fn wait_for_response_with_timeouts_and_renderer(

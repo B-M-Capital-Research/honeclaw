@@ -110,6 +110,7 @@ pub(super) fn capture_tool_finish(
     });
 }
 
+#[cfg(test)]
 pub(crate) fn extract_finished_tool_calls(state: AcpPromptState) -> Vec<ToolCallMade> {
     state.finished_tool_calls
 }

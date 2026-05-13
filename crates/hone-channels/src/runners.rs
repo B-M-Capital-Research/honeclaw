@@ -1,8 +1,8 @@
 mod acp_common;
 mod codex_acp;
 // gemini_acp 已被全局禁用（见 core/bot_core.rs 工厂层 + docs/invariants.md）。
-// 模块代码仅保留作 legacy 参考和测试夹具，因此整体允许 dead_code。
-#[allow(dead_code)]
+// 模块代码仅保留 legacy 参数清洗和版本校验测试夹具。
+#[cfg(test)]
 mod gemini_acp;
 mod gemini_cli;
 mod hone_cloud;

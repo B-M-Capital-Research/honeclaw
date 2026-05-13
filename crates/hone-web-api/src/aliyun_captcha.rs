@@ -186,7 +186,7 @@ struct AliyunCaptchaResult {
     #[serde(rename = "VerifyResult")]
     verify_result: Option<bool>,
     #[serde(rename = "VerifyCode")]
-    #[cfg_attr(not(test), allow(dead_code))]
+    #[cfg(test)]
     verify_code: Option<String>,
 }
 

@@ -1,6 +1,6 @@
 # Repo Map
 
-Last updated: 2026-05-12
+Last updated: 2026-05-13
 
 ## Purpose
 
@@ -34,7 +34,7 @@ Last updated: 2026-05-12
 - `agents/`
   - `function_calling`: function-calling agent core
   - `gemini_cli`, `codex_cli`: CLI agent adapters
-  - `codex_acp`, `opencode_acp`: active agent runner adapters based on ACP stdio / JSON-RPC; `gemini_acp` code/config remains only for migration/reference and is disabled by the runtime factory
+  - `codex_acp`, `opencode_acp`: active agent runner adapters based on ACP stdio / JSON-RPC; `gemini_acp` config remains only for migration/reference, while `gemini_acp.rs` only keeps legacy argument/version test helpers because runtime creation is disabled by the factory
   - `multi-agent`: two-stage runner wiring that combines a direct function-calling search pass with an ACP answer pass
 - `memory/`
   - Local storage abstractions for sessions, identity quotas, portfolios, cron jobs, and LLM audit logs
@@ -102,7 +102,7 @@ Last updated: 2026-05-12
   - `mod.rs`: runner exports
   - `types.rs`: shared runner trait / request / event / result types
   - `acp_common.rs`: shared helpers for ACP stdio / JSON-RPC
-  - `gemini_cli.rs`, `codex_acp.rs`, `opencode_acp.rs`, `multi_agent.rs`, `hone_cloud.rs`: active runner implementations; `gemini_acp.rs` is kept for legacy migration/reference but runtime creation rejects `agent.runner=gemini_acp`; `hone_cloud` calls the public user service through the OpenAI-compatible `/api/public/v1/chat/completions` shape
+  - `gemini_cli.rs`, `codex_acp.rs`, `opencode_acp.rs`, `multi_agent.rs`, `hone_cloud.rs`: active runner implementations; `gemini_acp.rs` only keeps legacy argument/version test helpers and runtime creation rejects `agent.runner=gemini_acp`; `hone_cloud` calls the public user service through the OpenAI-compatible `/api/public/v1/chat/completions` shape
 - Prompt layering: `crates/hone-channels/src/prompt.rs`
   - Injects the global finance-domain constraints in one place: no stock-picking recommendations, reject non-finance questions, warn users not to blindly follow buy or sell advice, and keep greetings short
 - Session compaction service: `crates/hone-channels/src/session_compactor.rs`
