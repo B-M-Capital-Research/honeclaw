@@ -12,6 +12,11 @@ import { useNavigate } from "@solidjs/router"
 import { fetchGithubStars } from "@/lib/github-stars"
 import { CONTENT } from "@/lib/public-content"
 import { setLocale, useLocale } from "@/lib/i18n"
+import {
+  PUBLIC_BILIBILI_URL,
+  PUBLIC_YOUTUBE_URL,
+  PublicContactMenu,
+} from "@/components/public-contact-menu"
 import "./public-site.css"
 
 // ── Icons ────────────────────────────────────────────────────────────────────
@@ -58,9 +63,7 @@ function Header() {
       </div>
 
       <div class="header-actions">
-        <div class="header-socials mobile-hide">
-          <a href="https://www.youtube.com/@巴芒投研美股频道" target="_blank" class="icon-btn-ghost" title="YouTube"><ICONS.Youtube /></a>
-          <a href="https://www.bilibili.com/video/BV1ByXNBGET5/" target="_blank" class="icon-btn-ghost" title="Bilibili"><ICONS.Bilibili /></a>
+        <div class="header-socials header-github-stars">
           <a href="https://github.com/B-M-Capital-Research/honeclaw" target="_blank" class="star-badge">
             <ICONS.Github />
             <span>{stars() || "..."}</span>
@@ -69,26 +72,7 @@ function Header() {
 
         <div class="divider-v mobile-hide" />
 
-        <a
-          href={`mailto:${C.contact_email}`}
-          class="header-contact-link"
-          title={`${C.contact_wechat_label}: ${C.contact_wechat}`}
-          aria-label={`${C.contact_email_label}: ${C.contact_email}`}
-          style={{
-            padding: "0 12px",
-            height: "34px",
-            "border-radius": "999px",
-            border: "1.5px solid #e2e8f0",
-            background: "rgba(255,255,255,0.72)",
-            color: "#334155",
-            "text-decoration": "none",
-            "font-size": "12px",
-            "font-weight": "700",
-            "white-space": "nowrap",
-          }}
-        >
-          <span class="header-contact-text">{C.contact_email}</span>
-        </a>
+        <PublicContactMenu />
 
         <div class="lang-switch">
           <button onClick={() => setLocale("zh")} class={useLocale() === "zh" ? "active" : ""}>中</button>
@@ -181,11 +165,11 @@ export default function PublicHomePage() {
               <ICONS.Github />
               <span>GitHub</span>
             </a>
-            <a href="https://www.bilibili.com/video/BV1ByXNBGET5/" target="_blank" class="btn-secondary refined bilibili-btn mobile-hide">
+            <a href={PUBLIC_BILIBILI_URL} target="_blank" class="btn-secondary refined bilibili-btn mobile-hide">
               <ICONS.Bilibili />
               <span>Bilibili</span>
             </a>
-            <a href="https://www.youtube.com/@巴芒投研美股频道" target="_blank" class="btn-secondary refined youtube-btn mobile-hide">
+            <a href={PUBLIC_YOUTUBE_URL} target="_blank" class="btn-secondary refined youtube-btn mobile-hide">
               <ICONS.Youtube />
               <span>YouTube</span>
             </a>

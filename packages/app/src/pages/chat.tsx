@@ -16,6 +16,7 @@ import {
 import { createStore, reconcile } from "solid-js/store";
 import { useNavigate } from "@solidjs/router";
 import { PublicLoginForm } from "@/components/public-login-form";
+import { PublicContactMenu } from "@/components/public-contact-menu";
 import { fetchGithubStars } from "@/lib/github-stars";
 import { CONTENT } from "@/lib/public-content";
 import { setLocale, useLocale } from "@/lib/i18n";
@@ -209,21 +210,7 @@ function Header() {
       </div>
 
       <div class="header-actions">
-        <div class="header-socials mobile-hide">
-          <a
-            href="https://www.youtube.com/@巴芒投研美股频道"
-            target="_blank"
-            class="icon-btn-ghost"
-          >
-            <ICONS.Youtube />
-          </a>
-          <a
-            href="https://www.bilibili.com/video/BV1ByXNBGET5/"
-            target="_blank"
-            class="icon-btn-ghost"
-          >
-            <ICONS.Bilibili />
-          </a>
+        <div class="header-socials header-github-stars">
           <a
             href="https://github.com/B-M-Capital-Research/honeclaw"
             target="_blank"
@@ -236,26 +223,7 @@ function Header() {
 
         <div class="divider-v mobile-hide" />
 
-        <a
-          href={`mailto:${C.contact_email}`}
-          class="header-contact-link"
-          title={`${C.contact_wechat_label}: ${C.contact_wechat}`}
-          aria-label={`${C.contact_email_label}: ${C.contact_email}`}
-          style={{
-            padding: "0 12px",
-            height: "34px",
-            "border-radius": "999px",
-            border: "1.5px solid #e2e8f0",
-            background: "rgba(255,255,255,0.72)",
-            color: "#334155",
-            "text-decoration": "none",
-            "font-size": "12px",
-            "font-weight": "700",
-            "white-space": "nowrap",
-          }}
-        >
-          <span class="header-contact-text">{C.contact_email}</span>
-        </a>
+        <PublicContactMenu />
 
         <div class="lang-switch">
           <button
@@ -1247,6 +1215,17 @@ function Composer(props: {
     !props.uploading &&
     (!!props.draft.trim() || props.attachments.length > 0) &&
     !quotaExhausted();
+  const isMobileViewport = () =>
+    typeof window !== "undefined" &&
+    window.matchMedia("(max-width: 768px)").matches;
+  const syncTextareaHeight = () => {
+    if (!taRef) return;
+    const maxHeight = isMobileViewport() ? 132 : 180;
+    taRef.style.height = "auto";
+    const nextHeight = Math.min(taRef.scrollHeight, maxHeight);
+    taRef.style.height = `${nextHeight}px`;
+    taRef.style.overflowY = taRef.scrollHeight > maxHeight ? "auto" : "hidden";
+  };
   const handlePaste = (e: ClipboardEvent) => {
     const items = Array.from(e.clipboardData?.items ?? []);
     const files = items
@@ -1260,7 +1239,15 @@ function Composer(props: {
   };
 
   createEffect(() => {
-    if (!props.isSending && taRef) taRef.focus();
+    props.draft;
+    queueMicrotask(syncTextareaHeight);
+  });
+
+  createEffect(() => {
+    if (!props.isSending && taRef && !isMobileViewport()) {
+      taRef.focus();
+      syncTextareaHeight();
+    }
   });
 
   return (
@@ -1348,6 +1335,7 @@ function Composer(props: {
             data-testid="composer-attach-button"
             type="button"
             class="pub-attach-btn"
+            data-open={menuOpen() ? "true" : undefined}
             style={{ width: "36px", height: "36px", "flex-shrink": "0" }}
             onClick={() => setMenuOpen(!menuOpen())}
           >
@@ -1371,7 +1359,10 @@ function Composer(props: {
             placeholder={quotaExhausted() ? "今日额度已用完" : "向 Hone 提问…"}
             value={props.draft}
             disabled={props.isSending}
-            onInput={(e) => props.onDraftChange(e.currentTarget.value)}
+            onInput={(e) => {
+              props.onDraftChange(e.currentTarget.value);
+              requestAnimationFrame(syncTextareaHeight);
+            }}
             onKeyDown={(e) => {
               if (!e.isComposing && e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -1568,26 +1559,26 @@ export default function PublicChatPage() {
     justFinishedTimer = window.setTimeout(() => setJustFinished(false), 2400);
   };
 
-  // Keep the composer pinned to the visible viewport when the user pinch-zooms
-  // or the soft keyboard opens, so it remains reachable without zooming back out.
+  // Keep the chat page sized to the visible viewport. Mobile browsers resize
+  // visualViewport around the keyboard; using a height variable avoids composer
+  // transforms and prevents the outer page from becoming draggable.
   createEffect(() => {
     const vv =
       typeof window !== "undefined" ? window.visualViewport : undefined;
     if (!vv) return;
     const update = () => {
-      const delta = vv.offsetTop + vv.height - window.innerHeight;
       document.documentElement.style.setProperty(
-        "--composer-vv-shift",
-        `${Math.min(0, delta)}px`,
+        "--public-chat-vh",
+        `${Math.round(vv.height)}px`,
       );
     };
     update();
-    vv.addEventListener("scroll", update);
     vv.addEventListener("resize", update);
+    window.addEventListener("orientationchange", update);
     onCleanup(() => {
-      vv.removeEventListener("scroll", update);
       vv.removeEventListener("resize", update);
-      document.documentElement.style.removeProperty("--composer-vv-shift");
+      window.removeEventListener("orientationchange", update);
+      document.documentElement.style.removeProperty("--public-chat-vh");
     });
   });
 
@@ -1677,9 +1668,33 @@ export default function PublicChatPage() {
 
   onMount(() => {
     initPublicPrefs();
+    const viewportMeta = document.querySelector<HTMLMetaElement>(
+      'meta[name="viewport"]',
+    );
+    const previousViewport = viewportMeta?.getAttribute("content") ?? null;
+    viewportMeta?.setAttribute(
+      "content",
+      "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+    );
+    const preventGesture = (event: Event) => event.preventDefault();
+    document.addEventListener("gesturestart", preventGesture);
+    document.addEventListener("gesturechange", preventGesture);
+    document.addEventListener("gestureend", preventGesture);
     document.documentElement.classList.add("public-chat-scroll-lock");
     document.body.classList.add("public-chat-scroll-lock");
     void restoreSession({ resetWindow: true });
+    onCleanup(() => {
+      if (viewportMeta) {
+        if (previousViewport === null) {
+          viewportMeta.removeAttribute("content");
+        } else {
+          viewportMeta.setAttribute("content", previousViewport);
+        }
+      }
+      document.removeEventListener("gesturestart", preventGesture);
+      document.removeEventListener("gesturechange", preventGesture);
+      document.removeEventListener("gestureend", preventGesture);
+    });
   });
   onCleanup(() => {
     activeController?.abort();
@@ -1977,18 +1992,30 @@ export default function PublicChatPage() {
         html.public-chat-scroll-lock,
         body.public-chat-scroll-lock,
         body.public-chat-scroll-lock #root {
-          height: 100dvh !important;
-          min-height: 100dvh !important;
+          width: 100% !important;
+          height: var(--public-chat-vh, 100dvh) !important;
+          min-height: var(--public-chat-vh, 100dvh) !important;
+          max-height: var(--public-chat-vh, 100dvh) !important;
           overflow: hidden !important;
           overscroll-behavior: none;
         }
+        body.public-chat-scroll-lock {
+          position: fixed;
+          inset: 0;
+        }
+        body.public-chat-scroll-lock #root {
+          position: relative;
+        }
         .public-chat-page {
-          height: 100dvh !important;
-          max-height: 100dvh;
+          width: 100vw;
+          height: var(--public-chat-vh, 100dvh) !important;
+          max-height: var(--public-chat-vh, 100dvh);
           overflow: hidden;
           overflow-anchor: none;
+          overscroll-behavior: none;
         }
         .public-chat-shell {
+          height: 100%;
           min-height: 0;
           overflow-anchor: none;
         }
@@ -1999,12 +2026,16 @@ export default function PublicChatPage() {
           overflow-anchor: none;
           touch-action: pan-y;
         }
-        /* Keep the composer pinned to the visible viewport when the user
-           pinch-zooms or the soft keyboard pushes the layout viewport up. */
         .public-chat-composer {
-          transform: translateY(var(--composer-vv-shift, 0px));
-          transition: transform 0.12s ease-out;
-          will-change: transform;
+          touch-action: manipulation;
+        }
+        .public-chat-composer *,
+        .public-chat-composer-input {
+          touch-action: manipulation;
+        }
+        .public-chat-composer-input {
+          touch-action: pan-y;
+          overflow-x: hidden;
         }
         .public-chat-composer-status {
           max-width: 900px;
@@ -2348,38 +2379,75 @@ export default function PublicChatPage() {
             padding-left: 12px !important;
           }
           .public-chat-composer {
-            padding: 3px 8px calc(4px + env(safe-area-inset-bottom)) !important;
+            padding: 10px 12px calc(12px + env(safe-area-inset-bottom)) !important;
+            background:
+              linear-gradient(180deg, rgba(248,250,252,0), rgba(248,250,252,0.92) 28%, rgba(248,250,252,0.98)) !important;
           }
           .public-chat-composer-box {
-            border-radius: 14px !important;
-            border-width: 1.5px !important;
+            width: 100% !important;
+            max-width: none !important;
+            border-radius: 24px !important;
+            border: 1px solid rgba(15,23,42,0.08) !important;
+            background: rgba(255,255,255,0.96) !important;
+            box-shadow: 0 18px 44px rgba(15,23,42,0.14), 0 2px 8px rgba(15,23,42,0.06) !important;
+          }
+          .public-chat-composer-box:focus-within {
+            border-color: rgba(245,158,11,0.45) !important;
+            box-shadow: 0 20px 52px rgba(15,23,42,0.16), 0 0 0 4px rgba(245,158,11,0.12) !important;
           }
           .public-chat-composer-row {
-            padding: 2px 5px !important;
-            gap: 3px !important;
+            align-items: flex-end !important;
+            padding: 8px !important;
+            gap: 8px !important;
           }
           .public-chat-composer .pub-attach-btn,
           .public-chat-send-button {
-            width: 28px !important;
-            height: 28px !important;
-            border-radius: 9px !important;
-            flex: 0 0 28px;
+            width: 40px !important;
+            height: 40px !important;
+            border-radius: 15px !important;
+            flex: 0 0 40px !important;
+            align-self: flex-end !important;
+          }
+          .public-chat-composer .pub-attach-btn {
+            background: #f8fafc !important;
+            border: 1px solid #e2e8f0 !important;
+            color: #475569 !important;
+          }
+          .public-chat-composer .pub-attach-btn[data-open="true"],
+          .public-chat-composer .pub-attach-btn:active {
+            background: rgba(245,158,11,0.12) !important;
+            border-color: rgba(245,158,11,0.35) !important;
+            color: #d97706 !important;
+          }
+          .public-chat-send-button {
+            box-shadow: 0 8px 18px rgba(15,23,42,0.18) !important;
+          }
+          .public-chat-send-button[disabled] {
+            box-shadow: none !important;
           }
           .public-chat-composer .pub-attach-btn svg,
-          .public-chat-send-button svg { width: 15px !important; height: 15px !important; }
+          .public-chat-send-button svg { width: 18px !important; height: 18px !important; }
           .public-chat-composer-input {
-            min-height: 28px !important;
-            max-height: 120px !important;
-            padding-top: 4px !important;
-            padding-bottom: 4px !important;
-            font-size: 14px !important;
-            line-height: 1.35 !important;
+            flex: 1 1 auto !important;
+            min-width: 0 !important;
+            min-height: 40px !important;
+            max-height: 132px !important;
+            padding: 8px 2px 7px !important;
+            font-size: 16px !important;
+            line-height: 1.48 !important;
+            font-weight: 500 !important;
+            align-self: stretch !important;
+          }
+          .public-chat-composer-input::placeholder {
+            font-size: 15px !important;
+            line-height: 1.48 !important;
           }
           .public-chat-composer-status {
             font-size: 11.5px !important;
-            padding: 4px 10px !important;
-            margin-bottom: 4px !important;
+            padding: 6px 12px !important;
+            margin: 0 4px 7px !important;
             gap: 8px !important;
+            border-radius: 14px !important;
           }
           .public-chat-composer-status-label { font-size: 11px !important; }
           .public-chat-composer-status-time { font-size: 11px !important; }

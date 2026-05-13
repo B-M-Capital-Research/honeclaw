@@ -5,6 +5,7 @@ import { useNavigate } from "@solidjs/router"
 import { fetchGithubStars } from "@/lib/github-stars"
 import { CONTENT } from "@/lib/public-content"
 import { setLocale, useLocale } from "@/lib/i18n"
+import { PublicContactMenu } from "@/components/public-contact-menu"
 import "./public-site.css"
 
 function AnimatedBackground() {
@@ -30,28 +31,9 @@ function Header() {
       </div>
 
       <div class="header-actions">
-        <a
-          href={`mailto:${C.contact_email}`}
-          class="header-contact-link"
-          title={`${C.contact_wechat_label}: ${C.contact_wechat}`}
-          aria-label={`${C.contact_email_label}: ${C.contact_email}`}
-          style={{
-            padding: "0 12px",
-            height: "34px",
-            "border-radius": "999px",
-            border: "1.5px solid #e2e8f0",
-            background: "rgba(255,255,255,0.72)",
-            color: "#334155",
-            "text-decoration": "none",
-            "font-size": "12px",
-            "font-weight": "700",
-            "white-space": "nowrap",
-          }}
-        >
-          <span class="header-contact-text">{C.contact_email}</span>
-        </a>
+        <PublicContactMenu />
 
-        <a href={C.github_url} target="_blank" rel="noopener noreferrer" class="star-badge mobile-hide">
+        <a href={C.github_url} target="_blank" rel="noopener noreferrer" class="star-badge header-github-stars">
           <span>GitHub</span>
           <span>{stars() || "..."}</span>
         </a>
