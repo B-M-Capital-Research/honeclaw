@@ -149,11 +149,102 @@ run_script_self_path_quality_case() {
   fi
 }
 
+run_gitleaks_archive_layout_case() {
+  local repo_dir="$TMP_ROOT/gitleaks-repo"
+  local tools_dir="$TMP_ROOT/gitleaks-tools"
+  local fixture_dir="$TMP_ROOT/gitleaks-fixture"
+  local archive_path="$TMP_ROOT/gitleaks_0.0.0_darwin_arm64.tar.gz"
+
+  mkdir -p "$repo_dir" "$tools_dir" "$fixture_dir"
+  printf 'not the binary\n' > "$fixture_dir/README.md"
+  tar -czf "$archive_path" -C "$fixture_dir" README.md
+
+  cat > "$tools_dir/curl" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+output=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o)
+      output="$2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$output" ]]; then
+  echo "missing curl -o target" >&2
+  exit 1
+fi
+
+cp "$HONE_TEST_GITLEAKS_ARCHIVE" "$output"
+EOF
+  chmod +x "$tools_dir/curl"
+
+  (
+    cd "$repo_dir"
+    git init -q
+    git config user.email "patrol@example.invalid"
+    git config user.name "Code Patrol"
+
+    local output
+    if output="$(
+      env \
+        PATH="$tools_dir:/usr/bin:/bin" \
+        GITLEAKS_VERSION=0.0.0 \
+        HONE_TEST_GITLEAKS_ARCHIVE="$archive_path" \
+        bash "$ROOT_DIR/scripts/install_gitleaks.sh" 2>&1
+    )"; then
+      echo "[FAIL] install_gitleaks accepted an archive without a gitleaks binary" >&2
+      exit 1
+    fi
+
+    assert_contains "$output" "downloaded gitleaks archive did not contain expected binary: gitleaks" "gitleaks archive layout failure should be explicit"
+    assert_contains "$output" "archive: https://github.com/gitleaks/gitleaks/releases/download/v0.0.0/gitleaks_0.0.0_" "gitleaks archive layout failure should include the source archive"
+  )
+}
+
+run_build_desktop_home_bun_case() {
+  local home_dir="$TMP_ROOT/build-desktop-home"
+  local bun_log="$TMP_ROOT/build-desktop-bun.log"
+  local bunx_log="$TMP_ROOT/build-desktop-bunx.log"
+
+  mkdir -p "$home_dir/.bun/bin"
+  cat > "$home_dir/.bun/bin/bun" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "$HONE_TEST_BUILD_DESKTOP_BUN_LOG"
+EOF
+  cat > "$home_dir/.bun/bin/bunx" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "$HONE_TEST_BUILD_DESKTOP_BUNX_LOG"
+EOF
+  chmod +x "$home_dir/.bun/bin/bun" "$home_dir/.bun/bin/bunx"
+
+  env \
+    HOME="$home_dir" \
+    PATH="/usr/bin:/bin" \
+    HONE_TEST_BUILD_DESKTOP_BUN_LOG="$bun_log" \
+    HONE_TEST_BUILD_DESKTOP_BUNX_LOG="$bunx_log" \
+    bash "$ROOT_DIR/scripts/build_desktop.sh" >/dev/null
+
+  assert_contains "$(cat "$bun_log")" "install" "build_desktop should run bun install through the home Bun fallback"
+  assert_contains "$(cat "$bun_log")" "scripts/prepare_tauri_sidecar.mjs release" "build_desktop should prepare release sidecars"
+  assert_contains "$(cat "$bunx_log")" "tauri build --config bins/hone-desktop/tauri.generated.conf.json" "build_desktop should invoke the Tauri build command"
+}
+
 run_missing_homebrew_formula_value_case
 run_invalid_homebrew_formula_sha_case
 run_homebrew_formula_generation_case
 run_homebrew_formula_version_normalization_case
 run_changed_fmt_bash3_compatible_case
 run_script_self_path_quality_case
+run_gitleaks_archive_layout_case
+run_build_desktop_home_bun_case
 
 echo "[PASS] ops script argument quality regression passed"

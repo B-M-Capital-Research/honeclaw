@@ -30,6 +30,19 @@ run_wrapper() {
     bash "$WRAPPER_SCRIPT" "$@"
 }
 
+run_wrapper_with_home_bun() {
+  local home_dir="$TMP_ROOT/home-with-bun"
+  mkdir -p "$home_dir/.bun/bin"
+  cp "$TOOLS_DIR/bun" "$home_dir/.bun/bin/bun"
+
+  : > "$ARGS_LOG"
+  env \
+    HOME="$home_dir" \
+    PATH="/usr/bin:/bin" \
+    HONE_TEST_BUN_ARGS_LOG="$ARGS_LOG" \
+    bash "$WRAPPER_SCRIPT" "$@"
+}
+
 assert_args() {
   local expected="$1"
   local actual
@@ -47,5 +60,8 @@ assert_args "$ROOT_DIR/scripts/prepare_tauri_sidecar.mjs debug"
 
 run_wrapper release --target-triple aarch64-apple-darwin --skip-build --json
 assert_args "$ROOT_DIR/scripts/prepare_tauri_sidecar.mjs release --target-triple aarch64-apple-darwin --skip-build --json"
+
+run_wrapper_with_home_bun --shell-only
+assert_args "$ROOT_DIR/scripts/prepare_tauri_sidecar.mjs --shell-only"
 
 echo "[PASS] prepare_tauri_sidecar wrapper forwards all arguments"

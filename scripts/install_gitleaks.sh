@@ -64,6 +64,11 @@ PY
   fi
 
   tar -xzf "$ARCHIVE_PATH" -C "$INSTALL_DIR"
+  if [ ! -f "$BIN_PATH" ]; then
+    echo "downloaded gitleaks archive did not contain expected binary: gitleaks" >&2
+    echo "archive: $DOWNLOAD_URL" >&2
+    exit 1
+  fi
   chmod +x "$BIN_PATH"
 fi
 
