@@ -81,6 +81,39 @@ export function nextVisibleMessageCount(
   return Math.min(totalMessages, Math.max(0, currentVisibleCount) + pageSize);
 }
 
+// Server-side stable IDs always look like `h{index}_{base36hash}`. Anything
+// else in the local message list is an optimistic id minted at send time
+// (crypto.randomUUID() or the Date.now() fallback in messageId()).
+const STABLE_HISTORY_ID_PATTERN = /^h\d+_/;
+
+/**
+ * Rewrite trailing items in `next` so they keep the same `id` as the
+ * matching trailing items in `existing` when those existing ids are still
+ * optimistic. Without this, reconcile() would treat the optimistic UUIDs
+ * and the server-side `stableHistoryId`s as different keys, drop the local
+ * DOM nodes and insert fresh ones — which momentarily shrinks the messages
+ * container and lets the browser clamp scrollTop down to "the very top of
+ * the conversation" before the ResizeObserver pulls it back. Roles must
+ * match for the swap to be safe; we stop at the first structural divergence.
+ *
+ * Mutates `next` in place and returns it for convenient chaining.
+ */
+export function rekeyTrailingOptimisticIds<
+  M extends { id: string; role: string },
+>(existing: readonly M[], next: M[]): M[] {
+  for (let offset = 1; offset <= Math.min(existing.length, next.length); offset++) {
+    const oldMsg = existing[existing.length - offset];
+    const newMsg = next[next.length - offset];
+    if (!oldMsg || !newMsg) break;
+    if (oldMsg.role !== newMsg.role) break;
+    if (oldMsg.id === newMsg.id) continue;
+    if (STABLE_HISTORY_ID_PATTERN.test(oldMsg.id)) break;
+    // Cast away readonly on the id field — `next` is owned by us here.
+    (newMsg as { id: string }).id = oldMsg.id;
+  }
+  return next;
+}
+
 export function shouldLoadOlderPublicMessages(input: {
   scrollTop: number;
   previousScrollTop: number;

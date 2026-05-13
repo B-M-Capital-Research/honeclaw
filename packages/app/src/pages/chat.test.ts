@@ -3,6 +3,7 @@ import { displayGithubStars, formatGithubStars, GITHUB_STARS_FALLBACK } from "@/
 import {
   nextVisibleMessageCount,
   normalizePhoneNumber,
+  rekeyTrailingOptimisticIds,
   resolvePublicChatView,
   selectVisibleRecentMessages,
   shouldLoadOlderPublicMessages,
@@ -114,6 +115,58 @@ describe("public chat history window", () => {
     expect(nextVisibleMessageCount(100, 24, 24)).toBe(48);
     expect(nextVisibleMessageCount(40, 24, 24)).toBe(40);
     expect(nextVisibleMessageCount(10, -1, 24)).toBe(10);
+  });
+
+  it("rewrites trailing server ids to preserve optimistic UUIDs", () => {
+    const existing = [
+      { id: "h0_abc", role: "user" as const },
+      { id: "h1_def", role: "assistant" as const },
+      { id: "5f3a8e1c-1234-5678-9abc-def012345678", role: "user" as const },
+      { id: "7c9d0e2f-1234-5678-9abc-def012345678", role: "assistant" as const },
+    ];
+    const next = [
+      { id: "h0_abc", role: "user" as const },
+      { id: "h1_def", role: "assistant" as const },
+      { id: "h2_xyz", role: "user" as const },
+      { id: "h3_uvw", role: "assistant" as const },
+    ];
+    rekeyTrailingOptimisticIds(existing, next);
+    // Trailing pair takes the optimistic UUIDs so reconcile patches in place.
+    expect(next[2]!.id).toBe("5f3a8e1c-1234-5678-9abc-def012345678");
+    expect(next[3]!.id).toBe("7c9d0e2f-1234-5678-9abc-def012345678");
+    // Stable-id history rows above the trailing pair are left untouched.
+    expect(next[0]!.id).toBe("h0_abc");
+    expect(next[1]!.id).toBe("h1_def");
+  });
+
+  it("stops rewriting once a stable id is encountered", () => {
+    // Mid-array stable id means no more optimistic IDs above it; walk halts.
+    const existing = [
+      { id: "h0_abc", role: "user" as const },
+      { id: "abc-uuid-1", role: "assistant" as const }, // optimistic
+    ];
+    const next = [
+      { id: "h0_abc", role: "user" as const },
+      { id: "h1_zzz", role: "assistant" as const },
+    ];
+    rekeyTrailingOptimisticIds(existing, next);
+    expect(next[1]!.id).toBe("abc-uuid-1");
+    expect(next[0]!.id).toBe("h0_abc");
+  });
+
+  it("stops walking when roles diverge", () => {
+    // Role mismatch indicates structural disagreement; do not rewrite further.
+    const existing = [
+      { id: "uuid-1", role: "user" as const },
+      { id: "uuid-2", role: "user" as const },
+    ];
+    const next = [
+      { id: "h0_a", role: "user" as const },
+      { id: "h1_b", role: "assistant" as const }, // role differs from tail of existing
+    ];
+    rekeyTrailingOptimisticIds(existing, next);
+    expect(next[0]!.id).toBe("h0_a");
+    expect(next[1]!.id).toBe("h1_b");
   });
 
   it("loads older messages only for explicit upward scroll near top", () => {
