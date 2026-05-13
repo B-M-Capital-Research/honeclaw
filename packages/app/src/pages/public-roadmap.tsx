@@ -169,7 +169,7 @@ export default function PublicRoadmapPage() {
           <div class="channel-grid">
             {R().channels.map(channel => (
               <div class="channel-row">
-                <span class="channel-icon">{channel.icon}</span>
+                <span class="channel-icon" aria-hidden="true">{channel.name.slice(0, 1)}</span>
                 <div>
                   <div class="channel-title">
                     <span>{channel.name}</span>
@@ -210,8 +210,8 @@ export default function PublicRoadmapPage() {
           <div class="skills-grid">
             {R().skills.map(skill => (
               <div class="skill-row">
-                <code>{skill.name}</code>
-                <p>{skill.desc}</p>
+                <strong class="skill-row-name">{skill.desc}</strong>
+                <code class="skill-row-id">{skill.name}</code>
               </div>
             ))}
           </div>
@@ -313,9 +313,9 @@ export default function PublicRoadmapPage() {
         .header-logo img { height: 32px; }
         .header-logo span { font-weight: 800; font-size: 22px; color: #000; }
         .header-actions { display: flex; align-items: center; gap: 24px; }
-        .lang-switch { display: flex; background: #f1f5f9; padding: 3px; border-radius: 10px; }
-        .lang-switch button { padding: 4px 14px; border: none; background: transparent; cursor: pointer; font-size: 13px; font-weight: 700; color: #64748b; }
-        .lang-switch button.active { background: #fff; color: #000; border-radius: 7px; box-shadow: 0 2px 4px rgba(0,0,0,0.06); }
+        .lang-switch { display: inline-flex; align-items: center; background: rgba(255,255,255,0.72); border: 1px solid #e2e8f0; padding: 3px; border-radius: 999px; gap: 2px; }
+        .lang-switch button { min-width: 34px; min-height: 28px; padding: 0 12px; border: none; border-radius: 999px; background: transparent; cursor: pointer; font-size: 12px; font-weight: 700; color: #64748b; }
+        .lang-switch button.active { background: #000; color: #fff; border-radius: 999px; }
         .btn-chat-nav { background: #000; color: #fff; border: none; padding: 10px 24px; border-radius: 100px; font-size: 14px; font-weight: 700; cursor: pointer; }
         .btn-roadmap-nav { background: transparent; color: #64748b; border: 1.5px solid #e2e8f0; padding: 8px 20px; border-radius: 100px; font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
 
@@ -347,8 +347,19 @@ export default function PublicRoadmapPage() {
         .phase-tag.next { background: #eff6ff; color: #1d4ed8; }
         .phase-tag.later { background: #fdf2f8; color: #be185d; }
         .phase-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 11px; }
-        .phase-list li { font-size: 15px; color: #475569; line-height: 1.5; display: flex; gap: 10px; }
-        .phase-list li::before { content: '->'; color: #cbd5e1; flex: 0 0 auto; }
+        .phase-list li {
+          font-size: 15px; color: #475569; line-height: 1.5;
+          display: flex; gap: 10px; align-items: baseline;
+        }
+        .phase-list li::before {
+          content: '';
+          flex: 0 0 auto;
+          width: 14px; height: 14px;
+          margin-top: 5px;
+          background-color: #cbd5e1;
+          -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><path d='M5 12h14M13 5l7 7-7 7'/></svg>") center / contain no-repeat;
+          mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><path d='M5 12h14M13 5l7 7-7 7'/></svg>") center / contain no-repeat;
+        }
 
         .matrix-container { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; }
         .matrix-group { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
@@ -364,13 +375,33 @@ export default function PublicRoadmapPage() {
         .channel-grid, .skills-grid, .docs-grid, .faq-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
         .channel-row, .skill-row, .architecture-point, .doc-card, .contrib-card, details { border: 1px solid #e2e8f0; border-radius: 14px; padding: 18px; background: #fff; min-width: 0; }
         .channel-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px; }
-        .channel-icon { font-size: 20px; color: #f59e0b; }
+        .channel-icon {
+          display: inline-flex; align-items: center; justify-content: center;
+          width: 36px; height: 36px; border-radius: 10px;
+          background: rgba(245,158,11,0.10);
+          color: #b45309;
+          font-size: 14px; font-weight: 800;
+          letter-spacing: 0;
+        }
         .channel-title { display: flex; justify-content: space-between; gap: 10px; align-items: center; font-weight: 800; color: #0f172a; }
         .channel-row p, .skill-row p, .architecture-point p, .contrib-card p, details p { margin: 8px 0 0; color: #64748b; line-height: 1.55; }
         .architecture-grid, .boundary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .architecture-point h3, .boundary-grid h3 { margin: 0 0 10px; font-size: 16px; color: #0f172a; }
         .text-link { display: inline-block; margin-top: 22px; color: #d97706; font-weight: 800; text-decoration: none; }
-        .skill-row code { display: block; font-size: 13px; font-weight: 800; color: #b45309; overflow-wrap: anywhere; }
+        .skill-row { display: flex; flex-direction: column; gap: 10px; }
+        .skill-row-name { font-size: 15px; font-weight: 700; color: #0f172a; line-height: 1.45; }
+        .skill-row-id {
+          align-self: flex-start;
+          padding: 2px 8px;
+          border-radius: 6px;
+          background: #f1f5f9;
+          font-family: var(--font-mono, "JetBrains Mono", monospace);
+          font-size: 11px;
+          font-weight: 600;
+          color: #94a3b8;
+          letter-spacing: 0;
+          overflow-wrap: anywhere;
+        }
         .docs-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
         .doc-card, .contrib-card { color: inherit; text-decoration: none; transition: border-color 0.2s, transform 0.2s; }
         .doc-card:hover, .contrib-card:hover { border-color: #f59e0b; transform: translateY(-1px); }
