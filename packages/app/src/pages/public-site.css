@@ -192,6 +192,7 @@ html {
   gap: 7px;
   font-size: 14px;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
   text-decoration: none;
   transition: background 0.2s;
 }
@@ -219,17 +220,15 @@ html {
 }
 .pub-contact-link::before,
 .header-contact-link::before {
-  content: "@";
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  content: "";
+  display: inline-block;
   width: 18px;
   height: 18px;
   border-radius: 999px;
-  background: rgba(245, 158, 11, 0.12);
-  color: #b45309;
-  font-size: 12px;
-  font-weight: 800;
+  background:
+    rgba(245, 158, 11, 0.12)
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b45309' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='5' width='18' height='14' rx='3'/><path d='M3 7l9 6 9-6'/></svg>")
+      center / 11px 11px no-repeat;
 }
 .pub-contact-label {
   color: #94a3b8;
@@ -794,8 +793,8 @@ html {
     max-width: 100%;
   }
   .page-header {
-    height: 64px !important;
-    padding: 0 16px !important;
+    height: 56px !important;
+    padding: 0 14px !important;
     gap: 10px !important;
     min-width: 0 !important;
   }
@@ -808,10 +807,7 @@ html {
     height: 28px !important;
   }
   .header-logo span {
-    max-width: 96px !important;
-    overflow: hidden !important;
     font-size: 18px !important;
-    text-overflow: ellipsis !important;
     white-space: nowrap !important;
   }
   .header-actions {
@@ -820,18 +816,10 @@ html {
     flex: 0 1 auto !important;
   }
   .header-socials,
+  .header-github-stars,
   .divider-v,
   .mobile-hide {
     display: none !important;
-  }
-  .header-github-stars {
-    display: flex !important;
-  }
-  .header-github-stars .star-badge {
-    min-height: 32px !important;
-    padding: 0 9px !important;
-    gap: 5px !important;
-    font-size: 12px !important;
   }
   .header-contact-link {
     width: 34px !important;
@@ -850,9 +838,14 @@ html {
   .pub-contact-label {
     display: none !important;
   }
+  /* On mobile, anchor the popover to the viewport so it stays inside the screen
+     no matter where the @ button sits within the header row. */
   .pub-contact-popover {
-    right: -92px;
-    width: min(360px, calc(100vw - 20px));
+    position: fixed;
+    top: calc(56px + 6px);
+    right: 12px;
+    left: 12px;
+    width: auto;
     padding: 12px;
   }
   .pub-contact-card-grid {
@@ -900,11 +893,10 @@ html {
     min-width: 0 !important;
     flex: 1 1 auto !important;
   }
+  /* The OPEN FINANCIAL CONSOLE tagline is decorative — the logo alone identifies
+     the page on mobile, so hide it to free space for the hamburger. */
   .pub-nav > div:first-child span {
-    max-width: min(46vw, 180px) !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
-    white-space: nowrap !important;
+    display: none !important;
   }
   .pub-mobile-menu {
     overscroll-behavior: contain;
@@ -1221,10 +1213,6 @@ html {
     grid-template-columns: 1fr;
   }
 
-  .header-logo span {
-    max-width: 72px !important;
-  }
-
   .btn-roadmap-nav,
   .btn-chat-nav {
     padding-right: 12px !important;
@@ -1267,10 +1255,6 @@ html {
   .page-header {
     padding-right: 12px !important;
     padding-left: 12px !important;
-  }
-
-  .header-logo span {
-    display: none !important;
   }
 
   .lang-switch button {
