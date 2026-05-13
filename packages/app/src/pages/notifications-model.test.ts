@@ -49,13 +49,14 @@ describe("notifications-model", () => {
         execStatus: "",
         sendStatus: "",
       }),
-    ).toMatchObject({
+    ).toEqual({
       since: "2026-05-12T12:00:00.000Z",
       channel: "telegram",
       user_id: "u1",
       channel_scope: "scope-a",
       execution_status: undefined,
       message_send_status: undefined,
+      limit: NOTIFICATION_QUERY_LIMIT,
     })
   })
 

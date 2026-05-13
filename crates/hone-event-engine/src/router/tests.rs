@@ -16,6 +16,13 @@ struct CapturingSink {
     calls: Mutex<Vec<(String, String)>>,
 }
 
+impl CapturingSink {
+    fn assert_no_calls(&self) {
+        let calls = self.calls.lock().unwrap();
+        assert!(calls.is_empty(), "expected no sink calls, got {calls:?}");
+    }
+}
+
 #[async_trait]
 impl OutboundSink for CapturingSink {
     async fn send(&self, actor: &ActorIdentity, body: &str) -> anyhow::Result<()> {
@@ -656,7 +663,7 @@ async fn medium_and_low_are_deferred_to_digest() {
     let (sent_l, pending_l) = router.dispatch(&ev(Severity::Low)).await.unwrap();
     assert_eq!(sent_m + sent_l, 0);
     assert_eq!(pending_m + pending_l, 2);
-    assert!(sink.calls.lock().unwrap().is_empty());
+    sink.assert_no_calls();
 }
 
 #[tokio::test]
@@ -728,7 +735,7 @@ async fn disabled_prefs_skip_send_and_enqueue() {
     let (sent_m, pending_m) = router.dispatch(&ev(Severity::Medium)).await.unwrap();
     assert_eq!(sent_h + sent_m, 0);
     assert_eq!(pending_h + pending_m, 0);
-    assert!(sink.calls.lock().unwrap().is_empty());
+    sink.assert_no_calls();
 }
 
 #[tokio::test]
@@ -785,7 +792,7 @@ async fn portfolio_only_prefs_drop_symbolless_events() {
     macro_ev.symbols.clear();
     let (sent, _pending) = router.dispatch(&macro_ev).await.unwrap();
     assert_eq!(sent, 0);
-    assert!(sink.calls.lock().unwrap().is_empty());
+    sink.assert_no_calls();
 
     // 命中 symbol 的事件仍应送达
     let (sent, _pending) = router.dispatch(&ev(Severity::High)).await.unwrap();
@@ -900,7 +907,7 @@ async fn legal_ad_high_is_demoted_before_sink() {
     let (sent, pending) = router.dispatch(&event).await.unwrap();
     assert_eq!(sent, 0);
     assert_eq!(pending, 1, "法律广告即使误标 High 也应进 digest");
-    assert!(sink.calls.lock().unwrap().is_empty());
+    sink.assert_no_calls();
 }
 
 #[tokio::test]
@@ -957,7 +964,7 @@ async fn low_news_upgrades_to_medium_when_same_day_hard_signal_exists() {
     let (sent, pending) = router.dispatch(&news).await.unwrap();
     assert_eq!(sent, 0);
     assert_eq!(pending, 1, "Low 新闻应被升到 Medium 后入 digest");
-    assert!(sink.calls.lock().unwrap().is_empty());
+    sink.assert_no_calls();
 }
 
 #[tokio::test]
@@ -1089,7 +1096,7 @@ async fn low_news_stays_low_without_same_day_signal() {
     let (sent, pending) = router.dispatch(&news).await.unwrap();
     assert_eq!(sent, 0);
     assert_eq!(pending, 1);
-    assert!(sink.calls.lock().unwrap().is_empty());
+    sink.assert_no_calls();
 }
 
 #[tokio::test]
@@ -1128,7 +1135,7 @@ async fn globally_disabled_kind_is_dropped_before_prefs() {
     let (sent, pending) = router.dispatch(&blocked).await.unwrap();
     assert_eq!(sent, 0);
     assert_eq!(pending, 0);
-    assert!(sink.calls.lock().unwrap().is_empty());
+    sink.assert_no_calls();
 
     // 非黑名单 kind 不受影响
     let (sent, _) = router.dispatch(&ev(Severity::High)).await.unwrap();
@@ -1183,7 +1190,7 @@ async fn llm_classifier_upgrades_uncertain_news_to_medium_for_actor() {
     // 升 Medium 后走 digest,immediate sink 仍为 0
     assert_eq!(sent, 0);
     assert_eq!(pending, 1, "LLM 升级后应进 digest");
-    assert!(sink.calls.lock().unwrap().is_empty());
+    sink.assert_no_calls();
 }
 
 /// e2e:LLM 返回 NotImportant 时,uncertain 源新闻保持 Low,正常进 digest。
@@ -1231,7 +1238,7 @@ async fn llm_classifier_keeps_low_when_not_important() {
     let (sent, pending) = router.dispatch(&news).await.unwrap();
     assert_eq!(sent, 0);
     assert_eq!(pending, 1);
-    assert!(sink.calls.lock().unwrap().is_empty());
+    sink.assert_no_calls();
 }
 
 /// e2e:trusted 源 News 不走 LLM(LLM 即便返回 Important 也不应触发,
@@ -1709,7 +1716,7 @@ async fn per_actor_price_threshold_below_system_floor_stays_digest() {
     let (sent, pending) = router.dispatch(&ev).await.unwrap();
     assert_eq!(sent, 0, "低于系统直推地板不应即时推");
     assert_eq!(pending, 1);
-    assert!(sink.calls.lock().unwrap().is_empty());
+    sink.assert_no_calls();
 }
 
 #[tokio::test]
@@ -1874,7 +1881,7 @@ async fn price_close_direct_disabled_keeps_closing_move_in_digest() {
     let (sent, pending) = router.dispatch(&ev).await.unwrap();
     assert_eq!(sent, 0, "默认不应在收盘时间即时推价格异动");
     assert_eq!(pending, 1);
-    assert!(sink.calls.lock().unwrap().is_empty());
+    sink.assert_no_calls();
 }
 
 #[tokio::test]
@@ -2040,7 +2047,7 @@ async fn per_actor_immediate_kinds_does_not_resurrect_low_signal_news() {
     let (sent, pending) = router.dispatch(&news).await.unwrap();
     assert_eq!(sent, 0, "Low news must not be forced into sink");
     assert_eq!(pending, 1, "Low news can still queue normally for digest");
-    assert!(sink.calls.lock().unwrap().is_empty());
+    sink.assert_no_calls();
 }
 
 #[tokio::test]
@@ -2094,7 +2101,7 @@ async fn per_actor_immediate_kinds_skips_noop_analyst_grade() {
     let (sent, pending) = router.dispatch(&ev).await.unwrap();
     assert_eq!(sent, 0, "评级没有变化时不应被 immediate_kinds 强制直推");
     assert_eq!(pending, 1);
-    assert!(sink.calls.lock().unwrap().is_empty());
+    sink.assert_no_calls();
 }
 
 #[tokio::test]
@@ -2197,7 +2204,7 @@ async fn per_actor_overrides_default_off_keeps_legacy_behavior() {
     let (sent, pending) = router.dispatch(&price_low).await.unwrap();
     assert_eq!(sent, 0);
     assert_eq!(pending, 1);
-    assert!(sink.calls.lock().unwrap().is_empty());
+    sink.assert_no_calls();
 }
 
 #[tokio::test]
@@ -2208,7 +2215,7 @@ async fn event_without_subscribers_is_no_op() {
     let (sent, pending) = router.dispatch(&e).await.unwrap();
     assert_eq!(sent, 0);
     assert_eq!(pending, 0);
-    assert!(sink.calls.lock().unwrap().is_empty());
+    sink.assert_no_calls();
 }
 
 /// 构造一个跨当前 UTC 分钟的 quiet_hours 区间(±30min,跨午夜安全)。
@@ -2325,5 +2332,5 @@ async fn quiet_does_not_hold_medium_to_digest() {
     let (sent, pending) = router.dispatch(&event).await.unwrap();
     assert_eq!(sent, 0);
     assert_eq!(pending, 1, "Medium event should still enqueue to digest");
-    assert!(sink.calls.lock().unwrap().is_empty());
+    sink.assert_no_calls();
 }

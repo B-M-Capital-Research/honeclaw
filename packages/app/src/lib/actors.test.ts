@@ -100,7 +100,10 @@ describe("mergeActorSummaries", () => {
 
   it("merges by actor key and aggregates per-source fields", () => {
     const result = mergeActorSummaries({ portfolios, profiles, sessions })
-    expect(result).toHaveLength(2)
+    expect(result.map((summary) => summary.actor.user_id).sort()).toEqual([
+      "alice",
+      "bob",
+    ])
     const findActor = (userId: string): ActorListItem =>
       requireValue(
         result.find((r) => r.actor.user_id === userId),

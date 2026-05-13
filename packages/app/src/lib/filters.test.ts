@@ -17,8 +17,16 @@ function userInfoFixture(patch: Partial<UserInfo>): UserInfo {
   }
 }
 
+function filteredUserIds(
+  users: UserInfo[],
+  query: string,
+  channel = "all",
+): string[] {
+  return filterUsers(users, query, channel).map((user) => user.user_id)
+}
+
 describe("filters", () => {
-  it("filters users by query", () => {
+  it("matches users by query and channel without losing row identity", () => {
     const users = [
       userInfoFixture({ user_id: "alice@example.com", channel: "direct" }),
       userInfoFixture({
@@ -29,14 +37,36 @@ describe("filters", () => {
       }),
     ]
 
-    expect(filterUsers(users, "ali")).toHaveLength(1)
-    expect(filterUsers(users, "  ")).toHaveLength(2)
-    expect(filterUsers(users, "", "discord")).toHaveLength(1)
-    expect(filterUsers(users, "bob", "direct")).toHaveLength(0)
+    expect(filteredUserIds(users, "ali")).toEqual(["alice@example.com"])
+    expect(filteredUserIds(users, "  ")).toEqual([
+      "alice@example.com",
+      "bob@test.com",
+    ])
+    expect(filteredUserIds(users, "", "discord")).toEqual(["bob@test.com"])
+    expect(filteredUserIds(users, "bob", "direct")).toEqual([])
   })
 
-  it("detects unread state", () => {
+  it("marks unread rows only for other-user messages newer than the read stamp", () => {
     expect(hasUnread("alice", "2026-03-07T12:00:00Z", "user", {}, undefined)).toBe(true)
+    expect(hasUnread("alice", "2026-03-07T12:00:00Z", "assistant", {}, undefined)).toBe(false)
+    expect(
+      hasUnread(
+        "alice",
+        "2026-03-07T12:00:00Z",
+        "user",
+        {},
+        "alice",
+      ),
+    ).toBe(false)
+    expect(
+      hasUnread(
+        "alice",
+        "2026-03-07T12:30:01Z",
+        "assistant",
+        { alice: "2026-03-07T12:30:00Z" },
+        undefined,
+      ),
+    ).toBe(true)
     expect(
       hasUnread(
         "alice",

@@ -520,11 +520,11 @@ mod tests {
     #[test]
     fn empty_html_returns_empty() {
         let text = extract_article_text("<html><body></body></html>", 1000);
-        assert!(text.is_empty());
+        assert_eq!(text, "");
     }
 
     #[test]
-    fn handles_li_and_headers() {
+    fn extracts_headers_and_list_items_in_document_order() {
         let html = r#"
             <article>
               <h2>Section title</h2>
@@ -535,9 +535,7 @@ mod tests {
             </article>
         "#;
         let text = extract_article_text(html, 1000);
-        assert!(text.contains("Section title"));
-        assert!(text.contains("Bullet one"));
-        assert!(text.contains("Bullet two"));
+        assert_eq!(text, "Section title\n\nBullet one\n\nBullet two");
     }
 
     // ----- Jina Reader 解析 -----

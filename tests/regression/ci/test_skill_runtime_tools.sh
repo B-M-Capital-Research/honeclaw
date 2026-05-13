@@ -12,4 +12,4 @@ cargo test -p hone-tools \
   skill_tool::tests::execute_persists_invoked_skill_into_real_session_storage \
   -- --exact
 
-echo "skill runtime tool regression passed"
+echo "[PASS] skill runtime tool regression passed"

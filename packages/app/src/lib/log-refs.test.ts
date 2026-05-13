@@ -96,7 +96,17 @@ describe("extractLogRefs", () => {
         extra: { session_id: "Actor_web__direct__ME" },
       }),
     )
-    expect(refs.filter((r) => r.kind === "session").length).toBe(1)
+    expect(refs.filter((r) => r.kind === "session")).toEqual([
+      {
+        kind: "session",
+        sessionId: "Actor_web__direct__ME",
+        actor: {
+          channel: "web",
+          user_id: "ME",
+          channel_scope: undefined,
+        },
+      },
+    ])
   })
 
   it("emits task ref from extra.task_id", () => {
