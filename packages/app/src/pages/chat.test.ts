@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { formatGithubStars } from "@/lib/github-stars";
+import { displayGithubStars, formatGithubStars, GITHUB_STARS_FALLBACK } from "@/lib/github-stars";
 import {
   nextVisibleMessageCount,
   normalizePhoneNumber,
@@ -21,6 +21,14 @@ describe("formatGithubStars", () => {
     expect(formatGithubStars(42)).toBe("42");
     expect(formatGithubStars(1250)).toBe("1.3k");
     expect(formatGithubStars(12000)).toBe("12k");
+  });
+});
+
+describe("displayGithubStars", () => {
+  it("never exposes the loading placeholder in public nav", () => {
+    expect(displayGithubStars(undefined)).toBe(GITHUB_STARS_FALLBACK);
+    expect(displayGithubStars("...")).toBe(GITHUB_STARS_FALLBACK);
+    expect(displayGithubStars("1.2k")).toBe("1.2k");
   });
 });
 

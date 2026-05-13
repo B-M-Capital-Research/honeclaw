@@ -17,7 +17,7 @@ import { createStore, reconcile } from "solid-js/store";
 import { useNavigate } from "@solidjs/router";
 import { PublicLoginForm } from "@/components/public-login-form";
 import { PublicContactMenu } from "@/components/public-contact-menu";
-import { fetchGithubStars } from "@/lib/github-stars";
+import { displayGithubStars, fetchGithubStars } from "@/lib/github-stars";
 import { CONTENT } from "@/lib/public-content";
 import { setLocale, useLocale } from "@/lib/i18n";
 import {
@@ -217,7 +217,7 @@ function Header() {
             class="star-badge"
           >
             <ICONS.Github />
-            <span>{stars() || "..."}</span>
+            <span>{displayGithubStars(stars())}</span>
           </a>
         </div>
 

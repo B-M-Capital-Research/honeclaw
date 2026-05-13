@@ -2,7 +2,7 @@
 
 import { createResource } from "solid-js"
 import { useNavigate } from "@solidjs/router"
-import { fetchGithubStars } from "@/lib/github-stars"
+import { displayGithubStars, fetchGithubStars } from "@/lib/github-stars"
 import { CONTENT } from "@/lib/public-content"
 import { setLocale, useLocale } from "@/lib/i18n"
 import { PublicContactMenu } from "@/components/public-contact-menu"
@@ -35,7 +35,7 @@ function Header() {
 
         <a href={C.github_url} target="_blank" rel="noopener noreferrer" class="star-badge header-github-stars">
           <span>GitHub</span>
-          <span>{stars() || "..."}</span>
+          <span>{displayGithubStars(stars())}</span>
         </a>
 
         <div class="lang-switch">

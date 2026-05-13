@@ -2,7 +2,7 @@
 
 import { createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { useNavigate, useLocation } from "@solidjs/router"
-import { fetchGithubStars } from "@/lib/github-stars"
+import { displayGithubStars, fetchGithubStars } from "@/lib/github-stars"
 import { CONTENT } from "@/lib/public-content"
 import { setLocale, useLocale } from "@/lib/i18n"
 import { PublicContactCards, PublicContactMenu } from "@/components/public-contact-menu"
@@ -176,7 +176,7 @@ export function PublicNav() {
             }}
           >
             <span>GitHub</span>
-            <span class="pub-github-star-count">{stars() || "..."}</span>
+            <span class="pub-github-star-count">{displayGithubStars(stars())}</span>
           </a>
 
           <div
@@ -358,7 +358,7 @@ export function PublicNav() {
               }}
             >
               <span>GitHub</span>
-              <span class="pub-github-star-count">{stars() || "..."}</span>
+              <span class="pub-github-star-count">{displayGithubStars(stars())}</span>
             </a>
           </div>
           <div
