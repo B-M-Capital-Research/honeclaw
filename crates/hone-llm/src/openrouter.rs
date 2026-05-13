@@ -203,11 +203,11 @@ impl OpenRouterProvider {
     fn convert_messages(
         messages: &[Message],
     ) -> hone_core::HoneResult<Vec<ChatCompletionRequestMessage>> {
-        let mut out = Vec::with_capacity(messages.len());
-        for msg in messages {
-            let m = match msg.role.as_str() {
+        let mut request_messages = Vec::with_capacity(messages.len());
+        for message in messages {
+            let request_message = match message.role.as_str() {
                 "system" => {
-                    let content = msg.content.as_deref().unwrap_or("");
+                    let content = message.content.as_deref().unwrap_or("");
                     ChatCompletionRequestSystemMessageArgs::default()
                         .content(content)
                         .build()
@@ -215,7 +215,7 @@ impl OpenRouterProvider {
                         .map_err(|e| hone_core::HoneError::Llm(e.to_string()))?
                 }
                 "user" => {
-                    let content = msg.content.as_deref().unwrap_or("");
+                    let content = message.content.as_deref().unwrap_or("");
                     ChatCompletionRequestUserMessageArgs::default()
                         .content(content)
                         .build()
@@ -224,23 +224,26 @@ impl OpenRouterProvider {
                 }
                 "assistant" => {
                     let mut builder = ChatCompletionRequestAssistantMessageArgs::default();
-                    if let Some(content) = &msg.content {
+                    if let Some(content) = &message.content {
                         builder.content(content.as_str());
                     }
-                    if let Some(tool_calls) = &msg.tool_calls {
-                        let tc: Vec<async_openai::types::ChatCompletionMessageToolCall> =
-                            tool_calls
-                                .iter()
-                                .map(|tc| async_openai::types::ChatCompletionMessageToolCall {
-                                    id: tc.id.clone(),
+                    if let Some(tool_calls) = &message.tool_calls {
+                        let request_tool_calls: Vec<
+                            async_openai::types::ChatCompletionMessageToolCall,
+                        > = tool_calls
+                            .iter()
+                            .map(
+                                |tool_call| async_openai::types::ChatCompletionMessageToolCall {
+                                    id: tool_call.id.clone(),
                                     r#type: async_openai::types::ChatCompletionToolType::Function,
                                     function: async_openai::types::FunctionCall {
-                                        name: tc.function.name.clone(),
-                                        arguments: tc.function.arguments.clone(),
+                                        name: tool_call.function.name.clone(),
+                                        arguments: tool_call.function.arguments.clone(),
                                     },
-                                })
-                                .collect();
-                        builder.tool_calls(tc);
+                                },
+                            )
+                            .collect();
+                        builder.tool_calls(request_tool_calls);
                     }
                     builder
                         .build()
@@ -248,8 +251,8 @@ impl OpenRouterProvider {
                         .map_err(|e| hone_core::HoneError::Llm(e.to_string()))?
                 }
                 "tool" => {
-                    let content = msg.content.as_deref().unwrap_or("");
-                    let tool_call_id = msg.tool_call_id.as_deref().unwrap_or("");
+                    let content = message.content.as_deref().unwrap_or("");
+                    let tool_call_id = message.tool_call_id.as_deref().unwrap_or("");
                     ChatCompletionRequestToolMessageArgs::default()
                         .content(content)
                         .tool_call_id(tool_call_id)
@@ -263,9 +266,9 @@ impl OpenRouterProvider {
                     )));
                 }
             };
-            out.push(m);
+            request_messages.push(request_message);
         }
-        Ok(out)
+        Ok(request_messages)
     }
 
     async fn post_chat_completion(
@@ -389,7 +392,7 @@ impl OpenRouterProvider {
     }
 
     fn tool_calls_from_value(value: &Value) -> Option<Vec<ToolCall>> {
-        let calls = value
+        let response_tool_calls = value
             .get("choices")?
             .as_array()?
             .first()?
@@ -397,28 +400,28 @@ impl OpenRouterProvider {
             .get("tool_calls")?
             .as_array()?;
         Some(
-            calls
+            response_tool_calls
                 .iter()
-                .map(|tc| {
-                    let function = tc.get("function").unwrap_or(&Value::Null);
-                    let arguments = match function.get("arguments") {
-                        Some(Value::String(s)) => s.clone(),
+                .map(|tool_call_value| {
+                    let function_payload = tool_call_value.get("function").unwrap_or(&Value::Null);
+                    let arguments = match function_payload.get("arguments") {
+                        Some(Value::String(text)) => text.clone(),
                         Some(other) => other.to_string(),
                         None => String::new(),
                     };
                     ToolCall {
-                        id: tc
+                        id: tool_call_value
                             .get("id")
                             .and_then(|v| v.as_str())
                             .unwrap_or_default()
                             .to_string(),
-                        call_type: tc
+                        call_type: tool_call_value
                             .get("type")
                             .and_then(|v| v.as_str())
                             .unwrap_or("function")
                             .to_string(),
                         function: FunctionCall {
-                            name: function
+                            name: function_payload
                                 .get("name")
                                 .and_then(|v| v.as_str())
                                 .unwrap_or_default()
@@ -433,7 +436,7 @@ impl OpenRouterProvider {
 
     /// 将 serde_json::Value (OpenAI tool schema) 转换为 ChatCompletionTool
     fn convert_tools(tools: &[Value]) -> hone_core::HoneResult<Vec<ChatCompletionTool>> {
-        let mut out = Vec::with_capacity(tools.len());
+        let mut chat_tools = Vec::with_capacity(tools.len());
         for tool_schema in tools {
             let function_schema = tool_schema
                 .get("function")
@@ -463,12 +466,12 @@ impl OpenRouterProvider {
                 );
             }
 
-            out.push(ChatCompletionTool {
+            chat_tools.push(ChatCompletionTool {
                 r#type: ChatCompletionToolType::Function,
                 function: function_object,
             });
         }
-        Ok(out)
+        Ok(chat_tools)
     }
 }
 
@@ -518,9 +521,10 @@ impl LlmProvider for OpenRouterProvider {
         let mut last_err = String::new();
 
         for client in &self.clients {
-            let converted = Self::convert_messages(messages)?;
+            let converted_messages = Self::convert_messages(messages)?;
             if !self.request_options.is_empty() {
-                let request = self.build_profile_request_body(converted, None, model_str)?;
+                let request =
+                    self.build_profile_request_body(converted_messages, None, model_str)?;
                 match Self::post_chat_completion_value(client, &request).await {
                     Ok(value) => {
                         return Ok(ChatResult {
@@ -536,7 +540,7 @@ impl LlmProvider for OpenRouterProvider {
             }
             let request = CreateChatCompletionRequestArgs::default()
                 .model(model_str)
-                .messages(converted)
+                .messages(converted_messages)
                 .max_tokens(self.max_tokens)
                 .build()
                 .map_err(|e| hone_core::HoneError::Llm(e.to_string()))?;
@@ -590,14 +594,17 @@ impl LlmProvider for OpenRouterProvider {
         model: Option<&str>,
     ) -> hone_core::HoneResult<ChatResponse> {
         let model_str = model.unwrap_or(&self.model);
-        let tool_defs = Self::convert_tools(tools)?;
+        let chat_tools = Self::convert_tools(tools)?;
         let mut last_err = String::new();
 
         for client in &self.clients {
-            let converted = Self::convert_messages(messages)?;
+            let converted_messages = Self::convert_messages(messages)?;
             if !self.request_options.is_empty() {
-                let request =
-                    self.build_profile_request_body(converted, Some(tool_defs.clone()), model_str)?;
+                let request = self.build_profile_request_body(
+                    converted_messages,
+                    Some(chat_tools.clone()),
+                    model_str,
+                )?;
                 match Self::post_chat_completion_value(client, &request).await {
                     Ok(value) => {
                         return Ok(ChatResponse {
@@ -615,8 +622,8 @@ impl LlmProvider for OpenRouterProvider {
             }
             let request = CreateChatCompletionRequestArgs::default()
                 .model(model_str)
-                .messages(converted)
-                .tools(tool_defs.clone())
+                .messages(converted_messages)
+                .tools(chat_tools.clone())
                 .max_tokens(self.max_tokens)
                 .build()
                 .map_err(|e| hone_core::HoneError::Llm(e.to_string()))?;
@@ -629,14 +636,15 @@ impl LlmProvider for OpenRouterProvider {
 
                     let content = choice.message.content.clone().unwrap_or_default();
 
-                    let tool_calls = choice.message.tool_calls.as_ref().map(|tcs| {
-                        tcs.iter()
-                            .map(|tc| ToolCall {
-                                id: tc.id.clone(),
+                    let tool_calls = choice.message.tool_calls.as_ref().map(|sdk_tool_calls| {
+                        sdk_tool_calls
+                            .iter()
+                            .map(|sdk_tool_call| ToolCall {
+                                id: sdk_tool_call.id.clone(),
                                 call_type: "function".to_string(),
                                 function: FunctionCall {
-                                    name: tc.function.name.clone(),
-                                    arguments: tc.function.arguments.clone(),
+                                    name: sdk_tool_call.function.name.clone(),
+                                    arguments: sdk_tool_call.function.arguments.clone(),
                                 },
                             })
                             .collect()
@@ -700,10 +708,10 @@ impl LlmProvider for OpenRouterProvider {
                 }
             };
 
-            let converted = Self::convert_messages(messages)?;
+            let converted_messages = Self::convert_messages(messages)?;
             let request = CreateChatCompletionRequestArgs::default()
                 .model(model.unwrap_or(&self.model))
-                .messages(converted)
+                .messages(converted_messages)
                 .max_tokens(self.max_tokens)
                 .build()
                 .map_err(|e| hone_core::HoneError::Llm(e.to_string()))?;
@@ -779,11 +787,20 @@ mod tests {
             )
             .await
             .expect_err("numeric provider error should remain an error");
-        let msg = err.to_string();
-        assert!(msg.contains("upstream HTTP 400"), "{msg}");
-        assert!(msg.contains("maximum context length exceeded"), "{msg}");
-        assert!(msg.contains("code: 400"), "{msg}");
-        assert!(!msg.contains("invalid type: integer"), "{msg}");
+        let error_message = err.to_string();
+        assert!(
+            error_message.contains("upstream HTTP 400"),
+            "{error_message}"
+        );
+        assert!(
+            error_message.contains("maximum context length exceeded"),
+            "{error_message}"
+        );
+        assert!(error_message.contains("code: 400"), "{error_message}");
+        assert!(
+            !error_message.contains("invalid type: integer"),
+            "{error_message}"
+        );
         assert!(
             requests.load(Ordering::SeqCst) >= 2,
             "SDK path plus raw HTTP fallback should both hit the mock server"
@@ -821,11 +838,20 @@ mod tests {
             )
             .await
             .expect_err("numeric provider error should remain an error");
-        let msg = err.to_string();
-        assert!(msg.contains("upstream HTTP 400"), "{msg}");
-        assert!(msg.contains("maximum context length exceeded"), "{msg}");
-        assert!(msg.contains("code: 400"), "{msg}");
-        assert!(!msg.contains("invalid type: integer"), "{msg}");
+        let error_message = err.to_string();
+        assert!(
+            error_message.contains("upstream HTTP 400"),
+            "{error_message}"
+        );
+        assert!(
+            error_message.contains("maximum context length exceeded"),
+            "{error_message}"
+        );
+        assert!(error_message.contains("code: 400"), "{error_message}");
+        assert!(
+            !error_message.contains("invalid type: integer"),
+            "{error_message}"
+        );
         assert!(
             requests.load(Ordering::SeqCst) >= 2,
             "SDK path plus raw HTTP fallback should both hit the mock server"

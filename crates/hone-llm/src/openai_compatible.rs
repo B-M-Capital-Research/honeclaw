@@ -71,11 +71,11 @@ impl OpenAiCompatibleProvider {
     fn convert_messages(
         messages: &[Message],
     ) -> hone_core::HoneResult<Vec<ChatCompletionRequestMessage>> {
-        let mut out = Vec::with_capacity(messages.len());
-        for msg in messages {
-            let m = match msg.role.as_str() {
+        let mut request_messages = Vec::with_capacity(messages.len());
+        for message in messages {
+            let request_message = match message.role.as_str() {
                 "system" => {
-                    let content = msg.content.as_deref().unwrap_or("");
+                    let content = message.content.as_deref().unwrap_or("");
                     ChatCompletionRequestSystemMessageArgs::default()
                         .content(content)
                         .build()
@@ -83,7 +83,7 @@ impl OpenAiCompatibleProvider {
                         .map_err(|e| hone_core::HoneError::Llm(e.to_string()))?
                 }
                 "user" => {
-                    let content = msg.content.as_deref().unwrap_or("");
+                    let content = message.content.as_deref().unwrap_or("");
                     ChatCompletionRequestUserMessageArgs::default()
                         .content(content)
                         .build()
@@ -92,23 +92,26 @@ impl OpenAiCompatibleProvider {
                 }
                 "assistant" => {
                     let mut builder = ChatCompletionRequestAssistantMessageArgs::default();
-                    if let Some(content) = &msg.content {
+                    if let Some(content) = &message.content {
                         builder.content(content.as_str());
                     }
-                    if let Some(tool_calls) = &msg.tool_calls {
-                        let tc: Vec<async_openai::types::ChatCompletionMessageToolCall> =
-                            tool_calls
-                                .iter()
-                                .map(|tc| async_openai::types::ChatCompletionMessageToolCall {
-                                    id: tc.id.clone(),
+                    if let Some(tool_calls) = &message.tool_calls {
+                        let request_tool_calls: Vec<
+                            async_openai::types::ChatCompletionMessageToolCall,
+                        > = tool_calls
+                            .iter()
+                            .map(
+                                |tool_call| async_openai::types::ChatCompletionMessageToolCall {
+                                    id: tool_call.id.clone(),
                                     r#type: async_openai::types::ChatCompletionToolType::Function,
                                     function: async_openai::types::FunctionCall {
-                                        name: tc.function.name.clone(),
-                                        arguments: tc.function.arguments.clone(),
+                                        name: tool_call.function.name.clone(),
+                                        arguments: tool_call.function.arguments.clone(),
                                     },
-                                })
-                                .collect();
-                        builder.tool_calls(tc);
+                                },
+                            )
+                            .collect();
+                        builder.tool_calls(request_tool_calls);
                     }
                     builder
                         .build()
@@ -116,8 +119,8 @@ impl OpenAiCompatibleProvider {
                         .map_err(|e| hone_core::HoneError::Llm(e.to_string()))?
                 }
                 "tool" => {
-                    let content = msg.content.as_deref().unwrap_or("");
-                    let tool_call_id = msg.tool_call_id.as_deref().unwrap_or("");
+                    let content = message.content.as_deref().unwrap_or("");
+                    let tool_call_id = message.tool_call_id.as_deref().unwrap_or("");
                     ChatCompletionRequestToolMessageArgs::default()
                         .content(content)
                         .tool_call_id(tool_call_id)
@@ -131,9 +134,9 @@ impl OpenAiCompatibleProvider {
                     )));
                 }
             };
-            out.push(m);
+            request_messages.push(request_message);
         }
-        Ok(out)
+        Ok(request_messages)
     }
 
     async fn post_chat_completion(
@@ -264,7 +267,7 @@ impl OpenAiCompatibleProvider {
     }
 
     fn tool_calls_from_value(value: &Value) -> Option<Vec<ToolCall>> {
-        let calls = value
+        let response_tool_calls = value
             .get("choices")?
             .as_array()?
             .first()?
@@ -272,28 +275,28 @@ impl OpenAiCompatibleProvider {
             .get("tool_calls")?
             .as_array()?;
         Some(
-            calls
+            response_tool_calls
                 .iter()
-                .map(|tc| {
-                    let function = tc.get("function").unwrap_or(&Value::Null);
-                    let arguments = match function.get("arguments") {
-                        Some(Value::String(s)) => s.clone(),
+                .map(|tool_call_value| {
+                    let function_payload = tool_call_value.get("function").unwrap_or(&Value::Null);
+                    let arguments = match function_payload.get("arguments") {
+                        Some(Value::String(text)) => text.clone(),
                         Some(other) => other.to_string(),
                         None => String::new(),
                     };
                     ToolCall {
-                        id: tc
+                        id: tool_call_value
                             .get("id")
                             .and_then(|v| v.as_str())
                             .unwrap_or_default()
                             .to_string(),
-                        call_type: tc
+                        call_type: tool_call_value
                             .get("type")
                             .and_then(|v| v.as_str())
                             .unwrap_or("function")
                             .to_string(),
                         function: FunctionCall {
-                            name: function
+                            name: function_payload
                                 .get("name")
                                 .and_then(|v| v.as_str())
                                 .unwrap_or_default()
@@ -399,11 +402,20 @@ mod tests {
             )
             .await
             .expect_err("numeric provider error should remain an error");
-        let msg = err.to_string();
-        assert!(msg.contains("upstream HTTP 400"), "{msg}");
-        assert!(msg.contains("maximum context length exceeded"), "{msg}");
-        assert!(msg.contains("code: 400"), "{msg}");
-        assert!(!msg.contains("invalid type: integer"), "{msg}");
+        let error_message = err.to_string();
+        assert!(
+            error_message.contains("upstream HTTP 400"),
+            "{error_message}"
+        );
+        assert!(
+            error_message.contains("maximum context length exceeded"),
+            "{error_message}"
+        );
+        assert!(error_message.contains("code: 400"), "{error_message}");
+        assert!(
+            !error_message.contains("invalid type: integer"),
+            "{error_message}"
+        );
         assert!(
             requests.load(Ordering::SeqCst) >= 1,
             "raw HTTP path should hit the mock server"
@@ -542,8 +554,8 @@ mod tests {
 
 /// Returns true for transient HTTP transport errors that are worth retrying once.
 /// Covers "error sending request for url", connection resets, and EOF-before-response.
-fn is_retryable_transport_error(err: &str) -> bool {
-    let lower = err.to_lowercase();
+fn is_retryable_transport_error(error_message: &str) -> bool {
+    let lower = error_message.to_lowercase();
     lower.contains("error sending request")
         || lower.contains("connection reset")
         || lower.contains("connection closed before message completed")
@@ -558,14 +570,16 @@ impl LlmProvider for OpenAiCompatibleProvider {
         messages: &[Message],
         model: Option<&str>,
     ) -> hone_core::HoneResult<ChatResult> {
-        let converted = Self::convert_messages(messages)?;
+        let converted_messages = Self::convert_messages(messages)?;
         let model = model.unwrap_or(&self.model);
         if self.request_options.is_empty()
-            && !messages.iter().any(|msg| msg.reasoning_content.is_some())
+            && !messages
+                .iter()
+                .any(|message| message.reasoning_content.is_some())
         {
             let request = CreateChatCompletionRequestArgs::default()
                 .model(model)
-                .messages(converted)
+                .messages(converted_messages)
                 .max_tokens(self.max_tokens)
                 .build()
                 .map_err(|e| hone_core::HoneError::Llm(e.to_string()))?;
@@ -590,8 +604,8 @@ impl LlmProvider for OpenAiCompatibleProvider {
                         return Ok(ChatResult { content, usage });
                     }
                     Err(err) => {
-                        let msg = err.to_string();
-                        let hone_err = hone_core::HoneError::Llm(msg.clone());
+                        let error_message = err.to_string();
+                        let hone_err = hone_core::HoneError::Llm(error_message.clone());
                         if should_retry_with_raw_http(&err) {
                             let value = self.post_chat_completion(&request).await?;
                             return Ok(ChatResult {
@@ -599,9 +613,9 @@ impl LlmProvider for OpenAiCompatibleProvider {
                                 usage: Self::usage_from_value(&value),
                             });
                         }
-                        if attempt == 0 && is_retryable_transport_error(&msg) {
+                        if attempt == 0 && is_retryable_transport_error(&error_message) {
                             tracing::warn!(
-                                "[openai_compatible] chat transport error, retrying: {msg}"
+                                "[openai_compatible] chat transport error, retrying: {error_message}"
                             );
                             last_err = Some(hone_err);
                         } else {
@@ -680,10 +694,10 @@ impl LlmProvider for OpenAiCompatibleProvider {
         model: Option<&'a str>,
     ) -> BoxStream<'a, hone_core::HoneResult<String>> {
         let fut = async move {
-            let converted = Self::convert_messages(messages)?;
+            let converted_messages = Self::convert_messages(messages)?;
             let request = CreateChatCompletionRequestArgs::default()
                 .model(model.unwrap_or(&self.model))
-                .messages(converted)
+                .messages(converted_messages)
                 .max_tokens(self.max_tokens)
                 .build()
                 .map_err(|e| hone_core::HoneError::Llm(e.to_string()))?;
