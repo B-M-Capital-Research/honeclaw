@@ -932,14 +932,14 @@ pub(crate) async fn set_channel_settings_impl(
         }
         let status = connect_backend_serialized(&app, &state).await?;
         let message = if status.connected {
-            "已保存到运行时覆盖层，并已重启内置后端".to_string()
+            "已保存渠道设置，并已重启内置后端".to_string()
         } else {
             format!(
-                "已保存到运行时覆盖层，但内置后端重启后未连接：{}",
+                "已保存渠道设置，但当前运行时尚未生效：{}",
                 status
                     .last_error
                     .clone()
-                    .unwrap_or_else(|| "未知错误".to_string())
+                    .unwrap_or_else(|| "内置后端重启后未连接".to_string())
             )
         };
         return Ok(DesktopChannelSettingsUpdateResult {
@@ -953,7 +953,7 @@ pub(crate) async fn set_channel_settings_impl(
     Ok(DesktopChannelSettingsUpdateResult {
         settings: saved,
         restarted_bundled_backend: false,
-        message: "已保存到本地运行时覆盖层。当前为远程模式，下次切回内置后端时生效".to_string(),
+        message: "已保存渠道设置。当前为远程模式，下次切回内置后端时生效".to_string(),
         backend_status: None,
     })
 }
@@ -1243,7 +1243,7 @@ fn build_agent_settings_update_result(
                 "已保存 Agent 设置，并已重启内置后端".to_string()
             } else {
                 format!(
-                    "已保存 Agent 设置，但当前 runtime 尚未生效：{}",
+                    "已保存 Agent 设置，但当前运行时尚未生效：{}",
                     status
                         .last_error
                         .clone()
@@ -1943,7 +1943,7 @@ fmp:
         assert!(result.restarted_bundled_backend);
         assert_eq!(result.settings.runner, "multi-agent");
         assert!(
-            result.message.contains("当前 runtime 尚未生效"),
+            result.message.contains("当前运行时尚未生效"),
             "should explicitly surface that runtime did not apply the new runner"
         );
         assert_eq!(

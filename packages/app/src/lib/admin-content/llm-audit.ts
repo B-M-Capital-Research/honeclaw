@@ -2,7 +2,7 @@ import { makeContentProxy } from "../i18n"
 
 const ZH = {
   capability: {
-    unavailable: "当前 backend 未开放 LLM 审计能力。",
+    unavailable: "当前后端未开放 LLM 审计能力。",
   },
   toolbar: {
     title: "LLM 审计",
@@ -50,7 +50,7 @@ const ZH = {
 
 const EN: typeof ZH = {
   capability: {
-    unavailable: "This backend does not expose the LLM audit capability.",
+    unavailable: "The current backend does not expose the LLM audit capability.",
   },
   toolbar: {
     title: "LLM audit",

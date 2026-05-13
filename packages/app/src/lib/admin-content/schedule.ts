@@ -40,7 +40,7 @@ const ZH = {
   filters: {
     blocked_kinds: "屏蔽类型：",
     allow_kinds: "仅允许类型：",
-    exempt_in_quiet: "勿扰期间豁免：",
+    exempt_in_quiet: "勿扰豁免类型：",
   },
 }
 
@@ -57,7 +57,7 @@ const EN: typeof ZH = {
     cron_job: "Custom",
   },
   card: {
-    actor: "actor",
+    actor: "User",
     timezone: "Timezone",
     quiet_hours: "Quiet hours",
     quiet_disabled: "Disabled",
@@ -82,9 +82,9 @@ const EN: typeof ZH = {
     cell_active: "✅",
   },
   filters: {
-    blocked_kinds: "Blocked kinds: ",
-    allow_kinds: "Allow kinds: ",
-    exempt_in_quiet: "Quiet exempt: ",
+    blocked_kinds: "Blocked event types: ",
+    allow_kinds: "Allowed event types: ",
+    exempt_in_quiet: "Quiet-hour exemptions: ",
   },
 }
 

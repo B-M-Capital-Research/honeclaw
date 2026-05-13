@@ -112,7 +112,7 @@ const ZH = {
       description_suffix:
         " 驱动当前 Agent，会话实际走 ACP 链路而不是 multi-agent。",
       runtime_note:
-        "运行时配置当前来自 desktop canonical / effective config；如果 live listener 仍显示旧 runner，应继续核对 release sidecar 是否已按新配置重启。",
+        "设置会写入 config.yaml 并刷新 effective config；如果监听进程仍显示旧 runner，请确认内置后端已按新配置重启。",
       checking_status: "检测中，请稍候…",
       test_connection: "测试连通",
       checking: "检测中…",
@@ -147,7 +147,7 @@ const ZH = {
       add_key: "+ 添加 Key",
       save: "保存 FMP",
       saving: "保存中…",
-      saved: "已保存 FMP API key，内置后端已重启生效",
+      saved: "已保存 FMP API Key 列表，内置后端已重启生效",
     },
     tavily: {
       name: "搜索 API（Tavily）",
@@ -157,7 +157,7 @@ const ZH = {
       add_key: "+ 添加 Key",
       save: "保存 Tavily",
       saving: "保存中…",
-      saved: "已保存 Tavily API key，内置后端已重启生效",
+      saved: "已保存 Tavily API Key 列表，内置后端已重启生效",
     },
   },
   notify: {
@@ -376,7 +376,7 @@ const EN: typeof ZH = {
       description_suffix:
         ". Sessions run over the ACP link instead of multi-agent.",
       runtime_note:
-        "Runtime config currently comes from desktop canonical / effective config. If the live listener still shows the old runner, double-check that the release sidecar restarted with the new config.",
+        "Settings write to config.yaml and refresh the effective config. If the listener still shows the old runner, confirm that the embedded backend restarted with the new config.",
       checking_status: "Checking, please wait…",
       test_connection: "Test connection",
       checking: "Checking…",

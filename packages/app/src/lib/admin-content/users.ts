@@ -17,7 +17,7 @@ const ZH = {
     subtitle: "合并持仓 / 画像 / 会话三处来源",
     manual_open: "手动输入",
     manual_collapse: "收起",
-    search_placeholder: "搜索 user_id / 渠道 / scope",
+    search_placeholder: "搜索用户 ID / 渠道 / 范围",
     manual_channel_placeholder: "渠道，如 imessage",
     manual_user_id_placeholder: "用户 ID",
     manual_scope_placeholder: "范围，可选",
@@ -106,14 +106,14 @@ const EN: typeof ZH = {
     subtitle: "Merged from holdings, profiles, and sessions.",
     manual_open: "Manual",
     manual_collapse: "Hide",
-    search_placeholder: "Search user_id / channel / scope",
+    search_placeholder: "Search user ID / channel / scope",
     manual_channel_placeholder: "Channel, e.g. imessage",
     manual_user_id_placeholder: "User ID",
     manual_scope_placeholder: "Scope, optional",
     manual_submit: "Open",
     empty_search_title: "No matching users",
     empty_search_description:
-      "Try a different search term, or use manual entry above to locate a specific actor.",
+      "Try a different search term, or use manual entry above to locate a specific user.",
     empty_title: "No users yet",
     empty_description:
       "Nobody has holdings / profiles / sessions yet — connect an IM channel or add one manually.",
@@ -166,7 +166,7 @@ const EN: typeof ZH = {
     style_title: "Overall investment style",
     style_empty: "Not distilled yet — at least one company profile is required.",
     holdings_title: "Per-holding mainlines ({count})",
-    holdings_empty: "This actor has no holdings.",
+    holdings_empty: "This user has no holdings.",
     view_profile: "View profile",
     view: "View",
     no_profile_label: "No company profile",
@@ -177,7 +177,7 @@ const EN: typeof ZH = {
     retry_hint: '. Click "Distill now" to retry.',
     profile_inventory_title: "Company profile inventory ({count})",
     profile_inventory_empty:
-      "This actor's sandbox has no company profiles yet.",
+      "This user's sandbox has no company profiles yet.",
     modal_title_suffix: " · Company profile",
     modal_footer:
       "Profiles are maintained by the user in chat via the company_portrait skill — read-only here.",

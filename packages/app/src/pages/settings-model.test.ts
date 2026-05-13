@@ -346,7 +346,7 @@ describe("settings-model", () => {
       isAgentSettingsRuntimeMismatch({
         settings: defaultAgentSettings(),
         restartedBundledBackend: true,
-        message: "已保存 Agent 设置，但当前 runtime 尚未生效",
+        message: "已保存 Agent 设置，但当前运行时尚未生效",
         backendStatus: {
           config: {
             mode: "bundled",
