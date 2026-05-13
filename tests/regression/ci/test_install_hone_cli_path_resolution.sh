@@ -263,6 +263,42 @@ run_missing_bundle_path_case() {
   fi
 }
 
+run_missing_current_binary_case() {
+  local home_dir="$TMP_ROOT/home-missing-current-binary"
+  local path_bin="$home_dir/custom-bin"
+  mkdir -p "$path_bin"
+
+  env \
+    HOME="$home_dir" \
+    PATH="$TOOLS_DIR:$path_bin:/usr/bin:/bin" \
+    HONE_RUN_ONBOARD=0 \
+    HONE_GITHUB_REPO="example/honeclaw" \
+    MOCK_ARCHIVE_PATH="$ARCHIVE_PATH" \
+    bash "$INSTALL_SCRIPT" >/dev/null
+
+  rm "$home_dir/.honeclaw/current/bin/hone-cli"
+
+  local output
+  if output="$(
+    env HOME="$home_dir" PATH="$path_bin:$TOOLS_DIR:/usr/bin:/bin" hone-cli smoke 2>&1
+  )"; then
+    echo "[FAIL] installed wrapper succeeded despite a missing current hone-cli binary" >&2
+    exit 1
+  fi
+
+  if [[ "$output" != *"installed Hone CLI binary is missing: $home_dir/.honeclaw/current/bin/hone-cli"* ]]; then
+    echo "[FAIL] installed wrapper did not explain the missing current hone-cli binary" >&2
+    echo "$output" >&2
+    exit 1
+  fi
+
+  if [[ "$output" != *"rerun the Hone installer"* ]]; then
+    echo "[FAIL] installed wrapper did not provide reinstall recovery guidance" >&2
+    echo "$output" >&2
+    exit 1
+  fi
+}
+
 run_path_hit_case
 
 run_fallback_case "/bin/zsh" "$TMP_ROOT/home-fallback-zsh" "$TMP_ROOT/home-fallback-zsh/.zshrc"
@@ -271,5 +307,6 @@ touch "$TMP_ROOT/home-fallback-bash/.bashrc"
 run_fallback_case "/bin/bash" "$TMP_ROOT/home-fallback-bash" "$TMP_ROOT/home-fallback-bash/.bashrc"
 run_explicit_bin_dir_failure_case
 run_missing_bundle_path_case
+run_missing_current_binary_case
 
 echo "[PASS] hone-cli install path resolution regression passed"

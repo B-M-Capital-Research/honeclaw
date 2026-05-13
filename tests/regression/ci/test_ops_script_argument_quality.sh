@@ -35,6 +35,24 @@ run_missing_homebrew_formula_value_case() {
   assert_contains "$output" "scripts/update_homebrew_formula.sh" "usage should name the script"
 }
 
+run_invalid_homebrew_formula_sha_case() {
+  local output
+  if output="$(
+    bash "$ROOT_DIR/scripts/update_homebrew_formula.sh" \
+      --version 1.2.3 \
+      --darwin-aarch64-sha not-a-sha \
+      --darwin-x86_64-sha "$(printf 'b%.0s' {1..64})" \
+      --linux-x86_64-sha "$(printf 'c%.0s' {1..64})" \
+      2>&1
+  )"; then
+    echo "[FAIL] update_homebrew_formula accepted an invalid sha256" >&2
+    exit 1
+  fi
+
+  assert_contains "$output" "invalid sha256 for --darwin-aarch64-sha" "invalid checksum should name the bad flag"
+  assert_contains "$output" "scripts/update_homebrew_formula.sh" "invalid checksum should include usage"
+}
+
 run_homebrew_formula_generation_case() {
   local output_path="$TMP_ROOT/honeclaw.rb"
 
@@ -52,6 +70,22 @@ run_homebrew_formula_generation_case() {
 
   assert_contains "$(cat "$output_path")" 'version "1.2.3"' "formula should include requested version"
   assert_contains "$(cat "$output_path")" "hone-cli web user-ui" "formula caveats should include the public Web UI command"
+  assert_contains "$(cat "$output_path")" 'mkdir -p "$HONE_HOME"' "formula wrapper should create HONE_HOME before seeding config files"
+  assert_contains "$(cat "$output_path")" "installed Hone CLI binary is missing:" "formula wrapper should explain missing bundled CLI binaries"
+}
+
+run_homebrew_formula_version_normalization_case() {
+  local output_path="$TMP_ROOT/honeclaw-versioned.rb"
+
+  bash "$ROOT_DIR/scripts/update_homebrew_formula.sh" \
+    --version v1.2.3 \
+    --darwin-aarch64-sha "$(printf 'd%.0s' {1..64})" \
+    --darwin-x86_64-sha "$(printf 'e%.0s' {1..64})" \
+    --linux-x86_64-sha "$(printf 'f%.0s' {1..64})" \
+    --output "$output_path"
+
+  assert_contains "$(cat "$output_path")" 'version "1.2.3"' "formula should normalize a leading v in --version"
+  assert_contains "$(cat "$output_path")" "/releases/download/v1.2.3/honeclaw-darwin-aarch64.tar.gz" "formula URL should not duplicate the v prefix"
 }
 
 run_changed_fmt_bash3_compatible_case() {
@@ -116,7 +150,9 @@ run_script_self_path_quality_case() {
 }
 
 run_missing_homebrew_formula_value_case
+run_invalid_homebrew_formula_sha_case
 run_homebrew_formula_generation_case
+run_homebrew_formula_version_normalization_case
 run_changed_fmt_bash3_compatible_case
 run_script_self_path_quality_case
 

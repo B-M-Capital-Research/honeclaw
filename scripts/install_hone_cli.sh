@@ -256,6 +256,12 @@ export HONE_SKILLS_DIR="${HONE_SKILLS_DIR:-$CURRENT_ROOT/share/honeclaw/skills}"
 export HONE_WEB_DIST_DIR="${HONE_WEB_DIST_DIR:-$CURRENT_ROOT/share/honeclaw/web}"
 export HONE_PUBLIC_WEB_DIST_DIR="${HONE_PUBLIC_WEB_DIST_DIR:-$CURRENT_ROOT/share/honeclaw/web-public}"
 
+if [[ ! -x "$CURRENT_ROOT/bin/hone-cli" ]]; then
+  echo "installed Hone CLI binary is missing: $CURRENT_ROOT/bin/hone-cli" >&2
+  echo "rerun the Hone installer or restore the current release bundle under $CURRENT_ROOT" >&2
+  exit 1
+fi
+
 exec "$CURRENT_ROOT/bin/hone-cli" "$@"
 EOF
 chmod +x "$WRAPPER_PATH"

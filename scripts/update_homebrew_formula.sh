@@ -27,6 +27,16 @@ require_value() {
   printf '%s\n' "$value"
 }
 
+require_sha256() {
+  local flag="$1"
+  local value="$2"
+
+  if [[ ! "$value" =~ ^[0-9a-fA-F]{64}$ ]]; then
+    echo "invalid sha256 for $flag" >&2
+    usage
+  fi
+}
+
 VERSION=""
 DARWIN_AARCH64_SHA=""
 DARWIN_X86_64_SHA=""
@@ -64,6 +74,15 @@ done
 if [[ -z "$VERSION" || -z "$DARWIN_AARCH64_SHA" || -z "$DARWIN_X86_64_SHA" || -z "$LINUX_X86_64_SHA" ]]; then
   usage
 fi
+
+VERSION="${VERSION#v}"
+if [[ -z "$VERSION" ]]; then
+  echo "missing value for --version" >&2
+  usage
+fi
+require_sha256 "--darwin-aarch64-sha" "$DARWIN_AARCH64_SHA"
+require_sha256 "--darwin-x86_64-sha" "$DARWIN_X86_64_SHA"
+require_sha256 "--linux-x86_64-sha" "$LINUX_X86_64_SHA"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 if [[ -z "$OUTPUT_PATH" ]]; then
@@ -108,6 +127,7 @@ class Honeclaw < Formula
       HONE_WEB_DIST_DIR="\${HONE_WEB_DIST_DIR:-#{libexec}/share/honeclaw/web}"
       HONE_PUBLIC_WEB_DIST_DIR="\${HONE_PUBLIC_WEB_DIST_DIR:-#{libexec}/share/honeclaw/web-public}"
 
+      mkdir -p "\$HONE_HOME"
       mkdir -p "\$HONE_DATA_DIR/runtime"
 
       if [[ "\$HONE_USER_CONFIG_PATH" == "\$HONE_HOME/config.yaml" && ! -f "\$HONE_USER_CONFIG_PATH" ]]; then
@@ -125,6 +145,12 @@ class Honeclaw < Formula
       export HONE_SKILLS_DIR
       export HONE_WEB_DIST_DIR
       export HONE_PUBLIC_WEB_DIST_DIR
+
+      if [[ ! -x "#{libexec}/bin/hone-cli" ]]; then
+        echo "installed Hone CLI binary is missing: #{libexec}/bin/hone-cli" >&2
+        echo "reinstall or upgrade the Hone Homebrew package, then retry" >&2
+        exit 1
+      fi
 
       exec "#{libexec}/bin/hone-cli" "\$@"
     EOS

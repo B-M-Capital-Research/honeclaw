@@ -53,7 +53,8 @@ The standard Homebrew tap (`B-M-Capital-Research/homebrew-honeclaw`) installs th
 On first run, the wrapper:
 
 - Seeds `~/.honeclaw/config.yaml` and `~/.honeclaw/soul.md` if they do not exist
-- Uses the same default `HONE_HOME`, `HONE_USER_CONFIG_PATH`, `HONE_DATA_DIR`, and `HONE_SKILLS_DIR` semantics as the `curl | bash` install
+- Uses the same default `HONE_HOME`, `HONE_USER_CONFIG_PATH`, `HONE_DATA_DIR`, `HONE_SKILLS_DIR`, and bundled Web asset env semantics as the `curl | bash` install
+- Exports `HONE_INSTALL_ROOT` to the Homebrew `libexec` bundle instead of `~/.honeclaw/current`
 - Lets `hone-cli start` reuse the bundled runtime binaries from the Homebrew cellar without requiring the desktop host
 
 ## Uninstall
