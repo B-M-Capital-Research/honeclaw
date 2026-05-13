@@ -835,6 +835,7 @@ const CONTENT_ZH = {
     composer: {
       quota_exhausted: "今日额度已用完",
       placeholder: "向 Hone 提问…",
+      send_aria: "发送",
     },
     history: {
       loading_older: "加载中...",
@@ -846,6 +847,9 @@ const CONTENT_ZH = {
     },
     actions: {
       logout: "退出",
+      copy_aria: "复制",
+      copied: "已复制",
+      scroll_to_bottom_aria: "回到最新消息",
     },
   },
 
@@ -2261,6 +2265,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     composer: {
       quota_exhausted: "Today's quota is used up",
       placeholder: "Ask Hone…",
+      send_aria: "Send",
     },
     history: {
       loading_older: "Loading...",
@@ -2272,6 +2277,9 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     },
     actions: {
       logout: "Log out",
+      copy_aria: "Copy",
+      copied: "Copied",
+      scroll_to_bottom_aria: "Jump to latest",
     },
   },
 

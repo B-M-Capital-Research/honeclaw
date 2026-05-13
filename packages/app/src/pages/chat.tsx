@@ -206,7 +206,6 @@ function PrefsButton() {
 function Header() {
   const navigate = useNavigate();
   const [stars] = createResource(fetchGithubStars);
-  const C = CONTENT.nav;
 
   return (
     <header class="page-header">
@@ -255,9 +254,9 @@ function Header() {
           >
             {CONTENT.home_page.roadmap_button}
           </button>
-          <button onClick={() => navigate("/chat")} class="btn-chat-nav">
-            {C.chat}
-          </button>
+          {/* The 对话 pill is the page we're already on, so hide it here
+              to free header room for the prefs trigger and stop the dead
+              click. The roadmap link (mobile-hidden too) covers desktop. */}
         </div>
       </div>
     </header>
@@ -376,7 +375,16 @@ function assistantMarkdownClass(extra: string = "") {
     "[&_strong]:text-[#0f172a] [&_strong]:font-bold",
     "[&_pre]:mt-4 [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_pre]:rounded-2xl [&_pre]:border-0 [&_pre]:shadow-none",
     "[&_code]:rounded-lg [&_code]:bg-black/[0.05] [&_code]:px-2 [&_code]:py-1 [&_code]:text-[14px] [&_code]:font-[var(--font-mono,'JetBrains_Mono',monospace)]",
+    // List bullets/numbers: Tailwind preflight strips them; put them back so
+    // markdown lists actually look like lists instead of indented paragraphs.
+    "[&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5",
+    "[&_li]:marker:text-slate-400",
     "[&_ul]:my-3 [&_ol]:my-3 [&_li]:my-1",
+    // Real heading hierarchy in case the LLM uses ##/###.
+    "[&_h1]:mt-5 [&_h1]:mb-2 [&_h1]:text-[1.2em] [&_h1]:font-extrabold [&_h1]:text-[#0f172a]",
+    "[&_h2]:mt-5 [&_h2]:mb-2 [&_h2]:text-[1.1em] [&_h2]:font-extrabold [&_h2]:text-[#0f172a]",
+    "[&_h3]:mt-4 [&_h3]:mb-1 [&_h3]:text-[1.05em] [&_h3]:font-bold [&_h3]:text-[#0f172a]",
+    "[&_h4]:mt-3 [&_h4]:mb-1 [&_h4]:font-bold [&_h4]:text-[#0f172a]",
     "[&_blockquote]:my-4 [&_blockquote]:border-l-4 [&_blockquote]:border-black/5 [&_blockquote]:pl-4 [&_blockquote]:text-[#64748b] [&_blockquote]:italic",
     extra,
   ].join(" ");
@@ -646,10 +654,19 @@ function UserBubble(props: {
 function AssistantBubble(props: {
   content: string;
   attachments?: PublicChatAttachment[];
+  isContinuation?: boolean;
 }) {
   const nonImageAttachments = createMemo(() =>
     (props.attachments ?? []).filter((a) => a.kind !== "image"),
   );
+  const [copied, setCopied] = createSignal(false);
+  const handleCopy = () => {
+    const text = stripAttachmentMarkers(props.content);
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1400);
+    });
+  };
   return (
     <div
       class="pub-msg-in pub-msg-row"
@@ -665,13 +682,15 @@ function AssistantBubble(props: {
           "max-width": "85%",
           background: "rgba(255, 255, 255, 0.9)",
           "backdrop-filter": "blur(10px)",
-          border: "1.5px solid #f1f5f9",
+          border: "1.5px solid #e2e8f0",
           "border-radius": "4px 24px 24px 24px",
           padding: "16px 20px",
           color: "#1e293b",
-          "box-shadow": "0 4px 20px rgba(0,0,0,0.02)",
+          "box-shadow": "0 4px 20px rgba(15,23,42,0.04)",
+          position: "relative",
         }}
       >
+        <Show when={!props.isContinuation}>
         <div
           class="pub-msg-bubble__brand"
           style={{
@@ -702,6 +721,7 @@ function AssistantBubble(props: {
             HONE
           </span>
         </div>
+        </Show>
         <AssistantBody content={props.content} />
         <Show when={nonImageAttachments().length > 0}>
           <div
@@ -717,6 +737,52 @@ function AssistantBubble(props: {
             </For>
           </div>
         </Show>
+        <button
+          type="button"
+          class="pub-msg-copy"
+          aria-label={CONTENT.chat_page.actions.copy_aria}
+          title={
+            copied()
+              ? CONTENT.chat_page.actions.copied
+              : CONTENT.chat_page.actions.copy_aria
+          }
+          onClick={handleCopy}
+          data-copied={copied() ? "true" : undefined}
+        >
+          <Show
+            when={copied()}
+            fallback={
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+            }
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.4"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M20 6L9 17l-5-5" />
+            </svg>
+          </Show>
+        </button>
       </div>
     </div>
   );
@@ -777,7 +843,7 @@ function PendingBubble(props: {
           background: "#fff",
           border: terminal()
             ? "2px solid rgba(239,68,68,0.2)"
-            : "1.5px solid #f1f5f9",
+            : "1.5px solid #e2e8f0",
           "border-radius": "4px 24px 24px 24px",
           padding: "16px 20px",
           "box-shadow": "0 10px 30px rgba(0,0,0,0.03)",
@@ -1408,6 +1474,8 @@ function Composer(props: {
             data-testid="composer-send-button"
             type="button"
             class="public-chat-send-button"
+            aria-label={CONTENT.chat_page.composer.send_aria}
+            title={CONTENT.chat_page.composer.send_aria}
             onClick={() => canSend() && props.onSend()}
             disabled={!canSend()}
             style={{
@@ -1466,6 +1534,9 @@ export default function PublicChatPage() {
     createSignal(HISTORY_PAGE_SIZE);
   const [loadingOlderMessages, setLoadingOlderMessages] = createSignal(false);
   const [justFinished, setJustFinished] = createSignal(false);
+  // True when the user has scrolled up far enough to lose track of the latest
+  // reply — drives the floating scroll-to-bottom affordance above the composer.
+  const [awayFromBottom, setAwayFromBottom] = createSignal(false);
   // When set, the server has an in-flight assistant run for which we have
   // no local streaming context — typically because the page was refreshed
   // mid-response. Until the answer arrives, show the same "思考中" status
@@ -1586,6 +1657,7 @@ export default function PublicChatPage() {
     } else if (dist < 80) {
       stickToBottom = true;
     }
+    setAwayFromBottom(dist > 240);
     const previousTop = lastScrollTop;
     lastScrollTop = top;
     if (
@@ -1944,7 +2016,7 @@ export default function PublicChatPage() {
                       </div>
                     </Show>
                     <For each={visibleMessages()}>
-                      {(msg) => (
+                      {(msg, i) => (
                         <Switch>
                           <Match when={msg.role === "user"}>
                             <UserBubble
@@ -1963,6 +2035,10 @@ export default function PublicChatPage() {
                             <AssistantBubble
                               content={msg.content}
                               attachments={msg.attachments}
+                              isContinuation={
+                                i() > 0 &&
+                                visibleMessages()[i() - 1]?.role === "assistant"
+                              }
                             />
                           </Match>
                           <Match
@@ -1984,6 +2060,30 @@ export default function PublicChatPage() {
                   </div>
                 </div>
 
+                <div style={{ position: "relative" }}>
+                  <Show when={awayFromBottom()}>
+                    <button
+                      type="button"
+                      class="public-chat-scroll-down"
+                      aria-label={CONTENT.chat_page.actions.scroll_to_bottom_aria}
+                      title={CONTENT.chat_page.actions.scroll_to_bottom_aria}
+                      onClick={settleAtBottom}
+                    >
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.4"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M12 5v14M19 12l-7 7-7-7" />
+                      </svg>
+                    </button>
+                  </Show>
                 <Composer
                   draft={draft()}
                   onDraftChange={setDraft}
@@ -2016,6 +2116,7 @@ export default function PublicChatPage() {
                   pendingMessage={composerPendingMessage()}
                   justFinished={justFinished()}
                 />
+                </div>
               </div>
             )}
           </Show>
@@ -2178,8 +2279,10 @@ export default function PublicChatPage() {
         }
         .public-chat-composer-status-stop:hover { background: #ef4444; }
         /* Tone down the homepage's animated background blobs on the chat
-           page — they distract from the conversation content. */
-        .public-chat-page .animated-bg .circle { opacity: 0.18; filter: blur(80px); }
+           page — three near-white surfaces (page bg + bubble + ticker chip)
+           competing for attention reads as visual noise, so the gradient
+           goes to a near-invisible tint. */
+        .public-chat-page .animated-bg .circle { opacity: 0.08; filter: blur(80px); }
         /* Markdown tables: keep them inside the bubble on narrow screens. */
         .public-chat-messages .hf-markdown table {
           display: block;
@@ -2190,6 +2293,94 @@ export default function PublicChatPage() {
         .public-chat-messages .hf-markdown th,
         .public-chat-messages .hf-markdown td {
           white-space: nowrap;
+        }
+        /* The LLM tends to write section labels as **bold** rather than as
+           proper ##/### headings, so two patterns slip through markdown as
+           inline <strong> inside a <p>. Promote them to heading-feeling
+           blocks so long answers gain a scannable skeleton.
+
+           Pattern A — "<p><strong>label</strong></p>": a bold-only line, treat
+           as a small block heading.
+           Pattern B — "<p><strong>label</strong><br>body…</p>": a bold lead
+           followed by body, lift the lead onto its own line as a label. */
+        .public-chat-messages .hf-markdown p > strong:only-child {
+          display: block;
+          margin-top: 14px;
+          margin-bottom: 2px;
+          font-size: 1.05em;
+          color: #0f172a;
+        }
+        .public-chat-messages .hf-markdown p:first-child > strong:only-child {
+          margin-top: 0;
+        }
+        .public-chat-messages .hf-markdown p > strong:first-child + br {
+          /* Visually break the line into label + body */
+          line-height: 1.6;
+        }
+        .public-chat-messages .hf-markdown p > strong:first-child:not(:only-child) {
+          color: #0f172a;
+        }
+        /* The 1-item ordered list pattern that comes out of "1. xxx\n   - a\n   - b"
+           (marked splits the number off into a standalone <ol>) — drop its top
+           margin so the bullets read as children of the line above. */
+        .public-chat-messages .hf-markdown ol + ul {
+          margin-top: -8px;
+        }
+        /* Copy button: tucks into the bottom-right corner of an assistant
+           bubble, faded by default and brighter on hover. On mobile (no
+           hover) it stays at a low-key visible opacity so long answers can
+           still be lifted out with one tap. */
+        .pub-msg-copy {
+          position: absolute;
+          right: 8px;
+          bottom: 8px;
+          width: 28px;
+          height: 28px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border: none;
+          border-radius: 999px;
+          background: rgba(15, 23, 42, 0.04);
+          color: #64748b;
+          cursor: pointer;
+          opacity: 0;
+          transition: opacity 0.18s, background 0.18s, color 0.18s;
+        }
+        .pub-msg-bubble--assistant:hover .pub-msg-copy { opacity: 1; }
+        .pub-msg-copy:hover { background: rgba(15, 23, 42, 0.08); color: #0f172a; }
+        .pub-msg-copy[data-copied="true"] {
+          opacity: 1;
+          background: rgba(16, 185, 129, 0.12);
+          color: #059669;
+        }
+        @media (hover: none) {
+          .pub-msg-copy { opacity: 0.55; }
+          .pub-msg-copy:active { opacity: 1; }
+        }
+        /* Scroll-to-bottom: floats above the composer when the user has
+           scrolled up enough to lose track of the latest reply. */
+        .public-chat-scroll-down {
+          position: absolute;
+          right: 16px;
+          bottom: calc(100% + 8px);
+          width: 36px;
+          height: 36px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border: none;
+          border-radius: 999px;
+          background: #0f172a;
+          color: #fff;
+          cursor: pointer;
+          box-shadow: 0 6px 18px rgba(15, 23, 42, 0.22);
+          z-index: 5;
+          animation: hone-scroll-down-pop 0.16s ease-out;
+        }
+        @keyframes hone-scroll-down-pop {
+          from { opacity: 0; transform: translateY(6px); }
+          to   { opacity: 1; transform: translateY(0); }
         }
         .public-chat-composer-input::placeholder { color: #94a3b8; font-size: 14px; font-weight: 500; }
         /* Header right side: equalize visual heights so the lang pill and the
@@ -2387,12 +2578,13 @@ export default function PublicChatPage() {
 
         @media (max-width: 768px) {
           .public-chat-composer-status { border-radius: 11px; }
-          /* Density target: WeChat-like — small font, tight line-height,
-             minimal bubble padding, ~6px between turns. Don't go below
-             this without cramping the text. */
+          /* Density target: WeChat-feel but with enough breathing room that
+             long answers stay scannable. Bubbles, font, and inter-turn gap
+             all calibrated together — bumping one without the others looks
+             off. */
           .public-chat-messages .hf-markdown {
-            font-size: 13.5px;
-            line-height: 1.45;
+            font-size: 14.5px;
+            line-height: 1.55;
           }
           .public-chat-messages .hf-markdown p,
           .public-chat-messages .hf-markdown ul,
@@ -2400,7 +2592,7 @@ export default function PublicChatPage() {
           .public-chat-messages .hf-markdown table,
           .public-chat-messages .hf-markdown pre,
           .public-chat-messages .hf-markdown blockquote {
-            margin: 0.45rem 0;
+            margin: 0.55rem 0;
           }
           .public-chat-messages .hf-markdown th,
           .public-chat-messages .hf-markdown td {
@@ -2408,21 +2600,22 @@ export default function PublicChatPage() {
             font-size: 12px;
           }
           .public-chat-messages .pub-msg-row {
-            margin-bottom: 6px !important;
+            margin-bottom: 12px !important;
           }
           .public-chat-messages .pub-msg-bubble {
-            max-width: 94% !important;
+            max-width: 92% !important;
             border-radius: 14px !important;
-            box-shadow: 0 1px 6px rgba(0,0,0,0.04) !important;
+            box-shadow: 0 1px 6px rgba(15,23,42,0.05) !important;
           }
           .public-chat-messages .pub-msg-bubble--assistant {
-            padding: 8px 11px !important;
+            padding: 10px 14px !important;
+            border: 1.5px solid #e2e8f0 !important;
             border-radius: 4px 14px 14px 14px !important;
           }
           .public-chat-messages .pub-msg-bubble--user {
-            padding: 7px 11px !important;
-            font-size: 14px !important;
-            line-height: 1.45 !important;
+            padding: 10px 14px !important;
+            font-size: 14.5px !important;
+            line-height: 1.55 !important;
             border-radius: 14px 14px 4px 14px !important;
           }
           /* The HONE brand row inside each assistant bubble is redundant
