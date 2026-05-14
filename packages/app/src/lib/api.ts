@@ -287,14 +287,14 @@ export async function publicLogout() {
   await parseJson<{ ok: boolean }>(response);
 }
 
-export async function getPublicAuthMe() {
-  const response = await apiFetch("/api/public/auth/me");
+export async function getPublicAuthMe(signal?: AbortSignal) {
+  const response = await apiFetch("/api/public/auth/me", { signal });
   const payload = await parseJson<{ user: PublicAuthUserInfo }>(response);
   return payload.user;
 }
 
-export async function getPublicHistory() {
-  const response = await apiFetch("/api/public/history");
+export async function getPublicHistory(signal?: AbortSignal) {
+  const response = await apiFetch("/api/public/history", { signal });
   const payload = await parseJson<{ messages?: HistoryMsg[] }>(response);
   return payload.messages ?? [];
 }

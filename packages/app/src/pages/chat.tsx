@@ -49,10 +49,13 @@ import {
   formatPublicAttachmentBytes,
   isPublicChatQuotaExhausted,
   nextVisibleMessageCount,
+  PUBLIC_RESTORE_TIMEOUT_MS,
   publicComposerPendingMessage,
   publicAttachmentFileLabel,
+  publicRestoreRetryDelay,
   rekeyTrailingOptimisticIds,
   selectVisibleRecentMessages,
+  shouldRetryPublicRestore,
   shouldRecoverPinnedBottom,
   shouldLoadOlderPublicMessages,
   splitPublicChatAttachments,
@@ -428,7 +431,42 @@ function renamePasteFile(file: File) {
   });
 }
 
-function LoadingCard() {
+type RestoreSessionStatus = {
+  attempt: number;
+  mode: "loading" | "retrying" | "failed";
+  message?: string;
+};
+
+function restoreErrorMessage(error: unknown) {
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return CONTENT.chat_page.restoring.timeout_reason;
+  }
+  if (error instanceof Error && error.message.trim()) return error.message;
+  return CONTENT.chat_page.restoring.generic_reason;
+}
+
+function LoadingCard(props: {
+  status?: RestoreSessionStatus | null;
+  onRetry?: () => void;
+}) {
+  const title = () =>
+    props.status?.mode === "failed"
+      ? CONTENT.chat_page.restoring.failed_title
+      : CONTENT.chat_page.restoring.title;
+  const desc = () => {
+    const status = props.status;
+    if (!status || status.mode === "loading") {
+      return CONTENT.chat_page.restoring.desc;
+    }
+    if (status.mode === "retrying") {
+      return CONTENT.chat_page.restoring.retrying.replace(
+        "{attempt}",
+        String(status.attempt),
+      );
+    }
+    return CONTENT.chat_page.restoring.failed_desc;
+  };
+
   return (
     <div
       style={{
@@ -470,7 +508,22 @@ function LoadingCard() {
               margin: "0 auto 24px",
             }}
           >
-            <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+            <Show
+              when={props.status?.mode === "failed"}
+              fallback={
+                <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+              }
+            >
+              <span
+                style={{
+                  color: "#fff",
+                  "font-size": "24px",
+                  "font-weight": "900",
+                }}
+              >
+                !
+              </span>
+            </Show>
           </div>
           <h1
             style={{
@@ -480,7 +533,7 @@ function LoadingCard() {
               margin: "0 0 12px",
             }}
           >
-            {CONTENT.chat_page.restoring.title}
+            {title()}
           </h1>
           <p
             style={{
@@ -490,8 +543,43 @@ function LoadingCard() {
               "line-height": "1.6",
             }}
           >
-            {CONTENT.chat_page.restoring.desc}
+            {desc()}
           </p>
+          <Show when={props.status?.mode === "failed" && props.status.message}>
+            <p
+              style={{
+                "font-size": "13px",
+                color: "#94a3b8",
+                margin: "12px 0 0",
+                "line-height": "1.6",
+                "word-break": "break-word",
+              }}
+            >
+              {CONTENT.chat_page.restoring.reason_prefix.replace(
+                "{message}",
+                props.status?.message ?? "",
+              )}
+            </p>
+          </Show>
+          <Show when={props.status?.mode === "failed"}>
+            <button
+              type="button"
+              onClick={props.onRetry}
+              style={{
+                margin: "22px auto 0",
+                height: "44px",
+                padding: "0 22px",
+                "border-radius": "999px",
+                border: "0",
+                background: "#0f172a",
+                color: "#fff",
+                "font-weight": "800",
+                cursor: "pointer",
+              }}
+            >
+              {CONTENT.chat_page.restoring.retry_button}
+            </button>
+          </Show>
         </div>
       </div>
     </div>
@@ -1812,7 +1900,11 @@ export default function PublicChatPage() {
   const [backgroundPending, setBackgroundPending] = createSignal<{
     since: number;
   } | null>(null);
+  const [restoreStatus, setRestoreStatus] =
+    createSignal<RestoreSessionStatus | null>({ attempt: 1, mode: "loading" });
   let activeController: AbortController | null = null;
+  let restoreController: AbortController | null = null;
+  let restoreRetryTimer: number | undefined;
   let scrollRef: HTMLDivElement | undefined;
   let messagesInnerRef: HTMLDivElement | undefined;
   let sessionSyncGeneration = 0;
@@ -2002,15 +2094,45 @@ export default function PublicChatPage() {
     setAuthState("logged_out");
   };
 
+  const clearRestoreRetry = () => {
+    if (restoreRetryTimer !== undefined) {
+      window.clearTimeout(restoreRetryTimer);
+      restoreRetryTimer = undefined;
+    }
+  };
+
   const restoreSession = async (
-    options: { resetWindow?: boolean; keepAtBottom?: boolean } = {},
+    options: {
+      resetWindow?: boolean;
+      keepAtBottom?: boolean;
+      retryOnFailure?: boolean;
+      attempt?: number;
+    } = {},
   ) => {
+    clearRestoreRetry();
     const generation = ++sessionSyncGeneration;
+    const attempt = options.attempt ?? 1;
+    const retryOnFailure =
+      options.retryOnFailure ??
+      (authState() === "loading" || options.resetWindow);
+    restoreController?.abort();
+    const controller = new AbortController();
+    restoreController = controller;
+    const timeoutId = window.setTimeout(
+      () => controller.abort(),
+      PUBLIC_RESTORE_TIMEOUT_MS,
+    );
+    if (authState() === "loading" || !currentUser()) {
+      setRestoreStatus({
+        attempt,
+        mode: attempt > 1 ? "retrying" : "loading",
+      });
+    }
     try {
-      const user = await getPublicAuthMe();
+      const user = await getPublicAuthMe(controller.signal);
       if (generation !== sessionSyncGeneration) return;
       applyPublicUser(user);
-      const history = await getPublicHistory();
+      const history = await getPublicHistory(controller.signal);
       if (generation !== sessionSyncGeneration) return;
       const next = toPublicChatMessages(history);
       if (options.resetWindow) {
@@ -2055,11 +2177,39 @@ export default function PublicChatPage() {
       } else {
         setBackgroundPending(null);
       }
+      setRestoreStatus(null);
     } catch (error) {
       if (generation !== sessionSyncGeneration) return;
       if (isUnauthorizedApiError(error)) {
+        setRestoreStatus(null);
         setAuthState("logged_out");
+        return;
       }
+      const message = restoreErrorMessage(error);
+      if (retryOnFailure && shouldRetryPublicRestore(attempt)) {
+        const nextAttempt = attempt + 1;
+        const retryDelay = publicRestoreRetryDelay(attempt);
+        setRestoreStatus({
+          attempt: nextAttempt,
+          mode: "retrying",
+          message,
+        });
+        restoreRetryTimer = window.setTimeout(() => {
+          restoreRetryTimer = undefined;
+          void restoreSession({
+            ...options,
+            attempt: nextAttempt,
+            retryOnFailure: true,
+          });
+        }, retryDelay);
+        return;
+      }
+      if (authState() === "loading" || !currentUser()) {
+        setRestoreStatus({ attempt, mode: "failed", message });
+      }
+    } finally {
+      window.clearTimeout(timeoutId);
+      if (restoreController === controller) restoreController = null;
     }
   };
 
@@ -2114,7 +2264,10 @@ export default function PublicChatPage() {
     document.body.classList.toggle("public-chat-scroll-lock", locked);
   });
   onCleanup(() => {
+    sessionSyncGeneration += 1;
     activeController?.abort();
+    restoreController?.abort();
+    clearRestoreRetry();
     if (justFinishedTimer !== undefined) window.clearTimeout(justFinishedTimer);
     document.documentElement.classList.remove("public-chat-scroll-lock");
     document.body.classList.remove("public-chat-scroll-lock");
@@ -2216,7 +2369,16 @@ export default function PublicChatPage() {
 
       <Switch>
         <Match when={authState() === "loading"}>
-          <LoadingCard />
+          <LoadingCard
+            status={restoreStatus()}
+            onRetry={() =>
+              restoreSession({
+                resetWindow: true,
+                retryOnFailure: true,
+                attempt: 1,
+              })
+            }
+          />
         </Match>
         <Match when={authState() === "logged_out"}>
           <PublicLoginForm
@@ -2224,7 +2386,21 @@ export default function PublicChatPage() {
           />
         </Match>
         <Match when={authState() === "ready"}>
-          <Show when={currentUser()} fallback={<LoadingCard />}>
+          <Show
+            when={currentUser()}
+            fallback={
+              <LoadingCard
+                status={restoreStatus()}
+                onRetry={() =>
+                  restoreSession({
+                    resetWindow: true,
+                    retryOnFailure: true,
+                    attempt: 1,
+                  })
+                }
+              />
+            }
+          >
             {(user) => (
               <>
                 <ChatSidebar

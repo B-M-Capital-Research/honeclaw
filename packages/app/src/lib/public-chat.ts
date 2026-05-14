@@ -9,6 +9,10 @@ export type PublicChatAuthState =
 
 type PublicChatView = "loading" | "login" | "chat";
 
+export const PUBLIC_RESTORE_TIMEOUT_MS = 8000;
+export const PUBLIC_RESTORE_MAX_ATTEMPTS = 4;
+export const PUBLIC_RESTORE_RETRY_DELAYS_MS = [700, 1600, 3200] as const;
+
 export type PublicChatAttachment = {
   /** Absolute server-side path returned by `/api/public/upload` or carried in history. */
   path: string;
@@ -59,6 +63,21 @@ export function resolvePublicChatView(
   if (authState === "ready") return "chat";
   if (authState === "loading") return "loading";
   return "login";
+}
+
+export function publicRestoreRetryDelay(attempt: number) {
+  const index = Math.max(
+    0,
+    Math.min(attempt - 1, PUBLIC_RESTORE_RETRY_DELAYS_MS.length - 1),
+  );
+  return PUBLIC_RESTORE_RETRY_DELAYS_MS[index]!;
+}
+
+export function shouldRetryPublicRestore(
+  attempt: number,
+  maxAttempts = PUBLIC_RESTORE_MAX_ATTEMPTS,
+) {
+  return attempt < maxAttempts;
 }
 
 export function toPublicChatMessages(

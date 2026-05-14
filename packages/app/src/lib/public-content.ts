@@ -884,6 +884,13 @@ const CONTENT_ZH = {
     restoring: {
       title: "正在恢复对话",
       desc: "正在校验当前会话并恢复聊天历史",
+      retrying: "后端响应较慢，正在自动重试（第 {attempt} 次）...",
+      failed_title: "恢复对话失败",
+      failed_desc: "当前会话暂时没有恢复成功，可以立即重新尝试。",
+      retry_button: "重新恢复",
+      timeout_reason: "请求超时",
+      generic_reason: "网络或服务暂时不可用",
+      reason_prefix: "原因：{message}",
     },
     actions: {
       logout: "退出",
@@ -2386,6 +2393,13 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     restoring: {
       title: "Restoring chat",
       desc: "Checking the current session and restoring chat history",
+      retrying: "The backend is taking longer than expected. Retrying automatically (attempt {attempt})...",
+      failed_title: "Could not restore chat",
+      failed_desc: "The current session could not be restored. You can try again now.",
+      retry_button: "Retry restore",
+      timeout_reason: "Request timed out",
+      generic_reason: "Network or service is temporarily unavailable",
+      reason_prefix: "Reason: {message}",
     },
     actions: {
       logout: "Log out",

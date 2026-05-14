@@ -7,11 +7,14 @@ import {
   formatPublicAttachmentBytes,
   isPublicChatQuotaExhausted,
   normalizePhoneNumber,
+  PUBLIC_RESTORE_MAX_ATTEMPTS,
+  publicRestoreRetryDelay,
   publicComposerPendingMessage,
   publicAttachmentFileLabel,
   rekeyTrailingOptimisticIds,
   resolvePublicChatView,
   selectVisibleRecentMessages,
+  shouldRetryPublicRestore,
   shouldRecoverPinnedBottom,
   shouldLoadOlderPublicMessages,
   splitPublicChatAttachments,
@@ -52,6 +55,17 @@ describe("resolvePublicChatView", () => {
     expect(resolvePublicChatView("ready")).toBe("chat");
     expect(resolvePublicChatView("logged_out")).toBe("login");
     expect(resolvePublicChatView("logging_in")).toBe("login");
+  });
+});
+
+describe("public chat restore retry policy", () => {
+  it("retries slow restores with capped backoff before surfacing failure", () => {
+    expect(shouldRetryPublicRestore(1)).toBe(true);
+    expect(shouldRetryPublicRestore(PUBLIC_RESTORE_MAX_ATTEMPTS)).toBe(false);
+    expect(publicRestoreRetryDelay(1)).toBeLessThan(
+      publicRestoreRetryDelay(2),
+    );
+    expect(publicRestoreRetryDelay(99)).toBe(publicRestoreRetryDelay(3));
   });
 });
 
