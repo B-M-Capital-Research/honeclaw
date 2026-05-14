@@ -4,6 +4,7 @@
 - Bug Type：Desktop release runtime / daily macOS build verification
 - 严重等级：P1
 - 状态：New
+- GitHub Issue：[#42](https://github.com/B-M-Capital-Research/honeclaw/issues/42)
 - 证据来源：`honeclaw-mac` 每日 macOS 完整打包验证
 
 ## 端到端链路

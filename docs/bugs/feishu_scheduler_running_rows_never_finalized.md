@@ -42,6 +42,15 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-15 07:02 CST` 复核，当前机器运行态在最近四小时仍继续新增 started-row 残留；但 04:05 CST 已按当前 HEAD 回归验证确认 `delivery_key` 终态覆盖、最近 started fallback 与启动 stale recovery 仍生效，本轮仅补充旧/非生产运行态证据，不把状态从 `Fixed` 回退为 `New`：
+    - 最近四小时窗口 `2026-05-15T03:00:00+08:00` 到 `2026-05-15T07:00:18+08:00` 内共有 `103` 条 `execution_status=running + message_send_status=pending + detail.phase=started` 残留。
+    - 其中 `99` 条为 heartbeat started 行，覆盖 `04:00`、`04:30`、`05:00`、`05:30`、`06:00`、`06:30`、`07:00` 等窗口；另有 `4` 条普通 scheduler started 行。
+    - 普通 scheduler 代表样本包括 `Oil_Price_Monitor_Closing`、`OWALERT_PostMarket`、`科技成长赛道大盘极值与情绪监控`、`每日美股盘后收盘复盘`；同窗已有独立终态行落成 `completed + sent + delivered=1`。
+    - Heartbeat 代表样本：07:00 CST 先写入 `run_id=21523-21533` 等 started 行，随后 `run_id=21534-21544` 另起 `execution_failed/skipped_error` 或 `noop/skipped_noop` 终态；原 started 行仍保留 `running + pending`。
+  - 结论：
+    - 这是同一根因 / 同一影响范围的运行态残留证据，不新建重复文档。
+    - 这不是 P1 的“无最终回复 / 用户不可见失败”缺陷：本轮普通 scheduler 有成功送达终态，heartbeat 也有失败或 noop 终态；受损点是调度台账同时保留悬挂 started 行，影响运维判断和后续 stale recovery 噪音。
+    - 仍按 `P3` 定级：它没有阻断本轮用户可见投递，也没有造成跨用户错投或数据破坏，但会持续污染 `cron_job_runs` 的运行中状态和巡检判断。
   - `2026-05-15 03:03 CST` 复核，started-row finalize 缺陷在最近四小时真实运行窗口再次实时新增，状态从 `Fixed` 调回 `New`：
     - 最近四小时窗口 `2026-05-14T23:01:37+08:00` 到 `2026-05-15T03:02:50+08:00` 内共有 `92` 条 `execution_status=running + message_send_status=pending + detail.phase=started` 残留。
     - 其中 `88` 条为 heartbeat started 行，覆盖 `23:30`、`00:30`、`01:00`、`01:30`、`02:00`、`02:30`、`03:00` 等窗口；另有 `4` 条普通 scheduler started 行。

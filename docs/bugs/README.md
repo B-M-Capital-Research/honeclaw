@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-15 04:17 CST
+最后更新：2026-05-15 07:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,14 +17,17 @@
 
 ## 当前概览
 
-- 活跃待修复：1
+- 活跃待修复：2
 - Later / 待复现：9
-- 已修复 / 已关闭：103
+- 已修复 / 已关闭：102
 - 历史分析 / 部分止血：5
 - 本轮 04:05 CST 已修复观察池击球区紧凑 summary 解析缺口：scheduler 现在会从 `MSFT $335-$350`、同一行多个 ticker、以及 `保守/合理/激进` 分档区间中恢复击球区；`待确认` 不会回灌。验证 `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs`、`cargo test -p hone-channels scheduled_watchlist_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue。
 - 本轮 04:17 CST 新增 Daily macOS build release app API 生命周期缺陷：`Hone Financial.app` 与 `.dmg` 已成功生成，但直接运行 `.app/Contents/MacOS/hone-desktop` 会在 embedded Web API ready 后退出，LaunchServices 启动虽保持进程但不绑定 `18077/18088`，导致 `/api/meta` 与用户端页面均无法完成验证；隔离配置已确认 Feishu/Telegram/Discord/iMessage/event-engine disabled。
 - 本轮 04:05 CST 复核 Heartbeat `mimo-v2.5-pro` reasoning transcript 兼容缺陷：当前 HEAD 已包含 reasoning transcript replay 与 OpenAI-compatible raw body 透传，`cargo test -p hone-llm chat_with_tools_replays_reasoning_content_in_raw_request_body -- --nocapture`、`cargo test -p hone-agent run_replays_reasoning_content_into_followup_tool_round -- --nocapture` 通过；不再以当前机器旧/非生产运行态证据保持活跃。
 - 本轮 04:05 CST 复核 Feishu scheduler started-row 台账缺陷：当前 HEAD 已覆盖 `delivery_key` 终态覆盖、最近 started fallback 与启动 stale recovery，`cargo test -p hone-memory --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；关联 Issue [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39)。
+- 本轮 07:02 CST 重新打开原油普通 scheduler 播报缺陷：04:02 CST `Oil_Price_Monitor_Closing` 成功外发 Brent Jul 2026 / WTI Jun 2026 具体价格与“对今晚高估值科技股不是尾盘强防守信号”的确定性判断，`detail_json.scheduler=null` 且无 `commodity_causality_guarded` 或同窗来源审计元数据；状态从 `Fixed` 调回 `New`。
+- 本轮 07:02 CST 仅补充 Heartbeat `mimo-v2.5-pro` 与 Feishu scheduler started-row 的当前机器运行态证据：03:00-07:00 CST 仍有 heartbeat `Param Incorrect` 失败与 started-row 残留，但 04:05 CST 已按当前 HEAD 回归验证确认两项代码修复成立，因此不把两项从 `Fixed` 回退为 `New`。
+- 本轮 07:02 CST 未发现新的用户可见路径外泄、工具轨迹外泄、Feishu 直聊半成品收口、Web quota 无回复或新的 P1 级链路异常；event-engine news classifier 仍有 OpenRouter 402 后 deterministic fallback 记录，但未见用户可见投递失败，本轮不新建缺陷。
 - 本轮 03:03 CST 确认 Heartbeat `mimo-v2.5-pro` reasoning transcript 兼容缺陷持续活跃：23:30-03:00 CST 又新增 82 条同类 `reasoning_content must be passed back` / `Param Incorrect` heartbeat 失败，覆盖 11 个 job；同窗普通 scheduler 有 5 条成功送达，故障仍集中在 heartbeat function-calling 路径。
 - 本轮 03:03 CST 重新打开 Feishu scheduler started-row 台账缺陷：23:30-03:00 CST 新增 92 条 `running + pending + detail.phase=started` 残留，其中 88 条 heartbeat、4 条普通 scheduler；同一 delivery_key 随后已有 `execution_failed/sent/noop` 终态另起行，说明 started 行仍未被终态覆盖，状态从 `Fixed` 调回 `New`。
 - 本轮 03:03 CST 确认观察池击球区缺陷仍活跃：23:02 CST `核心观察股池晚间快报` 成功送达，但 `MSFT / NVDA / GOOGL / AAPL / AVGO / AMZN / META` 继续批量显示 `击球区：待确认`；仍按不阻断投递链路的 P3 处理。
@@ -101,7 +104,8 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Daily macOS build release app 启动后 Web/API 生命周期不可验证 | P1 | New | 2026-05-15 `.app` / `.dmg` 打包成功，但 release app 无法同时保持进程运行并让 `/api/meta` 响应；需修复 desktop startup / bundled backend bootstrap 的自动化 smoke 路径 | [daily_macos_build_release_app_api_not_persistent.md](./daily_macos_build_release_app_api_not_persistent.md) |
+| Daily macOS build release app 启动后 Web/API 生命周期不可验证 | P1 | New | 2026-05-15 `.app` / `.dmg` 打包成功，但 release app 无法同时保持进程运行并让 `/api/meta` 响应；需修复 desktop startup / bundled backend bootstrap 的自动化 smoke 路径；关联 Issue [#42](https://github.com/B-M-Capital-Research/honeclaw/issues/42) | [daily_macos_build_release_app_api_not_persistent.md](./daily_macos_build_release_app_api_not_persistent.md) |
+| 原油定时播报在价格 / 日期 / 背景口径上继续输出未核验或错误事实 | P2 | New | 2026-05-15 07:02 复发：04:02 CST `Oil_Price_Monitor_Closing` 成功外发 WTI / Brent 具体价格与科技股尾盘影响判断，`detail_json.scheduler=null` 且无商品 guard / 同窗来源审计元数据；无关联 GitHub Issue | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 
 ## Later / 待复现
 
@@ -126,7 +130,6 @@
 | 核心观察池简报在本地击球区配置恢复后仍把多数标的降成“待确认” | P3 | Fixed | 2026-05-15 04:05 scheduler 已支持从紧凑 compact summary 中恢复 `ticker + $区间` 击球区，覆盖同一行多个 ticker 与分档区间；无关联 GitHub Issue | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 | Feishu 直聊在工具尚未跑完时提前把工具进度 / 不完整错误当成最终回复 | P2 | Fixed | 2026-05-15 02:10 Feishu failure fallback 现在会过滤 `执行完成：本地命令`、`正在调用 Searching the Web...`、`工具执行完成` 与过渡计划句，不再把工具轨迹和内部执行语句拼成用户可见最终失败回复；待后续真实运行态只读复核后再决定是否 `Closed`；无关联 GitHub Issue | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixed | 2026-05-14 20:12 成功 `cron_job` 副作用现在会在 planning sentence 被抑制前恢复为确认回复；定时任务创建 / 更新 / 删除已成功时不再外发通用失败提示遮蔽真实状态；关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29) | [feishu_direct_empty_reply_false_success.md](./archive/feishu_direct_empty_reply_false_success.md) |
-| 原油定时播报在价格 / 日期 / 背景口径上继续输出未核验或错误事实 | P2 | Fixed | 2026-05-14 20:06 商品归因 guard 已扩展到普通 scheduler 成功路径；`Oil_Price_Monitor_Closing` 与 `OWALERT_PostMarket` 这类非 heartbeat 输出命中未核验 WTI / Brent / 油价因果口径时会改写为安全说明，并写入 `commodity_causality_guarded=true` 与 raw/guarded/deliver preview 元数据；无关联 GitHub Issue | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Feishu 公司画像建档成功后向用户暴露本机绝对路径与内部文件落点 | P3 | Fixed | 2026-05-14 16:07 已把本地 Markdown 文件链接与裸绝对路径脱敏并入共享 `sanitize_user_visible_output(...)`，公司画像建档回复不再暴露本机 repo 根、`data/agent-sandboxes` 或 direct actor sandbox 标识；无关联 GitHub Issue | [feishu_company_profile_absolute_path_leak.md](./feishu_company_profile_absolute_path_leak.md) |
 | Web direct 可读取并总结其它 web session / 本机 Codex 记录 / 全局持仓数据 | P1 | Fixed | 2026-05-14 15:04 继续仅见修复前 live 旧运行态：11:13-11:46 CST 同一 web 会话仍可读取/复制 `~/.codex` session 记录并读取 `~/.codex/auth.json` 后主动脱敏 token；live `PID 63485` 启动于 2026-05-13 19:28 CST，早于 04:24 修复。待下次正常部署/重启后再做 live 复核；关联 Issue [#41](https://github.com/B-M-Capital-Research/honeclaw/issues/41) | [web_direct_cross_session_sandbox_data_exposure.md](./web_direct_cross_session_sandbox_data_exposure.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixed | 2026-05-12 19:12 malformed-triggered 恢复扩展到 JSON-ish `status` 与智能引号 `message`；新增 `heartbeat_malformed_triggered_json_recovers_unquoted_status`、`heartbeat_malformed_triggered_json_recovers_smart_quoted_message`；`rustfmt --edition 2024 --check crates/hone-channels/src/scheduler.rs`、`cargo test -p hone-channels heartbeat_malformed --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |

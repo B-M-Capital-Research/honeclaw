@@ -3,7 +3,21 @@
 - **发现时间**: 2026-04-22 07:00 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
+
+## 最新进展（2026-05-15 07:02 CST）
+
+- 本轮巡检把本单从 `Fixed` 调回 `New`：最近四小时真实窗口中，普通 scheduler `Oil_Price_Monitor_Closing` 再次成功外发具体 WTI / Brent 价格和科技股尾盘影响判断，且台账没有商品 guard 或同窗来源审计元数据。
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - `run_id=21406`
+  - `job_name=Oil_Price_Monitor_Closing`
+  - `executed_at=2026-05-15T04:02:12.046149+08:00`
+  - `execution_status=completed`
+  - `message_send_status=sent`
+  - `delivered=1`
+  - `detail_json={"delivery_key":"j_355ba2f1:2026-05-15:04:00","receive_id":"...","scheduler":null}`
+  - `response_preview` 向用户发送 `Brent Jul 2026 约 106.30 美元`、`WTI Jun 2026 约 101.80 美元`，并进一步判断“这对今晚高估值科技股不是尾盘强防守信号；油价仍是通胀与利率风险项，但从盘面看，QQQ、RKLB、COHR 没有被油价持续压住”。
+- 结论：这是同一“原油普通 scheduler 外发未核验价格 / 因果口径”的持续复发，不新建重复文档。该问题已经成功送达用户侧，并直接影响油价、通胀和科技股风险判断，因此维持功能性质量缺陷 `P2 / New`。
 
 ## 修复记录（2026-05-14 20:06 CST）
 
