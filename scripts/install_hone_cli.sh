@@ -252,20 +252,32 @@ mkdir -p "$RELEASES_DIR"
 rm -rf "$DEST_DIR"
 tar -xzf "$ARCHIVE_PATH" -C "$RELEASES_DIR"
 
-required_bundle_paths=(
-  "bin/hone-cli"
-  "share/honeclaw/config.example.yaml"
-  "share/honeclaw/soul.md"
-  "share/honeclaw/web/index.html"
-  "share/honeclaw/web-public/index.html"
-)
-for relative_path in "${required_bundle_paths[@]}"; do
-  if [[ ! -e "$DEST_DIR/$relative_path" ]]; then
+require_regular_bundle_file() {
+  local relative_path="$1"
+  local full_path="$DEST_DIR/$relative_path"
+
+  if [[ ! -e "$full_path" ]]; then
     echo "release asset is missing required bundle path: $relative_path" >&2
     echo "downloaded asset: $DOWNLOAD_URL" >&2
     exit 1
   fi
-done
+  if [[ -L "$full_path" || ! -f "$full_path" ]]; then
+    echo "release asset required bundle path must be a regular file: $relative_path" >&2
+    echo "downloaded asset: $DOWNLOAD_URL" >&2
+    exit 1
+  fi
+}
+
+require_regular_bundle_file "bin/hone-cli"
+if [[ ! -x "$DEST_DIR/bin/hone-cli" ]]; then
+  echo "release asset required CLI binary is not executable: bin/hone-cli" >&2
+  echo "downloaded asset: $DOWNLOAD_URL" >&2
+  exit 1
+fi
+require_regular_bundle_file "share/honeclaw/config.example.yaml"
+require_regular_bundle_file "share/honeclaw/soul.md"
+require_regular_bundle_file "share/honeclaw/web/index.html"
+require_regular_bundle_file "share/honeclaw/web-public/index.html"
 
 CURRENT_LINK="$INSTALL_ROOT/current"
 ln -sfn "$DEST_DIR" "$CURRENT_LINK"

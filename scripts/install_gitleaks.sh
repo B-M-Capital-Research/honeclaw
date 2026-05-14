@@ -40,6 +40,30 @@ DOWNLOAD_URL="https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}
 
 mkdir -p "$INSTALL_DIR"
 
+validate_archive_layout() {
+  local archive_path="$1"
+  local listing
+  if ! listing="$(tar -tzf "$archive_path")"; then
+    echo "failed to inspect gitleaks archive layout: $archive_path" >&2
+    exit 1
+  fi
+
+  local entry
+  while IFS= read -r entry; do
+    if [[ -z "$entry" ]]; then
+      continue
+    fi
+
+    case "$entry" in
+      /*|../*|*/../*|.|..)
+        echo "gitleaks archive contains unsafe path: $entry" >&2
+        echo "archive: $DOWNLOAD_URL" >&2
+        exit 1
+        ;;
+    esac
+  done <<< "$listing"
+}
+
 if [ ! -x "$BIN_PATH" ]; then
   TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/gitleaks-install.XXXXXX")"
   trap 'rm -rf "$TMP_DIR"' EXIT
@@ -66,8 +90,9 @@ PY
     exit 1
   fi
 
+  validate_archive_layout "$ARCHIVE_PATH"
   tar -xzf "$ARCHIVE_PATH" -C "$INSTALL_DIR"
-  if [ ! -f "$BIN_PATH" ]; then
+  if [[ -L "$BIN_PATH" || ! -f "$BIN_PATH" ]]; then
     echo "downloaded gitleaks archive did not contain expected binary: gitleaks" >&2
     echo "archive: $DOWNLOAD_URL" >&2
     exit 1

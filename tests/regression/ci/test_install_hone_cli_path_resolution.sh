@@ -41,6 +41,8 @@ ARCHIVE_PATH="$TMP_ROOT/$ASSET_NAME"
 INCOMPLETE_ARCHIVE_PATH="$TMP_ROOT/incomplete-$ASSET_NAME"
 UNSAFE_ARCHIVE_PATH="$TMP_ROOT/unsafe-$ASSET_NAME"
 MULTI_ROOT_ARCHIVE_PATH="$TMP_ROOT/multi-root-$ASSET_NAME"
+SYMLINK_ARCHIVE_PATH="$TMP_ROOT/symlink-$ASSET_NAME"
+NON_EXEC_ARCHIVE_PATH="$TMP_ROOT/non-exec-$ASSET_NAME"
 
 mkdir -p \
   "$TMP_ROOT/$BUNDLE_NAME/bin" \
@@ -117,6 +119,46 @@ with tarfile.open(archive_path, "w:gz") as archive:
     second.size = len(second_payload)
     archive.addfile(second, fileobj=io.BytesIO(second_payload))
 PY
+
+HONE_SYMLINK_ARCHIVE_PATH="$SYMLINK_ARCHIVE_PATH" HONE_SYMLINK_BUNDLE_NAME="$BUNDLE_NAME" python3 - <<'PY'
+import io
+import os
+import tarfile
+from pathlib import Path
+
+archive_path = Path(os.environ["HONE_SYMLINK_ARCHIVE_PATH"])
+bundle_name = os.environ["HONE_SYMLINK_BUNDLE_NAME"]
+with tarfile.open(archive_path, "w:gz") as archive:
+    files = {
+        f"{bundle_name}/bin/hone-cli": (b"#!/usr/bin/env bash\n", 0o755),
+        f"{bundle_name}/share/honeclaw/soul.md": (b"# mock soul\n", 0o644),
+        f"{bundle_name}/share/honeclaw/web/index.html": (b"<!DOCTYPE html>\n", 0o644),
+        f"{bundle_name}/share/honeclaw/web-public/index.html": (b"<!DOCTYPE html>\n", 0o644),
+    }
+    for name, (payload, mode) in files.items():
+        entry = tarfile.TarInfo(name)
+        entry.mode = mode
+        entry.size = len(payload)
+        archive.addfile(entry, fileobj=io.BytesIO(payload))
+
+    symlink = tarfile.TarInfo(f"{bundle_name}/share/honeclaw/config.example.yaml")
+    symlink.type = tarfile.SYMTYPE
+    symlink.linkname = "soul.md"
+    archive.addfile(symlink)
+PY
+
+NON_EXEC_BUNDLE_NAME="${BUNDLE_NAME}-non-exec"
+mkdir -p \
+  "$TMP_ROOT/$NON_EXEC_BUNDLE_NAME/bin" \
+  "$TMP_ROOT/$NON_EXEC_BUNDLE_NAME/share/honeclaw/web" \
+  "$TMP_ROOT/$NON_EXEC_BUNDLE_NAME/share/honeclaw/web-public"
+cp "$TMP_ROOT/$BUNDLE_NAME/bin/hone-cli" "$TMP_ROOT/$NON_EXEC_BUNDLE_NAME/bin/hone-cli"
+chmod 0644 "$TMP_ROOT/$NON_EXEC_BUNDLE_NAME/bin/hone-cli"
+cp "$TMP_ROOT/$BUNDLE_NAME/share/honeclaw/config.example.yaml" "$TMP_ROOT/$NON_EXEC_BUNDLE_NAME/share/honeclaw/config.example.yaml"
+cp "$TMP_ROOT/$BUNDLE_NAME/share/honeclaw/soul.md" "$TMP_ROOT/$NON_EXEC_BUNDLE_NAME/share/honeclaw/soul.md"
+cp "$TMP_ROOT/$BUNDLE_NAME/share/honeclaw/web/index.html" "$TMP_ROOT/$NON_EXEC_BUNDLE_NAME/share/honeclaw/web/index.html"
+cp "$TMP_ROOT/$BUNDLE_NAME/share/honeclaw/web-public/index.html" "$TMP_ROOT/$NON_EXEC_BUNDLE_NAME/share/honeclaw/web-public/index.html"
+tar -czf "$NON_EXEC_ARCHIVE_PATH" -C "$TMP_ROOT" "$NON_EXEC_BUNDLE_NAME"
 
 cat > "$TOOLS_DIR/curl" <<'EOF'
 #!/usr/bin/env bash
@@ -392,6 +434,56 @@ run_missing_current_binary_case() {
   fi
 }
 
+run_symlink_bundle_path_case() {
+  local home_dir="$TMP_ROOT/home-symlink-bundle"
+  mkdir -p "$home_dir"
+
+  local output
+  if output="$(
+    env \
+      HOME="$home_dir" \
+      PATH="$TOOLS_DIR:/usr/bin:/bin" \
+      HONE_RUN_ONBOARD=0 \
+      HONE_GITHUB_REPO="example/honeclaw" \
+      MOCK_ARCHIVE_PATH="$SYMLINK_ARCHIVE_PATH" \
+      bash "$INSTALL_SCRIPT" 2>&1
+  )"; then
+    echo "[FAIL] installer accepted a required bundle file as a symlink" >&2
+    exit 1
+  fi
+
+  if [[ "$output" != *"release asset required bundle path must be a regular file: share/honeclaw/config.example.yaml"* ]]; then
+    echo "[FAIL] installer did not reject a symlinked required bundle file" >&2
+    echo "$output" >&2
+    exit 1
+  fi
+}
+
+run_non_executable_cli_case() {
+  local home_dir="$TMP_ROOT/home-non-exec-cli"
+  mkdir -p "$home_dir"
+
+  local output
+  if output="$(
+    env \
+      HOME="$home_dir" \
+      PATH="$TOOLS_DIR:/usr/bin:/bin" \
+      HONE_RUN_ONBOARD=0 \
+      HONE_GITHUB_REPO="example/honeclaw" \
+      MOCK_ARCHIVE_PATH="$NON_EXEC_ARCHIVE_PATH" \
+      bash "$INSTALL_SCRIPT" 2>&1
+  )"; then
+    echo "[FAIL] installer accepted a non-executable hone-cli binary" >&2
+    exit 1
+  fi
+
+  if [[ "$output" != *"release asset required CLI binary is not executable: bin/hone-cli"* ]]; then
+    echo "[FAIL] installer did not explain the non-executable hone-cli binary" >&2
+    echo "$output" >&2
+    exit 1
+  fi
+}
+
 run_path_hit_case
 
 run_fallback_case "/bin/zsh" "$TMP_ROOT/home-fallback-zsh" "$TMP_ROOT/home-fallback-zsh/.zshrc"
@@ -402,6 +494,8 @@ run_explicit_bin_dir_failure_case
 run_missing_bundle_path_case
 run_unsafe_archive_layout_case
 run_multi_root_archive_layout_case
+run_symlink_bundle_path_case
+run_non_executable_cli_case
 run_missing_current_binary_case
 
 echo "[PASS] hone-cli install path resolution regression passed"

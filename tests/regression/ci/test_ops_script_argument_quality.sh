@@ -208,6 +208,81 @@ EOF
   )
 }
 
+run_gitleaks_unsafe_archive_path_case() {
+  local repo_dir="$TMP_ROOT/gitleaks-unsafe-repo"
+  local tools_dir="$TMP_ROOT/gitleaks-unsafe-tools"
+  local archive_path="$TMP_ROOT/gitleaks_0.0.1_darwin_arm64.tar.gz"
+
+  mkdir -p "$repo_dir" "$tools_dir"
+  HONE_TEST_UNSAFE_GITLEAKS_ARCHIVE="$archive_path" python3 - <<'PY'
+import io
+import os
+import tarfile
+from pathlib import Path
+
+archive_path = Path(os.environ["HONE_TEST_UNSAFE_GITLEAKS_ARCHIVE"])
+with tarfile.open(archive_path, "w:gz") as archive:
+    safe = tarfile.TarInfo("gitleaks")
+    safe.mode = 0o755
+    safe_payload = b"#!/usr/bin/env bash\n"
+    safe.size = len(safe_payload)
+    archive.addfile(safe, fileobj=io.BytesIO(safe_payload))
+
+    unsafe = tarfile.TarInfo("../outside-gitleaks-install")
+    unsafe_payload = b"unsafe\n"
+    unsafe.size = len(unsafe_payload)
+    archive.addfile(unsafe, fileobj=io.BytesIO(unsafe_payload))
+PY
+
+  cat > "$tools_dir/curl" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+output=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o)
+      output="$2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$output" ]]; then
+  echo "missing curl -o target" >&2
+  exit 1
+fi
+
+cp "$HONE_TEST_GITLEAKS_ARCHIVE" "$output"
+EOF
+  chmod +x "$tools_dir/curl"
+
+  (
+    cd "$repo_dir"
+    git init -q
+    git config user.email "patrol@example.invalid"
+    git config user.name "Code Patrol"
+
+    local output
+    if output="$(
+      env \
+        PATH="$tools_dir:/usr/bin:/bin" \
+        GITLEAKS_VERSION=0.0.1 \
+        HONE_TEST_GITLEAKS_ARCHIVE="$archive_path" \
+        bash "$ROOT_DIR/scripts/install_gitleaks.sh" 2>&1
+    )"; then
+      echo "[FAIL] install_gitleaks accepted an archive with unsafe paths" >&2
+      exit 1
+    fi
+
+    assert_contains "$output" "gitleaks archive contains unsafe path: ../outside-gitleaks-install" "gitleaks installer should reject unsafe archive paths"
+    assert_contains "$output" "archive: https://github.com/gitleaks/gitleaks/releases/download/v0.0.1/gitleaks_0.0.1_" "gitleaks unsafe-path failure should include the source archive"
+  )
+}
+
 run_gitleaks_outside_repo_case() {
   local outside_dir="$TMP_ROOT/outside-git-repo"
   mkdir -p "$outside_dir"
@@ -261,6 +336,7 @@ run_homebrew_formula_version_normalization_case
 run_changed_fmt_bash3_compatible_case
 run_script_self_path_quality_case
 run_gitleaks_archive_layout_case
+run_gitleaks_unsafe_archive_path_case
 run_gitleaks_outside_repo_case
 run_build_desktop_home_bun_case
 
