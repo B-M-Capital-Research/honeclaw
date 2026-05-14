@@ -28,6 +28,15 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-14 15:04 CST` 复核，当前 live 旧运行态仍在新增 started-row 残留，但不把本单从 `Fixed` 回退为 `New`：
+    - 最近四小时窗口 `2026-05-14T11:00:00+08:00` 到 `2026-05-14T15:00:00+08:00` 内共有 `100` 条 `execution_status=running + message_send_status=pending` started 残留。
+    - 其中 `99` 条为 heartbeat started 行，覆盖 11:00、11:30、12:00、12:30、13:00、13:30、14:00、14:30、15:00 等窗口；另有 `1` 条普通 scheduler started 行。
+    - 普通 scheduler 样本为 `每日公司资讯与分析总结`，同窗终态随后另起 `completed + sent + delivered=1`；原 started 行仍保留 `running + pending`。
+    - Heartbeat 代表样本：15:00 同窗继续先写入 11 条 started 行，随后另起多条 `execution_failed + skipped_error + delivered=0` 终态；原 started 行仍未被覆盖。
+  - 结论：
+    - 这些记录证明当前机器 live 进程仍在跑旧实现或非生产运行态，不再证明当前 HEAD 的修复无效。
+    - 12:07 CST 当前 HEAD 已有 `delivery_key` 覆盖、最近 started fallback 与启动 stale recovery 回归；后续只有在本地可复现测试或当前代码路径证明终态仍会另起行时再改回 `New`。
+    - 普通 scheduler 与 heartbeat 均已有独立终态行，用户可见投递主链路没有因此被阻断；受损点仍是调度台账一致性和 stale recovery / 巡检噪音，因此严重等级仍不高于 `P3`。
   - `2026-05-14 11:05 CST` 复核，started-row finalize 缺陷继续实时新增：
     - 最近四小时窗口 `2026-05-14T07:00:00+08:00` 到 `2026-05-14T11:00:00+08:00` 内共有 `111` 条 `execution_status=running + message_send_status=pending` started 残留。
     - 其中 `99` 条为 heartbeat started 行，覆盖 07:00、07:30、08:00、08:30、09:00、09:30、10:00、10:30、11:00 等窗口；另有 `12` 条普通 scheduler started 行。

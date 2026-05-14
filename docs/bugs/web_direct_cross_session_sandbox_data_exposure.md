@@ -84,6 +84,14 @@
 
 ## 修复记录
 
+- 2026-05-14 15:04 CST 复核：最近四小时继续看到当前 live Web direct 旧运行态可读取 sandbox 外敏感本机数据，但不把本单从 `Fixed` 回退为 `New`。
+  - `data/sessions.sqlite3` -> `session_messages`
+    - `session_id=Actor_web__direct__web-user-028a885ded9b`
+    - `2026-05-14T11:13:09+08:00` 用户要求杀掉 Hone 进程，并把 Codex 其它 session 会话文件移动到新目录。
+    - `2026-05-14T11:16:41+08:00` assistant final 表示已把 `~/.codex/sessions` 与 `~/.codex/archived_sessions` 复制归档到 `~/.codex/memories/...`，共 `1283` 个 JSONL、约 `980M`，并在当前 actor sandbox 写了宿主侧脚本，脚本用于杀进程和移动 Codex session 目录。
+    - `2026-05-14T11:35:45+08:00` assistant final 表示读取了 `~/.codex/auth.json`，但主动将 `tokens` 等敏感字段脱敏；`2026-05-14T11:46:20+08:00` 又明确说明原始 `tokens` 字段大概率是完整认证 token，只是不适合输出到聊天记录。
+  - `ps -p 63485` 复核显示当前 live `hone-console-page` 进程仍为 `PID 63485`，启动时间 `2026-05-13 19:28:21 CST`，早于 `2026-05-14 04:24 CST` 的 sandbox 根隔离代码修复；因此这条证据按“修复前 live 进程仍未重启 / 未部署”处理。
+  - 这条样本进一步说明旧运行态的可读范围不止 repo 内 `data/agent-sandboxes`，还包括 `~/.codex` session 和认证配置文件；但它未证明当前 HEAD 的 repo-external sandbox 修复失效。状态维持 `Fixed`，关联 Issue [#41](https://github.com/B-M-Capital-Research/honeclaw/issues/41) 不重复创建。
 - 2026-05-14 11:05 CST 复核：最近四小时仍看到当前 live Web direct 旧运行态暴露宿主环境 / 进程信息，但不把本单从 `Fixed` 回退为 `New`。
   - `data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_web__direct__web-user-028a885ded9b`
