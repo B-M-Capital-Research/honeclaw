@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-15 02:10 CST
+最后更新：2026-05-15 03:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,10 +17,14 @@
 
 ## 当前概览
 
-- 活跃待修复：2
+- 活跃待修复：3
 - Later / 待复现：9
-- 已修复 / 已关闭：101
+- 已修复 / 已关闭：100
 - 历史分析 / 部分止血：5
+- 本轮 03:03 CST 确认 Heartbeat `mimo-v2.5-pro` reasoning transcript 兼容缺陷持续活跃：23:30-03:00 CST 又新增 82 条同类 `reasoning_content must be passed back` / `Param Incorrect` heartbeat 失败，覆盖 11 个 job；同窗普通 scheduler 有 5 条成功送达，故障仍集中在 heartbeat function-calling 路径。
+- 本轮 03:03 CST 重新打开 Feishu scheduler started-row 台账缺陷：23:30-03:00 CST 新增 92 条 `running + pending + detail.phase=started` 残留，其中 88 条 heartbeat、4 条普通 scheduler；同一 delivery_key 随后已有 `execution_failed/sent/noop` 终态另起行，说明 started 行仍未被终态覆盖，状态从 `Fixed` 调回 `New`。
+- 本轮 03:03 CST 确认观察池击球区缺陷仍活跃：23:02 CST `核心观察股池晚间快报` 成功送达，但 `MSFT / NVDA / GOOGL / AAPL / AVGO / AMZN / META` 继续批量显示 `击球区：待确认`；仍按不阻断投递链路的 P3 处理。
+- 本轮 03:03 CST 未发现新的用户可见路径外泄、工具轨迹外泄、直聊半成品收口、Web quota 无回复或新的 P1 级链路异常；`acp-events.log` 中仍有 raw `session/update` 工具更新记录，但最近四小时 assistant final 未见同类 prompt / rawOutput 用户可见外泄，本轮不新建缺陷。
 - 本轮 02:10 CST 已修复 Feishu 直聊半成品失败回退复发：Feishu failure fallback 现在会过滤 `执行完成：本地命令`、`正在调用 Searching the Web...`、`工具执行完成` 等 Codex/ACP 轨迹行，并丢弃 `我先核验...` 这类过渡计划句，不再把工具进度和内部执行语句拼成用户可见最终失败回复。验证 `cargo test -p hone-feishu failed_reply_text_ -- --nocapture`、`cargo test -p hone-feishu stream_buffer_visible_final_rejects_placeholder_and_progress -- --nocapture`、`rustfmt --edition 2024 --check bins/hone-feishu/src/handler.rs` 通过；无关联 GitHub Issue。
 - 本轮 23:04 CST 确认 Heartbeat `mimo-v2.5-pro` reasoning transcript 兼容缺陷仍活跃：19:00-23:01 CST 新增 90 条同类 `reasoning_content must be passed back` / `Param Incorrect` heartbeat 失败，覆盖 11 个 job；`data/runtime/logs` 同窗也记录 `HeartbeatDiag runner_error model=mimo-v2.5-pro`，普通 scheduler 与 Feishu / Web direct 仍有成功回复，故障仍集中在 heartbeat function-calling 路径。
 - 本轮 23:04 CST 确认观察池击球区缺陷仍活跃：21:37 CST `科技核心股池 · 晚间击球区快报` 已成功送达，但 `MSFT / NVDA / GOOGL / AAPL / AVGO / AMZN / META` 等继续批量显示 `击球区：待确认`；23:00 `核心观察股池晚间快报` 截至巡检时仍处于 `running + pending`，不作为新增复发结论。
@@ -93,8 +97,9 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Heartbeat 监控使用 `mimo-v2.5-pro` 时批量命中 `Param Incorrect` 并漏发 | P2 | New | 2026-05-14 23:04 持续复发：19:00-23:01 CST 新增 90 条同类 `reasoning_content must be passed back` / `Param Incorrect` heartbeat 失败，覆盖 11 个 job；无关联 GitHub Issue | [scheduler_heartbeat_mimo_param_incorrect_batch_failures.md](./scheduler_heartbeat_mimo_param_incorrect_batch_failures.md) |
-| 核心观察池简报在本地击球区配置恢复后仍把多数标的降成“待确认” | P3 | New | 2026-05-14 23:04 复发：21:37 CST `科技核心股池 · 晚间击球区快报` 成功送达但核心股与拓展股继续批量写成 `击球区：待确认`；不阻断投递链路；无关联 GitHub Issue | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
+| Heartbeat 监控使用 `mimo-v2.5-pro` 时批量命中 `Param Incorrect` 并漏发 | P2 | New | 2026-05-15 03:03 持续复发：23:30-03:00 CST 新增 82 条同类 `reasoning_content must be passed back` / `Param Incorrect` heartbeat 失败，覆盖 11 个 job；无关联 GitHub Issue | [scheduler_heartbeat_mimo_param_incorrect_batch_failures.md](./scheduler_heartbeat_mimo_param_incorrect_batch_failures.md) |
+| Feishu scheduler 预写 `running/pending` started 行后，终态另起行导致台账持续悬挂 | P3 | New | 2026-05-15 03:03 复发：23:30-03:00 CST 新增 92 条 `running + pending + detail.phase=started` 残留，其中 88 条 heartbeat、4 条普通 scheduler；主投递链路有独立终态，不阻断用户可见投递；关联 Issue [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39) | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
+| 核心观察池简报在本地击球区配置恢复后仍把多数标的降成“待确认” | P3 | New | 2026-05-15 03:03 复发：23:02 CST `核心观察股池晚间快报` 成功送达但核心股与拓展股继续批量写成 `击球区：待确认`；不阻断投递链路；无关联 GitHub Issue | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 
 ## Later / 待复现
 

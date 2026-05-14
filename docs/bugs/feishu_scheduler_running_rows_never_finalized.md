@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-28 17:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P3
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39)
 
 ## 修复复核（2026-05-14 12:07 CST）
@@ -28,6 +28,15 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-15 03:03 CST` 复核，started-row finalize 缺陷在最近四小时真实运行窗口再次实时新增，状态从 `Fixed` 调回 `New`：
+    - 最近四小时窗口 `2026-05-14T23:01:37+08:00` 到 `2026-05-15T03:02:50+08:00` 内共有 `92` 条 `execution_status=running + message_send_status=pending + detail.phase=started` 残留。
+    - 其中 `88` 条为 heartbeat started 行，覆盖 `23:30`、`00:30`、`01:00`、`01:30`、`02:00`、`02:30`、`03:00` 等窗口；另有 `4` 条普通 scheduler started 行。
+    - 普通 scheduler 代表样本包括 `科技成长股持仓买卖点日内预警`、`AAOI 每日动态监控`、`TEM 每日动态监控`、`RKLB 每日动态监控`；同窗已有独立终态行落成 `completed + sent + delivered=1`。
+    - Heartbeat 代表样本：03:00 CST 先写入 `run_id=21339-21349` 等 started 行，随后 `run_id=21350-21360` 另起 `execution_failed + skipped_error + delivered=0` 终态；原 started 行仍保留 `running + pending`。
+  - 结论：
+    - 这是同一根因 / 同一影响范围的复发，不新建重复文档。
+    - 这不是 P1 的“无最终回复 / 用户不可见失败”缺陷：本轮普通 scheduler 有成功送达终态，heartbeat 也有失败或 noop 终态；受损点是调度台账同时保留悬挂 started 行，影响运维判断和后续 stale recovery 噪音。
+    - 仍按 `P3` 定级：它没有阻断本轮用户可见投递，也没有造成跨用户错投或数据破坏，但会持续污染 `cron_job_runs` 的运行中状态和巡检判断。
   - `2026-05-14 15:04 CST` 复核，当前 live 旧运行态仍在新增 started-row 残留，但不把本单从 `Fixed` 回退为 `New`：
     - 最近四小时窗口 `2026-05-14T11:00:00+08:00` 到 `2026-05-14T15:00:00+08:00` 内共有 `100` 条 `execution_status=running + message_send_status=pending` started 残留。
     - 其中 `99` 条为 heartbeat started 行，覆盖 11:00、11:30、12:00、12:30、13:00、13:30、14:00、14:30、15:00 等窗口；另有 `1` 条普通 scheduler started 行。
