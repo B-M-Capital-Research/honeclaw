@@ -5,7 +5,7 @@ import { ToastProvider } from "@hone-financial/ui/context/toast"
 import { ThemeProvider } from "@hone-financial/ui/theme"
 import { MetaProvider, Title } from "@solidjs/meta"
 import { Navigate, Route, Router } from "@solidjs/router"
-import { ErrorBoundary, Suspense, lazy, type ParentProps } from "solid-js"
+import { ErrorBoundary, Suspense, createEffect, createSignal, lazy, type ParentProps } from "solid-js"
 import { BackendProvider } from "@/context/backend"
 import { ConsoleProvider } from "@/context/console"
 import { SessionsProvider } from "@/context/sessions"
@@ -14,6 +14,7 @@ import { TasksProvider } from "@/context/tasks"
 import { PortfolioProvider } from "@/context/portfolio"
 import { ResearchProvider } from "@/context/research"
 import { CompanyProfilesProvider } from "@/context/company-profiles"
+import { isRecoverableAssetLoadError, recoverFromAssetLoadError } from "@/lib/asset-recovery"
 import ConsoleLayout from "@/pages/layout"
 
 const HomePage = lazy(() => import("@/pages/home"))
@@ -41,6 +42,22 @@ const APP_SURFACE = import.meta.env.VITE_HONE_APP_SURFACE === "public" ? "public
 
 function Loading() {
   return <div class="flex min-h-screen items-center justify-center text-sm text-[color:var(--text-secondary)]">Loading…</div>
+}
+
+function AppErrorFallback(props: { error: unknown }) {
+  const [recovering, setRecovering] = createSignal(false)
+  createEffect(() => {
+    setRecovering(recoverFromAssetLoadError(props.error))
+  })
+  return (
+    <div class="flex min-h-screen items-center justify-center p-8 text-center text-sm text-[color:var(--text-secondary)]">
+      {recovering()
+        ? "正在加载最新版本…"
+        : isRecoverableAssetLoadError(props.error)
+          ? "页面资源已更新，请刷新页面。"
+          : String(props.error)}
+    </div>
+  )
 }
 
 function AdminProviders(props: ParentProps) {
@@ -92,7 +109,7 @@ function PublicProviders(props: ParentProps) {
 function PublicSurface() {
   return (
     <PublicProviders>
-      <ErrorBoundary fallback={(error) => <div class="p-8 text-red-300">{String(error)}</div>}>
+      <ErrorBoundary fallback={(error) => <AppErrorFallback error={error} />}>
         <Suspense fallback={<Loading />}>
           <Router>
             <Route path="/" component={PublicSiteHomePage} />
@@ -114,7 +131,7 @@ function PublicSurface() {
 function AdminSurface() {
   return (
     <AdminProviders>
-      <ErrorBoundary fallback={(error) => <div class="p-8 text-red-300">{String(error)}</div>}>
+      <ErrorBoundary fallback={(error) => <AppErrorFallback error={error} />}>
         <Suspense fallback={<Loading />}>
           <Router>
             <Route path="/" component={HomePage} />

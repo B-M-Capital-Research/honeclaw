@@ -48,8 +48,11 @@ curl -fsS https://hone-claw.com/roadmap >/dev/null
 For SPA routes, keep `packages/app/public/_redirects` in the public build:
 
 ```text
+/assets/*  /404.html  404
 /* /index.html 200
 ```
+
+The assets rule must stay before the SPA fallback. It prevents stale JavaScript chunk requests after a frontend deploy from receiving `index.html` as `text/html`; the app also auto-reloads once when it detects this stale-asset condition.
 
 ## Backend Origin Update
 
