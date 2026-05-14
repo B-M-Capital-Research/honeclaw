@@ -128,7 +128,7 @@ impl Tool for RestartHoneTool {
         );
 
         // 启动 scripts/restart_hone.sh，通过 nohup 在后台独立运行
-        // 脚本接受两个参数：<project_root> <old_pid>
+        // 脚本接受参数：<project_root> [old_pid]
         // 脚本内部会将日志追加到 data/logs/restart.log，Rust 侧直接丢弃 stdout/stderr
         let spawn_result = std::process::Command::new("nohup")
             .arg("bash")
@@ -140,8 +140,8 @@ impl Tool for RestartHoneTool {
             .stderr(Stdio::null())
             .spawn();
 
-        // 无论是否成功，都清除锁文件（脚本成功后会自动退出，不需要保留锁）
-        // 注意：脚本本身是 nohup 后台进程，spawn() 成功即可 detach
+        // 注意：脚本本身是 nohup 后台进程，spawn() 成功即可 detach。
+        // 成功路径保留锁文件给 60s 超时保护，失败路径才立即清除。
         match spawn_result {
             Ok(child) => {
                 // 不 wait，直接 drop（Rust drop 不会 kill 子进程）

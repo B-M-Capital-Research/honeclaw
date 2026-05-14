@@ -143,7 +143,7 @@ describe("public chat history window", () => {
     expect(nextVisibleMessageCount(10, -1, 24)).toBe(10);
   });
 
-  it("rewrites trailing server ids to preserve optimistic UUIDs", () => {
+  it("rewrites trailing history ids to preserve optimistic UUIDs", () => {
     const existing = [
       { id: "h0_abc", role: "user" as const },
       { id: "h1_def", role: "assistant" as const },

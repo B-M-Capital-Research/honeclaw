@@ -334,9 +334,9 @@ impl Tool for NotificationPrefsTool {
                         floor_macro: None,
                     });
                 }
-                // 任何 slot 落在现有 quiet_hours 内会被 scheduler 跳过(scheduler.rs:277
-                // 在 quiet 窗内 continue,然后只在 quiet_to 那一分钟跑 quiet_flush),
-                // 等于配置静默失效。这里 hard error,逼 LLM 自动改时间或先 clear_quiet_hours。
+                // 任何 slot 落在现有 quiet_hours 内都会被 scheduler 让位给
+                // quiet_flush,等于 digest slot 配置静默失效。这里 hard error,
+                // 逼 LLM 自动改时间或先 clear_quiet_hours。
                 if let Some(qh) = prefs.quiet_hours.as_ref() {
                     let blocked_slots: Vec<String> = slots
                         .iter()

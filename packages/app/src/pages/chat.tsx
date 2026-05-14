@@ -1763,10 +1763,10 @@ export default function PublicChatPage() {
         stickToBottom ||
         distanceFromBottom() < 120;
       // Keep optimistic UUIDs on the just-sent pair so reconcile patches the
-      // bubbles in place instead of swapping the DOM nodes for the server's
-      // stable ids — the swap collapses scrollHeight long enough for the
-      // browser to clamp scrollTop "to the top of the conversation" before
-      // settleAtBottom can pull it back.
+      // bubbles in place instead of swapping the DOM nodes for the next
+      // history-derived stable ids — the swap collapses scrollHeight long
+      // enough for the browser to clamp scrollTop "to the top of the
+      // conversation" before settleAtBottom can pull it back.
       rekeyTrailingOptimisticIds(messages, next);
       setMessages(reconcile(next, { key: "id" }));
       if (shouldKeepBottom) {

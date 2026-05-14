@@ -164,7 +164,7 @@ async fn main() -> Result<()> {
         println!("D · FAIL: 没东西可 flush;C 这步应至少 enqueue 1 条");
         failures += 1;
     } else {
-        // 与生产 digest.rs:441 一致:用 sink 自己声明的 format,避免渲染产物
+        // 与生产 digest flush 路径一致:用 sink 自己声明的 format,避免渲染产物
         // 与 sendMessage 的 parse_mode 不匹配(例如 <b> 当字面量泄露)。
         let body = render_digest(
             &format!("[E2E {tag}] 模拟盘后 digest"),
