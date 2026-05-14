@@ -151,6 +151,14 @@
     - `2026-04-16T16:01:05+08:00` assistant 只收到 55 字过渡句：`美股行情已经拿到。港股代码格式在底层数据里没直接回出...`
     - 同轮日志同样显示 `session.persist_assistant/done` 之后仍继续启动 `Tool: hone/web_search`
 
+## 2026-05-15 修复
+
+- 本轮把 2026-05-12 23:34 最新复发样本里的 failure partial 收口缺口补到了 [`/Users/fengming2/Desktop/honeclaw/bins/hone-feishu/src/handler.rs`](/Users/fengming2/Desktop/honeclaw/bins/hone-feishu/src/handler.rs)：
+  - `sanitize_failed_partial_reply(...)` 现在在去掉进度行后，会继续丢弃过渡性计划句，避免把 `我先核验...再批量补建` 这类内部执行语句拼成用户可见失败答复。
+  - `looks_like_progress_trace_line(...)` 新增覆盖 `执行完成：本地命令`、`正在调用 Searching the Web...`、`工具执行完成` 与裸 `Searching the Web`，补上 Codex/ACP 最近复发样本里原先未被识别的轨迹文案。
+- 这次修复只改变 Feishu 失败态 fallback 的用户可见文本，不改变 runner 成败判定，也不影响 quota / usage-limit 等已有错误映射优先级。
+- 状态更新为 `Fixed`：当前仓库代码已覆盖这类“工具轨迹/计划句被当成最终失败回复”的活跃复发形态；由于本任务不重启现有服务，真实运行态仍需后续只读复核后再决定是否 `Closed`。
+
 ## 端到端链路
 
 1. Feishu 直聊用户发起需要正式分析的请求，例如 `美股TEMPUS AI 的value analysis`。
@@ -232,10 +240,9 @@
 - `cargo test -p hone-channels acp_prompt_`
 - `cargo test -p hone-channels user_visible_error_message_`
 - `cargo test -p hone-feishu failed_reply_text_`
-- 2026-05-15 本轮验证：
-  - `rustfmt --edition 2024 --config skip_children=true --check bins/hone-feishu/src/handler.rs`
-  - `cargo test -p hone-feishu failed_reply_text_ -- --nocapture`
-  - `cargo check -p hone-feishu --tests`
+- `cargo test -p hone-feishu stream_buffer_visible_final_rejects_placeholder_and_progress -- --nocapture`
+- `rustfmt --edition 2024 --check bins/hone-feishu/src/handler.rs`
+- `cargo check -p hone-feishu --tests`
 
 ## 下一步建议
 

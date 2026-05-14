@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-15 00:00 CST
+最后更新：2026-05-15 02:10 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -21,7 +21,7 @@
 - Later / 待复现：9
 - 已修复 / 已关闭：101
 - 历史分析 / 部分止血：5
-- 本轮 00:00 CST 已修复 Feishu 直聊失败 partial 纯工具进度外发缺陷：失败收口会过滤 `执行完成：本地命令`、`正在调用 Searching the Web...`、`工具执行完成` 与不完整尾注，若 partial 只剩 compact 工具状态则回退到产品化错误文案，不再把工具进度当作最终回复。验证 `rustfmt --edition 2024 --config skip_children=true --check bins/hone-feishu/src/handler.rs`、`cargo test -p hone-feishu failed_reply_text_ -- --nocapture`、`cargo check -p hone-feishu --tests` 通过；无关联 GitHub Issue。
+- 本轮 02:10 CST 已修复 Feishu 直聊半成品失败回退复发：Feishu failure fallback 现在会过滤 `执行完成：本地命令`、`正在调用 Searching the Web...`、`工具执行完成` 等 Codex/ACP 轨迹行，并丢弃 `我先核验...` 这类过渡计划句，不再把工具进度和内部执行语句拼成用户可见最终失败回复。验证 `cargo test -p hone-feishu failed_reply_text_ -- --nocapture`、`cargo test -p hone-feishu stream_buffer_visible_final_rejects_placeholder_and_progress -- --nocapture`、`rustfmt --edition 2024 --check bins/hone-feishu/src/handler.rs` 通过；无关联 GitHub Issue。
 - 本轮 23:04 CST 确认 Heartbeat `mimo-v2.5-pro` reasoning transcript 兼容缺陷仍活跃：19:00-23:01 CST 新增 90 条同类 `reasoning_content must be passed back` / `Param Incorrect` heartbeat 失败，覆盖 11 个 job；`data/runtime/logs` 同窗也记录 `HeartbeatDiag runner_error model=mimo-v2.5-pro`，普通 scheduler 与 Feishu / Web direct 仍有成功回复，故障仍集中在 heartbeat function-calling 路径。
 - 本轮 23:04 CST 确认观察池击球区缺陷仍活跃：21:37 CST `科技核心股池 · 晚间击球区快报` 已成功送达，但 `MSFT / NVDA / GOOGL / AAPL / AVGO / AMZN / META` 等继续批量显示 `击球区：待确认`；23:00 `核心观察股池晚间快报` 截至巡检时仍处于 `running + pending`，不作为新增复发结论。
 - 本轮 23:04 CST 未发现新的用户可见路径外泄、工具中间稿外泄、Feishu 直聊半成品收口或 quota 无回复样本；19:03 CST 用户指出前一轮“没有做成表格”后，下一轮已返回标准 Markdown 表格，按单次轻微质量波动且已当场纠正处理，不建档。
@@ -114,7 +114,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Feishu 直聊在工具尚未跑完时提前把工具进度 / 不完整错误当成最终回复 | P2 | Fixed | 2026-05-15 失败 partial stream 过滤补齐 ACP compact 工具进度形态：`执行完成：本地命令`、`正在调用 Searching the Web...`、`工具执行完成` 与不完整尾注会被视为噪声；纯进度 partial 回退到产品化错误文案，不再外发半成品工具轨迹。`rustfmt --edition 2024 --config skip_children=true --check bins/hone-feishu/src/handler.rs`、`cargo test -p hone-feishu failed_reply_text_ -- --nocapture`、`cargo check -p hone-feishu --tests` 通过；无关联 GitHub Issue | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
+| Feishu 直聊在工具尚未跑完时提前把工具进度 / 不完整错误当成最终回复 | P2 | Fixed | 2026-05-15 02:10 Feishu failure fallback 现在会过滤 `执行完成：本地命令`、`正在调用 Searching the Web...`、`工具执行完成` 与过渡计划句，不再把工具轨迹和内部执行语句拼成用户可见最终失败回复；待后续真实运行态只读复核后再决定是否 `Closed`；无关联 GitHub Issue | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixed | 2026-05-14 20:12 成功 `cron_job` 副作用现在会在 planning sentence 被抑制前恢复为确认回复；定时任务创建 / 更新 / 删除已成功时不再外发通用失败提示遮蔽真实状态；关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29) | [feishu_direct_empty_reply_false_success.md](./archive/feishu_direct_empty_reply_false_success.md) |
 | 原油定时播报在价格 / 日期 / 背景口径上继续输出未核验或错误事实 | P2 | Fixed | 2026-05-14 20:06 商品归因 guard 已扩展到普通 scheduler 成功路径；`Oil_Price_Monitor_Closing` 与 `OWALERT_PostMarket` 这类非 heartbeat 输出命中未核验 WTI / Brent / 油价因果口径时会改写为安全说明，并写入 `commodity_causality_guarded=true` 与 raw/guarded/deliver preview 元数据；无关联 GitHub Issue | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Feishu 公司画像建档成功后向用户暴露本机绝对路径与内部文件落点 | P3 | Fixed | 2026-05-14 16:07 已把本地 Markdown 文件链接与裸绝对路径脱敏并入共享 `sanitize_user_visible_output(...)`，公司画像建档回复不再暴露本机 repo 根、`data/agent-sandboxes` 或 direct actor sandbox 标识；无关联 GitHub Issue | [feishu_company_profile_absolute_path_leak.md](./feishu_company_profile_absolute_path_leak.md) |

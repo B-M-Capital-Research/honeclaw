@@ -111,7 +111,40 @@ fn sanitize_failed_partial_reply(text: &str) -> String {
         .filter(|line| !looks_like_progress_trace_line(line))
         .collect::<Vec<_>>()
         .join("\n");
-    kept.trim().to_string()
+    let trimmed = kept.trim().to_string();
+    if trimmed.is_empty() || looks_like_transitional_planning_partial(&trimmed) {
+        String::new()
+    } else {
+        trimmed
+    }
+}
+
+fn looks_like_transitional_planning_partial(text: &str) -> bool {
+    let trimmed = text.trim();
+    if trimmed.is_empty()
+        || trimmed.chars().count() >= 200
+        || trimmed.contains('？')
+        || trimmed.contains('?')
+    {
+        return false;
+    }
+    let starts_like_internal_planning = [
+        "我先",
+        "我再",
+        "我需要先",
+        "我还缺",
+        "我需要补",
+        "先看本地",
+        "先补查",
+        "先调取",
+        "先核验",
+        "先抓取",
+        "还缺一件事",
+        "我还需要先",
+    ]
+    .iter()
+    .any(|prefix| trimmed.starts_with(prefix));
+    starts_like_internal_planning
 }
 
 fn looks_like_progress_trace_line(line: &str) -> bool {
@@ -122,8 +155,8 @@ fn looks_like_progress_trace_line(line: &str) -> bool {
     trimmed == THINKING_PLACEHOLDER_TEXT
         || trimmed.starts_with("正在调用 Tool:")
         || trimmed.starts_with("正在调用 tool:")
-        || trimmed.starts_with("正在调用 Searching the Web")
         || trimmed.starts_with("正在调用工具")
+        || trimmed.starts_with("正在调用 Searching the Web")
         || trimmed.starts_with("正在执行：")
         || trimmed.starts_with("执行完成：")
         || trimmed == "工具执行完成"
@@ -132,6 +165,8 @@ fn looks_like_progress_trace_line(line: &str) -> bool {
         || trimmed == "处理中发生错误，内容可能不完整"
         || trimmed == "_(处理中发生错误，内容可能不完整)_"
         || trimmed.starts_with("Tool: ")
+        || trimmed == "工具执行完成"
+        || trimmed == "Searching the Web"
         || trimmed.starts_with("工具调用")
         || trimmed.contains("hone/data_fetch")
         || trimmed.contains("hone/web_search")
@@ -1836,6 +1871,19 @@ mod tests {
                 Some("codex acp prompt ended before tool completion: Searching the Web"),
             ),
             "抱歉，这次处理失败了。请稍后再试。"
+        );
+    }
+
+    #[test]
+    fn failed_reply_text_drops_transitional_planning_partial_stream() {
+        assert_eq!(
+            build_failed_reply_text(
+                None,
+                true,
+                "我先核验持仓里还没建画像的公司，再批量补建。",
+                Some("codex acp session/prompt idle timeout (180s)"),
+            ),
+            "抱歉，处理超时了。请稍后再试。"
         );
     }
 
