@@ -806,7 +806,7 @@ const CONTENT_ZH = {
       desc: "付费体系、VIP 群、专属能力——即将推出。加入社群获取第一手信息。",
     },
     fields: {
-      user_id: "账号 ID",
+      user_id: "账号",
       created_at: "注册时间",
       last_login: "最近登录",
       daily_limit: "访问权限",
@@ -847,7 +847,7 @@ const CONTENT_ZH = {
       file_subtitle: "PDF · 文档 · 其他",
     },
     composer: {
-      quota_exhausted: "今日额度已用完",
+      quota_exhausted: "今日对话次数已用完",
       placeholder: "向 Hone 提问…",
       send_aria: "发送",
       proactive_tip: "录入持仓，开启推送模式",
@@ -878,8 +878,8 @@ const CONTENT_ZH = {
       proactive_got_it: "知道了",
     },
     history: {
-      loading_older: "加载中...",
-      load_older: "上滑加载更早消息",
+      loading_older: "加载中…",
+      load_older: "继续向上滚动加载更早消息",
     },
     restoring: {
       title: "正在恢复对话",
@@ -906,7 +906,7 @@ const CONTENT_ZH = {
       strings: {
         title: "分享对话",
         subtitle: "从最近 4 条消息里选择要分享的内容",
-        preview_subtitle: "预览图片后保存、复制或分享到其他 App",
+        preview_subtitle: "预览图片后保存、复制或分享到其他应用",
         generate_image: "生成分享图片",
         back_to_select: "重新选择消息",
         download: "下载图片",
@@ -914,13 +914,13 @@ const CONTENT_ZH = {
         copy_image: "复制图片",
         copy_text: "仅复制文字",
         share: "系统分享",
-        share_other_app: "分享到其他 App",
+        share_other_app: "分享到其他应用",
         close_aria: "关闭",
         success_download: "图片已保存",
         success_copy_image: "图片已复制",
         success_copy_text: "文字已复制",
         success_share: "已分享",
-        save_image_hint: "请在系统分享面板选择保存图片，或长按图片保存到相册",
+        save_image_hint: "请在系统分享面板选择保存图片，或长按图片存入相册",
         error_download: "保存失败，请重试",
         error_copy_image: "复制失败，请改用保存图片",
         error_copy_text: "复制文字失败，请手动选择文本",
@@ -2318,7 +2318,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       desc: "Billing, VIP group, premium capabilities — coming soon. Join the community to hear first.",
     },
     fields: {
-      user_id: "Account ID",
+      user_id: "Account",
       created_at: "Joined",
       last_login: "Last login",
       daily_limit: "Access",
@@ -2359,7 +2359,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       file_subtitle: "PDF · documents · other",
     },
     composer: {
-      quota_exhausted: "Today's quota is used up",
+      quota_exhausted: "You've used today's chat quota",
       placeholder: "Ask Hone…",
       send_aria: "Send",
       proactive_tip: "Add holdings to enable push mode",
@@ -2390,8 +2390,8 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       proactive_got_it: "Got it",
     },
     history: {
-      loading_older: "Loading...",
-      load_older: "Swipe up for earlier messages",
+      loading_older: "Loading…",
+      load_older: "Keep scrolling up for earlier messages",
     },
     restoring: {
       title: "Restoring chat",
@@ -2426,7 +2426,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         copy_image: "Copy image",
         copy_text: "Copy text only",
         share: "Share…",
-        share_other_app: "Share to app",
+        share_other_app: "Share to another app",
         close_aria: "Close",
         success_download: "Image saved",
         success_copy_image: "Image copied",

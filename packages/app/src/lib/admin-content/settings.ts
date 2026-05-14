@@ -173,9 +173,9 @@ const ZH = {
       chat_scope_label: "会话范围",
       allow_from_label: "允许用户",
       allow_emails_label: "允许邮箱",
-      allow_mobiles_label: "允许手机号",
-      allow_open_ids_label: "允许 open ID",
-      target_handle_label: "监听对象",
+      allow_mobiles_label: "允许的手机号",
+      allow_open_ids_label: "允许 OpenID",
+      target_handle_label: "监听账号",
       csv_placeholder: "逗号分隔；留空表示全部允许",
     },
     feishu: {
@@ -203,7 +203,7 @@ const ZH = {
     },
     imessage: {
       name: "iMessage",
-      warning: "⚠️ Needs Full Disk Access",
+      warning: "需要完全磁盘访问权限",
     },
     sync_note:
       "保存后配置文件立即更新；CLI 启动的监听进程需重启后应用启停变化。",
@@ -441,9 +441,9 @@ const EN: typeof ZH = {
       chat_scope_label: "Chat scope",
       allow_from_label: "Allowed users",
       allow_emails_label: "Allowed emails",
-      allow_mobiles_label: "Allowed mobiles",
-      allow_open_ids_label: "Allowed open IDs",
-      target_handle_label: "Tracked handle",
+      allow_mobiles_label: "Allowed phone numbers",
+      allow_open_ids_label: "Allowed OpenIDs",
+      target_handle_label: "Target account",
       csv_placeholder: "Comma-separated; empty means allow all",
     },
     feishu: {
@@ -471,7 +471,7 @@ const EN: typeof ZH = {
     },
     imessage: {
       name: "iMessage",
-      warning: "⚠️ Needs Full Disk Access",
+      warning: "Requires Full Disk Access",
     },
     sync_note:
       "Saving updates the config file immediately; CLI-started listeners need a restart to apply enable/disable changes.",
