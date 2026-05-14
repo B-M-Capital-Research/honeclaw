@@ -3,12 +3,13 @@
 - **发现时间**: 2026-05-12 23:03 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无
 
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-15 04:05 CST` 复核：当前 HEAD 已包含 reasoning transcript replay 修复，并且 `hone-llm` / `hone-agent` 的定向回归仍通过。本轮不再以当前机器旧/非生产运行态作为继续打开依据，状态从 `New` 更新为 `Fixed`；无关联 GitHub Issue。
   - `2026-05-15 03:03 CST` 复核：该缺陷继续保持活跃 `New`。23:30-03:00 CST 又新增 `82` 条同类 heartbeat 失败，覆盖 `11` 个 job；终态均为 `execution_failed + skipped_error + delivered=0`。
   - 失败 job 覆盖 `Cerebras IPO与业务进展心跳监控`、`DRAM 心跳监控`、`Monitor_Watchlist_11`、`RKLB异动监控`、`TEM大事件心跳监控`、`TSLA 正负触发条件心跳监控`、`伦敦金跌破4500提醒`、`小米30港元破位预警`、`持仓重大事件心跳检测`、`TEM破位预警` 与 `全天原油价格3小时播报`。
   - 代表性窗口：23:30、00:30、01:00、01:30、02:00、02:30、03:00 持续出现同类失败；03:00 CST 同窗 `run_id=21350-21360` 连续失败。
@@ -109,6 +110,7 @@
 
 ## 修复情况
 
+- 2026-05-15 04:05 CST 复核当前 HEAD 的修复仍生效：function-calling agent 会把 assistant `reasoning_content` 写入后续工具轮，OpenAI-compatible raw request body 也会携带该字段。本轮没有新增代码改动；仅把 bug 状态从旧运行态证据驱动的 `New` 收敛为代码与回归验证驱动的 `Fixed`。
 - 2026-05-13 已在 `agents/function_calling/src/lib.rs` 保留 assistant `reasoning_content`，并通过 `AgentMessage.metadata -> hone_llm::Message.reasoning_content` 在多轮 tool loop 中回传给上游。
 - 2026-05-13 已在 `crates/hone-llm/src/openai_compatible.rs` 收口 OpenAI-compatible 非流式请求：一旦消息里出现 `reasoning_content`，改走原始 JSON 请求体并显式携带该字段；同时从响应里提取 `reasoning_content` 供下一轮继续使用。
 - 2026-05-13 已把 heartbeat auxiliary function-calling 工具集收窄为 `data_fetch` / `web_search` / `portfolio` / `missed_events` / `local_*`，移除 `skill_tool`、`load_skill`、`notification_prefs`、`deep_research` 等与 heartbeat 无关的 schema，降低同类 provider 兼容风险与请求体膨胀。
@@ -117,6 +119,7 @@
 
 - `cargo test -p hone-llm chat_with_tools_replays_reasoning_content_in_raw_request_body -- --nocapture`
 - `cargo test -p hone-agent run_replays_reasoning_content_into_followup_tool_round -- --nocapture`
+- 2026-05-15 04:05 CST 复跑上述两条定向回归通过。
 - `cargo test -p hone-channels heartbeat_ --lib -- --nocapture`
 - `cargo test -p hone-llm -p hone-agent -p hone-channels --no-run`
 

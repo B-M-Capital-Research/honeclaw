@@ -3,8 +3,22 @@
 - **发现时间**: 2026-04-28 17:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39)
+
+## 修复复核（2026-05-15 04:05 CST）
+
+- 本轮按当前自动化约束复核：当前机器不再作为生产机器，最近 live `running + pending + phase=started` 证据不再作为重新打开本单的前置依据。
+- 当前仓库代码仍覆盖本缺陷描述的台账一致性根因：
+  - 终态写入会优先按顶层 `detail.delivery_key` 覆盖同一 job / actor / channel_target / heartbeat 的 started 行。
+  - 终态 detail 缺少可用 `delivery_key` 时，会回退覆盖最近 2 小时内同一 job / actor / channel_target / heartbeat 的 `phase=started` 行。
+  - `hone_scheduler::execution_detail_with_delivery_key(...)` 会把 scheduler 终态 metadata 统一补成顶层 `delivery_key`，避免终态另起新行。
+  - 启动恢复仍保留 `recover_stale_started_executions(...)`，用于进程中断后把真正陈旧的 started 行收口为 `execution_failed + send_failed`。
+- 本轮没有继续改这条链路代码；结论是 03:03 CST 导航台账重新打开基于当前机器 live 旧/非生产运行态，不足以推翻当前 HEAD。状态更新为 `Fixed`，后续只有在本地可复现测试或当前代码路径证明终态仍会另起行时再改回 `New`。
+- 本轮复核验证：
+  - `cargo test -p hone-memory --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+- 关联 GitHub Issue: [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39)
 
 ## 修复复核（2026-05-14 12:07 CST）
 

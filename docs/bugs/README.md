@@ -17,10 +17,13 @@
 
 ## 当前概览
 
-- 活跃待修复：3
+- 活跃待修复：0
 - Later / 待复现：9
-- 已修复 / 已关闭：100
+- 已修复 / 已关闭：103
 - 历史分析 / 部分止血：5
+- 本轮 04:05 CST 已修复观察池击球区紧凑 summary 解析缺口：scheduler 现在会从 `MSFT $335-$350`、同一行多个 ticker、以及 `保守/合理/激进` 分档区间中恢复击球区；`待确认` 不会回灌。验证 `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs`、`cargo test -p hone-channels scheduled_watchlist_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue。
+- 本轮 04:05 CST 复核 Heartbeat `mimo-v2.5-pro` reasoning transcript 兼容缺陷：当前 HEAD 已包含 reasoning transcript replay 与 OpenAI-compatible raw body 透传，`cargo test -p hone-llm chat_with_tools_replays_reasoning_content_in_raw_request_body -- --nocapture`、`cargo test -p hone-agent run_replays_reasoning_content_into_followup_tool_round -- --nocapture` 通过；不再以当前机器旧/非生产运行态证据保持活跃。
+- 本轮 04:05 CST 复核 Feishu scheduler started-row 台账缺陷：当前 HEAD 已覆盖 `delivery_key` 终态覆盖、最近 started fallback 与启动 stale recovery，`cargo test -p hone-memory --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；关联 Issue [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39)。
 - 本轮 03:03 CST 确认 Heartbeat `mimo-v2.5-pro` reasoning transcript 兼容缺陷持续活跃：23:30-03:00 CST 又新增 82 条同类 `reasoning_content must be passed back` / `Param Incorrect` heartbeat 失败，覆盖 11 个 job；同窗普通 scheduler 有 5 条成功送达，故障仍集中在 heartbeat function-calling 路径。
 - 本轮 03:03 CST 重新打开 Feishu scheduler started-row 台账缺陷：23:30-03:00 CST 新增 92 条 `running + pending + detail.phase=started` 残留，其中 88 条 heartbeat、4 条普通 scheduler；同一 delivery_key 随后已有 `execution_failed/sent/noop` 终态另起行，说明 started 行仍未被终态覆盖，状态从 `Fixed` 调回 `New`。
 - 本轮 03:03 CST 确认观察池击球区缺陷仍活跃：23:02 CST `核心观察股池晚间快报` 成功送达，但 `MSFT / NVDA / GOOGL / AAPL / AVGO / AMZN / META` 继续批量显示 `击球区：待确认`；仍按不阻断投递链路的 P3 处理。
@@ -97,9 +100,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Heartbeat 监控使用 `mimo-v2.5-pro` 时批量命中 `Param Incorrect` 并漏发 | P2 | New | 2026-05-15 03:03 持续复发：23:30-03:00 CST 新增 82 条同类 `reasoning_content must be passed back` / `Param Incorrect` heartbeat 失败，覆盖 11 个 job；无关联 GitHub Issue | [scheduler_heartbeat_mimo_param_incorrect_batch_failures.md](./scheduler_heartbeat_mimo_param_incorrect_batch_failures.md) |
-| Feishu scheduler 预写 `running/pending` started 行后，终态另起行导致台账持续悬挂 | P3 | New | 2026-05-15 03:03 复发：23:30-03:00 CST 新增 92 条 `running + pending + detail.phase=started` 残留，其中 88 条 heartbeat、4 条普通 scheduler；主投递链路有独立终态，不阻断用户可见投递；关联 Issue [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39) | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
-| 核心观察池简报在本地击球区配置恢复后仍把多数标的降成“待确认” | P3 | New | 2026-05-15 03:03 复发：23:02 CST `核心观察股池晚间快报` 成功送达但核心股与拓展股继续批量写成 `击球区：待确认`；不阻断投递链路；无关联 GitHub Issue | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
+| 无 | - | - | 当前没有 `New` / `Approved` / `Fixing` 活跃缺陷；后续巡检如有本地可复现证据再重新加入 | - |
 
 ## Later / 待复现
 
@@ -119,6 +120,9 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Heartbeat 监控使用 `mimo-v2.5-pro` 时批量命中 `Param Incorrect` 并漏发 | P2 | Fixed | 2026-05-15 04:05 复核当前 HEAD 已包含 reasoning transcript replay 与 OpenAI-compatible raw body 透传，定向 `hone-llm` / `hone-agent` 回归通过；无关联 GitHub Issue | [scheduler_heartbeat_mimo_param_incorrect_batch_failures.md](./scheduler_heartbeat_mimo_param_incorrect_batch_failures.md) |
+| Feishu scheduler 预写 `running/pending` started 行后，终态另起行导致台账持续悬挂 | P3 | Fixed | 2026-05-15 04:05 复核当前 HEAD 已覆盖 `delivery_key` 终态覆盖、最近 started fallback 与启动 stale recovery；不再以当前机器旧/非生产运行态证据保持活跃；关联 Issue [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39) | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
+| 核心观察池简报在本地击球区配置恢复后仍把多数标的降成“待确认” | P3 | Fixed | 2026-05-15 04:05 scheduler 已支持从紧凑 compact summary 中恢复 `ticker + $区间` 击球区，覆盖同一行多个 ticker 与分档区间；无关联 GitHub Issue | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 | Feishu 直聊在工具尚未跑完时提前把工具进度 / 不完整错误当成最终回复 | P2 | Fixed | 2026-05-15 02:10 Feishu failure fallback 现在会过滤 `执行完成：本地命令`、`正在调用 Searching the Web...`、`工具执行完成` 与过渡计划句，不再把工具轨迹和内部执行语句拼成用户可见最终失败回复；待后续真实运行态只读复核后再决定是否 `Closed`；无关联 GitHub Issue | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixed | 2026-05-14 20:12 成功 `cron_job` 副作用现在会在 planning sentence 被抑制前恢复为确认回复；定时任务创建 / 更新 / 删除已成功时不再外发通用失败提示遮蔽真实状态；关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29) | [feishu_direct_empty_reply_false_success.md](./archive/feishu_direct_empty_reply_false_success.md) |
 | 原油定时播报在价格 / 日期 / 背景口径上继续输出未核验或错误事实 | P2 | Fixed | 2026-05-14 20:06 商品归因 guard 已扩展到普通 scheduler 成功路径；`Oil_Price_Monitor_Closing` 与 `OWALERT_PostMarket` 这类非 heartbeat 输出命中未核验 WTI / Brent / 油价因果口径时会改写为安全说明，并写入 `commodity_causality_guarded=true` 与 raw/guarded/deliver preview 元数据；无关联 GitHub Issue | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |

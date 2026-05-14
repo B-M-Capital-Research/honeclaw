@@ -3,8 +3,18 @@
 - **发现时间**: 2026-04-29 23:06 CST
 - **Bug Type**: System Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **修复结论复核**:
+  - `2026-05-15 04:05 CST` 本轮修复最新可复现解析缺口，状态从 `New` 更新为 `Fixed`：
+    - 复核当前代码确认，既有恢复链路已覆盖 Markdown 表格和 `击球区:` 行，但没有覆盖缺陷文档中多次出现的紧凑 compact summary 形态，例如 `MSFT $335-$350`、`NVDA $150-$165`、`GOOGL $255-$275`。
+    - `crates/hone-channels/src/scheduler.rs` 现在会在观察池 / 击球区定时任务的 compact summary / session summary 中逐行提取 `ticker + $区间` 形态，并支持同一行多个 ticker 与 `保守/合理/激进` 分档区间；`待确认` 不会被回灌为有效区间。
+    - 新增回归测试：
+      - `scheduled_watchlist_prompt_recovers_compact_inline_hit_zones`
+    - 验证通过：
+      - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs`
+      - `cargo test -p hone-channels scheduled_watchlist_ --lib -- --nocapture`
+      - `cargo check -p hone-channels --tests`
+    - 无关联 GitHub Issue。
   - `2026-05-15 03:03 CST` 本轮确认该缺陷继续活跃：
     - `data/sessions.sqlite3` -> `cron_job_runs`
       - `run_id=21176`
