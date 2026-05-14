@@ -4,8 +4,8 @@
 //! 两个职责:
 //! 1. **用户态净化**:把流式正文 / 工具进度里的内部 prompt、原始 JSON payload
 //!    和绝对路径收口在 runner 边界内,避免沙盒细节泄给 UI / 下游;
-//! 2. **结构化日志**:每次 runner 事件额外在 sidecar.log 打一条 `runner_*`
-//!    state,方便运维拿 message_id 定位整条 flow。
+//! 2. **结构化日志**:每次 runner 事件额外打 `runner_*` state,方便运维拿
+//!    message_id 定位整条 flow。
 
 use async_trait::async_trait;
 use std::sync::Arc;

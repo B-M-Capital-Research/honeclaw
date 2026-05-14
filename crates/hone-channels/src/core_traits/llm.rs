@@ -17,7 +17,8 @@ use crate::core::HoneBotCore;
 
 /// 主 / 辅助 LLM provider + audit sink 的访问入口。
 pub trait LlmProviderBundle: Send + Sync {
-    /// 主对话 LLM（走 `agent.runner` 选定的路径;未配置则返回 `None`）。
+    /// 主对话 LLM provider（供 function-calling 等 LLM-backed runner 使用;
+    /// 未配置则返回 `None`）。
     fn primary_llm(&self) -> Option<Arc<dyn LlmProvider>>;
 
     /// 辅助 LLM（heartbeat / session compaction 等后台任务使用)。

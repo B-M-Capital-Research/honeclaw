@@ -1,7 +1,8 @@
 //! ACP 事件日志 + tracing 诊断格式化。
 //!
 //! 两份产物:
-//! - **`acp-events.log`**:JSONL,每条写请求/响应/notification 原文 + 身份上下文。
+//! - **`acp-events.log`**:JSONL,正常请求/响应/notification 写 payload + 身份上下文;
+//!   parse error 只写脱敏后的 bounded preview,不保留完整 raw line。
 //!   运维可以用 `grep '"identity":"Actor_…"'` 快速还原一条完整的 ACP session 流。
 //! - **tracing warn**:在 prompt 超时 / stop 的时候打一条超紧凑的 summary,
 //!   把 reply 长度、finished/pending tool count、stderr tail 压到一行。

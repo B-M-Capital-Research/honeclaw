@@ -6,7 +6,7 @@
 //! |--------------|------|
 //! | `sink`       | `OutboundSink` trait + `LogSink` + `actor_key` / `body_preview` |
 //! | `stats`      | `NewsUpgradeTickStats`(单 tick 升级可观测统计) |
-//! | `config`     | `NotificationRouter` struct + `new` + 17 个 `with_*` builder + tick 计数器接口 |
+//! | `config`     | `NotificationRouter` struct + `new` + 链式 `with_*` builder + tick 计数器接口 |
 //! | `classify`   | `maybe_upgrade_news` + `maybe_llm_upgrade_for_actor` + 硬信号合流 |
 //! | `policy`     | 系统级 / per-actor / quiet-mode 三层 severity 调整 + 9 个查询纯函数 |
 //! | `dispatch`   | `NotificationRouter::dispatch` 主管线 |

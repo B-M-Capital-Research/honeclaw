@@ -1,5 +1,5 @@
 // Dev-only preview route used to verify the rendered share card visually
-// without going through the full chat flow. Mount under /__share-preview.
+// without going through the full chat flow. Routed at /__share-preview.
 
 import { createSignal } from "solid-js";
 import { ChatShareCard } from "@/components/chat-share-card";

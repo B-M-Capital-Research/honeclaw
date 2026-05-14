@@ -1,4 +1,4 @@
-//! `NotificationRouter` 结构体定义 + `new` + 17 个 `with_*` builder + per-tick
+//! `NotificationRouter` 结构体定义 + `new` + 链式 `with_*` builder + per-tick
 //! 状态的清零/快照接口。
 //!
 //! 这里**只**承担「装/读配置」的职责;真正的事件分发 / 升级仲裁 / 策略覆盖

@@ -2,7 +2,7 @@
 //!
 //! 这里集中放:
 //! - **启动路由日志** (`log_startup_routing`):把 config 里哪个 runner 被选中、
-//!   哪个 LLM provider 被用、session 后端怎么配的,一次性打到 stdout,
+//!   哪个 LLM provider 被用、session 后端怎么配的,一次性打到结构化日志,
 //!   运维一眼就能判断「这份进程的配置是对的吗」;
 //! - **消息流日志** (`log_message_*`):把 `received → step → finished / failed`
 //!   写成统一的 `[MsgFlow/<channel>]` 前缀 + tracing 字段,方便用
@@ -25,7 +25,7 @@ impl HoneBotCore {
         None
     }
 
-    /// 打印启动期路由信息（配置来源、主对话执行器、压缩执行器）
+    /// 打印启动期路由信息（配置来源、主对话执行器、压缩/审计/存储后端等）
     pub fn log_startup_routing(&self, channel: &str, config_path: &str) {
         let llm_provider = self.config.llm.provider.trim();
         let (llm_model, llm_timeout, llm_max_tokens) = match llm_provider {

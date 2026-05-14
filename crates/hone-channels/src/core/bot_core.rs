@@ -51,7 +51,7 @@ pub struct CompactSessionOutcome {
 ///
 /// `pub(super)` 字段(`workflow_runner_http`, `runtime_admin_overrides`)
 /// 留给 `super::intercept` 访问 —— 它们本质是「core 状态」但方法已经搬到
-/// sibling,visibility 卡在 agent_session module 内部。
+/// sibling module,所以可见性收在 `core` module 内部。
 pub struct HoneBotCore {
     pub config: HoneConfig,
     pub llm: Option<Arc<dyn LlmProvider>>,

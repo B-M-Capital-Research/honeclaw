@@ -5,8 +5,8 @@
 //! 反推,脆弱不可靠。本模块把"哪些事件、属于哪个大类、严重度多高"这些结构化信号
 //! 提到一份 `DigestPayload` 里,让 sink 自己根据自家能力渲染。
 //!
-//! 6 个 `KindBucket` 把 17 种 `EventKind` 折叠成可视化分组——14 种 short label
-//! ([价格]/[新闻]/[财报] 等)在 digest 视图里互相挤,bucket 化后每组单独成块。
+//! 6 个 `KindBucket` 把多种 `EventKind` / price window 短标签折叠成可视化分组:
+//! [价格]/[新闻]/[财报] 等短标签在 digest 视图里互相挤,bucket 化后每组单独成块。
 
 use std::collections::BTreeMap;
 

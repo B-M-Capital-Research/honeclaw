@@ -172,7 +172,7 @@ impl AgentSession {
     /// 外层除了 `agent.run start` 之外没有任何痕迹，直到整个 run 结束或超时才会再次落日志
     /// （参见 `docs/bugs/feishu_scheduler_run_stuck_without_cron_job_run.md`）。这里用一个
     /// `tokio::select!` ticker 在 run_fut 未完成时定期打 `agent.run.progress`，保证：
-    /// - `sidecar.log` 在卡死期间仍有心跳，运维能立刻判定「执行中 vs 卡死」；
+    /// - 结构化运行日志在卡死期间仍有心跳，运维能立刻判定「执行中 vs 卡死」；
     /// - session 可见进度事件 (`session_progress_event`) 同步到 UI/下游，避免客户端以为 run 已失联。
     async fn run_runner_with_progress_watchdog(
         &self,

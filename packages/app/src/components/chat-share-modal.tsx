@@ -1,5 +1,6 @@
-// Bottom-sheet on mobile / centered dialog on desktop. User first picks from
-// the latest messages, then previews the rendered image before exporting.
+// Bottom-sheet on mobile / centered dialog on desktop. The picker shows a
+// short message window ending at the clicked message, then previews the
+// rendered image before export/copy/share actions.
 
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { Portal } from "solid-js/web";
@@ -107,8 +108,9 @@ export function ChatShareModal(props: ChatShareModalProps) {
     }
   };
 
-  // Reset selection to the newest recent message whenever the modal transitions from
-  // closed to open — the parent keeps this component mounted across opens.
+  // Reset selection to the final item in the picker window whenever the modal
+  // transitions from closed to open; the parent keeps this component mounted
+  // across opens.
   createEffect(() => {
     if (props.open && !wasOpen) {
       const recent = recentMessages();

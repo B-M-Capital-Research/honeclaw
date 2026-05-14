@@ -1,6 +1,6 @@
-// Offscreen-rendered card that gets fed into html2canvas to produce the
-// shareable image. Layout is fully self-contained — no Tailwind, no
-// inherited chat-page CSS — so a screenshot from any device looks the same.
+// Render-only card used both for the modal preview and as the html2canvas
+// source for exported images. Layout stays self-contained through inline and
+// scoped styles so the output does not inherit chat-page CSS.
 
 import { Markdown } from "@hone-financial/ui/markdown";
 import { For, Show, createEffect, createSignal } from "solid-js";
@@ -15,15 +15,14 @@ export type ChatShareCardProps = {
   qrUrl: string;
   qrCaption: string;
   messageFontSize?: number;
-  /** Mounted as visible (`false`) vs. hidden offscreen (`true`). */
+  /** When true, position offscreen for capture; otherwise render inline. */
   hidden?: boolean;
   /** Refs the wrapper element so the caller can hand it to html2canvas. */
   registerRef?: (el: HTMLDivElement) => void;
 };
 
-// Portrait phone-screenshot aspect — narrower than a desktop card so the
-// long-form output keeps its mobile rhythm (a screenshot people will read
-// or forward inside IM).
+// Portrait phone-screenshot width: narrower than a desktop card so long-form
+// output keeps its mobile rhythm when people read or forward it inside IM.
 const CARD_WIDTH = 420;
 
 // Inline SVG version of /logo.svg — html2canvas can't reliably rasterize

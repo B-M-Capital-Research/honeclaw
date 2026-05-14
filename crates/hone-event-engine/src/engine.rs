@@ -521,11 +521,10 @@ impl EventEngine {
         // 事件既不入库也不分发。需要"poller 仍跑、只是 router 丢弃某 kind"
         // 这种兜底关法,改用 EventEngineConfig.disabled_kinds。
         //
-        // v0.1.46 开始:earnings / corp_action / macro / analyst_grade / earnings_surprise
-        // 这 5 个日频 poller 改为 **cron-aligned**:在每个 default slot 前 prefetch_offset_mins
-        // 跑一次,保证 digest flush 时用到的数据永远是刚拉的。冷启动时每个 poller 立即跑
-        // 一次,避免用户重启后等到下一个 flush 窗口。news / price 节奏本来就快(分钟级),
-        // 继续用固定 interval。
+        // v0.1.46 开始:日频 / 低频 FMP poller 改为 **cron-aligned**:在每个
+        // default slot 前 prefetch_offset_mins 跑一次,保证 digest flush 时用到的数据
+        // 永远是刚拉的。冷启动时每个 poller 立即跑一次,避免用户重启后等到下一个
+        // flush 窗口。news / price 节奏本来就快(分钟级),继续用固定 interval。
         let sources = &self.engine_cfg.sources;
         let prefetch_at: Vec<String> = self
             .engine_cfg
