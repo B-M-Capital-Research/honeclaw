@@ -196,13 +196,12 @@ fn truncate(s: &str, max_chars: usize) -> String {
 fn extract_cashtag_symbols(text: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for token in text.split(|c: char| !c.is_ascii_alphanumeric() && c != '$') {
-        if let Some(rest) = token.strip_prefix('$') {
-            if (1..=5).contains(&rest.len())
-                && rest.chars().all(|c| c.is_ascii_uppercase())
-                && !out.contains(&rest.to_string())
-            {
-                out.push(rest.to_string());
-            }
+        if let Some(rest) = token.strip_prefix('$')
+            && (1..=5).contains(&rest.len())
+            && rest.chars().all(|c| c.is_ascii_uppercase())
+            && !out.contains(&rest.to_string())
+        {
+            out.push(rest.to_string());
         }
     }
     out

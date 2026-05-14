@@ -11,20 +11,15 @@ use serde::{Deserialize, Serialize};
 
 /// 一条 `DigestItem` 的来源。`Buffered` 来自 per-actor `DigestBuffer`(持仓路由);
 /// `Synth` 是 scheduler 现算的 earnings 倒计时;`Global` 是 LLM 精读的全球要闻。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ItemOrigin {
+    /// buffer-only 路径产出的 `DigestItem` 都来自 buffer;默认 Buffered
+    /// 维持现有 fixture / 测试断言。
+    #[default]
     Buffered,
     Synth,
     Global,
-}
-
-impl Default for ItemOrigin {
-    fn default() -> Self {
-        // buffer-only 路径产出的 `DigestItem` 都来自 buffer;默认 Buffered
-        // 维持现有 fixture / 测试断言。
-        ItemOrigin::Buffered
-    }
 }
 
 /// Floor 标签 —— 强制保留在 payload 顶部,绕过 LLM personalize 排序。

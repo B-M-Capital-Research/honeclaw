@@ -87,10 +87,10 @@ impl FeishuSink {
     async fn token(&self) -> anyhow::Result<String> {
         {
             let cache = self.token_cache.read().await;
-            if let Some((t, exp)) = &*cache {
-                if Instant::now() < *exp {
-                    return Ok(t.clone());
-                }
+            if let Some((t, exp)) = &*cache
+                && Instant::now() < *exp
+            {
+                return Ok(t.clone());
             }
         }
         let resp = self

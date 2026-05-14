@@ -420,16 +420,16 @@ fn build_periodic_filing_context(
         push_context_section(&mut out, "Item 1A Risk Factors excerpt", &body, max_chars);
     }
 
-    if let Some(legal) = find_item_span_by_title(&spans, "1", "(?i)legal") {
-        if legal.chars <= 8_000 {
-            let body = join_blocks_under_cap(&blocks[legal.start..legal.end], 2_200);
-            push_context_section(
-                &mut out,
-                "Part II legal proceedings excerpt",
-                &body,
-                max_chars,
-            );
-        }
+    if let Some(legal) = find_item_span_by_title(&spans, "1", "(?i)legal")
+        && legal.chars <= 8_000
+    {
+        let body = join_blocks_under_cap(&blocks[legal.start..legal.end], 2_200);
+        push_context_section(
+            &mut out,
+            "Part II legal proceedings excerpt",
+            &body,
+            max_chars,
+        );
     }
 
     if out.trim().is_empty() {
@@ -599,16 +599,15 @@ fn windows_in_range(
     let signal_re = signal_regex();
     let heading_re = heading_regex();
     let mut ranges: Vec<(usize, usize)> = Vec::new();
-    for idx in start..end {
-        let block = &blocks[idx];
+    for (idx, block) in blocks.iter().enumerate().take(end).skip(start) {
         if signal_re.is_match(block) || heading_re.is_match(block) {
             let a = idx.saturating_sub(radius).max(start);
             let b = (idx + radius + 2).min(end);
-            if let Some(last) = ranges.last_mut() {
-                if a <= last.1 {
-                    last.1 = last.1.max(b);
-                    continue;
-                }
+            if let Some(last) = ranges.last_mut()
+                && a <= last.1
+            {
+                last.1 = last.1.max(b);
+                continue;
             }
             ranges.push((a, b));
         }

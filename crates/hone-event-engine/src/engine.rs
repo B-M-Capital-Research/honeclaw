@@ -303,15 +303,15 @@ impl EventEngine {
                 let mut last_size = registry_bg.load().len();
                 loop {
                     ticker.tick().await;
-                    if let Some(new_size) = registry_bg.refresh() {
-                        if new_size != last_size {
-                            info!(
-                                subscribers = new_size,
-                                previous = last_size,
-                                "subscription registry refreshed"
-                            );
-                            last_size = new_size;
-                        }
+                    if let Some(new_size) = registry_bg.refresh()
+                        && new_size != last_size
+                    {
+                        info!(
+                            subscribers = new_size,
+                            previous = last_size,
+                            "subscription registry refreshed"
+                        );
+                        last_size = new_size;
                     }
                 }
             });

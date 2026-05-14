@@ -84,47 +84,33 @@ impl NotificationRouter {
         let Some(tag) = trigger_tag else {
             return event.clone();
         };
-        if self.news_upgrade_per_tick_cap > 0 {
-            if let Ok(n) = self.news_upgrade_total_counter.lock() {
-                if *n >= self.news_upgrade_per_tick_cap {
-                    if let Ok(mut stats) = self.news_upgrade_tick_stats.lock() {
-                        stats.skipped_per_tick_cap += 1;
-                    }
-                    tracing::info!(
-                        event_id = %event.id,
-                        symbols = ?event.symbols,
-                        cap = self.news_upgrade_per_tick_cap,
-                        "news upgrade skipped (per-tick cap reached)"
-                    );
-                    return event.clone();
-                }
+        if self.news_upgrade_per_tick_cap_reached() {
+            if let Ok(mut stats) = self.news_upgrade_tick_stats.lock() {
+                stats.skipped_per_tick_cap += 1;
             }
+            tracing::info!(
+                event_id = %event.id,
+                symbols = ?event.symbols,
+                cap = self.news_upgrade_per_tick_cap,
+                "news upgrade skipped (per-tick cap reached)"
+            );
+            return event.clone();
         }
         // per-symbol per-tick 升级上限:命中后维持 Low,不污染 digest 顶端。
         // 取 event.symbols 中已经升过最多次的那个 symbol 的计数代表本事件;
         // 若任一相关 symbol 都已超过 cap,则跳过升级,但所有相关 symbol 都不再
         // 计数(因为本事件未升级,不应推高计数)。
-        if self.news_upgrade_per_symbol_per_tick_cap > 0 {
-            if let Ok(map) = self.news_upgrade_counter.lock() {
-                let already_capped = event.symbols.iter().any(|sym| {
-                    map.get(sym)
-                        .copied()
-                        .map(|n| n >= self.news_upgrade_per_symbol_per_tick_cap)
-                        .unwrap_or(false)
-                });
-                if already_capped {
-                    if let Ok(mut stats) = self.news_upgrade_tick_stats.lock() {
-                        stats.skipped_per_symbol_cap += 1;
-                    }
-                    tracing::info!(
-                        event_id = %event.id,
-                        symbols = ?event.symbols,
-                        cap = self.news_upgrade_per_symbol_per_tick_cap,
-                        "news upgrade skipped (per-symbol per-tick cap reached)"
-                    );
-                    return event.clone();
-                }
+        if self.news_upgrade_per_symbol_cap_reached(event) {
+            if let Ok(mut stats) = self.news_upgrade_tick_stats.lock() {
+                stats.skipped_per_symbol_cap += 1;
             }
+            tracing::info!(
+                event_id = %event.id,
+                symbols = ?event.symbols,
+                cap = self.news_upgrade_per_symbol_per_tick_cap,
+                "news upgrade skipped (per-symbol per-tick cap reached)"
+            );
+            return event.clone();
         }
         // 升级落地:对所有相关 symbol +1。即使某个 symbol 之前 0 次,
         // 这次升级也算它的一次"相关升级"。
@@ -205,6 +191,30 @@ impl NotificationRouter {
             }
             _ => None,
         }
+    }
+
+    fn news_upgrade_per_tick_cap_reached(&self) -> bool {
+        self.news_upgrade_per_tick_cap > 0
+            && self
+                .news_upgrade_total_counter
+                .lock()
+                .map(|count| *count >= self.news_upgrade_per_tick_cap)
+                .unwrap_or(false)
+    }
+
+    fn news_upgrade_per_symbol_cap_reached(&self, event: &MarketEvent) -> bool {
+        if self.news_upgrade_per_symbol_per_tick_cap == 0 {
+            return false;
+        }
+        let Ok(map) = self.news_upgrade_counter.lock() else {
+            return false;
+        };
+        event.symbols.iter().any(|sym| {
+            map.get(sym)
+                .copied()
+                .map(|count| count >= self.news_upgrade_per_symbol_per_tick_cap)
+                .unwrap_or(false)
+        })
     }
 }
 

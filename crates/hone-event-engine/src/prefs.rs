@@ -158,19 +158,19 @@ impl NotificationPrefs {
         if self.source_blocked(&event.source) {
             return false;
         }
-        if let Some(allow) = &self.allow_sources {
-            if !allow.iter().any(|pat| source_matches(&event.source, pat)) {
-                return false;
-            }
+        if let Some(allow) = &self.allow_sources
+            && !allow.iter().any(|pat| source_matches(&event.source, pat))
+        {
+            return false;
         }
         let tag = kind_tag(&event.kind);
         if self.blocked_kinds.iter().any(|k| k == tag) {
             return false;
         }
-        if let Some(allow) = &self.allow_kinds {
-            if !allow.iter().any(|k| k == tag) {
-                return false;
-            }
+        if let Some(allow) = &self.allow_kinds
+            && !allow.iter().any(|k| k == tag)
+        {
+            return false;
         }
         true
     }

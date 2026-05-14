@@ -167,10 +167,10 @@ impl SecFilingsPoller {
         }
         if let Some(summarizer) = &self.summarizer {
             for ev in out.iter_mut() {
-                if let Some(summary) = summarizer.summarize(ev).await {
-                    if let Some(obj) = ev.payload.as_object_mut() {
-                        obj.insert("llm_summary".into(), Value::String(summary));
-                    }
+                if let Some(summary) = summarizer.summarize(ev).await
+                    && let Some(obj) = ev.payload.as_object_mut()
+                {
+                    obj.insert("llm_summary".into(), Value::String(summary));
                 }
             }
         }

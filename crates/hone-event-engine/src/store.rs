@@ -182,15 +182,13 @@ impl EventStore {
             )?
         };
         let is_new = affected > 0;
-        if is_new {
-            if let Err(e) = self.append_jsonl_mirror(ev) {
-                tracing::warn!(
-                    event_id = %ev.id,
-                    source = %ev.source,
-                    symbols = ?ev.symbols,
-                    "events jsonl mirror append failed: {e:#}"
-                );
-            }
+        if is_new && let Err(e) = self.append_jsonl_mirror(ev) {
+            tracing::warn!(
+                event_id = %ev.id,
+                source = %ev.source,
+                symbols = ?ev.symbols,
+                "events jsonl mirror append failed: {e:#}"
+            );
         }
         Ok(is_new)
     }
@@ -268,10 +266,10 @@ impl EventStore {
         let mut out: Vec<String> = Vec::new();
         for r in rows {
             let json = r?;
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&json) {
-                if let Some(t) = v.get("type").and_then(|v| v.as_str()) {
-                    out.push(t.to_string());
-                }
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&json)
+                && let Some(t) = v.get("type").and_then(|v| v.as_str())
+            {
+                out.push(t.to_string());
             }
         }
         Ok(out)

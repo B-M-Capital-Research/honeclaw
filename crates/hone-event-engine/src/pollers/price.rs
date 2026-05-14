@@ -273,37 +273,39 @@ fn events_from_quotes_at(
             }
         }
 
-        if let (Some(price), Some(year_high_price)) = (price, year_high) {
-            if year_high_price > 0.0 && price >= year_high_price * (1.0 - near_tol) {
-                events.push(MarketEvent {
-                    id: format!("52h:{symbol}:{date_key}"),
-                    kind: EventKind::Weekly52High,
-                    severity: Severity::Medium,
-                    symbols: vec![symbol.clone()],
-                    occurred_at: quote_time,
-                    title: format!("{symbol} 触及 52 周新高"),
-                    summary: format!("价格 {price:.2} · 年内高 {year_high_price:.2}"),
-                    url: None,
-                    source: "fmp.quote".into(),
-                    payload: quote.clone(),
-                });
-            }
+        if let (Some(price), Some(year_high_price)) = (price, year_high)
+            && year_high_price > 0.0
+            && price >= year_high_price * (1.0 - near_tol)
+        {
+            events.push(MarketEvent {
+                id: format!("52h:{symbol}:{date_key}"),
+                kind: EventKind::Weekly52High,
+                severity: Severity::Medium,
+                symbols: vec![symbol.clone()],
+                occurred_at: quote_time,
+                title: format!("{symbol} 触及 52 周新高"),
+                summary: format!("价格 {price:.2} · 年内高 {year_high_price:.2}"),
+                url: None,
+                source: "fmp.quote".into(),
+                payload: quote.clone(),
+            });
         }
-        if let (Some(price), Some(year_low_price)) = (price, year_low) {
-            if year_low_price > 0.0 && price <= year_low_price * (1.0 + near_tol) {
-                events.push(MarketEvent {
-                    id: format!("52l:{symbol}:{date_key}"),
-                    kind: EventKind::Weekly52Low,
-                    severity: Severity::Medium,
-                    symbols: vec![symbol.clone()],
-                    occurred_at: quote_time,
-                    title: format!("{symbol} 触及 52 周新低"),
-                    summary: format!("价格 {price:.2} · 年内低 {year_low_price:.2}"),
-                    url: None,
-                    source: "fmp.quote".into(),
-                    payload: quote.clone(),
-                });
-            }
+        if let (Some(price), Some(year_low_price)) = (price, year_low)
+            && year_low_price > 0.0
+            && price <= year_low_price * (1.0 + near_tol)
+        {
+            events.push(MarketEvent {
+                id: format!("52l:{symbol}:{date_key}"),
+                kind: EventKind::Weekly52Low,
+                severity: Severity::Medium,
+                symbols: vec![symbol.clone()],
+                occurred_at: quote_time,
+                title: format!("{symbol} 触及 52 周新低"),
+                summary: format!("价格 {price:.2} · 年内低 {year_low_price:.2}"),
+                url: None,
+                source: "fmp.quote".into(),
+                payload: quote.clone(),
+            });
         }
     }
 

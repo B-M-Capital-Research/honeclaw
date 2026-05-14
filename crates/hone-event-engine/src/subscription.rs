@@ -162,7 +162,7 @@ impl SubscriptionRegistry {
             }
         }
         let mut out: Vec<ActorIdentity> = dedup.into_values().collect();
-        out.sort_by(|a, b| actor_storage_key(a).cmp(&actor_storage_key(b)));
+        out.sort_by_key(actor_storage_key);
         out
     }
 

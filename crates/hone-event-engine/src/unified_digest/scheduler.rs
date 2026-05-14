@@ -614,9 +614,7 @@ impl UnifiedDigestScheduler {
         now: DateTime<Utc>,
         slot: &DigestSlot,
     ) -> Option<GlobalSlotCache> {
-        if self.curator.is_none() {
-            return None;
-        }
+        self.curator.as_ref()?;
         {
             let cache = self.global_cache.lock().await;
             if let Some(cached_slot) = cache.get(cache_key) {

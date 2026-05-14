@@ -22,6 +22,11 @@ use hone_llm::{LlmProvider, Message};
 
 use crate::event::MarketEvent;
 
+type EventPromptCacheKey = (String, u64);
+type TitlePromptCacheKey = (String, String, u64);
+type EventPromptCache = Arc<Mutex<HashMap<EventPromptCacheKey, Importance>>>;
+type TitlePromptCache = Arc<Mutex<HashMap<TitlePromptCacheKey, Importance>>>;
+
 /// LLM 仲裁结果。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Importance {
@@ -62,8 +67,8 @@ impl NewsClassifier for NoopClassifier {
 pub struct LlmNewsClassifier {
     provider: Arc<dyn LlmProvider>,
     model: String,
-    cache: Arc<Mutex<HashMap<(String, u64), Importance>>>,
-    title_cache: Arc<Mutex<HashMap<(String, String, u64), Importance>>>,
+    cache: EventPromptCache,
+    title_cache: TitlePromptCache,
 }
 
 impl LlmNewsClassifier {
@@ -93,11 +98,12 @@ impl LlmNewsClassifier {
             if ch.is_ascii_alphanumeric() {
                 out.push(ch);
                 prev_space = false;
-            } else if ch.is_whitespace() || ch == '-' || ch == '_' {
-                if !prev_space && !out.is_empty() {
-                    out.push(' ');
-                    prev_space = true;
-                }
+            } else if (ch.is_whitespace() || ch == '-' || ch == '_')
+                && !prev_space
+                && !out.is_empty()
+            {
+                out.push(' ');
+                prev_space = true;
             }
             // 其他字符(标点/emoji/CJK punctuation)直接丢弃
         }
@@ -232,18 +238,33 @@ impl LlmNewsClassifier {
 
     fn cache_result(
         &self,
-        l1_key: (String, u64),
-        l2_key: (String, String, u64),
+        l1_key: EventPromptCacheKey,
+        l2_key: TitlePromptCacheKey,
         title_norm: &str,
         importance: Importance,
     ) {
-        if let Ok(mut cache) = self.cache.lock() {
-            cache.insert(l1_key, importance);
+        self.insert_l1_cache(&l1_key, importance);
+        if !title_norm.is_empty()
+            && let Ok(mut cache) = self.title_cache.lock()
+        {
+            cache.insert(l2_key, importance);
         }
-        if !title_norm.is_empty() {
-            if let Ok(mut cache) = self.title_cache.lock() {
-                cache.insert(l2_key, importance);
-            }
+    }
+
+    fn l1_cache_hit(&self, l1_key: &EventPromptCacheKey) -> Option<Importance> {
+        self.cache.lock().ok()?.get(l1_key).copied()
+    }
+
+    fn l2_cache_hit(&self, title_norm: &str, l2_key: &TitlePromptCacheKey) -> Option<Importance> {
+        if title_norm.is_empty() {
+            return None;
+        }
+        self.title_cache.lock().ok()?.get(l2_key).copied()
+    }
+
+    fn insert_l1_cache(&self, l1_key: &EventPromptCacheKey, importance: Importance) {
+        if let Ok(mut cache) = self.cache.lock() {
+            cache.insert(l1_key.clone(), importance);
         }
     }
 }
@@ -255,26 +276,17 @@ impl NewsClassifier for LlmNewsClassifier {
         let l1_key = (event.id.clone(), p_hash);
 
         // L1 命中
-        if let Ok(cache) = self.cache.lock() {
-            if let Some(hit) = cache.get(&l1_key).copied() {
-                return Some(hit);
-            }
+        if let Some(hit) = self.l1_cache_hit(&l1_key) {
+            return Some(hit);
         }
 
         // L2 命中(同标题 + 同 symbols + 同 prompt)
         let title_norm = Self::normalize_title(&event.title);
         let symbols_norm = Self::normalize_symbols(&event.symbols);
         let l2_key = (title_norm.clone(), symbols_norm.clone(), p_hash);
-        if !title_norm.is_empty() {
-            if let Ok(cache) = self.title_cache.lock() {
-                if let Some(hit) = cache.get(&l2_key).copied() {
-                    // 回填 L1
-                    if let Ok(mut l1) = self.cache.lock() {
-                        l1.insert(l1_key, hit);
-                    }
-                    return Some(hit);
-                }
-            }
+        if let Some(hit) = self.l2_cache_hit(&title_norm, &l2_key) {
+            self.insert_l1_cache(&l1_key, hit);
+            return Some(hit);
         }
 
         let messages = Self::build_messages(event, importance_prompt);

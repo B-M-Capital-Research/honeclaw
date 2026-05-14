@@ -88,12 +88,11 @@ impl ExtendedHoursPoller {
     }
 
     async fn fetch_prev_close(&self, symbol: &str, et_today: NaiveDate) -> anyhow::Result<f64> {
-        if let Ok(map) = self.prev_close_cache.lock() {
-            if let Some((cached_day, close)) = map.get(symbol) {
-                if *cached_day == et_today {
-                    return Ok(*close);
-                }
-            }
+        if let Ok(map) = self.prev_close_cache.lock()
+            && let Some((cached_day, close)) = map.get(symbol)
+            && *cached_day == et_today
+        {
+            return Ok(*close);
         }
 
         let mut day = et_today;

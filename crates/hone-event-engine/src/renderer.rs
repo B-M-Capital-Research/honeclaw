@@ -73,15 +73,17 @@ pub fn render_immediate(event: &MarketEvent, fmt: RenderFormat) -> String {
 ///
 /// 失败 / enrichment 关闭 / payload 字段不存在 → fallback 到 `event.summary`。
 pub fn effective_body(event: &MarketEvent) -> &str {
-    if matches!(event.kind, EventKind::SecFiling { .. }) {
-        if let Some(s) = event.payload.get("llm_summary").and_then(|v| v.as_str()) {
-            let trimmed = s.trim();
-            if !trimmed.is_empty() {
-                return trimmed;
-            }
-        }
+    if matches!(event.kind, EventKind::SecFiling { .. })
+        && let Some(summary) = non_empty_payload_str(event, "llm_summary")
+    {
+        return summary;
     }
     &event.summary
+}
+
+fn non_empty_payload_str<'a>(event: &'a MarketEvent, key: &str) -> Option<&'a str> {
+    let trimmed = event.payload.get(key)?.as_str()?.trim();
+    (!trimmed.is_empty()).then_some(trimmed)
 }
 
 fn render_immediate_feishu_post(event: &MarketEvent) -> String {
