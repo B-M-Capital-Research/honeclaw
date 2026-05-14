@@ -371,7 +371,7 @@ fn value_excerpt_for_log(value: &Value, max_chars: usize) -> String {
     acp_diagnostic_excerpt_for_log(&encoded, max_chars)
 }
 
-fn acp_diagnostic_excerpt_for_log(text: &str, max_chars: usize) -> String {
+pub(crate) fn acp_diagnostic_excerpt_for_log(text: &str, max_chars: usize) -> String {
     truncate_for_log(&redact_common_stderr_secrets(text), max_chars)
 }
 

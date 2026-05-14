@@ -29,7 +29,8 @@ use super::gemini_cli::{
 };
 use super::opencode_acp::{
     build_opencode_acp_prompt_text, configured_opencode_model_id, effective_opencode_args,
-    handle_opencode_session_update, isolated_opencode_config, resolve_command_path_with_env,
+    handle_opencode_session_update, isolated_opencode_config, opencode_api_key_log_status,
+    resolve_command_path_with_env,
 };
 use super::tool_reasoning::{render_runner_tool_label, runner_context_messages};
 use super::types::{AgentRunnerEmitter, AgentRunnerEvent};
@@ -141,6 +142,15 @@ fn configured_opencode_model_id_does_not_duplicate_variant_suffix() {
         configured_opencode_model_id(&config).as_deref(),
         Some("openrouter/openai/gpt-5.4/medium")
     );
+}
+
+#[test]
+fn opencode_api_key_log_status_does_not_preview_secret() {
+    let status = opencode_api_key_log_status(Some("sk-or-v1-secret-value"));
+
+    assert_eq!(status, "OPENROUTER_API_KEY injected from Hone config");
+    assert!(!status.contains("sk-or"));
+    assert!(!status.contains("secret"));
 }
 
 #[test]
@@ -1379,6 +1389,50 @@ async fn opencode_tool_status_labels_workspace_root_explicitly() {
                 reasoning: Some("正在执行：grep \"AAOI|COHR\" in workspace root".to_string()),
             },
         ]
+    );
+}
+
+#[tokio::test]
+async fn opencode_tool_status_redacts_secret_values_in_labels() {
+    let emitter = Arc::new(CaptureEmitter::default());
+    let emitter_trait: Arc<dyn AgentRunnerEmitter> = emitter.clone();
+    let mut state = AcpPromptState::default();
+
+    handle_opencode_session_update(
+        &serde_json::json!({
+            "update": {
+                "sessionUpdate": "tool_call",
+                "toolCallId": "call_grep_secret",
+                "title": "grep",
+                "kind": "search",
+                "status": "pending",
+                "rawInput": {
+                    "pattern": "token=pattern-secret auth=Bearer bearer-secret",
+                    "path": "/tmp/runtime?api_key=path-secret",
+                    "purpose": "check apiKey: header-secret"
+                }
+            }
+        }),
+        &emitter_trait,
+        &mut state,
+    )
+    .await;
+
+    let events = emitter.tool_events();
+    assert_eq!(events.len(), 1);
+    let event = &events[0];
+    assert!(event.tool.contains("token=<redacted>"));
+    assert!(event.tool.contains("Bearer <redacted>"));
+    assert!(event.tool.contains("api_key=<redacted>"));
+    assert!(event.tool.contains("apiKey: <redacted>"));
+    assert!(!event.tool.contains("pattern-secret"));
+    assert!(!event.tool.contains("bearer-secret"));
+    assert!(!event.tool.contains("path-secret"));
+    assert!(!event.tool.contains("header-secret"));
+    let expected_reasoning = format!("正在执行：{}", event.tool);
+    assert_eq!(
+        event.reasoning.as_deref(),
+        Some(expected_reasoning.as_str())
     );
 }
 

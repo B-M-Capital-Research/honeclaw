@@ -20,8 +20,9 @@ use crate::runners::types::AgentRunnerEmitter;
 
 use super::ingest::handle_acp_session_update_with_renderer;
 use super::log::{
-    AcpEventLogContext, acp_error_detail_for_message, log_acp_payload, log_acp_raw_parse_error,
-    message_with_bounded_stderr, timeout_message_with_stderr,
+    AcpEventLogContext, acp_diagnostic_excerpt_for_log, acp_error_detail_for_message,
+    log_acp_payload, log_acp_raw_parse_error, message_with_bounded_stderr,
+    timeout_message_with_stderr,
 };
 use super::state::{
     AcpPermissionDecision, AcpPromptState, AcpResponseTimeouts, AcpSessionUpdateTransformer,
@@ -422,7 +423,8 @@ async fn handle_acp_permission_request(
                 stage: "acp.permission",
                 detail: Some(format!(
                     "{runner_label}:{}:{tool_title}",
-                    decision.progress_label()
+                    decision.progress_label(),
+                    tool_title = acp_diagnostic_excerpt_for_log(&tool_title, 160),
                 )),
             })
             .await;

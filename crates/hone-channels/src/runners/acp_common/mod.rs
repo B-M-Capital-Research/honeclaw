@@ -35,9 +35,9 @@ mod tests;
 
 pub(crate) use ingest::{acp_prompt_succeeded, ingest_acp_message_chunk, ingest_acp_usage_update};
 pub(crate) use log::{
-    AcpEventLogContext, acp_error_detail_for_message, log_acp_payload,
-    log_acp_prompt_stop_diagnostics, log_acp_raw_parse_error, message_with_bounded_stderr,
-    timeout_message_with_stderr,
+    AcpEventLogContext, acp_diagnostic_excerpt_for_log, acp_error_detail_for_message,
+    log_acp_payload, log_acp_prompt_stop_diagnostics, log_acp_raw_parse_error,
+    message_with_bounded_stderr, timeout_message_with_stderr,
 };
 pub(crate) use protocol::{
     create_acp_session, set_acp_session_model, wait_for_response,

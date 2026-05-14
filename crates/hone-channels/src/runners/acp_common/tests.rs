@@ -23,11 +23,26 @@ struct CollectingEmitter {
     deltas: Arc<Mutex<Vec<String>>>,
 }
 
+struct ProgressEmitter {
+    details: Arc<Mutex<Vec<String>>>,
+}
+
 #[async_trait]
 impl AgentRunnerEmitter for CollectingEmitter {
     async fn emit(&self, event: AgentRunnerEvent) {
         if let AgentRunnerEvent::StreamDelta { content } = event {
             self.deltas.lock().await.push(content);
+        }
+    }
+}
+
+#[async_trait]
+impl AgentRunnerEmitter for ProgressEmitter {
+    async fn emit(&self, event: AgentRunnerEvent) {
+        if let AgentRunnerEvent::Progress { detail, .. } = event
+            && let Some(detail) = detail
+        {
+            self.details.lock().await.push(detail);
         }
     }
 }
@@ -38,6 +53,14 @@ fn collecting_emitter() -> (Arc<dyn AgentRunnerEmitter>, Arc<Mutex<Vec<String>>>
         deltas: deltas.clone(),
     });
     (emitter, deltas)
+}
+
+fn progress_emitter() -> (Arc<dyn AgentRunnerEmitter>, Arc<Mutex<Vec<String>>>) {
+    let details = Arc::new(Mutex::new(Vec::new()));
+    let emitter: Arc<dyn AgentRunnerEmitter> = Arc::new(ProgressEmitter {
+        details: details.clone(),
+    });
+    (emitter, details)
 }
 
 /// codex-acp 内置 compact 触发后单独发一条 `agent_message_chunk text="Context compacted\n"`。
@@ -428,6 +451,62 @@ async fn acp_permission_request_preserves_string_jsonrpc_id() {
     let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
     assert!(stdout.contains("\"id\":\"0e68dcc2-6a6b-4d1e-a49d-cb6dd179beb7\""));
     assert!(stdout.contains("\"optionId\":\"approved-for-session\""));
+}
+
+#[tokio::test]
+async fn acp_permission_progress_redacts_tool_title() {
+    let mut child = tokio::process::Command::new("cat")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn cat");
+    let mut stdin = child.stdin.take().expect("child stdin");
+    let (emitter, details) = progress_emitter();
+    let line = json!({
+        "jsonrpc": "2.0",
+        "id": 4,
+        "method": "session/request_permission",
+        "params": {
+            "sessionId": "session-1",
+            "options": [
+                {
+                    "kind": "reject_once",
+                    "name": "Reject",
+                    "optionId": "reject"
+                }
+            ],
+            "toolCall": {
+                "title": "run token=tool-secret auth=Bearer bearer-secret"
+            }
+        }
+    })
+    .to_string();
+
+    let result = process_acp_payload(
+        "codex",
+        &mut stdin,
+        4,
+        &line,
+        Some(&emitter),
+        None,
+        None,
+        None,
+        None,
+        AcpPermissionDecision::RejectOnce,
+        None,
+    )
+    .await
+    .expect("process permission request");
+
+    assert!(result.is_none());
+    let details = details.lock().await.clone();
+    assert_eq!(details.len(), 1);
+    assert!(details[0].contains("token=<redacted>"));
+    assert!(details[0].contains("Bearer <redacted>"));
+    assert!(!details[0].contains("tool-secret"));
+    assert!(!details[0].contains("bearer-secret"));
+    drop(stdin);
+    let _ = child.kill().await;
 }
 
 #[tokio::test]

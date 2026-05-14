@@ -17,10 +17,10 @@ use crate::mcp_bridge::hone_mcp_servers;
 
 use super::acp_common::{
     ACP_NEEDS_SP_RESEED_KEY, ACP_PREV_PROMPT_PEAK_KEY, AcpEventLogContext, AcpPromptState,
-    AcpResponseTimeouts, AcpToolCallRecord, acp_error_detail_for_message, acp_prompt_succeeded,
-    create_acp_session, log_acp_payload, log_acp_prompt_stop_diagnostics, log_acp_raw_parse_error,
-    message_with_bounded_stderr, set_acp_session_model, timeout_message_with_stderr,
-    wait_for_response, write_jsonrpc_request,
+    AcpResponseTimeouts, AcpToolCallRecord, acp_diagnostic_excerpt_for_log,
+    acp_error_detail_for_message, acp_prompt_succeeded, create_acp_session, log_acp_payload,
+    log_acp_prompt_stop_diagnostics, log_acp_raw_parse_error, message_with_bounded_stderr,
+    set_acp_session_model, timeout_message_with_stderr, wait_for_response, write_jsonrpc_request,
 };
 use super::types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
@@ -28,6 +28,7 @@ use super::types::{
 };
 
 const OPENCODE_ACP_SESSION_KEY: &str = "opencode_acp_session_id";
+const OPENCODE_LOG_DETAIL_CHARS: usize = 400;
 
 pub(crate) struct OpencodeAcpRunner {
     config: OpencodeAcpConfig,
@@ -130,9 +131,9 @@ pub(crate) fn configured_opencode_model_id(config: &OpencodeAcpConfig) -> Option
 
     tracing::info!(
         "[AgentRunner/opencode] configured_model_id: input_model='{}', base_url='{}', final_model='{}'",
-        config.model,
-        config.api_base_url,
-        final_model
+        opencode_log_detail(&config.model),
+        opencode_log_detail(&config.api_base_url),
+        opencode_log_detail(&final_model)
     );
 
     Some(final_model)
@@ -406,18 +407,9 @@ async fn run_opencode_acp(
             .filter(|key| !key.trim().is_empty())
     };
 
-    // ── 日志：API key 注入状态 ──────────────────────────────────────────────────
-    let api_key_status = match injected_openrouter_api_key {
-        Some(key) => {
-            let preview = &key[..key.len().min(8)];
-            format!("injecting OPENROUTER_API_KEY={preview}…")
-        }
-        _ => {
-            "OPENROUTER_API_KEY not injected (will inherit local opencode auth/config)".to_string()
-        }
-    };
+    let api_key_status = opencode_api_key_log_status(injected_openrouter_api_key);
     let model_status = configured_opencode_model_id(config)
-        .map(|m| format!("model={m}"))
+        .map(|model| format!("model={}", opencode_log_detail(&model)))
         .unwrap_or_else(|| "model=<not set, using opencode default>".to_string());
     tracing::info!(
         "[AgentRunner/opencode] session={} {api_key_status} {model_status}",
@@ -547,8 +539,9 @@ async fn run_opencode_acp(
 
     if let Some(model_id) = configured_opencode_model_id(config) {
         tracing::info!(
-            "[AgentRunner/opencode] session={} setting model to {model_id}",
+            "[AgentRunner/opencode] session={} setting model to {}",
             request.session_id,
+            opencode_log_detail(&model_id),
         );
         set_acp_session_model(
             "opencode",
@@ -843,14 +836,20 @@ fn relativize_opencode_path(path: &str) -> String {
 }
 
 fn truncate_opencode_detail(text: &str, max_chars: usize) -> String {
-    let trimmed = text.trim();
-    let total = trimmed.chars().count();
-    if total <= max_chars {
-        return trimmed.to_string();
+    acp_diagnostic_excerpt_for_log(text, max_chars)
+}
+
+pub(crate) fn opencode_api_key_log_status(
+    injected_openrouter_api_key: Option<&str>,
+) -> &'static str {
+    match injected_openrouter_api_key {
+        Some(key) if !key.trim().is_empty() => "OPENROUTER_API_KEY injected from Hone config",
+        _ => "OPENROUTER_API_KEY not injected (will inherit local opencode auth/config)",
     }
-    let keep = max_chars.saturating_sub(1);
-    let prefix = trimmed.chars().take(keep).collect::<String>();
-    format!("{prefix}…")
+}
+
+fn opencode_log_detail(text: &str) -> String {
+    acp_diagnostic_excerpt_for_log(text, OPENCODE_LOG_DETAIL_CHARS)
 }
 
 fn opencode_tool_name_for_update(state: &AcpPromptState, update: &Value) -> String {
@@ -1104,7 +1103,7 @@ async fn handle_opencode_tool_call_update(
         emitter
             .emit(AgentRunnerEvent::Progress {
                 stage: "opencode.tool_failed",
-                detail: Some(format!("tool={tool_name}")),
+                detail: Some(format!("tool={}", opencode_log_detail(&tool_name))),
             })
             .await;
     }
@@ -1341,7 +1340,10 @@ async fn handle_opencode_permission_request(
     emitter
         .emit(AgentRunnerEvent::Progress {
             stage: "acp.permission",
-            detail: Some(format!("opencode:rejected:{tool_title}")),
+            detail: Some(format!(
+                "opencode:rejected:{}",
+                opencode_log_detail(&tool_title)
+            )),
         })
         .await;
 

@@ -20,6 +20,8 @@ use super::types::{
     RunnerTimeouts,
 };
 
+const MULTI_AGENT_LOG_DETAIL_CHARS: usize = 400;
+
 pub(crate) struct MultiAgentRunner {
     system_prompt: String,
     search_config: MultiAgentSearchConfig,
@@ -373,11 +375,11 @@ impl AgentRunner for MultiAgentRunner {
             "[MultiAgent] session={} actor={} search.provider=openai-compatible search.base_url={} search.model={} answer.runner=opencode_acp answer.base_url={} answer.model={} answer.variant={} answer.max_tool_calls={}",
             request.session_id,
             request.actor.session_id(),
-            self.search_config.base_url,
-            self.search_config.model,
-            self.answer_config.api_base_url,
-            self.answer_config.model,
-            self.answer_config.variant,
+            multi_agent_log_detail(&self.search_config.base_url),
+            multi_agent_log_detail(&self.search_config.model),
+            multi_agent_log_detail(&self.answer_config.api_base_url),
+            multi_agent_log_detail(&self.answer_config.model),
+            multi_agent_log_detail(&self.answer_config.variant),
             self.answer_max_tool_calls,
         );
         let search_started = Instant::now();
@@ -386,8 +388,8 @@ impl AgentRunner for MultiAgentRunner {
                 stage: "multi_agent.search.start",
                 detail: Some(format!(
                     "provider=openai-compatible base_url={} model={} max_iterations={}",
-                    self.search_config.base_url,
-                    self.search_config.model,
+                    multi_agent_log_detail(&self.search_config.base_url),
+                    multi_agent_log_detail(&self.search_config.model),
                     self.search_config.max_iterations
                 )),
             })
@@ -554,9 +556,9 @@ impl AgentRunner for MultiAgentRunner {
                 stage: "multi_agent.answer.start",
                 detail: Some(format!(
                     "runner=opencode_acp base_url={} model={} variant={} max_tool_calls={}",
-                    self.answer_config.api_base_url,
-                    self.answer_config.model,
-                    self.answer_config.variant,
+                    multi_agent_log_detail(&self.answer_config.api_base_url),
+                    multi_agent_log_detail(&self.answer_config.model),
+                    multi_agent_log_detail(&self.answer_config.variant),
                     self.answer_max_tool_calls
                 )),
             })
@@ -646,9 +648,122 @@ impl AgentRunner for MultiAgentRunner {
     }
 }
 
+fn multi_agent_log_detail(text: &str) -> String {
+    truncate_multi_agent_log_detail(
+        &redact_common_multi_agent_log_secrets(text),
+        MULTI_AGENT_LOG_DETAIL_CHARS,
+    )
+}
+
+fn truncate_multi_agent_log_detail(text: &str, max_chars: usize) -> String {
+    let trimmed = text.trim();
+    let total = trimmed.chars().count();
+    if total <= max_chars {
+        return trimmed.to_string();
+    }
+    let keep = max_chars.saturating_sub(1);
+    let prefix = trimmed.chars().take(keep).collect::<String>();
+    format!("{prefix}…")
+}
+
+fn redact_common_multi_agent_log_secrets(text: &str) -> String {
+    let mut output = redact_multi_agent_marker_value(text, "Bearer ");
+    for key in [
+        "access_token",
+        "accessToken",
+        "api_key",
+        "apiKey",
+        "apikey",
+        "token",
+        "app_secret",
+        "appSecret",
+        "secret",
+        "password",
+    ] {
+        output = redact_multi_agent_marker_value(&output, &format!("{key}="));
+        output = redact_multi_agent_marker_value(&output, &format!("{key}:"));
+        output = redact_multi_agent_json_string_field(&output, key);
+    }
+    output
+}
+
+fn redact_multi_agent_marker_value(text: &str, marker: &str) -> String {
+    let mut remaining = text;
+    let mut output = String::with_capacity(text.len());
+    while let Some(index) = remaining.find(marker) {
+        let value_start = index + marker.len();
+        output.push_str(&remaining[..value_start]);
+        let leading_whitespace = remaining[value_start..]
+            .chars()
+            .take_while(|ch| ch.is_whitespace())
+            .map(char::len_utf8)
+            .sum::<usize>();
+        output.push_str(&remaining[value_start..value_start + leading_whitespace]);
+        output.push_str("<redacted>");
+        let value_tail = remaining[value_start + leading_whitespace..]
+            .char_indices()
+            .find_map(|(idx, ch)| {
+                (ch == '&'
+                    || ch == ')'
+                    || ch == ','
+                    || ch == '"'
+                    || ch == '\''
+                    || ch == '}'
+                    || ch == ']'
+                    || ch.is_whitespace())
+                .then_some(idx)
+            })
+            .unwrap_or(remaining[value_start + leading_whitespace..].len());
+        remaining = &remaining[value_start + leading_whitespace + value_tail..];
+    }
+    output.push_str(remaining);
+    output
+}
+
+fn redact_multi_agent_json_string_field(text: &str, key: &str) -> String {
+    let key_marker = format!("\"{key}\"");
+    let mut remaining = text;
+    let mut output = String::with_capacity(text.len());
+    while let Some(index) = remaining.find(&key_marker) {
+        let after_key = index + key_marker.len();
+        let tail = &remaining[after_key..];
+        let Some((colon_offset, _)) = tail.char_indices().find(|(_, ch)| !ch.is_whitespace())
+        else {
+            break;
+        };
+        if !tail[colon_offset..].starts_with(':') {
+            output.push_str(&remaining[..after_key]);
+            remaining = &remaining[after_key..];
+            continue;
+        }
+        let after_colon = &tail[colon_offset + 1..];
+        let Some((quote_offset, _)) = after_colon
+            .char_indices()
+            .find(|(_, ch)| !ch.is_whitespace())
+        else {
+            break;
+        };
+        if !after_colon[quote_offset..].starts_with('"') {
+            output.push_str(&remaining[..after_key]);
+            remaining = &remaining[after_key..];
+            continue;
+        }
+        let value_start = after_key + colon_offset + 1 + quote_offset + 1;
+        output.push_str(&remaining[..value_start]);
+        output.push_str("<redacted>");
+        let value_tail = remaining[value_start..]
+            .char_indices()
+            .find_map(|(idx, ch)| (ch == '"').then_some(idx))
+            .unwrap_or(remaining[value_start..].len());
+        remaining = &remaining[value_start + value_tail..];
+    }
+    output.push_str(remaining);
+    output
+}
+
 #[cfg(test)]
 mod tests {
-    use super::MultiAgentRunner;
+    use super::{MultiAgentRunner, multi_agent_log_detail};
     use hone_core::agent::normalize_agent_messages;
     use hone_core::agent::{AgentContext, AgentMessage, AgentResponse, ToolCallMade};
     use hone_core::config::{MultiAgentSearchConfig, OpencodeAcpConfig};
@@ -676,6 +791,20 @@ mod tests {
             Arc::new(ToolRegistry::new()),
             None,
         )
+    }
+
+    #[test]
+    fn multi_agent_log_detail_redacts_common_secret_shapes() {
+        let detail = multi_agent_log_detail(
+            r#"https://api.example.test/v1?api_key=query-secret model=Bearer bearer-secret {"token":"json-secret"}"#,
+        );
+
+        assert!(detail.contains("api_key=<redacted>"));
+        assert!(detail.contains("Bearer <redacted>"));
+        assert!(detail.contains("\"token\":\"<redacted>\""));
+        assert!(!detail.contains("query-secret"));
+        assert!(!detail.contains("bearer-secret"));
+        assert!(!detail.contains("json-secret"));
     }
 
     #[test]
