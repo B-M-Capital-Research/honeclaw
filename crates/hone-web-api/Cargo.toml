@@ -11,7 +11,6 @@ path = "src/lib.rs"
 hone-core      = { workspace = true }
 hone-channels  = { workspace = true }
 hone-memory    = { workspace = true }
-hone-agent     = { workspace = true }
 hone-scheduler = { workspace = true }
 hone-tools     = { workspace = true }
 hone-event-engine = { workspace = true }
@@ -38,6 +37,3 @@ hmac           = { workspace = true }
 sha1           = { workspace = true }
 sha2           = { workspace = true }
 percent-encoding = { workspace = true }
-
-[dev-dependencies]
-tower = "0.5"
