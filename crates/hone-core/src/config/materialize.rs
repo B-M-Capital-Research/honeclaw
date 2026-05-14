@@ -470,9 +470,9 @@ pub fn promote_legacy_runtime_agent_settings(
 ///
 /// Older desktop installs can carry an explicit
 /// `storage.session_sqlite_shadow_write_enabled: false` in their canonical config because that
-/// value was copied from an old generated runtime snapshot. During the SQLite mirror rollout the
-/// JSON session files remain the source of truth, but every runtime must dual-write the SQLite
-/// mirror so recovery, listing, and bug triage do not see stale session state.
+/// value was copied from an old generated runtime snapshot. When `session_runtime_backend` is
+/// still `json`, JSON session files remain the source of truth, but every runtime must dual-write
+/// the SQLite mirror so recovery, listing, and bug triage do not see stale session state.
 pub fn normalize_runtime_storage_rollout_settings(
     canonical_config_path: &Path,
 ) -> crate::HoneResult<Vec<String>> {

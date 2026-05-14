@@ -41,8 +41,8 @@ Hone 当前已经具备投资上下文的多个底层部件：
 
 - `PortfolioStorage` 按 `ActorIdentity` 存储持仓和关注列表，`Holding` 支持股票、期权、长期/短期 horizon、策略备注，以及 `tracking_only` 关注标的。
 - `PortfolioTool` 允许 agent 在会话中查看、添加、更新、删除持仓与关注。
-- Admin 端 `/users/:actorKey/portfolio` 可以手工维护持仓，`/users/:actorKey/profiles` 和 `/users/:actorKey/thesis` 可以查看公司画像与蒸馏结果。
-- Public 端 `/portfolio` 读取当前 web actor 的 portfolio、notification prefs 中的 `investment_theses` / `investment_global_style`，以及 actor sandbox 里的 `company_profiles/*/profile.md`，并提示用户通过 `/chat` 维护画像。
+- Admin 端 `/users/:actorKey/portfolio` 可以手工维护持仓，`/users/:actorKey/profiles` 和 `/users/:actorKey/mainline` 可以查看公司画像与蒸馏结果。
+- Public 端 `/portfolio` 读取当前 web actor 的 portfolio、notification prefs 中的 `mainline_by_ticker` / `mainline_style`，以及 actor sandbox 里的 `company_profiles/*/profile.md`，并提示用户通过 `/chat` 维护画像。
 - Event engine 的订阅层从 portfolio 构建 watch pool，通知偏好支持 `portfolio_only`、digest slots、quiet hours、source/kind allow/block、per-ticker thesis 和 global style。
 - `company_portrait` skill 负责把系统性研究沉淀为 actor sandbox 下的 `company_profiles/<ticker>/profile.md` 和事件时间线。
 - `scheduled_task` skill 可以结合 portfolio 创建定时简报、事件提醒和价格提醒。
@@ -51,7 +51,7 @@ Hone 当前已经具备投资上下文的多个底层部件：
 
 - 用户到底持有什么、只是关注什么、哪些标的是长期核心仓位。
 - 哪些持仓已经有公司画像，哪些没有。
-- 哪些画像可被 thesis 蒸馏识别，哪些因为 ticker/frontmatter/目录名问题被跳过。
+- 哪些画像可被投资主线蒸馏识别，哪些因为 ticker/frontmatter/目录名问题被跳过。
 - 用户希望多吵、多安静，哪些事件要即时推，哪些只进 digest。
 - 第一个有价值的 scheduled task 应该是什么。
 
@@ -62,16 +62,16 @@ Hone 当前已经具备投资上下文的多个底层部件：
 ### 问题
 
 1. 投资上下文的“完整度”没有一等状态。
-   现在 portfolio、company profile、thesis prefs、notification prefs、cron jobs 分别存在，但没有一个面向用户和管理员的 readiness model 说明哪些前置条件已满足、哪些缺口会影响 digest、推送或长期记忆。
+   现在 portfolio、company profile、mainline prefs、notification prefs、cron jobs 分别存在，但没有一个面向用户和管理员的 readiness model 说明哪些前置条件已满足、哪些缺口会影响 digest、推送或长期记忆。
 
 2. Public 端空态没有下一步编排。
-   `/portfolio` 能展示蒸馏后的投资上下文，但当 portfolio 为空、profile 缺失或 thesis 被跳过时，用户只能被动跳到 `/chat`。系统没有把用户引导进一个低摩擦的 intake 流程。
+   `/portfolio` 能展示蒸馏后的投资上下文，但当 portfolio 为空、profile 缺失或 mainline 蒸馏被跳过时，用户只能被动跳到 `/chat`。系统没有把用户引导进一个低摩擦的 intake 流程。
 
 3. Agent 写入能力强，但缺少结构化 intake 护栏。
    `PortfolioTool` 和 `company_portrait` skill 已能修改长期状态。如果用户在自由聊天里一次性给出复杂持仓，agent 需要自己决定哪些字段写入、哪些追问、是否建画像、是否设置任务。缺少“收集草稿 -> 用户确认 -> 原子应用 -> 生成缺口清单”的产品契约。
 
 4. Admin 端能代管数据，但很难判断一个用户是否已经“可用”。
-   `/users` 聚合了持仓、画像、thesis、会话、研究任务，但没有按 actor 汇总“激活完成度”或“为什么这个用户收不到高质量 digest”。
+   `/users` 聚合了持仓、画像、mainline、会话、研究任务，但没有按 actor 汇总“激活完成度”或“为什么这个用户收不到高质量 digest”。
 
 5. 多渠道体验不一致。
    Web 用户从 public `/chat` 和 `/portfolio` 进入；Feishu/Telegram/Discord 用户从私聊或群聊进入；Desktop 用户从 bundled/remote backend 进入。它们共享 actor 数据，但缺少同一个 intake/gap resolver 语义。
@@ -82,27 +82,27 @@ Hone 当前已经具备投资上下文的多个底层部件：
 
 - 新用户激活：从第一次登录到拿到有用 digest 的时间更短。
 - 留存：用户看到缺口被逐步补齐，Hone 变成持续维护的研究工作台，而不是一次性聊天窗口。
-- 推送质量：portfolio、profile、thesis、prefs 和 cron 都有明确来源，少发无关消息，少漏关键事件。
+- 推送质量：portfolio、profile、mainline、prefs 和 cron 都有明确来源，少发无关消息，少漏关键事件。
 - 商业化承接：未来 entitlement/付费可以围绕“可监控标的数、画像数、自动任务数、digest 个性化”表达，而不是只卖对话次数。
 - 运维效率：admin 能看出问题是无 portfolio、无 profile、蒸馏失败、通知关闭、quiet held，还是 channel delivery 问题。
 
 ## 方案概述
 
-新增一个“Investment Context Intake and Gap Resolver”产品/架构层，核心不是新建另一套投资数据，而是把现有 portfolio、company portraits、notification prefs、cron jobs 和 digest thesis 串成一个可恢复的初始化与缺口修复流程。
+新增一个“Investment Context Intake and Gap Resolver”产品/架构层，核心不是新建另一套投资数据，而是把现有 portfolio、company portraits、notification prefs、cron jobs 和 digest mainline 串成一个可恢复的初始化与缺口修复流程。
 
 建议包含四个对象：
 
 1. `InvestmentContextStatus`
-   按 actor 聚合当前 readiness：portfolio 数量、watchlist 数量、profile 覆盖率、thesis 蒸馏状态、prefs 状态、digest slots、quiet hours、cron 任务、最近一次上下文变更时间。
+   按 actor 聚合当前 readiness：portfolio 数量、watchlist 数量、profile 覆盖率、投资主线蒸馏状态、prefs 状态、digest slots、quiet hours、cron 任务、最近一次上下文变更时间。
 
 2. `InvestmentContextGap`
-   可执行缺口项，例如 `missing_portfolio`、`missing_profile`、`profile_unrecognized_ticker`、`thesis_distill_skipped`、`notification_disabled`、`no_digest_slot`、`no_first_briefing_task`。
+   可执行缺口项，例如 `missing_portfolio`、`missing_profile`、`profile_unrecognized_ticker`、`mainline_distill_skipped`、`notification_disabled`、`no_digest_slot`、`no_first_briefing_task`。
 
 3. `IntakeDraft`
    用户在 public/chat/admin/desktop 任一入口补充的信息先进入草稿：持仓、关注、长期偏好、事件敏感度、勿扰时段、想跟踪的公司、是否允许建立画像、是否创建首个 scheduled task。
 
 4. `ApplyPlan`
-   用户确认后由现有工具和存储完成写入：`portfolio` upsert、`company_portrait` 建档或补 ticker/frontmatter、`NotificationPrefs` 更新、`cron_job` 添加首个任务，并触发一次 thesis distill refresh。
+   用户确认后由现有工具和存储完成写入：`portfolio` upsert、`company_portrait` 建档或补 ticker/frontmatter、`NotificationPrefs` 更新、`cron_job` 添加首个任务，并触发一次 mainline distill refresh。
 
 关键原则：
 
@@ -126,15 +126,15 @@ Hone 当前已经具备投资上下文的多个底层部件：
   - 哪些 ticker 会创建空画像骨架或触发 agent 建首版画像。
   - 哪些通知偏好会改变。
   - 是否创建首个“每日投资简报”或“持仓事件提醒”任务。
-- 成功后 `/portfolio` 展示 readiness 卡片，例如“4/5 个持仓已有画像，2 个 thesis 已蒸馏，1 个标的需要补 profile frontmatter”。
+- 成功后 `/portfolio` 展示 readiness 卡片，例如“4/5 个持仓已有画像，2 个 mainline 已蒸馏，1 个标的需要补 profile frontmatter”。
 
 ### Admin 管理端
 
 - `/users` 左侧或用户详情页增加 `Context readiness` 概览。
-- 在用户 portfolio/profiles/thesis tabs 中突出缺口：
+- 在用户 portfolio/profiles/mainline tabs 中突出缺口：
   - 持仓存在但没有画像。
   - 画像存在但 ticker/frontmatter 无法被蒸馏识别。
-  - thesis distill skipped 的原因和建议操作。
+  - mainline distill skipped 的原因和建议操作。
   - 通知关闭、digest slots 为空、quiet hours 覆盖全部 digest slot。
 - 管理员可以为单个 actor 发起 intake repair：
   - 仅生成修复建议。
@@ -161,7 +161,7 @@ Hone 当前已经具备投资上下文的多个底层部件：
 
 - `GET /api/investment-context/status?channel=&user_id=&channel_scope=`
   - admin 端查询任意 actor。
-  - 聚合 `PortfolioStorage`、company profile scan、`FilePrefsStorage`、cron jobs 和 thesis distill metadata。
+  - 聚合 `PortfolioStorage`、company profile scan、`FilePrefsStorage`、cron jobs 和 mainline distill metadata。
 
 - `GET /api/public/investment-context/status`
   - public 端从 `hone_web_session` 推导 web actor。
@@ -176,7 +176,7 @@ Hone 当前已经具备投资上下文的多个底层部件：
   - 应用用户确认后的 plan。
   - 写 portfolio 与 notification prefs。
   - 画像类动作只创建 agent handoff/task 或触发受控 chat prompt，不直接在 API 写主画像正文。
-  - 可选触发 thesis distill refresh。
+  - 可选触发 mainline distill refresh。
 
 Admin 端可增加同构接口：
 
@@ -189,7 +189,7 @@ Admin 端可增加同构接口：
 
 - portfolio: `memory/src/portfolio.rs`
 - company profile: actor sandbox `company_profiles/*/profile.md`
-- thesis metadata: `NotificationPrefs.investment_theses`、`investment_global_style`、`last_thesis_distilled_at`、`thesis_distill_skipped`
+- mainline metadata: `NotificationPrefs.mainline_by_ticker`、`mainline_style`、`last_mainline_distilled_at`、`mainline_distill_skipped`
 - notification prefs: `NotificationPrefs`
 - scheduled tasks: `CronJobStorage`
 
@@ -245,7 +245,7 @@ Public 端：
 
 - 在 `packages/app/src/pages/public-portfolio.tsx` 增加 readiness panel、gap list、intake modal。
 - 在 `packages/app/src/lib/api.ts` 增加 status/preview/apply 客户端。
-- 空态和 skipped thesis 区域提供直接行动入口。
+- 空态和 skipped mainline 区域提供直接行动入口。
 
 Admin 端：
 
@@ -269,7 +269,7 @@ Desktop：
 
 1. 定义派生 status/gap 类型
    - 在 web API 层先实现只读 status。
-   - 覆盖 portfolio 空、profile 缺失、thesis skipped、prefs disabled、digest slot empty、quiet hours conflict。
+   - 覆盖 portfolio 空、profile 缺失、mainline skipped、prefs disabled、digest slot empty、quiet hours conflict。
 
 2. 接入 public `/portfolio`
    - 展示 readiness panel 和 gaps。
@@ -278,7 +278,7 @@ Desktop：
 
 3. 接入 admin `/users`
    - 用户详情页顶部展示 readiness。
-   - portfolio/profile/thesis tab 展示对应 gap。
+   - portfolio/profile/mainline tab 展示对应 gap。
    - 支持 admin 复制一段“建议用户发送给 agent 的修复 prompt”。
 
 4. 实现 preview/apply v1
@@ -291,7 +291,7 @@ Desktop：
    - 强制确认后写入。
    - 与 `company_portrait`、`scheduled_task` 保持工具边界。
 
-6. 增加 thesis refresh 与任务建议
+6. 增加 mainline refresh 与任务建议
    - 用户确认后可手动触发一次 distill。
    - 推荐但不强制创建首个 daily/weekly briefing task。
 
@@ -305,7 +305,7 @@ Desktop：
 自动化验证：
 
 - Rust unit tests:
-  - status 派生：空 portfolio、仅 watchlist、holding 有/无 profile、profile 无 frontmatter、thesis skipped。
+  - status 派生：空 portfolio、仅 watchlist、holding 有/无 profile、profile 无 frontmatter、mainline skipped。
   - quiet hours 与 digest slot 冲突检测。
   - notification disabled / digest slots empty gap。
 - Web API tests:
@@ -314,7 +314,7 @@ Desktop：
   - preview 不写盘，apply 才写盘。
 - Frontend tests:
   - public `/portfolio` 空态显示 intake 入口。
-  - skipped thesis 显示具体 gap。
+  - skipped mainline 显示具体 gap。
   - admin users 页在 actor 切换后刷新 readiness。
 
 手工验收：
@@ -330,7 +330,7 @@ Desktop：
 
 - 新用户从登录到首个 portfolio 记录的转化率。
 - portfolio 非空用户中 profile 覆盖率。
-- thesis distill skipped 比例。
+- mainline distill skipped 比例。
 - 首个 digest 成功生成和投递的时间。
 - 用户手动问“为什么我没收到推送/没有投资上下文”的次数下降。
 
@@ -376,4 +376,4 @@ Desktop：
 - 与 `desktop-bundled-runtime-startup-ux.md` 不重复：该提案处理 desktop sidecar 启动冲突和接管体验；本提案只让 desktop 消费同一投资上下文 readiness。
 - 与 `skill-runtime-multi-agent-alignment.md` 不重复：该提案处理 skill runtime 与 multi-agent 执行模型；本提案只新增一个可选的投资上下文 intake 契约，复用现有 skill/runtime 机制。
 
-本轮选择该主题，是因为当前仓库已经具备 portfolio、company portrait、public portfolio、notification prefs、cron jobs 和 digest thesis 的基础设施，但缺少把这些能力转化为“用户首次可用”和“持续缺口修复”的产品层。它能直接提升激活、留存和推送质量，且可以分阶段落地，不要求重构核心 runner 或存储真相源。
+本轮选择该主题，是因为当前仓库已经具备 portfolio、company portrait、public portfolio、notification prefs、cron jobs 和 digest mainline 的基础设施，但缺少把这些能力转化为“用户首次可用”和“持续缺口修复”的产品层。它能直接提升激活、留存和推送质量，且可以分阶段落地，不要求重构核心 runner 或存储真相源。

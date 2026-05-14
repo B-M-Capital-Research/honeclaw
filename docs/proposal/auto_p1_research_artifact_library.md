@@ -45,7 +45,7 @@ Hone 当前已经有两类研究资产：
 
 - 研究任务是 admin console 的本地浏览器状态，不按 `ActorIdentity` 持久化；换浏览器、换设备或清 localStorage 后，报告索引会丢失。
 - 后端只是安全代理外部 API，并校验 `research_api_base` 只允许 HTTPS 远端或 HTTP loopback；没有本地 `ResearchArtifact` 元数据、状态机、权限边界和审计。
-- 完成报告的 Markdown / PDF 没有和公司画像、public `/portfolio`、会话历史、scheduled task、digest thesis 蒸馏形成交接关系。
+- 完成报告的 Markdown / PDF 没有和公司画像、public `/portfolio`、会话历史、scheduled task、digest 投资主线蒸馏形成交接关系。
 - `config.example.yaml` 有 `web.research_api_key`，但当前研究代理路径没有把它产品化成能力状态、密钥缺失提示、成本/权益消耗或可诊断错误。
 - 多渠道 `/report` shortcut 和 Web research 页在产品语义上接近，但仓库文档只说明 `/report` 是 local private workflow runner bridge，还没有统一“研究报告交付物”对象。
 

@@ -1,16 +1,16 @@
-//! 后台 cron:每天 sweep 一次所有持仓 actor,按"覆盖度"触发蒸馏。
+//! 后台 cron:定期 sweep 所有持仓 actor,按"覆盖度"触发蒸馏。
 //!
 //! 触发政策(2026-04-26 用户要求):
-//! - 每天 tick 一次(默认 24h interval)
+//! - loop 每小时 tick 一次,但真正触发由 actor 的 staleness 策略决定
 //! - 对每个 portfolio actor:
 //!   - 若 holdings 全部已有投资主线 → 仅当距上次蒸馏 ≥ WEEKLY_REFRESH_HOURS 才再跑
 //!   - 若 holdings 有 ticker 缺主线(没画像 / 上次失败 / 新增持仓) → **立即跑**
 //!     (但仍受 MIN_RETRY_INTERVAL_HOURS 节流,避免无画像时无限循环)
 //!
 //! 这样的好处:
-//! - 新加持仓 / 新建画像后,最长 24h 就能进投资主线池
+//! - 新加持仓 / 新建画像后,下一次小时级 tick 就有机会进投资主线池
 //! - 已经覆盖完整的不会被频繁打扰(每周 1 次刷新)
-//! - 一直没画像的 ticker 不会每小时都重试(MIN_RETRY 节流)
+//! - 一直没画像的 ticker 不会每小时都重试(MIN_RETRY_INTERVAL_HOURS 节流)
 //!
 //! 失败哲学:cron 出错绝不能阻塞 digest scheduler。独立 task,挂掉只 warn。
 
@@ -27,7 +27,7 @@ use tracing::{info, warn};
 use crate::global_digest::mainline_distill::{MainlineDistiller, distill_and_persist_one};
 use crate::prefs::{NotificationPrefs, PrefsProvider};
 
-/// 默认 cron tick 间隔:24 小时(每日检测一次)。
+/// 兼容旧调用签名的默认策略间隔值；实际 loop tick 频率固定为小时级。
 pub const DEFAULT_DISTILL_INTERVAL_HOURS: i64 = 24;
 
 /// 覆盖完整后,触发"周更新"的最小间隔。
@@ -94,9 +94,9 @@ pub fn should_trigger(
 
 /// 单个 cron tick:扫所有 actor,按 should_trigger 决策决定是否跑。
 ///
-/// 返回 (触发数, 跳过数) 便于日志。`_interval_hours` 参数保留是为了向后兼容
-/// 旧测试签名 / 未来可能的覆写;实际触发用 [`should_trigger`] 内部硬编码的
-/// `WEEKLY_REFRESH_HOURS` / `MIN_RETRY_INTERVAL_HOURS`。
+/// 返回 (触发数, 跳过数) 便于日志。`_interval_hours` 参数保留是为了向后兼容旧调用
+/// 签名;实际触发用 [`should_trigger`] 内部的 `WEEKLY_REFRESH_HOURS` /
+/// `MIN_RETRY_INTERVAL_HOURS`。
 pub async fn distill_tick(
     distiller: &dyn MainlineDistiller,
     prefs: &dyn PrefsProvider,

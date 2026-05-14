@@ -92,9 +92,10 @@ pub struct NotificationPrefs {
     #[serde(alias = "investment_theses")]
     pub mainline_by_ticker: Option<HashMap<String, String>>,
     /// **系统蒸馏元数据**(2026-04-26 起):`mainline_by_ticker` / `mainline_style`
-    /// 由后台 cron 周扫用户 sandbox `company_profiles/*/profile.md` 自动蒸馏写入,
-    /// 用户不再通过 NL tool 直接编辑。本字段是 RFC3339 时间戳记录最近一次蒸馏成功时刻,
-    /// 让前端可以展示"上次更新"和判断是否需要手动刷一次。`None` = 还没蒸过(老数据兼容)。
+    /// 由后台 cron 按"缺失持仓主线优先、覆盖完整后每周刷新"策略读取用户 sandbox
+    /// `company_profiles/*/profile.md` 自动蒸馏写入,用户不再通过 NL tool 直接编辑。
+    /// 本字段是 RFC3339 时间戳记录最近一次蒸馏成功时刻,让前端可以展示"上次更新"
+    /// 和判断是否需要手动刷一次。`None` = 还没蒸过(老数据兼容)。
     #[serde(alias = "last_thesis_distilled_at")]
     pub last_mainline_distilled_at: Option<String>,
     /// 蒸馏过程中跳过的 ticker(无 profile / LLM 失败 / 画像没有 ticker 标识)。
@@ -110,8 +111,8 @@ pub struct NotificationPrefs {
 }
 
 /// 勿扰时段配置。本地时刻按 `NotificationPrefs.timezone` 解释（缺省走全局 digest tz）。
-/// 实际定义在 `hone_core::quiet::QuietHours`，这里 re-export 让 hone-channels 等
-/// 不依赖 event-engine 的 crate 也能使用。
+/// 实际定义在 `hone_core::quiet::QuietHours`；这里 re-export 是为了保留
+/// `hone_event_engine::prefs::QuietHours` 的既有导入路径。
 pub use hone_core::quiet::QuietHours;
 
 impl Default for NotificationPrefs {

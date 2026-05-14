@@ -20,12 +20,12 @@ owner: automation
 - `crates/hone-event-engine/src/router/dispatch.rs`
 - `crates/hone-event-engine/src/unified_digest/scheduler.rs`
 - `crates/hone-event-engine/src/unified_digest/types.rs`
-- `crates/hone-event-engine/src/global_digest/thesis_distill.rs`
+- `crates/hone-event-engine/src/global_digest/mainline_distill.rs`
 - `crates/hone-event-engine/src/store.rs`
 - `crates/hone-web-api/src/routes/public_digest.rs`
 - `crates/hone-web-api/src/routes/notifications.rs`
 - `packages/app/src/pages/public-portfolio.tsx`
-- `packages/app/src/components/user-thesis-view.tsx`
+- `packages/app/src/components/user-mainline-view.tsx`
 - `packages/app/src/pages/notifications.tsx`
 - `packages/app/src/pages/users.tsx`
 - `skills/company_portrait/SKILL.md`
@@ -36,12 +36,12 @@ owner: automation
 Honeclaw 已经形成了比较完整的投资研究资产链路：
 
 - 公司画像以 actor sandbox 下的 `company_profiles/<profile_id>/profile.md` 和 `events/*.md` 为长期研究资产，`company_portrait` skill 要求把 thesis、证据、证伪条件和事件变化沉淀下来。
-- `global_digest/thesis_distill.rs` 会只读公司画像，把每个持仓的长期 thesis 和整体投资风格蒸馏到 `NotificationPrefs`，供全球新闻 digest 和个性化过滤使用。
+- `global_digest/mainline_distill.rs` 会只读公司画像，把每个持仓的长期 thesis 和整体投资风格蒸馏到 `NotificationPrefs`，供全球新闻 digest 和个性化过滤使用。
 - `UnifiedDigestScheduler` 已经把 buffered 事件、财报倒计时、全球新闻、floor item、用户 thesis relation 和 curation 串成统一 digest。
 - event router 会根据订阅、偏好、quiet mode、cap、cooldown 等规则把事件发送、排队、过滤或降级，并把结果写入 `delivery_log`。
-- 用户端 `/portfolio` 能看到 thesis、整体风格和只读公司画像；管理端 `/users/:actor/thesis` 能代 actor 查看和触发蒸馏；管理端 `/notifications` 能排查 cron 与 event-engine 推送日志。
+- 用户端 `/portfolio` 能看到 thesis、整体风格和只读公司画像；管理端 `/users/:actor/mainline` 能代 actor 查看和触发蒸馏；管理端 `/notifications` 能排查 cron 与 event-engine 推送日志。
 
-但目前这些能力仍缺少一个关键产品层：当一条事件可能改变长期判断时，系统只能“推送一次”或“进入 digest”，不能把它变成一个可复盘、可处理、可沉淀的研究待办。用户看到新闻、财报、SEC filing 或价格异动后，仍需要自己记得回到 chat，让 agent 更新画像；如果忘了，下一轮 thesis distill 仍读旧画像，digest 个性化也会继续基于旧 thesis 工作。
+但目前这些能力仍缺少一个关键产品层：当一条事件可能改变长期判断时，系统只能“推送一次”或“进入 digest”，不能把它变成一个可复盘、可处理、可沉淀的研究待办。用户看到新闻、财报、SEC filing 或价格异动后，仍需要自己记得回到 chat，让 agent 更新画像；如果忘了，下一轮 mainline distill 仍读旧画像，digest 个性化也会继续基于旧 thesis 工作。
 
 这与 Hone 的核心定位有冲突：Hone 不是资讯流，而是投资纪律和长期判断的维护系统。主动通知只解决“看到事件”，还没有解决“证据是否改变了我的 thesis，以及是否已经把这个变化写回长期记忆”。
 
@@ -50,11 +50,11 @@ Honeclaw 已经形成了比较完整的投资研究资产链路：
 当前缺口主要影响四条链路：
 
 - 用户端：用户很难从一次性通知进入“这条证据是否需要更新我的公司画像”的复盘动作。长期资产维护依赖用户临时发起对话，路径不可发现。
-- 管理端：管理员可以看到推送日志和 thesis 蒸馏状态，但无法看到“哪些 actor 的哪些 ticker 有待复盘证据、积压多久、是否已经处理”。
+- 管理端：管理员可以看到推送日志和投资主线蒸馏状态，但无法看到“哪些 actor 的哪些 ticker 有待复盘证据、积压多久、是否已经处理”。
 - 多渠道：Feishu / Telegram / Discord / iMessage 收到事件后，渠道消息天然易丢失；没有一个 Web/desktop 中央队列承接“稍后处理”。
-- 系统可信度：如果 thesis distill 反复读到过期画像，global digest 的 personalize 结果会逐渐偏离真实持仓逻辑，用户会觉得 Hone 只会推消息，不会维护判断。
+- 系统可信度：如果 mainline distill 反复读到过期画像，global digest 的 personalize 结果会逐渐偏离真实持仓逻辑，用户会觉得 Hone 只会推消息，不会维护判断。
 
-机会是：仓库已有事件存储、delivery log、company profile event 文档、thesis distill、public/admin thesis 视图和 notification log。无需重构 runner 或直接开放画像编辑器，就可以增加一个“证据复盘队列”，把事件引擎和长期研究记忆连接起来。
+机会是：仓库已有事件存储、delivery log、company profile event 文档、mainline distill、public/admin mainline 视图和 notification log。无需重构 runner 或直接开放画像编辑器，就可以增加一个“证据复盘队列”，把事件引擎和长期研究记忆连接起来。
 
 ## 方案概述
 
@@ -86,11 +86,11 @@ Honeclaw 已经形成了比较完整的投资研究资产链路：
 
 ### 管理端
 
-在 `/users/:actor/thesis` 或新增子 tab 中展示 Evidence Review Queue：
+在 `/users/:actor/mainline` 或新增子 tab 中展示 Evidence Review Queue：
 
 - 支持按 actor、ticker、status、event kind、age 过滤。
 - 展示 open 项积压、平均处理时长、已转 agent 但未完成的数量。
-- 能看到每个 ticker 最近一次 thesis distill 时间、画像 `last_reviewed_at`、open evidence 数量，帮助判断“蒸馏结果是否可能过期”。
+- 能看到每个 ticker 最近一次 mainline distill 时间、画像 `last_reviewed_at`、open evidence 数量，帮助判断“蒸馏结果是否可能过期”。
 
 ### 桌面端
 
@@ -188,9 +188,9 @@ action 不直接写画像，只更新 queue 或创建 agent draft：
 - 跨 actor 读取必须等 workspace proposal 落地后再扩展；第一版只读当前 actor。
 - 不改变 `ActorIdentity` / `SessionIdentity` 语义。
 
-### 5. Thesis distill 的 stale signal
+### 5. Mainline distill 的 stale signal
 
-`thesis_distill` 当前只读画像并写 prefs。可以先不改蒸馏逻辑，只在 UI 层展示 stale signal：
+`mainline_distill` 当前只读画像并写 prefs。可以先不改蒸馏逻辑，只在 UI 层展示 stale signal：
 
 - 若某 ticker 存在 open `requires_update/counters_thesis` evidence，标记“thesis 可能待复盘”。
 - 若 `profile.last_reviewed_at` 或 profile mtime 晚于 evidence `created_at`，可提示“画像已在证据后更新”。
@@ -216,7 +216,7 @@ action 不直接写画像，只更新 queue 或创建 agent draft：
 
 - 当 agent 通过 `company_portrait` skill 追加 event 或更新 profile 后，允许工具把相关 evidence 标记为 `profile_updated`。
 - 管理端展示 evidence -> profile event 的反向链接。
-- 在 thesis distill UI 中显示“open counter evidence count”，提示当前 thesis 是否需要人工复盘后再信任。
+- 在 mainline distill UI 中显示“open counter evidence count”，提示当前 thesis 是否需要人工复盘后再信任。
 
 ### Phase 4: 指标与灰度
 
@@ -237,7 +237,7 @@ action 不直接写画像，只更新 queue 或创建 agent draft：
   - profile 更新后，关联 evidence 可被标记为 `profile_updated`，并在用户端不再显示为 open。
 - 前端验收：
   - public `/portfolio` 在移动和桌面视口展示 evidence 卡片，不遮挡现有 thesis/profile 内容。
-  - admin `/users/:actor/thesis` 能按 ticker/status 过滤。
+  - admin `/users/:actor/mainline` 能按 ticker/status 过滤。
   - 桌面 bundled mode 下通过同一 Web API 看到 badge，不需要额外进程。
 - 指标：
   - evidence open 超过 7 天的比例下降。
@@ -251,7 +251,7 @@ action 不直接写画像，只更新 queue 或创建 agent draft：
 - 风险：把价格异动写成长期判断，违反公司画像约束。取舍：价格 band 默认只作为 `unknown` 或手动复盘入口，不自动标记 thesis-changing。
 - 风险：新增状态表扩大 event-engine store 职责。取舍：evidence 与 event/delivery 高度相关，先靠 SQLite 事务和幂等 id 保持简单；若后续 workspace 抽象落地，再考虑迁到 memory 的 workspace-level store。
 - 风险：agent 更新画像失败后 queue 状态不准确。取舍：`send_to_agent` 只代表已提交处理，不代表完成；完成必须由工具或 profile mtime/event link 显式确认。
-- 不做：不重写 notification prefs、不替代 delivery decision loop、不做 UI 直接画像编辑器、不做跨 actor/workspace evidence 共享、不让模型自动改写 thesis distill 输出。
+- 不做：不重写 notification prefs、不替代 delivery decision loop、不做 UI 直接画像编辑器、不做跨 actor/workspace evidence 共享、不让模型自动改写 mainline distill 输出。
 
 ## 与已有提案的差异
 
@@ -261,4 +261,4 @@ action 不直接写画像，只更新 queue 或创建 agent draft：
 - 与 `desktop-bundled-runtime-startup-ux.md` 不重复：该提案解决桌面启动/sidecar ownership；本提案只复用现有 desktop Web surface 展示 badge。
 - 与 `skill-runtime-multi-agent-alignment.md` 不重复：该提案解决 skill runtime 与 multi-agent 执行语义；本提案只新增一个可选 evidence tool，并继续通过既有 `company_portrait` skill 完成画像更新。
 
-查重结论：现有提案覆盖通知解释、跨渠道身份、运行排障、桌面启动、skill runtime，但没有覆盖“市场证据 -> 人工复盘 -> agent 更新公司画像 -> thesis distill 可信输入”的闭环。因此本主题是新的、可落地的 P1 产品/架构提案。
+查重结论：现有提案覆盖通知解释、跨渠道身份、运行排障、桌面启动、skill runtime，但没有覆盖“市场证据 -> 人工复盘 -> agent 更新公司画像 -> mainline distill 可信输入”的闭环。因此本主题是新的、可落地的 P1 产品/架构提案。
