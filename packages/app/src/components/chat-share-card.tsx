@@ -126,23 +126,27 @@ const SHARE_CARD_CSS = `
     border: 0;
     border-radius: 8px;
     font-size: 13px;
-    line-height: 1.6;
+    line-height: 1.65;
     white-space: pre-wrap;
     word-break: break-word;
     overflow-wrap: anywhere;
-    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
   }
   .hf-share-card-md .hf-markdown-code code {
     background: transparent !important;
     padding: 0;
     font-family: inherit;
   }
+  .hf-share-card-md .hf-markdown-code code span {
+    vertical-align: baseline;
+    line-height: inherit;
+  }
   .hf-share-card-md :not(pre) > code {
     background: rgba(15, 23, 42, 0.06);
     border-radius: 4px;
     padding: 1px 6px;
     font-size: 0.92em;
-    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
   }
 `;
 
