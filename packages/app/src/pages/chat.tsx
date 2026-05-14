@@ -16,7 +16,10 @@ import {
 import { createStore, reconcile } from "solid-js/store";
 import { useNavigate } from "@solidjs/router";
 import { PublicLoginForm } from "@/components/public-login-form";
-import { PublicContactMenu } from "@/components/public-contact-menu";
+import {
+  PublicContactCards,
+  PublicContactMenu,
+} from "@/components/public-contact-menu";
 import { ChatShareModal } from "@/components/chat-share-modal";
 import { displayGithubStars, fetchGithubStars } from "@/lib/github-stars";
 import { CONTENT } from "@/lib/public-content";
@@ -261,6 +264,139 @@ function Header() {
         </div>
       </div>
     </header>
+  );
+}
+
+function ChatSidebar(props: {
+  user: PublicAuthUserInfo;
+  collapsed: boolean;
+  onToggle: () => void;
+  onLogout: () => void;
+}) {
+  const navigate = useNavigate();
+  const [stars] = createResource(fetchGithubStars);
+
+  return (
+    <aside
+      class={"public-chat-sidebar" + (props.collapsed ? " is-collapsed" : "")}
+      aria-label={CONTENT.chat_page.sidebar.label}
+    >
+      <div class="public-chat-sidebar-brand">
+        <button
+          type="button"
+          class="public-chat-sidebar-logo"
+          onClick={() => navigate("/")}
+          aria-label="Hone"
+        >
+          <img src="/logo.svg" alt="Hone" />
+          <span>Hone</span>
+        </button>
+        <button
+          type="button"
+          class="public-chat-sidebar-toggle"
+          onClick={props.onToggle}
+          aria-label={
+            props.collapsed
+              ? CONTENT.chat_page.sidebar.expand
+              : CONTENT.chat_page.sidebar.collapse
+          }
+          title={
+            props.collapsed
+              ? CONTENT.chat_page.sidebar.expand
+              : CONTENT.chat_page.sidebar.collapse
+          }
+        >
+          <svg
+            width="17"
+            height="17"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path
+              d={props.collapsed ? "M9 18l6-6-6-6" : "M15 18l-6-6 6-6"}
+            />
+          </svg>
+        </button>
+      </div>
+
+      <nav class="public-chat-sidebar-nav">
+        <button type="button" class="is-active" title={CONTENT.nav.chat}>
+          <ICONS.Chat />
+          <span>{CONTENT.nav.chat}</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate("/roadmap")}
+          title={CONTENT.nav.roadmap}
+        >
+          <span class="public-chat-sidebar-icon">R</span>
+          <span>{CONTENT.nav.roadmap}</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate("/me")}
+          title={CONTENT.nav.me}
+        >
+          <span class="public-chat-sidebar-icon">A</span>
+          <span>{CONTENT.nav.me}</span>
+        </button>
+      </nav>
+
+      <div class="public-chat-sidebar-socials">
+        <a
+          href={CONTENT.nav.github_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="public-chat-sidebar-star"
+          title="GitHub"
+        >
+          <ICONS.Github />
+          <span>{displayGithubStars(stars())}</span>
+        </a>
+      </div>
+
+      <div class="public-chat-sidebar-contact">
+        <div class="public-chat-sidebar-section-title">
+          {CONTENT.nav.contact_title}
+        </div>
+        <PublicContactCards />
+      </div>
+
+      <div class="public-chat-sidebar-footer">
+        <div class="public-chat-sidebar-user" title={props.user.user_id}>
+          <span class="public-chat-sidebar-avatar">H</span>
+          <span>
+            <strong>{CONTENT.chat_page.sidebar.signed_in}</strong>
+            <small>{CONTENT.chat_page.sidebar.account_center}</small>
+          </span>
+        </div>
+        <div class="public-chat-sidebar-footer-actions">
+          <button
+            type="button"
+            class="public-chat-sidebar-lang"
+            onClick={() => setLocale(useLocale() === "zh" ? "en" : "zh")}
+            title={
+              useLocale() === "zh" ? CONTENT.nav.locale_en : CONTENT.nav.locale_zh
+            }
+          >
+            {useLocale() === "zh" ? "中" : "EN"}
+          </button>
+          <PrefsButton />
+          <button
+            type="button"
+            class="public-chat-sidebar-logout"
+            onClick={props.onLogout}
+            title={CONTENT.chat_page.actions.logout}
+          >
+            <span>{CONTENT.chat_page.actions.logout}</span>
+          </button>
+        </div>
+      </div>
+    </aside>
   );
 }
 
@@ -1669,6 +1805,7 @@ export default function PublicChatPage() {
     createSignal(HISTORY_PAGE_SIZE);
   const [loadingOlderMessages, setLoadingOlderMessages] = createSignal(false);
   const [justFinished, setJustFinished] = createSignal(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = createSignal(false);
   // True when the user has scrolled up far enough to lose track of the latest
   // reply — drives the floating scroll-to-bottom affordance above the composer.
   const [awayFromBottom, setAwayFromBottom] = createSignal(false);
@@ -1834,6 +1971,13 @@ export default function PublicChatPage() {
     });
     setCurrentUser(user);
     setAuthState("ready");
+  };
+
+  const logoutPublicChat = () => {
+    void publicLogout();
+    setCurrentUser(null);
+    setSessionInfo(null);
+    setAuthState("logged_out");
   };
 
   const restoreSession = async (
@@ -2055,19 +2199,26 @@ export default function PublicChatPage() {
         </Match>
         <Match when={authState() === "ready"}>
           <Show when={currentUser()} fallback={<LoadingCard />}>
-            {(_user) => (
-              <div
-                class="public-chat-shell"
-                style={{
-                  flex: "1",
-                  display: "flex",
-                  "flex-direction": "column",
-                  "padding-top": "80px",
-                  position: "relative",
-                  "z-index": "10",
-                  overflow: "hidden",
-                }}
-              >
+            {(user) => (
+              <>
+                <ChatSidebar
+                  user={user()}
+                  collapsed={sidebarCollapsed()}
+                  onToggle={() => setSidebarCollapsed((value) => !value)}
+                  onLogout={logoutPublicChat}
+                />
+                <div
+                  class="public-chat-shell"
+                  style={{
+                    flex: "1",
+                    display: "flex",
+                    "flex-direction": "column",
+                    "padding-top": "80px",
+                    position: "relative",
+                    "z-index": "10",
+                    overflow: "hidden",
+                  }}
+                >
                 {/* Session actions */}
                 <div
                   class="public-chat-session-strip"
@@ -2104,10 +2255,7 @@ export default function PublicChatPage() {
                       {sessionInfo()?.userId}
                     </button>
                     <button
-                      onClick={() => {
-                        publicLogout();
-                        setAuthState("logged_out");
-                      }}
+                      onClick={logoutPublicChat}
                       style={{
                         border: "none",
                         background: "none",
@@ -2220,40 +2368,44 @@ export default function PublicChatPage() {
                       </svg>
                     </button>
                   </Show>
-                <Composer
-                  draft={draft()}
-                  onDraftChange={setDraft}
-                  attachments={pendingAttachments}
-                  onRemoveAttachment={(i) =>
-                    setPendingAttachments(
-                      pendingAttachments.filter((_, j) => j !== i),
-                    )
-                  }
-                  onPickFiles={async (files) => {
-                    setUploading(true);
-                    try {
-                      const uploaded = await uploadPublicAttachments(files);
-                      setPendingAttachments([
-                        ...pendingAttachments,
-                        ...uploaded.map((u) => ({ ...u, kind: u.kind as any })),
-                      ]);
-                    } finally {
-                      setUploading(false);
+                  <Composer
+                    draft={draft()}
+                    onDraftChange={setDraft}
+                    attachments={pendingAttachments}
+                    onRemoveAttachment={(i) =>
+                      setPendingAttachments(
+                        pendingAttachments.filter((_, j) => j !== i),
+                      )
                     }
-                  }}
-                  uploadError={uploadError()}
-                  onDismissUploadError={() => setUploadError("")}
-                  uploading={uploading()}
-                  onSend={handleSend}
-                  onStop={() => activeController?.abort()}
-                  isSending={isSending()}
-                  remaining={sessionInfo()?.remainingToday}
-                  dailyLimit={sessionInfo()?.dailyLimit}
-                  pendingMessage={composerPendingMessage()}
-                  justFinished={justFinished()}
-                />
+                    onPickFiles={async (files) => {
+                      setUploading(true);
+                      try {
+                        const uploaded = await uploadPublicAttachments(files);
+                        setPendingAttachments([
+                          ...pendingAttachments,
+                          ...uploaded.map((u) => ({
+                            ...u,
+                            kind: u.kind as any,
+                          })),
+                        ]);
+                      } finally {
+                        setUploading(false);
+                      }
+                    }}
+                    uploadError={uploadError()}
+                    onDismissUploadError={() => setUploadError("")}
+                    uploading={uploading()}
+                    onSend={handleSend}
+                    onStop={() => activeController?.abort()}
+                    isSending={isSending()}
+                    remaining={sessionInfo()?.remainingToday}
+                    dailyLimit={sessionInfo()?.dailyLimit}
+                    pendingMessage={composerPendingMessage()}
+                    justFinished={justFinished()}
+                  />
                 </div>
               </div>
+              </>
             )}
           </Show>
         </Match>
@@ -2323,6 +2475,270 @@ export default function PublicChatPage() {
           height: 100%;
           min-height: 0;
           overflow-anchor: none;
+        }
+        @media (min-width: 769px) {
+          .public-chat-page--ready {
+            flex-direction: row !important;
+            background: #f8fafc;
+          }
+          .public-chat-page--ready > .page-header {
+            display: none !important;
+          }
+          .public-chat-page--ready .public-chat-shell {
+            height: 100dvh !important;
+            padding-top: 0 !important;
+            background: rgba(248,250,252,0.72);
+          }
+          .public-chat-page--ready .public-chat-session-strip {
+            display: none !important;
+          }
+          .public-chat-page--ready .public-chat-messages {
+            padding-top: 24px !important;
+          }
+          .public-chat-sidebar {
+            position: relative;
+            z-index: 20;
+            width: 292px;
+            height: 100dvh;
+            flex: 0 0 292px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            padding: 14px 12px;
+            background: rgba(255,255,255,0.88);
+            border-right: 1px solid rgba(15,23,42,0.08);
+            box-shadow: 10px 0 34px rgba(15,23,42,0.05);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            transition: width 0.18s ease, flex-basis 0.18s ease;
+            overflow: hidden;
+          }
+          .public-chat-sidebar.is-collapsed {
+            width: 72px;
+            flex-basis: 72px;
+            align-items: center;
+            padding-right: 10px;
+            padding-left: 10px;
+          }
+          .public-chat-sidebar-brand {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            min-height: 42px;
+            gap: 8px;
+          }
+          .public-chat-sidebar-logo {
+            min-width: 0;
+            border: none;
+            background: transparent;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            padding: 4px 6px;
+            color: #0f172a;
+            font-size: 18px;
+            font-weight: 850;
+            letter-spacing: 0;
+          }
+          .public-chat-sidebar-logo img {
+            width: 30px;
+            height: 30px;
+            border-radius: 8px;
+            flex: 0 0 30px;
+          }
+          .public-chat-sidebar-toggle,
+          .public-chat-sidebar-footer-actions .hone-prefs-trigger,
+          .public-chat-sidebar-lang {
+            width: 34px;
+            height: 34px;
+            min-width: 34px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid rgba(15,23,42,0.08);
+            border-radius: 8px;
+            background: #fff;
+            color: #475569;
+            cursor: pointer;
+            box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+          }
+          .public-chat-sidebar-toggle:hover,
+          .public-chat-sidebar-footer-actions .hone-prefs-trigger:hover,
+          .public-chat-sidebar-lang:hover {
+            color: #0f172a;
+            background: #f8fafc;
+          }
+          .public-chat-sidebar-nav {
+            display: grid;
+            gap: 4px;
+          }
+          .public-chat-sidebar-nav button,
+          .public-chat-sidebar-star {
+            width: 100%;
+            min-height: 40px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border: none;
+            border-radius: 8px;
+            background: transparent;
+            color: #475569;
+            cursor: pointer;
+            padding: 0 10px;
+            font-size: 14px;
+            font-weight: 750;
+            text-decoration: none;
+            letter-spacing: 0;
+          }
+          .public-chat-sidebar-nav button:hover,
+          .public-chat-sidebar-star:hover {
+            background: #f1f5f9;
+            color: #0f172a;
+          }
+          .public-chat-sidebar-nav button.is-active {
+            background: #0f172a;
+            color: #fff;
+          }
+          .public-chat-sidebar-nav svg,
+          .public-chat-sidebar-star svg,
+          .public-chat-sidebar-icon {
+            width: 22px;
+            height: 22px;
+            flex: 0 0 22px;
+          }
+          .public-chat-sidebar-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            background: rgba(15,23,42,0.06);
+            font-size: 12px;
+            font-weight: 850;
+          }
+          .public-chat-sidebar-contact {
+            min-height: 0;
+            overflow: auto;
+            padding: 6px 2px 0;
+          }
+          .public-chat-sidebar-section-title {
+            margin: 0 6px 8px;
+            color: #94a3b8;
+            font-size: 12px;
+            font-weight: 850;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+          }
+          .public-chat-sidebar-contact .pub-contact-card-grid {
+            grid-template-columns: 1fr;
+            gap: 7px;
+          }
+          .public-chat-sidebar-contact .pub-contact-card {
+            min-height: 42px;
+            padding: 9px 10px;
+            border-radius: 8px;
+            background: #f8fafc;
+          }
+          .public-chat-sidebar-contact .pub-contact-card small {
+            max-width: 190px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+          .public-chat-sidebar-footer {
+            margin-top: auto;
+            display: grid;
+            gap: 10px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(15,23,42,0.08);
+          }
+          .public-chat-sidebar-user {
+            min-width: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+          }
+          .public-chat-sidebar-avatar {
+            width: 34px;
+            height: 34px;
+            flex: 0 0 34px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 9px;
+            background: #0f172a;
+            color: #fff;
+            font-size: 14px;
+            font-weight: 850;
+          }
+          .public-chat-sidebar-user strong,
+          .public-chat-sidebar-user small {
+            display: block;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+          .public-chat-sidebar-user strong {
+            color: #0f172a;
+            font-size: 13px;
+            font-weight: 850;
+          }
+          .public-chat-sidebar-user small {
+            margin-top: 2px;
+            color: #64748b;
+            font-size: 12px;
+            font-weight: 650;
+          }
+          .public-chat-sidebar-footer-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+          }
+          .public-chat-sidebar-logout {
+            flex: 1;
+            min-height: 34px;
+            border: none;
+            border-radius: 8px;
+            background: #fff1f2;
+            color: #e11d48;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 800;
+          }
+          .public-chat-sidebar-logout:hover {
+            background: #ffe4e6;
+          }
+          .public-chat-sidebar.is-collapsed .public-chat-sidebar-logo span,
+          .public-chat-sidebar.is-collapsed .public-chat-sidebar-nav span:not(.public-chat-sidebar-icon),
+          .public-chat-sidebar.is-collapsed .public-chat-sidebar-star span,
+          .public-chat-sidebar.is-collapsed .public-chat-sidebar-contact,
+          .public-chat-sidebar.is-collapsed .public-chat-sidebar-section-title,
+          .public-chat-sidebar.is-collapsed .public-chat-sidebar-user span:not(.public-chat-sidebar-avatar),
+          .public-chat-sidebar.is-collapsed .public-chat-sidebar-logout span {
+            display: none !important;
+          }
+          .public-chat-sidebar.is-collapsed .public-chat-sidebar-brand,
+          .public-chat-sidebar.is-collapsed .public-chat-sidebar-footer-actions {
+            flex-direction: column;
+          }
+          .public-chat-sidebar.is-collapsed .public-chat-sidebar-nav button,
+          .public-chat-sidebar.is-collapsed .public-chat-sidebar-star {
+            width: 42px;
+            justify-content: center;
+            padding: 0;
+          }
+          .public-chat-sidebar.is-collapsed .public-chat-sidebar-footer {
+            width: 42px;
+          }
+          .public-chat-sidebar.is-collapsed .public-chat-sidebar-logout {
+            flex: 0 0 34px;
+            width: 34px;
+          }
+        }
+        @media (max-width: 768px) {
+          .public-chat-sidebar {
+            display: none !important;
+          }
         }
         .public-chat-messages {
           min-height: 0;

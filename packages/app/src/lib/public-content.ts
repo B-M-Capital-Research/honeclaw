@@ -816,6 +816,13 @@ const CONTENT_ZH = {
   },
 
   chat_page: {
+    sidebar: {
+      label: "聊天导航",
+      collapse: "收起侧边栏",
+      expand: "展开侧边栏",
+      signed_in: "已登录",
+      account_center: "账号中心",
+    },
     prefs: {
       aria_label: "字号与主题",
       font_size: "字号",
@@ -2306,6 +2313,13 @@ const CONTENT_EN: typeof CONTENT_ZH = {
   },
 
   chat_page: {
+    sidebar: {
+      label: "Chat navigation",
+      collapse: "Collapse sidebar",
+      expand: "Expand sidebar",
+      signed_in: "Signed in",
+      account_center: "Account center",
+    },
     prefs: {
       aria_label: "Font size and theme",
       font_size: "Size",
