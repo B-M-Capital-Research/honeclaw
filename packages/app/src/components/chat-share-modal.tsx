@@ -7,6 +7,12 @@ import { Portal } from "solid-js/web";
 import type { PublicChatMessage } from "@/lib/public-chat";
 import { stripAttachmentMarkers } from "@/lib/public-chat";
 import { ChatShareCard } from "./chat-share-card";
+import {
+  ShareRenderError,
+  canvasToPngBlob,
+  isShareAbortError,
+  isShareRenderError,
+} from "./chat-share-export";
 
 export type ChatShareModalProps = {
   open: boolean;
@@ -30,8 +36,12 @@ export type ChatShareModalProps = {
     success_copy_image: string;
     success_copy_text: string;
     success_share: string;
+    error_download: string;
     error_copy_image: string;
+    error_copy_text: string;
+    error_render: string;
     error_share: string;
+    error_system_share: string;
     role_user: string;
     role_assistant: string;
     nothing_selected: string;
@@ -108,14 +118,23 @@ export function ChatShareModal(props: ChatShareModalProps) {
     typeof window !== "undefined" && "share" in navigator;
 
   const renderCanvas = async () => {
-    if (!cardEl) return null;
+    if (!cardEl) throw new ShareRenderError("Share card is not ready");
     const { default: html2canvas } = await import("html2canvas");
-    return html2canvas(cardEl, {
-      scale: window.devicePixelRatio >= 2 ? 2 : 1.5,
-      backgroundColor: "#ffffff",
-      useCORS: true,
-      logging: false,
-    });
+    try {
+      return await html2canvas(cardEl, {
+        scale: window.devicePixelRatio >= 2 ? 2 : 1.5,
+        backgroundColor: "#ffffff",
+        useCORS: true,
+        logging: false,
+      });
+    } catch {
+      throw new ShareRenderError("Share image rendering failed");
+    }
+  };
+
+  const renderPngBlob = async () => {
+    const canvas = await renderCanvas();
+    return canvasToPngBlob(canvas);
   };
 
   const withBusy = async (fn: () => Promise<void>) => {
@@ -128,68 +147,79 @@ export function ChatShareModal(props: ChatShareModalProps) {
     }
   };
 
+  const showExportError = (
+    action: "download" | "copy_image" | "copy_text" | "system_share",
+    error: unknown,
+    fallbackText: string,
+  ) => {
+    if (isShareAbortError(error)) {
+      showToast({ kind: "error", text: props.strings.error_share });
+      return;
+    }
+    const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    console.warn(`[ChatShareModal] ${action} failed: ${detail}`);
+    showToast({
+      kind: "error",
+      text: isShareRenderError(error) ? props.strings.error_render : fallbackText,
+    });
+  };
+
   const handleDownload = () =>
     withBusy(async () => {
-      const canvas = await renderCanvas();
-      if (!canvas) return;
-      const blob: Blob | null = await new Promise((resolve) =>
-        canvas.toBlob((b) => resolve(b), "image/png"),
-      );
-      if (!blob) return;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `hone-share-${Date.now()}.png`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.setTimeout(() => URL.revokeObjectURL(url), 2000);
-      showToast({ kind: "success", text: props.strings.success_download });
+      try {
+        const blob = await renderPngBlob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `hone-share-${Date.now()}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+        showToast({ kind: "success", text: props.strings.success_download });
+      } catch (error) {
+        showExportError("download", error, props.strings.error_download);
+      }
     });
 
   const handleCopyImage = () =>
     withBusy(async () => {
-      const canvas = await renderCanvas();
-      if (!canvas) return;
-      const blob: Blob | null = await new Promise((resolve) =>
-        canvas.toBlob((b) => resolve(b), "image/png"),
-      );
-      if (!blob) return;
+      let blob: Blob;
       try {
+        blob = await renderPngBlob();
         await navigator.clipboard.write([
           new ClipboardItem({ "image/png": blob }),
         ]);
         showToast({ kind: "success", text: props.strings.success_copy_image });
-      } catch {
-        showToast({ kind: "error", text: props.strings.error_copy_image });
+      } catch (error) {
+        showExportError("copy_image", error, props.strings.error_copy_image);
       }
     });
 
   const handleCopyText = () =>
     withBusy(async () => {
-      const text = selectedMessages()
-        .map((m) => {
-          const label =
-            m.role === "user" ? props.strings.role_user : props.strings.role_assistant;
-          return `【${label}】\n${stripAttachmentMarkers(m.content).trim()}`;
-        })
-        .join("\n\n");
-      await navigator.clipboard.writeText(text);
-      showToast({ kind: "success", text: props.strings.success_copy_text });
+      try {
+        const text = selectedMessages()
+          .map((m) => {
+            const label =
+              m.role === "user" ? props.strings.role_user : props.strings.role_assistant;
+            return `【${label}】\n${stripAttachmentMarkers(m.content).trim()}`;
+          })
+          .join("\n\n");
+        await navigator.clipboard.writeText(text);
+        showToast({ kind: "success", text: props.strings.success_copy_text });
+      } catch (error) {
+        showExportError("copy_text", error, props.strings.error_copy_text);
+      }
     });
 
   const handleSystemShare = () =>
     withBusy(async () => {
-      const canvas = await renderCanvas();
-      if (!canvas) return;
-      const blob: Blob | null = await new Promise((resolve) =>
-        canvas.toBlob((b) => resolve(b), "image/png"),
-      );
-      if (!blob) return;
-      const file = new File([blob], `hone-share-${Date.now()}.png`, {
-        type: "image/png",
-      });
       try {
+        const blob = await renderPngBlob();
+        const file = new File([blob], `hone-share-${Date.now()}.png`, {
+          type: "image/png",
+        });
         if (
           "canShare" in navigator &&
           (navigator as Navigator & { canShare: (d: ShareData) => boolean }).canShare({
@@ -202,8 +232,8 @@ export function ChatShareModal(props: ChatShareModalProps) {
         }
         await navigator.share({ title: props.brandName, url: props.qrUrl });
         showToast({ kind: "success", text: props.strings.success_share });
-      } catch {
-        showToast({ kind: "error", text: props.strings.error_share });
+      } catch (error) {
+        showExportError("system_share", error, props.strings.error_system_share);
       }
     });
 
