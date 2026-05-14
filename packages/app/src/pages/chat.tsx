@@ -1294,6 +1294,104 @@ function ComposerStatus(props: {
   );
 }
 
+function ProactiveModeTips() {
+  const [open, setOpen] = createSignal(false);
+
+  createEffect(() => {
+    if (!open()) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    onCleanup(() => document.removeEventListener("keydown", onKey));
+  });
+
+  return (
+    <>
+      <div class="public-chat-proactive-tip-wrap">
+        <button
+          type="button"
+          class="public-chat-proactive-tip"
+          aria-haspopup="dialog"
+          aria-expanded={open()}
+          onClick={() => setOpen(true)}
+        >
+          <span class="public-chat-proactive-tip-dot" aria-hidden="true" />
+          <span>{CONTENT.chat_page.composer.proactive_tip}</span>
+        </button>
+      </div>
+      <Show when={open()}>
+        <div
+          class="public-chat-proactive-modal-backdrop"
+          role="presentation"
+          onClick={() => setOpen(false)}
+        >
+          <div
+            class="public-chat-proactive-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="public-chat-proactive-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              class="public-chat-proactive-close"
+              aria-label={CONTENT.chat_page.composer.proactive_close_aria}
+              onClick={() => setOpen(false)}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.4"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+            <h2 id="public-chat-proactive-title">
+              {CONTENT.chat_page.composer.proactive_title}
+            </h2>
+            <p class="public-chat-proactive-intro">
+              {CONTENT.chat_page.composer.proactive_intro}
+            </p>
+            <div class="public-chat-proactive-list">
+              <For each={CONTENT.chat_page.composer.proactive_items}>
+                {(item) => (
+                  <div class="public-chat-proactive-item">
+                    <span class="public-chat-proactive-item-mark" />
+                    <span>
+                      <strong>{item.title}</strong>
+                      <small>{item.body}</small>
+                    </span>
+                  </div>
+                )}
+              </For>
+            </div>
+            <div class="public-chat-proactive-examples">
+              <div>{CONTENT.chat_page.composer.proactive_examples_title}</div>
+              <For each={CONTENT.chat_page.composer.proactive_examples}>
+                {(example) => <span>{example}</span>}
+              </For>
+            </div>
+            <button
+              type="button"
+              class="public-chat-proactive-primary"
+              onClick={() => setOpen(false)}
+            >
+              {CONTENT.chat_page.composer.proactive_got_it}
+            </button>
+          </div>
+        </div>
+      </Show>
+    </>
+  );
+}
+
 function Composer(props: {
   draft: string;
   onDraftChange: (v: string) => void;
@@ -1376,6 +1474,7 @@ function Composer(props: {
         onStop={props.onStop}
         justFinished={props.justFinished}
       />
+      <ProactiveModeTips />
       <input
         data-testid="composer-image-input"
         ref={imgInputRef}
@@ -2327,6 +2426,175 @@ export default function PublicChatPage() {
           transition: background 0.2s;
         }
         .public-chat-composer-status-stop:hover { background: #ef4444; }
+
+        .public-chat-proactive-tip-wrap {
+          max-width: 900px;
+          margin: 0 auto 8px;
+          display: flex;
+          align-items: center;
+        }
+        .public-chat-proactive-tip {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          min-height: 28px;
+          max-width: 100%;
+          padding: 5px 10px;
+          border: 1px solid rgba(15,23,42,0.08);
+          border-radius: 999px;
+          background: rgba(255,255,255,0.82);
+          color: #475569;
+          box-shadow: 0 6px 18px rgba(15,23,42,0.05);
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+          cursor: pointer;
+          font-size: 12.5px;
+          font-weight: 700;
+          line-height: 1.2;
+          letter-spacing: 0;
+          transition: background 0.18s, color 0.18s, border-color 0.18s, box-shadow 0.18s;
+        }
+        .public-chat-proactive-tip:hover,
+        .public-chat-proactive-tip[aria-expanded="true"] {
+          background: #fff;
+          color: #0f172a;
+          border-color: rgba(245,158,11,0.35);
+          box-shadow: 0 8px 22px rgba(15,23,42,0.08);
+        }
+        .public-chat-proactive-tip-dot {
+          width: 7px;
+          height: 7px;
+          border-radius: 999px;
+          background: #f59e0b;
+          box-shadow: 0 0 0 4px rgba(245,158,11,0.12);
+          flex: 0 0 7px;
+        }
+        .public-chat-proactive-modal-backdrop {
+          position: fixed;
+          inset: 0;
+          z-index: 1000;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 20px;
+          background: rgba(15,23,42,0.22);
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+          animation: hone-proactive-backdrop 0.14s ease-out;
+        }
+        @keyframes hone-proactive-backdrop {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
+        .public-chat-proactive-modal {
+          position: relative;
+          width: min(440px, calc(100vw - 32px));
+          max-height: min(720px, calc(100dvh - 40px));
+          overflow: auto;
+          padding: 22px;
+          border: 1px solid rgba(15,23,42,0.08);
+          border-radius: 18px;
+          background: rgba(255,255,255,0.98);
+          color: #0f172a;
+          box-shadow: 0 26px 80px rgba(15,23,42,0.22);
+          animation: hone-proactive-pop 0.16s ease-out;
+        }
+        @keyframes hone-proactive-pop {
+          from { opacity: 0; transform: translateY(8px) scale(0.98); }
+          to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .public-chat-proactive-modal h2 {
+          margin: 0 36px 8px 0;
+          font-size: 22px;
+          line-height: 1.25;
+          letter-spacing: 0;
+          color: #0f172a;
+        }
+        .public-chat-proactive-intro {
+          margin: 0 0 16px;
+          color: #475569;
+          font-size: 14px;
+          line-height: 1.65;
+        }
+        .public-chat-proactive-close {
+          position: absolute;
+          top: 14px;
+          right: 14px;
+          width: 30px;
+          height: 30px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border: none;
+          border-radius: 999px;
+          background: #f8fafc;
+          color: #64748b;
+          cursor: pointer;
+          transition: background 0.16s, color 0.16s;
+        }
+        .public-chat-proactive-close:hover { background: #f1f5f9; color: #0f172a; }
+        .public-chat-proactive-list {
+          display: grid;
+          gap: 12px;
+          margin: 0 0 16px;
+        }
+        .public-chat-proactive-item {
+          display: grid;
+          grid-template-columns: 8px 1fr;
+          gap: 10px;
+          align-items: start;
+        }
+        .public-chat-proactive-item-mark {
+          width: 8px;
+          height: 8px;
+          margin-top: 7px;
+          border-radius: 999px;
+          background: #f59e0b;
+        }
+        .public-chat-proactive-item strong {
+          display: block;
+          margin: 0 0 3px;
+          font-size: 14px;
+          line-height: 1.35;
+          color: #0f172a;
+        }
+        .public-chat-proactive-item small {
+          display: block;
+          color: #64748b;
+          font-size: 13px;
+          line-height: 1.55;
+        }
+        .public-chat-proactive-examples {
+          display: grid;
+          gap: 7px;
+          margin: 0 0 18px;
+          padding: 12px;
+          border-radius: 12px;
+          background: #f8fafc;
+        }
+        .public-chat-proactive-examples div {
+          color: #475569;
+          font-size: 12px;
+          font-weight: 800;
+          line-height: 1.3;
+        }
+        .public-chat-proactive-examples span {
+          color: #334155;
+          font-size: 12.5px;
+          line-height: 1.45;
+        }
+        .public-chat-proactive-primary {
+          width: 100%;
+          min-height: 40px;
+          border: none;
+          border-radius: 12px;
+          background: #0f172a;
+          color: #fff;
+          cursor: pointer;
+          font-size: 14px;
+          font-weight: 800;
+          letter-spacing: 0;
+        }
         /* Tone down the homepage's animated background blobs on the chat
            page — three near-white surfaces (page bg + bubble + ticker chip)
            competing for attention reads as visual noise, so the gradient
@@ -2662,6 +2930,48 @@ export default function PublicChatPage() {
         [data-theme="dark"] .public-chat-composer-status-time { color: #94a3b8 !important; }
         [data-theme="dark"] .public-chat-composer-status-stop { background: #f1f5f9 !important; color: #0a0e16 !important; }
         [data-theme="dark"] .public-chat-composer-status-stop:hover { background: #ef4444 !important; color: #fff !important; }
+        [data-theme="dark"] .public-chat-proactive-tip {
+          background: rgba(19,27,44,0.82) !important;
+          border-color: rgba(255,255,255,0.08) !important;
+          color: #cbd5e1 !important;
+          box-shadow: 0 8px 22px rgba(0,0,0,0.28) !important;
+        }
+        [data-theme="dark"] .public-chat-proactive-tip:hover,
+        [data-theme="dark"] .public-chat-proactive-tip[aria-expanded="true"] {
+          background: #131b2c !important;
+          border-color: rgba(245,158,11,0.38) !important;
+          color: #f8fafc !important;
+        }
+        [data-theme="dark"] .public-chat-proactive-modal-backdrop {
+          background: rgba(2,6,23,0.52) !important;
+        }
+        [data-theme="dark"] .public-chat-proactive-modal {
+          background: rgba(19,27,44,0.98) !important;
+          border-color: rgba(255,255,255,0.08) !important;
+          color: #e5e7eb !important;
+          box-shadow: 0 28px 90px rgba(0,0,0,0.58) !important;
+        }
+        [data-theme="dark"] .public-chat-proactive-modal h2,
+        [data-theme="dark"] .public-chat-proactive-item strong { color: #f8fafc !important; }
+        [data-theme="dark"] .public-chat-proactive-intro,
+        [data-theme="dark"] .public-chat-proactive-item small,
+        [data-theme="dark"] .public-chat-proactive-examples div,
+        [data-theme="dark"] .public-chat-proactive-examples span { color: #cbd5e1 !important; }
+        [data-theme="dark"] .public-chat-proactive-close {
+          background: rgba(255,255,255,0.06) !important;
+          color: #cbd5e1 !important;
+        }
+        [data-theme="dark"] .public-chat-proactive-close:hover {
+          background: rgba(255,255,255,0.1) !important;
+          color: #fff !important;
+        }
+        [data-theme="dark"] .public-chat-proactive-examples {
+          background: rgba(255,255,255,0.05) !important;
+        }
+        [data-theme="dark"] .public-chat-proactive-primary {
+          background: #f8fafc !important;
+          color: #0a0e16 !important;
+        }
 
         @media (max-width: 768px) {
           .public-chat-composer-status { border-radius: 11px; }
@@ -2748,6 +3058,27 @@ export default function PublicChatPage() {
             padding: 10px 12px calc(12px + env(safe-area-inset-bottom)) !important;
             background:
               linear-gradient(180deg, rgba(248,250,252,0), rgba(248,250,252,0.92) 28%, rgba(248,250,252,0.98)) !important;
+          }
+          .public-chat-proactive-tip-wrap {
+            margin: 0 4px 7px !important;
+          }
+          .public-chat-proactive-tip {
+            min-height: 26px !important;
+            padding: 5px 9px !important;
+            font-size: 12px !important;
+          }
+          .public-chat-proactive-modal-backdrop {
+            align-items: flex-end !important;
+            padding: 12px !important;
+          }
+          .public-chat-proactive-modal {
+            width: 100% !important;
+            max-height: calc(100dvh - 24px) !important;
+            padding: 20px !important;
+            border-radius: 18px !important;
+          }
+          .public-chat-proactive-modal h2 {
+            font-size: 20px !important;
           }
           .public-chat-composer-box {
             width: 100% !important;

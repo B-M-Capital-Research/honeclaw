@@ -843,6 +843,32 @@ const CONTENT_ZH = {
       quota_exhausted: "今日额度已用完",
       placeholder: "向 Hone 提问…",
       send_aria: "发送",
+      proactive_tip: "录入持仓，开启推送模式",
+      proactive_title: "Hone 可以主动盯住你的持仓",
+      proactive_intro:
+        "把持仓或关注标的告诉 Hone 后，它会按你的偏好筛选重要变化，并在合适的时候提醒你。",
+      proactive_items: [
+        {
+          title: "持仓相关提醒",
+          body: "财报发布、电话会、SEC 文件、重大新闻、评级变化和价格异动。",
+        },
+        {
+          title: "持仓分析",
+          body: "结合你的仓位、关注理由和长期主线，整理可能影响判断的信号。",
+        },
+        {
+          title: "自然语言管理",
+          body: "直接说「只推持仓相关」「今晚勿扰」「每周五复盘」即可开关偏好或管理定时任务。",
+        },
+      ],
+      proactive_examples_title: "你可以这样说",
+      proactive_examples: [
+        "我持有 AAPL 和 NVDA，帮我开启关键事件提醒",
+        "只给我推持仓相关的财报和重大新闻",
+        "每周五收盘后做一次持仓复盘",
+      ],
+      proactive_close_aria: "关闭推送模式说明",
+      proactive_got_it: "知道了",
     },
     history: {
       loading_older: "加载中...",
@@ -2307,6 +2333,32 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       quota_exhausted: "Today's quota is used up",
       placeholder: "Ask Hone…",
       send_aria: "Send",
+      proactive_tip: "Add holdings to enable push mode",
+      proactive_title: "Hone can watch your holdings for you",
+      proactive_intro:
+        "Tell Hone what you hold or follow, and it will filter important changes by your preferences and reach out at the right time.",
+      proactive_items: [
+        {
+          title: "Holding-aware alerts",
+          body: "Earnings, calls, SEC filings, major news, rating changes, and price moves.",
+        },
+        {
+          title: "Portfolio analysis",
+          body: "Signals are framed around your positions, watch reasons, and long-term thesis.",
+        },
+        {
+          title: "Natural-language control",
+          body: "Say things like “only holdings”, “quiet tonight”, or “review every Friday” to manage alerts and schedules.",
+        },
+      ],
+      proactive_examples_title: "Try saying",
+      proactive_examples: [
+        "I hold AAPL and NVDA. Turn on key event alerts.",
+        "Only push earnings and major news for my holdings.",
+        "Run a portfolio review after market close every Friday.",
+      ],
+      proactive_close_aria: "Close push mode tips",
+      proactive_got_it: "Got it",
     },
     history: {
       loading_older: "Loading...",
