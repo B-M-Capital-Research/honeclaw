@@ -14,6 +14,7 @@ export type ChatShareCardProps = {
   brandTagline: string;
   qrUrl: string;
   qrCaption: string;
+  messageFontSize?: number;
   /** Mounted as visible (`false`) vs. hidden offscreen (`true`). */
   hidden?: boolean;
   /** Refs the wrapper element so the caller can hand it to html2canvas. */
@@ -32,10 +33,11 @@ function HoneLogo(props: { size: number }) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 500 450"
+      viewBox="145 90 220 210"
       width={props.size}
       height={props.size}
       aria-hidden="true"
+      style={{ display: "block" }}
     >
       <defs>
         <linearGradient id="hone-share-stone-top" x1="0%" y1="100%" x2="100%" y2="0%">
@@ -152,6 +154,7 @@ const SHARE_CARD_CSS = `
 
 export function ChatShareCard(props: ChatShareCardProps) {
   const [qrDataUrl, setQrDataUrl] = createSignal<string>("");
+  const messageFontSize = () => props.messageFontSize ?? 13.5;
 
   createEffect(() => {
     let cancelled = false;
@@ -239,8 +242,16 @@ export function ChatShareCard(props: ChatShareCardProps) {
         >
           <For each={props.messages}>
             {(msg) => (
-              <Show when={msg.role === "user"} fallback={<AssistantRow content={msg.content} />}>
-                <UserRow content={msg.content} />
+              <Show
+                when={msg.role === "user"}
+                fallback={
+                  <AssistantRow
+                    content={msg.content}
+                    fontSize={messageFontSize()}
+                  />
+                }
+              >
+                <UserRow content={msg.content} fontSize={messageFontSize()} />
               </Show>
             )}
           </For>
@@ -249,17 +260,17 @@ export function ChatShareCard(props: ChatShareCardProps) {
         {/* Footer */}
         <div
           style={{
-            display: "flex",
+            display: "grid",
+            "grid-template-columns": "1fr auto",
             "align-items": "center",
-            "justify-content": "space-between",
-            gap: "16px",
+            gap: "18px",
             padding: "16px 20px 22px 20px",
             "border-top": "1px solid #f1f5f9",
             background: "#fafbfc",
           }}
         >
-          <div style={{ display: "flex", "flex-direction": "column", gap: "6px", "min-width": "0", flex: "1" }}>
-            <div style={{ display: "flex", "align-items": "center", gap: "8px" }}>
+          <div style={{ display: "flex", "flex-direction": "column", gap: "7px", "min-width": "0" }}>
+            <div style={{ display: "flex", "align-items": "center", gap: "8px", "min-height": "28px" }}>
               <HoneLogo size={24} />
               <span
                 style={{
@@ -277,19 +288,30 @@ export function ChatShareCard(props: ChatShareCardProps) {
             </span>
           </div>
           <Show when={qrDataUrl()}>
-            <img
-              src={qrDataUrl()}
-              alt=""
+            <div
               style={{
-                width: "76px",
-                height: "76px",
-                "border-radius": "9px",
+                width: "88px",
+                height: "88px",
+                display: "flex",
+                "align-items": "center",
+                "justify-content": "center",
+                "border-radius": "12px",
                 background: "#fff",
-                padding: "5px",
                 border: "1px solid #e2e8f0",
                 "flex-shrink": "0",
+                "box-sizing": "border-box",
               }}
-            />
+            >
+              <img
+                src={qrDataUrl()}
+                alt=""
+                style={{
+                  display: "block",
+                  width: "76px",
+                  height: "76px",
+                }}
+              />
+            </div>
           </Show>
         </div>
       </div>
@@ -297,7 +319,7 @@ export function ChatShareCard(props: ChatShareCardProps) {
   );
 }
 
-function UserRow(props: { content: string }) {
+function UserRow(props: { content: string; fontSize: number }) {
   const cleaned = () => stripAttachmentMarkers(props.content);
   return (
     <div style={{ display: "flex", "justify-content": "flex-end" }}>
@@ -308,7 +330,7 @@ function UserRow(props: { content: string }) {
           color: "#f8fafc",
           padding: "10px 14px",
           "border-radius": "12px 12px 4px 12px",
-          "font-size": "13.5px",
+          "font-size": `${props.fontSize}px`,
           "line-height": "1.55",
           "white-space": "pre-wrap",
           "word-break": "break-word",
@@ -320,7 +342,7 @@ function UserRow(props: { content: string }) {
   );
 }
 
-function AssistantRow(props: { content: string }) {
+function AssistantRow(props: { content: string; fontSize: number }) {
   return (
     <div style={{ display: "flex", "justify-content": "flex-start" }}>
       <div
@@ -331,7 +353,7 @@ function AssistantRow(props: { content: string }) {
           padding: "12px 14px",
           "border-radius": "4px 12px 12px 12px",
           border: "1px solid #e2e8f0",
-          "font-size": "13.5px",
+          "font-size": `${props.fontSize}px`,
           "line-height": "1.6",
         }}
       >

@@ -64,12 +64,16 @@ type Toast =
 
 type ShareStep = "select" | "preview";
 
+const SHARE_FONT_SIZES = [13.5, 15, 16.5, 18] as const;
+const DEFAULT_SHARE_FONT_INDEX = 1;
+
 export function ChatShareModal(props: ChatShareModalProps) {
   const [selected, setSelected] = createSignal<Set<string>>(new Set());
   const [toast, setToast] = createSignal<Toast>(null);
   const [busy, setBusy] = createSignal(false);
   const [step, setStep] = createSignal<ShareStep>("select");
   const [previewUrl, setPreviewUrl] = createSignal<string | null>(null);
+  const [fontIndex, setFontIndex] = createSignal(DEFAULT_SHARE_FONT_INDEX);
   let cardEl: HTMLDivElement | undefined;
   let listEl: HTMLUListElement | undefined;
   let toastTimer: number | undefined;
@@ -84,6 +88,8 @@ export function ChatShareModal(props: ChatShareModalProps) {
   const selectedMessages = createMemo<PublicChatMessage[]>(() =>
     recentMessages().filter((m) => selected().has(m.id)),
   );
+  const shareFontSize = () =>
+    SHARE_FONT_SIZES[fontIndex()] ?? SHARE_FONT_SIZES[DEFAULT_SHARE_FONT_INDEX];
 
   const revokePreviewUrl = () => {
     const url = previewUrl();
@@ -107,6 +113,7 @@ export function ChatShareModal(props: ChatShareModalProps) {
       const defaultId = defaultShareMessageId(recent);
       setSelected(defaultId ? new Set([defaultId]) : new Set<string>());
       setStep("select");
+      setFontIndex(DEFAULT_SHARE_FONT_INDEX);
       revokePreviewUrl();
       setBusy(false);
       setToast(null);
@@ -123,6 +130,7 @@ export function ChatShareModal(props: ChatShareModalProps) {
   });
 
   const selectionKey = () => selectedMessages().map((m) => m.id).join("|");
+  const renderSignature = () => `${selectionKey()}::font:${shareFontSize()}`;
 
   createEffect(() => {
     const key = selectionKey();
@@ -193,7 +201,7 @@ export function ChatShareModal(props: ChatShareModalProps) {
   };
 
   const renderPngBlob = async () => {
-    const key = selectionKey();
+    const key = renderSignature();
     if (key && renderKey === key && cachedBlob) return cachedBlob;
     if (key && renderKey === key && renderPromise) return renderPromise;
     renderKey = key;
@@ -236,6 +244,21 @@ export function ChatShareModal(props: ChatShareModalProps) {
     revokePreviewUrl();
     setPreviewUrl(URL.createObjectURL(blob));
     setStep("preview");
+  };
+
+  const changeFontSize = (index: number) => {
+    if (index === fontIndex()) return;
+    setFontIndex(index);
+    cachedBlob = null;
+    renderPromise = null;
+    renderKey = "";
+    revokePreviewUrl();
+    if (step() === "preview" && hasSelection()) {
+      withBusy(async () => {
+        await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+        await showPreview();
+      }).catch(() => undefined);
+    }
   };
 
   const withBusy = async (fn: () => Promise<void>) => {
@@ -467,6 +490,22 @@ export function ChatShareModal(props: ChatShareModalProps) {
               }
             >
               <div class="pub-share-preview-body">
+                <div class="pub-share-font-toolbar" aria-label="Share image font size">
+                  <For each={SHARE_FONT_SIZES}>
+                    {(size, i) => (
+                      <button
+                        type="button"
+                        class="pub-share-font-button"
+                        data-active={i() === fontIndex() ? "true" : undefined}
+                        style={{ "font-size": `${12 + i() * 1.5}px` }}
+                        aria-label={`Font size ${i() + 1}: ${size}px`}
+                        onClick={() => changeFontSize(i())}
+                      >
+                        Aa
+                      </button>
+                    )}
+                  </For>
+                </div>
                 <Show when={previewUrl()}>
                   {(url) => (
                     <div class="pub-share-preview-frame">
@@ -543,6 +582,7 @@ export function ChatShareModal(props: ChatShareModalProps) {
               brandTagline={props.brandTagline}
               qrUrl={props.qrUrl}
               qrCaption={props.qrCaption}
+              messageFontSize={shareFontSize()}
               hidden
               registerRef={(el) => (cardEl = el)}
             />
@@ -655,6 +695,38 @@ const MODAL_CSS = `
     min-height: 0;
     background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
   }
+  .pub-share-font-toolbar {
+    width: min(100%, 320px);
+    margin: 0 auto 10px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    padding: 4px;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.86);
+    box-shadow: 0 10px 24px rgba(15,23,42,0.08);
+  }
+  .pub-share-font-button {
+    min-height: 34px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: #64748b;
+    font-family: var(--font-sans, "Plus Jakarta Sans", sans-serif);
+    font-weight: 800;
+    cursor: pointer;
+    transition: background 0.14s ease, color 0.14s ease, transform 0.06s ease;
+  }
+  .pub-share-font-button:hover {
+    background: #f1f5f9;
+    color: #0f172a;
+  }
+  .pub-share-font-button[data-active="true"] {
+    background: #0f172a;
+    color: #fff;
+  }
+  .pub-share-font-button:active { transform: scale(0.98); }
   .pub-share-preview-frame {
     width: min(100%, 320px);
     max-height: min(54vh, 560px);
