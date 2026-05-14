@@ -1046,10 +1046,7 @@ fn heartbeat_execution_from_content(
     }
 }
 
-fn scheduler_event_is_commodity_heartbeat(event: &SchedulerEvent) -> bool {
-    if !event.heartbeat {
-        return false;
-    }
+fn scheduler_event_is_commodity_related(event: &SchedulerEvent) -> bool {
     let haystack = format!("{} {}", event.job_name, event.task_prompt).to_ascii_lowercase();
     event.job_name.contains("原油")
         || event.job_name.contains("油价")
@@ -1091,10 +1088,14 @@ fn text_has_commodity_causality_claim(text: &str) -> bool {
         "影响",
         "背景",
         "因素",
+        "解释",
         "推高",
         "推升",
         "拉动",
         "压制",
+        "压力",
+        "缓和",
+        "修复",
         "担忧",
         "风险",
         "风险溢价",
@@ -1115,6 +1116,9 @@ fn text_has_commodity_causality_claim(text: &str) -> bool {
         "需求",
         "库存",
         "航运",
+        "能源",
+        "通胀",
+        "油价",
         "谈判",
         "军事",
         "战争",
@@ -1171,28 +1175,33 @@ fn split_commodity_message_segments(text: &str) -> Vec<String> {
 
 fn text_has_speculative_commodity_price(text: &str) -> bool {
     let compact = compact_lowercase_text(text);
-    [
-        "估算",
-        "约$",
-        "约为$",
-        "约每桶",
-        "约人民币",
-        "推算",
-        "预测",
-        "预测区间",
-        "通常较",
-        "贴水",
-        "未独立校验",
-        "未完成同窗",
-        "精确收盘价未",
-        "无法证明",
-        "未核验",
-        "assume",
-        "estimated",
-        "forecast",
-    ]
-    .iter()
-    .any(|term| compact.contains(term))
+    let approximate_commodity_quote = compact.contains("约")
+        && text_looks_commodity_related(text)
+        && text.chars().any(|ch| ch.is_ascii_digit())
+        && ["$", "美元", "桶"].iter().any(|term| text.contains(term));
+    approximate_commodity_quote
+        || [
+            "估算",
+            "约$",
+            "约为$",
+            "约每桶",
+            "约人民币",
+            "推算",
+            "预测",
+            "预测区间",
+            "通常较",
+            "贴水",
+            "未独立校验",
+            "未完成同窗",
+            "精确收盘价未",
+            "无法证明",
+            "未核验",
+            "assume",
+            "estimated",
+            "forecast",
+        ]
+        .iter()
+        .any(|term| compact.contains(term))
 }
 
 fn chinese_weekday_number(label: &str) -> Option<u32> {
@@ -1351,10 +1360,12 @@ fn rewrite_commodity_causality_message(text: &str) -> String {
 }
 
 fn guard_commodity_causality_for_event(text: &str, event: &SchedulerEvent) -> Option<String> {
-    if !scheduler_event_is_commodity_heartbeat(event)
-        || !(text_has_commodity_causality_claim(text)
-            || text_has_unverified_commodity_market_claim(text))
-    {
+    let has_unsafe_commodity_claim = text_has_commodity_causality_claim(text)
+        || text_has_unverified_commodity_market_claim(text);
+    if !has_unsafe_commodity_claim {
+        return None;
+    }
+    if !scheduler_event_is_commodity_related(event) && !text_looks_commodity_related(text) {
         return None;
     }
 
@@ -1364,6 +1375,22 @@ fn guard_commodity_causality_for_event(text: &str, event: &SchedulerEvent) -> Op
     } else {
         Some(rewritten)
     }
+}
+
+fn text_looks_commodity_related(text: &str) -> bool {
+    let compact = compact_lowercase_text(text);
+    ["原油", "油价", "布伦特", "wti", "brent", "crude", "oil"]
+        .iter()
+        .any(|term| compact.contains(term))
+}
+
+fn scheduler_metadata_with_commodity_guard(original: &str, guarded: &str) -> Value {
+    json!({
+        "commodity_causality_guarded": true,
+        "raw_preview": truncate_for_log(original.trim(), 280),
+        "guarded_preview": truncate_for_log(guarded.trim(), 200),
+        "deliver_preview": truncate_for_log(guarded.trim(), 200),
+    })
 }
 
 fn text_has_direct_trade_instruction(text: &str) -> bool {
@@ -2072,6 +2099,26 @@ pub async fn execute_scheduler_event(
                     session_id: Some(session_id),
                 }
             } else {
+                if let Some(guarded_content) =
+                    guard_commodity_causality_for_event(&sanitized, event)
+                {
+                    tracing::info!(
+                        "[SchedulerDiag] commodity_causality_guarded job_id={} job={} target={}",
+                        event.job_id,
+                        event.job_name,
+                        event.channel_target,
+                    );
+                    return ScheduledTaskExecution {
+                        should_deliver: true,
+                        content: guarded_content.clone(),
+                        error: None,
+                        metadata: scheduler_metadata_with_commodity_guard(
+                            &sanitized,
+                            &guarded_content,
+                        ),
+                        session_id: Some(session_id),
+                    };
+                }
                 ScheduledTaskExecution {
                     should_deliver: true,
                     content: sanitized,
@@ -3777,6 +3824,75 @@ mod tests {
         assert!(!guarded.contains("$105.27"));
         assert!(!guarded.contains("战争紧张"));
         assert!(!guarded.contains("战略储备"));
+    }
+
+    #[test]
+    fn commodity_guard_covers_non_heartbeat_oil_scheduler() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_oil", None::<String>).expect("actor"),
+            job_id: "job-oil-close".to_string(),
+            job_name: "Oil_Price_Monitor_Closing".to_string(),
+            task_prompt: "收盘后汇总 WTI / Brent 价格与科技股影响".to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_oil".to_string(),
+            delivery_key: "delivery-oil-close".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: false,
+            schedule_hour: 4,
+            schedule_minute: 0,
+            schedule_repeat: "daily".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        let guarded = guard_commodity_causality_for_event(
+            "WTI 约 101.02 美元，Brent 约 105.63 美元，WSJ 今日结算口径。油价回落对今晚科技股不是压制项，反而是边际缓和。",
+            &event,
+        )
+        .expect("ordinary oil scheduler should share the commodity guard");
+
+        assert!(guarded.contains("未完成同窗来源核验"));
+        assert!(!guarded.contains("101.02"));
+        assert!(!guarded.contains("105.63"));
+        assert!(!guarded.contains("WSJ"));
+        assert!(!guarded.contains("科技股不是压制项"));
+    }
+
+    #[test]
+    fn commodity_guard_covers_non_heartbeat_market_scheduler_output() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_oil", None::<String>).expect("actor"),
+            job_id: "job-postmarket".to_string(),
+            job_name: "OWALERT_PostMarket".to_string(),
+            task_prompt: "盘后扫描影响科技成长股的宏观与行业变量".to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_oil".to_string(),
+            delivery_key: "delivery-postmarket".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: false,
+            schedule_hour: 4,
+            schedule_minute: 30,
+            schedule_repeat: "daily".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        let guarded = guard_commodity_causality_for_event(
+            "USO 收盘附近 142.07；WTI 跌 1.1% 至 101.02 美元，Brent 跌 2.0% 至 105.63 美元，能源通胀压力边际缓和，是 AI 风险偏好修复的核心解释之一。",
+            &event,
+        )
+        .expect("commodity claims in broader scheduler output should be guarded");
+
+        assert!(guarded.contains("不能视为已确认油价主因"));
+        assert!(!guarded.contains("101.02"));
+        assert!(!guarded.contains("105.63"));
+        assert!(!guarded.contains("风险偏好修复"));
     }
 
     #[test]

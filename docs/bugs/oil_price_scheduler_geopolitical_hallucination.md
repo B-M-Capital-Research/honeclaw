@@ -3,7 +3,24 @@
 - **发现时间**: 2026-04-22 07:00 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
+
+## 修复记录（2026-05-14 20:06 CST）
+
+- 本轮把商品归因 guard 从 heartbeat 专用扩展为普通 scheduler / heartbeat 共享：
+  - `scheduler_event_is_commodity_related(...)` 不再要求 `event.heartbeat=true`，因此 `Oil_Price_Monitor_Closing` 这类普通原油 scheduler 会被同一出站边界拦截。
+  - 普通 scheduler 成功输出在最终 `ScheduledTaskExecution` 前调用 `guard_commodity_causality_for_event(...)`；命中后会发送安全说明，并在 `metadata` 写入 `commodity_causality_guarded=true`、`raw_preview`、`guarded_preview`、`deliver_preview`，避免再次出现 `detail_json.scheduler=null` 且无法审计的坏播报。
+  - 对任务名不含原油但正文含 WTI / Brent / 油价 / 能源通胀归因的普通 scheduler，也会基于输出内容触发 guard，覆盖 `OWALERT_PostMarket` 复发形态。
+  - 未核验近似报价识别补齐 `WTI 约 101.02 美元` 这类不带 `$` 的写法；能源通胀压力 / 风险偏好修复等油价因果表述纳入高风险归因触发词。
+- 新增回归：
+  - `commodity_guard_covers_non_heartbeat_oil_scheduler`
+  - `commodity_guard_covers_non_heartbeat_market_scheduler_output`
+- 验证：
+  - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs`
+  - `cargo test -p hone-channels commodity_ --lib -- --nocapture`
+  - `cargo test -p hone-channels heartbeat_ --lib -- --nocapture`
+- 关联 GitHub Issue：无。
+- 未验证项：本轮不重启 live 服务，也不使用当前机器线上运行态作为修复判定；状态先记 `Fixed`，待正常部署 / 重启后再通过真实普通 scheduler 窗口复核是否可关闭。
 
 ## 最新进展（2026-05-14 07:06 CST）
 
