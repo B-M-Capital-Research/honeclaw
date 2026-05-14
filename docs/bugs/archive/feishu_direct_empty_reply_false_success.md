@@ -3,9 +3,17 @@
 - **发现时间**: 2026-04-15 18:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29)
 - **证据来源**:
+  - 2026-05-14 17:17 最新真实直聊样本：
+    - `session_id=Actor_feishu__direct__ou_5ff0946a82698f7d16d9a5684696c84185`
+    - `2026-05-14T17:17:38.611922+08:00` 用户要求创建每日 20:00 北京时间的大盘监控，内容包括纳指、标普 500、Fear & Greed、VIX 和大盘分析结论。
+    - `data/runtime/logs/web.log.2026-05-14` 显示同轮先执行 `Tool: hone/skill_tool`，随后执行 `Tool: hone/cron_job`，两次工具均有 `status=done`，说明链路已经进入任务创建工具路径。
+    - `2026-05-14 17:18:12.945 CST` 日志记录 `transitional planning sentence detected, treating as empty ... chars=198`，随后 `step=agent.run.fallback ... detail=planning_sentence_suppressed`。
+    - `2026-05-14T17:18:12.945477+08:00` 最终 assistant 落库并发送的仍是通用 fallback：`这次没有成功产出完整回复。我已经自动重试过了，请再发一次，或换个问法。`
+    - 同轮 `MsgFlow/feishu done ... success=true ... tools=2(Tool: hone/cron_job,Tool: hone/skill_tool) reply.chars=35`，说明这不是显式失败态，而是有效工具链后的可见答复被判空并以成功路径收口。
+    - 这不是独立新缺陷：根因仍是 Feishu 直聊 Answer 阶段把空/无效可见输出伪装成成功；只是本轮影响对象从澄清/画像确认扩展到用户可见的定时任务创建确认。
   - 2026-05-02 16:59 最新真实直聊样本：
     - `session_id=Actor_feishu__direct__ou_5f0e57a9914d61ae96d437cdeb65e43593`
     - `2026-05-02T16:59:25.533704+08:00` 用户提问：`toto估值是否合理`
@@ -112,6 +120,8 @@
 
 ## 当前实现效果
 
+- `2026-05-14 17:17` 的最新样本说明，本缺陷在 README 已标记 `Fixed` 后再次活跃：用户明确要求创建定时任务，`cron_job` 工具已经执行，但最终可见回复被 `planning_sentence_suppressed` 替换成通用失败文案。
+- 这会让用户无法确认每日 20:00 大盘监控是否创建成功，可能重复创建或放弃任务；因此状态从 `Fixed` 调回 `New`。
 - `2026-05-02 16:59` 的最新样本说明，本缺陷在 README 已标记 `Fixed` 后仍然活跃，只是坏态继续演化：Answer 阶段不再一定是 `reply_chars=0`，而是先吐出一段计划/澄清句，再被 `response_finalizer` 认定为 `planning_sentence_suppressed` 并统一替换成 fallback。
 - 这意味着链路已经拿到了可消费的用户态文本，但当前“过渡句净化”规则仍会把它整体当作空答复处理，结果用户既没拿到实际澄清问题，也没拿到正式分析。
 - `2026-04-26 08:35` 的最新样本说明，即使用户只是发起一条普通的港股对比请求，链路仍会在两次 answer 都 `reply_chars=0` 后直接退化成通用 fallback；这不是“复杂画像/附件排查”的特例。
@@ -126,6 +136,7 @@
 
 ## 用户影响
 
+- `2026-05-14 17:17` 的定时任务创建样本进一步说明，fallback 不只是提示用户“再试一次”：它会遮蔽可能已经发生的 `cron_job` 副作用，使用户无法知道监控任务是否存在，进而可能重复建任务或错过大盘提醒。
 - 这是功能性缺陷，不是单纯回答质量波动。用户明确要求的投研报告完全没有返回，任务实际失败。
 - `2026-05-02 16:59` 这条样本进一步说明，哪怕用户问题本身只是一个应该先澄清 ticker 的短问句，系统也会把本来应直接发给用户的澄清句吞掉并改发通用失败提示，用户无法继续当前任务。
 - 问题发生在 Feishu 直聊主链路，而不是边缘后台任务，直接影响用户能否完成一次正常问答，因此定级为 `P1`。
@@ -155,6 +166,7 @@
 
 ## 下一步建议
 
+- 复核 `planning_sentence_suppressed` 在工具副作用已发生后的收口策略：如果 `cron_job` / 文件写入 / 画像创建等工具已成功执行，最终答复至少应说明任务状态或失败原因，不能只返回通用 fallback。
 - 先复核 `response_finalizer` 对 `transitional planning sentence` 的判定边界，确认哪些“用户应该看到的澄清/确认句”被误杀；至少不能把要求确认 ticker 的可执行澄清句与内部计划句混为一类。
 - 重新比对 `reply_chars=0` 但 `success=true` 的最新日志路径，确认当前 Feishu 直聊链路为何没有落到 `EMPTY_SUCCESS_FALLBACK_MESSAGE`。
 - 在 bug 修复前，继续把 `reply.chars=0`、`empty reply`、`segments.sent=1/1` 组合视为高优先级回归信号；若 scheduler 或其它渠道也出现同类模式，再分别更新对应文档状态。

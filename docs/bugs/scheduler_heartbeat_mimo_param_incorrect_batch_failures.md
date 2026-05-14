@@ -9,6 +9,11 @@
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-14 19:04 CST` 复核：该缺陷继续保持活跃 `New`。15:30-19:00 CST 又新增 `80` 条同类 heartbeat 失败，覆盖 `11` 个 job；终态均为 `execution_failed + skipped_error + delivered=0`。
+  - 失败 job 覆盖 `Cerebras IPO与业务进展心跳监控`、`DRAM 心跳监控`、`Monitor_Watchlist_11`、`RKLB异动监控`、`TEM大事件心跳监控`、`TSLA 正负触发条件心跳监控`、`伦敦金跌破4500提醒`、`小米30港元破位预警`、`持仓重大事件心跳检测`、`TEM破位预警` 与 `全天原油价格3小时播报`。
+  - 代表性窗口：15:30、16:00、16:30、17:00、17:30、18:00、18:30、19:00 持续出现同类失败；9 个 job 各失败 8 次，`TEM破位预警` 失败 7 次，`全天原油价格3小时播报` 失败 1 次。
+  - `error_message` 继续为 `LLM 错误: : Param Incorrect (param: The reasoning_content in the thinking mode must be passed back to the API.) (code: 400)`。
+  - 同窗未看到非 heartbeat 原油坏播报或观察池击球区送达样本；本轮新增证据继续集中在 heartbeat `mimo-v2.5-pro` function-calling 路径。
   - `2026-05-14 15:04 CST` 复核：该缺陷继续保持活跃 `New`。11:00-15:00 CST 又新增 `90` 条同类 heartbeat 失败，覆盖 `11` 个 job；终态均为 `execution_failed + skipped_error + delivered=0`。
   - 失败 job 覆盖 `Cerebras IPO与业务进展心跳监控`、`DRAM 心跳监控`、`Monitor_Watchlist_11`、`RKLB异动监控`、`TEM大事件心跳监控`、`TSLA 正负触发条件心跳监控`、`小米30港元破位预警`、`持仓重大事件心跳检测`、`TEM破位预警`、`伦敦金跌破4500提醒` 与 `全天原油价格3小时播报`。
   - 代表性窗口：11:00、11:30、12:00、12:30、13:00、13:30、14:00、14:30、15:00 持续出现同类失败；8 个 job 各失败 9 次，`TEM破位预警`、`伦敦金跌破4500提醒` 各失败 8 次，`全天原油价格3小时播报` 失败 2 次。
@@ -72,6 +77,7 @@
 - 2026-05-14 07:06 CST 的最新复核显示，03:00-07:00 CST 又新增 `90` 条 heartbeat 因同一 `mimo-v2.5-pro` 上游 `HTTP 400 Param Incorrect` 失败，覆盖 11 个 job；普通 scheduler 与 Feishu direct 同窗仍可送达。
 - 2026-05-14 11:05 CST 的最新复核显示，07:00-11:00 CST 又新增 `91` 条 heartbeat 因同一 `mimo-v2.5-pro` 上游 `HTTP 400 Param Incorrect` 失败，覆盖 11 个 job；普通 scheduler 与 Feishu direct 同窗仍可送达。
 - 2026-05-14 15:04 CST 的最新复核显示，11:00-15:00 CST 又新增 `90` 条 heartbeat 因同一 `mimo-v2.5-pro` 上游 `HTTP 400 Param Incorrect` 失败，覆盖 11 个 job；普通 scheduler 同窗仍可送达。
+- 2026-05-14 19:04 CST 的最新复核显示，15:30-19:00 CST 又新增 `80` 条 heartbeat 因同一 `mimo-v2.5-pro` 上游 `HTTP 400 Param Incorrect` 失败，覆盖 11 个 job。
 - 失败已被正确记为 `provider_http_error`，没有被伪装成 noop；但业务效果仍是本轮监控漏发。
 - 同窗普通 scheduler 仍可送达，故障集中在 heartbeat provider 参数 / 模型兼容路径。
 
