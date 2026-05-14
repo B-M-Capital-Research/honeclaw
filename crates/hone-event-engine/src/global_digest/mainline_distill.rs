@@ -116,12 +116,12 @@ impl MainlineDistiller for LlmMainlineDistiller {
             tool_call_id: None,
             name: None,
         }];
-        let resp = self
+        let llm_response = self
             .provider
             .chat(&messages, Some(&self.model))
             .await
             .map_err(|e| anyhow::anyhow!("LLM call failed: {e}"))?;
-        let trimmed = resp.content.trim().to_string();
+        let trimmed = llm_response.content.trim().to_string();
         if trimmed.is_empty() {
             anyhow::bail!("empty mainline output for {ticker}");
         }
@@ -152,12 +152,12 @@ impl MainlineDistiller for LlmMainlineDistiller {
             tool_call_id: None,
             name: None,
         }];
-        let resp = self
+        let llm_response = self
             .provider
             .chat(&messages, Some(&self.model))
             .await
             .map_err(|e| anyhow::anyhow!("LLM call failed: {e}"))?;
-        let trimmed = resp.content.trim().to_string();
+        let trimmed = llm_response.content.trim().to_string();
         if trimmed.is_empty() {
             anyhow::bail!("empty global style output");
         }
@@ -235,13 +235,13 @@ pub fn scan_profiles(
 pub fn extract_tickers(md: &str) -> Vec<String> {
     // 1. YAML frontmatter `ticker: X` 或 `ticker: X / Y`
     for line in md.lines().take(20) {
-        let l = line.trim();
-        if let Some(rest) = l
+        let trimmed_line = line.trim();
+        if let Some(rest) = trimmed_line
             .strip_prefix("ticker:")
-            .or_else(|| l.strip_prefix("Ticker:"))
+            .or_else(|| trimmed_line.strip_prefix("Ticker:"))
         {
-            let raw = rest.trim().trim_matches('"').trim_matches('\'');
-            return parse_ticker_list(raw);
+            let raw_tickers = rest.trim().trim_matches('"').trim_matches('\'');
+            return parse_ticker_list(raw_tickers);
         }
     }
     // 2. 标题里的 (TICKER) / (TICKER) — 第一行 `# Foo (TICKER)` 或 `# Foo（TICKER）`
@@ -284,13 +284,14 @@ fn extract_paren_ticker(line: &str) -> Option<String> {
     None
 }
 
-fn is_plausible_ticker(s: &str) -> bool {
-    let s = s.trim();
-    !s.is_empty()
-        && s.len() <= 6
-        && s.chars()
+fn is_plausible_ticker(raw_ticker: &str) -> bool {
+    let trimmed_ticker = raw_ticker.trim();
+    !trimmed_ticker.is_empty()
+        && trimmed_ticker.len() <= 6
+        && trimmed_ticker
+            .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
-        && s.chars().any(|c| c.is_ascii_alphabetic())
+        && trimmed_ticker.chars().any(|c| c.is_ascii_alphabetic())
 }
 
 /// 蒸馏一个 actor 的所有持仓主线 + 整体风格。`holdings` 决定要蒸哪些 ticker;
@@ -385,8 +386,8 @@ pub async fn distill_and_persist_one(
     holdings: &[String],
 ) -> anyhow::Result<crate::prefs::NotificationPrefs> {
     let sandbox_root = actor_sandbox_dir(sandbox_base, actor);
-    let distilled = distill_for_actor(distiller, &sandbox_root, holdings).await;
-    merge_into_prefs(prefs_storage, actor, distilled)
+    let distilled_mainlines = distill_for_actor(distiller, &sandbox_root, holdings).await;
+    merge_into_prefs(prefs_storage, actor, distilled_mainlines)
 }
 
 /// 把蒸馏结果合并写回 actor 的 NotificationPrefs 文件。

@@ -63,8 +63,8 @@ pub enum PickCategory {
 }
 
 impl PickCategory {
-    fn from_str(s: &str) -> Self {
-        match s {
+    fn from_str(raw_category: &str) -> Self {
+        match raw_category {
             "mainline_counter" | "thesis_counter" => PickCategory::MainlineCounter,
             "macro_floor" => PickCategory::MacroFloor,
             _ => PickCategory::MainlineAligned,
@@ -83,8 +83,8 @@ pub enum MainlineRelation {
 }
 
 impl MainlineRelation {
-    fn from_str(s: &str) -> Self {
-        match s {
+    fn from_str(raw_relation: &str) -> Self {
+        match raw_relation {
             "印证" | "aligned" => MainlineRelation::Aligned,
             // "反证" 是旧术语,统一为"证伪"后保留兼容 LLM prompt-cache 短期回吐
             "证伪" | "反证" | "counter" => MainlineRelation::Counter,
@@ -214,12 +214,12 @@ impl Curator {
             return Ok(Vec::new());
         }
         let messages = build_pass1_messages(candidates, audience);
-        let resp = self
+        let llm_response = self
             .pass1_provider
             .chat(&messages, Some(&self.pass1_model))
             .await
             .map_err(|e| anyhow::anyhow!("pass1 LLM call failed: {e}"))?;
-        let parsed = parse_pass1_response(&resp.content)?;
+        let parsed = parse_pass1_response(&llm_response.content)?;
         Ok(rank_and_dedupe(candidates, parsed.items, top_n))
     }
 
@@ -250,12 +250,12 @@ impl Curator {
             floor_macro,
             final_n,
         );
-        let resp = self
+        let llm_response = self
             .pass2_provider
             .chat(&messages, Some(&self.pass2_model))
             .await
             .map_err(|e| anyhow::anyhow!("pass2 personalize LLM call failed: {e}"))?;
-        let parsed = parse_pass2_personalize_response(&resp.content)?;
+        let parsed = parse_pass2_personalize_response(&llm_response.content)?;
         let macro_count = parsed
             .picks
             .iter()
@@ -288,12 +288,12 @@ impl Curator {
             return Ok(Vec::new());
         }
         let messages = build_pass2_baseline_messages(&picks_with_bodies, audience, final_n);
-        let resp = self
+        let llm_response = self
             .pass2_provider
             .chat(&messages, Some(&self.pass2_model))
             .await
             .map_err(|e| anyhow::anyhow!("pass2 baseline LLM call failed: {e}"))?;
-        let parsed = parse_pass2_baseline_response(&resp.content)?;
+        let parsed = parse_pass2_baseline_response(&llm_response.content)?;
         Ok(map_pass2_baseline(picks_with_bodies, parsed.picks))
     }
 }
@@ -320,16 +320,16 @@ fn build_pass2_baseline_messages(
     );
 
     let briefs_block = render_briefs_block(audience);
-    let cand_block: String = picks_with_bodies
+    let candidate_block: String = picks_with_bodies
         .iter()
         .enumerate()
-        .map(|(pick_index, (ranked_candidate, body))| {
+        .map(|(pick_index, (ranked_candidate, article_body))| {
             let symbols = if ranked_candidate.candidate.event.symbols.is_empty() {
                 "[]".to_string()
             } else {
                 format!("[{}]", ranked_candidate.candidate.event.symbols.join(","))
             };
-            let body_preview: String = body.text.chars().take(5000).collect();
+            let body_preview: String = article_body.text.chars().take(5000).collect();
             format!(
                 "=== [{pick_index}] {} ===\nsource: {} | symbols: {symbols}\nPass1 score: {} | cluster: {}\nURL: {}\n原文({:?}, {}c):\n{body_preview}",
                 ranked_candidate.candidate.event.title,
@@ -337,14 +337,14 @@ fn build_pass2_baseline_messages(
                 ranked_candidate.pass1_score,
                 ranked_candidate.pass1_cluster,
                 ranked_candidate.candidate.event.url.as_deref().unwrap_or(""),
-                body.source,
-                body.text.chars().count(),
+                article_body.source,
+                article_body.text.chars().count(),
             )
         })
         .collect::<Vec<_>>()
         .join("\n\n");
 
-    let user = format!("## 受众持仓概览\n{briefs_block}\n\n## 候选全文\n{cand_block}");
+    let user = format!("## 受众持仓概览\n{briefs_block}\n\n## 候选全文\n{candidate_block}");
 
     vec![
         Message {
@@ -385,10 +385,10 @@ fn map_pass2_baseline(
         if baseline_pick.idx >= picks_with_bodies.len() {
             continue;
         }
-        let (ranked_candidate, body) = picks_with_bodies[baseline_pick.idx].clone();
+        let (ranked_candidate, article_body) = picks_with_bodies[baseline_pick.idx].clone();
         curated_items.push(BaselineCuratedItem {
             candidate: ranked_candidate.candidate,
-            article: body,
+            article: article_body,
             rank: baseline_pick.rank,
             comment: baseline_pick.comment,
         });
@@ -428,16 +428,16 @@ fn build_pass2_personalize_messages(
     );
 
     let briefs_block = render_briefs_block(audience);
-    let cand_block: String = picks_with_bodies
+    let candidate_block: String = picks_with_bodies
         .iter()
         .enumerate()
-        .map(|(pick_index, (ranked_candidate, body))| {
+        .map(|(pick_index, (ranked_candidate, article_body))| {
             let symbols = if ranked_candidate.candidate.event.symbols.is_empty() {
                 "[]".to_string()
             } else {
                 format!("[{}]", ranked_candidate.candidate.event.symbols.join(","))
             };
-            let body_preview: String = body.text.chars().take(5000).collect();
+            let body_preview: String = article_body.text.chars().take(5000).collect();
             format!(
                 "=== [{pick_index}] {} ===\nsource: {} | symbols: {symbols}\nPass1 score: {} | cluster: {}\nURL: {}\n原文({:?}, {}c):\n{body_preview}",
                 ranked_candidate.candidate.event.title,
@@ -445,8 +445,8 @@ fn build_pass2_personalize_messages(
                 ranked_candidate.pass1_score,
                 ranked_candidate.pass1_cluster,
                 ranked_candidate.candidate.event.url.as_deref().unwrap_or(""),
-                body.source,
-                body.text.chars().count(),
+                article_body.source,
+                article_body.text.chars().count(),
             )
         })
         .collect::<Vec<_>>()
@@ -455,7 +455,7 @@ fn build_pass2_personalize_messages(
     let mainline_block = render_mainline_block(mainline);
 
     let user = format!(
-        "## 受众持仓概览\n{briefs_block}\n\n## 用户投资主线\n{mainline_block}\n\n## 候选全文\n{cand_block}"
+        "## 受众持仓概览\n{briefs_block}\n\n## 用户投资主线\n{mainline_block}\n\n## 候选全文\n{candidate_block}"
     );
 
     vec![
@@ -520,10 +520,10 @@ fn map_pass2_personalize(
         if personalized_pick.idx >= picks_with_bodies.len() {
             continue;
         }
-        let (ranked_candidate, body) = picks_with_bodies[personalized_pick.idx].clone();
+        let (ranked_candidate, article_body) = picks_with_bodies[personalized_pick.idx].clone();
         personalized_items.push(PersonalizedItem {
             candidate: ranked_candidate.candidate,
-            article: body,
+            article: article_body,
             rank: personalized_pick.rank,
             comment: personalized_pick.comment,
             category: PickCategory::from_str(&personalized_pick.category),
@@ -589,7 +589,7 @@ cluster id 用英文短词,同事件不同媒体一定要合并(merger/recall/la
 
     let briefs_block = render_briefs_block(audience);
 
-    let cand_block: String = candidates
+    let candidate_block: String = candidates
         .iter()
         .enumerate()
         .map(|(candidate_index, candidate)| {
@@ -609,7 +609,7 @@ cluster id 用英文短词,同事件不同媒体一定要合并(merger/recall/la
 
     let candidate_count = candidates.len();
     let user = format!(
-        "## 受众持仓概览\n{briefs_block}\n\n## 候选({candidate_count} 篇)\n{cand_block}\n\n请输出 JSON,items 数组要覆盖全部 {candidate_count} 条候选。"
+        "## 受众持仓概览\n{briefs_block}\n\n## 候选({candidate_count} 篇)\n{candidate_block}\n\n请输出 JSON,items 数组要覆盖全部 {candidate_count} 条候选。"
     );
 
     vec![
@@ -643,10 +643,10 @@ pub(super) fn parse_pass1_response(content: &str) -> anyhow::Result<Pass1Respons
     })
 }
 
-pub(super) fn strip_json_fence(s: &str) -> String {
-    let s = s.trim();
+pub(super) fn strip_json_fence(raw_content: &str) -> String {
+    let trimmed_content = raw_content.trim();
     // 形如 ```json ... ``` 或 ``` ... ```
-    if let Some(rest) = s.strip_prefix("```") {
+    if let Some(rest) = trimmed_content.strip_prefix("```") {
         let rest = rest.trim_start_matches("json").trim_start_matches('\n');
         if let Some(end) = rest.rfind("```") {
             return rest[..end].trim().to_string();
@@ -654,12 +654,12 @@ pub(super) fn strip_json_fence(s: &str) -> String {
         return rest.trim().to_string();
     }
     // 找第一个 `{` 之后到最后一个 `}`,截出 JSON 主体(LLM 可能在前后加 prose)
-    if let (Some(start), Some(end)) = (s.find('{'), s.rfind('}'))
+    if let (Some(start), Some(end)) = (trimmed_content.find('{'), trimmed_content.rfind('}'))
         && end > start
     {
-        return s[start..=end].to_string();
+        return trimmed_content[start..=end].to_string();
     }
-    s.to_string()
+    trimmed_content.to_string()
 }
 
 /// cluster dedup + top_n 截断。
@@ -806,20 +806,21 @@ mod tests {
 
     #[test]
     fn strip_json_fence_strips_markdown_code_block() {
-        let s = "```json\n{\"a\":1}\n```";
-        assert_eq!(strip_json_fence(s), r#"{"a":1}"#);
+        let fenced_json = "```json\n{\"a\":1}\n```";
+        assert_eq!(strip_json_fence(fenced_json), r#"{"a":1}"#);
     }
 
     #[test]
     fn strip_json_fence_strips_unlabeled_fence() {
-        let s = "```\n{\"a\":2}\n```";
-        assert_eq!(strip_json_fence(s), r#"{"a":2}"#);
+        let fenced_json = "```\n{\"a\":2}\n```";
+        assert_eq!(strip_json_fence(fenced_json), r#"{"a":2}"#);
     }
 
     #[test]
     fn strip_json_fence_extracts_object_from_prose() {
-        let s = "Sure! Here is the JSON:\n\n{\"a\":3}\n\nLet me know if you need more.";
-        assert_eq!(strip_json_fence(s), r#"{"a":3}"#);
+        let prose_wrapped_json =
+            "Sure! Here is the JSON:\n\n{\"a\":3}\n\nLet me know if you need more.";
+        assert_eq!(strip_json_fence(prose_wrapped_json), r#"{"a":3}"#);
     }
 
     #[test]
@@ -941,8 +942,8 @@ mod tests {
 
     #[tokio::test]
     async fn pass1_select_calls_llm_and_returns_ranked() {
-        let json = r#"{"items":[{"idx":0,"score":5,"cluster":"x","takeaway":"hot"}]}"#;
-        let (curator, response_provider) = make_curator_with_response(json);
+        let response_json = r#"{"items":[{"idx":0,"score":5,"cluster":"x","takeaway":"hot"}]}"#;
+        let (curator, response_provider) = make_curator_with_response(response_json);
         let candidates = vec![fixture_candidate("a", "Big news")];
         let ranked_candidates = curator
             .pass1_select(&candidates, &audience(), 10)
@@ -971,11 +972,11 @@ mod tests {
 
     #[tokio::test]
     async fn pass2_baseline_calls_llm_and_maps_picks() {
-        let json = r#"{"picks":[
+        let response_json = r#"{"picks":[
             {"idx":1,"rank":1,"title":"Story B","url":"https://x/b","comment":"nice"},
             {"idx":0,"rank":2,"title":"Story A","url":"https://x/a","comment":"ok"}
         ]}"#;
-        let (curator, _response_provider) = make_curator_with_response(json);
+        let (curator, _response_provider) = make_curator_with_response(response_json);
         let candidates = vec![
             fixture_candidate("a", "Story A"),
             fixture_candidate("b", "Story B"),
@@ -1009,11 +1010,11 @@ mod tests {
 
     #[tokio::test]
     async fn pass2_baseline_skips_invalid_idx() {
-        let json = r#"{"picks":[
+        let response_json = r#"{"picks":[
             {"idx":99,"rank":1,"title":"fake","url":"x","comment":"c"},
             {"idx":0,"rank":2,"title":"real","url":"x","comment":"r"}
         ]}"#;
-        let (curator, _) = make_curator_with_response(json);
+        let (curator, _) = make_curator_with_response(response_json);
         let candidates = vec![fixture_candidate("a", "T")];
         let picks_with_bodies: Vec<_> = candidates
             .into_iter()
@@ -1083,11 +1084,11 @@ mod tests {
     #[tokio::test]
     async fn pass2_personalize_categorizes_picks() {
         // LLM 输出:GOOGL 印证、半导体见顶被剔除、Hormuz 作为 macro_floor
-        let json = r#"{"picks":[
+        let response_json = r#"{"picks":[
             {"idx":0,"rank":1,"title":"GOOGL Anthropic","url":"u","comment":"印证 Gemini 飞轮","category":"mainline_aligned","mainline_relation":"印证"},
             {"idx":2,"rank":2,"title":"Hormuz","url":"u","comment":"波及电力叙事","category":"macro_floor","mainline_relation":"N/A"}
         ],"floor_satisfied":true}"#;
-        let (curator, _) = make_curator_with_response(json);
+        let (curator, _) = make_curator_with_response(response_json);
         let mut by_ticker = HashMap::new();
         by_ticker.insert("GOOGL".into(), "看 Gemini 生态飞轮".into());
         let mainline = UserMainline {
@@ -1118,10 +1119,10 @@ mod tests {
 
     #[tokio::test]
     async fn pass2_personalize_empty_mainline_works_like_baseline() {
-        let json = r#"{"picks":[
+        let response_json = r#"{"picks":[
             {"idx":0,"rank":1,"title":"T","url":"u","comment":"c","category":"mainline_aligned","mainline_relation":"中立"}
         ]}"#;
-        let (curator, _) = make_curator_with_response(json);
+        let (curator, _) = make_curator_with_response(response_json);
         let mainline = UserMainline::default(); // 全 None
         let personalized_picks = curator
             .pass2_personalize(sample_picks_with_bodies(), &audience(), mainline, 0, 8)
@@ -1137,10 +1138,10 @@ mod tests {
     #[tokio::test]
     async fn pass2_personalize_handles_unknown_category_string() {
         // LLM 返回的 category 字符串未在 enum 里 → fallback 到 MainlineAligned
-        let json = r#"{"picks":[
+        let response_json = r#"{"picks":[
             {"idx":0,"rank":1,"title":"T","url":"u","comment":"c","category":"weird_value","mainline_relation":"???"}
         ]}"#;
-        let (curator, _) = make_curator_with_response(json);
+        let (curator, _) = make_curator_with_response(response_json);
         let personalized_picks = curator
             .pass2_personalize(
                 sample_picks_with_bodies(),
@@ -1163,11 +1164,11 @@ mod tests {
 
     #[tokio::test]
     async fn pass2_personalize_skips_invalid_idx() {
-        let json = r#"{"picks":[
+        let response_json = r#"{"picks":[
             {"idx":99,"rank":1,"title":"x","url":"u","comment":"c","category":"mainline_aligned","mainline_relation":"中立"},
             {"idx":1,"rank":2,"title":"y","url":"u","comment":"c","category":"mainline_aligned","mainline_relation":"中立"}
         ]}"#;
-        let (curator, _) = make_curator_with_response(json);
+        let (curator, _) = make_curator_with_response(response_json);
         let personalized_picks = curator
             .pass2_personalize(
                 sample_picks_with_bodies(),
@@ -1185,10 +1186,10 @@ mod tests {
     #[tokio::test]
     async fn pass2_personalize_accepts_legacy_thesis_field_names() {
         // LLM prompt-cache 短期内可能仍按旧 prompt 输出 thesis_* —— 必须能反序列化通过
-        let json = r#"{"picks":[
+        let response_json = r#"{"picks":[
             {"idx":0,"rank":1,"title":"T","url":"u","comment":"c","category":"thesis_counter","thesis_relation":"反证"}
         ]}"#;
-        let (curator, _) = make_curator_with_response(json);
+        let (curator, _) = make_curator_with_response(response_json);
         let personalized_picks = curator
             .pass2_personalize(
                 sample_picks_with_bodies(),

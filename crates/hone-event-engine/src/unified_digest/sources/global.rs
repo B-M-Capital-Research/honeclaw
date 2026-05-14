@@ -30,22 +30,22 @@ impl<'a> GlobalNewsSource<'a> {
         lookback_hours: u32,
         dedup_lookback_hours: u32,
     ) -> anyhow::Result<Vec<UnifiedCandidate>> {
-        let raw = CandidateCollector::new(self.store).collect(
+        let collected_candidates = CandidateCollector::new(self.store).collect(
             until,
             lookback_hours,
             dedup_lookback_hours,
         )?;
-        Ok(raw
+        Ok(collected_candidates
             .into_iter()
-            .map(|c| {
-                let seen_at = c.event.occurred_at;
+            .map(|candidate| {
+                let seen_at = candidate.event.occurred_at;
                 UnifiedCandidate {
-                    event: c.event,
+                    event: candidate.event,
                     origin: ItemOrigin::Global,
                     seen_at,
-                    fmp_text: Some(c.fmp_text),
-                    site: Some(c.site),
-                    source_class: Some(c.source_class),
+                    fmp_text: Some(candidate.fmp_text),
+                    site: Some(candidate.site),
+                    source_class: Some(candidate.source_class),
                 }
             })
             .collect())
@@ -61,7 +61,7 @@ mod tests {
     use serde_json::json;
     use tempfile::tempdir;
 
-    fn news(id: &str, sc: &str, occurred: DateTime<Utc>) -> MarketEvent {
+    fn news(id: &str, source_class: &str, occurred: DateTime<Utc>) -> MarketEvent {
         MarketEvent {
             id: id.into(),
             kind: EventKind::NewsCritical,
@@ -73,7 +73,7 @@ mod tests {
             url: Some(format!("https://reuters.com/{id}")),
             source: "fmp.stock_news:reuters.com".into(),
             payload: json!({
-                "source_class": sc,
+                "source_class": source_class,
                 "legal_ad_template": false,
                 "fmp": { "site": "reuters.com", "text": format!("body {id}") },
             }),

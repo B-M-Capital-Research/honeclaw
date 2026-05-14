@@ -231,7 +231,7 @@ mod tests {
     fn drops_pr_wire_opinion_blog_uncertain() {
         let store = open_store();
         let now = Utc.with_ymd_and_hms(2026, 4, 25, 12, 0, 0).unwrap();
-        for (id, site, sc) in [
+        for (id, site, source_class) in [
             ("n_pr", "globenewswire.com", "pr_wire"),
             ("n_op", "seekingalpha.com", "opinion_blog"),
             ("n_un", "randomblog.example", "uncertain"),
@@ -241,7 +241,7 @@ mod tests {
                     id,
                     "title",
                     site,
-                    sc,
+                    source_class,
                     false,
                     Severity::High,
                     now - chrono::Duration::hours(1),
@@ -327,7 +327,7 @@ mod tests {
         // 防止 seekingalpha listicle、律所 PR 灌进来。
         let store = open_store();
         let now = Utc.with_ymd_and_hms(2026, 4, 25, 12, 0, 0).unwrap();
-        for (id, site, sc) in [
+        for (id, site, source_class) in [
             ("n_low_opinion", "seekingalpha.com", "opinion_blog"),
             ("n_low_pr", "globenewswire.com", "pr_wire"),
             ("n_low_uncertain", "marketbeat.com", "uncertain"),
@@ -337,7 +337,7 @@ mod tests {
                     id,
                     "low-quality content",
                     site,
-                    sc,
+                    source_class,
                     false,
                     Severity::Low,
                     now - chrono::Duration::hours(1),

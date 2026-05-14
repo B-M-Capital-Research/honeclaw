@@ -187,7 +187,7 @@ pub async fn distill_cron_loop(
         ticker.tick().await;
         let now = Utc::now();
         let started_at = now;
-        let (t, s) = distill_tick(
+        let (triggered_count, skipped_count) = distill_tick(
             distiller.as_ref(),
             prefs.as_ref(),
             portfolio_storage.as_ref(),
@@ -196,24 +196,29 @@ pub async fn distill_cron_loop(
             interval_hours,
         )
         .await;
-        if t > 0 {
+        if triggered_count > 0 {
             info!(
                 task = "mainline_cron",
-                triggered = t,
-                skipped = s,
+                triggered = triggered_count,
+                skipped = skipped_count,
                 "mainline distill cron tick complete"
             );
         }
         if let Some(dir) = task_runs_dir.as_deref() {
             // distill_tick 只返回成败计数,本身不抛 Err(失败 actor 已在内部 warn);
             // 整条 tick 总是 Ok,outcome 用 triggered 数区分:>0 → ok, =0 → skipped。
-            if t > 0 {
-                hone_core::task_observer::record_ok(dir, "mainline_cron", started_at, t as u64);
+            if triggered_count > 0 {
+                hone_core::task_observer::record_ok(
+                    dir,
+                    "mainline_cron",
+                    started_at,
+                    triggered_count as u64,
+                );
             } else {
                 hone_core::task_observer::record_skipped(dir, "mainline_cron", started_at);
             }
         }
-        let _ = s; // s 已经在 info! 用了,这里再次 silenced 让无 task_runs_dir 路径通过 warning
+        let _ = skipped_count; // skipped_count 已经在 info! 用了,这里再次 silenced 让无 task_runs_dir 路径通过 warning
     }
 }
 

@@ -102,7 +102,7 @@ impl LlmEventDeduper {
     }
 
     fn build_prompt(candidates: &[GlobalDigestCandidate]) -> String {
-        let cand_block: String = candidates
+        let candidate_block: String = candidates
             .iter()
             .enumerate()
             .map(|(candidate_index, candidate)| {
@@ -134,7 +134,7 @@ impl LlmEventDeduper {
              {{\"clusters\":[{{\"id\":\"some-event-id\",\"items\":[0,3,7]}},...]}}\n\
              \n\
              候选:\n\
-             {cand_block}\n"
+             {candidate_block}\n"
         )
     }
 }
@@ -306,21 +306,21 @@ pub(crate) fn parse_dedupe_json(content: &str) -> anyhow::Result<DedupResponse> 
     serde_json::from_str(&cleaned).map_err(|e| anyhow::anyhow!("parse: {e}"))
 }
 
-fn strip_fence(s: &str) -> String {
-    let s = s.trim();
-    if let Some(rest) = s.strip_prefix("```") {
+fn strip_fence(raw_content: &str) -> String {
+    let trimmed_content = raw_content.trim();
+    if let Some(rest) = trimmed_content.strip_prefix("```") {
         let rest = rest.trim_start_matches("json").trim_start_matches('\n');
         if let Some(end) = rest.rfind("```") {
             return rest[..end].trim().to_string();
         }
     }
     // 找 JSON 主体的起止 brace
-    if let (Some(start), Some(end)) = (s.find('{'), s.rfind('}'))
+    if let (Some(start), Some(end)) = (trimmed_content.find('{'), trimmed_content.rfind('}'))
         && end > start
     {
-        return s[start..=end].to_string();
+        return trimmed_content[start..=end].to_string();
     }
-    s.to_string()
+    trimmed_content.to_string()
 }
 
 fn truncate(s: &str, max_chars: usize) -> String {
@@ -702,8 +702,9 @@ mod tests {
 
     #[test]
     fn parse_dedupe_json_handles_prose_wrapping() {
-        let raw = "Sure, here is the JSON:\n{\"clusters\":[{\"id\":\"x\",\"items\":[0]}]}\nThanks!";
-        let parsed = parse_dedupe_json(raw).unwrap();
+        let prose_wrapped_json =
+            "Sure, here is the JSON:\n{\"clusters\":[{\"id\":\"x\",\"items\":[0]}]}\nThanks!";
+        let parsed = parse_dedupe_json(prose_wrapped_json).unwrap();
         assert_eq!(parsed.clusters.len(), 1);
     }
 }

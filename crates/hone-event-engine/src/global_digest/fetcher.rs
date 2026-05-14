@@ -97,24 +97,26 @@ impl ArticleFetcher {
 
         // —— 第 1 段:直抓原文 ——
         match self.client.get(url).send().await {
-            Ok(resp) if resp.status().is_success() => match resp.text().await {
-                Ok(html) => {
-                    let text = extract_article_text(&html, MAX_ARTICLE_CHARS);
-                    if !text.trim().is_empty() {
-                        return ArticleBody {
-                            url: url.into(),
-                            text,
-                            source: ArticleSource::Fetched,
-                        };
+            Ok(http_response) if http_response.status().is_success() => {
+                match http_response.text().await {
+                    Ok(html) => {
+                        let text = extract_article_text(&html, MAX_ARTICLE_CHARS);
+                        if !text.trim().is_empty() {
+                            return ArticleBody {
+                                url: url.into(),
+                                text,
+                                source: ArticleSource::Fetched,
+                            };
+                        }
+                        tracing::info!(url, "global_digest direct fetch empty body");
                     }
-                    tracing::info!(url, "global_digest direct fetch empty body");
+                    Err(e) => {
+                        tracing::warn!(url, "global_digest direct fetch body decode failed: {e}");
+                    }
                 }
-                Err(e) => {
-                    tracing::warn!(url, "global_digest direct fetch body decode failed: {e}");
-                }
-            },
-            Ok(resp) => {
-                let status = resp.status();
+            }
+            Ok(http_response) => {
+                let status = http_response.status();
                 if paywall {
                     tracing::info!(
                         url,
@@ -150,26 +152,26 @@ impl ArticleFetcher {
     /// "Warning: Target URL returned error N",由 `parse_jina_markdown` 识别。
     async fn fetch_via_jina(&self, url: &str, key: &str) -> Option<String> {
         let target = format!("{JINA_BASE_URL}{url}");
-        let resp = match self.jina_client.get(&target).bearer_auth(key).send().await {
-            Ok(r) => r,
+        let http_response = match self.jina_client.get(&target).bearer_auth(key).send().await {
+            Ok(response) => response,
             Err(e) => {
                 tracing::warn!(url, "global_digest jina fetch failed: {e}");
                 return None;
             }
         };
-        let status = resp.status();
+        let status = http_response.status();
         if !status.is_success() {
             tracing::warn!(url, status = %status, "global_digest jina fetch non-2xx");
             return None;
         }
-        let body = match resp.text().await {
-            Ok(t) => t,
+        let response_body = match http_response.text().await {
+            Ok(text) => text,
             Err(e) => {
                 tracing::warn!(url, "global_digest jina body decode failed: {e}");
                 return None;
             }
         };
-        match parse_jina_markdown(&body, MAX_ARTICLE_CHARS) {
+        match parse_jina_markdown(&response_body, MAX_ARTICLE_CHARS) {
             Some(text) => {
                 tracing::debug!(url, len = text.chars().count(), "global_digest jina ok");
                 Some(text)

@@ -619,8 +619,8 @@ impl UnifiedDigestScheduler {
         }
         {
             let cache = self.global_cache.lock().await;
-            if let Some(c) = cache.get(cache_key) {
-                return Some(c.clone());
+            if let Some(cached_slot) = cache.get(cache_key) {
+                return Some(cached_slot.clone());
             }
         }
 
@@ -631,12 +631,12 @@ impl UnifiedDigestScheduler {
                 .await;
 
         let global_source = GlobalNewsSource::new(&self.store);
-        let raw = match global_source.collect(
+        let unified_candidates = match global_source.collect(
             now,
             self.lookback_hours,
             self.lookback_hours.saturating_add(2),
         ) {
-            Ok(v) => v,
+            Ok(candidates) => candidates,
             Err(e) => {
                 warn!(slot = %slot.id, "global collect failed: {e:#}");
                 let cache = GlobalSlotCache {
@@ -652,11 +652,12 @@ impl UnifiedDigestScheduler {
         };
 
         // 把 UnifiedCandidate 还原回 GlobalDigestCandidate(curator 的输入类型)。
-        let raw_g: Vec<crate::global_digest::collector::GlobalDigestCandidate> = raw
-            .into_iter()
-            .filter_map(unified_to_global_candidate)
-            .collect();
-        if raw_g.is_empty() {
+        let global_candidates: Vec<crate::global_digest::collector::GlobalDigestCandidate> =
+            unified_candidates
+                .into_iter()
+                .filter_map(unified_to_global_candidate)
+                .collect();
+        if global_candidates.is_empty() {
             self.append_audit(
                 &local_date_key(now, self.tz_offset_hours),
                 &format!(
@@ -677,12 +678,12 @@ impl UnifiedDigestScheduler {
         }
 
         // event-level dedup
-        let raw_count = raw_g.len();
+        let raw_count = global_candidates.len();
         let (candidates, dedupe_stats, _audits) = if self.event_dedupe_enabled {
-            self.event_deduper.dedupe(raw_g).await
+            self.event_deduper.dedupe(global_candidates).await
         } else {
             (
-                raw_g,
+                global_candidates,
                 crate::global_digest::event_dedupe::DedupeStats {
                     input: raw_count,
                     clusters: raw_count,
