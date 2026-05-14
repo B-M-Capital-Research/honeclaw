@@ -82,6 +82,19 @@ static RE_HEARTBEAT_ENTITY_ANCHOR: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(r"[A-Za-z][A-Za-z0-9.-]{1,}").expect("valid heartbeat entity anchor regex")
 });
 
+static RE_HEARTBEAT_REVISION_FACT_TOKEN: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r"(?ix)
+        \$\s*\d+(?:\.\d+)?(?:\s*(?:-|–|~|至|到)\s*\$?\s*\d+(?:\.\d+)?)?
+        |
+        \d+(?:\.\d+)?\s*%
+        |
+        \d+(?:\.\d+)?\s*(?:亿|万)?\s*(?:美元|美金|港元|人民币|元|股)
+        ",
+    )
+    .expect("valid heartbeat revision fact regex")
+});
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum HeartbeatOutcome {
     Noop,
@@ -765,6 +778,56 @@ fn heartbeat_same_ticker_reworded_fact_match(message: &str, preview: &str) -> bo
         >= 1
 }
 
+fn heartbeat_revision_sensitive_terms_present(text: &str) -> bool {
+    let compact = text
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    [
+        "定价区间",
+        "发行价",
+        "募资",
+        "发行股",
+        "发行股份",
+        "估值",
+        "上调",
+        "下调",
+        "pricingrange",
+        "pricerange",
+        "offeringprice",
+        "offering",
+        "valuation",
+    ]
+    .iter()
+    .any(|term| compact.contains(term))
+}
+
+fn heartbeat_revision_fact_tokens(text: &str) -> std::collections::BTreeSet<String> {
+    RE_HEARTBEAT_REVISION_FACT_TOKEN
+        .find_iter(text)
+        .map(|matched| {
+            matched
+                .as_str()
+                .chars()
+                .filter(|ch| !ch.is_whitespace())
+                .collect::<String>()
+                .to_ascii_lowercase()
+        })
+        .collect()
+}
+
+fn heartbeat_revision_facts_diverged(message: &str, preview: &str) -> bool {
+    if !(heartbeat_revision_sensitive_terms_present(message)
+        || heartbeat_revision_sensitive_terms_present(preview))
+    {
+        return false;
+    }
+    let message_facts = heartbeat_revision_fact_tokens(message);
+    let preview_facts = heartbeat_revision_fact_tokens(preview);
+    !message_facts.is_empty() && !preview_facts.is_empty() && message_facts != preview_facts
+}
+
 fn heartbeat_duplicate_preview_match(
     message: &str,
     delivered_previews: &[(String, String)],
@@ -795,6 +858,11 @@ fn heartbeat_duplicate_preview_match(
         let reworded_fact_match = shared >= 5
             && (!same_explicit_ticker
                 || heartbeat_same_ticker_reworded_fact_match(message, preview));
+        if (strong_match || reworded_fact_match)
+            && heartbeat_revision_facts_diverged(message, preview)
+        {
+            continue;
+        }
         if strong_match || reworded_fact_match {
             return Some(truncate_for_log(preview.trim(), 200));
         }
@@ -3347,6 +3415,18 @@ mod tests {
         let previews = vec![(
             "2026-05-12T08:30:00+08:00".to_string(),
             "【Cerebras IPO 重大更新 | 2026-05-12 08:30 北京时间】Cerebras IPO 定价区间上修，上市时间线出现新进展。"
+                .to_string(),
+        )];
+
+        assert!(heartbeat_duplicate_preview_match(message, &previews).is_none());
+    }
+
+    #[test]
+    fn heartbeat_duplicate_preview_match_allows_cerebras_ipo_pricing_range_revision() {
+        let message = "【Cerebras IPO与业务进展心跳监控】Cerebras IPO 定价区间从 $115-$125 上调至 $150-$160，发行股数与募资额同步提高，预计今日定价。";
+        let previews = vec![(
+            "2026-05-13T13:00:00+08:00".to_string(),
+            "【Cerebras IPO 临门】Cerebras IPO 定价区间仍为 $115-$125，最终定价预计当晚或次日早间确定。"
                 .to_string(),
         )];
 

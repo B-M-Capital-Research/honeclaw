@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-14 11:05 CST
+最后更新：2026-05-14 12:07 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,10 +17,12 @@
 
 ## 当前概览
 
-- 活跃待修复：7
+- 活跃待修复：5
 - Later / 待复现：9
-- 已修复 / 已关闭：96
+- 已修复 / 已关闭：98
 - 历史分析 / 部分止血：5
+- 本轮 12:07 CST 已修复 Heartbeat preview 去重同一 job 实质性增量误抑制：`Cerebras IPO` 定价区间从 `$115-$125` 上调至 `$150-$160` 时，新增修订敏感事实检查会识别定价区间 / 发行 / 募资 / 估值等关键数字事实变化，不再被旧 preview 压成 `noop`。验证 `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs`、`cargo test -p hone-channels heartbeat_duplicate_preview_match --lib -- --nocapture` 通过。
+- 本轮 12:07 CST 复核 Feishu scheduler started-row 台账缺陷：当前 HEAD 已有 `delivery_key` 覆盖、最近 started fallback 与启动 stale recovery 回归，最近 live 残留证据按当前机器旧运行态 / 非生产机器证据处理；`cargo test -p hone-memory --lib -- --nocapture` 与 `cargo check -p hone-channels --tests` 通过，状态从 `New` 更新为 `Fixed`，关联 Issue [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39)。
 - 本轮 07:06 CST 重新打开原油定时播报缺陷：04:01 `Oil_Price_Monitor_Closing` 与 04:33 `OWALERT_PostMarket` 均成功外发 WTI / Brent 具体价格与油价回落对科技股的确定性影响判断，`detail_json.scheduler=null` 且没有商品 guard / 同窗来源审计元数据；这是普通 scheduler 路径复发，不是已确认生效的 heartbeat guard 路径。
 - 本轮 07:06 CST 确认 Heartbeat `mimo-v2.5-pro` reasoning transcript 兼容缺陷仍活跃：03:00-07:00 CST 又新增 90 条同类 `reasoning_content must be passed back` / `Param Incorrect` heartbeat 失败，覆盖 11 个 job；同窗普通 scheduler 和 Feishu direct 仍可送达。
 - 本轮 07:06 CST 确认 Feishu scheduler started-row 台账缺陷仍活跃：03:00-07:00 CST 新增 102 条 `running + pending + detail.phase=started` 残留，其中 99 条 heartbeat、3 条普通 scheduler；对应终态继续另起行写入。
@@ -80,11 +82,9 @@
 | --- | --- | --- | --- | --- |
 | Heartbeat 监控使用 `mimo-v2.5-pro` 时批量命中 `Param Incorrect` 并漏发 | P2 | New | 2026-05-14 11:05 持续复发：07:00-11:00 CST 新增 91 条同类 `reasoning_content must be passed back` / `Param Incorrect` heartbeat 失败，覆盖 11 个 job；无关联 GitHub Issue | [scheduler_heartbeat_mimo_param_incorrect_batch_failures.md](./scheduler_heartbeat_mimo_param_incorrect_batch_failures.md) |
 | 原油定时播报在价格 / 日期 / 背景口径上继续输出未核验或错误事实 | P2 | New | 2026-05-14 07:06 复发：04:01 `Oil_Price_Monitor_Closing` 与 04:33 `OWALERT_PostMarket` 成功外发 WTI / Brent 具体价格和油价回落对科技股的确定性影响判断，`detail_json.scheduler=null`，普通 scheduler 路径未见商品 guard / 同窗来源审计元数据；无关联 GitHub Issue | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
-| Heartbeat 预览去重会把同一 job 的实质性增量误判为重复，导致真实触发被压成 noop 漏发 | P2 | New | 2026-05-13 15:04 复发：10:22 CST runtime 重启后，14:30 / 15:00 CST Cerebras IPO 定价区间上调至 `$150-$160` 的新提醒仍被 13:00 `$115-$125` 旧 preview 抑制为 `noop + skipped_noop`；无关联 GitHub Issue | [scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md](./scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md) |
 | Feishu 直聊在工具尚未跑完时提前把工具进度 / 不完整错误当成最终回复 | P2 | New | 2026-05-13 03:02 复发：23:30 CST 用户要求为当前持仓未建画像公司建档，23:34 CST assistant final 只返回 `本地命令`、`Searching the Web`、`处理中发生错误，内容可能不完整`，没有交代建档结果；无关联 GitHub Issue | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
 | Feishu 公司画像建档成功后向用户暴露本机绝对路径与内部文件落点 | P3 | New | 2026-05-13 03:02 复发：23:48 CST PDD 公司画像建档回复直接包含 `/Users/fengming2/Desktop/honeclaw/data/agent-sandboxes/.../company_profiles/pdd/profile.md` 本机路径；主功能完成但输出边界失守；无关联 GitHub Issue | [feishu_company_profile_absolute_path_leak.md](./feishu_company_profile_absolute_path_leak.md) |
 | 核心观察池简报在本地击球区配置恢复后仍把多数标的降成“待确认” | P3 | New | 2026-05-14 11:05 复发：09:02 CST `核心观察池早间简报` 成功送达但核心股与拓展股继续批量写成 `击球区：待确认`；不阻断投递链路；无关联 GitHub Issue | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
-| Feishu scheduler 预写的 `running/pending` started 行不会被终态覆盖，悬挂台账持续堆积 | P3 | New | 2026-05-14 11:05 复发：07:00-11:00 CST 新增 111 条 started 残留，其中 99 条 heartbeat、12 条普通 scheduler；同窗终态已另起行为 `execution_failed/sent/noop`，说明台账仍保留悬挂运行中；无关联 GitHub Issue | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
 
 ## Later / 待复现
 

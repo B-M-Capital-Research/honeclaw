@@ -3,7 +3,20 @@
 - 发现时间：2026-05-04 23:10 CST
 - Bug Type：Business Error
 - 严重等级：P2
-- 状态：New
+- 状态：Fixed
+
+## 修复记录（2026-05-14 12:07 CST）
+
+- 本轮修复同一 job / 同一实体的“实质性事实增量”被 heartbeat preview 去重误吞的复发形态。
+- `crates/hone-channels/src/scheduler.rs` 在既有 ticker / entity anchor 与 token overlap 去重之外，新增修订敏感事实检查：
+  - 当提醒涉及定价区间、发行价、募资、发行股数、估值、上调 / 下调等事实修订语境时，会抽取 `$115-$125`、`$150-$160`、百分比、金额、股数等关键数字事实。
+  - 如果本轮提醒与历史 preview 的关键数字事实集合已经变化，即使语义 overlap 很高，也不再视为 duplicate，避免把 IPO 定价区间上调等实质性更新压成 `noop + skipped_noop`。
+  - 既有跨 ticker / 跨实体保护和同事实改写抑制仍保留。
+- 新增回归 `heartbeat_duplicate_preview_match_allows_cerebras_ipo_pricing_range_revision`，覆盖 `Cerebras IPO` 定价区间从 `$115-$125` 上调至 `$150-$160` 后不应被旧 preview 抑制。
+- 验证：
+  - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs`
+  - `cargo test -p hone-channels heartbeat_duplicate_preview_match --lib -- --nocapture`
+- 关联 GitHub Issue：无。
 
 ## 最新进展（2026-05-13 15:04 CST）
 

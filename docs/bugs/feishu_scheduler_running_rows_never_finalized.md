@@ -3,8 +3,27 @@
 - **发现时间**: 2026-04-28 17:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P3
-- **状态**: New
-- **GitHub Issue**: 无
+- **状态**: Fixed
+- **GitHub Issue**: [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39)
+
+## 修复复核（2026-05-14 12:07 CST）
+
+- 本轮按当前自动化约束复核：当前机器不再作为生产机器，最近 live `running + pending + phase=started` 证据不再作为重新打开本单的前置依据。
+- 当前仓库代码已覆盖本缺陷描述的台账一致性根因：
+  - `memory/src/cron_job/history.rs::record_execution_event(...)` 会在写入非 `running/pending` 终态时，优先用 `detail.delivery_key` 覆盖同一 job / actor / channel_target / heartbeat 的 started 行。
+  - 若终态 detail 缺少可用 `delivery_key`，存储层还会回退覆盖最近 2 小时内同一 job / actor / channel_target / heartbeat 的 `phase=started` 行，兼容旧终态写入形态。
+  - `hone_scheduler::execution_detail_with_delivery_key(...)` 会把 Feishu / Web 等 scheduler 终态 metadata 统一补成顶层 `delivery_key`，避免终态另起新行。
+  - Feishu 启动恢复仍保留 `recover_stale_started_executions(...)`，用于进程中断后把真正陈旧的 started 行收口为 `execution_failed + send_failed`。
+- 本轮没有继续改这条链路代码；结论是导航台账落后于当前 HEAD。状态更新为 `Fixed`，后续只有在本地可复现测试或当前代码路径证明终态仍会另起行时再改回 `New`。
+- 已有回归覆盖：
+  - `heartbeat_started_rows_finalize_across_two_windows`
+  - `heartbeat_started_rows_finalize_with_scheduler_metadata_wrapper`
+  - `execution_terminal_event_falls_back_to_recent_started_row`
+  - `pre_fix_v0_5_0_terminal_without_delivery_key_finalizes_recent_started_row`
+  - `heartbeat_started_row_without_delivery_key_is_finalized_by_recent_started_fallback`
+- 本轮复核验证：
+  - `cargo test -p hone-memory --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
 
 ## 证据来源
 
