@@ -122,8 +122,15 @@ fn looks_like_progress_trace_line(line: &str) -> bool {
     trimmed == THINKING_PLACEHOLDER_TEXT
         || trimmed.starts_with("正在调用 Tool:")
         || trimmed.starts_with("正在调用 tool:")
+        || trimmed.starts_with("正在调用 Searching the Web")
         || trimmed.starts_with("正在调用工具")
         || trimmed.starts_with("正在执行：")
+        || trimmed.starts_with("执行完成：")
+        || trimmed == "工具执行完成"
+        || trimmed == "本地命令完成"
+        || trimmed == "Searching the Web完成"
+        || trimmed == "处理中发生错误，内容可能不完整"
+        || trimmed == "_(处理中发生错误，内容可能不完整)_"
         || trimmed.starts_with("Tool: ")
         || trimmed.starts_with("工具调用")
         || trimmed.contains("hone/data_fetch")
@@ -1816,6 +1823,19 @@ mod tests {
                 Some("codex acp session/prompt idle timeout (180s)"),
             ),
             "抱歉，处理超时了。请稍后再试。"
+        );
+    }
+
+    #[test]
+    fn failed_reply_text_drops_compact_tool_progress_only_partial_stream() {
+        assert_eq!(
+            build_failed_reply_text(
+                None,
+                true,
+                "执行完成：本地命令\n正在调用 Searching the Web...\n工具执行完成\n_(处理中发生错误，内容可能不完整)_",
+                Some("codex acp prompt ended before tool completion: Searching the Web"),
+            ),
+            "抱歉，这次处理失败了。请稍后再试。"
         );
     }
 

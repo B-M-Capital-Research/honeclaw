@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-16 16:12 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - `data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5fe09f5f16b20c06ee5962d1b6ca7a4cda`
@@ -221,11 +221,21 @@
 - 已在 `bins/hone-feishu/src/handler.rs` 的失败收口中补充“过渡计划句”过滤；如果 partial stream 只剩 `我先核验...`、`下一步补...` 一类过渡句，则直接回退到产品化错误文案，不再把半成品正文发给用户。
 - 这轮修复覆盖的是“工具未完成却提前收口”的共享根因；尚未包含 `idle timeout`、`reply_chars=0` 这类其它 Answer 失败形态，因此相关 P1 缺陷继续独立跟踪。
 
+## 修复情况（2026-05-15）
+
+- 本轮复核 `2026-05-13 03:02 CST` 复发样本后，确认当前剩余可本地闭环的缺口在 Feishu 失败 partial stream 过滤：ACP compact stream 会输出 `执行完成：本地命令`、`正在调用 Searching the Web...`、`工具执行完成` 与 `_(处理中发生错误，内容可能不完整)_` 这类用户可见进度行，旧过滤只覆盖 `Tool:` / `hone/*` / `正在执行：` 等协议形态，导致纯工具进度在失败收口时仍被当作“部分答复”外发。
+- `bins/hone-feishu/src/handler.rs` 现已把上述 compact 工具进度 / 不完整尾注识别为失败 partial 噪声；当 partial 只剩工具进度时，会回退到 `user_visible_error_message(...)` 的产品化错误文案，不再向用户发送 `本地命令`、`Searching the Web` 或重复的“不完整”尾注。
+- 新增回归 `failed_reply_text_drops_compact_tool_progress_only_partial_stream` 锁住本次复发形态。
+
 ## 回归验证
 
 - `cargo test -p hone-channels acp_prompt_`
 - `cargo test -p hone-channels user_visible_error_message_`
 - `cargo test -p hone-feishu failed_reply_text_`
+- 2026-05-15 本轮验证：
+  - `rustfmt --edition 2024 --config skip_children=true --check bins/hone-feishu/src/handler.rs`
+  - `cargo test -p hone-feishu failed_reply_text_ -- --nocapture`
+  - `cargo check -p hone-feishu --tests`
 
 ## 下一步建议
 
