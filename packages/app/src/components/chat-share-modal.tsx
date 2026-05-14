@@ -10,6 +10,8 @@ import { ChatShareCard } from "./chat-share-card";
 import {
   ShareRenderError,
   canvasToPngBlob,
+  canSharePngFile,
+  isLikelyIOSPlatform,
   isShareAbortError,
   isShareRenderError,
 } from "./chat-share-export";
@@ -36,6 +38,7 @@ export type ChatShareModalProps = {
     success_copy_image: string;
     success_copy_text: string;
     success_share: string;
+    save_image_hint: string;
     error_download: string;
     error_copy_image: string;
     error_copy_text: string;
@@ -60,8 +63,12 @@ export function ChatShareModal(props: ChatShareModalProps) {
   const [toast, setToast] = createSignal<Toast>(null);
   const [busy, setBusy] = createSignal(false);
   let cardEl: HTMLDivElement | undefined;
+  let listEl: HTMLUListElement | undefined;
   let toastTimer: number | undefined;
   let wasOpen = false;
+  let renderKey = "";
+  let cachedBlob: Blob | null = null;
+  let renderPromise: Promise<Blob> | null = null;
 
   const showToast = (t: Toast) => {
     setToast(t);
@@ -79,8 +86,38 @@ export function ChatShareModal(props: ChatShareModalProps) {
       setSelected(seedId ? new Set([seedId]) : new Set<string>());
       setBusy(false);
       setToast(null);
+      window.requestAnimationFrame(() => {
+        const item = listEl?.querySelector<HTMLElement>(
+          ".pub-share-item[data-selected='true']",
+        );
+        item?.scrollIntoView({ block: "center" });
+      });
     }
     wasOpen = props.open;
+  });
+
+  const selectionKey = () => selectedMessages().map((m) => m.id).join("|");
+
+  createEffect(() => {
+    const key = selectionKey();
+    if (!props.open || !key) {
+      renderKey = "";
+      cachedBlob = null;
+      renderPromise = null;
+      return;
+    }
+    if (renderKey !== key) {
+      renderKey = key;
+      cachedBlob = null;
+      renderPromise = null;
+    }
+    const timer = window.setTimeout(() => {
+      void renderPngBlob().catch(() => {
+        // Export handlers surface render failures to the user; background
+        // warm-up only exists to keep iOS share inside the tap gesture budget.
+      });
+    }, 80);
+    onCleanup(() => window.clearTimeout(timer));
   });
 
   onMount(() => {
@@ -117,6 +154,10 @@ export function ChatShareModal(props: ChatShareModalProps) {
   const supportsSystemShare = () =>
     typeof window !== "undefined" && "share" in navigator;
 
+  const isIOS = () =>
+    typeof navigator !== "undefined" &&
+    isLikelyIOSPlatform(navigator.platform, navigator.maxTouchPoints || 0);
+
   const renderCanvas = async () => {
     if (!cardEl) throw new ShareRenderError("Share card is not ready");
     const { default: html2canvas } = await import("html2canvas");
@@ -133,8 +174,42 @@ export function ChatShareModal(props: ChatShareModalProps) {
   };
 
   const renderPngBlob = async () => {
+    const key = selectionKey();
+    if (key && renderKey === key && cachedBlob) return cachedBlob;
+    if (key && renderKey === key && renderPromise) return renderPromise;
+    renderKey = key;
     const canvas = await renderCanvas();
-    return canvasToPngBlob(canvas);
+    renderPromise = canvasToPngBlob(canvas).then((blob) => {
+      if (renderKey === key) cachedBlob = blob;
+      return blob;
+    }).finally(() => {
+      if (renderKey === key) renderPromise = null;
+    });
+    return renderPromise;
+  };
+
+  const makePngFile = (blob: Blob) =>
+    new File([blob], `hone-share-${Date.now()}.png`, { type: "image/png" });
+
+  const sharePngFile = async (blob: Blob) => {
+    if (!supportsSystemShare()) return false;
+    const file = makePngFile(blob);
+    if (!canSharePngFile(navigator, file)) return false;
+    await navigator.share({ files: [file], title: props.brandName });
+    return true;
+  };
+
+  const openImageForSave = (blob: Blob) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.target = "_blank";
+    link.rel = "noopener";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    showToast({ kind: "success", text: props.strings.save_image_hint });
   };
 
   const withBusy = async (fn: () => Promise<void>) => {
@@ -168,6 +243,18 @@ export function ChatShareModal(props: ChatShareModalProps) {
     withBusy(async () => {
       try {
         const blob = await renderPngBlob();
+        if (isIOS()) {
+          try {
+            if (await sharePngFile(blob)) {
+              showToast({ kind: "success", text: props.strings.save_image_hint });
+              return;
+            }
+          } catch (error) {
+            if (isShareAbortError(error)) throw error;
+          }
+          openImageForSave(blob);
+          return;
+        }
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
@@ -184,7 +271,7 @@ export function ChatShareModal(props: ChatShareModalProps) {
 
   const handleCopyImage = () =>
     withBusy(async () => {
-      let blob: Blob;
+      let blob: Blob | undefined;
       try {
         blob = await renderPngBlob();
         await navigator.clipboard.write([
@@ -192,6 +279,10 @@ export function ChatShareModal(props: ChatShareModalProps) {
         ]);
         showToast({ kind: "success", text: props.strings.success_copy_image });
       } catch (error) {
+        if (blob && isIOS() && !isShareRenderError(error) && !isShareAbortError(error)) {
+          openImageForSave(blob);
+          return;
+        }
         showExportError("copy_image", error, props.strings.error_copy_image);
       }
     });
@@ -217,22 +308,22 @@ export function ChatShareModal(props: ChatShareModalProps) {
     withBusy(async () => {
       try {
         const blob = await renderPngBlob();
-        const file = new File([blob], `hone-share-${Date.now()}.png`, {
-          type: "image/png",
-        });
-        if (
-          "canShare" in navigator &&
-          (navigator as Navigator & { canShare: (d: ShareData) => boolean }).canShare({
-            files: [file],
-          })
-        ) {
-          await navigator.share({ files: [file], title: props.brandName });
+        if (await sharePngFile(blob)) {
           showToast({ kind: "success", text: props.strings.success_share });
           return;
         }
         await navigator.share({ title: props.brandName, url: props.qrUrl });
         showToast({ kind: "success", text: props.strings.success_share });
       } catch (error) {
+        if (isIOS() && !isShareRenderError(error) && !isShareAbortError(error)) {
+          try {
+            const blob = await renderPngBlob();
+            openImageForSave(blob);
+            return;
+          } catch {
+            // Fall through to the original error toast.
+          }
+        }
         showExportError("system_share", error, props.strings.error_system_share);
       }
     });
@@ -305,7 +396,7 @@ export function ChatShareModal(props: ChatShareModalProps) {
                     : props.strings.select_all}
                 </button>
               </div>
-              <ul class="pub-share-list">
+              <ul class="pub-share-list" ref={listEl}>
                 <For each={props.messages}>
                   {(m) => (
                     <li

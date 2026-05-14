@@ -3126,7 +3126,21 @@ export default function PublicChatPage() {
           color: #059669;
         }
         @media (hover: none), (max-width: 768px) {
-          .pub-msg-actions { opacity: 0.55; }
+          .pub-msg-actions {
+            right: 10px;
+            bottom: 10px;
+            gap: 6px;
+            opacity: 0.78;
+          }
+          .pub-msg-action {
+            width: 36px;
+            height: 36px;
+            background: rgba(15, 23, 42, 0.07);
+          }
+          .pub-msg-action svg {
+            width: 18px;
+            height: 18px;
+          }
           .pub-msg-actions:active { opacity: 1; }
         }
         /* Scroll-to-bottom: floats above the composer when the user has

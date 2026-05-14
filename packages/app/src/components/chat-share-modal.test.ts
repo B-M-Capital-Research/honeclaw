@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 
 import {
   ShareRenderError,
+  canSharePngFile,
   canvasToPngBlob,
+  isLikelyIOSPlatform,
   isShareAbortError,
   isShareRenderError,
 } from "./chat-share-export";
@@ -52,5 +54,38 @@ describe("chat share export errors", () => {
     expect(isShareAbortError(abortError)).toBe(true);
     expect(isShareAbortError({ name: "AbortError" })).toBe(true);
     expect(isShareAbortError(new Error("clipboard denied"))).toBe(false);
+  });
+
+  test("detects iOS and touch iPad platforms", () => {
+    expect(isLikelyIOSPlatform("iPhone", 0)).toBe(true);
+    expect(isLikelyIOSPlatform("iPad", 0)).toBe(true);
+    expect(isLikelyIOSPlatform("MacIntel", 5)).toBe(true);
+    expect(isLikelyIOSPlatform("MacIntel", 0)).toBe(false);
+    expect(isLikelyIOSPlatform("Win32", 10)).toBe(false);
+  });
+
+  test("guards file sharing capability checks", () => {
+    const file = new File(["png"], "share.png", { type: "image/png" });
+    expect(canSharePngFile(undefined, file)).toBe(false);
+    expect(
+      canSharePngFile(
+        {
+          canShare(data?: ShareData) {
+            return data?.files?.[0]?.type === "image/png";
+          },
+        } as Pick<Navigator, "canShare">,
+        file,
+      ),
+    ).toBe(true);
+    expect(
+      canSharePngFile(
+        {
+          canShare() {
+            throw new Error("unsupported");
+          },
+        } as Pick<Navigator, "canShare">,
+        file,
+      ),
+    ).toBe(false);
   });
 });

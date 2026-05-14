@@ -18,6 +18,25 @@ export function isShareAbortError(error: unknown) {
   );
 }
 
+export function isLikelyIOSPlatform(platform: string, maxTouchPoints: number) {
+  return (
+    /iPad|iPhone|iPod/.test(platform) ||
+    (platform === "MacIntel" && maxTouchPoints > 1)
+  );
+}
+
+export function canSharePngFile(
+  nav: Pick<Navigator, "canShare"> | undefined,
+  file: File,
+) {
+  if (!nav || typeof nav.canShare !== "function") return false;
+  try {
+    return nav.canShare({ files: [file] });
+  } catch {
+    return false;
+  }
+}
+
 export async function canvasToPngBlob(canvas: HTMLCanvasElement) {
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((blob) => {
