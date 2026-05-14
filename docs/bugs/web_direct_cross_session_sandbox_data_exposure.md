@@ -84,6 +84,14 @@
 
 ## 修复记录
 
+- 2026-05-14 11:05 CST 复核：最近四小时仍看到当前 live Web direct 旧运行态暴露宿主环境 / 进程信息，但不把本单从 `Fixed` 回退为 `New`。
+  - `data/sessions.sqlite3` -> `session_messages`
+    - `session_id=Actor_web__direct__web-user-028a885ded9b`
+    - `2026-05-14T10:50:38+08:00` assistant final 返回主机名、repo 内 actor sandbox 绝对路径以及“能只读查看一些本机路径”等说明。
+    - `2026-05-14T10:53:14+08:00` assistant final 在 `ps aux` 失败后改用 `lsof` / 日志，列出 `hone-console-page` PID、二进制路径、工作目录、监听端口和日志路径。
+    - `2026-05-14T10:55:32+08:00` 到 `11:00:10+08:00` assistant 按用户要求尝试 `kill` / 脚本封装后失败，并把 `Operation not permitted` 与进程仍监听端口的结果返回给用户。
+  - 本机 `ps` 复核显示该 live `hone-console-page` 进程 `PID 63485` 启动于 `2026-05-13 19:28:21 CST`，早于 `2026-05-14 04:24 CST` 的 sandbox 根隔离代码修复；因此这条证据按“修复前 live 进程仍未重启 / 未部署”处理。
+  - 这条样本未证明当前 HEAD 的 repo-external sandbox 修复失效，也没有看到再次读取其它 web session 画像或全局 portfolio 的新证据；状态维持 `Fixed`，但仍不能更新为 `Closed`。后续必须在 live 重启到修复后代码后复打“查看本机路径 / 其它 session / 宿主进程”类提示词。
 - 2026-05-13 23:04 CST 复核：在 20:24 CST 真实 Web direct 会话里仍能读取 `~/.codex` session 记录和全局 portfolio 文件并外发摘要；因此本单从 `Fixed` 调回 `New`。已有 GitHub Issue [#41](https://github.com/B-M-Capital-Research/honeclaw/issues/41)，本轮不重复创建。
 - 2026-05-14 04:24 CST：实际代码已补齐共享 sandbox 根隔离，而不再只停留在文档结论。
   - `crates/hone-channels/src/sandbox.rs` 不再从 `HONE_DATA_DIR` 派生 actor sandbox；若 `HONE_AGENT_SANDBOX_DIR` 指向当前 git worktree 内部，会退回 repo-external temp sandbox。

@@ -9,6 +9,14 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-14 11:05 CST` 复核，started-row finalize 缺陷继续实时新增：
+    - 最近四小时窗口 `2026-05-14T07:00:00+08:00` 到 `2026-05-14T11:00:00+08:00` 内共有 `111` 条 `execution_status=running + message_send_status=pending` started 残留。
+    - 其中 `99` 条为 heartbeat started 行，覆盖 07:00、07:30、08:00、08:30、09:00、09:30、10:00、10:30、11:00 等窗口；另有 `12` 条普通 scheduler started 行。
+    - 普通 scheduler 代表样本覆盖 `每日有色化工标的新闻追踪`、`创新药持仓每日动态推送`、`每日CNN贪婪指数`、`港股持仓与关注股早间行情研判`、`美股AI产业链盘后报告`、`闪迪(SNDK)每日行情与行业简报`、`Hone_AI_Morning_Briefing`、`A股盘前高景气产业链推演`、`核心观察池早间简报` 等；这些任务随后另起 `completed + sent + delivered=1` 终态，但原 started 行仍保留 `running + pending`。
+    - Heartbeat 代表样本：11:00 同窗 `run_id=20568-20578` 先写入 11 条 started 行，随后 `run_id=20579-20589` 另起 1 条 `noop + skipped_noop` 与 10 条 `execution_failed + skipped_error + delivered=0` 终态；原 started 行仍未被覆盖。
+  - 结论：
+    - 该缺陷在最近四小时继续扩大，不是只剩历史脏数据。
+    - 普通 scheduler 与 heartbeat 均已有独立终态行，用户可见投递主链路没有因此被阻断；受损点仍是调度台账一致性和 stale recovery / 巡检噪音，因此严重等级维持 `P3`。
   - `2026-05-14 07:06 CST` 复核，started-row finalize 缺陷继续实时新增：
     - 最近四小时窗口 `2026-05-14T03:00:00+08:00` 到 `2026-05-14T07:00:00+08:00` 内共有 `102` 条 `execution_status=running + message_send_status=pending + detail.phase=started` 残留。
     - 其中 `99` 条为 heartbeat started 行，覆盖 03:00、03:30、04:00、04:30、05:00、05:30、06:00、06:30、07:00 等窗口；另有 `3` 条普通 scheduler started 行。

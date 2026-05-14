@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-14 07:06 CST
+最后更新：2026-05-14 11:05 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -25,6 +25,10 @@
 - 本轮 07:06 CST 确认 Heartbeat `mimo-v2.5-pro` reasoning transcript 兼容缺陷仍活跃：03:00-07:00 CST 又新增 90 条同类 `reasoning_content must be passed back` / `Param Incorrect` heartbeat 失败，覆盖 11 个 job；同窗普通 scheduler 和 Feishu direct 仍可送达。
 - 本轮 07:06 CST 确认 Feishu scheduler started-row 台账缺陷仍活跃：03:00-07:00 CST 新增 102 条 `running + pending + detail.phase=started` 残留，其中 99 条 heartbeat、3 条普通 scheduler；对应终态继续另起行写入。
 - 本轮 07:06 CST 未发现新的用户可见路径外泄、工具轨迹外泄、直聊半成品收口、heartbeat duplicate suppression 或观察池击球区样本；既有相关缺陷状态不变。
+- 本轮 11:05 CST 确认 Heartbeat `mimo-v2.5-pro` reasoning transcript 兼容缺陷仍活跃：07:00-11:00 CST 新增 91 条同类 `reasoning_content must be passed back` / `Param Incorrect` heartbeat 失败，覆盖 11 个 job；同窗普通 scheduler 与 Feishu direct 仍有成功送达。
+- 本轮 11:05 CST 确认 Feishu scheduler started-row 台账缺陷仍活跃：07:00-11:00 CST 新增 111 条 `running + pending` started 残留，其中 99 条 heartbeat、12 条普通 scheduler；普通 scheduler 已另起 `completed + sent` 终态，说明主投递链路不被阻断但台账继续污染。
+- 本轮 11:05 CST 确认观察池击球区缺陷仍活跃：09:02 CST `核心观察池早间简报` 成功送达，但 `MSFT / NVDA / GOOGL / AAPL / AVGO / AMZN / META` 等仍批量显示 `击球区：待确认`。
+- 本轮 11:05 CST 仅补充 Web direct sandbox 隔离旧 live 证据：10:50-11:00 CST `web-user-028a885ded9b` 仍可看到主机名、repo 内 sandbox 绝对路径、`hone-console-page` PID/二进制/工作目录并尝试 kill；但当前 live 进程 `PID 63485` 启动于 2026-05-13 19:28 CST，早于 04:24 CST 的代码修复，因此本轮不把该 P1 从 `Fixed` 回退为 `New`，待重启后复核。
 - 本轮 04:24 CST 已修复 Web direct 跨 session / 全局数据暴露缺陷：`sandbox_base_dir()` 不再从 `HONE_DATA_DIR` 派生 repo 内 `data/agent-sandboxes`，repo 内部 `HONE_AGENT_SANDBOX_DIR` 会退回 repo-external temp sandbox；desktop sidecar 也改为注入独立 `sandbox_dir`，并在 actor sandbox 初始化时清理误落入的 `portfolio_*.json` / `portfolio/` / `portfolios/`。`cargo test -p hone-channels sandbox --lib -- --nocapture`、`cargo test -p hone-channels prepare_ignores_repo_internal_sandbox_override --lib -- --nocapture`、`HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop runtime_env -- --nocapture`、`cargo check -p hone-channels --tests`、`HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo check -p hone-desktop` 通过；当前仅缺 live 进程重启后的运行态复核，因此先记 `Fixed`。
 - 本轮不再保留 Web direct quota 拒绝为活跃缺陷：仓库代码已覆盖 Web actor 的 quota 拒绝 assistant transcript 与失败 `Done` 事件；当前机器 JSON 会话在 20:09 / 21:04 CST 仍新增孤立 heartbeat user turn，但按旧运行态 / 未重启进程证据处理，不重新打开。
 - 本轮复核后不再保留 `sessions.sqlite3` 会话镜像为活跃缺陷：仓库代码已覆盖 `runtime_backend=sqlite` 且 shadow 写开关为 `false` 的启动 JSON -> SQLite 回填路径；当前 `sessions/session_messages` 仍停在 2026-04-27、`cron_job_runs` 已推进到 23:01 CST，仍按当前机器旧运行态 / 未重启进程证据处理。
@@ -74,13 +78,13 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Heartbeat 监控使用 `mimo-v2.5-pro` 时批量命中 `Param Incorrect` 并漏发 | P2 | New | 2026-05-14 07:06 持续复发：03:00-07:00 CST 新增 90 条同类 `reasoning_content must be passed back` / `Param Incorrect` heartbeat 失败，覆盖 11 个 job；无关联 GitHub Issue | [scheduler_heartbeat_mimo_param_incorrect_batch_failures.md](./scheduler_heartbeat_mimo_param_incorrect_batch_failures.md) |
+| Heartbeat 监控使用 `mimo-v2.5-pro` 时批量命中 `Param Incorrect` 并漏发 | P2 | New | 2026-05-14 11:05 持续复发：07:00-11:00 CST 新增 91 条同类 `reasoning_content must be passed back` / `Param Incorrect` heartbeat 失败，覆盖 11 个 job；无关联 GitHub Issue | [scheduler_heartbeat_mimo_param_incorrect_batch_failures.md](./scheduler_heartbeat_mimo_param_incorrect_batch_failures.md) |
 | 原油定时播报在价格 / 日期 / 背景口径上继续输出未核验或错误事实 | P2 | New | 2026-05-14 07:06 复发：04:01 `Oil_Price_Monitor_Closing` 与 04:33 `OWALERT_PostMarket` 成功外发 WTI / Brent 具体价格和油价回落对科技股的确定性影响判断，`detail_json.scheduler=null`，普通 scheduler 路径未见商品 guard / 同窗来源审计元数据；无关联 GitHub Issue | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Heartbeat 预览去重会把同一 job 的实质性增量误判为重复，导致真实触发被压成 noop 漏发 | P2 | New | 2026-05-13 15:04 复发：10:22 CST runtime 重启后，14:30 / 15:00 CST Cerebras IPO 定价区间上调至 `$150-$160` 的新提醒仍被 13:00 `$115-$125` 旧 preview 抑制为 `noop + skipped_noop`；无关联 GitHub Issue | [scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md](./scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md) |
 | Feishu 直聊在工具尚未跑完时提前把工具进度 / 不完整错误当成最终回复 | P2 | New | 2026-05-13 03:02 复发：23:30 CST 用户要求为当前持仓未建画像公司建档，23:34 CST assistant final 只返回 `本地命令`、`Searching the Web`、`处理中发生错误，内容可能不完整`，没有交代建档结果；无关联 GitHub Issue | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
 | Feishu 公司画像建档成功后向用户暴露本机绝对路径与内部文件落点 | P3 | New | 2026-05-13 03:02 复发：23:48 CST PDD 公司画像建档回复直接包含 `/Users/fengming2/Desktop/honeclaw/data/agent-sandboxes/.../company_profiles/pdd/profile.md` 本机路径；主功能完成但输出边界失守；无关联 GitHub Issue | [feishu_company_profile_absolute_path_leak.md](./feishu_company_profile_absolute_path_leak.md) |
-| 核心观察池简报在本地击球区配置恢复后仍把多数标的降成“待确认” | P3 | New | 2026-05-13 23:04 复发：23:00 CST `核心观察股池晚间快报` 在 10:22 runtime 重启后仍把 25 支观察池批量写成 `击球区：待确认`；不阻断投递链路；无关联 GitHub Issue | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
-| Feishu scheduler 预写的 `running/pending` started 行不会被终态覆盖，悬挂台账持续堆积 | P3 | New | 2026-05-14 07:06 复发：03:00-07:00 CST 新增 102 条 `phase=started` 残留；同窗终态已另起行为 `execution_failed/sent/noop`，说明台账仍保留悬挂运行中；无关联 GitHub Issue | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
+| 核心观察池简报在本地击球区配置恢复后仍把多数标的降成“待确认” | P3 | New | 2026-05-14 11:05 复发：09:02 CST `核心观察池早间简报` 成功送达但核心股与拓展股继续批量写成 `击球区：待确认`；不阻断投递链路；无关联 GitHub Issue | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
+| Feishu scheduler 预写的 `running/pending` started 行不会被终态覆盖，悬挂台账持续堆积 | P3 | New | 2026-05-14 11:05 复发：07:00-11:00 CST 新增 111 条 started 残留，其中 99 条 heartbeat、12 条普通 scheduler；同窗终态已另起行为 `execution_failed/sent/noop`，说明台账仍保留悬挂运行中；无关联 GitHub Issue | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
 
 ## Later / 待复现
 
