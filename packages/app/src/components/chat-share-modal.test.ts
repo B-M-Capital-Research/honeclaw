@@ -91,7 +91,7 @@ describe("chat share export errors", () => {
     ).toBe(false);
   });
 
-  test("limits the picker to the latest four messages and defaults to the latest", () => {
+  test("limits the picker to the latest four messages by default", () => {
     const messages = [
       { id: "m1" },
       { id: "m2" },
@@ -110,5 +110,26 @@ describe("chat share export errors", () => {
     ]);
     expect(defaultShareMessageId(recent)).toBe("m5");
     expect(defaultShareMessageId([])).toBeNull();
+  });
+
+  test("uses the clicked message as the final share picker item", () => {
+    const messages = [
+      { id: "m1" },
+      { id: "m2" },
+      { id: "m3" },
+      { id: "m4" },
+      { id: "m5" },
+      { id: "m6" },
+    ];
+
+    const recent = recentShareMessages(messages, 4, 3);
+
+    expect(recent.map((message) => message.id)).toEqual([
+      "m1",
+      "m2",
+      "m3",
+      "m4",
+    ]);
+    expect(defaultShareMessageId(recent)).toBe("m4");
   });
 });

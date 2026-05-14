@@ -79,7 +79,7 @@ export function ChatShareModal(props: ChatShareModalProps) {
   let renderPromise: Promise<Blob> | null = null;
 
   const recentMessages = createMemo<PublicChatMessage[]>(() =>
-    recentShareMessages(props.messages, 4),
+    recentShareMessages(props.messages, 4, props.seedIndex),
   );
   const selectedMessages = createMemo<PublicChatMessage[]>(() =>
     recentMessages().filter((m) => selected().has(m.id)),

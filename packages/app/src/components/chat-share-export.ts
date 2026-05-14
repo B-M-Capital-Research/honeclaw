@@ -37,8 +37,18 @@ export function canSharePngFile(
   }
 }
 
-export function recentShareMessages<T>(messages: readonly T[], limit = 4): T[] {
-  return messages.slice(Math.max(0, messages.length - Math.max(1, limit)));
+export function recentShareMessages<T>(
+  messages: readonly T[],
+  limit = 4,
+  seedIndex = messages.length - 1,
+): T[] {
+  if (messages.length === 0) return [];
+  const safeLimit = Math.max(1, limit);
+  const endIndex = Math.min(
+    messages.length - 1,
+    Math.max(0, Math.trunc(seedIndex)),
+  );
+  return messages.slice(Math.max(0, endIndex - safeLimit + 1), endIndex + 1);
 }
 
 export function defaultShareMessageId<T extends { id: string }>(
