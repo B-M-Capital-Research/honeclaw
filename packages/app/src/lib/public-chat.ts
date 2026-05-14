@@ -42,6 +42,10 @@ export type PublicChatComposerState = {
   dailyLimit: number | undefined;
 };
 
+export type PublicChatBackgroundPending = {
+  since: number;
+} | null;
+
 export function normalizePhoneNumber(value: string) {
   const trimmed = value.trim();
   const hasLeadingPlus = trimmed.startsWith("+");
@@ -195,6 +199,43 @@ export function publicAttachmentFileLabel(name: string) {
   return parts.length > 1
     ? parts[parts.length - 1]!.toUpperCase().slice(0, 4)
     : "FILE";
+}
+
+export function findPendingPublicAssistantMessage(
+  messages: readonly PublicChatMessage[],
+): PublicChatMessage | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    if (
+      message?.role === "assistant" &&
+      message.phase &&
+      message.phase !== "done" &&
+      message.phase !== "error"
+    ) {
+      return message;
+    }
+  }
+  return undefined;
+}
+
+export function publicBackgroundPendingMessage(
+  pending: PublicChatBackgroundPending,
+): PublicChatMessage | undefined {
+  if (!pending) return undefined;
+  return {
+    id: "_background",
+    role: "assistant",
+    content: "",
+    phase: "thinking",
+    startedAt: pending.since,
+  };
+}
+
+export function publicComposerPendingMessage(input: {
+  local: PublicChatMessage | undefined;
+  background: PublicChatBackgroundPending;
+}): PublicChatMessage | undefined {
+  return input.local ?? publicBackgroundPendingMessage(input.background);
 }
 
 function toPublicAttachments(

@@ -45,9 +45,11 @@ import { buildApiUrl } from "@/lib/backend";
 import { parseMessageContent, messageId } from "@/lib/messages";
 import {
   canSendPublicChatMessage,
+  findPendingPublicAssistantMessage,
   formatPublicAttachmentBytes,
   isPublicChatQuotaExhausted,
   nextVisibleMessageCount,
+  publicComposerPendingMessage,
   publicAttachmentFileLabel,
   rekeyTrailingOptimisticIds,
   selectVisibleRecentMessages,
@@ -1859,31 +1861,13 @@ export default function PublicChatPage() {
   const isSendingOrStreaming = () =>
     isSending() || !!pendingAssistantMessage() || !!backgroundPending();
   const pendingAssistantMessage = createMemo(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const m = messages[i];
-      if (
-        m.role === "assistant" &&
-        m.phase &&
-        m.phase !== "done" &&
-        m.phase !== "error"
-      )
-        return m;
-    }
-    return undefined;
+    return findPendingPublicAssistantMessage(messages);
   });
   const composerPendingMessage = createMemo<ChatMessage | undefined>(() => {
-    const local = pendingAssistantMessage();
-    if (local) return local;
-    const bg = backgroundPending();
-    if (bg)
-      return {
-        id: "_background",
-        role: "assistant",
-        content: "",
-        phase: "thinking",
-        startedAt: bg.since,
-      };
-    return undefined;
+    return publicComposerPendingMessage({
+      local: pendingAssistantMessage(),
+      background: backgroundPending(),
+    });
   });
 
   const loadOlderMessages = () => {

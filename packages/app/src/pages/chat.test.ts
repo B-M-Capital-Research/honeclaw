@@ -2,10 +2,12 @@ import { describe, expect, it } from "bun:test";
 import { displayGithubStars, formatGithubStars, GITHUB_STARS_FALLBACK } from "@/lib/github-stars";
 import {
   canSendPublicChatMessage,
+  findPendingPublicAssistantMessage,
   nextVisibleMessageCount,
   formatPublicAttachmentBytes,
   isPublicChatQuotaExhausted,
   normalizePhoneNumber,
+  publicComposerPendingMessage,
   publicAttachmentFileLabel,
   rekeyTrailingOptimisticIds,
   resolvePublicChatView,
@@ -211,6 +213,62 @@ describe("public chat attachment model", () => {
     expect(formatPublicAttachmentBytes(512)).toBe("512 B");
     expect(formatPublicAttachmentBytes(1536)).toBe("1.5 KB");
     expect(formatPublicAttachmentBytes(2 * 1024 * 1024)).toBe("2.0 MB");
+  });
+});
+
+describe("public chat pending assistant state", () => {
+  it("selects the latest non-terminal assistant message", () => {
+    const running = {
+      id: "a2",
+      role: "assistant" as const,
+      content: "",
+      phase: "running" as const,
+    };
+    const messages = [
+      { id: "u1", role: "user" as const, content: "hi" },
+      {
+        id: "a1",
+        role: "assistant" as const,
+        content: "done",
+        phase: "done" as const,
+      },
+      running,
+      {
+        id: "a3",
+        role: "assistant" as const,
+        content: "failed",
+        phase: "error" as const,
+      },
+    ];
+
+    expect(findPendingPublicAssistantMessage(messages)).toBe(running);
+  });
+
+  it("falls back to background pending state for the composer strip", () => {
+    expect(
+      publicComposerPendingMessage({
+        local: undefined,
+        background: { since: 1778749318381 },
+      }),
+    ).toMatchObject({
+      id: "_background",
+      role: "assistant",
+      phase: "thinking",
+      startedAt: 1778749318381,
+    });
+
+    const local = {
+      id: "local",
+      role: "assistant" as const,
+      content: "streaming",
+      phase: "streaming" as const,
+    };
+    expect(
+      publicComposerPendingMessage({
+        local,
+        background: { since: 1 },
+      }),
+    ).toBe(local);
   });
 });
 
