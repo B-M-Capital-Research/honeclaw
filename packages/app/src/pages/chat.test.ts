@@ -1,13 +1,18 @@
 import { describe, expect, it } from "bun:test";
 import { displayGithubStars, formatGithubStars, GITHUB_STARS_FALLBACK } from "@/lib/github-stars";
 import {
+  canSendPublicChatMessage,
   nextVisibleMessageCount,
+  formatPublicAttachmentBytes,
+  isPublicChatQuotaExhausted,
   normalizePhoneNumber,
+  publicAttachmentFileLabel,
   rekeyTrailingOptimisticIds,
   resolvePublicChatView,
   selectVisibleRecentMessages,
   shouldRecoverPinnedBottom,
   shouldLoadOlderPublicMessages,
+  splitPublicChatAttachments,
   stripAttachmentMarkers,
   toPublicChatMessages,
 } from "@/lib/public-chat";
@@ -127,6 +132,85 @@ describe("stripAttachmentMarkers", () => {
         "问题正文\n[附件: /uploads/chart.png]\n正文里提到 [附件: label] 不应被删",
       ),
     ).toBe("问题正文\n正文里提到 [附件: label] 不应被删");
+  });
+});
+
+describe("public chat composer state", () => {
+  it("derives send eligibility from draft, attachments, busy state, and quota", () => {
+    const base = {
+      draft: "",
+      attachmentCount: 0,
+      isSending: false,
+      uploading: false,
+      remaining: undefined,
+      dailyLimit: undefined,
+    };
+
+    expect(canSendPublicChatMessage(base)).toBe(false);
+    expect(canSendPublicChatMessage({ ...base, draft: "  hello " })).toBe(true);
+    expect(canSendPublicChatMessage({ ...base, attachmentCount: 1 })).toBe(true);
+    expect(
+      canSendPublicChatMessage({ ...base, draft: "hello", isSending: true }),
+    ).toBe(false);
+    expect(
+      canSendPublicChatMessage({ ...base, draft: "hello", uploading: true }),
+    ).toBe(false);
+    expect(
+      canSendPublicChatMessage({
+        ...base,
+        draft: "hello",
+        remaining: 0,
+        dailyLimit: 10,
+      }),
+    ).toBe(false);
+    expect(
+      canSendPublicChatMessage({
+        ...base,
+        draft: "hello",
+        remaining: 0,
+        dailyLimit: 0,
+      }),
+    ).toBe(true);
+  });
+
+  it("only treats positive daily limits as capped quota", () => {
+    expect(
+      isPublicChatQuotaExhausted({ remaining: 0, dailyLimit: undefined }),
+    ).toBe(false);
+    expect(isPublicChatQuotaExhausted({ remaining: 0, dailyLimit: 0 })).toBe(
+      false,
+    );
+    expect(isPublicChatQuotaExhausted({ remaining: 0, dailyLimit: 3 })).toBe(
+      true,
+    );
+  });
+});
+
+describe("public chat attachment model", () => {
+  it("splits preview attachments into image and file groups", () => {
+    const groups = splitPublicChatAttachments([
+      { path: "/a.png", name: "a.png", kind: "image" },
+      { path: "/b.pdf", name: "b.pdf", kind: "pdf" },
+      { path: "/c.bin", name: "c.bin", kind: "file" },
+    ]);
+
+    expect(groups.images.map((attachment) => attachment.path)).toEqual([
+      "/a.png",
+    ]);
+    expect(groups.files.map((attachment) => attachment.path)).toEqual([
+      "/b.pdf",
+      "/c.bin",
+    ]);
+  });
+
+  it("derives compact file labels and byte labels for attachment chips", () => {
+    expect(publicAttachmentFileLabel("report.pdf")).toBe("PDF");
+    expect(publicAttachmentFileLabel("archive.longext")).toBe("LONG");
+    expect(publicAttachmentFileLabel("README")).toBe("FILE");
+    expect(formatPublicAttachmentBytes(undefined)).toBe("");
+    expect(formatPublicAttachmentBytes(512)).toBe("512 B");
+    expect(formatPublicAttachmentBytes(1536)).toBe("1.5 KB");
+    expect(formatPublicAttachmentBytes(2 * 1024 * 1024)).toBe("2.0 MB");
   });
 });
 

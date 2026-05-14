@@ -33,6 +33,15 @@ export type PublicChatMessage = {
   attachments?: PublicChatAttachment[];
 };
 
+export type PublicChatComposerState = {
+  draft: string;
+  attachmentCount: number;
+  isSending: boolean;
+  uploading: boolean;
+  remaining: number | undefined;
+  dailyLimit: number | undefined;
+};
+
 export function normalizePhoneNumber(value: string) {
   const trimmed = value.trim();
   const hasLeadingPlus = trimmed.startsWith("+");
@@ -142,6 +151,50 @@ export function shouldRecoverPinnedBottom(input: {
     input.scrollTop <= 24 &&
     input.distanceFromBottom > 120
   );
+}
+
+export function isPublicChatQuotaCapped(dailyLimit: number | undefined) {
+  return !!dailyLimit && dailyLimit > 0;
+}
+
+export function isPublicChatQuotaExhausted(input: {
+  remaining: number | undefined;
+  dailyLimit: number | undefined;
+}) {
+  return isPublicChatQuotaCapped(input.dailyLimit) && input.remaining === 0;
+}
+
+export function canSendPublicChatMessage(input: PublicChatComposerState) {
+  return (
+    !input.isSending &&
+    !input.uploading &&
+    (!!input.draft.trim() || input.attachmentCount > 0) &&
+    !isPublicChatQuotaExhausted(input)
+  );
+}
+
+export function splitPublicChatAttachments(
+  attachments: readonly PublicChatAttachment[] | undefined,
+) {
+  const items = attachments ?? [];
+  return {
+    images: items.filter((attachment) => attachment.kind === "image"),
+    files: items.filter((attachment) => attachment.kind !== "image"),
+  };
+}
+
+export function formatPublicAttachmentBytes(bytes?: number) {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+export function publicAttachmentFileLabel(name: string) {
+  const parts = name.split(".");
+  return parts.length > 1
+    ? parts[parts.length - 1]!.toUpperCase().slice(0, 4)
+    : "FILE";
 }
 
 function toPublicAttachments(

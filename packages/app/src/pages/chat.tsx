@@ -44,11 +44,16 @@ import {
 import { buildApiUrl } from "@/lib/backend";
 import { parseMessageContent, messageId } from "@/lib/messages";
 import {
+  canSendPublicChatMessage,
+  formatPublicAttachmentBytes,
+  isPublicChatQuotaExhausted,
   nextVisibleMessageCount,
+  publicAttachmentFileLabel,
   rekeyTrailingOptimisticIds,
   selectVisibleRecentMessages,
   shouldRecoverPinnedBottom,
   shouldLoadOlderPublicMessages,
+  splitPublicChatAttachments,
   stripAttachmentMarkers,
   toPublicChatMessages,
 } from "@/lib/public-chat";
@@ -408,20 +413,6 @@ function publicAttachmentUrl(att: PublicChatAttachment): string {
   );
 }
 
-function formatBytes(bytes?: number) {
-  if (!bytes) return "";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
-
-function fileExtension(name: string) {
-  const parts = name.split(".");
-  return parts.length > 1
-    ? parts[parts.length - 1]!.toUpperCase().slice(0, 4)
-    : "FILE";
-}
-
 function renamePasteFile(file: File) {
   const ext = file.type.split("/")[1]?.split(";")[0] || "bin";
   const stamp = new Date()
@@ -643,7 +634,7 @@ function FileCard(props: {
   file: PublicChatAttachment;
   inUserBubble?: boolean;
 }) {
-  const ext = () => fileExtension(props.file.name);
+  const ext = () => publicAttachmentFileLabel(props.file.name);
   const iconBg = () =>
     props.inUserBubble ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.05)";
   const iconColor = () => (props.inUserBubble ? "#fff" : "#1e293b");
@@ -707,7 +698,7 @@ function FileCard(props: {
               "margin-top": "3px",
             }}
           >
-            {formatBytes(props.file.size)}
+            {formatPublicAttachmentBytes(props.file.size)}
           </div>
         </Show>
       </div>
@@ -721,12 +712,11 @@ function UserBubble(props: {
   onOpenImage: (images: PublicChatAttachment[], index: number) => void;
 }) {
   const cleaned = createMemo(() => stripAttachmentMarkers(props.content));
-  const images = createMemo(() =>
-    (props.attachments ?? []).filter((a) => a.kind === "image"),
+  const attachmentGroups = createMemo(() =>
+    splitPublicChatAttachments(props.attachments),
   );
-  const files = createMemo(() =>
-    (props.attachments ?? []).filter((a) => a.kind !== "image"),
-  );
+  const images = () => attachmentGroups().images;
+  const files = () => attachmentGroups().files;
   const hasText = () => cleaned().length > 0;
   const hasAttach = () => images().length + files().length > 0;
   const imageOnly = () =>
@@ -1182,7 +1172,7 @@ function AttachPreview(props: {
                         color: "#d97706",
                       }}
                     >
-                      {fileExtension(item.name)}
+                      {publicAttachmentFileLabel(item.name)}
                     </div>
                     <div style={{ flex: "1", "min-width": "0" }}>
                       <div
@@ -1204,7 +1194,7 @@ function AttachPreview(props: {
                           color: "#94a3b8",
                         }}
                       >
-                        {formatBytes(item.size)}
+                        {formatPublicAttachmentBytes(item.size)}
                       </div>
                     </div>
                   </div>
@@ -1534,9 +1524,7 @@ function Composer(props: {
   onDraftChange: (v: string) => void;
   attachments: PublicChatAttachment[];
   onRemoveAttachment: (index: number) => void;
-  onPickFiles: (files: File[], kind: "image" | "file") => void;
-  uploadError: string;
-  onDismissUploadError: () => void;
+  onPickFiles: (files: File[]) => void;
   uploading: boolean;
   onSend: () => void;
   onStop: () => void;
@@ -1552,14 +1540,20 @@ function Composer(props: {
   let imgInputRef: HTMLInputElement | undefined;
   let fileInputRef: HTMLInputElement | undefined;
 
-  // dailyLimit falsy (0/undefined) means unlimited — see session strip.
-  const isCapped = () => !!props.dailyLimit && props.dailyLimit > 0;
-  const quotaExhausted = () => isCapped() && props.remaining === 0;
+  const quotaExhausted = () =>
+    isPublicChatQuotaExhausted({
+      remaining: props.remaining,
+      dailyLimit: props.dailyLimit,
+    });
   const canSend = () =>
-    !props.isSending &&
-    !props.uploading &&
-    (!!props.draft.trim() || props.attachments.length > 0) &&
-    !quotaExhausted();
+    canSendPublicChatMessage({
+      draft: props.draft,
+      attachmentCount: props.attachments.length,
+      isSending: props.isSending,
+      uploading: props.uploading,
+      remaining: props.remaining,
+      dailyLimit: props.dailyLimit,
+    });
   const isMobileViewport = () =>
     typeof window !== "undefined" &&
     window.matchMedia("(max-width: 768px)").matches;
@@ -1580,7 +1574,7 @@ function Composer(props: {
       .map(renamePasteFile);
     if (files.length === 0) return;
     e.preventDefault();
-    props.onPickFiles(files, "image");
+    props.onPickFiles(files);
   };
 
   createEffect(() => {
@@ -1624,7 +1618,7 @@ function Composer(props: {
             ? Array.from(e.currentTarget.files)
             : [];
           e.currentTarget.value = "";
-          if (files.length) props.onPickFiles(files, "image");
+          if (files.length) props.onPickFiles(files);
         }}
       />
       <input
@@ -1637,7 +1631,7 @@ function Composer(props: {
             ? Array.from(e.currentTarget.files)
             : [];
           e.currentTarget.value = "";
-          if (files.length) props.onPickFiles(files, "file");
+          if (files.length) props.onPickFiles(files);
         }}
       />
 
@@ -1787,7 +1781,6 @@ export default function PublicChatPage() {
   const [pendingAttachments, setPendingAttachments] = createStore<
     PublicChatAttachment[]
   >([]);
-  const [uploadError, setUploadError] = createSignal("");
   const [uploading, setUploading] = createSignal(false);
   const [lightbox, setLightbox] = createSignal<{
     images: PublicChatAttachment[];
@@ -2441,8 +2434,6 @@ export default function PublicChatPage() {
                         setUploading(false);
                       }
                     }}
-                    uploadError={uploadError()}
-                    onDismissUploadError={() => setUploadError("")}
                     uploading={uploading()}
                     onSend={handleSend}
                     onStop={() => activeController?.abort()}
