@@ -154,7 +154,7 @@ const SHARE_CARD_CSS = `
 
 export function ChatShareCard(props: ChatShareCardProps) {
   const [qrDataUrl, setQrDataUrl] = createSignal<string>("");
-  const messageFontSize = () => props.messageFontSize ?? 13.5;
+  const messageFontSize = () => props.messageFontSize ?? 16.5;
 
   createEffect(() => {
     let cancelled = false;

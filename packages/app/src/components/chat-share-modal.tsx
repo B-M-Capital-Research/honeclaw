@@ -64,7 +64,7 @@ type Toast =
 
 type ShareStep = "select" | "preview";
 
-const SHARE_FONT_SIZES = [13.5, 15, 16.5, 18] as const;
+const SHARE_FONT_SIZES = [15, 16.5, 18, 20] as const;
 const DEFAULT_SHARE_FONT_INDEX = 1;
 
 export function ChatShareModal(props: ChatShareModalProps) {
@@ -78,6 +78,7 @@ export function ChatShareModal(props: ChatShareModalProps) {
   let listEl: HTMLUListElement | undefined;
   let toastTimer: number | undefined;
   let wasOpen = false;
+  let selectionRenderKey = "";
   let renderKey = "";
   let cachedBlob: Blob | null = null;
   let renderPromise: Promise<Blob> | null = null;
@@ -135,14 +136,16 @@ export function ChatShareModal(props: ChatShareModalProps) {
   createEffect(() => {
     const key = selectionKey();
     if (!props.open || !key) {
+      selectionRenderKey = "";
       renderKey = "";
       cachedBlob = null;
       renderPromise = null;
       revokePreviewUrl();
       return;
     }
-    if (renderKey !== key) {
-      renderKey = key;
+    if (selectionRenderKey !== key) {
+      selectionRenderKey = key;
+      renderKey = "";
       cachedBlob = null;
       renderPromise = null;
       revokePreviewUrl();
@@ -186,6 +189,12 @@ export function ChatShareModal(props: ChatShareModalProps) {
     isLikelyIOSPlatform(navigator.platform, navigator.maxTouchPoints || 0);
 
   const renderCanvas = async () => {
+    if (!cardEl) {
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    }
+    if (!cardEl) {
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    }
     if (!cardEl) throw new ShareRenderError("Share card is not ready");
     const { default: html2canvas } = await import("html2canvas");
     try {
@@ -247,7 +256,12 @@ export function ChatShareModal(props: ChatShareModalProps) {
   };
 
   const changeFontSize = (index: number) => {
-    if (index === fontIndex()) return;
+    if (index === fontIndex()) {
+      if (step() === "preview" && hasSelection() && !previewUrl() && !busy()) {
+        void withBusy(showPreview).catch(() => undefined);
+      }
+      return;
+    }
     setFontIndex(index);
     cachedBlob = null;
     renderPromise = null;
