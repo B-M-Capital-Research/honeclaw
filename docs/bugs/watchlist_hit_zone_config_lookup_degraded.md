@@ -5,6 +5,19 @@
 - **严重等级**: P3
 - **状态**: New
 - **修复结论复核**:
+  - `2026-05-14 23:04 CST` 本轮确认该缺陷继续活跃：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - `run_id=21108`
+      - `job_name=科技核心股池 · 晚间击球区快报`
+      - `executed_at=2026-05-14T21:37:27.210326+08:00`
+      - `execution_status=completed`
+      - `message_send_status=sent`
+      - `delivered=1`
+      - `response_preview` 继续把核心股 `MSFT / NVDA / GOOGL / AAPL / AVGO / AMZN / META` 和拓展股批量写成 `击球区：待确认`。
+    - 同窗 `run_id=21154` / `核心观察股池晚间快报` 在 23:00 CST 刚进入 `running + pending`，截至本轮巡检尚未形成终态；本轮不把它作为新增坏答复证据。
+    - 结论：
+      - 这是同一根因 / 同一影响范围的持续复发，不新建重复文档。
+      - 仍定为 `P3`：任务按时完成并送达，价格与财报字段仍可读；受损的是固定观察池字段恢复与报告参考价值，没有阻断主投递链路。
   - `2026-05-14 11:05 CST` 本轮确认该缺陷继续活跃：
     - `data/sessions.sqlite3` -> `cron_job_runs`
       - `run_id=20500`
