@@ -220,6 +220,18 @@ static RE_COMPACT_MARKER_LINE: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(r"(?i)^\s*(context|conversation)\s+compacted[\s\.\u{3002}:：-]*$")
         .expect("valid regex")
 });
+static RE_LOCAL_MARKDOWN_LINK: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r#"\[(?P<label>[^\]\n]{0,240})\]\((?P<path>(?:file://)?(?:[A-Za-z]:[\\/]|/)[^)\n]+)\)"#,
+    )
+    .expect("valid regex")
+});
+static RE_FILE_URI_ABSOLUTE_PATH: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r#"(?P<prefix>^|[\s\(\[\{<"'`])file://(?P<path>(?:[A-Za-z]:[\\/]|/)[^\s<>"'`]+)"#,
+    )
+    .expect("valid regex")
+});
 static RE_ABSOLUTE_PATH: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(r#"(?P<prefix>^|[\s\(\[\{<"'`])(?P<path>(?:[A-Za-z]:[\\/]|/)[^\s<>"'`]+)"#)
         .expect("valid regex")
@@ -304,6 +316,9 @@ pub fn sanitize_user_visible_output(text: &str) -> SanitizedUserVisibleOutput {
         removed_internal = true;
         sanitized = stripped;
     }
+    let (path_sanitized, removed_paths) = redact_user_visible_local_paths(&sanitized);
+    sanitized = path_sanitized;
+    removed_internal |= removed_paths;
     sanitized = RE_WS.replace_all(&sanitized, " ").to_string();
     sanitized = RE_NL.replace_all(&sanitized, "\n\n").to_string();
     sanitized = sanitized.trim().to_string();
@@ -331,6 +346,52 @@ fn strip_internal_protocol_blocks(mut value: String) -> (String, bool) {
     }
 
     (value, removed_internal)
+}
+
+fn redact_user_visible_local_paths(text: &str) -> (String, bool) {
+    let mut removed = false;
+
+    let markdown_stripped = RE_LOCAL_MARKDOWN_LINK.replace_all(text, |caps: &regex::Captures| {
+        removed = true;
+        let label = caps
+            .name("label")
+            .map(|m| m.as_str().trim())
+            .unwrap_or_default();
+        let raw_path = caps
+            .name("path")
+            .map(|m| m.as_str())
+            .unwrap_or_default()
+            .trim_start_matches("file://");
+        if label.is_empty()
+            || RE_ABSOLUTE_PATH.is_match(label)
+            || RE_FILE_URI_ABSOLUTE_PATH.is_match(label)
+        {
+            mask_absolute_path(raw_path)
+        } else {
+            label.to_string()
+        }
+    });
+    let mut sanitized = markdown_stripped.into_owned();
+
+    let file_uri_stripped =
+        RE_FILE_URI_ABSOLUTE_PATH.replace_all(&sanitized, |caps: &regex::Captures| {
+            removed = true;
+            let prefix = caps.name("prefix").map(|m| m.as_str()).unwrap_or_default();
+            let raw = caps.name("path").map(|m| m.as_str()).unwrap_or_default();
+            let (path, suffix) = split_trailing_path_punctuation(raw);
+            format!("{prefix}{}{suffix}", mask_absolute_path(path))
+        });
+    sanitized = file_uri_stripped.into_owned();
+
+    let absolute_stripped = RE_ABSOLUTE_PATH.replace_all(&sanitized, |caps: &regex::Captures| {
+        removed = true;
+        let prefix = caps.name("prefix").map(|m| m.as_str()).unwrap_or_default();
+        let raw = caps.name("path").map(|m| m.as_str()).unwrap_or_default();
+        let (path, suffix) = split_trailing_path_punctuation(raw);
+        format!("{prefix}{}{suffix}", mask_absolute_path(path))
+    });
+
+    (absolute_stripped.into_owned(), removed)
 }
 
 pub fn user_visible_error_message(raw: Option<&str>) -> String {
@@ -854,6 +915,33 @@ mod tests {
         let sanitized = sanitize_user_visible_output(raw);
         assert!(!sanitized.removed_internal);
         assert_eq!(sanitized.content, raw);
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_redacts_local_markdown_file_links() {
+        let raw = "PDD 公司画像已建好：主画像 [profile.md](/Users/fengming2/Desktop/honeclaw/data/agent-sandboxes/feishu/direct__secret/company_profiles/pdd/profile.md)，事件 [2026-05-12-init.md](file:///Users/fengming2/Desktop/honeclaw/data/agent-sandboxes/feishu/direct__secret/company_profiles/pdd/events/2026-05-12-init.md)。";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(sanitized.removed_internal);
+        assert_eq!(
+            sanitized.content,
+            "PDD 公司画像已建好：主画像 profile.md，事件 2026-05-12-init.md。"
+        );
+        assert!(!sanitized.content.contains("/Users/"));
+        assert!(!sanitized.content.contains("direct__secret"));
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_redacts_bare_absolute_paths() {
+        let raw = "已写入 /Users/fengming2/Desktop/honeclaw/data/agent-sandboxes/feishu/direct__secret/company_profiles/pdd/profile.md 和 C:\\Users\\fengming\\honeclaw\\secret\\note.txt。";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(sanitized.removed_internal);
+        assert_eq!(
+            sanitized.content,
+            "已写入 <absolute-path>/profile.md 和 <absolute-path>/note.txt。"
+        );
+        assert!(!sanitized.content.contains("/Users/"));
+        assert!(!sanitized.content.contains("C:\\Users"));
+        assert!(!sanitized.content.contains("direct__secret"));
     }
 
     #[test]

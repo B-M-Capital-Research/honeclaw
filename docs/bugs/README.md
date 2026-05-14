@@ -17,10 +17,11 @@
 
 ## 当前概览
 
-- 活跃待修复：5
+- 活跃待修复：4
 - Later / 待复现：9
-- 已修复 / 已关闭：98
+- 已修复 / 已关闭：99
 - 历史分析 / 部分止血：5
+- 本轮 16:07 CST 已修复 Feishu 公司画像路径外泄缺陷：共享 `sanitize_user_visible_output(...)` 现在会把本地 Markdown 文件链接降成无路径标签，并将裸 `/Users/...` / `C:\Users\...` 绝对路径改写为 `<absolute-path>/<basename>`，避免 `data/agent-sandboxes`、direct actor sandbox 标识和本机仓库根进入外部渠道 final。验证 `cargo test -p hone-channels sanitize_user_visible_output_redacts --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`、`rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/runtime.rs` 通过；无关联 GitHub Issue。
 - 本轮 12:07 CST 已修复 Heartbeat preview 去重同一 job 实质性增量误抑制：`Cerebras IPO` 定价区间从 `$115-$125` 上调至 `$150-$160` 时，新增修订敏感事实检查会识别定价区间 / 发行 / 募资 / 估值等关键数字事实变化，不再被旧 preview 压成 `noop`。验证 `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs`、`cargo test -p hone-channels heartbeat_duplicate_preview_match --lib -- --nocapture` 通过。
 - 本轮 12:07 CST 复核 Feishu scheduler started-row 台账缺陷：当前 HEAD 已有 `delivery_key` 覆盖、最近 started fallback 与启动 stale recovery 回归，最近 live 残留证据按当前机器旧运行态 / 非生产机器证据处理；`cargo test -p hone-memory --lib -- --nocapture` 与 `cargo check -p hone-channels --tests` 通过，状态从 `New` 更新为 `Fixed`，关联 Issue [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39)。
 - 本轮 07:06 CST 重新打开原油定时播报缺陷：04:01 `Oil_Price_Monitor_Closing` 与 04:33 `OWALERT_PostMarket` 均成功外发 WTI / Brent 具体价格与油价回落对科技股的确定性影响判断，`detail_json.scheduler=null` 且没有商品 guard / 同窗来源审计元数据；这是普通 scheduler 路径复发，不是已确认生效的 heartbeat guard 路径。
@@ -87,7 +88,6 @@
 | Heartbeat 监控使用 `mimo-v2.5-pro` 时批量命中 `Param Incorrect` 并漏发 | P2 | New | 2026-05-14 15:04 持续复发：11:00-15:00 CST 新增 90 条同类 `reasoning_content must be passed back` / `Param Incorrect` heartbeat 失败，覆盖 11 个 job；无关联 GitHub Issue | [scheduler_heartbeat_mimo_param_incorrect_batch_failures.md](./scheduler_heartbeat_mimo_param_incorrect_batch_failures.md) |
 | 原油定时播报在价格 / 日期 / 背景口径上继续输出未核验或错误事实 | P2 | New | 2026-05-14 07:06 复发：04:01 `Oil_Price_Monitor_Closing` 与 04:33 `OWALERT_PostMarket` 成功外发 WTI / Brent 具体价格和油价回落对科技股的确定性影响判断，`detail_json.scheduler=null`，普通 scheduler 路径未见商品 guard / 同窗来源审计元数据；无关联 GitHub Issue | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Feishu 直聊在工具尚未跑完时提前把工具进度 / 不完整错误当成最终回复 | P2 | New | 2026-05-13 03:02 复发：23:30 CST 用户要求为当前持仓未建画像公司建档，23:34 CST assistant final 只返回 `本地命令`、`Searching the Web`、`处理中发生错误，内容可能不完整`，没有交代建档结果；无关联 GitHub Issue | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
-| Feishu 公司画像建档成功后向用户暴露本机绝对路径与内部文件落点 | P3 | New | 2026-05-13 03:02 复发：23:48 CST PDD 公司画像建档回复直接包含 `/Users/fengming2/Desktop/honeclaw/data/agent-sandboxes/.../company_profiles/pdd/profile.md` 本机路径；主功能完成但输出边界失守；无关联 GitHub Issue | [feishu_company_profile_absolute_path_leak.md](./feishu_company_profile_absolute_path_leak.md) |
 | 核心观察池简报在本地击球区配置恢复后仍把多数标的降成“待确认” | P3 | New | 2026-05-14 11:05 复发：09:02 CST `核心观察池早间简报` 成功送达但核心股与拓展股继续批量写成 `击球区：待确认`；不阻断投递链路；无关联 GitHub Issue | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 
 ## Later / 待复现
@@ -108,6 +108,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Feishu 公司画像建档成功后向用户暴露本机绝对路径与内部文件落点 | P3 | Fixed | 2026-05-14 16:07 已把本地 Markdown 文件链接与裸绝对路径脱敏并入共享 `sanitize_user_visible_output(...)`，公司画像建档回复不再暴露本机 repo 根、`data/agent-sandboxes` 或 direct actor sandbox 标识；无关联 GitHub Issue | [feishu_company_profile_absolute_path_leak.md](./feishu_company_profile_absolute_path_leak.md) |
 | Web direct 可读取并总结其它 web session / 本机 Codex 记录 / 全局持仓数据 | P1 | Fixed | 2026-05-14 15:04 继续仅见修复前 live 旧运行态：11:13-11:46 CST 同一 web 会话仍可读取/复制 `~/.codex` session 记录并读取 `~/.codex/auth.json` 后主动脱敏 token；live `PID 63485` 启动于 2026-05-13 19:28 CST，早于 04:24 修复。待下次正常部署/重启后再做 live 复核；关联 Issue [#41](https://github.com/B-M-Capital-Research/honeclaw/issues/41) | [web_direct_cross_session_sandbox_data_exposure.md](./web_direct_cross_session_sandbox_data_exposure.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixed | 2026-05-12 19:12 malformed-triggered 恢复扩展到 JSON-ish `status` 与智能引号 `message`；新增 `heartbeat_malformed_triggered_json_recovers_unquoted_status`、`heartbeat_malformed_triggered_json_recovers_smart_quoted_message`；`rustfmt --edition 2024 --check crates/hone-channels/src/scheduler.rs`、`cargo test -p hone-channels heartbeat_malformed --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Feishu direct 命中 Codex runner usage limit 后只返回通用失败兜底 | P1 | Fixed | 2026-05-12 11:04 共享错误净化层新增 Codex / runner / ACP usage-limit 识别，统一返回“当前执行额度已用尽，暂时无法继续处理。请稍后再试。”；Feishu direct 失败回复优先展示该错误，不再被 placeholder 或 partial stream 遮蔽。`cargo test -p hone-channels user_visible_error_message --lib -- --nocapture`、`cargo test -p hone-feishu failed_reply_text_keeps_codex_usage_limit_over_partial_stream -- --nocapture`、`cargo check -p hone-channels -p hone-feishu --tests` 通过；关联 Issue [#40](https://github.com/B-M-Capital-Research/honeclaw/issues/40) | [feishu_direct_codex_usage_limit_generic_failure.md](./feishu_direct_codex_usage_limit_generic_failure.md) |
