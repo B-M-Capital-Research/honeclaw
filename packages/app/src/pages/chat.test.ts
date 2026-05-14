@@ -6,6 +6,7 @@ import {
   rekeyTrailingOptimisticIds,
   resolvePublicChatView,
   selectVisibleRecentMessages,
+  shouldRecoverPinnedBottom,
   shouldLoadOlderPublicMessages,
   stripAttachmentMarkers,
   toPublicChatMessages,
@@ -224,6 +225,30 @@ describe("public chat history window", () => {
         hasOlderMessages: true,
         loadingOlderMessages: false,
         sendingOrStreaming: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("recovers accidental top jumps while pinned to the newest message", () => {
+    expect(
+      shouldRecoverPinnedBottom({
+        scrollTop: 0,
+        distanceFromBottom: 1800,
+        pinnedToBottom: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldRecoverPinnedBottom({
+        scrollTop: 0,
+        distanceFromBottom: 1800,
+        pinnedToBottom: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldRecoverPinnedBottom({
+        scrollTop: 48,
+        distanceFromBottom: 1800,
+        pinnedToBottom: true,
       }),
     ).toBe(false);
   });

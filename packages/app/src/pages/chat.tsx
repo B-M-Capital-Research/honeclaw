@@ -47,6 +47,7 @@ import {
   nextVisibleMessageCount,
   rekeyTrailingOptimisticIds,
   selectVisibleRecentMessages,
+  shouldRecoverPinnedBottom,
   shouldLoadOlderPublicMessages,
   stripAttachmentMarkers,
   toPublicChatMessages,
@@ -1823,12 +1824,15 @@ export default function PublicChatPage() {
   let stickToBottom = true;
   let lastScrollTop = 0;
   let suppressScrollUntil = 0;
+  let pinBottomUntil = 0;
+  let shareReturnScrollTop: number | null = null;
+  let shareReturnAtBottom = true;
   let justFinishedTimer: number | undefined;
 
   const scrollToBottom = () => {
     requestAnimationFrame(() => {
       if (!scrollRef) return;
-      suppressScrollUntil = Date.now() + 180;
+      suppressScrollUntil = Math.max(suppressScrollUntil, Date.now() + 180);
       scrollRef.scrollTop = Math.max(
         0,
         scrollRef.scrollHeight - scrollRef.clientHeight,
@@ -1836,13 +1840,21 @@ export default function PublicChatPage() {
       lastScrollTop = scrollRef.scrollTop;
     });
   };
-  const settleAtBottom = () => {
+  const pinToBottom = (durationMs = 900) => {
     stickToBottom = true;
-    suppressScrollUntil = Date.now() + 260;
+    const until = Date.now() + durationMs;
+    pinBottomUntil = Math.max(pinBottomUntil, until);
+    suppressScrollUntil = Math.max(suppressScrollUntil, until);
+    setAwayFromBottom(false);
     scrollToBottom();
     requestAnimationFrame(scrollToBottom);
+    window.setTimeout(scrollToBottom, 40);
     window.setTimeout(scrollToBottom, 90);
+    window.setTimeout(scrollToBottom, 180);
+    window.setTimeout(scrollToBottom, 360);
   };
+  const settleAtBottom = () => pinToBottom(900);
+  const isBottomPinned = () => Date.now() < pinBottomUntil;
   const distanceFromBottom = () =>
     scrollRef
       ? scrollRef.scrollHeight - scrollRef.scrollTop - scrollRef.clientHeight
@@ -1907,8 +1919,18 @@ export default function PublicChatPage() {
     // Ignore scroll events produced by our own bottom pinning/history
     // compensation. Mobile browsers can emit these while keyboard/layout
     // metrics settle; treating them as user scrolls can jump to older messages.
-    if (Date.now() < suppressScrollUntil) {
-      lastScrollTop = top;
+    if (Date.now() < suppressScrollUntil || isBottomPinned()) {
+      if (
+        shouldRecoverPinnedBottom({
+          scrollTop: top,
+          distanceFromBottom: dist,
+          pinnedToBottom: stickToBottom || isBottomPinned(),
+        })
+      ) {
+        scrollToBottom();
+        return;
+      }
+      if (!isBottomPinned()) lastScrollTop = top;
       return;
     }
     suppressScrollUntil = 0;
@@ -1950,6 +1972,29 @@ export default function PublicChatPage() {
     setJustFinished(true);
     if (justFinishedTimer !== undefined) window.clearTimeout(justFinishedTimer);
     justFinishedTimer = window.setTimeout(() => setJustFinished(false), 2400);
+  };
+
+  const openShareModal = (seedIndex: number) => {
+    shareReturnScrollTop = scrollRef?.scrollTop ?? null;
+    shareReturnAtBottom = stickToBottom || distanceFromBottom() < 160;
+    if (shareReturnAtBottom) pinToBottom(900);
+    setShareSeed(seedIndex);
+  };
+
+  const closeShareModal = () => {
+    setShareSeed(null);
+    if (shareReturnAtBottom) {
+      pinToBottom(1200);
+    } else if (scrollRef && shareReturnScrollTop !== null) {
+      const nextTop = shareReturnScrollTop;
+      suppressScrollUntil = Date.now() + 260;
+      requestAnimationFrame(() => {
+        if (!scrollRef) return;
+        scrollRef.scrollTop = nextTop;
+        lastScrollTop = scrollRef.scrollTop;
+      });
+    }
+    shareReturnScrollTop = null;
   };
 
   // When the inner messages content grows (streaming, new message), keep the
@@ -2005,6 +2050,7 @@ export default function PublicChatPage() {
         options.keepAtBottom ||
         stickToBottom ||
         distanceFromBottom() < 120;
+      if (shouldKeepBottom) pinToBottom(1200);
       // Keep optimistic UUIDs on the just-sent pair so reconcile patches the
       // bubbles in place instead of swapping the DOM nodes for the next
       // history-derived stable ids — the swap collapses scrollHeight long
@@ -2013,7 +2059,7 @@ export default function PublicChatPage() {
       rekeyTrailingOptimisticIds(messages, next);
       setMessages(reconcile(next, { key: "id" }));
       if (shouldKeepBottom) {
-        settleAtBottom();
+        pinToBottom(1200);
       } else if (previousScrollTop !== undefined) {
         requestAnimationFrame(() => {
           if (scrollRef) {
@@ -2164,6 +2210,7 @@ export default function PublicChatPage() {
           if (ev.event === "run_finished") {
             const index = messages.findIndex((m) => m.id === assistantId);
             if (index >= 0) setMessages(index, "phase", "done");
+            pinToBottom(1400);
             flashJustFinished();
           }
         }
@@ -2173,7 +2220,9 @@ export default function PublicChatPage() {
       if (index >= 0)
         setMessages(index, { phase: "error", statusText: String(e) });
     } finally {
-      const shouldStayAtBottom = stickToBottom || distanceFromBottom() < 160;
+      const shouldStayAtBottom =
+        stickToBottom || isBottomPinned() || distanceFromBottom() < 160;
+      if (shouldStayAtBottom) pinToBottom(1600);
       setIsSending(false);
       flashJustFinished();
       void restoreSession({ keepAtBottom: shouldStayAtBottom });
@@ -2322,7 +2371,7 @@ export default function PublicChatPage() {
                                 i() > 0 &&
                                 visibleMessages()[i() - 1]?.role === "assistant"
                               }
-                              onShare={() => setShareSeed(i())}
+                              onShare={() => openShareModal(i())}
                             />
                           </Match>
                           <Match
@@ -2430,7 +2479,7 @@ export default function PublicChatPage() {
         qrUrl="https://hone-claw.com/chat"
         qrCaption={CONTENT.chat_page.share.qr_caption}
         strings={CONTENT.chat_page.share.strings}
-        onClose={() => setShareSeed(null)}
+        onClose={closeShareModal}
       />
 
       <style>{`

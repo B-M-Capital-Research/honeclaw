@@ -90,7 +90,9 @@ export function ChatShareModal(props: ChatShareModalProps) {
         const item = listEl?.querySelector<HTMLElement>(
           ".pub-share-item[data-selected='true']",
         );
-        item?.scrollIntoView({ block: "center" });
+        if (!item || !listEl) return;
+        listEl.scrollTop =
+          item.offsetTop - listEl.clientHeight / 2 + item.clientHeight / 2;
       });
     }
     wasOpen = props.open;

@@ -132,6 +132,18 @@ export function shouldLoadOlderPublicMessages(input: {
   );
 }
 
+export function shouldRecoverPinnedBottom(input: {
+  scrollTop: number;
+  distanceFromBottom: number;
+  pinnedToBottom: boolean;
+}) {
+  return (
+    input.pinnedToBottom &&
+    input.scrollTop <= 24 &&
+    input.distanceFromBottom > 120
+  );
+}
+
 function toPublicAttachments(
   items: HistoryAttachment[],
 ): PublicChatAttachment[] {
