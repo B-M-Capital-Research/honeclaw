@@ -25,7 +25,7 @@ const ZH = {
   },
   detail: {
     header_title: "技能管理",
-    header_subtitle: "查看当前注册的 skills，并控制它们是否可被 Hone 在所有渠道与 runners 中调用。",
+    header_subtitle: "查看当前注册的技能，并控制它们是否可被 Hone 在所有渠道与 Agent 引擎中调用。",
     reset_button: "恢复默认",
     resetting_button: "恢复中…",
     counts_total: "总数 {count}",
@@ -76,7 +76,7 @@ const EN: typeof ZH = {
   },
   detail: {
     header_title: "Skills",
-    header_subtitle: "View registered skills and control whether Hone can invoke them across channels and runners.",
+    header_subtitle: "View registered skills and control whether Hone can invoke them across channels and agent engines.",
     reset_button: "Restore defaults",
     resetting_button: "Restoring…",
     counts_total: "Total {count}",

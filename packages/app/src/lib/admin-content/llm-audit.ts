@@ -64,7 +64,7 @@ const EN: typeof ZH = {
   },
   table: {
     col_time: "Time",
-    col_actor_session: "Actor / Session",
+    col_actor_session: "User / Session",
     col_provider_model: "Provider / Model",
     col_operation: "Operation",
     col_status: "Status",

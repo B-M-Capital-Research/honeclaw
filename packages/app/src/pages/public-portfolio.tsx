@@ -87,7 +87,7 @@ function MainlineCard(props: {
               }
             >
               <strong style={{ color: "#d97706" }}>画像存在，但投资主线生成失败 / 跳过</strong>
-              {props.isSkipped ? "（上次跳过）" : ""}—— 点"立即更新"重试。
+              {props.isSkipped ? "（上次跳过）" : ""}—— 点击「立即更新」重试。
             </Show>
           </div>
         }
@@ -183,7 +183,7 @@ function ProfileModal(props: { open: boolean; ticker: string | null; onClose: ()
             }}
           >
             <div style={{ "font-weight": "700", color: "#0f172a" }}>
-              {props.ticker} · 公司画像 (read-only)
+              {props.ticker} · 公司画像（只读）
             </div>
             <button
               type="button"
@@ -528,7 +528,7 @@ function PortfolioContextView() {
                       gap: "14px",
                     }}
                   >
-                    <span>还没有公司画像。跟 Hone 说"建立 X 的公司画像"就能开始。</span>
+                    <span>还没有公司画像。跟 Hone 说「建立 X 的公司画像」就能开始。</span>
                     <button
                       type="button"
                       onClick={() => navigate("/chat")}

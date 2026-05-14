@@ -95,7 +95,7 @@ const EN: typeof ZH = {
   chat: {
     empty_open_title: "Open a session on the left",
     empty_open_description: "Browse shared session history, or start a new user session and chat with Hone.",
-    header_subtitle_group: "Shared group session history (read-only).",
+    header_subtitle_group: "Shared group session history (view only).",
     header_subtitle_direct: "Live streaming responses and scheduled push messages.",
     status_online: "Online",
     status_processing: "Processing",

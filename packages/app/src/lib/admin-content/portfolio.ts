@@ -57,7 +57,7 @@ const ZH = {
 const EN: typeof ZH = {
   detail: {
     empty_title: "Pick a holdings owner on the left",
-    empty_description: "Browse a channel actor's portfolio overview, or adjust their holdings manually.",
+    empty_description: "Browse a channel user's portfolio overview, or adjust their holdings manually.",
     header_title: "Holdings & watchlist",
     add_button: "Add holding",
     empty_records_title: "No holdings or watchlist entries",

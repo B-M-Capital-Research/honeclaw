@@ -29,12 +29,12 @@ const ZH = {
   agent: {
     title: "基础设置",
     subtitle:
-      "选择 Agent 引擎并配置相关参数，保存后写入 config.yaml 并刷新 effective config。",
+      "选择 Agent 引擎并配置相关参数，保存后写入 config.yaml 并刷新运行时配置快照。",
     current_badge: "当前",
     hone_cloud: {
       name: "Hone Cloud",
       description:
-        "使用 hone-claw.com 托管用户端配置与生产服务运行对话，可填写用户 API Key 或自定义服务地址。",
+        "使用 hone-claw.com 托管的用户端配置和生产对话服务，可填写用户 API Key 或自定义服务地址。",
       base_url_label: "服务地址",
       model_label: "模型",
       api_key_label: "API Key",
@@ -50,7 +50,7 @@ const ZH = {
     multi_agent: {
       name: "Multi-Agent",
       description:
-        "Search Agent 使用 MiniMax function calling，Answer Agent 使用 OpenAI-compatible 路由收束回复",
+        "Search Agent 使用 MiniMax 工具调用，Answer Agent 通过 OpenAI 兼容接口收束回复。",
       search_title: "Search Agent (MiniMax / OpenAI-compatible)",
       answer_title: "Answer Agent (OpenAI-compatible)",
       test_search: "测试 Search Agent",
@@ -68,15 +68,15 @@ const ZH = {
       base_url_label: "Base URL",
       model_label: "主模型",
       api_key_label: "API Key",
-      auxiliary_title: "Auxiliary 子模型链路",
+      auxiliary_title: "辅助模型链路",
       auxiliary_subtitle:
         "用于心跳检测、会话压缩等后台辅助任务，支持独立的 OpenAI-compatible Base URL / API Key / Model。",
       auxiliary_url_label: "Auxiliary Base URL",
       auxiliary_model_label: "Auxiliary Model",
       auxiliary_apikey_label: "Auxiliary API Key",
-      profiles_title: "LLM Profile 路由",
+      profiles_title: "模型用途路由",
       profiles_subtitle:
-        "按用途选择模型 symbol；运行时会用对应 profile 的 provider、model 与参数发起请求。",
+        "按用途选择模型标识；运行时会用对应配置档的服务商、模型和参数发起请求。",
       profiles_default_label: "默认对话",
       profiles_auxiliary_label: "辅助任务",
       profiles_polish_label: "消息润色",
@@ -112,7 +112,7 @@ const ZH = {
       description_suffix:
         " 驱动当前 Agent，会话实际走 ACP 链路而不是 multi-agent。",
       runtime_note:
-        "设置会写入 config.yaml 并刷新 effective config；如果监听进程仍显示旧 runner，请确认内置后端已按新配置重启。",
+        "设置会写入 config.yaml 并刷新运行时配置快照；如果监听进程仍显示旧 Agent 引擎，请确认内置后端已按新配置重启。",
       checking_status: "检测中，请稍候…",
       test_connection: "测试连通",
       checking: "检测中…",
@@ -292,12 +292,12 @@ const EN: typeof ZH = {
   agent: {
     title: "Core settings",
     subtitle:
-      "Pick the agent runner and configure its parameters. Saving writes config.yaml and refreshes the effective config.",
+      "Pick the agent engine and configure its parameters. Saving writes config.yaml and refreshes the runtime config snapshot.",
     current_badge: "Active",
     hone_cloud: {
       name: "Hone Cloud",
       description:
-        "Uses the hone-claw.com hosted user configuration and production service. Enter a user API key or customize the service URL.",
+        "Uses the hone-claw.com hosted user configuration and production chat service. Enter a user API key or customize the service URL.",
       base_url_label: "Service URL",
       model_label: "Model",
       api_key_label: "API Key",
@@ -332,15 +332,15 @@ const EN: typeof ZH = {
       base_url_label: "Base URL",
       model_label: "Primary model",
       api_key_label: "API Key",
-      auxiliary_title: "Auxiliary sub-model",
+      auxiliary_title: "Auxiliary model path",
       auxiliary_subtitle:
         "Used for heartbeat checks, session compaction, and other background helpers. Accepts an independent OpenAI-compatible Base URL / API Key / Model.",
       auxiliary_url_label: "Auxiliary Base URL",
       auxiliary_model_label: "Auxiliary Model",
       auxiliary_apikey_label: "Auxiliary API Key",
-      profiles_title: "LLM profile routing",
+      profiles_title: "Model route profiles",
       profiles_subtitle:
-        "Choose model symbols per runtime use case; each profile carries its provider, model, and request parameters.",
+        "Pick a model identifier for each use case. Runtime calls use the matching profile provider, model, and parameters.",
       profiles_default_label: "Default chat",
       profiles_auxiliary_label: "Auxiliary tasks",
       profiles_polish_label: "Message polish",
@@ -376,7 +376,7 @@ const EN: typeof ZH = {
       description_suffix:
         ". Sessions run over the ACP link instead of multi-agent.",
       runtime_note:
-        "Settings write to config.yaml and refresh the effective config. If the listener still shows the old runner, confirm that the embedded backend restarted with the new config.",
+        "Settings write to config.yaml and refresh the runtime config snapshot. If the listener still shows the old agent engine, confirm that the embedded backend restarted with the new config.",
       checking_status: "Checking, please wait…",
       test_connection: "Test connection",
       checking: "Checking…",
@@ -430,7 +430,7 @@ const EN: typeof ZH = {
   notify: {
     title: "Notification preferences",
     subtitle:
-      "Adjust event push policy on behalf of any actor. End users can also tune this from the channel via natural language.",
+      "Adjust event push policy on behalf of any user identity. End users can also tune this from the channel via natural language.",
   },
   channel: {
     title: "Channels",

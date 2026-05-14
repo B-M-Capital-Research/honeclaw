@@ -307,7 +307,7 @@ const CONTENT_ZH = {
         eyebrow: "§ 01 · QUICK START",
         title: "快速开始",
         intro:
-          "三种方式接入 Hone：一键安装脚本、Homebrew、或源码开发。安装后可用 `hone-cli start` 跑完整运行时，也可用 `hone-cli web admin-ui` / `hone-cli web user-ui` 单独打开管理端或公开用户端。",
+          "三种方式接入 Hone：一键安装脚本、Homebrew、或源码开发。安装后可用 `hone-cli start` 跑完整运行时，也可用 `hone-cli web admin-ui` / `hone-cli web user-ui` 单独打开管理端或公开用户端界面。",
       },
       capabilities: {
         eyebrow: "§ 02 · CAPABILITY MATRIX",
@@ -318,13 +318,13 @@ const CONTENT_ZH = {
         eyebrow: "§ 03 · CHANNELS",
         title: "渠道接入",
         intro:
-          "Hone 是多端接入的投研 agent。每个渠道都是独立进程，可独立启停、独立配置。",
+          "Hone 是多端接入的投研助手。每个渠道都是独立进程，可独立启停、独立配置。",
       },
       architecture: {
         eyebrow: "§ 04 · ARCHITECTURE",
         title: "系统架构",
         intro:
-          "Rust 核心引擎 · 多 Runner 抽象 · SolidJS 前端。公开 user-ui、管理后台和渠道进程共用同一套后端能力，但按界面、端口和进程边界隔离。",
+          "Rust 核心引擎 · 多 Agent 引擎抽象 · SolidJS 前端。公开用户端、管理后台和渠道进程共用同一套后端能力，但按界面、端口和进程边界隔离。",
         footnote_prefix: "完整模块说明见",
         footnote_link: "docs/repo-map.md ↗",
       },
@@ -411,23 +411,23 @@ const CONTENT_ZH = {
     architecture_points: [
       {
         title: "CLI 启动",
-        desc: "`hone-cli doctor / onboard / start` 负责体检、首装向导、启动 hone-console-page 与已启用渠道；`hone-cli web admin-ui` / `hone-cli web user-ui` 可定位或启动管理端与用户端 Web；源码模式使用 `cargo run -p hone-cli -- start --build`。",
+        desc: "`hone-cli doctor / onboard / start` 负责体检、首装向导、启动 hone-console-page 与已启用渠道；`hone-cli web admin-ui` / `hone-cli web user-ui` 可定位或启动管理端与公开用户端；源码模式使用 `cargo run -p hone-cli -- start --build`。",
       },
       {
-        title: "公开 user-ui",
-        desc: "公开 user-ui 路由包含 `/`、`/roadmap`、`/chat`、`/me`、`/portfolio`、`/terms`、`/privacy`；`/chat` 使用阿里云行为验证 + 手机短信验证码登录，管理端 Web 白名单是准入来源，并支持助手回答复制与图片分享；`/portfolio` 只读展示 digest context 与公司画像入口，后端公开面收敛在 `/api/public/*`。",
+        title: "公开用户端",
+        desc: "公开用户端路由包含 `/`、`/roadmap`、`/chat`、`/me`、`/portfolio`、`/terms`、`/privacy`；`/chat` 使用阿里云行为验证 + 手机短信验证码登录，管理端白名单是准入来源，并支持助手回答复制与图片分享；`/portfolio` 只读展示推送上下文与公司画像入口，后端公开面收敛在 `/api/public/*`。",
       },
       {
         title: "管理后台",
         desc: "管理后台提供 dashboard、sessions、skills、tasks、users、research、llm-audit、task-health、notifications、schedule、settings、logs 等维护入口。",
       },
       {
-        title: "Runner 层",
-        desc: "推荐 runner 是 Hone Cloud、Codex ACP 和 OpenCode ACP；同时保留 OpenAI-compatible function calling、Gemini CLI、Codex CLI 与 multi-agent。`gemini_acp` 仅保留为迁移配置，不作为运行时入口。",
+        title: "Agent 引擎层",
+        desc: "推荐 Agent 引擎是 Hone Cloud、Codex ACP 和 OpenCode ACP；同时保留 OpenAI 兼容函数调用、Gemini CLI、Codex CLI 与 multi-agent。`gemini_acp` 仅保留为迁移配置，不作为运行时入口。",
       },
       {
         title: "事件与任务",
-        desc: "Cron 任务、事件引擎 digest、`/missed` 回查、通知偏好与渠道投递共享 Rust 后端、SQLite/JSON 存储和 actor 归属。",
+        desc: "Cron 任务、事件引擎摘要、`/missed` 回查、通知偏好与渠道投递共享 Rust 后端、SQLite/JSON 存储和用户归属模型。",
       },
     ],
 
@@ -443,7 +443,7 @@ const CONTENT_ZH = {
           {
             name: "公司画像 & 长期记忆",
             status: "stable",
-            note: "company_portrait skill",
+            note: "公司画像 Skill",
           },
           {
             name: "个股研究 / 深度研究",
@@ -488,7 +488,7 @@ const CONTENT_ZH = {
           },
           { name: "Tauri 桌面端", status: "stable", note: "macOS 已发布" },
           {
-            name: "多 Runner 抽象",
+            name: "多 Agent 引擎抽象",
             status: "stable",
             note: "OpenAI-compatible · Gemini CLI · Codex CLI/ACP · OpenCode ACP · multi-agent",
           },
@@ -613,7 +613,7 @@ const CONTENT_ZH = {
       { name: "skill_manager", desc: "查看 / 新建 / 修改 Hone Skill" },
       {
         name: "notification_preferences",
-        desc: "用自然语言调整自己的推送偏好（严重度、持仓过滤、kind 白/黑名单）",
+        desc: "用自然语言调整自己的推送偏好（严重度、持仓过滤、事件类型允许/屏蔽范围）",
       },
       { name: "hone_admin", desc: "查看修改 Hone 源码与配置（管理员）" },
     ],
@@ -632,7 +632,7 @@ const CONTENT_ZH = {
         "Cron 定时任务系统",
         "事件引擎推送质量收口：digest 去重 / min-gap / topic memory / 分类预算 / 方向性价格阈值",
         "ACP 自管上下文与 compact 防泄漏，支持 codex_acp / opencode_acp 长会话恢复",
-        "多 Runner 抽象：OpenAI-compatible / Gemini CLI / Codex CLI/ACP / OpenCode ACP / multi-agent",
+        "多 Agent 引擎：OpenAI-compatible / Gemini CLI / Codex CLI/ACP / OpenCode ACP / multi-agent",
       ],
     },
     next: {
@@ -758,7 +758,7 @@ const CONTENT_ZH = {
       },
       {
         q: "支持哪些 LLM？",
-        a: "通过 Runner 抽象层支持：OpenAI 兼容协议（含 OpenRouter）、Gemini CLI、Codex CLI / ACP、OpenCode ACP，以及 multi-agent 搜索+回答链路。可以在桌面端设置里随时切换。",
+        a: "通过 Agent 引擎抽象层支持：OpenAI 兼容协议（含 OpenRouter）、Gemini CLI、Codex CLI / ACP、OpenCode ACP，以及 multi-agent 搜索+回答链路。可以在桌面端设置里随时切换。",
       },
       {
         q: "开源协议？能商用吗？",
@@ -770,7 +770,7 @@ const CONTENT_ZH = {
       },
       {
         q: "和 Codex / RooCode 等 coding agent 的关系？",
-        a: "Hone 借鉴了这些产品的 runner / skill / session 架构，但专注投研而非写代码。Codex CLI / ACP、Gemini CLI、OpenCode ACP 和 multi-agent 在 Hone 中作为可插拔 Runner 存在。",
+        a: "Hone 借鉴了这些产品的 Agent 引擎、Skill 与会话架构，但专注投研而非写代码。Codex CLI / ACP、Gemini CLI、OpenCode ACP 和 multi-agent 在 Hone 中作为可插拔引擎存在。",
       },
     ],
   },
@@ -1766,7 +1766,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         eyebrow: "§ 01 · QUICK START",
         title: "Quick Start",
         intro:
-          "Three paths to run Hone: the one-line installer, Homebrew, or source. After install, use `hone-cli start` for the full runtime or `hone-cli web admin-ui` / `hone-cli web user-ui` to open the admin console or the public user surface.",
+          "Three paths to run Hone: the one-line installer, Homebrew, or source. After install, use `hone-cli start` for the full runtime or `hone-cli web admin-ui` / `hone-cli web user-ui` to open the admin console or public user app.",
       },
       capabilities: {
         eyebrow: "§ 02 · CAPABILITY MATRIX",
@@ -1783,7 +1783,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         eyebrow: "§ 04 · ARCHITECTURE",
         title: "Architecture",
         intro:
-          "Rust core · multi-runner abstraction · SolidJS frontend. The public user-ui, admin console, and channel processes share backend capabilities while staying separated by interface, port, and process boundary.",
+          "Rust core · multi-engine abstraction · SolidJS frontend. The public user app, admin console, and channel processes share backend capabilities while staying separated by interface, port, and process boundary.",
         footnote_prefix: "Full module walkthrough in",
         footnote_link: "docs/repo-map.md ↗",
       },
@@ -1860,23 +1860,23 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     architecture_points: [
       {
         title: "CLI startup",
-        desc: "`hone-cli doctor / onboard / start` handles health checks, guided setup, and starting hone-console-page plus enabled channels; `hone-cli web admin-ui` / `hone-cli web user-ui` can locate or start the admin and public Web surfaces; source mode uses `cargo run -p hone-cli -- start --build`.",
+        desc: "`hone-cli doctor / onboard / start` handles health checks, guided setup, and starting hone-console-page plus enabled channels; `hone-cli web admin-ui` / `hone-cli web user-ui` can locate or start the admin console and public user app; source mode uses `cargo run -p hone-cli -- start --build`.",
       },
       {
-        title: "Public user-ui",
-        desc: "The public user-ui routes `/`, `/roadmap`, `/chat`, `/me`, `/portfolio`, `/terms`, and `/privacy`; `/chat` signs users in with Aliyun behavior captcha plus phone/SMS verification from the admin Web whitelist, and supports assistant-reply copy plus image sharing; `/portfolio` is a read-only investment context surface for digest context and company-profile entrypoints, and the public backend is scoped to `/api/public/*`.",
+        title: "Public user app",
+        desc: "The public user app routes `/`, `/roadmap`, `/chat`, `/me`, `/portfolio`, `/terms`, and `/privacy`; `/chat` signs users in with Aliyun behavior captcha plus phone/SMS verification from the admin whitelist, and supports assistant-reply copy plus image sharing; `/portfolio` is a read-only investment context surface for push context and company-profile entrypoints, and the public backend is scoped to `/api/public/*`.",
       },
       {
         title: "Admin console",
         desc: "The admin console includes dashboard, sessions, skills, tasks, users, research, llm-audit, task-health, notifications, schedule, settings, and logs for operators.",
       },
       {
-        title: "Runner layer",
-        desc: "Recommended runners are Hone Cloud, Codex ACP, and OpenCode ACP; OpenAI-compatible function calling, Gemini CLI, Codex CLI, and multi-agent remain supported. `gemini_acp` is kept only as migration config, not a runtime entrypoint.",
+        title: "Agent engine layer",
+        desc: "Recommended agent engines are Hone Cloud, Codex ACP, and OpenCode ACP; OpenAI-compatible function calling, Gemini CLI, Codex CLI, and multi-agent remain supported. `gemini_acp` is kept only as migration config, not a runtime entrypoint.",
       },
       {
         title: "Events and tasks",
-        desc: "Cron jobs, event-engine digests, `/missed` recovery, notification preferences, and channel delivery share the Rust backend, SQLite/JSON storage, and actor ownership model.",
+        desc: "Cron jobs, event-engine digests, `/missed` recovery, notification preferences, and channel delivery share the Rust backend, SQLite/JSON storage, and user ownership model.",
       },
     ],
 
@@ -1892,7 +1892,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           {
             name: "Company profiles & long memory",
             status: "stable",
-            note: "company_portrait skill",
+            note: "company profile skill",
           },
           {
             name: "Stock research / deep research",
@@ -1941,7 +1941,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           },
           { name: "Tauri desktop", status: "stable", note: "macOS released" },
           {
-            name: "Multi-runner abstraction",
+            name: "Multi-engine abstraction",
             status: "stable",
             note: "OpenAI-compatible · Gemini CLI · Codex CLI/ACP · OpenCode ACP · multi-agent",
           },
@@ -1981,7 +1981,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
             note: "Aliyun Captcha + Aliyun SMS + admin Web whitelist",
           },
           {
-            name: "Per-actor notification prefs",
+            name: "Per-user notification prefs",
             status: "stable",
             note: "notification_preferences skill + settings page + config-level mute",
           },
@@ -2122,7 +2122,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         "Cron-driven scheduled tasks",
         "Event-engine push-quality pass: digest dedupe / min-gap / topic memory / category budgets / directional price thresholds",
         "ACP self-managed context with compact-leak suppression for long codex_acp / opencode_acp sessions",
-        "Multi-runner: OpenAI-compatible / Gemini CLI / Codex CLI/ACP / OpenCode ACP / multi-agent",
+        "Multi-engine setup: OpenAI-compatible / Gemini CLI / Codex CLI/ACP / OpenCode ACP / multi-agent",
       ],
     },
     next: {
@@ -2248,7 +2248,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         q: "Which LLMs are supported?",
-        a: "Through the runner abstraction: OpenAI-compatible protocols (including OpenRouter), Gemini CLI, Codex CLI / ACP, OpenCode ACP, and the multi-agent search-plus-answer flow. Switch at any time from the desktop settings.",
+        a: "Through the agent-engine abstraction: OpenAI-compatible protocols (including OpenRouter), Gemini CLI, Codex CLI / ACP, OpenCode ACP, and the multi-agent search-plus-answer flow. Switch at any time from the desktop settings.",
       },
       {
         q: "What license? Commercial use?",
@@ -2260,7 +2260,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         q: "How does Hone relate to Codex / RooCode and other coding agents?",
-        a: "Hone borrows their runner / skill / session architecture but targets investment research, not coding. Codex CLI / ACP, Gemini CLI, OpenCode ACP, and multi-agent show up inside Hone as pluggable runners.",
+        a: "Hone borrows their agent-engine, skill, and session architecture but targets investment research, not coding. Codex CLI / ACP, Gemini CLI, OpenCode ACP, and multi-agent show up inside Hone as pluggable engines.",
       },
     ],
   },

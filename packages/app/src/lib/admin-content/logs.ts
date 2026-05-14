@@ -30,7 +30,7 @@ const EN: typeof ZH = {
     title: "Logs",
     search_placeholder: "Search logs…",
     user_filter_placeholder: "Filter by user ID…",
-    user_filter_title: "Only show logs related to this user (matches structured actor or message text).",
+    user_filter_title: "Only show logs related to this user (matches structured user identity or message text).",
     pause_button: "Pause",
     resume_button: "Resume",
     clear_button: "Clear",

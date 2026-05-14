@@ -17,10 +17,10 @@ const ZH = {
     subtitle: "合并持仓 / 画像 / 会话三处来源",
     manual_open: "手动输入",
     manual_collapse: "收起",
-    search_placeholder: "搜索用户 ID / 渠道 / 范围",
+    search_placeholder: "搜索用户 ID / 渠道 / 场景",
     manual_channel_placeholder: "渠道，如 imessage",
     manual_user_id_placeholder: "用户 ID",
-    manual_scope_placeholder: "范围，可选",
+    manual_scope_placeholder: "场景，可选",
     manual_submit: "打开",
     empty_search_title: "没有匹配的用户",
     empty_search_description: "试试切换搜索词，或用上方手动输入定位特定用户主体。",
@@ -85,7 +85,7 @@ const ZH = {
     profile_inventory_empty: "该用户主体的沙盒里还没有任何公司画像。",
     modal_title_suffix: " · 公司画像",
     modal_footer:
-      "画像由用户在聊天里通过 company_portrait skill 维护，此处只读。",
+      "画像由用户在聊天里通过公司画像技能维护，此处只读。",
   },
 }
 
@@ -106,10 +106,10 @@ const EN: typeof ZH = {
     subtitle: "Merged from holdings, profiles, and sessions.",
     manual_open: "Manual",
     manual_collapse: "Hide",
-    search_placeholder: "Search user ID / channel / scope",
+    search_placeholder: "Search user ID / channel / context",
     manual_channel_placeholder: "Channel, e.g. imessage",
     manual_user_id_placeholder: "User ID",
-    manual_scope_placeholder: "Scope, optional",
+    manual_scope_placeholder: "Context, optional",
     manual_submit: "Open",
     empty_search_title: "No matching users",
     empty_search_description:
@@ -180,7 +180,7 @@ const EN: typeof ZH = {
       "This user's sandbox has no company profiles yet.",
     modal_title_suffix: " · Company profile",
     modal_footer:
-      "Profiles are maintained by the user in chat via the company_portrait skill — read-only here.",
+      "Profiles are maintained by the user in chat through the company profile skill — read-only here.",
   },
 }
 

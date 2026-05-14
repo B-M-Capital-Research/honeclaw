@@ -38,8 +38,8 @@ const ZH = {
     cell_active: "✅",
   },
   filters: {
-    blocked_kinds: "屏蔽类型：",
-    allow_kinds: "仅允许类型：",
+    blocked_kinds: "屏蔽事件类型：",
+    allow_kinds: "仅允许事件类型：",
     exempt_in_quiet: "勿扰豁免类型：",
   },
 }
