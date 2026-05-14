@@ -483,15 +483,15 @@ fn render_mainline_block(mainline: &UserMainline<'_>) -> String {
     if let Some(style) = mainline.style {
         lines.push(format!("### 全局风格\n{style}"));
     }
-    if let Some(by_ticker) = mainline.by_ticker {
-        if !by_ticker.is_empty() {
-            lines.push("### 个股投资主线".to_string());
-            // 按 ticker 排序保证 prompt 稳定
-            let mut entries: Vec<_> = by_ticker.iter().collect();
-            entries.sort_by_key(|(k, _)| k.as_str());
-            for (sym, txt) in entries {
-                lines.push(format!("- **{sym}**:{txt}"));
-            }
+    if let Some(by_ticker) = mainline.by_ticker
+        && !by_ticker.is_empty()
+    {
+        lines.push("### 个股投资主线".to_string());
+        // 按 ticker 排序保证 prompt 稳定
+        let mut entries: Vec<_> = by_ticker.iter().collect();
+        entries.sort_by_key(|(k, _)| k.as_str());
+        for (sym, txt) in entries {
+            lines.push(format!("- **{sym}**:{txt}"));
         }
     }
     if lines.is_empty() {
@@ -654,10 +654,10 @@ pub(super) fn strip_json_fence(s: &str) -> String {
         return rest.trim().to_string();
     }
     // 找第一个 `{` 之后到最后一个 `}`,截出 JSON 主体(LLM 可能在前后加 prose)
-    if let (Some(start), Some(end)) = (s.find('{'), s.rfind('}')) {
-        if end > start {
-            return s[start..=end].to_string();
-        }
+    if let (Some(start), Some(end)) = (s.find('{'), s.rfind('}'))
+        && end > start
+    {
+        return s[start..=end].to_string();
     }
     s.to_string()
 }

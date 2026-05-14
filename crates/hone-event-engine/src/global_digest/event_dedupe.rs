@@ -309,10 +309,10 @@ fn strip_fence(s: &str) -> String {
         }
     }
     // 找 JSON 主体的起止 brace
-    if let (Some(start), Some(end)) = (s.find('{'), s.rfind('}')) {
-        if end > start {
-            return s[start..=end].to_string();
-        }
+    if let (Some(start), Some(end)) = (s.find('{'), s.rfind('}'))
+        && end > start
+    {
+        return s[start..=end].to_string();
     }
     s.to_string()
 }

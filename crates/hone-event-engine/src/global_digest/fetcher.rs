@@ -131,14 +131,14 @@ impl ArticleFetcher {
         }
 
         // —— 第 2 段:Jina Reader(若配置 key)——
-        if let Some(key) = self.jina_api_key.as_deref() {
-            if let Some(text) = self.fetch_via_jina(url, key).await {
-                return ArticleBody {
-                    url: url.into(),
-                    text,
-                    source: ArticleSource::JinaFallback,
-                };
-            }
+        if let Some(key) = self.jina_api_key.as_deref()
+            && let Some(text) = self.fetch_via_jina(url, key).await
+        {
+            return ArticleBody {
+                url: url.into(),
+                text,
+                source: ArticleSource::JinaFallback,
+            };
         }
 
         // —— 第 3 段:FMP 摘要 ——
