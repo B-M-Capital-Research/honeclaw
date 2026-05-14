@@ -15,6 +15,8 @@ type RecoveryOptions = {
   minReloadIntervalMs?: number;
 };
 
+const ASSET_RECOVERY_SW_URL = "/asset-recovery-sw.js";
+
 const RECOVERABLE_ERROR_PATTERNS = [
   /text\/html.*valid javascript mime type/i,
   /failed to fetch dynamically imported module/i,
@@ -108,6 +110,18 @@ function eventTargetLooksLikeScriptAsset(target: EventTarget | null): boolean {
 }
 
 export function installAssetLoadRecovery(win: Window = window) {
+  registerAssetRecoveryServiceWorker(win);
+
+  win.navigator.serviceWorker?.addEventListener("message", (event) => {
+    if (
+      typeof event.data === "object" &&
+      event.data !== null &&
+      event.data.type === "hone:asset-recovery:reload"
+    ) {
+      recoverFromAssetLoadError("Failed to fetch dynamically imported module");
+    }
+  });
+
   win.addEventListener("vite:preloadError", (event) => {
     if (recoverFromAssetLoadError(event)) {
       event.preventDefault();
@@ -132,4 +146,15 @@ export function installAssetLoadRecovery(win: Window = window) {
     },
     true,
   );
+}
+
+function registerAssetRecoveryServiceWorker(win: Window) {
+  if (!("serviceWorker" in win.navigator)) return;
+  if (win.location.protocol !== "https:" && win.location.hostname !== "localhost") {
+    return;
+  }
+
+  win.navigator.serviceWorker.register(ASSET_RECOVERY_SW_URL).catch(() => {
+    // The global error/rejection handlers still cover stale assets when SW registration is unavailable.
+  });
 }

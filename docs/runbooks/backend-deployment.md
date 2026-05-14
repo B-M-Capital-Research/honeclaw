@@ -51,7 +51,7 @@ For SPA routes, keep `packages/app/public/_redirects` in the public build:
 /* /index.html 200
 ```
 
-Keep `packages/app/public/_worker.js` in the public build too. It prevents stale JavaScript chunk requests after a frontend deploy from receiving `index.html` as `text/html`; the app also auto-reloads once when it detects this stale-asset condition.
+Keep `packages/app/public/asset-recovery-sw.js` and `packages/app/public/_worker.js` in the public build too. They prevent stale JavaScript chunk requests after a frontend deploy from staying on a `text/html` asset response; the app also auto-reloads once when it detects this stale-asset condition.
 
 ## Backend Origin Update
 
