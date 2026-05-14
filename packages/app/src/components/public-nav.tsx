@@ -63,6 +63,7 @@ export function PublicNav() {
     <>
       <nav
         class="pub-nav"
+        data-transparent={transparent() ? "true" : undefined}
         style={{
           position: "fixed",
           top: "0",
@@ -103,22 +104,14 @@ export function PublicNav() {
         </div>
 
         {/* Desktop links */}
-        <div class="pub-nav-links" style={{ "align-items": "center", gap: "2px" }}>
+        <div class="pub-nav-links">
           <For each={links}>
             {(l) => (
               <button
                 onClick={() => go(l.path)}
+                class={`pub-nav-link${page() === l.path ? " is-active" : ""}`}
                 style={{
-                  "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
-                  "font-size": "14px",
-                  "font-weight": "500",
                   background: getLinkBg(l.path),
-                  border: "none",
-                  cursor: "pointer",
-                  padding: "6px 12px",
-                  "border-radius": "6px",
-                  transition: "color 0.2s, background 0.2s",
-                  "letter-spacing": "0.01em",
                   color: getLinkColor(l.path),
                 }}
               >
@@ -129,23 +122,7 @@ export function PublicNav() {
 
           <button
             onClick={() => go("/chat")}
-            style={{
-              "margin-left": "8px",
-              padding: "7px 18px",
-              "border-radius": "6px",
-              background: "#f59e0b",
-              border: "none",
-              cursor: "pointer",
-              "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
-              "font-size": "13px",
-              "font-weight": "600",
-              color: "#fff",
-              "letter-spacing": "0.02em",
-              "box-shadow": "0 2px 8px rgba(245,158,11,0.30)",
-              transition: "background 0.2s",
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = "#d97706" }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "#f59e0b" }}
+            class="pub-nav-cta"
           >
             {C.chat}
           </button>
@@ -157,38 +134,13 @@ export function PublicNav() {
             target="_blank"
             rel="noopener noreferrer"
             class="pub-github-star-link"
-            style={{
-              "margin-left": "10px",
-              "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
-              "font-size": "12px",
-              "font-weight": "500",
-              color: transparent() ? "rgba(255,255,255,0.5)" : "#94a3b8",
-              "text-decoration": "none",
-              padding: "6px 10px",
-              "border-radius": "6px",
-              border: transparent() ? "1px solid rgba(255,255,255,0.15)" : "1px solid rgba(0,0,0,0.10)",
-              display: "inline-flex",
-              "align-items": "center",
-              gap: "6px",
-              transition: "all 0.2s",
-              "letter-spacing": "0.02em",
-              "white-space": "nowrap",
-            }}
           >
             <span>GitHub</span>
             <span class="pub-github-star-count">{displayGithubStars(stars())}</span>
           </a>
 
           <div
-            style={{
-              "margin-left": "8px",
-              display: "inline-flex",
-              "align-items": "center",
-              gap: "2px",
-              padding: "2px",
-              "border-radius": "6px",
-              border: transparent() ? "1px solid rgba(255,255,255,0.15)" : "1px solid rgba(0,0,0,0.10)",
-            }}
+            class="pub-nav-lang"
           >
             <For each={[{ code: "zh" as const, labelKey: "locale_zh" as const }, { code: "en" as const, labelKey: "locale_en" as const }]}>
               {(opt) => {
@@ -196,29 +148,7 @@ export function PublicNav() {
                 return (
                   <button
                     onClick={() => setLocale(opt.code)}
-                    style={{
-                      "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
-                      "font-size": "11px",
-                      "font-weight": active() ? "600" : "500",
-                      "letter-spacing": "0.05em",
-                      padding: "4px 8px",
-                      "border-radius": "4px",
-                      border: "none",
-                      cursor: "pointer",
-                      background: active()
-                        ? transparent()
-                          ? "rgba(255,255,255,0.14)"
-                          : "rgba(245,158,11,0.10)"
-                        : "transparent",
-                      color: active()
-                        ? transparent()
-                          ? "#fff"
-                          : "#f59e0b"
-                        : transparent()
-                        ? "rgba(255,255,255,0.55)"
-                        : "#64748b",
-                      transition: "color 0.2s, background 0.2s",
-                    }}
+                    class={active() ? "is-active" : ""}
                   >
                     {C[opt.labelKey]}
                   </button>

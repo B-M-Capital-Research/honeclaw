@@ -158,8 +158,131 @@ html {
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 10px;
   min-width: 0;
+}
+.pub-nav,
+.page-header,
+.public-chat-sidebar {
+  font-family: var(--font-sans, "Plus Jakarta Sans", sans-serif);
+}
+.pub-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pub-nav-link,
+.pub-nav-cta,
+.pub-github-star-link,
+.pub-nav-lang,
+.star-badge,
+.pub-contact-link,
+.header-contact-link,
+.btn-chat-nav,
+.btn-roadmap-nav {
+  box-sizing: border-box;
+  min-height: 36px;
+  border-radius: 999px;
+  font-family: var(--font-sans, "Plus Jakarta Sans", sans-serif);
+  font-size: 13px;
+  font-weight: 750;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+.pub-nav-link {
+  border: 0;
+  cursor: pointer;
+  padding: 0 13px;
+  color: #475569;
+  background: transparent;
+  transition: color 0.18s ease, background 0.18s ease;
+}
+.pub-nav-link:hover {
+  background: rgba(15, 23, 42, 0.06);
+  color: #0f172a !important;
+}
+.pub-nav-link.is-active {
+  font-weight: 800;
+}
+.pub-nav-cta {
+  min-width: 72px;
+  padding: 0 18px;
+  border: 1px solid #0f172a;
+  background: #0f172a;
+  color: #fff;
+  cursor: pointer;
+  box-shadow: none;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.06s ease;
+}
+.pub-nav-cta:hover {
+  background: #1e293b;
+  border-color: #1e293b;
+}
+.pub-nav-cta:active,
+.btn-chat-nav:active,
+.btn-roadmap-nav:active,
+.pub-github-star-link:active,
+.star-badge:active,
+.header-contact-link:active {
+  transform: scale(0.98);
+}
+.pub-github-star-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  color: #475569;
+  text-decoration: none;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+.pub-github-star-link:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+.pub-nav-lang {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  background: rgba(255, 255, 255, 0.72);
+}
+.pub-nav-lang button {
+  min-width: 34px;
+  min-height: 30px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+}
+.pub-nav-lang button.is-active {
+  background: #0f172a;
+  color: #fff;
+}
+.pub-nav[data-transparent="true"] .pub-nav-link:hover,
+.pub-nav[data-transparent="true"] .pub-nav-link.is-active {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #fff !important;
+}
+.pub-nav[data-transparent="true"] .pub-github-star-link,
+.pub-nav[data-transparent="true"] .pub-nav-lang {
+  border-color: rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.72);
+}
+.pub-nav[data-transparent="true"] .pub-nav-lang button {
+  color: rgba(255,255,255,0.72);
+}
+.pub-nav[data-transparent="true"] .pub-nav-lang button.is-active {
+  background: rgba(255,255,255,0.16);
+  color: #fff;
 }
 .header-socials {
   display: flex;
@@ -182,41 +305,45 @@ html {
   color: #000;
 }
 .star-badge {
-  min-height: 38px;
+  min-height: 36px;
   padding: 0 12px;
-  border-radius: 10px;
-  background: #f1f5f9;
-  color: #1e293b;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  background: rgba(255, 255, 255, 0.72);
+  color: #475569;
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  font-size: 14px;
-  font-weight: 700;
   font-variant-numeric: tabular-nums;
   text-decoration: none;
-  transition: background 0.2s;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
 }
 .star-badge:hover {
-  background: #e2e8f0;
+  border-color: #cbd5e1;
+  background: #f8fafc;
+  color: #0f172a;
 }
 .pub-contact-link,
 .header-contact-link {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   flex-shrink: 0;
-  min-height: 34px;
+  min-height: 36px;
   padding: 0 12px;
-  border: 1.5px solid #e2e8f0;
-  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.10);
   background: rgba(255, 255, 255, 0.72);
-  color: #334155;
-  font-family: var(--font-sans, "Plus Jakarta Sans", sans-serif);
-  font-size: 12px;
-  font-weight: 700;
+  color: #475569;
   text-decoration: none;
   white-space: nowrap;
   cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+.pub-contact-link:hover,
+.header-contact-link:hover,
+.pub-contact-menu:focus-within .header-contact-link {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+  color: #0f172a;
 }
 .pub-contact-link::before,
 .header-contact-link::before {
@@ -340,8 +467,9 @@ html {
   background: #e2e8f0;
 }
 .lang-switch {
-  padding: 3px;
-  border: 1px solid #e2e8f0;
+  min-height: 36px;
+  padding: 2px;
+  border: 1px solid rgba(15, 23, 42, 0.10);
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
@@ -351,7 +479,7 @@ html {
 }
 .lang-switch button {
   min-width: 34px;
-  min-height: 28px;
+  min-height: 30px;
   padding: 0 9px;
   border: none;
   border-radius: 999px;
@@ -359,39 +487,34 @@ html {
   color: #64748b;
   cursor: pointer;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 750;
   letter-spacing: 0;
   transition: color 0.2s, background 0.2s;
 }
 .lang-switch button.active {
-  background: #000;
+  background: #0f172a;
   color: #fff;
 }
 .btn-chat-nav,
 .btn-roadmap-nav {
-  min-height: 40px;
-  border-radius: 999px;
+  min-height: 36px;
   cursor: pointer;
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0;
-  white-space: nowrap;
-  transition: color 0.2s, background 0.2s, border-color 0.2s;
+  transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease, transform 0.06s ease;
 }
 .btn-chat-nav {
-  padding: 0 22px;
-  border: none;
-  background: #000;
+  padding: 0 18px;
+  border: 1px solid #0f172a;
+  background: #0f172a;
   color: #fff;
 }
 .btn-chat-nav:hover {
   background: #1e293b;
 }
 .btn-roadmap-nav {
-  padding: 0 20px;
-  border: 1.5px solid #e2e8f0;
-  background: transparent;
-  color: #64748b;
+  padding: 0 16px;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  background: rgba(255, 255, 255, 0.72);
+  color: #475569;
 }
 .btn-roadmap-nav:hover {
   border-color: #cbd5e1;

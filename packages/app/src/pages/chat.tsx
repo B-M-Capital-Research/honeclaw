@@ -2750,24 +2750,26 @@ export default function PublicChatPage() {
           .public-chat-sidebar-toggle,
           .public-chat-sidebar-footer-actions .hone-prefs-trigger,
           .public-chat-sidebar-lang {
-            width: 34px;
-            height: 34px;
-            min-width: 34px;
+            width: 36px;
+            height: 36px;
+            min-width: 36px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            border: 1px solid rgba(15,23,42,0.08);
-            border-radius: 8px;
-            background: #fff;
+            border: 1px solid rgba(15,23,42,0.10);
+            border-radius: 10px;
+            background: rgba(255,255,255,0.78);
             color: #475569;
             cursor: pointer;
-            box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+            box-shadow: none;
+            transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.06s ease;
           }
           .public-chat-sidebar-toggle:hover,
           .public-chat-sidebar-footer-actions .hone-prefs-trigger:hover,
           .public-chat-sidebar-lang:hover {
             color: #0f172a;
             background: #f8fafc;
+            border-color: #cbd5e1;
           }
           .public-chat-sidebar-nav {
             display: grid;
@@ -2780,24 +2782,27 @@ export default function PublicChatPage() {
             display: flex;
             align-items: center;
             gap: 10px;
-            border: none;
-            border-radius: 8px;
+            border: 1px solid transparent;
+            border-radius: 10px;
             background: transparent;
             color: #475569;
             cursor: pointer;
             padding: 0 10px;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 750;
             text-decoration: none;
             letter-spacing: 0;
+            transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.06s ease;
           }
           .public-chat-sidebar-nav button:hover,
           .public-chat-sidebar-star:hover {
             background: #f1f5f9;
+            border-color: rgba(15,23,42,0.08);
             color: #0f172a;
           }
           .public-chat-sidebar-nav button.is-active {
             background: #0f172a;
+            border-color: #0f172a;
             color: #fff;
           }
           .public-chat-sidebar-nav svg,
@@ -2836,7 +2841,7 @@ export default function PublicChatPage() {
           .public-chat-sidebar-contact .pub-contact-card {
             min-height: 42px;
             padding: 9px 10px;
-            border-radius: 8px;
+            border-radius: 10px;
             background: #f8fafc;
           }
           .public-chat-sidebar-contact .pub-contact-card small {
@@ -2859,13 +2864,13 @@ export default function PublicChatPage() {
             gap: 10px;
           }
           .public-chat-sidebar-avatar {
-            width: 34px;
-            height: 34px;
-            flex: 0 0 34px;
+            width: 36px;
+            height: 36px;
+            flex: 0 0 36px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            border-radius: 9px;
+            border-radius: 10px;
             background: #0f172a;
             color: #fff;
             font-size: 14px;
@@ -2896,17 +2901,19 @@ export default function PublicChatPage() {
           }
           .public-chat-sidebar-logout {
             flex: 1;
-            min-height: 34px;
-            border: none;
-            border-radius: 8px;
+            min-height: 36px;
+            border: 1px solid rgba(225,29,72,0.12);
+            border-radius: 10px;
             background: #fff1f2;
             color: #e11d48;
             cursor: pointer;
             font-size: 13px;
             font-weight: 800;
+            transition: background 0.18s ease, border-color 0.18s ease, transform 0.06s ease;
           }
           .public-chat-sidebar-logout:hover {
             background: #ffe4e6;
+            border-color: rgba(225,29,72,0.22);
           }
           .public-chat-sidebar.is-collapsed .public-chat-sidebar-logo span,
           .public-chat-sidebar.is-collapsed .public-chat-sidebar-nav span:not(.public-chat-sidebar-icon),
@@ -2931,8 +2938,8 @@ export default function PublicChatPage() {
             width: 42px;
           }
           .public-chat-sidebar.is-collapsed .public-chat-sidebar-logout {
-            flex: 0 0 34px;
-            width: 34px;
+            flex: 0 0 36px;
+            width: 36px;
           }
         }
         @media (max-width: 768px) {
@@ -3371,9 +3378,9 @@ export default function PublicChatPage() {
         /* Header right side: equalize visual heights so the lang pill and the
            对话 button look truly center-aligned, and trim some vertical bulk. */
         .public-chat-page .lang-switch { padding: 2px; }
-        .public-chat-page .lang-switch button { min-height: 28px; }
+        .public-chat-page .lang-switch button { min-height: 30px; }
         .public-chat-page .btn-chat-nav,
-        .public-chat-page .btn-roadmap-nav { min-height: 34px; padding: 0 16px; }
+        .public-chat-page .btn-roadmap-nav { min-height: 36px; padding: 0 16px; }
 
         /* ── Prefs trigger + popover ─────────────────────────────────── */
         .hone-prefs { position: relative; display: inline-flex; }
@@ -3381,16 +3388,16 @@ export default function PublicChatPage() {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          width: 32px; height: 32px;
+          width: 36px; height: 36px;
           border-radius: 999px;
-          border: none;
-          background: transparent;
+          border: 1px solid rgba(15,23,42,0.10);
+          background: rgba(255,255,255,0.72);
           color: #64748b;
           cursor: pointer;
-          transition: background 0.18s, color 0.18s;
+          transition: background 0.18s, border-color 0.18s, color 0.18s, transform 0.06s;
         }
         .hone-prefs-trigger:hover,
-        .hone-prefs-trigger[aria-expanded="true"] { background: #f1f5f9; color: #0f172a; }
+        .hone-prefs-trigger[aria-expanded="true"] { background: #f8fafc; border-color: #cbd5e1; color: #0f172a; }
         .hone-prefs-panel {
           position: absolute;
           right: 0; top: calc(100% + 10px);
