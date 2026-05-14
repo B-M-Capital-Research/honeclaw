@@ -36,6 +36,14 @@
 - risk: the function owns SQLite connection selection, preview truncation, delivery-key terminal update, recent-started fallback update, and insert fallback. A patrol-sized split could accidentally create duplicate cron run rows or fail to finalize legacy started rows.
 - suggested_fix: extract private helpers for terminal input detection, shared update parameters, delivery-key update, recent-started fallback update, and insert fallback. Preserve the current update-before-insert order, then rerun the existing heartbeat/terminal-row tests plus stale-started recovery coverage.
 
+### Event-engine router dispatch mixes policy, prefs, and sink side effects
+
+- status: open
+- direction: 复杂度热点
+- evidence: `cargo clippy -p hone-event-engine --lib -- -W clippy::collapsible_if -W clippy::too_many_lines -W clippy::cognitive_complexity` reports `crates/hone-event-engine/src/router/dispatch.rs` `Router::dispatch` at cognitive complexity `60/25` and `391/100` lines.
+- risk: the function owns global policy demotion, per-actor preference checks, same-symbol cooldown, price-band advance gating, quiet-hours holding, delivery-log writes, immediate sink sends, digest enqueue fallback, and status accounting in one async path. A drive-by split could change which users receive immediate alerts versus digest-only events, or alter delivery-log accounting.
+- suggested_fix: split behavior-preserving private helpers around policy evaluation, per-actor route decision, quiet-hours hold decision, and final delivery/enqueue side effects. Keep the current sent/enqueued counters and log statuses intact, then cover high severity immediate delivery, quiet hold, cooldown demotion, price-band advance, and disabled prefs with the existing router test surface.
+
 ## 2026-05-13 - 用户文案
 
 ### Public portfolio page is not localized while the surrounding public site is bilingual
