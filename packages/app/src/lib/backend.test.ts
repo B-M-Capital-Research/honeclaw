@@ -18,6 +18,44 @@ function requireValue<T>(value: T | null | undefined, label: string): T {
   return value
 }
 
+async function withWindowOrigin<T>(
+  origin: string,
+  testBody: () => T | Promise<T>,
+): Promise<T> {
+  const originalWindow = globalThis.window
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: { location: { origin } },
+  })
+  try {
+    return await testBody()
+  } finally {
+    if (originalWindow === undefined) {
+      delete (globalThis as { window?: Window }).window
+    } else {
+      Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        value: originalWindow,
+      })
+    }
+  }
+}
+
+async function captureApiFetchInit(path: string): Promise<RequestInit> {
+  const originalFetch = globalThis.fetch
+  let captured: RequestInit | undefined
+  globalThis.fetch = ((_: RequestInfo | URL, init?: RequestInit) => {
+    captured = init
+    return Promise.resolve(new Response("{}", { status: 200 }))
+  }) as typeof fetch
+  try {
+    await apiFetch(path)
+    return requireValue(captured, "fetch init")
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+}
+
 describe("backend runtime helpers", () => {
   beforeEach(() => {
     setBackendRuntime({
@@ -60,25 +98,11 @@ describe("backend runtime helpers", () => {
   })
 
   test("buildApiUrl resolves relative paths against current origin when no backend base URL exists", () => {
-    const originalWindow = globalThis.window
-    Object.defineProperty(globalThis, "window", {
-      configurable: true,
-      value: { location: { origin: "http://localhost" } },
-    })
-    try {
+    return withWindowOrigin("http://localhost", () => {
       expect(buildApiUrl("/api/cron-jobs", "")).toBe(
         "http://localhost/api/cron-jobs",
       )
-    } finally {
-      if (originalWindow === undefined) {
-        delete (globalThis as { window?: Window }).window
-      } else {
-        Object.defineProperty(globalThis, "window", {
-          configurable: true,
-          value: originalWindow,
-        })
-      }
-    }
+    })
   })
 
   test("buildAuthHeaders injects bearer token", () => {
@@ -127,17 +151,7 @@ describe("backend runtime helpers", () => {
   })
 
   test("apiFetch includes cookies for public auth refreshes", async () => {
-    const originalFetch = globalThis.fetch
-    let captured: RequestInit | undefined
-    globalThis.fetch = ((_: RequestInfo | URL, init?: RequestInit) => {
-      captured = init
-      return Promise.resolve(new Response("{}", { status: 200 }))
-    }) as typeof fetch
-    try {
-      await apiFetch("/api/public/auth/me")
-      expect(requireValue(captured, "fetch init").credentials).toBe("include")
-    } finally {
-      globalThis.fetch = originalFetch
-    }
+    const init = await captureApiFetchInit("/api/public/auth/me")
+    expect(init.credentials).toBe("include")
   })
 })

@@ -9,6 +9,10 @@ import {
   toggleTag,
 } from "./notification-preferences-model"
 
+function slotIds(slots: Array<{ id: string }>): string[] {
+  return slots.map((slot) => slot.id)
+}
+
 describe("notification-preferences-model", () => {
   it("keeps the default notification prefs in one reusable value", () => {
     expect(DEFAULT_NOTIFICATION_PREFS.enabled).toBe(true)
@@ -85,10 +89,7 @@ describe("notification-preferences-model", () => {
       { id: "late", time: "23:00" },
       { id: "early", time: "08:00" },
     ]
-    expect(sortDigestSlots(slots).map((slot) => slot.id)).toEqual([
-      "early",
-      "late",
-    ])
-    expect(slots.map((slot) => slot.id)).toEqual(["late", "early"])
+    expect(slotIds(sortDigestSlots(slots))).toEqual(["early", "late"])
+    expect(slotIds(slots)).toEqual(["late", "early"])
   })
 })

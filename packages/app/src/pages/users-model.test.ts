@@ -7,6 +7,10 @@ import {
   USER_TAB_CONFIG,
 } from "./users-model"
 
+function tabIds(tabs: Array<{ id: string }>): string[] {
+  return tabs.map((tab) => tab.id)
+}
+
 describe("users-model", () => {
   it("resolves route tab params with portfolio fallback", () => {
     expect(resolveUsersTab("profiles")).toBe("profiles")
@@ -16,7 +20,7 @@ describe("users-model", () => {
   })
 
   it("keeps user tabs in route order and filters capability-gated tabs", () => {
-    expect(USER_TAB_CONFIG.map((tab) => tab.id)).toEqual([
+    expect(tabIds(USER_TAB_CONFIG)).toEqual([
       "portfolio",
       "profiles",
       "mainline",
@@ -24,15 +28,13 @@ describe("users-model", () => {
       "research",
     ])
 
-    expect(availableUsersTabs(() => false).map((tab) => tab.id)).toEqual([
+    expect(tabIds(availableUsersTabs(() => false))).toEqual([
       "portfolio",
       "mainline",
       "sessions",
     ])
     expect(
-      availableUsersTabs((capability) => capability === "research").map(
-        (tab) => tab.id,
-      ),
+      tabIds(availableUsersTabs((capability) => capability === "research")),
     ).toEqual(["portfolio", "mainline", "sessions", "research"])
   })
 

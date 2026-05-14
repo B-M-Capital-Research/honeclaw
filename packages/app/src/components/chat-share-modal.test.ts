@@ -7,6 +7,17 @@ import {
   isShareRenderError,
 } from "./chat-share-export";
 
+async function expectCanvasEncodingError(
+  canvas: HTMLCanvasElement,
+): Promise<unknown> {
+  try {
+    await canvasToPngBlob(canvas);
+  } catch (error) {
+    return error;
+  }
+  throw new Error("expected canvasToPngBlob to fail");
+}
+
 describe("chat share export errors", () => {
   test("reports canvas encoding failures as render errors", async () => {
     const canvas = {
@@ -15,13 +26,9 @@ describe("chat share export errors", () => {
       },
     } as HTMLCanvasElement;
 
-    try {
-      await canvasToPngBlob(canvas);
-      throw new Error("expected canvasToPngBlob to fail");
-    } catch (error) {
-      expect(error).toBeInstanceOf(ShareRenderError);
-      expect(isShareRenderError(error)).toBe(true);
-    }
+    const error = await expectCanvasEncodingError(canvas);
+    expect(error).toBeInstanceOf(ShareRenderError);
+    expect(isShareRenderError(error)).toBe(true);
   });
 
   test("encodes share images as png blobs", async () => {

@@ -25,6 +25,29 @@ function filteredUserIds(
   return filterUsers(users, query, channel).map((user) => user.user_id)
 }
 
+type UnreadDecisionInput = {
+  userId?: string
+  lastTime?: string
+  lastRole?: string
+  readAt?: Record<string, string>
+  activeUserId?: string
+}
+
+function expectUnreadDecision(
+  input: UnreadDecisionInput,
+  expected: boolean,
+): void {
+  expect(
+    hasUnread(
+      input.userId ?? "alice",
+      input.lastTime ?? "2026-03-07T12:00:00Z",
+      input.lastRole ?? "user",
+      input.readAt ?? {},
+      input.activeUserId,
+    ),
+  ).toBe(expected)
+}
+
 describe("filters", () => {
   it("matches users by query and channel without losing row identity", () => {
     const users = [
@@ -47,34 +70,23 @@ describe("filters", () => {
   })
 
   it("marks unread rows only for other-user messages newer than the read stamp", () => {
-    expect(hasUnread("alice", "2026-03-07T12:00:00Z", "user", {}, undefined)).toBe(true)
-    expect(hasUnread("alice", "2026-03-07T12:00:00Z", "assistant", {}, undefined)).toBe(false)
-    expect(
-      hasUnread(
-        "alice",
-        "2026-03-07T12:00:00Z",
-        "user",
-        {},
-        "alice",
-      ),
-    ).toBe(false)
-    expect(
-      hasUnread(
-        "alice",
-        "2026-03-07T12:30:01Z",
-        "assistant",
-        { alice: "2026-03-07T12:30:00Z" },
-        undefined,
-      ),
-    ).toBe(true)
-    expect(
-      hasUnread(
-        "alice",
-        "2026-03-07T12:00:00Z",
-        "assistant",
-        { alice: "2026-03-07T12:30:00Z" },
-        undefined,
-      ),
-    ).toBe(false)
+    expectUnreadDecision({}, true)
+    expectUnreadDecision({ lastRole: "assistant" }, false)
+    expectUnreadDecision({ activeUserId: "alice" }, false)
+    expectUnreadDecision(
+      {
+        lastTime: "2026-03-07T12:30:01Z",
+        lastRole: "assistant",
+        readAt: { alice: "2026-03-07T12:30:00Z" },
+      },
+      true,
+    )
+    expectUnreadDecision(
+      {
+        lastRole: "assistant",
+        readAt: { alice: "2026-03-07T12:30:00Z" },
+      },
+      false,
+    )
   })
 })

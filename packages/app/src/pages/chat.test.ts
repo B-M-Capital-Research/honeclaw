@@ -12,6 +12,10 @@ import {
 } from "@/lib/public-chat";
 import type { HistoryMsg } from "@/lib/types";
 
+function messageIds(messages: Array<{ id: string }>): string[] {
+  return messages.map((message) => message.id);
+}
+
 describe("normalizePhoneNumber", () => {
   it("keeps a leading plus and strips non-digits", () => {
     expect(normalizePhoneNumber(" +86 138-0013-8000 ")).toBe("+8613800138000");
@@ -53,9 +57,7 @@ describe("toPublicChatMessages", () => {
     const first = toPublicChatMessages(history);
     const second = toPublicChatMessages(history);
 
-    expect(first.map((message) => message.id)).toEqual(
-      second.map((message) => message.id),
-    );
+    expect(messageIds(first)).toEqual(messageIds(second));
   });
 
   it("preserves existing prefix ids when new history rows are appended", () => {
@@ -73,9 +75,7 @@ describe("toPublicChatMessages", () => {
     const base = toPublicChatMessages(baseHistory);
     const next = toPublicChatMessages(nextHistory);
 
-    expect(next.slice(0, base.length).map((message) => message.id)).toEqual(
-      base.map((message) => message.id),
-    );
+    expect(messageIds(next.slice(0, base.length))).toEqual(messageIds(base));
   });
 
   it("tolerates legacy history rows with missing content or attachments", () => {

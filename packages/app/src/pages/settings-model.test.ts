@@ -53,6 +53,20 @@ function requireValue<T>(value: T | null | undefined, label: string): T {
   return value
 }
 
+function defaultLlmProfiles() {
+  return requireValue(defaultAgentSettings().llmProfiles, "default LLM profiles")
+}
+
+function profileById(
+  profiles: ReturnType<typeof defaultLlmProfiles>["profiles"],
+  id: string,
+) {
+  return requireValue(
+    profiles.find((profile) => profile.id === id),
+    `${id} profile`,
+  )
+}
+
 describe("settings-model", () => {
   it("defaults multi-agent answer tool limit to three", () => {
     expect(
@@ -90,23 +104,17 @@ describe("settings-model", () => {
   })
 
   it("defaults and merges LLM profile settings", () => {
-    const defaults = requireValue(
-      defaultAgentSettings().llmProfiles,
-      "default LLM profiles",
-    )
+    const defaults = defaultLlmProfiles()
     expect(defaults.defaultProfile).toBe("main")
     expect(defaults.digestPass2Profile).toBe("digest_strong")
-    expect(
-      requireValue(
-        defaults.profiles.find((profile) => profile.id === "digest_strong"),
-        "default digest_strong profile",
-      ).reasoningEffort,
-    ).toBe("low")
+    expect(profileById(defaults.profiles, "digest_strong").reasoningEffort).toBe(
+      "low",
+    )
 
     const merged = mergeAgentSettings({
       ...defaultAgentSettings(),
       llmProfiles: {
-        ...requireValue(defaultAgentSettings().llmProfiles, "default LLM profiles"),
+        ...defaultLlmProfiles(),
         defaultProfile: "custom_main",
         profiles: [
           {
@@ -125,19 +133,11 @@ describe("settings-model", () => {
       "merged LLM profiles",
     )
     expect(mergedProfiles.defaultProfile).toBe("custom_main")
+    expect(profileById(mergedProfiles.profiles, "main").model).toBe(
+      "openai/gpt-5.4",
+    )
     expect(
-      requireValue(
-        mergedProfiles.profiles.find((profile) => profile.id === "main"),
-        "merged main profile",
-      ).model,
-    ).toBe("openai/gpt-5.4")
-    expect(
-      requireValue(
-        mergedProfiles.profiles.find(
-          (profile) => profile.id === "digest_strong",
-        ),
-        "merged digest_strong profile",
-      ).model,
+      profileById(mergedProfiles.profiles, "digest_strong").model,
     ).toBe("x-ai/grok-4.1-fast")
   })
 
@@ -299,10 +299,7 @@ describe("settings-model", () => {
   })
 
   it("updates LLM profile draft slices immutably", () => {
-    const current = requireValue(
-      defaultAgentSettings().llmProfiles,
-      "default LLM profiles",
-    )
+    const current = defaultLlmProfiles()
     const withBinding = updateLlmProfileBinding(current, "defaultProfile", "aux")
     expect(withBinding.defaultProfile).toBe("aux")
     expect(current.defaultProfile).toBe("main")
