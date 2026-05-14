@@ -438,10 +438,18 @@ llm:
     max_tokens: 32768
 
 storage:
+  # JSON session files remain the default runtime read path.
   sessions_dir: "./data/sessions"
+  # SQLite session index / optional runtime backend. Keep this under data/ so
+  # startup backfill and rollback tooling can find the same local session store.
   session_sqlite_db_path: "./data/sessions.sqlite3"
+  # Keep JSON -> SQLite mirror writes enabled during the rollout, even when
+  # session_runtime_backend stays "json".
   session_sqlite_shadow_write_enabled: true
+  # Runtime session read backend: "json" (default) or "sqlite".
   session_runtime_backend: "json"
+  # Per-actor daily conversation quota files. Legacy conversation_quota_db_path
+  # is still accepted as an alias, but new configs should use this directory key.
   conversation_quota_dir: "./data/conversation_quota"
   llm_audit_db_path: "./data/llm_audit.sqlite3"
   llm_audit_retention_days: 30

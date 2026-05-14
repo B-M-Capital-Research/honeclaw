@@ -516,24 +516,23 @@
 
 ## 12. 配置与目录策略
 
-当前配置只有：
+当前实现已经落地的配置：
 
 - `storage.sessions_dir`
+- `storage.session_sqlite_db_path`
+- `storage.session_sqlite_shadow_write_enabled`
+- `storage.session_runtime_backend`
 - `storage.llm_audit_db_path`
 
-建议新增独立配置：
-
-- `storage.session_db_path`
-
-默认值建议：
+SQLite session 默认路径：
 
 - `./data/sessions.sqlite3`
 
 兼容策略：
 
-- 保留 `storage.sessions_dir` 一段时间，用于迁移输入、归档或导出目录
-- 在最终切换完成前，不立即删除该配置项
-- 文档中明确其角色从“运行时真相源”转为“迁移期兼容目录”
+- 保留 `storage.sessions_dir`，在 `session_runtime_backend: "json"` 时仍作为运行时读路径；在 `session_runtime_backend: "sqlite"` 时作为 JSON 回退镜像和迁移输入。
+- 保持 `storage.session_sqlite_shadow_write_enabled: true`，直到 SQLite 稳定性经过足够长时间验证。
+- 旧草案中的 `storage.session_db_path` 没有进入实现；当前配置字段是 `storage.session_sqlite_db_path`。
 
 ## 13. 风险与控制措施
 

@@ -143,6 +143,15 @@ fn assert_config_example_multi_agent_fallback_docs(example: &str) {
 fn assert_config_example_storage_and_logging(root: &serde_yaml::Mapping) {
     let storage = yaml_key(root, "storage").unwrap().as_mapping().unwrap();
     assert!(!yaml_has_key(storage, "base_path"));
+    assert!(
+        !yaml_has_key(storage, "session_db_path"),
+        "storage.session_db_path was a draft name; use session_sqlite_db_path"
+    );
+    assert!(yaml_has_key(storage, "sessions_dir"));
+    assert!(yaml_has_key(storage, "session_sqlite_db_path"));
+    assert!(yaml_has_key(storage, "session_sqlite_shadow_write_enabled"));
+    assert!(yaml_has_key(storage, "session_runtime_backend"));
+    assert!(yaml_has_key(storage, "conversation_quota_dir"));
     assert!(yaml_has_key(storage, "gen_images_dir"));
     assert!(yaml_has_key(storage, "notif_prefs_dir"));
 
@@ -384,6 +393,17 @@ fn config_example_yaml_matches_current_schema() {
     assert!(config.agent.opencode.model.is_empty());
     assert!(config.agent.opencode.api_base_url.is_empty());
     assert!(config.agent.opencode.api_key.is_empty());
+    assert_eq!(config.storage.sessions_dir, "./data/sessions");
+    assert_eq!(
+        config.storage.session_sqlite_db_path,
+        "./data/sessions.sqlite3"
+    );
+    assert!(config.storage.session_sqlite_shadow_write_enabled);
+    assert_eq!(config.storage.session_runtime_backend, "json");
+    assert_eq!(
+        config.storage.conversation_quota_dir,
+        "./data/conversation_quota"
+    );
     assert_eq!(config.llm.default_profile, "main");
     assert_eq!(config.llm.auxiliary_profile, "aux");
     assert!(config.llm.profiles.contains_key("main"));

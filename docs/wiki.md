@@ -287,7 +287,7 @@ Important config areas:
 - `llm.*`: provider keys and OpenAI-compatible/OpenRouter routes.
 - `imessage.*`, `feishu.*`, `telegram.*`, `discord.*`: channel enablement, credentials, allowlists, and chat scope.
 - `web.*`: Web console auth token and workflow/research integration settings.
-- `storage.*`: JSON/SQLite session backend and data paths.
+- `storage.*`: session data paths and backend selection, especially `sessions_dir`, `session_sqlite_db_path`, `session_sqlite_shadow_write_enabled`, and `session_runtime_backend`.
 - `admins.*`: channel admin identities and runtime admin registration passphrase.
 - `event_engine.*`: market/news event monitoring and delivery.
 - `logging.*`: runtime log level, file output, console output, and optional UDP sink.
