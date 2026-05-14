@@ -883,6 +883,48 @@ fn finalize_agent_response_marks_planning_sentence_as_failure() {
 }
 
 #[test]
+fn finalize_agent_response_recovers_cron_job_confirmation_from_tool_result() {
+    let root = make_temp_dir("hone_channels_finalize_cron_confirmation");
+    std::fs::create_dir_all(&root).expect("create root");
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let mut response = AgentResponse {
+        content: "我先处理这个监控任务，稍后给你创建结果。".to_string(),
+        tool_calls_made: vec![ToolCallMade {
+            name: "cron_job".to_string(),
+            arguments: serde_json::json!({"action": "add"}),
+            result: serde_json::json!({
+                "success": true,
+                "job": {
+                    "id": "j_market20",
+                    "name": "每日大盘监控",
+                    "schedule": {
+                        "hour": 20,
+                        "minute": 0,
+                        "repeat": "daily"
+                    }
+                }
+            }),
+            tool_call_id: None,
+        }],
+        iterations: 1,
+        success: true,
+        error: None,
+    };
+
+    let outcome = finalize_agent_response(&core, "session", "mock", &mut response);
+
+    assert!(response.success);
+    assert!(response.error.is_none());
+    assert_eq!(
+        response.content,
+        "已创建定时任务：每日大盘监控（每天 20:00）。任务 ID：j_market20。"
+    );
+    assert!(outcome.fallback_reason.is_none());
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn transitional_clarification_question_is_not_treated_as_planning_sentence() {
     assert!(!crate::runtime::is_transitional_planning_sentence(
         "请先确认具体是哪只股票/资产的 ticker？确认标的后我再校验当前价格、财报、估值倍数和同业，再判断估值是否合理。"

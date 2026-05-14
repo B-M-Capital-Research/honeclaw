@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use hone_core::agent::AgentResponse;
+use hone_core::agent::{AgentResponse, ToolCallMade};
 
 use crate::HoneBotCore;
 use crate::outbound::{ResponseContentSegment, split_response_content_segments};
@@ -64,6 +64,18 @@ pub(crate) fn finalize_agent_response(
         response.error = Some(EMPTY_SUCCESS_FALLBACK_MESSAGE.to_string());
         outcome.fallback_reason = Some("sanitized_empty_success");
     } else if is_transitional_planning_sentence(sanitized.content.trim()) {
+        if let Some(recovered) =
+            recover_successful_side_effect_confirmation(&response.tool_calls_made)
+        {
+            tracing::info!(
+                "[AgentSession] recovered side-effect confirmation from tool result runner={} session_id={}",
+                runner_name,
+                session_id
+            );
+            response.content = recovered;
+            response.error = None;
+            return outcome;
+        }
         tracing::warn!(
             "[AgentSession] transitional planning sentence detected, treating as empty runner={} session_id={} chars={}",
             runner_name,
@@ -80,6 +92,103 @@ pub(crate) fn finalize_agent_response(
 
     response.content = normalize_local_image_references(core, session_id, &response.content);
     outcome
+}
+
+fn recover_successful_side_effect_confirmation(tool_calls: &[ToolCallMade]) -> Option<String> {
+    tool_calls.iter().rev().find_map(|call| {
+        if call.name != "cron_job" {
+            return None;
+        }
+        if call.result.get("success").and_then(|value| value.as_bool()) != Some(true) {
+            return None;
+        }
+        let action = call
+            .arguments
+            .get("action")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default();
+        match action {
+            "add" => cron_job_confirmation_message("已创建定时任务", call),
+            "update" => cron_job_confirmation_message("已更新定时任务", call),
+            "remove" => call
+                .result
+                .get("removed_job_id")
+                .and_then(|value| value.as_str())
+                .map(|job_id| format!("已删除定时任务：{job_id}。")),
+            _ => None,
+        }
+    })
+}
+
+fn cron_job_confirmation_message(prefix: &str, call: &ToolCallMade) -> Option<String> {
+    let job = call.result.get("job")?;
+    let name = job
+        .get("name")
+        .and_then(|value| value.as_str())
+        .unwrap_or("未命名任务");
+    let job_id = job.get("id").and_then(|value| value.as_str()).unwrap_or("");
+    let schedule = job.get("schedule").map(format_cron_schedule);
+    let mut message = format!("{prefix}：{name}");
+    if let Some(schedule) = schedule.filter(|value| !value.is_empty()) {
+        message.push_str("（");
+        message.push_str(&schedule);
+        message.push('）');
+    }
+    if !job_id.is_empty() {
+        message.push_str("。任务 ID：");
+        message.push_str(job_id);
+    }
+    message.push('。');
+    Some(message)
+}
+
+fn format_cron_schedule(schedule: &serde_json::Value) -> String {
+    let repeat = schedule
+        .get("repeat")
+        .and_then(|value| value.as_str())
+        .unwrap_or("daily");
+    let hour = schedule
+        .get("hour")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(0);
+    let minute = schedule
+        .get("minute")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(0);
+    let time = format!("{hour:02}:{minute:02}");
+    match repeat {
+        "heartbeat" => "每 30 分钟条件轮询".to_string(),
+        "workday" => format!("工作日 {time}"),
+        "trading_day" => format!("交易日 {time}"),
+        "weekly" => {
+            let weekday = schedule
+                .get("weekday")
+                .and_then(|value| value.as_u64())
+                .and_then(weekday_label)
+                .unwrap_or("每周");
+            format!("{weekday} {time}")
+        }
+        "once" => schedule
+            .get("date")
+            .and_then(|value| value.as_str())
+            .filter(|date| !date.trim().is_empty())
+            .map(|date| format!("{date} {time}"))
+            .unwrap_or(time),
+        _ => format!("每天 {time}"),
+    }
+}
+
+fn weekday_label(value: u64) -> Option<&'static str> {
+    match value {
+        0 => Some("每周一"),
+        1 => Some("每周二"),
+        2 => Some("每周三"),
+        3 => Some("每周四"),
+        4 => Some("每周五"),
+        5 => Some("每周六"),
+        6 => Some("每周日"),
+        _ => None,
+    }
 }
 
 pub(crate) fn response_leaks_system_prompt(content: &str) -> bool {

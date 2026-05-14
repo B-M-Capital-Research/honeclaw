@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 18:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29)
 - **证据来源**:
   - 2026-05-14 17:17 最新真实直聊样本：
@@ -148,6 +148,19 @@
 - 最新样本说明另一条同根因分支也仍然活跃：`response_finalizer` 会把某些真实用户态澄清/计划句直接判成 `transitional planning sentence`，随后走与空回复相同的 fallback 收口。
 - 多代理封装层把空回复继续当作 `answer.done success=true`，导致上层消息流无法区分“正常完成”和“零字节完成”。
 - Feishu 发送侧只看分段流程是否跑完，没有拦截空正文，因此把空 assistant 消息照常投递。
+
+## 修复进展（2026-05-14 20:12 CST）
+
+- 本轮针对 17:17 CST 最新定时任务创建样本补齐副作用确认兜底：
+  - `response_finalizer` 在抑制 `transitional planning sentence` 前，会先检查本轮 `cron_job` 工具是否已经成功执行 `add` / `update` / `remove`。
+  - 若 `cron_job` 已返回成功结果，finalizer 会从工具结果合成用户可见确认，例如 `已创建定时任务：每日大盘监控（每天 20:00）。任务 ID：...。`，不再把已发生的任务变更遮蔽成“没有成功产出完整回复”。
+  - 该逻辑只覆盖明确成功的定时任务副作用；真正空输出、内部-only 输出和没有副作用证明的 planning sentence 仍继续走失败兜底。
+- 新增回归：
+  - `finalize_agent_response_recovers_cron_job_confirmation_from_tool_result`
+- 验证：
+  - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/response_finalizer.rs crates/hone-channels/src/agent_session/tests.rs`
+  - `cargo test -p hone-channels finalize_agent_response_recovers_cron_job_confirmation_from_tool_result -- --nocapture`
+- 状态更新为 `Fixed`。本轮不重启 live 服务；后续若部署后仍出现 `cron_job success + planning_sentence_suppressed + 通用失败提示`，应继续在本单追加证据。
 
 ## 修复情况（2026-04-16）
 
