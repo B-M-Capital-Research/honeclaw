@@ -109,8 +109,8 @@ fn truncate_prompt_snippet(text: &str, max_chars: usize) -> String {
 }
 
 fn sanitize_assistant_followup_snippet(text: &str) -> String {
-    let sanitized = sanitize_user_visible_output(text).content;
-    replace_local_image_markers(&sanitized, LOCAL_IMAGE_CONTEXT_PLACEHOLDER)
+    let image_placeholders = replace_local_image_markers(text, LOCAL_IMAGE_CONTEXT_PLACEHOLDER);
+    sanitize_user_visible_output(&image_placeholders).content
 }
 
 fn build_group_followup_recv_extra(

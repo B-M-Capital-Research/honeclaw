@@ -129,10 +129,13 @@ impl<'a> SessionCompactor<'a> {
         let mut history_text = String::new();
         for message in &messages_to_summarize {
             let content = match message.role.as_str() {
-                "assistant" => replace_local_image_markers(
-                    &sanitize_user_visible_output(&session_message_text(message)).content,
-                    LOCAL_IMAGE_CONTEXT_PLACEHOLDER,
-                ),
+                "assistant" => {
+                    let image_placeholders = replace_local_image_markers(
+                        &session_message_text(message),
+                        LOCAL_IMAGE_CONTEXT_PLACEHOLDER,
+                    );
+                    sanitize_user_visible_output(&image_placeholders).content
+                }
                 "user" => sanitize_user_visible_output(&session_message_text(message)).content,
                 "tool" => String::new(),
                 _ => session_message_text(message),

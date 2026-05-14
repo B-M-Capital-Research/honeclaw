@@ -270,6 +270,6 @@ pub(super) fn persistable_turn_from_response(
 /// 恢复上下文时对 assistant 历史内容做的二次脱敏。把本地图片 marker 压成
 /// 统一占位符,避免历史里出现真实沙盒路径泄露给下一轮 runner。
 pub(super) fn sanitize_assistant_context_content(content: &str) -> String {
-    let sanitized = sanitize_user_visible_output(content).content;
-    replace_local_image_markers(&sanitized, LOCAL_IMAGE_CONTEXT_PLACEHOLDER)
+    let image_placeholders = replace_local_image_markers(content, LOCAL_IMAGE_CONTEXT_PLACEHOLDER);
+    sanitize_user_visible_output(&image_placeholders).content
 }
