@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-15 03:03 CST
+最后更新：2026-05-15 04:17 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,11 +17,12 @@
 
 ## 当前概览
 
-- 活跃待修复：0
+- 活跃待修复：1
 - Later / 待复现：9
 - 已修复 / 已关闭：103
 - 历史分析 / 部分止血：5
 - 本轮 04:05 CST 已修复观察池击球区紧凑 summary 解析缺口：scheduler 现在会从 `MSFT $335-$350`、同一行多个 ticker、以及 `保守/合理/激进` 分档区间中恢复击球区；`待确认` 不会回灌。验证 `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs`、`cargo test -p hone-channels scheduled_watchlist_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue。
+- 本轮 04:17 CST 新增 Daily macOS build release app API 生命周期缺陷：`Hone Financial.app` 与 `.dmg` 已成功生成，但直接运行 `.app/Contents/MacOS/hone-desktop` 会在 embedded Web API ready 后退出，LaunchServices 启动虽保持进程但不绑定 `18077/18088`，导致 `/api/meta` 与用户端页面均无法完成验证；隔离配置已确认 Feishu/Telegram/Discord/iMessage/event-engine disabled。
 - 本轮 04:05 CST 复核 Heartbeat `mimo-v2.5-pro` reasoning transcript 兼容缺陷：当前 HEAD 已包含 reasoning transcript replay 与 OpenAI-compatible raw body 透传，`cargo test -p hone-llm chat_with_tools_replays_reasoning_content_in_raw_request_body -- --nocapture`、`cargo test -p hone-agent run_replays_reasoning_content_into_followup_tool_round -- --nocapture` 通过；不再以当前机器旧/非生产运行态证据保持活跃。
 - 本轮 04:05 CST 复核 Feishu scheduler started-row 台账缺陷：当前 HEAD 已覆盖 `delivery_key` 终态覆盖、最近 started fallback 与启动 stale recovery，`cargo test -p hone-memory --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；关联 Issue [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39)。
 - 本轮 03:03 CST 确认 Heartbeat `mimo-v2.5-pro` reasoning transcript 兼容缺陷持续活跃：23:30-03:00 CST 又新增 82 条同类 `reasoning_content must be passed back` / `Param Incorrect` heartbeat 失败，覆盖 11 个 job；同窗普通 scheduler 有 5 条成功送达，故障仍集中在 heartbeat function-calling 路径。
@@ -100,7 +101,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| 无 | - | - | 当前没有 `New` / `Approved` / `Fixing` 活跃缺陷；后续巡检如有本地可复现证据再重新加入 | - |
+| Daily macOS build release app 启动后 Web/API 生命周期不可验证 | P1 | New | 2026-05-15 `.app` / `.dmg` 打包成功，但 release app 无法同时保持进程运行并让 `/api/meta` 响应；需修复 desktop startup / bundled backend bootstrap 的自动化 smoke 路径 | [daily_macos_build_release_app_api_not_persistent.md](./daily_macos_build_release_app_api_not_persistent.md) |
 
 ## Later / 待复现
 
