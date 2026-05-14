@@ -42,78 +42,90 @@ pub(crate) fn curate_digest_events_with_omitted_at(
 ) -> DigestCuration {
     let mut kept = Vec::with_capacity(events.len());
     let mut omitted = Vec::new();
-    let mut social_count = 0usize;
-    let mut by_symbol: HashMap<String, usize> = HashMap::new();
-    let mut by_source: HashMap<String, usize> = HashMap::new();
-    let mut by_domain: HashMap<String, usize> = HashMap::new();
-    let mut title_keys: HashSet<String> = HashSet::new();
-    let mut topic_tokens: Vec<(String, HashSet<String>)> = Vec::new();
+    let mut curation_state = DigestCurationState::default();
 
     for event in events {
         let is_high = event.severity.rank() >= crate::event::Severity::High.rank();
-        if !is_high {
-            if should_omit_from_digest(&event, now) {
-                omitted.push(event);
-                continue;
-            }
-            if matches!(event.kind, EventKind::SocialPost) {
-                if social_count >= DIGEST_MAX_SOCIAL_ITEMS {
-                    omitted.push(event);
-                    continue;
-                }
-            }
-            if let Some(symbol) = primary_symbol_key(&event) {
-                if by_symbol.get(&symbol).copied().unwrap_or(0) >= DIGEST_MAX_ITEMS_PER_SYMBOL {
-                    omitted.push(event);
-                    continue;
-                }
-            }
-            if !event.source.is_empty()
-                && by_source.get(&event.source).copied().unwrap_or(0) >= DIGEST_MAX_ITEMS_PER_SOURCE
-            {
-                omitted.push(event);
-                continue;
-            }
-            if let Some(domain) = event_domain_key(&event) {
-                if by_domain.get(&domain).copied().unwrap_or(0) >= DIGEST_MAX_ITEMS_PER_DOMAIN {
-                    omitted.push(event);
-                    continue;
-                }
-            }
-            if let Some(title_key) = digest_title_dedupe_key(&event) {
-                if !title_keys.insert(title_key) {
-                    omitted.push(event);
-                    continue;
-                }
-            }
-            if let Some((topic_key, tokens)) = digest_topic_tokens(&event) {
-                if topic_tokens
-                    .iter()
-                    .any(|(key, seen)| key == &topic_key && token_jaccard(seen, &tokens) >= 0.55)
-                {
-                    omitted.push(event);
-                    continue;
-                }
-                topic_tokens.push((topic_key, tokens));
-            }
+        if !is_high && curation_state.should_omit_non_high_event(&event, now) {
+            omitted.push(event);
+            continue;
         }
 
-        if matches!(event.kind, EventKind::SocialPost) {
-            social_count += 1;
-        }
-        if let Some(symbol) = primary_symbol_key(&event) {
-            *by_symbol.entry(symbol).or_default() += 1;
-        }
-        if !event.source.is_empty() {
-            *by_source.entry(event.source.clone()).or_default() += 1;
-        }
-        if let Some(domain) = event_domain_key(&event) {
-            *by_domain.entry(domain).or_default() += 1;
-        }
+        curation_state.record_kept_event(&event);
         kept.push(event);
     }
 
     DigestCuration { kept, omitted }
+}
+
+#[derive(Default)]
+struct DigestCurationState {
+    social_count: usize,
+    by_symbol: HashMap<String, usize>,
+    by_source: HashMap<String, usize>,
+    by_domain: HashMap<String, usize>,
+    title_keys: HashSet<String>,
+    topic_tokens: Vec<(String, HashSet<String>)>,
+}
+
+impl DigestCurationState {
+    fn should_omit_non_high_event(&mut self, event: &MarketEvent, now: DateTime<Utc>) -> bool {
+        if should_omit_from_digest(event, now) {
+            return true;
+        }
+        if matches!(event.kind, EventKind::SocialPost)
+            && self.social_count >= DIGEST_MAX_SOCIAL_ITEMS
+        {
+            return true;
+        }
+        if let Some(symbol) = primary_symbol_key(event)
+            && self.by_symbol.get(&symbol).copied().unwrap_or(0) >= DIGEST_MAX_ITEMS_PER_SYMBOL
+        {
+            return true;
+        }
+        if !event.source.is_empty()
+            && self.by_source.get(&event.source).copied().unwrap_or(0)
+                >= DIGEST_MAX_ITEMS_PER_SOURCE
+        {
+            return true;
+        }
+        if let Some(domain) = event_domain_key(event)
+            && self.by_domain.get(&domain).copied().unwrap_or(0) >= DIGEST_MAX_ITEMS_PER_DOMAIN
+        {
+            return true;
+        }
+        if let Some(title_key) = digest_title_dedupe_key(event)
+            && !self.title_keys.insert(title_key)
+        {
+            return true;
+        }
+        if let Some((topic_key, tokens)) = digest_topic_tokens(event) {
+            let duplicate = self
+                .topic_tokens
+                .iter()
+                .any(|(key, seen)| key == &topic_key && token_jaccard(seen, &tokens) >= 0.55);
+            if duplicate {
+                return true;
+            }
+            self.topic_tokens.push((topic_key, tokens));
+        }
+        false
+    }
+
+    fn record_kept_event(&mut self, event: &MarketEvent) {
+        if matches!(event.kind, EventKind::SocialPost) {
+            self.social_count += 1;
+        }
+        if let Some(symbol) = primary_symbol_key(event) {
+            *self.by_symbol.entry(symbol).or_default() += 1;
+        }
+        if !event.source.is_empty() {
+            *self.by_source.entry(event.source.clone()).or_default() += 1;
+        }
+        if let Some(domain) = event_domain_key(event) {
+            *self.by_domain.entry(domain).or_default() += 1;
+        }
+    }
 }
 
 pub(crate) fn suppress_recent_digest_topics_with_omitted(

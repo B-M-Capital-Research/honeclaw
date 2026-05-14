@@ -272,12 +272,12 @@ pub fn extract_one_liner(desc: &str, max_chars: usize) -> String {
     let mut cut: String = chars.iter().take(max_chars).collect();
     // 找最靠后的英文/中文句号
     let last_dot = cut.rfind(". ").or_else(|| cut.rfind('。'));
-    if let Some(idx) = last_dot {
-        if idx > max_chars / 3 {
-            // 至少要保留前 1/3,否则不如硬截
-            cut.truncate(idx + 1);
-            return cut.trim().to_string();
-        }
+    if let Some(idx) = last_dot
+        && idx > max_chars / 3
+    {
+        // 至少要保留前 1/3,否则不如硬截
+        cut.truncate(idx + 1);
+        return cut.trim().to_string();
     }
     cut.push('…');
     cut

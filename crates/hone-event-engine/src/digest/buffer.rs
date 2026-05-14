@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 use hone_core::ActorIdentity;
@@ -146,16 +146,19 @@ impl DigestBuffer {
             if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
                 continue;
             }
-            if let Ok(f) = std::fs::File::open(&path) {
-                if let Some(Ok(first)) = BufReader::new(f).lines().next() {
-                    if let Ok(rec) = serde_json::from_str::<BufferRecord>(&first) {
-                        actors.insert(actor_slug(&rec.actor), rec.actor);
-                    }
-                }
+            if let Some(actor) = first_buffer_actor(&path) {
+                actors.insert(actor_slug(&actor), actor);
             }
         }
         actors.into_values().collect()
     }
+}
+
+fn first_buffer_actor(path: &Path) -> Option<ActorIdentity> {
+    let file = std::fs::File::open(path).ok()?;
+    let first = BufReader::new(file).lines().next()?.ok()?;
+    let record = serde_json::from_str::<BufferRecord>(&first).ok()?;
+    Some(record.actor)
 }
 
 fn actor_slug(a: &ActorIdentity) -> String {

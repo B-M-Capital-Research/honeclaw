@@ -216,10 +216,10 @@ pub fn scan_profiles(
         }
         // 一个 profile 可能含多个 ticker(GOOGL / GOOG),分别 emit
         for ticker in tickers {
-            if let Some(filter) = &holdings_set {
-                if !filter.contains(&ticker) {
-                    continue;
-                }
+            if let Some(filter) = &holdings_set
+                && !filter.contains(&ticker)
+            {
+                continue;
             }
             profiles.push(ProfileSource {
                 ticker,
@@ -245,10 +245,10 @@ pub fn extract_tickers(md: &str) -> Vec<String> {
         }
     }
     // 2. 标题里的 (TICKER) / (TICKER) — 第一行 `# Foo (TICKER)` 或 `# Foo（TICKER）`
-    if let Some(first) = md.lines().find(|l| l.starts_with("# ")) {
-        if let Some(t) = extract_paren_ticker(first) {
-            return vec![t];
-        }
+    if let Some(first) = md.lines().find(|l| l.starts_with("# "))
+        && let Some(t) = extract_paren_ticker(first)
+    {
+        return vec![t];
     }
     Vec::new()
 }
@@ -262,23 +262,23 @@ fn parse_ticker_list(raw: &str) -> Vec<String> {
 
 fn extract_paren_ticker(line: &str) -> Option<String> {
     // 半角 ()  — ASCII 0x28 / 0x29
-    if let (Some(start), Some(end)) = (line.rfind('('), line.rfind(')')) {
-        if end > start {
-            let candidate = &line[start + 1..end];
-            if is_plausible_ticker(candidate) {
-                return Some(candidate.to_uppercase());
-            }
+    if let (Some(start), Some(end)) = (line.rfind('('), line.rfind(')'))
+        && end > start
+    {
+        let candidate = &line[start + 1..end];
+        if is_plausible_ticker(candidate) {
+            return Some(candidate.to_uppercase());
         }
     }
     // 全角 — U+FF08 / U+FF09(每个 3 字节 UTF-8)
     let lp = '\u{FF08}';
     let rp = '\u{FF09}';
-    if let (Some(start), Some(end)) = (line.rfind(lp), line.rfind(rp)) {
-        if end > start {
-            let candidate = &line[start + lp.len_utf8()..end];
-            if is_plausible_ticker(candidate) {
-                return Some(candidate.to_uppercase());
-            }
+    if let (Some(start), Some(end)) = (line.rfind(lp), line.rfind(rp))
+        && end > start
+    {
+        let candidate = &line[start + lp.len_utf8()..end];
+        if is_plausible_ticker(candidate) {
+            return Some(candidate.to_uppercase());
         }
     }
     None
