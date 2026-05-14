@@ -105,13 +105,14 @@ impl KindBucket {
 /// 按 bucket 分组 items,保留传入顺序(BTreeMap 的 KindBucket 序 = 渲染序)。
 /// 返回引用,不复制 items —— 调用方按需要遍历。
 pub fn group_by_kind_bucket(items: &[DigestItem]) -> BTreeMap<KindBucket, Vec<&DigestItem>> {
-    let mut out: BTreeMap<KindBucket, Vec<&DigestItem>> = BTreeMap::new();
-    for it in items {
-        out.entry(KindBucket::from_kind(&it.kind))
+    let mut buckets_by_kind: BTreeMap<KindBucket, Vec<&DigestItem>> = BTreeMap::new();
+    for item in items {
+        buckets_by_kind
+            .entry(KindBucket::from_kind(&item.kind))
             .or_default()
-            .push(it);
+            .push(item);
     }
-    out
+    buckets_by_kind
 }
 
 /// 从单条 `MarketEvent` 投影出 `DigestItem`。`headline` 由 caller 传(因为

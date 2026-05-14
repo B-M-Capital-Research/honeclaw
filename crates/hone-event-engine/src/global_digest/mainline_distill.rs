@@ -344,10 +344,10 @@ pub async fn distill_for_actor(
     }
     // holdings 里没有 profile 的 ticker 也算 skipped
     let covered: std::collections::HashSet<String> = by_ticker.keys().cloned().collect();
-    for h in holdings {
-        let h_up = h.to_uppercase();
-        if !covered.contains(&h_up) && !skipped.contains(&h_up) {
-            skipped.push(h_up);
+    for holding_ticker in holdings {
+        let normalized_ticker = holding_ticker.to_uppercase();
+        if !covered.contains(&normalized_ticker) && !skipped.contains(&normalized_ticker) {
+            skipped.push(normalized_ticker);
         }
     }
 

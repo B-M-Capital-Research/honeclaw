@@ -111,10 +111,14 @@ fn escape_attr_html(s: &str) -> String {
 }
 
 fn short_host(url: &str) -> String {
-    let s = url
+    let without_scheme = url
         .trim_start_matches("https://")
         .trim_start_matches("http://");
-    s.split('/').next().unwrap_or(s).to_string()
+    without_scheme
+        .split('/')
+        .next()
+        .unwrap_or(without_scheme)
+        .to_string()
 }
 
 #[cfg(test)]

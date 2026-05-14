@@ -111,21 +111,21 @@ pub(crate) fn build_telegram_digest_html(payload: &DigestPayload) -> String {
     } else {
         format!("{} 📬 {}", severity_dot, payload.label)
     };
-    let mut out = format!("<b>{}</b>", escape_html(&title));
+    let mut html = format!("<b>{}</b>", escape_html(&title));
     let grouped = group_by_kind_bucket(&payload.items);
     for (bucket, items) in grouped {
-        out.push_str("\n\n");
-        out.push_str(&format!(
+        html.push_str("\n\n");
+        html.push_str(&format!(
             "<b>{}</b>",
             escape_html(&format!("{} · {}", bucket.header_label(), items.len()))
         ));
-        for it in items {
-            out.push('\n');
-            out.push_str(&render_telegram_line(it));
+        for item in items {
+            html.push('\n');
+            html.push_str(&render_telegram_line(item));
         }
     }
     if payload.cap_overflow > 0 {
-        out.push_str(&format!(
+        html.push_str(&format!(
             "\n\n<i>{}</i>",
             escape_html(&format!(
                 "另 {} 条因数量上限未展示,发送 /missed 查看完整清单",
@@ -133,23 +133,23 @@ pub(crate) fn build_telegram_digest_html(payload: &DigestPayload) -> String {
             ))
         ));
     }
-    out
+    html
 }
 
-fn render_telegram_line(it: &DigestItem) -> String {
-    let mut out = String::from("• ");
-    if let Some(sym) = &it.primary_symbol {
-        out.push_str(&format!("<b>${}</b> ", escape_html(sym)));
+fn render_telegram_line(item: &DigestItem) -> String {
+    let mut line = String::from("• ");
+    if let Some(symbol) = &item.primary_symbol {
+        line.push_str(&format!("<b>${}</b> ", escape_html(symbol)));
     }
-    out.push_str(&escape_html(it.headline.trim()));
-    if let Some(url) = &it.url {
-        out.push_str(&format!(
+    line.push_str(&escape_html(item.headline.trim()));
+    if let Some(url) = &item.url {
+        line.push_str(&format!(
             " <a href=\"{}\">{}</a>",
             escape_html_attr(url),
             escape_html(&link_label(url)),
         ));
     }
-    out
+    line
 }
 
 fn escape_html(s: &str) -> String {

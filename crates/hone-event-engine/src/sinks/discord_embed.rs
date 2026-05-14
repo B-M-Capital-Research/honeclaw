@@ -117,8 +117,8 @@ fn build_field(
     let mut remaining_budget = budget.saturating_sub(name_cost);
     let mut value = String::new();
     let mut emitted = 0usize;
-    for it in items {
-        let line = render_item_line(it);
+    for item in items {
+        let line = render_item_line(item);
         let line_chars = line.chars().count() + 1; // \n
         if value.chars().count() + line_chars > FIELD_VALUE_MAX {
             break;

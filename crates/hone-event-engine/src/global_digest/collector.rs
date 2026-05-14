@@ -58,31 +58,31 @@ impl<'a> CandidateCollector<'a> {
         let dedup_since =
             until - chrono::Duration::hours(dedup_lookback_hours.min(MAX_LOOKBACK_HOURS) as i64);
 
-        let raw = self
+        let raw_candidates = self
             .store
             .list_global_digest_news_candidates(since, until)?;
         let already_pushed = self
             .store
             .broadcasted_event_ids_since(GLOBAL_DIGEST_CHANNEL, dedup_since)?;
 
-        let mut out = Vec::with_capacity(raw.len());
-        for ev in raw {
+        let mut candidates = Vec::with_capacity(raw_candidates.len());
+        for event in raw_candidates {
             // SQL 已限定 source LIKE 'fmp.stock_news:%' 且 kind_json 含
             // 'news_critical',这里 belt-and-suspenders 再确认一次 kind 标签,
             // 防止以后加新 kind 字段误命中。
-            if kind_tag(&ev.kind) != "news_critical" {
+            if kind_tag(&event.kind) != "news_critical" {
                 continue;
             }
-            if already_pushed.contains(&ev.id) {
+            if already_pushed.contains(&event.id) {
                 continue;
             }
-            if is_earnings_call_transcript_title(&ev.title) {
+            if is_earnings_call_transcript_title(&event.title) {
                 continue;
             }
 
             // payload 里 poller 已写入 source_class / legal_ad_template / fmp.text
             // (见 pollers::news::run_inner);这里直接读,不重算分类。
-            let payload = &ev.payload;
+            let payload = &event.payload;
             if payload
                 .get("legal_ad_template")
                 .and_then(|v| v.as_bool())
@@ -97,26 +97,26 @@ impl<'a> CandidateCollector<'a> {
             if source_class != NewsSourceClass::Trusted {
                 continue;
             }
-            let fmp_obj = payload.get("fmp");
-            let fmp_text = fmp_obj
+            let fmp_payload = payload.get("fmp");
+            let fmp_text = fmp_payload
                 .and_then(|f| f.get("text"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            let site = fmp_obj
+            let site = fmp_payload
                 .and_then(|f| f.get("site"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
 
-            out.push(GlobalDigestCandidate {
-                event: ev,
+            candidates.push(GlobalDigestCandidate {
+                event,
                 source_class,
                 fmp_text,
                 site,
             });
         }
-        Ok(out)
+        Ok(candidates)
     }
 }
 
@@ -570,7 +570,10 @@ mod tests {
             .collect(now, 24, 24)
             .unwrap();
         assert_eq!(candidates.len(), 3);
-        let sources: Vec<&str> = candidates.iter().map(|c| c.event.source.as_str()).collect();
+        let sources: Vec<&str> = candidates
+            .iter()
+            .map(|candidate| candidate.event.source.as_str())
+            .collect();
         assert!(sources.contains(&"fmp.stock_news:reuters.com"));
         assert!(sources.contains(&"rss:bloomberg_markets"));
         assert!(sources.contains(&"rss:spacenews"));
