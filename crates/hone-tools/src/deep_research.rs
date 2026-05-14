@@ -95,8 +95,8 @@ impl Tool for DeepResearchTool {
             req = req.header("Authorization", format!("Bearer {}", self.api_key));
         }
 
-        let resp = match req.send().await {
-            Ok(r) => r,
+        let response = match req.send().await {
+            Ok(response) => response,
             Err(e) => {
                 let safe_error = sanitize_deep_research_error_detail(&e.to_string());
                 tracing::error!("[DeepResearchTool] API 请求失败: {}", safe_error);
@@ -107,9 +107,9 @@ impl Tool for DeepResearchTool {
             }
         };
 
-        let status = resp.status();
-        let raw: Value = match resp.json().await {
-            Ok(v) => v,
+        let status = response.status();
+        let response_json: Value = match response.json().await {
+            Ok(value) => value,
             Err(e) => {
                 let safe_error = sanitize_deep_research_error_detail(&e.to_string());
                 tracing::error!("[DeepResearchTool] 响应解析失败: {}", safe_error);
@@ -121,8 +121,8 @@ impl Tool for DeepResearchTool {
         };
 
         if !status.is_success() {
-            let err_msg = deep_research_error_message(&raw);
-            let raw_preview = deep_research_payload_preview(&raw);
+            let err_msg = deep_research_error_message(&response_json);
+            let raw_preview = deep_research_payload_preview(&response_json);
             tracing::error!(
                 "[DeepResearchTool] API 返回错误 status={} error={} response_preview={}",
                 status,
@@ -136,10 +136,10 @@ impl Tool for DeepResearchTool {
         }
 
         // 提取 task_id（兼容多种字段名）
-        let task_id = raw
+        let task_id = response_json
             .get("task_id")
-            .or_else(|| raw.get("taskId"))
-            .or_else(|| raw.get("id"))
+            .or_else(|| response_json.get("taskId"))
+            .or_else(|| response_json.get("id"))
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
@@ -155,7 +155,7 @@ impl Tool for DeepResearchTool {
             "task_id": task_id,
             "company_name": company_name,
             "message": format!("已成功启动 {} 的深度研究任务，系统将每分钟汇报一次进度，最多监控 15 分钟。完整报告约需 1-2 小时，完成后可在「个股研究」页面查阅。", company_name),
-            "raw": raw
+            "raw": response_json
         }))
     }
 }

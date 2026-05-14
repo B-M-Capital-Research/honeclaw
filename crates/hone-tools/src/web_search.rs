@@ -115,7 +115,7 @@ impl WebSearchTool {
             "include_raw_content": false
         });
 
-        let resp = self
+        let response = self
             .http
             .post(&self.endpoint)
             .json(&body)
@@ -124,13 +124,13 @@ impl WebSearchTool {
             .await
             .map_err(|e| format!("Tavily 网络请求失败: {e}"))?;
 
-        let status = resp.status();
-        let data: Value = resp
+        let status = response.status();
+        let response_json: Value = response
             .json()
             .await
             .map_err(|e| format!("Tavily 响应解析失败: {e}"))?;
 
-        Self::interpret_response(status, data)
+        Self::interpret_response(status, response_json)
     }
 
     fn classify_attempt_error(error: &str) -> TavilyErrorKind {

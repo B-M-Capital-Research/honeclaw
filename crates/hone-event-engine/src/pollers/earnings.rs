@@ -67,21 +67,21 @@ impl EventSource for EarningsPoller {
 /// EventStore 去重保证同一场财报只入库一次。倒计时由 `synthesize_countdowns`
 /// 在 digest flush 时刻按 `now` 现算,不在这里产出。
 fn events_from_calendar(raw: &Value) -> Vec<MarketEvent> {
-    let arr = match raw.as_array() {
-        Some(a) => a,
+    let earning_items = match raw.as_array() {
+        Some(items) => items,
         None => return vec![],
     };
 
-    let mut out = Vec::new();
-    for item in arr.iter() {
-        let Some(symbol) = item
+    let mut events = Vec::new();
+    for earning_item in earning_items {
+        let Some(symbol) = earning_item
             .get("symbol")
             .and_then(|v| v.as_str())
             .map(str::to_string)
         else {
             continue;
         };
-        let Some(date_str) = item
+        let Some(date_str) = earning_item
             .get("date")
             .and_then(|v| v.as_str())
             .map(str::to_string)
@@ -96,8 +96,10 @@ fn events_from_calendar(raw: &Value) -> Vec<MarketEvent> {
         };
         let occurred_at = Utc.from_utc_datetime(&dt).to_utc();
 
-        let eps_est = item.get("epsEstimated").and_then(|v| v.as_f64());
-        let rev_est = item.get("revenueEstimated").and_then(|v| v.as_f64());
+        let eps_est = earning_item.get("epsEstimated").and_then(|v| v.as_f64());
+        let rev_est = earning_item
+            .get("revenueEstimated")
+            .and_then(|v| v.as_f64());
         let summary = match (eps_est, rev_est) {
             (Some(e), Some(r)) => format!("EPS est {e:.2} · Rev est {r:.0}"),
             (Some(e), None) => format!("EPS est {e:.2}"),
@@ -105,7 +107,7 @@ fn events_from_calendar(raw: &Value) -> Vec<MarketEvent> {
             (None, None) => String::new(),
         };
 
-        out.push(MarketEvent {
+        events.push(MarketEvent {
             id: format!("earnings:{symbol}:{date_str}"),
             kind: EventKind::EarningsUpcoming,
             severity: Severity::Medium,
@@ -115,10 +117,10 @@ fn events_from_calendar(raw: &Value) -> Vec<MarketEvent> {
             summary,
             url: None,
             source: "fmp.earning_calendar".into(),
-            payload: item.clone(),
+            payload: earning_item.clone(),
         });
     }
-    out
+    events
 }
 
 /// 根据一批已入库的 earnings teaser + 当前本地日期,现算出 T-3/T-2/T-1 倒计时

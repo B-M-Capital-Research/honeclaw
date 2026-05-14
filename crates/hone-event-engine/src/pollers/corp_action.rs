@@ -230,11 +230,12 @@ impl EventSource for SecFilingsPoller {
 // ─────────────────────────────────────────────────────────────────────────────
 
 fn events_from_splits(raw: &Value) -> Vec<MarketEvent> {
-    let arr = match raw.as_array() {
-        Some(a) => a,
+    let split_items = match raw.as_array() {
+        Some(items) => items,
         None => return vec![],
     };
-    arr.iter()
+    split_items
+        .iter()
         .filter_map(|item| {
             let symbol = item.get("symbol")?.as_str()?.to_string();
             let date = item.get("date")?.as_str()?.to_string();
@@ -263,11 +264,12 @@ fn events_from_splits(raw: &Value) -> Vec<MarketEvent> {
 }
 
 fn events_from_dividends(raw: &Value) -> Vec<MarketEvent> {
-    let arr = match raw.as_array() {
-        Some(a) => a,
+    let dividend_items = match raw.as_array() {
+        Some(items) => items,
         None => return vec![],
     };
-    arr.iter()
+    dividend_items
+        .iter()
         .filter_map(|item| {
             let symbol = item.get("symbol")?.as_str()?.to_string();
             let date = item.get("date")?.as_str()?.to_string();
@@ -292,11 +294,12 @@ fn events_from_dividends(raw: &Value) -> Vec<MarketEvent> {
 }
 
 fn events_from_sec_filings(raw: &Value, ticker: &str) -> Vec<MarketEvent> {
-    let arr = match raw.as_array() {
-        Some(a) => a,
+    let filing_items = match raw.as_array() {
+        Some(items) => items,
         None => return vec![],
     };
-    arr.iter()
+    filing_items
+        .iter()
         .filter_map(|item| {
             let form = item
                 .get("type")

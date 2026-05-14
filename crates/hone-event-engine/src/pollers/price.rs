@@ -212,28 +212,28 @@ fn events_from_quotes_at(
     near_tol: f64,
     now: DateTime<Utc>,
 ) -> Vec<MarketEvent> {
-    let arr = match raw.as_array() {
-        Some(a) => a,
+    let quotes = match raw.as_array() {
+        Some(quotes) => quotes,
         None => return vec![],
     };
-    let mut out = Vec::new();
+    let mut events = Vec::new();
 
-    for item in arr {
-        let Some((quote_time, window)) = quote_time_and_window(item, now) else {
+    for quote in quotes {
+        let Some((quote_time, window)) = quote_time_and_window(quote, now) else {
             continue;
         };
         let date_key = quote_time.date_naive().format("%Y-%m-%d").to_string();
-        let Some(symbol) = item
+        let Some(symbol) = quote
             .get("symbol")
             .and_then(|v| v.as_str())
             .map(String::from)
         else {
             continue;
         };
-        let price = item.get("price").and_then(|v| v.as_f64());
-        let pct = item.get("changesPercentage").and_then(|v| v.as_f64());
-        let year_high = item.get("yearHigh").and_then(|v| v.as_f64());
-        let year_low = item.get("yearLow").and_then(|v| v.as_f64());
+        let price = quote.get("price").and_then(|v| v.as_f64());
+        let pct = quote.get("changesPercentage").and_then(|v| v.as_f64());
+        let year_high = quote.get("yearHigh").and_then(|v| v.as_f64());
+        let year_low = quote.get("yearLow").and_then(|v| v.as_f64());
 
         if let Some(pct) = pct {
             let abs = pct.abs();
@@ -249,8 +249,8 @@ fn events_from_quotes_at(
                 let bps = (pct * 100.0).round() as i64;
                 let direction = if pct >= 0.0 { "+" } else { "" };
                 let lane = price_lane(pct, low_pct, high_pct, step_pct, window);
-                let payload = price_payload(item, pct, price, &date_key, lane.as_ref());
-                out.push(MarketEvent {
+                let payload = price_payload(quote, pct, price, &date_key, lane.as_ref());
+                events.push(MarketEvent {
                     id: lane
                         .as_ref()
                         .map(|lane| lane.event_id(&symbol, &date_key, window))
@@ -273,41 +273,41 @@ fn events_from_quotes_at(
             }
         }
 
-        if let (Some(price), Some(yh)) = (price, year_high) {
-            if yh > 0.0 && price >= yh * (1.0 - near_tol) {
-                out.push(MarketEvent {
+        if let (Some(price), Some(year_high_price)) = (price, year_high) {
+            if year_high_price > 0.0 && price >= year_high_price * (1.0 - near_tol) {
+                events.push(MarketEvent {
                     id: format!("52h:{symbol}:{date_key}"),
                     kind: EventKind::Weekly52High,
                     severity: Severity::Medium,
                     symbols: vec![symbol.clone()],
                     occurred_at: quote_time,
                     title: format!("{symbol} 触及 52 周新高"),
-                    summary: format!("价格 {price:.2} · 年内高 {yh:.2}"),
+                    summary: format!("价格 {price:.2} · 年内高 {year_high_price:.2}"),
                     url: None,
                     source: "fmp.quote".into(),
-                    payload: item.clone(),
+                    payload: quote.clone(),
                 });
             }
         }
-        if let (Some(price), Some(yl)) = (price, year_low) {
-            if yl > 0.0 && price <= yl * (1.0 + near_tol) {
-                out.push(MarketEvent {
+        if let (Some(price), Some(year_low_price)) = (price, year_low) {
+            if year_low_price > 0.0 && price <= year_low_price * (1.0 + near_tol) {
+                events.push(MarketEvent {
                     id: format!("52l:{symbol}:{date_key}"),
                     kind: EventKind::Weekly52Low,
                     severity: Severity::Medium,
                     symbols: vec![symbol.clone()],
                     occurred_at: quote_time,
                     title: format!("{symbol} 触及 52 周新低"),
-                    summary: format!("价格 {price:.2} · 年内低 {yl:.2}"),
+                    summary: format!("价格 {price:.2} · 年内低 {year_low_price:.2}"),
                     url: None,
                     source: "fmp.quote".into(),
-                    payload: item.clone(),
+                    payload: quote.clone(),
                 });
             }
         }
     }
 
-    out
+    events
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -332,8 +332,11 @@ impl PriceWindow {
     }
 }
 
-fn quote_time_and_window(item: &Value, now: DateTime<Utc>) -> Option<(DateTime<Utc>, PriceWindow)> {
-    let Some(quote_time) = item
+fn quote_time_and_window(
+    quote: &Value,
+    now: DateTime<Utc>,
+) -> Option<(DateTime<Utc>, PriceWindow)> {
+    let Some(quote_time) = quote
         .get("timestamp")
         .and_then(|v| v.as_i64())
         .and_then(|ts| Utc.timestamp_opt(ts, 0).single())
@@ -429,13 +432,13 @@ fn sanitize_realert_step_pct(step_pct: f64) -> f64 {
 }
 
 fn price_payload(
-    item: &Value,
+    quote: &Value,
     pct: f64,
     price: Option<f64>,
     date_key: &str,
     lane: Option<&PriceLane>,
 ) -> Value {
-    let mut payload = item.clone();
+    let mut payload = quote.clone();
     let Some(obj) = payload.as_object_mut() else {
         return payload;
     };
@@ -598,12 +601,12 @@ mod tests {
                 .iter()
                 .any(|e| matches!(e.kind, EventKind::Weekly52High))
         );
-        let hi = events
+        let year_high_event = events
             .iter()
             .find(|e| matches!(e.kind, EventKind::Weekly52High))
             .unwrap();
-        assert_eq!(hi.severity, Severity::Medium);
-        assert!(hi.id.starts_with("52h:NVDA:"));
+        assert_eq!(year_high_event.severity, Severity::Medium);
+        assert!(year_high_event.id.starts_with("52h:NVDA:"));
     }
 
     #[test]
@@ -613,12 +616,12 @@ mod tests {
              "yearHigh": 200.0, "yearLow": 50.0}
         ]);
         let events = events_from_quotes(&raw, 5.0, 10.0, 0.001);
-        let lo = events
+        let year_low_event = events
             .iter()
             .find(|e| matches!(e.kind, EventKind::Weekly52Low))
             .unwrap();
-        assert_eq!(lo.severity, Severity::Medium);
-        assert!(lo.id.starts_with("52l:BOO:"));
+        assert_eq!(year_low_event.severity, Severity::Medium);
+        assert!(year_low_event.id.starts_with("52l:BOO:"));
     }
 
     #[test]

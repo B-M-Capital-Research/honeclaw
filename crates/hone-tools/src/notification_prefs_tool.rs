@@ -70,21 +70,21 @@ fn parse_severity(raw: &str) -> HoneResult<Severity> {
 }
 
 fn extract_string_array(value: &Value) -> HoneResult<Vec<String>> {
-    let arr = value.as_array().ok_or_else(|| {
+    let string_values = value.as_array().ok_or_else(|| {
         HoneError::Tool("value 必须是字符串数组,例如 [\"news_critical\",\"sec_filing\"]".into())
     })?;
-    let mut out = Vec::with_capacity(arr.len());
-    for item in arr {
-        let s = item
+    let mut strings = Vec::with_capacity(string_values.len());
+    for string_value in string_values {
+        let tag = string_value
             .as_str()
             .ok_or_else(|| HoneError::Tool("kind tag 列表里出现非字符串元素".into()))?
             .trim()
             .to_string();
-        if !s.is_empty() {
-            out.push(s);
+        if !tag.is_empty() {
+            strings.push(tag);
         }
     }
-    Ok(out)
+    Ok(strings)
 }
 
 fn validate_tags(tags: &[String]) -> HoneResult<()> {
@@ -309,27 +309,27 @@ impl Tool for NotificationPrefsTool {
                 }
             }
             "set_digest_slots" => {
-                let arr = value.as_array().ok_or_else(|| {
+                let slot_values = value.as_array().ok_or_else(|| {
                     HoneError::Tool(
                         "set_digest_slots 需要 HH:MM 字符串数组,例 [\"19:00\",\"09:00\"];传 [] 关 digest".into(),
                     )
                 })?;
-                let mut slots: Vec<DigestSlot> = Vec::with_capacity(arr.len());
-                for (idx, item) in arr.iter().enumerate() {
-                    let s = item
+                let mut slots: Vec<DigestSlot> = Vec::with_capacity(slot_values.len());
+                for (idx, slot_value) in slot_values.iter().enumerate() {
+                    let slot_time = slot_value
                         .as_str()
                         .ok_or_else(|| {
                             HoneError::Tool("digest_slots 元素必须是 HH:MM 字符串".into())
                         })?
                         .trim()
                         .to_string();
-                    if s.is_empty() {
+                    if slot_time.is_empty() {
                         continue;
                     }
-                    validate_hhmm(&s)?;
+                    validate_hhmm(&slot_time)?;
                     slots.push(DigestSlot {
                         id: format!("slot_{idx}"),
-                        time: s,
+                        time: slot_time,
                         label: None,
                         floor_macro: None,
                     });
@@ -338,16 +338,16 @@ impl Tool for NotificationPrefsTool {
                 // 在 quiet 窗内 continue,然后只在 quiet_to 那一分钟跑 quiet_flush),
                 // 等于配置静默失效。这里 hard error,逼 LLM 自动改时间或先 clear_quiet_hours。
                 if let Some(qh) = prefs.quiet_hours.as_ref() {
-                    let bad: Vec<String> = slots
+                    let blocked_slots: Vec<String> = slots
                         .iter()
-                        .filter(|s| crate::schedule_view::time_in_quiet(&s.time, Some(qh)))
-                        .map(|s| s.time.clone())
+                        .filter(|slot| crate::schedule_view::time_in_quiet(&slot.time, Some(qh)))
+                        .map(|slot| slot.time.clone())
                         .collect();
-                    if !bad.is_empty() {
+                    if !blocked_slots.is_empty() {
                         return Err(HoneError::Tool(format!(
                             "digest slot 时间 [{}] 落在 quiet_hours {}–{} 内,scheduler 不会触发;\
                              改 slot 时间或先 clear_quiet_hours / 缩短 quiet 区间。",
-                            bad.join(", "),
+                            blocked_slots.join(", "),
                             qh.from,
                             qh.to,
                         )));
@@ -381,19 +381,19 @@ impl Tool for NotificationPrefsTool {
                 prefs.immediate_kinds = if tags.is_empty() { None } else { Some(tags) };
             }
             "set_quiet_hours" => {
-                let obj = value.as_object().ok_or_else(|| {
+                let quiet_hours_object = value.as_object().ok_or_else(|| {
                     HoneError::Tool(
                         "set_quiet_hours 需要对象 {from, to, exempt_kinds?},例 {\"from\":\"23:00\",\"to\":\"07:00\"}"
                             .into(),
                     )
                 })?;
-                let from = obj
+                let from = quiet_hours_object
                     .get("from")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| HoneError::Tool("set_quiet_hours 缺少 from (HH:MM)".into()))?
                     .trim()
                     .to_string();
-                let to = obj
+                let to = quiet_hours_object
                     .get("to")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| HoneError::Tool("set_quiet_hours 缺少 to (HH:MM)".into()))?
@@ -407,7 +407,7 @@ impl Tool for NotificationPrefsTool {
                             .into(),
                     ));
                 }
-                let exempt_kinds: Vec<String> = match obj.get("exempt_kinds") {
+                let exempt_kinds: Vec<String> = match quiet_hours_object.get("exempt_kinds") {
                     Some(v) if !v.is_null() => extract_string_array(v)?,
                     _ => Vec::new(),
                 };

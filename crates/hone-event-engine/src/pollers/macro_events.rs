@@ -98,11 +98,12 @@ impl EventSource for MacroPoller {
 }
 
 fn events_from_calendar(raw: &Value, keywords: &[String]) -> Vec<MarketEvent> {
-    let arr = match raw.as_array() {
-        Some(a) => a,
+    let calendar_items = match raw.as_array() {
+        Some(items) => items,
         None => return vec![],
     };
-    arr.iter()
+    calendar_items
+        .iter()
         .filter_map(|item| {
             let event_name = item.get("event")?.as_str()?.to_string();
             let date_raw = item.get("date")?.as_str()?.to_string();

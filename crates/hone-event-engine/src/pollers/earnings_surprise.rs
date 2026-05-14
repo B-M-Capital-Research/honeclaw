@@ -271,11 +271,12 @@ fn events_from_surprises(
     cutoff: DateTime<Utc>,
     high_pct: f64,
 ) -> Vec<MarketEvent> {
-    let arr = match raw.as_array() {
-        Some(a) => a,
+    let surprise_items = match raw.as_array() {
+        Some(items) => items,
         None => return vec![],
     };
-    arr.iter()
+    surprise_items
+        .iter()
         .filter_map(|item| event_from_surprise_item(item, ticker, cutoff, high_pct))
         .collect()
 }
@@ -422,9 +423,10 @@ fn select_recent_8k_url(
     occurred_at: DateTime<Utc>,
     recent_hours: i64,
 ) -> Option<(String, DateTime<Utc>)> {
-    let arr = raw.as_array()?;
+    let filing_items = raw.as_array()?;
     let max_delta_secs = recent_hours.max(1) * 60 * 60;
-    arr.iter()
+    filing_items
+        .iter()
         .filter_map(|item| recent_8k_candidate(item, occurred_at, max_delta_secs))
         .min_by_key(|(_, _, delta_secs)| *delta_secs)
         .map(|(url, accepted_at, _)| (url, accepted_at))

@@ -82,11 +82,11 @@ impl EventSource for AnalystGradePoller {
 }
 
 fn events_from_grades(raw: &Value, ticker: &str, cutoff: DateTime<Utc>) -> Vec<MarketEvent> {
-    let arr = match raw.as_array() {
-        Some(a) => a,
+    let grade_items = match raw.as_array() {
+        Some(items) => items,
         None => return vec![],
     };
-    let events: Vec<MarketEvent> = arr
+    let events: Vec<MarketEvent> = grade_items
         .iter()
         .filter_map(|item| {
             let published = item.get("publishedDate").and_then(|v| v.as_str())?;

@@ -171,23 +171,23 @@ impl Tool for PortfolioTool {
             "view" => {
                 let portfolio = storage.load(&self.actor)?;
                 let data = match portfolio {
-                    Some(p) => {
+                    Some(saved_portfolio) => {
                         let mut holdings = Vec::new();
                         let mut watchlist = Vec::new();
-                        for h in &p.holdings {
-                            let enriched = enrich_holding(h);
-                            if h.tracking_only.unwrap_or(false) {
+                        for holding in &saved_portfolio.holdings {
+                            let enriched = enrich_holding(holding);
+                            if holding.tracking_only.unwrap_or(false) {
                                 watchlist.push(enriched);
                             } else {
                                 holdings.push(enriched);
                             }
                         }
                         serde_json::json!({
-                            "actor": p.actor,
-                            "user_id": p.user_id,
+                            "actor": saved_portfolio.actor,
+                            "user_id": saved_portfolio.user_id,
                             "holdings": holdings,
                             "watchlist": watchlist,
-                            "updated_at": p.updated_at,
+                            "updated_at": saved_portfolio.updated_at,
                         })
                     }
                     None => serde_json::json!({
@@ -214,20 +214,21 @@ impl Tool for PortfolioTool {
                 let mut processed = Vec::with_capacity(input_holdings.len());
 
                 for holding in input_holdings {
-                    let promoted_from_watchlist =
-                        if let Some(existing) = portfolio.holdings.iter_mut().find(|h| {
-                            h.symbol == holding.symbol && h.asset_type == holding.asset_type
+                    let promoted_from_watchlist = if let Some(existing) =
+                        portfolio.holdings.iter_mut().find(|candidate| {
+                            candidate.symbol == holding.symbol
+                                && candidate.asset_type == holding.asset_type
                         }) {
-                            let was_watchlist = existing.tracking_only.unwrap_or(false);
-                            *existing = Holding {
-                                tracking_only: None,
-                                ..holding.clone()
-                            };
-                            was_watchlist
-                        } else {
-                            portfolio.holdings.push(holding.clone());
-                            false
+                        let was_watchlist = existing.tracking_only.unwrap_or(false);
+                        *existing = Holding {
+                            tracking_only: None,
+                            ..holding.clone()
                         };
+                        was_watchlist
+                    } else {
+                        portfolio.holdings.push(holding.clone());
+                        false
+                    };
                     processed.push(serde_json::json!({
                         "ticker": holding.symbol,
                         "asset_type": holding.asset_type,
@@ -260,8 +261,9 @@ impl Tool for PortfolioTool {
 
                 if let Some(mut portfolio) = storage.load(&self.actor)? {
                     for removal in &removals {
-                        portfolio.holdings.retain(|h| {
-                            !(h.symbol == removal.symbol && h.asset_type == removal.asset_type)
+                        portfolio.holdings.retain(|candidate| {
+                            !(candidate.symbol == removal.symbol
+                                && candidate.asset_type == removal.asset_type)
                         });
                     }
                     portfolio.updated_at = chrono::Utc::now().to_rfc3339();
@@ -303,19 +305,20 @@ impl Tool for PortfolioTool {
                     holding.avg_cost = 0.0;
                     holding.tracking_only = Some(true);
 
-                    let result =
-                        if let Some(existing) = portfolio.holdings.iter().find(|h| {
-                            h.symbol == holding.symbol && h.asset_type == holding.asset_type
+                    let result = if let Some(existing) =
+                        portfolio.holdings.iter().find(|candidate| {
+                            candidate.symbol == holding.symbol
+                                && candidate.asset_type == holding.asset_type
                         }) {
-                            if existing.tracking_only.unwrap_or(false) {
-                                "already_watching"
-                            } else {
-                                "already_holding"
-                            }
+                        if existing.tracking_only.unwrap_or(false) {
+                            "already_watching"
                         } else {
-                            portfolio.holdings.push(holding.clone());
-                            "watching"
-                        };
+                            "already_holding"
+                        }
+                    } else {
+                        portfolio.holdings.push(holding.clone());
+                        "watching"
+                    };
 
                     let kind = if result == "already_holding" {
                         "holding"
@@ -361,16 +364,17 @@ impl Tool for PortfolioTool {
                 if let Some(mut portfolio) = storage.load(&self.actor)? {
                     for removal in &removals {
                         let before = portfolio.holdings.len();
-                        portfolio.holdings.retain(|h| {
-                            !(h.symbol == removal.symbol
-                                && h.asset_type == removal.asset_type
-                                && h.tracking_only.unwrap_or(false))
+                        portfolio.holdings.retain(|candidate| {
+                            !(candidate.symbol == removal.symbol
+                                && candidate.asset_type == removal.asset_type
+                                && candidate.tracking_only.unwrap_or(false))
                         });
                         let removed = portfolio.holdings.len() < before;
                         let reason = if removed {
                             "unwatched"
-                        } else if portfolio.holdings.iter().any(|h| {
-                            h.symbol == removal.symbol && h.asset_type == removal.asset_type
+                        } else if portfolio.holdings.iter().any(|candidate| {
+                            candidate.symbol == removal.symbol
+                                && candidate.asset_type == removal.asset_type
                         }) {
                             "not_watchlist"
                         } else {
@@ -398,7 +402,7 @@ impl Tool for PortfolioTool {
 
                 let overall_success = processed
                     .iter()
-                    .all(|v| v["success"].as_bool().unwrap_or(false));
+                    .all(|result| result["success"].as_bool().unwrap_or(false));
                 let mut response = serde_json::json!({
                     "action": "unwatch",
                     "count": processed.len(),
@@ -480,16 +484,16 @@ fn normalize_option_type(option_type: &str) -> hone_core::HoneResult<String> {
 
 fn normalized_string(value: Option<&Value>) -> Option<String> {
     value
-        .and_then(|v| v.as_str())
-        .map(|v| v.trim().to_uppercase())
-        .filter(|v| !v.is_empty())
+        .and_then(|value| value.as_str())
+        .map(|value| value.trim().to_uppercase())
+        .filter(|value| !value.is_empty())
 }
 
 fn normalized_date(value: Option<&Value>) -> Option<String> {
     value
-        .and_then(|v| v.as_str())
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
+        .and_then(|value| value.as_str())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
 }
 
 fn normalized_notes(value: Option<&Value>) -> Option<String> {
@@ -657,17 +661,17 @@ fn option_metadata(args: &Value, asset_type: &str) -> hone_core::HoneResult<Opti
     })
 }
 
-fn enrich_holding(h: &Holding) -> Value {
-    let mut v = serde_json::to_value(h).unwrap_or(serde_json::json!({}));
-    let kind = if h.tracking_only.unwrap_or(false) {
+fn enrich_holding(holding: &Holding) -> Value {
+    let mut holding_value = serde_json::to_value(holding).unwrap_or(serde_json::json!({}));
+    let kind = if holding.tracking_only.unwrap_or(false) {
         "watchlist"
     } else {
         "holding"
     };
-    if let Some(obj) = v.as_object_mut() {
+    if let Some(obj) = holding_value.as_object_mut() {
         obj.insert("kind".to_string(), serde_json::json!(kind));
     }
-    v
+    holding_value
 }
 
 fn trim_trailing_zero(value: f64) -> String {
@@ -707,7 +711,7 @@ mod tests {
         assert_eq!(view_empty["action"], "view");
         assert_eq!(view_empty["portfolio"]["message"], "暂无持仓");
 
-        let add_resp = tool
+        let add_response = tool
             .execute(serde_json::json!({
                 "action":"add",
                 "ticker":"AAPL",
@@ -719,7 +723,7 @@ mod tests {
             }))
             .await
             .expect("add");
-        assert_eq!(add_resp["success"].as_bool(), Some(true));
+        assert_eq!(add_response["success"].as_bool(), Some(true));
 
         let view_after_add = tool
             .execute(serde_json::json!({"action":"view"}))
@@ -736,7 +740,7 @@ mod tests {
         assert_eq!(holdings[0]["holding_horizon"], HOLDING_HORIZON_LONG_TERM);
         assert_eq!(holdings[0]["strategy_notes"], "核心长期仓位");
 
-        let update_resp = tool
+        let update_response = tool
             .execute(serde_json::json!({
                 "action":"update",
                 "ticker":"AAPL",
@@ -748,7 +752,7 @@ mod tests {
             }))
             .await
             .expect("update");
-        assert_eq!(update_resp["success"].as_bool(), Some(true));
+        assert_eq!(update_response["success"].as_bool(), Some(true));
 
         let view_after_update = tool
             .execute(serde_json::json!({"action":"view"}))
@@ -764,7 +768,7 @@ mod tests {
         assert_eq!(holdings[0]["holding_horizon"], HOLDING_HORIZON_SHORT_TERM);
         assert_eq!(holdings[0]["strategy_notes"], "财报前事件驱动");
 
-        let remove_resp = tool
+        let remove_response = tool
             .execute(serde_json::json!({
                 "action":"remove",
                 "ticker":"AAPL",
@@ -772,7 +776,7 @@ mod tests {
             }))
             .await
             .expect("remove");
-        assert_eq!(remove_resp["success"].as_bool(), Some(true));
+        assert_eq!(remove_response["success"].as_bool(), Some(true));
 
         let view_after_remove = tool
             .execute(serde_json::json!({"action":"view"}))
@@ -791,7 +795,7 @@ mod tests {
         let actor = ActorIdentity::new("imessage", "u_option", None::<String>).expect("actor");
         let tool = PortfolioTool::new(&data_dir, actor);
 
-        let add_resp = tool
+        let add_response = tool
             .execute(serde_json::json!({
                 "action":"add",
                 "asset_type":"option",
@@ -806,14 +810,14 @@ mod tests {
             }))
             .await
             .expect("add option");
-        assert_eq!(add_resp["success"].as_bool(), Some(true));
-        assert_eq!(add_resp["ticker"], "AAPL 2026-06-19 C 200");
+        assert_eq!(add_response["success"].as_bool(), Some(true));
+        assert_eq!(add_response["ticker"], "AAPL 2026-06-19 C 200");
 
-        let view_resp = tool
+        let view_response = tool
             .execute(serde_json::json!({"action":"view"}))
             .await
             .expect("view option");
-        let holdings = view_resp["portfolio"]["holdings"]
+        let holdings = view_response["portfolio"]["holdings"]
             .as_array()
             .cloned()
             .unwrap_or_default();
@@ -826,7 +830,7 @@ mod tests {
         assert_eq!(holdings[0]["holding_horizon"], HOLDING_HORIZON_SHORT_TERM);
         assert_eq!(holdings[0]["strategy_notes"], "波动率交易");
 
-        let remove_resp = tool
+        let remove_response = tool
             .execute(serde_json::json!({
                 "action":"remove",
                 "asset_type":"option",
@@ -834,7 +838,7 @@ mod tests {
             }))
             .await
             .expect("remove option");
-        assert_eq!(remove_resp["success"].as_bool(), Some(true));
+        assert_eq!(remove_response["success"].as_bool(), Some(true));
     }
 
     #[tokio::test]
@@ -843,7 +847,7 @@ mod tests {
         let actor = ActorIdentity::new("imessage", "u_batch", None::<String>).expect("actor");
         let tool = PortfolioTool::new(&data_dir, actor);
 
-        let add_resp = tool
+        let add_response = tool
             .execute(serde_json::json!({
                 "action":"add",
                 "holdings":[
@@ -871,14 +875,14 @@ mod tests {
             .await
             .expect("batch add");
 
-        assert_eq!(add_resp["success"].as_bool(), Some(true));
-        assert_eq!(add_resp["count"], 2);
+        assert_eq!(add_response["success"].as_bool(), Some(true));
+        assert_eq!(add_response["count"], 2);
 
-        let view_resp = tool
+        let view_response = tool
             .execute(serde_json::json!({"action":"view"}))
             .await
             .expect("view batch");
-        let holdings = view_resp["portfolio"]["holdings"]
+        let holdings = view_response["portfolio"]["holdings"]
             .as_array()
             .cloned()
             .unwrap_or_default();
@@ -925,7 +929,7 @@ mod tests {
         .await
         .expect("seed holdings");
 
-        let remove_resp = tool
+        let remove_response = tool
             .execute(serde_json::json!({
                 "action":"remove",
                 "holdings":[
@@ -935,14 +939,14 @@ mod tests {
             }))
             .await
             .expect("batch remove");
-        assert_eq!(remove_resp["success"].as_bool(), Some(true));
-        assert_eq!(remove_resp["count"], 2);
+        assert_eq!(remove_response["success"].as_bool(), Some(true));
+        assert_eq!(remove_response["count"], 2);
 
-        let view_resp = tool
+        let view_response = tool
             .execute(serde_json::json!({"action":"view"}))
             .await
             .expect("view after batch remove");
-        let holdings = view_resp["portfolio"]["holdings"]
+        let holdings = view_response["portfolio"]["holdings"]
             .as_array()
             .cloned()
             .unwrap_or_default();
@@ -971,11 +975,11 @@ mod tests {
         .await
         .expect("add negative cost");
 
-        let view_resp = tool
+        let view_response = tool
             .execute(serde_json::json!({"action":"view"}))
             .await
             .expect("view negative cost");
-        let holdings = view_resp["portfolio"]["holdings"]
+        let holdings = view_response["portfolio"]["holdings"]
             .as_array()
             .cloned()
             .unwrap_or_default();
@@ -991,27 +995,27 @@ mod tests {
         let actor = ActorIdentity::new("imessage", "u_watch", None::<String>).expect("actor");
         let tool = PortfolioTool::new(&data_dir, actor);
 
-        let watch_resp = tool
+        let watch_response = tool
             .execute(serde_json::json!({
                 "action":"watch",
                 "ticker":"NVDA"
             }))
             .await
             .expect("watch");
-        assert_eq!(watch_resp["success"].as_bool(), Some(true));
-        assert_eq!(watch_resp["ticker"], "NVDA");
-        assert_eq!(watch_resp["kind"], "watchlist");
-        assert_eq!(watch_resp["result"], "watching");
+        assert_eq!(watch_response["success"].as_bool(), Some(true));
+        assert_eq!(watch_response["ticker"], "NVDA");
+        assert_eq!(watch_response["kind"], "watchlist");
+        assert_eq!(watch_response["result"], "watching");
 
-        let view_resp = tool
+        let view_response = tool
             .execute(serde_json::json!({"action":"view"}))
             .await
             .expect("view");
-        let watchlist = view_resp["portfolio"]["watchlist"]
+        let watchlist = view_response["portfolio"]["watchlist"]
             .as_array()
             .cloned()
             .unwrap_or_default();
-        let holdings = view_resp["portfolio"]["holdings"]
+        let holdings = view_response["portfolio"]["holdings"]
             .as_array()
             .cloned()
             .unwrap_or_default();
@@ -1027,12 +1031,12 @@ mod tests {
             .expect("watch again");
         assert_eq!(watch_again["result"], "already_watching");
 
-        let unwatch_resp = tool
+        let unwatch_response = tool
             .execute(serde_json::json!({"action":"unwatch","ticker":"NVDA"}))
             .await
             .expect("unwatch");
-        assert_eq!(unwatch_resp["success"].as_bool(), Some(true));
-        assert_eq!(unwatch_resp["result"], "unwatched");
+        assert_eq!(unwatch_response["success"].as_bool(), Some(true));
+        assert_eq!(unwatch_response["result"], "unwatched");
 
         let view_after = tool
             .execute(serde_json::json!({"action":"view"}))
@@ -1060,27 +1064,27 @@ mod tests {
         .await
         .expect("seed holding");
 
-        let watch_resp = tool
+        let watch_response = tool
             .execute(serde_json::json!({
                 "action":"watch",
                 "ticker":"AAPL"
             }))
             .await
             .expect("watch existing");
-        assert_eq!(watch_resp["result"], "already_holding");
-        assert_eq!(watch_resp["kind"], "holding");
+        assert_eq!(watch_response["result"], "already_holding");
+        assert_eq!(watch_response["kind"], "holding");
         assert!(
-            watch_resp["message"]
+            watch_response["message"]
                 .as_str()
                 .unwrap_or("")
                 .contains("已在持仓中")
         );
 
-        let view_resp = tool
+        let view_response = tool
             .execute(serde_json::json!({"action":"view"}))
             .await
             .expect("view after no-op watch");
-        let holdings = view_resp["portfolio"]["holdings"]
+        let holdings = view_response["portfolio"]["holdings"]
             .as_array()
             .cloned()
             .unwrap_or_default();
@@ -1089,12 +1093,12 @@ mod tests {
         assert_eq!(holdings[0]["avg_cost"], 180.0);
         assert_eq!(holdings[0]["kind"], "holding");
 
-        let unwatch_resp = tool
+        let unwatch_response = tool
             .execute(serde_json::json!({"action":"unwatch","ticker":"AAPL"}))
             .await
             .expect("unwatch real holding");
-        assert_eq!(unwatch_resp["success"].as_bool(), Some(false));
-        assert_eq!(unwatch_resp["result"], "not_watchlist");
+        assert_eq!(unwatch_response["success"].as_bool(), Some(false));
+        assert_eq!(unwatch_response["result"], "not_watchlist");
 
         let view_after = tool
             .execute(serde_json::json!({"action":"view"}))
@@ -1103,7 +1107,7 @@ mod tests {
         assert_eq!(
             view_after["portfolio"]["holdings"]
                 .as_array()
-                .map(|h| h.len())
+                .map(|holdings| holdings.len())
                 .unwrap_or(0),
             1
         );
@@ -1119,7 +1123,7 @@ mod tests {
             .await
             .expect("watch");
 
-        let add_resp = tool
+        let add_response = tool
             .execute(serde_json::json!({
                 "action":"add",
                 "ticker":"TSLA",
@@ -1128,23 +1132,26 @@ mod tests {
             }))
             .await
             .expect("promote");
-        assert_eq!(add_resp["success"].as_bool(), Some(true));
-        let first = add_resp["holdings"]
+        assert_eq!(add_response["success"].as_bool(), Some(true));
+        let promoted_holding = add_response["holdings"]
             .as_array()
             .and_then(|items| items.first())
             .cloned()
             .expect("promoted entry");
-        assert_eq!(first["promoted_from_watchlist"].as_bool(), Some(true));
+        assert_eq!(
+            promoted_holding["promoted_from_watchlist"].as_bool(),
+            Some(true)
+        );
 
-        let view_resp = tool
+        let view_response = tool
             .execute(serde_json::json!({"action":"view"}))
             .await
             .expect("view");
-        let holdings = view_resp["portfolio"]["holdings"]
+        let holdings = view_response["portfolio"]["holdings"]
             .as_array()
             .cloned()
             .unwrap_or_default();
-        let watchlist = view_resp["portfolio"]["watchlist"]
+        let watchlist = view_response["portfolio"]["watchlist"]
             .as_array()
             .cloned()
             .unwrap_or_default();
@@ -1181,20 +1188,20 @@ mod tests {
             .await
             .expect("remove holding");
 
-        let view_resp = tool
+        let view_response = tool
             .execute(serde_json::json!({"action":"view"}))
             .await
             .expect("view after mixed remove");
         assert!(
-            view_resp["portfolio"]["holdings"]
+            view_response["portfolio"]["holdings"]
                 .as_array()
-                .map(|h| h.is_empty())
+                .map(|holdings| holdings.is_empty())
                 .unwrap_or(false)
         );
         assert!(
-            view_resp["portfolio"]["watchlist"]
+            view_response["portfolio"]["watchlist"]
                 .as_array()
-                .map(|h| h.is_empty())
+                .map(|watchlist| watchlist.is_empty())
                 .unwrap_or(false)
         );
     }

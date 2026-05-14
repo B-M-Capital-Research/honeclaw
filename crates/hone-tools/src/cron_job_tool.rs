@@ -494,7 +494,7 @@ mod tests {
         let actor = ActorIdentity::new("imessage", "u1", None::<String>).expect("actor");
         let tool = CronJobTool::new(&data_dir, Some(actor), "u1", false);
 
-        let add_resp = tool
+        let add_response = tool
             .execute(serde_json::json!({
                 "action":"add",
                 "name":"morning report",
@@ -505,23 +505,26 @@ mod tests {
             }))
             .await
             .expect("add job");
-        assert_eq!(add_resp["success"].as_bool(), Some(true));
-        let job_id = add_resp["job"]["id"]
+        assert_eq!(add_response["success"].as_bool(), Some(true));
+        let job_id = add_response["job"]["id"]
             .as_str()
             .unwrap_or_default()
             .to_string();
         assert!(!job_id.is_empty());
 
-        let list_resp = tool
+        let list_response = tool
             .execute(serde_json::json!({"action":"list"}))
             .await
             .expect("list jobs");
-        let jobs = list_resp["jobs"].as_array().cloned().unwrap_or_default();
+        let jobs = list_response["jobs"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
         assert_eq!(jobs.len(), 1);
         assert_eq!(jobs[0]["name"], "morning report");
 
         // Update by explicit job_id
-        let update_resp = tool
+        let update_response = tool
             .execute(serde_json::json!({
                 "action":"update",
                 "job_id":job_id,
@@ -529,8 +532,8 @@ mod tests {
             }))
             .await
             .expect("update job by id");
-        assert_eq!(update_resp["success"].as_bool(), Some(true));
-        assert_eq!(update_resp["job"]["schedule"]["hour"], 10);
+        assert_eq!(update_response["success"].as_bool(), Some(true));
+        assert_eq!(update_response["job"]["schedule"]["hour"], 10);
 
         // Update by name fuzzy match (no job_id)
         let update_by_name = tool
@@ -558,7 +561,7 @@ mod tests {
         assert_eq!(remove_preview["success"].as_bool(), Some(false));
         assert_eq!(remove_preview["needs_confirmation"].as_bool(), Some(true));
 
-        let remove_resp = tool
+        let remove_response = tool
             .execute(serde_json::json!({
                 "action":"remove",
                 "job_id": job_id,
@@ -566,13 +569,16 @@ mod tests {
             }))
             .await
             .expect("remove job with confirm");
-        assert_eq!(remove_resp["success"].as_bool(), Some(true));
+        assert_eq!(remove_response["success"].as_bool(), Some(true));
 
-        let list_resp = tool
+        let list_response = tool
             .execute(serde_json::json!({"action":"list"}))
             .await
             .expect("list jobs after remove");
-        let jobs = list_resp["jobs"].as_array().cloned().unwrap_or_default();
+        let jobs = list_response["jobs"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
         assert!(jobs.is_empty());
     }
 
@@ -582,7 +588,7 @@ mod tests {
         let actor = ActorIdentity::new("telegram", "user_42", None::<String>).expect("actor");
         let tool = CronJobTool::new(&data_dir, Some(actor), "-1001234567890", false);
 
-        let add_resp = tool
+        let add_response = tool
             .execute(serde_json::json!({
                 "action":"add",
                 "name":"group heartbeat",
@@ -592,9 +598,9 @@ mod tests {
             .await
             .expect("add job");
 
-        assert_eq!(add_resp["success"].as_bool(), Some(true));
-        assert_eq!(add_resp["job"]["channel"], "telegram");
-        assert_eq!(add_resp["job"]["channel_target"], "-1001234567890");
+        assert_eq!(add_response["success"].as_bool(), Some(true));
+        assert_eq!(add_response["job"]["channel"], "telegram");
+        assert_eq!(add_response["job"]["channel_target"], "-1001234567890");
     }
 
     #[tokio::test]
@@ -614,7 +620,7 @@ mod tests {
         .await
         .expect("add");
 
-        let resp = tool
+        let update_response = tool
             .execute(serde_json::json!({
                 "action":"update",
                 "name":"nonexistent task",
@@ -622,8 +628,13 @@ mod tests {
             }))
             .await
             .expect("update nonexistent");
-        assert_eq!(resp["success"].as_bool(), Some(false));
-        assert!(resp["error"].as_str().unwrap_or("").contains("未找到"));
+        assert_eq!(update_response["success"].as_bool(), Some(false));
+        assert!(
+            update_response["error"]
+                .as_str()
+                .unwrap_or("")
+                .contains("未找到")
+        );
     }
 
     #[tokio::test]
@@ -632,7 +643,7 @@ mod tests {
         let actor = ActorIdentity::new("imessage", "u1", None::<String>).expect("actor");
         let tool = CronJobTool::new(&data_dir, Some(actor.clone()), "u1", false);
 
-        let add_resp = tool
+        let add_response = tool
             .execute(serde_json::json!({
                 "action":"add",
                 "name":"night review",
@@ -643,34 +654,34 @@ mod tests {
             }))
             .await
             .expect("add job");
-        let job_id = add_resp["job"]["id"]
+        let job_id = add_response["job"]["id"]
             .as_str()
             .unwrap_or_default()
             .to_string();
 
-        let preview_resp = tool
+        let preview_response = tool
             .execute(serde_json::json!({
                 "action":"remove",
                 "job_id": job_id
             }))
             .await
             .expect("preview remove");
-        assert_eq!(preview_resp["success"].as_bool(), Some(false));
-        assert_eq!(preview_resp["needs_confirmation"].as_bool(), Some(true));
-        assert_eq!(preview_resp["job"]["id"], add_resp["job"]["id"]);
+        assert_eq!(preview_response["success"].as_bool(), Some(false));
+        assert_eq!(preview_response["needs_confirmation"].as_bool(), Some(true));
+        assert_eq!(preview_response["job"]["id"], add_response["job"]["id"]);
 
         let jobs_after_preview = hone_memory::CronJobStorage::new(&data_dir).list_jobs(&actor);
         assert_eq!(jobs_after_preview.len(), 1);
 
-        let confirmed_resp = tool
+        let confirmed_response = tool
             .execute(serde_json::json!({
                 "action":"remove",
-                "job_id": add_resp["job"]["id"],
+                "job_id": add_response["job"]["id"],
                 "confirm":"yes"
             }))
             .await
             .expect("confirmed remove");
-        assert_eq!(confirmed_resp["success"].as_bool(), Some(true));
+        assert_eq!(confirmed_response["success"].as_bool(), Some(true));
 
         let jobs_after_confirm = hone_memory::CronJobStorage::new(&data_dir).list_jobs(&actor);
         assert!(jobs_after_confirm.is_empty());
@@ -695,17 +706,19 @@ mod tests {
             .expect("add job");
         }
 
-        let resp = tool
+        let remove_response = tool
             .execute(serde_json::json!({
                 "action":"remove",
                 "name":"crude"
             }))
             .await
             .expect("remove by ambiguous name");
-        assert_eq!(resp["success"].as_bool(), Some(false));
-        assert_eq!(resp["needs_confirmation"].as_bool(), Some(true));
+        assert_eq!(remove_response["success"].as_bool(), Some(false));
+        assert_eq!(remove_response["needs_confirmation"].as_bool(), Some(true));
         assert_eq!(
-            resp["candidates"].as_array().map(|items| items.len()),
+            remove_response["candidates"]
+                .as_array()
+                .map(|items| items.len()),
             Some(2)
         );
 
@@ -719,7 +732,7 @@ mod tests {
         let actor = ActorIdentity::new("imessage", "u1", None::<String>).expect("actor");
         let tool = CronJobTool::new(&data_dir, Some(actor), "u1", false);
 
-        let add_resp = tool
+        let add_response = tool
             .execute(serde_json::json!({
                 "action":"add",
                 "name":"weekly sunday report",
@@ -732,17 +745,17 @@ mod tests {
             .await
             .expect("add weekly job");
         assert_eq!(
-            add_resp["success"].as_bool(),
+            add_response["success"].as_bool(),
             Some(true),
-            "weekly add failed: {add_resp}"
+            "weekly add failed: {add_response}"
         );
-        assert_eq!(add_resp["job"]["schedule"]["weekday"], 6);
-        let job_id = add_resp["job"]["id"]
+        assert_eq!(add_response["job"]["schedule"]["weekday"], 6);
+        let job_id = add_response["job"]["id"]
             .as_str()
             .unwrap_or_default()
             .to_string();
 
-        let update_resp = tool
+        let update_response = tool
             .execute(serde_json::json!({
                 "action":"update",
                 "job_id":job_id,
@@ -753,24 +766,24 @@ mod tests {
             .await
             .expect("update weekly job");
         assert_eq!(
-            update_resp["success"].as_bool(),
+            update_response["success"].as_bool(),
             Some(true),
-            "weekly update failed: {update_resp}"
+            "weekly update failed: {update_response}"
         );
-        assert_eq!(update_resp["job"]["schedule"]["weekday"], 0);
-        assert_eq!(update_resp["job"]["schedule"]["hour"], 9);
+        assert_eq!(update_response["job"]["schedule"]["weekday"], 0);
+        assert_eq!(update_response["job"]["schedule"]["hour"], 9);
 
-        let clear_weekday_resp = tool
+        let clear_weekday_response = tool
             .execute(serde_json::json!({
                 "action":"update",
-                "job_id":update_resp["job"]["id"],
+                "job_id":update_response["job"]["id"],
                 "repeat":"daily"
             }))
             .await
             .expect("change weekly to daily");
-        assert_eq!(clear_weekday_resp["success"].as_bool(), Some(true));
-        assert!(clear_weekday_resp["job"]["schedule"]["weekday"].is_null());
-        assert_eq!(clear_weekday_resp["job"]["schedule"]["repeat"], "daily");
+        assert_eq!(clear_weekday_response["success"].as_bool(), Some(true));
+        assert!(clear_weekday_response["job"]["schedule"]["weekday"].is_null());
+        assert_eq!(clear_weekday_response["job"]["schedule"]["repeat"], "daily");
     }
 
     #[test]

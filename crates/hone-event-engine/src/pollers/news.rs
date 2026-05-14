@@ -279,12 +279,13 @@ impl EventSource for NewsPoller {
 
 /// FMP stock_news 响应 → MarketEvent 列表。
 fn events_from_stock_news(raw: &Value, keywords: &[String]) -> Vec<MarketEvent> {
-    let arr = match raw.as_array() {
-        Some(a) => a,
+    let articles = match raw.as_array() {
+        Some(items) => items,
         None => return vec![],
     };
 
-    arr.iter()
+    articles
+        .iter()
         .filter_map(|item| {
             let title = item.get("title")?.as_str()?.to_string();
             let published_raw = item.get("publishedDate")?.as_str()?.to_string();

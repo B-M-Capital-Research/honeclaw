@@ -165,20 +165,20 @@ impl EventDeduper for LlmEventDeduper {
             name: None,
         }];
 
-        let resp = match self.provider.chat(&messages, Some(&self.model)).await {
-            Ok(r) => r,
+        let llm_response = match self.provider.chat(&messages, Some(&self.model)).await {
+            Ok(response) => response,
             Err(e) => {
                 tracing::warn!(model = %self.model, "event_dedupe LLM call failed: {e}; falling back to pass-through");
                 return pass_through(candidates, true);
             }
         };
 
-        let parsed: DedupResponse = match parse_dedupe_json(&resp.content) {
+        let parsed: DedupResponse = match parse_dedupe_json(&llm_response.content) {
             Ok(p) => p,
             Err(e) => {
                 tracing::warn!(
                     model = %self.model,
-                    raw_prefix = %resp.content.chars().take(160).collect::<String>(),
+                    raw_prefix = %llm_response.content.chars().take(160).collect::<String>(),
                     "event_dedupe JSON parse failed: {e}; falling back to pass-through"
                 );
                 return pass_through(candidates, true);
@@ -220,8 +220,8 @@ impl EventDeduper for LlmEventDeduper {
         sorted_clusters.sort_by_key(|(_, items)| *items.iter().min().unwrap_or(&0));
         for (id, items) in sorted_clusters {
             let rep_local_idx = pick_representative_idx(&candidates, &items);
-            let rep = candidates[rep_local_idx].clone();
-            let kept_event_id = rep.event.id.clone();
+            let representative = candidates[rep_local_idx].clone();
+            let kept_event_id = representative.event.id.clone();
             let merged: Vec<String> = items
                 .iter()
                 .filter(|i| **i != rep_local_idx)
@@ -235,7 +235,7 @@ impl EventDeduper for LlmEventDeduper {
                 kept_event_id,
                 merged_event_ids: merged,
             });
-            reps.push(rep);
+            reps.push(representative);
         }
 
         (

@@ -48,7 +48,7 @@ impl DataFetchTool {
         let connector = if url.contains('?') { "&" } else { "?" };
         let full_url = format!("{}{connector}apikey={}", url, key);
 
-        let resp = self
+        let response = self
             .http
             .get(&full_url)
             .timeout(std::time::Duration::from_secs(self.timeout))
@@ -56,12 +56,12 @@ impl DataFetchTool {
             .await
             .map_err(|e| format_fmp_transport_error("请求", &e))?;
 
-        let status = resp.status();
-        let body = resp
+        let status = response.status();
+        let body = response
             .text()
             .await
             .map_err(|e| format_fmp_transport_error("响应读取", &e))?;
-        let data: Value = serde_json::from_str(&body).map_err(|e| {
+        let response_json: Value = serde_json::from_str(&body).map_err(|e| {
             let prefix = sanitize_fmp_error_detail(&body)
                 .chars()
                 .take(200)
@@ -75,7 +75,10 @@ impl DataFetchTool {
         }
 
         // FMP 在 HTTP 200 时也可能返回认证错误（"Error Message" 字段）
-        if let Some(err_msg) = data.get("Error Message").and_then(|v| v.as_str()) {
+        if let Some(err_msg) = response_json
+            .get("Error Message")
+            .and_then(|value| value.as_str())
+        {
             let lower = err_msg.to_lowercase();
             if lower.contains("invalid api key")
                 || lower.contains("api key")
@@ -89,7 +92,7 @@ impl DataFetchTool {
             }
         }
 
-        Ok(data)
+        Ok(response_json)
     }
 
     fn build_url(&self, data_type: &str, ticker: &str) -> Result<String, String> {
