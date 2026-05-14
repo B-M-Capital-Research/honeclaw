@@ -55,7 +55,7 @@ validate_archive_layout() {
     fi
 
     case "$entry" in
-      /*|../*|*/../*|.|..)
+      /*|../*|*/../*|*/..|.|..)
         echo "gitleaks archive contains unsafe path: $entry" >&2
         echo "archive: $DOWNLOAD_URL" >&2
         exit 1
@@ -64,7 +64,11 @@ validate_archive_layout() {
   done <<< "$listing"
 }
 
-if [ ! -x "$BIN_PATH" ]; then
+if [[ -L "$BIN_PATH" || ! -x "$BIN_PATH" ]]; then
+  if [[ -L "$BIN_PATH" ]]; then
+    rm -f "$BIN_PATH"
+  fi
+
   TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/gitleaks-install.XXXXXX")"
   trap 'rm -rf "$TMP_DIR"' EXIT
   ARCHIVE_PATH="$TMP_DIR/$ARCHIVE_NAME"

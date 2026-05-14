@@ -232,6 +232,11 @@ with tarfile.open(archive_path, "w:gz") as archive:
     unsafe_payload = b"unsafe\n"
     unsafe.size = len(unsafe_payload)
     archive.addfile(unsafe, fileobj=io.BytesIO(unsafe_payload))
+
+    trailing_parent = tarfile.TarInfo("nested/..")
+    trailing_parent_payload = b"unsafe\n"
+    trailing_parent.size = len(trailing_parent_payload)
+    archive.addfile(trailing_parent, fileobj=io.BytesIO(trailing_parent_payload))
 PY
 
   cat > "$tools_dir/curl" <<'EOF'
@@ -280,6 +285,72 @@ EOF
 
     assert_contains "$output" "gitleaks archive contains unsafe path: ../outside-gitleaks-install" "gitleaks installer should reject unsafe archive paths"
     assert_contains "$output" "archive: https://github.com/gitleaks/gitleaks/releases/download/v0.0.1/gitleaks_0.0.1_" "gitleaks unsafe-path failure should include the source archive"
+  )
+}
+
+run_gitleaks_existing_symlink_case() {
+  local repo_dir="$TMP_ROOT/gitleaks-symlink-repo"
+  local tools_dir="$TMP_ROOT/gitleaks-symlink-tools"
+  local fixture_dir="$TMP_ROOT/gitleaks-symlink-fixture"
+  local archive_path="$TMP_ROOT/gitleaks_0.0.2_darwin_arm64.tar.gz"
+
+  mkdir -p "$repo_dir/.git-tools/gitleaks/0.0.2" "$repo_dir/.githooks" "$tools_dir" "$fixture_dir"
+  touch "$repo_dir/.githooks/pre-commit" "$repo_dir/.githooks/pre-push"
+  ln -s /bin/sh "$repo_dir/.git-tools/gitleaks/0.0.2/gitleaks"
+  cat > "$fixture_dir/gitleaks" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "mock gitleaks"
+EOF
+  chmod +x "$fixture_dir/gitleaks"
+  tar -czf "$archive_path" -C "$fixture_dir" gitleaks
+
+  cat > "$tools_dir/curl" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+output=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o)
+      output="$2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$output" ]]; then
+  echo "missing curl -o target" >&2
+  exit 1
+fi
+
+cp "$HONE_TEST_GITLEAKS_ARCHIVE" "$output"
+EOF
+  chmod +x "$tools_dir/curl"
+
+  (
+    cd "$repo_dir"
+    git init -q
+    git config user.email "patrol@example.invalid"
+    git config user.name "Code Patrol"
+
+    env \
+      PATH="$tools_dir:/usr/bin:/bin" \
+      GITLEAKS_VERSION=0.0.2 \
+      HONE_TEST_GITLEAKS_ARCHIVE="$archive_path" \
+      bash "$ROOT_DIR/scripts/install_gitleaks.sh" >/dev/null
+
+    if [[ -L "$repo_dir/.git-tools/gitleaks/0.0.2/gitleaks" ]]; then
+      echo "[FAIL] install_gitleaks kept an existing symlinked binary" >&2
+      exit 1
+    fi
+    if [[ "$("$repo_dir/.git-tools/gitleaks/0.0.2/gitleaks")" != "mock gitleaks" ]]; then
+      echo "[FAIL] install_gitleaks did not replace the symlink with the downloaded binary" >&2
+      exit 1
+    fi
   )
 }
 
@@ -337,6 +408,7 @@ run_changed_fmt_bash3_compatible_case
 run_script_self_path_quality_case
 run_gitleaks_archive_layout_case
 run_gitleaks_unsafe_archive_path_case
+run_gitleaks_existing_symlink_case
 run_gitleaks_outside_repo_case
 run_build_desktop_home_bun_case
 

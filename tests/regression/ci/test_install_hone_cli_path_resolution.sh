@@ -40,6 +40,7 @@ BUNDLE_NAME="${ASSET_NAME%.tar.gz}"
 ARCHIVE_PATH="$TMP_ROOT/$ASSET_NAME"
 INCOMPLETE_ARCHIVE_PATH="$TMP_ROOT/incomplete-$ASSET_NAME"
 UNSAFE_ARCHIVE_PATH="$TMP_ROOT/unsafe-$ASSET_NAME"
+UNSAFE_TRAILING_PARENT_ARCHIVE_PATH="$TMP_ROOT/unsafe-trailing-parent-$ASSET_NAME"
 MULTI_ROOT_ARCHIVE_PATH="$TMP_ROOT/multi-root-$ASSET_NAME"
 SYMLINK_ARCHIVE_PATH="$TMP_ROOT/symlink-$ASSET_NAME"
 NON_EXEC_ARCHIVE_PATH="$TMP_ROOT/non-exec-$ASSET_NAME"
@@ -95,6 +96,27 @@ with tarfile.open(archive_path, "w:gz") as archive:
     archive.addfile(safe, fileobj=io.BytesIO(safe_payload))
 
     unsafe = tarfile.TarInfo("../outside-honeclaw-install")
+    unsafe_payload = b"unsafe\n"
+    unsafe.size = len(unsafe_payload)
+    archive.addfile(unsafe, fileobj=io.BytesIO(unsafe_payload))
+PY
+
+HONE_UNSAFE_TRAILING_PARENT_ARCHIVE_PATH="$UNSAFE_TRAILING_PARENT_ARCHIVE_PATH" HONE_UNSAFE_TRAILING_PARENT_BUNDLE_NAME="$BUNDLE_NAME" python3 - <<'PY'
+import io
+import os
+import tarfile
+from pathlib import Path
+
+archive_path = Path(os.environ["HONE_UNSAFE_TRAILING_PARENT_ARCHIVE_PATH"])
+bundle_name = os.environ["HONE_UNSAFE_TRAILING_PARENT_BUNDLE_NAME"]
+with tarfile.open(archive_path, "w:gz") as archive:
+    safe = tarfile.TarInfo(f"{bundle_name}/bin/hone-cli")
+    safe.mode = 0o755
+    safe_payload = b"#!/usr/bin/env bash\n"
+    safe.size = len(safe_payload)
+    archive.addfile(safe, fileobj=io.BytesIO(safe_payload))
+
+    unsafe = tarfile.TarInfo(f"{bundle_name}/..")
     unsafe_payload = b"unsafe\n"
     unsafe.size = len(unsafe_payload)
     archive.addfile(unsafe, fileobj=io.BytesIO(unsafe_payload))
@@ -398,6 +420,31 @@ run_multi_root_archive_layout_case() {
   fi
 }
 
+run_unsafe_trailing_parent_archive_layout_case() {
+  local home_dir="$TMP_ROOT/home-unsafe-trailing-parent-bundle"
+  mkdir -p "$home_dir"
+
+  local output
+  if output="$(
+    env \
+      HOME="$home_dir" \
+      PATH="$TOOLS_DIR:/usr/bin:/bin" \
+      HONE_RUN_ONBOARD=0 \
+      HONE_GITHUB_REPO="example/honeclaw" \
+      MOCK_ARCHIVE_PATH="$UNSAFE_TRAILING_PARENT_ARCHIVE_PATH" \
+      bash "$INSTALL_SCRIPT" 2>&1
+  )"; then
+    echo "[FAIL] installer accepted an archive with a trailing parent path" >&2
+    exit 1
+  fi
+
+  if [[ "$output" != *"release asset contains unsafe archive path: $BUNDLE_NAME/.."* ]]; then
+    echo "[FAIL] installer did not explain the trailing parent archive path" >&2
+    echo "$output" >&2
+    exit 1
+  fi
+}
+
 run_missing_current_binary_case() {
   local home_dir="$TMP_ROOT/home-missing-current-binary"
   local path_bin="$home_dir/custom-bin"
@@ -493,6 +540,7 @@ run_fallback_case "/bin/bash" "$TMP_ROOT/home-fallback-bash" "$TMP_ROOT/home-fal
 run_explicit_bin_dir_failure_case
 run_missing_bundle_path_case
 run_unsafe_archive_layout_case
+run_unsafe_trailing_parent_archive_layout_case
 run_multi_root_archive_layout_case
 run_symlink_bundle_path_case
 run_non_executable_cli_case

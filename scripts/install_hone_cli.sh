@@ -213,7 +213,7 @@ validate_archive_layout() {
     fi
 
     case "$entry" in
-      /*|../*|*/../*|.|..)
+      /*|../*|*/../*|*/..|.|..)
         echo "release asset contains unsafe archive path: $entry" >&2
         echo "downloaded asset: $DOWNLOAD_URL" >&2
         exit 1
