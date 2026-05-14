@@ -1,6 +1,6 @@
 # Runbook: Hone CLI Install And Start
 
-Last updated: 2026-05-11
+Last updated: 2026-05-14
 
 ## When To Use
 
@@ -31,6 +31,7 @@ HONE_RUN_ONBOARD=1 curl -fsSL https://raw.githubusercontent.com/B-M-Capital-Rese
 The installer:
 
 - Downloads the matching release asset such as `honeclaw-darwin-aarch64.tar.gz`
+- Verifies that the archive has one safe top-level bundle directory, no path traversal entries, regular required files, an executable `bin/hone-cli`, and both admin/public Web bundles
 - Extracts it under `~/.honeclaw/releases/<bundle>`
 - Maintains `~/.honeclaw/current` as the active symlink
 - Writes a `hone-cli` wrapper to the first writable user-facing bin dir already present in `PATH` when possible
@@ -298,6 +299,12 @@ eval "$($(command -v brew) shellenv)"
 - Reinstall with the latest GitHub bundle
 - Confirm that `~/.honeclaw/current/bin/` contains `hone-console-page`, `hone-mcp`, and any enabled channel binaries
 - In a source checkout, use `cargo run -p hone-cli -- start --build` so the local runtime binaries are built before startup
+
+### Installer rejects the release asset layout
+
+- Treat messages about unsafe archive paths, multiple top-level roots, non-regular required files, or a non-executable `bin/hone-cli` as release packaging problems
+- Reinstall from a newer release asset instead of editing files under `~/.honeclaw/releases` by hand
+- If validating a locally built bundle, rebuild the archive so `bin/hone-cli`, `share/honeclaw/config.example.yaml`, `share/honeclaw/soul.md`, `share/honeclaw/web/index.html`, and `share/honeclaw/web-public/index.html` are regular files, and `bin/hone-cli` is executable
 
 ### The backend starts but the web page says assets are missing
 
