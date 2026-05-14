@@ -303,9 +303,9 @@ fn build_pass2_baseline_messages(
     audience: &AudienceContext,
     final_n: u32,
 ) -> Vec<Message> {
-    let n = picks_with_bodies.len();
+    let candidate_count = picks_with_bodies.len();
     let system = format!(
-        "你是金融新闻精读助手。Pass 1 已经初筛出 {n} 篇候选,你看到了原文(部分付费墙抓不到,fallback 到 RSS / FMP 摘要)。
+        "你是金融新闻精读助手。Pass 1 已经初筛出 {candidate_count} 篇候选,你看到了原文(部分付费墙抓不到,fallback 到 RSS / FMP 摘要)。
 
 请:
 1. 重新评估每条是否真值得放进\"今日全球要闻\",按全球投资者关注度从高到低排序
@@ -323,20 +323,20 @@ fn build_pass2_baseline_messages(
     let cand_block: String = picks_with_bodies
         .iter()
         .enumerate()
-        .map(|(i, (rc, body))| {
-            let symbols = if rc.candidate.event.symbols.is_empty() {
+        .map(|(pick_index, (ranked_candidate, body))| {
+            let symbols = if ranked_candidate.candidate.event.symbols.is_empty() {
                 "[]".to_string()
             } else {
-                format!("[{}]", rc.candidate.event.symbols.join(","))
+                format!("[{}]", ranked_candidate.candidate.event.symbols.join(","))
             };
             let body_preview: String = body.text.chars().take(5000).collect();
             format!(
-                "=== [{i}] {} ===\nsource: {} | symbols: {symbols}\nPass1 score: {} | cluster: {}\nURL: {}\n原文({:?}, {}c):\n{body_preview}",
-                rc.candidate.event.title,
-                rc.candidate.event.source,
-                rc.pass1_score,
-                rc.pass1_cluster,
-                rc.candidate.event.url.as_deref().unwrap_or(""),
+                "=== [{pick_index}] {} ===\nsource: {} | symbols: {symbols}\nPass1 score: {} | cluster: {}\nURL: {}\n原文({:?}, {}c):\n{body_preview}",
+                ranked_candidate.candidate.event.title,
+                ranked_candidate.candidate.event.source,
+                ranked_candidate.pass1_score,
+                ranked_candidate.pass1_cluster,
+                ranked_candidate.candidate.event.url.as_deref().unwrap_or(""),
                 body.source,
                 body.text.chars().count(),
             )
@@ -380,21 +380,21 @@ fn map_pass2_baseline(
     picks_with_bodies: Vec<(RankedCandidate, ArticleBody)>,
     items: Vec<Pass2BaselineItem>,
 ) -> Vec<BaselineCuratedItem> {
-    let mut out = Vec::with_capacity(items.len());
-    for it in items {
-        if it.idx >= picks_with_bodies.len() {
+    let mut curated_items = Vec::with_capacity(items.len());
+    for baseline_pick in items {
+        if baseline_pick.idx >= picks_with_bodies.len() {
             continue;
         }
-        let (rc, body) = picks_with_bodies[it.idx].clone();
-        out.push(BaselineCuratedItem {
-            candidate: rc.candidate,
+        let (ranked_candidate, body) = picks_with_bodies[baseline_pick.idx].clone();
+        curated_items.push(BaselineCuratedItem {
+            candidate: ranked_candidate.candidate,
             article: body,
-            rank: it.rank,
-            comment: it.comment,
+            rank: baseline_pick.rank,
+            comment: baseline_pick.comment,
         });
     }
-    out.sort_by_key(|x| x.rank);
-    out
+    curated_items.sort_by_key(|item| item.rank);
+    curated_items
 }
 
 fn build_pass2_personalize_messages(
@@ -404,9 +404,9 @@ fn build_pass2_personalize_messages(
     floor_macro: u32,
     final_n: u32,
 ) -> Vec<Message> {
-    let n = picks_with_bodies.len();
+    let candidate_count = picks_with_bodies.len();
     let system = format!(
-        "你是金融新闻精读助手。Pass 1 已经初筛出 {n} 篇候选,你看到了原文(部分付费墙抓不到)。
+        "你是金融新闻精读助手。Pass 1 已经初筛出 {candidate_count} 篇候选,你看到了原文(部分付费墙抓不到)。
 
 **关键 1**:用户有明确投资风格和个股投资主线(下方\"用户投资主线\"段)。请按用户视角:
 - 印证主线的事件优先(即使 Pass1 中等分),标 category=\"mainline_aligned\"
@@ -431,20 +431,20 @@ fn build_pass2_personalize_messages(
     let cand_block: String = picks_with_bodies
         .iter()
         .enumerate()
-        .map(|(i, (rc, body))| {
-            let symbols = if rc.candidate.event.symbols.is_empty() {
+        .map(|(pick_index, (ranked_candidate, body))| {
+            let symbols = if ranked_candidate.candidate.event.symbols.is_empty() {
                 "[]".to_string()
             } else {
-                format!("[{}]", rc.candidate.event.symbols.join(","))
+                format!("[{}]", ranked_candidate.candidate.event.symbols.join(","))
             };
             let body_preview: String = body.text.chars().take(5000).collect();
             format!(
-                "=== [{i}] {} ===\nsource: {} | symbols: {symbols}\nPass1 score: {} | cluster: {}\nURL: {}\n原文({:?}, {}c):\n{body_preview}",
-                rc.candidate.event.title,
-                rc.candidate.event.source,
-                rc.pass1_score,
-                rc.pass1_cluster,
-                rc.candidate.event.url.as_deref().unwrap_or(""),
+                "=== [{pick_index}] {} ===\nsource: {} | symbols: {symbols}\nPass1 score: {} | cluster: {}\nURL: {}\n原文({:?}, {}c):\n{body_preview}",
+                ranked_candidate.candidate.event.title,
+                ranked_candidate.candidate.event.source,
+                ranked_candidate.pass1_score,
+                ranked_candidate.pass1_cluster,
+                ranked_candidate.candidate.event.url.as_deref().unwrap_or(""),
                 body.source,
                 body.text.chars().count(),
             )
@@ -489,9 +489,9 @@ fn render_mainline_block(mainline: &UserMainline<'_>) -> String {
         lines.push("### 个股投资主线".to_string());
         // 按 ticker 排序保证 prompt 稳定
         let mut entries: Vec<_> = by_ticker.iter().collect();
-        entries.sort_by_key(|(k, _)| k.as_str());
-        for (sym, txt) in entries {
-            lines.push(format!("- **{sym}**:{txt}"));
+        entries.sort_by_key(|(ticker, _)| ticker.as_str());
+        for (ticker, mainline_text) in entries {
+            lines.push(format!("- **{ticker}**:{mainline_text}"));
         }
     }
     if lines.is_empty() {
@@ -515,23 +515,23 @@ fn map_pass2_personalize(
     picks_with_bodies: Vec<(RankedCandidate, ArticleBody)>,
     items: Vec<Pass2PersonalizeItem>,
 ) -> Vec<PersonalizedItem> {
-    let mut out = Vec::with_capacity(items.len());
-    for it in items {
-        if it.idx >= picks_with_bodies.len() {
+    let mut personalized_items = Vec::with_capacity(items.len());
+    for personalized_pick in items {
+        if personalized_pick.idx >= picks_with_bodies.len() {
             continue;
         }
-        let (rc, body) = picks_with_bodies[it.idx].clone();
-        out.push(PersonalizedItem {
-            candidate: rc.candidate,
+        let (ranked_candidate, body) = picks_with_bodies[personalized_pick.idx].clone();
+        personalized_items.push(PersonalizedItem {
+            candidate: ranked_candidate.candidate,
             article: body,
-            rank: it.rank,
-            comment: it.comment,
-            category: PickCategory::from_str(&it.category),
-            mainline_relation: MainlineRelation::from_str(&it.mainline_relation),
+            rank: personalized_pick.rank,
+            comment: personalized_pick.comment,
+            category: PickCategory::from_str(&personalized_pick.category),
+            mainline_relation: MainlineRelation::from_str(&personalized_pick.mainline_relation),
         });
     }
-    out.sort_by_key(|x| x.rank);
-    out
+    personalized_items.sort_by_key(|item| item.rank);
+    personalized_items
 }
 
 /// 渲染 audience briefs 段(给 Pass 1/2 prompt 共用)。
@@ -539,23 +539,23 @@ fn render_briefs_block(audience: &AudienceContext) -> String {
     audience
         .briefs
         .iter()
-        .map(|b| {
+        .map(|brief| {
             let mut line = format!(
                 "- {} — {} ({}{}{})\n  业务: {}",
-                b.ticker,
-                b.name,
-                b.sector,
-                if b.sector.is_empty() || b.industry.is_empty() {
+                brief.ticker,
+                brief.name,
+                brief.sector,
+                if brief.sector.is_empty() || brief.industry.is_empty() {
                     ""
                 } else {
                     " / "
                 },
-                b.industry,
-                b.one_liner,
+                brief.industry,
+                brief.one_liner,
             );
-            if !b.user_notes.is_empty() {
+            if !brief.user_notes.is_empty() {
                 line.push_str("\n  用户备注: ");
-                line.push_str(&b.user_notes.join(" | "));
+                line.push_str(&brief.user_notes.join(" | "));
             }
             line
         })
@@ -592,24 +592,24 @@ cluster id 用英文短词,同事件不同媒体一定要合并(merger/recall/la
     let cand_block: String = candidates
         .iter()
         .enumerate()
-        .map(|(i, c)| {
-            let symbols = if c.event.symbols.is_empty() {
+        .map(|(candidate_index, candidate)| {
+            let symbols = if candidate.event.symbols.is_empty() {
                 "[]".to_string()
             } else {
-                format!("[{}]", c.event.symbols.join(","))
+                format!("[{}]", candidate.event.symbols.join(","))
             };
-            let text_preview: String = c.fmp_text.chars().take(160).collect();
+            let text_preview: String = candidate.fmp_text.chars().take(160).collect();
             format!(
-                "[{i}] title={} | source={} | symbols={symbols} | text={text_preview}",
-                c.event.title, c.event.source
+                "[{candidate_index}] title={} | source={} | symbols={symbols} | text={text_preview}",
+                candidate.event.title, candidate.event.source
             )
         })
         .collect::<Vec<_>>()
         .join("\n");
 
+    let candidate_count = candidates.len();
     let user = format!(
-        "## 受众持仓概览\n{briefs_block}\n\n## 候选({n} 篇)\n{cand_block}\n\n请输出 JSON,items 数组要覆盖全部 {n} 条候选。",
-        n = candidates.len()
+        "## 受众持仓概览\n{briefs_block}\n\n## 候选({candidate_count} 篇)\n{cand_block}\n\n请输出 JSON,items 数组要覆盖全部 {candidate_count} 条候选。"
     );
 
     vec![
@@ -671,37 +671,42 @@ fn rank_and_dedupe(
     use std::collections::HashMap;
     // 同 cluster 内只保留最高分 item
     let mut by_cluster: HashMap<String, Pass1Item> = HashMap::new();
-    for it in items {
-        if it.idx >= candidates.len() {
+    for pass1_item in items {
+        if pass1_item.idx >= candidates.len() {
             // 越界 idx 直接跳过(保护 LLM 编造 idx)
             continue;
         }
-        let cluster_key = if it.cluster.is_empty() {
+        let cluster_key = if pass1_item.cluster.is_empty() {
             // 空 cluster 退化成 idx-唯一,保留为独立条目
-            format!("__noclust__{}", it.idx)
+            format!("__noclust__{}", pass1_item.idx)
         } else {
-            it.cluster.clone()
+            pass1_item.cluster.clone()
         };
         by_cluster
             .entry(cluster_key)
-            .and_modify(|exist| {
-                if it.score > exist.score {
-                    *exist = it.clone();
+            .and_modify(|existing_item| {
+                if pass1_item.score > existing_item.score {
+                    *existing_item = pass1_item.clone();
                 }
             })
-            .or_insert(it);
+            .or_insert(pass1_item);
     }
     let mut deduped: Vec<Pass1Item> = by_cluster.into_values().collect();
     // 按 score 降序;同分按 idx 升序保稳定
-    deduped.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| a.idx.cmp(&b.idx)));
+    deduped.sort_by(|left, right| {
+        right
+            .score
+            .cmp(&left.score)
+            .then_with(|| left.idx.cmp(&right.idx))
+    });
     deduped
         .into_iter()
         .take(top_n)
-        .map(|it| RankedCandidate {
-            candidate: candidates[it.idx].clone(),
-            pass1_score: it.score,
-            pass1_cluster: it.cluster,
-            pass1_takeaway: it.takeaway,
+        .map(|pass1_item| RankedCandidate {
+            candidate: candidates[pass1_item.idx].clone(),
+            pass1_score: pass1_item.score,
+            pass1_cluster: pass1_item.cluster,
+            pass1_takeaway: pass1_item.takeaway,
         })
         .collect()
 }
@@ -975,22 +980,25 @@ mod tests {
             fixture_candidate("a", "Story A"),
             fixture_candidate("b", "Story B"),
         ];
-        let picks: Vec<(RankedCandidate, ArticleBody)> = candidates
+        let picks_with_bodies: Vec<(RankedCandidate, ArticleBody)> = candidates
             .into_iter()
             .enumerate()
-            .map(|(i, c)| {
+            .map(|(candidate_index, candidate)| {
                 (
                     RankedCandidate {
-                        candidate: c,
+                        candidate,
                         pass1_score: 5,
-                        pass1_cluster: format!("c{i}"),
+                        pass1_cluster: format!("c{candidate_index}"),
                         pass1_takeaway: "t".into(),
                     },
                     fetched_article_body("article body"),
                 )
             })
             .collect();
-        let baseline_picks = curator.pass2_baseline(picks, &audience(), 8).await.unwrap();
+        let baseline_picks = curator
+            .pass2_baseline(picks_with_bodies, &audience(), 8)
+            .await
+            .unwrap();
         assert_eq!(baseline_picks.len(), 2);
         // 按 rank 升序
         assert_eq!(baseline_picks[0].rank, 1);
@@ -1007,12 +1015,12 @@ mod tests {
         ]}"#;
         let (curator, _) = make_curator_with_response(json);
         let candidates = vec![fixture_candidate("a", "T")];
-        let picks: Vec<_> = candidates
+        let picks_with_bodies: Vec<_> = candidates
             .into_iter()
-            .map(|c| {
+            .map(|candidate| {
                 (
                     RankedCandidate {
-                        candidate: c,
+                        candidate,
                         pass1_score: 5,
                         pass1_cluster: "x".into(),
                         pass1_takeaway: "".into(),
@@ -1021,7 +1029,10 @@ mod tests {
                 )
             })
             .collect();
-        let baseline_picks = curator.pass2_baseline(picks, &audience(), 8).await.unwrap();
+        let baseline_picks = curator
+            .pass2_baseline(picks_with_bodies, &audience(), 8)
+            .await
+            .unwrap();
         assert_eq!(baseline_picks.len(), 1);
         assert_eq!(baseline_picks[0].candidate.event.id, "a");
     }
@@ -1037,7 +1048,7 @@ mod tests {
         assert_eq!(*response_provider.calls.lock().unwrap(), 0);
     }
 
-    fn picks() -> Vec<(RankedCandidate, ArticleBody)> {
+    fn sample_picks_with_bodies() -> Vec<(RankedCandidate, ArticleBody)> {
         vec![
             (
                 RankedCandidate {
@@ -1084,7 +1095,7 @@ mod tests {
             by_ticker: Some(&by_ticker),
         };
         let personalized_picks = curator
-            .pass2_personalize(picks(), &audience(), mainline, 1, 8)
+            .pass2_personalize(sample_picks_with_bodies(), &audience(), mainline, 1, 8)
             .await
             .unwrap();
         assert_eq!(personalized_picks.len(), 2);
@@ -1113,7 +1124,7 @@ mod tests {
         let (curator, _) = make_curator_with_response(json);
         let mainline = UserMainline::default(); // 全 None
         let personalized_picks = curator
-            .pass2_personalize(picks(), &audience(), mainline, 0, 8)
+            .pass2_personalize(sample_picks_with_bodies(), &audience(), mainline, 0, 8)
             .await
             .unwrap();
         assert_eq!(personalized_picks.len(), 1);
@@ -1131,7 +1142,13 @@ mod tests {
         ]}"#;
         let (curator, _) = make_curator_with_response(json);
         let personalized_picks = curator
-            .pass2_personalize(picks(), &audience(), UserMainline::default(), 0, 8)
+            .pass2_personalize(
+                sample_picks_with_bodies(),
+                &audience(),
+                UserMainline::default(),
+                0,
+                8,
+            )
             .await
             .unwrap();
         assert_eq!(
@@ -1152,7 +1169,13 @@ mod tests {
         ]}"#;
         let (curator, _) = make_curator_with_response(json);
         let personalized_picks = curator
-            .pass2_personalize(picks(), &audience(), UserMainline::default(), 0, 8)
+            .pass2_personalize(
+                sample_picks_with_bodies(),
+                &audience(),
+                UserMainline::default(),
+                0,
+                8,
+            )
             .await
             .unwrap();
         assert_eq!(personalized_picks.len(), 1);
@@ -1167,7 +1190,13 @@ mod tests {
         ]}"#;
         let (curator, _) = make_curator_with_response(json);
         let personalized_picks = curator
-            .pass2_personalize(picks(), &audience(), UserMainline::default(), 0, 8)
+            .pass2_personalize(
+                sample_picks_with_bodies(),
+                &audience(),
+                UserMainline::default(),
+                0,
+                8,
+            )
             .await
             .unwrap();
         assert_eq!(personalized_picks.len(), 1);

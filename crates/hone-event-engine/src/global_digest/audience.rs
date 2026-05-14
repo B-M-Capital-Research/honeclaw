@@ -131,17 +131,17 @@ impl<'a> AudienceBuilder<'a> {
             if !actor.is_direct() {
                 continue;
             }
-            for h in &portfolio.holdings {
-                let sym = h.symbol.to_uppercase();
-                if seen.insert(sym.clone()) {
-                    tickers.push(sym.clone());
+            for holding in &portfolio.holdings {
+                let ticker = holding.symbol.to_uppercase();
+                if seen.insert(ticker.clone()) {
+                    tickers.push(ticker.clone());
                 }
-                if let Some(n) = h.notes.as_deref() {
-                    let n = n.trim();
-                    if !n.is_empty() {
-                        let entry = notes_by.entry(sym).or_default();
-                        if !entry.iter().any(|existing| existing == n) {
-                            entry.push(n.to_string());
+                if let Some(notes) = holding.notes.as_deref() {
+                    let trimmed_notes = notes.trim();
+                    if !trimmed_notes.is_empty() {
+                        let entry = notes_by.entry(ticker).or_default();
+                        if !entry.iter().any(|existing| existing == trimmed_notes) {
+                            entry.push(trimmed_notes.to_string());
                         }
                     }
                 }
@@ -160,12 +160,12 @@ impl<'a> AudienceBuilder<'a> {
         match self.fmp.get_json(&path).await {
             Ok(Value::Array(arr)) => arr
                 .into_iter()
-                .filter_map(|p| {
-                    let sym = p
+                .filter_map(|profile| {
+                    let ticker = profile
                         .get("symbol")
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_uppercase())?;
-                    Some((sym, p))
+                    Some((ticker, profile))
                 })
                 .collect(),
             Ok(other) => {

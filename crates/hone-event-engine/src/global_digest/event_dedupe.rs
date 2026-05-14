@@ -72,12 +72,12 @@ impl EventDeduper for PassThroughDeduper {
         &self,
         candidates: Vec<GlobalDigestCandidate>,
     ) -> (Vec<GlobalDigestCandidate>, DedupeStats, Vec<ClusterAudit>) {
-        let n = candidates.len();
+        let candidate_count = candidates.len();
         (
             candidates,
             DedupeStats {
-                input: n,
-                clusters: n,
+                input: candidate_count,
+                clusters: candidate_count,
                 multi_clusters: 0,
                 silent_drops_recovered: 0,
                 fell_back_to_pass_through: false,
@@ -105,11 +105,17 @@ impl LlmEventDeduper {
         let cand_block: String = candidates
             .iter()
             .enumerate()
-            .map(|(i, c)| format!("[{i}] {}", truncate(&c.event.title, 120)))
+            .map(|(candidate_index, candidate)| {
+                format!(
+                    "[{candidate_index}] {}",
+                    truncate(&candidate.event.title, 120)
+                )
+            })
             .collect::<Vec<_>>()
             .join("\n");
+        let candidate_count = candidates.len();
         format!(
-            "把下面 {n} 条新闻分组,**目标是 event-level cluster,不是 theme-level**。\n\
+            "把下面 {candidate_count} 条新闻分组,**目标是 event-level cluster,不是 theme-level**。\n\
              \n\
              **event-cluster 的定义**:\n\
              1. 同一具体真实事件的多篇报道(同一组 actor、同一时间窗口内的同一行动)= 同一 cluster\n\
@@ -128,8 +134,7 @@ impl LlmEventDeduper {
              {{\"clusters\":[{{\"id\":\"some-event-id\",\"items\":[0,3,7]}},...]}}\n\
              \n\
              候选:\n\
-             {cand_block}\n",
-            n = candidates.len()
+             {cand_block}\n"
         )
     }
 }
@@ -188,26 +193,26 @@ impl EventDeduper for LlmEventDeduper {
         // 收集 grok 覆盖的 idx,缺的当 singleton 补回(grok 偶尔丢条)
         let mut covered: Vec<bool> = vec![false; input_n];
         let mut clusters: Vec<(String, Vec<usize>)> = Vec::with_capacity(parsed.clusters.len());
-        for c in parsed.clusters {
-            let valid_items: Vec<usize> = c
+        for cluster in parsed.clusters {
+            let valid_items: Vec<usize> = cluster
                 .items
                 .iter()
                 .copied()
-                .filter(|i| *i < input_n && !covered[*i])
+                .filter(|candidate_index| *candidate_index < input_n && !covered[*candidate_index])
                 .collect();
-            for i in &valid_items {
-                covered[*i] = true;
+            for candidate_index in &valid_items {
+                covered[*candidate_index] = true;
             }
             if !valid_items.is_empty() {
-                clusters.push((c.id, valid_items));
+                clusters.push((cluster.id, valid_items));
             }
         }
         let mut silent_drops = 0;
-        for (i, c) in covered.iter().enumerate() {
-            if !*c {
+        for (candidate_index, is_covered) in covered.iter().enumerate() {
+            if !*is_covered {
                 silent_drops += 1;
-                let id = format!("recovered-singleton-{i}");
-                clusters.push((id, vec![i]));
+                let id = format!("recovered-singleton-{candidate_index}");
+                clusters.push((id, vec![candidate_index]));
             }
         }
 
@@ -256,12 +261,12 @@ fn pass_through(
     candidates: Vec<GlobalDigestCandidate>,
     failed: bool,
 ) -> (Vec<GlobalDigestCandidate>, DedupeStats, Vec<ClusterAudit>) {
-    let n = candidates.len();
+    let candidate_count = candidates.len();
     (
         candidates,
         DedupeStats {
-            input: n,
-            clusters: n,
+            input: candidate_count,
+            clusters: candidate_count,
             multi_clusters: 0,
             silent_drops_recovered: 0,
             fell_back_to_pass_through: failed,
@@ -274,21 +279,22 @@ fn pass_through(
 fn pick_representative_idx(candidates: &[GlobalDigestCandidate], items: &[usize]) -> usize {
     *items
         .iter()
-        .max_by(|a, b| {
-            let ca = &candidates[**a];
-            let cb = &candidates[**b];
-            let trust_a = matches!(ca.source_class, NewsSourceClass::Trusted) as u8;
-            let trust_b = matches!(cb.source_class, NewsSourceClass::Trusted) as u8;
-            // 注意:这里用 Greater = a 更优;max_by 返回最大者
+        .max_by(|left_index, right_index| {
+            let left_candidate = &candidates[**left_index];
+            let right_candidate = &candidates[**right_index];
+            let left_trust = matches!(left_candidate.source_class, NewsSourceClass::Trusted) as u8;
+            let right_trust =
+                matches!(right_candidate.source_class, NewsSourceClass::Trusted) as u8;
+            // 注意:这里用 Greater = left 更优;max_by 返回最大者
             (
-                trust_a,
-                ca.event.summary.len(),
-                ca.event.occurred_at.timestamp(),
+                left_trust,
+                left_candidate.event.summary.len(),
+                left_candidate.event.occurred_at.timestamp(),
             )
                 .cmp(&(
-                    trust_b,
-                    cb.event.summary.len(),
-                    cb.event.occurred_at.timestamp(),
+                    right_trust,
+                    right_candidate.event.summary.len(),
+                    right_candidate.event.occurred_at.timestamp(),
                 ))
         })
         .unwrap_or(&items[0])
