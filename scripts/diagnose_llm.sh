@@ -4,12 +4,62 @@
 
 set -uo pipefail
 
-CONFIG_PATH="${HONE_CONFIG_PATH:-config.yaml}"
-API_KEY=$(awk '
-  $1=="openrouter:" {in=1; next}
-  in && $1=="api_key:" {print $2; exit}
-  in && /^[^[:space:]]/ {exit}
-' "$CONFIG_PATH" 2>/dev/null | sed 's/#.*$//' | tr -d '"')
+CONFIG_PATH="${HONE_USER_CONFIG_PATH:-${HONE_CONFIG_PATH:-config.yaml}}"
+API_KEY=$(python3 - "$CONFIG_PATH" <<'PY' 2>/dev/null
+import sys
+from pathlib import Path
+
+
+def clean(value: str) -> str:
+    value = value.strip().strip('"').strip("'")
+    if not value or value == "[]":
+        return ""
+    return value
+
+
+def first_value_at_path(text: str, target: tuple[str, ...]) -> str:
+    stack: list[tuple[int, str]] = []
+    for raw_line in text.splitlines():
+        line = raw_line.split("#", 1)[0].rstrip()
+        if not line.strip():
+            continue
+        indent = len(line) - len(line.lstrip(" "))
+        content = line.strip()
+        while stack and indent <= stack[-1][0]:
+            stack.pop()
+        if content.startswith("-"):
+            if tuple(key for _, key in stack) == target:
+                found = clean(content[1:])
+                if found:
+                    return found
+            continue
+        if ":" not in content:
+            continue
+        key, raw_value = content.split(":", 1)
+        key = key.strip().strip('"').strip("'")
+        path = tuple([*(key for _, key in stack), key])
+        value = clean(raw_value)
+        if path == target and value:
+            return value
+        if not raw_value.strip():
+            stack.append((indent, key))
+    return ""
+
+
+config_path = Path(sys.argv[1]).expanduser()
+text = config_path.read_text(encoding="utf-8")
+for path in (
+    ("llm", "providers", "openrouter", "api_key"),
+    ("llm", "providers", "openrouter", "api_keys"),
+    ("llm", "openrouter", "api_key"),
+    ("llm", "openrouter", "api_keys"),
+):
+    value = first_value_at_path(text, path)
+    if value:
+        print(value)
+        break
+PY
+)
 MODEL="moonshotai/kimi-k2.5"
 BASE_URL="https://openrouter.ai/api/v1"
 
@@ -31,7 +81,7 @@ echo "============================================================"
 echo
 
 if [ -z "$API_KEY" ]; then
-  fail "未在 ${CONFIG_PATH} 中配置 llm.openrouter.api_key"
+  fail "未在 ${CONFIG_PATH} 中配置 llm.providers.openrouter.api_key/api_keys（legacy llm.openrouter.* 仍可读取）"
   exit 1
 fi
 
