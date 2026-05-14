@@ -287,7 +287,7 @@ const CONTENT_ZH = {
       "透明、务实、长期主义。下面是 Hone 目前能做什么、接下来做什么、以及如何接入你的投研工作流。",
     hero_meta: "ROADMAP · DOCS · API",
     sidebar_title: "ON THIS PAGE",
-    version: "v0.12.0",
+    version: "v0.12.2",
 
     toc: [
       { id: "quick-start", label: "快速开始", sub: "Quick Start" },
@@ -415,7 +415,7 @@ const CONTENT_ZH = {
       },
       {
         title: "公开用户端",
-        desc: "公开用户端路由包含 `/`、`/roadmap`、`/chat`、`/me`、`/portfolio`、`/terms`、`/privacy`；`/chat` 使用阿里云行为验证 + 手机短信验证码登录，管理端白名单是准入来源，并支持助手回答复制与图片分享；`/portfolio` 只读展示推送上下文与公司画像入口，后端公开面收敛在 `/api/public/*`。",
+        desc: "公开用户端路由包含 `/`、`/roadmap`、`/chat`、`/me`、`/portfolio`、`/terms`、`/privacy`，并保留开发用 `/__share-preview` 分享卡预览页；`/chat` 使用阿里云行为验证 + 手机短信验证码登录，管理端白名单是准入来源，桌面端为可收起左侧导航 + 右侧对话工作台，支持助手回答复制、图片分享、联系入口和 GitHub stars 兜底；`/portfolio` 只读展示推送上下文与公司画像入口，后端公开面收敛在 `/api/public/*`。",
       },
       {
         title: "管理后台",
@@ -427,7 +427,7 @@ const CONTENT_ZH = {
       },
       {
         title: "事件与任务",
-        desc: "Cron 任务、事件引擎摘要、`/missed` 回查、通知偏好与渠道投递共享 Rust 后端、SQLite/JSON 存储和用户归属模型。",
+        desc: "Cron 任务、事件引擎摘要、`/missed` 回查、通知偏好与渠道投递共享 Rust 后端、SQLite/JSON 存储和用户归属模型；Feishu 等渠道的 scheduler heartbeat 已补齐 revision-aware 重复抑制与 running 行终结回归覆盖。",
       },
     ],
 
@@ -468,7 +468,7 @@ const CONTENT_ZH = {
           {
             name: "公开聊天分享长图",
             status: "stable",
-            note: "html2canvas + qrcode + markdown 渲染",
+            note: "html2canvas + qrcode + markdown 渲染 + CJK 代码块字体",
           },
           { name: "向量检索增强记忆", status: "planned", note: "规划中" },
         ],
@@ -484,7 +484,7 @@ const CONTENT_ZH = {
           {
             name: "SolidJS 前端",
             status: "stable",
-            note: "Vite · Tailwind v4",
+            note: "Vite · Tailwind v4 · stale asset recovery",
           },
           { name: "Tauri 桌面端", status: "stable", note: "macOS 已发布" },
           {
@@ -559,7 +559,7 @@ const CONTENT_ZH = {
         name: "Lark / Feishu",
         icon: "◈",
         status: "stable",
-        desc: "飞书机器人双向通信",
+        desc: "飞书机器人双向通信与 scheduler heartbeat 推送",
       },
       {
         name: "Discord",
@@ -622,17 +622,20 @@ const CONTENT_ZH = {
       label: "当前已有",
       items: [
         "Web 聊天界面（阿里云行为验证 + 手机短信验证码，管理端白名单准入）+ 公开门面站",
-        "公开 `/chat` 助手回答复制与分享：可选择消息，导出品牌长图、复制图片/文字或调用系统分享",
-        "公开 `/chat` markdown 渲染、移动输入框、滚动锚定与回到底部按钮已完成稳定性打磨",
+        "公开 `/chat` 桌面工作台布局：可收起左侧导航、账号入口、联系入口、GitHub stars 与右侧完整高度对话区",
+        "公开 `/chat` 助手回答复制与分享：可选择消息，导出品牌长图、复制图片/文字或调用系统分享；分享卡支持 CJK 代码块字体并有开发预览页",
+        "公开 `/chat` markdown 渲染、移动输入框、键盘聚焦、滚动锚定与回到底部按钮已完成稳定性打磨",
         "Tauri macOS 桌面端 + 内置后端",
         "7 个渠道：Web / iMessage / Lark / Discord / Telegram / CLI / MCP",
         "16 个公开 Skill（个股、持仓、估值/筛选入口、图表、PDF、Cron、漏推回查、推送偏好…）",
         "投研纪律约束 & 零幻觉协议",
         "公司画像与跨会话长期记忆",
         "Cron 定时任务系统",
-        "事件引擎推送质量收口：digest 去重 / min-gap / topic memory / 分类预算 / 方向性价格阈值",
+        "事件引擎推送质量收口：digest 去重 / min-gap / topic memory / 分类预算 / 方向性价格阈值 / Feishu scheduler heartbeat revision 去重",
+        "前端部署资产恢复：service worker 与全局错误处理可识别 stale chunk，并在安全间隔内自动刷新到新版本",
         "ACP 自管上下文与 compact 防泄漏，支持 codex_acp / opencode_acp 长会话恢复",
         "多 Agent 引擎：OpenAI-compatible / Gemini CLI / Codex CLI/ACP / OpenCode ACP / multi-agent",
+        "`scripts/diagnose_llm.sh` 已按当前 LLM provider 配置路径读取 OpenRouter key，保留 legacy 路径兼容",
       ],
     },
     next: {
@@ -754,7 +757,7 @@ const CONTENT_ZH = {
       },
       {
         q: "需要自己部署吗？",
-        a: "三种方式任选：①「curl | bash」一键装 hone-cli；② Homebrew tap；③ clone 仓库后用本地 CLI 构建启动。前两种共享同一份 GitHub release bundle，不需要自己编译 Rust。公开 SMS 登录需要配置阿里云短信；如启用行为验证，还需要配置阿里云验证码环境变量。",
+        a: "三种方式任选：①「curl | bash」一键装 hone-cli；② Homebrew tap；③ clone 仓库后用本地 CLI 构建启动。前两种共享同一份 GitHub release bundle，不需要自己编译 Rust。公开 SMS 登录需要配置阿里云短信；如启用行为验证，还需要配置阿里云验证码环境变量。升级前端后，公开页面会通过资产恢复逻辑处理旧 chunk 缓存导致的加载失败。",
       },
       {
         q: "支持哪些 LLM？",
@@ -1768,7 +1771,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       "Transparent, pragmatic, long-term. Here's what Hone does today, what's next, and how to bring it into your research workflow.",
     hero_meta: "ROADMAP · DOCS · API",
     sidebar_title: "ON THIS PAGE",
-    version: "v0.12.0",
+    version: "v0.12.2",
 
     toc: [
       { id: "quick-start", label: "Quick Start", sub: "Quick Start" },
@@ -1886,7 +1889,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         title: "Public user app",
-        desc: "The public user app routes `/`, `/roadmap`, `/chat`, `/me`, `/portfolio`, `/terms`, and `/privacy`; `/chat` signs users in with Aliyun behavior captcha plus phone/SMS verification from the admin whitelist, and supports assistant-reply copy plus image sharing; `/portfolio` is a read-only investment context surface for push context and company-profile entrypoints, and the public backend is scoped to `/api/public/*`.",
+        desc: "The public user app routes `/`, `/roadmap`, `/chat`, `/me`, `/portfolio`, `/terms`, and `/privacy`, with a dev-only `/__share-preview` page for share-card QA; `/chat` signs users in with Aliyun behavior captcha plus phone/SMS verification from the admin whitelist, uses a collapsible desktop left rail plus full-height conversation workspace, and supports assistant-reply copy, image sharing, contact links, and GitHub stars fallback; `/portfolio` is a read-only investment context surface for push context and company-profile entrypoints, and the public backend is scoped to `/api/public/*`.",
       },
       {
         title: "Admin console",
@@ -1898,7 +1901,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         title: "Events and tasks",
-        desc: "Cron jobs, event-engine digests, `/missed` recovery, notification preferences, and channel delivery share the Rust backend, SQLite/JSON storage, and user ownership model.",
+        desc: "Cron jobs, event-engine digests, `/missed` recovery, notification preferences, and channel delivery share the Rust backend, SQLite/JSON storage, and user ownership model; Feishu and other channel scheduler heartbeats now include revision-aware duplicate suppression and running-row finalization coverage.",
       },
     ],
 
@@ -1939,7 +1942,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           {
             name: "Public chat image sharing",
             status: "stable",
-            note: "html2canvas + qrcode + markdown rendering",
+            note: "html2canvas + qrcode + markdown rendering + CJK code font",
           },
           {
             name: "Vector-augmented memory",
@@ -1959,7 +1962,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           {
             name: "SolidJS frontend",
             status: "stable",
-            note: "Vite · Tailwind v4",
+            note: "Vite · Tailwind v4 · stale asset recovery",
           },
           { name: "Tauri desktop", status: "stable", note: "macOS released" },
           {
@@ -2038,7 +2041,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         name: "Lark / Feishu",
         icon: "◈",
         status: "stable",
-        desc: "Two-way Feishu bot",
+        desc: "Two-way Feishu bot with scheduler heartbeat pushes",
       },
       {
         name: "Discord",
@@ -2134,17 +2137,20 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       label: "Shipping today",
       items: [
         "Web chat (Aliyun behavior captcha + phone/SMS verification, admitted by the admin whitelist) + public landing site",
-        "Public `/chat` assistant-reply copy and sharing: select messages, export a branded long image, copy image/text, or invoke native share",
-        "Public `/chat` markdown rendering, mobile composer, scroll anchoring, and jump-to-latest behavior have been stabilized",
+        "Public `/chat` desktop workbench layout: collapsible left rail, account entry, contact links, GitHub stars, and a full-height conversation area",
+        "Public `/chat` assistant-reply copy and sharing: select messages, export a branded long image, copy image/text, or invoke native share; share cards support CJK code-block fonts and have a dev preview route",
+        "Public `/chat` markdown rendering, mobile composer, keyboard focus, scroll anchoring, and jump-to-latest behavior have been stabilized",
         "Tauri macOS desktop with bundled backend",
         "7 channels: Web / iMessage / Lark / Discord / Telegram / CLI / MCP",
         "16 public skills (stocks, portfolio, valuation/screening entrypoints, charts, PDF, cron, missed-event recovery, notification prefs…)",
         "Research discipline & zero-hallucination protocol",
         "Company profiles + cross-session long memory",
         "Cron-driven scheduled tasks",
-        "Event-engine push-quality pass: digest dedupe / min-gap / topic memory / category budgets / directional price thresholds",
+        "Event-engine push-quality pass: digest dedupe / min-gap / topic memory / category budgets / directional price thresholds / Feishu scheduler heartbeat revision dedupe",
+        "Frontend deploy asset recovery: the service worker and global error handlers detect stale chunks and safely reload onto the new version",
         "ACP self-managed context with compact-leak suppression for long codex_acp / opencode_acp sessions",
         "Multi-engine setup: OpenAI-compatible / Gemini CLI / Codex CLI/ACP / OpenCode ACP / multi-agent",
+        "`scripts/diagnose_llm.sh` reads OpenRouter keys from the current LLM provider config paths while keeping legacy path compatibility",
       ],
     },
     next: {
@@ -2266,7 +2272,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         q: "Do I have to self-host?",
-        a: "Three options: (1) the `curl | bash` installer for hone-cli; (2) a Homebrew tap; (3) clone the repo and start through the local CLI build path. The first two share the same GitHub release bundle — no Rust compile needed. Public SMS login requires Aliyun SMS configuration; if the behavior captcha gate is enabled, configure Aliyun Captcha environment variables too.",
+        a: "Three options: (1) the `curl | bash` installer for hone-cli; (2) a Homebrew tap; (3) clone the repo and start through the local CLI build path. The first two share the same GitHub release bundle — no Rust compile needed. Public SMS login requires Aliyun SMS configuration; if the behavior captcha gate is enabled, configure Aliyun Captcha environment variables too. After frontend upgrades, the public app uses asset recovery to handle load failures caused by stale cached chunks.",
       },
       {
         q: "Which LLMs are supported?",
