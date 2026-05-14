@@ -82,6 +82,7 @@ export function ChatShareModal(props: ChatShareModalProps) {
   let renderKey = "";
   let cachedBlob: Blob | null = null;
   let renderPromise: Promise<Blob> | null = null;
+  let previewRenderPromise: Promise<void> | null = null;
 
   const recentMessages = createMemo<PublicChatMessage[]>(() =>
     recentShareMessages(props.messages, 4, props.seedIndex),
@@ -140,6 +141,7 @@ export function ChatShareModal(props: ChatShareModalProps) {
       renderKey = "";
       cachedBlob = null;
       renderPromise = null;
+      previewRenderPromise = null;
       revokePreviewUrl();
       return;
     }
@@ -148,6 +150,7 @@ export function ChatShareModal(props: ChatShareModalProps) {
       renderKey = "";
       cachedBlob = null;
       renderPromise = null;
+      previewRenderPromise = null;
       revokePreviewUrl();
       setStep("select");
     }
@@ -249,11 +252,21 @@ export function ChatShareModal(props: ChatShareModalProps) {
   };
 
   const showPreview = async () => {
+    setStep("preview");
     const blob = await renderPngBlob();
     revokePreviewUrl();
     setPreviewUrl(URL.createObjectURL(blob));
-    setStep("preview");
   };
+
+  createEffect(() => {
+    if (!props.open || step() !== "preview" || !hasSelection() || previewUrl()) {
+      return;
+    }
+    if (busy() || previewRenderPromise) return;
+    previewRenderPromise = withBusy(showPreview).finally(() => {
+      previewRenderPromise = null;
+    });
+  });
 
   const changeFontSize = (index: number) => {
     if (index === fontIndex()) {
@@ -265,6 +278,7 @@ export function ChatShareModal(props: ChatShareModalProps) {
     setFontIndex(index);
     cachedBlob = null;
     renderPromise = null;
+    previewRenderPromise = null;
     renderKey = "";
     revokePreviewUrl();
     if (step() === "preview" && hasSelection()) {
