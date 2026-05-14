@@ -37,6 +37,16 @@ export function canSharePngFile(
   }
 }
 
+export function recentShareMessages<T>(messages: readonly T[], limit = 4): T[] {
+  return messages.slice(Math.max(0, messages.length - Math.max(1, limit)));
+}
+
+export function defaultShareMessageId<T extends { id: string }>(
+  messages: readonly T[],
+) {
+  return messages[messages.length - 1]?.id ?? null;
+}
+
 export async function canvasToPngBlob(canvas: HTMLCanvasElement) {
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((blob) => {

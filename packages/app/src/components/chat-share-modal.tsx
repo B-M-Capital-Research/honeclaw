@@ -1,6 +1,5 @@
-// Bottom-sheet on mobile / centered dialog on desktop. User picks which
-// messages to include, previews the rendered card, and exports via one of
-// four channels: download / copy-image / copy-text / system share.
+// Bottom-sheet on mobile / centered dialog on desktop. User first picks from
+// the latest messages, then previews the rendered image before exporting.
 
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { Portal } from "solid-js/web";
@@ -11,9 +10,11 @@ import {
   ShareRenderError,
   canvasToPngBlob,
   canSharePngFile,
+  defaultShareMessageId,
   isLikelyIOSPlatform,
   isShareAbortError,
   isShareRenderError,
+  recentShareMessages,
 } from "./chat-share-export";
 
 export type ChatShareModalProps = {
@@ -27,12 +28,15 @@ export type ChatShareModalProps = {
   strings: {
     title: string;
     subtitle: string;
-    select_all: string;
-    deselect_all: string;
+    preview_subtitle: string;
+    generate_image: string;
+    back_to_select: string;
     download: string;
+    save_image: string;
     copy_image: string;
     copy_text: string;
     share: string;
+    share_other_app: string;
     close_aria: string;
     success_download: string;
     success_copy_image: string;
@@ -58,10 +62,14 @@ type Toast =
   | { kind: "error"; text: string }
   | null;
 
+type ShareStep = "select" | "preview";
+
 export function ChatShareModal(props: ChatShareModalProps) {
   const [selected, setSelected] = createSignal<Set<string>>(new Set());
   const [toast, setToast] = createSignal<Toast>(null);
   const [busy, setBusy] = createSignal(false);
+  const [step, setStep] = createSignal<ShareStep>("select");
+  const [previewUrl, setPreviewUrl] = createSignal<string | null>(null);
   let cardEl: HTMLDivElement | undefined;
   let listEl: HTMLUListElement | undefined;
   let toastTimer: number | undefined;
@@ -69,6 +77,19 @@ export function ChatShareModal(props: ChatShareModalProps) {
   let renderKey = "";
   let cachedBlob: Blob | null = null;
   let renderPromise: Promise<Blob> | null = null;
+
+  const recentMessages = createMemo<PublicChatMessage[]>(() =>
+    recentShareMessages(props.messages, 4),
+  );
+  const selectedMessages = createMemo<PublicChatMessage[]>(() =>
+    recentMessages().filter((m) => selected().has(m.id)),
+  );
+
+  const revokePreviewUrl = () => {
+    const url = previewUrl();
+    if (url) URL.revokeObjectURL(url);
+    setPreviewUrl(null);
+  };
 
   const showToast = (t: Toast) => {
     setToast(t);
@@ -78,12 +99,15 @@ export function ChatShareModal(props: ChatShareModalProps) {
     }
   };
 
-  // Reset selection to just the seed whenever the modal transitions from
+  // Reset selection to the newest recent message whenever the modal transitions from
   // closed to open — the parent keeps this component mounted across opens.
   createEffect(() => {
     if (props.open && !wasOpen) {
-      const seedId = props.messages[props.seedIndex]?.id;
-      setSelected(seedId ? new Set([seedId]) : new Set<string>());
+      const recent = recentMessages();
+      const defaultId = defaultShareMessageId(recent);
+      setSelected(defaultId ? new Set([defaultId]) : new Set<string>());
+      setStep("select");
+      revokePreviewUrl();
       setBusy(false);
       setToast(null);
       window.requestAnimationFrame(() => {
@@ -106,12 +130,15 @@ export function ChatShareModal(props: ChatShareModalProps) {
       renderKey = "";
       cachedBlob = null;
       renderPromise = null;
+      revokePreviewUrl();
       return;
     }
     if (renderKey !== key) {
       renderKey = key;
       cachedBlob = null;
       renderPromise = null;
+      revokePreviewUrl();
+      setStep("select");
     }
     const timer = window.setTimeout(() => {
       void renderPngBlob().catch(() => {
@@ -130,6 +157,7 @@ export function ChatShareModal(props: ChatShareModalProps) {
     onCleanup(() => {
       window.removeEventListener("keydown", onKey);
       if (toastTimer) window.clearTimeout(toastTimer);
+      revokePreviewUrl();
     });
   });
 
@@ -141,17 +169,6 @@ export function ChatShareModal(props: ChatShareModalProps) {
       return next;
     });
   };
-
-  const allSelected = () => selected().size === props.messages.length;
-  const selectedMessages = createMemo<PublicChatMessage[]>(() =>
-    props.messages.filter((m) => selected().has(m.id)),
-  );
-
-  const supportsClipboardImage = () =>
-    typeof window !== "undefined" &&
-    "clipboard" in navigator &&
-    "write" in navigator.clipboard &&
-    typeof window.ClipboardItem !== "undefined";
 
   const supportsSystemShare = () =>
     typeof window !== "undefined" && "share" in navigator;
@@ -214,6 +231,13 @@ export function ChatShareModal(props: ChatShareModalProps) {
     showToast({ kind: "success", text: props.strings.save_image_hint });
   };
 
+  const showPreview = async () => {
+    const blob = await renderPngBlob();
+    revokePreviewUrl();
+    setPreviewUrl(URL.createObjectURL(blob));
+    setStep("preview");
+  };
+
   const withBusy = async (fn: () => Promise<void>) => {
     if (busy()) return;
     setBusy(true);
@@ -241,7 +265,16 @@ export function ChatShareModal(props: ChatShareModalProps) {
     });
   };
 
-  const handleDownload = () =>
+  const handleGenerateImage = () =>
+    withBusy(async () => {
+      try {
+        await showPreview();
+      } catch (error) {
+        showExportError("download", error, props.strings.error_render);
+      }
+    });
+
+  const handleSaveImage = () =>
     withBusy(async () => {
       try {
         const blob = await renderPngBlob();
@@ -351,7 +384,11 @@ export function ChatShareModal(props: ChatShareModalProps) {
             <div class="pub-share-header">
               <div>
                 <div class="pub-share-title">{props.strings.title}</div>
-                <div class="pub-share-subtitle">{props.strings.subtitle}</div>
+                <div class="pub-share-subtitle">
+                  {step() === "preview"
+                    ? props.strings.preview_subtitle
+                    : props.strings.subtitle}
+                </div>
               </div>
               <button
                 type="button"
@@ -376,66 +413,86 @@ export function ChatShareModal(props: ChatShareModalProps) {
               </button>
             </div>
 
-            <div class="pub-share-body">
-              <div class="pub-share-list-head">
-                <span>
-                  {selectedMessages().length} / {props.messages.length}
-                </span>
+            <Show
+              when={step() === "preview"}
+              fallback={
+                <>
+                  <div class="pub-share-body">
+                    <div class="pub-share-list-head">
+                      <span>
+                        {selectedMessages().length} / {recentMessages().length}
+                      </span>
+                    </div>
+                    <ul class="pub-share-list" ref={listEl}>
+                      <For each={recentMessages()}>
+                        {(m) => (
+                          <li
+                            class="pub-share-item"
+                            data-selected={selected().has(m.id) ? "true" : undefined}
+                            data-role={m.role}
+                          >
+                            <label class="pub-share-item-label">
+                              <input
+                                type="checkbox"
+                                checked={selected().has(m.id)}
+                                onChange={() => toggle(m.id)}
+                              />
+                              <span class="pub-share-item-role">
+                                {m.role === "user"
+                                  ? props.strings.role_user
+                                  : props.strings.role_assistant}
+                              </span>
+                              <span class="pub-share-item-preview">
+                                {previewLabel(m)}
+                              </span>
+                            </label>
+                          </li>
+                        )}
+                      </For>
+                    </ul>
+                  </div>
+
+                  <div class="pub-share-actions pub-share-actions--single">
+                    <button
+                      type="button"
+                      class="pub-share-action pub-share-action--primary"
+                      disabled={!hasSelection() || busy()}
+                      onClick={handleGenerateImage}
+                    >
+                      <ActionIcon name="image" />
+                      <span>{props.strings.generate_image}</span>
+                    </button>
+                  </div>
+                </>
+              }
+            >
+              <div class="pub-share-preview-body">
+                <Show when={previewUrl()}>
+                  {(url) => (
+                    <div class="pub-share-preview-frame">
+                      <img src={url()} alt={props.strings.title} />
+                    </div>
+                  )}
+                </Show>
                 <button
                   type="button"
-                  class="pub-share-toggle-all"
-                  onClick={() => {
-                    if (allSelected()) {
-                      const seedId = props.messages[props.seedIndex]?.id;
-                      setSelected(seedId ? new Set([seedId]) : new Set<string>());
-                    } else {
-                      setSelected(new Set(props.messages.map((m) => m.id)));
-                    }
-                  }}
+                  class="pub-share-back"
+                  onClick={() => setStep("select")}
                 >
-                  {allSelected()
-                    ? props.strings.deselect_all
-                    : props.strings.select_all}
+                  {props.strings.back_to_select}
                 </button>
               </div>
-              <ul class="pub-share-list" ref={listEl}>
-                <For each={props.messages}>
-                  {(m) => (
-                    <li
-                      class="pub-share-item"
-                      data-selected={selected().has(m.id) ? "true" : undefined}
-                      data-role={m.role}
-                    >
-                      <label class="pub-share-item-label">
-                        <input
-                          type="checkbox"
-                          checked={selected().has(m.id)}
-                          onChange={() => toggle(m.id)}
-                        />
-                        <span class="pub-share-item-role">
-                          {m.role === "user"
-                            ? props.strings.role_user
-                            : props.strings.role_assistant}
-                        </span>
-                        <span class="pub-share-item-preview">{previewLabel(m)}</span>
-                      </label>
-                    </li>
-                  )}
-                </For>
-              </ul>
-            </div>
 
-            <div class="pub-share-actions">
-              <button
-                type="button"
-                class="pub-share-action"
-                disabled={!hasSelection() || busy()}
-                onClick={handleDownload}
-              >
-                <ActionIcon name="download" />
-                <span>{props.strings.download}</span>
-              </button>
-              <Show when={supportsClipboardImage()}>
+              <div class="pub-share-actions">
+                <button
+                  type="button"
+                  class="pub-share-action"
+                  disabled={!hasSelection() || busy()}
+                  onClick={handleSaveImage}
+                >
+                  <ActionIcon name="download" />
+                  <span>{props.strings.save_image}</span>
+                </button>
                 <button
                   type="button"
                   class="pub-share-action"
@@ -445,28 +502,28 @@ export function ChatShareModal(props: ChatShareModalProps) {
                   <ActionIcon name="image" />
                   <span>{props.strings.copy_image}</span>
                 </button>
-              </Show>
-              <button
-                type="button"
-                class="pub-share-action"
-                disabled={!hasSelection() || busy()}
-                onClick={handleCopyText}
-              >
-                <ActionIcon name="text" />
-                <span>{props.strings.copy_text}</span>
-              </button>
-              <Show when={supportsSystemShare()}>
                 <button
                   type="button"
                   class="pub-share-action"
                   disabled={!hasSelection() || busy()}
-                  onClick={handleSystemShare}
+                  onClick={handleCopyText}
                 >
-                  <ActionIcon name="share" />
-                  <span>{props.strings.share}</span>
+                  <ActionIcon name="text" />
+                  <span>{props.strings.copy_text}</span>
                 </button>
-              </Show>
-            </div>
+                <Show when={supportsSystemShare()}>
+                  <button
+                    type="button"
+                    class="pub-share-action"
+                    disabled={!hasSelection() || busy()}
+                    onClick={handleSystemShare}
+                  >
+                    <ActionIcon name="share" />
+                    <span>{props.strings.share_other_app}</span>
+                  </button>
+                </Show>
+              </div>
+            </Show>
 
             <Show when={busy()}>
               <div class="pub-share-busy">{props.strings.rendering}</div>
@@ -591,6 +648,42 @@ const MODAL_CSS = `
   }
   .pub-share-close:hover { background: #e2e8f0; color: #0f172a; }
   .pub-share-body { padding: 14px 22px 10px 22px; overflow-y: auto; flex: 1; min-height: 0; }
+  .pub-share-preview-body {
+    padding: 16px 22px 12px 22px;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+    background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+  }
+  .pub-share-preview-frame {
+    width: min(100%, 320px);
+    max-height: min(54vh, 560px);
+    margin: 0 auto;
+    border-radius: 16px;
+    overflow: auto;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 18px 50px rgba(15,23,42,0.16);
+  }
+  .pub-share-preview-frame img {
+    display: block;
+    width: 100%;
+    height: auto;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: default;
+  }
+  .pub-share-back {
+    display: block;
+    margin: 12px auto 0;
+    background: none;
+    border: 0;
+    color: #2563eb;
+    font-size: 12.5px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .pub-share-back:hover { text-decoration: underline; }
   .pub-share-list-head {
     display: flex; align-items: center; justify-content: space-between;
     font-size: 12.5px; color: #64748b;
@@ -634,6 +727,7 @@ const MODAL_CSS = `
     border-top: 1px solid #f1f5f9;
     background: #fafbfc;
   }
+  .pub-share-actions--single { grid-template-columns: 1fr; }
   .pub-share-action {
     display: inline-flex; align-items: center; justify-content: center;
     gap: 8px;
@@ -647,6 +741,15 @@ const MODAL_CSS = `
     transition: background 0.12s, border-color 0.12s, transform 0.06s;
   }
   .pub-share-action:hover:not(:disabled) { background: #f8fafc; border-color: #cbd5e1; }
+  .pub-share-action--primary {
+    background: #0f172a;
+    color: #fff;
+    border-color: #0f172a;
+  }
+  .pub-share-action--primary:hover:not(:disabled) {
+    background: #111827;
+    border-color: #111827;
+  }
   .pub-share-action:active:not(:disabled) { transform: scale(0.98); }
   .pub-share-action:disabled { opacity: 0.45; cursor: not-allowed; }
   .pub-share-busy {

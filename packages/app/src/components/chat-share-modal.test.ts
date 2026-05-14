@@ -4,9 +4,11 @@ import {
   ShareRenderError,
   canSharePngFile,
   canvasToPngBlob,
+  defaultShareMessageId,
   isLikelyIOSPlatform,
   isShareAbortError,
   isShareRenderError,
+  recentShareMessages,
 } from "./chat-share-export";
 
 async function expectCanvasEncodingError(
@@ -87,5 +89,26 @@ describe("chat share export errors", () => {
         file,
       ),
     ).toBe(false);
+  });
+
+  test("limits the picker to the latest four messages and defaults to the latest", () => {
+    const messages = [
+      { id: "m1" },
+      { id: "m2" },
+      { id: "m3" },
+      { id: "m4" },
+      { id: "m5" },
+    ];
+
+    const recent = recentShareMessages(messages, 4);
+
+    expect(recent.map((message) => message.id)).toEqual([
+      "m2",
+      "m3",
+      "m4",
+      "m5",
+    ]);
+    expect(defaultShareMessageId(recent)).toBe("m5");
+    expect(defaultShareMessageId([])).toBeNull();
   });
 });
