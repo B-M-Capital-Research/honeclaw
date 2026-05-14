@@ -1,6 +1,6 @@
 # Hone-Financial Technical Specification
 
-Last updated: 2026-05-11
+Last updated: 2026-05-15
 Status: Aligned with the current implementation
 
 ## 1. Document Purpose
@@ -21,9 +21,9 @@ Hone-Financial is a local-first AI research assistant. The current codebase has 
 
 Current capabilities:
 
-- Multiple entrypoints: Web console, CLI, iMessage, Discord, and Feishu
-- Multiple agent execution modes: `function_calling`, `gemini_cli`, and `codex_cli`
-- Local JSON persistence for sessions, holdings, scheduled tasks, drafts, and generated files
+- Multiple entrypoints: Web console, public Web API, CLI, iMessage, Discord, Feishu, Telegram, and Desktop
+- Multiple agent execution modes: `hone_cloud`, `function_calling`, `gemini_cli`, `codex_cli`, `codex_acp`, `opencode_acp`, and `multi-agent`; `gemini_acp` remains deserializable legacy config but is rejected at runtime
+- Local JSON file storage plus SQLite-backed session indexes/runtime reads, cron run history, Web auth sessions, and LLM audit records
 - Multi-channel actor isolation by `channel + user_id + channel_scope`
 - A Claude Code-style skill system that discloses compact skill listings first, then injects the full `SKILL.md` only when a skill is invoked
 - Skills can optionally declare a default `script` entrypoint that `skill_tool` may execute explicitly inside the skill directory
@@ -32,8 +32,8 @@ Current capabilities:
 
 Current boundaries to keep in mind:
 
-- The Telegram binary and configuration already exist, but the message-delivery path is still a placeholder and should not be treated as a fully usable channel
-- The `hone-tools` crate still contains implementations such as `data_fetch`, `web_search`, and `portfolio`, but the default registry currently focuses on the skill runtime (`skill_tool`, `discover_skills`, compatibility `load_skill`), `cron_job`, and the admin-only `restart_hone`
+- Some older runner crates under `agents/` remain for compatibility, while the active runner factory lives in `crates/hone-channels/src/runners.rs`
+- The `hone-tools` registry includes skills, cron jobs, portfolio, data fetch, web search, notification preferences, missed events, local file tools, deep research, and admin-only `restart_hone`
 
 ## 3. Technology Stack
 
@@ -56,8 +56,8 @@ Frontend:
 
 Integrations and external capabilities:
 
-- OpenRouter / Kimi model calls
-- Local Gemini CLI / Codex CLI agent adapters
+- OpenRouter / Kimi / OpenAI-compatible model calls
+- Local Gemini CLI, Codex CLI, Codex ACP, OpenCode ACP, Hone Cloud, and multi-agent adapters
 - Tavily search
 - Nano Banana image generation
 - Feishu Go facade, connected from the Rust business process through local RPC
@@ -74,7 +74,9 @@ Hone-Financial/
 │   ├── hone-tools
 │   ├── hone-integrations
 │   ├── hone-scheduler
-│   └── hone-channels
+│   ├── hone-channels
+│   ├── hone-event-engine
+│   └── hone-web-api
 ├── agents/
 │   ├── function_calling
 │   ├── gemini_cli
@@ -111,8 +113,7 @@ Hone-Financial/
 #### `crates/hone-tools`
 
 - Defines the `Tool` trait and `ToolRegistry`
-- Implements `skill_runtime`, `skill_tool`, `discover_skills`, compatibility `load_skill`, `cron_job`, and `restart_hone`
-- Keeps `data_fetch`, `web_search`, and `portfolio` implementations around for future wiring and the skill system
+- Implements the skill runtime, cron jobs, portfolio, data fetch, web search, notification preferences, missed events, actor-local file tools, deep research, and admin-only restart tools
 
 #### `crates/hone-integrations`
 
@@ -130,14 +131,12 @@ Hone-Financial/
 
 #### `agents/*`
 
-- `function_calling`: LLM + tool loop
-- `gemini_cli`: wrapper around the local `gemini` CLI
-- `codex_cli`: wrapper around the local `codex exec`
+- Legacy reasoning-agent crates for `function_calling`, `gemini_cli`, and `codex_cli`; current channel runtime creates runners through `crates/hone-channels/src/runners.rs`
 
 #### `memory/`
 
-- JSON file storage layer
-- Stores sessions, portfolios, and cron jobs
+- JSON and SQLite storage layer
+- Stores sessions, portfolios, cron jobs, web auth, delivery logs, and related runtime indexes
 
 #### `bins/*`
 
@@ -162,16 +161,16 @@ Channel entrypoint / Web API
   -> HoneBotCore
   -> ActorIdentity / SessionStorage
   -> ToolRegistry
-  -> Agent(function_calling | gemini_cli | codex_cli)
+  -> AgentRunner(hone_cloud | function_calling | gemini_cli | codex_cli | codex_acp | opencode_acp | multi-agent)
   -> memory / integrations / scheduler
   -> Channel reply or Web response
 ```
 
 ### 5.2 `HoneBotCore`
 
-`crates/hone-channels/src/core.rs` is the current backend assembly point. It is responsible for:
+`crates/hone-channels/src/core/mod.rs` plus its sibling modules are the current backend assembly point. They are responsible for:
 
-- Loading configuration from `config.yaml`
+- Loading the resolved `HoneConfig`; CLI/Desktop settings mutate canonical `config.yaml`, while child runtime processes usually consume the generated `data/runtime/effective-config.yaml`
 - Initializing `SessionStorage`
 - Creating the LLM provider
 - Creating the default `ToolRegistry`
@@ -210,7 +209,7 @@ This rule is already applied to:
 
 #### `function_calling`
 
-- The default provider
+- Built-in OpenAI-compatible tool-calling runner
 - Runs multiple LLM turns
 - Passes the tool schema to the LLM
 - Executes tools in order when the model returns `tool_calls`
@@ -228,6 +227,28 @@ This rule is already applied to:
 - Writes the system prompt, tool schema, and recent conversation to stdin
 - Recovers the final response from a temporary output file
 
+#### `codex_acp`
+
+- Uses `codex-acp` over stdio / JSON-RPC
+- Requires the validated `codex` / `codex-acp` version floor before starting a turn
+- Creates a fresh ACP session per Hone turn and seeds it from Hone's restored context
+
+#### `opencode_acp`
+
+- Uses `opencode acp` over stdio / JSON-RPC
+- Inherits the user's local OpenCode provider/model/auth config when `agent.opencode.*` overrides are empty
+- Applies explicit `agent.opencode.model` / `variant` through ACP `session/set_model` when configured
+
+#### `hone_cloud`
+
+- Calls the configured Hone Cloud OpenAI-compatible chat endpoint
+- Uses `agent.hone_cloud.base_url`, `api_key`, and `model`
+
+#### `multi-agent`
+
+- Runs a direct search stage from `agent.multi_agent.search`
+- Runs the answer stage through OpenCode ACP using `agent.multi_agent.answer` plus the OpenRouter key pool fallback when Hone manages that route
+
 ### 5.5 Tool Layer
 
 Default registered tools:
@@ -236,18 +257,18 @@ Default registered tools:
 - `discover_skills`
 - `load_skill` (compatibility shim)
 - `cron_job`
-- `restart_hone` (admin only)
-
-Tools that already exist but are not registered by default in `HoneBotCore`:
-
+- `portfolio`
+- `notification_prefs`
+- `missed_events`
+- Actor-local `list_files`, `search_files`, and `read_file` tools when an actor is available
 - `data_fetch`
 - `web_search`
-- `portfolio`
+- `deep_research`
+- `restart_hone` (admin only)
 
 That means:
 
 - `skills/` frontmatter can declare these tool names
-- Without extra wiring, the agent runtime may not actually be able to call them
 - When writing skills or extending the default tool set, update `HoneBotCore::create_tool_registry` as well
 
 ### 5.6 Skill System
@@ -326,7 +347,7 @@ Precedence is:
 
 ### 6.1 Storage Strategy
 
-The backend currently uses local JSON files by default and does not depend on a database service.
+The backend remains local-first and does not depend on an external database service. JSON files are still the default session runtime read path, while SQLite-backed session indexes/runtime reads are available through `storage.session_sqlite_db_path` and `storage.session_runtime_backend`; cron run history, Web auth sessions, and LLM audit records also use local SQLite tables.
 
 Main directories come from `config.storage.*`:
 
@@ -343,7 +364,7 @@ Main directories come from `config.storage.*`:
 
 `memory/src/session.rs`
 
-- One session corresponds to one JSON file
+- In `json` mode, one session corresponds to one JSON file; in `sqlite` mode, `storage.session_sqlite_db_path` is the runtime read source while JSON can remain a rollback mirror
 - The session structure contains `actor`, the message list, metadata, and summary
 - The Web UI, CLI, and every channel reuse the same persistence layer
 
@@ -363,7 +384,7 @@ Session compression rules:
 
 ### 6.4 Cron Job
 
-`memory/src/cron_job.rs`
+`memory/src/cron_job/mod.rs`
 
 - File names are isolated by actor: `cron_jobs_<actor_key>.json`
 - Each actor can have up to 20 enabled jobs
@@ -451,9 +472,8 @@ Entrypoint: `bins/hone-telegram/src/main.rs`
 
 Current status:
 
-- The config structure, scheduler integration, and startup scaffolding already exist
-- Real message receiving and reply handling are still placeholder-mode
-- The docs and README should not describe it as a mature capability on par with Discord or iMessage
+- Uses teloxide polling for real message receiving
+- Supports direct triggers, group mentions/replies, placeholder/progress updates, HTML-safe response splitting, local image/file segments, and scheduler delivery
 - The Rust side is organized into sibling modules (`handler.rs`, `listener.rs`, `markdown_v2.rs`, `types.rs`) behind the `main.rs` façade
 
 ## 8. Web Console Frontend
@@ -484,10 +504,16 @@ Web and backend integration:
 
 ## 9. Configuration System
 
-Config sources:
+Long-lived config sources:
 
-1. `config.yaml`
+1. Canonical `config.yaml`
 2. `config.example.yaml` as the sample
+
+Runtime materialization:
+
+- CLI/Desktop settings mutate canonical `config.yaml`
+- Startup generates `data/runtime/effective-config.yaml` for backend/channel child processes
+- `HONE_CONFIG_PATH` points runtime children at the effective snapshot, while installed wrappers use `HONE_USER_CONFIG_PATH` for canonical user config
 
 Key config sections:
 
@@ -535,7 +561,7 @@ Current consumption:
 
 - The Web console converts events into SSE pushes
 - Other channels handle them in their own entrypoints
-- Telegram is still a placeholder-log mode
+- Telegram consumes scheduled delivery through its channel entrypoint
 
 ## 11. Testing and Delivery Contract
 
@@ -568,8 +594,7 @@ Testing organization follows `AGENTS.md`:
 - `docs/technical-spec.md` has been refreshed from the historical Python document to the current implementation, but it still needs to evolve with the code
 - Some skills in `skills/` still mention older CRUD-style `skill_tool` or `load_skill` guidance and need continued migration to the execution-style runtime contract
 - Skill fields such as `hooks`, `allowed-tools`, `model`, and `effort` are now parsed and exposed, but strict runner-side enforcement is not fully implemented yet
-- Telegram still needs a real bot integration
-- Persistence is still local JSON-first; if a database is introduced later, `ActorIdentity` must remain the isolation source of truth
+- Persistence is still local-first; any further database-backed paths must keep `ActorIdentity` as the isolation source of truth
 
 ## 13. Key Entrypoint Index
 
@@ -580,9 +605,9 @@ Testing organization follows `AGENTS.md`:
 - Discord: `bins/hone-discord/src/main.rs`
 - Feishu: `bins/hone-feishu/src/main.rs` plus sibling modules
 - Telegram: `bins/hone-telegram/src/main.rs` plus sibling modules
-- Core assembly: `crates/hone-channels/src/core.rs`
+- Core assembly: `crates/hone-channels/src/core/mod.rs`
 - Config structure: `crates/hone-core/src/config/mod.rs` and `crates/hone-core/src/config/{agent,channels,event_engine,server}.rs`
 - Actor isolation: `crates/hone-core/src/actor.rs`
 - Session storage: `memory/src/session.rs`
-- Scheduled task storage: `memory/src/cron_job.rs`
+- Scheduled task storage: `memory/src/cron_job/mod.rs`
 - Portfolio storage: `memory/src/portfolio.rs`

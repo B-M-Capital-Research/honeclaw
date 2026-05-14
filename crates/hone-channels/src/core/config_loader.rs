@@ -1,8 +1,12 @@
 //! 进程启动时从磁盘加载 `HoneConfig` 的入口。
 //!
-//! 被所有 binary (`hone-cli` / `hone-feishu` / `hone-telegram` / …) 共用,
+//! 被通道/后端 runtime 进程 (`hone-console-page` / `hone-feishu` /
+//! `hone-telegram` / …) 共用。CLI/Desktop 设置面负责读写 canonical
+//! `config.yaml`; 启动时再生成 `data/runtime/effective-config.yaml` 并通过
+//! `HONE_CONFIG_PATH` 注入这些子进程。
+//!
 //! 解析优先级:
-//! 1. `--config <path>` / 环境变量 `HONE_CONFIG_PATH`(走 `runtime_config_path`)
+//! 1. 环境变量 `HONE_CONFIG_PATH`(通常是 generated effective config)
 //! 2. 退化到 cwd 下的 `config.yaml`
 //!
 //! 加载后会应用两条 runtime override:`HONE_DATA_DIR` 和 `HONE_SKILLS_DIR`,

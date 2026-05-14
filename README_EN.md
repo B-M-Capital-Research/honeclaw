@@ -126,7 +126,7 @@ cargo run -p hone-cli -- start --build
 Source checkouts use the local CLI build path. Release and Homebrew installs use the packaged `hone-cli start` command. The first source build can take about **10 minutes** depending on network and CPU.
 
 1. **Build**: Compiles `hone-cli`, `hone-console-page`, `hone-mcp`, and enabled channel runtime binaries into the local Cargo target dir.
-2. **Config**: Loads `config.yaml` and generates `data/runtime/effective-config.yaml`.
+2. **Config**: Loads canonical `config.yaml` and generates `data/runtime/effective-config.yaml` for backend and channel processes.
 3. **Bring-up**: Starts the backend and enabled channel listeners in the foreground.
 
 ### Choose the Agent’s inference backend
@@ -138,7 +138,7 @@ hone-cli onboard
 hone-cli configure --section agent --section channels --section providers
 ```
 
-Pick either a local CLI runner such as Codex, OpenCode, or Gemini, or an OpenAI-compatible provider such as OpenRouter.
+Pick Hone Cloud, a local runner such as Codex ACP or OpenCode ACP, or a legacy local CLI runner such as Gemini / Codex CLI. OpenRouter credentials are configured as provider keys for the routes that need them.
 
 The next section’s screenshots show the full **model and channel** setup.
 

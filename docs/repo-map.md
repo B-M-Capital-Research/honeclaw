@@ -1,6 +1,6 @@
 # Repo Map
 
-Last updated: 2026-05-14
+Last updated: 2026-05-15
 
 ## Purpose
 
@@ -42,7 +42,7 @@ Last updated: 2026-05-14
   - `memory/src/web_auth.rs` keeps web invite/whitelist users, hashed per-user Hone Cloud API keys, and public-login cookie sessions in the shared SQLite DB; one active phone number maps to one stable `channel=web` actor, with legacy invite codes retained for admin compatibility
   - `memory/src/session.rs` currently stores versioned session JSON (v3) and explicitly persists `summary`, legacy `runtime.prompt.frozen_time_beijing`, recoverable `tool` result messages, and the session ownership field `session_identity`; current prompt assembly no longer uses that legacy frozen timestamp as the displayed "当前时间". When a SQLite index is configured, including `storage.session_runtime_backend=sqlite` even with shadow writes disabled, `SessionStorage` performs a best-effort startup JSON -> SQLite backfill so old disabled-shadow windows do not leave `sessions.sqlite3` permanently stale.
   - `memory/src/session_sqlite.rs` hosts the SQLite-backed session persistence used by both shadow backfill and runtime reads/writes when `storage.session_runtime_backend=sqlite`
-  - `memory/src/cron_job.rs` keeps cron definitions in per-actor JSON files, mirrors cron execution history into the shared SQLite DB so task detail can query per-run records, and exposes a typed channel-target directory aggregated from cron definitions plus recent execution history
+  - `memory/src/cron_job/mod.rs` keeps cron definitions in per-actor JSON files, mirrors cron execution history into the shared SQLite DB so task detail can query per-run records, and exposes a typed channel-target directory aggregated from cron definitions plus recent execution history
   - `memory/src/quota.rs` stores `success_count` / `in_flight` in JSON files by `ActorIdentity` and by Beijing date
 - `bins/`
   - `hone-console-page`: Web console backend, static asset hosting, and API
@@ -64,7 +64,7 @@ Last updated: 2026-05-14
   - `SKILL.md` frontmatter now also supports an opt-in `script` entrypoint that `skill_tool(..., execute_script=true)` can run from the skill directory
   - `skills/stock_research/` is now the canonical equity-research skill surface: it covers single-company research, valuation framing, and criteria-based screening through one prompt plus compatibility aliases such as `valuation`, `OWGZ`, `stock screener`, and `OWXG`
   - `skills/scheduled_task/` now also owns portfolio event reminder linkage; the former standalone `major_alert` prompt has been folded into this skill
-  - `skills/chart_visualization/` 是内置图表 skill：`SKILL.md` 定义 chart spec 与 `file:///abs/path.png` 输出契约，`scripts/render_chart.py` 用 Python `matplotlib` 把 PNG 写进 Hone runtime 的 `gen_images` 目录
+  - `skills/chart_visualization/` 是内置图表 skill：`SKILL.md` 定义 chart spec 与 `file:///abs/path.png` 输出契约，`skills/chart_visualization/scripts/render_chart.py` 用 Python `matplotlib` 把 PNG 写进 Hone runtime 的 `gen_images` 目录
   - `skills/company_portrait/` now follows a lighter Codex-style pattern: keep the trigger/workflow contract in `SKILL.md`, and move the detailed portrait framework / event template / research-trail guidance into `references/`
 - `data/runtime/skill_registry.json`
   - Global skill enabled/disabled override layer for registered skills
@@ -82,7 +82,7 @@ Last updated: 2026-05-14
   - `hone-cli` now has explicit subcommands for `chat`, `config`, `configure`, `models`, `channels`, `status`, `doctor`, `start`, and `web`; `web admin-ui` / `web user-ui` start or locate the admin and user Web surfaces; `channels targets [--json]` inspects the typed cron-backed channel-target directory; no-subcommand mode still drops into the local chat REPL
 - Channel runtime export: `crates/hone-channels/src/lib.rs`
 - Shared channel bootstrap: `crates/hone-channels/src/bootstrap.rs`
-- `AgentSession` abstraction: `crates/hone-channels/src/agent_session.rs`
+- `AgentSession` abstraction: `crates/hone-channels/src/agent_session/mod.rs`
 - Prompt/skill turn construction: `crates/hone-channels/src/turn_builder.rs`
   - Owns turn-0 skill listing disclosure, related-skill hints, slash-skill expansion, and invoked-skill runtime input composition
 - Assistant response finalization: `crates/hone-channels/src/response_finalizer.rs`
@@ -197,7 +197,7 @@ Last updated: 2026-05-14
   - If the Web UI needs to show it, also update `bins/hone-console-page/src/main.rs` and the frontend pages
 - Adjusting the skill runtime:
   - Start with `crates/hone-tools/src/skill_runtime.rs`, `crates/hone-tools/src/{skill_registry.rs,skill_tool.rs}`
-  - Then check `crates/hone-channels/src/{agent_session.rs,core.rs,prompt.rs,mcp_bridge.rs,runtime.rs}`
+  - Then check `crates/hone-channels/src/agent_session/mod.rs`, `crates/hone-channels/src/core/mod.rs`, `crates/hone-channels/src/prompt.rs`, `crates/hone-channels/src/mcp_bridge.rs`, and `crates/hone-channels/src/runtime.rs`
   - If the Web UI is affected, also check `crates/hone-web-api/src/routes/skills.rs` and `packages/app/src/{context/skills.tsx,components/skill-*.tsx,lib/skill-command.ts}`
 - Adding a Web page or dashboard:
   - Change `packages/app/src/pages/*`
@@ -220,19 +220,19 @@ Last updated: 2026-05-14
   - Then check the Web API, channel entrypoints, and frontend pages that depend on it
 - Adjusting company portraits:
   - Start with `memory/src/company_profile/{mod,types,markdown,storage,transfer}.rs`
-  - Then check `crates/hone-channels/src/{sandbox.rs,prompt.rs,core.rs}` and `crates/hone-web-api/src/routes/company_profiles.rs`
+  - Then check `crates/hone-channels/src/sandbox.rs`, `crates/hone-channels/src/prompt.rs`, `crates/hone-channels/src/core/mod.rs`, and `crates/hone-web-api/src/routes/company_profiles.rs`
   - If the Web UI is affected, also check `packages/app/src/{context/company-profiles.tsx,components/company-profile-*.tsx,pages/memory.tsx}`
 - Adjusting identity quotas or limits:
-  - Start with `memory/src/quota.rs` and `memory/src/cron_job.rs`
-  - Then check `crates/hone-channels/src/agent_session.rs` and `crates/hone-channels/src/scheduler.rs`
+  - Start with `memory/src/quota.rs` and `memory/src/cron_job/mod.rs`
+  - Then check `crates/hone-channels/src/agent_session/mod.rs` and `crates/hone-channels/src/scheduler.rs`
   - If the Web UI is affected, also check `crates/hone-web-api/src/routes/chat.rs`, `crates/hone-web-api/src/routes/cron.rs`, and `packages/app/src/lib/api.ts`
 - Adjusting the agent execution path:
-  - Start with `crates/hone-channels/src/agent_session.rs`
-  - Then check `crates/hone-channels/src/prompt.rs`, `crates/hone-channels/src/core.rs`, and `crates/hone-channels/src/sandbox.rs`
+  - Start with `crates/hone-channels/src/agent_session/mod.rs`
+  - Then check `crates/hone-channels/src/prompt.rs`, `crates/hone-channels/src/core/mod.rs`, and `crates/hone-channels/src/sandbox.rs`
   - If the Web UI is affected, also check `crates/hone-web-api/src/routes/chat.rs` and `packages/app/src/context/sessions.tsx`
 - Adjusting LLM audit:
   - Start with `memory/src/llm_audit.rs`
-  - Then check `crates/hone-channels/src/core.rs` and `agents/*`
+  - Then check `crates/hone-channels/src/core/mod.rs`, `crates/hone-channels/src/runners/*`, and legacy `agents/*` if that path is still in use
 
 ## Fragile Areas / Notes
 
