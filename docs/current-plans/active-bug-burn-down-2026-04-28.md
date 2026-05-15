@@ -3,7 +3,7 @@
 - title: Active Bug Burn-down 2026-04-28
 - status: in_progress
 - created_at: 2026-04-28
-- updated_at: 2026-05-15 08:07 CST
+- updated_at: 2026-05-16 03:05 CST
 - owner: Codex
 - related_files:
   - `docs/bugs/README.md`
@@ -85,6 +85,7 @@ Clear the current active bug queue as far as software changes can responsibly do
 - 2026-05-11 03:06: Re-closed the reopened P3 watchlist hit-zone degradation after the latest recurrence showed that “current 25-stock watchlist” task text can omit explicit tickers. `recover_watchlist_hit_zone_context` no longer returns early when the task prompt has no ticker; in that shape it scans the current compact summary / session summary for watchlist table and inline hit-zone entries, restores every valid ticker -> zone mapping, and still rejects `待确认` or non-dollar values. Added `scheduled_watchlist_prompt_recovers_all_hit_zones_when_task_omits_tickers`; active bug queue is now empty again. No GitHub Issue is linked to this bug.
 - 2026-05-15 08:07: Closed the active P1 Daily macOS release app API lifecycle bug by adding `HONE_DESKTOP_SMOKE_SERVER=1` to `hone-desktop`. The packaged desktop executable can now run a headless Web/API smoke server on fixed ports, independent of Tauri window lifecycle, and stays alive until Ctrl-C. Local smoke verified `/api/meta`, the public user page, and disabled channel status on `18077/18088`; Issue #42 is linked in the bug doc.
 - 2026-05-15 08:07: Re-closed the active P2 oil scheduler recurrence based on current code and a new exact regression for the latest contract-month sample. The existing ordinary scheduler commodity guard already rewrites unsafe `Brent Jul 2026 / WTI Jun 2026` approximate prices and tech-stock tail-risk causality into a safe notice; the latest `detail_json.scheduler=null` evidence is treated as old/non-production runtime state, not as a current HEAD failure. Active bug queue is now empty.
+- 2026-05-16 03:05: Re-closed the reopened P1 Feishu direct empty/invalid answer bug after the latest 2026-05-15 21:48 / 22:07 samples showed two remaining `planning_sentence_suppressed` gaps. `response_finalizer` now recovers successful `portfolio` side effects into user-visible confirmations, and `is_transitional_planning_sentence(...)` keeps “把图发给我 / 上传截图” style attachment guidance instead of collapsing it into the generic fallback. Added focused `hone-channels` regressions plus `cargo check`; active bug queue remains empty.
 
 ## Validation
 

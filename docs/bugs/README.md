@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-16 03:04 CST
+最后更新：2026-05-16 03:05 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -21,14 +21,10 @@
 - Later / 待复现：9
 - 已修复 / 已关闭：105
 - 历史分析 / 部分止血：5
+- 本轮 03:05 CST 已修复 Feishu 直聊空/无效回复遮蔽缺陷：`response_finalizer` 现在会从成功 `portfolio` 工具结果恢复用户可见确认，`is_transitional_planning_sentence(...)` 也保留“把图发给我 / 上传截图”类下一步指引，不再把建仓补图与持仓跟踪短答压成通用失败。验证 `cargo test -p hone-channels finalize_agent_response_ -- --nocapture`、`cargo test -p hone-channels transitional_ -- --nocapture`、`cargo check -p hone-channels --tests`、`rustfmt --edition 2024 --check crates/hone-channels/src/response_finalizer.rs crates/hone-channels/src/runtime.rs crates/hone-channels/src/agent_session/tests.rs` 通过；关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29)。
+- 本轮 00:06 CST 已修复 Web scheduler 手机系统通知能力边界缺陷：Web 且允许 cron 的对话提示新增“只保证写入 Hone 会话 / SSE，不支持 Web Push / 手机系统通知”的约束，scheduler 台账 detail 也显式写入 `system_push_supported=false` / `system_push_sent=false`，避免把 `delivered=1` 误读为手机 push 已送达。验证 `cargo test -p hone-web-api web_scheduler_ -- --nocapture`、`cargo check -p hone-web-api --tests` 通过；无关联 GitHub Issue。
 - 本轮 03:04 CST 继续观察到当前机器旧运行态 heartbeat `mimo-v2.5-pro` 批量失败：23:30-03:00 CST 新增 81 条 `reasoning_content must be passed back` / `Param Incorrect` heartbeat 失败，覆盖 11 个 job；同窗 `cron_job_runs` 仍新增 88 条 `running + pending` started 残留。当前 `hone-console-page` / `hone-feishu` 进程仍启动于 2026-05-13，早于 2026-05-15 04:05 的当前 HEAD 修复复核，因此仅追加运行态证据，不把 `scheduler_heartbeat_mimo_param_incorrect_batch_failures.md` 或 `feishu_scheduler_running_rows_never_finalized.md` 从 `Fixed` 回退。
 - 本轮 03:04 CST 未发现新的独立 P1：最近四小时 Feishu / Web direct 均有 assistant 收口；assistant final 未命中 `/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`session/update`、原始飞书标签或 compact marker 可见污染。Web “股票还是基金”上下文澄清已在下一轮直接纠正，按单次歧义处理，不新增 P3。
-- 本轮 00:06 CST 已修复 Feishu 直聊空/无效回复遮蔽的 `portfolio` 复发：`response_finalizer` 现在会从成功的 `portfolio add/update/remove/watch/unwatch` 工具结果恢复用户可见确认，例如 RDW 持仓成本记录成功后直接说明“已记录持仓”，不再被 `planning_sentence_suppressed` 替换成通用失败。验证 `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/response_finalizer.rs crates/hone-channels/src/agent_session/tests.rs`、`cargo test -p hone-channels finalize_agent_response -- --nocapture`、`cargo test -p hone-channels resolve_prompt_input_warns_web_cron_cannot_send_mobile_system_push -- --nocapture`、`cargo check -p hone-channels --tests` 通过；修复提交 `fbba5342`；关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29)。
-- 本轮 00:06 CST 已修复 Web scheduler 手机系统通知能力边界缺陷：Web 且允许 cron 的对话提示新增“只保证写入 Hone 会话 / SSE，不支持 Web Push / 手机系统通知”的约束，scheduler 台账 detail 也显式写入 `system_push_supported=false` / `system_push_sent=false`，避免把 `delivered=1` 误读为手机 push 已送达。验证 `cargo test -p hone-web-api web_scheduler_ -- --nocapture`、`cargo check -p hone-web-api --tests` 通过；修复提交 `fbba5342`；无关联 GitHub Issue。
-- 本轮 23:06 CST 继续确认 Feishu 直聊空/无效回复遮蔽缺陷活跃：21:48 CST 用户输入“我建仓了这只股票”，链路执行 `skill_tool` 后 final 被 `planning_sentence_suppressed` 替换成通用失败，并以 `success=true`、`reply.chars=35`、`segments.sent=1/1` 收口；22:07 CST 用户输入“我新建仓了一只股票 我直接发图给你”也被同样替换成通用失败。两条都是同一根因，不新建重复缺陷；关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29)，不重复创建。
-- 本轮 23:06 CST 未发现新的独立 P1：最近四小时 Feishu / Web direct 未见新的本机绝对路径、工具轨迹、原始标签或跨 session 数据外泄 final；heartbeat `mimo-v2.5-pro` 与 started-row 残留仍属于已知运行态证据，23:00 `核心观察股池晚间快报` 仍在 `running + pending` 且距离触发时间过短，本轮不作为新的卡死结论。
-- 本轮 19:03 CST 重新打开 Feishu 直聊空/无效回复遮蔽缺陷：17:37 CST 用户要求继续跟踪 RDW，链路执行 `skill_tool`、`data_fetch` 与两次 `portfolio` 工具后，final 被 `planning_sentence_suppressed` 替换成“这次没有成功产出完整回复...”，但整轮仍按 `success=true`、`reply.chars=35`、`segments.sent=1/1` 收口；这不是单纯回答质量问题，而是工具链/潜在业务副作用后的用户可见确认被通用失败遮蔽。关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29)，不重复创建。
-- 本轮 19:03 CST 未发现新的独立 P1：heartbeat `mimo-v2.5-pro` 与 started-row 残留仍是当前机器旧运行态/已知缺陷证据；Feishu direct 其它最近会话均有 assistant 收口，未见新的绝对路径、工具轨迹或原始标签外泄。17:37 样本归并到既有 Feishu 直聊空/无效回复缺陷。
 - 本轮 12:10 CST 已修复 Feishu event-engine digest `open_id cross app` 复发：event-engine Feishu sink 现在会从 cron 任务 channel-target 目录为 direct actor 建立无歧义联系人映射，优先用 email/mobile 重新解析 current-app open_id，再发送 digest 卡片；没有唯一联系人时不猜测映射。验证 `rustfmt --edition 2024 --config skip_children=true --check crates/hone-event-engine/src/sinks/feishu.rs crates/hone-web-api/src/lib.rs`、`cargo test -p hone-event-engine feishu --lib -- --nocapture`、`cargo test -p hone-web-api feishu_direct_actor_targets --lib -- --nocapture`、`cargo check -p hone-event-engine -p hone-web-api --tests` 通过；关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)。
 - 本轮 15:04 CST 新增 Web scheduler 手机系统通知缺陷：12:35 / 12:47 CST 两条 Web 测试通知均 `completed + sent + delivered=1`，但 `detail_json.console_event_sent=false`，用户连续反馈手机没收到；前端只监听 SSE `scheduled_message`，未见 Web Push / Notification API 能力，assistant 前序回答却引导用户按手机系统通知排查。定级 P2 / New；非 P1，不创建 GitHub issue。
 - 本轮 15:04 CST 继续观察到 heartbeat `mimo-v2.5-pro` 旧运行态批量 `Param Incorrect` 与 started-row 残留，但当前 HEAD 已有对应修复和重启后恢复记录；本轮不把相关 fixed/closed 缺陷回退。Feishu direct 最近四小时都有 assistant 收口，未见新的工具轨迹、绝对路径或半成品污染 final。
@@ -120,7 +116,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| 暂无 | - | - | 本轮 2026-05-16 00:06 CST 已清空当前活跃队列；后续若复发再重新进入活跃待修复 | - |
+| 暂无 | - | - | 本轮 2026-05-16 03:05 CST 复核后活跃队列仍为空；后续若复发再重新进入活跃待修复 | - |
 
 ## Later / 待复现
 
@@ -140,7 +136,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixed | 2026-05-16 00:06 `response_finalizer` 已从成功 `portfolio` 写操作恢复用户可见确认，覆盖 RDW 持仓/跟踪复发；修复提交 `fbba5342`；关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29) | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
+| Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixed | 2026-05-16 03:05 `response_finalizer` 新增成功 `portfolio` 副作用确认恢复，`is_transitional_planning_sentence(...)` 保留“把图发给我 / 上传截图”类用户下一步指引；`cargo test -p hone-channels finalize_agent_response_ -- --nocapture`、`cargo test -p hone-channels transitional_ -- --nocapture`、`cargo check -p hone-channels --tests` 通过。关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29) | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Web scheduler 让用户以为会发送手机系统通知，但实际只写入 Web 会话 / SSE 事件 | P2 | Fixed | 2026-05-16 00:06 Web cron 提示新增手机系统通知能力边界，Web scheduler detail 区分会话/SSE 与 `system_push_supported=false`；修复提交 `fbba5342`；无关联 GitHub Issue | [web_scheduler_mobile_push_not_delivered.md](./web_scheduler_mobile_push_not_delivered.md) |
 | Feishu 直达定时任务已生成最终播报，但 event-engine / scheduler 发送阶段再次稳定返回 `open_id cross app` | P1 | Fixed | 2026-05-15 event-engine Feishu sink 已接入 cron channel-target 目录，为 direct actor 使用无歧义 email/mobile 重新解析 current-app open_id；关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
 | Daily macOS build release app 启动后 Web/API 生命周期不可验证 | P1 | Fixed | 2026-05-15 08:07 新增 `HONE_DESKTOP_SMOKE_SERVER=1`，打包桌面可在无窗口 smoke 模式下保持 Web/API 进程，`/api/meta`、用户端页面和 disabled channels 检查通过；关联 Issue [#42](https://github.com/B-M-Capital-Research/honeclaw/issues/42) | [daily_macos_build_release_app_api_not_persistent.md](./daily_macos_build_release_app_api_not_persistent.md) |

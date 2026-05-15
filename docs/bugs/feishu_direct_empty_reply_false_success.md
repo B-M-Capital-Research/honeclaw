@@ -17,9 +17,9 @@
     - 结论：这是同一根因的持续复发，不新建重复文档。当前坏态不只遮蔽已发生的 `cron_job` / `portfolio` 副作用，也会把本应澄清“请上传图片 / 请提供标的”的短答吞掉并改发通用失败。
     - 影响：用户正在表达新增持仓并准备发图，系统没有给出可执行的下一步确认或附件接收说明，导致 Feishu 直聊主链路继续无法承接持仓录入 / 图片后续任务。该问题仍影响功能链路，维持 `P1 / New`。
   - 当前状态结论：
-    - 2026-05-15 23:06 CST：状态维持 `New`。
+    - 2026-05-16 03:05 CST：状态更新为 `Fixed`。
     - 关联 GitHub Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29) 已存在，本轮不重复创建。
-    - 新修复除覆盖非 `cron_job` 工具副作用外，还需要在无工具调用但 Answer 只产出短计划/澄清句时，保留可用户消费的澄清或下一步指引，而不是统一替换成“没有成功产出完整回复”。
+    - 本轮修复已同时覆盖两条剩余入口：成功 `portfolio` 工具副作用恢复确认，以及“把图发给我 / 上传截图”类用户下一步指引保留，不再统一替换成“没有成功产出完整回复”。
   - 2026-05-15 17:36-17:37 最新真实直聊样本：
     - `session_id=Actor_feishu__direct__ou_5f9f2cd3505aab8fed0a6ffd582df285b1`
     - `2026-05-15T17:36:53.261646+08:00` 用户输入：`我持有RDW，成本价12，继续帮我跟踪`
@@ -175,6 +175,22 @@
 - 最新样本说明另一条同根因分支也仍然活跃：`response_finalizer` 会把某些真实用户态澄清/计划句直接判成 `transitional planning sentence`，随后走与空回复相同的 fallback 收口。
 - 多代理封装层把空回复继续当作 `answer.done success=true`，导致上层消息流无法区分“正常完成”和“零字节完成”。
 - Feishu 发送侧只看分段流程是否跑完，没有拦截空正文，因此把空 assistant 消息照常投递。
+
+## 修复进展（2026-05-16 03:05 CST）
+
+- 本轮继续补齐 `planning_sentence_suppressed` 的两条剩余复发入口：
+  - `response_finalizer` 现在会从成功 `portfolio` 工具结果恢复用户可见确认，覆盖 `add/update/remove/watch/unwatch` 五类写操作，不再把 RDW 持仓记录 / 跟踪建立这类已发生副作用遮蔽成通用失败。
+  - `is_transitional_planning_sentence(...)` 新增“发给我 / 发图给我 / 发截图给我 / 上传图片 / 上传截图”等用户可执行附件引导白名单，保留“你把持仓图片发给我，我再帮你整理建仓信息”这类短答，不再误杀成内部计划句。
+- 新增回归：
+  - `finalize_agent_response_recovers_portfolio_confirmation_from_tool_result`
+  - `transitional_image_upload_guidance_is_not_treated_as_planning_sentence`
+  - `finalize_agent_response_keeps_user_facing_image_upload_guidance`
+- 验证：
+  - `cargo test -p hone-channels finalize_agent_response_ -- --nocapture`
+  - `cargo test -p hone-channels transitional_ -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+  - `rustfmt --edition 2024 --check crates/hone-channels/src/response_finalizer.rs crates/hone-channels/src/runtime.rs crates/hone-channels/src/agent_session/tests.rs`
+- 状态维持 `Fixed`。本轮不重启 live 服务；后续若部署后仍出现 `portfolio success + planning_sentence_suppressed + 通用失败提示` 或“发图给你”类短答再次被压成 fallback，应继续在本单追加新日志窗口。
 
 ## 修复进展（2026-05-16 00:06 CST）
 
