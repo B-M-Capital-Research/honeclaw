@@ -66,7 +66,7 @@ type Toast =
 type ShareStep = "select" | "preview";
 
 const SHARE_FONT_SIZES = [15, 16.5, 18, 20] as const;
-const DEFAULT_SHARE_FONT_INDEX = 1;
+const DEFAULT_SHARE_FONT_INDEX = 2;
 
 export function ChatShareModal(props: ChatShareModalProps) {
   const [selected, setSelected] = createSignal<Set<string>>(new Set());
