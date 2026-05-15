@@ -881,17 +881,22 @@ const MODAL_CSS = `
     to { opacity: 1; transform: translate(-50%, 0); }
   }
   @media (max-width: 600px) {
-    .pub-share-overlay { padding: 0; align-items: flex-end; }
+    .pub-share-overlay {
+      align-items: flex-end;
+      justify-content: center;
+      padding: max(16px, calc(env(safe-area-inset-top, 0px) + 12px)) 0 0;
+    }
     .pub-share-panel {
       max-width: none; width: 100%;
       border-radius: 18px 18px 0 0;
-      max-height: 92vh;
+      max-height: calc(100vh - max(16px, calc(env(safe-area-inset-top, 0px) + 12px)));
+      max-height: calc(100dvh - max(16px, calc(env(safe-area-inset-top, 0px) + 12px)));
       padding-bottom: env(safe-area-inset-bottom, 0px);
     }
     .pub-share-header {
       position: sticky;
       top: 0;
-      z-index: 5;
+      z-index: 20;
       align-items: center;
       padding: 14px calc(16px + env(safe-area-inset-right, 0px)) 12px calc(18px + env(safe-area-inset-left, 0px));
       box-shadow: 0 1px 0 #f1f5f9;
@@ -903,6 +908,8 @@ const MODAL_CSS = `
       margin: -6px 0 -6px 8px;
       background: #eef2f7;
       box-shadow: 0 1px 3px rgba(15,23,42,0.08);
+      position: relative;
+      z-index: 21;
     }
     .pub-share-close svg {
       width: 18px;
