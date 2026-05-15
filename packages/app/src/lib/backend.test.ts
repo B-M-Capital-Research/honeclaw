@@ -1,12 +1,16 @@
-import { beforeEach, describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import {
+  FRIENDLY_BACKEND_UNAVAILABLE_MESSAGE,
   apiFetch,
   buildApiUrl,
   buildAuthHeaders,
   defaultBackendConfig,
+  friendlyBackendErrorMessage,
   hasRuntimeCapability,
+  resetApiFetchRetryDelayForTests,
   normalizeBaseUrl,
   resolveBaseUrl,
+  setApiFetchRetryDelayForTests,
   setBackendRuntime,
   supportsApiVersion,
 } from "./backend"
@@ -57,6 +61,8 @@ async function captureApiFetchInit(path: string): Promise<RequestInit> {
 }
 
 describe("backend runtime helpers", () => {
+  const originalFetch = globalThis.fetch
+
   beforeEach(() => {
     setBackendRuntime({
       mode: "browser",
@@ -65,6 +71,12 @@ describe("backend runtime helpers", () => {
       meta: undefined,
       isDesktop: false,
     })
+    setApiFetchRetryDelayForTests(0)
+  })
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+    resetApiFetchRetryDelayForTests()
   })
 
   test("defaultBackendConfig uses bundled mode with empty connection details", () => {
@@ -153,5 +165,39 @@ describe("backend runtime helpers", () => {
   test("apiFetch includes cookies for public auth refreshes", async () => {
     const init = await captureApiFetchInit("/api/public/auth/me")
     expect(init.credentials).toBe("include")
+  })
+
+  test("apiFetch retries transient backend statuses once", async () => {
+    let calls = 0
+    globalThis.fetch = ((_: RequestInfo | URL, __?: RequestInit) => {
+      calls += 1
+      const status = calls === 1 ? 502 : 200
+      return Promise.resolve(new Response("{}", { status }))
+    }) as typeof fetch
+
+    const response = await apiFetch("/api/meta")
+
+    expect(response.status).toBe(200)
+    expect(calls).toBe(2)
+  })
+
+  test("apiFetch retries transport failures before showing friendly error", async () => {
+    let calls = 0
+    globalThis.fetch = ((_: RequestInfo | URL, __?: RequestInit) => {
+      calls += 1
+      return Promise.reject(new TypeError("Failed to fetch"))
+    }) as typeof fetch
+
+    await expect(apiFetch("/api/meta")).rejects.toThrow(
+      FRIENDLY_BACKEND_UNAVAILABLE_MESSAGE,
+    )
+    expect(calls).toBe(2)
+  })
+
+  test("friendlyBackendErrorMessage only rewrites temporary backend failures", () => {
+    expect(friendlyBackendErrorMessage(502)).toBe(
+      FRIENDLY_BACKEND_UNAVAILABLE_MESSAGE,
+    )
+    expect(friendlyBackendErrorMessage(400)).toBe(null)
   })
 })

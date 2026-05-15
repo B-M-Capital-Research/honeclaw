@@ -3302,18 +3302,24 @@ export default function PublicChatPage() {
           color: #e5e7eb !important;
         }
         /* Action row (copy + share) sits in the bottom-right of an
-           assistant bubble. Desktop: faded until hover. Mobile: visible at
-           low-key opacity so long answers can be lifted out with one tap. */
+           assistant bubble without overlaying the answer text. Desktop:
+           faded until hover/focus. Mobile: visible at low-key opacity so
+           long answers can be lifted out with one tap. */
         .pub-msg-actions {
-          position: absolute;
-          right: 8px;
-          bottom: 8px;
           display: inline-flex;
+          width: 100%;
+          justify-content: flex-end;
           gap: 4px;
+          margin-top: 10px;
           opacity: 0;
+          pointer-events: none;
           transition: opacity 0.18s;
         }
-        .pub-msg-bubble--assistant:hover .pub-msg-actions { opacity: 1; }
+        .pub-msg-bubble--assistant:hover .pub-msg-actions,
+        .pub-msg-bubble--assistant:focus-within .pub-msg-actions {
+          opacity: 1;
+          pointer-events: auto;
+        }
         .pub-msg-action {
           width: 28px;
           height: 28px;
@@ -3334,10 +3340,9 @@ export default function PublicChatPage() {
         }
         @media (hover: none), (max-width: 768px) {
           .pub-msg-actions {
-            right: 10px;
-            bottom: 10px;
             gap: 6px;
             opacity: 0.78;
+            pointer-events: auto;
           }
           .pub-msg-action {
             width: 36px;

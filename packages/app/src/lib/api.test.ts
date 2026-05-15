@@ -1,10 +1,21 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { ApiError, getPublicAuthMe, isUnauthorizedApiError } from "./api";
+import {
+  ApiError,
+  getPublicAuthMe,
+  isUnauthorizedApiError,
+  sendPublicChat,
+} from "./api";
+import {
+  FRIENDLY_BACKEND_UNAVAILABLE_MESSAGE,
+  resetApiFetchRetryDelayForTests,
+  setApiFetchRetryDelayForTests,
+} from "./backend";
 
 const originalFetch = globalThis.fetch;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  resetApiFetchRetryDelayForTests();
 });
 
 function mockFetch(response: Response) {
@@ -45,5 +56,41 @@ describe("public API errors", () => {
     );
 
     expect(isUnauthorizedApiError(error)).toBe(false);
+  });
+
+  test("rewrites repeated 502 responses to a friendly message", async () => {
+    setApiFetchRetryDelayForTests(0);
+    let calls = 0;
+    globalThis.fetch = ((() => {
+      calls += 1;
+      return Promise.resolve(
+        new Response("<html>Bad Gateway</html>", {
+          status: 502,
+          statusText: "Bad Gateway",
+        }),
+      );
+    }) as unknown) as typeof fetch;
+
+    const error = await expectApiError(getPublicAuthMe);
+
+    expect(calls).toBe(2);
+    expect(error.status).toBe(502);
+    expect(error.message).toBe(FRIENDLY_BACKEND_UNAVAILABLE_MESSAGE);
+  });
+
+  test("streaming public chat uses the same friendly backend failure", async () => {
+    setApiFetchRetryDelayForTests(0);
+    globalThis.fetch = ((() =>
+      Promise.resolve(
+        new Response("nginx gateway failure\nwith stack details", {
+          status: 503,
+          statusText: "Service Unavailable",
+        }),
+      )) as unknown) as typeof fetch;
+
+    const error = await expectApiError(() => sendPublicChat("hello"));
+
+    expect(error.status).toBe(503);
+    expect(error.message).toBe(FRIENDLY_BACKEND_UNAVAILABLE_MESSAGE);
   });
 });

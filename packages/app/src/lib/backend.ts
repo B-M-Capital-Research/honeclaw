@@ -14,6 +14,13 @@ import type {
 } from "./types"
 
 const SUPPORTED_API_VERSION = "desktop-v1"
+const TRANSIENT_BACKEND_STATUSES = new Set([408, 502, 503, 504])
+const API_FETCH_MAX_ATTEMPTS = 2
+export const API_FETCH_RETRY_DELAY_MS = 2500
+export const FRIENDLY_BACKEND_UNAVAILABLE_MESSAGE =
+  "服务暂时不可用，已自动重试一次。请稍后再试。"
+
+let apiFetchRetryDelayMs = API_FETCH_RETRY_DELAY_MS
 
 type RuntimeMode = BackendConfig["mode"] | "browser"
 
@@ -121,12 +128,80 @@ export function buildAuthHeaders(headers?: HeadersInit, bearerToken = runtimeSta
   return next
 }
 
+export function setApiFetchRetryDelayForTests(delayMs: number) {
+  apiFetchRetryDelayMs = Math.max(0, delayMs)
+}
+
+export function resetApiFetchRetryDelayForTests() {
+  apiFetchRetryDelayMs = API_FETCH_RETRY_DELAY_MS
+}
+
+export function isTransientBackendStatus(status: number) {
+  return TRANSIENT_BACKEND_STATUSES.has(status)
+}
+
+export function friendlyBackendErrorMessage(status?: number) {
+  if (status == null || isTransientBackendStatus(status)) {
+    return FRIENDLY_BACKEND_UNAVAILABLE_MESSAGE
+  }
+  return null
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof Error && error.name === "AbortError"
+}
+
+function waitForRetryDelay(signal: AbortSignal | null | undefined) {
+  if (signal?.aborted) {
+    return Promise.reject(new DOMException("Aborted", "AbortError"))
+  }
+  return new Promise<void>((resolve, reject) => {
+    const cleanup = () => signal?.removeEventListener("abort", handleAbort)
+    const timeout = setTimeout(() => {
+      cleanup()
+      resolve()
+    }, apiFetchRetryDelayMs)
+    const handleAbort = () => {
+      clearTimeout(timeout)
+      cleanup()
+      reject(new DOMException("Aborted", "AbortError"))
+    }
+    signal?.addEventListener("abort", handleAbort, { once: true })
+  })
+}
+
 export async function apiFetch(path: string, init: RequestInit = {}) {
-  return fetch(buildApiUrl(path), {
+  const request = {
     credentials: "include",
     ...init,
     headers: buildAuthHeaders(init.headers),
-  })
+  } satisfies RequestInit
+
+  for (let attempt = 1; attempt <= API_FETCH_MAX_ATTEMPTS; attempt++) {
+    try {
+      const response = await fetch(buildApiUrl(path), request)
+      if (
+        attempt < API_FETCH_MAX_ATTEMPTS &&
+        isTransientBackendStatus(response.status) &&
+        !init.signal?.aborted
+      ) {
+        await waitForRetryDelay(init.signal)
+        continue
+      }
+      return response
+    } catch (error) {
+      if (isAbortError(error) || init.signal?.aborted) {
+        throw error
+      }
+      if (attempt < API_FETCH_MAX_ATTEMPTS) {
+        await waitForRetryDelay(init.signal)
+        continue
+      }
+      throw new Error(FRIENDLY_BACKEND_UNAVAILABLE_MESSAGE)
+    }
+  }
+
+  throw new Error(FRIENDLY_BACKEND_UNAVAILABLE_MESSAGE)
 }
 
 async function parseJson<T>(response: Response): Promise<T> {

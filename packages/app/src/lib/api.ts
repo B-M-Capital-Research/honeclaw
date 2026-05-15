@@ -26,7 +26,11 @@ import type {
   WebInviteInfo,
 } from "./types";
 import type { ActorRef } from "./actors";
-import { apiFetch, createEventSource } from "./backend";
+import {
+  apiFetch,
+  createEventSource,
+  friendlyBackendErrorMessage,
+} from "./backend";
 
 export class ApiError extends Error {
   status: number;
@@ -49,6 +53,10 @@ export function isUnauthorizedApiError(error: unknown) {
 async function parseJson<T>(response: Response): Promise<T> {
   const contentType = response.headers.get("content-type") ?? "";
   if (!response.ok) {
+    const friendlyMessage = friendlyBackendErrorMessage(response.status);
+    if (friendlyMessage) {
+      throw new ApiError(friendlyMessage, response);
+    }
     const text = await response.text();
     let message = "";
     try {
@@ -70,6 +78,15 @@ async function parseJson<T>(response: Response): Promise<T> {
     );
   }
   return response.json() as Promise<T>;
+}
+
+async function apiErrorFromResponse(response: Response): Promise<ApiError> {
+  const friendlyMessage = friendlyBackendErrorMessage(response.status);
+  if (friendlyMessage) {
+    return new ApiError(friendlyMessage, response);
+  }
+  const text = await response.text();
+  return new ApiError(text || response.statusText, response);
 }
 
 export async function getMeta() {
@@ -224,8 +241,7 @@ export async function sendChat(
   });
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new ApiError(text || response.statusText, response);
+    throw await apiErrorFromResponse(response);
   }
 
   if (!response.body) {
@@ -421,8 +437,7 @@ export async function sendPublicChat(
   });
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || response.statusText);
+    throw await apiErrorFromResponse(response);
   }
 
   if (!response.body) {
