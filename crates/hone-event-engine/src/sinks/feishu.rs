@@ -11,7 +11,7 @@
 //! 为什么不走 Go facade:facade 主要承接交互式对话的复杂路径(卡片 / thread /
 //! placeholder),engine 只需要最朴素的一段 text,多一跳 JSON-RPC 反而引入依赖。
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -37,7 +37,8 @@ pub struct FeishuSink {
     client: reqwest::Client,
     token_cache: Arc<RwLock<Option<(String, Instant)>>>,
     direct_contacts: Option<FeishuDirectContacts>,
-    direct_open_id_cache: Arc<RwLock<Option<String>>>,
+    direct_actor_contacts: HashMap<String, FeishuDirectContacts>,
+    direct_open_id_cache: Arc<RwLock<HashMap<String, String>>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -71,7 +72,8 @@ impl FeishuSink {
                 .expect("reqwest client"),
             token_cache: Arc::new(RwLock::new(None)),
             direct_contacts: None,
-            direct_open_id_cache: Arc::new(RwLock::new(None)),
+            direct_actor_contacts: HashMap::new(),
+            direct_open_id_cache: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -81,6 +83,25 @@ impl FeishuSink {
         allow_mobiles: &[String],
     ) -> Self {
         self.direct_contacts = stable_direct_contacts(allow_emails, allow_mobiles);
+        self
+    }
+
+    pub fn with_direct_actor_contact_targets<I, A, T>(mut self, targets: I) -> Self
+    where
+        I: IntoIterator<Item = (A, T)>,
+        A: Into<String>,
+        T: Into<String>,
+    {
+        self.direct_actor_contacts = targets
+            .into_iter()
+            .filter_map(|(actor_user_id, target)| {
+                let actor_user_id = actor_user_id.into().trim().to_string();
+                if actor_user_id.is_empty() {
+                    return None;
+                }
+                direct_contact_from_target(&target.into()).map(|contacts| (actor_user_id, contacts))
+            })
+            .collect();
         self
     }
 
@@ -144,6 +165,16 @@ impl FeishuSink {
                 Ok(("chat_id", chat_id))
             }
             _ => {
+                if let Some(contacts) = self.direct_actor_contacts.get(actor.user_id.trim())
+                    && let Some(open_id) = self
+                        .resolve_direct_open_id_for_contacts(
+                            &format!("actor:{}", actor.user_id.trim()),
+                            contacts,
+                        )
+                        .await?
+                {
+                    return Ok(("open_id", open_id));
+                }
                 if let Some(open_id) = self.resolve_direct_open_id().await? {
                     Ok(("open_id", open_id))
                 } else {
@@ -157,7 +188,22 @@ impl FeishuSink {
         let Some(contacts) = &self.direct_contacts else {
             return Ok(None);
         };
-        if let Some(cached) = self.direct_open_id_cache.read().await.clone() {
+        self.resolve_direct_open_id_for_contacts("config:single_direct_contact", contacts)
+            .await
+    }
+
+    async fn resolve_direct_open_id_for_contacts(
+        &self,
+        cache_key: &str,
+        contacts: &FeishuDirectContacts,
+    ) -> anyhow::Result<Option<String>> {
+        if let Some(cached) = self
+            .direct_open_id_cache
+            .read()
+            .await
+            .get(cache_key)
+            .cloned()
+        {
             return Ok(Some(cached));
         }
         let token = self.token().await?;
@@ -203,7 +249,10 @@ impl FeishuSink {
         let Some(open_id) = unique_batch_get_open_id(parsed.data) else {
             return Ok(None);
         };
-        *self.direct_open_id_cache.write().await = Some(open_id.clone());
+        self.direct_open_id_cache
+            .write()
+            .await
+            .insert(cache_key.to_string(), open_id.clone());
         Ok(Some(open_id))
     }
 }
@@ -236,6 +285,40 @@ fn stable_direct_contacts(
     } else {
         Some(FeishuDirectContacts { emails, mobiles })
     }
+}
+
+fn direct_contact_from_target(target: &str) -> Option<FeishuDirectContacts> {
+    let target = target.trim();
+    if target.is_empty() || target == "*" {
+        return None;
+    }
+    if target.contains('@') {
+        return Some(FeishuDirectContacts {
+            emails: vec![target.to_string()],
+            mobiles: Vec::new(),
+        });
+    }
+    if looks_like_mobile(target) {
+        return Some(FeishuDirectContacts {
+            emails: Vec::new(),
+            mobiles: vec![target.to_string()],
+        });
+    }
+    None
+}
+
+fn looks_like_mobile(target: &str) -> bool {
+    let trimmed = target.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    if !trimmed
+        .chars()
+        .all(|ch| ch.is_ascii_digit() || matches!(ch, '+' | ' ' | '-' | '(' | ')'))
+    {
+        return false;
+    }
+    trimmed.chars().filter(|ch| ch.is_ascii_digit()).count() >= 7
 }
 
 fn unique_batch_get_open_id(data: Option<Value>) -> Option<String> {
@@ -398,6 +481,48 @@ mod tests {
             })
         );
         assert_eq!(stable_direct_contacts(&["*".to_string()], &[]), None);
+    }
+
+    #[test]
+    fn direct_actor_contact_targets_keep_only_resolvable_contacts() {
+        let sink = FeishuSink::new("app", "secret").with_direct_actor_contact_targets(vec![
+            ("ou_email", "alice@example.com"),
+            ("ou_mobile", "+8613800138000"),
+            ("ou_open", "ou_stale"),
+            ("", "bob@example.com"),
+        ]);
+        assert_eq!(
+            sink.direct_actor_contacts.get("ou_email"),
+            Some(&FeishuDirectContacts {
+                emails: vec!["alice@example.com".to_string()],
+                mobiles: vec![],
+            })
+        );
+        assert_eq!(
+            sink.direct_actor_contacts.get("ou_mobile"),
+            Some(&FeishuDirectContacts {
+                emails: vec![],
+                mobiles: vec!["+8613800138000".to_string()],
+            })
+        );
+        assert!(!sink.direct_actor_contacts.contains_key("ou_open"));
+        assert!(!sink.direct_actor_contacts.contains_key(""));
+    }
+
+    #[tokio::test]
+    async fn receive_target_prefers_actor_contact_cache() {
+        let sink = FeishuSink::new("app", "secret")
+            .with_direct_actor_contact_targets(vec![("ou_stale", "+8613800138000")]);
+        sink.direct_open_id_cache
+            .write()
+            .await
+            .insert("actor:ou_stale".to_string(), "ou_current".to_string());
+        let actor = ActorIdentity::new("feishu", "ou_stale", None::<String>).unwrap();
+
+        let (ty, id) = sink.receive_target(&actor).await.unwrap();
+
+        assert_eq!(ty, "open_id");
+        assert_eq!(id, "ou_current");
     }
 
     #[test]

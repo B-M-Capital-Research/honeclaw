@@ -44,6 +44,7 @@ Last updated: 2026-05-15
   - `memory/src/session_sqlite.rs` hosts the SQLite-backed session persistence used by both shadow backfill and runtime reads/writes when `storage.session_runtime_backend=sqlite`
   - `memory/src/cron_job/mod.rs` keeps cron definitions in per-actor JSON files, mirrors cron execution history into the shared SQLite DB so task detail can query per-run records, and exposes a typed channel-target directory aggregated from cron definitions plus recent execution history
   - `memory/src/quota.rs` stores `success_count` / `in_flight` in JSON files by `ActorIdentity` and by Beijing date
+- Event-engine Feishu direct delivery is assembled by `crates/hone-web-api/src/lib.rs` plus `crates/hone-event-engine/src/sinks/feishu.rs`: when building the event-engine sink, Web API reads the cron-backed channel-target directory and passes unambiguous per-actor email/mobile targets into the Feishu sink so digest/card sends can resolve current-app `open_id` instead of reusing stale portfolio actor IDs. Ambiguous or non-contact targets are intentionally ignored to avoid cross-user delivery.
 - `bins/`
   - `hone-console-page`: Web console backend, static asset hosting, and API
   - `hone-cli`: local REPL

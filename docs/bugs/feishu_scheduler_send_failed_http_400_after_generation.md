@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-16 22:08 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)
 - **证据来源**:
   - 2026-04-30 22:33 最近一小时最新样本：
@@ -325,3 +325,24 @@
 - 下一步建议：
   - 优先复核当前 live 配置下 event-engine Feishu sink 的 direct contact fallback 是否实际启用，以及 fallback 解析出的 current-app open_id 是否覆盖该 actor。
   - 增加运行态诊断：当 sink 从 direct actor open_id 回退到联系人解析或保留原 open_id 时，记录脱敏后的 fallback 决策原因，避免再次只能看到 Feishu 400。
+
+## 修复记录（2026-05-15 12:10 CST）
+
+- 状态更新为 `Fixed`。
+- 本轮不再依赖当前机器的生产日志或 live 投递状态作完成判定，只基于 bug 台账、代码路径和本地回归验证闭合仓库侧可修缺口。
+- 根因补充：event-engine 的受众来自 portfolio / digest buffer 里的 `ActorIdentity`，这些 actor 只携带历史 Feishu `open_id`；在当前 `config.yaml` 没有 `allow_email` / `allow_mobile` 的情况下，旧 fallback 无法启用，digest sink 仍会把历史 `ou_...` 直接交给 Feishu send API，从而复发 `code=99992361 / open_id cross app`。
+- 修复内容：
+  - `crates/hone-web-api/src/lib.rs` 在组装 event-engine sink 时读取 `CronJobStorage::list_channel_targets()`，从已创建的 Feishu direct cron job / execution 历史中提取 `actor_user_id -> channel_target`。
+  - 只接受 email 或 mobile 这类可由 Feishu `batch_get_id?user_id_type=open_id` 重新解析的联系人目标；同一 actor 若出现多个不同联系人目标，会跳过映射，避免误投。
+  - `crates/hone-event-engine/src/sinks/feishu.rs` 新增 per-actor direct contact targets；direct digest 发送时优先用该 actor 的联系人重新解析 current-app open_id，解析结果唯一时才替换发送目标。
+  - 原有 `allow_email` / `allow_mobile` 单用户安装 fallback 仍保留，群聊继续走 `chat_id`。
+- 用户可见影响：event-engine digest / 价格异动卡片不会再仅因 portfolio 里保存了旧 app 域 `open_id` 而直接落入 dryrun fallback；具备无歧义 cron channel target 的 direct actor 会先解析当前 app open_id 再投递。
+- 验证：
+  - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-event-engine/src/sinks/feishu.rs crates/hone-web-api/src/lib.rs`
+  - `cargo test -p hone-event-engine feishu --lib -- --nocapture`
+  - `cargo test -p hone-web-api feishu_direct_actor_targets --lib -- --nocapture`
+  - `cargo check -p hone-event-engine -p hone-web-api --tests`
+- 文档同步：
+  - `docs/bugs/README.md` 已将本单从“活跃待修复”移入“已修复 / 已关闭”。
+  - `docs/repo-map.md` 已补充 event-engine Feishu sink 现在会复用 cron channel-target 目录解析 direct actor 的 current-app open_id。
+- 后续建议：如果某个 actor 没有 email/mobile 型 cron channel target，或同一 actor 存在多个不同 direct targets，本轮代码会继续拒绝猜测映射；应补齐对应 actor 的稳定 channel target 或在配置层提供可唯一解析的联系人，而不是在代码里硬编码 open_id。

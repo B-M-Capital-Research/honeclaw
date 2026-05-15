@@ -16,7 +16,7 @@ pub use logging::{LogBuffer, LogCaptureLayer, LogEntry};
 pub use routes::{build_admin_app, build_public_app};
 pub use state::{AppState, AuthState, PushEvent};
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -28,6 +28,7 @@ use hone_event_engine::{
     OutboundSink, TelegramSink, parse_polish_levels,
 };
 use hone_llm::{CreatedLlmProvider, LlmResolver};
+use hone_memory::{ChannelTargetRecord, CronJobStorage};
 use tokio::sync::broadcast;
 use tracing::info;
 use tracing_subscriber::prelude::*;
@@ -309,6 +310,7 @@ fn build_event_engine_sink(core_cfg: &HoneConfig) -> Arc<dyn OutboundSink> {
         && !core_cfg.feishu.app_id.trim().is_empty()
         && !core_cfg.feishu.app_secret.trim().is_empty()
     {
+        let direct_actor_targets = feishu_direct_actor_contact_targets(core_cfg);
         multi = multi.with_channel(
             "feishu",
             Arc::new(
@@ -319,7 +321,8 @@ fn build_event_engine_sink(core_cfg: &HoneConfig) -> Arc<dyn OutboundSink> {
                 .with_single_direct_contact_fallback(
                     &core_cfg.feishu.allow_emails,
                     &core_cfg.feishu.allow_mobiles,
-                ),
+                )
+                .with_direct_actor_contact_targets(direct_actor_targets),
             ),
         );
     }
@@ -336,6 +339,77 @@ fn build_event_engine_sink(core_cfg: &HoneConfig) -> Arc<dyn OutboundSink> {
         "event engine sink: MultiChannelSink 已装配"
     );
     Arc::new(multi)
+}
+
+fn feishu_direct_actor_contact_targets(core_cfg: &HoneConfig) -> Vec<(String, String)> {
+    let storage = CronJobStorage::with_sqlite(
+        &core_cfg.storage.cron_jobs_dir,
+        &core_cfg.storage.session_sqlite_db_path,
+    );
+    feishu_direct_actor_contact_targets_from_records(storage.list_channel_targets())
+}
+
+fn feishu_direct_actor_contact_targets_from_records(
+    records: Vec<ChannelTargetRecord>,
+) -> Vec<(String, String)> {
+    let mut targets_by_actor: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for record in records {
+        if record.channel.trim() != "feishu" {
+            continue;
+        }
+        if matches!(record.channel_scope.as_deref(), Some(scope) if scope != "direct") {
+            continue;
+        }
+        let target = record.target.trim();
+        if !looks_like_contact_target(target) {
+            continue;
+        }
+        for actor_user_id in record.actor_user_ids {
+            let actor_user_id = actor_user_id.trim();
+            if actor_user_id.is_empty() {
+                continue;
+            }
+            targets_by_actor
+                .entry(actor_user_id.to_string())
+                .or_default()
+                .insert(target.to_string());
+        }
+    }
+    targets_by_actor
+        .into_iter()
+        .filter_map(|(actor_user_id, targets)| {
+            if targets.len() == 1 {
+                targets
+                    .into_iter()
+                    .next()
+                    .map(|target| (actor_user_id, target))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn looks_like_contact_target(target: &str) -> bool {
+    let target = target.trim();
+    if target.is_empty() || target == "*" {
+        return false;
+    }
+    target.contains('@') || looks_like_mobile_target(target)
+}
+
+fn looks_like_mobile_target(target: &str) -> bool {
+    let target = target.trim();
+    if target.is_empty() {
+        return false;
+    }
+    if !target
+        .chars()
+        .all(|ch| ch.is_ascii_digit() || matches!(ch, '+' | ' ' | '-' | '(' | ')'))
+    {
+        return false;
+    }
+    target.chars().filter(|ch| ch.is_ascii_digit()).count() >= 7
 }
 
 pub struct StartedServer {
@@ -809,5 +883,57 @@ mod tests {
         cfg.llm.openrouter.max_tokens = 30_000;
 
         assert_eq!(mainline_distill_max_tokens(&cfg), 1200);
+    }
+
+    #[test]
+    fn feishu_direct_actor_targets_use_unambiguous_contact_targets() {
+        let targets = feishu_direct_actor_contact_targets_from_records(vec![
+            channel_target_record("feishu", None, "+8613800138000", vec!["ou_old"]),
+            channel_target_record("telegram", None, "+8613800138000", vec!["tg_user"]),
+            channel_target_record(
+                "feishu",
+                Some("chat_oc_1"),
+                "+8613800138001",
+                vec!["ou_group"],
+            ),
+            channel_target_record("feishu", None, "ou_stale", vec!["ou_open"]),
+            channel_target_record("feishu", None, "alice@example.com", vec!["ou_email"]),
+        ]);
+
+        assert_eq!(
+            targets,
+            vec![
+                ("ou_email".to_string(), "alice@example.com".to_string()),
+                ("ou_old".to_string(), "+8613800138000".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn feishu_direct_actor_targets_skip_ambiguous_actor_targets() {
+        let targets = feishu_direct_actor_contact_targets_from_records(vec![
+            channel_target_record("feishu", None, "+8613800138000", vec!["ou_old"]),
+            channel_target_record("feishu", None, "+8613800138001", vec!["ou_old"]),
+        ]);
+
+        assert!(targets.is_empty());
+    }
+
+    fn channel_target_record(
+        channel: &str,
+        channel_scope: Option<&str>,
+        target: &str,
+        actor_user_ids: Vec<&str>,
+    ) -> ChannelTargetRecord {
+        ChannelTargetRecord {
+            channel: channel.to_string(),
+            channel_scope: channel_scope.map(str::to_string),
+            target: target.to_string(),
+            actor_user_ids: actor_user_ids.into_iter().map(str::to_string).collect(),
+            sources: vec!["test".to_string()],
+            scheduled_jobs: 1,
+            enabled_jobs: 1,
+            last_seen_at: None,
+        }
     }
 }
