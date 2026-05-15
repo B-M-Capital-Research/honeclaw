@@ -3,9 +3,22 @@
 - **发现时间**: 2026-04-15 18:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29)
 - **证据来源**:
+  - 2026-05-15 17:36-17:37 最新真实直聊样本：
+    - `session_id=Actor_feishu__direct__ou_5f9f2cd3505aab8fed0a6ffd582df285b1`
+    - `2026-05-15T17:36:53.261646+08:00` 用户输入：`我持有RDW，成本价12，继续帮我跟踪`
+    - 同轮日志显示 runner 已执行 `Tool: hone/skill_tool`、`Tool: hone/data_fetch` 和两次 `Tool: hone/portfolio`，说明链路进入了持仓 / 跟踪工具路径，而不是完全没有开始处理。
+    - `data/runtime/logs/web.log.2026-05-15` 在 `17:37:23.963 CST` 记录 `transitional planning sentence detected, treating as empty ... chars=178`，随后 `step=agent.run.fallback ... detail=planning_sentence_suppressed`。
+    - `2026-05-15T17:37:23.963599+08:00` 最终 assistant 落库并发送：`这次没有成功产出完整回复。我已经自动重试过了，请再发一次，或换个问法。`
+    - 同轮 `MsgFlow/feishu done ... success=true ... tools=4(Tool: hone/data_fetch,Tool: hone/portfolio,Tool: hone/skill_tool) reply.chars=35`，随后 `reply.send ... segments.sent=1/1`。
+    - 结论：这是同一根因的复发，不新建重复文档。2026-05-14 的修复只覆盖成功 `cron_job` 副作用恢复确认；本轮 `portfolio` / 持仓跟踪工具路径仍会在 planning sentence 被抑制后外发通用失败，并且整轮仍被记为成功。
+    - 影响：用户明确要求继续跟踪 RDW，但可见回复无法说明跟踪是否已建立、持仓是否已记录、还缺哪些字段或是否需要重试。该问题影响 Feishu 直聊主链路任务完成确认，维持 `P1 / New`。
+  - 当前状态结论：
+    - 2026-05-15 19:03 CST：状态从 `Fixed` 调回 `New`。
+    - 关联 GitHub Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29) 已存在，本轮不重复创建。
+    - 新修复需要覆盖 `portfolio` / 文件写入 / 画像创建等非 `cron_job` 工具副作用：如果工具已成功执行，应恢复为具体确认；如果不能确认，应返回明确的业务失败原因，不能用通用“没有成功产出完整回复”遮蔽。
   - 2026-05-14 17:17 最新真实直聊样本：
     - `session_id=Actor_feishu__direct__ou_5ff0946a82698f7d16d9a5684696c84185`
     - `2026-05-14T17:17:38.611922+08:00` 用户要求创建每日 20:00 北京时间的大盘监控，内容包括纳指、标普 500、Fear & Greed、VIX 和大盘分析结论。

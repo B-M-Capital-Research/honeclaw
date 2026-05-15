@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-15 15:04 CST
+最后更新：2026-05-15 19:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,10 +17,12 @@
 
 ## 当前概览
 
-- 活跃待修复：1
+- 活跃待修复：2
 - Later / 待复现：9
-- 已修复 / 已关闭：104
+- 已修复 / 已关闭：103
 - 历史分析 / 部分止血：5
+- 本轮 19:03 CST 重新打开 Feishu 直聊空/无效回复遮蔽缺陷：17:37 CST 用户要求继续跟踪 RDW，链路执行 `skill_tool`、`data_fetch` 与两次 `portfolio` 工具后，final 被 `planning_sentence_suppressed` 替换成“这次没有成功产出完整回复...”，但整轮仍按 `success=true`、`reply.chars=35`、`segments.sent=1/1` 收口；这不是单纯回答质量问题，而是工具链/潜在业务副作用后的用户可见确认被通用失败遮蔽。关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29)，不重复创建。
+- 本轮 19:03 CST 未发现新的独立 P1：heartbeat `mimo-v2.5-pro` 与 started-row 残留仍是当前机器旧运行态/已知缺陷证据；Feishu direct 其它最近会话均有 assistant 收口，未见新的绝对路径、工具轨迹或原始标签外泄。17:37 样本归并到既有 Feishu 直聊空/无效回复缺陷。
 - 本轮 12:10 CST 已修复 Feishu event-engine digest `open_id cross app` 复发：event-engine Feishu sink 现在会从 cron 任务 channel-target 目录为 direct actor 建立无歧义联系人映射，优先用 email/mobile 重新解析 current-app open_id，再发送 digest 卡片；没有唯一联系人时不猜测映射。验证 `rustfmt --edition 2024 --config skip_children=true --check crates/hone-event-engine/src/sinks/feishu.rs crates/hone-web-api/src/lib.rs`、`cargo test -p hone-event-engine feishu --lib -- --nocapture`、`cargo test -p hone-web-api feishu_direct_actor_targets --lib -- --nocapture`、`cargo check -p hone-event-engine -p hone-web-api --tests` 通过；关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)。
 - 本轮 15:04 CST 新增 Web scheduler 手机系统通知缺陷：12:35 / 12:47 CST 两条 Web 测试通知均 `completed + sent + delivered=1`，但 `detail_json.console_event_sent=false`，用户连续反馈手机没收到；前端只监听 SSE `scheduled_message`，未见 Web Push / Notification API 能力，assistant 前序回答却引导用户按手机系统通知排查。定级 P2 / New；非 P1，不创建 GitHub issue。
 - 本轮 15:04 CST 继续观察到 heartbeat `mimo-v2.5-pro` 旧运行态批量 `Param Incorrect` 与 started-row 残留，但当前 HEAD 已有对应修复和重启后恢复记录；本轮不把相关 fixed/closed 缺陷回退。Feishu direct 最近四小时都有 assistant 收口，未见新的工具轨迹、绝对路径或半成品污染 final。
@@ -112,6 +114,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | New | 2026-05-15 19:03 重新打开：17:37 CST `继续帮我跟踪 RDW` 在 `portfolio` 工具执行后被 `planning_sentence_suppressed` 改成通用失败，但链路仍记 `success=true` 并发送；关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29) | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Web scheduler 让用户以为会发送手机系统通知，但实际只写入 Web 会话 / SSE 事件 | P2 | New | 2026-05-15 15:04 新增：12:35 / 12:47 CST 两条测试通知均 `completed + sent + delivered=1` 且 `console_event_sent=false`，用户连续反馈手机未收到；当前前端只监听 SSE，未见 Web Push / Notification API 能力，需先收口能力边界或补真正系统 push | [web_scheduler_mobile_push_not_delivered.md](./web_scheduler_mobile_push_not_delivered.md) |
 
 ## Later / 待复现
@@ -139,7 +142,6 @@
 | Feishu scheduler 预写 `running/pending` started 行后，终态另起行导致台账持续悬挂 | P3 | Fixed | 2026-05-15 04:05 复核当前 HEAD 已覆盖 `delivery_key` 终态覆盖、最近 started fallback 与启动 stale recovery；不再以当前机器旧/非生产运行态证据保持活跃；关联 Issue [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39) | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
 | 核心观察池简报在本地击球区配置恢复后仍把多数标的降成“待确认” | P3 | Fixed | 2026-05-15 04:05 scheduler 已支持从紧凑 compact summary 中恢复 `ticker + $区间` 击球区，覆盖同一行多个 ticker 与分档区间；无关联 GitHub Issue | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 | Feishu 直聊在工具尚未跑完时提前把工具进度 / 不完整错误当成最终回复 | P2 | Fixed | 2026-05-15 02:10 Feishu failure fallback 现在会过滤 `执行完成：本地命令`、`正在调用 Searching the Web...`、`工具执行完成` 与过渡计划句，不再把工具轨迹和内部执行语句拼成用户可见最终失败回复；待后续真实运行态只读复核后再决定是否 `Closed`；无关联 GitHub Issue | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
-| Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixed | 2026-05-14 20:12 成功 `cron_job` 副作用现在会在 planning sentence 被抑制前恢复为确认回复；定时任务创建 / 更新 / 删除已成功时不再外发通用失败提示遮蔽真实状态；关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29) | [feishu_direct_empty_reply_false_success.md](./archive/feishu_direct_empty_reply_false_success.md) |
 | Feishu 公司画像建档成功后向用户暴露本机绝对路径与内部文件落点 | P3 | Fixed | 2026-05-14 16:07 已把本地 Markdown 文件链接与裸绝对路径脱敏并入共享 `sanitize_user_visible_output(...)`，公司画像建档回复不再暴露本机 repo 根、`data/agent-sandboxes` 或 direct actor sandbox 标识；无关联 GitHub Issue | [feishu_company_profile_absolute_path_leak.md](./feishu_company_profile_absolute_path_leak.md) |
 | Web direct 可读取并总结其它 web session / 本机 Codex 记录 / 全局持仓数据 | P1 | Fixed | 2026-05-14 15:04 继续仅见修复前 live 旧运行态：11:13-11:46 CST 同一 web 会话仍可读取/复制 `~/.codex` session 记录并读取 `~/.codex/auth.json` 后主动脱敏 token；live `PID 63485` 启动于 2026-05-13 19:28 CST，早于 04:24 修复。待下次正常部署/重启后再做 live 复核；关联 Issue [#41](https://github.com/B-M-Capital-Research/honeclaw/issues/41) | [web_direct_cross_session_sandbox_data_exposure.md](./web_direct_cross_session_sandbox_data_exposure.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixed | 2026-05-12 19:12 malformed-triggered 恢复扩展到 JSON-ish `status` 与智能引号 `message`；新增 `heartbeat_malformed_triggered_json_recovers_unquoted_status`、`heartbeat_malformed_triggered_json_recovers_smart_quoted_message`；`rustfmt --edition 2024 --check crates/hone-channels/src/scheduler.rs`、`cargo test -p hone-channels heartbeat_malformed --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
