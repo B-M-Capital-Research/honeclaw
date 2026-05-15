@@ -188,6 +188,7 @@
   - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/response_finalizer.rs crates/hone-channels/src/agent_session/tests.rs`
   - `cargo test -p hone-channels finalize_agent_response -- --nocapture`
   - `cargo check -p hone-channels --tests`
+- 修复提交：`fbba5342`
 - 状态更新为 `Fixed`。本轮不重启 live 服务；后续若部署后仍出现 `portfolio success + planning_sentence_suppressed + 通用失败提示`，应继续在本单追加证据或拆出更具体的副作用恢复缺口。
 
 ## 修复进展（2026-05-14 20:12 CST）

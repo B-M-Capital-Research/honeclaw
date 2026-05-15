@@ -71,6 +71,7 @@ Web 用户创建持仓新闻晚报 -> 用户询问如何在手机收到提醒 ->
   - `cargo test -p hone-channels resolve_prompt_input_warns_web_cron_cannot_send_mobile_system_push -- --nocapture`
   - `cargo test -p hone-web-api web_scheduler_ -- --nocapture`
   - `cargo check -p hone-web-api --tests`
+- 修复提交：`fbba5342`
 - 状态更新为 `Fixed`。若后续产品要求真正手机提醒，应另开功能/缺陷补 Web Push/App Push 订阅、授权状态检查和系统级投递台账。
 
 ## 下一步建议
