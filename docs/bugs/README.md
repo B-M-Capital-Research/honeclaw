@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-15 08:07 CST
+最后更新：2026-05-15 11:09 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,10 +17,13 @@
 
 ## 当前概览
 
-- 活跃待修复：0
+- 活跃待修复：1
 - Later / 待复现：9
-- 已修复 / 已关闭：104
+- 已修复 / 已关闭：103
 - 历史分析 / 部分止血：5
+- 本轮 11:09 CST 重新打开 Feishu event-engine / scheduler `open_id cross app` 投递缺陷：08:30 CST `channel digest sink failed, falling back to log`，Feishu 返回 `code=99992361 / open_id cross app`，只剩 dryrun log；同窗普通 Feishu direct 与 scheduler 仍有成功送达，故障集中在 event-engine digest sink。关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)，不重复创建。
+- 本轮 11:09 CST 仅补充旧运行态观察：07:00-11:00 CST heartbeat `mimo-v2.5-pro` 仍有 90 条 `Param Incorrect` 失败、11:00 后全库新增 99 条 heartbeat started-row 残留，且 09:02 核心观察池早报仍批量显示 `击球区：待确认`；但当前 live `hone-console-page` 启动于 2026-05-13 19:28 CST，且对应 HEAD 修复均已有定向回归，故不把这三项从 `Fixed` 回退。
+- 本轮 11:09 CST 观察到 event-engine OpenRouter 402 与 FMP quota limit 降级日志，但当前表现为后台 enrichment / digest best-effort 降级，未见新的用户可见投递失败或格式污染；用户 10:29 指出“中国宏桥特别股息”漏算后下一轮已当场纠正，按单次质量波动处理，不新增 P3。
 - 本轮 08:07 CST 已修复 Daily macOS release app API smoke 生命周期缺陷：`HONE_DESKTOP_SMOKE_SERVER=1` 现在让 `.app/Contents/MacOS/hone-desktop` 绕过窗口生命周期，直接启动 embedded Web/API 并保持到 Ctrl-C；隔离端口 `18077/18088` 下 `/api/meta`、用户端页面与 `/api/channels` disabled 状态均验证通过；关联 Issue [#42](https://github.com/B-M-Capital-Research/honeclaw/issues/42)。
 - 本轮 08:07 CST 复核并锁住原油普通 scheduler 复发样本：当前 HEAD 的普通 scheduler commodity guard 已覆盖 `Brent Jul 2026 约 106.30 美元`、`WTI Jun 2026 约 101.80 美元` 与科技股尾盘 / 通胀利率风险判断，本轮新增精确回归；最新 `detail_json.scheduler=null` 样本按当前机器旧 / 非生产运行态证据处理，不再保持活跃；无关联 GitHub Issue。
 - 本轮 04:05 CST 已修复观察池击球区紧凑 summary 解析缺口：scheduler 现在会从 `MSFT $335-$350`、同一行多个 ticker、以及 `保守/合理/激进` 分档区间中恢复击球区；`待确认` 不会回灌。验证 `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs`、`cargo test -p hone-channels scheduled_watchlist_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue。
@@ -106,6 +109,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Feishu 直达定时任务已生成最终播报，但 event-engine / scheduler 发送阶段再次稳定返回 `open_id cross app` | P1 | New | 2026-05-15 11:09 复发：08:30 CST event-engine digest sink 对 Feishu direct actor 发送失败并降级为 dryrun log，Feishu 返回 `code=99992361 / open_id cross app`；同窗仍有其它 Feishu 消息成功送达，说明不是全局出站不可用；关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
 
 ## Later / 待复现
 
@@ -147,7 +151,6 @@
 | Feishu 晨报在 `data_fetch` 连续失败后仍以成功态发送旧价格早报 | P3 | Fixed | 2026-05-08 非 heartbeat scheduler 成功路径新增 `stale_market_data_fallback`：关键行情 / 报价 / `data_fetch` 失败且继续复用旧价格或旧收盘口径时，回滚旧价格正文、投递失败提示并记录 `failure_kind=stale_market_data_fallback`；`cargo test -p hone-channels scheduler::tests::scheduler_detects_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [feishu_scheduler_stale_price_fallback_after_data_fetch_failure.md](./feishu_scheduler_stale_price_fallback_after_data_fetch_failure.md) |
 | Heartbeat 监控批量触发 OpenRouter `HTTP 402` 后整轮跳过并漏发告警 | P1 | Fixed | 2026-05-08 复核当前代码已将 heartbeat 专用 completion token 固定为 `4096` 并通过 `max_tokens_override` 进入 auxiliary provider；`provider_quota_exhausted` 仍显式记录。03:05 复活证据来自当前机器旧运行态 / 外部 credits，且 `can only afford 217` 低于可维护预算，不再作为当前活跃 bug；关联 Issue [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36) | [scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md](./scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md) |
 | Daily macOS build 在 `.app` 生成后 DMG bundling 失败，最终 `.dmg` 缺失 | P1 | Fixed | 2026-05-07 本机打包缓存已生成最终 `Hone Financial_0.7.0_aarch64.dmg`，`hdiutil verify` 返回 checksum valid；本轮未改代码，原阻断按当前本机验证链路关闭；无关联 GitHub Issue | [daily_macos_build_dmg_bundle_failed.md](./archive/daily_macos_build_dmg_bundle_failed.md) |
-| Feishu 直达定时任务已生成最终播报，但 event-engine / scheduler 发送阶段再次稳定返回 `open_id cross app` | P1 | Fixed | 2026-05-07 复核当前代码已覆盖 scheduler 历史 `ou_...` current-app open_id 重解析与 event-engine 单用户联系人唯一解析 fallback；不再以当前机器旧 live 日志作为活跃证据；`cargo test -p hone-feishu scheduler_resolution_target -- --nocapture` 通过；关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) | [feishu_scheduler_send_failed_http_400_after_generation.md](./archive/feishu_scheduler_send_failed_http_400_after_generation.md) |
 | SEC filing enrichment 复用全局 OpenRouter max_tokens 触发 `HTTP 402` | P2 | Fixed | 2026-05-07 SEC filing 摘要改用独立 capped OpenRouter provider，并追加 section-aware 摘抄修复 TEM 10-Q `54381 > 6713`；随后对 `5198/3956 > 3256` 增加 `10k -> 7k -> 4.5k -> 2.8k` 语义摘抄重试；定向 web-api / event-engine 测试和 `cargo check -p hone-web-api` 通过；无关联 GitHub Issue | [sec_enrichment_openrouter_max_tokens_402.md](./archive/sec_enrichment_openrouter_max_tokens_402.md) |
 | Event-engine price poller 将全量 watch pool 拼成单个 FMP quote 请求，池子变大后整 tick 超时/隧道失败 | P0 | Fixed | 2026-05-06 `PricePoller::fetch` 改为过滤不适合 FMP equity quote path 的 option-style symbol，并按 batch size / URL path 长度拆分 `/v3/quote/{symbols}`；单 batch 失败不再丢弃同 tick 其它成功 batch，仅所有 batch 都失败时返回 poller 错误；无关联 GitHub Issue | [event_engine_price_poller_unbounded_quote_batch.md](./archive/event_engine_price_poller_unbounded_quote_batch.md) |
 | Feishu 直聊切到非金融新话题时，仍直接回答楼市/买房问题而未执行领域边界拒绝 | P3 | Fixed | 2026-05-06 `AgentSession::run` 在 quota/runner 前增加直聊非金融短路：明显生活/硬件问题且无金融锚点时直接持久化领域边界回复，不调用 LLM / `stock_research` / 工具且不消耗 daily quota；scheduled-task 与 admin actor 不受影响；无关联 GitHub Issue | [feishu_direct_non_finance_query_misroutes_to_stock_research.md](./archive/feishu_direct_non_finance_query_misroutes_to_stock_research.md) |

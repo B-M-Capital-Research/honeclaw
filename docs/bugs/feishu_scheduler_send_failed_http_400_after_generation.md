@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-16 22:08 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)
 - **证据来源**:
   - 2026-04-30 22:33 最近一小时最新样本：
@@ -305,3 +305,23 @@
 - 状态更新为 `Fixed`；关联 GitHub Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) 建议基于当前代码和当前 app 配置复测。
 - 验证：
   - `cargo test -p hone-feishu scheduler_resolution_target -- --nocapture`
+
+## 状态更新（2026-05-15 11:09 CST）
+
+- 本轮巡检确认：最近四小时真实运行窗口再次出现同一 `open_id cross app` 投递失败，本单从 `Fixed` 重新打开为 `New`。
+- 证据来源：
+  - `data/runtime/logs/hone-console-page-prod.log`
+  - `2026-05-15T00:30:43Z` 左右，event-engine digest sink 记录 `channel digest sink failed, falling back to log`，Feishu 返回 `HTTP 400 Bad Request`，错误码为 `99992361 / open_id cross app`。
+  - 同一条失败后只剩 `[dryrun sink]` 的事件卡片日志，说明内容已生成，但真实 Feishu 投递未送达。
+  - 同窗仍有普通 Feishu direct 回复、scheduler 早报和 event-engine 其它 sink delivered 样本，说明不是 Feishu 出站全局不可用。
+- 端到端链路：
+  1. event-engine digest 生成 Feishu 卡片正文。
+  2. sink 对 Feishu direct actor 发起发送。
+  3. Feishu API 拒绝当前 open_id，返回跨 app 标识域错误。
+  4. 系统降级为 dryrun log，用户侧收不到本该送达的 digest 卡片。
+- 当前判断：
+  - 这不是回答质量问题，而是已生成事件提醒在最终投递阶段丢失，继续属于功能性 `System Error / P1`。
+  - 本轮没有新建 GitHub issue，因为已有 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) 覆盖同一根因和同一发送链路。
+- 下一步建议：
+  - 优先复核当前 live 配置下 event-engine Feishu sink 的 direct contact fallback 是否实际启用，以及 fallback 解析出的 current-app open_id 是否覆盖该 actor。
+  - 增加运行态诊断：当 sink 从 direct actor open_id 回退到联系人解析或保留原 open_id 时，记录脱敏后的 fallback 决策原因，避免再次只能看到 Feishu 400。
