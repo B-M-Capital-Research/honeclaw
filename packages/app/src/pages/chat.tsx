@@ -218,15 +218,118 @@ function PrefsButton() {
   );
 }
 
-function Header() {
+function AccountButton(props: {
+  user?: PublicAuthUserInfo | null;
+  onLogout?: () => void;
+}) {
+  const navigate = useNavigate();
+  const [open, setOpen] = createSignal(false);
+  let rootRef: HTMLDivElement | undefined;
+
+  createEffect(() => {
+    if (!open()) return;
+    const onPointer = (e: PointerEvent) => {
+      if (rootRef && !rootRef.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointer, true);
+    document.addEventListener("keydown", onKey);
+    onCleanup(() => {
+      document.removeEventListener("pointerdown", onPointer, true);
+      document.removeEventListener("keydown", onKey);
+    });
+  });
+
+  const openAccountCenter = () => {
+    setOpen(false);
+    navigate("/me");
+  };
+
+  const logout = () => {
+    setOpen(false);
+    props.onLogout?.();
+  };
+
+  return (
+    <Show when={props.user}>
+      {(user) => (
+        <div class="public-chat-account" ref={rootRef}>
+          <button
+            type="button"
+            class="public-chat-account-trigger"
+            aria-label={CONTENT.chat_page.sidebar.account_center}
+            aria-expanded={open()}
+            onClick={() => setOpen((value) => !value)}
+          >
+            <svg
+              width="17"
+              height="17"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M20 21a8 8 0 0 0-16 0" />
+              <circle cx="12" cy="8" r="4" />
+            </svg>
+          </button>
+          <Show when={open()}>
+            <div class="public-chat-account-panel" role="dialog">
+              <div class="public-chat-account-card">
+                <span class="public-chat-account-avatar">H</span>
+                <span>
+                  <strong>{CONTENT.chat_page.sidebar.signed_in}</strong>
+                  <small>{user().user_id}</small>
+                </span>
+              </div>
+              <div class="public-chat-account-meta">
+                <span>{CONTENT.me.fields.remaining}</span>
+                <strong>
+                  {user().remaining_today} / {user().daily_limit}
+                </strong>
+              </div>
+              <button
+                type="button"
+                class="public-chat-account-center"
+                onClick={openAccountCenter}
+              >
+                {CONTENT.chat_page.sidebar.account_center}
+              </button>
+              <button
+                type="button"
+                class="public-chat-account-logout"
+                onClick={logout}
+              >
+                {CONTENT.chat_page.actions.logout}
+              </button>
+            </div>
+          </Show>
+        </div>
+      )}
+    </Show>
+  );
+}
+
+function Header(props: {
+  user?: PublicAuthUserInfo | null;
+  onLogout?: () => void;
+}) {
   const navigate = useNavigate();
   const [stars] = createResource(fetchGithubStars);
 
   return (
     <header class="page-header">
-      <div onClick={() => navigate("/")} class="header-logo">
-        <img src="/logo.svg" alt="Hone" />
-        <span>Hone</span>
+      <div class="public-chat-header-brand">
+        <div onClick={() => navigate("/")} class="header-logo">
+          <img src="/logo.svg" alt="Hone" />
+          <span>Hone</span>
+        </div>
+        <AccountButton user={props.user} onLogout={props.onLogout} />
       </div>
 
       <div class="header-actions">
@@ -2363,7 +2466,7 @@ export default function PublicChatPage() {
       style={{ height: "100dvh", display: "flex", "flex-direction": "column" }}
     >
       <AnimatedBackground />
-      <Header />
+      <Header user={currentUser()} onLogout={logoutPublicChat} />
 
       <Switch>
         <Match when={authState() === "loading"}>
@@ -2673,6 +2776,123 @@ export default function PublicChatPage() {
           height: 100%;
           min-height: 0;
           overflow-anchor: none;
+        }
+        .public-chat-header-brand {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          min-width: 0;
+        }
+        .public-chat-account {
+          position: relative;
+          display: none;
+        }
+        .public-chat-account-trigger {
+          width: 32px;
+          height: 32px;
+          border: 1px solid rgba(15,23,42,0.10);
+          border-radius: 999px;
+          background: rgba(255,255,255,0.82);
+          color: #334155;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          box-shadow: 0 1px 3px rgba(15,23,42,0.08);
+          transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.06s ease;
+        }
+        .public-chat-account-trigger:active {
+          transform: scale(0.96);
+        }
+        .public-chat-account-panel {
+          position: fixed;
+          top: calc(54px + env(safe-area-inset-top, 0px));
+          left: 12px;
+          z-index: 220;
+          width: min(280px, calc(100vw - 24px));
+          padding: 12px;
+          border: 1px solid rgba(15,23,42,0.10);
+          border-radius: 16px;
+          background: rgba(255,255,255,0.98);
+          box-shadow: 0 20px 52px rgba(15,23,42,0.18);
+          backdrop-filter: blur(18px);
+          -webkit-backdrop-filter: blur(18px);
+        }
+        .public-chat-account-card {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          min-width: 0;
+        }
+        .public-chat-account-avatar {
+          width: 38px;
+          height: 38px;
+          flex: 0 0 38px;
+          border-radius: 12px;
+          background: #0f172a;
+          color: #fff;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 15px;
+          font-weight: 850;
+        }
+        .public-chat-account-card strong,
+        .public-chat-account-card small {
+          display: block;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .public-chat-account-card strong {
+          color: #0f172a;
+          font-size: 13px;
+          font-weight: 850;
+        }
+        .public-chat-account-card small {
+          margin-top: 2px;
+          color: #64748b;
+          font-size: 12px;
+          font-weight: 650;
+        }
+        .public-chat-account-meta {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          margin-top: 12px;
+          padding: 10px 12px;
+          border-radius: 12px;
+          background: #f8fafc;
+          color: #64748b;
+          font-size: 12px;
+          font-weight: 700;
+        }
+        .public-chat-account-meta strong {
+          color: #0f172a;
+          font-size: 13px;
+          font-weight: 850;
+        }
+        .public-chat-account-center,
+        .public-chat-account-logout {
+          width: 100%;
+          min-height: 40px;
+          margin-top: 10px;
+          border-radius: 12px;
+          cursor: pointer;
+          font-size: 13px;
+          font-weight: 850;
+          font-family: inherit;
+        }
+        .public-chat-account-center {
+          border: 1px solid rgba(15,23,42,0.10);
+          background: #fff;
+          color: #0f172a;
+        }
+        .public-chat-account-logout {
+          border: 1px solid rgba(225,29,72,0.14);
+          background: #fff1f2;
+          color: #e11d48;
         }
         @media (min-width: 769px) {
           .public-chat-page--ready {
@@ -3536,6 +3756,36 @@ export default function PublicChatPage() {
           border-bottom-color: rgba(255,255,255,0.06) !important;
         }
         [data-theme="dark"] .header-logo span { color: #e5e7eb !important; }
+        [data-theme="dark"] .public-chat-account-trigger {
+          background: rgba(15,23,42,0.86);
+          border-color: rgba(148,163,184,0.20);
+          color: #cbd5e1;
+        }
+        [data-theme="dark"] .public-chat-account-panel {
+          background: rgba(15,23,42,0.98);
+          border-color: rgba(148,163,184,0.18);
+        }
+        [data-theme="dark"] .public-chat-account-card strong,
+        [data-theme="dark"] .public-chat-account-meta strong {
+          color: #f8fafc;
+        }
+        [data-theme="dark"] .public-chat-account-card small,
+        [data-theme="dark"] .public-chat-account-meta {
+          color: #94a3b8;
+        }
+        [data-theme="dark"] .public-chat-account-meta {
+          background: rgba(30,41,59,0.82);
+        }
+        [data-theme="dark"] .public-chat-account-center {
+          background: rgba(30,41,59,0.86);
+          border-color: rgba(148,163,184,0.18);
+          color: #f8fafc;
+        }
+        [data-theme="dark"] .public-chat-account-logout {
+          background: rgba(127,29,29,0.28);
+          border-color: rgba(248,113,113,0.22);
+          color: #fda4af;
+        }
         [data-theme="dark"] .lang-switch {
           background: rgba(255,255,255,0.04) !important;
           border-color: rgba(255,255,255,0.08) !important;
@@ -3715,8 +3965,25 @@ export default function PublicChatPage() {
              eats 30+ px of vertical space per turn. */
           .public-chat-messages .pub-msg-bubble__brand { display: none !important; }
           .public-chat-page .page-header { height: 46px !important; padding: 0 12px !important; }
+          .public-chat-page .public-chat-header-brand {
+            gap: 7px !important;
+            flex: 1 1 auto !important;
+            min-width: 0 !important;
+          }
           .public-chat-page .header-logo img { height: 22px !important; }
           .public-chat-page .header-logo span { font-size: 16px !important; }
+          .public-chat-page--ready .public-chat-account {
+            display: inline-flex !important;
+            flex: 0 0 auto !important;
+          }
+          .public-chat-account-trigger {
+            width: 30px !important;
+            height: 30px !important;
+          }
+          .public-chat-account-trigger svg {
+            width: 16px !important;
+            height: 16px !important;
+          }
           .public-chat-page .lang-switch { padding: 1px !important; }
           .public-chat-page .lang-switch button { min-height: 22px !important; min-width: 26px !important; padding: 0 6px !important; font-size: 11px !important; }
           .public-chat-page .btn-chat-nav { min-height: 28px !important; padding: 0 12px !important; font-size: 12px !important; }
