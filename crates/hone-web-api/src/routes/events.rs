@@ -65,6 +65,20 @@ fn web_scheduler_delivery_status(_console_event_sent: bool) -> (String, bool) {
     ("sent".to_string(), true)
 }
 
+fn web_scheduler_delivery_detail(
+    scheduler_metadata: serde_json::Value,
+    console_event_sent: bool,
+    channel: &str,
+) -> serde_json::Value {
+    json!({
+        "scheduler": scheduler_metadata,
+        "console_event_sent": console_event_sent,
+        "system_push_supported": false,
+        "system_push_sent": false,
+        "delivery_channel": channel,
+    })
+}
+
 /// 接收调度器事件，为每个触发的任务启动独立处理协程
 pub(crate) async fn handle_scheduler_events(
     state: Arc<AppState>,
@@ -187,11 +201,11 @@ pub(crate) async fn handle_scheduler_events(
             let (mut message_send_status, mut delivered) =
                 web_scheduler_delivery_status(push_result.is_ok());
             let mut error_message = result.error.clone();
-            let mut detail = json!({
-                "scheduler": result.metadata,
-                "console_event_sent": push_result.is_ok(),
-                "delivery_channel": event.channel.clone(),
-            });
+            let mut detail = web_scheduler_delivery_detail(
+                result.metadata.clone(),
+                push_result.is_ok(),
+                &event.channel,
+            );
             if event.channel == "imessage" {
                 let url = format!(
                     "http://{}/api/send",
@@ -429,5 +443,15 @@ mod tests {
 
         assert_eq!(message_send_status, "sent");
         assert!(delivered);
+    }
+
+    #[test]
+    fn web_scheduler_detail_distinguishes_session_delivery_from_system_push() {
+        let detail = web_scheduler_delivery_detail(json!({"status": "triggered"}), false, "web");
+
+        assert_eq!(detail["delivery_channel"], "web");
+        assert_eq!(detail["console_event_sent"], false);
+        assert_eq!(detail["system_push_supported"], false);
+        assert_eq!(detail["system_push_sent"], false);
     }
 }

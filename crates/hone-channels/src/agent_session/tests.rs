@@ -768,6 +768,25 @@ fn resolve_prompt_input_hides_cron_only_skills_when_cron_is_not_allowed() {
 }
 
 #[test]
+fn resolve_prompt_input_warns_web_cron_cannot_send_mobile_system_push() {
+    let root = make_temp_dir("hone_channels_prompt_web_cron_delivery");
+    std::fs::create_dir_all(&root).expect("create root");
+    let llm = MockLlmProvider::with_tool_responses(Vec::new());
+    let core = make_test_core(&root, llm);
+    let actor = ActorIdentity::new("web", "web-user", None::<String>).expect("actor");
+    let session = AgentSession::new(core, actor, "web-user").with_cron_allowed(true);
+
+    let (system_prompt, _) = session.resolve_prompt_input("session-demo", "3 分钟后提醒我");
+
+    assert!(system_prompt.contains("【Web 定时任务送达边界】"));
+    assert!(system_prompt.contains("只保证写入当前 Hone 会话"));
+    assert!(system_prompt.contains("当前没有 Web Push / 手机系统通知能力"));
+    assert!(system_prompt.contains("不要承诺会出现在手机通知中心"));
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn resolve_prompt_input_places_recv_extra_before_compact_summary() {
     let root = make_temp_dir("hone_channels_prompt_recv_extra_priority");
     let storage = SessionStorage::new(root.join("sessions"));
@@ -918,6 +937,54 @@ fn finalize_agent_response_recovers_cron_job_confirmation_from_tool_result() {
     assert_eq!(
         response.content,
         "已创建定时任务：每日大盘监控（每天 20:00）。任务 ID：j_market20。"
+    );
+    assert!(outcome.fallback_reason.is_none());
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn finalize_agent_response_recovers_portfolio_confirmation_from_tool_result() {
+    let root = make_temp_dir("hone_channels_finalize_portfolio_confirmation");
+    std::fs::create_dir_all(&root).expect("create root");
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let mut response = AgentResponse {
+        content: "我先把你的 RDW 持仓记录好，然后继续跟踪。".to_string(),
+        tool_calls_made: vec![ToolCallMade {
+            name: "portfolio".to_string(),
+            arguments: serde_json::json!({
+                "action": "add",
+                "ticker": "rdw",
+                "cost_basis": 12
+            }),
+            result: serde_json::json!({
+                "action": "add",
+                "count": 1,
+                "holdings": [{
+                    "ticker": "RDW",
+                    "asset_type": "stock",
+                    "holding_horizon": null,
+                    "strategy_notes": null,
+                    "promoted_from_watchlist": false
+                }],
+                "success": true,
+                "ticker": "RDW",
+                "asset_type": "stock"
+            }),
+            tool_call_id: None,
+        }],
+        iterations: 1,
+        success: true,
+        error: None,
+    };
+
+    let outcome = finalize_agent_response(&core, "session", "mock", &mut response);
+
+    assert!(response.success);
+    assert!(response.error.is_none());
+    assert_eq!(
+        response.content,
+        "已记录持仓：RDW，成本价 12。后续跟踪会优先参考这条持仓记录。"
     );
     assert!(outcome.fallback_reason.is_none());
 

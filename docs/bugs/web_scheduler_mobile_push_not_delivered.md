@@ -3,8 +3,8 @@
 - 发现时间：2026-05-15 15:04 CST
 - Bug Type：Business Error
 - 严重等级：P2
-- 状态：New
-- 修复情况：未修复；当前证据显示任务执行与会话落库成功，但手机系统级通知未送达，且产品/assistant 表述会让用户误以为可依赖手机提醒。
+- 状态：Fixed
+- 修复情况：2026-05-16 00:06 已收口 Web 渠道能力边界：Web cron 对话提示明确只保证写入 Hone 会话 / 在线 SSE，不承诺手机系统通知；Web scheduler 台账 detail 显式记录 `system_push_supported=false` / `system_push_sent=false`。
 - GitHub issue：无；当前不是 P1，未创建 issue。
 
 ## 证据来源
@@ -52,9 +52,28 @@ Web 用户创建持仓新闻晚报 -> 用户询问如何在手机收到提醒 ->
 - 前端没有可见的 Web Push 订阅与浏览器通知授权链路；后端也没有独立的 push 订阅表或外部通知投递结果。
 - assistant 缺少 channel capability 约束：当 `delivery_channel=web` 且没有 Web Push 能力时，仍按“手机通知权限”给出操作建议，导致用户预期与系统实际能力错位。
 
+## 修复进展（2026-05-16 00:06 CST）
+
+- 已在 Web 渠道且允许 cron 的对话提示中注入 `【Web 定时任务送达边界】`：
+  - 当前 Web 定时任务结果只保证写入当前 Hone 会话；
+  - 网页在线且 SSE 连接存在时会实时追加到页面；
+  - 当前没有 Web Push / 手机系统通知能力，不允许承诺会出现在手机通知中心，也不再引导用户排查手机通知权限。
+- 已在 Web scheduler 执行台账 detail 中补充：
+  - `system_push_supported=false`
+  - `system_push_sent=false`
+  - 继续保留 `console_event_sent`，用于区分页面实时 SSE 是否送达。
+- 保留既有“会话落库即 Web delivered”的语义，不把离线页面视为 send_failed；但台账不再让后续排障误读为手机系统 push 已送达。
+- 新增回归：
+  - `resolve_prompt_input_warns_web_cron_cannot_send_mobile_system_push`
+  - `web_scheduler_detail_distinguishes_session_delivery_from_system_push`
+- 验证：
+  - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/prompt.rs crates/hone-channels/src/turn_builder.rs crates/hone-channels/src/agent_session/tests.rs crates/hone-web-api/src/routes/events.rs`
+  - `cargo test -p hone-channels resolve_prompt_input_warns_web_cron_cannot_send_mobile_system_push -- --nocapture`
+  - `cargo test -p hone-web-api web_scheduler_ -- --nocapture`
+  - `cargo check -p hone-web-api --tests`
+- 状态更新为 `Fixed`。若后续产品要求真正手机提醒，应另开功能/缺陷补 Web Push/App Push 订阅、授权状态检查和系统级投递台账。
+
 ## 下一步建议
 
-1. 产品层先明确 Web scheduler 的承诺：仅会话内消息，还是必须支持系统级 push。
-2. 若保持仅会话内消息：在 cron job tool / system prompt / UI 文案里明确禁止承诺手机系统通知，并在回答中建议用户改用已支持的 Feishu / Telegram / Discord 等渠道。
-3. 若要支持手机提醒：新增 Web Push/App Push capability、订阅状态检查与投递台账字段，区分 `session_persisted`、`sse_event_sent`、`system_push_sent`、`system_push_failed`。
-4. 修复后补一条回归：当 `delivery_channel=web` 且无 push capability 时，assistant 创建测试通知的 final 必须说明“只能写入当前 Hone 会话，不保证手机系统通知”。
+1. 若保持仅会话内消息：后续 UI 可继续补显式说明，但当前 prompt 与台账已先阻断错误承诺。
+2. 若要支持手机提醒：新增 Web Push/App Push capability、订阅状态检查与投递台账字段，区分 `session_persisted`、`sse_event_sent`、`system_push_sent`、`system_push_failed`。

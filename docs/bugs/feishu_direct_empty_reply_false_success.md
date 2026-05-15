@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 18:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29)
 - **证据来源**:
   - 2026-05-15 21:48-22:07 最新真实直聊样本：
@@ -175,6 +175,20 @@
 - 最新样本说明另一条同根因分支也仍然活跃：`response_finalizer` 会把某些真实用户态澄清/计划句直接判成 `transitional planning sentence`，随后走与空回复相同的 fallback 收口。
 - 多代理封装层把空回复继续当作 `answer.done success=true`，导致上层消息流无法区分“正常完成”和“零字节完成”。
 - Feishu 发送侧只看分段流程是否跑完，没有拦截空正文，因此把空 assistant 消息照常投递。
+
+## 修复进展（2026-05-16 00:06 CST）
+
+- 本轮针对 2026-05-15 17:37 CST 的 `RDW` 持仓 / 继续跟踪复发样本补齐 `portfolio` 副作用确认兜底：
+  - `response_finalizer` 在抑制 `transitional planning sentence` 前，除既有 `cron_job` 外，也会检查本轮成功的 `portfolio add/update/remove/watch/unwatch` 工具结果。
+  - 若 `portfolio` 已明确写入、更新、删除或加入关注，会从工具结果合成用户可见确认，例如 `已记录持仓：RDW，成本价 12。后续跟踪会优先参考这条持仓记录。`。
+  - 该逻辑只覆盖工具结果 `success=true` 的写操作；`view`、失败结果、真正空输出和没有副作用证明的 planning sentence 仍继续走失败兜底。
+- 新增回归：
+  - `finalize_agent_response_recovers_portfolio_confirmation_from_tool_result`
+- 验证：
+  - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/response_finalizer.rs crates/hone-channels/src/agent_session/tests.rs`
+  - `cargo test -p hone-channels finalize_agent_response -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+- 状态更新为 `Fixed`。本轮不重启 live 服务；后续若部署后仍出现 `portfolio success + planning_sentence_suppressed + 通用失败提示`，应继续在本单追加证据或拆出更具体的副作用恢复缺口。
 
 ## 修复进展（2026-05-14 20:12 CST）
 

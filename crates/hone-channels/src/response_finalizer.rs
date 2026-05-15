@@ -96,28 +96,29 @@ pub(crate) fn finalize_agent_response(
 
 fn recover_successful_side_effect_confirmation(tool_calls: &[ToolCallMade]) -> Option<String> {
     tool_calls.iter().rev().find_map(|call| {
-        if call.name != "cron_job" {
-            return None;
-        }
         if call.result.get("success").and_then(|value| value.as_bool()) != Some(true) {
             return None;
         }
-        let action = call
-            .arguments
-            .get("action")
-            .and_then(|value| value.as_str())
-            .unwrap_or_default();
-        match action {
-            "add" => cron_job_confirmation_message("已创建定时任务", call),
-            "update" => cron_job_confirmation_message("已更新定时任务", call),
-            "remove" => call
-                .result
-                .get("removed_job_id")
-                .and_then(|value| value.as_str())
-                .map(|job_id| format!("已删除定时任务：{job_id}。")),
+        match call.name.as_str() {
+            "cron_job" => recover_cron_job_confirmation(call),
+            "portfolio" => recover_portfolio_confirmation(call),
             _ => None,
         }
     })
+}
+
+fn recover_cron_job_confirmation(call: &ToolCallMade) -> Option<String> {
+    let action = tool_action(call);
+    match action.as_deref() {
+        Some("add") => cron_job_confirmation_message("已创建定时任务", call),
+        Some("update") => cron_job_confirmation_message("已更新定时任务", call),
+        Some("remove") => call
+            .result
+            .get("removed_job_id")
+            .and_then(|value| value.as_str())
+            .map(|job_id| format!("已删除定时任务：{job_id}。")),
+        _ => None,
+    }
 }
 
 fn cron_job_confirmation_message(prefix: &str, call: &ToolCallMade) -> Option<String> {
@@ -140,6 +141,132 @@ fn cron_job_confirmation_message(prefix: &str, call: &ToolCallMade) -> Option<St
     }
     message.push('。');
     Some(message)
+}
+
+fn recover_portfolio_confirmation(call: &ToolCallMade) -> Option<String> {
+    let action = tool_action(call)?;
+    let tickers = portfolio_tickers(call);
+    if tickers.is_empty() {
+        return None;
+    }
+    let label = tickers.join("、");
+    let message = match action.as_str() {
+        "add" => {
+            let mut message = format!("已记录持仓：{label}");
+            if let Some(cost_basis) = portfolio_cost_basis(call) {
+                message.push_str("，成本价 ");
+                message.push_str(&cost_basis);
+            }
+            message.push_str("。后续跟踪会优先参考这条持仓记录。");
+            message
+        }
+        "update" => format!("已更新持仓：{label}。后续跟踪会使用最新持仓记录。"),
+        "remove" => format!("已处理持仓/关注删除请求：{label}。"),
+        "watch" => match portfolio_first_result(call).as_deref() {
+            Some("already_holding") => format!("{label} 已在持仓中，会继续按持仓跟踪。"),
+            Some("already_watching") => format!("{label} 已在关注列表中，会继续跟踪。"),
+            _ => format!("已加入关注列表：{label}。后续会继续跟踪。"),
+        },
+        "unwatch" => format!("已取消关注：{label}。"),
+        _ => return None,
+    };
+    Some(message)
+}
+
+fn tool_action(call: &ToolCallMade) -> Option<String> {
+    call.result
+        .get("action")
+        .and_then(|value| value.as_str())
+        .or_else(|| {
+            call.arguments
+                .get("action")
+                .and_then(|value| value.as_str())
+        })
+        .map(str::to_string)
+}
+
+fn portfolio_tickers(call: &ToolCallMade) -> Vec<String> {
+    let mut tickers = Vec::new();
+    push_portfolio_ticker(&mut tickers, &call.result);
+    if let Some(holdings) = call
+        .result
+        .get("holdings")
+        .and_then(|value| value.as_array())
+    {
+        for holding in holdings {
+            push_portfolio_ticker(&mut tickers, holding);
+        }
+    }
+    if let Some(holdings) = call
+        .arguments
+        .get("holdings")
+        .and_then(|value| value.as_array())
+    {
+        for holding in holdings {
+            push_portfolio_ticker(&mut tickers, holding);
+        }
+    }
+    push_portfolio_ticker(&mut tickers, &call.arguments);
+    tickers
+}
+
+fn push_portfolio_ticker(tickers: &mut Vec<String>, value: &serde_json::Value) {
+    let Some(ticker) = value
+        .get("ticker")
+        .or_else(|| value.get("symbol"))
+        .and_then(|value| value.as_str())
+        .map(|value| value.trim().to_ascii_uppercase())
+        .filter(|value| !value.is_empty())
+    else {
+        return;
+    };
+    if !tickers.iter().any(|existing| existing == &ticker) {
+        tickers.push(ticker);
+    }
+}
+
+fn portfolio_cost_basis(call: &ToolCallMade) -> Option<String> {
+    call.arguments
+        .get("cost_basis")
+        .and_then(format_number_value)
+        .or_else(|| {
+            call.arguments
+                .get("holdings")
+                .and_then(|value| value.as_array())
+                .and_then(|holdings| holdings.first())
+                .and_then(|holding| holding.get("cost_basis"))
+                .and_then(format_number_value)
+        })
+}
+
+fn format_number_value(value: &serde_json::Value) -> Option<String> {
+    if let Some(number) = value.as_f64() {
+        return Some(if number.fract() == 0.0 {
+            format!("{number:.0}")
+        } else {
+            format!("{number:.2}")
+        });
+    }
+    value
+        .as_str()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn portfolio_first_result(call: &ToolCallMade) -> Option<String> {
+    call.result
+        .get("result")
+        .and_then(|value| value.as_str())
+        .or_else(|| {
+            call.result
+                .get("holdings")
+                .and_then(|value| value.as_array())
+                .and_then(|holdings| holdings.first())
+                .and_then(|holding| holding.get("result"))
+                .and_then(|value| value.as_str())
+        })
+        .map(str::to_string)
 }
 
 fn format_cron_schedule(schedule: &serde_json::Value) -> String {

@@ -27,6 +27,10 @@ pub const DEFAULT_CRON_TASK_POLICY: &str = "【定时任务 / 心跳任务策略
 - 对这种无明确时刻的条件型任务，必须先询问用户是否要创建“心跳检测”任务；心跳任务会每 30 分钟检查一次条件。\n\
 - 只有在用户明确同意后，才创建 repeat=heartbeat 的任务；heartbeat 任务建议带上 heartbeat 标签。\n\
 - 用户询问“我的所有定时任务”时，应把 heartbeat 任务也视为任务列表的一部分一并说明。";
+pub const DEFAULT_WEB_CRON_DELIVERY_POLICY: &str = "【Web 定时任务送达边界】\n\
+- 当前 Web 渠道的定时任务结果只保证写入当前 Hone 会话，并在网页在线且 SSE 连接存在时实时追加到页面。\n\
+- 当前没有 Web Push / 手机系统通知能力；不要承诺会出现在手机通知中心，也不要引导用户排查手机通知权限。\n\
+- 如果用户明确需要手机系统级提醒，应说明当前 Web 渠道不支持，并建议改用已配置的外部通知渠道。";
 pub const DEFAULT_COMPANY_PROFILE_POLICY: &str = "【公司画像 / 长期跟踪策略】\n\
 - 若用户正在系统研究某家公司，应优先检查当前 actor 用户空间下的 `company_profiles/` 是否已有该公司画像。\n\
 - 若用户问题明显依赖当前 actor 用户空间下的本地持久化信息，也应优先检查本地文件，例如 `company_profiles/`、`uploads/`、`runtime/` 产物或其它用户本地笔记；如果当前阶段暴露的是只读本地工具，应优先使用这些工具，而不是直接声称无法访问文件、历史或记忆。\n\

@@ -51,6 +51,11 @@ impl<'a> PromptTurnBuilder<'a> {
             prompt_options
                 .extra_sections
                 .push(crate::prompt::DEFAULT_CRON_TASK_POLICY.to_string());
+            if self.actor.channel == "web" {
+                prompt_options
+                    .extra_sections
+                    .push(crate::prompt::DEFAULT_WEB_CRON_DELIVERY_POLICY.to_string());
+            }
         }
         let stage_constraints =
             hone_tools::skill_runtime::SkillStageConstraints::new(self.allow_cron, None);
