@@ -6,6 +6,20 @@
 - **状态**: New
 - **GitHub Issue**: [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29)
 - **证据来源**:
+  - 2026-05-15 21:48-22:07 最新真实直聊样本：
+    - `session_id=Actor_feishu__direct__ou_5f64ee7ca7af22d44a83a31054e6fb92a3`
+    - `2026-05-15T21:48:24.221814+08:00` 用户输入：`我建仓了这只股票`
+    - 同轮日志显示 `Tool: hone/skill_tool` 已执行，随后 `data/runtime/logs/hone-feishu.runtime-recovery.log` 在 `21:48:53.068 CST` 记录 `transitional planning sentence detected, treating as empty ... chars=120` 与 `step=agent.run.fallback ... detail=planning_sentence_suppressed`。
+    - `2026-05-15T21:48:53.068790+08:00` assistant 最终落库并发送：`这次没有成功产出完整回复。我已经自动重试过了，请再发一次，或换个问法。`
+    - 同轮 `MsgFlow/feishu done ... success=true ... tools=1(Tool: hone/skill_tool) reply.chars=35`，随后 `reply.send ... segments.sent=1/1`。
+    - `2026-05-15T22:06:56.166595+08:00` 用户再次输入：`我新建仓了一只股票 我直接发图给你`
+    - `2026-05-15T22:07:17.258 CST` 日志再次记录 `transitional planning sentence detected, treating as empty ... chars=70` 与 `step=agent.run.fallback ... detail=planning_sentence_suppressed`；同轮没有工具调用，仍按 `success=true`、`reply.chars=35`、`segments.sent=1/1` 收口。
+    - 结论：这是同一根因的持续复发，不新建重复文档。当前坏态不只遮蔽已发生的 `cron_job` / `portfolio` 副作用，也会把本应澄清“请上传图片 / 请提供标的”的短答吞掉并改发通用失败。
+    - 影响：用户正在表达新增持仓并准备发图，系统没有给出可执行的下一步确认或附件接收说明，导致 Feishu 直聊主链路继续无法承接持仓录入 / 图片后续任务。该问题仍影响功能链路，维持 `P1 / New`。
+  - 当前状态结论：
+    - 2026-05-15 23:06 CST：状态维持 `New`。
+    - 关联 GitHub Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29) 已存在，本轮不重复创建。
+    - 新修复除覆盖非 `cron_job` 工具副作用外，还需要在无工具调用但 Answer 只产出短计划/澄清句时，保留可用户消费的澄清或下一步指引，而不是统一替换成“没有成功产出完整回复”。
   - 2026-05-15 17:36-17:37 最新真实直聊样本：
     - `session_id=Actor_feishu__direct__ou_5f9f2cd3505aab8fed0a6ffd582df285b1`
     - `2026-05-15T17:36:53.261646+08:00` 用户输入：`我持有RDW，成本价12，继续帮我跟踪`
@@ -15,7 +29,7 @@
     - 同轮 `MsgFlow/feishu done ... success=true ... tools=4(Tool: hone/data_fetch,Tool: hone/portfolio,Tool: hone/skill_tool) reply.chars=35`，随后 `reply.send ... segments.sent=1/1`。
     - 结论：这是同一根因的复发，不新建重复文档。2026-05-14 的修复只覆盖成功 `cron_job` 副作用恢复确认；本轮 `portfolio` / 持仓跟踪工具路径仍会在 planning sentence 被抑制后外发通用失败，并且整轮仍被记为成功。
     - 影响：用户明确要求继续跟踪 RDW，但可见回复无法说明跟踪是否已建立、持仓是否已记录、还缺哪些字段或是否需要重试。该问题影响 Feishu 直聊主链路任务完成确认，维持 `P1 / New`。
-  - 当前状态结论：
+  - 2026-05-15 19:03 当前状态结论：
     - 2026-05-15 19:03 CST：状态从 `Fixed` 调回 `New`。
     - 关联 GitHub Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29) 已存在，本轮不重复创建。
     - 新修复需要覆盖 `portfolio` / 文件写入 / 画像创建等非 `cron_job` 工具副作用：如果工具已成功执行，应恢复为具体确认；如果不能确认，应返回明确的业务失败原因，不能用通用“没有成功产出完整回复”遮蔽。

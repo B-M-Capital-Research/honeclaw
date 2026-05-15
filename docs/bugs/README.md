@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-15 19:03 CST
+最后更新：2026-05-15 23:06 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -21,6 +21,8 @@
 - Later / 待复现：9
 - 已修复 / 已关闭：103
 - 历史分析 / 部分止血：5
+- 本轮 23:06 CST 继续确认 Feishu 直聊空/无效回复遮蔽缺陷活跃：21:48 CST 用户输入“我建仓了这只股票”，链路执行 `skill_tool` 后 final 被 `planning_sentence_suppressed` 替换成通用失败，并以 `success=true`、`reply.chars=35`、`segments.sent=1/1` 收口；22:07 CST 用户输入“我新建仓了一只股票 我直接发图给你”也被同样替换成通用失败。两条都是同一根因，不新建重复缺陷；关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29)，不重复创建。
+- 本轮 23:06 CST 未发现新的独立 P1：最近四小时 Feishu / Web direct 未见新的本机绝对路径、工具轨迹、原始标签或跨 session 数据外泄 final；heartbeat `mimo-v2.5-pro` 与 started-row 残留仍属于已知运行态证据，23:00 `核心观察股池晚间快报` 仍在 `running + pending` 且距离触发时间过短，本轮不作为新的卡死结论。
 - 本轮 19:03 CST 重新打开 Feishu 直聊空/无效回复遮蔽缺陷：17:37 CST 用户要求继续跟踪 RDW，链路执行 `skill_tool`、`data_fetch` 与两次 `portfolio` 工具后，final 被 `planning_sentence_suppressed` 替换成“这次没有成功产出完整回复...”，但整轮仍按 `success=true`、`reply.chars=35`、`segments.sent=1/1` 收口；这不是单纯回答质量问题，而是工具链/潜在业务副作用后的用户可见确认被通用失败遮蔽。关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29)，不重复创建。
 - 本轮 19:03 CST 未发现新的独立 P1：heartbeat `mimo-v2.5-pro` 与 started-row 残留仍是当前机器旧运行态/已知缺陷证据；Feishu direct 其它最近会话均有 assistant 收口，未见新的绝对路径、工具轨迹或原始标签外泄。17:37 样本归并到既有 Feishu 直聊空/无效回复缺陷。
 - 本轮 12:10 CST 已修复 Feishu event-engine digest `open_id cross app` 复发：event-engine Feishu sink 现在会从 cron 任务 channel-target 目录为 direct actor 建立无歧义联系人映射，优先用 email/mobile 重新解析 current-app open_id，再发送 digest 卡片；没有唯一联系人时不猜测映射。验证 `rustfmt --edition 2024 --config skip_children=true --check crates/hone-event-engine/src/sinks/feishu.rs crates/hone-web-api/src/lib.rs`、`cargo test -p hone-event-engine feishu --lib -- --nocapture`、`cargo test -p hone-web-api feishu_direct_actor_targets --lib -- --nocapture`、`cargo check -p hone-event-engine -p hone-web-api --tests` 通过；关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)。
@@ -114,7 +116,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | New | 2026-05-15 19:03 重新打开：17:37 CST `继续帮我跟踪 RDW` 在 `portfolio` 工具执行后被 `planning_sentence_suppressed` 改成通用失败，但链路仍记 `success=true` 并发送；关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29) | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
+| Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | New | 2026-05-15 23:06 继续确认：21:48 CST 建仓表达在 `skill_tool` 后被 `planning_sentence_suppressed` 改成通用失败，22:07 CST “直接发图给你”也同样失败；链路仍记 `success=true` 并发送；关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29) | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Web scheduler 让用户以为会发送手机系统通知，但实际只写入 Web 会话 / SSE 事件 | P2 | New | 2026-05-15 15:04 新增：12:35 / 12:47 CST 两条测试通知均 `completed + sent + delivered=1` 且 `console_event_sent=false`，用户连续反馈手机未收到；当前前端只监听 SSE，未见 Web Push / Notification API 能力，需先收口能力边界或补真正系统 push | [web_scheduler_mobile_push_not_delivered.md](./web_scheduler_mobile_push_not_delivered.md) |
 
 ## Later / 待复现
