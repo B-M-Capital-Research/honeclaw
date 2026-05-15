@@ -61,6 +61,8 @@ pre,
 .hf-markdown {
   color: var(--text-secondary);
   line-height: 1.7;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .hf-markdown h1,
@@ -93,13 +95,57 @@ pre,
   margin: 1rem 0;
 }
 
+.hf-markdown > :first-child {
+  margin-top: 0;
+}
+
+.hf-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.hf-markdown strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
 .hf-markdown a {
   color: var(--accent);
 }
 
 .hf-markdown ul,
 .hf-markdown ol {
-  padding-left: 1.25rem;
+  padding-left: 1.45rem;
+  list-style-position: outside;
+}
+
+.hf-markdown ul {
+  list-style-type: disc;
+}
+
+.hf-markdown ol {
+  list-style-type: decimal;
+}
+
+.hf-markdown ul ul {
+  list-style-type: circle;
+}
+
+.hf-markdown ul ul ul {
+  list-style-type: square;
+}
+
+.hf-markdown li {
+  margin: 0.35rem 0;
+  padding-left: 0.15rem;
+}
+
+.hf-markdown li > p {
+  margin: 0.35rem 0;
+}
+
+.hf-markdown li > ul,
+.hf-markdown li > ol {
+  margin: 0.35rem 0 0.5rem;
 }
 
 .hf-markdown blockquote {

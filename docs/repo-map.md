@@ -58,7 +58,7 @@ Last updated: 2026-05-15
 - Actor sandbox research docs live under a repo-external `agent-sandboxes/<channel>/<scope__user>/company_profiles/<profile_id>/profile.md` plus `events/*.md`; this actor-local directory is the source of truth for company portraits and long-term fundamental tracking. Portfolio JSON must stay in `storage.portfolio_dir`, never inside actor sandboxes.
 - `packages/`
   - `app`: SolidJS web console
-  - `ui`: shared UI components and context
+  - `ui`: shared UI components and context; Markdown rendering is centered on `src/lib/markdown.ts` (`parseMarkdown`) plus the `Markdown` component / `MarkedProvider`, with base prose styles in `src/styles/index.css`
 - `skills/`
   - In-repo skill definitions; runtime also supports `data/custom_skills/<id>/SKILL.md` and nested `.hone/skills/<id>/SKILL.md` with nearer dynamic directories taking precedence
   - `SKILL.md` frontmatter now also supports an opt-in `script` entrypoint that `skill_tool(..., execute_script=true)` can run from the skill directory

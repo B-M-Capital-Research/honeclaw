@@ -586,27 +586,10 @@ function LoadingCard(props: {
   );
 }
 
-function assistantMarkdownClass(extra: string = "") {
+function assistantMarkdownClass(white = false) {
   return [
-    "break-words text-[16px] leading-[1.8] text-[#1e293b]",
-    "[&_*]:max-w-full",
-    "[&_p]:my-0 [&_p+*]:mt-3",
-    "[&_strong]:text-[#0f172a] [&_strong]:font-bold",
-    "[&_pre]:mt-4 [&_pre]:max-w-full [&_pre]:rounded-2xl [&_pre]:border-0 [&_pre]:shadow-none",
-    "[&_pre_code]:!bg-transparent [&_pre_code]:!p-0 [&_pre_code]:!rounded-none",
-    "[&_:not(pre)>code]:rounded-md [&_:not(pre)>code]:bg-black/[0.05] [&_:not(pre)>code]:px-1.5 [&_:not(pre)>code]:py-0.5 [&_:not(pre)>code]:text-[0.92em] [&_:not(pre)>code]:font-[var(--font-mono,'JetBrains_Mono',monospace)]",
-    // List bullets/numbers: Tailwind preflight strips them; put them back so
-    // markdown lists actually look like lists instead of indented paragraphs.
-    "[&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5",
-    "[&_li]:marker:text-slate-400",
-    "[&_ul]:my-3 [&_ol]:my-3 [&_li]:my-1",
-    // Real heading hierarchy in case the LLM uses ##/###.
-    "[&_h1]:mt-5 [&_h1]:mb-2 [&_h1]:text-[1.2em] [&_h1]:font-extrabold [&_h1]:text-[#0f172a]",
-    "[&_h2]:mt-5 [&_h2]:mb-2 [&_h2]:text-[1.1em] [&_h2]:font-extrabold [&_h2]:text-[#0f172a]",
-    "[&_h3]:mt-4 [&_h3]:mb-1 [&_h3]:text-[1.05em] [&_h3]:font-bold [&_h3]:text-[#0f172a]",
-    "[&_h4]:mt-3 [&_h4]:mb-1 [&_h4]:font-bold [&_h4]:text-[#0f172a]",
-    "[&_blockquote]:my-4 [&_blockquote]:border-l-4 [&_blockquote]:border-black/5 [&_blockquote]:pl-4 [&_blockquote]:text-[#64748b] [&_blockquote]:italic",
-    extra,
+    "public-chat-markdown",
+    white ? "public-chat-markdown--white" : "",
   ].join(" ");
 }
 
@@ -616,8 +599,7 @@ function AssistantBody(props: { content: string; white?: boolean }) {
     parseMessageContent(cleaned(), { imageEndpoint: PUBLIC_IMAGE_ENDPOINT }),
   );
   const hasImage = () => parts().some((part) => part.type === "image");
-  const markdownClass = () =>
-    assistantMarkdownClass(props.white ? "!text-white [&_*]:!text-white" : "");
+  const markdownClass = () => assistantMarkdownClass(props.white);
 
   return (
     <Show
@@ -1533,7 +1515,23 @@ function ProactiveModeTips() {
           aria-expanded={open()}
           onClick={() => setOpen(true)}
         >
-          <span class="public-chat-proactive-tip-dot" aria-hidden="true" />
+          <svg
+            class="public-chat-proactive-tip-icon"
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M9 6V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1" />
+            <path d="M5 6h14a2 2 0 0 1 2 2v10.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z" />
+            <path d="M3 12h18" />
+            <path d="M12 10.5v3" />
+          </svg>
           <span>{CONTENT.chat_page.composer.proactive_tip}</span>
         </button>
       </div>
@@ -3084,13 +3082,12 @@ export default function PublicChatPage() {
           border-color: rgba(245,158,11,0.35);
           box-shadow: 0 8px 22px rgba(15,23,42,0.08);
         }
-        .public-chat-proactive-tip-dot {
-          width: 7px;
-          height: 7px;
-          border-radius: 999px;
-          background: #f59e0b;
-          box-shadow: 0 0 0 4px rgba(245,158,11,0.12);
-          flex: 0 0 7px;
+        .public-chat-proactive-tip-icon {
+          width: 15px;
+          height: 15px;
+          flex: 0 0 15px;
+          color: #d97706;
+          stroke-width: 2.2;
         }
         .public-chat-proactive-modal-backdrop {
           position: fixed;
@@ -3223,6 +3220,90 @@ export default function PublicChatPage() {
            competing for attention reads as visual noise, so the gradient
            goes to a near-invisible tint. */
         .public-chat-page .animated-bg .circle { opacity: 0.08; filter: blur(80px); }
+        .public-chat-messages .public-chat-markdown {
+          color: #1e293b;
+          font-size: 16px;
+          line-height: 1.75;
+          white-space: normal;
+        }
+        .public-chat-messages .public-chat-markdown * {
+          max-width: 100%;
+        }
+        .public-chat-messages .public-chat-markdown h1 {
+          font-size: 1.35em;
+          line-height: 1.35;
+          margin: 1.2em 0 0.45em;
+        }
+        .public-chat-messages .public-chat-markdown h2 {
+          font-size: 1.18em;
+          line-height: 1.4;
+          margin: 1.15em 0 0.45em;
+        }
+        .public-chat-messages .public-chat-markdown h3,
+        .public-chat-messages .public-chat-markdown h4 {
+          font-size: 1.05em;
+          line-height: 1.45;
+          margin: 1em 0 0.35em;
+        }
+        .public-chat-messages .public-chat-markdown p {
+          margin: 0.72em 0;
+        }
+        .public-chat-messages .public-chat-markdown strong {
+          color: #0f172a;
+          font-weight: 800;
+        }
+        .public-chat-messages .public-chat-markdown ul,
+        .public-chat-messages .public-chat-markdown ol {
+          margin: 0.72em 0;
+          padding-left: 1.45em;
+          list-style-position: outside;
+        }
+        .public-chat-messages .public-chat-markdown ul {
+          list-style-type: disc;
+        }
+        .public-chat-messages .public-chat-markdown ol {
+          list-style-type: decimal;
+        }
+        .public-chat-messages .public-chat-markdown ul ul {
+          list-style-type: circle;
+        }
+        .public-chat-messages .public-chat-markdown ul ul ul {
+          list-style-type: square;
+        }
+        .public-chat-messages .public-chat-markdown li {
+          margin: 0.32em 0;
+          padding-left: 0.12em;
+        }
+        .public-chat-messages .public-chat-markdown li > p {
+          margin: 0.35em 0;
+        }
+        .public-chat-messages .public-chat-markdown li > ul,
+        .public-chat-messages .public-chat-markdown li > ol {
+          margin: 0.35em 0 0.5em;
+        }
+        .public-chat-messages .public-chat-markdown blockquote {
+          margin: 1em 0;
+          border-left: 4px solid rgba(15,23,42,0.12);
+          padding-left: 1em;
+          color: #64748b;
+        }
+        .public-chat-messages .public-chat-markdown :not(pre) > code {
+          border-radius: 6px;
+          background: rgba(15,23,42,0.06);
+          padding: 0.12em 0.36em;
+          font-size: 0.92em;
+          font-family: var(--font-mono, "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+        }
+        .public-chat-messages .public-chat-markdown > :first-child {
+          margin-top: 0;
+        }
+        .public-chat-messages .public-chat-markdown > :last-child {
+          margin-bottom: 0;
+        }
+        .public-chat-messages .public-chat-markdown--white,
+        .public-chat-messages .public-chat-markdown--white * {
+          color: #fff !important;
+        }
         /* Markdown tables: keep them inside the bubble on narrow screens. */
         .public-chat-messages .hf-markdown table {
           display: block;
@@ -3233,38 +3314,6 @@ export default function PublicChatPage() {
         .public-chat-messages .hf-markdown th,
         .public-chat-messages .hf-markdown td {
           white-space: nowrap;
-        }
-        /* The LLM tends to write section labels as **bold** rather than as
-           proper ##/### headings, so two patterns slip through markdown as
-           inline <strong> inside a <p>. Promote them to heading-feeling
-           blocks so long answers gain a scannable skeleton.
-
-           Pattern A — "<p><strong>label</strong></p>": a bold-only line, treat
-           as a small block heading.
-           Pattern B — "<p><strong>label</strong><br>body…</p>": a bold lead
-           followed by body, lift the lead onto its own line as a label. */
-        .public-chat-messages .hf-markdown p > strong:only-child {
-          display: block;
-          margin-top: 14px;
-          margin-bottom: 2px;
-          font-size: 1.05em;
-          color: #0f172a;
-        }
-        .public-chat-messages .hf-markdown p:first-child > strong:only-child {
-          margin-top: 0;
-        }
-        .public-chat-messages .hf-markdown p > strong:first-child + br {
-          /* Visually break the line into label + body */
-          line-height: 1.6;
-        }
-        .public-chat-messages .hf-markdown p > strong:first-child:not(:only-child) {
-          color: #0f172a;
-        }
-        /* The 1-item ordered list pattern that comes out of "1. xxx\n   - a\n   - b"
-           (marked splits the number off into a standalone <ol>) — drop its top
-           margin so the bullets read as children of the line above. */
-        .public-chat-messages .hf-markdown ol + ul {
-          margin-top: -8px;
         }
         /* Shiki code block: a single flat surface — the wrapper div is
            invisible, the visible chip is the <pre> itself. Soft gray-50
@@ -3534,7 +3583,11 @@ export default function PublicChatPage() {
         [data-theme="dark"] .public-chat-messages .pub-msg-bubble--assistant,
         [data-theme="dark"] .public-chat-messages .pub-msg-bubble--assistant .hf-markdown,
         [data-theme="dark"] .public-chat-messages .pub-msg-bubble--assistant .hf-markdown * { color: #e5e7eb !important; }
-        [data-theme="dark"] .public-chat-messages .pub-msg-bubble--assistant .hf-markdown strong { color: #f8fafc !important; }
+        [data-theme="dark"] .public-chat-messages .pub-msg-bubble--assistant .hf-markdown strong,
+        [data-theme="dark"] .public-chat-messages .pub-msg-bubble--assistant .hf-markdown h1,
+        [data-theme="dark"] .public-chat-messages .pub-msg-bubble--assistant .hf-markdown h2,
+        [data-theme="dark"] .public-chat-messages .pub-msg-bubble--assistant .hf-markdown h3,
+        [data-theme="dark"] .public-chat-messages .pub-msg-bubble--assistant .hf-markdown h4 { color: #f8fafc !important; }
         [data-theme="dark"] .public-chat-messages .pub-msg-bubble--assistant .hf-markdown a { color: #60a5fa !important; }
         [data-theme="dark"] .public-chat-messages .pub-msg-bubble--assistant .hf-markdown code {
           background: rgba(255,255,255,0.08) !important; color: #f8fafc !important;

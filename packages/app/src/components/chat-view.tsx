@@ -1,5 +1,6 @@
 import { Button } from "@hone-financial/ui/button";
 import { EmptyState } from "@hone-financial/ui/empty-state";
+import { Markdown } from "@hone-financial/ui/markdown";
 import { Textarea } from "@hone-financial/ui/textarea";
 import { VList, type VListHandle } from "virtua/solid";
 import {
@@ -190,6 +191,8 @@ function MessageBubble(props: { message: TimelineMessage }) {
   const isCompactSummary = () =>
     props.message.kind === "system" &&
     props.message.subtype === "compact_summary";
+  const rendersMarkdown = () =>
+    props.message.kind === "assistant" || props.message.kind === "scheduled";
 
   const base =
     props.message.kind === "user"
@@ -232,9 +235,22 @@ function MessageBubble(props: { message: TimelineMessage }) {
               />
             </Match>
             <Match when={part.type === "text"}>
-              <span class={isCompactSummary() ? "whitespace-pre-wrap text-[color:var(--text-muted)]" : "whitespace-pre-wrap"}>
-                {part.value}
-              </span>
+              <Show
+                when={rendersMarkdown()}
+                fallback={
+                  <span
+                    class={
+                      isCompactSummary()
+                        ? "whitespace-pre-wrap text-[color:var(--text-muted)]"
+                        : "whitespace-pre-wrap"
+                    }
+                  >
+                    {part.value}
+                  </span>
+                }
+              >
+                <Markdown text={part.value} class="text-sm leading-7" />
+              </Show>
             </Match>
           </Switch>
         )}

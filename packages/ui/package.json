@@ -9,6 +9,7 @@
     "./input": "./src/components/input.tsx",
     "./logo": "./src/components/logo.tsx",
     "./markdown": "./src/components/markdown.tsx",
+    "./markdown-utils": "./src/lib/markdown.ts",
     "./skeleton": "./src/components/skeleton.tsx",
     "./textarea": "./src/components/textarea.tsx",
     "./context/dialog": "./src/context/dialog.tsx",
