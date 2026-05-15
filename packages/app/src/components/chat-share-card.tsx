@@ -80,11 +80,55 @@ const SHARE_CARD_CSS = `
   .hf-share-card-md p:last-child { margin-bottom: 0; }
   .hf-share-card-md strong { color: #0f172a; font-weight: 700; }
   .hf-share-card-md ul,
-  .hf-share-card-md ol { margin: 0.6em 0; padding-left: 1.25em; }
-  .hf-share-card-md ul { list-style: disc; }
-  .hf-share-card-md ol { list-style: decimal; }
-  .hf-share-card-md li { margin: 0.2em 0; }
-  .hf-share-card-md li::marker { color: #94a3b8; }
+  .hf-share-card-md ol {
+    margin: 0.62em 0;
+    padding-left: 0;
+    list-style: none;
+  }
+  .hf-share-card-md ol { counter-reset: hone-share-ol; }
+  .hf-share-card-md li {
+    position: relative;
+    margin: 0.26em 0;
+    padding-left: 1.45em;
+    line-height: 1.58;
+  }
+  .hf-share-card-md ol > li {
+    counter-increment: hone-share-ol;
+  }
+  .hf-share-card-md ul > li::before,
+  .hf-share-card-md ol > li::before {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1.05em;
+    color: #94a3b8;
+    font-size: 1em;
+    font-weight: 700;
+    line-height: inherit;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .hf-share-card-md ul > li::before {
+    content: "•";
+  }
+  .hf-share-card-md ul ul > li::before {
+    content: "◦";
+    font-size: 0.95em;
+  }
+  .hf-share-card-md ul ul ul > li::before {
+    content: "▪";
+    font-size: 0.72em;
+  }
+  .hf-share-card-md ol > li::before {
+    content: counter(hone-share-ol) ".";
+  }
+  .hf-share-card-md li > p {
+    margin: 0.24em 0;
+  }
+  .hf-share-card-md li > ul,
+  .hf-share-card-md li > ol {
+    margin: 0.28em 0 0.44em;
+  }
   .hf-share-card-md h1,
   .hf-share-card-md h2,
   .hf-share-card-md h3,
@@ -327,15 +371,21 @@ function UserRow(props: { content: string; fontSize: number }) {
           "max-width": "86%",
           background: "#0f172a",
           color: "#f8fafc",
-          padding: "10px 14px",
+          display: "flex",
+          "align-items": "center",
+          "justify-content": "flex-start",
+          "min-height": `${Math.round(props.fontSize * 1.45 + 20)}px`,
+          padding: "10px 15px",
           "border-radius": "12px 12px 4px 12px",
           "font-size": `${props.fontSize}px`,
-          "line-height": "1.55",
+          "line-height": "1.45",
           "white-space": "pre-wrap",
+          "text-align": "left",
           "word-break": "break-word",
+          "box-sizing": "border-box",
         }}
       >
-        {cleaned()}
+        <span style={{ display: "block", width: "100%" }}>{cleaned()}</span>
       </div>
     </div>
   );
