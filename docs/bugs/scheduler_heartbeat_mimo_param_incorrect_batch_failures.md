@@ -9,6 +9,10 @@
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-16 07:02 CST` 复核：最近四小时真实运行窗口 `2026-05-16T03:30:09+08:00` 到 `2026-05-16T07:00:18+08:00` 又新增 `81` 条 heartbeat `reasoning_content must be passed back` / `Param Incorrect` 失败，覆盖 `11` 个 job；终态均为 `execution_failed + skipped_error + delivered=0`。
+  - 失败 job 仍覆盖 `Cerebras IPO与业务进展心跳监控`、`DRAM 心跳监控`、`Monitor_Watchlist_11`、`RKLB异动监控`、`TEM大事件心跳监控`、`TEM破位预警`、`TSLA 正负触发条件心跳监控`、`伦敦金跌破4500提醒`、`持仓重大事件心跳检测`、`小米30港元破位预警` 与 `全天原油价格3小时播报`。
+  - 同窗仅看到 1 条普通 scheduler `每日美股盘后收盘复盘` 成功 `completed + sent + delivered=1`；最近四小时 Feishu assistant final 未命中绝对路径、工具轨迹、原始 ACP `session/update` 或飞书标签可见污染。故障仍集中在 heartbeat `mimo-v2.5-pro` function-calling 路径。
+  - 当前证据继续按当前机器旧/非生产运行态处理，只追加运行态观察，不把状态从 `Fixed` 回退为 `New`。
   - `2026-05-16 03:04 CST` 复核：最近四小时真实运行窗口 `2026-05-15T23:30:08+08:00` 到 `2026-05-16T03:00:19+08:00` 又新增 `81` 条 heartbeat `reasoning_content must be passed back` / `Param Incorrect` 失败，覆盖 `11` 个 job；终态均为 `execution_failed + skipped_error + delivered=0`。
   - 失败 job 覆盖 `Cerebras IPO与业务进展心跳监控`、`DRAM 心跳监控`、`Monitor_Watchlist_11`、`RKLB异动监控`、`TEM大事件心跳监控`、`TEM破位预警`、`TSLA 正负触发条件心跳监控`、`伦敦金跌破4500提醒`、`持仓重大事件心跳检测`、`小米30港元破位预警` 与 `全天原油价格3小时播报`。
   - 其中 9 个 job 各失败 `8` 次，`TEM破位预警` 失败 `7` 次，`全天原油价格3小时播报` 失败 `2` 次；03:00 CST 同窗仍连续失败。
@@ -103,6 +107,7 @@
 - 2026-05-15 03:03 CST 的最新复核显示，23:30-03:00 CST 又新增 `82` 条 heartbeat 因同一 `mimo-v2.5-pro` 上游 `HTTP 400 Param Incorrect` 失败，覆盖 11 个 job；同窗普通 scheduler 与 direct 会话仍有成功收口。
 - 2026-05-15 07:02 CST 的最新复核仅作为当前机器旧/非生产运行态证据：03:00-07:00 CST 仍新增 `90` 条 heartbeat 因同一 `mimo-v2.5-pro` 上游 `HTTP 400 Param Incorrect` 失败，覆盖 11 个 job；但 04:05 CST 已按当前 HEAD 回归验证确认修复成立，本轮不重新打开。
 - 2026-05-16 03:04 CST 的最新复核继续只作为当前机器旧/非生产运行态证据：23:30-03:00 CST 仍新增 `81` 条 heartbeat 因同一 `mimo-v2.5-pro` 上游 `HTTP 400 Param Incorrect` 失败，覆盖 11 个 job；live 主进程仍早于 04:05 CST 修复复核，不重新打开。
+- 2026-05-16 07:02 CST 的最新复核继续只作为当前机器旧/非生产运行态证据：03:30-07:00 CST 仍新增 `81` 条 heartbeat 因同一 `mimo-v2.5-pro` 上游 `HTTP 400 Param Incorrect` 失败，覆盖 11 个 job；本轮不重新打开。
 - 失败已被正确记为 `provider_http_error`，没有被伪装成 noop；但业务效果仍是本轮监控漏发。
 - 同窗普通 scheduler 仍可送达，故障集中在 heartbeat provider 参数 / 模型兼容路径。
 

@@ -42,6 +42,10 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-16 07:02 CST` 复核，当前机器运行态在最近四小时仍继续新增 started-row 残留；但 2026-05-15 04:05 CST 已按当前 HEAD 回归验证确认 `delivery_key` 终态覆盖、最近 started fallback 与启动 stale recovery 仍生效，本轮仅补充旧/非生产运行态证据，不把状态从 `Fixed` 回退为 `New`：
+    - 最近四小时窗口 `2026-05-16T03:30:01+08:00` 到 `2026-05-16T07:00:01+08:00` 内共有 `89` 条 `execution_status=running + message_send_status=pending` started 残留。
+    - 其中 `88` 条为 heartbeat started 行，另有 `1` 条普通 scheduler started 行；同窗已有 `81` 条 heartbeat `execution_failed + skipped_error`、`7` 条 heartbeat `noop + skipped_noop` 与 `1` 条普通 scheduler `completed + sent + delivered=1` 终态。
+    - 用户可见投递主链路没有因此被阻断，受损点仍是调度台账一致性和巡检噪音；严重等级仍不高于 `P3`。
   - `2026-05-16 03:04 CST` 复核，当前机器运行态在最近四小时仍继续新增 started-row 残留；但 2026-05-15 04:05 CST 已按当前 HEAD 回归验证确认 `delivery_key` 终态覆盖、最近 started fallback 与启动 stale recovery 仍生效，本轮仅补充旧/非生产运行态证据，不把状态从 `Fixed` 回退为 `New`：
     - 最近四小时窗口 `2026-05-15T23:30:01+08:00` 到 `2026-05-16T03:00:01+08:00` 内共有 `88` 条 `execution_status=running + message_send_status=pending` started 残留，均为 heartbeat started 行。
     - 同窗终态已另起 `81` 条 `execution_failed + skipped_error` 与 `7` 条 `noop + skipped_noop`；用户可见投递主链路没有因此被阻断，受损点仍是调度台账一致性和巡检噪音。

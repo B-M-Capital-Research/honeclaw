@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-16 03:05 CST
+最后更新：2026-05-16 07:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -21,6 +21,8 @@
 - Later / 待复现：9
 - 已修复 / 已关闭：105
 - 历史分析 / 部分止血：5
+- 本轮 07:02 CST 未发现新的独立缺陷或活跃 P1。最近四小时只有 06:00 CST 一条 Feishu 普通 scheduler 盘后复盘成功收口；assistant final 未命中 `/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`session/update`、原始飞书标签或 compact marker 可见污染。
+- 本轮 07:02 CST 继续观察到当前机器运行态 heartbeat `mimo-v2.5-pro` 批量失败和 scheduler started-row 残留：03:30-07:00 CST 新增 81 条 `reasoning_content must be passed back` / `Param Incorrect` heartbeat 失败，覆盖 11 个 job；同窗新增 89 条 `running + pending` started 残留，其中 88 条为 heartbeat、1 条普通 scheduler。当前证据仍按旧/非生产运行态处理，仅追加到 `scheduler_heartbeat_mimo_param_incorrect_batch_failures.md` 与 `feishu_scheduler_running_rows_never_finalized.md`，不从 `Fixed` 回退。
 - 本轮 03:05 CST 已修复 Feishu 直聊空/无效回复遮蔽缺陷：`response_finalizer` 现在会从成功 `portfolio` 工具结果恢复用户可见确认，`is_transitional_planning_sentence(...)` 也保留“把图发给我 / 上传截图”类下一步指引，不再把建仓补图与持仓跟踪短答压成通用失败。验证 `cargo test -p hone-channels finalize_agent_response_ -- --nocapture`、`cargo test -p hone-channels transitional_ -- --nocapture`、`cargo check -p hone-channels --tests`、`rustfmt --edition 2024 --check crates/hone-channels/src/response_finalizer.rs crates/hone-channels/src/runtime.rs crates/hone-channels/src/agent_session/tests.rs` 通过；关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29)。
 - 本轮 00:06 CST 已修复 Web scheduler 手机系统通知能力边界缺陷：Web 且允许 cron 的对话提示新增“只保证写入 Hone 会话 / SSE，不支持 Web Push / 手机系统通知”的约束，scheduler 台账 detail 也显式写入 `system_push_supported=false` / `system_push_sent=false`，避免把 `delivered=1` 误读为手机 push 已送达。验证 `cargo test -p hone-web-api web_scheduler_ -- --nocapture`、`cargo check -p hone-web-api --tests` 通过；无关联 GitHub Issue。
 - 本轮 03:04 CST 继续观察到当前机器旧运行态 heartbeat `mimo-v2.5-pro` 批量失败：23:30-03:00 CST 新增 81 条 `reasoning_content must be passed back` / `Param Incorrect` heartbeat 失败，覆盖 11 个 job；同窗 `cron_job_runs` 仍新增 88 条 `running + pending` started 残留。当前 `hone-console-page` / `hone-feishu` 进程仍启动于 2026-05-13，早于 2026-05-15 04:05 的当前 HEAD 修复复核，因此仅追加运行态证据，不把 `scheduler_heartbeat_mimo_param_incorrect_batch_failures.md` 或 `feishu_scheduler_running_rows_never_finalized.md` 从 `Fixed` 回退。
