@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-15 07:02 CST
+最后更新：2026-05-15 08:07 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,10 +17,12 @@
 
 ## 当前概览
 
-- 活跃待修复：2
+- 活跃待修复：0
 - Later / 待复现：9
-- 已修复 / 已关闭：102
+- 已修复 / 已关闭：104
 - 历史分析 / 部分止血：5
+- 本轮 08:07 CST 已修复 Daily macOS release app API smoke 生命周期缺陷：`HONE_DESKTOP_SMOKE_SERVER=1` 现在让 `.app/Contents/MacOS/hone-desktop` 绕过窗口生命周期，直接启动 embedded Web/API 并保持到 Ctrl-C；隔离端口 `18077/18088` 下 `/api/meta`、用户端页面与 `/api/channels` disabled 状态均验证通过；关联 Issue [#42](https://github.com/B-M-Capital-Research/honeclaw/issues/42)。
+- 本轮 08:07 CST 复核并锁住原油普通 scheduler 复发样本：当前 HEAD 的普通 scheduler commodity guard 已覆盖 `Brent Jul 2026 约 106.30 美元`、`WTI Jun 2026 约 101.80 美元` 与科技股尾盘 / 通胀利率风险判断，本轮新增精确回归；最新 `detail_json.scheduler=null` 样本按当前机器旧 / 非生产运行态证据处理，不再保持活跃；无关联 GitHub Issue。
 - 本轮 04:05 CST 已修复观察池击球区紧凑 summary 解析缺口：scheduler 现在会从 `MSFT $335-$350`、同一行多个 ticker、以及 `保守/合理/激进` 分档区间中恢复击球区；`待确认` 不会回灌。验证 `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs`、`cargo test -p hone-channels scheduled_watchlist_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue。
 - 本轮 04:17 CST 新增 Daily macOS build release app API 生命周期缺陷：`Hone Financial.app` 与 `.dmg` 已成功生成，但直接运行 `.app/Contents/MacOS/hone-desktop` 会在 embedded Web API ready 后退出，LaunchServices 启动虽保持进程但不绑定 `18077/18088`，导致 `/api/meta` 与用户端页面均无法完成验证；隔离配置已确认 Feishu/Telegram/Discord/iMessage/event-engine disabled。
 - 本轮 04:05 CST 复核 Heartbeat `mimo-v2.5-pro` reasoning transcript 兼容缺陷：当前 HEAD 已包含 reasoning transcript replay 与 OpenAI-compatible raw body 透传，`cargo test -p hone-llm chat_with_tools_replays_reasoning_content_in_raw_request_body -- --nocapture`、`cargo test -p hone-agent run_replays_reasoning_content_into_followup_tool_round -- --nocapture` 通过；不再以当前机器旧/非生产运行态证据保持活跃。
@@ -104,8 +106,6 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Daily macOS build release app 启动后 Web/API 生命周期不可验证 | P1 | New | 2026-05-15 `.app` / `.dmg` 打包成功，但 release app 无法同时保持进程运行并让 `/api/meta` 响应；需修复 desktop startup / bundled backend bootstrap 的自动化 smoke 路径；关联 Issue [#42](https://github.com/B-M-Capital-Research/honeclaw/issues/42) | [daily_macos_build_release_app_api_not_persistent.md](./daily_macos_build_release_app_api_not_persistent.md) |
-| 原油定时播报在价格 / 日期 / 背景口径上继续输出未核验或错误事实 | P2 | New | 2026-05-15 07:02 复发：04:02 CST `Oil_Price_Monitor_Closing` 成功外发 WTI / Brent 具体价格与科技股尾盘影响判断，`detail_json.scheduler=null` 且无商品 guard / 同窗来源审计元数据；无关联 GitHub Issue | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 
 ## Later / 待复现
 
@@ -125,6 +125,8 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Daily macOS build release app 启动后 Web/API 生命周期不可验证 | P1 | Fixed | 2026-05-15 08:07 新增 `HONE_DESKTOP_SMOKE_SERVER=1`，打包桌面可在无窗口 smoke 模式下保持 Web/API 进程，`/api/meta`、用户端页面和 disabled channels 检查通过；关联 Issue [#42](https://github.com/B-M-Capital-Research/honeclaw/issues/42) | [daily_macos_build_release_app_api_not_persistent.md](./daily_macos_build_release_app_api_not_persistent.md) |
+| 原油定时播报在价格 / 日期 / 背景口径上继续输出未核验或错误事实 | P2 | Fixed | 2026-05-15 08:07 当前 HEAD 普通 scheduler commodity guard 已覆盖最新 contract-month 价格与科技股尾盘判断复发样本，新增精确回归；无关联 GitHub Issue | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Heartbeat 监控使用 `mimo-v2.5-pro` 时批量命中 `Param Incorrect` 并漏发 | P2 | Fixed | 2026-05-15 04:05 复核当前 HEAD 已包含 reasoning transcript replay 与 OpenAI-compatible raw body 透传，定向 `hone-llm` / `hone-agent` 回归通过；无关联 GitHub Issue | [scheduler_heartbeat_mimo_param_incorrect_batch_failures.md](./scheduler_heartbeat_mimo_param_incorrect_batch_failures.md) |
 | Feishu scheduler 预写 `running/pending` started 行后，终态另起行导致台账持续悬挂 | P3 | Fixed | 2026-05-15 04:05 复核当前 HEAD 已覆盖 `delivery_key` 终态覆盖、最近 started fallback 与启动 stale recovery；不再以当前机器旧/非生产运行态证据保持活跃；关联 Issue [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39) | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
 | 核心观察池简报在本地击球区配置恢复后仍把多数标的降成“待确认” | P3 | Fixed | 2026-05-15 04:05 scheduler 已支持从紧凑 compact summary 中恢复 `ticker + $区间` 击球区，覆盖同一行多个 ticker 与分档区间；无关联 GitHub Issue | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |

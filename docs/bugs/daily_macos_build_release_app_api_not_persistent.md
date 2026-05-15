@@ -3,9 +3,16 @@
 - 发现时间：2026-05-15 04:17 CST
 - Bug Type：Desktop release runtime / daily macOS build verification
 - 严重等级：P1
-- 状态：New
+- 状态：Fixed
 - GitHub Issue：[#42](https://github.com/B-M-Capital-Research/honeclaw/issues/42)
 - 证据来源：`honeclaw-mac` 每日 macOS 完整打包验证
+
+## 修复记录（2026-05-15 08:07 CST）
+
+- `bins/hone-desktop/src/commands.rs` 新增显式 smoke server 模式：设置 `HONE_DESKTOP_SMOKE_SERVER=1` 后，打包出的 `.app/Contents/MacOS/hone-desktop` 会绕过 Tauri 窗口生命周期，直接启动同进程 `hone_web_api::start_server(...)` 并保持进程直到 Ctrl-C。
+- smoke 模式会按 `HONE_CONFIG_PATH` -> `HONE_USER_CONFIG_PATH` 选择配置，按 `HONE_DESKTOP_DATA_DIR` -> `HONE_DATA_DIR` 选择数据目录，并强制设置 `HONE_DISABLE_AUTO_OPEN=1`，因此每日验证可以继续使用隔离 config、固定 `HONE_WEB_PORT` / `HONE_PUBLIC_WEB_PORT` 和 disabled channels。
+- 本地 smoke 已用 debug binary 复现验证链路：`/api/meta` 返回 `desktop-v1`，用户端 `18088` 可响应，`/api/channels` 显示 `web=running` 且 `imessage/discord/feishu/telegram=disabled`。
+- 该修复不宣称 LaunchServices 窗口启动路径已恢复；它补齐的是每日 macOS release build 所需的自动化、可判定 Web/API smoke 路径。
 
 ## 端到端链路
 
@@ -70,6 +77,9 @@
 
 ## 验证结果
 
+- `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop desktop_smoke -- --nocapture`：通过。
+- `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo check -p hone-desktop --tests`：通过。
+- `HONE_DESKTOP_SMOKE_SERVER=1 HONE_WEB_PORT=18077 HONE_PUBLIC_WEB_PORT=18088 HONE_USER_CONFIG_PATH=... HONE_DESKTOP_DATA_DIR=... target/debug/hone-desktop` + `curl /api/meta`、`curl :18088/`、`curl /api/channels`：通过，进程保持到 Ctrl-C，渠道 disabled 状态可审计。
 - `env PATH="$HOME/.bun/bin:$PATH" CARGO_TARGET_DIR=/Users/ecohnoch/Library/Caches/honeclaw/target bun run tauri:prep:build && env PATH="$HOME/.bun/bin:$PATH" CARGO_TARGET_DIR=/Users/ecohnoch/Library/Caches/honeclaw/target bunx --bun tauri build --config bins/hone-desktop/tauri.generated.conf.json`：通过。
 - `.app` 存在：通过。
 - `.dmg` 存在：通过。

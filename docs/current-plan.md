@@ -1,6 +1,6 @@
 # Current Plan Index
 
-最后更新：2026-05-14
+最后更新：2026-05-15
 状态：有 6 个活跃任务
 
 ## 说明
@@ -19,7 +19,7 @@
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/active-bug-burn-down-2026-04-28.md`
-  - 摘要：集中清理 `docs/bugs/README.md` 活跃缺陷；2026-05-14 已补齐 Web direct actor sandbox 隔离，当前高优先级活跃项已转为 2 个 Feishu 输出边界缺陷与 1 个 Heartbeat provider 兼容缺陷
+  - 摘要：集中清理 `docs/bugs/README.md` 活跃缺陷；2026-05-15 已补齐 release app headless smoke server 并锁住原油普通 scheduler 最新复发样本，当前活跃待修复队列为空
 - **Chart Visualization Skill 与多通道 PNG 投递**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/chart-visualization-skill.md`

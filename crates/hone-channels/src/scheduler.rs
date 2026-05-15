@@ -3900,6 +3900,42 @@ mod tests {
     }
 
     #[test]
+    fn commodity_guard_covers_oil_scheduler_contract_months_and_tail_risk_claim() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_oil", None::<String>).expect("actor"),
+            job_id: "job-oil-close".to_string(),
+            job_name: "Oil_Price_Monitor_Closing".to_string(),
+            task_prompt: "收盘后汇总 WTI / Brent 价格与科技股影响".to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_oil".to_string(),
+            delivery_key: "delivery-oil-close".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: false,
+            schedule_hour: 4,
+            schedule_minute: 0,
+            schedule_repeat: "daily".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        let guarded = guard_commodity_causality_for_event(
+            "Brent Jul 2026 约 106.30 美元，WTI Jun 2026 约 101.80 美元。这对今晚高估值科技股不是尾盘强防守信号；油价仍是通胀与利率风险项，但从盘面看，QQQ、RKLB、COHR 没有被油价持续压住。",
+            &event,
+        )
+        .expect("ordinary oil scheduler contract-month claims should be guarded");
+
+        assert!(guarded.contains("未完成同窗来源核验"));
+        assert!(guarded.contains("本轮未保留原正文中的价格或归因句"));
+        assert!(!guarded.contains("106.30"));
+        assert!(!guarded.contains("101.80"));
+        assert!(!guarded.contains("尾盘强防守信号"));
+        assert!(!guarded.contains("通胀与利率风险项"));
+    }
+
+    #[test]
     fn commodity_guard_covers_non_heartbeat_market_scheduler_output() {
         let event = SchedulerEvent {
             actor: ActorIdentity::new("feishu", "ou_oil", None::<String>).expect("actor"),

@@ -3,7 +3,18 @@
 - **发现时间**: 2026-04-22 07:00 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
+
+## 修复记录（2026-05-15 08:07 CST）
+
+- 复核当前 HEAD 后确认：普通 scheduler 路径已经会在成功输出送达前调用 `guard_commodity_causality_for_event(...)`，并在命中时写入 `commodity_causality_guarded=true`、`raw_preview`、`guarded_preview`、`deliver_preview` 元数据；`detail_json.scheduler=null` 的最新样本按当前机器旧 / 非生产运行态证据处理，不再推翻代码层修复。
+- 本轮补充精确回归 `commodity_guard_covers_oil_scheduler_contract_months_and_tail_risk_claim`，覆盖 2026-05-15 04:02 复发文本里的 `Brent Jul 2026 约 106.30 美元`、`WTI Jun 2026 约 101.80 美元`、科技股尾盘防守信号与通胀 / 利率风险判断。当前 guard 会改写为安全说明，并移除原文价格和未核验因果判断。
+- 验证：
+  - `cargo test -p hone-channels commodity_guard_covers_oil_scheduler_contract_months_and_tail_risk_claim --lib -- --nocapture`
+  - `cargo test -p hone-channels commodity_ --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+  - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs`
+- 关联 GitHub Issue：无。
 
 ## 最新进展（2026-05-15 07:02 CST）
 

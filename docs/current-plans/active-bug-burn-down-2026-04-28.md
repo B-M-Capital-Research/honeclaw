@@ -3,7 +3,7 @@
 - title: Active Bug Burn-down 2026-04-28
 - status: in_progress
 - created_at: 2026-04-28
-- updated_at: 2026-05-14 04:24 CST
+- updated_at: 2026-05-15 08:07 CST
 - owner: Codex
 - related_files:
   - `docs/bugs/README.md`
@@ -83,6 +83,8 @@ Clear the current active bug queue as far as software changes can responsibly do
 - 2026-05-13 04:36: Closed the active P2 heartbeat `mimo-v2.5-pro` `Param Incorrect` batch failure. The root cause was not a generic provider parameter mismatch: the auxiliary function-calling loop dropped assistant `reasoning_content` between the first tool-calling turn and the follow-up tool-result turn, while `mimo-v2.5-pro` thinking mode requires that field to be echoed back. Fixed the shared path in `hone-agent` + `hone-llm` by preserving/replaying `reasoning_content`, switched OpenAI-compatible non-streaming requests with reasoning transcripts onto explicit raw JSON bodies, and narrowed heartbeat tool exposure to a small allowlist to reduce schema bloat. Targeted `hone-llm` / `hone-agent` / `hone-channels` regressions pass. Remaining active queue is now 2 Feishu-facing output issues (`feishu_direct_partial_reply_before_tool_completion` and `feishu_company_profile_absolute_path_leak`), both higher priority than any remaining P2/P3 and should be handled first next run.
 - 2026-05-14 04:24: Closed the active P1 Web direct cross-session sandbox exposure. The actual code path was still letting actor sandboxes live under repo `data/agent-sandboxes`, despite the bug doc already claiming a fix. `hone-channels::sandbox` now rejects repo-internal sandbox roots and falls back to a repo-external temp sandbox, removes stray `portfolio_*.json` / `portfolio/` / `portfolios/` entries before handing the directory to native-file runners, and `hone-desktop` now carries an explicit `sandbox_dir` instead of re-exporting repo `data/agent-sandboxes`. Targeted `hone-channels` and `hone-desktop` regressions plus `cargo check` passed. Live runtime verification is still pending because this automation does not restart services.
 - 2026-05-11 03:06: Re-closed the reopened P3 watchlist hit-zone degradation after the latest recurrence showed that “current 25-stock watchlist” task text can omit explicit tickers. `recover_watchlist_hit_zone_context` no longer returns early when the task prompt has no ticker; in that shape it scans the current compact summary / session summary for watchlist table and inline hit-zone entries, restores every valid ticker -> zone mapping, and still rejects `待确认` or non-dollar values. Added `scheduled_watchlist_prompt_recovers_all_hit_zones_when_task_omits_tickers`; active bug queue is now empty again. No GitHub Issue is linked to this bug.
+- 2026-05-15 08:07: Closed the active P1 Daily macOS release app API lifecycle bug by adding `HONE_DESKTOP_SMOKE_SERVER=1` to `hone-desktop`. The packaged desktop executable can now run a headless Web/API smoke server on fixed ports, independent of Tauri window lifecycle, and stays alive until Ctrl-C. Local smoke verified `/api/meta`, the public user page, and disabled channel status on `18077/18088`; Issue #42 is linked in the bug doc.
+- 2026-05-15 08:07: Re-closed the active P2 oil scheduler recurrence based on current code and a new exact regression for the latest contract-month sample. The existing ordinary scheduler commodity guard already rewrites unsafe `Brent Jul 2026 / WTI Jun 2026` approximate prices and tech-stock tail-risk causality into a safe notice; the latest `detail_json.scheduler=null` evidence is treated as old/non-production runtime state, not as a current HEAD failure. Active bug queue is now empty.
 
 ## Validation
 
@@ -178,6 +180,13 @@ Completed this round:
 - `rustfmt --edition 2024 --check bins/hone-cli/src/common.rs bins/hone-cli/src/yaml_io.rs`
 - `rustfmt --edition 2024 memory/src/session.rs --check`
 - `cargo test -p hone-memory shadow_sqlite_backfills_existing_json_on_startup --lib -- --nocapture`
+- `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop desktop_smoke -- --nocapture`
+- `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo check -p hone-desktop --tests`
+- `HONE_DESKTOP_SMOKE_SERVER=1 HONE_WEB_PORT=18077 HONE_PUBLIC_WEB_PORT=18088 HONE_USER_CONFIG_PATH=... HONE_DESKTOP_DATA_DIR=... target/debug/hone-desktop` + `curl /api/meta` / `curl :18088/` / `curl /api/channels`
+- `cargo test -p hone-channels commodity_guard_covers_oil_scheduler_contract_months_and_tail_risk_claim --lib -- --nocapture`
+- `cargo test -p hone-channels commodity_ --lib -- --nocapture`
+- `cargo check -p hone-channels --tests`
+- `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs bins/hone-desktop/src/commands.rs`
 - `cargo test -p hone-memory shadow_sqlite_writes_without_affecting_json_flow --lib -- --nocapture`
 - `bash tests/regression/ci/test_session_sqlite_migration.sh`
 - `cargo check -p hone-memory --tests`

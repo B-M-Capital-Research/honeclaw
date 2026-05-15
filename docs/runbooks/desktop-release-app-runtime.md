@@ -163,6 +163,33 @@ env \
 
 This is the recommended long-running command.
 
+## Start A Headless Smoke Server
+
+Daily build verification can run the packaged desktop executable in a Web/API-only mode when the goal is to prove `/api/meta`, the public user page, and disabled channel status without depending on macOS window lifecycle.
+
+Use the same `.app/Contents/MacOS/hone-desktop` binary with `HONE_DESKTOP_SMOKE_SERVER=1`:
+
+```bash
+env \
+  HONE_DESKTOP_SMOKE_SERVER=1 \
+  HONE_WEB_PORT=18077 \
+  HONE_PUBLIC_WEB_PORT=18088 \
+  HONE_USER_CONFIG_PATH=/Users/ecohnoch/Desktop/honeclaw/data/runtime/daily-build-check/config.yaml \
+  HONE_DESKTOP_DATA_DIR=/Users/ecohnoch/Desktop/honeclaw/data/runtime/daily-build-check/data \
+  HONE_SKILLS_DIR=/Users/ecohnoch/Desktop/honeclaw/skills \
+  /Users/ecohnoch/Library/Caches/honeclaw/target/release/bundle/macos/Hone\ Financial.app/Contents/MacOS/hone-desktop
+```
+
+Expected smoke checks:
+
+```bash
+curl http://127.0.0.1:18077/api/meta
+curl http://127.0.0.1:18088/
+curl http://127.0.0.1:18077/api/channels
+```
+
+The process stays alive until Ctrl-C. This mode is for release build smoke verification; normal desktop use should still launch the release app without `HONE_DESKTOP_SMOKE_SERVER`.
+
 ## Start The Backend Lane
 
 When the desktop is configured to use the local backend on `127.0.0.1:8077`, the backend lane must be restarted with the same repo-local env and the same cache target directory assumptions as the desktop lane.
