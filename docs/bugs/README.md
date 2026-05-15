@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-15 12:10 CST
+最后更新：2026-05-15 15:04 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,11 +17,13 @@
 
 ## 当前概览
 
-- 活跃待修复：0
+- 活跃待修复：1
 - Later / 待复现：9
 - 已修复 / 已关闭：104
 - 历史分析 / 部分止血：5
 - 本轮 12:10 CST 已修复 Feishu event-engine digest `open_id cross app` 复发：event-engine Feishu sink 现在会从 cron 任务 channel-target 目录为 direct actor 建立无歧义联系人映射，优先用 email/mobile 重新解析 current-app open_id，再发送 digest 卡片；没有唯一联系人时不猜测映射。验证 `rustfmt --edition 2024 --config skip_children=true --check crates/hone-event-engine/src/sinks/feishu.rs crates/hone-web-api/src/lib.rs`、`cargo test -p hone-event-engine feishu --lib -- --nocapture`、`cargo test -p hone-web-api feishu_direct_actor_targets --lib -- --nocapture`、`cargo check -p hone-event-engine -p hone-web-api --tests` 通过；关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)。
+- 本轮 15:04 CST 新增 Web scheduler 手机系统通知缺陷：12:35 / 12:47 CST 两条 Web 测试通知均 `completed + sent + delivered=1`，但 `detail_json.console_event_sent=false`，用户连续反馈手机没收到；前端只监听 SSE `scheduled_message`，未见 Web Push / Notification API 能力，assistant 前序回答却引导用户按手机系统通知排查。定级 P2 / New；非 P1，不创建 GitHub issue。
+- 本轮 15:04 CST 继续观察到 heartbeat `mimo-v2.5-pro` 旧运行态批量 `Param Incorrect` 与 started-row 残留，但当前 HEAD 已有对应修复和重启后恢复记录；本轮不把相关 fixed/closed 缺陷回退。Feishu direct 最近四小时都有 assistant 收口，未见新的工具轨迹、绝对路径或半成品污染 final。
 - 本轮 11:09 CST 重新打开 Feishu event-engine / scheduler `open_id cross app` 投递缺陷：08:30 CST `channel digest sink failed, falling back to log`，Feishu 返回 `code=99992361 / open_id cross app`，只剩 dryrun log；同窗普通 Feishu direct 与 scheduler 仍有成功送达，故障集中在 event-engine digest sink。关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)，不重复创建。
 - 本轮 11:09 CST 仅补充旧运行态观察：07:00-11:00 CST heartbeat `mimo-v2.5-pro` 仍有 90 条 `Param Incorrect` 失败、11:00 后全库新增 99 条 heartbeat started-row 残留，且 09:02 核心观察池早报仍批量显示 `击球区：待确认`；但当前 live `hone-console-page` 启动于 2026-05-13 19:28 CST，且对应 HEAD 修复均已有定向回归，故不把这三项从 `Fixed` 回退。
 - 本轮 11:09 CST 观察到 event-engine OpenRouter 402 与 FMP quota limit 降级日志，但当前表现为后台 enrichment / digest best-effort 降级，未见新的用户可见投递失败或格式污染；用户 10:29 指出“中国宏桥特别股息”漏算后下一轮已当场纠正，按单次质量波动处理，不新增 P3。
@@ -110,7 +112,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| _无_ | - | - | 当前无 `New` / `Approved` / `Fixing` 活跃缺陷 | - |
+| Web scheduler 让用户以为会发送手机系统通知，但实际只写入 Web 会话 / SSE 事件 | P2 | New | 2026-05-15 15:04 新增：12:35 / 12:47 CST 两条测试通知均 `completed + sent + delivered=1` 且 `console_event_sent=false`，用户连续反馈手机未收到；当前前端只监听 SSE，未见 Web Push / Notification API 能力，需先收口能力边界或补真正系统 push | [web_scheduler_mobile_push_not_delivered.md](./web_scheduler_mobile_push_not_delivered.md) |
 
 ## Later / 待复现
 
