@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-17 03:03 CST
+最后更新：2026-05-17 07:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -21,6 +21,8 @@
 - Later / 待复现：9
 - 已修复 / 已关闭：105
 - 历史分析 / 部分止血：5
+- 本轮 07:02 CST 未发现新的独立缺陷或活跃 P1。最近四小时只有 1 条普通 Feishu scheduler `每日美股盘后收盘复盘` 有 user/assistant 收口，状态为 `completed + sent + delivered=1`；assistant final 污染扫描未命中 `/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、原始飞书标签、compact marker 或工具进度文案。最近四小时无 direct 用户新请求、无非文档代码提交；Discord 03:51 CST websocket 短暂重连后已恢复，不作为活跃缺陷登记。
+- 本轮 07:02 CST 继续观察到当前机器旧运行态 heartbeat `mimo-v2.5-pro` 批量失败和 scheduler started-row 残留：03:30-07:00 CST 新增 79 条 heartbeat `reasoning_content must be passed back` / `Param Incorrect` 失败，覆盖 11 个 job；同窗新增 89 条 `running + pending` started 残留，其中 88 条为 heartbeat、1 条为普通 scheduler。当前 `hone-console-page` 仍启动于 2026-05-13 19:28 CST，`hone-feishu` 仍启动于 2026-05-13 21:01 CST，早于 2026-05-15 04:05 的当前 HEAD 修复复核，因此仅追加到 `scheduler_heartbeat_mimo_param_incorrect_batch_failures.md` 与 `feishu_scheduler_running_rows_never_finalized.md`，不从 `Fixed` 回退。
 - 本轮 03:03 CST 未发现新的独立缺陷或活跃 P1。最近四小时 Feishu direct 2 个用户请求均有 assistant final 收口；普通 Feishu scheduler `RKLB / AAOI / TEM 每日动态监控` 均 `completed + sent + delivered=1`。assistant final 污染扫描未命中 `/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`session/update`、原始飞书标签、compact marker 或工具进度文案。最近四小时无非文档代码提交。
 - 本轮 03:03 CST 继续观察到当前机器旧运行态 heartbeat `mimo-v2.5-pro` 批量失败和 scheduler started-row 残留：23:30-03:00 CST 新增 82 条 heartbeat `reasoning_content must be passed back` / `Param Incorrect` 失败，覆盖 11 个 job；同窗新增 91 条 `running + pending` started 残留，其中 88 条为 heartbeat、3 条为普通 scheduler。当前 `hone-console-page` 仍启动于 2026-05-13，`hone-feishu` 仍启动于 2026-05-13，早于 2026-05-15 04:05 的当前 HEAD 修复复核，因此仅追加到 `scheduler_heartbeat_mimo_param_incorrect_batch_failures.md` 与 `feishu_scheduler_running_rows_never_finalized.md`，不从 `Fixed` 回退。
 - 本轮 23:03 CST 未发现新的独立缺陷或活跃 P1。最近四小时 Feishu / Web direct 与普通 scheduler 均有 assistant final 收口；assistant final 污染扫描未命中 `/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`session/update`、原始飞书标签、compact marker 或工具进度文案。最近四小时无非文档代码提交。
