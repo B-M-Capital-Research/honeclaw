@@ -825,6 +825,10 @@ const CONTENT_ZH = {
       expand: "展开侧边栏",
       signed_in: "已登录",
       account_center: "账号中心",
+      history_title: "对话记录",
+      history_empty: "开始提问后，这里会显示最近的问题。",
+      history_attachment: "带附件的问题",
+      history_empty_item: "空消息",
     },
     prefs: {
       aria_label: "字号与主题",
@@ -2340,6 +2344,10 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       expand: "Expand sidebar",
       signed_in: "Signed in",
       account_center: "Account center",
+      history_title: "Conversation history",
+      history_empty: "Recent questions will appear here after you start chatting.",
+      history_attachment: "Question with attachments",
+      history_empty_item: "Empty message",
     },
     prefs: {
       aria_label: "Font size and theme",

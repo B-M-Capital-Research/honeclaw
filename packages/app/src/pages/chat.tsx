@@ -16,10 +16,7 @@ import {
 import { createStore, reconcile } from "solid-js/store";
 import { useNavigate } from "@solidjs/router";
 import { PublicLoginForm } from "@/components/public-login-form";
-import {
-  PublicContactCards,
-  PublicContactMenu,
-} from "@/components/public-contact-menu";
+import { PublicContactMenu } from "@/components/public-contact-menu";
 import { ChatShareModal } from "@/components/chat-share-modal";
 import { displayGithubStars, fetchGithubStars } from "@/lib/github-stars";
 import { CONTENT } from "@/lib/public-content";
@@ -105,6 +102,7 @@ const ICONS = {
 
 const PUBLIC_IMAGE_ENDPOINT = "/api/public/image";
 const HISTORY_PAGE_SIZE = 24;
+const SIDEBAR_HISTORY_LIMIT = 6;
 
 function AnimatedBackground() {
   return (
@@ -384,11 +382,23 @@ function Header(props: {
 function ChatSidebar(props: {
   user: PublicAuthUserInfo;
   collapsed: boolean;
+  recentMessages: ChatMessage[];
   onToggle: () => void;
+  onSelectMessage: (id: string) => void;
   onLogout: () => void;
 }) {
   const navigate = useNavigate();
   const [stars] = createResource(fetchGithubStars);
+  const messagePreview = (message: ChatMessage) => {
+    const text = stripAttachmentMarkers(message.content)
+      .replace(/\s+/g, " ")
+      .trim();
+    if (text) return text.length > 44 ? `${text.slice(0, 44)}...` : text;
+    if ((message.attachments?.length ?? 0) > 0) {
+      return CONTENT.chat_page.sidebar.history_attachment;
+    }
+    return CONTENT.chat_page.sidebar.history_empty_item;
+  };
 
   return (
     <aside
@@ -450,14 +460,6 @@ function ChatSidebar(props: {
           <span class="public-chat-sidebar-icon">R</span>
           <span>{CONTENT.nav.roadmap}</span>
         </button>
-        <button
-          type="button"
-          onClick={() => navigate("/me")}
-          title={CONTENT.nav.me}
-        >
-          <span class="public-chat-sidebar-icon">A</span>
-          <span>{CONTENT.nav.me}</span>
-        </button>
       </nav>
 
       <div class="public-chat-sidebar-socials">
@@ -473,21 +475,53 @@ function ChatSidebar(props: {
         </a>
       </div>
 
-      <div class="public-chat-sidebar-contact">
+      <section class="public-chat-sidebar-history">
         <div class="public-chat-sidebar-section-title">
-          {CONTENT.nav.contact_title}
+          {CONTENT.chat_page.sidebar.history_title}
         </div>
-        <PublicContactCards />
-      </div>
+        <Show
+          when={props.recentMessages.length > 0}
+          fallback={
+            <div class="public-chat-sidebar-history-empty">
+              {CONTENT.chat_page.sidebar.history_empty}
+            </div>
+          }
+        >
+          <div class="public-chat-sidebar-history-list">
+            <For each={props.recentMessages}>
+              {(message, index) => (
+                <button
+                  type="button"
+                  class="public-chat-sidebar-history-item"
+                  onClick={() => props.onSelectMessage(message.id)}
+                  title={messagePreview(message)}
+                >
+                  <span class="public-chat-sidebar-history-index">
+                    {index() + 1}
+                  </span>
+                  <span class="public-chat-sidebar-history-text">
+                    {messagePreview(message)}
+                  </span>
+                </button>
+              )}
+            </For>
+          </div>
+        </Show>
+      </section>
 
       <div class="public-chat-sidebar-footer">
-        <div class="public-chat-sidebar-user" title={props.user.user_id}>
+        <button
+          type="button"
+          class="public-chat-sidebar-user"
+          title={props.user.user_id}
+          onClick={() => navigate("/me")}
+        >
           <span class="public-chat-sidebar-avatar">H</span>
           <span>
             <strong>{CONTENT.chat_page.sidebar.signed_in}</strong>
             <small>{CONTENT.chat_page.sidebar.account_center}</small>
           </span>
-        </div>
+        </button>
         <div class="public-chat-sidebar-footer-actions">
           <button
             type="button"
@@ -499,7 +533,6 @@ function ChatSidebar(props: {
           >
             {useLocale() === "zh" ? "中" : "EN"}
           </button>
-          <PrefsButton />
           <button
             type="button"
             class="public-chat-sidebar-logout"
@@ -2028,6 +2061,19 @@ export default function PublicChatPage() {
       lastScrollTop = scrollRef.scrollTop;
     });
   };
+  const scrollToMessage = (id: string) => {
+    const index = messages.findIndex((message) => message.id === id);
+    if (index < 0) return;
+    const neededVisibleCount = messages.length - index;
+    setVisibleMessageCount((current) =>
+      Math.max(current, neededVisibleCount, HISTORY_PAGE_SIZE),
+    );
+    requestAnimationFrame(() => {
+      document
+        .getElementById(`public-chat-message-${id}`)
+        ?.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+  };
   const pinToBottom = (durationMs = 900) => {
     stickToBottom = true;
     const until = Date.now() + durationMs;
@@ -2049,6 +2095,12 @@ export default function PublicChatPage() {
       : 0;
   const visibleMessages = createMemo(() =>
     selectVisibleRecentMessages(messages, visibleMessageCount()),
+  );
+  const sidebarHistoryMessages = createMemo(() =>
+    messages
+      .filter((message) => message.role === "user")
+      .slice(-SIDEBAR_HISTORY_LIMIT)
+      .reverse(),
   );
   const hasOlderMessages = () => visibleMessageCount() < messages.length;
   const isSendingOrStreaming = () =>
@@ -2507,7 +2559,9 @@ export default function PublicChatPage() {
                 <ChatSidebar
                   user={user()}
                   collapsed={sidebarCollapsed()}
+                  recentMessages={sidebarHistoryMessages()}
                   onToggle={() => setSidebarCollapsed((value) => !value)}
+                  onSelectMessage={scrollToMessage}
                   onLogout={logoutPublicChat}
                 />
                 <div
@@ -2603,45 +2657,48 @@ export default function PublicChatPage() {
                     </Show>
                     <For each={visibleMessages()}>
                       {(msg, i) => (
-                        <Switch>
-                          <Match when={msg.role === "user"}>
-                            <UserBubble
-                              content={msg.content}
-                              attachments={msg.attachments}
-                              onOpenImage={(imgs, i) =>
-                                setLightbox({ images: imgs, index: i })
+                        <div id={`public-chat-message-${msg.id}`}>
+                          <Switch>
+                            <Match when={msg.role === "user"}>
+                              <UserBubble
+                                content={msg.content}
+                                attachments={msg.attachments}
+                                onOpenImage={(imgs, i) =>
+                                  setLightbox({ images: imgs, index: i })
+                                }
+                              />
+                            </Match>
+                            <Match
+                              when={
+                                msg.role === "assistant" && msg.phase === "done"
                               }
-                            />
-                          </Match>
-                          <Match
-                            when={
-                              msg.role === "assistant" && msg.phase === "done"
-                            }
-                          >
-                            <AssistantBubble
-                              content={msg.content}
-                              attachments={msg.attachments}
-                              isContinuation={
-                                i() > 0 &&
-                                visibleMessages()[i() - 1]?.role === "assistant"
+                            >
+                              <AssistantBubble
+                                content={msg.content}
+                                attachments={msg.attachments}
+                                isContinuation={
+                                  i() > 0 &&
+                                  visibleMessages()[i() - 1]?.role ===
+                                    "assistant"
+                                }
+                                onShare={() => openShareModal(i())}
+                              />
+                            </Match>
+                            <Match
+                              when={
+                                msg.role === "assistant" &&
+                                msg.phase !== "done" &&
+                                (msg.content || msg.phase === "error")
                               }
-                              onShare={() => openShareModal(i())}
-                            />
-                          </Match>
-                          <Match
-                            when={
-                              msg.role === "assistant" &&
-                              msg.phase !== "done" &&
-                              (msg.content || msg.phase === "error")
-                            }
-                          >
-                            <PendingBubble
-                              message={msg}
-                              onStop={() => activeController?.abort()}
-                              onDismiss={() => {}}
-                            />
-                          </Match>
-                        </Switch>
+                            >
+                              <PendingBubble
+                                message={msg}
+                                onStop={() => activeController?.abort()}
+                                onDismiss={() => {}}
+                              />
+                            </Match>
+                          </Switch>
+                        </div>
                       )}
                     </For>
                   </div>
@@ -2755,12 +2812,21 @@ export default function PublicChatPage() {
           position: relative;
         }
         .public-chat-page {
+          --font-sans: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
           width: 100vw;
           height: 100dvh !important;
           max-height: 100dvh;
           overflow: hidden;
           overflow-anchor: none;
           overscroll-behavior: none;
+          font-family: var(--font-sans);
+          -webkit-font-smoothing: antialiased;
+          text-rendering: optimizeLegibility;
+        }
+        .public-chat-page button,
+        .public-chat-page textarea,
+        .public-chat-page input {
+          font-family: inherit;
         }
         .public-chat-page--logged_out,
         .public-chat-page--loading {
@@ -2942,31 +3008,41 @@ export default function PublicChatPage() {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            min-height: 42px;
+            min-height: 56px;
             gap: 8px;
           }
           .public-chat-sidebar-logo {
             min-width: 0;
-            border: none;
-            background: transparent;
+            min-height: 52px;
+            border: 1px solid rgba(15,23,42,0.08);
+            border-radius: 14px;
+            background: #fff;
             display: inline-flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
             cursor: pointer;
-            padding: 4px 6px;
+            padding: 6px 10px;
             color: #0f172a;
-            font-size: 18px;
-            font-weight: 850;
+            font-size: 21px;
+            font-weight: 900;
             letter-spacing: 0;
+            box-shadow: 0 8px 22px rgba(15,23,42,0.06);
+            transition: border-color 0.18s ease, transform 0.06s ease, box-shadow 0.18s ease;
+          }
+          .public-chat-sidebar-logo:hover {
+            border-color: rgba(15,23,42,0.16);
+            box-shadow: 0 10px 26px rgba(15,23,42,0.08);
+          }
+          .public-chat-sidebar-logo:active {
+            transform: scale(0.99);
           }
           .public-chat-sidebar-logo img {
-            width: 30px;
-            height: 30px;
-            border-radius: 8px;
-            flex: 0 0 30px;
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            flex: 0 0 38px;
           }
           .public-chat-sidebar-toggle,
-          .public-chat-sidebar-footer-actions .hone-prefs-trigger,
           .public-chat-sidebar-lang {
             width: 36px;
             height: 36px;
@@ -2983,7 +3059,6 @@ export default function PublicChatPage() {
             transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.06s ease;
           }
           .public-chat-sidebar-toggle:hover,
-          .public-chat-sidebar-footer-actions .hone-prefs-trigger:hover,
           .public-chat-sidebar-lang:hover {
             color: #0f172a;
             background: #f8fafc;
@@ -3039,10 +3114,11 @@ export default function PublicChatPage() {
             font-size: 12px;
             font-weight: 850;
           }
-          .public-chat-sidebar-contact {
+          .public-chat-sidebar-history {
             min-height: 0;
             overflow: auto;
             padding: 6px 2px 0;
+            flex: 1 1 auto;
           }
           .public-chat-sidebar-section-title {
             margin: 0 6px 8px;
@@ -3052,21 +3128,65 @@ export default function PublicChatPage() {
             letter-spacing: 0.08em;
             text-transform: uppercase;
           }
-          .public-chat-sidebar-contact .pub-contact-card-grid {
-            grid-template-columns: 1fr;
+          .public-chat-sidebar-history-empty {
+            margin: 0 6px;
+            padding: 12px 10px;
+            border: 1px dashed rgba(15,23,42,0.12);
+            border-radius: 12px;
+            color: #94a3b8;
+            font-size: 12px;
+            font-weight: 650;
+            line-height: 1.5;
+          }
+          .public-chat-sidebar-history-list {
+            display: grid;
             gap: 7px;
           }
-          .public-chat-sidebar-contact .pub-contact-card {
+          .public-chat-sidebar-history-item {
+            width: 100%;
             min-height: 42px;
-            padding: 9px 10px;
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            padding: 8px 10px;
+            border: 1px solid rgba(15,23,42,0.06);
             border-radius: 10px;
             background: #f8fafc;
+            color: #334155;
+            cursor: pointer;
+            text-align: left;
+            transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.06s ease;
           }
-          .public-chat-sidebar-contact .pub-contact-card small {
-            max-width: 190px;
+          .public-chat-sidebar-history-item:hover {
+            background: #fff;
+            border-color: rgba(245,158,11,0.28);
+            color: #0f172a;
+          }
+          .public-chat-sidebar-history-item:active {
+            transform: scale(0.99);
+          }
+          .public-chat-sidebar-history-index {
+            width: 22px;
+            height: 22px;
+            flex: 0 0 22px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 7px;
+            background: rgba(245,158,11,0.12);
+            color: #b45309;
+            font-size: 11px;
+            font-weight: 850;
+            font-variant-numeric: tabular-nums;
+          }
+          .public-chat-sidebar-history-text {
+            min-width: 0;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+            font-size: 12.5px;
+            font-weight: 700;
+            line-height: 1.3;
           }
           .public-chat-sidebar-footer {
             margin-top: auto;
@@ -3080,6 +3200,12 @@ export default function PublicChatPage() {
             display: flex;
             align-items: center;
             gap: 10px;
+            width: 100%;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            cursor: pointer;
+            text-align: left;
           }
           .public-chat-sidebar-avatar {
             width: 36px;
@@ -3136,7 +3262,7 @@ export default function PublicChatPage() {
           .public-chat-sidebar.is-collapsed .public-chat-sidebar-logo span,
           .public-chat-sidebar.is-collapsed .public-chat-sidebar-nav span:not(.public-chat-sidebar-icon),
           .public-chat-sidebar.is-collapsed .public-chat-sidebar-star span,
-          .public-chat-sidebar.is-collapsed .public-chat-sidebar-contact,
+          .public-chat-sidebar.is-collapsed .public-chat-sidebar-history,
           .public-chat-sidebar.is-collapsed .public-chat-sidebar-section-title,
           .public-chat-sidebar.is-collapsed .public-chat-sidebar-user span:not(.public-chat-sidebar-avatar),
           .public-chat-sidebar.is-collapsed .public-chat-sidebar-logout span {
@@ -3151,6 +3277,18 @@ export default function PublicChatPage() {
             width: 42px;
             justify-content: center;
             padding: 0;
+          }
+          .public-chat-sidebar.is-collapsed .public-chat-sidebar-logo {
+            width: 42px;
+            min-height: 42px;
+            justify-content: center;
+            padding: 0;
+            border-radius: 12px;
+          }
+          .public-chat-sidebar.is-collapsed .public-chat-sidebar-logo img {
+            width: 28px;
+            height: 28px;
+            flex-basis: 28px;
           }
           .public-chat-sidebar.is-collapsed .public-chat-sidebar-footer {
             width: 42px;
@@ -3916,6 +4054,49 @@ export default function PublicChatPage() {
         [data-theme="dark"] .public-chat-proactive-primary {
           background: #f8fafc !important;
           color: #0a0e16 !important;
+        }
+        [data-theme="dark"] .public-chat-sidebar {
+          background: rgba(10,14,22,0.9) !important;
+          border-right-color: rgba(255,255,255,0.08) !important;
+        }
+        [data-theme="dark"] .public-chat-sidebar-logo {
+          background: rgba(19,27,44,0.9) !important;
+          border-color: rgba(255,255,255,0.08) !important;
+          color: #f8fafc !important;
+          box-shadow: 0 8px 22px rgba(0,0,0,0.24) !important;
+        }
+        [data-theme="dark"] .public-chat-sidebar-nav button,
+        [data-theme="dark"] .public-chat-sidebar-star,
+        [data-theme="dark"] .public-chat-sidebar-lang {
+          color: #cbd5e1 !important;
+        }
+        [data-theme="dark"] .public-chat-sidebar-nav button:hover,
+        [data-theme="dark"] .public-chat-sidebar-star:hover,
+        [data-theme="dark"] .public-chat-sidebar-lang:hover,
+        [data-theme="dark"] .public-chat-sidebar-history-item:hover {
+          background: rgba(255,255,255,0.06) !important;
+          border-color: rgba(255,255,255,0.12) !important;
+          color: #f8fafc !important;
+        }
+        [data-theme="dark"] .public-chat-sidebar-nav button.is-active {
+          background: #f8fafc !important;
+          border-color: #f8fafc !important;
+          color: #0a0e16 !important;
+        }
+        [data-theme="dark"] .public-chat-sidebar-history-empty,
+        [data-theme="dark"] .public-chat-sidebar-history-item {
+          background: rgba(19,27,44,0.72) !important;
+          border-color: rgba(255,255,255,0.08) !important;
+          color: #cbd5e1 !important;
+        }
+        [data-theme="dark"] .public-chat-sidebar-footer {
+          border-top-color: rgba(255,255,255,0.08) !important;
+        }
+        [data-theme="dark"] .public-chat-sidebar-user strong {
+          color: #f8fafc !important;
+        }
+        [data-theme="dark"] .public-chat-sidebar-user small {
+          color: #94a3b8 !important;
         }
 
         @media (max-width: 768px) {
