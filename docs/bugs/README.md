@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-16 19:03 CST
+最后更新：2026-05-16 23:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -21,6 +21,9 @@
 - Later / 待复现：9
 - 已修复 / 已关闭：105
 - 历史分析 / 部分止血：5
+- 本轮 23:03 CST 未发现新的独立缺陷或活跃 P1。最近四小时 Feishu / Web direct 与普通 scheduler 均有 assistant final 收口；assistant final 污染扫描未命中 `/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`session/update`、原始飞书标签、compact marker 或工具进度文案。最近四小时无非文档代码提交。
+- 本轮 23:03 CST 继续观察到当前机器旧运行态 heartbeat `mimo-v2.5-pro` 批量失败和 scheduler started-row 残留：19:00-23:00 CST 新增 91 条 heartbeat `reasoning_content must be passed back` / `Param Incorrect` 失败，覆盖 11 个 job；同窗新增 113 条 `running + pending` started 残留，其中 99 条为 heartbeat、14 条为普通 scheduler。当前 `hone-console-page` 仍启动于 2026-05-13 19:28，早于 2026-05-15 04:05 的当前 HEAD 修复复核，因此仅追加到 `scheduler_heartbeat_mimo_param_incorrect_batch_failures.md` 与 `feishu_scheduler_running_rows_never_finalized.md`，不从 `Fixed` 回退。
+- 本轮 23:03 CST 观察到 `科技核心股池 · 晚间击球区快报` 与 `核心观察股池晚间快报` 在 21:37 / 23:01 CST 继续批量显示 `击球区：待确认`；live 主进程仍早于 2026-05-15 04:05 的击球区恢复修复，因此仅追加旧/非生产运行态证据到 `watchlist_hit_zone_config_lookup_degraded.md`，不从 `Fixed` 回退。
 - 本轮 19:03 CST 未发现新的独立缺陷或活跃 P1。最近四小时 17 个 user turn 均有相邻 assistant final 收口；assistant final 污染扫描未命中 `/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`session/update`、原始飞书标签、compact marker 或工具进度文案。最近四小时未见普通 scheduler 终态；Discord 仅见 websocket resume，不作为活跃缺陷登记。
 - 本轮 19:03 CST 继续观察到当前机器旧运行态 heartbeat `mimo-v2.5-pro` 批量失败和 scheduler started-row 残留：15:30-19:00 CST 新增 80 条 heartbeat `reasoning_content must be passed back` / `Param Incorrect` 失败，覆盖 11 个 job；同窗新增 88 条 `running + pending` started 残留，均为 heartbeat。当前 `hone-console-page` / `hone-feishu` 仍启动于 2026-05-13，早于 2026-05-15 04:05 的当前 HEAD 修复复核，因此仅追加到 `scheduler_heartbeat_mimo_param_incorrect_batch_failures.md` 与 `feishu_scheduler_running_rows_never_finalized.md`，不从 `Fixed` 回退。
 - 本轮 15:03 CST 未发现新的独立缺陷或活跃 P1。最近四小时 9 个 user turn 均有相邻 assistant final 收口；assistant final 污染扫描未命中 `/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`session/update`、原始飞书标签、compact marker 或工具进度文案。普通 Feishu scheduler `每日公司资讯与分析总结` 已 `completed + sent + delivered=1`；观察池击球区 `待确认` 最近四小时未复现。
