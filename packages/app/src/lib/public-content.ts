@@ -415,7 +415,7 @@ const CONTENT_ZH = {
       },
       {
         title: "公开用户端",
-        desc: "公开用户端路由包含 `/`、`/roadmap`、`/chat`、`/me`、`/portfolio`、`/terms`、`/privacy`，并保留开发用 `/__share-preview` 分享卡预览页；`/chat` 使用阿里云行为验证 + 手机短信验证码登录，管理端白名单是准入来源，桌面端为可收起左侧导航 + 右侧对话工作台，支持助手回答复制、图片分享、联系入口和 GitHub stars 兜底；`/portfolio` 只读展示推送上下文与公司画像入口，后端公开面收敛在 `/api/public/*`。",
+        desc: "公开用户端路由包含 `/`、`/roadmap`、`/chat`、`/me`、`/portfolio`、`/terms`、`/privacy`，并保留开发用 `/__share-preview` 分享卡预览页；`/chat` 使用阿里云行为验证 + 手机短信验证码登录，管理端白名单是准入来源，桌面端为可收起左侧栏 + 右侧对话工作台，侧栏聚合导航、账号、最近对话历史、联系入口和 GitHub stars，支持助手回答复制、图片分享与历史回看；`/portfolio` 只读展示推送上下文与公司画像入口，后端公开面收敛在 `/api/public/*`。",
       },
       {
         title: "管理后台",
@@ -466,9 +466,9 @@ const CONTENT_ZH = {
             note: "chart_visualization / image_generation",
           },
           {
-            name: "公开聊天分享长图",
+            name: "公开聊天工作台与分享",
             status: "stable",
-            note: "html2canvas + qrcode + markdown 渲染 + CJK 代码块字体",
+            note: "侧栏历史 + html2canvas + qrcode + markdown 渲染 + CJK 代码块字体",
           },
           { name: "向量检索增强记忆", status: "planned", note: "规划中" },
         ],
@@ -622,7 +622,7 @@ const CONTENT_ZH = {
       label: "当前已有",
       items: [
         "Web 聊天界面（阿里云行为验证 + 手机短信验证码，管理端白名单准入）+ 公开门面站",
-        "公开 `/chat` 桌面工作台布局：可收起左侧导航、账号入口、联系入口、GitHub stars 与右侧完整高度对话区",
+        "公开 `/chat` 桌面工作台布局：可收起左侧栏、账号入口、最近对话历史、联系入口、GitHub stars 与右侧完整高度对话区",
         "公开 `/chat` 助手回答复制与分享：可选择消息，导出品牌长图、复制图片/文字或调用系统分享；分享卡支持 CJK 代码块字体并有开发预览页",
         "公开 `/chat` markdown 渲染、移动输入框、键盘聚焦、滚动锚定与回到底部按钮已完成稳定性打磨",
         "Tauri macOS 桌面端 + 内置后端",
@@ -1893,7 +1893,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         title: "Public user app",
-        desc: "The public user app routes `/`, `/roadmap`, `/chat`, `/me`, `/portfolio`, `/terms`, and `/privacy`, with a dev-only `/__share-preview` page for share-card QA; `/chat` signs users in with Aliyun behavior captcha plus phone/SMS verification from the admin whitelist, uses a collapsible desktop left rail plus full-height conversation workspace, and supports assistant-reply copy, image sharing, contact links, and GitHub stars fallback; `/portfolio` is a read-only investment context surface for push context and company-profile entrypoints, and the public backend is scoped to `/api/public/*`.",
+        desc: "The public user app routes `/`, `/roadmap`, `/chat`, `/me`, `/portfolio`, `/terms`, and `/privacy`, with a dev-only `/__share-preview` page for share-card QA; `/chat` signs users in with Aliyun behavior captcha plus phone/SMS verification from the admin whitelist, uses a collapsible desktop left rail plus full-height conversation workspace, and gathers navigation, account access, recent conversation history, contact links, and GitHub stars in that rail while supporting assistant-reply copy, image sharing, and history review; `/portfolio` is a read-only investment context surface for push context and company-profile entrypoints, and the public backend is scoped to `/api/public/*`.",
       },
       {
         title: "Admin console",
@@ -1944,9 +1944,9 @@ const CONTENT_EN: typeof CONTENT_ZH = {
             note: "chart_visualization / image_generation",
           },
           {
-            name: "Public chat image sharing",
+            name: "Public chat workbench and sharing",
             status: "stable",
-            note: "html2canvas + qrcode + markdown rendering + CJK code font",
+            note: "sidebar history + html2canvas + qrcode + markdown rendering + CJK code font",
           },
           {
             name: "Vector-augmented memory",
@@ -2141,7 +2141,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       label: "Shipping today",
       items: [
         "Web chat (Aliyun behavior captcha + phone/SMS verification, admitted by the admin whitelist) + public landing site",
-        "Public `/chat` desktop workbench layout: collapsible left rail, account entry, contact links, GitHub stars, and a full-height conversation area",
+        "Public `/chat` desktop workbench layout: collapsible left rail, account entry, recent conversation history, contact links, GitHub stars, and a full-height conversation area",
         "Public `/chat` assistant-reply copy and sharing: select messages, export a branded long image, copy image/text, or invoke native share; share cards support CJK code-block fonts and have a dev preview route",
         "Public `/chat` markdown rendering, mobile composer, keyboard focus, scroll anchoring, and jump-to-latest behavior have been stabilized",
         "Tauri macOS desktop with bundled backend",
