@@ -9,15 +9,20 @@
 ## 证据来源
 
 - `data/runtime/logs/hone-console-page-prod.log`
+  - `2026-05-17 23:04 CST` 复核：最近四小时窗口内，`2026-05-17T14:28:26Z` / `22:28:26 CST` 再次出现 OpenRouter `HTTP 404`，摘要仍为 `Grok 4.1 Fast is deprecated. xAI recommends switching to Grok 4.3`；但当前 `hone-console-page` 仍启动于 `2026-05-13 19:28 CST`，早于 20:10 CST 修复提交后的部署，因此该样本按旧运行态证据处理，不把状态从 `Fixed` 回退。
+  - 本次受影响链路为 `global_digest::mainline_distill` 的新增 actor first-run distill；代表 ticker 为 `OKLO`，随后 `mainline style distill` 也失败，`mainline distill cron` 记录 `distilled=0 skipped_tickers=1`。
+  - 同窗可见 news classifier OpenRouter `HTTP 402` fallback，但该错误属于额度 / token 降级，不改变本单 `x-ai/grok-4.1-fast` 下线根因判断。
   - `2026-05-17 16:28:24-17:28:33 CST` 最近四小时真实运行窗口内，OpenRouter 对 `x-ai/grok-4.1-fast` 连续返回 `HTTP 404`，摘要为 `Grok 4.1 Fast is deprecated. xAI recommends switching to Grok 4.3`。
   - 同窗共检出 `48` 条 `Grok 4.1 Fast is deprecated` 日志。
   - 受影响链路包括 `global_digest::mainline_distill` 的 per-ticker 主线蒸馏和 `mainline style distill`；代表 ticker 包括 `ORCL`、`ASTS`、`RKLB`、`TEM`、`VST`、`PDD`、`NBIS`、`GOOGL`、`CRWV`、`CAI`、`DELL`、`LITE` 等。
   - 更早同日还可见 `sec_enrichment LLM call failed` 与 `event_dedupe LLM call failed; falling back to pass-through` 命中同一模型下线错误，说明影响不止单个 mainline distill job。
 - `data/sessions.sqlite3`
+  - `2026-05-17 23:04 CST` 复核：最近四小时有 `25` 个 user turn 与 `25` 个 assistant final，普通 scheduler 有 `16` 条 `completed + sent + delivered=1`；assistant final 污染扫描未命中 `/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、原始飞书标签、compact marker、`reasoning_content` 或 `Param Incorrect`。
+  - 同窗没有 session message 直接包含 `Grok 4.1 Fast is deprecated`，说明这轮仍是后台 event-engine / global digest enhancement 降级，而非用户可见原始错误外泄。
   - 最近四小时直聊会话仍有 `45` 个 user turn 与 `45` 个 assistant turn，普通 scheduler 有 `11` 条 `completed + sent + delivered=1`，未见直聊无回复或出站全局停摆。
   - 同窗 assistant final 污染扫描未命中 `/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、原始飞书标签、compact marker、`reasoning_content` 或 `Param Incorrect`。
 - 代码/配置确认：
-  - `config.yaml`、`config.example.yaml`、`crates/hone-core/src/config/event_engine.rs`、`crates/hone-web-api/src/lib.rs`、`packages/app/src/pages/settings-model.ts` 等仍把 `x-ai/grok-4.1-fast` 用作 event-engine / global digest / news classifier / SEC enrichment 相关默认或示例模型。
+  - 2026-05-17 20:10 CST 修复前，`config.yaml`、`config.example.yaml`、`crates/hone-core/src/config/event_engine.rs`、`crates/hone-web-api/src/lib.rs`、`packages/app/src/pages/settings-model.ts` 等仍把 `x-ai/grok-4.1-fast` 用作 event-engine / global digest / news classifier / SEC enrichment 相关默认或示例模型。
   - 既有缺陷 [`event_engine_mainline_distill_openrouter_402.md`](./event_engine_mainline_distill_openrouter_402.md) 已修复的是短摘要链路复用全局 `max_tokens` 导致 `HTTP 402`；本次是同一大功能域中的新外部模型下线 / 默认模型过期问题，根因不同。
 
 ## 端到端链路
@@ -36,6 +41,7 @@
 
 ## 当前实现效果
 
+- 2026-05-17 23:04 CST 复核：当前机器旧运行态仍复现该缺陷；新增 OKLO actor 的 mainline distill first-run 继续因 `x-ai/grok-4.1-fast` 下线失败，style distill 也失败。由于当前 HEAD 已在 20:10 CST 切换默认 / 示例 / 桌面设置模型到 `x-ai/grok-4.3`，本轮仅补充旧运行态证据，不重新打开。
 - 多条 event-engine LLM-backed enhancement 仍会请求已经下线的 `x-ai/grok-4.1-fast`。
 - mainline distill 对部分 actor 继续完成 cron tick，但主线蒸馏和 style 蒸馏失败，后续 digest 个性化缺少或陈旧。
 - event dedupe 在模型调用失败后走 pass-through，可能增加重复或弱相关摘要进入后续候选。

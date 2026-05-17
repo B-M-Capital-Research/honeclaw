@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-17 20:10 CST
+最后更新：2026-05-17 23:04 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -22,6 +22,10 @@
 - 已修复 / 已关闭：106
 - 历史分析 / 部分止血：5
 - 本轮 20:10 CST 已修复 P2 `Event-engine still uses deprecated x-ai/grok-4.1-fast and loses LLM-backed enrichment`：event-engine 默认模型、示例配置、桌面设置默认 LLM profiles 与相关测试从已下线 `x-ai/grok-4.1-fast` 切到 OpenRouter 当前可用的 `x-ai/grok-4.3`；并补配置回归，防止 `config.example.yaml` 继续引用废弃模型。`cargo test -p hone-core config_example_yaml_matches_current_schema -- --nocapture`、`cargo test -p hone-core event_engine_default_models_avoid_deprecated_grok41_fast -- --nocapture`、`cargo test -p hone-web-api mainline_distill_uses_short_completion_budget --lib -- --nocapture`、`cargo check -p hone-core -p hone-web-api -p hone-event-engine --tests`、`cargo fmt --all -- --check` 通过；`bun` 不在当前环境，前端单测未执行。无关联 GitHub Issue。
+- 本轮 23:04 CST 未发现新的独立缺陷或活跃 P1。最近四小时共有 25 个 user turn 与 25 个 assistant final，Feishu / Web 直聊和普通 scheduler 均有收口；普通 scheduler 16 条 `completed + sent + delivered=1`。assistant final 污染扫描未命中 `/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、原始飞书标签、compact marker、`reasoning_content` 或 `Param Incorrect`；最近四小时无非文档代码提交。当前活跃待修复仍为 0，未创建 GitHub issue。
+- 本轮 23:04 CST 继续观察到 `x-ai/grok-4.1-fast` 下线问题在当前机器旧运行态复现：22:28 CST `hone-console-page-prod.log` 再次记录 `global_digest::mainline_distill` / style distill 对 `x-ai/grok-4.1-fast` 的 OpenRouter `HTTP 404`，影响新增 OKLO actor 的 mainline distill；但远端当前 HEAD 已在 20:10 CST 修复默认 / 示例 / 桌面设置模型到 `x-ai/grok-4.3`，且 live `hone-console-page` 仍启动于 2026-05-13 19:28 CST，因此仅追加旧运行态证据，不把 `event_engine_grok41_deprecated_404.md` 从 `Fixed` 回退。
+- 本轮 23:04 CST 继续观察到当前机器旧运行态 heartbeat `mimo-v2.5-pro` 批量失败和 scheduler started-row 残留：19:30-23:00 CST 新增 81 条 heartbeat `reasoning_content must be passed back` / `Param Incorrect` 失败，覆盖 11 个 job；同窗新增 102 条 `running + pending` started 残留，其中 88 条为 heartbeat、14 条为普通 scheduler。当前 `hone-console-page` 仍启动于 2026-05-13 19:28 CST，`hone-feishu` 仍启动于 2026-05-13 21:01 CST，早于 2026-05-15 04:05 的当前 HEAD 修复复核，因此仅追加到 `scheduler_heartbeat_mimo_param_incorrect_batch_failures.md` 与 `feishu_scheduler_running_rows_never_finalized.md`，不从 `Fixed` 回退。
+- 本轮 23:04 CST 观察到 `科技核心股池 · 晚间击球区快报` 与 `核心观察股池晚间快报` 在 21:36 / 23:01 CST 继续批量显示 `击球区：待确认`；live 主进程仍早于 2026-05-15 04:05 的紧凑 summary 解析修复复核，因此仅追加旧/非生产运行态证据到 `watchlist_hit_zone_config_lookup_degraded.md`，不从 `Fixed` 回退。
 - 本轮 19:02 CST 新增 P2 `Event-engine still uses deprecated x-ai/grok-4.1-fast and loses LLM-backed enrichment`：最近四小时 `hone-console-page-prod.log` 检出 48 条 OpenRouter `Grok 4.1 Fast is deprecated` / `HTTP 404`，影响 `global_digest::mainline_distill`、style distill，并在同日更早窗口影响 SEC enrichment 与 event dedupe；当前配置与默认值仍多处指向 `x-ai/grok-4.1-fast`。直聊会话同窗 45 个 user turn / 45 个 assistant final，普通 scheduler 11 条 `completed + sent + delivered=1`，未见全局出站或无回复，因此定级 P2 / New，非 P1 不创建 GitHub issue。
 - 本轮 19:02 CST 未发现新的用户可见回复结构污染：assistant final 污染扫描未命中 `/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、原始飞书标签、compact marker、`reasoning_content` 或 `Param Incorrect`；最近四小时无非文档代码提交。当前机器旧运行态 heartbeat `mimo-v2.5-pro` 仍新增 244 条 `reasoning_content must be passed back` / `Param Incorrect` 失败和 273 条 `running + pending` started 残留，仍按旧运行态证据处理，不把已修复条目回退。
 - 本轮 20:04 CST 先隔离工作区既有未登记 `asset-recovery` 前端改动到 stash `automation-bug-2-preexisting-asset-recovery-20260517`，随后复核 open GitHub Issues #22/#24/#25/#26/#28/#29/#30/#31/#32/#35/#36/#39/#40/#41/#42 与对应 bug 文档；这些 issue 均已在本页对应行记录为 `Fixed` / `Closed`，或属于旧运行态 / 外部额度证据，当前机器不再作为生产状态判定来源。远端同时新增的 event-engine deprecated model P2 已进入本轮修复候选。

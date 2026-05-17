@@ -5,6 +5,25 @@
 - **严重等级**: P3
 - **状态**: Fixed
 - **修复结论复核**:
+  - `2026-05-17 23:04 CST` 本轮在当前机器旧/非生产运行态中继续看到两条坏样本，但不推翻仓库代码层面的 `Fixed` 结论：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - `run_id=24500`
+      - `job_name=科技核心股池 · 晚间击球区快报`
+      - `executed_at=2026-05-17T21:36:47.659945+08:00`
+      - `execution_status=completed`
+      - `message_send_status=sent`
+      - `delivered=1`
+      - `response_preview` 继续把核心股 `MSFT / NVDA / GOOGL / AAPL / AVGO / AMZN / META` 批量写成 `击球区：待确认`。
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - `run_id=24570`
+      - `job_name=核心观察股池晚间快报`
+      - `executed_at=2026-05-17T23:01:28.041311+08:00`
+      - `execution_status=completed`
+      - `message_send_status=sent`
+      - `delivered=1`
+      - `response_preview` 继续把核心股 `MSFT / NVDA / GOOGL / AAPL / AVGO / AMZN / META` 批量写成 `击球区：待确认`。
+    - 当前 `hone-console-page` 仍启动于 `2026-05-13 19:28 CST`，早于 `2026-05-15 04:05 CST` 的紧凑 summary 解析修复复核；因此本轮按旧 live / 非生产运行态证据处理，不把状态从 `Fixed` 回退为 `New`。
+    - 仍定为 `P3 / Fixed`：任务按时完成并送达，价格与财报字段仍可读；受损的是固定观察池字段恢复与报告参考价值，没有阻断主投递链路。
   - `2026-05-17 11:03 CST` 本轮在当前机器旧/非生产运行态中继续看到一条坏样本，但不推翻仓库代码层面的 `Fixed` 结论：
     - `data/sessions.sqlite3` -> `cron_job_runs`
       - `run_id=23916`
