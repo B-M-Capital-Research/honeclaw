@@ -237,7 +237,7 @@ event_engine:
     quality_review:
       enabled: true
       llm: earnings_quality
-      model: x-ai/grok-4.1-fast
+      model: x-ai/grok-4.3
       max_review_tokens: 1800
       min_review_confidence: 0.65
       min_immediate_confidence: 0.9
@@ -254,8 +254,8 @@ event_engine:
   #   想关掉某 form 直接从这里删掉它,不需要改代码。空数组等于关闭整个 poller。
   # enrichment: 是否给 SEC filing 调 LLM 生成 ~200 字业务摘要(长期主线投资者
   #   视角:跳过 GAAP 数字,抓 backlog / 资本配置 / 风险因子新增)。
-  #   POC 实证 grok-4.1-fast 在 11 持仓 × 一年 ~70 条 filing 上 ≈ $0.82/年,质量、
-  #   成本、延迟均第一。失败 fallback 走原始 form/link body,不阻塞推送。
+  #   原 POC 使用 grok 4.1 fast；当前默认切到 OpenRouter 可用的 grok 4.3。
+  #   失败 fallback 走原始 form/link body,不阻塞推送。
   sec_filings:
     forms:
       - 8-K
@@ -266,7 +266,7 @@ event_engine:
     enrichment:
       enabled: true
       llm: filing_summary
-      model: x-ai/grok-4.1-fast
+      model: x-ai/grok-4.3
       max_summary_tokens: 800
       # SEC EDGAR 强制要求 User-Agent 包含联系邮箱,否则会被限流或拒绝。
       # 部署方应改成自己的真实联系邮箱(SEC 不强制可达,但需有公司 / 产品名 + 邮箱)。
@@ -288,9 +288,9 @@ event_engine:
     lookback_hours: 24 # 候选池回看窗口
     # *_llm fields name llm.profiles entries; matching *_model fields are legacy OpenRouter fallbacks.
     pass1_llm: digest_fast
-    pass1_model: x-ai/grok-4.1-fast
+    pass1_model: x-ai/grok-4.3
     pass2_llm: digest_strong
-    pass2_model: x-ai/grok-4.1-fast # 价格 $0.20/$0.50 per M,2M context,带 reasoning
+    pass2_model: x-ai/grok-4.3 # 2026-05 OpenRouter 推荐替代已下线的 Grok 4.1 Fast
     pass2_top_n: 15 # Pass 1 排序后送 Pass 2 精读的候选数上限
     final_pick_n: 8 # 单次推送最终保留的条数上限
     fetch_full_text: true # Pass 2 是否 GET 原文 → html2text;失败 fallback FMP text
@@ -304,7 +304,7 @@ event_engine:
     event_dedupe_enabled: true
     event_dedupe_llm: digest_strong
     mainline_distill_llm: mainline_short
-    event_dedupe_model: x-ai/grok-4.1-fast
+    event_dedupe_model: x-ai/grok-4.3
 
   # Per-source 开关。每个字段对应 hone-event-engine 内一个 EventSource,
   # 设成 false 即不 spawn 该 source(最省 FMP 配额)。
@@ -348,7 +348,7 @@ event_engine:
   # legacy OpenRouter fallback when that profile is empty. Keep CI/tests mocked;
   # use real API only for manual live-quality checks.
   news_classifier_llm: news_classifier
-  news_classifier_model: "x-ai/grok-4.1-fast"
+  news_classifier_model: "x-ai/grok-4.3"
   # Global default phrase for judging whether uncertain-source news is important.
   # Per-actor notif_prefs news_importance_prompt overrides this value.
   news_importance_prompt: "公司或潜在影响公司长期逻辑和宏观叙事的重大事件"
@@ -387,13 +387,13 @@ llm:
         max_tokens: 4096
     news_classifier:
       provider: openrouter
-      model: "x-ai/grok-4.1-fast"
+      model: "x-ai/grok-4.3"
       params:
         max_tokens: 64
         temperature: 0
     filing_summary:
       provider: openrouter
-      model: "x-ai/grok-4.1-fast"
+      model: "x-ai/grok-4.3"
       params:
         max_tokens: 800
         temperature: 0.2
@@ -401,7 +401,7 @@ llm:
           type: json_object
     earnings_quality:
       provider: openrouter
-      model: "x-ai/grok-4.1-fast"
+      model: "x-ai/grok-4.3"
       params:
         max_tokens: 1800
         temperature: 0.2
@@ -409,13 +409,13 @@ llm:
           type: json_object
     digest_fast:
       provider: openrouter
-      model: "x-ai/grok-4.1-fast"
+      model: "x-ai/grok-4.3"
       params:
         max_tokens: 1200
         temperature: 0.2
     digest_strong:
       provider: openrouter
-      model: "x-ai/grok-4.1-fast"
+      model: "x-ai/grok-4.3"
       params:
         max_tokens: 1600
         temperature: 0.2
@@ -423,7 +423,7 @@ llm:
           effort: low
     mainline_short:
       provider: openrouter
-      model: "x-ai/grok-4.1-fast"
+      model: "x-ai/grok-4.3"
       params:
         max_tokens: 1200
         temperature: 0.2

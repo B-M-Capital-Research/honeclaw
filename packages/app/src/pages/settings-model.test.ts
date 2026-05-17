@@ -138,7 +138,7 @@ describe("settings-model", () => {
     )
     expect(
       profileById(mergedProfiles.profiles, "digest_strong").model,
-    ).toBe("x-ai/grok-4.1-fast")
+    ).toBe("x-ai/grok-4.3")
   })
 
   it("normalizes empty key lists and derives matching visibility state", () => {

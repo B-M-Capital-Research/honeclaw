@@ -56,7 +56,7 @@ pub trait MainlineDistiller: Send + Sync {
     async fn distill_style(&self, all_profiles: &[ProfileSource]) -> anyhow::Result<String>;
 }
 
-/// LLM 实现 —— 默认走 grok-4.1-fast(POC 验证质量好,速度可接受)。
+/// LLM 实现 —— 默认走当前 OpenRouter 可用的 grok 级模型。
 pub struct LlmMainlineDistiller {
     provider: Arc<dyn LlmProvider>,
     model: String,

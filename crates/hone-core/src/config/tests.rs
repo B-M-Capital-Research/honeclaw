@@ -410,11 +410,64 @@ fn config_example_yaml_matches_current_schema() {
     assert!(config.llm.profiles.contains_key("aux"));
     assert!(config.llm.profiles.contains_key("digest_fast"));
     assert!(config.llm.profiles.contains_key("digest_strong"));
+    assert!(
+        !raw.contains("x-ai/grok-4.1-fast"),
+        "config.example.yaml must not point event-engine defaults at the deprecated Grok 4.1 Fast model"
+    );
+    assert_eq!(config.event_engine.news_classifier_model, "x-ai/grok-4.3");
+    assert_eq!(
+        config.event_engine.earnings.quality_review.model,
+        "x-ai/grok-4.3"
+    );
+    assert_eq!(
+        config.event_engine.sec_filings.enrichment.model,
+        "x-ai/grok-4.3"
+    );
+    assert_eq!(
+        config.event_engine.global_digest.pass1_model,
+        "x-ai/grok-4.3"
+    );
+    assert_eq!(
+        config.event_engine.global_digest.pass2_model,
+        "x-ai/grok-4.3"
+    );
+    assert_eq!(
+        config.event_engine.global_digest.event_dedupe_model,
+        "x-ai/grok-4.3"
+    );
+    assert_eq!(
+        config
+            .llm
+            .profiles
+            .get("mainline_short")
+            .expect("mainline_short profile")
+            .model,
+        "x-ai/grok-4.3"
+    );
     assert_eq!(
         config.event_engine.news_importance_prompt,
         "公司或潜在影响公司长期逻辑和宏观叙事的重大事件"
     );
     assert_eq!(config.event_engine.sources.rss_feeds.len(), 3);
+}
+
+#[test]
+fn event_engine_default_models_avoid_deprecated_grok41_fast() {
+    let config = HoneConfig::default();
+    let deprecated = "x-ai/grok-4.1-fast";
+
+    assert_ne!(config.event_engine.news_classifier_model, deprecated);
+    assert_ne!(
+        config.event_engine.earnings.quality_review.model,
+        deprecated
+    );
+    assert_ne!(config.event_engine.sec_filings.enrichment.model, deprecated);
+    assert_ne!(config.event_engine.global_digest.pass1_model, deprecated);
+    assert_ne!(config.event_engine.global_digest.pass2_model, deprecated);
+    assert_ne!(
+        config.event_engine.global_digest.event_dedupe_model,
+        deprecated
+    );
 }
 
 #[test]
@@ -433,7 +486,7 @@ llm:
   profiles:
     digest_strong:
       provider: openrouter
-      model: x-ai/grok-4.1-fast
+      model: x-ai/grok-4.3
       params:
         max_tokens: 1200
         temperature: 0.2
@@ -461,7 +514,7 @@ llm:
 
     let profile = config.llm.profiles.get("digest_strong").unwrap();
     assert_eq!(profile.provider, "openrouter");
-    assert_eq!(profile.model, "x-ai/grok-4.1-fast");
+    assert_eq!(profile.model, "x-ai/grok-4.3");
     assert_eq!(profile.params.max_tokens, Some(1200));
     assert_eq!(profile.params.temperature, Some(0.2));
     assert_eq!(

@@ -4,8 +4,9 @@
 //!
 //! 设计:**保守 dedup,只合明显同一具体事件**(同 actor + 同行动 + 几天内)。
 //! 主题相同但事件独立(如 SpaceX $57M 合同 vs Pentagon $2.3B Maven AI 都是国防
-//! 太空)绝对不合。POC 验证:`x-ai/grok-4.1-fast` 二阶段 induce-then-assign 在
-//! 04-22 → 04-25 四天 + 04-21 高量 236 条上稳定保守(详见 docs 或 commit msg)。
+//! 太空)绝对不合。原 grok 4.1 fast POC 的二阶段 induce-then-assign 在 04-22 →
+//! 04-25 四天 + 04-21 高量 236 条上稳定保守;当前配置使用 OpenRouter 可用的
+//! grok 4.3 替代。
 //!
 //! 失败降级:LLM 调用失败 / JSON 解析失败 → 透传原候选,scheduler 不会因为
 //! dedup 挂掉断了整次推送。
@@ -87,7 +88,7 @@ impl EventDeduper for PassThroughDeduper {
     }
 }
 
-/// 走 OpenRouter / OpenAI 兼容 LLM 的实现。生产配 `x-ai/grok-4.1-fast`。
+/// 走 OpenRouter / OpenAI 兼容 LLM 的实现。生产配 `x-ai/grok-4.3`。
 pub struct LlmEventDeduper {
     provider: Arc<dyn LlmProvider>,
     model: String,

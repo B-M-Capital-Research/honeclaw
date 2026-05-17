@@ -8,14 +8,14 @@
 //! Pass 2 baseline / personalize 在同模块的 pass2_baseline / pass2_personalize 里。
 //!
 //! POC 验证(见 SKILL `poc-driven-feature-design`):
-//! - **必须用 grok-4.1-fast 或更强模型**。2026-04-27 复盘 POC 实测 nova-lite-v1 在
+//! - **必须用当前可用的 grok 级强模型**。2026-04-27 复盘 POC 实测 nova-lite-v1 在
 //!   42-61 候选量级下塌成 1/2/3 三档,完全没有 4/5;同时 cluster id 给得过细
 //!   (Iran/Hormuz/Oil/Gold 5+ 个独立 cluster),thematic dedup 失效。
-//!   grok-4.1-fast 在同 prompt 给出健康 5/4/3/2/1 分布,且自动把 11 条 Iran 主题
-//!   合到一个 cluster。代价 3× ($0.001 → $0.003/run),绝对值仍 < 1¢。
+//!   原 grok 4.1 fast POC 在同 prompt 给出健康 5/4/3/2/1 分布,且自动把 11 条
+//!   Iran 主题合到一个 cluster；当前配置使用 OpenRouter 可用的 grok 4.3 替代。
 //! - 174 候选下 cluster dedup 仍准确(174→124,iran-war 一次合 21)
 //! - 带 audience brief 后 LLM 自动推 NVDA/Intel/TSM 是 AMD 同行
-//! - Pass 1 cost ≈ $0.003 / 60 候选 / grok-4.1-fast
+//! - Pass 1 仍应使用强模型；失败时可降级透传,但不要静默换回 nova-lite-v1。
 
 use std::collections::HashMap;
 use std::sync::Arc;

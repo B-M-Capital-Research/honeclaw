@@ -3,7 +3,7 @@
 - **发现时间**: 2026-05-17 19:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无；非 P1，本轮不创建 issue。
 
 ## 证据来源
@@ -60,3 +60,27 @@
 - 同步更新 `config.yaml`、`config.example.yaml`、默认配置函数、桌面设置默认值和相关测试期望，避免 UI 保存旧模型把修复回滚。
 - 增加 `model_unavailable` / `provider_model_deprecated` 类错误归因，必要时对 LLM-backed enrichment 走可配置 fallback。
 - 修复后用 event-engine baseline 或至少一条 mainline distill / SEC enrichment / event dedupe 定向 smoke 证明新模型可用。
+
+## 修复记录（2026-05-17 20:10 CST）
+
+- 状态更新为 `Fixed`。
+- 复核 OpenRouter 当前模型页与 xAI docs 后，选择 `x-ai/grok-4.3` 作为 `x-ai/grok-4.1-fast` 的当前可用替代。
+- `crates/hone-core/src/config/event_engine.rs` 的 event-engine 默认模型已统一切到 `x-ai/grok-4.3`，覆盖：
+  - `news_classifier_model`
+  - earnings quality review
+  - SEC filing enrichment
+  - global digest pass1 / pass2
+  - event dedupe
+- `config.example.yaml` 与桌面设置默认 LLM profiles 已同步切到 `x-ai/grok-4.3`，避免新配置或 UI 保存重新写回废弃模型。
+- 新增 / 更新配置回归：`config_example_yaml_matches_current_schema` 会断言 `config.example.yaml` 不再包含 `x-ai/grok-4.1-fast`，并检查 event-engine 示例模型与 `mainline_short` profile 均为 `x-ai/grok-4.3`；新增 `event_engine_default_models_avoid_deprecated_grok41_fast` 锁住默认配置不再回退。
+- 本轮未写真实 OpenRouter 调用 smoke，避免把当前机器外部网络 / API key / provider 可用性作为完成门槛；模型 ID 可用性以 OpenRouter 模型页和 xAI docs 为准。
+
+## 验证（2026-05-17 20:10 CST）
+
+- 通过：`cargo test -p hone-core config_example_yaml_matches_current_schema -- --nocapture`
+- 通过：`cargo test -p hone-core event_engine_default_models_avoid_deprecated_grok41_fast -- --nocapture`
+- 通过：`cargo test -p hone-web-api mainline_distill_uses_short_completion_budget --lib -- --nocapture`
+- 通过：`cargo check -p hone-core -p hone-web-api -p hone-event-engine --tests`
+- 通过：`cargo fmt --all -- --check`
+- 通过：`git diff --check`
+- 未执行：`bun test packages/app/src/pages/settings-model.test.ts`，当前环境缺少 `bun`。

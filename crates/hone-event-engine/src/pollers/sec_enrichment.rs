@@ -963,12 +963,8 @@ mod tests {
     #[tokio::test]
     async fn llm_summarizer_returns_none_when_url_fetch_fails() {
         let provider: Arc<dyn LlmProvider> = Arc::new(PanicProvider);
-        let s = LlmSecFilingSummarizer::new(
-            provider,
-            "x-ai/grok-4.1-fast",
-            800,
-            "test-ua test@example.com",
-        );
+        let s =
+            LlmSecFilingSummarizer::new(provider, "x-ai/grok-4.3", 800, "test-ua test@example.com");
         // 真实但 unroutable 的 URL —— reqwest 应该 timeout / error 出来,触发 None 路径
         // 而非走到 LLM call。
         let ev = make_filing_event(
@@ -983,12 +979,8 @@ mod tests {
     #[tokio::test]
     async fn llm_summarizer_returns_none_for_non_secfiling_event() {
         let provider: Arc<dyn LlmProvider> = Arc::new(PanicProvider);
-        let s = LlmSecFilingSummarizer::new(
-            provider,
-            "x-ai/grok-4.1-fast",
-            800,
-            "test-ua test@example.com",
-        );
+        let s =
+            LlmSecFilingSummarizer::new(provider, "x-ai/grok-4.3", 800, "test-ua test@example.com");
         let mut ev = make_filing_event("x", Some("https://x"), "10-Q");
         ev.kind = EventKind::Split; // 不是 SecFiling
         assert!(s.summarize(&ev).await.is_none());
@@ -997,12 +989,8 @@ mod tests {
     #[tokio::test]
     async fn llm_summarizer_returns_none_for_empty_url() {
         let provider: Arc<dyn LlmProvider> = Arc::new(PanicProvider);
-        let s = LlmSecFilingSummarizer::new(
-            provider,
-            "x-ai/grok-4.1-fast",
-            800,
-            "test-ua test@example.com",
-        );
+        let s =
+            LlmSecFilingSummarizer::new(provider, "x-ai/grok-4.3", 800, "test-ua test@example.com");
         let ev = make_filing_event("x", None, "10-Q");
         assert!(s.summarize(&ev).await.is_none());
     }

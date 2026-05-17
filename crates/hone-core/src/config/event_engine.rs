@@ -80,7 +80,7 @@ fn default_news_importance_prompt() -> String {
 }
 
 fn default_news_classifier_model() -> String {
-    "x-ai/grok-4.1-fast".to_string()
+    "x-ai/grok-4.3".to_string()
 }
 
 /// 财报 poller 特有参数。
@@ -155,7 +155,7 @@ impl Default for EarningsQualityReviewConfig {
 }
 
 fn default_earnings_quality_review_model() -> String {
-    "x-ai/grok-4.1-fast".into()
+    "x-ai/grok-4.3".into()
 }
 
 fn default_earnings_quality_review_max_tokens() -> u32 {
@@ -186,8 +186,8 @@ fn default_earnings_quality_review_context_max_chars() -> usize {
 /// 在事件构造时按 form 类型映射,**不是**在 config 里配置。
 ///
 /// `enrichment` 子配置控制是否调 LLM 给每条 filing 生成 ~200 字业务摘要(长期主线投资者
-/// 视角,跳过 GAAP 数字、抓 backlog/资本配置/风险)。POC 实证 grok-4.1-fast 在 11 持仓
-/// 一年 ~70 条 filing × $0.012 ≈ $0.82/年,质量、成本、延迟均第一。
+/// 视角,跳过 GAAP 数字、抓 backlog/资本配置/风险)。原 POC 使用 grok 4.1 fast,
+/// 当前默认切到 OpenRouter 可用的 grok 4.3。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecFilingsConfig {
     #[serde(default = "default_sec_forms")]
@@ -223,10 +223,10 @@ pub struct SecFilingsEnrichmentConfig {
     /// 可选 LLM profile 名称。配置后优先于 `model`。
     #[serde(default)]
     pub llm: String,
-    /// LLM 模型名(OpenRouter 风格)。POC 验证 `x-ai/grok-4.1-fast` 质量、成本、延迟均最佳。
+    /// LLM 模型名(OpenRouter 风格)。默认使用当前 OpenRouter 可用的 `x-ai/grok-4.3`。
     #[serde(default = "default_sec_summary_model")]
     pub model: String,
-    /// 摘要 max_tokens 上限。grok-4.1-fast 在 ~200 字目标下,800 token 充足且不会被截断。
+    /// 摘要 max_tokens 上限。~200 字目标下 800 token 充足且不会被截断。
     #[serde(default = "default_sec_summary_max_tokens")]
     pub max_summary_tokens: u32,
     /// fetch SEC.gov 时使用的 User-Agent。**SEC 强制要求格式包含联系邮箱**,否则会被
@@ -248,7 +248,7 @@ impl Default for SecFilingsEnrichmentConfig {
 }
 
 fn default_sec_summary_model() -> String {
-    "x-ai/grok-4.1-fast".into()
+    "x-ai/grok-4.3".into()
 }
 
 fn default_sec_summary_max_tokens() -> u32 {
@@ -318,7 +318,8 @@ pub struct GlobalDigestConfig {
     pub event_dedupe_enabled: bool,
 
     /// 事件级 dedup 的 legacy OpenRouter 模型 —— 仅在 `event_dedupe_llm` 留空时使用。
-    /// POC 验证 grok-4.1-fast 在 17-236 候选量级上稳定保守(只合明显同事件)。
+    /// 原 POC 验证 grok 4.1 fast 在 17-236 候选量级上稳定保守(只合明显同事件);
+    /// 当前默认切到 OpenRouter 可用的 grok 4.3。
     /// 务必用强模型,nova-lite 这种会过度归类成 theme。
     #[serde(default = "default_event_dedupe_model")]
     pub event_dedupe_model: String,
@@ -362,7 +363,7 @@ impl Default for GlobalDigestConfig {
 }
 
 fn default_event_dedupe_model() -> String {
-    "x-ai/grok-4.1-fast".into()
+    "x-ai/grok-4.3".into()
 }
 
 fn default_global_digest_tz() -> String {
@@ -372,10 +373,10 @@ fn default_global_digest_lookback_hours() -> u32 {
     24
 }
 fn default_global_digest_pass1_model() -> String {
-    "x-ai/grok-4.1-fast".into()
+    "x-ai/grok-4.3".into()
 }
 fn default_global_digest_pass2_model() -> String {
-    "x-ai/grok-4.1-fast".into()
+    "x-ai/grok-4.3".into()
 }
 fn default_global_digest_pass2_top_n() -> u32 {
     15

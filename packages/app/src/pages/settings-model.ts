@@ -123,7 +123,7 @@ function defaultLlmProfileSettings(): LlmProfileSettings {
       {
         id: "news_classifier",
         provider: "openrouter",
-        model: "x-ai/grok-4.1-fast",
+        model: "x-ai/grok-4.3",
         maxTokens: 64,
         temperature: 0,
         responseFormatJson: false,
@@ -131,7 +131,7 @@ function defaultLlmProfileSettings(): LlmProfileSettings {
       {
         id: "filing_summary",
         provider: "openrouter",
-        model: "x-ai/grok-4.1-fast",
+        model: "x-ai/grok-4.3",
         maxTokens: 800,
         temperature: 0.2,
         responseFormatJson: true,
@@ -139,7 +139,7 @@ function defaultLlmProfileSettings(): LlmProfileSettings {
       {
         id: "earnings_quality",
         provider: "openrouter",
-        model: "x-ai/grok-4.1-fast",
+        model: "x-ai/grok-4.3",
         maxTokens: 1800,
         temperature: 0.2,
         responseFormatJson: true,
@@ -147,7 +147,7 @@ function defaultLlmProfileSettings(): LlmProfileSettings {
       {
         id: "digest_fast",
         provider: "openrouter",
-        model: "x-ai/grok-4.1-fast",
+        model: "x-ai/grok-4.3",
         maxTokens: 1200,
         temperature: 0.2,
         responseFormatJson: false,
@@ -155,7 +155,7 @@ function defaultLlmProfileSettings(): LlmProfileSettings {
       {
         id: "digest_strong",
         provider: "openrouter",
-        model: "x-ai/grok-4.1-fast",
+        model: "x-ai/grok-4.3",
         maxTokens: 1600,
         temperature: 0.2,
         reasoningEffort: "low",
@@ -164,7 +164,7 @@ function defaultLlmProfileSettings(): LlmProfileSettings {
       {
         id: "mainline_short",
         provider: "openrouter",
-        model: "x-ai/grok-4.1-fast",
+        model: "x-ai/grok-4.3",
         maxTokens: 1200,
         temperature: 0.2,
         responseFormatJson: false,
