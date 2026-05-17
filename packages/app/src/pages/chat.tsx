@@ -1631,6 +1631,31 @@ function ComposerStatus(props: {
 
 function ProactiveModeTips() {
   const [open, setOpen] = createSignal(false);
+  const [copiedExample, setCopiedExample] = createSignal<number | null>(null);
+  let copiedTimer: number | undefined;
+
+  const copyText = async (text: string) => {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand("copy");
+    textarea.remove();
+  };
+
+  const copyExample = async (text: string, index: number) => {
+    await copyText(text);
+    setCopiedExample(index);
+    if (copiedTimer) window.clearTimeout(copiedTimer);
+    copiedTimer = window.setTimeout(() => setCopiedExample(null), 1200);
+  };
 
   createEffect(() => {
     if (!open()) return;
@@ -1639,6 +1664,10 @@ function ProactiveModeTips() {
     };
     document.addEventListener("keydown", onKey);
     onCleanup(() => document.removeEventListener("keydown", onKey));
+  });
+
+  onCleanup(() => {
+    if (copiedTimer) window.clearTimeout(copiedTimer);
   });
 
   return (
@@ -1726,7 +1755,63 @@ function ProactiveModeTips() {
             <div class="public-chat-proactive-examples">
               <div>{CONTENT.chat_page.composer.proactive_examples_title}</div>
               <For each={CONTENT.chat_page.composer.proactive_examples}>
-                {(example) => <span>{example}</span>}
+                {(example, index) => (
+                  <span class="public-chat-proactive-example-row">
+                    <button
+                      type="button"
+                      class="public-chat-proactive-copy"
+                      aria-label={CONTENT.chat_page.actions.copy_aria}
+                      title={
+                        copiedExample() === index()
+                          ? CONTENT.chat_page.actions.copied
+                          : CONTENT.chat_page.actions.copy_aria
+                      }
+                      onClick={() => void copyExample(example, index())}
+                    >
+                      <Show
+                        when={copiedExample() === index()}
+                        fallback={
+                          <svg
+                            width="13"
+                            height="13"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                          >
+                            <rect
+                              x="9"
+                              y="9"
+                              width="13"
+                              height="13"
+                              rx="2"
+                              ry="2"
+                            />
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                          </svg>
+                        }
+                      >
+                        <svg
+                          width="13"
+                          height="13"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2.2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M20 6 9 17l-5-5" />
+                        </svg>
+                      </Show>
+                    </button>
+                    <span>{example}</span>
+                  </span>
+                )}
               </For>
             </div>
             <button
@@ -3008,12 +3093,12 @@ export default function PublicChatPage() {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            min-height: 56px;
+            min-height: 62px;
             gap: 8px;
           }
           .public-chat-sidebar-logo {
             min-width: 0;
-            min-height: 52px;
+            min-height: 58px;
             border: 1px solid rgba(15,23,42,0.08);
             border-radius: 14px;
             background: #fff;
@@ -3037,10 +3122,10 @@ export default function PublicChatPage() {
             transform: scale(0.99);
           }
           .public-chat-sidebar-logo img {
-            width: 38px;
-            height: 38px;
+            width: 44px;
+            height: 44px;
             border-radius: 10px;
-            flex: 0 0 38px;
+            flex: 0 0 44px;
           }
           .public-chat-sidebar-toggle,
           .public-chat-sidebar-lang {
@@ -3286,9 +3371,9 @@ export default function PublicChatPage() {
             border-radius: 12px;
           }
           .public-chat-sidebar.is-collapsed .public-chat-sidebar-logo img {
-            width: 28px;
-            height: 28px;
-            flex-basis: 28px;
+            width: 32px;
+            height: 32px;
+            flex-basis: 32px;
           }
           .public-chat-sidebar.is-collapsed .public-chat-sidebar-footer {
             width: 42px;
@@ -3556,10 +3641,40 @@ export default function PublicChatPage() {
           font-weight: 800;
           line-height: 1.3;
         }
-        .public-chat-proactive-examples span {
+        .public-chat-proactive-example-row {
+          display: grid;
+          grid-template-columns: 24px 1fr;
+          align-items: start;
+          gap: 7px;
           color: #334155;
           font-size: 12.5px;
           line-height: 1.45;
+        }
+        .public-chat-proactive-example-row span {
+          color: #334155;
+          font-size: 12.5px;
+          line-height: 1.45;
+        }
+        .public-chat-proactive-copy {
+          width: 22px;
+          height: 22px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border: 1px solid rgba(15,23,42,0.08);
+          border-radius: 7px;
+          background: #fff;
+          color: #64748b;
+          cursor: pointer;
+          transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.06s ease;
+        }
+        .public-chat-proactive-copy:hover {
+          background: rgba(245,158,11,0.10);
+          border-color: rgba(245,158,11,0.24);
+          color: #b45309;
+        }
+        .public-chat-proactive-copy:active {
+          transform: scale(0.96);
         }
         .public-chat-proactive-primary {
           width: 100%;
@@ -4039,7 +4154,8 @@ export default function PublicChatPage() {
         [data-theme="dark"] .public-chat-proactive-intro,
         [data-theme="dark"] .public-chat-proactive-item small,
         [data-theme="dark"] .public-chat-proactive-examples div,
-        [data-theme="dark"] .public-chat-proactive-examples span { color: #cbd5e1 !important; }
+        [data-theme="dark"] .public-chat-proactive-example-row,
+        [data-theme="dark"] .public-chat-proactive-example-row span { color: #cbd5e1 !important; }
         [data-theme="dark"] .public-chat-proactive-close {
           background: rgba(255,255,255,0.06) !important;
           color: #cbd5e1 !important;
@@ -4050,6 +4166,16 @@ export default function PublicChatPage() {
         }
         [data-theme="dark"] .public-chat-proactive-examples {
           background: rgba(255,255,255,0.05) !important;
+        }
+        [data-theme="dark"] .public-chat-proactive-copy {
+          background: rgba(255,255,255,0.06) !important;
+          border-color: rgba(255,255,255,0.08) !important;
+          color: #cbd5e1 !important;
+        }
+        [data-theme="dark"] .public-chat-proactive-copy:hover {
+          background: rgba(245,158,11,0.16) !important;
+          border-color: rgba(245,158,11,0.32) !important;
+          color: #fbbf24 !important;
         }
         [data-theme="dark"] .public-chat-proactive-primary {
           background: #f8fafc !important;
@@ -4145,14 +4271,14 @@ export default function PublicChatPage() {
              on mobile (the bubble shape already tells you it's HONE) and
              eats 30+ px of vertical space per turn. */
           .public-chat-messages .pub-msg-bubble__brand { display: none !important; }
-          .public-chat-page .page-header { height: 46px !important; padding: 0 12px !important; }
+          .public-chat-page .page-header { height: 50px !important; padding: 0 12px !important; }
           .public-chat-page .public-chat-header-brand {
             gap: 7px !important;
             flex: 1 1 auto !important;
             min-width: 0 !important;
           }
-          .public-chat-page .header-logo img { height: 22px !important; }
-          .public-chat-page .header-logo span { font-size: 16px !important; }
+          .public-chat-page .header-logo img { height: 28px !important; }
+          .public-chat-page .header-logo span { font-size: 18px !important; }
           .public-chat-page--ready .public-chat-account {
             display: inline-flex !important;
             flex: 0 0 auto !important;
@@ -4187,7 +4313,7 @@ export default function PublicChatPage() {
           .hone-prefs-seg { padding: 4px 0 !important; }
           .hone-prefs-seg--text { padding: 5px 0 !important; }
           .public-chat-shell {
-            padding-top: 46px !important;
+            padding-top: 50px !important;
           }
           .public-chat-messages {
             padding-top: 6px !important;

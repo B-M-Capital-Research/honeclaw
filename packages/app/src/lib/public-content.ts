@@ -877,6 +877,7 @@ const CONTENT_ZH = {
       ],
       proactive_examples_title: "你可以这样说",
       proactive_examples: [
+        "介绍一下磷化铟产业链，推荐一些相关的光模块公司",
         "我持有 AAPL 和 NVDA，帮我开启关键事件提醒",
         "只给我推持仓相关的财报和重大新闻",
         "每周五收盘后做一次持仓复盘",
@@ -2396,6 +2397,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       ],
       proactive_examples_title: "Try saying",
       proactive_examples: [
+        "Introduce the indium phosphide industry chain and recommend related optical module companies.",
         "I hold AAPL and NVDA. Turn on key event alerts.",
         "Only push earnings and major news for my holdings.",
         "Run a portfolio review after market close every Friday.",
