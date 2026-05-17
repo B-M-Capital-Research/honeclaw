@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-17 07:02 CST
+最后更新：2026-05-17 11:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -21,6 +21,9 @@
 - Later / 待复现：9
 - 已修复 / 已关闭：105
 - 历史分析 / 部分止血：5
+- 本轮 11:03 CST 未发现新的独立缺陷或活跃 P1。最近四小时共有 16 个 user turn 与 16 个 assistant final，Feishu / Web / Discord 直聊和普通 scheduler 均有收口；assistant final 污染扫描未命中 `/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、原始飞书标签、compact marker 或工具进度文案。10:29 CST `这是什么公司 光配件公司吗` 曾被先解释为 Filtronic，10:31 CST 用户明确 `SIVE.ST` 后已纠正；按单次上下文歧义质量波动处理，不单独登记 P3。最近四小时无非文档代码提交；Feishu websocket 08:19 CST 短暂断连后 08:21 CST 已恢复，不作为活跃缺陷登记。
+- 本轮 11:03 CST 继续观察到当前机器旧运行态 heartbeat `mimo-v2.5-pro` 批量失败和 scheduler started-row 残留：07:30-11:00 CST 新增 81 条 heartbeat `reasoning_content must be passed back` / `Param Incorrect` 失败，覆盖 11 个 job；同窗新增 96 条 `running + pending` started 残留，其中 88 条为 heartbeat、8 条为普通 scheduler。当前 `hone-console-page` 仍启动于 2026-05-13 19:28 CST，早于 2026-05-15 04:05 的当前 HEAD 修复复核，因此仅追加到 `scheduler_heartbeat_mimo_param_incorrect_batch_failures.md` 与 `feishu_scheduler_running_rows_never_finalized.md`，不从 `Fixed` 回退。
+- 本轮 11:03 CST 观察到 `核心观察池早间简报` 在 09:01 CST 继续批量显示 `击球区：待确认`；live 主进程仍早于 2026-05-15 04:05 的紧凑 summary 解析修复，因此仅追加旧/非生产运行态证据到 `watchlist_hit_zone_config_lookup_degraded.md`，不从 `Fixed` 回退。
 - 本轮 07:02 CST 未发现新的独立缺陷或活跃 P1。最近四小时只有 1 条普通 Feishu scheduler `每日美股盘后收盘复盘` 有 user/assistant 收口，状态为 `completed + sent + delivered=1`；assistant final 污染扫描未命中 `/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、原始飞书标签、compact marker 或工具进度文案。最近四小时无 direct 用户新请求、无非文档代码提交；Discord 03:51 CST websocket 短暂重连后已恢复，不作为活跃缺陷登记。
 - 本轮 07:02 CST 继续观察到当前机器旧运行态 heartbeat `mimo-v2.5-pro` 批量失败和 scheduler started-row 残留：03:30-07:00 CST 新增 79 条 heartbeat `reasoning_content must be passed back` / `Param Incorrect` 失败，覆盖 11 个 job；同窗新增 89 条 `running + pending` started 残留，其中 88 条为 heartbeat、1 条为普通 scheduler。当前 `hone-console-page` 仍启动于 2026-05-13 19:28 CST，`hone-feishu` 仍启动于 2026-05-13 21:01 CST，早于 2026-05-15 04:05 的当前 HEAD 修复复核，因此仅追加到 `scheduler_heartbeat_mimo_param_incorrect_batch_failures.md` 与 `feishu_scheduler_running_rows_never_finalized.md`，不从 `Fixed` 回退。
 - 本轮 03:03 CST 未发现新的独立缺陷或活跃 P1。最近四小时 Feishu direct 2 个用户请求均有 assistant final 收口；普通 Feishu scheduler `RKLB / AAOI / TEM 每日动态监控` 均 `completed + sent + delivered=1`。assistant final 污染扫描未命中 `/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`session/update`、原始飞书标签、compact marker 或工具进度文案。最近四小时无非文档代码提交。
@@ -132,7 +135,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| 暂无 | - | - | 本轮 2026-05-17 03:03 CST 复核后活跃队列仍为空；后续若复发再重新进入活跃待修复 | - |
+| 暂无 | - | - | 本轮 2026-05-17 11:03 CST 复核后活跃队列仍为空；后续若复发再重新进入活跃待修复 | - |
 
 ## Later / 待复现
 
