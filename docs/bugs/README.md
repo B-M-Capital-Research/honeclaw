@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-18 03:03 CST
+最后更新：2026-05-18 07:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -21,6 +21,9 @@
 - Later / 待复现：9
 - 已修复 / 已关闭：106
 - 历史分析 / 部分止血：5
+- 本轮 07:03 CST 未发现新的独立缺陷或活跃 P1。最近四小时共有 8 个 user turn 与 8 个 assistant final，Feishu / Web 直聊和普通 scheduler 均有收口；普通 scheduler 7 条 `completed + sent + delivered=1`。assistant final 污染扫描未命中 `/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、原始飞书标签、compact marker、`reasoning_content` 或 `Param Incorrect`；最近四小时无非文档代码提交。当前活跃待修复仍为 0，未创建 GitHub issue。
+- 本轮 07:03 CST 继续观察到 `x-ai/grok-4.1-fast` 下线问题在当前机器旧运行态复现：05:28 / 06:28 CST `hone-console-page-prod.log` 再次记录 `global_digest::mainline_distill` / style distill 对 `x-ai/grok-4.1-fast` 的 OpenRouter `HTTP 404`，影响 OKLO、RKLB、TEM、VST、ORCL、ASTS、LITE、DELL 等 ticker；但当前 HEAD 已在 2026-05-17 20:10 CST 修复默认 / 示例 / 桌面设置模型到 `x-ai/grok-4.3`，因此仅追加旧运行态证据，不把 `event_engine_grok41_deprecated_404.md` 从 `Fixed` 回退。
+- 本轮 07:03 CST 继续观察到当前机器旧运行态 heartbeat `mimo-v2.5-pro` 批量失败和 scheduler started-row 残留：03:30-07:00 CST 新增 80 条 heartbeat `reasoning_content must be passed back` / `Param Incorrect` 失败，覆盖 11 个 job；同窗新增 93 条 `running + pending` started 残留，其中 88 条为 heartbeat、5 条为普通 scheduler。当前机器没有可确认已重启到 2026-05-15 04:05 CST 当前 HEAD 修复后的 live 进程；仅追加到 `scheduler_heartbeat_mimo_param_incorrect_batch_failures.md` 与 `feishu_scheduler_running_rows_never_finalized.md`，不从 `Fixed` 回退。
 - 本轮 03:03 CST 未发现新的独立缺陷或活跃 P1。最近四小时共有 7 个 user turn 与 7 个 assistant final，Feishu 直聊和普通 scheduler 均有收口；普通 scheduler 3 条 `completed + sent + delivered=1`。assistant final 污染扫描未命中 `/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、原始飞书标签、compact marker、`reasoning_content` 或 `Param Incorrect`；最近四小时无非文档代码提交。当前活跃待修复仍为 0，未创建 GitHub issue。
 - 本轮 03:03 CST 继续观察到 `x-ai/grok-4.1-fast` 下线问题在当前机器旧运行态复现：23:28 CST `hone-console-page-prod.log` 再次记录 `global_digest::mainline_distill` / style distill 对 `x-ai/grok-4.1-fast` 的 OpenRouter `HTTP 404`，影响 VST / RKLB / ORCL / TEM / ASTS / GOOGL / CRWV / PDD / NBIS / CAI / LITE / DELL 等 ticker；但当前 HEAD 已在 2026-05-17 20:10 CST 修复默认 / 示例 / 桌面设置模型到 `x-ai/grok-4.3`，因此仅追加旧运行态证据，不把 `event_engine_grok41_deprecated_404.md` 从 `Fixed` 回退。
 - 本轮 03:03 CST 继续观察到当前机器旧运行态 heartbeat `mimo-v2.5-pro` 批量失败和 scheduler started-row 残留：23:30-03:00 CST 新增 82 条 heartbeat `reasoning_content must be passed back` / `Param Incorrect` 失败，覆盖 11 个 job；同窗新增 91 条 `running + pending` started 残留，其中 88 条为 heartbeat、3 条为普通 scheduler。当前机器没有可确认已重启到 2026-05-15 04:05 CST 当前 HEAD 修复后的 live 进程；仅追加到 `scheduler_heartbeat_mimo_param_incorrect_batch_failures.md` 与 `feishu_scheduler_running_rows_never_finalized.md`，不从 `Fixed` 回退。
