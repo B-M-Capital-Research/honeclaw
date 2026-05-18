@@ -153,6 +153,7 @@
 
 ## 当前实现效果
 
+- 2026-05-19 07:03 CST 的最新复核继续只作为当前机器旧/非生产运行态证据：03:30-07:00 CST 仍新增 `78` 条 heartbeat 因同一 `mimo-v2.5-pro` 上游 `HTTP 400 Param Incorrect` 失败，覆盖 11 个 job；最近四小时普通 scheduler 仍有 `5` 条 `completed + sent + delivered=1`，assistant final 污染扫描未见用户可见 `reasoning_content` / `Param Incorrect` 外泄；当前机器没有可确认已重启到 2026-05-15 04:05 CST 当前 HEAD 修复后的 live 进程，本轮不重新打开。
 - 2026-05-18 23:03 CST 的最新复核继续只作为当前机器旧/非生产运行态证据：19:30-23:00 CST 仍新增 `81` 条 heartbeat 因同一 `mimo-v2.5-pro` 上游 `HTTP 400 Param Incorrect` 失败，覆盖 11 个 job；当前机器没有可确认已重启到 2026-05-15 04:05 CST 当前 HEAD 修复后的 live 进程，本轮不重新打开。
 - 2026-05-18 19:03 CST 的最新复核继续只作为当前机器旧/非生产运行态证据：15:30-19:00 CST 仍新增 `80` 条 heartbeat 因同一 `mimo-v2.5-pro` 上游 `HTTP 400 Param Incorrect` 失败，覆盖 11 个 job；当前机器没有可确认已重启到 2026-05-15 04:05 CST 当前 HEAD 修复后的 live 进程，本轮不重新打开。
 - 2026-05-18 15:02 CST 的复核继续只作为当前机器旧/非生产运行态证据：11:30-15:00 CST 仍新增 `81` 条 heartbeat 因同一 `mimo-v2.5-pro` 上游 `HTTP 400 Param Incorrect` 失败，覆盖 11 个 job；当前机器没有可确认已重启到 2026-05-15 04:05 CST 当前 HEAD 修复后的 live 进程，本轮不重新打开。

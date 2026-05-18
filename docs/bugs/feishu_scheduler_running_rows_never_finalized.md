@@ -1177,3 +1177,9 @@
 - 状态更新为 `Fixed`；历史已悬挂 `running + pending` 行仍可另做数据清理，但不再作为当前代码活跃 bug。
 - 验证：
   - `cargo test -p hone-memory started_row --lib -- --nocapture`
+
+## 旧运行态观察（2026-05-19 07:03 CST）
+
+- 最近四小时 `2026-05-19 03:30-07:00 CST` 继续新增 `93` 条 `running + pending` started 残留，其中 `88` 条为 heartbeat、`5` 条为普通 scheduler；全库 `running + pending` 残留当前为 `3104` 条。
+- 同窗真实终态仍有 `5` 条普通 scheduler `completed + sent + delivered=1`，另有 heartbeat `execution_failed + skipped_error` 因旧运行态 `mimo-v2.5-pro` `Param Incorrect` 失败；这与“started 行未被终态覆盖”的历史形态一致。
+- 当前机器没有可确认已重启到 `2026-05-15 04:05 CST` 当前 HEAD 修复后的 live 进程；本轮仅追加旧运行态证据，不把状态从 `Fixed` 回退为 `New`。
