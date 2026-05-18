@@ -17,10 +17,12 @@
 
 ## 当前概览
 
-- 活跃待修复：0
+- 活跃待修复：1
 - Later / 待复现：9
-- 已修复 / 已关闭：106
+- 已修复 / 已关闭：105
 - 历史分析 / 部分止血：5
+- 本轮 03:02 CST 重新打开 P1 `Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复”`：最近四小时共有 24 个 user turn 与 25 个 assistant final，Feishu 直聊和普通 scheduler 均有收口；普通 scheduler 5 条 `completed + sent + delivered=1`。assistant final 污染扫描未命中 `/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、原始飞书标签、compact marker、`reasoning_content` 或 `Param Incorrect`，但 `2026-05-19T00:08:18+08:00` 有 1 条 Feishu 直聊通用失败回复：用户提交 VST 215 股与 140.7 减仓 176 股计划，`portfolio` 工具已返回包含最新持仓备注的组合快照，随后 `planning_sentence_suppressed`，最终仍以 `success=true` 外发送达通用失败文案。该缺陷已有 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29)，本轮不重复创建。最近四小时无非文档代码提交。
+- 本轮 03:02 CST 继续观察到当前机器旧运行态 heartbeat `mimo-v2.5-pro` 批量失败和 scheduler started-row 残留：23:30-03:00 CST 新增 81 条 heartbeat `reasoning_content must be passed back` / `Param Incorrect` 失败，覆盖 11 个 job；同窗新增 92 条 `running + pending` started 残留，其中 88 条为 heartbeat、4 条为普通 scheduler。当前机器没有可确认已重启到 2026-05-15 04:05 CST 当前 HEAD 修复后的 live 进程；仅追加观察，不把 `scheduler_heartbeat_mimo_param_incorrect_batch_failures.md` 与 `feishu_scheduler_running_rows_never_finalized.md` 从 `Fixed` 回退。
 - 本轮 23:03 CST 未发现新的独立缺陷或活跃 P1。最近四小时按 `datetime(...)` 归一化后共有 48 个 user turn 与 48 个 assistant final，Feishu / Web 直聊和普通 scheduler 均有收口；普通 scheduler 33 条 `completed + sent + delivered=1`。assistant final 污染扫描未命中 `/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、原始飞书标签、compact marker、`reasoning_content`、`Param Incorrect` 或 Codex ACP 内部错误；最近四小时无孤立 user turn、无非文档代码提交。20:18 CST Feishu 直聊曾返回一次通用失败文案，但同用户 20:29 CST 重试后成功收口，按单次可恢复失败处理，不新建缺陷；当前活跃待修复仍为 0，未创建 GitHub issue。
 - 本轮 23:03 CST 继续观察到 `x-ai/grok-4.1-fast` 下线问题在当前机器旧运行态复现：19:28 / 20:28 CST `hone-console-page-prod.log` 记录 `global_digest::mainline_distill` / style distill 对 `x-ai/grok-4.1-fast` 的 OpenRouter `HTTP 404`，代表 ticker 包括 OKLO、RKLB、VST、ORCL、ASTS、TEM、NBIS、CRWV、PDD、CAI、GOOGL、DELL、LITE；但当前 HEAD 已在 2026-05-17 20:10 CST 修复默认 / 示例 / 桌面设置模型到 `x-ai/grok-4.3`，因此仅追加旧运行态证据，不把 `event_engine_grok41_deprecated_404.md` 从 `Fixed` 回退。
 - 本轮 23:03 CST 继续观察到当前机器旧运行态 heartbeat `mimo-v2.5-pro` 批量失败和 scheduler started-row 残留：19:30-23:00 CST 新增 81 条 heartbeat `reasoning_content must be passed back` / `Param Incorrect` 失败，覆盖 11 个 job；同窗新增 119 条 `running + pending` started 残留，其中 88 条为 heartbeat、31 条为普通 scheduler。当前机器没有可确认已重启到 2026-05-15 04:05 CST 当前 HEAD 修复后的 live 进程；仅追加到 `scheduler_heartbeat_mimo_param_incorrect_batch_failures.md` 与 `feishu_scheduler_running_rows_never_finalized.md`，不从 `Fixed` 回退。
@@ -163,7 +165,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| 暂无 | - | - | 本轮 2026-05-17 20:10 CST 已修复 event-engine deprecated model P2；后续若 `x-ai/grok-4.3` 真实调用仍失败，再以新证据重新进入活跃队列 | - |
+| Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | New | 2026-05-19 03:02 复发：00:08 CST 用户提交 VST 持仓和计划减仓信息，`portfolio` 工具已返回包含最新备注的组合快照，但 finalizer 因 `planning_sentence_suppressed` 外发通用失败；当前恢复逻辑只覆盖 `portfolio add/update/remove/watch/unwatch`，未覆盖本次 `action=view` 但已携带最新持仓状态的结果。关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29) | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 
 ## Later / 待复现
 
@@ -184,7 +186,6 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Event-engine still uses deprecated `x-ai/grok-4.1-fast` and loses LLM-backed enrichment | P2 | Fixed | 2026-05-18 15:02 继续仅见当前机器旧运行态失败：13:28 CST mainline distill / style distill 仍请求 `x-ai/grok-4.1-fast` 并收到 OpenRouter `HTTP 404`；当前 HEAD 已切到 `x-ai/grok-4.3`，不回退状态。无关联 GitHub Issue | [event_engine_grok41_deprecated_404.md](./event_engine_grok41_deprecated_404.md) |
-| Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixed | 2026-05-16 03:05 `response_finalizer` 新增成功 `portfolio` 副作用确认恢复，`is_transitional_planning_sentence(...)` 保留“把图发给我 / 上传截图”类用户下一步指引；`cargo test -p hone-channels finalize_agent_response_ -- --nocapture`、`cargo test -p hone-channels transitional_ -- --nocapture`、`cargo check -p hone-channels --tests` 通过。关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29) | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Web scheduler 让用户以为会发送手机系统通知，但实际只写入 Web 会话 / SSE 事件 | P2 | Fixed | 2026-05-16 00:06 Web cron 提示新增手机系统通知能力边界，Web scheduler detail 区分会话/SSE 与 `system_push_supported=false`；修复提交 `fbba5342`；无关联 GitHub Issue | [web_scheduler_mobile_push_not_delivered.md](./web_scheduler_mobile_push_not_delivered.md) |
 | Feishu 直达定时任务已生成最终播报，但 event-engine / scheduler 发送阶段再次稳定返回 `open_id cross app` | P1 | Fixed | 2026-05-15 event-engine Feishu sink 已接入 cron channel-target 目录，为 direct actor 使用无歧义 email/mobile 重新解析 current-app open_id；关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
 | Daily macOS build release app 启动后 Web/API 生命周期不可验证 | P1 | Fixed | 2026-05-15 08:07 新增 `HONE_DESKTOP_SMOKE_SERVER=1`，打包桌面可在无窗口 smoke 模式下保持 Web/API 进程，`/api/meta`、用户端页面和 disabled channels 检查通过；关联 Issue [#42](https://github.com/B-M-Capital-Research/honeclaw/issues/42) | [daily_macos_build_release_app_api_not_persistent.md](./daily_macos_build_release_app_api_not_persistent.md) |

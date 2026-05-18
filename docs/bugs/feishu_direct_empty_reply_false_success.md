@@ -3,9 +3,18 @@
 - **发现时间**: 2026-04-15 18:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29)
 - **证据来源**:
+  - 2026-05-19 00:08 最新真实直聊样本：
+    - `session_id=Actor_feishu__direct__ou_5f64ee7ca7af22d44a83a31054e6fb92a3`
+    - `2026-05-19T00:07:58.036565+08:00` 用户输入：`我现在有215股，但是我会在140.7减仓176股`。
+    - `data/runtime/logs/hone-feishu.runtime-recovery.log` 在 `2026-05-18T16:08:14Z` 记录同轮已执行 `Tool: hone/portfolio`，工具结果中的 `portfolio.holdings` 已包含 `VST` 持仓 `215` 股、均价 `139.84`，备注也已写入“用户计划若价格到140.7附近减仓176股，目前仅记录为计划，未按已成交卖出处理”。
+    - `2026-05-18T16:08:18.938Z` 日志记录 `transitional planning sentence detected, treating as empty ... chars=145`，随后 `step=agent.run.fallback ... detail=planning_sentence_suppressed`。
+    - `2026-05-19T00:08:18.939343+08:00` assistant 最终落库并发送：`这次没有成功产出完整回复。我已经自动重试过了，请再发一次，或换个问法。`
+    - 同轮 `MsgFlow/feishu done ... success=true ... tools=1(Tool: hone/portfolio) reply.chars=35`，随后 `reply.send ... segments.sent=1/1`，说明用户可见链路被通用失败遮蔽，但上层仍记录为成功收口。
+    - 当前仓库代码只会从 `portfolio add/update/remove/watch/unwatch` 工具结果恢复副作用确认；本轮工具结果表现为 `action=view`，但结果中已经反映用户持仓/计划被写入或读取到最新状态，现有恢复逻辑无法合成用户可见确认。
+    - 结论：这是同一根因的复发，不新建重复文档；状态从 `Fixed` 调回 `New`。关联 GitHub Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29) 已存在，本轮不重复创建。
   - 2026-05-15 21:48-22:07 最新真实直聊样本：
     - `session_id=Actor_feishu__direct__ou_5f64ee7ca7af22d44a83a31054e6fb92a3`
     - `2026-05-15T21:48:24.221814+08:00` 用户输入：`我建仓了这只股票`
@@ -147,6 +156,9 @@
 
 ## 当前实现效果
 
+- `2026-05-19 00:08` 的最新样本说明，本缺陷在 `2026-05-16 03:05` 标记 `Fixed` 后再次活跃：用户提供 VST 持仓与计划减仓信息，`portfolio` 工具已进入当前持仓记录路径，但最终可见回复仍被 `planning_sentence_suppressed` 替换成通用失败文案。
+- 这轮不是单纯外部 runner 额度或发送失败：日志显示工具调用成功、assistant 已落库、Feishu 也 `segments.sent=1/1`；缺口在成功工具副作用或状态更新后的最终确认恢复。
+- 当前代码能恢复 `portfolio add/update/remove/watch/unwatch`，但对 `action=view` 且结果已携带最新持仓备注的场景没有恢复策略，因此用户无法知道“215股、140.7减仓176股计划”是否已被记录。
 - `2026-05-14 17:17` 的最新样本说明，本缺陷在 README 已标记 `Fixed` 后再次活跃：用户明确要求创建定时任务，`cron_job` 工具已经执行，但最终可见回复被 `planning_sentence_suppressed` 替换成通用失败文案。
 - 这会让用户无法确认每日 20:00 大盘监控是否创建成功，可能重复创建或放弃任务；因此状态从 `Fixed` 调回 `New`。
 - `2026-05-02 16:59` 的最新样本说明，本缺陷在 README 已标记 `Fixed` 后仍然活跃，只是坏态继续演化：Answer 阶段不再一定是 `reply_chars=0`，而是先吐出一段计划/澄清句，再被 `response_finalizer` 认定为 `planning_sentence_suppressed` 并统一替换成 fallback。
@@ -163,6 +175,7 @@
 
 ## 用户影响
 
+- `2026-05-19 00:08` 的持仓计划样本说明，用户明确提交了可执行的持仓/计划信息，但只收到“没有成功产出完整回复”。这会让用户误以为持仓计划没有记录，可能重复录入或基于错误账本继续后续投研。
 - `2026-05-14 17:17` 的定时任务创建样本进一步说明，fallback 不只是提示用户“再试一次”：它会遮蔽可能已经发生的 `cron_job` 副作用，使用户无法知道监控任务是否存在，进而可能重复建任务或错过大盘提醒。
 - 这是功能性缺陷，不是单纯回答质量波动。用户明确要求的投研报告完全没有返回，任务实际失败。
 - `2026-05-02 16:59` 这条样本进一步说明，哪怕用户问题本身只是一个应该先澄清 ticker 的短问句，系统也会把本来应直接发给用户的澄清句吞掉并改发通用失败提示，用户无法继续当前任务。
@@ -171,6 +184,7 @@
 
 ## 根因判断
 
+- 最新复发样本显示，前次修复仍遗漏一类工具结果形态：`portfolio` 工具可在用户持仓计划被吸收后以 `action=view` 返回完整组合快照，`recover_portfolio_confirmation(...)` 只按 `action` 白名单恢复确认，因此不会从该结果合成“已记录/已更新”的用户态收口。
 - `opencode_acp` 能识别 `reply_chars=0` 和 `empty reply`，但当前没有把这类结果升级为硬失败。
 - 最新样本说明另一条同根因分支也仍然活跃：`response_finalizer` 会把某些真实用户态澄清/计划句直接判成 `transitional planning sentence`，随后走与空回复相同的 fallback 收口。
 - 多代理封装层把空回复继续当作 `answer.done success=true`，导致上层消息流无法区分“正常完成”和“零字节完成”。
@@ -191,6 +205,13 @@
   - `cargo check -p hone-channels --tests`
   - `rustfmt --edition 2024 --check crates/hone-channels/src/response_finalizer.rs crates/hone-channels/src/runtime.rs crates/hone-channels/src/agent_session/tests.rs`
 - 状态维持 `Fixed`。本轮不重启 live 服务；后续若部署后仍出现 `portfolio success + planning_sentence_suppressed + 通用失败提示` 或“发图给你”类短答再次被压成 fallback，应继续在本单追加新日志窗口。
+
+## 复发确认（2026-05-19 03:02 CST）
+
+- 最近四小时窗口内仅发现 1 条 Feishu assistant final 命中通用失败文案，即 `2026-05-19T00:08:18.939343+08:00` 的 VST 持仓计划样本。
+- 该样本符合前次修复说明中的复发条件：`portfolio` 工具已成功返回，随后 `planning_sentence_suppressed`，最终用户只收到通用失败提示。
+- 状态从 `Fixed` 调回 `New`。关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29) 已存在，本轮不重复创建 P1 issue。
+- 下一步建议：扩展 `recover_portfolio_confirmation(...)` 或上游 portfolio 工具结果，使“已吸收用户本轮持仓计划但返回 `action=view`”的场景也能恢复为具体确认；同时增加一条覆盖 `portfolio view + updated holding notes + planning_sentence_suppressed` 的回归。
 
 ## 修复进展（2026-05-16 00:06 CST）
 
