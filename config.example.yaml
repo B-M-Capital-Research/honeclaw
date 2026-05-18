@@ -254,7 +254,8 @@ event_engine:
   #   想关掉某 form 直接从这里删掉它,不需要改代码。空数组等于关闭整个 poller。
   # enrichment: 是否给 SEC filing 调 LLM 生成 ~200 字业务摘要(长期主线投资者
   #   视角:跳过 GAAP 数字,抓 backlog / 资本配置 / 风险因子新增)。
-  #   原 POC 使用 grok 4.1 fast；当前默认切到 OpenRouter 可用的 grok 4.3。
+  #   当前默认使用 x-ai/grok-4.3 替代已下线的 Grok 4.1 Fast；
+  #   实际质量、延迟和成本以 OpenRouter 当前模型为准。
   #   失败 fallback 走原始 form/link body,不阻塞推送。
   sec_filings:
     forms:
@@ -290,7 +291,7 @@ event_engine:
     pass1_llm: digest_fast
     pass1_model: x-ai/grok-4.3
     pass2_llm: digest_strong
-    pass2_model: x-ai/grok-4.3 # 2026-05 OpenRouter 推荐替代已下线的 Grok 4.1 Fast
+    pass2_model: x-ai/grok-4.3 # 替代已下线的 Grok 4.1 Fast；实际价格 / context / reasoning 能力以 OpenRouter 当前模型为准
     pass2_top_n: 15 # Pass 1 排序后送 Pass 2 精读的候选数上限
     final_pick_n: 8 # 单次推送最终保留的条数上限
     fetch_full_text: true # Pass 2 是否 GET 原文 → html2text;失败 fallback FMP text

@@ -28,7 +28,7 @@ const PAYWALL_DOMAINS: &[&str] = &[
     "economist.com",
 ];
 /// 截断阈值 —— Pass 2 prompt 经济性。15 篇 × 6000 字 ≈ 90K chars ≈ 30K tokens,
-/// 加 prompt 与 system 大约 100K input,低于当前 grok 级长上下文模型容量。
+/// 加 prompt 与 system 后仍应落在当前 grok 级强模型的可控上下文内。
 pub const MAX_ARTICLE_CHARS: usize = 6000;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

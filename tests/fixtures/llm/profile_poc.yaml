@@ -10,7 +10,7 @@ llm:
   profiles:
     poc_reasoning_json:
       provider: openrouter
-      model: x-ai/grok-4.1-fast
+      model: x-ai/grok-4.3
       params:
         max_tokens: 256
         temperature: 0

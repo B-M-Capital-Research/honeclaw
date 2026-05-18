@@ -186,8 +186,9 @@ fn default_earnings_quality_review_context_max_chars() -> usize {
 /// 在事件构造时按 form 类型映射,**不是**在 config 里配置。
 ///
 /// `enrichment` 子配置控制是否调 LLM 给每条 filing 生成 ~200 字业务摘要(长期主线投资者
-/// 视角,跳过 GAAP 数字、抓 backlog/资本配置/风险)。原 POC 使用 grok 4.1 fast,
-/// 当前默认切到 OpenRouter 可用的 grok 4.3。
+/// 视角,跳过 GAAP 数字、抓 backlog/资本配置/风险)。当前默认模型是
+/// `x-ai/grok-4.3`,用于替代已下线的 Grok 4.1 Fast;实际质量、延迟和成本以
+/// OpenRouter 当前模型为准。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecFilingsConfig {
     #[serde(default = "default_sec_forms")]
@@ -226,7 +227,7 @@ pub struct SecFilingsEnrichmentConfig {
     /// LLM 模型名(OpenRouter 风格)。默认使用当前 OpenRouter 可用的 `x-ai/grok-4.3`。
     #[serde(default = "default_sec_summary_model")]
     pub model: String,
-    /// 摘要 max_tokens 上限。~200 字目标下 800 token 充足且不会被截断。
+    /// 摘要 max_tokens 上限。~200 字目标下,800 token 通常充足且不会被截断。
     #[serde(default = "default_sec_summary_max_tokens")]
     pub max_summary_tokens: u32,
     /// fetch SEC.gov 时使用的 User-Agent。**SEC 强制要求格式包含联系邮箱**,否则会被

@@ -289,7 +289,7 @@ llm:
   profiles:
     digest:
       provider: openrouter
-      model: x-ai/grok-4.1-fast
+      model: x-ai/grok-4.3
       params:
         max_tokens: 123
         temperature: 0.2
@@ -302,7 +302,7 @@ llm:
         let created = LlmResolver::new(&cfg)
             .provider_for_profile("digest", None)
             .unwrap();
-        assert_eq!(created.model, "x-ai/grok-4.1-fast");
+        assert_eq!(created.model, "x-ai/grok-4.3");
         assert_eq!(created.profile_name.as_deref(), Some("digest"));
     }
 
@@ -321,7 +321,7 @@ llm:
   profiles:
     digest:
       provider: openrouter
-      model: x-ai/grok-4.1-fast
+      model: x-ai/grok-4.3
 "#;
         let cfg: HoneConfig = serde_yaml::from_str(yaml).unwrap();
         let err = match LlmResolver::new(&cfg).provider_for_profile("digest", None) {

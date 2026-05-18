@@ -12,7 +12,8 @@
 //!   42-61 候选量级下塌成 1/2/3 三档,完全没有 4/5;同时 cluster id 给得过细
 //!   (Iran/Hormuz/Oil/Gold 5+ 个独立 cluster),thematic dedup 失效。
 //!   原 grok 4.1 fast POC 在同 prompt 给出健康 5/4/3/2/1 分布,且自动把 11 条
-//!   Iran 主题合到一个 cluster；当前配置使用 OpenRouter 可用的 grok 4.3 替代。
+//!   Iran 主题合到一个 cluster；当前配置使用 OpenRouter 可用的 grok 4.3 替代,
+//!   实际 score 分布、聚类质量和成本以当前模型为准。
 //! - 174 候选下 cluster dedup 仍准确(174→124,iran-war 一次合 21)
 //! - 带 audience brief 后 LLM 自动推 NVDA/Intel/TSM 是 AMD 同行
 //! - Pass 1 仍应使用强模型；失败时可降级透传,但不要静默换回 nova-lite-v1。

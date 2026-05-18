@@ -115,7 +115,7 @@ env RUN_EVENT_ENGINE_LLM_BASELINE=1 EVENT_ENGINE_NEWS_CLASSIFIER_MODEL=amazon/no
 To compare another model:
 
 ```bash
-env RUN_EVENT_ENGINE_LLM_BASELINE=1 EVENT_ENGINE_NEWS_CLASSIFIER_MODEL=x-ai/grok-4.1-fast bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh
+env RUN_EVENT_ENGINE_LLM_BASELINE=1 EVENT_ENGINE_NEWS_CLASSIFIER_MODEL=x-ai/grok-4.3 bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh
 ```
 
 To collect a non-blocking drift report:
