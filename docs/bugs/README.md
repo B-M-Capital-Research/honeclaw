@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-18 15:02 CST
+最后更新：2026-05-18 19:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -21,6 +21,8 @@
 - Later / 待复现：9
 - 已修复 / 已关闭：106
 - 历史分析 / 部分止血：5
+- 本轮 19:03 CST 未发现新的独立缺陷或活跃 P1。最近四小时按 `datetime(...)` 归一化后共有 14 个 user turn 与 14 个 assistant final，6 个 Feishu 直聊会话最新均以 assistant 收口；assistant final 污染扫描未命中 `/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、原始飞书标签、compact marker、`reasoning_content`、`Param Incorrect` 或 Codex ACP 内部错误；最近四小时无孤立 user turn、无非文档代码提交。event-engine news classifier 有 1 条 OpenRouter `HTTP 402` fallback 日志，但未见用户可见投递失败或格式污染，本轮不新建缺陷；当前活跃待修复仍为 0，未创建 GitHub issue。
+- 本轮 19:03 CST 继续观察到当前机器旧运行态 heartbeat `mimo-v2.5-pro` 批量失败和 scheduler started-row 残留：15:30-19:00 CST 新增 80 条 heartbeat `reasoning_content must be passed back` / `Param Incorrect` 失败，覆盖 11 个 job；同窗新增 88 条 `running + pending` started 残留，全部为 heartbeat。当前机器没有可确认已重启到 2026-05-15 04:05 CST 当前 HEAD 修复后的 live 进程；仅追加到 `scheduler_heartbeat_mimo_param_incorrect_batch_failures.md` 与 `feishu_scheduler_running_rows_never_finalized.md`，不从 `Fixed` 回退。
 - 本轮 15:02 CST 未发现新的独立缺陷或活跃 P1。最近四小时按 `datetime(...)` 归一化后共有 7 个 user turn 与 7 个 assistant final，Feishu 直聊、普通 scheduler 和其它直聊均有收口；普通 scheduler 1 条 `completed + sent + delivered=1`。assistant final 污染扫描未命中 `/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、原始飞书标签、compact marker、`reasoning_content` 或 `Param Incorrect`；最近四小时无孤立 user turn、无非文档代码提交。当前活跃待修复仍为 0，未创建 GitHub issue。
 - 本轮 15:02 CST 继续观察到 `x-ai/grok-4.1-fast` 下线问题在当前机器旧运行态复现：13:28 CST `hone-console-page-prod.log` 记录 `global_digest::mainline_distill` / style distill 对 `x-ai/grok-4.1-fast` 的 OpenRouter `HTTP 404`，影响 OKLO、VST、TEM、RKLB、ORCL、ASTS、CRWV、NBIS、PDD、GOOGL、CAI、LITE、DELL 等 ticker；但当前 HEAD 已在 2026-05-17 20:10 CST 修复默认 / 示例 / 桌面设置模型到 `x-ai/grok-4.3`，因此仅追加旧运行态证据，不把 `event_engine_grok41_deprecated_404.md` 从 `Fixed` 回退。
 - 本轮 15:02 CST 继续观察到当前机器旧运行态 heartbeat `mimo-v2.5-pro` 批量失败和 scheduler started-row 残留：11:30-15:00 CST 新增 81 条 heartbeat `reasoning_content must be passed back` / `Param Incorrect` 失败，覆盖 11 个 job；同窗新增 89 条 `running + pending` started 残留，其中 88 条为 heartbeat、1 条为普通 scheduler。当前机器没有可确认已重启到 2026-05-15 04:05 CST 当前 HEAD 修复后的 live 进程；仅追加到 `scheduler_heartbeat_mimo_param_incorrect_batch_failures.md` 与 `feishu_scheduler_running_rows_never_finalized.md`，不从 `Fixed` 回退。
