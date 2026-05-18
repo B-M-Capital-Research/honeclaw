@@ -415,7 +415,7 @@ const CONTENT_ZH = {
       },
       {
         title: "公开用户端",
-        desc: "公开用户端路由包含 `/`、`/roadmap`、`/chat`、`/me`、`/portfolio`、`/terms`、`/privacy`，并保留开发用 `/__share-preview` 分享卡预览页；`/chat` 使用阿里云行为验证 + 手机短信验证码登录，管理端白名单是准入来源，桌面端为可收起左侧栏 + 右侧对话工作台，侧栏聚合导航、账号、最近对话历史、联系入口和 GitHub stars，支持助手回答复制、图片分享与历史回看；`/portfolio` 只读展示推送上下文与公司画像入口，后端公开面收敛在 `/api/public/*`。",
+        desc: "公开用户端路由包含 `/`、`/roadmap`、`/chat`、`/me`、`/portfolio`、`/terms`、`/privacy`，并保留开发用 `/__share-preview` 分享卡预览页；`/chat` 使用阿里云行为验证 + 手机短信验证码登录，管理端白名单是准入来源，桌面端为可收起左侧栏 + 右侧对话工作台，侧栏聚合导航、账号、最近对话历史、联系入口和 GitHub stars，支持助手回答复制、图片分享与历史回看；`/portfolio` 只读展示推送上下文与公司画像入口，后端公开面收敛在 `/api/public/*`，其中 `/api/public/v1/chat/completions` 提供 API-key 鉴权的 OpenAI-compatible 对话接口。",
       },
       {
         title: "管理后台",
@@ -528,6 +528,11 @@ const CONTENT_ZH = {
             note: "Aliyun Captcha + Aliyun SMS + 管理端 Web 白名单",
           },
           {
+            name: "公开 OpenAI-compatible Chat API",
+            status: "beta",
+            note: "用户 API key + /api/public/v1/chat/completions",
+          },
+          {
             name: "按用户细粒度推送偏好",
             status: "stable",
             note: "notification_preferences skill + 设置页 + config 全局节流",
@@ -633,6 +638,7 @@ const CONTENT_ZH = {
         "Cron 定时任务系统",
         "事件引擎推送质量收口：digest 去重 / min-gap / topic memory / 分类预算 / 方向性价格阈值 / Feishu scheduler heartbeat revision 去重",
         "前端部署资产恢复：service worker 与全局错误处理可识别 stale chunk，并在安全间隔内自动刷新到新版本",
+        "公开 API-key 对话入口：管理端可为 Web 用户生成 API key，客户端可按 OpenAI-compatible `/api/public/v1/chat/completions` 形状调用 Hone",
         "ACP 自管上下文与 compact 防泄漏，支持 codex_acp / opencode_acp 长会话恢复",
         "多 Agent 引擎：OpenAI-compatible / Gemini CLI / Codex CLI/ACP / OpenCode ACP / multi-agent",
         "`scripts/diagnose_llm.sh` 已按当前 LLM provider 配置路径读取 OpenRouter key，保留 legacy 路径兼容",
@@ -653,7 +659,7 @@ const CONTENT_ZH = {
       items: [
         "多用户协作研究空间",
         "可视化持仓分析面板",
-        "面向开发者的开放 API",
+        "更完整的开发者 API、SDK 与示例",
         "社区 Skill 市场",
         "多 Agent 协同编排",
       ],
@@ -1041,31 +1047,38 @@ const CONTENT_ZH = {
             {
               kind: "ul",
               items: [
-                ["违反您所在地或任何其他相关司法管辖区适用的法律或法规；"],
+                [
+                  "违反美国联邦、州或地方适用法律法规，包括但不限于出口管制、OFAC 制裁、反洗钱、证券、隐私、网络安全及其他相关规定；",
+                ],
+                [
+                  "违反中国大陆法律法规、监管要求、公序良俗或社会公共利益，或生成、传播、诱导生成中国法律法规及主流平台治理规则明确禁止或不倡导的内容；",
+                ],
                 [
                   "侵犯他人合法权益，包括知识产权、隐私权、名誉权、商业秘密、肖像权或其他财产或人身权利；",
                 ],
                 ["发布或传播威胁、骚扰、仇恨、歧视性、欺诈性或诽谤性内容；"],
                 [
-                  "发布、传播或索取淫秽色情、儿童性剥削材料、毒品交易、暴力或其他非法内容；",
+                  "发布、传播或索取淫秽色情、儿童性剥削材料、赌博、毒品交易、诈骗、暴力恐怖主义、极端主义或其他非法、有害内容；",
                 ],
-                ["通过提示词或其他方式诱导本服务输出违反前述规定的内容；"],
+                [
+                  "发布、传播或诱导生成危害国家安全、煽动颠覆国家政权、分裂国家、破坏国家统一、煽动民族仇恨、反华、政治敏感违法违规、损害公共秩序或违背公序良俗的内容；",
+                ],
+                [
+                  "通过提示词注入、越狱、角色扮演、伪造系统指令、上下文污染或其他方式诱导本服务输出、协助、掩饰或放大违反前述规定的内容；",
+                ],
                 [
                   "对本服务进行反向工程、爬取、批量自动化访问、漏洞利用、规避访问控制或其他形式的滥用；",
                 ],
                 [
                   "上传、传播或部署恶意代码、垃圾信息、钓鱼链接或其他有害技术；",
                 ],
-                ["冒用他人身份、伪造账号信息或从事任何形式的欺诈行为；"],
-                [
-                  "利用本服务从事违反美国出口管制法律、OFAC 制裁、反洗钱法律或其他经济制裁规定的行为。",
-                ],
+                ["冒用他人身份、伪造账号信息或从事任何形式的欺诈行为。"],
               ],
             },
             {
               kind: "p",
               parts: [
-                "若您违反前述规定，我们有权立即暂停或终止您的账号、保留相关证据，并依法配合执法或司法机关的合法请求。由此产生的全部法律责任由您本人承担。",
+                "若您违反前述规定，我们有权立即暂停或终止您的账号、取消使用资格、保留相关证据，并依法配合执法、监管或司法机关的合法请求。由此产生的全部法律责任由您本人承担。",
               ],
             },
           ],
@@ -1894,7 +1907,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         title: "Public user app",
-        desc: "The public user app routes `/`, `/roadmap`, `/chat`, `/me`, `/portfolio`, `/terms`, and `/privacy`, with a dev-only `/__share-preview` page for share-card QA; `/chat` signs users in with Aliyun behavior captcha plus phone/SMS verification from the admin whitelist, uses a collapsible desktop left rail plus full-height conversation workspace, and gathers navigation, account access, recent conversation history, contact links, and GitHub stars in that rail while supporting assistant-reply copy, image sharing, and history review; `/portfolio` is a read-only investment context surface for push context and company-profile entrypoints, and the public backend is scoped to `/api/public/*`.",
+        desc: "The public user app routes `/`, `/roadmap`, `/chat`, `/me`, `/portfolio`, `/terms`, and `/privacy`, with a dev-only `/__share-preview` page for share-card QA; `/chat` signs users in with Aliyun behavior captcha plus phone/SMS verification from the admin whitelist, uses a collapsible desktop left rail plus full-height conversation workspace, and gathers navigation, account access, recent conversation history, contact links, and GitHub stars in that rail while supporting assistant-reply copy, image sharing, and history review; `/portfolio` is a read-only investment context surface for push context and company-profile entrypoints, and the public backend is scoped to `/api/public/*`, including `/api/public/v1/chat/completions` for API-key-authenticated OpenAI-compatible chat.",
       },
       {
         title: "Admin console",
@@ -2009,6 +2022,11 @@ const CONTENT_EN: typeof CONTENT_ZH = {
             name: "Public SMS login with captcha gate",
             status: "stable",
             note: "Aliyun Captcha + Aliyun SMS + admin Web whitelist",
+          },
+          {
+            name: "Public OpenAI-compatible Chat API",
+            status: "beta",
+            note: "user API keys + /api/public/v1/chat/completions",
           },
           {
             name: "Per-user notification prefs",
@@ -2153,6 +2171,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         "Cron-driven scheduled tasks",
         "Event-engine push-quality pass: digest dedupe / min-gap / topic memory / category budgets / directional price thresholds / Feishu scheduler heartbeat revision dedupe",
         "Frontend deploy asset recovery: the service worker and global error handlers detect stale chunks and safely reload onto the new version",
+        "Public API-key chat entrypoint: admins can issue API keys for Web users, and clients can call Hone through the OpenAI-compatible `/api/public/v1/chat/completions` shape",
         "ACP self-managed context with compact-leak suppression for long codex_acp / opencode_acp sessions",
         "Multi-engine setup: OpenAI-compatible / Gemini CLI / Codex CLI/ACP / OpenCode ACP / multi-agent",
         "`scripts/diagnose_llm.sh` reads OpenRouter keys from the current LLM provider config paths while keeping legacy path compatibility",
@@ -2173,7 +2192,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       items: [
         "Multi-user collaborative research space",
         "Visual portfolio analytics dashboard",
-        "Open API for developers",
+        "Broader developer APIs, SDKs, and examples",
         "Community skill marketplace",
         "Multi-agent orchestration",
       ],
@@ -2569,7 +2588,10 @@ const CONTENT_EN: typeof CONTENT_ZH = {
               kind: "ul",
               items: [
                 [
-                  "violate any law or regulation applicable in your location or any other relevant jurisdiction;",
+                  "violate any U.S. federal, state, or local law or regulation, including export-control, OFAC sanctions, anti-money-laundering, securities, privacy, cybersecurity, and other applicable rules;",
+                ],
+                [
+                  "violate mainland China laws, regulatory requirements, public-order and good-morals standards, or public interests, or generate, transmit, or induce content that mainland China laws or mainstream platform governance rules expressly prohibit or discourage;",
                 ],
                 [
                   "infringe on others' rights, including intellectual property, privacy, publicity, reputation, trade secrets, or other proprietary or personal rights;",
@@ -2578,10 +2600,13 @@ const CONTENT_EN: typeof CONTENT_ZH = {
                   "post or transmit content that is threatening, harassing, hateful, discriminatory, fraudulent, or defamatory;",
                 ],
                 [
-                  "produce, reproduce, distribute, or solicit pornographic content, child sexual abuse material, drug trafficking, violence, or other unlawful content;",
+                  "produce, reproduce, distribute, or solicit pornographic content, child sexual abuse material, gambling, drug trafficking, scams, violent terrorism, extremism, or other unlawful or harmful content;",
                 ],
                 [
-                  "use prompts or any other means to induce the service to produce content that violates the above;",
+                  "post, transmit, or induce content that harms national security, incites subversion of state power, separatism, destruction of national unity, ethnic hatred, anti-China content, unlawful politically sensitive content, disruption of public order, or violations of public morals;",
+                ],
+                [
+                  "use prompt injection, jailbreaks, role-play, forged system instructions, context pollution, or any other means to induce the service to produce, assist, conceal, or amplify content that violates the above;",
                 ],
                 [
                   "reverse-engineer, scrape, bulk-automate, exploit vulnerabilities, circumvent access controls, or otherwise abuse the service;",
@@ -2590,17 +2615,14 @@ const CONTENT_EN: typeof CONTENT_ZH = {
                   "upload, distribute, or deploy malware, spam, phishing links, or other harmful technologies;",
                 ],
                 [
-                  "impersonate others, falsify account information, or engage in any form of fraud;",
-                ],
-                [
-                  "use the service to violate U.S. export-control laws, OFAC sanctions, anti-money-laundering laws, or other economic-sanctions regulations.",
+                  "impersonate others, falsify account information, or engage in any form of fraud.",
                 ],
               ],
             },
             {
               kind: "p",
               parts: [
-                "If you violate the above, we may immediately suspend or terminate your account, preserve relevant evidence, and cooperate with lawful requests from law-enforcement or judicial authorities. You bear sole legal responsibility for any consequences.",
+                "If you violate the above, we may immediately suspend or terminate your account, revoke your eligibility to use the service, preserve relevant evidence, and cooperate with lawful requests from law-enforcement, regulatory, or judicial authorities. You bear sole legal responsibility for any consequences.",
               ],
             },
           ],
