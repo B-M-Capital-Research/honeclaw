@@ -42,6 +42,11 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-19 11:03 CST` 复核，当前机器运行态在最近四小时仍继续新增 started-row 残留；但 2026-05-15 04:05 CST 已按当前 HEAD 回归验证确认 `delivery_key` 终态覆盖、最近 started fallback 与启动 stale recovery 仍生效，本轮仅补充旧/非生产运行态证据，不把状态从 `Fixed` 回退为 `New`：
+    - 最近四小时窗口 `2026-05-19T07:02:00+08:00` 到 `2026-05-19T11:00:03+08:00` 内共有 `103` 条 `execution_status=running + message_send_status=pending` started 残留。
+    - 其中 `88` 条为 heartbeat started 行，另有 `15` 条普通 scheduler started 行；同窗已有 `80` 条 heartbeat `execution_failed + skipped_error`、`8` 条 heartbeat `noop + skipped_noop` 与 `18` 条普通 scheduler `completed + sent + delivered=1` 终态。
+    - 用户可见投递主链路没有因此被阻断，最近四小时 `30` 个 user turn 与 `31` 个 assistant final 均有收口；受损点仍是调度台账一致性和巡检噪音，严重等级仍不高于 `P3`。
+    - 当前机器没有可确认已重启到 2026-05-15 04:05 CST 当前 HEAD 修复后的 live 进程；后续只有在本地可复现测试或当前代码路径证明终态仍会另起行时再改回 `New`。
   - `2026-05-18 23:03 CST` 复核，当前机器运行态在最近四小时仍继续新增 started-row 残留；但 2026-05-15 04:05 CST 已按当前 HEAD 回归验证确认 `delivery_key` 终态覆盖、最近 started fallback 与启动 stale recovery 仍生效，本轮仅补充旧/非生产运行态证据，不把状态从 `Fixed` 回退为 `New`：
     - 最近四小时窗口 `2026-05-18T19:30:02+08:00` 到 `2026-05-18T23:00:02+08:00` 内共有 `119` 条 `execution_status=running + message_send_status=pending` started 残留。
     - 其中 `88` 条为 heartbeat started 行，另有 `31` 条普通 scheduler started 行；同窗已有 `81` 条 heartbeat `execution_failed + skipped_error`、`7` 条 heartbeat `noop + skipped_noop` 与 `33` 条普通 scheduler `completed + sent + delivered=1` 终态。
@@ -1177,6 +1182,12 @@
 - 状态更新为 `Fixed`；历史已悬挂 `running + pending` 行仍可另做数据清理，但不再作为当前代码活跃 bug。
 - 验证：
   - `cargo test -p hone-memory started_row --lib -- --nocapture`
+
+## 旧运行态观察（2026-05-19 11:03 CST）
+
+- 最近四小时 `2026-05-19 07:02-11:00 CST` 继续新增 `103` 条 `running + pending` started 残留，其中 `88` 条为 heartbeat、`15` 条为普通 scheduler。
+- 同窗真实终态仍有 `18` 条普通 scheduler `completed + sent + delivered=1`，另有 `80` 条 heartbeat `execution_failed + skipped_error` 与 `8` 条 heartbeat `noop + skipped_noop`；这与“started 行未被终态覆盖”的历史形态一致。
+- 当前机器没有可确认已重启到 `2026-05-15 04:05 CST` 当前 HEAD 修复后的 live 进程；本轮仅追加旧运行态证据，不把状态从 `Fixed` 回退为 `New`。
 
 ## 旧运行态观察（2026-05-19 07:03 CST）
 
