@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 18:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29)
 - **证据来源**:
   - 2026-05-19 00:08 最新真实直聊样本：
@@ -212,6 +212,18 @@
 - 该样本符合前次修复说明中的复发条件：`portfolio` 工具已成功返回，随后 `planning_sentence_suppressed`，最终用户只收到通用失败提示。
 - 状态从 `Fixed` 调回 `New`。关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29) 已存在，本轮不重复创建 P1 issue。
 - 下一步建议：扩展 `recover_portfolio_confirmation(...)` 或上游 portfolio 工具结果，使“已吸收用户本轮持仓计划但返回 `action=view`”的场景也能恢复为具体确认；同时增加一条覆盖 `portfolio view + updated holding notes + planning_sentence_suppressed` 的回归。
+
+## 修复进展（2026-05-19 08:06 CST）
+
+- 本轮补齐 `portfolio view` 成功读取后的最终确认恢复：`response_finalizer` 不再只依赖 `success=true` 的写操作结果；当 `portfolio view` 返回 `result.portfolio.holdings/watchlist` 时，也会从当前持仓状态合成用户可见确认。
+- 该恢复路径会优先按工具参数里的 ticker 过滤相关持仓；若命中 VST 这类单标的，会返回当前股数、成本价与备注摘要，避免 `planning_sentence_suppressed` 把已经读到的持仓/计划状态遮蔽成通用失败。
+- 新增回归 `finalize_agent_response_recovers_portfolio_view_holding_confirmation`，覆盖 `portfolio view + result.portfolio.holdings + VST 215 股 + 140.7 减仓计划备注` 形态。
+- 验证：
+  - `cargo test -p hone-channels finalize_agent_response_recovers_portfolio_view_holding_confirmation -- --nocapture`
+  - `cargo test -p hone-channels finalize_agent_response_ -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+  - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/response_finalizer.rs crates/hone-channels/src/agent_session/tests.rs`
+- 状态更新为 `Fixed`。本轮不重启 live 服务；后续若部署后仍出现 `portfolio view + planning_sentence_suppressed + 通用失败提示`，应继续在本单追加新证据。
 
 ## 修复进展（2026-05-16 00:06 CST）
 

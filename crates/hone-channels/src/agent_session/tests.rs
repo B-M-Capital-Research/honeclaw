@@ -992,6 +992,54 @@ fn finalize_agent_response_recovers_portfolio_confirmation_from_tool_result() {
 }
 
 #[test]
+fn finalize_agent_response_recovers_portfolio_view_holding_confirmation() {
+    let root = make_temp_dir("hone_channels_finalize_portfolio_view_confirmation");
+    std::fs::create_dir_all(&root).expect("create root");
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let mut response = AgentResponse {
+        content: "我先看一下你的 VST 持仓和计划，再给你确认。".to_string(),
+        tool_calls_made: vec![ToolCallMade {
+            name: "portfolio".to_string(),
+            arguments: serde_json::json!({
+                "action": "view",
+                "ticker": "vst"
+            }),
+            result: serde_json::json!({
+                "action": "view",
+                "portfolio": {
+                    "holdings": [{
+                        "symbol": "VST",
+                        "asset_type": "stock",
+                        "shares": 215.0,
+                        "avg_cost": 139.84,
+                        "notes": "用户计划若价格到140.7附近减仓176股，目前仅记录为计划，未按已成交卖出处理",
+                        "kind": "holding"
+                    }],
+                    "watchlist": [],
+                    "updated_at": "2026-05-18T16:08:14Z"
+                }
+            }),
+            tool_call_id: None,
+        }],
+        iterations: 1,
+        success: true,
+        error: None,
+    };
+
+    let outcome = finalize_agent_response(&core, "session", "mock", &mut response);
+
+    assert!(response.success);
+    assert!(response.error.is_none());
+    assert_eq!(
+        response.content,
+        "已读取相关持仓记录：VST，215 股，成本价 139.84，备注：用户计划若价格到140.7附近减仓176股，目前仅记录为计划，未按已成交卖出处理。"
+    );
+    assert!(outcome.fallback_reason.is_none());
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn transitional_clarification_question_is_not_treated_as_planning_sentence() {
     assert!(!crate::runtime::is_transitional_planning_sentence(
         "请先确认具体是哪只股票/资产的 ticker？确认标的后我再校验当前价格、财报、估值倍数和同业，再判断估值是否合理。"
