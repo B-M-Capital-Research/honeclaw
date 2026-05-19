@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-19 15:02 CST
+最后更新：2026-05-19 19:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -21,6 +21,8 @@
 - Later / 待复现：9
 - 已修复 / 已关闭：106
 - 历史分析 / 部分止血：5
+- 本轮 19:02 CST 未发现新的独立缺陷或活跃 P1 变化。最近四小时共有 21 个 user turn 与 21 个 assistant final，Feishu / Web 直聊均有 assistant final 收口；assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、原始飞书标签、compact marker、`reasoning_content` 或 `Param Incorrect`；最近四小时无孤立 user turn、无非文档代码提交。当前活跃待修复为 0，本轮未创建 GitHub issue。
+- 本轮 19:02 CST 继续观察到当前机器旧运行态 heartbeat `mimo-v2.5-pro` 批量失败和 scheduler started-row 残留：15:30-19:00 CST 新增 81 条 heartbeat `reasoning_content must be passed back` / `Param Incorrect` 失败，覆盖 11 个 job；同窗新增 88 条 `running + pending` started 残留，全部为 heartbeat。当前机器没有可确认已重启到 2026-05-15 04:05 CST 当前 HEAD 修复后的 live 进程；仅追加到 `scheduler_heartbeat_mimo_param_incorrect_batch_failures.md` 与 `feishu_scheduler_running_rows_never_finalized.md`，不从 `Fixed` 回退。
 - 本轮 15:02 CST 未发现新的独立缺陷或活跃 P1 变化。最近四小时共有 10 个 user turn 与 10 个 assistant final，Feishu 直聊和普通 scheduler 均有收口；普通 scheduler `每日公司资讯与分析总结` 有 `completed + sent + delivered=1` 终态。assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、原始飞书标签、compact marker、`reasoning_content` 或 `Param Incorrect`；最近四小时无孤立 user turn、无非文档代码提交。当前活跃待修复为 0，本轮未创建 GitHub issue。
 - 本轮 15:02 CST 继续观察到当前机器旧运行态 heartbeat `mimo-v2.5-pro` 批量失败和 scheduler started-row 残留：11:30-15:00 CST 新增 81 条 heartbeat `reasoning_content must be passed back` / `Param Incorrect` 失败，覆盖 11 个 job；同窗新增 89 条 `running + pending` started 残留，其中 88 条为 heartbeat、1 条为普通 scheduler。当前机器没有可确认已重启到 2026-05-15 04:05 CST 当前 HEAD 修复后的 live 进程；仅追加到 `scheduler_heartbeat_mimo_param_incorrect_batch_failures.md` 与 `feishu_scheduler_running_rows_never_finalized.md`，不从 `Fixed` 回退。
 - 本轮 08:06 CST 已修复 P1 `Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复”`：`response_finalizer` 现在可从成功 `portfolio view` 的 `result.portfolio.holdings/watchlist` 恢复用户可见持仓确认，覆盖 VST 215 股与 140.7 减仓计划备注这类 `action=view + planning_sentence_suppressed` 复发形态；新增 `finalize_agent_response_recovers_portfolio_view_holding_confirmation` 回归。`cargo test -p hone-channels finalize_agent_response_recovers_portfolio_view_holding_confirmation -- --nocapture`、`cargo test -p hone-channels finalize_agent_response_ -- --nocapture`、`cargo check -p hone-channels --tests`、`rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/response_finalizer.rs crates/hone-channels/src/agent_session/tests.rs` 通过；关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29)。

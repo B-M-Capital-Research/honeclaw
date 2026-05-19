@@ -42,6 +42,11 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-19 19:02 CST` 复核，当前机器运行态在最近四小时仍继续新增 started-row 残留；但 2026-05-15 04:05 CST 已按当前 HEAD 回归验证确认 `delivery_key` 终态覆盖、最近 started fallback 与启动 stale recovery 仍生效，本轮仅补充旧/非生产运行态证据，不把状态从 `Fixed` 回退为 `New`：
+    - 最近四小时窗口 `2026-05-19T15:30:03+08:00` 到 `2026-05-19T19:00:03+08:00` 内共有 `88` 条 `execution_status=running + message_send_status=pending` started 残留。
+    - `88` 条全部为 heartbeat started 行；同窗已有 `81` 条 heartbeat `execution_failed + skipped_error` 与 `7` 条 heartbeat `noop + skipped_noop` 终态，没有普通 scheduler 终态。
+    - 用户可见直聊主链路没有因此被阻断，最近四小时 `21` 个 user turn 与 `21` 个 assistant final 均有收口；受损点仍是调度台账一致性和巡检噪音，严重等级仍不高于 `P3`。
+    - 当前机器没有可确认已重启到 2026-05-15 04:05 CST 当前 HEAD 修复后的 live 进程；后续只有在本地可复现测试或当前代码路径证明终态仍会另起行时再改回 `New`。
   - `2026-05-19 15:02 CST` 复核，当前机器运行态在最近四小时仍继续新增 started-row 残留；但 2026-05-15 04:05 CST 已按当前 HEAD 回归验证确认 `delivery_key` 终态覆盖、最近 started fallback 与启动 stale recovery 仍生效，本轮仅补充旧/非生产运行态证据，不把状态从 `Fixed` 回退为 `New`：
     - 最近四小时窗口 `2026-05-19T11:30:03+08:00` 到 `2026-05-19T15:00:03+08:00` 内共有 `89` 条 `execution_status=running + message_send_status=pending` started 残留。
     - 其中 `88` 条为 heartbeat started 行，另有 `1` 条普通 scheduler started 行；同窗已有 `81` 条 heartbeat `execution_failed + skipped_error`、`7` 条 heartbeat `noop + skipped_noop` 与 `1` 条普通 scheduler `completed + sent + delivered=1` 终态。
@@ -1099,6 +1104,8 @@
 - 巡检查询 `execution_status=running` 时，不应把已经 `noop`、`completed`、`execution_failed` 的历史窗口误判成仍在执行。
 
 ## 当前实现效果
+
+- 2026-05-19 19:02 CST 的最新复核继续只作为当前机器旧/非生产运行态证据：15:30-19:00 CST 仍新增 `88` 条 `execution_status=running + message_send_status=pending` started 残留，全部为 heartbeat started 行；同窗已有 `81` 条 heartbeat `execution_failed + skipped_error` 与 `7` 条 `noop + skipped_noop` 终态。用户可见直聊主链路没有因此被阻断，最近四小时 21 个 user turn 与 21 个 assistant final 均有收口；当前机器没有可确认已重启到 2026-05-15 04:05 CST 当前 HEAD 修复后的 live 进程，本轮不重新打开。
 
 - `2026-05-04 09:02` 的最新三轮窗口说明，这条缺陷仍持续活跃：即使 `08:30`、`08:45`、`09:00` 同窗里已有 `completed + sent` 与 `noop + skipped_noop` 终态，started 行仍继续悬挂为 `running + pending`。
 - 当前 started 残留总量已升到 `4375` 条，且最近一小时不再只是 heartbeat，连 `港股持仓与关注股早间行情研判`、`核心观察池早间简报`、`特斯拉与火箭实验室新闻日报`、`A股盘前高景气产业链推演` 这类普通 scheduler 任务也继续堆积 started 行。
