@@ -5,6 +5,30 @@
 - **严重等级**: P2
 - **状态**: Fixed
 
+## 旧运行态复核（2026-05-21 07:03 CST）
+
+- 本轮最近四小时真实窗口再次看到原油普通 scheduler 成功外发具体油价和科技股影响判断，但仍不足以推翻 `2026-05-15 08:07 CST` 的当前 HEAD 修复结论；当前 `data/runtime/logs/hone-console-page-prod.log` 显示 Web/API scheduler 进程启动于 `2026-05-13T07:20:57Z`，早于 `2026-05-14 20:07 CST` 普通 scheduler commodity guard 修复提交 `25c4652`。
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - `run_id=28439`
+  - `job_name=Oil_Price_Monitor_Closing`
+  - `executed_at=2026-05-21T04:01:42.782197+08:00`
+  - `execution_status=completed`
+  - `message_send_status=sent`
+  - `delivered=1`
+  - `detail_json={"delivery_key":"j_355ba2f1:2026-05-21:04:00","receive_id":"...","scheduler":null}`
+  - `response_preview` / assistant final 向用户发送 `Brent 收于 105.02 美元`、`WTI 收于 98.26 美元`，引用 Reuters / AP，并判断“今天油价对科技股不是压制，而是边际提振”“尾盘防守主要依据不应是油价”。
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - `run_id=28470`
+  - `job_name=OWALERT_PostMarket`
+  - `executed_at=2026-05-21T04:32:11.916307+08:00`
+  - `execution_status=completed`
+  - `message_send_status=sent`
+  - `delivered=1`
+  - `detail_json={"delivery_key":"j_a6577b6f:2026-05-21:04:30","receive_id":"...","scheduler":null}`
+  - `response_preview` / assistant final 继续复用同一油价口径，写入 `Brent 收于 105.02 美元/桶`、`WTI 收于 98.26 美元/桶`，并把“油价大跌、10 年期美债收益率回落”组织成当日 AI / 高估值科技反弹的核心宏观解释。
+- 两条记录均未见 `commodity_causality_guarded=true`、`raw_preview`、`guarded_preview` 或 `deliver_preview` 等 guard 审计字段；这与历史普通 scheduler 修复前样本一致。
+- 本轮不把状态从 `Fixed` 回退为 `New`：证据来自明确早于修复提交的 live 进程，不是当前代码路径复现。后续只有在部署 / 重启到 `25c4652` 之后仍出现同类未 guard 送达，才应重新打开。
+
 ## 修复记录（2026-05-15 08:07 CST）
 
 - 复核当前 HEAD 后确认：普通 scheduler 路径已经会在成功输出送达前调用 `guard_commodity_causality_for_event(...)`，并在命中时写入 `commodity_causality_guarded=true`、`raw_preview`、`guarded_preview`、`deliver_preview` 元数据；`detail_json.scheduler=null` 的最新样本按当前机器旧 / 非生产运行态证据处理，不再推翻代码层修复。
