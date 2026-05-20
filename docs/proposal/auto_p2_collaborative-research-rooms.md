@@ -2,7 +2,7 @@
 
 status: proposed
 priority: P2
-created_at: 2026-05-21 02:18:00 +0800
+created_at: 2026-05-21 02:07:06 +0800
 owner: automation
 verification: see `## 验证方式`
 risks: see `## 风险与取舍`
