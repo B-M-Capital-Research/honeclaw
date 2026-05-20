@@ -423,11 +423,11 @@ const CONTENT_ZH = {
       },
       {
         title: "Agent 引擎层",
-        desc: "推荐 Agent 引擎是 Hone Cloud、Codex ACP 和 OpenCode ACP；同时保留 OpenAI 兼容函数调用、Gemini CLI、Codex CLI 与 multi-agent。`gemini_acp` 仅保留为迁移配置，不作为运行时入口。",
+        desc: "推荐 Agent 引擎是 Hone Cloud、Codex ACP 和 OpenCode ACP；同时保留 OpenAI 兼容函数调用、Gemini CLI、Codex CLI 与 multi-agent。LLM 凭证以 `config.yaml` 为唯一真相源，OpenRouter 与通用 OpenAI-compatible provider 都支持 `llm.providers.*.api_keys` key pool，遇到上游 429 / 配额错误时可尝试下一个 key；`gemini_acp` 仅保留为迁移配置，不作为运行时入口。",
       },
       {
         title: "事件与任务",
-        desc: "Cron 任务、事件引擎摘要、`/missed` 回查、通知偏好与渠道投递共享 Rust 后端、SQLite/JSON 存储和用户归属模型；Feishu 等渠道的 scheduler heartbeat 已补齐 revision-aware 重复抑制与 running 行终结回归覆盖。",
+        desc: "Cron 任务、事件引擎摘要、`/missed` 回查、通知偏好与渠道投递共享 Rust 后端、SQLite/JSON 存储和用户归属模型；Feishu 等渠道的 scheduler heartbeat 已补齐 revision-aware 重复抑制与 running 行终结回归覆盖，event-engine 默认 LLM 配置已切到当前可用的 `x-ai/grok-4.3`，避免继续依赖已下线的 Grok 4.1 Fast。",
       },
     ],
 
@@ -453,7 +453,7 @@ const CONTENT_ZH = {
           {
             name: "持仓追踪与提醒",
             status: "stable",
-            note: "portfolio_management + cron",
+            note: "portfolio_management + cron + 成功持仓读取确认恢复",
           },
           {
             name: "估值 / 选股 / 仓位建议",
@@ -491,6 +491,16 @@ const CONTENT_ZH = {
             name: "多 Agent 引擎抽象",
             status: "stable",
             note: "OpenAI-compatible · Gemini CLI · Codex CLI/ACP · OpenCode ACP · multi-agent",
+          },
+          {
+            name: "LLM provider key pool 与上游错误保真",
+            status: "stable",
+            note: "config.yaml llm.providers.*.api_keys · OpenRouter / OpenAI-compatible fallback",
+          },
+          {
+            name: "渠道回复收口与副作用确认",
+            status: "stable",
+            note: "response_finalizer 可从成功 cron / portfolio 工具结果恢复用户可见确认",
           },
           {
             name: "Windows / Linux 桌面端",
@@ -637,6 +647,9 @@ const CONTENT_ZH = {
         "公司画像与跨会话长期记忆",
         "Cron 定时任务系统",
         "事件引擎推送质量收口：digest 去重 / min-gap / topic memory / 分类预算 / 方向性价格阈值 / Feishu scheduler heartbeat revision 去重",
+        "Event-engine 默认模型与示例配置已替换为 `x-ai/grok-4.3`，避免 Grok 4.1 Fast 下线导致新闻分类、global digest、mainline distill 等 LLM 增强链路失效",
+        "LLM provider 配置收口到 `config.yaml`，OpenRouter 与通用 OpenAI-compatible provider 支持 `api_keys` 轮换，并保留上游 HTTP / schema 错误正文便于诊断",
+        "渠道回复收口层可在 runner 只产出过渡性规划句时，从成功的定时任务或持仓工具结果恢复用户可见确认，避免真实成功被空回复 fallback 遮蔽",
         "前端部署资产恢复：service worker 与全局错误处理可识别 stale chunk，并在安全间隔内自动刷新到新版本",
         "公开 API-key 对话入口：管理端可为 Web 用户生成 API key，客户端可按 OpenAI-compatible `/api/public/v1/chat/completions` 形状调用 Hone",
         "ACP 自管上下文与 compact 防泄漏，支持 codex_acp / opencode_acp 长会话恢复",
@@ -767,7 +780,7 @@ const CONTENT_ZH = {
       },
       {
         q: "支持哪些 LLM？",
-        a: "通过 Agent 引擎抽象层支持：OpenAI 兼容协议（含 OpenRouter）、Gemini CLI、Codex CLI / ACP、OpenCode ACP，以及 multi-agent 搜索+回答链路。可以在桌面端设置里随时切换。",
+        a: "通过 Agent 引擎抽象层支持：Hone Cloud、OpenAI 兼容协议（含 OpenRouter）、Gemini CLI、Codex CLI / ACP、OpenCode ACP，以及 multi-agent 搜索+回答链路。凭证统一写入 `config.yaml` 的 `llm.providers.*.api_key` 或 `api_keys`，通用 OpenAI-compatible provider 与 OpenRouter 都能在 key pool 内尝试下一个可用 key。",
       },
       {
         q: "开源协议？能商用吗？",
@@ -1915,11 +1928,11 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         title: "Agent engine layer",
-        desc: "Recommended agent engines are Hone Cloud, Codex ACP, and OpenCode ACP; OpenAI-compatible function calling, Gemini CLI, Codex CLI, and multi-agent remain supported. `gemini_acp` is kept only as migration config, not a runtime entrypoint.",
+        desc: "Recommended agent engines are Hone Cloud, Codex ACP, and OpenCode ACP; OpenAI-compatible function calling, Gemini CLI, Codex CLI, and multi-agent remain supported. LLM credentials use `config.yaml` as the only source of truth, and both OpenRouter and generic OpenAI-compatible providers support `llm.providers.*.api_keys` key pools so the runtime can try the next key after upstream 429 / quota failures; `gemini_acp` is kept only as migration config, not a runtime entrypoint.",
       },
       {
         title: "Events and tasks",
-        desc: "Cron jobs, event-engine digests, `/missed` recovery, notification preferences, and channel delivery share the Rust backend, SQLite/JSON storage, and user ownership model; Feishu and other channel scheduler heartbeats now include revision-aware duplicate suppression and running-row finalization coverage.",
+        desc: "Cron jobs, event-engine digests, `/missed` recovery, notification preferences, and channel delivery share the Rust backend, SQLite/JSON storage, and user ownership model; Feishu and other channel scheduler heartbeats now include revision-aware duplicate suppression and running-row finalization coverage, and event-engine default LLM config now uses the currently available `x-ai/grok-4.3` instead of the retired Grok 4.1 Fast.",
       },
     ],
 
@@ -1945,7 +1958,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           {
             name: "Portfolio tracking & alerts",
             status: "stable",
-            note: "portfolio_management + cron",
+            note: "portfolio_management + cron + successful portfolio-view confirmation recovery",
           },
           {
             name: "Valuation / selection / position advice",
@@ -1987,6 +2000,16 @@ const CONTENT_EN: typeof CONTENT_ZH = {
             name: "Multi-engine abstraction",
             status: "stable",
             note: "OpenAI-compatible · Gemini CLI · Codex CLI/ACP · OpenCode ACP · multi-agent",
+          },
+          {
+            name: "LLM provider key pools and upstream error fidelity",
+            status: "stable",
+            note: "config.yaml llm.providers.*.api_keys · OpenRouter / OpenAI-compatible fallback",
+          },
+          {
+            name: "Channel finalization and side-effect confirmations",
+            status: "stable",
+            note: "response_finalizer can recover user-visible confirmations from successful cron / portfolio tool results",
           },
           {
             name: "Windows / Linux desktop",
@@ -2170,6 +2193,9 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         "Company profiles + cross-session long memory",
         "Cron-driven scheduled tasks",
         "Event-engine push-quality pass: digest dedupe / min-gap / topic memory / category budgets / directional price thresholds / Feishu scheduler heartbeat revision dedupe",
+        "Event-engine default models and sample config now use `x-ai/grok-4.3`, avoiding failures from the retired Grok 4.1 Fast in news classification, global digest, and mainline distillation paths",
+        "LLM provider config is consolidated into `config.yaml`; OpenRouter and generic OpenAI-compatible providers support `api_keys` rotation and preserve upstream HTTP / schema error bodies for diagnosis",
+        "The channel response finalizer can recover user-visible confirmations from successful scheduled-task or portfolio tool results when a runner only emits a transitional planning sentence, so real side effects are not hidden behind an empty-reply fallback",
         "Frontend deploy asset recovery: the service worker and global error handlers detect stale chunks and safely reload onto the new version",
         "Public API-key chat entrypoint: admins can issue API keys for Web users, and clients can call Hone through the OpenAI-compatible `/api/public/v1/chat/completions` shape",
         "ACP self-managed context with compact-leak suppression for long codex_acp / opencode_acp sessions",
@@ -2300,7 +2326,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         q: "Which LLMs are supported?",
-        a: "Through the agent-engine abstraction: OpenAI-compatible protocols (including OpenRouter), Gemini CLI, Codex CLI / ACP, OpenCode ACP, and the multi-agent search-plus-answer flow. Switch at any time from the desktop settings.",
+        a: "Hone supports Hone Cloud, OpenAI-compatible protocols (including OpenRouter), Gemini CLI, Codex CLI / ACP, OpenCode ACP, and the multi-agent search-plus-answer flow through the agent-engine abstraction. Credentials live in `config.yaml` under `llm.providers.*.api_key` or `api_keys`, and generic OpenAI-compatible providers plus OpenRouter can try the next key in the pool.",
       },
       {
         q: "What license? Commercial use?",
