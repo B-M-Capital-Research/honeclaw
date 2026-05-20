@@ -19,7 +19,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
 use serde_json::Value;
 
-use crate::event::{EventKind, MarketEvent, Severity};
+use crate::event::{EventKind, MarketEvent, Severity, is_user_visible_url};
 use crate::fmp::FmpClient;
 use crate::source::{EventSource, SourceSchedule};
 use crate::subscription::SharedRegistry;
@@ -126,6 +126,7 @@ fn events_from_grades(raw: &Value, ticker: &str, cutoff: DateTime<Utc>) -> Vec<M
             let url = item
                 .get("newsURL")
                 .and_then(|v| v.as_str())
+                .filter(|url| is_user_visible_url(url))
                 .map(|s| s.to_string());
             Some(MarketEvent {
                 id: format!("grade:{ticker}:{published}:{grading_company}"),
@@ -481,6 +482,30 @@ mod tests {
             events.last().unwrap().id.ends_with(":Citigroup")
                 || events.last().unwrap().id.ends_with(":Oppenheimer"),
             "same-grade rows should sort to the end"
+        );
+    }
+
+    #[test]
+    fn thefly_ajax_news_url_is_hidden_but_kept_in_payload() {
+        let published = Utc::now().format("%Y-%m-%dT%H:%M:%S.000Z").to_string();
+        let raw = serde_json::json!([{
+            "symbol": "AMD",
+            "publishedDate": published,
+            "newsURL": "https://www.thefly.com/ajax/news_get.php?id=4357265",
+            "newsTitle": "AMD price target raised to $300 from $250 at Example",
+            "newGrade": "Buy",
+            "previousGrade": "Buy",
+            "gradingCompany": "Example",
+            "action": "hold",
+        }]);
+
+        let events = events_from_grades(&raw, "AMD", Utc::now() - chrono::Duration::days(7));
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].url, None);
+        assert_eq!(
+            events[0].payload.get("newsURL").and_then(|v| v.as_str()),
+            Some("https://www.thefly.com/ajax/news_get.php?id=4357265")
         );
     }
 

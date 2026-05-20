@@ -56,7 +56,7 @@ pub fn render_immediate(event: &MarketEvent, fmt: RenderFormat) -> String {
         out.push_str(&render_inline(body_trim, fmt));
     }
 
-    if let Some(u) = event.url.as_deref().filter(|u| !u.is_empty()) {
+    if let Some(u) = event.user_visible_url() {
         out.push_str("\n\n");
         out.push_str(&render_link(u, fmt));
     }
@@ -97,7 +97,7 @@ fn render_immediate_feishu_post(event: &MarketEvent) -> String {
 
     let mut content = Vec::new();
     let mut title_row = vec![feishu_text(&event.title)];
-    if let Some(url) = event.url.as_deref().filter(|u| !u.is_empty()) {
+    if let Some(url) = event.user_visible_url() {
         title_row.push(feishu_text(" · "));
         title_row.push(feishu_link_icon(url));
     }
@@ -545,5 +545,18 @@ mod tests {
                 .and_then(|v| v.as_str()),
             Some("🔗")
         );
+    }
+
+    #[test]
+    fn immediate_render_omits_unstable_thefly_ajax_url() {
+        let mut ev = sample(EventKind::AnalystGrade);
+        ev.url = Some("https://thefly.com/ajax/news_get.php?id=4357265".into());
+
+        let plain = render_immediate(&ev, RenderFormat::Plain);
+        assert!(!plain.contains("news_get.php"), "got:\n{plain}");
+
+        ev.url = Some("https://news.example.com/path".into());
+        let plain = render_immediate(&ev, RenderFormat::Plain);
+        assert!(plain.contains("https://news.example.com/path"));
     }
 }

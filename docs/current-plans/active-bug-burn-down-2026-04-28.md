@@ -3,7 +3,7 @@
 - title: Active Bug Burn-down 2026-04-28
 - status: in_progress
 - created_at: 2026-04-28
-- updated_at: 2026-05-16 03:05 CST
+- updated_at: 2026-05-20 11:30 CST
 - owner: Codex
 - related_files:
   - `docs/bugs/README.md`
@@ -86,6 +86,7 @@ Clear the current active bug queue as far as software changes can responsibly do
 - 2026-05-15 08:07: Closed the active P1 Daily macOS release app API lifecycle bug by adding `HONE_DESKTOP_SMOKE_SERVER=1` to `hone-desktop`. The packaged desktop executable can now run a headless Web/API smoke server on fixed ports, independent of Tauri window lifecycle, and stays alive until Ctrl-C. Local smoke verified `/api/meta`, the public user page, and disabled channel status on `18077/18088`; Issue #42 is linked in the bug doc.
 - 2026-05-15 08:07: Re-closed the active P2 oil scheduler recurrence based on current code and a new exact regression for the latest contract-month sample. The existing ordinary scheduler commodity guard already rewrites unsafe `Brent Jul 2026 / WTI Jun 2026` approximate prices and tech-stock tail-risk causality into a safe notice; the latest `detail_json.scheduler=null` evidence is treated as old/non-production runtime state, not as a current HEAD failure. Active bug queue is now empty.
 - 2026-05-16 03:05: Re-closed the reopened P1 Feishu direct empty/invalid answer bug after the latest 2026-05-15 21:48 / 22:07 samples showed two remaining `planning_sentence_suppressed` gaps. `response_finalizer` now recovers successful `portfolio` side effects into user-visible confirmations, and `is_transitional_planning_sentence(...)` keeps “把图发给我 / 上传截图” style attachment guidance instead of collapsing it into the generic fallback. Added focused `hone-channels` regressions plus `cargo check`; active bug queue remains empty.
+- 2026-05-20 11:30: Closed the user-reported The Fly broken-link push regression. AnalystGrade events now keep raw FMP `payload.newsURL` for fanout/cooldown dedupe, but user-visible rendering filters The Fly internal `/ajax/news_get.php` and app-shell `/news.php` entrypoints. The attempted `news.php?symbol=AMD` replacement was verified to land on the The Fly app/home shell rather than a stable AMD news list, so the final policy is to omit unstable The Fly links unless upstream provides a stable public permalink or a non-The Fly URL.
 
 ## Validation
 
@@ -153,6 +154,12 @@ Completed this round:
 - `cargo test -p hone-channels transitional_clarification_question_is_not_treated_as_planning_sentence -- --nocapture`
 - `cargo test -p hone-channels finalize_agent_response_keeps_user_facing_clarification_question -- --nocapture`
 - `cargo check -p hone-channels --tests`
+- `cargo test -p hone-event-engine user_visible_url_filters_unstable_thefly_entrypoints --lib -- --nocapture`
+- `cargo test -p hone-event-engine thefly_ajax_news_url_is_hidden_but_kept_in_payload --lib -- --nocapture`
+- `cargo test -p hone-event-engine immediate_render_omits_unstable_thefly_ajax_url --lib -- --nocapture`
+- `cargo test -p hone-event-engine digest_payload_omits_unstable_thefly_urls --lib -- --nocapture`
+- `cargo test -p hone-event-engine --lib`
+- `cargo fmt --all -- --check`
 - `rustfmt --edition 2024 crates/hone-channels/src/runtime.rs crates/hone-channels/src/agent_session/tests.rs`
 - `cargo test -p hone-channels session_event_emitter_ -- --nocapture`
 - `cargo check -p hone-channels --tests`

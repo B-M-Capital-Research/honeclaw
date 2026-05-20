@@ -120,9 +120,7 @@ fn render_digest_text(
         let title_inline = crate::renderer::render_inline(&display_title, fmt);
         let head_inline = crate::renderer::render_inline(&head, fmt);
         let link_inline = ev
-            .url
-            .as_deref()
-            .filter(|u| !u.is_empty())
+            .user_visible_url()
             .map(|u| crate::renderer::render_link_icon(u, fmt));
         out.push('\n');
         if head_inline.is_empty() {
@@ -168,7 +166,7 @@ fn render_digest_feishu_post(
             row.push(crate::renderer::feishu_text(" · "));
         }
         row.push(crate::renderer::feishu_text(&display_title));
-        if let Some(url) = ev.url.as_deref().filter(|u| !u.is_empty()) {
+        if let Some(url) = ev.user_visible_url() {
             row.push(crate::renderer::feishu_text(" · "));
             row.push(crate::renderer::feishu_link_icon(url));
         }
@@ -474,6 +472,17 @@ mod tests {
         assert_eq!(p.max_severity, Severity::High);
         assert_eq!(p.items.len(), 3);
         assert_eq!(p.cap_overflow, 0);
+    }
+
+    #[test]
+    fn digest_payload_omits_unstable_thefly_urls() {
+        let mut event = ev(EventKind::AnalystGrade, Severity::Medium);
+        event.url = Some("https://thefly.com/ajax/news_get.php?id=4357265".into());
+
+        let payload = build_digest_payload("test", &[event], 0);
+
+        assert_eq!(payload.items.len(), 1);
+        assert_eq!(payload.items[0].url, None);
     }
 
     #[test]

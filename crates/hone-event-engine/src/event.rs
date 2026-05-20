@@ -121,6 +121,37 @@ impl MarketEvent {
     pub fn touches(&self, symbol: &str) -> bool {
         self.symbols.iter().any(|s| s.eq_ignore_ascii_case(symbol))
     }
+
+    pub fn user_visible_url(&self) -> Option<&str> {
+        self.url
+            .as_deref()
+            .map(str::trim)
+            .filter(|url| !url.is_empty())
+            .filter(|url| is_user_visible_url(url))
+    }
+}
+
+pub fn is_user_visible_url(url: &str) -> bool {
+    !is_known_unstable_user_url(url)
+}
+
+fn is_known_unstable_user_url(url: &str) -> bool {
+    let normalized = url.trim().to_ascii_lowercase();
+    let without_scheme = normalized
+        .strip_prefix("https://")
+        .or_else(|| normalized.strip_prefix("http://"))
+        .unwrap_or(&normalized);
+    let without_www = without_scheme
+        .strip_prefix("www.")
+        .unwrap_or(without_scheme);
+    let host = without_www.split('/').next().unwrap_or_default();
+    let path_with_query = without_www
+        .strip_prefix(host)
+        .filter(|path| path.starts_with('/'))
+        .unwrap_or("");
+    let path = path_with_query.split('?').next().unwrap_or(path_with_query);
+    let is_thefly = host == "thefly.com" || host.ends_with(".thefly.com");
+    is_thefly && matches!(path, "/ajax/news_get.php" | "/news.php")
 }
 
 pub fn is_noop_analyst_grade(event: &MarketEvent) -> bool {
@@ -297,6 +328,33 @@ mod tests {
         assert!(ev.touches("aapl"));
         assert!(ev.touches("AAPL"));
         assert!(!ev.touches("TSLA"));
+    }
+
+    #[test]
+    fn user_visible_url_filters_unstable_thefly_entrypoints() {
+        let mut ev = MarketEvent {
+            id: "grade:AMD:test".into(),
+            kind: EventKind::AnalystGrade,
+            severity: Severity::High,
+            symbols: vec!["AMD".into()],
+            occurred_at: Utc::now(),
+            title: "AMD · analyst call".into(),
+            summary: String::new(),
+            url: Some("https://www.thefly.com/ajax/news_get.php?id=4357265".into()),
+            source: "fmp.upgrades_downgrades".into(),
+            payload: serde_json::Value::Null,
+        };
+
+        assert_eq!(ev.user_visible_url(), None);
+
+        ev.url = Some("https://apim.thefly.com/news.php?symbol=AMD".into());
+        assert_eq!(ev.user_visible_url(), None);
+
+        ev.url = Some("https://thefly.com/permalinks/entry.php/id4191882/TEL-test".into());
+        assert_eq!(
+            ev.user_visible_url(),
+            Some("https://thefly.com/permalinks/entry.php/id4191882/TEL-test")
+        );
     }
 
     #[test]

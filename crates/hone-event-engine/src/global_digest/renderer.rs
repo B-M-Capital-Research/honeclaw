@@ -75,8 +75,7 @@ fn render_item(item: &PersonalizedItem, fmt: RenderFormat) -> String {
     let url_line = item
         .candidate
         .event
-        .url
-        .as_deref()
+        .user_visible_url()
         .map(|u| match fmt {
             RenderFormat::TelegramHtml => {
                 format!("<a href=\"{}\">{}</a>", escape_attr_html(u), short_host(u))

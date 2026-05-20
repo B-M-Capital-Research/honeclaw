@@ -129,11 +129,7 @@ pub(crate) fn item_from_event(event: &MarketEvent, headline: String) -> DigestIt
         severity: event.severity,
         primary_symbol,
         headline,
-        url: event
-            .url
-            .as_deref()
-            .filter(|u| !u.is_empty())
-            .map(String::from),
+        url: event.user_visible_url().map(String::from),
         occurred_at: event.occurred_at,
         origin: ItemOrigin::Buffered,
         floor: None,

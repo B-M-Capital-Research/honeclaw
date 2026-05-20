@@ -1,6 +1,6 @@
 # Current Plan Index
 
-最后更新：2026-05-16
+最后更新：2026-05-20
 状态：有 6 个活跃任务
 
 ## 说明
@@ -19,7 +19,7 @@
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/active-bug-burn-down-2026-04-28.md`
-  - 摘要：集中清理 `docs/bugs/README.md` 活跃缺陷；2026-05-16 已补齐 Feishu 直聊 `portfolio` 副作用确认与“发图/上传截图”下一步指引保留，当前活跃待修复队列为空
+  - 摘要：集中清理 `docs/bugs/README.md` 活跃缺陷；2026-05-20 已收口 The Fly 不稳定链接推送问题，当前活跃待修复队列为空
 - **Chart Visualization Skill 与多通道 PNG 投递**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/chart-visualization-skill.md`
