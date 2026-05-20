@@ -31,7 +31,7 @@ function buildUser() {
     remaining_today: 17,
     has_password: false,
     tos_accepted_at: "2026-05-12T08:00:00Z",
-    tos_version: "2.0",
+    tos_version: "2.1",
   };
 }
 
@@ -134,7 +134,7 @@ async function installPublicAuthMocks(
         await fulfillJson(route, { error: "验证码不正确或已过期" }, 401);
         return;
       }
-      if (body.tos_version !== "2.0") {
+      if (body.tos_version !== "2.1") {
         await fulfillJson(route, { error: "需同意用户协议与隐私政策" }, 400);
         return;
       }
@@ -181,7 +181,7 @@ test("SMS login sends code, requires ToS, and signs in", async ({ page }) => {
 
   await expect.poll(() => mock.loginCalls).toBe(1);
   expect(mock.lastLoginBody).toContain('"remember":true');
-  expect(mock.lastLoginBody).toContain('"tos_version":"2.0"');
+  expect(mock.lastLoginBody).toContain('"tos_version":"2.1"');
   await expect(page.getByText("账号信息")).toBeVisible();
 });
 

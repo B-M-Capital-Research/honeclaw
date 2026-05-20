@@ -1093,3 +1093,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: `cargo test -p hone-channels sandbox --lib -- --nocapture`, `cargo test -p hone-channels prepare_ignores_repo_internal_sandbox_override --lib -- --nocapture`, `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop runtime_env -- --nocapture`, `cargo check -p hone-channels --tests`, `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo check -p hone-desktop`
 - Current conclusion: Actor sandboxes no longer default to repo `data/agent-sandboxes`; repo-internal sandbox roots now fall back to a repo-external temp directory, desktop sidecar propagates that explicit sandbox root, and sandbox initialization removes legacy portfolio files before native-file runners can read them.
 - Next entry point: `docs/handoffs/2026-05-14-web-direct-sandbox-isolation-hotfix.md`
+
+### Public Login ToS Runtime Mismatch
+
+- Status: done
+- Date: 2026-05-20
+- Plan: N/A
+- Handoff: `docs/handoffs/2026-05-20-public-login-tos-runtime-mismatch.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `docs/runbooks/desktop-release-app-runtime.md`, `bun run build:web:public`, `cargo build --release -p hone-console-page`, `bun --filter @hone-financial/app test -- public-sms-login`
+- Current conclusion: Public login failure came from runtime artifact skew: the public bundle and `hone-console-page` binary did not agree on `TOS_VERSION`. Port 8088 now serves the rebuilt public bundle with ToS `2.1`, and the rebuilt backend accepts `2.1` while rejecting stale `2.0`.
+- Next entry point: `docs/handoffs/2026-05-20-public-login-tos-runtime-mismatch.md`
