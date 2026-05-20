@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-19 19:02 CST
+最后更新：2026-05-20 11:06 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,10 +17,11 @@
 
 ## 当前概览
 
-- 活跃待修复：0
+- 活跃待修复：1
 - Later / 待复现：9
 - 已修复 / 已关闭：106
 - 历史分析 / 部分止血：5
+- 本轮 11:06 CST 新增活跃 P1 `Codex version probe 资源耗尽导致直聊和定时任务批量失败并外露原始 runner 错误`：最近四小时按 `timestamp` 归一化后共有 25 条 user turn 与 11 条 assistant；assistant final 污染扫描未命中旧式 `/Users/`、`rawOutput`、`tool_call`、`session/update` 等，但命中新的 runner 启动前失败形态。08:59 / 09:22 / 09:53 CST 至少 3 条 Feishu 直聊把 `failed to probe codex version via codex: Resource temporarily unavailable (os error 35)` 作为用户可见 assistant；08:00-10:00 CST 至少 15 条普通 scheduler 落成 `execution_failed + sent + delivered=1`，多数 `response_preview` 为同一原始错误；Web / Discord scheduler 日志也出现同一 `SpawnFailed`。这是跨渠道主链路功能失败和错误边界失守，已建档并创建脱敏 Issue [#43](https://github.com/B-M-Capital-Research/honeclaw/issues/43)。
 - 本轮 19:02 CST 未发现新的独立缺陷或活跃 P1 变化。最近四小时共有 21 个 user turn 与 21 个 assistant final，Feishu / Web 直聊均有 assistant final 收口；assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、原始飞书标签、compact marker、`reasoning_content` 或 `Param Incorrect`；最近四小时无孤立 user turn、无非文档代码提交。当前活跃待修复为 0，本轮未创建 GitHub issue。
 - 本轮 19:02 CST 继续观察到当前机器旧运行态 heartbeat `mimo-v2.5-pro` 批量失败和 scheduler started-row 残留：15:30-19:00 CST 新增 81 条 heartbeat `reasoning_content must be passed back` / `Param Incorrect` 失败，覆盖 11 个 job；同窗新增 88 条 `running + pending` started 残留，全部为 heartbeat。当前机器没有可确认已重启到 2026-05-15 04:05 CST 当前 HEAD 修复后的 live 进程；仅追加到 `scheduler_heartbeat_mimo_param_incorrect_batch_failures.md` 与 `feishu_scheduler_running_rows_never_finalized.md`，不从 `Fixed` 回退。
 - 本轮 15:02 CST 未发现新的独立缺陷或活跃 P1 变化。最近四小时共有 10 个 user turn 与 10 个 assistant final，Feishu 直聊和普通 scheduler 均有收口；普通 scheduler `每日公司资讯与分析总结` 有 `completed + sent + delivered=1` 终态。assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、原始飞书标签、compact marker、`reasoning_content` 或 `Param Incorrect`；最近四小时无孤立 user turn、无非文档代码提交。当前活跃待修复为 0，本轮未创建 GitHub issue。
@@ -176,6 +177,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Codex version probe 资源耗尽导致直聊和定时任务批量失败并外露原始 runner 错误 | P1 | New | 2026-05-20 11:06 最近四小时至少 3 条 Feishu 直聊、15 条普通 scheduler、1 条 Web scheduler、1 条 Discord scheduler 命中 `failed to probe codex version via codex: Resource temporarily unavailable (os error 35)`；多数 Feishu 路径把原始 runner 错误作为用户可见内容或 `response_preview` 送达。关联 Issue [#43](https://github.com/B-M-Capital-Research/honeclaw/issues/43) | [codex_version_probe_resource_unavailable_raw_failure.md](./codex_version_probe_resource_unavailable_raw_failure.md) |
 
 ## Later / 待复现
 
