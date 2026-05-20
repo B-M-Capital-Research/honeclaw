@@ -18,6 +18,8 @@ const GENERIC_USER_ERROR_MESSAGE: &str = "抱歉，这次处理失败了。请�
 const TIMEOUT_USER_ERROR_MESSAGE: &str = "抱歉，处理超时了。请稍后再试。";
 const RUNNER_USAGE_LIMIT_USER_ERROR_MESSAGE: &str =
     "当前执行额度已用尽，暂时无法继续处理。请稍后再试。";
+const RUNNER_RESOURCE_UNAVAILABLE_USER_ERROR_MESSAGE: &str =
+    "当前本机执行环境暂时不可用，请稍后再试。";
 
 /// 流式处理结果
 #[derive(Debug, Clone)]
@@ -435,10 +437,15 @@ fn sanitized_non_empty_user_visible(raw: Option<&str>) -> Option<String> {
 }
 
 fn user_actionable_error_message(sanitized: &str, lowered: &str) -> Option<String> {
-    quota_rejection_user_message(sanitized).or_else(|| {
-        looks_runner_usage_limit_error_lowered(lowered)
-            .then(|| RUNNER_USAGE_LIMIT_USER_ERROR_MESSAGE.to_string())
-    })
+    quota_rejection_user_message(sanitized)
+        .or_else(|| {
+            looks_runner_usage_limit_error_lowered(lowered)
+                .then(|| RUNNER_USAGE_LIMIT_USER_ERROR_MESSAGE.to_string())
+        })
+        .or_else(|| {
+            looks_runner_resource_unavailable_error_lowered(lowered)
+                .then(|| RUNNER_RESOURCE_UNAVAILABLE_USER_ERROR_MESSAGE.to_string())
+        })
 }
 
 fn quota_rejection_user_message(sanitized: &str) -> Option<String> {
@@ -461,6 +468,19 @@ fn looks_runner_usage_limit_error_lowered(lowered: &str) -> bool {
             || lowered.contains("quota exhausted")
             || lowered.contains("insufficient quota")
             || lowered.contains("try again later"))
+}
+
+fn looks_runner_resource_unavailable_error_lowered(lowered: &str) -> bool {
+    (lowered.contains("codex")
+        || lowered.contains("codex-acp")
+        || lowered.contains("runner")
+        || lowered.contains("acp"))
+        && (lowered.contains("resource temporarily unavailable")
+            || lowered.contains("os error 35")
+            || lowered.contains("would block")
+            || lowered.contains("failed to probe")
+            || lowered.contains("version probe")
+            || lowered.contains("failed to spawn"))
 }
 
 fn looks_timeout_error_lowered(lowered: &str) -> bool {
@@ -982,6 +1002,16 @@ mod tests {
     }
 
     #[test]
+    fn user_visible_error_message_maps_codex_probe_resource_errors() {
+        let err = user_visible_error_message(Some(
+            "failed to probe codex version via `codex`: Resource temporarily unavailable (os error 35)",
+        ));
+        assert_eq!(err, RUNNER_RESOURCE_UNAVAILABLE_USER_ERROR_MESSAGE);
+        assert!(!err.contains("Resource temporarily unavailable"));
+        assert!(!err.contains("os error 35"));
+    }
+
+    #[test]
     fn user_visible_error_message_or_none_suppresses_internal_acp_errors() {
         let err = user_visible_error_message_or_none(Some(
             "codex acp prompt ended before tool completion: Searching the Web",
@@ -1006,6 +1036,17 @@ mod tests {
             "LLM 错误: codex runner quota exceeded, please try again later",
         ));
         assert_eq!(err.as_deref(), Some(RUNNER_USAGE_LIMIT_USER_ERROR_MESSAGE));
+    }
+
+    #[test]
+    fn user_visible_error_message_or_none_keeps_codex_probe_resource_errors_sanitized() {
+        let err = user_visible_error_message_or_none(Some(
+            "failed to probe codex version via `codex`: Resource temporarily unavailable (os error 35)",
+        ));
+        assert_eq!(
+            err.as_deref(),
+            Some(RUNNER_RESOURCE_UNAVAILABLE_USER_ERROR_MESSAGE)
+        );
     }
 
     #[test]

@@ -3,7 +3,7 @@
 - 发现时间：2026-05-20 11:06 CST
 - Bug Type：System Error
 - 严重等级：P1
-- 状态：New
+- 状态：Fixed
 - GitHub Issue：[#43](https://github.com/B-M-Capital-Research/honeclaw/issues/43)
 
 ## 证据来源
@@ -66,9 +66,24 @@
 - 下游错误净化层没有覆盖 `failed to probe codex version via codex` / `SpawnFailed` / `os error 35` 这类 runner 启动前失败，导致原始错误进入用户可见内容。
 - scheduler 对部分 runner 启动前失败仍按 `sent + delivered=1` 登记，使台账更像“发送了有效失败回复”，而不是“任务未能进入 agent 执行”。
 
-## 下一步建议
+## 修复记录
 
-- 在共享错误净化层新增 runner spawn / version probe / `os error 35` 的用户态映射，禁止原始错误进入 assistant final、Feishu failure fallback、scheduler `response_preview`。
-- 为 Codex runner version probe 增加缓存、超时、退避或启动健康检查，避免每轮请求都因短时进程资源耗尽同步失败。
-- 为 scheduler 增加 runner 启动前失败分类，例如 `runner_spawn_failed`，并确认是否应 `should_deliver=false` 或只投递脱敏系统繁忙提示。
-- 增加回归：模拟 `SpawnFailed("failed to probe codex version ... os error 35")`，覆盖 Feishu direct、共享 outbound 和 scheduler 失败收口。
+- 2026-05-20 12:10 CST：`crates/hone-channels/src/runtime.rs` 新增 runner resource-unavailable 分类。
+- 覆盖包含 `codex` / `codex-acp` / `runner` / `acp` 且同时包含 `Resource temporarily unavailable`、`os error 35`、`would block`、`failed to probe`、`version probe` 或 `failed to spawn` 的错误。
+- 直聊和通用出站错误映射为：`当前本机执行环境暂时不可用，请稍后再试。`
+- scheduler 的 `user_visible_error_message_or_none(...)` 同样返回该脱敏文案，避免 `response_preview` / 用户送达内容包含原始 runner 错误。
+- 本修复只做通用错误边界加固，不为单次资源耗尽写重试、绕过或硬编码特殊流程。
+
+## 验证
+
+- `cargo test -p hone-channels user_visible_error_message_maps_codex_probe_resource_errors --lib -- --nocapture`
+- `cargo test -p hone-channels user_visible_error_message_or_none_keeps_codex_probe_resource_errors_sanitized --lib -- --nocapture`
+- `cargo test -p hone-channels user_visible_error_message --lib -- --nocapture`
+- `cargo check -p hone-channels --tests`
+- `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/runtime.rs`
+
+## 后续建议
+
+- 为 Codex runner version probe 评估缓存、超时、退避或启动健康检查，避免每轮请求都因短时进程资源耗尽同步失败。
+- 为 scheduler 增加 runner 启动前失败分类，例如 `runner_spawn_failed`，便于区分“任务未进入 agent 执行”和“模型执行中失败”。
+- 若部署后仍出现 runner 启动前错误原文外发，保留脱敏错误关键词并扩展同一分类函数，不要针对单个日志样本写渠道特判。
