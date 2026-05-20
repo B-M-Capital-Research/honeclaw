@@ -167,23 +167,20 @@ impl<'a> LlmResolver<'a> {
                 options,
             )?)
         } else {
-            let key = self
-                    .provider_key_pool(provider_name, provider_cfg)
-                    .first()
-                    .map(str::to_string)
-                    .ok_or_else(|| {
-                        hone_core::HoneError::Config(format!(
-                            "llm.providers.{provider_name} API key 未配置：请在 config.yaml 的 llm.providers.{provider_name}.api_key 或 api_keys 中填写；运行时不再读取 *_API_KEY 环境变量"
-                        ))
-                    })?;
+            let pool = self.provider_key_pool(provider_name, provider_cfg);
+            if pool.is_empty() {
+                return Err(hone_core::HoneError::Config(format!(
+                    "llm.providers.{provider_name} API key 未配置：请在 config.yaml 的 llm.providers.{provider_name}.api_key 或 api_keys 中填写；运行时不再读取 *_API_KEY 环境变量"
+                )));
+            }
             if provider_cfg.base_url.trim().is_empty() {
                 return Err(hone_core::HoneError::Config(format!(
                     "llm.providers.{provider_name}.base_url 不能为空"
                 )));
             }
             Arc::new(
-                OpenAiCompatibleProvider::new(
-                    &key,
+                OpenAiCompatibleProvider::from_key_pool(
+                    pool.keys(),
                     provider_cfg.base_url.trim(),
                     model,
                     provider_cfg.timeout.unwrap_or(120),

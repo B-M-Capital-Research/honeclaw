@@ -1473,12 +1473,18 @@ fn guard_direct_trade_instruction_for_event(text: &str, event: &SchedulerEvent) 
 fn heartbeat_runner_failure_kind(error: &str) -> &'static str {
     let lower = error.to_ascii_lowercase();
     if lower.contains("upstream http 402")
+        || lower.contains("upstream http 429")
         || lower.contains("http 402")
+        || lower.contains("http 429")
         || lower.contains("code: 402")
+        || lower.contains("code: 429")
         || lower.contains("requires more credits")
         || lower.contains("insufficient credit")
         || lower.contains("insufficient balance")
         || lower.contains("quota exceeded")
+        || lower.contains("rate limit exceeded")
+        || lower.contains("too many requests")
+        || lower.contains("resource exhausted")
     {
         return "provider_quota_exhausted";
     }
@@ -3239,6 +3245,21 @@ mod tests {
             execution.metadata["heartbeat_model"],
             "moonshotai/kimi-k2.5"
         );
+    }
+
+    #[test]
+    fn heartbeat_provider_429_quota_error_is_classified() {
+        let execution = heartbeat_execution_from_runner_error(
+            "LLM 错误: 所有 OpenAI-compatible API Key 均失败（共 1 个）。最后错误：LLM 错误: upstream HTTP 429: rate limit exceeded (code: 429)"
+                .to_string(),
+            "mimo-v2.5-pro",
+        );
+        assert!(!execution.should_deliver);
+        assert_eq!(
+            execution.metadata["failure_kind"],
+            "provider_quota_exhausted"
+        );
+        assert_eq!(execution.metadata["heartbeat_model"], "mimo-v2.5-pro");
     }
 
     #[test]

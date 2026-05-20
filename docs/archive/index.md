@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-05-12
+Last updated: 2026-05-20
+
+## 2026-05-20
+
+### Heartbeat Mimo 429 Key-Pool Fallback
+
+- Status: done
+- Date: 2026-05-20
+- Plan: `docs/current-plans/active-bug-burn-down-2026-04-28.md`
+- Handoff: `docs/handoffs/2026-05-20-heartbeat-mimo-429-key-pool.md`
+- Decision / ADR: N/A
+- Related PRs / commits: GitHub Issue [#44](https://github.com/B-M-Capital-Research/honeclaw/issues/44)
+- Related runbooks / regressions: `cargo test -p hone-llm chat_with_tools_falls_back_to_next_key_after_http_429 -- --nocapture`, `cargo test -p hone-channels heartbeat_provider_429_quota_error_is_classified --lib -- --nocapture`
+- Current conclusion: OpenAI-compatible non-streaming routes now honor provider key pools for non-OpenRouter profiles, so a single exhausted mimo key no longer drops the whole heartbeat batch when fallback keys are configured.
+- Next entry point: `docs/bugs/scheduler_heartbeat_mimo_429_quota_exhausted.md`
 
 ## 2026-05-12
 

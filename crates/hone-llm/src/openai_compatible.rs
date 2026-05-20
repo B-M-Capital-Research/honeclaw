@@ -19,11 +19,16 @@ use crate::provider::{
 };
 
 #[derive(Clone)]
-pub struct OpenAiCompatibleProvider {
+struct OpenAiCompatibleClient {
     client: Client<OpenAIConfig>,
     http_client: reqwest::Client,
     api_key: String,
     base_url: String,
+}
+
+#[derive(Clone)]
+pub struct OpenAiCompatibleProvider {
+    clients: Vec<OpenAiCompatibleClient>,
     pub model: String,
     pub max_tokens: u16,
     request_options: LlmRequestOptions,
@@ -47,16 +52,50 @@ impl OpenAiCompatibleProvider {
         timeout_secs: u64,
         max_tokens: u16,
     ) -> hone_core::HoneResult<Self> {
+        Self::from_key_pool(
+            &[api_key.to_string()],
+            base_url,
+            model,
+            timeout_secs,
+            max_tokens,
+        )
+    }
+
+    pub fn from_key_pool(
+        keys: &[String],
+        base_url: &str,
+        model: &str,
+        timeout_secs: u64,
+        max_tokens: u16,
+    ) -> hone_core::HoneResult<Self> {
+        let pool =
+            hone_core::api_key_pool::ApiKeyPool::new(keys.iter().map(|key| key.trim().to_string()));
+        if pool.is_empty() {
+            return Err(hone_core::HoneError::Config(
+                "LLM API key 未配置：请在 config.yaml 的 llm.providers.<name>.api_key 或 api_keys 中填写；运行时不再读取 *_API_KEY 环境变量".to_string(),
+            ));
+        }
+
         let http_client = Self::build_http_client(timeout_secs)?;
         let base_url = base_url.trim_end_matches('/').to_string();
-        let openai_config = OpenAIConfig::new()
-            .with_api_key(api_key)
-            .with_api_base(&base_url);
+        let clients = pool
+            .keys()
+            .iter()
+            .map(|key| {
+                let openai_config = OpenAIConfig::new()
+                    .with_api_key(key)
+                    .with_api_base(&base_url);
+                OpenAiCompatibleClient {
+                    client: Client::with_config(openai_config)
+                        .with_http_client(http_client.clone()),
+                    http_client: http_client.clone(),
+                    api_key: key.clone(),
+                    base_url: base_url.clone(),
+                }
+            })
+            .collect();
         Ok(Self {
-            client: Client::with_config(openai_config).with_http_client(http_client.clone()),
-            http_client,
-            api_key: api_key.to_string(),
-            base_url,
+            clients,
             model: model.to_string(),
             max_tokens,
             request_options: LlmRequestOptions::default(),
@@ -140,13 +179,13 @@ impl OpenAiCompatibleProvider {
     }
 
     async fn post_chat_completion(
-        &self,
+        client: &OpenAiCompatibleClient,
         request: &async_openai::types::CreateChatCompletionRequest,
     ) -> hone_core::HoneResult<Value> {
-        let response = self
+        let response = client
             .http_client
-            .post(format!("{}/chat/completions", self.base_url))
-            .bearer_auth(&self.api_key)
+            .post(format!("{}/chat/completions", client.base_url))
+            .bearer_auth(&client.api_key)
             .json(request)
             .send()
             .await
@@ -172,11 +211,14 @@ impl OpenAiCompatibleProvider {
         })
     }
 
-    async fn post_chat_completion_value(&self, request: &Value) -> hone_core::HoneResult<Value> {
-        let response = self
+    async fn post_chat_completion_value(
+        client: &OpenAiCompatibleClient,
+        request: &Value,
+    ) -> hone_core::HoneResult<Value> {
+        let response = client
             .http_client
-            .post(format!("{}/chat/completions", self.base_url))
-            .bearer_auth(&self.api_key)
+            .post(format!("{}/chat/completions", client.base_url))
+            .bearer_auth(&client.api_key)
             .json(request)
             .send()
             .await
@@ -520,6 +562,87 @@ mod tests {
         assert_eq!(response.content, "done");
     }
 
+    #[tokio::test]
+    async fn chat_with_tools_falls_back_to_next_key_after_http_429() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test server");
+        let addr = listener.local_addr().expect("read local addr");
+        let requests = Arc::new(AtomicUsize::new(0));
+        let requests_for_task = requests.clone();
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut socket, _)) = listener.accept().await else {
+                    break;
+                };
+                requests_for_task.fetch_add(1, Ordering::SeqCst);
+                tokio::spawn(async move {
+                    let mut buf = vec![0_u8; 65536];
+                    let n = socket.read(&mut buf).await.expect("read request");
+                    let request = String::from_utf8_lossy(&buf[..n]);
+                    let (status, body) = if request.contains("authorization: Bearer bad-key")
+                        || request.contains("Authorization: Bearer bad-key")
+                    {
+                        (
+                            "429 Too Many Requests",
+                            r#"{"error":{"message":"rate limit exceeded","code":429}}"#,
+                        )
+                    } else {
+                        (
+                            "200 OK",
+                            r#"{"id":"resp","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"ok","tool_calls":null}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}"#,
+                        )
+                    };
+                    let response = format!(
+                        "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    );
+                    let _ = socket.write_all(response.as_bytes()).await;
+                    let _ = socket.shutdown().await;
+                });
+            }
+        });
+
+        let provider = OpenAiCompatibleProvider::from_key_pool(
+            &["bad-key".to_string(), "good-key".to_string()],
+            &format!("http://{addr}"),
+            "test-model",
+            30,
+            64,
+        )
+        .expect("provider");
+
+        let response = provider
+            .chat_with_tools(
+                &[Message {
+                    role: "user".to_string(),
+                    content: Some("hello".to_string()),
+                    reasoning_content: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                }],
+                &[serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": "demo_tool",
+                        "description": "demo",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {}
+                        }
+                    }
+                })],
+                None,
+            )
+            .await
+            .expect("second key should succeed");
+
+        assert_eq!(response.content, "ok");
+        assert_eq!(requests.load(Ordering::SeqCst), 2);
+    }
+
     async fn spawn_numeric_error_server() -> (String, Arc<AtomicUsize>) {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
@@ -570,87 +693,105 @@ impl LlmProvider for OpenAiCompatibleProvider {
         messages: &[Message],
         model: Option<&str>,
     ) -> hone_core::HoneResult<ChatResult> {
-        let converted_messages = Self::convert_messages(messages)?;
         let model = model.unwrap_or(&self.model);
         if self.request_options.is_empty()
             && !messages
                 .iter()
                 .any(|message| message.reasoning_content.is_some())
         {
-            let request = CreateChatCompletionRequestArgs::default()
-                .model(model)
-                .messages(converted_messages)
-                .max_tokens(self.max_tokens)
-                .build()
-                .map_err(|e| hone_core::HoneError::Llm(e.to_string()))?;
+            let mut last_err = String::new();
+            for client in &self.clients {
+                let request = CreateChatCompletionRequestArgs::default()
+                    .model(model)
+                    .messages(Self::convert_messages(messages)?)
+                    .max_tokens(self.max_tokens)
+                    .build()
+                    .map_err(|e| hone_core::HoneError::Llm(e.to_string()))?;
 
-            let mut last_err: Option<hone_core::HoneError> = None;
+                for attempt in 0..=1 {
+                    if attempt > 0 {
+                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    }
+                    match client.client.chat().create(request.clone()).await {
+                        Ok(response) => {
+                            let content = response
+                                .choices
+                                .first()
+                                .and_then(|c| c.message.content.clone())
+                                .unwrap_or_default();
+                            let usage = response.usage.map(|u| crate::provider::TokenUsage {
+                                prompt_tokens: Some(u.prompt_tokens),
+                                completion_tokens: Some(u.completion_tokens),
+                                total_tokens: Some(u.total_tokens),
+                            });
+                            return Ok(ChatResult { content, usage });
+                        }
+                        Err(err) => {
+                            let error_message = err.to_string();
+                            last_err = error_message.clone();
+                            if should_retry_with_raw_http(&err) {
+                                match Self::post_chat_completion(client, &request).await {
+                                    Ok(value) => {
+                                        return Ok(ChatResult {
+                                            content: Self::content_from_value(&value),
+                                            usage: Self::usage_from_value(&value),
+                                        });
+                                    }
+                                    Err(raw_err) => {
+                                        last_err = raw_err.to_string();
+                                        break;
+                                    }
+                                }
+                            }
+                            if attempt == 0 && is_retryable_transport_error(&error_message) {
+                                tracing::warn!(
+                                    "[openai_compatible] chat transport error, retrying: {error_message}"
+                                );
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            return Err(hone_core::HoneError::Llm(format!(
+                "所有 OpenAI-compatible API Key 均失败（共 {} 个）。最后错误：{last_err}",
+                self.clients.len()
+            )));
+        }
+
+        let request = self.build_request_body(messages, None, model)?;
+        let mut last_err = String::new();
+        for client in &self.clients {
             for attempt in 0..=1 {
                 if attempt > 0 {
                     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                 }
-                match self.client.chat().create(request.clone()).await {
-                    Ok(response) => {
-                        let content = response
-                            .choices
-                            .first()
-                            .and_then(|c| c.message.content.clone())
-                            .unwrap_or_default();
-                        let usage = response.usage.map(|u| crate::provider::TokenUsage {
-                            prompt_tokens: Some(u.prompt_tokens),
-                            completion_tokens: Some(u.completion_tokens),
-                            total_tokens: Some(u.total_tokens),
+                match Self::post_chat_completion_value(client, &request).await {
+                    Ok(value) => {
+                        return Ok(ChatResult {
+                            content: Self::content_from_value(&value),
+                            usage: Self::usage_from_value(&value),
                         });
-                        return Ok(ChatResult { content, usage });
+                    }
+                    Err(err) if attempt == 0 && is_retryable_transport_error(&err.to_string()) => {
+                        tracing::warn!(
+                            "[openai_compatible] raw chat transport error, retrying: {}",
+                            err
+                        );
+                        last_err = err.to_string();
                     }
                     Err(err) => {
-                        let error_message = err.to_string();
-                        let hone_err = hone_core::HoneError::Llm(error_message.clone());
-                        if should_retry_with_raw_http(&err) {
-                            let value = self.post_chat_completion(&request).await?;
-                            return Ok(ChatResult {
-                                content: Self::content_from_value(&value),
-                                usage: Self::usage_from_value(&value),
-                            });
-                        }
-                        if attempt == 0 && is_retryable_transport_error(&error_message) {
-                            tracing::warn!(
-                                "[openai_compatible] chat transport error, retrying: {error_message}"
-                            );
-                            last_err = Some(hone_err);
-                        } else {
-                            return Err(hone_err);
-                        }
+                        last_err = err.to_string();
+                        break;
                     }
                 }
             }
-            return Err(last_err.unwrap());
         }
-
-        let request = self.build_request_body(messages, None, model)?;
-        let mut last_err: Option<hone_core::HoneError> = None;
-        for attempt in 0..=1 {
-            if attempt > 0 {
-                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-            }
-            match self.post_chat_completion_value(&request).await {
-                Ok(value) => {
-                    return Ok(ChatResult {
-                        content: Self::content_from_value(&value),
-                        usage: Self::usage_from_value(&value),
-                    });
-                }
-                Err(err) if attempt == 0 && is_retryable_transport_error(&err.to_string()) => {
-                    tracing::warn!(
-                        "[openai_compatible] raw chat transport error, retrying: {}",
-                        err
-                    );
-                    last_err = Some(err);
-                }
-                Err(err) => return Err(err),
-            }
-        }
-        Err(last_err.unwrap())
+        Err(hone_core::HoneError::Llm(format!(
+            "所有 OpenAI-compatible API Key 均失败（共 {} 个）。最后错误：{last_err}",
+            self.clients.len()
+        )))
     }
 
     async fn chat_with_tools(
@@ -661,31 +802,39 @@ impl LlmProvider for OpenAiCompatibleProvider {
     ) -> hone_core::HoneResult<ChatResponse> {
         let model = model.unwrap_or(&self.model);
         let request = self.build_request_body(messages, Some(tools), model)?;
-        let mut last_err: Option<hone_core::HoneError> = None;
-        for attempt in 0..=1 {
-            if attempt > 0 {
-                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-            }
-            match self.post_chat_completion_value(&request).await {
-                Ok(value) => {
-                    return Ok(ChatResponse {
-                        content: Self::content_from_value(&value),
-                        reasoning_content: Self::reasoning_content_from_value(&value),
-                        tool_calls: Self::tool_calls_from_value(&value),
-                        usage: Self::usage_from_value(&value),
-                    });
+        let mut last_err = String::new();
+        for client in &self.clients {
+            for attempt in 0..=1 {
+                if attempt > 0 {
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                 }
-                Err(err) if attempt == 0 && is_retryable_transport_error(&err.to_string()) => {
-                    tracing::warn!(
-                        "[openai_compatible] raw chat_with_tools transport error, retrying: {}",
-                        err
-                    );
-                    last_err = Some(err);
+                match Self::post_chat_completion_value(client, &request).await {
+                    Ok(value) => {
+                        return Ok(ChatResponse {
+                            content: Self::content_from_value(&value),
+                            reasoning_content: Self::reasoning_content_from_value(&value),
+                            tool_calls: Self::tool_calls_from_value(&value),
+                            usage: Self::usage_from_value(&value),
+                        });
+                    }
+                    Err(err) if attempt == 0 && is_retryable_transport_error(&err.to_string()) => {
+                        tracing::warn!(
+                            "[openai_compatible] raw chat_with_tools transport error, retrying: {}",
+                            err
+                        );
+                        last_err = err.to_string();
+                    }
+                    Err(err) => {
+                        last_err = err.to_string();
+                        break;
+                    }
                 }
-                Err(err) => return Err(err),
             }
         }
-        Err(last_err.unwrap())
+        Err(hone_core::HoneError::Llm(format!(
+            "所有 OpenAI-compatible API Key 均失败（共 {} 个）。最后错误：{last_err}",
+            self.clients.len()
+        )))
     }
 
     fn chat_stream<'a>(
@@ -694,6 +843,11 @@ impl LlmProvider for OpenAiCompatibleProvider {
         model: Option<&'a str>,
     ) -> BoxStream<'a, hone_core::HoneResult<String>> {
         let fut = async move {
+            let client = self.clients.first().ok_or_else(|| {
+                hone_core::HoneError::Config(
+                    "LLM API key 未配置：请在 config.yaml 中填写".to_string(),
+                )
+            })?;
             let converted_messages = Self::convert_messages(messages)?;
             let request = CreateChatCompletionRequestArgs::default()
                 .model(model.unwrap_or(&self.model))
@@ -701,7 +855,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
                 .max_tokens(self.max_tokens)
                 .build()
                 .map_err(|e| hone_core::HoneError::Llm(e.to_string()))?;
-            let stream = self
+            let stream = client
                 .client
                 .chat()
                 .create_stream(request)

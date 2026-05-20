@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-20 19:04 CST
+最后更新：2026-05-20 20:06 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,12 +17,13 @@
 
 ## 当前概览
 
-- 活跃待修复：1
+- 活跃待修复：0
 - Later / 待复现：9
-- 已修复 / 已关闭：107
+- 已修复 / 已关闭：108
 - 历史分析 / 部分止血：5
 - 本轮 19:04 CST 新增 P1 `Heartbeat 使用 mimo-v2.5-pro 时批量触发 HTTP 429 quota exhausted 并漏发`：最近四小时 `cron_job_runs` 新增 100 条 heartbeat `execution_failed + skipped_error + delivered=0`，错误集中为 `mimo-v2.5-pro` 上游 `HTTP 429` / `quota exhausted`，覆盖 15 个 heartbeat job；同窗 49 个 user turn 与 49 个 assistant final 均有收口，assistant final 污染扫描未命中空回复、通用失败、绝对路径、工具轨迹或 provider 原始错误，故障集中在 heartbeat provider quota 链路。已创建脱敏 Issue [#44](https://github.com/B-M-Capital-Research/honeclaw/issues/44)。
 - 本轮 19:04 CST 继续观察到 scheduler started-row 残留：15:30-19:00 CST 新增 93 条 heartbeat `running + pending` started 残留；同窗已有 100 条 heartbeat `execution_failed + skipped_error` 与 5 条 `noop + skipped_noop` 终态。当前 HEAD 已有 started-row 覆盖与回归，本轮仅追加到 `feishu_scheduler_running_rows_never_finalized.md`，不从 `Fixed` 回退。
+- 本轮 20:06 CST 已修复 P1 `Heartbeat mimo quota exhaustion drops alerts`：GitHub Issue [#44](https://github.com/B-M-Capital-Research/honeclaw/issues/44) 新增独立缺陷，指向 `mimo-v2.5-pro` heartbeat 批量 `HTTP 429` quota / rate-limit exhaustion；OpenAI-compatible provider 现在支持非 streaming 多 key fallback，非 OpenRouter profile 会使用完整 `llm.providers.<name>.api_key/api_keys` pool，heartbeat 429 / rate-limit / resource-exhausted 统一分类为 `provider_quota_exhausted`；新增 `chat_with_tools_falls_back_to_next_key_after_http_429` 与 `heartbeat_provider_429_quota_error_is_classified` 回归。
 - 本轮 12:10 CST 已修复 P1 `Codex version probe 资源耗尽导致直聊和定时任务批量失败并外露原始 runner 错误`：11:06 CST 新增活跃证据显示最近四小时至少 3 条 Feishu 直聊、15 条普通 scheduler、1 条 Web scheduler、1 条 Discord scheduler 命中 `failed to probe codex version via codex: Resource temporarily unavailable (os error 35)`，多数 Feishu 路径把原始 runner 错误作为用户可见内容或 `response_preview` 送达；共享错误净化层现新增 runner resource-unavailable 分类，直聊与 scheduler 均映射为“当前本机执行环境暂时不可用，请稍后再试。”；新增 `user_visible_error_message_maps_codex_probe_resource_errors` 与 `user_visible_error_message_or_none_keeps_codex_probe_resource_errors_sanitized` 回归。关联 Issue [#43](https://github.com/B-M-Capital-Research/honeclaw/issues/43)。
 - 本轮 19:02 CST 未发现新的独立缺陷或活跃 P1 变化。最近四小时共有 21 个 user turn 与 21 个 assistant final，Feishu / Web 直聊均有 assistant final 收口；assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、原始飞书标签、compact marker、`reasoning_content` 或 `Param Incorrect`；最近四小时无孤立 user turn、无非文档代码提交。当前活跃待修复为 0，本轮未创建 GitHub issue。
 - 本轮 19:02 CST 继续观察到当前机器旧运行态 heartbeat `mimo-v2.5-pro` 批量失败和 scheduler started-row 残留：15:30-19:00 CST 新增 81 条 heartbeat `reasoning_content must be passed back` / `Param Incorrect` 失败，覆盖 11 个 job；同窗新增 88 条 `running + pending` started 残留，全部为 heartbeat。当前机器没有可确认已重启到 2026-05-15 04:05 CST 当前 HEAD 修复后的 live 进程；仅追加到 `scheduler_heartbeat_mimo_param_incorrect_batch_failures.md` 与 `feishu_scheduler_running_rows_never_finalized.md`，不从 `Fixed` 回退。
@@ -179,7 +180,6 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Heartbeat 使用 `mimo-v2.5-pro` 时批量触发 `HTTP 429 quota exhausted` 并漏发 | P1 | New | 2026-05-20 19:04 最近四小时新增 100 条 heartbeat `execution_failed + skipped_error + delivered=0`，覆盖 15 个 job；直聊同窗正常收口，故障集中在 heartbeat provider quota / rate limit 路径。关联 Issue [#44](https://github.com/B-M-Capital-Research/honeclaw/issues/44) | [scheduler_heartbeat_mimo_429_quota_exhausted.md](./scheduler_heartbeat_mimo_429_quota_exhausted.md) |
 
 ## Later / 待复现
 
@@ -199,6 +199,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Heartbeat `mimo-v2.5-pro` 429 quota exhaustion drops alerts | P1 | Fixed | 2026-05-20 20:06 OpenAI-compatible provider 支持非 streaming 多 key fallback，非 OpenRouter profile 使用完整 `llm.providers.<name>.api_key/api_keys` pool；heartbeat `HTTP 429` / rate-limit / resource-exhausted 统一分类为 `provider_quota_exhausted`。关联 Issue [#44](https://github.com/B-M-Capital-Research/honeclaw/issues/44) | [scheduler_heartbeat_mimo_429_quota_exhausted.md](./scheduler_heartbeat_mimo_429_quota_exhausted.md) |
 | Codex version probe 资源耗尽导致直聊和定时任务批量失败并外露原始 runner 错误 | P1 | Fixed | 2026-05-20 12:10 共享错误净化层新增 runner resource-unavailable 分类；Codex / codex-acp 版本探针或 spawn 阶段的本机资源错误不再原样外发，直聊与 scheduler 均映射为“当前本机执行环境暂时不可用，请稍后再试。”；关联 Issue [#43](https://github.com/B-M-Capital-Research/honeclaw/issues/43) | [codex_version_probe_resource_unavailable_raw_failure.md](./codex_version_probe_resource_unavailable_raw_failure.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixed | 2026-05-19 08:06 `portfolio view` 的成功状态读取也能恢复为用户可见确认；覆盖 `result.portfolio.holdings/watchlist`、按工具参数 ticker 过滤相关持仓，并保留股数、成本价与备注摘要。关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29) | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Event-engine still uses deprecated `x-ai/grok-4.1-fast` and loses LLM-backed enrichment | P2 | Fixed | 2026-05-19 11:03 继续仅见当前机器旧运行态失败：08:03-10:28 CST SEC enrichment、event dedupe、mainline distill / style distill 仍请求 `x-ai/grok-4.1-fast` 并收到 OpenRouter `HTTP 404`；当前 HEAD 已切到 `x-ai/grok-4.3`，不回退状态。无关联 GitHub Issue | [event_engine_grok41_deprecated_404.md](./event_engine_grok41_deprecated_404.md) |
