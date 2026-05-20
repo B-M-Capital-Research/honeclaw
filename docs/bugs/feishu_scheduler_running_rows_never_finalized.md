@@ -42,6 +42,12 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-21 03:02 CST` 复核，当前机器运行态在最近四小时仍继续新增 started-row 残留；但 2026-05-15 04:05 CST 已按当前 HEAD 回归验证确认 `delivery_key` 终态覆盖、最近 started fallback 与启动 stale recovery 仍生效，本轮仅补充旧/未确认部署运行态证据，不把状态从 `Fixed` 回退为 `New`：
+    - 最近四小时窗口 `2026-05-20T23:02:00+08:00` 到 `2026-05-21T03:02:00+08:00` 内共有 `100` 条 `execution_status=running + message_send_status=pending` started 残留。
+    - 其中 `96` 条为 heartbeat started 行，覆盖 23:30、00:00、00:30、01:00、01:30、02:00、02:30、03:00 等窗口；另有 `4` 条普通 scheduler started 行，覆盖 00:00 与 03:00 窗口。
+    - 同窗已有 `120` 条 heartbeat `execution_failed + skipped_error + delivered=0` 终态、`3` 条普通 scheduler `noop + skipped_noop` 终态与 `1` 条普通 scheduler `completed + sent + delivered=1` 终态。
+    - 用户可见直聊主链路没有因此被阻断，最近四小时 Feishu / Web 直聊均有 assistant final 收口；唯一最新停在 user 的 Feishu direct 会话对应 3 条每日动态 scheduler 触发，终态已分别落为 `noop + skipped_noop`。受损点仍是调度台账一致性和巡检噪音，严重等级仍不高于 `P3`。
+    - 当前机器没有可确认已重启到 2026-05-15 04:05 CST 当前 HEAD 修复后的 live 进程；后续只有在本地可复现测试或当前代码路径证明终态仍会另起行时再改回 `New`。
   - `2026-05-20 23:02 CST` 复核，当前机器运行态在最近四小时仍继续新增 started-row 残留；但 2026-05-15 04:05 CST 已按当前 HEAD 回归验证确认 `delivery_key` 终态覆盖、最近 started fallback 与启动 stale recovery 仍生效，本轮仅补充旧/非生产运行态证据，不把状态从 `Fixed` 回退为 `New`：
     - 最近四小时窗口 `2026-05-20T19:00:00+08:00` 到 `2026-05-20T23:02:00+08:00` 内共有 `140` 条 `execution_status=running + message_send_status=pending` started 残留。
     - 其中 `108` 条为 heartbeat started 行，覆盖 19:00、19:30、20:00、20:30、21:00、21:30、22:00、22:30、23:00 等窗口；另有 `32` 条普通 scheduler started 行，覆盖 20:00、20:30、20:45、21:00、21:30、21:35、21:45、23:00 等窗口。

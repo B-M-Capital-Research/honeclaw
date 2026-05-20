@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-20 23:02 CST
+最后更新：2026-05-21 03:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -21,6 +21,9 @@
 - Later / 待复现：9
 - 已修复 / 已关闭：108
 - 历史分析 / 部分止血：5
+- 本轮 03:02 CST 未发现新的独立缺陷或活跃 P1 状态变化。最近四小时按消息时间共有 13 个 user turn 与 9 个 assistant final；Feishu / Web 直聊均有 assistant final 收口，唯一最新停在 user 的 Feishu direct 会话是 3 条每日动态 scheduler 触发，`cron_job_runs` 已分别落成 `noop + skipped_noop`，符合“无重要更新可跳过”分支。assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、原始飞书标签、compact marker、`reasoning_content`、`Param Incorrect`、`Resource temporarily unavailable` 或 provider 原始 `quota exhausted`；最近四小时无非文档代码提交。当前活跃待修复仍为 0，本轮不创建 GitHub issue。
+- 本轮 03:02 CST 继续观察到 `Heartbeat mimo quota exhaustion drops alerts` 的运行态失败记录：23:02-03:02 CST 新增 120 条 heartbeat `execution_failed + skipped_error + delivered=0`，错误集中为 `HTTP 429` / `quota exhausted`，覆盖同一批 15 个 heartbeat job；`failure_kind` 仍有 96 条为空、24 条为 `provider_http_error`。当前 `main` 已在 `d4d45e2` 修复 OpenAI-compatible 多 key fallback 与 heartbeat 429 分类，本轮仅补充旧/未确认部署运行态证据，不把该缺陷从 `Fixed` 回退。
+- 本轮 03:02 CST 继续观察到 scheduler started-row 残留：23:02-03:02 CST 新增 100 条 `running + pending` started 残留，其中 96 条为 heartbeat、4 条为普通 scheduler；同窗另有 120 条 heartbeat 失败终态、3 条普通 scheduler `noop + skipped_noop` 与 1 条普通 scheduler `completed + sent + delivered=1` 终态。当前 HEAD 已有 started-row 覆盖与回归，本轮仅追加到 `feishu_scheduler_running_rows_never_finalized.md`，不从 `Fixed` 回退。
 - 本轮 23:02 CST 未发现新的独立缺陷或活跃 P1 状态变化。最近四小时共有 52 个 user turn 与 52 个 assistant final，Feishu / Web 直聊均有 assistant final 收口；assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、原始飞书标签、compact marker、`reasoning_content`、`Param Incorrect` 或 provider 原始 `quota exhausted`；最近四小时无孤立 user turn、无非文档代码提交。当前活跃待修复仍为 0，本轮不创建 GitHub issue。
 - 本轮 23:02 CST 继续观察到 `Heartbeat mimo quota exhaustion drops alerts` 的运行态失败记录：19:00-23:00 CST 新增 123 条 heartbeat `execution_failed + skipped_error + delivered=0`，错误集中为 `HTTP 429` / `quota exhausted`，覆盖同一批 15 个 heartbeat job；但远端最新 `main` 已在 20:06 CST 修复 OpenAI-compatible 多 key fallback 与 heartbeat 429 分类，本轮仅补充运行态证据，不把该缺陷从 `Fixed` 回退。
 - 本轮 23:02 CST 继续观察到 scheduler started-row 残留：19:00-23:00 CST 新增 140 条 `running + pending` started 残留，其中 108 条为 heartbeat、32 条为普通 scheduler；同窗另有 123 条 heartbeat 失败终态与 34 条普通 scheduler `completed + sent + delivered=1` 终态。当前 HEAD 已有 started-row 覆盖与回归，本轮仅追加到 `feishu_scheduler_running_rows_never_finalized.md`，不从 `Fixed` 回退。
