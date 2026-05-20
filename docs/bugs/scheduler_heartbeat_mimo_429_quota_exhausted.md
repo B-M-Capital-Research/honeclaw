@@ -11,6 +11,29 @@
 - GitHub Issue [#44](https://github.com/B-M-Capital-Research/honeclaw/issues/44) 与 bug 台账记录：最近四小时 heartbeat 任务批量命中 `mimo-v2.5-pro` 上游 `HTTP 429` / `quota exhausted`，多条监控检查落成 `execution_failed + skipped_error + delivered=0`。
 - 受影响范围覆盖价格破位、持仓财报、重大新闻、板块关键事件、观察池等多个 heartbeat job；同窗直聊会话仍能正常收口，故障集中在 heartbeat provider quota / rate-limit 路径。
 - 本轮修复不依赖当前机器生产日志、线上健康检查或真实投递状态；判断与验证基于 issue 摘要、现有 heartbeat 代码、配置解析和本地回归。
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-20 23:02 CST` 复核，最近四小时窗口 `2026-05-20T19:00:00+08:00` 到 `2026-05-20T23:02:00+08:00` 内继续新增 `123` 条 heartbeat `execution_failed + skipped_error + delivered=0`；远端最新 `main` 已在 20:06 CST 修复代码路径，本轮将该证据作为当前机器运行态 / 部署复核线索，不把状态从 `Fixed` 回退为 `New`。
+  - 错误仍集中为 `HTTP 429` / `quota exhausted`，覆盖同一批 `15` 条 heartbeat job；其中 `光模块板块关键事件心跳提醒`、`存储板块关键事件心跳提醒`、`持仓财报与重大新闻心跳提醒` 各新增 `9` 条 `upstream HTTP 429: quota exhausted`，其余 `12` 条 job 各新增 `8` 条 `limitation: quota exhausted`。
+  - 同窗还有 `108` 条 heartbeat `running + pending` started 残留，以及 `32` 条普通 scheduler `running + pending` started 残留；普通 scheduler 同窗另有 `34` 条 `completed + sent + delivered=1` 终态，说明直聊 / 普通定时投递主链路没有被同一问题整体阻断。
+  - 会话侧按消息时间统计 `52` 个 user turn 与 `52` 个 assistant final，未发现孤立 user turn；assistant final 污染扫描未命中空回复、通用失败、绝对路径、工具轨迹、原始 ACP `session/update`、飞书标签、compact marker、`reasoning_content`、`Param Incorrect` 或 provider 原始 `quota exhausted`。
+  - 本轮是同一根因 / 同一影响范围的运行态复核，不新建重复缺陷；已有 GitHub Issue [#44](https://github.com/B-M-Capital-Research/honeclaw/issues/44)，不重复创建。
+  - 最近四小时窗口 `2026-05-20T15:02:00+08:00` 到 `2026-05-20T19:04:00+08:00` 内，heartbeat 任务新增 `100` 条 `execution_failed + skipped_error + delivered=0`。
+  - 错误统一为 `mimo-v2.5-pro` 上游 `HTTP 429` / `quota exhausted`，其中 `21` 条已有 `detail_json.failure_kind=provider_http_error`，另有 `79` 条旧形态未写入 failure_kind。
+  - 受影响 job 覆盖 `15` 条 heartbeat：`光模块板块关键事件心跳提醒`、`存储板块关键事件心跳提醒`、`持仓财报与重大新闻心跳提醒`、`Cerebras IPO与业务进展心跳监控`、`DRAM 心跳监控`、`Monitor_Watchlist_11`、`RKLB异动监控`、`TEM大事件心跳监控`、`TEM破位预警`、`TSLA 正负触发条件心跳监控`、`伦敦金跌破4500提醒`、`全天原油价格3小时播报`、`小米30港元破位预警`、`持仓重大事件心跳检测`、`heartbeat_绿田机械基本面跟踪`。
+  - 同窗还有 `93` 条 heartbeat `running + pending` started 残留，另有 `5` 条 heartbeat 正常 `noop + skipped_noop`。
+- `data/runtime/logs/web.log.2026-05-20`
+  - `19:00:33-19:03:57 CST` 连续出现 `Rate limited: Too many requests` 与 `Rate limited: quota exhausted`。
+  - 同窗有 `mimo-v2.5-pro` transport retry 记录，随后 heartbeat 台账继续落成 `skipped_error`。
+- `data/runtime/logs/hone-feishu.runtime-recovery.log`
+  - `2026-05-20T11:00:16Z` 起密集记录上游 rate limit / quota exhausted。
+- 会话质量对照：
+  - 最近四小时按消息时间统计 `49` 个 user turn 与 `49` 个 assistant final，未发现孤立 user turn。
+  - assistant final 污染扫描未命中空回复、通用失败、绝对路径、工具轨迹、原始 ACP `session/update`、飞书标签、compact marker、`reasoning_content`、`Param Incorrect` 或 `Resource temporarily unavailable`。
+  - 说明本轮新故障集中在 heartbeat provider quota 链路，而不是直聊回复结构污染或全局会话收口失败。
+- 去重检查：
+  - `scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md` 覆盖的是 OpenRouter `HTTP 402` / token budget / credits 不足，当前状态为 `Fixed`。
+  - `scheduler_heartbeat_mimo_param_incorrect_batch_failures.md` 覆盖的是同一 `mimo-v2.5-pro` 的 `HTTP 400 Param Incorrect` / `reasoning_content` transcript 兼容问题，当前状态为 `Fixed`。
+  - 本单是 `mimo-v2.5-pro` 在当前真实窗口里触发 `HTTP 429 quota exhausted`，状态码、直接原因和最新证据均不同，因此新建独立缺陷。
 
 ## 端到端链路
 
