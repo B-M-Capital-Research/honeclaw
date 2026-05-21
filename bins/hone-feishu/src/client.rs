@@ -11,6 +11,7 @@ const FEISHU_REQUEST_MAX_ATTEMPTS: usize = 3;
 const FEISHU_RETRY_DELAYS: [Duration; FEISHU_REQUEST_MAX_ATTEMPTS - 1] =
     [Duration::from_millis(500), Duration::from_millis(1500)];
 const FEISHU_INVALID_TOKEN_REFRESH_ATTEMPTS: usize = 2;
+const FEISHU_CONTACT_LOOKUP_MAX_ATTEMPTS: usize = FEISHU_REQUEST_MAX_ATTEMPTS;
 const FEISHU_ERROR_BODY_MAX_CHARS: usize = 500;
 
 #[derive(Clone)]
@@ -459,6 +460,19 @@ impl FeishuApiClient {
                     self.clear_token_cache().await;
                     continue;
                 }
+                if should_retry_feishu_contact_lookup_api_error(batch_resp.code, &batch_resp.msg)
+                    && should_retry_attempt(attempt)
+                {
+                    tracing::warn!(
+                        "Feishu resolve email api error {}: {}; retrying attempt {}/{}",
+                        batch_resp.code,
+                        batch_resp.msg,
+                        attempt + 1,
+                        FEISHU_CONTACT_LOOKUP_MAX_ATTEMPTS
+                    );
+                    sleep(feishu_retry_delay(attempt)).await;
+                    continue;
+                }
                 return Err(format!(
                     "Feishu resolve email api error {}: {}",
                     batch_resp.code, batch_resp.msg
@@ -476,7 +490,7 @@ impl FeishuApiClient {
             return Err(format!("No user found for email {}", email));
         }
 
-        Err("Feishu resolve email invalid token refresh exhausted".to_string())
+        Err("Feishu resolve email retry attempts exhausted".to_string())
     }
 
     pub(crate) async fn resolve_mobile(&self, mobile: &str) -> Result<FeishuResolvedUser, String> {
@@ -494,7 +508,7 @@ impl FeishuApiClient {
             data: Option<serde_json::Value>,
         }
 
-        for attempt in 1..=FEISHU_INVALID_TOKEN_REFRESH_ATTEMPTS {
+        for attempt in 1..=FEISHU_CONTACT_LOOKUP_MAX_ATTEMPTS {
             let token = self.get_token().await?;
             let resp = send_feishu_request_with_retry(
                 self.http.post(url).bearer_auth(&token).json(&body),
@@ -530,6 +544,19 @@ impl FeishuApiClient {
                     self.clear_token_cache().await;
                     continue;
                 }
+                if should_retry_feishu_contact_lookup_api_error(batch_resp.code, &batch_resp.msg)
+                    && should_retry_attempt(attempt)
+                {
+                    tracing::warn!(
+                        "Feishu resolve mobile api error {}: {}; retrying attempt {}/{}",
+                        batch_resp.code,
+                        batch_resp.msg,
+                        attempt + 1,
+                        FEISHU_CONTACT_LOOKUP_MAX_ATTEMPTS
+                    );
+                    sleep(feishu_retry_delay(attempt)).await;
+                    continue;
+                }
                 return Err(format!(
                     "Feishu resolve mobile api error {}: {}",
                     batch_resp.code, batch_resp.msg
@@ -547,7 +574,7 @@ impl FeishuApiClient {
             return Err(format!("No user found for mobile {}", mobile));
         }
 
-        Err("Feishu resolve mobile invalid token refresh exhausted".to_string())
+        Err("Feishu resolve mobile retry attempts exhausted".to_string())
     }
 
     pub(crate) async fn download_resource(
@@ -841,6 +868,10 @@ fn contains_invalid_access_token_text(value: &str) -> bool {
         || normalized.contains("tenant_access_token invalid")
 }
 
+fn should_retry_feishu_contact_lookup_api_error(code: i64, msg: &str) -> bool {
+    code == 1663 || msg.trim().eq_ignore_ascii_case("internal error")
+}
+
 fn format_feishu_http_error(action: &str, status: StatusCode, body: impl AsRef<str>) -> String {
     let detail = extract_feishu_error_detail(body.as_ref());
     if detail.is_empty() {
@@ -921,8 +952,8 @@ mod tests {
     use super::{
         FEISHU_ERROR_BODY_MAX_CHARS, feishu_retry_delay, first_batch_get_open_id,
         format_feishu_http_error, is_feishu_invalid_access_token_error,
-        should_refresh_feishu_token_for_http_error, should_retry_feishu_status,
-        should_retry_invalid_token_refresh,
+        should_refresh_feishu_token_for_http_error, should_retry_feishu_contact_lookup_api_error,
+        should_retry_feishu_status, should_retry_invalid_token_refresh,
     };
     use reqwest::StatusCode;
     use serde_json::json;
@@ -1003,6 +1034,34 @@ mod tests {
             99992361,
             "open_id cross app"
         ));
+    }
+
+    #[test]
+    fn contact_lookup_internal_errors_are_retryable() {
+        assert!(should_retry_feishu_contact_lookup_api_error(
+            1663,
+            "internal error"
+        ));
+        assert!(should_retry_feishu_contact_lookup_api_error(
+            0,
+            "Internal Error"
+        ));
+        assert!(!should_retry_feishu_contact_lookup_api_error(
+            40001,
+            "invalid parameter"
+        ));
+        assert!(!should_retry_feishu_contact_lookup_api_error(
+            99992361,
+            "open_id cross app"
+        ));
+    }
+
+    #[test]
+    fn contact_lookup_retry_budget_matches_request_retry_budget() {
+        assert_eq!(
+            super::FEISHU_CONTACT_LOOKUP_MAX_ATTEMPTS,
+            super::FEISHU_REQUEST_MAX_ATTEMPTS
+        );
     }
 
     #[test]

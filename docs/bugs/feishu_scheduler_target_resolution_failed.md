@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 22:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#32](https://github.com/B-M-Capital-Research/honeclaw/issues/32)
 - **证据来源**:
   - 2026-05-21 23:03 CST 复核重新打开：
@@ -171,8 +171,24 @@
 - 本轮复核确认 2026-05-05 已完成代码修复与回归说明，但文件头与 `docs/bugs/README.md` 仍停留在 `New`。
 - 已将本文件与导航表同步为 `Fixed`；关联 GitHub Issue [#32](https://github.com/B-M-Capital-Research/honeclaw/issues/32) 仍建议人工复测后再关闭。
 
+## 状态同步（2026-05-22 bug-2）
+
+- 本轮继续收口 contact lookup 的临时上游错误分类：`bins/hone-feishu/src/client.rs` 现在会把 `resolve_email` / `resolve_mobile` 返回的 `code=1663` 或消息为 `internal error` 的业务错误视为短暂 Feishu 内部错误，并按既有退避节奏做最多 3 次短重试，而不是首次 `200 + code!=0` 就直接落成 `target_resolution_failed`。
+- 该修复只作用于 contact lookup 目标解析，不会吞掉 `invalid parameter`、`open_id cross app`、`No user found` 等确定性配置/业务错误；token 失效仍沿用现有单次 cache refresh。
+- 新增回归：
+  - `contact_lookup_internal_errors_are_retryable`
+  - `contact_lookup_retry_budget_matches_request_retry_budget`
+- 本轮验证：
+  - `cargo test -p hone-feishu contact_lookup_internal_errors_are_retryable -- --nocapture`
+  - `cargo test -p hone-feishu contact_lookup_retry_budget_matches_request_retry_budget -- --nocapture`
+  - `cargo test -p hone-feishu invalid_access_token_errors_trigger_one_cache_refresh -- --nocapture`
+  - `cargo test -p hone-feishu retry_status_only_matches_transient_feishu_failures -- --nocapture`
+  - `cargo test -p hone-feishu looks_like_mobile_does_not_treat_open_id_as_mobile -- --nocapture`
+  - `cargo check -p hone-feishu`
+- 当前仍缺 live 进程无重启条件下的运行态证据，因此状态更新为 `Fixed`，不直接升为 `Closed`。
+
 ## 下一步建议
 
-- 优先检查 Feishu `resolve_mobile` / contact lookup 的 API 错误分类：`1663 internal error` 是否属于应短重试的上游临时错误。
-- 如果 `1663` 可恢复，应纳入 Feishu contact lookup 公共出站重试，并补一条 scheduler target resolution 回归。
-- 如果 `1663` 不可恢复，应在 scheduler 失败台账和用户可见补偿链路中更明确地区分“内容已生成但投递失败”，避免后续 assistant 只说“任务已触发”而掩盖 `delivered=0`。
+- 在不重启当前服务的前提下，后续巡检可优先关注 `cron_job_runs.message_send_status=target_resolution_failed` 是否还出现 `Feishu resolve mobile api error 1663: internal error`。
+- 若 live 运行态在后续自然重启/部署后不再出现同类 1663 样本，可把状态从 `Fixed` 更新为 `Closed`。
+- 如果仍复现但错误变成 `No user found`、`Invalid access token` 或 `open_id cross app`，应按现有独立缺陷重新归档，不要和本单混写。
