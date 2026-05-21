@@ -65,7 +65,6 @@ function ArticleBody(props: { post: PublicBlogPost }) {
               <span>{props.post.readTime}</span>
             </div>
             <h1>{props.post.title}</h1>
-            <div class="public-blog-alt-title">{props.post.alternateTitle}</div>
             <p>{props.post.excerpt}</p>
           </header>
 
