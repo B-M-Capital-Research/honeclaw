@@ -4,6 +4,7 @@ import {
   __PUBLIC_BLOG_POSTS__,
   findPublicBlogPost,
   latestPublicBlogPost,
+  alternatePublicBlogPost,
   publicBlogPosts,
 } from "./public-blog"
 
@@ -32,5 +33,13 @@ describe("public blog content", () => {
 
   it("returns the latest post from the active list", () => {
     expect(latestPublicBlogPost("zh")).toBe(publicBlogPosts("zh")[0])
+  })
+
+  it("finds the alternate locale post for language switching", () => {
+    const zh = findPublicBlogPost("why-hone-uses-rust", "zh")!
+    const en = alternatePublicBlogPost(zh, "zh")
+
+    expect(en.title).toContain("Why Hone uses Rust")
+    expect(alternatePublicBlogPost(en, "en").title).toContain("Hone 为什么")
   })
 })

@@ -36,6 +36,7 @@ Added a static bilingual Blog module to the public Hone site, including `/blog`,
 
 - Only the first article image is localized and stored locally. Other images from the source article were intentionally not imported because only the first bilingual image pair was required.
 - Future Blog posts should be added through `packages/app/src/lib/public-blog.ts` and colocated Markdown files, keeping slug parity between `zh` and `en`.
+- 2026-05-21 follow-up: article pages now show both Chinese and English titles, include an alternate-language card, and expose article-specific OG/Twitter metadata. Because social crawlers may not execute the SPA, `/blog/why-hone-uses-rust` metadata is also injected in `packages/app/public/_worker.js`; platform caches may still require rescraping after deploy.
 
 ## Next Entry Point
 

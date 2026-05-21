@@ -13,7 +13,7 @@ Why the name Hone:
 </p>
 
 <p align="center">
-  <strong>English</strong> | <a href="./README_ZH.md">简体中文</a> | <strong>Website:</strong> <a href="https://hone-claw.com" target="_blank">hone-claw.com</a> | <strong>💬 Community:</strong> <a href="https://discord.gg/TyDNfYXDGF" target="_blank">Discord</a>
+  <strong>English</strong> | <a href="./README_ZH.md">简体中文</a> | <strong>Website:</strong> <a href="https://hone-claw.com" target="_blank">hone-claw.com</a> | <strong>Blog:</strong> <a href="https://hone-claw.com/blog" target="_blank">hone-claw.com/blog</a> | <strong>💬 Community:</strong> <a href="https://discord.gg/TyDNfYXDGF" target="_blank">Discord</a>
 </p>
 
 ---
@@ -84,6 +84,8 @@ The public product website is now live at **[hone-claw.com](https://hone-claw.co
 - **Backend**: Rust
 - **Client** (desktop): Rust (Tauri)
 - **Frontend**: SolidJS + Tailwind v4
+
+Why Rust: see the first Hone Blog post, [Why Hone uses Rust, and why more teams should start using Rust](https://hone-claw.com/blog/why-hone-uses-rust).
 
 ### Supported channels
 

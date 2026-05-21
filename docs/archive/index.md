@@ -16,6 +16,18 @@ Last updated: 2026-05-21
 - Current conclusion: hone-claw.com public surface now has a bilingual static Blog index and Rust article route, with navigation/homepage entry points and local Chinese/English article images copied from the provided source links.
 - Next entry point: `packages/app/src/lib/public-blog.ts`, `packages/app/src/pages/public-blog.tsx`, and `packages/app/src/pages/public-blog-post.tsx`
 
+### Public Blog Share Metadata
+
+- Status: done
+- Date: 2026-05-21
+- Plan: `docs/archive/plans/public-blog-share-metadata.md`
+- Handoff: `docs/handoffs/2026-05-21-public-blog-module.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `bun --filter @hone-financial/app test`, `bun --filter @hone-financial/app typecheck`, `HONE_APP_OUT_DIR=dist-public HONE_APP_SURFACE=public bun --filter @hone-financial/app build`
+- Current conclusion: Blog article pages now show both Chinese and English titles, include a card to switch language versions, inject article-specific metadata at runtime, and use Cloudflare Worker HTML metadata injection for crawlers that do not execute the SPA. README top navigation and Rust-stack sections now link to the Blog with matching language labels.
+- Next entry point: `packages/app/public/_worker.js`, `packages/app/src/pages/public-blog-post.tsx`, and `README_ZH.md`
+
 ## 2026-05-20
 
 ### Heartbeat Mimo 429 Key-Pool Fallback

@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <strong>简体中文</strong> | <a href="./README.md">English</a> | <strong>官网：</strong><a href="https://hone-claw.com" target="_blank">hone-claw.com</a> | <strong>💬 社群：</strong> <a href="https://discord.gg/TyDNfYXDGF" target="_blank">Discord</a>
+  <strong>简体中文</strong> | <a href="./README.md">English</a> | <strong>官网：</strong><a href="https://hone-claw.com" target="_blank">hone-claw.com</a> | <strong>博客：</strong><a href="https://hone-claw.com/blog" target="_blank">hone-claw.com/blog</a> | <strong>💬 社群：</strong> <a href="https://discord.gg/TyDNfYXDGF" target="_blank">Discord</a>
 </p>
 
 ---
@@ -80,6 +80,8 @@ Honeclaw（或称 Hone）是一个使用 **Rust** 编写的开源个人投研辅
 - **后端**：Rust
 - **客户端**（桌面端）：Rust（Tauri）
 - **前端**：TypeScript（SolidJS + Tailwind v4）
+
+为什么使用 Rust：详见第一篇 Hone Blog，[Hone 为什么采用 Rust，以及推荐大家都开始使用 Rust](https://hone-claw.com/blog/why-hone-uses-rust)。
 
 ### 支持渠道
 
