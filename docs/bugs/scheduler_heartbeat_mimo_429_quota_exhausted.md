@@ -12,6 +12,10 @@
 - 受影响范围覆盖价格破位、持仓财报、重大新闻、板块关键事件、观察池等多个 heartbeat job；同窗直聊会话仍能正常收口，故障集中在 heartbeat provider quota / rate-limit 路径。
 - 本轮修复不依赖当前机器生产日志、线上健康检查或真实投递状态；判断与验证基于 issue 摘要、现有 heartbeat 代码、配置解析和本地回归。
 - `data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-21 23:03 CST` 复核，最近四小时窗口 `2026-05-21T19:03:00+08:00` 到 `2026-05-21T23:03:00+08:00` 内继续新增 `120` 条 heartbeat `execution_failed + skipped_error + delivered=0`，其中 Feishu `96` 条、Web `24` 条。
+  - 错误仍集中为 `HTTP 429` / `quota exhausted`：Feishu heartbeat 多为 `LLM 错误: limitation: quota exhausted (code: 429)`，Web heartbeat 多为 `LLM 错误: upstream HTTP 429: quota exhausted (code: 429)`。
+  - 同窗还有 `96` 条 Feishu heartbeat `running + pending` started 残留；普通 scheduler 同窗有 `31` 条 Feishu 和 `3` 条 Web `completed + sent + delivered=1`，另有 1 条 Feishu 普通 scheduler target resolution 失败已归入 `feishu_scheduler_target_resolution_failed.md`。
+  - 当前 `main` 已在 `d4d45e2` 修复 OpenAI-compatible 多 key fallback 与 heartbeat 429 分类，本轮继续按旧/未确认部署运行态证据处理，不把状态从 `Fixed` 回退为 `New`，也不重复创建 Issue [#44](https://github.com/B-M-Capital-Research/honeclaw/issues/44)。
   - `2026-05-21 19:03 CST` 复核，最近四小时窗口 `2026-05-21T15:14:06+08:00` 到 `2026-05-21T19:00:04+08:00` 内继续新增 `120` 条 heartbeat `execution_failed + skipped_error + delivered=0`；当前 `main` 已在 `d4d45e2` 修复 OpenAI-compatible 多 key fallback 与 heartbeat 429 分类，本轮将该证据作为当前机器旧/未确认部署运行态线索，不把状态从 `Fixed` 回退为 `New`。
   - 错误仍集中为 `HTTP 429` / `quota exhausted`，覆盖 `15` 条 heartbeat job；其中 `96` 条为 `LLM 错误: limitation: quota exhausted (code: 429)`，`24` 条为 `LLM 错误: upstream HTTP 429: quota exhausted (code: 429)`，本轮 sqlite `detail_json` 中的 `failure_kind` 仍有 `96` 条为空、`24` 条为 `provider_http_error`，符合旧运行态或未重启到当前 HEAD 的表现。
   - 同窗还有 `96` 条 heartbeat `running + pending` started 残留，没有普通 scheduler 运行记录；说明本轮故障仍集中在 heartbeat provider quota 链路。

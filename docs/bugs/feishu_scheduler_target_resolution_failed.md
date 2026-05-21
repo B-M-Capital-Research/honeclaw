@@ -2,10 +2,24 @@
 
 - **发现时间**: 2026-04-15 22:02 CST
 - **Bug Type**: System Error
-- **严重等级**: P1
-- **状态**: Fixed
+- **严重等级**: P2
+- **状态**: New
 - **GitHub Issue**: [#32](https://github.com/B-M-Capital-Research/honeclaw/issues/32)
 - **证据来源**:
+  - 2026-05-21 23:03 CST 复核重新打开：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=29415`
+    - `job_name=美股盘前科技与宏观简报`
+    - `executed_at=2026-05-21T20:32:30.455771+08:00`
+    - `execution_status=completed`
+    - `message_send_status=target_resolution_failed`
+    - `delivered=0`
+    - `error_message=集成错误: Feishu resolve mobile api error 1663: internal error`
+    - `response_preview` 已生成完整盘前简报开头，说明模型生成阶段完成，但投递前卡在 Feishu mobile target resolution。
+    - `data/runtime/logs/web.log.2026-05-21:20370` 同步记录 `[Feishu] 定时任务目标解析失败: job=美股盘前科技与宏观简报 target=+8618819016897 err=集成错误: Feishu resolve mobile api error 1663: internal error`。
+    - 同一会话 `2026-05-21T22:05:18+08:00` 用户反馈“今天盘前没发报告”；assistant 随后确认该任务 20:30 触发过，并判断“更像是触发后消息没有正常送达”。
+    - 全库当前仅发现 1 条 `Feishu resolve mobile api error 1663` 样本；22:08 的一次性测试推送 `run_id=29523` 已正常送达，说明这不是 Feishu 出站全局瘫痪。
+    - 本轮按单任务真实漏发定级为 `P2 / New`，不按历史批量 `P1` 处理；已有历史 Issue [#32](https://github.com/B-M-Capital-Research/honeclaw/issues/32)，本轮没有新增活跃 P1，不创建新 GitHub issue。
   - 最近一小时真实任务台账：`data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=1795`，`job_id=j_f02dfce5`，`job_name=OWALERT_PreMarket`，`executed_at=2026-04-15T21:04:28.730839+08:00`
     - `execution_status=execution_failed`，`message_send_status=target_resolution_failed`，`delivered=0`
@@ -58,11 +72,14 @@
 ## 用户影响
 
 - 这是功能性缺陷，不是单纯回答质量问题。用户配置的定时任务无法稳定送达，自动提醒链路实际失效。
-- 之所以定级为 `P1`，是因为问题影响的是用户主依赖的定时推送能力，而且同一用户的多个任务在当前小时仍持续失败。
+- 2026-05-21 本轮重新打开时定级为 `P2`：证据显示一个用户的一条 Feishu 盘前 scheduler 已生成但未送达，且用户明确感知为“今天盘前没发报告”；但同窗 Feishu 直聊和一次性测试推送正常收口，暂未证明同一根因批量影响多个用户或多个任务，因此不定为 P1。
+- 历史上该链路曾因同一 target resolution 阶段批量失败定级为 `P1`；若后续再次出现多任务 / 多用户连续 `target_resolution_failed`，应重新上调严重等级并复用 Issue [#32](https://github.com/B-M-Capital-Research/honeclaw/issues/32)。
 - 该问题不是 `P0`，因为现有校验至少阻止了跨用户误投；损害主要表现为“任务无法送达”，而不是“发错对象”。
 
 ## 根因判断
 
+- 2026-05-21 新样本的直接错误是 Feishu contact mobile API 返回 `1663: internal error`。这不同于历史的 `receive_id does not match actor`、`No user found`、`batch_get_id` 传输失败和 `99991663 Invalid access token`，但端到端失败阶段相同：内容生成完成后，target resolution 阶段未能得到可用 receive_id，最终 `delivered=0`。
+- 当前证据不足以判断是 Feishu 上游瞬时 1663、contact lookup 缺少可重试分类，还是本地 target 解析 / 缓存策略导致的可恢复错误未吸收；需要从代码和 Feishu API 错误语义确认 `1663 internal error` 是否应进入短重试。
 - 任务配置中的 `channel_target` 与绑定 actor 的 canonical 标识长期不一致，当前解析逻辑既可能把手机号解析到另一个用户的 `open_id`，也可能把已经像 `open_id` 的值再次当成 mobile 反查。
 - 发送前新增的一致性校验阻止了旧的跨用户误投，但没有配套的迁移或修复机制来纠正历史错误 target，因此任务会持续卡在拒发状态。
 - `cron_job_runs` 已多次显示相同 direct scheduler 在 `receive_id 不匹配` 与 `No user found` 两种校验错误间切换，说明问题更接近“定时任务目标存量数据或解析策略不一致”，而不是本轮模型输出异常。
@@ -141,7 +158,7 @@
 ## 2026-05-05 bug-2 复核
 
 - GitHub Issue [#32](https://github.com/B-M-Capital-Research/honeclaw/issues/32) 仍以本缺陷文档为入口报告 Feishu direct scheduler `target_resolution_failed`。
-- 本轮代码修复覆盖 `target_resolution_failed` 中由 Feishu `Invalid access token` 触发的可恢复子类：`resolve_email` / `resolve_mobile` 会清 token cache、重取 token 并重试一次；详情见 [`feishu_scheduler_tenant_access_token_request_failure.md`](./feishu_scheduler_tenant_access_token_request_failure.md) 与 Issue [#35](https://github.com/B-M-Capital-Research/honeclaw/issues/35)。
+- 本轮代码修复覆盖 `target_resolution_failed` 中由 Feishu `Invalid access token` 触发的可恢复子类：`resolve_email` / `resolve_mobile` 会清 token cache、重取 token 并重试一次；详情见 [`feishu_scheduler_tenant_access_token_request_failure.md`](./archive/feishu_scheduler_tenant_access_token_request_failure.md) 与 Issue [#35](https://github.com/B-M-Capital-Research/honeclaw/issues/35)。
 - `2026-05-05 19:08 CST` 本轮继续修复 `run_id=15676` 这类 `batch_get_id` 联系人查询传输失败：`resolve_email` / `resolve_mobile` 的 contact lookup 请求已接入 Feishu 公共出站重试封装，传输错误、`429` 与 `5xx` 会按既有 3 次短重试处理；`4xx` 业务错误仍不被吞掉，避免重新引入跨 app / 找不到联系人等配置问题。
 - 状态更新为 `Fixed`：本轮闭环的是 contact lookup 传输失败的通用吸震能力；当前机器不再用生产 Feishu 窗口作为判定依据。
 - 新增/更新回归：
@@ -153,3 +170,9 @@
 
 - 本轮复核确认 2026-05-05 已完成代码修复与回归说明，但文件头与 `docs/bugs/README.md` 仍停留在 `New`。
 - 已将本文件与导航表同步为 `Fixed`；关联 GitHub Issue [#32](https://github.com/B-M-Capital-Research/honeclaw/issues/32) 仍建议人工复测后再关闭。
+
+## 下一步建议
+
+- 优先检查 Feishu `resolve_mobile` / contact lookup 的 API 错误分类：`1663 internal error` 是否属于应短重试的上游临时错误。
+- 如果 `1663` 可恢复，应纳入 Feishu contact lookup 公共出站重试，并补一条 scheduler target resolution 回归。
+- 如果 `1663` 不可恢复，应在 scheduler 失败台账和用户可见补偿链路中更明确地区分“内容已生成但投递失败”，避免后续 assistant 只说“任务已触发”而掩盖 `delivered=0`。

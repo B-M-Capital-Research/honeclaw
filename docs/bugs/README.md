@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-21 20:09 CST
+最后更新：2026-05-21 23:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,10 +17,14 @@
 
 ## 当前概览
 
-- 活跃待修复：0
+- 活跃待修复：1
 - Later / 待复现：9
-- 已修复 / 已关闭：109
+- 已修复 / 已关闭：108
 - 历史分析 / 部分止血：5
+- 本轮 23:03 CST 重新打开 P2 `Feishu 定时任务目标解析链路再次失败，内容已生成但在 contact 阶段被拦截未送达`：20:30 CST `美股盘前科技与宏观简报` 已生成 `response_preview`，但 `cron_job_runs.run_id=29415` 落成 `completed + target_resolution_failed + delivered=0`，错误为 `Feishu resolve mobile api error 1663: internal error`；22:05 CST 用户明确反馈“今天盘前没发报告”，22:08 CST 一次性测试推送正常送达。该缺陷复用历史 target resolution 文档与 Issue [#32](https://github.com/B-M-Capital-Research/honeclaw/issues/32)，但当前仅确认单任务漏发，定级 `P2 / New`，不是活跃 P1，本轮不创建新 GitHub issue。
+- 本轮 23:03 CST 未发现新的独立活跃 P1。最近四小时按消息时间共有 53 个 user turn 与 52 个 assistant final；Feishu / Web 直聊均有 assistant final 收口，普通 scheduler 除上述 1 条 target resolution 失败与 1 条可见超时失败外，其余 31 条 Feishu 与 3 条 Web 普通 scheduler 均 `completed + sent + delivered=1`。assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content` 或 provider 原始 `quota exhausted`；最近四小时无非文档代码提交。
+- 本轮 23:03 CST 继续观察到 `Heartbeat mimo quota exhaustion drops alerts` 的运行态失败记录：19:03-23:03 CST 新增 120 条 heartbeat `execution_failed + skipped_error + delivered=0`，其中 Feishu 96 条、Web 24 条，错误集中为 `HTTP 429` / `quota exhausted`。当前 `main` 已在 `d4d45e2` 修复 OpenAI-compatible 多 key fallback 与 heartbeat 429 分类，本轮仅补充旧/未确认部署运行态证据，不把该缺陷从 `Fixed` 回退。
+- 本轮 23:03 CST 继续观察到 scheduler started-row 残留：19:03-23:03 CST 新增 96 条 Feishu heartbeat `running + pending` started 残留；同窗另有 120 条 heartbeat 失败终态。当前 HEAD 已有 started-row 覆盖与回归，本轮仅追加到 `feishu_scheduler_running_rows_never_finalized.md`，不从 `Fixed` 回退。
 - 本轮 20:09 CST 已修复 P2 `Web 直聊生成 Excel/CSV 只回文件名，手机端无法下载或打开`：Web direct 成功回复落库前会扫描本轮新生成、且 final 正文提到文件名的 sandbox 文件，并追加 `[附件: ...]` 让 public history 返回附件 metadata；前端非图片附件卡片现在指向 `/api/public/file` 下载链接。新增 `web_generated_file_is_attached_when_final_only_mentions_filename` 与 `stale_sandbox_files_are_not_attached_to_new_turns` 回归；无关联 GitHub Issue。
 - 本轮 19:03 CST 未发现新的独立缺陷或活跃 P1 状态变化。最近四小时共有 7 个 user turn 与 8 个 assistant final，Feishu / Web 直聊均有 assistant final 收口；本窗无普通 scheduler 运行记录，heartbeat 另见下方既有缺陷复核。assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content` 或 provider 原始 `quota exhausted`；最近四小时无非文档代码提交。15:02 CST 新增的 Web direct 文件交付 P2 仍为唯一活跃待修复项；16:17 CST 用户改要求“整理成 CSV 文本”后 assistant 已给出可复制 CSV 文本，但这只是用户侧绕过文件下载问题，不代表 artifact 交付链路已修复。
 - 本轮 19:03 CST 继续观察到 `Heartbeat mimo quota exhaustion drops alerts` 的运行态失败记录：15:14-19:00 CST 新增 120 条 heartbeat `execution_failed + skipped_error + delivered=0`，错误集中为 `HTTP 429` / `quota exhausted`，覆盖 15 个 heartbeat job；`failure_kind` 仍有 96 条为空、24 条为 `provider_http_error`。当前 `main` 已在 `d4d45e2` 修复 OpenAI-compatible 多 key fallback 与 heartbeat 429 分类，本轮仅补充旧/未确认部署运行态证据，不把该缺陷从 `Fixed` 回退。
@@ -201,6 +205,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Feishu 定时任务目标解析链路再次失败，内容已生成但在 contact 阶段被拦截未送达 | P2 | New | 2026-05-21 23:03 重新打开：`run_id=29415` 的 `美股盘前科技与宏观简报` 已生成内容，但 Feishu mobile API 返回 `1663 internal error`，最终 `target_resolution_failed + delivered=0`；用户 22:05 反馈“今天盘前没发报告”。复用历史 Issue [#32](https://github.com/B-M-Capital-Research/honeclaw/issues/32)，本轮不是活跃 P1，不新建 issue | [feishu_scheduler_target_resolution_failed.md](./feishu_scheduler_target_resolution_failed.md) |
 
 ## Later / 待复现
 
@@ -254,7 +259,6 @@
 | Feishu 直聊成功长答首段仍混入 `todo` / `current-plan` / 画像维护等内部工作流文本 | P3 | Fixed | 2026-05-06 共享 `sanitize_user_visible_output` 会剥离成功答复首段/首句里的内部工作流前言，覆盖 `todo`、`current-plan`、`动态计划`、`不落盘` 与 `我先...再...` 执行步骤式开头，同时保留 `我先给结论` 等正常用户可见结论；无关联 GitHub Issue | [feishu_direct_final_answer_internal_workflow_leak.md](./archive/feishu_direct_final_answer_internal_workflow_leak.md) |
 | Feishu 每日动态监控在“今日不触发新增重大推送”口径下再次把无新增长文照常发送 | P3 | Fixed | 2026-05-07 `has_skip_delivery_signal` 新增覆盖“今日不触发重大催化或风险证伪推送”“今日不触发新增重大催化或风险证伪推送”“今日不触发新增重大推送”等复发措辞，并移除空白后匹配；`cargo test -p hone-channels skip_delivery_signal_detected -- --nocapture` 通过；无关联 GitHub Issue | [feishu_scheduler_daily_monitor_skip_rule_broken.md](./archive/feishu_scheduler_daily_monitor_skip_rule_broken.md) |
 | Feishu scheduler 发送前统一卡在 `tenant_access_token` 取票失效，生成完成的日报仍整批无法送达 | P1 | Fixed | 2026-05-07 复核 2026-05-05 修复已覆盖 cached invalid-token 恢复：`send_message_with_receive_id_type`、`resolve_email`、`resolve_mobile` 遇到 Feishu invalid access token 会清 token cache 并重试一次；本轮同步修正导航表旧 `New` 状态；关联 Issue [#35](https://github.com/B-M-Capital-Research/honeclaw/issues/35) | [feishu_scheduler_tenant_access_token_request_failure.md](./archive/feishu_scheduler_tenant_access_token_request_failure.md) |
-| Feishu 定时任务目标解析链路再次失败，内容已生成但在 contact `batch_get_id` 阶段被拦截未送达 | P1 | Fixed | 2026-05-07 复核 2026-05-05 修复已覆盖 contact lookup 传输失败：`resolve_email` / `resolve_mobile` 的 `batch_get_id` 请求接入公共出站重试，传输错误、`429` 与 `5xx` 会短重试；本轮同步修正导航表旧 `New` 状态；关联 Issue [#32](https://github.com/B-M-Capital-Research/honeclaw/issues/32) | [feishu_scheduler_target_resolution_failed.md](./archive/feishu_scheduler_target_resolution_failed.md) |
 | Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | Fixed | 2026-05-07 复核当前 `hone-llm` 已覆盖 OpenAI-compatible / OpenRouter numeric provider error raw HTTP fallback，`numeric_provider_error_body` 回归通过；旧生产样本不再作为当前活跃判定 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./archive/scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
 | Feishu 定时任务 `schedule` / prompt 时间错配修复后，历史坏 job 仍持续 warning + skip | P2 | Fixed | 2026-05-07 复核当前 `CronJobStorage::get_due_jobs` 会修复历史 prompt/schedule 时间错配并持久化；`prompt_schedule_time_mismatch` 回归通过，旧进程日志不再维持活跃状态 | [feishu_scheduler_prompt_schedule_time_mismatch.md](./archive/feishu_scheduler_prompt_schedule_time_mismatch.md) |
 | Feishu scheduler 部分定时任务已进入执行和工具调用，但长期停在 `running/pending` 且无最终回复 | P1 | Closed | 2026-05-13 11:18 live 复核：10:22 CST Feishu scheduler 启动回收 4380 条历史 stale started row 为 `execution_failed + send_failed`，`detail.phase=recovered_stale_pending`；全库不再残留 running/pending；10:30 后新 heartbeat 正常收口；关联 Issue [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39) | [feishu_scheduler_run_stuck_without_cron_job_run.md](./feishu_scheduler_run_stuck_without_cron_job_run.md) |
