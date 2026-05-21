@@ -24,6 +24,7 @@ const CONTENT_ZH = {
     logo_tagline: "OPEN FINANCIAL CONSOLE",
     home: "首页",
     roadmap: "路线图与文档",
+    blog: "Blog",
     me: "个人",
     chat: "对话",
     back_home: "返回首页",
@@ -65,6 +66,11 @@ const CONTENT_ZH = {
     video_demo: "视频演示",
     view_full_roadmap: "完整路线图",
     zoom_hint: "查看详情",
+    blog_eyebrow: "工程 Blog",
+    blog_title: "为什么 Hone 选择 Rust",
+    blog_desc:
+      "从 Python + Node.js 到 Rust 的重构复盘：AI Coding 时代的上下文、稳定性和多端工程选择。",
+    blog_cta: "阅读文章",
   },
 
   trust: {
@@ -1487,6 +1493,7 @@ const CONTENT_ZH = {
         items: [
           { label: "首页", href: "/" },
           { label: "路线图", href: "/roadmap" },
+          { label: "Blog", href: "/blog" },
           { label: "对话", href: "/chat" },
           { label: "个人", href: "/me" },
         ],
@@ -1537,6 +1544,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     logo_tagline: "OPEN FINANCIAL CONSOLE",
     home: "Home",
     roadmap: "Roadmap & Docs",
+    blog: "Blog",
     me: "Account",
     chat: "Chat",
     back_home: "Home",
@@ -1579,6 +1587,11 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     video_demo: "VIDEO DEMO",
     view_full_roadmap: "View Full Roadmap",
     zoom_hint: "Zoom In",
+    blog_eyebrow: "Engineering Blog",
+    blog_title: "Why Hone chose Rust",
+    blog_desc:
+      "A field report on moving from Python + Node.js to Rust, and what it means for context, stability, and multi-endpoint engineering in the AI Coding era.",
+    blog_cta: "Read article",
   },
 
   trust: {
@@ -3083,6 +3096,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         items: [
           { label: "Home", href: "/" },
           { label: "Roadmap", href: "/roadmap" },
+          { label: "Blog", href: "/blog" },
           { label: "Chat", href: "/chat" },
           { label: "Account", href: "/me" },
         ],

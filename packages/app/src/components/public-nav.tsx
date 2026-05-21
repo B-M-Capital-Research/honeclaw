@@ -49,6 +49,7 @@ export function PublicNav() {
   const links = [
     { labelKey: "home", path: "/" },
     { labelKey: "roadmap", path: "/roadmap" },
+    { labelKey: "blog", path: "/blog" },
     { labelKey: "me", path: "/me" },
   ] as const
 

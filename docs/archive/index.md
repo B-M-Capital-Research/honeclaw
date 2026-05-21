@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-05-20
+Last updated: 2026-05-21
+
+## 2026-05-21
+
+### Public Blog Module
+
+- Status: done
+- Date: 2026-05-21
+- Plan: `docs/archive/plans/public-blog-module.md`
+- Handoff: `docs/handoffs/2026-05-21-public-blog-module.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `bun --filter @hone-financial/app test`, `bun --filter @hone-financial/app typecheck`, `HONE_APP_OUT_DIR=dist-public HONE_APP_SURFACE=public bun --filter @hone-financial/app build`
+- Current conclusion: hone-claw.com public surface now has a bilingual static Blog index and Rust article route, with navigation/homepage entry points and local Chinese/English article images copied from the provided source links.
+- Next entry point: `packages/app/src/lib/public-blog.ts`, `packages/app/src/pages/public-blog.tsx`, and `packages/app/src/pages/public-blog-post.tsx`
 
 ## 2026-05-20
 

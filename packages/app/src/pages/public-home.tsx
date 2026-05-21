@@ -11,6 +11,7 @@ import {
 import { useNavigate } from "@solidjs/router"
 import { fetchGithubStars } from "@/lib/github-stars"
 import { CONTENT } from "@/lib/public-content"
+import { latestPublicBlogPost } from "@/lib/public-blog"
 import { setLocale, useLocale } from "@/lib/i18n"
 import {
   PUBLIC_BILIBILI_URL,
@@ -83,6 +84,9 @@ function Header() {
           <button onClick={() => navigate("/roadmap")} class="btn-roadmap-nav mobile-hide">
             {CONTENT.home_page.roadmap_button}
           </button>
+          <button onClick={() => navigate("/blog")} class="btn-roadmap-nav mobile-hide">
+            {C.blog}
+          </button>
           <button onClick={() => navigate("/chat")} class="btn-chat-nav">{C.chat}</button>
         </div>
       </div>
@@ -130,6 +134,7 @@ export default function PublicHomePage() {
   })
 
   const current = () => slides()[index()]
+  const featuredPost = () => latestPublicBlogPost()
 
   return (
     <div class="hone-landing-v4">
@@ -179,6 +184,21 @@ export default function PublicHomePage() {
               <iframe src={videoUrl()} allowfullscreen />
             </div>
           </div>
+
+          <section class="home-blog-feature" onClick={() => navigate(`/blog/${featuredPost().slug}`)}>
+            <div class="home-blog-copy">
+              <div class="home-blog-eyebrow">{CONTENT.home_page.blog_eyebrow}</div>
+              <h2>{CONTENT.home_page.blog_title}</h2>
+              <p>{CONTENT.home_page.blog_desc}</p>
+              <button type="button">
+                {CONTENT.home_page.blog_cta}
+                <ICONS.ArrowRight />
+              </button>
+            </div>
+            <div class="home-blog-image">
+              <img src={featuredPost().heroImage} alt={featuredPost().title} loading="lazy" />
+            </div>
+          </section>
         </section>
 
         <div class="section-separator">
@@ -311,6 +331,35 @@ export default function PublicHomePage() {
         .video-wrapper { width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 28px; overflow: hidden; box-shadow: 0 30px 60px rgba(0,0,0,0.1); border: 1px solid #f1f5f9; }
         .video-wrapper iframe { width: 100%; height: 100%; border: none; }
 
+        .home-blog-feature {
+          width: 100%;
+          max-width: 960px;
+          display: grid;
+          grid-template-columns: minmax(0, 0.92fr) minmax(280px, 1fr);
+          gap: 24px;
+          align-items: stretch;
+          margin-top: 18px;
+          padding: 18px;
+          border: 1px solid #e2e8f0;
+          border-radius: 28px;
+          background: rgba(255,255,255,0.82);
+          box-shadow: 0 24px 70px rgba(15,23,42,0.08);
+          cursor: pointer;
+          transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+        }
+        .home-blog-feature:hover {
+          transform: translateY(-2px);
+          border-color: #f59e0b;
+          box-shadow: 0 32px 90px rgba(15,23,42,0.12);
+        }
+        .home-blog-copy { padding: 18px 10px 18px 18px; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; }
+        .home-blog-eyebrow { color: #d97706; font-size: 12px; font-weight: 900; letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 12px; }
+        .home-blog-copy h2 { margin: 0 0 12px; color: #0f172a; font-size: 32px; line-height: 1.12; letter-spacing: -0.03em; }
+        .home-blog-copy p { margin: 0 0 20px; color: #475569; font-size: 16px; line-height: 1.65; }
+        .home-blog-copy button { display: inline-flex; align-items: center; gap: 8px; border: none; background: #0f172a; color: #fff; border-radius: 999px; padding: 11px 18px; font-size: 14px; font-weight: 800; cursor: pointer; }
+        .home-blog-image { border-radius: 20px; overflow: hidden; background: #f8fafc; border: 1px solid #f1f5f9; }
+        .home-blog-image img { width: 100%; height: 100%; min-height: 230px; object-fit: cover; display: block; }
+
         /* Carousel Nav */
         .section-separator { width: 100%; margin: 80px 0 48px; display: flex; align-items: center; gap: 32px; }
         .section-separator .line { flex: 1; height: 1px; background: #f1f5f9; }
@@ -362,6 +411,8 @@ export default function PublicHomePage() {
           .carousel-text { text-align: center; width: 100%; align-items: center; }
           .carousel-image { width: 100%; }
           .feature-title { font-size: 32px; }
+          .home-blog-feature { grid-template-columns: 1fr; }
+          .home-blog-copy { padding: 18px; }
         }
         @media (max-width: 640px) {
           .hero-logo { height: 90px; }
