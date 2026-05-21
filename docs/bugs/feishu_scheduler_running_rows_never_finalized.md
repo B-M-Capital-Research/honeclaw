@@ -42,6 +42,12 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-21 19:03 CST` 复核，当前机器运行态在最近四小时仍继续新增 started-row 残留；但 2026-05-15 04:05 CST 已按当前 HEAD 回归验证确认 `delivery_key` 终态覆盖、最近 started fallback 与启动 stale recovery 仍生效，本轮仅补充旧/未确认部署运行态证据，不把状态从 `Fixed` 回退为 `New`：
+    - 最近四小时窗口 `2026-05-21T15:30:01+08:00` 到 `2026-05-21T19:00:01+08:00` 内共有 `96` 条 `execution_status=running + message_send_status=pending` started 残留。
+    - 这 `96` 条全部为 heartbeat started 行，覆盖 15:30、16:00、16:30、17:00、17:30、18:00、18:30、19:00 等窗口；本窗未见普通 scheduler started 残留。
+    - 同窗已有 `120` 条 heartbeat `execution_failed + skipped_error + delivered=0` 终态。
+    - 用户可见直聊主链路没有因此被阻断，最近四小时 `7` 个 user turn 与 `8` 个 assistant final 均有收口；受损点仍是调度台账一致性和巡检噪音，严重等级仍不高于 `P3`。
+    - 当前 `hone-console-page-prod.log` 仍可见 Web/API scheduler 进程启动早于 2026-05-15 04:05 CST 的当前 HEAD 修复复核；后续只有在本地可复现测试或当前代码路径证明终态仍会另起行时再改回 `New`。
   - `2026-05-21 15:02 CST` 复核，当前机器运行态在最近四小时仍继续新增 started-row 残留；但 2026-05-15 04:05 CST 已按当前 HEAD 回归验证确认 `delivery_key` 终态覆盖、最近 started fallback 与启动 stale recovery 仍生效，本轮仅补充旧/未确认部署运行态证据，不把状态从 `Fixed` 回退为 `New`：
     - 最近四小时窗口 `2026-05-21T11:30:01+08:00` 到 `2026-05-21T15:00:04+08:00` 内共有 `97` 条 `execution_status=running + message_send_status=pending` started 残留。
     - 其中 `96` 条为 heartbeat started 行，覆盖 11:30、12:00、12:30、13:00、13:30、14:00、14:30、15:00 等窗口；另有 `1` 条普通 scheduler started 行，代表任务为 `每日公司资讯与分析总结`。

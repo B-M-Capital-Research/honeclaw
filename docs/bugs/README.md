@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-21 15:02 CST
+最后更新：2026-05-21 19:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -21,6 +21,9 @@
 - Later / 待复现：9
 - 已修复 / 已关闭：108
 - 历史分析 / 部分止血：5
+- 本轮 19:03 CST 未发现新的独立缺陷或活跃 P1 状态变化。最近四小时共有 7 个 user turn 与 8 个 assistant final，Feishu / Web 直聊均有 assistant final 收口；本窗无普通 scheduler 运行记录，heartbeat 另见下方既有缺陷复核。assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content` 或 provider 原始 `quota exhausted`；最近四小时无非文档代码提交。15:02 CST 新增的 Web direct 文件交付 P2 仍为唯一活跃待修复项；16:17 CST 用户改要求“整理成 CSV 文本”后 assistant 已给出可复制 CSV 文本，但这只是用户侧绕过文件下载问题，不代表 artifact 交付链路已修复。
+- 本轮 19:03 CST 继续观察到 `Heartbeat mimo quota exhaustion drops alerts` 的运行态失败记录：15:14-19:00 CST 新增 120 条 heartbeat `execution_failed + skipped_error + delivered=0`，错误集中为 `HTTP 429` / `quota exhausted`，覆盖 15 个 heartbeat job；`failure_kind` 仍有 96 条为空、24 条为 `provider_http_error`。当前 `main` 已在 `d4d45e2` 修复 OpenAI-compatible 多 key fallback 与 heartbeat 429 分类，本轮仅补充旧/未确认部署运行态证据，不把该缺陷从 `Fixed` 回退。
+- 本轮 19:03 CST 继续观察到 scheduler started-row 残留：15:30-19:00 CST 新增 96 条 `running + pending` started 残留，全部为 heartbeat；同窗另有 120 条 heartbeat 失败终态。当前 HEAD 已有 started-row 覆盖与回归，本轮仅追加到 `feishu_scheduler_running_rows_never_finalized.md`，不从 `Fixed` 回退。
 - 本轮 15:02 CST 新增 P2 `Web 直聊生成 Excel/CSV 只回文件名，手机端无法下载或打开`：14:20-14:49 CST 同一 Web direct 会话中，用户要求生成 Excel 表格后，assistant 多次声称已生成或重新发送 `A股三年投资策略表.xlsx` / `.csv`，但最终回复只包含文件名和 Google Drive 连接建议，用户连续反馈“看不到文件”“没有入口”。这是 Web direct artifact 交付链路缺陷，阻断用户取得已生成表格，定为功能性 `P2 / New`；不是 P1，本轮不创建 GitHub issue。
 - 本轮 15:02 CST 未发现新的活跃 P1 状态变化。最近四小时共有 20 个 user turn 与 20 个 assistant final，Feishu / Web 直聊和普通 scheduler 均有 assistant final 收口；普通 scheduler 1 条 `completed + sent + delivered=1`。assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content` 或 provider 原始 `quota exhausted`；最近四小时无非文档代码提交。
 - 本轮 15:02 CST 继续观察到 `Heartbeat mimo quota exhaustion drops alerts` 的运行态失败记录：11:14-15:00 CST 新增 120 条 heartbeat `execution_failed + skipped_error + delivered=0`，错误集中为 `HTTP 429` / `quota exhausted`，覆盖 15 个 heartbeat job；`failure_kind` 仍有 96 条为空、24 条为 `provider_http_error`。当前 `main` 已在 `d4d45e2` 修复 OpenAI-compatible 多 key fallback 与 heartbeat 429 分类，本轮仅补充旧/未确认部署运行态证据，不把该缺陷从 `Fixed` 回退。
@@ -197,7 +200,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Web 直聊生成 Excel/CSV 只回文件名，手机端无法下载或打开 | P2 | New | 2026-05-21 15:02 新增：Web direct 已生成或声称生成表格文件后，没有把文件转成手机端可见附件 / 下载链接，用户连续追问仍拿不到文件；无关联 GitHub Issue | [web_direct_generated_files_not_downloadable.md](./web_direct_generated_files_not_downloadable.md) |
+| Web 直聊生成 Excel/CSV 只回文件名，手机端无法下载或打开 | P2 | New | 2026-05-21 19:03 复核：用户 16:17 CST 改要 CSV 文本后已得到可复制文本，但这只是绕过文件下载；Web direct 生成文件仍没有手机端可见附件 / 下载链接。无关联 GitHub Issue | [web_direct_generated_files_not_downloadable.md](./web_direct_generated_files_not_downloadable.md) |
 
 ## Later / 待复现
 
@@ -217,7 +220,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Heartbeat `mimo-v2.5-pro` 429 quota exhaustion drops alerts | P1 | Fixed | 2026-05-21 15:02 继续仅见当前机器旧/未确认部署运行态：11:14-15:00 CST 新增 120 条 heartbeat `execution_failed + skipped_error + delivered=0`，错误集中为 429 quota exhausted，当前 HEAD 已有多 key fallback 与 429 分类回归，不回退状态；关联 Issue [#44](https://github.com/B-M-Capital-Research/honeclaw/issues/44) | [scheduler_heartbeat_mimo_429_quota_exhausted.md](./scheduler_heartbeat_mimo_429_quota_exhausted.md) |
+| Heartbeat `mimo-v2.5-pro` 429 quota exhaustion drops alerts | P1 | Fixed | 2026-05-21 19:03 继续仅见当前机器旧/未确认部署运行态：15:14-19:00 CST 新增 120 条 heartbeat `execution_failed + skipped_error + delivered=0`，错误集中为 429 quota exhausted，当前 HEAD 已有多 key fallback 与 429 分类回归，不回退状态；关联 Issue [#44](https://github.com/B-M-Capital-Research/honeclaw/issues/44) | [scheduler_heartbeat_mimo_429_quota_exhausted.md](./scheduler_heartbeat_mimo_429_quota_exhausted.md) |
 | Codex version probe 资源耗尽导致直聊和定时任务批量失败并外露原始 runner 错误 | P1 | Fixed | 2026-05-20 12:10 共享错误净化层新增 runner resource-unavailable 分类；Codex / codex-acp 版本探针或 spawn 阶段的本机资源错误不再原样外发，直聊与 scheduler 均映射为“当前本机执行环境暂时不可用，请稍后再试。”；关联 Issue [#43](https://github.com/B-M-Capital-Research/honeclaw/issues/43) | [codex_version_probe_resource_unavailable_raw_failure.md](./codex_version_probe_resource_unavailable_raw_failure.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixed | 2026-05-19 08:06 `portfolio view` 的成功状态读取也能恢复为用户可见确认；覆盖 `result.portfolio.holdings/watchlist`、按工具参数 ticker 过滤相关持仓，并保留股数、成本价与备注摘要。关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29) | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Event-engine still uses deprecated `x-ai/grok-4.1-fast` and loses LLM-backed enrichment | P2 | Fixed | 2026-05-19 11:03 继续仅见当前机器旧运行态失败：08:03-10:28 CST SEC enrichment、event dedupe、mainline distill / style distill 仍请求 `x-ai/grok-4.1-fast` 并收到 OpenRouter `HTTP 404`；当前 HEAD 已切到 `x-ai/grok-4.3`，不回退状态。无关联 GitHub Issue | [event_engine_grok41_deprecated_404.md](./event_engine_grok41_deprecated_404.md) |
@@ -226,7 +229,7 @@
 | Daily macOS build release app 启动后 Web/API 生命周期不可验证 | P1 | Fixed | 2026-05-15 08:07 新增 `HONE_DESKTOP_SMOKE_SERVER=1`，打包桌面可在无窗口 smoke 模式下保持 Web/API 进程，`/api/meta`、用户端页面和 disabled channels 检查通过；关联 Issue [#42](https://github.com/B-M-Capital-Research/honeclaw/issues/42) | [daily_macos_build_release_app_api_not_persistent.md](./daily_macos_build_release_app_api_not_persistent.md) |
 | 原油定时播报在价格 / 日期 / 背景口径上继续输出未核验或错误事实 | P2 | Fixed | 2026-05-21 07:03 继续仅见修复前 live 旧运行态：04:01 / 04:32 CST 普通 scheduler 仍送达 WTI / Brent 价格和油价对科技股的因果判断，`hone-console-page-prod.log` 启动早于 2026-05-14 普通 scheduler guard 修复，不回退状态；无关联 GitHub Issue | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Heartbeat 监控使用 `mimo-v2.5-pro` 时批量命中 `Param Incorrect` 并漏发 | P2 | Fixed | 2026-05-19 11:03 继续仅见当前机器旧运行态失败：07:30-11:00 CST 80 条同类失败覆盖 11 个 job；当前机器无可确认已重启到 2026-05-15 04:05 修复后的 live 进程，不回退状态；无关联 GitHub Issue | [scheduler_heartbeat_mimo_param_incorrect_batch_failures.md](./scheduler_heartbeat_mimo_param_incorrect_batch_failures.md) |
-| Feishu scheduler 预写 `running/pending` started 行后，终态另起行导致台账持续悬挂 | P3 | Fixed | 2026-05-21 15:02 继续仅见当前机器旧运行态：11:30-15:00 CST 新增 97 条 started 残留，其中 96 条 heartbeat、1 条普通 scheduler；同窗已有 heartbeat 失败终态与普通 scheduler 成功送达终态，当前 HEAD 已有覆盖与回归，不回退状态；关联 Issue [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39) | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
+| Feishu scheduler 预写 `running/pending` started 行后，终态另起行导致台账持续悬挂 | P3 | Fixed | 2026-05-21 19:03 继续仅见当前机器旧运行态：15:30-19:00 CST 新增 96 条 started 残留，全部为 heartbeat；同窗已有 120 条 heartbeat 失败终态，当前 HEAD 已有覆盖与回归，不回退状态；关联 Issue [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39) | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
 | 核心观察池简报在本地击球区配置恢复后仍把多数标的降成“待确认” | P3 | Fixed | 2026-05-15 04:05 scheduler 已支持从紧凑 compact summary 中恢复 `ticker + $区间` 击球区，覆盖同一行多个 ticker 与分档区间；无关联 GitHub Issue | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 | Feishu 直聊在工具尚未跑完时提前把工具进度 / 不完整错误当成最终回复 | P2 | Fixed | 2026-05-15 02:10 Feishu failure fallback 现在会过滤 `执行完成：本地命令`、`正在调用 Searching the Web...`、`工具执行完成` 与过渡计划句，不再把工具轨迹和内部执行语句拼成用户可见最终失败回复；待后续真实运行态只读复核后再决定是否 `Closed`；无关联 GitHub Issue | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
 | Feishu 公司画像建档成功后向用户暴露本机绝对路径与内部文件落点 | P3 | Fixed | 2026-05-14 16:07 已把本地 Markdown 文件链接与裸绝对路径脱敏并入共享 `sanitize_user_visible_output(...)`，公司画像建档回复不再暴露本机 repo 根、`data/agent-sandboxes` 或 direct actor sandbox 标识；无关联 GitHub Issue | [feishu_company_profile_absolute_path_leak.md](./feishu_company_profile_absolute_path_leak.md) |
