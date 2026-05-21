@@ -12,6 +12,11 @@
 - 受影响范围覆盖价格破位、持仓财报、重大新闻、板块关键事件、观察池等多个 heartbeat job；同窗直聊会话仍能正常收口，故障集中在 heartbeat provider quota / rate-limit 路径。
 - 本轮修复不依赖当前机器生产日志、线上健康检查或真实投递状态；判断与验证基于 issue 摘要、现有 heartbeat 代码、配置解析和本地回归。
 - `data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-21 15:02 CST` 复核，最近四小时窗口 `2026-05-21T11:14:00+08:00` 到 `2026-05-21T15:00:04+08:00` 内继续新增 `120` 条 heartbeat `execution_failed + skipped_error + delivered=0`；当前 `main` 已在 `d4d45e2` 修复 OpenAI-compatible 多 key fallback 与 heartbeat 429 分类，本轮将该证据作为当前机器旧/未确认部署运行态线索，不把状态从 `Fixed` 回退为 `New`。
+  - 错误仍集中为 `HTTP 429` / `quota exhausted`，覆盖 `15` 条 heartbeat job；其中 `96` 条为 `LLM 错误: limitation: quota exhausted (code: 429)`，`24` 条为 `LLM 错误: upstream HTTP 429: quota exhausted (code: 429)`，本轮 sqlite `detail_json` 中的 `failure_kind` 仍有 `96` 条为空、`24` 条为 `provider_http_error`，符合旧运行态或未重启到当前 HEAD 的表现。
+  - 同窗还有 `96` 条 heartbeat `running + pending` started 残留、`1` 条普通 scheduler `running + pending` started 残留，以及 `1` 条普通 scheduler `completed + sent + delivered=1` 终态；说明直聊 / 普通 scheduler 主链路没有被同一问题整体阻断。
+  - 会话侧按消息时间统计 `20` 个 user turn 与 `20` 个 assistant final；Feishu / Web 直聊和普通 scheduler 均有 assistant final 收口。assistant final 污染扫描未命中空回复、通用失败、绝对路径、工具轨迹、原始 ACP `session/update`、compact marker、`reasoning_content`、`Param Incorrect`、`Resource temporarily unavailable` 或 provider 原始 `quota exhausted`。
+  - 本轮是同一根因 / 同一影响范围的运行态复核，不新建重复缺陷；已有 GitHub Issue [#44](https://github.com/B-M-Capital-Research/honeclaw/issues/44)，不重复创建。
   - `2026-05-21 11:02 CST` 复核，最近四小时窗口 `2026-05-21T07:02:28+08:00` 到 `2026-05-21T11:02:00+08:00` 内继续新增 `120` 条 heartbeat `execution_failed + skipped_error + delivered=0`；当前 `main` 已在 `d4d45e2` 修复 OpenAI-compatible 多 key fallback 与 heartbeat 429 分类，本轮将该证据作为当前机器旧/未确认部署运行态线索，不把状态从 `Fixed` 回退为 `New`。
   - 错误仍集中为 `HTTP 429` / `quota exhausted`，覆盖 `15` 条 heartbeat job；其中 `96` 条为 `LLM 错误: limitation: quota exhausted (code: 429)`，`24` 条为 `LLM 错误: upstream HTTP 429: quota exhausted (code: 429)`，本轮 sqlite `detail_json` 中的 `failure_kind` 仍有 `96` 条为空、`24` 条为 `provider_http_error`，符合旧运行态或未重启到当前 HEAD 的表现。
   - 同窗还有 `96` 条 heartbeat `running + pending` started 残留、`15` 条普通 scheduler `running + pending` started 残留，以及 `18` 条普通 scheduler `completed + sent + delivered=1` 终态；说明直聊 / 普通 scheduler 主链路没有被同一问题整体阻断。
