@@ -364,7 +364,10 @@ impl ReceivedAttachment {
             }
         } else if self.kind == AttachmentKind::Pdf {
             if let Some(err) = &self.pdf_extract_error {
-                line.push_str(&format!(" PDF解析状态=失败({err})"));
+                line.push_str(&format!(
+                    " PDF解析状态=失败({})",
+                    super::vector_store::sanitize_pdf_extract_error(err)
+                ));
             } else if self.pdf_text_preview.is_some() {
                 line.push_str(" PDF解析状态=已提取文本");
             } else {
@@ -528,10 +531,11 @@ pub fn build_attachment_ack_message(attachments: &[ReceivedAttachment]) -> Strin
         .filter(|a| a.kind == AttachmentKind::Pdf)
         .map(|a| {
             if let Some(err) = &a.pdf_extract_error {
+                let err = super::vector_store::sanitize_pdf_extract_error(err);
                 format!(
                     "{} 解析失败: {}",
                     a.filename,
-                    truncate_chars_append(err, 80, "...")
+                    truncate_chars_append(&err, 80, "...")
                 )
             } else if a.pdf_text_preview.is_some() {
                 format!("{} 已提取文本", a.filename)
@@ -715,10 +719,11 @@ fn build_pdf_extraction_note_from_refs(attachments: &[&ReceivedAttachment]) -> O
 
     for pdf in pdfs {
         if let Some(err) = &pdf.pdf_extract_error {
+            let err = super::vector_store::sanitize_pdf_extract_error(err);
             lines.push(format!(
                 "- {}: 提取失败（{}）",
                 pdf.filename,
-                truncate_chars_append(err, 120, "...")
+                truncate_chars_append(&err, 120, "...")
             ));
             continue;
         }
@@ -1203,6 +1208,35 @@ mod tests {
         assert!(note.contains("PDF提取文本"));
         assert!(note.contains("report.pdf"));
         assert!(note.contains("Revenue up 20% YoY."));
+    }
+
+    #[test]
+    fn pdf_extract_errors_are_sanitized_before_prompt_and_ack() {
+        let raw_error = "PDF 提取任务失败: task 42 panicked with message \"index out of bounds\" at /Users/example/.cargo/adobe-cmap-parser-0.4.1/src/lib.rs:195:41";
+        let attachments = vec![ReceivedAttachment {
+            filename: "report.pdf".to_string(),
+            content_type: Some("application/pdf".to_string()),
+            size: 4096,
+            url: "https://example.com/report.pdf".to_string(),
+            kind: AttachmentKind::Pdf,
+            local_path: Some("./data/discord_uploads/x/report.pdf".to_string()),
+            error: None,
+            extracted_files: Vec::new(),
+            extraction_error: None,
+            pdf_text_preview: None,
+            pdf_extract_error: Some(raw_error.to_string()),
+        }];
+
+        let prompt = build_user_input("请看 PDF", &attachments);
+        let ack = build_attachment_ack_message(&attachments);
+
+        for text in [prompt, ack] {
+            assert!(text.contains("pdf_text_extract_failed"));
+            assert!(!text.contains("/Users/"));
+            assert!(!text.contains("adobe-cmap-parser"));
+            assert!(!text.contains("index out of bounds"));
+            assert!(!text.contains("panicked"));
+        }
     }
 
     #[test]

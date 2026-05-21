@@ -3,7 +3,7 @@
 - title: Active Bug Burn-down 2026-04-28
 - status: in_progress
 - created_at: 2026-04-28
-- updated_at: 2026-05-20 20:06 CST
+- updated_at: 2026-05-22 10:05 CST
 - owner: Codex
 - related_files:
   - `docs/bugs/README.md`
@@ -88,6 +88,7 @@ Clear the current active bug queue as far as software changes can responsibly do
 - 2026-05-16 03:05: Re-closed the reopened P1 Feishu direct empty/invalid answer bug after the latest 2026-05-15 21:48 / 22:07 samples showed two remaining `planning_sentence_suppressed` gaps. `response_finalizer` now recovers successful `portfolio` side effects into user-visible confirmations, and `is_transitional_planning_sentence(...)` keeps “把图发给我 / 上传截图” style attachment guidance instead of collapsing it into the generic fallback. Added focused `hone-channels` regressions plus `cargo check`; active bug queue remains empty.
 - 2026-05-20 11:30: Closed the user-reported The Fly broken-link push regression. AnalystGrade events now keep raw FMP `payload.newsURL` for fanout/cooldown dedupe, but user-visible rendering filters The Fly internal `/ajax/news_get.php` and app-shell `/news.php` entrypoints. The attempted `news.php?symbol=AMD` replacement was verified to land on the The Fly app/home shell rather than a stable AMD news list, so the final policy is to omit unstable The Fly links unless upstream provides a stable public permalink or a non-The Fly URL.
 - 2026-05-20 20:06: Closed GitHub Issue #44 / P1 heartbeat `mimo-v2.5-pro` 429 quota exhaustion. The controllable bug was not the external quota itself, but the runtime ignoring configured non-OpenRouter `llm.providers.<name>.api_keys` after the first key. `OpenAiCompatibleProvider` now performs non-streaming key-pool fallback, profile resolution passes the full key pool, and heartbeat classifies 429 / rate-limit / resource-exhausted failures as `provider_quota_exhausted`. Active bug queue is empty again.
+- 2026-05-22 10:05: Closed the active P2 Feishu PDF CMap parser panic bug. Shared PDF extraction now catches `pdf_extract` / `adobe-cmap-parser` panics and returns stable `pdf_text_extract_failed`; attachment prompt lines, PDF notes, and ack messages sanitize historical `task panicked`, crate source path, and local absolute-path details before they can enter LLM-visible context. Active bug queue is empty again. No GitHub Issue is linked to this bug.
 
 ## Validation
 
@@ -167,6 +168,10 @@ Completed this round:
 - `cargo test -p hone-channels heartbeat_provider_ --lib -- --nocapture`
 - `cargo check -p hone-llm -p hone-channels --tests`
 - `rustfmt --edition 2024 --check crates/hone-llm/src/openai_compatible.rs crates/hone-llm/src/resolver.rs crates/hone-channels/src/scheduler.rs`
+- `cargo test -p hone-channels pdf_extract --lib -- --nocapture`
+- `cargo test -p hone-channels pdf_note_contains_extracted_text --lib -- --nocapture`
+- `cargo check -p hone-channels --tests`
+- `rustfmt --edition 2024 --check crates/hone-channels/src/attachments/vector_store.rs crates/hone-channels/src/attachments/ingest.rs`
 - `git diff --check`
 - `cargo fmt --all -- --check`
 - `rustfmt --edition 2024 crates/hone-channels/src/runtime.rs crates/hone-channels/src/agent_session/tests.rs`

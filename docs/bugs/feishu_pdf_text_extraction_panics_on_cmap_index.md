@@ -3,7 +3,7 @@
 - 发现时间：2026-05-22 03:03 CST
 - Bug Type：System Error
 - 严重等级：P2
-- 状态：New
+- 状态：Fixed
 - GitHub Issue：无；当前不是 P1，本轮未创建 issue。
 
 ## 证据来源
@@ -56,7 +56,20 @@
 
 ## 下一步建议
 
-- 在 PDF 提取边界包一层 `catch_unwind` 或隔离 worker，将 parser panic 归一化为可恢复错误，不让单页 / 单字体失败拖垮整份 PDF。
-- 对 CMap 失败补跳过策略或 alternate extractor fallback，并记录页面级覆盖率。
-- 对进入 session / prompt 的附件解析错误做脱敏，只保留 `pdf_text_extract_failed`、页数、已成功的 fallback 类型和简短原因。
-- 增加回归样本：同一 PDF 或最小 CMap 复现 fixture 应验证“不 panic、不中断整份附件处理、不会把本机路径 / crate 源码路径写进 LLM 可见摘要”。
+- 后续如果同类 PDF 仍无法提取正文，可继续评估 page-level extractor 或 OCR fallback，以提升正文覆盖率；本轮先关闭 panic containment 和错误脱敏缺口。
+
+## 修复情况（2026-05-22 10:05 CST）
+
+- `crates/hone-channels/src/attachments/vector_store.rs`
+  - `extract_pdf_preview(...)` 与 `extract_full_pdf_text(...)` 现在通过共享 `extract_pdf_text_safely(...)` 调用 `pdf_extract`，将内部 parser panic 捕获为稳定错误 `pdf_text_extract_failed: PDF 文本解析器内部错误，已跳过文本预览`。
+  - 保留原有 `pdf_extract` 普通错误路径；仅对 panic / `index out of bounds` / `adobe-cmap-parser` / 本机路径 / crate 源码路径类内部细节做脱敏归一化。
+- `crates/hone-channels/src/attachments/ingest.rs`
+  - `ReceivedAttachment::as_prompt_line(...)`、PDF 提取 note 与附件 ack 都会调用 `sanitize_pdf_extract_error(...)`。
+  - 旧的 `PDF 提取任务失败: task ... panicked ... /Users/.../adobe-cmap-parser...` 形态不会再进入 LLM 可见附件摘要或用户侧 ack。
+- 验证：
+  - `cargo test -p hone-channels pdf_extract --lib -- --nocapture`
+  - `cargo test -p hone-channels pdf_note_contains_extracted_text --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+  - `rustfmt --edition 2024 --check crates/hone-channels/src/attachments/vector_store.rs crates/hone-channels/src/attachments/ingest.rs`
+  - `git diff --check`
+- GitHub Issue：无；本缺陷未创建独立 issue。

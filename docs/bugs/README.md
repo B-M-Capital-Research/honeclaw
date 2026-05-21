@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-22 09:38 CST
+最后更新：2026-05-22 10:05 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,10 +17,11 @@
 
 ## 当前概览
 
-- 活跃待修复：1
+- 活跃待修复：0
 - Later / 待复现：9
-- 已修复 / 已关闭：109
+- 已修复 / 已关闭：110
 - 历史分析 / 部分止血：5
+- 本轮 10:05 CST 已修复 P2 `Feishu PDF 文本提取在 CMap 解析越界 panic 后只能降级读首页`：共享 PDF 文本提取边界现在会把 `pdf_extract` / `adobe-cmap-parser` 内部 panic 捕获并归一化为 `pdf_text_extract_failed`，避免 Tokio worker panic 以 `task panicked` 形态进入附件摘要；附件 prompt 与 ack 也会清洗历史 panic、crate 源码路径和本机绝对路径。新增 `pdf_extract_panic_is_caught_and_sanitized`、`pdf_extract_error_sanitizer_strips_internal_panic_details`、`pdf_extract_errors_are_sanitized_before_prompt_and_ack` 回归，并复跑 PDF note 回归与 `cargo check -p hone-channels --tests`；无关联 GitHub Issue。
 - 本轮 03:03 CST 新增 P2 `Feishu PDF 文本提取在 CMap 解析越界 panic 后只能降级读首页`：23:51、23:55、00:55 CST 同一 Feishu direct 会话三次上传同一 17 页 PDF，附件下载成功但 PDF 文本提取均因 `adobe-cmap-parser` `index out of bounds` panic 失败；assistant final 没有外发 panic 或绝对路径，但只能基于元数据 / 首页图片降级回答，无法覆盖后续 16 页正文。该问题阻断 PDF 附件理解链路的一类真实文件，定级 `P2 / New`；不是活跃 P1，本轮不创建 GitHub issue。
 - 本轮 09:38 CST 已修复 P2 `Feishu 定时任务目标解析链路再次失败，内容已生成但在 contact 阶段被拦截未送达`：`bins/hone-feishu/src/client.rs` 现在会把 Feishu contact lookup 的 `code=1663` / `internal error` 视为临时上游错误并按退避最多重试 3 次，避免首次 `200 + code!=0` 就直接落成 `target_resolution_failed`。新增 `contact_lookup_internal_errors_are_retryable` 与 `contact_lookup_retry_budget_matches_request_retry_budget` 回归，并复跑 `invalid_access_token_errors_trigger_one_cache_refresh`、`retry_status_only_matches_transient_feishu_failures`、`looks_like_mobile_does_not_treat_open_id_as_mobile` 与 `cargo check -p hone-feishu`；当前先记为 `Fixed`，等待后续自然运行态复核。
 - 本轮 03:03 CST 未发现新的独立活跃 P1。最近四小时按消息时间共有 39 个 user turn 与 39 个 assistant final；Feishu / Web 直聊均有 assistant final 收口，普通 scheduler 4 条 `completed + sent + delivered=1`，另有 4 条普通 scheduler started 行已有对应终态。assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content` 或 provider 原始 `quota exhausted`；最近四小时无非文档代码提交。
@@ -210,7 +211,6 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Feishu PDF 文本提取在 CMap 解析越界 panic 后只能降级读首页 | P2 | New | 2026-05-22 03:03 新增：同一 Feishu direct 会话三次上传同一 17 页 PDF，附件下载成功但文本提取均因 `adobe-cmap-parser` `index out of bounds` panic 失败；assistant 只能基于元数据 / 首页图片降级回答。非 P1，未创建 issue | [feishu_pdf_text_extraction_panics_on_cmap_index.md](./feishu_pdf_text_extraction_panics_on_cmap_index.md) |
 
 ## Later / 待复现
 
@@ -230,6 +230,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Feishu PDF 文本提取在 CMap 解析越界 panic 后只能降级读首页 | P2 | Fixed | 2026-05-22 10:05 PDF 文本提取的 `pdf_extract` panic 现被捕获并归一化为 `pdf_text_extract_failed`；附件 prompt/ack 清洗 panic、crate 路径和本机绝对路径，避免内部错误细节进入 LLM 上下文。无关联 GitHub Issue | [feishu_pdf_text_extraction_panics_on_cmap_index.md](./feishu_pdf_text_extraction_panics_on_cmap_index.md) |
 | Web 直聊生成 Excel/CSV 只回文件名，手机端无法下载或打开 | P2 | Fixed | 2026-05-21 20:09 Web direct 会把本轮新生成且正文提到文件名的 sandbox 文件追加为附件 marker，public history 可返回下载 metadata；前端非图片附件卡片现在使用 `/api/public/file` 下载链接。无关联 GitHub Issue | [web_direct_generated_files_not_downloadable.md](./web_direct_generated_files_not_downloadable.md) |
 | Feishu 定时任务目标解析链路再次失败，内容已生成但在 contact 阶段被拦截未送达 | P2 | Fixed | 2026-05-22 09:38 contact lookup 的 `code=1663` / `internal error` 现按临时上游错误做最多 3 次短重试，避免首次 Feishu 内部错误直接落成 `target_resolution_failed`；新增 `contact_lookup_internal_errors_are_retryable` 与 `contact_lookup_retry_budget_matches_request_retry_budget` 回归。关联 Issue [#32](https://github.com/B-M-Capital-Research/honeclaw/issues/32) | [feishu_scheduler_target_resolution_failed.md](./feishu_scheduler_target_resolution_failed.md) |
 | Heartbeat `mimo-v2.5-pro` 429 quota exhaustion drops alerts | P1 | Fixed | 2026-05-22 03:03 继续仅见当前机器旧/未确认部署运行态：23:03-03:03 CST 新增 120 条 heartbeat `execution_failed + skipped_error + delivered=0`，错误集中为 429 quota exhausted，当前 HEAD 已有多 key fallback 与 429 分类回归，不回退状态；关联 Issue [#44](https://github.com/B-M-Capital-Research/honeclaw/issues/44) | [scheduler_heartbeat_mimo_429_quota_exhausted.md](./scheduler_heartbeat_mimo_429_quota_exhausted.md) |

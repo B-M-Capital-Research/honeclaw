@@ -19,7 +19,7 @@
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/active-bug-burn-down-2026-04-28.md`
-  - 摘要：集中清理 `docs/bugs/README.md` 活跃缺陷；2026-05-20 已收口 heartbeat mimo 429 key-pool fallback，当前活跃待修复队列为空
+  - 摘要：集中清理 `docs/bugs/README.md` 活跃缺陷；2026-05-22 已收口 Feishu PDF CMap parser panic containment，当前活跃待修复队列为空
 - **Chart Visualization Skill 与多通道 PNG 投递**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/chart-visualization-skill.md`
