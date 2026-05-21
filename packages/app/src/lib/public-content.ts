@@ -421,7 +421,7 @@ const CONTENT_ZH = {
       },
       {
         title: "公开用户端",
-        desc: "公开用户端路由包含 `/`、`/roadmap`、`/chat`、`/me`、`/portfolio`、`/terms`、`/privacy`，并保留开发用 `/__share-preview` 分享卡预览页；`/chat` 使用阿里云行为验证 + 手机短信验证码登录，管理端白名单是准入来源，桌面端为可收起左侧栏 + 右侧对话工作台，侧栏聚合导航、账号、最近对话历史、联系入口和 GitHub stars，支持助手回答复制、图片分享与历史回看；`/portfolio` 只读展示推送上下文与公司画像入口，后端公开面收敛在 `/api/public/*`，其中 `/api/public/v1/chat/completions` 提供 API-key 鉴权的 OpenAI-compatible 对话接口。",
+        desc: "公开用户端路由包含 `/`、`/roadmap`、`/blog`、`/blog/:slug`、`/chat`、`/me`、`/portfolio`、`/terms`、`/privacy`，并保留开发用 `/__share-preview` 分享卡预览页；`/blog` 是双语静态长文内容面，Cloudflare Worker 为文章分享卡注入 crawler 友好的 metadata；`/chat` 使用阿里云行为验证 + 手机短信验证码登录，管理端白名单是准入来源，桌面端为可收起左侧栏 + 右侧对话工作台，侧栏聚合导航、账号、最近对话历史、联系入口和 GitHub stars，支持助手回答复制、图片分享、非图片生成物附件下载与历史回看；`/portfolio` 只读展示推送上下文与公司画像入口，后端公开面收敛在 `/api/public/*`，其中 `/api/public/file` 代理可下载生成物，`/api/public/v1/chat/completions` 提供 API-key 鉴权的 OpenAI-compatible 对话接口。",
       },
       {
         title: "管理后台",
@@ -474,7 +474,7 @@ const CONTENT_ZH = {
           {
             name: "公开聊天工作台与分享",
             status: "stable",
-            note: "侧栏历史 + html2canvas + qrcode + markdown 渲染 + CJK 代码块字体",
+            note: "侧栏历史 + html2canvas + qrcode + markdown 渲染 + CJK 代码块字体 + 附件下载卡片",
           },
           { name: "向量检索增强记忆", status: "planned", note: "规划中" },
         ],
@@ -491,6 +491,11 @@ const CONTENT_ZH = {
             name: "SolidJS 前端",
             status: "stable",
             note: "Vite · Tailwind v4 · stale asset recovery",
+          },
+          {
+            name: "公开 Blog 与文档内容面",
+            status: "stable",
+            note: "双语 Markdown 文章 + 文章路由 + Cloudflare 分享 metadata",
           },
           { name: "Tauri 桌面端", status: "stable", note: "macOS 已发布" },
           {
@@ -645,7 +650,9 @@ const CONTENT_ZH = {
         "Web 聊天界面（阿里云行为验证 + 手机短信验证码，管理端白名单准入）+ 公开门面站",
         "公开 `/chat` 桌面工作台布局：可收起左侧栏、账号入口、最近对话历史、联系入口、GitHub stars 与右侧完整高度对话区",
         "公开 `/chat` 助手回答复制与分享：可选择消息，导出品牌长图、复制图片/文字或调用系统分享；分享卡支持 CJK 代码块字体并有开发预览页",
+        "公开 `/chat` 非图片生成物附件卡片：runner 新生成且正文提到的 CSV / XLSX / PDF 等文件会追加为可下载附件，经 `/api/public/file` 打开",
         "公开 `/chat` markdown 渲染、移动输入框、键盘聚焦、滚动锚定与回到底部按钮已完成稳定性打磨",
+        "公开 `/blog` 与 `/blog/:slug` 双语长文页面，首篇 Rust 迁移复盘已随仓库发布，并由 Cloudflare Worker 为分享卡补齐 metadata",
         "Tauri macOS 桌面端 + 内置后端",
         "7 个渠道：Web / iMessage / Lark / Discord / Telegram / CLI / MCP",
         "16 个公开 Skill（个股、持仓、估值/筛选入口、图表、PDF、Cron、漏推回查、推送偏好…）",
@@ -715,6 +722,11 @@ const CONTENT_ZH = {
         title: "Wiki",
         url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/wiki.md",
         desc: "安装、启动、端口、配置、验证与排障入口",
+      },
+      {
+        title: "Hone Blog",
+        url: "https://hone-claw.com/blog",
+        desc: "公开双语长文，记录架构选择、迁移复盘与产品说明",
       },
       {
         title: "Repo Map",
@@ -1933,7 +1945,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         title: "Public user app",
-        desc: "The public user app routes `/`, `/roadmap`, `/chat`, `/me`, `/portfolio`, `/terms`, and `/privacy`, with a dev-only `/__share-preview` page for share-card QA; `/chat` signs users in with Aliyun behavior captcha plus phone/SMS verification from the admin whitelist, uses a collapsible desktop left rail plus full-height conversation workspace, and gathers navigation, account access, recent conversation history, contact links, and GitHub stars in that rail while supporting assistant-reply copy, image sharing, and history review; `/portfolio` is a read-only investment context surface for push context and company-profile entrypoints, and the public backend is scoped to `/api/public/*`, including `/api/public/v1/chat/completions` for API-key-authenticated OpenAI-compatible chat.",
+        desc: "The public user app routes `/`, `/roadmap`, `/blog`, `/blog/:slug`, `/chat`, `/me`, `/portfolio`, `/terms`, and `/privacy`, with a dev-only `/__share-preview` page for share-card QA; `/blog` is a bilingual static long-form content surface, with Cloudflare Worker metadata for crawler-friendly article cards; `/chat` signs users in with Aliyun behavior captcha plus phone/SMS verification from the admin whitelist, uses a collapsible desktop left rail plus full-height conversation workspace, and gathers navigation, account access, recent conversation history, contact links, and GitHub stars in that rail while supporting assistant-reply copy, image sharing, non-image generated-file downloads, and history review; `/portfolio` is a read-only investment context surface for push context and company-profile entrypoints, and the public backend is scoped to `/api/public/*`, including `/api/public/file` for downloadable generated artifacts and `/api/public/v1/chat/completions` for API-key-authenticated OpenAI-compatible chat.",
       },
       {
         title: "Admin console",
@@ -1986,7 +1998,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           {
             name: "Public chat workbench and sharing",
             status: "stable",
-            note: "sidebar history + html2canvas + qrcode + markdown rendering + CJK code font",
+            note: "sidebar history + html2canvas + qrcode + markdown rendering + CJK code font + attachment download cards",
           },
           {
             name: "Vector-augmented memory",
@@ -2007,6 +2019,11 @@ const CONTENT_EN: typeof CONTENT_ZH = {
             name: "SolidJS frontend",
             status: "stable",
             note: "Vite · Tailwind v4 · stale asset recovery",
+          },
+          {
+            name: "Public blog and docs surface",
+            status: "stable",
+            note: "bilingual Markdown posts + article routes + Cloudflare share metadata",
           },
           { name: "Tauri desktop", status: "stable", note: "macOS released" },
           {
@@ -2198,7 +2215,9 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         "Web chat (Aliyun behavior captcha + phone/SMS verification, admitted by the admin whitelist) + public landing site",
         "Public `/chat` desktop workbench layout: collapsible left rail, account entry, recent conversation history, contact links, GitHub stars, and a full-height conversation area",
         "Public `/chat` assistant-reply copy and sharing: select messages, export a branded long image, copy image/text, or invoke native share; share cards support CJK code-block fonts and have a dev preview route",
+        "Public `/chat` non-image generated-file cards: new runner-created CSV / XLSX / PDF-style files mentioned in the final answer are attached as downloads through `/api/public/file`",
         "Public `/chat` markdown rendering, mobile composer, keyboard focus, scroll anchoring, and jump-to-latest behavior have been stabilized",
+        "Public `/blog` and `/blog/:slug` bilingual long-form pages, with the first Rust migration retrospective checked into the repo and Cloudflare Worker metadata for share cards",
         "Tauri macOS desktop with bundled backend",
         "7 channels: Web / iMessage / Lark / Discord / Telegram / CLI / MCP",
         "16 public skills (stocks, portfolio, valuation/screening entrypoints, charts, PDF, cron, missed-event recovery, notification prefs…)",
@@ -2268,6 +2287,11 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         title: "Wiki",
         url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/wiki.md",
         desc: "Install, startup, ports, configuration, verification, and troubleshooting",
+      },
+      {
+        title: "Hone Blog",
+        url: "https://hone-claw.com/blog",
+        desc: "Public bilingual long-form posts on architecture choices, migrations, and product notes",
       },
       {
         title: "Repo Map",
