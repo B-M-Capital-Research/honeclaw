@@ -1,6 +1,14 @@
 // public-nav.tsx — Navigation + Footer for Hone Public Site
 
-import { createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js"
+import {
+  createResource,
+  createSignal,
+  For,
+  onCleanup,
+  onMount,
+  Show,
+  type JSX,
+} from "solid-js"
 import { useNavigate, useLocation } from "@solidjs/router"
 import { displayGithubStars, fetchGithubStars } from "@/lib/github-stars"
 import { CONTENT } from "@/lib/public-content"
@@ -8,7 +16,7 @@ import { setLocale, useLocale } from "@/lib/i18n"
 import { PublicContactCards, PublicContactMenu } from "@/components/public-contact-menu"
 import "../pages/public-site.css"
 
-export function PublicNav() {
+export function PublicNav(props: { extraActions?: JSX.Element } = {}) {
   const [scrolled, setScrolled] = createSignal(false)
   const [menuOpen, setMenuOpen] = createSignal(false)
   const [stars] = createResource(fetchGithubStars)
@@ -24,8 +32,7 @@ export function PublicNav() {
     onCleanup(() => window.removeEventListener("scroll", onScroll))
   })
 
-  const isHome = () => page() === "/"
-  const transparent = () => isHome() && !scrolled() && !menuOpen()
+  const transparent = () => false
 
   const navBg = () =>
     menuOpen()
@@ -36,12 +43,17 @@ export function PublicNav() {
   const navBorder = () => (transparent() ? "none" : "1px solid rgba(0,0,0,0.08)")
   const logoColor = () => (transparent() ? "rgba(255,255,255,0.75)" : "#64748b")
 
+  const isActive = (path: string) => {
+    if (path === "/") return page() === "/"
+    return page() === path || page().startsWith(`${path}/`)
+  }
+
   const getLinkColor = (path: string) => {
-    if (page() === path) return "#f59e0b"
+    if (isActive(path)) return "#f59e0b"
     return transparent() ? "rgba(255,255,255,0.75)" : "#475569"
   }
   const getLinkBg = (path: string) => {
-    if (page() !== path) return "transparent"
+    if (!isActive(path)) return "transparent"
     return transparent() ? "rgba(255,255,255,0.08)" : "rgba(245,158,11,0.08)"
   }
   // NOTE: store `labelKey` (not pre-resolved strings) so each render re-reads
@@ -110,7 +122,7 @@ export function PublicNav() {
             {(l) => (
               <button
                 onClick={() => go(l.path)}
-                class={`pub-nav-link${page() === l.path ? " is-active" : ""}`}
+                class={`pub-nav-link${isActive(l.path) ? " is-active" : ""}`}
                 style={{
                   background: getLinkBg(l.path),
                   color: getLinkColor(l.path),
@@ -123,10 +135,14 @@ export function PublicNav() {
 
           <button
             onClick={() => go("/chat")}
-            class="pub-nav-cta"
+            class={`pub-nav-cta${isActive("/chat") ? " is-active" : ""}`}
           >
             {C.chat}
           </button>
+
+          <Show when={props.extraActions}>
+            <div class="pub-nav-extra-actions">{props.extraActions}</div>
+          </Show>
 
           <PublicContactMenu />
 
@@ -234,9 +250,9 @@ export function PublicNav() {
                   style={{
                     "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
                     "font-size": "15px",
-                    "font-weight": page() === l.path ? "600" : "500",
-                    color: page() === l.path ? "#f59e0b" : "#0f172a",
-                    background: "none",
+                    "font-weight": isActive(l.path) ? "700" : "500",
+                    color: isActive(l.path) ? "#d97706" : "#0f172a",
+                    background: isActive(l.path) ? "rgba(245,158,11,0.10)" : "none",
                     border: "none",
                     cursor: "pointer",
                     padding: "10px 12px",
@@ -257,7 +273,7 @@ export function PublicNav() {
                 flex: "1",
                 padding: "11px 20px",
                 "border-radius": "8px",
-                background: "#f59e0b",
+                background: isActive("/chat") ? "#f59e0b" : "#0f172a",
                 border: "none",
                 cursor: "pointer",
                 "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
@@ -316,26 +332,12 @@ export function PublicNav() {
 
 export function PublicFooter() {
   const C = CONTENT.footer
-  const Cnav = CONTENT.nav
   const navigate = useNavigate()
 
   const go = (href: string) => {
     navigate(href)
     window.scrollTo({ top: 0, left: 0, behavior: "auto" })
   }
-
-  const chipStyle = (active: boolean) => ({
-    padding: "3px 10px",
-    "border-radius": "999px",
-    border: active ? "1px solid #f59e0b" : "1px solid #1e293b",
-    cursor: "pointer",
-    background: active ? "rgba(245,158,11,0.10)" : "transparent",
-    color: active ? "#f59e0b" : "#475569",
-    "font-size": "11px",
-    "letter-spacing": "0.05em",
-    "font-family": "inherit",
-    transition: "color 0.2s, background 0.2s, border-color 0.2s",
-  })
 
   return (
     <footer
@@ -351,25 +353,30 @@ export function PublicFooter() {
           {/* Brand column */}
           <div>
             <div style={{ display: "flex", "align-items": "center", gap: "10px", "margin-bottom": "16px" }}>
-              <img src="/logo.svg" style={{ height: "24px", filter: "brightness(0.9)" }} alt="Hone" />
+              <img
+                src="/logo.svg"
+                style={{
+                  height: "28px",
+                  padding: "4px",
+                  "border-radius": "10px",
+                  background: "#fff",
+                }}
+                alt="Hone"
+              />
+              <span
+                style={{
+                  color: "#f8fafc",
+                  "font-size": "18px",
+                  "font-weight": "850",
+                  "letter-spacing": "-0.02em",
+                }}
+              >
+                Hone
+              </span>
             </div>
             <p style={{ "font-size": "13px", "line-height": "1.7", color: "#64748b", margin: "0 0 16px" }}>
               {C.tagline}
             </p>
-            <div style={{ display: "flex", gap: "6px" }}>
-              <button
-                onClick={() => setLocale("zh")}
-                style={chipStyle(useLocale() === "zh")}
-              >
-                {Cnav.locale_zh}
-              </button>
-              <button
-                onClick={() => setLocale("en")}
-                style={chipStyle(useLocale() === "en")}
-              >
-                {Cnav.locale_en}
-              </button>
-            </div>
           </div>
 
           <For each={Object.values(C.columns)}>

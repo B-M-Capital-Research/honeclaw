@@ -218,6 +218,20 @@ html {
   background: #1e293b;
   border-color: #1e293b;
 }
+.pub-nav-cta.is-active {
+  border-color: #f59e0b;
+  background: #f59e0b;
+  color: #111827;
+}
+.pub-nav-cta.is-active:hover {
+  background: #d97706;
+  border-color: #d97706;
+}
+.pub-nav-extra-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
 .pub-nav-cta:active,
 .btn-chat-nav:active,
 .btn-roadmap-nav:active,
@@ -1545,6 +1559,8 @@ html {
   display: block;
   max-width: 1120px;
   margin: 0 auto 28px;
+  padding: 0;
+  text-align: left;
   border: none;
   background: transparent;
   color: #64748b;
@@ -1568,7 +1584,7 @@ html {
 }
 
 .public-blog-post-header p {
-  max-width: 880px;
+  max-width: 1120px;
   margin: 0;
   color: #475569;
   font-size: 18px;
@@ -1580,7 +1596,7 @@ html {
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  width: min(100%, 880px);
+  width: 100%;
   margin: 28px 0 34px;
   padding: 18px 20px;
   border: 1px solid #e2e8f0;
@@ -1630,7 +1646,7 @@ html {
 }
 
 .public-blog-markdown {
-  max-width: 880px;
+  max-width: 1120px;
   margin: 0;
   color: #263241;
   font-family: Georgia, "Times New Roman", "Noto Serif SC", "Songti SC", serif;

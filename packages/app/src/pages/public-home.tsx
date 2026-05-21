@@ -4,20 +4,18 @@ import {
   createSignal,
   onCleanup,
   onMount,
-  createResource,
   Show,
   For,
 } from "solid-js"
 import { useNavigate } from "@solidjs/router"
-import { fetchGithubStars } from "@/lib/github-stars"
 import { CONTENT } from "@/lib/public-content"
 import { latestPublicBlogPost } from "@/lib/public-blog"
-import { setLocale, useLocale } from "@/lib/i18n"
+import { useLocale } from "@/lib/i18n"
 import {
   PUBLIC_BILIBILI_URL,
   PUBLIC_YOUTUBE_URL,
-  PublicContactMenu,
 } from "@/components/public-contact-menu"
+import { PublicNav } from "@/components/public-nav"
 import "./public-site.css"
 
 // ── Icons ────────────────────────────────────────────────────────────────────
@@ -48,49 +46,6 @@ function AnimatedBackground() {
       <div class="circle circle-2"></div>
       <div class="circle circle-3"></div>
     </div>
-  )
-}
-
-function Header() {
-  const navigate = useNavigate()
-  const [stars] = createResource(fetchGithubStars)
-  const C = CONTENT.nav
-
-  return (
-    <header class="page-header">
-      <div onClick={() => navigate("/")} class="header-logo">
-        <img src="/logo.svg" alt="Hone" />
-        <span>Hone</span>
-      </div>
-
-      <div class="header-actions">
-        <div class="header-socials header-github-stars">
-          <a href="https://github.com/B-M-Capital-Research/honeclaw" target="_blank" class="star-badge">
-            <ICONS.Github />
-            <span>{stars() || "..."}</span>
-          </a>
-        </div>
-
-        <div class="divider-v mobile-hide" />
-
-        <PublicContactMenu />
-
-        <div class="lang-switch">
-          <button onClick={() => setLocale("zh")} class={useLocale() === "zh" ? "active" : ""}>中</button>
-          <button onClick={() => setLocale("en")} class={useLocale() === "en" ? "active" : ""}>EN</button>
-        </div>
-
-        <div style={{ display: "flex", gap: "8px" }}>
-          <button onClick={() => navigate("/roadmap")} class="btn-roadmap-nav mobile-hide">
-            {CONTENT.home_page.roadmap_button}
-          </button>
-          <button onClick={() => navigate("/blog")} class="btn-roadmap-nav mobile-hide">
-            {C.blog}
-          </button>
-          <button onClick={() => navigate("/chat")} class="btn-chat-nav">{C.chat}</button>
-        </div>
-      </div>
-    </header>
   )
 }
 
@@ -139,7 +94,7 @@ export default function PublicHomePage() {
   return (
     <div class="hone-landing-v4">
       <AnimatedBackground />
-      <Header />
+      <PublicNav />
       
       {/* Lightbox */}
       <Show when={enlargeImg()}>

@@ -16,7 +16,7 @@ import {
 import { createStore, reconcile } from "solid-js/store";
 import { useNavigate } from "@solidjs/router";
 import { PublicLoginForm } from "@/components/public-login-form";
-import { PublicContactMenu } from "@/components/public-contact-menu";
+import { PublicNav } from "@/components/public-nav";
 import { ChatShareModal } from "@/components/chat-share-modal";
 import { displayGithubStars, fetchGithubStars } from "@/lib/github-stars";
 import { CONTENT } from "@/lib/public-content";
@@ -310,72 +310,6 @@ function AccountButton(props: {
         </div>
       )}
     </Show>
-  );
-}
-
-function Header(props: {
-  user?: PublicAuthUserInfo | null;
-  onLogout?: () => void;
-}) {
-  const navigate = useNavigate();
-  const [stars] = createResource(fetchGithubStars);
-
-  return (
-    <header class="page-header">
-      <div class="public-chat-header-brand">
-        <div onClick={() => navigate("/")} class="header-logo">
-          <img src="/logo.svg" alt="Hone" />
-          <span>Hone</span>
-        </div>
-        <AccountButton user={props.user} onLogout={props.onLogout} />
-      </div>
-
-      <div class="header-actions">
-        <div class="header-socials header-github-stars">
-          <a
-            href="https://github.com/B-M-Capital-Research/honeclaw"
-            target="_blank"
-            class="star-badge"
-          >
-            <ICONS.Github />
-            <span>{displayGithubStars(stars())}</span>
-          </a>
-        </div>
-
-        <div class="divider-v mobile-hide" />
-
-        <PublicContactMenu />
-
-        <div class="lang-switch">
-          <button
-            onClick={() => setLocale("zh")}
-            class={useLocale() === "zh" ? "active" : ""}
-          >
-            中
-          </button>
-          <button
-            onClick={() => setLocale("en")}
-            class={useLocale() === "en" ? "active" : ""}
-          >
-            EN
-          </button>
-        </div>
-
-        <PrefsButton />
-
-        <div style={{ display: "flex", gap: "10px" }}>
-          <button
-            onClick={() => navigate("/roadmap")}
-            class="btn-roadmap-nav mobile-hide"
-          >
-            {CONTENT.home_page.roadmap_button}
-          </button>
-          {/* The 对话 pill is the page we're already on, so hide it here
-              to free header room for the prefs trigger and stop the dead
-              click. The roadmap link (mobile-hidden too) covers desktop. */}
-        </div>
-      </div>
-    </header>
   );
 }
 
@@ -2603,7 +2537,14 @@ export default function PublicChatPage() {
       style={{ height: "100dvh", display: "flex", "flex-direction": "column" }}
     >
       <AnimatedBackground />
-      <Header user={currentUser()} onLogout={logoutPublicChat} />
+      <PublicNav
+        extraActions={
+          <>
+            <PrefsButton />
+            <AccountButton user={currentUser()} onLogout={logoutPublicChat} />
+          </>
+        }
+      />
 
       <Switch>
         <Match when={authState() === "loading"}>
@@ -2936,7 +2877,7 @@ export default function PublicChatPage() {
         }
         .public-chat-account {
           position: relative;
-          display: none;
+          display: inline-flex;
         }
         .public-chat-account-trigger {
           width: 32px;
@@ -2968,6 +2909,12 @@ export default function PublicChatPage() {
           box-shadow: 0 20px 52px rgba(15,23,42,0.18);
           backdrop-filter: blur(18px);
           -webkit-backdrop-filter: blur(18px);
+        }
+        .pub-nav-extra-actions .public-chat-account-panel {
+          position: absolute;
+          top: calc(100% + 10px);
+          right: 0;
+          left: auto;
         }
         .public-chat-account-card {
           display: flex;
@@ -3055,7 +3002,7 @@ export default function PublicChatPage() {
           }
           .public-chat-page--ready .public-chat-shell {
             height: 100dvh !important;
-            padding-top: 0 !important;
+            padding-top: 56px !important;
             background: rgba(248,250,252,0.72);
           }
           .public-chat-page--ready .public-chat-session-strip {
@@ -3067,6 +3014,7 @@ export default function PublicChatPage() {
           .public-chat-sidebar {
             position: relative;
             z-index: 20;
+            padding-top: 56px;
             width: 292px;
             height: 100dvh;
             flex: 0 0 292px;
