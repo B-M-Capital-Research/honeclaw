@@ -8,6 +8,7 @@
 //! | `types`    | `AgentSession*` 公开数据类型 + event helper |
 //! | `progress` | `agent.run` 的 watchdog ticker |
 //! | `helpers`  | 纯函数 helper(persist 过滤、overflow 判读…) |
+//! | `artifacts`| Web direct 生成文件 -> 用户可下载附件登记 |
 //! | `guard`    | daily conversation 配额 RAII guard |
 //! | `emitter`  | runner -> session 事件转发器(含路径脱敏) |
 //! | `restore`  | `SessionStorage` -> `AgentContext` 的唯一入口 |
@@ -16,6 +17,7 @@
 //! 外部模块仍然通过 `hone_channels::agent_session::XXX` 拿到公开符号
 //! (下面的 `pub use` 把它们 re-export 到本 module 根)。
 
+mod artifacts;
 mod core;
 mod emitter;
 mod guard;

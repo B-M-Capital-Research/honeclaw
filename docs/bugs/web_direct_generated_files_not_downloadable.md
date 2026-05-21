@@ -3,7 +3,7 @@
 - **发现时间**: 2026-05-21 15:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无；本单不是 P1，暂不创建。
 
 ## 证据来源
@@ -58,8 +58,23 @@
 - 回复层缺少“文件已生成但无法投递”的能力边界判断，导致 assistant 把本地文件名当成交付结果。
 - Google Drive / 外部中转能力也没有在当前 Web 手机端形成可用入口，不能作为默认兜底。
 
+## 修复记录
+
+- `2026-05-21 20:09 CST` 已修复：
+  - Web direct 成功回复在落库前会扫描本轮新生成、且 final 正文提到文件名的 actor sandbox 文件，并追加 `[附件: <path>]` marker。
+  - public history 既有附件抽取逻辑会把 marker 转成附件 metadata，前端可渲染文件卡片。
+  - 前端非图片附件卡片现在使用 `/api/public/file?path=...` 下载链接，移动端和桌面端都能从当前聊天页打开或下载文件。
+  - 扫描只接受本轮新近生成的白名单扩展名文件，并限制数量 / 深度，避免把 sandbox 旧文件或无关文件误挂到新回复。
+
+## 验证
+
+- `cargo test -p hone-channels web_generated_file_is_attached -- --nocapture`
+- `cargo test -p hone-channels stale_sandbox_files_are_not_attached -- --nocapture`
+- `cargo check -p hone-channels --tests`
+- `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/agent_session/artifacts.rs crates/hone-channels/src/agent_session/core.rs crates/hone-channels/src/agent_session/mod.rs`
+- 前端 `bun` 当前机器不可用，未能执行 `bun run test:web` / `bun run typecheck:web`；本轮已做 TSX 静态复核，下载链接改动局限于 `FileCard` 非图片附件渲染。
+
 ## 下一步建议
 
-- 梳理 Web direct 文件产出协议：本地 sandbox 文件需要如何登记为 public/download artifact，前端如何展示，移动端如何打开。
-- 在 finalizer 或 Web 回复层增加文件交付校验：如果 final 文本引用本地生成文件名但没有可下载 artifact，应改为明确失败/降级提示，并提供纯文本 CSV 内容。
-- 为 Web direct 增加回归：用户要求生成 `.xlsx` / `.csv` 后，最终响应必须包含可下载 artifact metadata；若不支持，则不得声称“已发送文件”。
+- 后续可在 SSE `run_finished` 事件中同步携带附件 metadata，减少等待 history restore 才出现文件卡片的延迟。
+- 如未来支持外部网盘 / connector 上传，可在当前附件 marker 之外增加外部 URL metadata，但不应把 Google Drive 作为默认兜底。

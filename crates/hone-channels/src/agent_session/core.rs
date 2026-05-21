@@ -12,7 +12,7 @@ use hone_memory::{
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use crate::HoneBotCore;
 use crate::execution::{
@@ -26,6 +26,7 @@ use crate::runtime::user_visible_error_message;
 use crate::session_compactor::SessionCompactor;
 use crate::turn_builder::{PromptTurnBuilder, SlashSkillExpansion};
 
+use super::artifacts::attach_web_generated_files;
 use super::emitter::SessionEventEmitter;
 use super::guard::QuotaReservationGuard;
 use super::helpers::{
@@ -1135,6 +1136,7 @@ impl AgentSession {
         ))
         .await;
         let started = Instant::now();
+        let run_started_at = SystemTime::now();
         let mut streamed_output = false;
         let mut terminal_error_emitted = false;
         let mut context_messages: Option<Vec<AgentMessage>> = None;
@@ -1285,6 +1287,30 @@ impl AgentSession {
                 self.message_id.as_deref(),
                 None,
             );
+        }
+        if self.actor.channel == "web"
+            && response.success
+            && !self
+                .recv_extra
+                .as_deref()
+                .is_some_and(|extra| extra.contains("openai_compatible_api=true"))
+        {
+            let attached = attach_web_generated_files(
+                &mut response,
+                &execution.runner_request.working_directory,
+                run_started_at,
+            );
+            if attached > 0 {
+                self.core.log_message_step(
+                    &self.actor.channel,
+                    &self.actor.user_id,
+                    &session_id,
+                    "agent.run.attachments",
+                    &format!("generated_files={attached}"),
+                    self.message_id.as_deref(),
+                    None,
+                );
+            }
         }
         let elapsed_ms = started.elapsed().as_millis();
 

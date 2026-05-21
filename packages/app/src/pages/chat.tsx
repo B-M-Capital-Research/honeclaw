@@ -101,6 +101,7 @@ const ICONS = {
 };
 
 const PUBLIC_IMAGE_ENDPOINT = "/api/public/image";
+const PUBLIC_FILE_ENDPOINT = "/api/public/file";
 const HISTORY_PAGE_SIZE = 24;
 const SIDEBAR_HISTORY_LIMIT = 6;
 
@@ -488,6 +489,12 @@ function publicAttachmentUrl(att: PublicChatAttachment): string {
   );
 }
 
+function publicAttachmentDownloadUrl(att: PublicChatAttachment): string {
+  return buildApiUrl(
+    `${PUBLIC_FILE_ENDPOINT}?path=${encodeURIComponent(att.path)}`,
+  );
+}
+
 function renamePasteFile(file: File) {
   const ext = file.type.split("/")[1]?.split(";")[0] || "bin";
   const stamp = new Date()
@@ -784,7 +791,7 @@ function FileCard(props: {
     props.inUserBubble ? "rgba(255,255,255,0.95)" : "#0f172a";
   const subColor = () =>
     props.inUserBubble ? "rgba(255,255,255,0.7)" : "#64748b";
-  return (
+  const card = (
     <div
       style={{
         display: "flex",
@@ -845,6 +852,22 @@ function FileCard(props: {
         </Show>
       </div>
     </div>
+  );
+  if (props.file.kind === "image") return card;
+  return (
+    <a
+      href={publicAttachmentDownloadUrl(props.file)}
+      download={props.file.name}
+      target="_blank"
+      rel="noreferrer"
+      style={{
+        display: "block",
+        color: "inherit",
+        "text-decoration": "none",
+      }}
+    >
+      {card}
+    </a>
   );
 }
 
