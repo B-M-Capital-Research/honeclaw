@@ -30,6 +30,10 @@ function cloneAsIndexRequest(request, url) {
   return new Request(indexUrl, request);
 }
 
+function blogMetaForPath(pathname) {
+  return BLOG_META[pathname.replace(/\/$/, "")];
+}
+
 function escapeHtml(value) {
   return String(value)
     .replace(/&/g, "&amp;")
@@ -103,6 +107,17 @@ export default {
       return response;
     }
 
+    const blogMeta = blogMetaForPath(url.pathname);
+    if (
+      blogMeta &&
+      request.method === "GET" &&
+      requestWantsHtml(request) &&
+      response.status !== 404 &&
+      responseLooksLikeHtml(response)
+    ) {
+      return injectArticleMeta(response, blogMeta);
+    }
+
     if (response.status !== 404) {
       return response;
     }
@@ -112,7 +127,6 @@ export default {
       requestWantsHtml(request)
     ) {
       const indexResponse = await env.ASSETS.fetch(cloneAsIndexRequest(request, url));
-      const blogMeta = BLOG_META[url.pathname.replace(/\/$/, "")];
       if (blogMeta && request.method === "GET") {
         return injectArticleMeta(indexResponse, blogMeta);
       }
