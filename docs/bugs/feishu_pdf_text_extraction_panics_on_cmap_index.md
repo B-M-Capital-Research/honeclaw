@@ -10,10 +10,13 @@
 
 - `data/sessions.sqlite3` 最近四小时真实 Feishu 直聊窗口：
   - `session_id=Actor_feishu__direct__ou_5f0bdff19e3e341fbbbffe811abecaac61`
+  - `2026-05-22T06:55:10+08:00`，同一用户再次上传 `rubin 价值量拆解-译文.pdf`，附件下载成功，但 user turn 仍记录 `PDF解析状态=失败(PDF 提取任务失败: task ... panicked with message "index out of bounds: the len is 11414 but the index is 11414")`。
+  - `2026-05-22T06:56:13+08:00`，assistant final 没有外发 panic、绝对路径或 worker 栈，而是说明“这份 PDF 仍然无法完成文本解析”，并只基于此前成功读取到的首页继续降级分析。
   - `2026-05-21T23:51:07+08:00`、`2026-05-21T23:55:02+08:00`、`2026-05-22T00:55:06+08:00`，同一用户三次上传同一 17 页 PDF `rubin 价值量拆解-译文.pdf`。
   - 三条 user turn 均落库为 `下载状态=成功`，但 `PDF解析状态=失败(PDF 提取任务失败: task ... panicked with message "index out of bounds: the len is 11414 but the index is 11414")`。
   - 对应 assistant final 没有把 panic 或绝对路径继续外发，但只能说明“系统文本提取失败 / 只能读首页”，无法完整基于后续 16 页正文和表格回答。
 - `data/runtime/logs/hone-feishu.runtime-recovery.log`
+  - `2026-05-22 06:55 CST` 再次出现同一 worker panic：`adobe-cmap-parser-0.4.1/src/lib.rs:195:41`，`index out of bounds: the len is 11414 but the index is 11414`。
   - `2026-05-21 23:51 CST`、`23:55 CST`、`2026-05-22 00:55 CST` 三次出现同一 worker panic：
     - `adobe-cmap-parser-0.4.1/src/lib.rs:195:41`
     - `index out of bounds: the len is 11414 but the index is 11414`
@@ -38,9 +41,10 @@
 
 ## 当前实现效果
 
-- 同一 PDF 三次上传均触发同一 `index out of bounds` panic。
-- 用户任务没有完全失败，assistant 仍有最终回复；但核心输入材料的 16 页正文不可用，回答只能降级到首页摘要。
-- session user turn 与运行日志记录了本机路径和第三方 crate panic 位置；本轮未见这些细节出现在 assistant final，但它们已进入 agent 上下文，增加后续外泄风险。
+- 修复前，同一 PDF 至少四次上传均触发同一 `index out of bounds` panic。
+- 修复前，用户任务没有完全失败，assistant 仍有最终回复；但核心输入材料的 16 页正文不可用，回答只能降级到首页摘要。
+- 修复前，session user turn 与运行日志记录了本机路径和第三方 crate panic 位置；本轮未见这些细节出现在 assistant final，但它们已进入 agent 上下文，增加后续外泄风险。
+- 2026-05-22 10:05 CST 修复后，已先收口 panic containment 与错误脱敏；正文覆盖率更高的 page-level extractor / OCR fallback 仍属于后续增强方向。
 
 ## 用户影响
 
