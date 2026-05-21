@@ -8,8 +8,6 @@
 4. **Low resource usage and high stability:** Rust rewrites of Agent, CLI, and desktop tools often reduce memory usage, startup latency, and binary size by an order of magnitude.
 5. **AI Coding changes the learning curve:** Rust is hard to learn, but AI can now handle much of the syntax and scaffolding. Teams should spend more attention on review, safety, and engineering judgment.
 
-![Hone Rust engineering overview](/blog/why-hone-uses-rust-en.png)
-
 # 1. Context is precious
 
 Anthropic Skills has become a popular idea, and many Agent systems are moving toward skill-based plugin models. The core idea behind progressive disclosure is context management: context is scarce, so it must be used deliberately. In the early MCP era, systems often pushed hundreds of tools and metadata blobs into the context window. Now the industry is moving back toward skill-based governance. All of this is Context Engineering.
@@ -22,7 +20,11 @@ Look at the pain points in Java. Java is one of the most widely used languages, 
 
 > Example 1: Java projects often create many folders, many files, and long names. Even a modern project like Spring AI is cleaner than many older Java systems, but it still carries deep package structure, long identifiers, and object-oriented conventions that inflate context.
 
+![Java project structure context sprawl example](/blog/why-hone-uses-rust-java-files.png)
+
 > Example 2: A lot of text exists purely to describe collaboration boundaries. Java developers know the DO / DTO pattern well. A simple object can easily require nearly a hundred lines and an entire file.
+
+![Java DTO boilerplate example](/blog/why-hone-uses-rust-java-dto.png)
 
 Rust is much more token-efficient in how it organizes code. It combines the rigor of systems programming with modern functional abstractions, so an AI can understand deeper system semantics inside a smaller context window.
 
@@ -56,6 +58,8 @@ If a team is willing to be aggressive, Rust makes it easier to build a unified b
 # 3. Compilation as a test boundary
 
 Blank frontend pages are a familiar Vibe Coding failure mode. You open the page, it is blank, the console shows a TypeError, and the only option is to paste the error back into the AI and ask it to fix the issue. Then you click around and another similar runtime error appears. That is classic runtime failure, often caused by type collapse.
+
+![Runtime TypeError blank page example](/blog/why-hone-uses-rust-runtime-error.png)
 
 In an AI-heavy development loop, the scariest problem is hallucination. AI can generate code that looks perfect syntactically and stylistically while being wrong in deeper semantics, resource lifetime, or concurrent state. In practice, many of these defects only appear at runtime.
 

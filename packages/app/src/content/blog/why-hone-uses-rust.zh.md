@@ -8,8 +8,6 @@
 4. **资源占用低，稳定性高：** Rust 重写的 Agent / CLI / 桌面工具通常能显著降低内存、启动延迟和二进制体积。
 5. **AI Coding 改变了学习曲线：** Rust 学习成本高，但 AI 已经能承担大部分语法和样板生成；团队更应该把精力放在 CR、安全和工程判断上。
 
-![Hone Rust engineering overview](/blog/why-hone-uses-rust-zh.png)
-
 # 1. 寸土寸金的上下文
 
 Anthropic Skills 现在是一个很火的概念，各种 Agent 系统都在走 Skill 插件化，而“渐进式披露”的核心就是解决上下文问题：上下文是稀缺资源，要合理利用，不能乱塞。早期 MCP 时代，动辄几百个工具和元数据塞进上下文；现在又返璞归真，回到 Skill 化治理，这些都属于 Context Engineering。
@@ -22,7 +20,11 @@ Anthropic Skills 现在是一个很火的概念，各种 Agent 系统都在走 S
 
 > 案例 1：Java 经常出现文件夹多、文件多、命名冗长的问题。比如 Spring AI 这种相对新的 Java 项目，已经比很多旧项目清爽，但依然绕不开深包结构、长命名和面向对象规约带来的上下文冗余。
 
+![Java 项目结构上下文膨胀示例](/blog/why-hone-uses-rust-java-files.png)
+
 > 案例 2：大量用于协作的声明和描述文本。写过 Java 的朋友都熟悉 DO/DTO 这类模型，一个简单对象可能需要接近 100 行代码和一个完整文件去描述。
+
+![Java DTO 样板代码示例](/blog/why-hone-uses-rust-java-dto.png)
 
 相比之下，Rust 在语法设计和语言特性上展现出很高的 token 效率。它融合了底层系统编程的严谨性和现代函数式编程的高级抽象，让 AI 能在较短上下文窗口里捕捉系统业务的深层语义。
 
@@ -56,6 +58,8 @@ Rust 的 Tauri 摒弃内置浏览器内核，转而使用操作系统原生 WebV
 # 3. 编译即测试，强大的编译系统
 
 前端页面直接白屏，是大家在 Vibe Coding 中经常遇到的问题。打开页面白屏，Console 里是 TypeError，然后只能把报错复制给 AI 反复修。点一会儿，又出现类似白屏。这就是典型运行时异常，尤其是类型崩溃导致的运行时问题。
+
+![运行时 TypeError 导致白屏示例](/blog/why-hone-uses-rust-runtime-error.png)
 
 在完全依赖 AI 多轮对话的开发模式下，最可怕的是 AI 的幻觉：它会生成语法结构和编码风格看似完美，但在深层语义、资源生命周期或并发状态上完全错误且隐蔽的代码。根据体感，很多问题都要到运行时才触发。
 
