@@ -3,7 +3,7 @@ import { CONTENT } from "@/lib/public-content";
 export const PUBLIC_YOUTUBE_URL = "https://www.youtube.com/@巴芒投研美股频道";
 export const PUBLIC_BILIBILI_URL = "https://www.bilibili.com/video/BV1ByXNBGET5/";
 
-export function contactMenuTitle() {
+function contactMenuTitle() {
   return CONTENT.nav.contact_title;
 }
 

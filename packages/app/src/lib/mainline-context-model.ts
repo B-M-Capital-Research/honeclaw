@@ -1,10 +1,10 @@
-export type ProfileTickerSource = {
+type ProfileTickerSource = {
   profile_list: Array<{
     tickers: string[]
   }>
 }
 
-export type ProfileTickerList = {
+type ProfileTickerList = {
   tickers: string[]
 }
 

@@ -176,7 +176,7 @@ export function shouldRecoverPinnedBottom(input: {
   );
 }
 
-export function isPublicChatQuotaCapped(dailyLimit: number | undefined) {
+function isPublicChatQuotaCapped(dailyLimit: number | undefined) {
   return !!dailyLimit && dailyLimit > 0;
 }
 
@@ -237,7 +237,7 @@ export function findPendingPublicAssistantMessage(
   return undefined;
 }
 
-export function publicBackgroundPendingMessage(
+function publicBackgroundPendingMessage(
   pending: PublicChatBackgroundPending,
 ): PublicChatMessage | undefined {
   if (!pending) return undefined;

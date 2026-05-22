@@ -4,7 +4,7 @@ import { tpl, type Locale } from "@/lib/i18n"
 
 export const TASK_HEALTH_DAYS_OPTIONS = [1, 3, 7, 14] as const
 
-export type TaskSummaryRow = TaskSummary & {
+type TaskSummaryRow = TaskSummary & {
   task: string
 }
 

@@ -1,4 +1,4 @@
-export type PublicRefreshResult = {
+type PublicRefreshResult = {
   mainline_count: number
   skipped_tickers: string[]
 }
