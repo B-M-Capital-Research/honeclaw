@@ -3,7 +3,7 @@
 - **发现时间**: 2026-05-22 15:02 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 
 ## 证据来源
 
@@ -51,3 +51,12 @@
 - 在大佬交易 / ARK 跟踪 prompt 或后处理规则中补充口径约束：除非有官方 trade notification 或可核验主动交易清单，否则只说“持仓文件显示股数变化”，不得概括为主动买入 / 卖出。
 - 对 ARK 输出增加固定结构：`单只基金变化`、`全 ARK 合计变化`、`是否可判定主动交易`、`申赎/再平衡不确定性`。
 - 后续巡检若再次看到用户纠正同类“持仓差异被说成主动交易”样本，可将本单升级为更系统的披露口径缺陷。
+
+## 修复记录
+
+- 2026-05-23 00:03 CST：共享金融系统 prompt 新增基金/ETF 披露口径约束，要求 ARK、ETF、基金或机构持仓分析必须区分单只基金持仓文件、全机构合计、主动交易清单、申赎/再平衡和披露日期；除非本轮有可核验 trade notification、交易流水或官方主动买卖披露，不得把持仓文件股数差异直接表述为最近买入/卖出/减仓。
+- 同步加固 multi-agent search guidance：检索阶段遇到 ARK/ETF/基金持仓问题时必须把 share-count differences 写成 holding-file changes，而不是 recent buys/sells。
+- 回归验证：
+  - `cargo test -p hone-channels build_prompt_bundle_always_includes_finance_domain_policy --lib -- --nocapture`
+  - `cargo test -p hone-channels search_input_guidance_allows_direct_replies_for_greetings --lib -- --nocapture`
+- 无关联 GitHub Issue。

@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-22 23:01 CST
+最后更新：2026-05-23 00:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,10 +17,11 @@
 
 ## 当前概览
 
-- 活跃待修复：3
+- 活跃待修复：1
 - Later / 待复现：9
-- 已修复 / 已关闭：109
+- 已修复 / 已关闭：111
 - 历史分析 / 部分止血：5
+- 本轮 00:03 CST 已修复两个活跃 P3 质量缺陷：共享金融系统 prompt 新增强时效行情建议约束，避免 FUTU 这类盘前急跌问题继续用常规交易旧价推导抄底区间；同时新增基金/ETF 披露口径约束，避免把 ARK/ETF 持仓文件股数差异误表述为近期主动卖出。multi-agent search guidance 同步要求保留 quote 时段/时间戳限制和 holding-file changes 口径。回归：`cargo test -p hone-channels build_prompt_bundle_always_includes_finance_domain_policy --lib -- --nocapture`、`cargo test -p hone-channels search_input_guidance_allows_direct_replies_for_greetings --lib -- --nocapture`。两项均无关联 GitHub Issue。
 - 本轮 23:01 CST 重新打开 P2 `Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移`：22:39/22:52 CST Feishu scheduler 启动回收 5134 条历史 stale started row 后，23:00 CST heartbeat 窗口改用 `MiniMax-M2.7-highspeed`，但 Feishu 9 条、Web 1 条 heartbeat 又批量输出 `<think>` / plain text 或空状态对象并落成 `execution_failed + skipped_error + delivered=0`。这不是 429 quota 同根因，会导致自动监控提醒漏发，按功能性 `P2 / New` 重新进入活跃待修复；不是 P1，本轮不创建 GitHub issue。
 - 本轮 23:01 CST 未发现新的独立活跃 P1。最近四小时共有 54 个 user turn 与 51 个 assistant final；Feishu / Web 直聊和普通 scheduler 均有收口。assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`；最近四小时无非文档代码提交。
 - 本轮 23:01 CST 继续观察到 `Heartbeat mimo quota exhaustion drops alerts` 的运行态失败记录：19:13-22:30 CST 新增 105 条 heartbeat `execution_failed + skipped_error + delivered=0` 的 quota 失败，其中 Feishu 84 条、Web 21 条，错误集中为 `HTTP 429` / `quota exhausted`。当前 HEAD 已有多 key fallback 与 heartbeat 429 分类修复，本轮仅补充旧/未确认部署运行态证据，不把该缺陷从 `Fixed` 回退。
@@ -232,8 +233,6 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | New | 2026-05-22 23:01 重新打开：23:00 CST heartbeat 窗口改用 `MiniMax-M2.7-highspeed` 后，Feishu 9 条、Web 1 条 heartbeat 输出 `<think>` / plain text 或空状态对象并落成 `execution_failed + skipped_error + delivered=0`；影响自动监控提醒主链路。无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
-| Feishu 直聊在 FUTU 盘前暴跌时仍用常规交易旧价给抄底区间 | P3 | New | 2026-05-22 19:02 新增质量性缺陷：用户询问当天富途监管事件和抄底价格时，assistant 用常规交易旧价 `123.86` 给出区间；用户补充盘前已到 80 后，assistant 才承认上一轮未更新盘前口径并下修判断。不影响投递链路或系统稳定性，因此为 P3。无关联 GitHub Issue | [feishu_direct_futu_premarket_stale_price_advice.md](./feishu_direct_futu_premarket_stale_price_advice.md) |
-| Feishu 大佬跟踪把 ARK TEM 持仓差异误表述为近期卖出 | P3 | New | 2026-05-22 15:02 新增质量性缺陷：用户纠正 ARK 近期并未卖出 TEM，assistant 承认此前把持仓文件差异概括为近期卖出 / 降仓不严谨；不影响投递链路或系统稳定性，因此为 P3。无关联 GitHub Issue | [feishu_scheduler_ark_tem_trade_direction_misread.md](./feishu_scheduler_ark_tem_trade_direction_misread.md) |
 
 ## Later / 待复现
 
@@ -253,6 +252,8 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Feishu 直聊在 FUTU 盘前暴跌时仍用常规交易旧价给抄底区间 | P3 | Fixed | 2026-05-23 00:03 共享金融系统 prompt 新增强时效行情建议约束；含 `今天/盘前/盘后/现在/抄底/买点/卖点` 等语义时必须核实最新可得价格、数据时间和交易时段，若只得常规收盘或延迟价必须标注未覆盖扩展时段，不能把旧价作为当前决策锚。无关联 GitHub Issue | [feishu_direct_futu_premarket_stale_price_advice.md](./feishu_direct_futu_premarket_stale_price_advice.md) |
+| Feishu 大佬跟踪把 ARK TEM 持仓差异误表述为近期卖出 | P3 | Fixed | 2026-05-23 00:03 共享金融系统 prompt 新增基金/ETF 披露口径约束；ARK/ETF/基金持仓分析必须区分持仓文件、全机构合计、主动交易清单、申赎/再平衡和披露日期，没有可核验主动交易披露时只能写持仓文件股数变化。无关联 GitHub Issue | [feishu_scheduler_ark_tem_trade_direction_misread.md](./feishu_scheduler_ark_tem_trade_direction_misread.md) |
 | Feishu PDF 文本提取在 CMap 解析越界 panic 后只能降级读首页 | P2 | Fixed | 2026-05-22 10:05 PDF 文本提取的 `pdf_extract` panic 现被捕获并归一化为 `pdf_text_extract_failed`；附件 prompt/ack 清洗 panic、crate 路径和本机绝对路径，避免内部错误细节进入 LLM 上下文。无关联 GitHub Issue | [feishu_pdf_text_extraction_panics_on_cmap_index.md](./feishu_pdf_text_extraction_panics_on_cmap_index.md) |
 | Web 直聊生成 Excel/CSV 只回文件名，手机端无法下载或打开 | P2 | Fixed | 2026-05-21 20:09 Web direct 会把本轮新生成且正文提到文件名的 sandbox 文件追加为附件 marker，public history 可返回下载 metadata；前端非图片附件卡片现在使用 `/api/public/file` 下载链接。无关联 GitHub Issue | [web_direct_generated_files_not_downloadable.md](./web_direct_generated_files_not_downloadable.md) |
 | Feishu 定时任务目标解析链路再次失败，内容已生成但在 contact 阶段被拦截未送达 | P2 | Fixed | 2026-05-22 09:38 contact lookup 的 `code=1663` / `internal error` 现按临时上游错误做最多 3 次短重试，避免首次 Feishu 内部错误直接落成 `target_resolution_failed`；新增 `contact_lookup_internal_errors_are_retryable` 与 `contact_lookup_retry_budget_matches_request_retry_budget` 回归。关联 Issue [#32](https://github.com/B-M-Capital-Research/honeclaw/issues/32) | [feishu_scheduler_target_resolution_failed.md](./feishu_scheduler_target_resolution_failed.md) |

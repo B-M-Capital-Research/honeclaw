@@ -3,7 +3,7 @@
 - **发现时间**: 2026-05-22 19:02 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 
 ## 证据来源
 
@@ -51,3 +51,12 @@
 - 对直聊投研 prompt 或行情工具结果消费层增加口径约束：若用户使用 `今天 / 刚刚 / 盘前 / 盘后 / 现在 / 抄底` 等强时效词，必须优先校验盘前 / 盘后 / 实时可得价，或显式声明不可得。
 - 对操作建议类回复增加价格口径字段：`常规交易收盘价`、`盘前/盘后价`、`数据时间`、`是否可作为当前决策锚`。
 - 后续巡检若再次出现用户用实时价纠正 assistant 旧价，可将本单升级为更系统的 direct 行情口径缺陷。
+
+## 修复记录
+
+- 2026-05-23 00:03 CST：共享金融系统 prompt 新增强时效行情建议约束，要求含 `今天 / 盘前 / 盘后 / 现在 / 抄底 / 买点 / 卖点` 等操作语义的问题先核实最新可得价格、数据时间和交易时段口径；若工具只返回常规交易收盘价、延迟价或缺少扩展时段数据，必须明确标注未覆盖盘前/盘后实时价，不能继续把旧价作为当前决策锚推导精确抄底区间。
+- 同步加固 multi-agent search guidance：检索阶段遇到强时效投资问题时优先获取最新 quote、timestamp 与 trading-session scope，并把扩展时段缺口保留给最终回答。
+- 回归验证：
+  - `cargo test -p hone-channels build_prompt_bundle_always_includes_finance_domain_policy --lib -- --nocapture`
+  - `cargo test -p hone-channels search_input_guidance_allows_direct_replies_for_greetings --lib -- --nocapture`
+- 无关联 GitHub Issue。
