@@ -112,7 +112,7 @@ fn format_fmp_transport_error(operation: &str, error: &reqwest::Error) -> anyhow
 }
 
 fn sanitize_fmp_error_detail(text: &str) -> String {
-    let redacted = redact_fmp_query_secrets(text);
+    let redacted = redact_fmp_secrets(text);
     if redacted.chars().count() <= MAX_FMP_TRANSPORT_ERROR_CHARS {
         return redacted;
     }
@@ -123,11 +123,39 @@ fn sanitize_fmp_error_detail(text: &str) -> String {
         + "..."
 }
 
-fn redact_fmp_query_secrets(text: &str) -> String {
-    let mut output = text.to_string();
+fn redact_fmp_secrets(text: &str) -> String {
+    let mut output = redact_url_userinfo(text);
     for key in ["apikey", "api_key", "apiKey"] {
         output = redact_query_value(&output, key);
+        output = redact_marker_value(&output, &format!("{key}:"));
+        output = redact_json_string_field(&output, key);
     }
+    output
+}
+
+fn redact_url_userinfo(text: &str) -> String {
+    let mut remaining = text;
+    let mut output = String::with_capacity(text.len());
+    while let Some(index) = remaining.find("://") {
+        let authority_start = index + 3;
+        let authority = &remaining[authority_start..];
+        let authority_end = authority
+            .char_indices()
+            .find_map(|(idx, ch)| {
+                (ch.is_whitespace() || matches!(ch, '/' | '?' | '#' | ')')).then_some(idx)
+            })
+            .unwrap_or(authority.len());
+        let authority_slice = &authority[..authority_end];
+        if let Some(at_index) = authority_slice.rfind('@') {
+            output.push_str(&remaining[..authority_start]);
+            output.push_str("<redacted>@");
+            remaining = &remaining[authority_start + at_index + 1..];
+        } else {
+            output.push_str(&remaining[..authority_start]);
+            remaining = &remaining[authority_start..];
+        }
+    }
+    output.push_str(remaining);
     output
 }
 
@@ -142,6 +170,74 @@ fn redact_query_value(text: &str, key: &str) -> String {
         let value_tail = remaining[value_start..]
             .char_indices()
             .find_map(|(idx, ch)| (ch == '&' || ch == ')' || ch == ' ').then_some(idx))
+            .unwrap_or(remaining[value_start..].len());
+        remaining = &remaining[value_start + value_tail..];
+    }
+    output.push_str(remaining);
+    output
+}
+
+fn redact_marker_value(text: &str, marker: &str) -> String {
+    let mut remaining = text;
+    let mut output = String::with_capacity(text.len());
+    while let Some(index) = remaining.find(marker) {
+        let marker_end = index + marker.len();
+        let after_marker = &remaining[marker_end..];
+        let value_offset = after_marker
+            .char_indices()
+            .find_map(|(idx, ch)| (!ch.is_whitespace()).then_some(idx))
+            .unwrap_or(after_marker.len());
+        let value_start = marker_end + value_offset;
+        output.push_str(&remaining[..value_start]);
+        if value_start == remaining.len() {
+            remaining = "";
+            break;
+        }
+        output.push_str("<redacted>");
+        let value_tail = remaining[value_start..]
+            .char_indices()
+            .find_map(|(idx, ch)| {
+                (ch.is_whitespace() || matches!(ch, ')' | ',' | '"' | '&')).then_some(idx)
+            })
+            .unwrap_or(remaining[value_start..].len());
+        remaining = &remaining[value_start + value_tail..];
+    }
+    output.push_str(remaining);
+    output
+}
+
+fn redact_json_string_field(text: &str, key: &str) -> String {
+    let needle = format!("\"{key}\"");
+    let mut remaining = text;
+    let mut output = String::with_capacity(text.len());
+    while let Some(index) = remaining.find(&needle) {
+        let after_key = index + needle.len();
+        let Some((value_quote_offset, _)) = remaining[after_key..]
+            .char_indices()
+            .find(|(_, ch)| !ch.is_whitespace() && *ch != ':')
+            .filter(|(_, ch)| *ch == '"')
+        else {
+            output.push_str(&remaining[..after_key]);
+            remaining = &remaining[after_key..];
+            continue;
+        };
+        let value_start = after_key + value_quote_offset + 1;
+        output.push_str(&remaining[..value_start]);
+        output.push_str("<redacted>");
+        let mut escaped = false;
+        let value_tail = remaining[value_start..]
+            .char_indices()
+            .find_map(|(idx, ch)| {
+                if escaped {
+                    escaped = false;
+                    return None;
+                }
+                if ch == '\\' {
+                    escaped = true;
+                    return None;
+                }
+                (ch == '"').then_some(idx)
+            })
             .unwrap_or(remaining[value_start..].len());
         remaining = &remaining[value_start + value_tail..];
     }
@@ -172,6 +268,28 @@ mod tests {
         assert_eq!(
             detail,
             "https://fmp.test/v3/quote/AAPL?api_key=<redacted>&apiKey=<redacted>&apikey=<redacted>"
+        );
+    }
+
+    #[test]
+    fn fmp_error_detail_redacts_marker_and_json_key_aliases() {
+        let detail = sanitize_fmp_error_detail(
+            r#"upstream said api_key: one {"apikey":"two","apiKey":"three"}"#,
+        );
+        assert_eq!(
+            detail,
+            r#"upstream said api_key: <redacted> {"apikey":"<redacted>","apiKey":"<redacted>"}"#
+        );
+    }
+
+    #[test]
+    fn fmp_error_detail_redacts_url_userinfo() {
+        let detail = sanitize_fmp_error_detail(
+            "error sending request for url (https://user:secret@fmp.test/v3/quote/AAPL)",
+        );
+        assert_eq!(
+            detail,
+            "error sending request for url (https://<redacted>@fmp.test/v3/quote/AAPL)"
         );
     }
 }

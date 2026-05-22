@@ -264,7 +264,7 @@ fn format_fmp_transport_error(operation: &str, error: &reqwest::Error) -> String
 }
 
 fn sanitize_fmp_error_detail(text: &str) -> String {
-    let redacted = redact_fmp_query_secrets(text);
+    let redacted = redact_fmp_query_secrets(&redact_url_userinfo(text));
     if redacted.chars().count() <= MAX_FMP_TRANSPORT_ERROR_CHARS {
         return redacted;
     }
@@ -273,6 +273,32 @@ fn sanitize_fmp_error_detail(text: &str) -> String {
         .take(MAX_FMP_TRANSPORT_ERROR_CHARS)
         .collect::<String>()
         + "..."
+}
+
+fn redact_url_userinfo(text: &str) -> String {
+    let mut remaining = text;
+    let mut output = String::with_capacity(text.len());
+    while let Some(index) = remaining.find("://") {
+        let authority_start = index + 3;
+        let authority = &remaining[authority_start..];
+        let authority_end = authority
+            .char_indices()
+            .find_map(|(idx, ch)| {
+                (ch.is_whitespace() || matches!(ch, '/' | '?' | '#' | ')')).then_some(idx)
+            })
+            .unwrap_or(authority.len());
+        let authority_slice = &authority[..authority_end];
+        if let Some(at_index) = authority_slice.rfind('@') {
+            output.push_str(&remaining[..authority_start]);
+            output.push_str("<redacted>@");
+            remaining = &remaining[authority_start + at_index + 1..];
+        } else {
+            output.push_str(&remaining[..authority_start]);
+            remaining = &remaining[authority_start..];
+        }
+    }
+    output.push_str(remaining);
+    output
 }
 
 fn redact_fmp_query_secrets(text: &str) -> String {
@@ -557,6 +583,17 @@ mod tests {
         assert!(!detail.contains("\"one\""));
         assert!(!detail.contains("\"two\""));
         assert!(!detail.contains("\"three\""));
+    }
+
+    #[test]
+    fn fmp_error_detail_redacts_url_userinfo() {
+        let detail = sanitize_fmp_error_detail(
+            "error sending request for url (https://user:secret@example.com/api/v3/quote/AAPL)",
+        );
+        assert_eq!(
+            detail,
+            "error sending request for url (https://<redacted>@example.com/api/v3/quote/AAPL)"
+        );
     }
 
     #[test]

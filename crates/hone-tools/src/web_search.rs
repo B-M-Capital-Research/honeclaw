@@ -175,7 +175,7 @@ impl WebSearchTool {
 }
 
 fn sanitize_tavily_error_detail(text: &str) -> String {
-    let mut output = redact_tavily_marker_value(text, "Bearer ");
+    let mut output = redact_tavily_marker_value(&redact_url_userinfo(text), "Bearer ");
     for key in [
         "access_token",
         "accessToken",
@@ -198,6 +198,32 @@ fn sanitize_tavily_error_detail(text: &str) -> String {
         .take(MAX_TAVILY_ERROR_CHARS)
         .collect::<String>()
         + "..."
+}
+
+fn redact_url_userinfo(text: &str) -> String {
+    let mut remaining = text;
+    let mut output = String::with_capacity(text.len());
+    while let Some(index) = remaining.find("://") {
+        let authority_start = index + 3;
+        let authority = &remaining[authority_start..];
+        let authority_end = authority
+            .char_indices()
+            .find_map(|(idx, ch)| {
+                (ch.is_whitespace() || matches!(ch, '/' | '?' | '#' | ')')).then_some(idx)
+            })
+            .unwrap_or(authority.len());
+        let authority_slice = &authority[..authority_end];
+        if let Some(at_index) = authority_slice.rfind('@') {
+            output.push_str(&remaining[..authority_start]);
+            output.push_str("<redacted>@");
+            remaining = &remaining[authority_start + at_index + 1..];
+        } else {
+            output.push_str(&remaining[..authority_start]);
+            remaining = &remaining[authority_start..];
+        }
+    }
+    output.push_str(remaining);
+    output
 }
 
 fn redact_tavily_marker_value(text: &str, marker: &str) -> String {
@@ -429,6 +455,21 @@ mod tests {
         assert!(message.contains("\"safe\":\"kept\""));
         assert!(!message.contains("json-key"));
         assert!(!message.contains("\"tok\""));
+    }
+
+    #[test]
+    fn response_error_message_redacts_url_userinfo_in_detail() {
+        let payload = serde_json::json!({
+            "detail": {
+                "error": "callback failed for https://user:secret@example.test/search"
+            }
+        });
+
+        let message = WebSearchTool::response_error_message(&payload).expect("message");
+        assert_eq!(
+            message,
+            "callback failed for https://<redacted>@example.test/search"
+        );
     }
 
     #[test]

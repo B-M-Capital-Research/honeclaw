@@ -181,7 +181,7 @@ fn sanitize_skill_script_stderr(stderr: &str) -> String {
 }
 
 fn redact_skill_script_stderr_secrets(text: &str) -> String {
-    let mut output = redact_skill_script_marker_value(text, "Bearer ");
+    let mut output = redact_skill_script_marker_value(&redact_url_userinfo(text), "Bearer ");
     for key in [
         "access_token",
         "accessToken",
@@ -196,6 +196,32 @@ fn redact_skill_script_stderr_secrets(text: &str) -> String {
         output = redact_skill_script_marker_value(&output, &format!("{key}:"));
         output = redact_skill_script_json_string_field(&output, key);
     }
+    output
+}
+
+fn redact_url_userinfo(text: &str) -> String {
+    let mut remaining = text;
+    let mut output = String::with_capacity(text.len());
+    while let Some(index) = remaining.find("://") {
+        let authority_start = index + 3;
+        let authority = &remaining[authority_start..];
+        let authority_end = authority
+            .char_indices()
+            .find_map(|(idx, ch)| {
+                (ch.is_whitespace() || matches!(ch, '/' | '?' | '#' | ')')).then_some(idx)
+            })
+            .unwrap_or(authority.len());
+        let authority_slice = &authority[..authority_end];
+        if let Some(at_index) = authority_slice.rfind('@') {
+            output.push_str(&remaining[..authority_start]);
+            output.push_str("<redacted>@");
+            remaining = &remaining[authority_start + at_index + 1..];
+        } else {
+            output.push_str(&remaining[..authority_start]);
+            remaining = &remaining[authority_start..];
+        }
+    }
+    output.push_str(remaining);
     output
 }
 
@@ -312,15 +338,17 @@ mod tests {
 
     #[test]
     fn skill_script_stderr_preview_redacts_common_credentials() {
-        let stderr = r#"failed https://api.test/path?api_key=abc&token=tok auth=Bearer xyz apiKey: header-secret {"secret": "json-secret"}"#;
+        let stderr = r#"failed https://user:password@api.test/path?api_key=abc&token=tok auth=Bearer xyz apiKey: header-secret {"secret": "json-secret"}"#;
         let detail = sanitize_skill_script_stderr(stderr);
 
+        assert!(detail.contains("https://<redacted>@api.test/path"));
         assert!(detail.contains("api_key=<redacted>"));
         assert!(detail.contains("token=<redacted>"));
         assert!(detail.contains("Bearer <redacted>"));
         assert!(detail.contains("apiKey: <redacted>"));
         assert!(detail.contains("\"secret\": \"<redacted>\""));
         assert!(!detail.contains("abc"));
+        assert!(!detail.contains("password"));
         assert!(!detail.contains("=tok"));
         assert!(!detail.contains("xyz"));
         assert!(!detail.contains("header-secret"));

@@ -25,7 +25,9 @@ use crate::digest::DigestPayload;
 use crate::renderer::RenderFormat;
 use crate::router::OutboundSink;
 use crate::sinks::feishu_card::build_feishu_card;
-use crate::sinks::http_error::{format_transport_error, format_upstream_http_error};
+use crate::sinks::http_error::{
+    format_provider_api_error, format_transport_error, format_upstream_http_error,
+};
 
 const FEISHU_TOKEN_URL: &str =
     "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal";
@@ -133,7 +135,12 @@ impl FeishuSink {
         }
         let parsed: TokenResp = resp.json().await?;
         if parsed.code != 0 {
-            anyhow::bail!("feishu token error code={} msg={}", parsed.code, parsed.msg);
+            anyhow::bail!(format_provider_api_error(
+                "feishu",
+                "token",
+                parsed.code,
+                &parsed.msg
+            ));
         }
         let token = parsed
             .tenant_access_token
@@ -240,11 +247,12 @@ impl FeishuSink {
         }
         let parsed: BatchGetIdResp = resp.json().await?;
         if parsed.code != 0 {
-            anyhow::bail!(
-                "feishu resolve direct contact error code={} msg={}",
+            anyhow::bail!(format_provider_api_error(
+                "feishu",
+                "resolve direct contact",
                 parsed.code,
-                parsed.msg
-            );
+                &parsed.msg
+            ));
         }
         let Some(open_id) = unique_batch_get_open_id(parsed.data) else {
             return Ok(None);
@@ -375,7 +383,12 @@ impl FeishuSink {
         }
         let parsed: SendResp = resp.json().await?;
         if parsed.code != 0 {
-            anyhow::bail!("feishu send error code={} msg={}", parsed.code, parsed.msg);
+            anyhow::bail!(format_provider_api_error(
+                "feishu",
+                "send",
+                parsed.code,
+                &parsed.msg
+            ));
         }
         Ok(())
     }
