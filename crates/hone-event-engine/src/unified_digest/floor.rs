@@ -1,6 +1,6 @@
 //! Floor 分类器 —— 把一个 `MarketEvent` 映射到 `Option<FloorTag>`,floor 条目
-//! 在 unified scheduler 里**绕过 LLM** 直接 prepend 到 payload 顶部,且永远不会
-//! 被 `max_items_per_batch` 挤掉(只占配额)。
+//! 在 unified scheduler 里**绕过 LLM** 直接 prepend 到 payload 顶部。floor 优先
+//! 消耗 `max_items_per_batch` 配额;如果 floor 本身超过 cap,尾部仍会 overflow。
 //!
 //! 优先级(同一事件命中多条规则时取第一条):
 //! 1. `Severity::High` → `HighSeverity`

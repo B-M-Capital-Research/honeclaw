@@ -2,7 +2,7 @@
 //!
 //! Pass 1(本文件):批量打分 + cluster 聚类 + 一句话 takeaway。
 //!   - prompt 用 POC 验证过的"5 分锚点 + 具体例子"版本,避免两极化
-//!   - cluster id 由 LLM 一次性输出(同事件不同媒体合并),不需要算法 dedup
+//!   - cluster id 由 LLM 一次性输出(同事件不同媒体合并),再按 cluster 取代表
 //!   - 输出按 cluster 取分最高,按 score 降序截 top_n
 //!
 //! Pass 2 baseline / personalize 在同模块的 pass2_baseline / pass2_personalize 里。
@@ -16,7 +16,7 @@
 //!   实际 score 分布、聚类质量和成本以当前模型为准。
 //! - 174 候选下 cluster dedup 仍准确(174→124,iran-war 一次合 21)
 //! - 带 audience brief 后 LLM 自动推 NVDA/Intel/TSM 是 AMD 同行
-//! - Pass 1 仍应使用强模型；失败时可降级透传,但不要静默换回 nova-lite-v1。
+//! - Pass 1 仍应使用强模型；失败时本轮 global pool 跳过,不要静默换回 nova-lite-v1。
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -231,7 +231,7 @@ impl Curator {
     /// - 证伪保留并标 MainlineCounter,LLM 必须在短评里点出"是否构成实质证伪"
     /// - 用户视角噪音(短期估值/技术见顶/单日波动/笼统泡沫论)直接剔除
     /// - **macro_floor**:无论主线怎么过滤,至少留 floor_macro 条 macro_floor 标记
-    ///   候选池真没够格的就不强加(metadata `floor_satisfied=false`,只 warn 不错)
+    ///   候选池真没够格的就不强加(metadata `floor_satisfied=false`,只 warn 不报错)
     /// - 主线完全为空 → 退化成 baseline 行为(全部标 MainlineAligned + Neutral)
     pub async fn pass2_personalize(
         &self,

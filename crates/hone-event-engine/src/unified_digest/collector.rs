@@ -1,13 +1,13 @@
-//! `UnifiedCollector` —— 把三个 source 编排成两层产物:
+//! `UnifiedCollector` —— 把三个 source 编排成两层产物的轻量组合器:
 //!
 //! - **per-actor pool**:`BufferSource.drain(actor)` ∪ `SynthSource.synthesize_for_actor(actor)`,
 //!   每个 actor 独立产出,合并到一个 `Vec<UnifiedCandidate>`。
 //! - **shared pool**:`GlobalNewsSource.collect(until, lookback, dedup_lookback)`,
 //!   一次 slot 只取一次,所有 actor 共享,后续在 scheduler 里再做 per-actor `prefs` 过滤。
 //!
-//! Scheduler 已接入该组合 API;Synth / Global 两个 source 都是可选的——`SynthSource`
-//! 需要 store + registry 才有意义,`GlobalNewsSource` 在 `prefs.blocked_origins`
-//! 或 dryrun 关闭全球新闻时不创建。
+//! 当前 runtime scheduler 内联编排等价流程;这里保留组合器和测试来锁定
+//! source 层 contract。Synth / Global 两个 source 都是可选的——`SynthSource`
+//! 需要 store + registry 才有意义,`GlobalNewsSource` 可由调用方显式关闭。
 
 use chrono::{DateTime, Utc};
 use hone_core::ActorIdentity;
@@ -49,7 +49,7 @@ impl<'a> UnifiedCollector<'a> {
         }
     }
 
-    /// 关掉 global source —— 用户在 prefs 里 block 全球 origin、或 dryrun 不想跑 LLM 时用。
+    /// 关掉 global source —— 测试或调用方只想验证 per-actor pool 时使用。
     pub fn without_global(mut self) -> Self {
         self.global = None;
         self

@@ -9,7 +9,7 @@
 //! 4. **floor 分类**:High severity / earnings synth countdown / immediate_kinds 标
 //!    `FloorTag`,LLM 输出 `PickCategory::MacroFloor` 也标 floor
 //! 5. **合并排序**:floor prepend → 其余按 `digest_score` → topic memory + curation
-//!    cap(High 与 floor 不被剔)→ `max_items_per_batch` 截断 → render + send + log
+//!    cap(floor 优先保留)→ `max_items_per_batch` 截断 → render + send + log
 //!
 //! 调用方在 `pipeline::cron_minute_tick` 里以 60s 频率调 `tick_once`。
 //! `quiet_hours` 期间 actor 整体让位,`to` 时刻触发 `quiet_flush` 把 router hold
@@ -560,7 +560,7 @@ impl UnifiedDigestScheduler {
                             None,
                         );
                     }
-                    // global news 单独再落一份 `global_digest_item` 审计,沿用旧 channel。
+                    // global news 单独再落一份 `global_digest_item` 审计,便于对账。
                     for pi in &personalized {
                         if !merged.iter().any(|m| m.id == pi.candidate.event.id) {
                             continue;

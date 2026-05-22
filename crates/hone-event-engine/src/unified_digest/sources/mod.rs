@@ -20,8 +20,8 @@ use crate::unified_digest::ItemOrigin;
 pub struct UnifiedCandidate {
     pub event: MarketEvent,
     pub origin: ItemOrigin,
-    /// 候选事件被本 source 看到的时刻 —— 用于 floor 排序与 fired-today 防抖。
-    /// `Buffered` 取 enqueued_at,`Synth` 取 now,`Global` 取 occurred_at。
+    /// 候选事件被本 source 看到的时刻 —— 用于排序 tie-break。
+    /// `Buffered` 取 drain 时刻,`Synth` 取 now,`Global` 取 occurred_at。
     pub seen_at: DateTime<Utc>,
     /// 仅 `Global` 源填充:`payload.fmp.text` 浅拷贝,Pass 1 LLM 直接读。
     pub fmp_text: Option<String>,

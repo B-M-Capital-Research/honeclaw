@@ -3,7 +3,7 @@
 //!
 //! - `ItemOrigin` — `DigestItem` 的来源标签,渲染层据此决定 emoji / 排序。
 //! - `FloorTag` — High severity / earnings T-N / `immediate_kinds` 等绕过 LLM 的
-//!   优先级标签;floor 条目永远 prepend 到 payload 顶部,不被 max_items_per_batch 挤掉。
+//!   优先级标签;floor 条目 prepend 到 payload 顶部并优先消耗 max_items_per_batch 配额。
 //! - `MainlineRelation` — Pass 2 personalize 标记一条 item 与用户投资主线的关系。
 //! - `DigestSlot` — 用户自定义的 digest 触发槽位。
 

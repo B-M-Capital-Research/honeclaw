@@ -1,5 +1,15 @@
 # Code Quality Patrol Findings
 
+## 2026-05-22 - 注释准确性
+
+### Global digest broadcast dedup channel no longer matches unified scheduler audit writes
+
+- status: open
+- direction: 注释准确性
+- evidence: `crates/hone-event-engine/src/global_digest/collector.rs` documents cross-batch dedup against `GLOBAL_DIGEST_CHANNEL = "global_digest"` and `excludes_already_broadcast_event_ids` only logs that channel in the fixture. The current unified digest path in `crates/hone-event-engine/src/unified_digest/scheduler.rs` logs delivered global items under `delivery_log.channel = "global_digest_item"` and filtered items under the same channel; `rg` finds no production writer for `"global_digest"`. As a result the collector's `broadcasted_event_ids_since(GLOBAL_DIGEST_CHANNEL, ...)` appears to miss the channel that production writes now use.
+- risk: changing the constant directly would alter global-news cross-batch dedup behavior and could hide or newly suppress stories across actors and slots, so it needs a focused event-engine regression pass rather than a comment-only patrol fix.
+- suggested_fix: decide whether the canonical broadcast-dedup channel should be `global_digest_item` or a separate broadcast-level `global_digest` marker. Then align `GLOBAL_DIGEST_CHANNEL`, scheduler delivery-log writes, collector tests, and any audit/report wording in one behavior-preserving change with coverage for delivered and focus-filtered global picks.
+
 ## 2026-05-22 - 测试可维护性
 
 ### Event-engine live integration checks still live in the crate unit-test module

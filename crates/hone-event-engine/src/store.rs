@@ -894,8 +894,8 @@ impl EventStore {
         Ok(out)
     }
 
-    /// 按 `occurred_at_ts` 拉一段窗口内的 News + Macro 事件,供 global_digest
-    /// collector 二次过滤(source_class / legal_ad / 已广播)。**不**做 source class
+    /// 按 `occurred_at_ts` 拉一段窗口内的 `NewsCritical` 事件,供 global_digest
+    /// collector 二次过滤(source_class / legal_ad / 已广播)。**不**做 source_class
     /// 解析——那是 collector 的职责;这里只做 SQL 层能高效完成的过滤
     /// (kind / severity / 时间窗口 / source 前缀)。
     ///

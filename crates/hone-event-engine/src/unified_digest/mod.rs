@@ -3,7 +3,7 @@
 //! 各子模块职责:
 //! - `types` — `ItemOrigin` / `FloorTag` / `DigestSlot` / `MainlineRelation` 跨层共享类型
 //! - `sources` — `BufferSource` / `SynthSource` / `GlobalNewsSource` 抽象 `UnifiedCandidate` 流
-//! - `collector` — 三 source 编排 + per-actor 关联 + price-latest 去重保留
+//! - `collector` — 三 source 的组合器与 source-level contract tests
 //! - `floor` — High severity / earnings T-N / `immediate_kinds` 绕过 LLM 的 prepend 队
 //! - `scheduler` — 60s tick + 共享 Pass 1/baseline + per-actor fan-out personalize
 
