@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-23 00:03 CST
+最后更新：2026-05-23 00:14 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,10 +17,11 @@
 
 ## 当前概览
 
-- 活跃待修复：1
+- 活跃待修复：0
 - Later / 待复现：9
-- 已修复 / 已关闭：111
+- 已修复 / 已关闭：112
 - 历史分析 / 部分止血：5
+- 本轮 00:14 CST 已修复 P2 `Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移`：heartbeat `{}` 现在按 prompt 兼容契约归一为 noop，明确表达“条件未满足 / 不触发 / 本轮不发送 / return noop”的 plain text 或未闭合 `<think>` 推理文本归一为 `PlainTextNoop`，不再把 MiniMax 否定性分析记成失败；非结构化触发文本仍继续失败收口，不误发。无关联 GitHub Issue。
 - 本轮 00:03 CST 已修复两个活跃 P3 质量缺陷：共享金融系统 prompt 新增强时效行情建议约束，避免 FUTU 这类盘前急跌问题继续用常规交易旧价推导抄底区间；同时新增基金/ETF 披露口径约束，避免把 ARK/ETF 持仓文件股数差异误表述为近期主动卖出。multi-agent search guidance 同步要求保留 quote 时段/时间戳限制和 holding-file changes 口径。回归：`cargo test -p hone-channels build_prompt_bundle_always_includes_finance_domain_policy --lib -- --nocapture`、`cargo test -p hone-channels search_input_guidance_allows_direct_replies_for_greetings --lib -- --nocapture`。两项均无关联 GitHub Issue。
 - 本轮 23:01 CST 重新打开 P2 `Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移`：22:39/22:52 CST Feishu scheduler 启动回收 5134 条历史 stale started row 后，23:00 CST heartbeat 窗口改用 `MiniMax-M2.7-highspeed`，但 Feishu 9 条、Web 1 条 heartbeat 又批量输出 `<think>` / plain text 或空状态对象并落成 `execution_failed + skipped_error + delivered=0`。这不是 429 quota 同根因，会导致自动监控提醒漏发，按功能性 `P2 / New` 重新进入活跃待修复；不是 P1，本轮不创建 GitHub issue。
 - 本轮 23:01 CST 未发现新的独立活跃 P1。最近四小时共有 54 个 user turn 与 51 个 assistant final；Feishu / Web 直聊和普通 scheduler 均有收口。assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`；最近四小时无非文档代码提交。
@@ -232,7 +233,6 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | New | 2026-05-22 23:01 重新打开：23:00 CST heartbeat 窗口改用 `MiniMax-M2.7-highspeed` 后，Feishu 9 条、Web 1 条 heartbeat 输出 `<think>` / plain text 或空状态对象并落成 `execution_failed + skipped_error + delivered=0`；影响自动监控提醒主链路。无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 
 ## Later / 待复现
 
@@ -252,6 +252,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixed | 2026-05-23 00:14 `{}` 现在按 prompt 兼容契约归一为 noop；明确表达条件未满足 / 不触发 / 本轮不发送 / return noop 的 plain text 或未闭合 `<think>` 推理文本归一为 `PlainTextNoop`，避免 MiniMax 否定性分析被记成失败；非结构化触发文本仍失败收口。无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Feishu 直聊在 FUTU 盘前暴跌时仍用常规交易旧价给抄底区间 | P3 | Fixed | 2026-05-23 00:03 共享金融系统 prompt 新增强时效行情建议约束；含 `今天/盘前/盘后/现在/抄底/买点/卖点` 等语义时必须核实最新可得价格、数据时间和交易时段，若只得常规收盘或延迟价必须标注未覆盖扩展时段，不能把旧价作为当前决策锚。无关联 GitHub Issue | [feishu_direct_futu_premarket_stale_price_advice.md](./feishu_direct_futu_premarket_stale_price_advice.md) |
 | Feishu 大佬跟踪把 ARK TEM 持仓差异误表述为近期卖出 | P3 | Fixed | 2026-05-23 00:03 共享金融系统 prompt 新增基金/ETF 披露口径约束；ARK/ETF/基金持仓分析必须区分持仓文件、全机构合计、主动交易清单、申赎/再平衡和披露日期，没有可核验主动交易披露时只能写持仓文件股数变化。无关联 GitHub Issue | [feishu_scheduler_ark_tem_trade_direction_misread.md](./feishu_scheduler_ark_tem_trade_direction_misread.md) |
 | Feishu PDF 文本提取在 CMap 解析越界 panic 后只能降级读首页 | P2 | Fixed | 2026-05-22 10:05 PDF 文本提取的 `pdf_extract` panic 现被捕获并归一化为 `pdf_text_extract_failed`；附件 prompt/ack 清洗 panic、crate 路径和本机绝对路径，避免内部错误细节进入 LLM 上下文。无关联 GitHub Issue | [feishu_pdf_text_extraction_panics_on_cmap_index.md](./feishu_pdf_text_extraction_panics_on_cmap_index.md) |

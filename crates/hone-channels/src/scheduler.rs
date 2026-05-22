@@ -112,6 +112,7 @@ pub enum HeartbeatParseKind {
     JsonUnknownStatus,
     JsonMalformed,
     PlainTextSuppressed,
+    PlainTextNoop,
 }
 
 #[derive(Debug, Deserialize)]
@@ -353,6 +354,37 @@ fn recover_malformed_triggered_heartbeat_message(content: &str) -> Option<String
         return Some(message);
     }
     None
+}
+
+fn heartbeat_plain_text_indicates_noop(text: &str) -> bool {
+    let compact = text
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join("")
+        .to_ascii_lowercase();
+    [
+        "条件未满足",
+        "条件不满足",
+        "不满足触发",
+        "尚未触发",
+        "未触发",
+        "不触发",
+        "无需触发",
+        "不需要发送",
+        "本轮不发送",
+        "输出{\"status\":\"noop\"}",
+        "输出`{\"status\":\"noop\"}`",
+        "returnnoop",
+        "outputnoop",
+        "shouldoutputnoop",
+        "notmet",
+        "nottriggered",
+        "notrigger",
+        "conditionisnotmet",
+        "conditionsarenotmet",
+    ]
+    .iter()
+    .any(|marker| compact.contains(marker))
 }
 
 fn heartbeat_internal_marker_prefix(text: &str) -> bool {
@@ -924,6 +956,10 @@ pub fn inspect_heartbeat_result(content: &str) -> (HeartbeatOutcome, HeartbeatPa
         return (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonMalformed);
     }
 
+    if heartbeat_plain_text_indicates_noop(trimmed) {
+        return (HeartbeatOutcome::Noop, HeartbeatParseKind::PlainTextNoop);
+    }
+
     (
         HeartbeatOutcome::Noop,
         HeartbeatParseKind::PlainTextSuppressed,
@@ -941,9 +977,7 @@ pub struct ScheduledTaskExecution {
 fn heartbeat_parse_error_message(parse_kind: &HeartbeatParseKind) -> Option<String> {
     match parse_kind {
         HeartbeatParseKind::Empty => Some("heartbeat 输出为空，任务已标记失败".to_string()),
-        HeartbeatParseKind::JsonEmptyStatus => {
-            Some("heartbeat 输出缺少状态字段，任务已标记失败".to_string())
-        }
+        HeartbeatParseKind::JsonEmptyStatus => None,
         HeartbeatParseKind::JsonUnknownStatus => {
             Some("heartbeat 输出包含未知状态，任务已标记失败".to_string())
         }
@@ -2966,10 +3000,7 @@ mod tests {
         let content = "如果条件满足，应输出 `{\"status\":\"triggered\",\"message\":\"小米跌破 30 港元\"}`；当前条件未满足。";
         assert_eq!(
             inspect_heartbeat_result(content),
-            (
-                HeartbeatOutcome::Noop,
-                HeartbeatParseKind::PlainTextSuppressed
-            )
+            (HeartbeatOutcome::Noop, HeartbeatParseKind::PlainTextNoop)
         );
     }
 
@@ -3165,30 +3196,39 @@ mod tests {
     }
 
     #[test]
-    fn heartbeat_empty_json_marks_execution_failed() {
+    fn heartbeat_empty_json_is_compatible_noop() {
         let (outcome, parse_kind) = inspect_heartbeat_result("{}");
         assert_eq!(parse_kind, HeartbeatParseKind::JsonEmptyStatus);
         assert_eq!(outcome, HeartbeatOutcome::Noop);
         let execution = heartbeat_execution_from_content("{}", "model-x");
         assert!(!execution.should_deliver);
-        assert_eq!(
-            execution.error.as_deref(),
-            Some("heartbeat 输出缺少状态字段，任务已标记失败")
-        );
+        assert!(execution.error.is_none());
+        assert_eq!(execution.metadata["parse_kind"], "JsonEmptyStatus");
     }
 
     #[test]
-    fn heartbeat_think_plus_empty_json_marks_execution_failed() {
+    fn heartbeat_think_plus_empty_json_is_compatible_noop() {
         let (outcome, parse_kind) = inspect_heartbeat_result("<think>reasoning</think>\n\n{}");
         assert_eq!(parse_kind, HeartbeatParseKind::JsonEmptyStatus);
         assert_eq!(outcome, HeartbeatOutcome::Noop);
         let execution =
             heartbeat_execution_from_content("<think>reasoning</think>\n\n{}", "model-x");
         assert!(!execution.should_deliver);
+        assert!(execution.error.is_none());
+        assert_eq!(execution.metadata["parse_kind"], "JsonEmptyStatus");
+    }
+
+    #[test]
+    fn heartbeat_plain_text_noop_is_compatible_noop() {
+        let content = "<think>\n当前价格高于触发线，条件未满足，所以本轮应该返回 noop。\n";
         assert_eq!(
-            execution.error.as_deref(),
-            Some("heartbeat 输出缺少状态字段，任务已标记失败")
+            inspect_heartbeat_result(content),
+            (HeartbeatOutcome::Noop, HeartbeatParseKind::PlainTextNoop)
         );
+        let execution = heartbeat_execution_from_content(content, "MiniMax-M2.7-highspeed");
+        assert!(!execution.should_deliver);
+        assert!(execution.error.is_none());
+        assert_eq!(execution.metadata["parse_kind"], "PlainTextNoop");
     }
 
     #[test]

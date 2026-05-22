@@ -3,9 +3,25 @@
 - **发现时间**: 2026-04-15 14:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 
 ## 修复进展
+
+- `2026-05-23 00:14 CST` 本轮重新修复 MiniMax heartbeat 输出协议退化：
+  - `crates/hone-channels/src/scheduler.rs` 现在把 heartbeat prompt 已声明兼容的空 JSON `{}` 归一为 noop，不再把 `JsonEmptyStatus` 记成 `execution_failed + skipped_error`。
+  - 对明确表达“条件未满足 / 不触发 / 本轮不发送 / return noop”等含义的 plain text 或未闭合 `<think>` 推理文本，解析器会归一为 `PlainTextNoop`，避免 MiniMax 只输出否定性分析时把本轮记成失败；仍不把自由文本当作 `triggered` 消息外发，真正的 plain text 触发内容继续失败收口。
+  - 新增 / 调整回归：
+    - `heartbeat_empty_json_is_compatible_noop`
+    - `heartbeat_think_plus_empty_json_is_compatible_noop`
+    - `heartbeat_plain_text_noop_is_compatible_noop`
+    - 保留 `heartbeat_plain_text_marks_execution_failed` 证明非结构化触发文本不会误发。
+  - 验证通过：
+    - `cargo test -p hone-channels heartbeat_empty_json_is_compatible_noop --lib -- --nocapture`
+    - `cargo test -p hone-channels heartbeat_plain_text_noop_is_compatible_noop --lib -- --nocapture`
+    - `cargo test -p hone-channels heartbeat_plain_text_marks_execution_failed --lib -- --nocapture`
+    - `cargo test -p hone-channels heartbeat_ --lib -- --nocapture`
+    - `cargo check -p hone-channels --tests`
+  - 无关联 GitHub Issue。
 
 - `2026-05-22 23:01 CST` 本轮巡检把本单从 `Fixed` 回退为 `New`：22:39/22:52 CST Feishu scheduler 启动回收历史 stale started row 后，23:00 CST heartbeat 窗口切到 `MiniMax-M2.7-highspeed`，但多个 heartbeat 任务又批量输出 `<think>` / plain text，而不是解析器认可的结构化状态对象。
   - `data/sessions.sqlite3` -> `cron_job_runs`
