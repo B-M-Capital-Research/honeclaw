@@ -1,6 +1,6 @@
 import type { SkillInfo } from "./types"
 
-export type SkillSlashCommand = {
+type SkillSlashCommand = {
   commandInput: string
   query: string
   stage: "command" | "search"

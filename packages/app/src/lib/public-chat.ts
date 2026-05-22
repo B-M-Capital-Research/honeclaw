@@ -37,7 +37,7 @@ export type PublicChatMessage = {
   attachments?: PublicChatAttachment[];
 };
 
-export type PublicChatComposerState = {
+type PublicChatComposerState = {
   draft: string;
   attachmentCount: number;
   isSending: boolean;
@@ -46,7 +46,7 @@ export type PublicChatComposerState = {
   dailyLimit: number | undefined;
 };
 
-export type PublicChatBackgroundPending = {
+type PublicChatBackgroundPending = {
   since: number;
 } | null;
 

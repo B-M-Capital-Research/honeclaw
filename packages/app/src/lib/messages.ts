@@ -4,7 +4,7 @@ import { buildApiUrl, hasRuntimeCapability } from "./backend"
 const imagePattern =
   /<a\s+href="(file:\/\/[^\s"]+\.(?:jpg|jpeg|png|webp|gif|bmp))"[^>]*>.*?<\/a>|!?\[[^\]]*]\((file:\/\/[^\s)]+\.(?:jpg|jpeg|png|webp|gif|bmp))\)|(file:\/\/[^\s<>"']+\.(?:jpg|jpeg|png|webp|gif|bmp))/gi
 
-export type MessagePart =
+type MessagePart =
   | { type: "text"; value: string }
   | { type: "image"; value: string }
 
@@ -65,7 +65,7 @@ export function historyToTimeline(messages: HistoryMsg[]): TimelineMessage[] {
     })
 }
 
-export type ParseMessageOptions = {
+type ParseMessageOptions = {
   /** Image-proxy endpoint to use when a `file://` URL is rewritten. Defaults to `/api/image`. */
   imageEndpoint?: string
 }

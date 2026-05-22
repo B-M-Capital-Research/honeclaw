@@ -8,7 +8,7 @@ import QRCode from "qrcode";
 import type { PublicChatMessage } from "@/lib/public-chat";
 import { stripAttachmentMarkers } from "@/lib/public-chat";
 
-export type ChatShareCardProps = {
+type ChatShareCardProps = {
   messages: PublicChatMessage[];
   brandName: string;
   brandTagline: string;

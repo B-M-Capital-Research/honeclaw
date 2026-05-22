@@ -10,7 +10,7 @@ import { useSymbolDrawer } from "@/context/symbol-drawer"
  * Phase 1 支持 kind: actor / session / task。
  * symbol / research / skill 在后续 phase 接入(symbol 需要 SymbolDrawer)。
  */
-export type EntityKind =
+type EntityKind =
   | "actor"
   | "session"
   | "task"

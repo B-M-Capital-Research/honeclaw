@@ -8,7 +8,7 @@ import { actorFromSessionId, type ActorRef } from "./actors"
  * 安全策略:不在自由文本里做模糊正则(避免把 ERROR/INFO/AAPL 等误识别为实体);
  * symbol/research/skill 等弱结构 ref 推迟到 Phase 3 引入 SymbolDrawer 时再加。
  */
-export type LogRef =
+type LogRef =
   | { kind: "actor"; actor: ActorRef }
   | { kind: "session"; sessionId: string; actor?: ActorRef }
   | { kind: "task"; taskId: string }

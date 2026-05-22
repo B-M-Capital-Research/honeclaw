@@ -18,7 +18,7 @@ import {
   recentShareMessages,
 } from "./chat-share-export";
 
-export type ChatShareModalProps = {
+type ChatShareModalProps = {
   open: boolean;
   messages: PublicChatMessage[];
   seedIndex: number;

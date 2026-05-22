@@ -1,6 +1,6 @@
 export type UsersTab = "portfolio" | "profiles" | "mainline" | "sessions" | "research"
 
-export type UsersTabConfig = {
+type UsersTabConfig = {
   id: UsersTab
   labelKey:
     | "tab_portfolio"

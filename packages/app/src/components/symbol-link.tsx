@@ -1,6 +1,6 @@
 import { useSymbolDrawer } from "@/context/symbol-drawer"
 
-export type SymbolLinkProps = {
+type SymbolLinkProps = {
   symbol: string
   /** 自定义显示文本(默认大写 symbol) */
   label?: string
