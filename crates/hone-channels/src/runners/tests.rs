@@ -105,6 +105,33 @@ fn assert_contains_none(haystack: &str, needles: &[&str]) {
     }
 }
 
+fn assert_error_contains<T, E>(result: Result<T, E>, needle: &str)
+where
+    T: std::fmt::Debug,
+    E: std::fmt::Debug + std::fmt::Display,
+{
+    let err = result.expect_err("expected validation to fail");
+    assert!(
+        err.to_string().contains(needle),
+        "expected error to contain {needle:?}, got {err:?}"
+    );
+}
+
+fn assert_part_types(parts: &[hone_core::agent::NormalizedConversationPart], expected: &[&str]) {
+    let actual: Vec<_> = parts.iter().map(|part| part.part_type.as_str()).collect();
+    assert_eq!(actual, expected);
+}
+
+fn assert_single_tool_call<'a>(message: &'a AgentMessage, label: &str) -> &'a Value {
+    let tool_calls = message.tool_calls.as_ref().expect(label);
+    assert_eq!(
+        tool_calls.len(),
+        1,
+        "expected exactly one tool call for {label}"
+    );
+    &tool_calls[0]
+}
+
 fn json_fence_body<'a>(text: &'a str, label: &str) -> &'a str {
     let marker = "```json\n";
     let start = text
@@ -441,15 +468,11 @@ fn gemini_cli_tool_context_messages_capture_assistant_and_tool_entries() {
     assert_eq!(messages.len(), 2);
     assert_eq!(messages[0].role, "assistant");
     assert_eq!(messages[0].content.as_deref(), Some("我先查一下盘后新闻。"));
-    let tool_calls = messages[0]
-        .tool_calls
-        .as_ref()
-        .expect("assistant tool calls");
-    assert_eq!(tool_calls.len(), 1);
-    assert_eq!(tool_calls[0]["id"], "gemini_cli_call_1_1");
-    assert_eq!(tool_calls[0]["function"]["name"], "web_search");
+    let tool_call = assert_single_tool_call(&messages[0], "assistant tool calls");
+    assert_eq!(tool_call["id"], "gemini_cli_call_1_1");
+    assert_eq!(tool_call["function"]["name"], "web_search");
     assert_eq!(
-        tool_calls[0]["function"]["arguments"],
+        tool_call["function"]["arguments"],
         "{\"query\":\"AAOI COHR after hours move\"}"
     );
 
@@ -534,10 +557,10 @@ fn codex_cli_context_messages_are_ready_for_normalized_persistence() {
     let normalized = normalize_agent_messages(&messages);
     assert_eq!(normalized.len(), 1);
     assert_eq!(normalized[0].role, "assistant");
-    assert_eq!(normalized[0].content[0].part_type, "progress");
-    assert_eq!(normalized[0].content[1].part_type, "tool_call");
-    assert_eq!(normalized[0].content[2].part_type, "tool_result");
-    assert_eq!(normalized[0].content[3].part_type, "final");
+    assert_part_types(
+        &normalized[0].content,
+        &["progress", "tool_call", "tool_result", "final"],
+    );
 }
 
 #[test]
@@ -554,7 +577,7 @@ fn codex_version_matrix_accepts_minimum_validated_pair() {
             patch: 0,
         },
     );
-    assert!(result.is_ok());
+    result.expect("minimum Codex/Codex ACP versions should be accepted");
 }
 
 #[test]
@@ -571,7 +594,7 @@ fn codex_version_matrix_accepts_newer_adapter() {
             patch: 1,
         },
     );
-    assert!(result.is_ok());
+    result.expect("newer Codex ACP adapter should be accepted");
 }
 
 #[test]
@@ -588,11 +611,7 @@ fn codex_version_matrix_rejects_old_codex() {
             patch: 0,
         },
     );
-    assert!(
-        result
-            .unwrap_err()
-            .contains("npm install -g @openai/codex@latest")
-    );
+    assert_error_contains(result, "npm install -g @openai/codex@latest");
 }
 
 #[test]
@@ -609,11 +628,7 @@ fn codex_version_matrix_rejects_old_adapter() {
             patch: 1,
         },
     );
-    assert!(
-        result
-            .unwrap_err()
-            .contains("@zed-industries/codex-acp@latest")
-    );
+    assert_error_contains(result, "@zed-industries/codex-acp@latest");
 }
 
 #[test]
@@ -623,7 +638,7 @@ fn gemini_version_guard_rejects_old_binary() {
         minor: 29,
         patch: 0,
     });
-    assert!(result.unwrap_err().contains("@google/gemini-cli@latest"));
+    assert_error_contains(result, "@google/gemini-cli@latest");
 }
 
 #[test]
@@ -784,13 +799,9 @@ async fn acp_updates_build_restorable_transcript_sequence() {
     assert_eq!(messages[0].role, "assistant");
     assert_eq!(messages[0].content.as_deref(), Some("先查本地画像。"));
     assert!(messages[0].tool_calls.is_none());
-    let tool_calls = messages[1]
-        .tool_calls
-        .as_ref()
-        .expect("assistant tool calls");
-    assert_eq!(tool_calls.len(), 1);
-    assert_eq!(tool_calls[0]["id"], "call_1");
-    assert_eq!(tool_calls[0]["function"]["name"], "local_search_files");
+    let tool_call = assert_single_tool_call(&messages[1], "assistant tool calls");
+    assert_eq!(tool_call["id"], "call_1");
+    assert_eq!(tool_call["function"]["name"], "local_search_files");
     assert_eq!(messages[1].role, "assistant");
     assert_eq!(messages[1].content.as_deref(), Some(""));
     assert_eq!(messages[2].role, "tool");
@@ -893,20 +904,19 @@ fn normalized_history_collapses_tool_messages_into_assistant_turns() {
     assert_eq!(history[0].role, "user");
     assert_eq!(history[1].role, "assistant");
     assert_eq!(history[1].status.as_deref(), Some("completed"));
-    assert_eq!(history[1].content.len(), 4);
-    assert_eq!(history[1].content[0].part_type, "progress");
-    assert_eq!(history[1].content[1].part_type, "tool_call");
+    assert_part_types(
+        &history[1].content,
+        &["progress", "tool_call", "tool_result", "final"],
+    );
     assert_eq!(history[1].content[1].name.as_deref(), Some("web_search"));
     assert_eq!(
         history[1].content[1].args,
         Some(serde_json::json!({"query":"FLNC stock price"}))
     );
-    assert_eq!(history[1].content[2].part_type, "tool_result");
     assert_eq!(
         history[1].content[2].result,
         Some(serde_json::json!({"price":5.12}))
     );
-    assert_eq!(history[1].content[3].part_type, "final");
     assert_eq!(
         history[1].content[3].text.as_deref(),
         Some("结论：先看订单兑现，再谈估值弹性。")
@@ -1219,14 +1229,10 @@ async fn opencode_updates_preserve_tool_names_and_raw_io_in_transcript() {
     let messages = finalize_context_messages(&mut state);
     assert_eq!(messages.len(), 4);
     assert_eq!(messages[0].role, "assistant");
-    let tool_calls = messages[0]
-        .tool_calls
-        .as_ref()
-        .expect("assistant tool calls");
-    assert_eq!(tool_calls.len(), 1);
-    assert_eq!(tool_calls[0]["function"]["name"], "read");
+    let tool_call = assert_single_tool_call(&messages[0], "assistant tool calls");
+    assert_eq!(tool_call["function"]["name"], "read");
     assert_eq!(
-        tool_calls[0]["function"]["arguments"],
+        tool_call["function"]["arguments"],
         "{\"filePath\":\"/tmp/demo/uploads\"}"
     );
     assert_eq!(messages[1].role, "tool");
@@ -1237,11 +1243,10 @@ async fn opencode_updates_preserve_tool_names_and_raw_io_in_transcript() {
         Some("<entries>(0 entries)</entries>")
     );
     assert_eq!(messages[2].role, "assistant");
-    let grep_tool_calls = messages[2].tool_calls.as_ref().expect("grep tool call");
-    assert_eq!(grep_tool_calls.len(), 1);
-    assert_eq!(grep_tool_calls[0]["function"]["name"], "grep");
+    let grep_tool_call = assert_single_tool_call(&messages[2], "grep tool call");
+    assert_eq!(grep_tool_call["function"]["name"], "grep");
     assert_eq!(
-        grep_tool_calls[0]["function"]["arguments"],
+        grep_tool_call["function"]["arguments"],
         "{\"path\":\"/tmp/demo\",\"pattern\":\"AAOI|COHR\"}"
     );
     assert_eq!(messages[3].role, "tool");

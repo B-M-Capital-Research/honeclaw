@@ -337,6 +337,9 @@ mod tests {
         let actor = actor("discord", "alice", None);
         let date = "2026-03-17";
 
+        // Keep all reservations in flight before joining so this remains a real
+        // concurrency test instead of a sequential spawn/join loop.
+        #[allow(clippy::needless_collect)]
         let handles = (0..30)
             .map(|_| {
                 let storage = storage.clone();

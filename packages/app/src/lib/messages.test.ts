@@ -56,9 +56,13 @@ describe("parseMessageContent", () => {
 
   it("matches the shared local image marker fixture", () => {
     for (const fixture of localImageMarkerFixtures) {
-      expect(parsedTypes(fixture.input)).toEqual(
-        fixture.part_types as ReturnType<typeof parsedTypes>,
-      )
+      expect({
+        name: fixture.name,
+        partTypes: parsedTypes(fixture.input),
+      }).toEqual({
+        name: fixture.name,
+        partTypes: fixture.part_types as ReturnType<typeof parsedTypes>,
+      })
     }
   })
 })

@@ -112,9 +112,11 @@ describe("toPublicChatMessages", () => {
       '{"text":"ok"}',
       "done",
     ]);
-    expect(messages.every((message) => Array.isArray(message.attachments))).toBe(
-      true,
-    );
+    expect(messages.map((message) => message.attachments)).toEqual([
+      [],
+      [],
+      [],
+    ]);
   });
 
   it("keeps valid public attachment metadata and drops malformed rows", () => {

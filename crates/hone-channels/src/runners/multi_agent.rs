@@ -793,6 +793,14 @@ mod tests {
         )
     }
 
+    fn assert_part_types(
+        parts: &[hone_core::agent::NormalizedConversationPart],
+        expected: &[&str],
+    ) {
+        let actual: Vec<_> = parts.iter().map(|part| part.part_type.as_str()).collect();
+        assert_eq!(actual, expected);
+    }
+
     #[test]
     fn multi_agent_log_detail_redacts_common_secret_shapes() {
         let detail = multi_agent_log_detail(
@@ -1262,7 +1270,6 @@ mod tests {
         assert_eq!(messages[1].content.as_deref(), Some("结论：AAOI 更弱。"));
         let normalized = normalize_agent_messages(&messages);
         assert_eq!(normalized.len(), 1);
-        assert_eq!(normalized[0].content[0].part_type, "tool_call");
-        assert_eq!(normalized[0].content[1].part_type, "final");
+        assert_part_types(&normalized[0].content, &["tool_call", "final"]);
     }
 }

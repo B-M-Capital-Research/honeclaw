@@ -1,5 +1,15 @@
 # Code Quality Patrol Findings
 
+## 2026-05-22 - 测试可维护性
+
+### Event-engine live integration checks still live in the crate unit-test module
+
+- status: open
+- direction: 测试可维护性
+- evidence: `AGENTS.md` and `docs/invariants.md` both say external-account or local-machine-state checks should live under `tests/regression/manual/`, but `crates/hone-event-engine/src/tests.rs` still contains ignored live tests such as `live_engine_e2e`, `live_telegram_push_demo`, `live_telegram_push_llm_polished_demo`, `live_portfolio_backtest_push`, and `live_social_engine_e2e`. These tests read `HONE_FMP_API_KEY`, `HONE_TG_BOT_TOKEN`, `HONE_TG_CHAT_ID`, `HONE_OPENROUTER_KEY`, local `data/portfolio/...`, or live Telegram/FMP network state directly from the crate test module.
+- risk: the tests are ignored, so they do not block CI, but their placement makes the manual verification contract hard to discover from `tests/regression/manual/` and keeps long external workflows mixed with unit/integration test code. Moving them directly in a patrol could lose useful operator commands or accidentally change the live smoke setup.
+- suggested_fix: migrate the live event-engine checks into one or more `tests/regression/manual/test_event_engine_*.sh` wrappers or documented manual fixtures, keeping deterministic contract/unit coverage in Rust. Preserve the current trigger commands, required env vars, and expected artifacts, then update `docs/repo-map.md` if the manual regression entry points change.
+
 ## 2026-05-14 - 配置文档漂移
 
 ### `hone-cli onboard` does not validate multi-agent's OpenCode answer dependency

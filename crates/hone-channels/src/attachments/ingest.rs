@@ -1118,9 +1118,9 @@ mod tests {
 
     #[test]
     fn archive_extraction_blocks_path_escape() {
-        assert!(sanitize_relative_path(Path::new("../a.txt")).is_err());
-        assert!(sanitize_relative_path(Path::new("/tmp/a.txt")).is_err());
-        assert!(sanitize_relative_path(Path::new("safe/a.txt")).is_ok());
+        sanitize_relative_path(Path::new("../a.txt")).expect_err("parent path should fail");
+        sanitize_relative_path(Path::new("/tmp/a.txt")).expect_err("absolute path should fail");
+        sanitize_relative_path(Path::new("safe/a.txt")).expect("safe relative path should pass");
     }
 
     #[test]
@@ -1161,7 +1161,7 @@ mod tests {
 
     #[test]
     fn archive_note_contains_extracted_file_list() {
-        let attachments = vec![ReceivedAttachment {
+        let attachments = [ReceivedAttachment {
             filename: "pack.zip".to_string(),
             content_type: Some("application/zip".to_string()),
             size: 123,
@@ -1189,7 +1189,7 @@ mod tests {
 
     #[test]
     fn pdf_note_contains_extracted_text() {
-        let attachments = vec![ReceivedAttachment {
+        let attachments = [ReceivedAttachment {
             filename: "report.pdf".to_string(),
             content_type: Some("application/pdf".to_string()),
             size: 4096,

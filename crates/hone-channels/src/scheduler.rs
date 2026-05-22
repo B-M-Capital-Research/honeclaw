@@ -3233,10 +3233,11 @@ mod tests {
             "moonshotai/kimi-k2.5",
         );
         assert!(!execution.should_deliver);
-        assert_eq!(
-            execution.error.as_deref().unwrap().contains("HTTP 402"),
-            true
-        );
+        let error = execution
+            .error
+            .as_deref()
+            .expect("provider quota error should be recorded");
+        assert!(error.contains("HTTP 402"), "unexpected error: {error}");
         assert_eq!(
             execution.metadata["failure_kind"],
             "provider_quota_exhausted"

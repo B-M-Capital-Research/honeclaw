@@ -46,13 +46,12 @@ mod tests {
         let a = hash_password("same-input").expect("hash ok");
         let b = hash_password("same-input").expect("hash ok");
         assert_ne!(a, b, "salt should randomize encoded hash");
-        assert!(verify_password("same-input", &a).unwrap());
-        assert!(verify_password("same-input", &b).unwrap());
+        assert!(verify_password("same-input", &a).expect("verify first hash"));
+        assert!(verify_password("same-input", &b).expect("verify second hash"));
     }
 
     #[test]
     fn malformed_hash_returns_err() {
-        let res = verify_password("x", "not-a-valid-hash");
-        assert!(res.is_err());
+        verify_password("x", "not-a-valid-hash").expect_err("malformed hash should fail");
     }
 }
