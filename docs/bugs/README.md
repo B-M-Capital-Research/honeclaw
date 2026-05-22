@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-23 03:01 CST
+最后更新：2026-05-23 07:08 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,10 +17,13 @@
 
 ## 当前概览
 
-- 活跃待修复：0
+- 活跃待修复：1
 - Later / 待复现：9
-- 已修复 / 已关闭：112
+- 已修复 / 已关闭：111
 - 历史分析 / 部分止血：5
+- 本轮 07:08 CST 重新打开 P2 `Heartbeat 监控任务触发 context window exceeds limit 后缺少恢复，故障会在不同任务间漂移复现`：03:00-07:00 CST 真实 heartbeat 窗口新增 9 条 `ContextOverflowNoop + noop + skipped_noop + delivered=0`，其中 `持仓财报与重大新闻心跳提醒` 6 次重复命中，06:42 CST 新建的 Web `AI与科技持仓观察关键事件心跳提醒` 在 07:00 CST 首轮也命中超窗并被记为合法 noop。旧修复结论“本轮跳过、下轮正常重试”已被推翻；这是功能性 P2，不是 P1，本轮不创建 GitHub issue。
+- 本轮 07:08 CST 仅补充旧/未确认部署运行态证据：03:00-07:01 CST 仍有 79 条 heartbeat 结构化/状态解析失败、5 条 `max_iterations_exceeded:10`，但当前仓库 00:14 CST 已有 PlainTextNoop 兼容修复，03:09 CST 已把 heartbeat 迭代预算提升到 18 并加收口约束；本轮不把这两条已修复缺陷回退为活跃，待部署/重启后复核。
+- 本轮 07:08 CST 未发现新的独立活跃 P1。最近四小时共有 15 个 user turn 与 15 个 assistant final；Feishu / Web 直聊和 06:00 普通 scheduler 均有收口。assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`；最近四小时唯一非文档代码提交 `006ffa3c` 已修复 heartbeat max-iteration exhaustion。
 - 本轮 03:06 CST 已修复 P2 `Heartbeat 重大事件监控触发 max_iterations_exceeded 后整轮跳过`：heartbeat auxiliary function-calling 预算从 `10` 提升到 `18`，并在 prompt 新增“必须以最少工具调用收口”的约束，减少板块/多标的 heartbeat 为确认 noop 而反复穷举导致的触顶失败。回归：`cargo test -p hone-channels heartbeat_prompt_requires_noop_json_for_contract_conflicts --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_runner_uses_capped_completion_budget --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`。无关联 GitHub Issue。
 - 本轮 03:01 CST 重新打开 P2 `Heartbeat 重大事件监控触发 max_iterations_exceeded 后整轮跳过`：23:01-03:01 CST 真实 heartbeat 窗口新增 8 条 `max_iterations_exceeded:10 + execution_failed + skipped_error + delivered=0`，覆盖 Feishu 4 条、Web 4 条，集中在 `DRAM 心跳监控`、`TSLA 正负触发条件心跳监控`、Web `存储/光模块板块关键事件心跳提醒` 等任务；该旧文档已写明真实窗口继续出现 `max_iterations_exceeded:10` 应重新打开，因此从 `Fixed` 调回 `New`。不是 P1，本轮不创建 GitHub issue。
 - 本轮 03:01 CST 仅补充 P2 `Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移` 的旧/未确认部署运行态证据：23:01-03:01 CST 当前 live 仍有 77 条结构化/状态解析失败（Feishu 62 条、Web 15 条），但远端 00:14 CST 已有代码修复和回归，当前以代码修复结论为准，不把该缺陷从 `Fixed` 回退。
@@ -237,6 +240,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Heartbeat 监控任务触发 `context window exceeds limit` 后缺少恢复，故障会在不同任务间漂移复现 | P2 | New | 2026-05-23 07:08 最近四小时新增 9 条 `ContextOverflowNoop + noop + skipped_noop`，其中同一 Web heartbeat 连续 6 次重复静默超窗，06:42 新建的多标的 Web heartbeat 首轮也被超窗记成合法 noop；旧修复结论“本轮跳过、下轮正常重试”失效。无关联 GitHub Issue | [scheduler_heartbeat_context_window_limit_no_recovery.md](./scheduler_heartbeat_context_window_limit_no_recovery.md) |
 
 ## Later / 待复现
 
@@ -358,7 +362,6 @@
 | Event-engine social/event-source poller 重复记录 opaque decode failure | P2 | Closed | 2026-04-25 已补 status/content-type/body prefix 观测信息，原始 `error decoding response body` 坏日志在最新巡检窗口内未再出现；剩余 Truth Social 403 已转单独缺陷跟踪 | [event_engine_social_source_decode_failures.md](./archive/event_engine_social_source_decode_failures.md) |
 | 深度分析链路持续访问不存在的 `company_profiles` 相对路径，长期画像记忆被静默跳过 | P3 | Fixed | 2026-04-24 16:46 `请详细分析下谷歌` 真实会话已连续成功写入 actor sandbox 下的 `company_profiles/alphabet/*`；同小时 `acp-events.log` 未再出现 `目录不存在: company_profiles` | [company_profiles_relative_path_misses_actor_sandbox.md](./archive/company_profiles_relative_path_misses_actor_sandbox.md) |
 | Event-engine price poller 单次 FMP quote 抓取失败 | P3 | Closed | 2026-04-25 已确认只是单 tick 网络抖动；下一 tick 自愈，`fmp.quote` 数据流未中断，不再按活跃缺陷跟踪 | [event_engine_price_poller_transient_fetch_failure.md](./archive/event_engine_price_poller_transient_fetch_failure.md) |
-| Heartbeat 监控任务触发 `context window exceeds limit` 后缺少恢复，故障会在不同任务间漂移复现 | P2 | Fixed | 2026-04-20 heartbeat context overflow 改为 ContextOverflowNoop（skipped_noop），本轮跳过下轮正常重试 | [scheduler_heartbeat_context_window_limit_no_recovery.md](./archive/scheduler_heartbeat_context_window_limit_no_recovery.md) |
 | ASTS 发射链路把预告与停牌前行情误报成已发射后的实时结果 | P2 | Fixed | 2026-04-20 heartbeat prompt 补加时间一致性、价格时间口径、重复事件三条约束规则 | [asts_launch_schedule_misread_as_completed_event.md](./archive/asts_launch_schedule_misread_as_completed_event.md) |
 | Heartbeat 已触发提醒偶发向用户投递原始 JSON 载荷 | P3 | Fixed | 2026-04-20 在 JsonTriggered 分支补 `unwrap_nested_json_message`，将 `{"trigger":"..."}` 等嵌套 JSON 对象字段自动提取为纯文本 | [scheduler_heartbeat_trigger_json_payload_leak.md](./archive/scheduler_heartbeat_trigger_json_payload_leak.md) |
 | Feishu 直聊把歧义股票简称 `lite` 直接猜成 Litecoin，未先澄清实体 | P3 | Fixed | 2026-04-20 在 DEFAULT_FINANCE_DOMAIN_POLICY 补实体歧义约束：多候选资产时必须先列出候选请用户确认，不允许直接猜测 | [feishu_ambiguous_lite_entity_guessed_as_litecoin.md](./archive/feishu_ambiguous_lite_entity_guessed_as_litecoin.md) |
