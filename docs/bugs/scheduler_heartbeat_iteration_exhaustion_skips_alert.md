@@ -3,9 +3,26 @@
 - **发现时间**: 2026-04-20 06:01 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 
 ## 修复进展（2026-04-28）
+
+- `2026-05-23 03:01 CST` 本轮从 `Fixed` 重新打开为 `New`：旧修复说明写明，若真实窗口继续出现 `max_iterations_exceeded:10` 或等价触顶失败，应重新打开。本轮 23:01-03:01 CST 已满足该条件。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 最近四小时新增 `8` 条 heartbeat `max_iterations_exceeded:10 + execution_failed + skipped_error + delivered=0`；其中 Feishu `4` 条、Web `4` 条。
+    - Feishu 样本：
+      - `run_id=31020`，`DRAM 心跳监控`，`2026-05-23T00:01:14+08:00`。
+      - `run_id=31046`，`TSLA 正负触发条件心跳监控`，`2026-05-23T01:30:42+08:00`。
+      - `run_id=31052`，`DRAM 心跳监控`，`2026-05-23T02:00:38+08:00`。
+      - `run_id=31098`，Web `光模块板块关键事件心跳提醒`，`2026-05-23T03:00:49+08:00`。
+    - Web 样本集中在 `存储板块关键事件心跳提醒` 与 `光模块板块关键事件心跳提醒`，同样落成 `execution_failed + skipped_error + delivered=0`，用户侧只会看到任务执行失败或无提醒。
+    - `detail_json.failure_kind=runner_error`，`heartbeat_model=MiniMax-M2.7-highspeed`；错误不再是旧 `:6`，而是当前预算 `:10` 触顶。
+  - 运行日志：
+    - `data/runtime/logs/web.log.2026-05-22` 在 01:30、03:00 CST 等窗口记录 `[HeartbeatDiag] run_finish ... success=false error="max_iterations_exceeded:10"`，随后 `runner_error ... failure_kind=runner_error` 并跳过发送。
+  - 范围判断：
+    - 同窗普通 scheduler 有 `5` 条 `completed + sent + delivered=1`，Feishu / Web 直聊也有正常 assistant final；这不是全局 scheduler 停摆。
+    - 同一窗口还存在 77 条结构化输出失败，归入 `scheduler_heartbeat_unknown_status_silent_skip.md`；本单只跟踪 function-calling 迭代预算触顶导致整轮漏发的独立失败形态。
+  - 结论：这是功能性 bug，影响 heartbeat 自动提醒主链路；维持 `P2 / New`。不是 P1，本轮不创建 GitHub Issue。
 
 - `2026-05-08 11:06 CST` 复核当前仓库代码后关闭本单：heartbeat auxiliary function-calling 当前固定使用 `HEARTBEAT_MAX_ITERATIONS=10` 与 `max_tokens_override=4096`，触顶、provider quota、HTTP 4xx/5xx 等 runner error 均通过 `heartbeat_execution_from_runner_error(...)` 显式保留失败态与 `failure_kind`，不会再被收口成正常 `noop`。定向验证通过：`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-core -p hone-channels -p hone-scheduler --tests`。旧窗口里仍出现 `max_iterations_exceeded:6` 更符合未重启/未部署旧运行态或外部 runner 状态，不再作为当前仓库活跃 bug。
 

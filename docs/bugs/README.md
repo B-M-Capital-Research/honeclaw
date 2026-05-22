@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-23 00:14 CST
+最后更新：2026-05-23 03:01 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,10 +17,13 @@
 
 ## 当前概览
 
-- 活跃待修复：0
+- 活跃待修复：1
 - Later / 待复现：9
-- 已修复 / 已关闭：112
+- 已修复 / 已关闭：111
 - 历史分析 / 部分止血：5
+- 本轮 03:01 CST 重新打开 P2 `Heartbeat 重大事件监控触发 max_iterations_exceeded 后整轮跳过`：23:01-03:01 CST 真实 heartbeat 窗口新增 8 条 `max_iterations_exceeded:10 + execution_failed + skipped_error + delivered=0`，覆盖 Feishu 4 条、Web 4 条，集中在 `DRAM 心跳监控`、`TSLA 正负触发条件心跳监控`、Web `存储/光模块板块关键事件心跳提醒` 等任务；该旧文档已写明真实窗口继续出现 `max_iterations_exceeded:10` 应重新打开，因此从 `Fixed` 调回 `New`。不是 P1，本轮不创建 GitHub issue。
+- 本轮 03:01 CST 仅补充 P2 `Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移` 的旧/未确认部署运行态证据：23:01-03:01 CST 当前 live 仍有 77 条结构化/状态解析失败（Feishu 62 条、Web 15 条），但远端 00:14 CST 已有代码修复和回归，当前以代码修复结论为准，不把该缺陷从 `Fixed` 回退。
+- 本轮 03:01 CST 未发现新的独立活跃 P1。assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`；最近四小时无非文档代码提交。
 - 本轮 00:14 CST 已修复 P2 `Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移`：heartbeat `{}` 现在按 prompt 兼容契约归一为 noop，明确表达“条件未满足 / 不触发 / 本轮不发送 / return noop”的 plain text 或未闭合 `<think>` 推理文本归一为 `PlainTextNoop`，不再把 MiniMax 否定性分析记成失败；非结构化触发文本仍继续失败收口，不误发。无关联 GitHub Issue。
 - 本轮 00:03 CST 已修复两个活跃 P3 质量缺陷：共享金融系统 prompt 新增强时效行情建议约束，避免 FUTU 这类盘前急跌问题继续用常规交易旧价推导抄底区间；同时新增基金/ETF 披露口径约束，避免把 ARK/ETF 持仓文件股数差异误表述为近期主动卖出。multi-agent search guidance 同步要求保留 quote 时段/时间戳限制和 holding-file changes 口径。回归：`cargo test -p hone-channels build_prompt_bundle_always_includes_finance_domain_policy --lib -- --nocapture`、`cargo test -p hone-channels search_input_guidance_allows_direct_replies_for_greetings --lib -- --nocapture`。两项均无关联 GitHub Issue。
 - 本轮 23:01 CST 重新打开 P2 `Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移`：22:39/22:52 CST Feishu scheduler 启动回收 5134 条历史 stale started row 后，23:00 CST heartbeat 窗口改用 `MiniMax-M2.7-highspeed`，但 Feishu 9 条、Web 1 条 heartbeat 又批量输出 `<think>` / plain text 或空状态对象并落成 `execution_failed + skipped_error + delivered=0`。这不是 429 quota 同根因，会导致自动监控提醒漏发，按功能性 `P2 / New` 重新进入活跃待修复；不是 P1，本轮不创建 GitHub issue。
@@ -233,6 +236,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Heartbeat 重大事件监控触发 `max_iterations_exceeded` 后整轮跳过，下一窗又回摆成 `noop/sent` | P2 | New | 2026-05-23 03:01 重新打开：23:01-03:01 CST 新增 8 条 `max_iterations_exceeded:10 + execution_failed + skipped_error + delivered=0`，覆盖 Feishu 4 条、Web 4 条；旧文档已写明真实窗口继续出现 `:10` 应回到 New。无关联 GitHub Issue | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 
 ## Later / 待复现
 
@@ -279,7 +283,6 @@
 | Heartbeat 破位预警直接输出无条件止损交易指令 | P2 | Fixed | 2026-05-11 23:02 复核当前机器 19:30 CST 仍有旧运行态样本：`run_id=18842` 送达 `建议动作：无条件止损`，但仓库代码已在 `1d405f2` 扩展 guard 并刷新 `deliver_preview`；本轮仅补充证据，不回退状态；无关联 GitHub Issue | [scheduler_heartbeat_direct_trade_instruction.md](./scheduler_heartbeat_direct_trade_instruction.md) |
 | Daily macOS build release app setup panic 后残留不可回收 `hone-desktop` 进程 | P2 | Fixed | 2026-05-10 顶层 Tauri `run(...)` 错误不再通过 `.expect("error while running hone desktop")` 触发 panic，改为打印诊断并非 0 退出；`HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop desktop_run_error_message_is_nonpanic_diagnostic -- --nocapture`、`HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo check -p hone-desktop --tests` 通过；无关联 GitHub Issue | [daily_macos_build_startup_panic_stuck_process.md](./daily_macos_build_startup_panic_stuck_process.md) |
 | Event-engine mainline distill 复用全局 OpenRouter max_tokens 触发 HTTP 402 | P2 | Fixed | 2026-05-09 mainline distill cron 改用独立短输出 OpenRouter provider，completion cap 固定为 `1200`，不再复用全局 `llm.openrouter.max_tokens=30000`；`cargo test -p hone-web-api mainline_distill_uses_short_completion_budget --lib -- --nocapture`、`cargo check -p hone-web-api --tests` 通过；无关联 GitHub Issue | [event_engine_mainline_distill_openrouter_402.md](./event_engine_mainline_distill_openrouter_402.md) |
-| Heartbeat 重大事件监控触发 `max_iterations_exceeded:6` 后整轮跳过，下一窗又回摆成 `noop/sent` | P2 | Fixed | 2026-05-08 11:06 当前 heartbeat auxiliary runner 固定 `max_iterations=10` 与 `max_tokens_override=4096`，runner error 会记录 `failure_kind` 而不是伪装正常 noop；旧 `:6` 样本按未部署/旧运行态处理。`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-core -p hone-channels -p hone-scheduler --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒 | P3 | Fixed | 2026-05-08 11:06 当前 heartbeat 调度事件加载同 actor 最近送达历史，跨 job 重复由事实 token + 实体 anchor 抑制，同时保留不同实体/同 ticker 新事件通过路径。`cargo test -p hone-scheduler heartbeat_history_includes_actor_cross_job_deliveries -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-core -p hone-channels -p hone-scheduler --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Feishu 晨报在 `data_fetch` 连续失败后仍以成功态发送旧价格早报 | P3 | Fixed | 2026-05-08 非 heartbeat scheduler 成功路径新增 `stale_market_data_fallback`：关键行情 / 报价 / `data_fetch` 失败且继续复用旧价格或旧收盘口径时，回滚旧价格正文、投递失败提示并记录 `failure_kind=stale_market_data_fallback`；`cargo test -p hone-channels scheduler::tests::scheduler_detects_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [feishu_scheduler_stale_price_fallback_after_data_fetch_failure.md](./feishu_scheduler_stale_price_fallback_after_data_fetch_failure.md) |
 | Heartbeat 监控批量触发 OpenRouter `HTTP 402` 后整轮跳过并漏发告警 | P1 | Fixed | 2026-05-08 复核当前代码已将 heartbeat 专用 completion token 固定为 `4096` 并通过 `max_tokens_override` 进入 auxiliary provider；`provider_quota_exhausted` 仍显式记录。03:05 复活证据来自当前机器旧运行态 / 外部 credits，且 `can only afford 217` 低于可维护预算，不再作为当前活跃 bug；关联 Issue [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36) | [scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md](./scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md) |

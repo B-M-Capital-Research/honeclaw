@@ -23,6 +23,20 @@
     - `cargo check -p hone-channels --tests`
   - 无关联 GitHub Issue。
 
+- `2026-05-23 03:01 CST` 本轮仅补充旧/未确认部署运行态证据，不把本单从 `Fixed` 回退：远端 00:14 CST 已有代码修复和回归，当前以代码与测试为准；23:01-03:01 CST 当前 live 窗口仍出现的失败先作为部署复核线索保留。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 23:01-03:01 CST 新增 `77` 条结构化/状态解析失败，终态均为 `execution_failed + skipped_error + delivered=0`；其中 Feishu `62` 条、Web `15` 条。
+    - 错误分布：`heartbeat 输出不是结构化 JSON` Feishu `58` 条、Web `14` 条；`heartbeat 输出包含未知状态` Feishu `3` 条、Web `1` 条；`heartbeat 输出为空` Feishu `1` 条。
+    - 代表性最新样本：`run_id=31103` / `DRAM 心跳监控`、`run_id=31101` / `TSLA 正负触发条件心跳监控`、`run_id=31097` / Web `存储板块关键事件心跳提醒`、`run_id=31109` / `小米30港元破位预警`、`run_id=31108` / `全天原油价格3小时播报`。
+    - `detail_json.heartbeat_model=MiniMax-M2.7-highspeed`；最新样本多为 `parse_kind=PlainTextSuppressed`，`raw_preview` 以 `<think>` 开头并包含自然语言分析或任务配置自述，仍不是解析器认可的结构化状态对象。
+  - 运行日志：
+    - `data/runtime/logs/web.log.2026-05-22` 在 23:30-03:01 CST 持续记录 `[HeartbeatDiag] ... model=MiniMax-M2.7-highspeed ... parse_kind=PlainTextSuppressed`，随后 Feishu/Web scheduler 记录 `heartbeat 输出不是结构化 JSON，任务已标记失败` 并跳过发送。
+    - 同窗还可见合法 `JsonNoop` 与 `JsonTriggered` 样本，例如 `RKLB异动监控` 在 03:00 CST 成功 `completed + sent + delivered=1`，说明不是整批 scheduler 或 Feishu 出站不可用，而是同一 heartbeat 输出契约不稳定。
+  - 会话质量对照：
+    - 最近四小时共有 `29` 个 user turn 与 `31` 个 assistant final；没有 last_message_role=user 的孤立会话，Feishu / Web 直聊均收口。
+    - assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`。
+  - 结论：这是同一根因 / 同一影响范围的运行态复核，不新建重复文档；由于当前仓库代码已经修复，不登记为新的活跃缺陷，也不创建 P1 issue。后续若部署/重启到当前代码后仍出现同类失败，再重新打开。
+
 - `2026-05-22 23:01 CST` 本轮巡检把本单从 `Fixed` 回退为 `New`：22:39/22:52 CST Feishu scheduler 启动回收历史 stale started row 后，23:00 CST heartbeat 窗口切到 `MiniMax-M2.7-highspeed`，但多个 heartbeat 任务又批量输出 `<think>` / plain text，而不是解析器认可的结构化状态对象。
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - 最近四小时窗口内，19:13-22:30 CST 仍有 `105` 条 heartbeat 因 provider `HTTP 429 quota exhausted` 失败，继续归入 `scheduler_heartbeat_mimo_429_quota_exhausted.md` 的旧/未确认部署运行态证据。
