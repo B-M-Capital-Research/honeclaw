@@ -42,6 +42,11 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-22 19:02 CST` 复核，当前机器运行态在最近四小时仍继续新增 started-row 残留；但 2026-05-15 04:05 CST 已按当前 HEAD 回归验证确认 `delivery_key` 终态覆盖、最近 started fallback 与启动 stale recovery 仍生效，本轮仅补充旧/未确认部署运行态证据，不把状态从 `Fixed` 回退为 `New`：
+    - 最近四小时窗口 `2026-05-22T15:02:00+08:00` 到 `2026-05-22T19:02:00+08:00` 内共有 `96` 条 Feishu `execution_status=running + message_send_status=pending` started 残留。
+    - 这 `96` 条均为 heartbeat started 行，覆盖 15:30、16:00、16:30、17:00、17:30、18:00、18:30、19:00 等 heartbeat 窗口；本窗未见普通 scheduler started 残留。
+    - 同窗已有 `96` 条 Feishu heartbeat `execution_failed + skipped_error + delivered=0` 终态和 `24` 条 Web heartbeat 失败终态。
+    - 用户可见直聊主链路没有因此被阻断；最近四小时 `9` 个 user turn 与 `9` 个 assistant final，Feishu / Web 直聊均有收口。受损点仍是调度台账一致性和巡检噪音，严重等级仍不高于 `P3`。
   - `2026-05-22 15:02 CST` 复核，当前机器运行态在最近四小时仍继续新增 started-row 残留；但 2026-05-15 04:05 CST 已按当前 HEAD 回归验证确认 `delivery_key` 终态覆盖、最近 started fallback 与启动 stale recovery 仍生效，本轮仅补充旧/未确认部署运行态证据，不把状态从 `Fixed` 回退为 `New`：
     - 最近四小时窗口 `2026-05-22T11:00:00+08:00` 到 `2026-05-22T15:02:15+08:00` 内共有 `109` 条 Feishu `execution_status=running + message_send_status=pending` started 残留。
     - 其中 `108` 条为 heartbeat started 行，覆盖 11:30、12:00、12:30、13:00、13:30、14:00、14:30、15:00 等 heartbeat 窗口；另有 `1` 条普通 scheduler started 行。
