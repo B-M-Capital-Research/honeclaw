@@ -156,13 +156,13 @@ const EN: typeof ZH = {
     parse_kind_prefix: "parse_kind:",
     exec: {
       completed: "Success",
-      noop: "No-op",
+      noop: "No match",
       execution_failed: "Failed",
       unknown: "Unknown",
     },
     send: {
       sent: "Sent",
-      skipped_noop: "Skipped (no-op)",
+      skipped_noop: "Skipped (no match)",
       skipped_error: "Skipped (failed)",
       send_failed: "Send failed",
       target_resolution_failed: "Target resolution failed",

@@ -774,13 +774,13 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "notifications.defaults_2",
-        "Per-event 通知：默认开启（Severity::Low 起、不限 portfolio）。",
-        "Per-event notifications: enabled by default (from Severity::Low, all portfolios).",
+        "Per-event 通知：默认开启（低严重度起、不限持仓）。",
+        "Per-event notifications: enabled by default for low severity and above, across all portfolios.",
     ),
     (
         "notifications.defaults_3",
-        "投资主线自动蒸馏：后台 cron 周扫 sandbox `company_profiles/*/profile.md`，无需用户操作。",
-        "Investment mainline auto-distillation: a background cron weekly-scans sandbox `company_profiles/*/profile.md` — no user action needed.",
+        "投资主线自动蒸馏：Hone 会在后台每周检查公司画像文件，无需用户操作。",
+        "Investment mainline auto-distillation: Hone checks company profile files weekly in the background — no user action needed.",
     ),
     (
         "notifications.user_adjust_title",
@@ -794,8 +794,8 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "notifications.user_adjust_2",
-        "对应 `notification_prefs_tool`，无需 Web UI。",
-        "Backed by `notification_prefs_tool` — no web UI required.",
+        "Hone 会在背后调用通知偏好工具，无需 Web UI。",
+        "Hone updates notification preferences behind the scenes — no web UI required.",
     ),
     (
         "notifications.change_default_title",

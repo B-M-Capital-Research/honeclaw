@@ -29,7 +29,7 @@ const ZH = {
   agent: {
     title: "基础设置",
     subtitle:
-      "选择 Agent 引擎并配置相关参数，保存后写入 config.yaml 并刷新运行时配置快照。",
+      "选择 Agent 引擎并配置相关参数，保存后写入 config.yaml 并刷新当前运行设置。",
     current_badge: "当前",
     hone_cloud: {
       name: "Hone Cloud",
@@ -112,7 +112,7 @@ const ZH = {
       description_suffix:
         " 驱动当前 Agent，会话实际走 ACP 链路而不是 multi-agent。",
       runtime_note:
-        "设置会写入 config.yaml 并刷新运行时配置快照；如果监听进程仍显示旧 Agent 引擎，请确认内置后端已按新配置重启。",
+        "设置会写入 config.yaml 并刷新当前运行设置；如果监听进程仍显示旧 Agent 引擎，请确认内置后端已按新配置重启。",
       checking_status: "检测中，请稍候…",
       test_connection: "测试连通",
       checking: "检测中…",
@@ -292,7 +292,7 @@ const EN: typeof ZH = {
   agent: {
     title: "Core settings",
     subtitle:
-      "Pick the agent engine and configure its parameters. Saving writes config.yaml and refreshes the runtime config snapshot.",
+      "Pick the agent engine and configure its parameters. Saving writes config.yaml and refreshes the running settings.",
     current_badge: "Active",
     hone_cloud: {
       name: "Hone Cloud",
@@ -376,7 +376,7 @@ const EN: typeof ZH = {
       description_suffix:
         ". Sessions run over the ACP link instead of multi-agent.",
       runtime_note:
-        "Settings write to config.yaml and refresh the runtime config snapshot. If the listener still shows the old agent engine, confirm that the embedded backend restarted with the new config.",
+        "Settings write to config.yaml and refresh the running settings. If the listener still shows the old agent engine, confirm that the embedded backend restarted with the new config.",
       checking_status: "Checking, please wait…",
       test_connection: "Test connection",
       checking: "Checking…",
@@ -403,7 +403,7 @@ const EN: typeof ZH = {
   data: {
     title: "API configuration",
     subtitle:
-      "Configure keys for data sources and search services. Multi-key rotation and auto retry are supported.",
+      "Configure keys for data sources and search services. Multi-key rotation and automatic retries are supported.",
     fmp: {
       name: "Financial data API (Financial Modeling Prep)",
       description:
