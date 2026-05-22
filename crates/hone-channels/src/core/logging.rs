@@ -15,6 +15,10 @@ use hone_core::agent::AgentResponse;
 use hone_core::config::AgentRunnerKind;
 
 use super::bot_core::HoneBotCore;
+use crate::session_compactor::{
+    DIRECT_COMPRESS_THRESHOLD_BYTES, DIRECT_COMPRESS_THRESHOLD_MESSAGES,
+    DIRECT_RETAIN_RECENT_AFTER_COMPRESS, MIN_GROUP_COMPRESS_THRESHOLD_BYTES,
+};
 
 impl HoneBotCore {
     pub fn runner_supports_strict_actor_sandbox(&self) -> bool {
@@ -143,9 +147,21 @@ impl HoneBotCore {
         if self.auxiliary_llm.is_some() {
             let (aux_provider, aux_model) = self.auxiliary_provider_hint();
             tracing::info!(
-                "[Startup/{channel}] session.compression.engine=llm provider={} model={} threshold=40 retain_recent=4",
+                "[Startup/{channel}] session.compression.engine=llm provider={} model={} direct.threshold={} direct.bytes={} direct.retain_recent={} group.threshold={} group.bytes={} group.retain_recent={}",
                 printable_or_default(&aux_provider, "<empty>"),
-                printable_or_default(&aux_model, "<empty>")
+                printable_or_default(&aux_model, "<empty>"),
+                DIRECT_COMPRESS_THRESHOLD_MESSAGES,
+                DIRECT_COMPRESS_THRESHOLD_BYTES,
+                DIRECT_RETAIN_RECENT_AFTER_COMPRESS,
+                self.config.group_context.compress_threshold_messages.max(1),
+                self.config
+                    .group_context
+                    .compress_threshold_bytes
+                    .max(MIN_GROUP_COMPRESS_THRESHOLD_BYTES),
+                self.config
+                    .group_context
+                    .retain_recent_after_compress
+                    .max(1)
             );
         } else {
             tracing::warn!(

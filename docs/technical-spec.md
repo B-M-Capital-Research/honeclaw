@@ -370,9 +370,10 @@ Main directories come from `config.storage.*`:
 
 Session compression rules:
 
-- Trigger compression when the number of effective user / assistant messages exceeds 40
-- Ask the current LLM to generate a "watch list + conversation summary"
-- Keep one system summary plus the latest 4 messages after compression
+- Direct sessions trigger compression when the active message count exceeds 20 or active content exceeds about 80 KB
+- Group sessions use `group_context.compress_threshold_messages` and `group_context.compress_threshold_bytes` from `config.yaml`; defaults are 24 messages and 48 KB
+- Ask the configured auxiliary LLM route to generate a "watch list + conversation summary"
+- Keep one system summary plus the latest 6 messages for direct sessions; group sessions use `group_context.retain_recent_after_compress`, defaulting to 8
 
 ### 6.3 Portfolio
 
