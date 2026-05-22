@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-05-21
+Last updated: 2026-05-23
+
+## 2026-05-23
+
+### Heartbeat Max-Iterations Budget
+
+- Status: done
+- Date: 2026-05-23
+- Plan: N/A, single active-bug fix did not need dynamic plan tracking
+- Handoff: `docs/handoffs/2026-05-23-heartbeat-max-iterations-budget.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-channels heartbeat_prompt_requires_noop_json_for_contract_conflicts --lib -- --nocapture`, `cargo test -p hone-channels heartbeat_runner_uses_capped_completion_budget --lib -- --nocapture`, `cargo test -p hone-channels heartbeat_ --lib -- --nocapture`, `cargo check -p hone-channels --tests`
+- Current conclusion: heartbeat auxiliary function-calling now gets 18 iterations instead of 10, and the heartbeat prompt explicitly requires minimal tool use so sector/multi-symbol heartbeat jobs are less likely to burn their whole budget confirming noop.
+- Next entry point: `docs/bugs/scheduler_heartbeat_iteration_exhaustion_skips_alert.md`
 
 ## 2026-05-21
 

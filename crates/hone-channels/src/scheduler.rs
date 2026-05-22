@@ -26,7 +26,7 @@ use crate::{AgentSession, HoneBotCore};
 
 const HEARTBEAT_NOOP_SENTINEL: &str = "[[HEARTBEAT_NOOP]]";
 const HEARTBEAT_INTERNAL_PREFIX: &str = "[[HEART";
-const HEARTBEAT_MAX_ITERATIONS: u32 = 10;
+const HEARTBEAT_MAX_ITERATIONS: u32 = 18;
 const HEARTBEAT_MAX_TOKENS: u16 = 4096;
 const HEARTBEAT_ALLOWED_TOOLS: &[&str] = &[
     "data_fetch",
@@ -2033,6 +2033,7 @@ pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
 11. 重复事件约束：若某条件（如某只股票的某次发射或某次事件）已经在前一轮被判定为 noop 或 triggered，本轮如果没有获取到新的独立行情时间戳或新的独立事件窗口，就不允许改变结论，也不允许重复 triggered。\n\
 12. 来源归因约束：引用 Reuters、WSJ、Bloomberg、官方公告等来源时，必须确认本轮工具结果明确出现该来源与对应事实；没有明确来源时，只能写“未核验/市场传闻/需继续确认”，不得把地缘政治、谈判、航运限制等叙述写成已被权威媒体共同确认的事实。\n\
 13. 交易动作边界：预警只能报告触发事实、价格/成交量/时间口径和条件化风险管理框架，不得输出“无条件止损”“必须卖出”“立即清仓”“马上买入”等直接交易指令；涉及买卖、止损、加仓、减仓时必须明确这是分析参考，并要求用户结合仓位、成本、流动性和风险承受能力复核。\n\
+14. 工具预算约束：必须以最少工具调用收口。优先复用本轮已经拿到的价格、新闻、组合和文件信息；若需要逐标的穷举或反复重复同一查询才能确认，本轮只检查最可能触发的少数候选并尽快返回 noop 或 triggered，禁止为了展示分析过程反复调用相同工具。\n\
 {}\
 \n以下是需要检查的用户条件：\n{}",
             event.job_name, history_section, event.task_prompt
@@ -2834,6 +2835,7 @@ mod tests {
         assert!(prompt.contains("不要复述规则"));
         assert!(prompt.contains("不要输出空文本"));
         assert!(prompt.contains(r#"必须返回 `{"status":"noop"}`"#));
+        assert!(prompt.contains("必须以最少工具调用收口"));
     }
 
     #[test]
@@ -3321,7 +3323,7 @@ mod tests {
                 max_iterations,
                 max_tokens_override,
             } => {
-                assert_eq!(max_iterations, 10);
+                assert_eq!(max_iterations, 18);
                 assert_eq!(max_tokens_override, Some(4096));
             }
             ExecutionRunnerSelection::Configured => {

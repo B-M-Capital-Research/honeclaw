@@ -17,10 +17,11 @@
 
 ## 当前概览
 
-- 活跃待修复：1
+- 活跃待修复：0
 - Later / 待复现：9
-- 已修复 / 已关闭：111
+- 已修复 / 已关闭：112
 - 历史分析 / 部分止血：5
+- 本轮 03:06 CST 已修复 P2 `Heartbeat 重大事件监控触发 max_iterations_exceeded 后整轮跳过`：heartbeat auxiliary function-calling 预算从 `10` 提升到 `18`，并在 prompt 新增“必须以最少工具调用收口”的约束，减少板块/多标的 heartbeat 为确认 noop 而反复穷举导致的触顶失败。回归：`cargo test -p hone-channels heartbeat_prompt_requires_noop_json_for_contract_conflicts --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_runner_uses_capped_completion_budget --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`。无关联 GitHub Issue。
 - 本轮 03:01 CST 重新打开 P2 `Heartbeat 重大事件监控触发 max_iterations_exceeded 后整轮跳过`：23:01-03:01 CST 真实 heartbeat 窗口新增 8 条 `max_iterations_exceeded:10 + execution_failed + skipped_error + delivered=0`，覆盖 Feishu 4 条、Web 4 条，集中在 `DRAM 心跳监控`、`TSLA 正负触发条件心跳监控`、Web `存储/光模块板块关键事件心跳提醒` 等任务；该旧文档已写明真实窗口继续出现 `max_iterations_exceeded:10` 应重新打开，因此从 `Fixed` 调回 `New`。不是 P1，本轮不创建 GitHub issue。
 - 本轮 03:01 CST 仅补充 P2 `Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移` 的旧/未确认部署运行态证据：23:01-03:01 CST 当前 live 仍有 77 条结构化/状态解析失败（Feishu 62 条、Web 15 条），但远端 00:14 CST 已有代码修复和回归，当前以代码修复结论为准，不把该缺陷从 `Fixed` 回退。
 - 本轮 03:01 CST 未发现新的独立活跃 P1。assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`；最近四小时无非文档代码提交。
@@ -236,7 +237,6 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Heartbeat 重大事件监控触发 `max_iterations_exceeded` 后整轮跳过，下一窗又回摆成 `noop/sent` | P2 | New | 2026-05-23 03:01 重新打开：23:01-03:01 CST 新增 8 条 `max_iterations_exceeded:10 + execution_failed + skipped_error + delivered=0`，覆盖 Feishu 4 条、Web 4 条；旧文档已写明真实窗口继续出现 `:10` 应回到 New。无关联 GitHub Issue | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 
 ## Later / 待复现
 
@@ -260,6 +260,7 @@
 | Feishu 直聊在 FUTU 盘前暴跌时仍用常规交易旧价给抄底区间 | P3 | Fixed | 2026-05-23 00:03 共享金融系统 prompt 新增强时效行情建议约束；含 `今天/盘前/盘后/现在/抄底/买点/卖点` 等语义时必须核实最新可得价格、数据时间和交易时段，若只得常规收盘或延迟价必须标注未覆盖扩展时段，不能把旧价作为当前决策锚。无关联 GitHub Issue | [feishu_direct_futu_premarket_stale_price_advice.md](./feishu_direct_futu_premarket_stale_price_advice.md) |
 | Feishu 大佬跟踪把 ARK TEM 持仓差异误表述为近期卖出 | P3 | Fixed | 2026-05-23 00:03 共享金融系统 prompt 新增基金/ETF 披露口径约束；ARK/ETF/基金持仓分析必须区分持仓文件、全机构合计、主动交易清单、申赎/再平衡和披露日期，没有可核验主动交易披露时只能写持仓文件股数变化。无关联 GitHub Issue | [feishu_scheduler_ark_tem_trade_direction_misread.md](./feishu_scheduler_ark_tem_trade_direction_misread.md) |
 | Feishu PDF 文本提取在 CMap 解析越界 panic 后只能降级读首页 | P2 | Fixed | 2026-05-22 10:05 PDF 文本提取的 `pdf_extract` panic 现被捕获并归一化为 `pdf_text_extract_failed`；附件 prompt/ack 清洗 panic、crate 路径和本机绝对路径，避免内部错误细节进入 LLM 上下文。无关联 GitHub Issue | [feishu_pdf_text_extraction_panics_on_cmap_index.md](./feishu_pdf_text_extraction_panics_on_cmap_index.md) |
+| Heartbeat 重大事件监控触发 `max_iterations_exceeded` 后整轮跳过，下一窗又回摆成 `noop/sent` | P2 | Fixed | 2026-05-23 03:06 heartbeat auxiliary function-calling 预算从 `10` 提升到 `18`，并新增“必须以最少工具调用收口”的 prompt 约束，减少板块/多标的 heartbeat 为确认 noop 而反复穷举导致的触顶失败；相关 heartbeat 回归与 `cargo check -p hone-channels --tests` 通过。无关联 GitHub Issue | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 | Web 直聊生成 Excel/CSV 只回文件名，手机端无法下载或打开 | P2 | Fixed | 2026-05-21 20:09 Web direct 会把本轮新生成且正文提到文件名的 sandbox 文件追加为附件 marker，public history 可返回下载 metadata；前端非图片附件卡片现在使用 `/api/public/file` 下载链接。无关联 GitHub Issue | [web_direct_generated_files_not_downloadable.md](./web_direct_generated_files_not_downloadable.md) |
 | Feishu 定时任务目标解析链路再次失败，内容已生成但在 contact 阶段被拦截未送达 | P2 | Fixed | 2026-05-22 09:38 contact lookup 的 `code=1663` / `internal error` 现按临时上游错误做最多 3 次短重试，避免首次 Feishu 内部错误直接落成 `target_resolution_failed`；新增 `contact_lookup_internal_errors_are_retryable` 与 `contact_lookup_retry_budget_matches_request_retry_budget` 回归。关联 Issue [#32](https://github.com/B-M-Capital-Research/honeclaw/issues/32) | [feishu_scheduler_target_resolution_failed.md](./feishu_scheduler_target_resolution_failed.md) |
 | Heartbeat `mimo-v2.5-pro` 429 quota exhaustion drops alerts | P1 | Fixed | 2026-05-22 23:01 继续仅见当前机器旧/未确认部署运行态：19:13-22:30 CST 新增 105 条 heartbeat `execution_failed + skipped_error + delivered=0` 的 quota 失败，错误集中为 429 quota exhausted；当前 HEAD 已有多 key fallback 与 429 分类回归，不回退状态；关联 Issue [#44](https://github.com/B-M-Capital-Research/honeclaw/issues/44) | [scheduler_heartbeat_mimo_429_quota_exhausted.md](./scheduler_heartbeat_mimo_429_quota_exhausted.md) |

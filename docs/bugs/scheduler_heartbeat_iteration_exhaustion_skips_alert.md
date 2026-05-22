@@ -3,9 +3,23 @@
 - **发现时间**: 2026-04-20 06:01 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 
 ## 修复进展（2026-04-28）
+
+- `2026-05-23 03:06 CST` 本轮重新修复 heartbeat `max_iterations_exceeded:10` 触顶失败：
+  - `crates/hone-channels/src/scheduler.rs` 把 heartbeat auxiliary function-calling 预算从 `10` 提升到 `18`，与普通 function-calling 对话的默认迭代级别对齐，给板块/多标的重大事件 heartbeat 足够的工具回合预算。
+  - heartbeat prompt 新增“必须以最少工具调用收口”的约束：优先复用本轮已拿到的价格、新闻、组合和文件信息；若需要逐标的穷举或反复重复同一查询才能确认，本轮只检查最可能触发的少数候选并尽快返回 `noop/triggered`，避免为确认 noop 把整轮预算耗尽。
+  - 本轮没有把 runner error 伪装成 noop，也没有给某个 provider/模型写特判；修复仍保持“触顶继续显式失败留痕”的原则，只是把 heartbeat 的公共预算和 prompt 收口边界调到更稳的安全值。
+  - 新增 / 调整回归：
+    - `heartbeat_runner_uses_capped_completion_budget`
+    - `heartbeat_prompt_requires_noop_json_for_contract_conflicts`
+  - 验证通过：
+    - `cargo test -p hone-channels heartbeat_prompt_requires_noop_json_for_contract_conflicts --lib -- --nocapture`
+    - `cargo test -p hone-channels heartbeat_runner_uses_capped_completion_budget --lib -- --nocapture`
+    - `cargo test -p hone-channels heartbeat_ --lib -- --nocapture`
+    - `cargo check -p hone-channels --tests`
+  - 无关联 GitHub Issue。后续若部署当前代码后仍在真实窗口出现 `max_iterations_exceeded:18` 或同等 heartbeat 预算触顶失败，再重新打开。
 
 - `2026-05-23 03:01 CST` 本轮从 `Fixed` 重新打开为 `New`：旧修复说明写明，若真实窗口继续出现 `max_iterations_exceeded:10` 或等价触顶失败，应重新打开。本轮 23:01-03:01 CST 已满足该条件。
   - `data/sessions.sqlite3` -> `cron_job_runs`
