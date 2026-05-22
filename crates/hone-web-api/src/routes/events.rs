@@ -420,6 +420,14 @@ mod tests {
         }
     }
 
+    fn assert_detail_bool(detail: &Value, key: &str, expected: bool) {
+        assert_eq!(
+            detail[key].as_bool(),
+            Some(expected),
+            "expected scheduler detail {key:?} to be {expected}: {detail}"
+        );
+    }
+
     #[test]
     fn scheduler_failure_trace_required_keeps_internal_suppressed_web_failures() {
         let result = scheduled_result(
@@ -450,8 +458,8 @@ mod tests {
         let detail = web_scheduler_delivery_detail(json!({"status": "triggered"}), false, "web");
 
         assert_eq!(detail["delivery_channel"], "web");
-        assert_eq!(detail["console_event_sent"], false);
-        assert_eq!(detail["system_push_supported"], false);
-        assert_eq!(detail["system_push_sent"], false);
+        assert_detail_bool(&detail, "console_event_sent", false);
+        assert_detail_bool(&detail, "system_push_supported", false);
+        assert_detail_bool(&detail, "system_push_sent", false);
     }
 }

@@ -1,5 +1,15 @@
 # Code Quality Patrol Findings
 
+## 2026-05-23 - 测试可维护性
+
+### Ignored live smoke tests remain scattered outside manual regression entry points
+
+- status: open
+- direction: 测试可维护性
+- evidence: `AGENTS.md` and `docs/invariants.md` say external-account, external-CLI, or local-machine-state checks should live under `tests/regression/manual/`, but `rg "#\\[ignore\\]|live_|HONE_.*KEY|HONE_.*TOKEN"` still finds credential-backed ignored tests in crate modules. Examples include `crates/hone-web-api/src/aliyun_captcha.rs::live_probe_smoke`, `crates/hone-web-api/src/aliyun_sms.rs::live_send_verify_code_smoke`, and event-engine poller smokes such as `crates/hone-event-engine/src/pollers/news.rs::live_fmp_news_smoke`, `pollers/price.rs::live_fmp_price_smoke`, `pollers/earnings.rs::live_fmp_earnings_smoke`, `pollers/analyst_grade.rs::live_fmp_analyst_grade_smoke`, `pollers/corp_action.rs::live_fmp_corp_action_smoke`, `pollers/earnings_surprise.rs::live_fmp_earnings_surprise_smoke`, and `pollers/macro_events.rs::live_fmp_macro_smoke`.
+- risk: these tests are ignored and do not block CI, but their command surface is hard to discover from `tests/regression/manual/` and remains mixed into unit-test modules. Moving them in a patrol-sized patch could lose useful smoke commands, required environment notes, or fixture setup for live provider checks.
+- suggested_fix: create manual regression wrappers for Aliyun SMS/Captcha and event-engine FMP poller smokes, preserving required env vars, command examples, and expected success criteria. Keep deterministic parsing/auth/signature coverage in Rust unit tests, then update `tests/regression/README.md` if new manual entry points are added.
+
 ## 2026-05-22 - 注释准确性
 
 ### Global digest broadcast dedup channel no longer matches unified scheduler audit writes

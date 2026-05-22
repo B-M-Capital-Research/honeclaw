@@ -95,6 +95,53 @@ mod tests {
         )
     }
 
+    fn assert_job_result_success(result: &Value) {
+        assert_eq!(
+            result.get("success").and_then(Value::as_bool),
+            Some(true),
+            "expected cron job result to succeed: {result}"
+        );
+    }
+
+    fn assert_job_result_failure(result: &Value) {
+        assert_eq!(
+            result.get("success").and_then(Value::as_bool),
+            Some(false),
+            "expected cron job result to fail: {result}"
+        );
+    }
+
+    fn job_id_from_add_result(result: &Value) -> String {
+        assert_job_result_success(result);
+        result["job"]["id"]
+            .as_str()
+            .expect("successful add_job result should include job.id")
+            .to_string()
+    }
+
+    fn assert_job_result_error_contains(result: &Value, expected: &str) {
+        let error = result["error"].as_str().unwrap_or_default();
+        assert!(
+            error.contains(expected),
+            "expected cron job error containing {expected:?}, got result: {result}"
+        );
+    }
+
+    fn assert_job_result_error_eq(result: &Value, expected: &str) {
+        assert_eq!(
+            result["error"].as_str(),
+            Some(expected),
+            "unexpected cron job error in result: {result}"
+        );
+    }
+
+    fn assert_enabled_limit_error(error: &impl std::fmt::Display) {
+        assert!(
+            is_cron_enabled_limit_error(&error.to_string()),
+            "expected enabled-job limit error, got: {error}"
+        );
+    }
+
     #[test]
     fn add_job_validates_params() {
         let dir = make_temp_dir("hone_cron_storage_validate");
@@ -116,7 +163,7 @@ mod tests {
             None,
             false,
         );
-        assert_eq!(bad_hour["success"], false);
+        assert_job_result_failure(&bad_hour);
 
         let bad_weekly = storage.add_job(
             &actor,
@@ -133,7 +180,7 @@ mod tests {
             None,
             false,
         );
-        assert_eq!(bad_weekly["success"], false);
+        assert_job_result_failure(&bad_weekly);
     }
 
     #[test]
@@ -158,13 +205,8 @@ mod tests {
             false,
         );
 
-        assert_eq!(result["success"], false);
-        assert!(
-            result["error"]
-                .as_str()
-                .unwrap_or_default()
-                .contains("channel_target 不能为空")
-        );
+        assert_job_result_failure(&result);
+        assert_job_result_error_contains(&result, "channel_target 不能为空");
         assert!(storage.list_jobs(&actor).is_empty());
     }
 
@@ -190,13 +232,12 @@ mod tests {
             None,
             false,
         );
-        assert_eq!(add["success"], true);
-        let job_id = add["job"]["id"].as_str().unwrap_or_default();
+        let job_id = job_id_from_add_result(&add);
 
         storage
             .record_execution_event(
                 &actor,
-                job_id,
+                &job_id,
                 "group heartbeat",
                 "-100123",
                 true,
@@ -256,8 +297,7 @@ mod tests {
             None,
             false,
         );
-        assert_eq!(add["success"], true);
-        let job_id = add["job"]["id"].as_str().unwrap_or_default().to_string();
+        let job_id = job_id_from_add_result(&add);
 
         let due_first = storage.get_due_jobs(
             hour as i32,
@@ -391,42 +431,38 @@ mod tests {
         let actor_one = actor("discord", "alice", Some("g:1:c:1"));
         let actor_two = actor("discord", "alice", Some("g:1:c:2"));
 
-        assert_eq!(
-            storage.add_job(
-                &actor_one,
-                "report one",
-                Some(9),
-                Some(0),
-                "daily",
-                "task one",
-                "alice",
-                None,
-                None,
-                None,
-                true,
-                None,
-                false,
-            )["success"],
-            true
+        let first_add = storage.add_job(
+            &actor_one,
+            "report one",
+            Some(9),
+            Some(0),
+            "daily",
+            "task one",
+            "alice",
+            None,
+            None,
+            None,
+            true,
+            None,
+            false,
         );
-        assert_eq!(
-            storage.add_job(
-                &actor_two,
-                "report two",
-                Some(9),
-                Some(30),
-                "daily",
-                "task two",
-                "alice",
-                None,
-                None,
-                None,
-                true,
-                None,
-                false,
-            )["success"],
-            true
+        assert_job_result_success(&first_add);
+        let second_add = storage.add_job(
+            &actor_two,
+            "report two",
+            Some(9),
+            Some(30),
+            "daily",
+            "task two",
+            "alice",
+            None,
+            None,
+            None,
+            true,
+            None,
+            false,
         );
+        assert_job_result_success(&second_add);
 
         let first = storage.list_jobs(&actor_one);
         let second = storage.list_jobs(&actor_two);
@@ -443,15 +479,12 @@ mod tests {
         let actor = actor("discord", "alice", None);
 
         for index in 0..MAX_ENABLED_JOBS_PER_ACTOR {
-            assert_eq!(
-                add_enabled_job(&storage, &actor, &format!("job-{index}"))["success"],
-                true
-            );
+            assert_job_result_success(&add_enabled_job(&storage, &actor, &format!("job-{index}")));
         }
 
         let rejected = add_enabled_job(&storage, &actor, "job-6");
-        assert_eq!(rejected["success"], false);
-        assert_eq!(rejected["error"], cron_enabled_limit_error());
+        assert_job_result_failure(&rejected);
+        assert_job_result_error_eq(&rejected, &cron_enabled_limit_error());
 
         let disabled = storage.add_job(
             &actor,
@@ -468,7 +501,7 @@ mod tests {
             None,
             false,
         );
-        assert_eq!(disabled["success"], true);
+        assert_job_result_success(&disabled);
         assert_eq!(
             storage.list_jobs(&actor).len(),
             MAX_ENABLED_JOBS_PER_ACTOR + 1
@@ -484,7 +517,7 @@ mod tests {
         let mut job_ids = Vec::new();
         for index in 0..MAX_ENABLED_JOBS_PER_ACTOR {
             let result = add_enabled_job(&storage, &actor, &format!("job-{index}"));
-            job_ids.push(result["job"]["id"].as_str().unwrap_or_default().to_string());
+            job_ids.push(job_id_from_add_result(&result));
         }
 
         let disabled = storage.add_job(
@@ -502,15 +535,12 @@ mod tests {
             None,
             false,
         );
-        let disabled_id = disabled["job"]["id"]
-            .as_str()
-            .unwrap_or_default()
-            .to_string();
+        let disabled_id = job_id_from_add_result(&disabled);
 
         let toggle_err = storage
             .toggle_job(&disabled_id, Some(&actor), false)
             .expect_err("toggle should hit limit");
-        assert!(is_cron_enabled_limit_error(&toggle_err.to_string()));
+        assert_enabled_limit_error(&toggle_err);
 
         let update_err = storage
             .update_job(
@@ -523,7 +553,7 @@ mod tests {
                 false,
             )
             .expect_err("update should hit limit");
-        assert!(is_cron_enabled_limit_error(&update_err.to_string()));
+        assert_enabled_limit_error(&update_err);
 
         storage
             .toggle_job(&job_ids[0], Some(&actor), false)
@@ -556,8 +586,7 @@ mod tests {
             Some(vec!["heartbeat".to_string()]),
             false,
         );
-        assert_eq!(add["success"], true);
-        let job_id = add["job"]["id"].as_str().unwrap_or_default().to_string();
+        let job_id = job_id_from_add_result(&add);
 
         let now_bj = chrono::Utc::now().with_timezone(&beijing_offset());
         let due_first =
@@ -605,8 +634,7 @@ mod tests {
             None,
             false,
         );
-        assert_eq!(add["success"], true);
-        let job_id = add["job"]["id"].as_str().unwrap_or_default().to_string();
+        let job_id = job_id_from_add_result(&add);
 
         let mut data = storage.load_jobs(&actor);
         let job = data
@@ -649,8 +677,7 @@ mod tests {
             None,
             false,
         );
-        assert_eq!(add["success"], true);
-        let job_id = add["job"]["id"].as_str().unwrap_or_default().to_string();
+        let job_id = job_id_from_add_result(&add);
 
         let mut data = storage.load_jobs(&actor);
         let job = data
@@ -693,13 +720,8 @@ mod tests {
             false,
         );
 
-        assert_eq!(result["success"], false);
-        assert!(
-            result["error"]
-                .as_str()
-                .unwrap_or_default()
-                .contains("与结构化 schedule 08:30 不一致")
-        );
+        assert_job_result_failure(&result);
+        assert_job_result_error_contains(&result, "与结构化 schedule 08:30 不一致");
     }
 
     #[test]
@@ -788,7 +810,7 @@ mod tests {
             None,
             false,
         );
-        assert_eq!(add["success"], true);
+        assert_job_result_success(&add);
 
         let due = storage.get_due_jobs(12, 0, today.weekday().num_days_from_monday(), &["feishu"]);
         assert!(
@@ -819,7 +841,7 @@ mod tests {
             None,
             false,
         );
-        let job_id = add["job"]["id"].as_str().unwrap_or_default().to_string();
+        let job_id = job_id_from_add_result(&add);
 
         storage
             .record_execution_event(
@@ -873,7 +895,7 @@ mod tests {
             None,
             false,
         );
-        let job_id = add["job"]["id"].as_str().unwrap_or_default().to_string();
+        let job_id = job_id_from_add_result(&add);
 
         storage
             .record_execution_event(
@@ -1228,7 +1250,7 @@ mod tests {
             None,
             true,
         );
-        let job_id = add["job"]["id"].as_str().unwrap_or_default().to_string();
+        let job_id = job_id_from_add_result(&add);
 
         storage
             .record_execution_event(
