@@ -1,7 +1,11 @@
 import { describe, expect, it } from "bun:test"
 
 import {
+  backendConnectionLabel,
+  backendConnectionStatus,
   channelBadgeDotClass,
+  channelSummaryText,
+  frontendConnectionStatus,
   statusDotClass,
   statusLabel,
   statusTextClass,
@@ -114,5 +118,77 @@ describe("channel-status-badge-model", () => {
         counts: healthy,
       }),
     ).toBe("bg-[color:var(--success)]")
+  })
+
+  it("derives summary text and backend connection labels", () => {
+    const empty = summarizeChannelStatuses([])
+    const healthy = summarizeChannelStatuses([
+      channelStatusFixture(),
+      channelStatusFixture({ id: "telegram" }),
+    ])
+
+    expect(
+      backendConnectionLabel({ initializing: true, connected: false }),
+    ).toBe("后端连接中")
+    expect(
+      backendConnectionLabel({ initializing: false, connected: true }),
+    ).toBe("管理端后端正常连接中")
+    expect(channelSummaryText(empty, "后端连接中")).toBe(
+      "渠道加载中，后端连接中，管理端前端正常连接中",
+    )
+    expect(channelSummaryText(healthy, "管理端后端正常连接中")).toBe(
+      "2 个渠道监听中，管理端后端正常连接中，管理端前端正常连接中",
+    )
+  })
+
+  it("derives backend and frontend connection rows outside the component", () => {
+    expect(
+      backendConnectionStatus({
+        initializing: true,
+        connected: false,
+        isRemote: false,
+        baseUrl: "",
+      }),
+    ).toEqual({
+      label: "管理端后端",
+      detail: "正在建立连接…",
+      status: "degraded",
+    })
+    expect(
+      backendConnectionStatus({
+        initializing: false,
+        connected: true,
+        isRemote: true,
+        baseUrl: "http://localhost:8077",
+        resolvedBaseUrl: "http://127.0.0.1:8077",
+      }),
+    ).toEqual({
+      label: "管理端后端",
+      detail: "remote · http://127.0.0.1:8077（管理端端口 8077）",
+      status: "running",
+    })
+    expect(
+      backendConnectionStatus({
+        initializing: false,
+        connected: false,
+        error: "connection refused",
+        isRemote: false,
+        baseUrl: "",
+      }),
+    ).toEqual({
+      label: "管理端后端",
+      detail: "connection refused",
+      status: "stopped",
+    })
+    expect(
+      frontendConnectionStatus({
+        isDesktop: false,
+        origin: "http://localhost:8077",
+      }),
+    ).toEqual({
+      label: "管理端前端",
+      detail: "browser · http://localhost:8077（管理端页面）",
+      status: "running",
+    })
   })
 })

@@ -14,7 +14,13 @@ import {
   type ActorRef,
 } from "@/lib/actors"
 import { USERS } from "@/lib/admin-content/users"
-import { tpl } from "@/lib/i18n"
+import {
+  actorFromManualDraft,
+  actorListStatsText,
+  DEFAULT_MANUAL_ACTOR_DRAFT,
+  filterActorList,
+  patchActorDraft,
+} from "@/pages/users-model"
 
 type ActorListProps = {
   currentKey: string
@@ -32,13 +38,9 @@ export function ActorList(props: ActorListProps) {
 
   const [search, setSearch] = createSignal("")
   const [showManual, setShowManual] = createSignal(false)
-  const [draft, setDraft] = createSignal<ActorRef>({
-    channel: "imessage",
-    user_id: "",
-    channel_scope: "",
-  })
+  const [draft, setDraft] = createSignal<ActorRef>(DEFAULT_MANUAL_ACTOR_DRAFT)
   const updateDraft = (patch: Partial<ActorRef>) => {
-    setDraft((prev) => ({ ...prev, ...patch }))
+    setDraft((prev) => patchActorDraft(prev, patch))
   }
 
   const merged = createMemo<ActorListItem[]>(() =>
@@ -49,33 +51,15 @@ export function ActorList(props: ActorListProps) {
     }),
   )
 
-  const filtered = createMemo(() => {
-    const normalizedQuery = search().trim().toLowerCase()
-    if (!normalizedQuery) return merged()
-    return merged().filter((item) => {
-      const searchableActorFields = [
-        item.actor.user_id,
-        item.actor.channel,
-        item.actor.channel_scope ?? "",
-        item.sessionLabel ?? "",
-      ]
-        .join(" ")
-        .toLowerCase()
-      return searchableActorFields.includes(normalizedQuery)
-    })
-  })
+  const filtered = createMemo(() => filterActorList(merged(), search()))
 
   const loading = () =>
     portfolio.actorsList.loading || companyProfiles.actorsList.loading
 
   const submitManual = () => {
-    const draftActor = draft()
-    if (!draftActor.channel || !draftActor.user_id) return
-    props.onSelect({
-      channel: draftActor.channel,
-      user_id: draftActor.user_id,
-      channel_scope: draftActor.channel_scope || undefined,
-    })
+    const manualActor = actorFromManualDraft(draft())
+    if (!manualActor) return
+    props.onSelect(manualActor)
     setShowManual(false)
   }
 
@@ -167,20 +151,7 @@ export function ActorList(props: ActorListProps) {
                 {(item) => {
                   const key = item.key
                   const isActive = () => props.currentKey === key
-                  const stats = () => {
-                    const parts: string[] = []
-                    if (item.holdingsCount != null && item.holdingsCount > 0) {
-                      parts.push(tpl(USERS.list.stat_holdings, { count: item.holdingsCount }))
-                    }
-                    if (item.watchlistCount != null && item.watchlistCount > 0) {
-                      parts.push(tpl(USERS.list.stat_watchlist, { count: item.watchlistCount }))
-                    }
-                    if (item.profileCount != null && item.profileCount > 0) {
-                      parts.push(tpl(USERS.list.stat_profiles, { count: item.profileCount }))
-                    }
-                    if (item.lastSessionTime) parts.push(USERS.list.stat_sessions)
-                    return parts.length > 0 ? parts.join(" · ") : USERS.list.stat_empty
-                  }
+                  const stats = () => actorListStatsText(item)
                   return (
                     <button
                       type="button"

@@ -3,7 +3,11 @@ import { useConsole } from "@/context/console"
 import { useBackend } from "@/context/backend"
 import { cleanupDesktopChannelProcesses } from "@/lib/backend"
 import {
+  backendConnectionLabel,
+  backendConnectionStatus,
   channelBadgeDotClass,
+  channelSummaryText,
+  frontendConnectionStatus,
   statusDotClass,
   statusLabel,
   statusTextClass,
@@ -21,11 +25,12 @@ export function ChannelStatusBadge() {
   const channelError = () => consoleState.channelError()
   const channelCounts = createMemo(() => summarizeChannelStatuses(channels()))
   const backendConnected = createMemo(() => backend.state.connected)
-  const backendLabel = createMemo(() => {
-    if (backend.state.initializing) return "后端连接中"
-    if (backendConnected()) return "管理端后端正常连接中"
-    return "管理端后端未连接"
-  })
+  const backendLabel = createMemo(() =>
+    backendConnectionLabel({
+      initializing: backend.state.initializing,
+      connected: backendConnected(),
+    }),
+  )
 
   const dotColor = createMemo(() => {
     return channelBadgeDotClass({
@@ -36,51 +41,30 @@ export function ChannelStatusBadge() {
     })
   })
 
-  const summaryText = createMemo(() => {
-    const counts = channelCounts()
-    const channelText = counts.hasData ? `${counts.successCount} 个渠道监听中` : "渠道加载中"
-    return [channelText, backendLabel(), "管理端前端正常连接中"].join("，")
-  })
+  const summaryText = createMemo(() =>
+    channelSummaryText(channelCounts(), backendLabel()),
+  )
 
-  const backendStatus = createMemo(() => {
-    if (backend.state.initializing) {
-      return {
-        label: "管理端后端",
-        detail: "正在建立连接…",
-        status: "degraded",
-      }
-    }
-    if (backend.state.connected) {
-      const target =
-        backend.state.resolvedBaseUrl ||
-        (backend.isRemote() ? backend.state.config.baseUrl : "bundled")
-      return {
-        label: "管理端后端",
-        detail: backend.isRemote()
-          ? `remote · ${target}（管理端端口 8077）`
-          : `bundled · ${target}（管理端端口 8077）`,
-        status: "running",
-      }
-    }
-    return {
-      label: "管理端后端",
-      detail: backend.state.error || "未连接",
-      status: "stopped",
-    }
-  })
+  const backendStatus = createMemo(() =>
+    backendConnectionStatus({
+      initializing: backend.state.initializing,
+      connected: backend.state.connected,
+      error: backend.state.error,
+      isRemote: backend.isRemote(),
+      baseUrl: backend.state.config.baseUrl,
+      resolvedBaseUrl: backend.state.resolvedBaseUrl,
+    }),
+  )
 
   const frontendStatus = createMemo(() => {
     const target =
       typeof window !== "undefined" && window.location?.origin && window.location.origin !== "null"
         ? window.location.origin
         : "desktop shell"
-      return {
-        label: "管理端前端",
-        detail: backend.state.isDesktop
-          ? `desktop · ${target}`
-          : `browser · ${target}（管理端页面）`,
-      status: "running",
-    }
+    return frontendConnectionStatus({
+      isDesktop: backend.state.isDesktop,
+      origin: target,
+    })
   })
   const connectionStatuses = createMemo(() => [backendStatus(), frontendStatus()])
 
