@@ -5,6 +5,22 @@
 - **严重等级**: P3
 - **状态**: Fixed
 - **修复结论复核**:
+  - `2026-05-22 11:01 CST` 本轮在最近四小时真实运行窗口继续看到一条坏样本，但不推翻仓库代码层面的 `Fixed` 结论：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - `run_id=30164`
+      - `job_name=核心观察池早间简报`
+      - `executed_at=2026-05-22T09:02:13.419722+08:00`
+      - `execution_status=completed`
+      - `message_send_status=sent`
+      - `delivered=1`
+      - `response_preview` 写出“除 LITE 外，其余 24 支击球区区间本轮未提供，先标注待确认”，并把 `MSFT / NVDA / GOOGL / AAPL / AVGO / AMZN / META` 以及多支拓展股批量写成 `击球区：待确认`。
+    - `data/sessions.sqlite3` -> `session_messages`
+      - `session_id=Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773`
+      - assistant `ordinal=225`
+      - `timestamp=2026-05-22T09:02:11.565523+08:00`
+      - final 正文同样批量输出 `击球区：待确认`，没有外泄工具轨迹、绝对路径或内部错误。
+    - 本轮仍按旧/未确认部署运行态证据处理，不把状态从 `Fixed` 回退为 `New`。若后续确认运行进程已部署当前 HEAD 的 compact summary / session summary 击球区恢复逻辑后仍复现，再重新打开。
+    - 仍定为 `P3 / Fixed`：任务按时完成并送达，价格与财报字段仍可读；受损的是固定观察池字段恢复与报告参考价值，没有阻断主投递链路，因此不是 `P2` 或更高。
   - `2026-05-18 11:03 CST` 本轮在当前机器旧/非生产运行态中继续看到一条坏样本，但不推翻仓库代码层面的 `Fixed` 结论：
     - `data/sessions.sqlite3` -> `cron_job_runs`
       - `run_id=25054`
