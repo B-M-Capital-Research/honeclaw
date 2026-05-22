@@ -12,6 +12,13 @@
 - 受影响范围覆盖价格破位、持仓财报、重大新闻、板块关键事件、观察池等多个 heartbeat job；同窗直聊会话仍能正常收口，故障集中在 heartbeat provider quota / rate-limit 路径。
 - 本轮修复不依赖当前机器生产日志、线上健康检查或真实投递状态；判断与验证基于 issue 摘要、现有 heartbeat 代码、配置解析和本地回归。
 - `data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-22 23:01 CST` 复核，最近四小时窗口 `2026-05-22T19:01:33+08:00` 到 `2026-05-22T23:01:39+08:00` 内继续新增 `105` 条 heartbeat `execution_failed + skipped_error + delivered=0` 的 quota 失败，其中 Feishu `84` 条、Web `21` 条。
+  - 错误仍集中为 `HTTP 429` / `quota exhausted`：Feishu heartbeat 多为 `LLM 错误: limitation: quota exhausted (code: 429)`，Web heartbeat 多为 `LLM 错误: upstream HTTP 429: quota exhausted (code: 429)`。
+  - 受影响范围：Feishu `12` 个 heartbeat job、Web `3` 个 heartbeat job；Feishu 失败集中在 19:13-22:14 CST，Web 失败集中在 19:30-22:30 CST。
+  - 同窗还有 `84` 条 Feishu heartbeat `running + pending` started 残留、`31` 条普通 Feishu scheduler started 残留，以及 `32` 条 Feishu、`5` 条 Web 普通 scheduler `completed + sent + delivered=1` 终态。
+  - 22:39 / 22:52 CST Feishu scheduler 启动回收 `5134` 条历史 `running/pending` row 为 `execution_failed + send_failed`，`detail_json.phase=recovered_stale_pending`、`detail_json.recovered_by=feishu_scheduler_startup`；这是既有 stale-pending 回收逻辑在生效，不作为本单的新失败根因。
+  - 23:00 CST 以后又出现 `MiniMax-M2.7-highspeed` 输出 `<think>` / plain text 导致的非 quota 结构化失败，已回写 `scheduler_heartbeat_unknown_status_silent_skip.md` 并将该 P2 从 `Fixed` 重新打开。
+  - 当前 HEAD 已有 OpenAI-compatible 多 key fallback 与 heartbeat 429 分类修复，本轮继续按旧/未确认部署运行态证据处理，不把状态从 `Fixed` 回退为 `New`，也不重复创建 Issue [#44](https://github.com/B-M-Capital-Research/honeclaw/issues/44)。
   - `2026-05-22 19:02 CST` 复核，最近四小时窗口 `2026-05-22T15:02:00+08:00` 到 `2026-05-22T19:02:00+08:00` 内继续新增 `120` 条 heartbeat `execution_failed + skipped_error + delivered=0`，其中 Feishu `96` 条、Web `24` 条。
   - 错误仍集中为 `HTTP 429` / `quota exhausted`：Feishu heartbeat 多为 `LLM 错误: limitation: quota exhausted (code: 429)`，Web heartbeat 多为 `LLM 错误: upstream HTTP 429: quota exhausted (code: 429)`。
   - sqlite `detail_json.failure_kind` 中 Feishu 侧 `96` 条仍为空，Web 侧 `24` 条为 `provider_http_error`，符合旧运行态或未重启到当前 HEAD 的表现；同窗未再出现 `Param Incorrect` 或 `reasoning_content` 兼容错误。

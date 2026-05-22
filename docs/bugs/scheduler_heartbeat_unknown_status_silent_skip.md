@@ -3,9 +3,20 @@
 - **发现时间**: 2026-04-15 14:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 
 ## 修复进展
+
+- `2026-05-22 23:01 CST` 本轮巡检把本单从 `Fixed` 回退为 `New`：22:39/22:52 CST Feishu scheduler 启动回收历史 stale started row 后，23:00 CST heartbeat 窗口切到 `MiniMax-M2.7-highspeed`，但多个 heartbeat 任务又批量输出 `<think>` / plain text，而不是解析器认可的结构化状态对象。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 最近四小时窗口内，19:13-22:30 CST 仍有 `105` 条 heartbeat 因 provider `HTTP 429 quota exhausted` 失败，继续归入 `scheduler_heartbeat_mimo_429_quota_exhausted.md` 的旧/未确认部署运行态证据。
+    - 23:00-23:01 CST 新增 `10` 条非 quota 的 heartbeat 结构化失败：Feishu `9` 条、Web `1` 条，终态均为 `execution_failed + skipped_error + delivered=0`。
+    - 代表性样本：`run_id=30974` / `heartbeat_绿田机械基本面跟踪`、`run_id=30976` / `TSLA 正负触发条件心跳监控`、`run_id=30982` / `持仓重大事件心跳检测`、`run_id=30986` / `DRAM 心跳监控`、`run_id=30984` / `全天原油价格3小时播报`、`run_id=30973` / Web `存储板块关键事件心跳提醒`。
+    - `detail_json.heartbeat_model=MiniMax-M2.7-highspeed`；多数样本为 `parse_kind=PlainTextSuppressed`，`raw_preview` 以 `<think>` 开头并包含自然语言分析；`DRAM 心跳监控` 为 `JsonEmptyStatus`。这不是单纯 429 额度问题，而是 heartbeat 输出协议再次退化。
+  - 会话质量对照：
+    - 最近四小时共有 `54` 个 user turn 与 `51` 个 assistant final；Feishu / Web 直聊和普通 scheduler 均有收口。
+    - assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`。
+  - 结论：这是同一根因 / 同一影响范围的复发，不新建重复文档。它会导致 heartbeat 自动提醒主功能链路漏发，维持功能性 `P2 / New`；不是单纯回答质量 `P3`。无关联 GitHub Issue，本轮不创建 P1 issue。
 
 - `2026-05-12 19:12 CST` 本轮重新修复：
   - `crates/hone-channels/src/scheduler.rs` 的 malformed-triggered 恢复不再只接受严格双引号字符串状态；当 heartbeat 返回 JSON-ish 结构但 `status` 未加引号、或 `message` 使用中文智能引号等非标准引号时，仍会在确认 `status=triggered` 后提取用户可见 `message` 并进入既有投递、去重、近阈值和出站净化链路。
