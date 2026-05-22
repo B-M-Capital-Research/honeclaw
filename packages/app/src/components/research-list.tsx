@@ -8,31 +8,17 @@ import { useResearch } from "@/context/research"
 import type { ResearchTask } from "@/lib/types"
 import { RESEARCH } from "@/lib/admin-content/research"
 import { useLocale } from "@/lib/i18n"
+import {
+  confirmableResearchName,
+  formatResearchTaskTime,
+  researchStatusBadgeConfig,
+  researchSymbolFromSearchParam,
+} from "./research-list-model"
 
 // ── 状态徽章 ──────────────────────────────────────────────────────────────────
 
 function StatusBadge(props: { task: ResearchTask }) {
-  const statusConfig = () => {
-    switch (props.task.status) {
-      case "completed":
-        if (props.task.answer_markdown) {
-          return { label: RESEARCH.list.status.report_ready, dot: "bg-[color:var(--success)]", text: "text-[color:var(--success)]" }
-        }
-        return { label: RESEARCH.list.status.completed, dot: "bg-[color:var(--success)]", text: "text-[color:var(--success)]" }
-      case "running":
-        return {
-          label: props.task.progress || RESEARCH.list.status.running,
-          dot: "bg-blue-400 animate-pulse",
-          text: "text-blue-500",
-        }
-      case "pending":
-        return { label: RESEARCH.list.status.pending, dot: "bg-black/15", text: "text-[color:var(--text-muted)]" }
-      case "error":
-        return { label: RESEARCH.list.status.error, dot: "bg-rose-500", text: "text-rose-500" }
-      default:
-        return { label: RESEARCH.list.status.unknown, dot: "bg-black/15", text: "text-[color:var(--text-muted)]" }
-    }
-  }
+  const statusConfig = () => researchStatusBadgeConfig(props.task)
 
   return (
     <div class="flex items-center gap-1.5">
@@ -54,17 +40,17 @@ export function ResearchList() {
 
   // 接受 ?symbol=AAPL 自动预填(供 SymbolDrawer "启动研究" 跳转使用)
   createEffect(() => {
-    const sym = typeof searchParams.symbol === "string" ? searchParams.symbol : ""
+    const sym = researchSymbolFromSearchParam(searchParams.symbol)
     if (sym && !companyInput()) {
-      setCompanyInput(sym.toUpperCase())
+      setCompanyInput(sym)
       // 用过即清,避免反复回填
       setSearchParams({ symbol: undefined }, { replace: true })
     }
   })
 
   const handleConfirmOpen = () => {
-    const name = companyInput().trim()
-    if (!name || starting()) return
+    const name = confirmableResearchName(companyInput(), starting())
+    if (!name) return
     setConfirmName(name)
   }
 
@@ -90,21 +76,6 @@ export function ResearchList() {
   const openTask = (task: ResearchTask) => {
     research.selectTask(task.id)
     navigate(`/research/${encodeURIComponent(task.id)}`)
-  }
-
-  const formatTime = (iso?: string) => {
-    if (!iso) return ""
-    try {
-      const loc = useLocale() === "zh" ? "zh-CN" : "en-US"
-      return new Date(iso).toLocaleString(loc, {
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    } catch {
-      return iso
-    }
   }
 
   return (
@@ -208,7 +179,7 @@ export function ResearchList() {
                         </div>
                       </div>
                       <div class="shrink-0 text-[10px] text-[color:var(--text-muted)] mt-0.5">
-                        {formatTime(task.created_at)}
+                        {formatResearchTaskTime(task.created_at, useLocale())}
                       </div>
                     </div>
                   </button>
