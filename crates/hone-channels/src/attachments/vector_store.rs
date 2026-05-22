@@ -12,15 +12,7 @@ pub(crate) async fn extract_pdf_preview(pdf_path: PathBuf) -> Result<String, Str
         let raw = extract_pdf_text_safely(|| {
             extract_text(&pdf_path).map_err(|e| format!("pdf_extract 解析失败: {}", e))
         })?;
-        let normalized = raw
-            .lines()
-            .map(str::trim)
-            .filter(|line| !line.is_empty())
-            .collect::<Vec<_>>()
-            .join("\n");
-        if normalized.trim().is_empty() {
-            return Err("未提取到可读文本（可能是扫描件图片 PDF）".to_string());
-        }
+        let normalized = normalize_pdf_text(&raw)?;
         Ok(truncate_chars_append(
             &normalized,
             MAX_PDF_PREVIEW_CHARS,
@@ -38,19 +30,23 @@ pub async fn extract_full_pdf_text(pdf_path: &std::path::Path) -> Result<String,
         let raw = extract_pdf_text_safely(|| {
             extract_text(&path).map_err(|e| format!("pdf_extract 解析失败: {}", e))
         })?;
-        let normalized = raw
-            .lines()
-            .map(str::trim)
-            .filter(|line| !line.is_empty())
-            .collect::<Vec<_>>()
-            .join("\n");
-        if normalized.trim().is_empty() {
-            return Err("未提取到可读文本（可能是扫描件图片 PDF）".to_string());
-        }
-        Ok(normalized)
+        normalize_pdf_text(&raw)
     })
     .await
     .map_err(|e| format!("PDF 全量提取任务失败: {e}"))?
+}
+
+fn normalize_pdf_text(raw: &str) -> Result<String, String> {
+    let normalized = raw
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+    if normalized.trim().is_empty() {
+        return Err("未提取到可读文本（可能是扫描件图片 PDF）".to_string());
+    }
+    Ok(normalized)
 }
 
 fn extract_pdf_text_safely(

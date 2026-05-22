@@ -451,10 +451,7 @@ pub fn build_user_input_with_label(
         parts.push(content.trim().to_string());
     }
 
-    let accepted_attachments: Vec<&ReceivedAttachment> = attachments
-        .iter()
-        .filter(|att| att.error.is_none())
-        .collect();
+    let accepted_attachments = accepted_attachment_refs(attachments);
 
     if !accepted_attachments.is_empty() {
         let mut lines = vec![label.to_string()];
@@ -478,14 +475,8 @@ pub fn build_user_input_with_label(
 
 pub fn build_attachment_ack_message(attachments: &[ReceivedAttachment]) -> String {
     let mut counts = BTreeMap::new();
-    let accepted_attachments: Vec<&ReceivedAttachment> = attachments
-        .iter()
-        .filter(|att| att.error.is_none())
-        .collect();
-    let rejected_attachments: Vec<&ReceivedAttachment> = attachments
-        .iter()
-        .filter(|att| att.error.is_some())
-        .collect();
+    let accepted_attachments = accepted_attachment_refs(attachments);
+    let rejected_attachments = rejected_attachment_refs(attachments);
 
     for att in &accepted_attachments {
         *counts.entry(att.kind.label()).or_insert(0usize) += 1;
@@ -505,45 +496,22 @@ pub fn build_attachment_ack_message(attachments: &[ReceivedAttachment]) -> Strin
         )
     };
 
-    let archive_status: Vec<String> = accepted_attachments
-        .iter()
-        .filter(|a| a.kind == AttachmentKind::Archive)
-        .map(|a| {
-            if let Some(err) = &a.extraction_error {
-                format!(
-                    "{} 解压失败: {}",
-                    a.filename,
-                    truncate_chars_append(err, 80, "...")
-                )
-            } else {
-                format!("{} 已解压 {} 个文件", a.filename, a.extracted_files.len())
-            }
-        })
-        .collect();
+    let archive_status: Vec<String> =
+        attachment_refs_by_kind(&accepted_attachments, AttachmentKind::Archive)
+            .into_iter()
+            .map(archive_ack_status_line)
+            .collect();
     if !archive_status.is_empty() {
         msg.push_str(" 压缩包处理：");
         msg.push_str(&archive_status.join("；"));
         msg.push('。');
     }
 
-    let pdf_status: Vec<String> = accepted_attachments
-        .iter()
-        .filter(|a| a.kind == AttachmentKind::Pdf)
-        .map(|a| {
-            if let Some(err) = &a.pdf_extract_error {
-                let err = super::vector_store::sanitize_pdf_extract_error(err);
-                format!(
-                    "{} 解析失败: {}",
-                    a.filename,
-                    truncate_chars_append(&err, 80, "...")
-                )
-            } else if a.pdf_text_preview.is_some() {
-                format!("{} 已提取文本", a.filename)
-            } else {
-                format!("{} 未提取到文本", a.filename)
-            }
-        })
-        .collect();
+    let pdf_status: Vec<String> =
+        attachment_refs_by_kind(&accepted_attachments, AttachmentKind::Pdf)
+            .into_iter()
+            .map(pdf_ack_status_line)
+            .collect();
     if !pdf_status.is_empty() {
         msg.push_str(" PDF处理：");
         msg.push_str(&pdf_status.join("；"));
@@ -552,14 +520,7 @@ pub fn build_attachment_ack_message(attachments: &[ReceivedAttachment]) -> Strin
 
     let rejected_status: Vec<String> = rejected_attachments
         .iter()
-        .map(|a| {
-            let reason = a.error.as_deref().unwrap_or("未通过准入限制");
-            format!(
-                "{}：{}",
-                a.filename,
-                truncate_chars_append(reason, 120, "...")
-            )
-        })
+        .map(|a| rejected_attachment_status_line(a))
         .collect();
     if !rejected_status.is_empty() {
         msg.push_str(" 已拦截附件：");
@@ -568,6 +529,71 @@ pub fn build_attachment_ack_message(attachments: &[ReceivedAttachment]) -> Strin
     }
 
     msg
+}
+
+fn accepted_attachment_refs(attachments: &[ReceivedAttachment]) -> Vec<&ReceivedAttachment> {
+    attachments
+        .iter()
+        .filter(|attachment| attachment.error.is_none())
+        .collect()
+}
+
+fn rejected_attachment_refs(attachments: &[ReceivedAttachment]) -> Vec<&ReceivedAttachment> {
+    attachments
+        .iter()
+        .filter(|attachment| attachment.error.is_some())
+        .collect()
+}
+
+fn attachment_refs_by_kind<'a>(
+    attachments: &[&'a ReceivedAttachment],
+    kind: AttachmentKind,
+) -> Vec<&'a ReceivedAttachment> {
+    attachments
+        .iter()
+        .copied()
+        .filter(|attachment| attachment.kind == kind)
+        .collect()
+}
+
+fn archive_ack_status_line(attachment: &ReceivedAttachment) -> String {
+    if let Some(err) = &attachment.extraction_error {
+        format!(
+            "{} 解压失败: {}",
+            attachment.filename,
+            truncate_chars_append(err, 80, "...")
+        )
+    } else {
+        format!(
+            "{} 已解压 {} 个文件",
+            attachment.filename,
+            attachment.extracted_files.len()
+        )
+    }
+}
+
+fn pdf_ack_status_line(attachment: &ReceivedAttachment) -> String {
+    if let Some(err) = &attachment.pdf_extract_error {
+        let err = super::vector_store::sanitize_pdf_extract_error(err);
+        format!(
+            "{} 解析失败: {}",
+            attachment.filename,
+            truncate_chars_append(&err, 80, "...")
+        )
+    } else if attachment.pdf_text_preview.is_some() {
+        format!("{} 已提取文本", attachment.filename)
+    } else {
+        format!("{} 未提取到文本", attachment.filename)
+    }
+}
+
+fn rejected_attachment_status_line(attachment: &ReceivedAttachment) -> String {
+    let reason = attachment.error.as_deref().unwrap_or("未通过准入限制");
+    format!(
+        "{}：{}",
+        attachment.filename,
+        truncate_chars_append(reason, 120, "...")
+    )
 }
 
 pub fn infer_attachment_kind(content_type: Option<&str>, filename: &str) -> AttachmentKind {
@@ -703,11 +729,7 @@ fn build_attachment_strategy_note_from_refs(attachments: &[&ReceivedAttachment])
 }
 
 fn build_pdf_extraction_note_from_refs(attachments: &[&ReceivedAttachment]) -> Option<String> {
-    let pdfs: Vec<&ReceivedAttachment> = attachments
-        .iter()
-        .copied()
-        .filter(|a| a.kind == AttachmentKind::Pdf)
-        .collect();
+    let pdfs = attachment_refs_by_kind(attachments, AttachmentKind::Pdf);
     if pdfs.is_empty() {
         return None;
     }
@@ -742,11 +764,7 @@ fn build_pdf_extraction_note_from_refs(attachments: &[&ReceivedAttachment]) -> O
 }
 
 fn build_archive_extraction_note_from_refs(attachments: &[&ReceivedAttachment]) -> Option<String> {
-    let archives: Vec<&ReceivedAttachment> = attachments
-        .iter()
-        .copied()
-        .filter(|a| a.kind == AttachmentKind::Archive)
-        .collect();
+    let archives = attachment_refs_by_kind(attachments, AttachmentKind::Archive);
     if archives.is_empty() {
         return None;
     }
@@ -847,12 +865,7 @@ fn extract_zip_archive(
     let mut files = Vec::new();
 
     for idx in 0..archive.len() {
-        if files.len() >= MAX_ARCHIVE_EXTRACTED_FILES {
-            return Err(format!(
-                "压缩包文件数超过限制（>{}）",
-                MAX_ARCHIVE_EXTRACTED_FILES
-            ));
-        }
+        ensure_archive_file_capacity(&files)?;
         let mut entry = archive
             .by_index(idx)
             .map_err(|e| format!("读取 zip 条目失败: {e}"))?;
@@ -863,20 +876,8 @@ fn extract_zip_archive(
             .enclosed_name()
             .ok_or_else(|| format!("zip 包含非法路径: {}", entry.name()))?;
         let rel = sanitize_relative_path(enclosed)?;
-        let target = extract_dir.join(&rel);
-        if let Some(parent) = target.parent() {
-            fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {e}"))?;
-        }
-        let mut output = fs::File::create(&target).map_err(|e| format!("创建文件失败: {e}"))?;
-        let written =
-            copy_reader_with_limit(&mut entry, &mut output, MAX_ARCHIVE_SINGLE_FILE_BYTES)?;
-        total_bytes = total_bytes.saturating_add(written);
-        if total_bytes > MAX_ARCHIVE_TOTAL_BYTES {
-            return Err(format!(
-                "压缩包解压总大小超过限制（>{}MB）",
-                MAX_ARCHIVE_TOTAL_BYTES / 1024 / 1024
-            ));
-        }
+        let (target, written) = write_archive_entry(&mut entry, extract_dir, &rel)?;
+        add_archive_total_bytes(&mut total_bytes, written)?;
         files.push(build_extracted_file_info(&target, written));
     }
 
@@ -895,12 +896,7 @@ fn extract_tar_archive<R: Read>(
         .entries()
         .map_err(|e| format!("读取 tar 条目失败: {e}"))?
     {
-        if files.len() >= MAX_ARCHIVE_EXTRACTED_FILES {
-            return Err(format!(
-                "压缩包文件数超过限制（>{}）",
-                MAX_ARCHIVE_EXTRACTED_FILES
-            ));
-        }
+        ensure_archive_file_capacity(&files)?;
 
         let mut entry = entry.map_err(|e| format!("读取 tar 条目失败: {e}"))?;
         if entry.header().entry_type().is_dir() {
@@ -911,25 +907,47 @@ fn extract_tar_archive<R: Read>(
             .path()
             .map_err(|e| format!("读取 tar 路径失败: {e}"))?;
         let rel = sanitize_relative_path(&rel_raw)?;
-        let target = extract_dir.join(&rel);
-        if let Some(parent) = target.parent() {
-            fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {e}"))?;
-        }
-
-        let mut output = fs::File::create(&target).map_err(|e| format!("创建文件失败: {e}"))?;
-        let written =
-            copy_reader_with_limit(&mut entry, &mut output, MAX_ARCHIVE_SINGLE_FILE_BYTES)?;
-        total_bytes = total_bytes.saturating_add(written);
-        if total_bytes > MAX_ARCHIVE_TOTAL_BYTES {
-            return Err(format!(
-                "压缩包解压总大小超过限制（>{}MB）",
-                MAX_ARCHIVE_TOTAL_BYTES / 1024 / 1024
-            ));
-        }
+        let (target, written) = write_archive_entry(&mut entry, extract_dir, &rel)?;
+        add_archive_total_bytes(&mut total_bytes, written)?;
         files.push(build_extracted_file_info(&target, written));
     }
 
     Ok(files)
+}
+
+fn ensure_archive_file_capacity(files: &[ExtractedFileInfo]) -> Result<(), String> {
+    if files.len() >= MAX_ARCHIVE_EXTRACTED_FILES {
+        return Err(format!(
+            "压缩包文件数超过限制（>{}）",
+            MAX_ARCHIVE_EXTRACTED_FILES
+        ));
+    }
+    Ok(())
+}
+
+fn write_archive_entry<R: Read>(
+    reader: &mut R,
+    extract_dir: &Path,
+    rel: &Path,
+) -> Result<(PathBuf, u64), String> {
+    let target = extract_dir.join(rel);
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {e}"))?;
+    }
+    let mut output = fs::File::create(&target).map_err(|e| format!("创建文件失败: {e}"))?;
+    let written = copy_reader_with_limit(reader, &mut output, MAX_ARCHIVE_SINGLE_FILE_BYTES)?;
+    Ok((target, written))
+}
+
+fn add_archive_total_bytes(total_bytes: &mut u64, written: u64) -> Result<(), String> {
+    *total_bytes = total_bytes.saturating_add(written);
+    if *total_bytes > MAX_ARCHIVE_TOTAL_BYTES {
+        return Err(format!(
+            "压缩包解压总大小超过限制（>{}MB）",
+            MAX_ARCHIVE_TOTAL_BYTES / 1024 / 1024
+        ));
+    }
+    Ok(())
 }
 
 fn copy_reader_with_limit<R: Read, W: Write>(
