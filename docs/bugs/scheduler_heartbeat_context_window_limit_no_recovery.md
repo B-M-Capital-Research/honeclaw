@@ -5,6 +5,14 @@
 - **严重等级**: P2
 - **状态**: Fixed
 - **证据来源**:
+  - `2026-05-23 19:03 CST` 本轮仅补充旧/未确认部署运行态证据，不把本单从 `Fixed` 回退：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - 15:03-19:02 CST 新增 `12` 条 Web heartbeat `ContextOverflowNoop + noop + skipped_noop + delivered=0`。
+      - 样本覆盖 `持仓财报与重大新闻心跳提醒`（15:30、16:00、17:00、17:30、18:00、19:00 CST）、`AI与科技持仓观察关键事件心跳提醒`（15:30、16:01、16:31、17:00、18:01、18:30 CST）。
+    - 判断：
+      - 当前仓库 12:04 CST 已删除 `ContextOverflowNoop` 静默分支，超窗错误应保留为 `error` 并写入 `failure_kind=context_window_overflow` / `parse_kind=ContextOverflowError`；最新 live 仍写入旧 `ContextOverflowNoop`，更符合运行进程尚未确认重启/部署到该修复后的证据。
+      - 同窗 direct 会话均以 assistant final 收口，assistant final 污染扫描为 0；故障仍集中在 heartbeat 超窗台账语义，不是直聊或出站整体异常。
+      - 后续只有在确认部署当前代码后仍出现 `ContextOverflowNoop` 或等价静默超窗，再重新打开；本轮不创建 GitHub Issue。
   - `2026-05-23 12:04 CST` 已修复：
     - `crates/hone-channels/src/scheduler.rs` 删除 heartbeat runner context overflow 的 `ContextOverflowNoop` 静默分支；`context window exceeds limit` / `context_window_will_overflow` 等超窗错误现在保留 `ScheduledTaskExecution.error`。
     - heartbeat 超窗错误会写入 `failure_kind=context_window_overflow` 与 `parse_kind=ContextOverflowError`，各渠道记录执行结果时会自然落成 `execution_failed + skipped_error`，不再伪装为合法 `noop + skipped_noop`。

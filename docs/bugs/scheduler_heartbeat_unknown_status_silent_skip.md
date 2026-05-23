@@ -7,6 +7,19 @@
 
 ## 修复进展
 
+- `2026-05-23 19:03 CST` 本轮仅补充旧/未确认部署运行态证据，不把本单从 `Fixed` 回退：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 15:03-19:02 CST live 窗口新增 `70` 条 heartbeat `PlainTextSuppressed + execution_failed + skipped_error + delivered=0`；其中 Feishu `51` 条、Web `19` 条。
+    - 同窗另有 `JsonUnknownStatus` `2` 条、`JsonEmptyStatus` `2` 条；`ContextOverflowNoop` `12` 条和 `max_iterations_exceeded:10` `5` 条分别归入 `scheduler_heartbeat_context_window_limit_no_recovery.md` 与 `scheduler_heartbeat_iteration_exhaustion_skips_alert.md` 的旧/未确认部署运行态证据。
+    - 代表性样本：`run_id=31622` / `持仓重大事件心跳检测`、`run_id=31619` / `TSLA 正负触发条件心跳监控`、`run_id=31615` / Web `存储板块关键事件心跳提醒`、`run_id=31616` / Web `AI与科技持仓观察关键事件心跳提醒` 均已完成模型推理但未按 heartbeat JSON 收口，最终跳过发送。
+    - 同窗仍有合法 `JsonNoop`、`JsonTriggered` 与少量 `completed + sent` 样本，例如 `run_id=31617` / `DRAM 心跳监控`、`run_id=31624` / `小米30港元破位预警`、`run_id=31628` / `Cerebras IPO与业务进展心跳监控`，说明不是 scheduler 或出站整体不可用。
+  - 会话质量对照：
+    - 最近四小时按消息时间共有 `6` 个 user turn 与 `6` 个 assistant final，5 个最近活跃 direct session 均以 assistant final 收口；普通 scheduler 无运行记录。
+    - assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`。
+  - 判断：
+    - 当前仓库 12:13 CST 已有 status 别名归一、完整 `<think>` 内部-only noop 兼容和配置路径护栏回归；最新 live 仍持续写入 `PlainTextSuppressed`，更符合运行进程尚未确认重启/部署到该修复后的证据。
+    - 后续只有在确认部署当前代码后仍出现同类结构化收口失败，再重新打开；本轮不创建 GitHub Issue。
+
 - `2026-05-23 15:03 CST` 本轮仅补充旧/未确认部署运行态证据，不把本单从 `Fixed` 回退：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - 11:00-15:03 CST live 窗口新增 `96` 条 heartbeat `execution_failed + skipped_error + delivered=0`；其中 Feishu `73` 条、Web `23` 条。
