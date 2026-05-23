@@ -1,7 +1,7 @@
 // public-portfolio.tsx — 用户的"投资上下文"页:展示系统蒸馏的投资主线、整体投资风格、
 // sandbox 里的公司画像列表(read-only)。编辑画像走 /chat 与 agent 对话(company_portrait skill)。
 
-import { createEffect, createSignal, For, onMount, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, onMount, Show } from "solid-js"
 import { useNavigate } from "@solidjs/router"
 import { marked } from "marked"
 import DOMPurify from "dompurify"
@@ -14,7 +14,11 @@ import {
   getPublicAuthMe,
   type DigestContext,
 } from "@/lib/api"
-import { firstProfileTicker, profileTickerSet } from "@/lib/mainline-context-model"
+import {
+  mainlineHoldingCardState,
+  profileInventoryRowState,
+  profileTickerSet,
+} from "@/lib/mainline-context-model"
 import {
   canRefreshPublicMainline,
   formatPublicMainlineTimestamp,
@@ -279,9 +283,7 @@ function PortfolioContextView() {
     setModalOpen(true)
   }
 
-  const profileTickers = () => {
-    return profileTickerSet(digestContext())
-  }
+  const profileTickers = createMemo(() => profileTickerSet(digestContext()))
 
   return (
     <div style={{ "padding-top": "56px", "min-height": "100vh", background: "#f8fafc" }}>
@@ -487,15 +489,20 @@ function PortfolioContextView() {
                   }}
                 >
                   <For each={context().holdings}>
-                    {(ticker) => (
-                      <MainlineCard
-                        ticker={ticker}
-                        mainline={context().mainline_by_ticker[ticker]}
-                        hasProfile={profileTickers().has(ticker)}
-                        isSkipped={context().mainline_distill_skipped.includes(ticker)}
-                        onView={() => openProfile(ticker)}
-                      />
-                    )}
+                    {(ticker) => {
+                      const card = createMemo(() =>
+                        mainlineHoldingCardState(context(), ticker, profileTickers()),
+                      )
+                      return (
+                        <MainlineCard
+                          ticker={card().ticker}
+                          mainline={card().mainline}
+                          hasProfile={card().hasProfile}
+                          isSkipped={card().isSkipped}
+                          onView={() => openProfile(ticker)}
+                        />
+                      )
+                    }}
                   </For>
                 </div>
               </Show>
@@ -552,7 +559,7 @@ function PortfolioContextView() {
                 <div style={{ display: "flex", "flex-direction": "column", gap: "10px" }}>
                   <For each={context().profile_list}>
                     {(profile) => {
-                      const viewTicker = () => firstProfileTicker(profile)
+                      const row = createMemo(() => profileInventoryRowState(profile))
                       return (
                         <div
                           style={{
@@ -568,7 +575,7 @@ function PortfolioContextView() {
                         >
                           <div style={{ flex: "1" }}>
                             <div style={{ "font-size": "14px", "font-weight": "600", color: "#0f172a" }}>
-                              {profile.title || profile.dir}
+                              {row().title}
                               <span
                                 style={{
                                   "margin-left": "8px",
@@ -577,7 +584,7 @@ function PortfolioContextView() {
                                   color: "#64748b",
                                 }}
                               >
-                                {profile.tickers.join(" / ")}
+                                {row().tickerLabel}
                               </span>
                             </div>
                             <div
@@ -587,10 +594,10 @@ function PortfolioContextView() {
                                 "margin-top": "4px",
                               }}
                             >
-                              {(profile.bytes / 1024).toFixed(1)} KB · {profile.dir}
+                              {row().sizeLabel} · {row().dir}
                             </div>
                           </div>
-                          <Show when={viewTicker()}>
+                          <Show when={row().viewTicker}>
                             {(ticker) => (
                               <button
                                 type="button"

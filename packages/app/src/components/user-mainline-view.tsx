@@ -7,7 +7,7 @@
 //
 // 与 public 端 /portfolio 一致,但 actor 由 URL 决定而非 session。
 
-import { createSignal, For, Show, createEffect } from "solid-js"
+import { createEffect, createMemo, createSignal, For, Show } from "solid-js"
 import { marked } from "marked"
 import DOMPurify from "dompurify"
 import {
@@ -19,7 +19,11 @@ import {
 import type { ActorRef } from "@/lib/actors"
 import { USERS } from "@/lib/admin-content/users"
 import { tpl, useLocale } from "@/lib/i18n"
-import { firstProfileTicker, profileTickerSet } from "@/lib/mainline-context-model"
+import {
+  mainlineHoldingCardState,
+  profileInventoryRowState,
+  profileTickerSet,
+} from "@/lib/mainline-context-model"
 
 function formatTimestamp(iso: string | null): string {
   if (!iso) return USERS.mainline.not_distilled
@@ -165,9 +169,7 @@ export function UserMainlineView(props: { actor: ActorRef }) {
     }
   }
 
-  const profileTickers = () => {
-    return profileTickerSet(mainlineContext())
-  }
+  const profileTickers = createMemo(() => profileTickerSet(mainlineContext()))
 
   const openProfile = (ticker: string) => {
     setModalTicker(ticker)
@@ -253,20 +255,20 @@ export function UserMainlineView(props: { actor: ActorRef }) {
               <div class="mb-6 grid gap-3" style={{ "grid-template-columns": "repeat(auto-fill, minmax(280px, 1fr))" }}>
                 <For each={context().holdings}>
                   {(ticker) => {
-                    const mainline = context().mainline_by_ticker[ticker]
-                    const hasProfile = profileTickers().has(ticker)
-                    const isSkipped = context().mainline_distill_skipped.includes(ticker)
+                    const card = createMemo(() =>
+                      mainlineHoldingCardState(context(), ticker, profileTickers()),
+                    )
                     return (
                       <div
                         class="flex flex-col gap-2 rounded-md border p-4"
                         classList={{
-                          "border-[color:var(--border)] bg-[color:var(--panel)]": !!mainline,
-                          "border-amber-500/30 bg-amber-500/5": !mainline,
+                          "border-[color:var(--border)] bg-[color:var(--panel)]": !!card().mainline,
+                          "border-amber-500/30 bg-amber-500/5": !card().mainline,
                         }}
                       >
                         <div class="flex items-baseline justify-between gap-2">
-                          <div class="font-mono text-base font-bold">{ticker}</div>
-                          <Show when={hasProfile}>
+                          <div class="font-mono text-base font-bold">{card().ticker}</div>
+                          <Show when={card().hasProfile}>
                             <button
                               type="button"
                               class="rounded border border-[color:var(--border)] px-2 py-0.5 text-[11px] hover:border-[color:var(--accent)]"
@@ -277,11 +279,11 @@ export function UserMainlineView(props: { actor: ActorRef }) {
                           </Show>
                         </div>
                         <Show
-                          when={mainline}
+                          when={card().mainline}
                           fallback={
                             <div class="text-xs leading-6 text-[color:var(--text-muted)]">
                               <Show
-                                when={hasProfile}
+                                when={card().hasProfile}
                                 fallback={
                                   <>
                                     <span class="font-semibold text-amber-400">{USERS.mainline.no_profile_label}</span>
@@ -292,13 +294,13 @@ export function UserMainlineView(props: { actor: ActorRef }) {
                                 <span class="font-semibold text-amber-400">
                                   {USERS.mainline.profile_distill_failed}
                                 </span>
-                                {isSkipped ? USERS.mainline.skipped_last_run : ""}{USERS.mainline.retry_hint}
+                                {card().isSkipped ? USERS.mainline.skipped_last_run : ""}{USERS.mainline.retry_hint}
                               </Show>
                             </div>
                           }
                         >
                           <div class="text-sm leading-6 text-[color:var(--text-primary)]">
-                            {mainline}
+                            {card().mainline}
                           </div>
                         </Show>
                       </div>
@@ -323,21 +325,21 @@ export function UserMainlineView(props: { actor: ActorRef }) {
               <div class="space-y-2">
                 <For each={context().profile_list}>
                   {(profile) => {
-                    const viewTicker = () => firstProfileTicker(profile)
+                    const row = createMemo(() => profileInventoryRowState(profile))
                     return (
                       <div class="flex items-center justify-between gap-3 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] p-3">
                         <div class="flex-1 min-w-0">
                           <div class="text-sm font-medium">
-                            {profile.title || profile.dir}
+                            {row().title}
                             <span class="ml-2 font-mono text-xs text-[color:var(--text-muted)]">
-                              {profile.tickers.join(" / ")}
+                              {row().tickerLabel}
                             </span>
                           </div>
                           <div class="mt-0.5 text-[11px] text-[color:var(--text-muted)]">
-                            {(profile.bytes / 1024).toFixed(1)} KB · {profile.dir}
+                            {row().sizeLabel} · {row().dir}
                           </div>
                         </div>
-                        <Show when={viewTicker()}>
+                        <Show when={row().viewTicker}>
                           {(ticker) => (
                             <button
                               type="button"

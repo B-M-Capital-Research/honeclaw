@@ -59,8 +59,10 @@ import {
   normalizeApiKeys,
   optionalNumber,
   parseCsv,
+  prependWebInvite,
   removeApiKey,
   removeApiKeyVisibility,
+  replaceWebInvite,
   resolveSettingsTab,
   resolveHoneCloudOpenAiBaseUrl,
   SETTINGS_TAB_KEYS,
@@ -597,7 +599,7 @@ export default function SettingsPage() {
     clearInviteFeedback();
     try {
       const created = await createWebInvite(phoneNumber);
-      setWebInvites((current = []) => [created, ...current]);
+      setWebInvites((current) => prependWebInvite(current, created));
       setInvitePhoneNumber("");
       setInviteMessage(
         tpl(created.api_key ? SETTINGS.invite.created_with_api_key : SETTINGS.invite.created, {
@@ -646,11 +648,7 @@ export default function SettingsPage() {
   };
 
   const replaceInvite = (next: WebInviteInfo) => {
-    setWebInvites((current = []) =>
-      current.map((invite) =>
-        invite.user_id === next.user_id ? next : invite,
-      ),
-    );
+    setWebInvites((current) => replaceWebInvite(current, next));
   };
 
   const isInviteActionRunning = (

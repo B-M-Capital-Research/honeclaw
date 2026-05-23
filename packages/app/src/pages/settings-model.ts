@@ -10,6 +10,7 @@ import type {
   LlmProfileSettings,
   MetaInfo,
   TavilySettings,
+  WebInviteInfo,
 } from "@/lib/types"
 
 export type LanguageDraft = "zh" | "en"
@@ -265,6 +266,22 @@ export function isInviteActionRunning(
   action: InviteAction,
 ): boolean {
   return currentKey === inviteActionKey(userId, action)
+}
+
+export function prependWebInvite(
+  current: WebInviteInfo[] | undefined,
+  created: WebInviteInfo,
+): WebInviteInfo[] {
+  return [created, ...(current ?? [])]
+}
+
+export function replaceWebInvite(
+  current: WebInviteInfo[] | undefined,
+  next: WebInviteInfo,
+): WebInviteInfo[] {
+  return (current ?? []).map((invite) =>
+    invite.user_id === next.user_id ? next : invite,
+  )
 }
 
 export function mergeHoneCloudDraft(

@@ -21,8 +21,10 @@ import {
   normalizeApiKeys,
   optionalNumber,
   parseCsv,
+  prependWebInvite,
   removeApiKey,
   removeApiKeyVisibility,
+  replaceWebInvite,
   resolveSettingsTab,
   SETTINGS_TAB_KEYS,
   toChannelDraft,
@@ -32,6 +34,7 @@ import {
   updateLlmProfileEntry,
 } from "./settings-model"
 import type { MetaInfo } from "@/lib/types"
+import type { WebInviteInfo } from "@/lib/types"
 
 function metaWithLanguage(language?: "zh" | "en"): MetaInfo {
   return {
@@ -65,6 +68,25 @@ function profileById(
     profiles.find((profile) => profile.id === id),
     `${id} profile`,
   )
+}
+
+function webInvite(
+  userId: string,
+  patch: Partial<WebInviteInfo> = {},
+): WebInviteInfo {
+  return {
+    user_id: userId,
+    invite_code: `${userId}-code`,
+    phone_number: "+15551234567",
+    created_at: "2026-05-23T00:00:00Z",
+    enabled: true,
+    active_session_count: 0,
+    daily_limit: 30,
+    success_count: 0,
+    in_flight: 0,
+    remaining_today: 30,
+    ...patch,
+  }
 }
 
 describe("settings-model", () => {
@@ -268,6 +290,21 @@ describe("settings-model", () => {
     expect(inviteActionKey("user-1", "api-key-reset")).toBe("user-1:api-key-reset")
     expect(isInviteActionRunning("user-1:disable", "user-1", "disable")).toBe(true)
     expect(isInviteActionRunning("user-1:disable", "user-1", "enable")).toBe(false)
+  })
+
+  it("updates web invite lists outside the settings page component", () => {
+    const first = webInvite("user-1")
+    const second = webInvite("user-2")
+    const disabledFirst = webInvite("user-1", { enabled: false })
+
+    expect(prependWebInvite(undefined, first)).toEqual([first])
+    expect(prependWebInvite([second], first)).toEqual([first, second])
+    expect(replaceWebInvite([first, second], disabledFirst)).toEqual([
+      disabledFirst,
+      second,
+    ])
+    expect(replaceWebInvite([first], second)).toEqual([first])
+    expect(replaceWebInvite(undefined, first)).toEqual([])
   })
 
   it("keeps channel scope options centralized", () => {
