@@ -179,7 +179,7 @@ function createSessionsState() {
       }, REQUEST_TIMEOUT_MS);
 
       if (!backend.hasCapability("chat")) {
-        throw new Error("当前 backend 不支持聊天能力");
+        throw new Error("当前后端不支持聊天能力");
       }
       const stream = await sendChat(actor, draft, controller.signal);
       const reader = stream.getReader();

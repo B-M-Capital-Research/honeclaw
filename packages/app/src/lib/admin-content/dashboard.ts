@@ -6,7 +6,7 @@ const ZH = {
     multi_agent_desc: "MiniMax 搜索 + OpenAI-compatible 回答",
     codex_acp_desc: "通过 codex-acp 驱动当前会话",
     opencode_acp_name: "OpenCode ACP",
-    opencode_acp_desc: "本机 opencode 引擎 / 可继承本机配置",
+    opencode_acp_desc: "本机 opencode 引擎 / 留空继承本机配置",
     gemini_cli_desc: "复用本机 Gemini 命令行",
     codex_cli_desc: "复用本机 Codex 命令行",
   },
@@ -24,7 +24,7 @@ const ZH = {
 
   quick_chat: {
     title: "快速发起对话",
-    subtitle: "输入问题直接发给 ME 渠道，Enter 发送",
+    subtitle: "输入问题直接发送到 ME 会话，Enter 发送",
     runner_chip_title: "{desc} · 点击前往 Agent 配置",
     placeholder: "输入你想探索的投研问题…",
     shift_enter_hint: "Shift + Enter 换行",
@@ -50,7 +50,7 @@ const EN: typeof ZH = {
     multi_agent_desc: "MiniMax search + OpenAI-compatible answer",
     codex_acp_desc: "Drive sessions via codex-acp",
     opencode_acp_name: "OpenCode ACP",
-    opencode_acp_desc: "Local opencode engine / can inherit local config",
+    opencode_acp_desc: "Local opencode engine / inherits local config when blank",
     gemini_cli_desc: "Reuse local Gemini CLI",
     codex_cli_desc: "Reuse local Codex CLI",
   },
@@ -68,7 +68,7 @@ const EN: typeof ZH = {
 
   quick_chat: {
     title: "Quick chat",
-    subtitle: "Send a message to your ME session — press Enter to submit",
+    subtitle: "Send to your ME session — press Enter to submit",
     runner_chip_title: "{desc} · click to configure agent settings",
     placeholder: "What research question do you want to explore?",
     shift_enter_hint: "Shift + Enter for newline",

@@ -54,7 +54,7 @@ const ZH = {
 const EN: typeof ZH = {
   list: {
     title: "Skills",
-    subtitle: "Registry, enable state, and skill docs.",
+    subtitle: "Registry, enabled state, and skill docs.",
     counts_total: "Total {count}",
     counts_enabled: "Enabled {count}",
     counts_disabled: "Disabled {count}",
@@ -87,7 +87,7 @@ const EN: typeof ZH = {
     empty_description: "Skill status, load details, and Markdown docs will appear here.",
     badge_slash: "chat",
     badge_script: "script",
-    badge_path_gated: "path gated",
+    badge_path_gated: "path-gated",
     enable_label: "Enable this skill",
     invoke_button: "Run in chat",
     meta_loaded_from: "Source: {value}",

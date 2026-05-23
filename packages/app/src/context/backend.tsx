@@ -219,10 +219,10 @@ function createBackendState() {
   }
 
   const loadDesktopBackendStatusSafe = async () =>
-    withTimeout(loadDesktopBackendStatus(), DESKTOP_STATUS_TIMEOUT_MS, "读取 desktop backend 状态")
+    withTimeout(loadDesktopBackendStatus(), DESKTOP_STATUS_TIMEOUT_MS, "读取桌面后端状态")
 
   const connectDesktopBackendSafe = async () =>
-    withTimeout(connectDesktopBackend(), DESKTOP_CONNECT_TIMEOUT_MS, "连接 desktop backend")
+    withTimeout(connectDesktopBackend(), DESKTOP_CONNECT_TIMEOUT_MS, "连接桌面后端")
 
   const initDesktop = async () => {
     try {

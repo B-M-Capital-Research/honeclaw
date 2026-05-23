@@ -64,7 +64,7 @@ const ZH = {
     openai: {
       name: "OpenCode ACP",
       description:
-        "通过本机 opencode acp 启动 OpenCode；可留空继承本机 opencode 配置，或在 Hone 侧覆盖 OpenAI-compatible 端点。",
+        "通过本机 opencode ACP 启动 OpenCode；可留空继承本机 opencode 配置，或在 Hone 侧覆盖 OpenAI-compatible 端点。",
       base_url_label: "Base URL",
       model_label: "主模型",
       api_key_label: "API Key",
@@ -328,7 +328,7 @@ const EN: typeof ZH = {
     openai: {
       name: "OpenCode ACP",
       description:
-        "Starts local OpenCode via opencode acp. Leave fields blank to inherit local opencode config, or override the OpenAI-compatible endpoint from Hone.",
+        "Starts local OpenCode via opencode ACP. Leave fields blank to inherit local opencode config, or override the OpenAI-compatible endpoint from Hone.",
       base_url_label: "Base URL",
       model_label: "Primary model",
       api_key_label: "API Key",
@@ -488,19 +488,19 @@ const EN: typeof ZH = {
     create: "Add to whitelist",
     creating: "Adding…",
     phone_required: "Enter a phone number",
-    created: "Added {phone} to the whitelist (compatibility invite code {code})",
+    created: "Added {phone} to the whitelist (legacy invite code {code})",
     created_copied:
-      "Added {phone} to the whitelist and copied compatibility invite code {code}",
+      "Added {phone} to the whitelist and copied legacy invite code {code}",
     created_with_api_key:
-      "Added {phone} to the whitelist with compatibility invite code {code} and API key {apiKey}",
+      "Added {phone} to the whitelist with legacy invite code {code} and API key {apiKey}",
     created_with_api_key_copied:
-      "Added {phone} to the whitelist with compatibility invite code {code} and API key; both copied",
+      "Added {phone} to the whitelist with legacy invite code {code} and API key; both copied",
     copied: "Copied invite code {code}",
     copy_unsupported: "Clipboard not available in this environment",
     disable_confirm:
       "Disabling the whitelist entry for {userId} will immediately log out the existing web session. Continue?",
     reset_confirm:
-      "This will issue a new compatibility invite code for {userId} and immediately invalidate the old code and any active web session. Continue?",
+      "This will issue a new legacy invite code for {userId} and immediately invalidate the old code and any active web session. Continue?",
     api_key_reset_confirm:
       "This will issue a new API key for {userId}. The old API key stops working, but web sessions stay signed in. Continue?",
     reset_copied_suffix: "{message}; new invite code copied",

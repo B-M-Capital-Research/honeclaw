@@ -113,7 +113,7 @@ const EN: typeof ZH = {
     field_name: "Task name",
     field_name_placeholder: "e.g. Daily market briefing",
     field_user_id: "Owner user ID",
-    field_user_id_placeholder: "User ID for the person who owns this task",
+    field_user_id_placeholder: "User ID that owns this task",
     field_channel: "Channel",
     channel_imessage_disabled: "iMessage (disabled)",
     field_channel_scope: "Group context (optional)",

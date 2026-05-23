@@ -66,8 +66,8 @@ const EN: typeof ZH = {
   shell: {
     current_user: "Current user",
     portfolio_button: "Holdings",
-    portfolio_title: "Open this user's holdings tab",
-    profiles_button: "Profile",
+    portfolio_title: "Open this user's holdings",
+    profiles_button: "Profiles",
     profiles_title: "Open this user's company profiles",
     new_task_button: "New task",
     new_task_title: "Create a push task for this user",

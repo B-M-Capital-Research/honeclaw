@@ -24,7 +24,7 @@ const ZH = {
 
 const EN: typeof ZH = {
   capability: {
-    unavailable: "The current backend does not expose the logs capability.",
+    unavailable: "This backend does not expose logs.",
   },
   toolbar: {
     title: "Logs",
@@ -39,7 +39,7 @@ const EN: typeof ZH = {
     status_disconnected: "Disconnected",
   },
   list: {
-    empty: "No matching logs",
+    empty: "No matching logs yet",
     msg_id_prefix: "MSG_ID: {id}",
   },
 }

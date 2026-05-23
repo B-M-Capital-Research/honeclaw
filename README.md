@@ -74,7 +74,7 @@ The public product website is now live at **[hone-claw.com](https://hone-claw.co
 ## Prerequisites
 
 - **Environment**: A Unix-like system (**macOS** or **Ubuntu** recommended).
-- **Rust**: Toolchain **Edition 2021** or newer.
+- **Rust**: Stable toolchain with **Edition 2024** support.
 
 ### Tech stack
 

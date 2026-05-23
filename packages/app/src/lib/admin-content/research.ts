@@ -60,7 +60,7 @@ const ZH = {
     mermaid_error_prefix: "❌ Mermaid 渲染错误：",
   },
   context: {
-    backend_unsupported: "当前 backend 不支持研究能力",
+    backend_unsupported: "当前后端不支持深度研究能力",
     test_company_label: "测试公司（TEST）",
   },
 }
@@ -125,7 +125,7 @@ const EN: typeof ZH = {
     mermaid_error_prefix: "Mermaid render error: ",
   },
   context: {
-    backend_unsupported: "Current backend does not support research capability.",
+    backend_unsupported: "This backend does not support deep research.",
     test_company_label: "Test Company (TEST)",
   },
 }

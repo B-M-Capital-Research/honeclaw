@@ -50,7 +50,7 @@ const ZH = {
 
 const EN: typeof ZH = {
   capability: {
-    unavailable: "The current backend does not expose the LLM audit capability.",
+    unavailable: "This backend does not expose LLM audit.",
   },
   toolbar: {
     title: "LLM audit",
@@ -64,13 +64,13 @@ const EN: typeof ZH = {
   },
   table: {
     col_time: "Time",
-    col_actor_session: "User / Session",
+    col_actor_session: "User / session",
     col_provider_model: "Provider / Model",
     col_operation: "Operation",
     col_status: "Status",
     col_tokens: "Tokens",
     col_latency: "Latency",
-    empty: "No audit records",
+    empty: "No audit records yet",
     status_success: "Success",
     status_failed: "Failed",
     actor_user_none: "none",

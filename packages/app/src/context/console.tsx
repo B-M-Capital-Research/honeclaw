@@ -36,7 +36,7 @@ function createConsoleState() {
       return
     }
     if (backend.state.isDesktop && !backend.state.resolvedBaseUrl) {
-      setChannelError("desktop backend base URL 未就绪")
+      setChannelError("桌面后端 base URL 未就绪")
       return
     }
     try {
