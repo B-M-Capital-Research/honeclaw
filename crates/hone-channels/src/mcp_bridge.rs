@@ -15,66 +15,33 @@ use crate::runners::AgentRunnerRequest;
 pub fn hone_mcp_servers(request: &AgentRunnerRequest) -> Result<Value, String> {
     let command = hone_mcp_command_path()?;
     let mut env_entries = vec![
-        json!({
-            "name": "HONE_CONFIG_PATH",
-            "value": request.config_path,
-        }),
-        json!({
-            "name": "HONE_MCP_ACTOR_CHANNEL",
-            "value": request.actor.channel,
-        }),
-        json!({
-            "name": "HONE_MCP_ACTOR_USER_ID",
-            "value": request.actor.user_id,
-        }),
-        json!({
-            "name": "HONE_MCP_CHANNEL_TARGET",
-            "value": request.channel_target,
-        }),
-        json!({
-            "name": "HONE_MCP_SESSION_ID",
-            "value": request.session_id,
-        }),
-        json!({
-            "name": "HONE_MCP_ALLOW_CRON",
-            "value": if request.allow_cron { "1" } else { "0" },
-        }),
+        mcp_env_entry("HONE_CONFIG_PATH", request.config_path.as_str()),
+        mcp_env_entry("HONE_MCP_ACTOR_CHANNEL", request.actor.channel.as_str()),
+        mcp_env_entry("HONE_MCP_ACTOR_USER_ID", request.actor.user_id.as_str()),
+        mcp_env_entry("HONE_MCP_CHANNEL_TARGET", request.channel_target.as_str()),
+        mcp_env_entry("HONE_MCP_SESSION_ID", request.session_id.as_str()),
+        mcp_env_entry(
+            "HONE_MCP_ALLOW_CRON",
+            if request.allow_cron { "1" } else { "0" },
+        ),
     ];
     if let Some(scope) = &request.actor.channel_scope {
-        env_entries.push(json!({
-            "name": "HONE_MCP_ACTOR_SCOPE",
-            "value": scope,
-        }));
+        env_entries.push(mcp_env_entry("HONE_MCP_ACTOR_SCOPE", scope.as_str()));
     }
-    if let Ok(data_dir) = env::var("HONE_DATA_DIR") {
-        env_entries.push(json!({
-            "name": "HONE_DATA_DIR",
-            "value": data_dir,
-        }));
-    }
-    if let Ok(skills_dir) = env::var("HONE_SKILLS_DIR") {
-        env_entries.push(json!({
-            "name": "HONE_SKILLS_DIR",
-            "value": skills_dir,
-        }));
-    }
-    if let Ok(sandbox_dir) = env::var("HONE_AGENT_SANDBOX_DIR") {
-        env_entries.push(json!({
-            "name": "HONE_AGENT_SANDBOX_DIR",
-            "value": sandbox_dir,
-        }));
-    }
+    push_env_var_if_present(&mut env_entries, "HONE_DATA_DIR");
+    push_env_var_if_present(&mut env_entries, "HONE_SKILLS_DIR");
+    push_env_var_if_present(&mut env_entries, "HONE_AGENT_SANDBOX_DIR");
     if let Some(allowed_tools) = &request.allowed_tools {
-        env_entries.push(json!({
-            "name": "HONE_MCP_ALLOWED_TOOLS",
-            "value": allowed_tools.join(","),
-        }));
+        env_entries.push(mcp_env_entry(
+            "HONE_MCP_ALLOWED_TOOLS",
+            allowed_tools.join(","),
+        ));
     }
     if let Some(max_tool_calls) = request.max_tool_calls {
-        env_entries.push(json!({
-            "name": "HONE_MCP_MAX_TOOL_CALLS",
-            "value": max_tool_calls.to_string(),
-        }));
+        env_entries.push(mcp_env_entry(
+            "HONE_MCP_MAX_TOOL_CALLS",
+            max_tool_calls.to_string(),
+        ));
     }
 
     Ok(json!([
@@ -85,6 +52,19 @@ pub fn hone_mcp_servers(request: &AgentRunnerRequest) -> Result<Value, String> {
             "env": env_entries,
         }
     ]))
+}
+
+fn mcp_env_entry(name: &str, value: impl Into<String>) -> Value {
+    json!({
+        "name": name,
+        "value": value.into(),
+    })
+}
+
+fn push_env_var_if_present(env_entries: &mut Vec<Value>, name: &str) {
+    if let Ok(value) = env::var(name) {
+        env_entries.push(mcp_env_entry(name, value));
+    }
 }
 
 fn hone_mcp_command_path() -> Result<String, String> {
@@ -345,18 +325,7 @@ fn redact_value_for_log(value: &Value) -> Value {
         Value::Object(map) => Value::Object(
             map.iter()
                 .map(|(key, value)| {
-                    let lower = key.to_ascii_lowercase();
-                    let redacted = matches!(
-                        lower.as_str(),
-                        "api_key"
-                            | "apikey"
-                            | "token"
-                            | "access_token"
-                            | "authorization"
-                            | "password"
-                            | "secret"
-                    );
-                    let sanitized = if redacted {
+                    let sanitized = if is_sensitive_log_key(key) {
                         Value::String("<redacted>".to_string())
                     } else {
                         redact_value_for_log(value)
@@ -372,6 +341,13 @@ fn redact_value_for_log(value: &Value) -> Value {
     }
 }
 
+fn is_sensitive_log_key(key: &str) -> bool {
+    matches!(
+        key.to_ascii_lowercase().as_str(),
+        "api_key" | "apikey" | "token" | "access_token" | "authorization" | "password" | "secret"
+    )
+}
+
 fn value_excerpt_for_log(value: &Value, max_chars: usize) -> String {
     let redacted = redact_value_for_log(value);
     let encoded = serde_json::to_string(&redacted).unwrap_or_else(|_| redacted.to_string());
@@ -384,23 +360,25 @@ fn text_excerpt_for_log(text: &str, max_chars: usize) -> String {
 
 fn redact_text_for_log(text: &str) -> String {
     let mut output = redact_marker_value(text, "Bearer ");
-    for key in [
-        "access_token",
-        "accessToken",
-        "api_key",
-        "apiKey",
-        "apikey",
-        "token",
-        "app_secret",
-        "appSecret",
-        "secret",
-        "password",
-    ] {
+    for key in SENSITIVE_TEXT_MARKER_KEYS {
         output = redact_marker_value(&output, &format!("{key}="));
         output = redact_marker_value(&output, &format!("{key}:"));
     }
     output
 }
+
+const SENSITIVE_TEXT_MARKER_KEYS: &[&str] = &[
+    "access_token",
+    "accessToken",
+    "api_key",
+    "apiKey",
+    "apikey",
+    "token",
+    "app_secret",
+    "appSecret",
+    "secret",
+    "password",
+];
 
 fn redact_marker_value(text: &str, marker: &str) -> String {
     let mut remaining = text;
@@ -467,21 +445,11 @@ fn handle_initialize(params: &Value) -> Value {
 }
 
 fn handle_tools_list(registry: &ToolRegistry) -> Value {
+    let allowed_tools = allowed_tools_from_env();
     let mut tools: Vec<Value> = registry
         .get_tools_schema()
         .into_iter()
-        .filter(|schema| {
-            let allowed_tools = allowed_tools_from_env();
-            if let Some(allowed) = allowed_tools {
-                schema
-                    .get("function")
-                    .and_then(|value| value.get("name"))
-                    .and_then(|value| value.as_str())
-                    .is_some_and(|name| allowed.contains(name))
-            } else {
-                true
-            }
-        })
+        .filter(|schema| schema_tool_is_allowed(schema, allowed_tools.as_ref()))
         .filter_map(openai_tool_schema_to_mcp)
         .collect();
     tools.sort_by(|a, b| {
@@ -494,35 +462,17 @@ fn handle_tools_list(registry: &ToolRegistry) -> Value {
 
 async fn handle_tools_call(registry: &ToolRegistry, params: &Value) -> Value {
     let Some(name) = params.get("name").and_then(|v| v.as_str()) else {
-        return json!({
-            "content": [{ "type": "text", "text": "missing tool name" }],
-            "isError": true
-        });
+        return mcp_text_error("missing tool name");
     };
 
     if let Some(allowed_tools) = allowed_tools_from_env() {
         if !allowed_tools.contains(name) {
-            return json!({
-                "content": [{ "type": "text", "text": format!("tool `{name}` is not allowed in this stage") }],
-                "isError": true
-            });
+            return mcp_text_error(format!("tool `{name}` is not allowed in this stage"));
         }
     }
 
-    if let Some(limit) = max_tool_calls_from_env() {
-        let session_id = env::var("HONE_MCP_SESSION_ID").unwrap_or_default();
-        if !session_id.trim().is_empty() {
-            let counters = tool_call_counters();
-            let mut guard = counters.lock().expect("tool_call_counters lock");
-            let entry = guard.entry(session_id).or_insert(0);
-            if *entry >= limit {
-                return json!({
-                    "content": [{ "type": "text", "text": format!("tool call limit reached ({limit})") }],
-                    "isError": true
-                });
-            }
-            *entry += 1;
-        }
+    if let Some(limit_error) = consume_tool_call_budget() {
+        return limit_error;
     }
 
     let arguments = params
@@ -543,27 +493,7 @@ async fn handle_tools_call(registry: &ToolRegistry, params: &Value) -> Value {
     match registry.execute_tool(name, arguments).await {
         Ok(value) => {
             let is_error = value.get("error").is_some();
-            if is_error {
-                tracing::warn!(
-                    "[hone-mcp] tool.done session={} actor={} name={} duration_ms={} is_error={} result={}",
-                    session_id,
-                    actor,
-                    name,
-                    started_at.elapsed().as_millis(),
-                    is_error,
-                    value_excerpt_for_log(&value, 320)
-                );
-            } else {
-                tracing::info!(
-                    "[hone-mcp] tool.done session={} actor={} name={} duration_ms={} is_error={} result={}",
-                    session_id,
-                    actor,
-                    name,
-                    started_at.elapsed().as_millis(),
-                    is_error,
-                    value_excerpt_for_log(&value, 320)
-                );
-            }
+            log_tool_done(&session_id, &actor, name, started_at, is_error, &value);
             json!({
                 "content": [{ "type": "text", "text": value.to_string() }],
                 "structuredContent": value,
@@ -571,19 +501,87 @@ async fn handle_tools_call(registry: &ToolRegistry, params: &Value) -> Value {
             })
         }
         Err(err) => {
+            let err_text = err.to_string();
             tracing::warn!(
                 "[hone-mcp] tool.error session={} actor={} name={} duration_ms={} error={}",
                 session_id,
                 actor,
                 name,
                 started_at.elapsed().as_millis(),
-                text_excerpt_for_log(&err.to_string(), 320)
+                text_excerpt_for_log(&err_text, 320)
             );
-            json!({
-                "content": [{ "type": "text", "text": err.to_string() }],
-                "isError": true
-            })
+            mcp_text_error(err_text)
         }
+    }
+}
+
+fn schema_tool_is_allowed(schema: &Value, allowed_tools: Option<&HashSet<String>>) -> bool {
+    allowed_tools
+        .map(|allowed| schema_tool_name(schema).is_some_and(|name| allowed.contains(name)))
+        .unwrap_or(true)
+}
+
+fn schema_tool_name(schema: &Value) -> Option<&str> {
+    schema
+        .get("function")
+        .and_then(|value| value.get("name"))
+        .and_then(|value| value.as_str())
+}
+
+fn consume_tool_call_budget() -> Option<Value> {
+    let limit = max_tool_calls_from_env()?;
+    let session_id = env::var("HONE_MCP_SESSION_ID").unwrap_or_default();
+    if session_id.trim().is_empty() {
+        return None;
+    }
+
+    let counters = tool_call_counters();
+    let mut guard = counters.lock().expect("tool_call_counters lock");
+    let entry = guard.entry(session_id).or_insert(0);
+    if *entry >= limit {
+        return Some(mcp_text_error(format!("tool call limit reached ({limit})")));
+    }
+    *entry += 1;
+    None
+}
+
+fn mcp_text_error(text: impl Into<String>) -> Value {
+    json!({
+        "content": [{ "type": "text", "text": text.into() }],
+        "isError": true
+    })
+}
+
+fn log_tool_done(
+    session_id: &str,
+    actor: &str,
+    name: &str,
+    started_at: Instant,
+    is_error: bool,
+    value: &Value,
+) {
+    let duration_ms = started_at.elapsed().as_millis();
+    let result_excerpt = value_excerpt_for_log(value, 320);
+    if is_error {
+        tracing::warn!(
+            "[hone-mcp] tool.done session={} actor={} name={} duration_ms={} is_error={} result={}",
+            session_id,
+            actor,
+            name,
+            duration_ms,
+            is_error,
+            result_excerpt
+        );
+    } else {
+        tracing::info!(
+            "[hone-mcp] tool.done session={} actor={} name={} duration_ms={} is_error={} result={}",
+            session_id,
+            actor,
+            name,
+            duration_ms,
+            is_error,
+            result_excerpt
+        );
     }
 }
 
@@ -793,6 +791,30 @@ mod tests {
         assert!(env_bool("HONE_MCP_ALLOW_CRON"));
         unsafe { env::set_var("HONE_MCP_ALLOW_CRON", "0") };
         assert!(!env_bool("HONE_MCP_ALLOW_CRON"));
+    }
+
+    #[test]
+    fn tool_call_budget_rejects_calls_after_session_limit() {
+        let _guard = env_lock();
+        clear_test_env();
+        let session_id = "mcp-budget-test-session";
+        tool_call_counters()
+            .lock()
+            .expect("tool_call_counters lock")
+            .remove(session_id);
+        unsafe {
+            env::set_var("HONE_MCP_SESSION_ID", session_id);
+            env::set_var("HONE_MCP_MAX_TOOL_CALLS", "1");
+        }
+
+        assert!(consume_tool_call_budget().is_none());
+
+        let rejected = consume_tool_call_budget().expect("limit error");
+        assert_eq!(rejected["isError"], Value::Bool(true));
+        assert_eq!(
+            rejected["content"][0]["text"],
+            Value::String("tool call limit reached (1)".to_string())
+        );
     }
 
     #[test]
