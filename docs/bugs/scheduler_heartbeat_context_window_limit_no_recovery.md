@@ -5,6 +5,12 @@
 - **严重等级**: P2
 - **状态**: New
 - **证据来源**:
+  - `2026-05-23 11:01 CST` 本轮继续确认同一缺陷活跃：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - 07:30-11:01 CST 新增 `8` 条 heartbeat `ContextOverflowNoop + noop + skipped_noop + delivered=0`，均在 Web heartbeat。
+      - `持仓财报与重大新闻心跳提醒` 在 07:30、10:30、11:00 CST 继续重复命中 `ContextOverflowNoop`。
+      - `AI与科技持仓观察关键事件心跳提醒` 在 07:30、10:30 CST 继续命中 `ContextOverflowNoop`；11:00 CST 虽恢复为 `JsonNoop`，但同一类新建多标的 heartbeat 已连续多窗被超窗吞掉。
+    - 结论：这仍是同一根因 / 同一影响范围的运行态复现，不新建重复文档；严重等级与状态维持 `P2 / New`，不是 P1，本轮不创建 GitHub Issue。
   - `2026-05-23 07:08 CST` 本轮从 `Fixed` 重新打开：旧修复结论是 heartbeat context overflow 改为 `ContextOverflowNoop + skipped_noop` 后“本轮跳过、下轮正常重试”，但最近四小时真实窗口显示同一类超窗已经重复静默吞掉多条 heartbeat：
     - `data/sessions.sqlite3` -> `cron_job_runs`
       - 03:00-07:00 CST 共 `9` 条 heartbeat 落成 `noop + skipped_noop + delivered=0`，`detail_json.parse_kind=ContextOverflowNoop`。
@@ -63,6 +69,7 @@
 ## 当前实现效果
 
 - `2026-05-23 07:08 CST` 最新真实窗口表明，现有 `ContextOverflowNoop` 止血不足：它确实避免了原始 `context window exceeds limit` 外泄，但把 runner 超窗错误写成 `noop + skipped_noop`，导致台账和用户侧都无法区分“条件未触发”和“本轮根本没跑起来”。
+- `2026-05-23 11:01 CST` 最新窗口继续新增 8 条同类 `ContextOverflowNoop`，其中 `持仓财报与重大新闻心跳提醒` 和 `AI与科技持仓观察关键事件心跳提醒` 在前一轮巡检后仍重复命中，说明该问题不是 07:00 单窗偶发。
 - 同一 `持仓财报与重大新闻心跳提醒` 在最近四小时连续 6 次命中 `ContextOverflowNoop`，已经不符合旧修复结论里的“跳过本轮、下轮正常重试”。
 - 06:42 CST 新建的 `AI与科技持仓观察关键事件心跳提醒` 在 07:00 CST 首轮就超窗并被静默记为 noop，说明该问题仍会影响新建 heartbeat 的首轮可用性。
 - `TEM_动态监控` 与 `AAOI_动态监控` 都在创建后的第一轮 heartbeat 执行中直接命中 `context window exceeds limit (2013)`，说明首轮确实存在预算失控。

@@ -3,9 +3,20 @@
 - **发现时间**: 2026-04-15 14:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 
 ## 修复进展
+
+- `2026-05-23 11:01 CST` 本轮巡检把本单从 `Fixed` 回退为 `New`：07:30-11:01 CST 真实 heartbeat 窗口在 00:14 兼容修复后继续批量输出 `<think>` / 自然语言 / 工具配置片段，而不是解析器认可的 `noop` / `triggered` JSON。多数样本不是“明确否定性 noop”，因此不属于 00:14 修复已覆盖的 PlainTextNoop 兼容边界。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 07:30-11:01 CST 新增 `71` 条 heartbeat 结构化 / 状态解析失败，终态均为 `execution_failed + skipped_error + delivered=0`；其中 Feishu `51` 条、Web `20` 条。
+    - 错误分布：`PlainTextSuppressed` `63` 条、`JsonUnknownStatus` `5` 条、`JsonEmptyStatus` `2` 条、`Empty` `1` 条。
+    - 代表性样本：`run_id=31370` / `TSLA 正负触发条件心跳监控` 为 `JsonUnknownStatus`；`run_id=31369` / `TEM大事件心跳监控` 输出 `set_immediate_kinds` 工具配置片段并落成 `JsonEmptyStatus`；`run_id=31365` / `小米30港元破位预警` 的 plain text 已判断价格等于阈值但未按 `triggered` JSON 收口；`run_id=31359` / Web `存储板块关键事件心跳提醒` 把建画像/监控配置说明写进 raw output；`run_id=31367` / `伦敦金跌破4500提醒` 明确“未触发”但仍未被归一为合法 noop。
+    - 同窗仍有合法 `JsonNoop`、`JsonTriggered` 与 `completed + sent` 样本，例如 `run_id=31362` / `heartbeat_绿田机械基本面跟踪` 成功送达，说明不是 scheduler 或出站整体不可用。
+  - 会话质量对照：
+    - 最近四小时按消息时间共有 `31` 个 user turn 与 `23` 个 assistant final；Feishu / Web / Discord 直聊和普通 scheduler 均有收口。11:00:28 CST 的 Feishu direct 用户请求发生在巡检截止边界内，尚未形成异常结论。
+    - assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`。
+  - 结论：这是同一根因 / 同一影响范围的复发，不新建重复文档。它会导致 heartbeat 自动提醒主功能链路漏发或把 Web heartbeat 失败提示写回会话，维持功能性 `P2 / New`；不是单纯格式质量 `P3`。无关联 GitHub Issue，本轮不创建 P1 issue。
 
 - `2026-05-23 00:14 CST` 本轮重新修复 MiniMax heartbeat 输出协议退化：
   - `crates/hone-channels/src/scheduler.rs` 现在把 heartbeat prompt 已声明兼容的空 JSON `{}` 归一为 noop，不再把 `JsonEmptyStatus` 记成 `execution_failed + skipped_error`。
