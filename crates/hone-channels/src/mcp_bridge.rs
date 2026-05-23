@@ -81,10 +81,10 @@ fn hone_mcp_command_path() -> Result<String, String> {
         .parent()
         .ok_or_else(|| format!("failed to resolve parent dir for {}", current_exe.display()))?;
     let mut candidates = bundled_binary_candidates(parent, "hone-mcp");
-    if parent.file_name().and_then(|value| value.to_str()) == Some("deps") {
-        if let Some(grandparent) = parent.parent() {
-            candidates.extend(bundled_binary_candidates(grandparent, "hone-mcp"));
-        }
+    if parent.file_name().and_then(|value| value.to_str()) == Some("deps")
+        && let Some(grandparent) = parent.parent()
+    {
+        candidates.extend(bundled_binary_candidates(grandparent, "hone-mcp"));
     }
 
     if let Some(found) = candidates.iter().find(|candidate| candidate.exists()) {
@@ -256,10 +256,10 @@ pub async fn run_hone_mcp_stdio() -> Result<(), String> {
             }
         };
 
-        if id.is_some() {
-            if let Some(result) = result {
-                write_response(&mut writer, id, Some(result), None).await?;
-            }
+        if id.is_some()
+            && let Some(result) = result
+        {
+            write_response(&mut writer, id, Some(result), None).await?;
         }
     }
 
@@ -465,10 +465,10 @@ async fn handle_tools_call(registry: &ToolRegistry, params: &Value) -> Value {
         return mcp_text_error("missing tool name");
     };
 
-    if let Some(allowed_tools) = allowed_tools_from_env() {
-        if !allowed_tools.contains(name) {
-            return mcp_text_error(format!("tool `{name}` is not allowed in this stage"));
-        }
+    if let Some(allowed_tools) = allowed_tools_from_env()
+        && !allowed_tools.contains(name)
+    {
+        return mcp_text_error(format!("tool `{name}` is not allowed in this stage"));
     }
 
     if let Some(limit_error) = consume_tool_call_budget() {
