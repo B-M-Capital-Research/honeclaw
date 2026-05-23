@@ -207,21 +207,21 @@ mod tests {
     use crate::event::EventKind;
     use chrono::Utc;
 
-    fn item(
+    fn digest_item_fixture(
         kind: EventKind,
-        sev: Severity,
-        sym: &str,
+        severity: Severity,
+        symbol: &str,
         headline: &str,
         url: Option<&str>,
     ) -> DigestItem {
         DigestItem {
-            id: format!("id:{kind:?}:{sym}:{headline}"),
+            id: format!("id:{kind:?}:{symbol}:{headline}"),
             kind,
-            severity: sev,
-            primary_symbol: if sym.is_empty() {
+            severity,
+            primary_symbol: if symbol.is_empty() {
                 None
             } else {
-                Some(sym.into())
+                Some(symbol.into())
             },
             headline: headline.into(),
             url: url.map(String::from),
@@ -233,7 +233,7 @@ mod tests {
         }
     }
 
-    fn payload_with(
+    fn digest_payload_fixture(
         items: Vec<DigestItem>,
         max_sev: Severity,
         cap_overflow: usize,
@@ -249,8 +249,8 @@ mod tests {
 
     #[test]
     fn html_digest_starts_with_severity_dot_and_title() {
-        let p = payload_with(
-            vec![item(
+        let payload = digest_payload_fixture(
+            vec![digest_item_fixture(
                 EventKind::NewsCritical,
                 Severity::High,
                 "AAPL",
@@ -260,14 +260,14 @@ mod tests {
             Severity::High,
             0,
         );
-        let html = build_telegram_digest_html(&p);
+        let html = build_telegram_digest_html(&payload);
         assert!(html.starts_with("<b>🔴 📬 盘前摘要"), "html = {html}");
     }
 
     #[test]
     fn html_digest_uses_source_anchor_link() {
-        let p = payload_with(
-            vec![item(
+        let payload = digest_payload_fixture(
+            vec![digest_item_fixture(
                 EventKind::NewsCritical,
                 Severity::High,
                 "MU",
@@ -277,7 +277,7 @@ mod tests {
             Severity::High,
             0,
         );
-        let html = build_telegram_digest_html(&p);
+        let html = build_telegram_digest_html(&payload);
         assert!(
             html.contains(r#"<a href="https://example.com/path">example.com</a>"#),
             "html = {html}"
@@ -288,8 +288,8 @@ mod tests {
     #[test]
     fn html_digest_groups_by_bucket() {
         let items = vec![
-            item(EventKind::NewsCritical, Severity::High, "AAPL", "n1", None),
-            item(
+            digest_item_fixture(EventKind::NewsCritical, Severity::High, "AAPL", "n1", None),
+            digest_item_fixture(
                 EventKind::EarningsUpcoming,
                 Severity::Medium,
                 "GOOGL",
@@ -297,16 +297,16 @@ mod tests {
                 None,
             ),
         ];
-        let p = payload_with(items, Severity::High, 0);
-        let html = build_telegram_digest_html(&p);
+        let payload = digest_payload_fixture(items, Severity::High, 0);
+        let html = build_telegram_digest_html(&payload);
         assert!(html.contains("📰 新闻公告 · 1"));
         assert!(html.contains("📅 财报 · 1"));
     }
 
     #[test]
     fn html_digest_escapes_dangerous_chars() {
-        let p = payload_with(
-            vec![item(
+        let payload = digest_payload_fixture(
+            vec![digest_item_fixture(
                 EventKind::NewsCritical,
                 Severity::High,
                 "AAPL",
@@ -316,15 +316,15 @@ mod tests {
             Severity::High,
             0,
         );
-        let html = build_telegram_digest_html(&p);
+        let html = build_telegram_digest_html(&payload);
         assert!(html.contains("AT&amp;T &lt;hack&gt;"));
         assert!(!html.contains("<hack>"));
     }
 
     #[test]
     fn html_digest_includes_overflow_italic() {
-        let p = payload_with(
-            vec![item(
+        let payload = digest_payload_fixture(
+            vec![digest_item_fixture(
                 EventKind::NewsCritical,
                 Severity::High,
                 "AAPL",
@@ -334,7 +334,7 @@ mod tests {
             Severity::High,
             5,
         );
-        let html = build_telegram_digest_html(&p);
+        let html = build_telegram_digest_html(&payload);
         assert!(html.contains("<i>另 5 条"));
         assert!(html.contains("/missed"));
     }

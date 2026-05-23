@@ -122,21 +122,21 @@ mod tests {
     use crate::event::EventKind;
     use chrono::Utc;
 
-    fn item(
+    fn digest_item_fixture(
         kind: EventKind,
-        sev: Severity,
-        sym: &str,
+        severity: Severity,
+        symbol: &str,
         headline: &str,
         url: Option<&str>,
     ) -> DigestItem {
         DigestItem {
-            id: format!("id:{kind:?}:{sym}:{headline}"),
+            id: format!("id:{kind:?}:{symbol}:{headline}"),
             kind,
-            severity: sev,
-            primary_symbol: if sym.is_empty() {
+            severity,
+            primary_symbol: if symbol.is_empty() {
                 None
             } else {
-                Some(sym.into())
+                Some(symbol.into())
             },
             headline: headline.into(),
             url: url.map(String::from),
@@ -148,7 +148,7 @@ mod tests {
         }
     }
 
-    fn payload_with(
+    fn digest_payload_fixture(
         items: Vec<DigestItem>,
         max_sev: Severity,
         cap_overflow: usize,
@@ -164,8 +164,8 @@ mod tests {
 
     #[test]
     fn card_template_follows_max_severity() {
-        let high = payload_with(
-            vec![item(
+        let high = digest_payload_fixture(
+            vec![digest_item_fixture(
                 EventKind::NewsCritical,
                 Severity::High,
                 "AAPL",
@@ -181,14 +181,14 @@ mod tests {
                 .unwrap(),
             "red"
         );
-        let med = payload_with(vec![], Severity::Medium, 0);
+        let med = digest_payload_fixture(vec![], Severity::Medium, 0);
         assert_eq!(
             build_feishu_card(&med)["header"]["template"]
                 .as_str()
                 .unwrap(),
             "yellow"
         );
-        let low = payload_with(vec![], Severity::Low, 0);
+        let low = digest_payload_fixture(vec![], Severity::Low, 0);
         assert_eq!(
             build_feishu_card(&low)["header"]["template"]
                 .as_str()
@@ -200,18 +200,18 @@ mod tests {
     #[test]
     fn card_groups_buckets_with_hr_dividers() {
         let items = vec![
-            item(EventKind::NewsCritical, Severity::High, "AAPL", "n1", None),
-            item(
+            digest_item_fixture(EventKind::NewsCritical, Severity::High, "AAPL", "n1", None),
+            digest_item_fixture(
                 EventKind::EarningsUpcoming,
                 Severity::Medium,
                 "GOOGL",
                 "e1",
                 None,
             ),
-            item(EventKind::MacroEvent, Severity::Low, "", "m1", None),
+            digest_item_fixture(EventKind::MacroEvent, Severity::Low, "", "m1", None),
         ];
-        let p = payload_with(items, Severity::High, 0);
-        let card = build_feishu_card(&p);
+        let payload = digest_payload_fixture(items, Severity::High, 0);
+        let card = build_feishu_card(&payload);
         let elements = card["elements"].as_array().unwrap();
         // 3 个 bucket × (header div + markdown) + 2 个 hr 分隔 = 8 个 element
         assert_eq!(elements.len(), 3 * 2 + 2);
@@ -221,15 +221,15 @@ mod tests {
 
     #[test]
     fn card_includes_overflow_note() {
-        let items = vec![item(
+        let items = vec![digest_item_fixture(
             EventKind::NewsCritical,
             Severity::High,
             "AAPL",
             "n1",
             None,
         )];
-        let p = payload_with(items, Severity::High, 7);
-        let card = build_feishu_card(&p);
+        let payload = digest_payload_fixture(items, Severity::High, 7);
+        let card = build_feishu_card(&payload);
         let elements = card["elements"].as_array().unwrap();
         let note = elements
             .iter()
@@ -242,15 +242,15 @@ mod tests {
 
     #[test]
     fn card_renders_link_source_anchor_in_markdown() {
-        let items = vec![item(
+        let items = vec![digest_item_fixture(
             EventKind::NewsCritical,
             Severity::High,
             "MU",
             "Memory rally",
             Some("https://example.com/path"),
         )];
-        let p = payload_with(items, Severity::High, 0);
-        let card = build_feishu_card(&p);
+        let payload = digest_payload_fixture(items, Severity::High, 0);
+        let card = build_feishu_card(&payload);
         let md = card["elements"][1]["content"].as_str().unwrap();
         assert!(
             md.contains("[example.com](https://example.com/path)"),
@@ -261,8 +261,8 @@ mod tests {
 
     #[test]
     fn card_handles_empty_payload() {
-        let p = payload_with(vec![], Severity::Low, 0);
-        let card = build_feishu_card(&p);
+        let payload = digest_payload_fixture(vec![], Severity::Low, 0);
+        let card = build_feishu_card(&payload);
         let elements = card["elements"].as_array().unwrap();
         assert_eq!(elements.len(), 1);
         assert_eq!(elements[0]["tag"].as_str().unwrap(), "div");

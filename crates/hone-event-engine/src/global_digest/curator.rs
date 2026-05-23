@@ -725,7 +725,7 @@ mod tests {
     use hone_llm::{ChatResponse, provider::ChatResult};
     use std::sync::Mutex;
 
-    fn fixture_candidate(id: &str, title: &str) -> GlobalDigestCandidate {
+    fn global_digest_candidate_fixture(id: &str, title: &str) -> GlobalDigestCandidate {
         GlobalDigestCandidate {
             event: MarketEvent {
                 id: id.into(),
@@ -745,7 +745,7 @@ mod tests {
         }
     }
 
-    fn audience() -> AudienceContext {
+    fn audience_context_fixture() -> AudienceContext {
         AudienceContext {
             briefs: vec![CompanyBrief {
                 ticker: "AAPL".into(),
@@ -791,7 +791,7 @@ mod tests {
         }
     }
 
-    fn make_curator_with_response(content: &str) -> (Curator, Arc<StaticResponseProvider>) {
+    fn curator_with_static_response(content: &str) -> (Curator, Arc<StaticResponseProvider>) {
         let response_provider = Arc::new(StaticResponseProvider {
             content: content.into(),
             calls: Mutex::new(0),
@@ -843,11 +843,11 @@ mod tests {
     #[test]
     fn rank_and_dedupe_keeps_highest_score_per_cluster() {
         let candidates = vec![
-            fixture_candidate("a", "Story A"),
-            fixture_candidate("b", "Story B"),
-            fixture_candidate("c", "Story C"),
+            global_digest_candidate_fixture("a", "Story A"),
+            global_digest_candidate_fixture("b", "Story B"),
+            global_digest_candidate_fixture("c", "Story C"),
         ];
-        let items = vec![
+        let pass1_items = vec![
             Pass1Item {
                 idx: 0,
                 score: 3,
@@ -867,7 +867,7 @@ mod tests {
                 takeaway: "mid".into(),
             },
         ];
-        let ranked_candidates = rank_and_dedupe(&candidates, items, 10);
+        let ranked_candidates = rank_and_dedupe(&candidates, pass1_items, 10);
         assert_eq!(
             ranked_candidates.len(),
             2,
@@ -881,9 +881,9 @@ mod tests {
     #[test]
     fn rank_and_dedupe_truncates_to_top_n() {
         let candidates: Vec<_> = (0..5)
-            .map(|i| fixture_candidate(&format!("e{i}"), "T"))
+            .map(|i| global_digest_candidate_fixture(&format!("e{i}"), "T"))
             .collect();
-        let items: Vec<_> = (0..5)
+        let pass1_items: Vec<_> = (0..5)
             .map(|i| Pass1Item {
                 idx: i,
                 score: (5 - i) as u8,
@@ -891,7 +891,7 @@ mod tests {
                 takeaway: "t".into(),
             })
             .collect();
-        let ranked_candidates = rank_and_dedupe(&candidates, items, 3);
+        let ranked_candidates = rank_and_dedupe(&candidates, pass1_items, 3);
         assert_eq!(ranked_candidates.len(), 3);
         assert_eq!(ranked_candidates[0].pass1_score, 5);
         assert_eq!(ranked_candidates[1].pass1_score, 4);
@@ -900,8 +900,8 @@ mod tests {
 
     #[test]
     fn rank_and_dedupe_skips_out_of_range_idx() {
-        let candidates = vec![fixture_candidate("a", "T")];
-        let items = vec![
+        let candidates = vec![global_digest_candidate_fixture("a", "T")];
+        let pass1_items = vec![
             Pass1Item {
                 idx: 0,
                 score: 4,
@@ -915,15 +915,18 @@ mod tests {
                 takeaway: "fake".into(),
             },
         ];
-        let ranked_candidates = rank_and_dedupe(&candidates, items, 10);
+        let ranked_candidates = rank_and_dedupe(&candidates, pass1_items, 10);
         assert_eq!(ranked_candidates.len(), 1);
         assert_eq!(ranked_candidates[0].pass1_takeaway, "ok");
     }
 
     #[test]
     fn rank_and_dedupe_treats_empty_cluster_as_unique() {
-        let candidates = vec![fixture_candidate("a", "T1"), fixture_candidate("b", "T2")];
-        let items = vec![
+        let candidates = vec![
+            global_digest_candidate_fixture("a", "T1"),
+            global_digest_candidate_fixture("b", "T2"),
+        ];
+        let pass1_items = vec![
             Pass1Item {
                 idx: 0,
                 score: 3,
@@ -937,17 +940,17 @@ mod tests {
                 takeaway: "u2".into(),
             },
         ];
-        let ranked_candidates = rank_and_dedupe(&candidates, items, 10);
+        let ranked_candidates = rank_and_dedupe(&candidates, pass1_items, 10);
         assert_eq!(ranked_candidates.len(), 2, "空 cluster 不应该被合并");
     }
 
     #[tokio::test]
     async fn pass1_select_calls_llm_and_returns_ranked() {
         let response_json = r#"{"items":[{"idx":0,"score":5,"cluster":"x","takeaway":"hot"}]}"#;
-        let (curator, response_provider) = make_curator_with_response(response_json);
-        let candidates = vec![fixture_candidate("a", "Big news")];
+        let (curator, response_provider) = curator_with_static_response(response_json);
+        let candidates = vec![global_digest_candidate_fixture("a", "Big news")];
         let ranked_candidates = curator
-            .pass1_select(&candidates, &audience(), 10)
+            .pass1_select(&candidates, &audience_context_fixture(), 10)
             .await
             .unwrap();
         assert_eq!(ranked_candidates.len(), 1);
@@ -957,8 +960,11 @@ mod tests {
 
     #[tokio::test]
     async fn pass1_select_empty_candidates_skips_llm() {
-        let (curator, response_provider) = make_curator_with_response("");
-        let ranked_candidates = curator.pass1_select(&[], &audience(), 10).await.unwrap();
+        let (curator, response_provider) = curator_with_static_response("");
+        let ranked_candidates = curator
+            .pass1_select(&[], &audience_context_fixture(), 10)
+            .await
+            .unwrap();
         assert!(ranked_candidates.is_empty());
         assert_eq!(*response_provider.calls.lock().unwrap(), 0);
     }
@@ -977,10 +983,10 @@ mod tests {
             {"idx":1,"rank":1,"title":"Story B","url":"https://x/b","comment":"nice"},
             {"idx":0,"rank":2,"title":"Story A","url":"https://x/a","comment":"ok"}
         ]}"#;
-        let (curator, _response_provider) = make_curator_with_response(response_json);
+        let (curator, _response_provider) = curator_with_static_response(response_json);
         let candidates = vec![
-            fixture_candidate("a", "Story A"),
-            fixture_candidate("b", "Story B"),
+            global_digest_candidate_fixture("a", "Story A"),
+            global_digest_candidate_fixture("b", "Story B"),
         ];
         let picks_with_bodies: Vec<(RankedCandidate, ArticleBody)> = candidates
             .into_iter()
@@ -998,7 +1004,7 @@ mod tests {
             })
             .collect();
         let baseline_picks = curator
-            .pass2_baseline(picks_with_bodies, &audience(), 8)
+            .pass2_baseline(picks_with_bodies, &audience_context_fixture(), 8)
             .await
             .unwrap();
         assert_eq!(baseline_picks.len(), 2);
@@ -1015,8 +1021,8 @@ mod tests {
             {"idx":99,"rank":1,"title":"fake","url":"x","comment":"c"},
             {"idx":0,"rank":2,"title":"real","url":"x","comment":"r"}
         ]}"#;
-        let (curator, _) = make_curator_with_response(response_json);
-        let candidates = vec![fixture_candidate("a", "T")];
+        let (curator, _) = curator_with_static_response(response_json);
+        let candidates = vec![global_digest_candidate_fixture("a", "T")];
         let picks_with_bodies: Vec<_> = candidates
             .into_iter()
             .map(|candidate| {
@@ -1032,7 +1038,7 @@ mod tests {
             })
             .collect();
         let baseline_picks = curator
-            .pass2_baseline(picks_with_bodies, &audience(), 8)
+            .pass2_baseline(picks_with_bodies, &audience_context_fixture(), 8)
             .await
             .unwrap();
         assert_eq!(baseline_picks.len(), 1);
@@ -1041,20 +1047,20 @@ mod tests {
 
     #[tokio::test]
     async fn pass2_baseline_empty_picks_skips_llm() {
-        let (curator, response_provider) = make_curator_with_response("");
+        let (curator, response_provider) = curator_with_static_response("");
         let baseline_picks = curator
-            .pass2_baseline(vec![], &audience(), 8)
+            .pass2_baseline(vec![], &audience_context_fixture(), 8)
             .await
             .unwrap();
         assert!(baseline_picks.is_empty());
         assert_eq!(*response_provider.calls.lock().unwrap(), 0);
     }
 
-    fn sample_picks_with_bodies() -> Vec<(RankedCandidate, ArticleBody)> {
+    fn ranked_picks_with_article_bodies_fixture() -> Vec<(RankedCandidate, ArticleBody)> {
         vec![
             (
                 RankedCandidate {
-                    candidate: fixture_candidate("a", "GOOGL Anthropic $40B"),
+                    candidate: global_digest_candidate_fixture("a", "GOOGL Anthropic $40B"),
                     pass1_score: 5,
                     pass1_cluster: "google-anthropic".into(),
                     pass1_takeaway: "google invests".into(),
@@ -1063,7 +1069,7 @@ mod tests {
             ),
             (
                 RankedCandidate {
-                    candidate: fixture_candidate("b", "Semi rally 见顶警告"),
+                    candidate: global_digest_candidate_fixture("b", "Semi rally 见顶警告"),
                     pass1_score: 5,
                     pass1_cluster: "semi-rally".into(),
                     pass1_takeaway: "warning of overheat".into(),
@@ -1072,7 +1078,7 @@ mod tests {
             ),
             (
                 RankedCandidate {
-                    candidate: fixture_candidate("c", "Macron Hormuz strait"),
+                    candidate: global_digest_candidate_fixture("c", "Macron Hormuz strait"),
                     pass1_score: 4,
                     pass1_cluster: "hormuz".into(),
                     pass1_takeaway: "macron diplomacy".into(),
@@ -1089,7 +1095,7 @@ mod tests {
             {"idx":0,"rank":1,"title":"GOOGL Anthropic","url":"u","comment":"印证 Gemini 飞轮","category":"mainline_aligned","mainline_relation":"印证"},
             {"idx":2,"rank":2,"title":"Hormuz","url":"u","comment":"波及电力叙事","category":"macro_floor","mainline_relation":"N/A"}
         ],"floor_satisfied":true}"#;
-        let (curator, _) = make_curator_with_response(response_json);
+        let (curator, _) = curator_with_static_response(response_json);
         let mut by_ticker = HashMap::new();
         by_ticker.insert("GOOGL".into(), "看 Gemini 生态飞轮".into());
         let mainline = UserMainline {
@@ -1097,7 +1103,13 @@ mod tests {
             by_ticker: Some(&by_ticker),
         };
         let personalized_picks = curator
-            .pass2_personalize(sample_picks_with_bodies(), &audience(), mainline, 1, 8)
+            .pass2_personalize(
+                ranked_picks_with_article_bodies_fixture(),
+                &audience_context_fixture(),
+                mainline,
+                1,
+                8,
+            )
             .await
             .unwrap();
         assert_eq!(personalized_picks.len(), 2);
@@ -1123,10 +1135,16 @@ mod tests {
         let response_json = r#"{"picks":[
             {"idx":0,"rank":1,"title":"T","url":"u","comment":"c","category":"mainline_aligned","mainline_relation":"中立"}
         ]}"#;
-        let (curator, _) = make_curator_with_response(response_json);
+        let (curator, _) = curator_with_static_response(response_json);
         let mainline = UserMainline::default(); // 全 None
         let personalized_picks = curator
-            .pass2_personalize(sample_picks_with_bodies(), &audience(), mainline, 0, 8)
+            .pass2_personalize(
+                ranked_picks_with_article_bodies_fixture(),
+                &audience_context_fixture(),
+                mainline,
+                0,
+                8,
+            )
             .await
             .unwrap();
         assert_eq!(personalized_picks.len(), 1);
@@ -1142,11 +1160,11 @@ mod tests {
         let response_json = r#"{"picks":[
             {"idx":0,"rank":1,"title":"T","url":"u","comment":"c","category":"weird_value","mainline_relation":"???"}
         ]}"#;
-        let (curator, _) = make_curator_with_response(response_json);
+        let (curator, _) = curator_with_static_response(response_json);
         let personalized_picks = curator
             .pass2_personalize(
-                sample_picks_with_bodies(),
-                &audience(),
+                ranked_picks_with_article_bodies_fixture(),
+                &audience_context_fixture(),
                 UserMainline::default(),
                 0,
                 8,
@@ -1169,11 +1187,11 @@ mod tests {
             {"idx":99,"rank":1,"title":"x","url":"u","comment":"c","category":"mainline_aligned","mainline_relation":"中立"},
             {"idx":1,"rank":2,"title":"y","url":"u","comment":"c","category":"mainline_aligned","mainline_relation":"中立"}
         ]}"#;
-        let (curator, _) = make_curator_with_response(response_json);
+        let (curator, _) = curator_with_static_response(response_json);
         let personalized_picks = curator
             .pass2_personalize(
-                sample_picks_with_bodies(),
-                &audience(),
+                ranked_picks_with_article_bodies_fixture(),
+                &audience_context_fixture(),
                 UserMainline::default(),
                 0,
                 8,
@@ -1190,11 +1208,11 @@ mod tests {
         let response_json = r#"{"picks":[
             {"idx":0,"rank":1,"title":"T","url":"u","comment":"c","category":"thesis_counter","thesis_relation":"反证"}
         ]}"#;
-        let (curator, _) = make_curator_with_response(response_json);
+        let (curator, _) = curator_with_static_response(response_json);
         let personalized_picks = curator
             .pass2_personalize(
-                sample_picks_with_bodies(),
-                &audience(),
+                ranked_picks_with_article_bodies_fixture(),
+                &audience_context_fixture(),
                 UserMainline::default(),
                 0,
                 8,
@@ -1263,9 +1281,9 @@ mod tests {
             }
         }
         let curator = Curator::new(Arc::new(FailProvider), "p1", "p2");
-        let candidates = vec![fixture_candidate("a", "T")];
+        let candidates = vec![global_digest_candidate_fixture("a", "T")];
         let err = curator
-            .pass1_select(&candidates, &audience(), 10)
+            .pass1_select(&candidates, &audience_context_fixture(), 10)
             .await
             .unwrap_err();
         assert!(err.to_string().contains("pass1 LLM call failed"));

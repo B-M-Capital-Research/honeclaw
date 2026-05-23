@@ -498,7 +498,7 @@ mod tests {
         let fmp_config = hone_core::config::FmpConfig::default();
         let fmp = FmpClient::from_config(&fmp_config);
         let builder = AudienceBuilder::new(&fmp, dir.path().join("cache"), &storage);
-        let ctx = builder.build().await;
-        assert!(ctx.briefs.is_empty());
+        let audience_context = builder.build().await;
+        assert!(audience_context.briefs.is_empty());
     }
 }

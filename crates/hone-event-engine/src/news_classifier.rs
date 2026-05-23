@@ -336,7 +336,7 @@ mod tests {
     use hone_llm::ChatResponse;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    fn ev() -> MarketEvent {
+    fn market_event_fixture() -> MarketEvent {
         MarketEvent {
             id: "news:test:1".into(),
             kind: EventKind::NewsCritical,
@@ -457,7 +457,9 @@ mod tests {
             calls: AtomicUsize::new(0),
         });
         let c = LlmNewsClassifier::new(mock.clone(), "google/gemini-3-flash-preview");
-        let r = c.classify(&ev(), DEFAULT_IMPORTANCE_PROMPT).await;
+        let r = c
+            .classify(&market_event_fixture(), DEFAULT_IMPORTANCE_PROMPT)
+            .await;
         assert_eq!(r, Some(Importance::Important));
         assert_eq!(mock.calls.load(Ordering::SeqCst), 1);
     }
@@ -471,12 +473,14 @@ mod tests {
         let c = LlmNewsClassifier::new(mock.clone(), "google/gemini-3-flash-preview");
         // 同 event + 同 prompt 重复 3 次 → 仅一次 LLM call
         for _ in 0..3 {
-            let r = c.classify(&ev(), DEFAULT_IMPORTANCE_PROMPT).await;
+            let r = c
+                .classify(&market_event_fixture(), DEFAULT_IMPORTANCE_PROMPT)
+                .await;
             assert_eq!(r, Some(Importance::NotImportant));
         }
         assert_eq!(mock.calls.load(Ordering::SeqCst), 1);
         // 换 prompt → 再调一次
-        let _ = c.classify(&ev(), "完全不同的标准").await;
+        let _ = c.classify(&market_event_fixture(), "完全不同的标准").await;
         assert_eq!(mock.calls.load(Ordering::SeqCst), 2);
     }
 
@@ -486,7 +490,7 @@ mod tests {
             calls: AtomicUsize::new(0),
         });
         let c = LlmNewsClassifier::new(mock.clone(), "google/gemini-3-flash-preview");
-        let mut event = ev();
+        let mut event = market_event_fixture();
         event.title = "ACME announces $5 billion acquisition of RivalCo".into();
         event.summary = "The transaction reshapes ACME's long-term product strategy.".into();
         let r = c.classify(&event, DEFAULT_IMPORTANCE_PROMPT).await;
@@ -501,7 +505,7 @@ mod tests {
             calls: AtomicUsize::new(0),
         });
         let c = LlmNewsClassifier::new(mock.clone(), "google/gemini-3-flash-preview");
-        let mut event = ev();
+        let mut event = market_event_fixture();
         event.title = "Is Apple stock a buy after recent rally?".into();
         event.summary = "Analysts debate valuation and technical momentum.".into();
         let r = c.classify(&event, DEFAULT_IMPORTANCE_PROMPT).await;
@@ -517,9 +521,9 @@ mod tests {
             calls: AtomicUsize::new(0),
         });
         let c = LlmNewsClassifier::new(mock.clone(), "google/gemini-3-flash-preview");
-        let mut e1 = ev();
+        let mut e1 = market_event_fixture();
         e1.id = "news:https://siteA.com/path1".into();
-        let mut e2 = ev();
+        let mut e2 = market_event_fixture();
         e2.id = "news:https://siteB.com/path2".into();
         // 标题大小写/标点轻微差异也应命中归一化
         e2.title = "APPLE announces partnership!!".into();
@@ -545,10 +549,10 @@ mod tests {
             calls: AtomicUsize::new(0),
         });
         let c = LlmNewsClassifier::new(mock.clone(), "google/gemini-3-flash-preview");
-        let mut e1 = ev();
+        let mut e1 = market_event_fixture();
         e1.id = "news:1".into();
         e1.symbols = vec!["AAPL".into()];
-        let mut e2 = ev();
+        let mut e2 = market_event_fixture();
         e2.id = "news:2".into();
         e2.symbols = vec!["MSFT".into()];
 
@@ -568,7 +572,9 @@ mod tests {
     #[tokio::test]
     async fn noop_classifier_always_not_important() {
         let c = NoopClassifier;
-        let r = c.classify(&ev(), DEFAULT_IMPORTANCE_PROMPT).await;
+        let r = c
+            .classify(&market_event_fixture(), DEFAULT_IMPORTANCE_PROMPT)
+            .await;
         assert_eq!(r, Some(Importance::NotImportant));
     }
 }

@@ -260,7 +260,7 @@ mod tests {
         .unwrap();
     }
 
-    fn make_portfolio(actor: ActorIdentity, symbols: Vec<&str>) -> Portfolio {
+    fn portfolio_fixture(actor: ActorIdentity, symbols: Vec<&str>) -> Portfolio {
         Portfolio {
             actor: Some(actor.clone()),
             user_id: actor.user_id.clone(),
@@ -315,7 +315,10 @@ mod tests {
         let portfolios = PortfolioStorage::new(dir.path().join("portfolios"));
         let actor = ActorIdentity::new("telegram", "u1", None::<&str>).unwrap();
         portfolios
-            .save(&actor, &make_portfolio(actor.clone(), vec!["MU", "RKLB"]))
+            .save(
+                &actor,
+                &portfolio_fixture(actor.clone(), vec!["MU", "RKLB"]),
+            )
             .unwrap();
         let sandbox_base = dir.path().join("sandboxes");
         write_profile(&sandbox_base, &actor, "MU");
@@ -346,7 +349,7 @@ mod tests {
         let portfolios = PortfolioStorage::new(dir.path().join("portfolios"));
         let actor = ActorIdentity::new("telegram", "u1", None::<&str>).unwrap();
         portfolios
-            .save(&actor, &make_portfolio(actor.clone(), vec!["MU"]))
+            .save(&actor, &portfolio_fixture(actor.clone(), vec!["MU"]))
             .unwrap();
         let sandbox_base = dir.path().join("sandboxes");
         write_profile(&sandbox_base, &actor, "MU");
@@ -382,7 +385,10 @@ mod tests {
         let portfolios = PortfolioStorage::new(dir.path().join("portfolios"));
         let actor = ActorIdentity::new("telegram", "u1", None::<&str>).unwrap();
         portfolios
-            .save(&actor, &make_portfolio(actor.clone(), vec!["MU", "RKLB"]))
+            .save(
+                &actor,
+                &portfolio_fixture(actor.clone(), vec!["MU", "RKLB"]),
+            )
             .unwrap();
         let sandbox_base = dir.path().join("sandboxes");
         write_profile(&sandbox_base, &actor, "MU");
@@ -419,7 +425,10 @@ mod tests {
         let portfolios = PortfolioStorage::new(dir.path().join("portfolios"));
         let actor = ActorIdentity::new("telegram", "u1", None::<&str>).unwrap();
         portfolios
-            .save(&actor, &make_portfolio(actor.clone(), vec!["MU", "AAPL"]))
+            .save(
+                &actor,
+                &portfolio_fixture(actor.clone(), vec!["MU", "AAPL"]),
+            )
             .unwrap();
         let sandbox_base = dir.path().join("sandboxes");
         write_profile(&sandbox_base, &actor, "MU");
@@ -457,7 +466,7 @@ mod tests {
         let portfolios = PortfolioStorage::new(dir.path().join("portfolios"));
         let actor = ActorIdentity::new("telegram", "u1", None::<&str>).unwrap();
         portfolios
-            .save(&actor, &make_portfolio(actor.clone(), vec!["MU"]))
+            .save(&actor, &portfolio_fixture(actor.clone(), vec!["MU"]))
             .unwrap();
         let sandbox_base = dir.path().join("sandboxes");
         write_profile(&sandbox_base, &actor, "MU");
@@ -542,7 +551,7 @@ mod tests {
         let portfolios = PortfolioStorage::new(dir.path().join("portfolios"));
         let actor = ActorIdentity::new("telegram", "u1", None::<&str>).unwrap();
         portfolios
-            .save(&actor, &make_portfolio(actor.clone(), vec!["MU"]))
+            .save(&actor, &portfolio_fixture(actor.clone(), vec!["MU"]))
             .unwrap();
         let sandbox_base = dir.path().join("sandboxes");
         write_profile(&sandbox_base, &actor, "MU");

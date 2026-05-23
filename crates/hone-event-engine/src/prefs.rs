@@ -340,15 +340,19 @@ mod tests {
     use chrono::Utc;
     use tempfile::tempdir;
 
-    fn actor() -> ActorIdentity {
+    fn actor_identity_fixture() -> ActorIdentity {
         ActorIdentity::new("telegram", "u1", None::<&str>).unwrap()
     }
 
-    fn ev(kind: EventKind, sev: Severity, symbols: Vec<&str>) -> MarketEvent {
+    fn market_event_fixture(
+        kind: EventKind,
+        severity: Severity,
+        symbols: Vec<&str>,
+    ) -> MarketEvent {
         MarketEvent {
             id: "x".into(),
             kind,
-            severity: sev,
+            severity,
             symbols: symbols.into_iter().map(String::from).collect(),
             occurred_at: Utc::now(),
             title: "t".into(),
@@ -389,8 +393,16 @@ mod tests {
     #[test]
     fn default_prefs_allow_everything() {
         let prefs = NotificationPrefs::default();
-        assert!(prefs.should_deliver(&ev(EventKind::NewsCritical, Severity::Low, vec!["AAPL"])));
-        assert!(prefs.should_deliver(&ev(EventKind::MacroEvent, Severity::Low, vec![])));
+        assert!(prefs.should_deliver(&market_event_fixture(
+            EventKind::NewsCritical,
+            Severity::Low,
+            vec!["AAPL"]
+        )));
+        assert!(prefs.should_deliver(&market_event_fixture(
+            EventKind::MacroEvent,
+            Severity::Low,
+            vec![]
+        )));
     }
 
     #[test]
@@ -399,7 +411,7 @@ mod tests {
             enabled: false,
             ..Default::default()
         };
-        assert!(!prefs.should_deliver(&ev(
+        assert!(!prefs.should_deliver(&market_event_fixture(
             EventKind::EarningsReleased,
             Severity::High,
             vec!["AAPL"]
@@ -412,8 +424,16 @@ mod tests {
             portfolio_only: true,
             ..Default::default()
         };
-        assert!(prefs.should_deliver(&ev(EventKind::NewsCritical, Severity::Low, vec!["AAPL"])));
-        assert!(!prefs.should_deliver(&ev(EventKind::MacroEvent, Severity::Low, vec![])));
+        assert!(prefs.should_deliver(&market_event_fixture(
+            EventKind::NewsCritical,
+            Severity::Low,
+            vec!["AAPL"]
+        )));
+        assert!(!prefs.should_deliver(&market_event_fixture(
+            EventKind::MacroEvent,
+            Severity::Low,
+            vec![]
+        )));
     }
 
     #[test]
@@ -422,13 +442,21 @@ mod tests {
             min_severity: Severity::High,
             ..Default::default()
         };
-        assert!(!prefs.should_deliver(&ev(EventKind::NewsCritical, Severity::Low, vec!["AAPL"])));
-        assert!(!prefs.should_deliver(&ev(
+        assert!(!prefs.should_deliver(&market_event_fixture(
+            EventKind::NewsCritical,
+            Severity::Low,
+            vec!["AAPL"]
+        )));
+        assert!(!prefs.should_deliver(&market_event_fixture(
             EventKind::NewsCritical,
             Severity::Medium,
             vec!["AAPL"]
         )));
-        assert!(prefs.should_deliver(&ev(EventKind::NewsCritical, Severity::High, vec!["AAPL"])));
+        assert!(prefs.should_deliver(&market_event_fixture(
+            EventKind::NewsCritical,
+            Severity::High,
+            vec!["AAPL"]
+        )));
     }
 
     #[test]
@@ -437,12 +465,16 @@ mod tests {
             allow_kinds: Some(vec!["earnings_released".into()]),
             ..Default::default()
         };
-        assert!(prefs.should_deliver(&ev(
+        assert!(prefs.should_deliver(&market_event_fixture(
             EventKind::EarningsReleased,
             Severity::High,
             vec!["AAPL"]
         )));
-        assert!(!prefs.should_deliver(&ev(EventKind::NewsCritical, Severity::High, vec!["AAPL"])));
+        assert!(!prefs.should_deliver(&market_event_fixture(
+            EventKind::NewsCritical,
+            Severity::High,
+            vec!["AAPL"]
+        )));
     }
 
     #[test]
@@ -452,19 +484,23 @@ mod tests {
             blocked_kinds: vec!["news_critical".into()],
             ..Default::default()
         };
-        assert!(prefs.should_deliver(&ev(
+        assert!(prefs.should_deliver(&market_event_fixture(
             EventKind::EarningsReleased,
             Severity::High,
             vec!["AAPL"]
         )));
-        assert!(!prefs.should_deliver(&ev(EventKind::NewsCritical, Severity::High, vec!["AAPL"])));
+        assert!(!prefs.should_deliver(&market_event_fixture(
+            EventKind::NewsCritical,
+            Severity::High,
+            vec!["AAPL"]
+        )));
     }
 
     #[test]
     fn file_storage_roundtrip() {
         let dir = tempdir().unwrap();
         let store = FilePrefsStorage::new(dir.path()).unwrap();
-        let actor_id = actor();
+        let actor_id = actor_identity_fixture();
         // 缺失文件 → 默认
         let loaded = store.load(&actor_id);
         assert!(loaded.enabled);
@@ -595,7 +631,7 @@ mod tests {
         // 老 prefs 文件没有这 4 个字段;serde(default) 应让加载继续走默认。
         let dir = tempdir().unwrap();
         let store = FilePrefsStorage::new(dir.path()).unwrap();
-        let actor_id = actor();
+        let actor_id = actor_identity_fixture();
         std::fs::write(
             store.path_for(&actor_id),
             r#"{"enabled":true,"portfolio_only":false,"min_severity":"low","blocked_kinds":[]}"#,
@@ -616,7 +652,7 @@ mod tests {
 
     #[test]
     fn source_allow_and_block_lists_filter_events() {
-        let mut event = ev(EventKind::NewsCritical, Severity::High, vec!["AAPL"]);
+        let mut event = market_event_fixture(EventKind::NewsCritical, Severity::High, vec!["AAPL"]);
         event.source = "fmp.stock_news:reuters.com".into();
         let prefs = NotificationPrefs {
             allow_sources: Some(vec!["reuters.com".into()]),
@@ -639,7 +675,7 @@ mod tests {
         // 用户只写了 enabled=false，其他字段缺失；serde(default) 保证兼容。
         let dir = tempdir().unwrap();
         let store = FilePrefsStorage::new(dir.path()).unwrap();
-        let actor_id = actor();
+        let actor_id = actor_identity_fixture();
         std::fs::write(store.path_for(&actor_id), r#"{"enabled": false}"#).unwrap();
         let loaded = store.load(&actor_id);
         assert!(!loaded.enabled);
@@ -735,7 +771,7 @@ mod tests {
     fn malformed_json_falls_back_without_panic() {
         let dir = tempdir().unwrap();
         let store = FilePrefsStorage::new(dir.path()).unwrap();
-        let actor_id = actor();
+        let actor_id = actor_identity_fixture();
         std::fs::write(store.path_for(&actor_id), "not json").unwrap();
         let loaded = store.load(&actor_id);
         assert!(

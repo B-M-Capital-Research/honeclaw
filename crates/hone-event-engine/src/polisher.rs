@@ -149,11 +149,11 @@ mod tests {
     use hone_llm::{ChatResponse, Message};
     use std::sync::Mutex;
 
-    fn ev(sev: Severity) -> MarketEvent {
+    fn market_event_fixture(severity: Severity) -> MarketEvent {
         MarketEvent {
             id: "e1".into(),
             kind: EventKind::EarningsReleased,
-            severity: sev,
+            severity,
             symbols: vec!["AAPL".into()],
             occurred_at: Utc::now(),
             title: "earnings".into(),
@@ -209,7 +209,11 @@ mod tests {
     #[tokio::test]
     async fn noop_always_returns_none() {
         let p = NoopPolisher;
-        assert!(p.polish(&ev(Severity::High), "body").await.is_none());
+        assert!(
+            p.polish(&market_event_fixture(Severity::High), "body")
+                .await
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -223,12 +227,16 @@ mod tests {
         levels.insert(Severity::High);
         let p = LlmPolisher::new(provider.clone(), levels);
 
-        let polished = p.polish(&ev(Severity::High), "default").await;
+        let polished = p
+            .polish(&market_event_fixture(Severity::High), "default")
+            .await;
         assert_eq!(polished.as_deref(), Some("polished!"));
         assert_eq!(*provider.calls.lock().unwrap(), 1);
 
         // Medium 不在 level 集合内，不调用 LLM
-        let medium = p.polish(&ev(Severity::Medium), "default").await;
+        let medium = p
+            .polish(&market_event_fixture(Severity::Medium), "default")
+            .await;
         assert!(medium.is_none());
         assert_eq!(*provider.calls.lock().unwrap(), 1);
     }
@@ -243,7 +251,11 @@ mod tests {
         let mut levels = HashSet::new();
         levels.insert(Severity::High);
         let p = LlmPolisher::new(provider, levels);
-        assert!(p.polish(&ev(Severity::High), "default").await.is_none());
+        assert!(
+            p.polish(&market_event_fixture(Severity::High), "default")
+                .await
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -256,7 +268,11 @@ mod tests {
         let mut levels = HashSet::new();
         levels.insert(Severity::High);
         let p = LlmPolisher::new(provider, levels);
-        assert!(p.polish(&ev(Severity::High), "default").await.is_none());
+        assert!(
+            p.polish(&market_event_fixture(Severity::High), "default")
+                .await
+                .is_none()
+        );
     }
 
     #[test]

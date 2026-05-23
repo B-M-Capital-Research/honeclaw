@@ -16,18 +16,18 @@ fn curate_digest_events(events: Vec<MarketEvent>) -> Vec<MarketEvent> {
     curate_digest_events_with_omitted_at(events, Utc::now()).kept
 }
 
-fn actor(user: &str) -> ActorIdentity {
+fn actor_identity_fixture(user: &str) -> ActorIdentity {
     ActorIdentity::new("imessage", user, None::<&str>).unwrap()
 }
 
-fn ev(id: &str, sym: &str) -> MarketEvent {
+fn market_event_fixture(id: &str, symbol: &str) -> MarketEvent {
     MarketEvent {
         id: id.into(),
         kind: EventKind::EarningsUpcoming,
         severity: Severity::Medium,
-        symbols: vec![sym.into()],
+        symbols: vec![symbol.into()],
         occurred_at: Utc::now(),
-        title: format!("{sym} earnings"),
+        title: format!("{symbol} earnings"),
         summary: String::new(),
         url: None,
         source: "test".into(),
@@ -35,22 +35,22 @@ fn ev(id: &str, sym: &str) -> MarketEvent {
     }
 }
 
-fn price_ev(id: &str, sym: &str, pct: f64) -> MarketEvent {
+fn price_event_fixture(id: &str, symbol: &str, pct_change: f64) -> MarketEvent {
     MarketEvent {
         id: id.into(),
         kind: EventKind::PriceAlert {
-            pct_change_bps: (pct * 100.0).round() as i64,
+            pct_change_bps: (pct_change * 100.0).round() as i64,
             window: "day".into(),
         },
         severity: Severity::Low,
-        symbols: vec![sym.into()],
+        symbols: vec![symbol.into()],
         occurred_at: Utc.with_ymd_and_hms(2026, 4, 24, 13, 45, 0).unwrap(),
-        title: format!("{sym} {pct:+.2}%"),
+        title: format!("{symbol} {pct_change:+.2}%"),
         summary: String::new(),
         url: None,
         source: "fmp.quote".into(),
         payload: serde_json::json!({
-            "changesPercentage": pct,
+            "changesPercentage": pct_change,
             "hone_price_trade_date": "2026-04-24"
         }),
     }
@@ -60,10 +60,12 @@ fn price_ev(id: &str, sym: &str, pct: f64) -> MarketEvent {
 fn enqueue_then_drain_returns_events_in_order() {
     let dir = tempdir().unwrap();
     let buf = DigestBuffer::new(dir.path()).unwrap();
-    let a = actor("u1");
-    buf.enqueue(&a, &ev("1", "AAPL")).unwrap();
-    buf.enqueue(&a, &ev("2", "MSFT")).unwrap();
-    let drained = buf.drain_actor(&a).unwrap();
+    let actor = actor_identity_fixture("u1");
+    buf.enqueue(&actor, &market_event_fixture("1", "AAPL"))
+        .unwrap();
+    buf.enqueue(&actor, &market_event_fixture("2", "MSFT"))
+        .unwrap();
+    let drained = buf.drain_actor(&actor).unwrap();
     assert_eq!(drained.len(), 2);
     assert_eq!(drained[0].id, "1");
     assert_eq!(drained[1].id, "2");
@@ -73,17 +75,21 @@ fn enqueue_then_drain_returns_events_in_order() {
 fn price_enqueue_replaces_same_symbol_day_with_latest_event() {
     let dir = tempdir().unwrap();
     let buf = DigestBuffer::new(dir.path()).unwrap();
-    let a = actor("u1");
-    buf.enqueue(&a, &price_ev("price_low:AAOI:2026-04-24", "AAOI", 5.87))
-        .unwrap();
+    let actor = actor_identity_fixture("u1");
     buf.enqueue(
-        &a,
-        &price_ev("price_band:AAOI:2026-04-24:up:1000", "AAOI", 10.35),
+        &actor,
+        &price_event_fixture("price_low:AAOI:2026-04-24", "AAOI", 5.87),
     )
     .unwrap();
-    buf.enqueue(&a, &ev("news-1", "AAOI")).unwrap();
+    buf.enqueue(
+        &actor,
+        &price_event_fixture("price_band:AAOI:2026-04-24:up:1000", "AAOI", 10.35),
+    )
+    .unwrap();
+    buf.enqueue(&actor, &market_event_fixture("news-1", "AAOI"))
+        .unwrap();
 
-    let drained = buf.drain_actor(&a).unwrap();
+    let drained = buf.drain_actor(&actor).unwrap();
     assert_eq!(drained.len(), 2);
     assert_eq!(drained[0].id, "price_band:AAOI:2026-04-24:up:1000");
     assert_eq!(drained[1].id, "news-1");
@@ -96,23 +102,23 @@ fn price_enqueue_replaces_same_symbol_day_with_latest_event() {
 fn price_enqueue_collapses_band_and_close_for_same_symbol_day() {
     let dir = tempdir().unwrap();
     let buf = DigestBuffer::new(dir.path()).unwrap();
-    let a = actor("u1");
+    let actor = actor_identity_fixture("u1");
 
     // intraday band crossing
-    let mut band = price_ev("price_band:AMD:2026-04-24:up:1200", "AMD", 13.92);
+    let mut band = price_event_fixture("price_band:AMD:2026-04-24:up:1200", "AMD", 13.92);
     if let EventKind::PriceAlert { ref mut window, .. } = band.kind {
         *window = "day".into();
     }
     // end-of-day close summary,window=close
-    let mut close = price_ev("price_close:AMD:2026-04-24", "AMD", 13.91);
+    let mut close = price_event_fixture("price_close:AMD:2026-04-24", "AMD", 13.91);
     if let EventKind::PriceAlert { ref mut window, .. } = close.kind {
         *window = "close".into();
     }
 
-    buf.enqueue(&a, &band).unwrap();
-    buf.enqueue(&a, &close).unwrap();
+    buf.enqueue(&actor, &band).unwrap();
+    buf.enqueue(&actor, &close).unwrap();
 
-    let drained = buf.drain_actor(&a).unwrap();
+    let drained = buf.drain_actor(&actor).unwrap();
     assert_eq!(drained.len(), 1, "band + close 应只剩一条");
     assert_eq!(drained[0].id, "price_close:AMD:2026-04-24");
 }
@@ -121,22 +127,26 @@ fn price_enqueue_collapses_band_and_close_for_same_symbol_day() {
 fn drain_leaves_no_unflushed_file() {
     let dir = tempdir().unwrap();
     let buf = DigestBuffer::new(dir.path()).unwrap();
-    let a = actor("u1");
-    buf.enqueue(&a, &ev("1", "AAPL")).unwrap();
-    let _ = buf.drain_actor(&a).unwrap();
+    let actor = actor_identity_fixture("u1");
+    buf.enqueue(&actor, &market_event_fixture("1", "AAPL"))
+        .unwrap();
+    let _ = buf.drain_actor(&actor).unwrap();
     // 再次 drain 得到空
-    assert!(buf.drain_actor(&a).unwrap().is_empty());
+    assert!(buf.drain_actor(&actor).unwrap().is_empty());
 }
 
 #[test]
 fn list_pending_actors_dedups() {
     let dir = tempdir().unwrap();
     let buf = DigestBuffer::new(dir.path()).unwrap();
-    let a = actor("u1");
-    let b = actor("u2");
-    buf.enqueue(&a, &ev("1", "AAPL")).unwrap();
-    buf.enqueue(&a, &ev("2", "MSFT")).unwrap();
-    buf.enqueue(&b, &ev("3", "TSLA")).unwrap();
+    let first_actor = actor_identity_fixture("u1");
+    let second_actor = actor_identity_fixture("u2");
+    buf.enqueue(&first_actor, &market_event_fixture("1", "AAPL"))
+        .unwrap();
+    buf.enqueue(&first_actor, &market_event_fixture("2", "MSFT"))
+        .unwrap();
+    buf.enqueue(&second_actor, &market_event_fixture("3", "TSLA"))
+        .unwrap();
     let pending = buf.list_pending_actors();
     assert_eq!(pending.len(), 2);
 }
@@ -156,7 +166,9 @@ fn in_window_matches_local_time_exactly() {
 
 #[test]
 fn render_digest_appends_overflow_footer_when_truncated() {
-    let events: Vec<MarketEvent> = (0..3).map(|i| ev(&format!("e{i}"), "AAPL")).collect();
+    let events: Vec<MarketEvent> = (0..3)
+        .map(|i| market_event_fixture(&format!("e{i}"), "AAPL"))
+        .collect();
     let body = render_digest(
         "盘前摘要 · 08:30",
         &events,
@@ -177,7 +189,9 @@ fn render_digest_appends_overflow_footer_when_truncated() {
 
 #[test]
 fn render_digest_omits_footer_when_no_overflow() {
-    let events: Vec<MarketEvent> = (0..2).map(|i| ev(&format!("e{i}"), "AAPL")).collect();
+    let events: Vec<MarketEvent> = (0..2)
+        .map(|i| market_event_fixture(&format!("e{i}"), "AAPL"))
+        .collect();
     let body = render_digest("盘前摘要", &events, 0, crate::renderer::RenderFormat::Plain);
     assert!(
         !body.contains("未展示"),
@@ -192,7 +206,7 @@ fn render_digest_omits_footer_when_no_overflow() {
 #[test]
 fn render_digest_recovers_social_title_from_raw_text() {
     let full = "JUST IN: Polymarket to launch 24/7 perpetual futures trading for crypto, equities, commodities, and FX markets next quarter.";
-    let mut event = ev("social-1", "");
+    let mut event = market_event_fixture("social-1", "");
     event.kind = EventKind::SocialPost;
     event.title =
         "JUST IN: Polymarket to launch 24/7 perpetual futures trading for crypto, equiti…".into();
@@ -211,7 +225,7 @@ fn render_digest_recovers_social_title_from_raw_text() {
 
 #[test]
 fn render_digest_includes_macro_values() {
-    let mut event = ev("macro-1", "");
+    let mut event = market_event_fixture("macro-1", "");
     event.kind = EventKind::MacroEvent;
     event.symbols.clear();
     event.title = "[US] CPI MoM (Mar)".into();
@@ -235,7 +249,7 @@ fn render_digest_includes_macro_time_when_values_are_missing() {
     // 用 now+2h 而不是硬编码绝对时间 —— renderer 按 `occurred_at > now()` 决定
     // 用 "待公布" 还是 "时间",硬编码会随系统时钟漂移而 flake。
     let occurred_at = Utc::now() + chrono::Duration::hours(2);
-    let mut event = ev("macro-1", "");
+    let mut event = market_event_fixture("macro-1", "");
     event.kind = EventKind::MacroEvent;
     event.symbols.clear();
     event.occurred_at = occurred_at;
@@ -259,7 +273,7 @@ fn render_digest_includes_macro_time_when_values_are_missing() {
 
 #[test]
 fn render_digest_includes_earnings_metric_name() {
-    let mut event = ev("earnings-1", "GOOGL");
+    let mut event = market_event_fixture("earnings-1", "GOOGL");
     event.kind = EventKind::EarningsReleased;
     event.title = "GOOGL 财报 超预期 +93.6%".into();
     event.summary = "EPS 实际 5.11 / 预期 2.64".into();
@@ -279,7 +293,7 @@ fn render_digest_includes_earnings_metric_name() {
 
 #[test]
 fn render_digest_adds_compact_source_link_for_plain() {
-    let mut event = ev("news-1", "AAPL");
+    let mut event = market_event_fixture("news-1", "AAPL");
     event.title = "Apple supplier update".into();
     event.url = Some("https://news.example.com/path/to/story".into());
 
@@ -299,7 +313,7 @@ fn render_digest_adds_compact_source_link_for_plain() {
 
 #[test]
 fn render_digest_adds_source_link_for_telegram_and_discord() {
-    let mut event = ev("news-1", "AAPL");
+    let mut event = market_event_fixture("news-1", "AAPL");
     event.url = Some("https://news.example.com/path/to/story".into());
 
     let telegram = render_digest(
@@ -328,7 +342,7 @@ fn render_digest_adds_source_link_for_telegram_and_discord() {
 
 #[test]
 fn render_digest_feishu_post_uses_link_icon_element() {
-    let mut event = ev("news-1", "AAPL");
+    let mut event = market_event_fixture("news-1", "AAPL");
     event.url = Some("https://news.example.com/path/to/story".into());
 
     let body = render_digest(
@@ -368,7 +382,7 @@ fn curation_caps_social_and_source_noise() {
         .iter()
         .enumerate()
     {
-        let mut event = ev(&format!("social-{i}"), "");
+        let mut event = market_event_fixture(&format!("social-{i}"), "");
         event.kind = EventKind::SocialPost;
         event.severity = Severity::Medium;
         event.source = "telegram.watcherguru".into();
@@ -388,7 +402,7 @@ fn curation_caps_social_and_source_noise() {
 
 #[test]
 fn curation_omits_low_opinion_blog_news() {
-    let mut event = ev("news-opinion", "AAPL");
+    let mut event = market_event_fixture("news-opinion", "AAPL");
     event.kind = EventKind::NewsCritical;
     event.severity = Severity::Low;
     event.source = "fmp.stock_news:zacks.com".into();
@@ -406,7 +420,7 @@ fn curation_omits_low_opinion_blog_news() {
 
 #[test]
 fn curation_omits_generic_zacks_template_news() {
-    let mut event = ev("news-zacks-vst", "VST");
+    let mut event = market_event_fixture("news-zacks-vst", "VST");
     event.kind = EventKind::NewsCritical;
     event.severity = Severity::Low;
     event.source = "fmp.stock_news:zacks.com".into();
@@ -426,7 +440,7 @@ fn curation_omits_generic_zacks_template_news() {
 
 #[test]
 fn curation_omits_low_news_after_importance_arbitration() {
-    let mut event = ev("news-low", "AAPL");
+    let mut event = market_event_fixture("news-low", "AAPL");
     event.kind = EventKind::NewsCritical;
     event.severity = Severity::Low;
     event.source = "fmp.stock_news:businessinsider.com".into();
@@ -445,7 +459,7 @@ fn curation_omits_low_news_after_importance_arbitration() {
 #[test]
 fn curation_omits_low_quality_social_after_llm_no_even_with_symbols() {
     let now = Utc.with_ymd_and_hms(2026, 4, 24, 1, 0, 0).unwrap();
-    let mut no_symbol = ev("social-no-symbol", "");
+    let mut no_symbol = market_event_fixture("social-no-symbol", "");
     no_symbol.kind = EventKind::SocialPost;
     no_symbol.severity = Severity::Low;
     no_symbol.symbols.clear();
@@ -474,7 +488,7 @@ fn curation_omits_low_quality_social_after_llm_no_even_with_symbols() {
 #[test]
 fn curation_omits_low_or_far_future_macro_calendar() {
     let now = Utc.with_ymd_and_hms(2026, 4, 24, 1, 0, 0).unwrap();
-    let mut near_medium = ev("macro-near-medium", "");
+    let mut near_medium = market_event_fixture("macro-near-medium", "");
     near_medium.kind = EventKind::MacroEvent;
     near_medium.severity = Severity::Medium;
     near_medium.symbols.clear();
@@ -501,7 +515,7 @@ fn curation_omits_low_or_far_future_macro_calendar() {
 
 #[test]
 fn curation_omits_noop_analyst_grade() {
-    let mut event = ev("grade-noop", "GEV");
+    let mut event = market_event_fixture("grade-noop", "GEV");
     event.kind = EventKind::AnalystGrade;
     event.severity = Severity::Low;
     event.source = "fmp.upgrades_downgrades".into();
@@ -524,7 +538,7 @@ fn curation_omits_noop_analyst_grade() {
 
 #[test]
 fn curation_dedupes_repeated_news_titles() {
-    let mut first = ev("news-1", "GEV");
+    let mut first = market_event_fixture("news-1", "GEV");
     first.kind = EventKind::NewsCritical;
     first.severity = Severity::Medium;
     first.source = "fmp.stock_news:site-a.example".into();
@@ -548,7 +562,7 @@ fn curation_dedupes_repeated_news_titles() {
 
 #[test]
 fn curation_dedupes_similar_same_symbol_news_titles() {
-    let mut first = ev("news-1", "AMD");
+    let mut first = market_event_fixture("news-1", "AMD");
     first.kind = EventKind::NewsCritical;
     first.severity = Severity::Medium;
     first.title = "AMD shares rally after data center demand lifts outlook".into();
@@ -565,7 +579,7 @@ fn curation_dedupes_similar_same_symbol_news_titles() {
 
 #[test]
 fn curation_dedupes_same_social_lifecycle_update() {
-    let mut first = ev("social-powell-before", "");
+    let mut first = market_event_fixture("social-powell-before", "");
     first.kind = EventKind::SocialPost;
     first.severity = Severity::Medium;
     first.symbols.clear();
@@ -597,7 +611,7 @@ fn curation_dedupes_same_social_lifecycle_update() {
 #[test]
 fn curation_dedupes_macro_topics_for_same_country_indicator() {
     fn macro_ev(id: &str, title: &str) -> MarketEvent {
-        let mut m = ev(id, "");
+        let mut m = market_event_fixture(id, "");
         m.kind = EventKind::MacroEvent;
         m.severity = Severity::Medium;
         m.symbols = Vec::new();
@@ -621,13 +635,13 @@ fn curation_dedupes_macro_topics_for_same_country_indicator() {
 
 #[test]
 fn digest_score_prefers_trusted_portfolio_signal_over_social_noise() {
-    let mut social = ev("social-1", "");
+    let mut social = market_event_fixture("social-1", "");
     social.kind = EventKind::SocialPost;
     social.severity = Severity::Medium;
     social.source = "telegram.watcherguru".into();
     social.title = "JUST IN: generic crypto headline".into();
 
-    let mut filing = ev("sec-1", "AAPL");
+    let mut filing = market_event_fixture("sec-1", "AAPL");
     filing.kind = EventKind::SecFiling { form: "8-K".into() };
     filing.severity = Severity::Medium;
     filing.source = "sec.gov".into();
@@ -640,12 +654,12 @@ fn digest_score_prefers_trusted_portfolio_signal_over_social_noise() {
 fn curation_keeps_high_items_even_when_caps_are_hit() {
     let mut events = Vec::new();
     for i in 0..DIGEST_MAX_ITEMS_PER_SYMBOL {
-        let mut event = ev(&format!("aapl-low-{i}"), "AAPL");
+        let mut event = market_event_fixture(&format!("aapl-low-{i}"), "AAPL");
         event.severity = Severity::Low;
         event.source = format!("source-{i}");
         events.push(event);
     }
-    let mut high = ev("aapl-high", "AAPL");
+    let mut high = market_event_fixture("aapl-high", "AAPL");
     high.severity = Severity::High;
     high.title = "AAPL critical filing".into();
     high.source = "source-high".into();

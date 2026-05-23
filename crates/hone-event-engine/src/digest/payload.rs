@@ -142,11 +142,11 @@ pub(crate) fn item_from_event(event: &MarketEvent, headline: String) -> DigestIt
 mod tests {
     use super::*;
 
-    fn item(kind: EventKind, sev: Severity) -> DigestItem {
+    fn digest_item_fixture(kind: EventKind, severity: Severity) -> DigestItem {
         DigestItem {
             id: format!("id:{kind:?}"),
             kind,
-            severity: sev,
+            severity,
             primary_symbol: Some("AAPL".into()),
             headline: "h".into(),
             url: None,
@@ -204,16 +204,16 @@ mod tests {
     #[test]
     fn group_orders_by_bucket_declaration() {
         let items = vec![
-            item(EventKind::SocialPost, Severity::Low),
-            item(EventKind::NewsCritical, Severity::High),
-            item(
+            digest_item_fixture(EventKind::SocialPost, Severity::Low),
+            digest_item_fixture(EventKind::NewsCritical, Severity::High),
+            digest_item_fixture(
                 EventKind::PriceAlert {
                     pct_change_bps: 100,
                     window: "1d".into(),
                 },
                 Severity::Medium,
             ),
-            item(EventKind::EarningsUpcoming, Severity::Medium),
+            digest_item_fixture(EventKind::EarningsUpcoming, Severity::Medium),
         ];
         let grouped = group_by_kind_bucket(&items);
         let order: Vec<_> = grouped.keys().copied().collect();
@@ -231,13 +231,13 @@ mod tests {
 
     #[test]
     fn payload_total_sums_items_and_overflow() {
-        let p = DigestPayload {
+        let payload = DigestPayload {
             label: "x".into(),
-            items: vec![item(EventKind::NewsCritical, Severity::Low)],
+            items: vec![digest_item_fixture(EventKind::NewsCritical, Severity::Low)],
             cap_overflow: 3,
             max_severity: Severity::Low,
             generated_at: Utc::now(),
         };
-        assert_eq!(p.total(), 4);
+        assert_eq!(payload.total(), 4);
     }
 }

@@ -176,21 +176,21 @@ mod tests {
     use crate::event::EventKind;
     use chrono::Utc;
 
-    fn item(
+    fn digest_item_fixture(
         kind: EventKind,
-        sev: Severity,
-        sym: &str,
+        severity: Severity,
+        symbol: &str,
         headline: &str,
         url: Option<&str>,
     ) -> DigestItem {
         DigestItem {
-            id: format!("id:{kind:?}:{sym}:{headline}"),
+            id: format!("id:{kind:?}:{symbol}:{headline}"),
             kind,
-            severity: sev,
-            primary_symbol: if sym.is_empty() {
+            severity,
+            primary_symbol: if symbol.is_empty() {
                 None
             } else {
-                Some(sym.into())
+                Some(symbol.into())
             },
             headline: headline.into(),
             url: url.map(String::from),
@@ -202,7 +202,7 @@ mod tests {
         }
     }
 
-    fn payload_with(
+    fn digest_payload_fixture(
         items: Vec<DigestItem>,
         max_sev: Severity,
         cap_overflow: usize,
@@ -218,8 +218,8 @@ mod tests {
 
     #[test]
     fn embed_payload_does_not_suppress_its_own_embed() {
-        let p = payload_with(
-            vec![item(
+        let payload = digest_payload_fixture(
+            vec![digest_item_fixture(
                 EventKind::NewsCritical,
                 Severity::High,
                 "AAPL",
@@ -229,7 +229,7 @@ mod tests {
             Severity::High,
             0,
         );
-        let msg = build_discord_embed_message(&p, Utc::now());
+        let msg = build_discord_embed_message(&payload, Utc::now());
         assert!(
             msg.get("flags").is_none(),
             "embed-only digest must not set SUPPRESS_EMBEDS"
@@ -239,8 +239,8 @@ mod tests {
 
     #[test]
     fn embed_color_follows_max_severity() {
-        let high = payload_with(
-            vec![item(
+        let high = digest_payload_fixture(
+            vec![digest_item_fixture(
                 EventKind::NewsCritical,
                 Severity::High,
                 "AAPL",
@@ -255,13 +255,13 @@ mod tests {
             high_msg["embeds"][0]["color"].as_u64().unwrap() as u32,
             0xE7_4C_3C
         );
-        let med = payload_with(vec![], Severity::Medium, 0);
+        let med = digest_payload_fixture(vec![], Severity::Medium, 0);
         let med_msg = build_discord_embed_message(&med, Utc::now());
         assert_eq!(
             med_msg["embeds"][0]["color"].as_u64().unwrap() as u32,
             0xF1_C4_0F
         );
-        let low = payload_with(vec![], Severity::Low, 0);
+        let low = digest_payload_fixture(vec![], Severity::Low, 0);
         let low_msg = build_discord_embed_message(&low, Utc::now());
         assert_eq!(
             low_msg["embeds"][0]["color"].as_u64().unwrap() as u32,
@@ -272,15 +272,15 @@ mod tests {
     #[test]
     fn embed_groups_items_into_buckets() {
         let items = vec![
-            item(EventKind::NewsCritical, Severity::High, "AAPL", "n1", None),
-            item(
+            digest_item_fixture(EventKind::NewsCritical, Severity::High, "AAPL", "n1", None),
+            digest_item_fixture(
                 EventKind::EarningsUpcoming,
                 Severity::Medium,
                 "GOOGL",
                 "e1",
                 None,
             ),
-            item(
+            digest_item_fixture(
                 EventKind::PriceAlert {
                     pct_change_bps: 100,
                     window: "1d".into(),
@@ -290,10 +290,10 @@ mod tests {
                 "p1",
                 None,
             ),
-            item(EventKind::MacroEvent, Severity::Low, "", "m1", None),
+            digest_item_fixture(EventKind::MacroEvent, Severity::Low, "", "m1", None),
         ];
-        let p = payload_with(items, Severity::High, 0);
-        let msg = build_discord_embed_message(&p, Utc::now());
+        let payload = digest_payload_fixture(items, Severity::High, 0);
+        let msg = build_discord_embed_message(&payload, Utc::now());
         let fields = msg["embeds"][0]["fields"].as_array().unwrap();
         // 4 个 bucket: Price, Earnings, NewsFiling, Macro
         assert_eq!(fields.len(), 4);
@@ -307,15 +307,15 @@ mod tests {
 
     #[test]
     fn embed_includes_overflow_in_description() {
-        let items = vec![item(
+        let items = vec![digest_item_fixture(
             EventKind::NewsCritical,
             Severity::High,
             "AAPL",
             "n1",
             None,
         )];
-        let p = payload_with(items, Severity::High, 5);
-        let msg = build_discord_embed_message(&p, Utc::now());
+        let payload = digest_payload_fixture(items, Severity::High, 5);
+        let msg = build_discord_embed_message(&payload, Utc::now());
         let desc = msg["embeds"][0]["description"].as_str().unwrap();
         assert!(desc.contains("另 5 条因数量上限未展示"));
         assert!(desc.contains("/missed"));
@@ -323,15 +323,15 @@ mod tests {
 
     #[test]
     fn embed_renders_link_source_anchor() {
-        let items = vec![item(
+        let items = vec![digest_item_fixture(
             EventKind::NewsCritical,
             Severity::High,
             "MU",
             "Memory rally continues",
             Some("https://www.cnbc.com/2026/04/27/memory.html"),
         )];
-        let p = payload_with(items, Severity::High, 0);
-        let msg = build_discord_embed_message(&p, Utc::now());
+        let payload = digest_payload_fixture(items, Severity::High, 0);
+        let msg = build_discord_embed_message(&payload, Utc::now());
         let value = msg["embeds"][0]["fields"][0]["value"].as_str().unwrap();
         assert!(
             value.contains("[cnbc.com](https://www.cnbc.com/2026/04/27/memory.html)"),
@@ -344,7 +344,7 @@ mod tests {
         // 30 条长 headline,确保单 bucket 撑爆 1024
         let items: Vec<DigestItem> = (0..30)
             .map(|i| {
-                item(
+                digest_item_fixture(
                     EventKind::NewsCritical,
                     Severity::High,
                     "AAPL",
@@ -355,8 +355,8 @@ mod tests {
                 )
             })
             .collect();
-        let p = payload_with(items, Severity::High, 0);
-        let msg = build_discord_embed_message(&p, Utc::now());
+        let payload = digest_payload_fixture(items, Severity::High, 0);
+        let msg = build_discord_embed_message(&payload, Utc::now());
         let value = msg["embeds"][0]["fields"][0]["value"].as_str().unwrap();
         assert!(
             value.chars().count() <= FIELD_VALUE_MAX,
@@ -370,7 +370,7 @@ mod tests {
     fn embed_total_under_6000_for_huge_payload() {
         let items: Vec<DigestItem> = (0..100)
             .map(|i| {
-                item(
+                digest_item_fixture(
                     EventKind::NewsCritical,
                     Severity::High,
                     "AAPL",
@@ -379,8 +379,8 @@ mod tests {
                 )
             })
             .collect();
-        let p = payload_with(items, Severity::High, 0);
-        let msg = build_discord_embed_message(&p, Utc::now());
+        let payload = digest_payload_fixture(items, Severity::High, 0);
+        let msg = build_discord_embed_message(&payload, Utc::now());
         let total: usize = serde_json::to_string(&msg["embeds"][0])
             .unwrap()
             .chars()

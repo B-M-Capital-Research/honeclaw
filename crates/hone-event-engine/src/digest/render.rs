@@ -114,12 +114,12 @@ fn render_digest_text(
     };
     let kept = dedup_for_digest(events);
     let mut out = title;
-    for ev in kept {
-        let head = crate::renderer::header_line_compact(ev);
-        let display_title = digest_event_title(ev);
+    for event in kept {
+        let head = crate::renderer::header_line_compact(event);
+        let display_title = digest_event_title(event);
         let title_inline = crate::renderer::render_inline(&display_title, fmt);
         let head_inline = crate::renderer::render_inline(&head, fmt);
-        let link_inline = ev
+        let link_inline = event
             .user_visible_url()
             .map(|u| crate::renderer::render_link_icon(u, fmt));
         out.push('\n');
@@ -156,9 +156,9 @@ fn render_digest_feishu_post(
     };
     let mut content = Vec::new();
     let kept = dedup_for_digest(events);
-    for ev in kept {
-        let head = crate::renderer::header_line_compact(ev);
-        let display_title = digest_event_title(ev);
+    for event in kept {
+        let head = crate::renderer::header_line_compact(event);
+        let display_title = digest_event_title(event);
         let mut row = Vec::new();
         row.push(crate::renderer::feishu_text("• "));
         if !head.is_empty() {
@@ -166,7 +166,7 @@ fn render_digest_feishu_post(
             row.push(crate::renderer::feishu_text(" · "));
         }
         row.push(crate::renderer::feishu_text(&display_title));
-        if let Some(url) = ev.user_visible_url() {
+        if let Some(url) = event.user_visible_url() {
             row.push(crate::renderer::feishu_text(" · "));
             row.push(crate::renderer::feishu_link_icon(url));
         }
@@ -275,37 +275,37 @@ fn truncate_chars(text: &str, max_chars: usize) -> String {
 pub(super) fn dedup_for_digest(events: &[MarketEvent]) -> Vec<&MarketEvent> {
     let mut seen: HashSet<String> = HashSet::new();
     let mut out: Vec<&MarketEvent> = Vec::with_capacity(events.len());
-    for ev in events {
-        let key = dedup_key(ev);
+    for event in events {
+        let key = dedup_key(event);
         if seen.insert(key) {
-            out.push(ev);
+            out.push(event);
         }
     }
     out
 }
 
-fn dedup_key(ev: &MarketEvent) -> String {
-    let kind_tag = kind_tag(&ev.kind);
-    let symbol = ev
+fn dedup_key(event: &MarketEvent) -> String {
+    let kind_tag = kind_tag(&event.kind);
+    let symbol = event
         .symbols
         .iter()
         .find(|s| !s.is_empty())
         .map(|s| s.to_uppercase())
         .unwrap_or_default();
-    let normalized = match &ev.kind {
-        EventKind::EarningsUpcoming => ev
+    let normalized = match &event.kind {
+        EventKind::EarningsUpcoming => event
             .payload
             .get("report_date")
             .and_then(|v| v.as_str())
             .map(String::from)
-            .unwrap_or_else(|| ev.id.clone()),
-        EventKind::NewsCritical => ev
+            .unwrap_or_else(|| event.id.clone()),
+        EventKind::NewsCritical => event
             .url
             .as_deref()
             .filter(|u| !u.is_empty())
             .map(canonicalize_url)
-            .unwrap_or_else(|| ev.id.clone()),
-        _ => ev.id.clone(),
+            .unwrap_or_else(|| event.id.clone()),
+        _ => event.id.clone(),
     };
     format!("{kind_tag}|{symbol}|{normalized}")
 }
@@ -344,7 +344,7 @@ mod tests {
     use super::*;
     use chrono::Utc;
 
-    fn ev(kind: EventKind, sev: Severity) -> MarketEvent {
+    fn market_event_fixture(kind: EventKind, severity: Severity) -> MarketEvent {
         MarketEvent {
             id: format!(
                 "id:{}:{}",
@@ -352,7 +352,7 @@ mod tests {
                 Utc::now().timestamp_nanos_opt().unwrap_or_default()
             ),
             kind,
-            severity: sev,
+            severity,
             symbols: vec!["AAPL".into()],
             occurred_at: Utc::now(),
             title: "t".into(),
@@ -365,48 +365,48 @@ mod tests {
 
     #[test]
     fn digest_secfiling_detail_uses_truncated_llm_summary() {
-        let mut e = ev(
+        let mut event = market_event_fixture(
             EventKind::SecFiling {
                 form: "10-Q".into(),
             },
             Severity::Medium,
         );
-        e.title = "TSLA filed 10-Q".into();
+        event.title = "TSLA filed 10-Q".into();
         // 200 字 LLM summary,应被 truncate 到 120 字符 + 省略号
         let summary = "这份 filing 最值得 长期主线投资者关注的是 GE Vernova 的 backlog 同比增加 25%,其中海上风电订单成为主要驱动,反映客户对长期清洁能源转型的承诺。资本配置方面回购规模放缓,资金转向产能扩张。风险因子新增供应链关键稀土材料的地缘集中度。整体属于建设性季报。";
-        e.payload = serde_json::json!({"llm_summary": summary});
-        let title = digest_event_title(&e);
+        event.payload = serde_json::json!({"llm_summary": summary});
+        let title = digest_event_title(&event);
         assert!(title.contains("TSLA filed 10-Q · 这份 filing 最值得"));
         assert!(title.contains("…"), "应被截断,期待省略号; got: {title}");
     }
 
     #[test]
     fn digest_secfiling_without_llm_summary_has_no_detail() {
-        let mut e = ev(
+        let mut event = market_event_fixture(
             EventKind::SecFiling {
                 form: "10-Q".into(),
             },
             Severity::Medium,
         );
-        e.title = "TSLA filed 10-Q".into();
-        e.summary = "2026-04-20".into();
-        e.payload = serde_json::Value::Null;
-        let title = digest_event_title(&e);
+        event.title = "TSLA filed 10-Q".into();
+        event.summary = "2026-04-20".into();
+        event.payload = serde_json::Value::Null;
+        let title = digest_event_title(&event);
         // 没有 enrichment 时 digest 行就是 title 不带 ·detail
         assert_eq!(title, "TSLA filed 10-Q");
     }
 
     #[test]
     fn dedup_collapses_same_earnings_report_date() {
-        let mut e1 = ev(EventKind::EarningsUpcoming, Severity::Medium);
-        e1.id = "earnings:AAPL:T-2".into();
-        e1.title = "AAPL earnings in 2 days (2026-04-30)".into();
-        e1.payload = serde_json::json!({ "report_date": "2026-04-30" });
-        let mut e2 = ev(EventKind::EarningsUpcoming, Severity::Medium);
-        e2.id = "earnings:AAPL:on-date".into();
-        e2.title = "AAPL earnings on 2026-04-30".into();
-        e2.payload = serde_json::json!({ "report_date": "2026-04-30" });
-        let events = vec![e1.clone(), e2.clone()];
+        let mut first_event = market_event_fixture(EventKind::EarningsUpcoming, Severity::Medium);
+        first_event.id = "earnings:AAPL:T-2".into();
+        first_event.title = "AAPL earnings in 2 days (2026-04-30)".into();
+        first_event.payload = serde_json::json!({ "report_date": "2026-04-30" });
+        let mut second_event = market_event_fixture(EventKind::EarningsUpcoming, Severity::Medium);
+        second_event.id = "earnings:AAPL:on-date".into();
+        second_event.title = "AAPL earnings on 2026-04-30".into();
+        second_event.payload = serde_json::json!({ "report_date": "2026-04-30" });
+        let events = vec![first_event.clone(), second_event.clone()];
         let kept = dedup_for_digest(&events);
         assert_eq!(kept.len(), 1, "同 report_date 的 earnings 应折叠");
         assert_eq!(kept[0].id, "earnings:AAPL:T-2", "应保留第一条");
@@ -414,69 +414,74 @@ mod tests {
 
     #[test]
     fn dedup_keeps_distinct_earnings_for_different_tickers() {
-        let mut e1 = ev(EventKind::EarningsUpcoming, Severity::Medium);
-        e1.payload = serde_json::json!({ "report_date": "2026-04-30" });
-        let mut e2 = ev(EventKind::EarningsUpcoming, Severity::Medium);
-        e2.symbols = vec!["GOOGL".into()];
-        e2.payload = serde_json::json!({ "report_date": "2026-04-30" });
-        let events = vec![e1, e2];
+        let mut aapl_event = market_event_fixture(EventKind::EarningsUpcoming, Severity::Medium);
+        aapl_event.payload = serde_json::json!({ "report_date": "2026-04-30" });
+        let mut googl_event = market_event_fixture(EventKind::EarningsUpcoming, Severity::Medium);
+        googl_event.symbols = vec!["GOOGL".into()];
+        googl_event.payload = serde_json::json!({ "report_date": "2026-04-30" });
+        let events = vec![aapl_event, googl_event];
         let kept = dedup_for_digest(&events);
         assert_eq!(kept.len(), 2, "不同 ticker 不应合并");
     }
 
     #[test]
     fn dedup_collapses_same_news_url_with_different_query() {
-        let mut e1 = ev(EventKind::NewsCritical, Severity::High);
-        e1.id = "news:1".into();
-        e1.url = Some(
+        let mut first_event = market_event_fixture(EventKind::NewsCritical, Severity::High);
+        first_event.id = "news:1".into();
+        first_event.url = Some(
             "https://www.cnbc.com/2026/04/27/micron-and-sandisk.html?utm_source=twitter".into(),
         );
-        let mut e2 = ev(EventKind::NewsCritical, Severity::High);
-        e2.id = "news:2".into();
-        e2.url = Some("https://www.cnbc.com/2026/04/27/micron-and-sandisk.html#top".into());
-        let events = vec![e1, e2];
+        let mut second_event = market_event_fixture(EventKind::NewsCritical, Severity::High);
+        second_event.id = "news:2".into();
+        second_event.url =
+            Some("https://www.cnbc.com/2026/04/27/micron-and-sandisk.html#top".into());
+        let events = vec![first_event, second_event];
         let kept = dedup_for_digest(&events);
         assert_eq!(kept.len(), 1, "同一篇文章不同 query/fragment 应合并");
     }
 
     #[test]
     fn dedup_keeps_order_for_unique_events() {
-        let e1 = ev(EventKind::NewsCritical, Severity::High);
-        let mut e2 = ev(
+        let first_event = market_event_fixture(EventKind::NewsCritical, Severity::High);
+        let mut second_event = market_event_fixture(
             EventKind::PriceAlert {
                 pct_change_bps: 600,
                 window: "1d".into(),
             },
             Severity::Medium,
         );
-        e2.id = "p1".into();
-        let e3 = ev(EventKind::EarningsUpcoming, Severity::Medium);
-        let events = vec![e1.clone(), e2.clone(), e3.clone()];
+        second_event.id = "p1".into();
+        let third_event = market_event_fixture(EventKind::EarningsUpcoming, Severity::Medium);
+        let events = vec![
+            first_event.clone(),
+            second_event.clone(),
+            third_event.clone(),
+        ];
         let kept = dedup_for_digest(&events);
         assert_eq!(kept.len(), 3);
-        assert_eq!(kept[0].id, e1.id);
-        assert_eq!(kept[1].id, e2.id);
-        assert_eq!(kept[2].id, e3.id);
+        assert_eq!(kept[0].id, first_event.id);
+        assert_eq!(kept[1].id, second_event.id);
+        assert_eq!(kept[2].id, third_event.id);
     }
 
     #[test]
     fn build_payload_picks_max_severity() {
-        let mut low = ev(EventKind::SocialPost, Severity::Low);
+        let mut low = market_event_fixture(EventKind::SocialPost, Severity::Low);
         low.id = "s:1".into();
-        let mut med = ev(EventKind::EarningsUpcoming, Severity::Medium);
+        let mut med = market_event_fixture(EventKind::EarningsUpcoming, Severity::Medium);
         med.id = "e:1".into();
-        let mut high = ev(EventKind::NewsCritical, Severity::High);
+        let mut high = market_event_fixture(EventKind::NewsCritical, Severity::High);
         high.id = "n:1".into();
         let events = vec![low, med, high];
-        let p = build_digest_payload("test", &events, 0);
-        assert_eq!(p.max_severity, Severity::High);
-        assert_eq!(p.items.len(), 3);
-        assert_eq!(p.cap_overflow, 0);
+        let payload = build_digest_payload("test", &events, 0);
+        assert_eq!(payload.max_severity, Severity::High);
+        assert_eq!(payload.items.len(), 3);
+        assert_eq!(payload.cap_overflow, 0);
     }
 
     #[test]
     fn digest_payload_omits_unstable_thefly_urls() {
-        let mut event = ev(EventKind::AnalystGrade, Severity::Medium);
+        let mut event = market_event_fixture(EventKind::AnalystGrade, Severity::Medium);
         event.url = Some("https://thefly.com/ajax/news_get.php?id=4357265".into());
 
         let payload = build_digest_payload("test", &[event], 0);
