@@ -425,7 +425,7 @@ const CONTENT_ZH = {
       },
       {
         title: "管理后台",
-        desc: "管理后台提供 dashboard、sessions、skills、tasks、users、research、llm-audit、task-health、notifications、schedule、settings、logs 等维护入口。",
+        desc: "管理后台提供 dashboard、sessions、skills、tasks、users、research、llm-audit、task-health、notifications、schedule、settings、logs 等维护入口；users 页把持仓、公司画像、会话与研究任务按用户主体聚合，公司画像支持 actor 空间列表、详情查看、删除、zip 导出、导入预览与冲突处理后导入。",
       },
       {
         title: "Agent 引擎层",
@@ -449,7 +449,7 @@ const CONTENT_ZH = {
           {
             name: "公司画像 & 长期记忆",
             status: "stable",
-            note: "公司画像 Skill",
+            note: "公司画像 Skill + 管理端导入/导出",
           },
           {
             name: "个股研究 / 深度研究",
@@ -658,6 +658,7 @@ const CONTENT_ZH = {
         "16 个公开 Skill（个股、持仓、估值/筛选入口、图表、PDF、Cron、漏推回查、推送偏好…）",
         "投研纪律约束 & 零幻觉协议",
         "公司画像与跨会话长期记忆",
+        "管理端用户视图聚合持仓、画像、会话与研究任务；公司画像可按 actor 空间查看详情、删除、导出 zip、导入预览并处理冲突",
         "Cron 定时任务系统",
         "事件引擎推送质量收口：digest 去重 / min-gap / topic memory / 分类预算 / 方向性价格阈值 / Feishu scheduler heartbeat revision 去重",
         "Event-engine 默认模型与示例配置已替换为 `x-ai/grok-4.3`，避免 Grok 4.1 Fast 下线导致新闻分类、global digest、mainline distill 等 LLM 增强链路失效",
@@ -675,7 +676,7 @@ const CONTENT_ZH = {
       items: [
         "Windows / Linux 桌面端打包",
         "用户自定义 Skill 编辑器（前端化的 skill_manager）",
-        "数据导入 / 导出工具",
+        "更广泛的数据导入 / 导出工具（公司画像包转移已上线，继续补持仓、研究结果等迁移面）",
         "公开 Skill 文档与示例集",
         "向量检索增强长期记忆",
       ],
@@ -1949,7 +1950,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         title: "Admin console",
-        desc: "The admin console includes dashboard, sessions, skills, tasks, users, research, llm-audit, task-health, notifications, schedule, settings, and logs for operators.",
+        desc: "The admin console includes dashboard, sessions, skills, tasks, users, research, llm-audit, task-health, notifications, schedule, settings, and logs for operators; the users page groups holdings, company profiles, sessions, and research tasks by actor, and company profiles support actor-space listing, detail review, deletion, zip export, import preview, and conflict-aware import.",
       },
       {
         title: "Agent engine layer",
@@ -1973,7 +1974,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           {
             name: "Company profiles & long memory",
             status: "stable",
-            note: "company profile skill",
+            note: "company profile skill + admin import/export",
           },
           {
             name: "Stock research / deep research",
@@ -2223,6 +2224,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         "16 public skills (stocks, portfolio, valuation/screening entrypoints, charts, PDF, cron, missed-event recovery, notification prefs…)",
         "Research discipline & zero-hallucination protocol",
         "Company profiles + cross-session long memory",
+        "Admin user views group holdings, profiles, sessions, and research tasks; company profiles can be inspected by actor space, deleted, exported as zip bundles, preview-imported, and imported with conflict decisions",
         "Cron-driven scheduled tasks",
         "Event-engine push-quality pass: digest dedupe / min-gap / topic memory / category budgets / directional price thresholds / Feishu scheduler heartbeat revision dedupe",
         "Event-engine default models and sample config now use `x-ai/grok-4.3`, avoiding failures from the retired Grok 4.1 Fast in news classification, global digest, and mainline distillation paths",
@@ -2240,7 +2242,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       items: [
         "Windows / Linux desktop builds",
         "User-facing skill editor (frontend for skill_manager)",
-        "Data import / export tools",
+        "Broader data import / export tools (company-profile bundle transfer is live; portfolio and research-result migration surfaces still need coverage)",
         "Public skill documentation and example pack",
         "Vector-augmented long memory",
       ],
