@@ -608,7 +608,8 @@ agent:
   opencode:
     command: "opencode"
     args: [ "acp" ]
-    # Leave empty to inherit your local opencode global config (~/.config/opencode/opencode.json/jsonc)
+    # Leave empty to inherit your local opencode global config
+    # (~/.config/opencode/opencode.json or opencode.jsonc)
     model: ""
     # Optional; only used together with a Hone-side model override
     variant: ""

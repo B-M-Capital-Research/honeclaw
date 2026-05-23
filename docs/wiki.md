@@ -314,12 +314,13 @@ Common runner choices:
 | `codex_acp` | You use Codex ACP and want ACP session integration. |
 | `codex_cli` | You use Codex CLI directly. |
 | `function_calling` | You want the built-in OpenAI-compatible function-calling path. |
-| `multi-agent` | You want separate search and OpenCode ACP answer stages; search keys come from `agent.multi_agent.search.api_key` or legacy `llm.auxiliary.api_key`, while answer keys can inherit `llm.providers.openrouter`. |
+| `multi-agent` | You want separate search and OpenCode ACP answer stages; search keys come from `agent.multi_agent.search.api_key` or legacy `llm.auxiliary.api_key`, while answer keys can inherit `llm.providers.openrouter.api_key/api_keys`. |
 
 Typical OpenCode setup:
 
 ```bash
 curl -fsSL https://opencode.ai/install | bash
+opencode # run /connect and set the default provider/model
 hone-cli config set agent.runner opencode_acp
 hone-cli start
 ```

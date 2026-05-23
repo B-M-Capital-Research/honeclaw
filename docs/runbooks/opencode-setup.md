@@ -84,7 +84,7 @@ Common OpenRouter examples:
 
 Config file:
 
-- `~/.config/opencode/opencode.jsonc`
+- `~/.config/opencode/opencode.json` or `~/.config/opencode/opencode.jsonc`
 
 Minimal generic example:
 
@@ -215,7 +215,7 @@ agent:
 
 - The UI switch may only be a temporary session state
 - The Hone process does not reuse that temporary state by default
-- Either write `~/.config/opencode/opencode.jsonc`
+- Either write `~/.config/opencode/opencode.json` / `opencode.jsonc`
 - Or set `agent.opencode.model` / `agent.opencode.variant` in Hone's `config.yaml`
 
 ### Hone reports that ACP set-model failed
@@ -228,6 +228,6 @@ agent:
 
 - `opencode --version` works
 - `opencode models <provider>` works
-- `~/.config/opencode/opencode.jsonc` contains the default model
+- `~/.config/opencode/opencode.json` or `opencode.jsonc` contains the default model
 - `opencode run ... --print-logs` shows the target model
 - If Hone is involved, `config.yaml` is also configured with `agent.runner=opencode_acp`

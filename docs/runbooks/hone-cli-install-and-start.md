@@ -132,8 +132,8 @@ The onboarding flow will:
 - Detect local runner binaries such as `codex`, `codex-acp`, and `opencode`
 - Let you choose the default runner
 - If you choose `opencode_acp`, tell you to finish provider / model setup in local `opencode` first
-  - Hone defaults to inheriting `~/.config/opencode/opencode.json` or `opencode.jsonc`
-- If you choose `multi-agent`, tell you that search needs a dedicated search API key and answer needs local `opencode`
+  - Hone defaults to inheriting `~/.config/opencode/opencode.json` or `~/.config/opencode/opencode.jsonc`
+- If you choose `multi-agent`, tell you that search needs a dedicated search API key, answer needs an OpenRouter key pool, and the answer stage needs local `opencode`
 - Ask whether to enable each channel
 - If a channel is enabled, require its local mandatory fields and print the key permission / prerequisite notes
 - If you accidentally enable a channel and then hit a required field with no value to keep, the wizard offers:

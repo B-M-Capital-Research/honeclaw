@@ -281,6 +281,17 @@ fn assert_session_sqlite_runbook_runtime_docs(runbook: &str) {
     );
 }
 
+fn assert_opencode_runbook_config_file_docs(runbook: &str) {
+    assert!(
+        runbook.contains("~/.config/opencode/opencode.json"),
+        "OpenCode setup runbook should document the JSON config file path"
+    );
+    assert!(
+        runbook.contains("opencode.jsonc"),
+        "OpenCode setup runbook should document the JSONC config file path"
+    );
+}
+
 fn legacy_agent_migration_canonical_yaml() -> &'static str {
     r#"
 agent:
@@ -1706,4 +1717,10 @@ fn config_example_avoids_stale_config_knobs() {
     )
     .unwrap();
     assert_session_sqlite_runbook_runtime_docs(&session_sqlite_runbook);
+
+    let opencode_runbook = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/runbooks/opencode-setup.md"),
+    )
+    .unwrap();
+    assert_opencode_runbook_config_file_docs(&opencode_runbook);
 }

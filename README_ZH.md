@@ -72,7 +72,7 @@ Honeclaw（或称 Hone）是一个使用 **Rust** 编写的开源个人投研辅
 ## 前置依赖
 
 - **运行环境**：类 Unix 环境（推荐 **macOS** 或 **Ubuntu**）。
-- **Rust**：**2021 Edition** 及以上工具链。
+- **Rust**：支持 **Edition 2024** 的稳定工具链。
 
 ### 技术栈
 

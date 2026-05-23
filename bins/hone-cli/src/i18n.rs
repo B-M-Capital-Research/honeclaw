@@ -256,8 +256,8 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "runner.multi_agent.note_1",
-        "前置：multi-agent search API key，以及本机可运行的 opencode；answer 可复用 OpenRouter API key。",
-        "Requires: a multi-agent search API key plus local opencode; answer can reuse an OpenRouter API key.",
+        "前置：multi-agent search API key、本机可运行的 opencode，以及 answer 可用的 OpenRouter key pool。",
+        "Requires: a multi-agent search API key, local opencode, and an OpenRouter key pool for answer.",
     ),
     (
         "runner.multi_agent.note_2",
@@ -376,8 +376,8 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "runner.multi_agent.setup_note_2",
-        "实际跑起来还需要 `agent.multi_agent.search.api_key` 或 legacy `llm.auxiliary.api_key`，以及本机 opencode。",
-        "It also needs `agent.multi_agent.search.api_key` or legacy `llm.auxiliary.api_key`, plus local opencode.",
+        "实际跑起来还需要 `agent.multi_agent.search.api_key` 或 legacy `llm.auxiliary.api_key`、answer 可用的 OpenRouter key pool，以及本机 opencode。",
+        "It also needs `agent.multi_agent.search.api_key` or legacy `llm.auxiliary.api_key`, an OpenRouter key pool for answer, plus local opencode.",
     ),
     (
         "runner.multi_agent.setup_note_3",
