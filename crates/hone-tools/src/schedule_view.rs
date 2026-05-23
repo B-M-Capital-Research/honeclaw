@@ -473,6 +473,7 @@ pub(crate) fn time_in_quiet(local_hhmm: &str, qh: Option<&QuietHours>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::{assert_text_contains_all, assert_text_contains_none};
     use hone_event_engine::prefs::{NotificationPrefs, QuietHours as QH};
     use tempfile::tempdir;
 
@@ -622,26 +623,25 @@ mod tests {
     fn render_overview_discord_uses_codeblock_table() {
         let ov = make_overview();
         let s = render_overview(&ov, RenderFormat::DiscordMarkdown);
-        assert!(s.contains("你的推送日程"));
-        assert!(s.contains("Asia/Shanghai"));
-        // ``` 包住表
-        assert!(s.contains("```\n"), "should open code block: {s}");
-        assert!(s.contains("\n```\n"), "should close code block: {s}");
-        // 表头列名
-        assert!(s.contains("时刻"));
-        assert!(s.contains("类型"));
-        // 不应再出现 markdown table 字符
-        assert!(!s.contains("| --- |"));
-        assert!(!s.contains("## "));
+        assert_text_contains_all(
+            &s,
+            &[
+                "你的推送日程",
+                "Asia/Shanghai",
+                "```\n",
+                "\n```\n",
+                "时刻",
+                "类型",
+            ],
+        );
+        assert_text_contains_none(&s, &["| --- |", "## "]);
     }
 
     #[test]
     fn render_overview_telegram_uses_pre_block() {
         let ov = make_overview();
         let s = render_overview(&ov, RenderFormat::TelegramHtml);
-        assert!(s.contains("<pre>\n"));
-        assert!(s.contains("\n</pre>"));
-        assert!(s.contains("时刻"));
+        assert_text_contains_all(&s, &["<pre>\n", "\n</pre>", "时刻"]);
     }
 
     #[test]
@@ -649,11 +649,9 @@ mod tests {
         let ov = make_overview();
         for fmt in [RenderFormat::FeishuPost, RenderFormat::Plain] {
             let s = render_overview(&ov, fmt);
-            assert!(s.contains("你的推送日程"));
-            assert!(s.contains("定时推送："));
+            assert_text_contains_all(&s, &["你的推送日程", "定时推送："]);
             // 不应出现代码块或 HTML 标签
-            assert!(!s.contains("```"));
-            assert!(!s.contains("<pre>"));
+            assert_text_contains_none(&s, &["```", "<pre>"]);
             // 每条 schedule 单行带 •
             assert!(s.contains("• 07:30") || s.contains("• 08:30"));
         }

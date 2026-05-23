@@ -520,6 +520,7 @@ impl Tool for DataFetchTool {
 mod tests {
     use super::{DataFetchTool, sanitize_fmp_error_detail};
     use crate::base::Tool;
+    use crate::test_support::{assert_text_contains_all, assert_text_contains_none};
     use chrono::{Duration, NaiveDate};
     use serde_json::json;
 
@@ -576,13 +577,16 @@ mod tests {
             r#"backend failed {"api_key":"one","apiKey":"two","apikey":"three","safe":"kept"}"#,
         );
 
-        assert!(detail.contains("\"api_key\":\"<redacted>\""));
-        assert!(detail.contains("\"apiKey\":\"<redacted>\""));
-        assert!(detail.contains("\"apikey\":\"<redacted>\""));
-        assert!(detail.contains("\"safe\":\"kept\""));
-        assert!(!detail.contains("\"one\""));
-        assert!(!detail.contains("\"two\""));
-        assert!(!detail.contains("\"three\""));
+        assert_text_contains_all(
+            &detail,
+            &[
+                "\"api_key\":\"<redacted>\"",
+                "\"apiKey\":\"<redacted>\"",
+                "\"apikey\":\"<redacted>\"",
+                "\"safe\":\"kept\"",
+            ],
+        );
+        assert_text_contains_none(&detail, &["\"one\"", "\"two\"", "\"three\""]);
     }
 
     #[test]

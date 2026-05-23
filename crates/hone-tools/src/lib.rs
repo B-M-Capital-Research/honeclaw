@@ -19,6 +19,8 @@ pub mod schedule_view;
 pub mod skill_registry;
 pub mod skill_runtime;
 pub mod skill_tool;
+#[cfg(test)]
+mod test_support;
 pub mod web_search;
 
 pub use base::{Tool, ToolParameter};

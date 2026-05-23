@@ -328,6 +328,7 @@ fn redact_skill_script_json_string_field(text: &str, key: &str) -> String {
 mod tests {
     use super::*;
     use crate::base::Tool;
+    use crate::test_support::{assert_text_contains_all, assert_text_contains_none};
     use hone_memory::SessionStorage;
     use serde_json::Value;
     use std::fs;
@@ -366,28 +367,38 @@ mod tests {
         let stderr = r#"failed https://user:password@api.test/path?api_key=abc&token=tok auth=Bearer xyz apiKey: header-secret OPENROUTER_API_KEY=env-secret X-API-Key: gateway-secret Authorization: Basic basic-secret {"secret": "json-secret","client_secret":"json-client","authorization":"Basic json-basic"}"#;
         let detail = sanitize_skill_script_stderr(stderr);
 
-        assert!(detail.contains("https://<redacted>@api.test/path"));
-        assert!(detail.contains("api_key=<redacted>"));
-        assert!(detail.contains("token=<redacted>"));
-        assert!(detail.contains("Bearer <redacted>"));
-        assert!(detail.contains("apiKey: <redacted>"));
-        assert!(detail.contains("OPENROUTER_API_KEY=<redacted>"));
-        assert!(detail.contains("X-API-Key: <redacted>"));
-        assert!(detail.contains("Basic <redacted>"));
-        assert!(detail.contains("\"secret\": \"<redacted>\""));
-        assert!(detail.contains("\"client_secret\":\"<redacted>\""));
-        assert!(detail.contains("\"authorization\":\"<redacted>\""));
-        assert!(!detail.contains("abc"));
-        assert!(!detail.contains("password"));
-        assert!(!detail.contains("=tok"));
-        assert!(!detail.contains("xyz"));
-        assert!(!detail.contains("header-secret"));
-        assert!(!detail.contains("json-secret"));
-        assert!(!detail.contains("env-secret"));
-        assert!(!detail.contains("gateway-secret"));
-        assert!(!detail.contains("basic-secret"));
-        assert!(!detail.contains("json-client"));
-        assert!(!detail.contains("json-basic"));
+        assert_text_contains_all(
+            &detail,
+            &[
+                "https://<redacted>@api.test/path",
+                "api_key=<redacted>",
+                "token=<redacted>",
+                "Bearer <redacted>",
+                "apiKey: <redacted>",
+                "OPENROUTER_API_KEY=<redacted>",
+                "X-API-Key: <redacted>",
+                "Basic <redacted>",
+                "\"secret\": \"<redacted>\"",
+                "\"client_secret\":\"<redacted>\"",
+                "\"authorization\":\"<redacted>\"",
+            ],
+        );
+        assert_text_contains_none(
+            &detail,
+            &[
+                "abc",
+                "password",
+                "=tok",
+                "xyz",
+                "header-secret",
+                "json-secret",
+                "env-secret",
+                "gateway-secret",
+                "basic-secret",
+                "json-client",
+                "json-basic",
+            ],
+        );
     }
 
     #[tokio::test]
@@ -537,13 +548,16 @@ mod tests {
 
         assert_eq!(result["success"], Value::Bool(false));
         let error = result["error"].as_str().expect("error message");
-        assert!(error.contains("exit_code=Some(2)"));
-        assert!(error.contains("token=<redacted>"));
-        assert!(error.contains("api_key=<redacted>"));
-        assert!(error.contains("Bearer <redacted>"));
-        assert!(!error.contains("token=tok"));
-        assert!(!error.contains("api_key=abc"));
-        assert!(!error.contains("xyz"));
+        assert_text_contains_all(
+            error,
+            &[
+                "exit_code=Some(2)",
+                "token=<redacted>",
+                "api_key=<redacted>",
+                "Bearer <redacted>",
+            ],
+        );
+        assert_text_contains_none(error, &["token=tok", "api_key=abc", "xyz"]);
         clear_test_env();
     }
 

@@ -2,6 +2,14 @@
 
 ## 2026-05-23 - 测试可维护性
 
+### Hone-tools skill script tests trip strict clippy on async env locking and module layout
+
+- status: open
+- direction: 测试可维护性
+- evidence: `cargo clippy -p hone-tools --all-targets --no-deps -- -D warnings` reports `clippy::items-after-test-module` in `crates/hone-tools/src/skill_tool.rs` because the large `#[cfg(test)] mod tests` sits before later production helpers and the `impl Tool for SkillTool`. The same strict run reports `clippy::await-holding-lock` for several async skill-tool tests that keep the test-only `std::sync::MutexGuard` from `env_lock()` across `.await` while serializing environment mutations.
+- risk: the current tests pass and the lock intentionally serializes process-wide env changes, but the layout and sync-guard pattern make future strict clippy adoption noisy. A drive-by move would create a large diff around skill execution helpers and could accidentally weaken env isolation in concurrent async tests.
+- suggested_fix: in a focused test-maintenance pass, move the skill-tool test module to the end of the file or split production helpers before tests, then replace the sync env guard pattern with a small async-aware test harness or a scoped helper that performs env mutation and cleanup around awaited calls without holding `std::sync::MutexGuard` across `.await`. Rerun `cargo test -p hone-tools skill_tool` and the skill-runtime CI regression scripts.
+
 ### Ignored live smoke tests remain scattered outside manual regression entry points
 
 - status: open

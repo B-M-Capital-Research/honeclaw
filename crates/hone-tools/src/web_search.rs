@@ -399,10 +399,15 @@ impl Tool for WebSearchTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::{assert_text_contains_all, assert_text_contains_none};
     use hone_core::config::HoneConfig;
 
     fn owned_keys(keys: &[&str]) -> Vec<String> {
         keys.iter().map(|key| (*key).to_string()).collect()
+    }
+
+    fn assert_message_hides_raw_tavily_upgrade_copy(message: &str) {
+        assert_text_contains_none(message, &["support@tavily.com", "upgrade your plan"]);
     }
 
     #[test]
@@ -475,15 +480,20 @@ mod tests {
         });
 
         let message = WebSearchTool::response_error_message(&payload).expect("message");
-        assert!(message.contains("\"api_key\":\"<redacted>\""));
-        assert!(message.contains("\"token\":\"<redacted>\""));
-        assert!(message.contains("\"client_secret\":\"<redacted>\""));
-        assert!(message.contains("\"authorization\":\"<redacted>\""));
-        assert!(message.contains("\"safe\":\"kept\""));
-        assert!(!message.contains("json-key"));
-        assert!(!message.contains("\"tok\""));
-        assert!(!message.contains("json-client"));
-        assert!(!message.contains("json-basic"));
+        assert_text_contains_all(
+            &message,
+            &[
+                "\"api_key\":\"<redacted>\"",
+                "\"token\":\"<redacted>\"",
+                "\"client_secret\":\"<redacted>\"",
+                "\"authorization\":\"<redacted>\"",
+                "\"safe\":\"kept\"",
+            ],
+        );
+        assert_text_contains_none(
+            &message,
+            &["json-key", "\"tok\"", "json-client", "json-basic"],
+        );
     }
 
     #[test]
@@ -512,7 +522,7 @@ mod tests {
         let message = WebSearchTool::response_error_message(&payload).expect("message");
         assert!(message.ends_with("..."));
         assert!(message.chars().count() <= MAX_TAVILY_ERROR_CHARS + 3);
-        assert!(!message.contains("secret"));
+        assert_text_contains_none(&message, &["secret"]);
     }
 
     #[test]
@@ -529,7 +539,7 @@ mod tests {
         )
         .expect_err("quota response should fail");
 
-        assert!(error.contains("exceeds your plan"));
+        assert_text_contains_all(&error, &["exceeds your plan"]);
     }
 
     #[test]
@@ -549,9 +559,8 @@ mod tests {
     fn final_error_message_hides_raw_tavily_text() {
         let tool = WebSearchTool::new(vec!["key1".to_string(), "key2".to_string()], 5);
         let message = tool.final_user_error_message(2, 0);
-        assert!(message.contains("已尝试 2 个 API Key"));
-        assert!(!message.contains("support@tavily.com"));
-        assert!(!message.contains("upgrade your plan"));
+        assert_text_contains_all(&message, &["已尝试 2 个 API Key"]);
+        assert_message_hides_raw_tavily_upgrade_copy(&message);
     }
 
     #[tokio::test]
@@ -562,9 +571,8 @@ mod tests {
             .await
             .expect_err("missing keys should be a tool error");
         let message = error.to_string();
-        assert!(message.contains("Tavily 搜索当前不可用"));
-        assert!(!message.contains("support@tavily.com"));
-        assert!(!message.contains("upgrade your plan"));
+        assert_text_contains_all(&message, &["Tavily 搜索当前不可用"]);
+        assert_message_hides_raw_tavily_upgrade_copy(&message);
     }
 
     #[tokio::test]
@@ -608,8 +616,7 @@ mod tests {
             .await
             .expect_err("failed keys should be a tool error");
         let message = error.to_string();
-        assert!(message.contains("Tavily 搜索当前"), "{message}");
-        assert!(!message.contains("support@tavily.com"), "{message}");
-        assert!(!message.contains("upgrade your plan"), "{message}");
+        assert_text_contains_all(&message, &["Tavily 搜索当前"]);
+        assert_message_hides_raw_tavily_upgrade_copy(&message);
     }
 }

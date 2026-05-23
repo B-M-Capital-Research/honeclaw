@@ -336,6 +336,12 @@ fn redact_delimited_secret_value(text: &str, needle: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::{assert_text_contains_all, assert_text_contains_none};
+
+    fn expect_failed_tool_result(result: &Value) -> &str {
+        assert_eq!(result["success"], Value::Bool(false));
+        result["error"].as_str().expect("error message")
+    }
 
     #[test]
     fn tool_name_and_description() {
@@ -360,13 +366,8 @@ mod tests {
             .execute(serde_json::json!({"company_name": ""}))
             .await
             .expect("execute should not panic");
-        assert_eq!(result["success"].as_bool(), Some(false));
-        assert!(
-            result["error"]
-                .as_str()
-                .unwrap_or("")
-                .contains("company_name")
-        );
+        let err = expect_failed_tool_result(&result);
+        assert_text_contains_all(err, &["company_name"]);
     }
 
     #[tokio::test]
@@ -380,13 +381,9 @@ mod tests {
             .execute(serde_json::json!({"company_name": "NVIDIA"}))
             .await
             .expect("execute should not panic");
-        assert_eq!(result["success"].as_bool(), Some(false));
-        let err = result["error"].as_str().unwrap_or_default();
-        assert!(!err.is_empty(), "error should have message");
-        assert!(!err.contains("secret"));
-        assert!(!err.contains("user:pass"));
-        assert!(err.contains("token=<redacted>"));
-        assert!(err.contains("<redacted>@127.0.0.1"));
+        let err = expect_failed_tool_result(&result);
+        assert_text_contains_all(err, &["token=<redacted>", "<redacted>@127.0.0.1"]);
+        assert_text_contains_none(err, &["secret", "user:pass"]);
     }
 
     #[test]
@@ -417,16 +414,26 @@ mod tests {
             "backend rejected request with apiKey: header-secret token=token-secret OPENROUTER_API_KEY=env-secret X-API-Key: gateway-secret client_secret: client-secret",
         );
 
-        assert!(detail.contains("apiKey: <redacted>"));
-        assert!(detail.contains("token=<redacted>"));
-        assert!(detail.contains("OPENROUTER_API_KEY=<redacted>"));
-        assert!(detail.contains("X-API-Key: <redacted>"));
-        assert!(detail.contains("client_secret: <redacted>"));
-        assert!(!detail.contains("header-secret"));
-        assert!(!detail.contains("token-secret"));
-        assert!(!detail.contains("env-secret"));
-        assert!(!detail.contains("gateway-secret"));
-        assert!(!detail.contains("client-secret"));
+        assert_text_contains_all(
+            &detail,
+            &[
+                "apiKey: <redacted>",
+                "token=<redacted>",
+                "OPENROUTER_API_KEY=<redacted>",
+                "X-API-Key: <redacted>",
+                "client_secret: <redacted>",
+            ],
+        );
+        assert_text_contains_none(
+            &detail,
+            &[
+                "header-secret",
+                "token-secret",
+                "env-secret",
+                "gateway-secret",
+                "client-secret",
+            ],
+        );
     }
 
     #[test]
@@ -440,15 +447,17 @@ mod tests {
             }
         }));
 
-        assert!(detail.contains("backend rejected token=<redacted>"));
-        assert!(detail.contains("Bearer <redacted>"));
-        assert!(detail.contains("\"api_key\":\"<redacted>\""));
-        assert!(detail.contains("\"token\":\"<redacted>\""));
-        assert!(detail.contains("\"safe\":\"kept\""));
-        assert!(!detail.contains("abc"));
-        assert!(!detail.contains("xyz"));
-        assert!(!detail.contains(":\"key\""));
-        assert!(!detail.contains(":\"tok\""));
+        assert_text_contains_all(
+            &detail,
+            &[
+                "backend rejected token=<redacted>",
+                "Bearer <redacted>",
+                "\"api_key\":\"<redacted>\"",
+                "\"token\":\"<redacted>\"",
+                "\"safe\":\"kept\"",
+            ],
+        );
+        assert_text_contains_none(&detail, &["abc", "xyz", ":\"key\"", ":\"tok\""]);
     }
 
     #[tokio::test]
@@ -482,14 +491,12 @@ mod tests {
             .await
             .expect("execute should return structured error");
 
-        assert_eq!(result["success"].as_bool(), Some(false));
+        let error = expect_failed_tool_result(&result);
         assert!(result.get("raw").is_none());
-        let error = result["error"].as_str().expect("error message");
-        assert!(error.contains("HTTP 502"), "{error}");
-        assert!(error.contains("token=<redacted>"), "{error}");
-        assert!(error.contains("Bearer <redacted>"), "{error}");
-        assert!(!error.contains("abc"), "{error}");
-        assert!(!error.contains("xyz"), "{error}");
-        assert!(!error.contains("trace-1"), "{error}");
+        assert_text_contains_all(
+            error,
+            &["HTTP 502", "token=<redacted>", "Bearer <redacted>"],
+        );
+        assert_text_contains_none(error, &["abc", "xyz", "trace-1"]);
     }
 }
