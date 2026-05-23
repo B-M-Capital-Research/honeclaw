@@ -87,8 +87,9 @@ fn default_news_classifier_model() -> String {
 ///
 /// `window_days` 决定 EarningsPoller 每 tick 向 FMP earning_calendar 拉 `[today, today+N]`
 /// 的天数;也就是 Hone 开始"关注"一家公司财报的提前量。**v0.1.46 起**,Poller 只产出
-/// 稳定 id 的 `earnings:{SYM}:{DATE}` teaser(Medium);T-3/T-2/T-1 倒计时由 DigestScheduler
-/// 在每次 flush 时刻从 EventStore 现算(见 `pollers::earnings::synthesize_countdowns`),
+/// 稳定 id 的 `earnings:{SYM}:{DATE}` teaser(Medium);T-3/T-2/T-1 倒计时由
+/// `UnifiedDigestScheduler` 在每个 slot 触发时从 EventStore 现算
+/// (见 `pollers::earnings::synthesize_countdowns`),
 /// 这样 poller cron 漂移不会让倒计时 off-by-one。整条 lifecycle 仍共享 `earnings_upcoming`
 /// kind,用户把它放进 `blocked_kinds` 就能一次静音 teaser + 所有倒计时。
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -265,9 +266,11 @@ fn default_sec_user_agent() -> String {
 /// 全局 digest LLM 子配置,由 unified pipeline 复用来承载 curator / fetcher /
 /// event_dedupe 旋钮。触发由 per-actor `prefs.digest_slots` 驱动。
 ///
-/// 候选池(trusted-source High/Medium news + macro_event)由 unified scheduler
-/// 在每个 slot 触发时拉取,经 Pass 1 聚类 + Pass 2 精读后,与 buffer/synth 候选
-/// 在 per-actor fan-out 阶段合流。
+/// 候选池由 unified scheduler 在每个 slot 触发时拉取:RSS 源直接进入 SQL
+/// 预选,FMP trusted news 允许 Low 进入,最终由 collector 过滤成 trusted news。
+/// 经事件级 dedup + Pass 1 聚类 + Pass 2 精读后,与 buffer/synth 候选在
+/// per-actor fan-out 阶段合流。Macro floor 来自 personalize 阶段的分类,不是
+/// collector 的输入源。
 ///
 /// 默认 `enabled=false`。
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -6,7 +6,7 @@
 //! - `data/daily_reports/YYYY-MM-DD.md` — 人类可读的 Markdown 快照
 //! - 一行 `tracing::info` 紧凑版,方便 grep 线上日志
 //!
-//! 设计参照 `DigestScheduler`:上层每 60s `tick_once(now, &mut fired)`,
+//! 设计参照统一 scheduler 的 tick contract:上层每 60s `tick_once(now, &mut fired)`,
 //! 命中窗口就落盘;`fired` 防止同分钟重触发,跨日由调用方清空。
 
 use std::path::{Path, PathBuf};

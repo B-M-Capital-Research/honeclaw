@@ -906,8 +906,9 @@ impl EventStore {
     ///   导致 GOOGL 财报预告、Tokyo Electron 半导体上下游等主线硬料被砍。
     ///   POC 实测 24h 多出 19 条 trusted-Low,其中 ~25% 是主线相关硬料,
     ///   工作日扩量 ~80-180 条仍在 Pass1 prompt 容量内。
-    /// - FMP 非 trusted 域(opinion_blog / pr_wire / uncertain):仍按 high/medium 严格门槛,
-    ///   防止 seekingalpha listicle、律所 PR 灌进来。
+    /// - FMP 非 trusted 域(opinion_blog / pr_wire / uncertain):SQL 预选只保留
+    ///   high/medium,便于 collector 统一检查 payload;当前 collector 仍会丢弃
+    ///   非 trusted,防止 seekingalpha listicle、律所 PR 灌进来。
     pub fn list_global_digest_news_candidates(
         &self,
         since: DateTime<Utc>,

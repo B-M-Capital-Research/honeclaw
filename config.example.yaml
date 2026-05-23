@@ -274,15 +274,16 @@ event_engine:
       user_agent: "honeclaw event-engine ops@honeclaw.local"
 
   # 全局 digest LLM 子配置 —— UnifiedDigestScheduler 在每个 slot 触发时把这一节
-  # 作为 GlobalNewsSource 的旋钮使用。触发完全由 per-actor `prefs.digest_slots` 驱动,
-  # 这里不再有调度时刻。
+  # 作为 global news path 的采集 / dedup / LLM 旋钮使用。
+  # 触发完全由 per-actor `prefs.digest_slots` 驱动,这里不再有调度时刻。
   # 候选池流水:
-  # - 候选池 = trusted-source High/Medium news + 临近 high macro_event(不挂 ticker 也算)
+  # - 候选池 = RSS news + FMP trusted news(允许 Low 进入预选);collector 再过滤
+  #   legal_ad / transcript / 已广播事件。Macro floor 不从这里采集,由 personalize 分类产生。
   # - Pass 1 (pass1_llm/pass1_model) 批量打分 + cluster + 一句话 takeaway
   # - Pass 2 (pass2_llm/pass2_model) 抓原文(若 fetch_full_text=true) + 精读 + 短评 + 排序
   # 输出经 unified scheduler per-actor fan-out,与 buffer/synth 候选合流后渲染。
-  # 默认 enabled=false。`enabled=false` 时 GlobalNewsSource 直接返回空池,
-  # unified pipeline 仍按 buffer/synth 候选推送 actor。
+  # 默认 enabled=false。`enabled=false` 时 unified scheduler 不装配 global curator,
+  # global news section 跳过;pipeline 仍按 buffer/synth 候选推送 actor。
   global_digest:
     enabled: false
     timezone: Asia/Shanghai
@@ -626,7 +627,8 @@ agent:
     # Two-stage runner: direct OpenAI-compatible search, then opencode ACP answer.
     # Search uses agent.multi_agent.search.api_key, with legacy llm.auxiliary.api_key
     # as the only fallback when the search API key is empty.
-    # The answer stage can inherit llm.providers.openrouter.api_keys, with the legacy
+    # The answer stage uses agent.multi_agent.answer.api_key when set; otherwise it
+    # can inherit llm.providers.openrouter.api_key/api_keys, with the legacy
     # single-key OpenRouter fields still readable as migration fallbacks.
     search:
       base_url: "https://api.minimaxi.com/v1"

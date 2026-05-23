@@ -52,9 +52,10 @@ pub struct EventEngine {
     sink: Arc<dyn OutboundSink>,
     polisher: Arc<dyn BodyPolisher>,
     news_classifier: Option<Arc<dyn news_classifier::NewsClassifier>>,
-    /// LLM provider 用于 global_digest 的 Curator(Pass 1 + Pass 2)。
-    /// 缺省 None → global_digest 调度器不会启动,即使 config.global_digest.enabled=true
-    /// 也只 warn 不报错。
+    /// global_digest 的通用 LLM provider fallback。未注入分阶段 provider 时,
+    /// Pass 1 / Pass 2 都复用它;event_dedupe 再默认复用 Pass 2 provider。
+    /// 缺省 None 且未注入分阶段 provider → global news section 不装配 curator,
+    /// 即使 config.global_digest.enabled=true 也只 warn 不报错。
     global_digest_provider: Option<Arc<dyn hone_llm::LlmProvider>>,
     global_digest_pass1_provider: Option<Arc<dyn hone_llm::LlmProvider>>,
     global_digest_pass2_provider: Option<Arc<dyn hone_llm::LlmProvider>>,
@@ -162,8 +163,9 @@ impl EventEngine {
         self
     }
 
-    /// 注入 LLM provider 用于 global_digest 的 Curator(Pass 1 + Pass 2)。
-    /// 缺省 None → global_digest 不会启动(即使 config.global_digest.enabled=true 也只 warn)。
+    /// 注入 global_digest 的通用 LLM provider fallback。
+    /// 分阶段 provider 未配置时,Pass 1 / Pass 2 复用该 provider;event_dedupe
+    /// 默认复用 Pass 2 provider。
     pub fn with_global_digest_provider(mut self, provider: Arc<dyn hone_llm::LlmProvider>) -> Self {
         self.global_digest_provider = Some(provider);
         self

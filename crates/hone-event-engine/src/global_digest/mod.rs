@@ -5,8 +5,8 @@
 //!
 //! Pipeline(由 `unified_digest::scheduler` 编排):
 //! 1. `collector::CandidateCollector` —— 从 EventStore 拉 SQL 预筛后的 news 候选
-//!    (RSS 全收、FMP trusted 允许 Low、其它 FMP 只收 High/Medium),再过滤掉
-//!    legal_ad / pr_wire / opinion_blog / earnings_transcript / 已广播
+//!    (RSS 全收、FMP trusted 允许 Low、其它 FMP 仅作 high/medium 预选),再过滤成
+//!    trusted 且非 legal_ad / earnings_transcript / 已广播
 //! 2. `event_dedupe` 折叠同事件多源 → `fetcher` 抓原文 → `curator` Pass1+Pass2 LLM 精读
 //! 3. 输出经 unified scheduler per-actor fan-out,与 buffer/synth 候选池合流后渲染
 //!

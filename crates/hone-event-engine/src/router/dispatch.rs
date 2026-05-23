@@ -313,9 +313,9 @@ impl NotificationRouter {
                 }
             }
             // quiet_hours hold:用户设了勿扰时段且当前时刻在区间内,High 即时推不发,
-            // 写 delivery_log status='quiet_held',留给 DigestScheduler 在 quiet.to
-            // 时刻的 quiet_flush 合集里复活(过保鲜期则 drop)。Medium/Low 走原 digest
-            // 路径,DigestScheduler 在 quiet 区间内会跳过 fire,buffer 自然累积到 to。
+            // 写 delivery_log status='quiet_held',留给 UnifiedDigestScheduler 在
+            // quiet.to 时刻的 quiet_flush 合集里复活(过保鲜期则 drop)。Medium/Low
+            // 进入 buffer;unified scheduler 在 quiet 区间内会跳过 fire,自然累积到 to。
             // exempt_kinds 命中的 kind 即使在 quiet 内仍然立即推。
             if matches!(effective_sev, Severity::High) {
                 if let Some(qh) = user_prefs.quiet_hours.as_ref() {
