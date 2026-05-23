@@ -8,6 +8,18 @@ INSTALL_ROOT="$TMP_ROOT/.honeclaw"
 CURRENT_ROOT="$INSTALL_ROOT/current"
 BIN_DIR="$TMP_ROOT/bin"
 
+require_cmd() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "[FAIL] missing command: $1" >&2
+    exit 1
+  fi
+}
+
+require_cmd cargo
+require_cmd bun
+require_cmd curl
+require_cmd grep
+
 cleanup() {
   if [[ -n "${START_PID:-}" ]]; then
     kill "$START_PID" >/dev/null 2>&1 || true

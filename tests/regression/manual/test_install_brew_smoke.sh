@@ -5,6 +5,18 @@ set -euo pipefail
 TAP_NAME="${HONE_BREW_TAP_NAME:-B-M-Capital-Research/honeclaw}"
 FORMULA_REF="${HONE_BREW_FORMULA_REF:-$TAP_NAME/honeclaw}"
 TMP_HOME="$(mktemp -d "${TMPDIR:-/tmp}/hone-brew-smoke.XXXXXX")"
+
+require_cmd() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "[FAIL] missing command: $1" >&2
+    exit 1
+  fi
+}
+
+require_cmd brew
+require_cmd curl
+require_cmd grep
+
 BREW_BIN_DIR="$(brew --prefix)/bin"
 
 cleanup() {

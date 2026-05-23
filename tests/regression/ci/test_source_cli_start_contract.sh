@@ -59,4 +59,10 @@ if [[ "$invalid_root_output" != *'[restart_hone] error: project root is not a di
   exit 1
 fi
 
+invalid_pid_output="$(bash "$RESTART_SCRIPT" "$ROOT_DIR" -1 2>&1 || true)"
+if [[ "$invalid_pid_output" != *'[restart_hone] error: old_pid must be a positive integer: -1'* ]]; then
+  echo "[FAIL] restart_hone should reject invalid old_pid before sending signals" >&2
+  exit 1
+fi
+
 echo "[PASS] source CLI start contract regression passed"

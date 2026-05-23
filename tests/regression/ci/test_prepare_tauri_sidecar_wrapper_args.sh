@@ -7,6 +7,7 @@ WRAPPER_SCRIPT="$ROOT_DIR/scripts/prepare_tauri_sidecar.sh"
 TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/hone-tauri-wrapper.XXXXXX")"
 TOOLS_DIR="$TMP_ROOT/tools"
 ARGS_LOG="$TMP_ROOT/bun-args.log"
+REAL_BUN="$(command -v bun || true)"
 
 cleanup() {
   rm -rf "$TMP_ROOT"
@@ -63,5 +64,30 @@ assert_args "$ROOT_DIR/scripts/prepare_tauri_sidecar.mjs release --target-triple
 
 run_wrapper_with_home_bun --shell-only
 assert_args "$ROOT_DIR/scripts/prepare_tauri_sidecar.mjs --shell-only"
+
+if [[ -z "$REAL_BUN" ]]; then
+  echo "[FAIL] bun is required to validate prepare_tauri_sidecar argument errors" >&2
+  exit 1
+fi
+
+if output="$("$REAL_BUN" "$ROOT_DIR/scripts/prepare_tauri_sidecar.mjs" --target-triple --json 2>&1)"; then
+  echo "[FAIL] prepare_tauri_sidecar accepted --target-triple without a value" >&2
+  exit 1
+fi
+if [[ "$output" != *"missing value for --target-triple"* ]]; then
+  echo "[FAIL] missing --target-triple value should be explicit" >&2
+  echo "$output" >&2
+  exit 1
+fi
+
+if output="$("$REAL_BUN" "$ROOT_DIR/scripts/prepare_tauri_sidecar.mjs" debug release --shell-only 2>&1)"; then
+  echo "[FAIL] prepare_tauri_sidecar accepted multiple profiles" >&2
+  exit 1
+fi
+if [[ "$output" != *"profile can be specified only once: release"* ]]; then
+  echo "[FAIL] repeated profile should be explicit" >&2
+  echo "$output" >&2
+  exit 1
+fi
 
 echo "[PASS] prepare_tauri_sidecar wrapper forwards all arguments"

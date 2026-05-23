@@ -13,8 +13,8 @@ if ! command -v gemini >/dev/null 2>&1; then
   exit 1
 fi
 
-STDOUT_FILE="$(mktemp /tmp/hone_gemini_test_stdout.XXXXXX)"
-STDERR_FILE="$(mktemp /tmp/hone_gemini_test_stderr.XXXXXX)"
+STDOUT_FILE="$(mktemp "${TMPDIR:-/tmp}/hone_gemini_test_stdout.XXXXXX")"
+STDERR_FILE="$(mktemp "${TMPDIR:-/tmp}/hone_gemini_test_stderr.XXXXXX")"
 trap 'rm -f "$STDOUT_FILE" "$STDERR_FILE"' EXIT
 
 if ! gemini -p "$PROMPT" -o json >"$STDOUT_FILE" 2>"$STDERR_FILE"; then

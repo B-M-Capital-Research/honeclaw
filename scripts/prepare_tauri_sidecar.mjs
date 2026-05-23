@@ -167,6 +167,7 @@ function createGeneratedConfig(rootDir, externalBins, options = {}) {
 
 function parseArgs(argv) {
   let profile = "debug";
+  let profileSeen = false;
   let targetTriple = "";
   let skipBuild = false;
   let skipDevCommand = false;
@@ -177,12 +178,16 @@ function parseArgs(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (VALID_PROFILES.has(arg)) {
+      if (profileSeen) {
+        throw new Error(`profile can be specified only once: ${arg}`);
+      }
       profile = arg;
+      profileSeen = true;
       continue;
     }
     if (arg === "--target-triple") {
       targetTriple = argv[index + 1] ?? "";
-      if (!targetTriple) {
+      if (!targetTriple || targetTriple.startsWith("--")) {
         throw new Error("missing value for --target-triple");
       }
       index += 1;

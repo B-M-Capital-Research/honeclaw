@@ -41,37 +41,41 @@ Environment overrides:
 EOF
 }
 
+require_value() {
+  local flag="$1"
+  local value="${2:-}"
+  if [[ -z "$value" || "$value" == --* ]]; then
+    echo "[FAIL] $flag requires a value" >&2
+    exit 1
+  fi
+  printf '%s\n' "$value"
+}
+
 while (($# > 0)); do
   case "$1" in
     --prompt)
       shift
-      [[ $# -gt 0 ]] || { echo "[FAIL] --prompt requires a value" >&2; exit 1; }
-      PROMPT="$1"
+      PROMPT="$(require_value --prompt "${1:-}")"
       ;;
     --channel)
       shift
-      [[ $# -gt 0 ]] || { echo "[FAIL] --channel requires a value" >&2; exit 1; }
-      CHANNEL="$1"
+      CHANNEL="$(require_value --channel "${1:-}")"
       ;;
     --user-id)
       shift
-      [[ $# -gt 0 ]] || { echo "[FAIL] --user-id requires a value" >&2; exit 1; }
-      ACTOR_USER_ID="$1"
+      ACTOR_USER_ID="$(require_value --user-id "${1:-}")"
       ;;
     --scope)
       shift
-      [[ $# -gt 0 ]] || { echo "[FAIL] --scope requires a value" >&2; exit 1; }
-      CHANNEL_SCOPE="$1"
+      CHANNEL_SCOPE="$(require_value --scope "${1:-}")"
       ;;
     --target)
       shift
-      [[ $# -gt 0 ]] || { echo "[FAIL] --target requires a value" >&2; exit 1; }
-      CHANNEL_TARGET="$1"
+      CHANNEL_TARGET="$(require_value --target "${1:-}")"
       ;;
     --config)
       shift
-      [[ $# -gt 0 ]] || { echo "[FAIL] --config requires a value" >&2; exit 1; }
-      CONFIG_PATH="$1"
+      CONFIG_PATH="$(require_value --config "${1:-}")"
       ;;
     --show-raw)
       SHOW_RAW="1"

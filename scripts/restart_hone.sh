@@ -27,6 +27,11 @@ if [[ ! -d "$PROJECT_ROOT" ]]; then
     exit 1
 fi
 
+if [[ -n "$OLD_PID" && ! "$OLD_PID" =~ ^[1-9][0-9]*$ ]]; then
+    echo "[restart_hone] error: old_pid must be a positive integer: ${OLD_PID}" >&2
+    exit 1
+fi
+
 LOG_DIR="$PROJECT_ROOT/data/logs"
 mkdir -p "$LOG_DIR"
 

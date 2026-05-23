@@ -16,7 +16,7 @@ require_cmd cargo
 require_cmd python3
 require_cmd rtk
 
-TMP_DIR="$(mktemp -d)"
+TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hone-earnings-calendar.XXXXXX")"
 cleanup() {
   if [[ -n "${MCP_PID:-}" ]]; then
     kill "$MCP_PID" 2>/dev/null || true

@@ -23,6 +23,10 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 1
 fi
 
+if [[ -n "$OUTPUT_PATH" ]]; then
+  mkdir -p "$(dirname "$OUTPUT_PATH")"
+fi
+
 PREVIOUS_TAG="$(
   git -C "$ROOT_DIR" tag --sort=-v:refname \
     | awk -v current="$TAG" '$0 != current { print; exit }'

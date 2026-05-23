@@ -5,6 +5,15 @@
 set -uo pipefail
 
 CONFIG_PATH="${HONE_USER_CONFIG_PATH:-${HONE_CONFIG_PATH:-config.yaml}}"
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "[FAIL] python3 is required to read Hone config" >&2
+  exit 1
+fi
+if [[ ! -f "$CONFIG_PATH" ]]; then
+  echo "[FAIL] config file not found: $CONFIG_PATH" >&2
+  exit 1
+fi
+
 API_KEY=$(python3 - "$CONFIG_PATH" <<'PY' 2>/dev/null
 import sys
 from pathlib import Path
@@ -62,6 +71,8 @@ PY
 )
 MODEL="moonshotai/kimi-k2.5"
 BASE_URL="https://openrouter.ai/api/v1"
+TCP_TEST_LOG="$(mktemp "${TMPDIR:-/tmp}/hone_tcp_test.XXXXXX")"
+trap 'rm -f "$TCP_TEST_LOG"' EXIT
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -108,11 +119,11 @@ sep
 info "步骤 2/5: TCP 连通性测试（openrouter.ai:443）"
 if curl -s --connect-timeout 10 --max-time 10 \
     -o /dev/null -w "%{http_code}" \
-    "https://openrouter.ai" > /tmp/_hone_tcp_test 2>&1; then
+    "https://openrouter.ai" > "$TCP_TEST_LOG" 2>&1; then
   pass "TCP 443 端口可达，HTTPS 握手成功"
 else
   fail "无法连接 openrouter.ai:443，请检查网络/防火墙/代理"
-  echo "      详细错误: $(cat /tmp/_hone_tcp_test 2>/dev/null)"
+  echo "      详细错误: $(cat "$TCP_TEST_LOG" 2>/dev/null)"
 fi
 
 # ── 3. 代理环境变量检测 ────────────────────────────────────

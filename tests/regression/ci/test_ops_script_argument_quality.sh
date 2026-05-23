@@ -88,6 +88,19 @@ run_homebrew_formula_version_normalization_case() {
   assert_contains "$(cat "$output_path")" "/releases/download/v1.2.3/honeclaw-darwin-aarch64.tar.gz" "formula URL should not duplicate the v prefix"
 }
 
+run_prepare_release_notes_nested_output_case() {
+  local output_path="$TMP_ROOT/release-notes/nested/v0.9.1.md"
+
+  bash "$ROOT_DIR/scripts/prepare_release_notes.sh" v0.9.1 "$output_path"
+
+  if [[ ! -s "$output_path" ]]; then
+    echo "[FAIL] prepare_release_notes did not create nested output path" >&2
+    exit 1
+  fi
+
+  assert_contains "$(cat "$output_path")" "# v0.9.1" "release notes output should render the requested tag"
+}
+
 run_changed_fmt_bash3_compatible_case() {
   local repo_dir="$TMP_ROOT/fmt-repo"
   local tools_dir="$TMP_ROOT/tools"
@@ -404,6 +417,7 @@ run_missing_homebrew_formula_value_case
 run_invalid_homebrew_formula_sha_case
 run_homebrew_formula_generation_case
 run_homebrew_formula_version_normalization_case
+run_prepare_release_notes_nested_output_case
 run_changed_fmt_bash3_compatible_case
 run_script_self_path_quality_case
 run_gitleaks_archive_layout_case

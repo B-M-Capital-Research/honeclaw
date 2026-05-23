@@ -15,11 +15,17 @@ import urllib.request
 from pathlib import Path
 from typing import Optional
 
-import yaml
+try:
+    import yaml
+except ModuleNotFoundError:
+    raise SystemExit(
+        "PyYAML is required to read Hone config. Install it with: python3 -m pip install PyYAML"
+    ) from None
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
+        prog="scripts/diagnose_fmp_tavily.sh",
         description="Diagnose FMP and Tavily API keys, including quota exhaustion."
     )
     parser.add_argument(
