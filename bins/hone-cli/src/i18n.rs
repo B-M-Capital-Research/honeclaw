@@ -12,11 +12,11 @@
 //! 3. Missing keys fall back to the key itself so a stray `t(lang, "foo.bar")`
 //!    surfaces visibly in dev rather than silently rendering empty.
 //!
-//! The string table is intentionally compact — only Step 1 and a handful of
-//! shared chrome strings (banner, apply summary) are translated here. Other
-//! prompts in `onboard.rs` keep their original Chinese for now; they can be
-//! migrated to `t!()` in a follow-up commit without touching this module's
-//! shape.
+//! The string table stays focused on onboard chrome and reusable prompts:
+//! language, runner, channel, admin, provider, notifications, recovery, and
+//! apply strings live here. Some long-form input handling still stays in
+//! `onboard.rs`; those can move behind `t()` without changing this module's
+//! lookup contract.
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Lang {
@@ -97,8 +97,8 @@ fn leak(key: &str) -> &'static str {
     Box::leak(key.to_string().into_boxed_str())
 }
 
-/// (key, zh, en). Keys are dotted namespaces — `step.<n>` for step labels,
-/// `lang.*` for the language step itself, `apply.*` for the apply summary.
+/// (key, zh, en). Keys are dotted namespaces such as `step.*`, `lang.*`,
+/// `runner.*`, `channel.*`, `provider.*`, `notifications.*`, and `apply.*`.
 const STRINGS: &[(&str, &str, &str)] = &[
     // ── Banner / chrome ──────────────────────────────────────────────────
     ("banner.title", "Hone onboarding", "Hone onboarding"),

@@ -10,7 +10,7 @@
 
 use console::style;
 
-/// 一个大的 section 分隔符,比如 `━━ Step 3/6: Channels ━━━━━━━━━━━━━━━━━`。
+/// 一个大的 section 分隔符,比如 `━━ Step 3/7: Channels ━━━━━━━━━━━━━━━━━`。
 /// 用在 onboard 从一个环节切到下一个环节时,让用户立即看到进度。
 pub(crate) fn step_header(step: usize, total: usize, title: &str) {
     let prefix = format!("━━ Step {step}/{total}: {title} ");
@@ -80,28 +80,34 @@ mod tests {
         );
         hint_line("每个环节都可以跳过，之后再通过 `hone-cli onboard` 补配。");
 
-        step_header(1, 5, "Runner");
+        step_header(1, 7, "Language");
+        hint_line("Saved into config.yaml.language. Devices can still override locally.");
+
+        step_header(2, 7, "Runner");
         subsection("Multi-Agent");
         bullet("前置：multi-agent search key；answer 可复用 OpenRouter key。");
         bullet("原理：第一段 search 用小模型拉证据，第二段 answer 用主模型总结。");
         ok_line("opencode 已检测到可用。");
 
-        step_header(2, 5, "Channels");
+        step_header(3, 7, "Channels");
         subsection("Feishu prerequisites");
         bullet("需要飞书开放平台应用的 `app_id` 与 `app_secret`。");
         warn_line("Feishu 渠道默认 allow 白名单为空，即所有联系人都能触发 Hone。");
         hint_line("如需限定，onboard 完成后用 `hone-cli configure --section channels`。");
 
-        step_header(3, 5, "Admins");
+        step_header(4, 7, "Admins");
         hint_line("管理员白名单决定谁能触发 /register-admin /report 等管理指令。");
 
-        step_header(4, 5, "Providers");
+        step_header(5, 7, "Providers");
         subsection("OpenRouter API keys");
         bullet("LLM 主路由。function_calling / multi-agent answer / nano_banana 默认走这里。");
         ok_line("已保存 OpenRouter API keys。");
         fail_line("Token 必须是三段结构(长度=12)。");
 
-        step_header(5, 5, "Apply");
+        step_header(6, 7, "Notifications");
+        hint_line("此步骤纯告知，不写任何配置；下一步进入 Apply。");
+
+        step_header(7, 7, "Apply");
         ok_line("配置已保存，已立即生效（共写入 6 条字段）");
         hint_line("canonical config → /Users/you/.honeclaw/config.yaml");
 

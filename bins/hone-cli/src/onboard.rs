@@ -1,26 +1,28 @@
 //! `hone-cli onboard` —— 首次安装后的向导式配置流程。
 //!
 //! 整体结构:
-//! 1. 展示当前 runner 选项(hone_cloud / multi-agent / codex_cli / codex_acp / opencode_acp)+
-//!    binary 可用性,让用户选一种默认 runner
+//! 1. 选择控制台与 CLI 默认语言,暂存为最终写盘 mutation
+//! 2. 展示当前 runner 选项(hone_cloud / multi-agent / codex_cli / codex_acp / opencode_acp)+
+//!    可快速探测的 binary 状态,让用户选一种默认 runner
 //!    ([`prompt_onboard_runner`] + [`build_runner_onboard_mutations`])
-//! 2. 对每个渠道 (iMessage / Feishu / Telegram / Discord) 询问是否启用,
+//! 3. 对每个渠道 (iMessage / Feishu / Telegram / Discord) 询问是否启用,
 //!    启用的再逐字段收集必填项,展示 allow_* 默认开放的安全警告,
 //!    最后询问 chat_scope。非 macOS 平台自动跳过 iMessage。
 //!    ([`build_channel_onboard_mutations`])
-//! 3. 根据上一步真正启用的渠道,逐个询问是否把自己加进对应 `admins.*` 白名单
+//! 4. 根据上一步真正启用的渠道,逐个询问是否把自己加进对应 `admins.*` 白名单
 //!    ([`build_admin_onboard_mutations`])
-//! 4. 对每个 provider (OpenRouter / FMP / Tavily) 询问是否现在填 key
+//! 5. 对每个 provider (OpenRouter / FMP / Tavily) 询问是否现在填 key
 //!    ([`build_provider_onboard_mutations`])
-//! 5. 把所有 mutation 一次性写入 canonical config,并重生成 effective config,
+//! 6. 告知新用户通知默认行为与后续调整入口,不写 mutation
+//! 7. 把所有 mutation 一次性写入 canonical config,并重生成 effective config,
 //!    打印写入字段数量摘要
-//! 6. 可选运行 doctor / 直接 start
+//!    Apply 阶段结束后可选运行 doctor / 直接 start
 //!
 //! 所有 Spec struct(`RunnerOnboardSpec` / `ChannelOnboardSpec` /
 //! `ProviderOnboardSpec`) 都是 `&'static` 常量数据,放在各自的 `*_specs()`
 //! 工厂函数里,方便未来改文案/加新 runner 时集中维护。
 //!
-//! 交互契约:任意步骤 Ctrl+C 都安全 —— mutation 只在第 5 步才真正写盘。
+//! 交互契约:任意步骤 Ctrl+C 都安全 —— mutation 只在 Apply 阶段才真正写盘。
 
 use std::io::IsTerminal;
 use std::path::Path;
@@ -90,7 +92,8 @@ impl OnboardRunnerKind {
     }
 
     /// 对应 CLI 的 probe 指令（`codex --version` 等),用于在选择时判断本机是否已装。
-    /// 返回 `None` 表示该 runner 不依赖本机 binary(例如 hone_cloud)。
+    /// 返回 `None` 表示 onboard 阶段不做 binary 阻塞检查;其中 hone_cloud 不依赖
+    /// 本机 binary,multi-agent 的 opencode 依赖由 setup 提示和后续运行时检查覆盖。
     fn binary_probe(&self) -> Option<(&'static str, &'static str)> {
         match self {
             Self::HoneCloud | Self::MultiAgent => None,
@@ -616,7 +619,7 @@ pub(crate) fn prompt_onboard_runner(
             .collect::<Vec<_>>();
         print_onboard_block(selected.kind.title(), &notes);
 
-        // 不依赖 binary 的 runner 直接通过。multi-agent 目前也会走到这里,
+        // 没有 onboard-time probe 的 runner 直接通过。multi-agent 目前也会走到这里,
         // 但它和运行时 opencode probe 的不一致已记录到 code-quality patrol。
         let Some((binary, help_arg)) = selected.kind.binary_probe() else {
             return Ok(selected.kind);
