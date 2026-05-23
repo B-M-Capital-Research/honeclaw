@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 
 import {
   appendApiKey,
+  appendApiKeyDraftState,
   appendApiKeyVisibility,
   canSelectRunner,
   canShowSettingsTab,
@@ -29,9 +30,13 @@ import {
   SETTINGS_TAB_KEYS,
   toChannelDraft,
   toggleApiKeyVisibility,
+  toggleApiKeyDraftState,
+  toApiKeyDraftState,
   updateApiKeyList,
+  updateApiKeyDraftState,
   updateLlmProfileBinding,
   updateLlmProfileEntry,
+  removeApiKeyDraftState,
 } from "./settings-model"
 import type { MetaInfo } from "@/lib/types"
 import type { WebInviteInfo } from "@/lib/types"
@@ -227,6 +232,34 @@ describe("settings-model", () => {
     expect(removed).toEqual([true])
     expect(removed).not.toBe(visibility)
     expect(removeApiKeyVisibility([false], 0)).toEqual([false])
+  })
+
+  it("keeps api key draft settings and visibility together", () => {
+    const initial = toApiKeyDraftState({
+      apiKeys: ["alpha", "beta"],
+      provider: "fmp",
+    })
+    expect(initial).toEqual({
+      settings: { apiKeys: ["alpha", "beta"], provider: "fmp" },
+      visibility: [false, false],
+    })
+
+    const updated = updateApiKeyDraftState(initial, 1, "next")
+    expect(updated.settings.apiKeys).toEqual(["alpha", "next"])
+    expect(updated.visibility).toBe(initial.visibility)
+    expect(initial.settings.apiKeys).toEqual(["alpha", "beta"])
+
+    const toggled = toggleApiKeyDraftState(updated, 0)
+    expect(toggled.settings).toBe(updated.settings)
+    expect(toggled.visibility).toEqual([true, false])
+
+    const appended = appendApiKeyDraftState(toggled)
+    expect(appended.settings.apiKeys).toEqual(["alpha", "next", ""])
+    expect(appended.visibility).toEqual([true, false, false])
+
+    const removed = removeApiKeyDraftState(appended, 0)
+    expect(removed.settings.apiKeys).toEqual(["next", ""])
+    expect(removed.visibility).toEqual([false, false])
   })
 
   it("converts persisted channel settings into editable draft", () => {

@@ -6,6 +6,7 @@ import {
   createMemo,
   createResource,
   createSignal,
+  type Setter,
 } from "solid-js";
 import { useSearchParams } from "@solidjs/router";
 import { useBackend } from "@/context/backend";
@@ -32,13 +33,10 @@ import type {
   AgentProvider,
   AgentSettings,
   DesktopChannelSettingsInput,
-  FmpSettings,
-  TavilySettings,
   WebInviteInfo,
 } from "@/lib/types";
 import {
-  appendApiKey,
-  appendApiKeyVisibility,
+  appendApiKeyDraftState,
   canSelectRunner,
   canShowSettingsTab,
   CHANNEL_CHAT_SCOPES,
@@ -48,7 +46,6 @@ import {
   defaultLanguageDraft,
   defaultTavilySettings,
   formatCsv,
-  initialApiKeyVisibility,
   inviteActionKey as buildInviteActionKey,
   isAgentSettingsRuntimeMismatch,
   isInviteActionRunning as isInviteActionKeyRunning,
@@ -56,19 +53,19 @@ import {
   mergeAgentSettings,
   mergeHoneCloudDraft,
   normalizePhoneNumber,
-  normalizeApiKeys,
   optionalNumber,
   parseCsv,
   prependWebInvite,
-  removeApiKey,
-  removeApiKeyVisibility,
+  removeApiKeyDraftState,
   replaceWebInvite,
   resolveSettingsTab,
   resolveHoneCloudOpenAiBaseUrl,
   SETTINGS_TAB_KEYS,
+  toApiKeyDraftState,
   toChannelDraft,
-  toggleApiKeyVisibility,
-  updateApiKeyList,
+  toggleApiKeyDraftState,
+  updateApiKeyDraftState,
+  type ApiKeyDraftState,
   updateLlmProfileBinding as updateLlmProfileBindingDraft,
   updateLlmProfileEntry as updateLlmProfileEntryDraft,
   type InviteAction,
@@ -82,6 +79,9 @@ import { tpl } from "@/lib/i18n";
 type LlmProfileSettingsDraft = NonNullable<AgentSettings["llmProfiles"]>;
 type LlmProfileEntryDraft = LlmProfileSettingsDraft["profiles"][number];
 type LlmProfileBindingRow = { key: LlmProfileBindingKey; label: string };
+type ApiKeyDraftStateSetter<T extends { apiKeys: string[] }> = Setter<
+  ApiKeyDraftState<T>
+>;
 type CheckStatus = "idle" | "checking" | "ok" | "error";
 type CheckProbeResult = { ok: boolean; message: string };
 
@@ -339,10 +339,12 @@ export default function SettingsPage() {
   });
 
   // ── FMP API Keys 设置 ───────────────────────────────────────────────────────
-  const [fmpDraft, setFmpDraft] =
-    createSignal<FmpSettings>(defaultFmpSettings());
+  const [fmpDraftState, setFmpDraftState] = createSignal(
+    toApiKeyDraftState(defaultFmpSettings()),
+  );
+  const fmpDraft = () => fmpDraftState().settings;
+  const showFmpKeys = () => fmpDraftState().visibility;
   const [fmpSaving, setFmpSaving] = createSignal(false);
-  const [showFmpKeys, setShowFmpKeys] = createSignal<boolean[]>([false]);
 
   const [fmpSettingsRes] = createResource(
     () => backend.state.isDesktop,
@@ -355,9 +357,7 @@ export default function SettingsPage() {
   createEffect(() => {
     const s = fmpSettingsRes();
     if (s) {
-      const keys = normalizeApiKeys(s.apiKeys);
-      setFmpDraft({ apiKeys: keys });
-      setShowFmpKeys(initialApiKeyVisibility(keys));
+      setFmpDraftState(toApiKeyDraftState(s));
     }
   });
 
@@ -373,11 +373,12 @@ export default function SettingsPage() {
   };
 
   // ── Tavily API Keys 设置 ────────────────────────────────────────────────────
-  const [tavilyDraft, setTavilyDraft] = createSignal<TavilySettings>(
-    defaultTavilySettings(),
+  const [tavilyDraftState, setTavilyDraftState] = createSignal(
+    toApiKeyDraftState(defaultTavilySettings()),
   );
+  const tavilyDraft = () => tavilyDraftState().settings;
+  const showTavilyKeys = () => tavilyDraftState().visibility;
   const [tavilySaving, setTavilySaving] = createSignal(false);
-  const [showTavilyKeys, setShowTavilyKeys] = createSignal<boolean[]>([false]);
 
   const [tavilySettingsRes] = createResource(
     () => backend.state.isDesktop,
@@ -390,9 +391,7 @@ export default function SettingsPage() {
   createEffect(() => {
     const s = tavilySettingsRes();
     if (s) {
-      const keys = normalizeApiKeys(s.apiKeys);
-      setTavilyDraft({ apiKeys: keys });
-      setShowTavilyKeys(initialApiKeyVisibility(keys));
+      setTavilyDraftState(toApiKeyDraftState(s));
     }
   });
 
@@ -410,38 +409,34 @@ export default function SettingsPage() {
   // ── 多 Key 输入辅助函数 ──────────────────────────────────────────────────────
   /** 更新指定索引的 key 值 */
   function updateApiKeyDraft<T extends { apiKeys: string[] }>(
-    setter: (fn: (prev: T) => T) => void,
+    setter: ApiKeyDraftStateSetter<T>,
     index: number,
     value: string,
   ) {
-    setter((prev) => updateApiKeyList(prev, index, value));
+    setter((prev) => updateApiKeyDraftState(prev, index, value));
   }
 
   /** 追加一个空 key 输入行 */
   function addApiKeyDraftRow<T extends { apiKeys: string[] }>(
-    setter: (fn: (prev: T) => T) => void,
-    showSetter: (fn: (prev: boolean[]) => boolean[]) => void,
+    setter: ApiKeyDraftStateSetter<T>,
   ) {
-    setter((prev) => appendApiKey(prev));
-    showSetter((prev) => appendApiKeyVisibility(prev));
+    setter((prev) => appendApiKeyDraftState(prev));
   }
 
   /** 删除指定索引的 key */
   function removeApiKeyDraftRow<T extends { apiKeys: string[] }>(
-    setter: (fn: (prev: T) => T) => void,
-    showSetter: (fn: (prev: boolean[]) => boolean[]) => void,
+    setter: ApiKeyDraftStateSetter<T>,
     index: number,
   ) {
-    setter((prev) => removeApiKey(prev, index));
-    showSetter((prev) => removeApiKeyVisibility(prev, index));
+    setter((prev) => removeApiKeyDraftState(prev, index));
   }
 
   /** 切换指定索引的 key 显示/隐藏 */
-  function toggleApiKeyDraftVisibility(
-    showSetter: (fn: (prev: boolean[]) => boolean[]) => void,
+  function toggleApiKeyDraftVisibility<T extends { apiKeys: string[] }>(
+    setter: ApiKeyDraftStateSetter<T>,
     index: number,
   ) {
-    showSetter((prev) => toggleApiKeyVisibility(prev, index));
+    setter((prev) => toggleApiKeyDraftState(prev, index));
   }
 
   const updateHoneCloudDraft = (
@@ -656,19 +651,15 @@ export default function SettingsPage() {
     action: InviteAction,
   ) => isInviteActionKeyRunning(inviteActionKey(), userId, action);
 
-  const handleDisableInvite = async (invite: WebInviteInfo) => {
-    if (typeof window !== "undefined") {
-      const confirmed = window.confirm(
-        tpl(SETTINGS.invite.disable_confirm, { userId: invite.user_id }),
-      );
-      if (!confirmed) return;
-    }
+  const runInviteAction = async (
+    invite: WebInviteInfo,
+    action: InviteAction,
+    actionFn: () => Promise<void>,
+  ) => {
     clearInviteFeedback();
-    setInviteActionKey(buildInviteActionKey(invite.user_id, "disable"));
+    setInviteActionKey(buildInviteActionKey(invite.user_id, action));
     try {
-      const result = await disableWebInvite(invite.user_id);
-      replaceInvite(result.invite);
-      setInviteMessage(result.message);
+      await actionFn();
     } catch (error) {
       setInviteError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -676,18 +667,26 @@ export default function SettingsPage() {
     }
   };
 
+  const handleDisableInvite = async (invite: WebInviteInfo) => {
+    if (typeof window !== "undefined") {
+      const confirmed = window.confirm(
+        tpl(SETTINGS.invite.disable_confirm, { userId: invite.user_id }),
+      );
+      if (!confirmed) return;
+    }
+    await runInviteAction(invite, "disable", async () => {
+      const result = await disableWebInvite(invite.user_id);
+      replaceInvite(result.invite);
+      setInviteMessage(result.message);
+    });
+  };
+
   const handleEnableInvite = async (invite: WebInviteInfo) => {
-    clearInviteFeedback();
-    setInviteActionKey(buildInviteActionKey(invite.user_id, "enable"));
-    try {
+    await runInviteAction(invite, "enable", async () => {
       const result = await enableWebInvite(invite.user_id);
       replaceInvite(result.invite);
       setInviteMessage(result.message);
-    } catch (error) {
-      setInviteError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setInviteActionKey("");
-    }
+    });
   };
 
   const handleResetInvite = async (invite: WebInviteInfo) => {
@@ -697,9 +696,7 @@ export default function SettingsPage() {
       );
       if (!confirmed) return;
     }
-    clearInviteFeedback();
-    setInviteActionKey(buildInviteActionKey(invite.user_id, "reset"));
-    try {
+    await runInviteAction(invite, "reset", async () => {
       const result = await resetWebInvite(invite.user_id);
       replaceInvite(result.invite);
       setInviteMessage(result.message);
@@ -709,11 +706,7 @@ export default function SettingsPage() {
           tpl(SETTINGS.invite.reset_copied_suffix, { message: result.message }),
         );
       }
-    } catch (error) {
-      setInviteError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setInviteActionKey("");
-    }
+    });
   };
 
   const copyInviteApiKey = async (apiKey: string) => {
@@ -730,20 +723,14 @@ export default function SettingsPage() {
   };
 
   const handleGetInviteApiKey = async (invite: WebInviteInfo) => {
-    clearInviteFeedback();
-    setInviteActionKey(buildInviteActionKey(invite.user_id, "api-key"));
-    try {
+    await runInviteAction(invite, "api-key", async () => {
       const result = await getWebInviteApiKey(invite.user_id);
       replaceInvite(result.invite);
       setInviteMessage(result.message);
       if (result.invite.api_key) {
         await copyInviteApiKey(result.invite.api_key);
       }
-    } catch (error) {
-      setInviteError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setInviteActionKey("");
-    }
+    });
   };
 
   const handleResetInviteApiKey = async (invite: WebInviteInfo) => {
@@ -753,20 +740,14 @@ export default function SettingsPage() {
       );
       if (!confirmed) return;
     }
-    clearInviteFeedback();
-    setInviteActionKey(buildInviteActionKey(invite.user_id, "api-key-reset"));
-    try {
+    await runInviteAction(invite, "api-key-reset", async () => {
       const result = await resetWebInviteApiKey(invite.user_id);
       replaceInvite(result.invite);
       setInviteMessage(result.message);
       if (result.invite.api_key) {
         await copyInviteApiKey(result.invite.api_key);
       }
-    } catch (error) {
-      setInviteError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setInviteActionKey("");
-    }
+    });
   };
 
   const tabLabel = (key: SettingsTabKey): string => SETTINGS.tabs[key];
@@ -1872,7 +1853,7 @@ export default function SettingsPage() {
                           value={key()}
                           onInput={(e) =>
                             updateApiKeyDraft(
-                              setFmpDraft,
+                              setFmpDraftState,
                               index,
                               e.currentTarget.value,
                             )
@@ -1882,7 +1863,7 @@ export default function SettingsPage() {
                           type="button"
                           class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"
                           onClick={() =>
-                            toggleApiKeyDraftVisibility(setShowFmpKeys, index)
+                            toggleApiKeyDraftVisibility(setFmpDraftState, index)
                           }
                         >
                           <Show
@@ -1931,8 +1912,7 @@ export default function SettingsPage() {
                           class="text-xs text-rose-500 px-2 font-medium"
                           onClick={() =>
                             removeApiKeyDraftRow(
-                              setFmpDraft,
-                              setShowFmpKeys,
+                              setFmpDraftState,
                               index,
                             )
                           }
@@ -1947,9 +1927,7 @@ export default function SettingsPage() {
                   <button
                     type="button"
                     class="text-[10px] font-bold text-[color:var(--accent)]"
-                    onClick={() =>
-                      addApiKeyDraftRow(setFmpDraft, setShowFmpKeys)
-                    }
+                    onClick={() => addApiKeyDraftRow(setFmpDraftState)}
                   >
                     {SETTINGS.data.fmp.add_key}
                   </button>
@@ -2007,7 +1985,7 @@ export default function SettingsPage() {
                           value={key()}
                           onInput={(e) =>
                             updateApiKeyDraft(
-                              setTavilyDraft,
+                              setTavilyDraftState,
                               index,
                               e.currentTarget.value,
                             )
@@ -2018,7 +1996,7 @@ export default function SettingsPage() {
                           class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"
                           onClick={() =>
                             toggleApiKeyDraftVisibility(
-                              setShowTavilyKeys,
+                              setTavilyDraftState,
                               index,
                             )
                           }
@@ -2069,8 +2047,7 @@ export default function SettingsPage() {
                           class="text-xs text-rose-500 px-2 font-medium"
                           onClick={() =>
                             removeApiKeyDraftRow(
-                              setTavilyDraft,
-                              setShowTavilyKeys,
+                              setTavilyDraftState,
                               index,
                             )
                           }
@@ -2085,9 +2062,7 @@ export default function SettingsPage() {
                   <button
                     type="button"
                     class="text-[10px] font-bold text-[color:var(--accent)]"
-                    onClick={() =>
-                      addApiKeyDraftRow(setTavilyDraft, setShowTavilyKeys)
-                    }
+                    onClick={() => addApiKeyDraftRow(setTavilyDraftState)}
                   >
                     {SETTINGS.data.tavily.add_key}
                   </button>

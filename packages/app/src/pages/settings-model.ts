@@ -16,6 +16,10 @@ import type {
 export type LanguageDraft = "zh" | "en"
 export type SettingsTabKey = "agent" | "data" | "notify" | "channel" | "invite"
 export type LlmProfileBindingKey = keyof Omit<LlmProfileSettings, "profiles">
+export type ApiKeyDraftState<T extends { apiKeys: string[] }> = {
+  settings: T
+  visibility: boolean[]
+}
 export type InviteAction =
   | "disable"
   | "enable"
@@ -368,6 +372,16 @@ export function initialApiKeyVisibility(apiKeys?: string[]): boolean[] {
   return normalizeApiKeys(apiKeys).map(() => false)
 }
 
+export function toApiKeyDraftState<T extends { apiKeys: string[] }>(
+  settings: T,
+): ApiKeyDraftState<T> {
+  const apiKeys = normalizeApiKeys(settings.apiKeys)
+  return {
+    settings: { ...settings, apiKeys },
+    visibility: initialApiKeyVisibility(apiKeys),
+  }
+}
+
 export function updateApiKeyList<T extends { apiKeys: string[] }>(
   currentSettings: T,
   targetIndex: number,
@@ -418,6 +432,49 @@ export function removeApiKeyVisibility(
 
 export function appendApiKeyVisibility(currentVisibility: boolean[]): boolean[] {
   return [...currentVisibility, false]
+}
+
+export function updateApiKeyDraftState<T extends { apiKeys: string[] }>(
+  currentState: ApiKeyDraftState<T>,
+  targetIndex: number,
+  apiKey: string,
+): ApiKeyDraftState<T> {
+  return {
+    ...currentState,
+    settings: updateApiKeyList(currentState.settings, targetIndex, apiKey),
+  }
+}
+
+export function appendApiKeyDraftState<T extends { apiKeys: string[] }>(
+  currentState: ApiKeyDraftState<T>,
+): ApiKeyDraftState<T> {
+  return {
+    settings: appendApiKey(currentState.settings),
+    visibility: appendApiKeyVisibility(currentState.visibility),
+  }
+}
+
+export function removeApiKeyDraftState<T extends { apiKeys: string[] }>(
+  currentState: ApiKeyDraftState<T>,
+  targetIndex: number,
+): ApiKeyDraftState<T> {
+  return {
+    settings: removeApiKey(currentState.settings, targetIndex),
+    visibility: removeApiKeyVisibility(currentState.visibility, targetIndex),
+  }
+}
+
+export function toggleApiKeyDraftState<T extends { apiKeys: string[] }>(
+  currentState: ApiKeyDraftState<T>,
+  targetIndex: number,
+): ApiKeyDraftState<T> {
+  return {
+    ...currentState,
+    visibility: toggleApiKeyVisibility(
+      currentState.visibility,
+      targetIndex,
+    ),
+  }
 }
 
 export function toChannelDraft(
