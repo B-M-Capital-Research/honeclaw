@@ -12,10 +12,8 @@
     "./markdown-utils": "./src/lib/markdown.ts",
     "./skeleton": "./src/components/skeleton.tsx",
     "./textarea": "./src/components/textarea.tsx",
-    "./context/dialog": "./src/context/dialog.tsx",
     "./context/marked": "./src/context/marked.tsx",
     "./context/toast": "./src/context/toast.tsx",
-    "./theme": "./src/context/theme.tsx",
     "./styles": "./src/styles/index.css"
   },
   "scripts": {

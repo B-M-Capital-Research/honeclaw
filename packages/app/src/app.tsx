@@ -1,8 +1,6 @@
 import "@/index.css"
-import { DialogProvider } from "@hone-financial/ui/context/dialog"
 import { MarkedProvider } from "@hone-financial/ui/context/marked"
 import { ToastProvider } from "@hone-financial/ui/context/toast"
-import { ThemeProvider } from "@hone-financial/ui/theme"
 import { MetaProvider, Title } from "@solidjs/meta"
 import { Navigate, Route, Router } from "@solidjs/router"
 import { ErrorBoundary, Suspense, createEffect, createSignal, lazy, type ParentProps } from "solid-js"
@@ -66,31 +64,25 @@ function AdminProviders(props: ParentProps) {
   return (
     <MetaProvider>
       <Title>Hone Console</Title>
-      <ThemeProvider>
-        <DialogProvider>
-          <MarkedProvider>
-            <ToastProvider>
-              <BackendProvider>
-                <ConsoleProvider>
-                  <SessionsProvider>
-                    <SkillsProvider>
-                      <TasksProvider>
-                        <PortfolioProvider>
-                          <ResearchProvider>
-                            <CompanyProfilesProvider>
-                              {props.children}
-                            </CompanyProfilesProvider>
-                          </ResearchProvider>
-                        </PortfolioProvider>
-                      </TasksProvider>
-                    </SkillsProvider>
-                  </SessionsProvider>
-                </ConsoleProvider>
-              </BackendProvider>
-            </ToastProvider>
-          </MarkedProvider>
-        </DialogProvider>
-      </ThemeProvider>
+      <MarkedProvider>
+        <ToastProvider>
+          <BackendProvider>
+            <ConsoleProvider>
+              <SessionsProvider>
+                <SkillsProvider>
+                  <TasksProvider>
+                    <PortfolioProvider>
+                      <ResearchProvider>
+                        <CompanyProfilesProvider>{props.children}</CompanyProfilesProvider>
+                      </ResearchProvider>
+                    </PortfolioProvider>
+                  </TasksProvider>
+                </SkillsProvider>
+              </SessionsProvider>
+            </ConsoleProvider>
+          </BackendProvider>
+        </ToastProvider>
+      </MarkedProvider>
     </MetaProvider>
   )
 }
@@ -99,11 +91,9 @@ function PublicProviders(props: ParentProps) {
   return (
     <MetaProvider>
       <Title>Hone Chat</Title>
-      <ThemeProvider>
-        <MarkedProvider>
-          <ToastProvider>{props.children}</ToastProvider>
-        </MarkedProvider>
-      </ThemeProvider>
+      <MarkedProvider>
+        <ToastProvider>{props.children}</ToastProvider>
+      </MarkedProvider>
     </MetaProvider>
   )
 }
