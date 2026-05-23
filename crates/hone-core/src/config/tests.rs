@@ -202,6 +202,83 @@ fn assert_config_example_public_auth_env_docs(example: &str) {
             "config.example.yaml should document public auth env {env_name}"
         );
     }
+
+    assert!(
+        example.contains("HONE_PUBLIC_SECURE_COOKIE=true/1/yes or false/0/no"),
+        "config.example.yaml should document accepted secure-cookie override values"
+    );
+    assert!(
+        example.contains("invalid values keep Secure=true"),
+        "config.example.yaml should document secure-cookie safety fallback"
+    );
+}
+
+fn assert_public_auth_runbook_env_docs(runbook: &str) {
+    assert!(
+        runbook.contains("Public Auth Runtime Env"),
+        "backend deployment runbook should keep a public auth env section"
+    );
+    for env_name in [
+        "ALIBABA_CLOUD_ACCESS_KEY_ID",
+        "ALIBABA_CLOUD_ACCESS_KEY_SECRET",
+        "HONE_ALIYUN_SMS_ENDPOINT",
+        "HONE_ALIYUN_SMS_COUNTRY_CODE",
+        "HONE_ALIYUN_SMS_SIGN_NAME",
+        "HONE_ALIYUN_SMS_TEMPLATE_CODE",
+        "HONE_ALIYUN_SMS_TEMPLATE_PARAM",
+        "HONE_ALIYUN_CAPTCHA_PREFIX",
+        "HONE_ALIYUN_CAPTCHA_SCENE_ID",
+        "HONE_ALIYUN_CAPTCHA_REGION",
+        "HONE_ALIYUN_CAPTCHA_ENDPOINT",
+        "HONE_ALIYUN_CAPTCHA_ENABLED",
+        "HONE_PUBLIC_SECURE_COOKIE",
+    ] {
+        assert!(
+            runbook.contains(env_name),
+            "backend deployment runbook should document public auth env {env_name}"
+        );
+    }
+    for accepted_value in ["true", "1", "yes", "false", "0", "no"] {
+        assert!(
+            runbook.contains(accepted_value),
+            "backend deployment runbook should document secure-cookie value {accepted_value}"
+        );
+    }
+    assert!(
+        runbook.contains("Invalid non-empty values intentionally keep `Secure=true`"),
+        "backend deployment runbook should document secure-cookie safety fallback"
+    );
+}
+
+fn assert_session_sqlite_runbook_runtime_docs(runbook: &str) {
+    assert!(
+        runbook.contains("`storage.session_runtime_backend` 决定"),
+        "session SQLite runbook should describe the runtime backend switch"
+    );
+    assert!(
+        runbook.contains("`json`：运行时读取 `data/sessions/*.json`"),
+        "session SQLite runbook should document the JSON runtime read path"
+    );
+    assert!(
+        runbook.contains("`sqlite`：运行时读取 `storage.session_sqlite_db_path`"),
+        "session SQLite runbook should document the SQLite runtime read path"
+    );
+    assert!(
+        !runbook.contains("SQLite 只是额外镜像，不参与线上请求"),
+        "session SQLite runbook should not claim SQLite is never in the online request path"
+    );
+    assert!(
+        !runbook.contains("Web/API 读路径改造"),
+        "session SQLite runbook should not claim Web/API read path work is still pending"
+    );
+    assert!(
+        runbook.contains("当 `session_runtime_backend: \"json\"` 时，SQLite 影子库不是线上真相源"),
+        "session SQLite runbook should scope shadow-store risk to JSON runtime"
+    );
+    assert!(
+        runbook.contains("当 `session_runtime_backend: \"sqlite\"` 时，SQLite 是运行时读路径"),
+        "session SQLite runbook should document SQLite runtime risk"
+    );
 }
 
 fn legacy_agent_migration_canonical_yaml() -> &'static str {
@@ -1616,4 +1693,17 @@ fn config_example_avoids_stale_config_knobs() {
     assert_config_example_multi_agent_fallback_docs(&example);
     assert_config_example_storage_and_logging(root);
     assert_config_example_public_auth_env_docs(&example);
+
+    let backend_runbook = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/runbooks/backend-deployment.md"),
+    )
+    .unwrap();
+    assert_public_auth_runbook_env_docs(&backend_runbook);
+
+    let session_sqlite_runbook = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../docs/runbooks/session-sqlite-shadow-backfill.md"),
+    )
+    .unwrap();
+    assert_session_sqlite_runbook_runtime_docs(&session_sqlite_runbook);
 }

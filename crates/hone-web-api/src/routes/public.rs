@@ -1334,6 +1334,39 @@ mod tests {
     }
 
     #[test]
+    fn env_force_secure_cookie_accepts_aliases_and_fails_closed() {
+        let _guard = crate::test_env_lock().lock().unwrap();
+        let _env = EnvVarGuard::set(SECURE_COOKIE_ENV, "yes");
+        let headers = HeaderMap::new();
+
+        let yes_cookie = build_session_cookie("tok", &headers, WEB_SESSION_MAX_AGE_LONG_SECS)
+            .to_str()
+            .expect("cookie")
+            .to_string();
+        assert!(yes_cookie.contains("Secure"));
+
+        unsafe { std::env::set_var(SECURE_COOKIE_ENV, "0") };
+        let mut https_headers = HeaderMap::new();
+        https_headers.insert(
+            header::ORIGIN,
+            HeaderValue::from_static("https://chat.example.com"),
+        );
+        let zero_cookie =
+            build_session_cookie("tok", &https_headers, WEB_SESSION_MAX_AGE_LONG_SECS)
+                .to_str()
+                .expect("cookie")
+                .to_string();
+        assert!(!zero_cookie.contains("Secure"));
+
+        unsafe { std::env::set_var(SECURE_COOKIE_ENV, "maybe") };
+        let invalid_cookie = build_session_cookie("tok", &headers, WEB_SESSION_MAX_AGE_LONG_SECS)
+            .to_str()
+            .expect("cookie")
+            .to_string();
+        assert!(invalid_cookie.contains("Secure"));
+    }
+
+    #[test]
     fn cookie_max_age_reflects_remember_choice() {
         let _guard = crate::test_env_lock().lock().unwrap();
         let _env = EnvVarGuard::unset(SECURE_COOKIE_ENV);

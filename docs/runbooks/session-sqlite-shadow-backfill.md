@@ -8,10 +8,11 @@
 - 为后续真正切换到 SQLite 提前做数据基座和对账
 - 在线上先低风险演练迁移，不影响当前 JSON 运行时逻辑
 
-当前这套脚本是“影子库”方案：
+这套脚本仍是“影子库 / backfill”工具；运行时读路径由
+`storage.session_runtime_backend` 决定：
 
-- 运行时仍然只读写 `data/sessions/*.json`
-- SQLite 只是额外镜像，不参与线上请求
+- `json`：运行时读取 `data/sessions/*.json`，SQLite 只作为额外镜像
+- `sqlite`：运行时读取 `storage.session_sqlite_db_path`，JSON 继续作为回退镜像双写
 
 当前 Rust 运行时已经支持两种模式：
 
@@ -69,7 +70,7 @@ storage:
 
 - 这不会切换 runtime 读路径
 - SQLite 写入失败只会记日志，不会阻断 JSON 主写
-- 真正切 runtime 前，仍需继续完成 Web/API 读路径改造和对账验证
+- 真正切 runtime 前，仍需完成最新 backfill 和对账验证；Web/API 与渠道读写会跟随 `session_runtime_backend`
 
 ## 切换到 SQLite runtime
 
@@ -144,7 +145,8 @@ python3 scripts/diagnose_session_sqlite.py --json summary
 
 - 脚本会先稳定读取文件；如果读取过程中源文件发生变化，会报错并跳过该文件
 - 默认不做“缺失文件反向删库”，避免误删历史镜像
-- 当前影子库不是线上真相源，异常不会影响现网服务
+- 当 `session_runtime_backend: "json"` 时，SQLite 影子库不是线上真相源，异常不会影响现网服务
+- 当 `session_runtime_backend: "sqlite"` 时，SQLite 是运行时读路径，先完成 backfill / diagnose 再切换
 
 ## 推荐操作顺序
 

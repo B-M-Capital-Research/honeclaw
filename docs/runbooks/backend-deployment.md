@@ -128,7 +128,7 @@ Optional cookie override:
 HONE_PUBLIC_SECURE_COOKIE=true
 ```
 
-Use `HONE_PUBLIC_SECURE_COOKIE=true` when the backend origin cannot reliably infer HTTPS from proxy headers. Use `false` only for local HTTP diagnostics.
+Use `HONE_PUBLIC_SECURE_COOKIE=true`, `1`, or `yes` when the backend origin cannot reliably infer HTTPS from proxy headers. Use `false`, `0`, or `no` only for local HTTP diagnostics. Invalid non-empty values intentionally keep `Secure=true`.
 
 ## Worker Route
 

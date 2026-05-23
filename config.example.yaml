@@ -513,7 +513,8 @@ web:
   # - HONE_ALIYUN_SMS_SIGN_NAME (default: 速通互联验证码)
   # - HONE_ALIYUN_SMS_TEMPLATE_CODE (default: 100001)
   # - HONE_ALIYUN_SMS_TEMPLATE_PARAM (default: {"code":"##code##","min":"5"})
-  # - HONE_PUBLIC_SECURE_COOKIE=true/false may force the public session cookie Secure flag.
+  # - HONE_PUBLIC_SECURE_COOKIE=true/1/yes or false/0/no may force the public
+  #   session cookie Secure flag; invalid values keep Secure=true.
   # Existing admin-created Web invite users are treated as the public login whitelist.
   # Optional Aliyun Captcha 2.0 guard for public SMS sends is configured by env:
   # - ALIBABA_CLOUD_ACCESS_KEY_ID / ALIBABA_CLOUD_ACCESS_KEY_SECRET (same AccessKey env as SMS)
