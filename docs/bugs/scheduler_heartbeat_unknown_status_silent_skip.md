@@ -7,6 +7,19 @@
 
 ## 修复进展
 
+- `2026-05-24 07:03 CST` 本轮仅补充旧/未确认部署运行态证据，不把本单从 `Fixed` 回退：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 03:03-07:03 CST live 窗口新增 `76` 条 heartbeat 结构化 / 状态解析失败，终态均为 `execution_failed + skipped_error + delivered=0`；其中 Feishu `53` 条、Web `23` 条。
+    - 错误分布：`PlainTextSuppressed` `71` 条、`JsonUnknownStatus` `4` 条、`Empty` `1` 条；另有 `12` 条 `ContextOverflowNoop` 归入 `scheduler_heartbeat_context_window_limit_no_recovery.md`，`4` 条 `max_iterations_exceeded:10` 归入 `scheduler_heartbeat_iteration_exhaustion_skips_alert.md` 的旧/未确认部署运行态证据。
+    - 代表性样本：`run_id=32031` / `TSLA 正负触发条件心跳监控`、`run_id=32024` / `持仓重大事件心跳检测`、`run_id=32030` / `TEM大事件心跳监控`、`run_id=32020` / Web `存储板块关键事件心跳提醒`、`run_id=32021` / Web `AI与科技持仓观察关键事件心跳提醒` 均未按 heartbeat JSON 收口，最终跳过发送或写入执行失败。
+    - 同窗仍有合法 `noop + skipped_noop` 与少量 `completed + sent` 样本，例如 Feishu heartbeat `4` 条 `completed + sent + delivered=1`，普通 Feishu scheduler `1` 条 `completed + sent + delivered=1`，说明不是 scheduler 或出站整体不可用。
+  - 会话质量对照：
+    - 最近四小时按消息时间共有 `4` 个 user turn 与 `4` 个 assistant final；最近 `4` 个活跃 Feishu session 均以 assistant final 收口。
+    - assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`；同窗无 `running + pending` 残留。
+  - 判断：
+    - 当前仓库 12:13 CST 已有 status 别名归一、完整 `<think>` 内部-only noop 兼容和配置路径护栏回归；最新 live 仍持续写入 `PlainTextSuppressed`，更符合运行进程尚未确认重启/部署到该修复后的证据。
+    - 后续只有在确认部署当前代码后仍出现同类结构化收口失败，再重新打开；本轮不创建 GitHub Issue。
+
 - `2026-05-24 03:04 CST` 本轮仅补充旧/未确认部署运行态证据，不把本单从 `Fixed` 回退：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - 23:01-03:04 CST live 窗口新增 `81` 条 heartbeat 结构化 / 状态解析失败，终态均为 `execution_failed + skipped_error + delivered=0`；其中 Feishu `63` 条、Web `18` 条。
