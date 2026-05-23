@@ -8,6 +8,11 @@ import { useTasks } from "@/context/tasks"
 import { formatShanghaiDateTime } from "@/lib/time"
 import { TASKS } from "@/lib/admin-content/tasks"
 import { tpl } from "@/lib/i18n"
+import {
+    cronJobUpsertInputFromDraft,
+    isHeartbeatCronDraft,
+    tagsForRepeatDraft,
+} from "./task-detail-model"
 
 export function TaskDetail() {
     const navigate = useNavigate()
@@ -24,8 +29,7 @@ export function TaskDetail() {
     const isNew = () => tasks.state.currentTaskId === "new"
     const currentJob = () => tasks.currentTask()
 
-    const isHeartbeatDraft = () =>
-        tasks.state.draft.repeat === "heartbeat" || (tasks.state.draft.tags || []).includes("heartbeat")
+    const isHeartbeatDraft = () => isHeartbeatCronDraft(tasks.state.draft)
 
     const executionStatusLabel = (status: string) => {
         switch (status) {
@@ -61,22 +65,7 @@ export function TaskDetail() {
 
     const handleSubmit = async (e: Event) => {
         e.preventDefault()
-        // Validation is mostly handled by HTML5, but we need numeric conversions
-        const draft = tasks.state.draft
-        await tasks.saveTask({
-            channel: draft.channel,
-            name: draft.name,
-            task_prompt: draft.task_prompt,
-            user_id: draft.user_id,
-            channel_scope: draft.channel_scope,
-            hour: isHeartbeatDraft() ? undefined : Number(draft.hour),
-            minute: isHeartbeatDraft() ? undefined : Number(draft.minute),
-            repeat: draft.repeat,
-            weekday: draft.weekday !== undefined && !isNaN(Number(draft.weekday)) ? Number(draft.weekday) : undefined,
-            enabled: draft.enabled,
-            channel_target: draft.channel_target,
-            tags: draft.tags,
-        })
+        await tasks.saveTask(cronJobUpsertInputFromDraft(tasks.state.draft))
     }
 
     return (
@@ -206,11 +195,7 @@ export function TaskDetail() {
                                         if (repeat !== "weekly") {
                                             tasks.setDraft("weekday", undefined)
                                         }
-                                        if (repeat === "heartbeat") {
-                                            tasks.setDraft("tags", ["heartbeat"])
-                                        } else {
-                                            tasks.setDraft("tags", (tasks.state.draft.tags || []).filter((tag) => tag !== "heartbeat"))
-                                        }
+                                        tasks.setDraft("tags", tagsForRepeatDraft(repeat, tasks.state.draft.tags))
                                     }}
                                 >
                                     <option value="once">{TASKS.detail.repeat_once}</option>

@@ -23,11 +23,21 @@ import { NOTIFICATIONS } from "@/lib/admin-content/notifications";
 import { tpl } from "@/lib/i18n";
 import {
   DEFAULT_NOTIFICATION_PREFS,
+  addDigestSlot,
+  digestSlotsOverlapQuiet,
+  enableQuietHours,
   isValidDigestSlotTime,
+  priceHighOverrideFromInput,
+  quietHoursHasEmptyWindow,
+  removeDigestSlot,
   sameActor,
-  sortDigestSlots,
-  timeFallsInQuiet,
-  toggleTag,
+  setQuietHourEnd,
+  setQuietHourStart,
+  timezonePrefFromInput,
+  toggleAllowedKind,
+  toggleBlockedKind,
+  toggleImmediateKind,
+  toggleQuietExemptKind,
 } from "./notification-preferences-model";
 
 type RosterEntry = {
@@ -284,24 +294,15 @@ export function NotificationPreferencesCard() {
   };
 
   const handleAllowToggle = (tag: string) => {
-    editCurrent((prefs) => {
-      const nextTags = toggleTag(prefs.allow_kinds ?? [], tag);
-      return { ...prefs, allow_kinds: nextTags.length === 0 ? null : nextTags };
-    });
+    editCurrent((prefs) => toggleAllowedKind(prefs, tag));
   };
 
   const handleBlockToggle = (tag: string) => {
-    editCurrent((prefs) => ({
-      ...prefs,
-      blocked_kinds: toggleTag(prefs.blocked_kinds ?? [], tag),
-    }));
+    editCurrent((prefs) => toggleBlockedKind(prefs, tag));
   };
 
   const handleImmediateToggle = (tag: string) => {
-    editCurrent((prefs) => {
-      const nextTags = toggleTag(prefs.immediate_kinds ?? [], tag);
-      return { ...prefs, immediate_kinds: nextTags.length === 0 ? null : nextTags };
-    });
+    editCurrent((prefs) => toggleImmediateKind(prefs, tag));
   };
 
   // digest_slots 操作:null = 沿用全局 default_slots,[] = 关 digest,[..] = 自定义。
@@ -312,24 +313,11 @@ export function NotificationPreferencesCard() {
   const addSlot = () => {
     const slotTime = slotDraft().trim();
     if (!isValidDigestSlotTime(slotTime)) return;
-    editCurrent((prefs) => {
-      const existingSlots = prefs.digest_slots ?? [];
-      if (existingSlots.some((slot) => slot.time === slotTime)) return prefs; // 同时刻去重
-      const slotId = `slot_${existingSlots.length}`;
-      return {
-        ...prefs,
-        digest_slots: sortDigestSlots([
-          ...existingSlots,
-          { id: slotId, time: slotTime },
-        ]),
-      };
-    });
+    editCurrent((prefs) => addDigestSlot(prefs, slotTime));
     setSlotDraft("");
   };
   const removeSlot = (id: string) => {
-    updateCurrentPrefs((prefs) => ({
-      digest_slots: (prefs.digest_slots ?? []).filter((slot) => slot.id !== id),
-    }));
+    editCurrent((prefs) => removeDigestSlot(prefs, id));
   };
   const resetSlotsToGlobal = () => {
     updateCurrentPrefs({ digest_slots: null });
@@ -343,68 +331,34 @@ export function NotificationPreferencesCard() {
   const setQuietFrom = (raw: string) => {
     const quietStart = raw.trim();
     if (!isValidDigestSlotTime(quietStart)) return;
-    editCurrent((prefs) => ({
-      ...prefs,
-      quiet_hours: {
-        from: quietStart,
-        to: prefs.quiet_hours?.to ?? "08:00",
-        exempt_kinds: prefs.quiet_hours?.exempt_kinds ?? [],
-      },
-    }));
+    editCurrent((prefs) => setQuietHourStart(prefs, quietStart));
   };
   const setQuietTo = (raw: string) => {
     const quietEnd = raw.trim();
     if (!isValidDigestSlotTime(quietEnd)) return;
-    editCurrent((prefs) => ({
-      ...prefs,
-      quiet_hours: {
-        from: prefs.quiet_hours?.from ?? "00:00",
-        to: quietEnd,
-        exempt_kinds: prefs.quiet_hours?.exempt_kinds ?? [],
-      },
-    }));
+    editCurrent((prefs) => setQuietHourEnd(prefs, quietEnd));
   };
   const enableQuiet = () => {
-    editCurrent((prefs) =>
-      prefs.quiet_hours
-        ? prefs
-        : {
-            ...prefs,
-            quiet_hours: { from: "00:00", to: "08:00", exempt_kinds: [] },
-          },
-    );
+    editCurrent(enableQuietHours);
   };
   const clearQuiet = () => {
     updateCurrentPrefs({ quiet_hours: null });
   };
   const toggleQuietExempt = (tag: string) => {
-    editCurrent((prefs) => {
-      if (!prefs.quiet_hours) return prefs;
-      const nextTags = toggleTag(prefs.quiet_hours.exempt_kinds, tag);
-      return {
-        ...prefs,
-        quiet_hours: { ...prefs.quiet_hours, exempt_kinds: nextTags },
-      };
-    });
+    editCurrent((prefs) => toggleQuietExemptKind(prefs, tag));
   };
 
   const handleTimezoneInput = (raw: string) => {
-    const timezone = raw.trim();
-    updateCurrentPrefs({ timezone: timezone === "" ? null : timezone });
+    updateCurrentPrefs({ timezone: timezonePrefFromInput(raw) });
   };
 
   const handlePriceHighInput = (raw: string) => {
-    const priceThreshold = raw.trim();
-    if (priceThreshold === "") {
-      editCurrent((prefs) => ({ ...prefs, price_high_pct_override: null }));
-      return;
-    }
-    const parsedThreshold = Number(priceThreshold);
     editCurrent((prefs) => ({
       ...prefs,
-      price_high_pct_override: Number.isFinite(parsedThreshold)
-        ? parsedThreshold
-        : prefs.price_high_pct_override,
+      price_high_pct_override: priceHighOverrideFromInput(
+        raw,
+        prefs.price_high_pct_override,
+      ),
     }));
   };
 
@@ -742,16 +696,7 @@ export function NotificationPreferencesCard() {
                   {NOTIFICATIONS.prefs.digest_mute_button}
                 </button>
               </div>
-              <Show
-                when={(() => {
-                  const digestSlots = currentPrefs().digest_slots ?? [];
-                  const quietHours = currentPrefs().quiet_hours;
-                  if (!quietHours) return false;
-                  return digestSlots.some((digestSlot) =>
-                    timeFallsInQuiet(digestSlot.time, quietHours),
-                  );
-                })()}
-              >
+              <Show when={digestSlotsOverlapQuiet(currentPrefs())}>
                 <span class="rounded-md border border-rose-500/50 bg-rose-500/10 px-2 py-1 text-[10px] text-rose-500">
                   {tpl(NOTIFICATIONS.prefs.digest_quiet_warning, {
                     from: currentPrefs().quiet_hours!.from,
@@ -856,12 +801,7 @@ export function NotificationPreferencesCard() {
                     {NOTIFICATIONS.prefs.quiet_hint}
                   </span>
                 </div>
-                <Show
-                  when={
-                    currentPrefs().quiet_hours!.from ===
-                    currentPrefs().quiet_hours!.to
-                  }
-                >
+                <Show when={quietHoursHasEmptyWindow(currentPrefs())}>
                   <span class="rounded-md border border-rose-500/50 bg-rose-500/10 px-2 py-0.5 text-[10px] text-rose-500">
                     {NOTIFICATIONS.prefs.quiet_invalid}
                   </span>
