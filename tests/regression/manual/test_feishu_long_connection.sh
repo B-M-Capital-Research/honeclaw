@@ -27,6 +27,7 @@ fi
 
 if ! command -v node >/dev/null 2>&1; then
   echo "[FAIL] node command not found in PATH" >&2
+  echo "Install Node.js or add it to PATH, then rerun this manual Feishu regression" >&2
   exit 1
 fi
 

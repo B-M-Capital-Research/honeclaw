@@ -3,6 +3,12 @@
 
 set -euo pipefail
 
+if ! command -v python3 >/dev/null 2>&1; then
+    echo "[FAIL] python3 is required to read Hone config and probe FMP/Tavily" >&2
+    echo "Install Python 3 or add it to PATH, then rerun: bash scripts/diagnose_fmp_tavily.sh" >&2
+    exit 1
+fi
+
 python3 - "$@" <<'PY'
 import argparse
 import json

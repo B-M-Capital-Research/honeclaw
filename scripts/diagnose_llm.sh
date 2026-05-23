@@ -9,6 +9,11 @@ if ! command -v python3 >/dev/null 2>&1; then
   echo "[FAIL] python3 is required to read Hone config" >&2
   exit 1
 fi
+if ! command -v curl >/dev/null 2>&1; then
+  echo "[FAIL] curl is required to probe OpenRouter" >&2
+  echo "Install curl or add it to PATH, then rerun: bash scripts/diagnose_llm.sh" >&2
+  exit 1
+fi
 if [[ ! -f "$CONFIG_PATH" ]]; then
   echo "[FAIL] config file not found: $CONFIG_PATH" >&2
   exit 1

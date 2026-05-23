@@ -10,6 +10,7 @@ PROMPT="Reply with exactly one line: ${EXPECTED_TOKEN}"
 
 if ! command -v codex >/dev/null 2>&1; then
   echo "[FAIL] codex command not found in PATH" >&2
+  echo "Install Codex CLI or add it to PATH, then rerun: bash tests/regression/manual/test_codex_cli_exec.sh" >&2
   exit 1
 fi
 

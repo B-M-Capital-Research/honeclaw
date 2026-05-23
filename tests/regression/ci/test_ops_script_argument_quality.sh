@@ -413,6 +413,48 @@ EOF
   assert_contains "$(cat "$bunx_log")" "tauri build --config bins/hone-desktop/tauri.generated.conf.json" "build_desktop should invoke the Tauri build command"
 }
 
+run_diagnose_fmp_tavily_missing_python_case() {
+  local empty_tools="$TMP_ROOT/no-python-tools"
+  mkdir -p "$empty_tools"
+
+  local output
+  if output="$(env PATH="$empty_tools" /bin/bash "$ROOT_DIR/scripts/diagnose_fmp_tavily.sh" 2>&1)"; then
+    echo "[FAIL] diagnose_fmp_tavily accepted a PATH without python3" >&2
+    exit 1
+  fi
+
+  assert_contains "$output" "[FAIL] python3 is required to read Hone config and probe FMP/Tavily" "diagnose_fmp_tavily should explain the python3 dependency"
+  assert_contains "$output" "bash scripts/diagnose_fmp_tavily.sh" "diagnose_fmp_tavily should include a rerun command"
+}
+
+run_diagnose_llm_missing_curl_case() {
+  local tools_dir="$TMP_ROOT/llm-no-curl-tools"
+  local home_dir="$TMP_ROOT/llm-home"
+  mkdir -p "$tools_dir" "$home_dir"
+  cat > "$tools_dir/python3" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' 'sk-test'
+EOF
+  chmod +x "$tools_dir/python3"
+  printf 'llm:\n  providers:\n    openrouter:\n      api_key: sk-test\n' > "$home_dir/config.yaml"
+
+  local output
+  if output="$(
+    env \
+      HOME="$home_dir" \
+      PATH="$tools_dir" \
+      HONE_USER_CONFIG_PATH="$home_dir/config.yaml" \
+      /bin/bash "$ROOT_DIR/scripts/diagnose_llm.sh" 2>&1
+  )"; then
+    echo "[FAIL] diagnose_llm accepted a PATH without curl" >&2
+    exit 1
+  fi
+
+  assert_contains "$output" "[FAIL] curl is required to probe OpenRouter" "diagnose_llm should explain the curl dependency"
+  assert_contains "$output" "bash scripts/diagnose_llm.sh" "diagnose_llm should include a rerun command"
+}
+
 run_missing_homebrew_formula_value_case
 run_invalid_homebrew_formula_sha_case
 run_homebrew_formula_generation_case
@@ -425,5 +467,7 @@ run_gitleaks_unsafe_archive_path_case
 run_gitleaks_existing_symlink_case
 run_gitleaks_outside_repo_case
 run_build_desktop_home_bun_case
+run_diagnose_fmp_tavily_missing_python_case
+run_diagnose_llm_missing_curl_case
 
 echo "[PASS] ops script argument quality regression passed"
