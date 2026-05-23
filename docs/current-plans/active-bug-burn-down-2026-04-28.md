@@ -89,7 +89,8 @@ Clear the current active bug queue as far as software changes can responsibly do
 - 2026-05-20 11:30: Closed the user-reported The Fly broken-link push regression. AnalystGrade events now keep raw FMP `payload.newsURL` for fanout/cooldown dedupe, but user-visible rendering filters The Fly internal `/ajax/news_get.php` and app-shell `/news.php` entrypoints. The attempted `news.php?symbol=AMD` replacement was verified to land on the The Fly app/home shell rather than a stable AMD news list, so the final policy is to omit unstable The Fly links unless upstream provides a stable public permalink or a non-The Fly URL.
 - 2026-05-20 20:06: Closed GitHub Issue #44 / P1 heartbeat `mimo-v2.5-pro` 429 quota exhaustion. The controllable bug was not the external quota itself, but the runtime ignoring configured non-OpenRouter `llm.providers.<name>.api_keys` after the first key. `OpenAiCompatibleProvider` now performs non-streaming key-pool fallback, profile resolution passes the full key pool, and heartbeat classifies 429 / rate-limit / resource-exhausted failures as `provider_quota_exhausted`. Active bug queue is empty again.
 - 2026-05-22 10:05: Closed the active P2 Feishu PDF CMap parser panic bug. Shared PDF extraction now catches `pdf_extract` / `adobe-cmap-parser` panics and returns stable `pdf_text_extract_failed`; attachment prompt lines, PDF notes, and ack messages sanitize historical `task panicked`, crate source path, and local absolute-path details before they can enter LLM-visible context. Active bug queue is empty again. No GitHub Issue is linked to this bug.
-- 2026-05-23 12:04: Closed the reopened P2 heartbeat context-window overflow status bug. Heartbeat runner context overflow is no longer converted into `ContextOverflowNoop`; it now keeps `ScheduledTaskExecution.error` and records `failure_kind=context_window_overflow` plus `parse_kind=ContextOverflowError`, so channel histories land as `execution_failed + skipped_error` instead of `noop + skipped_noop`. After rebasing remote bug-ledger updates, the active queue still has 1 separate heartbeat structured-status degradation item. No GitHub Issue is linked to the context-overflow bug.
+- 2026-05-23 12:04: Closed the reopened P2 heartbeat context-window overflow status bug. Heartbeat runner context overflow is no longer converted into `ContextOverflowNoop`; it now keeps `ScheduledTaskExecution.error` and records `failure_kind=context_window_overflow` plus `parse_kind=ContextOverflowError`, so channel histories land as `execution_failed + skipped_error` instead of `noop + skipped_noop`. No GitHub Issue is linked to the context-overflow bug.
+- 2026-05-23 12:13: Closed the remaining active P2 heartbeat structured-status degradation bug. Heartbeat JSON status aliases now normalize common `not_triggered` / `condition_met` shapes, complete internal-only `<think>` outputs that explicitly say no trigger normalize to `PlainTextNoop`, and the heartbeat prompt now blocks tool/task/profile configuration fragments such as `set_immediate_kinds` / `cron_job` as final output. Active bug queue is empty again. No GitHub Issue is linked to this bug.
 
 ## Validation
 
@@ -218,6 +219,9 @@ Completed this round:
 - `rustfmt --edition 2024 --check crates/hone-channels/src/scheduler.rs`
 - `cargo check -p hone-channels --tests`
 - `cargo test -p hone-channels heartbeat_context_overflow_error_is_not_classified_as_noop --lib -- --nocapture`
+- `cargo test -p hone-channels heartbeat_ --lib -- --nocapture`
+- `cargo check -p hone-channels --tests`
+- `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs`
 - `cargo test -p hone-channels heartbeat_ --lib -- --nocapture`
 - `cargo check -p hone-channels --tests`
 - `cargo test -p hone-channels heartbeat_duplicate_preview_match --lib -- --nocapture`

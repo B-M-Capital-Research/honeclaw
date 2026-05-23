@@ -179,6 +179,56 @@ fn parse_heartbeat_json_payload(content: &str) -> Option<HeartbeatJsonResponse> 
         .find_map(|candidate| serde_json::from_str::<HeartbeatJsonResponse>(candidate).ok())
 }
 
+fn heartbeat_status_indicates_noop(status: &str) -> bool {
+    let compact = status
+        .split_whitespace()
+        .collect::<String>()
+        .replace(['-', '_'], "")
+        .to_ascii_lowercase();
+    matches!(
+        compact.as_str(),
+        "noop"
+            | "none"
+            | "false"
+            | "nottriggered"
+            | "notrigger"
+            | "conditionnotmet"
+            | "conditionsnotmet"
+            | "notmet"
+            | "unmet"
+            | "skip"
+            | "skipped"
+            | "nosend"
+    ) || status.contains("未触发")
+        || status.contains("不触发")
+        || status.contains("未满足")
+        || status.contains("不满足")
+}
+
+fn heartbeat_status_indicates_triggered(status: &str) -> bool {
+    let compact = status
+        .split_whitespace()
+        .collect::<String>()
+        .replace(['-', '_'], "")
+        .to_ascii_lowercase();
+    matches!(
+        compact.as_str(),
+        "triggered"
+            | "trigger"
+            | "alert"
+            | "send"
+            | "true"
+            | "yes"
+            | "met"
+            | "hit"
+            | "conditionmet"
+            | "conditionsmet"
+    ) || status.contains("已触发")
+        || status.contains("触发")
+        || status.contains("命中")
+        || status.contains("满足")
+}
+
 fn previous_visible_char(content: &str, idx: usize) -> Option<char> {
     content[..idx].chars().rev().find(|ch| !ch.is_whitespace())
 }
@@ -909,6 +959,9 @@ pub fn inspect_heartbeat_result(content: &str) -> (HeartbeatOutcome, HeartbeatPa
     let stripped = strip_internal_reasoning_blocks(content);
     let trimmed = stripped.trim();
     if trimmed.is_empty() {
+        if heartbeat_plain_text_indicates_noop(content) {
+            return (HeartbeatOutcome::Noop, HeartbeatParseKind::PlainTextNoop);
+        }
         return (HeartbeatOutcome::Noop, HeartbeatParseKind::Empty);
     }
     if trimmed == HEARTBEAT_NOOP_SENTINEL || heartbeat_internal_marker_present(trimmed) {
@@ -920,13 +973,13 @@ pub fn inspect_heartbeat_result(content: &str) -> (HeartbeatOutcome, HeartbeatPa
 
     if let Some(parsed) = parse_heartbeat_json_payload(trimmed) {
         let status = parsed.status.unwrap_or_default();
-        if status.eq_ignore_ascii_case("noop") {
+        if heartbeat_status_indicates_noop(&status) {
             return (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonNoop);
         }
         if status.is_empty() {
             return (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonEmptyStatus);
         }
-        if status.eq_ignore_ascii_case("triggered") {
+        if heartbeat_status_indicates_triggered(&status) {
             let raw_message = parsed.message.unwrap_or_default();
             let message = unwrap_nested_json_message(raw_message.trim())
                 .trim()
@@ -2038,6 +2091,7 @@ pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
 6. 如果你不确定是否满足条件，或者输出格式不是严格 JSON，就必须返回 noop，不允许发送自由文本。\n\
 6a. 输出契约：整条回复必须是单段 JSON，第一个可见字符必须是 `{{`。严禁使用 `<think>...</think>`、```json ... ```、`## 分析`、分步解释或任何前置/收尾的自由文本。推理过程不要对外展示；需要推理时在内部完成后，直接给出最终 JSON。\n\
 6b. 如果你发现用户条件、交易动作边界、来源归因或输出契约之间存在冲突，不要解释冲突、不要复述规则、不要输出空文本；必须返回 `{{\"status\":\"noop\"}}`，除非你能用合规的 `triggered` JSON 只报告触发事实和条件化风险提示。\n\
+6c. 严禁输出工具配置、任务配置、画像建档说明、`set_immediate_kinds`、`cron_job` 或任何“已配置/将创建监控”的说明；如果本轮误入配置/建档/任务治理路径，必须返回 `{{\"status\":\"noop\"}}`。\n\
 7. 时间一致性约束：对于发射、财报、业绩会等有明确时间窗口的事件，必须先判断当前时间是否已越过事件预定时间，才能输出完成态结论。若当前时间早于事件计划时间，必须返回 noop，不允许把未来计划误报成已完成。\n\
 8. 价格时间口径约束：引用股价时，必须核实价格的时间戳。若市场已停盘、股票停牌或价格来自上一交易日，必须在 message 中明确标注（最新可得价格为停牌前/上一交易日），不允许把旧价格包装成事件发生后的即时市场反应。\n\
 9. 价格阈值口径约束：除非用户条件里明确写的是“日内最高/最低/振幅/区间波动”，否则“盘中涨跌幅超过 X%”一律按最新可得价格相对昨收的涨跌幅判断；不允许用日内高点相对昨收、日内低点相对昨收，或高低点振幅去替代当前涨跌幅。\n\
@@ -2821,6 +2875,9 @@ mod tests {
         assert!(prompt.contains("不要输出空文本"));
         assert!(prompt.contains(r#"必须返回 `{"status":"noop"}`"#));
         assert!(prompt.contains("必须以最少工具调用收口"));
+        assert!(prompt.contains("严禁输出工具配置"));
+        assert!(prompt.contains("set_immediate_kinds"));
+        assert!(prompt.contains("误入配置/建档/任务治理路径"));
     }
 
     #[test]
@@ -3183,6 +3240,31 @@ mod tests {
     }
 
     #[test]
+    fn heartbeat_not_triggered_json_status_is_compatible_noop() {
+        let content = r#"{"status":"not_triggered","message":"条件未触发"}"#;
+        assert_eq!(
+            inspect_heartbeat_result(content),
+            (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonNoop)
+        );
+        let execution = heartbeat_execution_from_content(content, "model-x");
+        assert!(!execution.should_deliver);
+        assert!(execution.error.is_none());
+        assert_eq!(execution.metadata["parse_kind"], "JsonNoop");
+    }
+
+    #[test]
+    fn heartbeat_trigger_alias_json_status_delivers_message() {
+        let content = r#"{"status":"condition_met","message":"触发事实"}"#;
+        assert_eq!(
+            inspect_heartbeat_result(content),
+            (
+                HeartbeatOutcome::Deliver("触发事实".to_string()),
+                HeartbeatParseKind::JsonTriggered
+            )
+        );
+    }
+
+    #[test]
     fn heartbeat_empty_json_is_compatible_noop() {
         let (outcome, parse_kind) = inspect_heartbeat_result("{}");
         assert_eq!(parse_kind, HeartbeatParseKind::JsonEmptyStatus);
@@ -3208,6 +3290,19 @@ mod tests {
     #[test]
     fn heartbeat_plain_text_noop_is_compatible_noop() {
         let content = "<think>\n当前价格高于触发线，条件未满足，所以本轮应该返回 noop。\n";
+        assert_eq!(
+            inspect_heartbeat_result(content),
+            (HeartbeatOutcome::Noop, HeartbeatParseKind::PlainTextNoop)
+        );
+        let execution = heartbeat_execution_from_content(content, "MiniMax-M2.7-highspeed");
+        assert!(!execution.should_deliver);
+        assert!(execution.error.is_none());
+        assert_eq!(execution.metadata["parse_kind"], "PlainTextNoop");
+    }
+
+    #[test]
+    fn heartbeat_closed_think_only_noop_is_compatible_noop() {
+        let content = "<think>当前没有触发条件，本轮不发送。</think>";
         assert_eq!(
             inspect_heartbeat_result(content),
             (HeartbeatOutcome::Noop, HeartbeatParseKind::PlainTextNoop)

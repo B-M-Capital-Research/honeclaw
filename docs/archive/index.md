@@ -4,6 +4,18 @@ Last updated: 2026-05-23
 
 ## 2026-05-23
 
+### Heartbeat Structured Status Hardening
+
+- Status: done
+- Date: 2026-05-23
+- Plan: `docs/current-plans/active-bug-burn-down-2026-04-28.md`
+- Handoff: `docs/handoffs/2026-05-23-heartbeat-structured-status-hardening.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs`, `cargo test -p hone-channels heartbeat_ --lib -- --nocapture`, `cargo check -p hone-channels --tests`
+- Current conclusion: heartbeat status parsing now tolerates common nonstandard noop/triggered status aliases and complete internal-only no-op reasoning, while the prompt blocks tool/task/profile configuration fragments as final output.
+- Next entry point: `docs/bugs/scheduler_heartbeat_unknown_status_silent_skip.md`
+
 ### Heartbeat Context Overflow Status Boundary
 
 - Status: done

@@ -3,9 +3,24 @@
 - **发现时间**: 2026-04-15 14:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 
 ## 修复进展
+
+- `2026-05-23 12:13 CST` 本轮再次修复 heartbeat 输出协议退化：
+  - `crates/hone-channels/src/scheduler.rs` 对 JSON status 做通用别名归一：`not_triggered`、`not met`、`skip` 等明确未触发状态归一为 `JsonNoop`；`condition_met`、`trigger`、`alert` 等带 `message` 的触发状态归一为 `JsonTriggered`，但仍不把无 message 的自由文本当作可投递提醒。
+  - 当模型整段只输出完整 `<think>...</think>` 且内部明确表达“未触发 / 条件未满足 / 本轮不发送”时，解析器会归一为 `PlainTextNoop`，避免把纯内部否定性推理记成失败；不含明确 noop 语义的内部-only 或自由文本仍继续失败收口。
+  - heartbeat prompt 追加配置路径护栏：禁止输出工具配置、任务配置、画像建档说明、`set_immediate_kinds`、`cron_job` 或“已配置/将创建监控”说明；误入配置/建档/任务治理路径时必须返回 `{"status":"noop"}`。
+  - 新增 / 调整回归：
+    - `heartbeat_not_triggered_json_status_is_compatible_noop`
+    - `heartbeat_trigger_alias_json_status_delivers_message`
+    - `heartbeat_closed_think_only_noop_is_compatible_noop`
+    - `heartbeat_prompt_requires_noop_json_for_contract_conflicts` 补配置片段禁止断言。
+  - 验证通过：
+    - `cargo test -p hone-channels heartbeat_ --lib -- --nocapture`
+    - `cargo check -p hone-channels --tests`
+    - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs`
+  - 无关联 GitHub Issue。
 
 - `2026-05-23 11:01 CST` 本轮巡检把本单从 `Fixed` 回退为 `New`：07:30-11:01 CST 真实 heartbeat 窗口在 00:14 兼容修复后继续批量输出 `<think>` / 自然语言 / 工具配置片段，而不是解析器认可的 `noop` / `triggered` JSON。多数样本不是“明确否定性 noop”，因此不属于 00:14 修复已覆盖的 PlainTextNoop 兼容边界。
   - `data/sessions.sqlite3` -> `cron_job_runs`
