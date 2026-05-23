@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-23 19:03 CST
+最后更新：2026-05-23 23:01 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -21,6 +21,8 @@
 - Later / 待复现：9
 - 已修复 / 已关闭：112
 - 历史分析 / 部分止血：5
+- 本轮 23:01 CST 仅补充两个 P2 heartbeat 已修复缺陷的旧/未确认部署运行态证据：19:01-23:01 CST live 窗口新增 78 条 heartbeat 结构化收口失败（`PlainTextSuppressed` 76 条、`JsonMalformed` 1 条、`JsonUnknownStatus` 1 条；Feishu 58 条、Web 20 条）以及 6 条 heartbeat `max_iterations_exceeded:10 + execution_failed + skipped_error + delivered=0`。这些坏态仍对应当前代码 12:13、03:06 CST 已修复后不应再出现的旧信号，本轮不把相关缺陷从 `Fixed` 回退为 `New`，待 live 重启/部署后复核。
+- 本轮 23:01 CST 未发现新的独立活跃 P1。最近四小时按消息时间共有 32 个 user turn 与 31 个 assistant final；最新缺口是 23:00 CST 普通 Feishu scheduler 刚进入 `running + pending`，距离巡检截止约 1 分钟，暂按在途执行不建档。普通 scheduler 已有 13 条 Feishu、4 条 Web `completed + sent + delivered=1`；heartbeat 有 2 条 `completed + sent + delivered=1`。assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`；最近四小时无非文档代码提交。单条 heartbeat OpenRouter `502 Bad Gateway` 按偶发上游错误处理，证据不足不建新档。
 - 本轮 19:03 CST 仅补充三个 P2 heartbeat 已修复缺陷的旧/未确认部署运行态证据：15:03-19:02 CST live 窗口仍新增 70 条 heartbeat `PlainTextSuppressed + execution_failed + skipped_error + delivered=0` 结构化收口失败（Feishu 51 条、Web 19 条）、12 条 Web heartbeat `ContextOverflowNoop + noop + skipped_noop + delivered=0`、5 条 Feishu heartbeat `max_iterations_exceeded:10 + execution_failed + skipped_error + delivered=0`。这些坏态分别对应当前代码 12:13、12:04、03:06 CST 已修复后不应再出现的旧信号，本轮不把相关缺陷从 `Fixed` 回退为 `New`，待 live 重启/部署后复核。
 - 本轮 19:03 CST 未发现新的独立活跃 P1。最近四小时按消息时间共有 6 个 user turn 与 6 个 assistant final，5 个最近活跃 direct session 均以 assistant final 收口；普通 scheduler 无运行记录，heartbeat 有 2 条 `completed + sent + delivered=1`。assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`；最近四小时唯一非文档代码提交 `2daf96f6` 为 global digest 命名说明类 chore，不新增本轮活跃缺陷。
 - 本轮 15:03 CST 仅补充 P2 `Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移` 旧/未确认部署运行态证据：11:00-15:03 CST live 窗口仍新增 96 条 heartbeat `execution_failed + skipped_error + delivered=0`，其中 `PlainTextSuppressed` 81 条、`JsonUnknownStatus` 4 条、`JsonEmptyStatus` 3 条、`JsonMalformed` 1 条，另有 7 条 `max_iterations_exceeded:10` 归入已修复预算项的旧/未确认部署运行态证据；Feishu 73 条、Web 23 条失败。远端 12:13 CST 已有代码修复和回归，本轮不把该缺陷从 `Fixed` 回退为 `New`，待 live 重启/部署后复核。
