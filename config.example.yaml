@@ -118,8 +118,8 @@ nano_banana:
   base_url: "https://openrouter.ai/api/v1"
   model: "google/gemini-2.0-flash-exp"
   default_image_count: 3
-  # API key prefers llm.providers.openrouter.api_key/api_keys; legacy
-  # llm.openrouter.api_key/api_keys is still readable during migration.
+  # API key prefers the llm.providers.openrouter.api_keys pool; legacy single-key
+  # OpenRouter fields remain readable during migration.
   # Request timeout, max_tokens, temperature, HTTP referrer, and title currently use fixed client defaults.
   download_dir: "gen_images"
 
@@ -359,7 +359,7 @@ llm:
   default_profile: main
   auxiliary_profile: aux
   openrouter:
-    # Legacy config-only fallback. Prefer llm.providers.openrouter.api_key/api_keys.
+    # Legacy config-only fallback. Prefer the llm.providers.openrouter.api_keys pool.
     model: "moonshotai/kimi-k2.5"
     # Legacy auxiliary fallback model for heartbeats / session compression / other background checks.
     # This example uses llm.auxiliary_profile instead.
@@ -625,8 +625,9 @@ agent:
   multi_agent:
     # Two-stage runner: direct OpenAI-compatible search, then opencode ACP answer.
     # Search uses agent.multi_agent.search.api_key, with legacy llm.auxiliary.api_key
-    # as the only fallback when the search key is empty.
-    # The answer stage can inherit llm.providers.openrouter.api_key/api_keys when answer.api_key is empty.
+    # as the only fallback when the search API key is empty.
+    # The answer stage can inherit llm.providers.openrouter.api_keys, with the legacy
+    # single-key OpenRouter fields still readable as migration fallbacks.
     search:
       base_url: "https://api.minimaxi.com/v1"
       api_key: ""

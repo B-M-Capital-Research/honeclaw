@@ -41,6 +41,13 @@ fn sequence_mutation(path: &str, csv: &str) -> ConfigMutation {
     }
 }
 
+fn provider_keys_prompt(lang: crate::i18n::Lang, label: &str) -> String {
+    match lang {
+        crate::i18n::Lang::Zh => format!("{label} API keys（逗号分隔，可填多个）"),
+        crate::i18n::Lang::En => format!("{label} API keys (comma-separated)"),
+    }
+}
+
 #[derive(Args, Debug)]
 pub(crate) struct ConfigureArgs {
     #[arg(long = "section", value_enum)]
@@ -393,9 +400,12 @@ pub(crate) fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> 
             ConfigureSection::Providers => {
                 // Provider keys 走 `*.api_keys` 数组格式;一次性粘贴逗号分隔的多个 key,
                 // 顺手把老的 `*.api_key` 单 key 字段清空,防止残留值被运行时当真 key。
-                if let Some(keys) =
-                    prompt_secret(&theme, lang, "OpenRouter API keys（逗号分隔）", true)?
-                {
+                if let Some(keys) = prompt_secret(
+                    &theme,
+                    lang,
+                    &provider_keys_prompt(lang, "OpenRouter"),
+                    true,
+                )? {
                     mutations.push(provider_key_mutation(
                         "llm.providers.openrouter.api_keys",
                         parse_csv_values(&keys),
@@ -410,7 +420,8 @@ pub(crate) fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> 
                         value: Value::String(String::new()),
                     });
                 }
-                if let Some(keys) = prompt_secret(&theme, lang, "FMP API keys（逗号分隔）", true)?
+                if let Some(keys) =
+                    prompt_secret(&theme, lang, &provider_keys_prompt(lang, "FMP"), true)?
                 {
                     mutations.push(provider_key_mutation(
                         "fmp.api_keys",
@@ -422,7 +433,7 @@ pub(crate) fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> 
                     });
                 }
                 if let Some(keys) =
-                    prompt_secret(&theme, lang, "Tavily API keys（逗号分隔）", true)?
+                    prompt_secret(&theme, lang, &provider_keys_prompt(lang, "Tavily"), true)?
                 {
                     mutations.push(provider_key_mutation(
                         "search.api_keys",
@@ -441,4 +452,22 @@ pub(crate) fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> 
         paths.effective_config_path.to_string_lossy()
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::i18n::Lang;
+
+    #[test]
+    fn provider_keys_prompt_matches_configured_language() {
+        assert_eq!(
+            provider_keys_prompt(Lang::Zh, "OpenRouter"),
+            "OpenRouter API keys（逗号分隔，可填多个）"
+        );
+        assert_eq!(
+            provider_keys_prompt(Lang::En, "OpenRouter"),
+            "OpenRouter API keys (comma-separated)"
+        );
+    }
 }

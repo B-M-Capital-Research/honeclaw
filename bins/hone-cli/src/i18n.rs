@@ -256,8 +256,8 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "runner.multi_agent.note_1",
-        "前置：multi-agent search API key，以及本机可运行的 opencode；answer 可复用 OpenRouter key。",
-        "Requires: a multi-agent search API key plus local opencode; answer can reuse an OpenRouter key.",
+        "前置：multi-agent search API key，以及本机可运行的 opencode；answer 可复用 OpenRouter API key。",
+        "Requires: a multi-agent search API key plus local opencode; answer can reuse an OpenRouter API key.",
     ),
     (
         "runner.multi_agent.note_2",
@@ -680,28 +680,28 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "provider.api_keys_title",
-        "{label} API key",
+        "{label} API keys",
         "{label} API keys",
     ),
     (
         "provider.configure_prompt",
-        "现在配置 {label} API key 吗？",
+        "现在配置 {label} API keys 吗？",
         "Configure {label} API keys now?",
     ),
     (
         "provider.skip_message",
-        "已跳过 {label} API key 配置。",
-        "Skipped {label} API key configuration.",
+        "已跳过 {label} API keys 配置。",
+        "Skipped {label} API keys configuration.",
     ),
     (
         "provider.saved_message",
-        "已保存 {label} API key。",
+        "已保存 {label} API keys。",
         "Saved {label} API keys.",
     ),
     (
         "provider.keep_existing_message",
-        "保留现有 {label} API key 配置。",
-        "Kept existing {label} API key configuration.",
+        "保留现有 {label} API keys 配置。",
+        "Kept existing {label} API keys configuration.",
     ),
     (
         "provider.keys_required_or_skip",
@@ -711,7 +711,7 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ("provider.openrouter.label", "OpenRouter", "OpenRouter"),
     (
         "provider.openrouter.prompt",
-        "OpenRouter API key（逗号分隔，可填多个）",
+        "OpenRouter API keys（逗号分隔，可填多个）",
         "OpenRouter API keys (comma-separated)",
     ),
     (
@@ -732,7 +732,7 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ("provider.fmp.label", "FMP", "FMP"),
     (
         "provider.fmp.prompt",
-        "FMP API key（逗号分隔，可填多个）",
+        "FMP API keys（逗号分隔，可填多个）",
         "FMP API keys (comma-separated)",
     ),
     (
@@ -748,7 +748,7 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ("provider.tavily.label", "Tavily", "Tavily"),
     (
         "provider.tavily.prompt",
-        "Tavily API key（逗号分隔，可填多个）",
+        "Tavily API keys（逗号分隔，可填多个）",
         "Tavily API keys (comma-separated)",
     ),
     (
@@ -831,13 +831,13 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "recovery.option_provider_skip",
-        "跳过 {label} API key 配置",
-        "Skip {label} API key configuration",
+        "跳过 {label} API keys 配置",
+        "Skip {label} API keys configuration",
     ),
     (
         "recovery.provider_empty_prompt",
-        "{label} API key 为空，下一步？",
-        "{label} API key is empty — what next?",
+        "{label} API keys 为空，下一步？",
+        "{label} API keys are empty — what next?",
     ),
     (
         "recovery.option_discord_token_retry",

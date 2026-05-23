@@ -133,7 +133,7 @@ The onboarding flow will:
 - Let you choose the default runner
 - If you choose `opencode_acp`, tell you to finish provider / model setup in local `opencode` first
   - Hone defaults to inheriting `~/.config/opencode/opencode.json` or `opencode.jsonc`
-- If you choose `multi-agent`, tell you that search needs a dedicated search key and answer needs local `opencode`
+- If you choose `multi-agent`, tell you that search needs a dedicated search API key and answer needs local `opencode`
 - Ask whether to enable each channel
 - If a channel is enabled, require its local mandatory fields and print the key permission / prerequisite notes
 - If you accidentally enable a channel and then hit a required field with no value to keep, the wizard offers:
@@ -149,7 +149,7 @@ Runner install references shown by onboarding:
 - `Hone Cloud`
   - No local runner binary is required
   - Recommended config keeps `agent.runner: hone_cloud`
-  - Required key lives at `agent.hone_cloud.api_key`
+  - Required API key lives at `agent.hone_cloud.api_key`
 - `Codex CLI`
   - Install: `npm install -g @openai/codex`
   - Update: `codex --upgrade`
@@ -181,7 +181,7 @@ Runner install references shown by onboarding:
 - `multi-agent`
   - Requires local `opencode` for the answer stage because runtime uses the OpenCode ACP runner there
   - Search reads `agent.multi_agent.search.api_key`; if it is empty, only the legacy `llm.auxiliary.api_key` path is used as a fallback
-  - Answer reads `agent.multi_agent.answer.*`; if `answer.api_key` is empty while Hone manages the answer route, it can inherit `llm.providers.openrouter.api_key/api_keys`
+  - Answer reads `agent.multi_agent.answer.*`; if `answer.api_key` is empty while Hone manages the answer route, it can inherit the OpenRouter provider key pool (`llm.providers.openrouter.api_keys`, with legacy single-key fallback)
 
 If you prefer the older section-by-section setup, use:
 
