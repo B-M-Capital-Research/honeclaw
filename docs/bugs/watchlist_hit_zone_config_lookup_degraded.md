@@ -3,8 +3,22 @@
 - **发现时间**: 2026-04-29 23:06 CST
 - **Bug Type**: System Error
 - **严重等级**: P3
-- **状态**: Fixed
+- **状态**: Closed
 - **修复结论复核**:
+  - `2026-05-24 03:04 CST` 本轮确认修复在最新真实送达样本中生效，状态从 `Fixed` 更新为 `Closed`：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - `run_id=31770`
+      - `job_name=核心观察股池晚间快报`
+      - `executed_at=2026-05-23T23:02:21.288909+08:00`
+      - `execution_status=completed`
+      - `message_send_status=sent`
+      - `delivered=1`
+      - `response_preview` 明确写出“击球区沿用本地观察池配置”，并为 `MSFT / NVDA / GOOGL / AAPL` 等核心股恢复具体击球区，如 `MSFT $335-$350`、`NVDA $150-$165`、`GOOGL $255-$275`、`AAPL $205-$225`。
+    - `data/sessions.sqlite3` -> `session_messages`
+      - `session_id=Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773`
+      - assistant `timestamp=2026-05-23T23:02:18.589760+08:00`
+      - final 正文同样包含具体击球区，未再批量退化为“待确认”，也未外泄工具轨迹、绝对路径或内部错误。
+    - 仍定为历史 `P3`：该缺陷此前不阻断投递链路，只影响报告参考字段质量；本轮看到最新真实送达样本恢复配置字段，因此关闭。
   - `2026-05-22 11:01 CST` 本轮在最近四小时真实运行窗口继续看到一条坏样本，但不推翻仓库代码层面的 `Fixed` 结论：
     - `data/sessions.sqlite3` -> `cron_job_runs`
       - `run_id=30164`
