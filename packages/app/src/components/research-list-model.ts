@@ -8,7 +8,7 @@ type ResearchStatusInput = Pick<
 > &
   Partial<Pick<ResearchTask, "answer_markdown" | "progress">>
 
-export type ResearchStatusBadgeConfig = {
+type ResearchStatusBadgeConfig = {
   label: string
   dot: string
   text: string

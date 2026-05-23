@@ -26,7 +26,7 @@ type FrontendConnectionStatusInput = {
   origin: string
 }
 
-export type ConnectionStatusItem = {
+type ConnectionStatusItem = {
   label: string
   detail: string
   status: "degraded" | "running" | "stopped"

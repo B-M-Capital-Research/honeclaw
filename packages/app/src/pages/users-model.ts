@@ -75,7 +75,7 @@ export function actorFromManualDraft(draft: ActorRef): ActorRef | null {
   }
 }
 
-export function actorListSearchText(item: ActorListItem): string {
+function actorListSearchText(item: ActorListItem): string {
   return [
     item.actor.user_id,
     item.actor.channel,

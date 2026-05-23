@@ -9,7 +9,6 @@ import {
   publicBlogPosts,
   type PublicBlogPost,
 } from "@/lib/public-blog"
-import { CONTENT } from "@/lib/public-content"
 import { formatDate, setLocale, useLocale } from "@/lib/i18n"
 import "./public-site.css"
 
