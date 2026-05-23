@@ -7,6 +7,20 @@
 
 ## 修复进展
 
+- `2026-05-23 15:03 CST` 本轮仅补充旧/未确认部署运行态证据，不把本单从 `Fixed` 回退：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 11:00-15:03 CST live 窗口新增 `96` 条 heartbeat `execution_failed + skipped_error + delivered=0`；其中 Feishu `73` 条、Web `23` 条。
+    - 错误分布：`PlainTextSuppressed` `81` 条、`JsonUnknownStatus` `4` 条、`JsonEmptyStatus` `3` 条、`JsonMalformed` `1` 条；另有 `7` 条 `max_iterations_exceeded:10` 属于已修复预算项的旧/未确认部署运行态证据，记录到 `scheduler_heartbeat_iteration_exhaustion_skips_alert.md`，不计入本单结构化解析主因。
+    - 代表性样本：`run_id=31499` / `持仓重大事件心跳检测` 输出 TEM Q1 与持仓新闻分析后未按 JSON 收口；`run_id=31494` / `小米30港元破位预警` 已判断现价等于 HK$30 阈值并准备强提醒，但落成 `PlainTextSuppressed`；`run_id=31491` / `RKLB异动监控` 已写出触发提醒正文但不是合法 heartbeat JSON；`run_id=31467` / `TSLA 正负触发条件心跳监控` 输出 `status=error` 对象并落成 `JsonUnknownStatus`；`run_id=31476` / `TEM大事件心跳监控` 与 `run_id=31482` / `RKLB异动监控` 落成 `JsonEmptyStatus`。
+    - 同窗仍有合法 `noop + skipped_noop` 与少量 `completed + sent` 样本，例如 `run_id=31500` / `Monitor_Watchlist_11`、`run_id=31492` / `TEM破位预警`、普通 scheduler `每日公司资讯与分析总结` 成功送达，说明不是 scheduler 或出站整体不可用。
+  - 运行日志：
+    - `data/runtime/logs/hone-feishu.runtime-recovery.log` 在 15:00-15:02 CST 记录 `[HeartbeatDiag] ... model=MiniMax-M2.7-highspeed ... parse_kind=PlainTextSuppressed`，随后 Feishu scheduler 以 `heartbeat 输出不是结构化 JSON，任务已标记失败` 跳过发送。
+    - 同窗可见 Tavily key quota / deactivated 警告，但 `web_search` 与 `data_fetch` 仍有成功记录；本轮不把它单独登记为新缺陷。
+  - 会话质量对照：
+    - 最近四小时按消息时间共有 `7` 个 user turn 与 `7` 个 assistant final，5 个最近活跃 direct session 均以 assistant final 收口；普通 scheduler 有 1 条 Feishu `completed + sent + delivered=1`。
+    - assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`。
+  - 结论：远端 12:13 CST 已有代码修复和回归，最新坏态更符合 live runtime 尚未确认重启/部署到该修复后的证据；当前状态维持 `Fixed`。后续只有在确认部署当前代码后仍出现同类结构化收口失败，再重新打开；本轮不创建 GitHub Issue。
+
 - `2026-05-23 12:13 CST` 本轮再次修复 heartbeat 输出协议退化：
   - `crates/hone-channels/src/scheduler.rs` 对 JSON status 做通用别名归一：`not_triggered`、`not met`、`skip` 等明确未触发状态归一为 `JsonNoop`；`condition_met`、`trigger`、`alert` 等带 `message` 的触发状态归一为 `JsonTriggered`，但仍不把无 message 的自由文本当作可投递提醒。
   - 当模型整段只输出完整 `<think>...</think>` 且内部明确表达“未触发 / 条件未满足 / 本轮不发送”时，解析器会归一为 `PlainTextNoop`，避免把纯内部否定性推理记成失败；不含明确 noop 语义的内部-only 或自由文本仍继续失败收口。

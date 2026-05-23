@@ -7,6 +7,15 @@
 
 ## 修复进展（2026-04-28）
 
+- `2026-05-23 15:03 CST` 本轮仅补充旧/未确认部署运行态证据，不把本单从 `Fixed` 回退：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 11:00-15:03 CST 新增 `7` 条 heartbeat `max_iterations_exceeded:10 + execution_failed + skipped_error + delivered=0`，均为 Feishu heartbeat。
+    - 样本覆盖 `Cerebras IPO与业务进展心跳监控`（11:00、11:30）、`TSLA 正负触发条件心跳监控`（11:30、14:30）、`TEM大事件心跳监控`（12:00）、`DRAM 心跳监控`（12:01）、`持仓重大事件心跳检测`（14:31）。
+  - 判断：
+    - 当前仓库在 03:06 CST 已把 heartbeat auxiliary function-calling 预算从 `10` 提升到 `18`，并新增对应回归；最新运行态错误仍是 `max_iterations_exceeded:10`，更符合 live runtime 尚未确认重启/部署到该修复后的证据。
+    - 同一窗口主要坏态仍是 `scheduler_heartbeat_unknown_status_silent_skip.md` 跟踪的结构化输出退化；本单只跟踪 function-calling 预算触顶导致的整轮漏发。
+  - 结论：当前状态维持 `Fixed`。后续只有在确认部署当前代码后仍出现 `max_iterations_exceeded:18` 或同等 heartbeat 预算触顶失败，再重新打开；本轮不创建 GitHub Issue。
+
 - `2026-05-23 03:06 CST` 本轮重新修复 heartbeat `max_iterations_exceeded:10` 触顶失败：
   - `crates/hone-channels/src/scheduler.rs` 把 heartbeat auxiliary function-calling 预算从 `10` 提升到 `18`，与普通 function-calling 对话的默认迭代级别对齐，给板块/多标的重大事件 heartbeat 足够的工具回合预算。
   - heartbeat prompt 新增“必须以最少工具调用收口”的约束：优先复用本轮已拿到的价格、新闻、组合和文件信息；若需要逐标的穷举或反复重复同一查询才能确认，本轮只检查最可能触发的少数候选并尽快返回 `noop/triggered`，避免为确认 noop 把整轮预算耗尽。
