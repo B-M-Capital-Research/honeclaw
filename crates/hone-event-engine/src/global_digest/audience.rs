@@ -126,7 +126,7 @@ impl<'a> AudienceBuilder<'a> {
     fn collect_tickers_and_notes(&self) -> (Vec<String>, HashMap<String, Vec<String>>) {
         let mut tickers: Vec<String> = Vec::new();
         let mut seen = std::collections::HashSet::new();
-        let mut notes_by: HashMap<String, Vec<String>> = HashMap::new();
+        let mut notes_by_ticker: HashMap<String, Vec<String>> = HashMap::new();
         for (actor, portfolio) in self.portfolio_storage.list_all() {
             if !actor.is_direct() {
                 continue;
@@ -139,7 +139,7 @@ impl<'a> AudienceBuilder<'a> {
                 if let Some(notes) = holding.notes.as_deref() {
                     let trimmed_notes = notes.trim();
                     if !trimmed_notes.is_empty() {
-                        let entry = notes_by.entry(ticker).or_default();
+                        let entry = notes_by_ticker.entry(ticker).or_default();
                         if !entry.iter().any(|existing| existing == trimmed_notes) {
                             entry.push(trimmed_notes.to_string());
                         }
@@ -147,7 +147,7 @@ impl<'a> AudienceBuilder<'a> {
                 }
             }
         }
-        (tickers, notes_by)
+        (tickers, notes_by_ticker)
     }
 
     async fn fetch_profiles(&self, tickers: &[String]) -> HashMap<String, Value> {
@@ -213,7 +213,7 @@ impl<'a> AudienceBuilder<'a> {
         profile: Option<&Value>,
         user_notes: Vec<String>,
     ) -> CompanyBrief {
-        let Some(p) = profile else {
+        let Some(profile_json) = profile else {
             return CompanyBrief {
                 ticker: ticker.to_string(),
                 name: ticker.to_string(),
@@ -224,23 +224,26 @@ impl<'a> AudienceBuilder<'a> {
                 source: BriefSource::Empty,
             };
         };
-        let name = p
+        let name = profile_json
             .get("companyName")
             .and_then(|v| v.as_str())
             .unwrap_or(ticker)
             .to_string();
-        let sector = p
+        let sector = profile_json
             .get("sector")
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
-        let industry = p
+        let industry = profile_json
             .get("industry")
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
-        let desc = p.get("description").and_then(|v| v.as_str()).unwrap_or("");
-        let one_liner = extract_one_liner(desc, 200);
+        let description = profile_json
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let one_liner = extract_one_liner(description, 200);
         let source = if one_liner == "(无 profile)" {
             BriefSource::Empty
         } else {
@@ -260,8 +263,8 @@ impl<'a> AudienceBuilder<'a> {
 
 /// 从 description 抽 one-liner:截 max_chars 字符,优先在最近的句号处断,
 /// 否则硬截。空字符串 / 仅空白 → "(无 profile)"。
-pub fn extract_one_liner(desc: &str, max_chars: usize) -> String {
-    let trimmed = desc.trim();
+pub fn extract_one_liner(description: &str, max_chars: usize) -> String {
+    let trimmed = description.trim();
     if trimmed.is_empty() {
         return "(无 profile)".to_string();
     }
@@ -269,18 +272,18 @@ pub fn extract_one_liner(desc: &str, max_chars: usize) -> String {
     if chars.len() <= max_chars {
         return trimmed.to_string();
     }
-    let mut cut: String = chars.iter().take(max_chars).collect();
+    let mut truncated = chars.iter().take(max_chars).collect::<String>();
     // 找最靠后的英文/中文句号
-    let last_dot = cut.rfind(". ").or_else(|| cut.rfind('。'));
-    if let Some(idx) = last_dot
-        && idx > max_chars / 3
+    let sentence_end = truncated.rfind(". ").or_else(|| truncated.rfind('。'));
+    if let Some(sentence_end_index) = sentence_end
+        && sentence_end_index > max_chars / 3
     {
         // 至少要保留前 1/3,否则不如硬截
-        cut.truncate(idx + 1);
-        return cut.trim().to_string();
+        truncated.truncate(sentence_end_index + 1);
+        return truncated.trim().to_string();
     }
-    cut.push('…');
-    cut
+    truncated.push('…');
+    truncated
 }
 
 #[cfg(test)]
@@ -290,16 +293,16 @@ mod tests {
 
     #[test]
     fn extract_one_liner_returns_full_text_when_short() {
-        let desc = "Apple designs phones.";
-        let one_liner = extract_one_liner(desc, 100);
+        let description = "Apple designs phones.";
+        let one_liner = extract_one_liner(description, 100);
         assert_eq!(one_liner, "Apple designs phones.");
     }
 
     #[test]
     fn extract_one_liner_truncates_at_period_when_long() {
-        let desc = "Apple designs and sells phones, computers, tablets, watches, and services. \
+        let description = "Apple designs and sells phones, computers, tablets, watches, and services. \
                     The company also operates a chip business. Other ventures include AR/VR.";
-        let one_liner = extract_one_liner(desc, 80);
+        let one_liner = extract_one_liner(description, 80);
         // 应该在某个句号断开
         assert!(
             one_liner.ends_with('.') || one_liner.ends_with('…'),
@@ -316,8 +319,8 @@ mod tests {
 
     #[test]
     fn extract_one_liner_truncates_with_ellipsis_when_no_period() {
-        let desc = "a".repeat(300);
-        let one_liner = extract_one_liner(&desc, 50);
+        let description = "a".repeat(300);
+        let one_liner = extract_one_liner(&description, 50);
         assert!(one_liner.ends_with('…'));
         assert_eq!(one_liner.chars().count(), 51);
     }

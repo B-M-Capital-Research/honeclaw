@@ -120,8 +120,8 @@ impl<'a> CandidateCollector<'a> {
     }
 }
 
-fn parse_source_class(s: Option<&str>) -> NewsSourceClass {
-    match s.unwrap_or("uncertain") {
+fn parse_source_class(source_class: Option<&str>) -> NewsSourceClass {
+    match source_class.unwrap_or("uncertain") {
         "trusted" => NewsSourceClass::Trusted,
         "pr_wire" => NewsSourceClass::PrWire,
         "opinion_blog" => NewsSourceClass::OpinionBlog,

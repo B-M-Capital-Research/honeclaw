@@ -319,36 +319,39 @@ pub async fn distill_for_actor(
 
     // 并发蒸主线(每个独立 LLM call)
     use futures::stream::{self, StreamExt};
-    let results: Vec<(String, anyhow::Result<String>)> = stream::iter(profiles.iter().cloned())
-        .map(|profile| async move {
-            let distill_result = distiller
-                .distill_mainline(&profile.ticker, &profile.markdown)
-                .await;
-            (profile.ticker, distill_result)
-        })
-        .buffer_unordered(6)
-        .collect()
-        .await;
+    let ticker_distill_results: Vec<(String, anyhow::Result<String>)> =
+        stream::iter(profiles.iter().cloned())
+            .map(|profile| async move {
+                let distill_result = distiller
+                    .distill_mainline(&profile.ticker, &profile.markdown)
+                    .await;
+                (profile.ticker, distill_result)
+            })
+            .buffer_unordered(6)
+            .collect()
+            .await;
 
     let mut by_ticker: HashMap<String, String> = HashMap::new();
-    let mut skipped: Vec<String> = Vec::new();
-    for (ticker, distill_result) in results {
+    let mut skipped_tickers: Vec<String> = Vec::new();
+    for (ticker, distill_result) in ticker_distill_results {
         match distill_result {
             Ok(mainline) => {
                 by_ticker.insert(ticker, mainline);
             }
             Err(e) => {
                 tracing::warn!(ticker = %ticker, "mainline distill failed: {e}");
-                skipped.push(ticker);
+                skipped_tickers.push(ticker);
             }
         }
     }
     // holdings 里没有 profile 的 ticker 也算 skipped
-    let covered: std::collections::HashSet<String> = by_ticker.keys().cloned().collect();
+    let distilled_tickers: std::collections::HashSet<String> = by_ticker.keys().cloned().collect();
     for holding_ticker in holdings {
         let normalized_ticker = holding_ticker.to_uppercase();
-        if !covered.contains(&normalized_ticker) && !skipped.contains(&normalized_ticker) {
-            skipped.push(normalized_ticker);
+        if !distilled_tickers.contains(&normalized_ticker)
+            && !skipped_tickers.contains(&normalized_ticker)
+        {
+            skipped_tickers.push(normalized_ticker);
         }
     }
 
@@ -364,7 +367,7 @@ pub async fn distill_for_actor(
         by_ticker,
         style,
         last_distilled_at: Some(Utc::now()),
-        skipped_tickers: skipped,
+        skipped_tickers,
     }
 }
 
@@ -577,12 +580,12 @@ mod tests {
             fail_for_ticker: None,
         };
         let holdings = vec!["MU".to_string(), "RKLB".to_string()];
-        let result = distill_for_actor(&distiller, dir.path(), &holdings).await;
-        assert_eq!(result.by_ticker.len(), 2);
-        assert_eq!(result.by_ticker["MU"], "mainline for MU");
-        assert!(result.style.is_some());
-        assert!(result.last_distilled_at.is_some());
-        assert!(result.skipped_tickers.is_empty());
+        let distilled = distill_for_actor(&distiller, dir.path(), &holdings).await;
+        assert_eq!(distilled.by_ticker.len(), 2);
+        assert_eq!(distilled.by_ticker["MU"], "mainline for MU");
+        assert!(distilled.style.is_some());
+        assert!(distilled.last_distilled_at.is_some());
+        assert!(distilled.skipped_tickers.is_empty());
         assert_eq!(distiller.mainline_calls.load(Ordering::SeqCst), 2);
         assert_eq!(distiller.style_calls.load(Ordering::SeqCst), 1);
     }
@@ -603,10 +606,10 @@ mod tests {
             fail_for_ticker: Some("MU".into()),
         };
         let holdings = vec!["MU".to_string(), "RKLB".to_string()];
-        let result = distill_for_actor(&distiller, dir.path(), &holdings).await;
-        assert_eq!(result.by_ticker.len(), 1);
-        assert_eq!(result.by_ticker["RKLB"], "mainline for RKLB");
-        assert!(result.skipped_tickers.contains(&"MU".to_string()));
+        let distilled = distill_for_actor(&distiller, dir.path(), &holdings).await;
+        assert_eq!(distilled.by_ticker.len(), 1);
+        assert_eq!(distilled.by_ticker["RKLB"], "mainline for RKLB");
+        assert!(distilled.skipped_tickers.contains(&"MU".to_string()));
     }
 
     #[tokio::test]
@@ -624,9 +627,9 @@ mod tests {
             fail_for_ticker: None,
         };
         let holdings = vec!["MU".to_string(), "AAPL".to_string()];
-        let result = distill_for_actor(&distiller, dir.path(), &holdings).await;
-        assert_eq!(result.by_ticker.len(), 1);
-        assert!(result.skipped_tickers.contains(&"AAPL".to_string()));
+        let distilled = distill_for_actor(&distiller, dir.path(), &holdings).await;
+        assert_eq!(distilled.by_ticker.len(), 1);
+        assert!(distilled.skipped_tickers.contains(&"AAPL".to_string()));
     }
 
     #[tokio::test]
@@ -638,10 +641,10 @@ mod tests {
             fail_for_ticker: None,
         };
         let holdings = vec!["MU".to_string()];
-        let result = distill_for_actor(&distiller, dir.path(), &holdings).await;
-        assert!(result.by_ticker.is_empty());
-        assert!(result.style.is_none());
-        assert!(result.skipped_tickers.contains(&"MU".to_string()));
+        let distilled = distill_for_actor(&distiller, dir.path(), &holdings).await;
+        assert!(distilled.by_ticker.is_empty());
+        assert!(distilled.style.is_none());
+        assert!(distilled.skipped_tickers.contains(&"MU".to_string()));
         assert_eq!(distiller.mainline_calls.load(Ordering::SeqCst), 0);
         assert_eq!(distiller.style_calls.load(Ordering::SeqCst), 0);
     }
@@ -745,11 +748,11 @@ mod tests {
             captured_prompt: std::sync::Mutex::new(None),
         });
         let distiller = LlmMainlineDistiller::new(provider.clone(), "test-model");
-        let result = distiller
+        let distilled_mainline = distiller
             .distill_mainline("RKLB", "long profile content")
             .await
             .unwrap();
-        assert_eq!(result, "蒸馏出的 mainline");
+        assert_eq!(distilled_mainline, "蒸馏出的 mainline");
         let prompt = provider.captured_prompt.lock().unwrap().clone().unwrap();
         assert!(prompt.contains("RKLB"));
         assert!(prompt.contains("long profile content"));

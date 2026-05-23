@@ -218,42 +218,42 @@ impl EventDeduper for LlmEventDeduper {
         }
 
         // 选每簇代表 + 出 audit
-        let mut reps: Vec<GlobalDigestCandidate> = Vec::with_capacity(clusters.len());
-        let mut audits: Vec<ClusterAudit> = Vec::with_capacity(clusters.len());
-        let mut multi_count = 0;
+        let mut representatives: Vec<GlobalDigestCandidate> = Vec::with_capacity(clusters.len());
+        let mut cluster_audits: Vec<ClusterAudit> = Vec::with_capacity(clusters.len());
+        let mut multi_cluster_count = 0;
         // 按原 idx 排序保证输出顺序稳定
         let mut sorted_clusters = clusters;
         sorted_clusters.sort_by_key(|(_, items)| *items.iter().min().unwrap_or(&0));
         for (id, items) in sorted_clusters {
-            let rep_local_idx = pick_representative_idx(&candidates, &items);
-            let representative = candidates[rep_local_idx].clone();
+            let representative_index = pick_representative_idx(&candidates, &items);
+            let representative = candidates[representative_index].clone();
             let kept_event_id = representative.event.id.clone();
-            let merged: Vec<String> = items
+            let merged_event_ids: Vec<String> = items
                 .iter()
-                .filter(|i| **i != rep_local_idx)
+                .filter(|candidate_index| **candidate_index != representative_index)
                 .map(|i| candidates[*i].event.id.clone())
                 .collect();
             if items.len() > 1 {
-                multi_count += 1;
+                multi_cluster_count += 1;
             }
-            audits.push(ClusterAudit {
+            cluster_audits.push(ClusterAudit {
                 id,
                 kept_event_id,
-                merged_event_ids: merged,
+                merged_event_ids,
             });
-            reps.push(representative);
+            representatives.push(representative);
         }
 
         (
-            reps,
+            representatives,
             DedupeStats {
                 input: input_n,
-                clusters: audits.len(),
-                multi_clusters: multi_count,
+                clusters: cluster_audits.len(),
+                multi_clusters: multi_cluster_count,
                 silent_drops_recovered: silent_drops,
                 fell_back_to_pass_through: false,
             },
-            audits,
+            cluster_audits,
         )
     }
 }
@@ -324,8 +324,8 @@ fn strip_fence(raw_content: &str) -> String {
     trimmed_content.to_string()
 }
 
-fn truncate(s: &str, max_chars: usize) -> String {
-    s.chars().take(max_chars).collect()
+fn truncate(text: &str, max_chars: usize) -> String {
+    text.chars().take(max_chars).collect()
 }
 
 #[cfg(test)]
@@ -448,10 +448,10 @@ mod tests {
             last_prompt: Mutex::new(None),
         });
         let dedup = LlmEventDeduper::new(provider.clone(), "test-model");
-        let (deduped_candidates, stats, audits) = dedup.dedupe(vec![]).await;
+        let (deduped_candidates, stats, cluster_audits) = dedup.dedupe(vec![]).await;
         assert!(deduped_candidates.is_empty());
         assert_eq!(stats.input, 0);
-        assert!(audits.is_empty());
+        assert!(cluster_audits.is_empty());
         assert_eq!(provider.calls.load(Ordering::SeqCst), 0, "空输入不应调 LLM");
     }
 
@@ -513,7 +513,7 @@ mod tests {
             last_prompt: Mutex::new(None),
         });
         let dedup = LlmEventDeduper::new(provider.clone(), "test-model");
-        let (deduped_candidates, stats, audits) = dedup.dedupe(candidates).await;
+        let (deduped_candidates, stats, cluster_audits) = dedup.dedupe(candidates).await;
 
         assert_eq!(stats.input, 6);
         assert_eq!(stats.clusters, 3);
@@ -534,7 +534,10 @@ mod tests {
         assert!(kept_ids.contains(&"c1"));
         assert_eq!(deduped_candidates.len(), 3);
 
-        let hormuz_audit = audits.iter().find(|a| a.id == "hormuz-crisis").unwrap();
+        let hormuz_audit = cluster_audits
+            .iter()
+            .find(|audit| audit.id == "hormuz-crisis")
+            .unwrap();
         assert_eq!(hormuz_audit.kept_event_id, "a3");
         assert_eq!(hormuz_audit.merged_event_ids.len(), 2);
     }
@@ -560,7 +563,7 @@ mod tests {
             last_prompt: Mutex::new(None),
         });
         let dedup = LlmEventDeduper::new(provider, "test-model");
-        let (deduped_candidates, stats, audits) = dedup.dedupe(candidates).await;
+        let (deduped_candidates, stats, cluster_audits) = dedup.dedupe(candidates).await;
 
         assert_eq!(stats.input, 3);
         assert_eq!(stats.silent_drops_recovered, 1);
@@ -579,9 +582,9 @@ mod tests {
             "c 应被救回 singleton,实际 {kept_ids:?}"
         );
 
-        let recovered = audits
+        let recovered = cluster_audits
             .iter()
-            .find(|a| a.id.starts_with("recovered-singleton-"))
+            .find(|audit| audit.id.starts_with("recovered-singleton-"))
             .expect("应有 recovered-singleton 审计");
         assert_eq!(recovered.kept_event_id, "c");
     }
@@ -600,7 +603,7 @@ mod tests {
             last_prompt: Mutex::new(None),
         });
         let dedup = LlmEventDeduper::new(provider, "test-model");
-        let (deduped_candidates, stats, _audits) = dedup.dedupe(candidates).await;
+        let (deduped_candidates, stats, _cluster_audits) = dedup.dedupe(candidates).await;
         // 第二个簇应空被丢弃,不留 ghost cluster
         assert_eq!(stats.clusters, 1);
         assert_eq!(deduped_candidates.len(), 1);
@@ -635,10 +638,10 @@ mod tests {
         ];
         let provider = Arc::new(FailingProvider);
         let dedup = LlmEventDeduper::new(provider, "test-model");
-        let (deduped_candidates, stats, audits) = dedup.dedupe(candidates).await;
+        let (deduped_candidates, stats, cluster_audits) = dedup.dedupe(candidates).await;
         assert_eq!(deduped_candidates.len(), 2, "降级应原样输出全部候选");
         assert!(stats.fell_back_to_pass_through);
-        assert!(audits.is_empty());
+        assert!(cluster_audits.is_empty());
     }
 
     #[tokio::test]
@@ -720,12 +723,12 @@ mod tests {
             digest_candidate_fixture("b", "z", "w", NewsSourceClass::Trusted, 100),
         ];
         let dedup = PassThroughDeduper;
-        let (deduped_candidates, stats, audits) = dedup.dedupe(candidates).await;
+        let (deduped_candidates, stats, cluster_audits) = dedup.dedupe(candidates).await;
         assert_eq!(deduped_candidates.len(), 2);
         assert_eq!(stats.input, 2);
         assert_eq!(stats.clusters, 2);
         assert_eq!(stats.multi_clusters, 0);
-        assert!(audits.is_empty());
+        assert!(cluster_audits.is_empty());
     }
 
     #[test]

@@ -85,16 +85,16 @@ fn render_item(item: &PersonalizedItem, fmt: RenderFormat) -> String {
         })
         .unwrap_or_default();
 
-    let mut out = format!("{title_line}\n   {comment}\n   {source}{symbols}");
+    let mut rendered_item = format!("{title_line}\n   {comment}\n   {source}{symbols}");
     if !url_line.is_empty() {
-        out.push_str("\n   ");
-        out.push_str(&url_line);
+        rendered_item.push_str("\n   ");
+        rendered_item.push_str(&url_line);
     }
-    out
+    rendered_item
 }
 
-fn label_for(cat: PickCategory, rel: MainlineRelation) -> &'static str {
-    match (cat, rel) {
+fn label_for(category: PickCategory, relation: MainlineRelation) -> &'static str {
+    match (category, relation) {
         (PickCategory::MainlineAligned, MainlineRelation::Aligned) => "🎯 [印证]",
         (PickCategory::MainlineCounter, _) | (_, MainlineRelation::Counter) => "⚠️ [证伪]",
         (PickCategory::MacroFloor, _) => "🌍 [宏观]",
@@ -102,8 +102,9 @@ fn label_for(cat: PickCategory, rel: MainlineRelation) -> &'static str {
     }
 }
 
-fn escape_attr_html(s: &str) -> String {
-    s.replace('&', "&amp;")
+fn escape_attr_html(raw_text: &str) -> String {
+    raw_text
+        .replace('&', "&amp;")
         .replace('"', "&quot;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
