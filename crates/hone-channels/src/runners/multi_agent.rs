@@ -668,24 +668,49 @@ fn truncate_multi_agent_log_detail(text: &str, max_chars: usize) -> String {
 
 fn redact_common_multi_agent_log_secrets(text: &str) -> String {
     let mut output = redact_multi_agent_marker_value(text, "Bearer ");
-    for key in [
-        "access_token",
-        "accessToken",
-        "api_key",
-        "apiKey",
-        "apikey",
-        "token",
-        "app_secret",
-        "appSecret",
-        "secret",
-        "password",
-    ] {
+    output = redact_multi_agent_marker_value(&output, "Basic ");
+    for key in SENSITIVE_MULTI_AGENT_LOG_KEYS {
         output = redact_multi_agent_marker_value(&output, &format!("{key}="));
         output = redact_multi_agent_marker_value(&output, &format!("{key}:"));
         output = redact_multi_agent_json_string_field(&output, key);
     }
+    for key in ["authorization", "Authorization"] {
+        output = redact_multi_agent_json_string_field(&output, key);
+    }
     output
 }
+
+const SENSITIVE_MULTI_AGENT_LOG_KEYS: &[&str] = &[
+    "access_token",
+    "accessToken",
+    "api_key",
+    "apiKey",
+    "apikey",
+    "app_secret",
+    "appSecret",
+    "client_secret",
+    "clientSecret",
+    "refresh_token",
+    "refreshToken",
+    "id_token",
+    "idToken",
+    "session_token",
+    "sessionToken",
+    "bot_token",
+    "botToken",
+    "OPENROUTER_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "TAVILY_API_KEY",
+    "FMP_API_KEY",
+    "HONE_CLOUD_API_KEY",
+    "token",
+    "secret",
+    "password",
+    "X-API-Key",
+    "x-api-key",
+];
 
 fn redact_multi_agent_marker_value(text: &str, marker: &str) -> String {
     let mut remaining = text;
@@ -804,15 +829,25 @@ mod tests {
     #[test]
     fn multi_agent_log_detail_redacts_common_secret_shapes() {
         let detail = multi_agent_log_detail(
-            r#"https://api.example.test/v1?api_key=query-secret model=Bearer bearer-secret {"token":"json-secret"}"#,
+            r#"https://api.example.test/v1?api_key=query-secret model=Bearer bearer-secret OPENROUTER_API_KEY=env-secret Authorization: Basic basic-secret {"token":"json-secret","client_secret":"json-client","authorization":"Basic json-basic","refresh_token":"json-refresh"}"#,
         );
 
         assert!(detail.contains("api_key=<redacted>"));
         assert!(detail.contains("Bearer <redacted>"));
+        assert!(detail.contains("OPENROUTER_API_KEY=<redacted>"));
+        assert!(detail.contains("Basic <redacted>"));
         assert!(detail.contains("\"token\":\"<redacted>\""));
+        assert!(detail.contains("\"client_secret\":\"<redacted>\""));
+        assert!(detail.contains("\"authorization\":\"<redacted>\""));
+        assert!(detail.contains("\"refresh_token\":\"<redacted>\""));
         assert!(!detail.contains("query-secret"));
         assert!(!detail.contains("bearer-secret"));
+        assert!(!detail.contains("env-secret"));
+        assert!(!detail.contains("basic-secret"));
         assert!(!detail.contains("json-secret"));
+        assert!(!detail.contains("json-client"));
+        assert!(!detail.contains("json-basic"));
+        assert!(!detail.contains("json-refresh"));
     }
 
     #[test]

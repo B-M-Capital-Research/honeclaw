@@ -205,22 +205,47 @@ fn sanitize_hone_cloud_error_detail(text: &str) -> String {
 
 fn redact_common_hone_cloud_secrets(text: &str) -> String {
     let mut output = redact_marker_value(text, "Bearer ");
-    for key in [
-        "access_token",
-        "accessToken",
-        "api_key",
-        "apiKey",
-        "apikey",
-        "token",
-        "secret",
-        "password",
-    ] {
+    output = redact_marker_value(&output, "Basic ");
+    for key in SENSITIVE_HONE_CLOUD_DETAIL_KEYS {
         output = redact_marker_value(&output, &format!("{key}="));
         output = redact_marker_value(&output, &format!("{key}:"));
         output = redact_json_string_field(&output, key);
     }
+    for key in ["authorization", "Authorization"] {
+        output = redact_json_string_field(&output, key);
+    }
     output
 }
+
+const SENSITIVE_HONE_CLOUD_DETAIL_KEYS: &[&str] = &[
+    "access_token",
+    "accessToken",
+    "api_key",
+    "apiKey",
+    "apikey",
+    "client_secret",
+    "clientSecret",
+    "refresh_token",
+    "refreshToken",
+    "id_token",
+    "idToken",
+    "session_token",
+    "sessionToken",
+    "bot_token",
+    "botToken",
+    "OPENROUTER_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "TAVILY_API_KEY",
+    "FMP_API_KEY",
+    "HONE_CLOUD_API_KEY",
+    "token",
+    "secret",
+    "password",
+    "X-API-Key",
+    "x-api-key",
+];
 
 fn redact_marker_value(text: &str, marker: &str) -> String {
     let mut remaining = text;
@@ -319,17 +344,27 @@ mod tests {
     #[test]
     fn hone_cloud_error_detail_redacts_common_credentials() {
         let detail = sanitize_hone_cloud_error_detail(
-            r#"request failed for https://example.test/chat?api_key=abc&ok=1 Authorization: Bearer xyz apiKey: header-secret {"token": "tok","safe":"kept"}"#,
+            r#"request failed for https://example.test/chat?api_key=abc&ok=1 Authorization: Bearer xyz apiKey: header-secret OPENROUTER_API_KEY=env-secret X-API-Key: gateway-secret auth=Basic basic-secret {"token": "tok","client_secret":"json-client","authorization":"Basic json-basic","safe":"kept"}"#,
         );
 
         assert!(detail.contains("api_key=<redacted>"));
         assert!(detail.contains("Bearer <redacted>"));
         assert!(detail.contains("apiKey: <redacted>"));
+        assert!(detail.contains("OPENROUTER_API_KEY=<redacted>"));
+        assert!(detail.contains("X-API-Key: <redacted>"));
+        assert!(detail.contains("Basic <redacted>"));
         assert!(detail.contains("\"token\": \"<redacted>\""));
+        assert!(detail.contains("\"client_secret\":\"<redacted>\""));
+        assert!(detail.contains("\"authorization\":\"<redacted>\""));
         assert!(detail.contains("\"safe\":\"kept\""));
         assert!(!detail.contains("abc"));
         assert!(!detail.contains("xyz"));
         assert!(!detail.contains("header-secret"));
+        assert!(!detail.contains("env-secret"));
+        assert!(!detail.contains("gateway-secret"));
+        assert!(!detail.contains("basic-secret"));
         assert!(!detail.contains(":\"tok\""));
+        assert!(!detail.contains("json-client"));
+        assert!(!detail.contains("json-basic"));
     }
 }

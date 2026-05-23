@@ -318,24 +318,49 @@ fn gemini_cli_stderr_detail(stderr: &str) -> Option<String> {
 
 fn redact_common_stderr_secrets(text: &str) -> String {
     let mut output = redact_marker_value(text, "Bearer ");
-    for key in [
-        "access_token",
-        "accessToken",
-        "api_key",
-        "apiKey",
-        "apikey",
-        "token",
-        "app_secret",
-        "appSecret",
-        "secret",
-        "password",
-    ] {
+    output = redact_marker_value(&output, "Basic ");
+    for key in SENSITIVE_GEMINI_STDERR_KEYS {
         output = redact_marker_value(&output, &format!("{key}="));
         output = redact_marker_value(&output, &format!("{key}:"));
         output = redact_json_string_field(&output, key);
     }
+    for key in ["authorization", "Authorization"] {
+        output = redact_json_string_field(&output, key);
+    }
     output
 }
+
+const SENSITIVE_GEMINI_STDERR_KEYS: &[&str] = &[
+    "access_token",
+    "accessToken",
+    "api_key",
+    "apiKey",
+    "apikey",
+    "app_secret",
+    "appSecret",
+    "client_secret",
+    "clientSecret",
+    "refresh_token",
+    "refreshToken",
+    "id_token",
+    "idToken",
+    "session_token",
+    "sessionToken",
+    "bot_token",
+    "botToken",
+    "OPENROUTER_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "TAVILY_API_KEY",
+    "FMP_API_KEY",
+    "HONE_CLOUD_API_KEY",
+    "token",
+    "secret",
+    "password",
+    "X-API-Key",
+    "x-api-key",
+];
 
 fn redact_marker_value(text: &str, marker: &str) -> String {
     let mut remaining = text;
@@ -854,27 +879,39 @@ mod tests {
     fn gemini_exit_error_redacts_common_stderr_secret_shapes() {
         let message = gemini_cli_exit_error_message(
             Some(2),
-            r#"request failed token: header-secret auth=Bearer bearer-secret {"api_key":"json-secret"}"#,
+            r#"request failed token: header-secret auth=Bearer bearer-secret OPENROUTER_API_KEY=env-secret Authorization: Basic basic-secret {"api_key":"json-secret","client_secret":"json-client","authorization":"Basic json-basic"}"#,
         );
 
         assert!(message.contains("token: <redacted>"));
         assert!(message.contains("Bearer <redacted>"));
+        assert!(message.contains("OPENROUTER_API_KEY=<redacted>"));
+        assert!(message.contains("Basic <redacted>"));
         assert!(message.contains("\"api_key\":\"<redacted>\""));
+        assert!(message.contains("\"client_secret\":\"<redacted>\""));
+        assert!(message.contains("\"authorization\":\"<redacted>\""));
         assert!(!message.contains("header-secret"));
         assert!(!message.contains("bearer-secret"));
+        assert!(!message.contains("env-secret"));
+        assert!(!message.contains("basic-secret"));
         assert!(!message.contains("json-secret"));
+        assert!(!message.contains("json-client"));
+        assert!(!message.contains("json-basic"));
     }
 
     #[test]
     fn gemini_raw_line_preview_redacts_common_secret_shapes() {
         let preview = super::gemini_cli_log_preview(
-            r#"{"message":"token: header-secret","api_key":"json-secret"}"#,
+            r#"{"message":"token: header-secret","api_key":"json-secret","refresh_token":"json-refresh","bot_token":"json-bot"}"#,
             200,
         );
 
         assert!(preview.contains("token: <redacted>"));
         assert!(preview.contains("\"api_key\":\"<redacted>\""));
+        assert!(preview.contains("\"refresh_token\":\"<redacted>\""));
+        assert!(preview.contains("\"bot_token\":\"<redacted>\""));
         assert!(!preview.contains("header-secret"));
         assert!(!preview.contains("json-secret"));
+        assert!(!preview.contains("json-refresh"));
+        assert!(!preview.contains("json-bot"));
     }
 }

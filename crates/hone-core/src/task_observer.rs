@@ -261,56 +261,79 @@ fn truncate_task_error(error: &str) -> String {
 }
 
 fn redact_common_secret_details(text: &str) -> String {
-    let mut output = redact_bearer_tokens(text);
-    for key in [
-        "access_token",
-        "accessToken",
-        "api_key",
-        "apiKey",
-        "apikey",
-        "token",
-        "app_secret",
-        "appSecret",
-        "password",
-    ] {
-        output = redact_query_value(&output, key);
+    let mut output = redact_auth_scheme_tokens(text);
+    for key in SENSITIVE_TASK_ERROR_KEYS {
+        output = redact_delimited_secret_value(&output, &format!("{key}="));
+        output = redact_delimited_secret_value(&output, &format!("{key}:"));
     }
     output
 }
 
-fn redact_bearer_tokens(text: &str) -> String {
-    const MARKER: &str = "Bearer ";
+const SENSITIVE_TASK_ERROR_KEYS: &[&str] = &[
+    "access_token",
+    "accessToken",
+    "api_key",
+    "apiKey",
+    "apikey",
+    "app_secret",
+    "appSecret",
+    "client_secret",
+    "clientSecret",
+    "refresh_token",
+    "refreshToken",
+    "id_token",
+    "idToken",
+    "session_token",
+    "sessionToken",
+    "bot_token",
+    "botToken",
+    "OPENROUTER_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "TAVILY_API_KEY",
+    "FMP_API_KEY",
+    "HONE_CLOUD_API_KEY",
+    "token",
+    "secret",
+    "password",
+    "X-API-Key",
+    "x-api-key",
+];
+
+fn redact_auth_scheme_tokens(text: &str) -> String {
+    let output = redact_delimited_secret_value(text, "Bearer ");
+    redact_delimited_secret_value(&output, "Basic ")
+}
+
+fn redact_delimited_secret_value(text: &str, marker: &str) -> String {
     let mut remaining = text;
     let mut output = String::with_capacity(text.len());
-    while let Some(index) = remaining.find(MARKER) {
-        let value_start = index + MARKER.len();
+    while let Some(index) = remaining.find(marker) {
+        let value_start = index + marker.len();
         output.push_str(&remaining[..value_start]);
+        let leading_whitespace = remaining[value_start..]
+            .chars()
+            .take_while(|ch| ch.is_whitespace())
+            .map(char::len_utf8)
+            .sum::<usize>();
+        output.push_str(&remaining[value_start..value_start + leading_whitespace]);
         output.push_str(REDACTED_SECRET);
-        let value_tail = remaining[value_start..]
+        let value_tail = remaining[value_start + leading_whitespace..]
             .char_indices()
             .find_map(|(idx, ch)| {
-                (ch.is_whitespace() || matches!(ch, ')' | ',' | '"')).then_some(idx)
+                (ch == '&'
+                    || ch == ')'
+                    || ch == ','
+                    || ch == '"'
+                    || ch == '\''
+                    || ch == '}'
+                    || ch == ']'
+                    || ch.is_whitespace())
+                .then_some(idx)
             })
-            .unwrap_or(remaining[value_start..].len());
-        remaining = &remaining[value_start + value_tail..];
-    }
-    output.push_str(remaining);
-    output
-}
-
-fn redact_query_value(text: &str, key: &str) -> String {
-    let needle = format!("{key}=");
-    let mut remaining = text;
-    let mut output = String::with_capacity(text.len());
-    while let Some(index) = remaining.find(&needle) {
-        let value_start = index + needle.len();
-        output.push_str(&remaining[..value_start]);
-        output.push_str(REDACTED_SECRET);
-        let value_tail = remaining[value_start..]
-            .char_indices()
-            .find_map(|(idx, ch)| (ch == '&' || ch == ')' || ch.is_whitespace()).then_some(idx))
-            .unwrap_or(remaining[value_start..].len());
-        remaining = &remaining[value_start + value_tail..];
+            .unwrap_or(remaining[value_start + leading_whitespace..].len());
+        remaining = &remaining[value_start + leading_whitespace + value_tail..];
     }
     output.push_str(remaining);
     output
@@ -426,13 +449,13 @@ mod tests {
             temp_dir.path(),
             "poller.secret",
             Utc::now(),
-            "request failed https://api.test/path?access_token=abc&apiKey=def auth=Bearer bearer-secret",
+            "request failed https://api.test/path?access_token=abc&apiKey=def auth=Bearer bearer-secret OPENROUTER_API_KEY=env-secret X-API-Key: header-secret Authorization: Basic basic-secret",
         );
         let recent = read_recent_task_runs(temp_dir.path(), 0, 1);
         let err = recent[0].error.as_deref().unwrap();
         assert_eq!(
             err,
-            "request failed https://api.test/path?access_token=<redacted>&apiKey=<redacted> auth=Bearer <redacted>"
+            "request failed https://api.test/path?access_token=<redacted>&apiKey=<redacted> auth=Bearer <redacted> OPENROUTER_API_KEY=<redacted> X-API-Key: <redacted> Authorization: Basic <redacted>"
         );
     }
 }

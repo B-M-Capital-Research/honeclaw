@@ -344,7 +344,27 @@ fn redact_value_for_log(value: &Value) -> Value {
 fn is_sensitive_log_key(key: &str) -> bool {
     matches!(
         key.to_ascii_lowercase().as_str(),
-        "api_key" | "apikey" | "token" | "access_token" | "authorization" | "password" | "secret"
+        "api_key"
+            | "apikey"
+            | "x-api-key"
+            | "token"
+            | "access_token"
+            | "refresh_token"
+            | "id_token"
+            | "session_token"
+            | "bot_token"
+            | "authorization"
+            | "password"
+            | "secret"
+            | "app_secret"
+            | "client_secret"
+            | "openrouter_api_key"
+            | "anthropic_api_key"
+            | "gemini_api_key"
+            | "google_api_key"
+            | "tavily_api_key"
+            | "fmp_api_key"
+            | "hone_cloud_api_key"
     )
 }
 
@@ -360,6 +380,7 @@ fn text_excerpt_for_log(text: &str, max_chars: usize) -> String {
 
 fn redact_text_for_log(text: &str) -> String {
     let mut output = redact_marker_value(text, "Bearer ");
+    output = redact_marker_value(&output, "Basic ");
     for key in SENSITIVE_TEXT_MARKER_KEYS {
         output = redact_marker_value(&output, &format!("{key}="));
         output = redact_marker_value(&output, &format!("{key}:"));
@@ -373,11 +394,30 @@ const SENSITIVE_TEXT_MARKER_KEYS: &[&str] = &[
     "api_key",
     "apiKey",
     "apikey",
-    "token",
     "app_secret",
     "appSecret",
+    "client_secret",
+    "clientSecret",
+    "refresh_token",
+    "refreshToken",
+    "id_token",
+    "idToken",
+    "session_token",
+    "sessionToken",
+    "bot_token",
+    "botToken",
+    "OPENROUTER_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "TAVILY_API_KEY",
+    "FMP_API_KEY",
+    "HONE_CLOUD_API_KEY",
+    "token",
     "secret",
     "password",
+    "X-API-Key",
+    "x-api-key",
 ];
 
 fn redact_marker_value(text: &str, marker: &str) -> String {
@@ -820,13 +860,42 @@ mod tests {
     #[test]
     fn text_excerpt_for_log_redacts_common_secrets() {
         let excerpt = text_excerpt_for_log(
-            "request failed https://api.test/path?api_key=abc&token=def auth=Bearer bearer-secret apiKey: header-secret",
+            "request failed https://api.test/path?api_key=abc&token=def auth=Bearer bearer-secret apiKey: header-secret OPENROUTER_API_KEY=env-secret Authorization: Basic basic-secret",
             320,
         );
         assert_eq!(
             excerpt,
-            "request failed https://api.test/path?api_key=<redacted>&token=<redacted> auth=Bearer <redacted> apiKey: <redacted>"
+            "request failed https://api.test/path?api_key=<redacted>&token=<redacted> auth=Bearer <redacted> apiKey: <redacted> OPENROUTER_API_KEY=<redacted> Authorization: Basic <redacted>"
         );
+    }
+
+    #[test]
+    fn value_excerpt_for_log_redacts_extended_secret_keys() {
+        let excerpt = value_excerpt_for_log(
+            &json!({
+                "client_secret": "json-client",
+                "refresh_token": "json-refresh",
+                "authorization": "Basic json-basic",
+                "nested": {
+                    "bot_token": "json-bot",
+                    "X-API-Key": "json-header",
+                    "safe": "kept",
+                },
+            }),
+            500,
+        );
+
+        assert!(excerpt.contains("\"client_secret\":\"<redacted>\""));
+        assert!(excerpt.contains("\"refresh_token\":\"<redacted>\""));
+        assert!(excerpt.contains("\"authorization\":\"<redacted>\""));
+        assert!(excerpt.contains("\"bot_token\":\"<redacted>\""));
+        assert!(excerpt.contains("\"X-API-Key\":\"<redacted>\""));
+        assert!(excerpt.contains("\"safe\":\"kept\""));
+        assert!(!excerpt.contains("json-client"));
+        assert!(!excerpt.contains("json-refresh"));
+        assert!(!excerpt.contains("json-basic"));
+        assert!(!excerpt.contains("json-bot"));
+        assert!(!excerpt.contains("json-header"));
     }
 
     #[test]

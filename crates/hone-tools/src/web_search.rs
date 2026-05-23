@@ -176,18 +176,13 @@ impl WebSearchTool {
 
 fn sanitize_tavily_error_detail(text: &str) -> String {
     let mut output = redact_tavily_marker_value(&redact_url_userinfo(text), "Bearer ");
-    for key in [
-        "access_token",
-        "accessToken",
-        "api_key",
-        "apiKey",
-        "apikey",
-        "token",
-        "secret",
-        "password",
-    ] {
+    output = redact_tavily_marker_value(&output, "Basic ");
+    for key in SENSITIVE_TAVILY_ERROR_KEYS {
         output = redact_tavily_marker_value(&output, &format!("{key}="));
         output = redact_tavily_marker_value(&output, &format!("{key}:"));
+        output = redact_tavily_json_string_field(&output, key);
+    }
+    for key in ["authorization", "Authorization"] {
         output = redact_tavily_json_string_field(&output, key);
     }
     if output.chars().count() <= MAX_TAVILY_ERROR_CHARS {
@@ -199,6 +194,36 @@ fn sanitize_tavily_error_detail(text: &str) -> String {
         .collect::<String>()
         + "..."
 }
+
+const SENSITIVE_TAVILY_ERROR_KEYS: &[&str] = &[
+    "access_token",
+    "accessToken",
+    "api_key",
+    "apiKey",
+    "apikey",
+    "client_secret",
+    "clientSecret",
+    "refresh_token",
+    "refreshToken",
+    "id_token",
+    "idToken",
+    "session_token",
+    "sessionToken",
+    "bot_token",
+    "botToken",
+    "OPENROUTER_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "TAVILY_API_KEY",
+    "FMP_API_KEY",
+    "HONE_CLOUD_API_KEY",
+    "token",
+    "secret",
+    "password",
+    "X-API-Key",
+    "x-api-key",
+];
 
 fn redact_url_userinfo(text: &str) -> String {
     let mut remaining = text;
@@ -430,13 +455,13 @@ mod tests {
     fn response_error_message_reads_nested_detail_error() {
         let payload = serde_json::json!({
             "detail": {
-                "error": "This request exceeds your plan's set usage limit. Please upgrade your plan or contact support@tavily.com apiKey: leaked-key"
+                "error": "This request exceeds your plan's set usage limit. Please upgrade your plan or contact support@tavily.com apiKey: leaked-key TAVILY_API_KEY=env-secret Authorization: Basic basic-secret"
             }
         });
         assert_eq!(
             WebSearchTool::response_error_message(&payload).as_deref(),
             Some(
-                "This request exceeds your plan's set usage limit. Please upgrade your plan or contact support@tavily.com apiKey: <redacted>"
+                "This request exceeds your plan's set usage limit. Please upgrade your plan or contact support@tavily.com apiKey: <redacted> TAVILY_API_KEY=<redacted> Authorization: Basic <redacted>"
             )
         );
     }
@@ -445,16 +470,20 @@ mod tests {
     fn response_error_message_redacts_json_secret_fields_in_detail() {
         let payload = serde_json::json!({
             "detail": {
-                "error": r#"backend rejected {"api_key":"json-key","token":"tok","safe":"kept"}"#
+                "error": r#"backend rejected {"api_key":"json-key","token":"tok","client_secret":"json-client","authorization":"Basic json-basic","safe":"kept"}"#
             }
         });
 
         let message = WebSearchTool::response_error_message(&payload).expect("message");
         assert!(message.contains("\"api_key\":\"<redacted>\""));
         assert!(message.contains("\"token\":\"<redacted>\""));
+        assert!(message.contains("\"client_secret\":\"<redacted>\""));
+        assert!(message.contains("\"authorization\":\"<redacted>\""));
         assert!(message.contains("\"safe\":\"kept\""));
         assert!(!message.contains("json-key"));
         assert!(!message.contains("\"tok\""));
+        assert!(!message.contains("json-client"));
+        assert!(!message.contains("json-basic"));
     }
 
     #[test]

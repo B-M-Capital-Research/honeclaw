@@ -200,9 +200,21 @@ fn redact_json_secrets(value: &Value) -> Value {
                             | "api_keys"
                             | "api_key"
                             | "apikeys"
+                            | "x-api-key"
                             | "authorization"
+                            | "bot_token"
+                            | "client_secret"
+                            | "fmp_api_key"
+                            | "gemini_api_key"
+                            | "google_api_key"
+                            | "hone_cloud_api_key"
+                            | "id_token"
+                            | "openrouter_api_key"
                             | "password"
+                            | "refresh_token"
                             | "secret"
+                            | "session_token"
+                            | "tavily_api_key"
                             | "token"
                     );
                     let sanitized = if redacted {
@@ -221,24 +233,8 @@ fn redact_json_secrets(value: &Value) -> Value {
 }
 
 fn redact_bearer_secret(text: &str) -> String {
-    let marker = "Bearer ";
-    let mut remaining = text;
-    let mut output = String::with_capacity(text.len());
-    while let Some(index) = remaining.find(marker) {
-        let value_start = index + marker.len();
-        output.push_str(&remaining[..value_start]);
-        output.push_str("<redacted>");
-        let value_tail = remaining[value_start..]
-            .char_indices()
-            .find_map(|(idx, ch)| {
-                (ch == '&' || ch == ')' || ch == ',' || ch == '"' || ch.is_whitespace())
-                    .then_some(idx)
-            })
-            .unwrap_or(remaining[value_start..].len());
-        remaining = &remaining[value_start + value_tail..];
-    }
-    output.push_str(remaining);
-    output
+    let output = redact_delimited_secret_value(text, "Bearer ");
+    redact_delimited_secret_value(&output, "Basic ")
 }
 
 fn redact_url_userinfo(text: &str) -> String {
@@ -267,21 +263,42 @@ fn redact_url_userinfo(text: &str) -> String {
 
 fn redact_query_secrets(text: &str) -> String {
     let mut output = text.to_string();
-    for key in [
-        "access_token",
-        "accessToken",
-        "api_key",
-        "apiKey",
-        "apikey",
-        "token",
-        "secret",
-        "password",
-    ] {
+    for key in SENSITIVE_DEEP_RESEARCH_ERROR_KEYS {
         output = redact_delimited_secret_value(&output, &format!("{key}="));
         output = redact_delimited_secret_value(&output, &format!("{key}:"));
     }
     output
 }
+
+const SENSITIVE_DEEP_RESEARCH_ERROR_KEYS: &[&str] = &[
+    "access_token",
+    "accessToken",
+    "api_key",
+    "apiKey",
+    "apikey",
+    "client_secret",
+    "clientSecret",
+    "refresh_token",
+    "refreshToken",
+    "id_token",
+    "idToken",
+    "session_token",
+    "sessionToken",
+    "bot_token",
+    "botToken",
+    "OPENROUTER_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "TAVILY_API_KEY",
+    "FMP_API_KEY",
+    "HONE_CLOUD_API_KEY",
+    "token",
+    "secret",
+    "password",
+    "X-API-Key",
+    "x-api-key",
+];
 
 fn redact_delimited_secret_value(text: &str, needle: &str) -> String {
     let mut remaining = text;
@@ -385,24 +402,31 @@ mod tests {
 
     #[test]
     fn deep_research_error_detail_redacts_bearer_credentials() {
-        let detail =
-            sanitize_deep_research_error_detail("request failed with Authorization: Bearer abc123");
+        let detail = sanitize_deep_research_error_detail(
+            "request failed with Authorization: Bearer abc123 and Authorization: Basic basic-secret",
+        );
         assert_eq!(
             detail,
-            "request failed with Authorization: Bearer <redacted>"
+            "request failed with Authorization: Bearer <redacted> and Authorization: Basic <redacted>"
         );
     }
 
     #[test]
     fn deep_research_error_detail_redacts_colon_credentials() {
         let detail = sanitize_deep_research_error_detail(
-            "backend rejected request with apiKey: header-secret and token=token-secret",
+            "backend rejected request with apiKey: header-secret token=token-secret OPENROUTER_API_KEY=env-secret X-API-Key: gateway-secret client_secret: client-secret",
         );
 
         assert!(detail.contains("apiKey: <redacted>"));
         assert!(detail.contains("token=<redacted>"));
+        assert!(detail.contains("OPENROUTER_API_KEY=<redacted>"));
+        assert!(detail.contains("X-API-Key: <redacted>"));
+        assert!(detail.contains("client_secret: <redacted>"));
         assert!(!detail.contains("header-secret"));
         assert!(!detail.contains("token-secret"));
+        assert!(!detail.contains("env-secret"));
+        assert!(!detail.contains("gateway-secret"));
+        assert!(!detail.contains("client-secret"));
     }
 
     #[test]

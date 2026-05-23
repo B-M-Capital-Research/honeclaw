@@ -232,28 +232,53 @@ pub(crate) fn acp_error_detail_for_message(message: &str) -> String {
 }
 
 fn redact_common_stderr_secrets(text: &str) -> String {
-    let mut output = redact_bearer_tokens(text);
-    for key in [
-        "access_token",
-        "accessToken",
-        "api_key",
-        "apiKey",
-        "apikey",
-        "token",
-        "app_secret",
-        "appSecret",
-        "secret",
-        "password",
-    ] {
+    let mut output = redact_auth_scheme_tokens(text);
+    for key in SENSITIVE_STDERR_MARKER_KEYS {
         output = redact_key_value(&output, key);
         output = redact_marker_value(&output, &format!("{key}:"));
+        output = redact_json_string_field(&output, key);
+    }
+    for key in ["authorization", "Authorization"] {
         output = redact_json_string_field(&output, key);
     }
     output
 }
 
-fn redact_bearer_tokens(text: &str) -> String {
-    redact_marker_value(text, "Bearer ")
+const SENSITIVE_STDERR_MARKER_KEYS: &[&str] = &[
+    "access_token",
+    "accessToken",
+    "api_key",
+    "apiKey",
+    "apikey",
+    "app_secret",
+    "appSecret",
+    "client_secret",
+    "clientSecret",
+    "refresh_token",
+    "refreshToken",
+    "id_token",
+    "idToken",
+    "session_token",
+    "sessionToken",
+    "bot_token",
+    "botToken",
+    "OPENROUTER_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "TAVILY_API_KEY",
+    "FMP_API_KEY",
+    "HONE_CLOUD_API_KEY",
+    "token",
+    "secret",
+    "password",
+    "X-API-Key",
+    "x-api-key",
+];
+
+fn redact_auth_scheme_tokens(text: &str) -> String {
+    let output = redact_marker_value(text, "Bearer ");
+    redact_marker_value(&output, "Basic ")
 }
 
 fn redact_key_value(text: &str, key: &str) -> String {
@@ -467,6 +492,27 @@ mod tests {
         assert!(!tail.contains("header-secret"));
         assert!(!tail.contains("bearer-secret"));
         assert!(!tail.contains("json-secret"));
+    }
+
+    #[test]
+    fn diagnostics_redact_extended_credential_shapes() {
+        let detail = acp_diagnostic_excerpt_for_log(
+            r#"OPENROUTER_API_KEY=env-secret X-API-Key: header-secret Authorization: Basic basic-secret {"client_secret":"json-client","authorization":"Basic json-basic","refresh_token":"json-refresh"}"#,
+            500,
+        );
+
+        assert!(detail.contains("OPENROUTER_API_KEY=<redacted>"));
+        assert!(detail.contains("X-API-Key: <redacted>"));
+        assert!(detail.contains("Basic <redacted>"));
+        assert!(detail.contains("\"client_secret\":\"<redacted>\""));
+        assert!(detail.contains("\"authorization\":\"<redacted>\""));
+        assert!(detail.contains("\"refresh_token\":\"<redacted>\""));
+        assert!(!detail.contains("env-secret"));
+        assert!(!detail.contains("header-secret"));
+        assert!(!detail.contains("basic-secret"));
+        assert!(!detail.contains("json-client"));
+        assert!(!detail.contains("json-basic"));
+        assert!(!detail.contains("json-refresh"));
     }
 
     #[tokio::test]

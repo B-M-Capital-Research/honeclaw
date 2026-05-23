@@ -182,22 +182,47 @@ fn sanitize_skill_script_stderr(stderr: &str) -> String {
 
 fn redact_skill_script_stderr_secrets(text: &str) -> String {
     let mut output = redact_skill_script_marker_value(&redact_url_userinfo(text), "Bearer ");
-    for key in [
-        "access_token",
-        "accessToken",
-        "api_key",
-        "apiKey",
-        "apikey",
-        "token",
-        "secret",
-        "password",
-    ] {
+    output = redact_skill_script_marker_value(&output, "Basic ");
+    for key in SENSITIVE_SKILL_SCRIPT_STDERR_KEYS {
         output = redact_skill_script_marker_value(&output, &format!("{key}="));
         output = redact_skill_script_marker_value(&output, &format!("{key}:"));
         output = redact_skill_script_json_string_field(&output, key);
     }
+    for key in ["authorization", "Authorization"] {
+        output = redact_skill_script_json_string_field(&output, key);
+    }
     output
 }
+
+const SENSITIVE_SKILL_SCRIPT_STDERR_KEYS: &[&str] = &[
+    "access_token",
+    "accessToken",
+    "api_key",
+    "apiKey",
+    "apikey",
+    "client_secret",
+    "clientSecret",
+    "refresh_token",
+    "refreshToken",
+    "id_token",
+    "idToken",
+    "session_token",
+    "sessionToken",
+    "bot_token",
+    "botToken",
+    "OPENROUTER_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "TAVILY_API_KEY",
+    "FMP_API_KEY",
+    "HONE_CLOUD_API_KEY",
+    "token",
+    "secret",
+    "password",
+    "X-API-Key",
+    "x-api-key",
+];
 
 fn redact_url_userinfo(text: &str) -> String {
     let mut remaining = text;
@@ -338,7 +363,7 @@ mod tests {
 
     #[test]
     fn skill_script_stderr_preview_redacts_common_credentials() {
-        let stderr = r#"failed https://user:password@api.test/path?api_key=abc&token=tok auth=Bearer xyz apiKey: header-secret {"secret": "json-secret"}"#;
+        let stderr = r#"failed https://user:password@api.test/path?api_key=abc&token=tok auth=Bearer xyz apiKey: header-secret OPENROUTER_API_KEY=env-secret X-API-Key: gateway-secret Authorization: Basic basic-secret {"secret": "json-secret","client_secret":"json-client","authorization":"Basic json-basic"}"#;
         let detail = sanitize_skill_script_stderr(stderr);
 
         assert!(detail.contains("https://<redacted>@api.test/path"));
@@ -346,13 +371,23 @@ mod tests {
         assert!(detail.contains("token=<redacted>"));
         assert!(detail.contains("Bearer <redacted>"));
         assert!(detail.contains("apiKey: <redacted>"));
+        assert!(detail.contains("OPENROUTER_API_KEY=<redacted>"));
+        assert!(detail.contains("X-API-Key: <redacted>"));
+        assert!(detail.contains("Basic <redacted>"));
         assert!(detail.contains("\"secret\": \"<redacted>\""));
+        assert!(detail.contains("\"client_secret\":\"<redacted>\""));
+        assert!(detail.contains("\"authorization\":\"<redacted>\""));
         assert!(!detail.contains("abc"));
         assert!(!detail.contains("password"));
         assert!(!detail.contains("=tok"));
         assert!(!detail.contains("xyz"));
         assert!(!detail.contains("header-secret"));
         assert!(!detail.contains("json-secret"));
+        assert!(!detail.contains("env-secret"));
+        assert!(!detail.contains("gateway-secret"));
+        assert!(!detail.contains("basic-secret"));
+        assert!(!detail.contains("json-client"));
+        assert!(!detail.contains("json-basic"));
     }
 
     #[tokio::test]
