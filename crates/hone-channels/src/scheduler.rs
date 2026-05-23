@@ -1505,6 +1505,9 @@ fn guard_direct_trade_instruction_for_event(text: &str, event: &SchedulerEvent) 
 }
 
 fn heartbeat_runner_failure_kind(error: &str) -> &'static str {
+    if is_context_overflow_error(error) {
+        return "context_window_overflow";
+    }
     let lower = error.to_ascii_lowercase();
     if lower.contains("upstream http 402")
         || lower.contains("upstream http 429")
@@ -1538,14 +1541,23 @@ fn heartbeat_execution_from_runner_error(
     heartbeat_model: &str,
 ) -> ScheduledTaskExecution {
     let failure_kind = heartbeat_runner_failure_kind(&error);
+    let mut metadata = json!({
+        "heartbeat_model": heartbeat_model,
+        "failure_kind": failure_kind,
+    });
+    if is_context_overflow_error(&error)
+        && let Value::Object(map) = &mut metadata
+    {
+        map.insert(
+            "parse_kind".to_string(),
+            Value::String("ContextOverflowError".to_string()),
+        );
+    }
     ScheduledTaskExecution {
         should_deliver: false,
         content: String::new(),
         error: Some(error),
-        metadata: json!({
-            "heartbeat_model": heartbeat_model,
-            "failure_kind": failure_kind,
-        }),
+        metadata,
         session_id: None,
     }
 }
@@ -2366,43 +2378,16 @@ pub async fn execute_scheduler_event(
             execution
         }
         Err(error) => {
-            let (parse_kind_label, treat_as_noop) = if is_context_overflow_error(&error) {
-                ("ContextOverflowNoop", true)
-            } else {
-                ("", false)
-            };
-            if treat_as_noop {
-                tracing::warn!(
-                    "[HeartbeatDiag] transient_noop parse_kind={} job_id={} job={} target={} model={} error=\"{}\"",
-                    parse_kind_label,
-                    event.job_id,
-                    event.job_name,
-                    event.channel_target,
-                    heartbeat_model,
-                    truncate_for_log(&error, 280).replace('\n', "\\n"),
-                );
-                ScheduledTaskExecution {
-                    should_deliver: false,
-                    content: String::new(),
-                    error: None,
-                    metadata: json!({
-                        "heartbeat_model": heartbeat_model,
-                        "parse_kind": parse_kind_label,
-                    }),
-                    session_id: None,
-                }
-            } else {
-                tracing::warn!(
-                    "[HeartbeatDiag] runner_error job_id={} job={} target={} model={} failure_kind={} error=\"{}\"",
-                    event.job_id,
-                    event.job_name,
-                    event.channel_target,
-                    heartbeat_model,
-                    heartbeat_runner_failure_kind(&error),
-                    truncate_for_log(&error, 280).replace('\n', "\\n"),
-                );
-                heartbeat_execution_from_runner_error(error, &heartbeat_model)
-            }
+            tracing::warn!(
+                "[HeartbeatDiag] runner_error job_id={} job={} target={} model={} failure_kind={} error=\"{}\"",
+                event.job_id,
+                event.job_name,
+                event.channel_target,
+                heartbeat_model,
+                heartbeat_runner_failure_kind(&error),
+                truncate_for_log(&error, 280).replace('\n', "\\n"),
+            );
+            heartbeat_execution_from_runner_error(error, &heartbeat_model)
         }
     }
 }
@@ -3314,6 +3299,28 @@ mod tests {
         assert!(!execution.should_deliver);
         assert!(execution.error.is_some());
         assert_eq!(execution.metadata["failure_kind"], "provider_http_error");
+    }
+
+    #[test]
+    fn heartbeat_context_overflow_error_is_not_classified_as_noop() {
+        let execution = heartbeat_execution_from_runner_error(
+            "LLM 错误: bad_request_error: invalid params, context window exceeds limit (2013)"
+                .to_string(),
+            "mimo-v2.5-pro",
+        );
+        assert!(!execution.should_deliver);
+        assert_eq!(
+            execution.error.as_deref(),
+            Some(
+                "LLM 错误: bad_request_error: invalid params, context window exceeds limit (2013)"
+            )
+        );
+        assert_eq!(
+            execution.metadata["failure_kind"],
+            "context_window_overflow"
+        );
+        assert_eq!(execution.metadata["parse_kind"], "ContextOverflowError");
+        assert_eq!(execution.metadata["heartbeat_model"], "mimo-v2.5-pro");
     }
 
     #[test]

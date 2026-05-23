@@ -3,14 +3,20 @@
 - **发现时间**: 2026-04-16 14:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
+  - `2026-05-23 12:04 CST` 已修复：
+    - `crates/hone-channels/src/scheduler.rs` 删除 heartbeat runner context overflow 的 `ContextOverflowNoop` 静默分支；`context window exceeds limit` / `context_window_will_overflow` 等超窗错误现在保留 `ScheduledTaskExecution.error`。
+    - heartbeat 超窗错误会写入 `failure_kind=context_window_overflow` 与 `parse_kind=ContextOverflowError`，各渠道记录执行结果时会自然落成 `execution_failed + skipped_error`，不再伪装为合法 `noop + skipped_noop`。
+    - 该修复不为单次 provider/model 波动写特判，只修正可控的状态边界和可观测性；真正的 prompt 预算压缩 / 分批执行仍可作为后续增强单独推进。
+    - 回归验证：`cargo test -p hone-channels heartbeat_context_overflow_error_is_not_classified_as_noop --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过。
+    - 无关联 GitHub Issue。
   - `2026-05-23 11:01 CST` 本轮继续确认同一缺陷活跃：
     - `data/sessions.sqlite3` -> `cron_job_runs`
       - 07:30-11:01 CST 新增 `8` 条 heartbeat `ContextOverflowNoop + noop + skipped_noop + delivered=0`，均在 Web heartbeat。
       - `持仓财报与重大新闻心跳提醒` 在 07:30、10:30、11:00 CST 继续重复命中 `ContextOverflowNoop`。
       - `AI与科技持仓观察关键事件心跳提醒` 在 07:30、10:30 CST 继续命中 `ContextOverflowNoop`；11:00 CST 虽恢复为 `JsonNoop`，但同一类新建多标的 heartbeat 已连续多窗被超窗吞掉。
-    - 结论：这仍是同一根因 / 同一影响范围的运行态复现，不新建重复文档；严重等级与状态维持 `P2 / New`，不是 P1，本轮不创建 GitHub Issue。
+    - 当时结论：这仍是同一根因 / 同一影响范围的运行态复现，不新建重复文档；严重等级与状态维持 `P2 / New`，不是 P1，本轮不创建 GitHub Issue。
   - `2026-05-23 07:08 CST` 本轮从 `Fixed` 重新打开：旧修复结论是 heartbeat context overflow 改为 `ContextOverflowNoop + skipped_noop` 后“本轮跳过、下轮正常重试”，但最近四小时真实窗口显示同一类超窗已经重复静默吞掉多条 heartbeat：
     - `data/sessions.sqlite3` -> `cron_job_runs`
       - 03:00-07:00 CST 共 `9` 条 heartbeat 落成 `noop + skipped_noop + delivered=0`，`detail_json.parse_kind=ContextOverflowNoop`。
@@ -21,7 +27,7 @@
       - 07:00 CST 多条 `[HeartbeatDiag] run_finish ... context window exceeds limit (2013)` 随后被记录为 `transient_noop parse_kind=ContextOverflowNoop`，没有写入用户可见失败，也没有保留为 `execution_failed`。
     - 会话对照：
       - 最近四小时 Web / Feishu 直聊和 06:00 普通 scheduler 均有 assistant final 收口；assistant final 污染扫描未命中空回复、内部路径、工具轨迹、`<think>` 或 provider 原始错误。故障集中在 heartbeat 超窗恢复/台账语义。
-    - 结论：这是功能性 bug。它不会直接暴露原始 provider 错误，但会把超窗执行失败伪装成合法未触发，使用户刚创建或依赖中的 heartbeat 任务在关键窗口静默失效；严重等级维持 `P2 / New`。不是 P1，本轮不创建 GitHub Issue。
+    - 当时结论：这是功能性 bug。它不会直接暴露原始 provider 错误，但会把超窗执行失败伪装成合法未触发，使用户刚创建或依赖中的 heartbeat 任务在关键窗口静默失效；严重等级维持 `P2 / New`。不是 P1，本轮不创建 GitHub Issue。
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=1887`，`job_id=j_78d08da1`，`job_name=TEM_动态监控`，`executed_at=2026-04-16T14:00:19.471571+08:00`，`execution_status=execution_failed`，`message_send_status=skipped_error`，`delivered=0`，`error_message=LLM 错误: bad_request_error: invalid params, context window exceeds limit (2013)`
     - `run_id=1890`，`job_id=j_977ac60c`，`job_name=AAOI_动态监控`，`executed_at=2026-04-16T14:00:32.420976+08:00`，`execution_status=execution_failed`，`message_send_status=skipped_error`，`delivered=0`，`error_message=LLM 错误: bad_request_error: invalid params, context window exceeds limit (2013)`
@@ -68,6 +74,7 @@
 
 ## 当前实现效果
 
+- `2026-05-23 12:04 CST` 当前 HEAD 已不再把 heartbeat runner 的 context overflow 吸收成 `ContextOverflowNoop`；错误会保留为执行失败并携带 `failure_kind=context_window_overflow` / `parse_kind=ContextOverflowError`，使调度台账、渠道日志和通知页能够区分“条件未触发”和“本轮未能执行”。
 - `2026-05-23 07:08 CST` 最新真实窗口表明，现有 `ContextOverflowNoop` 止血不足：它确实避免了原始 `context window exceeds limit` 外泄，但把 runner 超窗错误写成 `noop + skipped_noop`，导致台账和用户侧都无法区分“条件未触发”和“本轮根本没跑起来”。
 - `2026-05-23 11:01 CST` 最新窗口继续新增 8 条同类 `ContextOverflowNoop`，其中 `持仓财报与重大新闻心跳提醒` 和 `AI与科技持仓观察关键事件心跳提醒` 在前一轮巡检后仍重复命中，说明该问题不是 07:00 单窗偶发。
 - 同一 `持仓财报与重大新闻心跳提醒` 在最近四小时连续 6 次命中 `ContextOverflowNoop`，已经不符合旧修复结论里的“跳过本轮、下轮正常重试”。
@@ -92,7 +99,8 @@
 
 ## 根因判断
 
-- 最新样本显示，当前仓库仍会在 heartbeat runner 返回 context overflow 时执行 `ContextOverflowNoop` 分支：错误被吸收为 `ScheduledTaskExecution { should_deliver=false, error=None }`，并以 `parse_kind=ContextOverflowNoop` 写入台账。
+- 已确认直接根因：heartbeat runner 错误处理路径把 `is_context_overflow_error(...)` 单独改写为 `ScheduledTaskExecution { should_deliver=false, error=None }`，导致上层无法按失败落账。
+- 修复前最新样本显示，仓库会在 heartbeat runner 返回 context overflow 时执行 `ContextOverflowNoop` 分支：错误被吸收为 `ScheduledTaskExecution { should_deliver=false, error=None }`，并以 `parse_kind=ContextOverflowNoop` 写入台账。
 - 这条分支只能降低原始错误外泄风险，不能恢复执行，也没有把“超窗失败”暴露给任务健康或用户可见状态；当同一任务反复超窗时，缺陷就从“错误文案不友好”变成“功能链路静默漏跑”。
 - 高概率是 heartbeat/function-calling 链路缺少上下文预算控制与 `context window exceeds limit` 的自动恢复能力。
 - 从证据看，普通会话链路已有上下文溢出恢复单独建档并标记 `Fixed`，但 heartbeat 任务在 `14:00` 仍然直接失败，说明这条执行路径没有复用同样的恢复策略，或其首轮构造的 prompt 规模已经超过当前模型容忍上限。
@@ -102,8 +110,8 @@
 
 ## 下一步建议
 
-- 不要继续把重复 `context window exceeds limit` 视为合法 noop。建议把 `ContextOverflowNoop` 至少计入可审计的降级/失败状态，或在连续 N 次同任务命中时升级为 `execution_failed` 并提示用户任务过大。
+- 已完成：不再把重复 `context window exceeds limit` 视为合法 noop；当前会按 `execution_failed + skipped_error` 保留可审计失败状态。
 - 对多标的 heartbeat 增加 prompt 预算上限、分批检查或压缩输入摘要，避免新建任务首轮就超过模型上下文。
 - 优先排查 heartbeat/function-calling 路径是否具备与普通会话一致的 overflow 检测、compact 和 retry 逻辑。
 - 为 `cron_job_runs.detail_json` 增补受控长度的请求摘要或 prompt 预算指标，否则后续很难快速判断是模板过长还是上下文继承异常。
-- 在修复前，可对 heartbeat 的 `context window exceeds limit` 做聚合告警与任务级重试观察，避免问题在不同监控任务间漂移时被误判成单点偶发。
+- 后续仍可对 heartbeat 的 `context window exceeds limit` 做聚合告警与任务级重试观察，避免问题在不同监控任务间漂移时被误判成单点偶发。

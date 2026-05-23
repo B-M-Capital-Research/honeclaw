@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-23 11:01 CST
+最后更新：2026-05-23 12:04 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,10 +17,11 @@
 
 ## 当前概览
 
-- 活跃待修复：2
+- 活跃待修复：1
 - Later / 待复现：9
-- 已修复 / 已关闭：110
+- 已修复 / 已关闭：111
 - 历史分析 / 部分止血：5
+- 本轮 12:04 CST 已修复 P2 `Heartbeat 监控任务触发 context window exceeds limit 后缺少恢复，故障会在不同任务间漂移复现`：heartbeat runner context overflow 不再走 `ContextOverflowNoop` 静默分支，超窗错误会保留为 `error` 并写入 `failure_kind=context_window_overflow` / `parse_kind=ContextOverflowError`，各渠道台账自然落成 `execution_failed + skipped_error`，不再伪装为合法 `noop + skipped_noop`。回归：`cargo test -p hone-channels heartbeat_context_overflow_error_is_not_classified_as_noop --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`。无关联 GitHub Issue。
 - 本轮 11:01 CST 重新打开 P2 `Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移`：07:30-11:01 CST 真实 heartbeat 窗口新增 71 条 `execution_failed + skipped_error + delivered=0` 的结构化/状态解析失败，其中 `PlainTextSuppressed` 63 条、`JsonUnknownStatus` 5 条、`JsonEmptyStatus` 2 条、`Empty` 1 条；部分样本已判断价格等于阈值或生成监控配置说明但未按 `triggered/noop` JSON 收口。00:14 修复只覆盖 `{}` 与明确否定性 noop，最新坏态仍会漏发 heartbeat 主链路，故同一旧文档从 `Fixed` 回退为 `New`；不是 P1，本轮不创建 GitHub issue。
 - 本轮 11:01 CST 继续确认 P2 `Heartbeat 监控任务触发 context window exceeds limit 后缺少恢复` 活跃：07:30-11:01 CST 又新增 8 条 Web heartbeat `ContextOverflowNoop + noop + skipped_noop + delivered=0`，`持仓财报与重大新闻心跳提醒` 与 `AI与科技持仓观察关键事件心跳提醒` 均在上轮之后继续重复命中，状态维持 `New`。
 - 本轮 11:01 CST 未发现新的独立活跃 P1。最近四小时按消息时间共有 31 个 user turn 与 23 个 assistant final；Feishu / Web / Discord 直聊和普通 scheduler 均有收口。assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`；最近四小时无非文档代码提交。
@@ -244,7 +245,6 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | New | 2026-05-23 11:01 最近四小时新增 71 条 heartbeat 结构化/状态解析失败，其中 `PlainTextSuppressed` 63 条、`JsonUnknownStatus` 5 条、`JsonEmptyStatus` 2 条、`Empty` 1 条；最新坏态不属于 00:14 `{}` / 明确否定性 noop 兼容修复覆盖范围，会继续漏发 heartbeat 主链路。无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
-| Heartbeat 监控任务触发 `context window exceeds limit` 后缺少恢复，故障会在不同任务间漂移复现 | P2 | New | 2026-05-23 11:01 上轮重新打开后又新增 8 条 Web heartbeat `ContextOverflowNoop + noop + skipped_noop`；`持仓财报与重大新闻心跳提醒` 与 `AI与科技持仓观察关键事件心跳提醒` 继续重复命中，旧修复结论“本轮跳过、下轮正常重试”失效。无关联 GitHub Issue | [scheduler_heartbeat_context_window_limit_no_recovery.md](./scheduler_heartbeat_context_window_limit_no_recovery.md) |
 
 ## Later / 待复现
 
@@ -264,6 +264,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Heartbeat 监控任务触发 `context window exceeds limit` 后缺少恢复，故障会在不同任务间漂移复现 | P2 | Fixed | 2026-05-23 12:04 heartbeat runner context overflow 不再走 `ContextOverflowNoop` 静默分支，超窗错误会保留为 `error` 并写入 `failure_kind=context_window_overflow` / `parse_kind=ContextOverflowError`，各渠道台账自然落成 `execution_failed + skipped_error`，不再伪装为合法 `noop + skipped_noop`。无关联 GitHub Issue | [scheduler_heartbeat_context_window_limit_no_recovery.md](./scheduler_heartbeat_context_window_limit_no_recovery.md) |
 | Feishu 直聊在 FUTU 盘前暴跌时仍用常规交易旧价给抄底区间 | P3 | Fixed | 2026-05-23 00:03 共享金融系统 prompt 新增强时效行情建议约束；含 `今天/盘前/盘后/现在/抄底/买点/卖点` 等语义时必须核实最新可得价格、数据时间和交易时段，若只得常规收盘或延迟价必须标注未覆盖扩展时段，不能把旧价作为当前决策锚。无关联 GitHub Issue | [feishu_direct_futu_premarket_stale_price_advice.md](./feishu_direct_futu_premarket_stale_price_advice.md) |
 | Feishu 大佬跟踪把 ARK TEM 持仓差异误表述为近期卖出 | P3 | Fixed | 2026-05-23 00:03 共享金融系统 prompt 新增基金/ETF 披露口径约束；ARK/ETF/基金持仓分析必须区分持仓文件、全机构合计、主动交易清单、申赎/再平衡和披露日期，没有可核验主动交易披露时只能写持仓文件股数变化。无关联 GitHub Issue | [feishu_scheduler_ark_tem_trade_direction_misread.md](./feishu_scheduler_ark_tem_trade_direction_misread.md) |
 | Feishu PDF 文本提取在 CMap 解析越界 panic 后只能降级读首页 | P2 | Fixed | 2026-05-22 10:05 PDF 文本提取的 `pdf_extract` panic 现被捕获并归一化为 `pdf_text_extract_failed`；附件 prompt/ack 清洗 panic、crate 路径和本机绝对路径，避免内部错误细节进入 LLM 上下文。无关联 GitHub Issue | [feishu_pdf_text_extraction_panics_on_cmap_index.md](./feishu_pdf_text_extraction_panics_on_cmap_index.md) |

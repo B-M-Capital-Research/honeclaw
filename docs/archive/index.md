@@ -4,6 +4,18 @@ Last updated: 2026-05-23
 
 ## 2026-05-23
 
+### Heartbeat Context Overflow Status Boundary
+
+- Status: done
+- Date: 2026-05-23
+- Plan: `docs/current-plans/active-bug-burn-down-2026-04-28.md`
+- Handoff: `docs/handoffs/2026-05-23-heartbeat-context-overflow-status.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-channels heartbeat_context_overflow_error_is_not_classified_as_noop --lib -- --nocapture`, `cargo test -p hone-channels heartbeat_ --lib -- --nocapture`, `cargo check -p hone-channels --tests`
+- Current conclusion: heartbeat context-window overflow is no longer treated as a legitimate noop; it is classified as `context_window_overflow` and lands as `execution_failed + skipped_error` for auditability.
+- Next entry point: `docs/bugs/scheduler_heartbeat_context_window_limit_no_recovery.md`
+
 ### Heartbeat Max-Iterations Budget
 
 - Status: done
