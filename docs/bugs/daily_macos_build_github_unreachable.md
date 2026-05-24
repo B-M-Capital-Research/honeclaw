@@ -3,7 +3,7 @@
 - 发现时间：2026-05-25 04:06 CST
 - Bug Type：Daily macOS build verification / source sync
 - 严重等级：P3
-- 状态：New
+- 状态：Later
 - GitHub Issue：未创建
 - 证据来源：`honeclaw-mac` 每日 macOS 完整打包验证
 
@@ -39,6 +39,7 @@
 
 - 当前证据更像本机到 GitHub 的网络连通性或出口策略问题，而不是仓库代码问题。
 - 因为 SSH 22、SSH 443 和 HTTPS 443 均失败，本轮暂按 P3 外部依赖 / 网络阻塞记录。
+- 2026-05-25 04:10 CST `bug-2` 复核：该缺陷当前没有可本地代码修复的通用根因；按缺陷修复规则，不为单次 GitHub 网络不可达写特殊兼容逻辑，状态从 `New` 调整为 `Later`，待同机网络恢复后重跑每日 macOS 打包验证。
 
 ## 下一步建议
 
@@ -56,3 +57,4 @@
 - `.app` / `.dmg` 产物确认：未执行。
 - `.app/Contents/MacOS/hone-desktop` 隔离 smoke：未执行。
 - 渠道隔离：未启动任何本轮验证 runtime 或真实 IM sidecar。
+- 2026-05-25 04:10 CST `bug-2` 复核：未运行代码测试；本次只做外部网络因素状态归类。
