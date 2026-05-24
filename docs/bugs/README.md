@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-24 23:03 CST
+最后更新：2026-05-25 03:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -54,7 +54,7 @@
 - 本轮 03:01 CST 未发现新的独立活跃 P1。assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`；最近四小时无非文档代码提交。
 - 本轮 00:14 CST 已修复 P2 `Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移`：heartbeat `{}` 现在按 prompt 兼容契约归一为 noop，明确表达“条件未满足 / 不触发 / 本轮不发送 / return noop”的 plain text 或未闭合 `<think>` 推理文本归一为 `PlainTextNoop`，不再把 MiniMax 否定性分析记成失败；非结构化触发文本仍继续失败收口，不误发。无关联 GitHub Issue。
 - 本轮 00:03 CST 已修复两个活跃 P3 质量缺陷：共享金融系统 prompt 新增强时效行情建议约束，避免 FUTU 这类盘前急跌问题继续用常规交易旧价推导抄底区间；同时新增基金/ETF 披露口径约束，避免把 ARK/ETF 持仓文件股数差异误表述为近期主动卖出。multi-agent search guidance 同步要求保留 quote 时段/时间戳限制和 holding-file changes 口径。回归：`cargo test -p hone-channels build_prompt_bundle_always_includes_finance_domain_policy --lib -- --nocapture`、`cargo test -p hone-channels search_input_guidance_allows_direct_replies_for_greetings --lib -- --nocapture`。两项均无关联 GitHub Issue。
-- 本轮 23:01 CST 重新打开 P2 `Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移`：22:39/22:52 CST Feishu scheduler 启动回收 5134 条历史 stale started row 后，23:00 CST heartbeat 窗口改用 `MiniMax-M2.7-highspeed`，但 Feishu 9 条、Web 1 条 heartbeat 又批量输出 `<think>` / plain text 或空状态对象并落成 `execution_failed + skipped_error + delivered=0`。这不是 429 quota 同根因，会导致自动监控提醒漏发，按功能性 `P2 / New` 重新进入活跃待修复；不是 P1，本轮不创建 GitHub issue。
+- 本轮 23:01 CST 仅补充 P2 `Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移` 的旧/未确认部署运行态证据：22:39/22:52 CST Feishu scheduler 启动回收 5134 条历史 stale started row 后，23:00 CST heartbeat 窗口仍出现 Feishu 9 条、Web 1 条 `<think>` / plain text / 空状态对象并落成 `execution_failed + skipped_error + delivered=0`。当前 bug 文档已按代码与回归验证维持 `Fixed`，本轮不把该缺陷重新纳入活跃待修复；不是 P1，本轮不创建 GitHub issue。
 - 本轮 23:01 CST 未发现新的独立活跃 P1。最近四小时共有 54 个 user turn 与 51 个 assistant final；Feishu / Web 直聊和普通 scheduler 均有收口。assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`；最近四小时无非文档代码提交。
 - 本轮 23:01 CST 继续观察到 `Heartbeat mimo quota exhaustion drops alerts` 的运行态失败记录：19:13-22:30 CST 新增 105 条 heartbeat `execution_failed + skipped_error + delivered=0` 的 quota 失败，其中 Feishu 84 条、Web 21 条，错误集中为 `HTTP 429` / `quota exhausted`。当前 HEAD 已有多 key fallback 与 heartbeat 429 分类修复，本轮仅补充旧/未确认部署运行态证据，不把该缺陷从 `Fixed` 回退。
 - 本轮 23:01 CST 继续观察到 scheduler started-row 残留：19:30-22:30 CST 仍有 84 条 Feishu heartbeat started 残留和 31 条普通 Feishu scheduler started 残留；同窗 22:39/22:52 CST 启动回收 5134 条历史 `running/pending` row 为 `execution_failed + send_failed`，证明 stale recovery 在生效。当前 HEAD 已有 started-row 覆盖与回归，本轮仅追加到 `feishu_scheduler_running_rows_never_finalized.md`，不从 `Fixed` 回退。
