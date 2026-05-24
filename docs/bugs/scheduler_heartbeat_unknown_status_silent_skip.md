@@ -7,6 +7,20 @@
 
 ## 修复进展
 
+- `2026-05-24 19:03 CST` 本轮仅补充旧/未确认部署运行态证据，不把本单从 `Fixed` 回退：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 15:03-19:03 CST live 窗口新增 `66` 条 heartbeat 结构化 / 状态解析失败，终态均为 `execution_failed + skipped_error + delivered=0`；其中 Feishu `48` 条、Web `18` 条。
+    - 错误分布：`PlainTextSuppressed` `61` 条、`JsonUnknownStatus` `2` 条、`JsonEmptyStatus` `1` 条、`JsonMalformed` `1` 条、`Empty` `1` 条；另有 `2` 条 `max_iterations_exceeded:10` 归入 `scheduler_heartbeat_iteration_exhaustion_skips_alert.md`，`11` 条 `ContextOverflowNoop` 归入 `scheduler_heartbeat_context_window_limit_no_recovery.md` 的旧/未确认部署运行态证据。
+    - 代表性样本：`run_id=32418` / Web `光模块板块关键事件心跳提醒`、`run_id=32416` / Web `存储板块关键事件心跳提醒`、`run_id=32423` / `DRAM 心跳监控`、`run_id=32426` / `Cerebras IPO与业务进展心跳监控`、`run_id=32420` / `RKLB异动监控`、`run_id=32428` / `全天原油价格3小时播报` 均未按 heartbeat JSON 收口，最终跳过发送或写入执行失败。
+    - 同窗仍有合法 `noop + skipped_noop` 与少量 `completed + sent` 样本，例如 Feishu heartbeat `1` 条 `completed + sent + delivered=1`，普通 Feishu scheduler `1` 条 `completed + sent + delivered=1`，说明不是 scheduler 或出站整体不可用。
+  - 会话质量对照：
+    - 最近四小时按消息时间共有 `9` 个 user turn 与 `9` 个 assistant final；最近活跃 direct session 均以 assistant final 收口。
+    - assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`；最近四小时无非文档代码提交。
+  - 判断：
+    - 当前仓库 12:13 CST 已有 status 别名归一、完整 `<think>` 内部-only noop 兼容和配置路径护栏回归；最新 live 仍持续写入 `PlainTextSuppressed`，更符合运行进程尚未确认重启/部署到该修复后的证据。
+    - 运行日志同窗仍可见 Tavily key quota / deactivated 警告，但直接回复有用户态降级说明，普通 scheduler 与部分 heartbeat 仍能送达；本轮不把这些作为新的独立缺陷建档。
+    - 后续只有在确认部署当前代码后仍出现同类结构化收口失败，再重新打开；本轮不创建 GitHub Issue。
+
 - `2026-05-24 15:02 CST` 本轮仅补充旧/未确认部署运行态证据，不把本单从 `Fixed` 回退：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - 11:04-15:02 CST live 窗口新增 `77` 条 heartbeat 结构化 / 状态解析失败，终态均为 `execution_failed + skipped_error + delivered=0`；其中 Feishu `56` 条、Web `21` 条。
