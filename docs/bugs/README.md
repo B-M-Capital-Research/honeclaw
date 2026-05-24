@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-25 03:04 CST
+最后更新：2026-05-25 07:04 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -21,6 +21,8 @@
 - Later / 待复现：9
 - 已修复 / 已关闭：112
 - 历史分析 / 部分止血：5
+- 本轮 07:04 CST 仅补充三个 P2 heartbeat 已修复缺陷的旧/未确认部署运行态证据：03:03-07:03 CST live 窗口新增 69 条 heartbeat 结构化/状态收口失败（`PlainTextSuppressed` 67 条、`JsonEmptyStatus` 1 条、`JsonUnknownStatus` 1 条；Feishu 49 条、Web 20 条）、12 条 `ContextOverflowNoop + noop + skipped_noop + delivered=0`（Web 10 条、Feishu 2 条）以及 9 条 `max_iterations_exceeded:10 + execution_failed + skipped_error + delivered=0`（Feishu 5 条、Web 4 条）。这些坏态仍对应当前代码 12:13、12:04、03:06 CST 已修复后不应再出现的旧信号，本轮不把相关缺陷从 `Fixed` 回退为 `New`，待 live 重启/部署后复核。
+- 本轮 07:04 CST 未发现新的独立活跃 P1。最近四小时按消息时间共有 2 个 user turn 与 2 个 assistant final，最新 05:30 / 06:00 Feishu scheduler session 均以 assistant final 收口。普通 scheduler 有 2 条 Feishu `completed + sent + delivered=1`，heartbeat 有 1 条 Feishu `completed + sent + delivered=1`；无 `running + pending` 残留、无非文档代码提交。assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`；运行日志仍可见 Tavily key quota / deactivated 警告和 heartbeat `notification_prefs` 参数错误，但未进入用户可见 final 或形成新的独立影响链路。
 - 本轮 03:04 CST 仅补充三个 P2 heartbeat 已修复缺陷的旧/未确认部署运行态证据：23:03-03:03 CST live 窗口新增 78 条 heartbeat 结构化/状态收口失败（`PlainTextSuppressed` 73 条、`JsonUnknownStatus` 5 条；Feishu 53 条、Web 25 条）、8 条 `ContextOverflowNoop + noop + skipped_noop + delivered=0`（Web 7 条、Feishu 1 条）以及 6 条 `max_iterations_exceeded:10 + execution_failed + skipped_error + delivered=0`（均为 Feishu）。这些坏态仍对应当前代码 12:13、12:04、03:06 CST 已修复后不应再出现的旧信号，本轮不把相关缺陷从 `Fixed` 回退为 `New`，待 live 重启/部署后复核。
 - 本轮 03:04 CST 未发现新的独立活跃 P1。最近四小时按消息时间共有 5 个 user turn 与 5 个 assistant final，最近活跃 Feishu direct / scheduler session 均以 assistant final 收口。普通 scheduler 有 3 条 Feishu `completed + sent + delivered=1`，heartbeat 有 2 条 Feishu `completed + sent + delivered=1`。assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`；最近四小时无 `running + pending` 残留、无非文档代码提交。运行日志同窗仍可见 Tavily key quota / deactivated 警告，但会话 final 未外露，heartbeat 失败仍归入既有结构化/超窗/迭代预算坏态，本轮不建新档。
 - 本轮 23:03 CST 仅补充三个 P2 heartbeat 已修复缺陷的旧/未确认部署运行态证据：19:02-23:02 CST live 窗口新增 416 条 heartbeat 结构化/状态收口失败（`PlainTextSuppressed` 391 条、`JsonUnknownStatus` 18 条、`JsonMalformed` 4 条、`Empty` 2 条、`JsonEmptyStatus` 1 条；Feishu 302 条、Web 114 条）、71 条 `ContextOverflowNoop + noop + skipped_noop + delivered=0`（Web 57 条、Feishu 14 条）以及 21 条 `max_iterations_exceeded:10 + execution_failed + skipped_error + delivered=0`（Feishu 11 条、Web 10 条）。这些坏态仍对应当前代码 12:13、12:04、03:06 CST 已修复后不应再出现的旧信号，本轮不把相关缺陷从 `Fixed` 回退为 `New`，待 live 重启/部署后复核。
