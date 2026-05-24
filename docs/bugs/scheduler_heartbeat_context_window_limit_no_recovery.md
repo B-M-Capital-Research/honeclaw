@@ -5,6 +5,14 @@
 - **严重等级**: P2
 - **状态**: Fixed
 - **证据来源**:
+  - `2026-05-24 23:03 CST` 本轮仅补充旧/未确认部署运行态证据，不把本单从 `Fixed` 回退：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - 19:02-23:02 CST 新增 `71` 条 heartbeat `ContextOverflowNoop + noop + skipped_noop + delivered=0`；其中 Web `57` 条、Feishu `14` 条。
+      - 样本覆盖 Web `持仓财报与重大新闻心跳提醒`、Web `AI与科技持仓观察关键事件心跳提醒`、Web `光模块板块关键事件心跳提醒`、Feishu `TSLA 正负触发条件心跳监控`、`RKLB异动监控`、`heartbeat_绿田机械基本面跟踪` 等任务。
+    - 判断：
+      - 当前仓库 12:04 CST 已删除 `ContextOverflowNoop` 静默分支，超窗错误应保留为 `error` 并写入 `failure_kind=context_window_overflow` / `parse_kind=ContextOverflowError`；最新 live 仍写入旧 `ContextOverflowNoop`，更符合运行进程尚未确认重启/部署到该修复后的证据。
+      - 同窗 direct / scheduler session 均有 assistant final 收口，assistant final 污染扫描为 `0`；故障仍集中在 heartbeat 超窗台账语义，不是直聊或出站整体异常。
+      - 后续只有在确认部署当前代码后仍出现 `ContextOverflowNoop` 或等价静默超窗，再重新打开；本轮不创建 GitHub Issue。
   - `2026-05-24 19:03 CST` 本轮仅补充旧/未确认部署运行态证据，不把本单从 `Fixed` 回退：
     - `data/sessions.sqlite3` -> `cron_job_runs`
       - 15:03-19:03 CST 新增 `11` 条 heartbeat `ContextOverflowNoop + noop + skipped_noop + delivered=0`；其中 Web `10` 条、Feishu `1` 条。
