@@ -115,128 +115,106 @@ pub(crate) struct ChannelToggleArgs {
 
 pub(crate) fn build_model_mutations(args: &ModelsSetArgs) -> Result<Vec<ConfigMutation>, String> {
     let mut mutations = Vec::new();
-    let mut push = |path: &str, value: Value| {
-        mutations.push(ConfigMutation::Set {
-            path: path.to_string(),
-            value,
-        });
-    };
 
     if let Some(value) = &args.runner {
-        push("agent.runner", Value::String(value.clone()));
+        push_string_mutation(&mut mutations, "agent.runner", value);
     }
     if let Some(value) = &args.codex_model {
-        push("agent.codex_model", Value::String(value.clone()));
+        push_string_mutation(&mut mutations, "agent.codex_model", value);
     }
     if let Some(value) = &args.codex_acp_model {
-        push("agent.codex_acp.model", Value::String(value.clone()));
+        push_string_mutation(&mut mutations, "agent.codex_acp.model", value);
     }
     if let Some(value) = &args.codex_acp_variant {
-        push("agent.codex_acp.variant", Value::String(value.clone()));
+        push_string_mutation(&mut mutations, "agent.codex_acp.variant", value);
     }
 
     // 主模型路由：同时写 opencode / multi_agent.answer 两条分支,让用户只感知
     // 「主模型」一个概念(两个字段实际由不同 runner 使用)。
     if let Some(value) = &args.base_url {
-        push("agent.opencode.api_base_url", Value::String(value.clone()));
-        push(
-            "agent.multi_agent.answer.api_base_url",
-            Value::String(value.clone()),
+        push_string_mutations(
+            &mut mutations,
+            &[
+                "agent.opencode.api_base_url",
+                "agent.multi_agent.answer.api_base_url",
+            ],
+            value,
         );
     }
     if let Some(value) = &args.api_key {
-        let normalized = normalize_credential_value(value);
-        push("agent.opencode.api_key", Value::String(normalized.clone()));
-        push(
-            "agent.multi_agent.answer.api_key",
-            Value::String(normalized),
+        push_secret_mutations(
+            &mut mutations,
+            &["agent.opencode.api_key", "agent.multi_agent.answer.api_key"],
+            value,
         );
     }
     if let Some(value) = &args.model {
-        push("agent.opencode.model", Value::String(value.clone()));
-        push(
-            "agent.multi_agent.answer.model",
-            Value::String(value.clone()),
+        push_string_mutations(
+            &mut mutations,
+            &["agent.opencode.model", "agent.multi_agent.answer.model"],
+            value,
         );
     }
     if let Some(value) = &args.variant {
-        push("agent.opencode.variant", Value::String(value.clone()));
-        push(
-            "agent.multi_agent.answer.variant",
-            Value::String(value.clone()),
+        push_string_mutations(
+            &mut mutations,
+            &["agent.opencode.variant", "agent.multi_agent.answer.variant"],
+            value,
         );
     }
 
     // 辅助 LLM（heartbeat / session compaction 等后台任务）。
     if let Some(value) = &args.aux_base_url {
-        push("llm.auxiliary.base_url", Value::String(value.clone()));
+        push_string_mutation(&mut mutations, "llm.auxiliary.base_url", value);
     }
     if let Some(value) = &args.aux_api_key {
-        push(
-            "llm.auxiliary.api_key",
-            Value::String(normalize_credential_value(value)),
-        );
+        push_secret_mutation(&mut mutations, "llm.auxiliary.api_key", value);
     }
     if let Some(value) = &args.aux_model {
-        push("llm.auxiliary.model", Value::String(value.clone()));
+        push_string_mutation(&mut mutations, "llm.auxiliary.model", value);
         // 老字段 `openrouter.sub_model` 仍作为 auxiliary 的 fallback,同步更新。
-        push("llm.openrouter.sub_model", Value::String(value.clone()));
+        push_string_mutation(&mut mutations, "llm.openrouter.sub_model", value);
     }
 
     // Multi-agent 专属(search / answer 两阶段)的独立字段。
     if let Some(value) = &args.search_base_url {
-        push(
-            "agent.multi_agent.search.base_url",
-            Value::String(value.clone()),
-        );
+        push_string_mutation(&mut mutations, "agent.multi_agent.search.base_url", value);
     }
     if let Some(value) = &args.search_api_key {
-        push(
-            "agent.multi_agent.search.api_key",
-            Value::String(normalize_credential_value(value)),
-        );
+        push_secret_mutation(&mut mutations, "agent.multi_agent.search.api_key", value);
     }
     if let Some(value) = &args.search_model {
-        push(
-            "agent.multi_agent.search.model",
-            Value::String(value.clone()),
-        );
+        push_string_mutation(&mut mutations, "agent.multi_agent.search.model", value);
     }
     if let Some(value) = args.search_max_iterations {
-        push(
+        push_number_mutation(
+            &mut mutations,
             "agent.multi_agent.search.max_iterations",
-            Value::Number(serde_yaml::Number::from(value)),
+            value,
         );
     }
 
     if let Some(value) = &args.answer_base_url {
-        push(
+        push_string_mutation(
+            &mut mutations,
             "agent.multi_agent.answer.api_base_url",
-            Value::String(value.clone()),
+            value,
         );
     }
     if let Some(value) = &args.answer_api_key {
-        push(
-            "agent.multi_agent.answer.api_key",
-            Value::String(normalize_credential_value(value)),
-        );
+        push_secret_mutation(&mut mutations, "agent.multi_agent.answer.api_key", value);
     }
     if let Some(value) = &args.answer_model {
-        push(
-            "agent.multi_agent.answer.model",
-            Value::String(value.clone()),
-        );
+        push_string_mutation(&mut mutations, "agent.multi_agent.answer.model", value);
     }
     if let Some(value) = &args.answer_variant {
-        push(
-            "agent.multi_agent.answer.variant",
-            Value::String(value.clone()),
-        );
+        push_string_mutation(&mut mutations, "agent.multi_agent.answer.variant", value);
     }
     if let Some(value) = args.answer_max_tool_calls {
-        push(
+        push_number_mutation(
+            &mut mutations,
             "agent.multi_agent.answer.max_tool_calls",
-            Value::Number(serde_yaml::Number::from(value)),
+            value,
         );
     }
 
@@ -250,138 +228,71 @@ pub(crate) fn build_channel_mutations(
     args: &ChannelSetArgs,
 ) -> Result<Vec<ConfigMutation>, String> {
     let mut mutations = Vec::new();
-    let mut push = |path: &str, value: Value| {
-        mutations.push(ConfigMutation::Set {
-            path: path.to_string(),
-            value,
-        });
-    };
 
     match args.channel {
         ChannelKind::Imessage => {
             if let Some(value) = args.enabled {
-                push("imessage.enabled", Value::Bool(value));
+                push_bool_mutation(&mut mutations, "imessage.enabled", value);
             }
             if let Some(value) = &args.target_handle {
-                push("imessage.target_handle", Value::String(value.clone()));
+                push_string_mutation(&mut mutations, "imessage.target_handle", value);
             }
             if let Some(value) = &args.db_path {
-                push("imessage.db_path", Value::String(value.clone()));
+                push_string_mutation(&mut mutations, "imessage.db_path", value);
             }
             if let Some(value) = args.poll_interval {
-                push(
-                    "imessage.poll_interval",
-                    Value::Number(serde_yaml::Number::from(value)),
-                );
+                push_number_mutation(&mut mutations, "imessage.poll_interval", value);
             }
         }
         ChannelKind::Feishu => {
             if let Some(value) = args.enabled {
-                push("feishu.enabled", Value::Bool(value));
+                push_bool_mutation(&mut mutations, "feishu.enabled", value);
             }
             if let Some(value) = &args.app_id {
-                push("feishu.app_id", Value::String(value.clone()));
+                push_string_mutation(&mut mutations, "feishu.app_id", value);
             }
             if let Some(value) = &args.app_secret {
-                push(
-                    "feishu.app_secret",
-                    Value::String(normalize_credential_value(value)),
-                );
+                push_secret_mutation(&mut mutations, "feishu.app_secret", value);
             }
             if let Some(value) = &args.chat_scope {
-                push(
-                    "feishu.chat_scope",
-                    Value::String(value.as_config_value().to_string()),
-                );
+                push_chat_scope_mutation(&mut mutations, "feishu.chat_scope", value);
             }
             if let Some(value) = &args.allow_emails {
-                push(
-                    "feishu.allow_emails",
-                    Value::Sequence(
-                        parse_csv_values(value)
-                            .into_iter()
-                            .map(Value::String)
-                            .collect(),
-                    ),
-                );
+                push_csv_sequence_mutation(&mut mutations, "feishu.allow_emails", value);
             }
             if let Some(value) = &args.allow_mobiles {
-                push(
-                    "feishu.allow_mobiles",
-                    Value::Sequence(
-                        parse_csv_values(value)
-                            .into_iter()
-                            .map(Value::String)
-                            .collect(),
-                    ),
-                );
+                push_csv_sequence_mutation(&mut mutations, "feishu.allow_mobiles", value);
             }
             if let Some(value) = &args.allow_open_ids {
-                push(
-                    "feishu.allow_open_ids",
-                    Value::Sequence(
-                        parse_csv_values(value)
-                            .into_iter()
-                            .map(Value::String)
-                            .collect(),
-                    ),
-                );
+                push_csv_sequence_mutation(&mut mutations, "feishu.allow_open_ids", value);
             }
         }
         ChannelKind::Telegram => {
             if let Some(value) = args.enabled {
-                push("telegram.enabled", Value::Bool(value));
+                push_bool_mutation(&mut mutations, "telegram.enabled", value);
             }
             if let Some(value) = &args.bot_token {
-                push(
-                    "telegram.bot_token",
-                    Value::String(normalize_credential_value(value)),
-                );
+                push_secret_mutation(&mut mutations, "telegram.bot_token", value);
             }
             if let Some(value) = &args.chat_scope {
-                push(
-                    "telegram.chat_scope",
-                    Value::String(value.as_config_value().to_string()),
-                );
+                push_chat_scope_mutation(&mut mutations, "telegram.chat_scope", value);
             }
             if let Some(value) = &args.allow_from {
-                push(
-                    "telegram.allow_from",
-                    Value::Sequence(
-                        parse_csv_values(value)
-                            .into_iter()
-                            .map(Value::String)
-                            .collect(),
-                    ),
-                );
+                push_csv_sequence_mutation(&mut mutations, "telegram.allow_from", value);
             }
         }
         ChannelKind::Discord => {
             if let Some(value) = args.enabled {
-                push("discord.enabled", Value::Bool(value));
+                push_bool_mutation(&mut mutations, "discord.enabled", value);
             }
             if let Some(value) = &args.bot_token {
-                push(
-                    "discord.bot_token",
-                    Value::String(normalize_credential_value(value)),
-                );
+                push_secret_mutation(&mut mutations, "discord.bot_token", value);
             }
             if let Some(value) = &args.chat_scope {
-                push(
-                    "discord.chat_scope",
-                    Value::String(value.as_config_value().to_string()),
-                );
+                push_chat_scope_mutation(&mut mutations, "discord.chat_scope", value);
             }
             if let Some(value) = &args.allow_from {
-                push(
-                    "discord.allow_from",
-                    Value::Sequence(
-                        parse_csv_values(value)
-                            .into_iter()
-                            .map(Value::String)
-                            .collect(),
-                    ),
-                );
+                push_csv_sequence_mutation(&mut mutations, "discord.allow_from", value);
             }
         }
     }
@@ -390,6 +301,62 @@ pub(crate) fn build_channel_mutations(
         return Err("至少提供一个 channels set 参数".to_string());
     }
     Ok(mutations)
+}
+
+fn push_set_mutation(mutations: &mut Vec<ConfigMutation>, path: &str, value: Value) {
+    mutations.push(ConfigMutation::Set {
+        path: path.to_string(),
+        value,
+    });
+}
+
+fn push_string_mutation(mutations: &mut Vec<ConfigMutation>, path: &str, value: &str) {
+    push_set_mutation(mutations, path, Value::String(value.to_string()));
+}
+
+fn push_string_mutations(mutations: &mut Vec<ConfigMutation>, paths: &[&str], value: &str) {
+    for path in paths {
+        push_string_mutation(mutations, path, value);
+    }
+}
+
+fn push_secret_mutation(mutations: &mut Vec<ConfigMutation>, path: &str, value: &str) {
+    push_string_mutation(mutations, path, &normalize_credential_value(value));
+}
+
+fn push_secret_mutations(mutations: &mut Vec<ConfigMutation>, paths: &[&str], value: &str) {
+    let normalized = normalize_credential_value(value);
+    for path in paths {
+        push_string_mutation(mutations, path, &normalized);
+    }
+}
+
+fn push_bool_mutation(mutations: &mut Vec<ConfigMutation>, path: &str, value: bool) {
+    push_set_mutation(mutations, path, Value::Bool(value));
+}
+
+fn push_number_mutation<N>(mutations: &mut Vec<ConfigMutation>, path: &str, value: N)
+where
+    N: Into<serde_yaml::Number>,
+{
+    push_set_mutation(mutations, path, Value::Number(value.into()));
+}
+
+fn push_chat_scope_mutation(mutations: &mut Vec<ConfigMutation>, path: &str, value: &CliChatScope) {
+    push_string_mutation(mutations, path, value.as_config_value());
+}
+
+fn push_csv_sequence_mutation(mutations: &mut Vec<ConfigMutation>, path: &str, value: &str) {
+    push_set_mutation(
+        mutations,
+        path,
+        Value::Sequence(
+            parse_csv_values(value)
+                .into_iter()
+                .map(Value::String)
+                .collect(),
+        ),
+    );
 }
 
 /// 把一串 key 压成一个 `Sequence<String>` mutation(`search.api_keys` / `fmp.api_keys` 等)。
@@ -437,21 +404,7 @@ mod tests {
             variant: Some("medium".to_string()),
             base_url: Some("https://openrouter.ai/api/v1".to_string()),
             api_key: Some("sk-test".to_string()),
-            codex_model: None,
-            codex_acp_model: None,
-            codex_acp_variant: None,
-            aux_base_url: None,
-            aux_api_key: None,
-            aux_model: None,
-            search_base_url: None,
-            search_api_key: None,
-            search_model: None,
-            search_max_iterations: None,
-            answer_base_url: None,
-            answer_api_key: None,
-            answer_model: None,
-            answer_variant: None,
-            answer_max_tool_calls: None,
+            ..empty_model_set_args()
         };
 
         let mutations = build_model_mutations(&args).unwrap();
@@ -467,21 +420,10 @@ mod tests {
             variant: None,
             base_url: None,
             api_key: Some("  sk-primary  ".to_string()),
-            codex_model: None,
-            codex_acp_model: None,
-            codex_acp_variant: None,
-            aux_base_url: None,
             aux_api_key: Some("  sk-aux  ".to_string()),
-            aux_model: None,
-            search_base_url: None,
             search_api_key: Some("  sk-search  ".to_string()),
-            search_model: None,
-            search_max_iterations: None,
-            answer_base_url: None,
             answer_api_key: Some("  sk-answer  ".to_string()),
-            answer_model: None,
-            answer_variant: None,
-            answer_max_tool_calls: None,
+            ..empty_model_set_args()
         };
 
         let mutations = build_model_mutations(&args).unwrap();
@@ -512,17 +454,9 @@ mod tests {
         let args = ChannelSetArgs {
             channel: ChannelKind::Telegram,
             enabled: Some(true),
-            target_handle: None,
-            db_path: None,
-            poll_interval: None,
-            app_id: None,
-            app_secret: None,
             bot_token: Some("token".to_string()),
             chat_scope: Some(CliChatScope::All),
-            allow_from: None,
-            allow_emails: None,
-            allow_mobiles: None,
-            allow_open_ids: None,
+            ..empty_channel_set_args(ChannelKind::Telegram)
         };
 
         let mutations = build_channel_mutations(&args).unwrap();
@@ -534,48 +468,18 @@ mod tests {
     fn build_channel_mutations_trim_secret_values() {
         let telegram_args = ChannelSetArgs {
             channel: ChannelKind::Telegram,
-            enabled: None,
-            target_handle: None,
-            db_path: None,
-            poll_interval: None,
-            app_id: None,
-            app_secret: None,
             bot_token: Some("  tg-token  ".to_string()),
-            chat_scope: None,
-            allow_from: None,
-            allow_emails: None,
-            allow_mobiles: None,
-            allow_open_ids: None,
+            ..empty_channel_set_args(ChannelKind::Telegram)
         };
         let feishu_args = ChannelSetArgs {
             channel: ChannelKind::Feishu,
-            enabled: None,
-            target_handle: None,
-            db_path: None,
-            poll_interval: None,
-            app_id: None,
             app_secret: Some("  fs-secret  ".to_string()),
-            bot_token: None,
-            chat_scope: None,
-            allow_from: None,
-            allow_emails: None,
-            allow_mobiles: None,
-            allow_open_ids: None,
+            ..empty_channel_set_args(ChannelKind::Feishu)
         };
         let discord_args = ChannelSetArgs {
             channel: ChannelKind::Discord,
-            enabled: None,
-            target_handle: None,
-            db_path: None,
-            poll_interval: None,
-            app_id: None,
-            app_secret: None,
             bot_token: Some("  dc-token  ".to_string()),
-            chat_scope: None,
-            allow_from: None,
-            allow_emails: None,
-            allow_mobiles: None,
-            allow_open_ids: None,
+            ..empty_channel_set_args(ChannelKind::Discord)
         };
 
         let telegram_mutations = build_channel_mutations(&telegram_args).unwrap();
@@ -603,18 +507,8 @@ mod tests {
     fn build_channel_mutations_supports_allowlists() {
         let telegram_args = ChannelSetArgs {
             channel: ChannelKind::Telegram,
-            enabled: None,
-            target_handle: None,
-            db_path: None,
-            poll_interval: None,
-            app_id: None,
-            app_secret: None,
-            bot_token: None,
-            chat_scope: None,
             allow_from: Some("123, 456".to_string()),
-            allow_emails: None,
-            allow_mobiles: None,
-            allow_open_ids: None,
+            ..empty_channel_set_args(ChannelKind::Telegram)
         };
         let mutations = build_channel_mutations(&telegram_args).unwrap();
         assert!(mutations.iter().any(|mutation| matches!(
@@ -625,6 +519,47 @@ mod tests {
 
         let feishu_args = ChannelSetArgs {
             channel: ChannelKind::Feishu,
+            allow_emails: Some("a@example.com,b@example.com".to_string()),
+            allow_mobiles: Some("+8613800138000".to_string()),
+            allow_open_ids: Some("ou_abc".to_string()),
+            ..empty_channel_set_args(ChannelKind::Feishu)
+        };
+        let mutations = build_channel_mutations(&feishu_args).unwrap();
+        assert!(mutations.iter().any(|mutation| matches!(
+            mutation,
+            ConfigMutation::Set { path, value: Value::Sequence(values) }
+                if path == "feishu.allow_emails" && values.len() == 2
+        )));
+    }
+
+    fn empty_model_set_args() -> ModelsSetArgs {
+        ModelsSetArgs {
+            runner: None,
+            model: None,
+            variant: None,
+            base_url: None,
+            api_key: None,
+            codex_model: None,
+            codex_acp_model: None,
+            codex_acp_variant: None,
+            aux_base_url: None,
+            aux_api_key: None,
+            aux_model: None,
+            search_base_url: None,
+            search_api_key: None,
+            search_model: None,
+            search_max_iterations: None,
+            answer_base_url: None,
+            answer_api_key: None,
+            answer_model: None,
+            answer_variant: None,
+            answer_max_tool_calls: None,
+        }
+    }
+
+    fn empty_channel_set_args(channel: ChannelKind) -> ChannelSetArgs {
+        ChannelSetArgs {
+            channel,
             enabled: None,
             target_handle: None,
             db_path: None,
@@ -634,16 +569,10 @@ mod tests {
             bot_token: None,
             chat_scope: None,
             allow_from: None,
-            allow_emails: Some("a@example.com,b@example.com".to_string()),
-            allow_mobiles: Some("+8613800138000".to_string()),
-            allow_open_ids: Some("ou_abc".to_string()),
-        };
-        let mutations = build_channel_mutations(&feishu_args).unwrap();
-        assert!(mutations.iter().any(|mutation| matches!(
-            mutation,
-            ConfigMutation::Set { path, value: Value::Sequence(values) }
-                if path == "feishu.allow_emails" && values.len() == 2
-        )));
+            allow_emails: None,
+            allow_mobiles: None,
+            allow_open_ids: None,
+        }
     }
 
     #[test]
