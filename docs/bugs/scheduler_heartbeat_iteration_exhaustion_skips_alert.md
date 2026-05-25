@@ -7,6 +7,15 @@
 
 ## 修复进展（2026-04-28）
 
+- `2026-05-25 11:03 CST` 本轮仅补充旧/未确认部署运行态证据，不把本单从 `Fixed` 回退：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 07:02-11:02 CST 新增 `8` 条 heartbeat `max_iterations_exceeded:10 + execution_failed + skipped_error + delivered=0`；其中 Feishu `6` 条、Web `2` 条。
+    - 样本覆盖 `持仓重大事件心跳检测`（10:31、11:01 CST）、`TSLA 正负触发条件心跳监控`（09:31、11:01 CST）、`DRAM 心跳监控`（09:01、10:31 CST）、Web `持仓财报与重大新闻心跳提醒`（09:00 CST）与 `heartbeat_绿田机械基本面跟踪`（09:00 CST）。
+  - 判断：
+    - 当前仓库在 03:06 CST 已把 heartbeat auxiliary function-calling 预算从 `10` 提升到 `18`，并新增 `heartbeat_runner_uses_capped_completion_budget` 等回归；最新运行态错误仍是 `max_iterations_exceeded:10`，更符合 live runtime 尚未确认重启/部署到该修复后的证据。
+    - 同一窗口主要坏态仍是 `scheduler_heartbeat_unknown_status_silent_skip.md` 跟踪的结构化输出退化；本单只跟踪 function-calling 预算触顶导致的整轮漏发。
+  - 结论：当前状态维持 `Fixed`。后续只有在确认部署当前代码后仍出现 `max_iterations_exceeded:18` 或同等 heartbeat 预算触顶失败，再重新打开；本轮不创建 GitHub Issue。
+
 - `2026-05-25 07:04 CST` 本轮仅补充旧/未确认部署运行态证据，不把本单从 `Fixed` 回退：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - 03:03-07:03 CST 新增 `9` 条 heartbeat `max_iterations_exceeded:10 + execution_failed + skipped_error + delivered=0`；其中 Feishu `5` 条、Web `4` 条。
