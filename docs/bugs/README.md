@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-25 15:04 CST
+最后更新：2026-05-25 19:05 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,10 +17,13 @@
 
 ## 当前概览
 
-- 活跃待修复：0
+- 活跃待修复：1
 - Later / 待复现：9
 - 已修复 / 已关闭：112
 - 历史分析 / 部分止血：5
+- 本轮 19:05 CST 新增 P2 `Scheduler commodity guard falsely replaces A/H market review with oil guard notice`：17:30 `A股港股收盘后跨市场复盘` 生成了完整 A 股 / 港股复盘并落库，但 `cron_job_runs.run_id=33185` 出站前被 `commodity_causality_guarded=true` 全量替换成原油 / 大宗商品安全提示，仍记 `completed + sent + delivered=1`；18:37-18:38 用户反馈没看到 17:30 复盘并要求重发。该问题是商品 guard 过宽造成非商品 scheduler 内容错误替换，区别于既有原油播报 guard 覆盖不足缺陷。
+- 本轮 19:05 CST 未发现新的独立活跃 P1。最近四小时按消息时间共有 24 个 user turn 与 24 个 assistant final，Feishu / Web direct 与普通 scheduler 均以 assistant final 收口；普通 scheduler 有 1 条 Feishu `completed + sent + delivered=1`，但该条即本轮新建 P2 的 guard false positive。assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`；最近四小时无非文档代码提交。
+- 本轮 19:05 CST 继续看到既有 heartbeat 旧/未确认部署运行态坏信号：15:30-19:01 CST heartbeat 新增 80 条 `execution_failed + skipped_error + delivered=0`（Feishu 58 条、Web 22 条）、45 条 `noop + skipped_noop + delivered=0`（Feishu 35 条、Web 10 条）和 3 条 Feishu `completed + sent + delivered=1`。失败形态仍主要对应已修复表中的结构化状态退化、context overflow 与迭代耗尽类旧信号，本轮不因这些重复信号新增缺陷或回退状态。
 - 本轮 15:04 CST 仅补充三个 P2 heartbeat 已修复缺陷的旧/未确认部署运行态证据：11:03-15:04 CST live 窗口新增 69 条 heartbeat 结构化/状态收口失败（`PlainTextSuppressed` 59 条、`JsonUnknownStatus` 5 条、`JsonMalformed` 3 条、`JsonEmptyStatus` 2 条；Feishu 49 条、Web 20 条）、11 条 `ContextOverflowNoop + noop + skipped_noop + delivered=0`（Web 9 条、Feishu 2 条）以及 6 条 `max_iterations_exceeded:10 + execution_failed + skipped_error + delivered=0`（Feishu 4 条、Web 2 条）。这些坏态仍对应当前代码 12:13、12:04、03:06 CST 已修复后不应再出现的旧信号，本轮不把相关缺陷从 `Fixed` 回退为 `New`，待 live 重启/部署后复核。
 - 本轮 15:04 CST 未发现新的独立活跃 P1。最近四小时按消息时间共有 9 个 user turn 与 9 个 assistant final，最近 Feishu direct / scheduler session 均以 assistant final 收口。普通 scheduler 有 1 条 Feishu `completed + sent + delivered=1`，heartbeat 有 1 条 Feishu `completed + sent + delivered=1`；无 `running + pending` 残留、无非文档代码提交。assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`；运行日志可见 `acp-events.log` 内部 session/update 与工具元数据、Feishu 已读事件无 handler 警告，但未进入用户可见 final 或形成新的独立影响链路。
 - 本轮 11:03 CST 仅补充三个 P2 heartbeat 已修复缺陷的旧/未确认部署运行态证据：07:02-11:02 CST live 窗口新增 75 条 heartbeat 结构化/状态收口失败（`PlainTextSuppressed` 70 条、`JsonUnknownStatus` 4 条、`JsonMalformed` 1 条；Feishu 56 条、Web 19 条）、12 条 `ContextOverflowNoop + noop + skipped_noop + delivered=0`（Web 11 条、Feishu 1 条）以及 8 条 `max_iterations_exceeded:10 + execution_failed + skipped_error + delivered=0`（Feishu 6 条、Web 2 条）。这些坏态仍对应当前代码 12:13、12:04、03:06 CST 已修复后不应再出现的旧信号，本轮不把相关缺陷从 `Fixed` 回退为 `New`，待 live 重启/部署后复核。
@@ -272,7 +275,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| （当前无活跃待修复） | - | - | - | - |
+| Scheduler commodity guard falsely replaces A/H market review with oil guard notice | P2 | New | 2026-05-25 19:05 新增：17:30 `A股港股收盘后跨市场复盘` 原始复盘生成并落库，但最终送达预览被 commodity guard 全量替换成原油 / 大宗商品提示，仍记 `completed + sent + delivered=1`；用户 18:37-18:38 反馈没看到复盘并要求重发。无关联 GitHub Issue | [scheduler_commodity_guard_false_positive_market_review.md](./scheduler_commodity_guard_false_positive_market_review.md) |
 
 ## Later / 待复现
 
