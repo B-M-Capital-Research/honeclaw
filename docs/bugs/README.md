@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-26 15:04 CST
+最后更新：2026-05-26 15:18 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -21,6 +21,7 @@
 - Later / 待复现：10
 - 已修复 / 已关闭：113
 - 历史分析 / 部分止血：5
+- 本轮 15:18 CST release 同步复核 Daily macOS build GitHub 拉取失败：默认 SSH remote 仍无法连接 `github.com:22` / `ssh.github.com:443`；显式设置本机 HTTP(S) proxy 后可通过 HTTPS 读取 GitHub。该问题仍按外部网络/出口阻塞归入 `Later`，后续每日自动化若继续使用默认 SSH remote，需要修复出口策略或切换到可用传输方式。
 - 本轮 15:04 CST 未发现新的独立活跃 P1，也未新增独立缺陷。11:08-15:04 CST 按消息时间共有 32 个 user turn 与 32 个 assistant final，Feishu / Web direct 与普通 scheduler 会话均以 assistant final 收口；assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`；最近四小时无非文档代码提交。
 - 本轮 15:04 CST 继续看到既有 heartbeat 旧/未确认部署运行态坏信号：11:08-15:04 CST heartbeat 新增 71 条 `execution_failed + skipped_error + delivered=0`（Feishu 48 条、Web 23 条）、56 条 `noop + skipped_noop + delivered=0`（Feishu 47 条、Web 9 条）和 1 条 Feishu `completed + sent + delivered=1`。失败形态仍主要对应已修复表中的结构化状态退化（`heartbeat 输出不是结构化 JSON` 59 条、未知状态 5 条、缺少状态 2 条）与迭代耗尽旧信号（`max_iterations_exceeded:10` 5 条）；本轮不因这些重复信号新增缺陷或从 `Fixed` 回退。
 - 本轮 15:04 CST 未观察到 `Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice` 新复发：11:08-15:04 CST 普通 scheduler 2 条 `completed + sent + delivered=1` 均未见 `detail_json.scheduler.commodity_causality_guarded=true`；运行日志仍有内部 `session/update` 流式片段、Tavily key quota/deactivated 警告与 heartbeat `notification_prefs` 参数错误，但未进入用户可见 final 或形成新的独立影响链路。
@@ -34,6 +35,8 @@
 - 本轮 03:03 CST 未发现新的独立活跃 P1，也未新增独立缺陷。23:02-03:02 CST 按消息时间共有 6 个 user turn 与 6 个 assistant final，Web direct 与 Feishu 普通 scheduler 均以 assistant final 收口；assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`。
 - 本轮 03:03 CST 继续看到既有 heartbeat 旧/未确认部署运行态坏信号：23:02-03:02 CST heartbeat 新增 74 条 `execution_failed + skipped_error + delivered=0`（Feishu 52 条、Web 22 条）、53 条 `noop + skipped_noop + delivered=0`（Feishu 43 条、Web 10 条）和 1 条 Feishu `completed + sent + delivered=1`。失败形态主要仍是已修复表中的结构化状态退化（`PlainTextSuppressed` 62 条、`JsonUnknownStatus` 3 条、`Empty` 1 条、其它 JSON/status 缺口 2 条）与迭代耗尽旧信号（`max_iterations_exceeded:10` 5 条），另有 1 条 Web provider `HTTP 529`；本轮不因这些重复信号新增缺陷或从 `Fixed` 回退。
 - 本轮 03:03 CST 未观察到活跃 P2 commodity guard false positive 新复发：23:02-03:02 CST 普通 scheduler 有 4 条 Feishu `completed + sent + delivered=1`，均未见 `detail_json.scheduler.commodity_causality_guarded=true`；既有活跃项仍保持 `New`，等待修复。
+- 本轮 04:08 CST 重新打开 P3 Daily macOS build GitHub 拉取失败：`git fetch origin` 再次因 `github.com:22` 超时失败，SSH-over-443 `ssh.github.com:443` 也超时，HTTPS `github.com:443` 连接 75 秒后失败；自动化无法确认远端最新 `main`，因此本轮未执行 `.app` / `.dmg` 打包与隔离 smoke，未启动真实 IM 渠道。
+- 本轮 00:29 CST 已修复 P2 `Scheduler commodity guard falsely replaces A/H market review with oil guard notice`：非商品 scheduler 只有在正文主体明显以商品 / 油价内容为主时才允许整篇 commodity rewrite；A/H 跨市场复盘里局部油气 / 油价提及不再触发全量替换，既有 Oil_Price_Monitor / OWALERT 未核验 WTI-Brent 归因 guard 回归仍通过。无关联 GitHub Issue。
 - 本轮 23:03 CST 确认活跃 P2 `Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice` 继续复发且影响范围扩大：20:00-21:45 CST 四条美股大盘风控 / 温度普通 scheduler（`run_id=33277/33259/33279/33336`）均生成完整市场简报并落库，但出站前被 `commodity_causality_guarded=true` 全量替换成原油 / 大宗商品安全提示，仍记 `completed + sent + delivered=1`。该证据补充到原缺陷文档，不新建重复缺陷；严重等级仍为 P2，状态保持 `New`，无关联 GitHub Issue。
 - 本轮 23:03 CST 未发现新的独立活跃 P1。最近四小时按消息时间共有 32 个 user turn 与 32 个 assistant final，Feishu / Web direct 与普通 scheduler 均以 assistant final 收口；普通 scheduler 有 17 条 Feishu、5 条 Web `completed + sent + delivered=1`，其中 4 条 Feishu 即上述 commodity guard false positive。assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`；最近四小时无非文档代码提交。
 - 本轮 23:03 CST 继续看到既有 heartbeat 旧/未确认部署运行态坏信号：19:02-23:02 CST heartbeat 新增 76 条 `execution_failed + skipped_error + delivered=0`（Feishu 54 条、Web 22 条）、51 条 `noop + skipped_noop + delivered=0`（Feishu 41 条、Web 10 条）和 1 条 Feishu `completed + sent + delivered=1`。失败形态仍主要对应已修复表中的结构化状态退化、context overflow 与迭代耗尽类旧信号，本轮不因这些重复信号新增缺陷或回退状态。
@@ -299,7 +302,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Daily macOS build 无法从 GitHub 拉取最新 main | P3 | Later | 2026-05-25 04:10 `bug-2` 复核为当前机器到 GitHub 的外部网络/出口连通性阻塞；不做代码特判，待同机网络恢复后重跑每日 macOS 打包验证。无关联 GitHub Issue | [daily_macos_build_github_unreachable.md](./daily_macos_build_github_unreachable.md) |
+| Daily macOS build 无法从 GitHub 拉取最新 main | P3 | Later | 2026-05-26 15:18 复核：默认 SSH remote 仍不可达；显式本机 HTTP(S) proxy 下 HTTPS 可读 GitHub。问题继续归类为外部网络/出口阻塞，待同机每日自动化恢复可用传输方式后重跑打包验证。无关联 GitHub Issue | [daily_macos_build_github_unreachable.md](./daily_macos_build_github_unreachable.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | Later | 2026-05-08 11:06 当前证据集中在 `Invalid bot token`、旧进程启动锁与 Telegram `GetUpdates` 网络失败，依赖外部凭据/网络/旧运行态；当前机器不再作为生产机器，本轮不针对单次外部错误写特殊兼容。若有效 token + 干净启动锁 + 可达网络下仍无法监听，再改回 `New` | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
 | Feishu 定时任务在 Answer 阶段返回空/无效回复后，调度台账仍记为 `completed + sent` | P1 | Later | 2026-04-26 已把 `EMPTY_SUCCESS_FALLBACK_MESSAGE` 与 `empty_success_exhausted` 提升为失败信号；若 scheduler 仍把同类 fallback 记为完成再改回 `New` | [feishu_scheduler_empty_reply_false_success.md](./archive/feishu_scheduler_empty_reply_false_success.md) |
 | Feishu 出站 `send/update message` 请求传输失败，定时任务和直聊回复都已生成但无法送达 | P1 | Later | 2026-04-26 已为 Feishu send/reply/update 出站请求补 3 次短重试，仅吸收传输错误、`429` 与 `5xx`；若真实出站窗口继续复现再改回 `New` | [feishu_send_message_request_transport_failure.md](./archive/feishu_send_message_request_transport_failure.md) |

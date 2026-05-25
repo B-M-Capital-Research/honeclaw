@@ -3,7 +3,7 @@
 - 发现时间：2026-05-25 04:06 CST
 - Bug Type：Daily macOS build verification / source sync
 - 严重等级：P3
-- 状态：Later
+- 状态：New
 - GitHub Issue：未创建
 - 证据来源：`honeclaw-mac` 每日 macOS 完整打包验证
 
@@ -16,6 +16,7 @@
    - `GIT_SSH_COMMAND='ssh -o BatchMode=yes -o ConnectTimeout=20 -p 443' git ls-remote ssh://git@ssh.github.com/B-M-Capital-Research/honeclaw.git HEAD`
    - `GIT_TERMINAL_PROMPT=0 git ls-remote https://github.com/B-M-Capital-Research/honeclaw.git HEAD`
 5. SSH-over-443 与 HTTPS 同样无法连接 GitHub，因此本轮不能确认本地 `main` 已更新到远端最新提交。
+6. 2026-05-26 04:08 CST 每日自动化再次复现同一阻塞：本地 `main` 已收口上一轮遗留 rebase，工作区干净，但 `git fetch origin` 仍无法连接 GitHub。
 
 ## 期望效果
 
@@ -28,6 +29,10 @@
   - `ssh: connect to host github.com port 22: Operation timed out`
   - `ssh: connect to host ssh.github.com port 443: Operation timed out`
   - `Failed to connect to github.com port 443 after 75004 ms`
+- 2026-05-26 04:08 CST 复现：
+  - `git fetch origin`：`ssh: connect to host github.com port 22: Operation timed out`
+  - SSH-over-443 `git ls-remote`：`ssh: connect to host ssh.github.com port 443: Operation timed out`
+  - HTTPS `git ls-remote`：`Failed to connect to github.com port 443 after 75007 ms`
 - 因为无法确认远端最新代码，本轮没有继续声称完成基于最新代码的打包与启动验证。
 
 ## 用户影响
@@ -40,6 +45,7 @@
 - 当前证据更像本机到 GitHub 的网络连通性或出口策略问题，而不是仓库代码问题。
 - 因为 SSH 22、SSH 443 和 HTTPS 443 均失败，本轮暂按 P3 外部依赖 / 网络阻塞记录。
 - 2026-05-25 04:10 CST `bug-2` 复核：该缺陷当前没有可本地代码修复的通用根因；按缺陷修复规则，不为单次 GitHub 网络不可达写特殊兼容逻辑，状态从 `New` 调整为 `Later`，待同机网络恢复后重跑每日 macOS 打包验证。
+- 2026-05-26 04:08 CST 再次复现，说明同机网络阻塞仍未恢复；状态从 `Later` 重新打开为 `New`，等待网络/出口策略恢复后重跑。
 
 ## 下一步建议
 
@@ -58,3 +64,12 @@
 - `.app/Contents/MacOS/hone-desktop` 隔离 smoke：未执行。
 - 渠道隔离：未启动任何本轮验证 runtime 或真实 IM sidecar。
 - 2026-05-25 04:10 CST `bug-2` 复核：未运行代码测试；本次只做外部网络因素状态归类。
+- 2026-05-26 04:08 CST 每日自动化复现：
+  - `git status --short --branch`：工作区干净，`main...origin/main [ahead 13]`。
+  - `git fetch origin`：失败，GitHub SSH 22 超时。
+  - SSH-over-443 `git ls-remote`：失败，`ssh.github.com:443` 超时。
+  - HTTPS `git ls-remote`：失败，`github.com:443` 连接失败。
+  - `build:desktop`：未执行，因为无法拉取/确认远端最新 `main`。
+  - `.app` / `.dmg` 产物确认：未执行。
+  - `.app/Contents/MacOS/hone-desktop` 隔离 smoke：未执行。
+  - 渠道隔离：未启动任何本轮验证 runtime 或真实 IM sidecar。
