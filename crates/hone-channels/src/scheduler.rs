@@ -4308,6 +4308,37 @@ mod tests {
     }
 
     #[test]
+    fn commodity_guard_does_not_rewrite_broad_us_market_risk_brief() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_market", None::<String>).expect("actor"),
+            job_id: "job-us-risk".to_string(),
+            job_name: "每日美股大盘风控简报".to_string(),
+            task_prompt: "复盘 Nasdaq、S&P 500、VIX、长端利率和主要风险因子。".to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_market".to_string(),
+            delivery_key: "delivery-us-risk".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: false,
+            schedule_hour: 20,
+            schedule_minute: 0,
+            schedule_repeat: "daily".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        assert!(
+            guard_commodity_causality_for_event(
+                "【每日美股大盘风控简报】\n美股因 Memorial Day 休市，Nasdaq、S&P 500 和 QQQ 缺少新的收盘确认。\nVIX 与 Fear & Greed 仍指向风险偏好偏谨慎，长端利率是今晚估值压力的主线。\n油价与能源需求担忧只是观察项，不足以解释整个科技股风险温度。\n操作上继续关注 AI 算力、半导体和高 beta 成长股的开盘确认。",
+                &event,
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
     fn non_commodity_heartbeat_does_not_get_causality_guard() {
         let event = SchedulerEvent {
             actor: ActorIdentity::new("feishu", "ou_rklb", None::<String>).expect("actor"),

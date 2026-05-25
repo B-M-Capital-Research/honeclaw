@@ -108,12 +108,12 @@
 ## 修复记录
 
 - 2026-05-26 00:29 CST：已修复。`guard_commodity_causality_for_event(...)` 对商品 / 原油任务继续按原逻辑拦截；对非商品任务不再因为正文里局部出现油价 / 能源归因词就整篇改写，只有正文主体明显以商品内容为主时才启用整篇 commodity rewrite。
-- 新增回归 `commodity_guard_does_not_rewrite_broad_ah_market_review`，覆盖 A/H 跨市场复盘正文里局部提到“油气板块承压、油价与能源需求担忧”时不触发 `commodity_causality_guarded`。
+- 新增回归 `commodity_guard_does_not_rewrite_broad_ah_market_review` 与 `commodity_guard_does_not_rewrite_broad_us_market_risk_brief`，覆盖 A/H 跨市场复盘和美股大盘风控正文里局部提到油气 / 油价 / 能源需求时不触发 `commodity_causality_guarded`。
 - 既有 `Oil_Price_Monitor_Closing`、contract-month 油价样本与 `OWALERT_PostMarket` 的 commodity guard 回归仍通过，确保未核验 WTI / Brent 价格和归因仍会被拦截。
 
 ## 验证结果
 
 - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs`：通过。
-- `cargo test -p hone-channels commodity_guard_ --lib -- --nocapture`：通过，4 passed。
-- `cargo test -p hone-channels commodity_ --lib -- --nocapture`：通过，12 passed。
+- `cargo test -p hone-channels commodity_guard_ --lib -- --nocapture`：通过，5 passed。
+- `cargo test -p hone-channels commodity_ --lib -- --nocapture`：通过，13 passed。
 - `cargo check -p hone-channels --tests`：通过。
