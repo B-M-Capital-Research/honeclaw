@@ -4,13 +4,13 @@ const ZH = {
   page: {
     title: "任务健康",
     window_label: "窗口",
-    filter_task_label: "过滤 task",
+    filter_task_label: "筛选任务",
     filter_all: "全部",
     refresh_button: "刷新",
     refreshing_button: "刷新中…",
   },
   summary: {
-    eyebrow: "24h 汇总（每个 task 一行）",
+    eyebrow: "24h 汇总（每个任务一行）",
     col_task: "任务",
     col_last_seen: "最近一次",
     col_runs_24h: "24h 总",
@@ -45,7 +45,7 @@ const EN: typeof ZH = {
   page: {
     title: "Task health",
     window_label: "Window",
-    filter_task_label: "Filter task",
+    filter_task_label: "Filter by task",
     filter_all: "All",
     refresh_button: "Refresh",
     refreshing_button: "Refreshing…",

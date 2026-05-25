@@ -39,7 +39,7 @@ const ZH = {
     research_title: "进行中研究",
     research_empty: "暂无研究任务",
     research_view_all: "全部 →",
-    last_message_empty: "(空)",
+    last_message_empty: "（空）",
     created_prefix: "创建于 {time}",
   },
 }

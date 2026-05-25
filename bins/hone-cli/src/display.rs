@@ -104,7 +104,7 @@ mod tests {
         subsection("OpenRouter API keys");
         bullet("LLM 主路由。function_calling / multi-agent answer / nano_banana 默认走这里。");
         ok_line("已保存 OpenRouter API keys。");
-        fail_line("Token 必须是三段结构(长度=12)。");
+        fail_line("Token 必须是三段结构（长度=12）。");
 
         step_header(6, 7, "Notifications");
         hint_line("此步骤纯告知，不写任何配置；下一步进入 Apply。");

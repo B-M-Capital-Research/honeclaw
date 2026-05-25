@@ -10,7 +10,7 @@ pub(crate) async fn run_chat(core: Arc<HoneBotCore>, config_path: &str) -> Resul
     tracing::info!("Hone CLI chat started");
     core.log_startup_routing("cli", config_path);
     let actor = HoneBotCore::create_actor("cli", "cli_user", None)
-        .map_err(|e| format!("cli actor 初始化失败: {e}"))?;
+        .map_err(|e| format!("cli actor 初始化失败：{e}"))?;
 
     println!("╭─────────────────────────────────────────╮");
     println!("│  🍯 Hone Financial — CLI                │");

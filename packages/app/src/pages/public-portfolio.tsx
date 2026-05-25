@@ -440,7 +440,7 @@ function PortfolioContextView() {
                   margin: "24px 0 12px",
                 }}
               >
-                各持仓投资主线 ({context().holdings.length} 只)
+                各持仓投资主线（{context().holdings.length} 只）
               </h2>
               <Show
                 when={context().holdings.length > 0}

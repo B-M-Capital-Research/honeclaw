@@ -22,7 +22,7 @@ pub(crate) async fn run_probe(
     let runner_name = core.config.agent.runner.clone();
 
     let actor = HoneBotCore::create_actor(&args.channel, &args.user_id, args.scope.as_deref())
-        .map_err(|e| format!("probe actor 初始化失败: {e}"))?;
+        .map_err(|e| format!("probe actor 初始化失败：{e}"))?;
 
     let mut session = AgentSession::new(core, actor.clone(), args.channel.clone())
         .with_restore_max_messages(None)

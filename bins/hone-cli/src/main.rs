@@ -56,9 +56,9 @@ struct Cli {
 // rustdoc 才不会被当成 help 文本暴露到 CLI。
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// 启动本地 chat REPL（默认子命令)。
+    /// 启动本地 chat REPL（默认子命令）。
     Chat,
-    /// 首次安装向导：写入 canonical config,可选跑 doctor / start。
+    /// 首次安装向导：写入 canonical config，可选运行 doctor / start。
     #[command(visible_alias = "setup")]
     Onboard(OnboardArgs),
     /// 删除 `$HONE_HOME` 下的 runtime data / config / 已下载 bundle。
@@ -68,9 +68,9 @@ enum Commands {
         #[command(subcommand)]
         command: ConfigCommands,
     },
-    /// 按 section 交互式编辑配置(agent / channels / providers)。
+    /// 按 section 交互式编辑配置（agent / channels / providers）。
     Configure(ConfigureArgs),
-    /// 查看 / 修改 agent model 路由配置。
+    /// 查看 / 修改 Agent model 路由配置。
     Models {
         #[command(subcommand)]
         command: ModelsCommands,
@@ -91,7 +91,7 @@ enum Commands {
         #[command(subcommand)]
         command: WebCommands,
     },
-    /// 启动渠道协议 probe,方便排查外部渠道连接问题。
+    /// 启动渠道协议 probe，方便排查外部渠道连接问题。
     Probe(ProbeArgs),
 }
 
@@ -99,7 +99,7 @@ enum Commands {
 enum ConfigCommands {
     /// 打印 canonical config 文件路径。
     File,
-    /// 读取指定路径的配置值(敏感字段会自动脱敏)。
+    /// 读取指定路径的配置值（敏感字段会自动脱敏）。
     Get(ConfigPathArgs),
     /// 按路径写入配置值并立即重新生成 effective config。
     Set(ConfigSetArgs),
@@ -113,19 +113,19 @@ enum ConfigCommands {
 enum ModelsCommands {
     /// 以人类可读 / JSON 形式打印当前 model 路由配置。
     Status(ReadableArgs),
-    /// 按字段写入 model 路由(runner / base_url / api_key / model 等)。
+    /// 按字段写入 model 路由（runner / base_url / api_key / model 等）。
     Set(ModelsSetArgs),
 }
 
 #[derive(Subcommand, Debug)]
 enum ChannelsCommands {
-    /// 列出四个渠道(iMessage / Feishu / Telegram / Discord)当前状态。
+    /// 列出四个渠道（iMessage / Feishu / Telegram / Discord）当前状态。
     List(ReadableArgs),
     /// 按渠道写入启用状态 / 认证字段 / chat_scope / allowlist。
     Set(ChannelSetArgs),
-    /// 列出已知投递目标(来源于 cron 任务和最近执行记录)。
+    /// 列出已知投递目标（来源于 cron 任务和最近执行记录）。
     Targets(ReadableArgs),
-    /// 快捷启用某个渠道(等价于 `channels set <c> --enabled true`)。
+    /// 快捷启用某个渠道（等价于 `channels set <c> --enabled true`）。
     Enable(ChannelToggleArgs),
     /// 快捷禁用某个渠道。
     Disable(ChannelToggleArgs),
@@ -180,7 +180,7 @@ struct ConfigSetArgs {
     value: String,
 }
 
-/// `config set` / `config get` 的输出结构（用于 `--json` 模式序列化)。
+/// `config set` / `config get` 的输出结构（用于 `--json` 模式序列化）。
 #[derive(Debug, Serialize)]
 struct MutationResult {
     config_path: String,

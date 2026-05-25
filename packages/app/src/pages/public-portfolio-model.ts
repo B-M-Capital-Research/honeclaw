@@ -28,7 +28,7 @@ export function formatPublicMainlineTimestamp(
 }
 
 export function publicRefreshMessage(result: PublicRefreshResult): string {
-  return `更新完成：${result.mainline_count} 条投资主线，跳过 ${result.skipped_tickers.length} 只`
+  return `更新完成：${result.mainline_count} 条投资主线，${result.skipped_tickers.length} 只跳过`
 }
 
 export function canRefreshPublicMainline(profileCount: number): boolean {

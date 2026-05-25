@@ -15,7 +15,7 @@ const DEFAULT_PUBLIC_WEB_PORT: u16 = 8088;
 pub(crate) enum WebCommands {
     /// 构建并启动管理后台 Web UI。
     AdminUi(WebUiArgs),
-    /// 构建并启动用户使用页面 Web UI。
+    /// 构建并启动公开用户端 Web UI。
     UserUi(WebUiArgs),
 }
 
@@ -226,7 +226,7 @@ async fn run_bun_command(
     let status = command
         .status()
         .await
-        .map_err(|e| format!("运行 bun 失败: {e}"))?;
+        .map_err(|e| format!("运行 bun 失败：{e}"))?;
     if !status.success() {
         return Err(format!("{label} 失败（status={status}）"));
     }
@@ -308,7 +308,7 @@ async fn run_bundled_frontend(
                     }
                     Ok(None) => {}
                     Err(error) => {
-                        return Err(format!("检查 hone-console-page 进程状态失败: {error}"));
+                        return Err(format!("检查 hone-console-page 进程状态失败：{error}"));
                     }
                 }
             }

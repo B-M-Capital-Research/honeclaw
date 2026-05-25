@@ -31,7 +31,7 @@ describe("public-portfolio-model", () => {
         mainline_count: 3,
         skipped_tickers: ["AAPL", "MSFT"],
       }),
-    ).toBe("更新完成：3 条投资主线，跳过 2 只")
+    ).toBe("更新完成：3 条投资主线，2 只跳过")
   })
 
 })

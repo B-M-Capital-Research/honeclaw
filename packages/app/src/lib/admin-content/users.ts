@@ -45,7 +45,7 @@ const ZH = {
     empty_title: "还没有会话记录",
     empty_description: "该用户尚未在任何渠道发起会话。",
     message_count: "{count} 条消息",
-    empty_message: "(空)",
+    empty_message: "（空）",
   },
   research: {
     empty_title: "该用户暂无关注的标的",

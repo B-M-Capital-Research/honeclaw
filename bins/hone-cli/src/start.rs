@@ -194,7 +194,7 @@ pub(crate) async fn spawn_binary(
 
     command
         .spawn()
-        .map_err(|e| format!("启动 {binary} 失败: {e}"))
+        .map_err(|e| format!("启动 {binary} 失败：{e}"))
 }
 
 async fn spawn_channel(
@@ -215,7 +215,7 @@ pub(crate) async fn ensure_child_alive(binary: &str, child: &mut Child) -> Resul
     match child.try_wait() {
         Ok(Some(status)) => Err(format!("{binary} 启动后立即退出（status={status}）")),
         Ok(None) => Ok(()),
-        Err(error) => Err(format!("检查 {binary} 进程状态失败: {error}")),
+        Err(error) => Err(format!("检查 {binary} 进程状态失败：{error}")),
     }
 }
 
@@ -227,7 +227,7 @@ async fn wait_for_any_child_exit(
             match child.try_wait() {
                 Ok(Some(status)) => return Ok((idx, status)),
                 Ok(None) => {}
-                Err(error) => return Err(format!("检查子进程状态失败: {error}")),
+                Err(error) => return Err(format!("检查子进程状态失败：{error}")),
             }
         }
         tokio::time::sleep(Duration::from_millis(300)).await;
@@ -272,7 +272,7 @@ async fn build_source_runtime_binaries(source_root: &Path) -> Result<(), String>
     let status = command
         .status()
         .await
-        .map_err(|e| format!("运行 cargo build 失败: {e}"))?;
+        .map_err(|e| format!("运行 cargo build 失败：{e}"))?;
     if !status.success() {
         return Err(format!("本地 CLI/runtime 构建失败（status={status}）"));
     }
@@ -413,7 +413,7 @@ pub(crate) async fn run_start(
                 Err(error) => {
                     shutdown_children(&mut children).await;
                     clear_current_pid(&paths);
-                    return Err(format!("等待子进程退出时失败: {error}"));
+                    return Err(format!("等待子进程退出时失败：{error}"));
                 }
             }
         }

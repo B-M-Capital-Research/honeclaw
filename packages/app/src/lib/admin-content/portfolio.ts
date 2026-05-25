@@ -2,10 +2,10 @@ import { makeContentProxy } from "../i18n"
 
 const ZH = {
   detail: {
-    empty_title: "从左侧定位主体持仓",
+    empty_title: "从左侧选择用户主体",
     empty_description: "你可以查看特定渠道主体的投资概况，或者为其手动调整持仓记录。",
     header_title: "持仓与关注概览",
-    add_button: "添加新持仓",
+    add_button: "添加持仓 / 关注",
     empty_records_title: "暂无持仓或关注数据",
     empty_records_description: "该用户当前没有任何资产或关注记录。",
     section_holdings: "持仓",
@@ -59,7 +59,7 @@ const EN: typeof ZH = {
     empty_title: "Pick a holdings owner on the left",
     empty_description: "Browse a channel user's portfolio overview, or adjust their holdings manually.",
     header_title: "Holdings & watchlist",
-    add_button: "Add holding",
+    add_button: "Add holding / watchlist",
     empty_records_title: "No holdings or watchlist entries",
     empty_records_description: "This user has no assets or watchlist records yet.",
     section_holdings: "Holdings",
