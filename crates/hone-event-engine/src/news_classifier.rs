@@ -92,22 +92,22 @@ impl LlmNewsClassifier {
     /// "Apple CEO Tim Cook's 15-year legacy by the numbers" 命中同 key,
     /// 而又不会过分激进把不同标题误合并。
     fn normalize_title(title: &str) -> String {
-        let mut out = String::with_capacity(title.len());
-        let mut prev_space = false;
+        let mut normalized_title = String::with_capacity(title.len());
+        let mut previous_was_space = false;
         for ch in title.to_lowercase().chars() {
             if ch.is_ascii_alphanumeric() {
-                out.push(ch);
-                prev_space = false;
+                normalized_title.push(ch);
+                previous_was_space = false;
             } else if (ch.is_whitespace() || ch == '-' || ch == '_')
-                && !prev_space
-                && !out.is_empty()
+                && !previous_was_space
+                && !normalized_title.is_empty()
             {
-                out.push(' ');
-                prev_space = true;
+                normalized_title.push(' ');
+                previous_was_space = true;
             }
             // 其他字符(标点/emoji/CJK punctuation)直接丢弃
         }
-        let trimmed = out.trim_end();
+        let trimmed = normalized_title.trim_end();
         trimmed.chars().take(80).collect()
     }
 
@@ -292,8 +292,8 @@ impl NewsClassifier for LlmNewsClassifier {
         let messages = Self::build_messages(event, importance_prompt);
         let result = self.provider.chat(&messages, Some(&self.model)).await;
         match result {
-            Ok(resp) => {
-                let importance = match Self::parse(&resp.content) {
+            Ok(llm_response) => {
+                let importance = match Self::parse(&llm_response.content) {
                     Some(v) => v,
                     None => {
                         let fallback = Self::deterministic_fallback(event);

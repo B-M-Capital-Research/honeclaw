@@ -122,17 +122,17 @@ impl DigestBuffer {
         );
 
         let f = std::fs::File::open(&rotated)?;
-        let mut out = Vec::new();
+        let mut events = Vec::new();
         for line in BufReader::new(f).lines().map_while(Result::ok) {
             if line.trim().is_empty() {
                 continue;
             }
             match serde_json::from_str::<BufferRecord>(&line) {
-                Ok(rec) => out.push(rec.event),
+                Ok(record) => events.push(record.event),
                 Err(e) => tracing::warn!("digest buffer parse skip: {e}"),
             }
         }
-        Ok(out)
+        Ok(events)
     }
 
     /// 列出 buffer 目录下所有有待 flush 的 actor。

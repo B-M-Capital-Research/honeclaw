@@ -152,31 +152,31 @@ impl SubscriptionRegistry {
     /// 用于 DailyReport 这类"给每个注册 actor 都推一条"的广播场景。
     pub fn actors(&self) -> Vec<ActorIdentity> {
         use std::collections::HashMap;
-        let mut dedup: HashMap<String, ActorIdentity> = HashMap::new();
-        for sub in &self.subs {
-            for a in sub.actors() {
-                if !a.is_direct() {
+        let mut actors_by_key: HashMap<String, ActorIdentity> = HashMap::new();
+        for subscription in &self.subs {
+            for actor in subscription.actors() {
+                if !actor.is_direct() {
                     continue;
                 }
-                dedup.insert(actor_storage_key(&a), a);
+                actors_by_key.insert(actor_storage_key(&actor), actor);
             }
         }
-        let mut out: Vec<ActorIdentity> = dedup.into_values().collect();
-        out.sort_by_key(actor_storage_key);
-        out
+        let mut actors: Vec<ActorIdentity> = actors_by_key.into_values().collect();
+        actors.sort_by_key(actor_storage_key);
+        actors
     }
 
     /// 聚合所有订阅关心的 symbol —— 用于 PricePoller 的 watch pool。
     pub fn watch_pool(&self) -> Vec<String> {
         let mut set: HashSet<String> = HashSet::new();
-        for sub in &self.subs {
-            for s in sub.watch_symbols() {
-                set.insert(s.to_ascii_uppercase());
+        for subscription in &self.subs {
+            for symbol in subscription.watch_symbols() {
+                set.insert(symbol.to_ascii_uppercase());
             }
         }
-        let mut out: Vec<String> = set.into_iter().collect();
-        out.sort();
-        out
+        let mut symbols: Vec<String> = set.into_iter().collect();
+        symbols.sort();
+        symbols
     }
 
     /// 返回所有命中该事件的 (actor, effective_severity) 对。

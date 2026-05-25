@@ -486,7 +486,7 @@ mod tests {
         }
     }
 
-    fn mk(dir: &std::path::Path) -> NotificationPrefsTool {
+    fn make_tool(dir: &std::path::Path) -> NotificationPrefsTool {
         let actor = ActorIdentity::new("telegram", "u1", None::<&str>).unwrap();
         let cron_dir = dir.join("__test_cron__");
         std::fs::create_dir_all(&cron_dir).unwrap();
@@ -501,25 +501,25 @@ mod tests {
     #[tokio::test]
     async fn get_returns_default_when_file_absent() {
         let dir = tempdir().unwrap();
-        let tool = mk(dir.path());
-        let out = tool.execute(json!({"action":"get"})).await.unwrap();
-        assert_eq!(out["prefs"]["enabled"], json!(true));
-        assert_eq!(out["prefs"]["min_severity"], json!("low"));
+        let tool = make_tool(dir.path());
+        let response = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(response["prefs"]["enabled"], json!(true));
+        assert_eq!(response["prefs"]["min_severity"], json!("low"));
     }
 
     #[tokio::test]
     async fn disable_then_get_shows_enabled_false() {
         let dir = tempdir().unwrap();
-        let tool = mk(dir.path());
+        let tool = make_tool(dir.path());
         let _ = tool.execute(json!({"action":"disable"})).await.unwrap();
-        let out = tool.execute(json!({"action":"get"})).await.unwrap();
-        assert_eq!(out["prefs"]["enabled"], json!(false));
+        let response = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(response["prefs"]["enabled"], json!(false));
     }
 
     #[tokio::test]
     async fn allow_kinds_rejects_unknown_tag() {
         let dir = tempdir().unwrap();
-        let tool = mk(dir.path());
+        let tool = make_tool(dir.path());
         let err = tool
             .execute(json!({"action":"allow_kinds","value":["not_a_tag"]}))
             .await
@@ -533,18 +533,18 @@ mod tests {
     #[tokio::test]
     async fn set_min_severity_writes_json_roundtrip() {
         let dir = tempdir().unwrap();
-        let tool = mk(dir.path());
+        let tool = make_tool(dir.path());
         tool.execute(json!({"action":"set_min_severity","value":"high"}))
             .await
             .unwrap();
-        let out = tool.execute(json!({"action":"get"})).await.unwrap();
-        assert_eq!(out["prefs"]["min_severity"], json!("high"));
+        let response = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(response["prefs"]["min_severity"], json!("high"));
     }
 
     #[tokio::test]
     async fn allow_and_block_kinds_persisted() {
         let dir = tempdir().unwrap();
-        let tool = mk(dir.path());
+        let tool = make_tool(dir.path());
         tool.execute(json!({
             "action": "allow_kinds",
             "value": ["earnings_released", "sec_filing"]
@@ -557,52 +557,52 @@ mod tests {
         }))
         .await
         .unwrap();
-        let out = tool.execute(json!({"action":"get"})).await.unwrap();
+        let response = tool.execute(json!({"action":"get"})).await.unwrap();
         assert_eq!(
-            out["prefs"]["allow_kinds"],
+            response["prefs"]["allow_kinds"],
             json!(["earnings_released", "sec_filing"])
         );
-        assert_eq!(out["prefs"]["blocked_kinds"], json!(["social_post"]));
+        assert_eq!(response["prefs"]["blocked_kinds"], json!(["social_post"]));
     }
 
     #[tokio::test]
     async fn reset_restores_defaults() {
         let dir = tempdir().unwrap();
-        let tool = mk(dir.path());
+        let tool = make_tool(dir.path());
         tool.execute(json!({"action":"disable"})).await.unwrap();
         tool.execute(json!({"action":"reset"})).await.unwrap();
-        let out = tool.execute(json!({"action":"get"})).await.unwrap();
-        assert_eq!(out["prefs"]["enabled"], json!(true));
-        assert_eq!(out["prefs"]["portfolio_only"], json!(false));
-        assert_eq!(out["prefs"]["allow_kinds"], json!(null));
+        let response = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(response["prefs"]["enabled"], json!(true));
+        assert_eq!(response["prefs"]["portfolio_only"], json!(false));
+        assert_eq!(response["prefs"]["allow_kinds"], json!(null));
     }
 
     #[tokio::test]
     async fn set_portfolio_only_accepts_bool_and_string() {
         let dir = tempdir().unwrap();
-        let tool = mk(dir.path());
+        let tool = make_tool(dir.path());
         tool.execute(json!({"action":"set_portfolio_only","value":true}))
             .await
             .unwrap();
-        let out = tool.execute(json!({"action":"get"})).await.unwrap();
-        assert_eq!(out["prefs"]["portfolio_only"], json!(true));
+        let response = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(response["prefs"]["portfolio_only"], json!(true));
 
         tool.execute(json!({"action":"set_portfolio_only","value":"false"}))
             .await
             .unwrap();
-        let out = tool.execute(json!({"action":"get"})).await.unwrap();
-        assert_eq!(out["prefs"]["portfolio_only"], json!(false));
+        let response = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(response["prefs"]["portfolio_only"], json!(false));
     }
 
     #[tokio::test]
     async fn set_timezone_validates_iana_and_persists() {
         let dir = tempdir().unwrap();
-        let tool = mk(dir.path());
+        let tool = make_tool(dir.path());
         tool.execute(json!({"action":"set_timezone","value":"America/New_York"}))
             .await
             .unwrap();
-        let out = tool.execute(json!({"action":"get"})).await.unwrap();
-        assert_eq!(out["prefs"]["timezone"], json!("America/New_York"));
+        let response = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(response["prefs"]["timezone"], json!("America/New_York"));
 
         let err = tool
             .execute(json!({"action":"set_timezone","value":"Mars/Olympus"}))
@@ -617,22 +617,22 @@ mod tests {
         tool.execute(json!({"action":"set_timezone","value":""}))
             .await
             .unwrap();
-        let out = tool.execute(json!({"action":"get"})).await.unwrap();
-        assert_eq!(out["prefs"]["timezone"], json!(null));
+        let response = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(response["prefs"]["timezone"], json!(null));
     }
 
     #[tokio::test]
     async fn set_digest_slots_round_trips_and_validates_format() {
         let dir = tempdir().unwrap();
-        let tool = mk(dir.path());
+        let tool = make_tool(dir.path());
         tool.execute(json!({
             "action": "set_digest_slots",
             "value": ["19:00", "02:30", "09:00"]
         }))
         .await
         .unwrap();
-        let out = tool.execute(json!({"action":"get"})).await.unwrap();
-        let times: Vec<String> = out["prefs"]["digest_slots"]
+        let response = tool.execute(json!({"action":"get"})).await.unwrap();
+        let times: Vec<String> = response["prefs"]["digest_slots"]
             .as_array()
             .unwrap()
             .iter()
@@ -654,19 +654,19 @@ mod tests {
         tool.execute(json!({"action":"set_digest_slots","value":[]}))
             .await
             .unwrap();
-        let out = tool.execute(json!({"action":"get"})).await.unwrap();
-        assert_eq!(out["prefs"]["digest_slots"], json!([]));
+        let response = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(response["prefs"]["digest_slots"], json!([]));
     }
 
     #[tokio::test]
     async fn set_price_high_pct_enforces_range() {
         let dir = tempdir().unwrap();
-        let tool = mk(dir.path());
+        let tool = make_tool(dir.path());
         tool.execute(json!({"action":"set_price_high_pct","value":3.5}))
             .await
             .unwrap();
-        let out = tool.execute(json!({"action":"get"})).await.unwrap();
-        assert_eq!(out["prefs"]["price_high_pct_override"], json!(3.5));
+        let response = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(response["prefs"]["price_high_pct_override"], json!(3.5));
 
         // 0 与负数被拒
         let err = tool
@@ -687,23 +687,23 @@ mod tests {
         tool.execute(json!({"action":"set_price_high_pct","value":"4.2"}))
             .await
             .unwrap();
-        let out = tool.execute(json!({"action":"get"})).await.unwrap();
-        assert_eq!(out["prefs"]["price_high_pct_override"], json!(4.2));
+        let response = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(response["prefs"]["price_high_pct_override"], json!(4.2));
     }
 
     #[tokio::test]
     async fn set_immediate_kinds_validates_and_clears_on_empty() {
         let dir = tempdir().unwrap();
-        let tool = mk(dir.path());
+        let tool = make_tool(dir.path());
         tool.execute(json!({
             "action": "set_immediate_kinds",
             "value": ["weekly52_high", "analyst_grade"]
         }))
         .await
         .unwrap();
-        let out = tool.execute(json!({"action":"get"})).await.unwrap();
+        let response = tool.execute(json!({"action":"get"})).await.unwrap();
         assert_eq!(
-            out["prefs"]["immediate_kinds"],
+            response["prefs"]["immediate_kinds"],
             json!(["weekly52_high", "analyst_grade"])
         );
 
@@ -720,8 +720,8 @@ mod tests {
         tool.execute(json!({"action":"set_immediate_kinds","value":[]}))
             .await
             .unwrap();
-        let out = tool.execute(json!({"action":"get"})).await.unwrap();
-        assert_eq!(out["prefs"]["immediate_kinds"], json!(null));
+        let response = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(response["prefs"]["immediate_kinds"], json!(null));
     }
 
     #[tokio::test]
@@ -745,18 +745,18 @@ mod tests {
     #[tokio::test]
     async fn set_quiet_hours_round_trips() {
         let dir = tempdir().unwrap();
-        let tool = mk(dir.path());
+        let tool = make_tool(dir.path());
         tool.execute(json!({
             "action": "set_quiet_hours",
             "value": { "from": "23:00", "to": "07:00", "exempt_kinds": ["earnings_released"] },
         }))
         .await
         .unwrap();
-        let out = tool.execute(json!({"action":"get"})).await.unwrap();
-        assert_eq!(out["prefs"]["quiet_hours"]["from"], json!("23:00"));
-        assert_eq!(out["prefs"]["quiet_hours"]["to"], json!("07:00"));
+        let response = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(response["prefs"]["quiet_hours"]["from"], json!("23:00"));
+        assert_eq!(response["prefs"]["quiet_hours"]["to"], json!("07:00"));
         assert_eq!(
-            out["prefs"]["quiet_hours"]["exempt_kinds"],
+            response["prefs"]["quiet_hours"]["exempt_kinds"],
             json!(["earnings_released"])
         );
     }
@@ -764,21 +764,21 @@ mod tests {
     #[tokio::test]
     async fn set_quiet_hours_without_exempt_defaults_to_empty() {
         let dir = tempdir().unwrap();
-        let tool = mk(dir.path());
+        let tool = make_tool(dir.path());
         tool.execute(json!({
             "action": "set_quiet_hours",
             "value": { "from": "22:30", "to": "06:30" },
         }))
         .await
         .unwrap();
-        let out = tool.execute(json!({"action":"get"})).await.unwrap();
-        assert_eq!(out["prefs"]["quiet_hours"]["exempt_kinds"], json!([]));
+        let response = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(response["prefs"]["quiet_hours"]["exempt_kinds"], json!([]));
     }
 
     #[tokio::test]
     async fn set_quiet_hours_validates_hhmm() {
         let dir = tempdir().unwrap();
-        let tool = mk(dir.path());
+        let tool = make_tool(dir.path());
         let err = tool
             .execute(json!({
                 "action": "set_quiet_hours",
@@ -795,7 +795,7 @@ mod tests {
     #[tokio::test]
     async fn set_quiet_hours_rejects_equal_from_to() {
         let dir = tempdir().unwrap();
-        let tool = mk(dir.path());
+        let tool = make_tool(dir.path());
         let err = tool
             .execute(json!({
                 "action": "set_quiet_hours",
@@ -812,7 +812,7 @@ mod tests {
     #[tokio::test]
     async fn set_quiet_hours_rejects_invalid_kind() {
         let dir = tempdir().unwrap();
-        let tool = mk(dir.path());
+        let tool = make_tool(dir.path());
         let err = tool
             .execute(json!({
                 "action": "set_quiet_hours",
@@ -829,22 +829,22 @@ mod tests {
     #[tokio::test]
     async fn get_overview_returns_display_text_and_overview() {
         let dir = tempdir().unwrap();
-        // mk() 用的是 telegram actor → display_text 应是 <pre> 包的等宽块
-        let tool = mk(dir.path());
-        let out = tool
+        // make_tool() 用的是 telegram actor → display_text 应是 <pre> 包的等宽块
+        let tool = make_tool(dir.path());
+        let response = tool
             .execute(json!({"action":"get_overview"}))
             .await
             .unwrap();
-        assert_eq!(out["status"], json!("ok"));
-        let txt = out["display_text"].as_str().expect("display_text");
-        assert!(txt.contains("你的推送日程"));
-        assert!(txt.contains("时刻"));
+        assert_eq!(response["status"], json!("ok"));
+        let display_text = response["display_text"].as_str().expect("display_text");
+        assert!(display_text.contains("你的推送日程"));
+        assert!(display_text.contains("时刻"));
         // telegram → 走 <pre>
-        assert!(txt.contains("<pre>"));
+        assert!(display_text.contains("<pre>"));
         // 不应再出现 markdown table 字符
-        assert!(!txt.contains("| --- |"));
-        assert_eq!(out["render_format"], json!("TelegramHtml"));
-        let entries = out["overview"]["schedule"].as_array().unwrap();
+        assert!(!display_text.contains("| --- |"));
+        assert_eq!(response["render_format"], json!("TelegramHtml"));
+        let entries = response["overview"]["schedule"].as_array().unwrap();
         assert_eq!(entries.len(), 2);
     }
 
@@ -860,14 +860,17 @@ mod tests {
             cron_dir,
             test_digest_defaults(),
         );
-        let out = tool
+        let response = tool
             .execute(json!({"action":"get_overview"}))
             .await
             .unwrap();
-        let txt = out["display_text"].as_str().unwrap();
-        assert!(txt.contains("```"), "discord 应用代码块: {txt}");
-        assert!(!txt.contains("<pre>"));
-        assert_eq!(out["render_format"], json!("DiscordMarkdown"));
+        let display_text = response["display_text"].as_str().unwrap();
+        assert!(
+            display_text.contains("```"),
+            "discord 应用代码块: {display_text}"
+        );
+        assert!(!display_text.contains("<pre>"));
+        assert_eq!(response["render_format"], json!("DiscordMarkdown"));
     }
 
     #[tokio::test]
@@ -882,21 +885,24 @@ mod tests {
             cron_dir,
             test_digest_defaults(),
         );
-        let out = tool
+        let response = tool
             .execute(json!({"action":"get_overview"}))
             .await
             .unwrap();
-        let txt = out["display_text"].as_str().unwrap();
-        assert!(!txt.contains("```"));
-        assert!(!txt.contains("<pre>"));
-        assert!(txt.contains("• "), "imessage 应该是项目符号列表: {txt}");
-        assert_eq!(out["render_format"], json!("Plain"));
+        let display_text = response["display_text"].as_str().unwrap();
+        assert!(!display_text.contains("```"));
+        assert!(!display_text.contains("<pre>"));
+        assert!(
+            display_text.contains("• "),
+            "imessage 应该是项目符号列表: {display_text}"
+        );
+        assert_eq!(response["render_format"], json!("Plain"));
     }
 
     #[tokio::test]
     async fn clear_quiet_hours_removes_field() {
         let dir = tempdir().unwrap();
-        let tool = mk(dir.path());
+        let tool = make_tool(dir.path());
         tool.execute(json!({
             "action": "set_quiet_hours",
             "value": { "from": "23:00", "to": "07:00" },
@@ -906,14 +912,14 @@ mod tests {
         tool.execute(json!({"action":"clear_quiet_hours"}))
             .await
             .unwrap();
-        let out = tool.execute(json!({"action":"get"})).await.unwrap();
-        assert_eq!(out["prefs"]["quiet_hours"], json!(null));
+        let response = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(response["prefs"]["quiet_hours"], json!(null));
     }
 
     #[tokio::test]
     async fn set_digest_slots_rejects_slot_inside_existing_quiet() {
         let dir = tempdir().unwrap();
-        let tool = mk(dir.path());
+        let tool = make_tool(dir.path());
         tool.execute(json!({
             "action": "set_quiet_hours",
             "value": { "from": "00:00", "to": "08:00" },
@@ -935,14 +941,14 @@ mod tests {
             other => panic!("unexpected err {other:?}"),
         }
         // 落盘的 slots 应保持未变(default 即 None)
-        let out = tool.execute(json!({"action":"get"})).await.unwrap();
-        assert_eq!(out["prefs"]["digest_slots"], json!(null));
+        let response = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(response["prefs"]["digest_slots"], json!(null));
     }
 
     #[tokio::test]
     async fn set_digest_slots_outside_quiet_succeeds() {
         let dir = tempdir().unwrap();
-        let tool = mk(dir.path());
+        let tool = make_tool(dir.path());
         tool.execute(json!({
             "action": "set_quiet_hours",
             "value": { "from": "00:00", "to": "08:00" },
@@ -955,8 +961,8 @@ mod tests {
         }))
         .await
         .unwrap();
-        let out = tool.execute(json!({"action":"get"})).await.unwrap();
-        let times: Vec<String> = out["prefs"]["digest_slots"]
+        let response = tool.execute(json!({"action":"get"})).await.unwrap();
+        let times: Vec<String> = response["prefs"]["digest_slots"]
             .as_array()
             .unwrap()
             .iter()
@@ -968,7 +974,7 @@ mod tests {
     #[tokio::test]
     async fn set_quiet_hours_rejects_when_existing_slot_falls_in() {
         let dir = tempdir().unwrap();
-        let tool = mk(dir.path());
+        let tool = make_tool(dir.path());
         tool.execute(json!({
             "action": "set_digest_slots",
             "value": ["02:30", "09:00"]
@@ -990,14 +996,14 @@ mod tests {
             other => panic!("unexpected err {other:?}"),
         }
         // quiet 没落盘
-        let out = tool.execute(json!({"action":"get"})).await.unwrap();
-        assert_eq!(out["prefs"]["quiet_hours"], json!(null));
+        let response = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(response["prefs"]["quiet_hours"], json!(null));
     }
 
     #[tokio::test]
     async fn set_quiet_hours_safe_when_no_slot_overlap() {
         let dir = tempdir().unwrap();
-        let tool = mk(dir.path());
+        let tool = make_tool(dir.path());
         tool.execute(json!({
             "action": "set_digest_slots",
             "value": ["09:00", "19:00"]
@@ -1010,7 +1016,7 @@ mod tests {
         }))
         .await
         .unwrap();
-        let out = tool.execute(json!({"action":"get"})).await.unwrap();
-        assert_eq!(out["prefs"]["quiet_hours"]["from"], json!("23:00"));
+        let response = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(response["prefs"]["quiet_hours"]["from"], json!("23:00"));
     }
 }

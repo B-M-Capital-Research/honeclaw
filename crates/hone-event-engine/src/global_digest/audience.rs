@@ -158,7 +158,7 @@ impl<'a> AudienceBuilder<'a> {
         let joined = tickers.join(",");
         let path = format!("/v3/profile/{joined}");
         match self.fmp.get_json(&path).await {
-            Ok(Value::Array(arr)) => arr
+            Ok(Value::Array(profiles)) => profiles
                 .into_iter()
                 .filter_map(|profile| {
                     let ticker = profile

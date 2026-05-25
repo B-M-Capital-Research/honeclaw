@@ -227,132 +227,132 @@ pub fn channel_render_format(channel: &str) -> RenderFormat {
 /// Discord / Telegram:用代码块包一张 monospace 表。CJK / emoji 显示宽度按 2 算。
 fn render_with_codeblock(overview: &ScheduleOverview, open: &str, close: &str) -> String {
     use std::fmt::Write;
-    let mut out = String::new();
-    write_header(&mut out, overview);
+    let mut output = String::new();
+    write_header(&mut output, overview);
 
     if overview.schedule.is_empty() {
-        let _ = writeln!(out, "（当前没有任何定时推送，所有事件走即时推）");
+        let _ = writeln!(output, "（当前没有任何定时推送，所有事件走即时推）");
     } else {
         // 表格:时刻 / 类型 / 内容 / 频率 / 状态(emoji)
         let headers = ["时刻", "类型", "内容", "频率", "状态"];
         let mut rows: Vec<[String; 5]> = Vec::new();
-        for e in &overview.schedule {
-            let kind = source_label(e.source);
-            let active = if e.will_be_held_by_quiet {
+        for entry in &overview.schedule {
+            let kind = source_label(entry.source);
+            let active = if entry.will_be_held_by_quiet {
                 "🌙 静音吞"
-            } else if e.bypass_quiet_hours {
+            } else if entry.bypass_quiet_hours {
                 "✅ 强发"
             } else {
                 "✅"
             };
             rows.push([
-                e.time_local.clone(),
+                entry.time_local.clone(),
                 kind.to_string(),
-                e.content_hint.clone(),
-                e.frequency.clone(),
+                entry.content_hint.clone(),
+                entry.frequency.clone(),
                 active.to_string(),
             ]);
         }
         // 计算每列 display-width
         let mut widths = [0usize; 5];
-        for (i, h) in headers.iter().enumerate() {
-            widths[i] = display_width(h);
+        for (column_index, header) in headers.iter().enumerate() {
+            widths[column_index] = display_width(header);
         }
         for row in &rows {
-            for i in 0..5 {
-                widths[i] = widths[i].max(display_width(&row[i]));
+            for column_index in 0..5 {
+                widths[column_index] = widths[column_index].max(display_width(&row[column_index]));
             }
         }
         // 表头 + 分隔(用 ─, 单字符宽)
-        out.push_str(open);
-        for (i, h) in headers.iter().enumerate() {
-            out.push_str(&pad_to(h, widths[i]));
-            if i + 1 < 5 {
-                out.push_str("  ");
+        output.push_str(open);
+        for (column_index, header) in headers.iter().enumerate() {
+            output.push_str(&pad_to(header, widths[column_index]));
+            if column_index + 1 < 5 {
+                output.push_str("  ");
             }
         }
-        out.push('\n');
-        for (i, w) in widths.iter().enumerate() {
-            out.push_str(&"─".repeat(*w));
-            if i + 1 < 5 {
-                out.push_str("  ");
+        output.push('\n');
+        for (column_index, width) in widths.iter().enumerate() {
+            output.push_str(&"─".repeat(*width));
+            if column_index + 1 < 5 {
+                output.push_str("  ");
             }
         }
-        out.push('\n');
+        output.push('\n');
         for row in &rows {
-            for i in 0..5 {
-                out.push_str(&pad_to(&row[i], widths[i]));
-                if i + 1 < 5 {
-                    out.push_str("  ");
+            for column_index in 0..5 {
+                output.push_str(&pad_to(&row[column_index], widths[column_index]));
+                if column_index + 1 < 5 {
+                    output.push_str("  ");
                 }
             }
-            out.push('\n');
+            output.push('\n');
         }
         // 去掉最后那个 \n,让 close 紧贴
-        if out.ends_with('\n') {
-            out.pop();
+        if output.ends_with('\n') {
+            output.pop();
         }
-        out.push_str(close);
-        out.push('\n');
+        output.push_str(close);
+        output.push('\n');
     }
 
-    write_immediate_section(&mut out, overview);
-    out
+    write_immediate_section(&mut output, overview);
+    output
 }
 
 /// Feishu / iMessage:纯文本项目符号列表,不依赖 monospace。
 fn render_as_list(overview: &ScheduleOverview) -> String {
     use std::fmt::Write;
-    let mut out = String::new();
-    write_header(&mut out, overview);
+    let mut output = String::new();
+    write_header(&mut output, overview);
 
     if overview.schedule.is_empty() {
-        let _ = writeln!(out, "（当前没有任何定时推送，所有事件走即时推）");
+        let _ = writeln!(output, "（当前没有任何定时推送，所有事件走即时推）");
     } else {
-        let _ = writeln!(out, "定时推送：");
-        for e in &overview.schedule {
-            let kind = source_label(e.source);
-            let active = if e.will_be_held_by_quiet {
+        let _ = writeln!(output, "定时推送：");
+        for entry in &overview.schedule {
+            let kind = source_label(entry.source);
+            let active = if entry.will_be_held_by_quiet {
                 "🌙 被静音吞"
-            } else if e.bypass_quiet_hours {
+            } else if entry.bypass_quiet_hours {
                 "✅ 强制不静音"
             } else {
                 "✅"
             };
             let _ = writeln!(
-                out,
+                output,
                 "• {} {} · {} · {} {}",
-                e.time_local, kind, e.content_hint, e.frequency, active
+                entry.time_local, kind, entry.content_hint, entry.frequency, active
             );
         }
     }
-    out.push('\n');
-    write_immediate_section(&mut out, overview);
-    out
+    output.push('\n');
+    write_immediate_section(&mut output, overview);
+    output
 }
 
-fn write_header(out: &mut String, overview: &ScheduleOverview) {
+fn write_header(output: &mut String, overview: &ScheduleOverview) {
     use std::fmt::Write;
-    let _ = writeln!(out, "你的推送日程");
-    let _ = writeln!(out, "时区：{}", overview.timezone);
+    let _ = writeln!(output, "你的推送日程");
+    let _ = writeln!(output, "时区：{}", overview.timezone);
     if let Some(qh) = &overview.quiet_hours {
         let exempt = if qh.exempt_kinds.is_empty() {
             String::new()
         } else {
             format!("（豁免: {}）", qh.exempt_kinds.join(", "))
         };
-        let _ = writeln!(out, "勿扰时段：🌙 {} – {}{}", qh.from, qh.to, exempt);
+        let _ = writeln!(output, "勿扰时段：🌙 {} – {}{}", qh.from, qh.to, exempt);
     } else {
-        let _ = writeln!(out, "勿扰时段：未启用");
+        let _ = writeln!(output, "勿扰时段：未启用");
     }
-    out.push('\n');
+    output.push('\n');
 }
 
-fn write_immediate_section(out: &mut String, overview: &ScheduleOverview) {
+fn write_immediate_section(output: &mut String, overview: &ScheduleOverview) {
     use std::fmt::Write;
-    let _ = writeln!(out, "即时推：");
+    let _ = writeln!(output, "即时推：");
     let _ = writeln!(
-        out,
+        output,
         "• 总开关：{}",
         if overview.immediate.enabled {
             "✅ 启用"
@@ -360,16 +360,16 @@ fn write_immediate_section(out: &mut String, overview: &ScheduleOverview) {
             "❌ 已 disable"
         }
     );
-    let _ = writeln!(out, "• 最低严重度：{}", overview.immediate.min_severity);
+    let _ = writeln!(output, "• 最低严重度：{}", overview.immediate.min_severity);
     if overview.immediate.portfolio_only {
-        let _ = writeln!(out, "• 只推命中持仓的事件");
+        let _ = writeln!(output, "• 只推命中持仓的事件");
     }
     if let Some(p) = overview.immediate.price_high_pct {
-        let _ = writeln!(out, "• 价格异动阈值：{p}%");
+        let _ = writeln!(output, "• 价格异动阈值：{p}%");
     }
     if !overview.immediate.blocked_kinds.is_empty() {
         let _ = writeln!(
-            out,
+            output,
             "• 屏蔽 kind：{}",
             overview.immediate.blocked_kinds.join(", ")
         );
@@ -377,11 +377,11 @@ fn write_immediate_section(out: &mut String, overview: &ScheduleOverview) {
     if let Some(allow) = overview.immediate.allow_kinds.as_ref()
         && !allow.is_empty()
     {
-        let _ = writeln!(out, "• 仅允许 kind：{}", allow.join(", "));
+        let _ = writeln!(output, "• 仅允许 kind：{}", allow.join(", "));
     }
     if !overview.immediate.exempt_in_quiet.is_empty() {
         let _ = writeln!(
-            out,
+            output,
             "• 静音期间豁免：{}",
             overview.immediate.exempt_in_quiet.join(", ")
         );
@@ -503,19 +503,31 @@ mod tests {
         let cron_dir = dir.path().join("cron");
         std::fs::create_dir_all(&prefs_dir).unwrap();
         std::fs::create_dir_all(&cron_dir).unwrap();
-        let pd = defaults();
-        let ov = build_overview(&prefs_dir, &cron_dir, &actor(), &pd, Utc::now()).unwrap();
+        let default_slots = defaults();
+        let overview =
+            build_overview(&prefs_dir, &cron_dir, &actor(), &default_slots, Utc::now()).unwrap();
         // 无 prefs → 默认 2 条 unified digest slot
-        assert_eq!(ov.schedule.len(), 2);
-        assert!(ov.quiet_hours.is_none());
-        assert!(ov.immediate.enabled); // 默认 true
+        assert_eq!(overview.schedule.len(), 2);
+        assert!(overview.quiet_hours.is_none());
+        assert!(overview.immediate.enabled); // 默认 true
         assert!(
-            ov.schedule
+            overview
+                .schedule
                 .iter()
-                .all(|e| e.source == ScheduleSource::Digest)
+                .all(|entry| entry.source == ScheduleSource::Digest)
         );
-        assert!(ov.schedule.iter().any(|e| e.time_local == "08:30"));
-        assert!(ov.schedule.iter().any(|e| e.time_local == "09:00"));
+        assert!(
+            overview
+                .schedule
+                .iter()
+                .any(|entry| entry.time_local == "08:30")
+        );
+        assert!(
+            overview
+                .schedule
+                .iter()
+                .any(|entry| entry.time_local == "09:00")
+        );
     }
 
     #[test]
@@ -539,7 +551,7 @@ mod tests {
 
         let cron_storage = CronJobStorage::new(&cron_dir);
         // 02:00 触发 → 在 quiet 内
-        let r = cron_storage.add_job(
+        let night_job_result = cron_storage.add_job(
             &actor(),
             "夜半监控",
             Some(2),
@@ -554,9 +566,13 @@ mod tests {
             None,
             true,
         );
-        assert_eq!(r["success"], serde_json::json!(true), "add_job failed: {r}");
+        assert_eq!(
+            night_job_result["success"],
+            serde_json::json!(true),
+            "add_job failed: {night_job_result}"
+        );
         // 09:00 触发 → 不在 quiet 内
-        let r2 = cron_storage.add_job(
+        let morning_job_result = cron_storage.add_job(
             &actor(),
             "盘后总结",
             Some(9),
@@ -572,26 +588,30 @@ mod tests {
             true,
         );
         assert_eq!(
-            r2["success"],
+            morning_job_result["success"],
             serde_json::json!(true),
-            "add_job 2 failed: {r2}"
+            "add_job 2 failed: {morning_job_result}"
         );
 
-        let pd = defaults();
-        let ov = build_overview(&prefs_dir, &cron_dir, &actor(), &pd, Utc::now()).unwrap();
+        let default_slots = defaults();
+        let overview =
+            build_overview(&prefs_dir, &cron_dir, &actor(), &default_slots, Utc::now()).unwrap();
 
-        let nighty = ov
+        let night_job = overview
             .schedule
             .iter()
-            .find(|e| e.content_hint == "夜半监控")
+            .find(|entry| entry.content_hint == "夜半监控")
             .expect("found cron 02:00");
-        assert!(nighty.will_be_held_by_quiet, "02:00 cron 应被 quiet 吞掉");
-        let post = ov
+        assert!(
+            night_job.will_be_held_by_quiet,
+            "02:00 cron 应被 quiet 吞掉"
+        );
+        let morning_job = overview
             .schedule
             .iter()
-            .find(|e| e.content_hint == "盘后总结")
+            .find(|entry| entry.content_hint == "盘后总结")
             .expect("found cron 09:00");
-        assert!(!post.will_be_held_by_quiet);
+        assert!(!morning_job.will_be_held_by_quiet);
     }
 
     #[test]
@@ -615,8 +635,8 @@ mod tests {
         let cron_dir = dir.path().join("cron");
         std::fs::create_dir_all(&prefs_dir).unwrap();
         std::fs::create_dir_all(&cron_dir).unwrap();
-        let pd = defaults();
-        build_overview(&prefs_dir, &cron_dir, &actor(), &pd, Utc::now()).unwrap()
+        let default_slots = defaults();
+        build_overview(&prefs_dir, &cron_dir, &actor(), &default_slots, Utc::now()).unwrap()
     }
 
     #[test]

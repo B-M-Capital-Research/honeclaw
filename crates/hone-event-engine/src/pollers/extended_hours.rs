@@ -110,7 +110,7 @@ impl ExtendedHoursPoller {
             if let Some(close) = response_json
                 .get("historical")
                 .and_then(|v| v.as_array())
-                .and_then(|arr| arr.first())
+                .and_then(|historical_rows| historical_rows.first())
                 .and_then(|item| item.get("close"))
                 .and_then(|v| v.as_f64())
             {
@@ -126,11 +126,11 @@ impl ExtendedHoursPoller {
     async fn fetch_window_bars(&self, symbol: &str) -> anyhow::Result<Vec<Bar>> {
         let path = format!("/v3/historical-chart/1min/{symbol}?extended=true");
         let response_json = self.client.get_json(&path).await?;
-        let arr = match response_json.as_array() {
+        let bar_values = match response_json.as_array() {
             Some(items) => items.clone(),
             None => return Ok(vec![]),
         };
-        Ok(arr.into_iter().filter_map(parse_bar).collect())
+        Ok(bar_values.into_iter().filter_map(parse_bar).collect())
     }
 }
 

@@ -84,7 +84,7 @@ impl Tool for DeepResearchTool {
             "company_name": company_name
         });
 
-        let mut req = self
+        let mut request_builder = self
             .http
             .post(&self.api_url)
             .header("Content-Type", "application/json")
@@ -92,10 +92,11 @@ impl Tool for DeepResearchTool {
             .timeout(std::time::Duration::from_secs(30));
 
         if !self.api_key.is_empty() {
-            req = req.header("Authorization", format!("Bearer {}", self.api_key));
+            request_builder =
+                request_builder.header("Authorization", format!("Bearer {}", self.api_key));
         }
 
-        let response = match req.send().await {
+        let response = match request_builder.send().await {
             Ok(response) => response,
             Err(e) => {
                 let safe_error = sanitize_deep_research_error_detail(&e.to_string());

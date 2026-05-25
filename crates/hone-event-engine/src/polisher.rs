@@ -100,12 +100,12 @@ impl BodyPolisher for LlmPolisher {
         }
         let messages = Self::build_prompt(event, default_body);
         match self.provider.chat(&messages, self.model.as_deref()).await {
-            Ok(res) => {
-                let t = res.content.trim();
-                if t.is_empty() {
+            Ok(llm_response) => {
+                let trimmed_content = llm_response.content.trim();
+                if trimmed_content.is_empty() {
                     None
                 } else {
-                    Some(t.to_string())
+                    Some(trimmed_content.to_string())
                 }
             }
             Err(e) => {
@@ -119,17 +119,17 @@ impl BodyPolisher for LlmPolisher {
 /// 把 config 里的字符串 severity 列表转换为 `HashSet<Severity>`。
 /// 不识别的字符串被忽略（记一条 warn）。
 pub fn parse_polish_levels(names: &[String]) -> HashSet<Severity> {
-    let mut out = HashSet::new();
+    let mut levels = HashSet::new();
     for name in names {
         match name.trim().to_ascii_lowercase().as_str() {
             "low" => {
-                out.insert(Severity::Low);
+                levels.insert(Severity::Low);
             }
             "medium" | "med" => {
-                out.insert(Severity::Medium);
+                levels.insert(Severity::Medium);
             }
             "high" => {
-                out.insert(Severity::High);
+                levels.insert(Severity::High);
             }
             other if !other.is_empty() => {
                 tracing::warn!("unknown polish severity level: {other}");
@@ -137,7 +137,7 @@ pub fn parse_polish_levels(names: &[String]) -> HashSet<Severity> {
             _ => {}
         }
     }
-    out
+    levels
 }
 
 #[cfg(test)]

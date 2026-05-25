@@ -240,7 +240,11 @@ fn parse_review_response(content: &str) -> Option<EarningsQualityReview> {
             Ok(value) => value,
             Err(_) => continue,
         };
-        let object = if let Some(first) = value.as_array().and_then(|arr| arr.first()).cloned() {
+        let object = if let Some(first) = value
+            .as_array()
+            .and_then(|response_items| response_items.first())
+            .cloned()
+        {
             first
         } else {
             value
