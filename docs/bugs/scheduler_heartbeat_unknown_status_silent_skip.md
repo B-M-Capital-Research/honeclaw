@@ -7,6 +7,20 @@
 
 ## 修复进展
 
+- `2026-05-25 15:04 CST` 本轮仅补充旧/未确认部署运行态证据，不把本单从 `Fixed` 回退：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 11:03-15:04 CST live 窗口新增 `69` 条 heartbeat 结构化 / 状态解析失败，终态均为 `execution_failed + skipped_error + delivered=0`；其中 Feishu `49` 条、Web `20` 条。
+    - 错误分布：`PlainTextSuppressed` `59` 条、`JsonUnknownStatus` `5` 条、`JsonMalformed` `3` 条、`JsonEmptyStatus` `2` 条；另有 `6` 条 `max_iterations_exceeded:10` 归入 `scheduler_heartbeat_iteration_exhaustion_skips_alert.md`，`11` 条 `ContextOverflowNoop` 归入 `scheduler_heartbeat_context_window_limit_no_recovery.md` 的旧/未确认部署运行态证据。
+    - 代表性样本：`run_id=33101` / `TEM破位预警`、`run_id=33095` / `全天原油价格3小时播报`、`run_id=33097` / `heartbeat_绿田机械基本面跟踪`、`run_id=33092` / Web `存储板块关键事件心跳提醒`、`run_id=33094` / Web `光模块板块关键事件心跳提醒` 均未按 heartbeat JSON 收口，最终写入执行失败。
+    - 同窗仍有合法 `noop + skipped_noop` 与少量 `completed + sent` 样本，例如 Feishu heartbeat `1` 条 `completed + sent + delivered=1`，普通 scheduler `1` 条 `completed + sent + delivered=1`，说明不是 scheduler 或出站整体不可用。
+  - 会话质量对照：
+    - 最近四小时按消息时间共有 `9` 个 user turn 与 `9` 个 assistant final；最近 Feishu direct / scheduler session 均以 assistant final 收口。
+    - assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`；最近四小时无 `running + pending` 残留、无非文档代码提交。
+  - 判断：
+    - 当前仓库 12:13 CST 已有 status 别名归一、完整 `<think>` 内部-only noop 兼容和配置路径护栏回归；最新 live 仍持续写入 `PlainTextSuppressed` / `JsonUnknownStatus` / `JsonMalformed`，更符合运行进程尚未确认重启/部署到该修复后的证据。
+    - 运行日志可见 `acp-events.log` 内部 session/update 与工具元数据、Feishu 已读事件无 handler 警告，但 direct / scheduler final 未见用户可见污染；主问题仍集中在既有 heartbeat 公共 JSON / 状态契约坏态。
+    - 后续只有在确认部署当前代码后仍出现同类结构化收口失败，再重新打开；本轮不创建 GitHub Issue。
+
 - `2026-05-25 11:03 CST` 本轮仅补充旧/未确认部署运行态证据，不把本单从 `Fixed` 回退：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - 07:02-11:02 CST live 窗口新增 `75` 条 heartbeat 结构化 / 状态解析失败，终态均为 `execution_failed + skipped_error + delivered=0`；其中 Feishu `56` 条、Web `19` 条。
