@@ -1517,7 +1517,7 @@ fn guard_commodity_causality_for_event(text: &str, event: &SchedulerEvent) -> Op
         return None;
     }
     let event_is_commodity_related = scheduler_event_is_commodity_related(event);
-    if !event_is_commodity_related && !text_looks_commodity_related(text) {
+    if !event_is_commodity_related && !text_is_predominantly_commodity_related(text) {
         return None;
     }
     if !event_is_commodity_related
@@ -1540,6 +1540,45 @@ fn text_looks_commodity_related(text: &str) -> bool {
     ["原油", "油价", "布伦特", "wti", "brent", "crude", "oil"]
         .iter()
         .any(|term| compact.contains(term))
+}
+
+fn text_is_predominantly_commodity_related(text: &str) -> bool {
+    if !text_looks_commodity_related(text) {
+        return false;
+    }
+
+    let segments = split_commodity_message_segments(text);
+    let meaningful_segments: Vec<&str> = segments
+        .iter()
+        .map(|segment| segment.trim())
+        .filter(|segment| !segment.is_empty())
+        .collect();
+    if meaningful_segments.is_empty() {
+        return true;
+    }
+    if meaningful_segments.len() <= 2 {
+        return true;
+    }
+
+    let total_chars: usize = meaningful_segments
+        .iter()
+        .map(|segment| segment.chars().count())
+        .sum();
+    if total_chars == 0 {
+        return false;
+    }
+
+    let commodity_segments = meaningful_segments
+        .iter()
+        .filter(|segment| text_looks_commodity_related(segment))
+        .count();
+    let commodity_chars: usize = meaningful_segments
+        .iter()
+        .filter(|segment| text_looks_commodity_related(segment))
+        .map(|segment| segment.chars().count())
+        .sum();
+
+    commodity_segments * 2 >= meaningful_segments.len() || commodity_chars * 2 >= total_chars
 }
 
 fn scheduler_metadata_with_commodity_guard(original: &str, guarded: &str) -> Value {
