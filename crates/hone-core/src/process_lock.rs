@@ -140,6 +140,19 @@ pub fn format_lock_failure_message(
     }
 }
 
+fn lock_pid_mismatch_warning(process: &str, pid: u32) -> String {
+    format!(
+        "{process} 启动锁记录的 pid={pid} 仍存在，但命令行已不匹配；为避免误杀进程，已跳过自动清理。"
+    )
+}
+
+fn lock_cleanup_attempt_warning(process: &str, pid: u32, path: &Path) -> String {
+    format!(
+        "检测到 {process} 启动锁冲突，正在尝试自动结束旧进程 pid={pid} 并清理锁文件: {}",
+        path.display()
+    )
+}
+
 fn read_lock_pid(path: &Path) -> Option<u32> {
     let content = fs::read_to_string(path).ok()?;
     content.lines().find_map(|line| {
@@ -228,18 +241,14 @@ pub fn try_cleanup_conflicting_process(
         return false;
     };
     if !pid_matches_expected_process(pid, &error.process) {
-        on_warn(&format!(
-            "startup lock conflict for {} has pid={} but command no longer matches expected process",
-            error.process, pid
-        ));
+        on_warn(&lock_pid_mismatch_warning(&error.process, pid));
         return false;
     }
 
-    on_warn(&format!(
-        "attempting automatic cleanup for startup lock conflict process={} pid={} path={}",
-        error.process,
+    on_warn(&lock_cleanup_attempt_warning(
+        &error.process,
         pid,
-        error.path.display()
+        &error.path,
     ));
 
     let stopped = terminate_pid_with_retry(pid);
@@ -321,5 +330,19 @@ mod tests {
         }
 
         let _ = fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn process_lock_cleanup_warnings_are_actionable() {
+        let mismatch = lock_pid_mismatch_warning(PROCESS_LOCK_DISCORD, 123);
+        assert!(mismatch.contains(PROCESS_LOCK_DISCORD));
+        assert!(mismatch.contains("pid=123"));
+        assert!(mismatch.contains("跳过自动清理"));
+
+        let cleanup =
+            lock_cleanup_attempt_warning(PROCESS_LOCK_DISCORD, 123, Path::new("/tmp/hone.lock"));
+        assert!(cleanup.contains("启动锁冲突"));
+        assert!(cleanup.contains("pid=123"));
+        assert!(cleanup.contains("/tmp/hone.lock"));
     }
 }

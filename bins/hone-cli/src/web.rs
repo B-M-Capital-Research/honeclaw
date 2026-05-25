@@ -304,7 +304,10 @@ async fn run_bundled_frontend(
             _ = tokio::time::sleep(Duration::from_millis(300)) => {
                 match child.try_wait() {
                     Ok(Some(status)) => {
-                        return Err(format!("hone-console-page exited unexpectedly: {status}"));
+                        return Err(start::unexpected_child_exit_message(
+                            "hone-console-page",
+                            &status,
+                        ));
                     }
                     Ok(None) => {}
                     Err(error) => {

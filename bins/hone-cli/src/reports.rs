@@ -118,7 +118,7 @@ pub(crate) fn binary_check(name: &str, help_arg: &str) -> BinaryStatus {
         Err(error) => BinaryStatus {
             name: name.to_string(),
             available: false,
-            detail: error.to_string(),
+            detail: truncate_binary_check_detail(&error.to_string()),
         },
     }
 }
@@ -157,7 +157,7 @@ pub(crate) fn runtime_binary_status(binary: &str) -> BinaryStatus {
         None => BinaryStatus {
             name: binary.to_string(),
             available: false,
-            detail: "未在 hone-cli 附近找到二进制".to_string(),
+            detail: truncate_binary_check_detail(&start::missing_binary_message(binary, None)),
         },
     }
 }
@@ -323,6 +323,16 @@ mod tests {
             detail,
             format!("{}...", "x".repeat(MAX_BINARY_CHECK_DETAIL_CHARS))
         );
+    }
+
+    #[test]
+    fn runtime_binary_status_missing_detail_is_actionable_and_bounded() {
+        let status = runtime_binary_status("hone-definitely-missing");
+
+        assert!(!status.available);
+        assert!(status.detail.contains("已检查"));
+        assert!(status.detail.contains("HONE_SOURCE_ROOT"));
+        assert!(status.detail.chars().count() <= MAX_BINARY_CHECK_DETAIL_CHARS + 3);
     }
 }
 

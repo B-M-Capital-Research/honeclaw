@@ -103,7 +103,9 @@ impl FeishuApiClient {
             ));
         }
 
-        let token = token_resp.tenant_access_token.ok_or("No token returned")?;
+        let token = token_resp
+            .tenant_access_token
+            .ok_or_else(feishu_token_missing_message)?;
         let expire_secs = token_resp.expire.unwrap_or(7200);
 
         let mut cache = self.token_cache.write().await;
@@ -464,7 +466,7 @@ impl FeishuApiClient {
                     && should_retry_attempt(attempt)
                 {
                     tracing::warn!(
-                        "Feishu resolve email api error {}: {}; retrying attempt {}/{}",
+                        "Feishu resolve email API returned retryable error code={} message={}; retrying attempt {}/{}",
                         batch_resp.code,
                         batch_resp.msg,
                         attempt + 1,
@@ -487,7 +489,7 @@ impl FeishuApiClient {
                 });
             }
 
-            return Err(format!("No user found for email {}", email));
+            return Err(feishu_contact_not_found_message("email", email));
         }
 
         Err("Feishu resolve email retry attempts exhausted".to_string())
@@ -548,7 +550,7 @@ impl FeishuApiClient {
                     && should_retry_attempt(attempt)
                 {
                     tracing::warn!(
-                        "Feishu resolve mobile api error {}: {}; retrying attempt {}/{}",
+                        "Feishu resolve mobile API returned retryable error code={} message={}; retrying attempt {}/{}",
                         batch_resp.code,
                         batch_resp.msg,
                         attempt + 1,
@@ -571,7 +573,7 @@ impl FeishuApiClient {
                 });
             }
 
-            return Err(format!("No user found for mobile {}", mobile));
+            return Err(feishu_contact_not_found_message("mobile", mobile));
         }
 
         Err("Feishu resolve mobile retry attempts exhausted".to_string())
@@ -947,13 +949,25 @@ fn first_batch_get_open_id(data: Option<serde_json::Value>) -> Option<String> {
         })
 }
 
+fn feishu_token_missing_message() -> String {
+    "Feishu token 响应缺少 tenant_access_token；请检查 feishu.app_id / feishu.app_secret 是否属于同一个应用，并确认应用权限已启用。"
+        .to_string()
+}
+
+fn feishu_contact_not_found_message(kind: &str, value: &str) -> String {
+    format!(
+        "Feishu contact lookup 未找到用户（{kind}={value}）；请检查 allowlist 配置值是否准确，以及应用通讯录权限是否覆盖该用户。"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        FEISHU_ERROR_BODY_MAX_CHARS, feishu_retry_delay, first_batch_get_open_id,
-        format_feishu_http_error, is_feishu_invalid_access_token_error,
-        should_refresh_feishu_token_for_http_error, should_retry_feishu_contact_lookup_api_error,
-        should_retry_feishu_status, should_retry_invalid_token_refresh,
+        FEISHU_ERROR_BODY_MAX_CHARS, feishu_contact_not_found_message, feishu_retry_delay,
+        feishu_token_missing_message, first_batch_get_open_id, format_feishu_http_error,
+        is_feishu_invalid_access_token_error, should_refresh_feishu_token_for_http_error,
+        should_retry_feishu_contact_lookup_api_error, should_retry_feishu_status,
+        should_retry_invalid_token_refresh,
     };
     use reqwest::StatusCode;
     use serde_json::json;
@@ -978,6 +992,19 @@ mod tests {
             ]
         })));
         assert!(open_id.is_none());
+    }
+
+    #[test]
+    fn feishu_token_and_contact_errors_are_actionable() {
+        let token_message = feishu_token_missing_message();
+        assert!(token_message.contains("tenant_access_token"));
+        assert!(token_message.contains("feishu.app_id"));
+        assert!(token_message.contains("权限"));
+
+        let contact_message = feishu_contact_not_found_message("email", "alice@example.com");
+        assert!(contact_message.contains("email=alice@example.com"));
+        assert!(contact_message.contains("allowlist"));
+        assert!(contact_message.contains("通讯录权限"));
     }
 
     #[test]

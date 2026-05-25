@@ -160,13 +160,52 @@ pub(crate) async fn wait_for_http_ready(url: &str) -> Result<(), String> {
         .build()
         .map_err(|e| e.to_string())?;
 
+    let mut last_observation = None;
     for _ in 0..60 {
         match client.get(url).send().await {
             Ok(response) if response.status() == StatusCode::OK => return Ok(()),
-            Ok(_) | Err(_) => tokio::time::sleep(Duration::from_millis(500)).await,
+            Ok(response) => {
+                last_observation = Some(format!("HTTP {}", response.status()));
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+            Err(error) => {
+                last_observation = Some(error.to_string());
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
         }
     }
-    Err(format!("服务未在预期时间内就绪: {url}"))
+    Err(http_ready_failure_message(url, last_observation.as_deref()))
+}
+
+fn http_ready_failure_message(url: &str, last_observation: Option<&str>) -> String {
+    match last_observation.filter(|value| !value.trim().is_empty()) {
+        Some(detail) => format!("服务未在预期时间内就绪: {url}（最后一次检查: {detail}）"),
+        None => format!("服务未在预期时间内就绪: {url}"),
+    }
+}
+
+pub(crate) fn missing_binary_message(binary: &str, source_root: Option<&Path>) -> String {
+    let executable = executable_name(binary);
+    let search_dirs = binary_search_dirs(source_root);
+    let checked = if search_dirs.is_empty() {
+        "<none>".to_string()
+    } else {
+        search_dirs
+            .iter()
+            .map(|dir| dir.to_string_lossy())
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    format!(
+        "找不到 {binary} 二进制（文件名: {executable}）。请确认它与 hone-cli 一起安装/构建；源码模式可先运行 `hone-cli start --build` 或设置 HONE_SOURCE_ROOT。已检查: {checked}"
+    )
+}
+
+pub(crate) fn unexpected_child_exit_message(
+    binary: &str,
+    status: &std::process::ExitStatus,
+) -> String {
+    format!("{binary} 异常退出（status={status}）。请查看上方 {binary} 日志。")
 }
 
 pub(crate) async fn spawn_binary(
@@ -176,7 +215,7 @@ pub(crate) async fn spawn_binary(
     source_root: Option<&Path>,
 ) -> Result<Child, String> {
     let path = locate_binary_with_source(binary, source_root)
-        .ok_or_else(|| format!("找不到 {binary} 二进制；请确认它与 hone-cli 一起安装/构建"))?;
+        .ok_or_else(|| missing_binary_message(binary, source_root))?;
 
     let mut command = Command::new(&path);
     command
@@ -213,7 +252,9 @@ async fn spawn_channel(
 pub(crate) async fn ensure_child_alive(binary: &str, child: &mut Child) -> Result<(), String> {
     tokio::time::sleep(Duration::from_secs(1)).await;
     match child.try_wait() {
-        Ok(Some(status)) => Err(format!("{binary} 启动后立即退出（status={status}）")),
+        Ok(Some(status)) => Err(format!(
+            "{binary} 启动后立即退出（status={status}）。请查看上方 {binary} 日志。"
+        )),
         Ok(None) => Ok(()),
         Err(error) => Err(format!("检查 {binary} 进程状态失败：{error}")),
     }
@@ -404,7 +445,7 @@ pub(crate) async fn run_start(
                     shutdown_children(&mut children).await;
                     clear_current_pid(&paths);
                     let binary = labels.get(idx).copied().unwrap_or("unknown");
-                    let base_error = format!("{binary} exited unexpectedly: {status}");
+                    let base_error = unexpected_child_exit_message(binary, &status);
                     if let Some(hint) = unexpected_exit_hint(binary) {
                         return Err(format!("{base_error}\n{hint}"));
                     }
@@ -460,6 +501,52 @@ mod tests {
         assert_eq!(resolved, binary);
 
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn missing_binary_message_lists_checked_source_dir() {
+        let root = std::env::temp_dir().join(format!(
+            "hone_missing_binary_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let message = missing_binary_message("hone-console-page", Some(&root));
+
+        assert!(message.contains("hone-console-page"));
+        assert!(message.contains(&source_target_debug_dir(&root).to_string_lossy().to_string()));
+        assert!(message.contains("HONE_SOURCE_ROOT"));
+    }
+
+    #[test]
+    fn http_ready_failure_message_keeps_last_observation() {
+        let message =
+            http_ready_failure_message("http://127.0.0.1:8077/api/meta", Some("HTTP 503"));
+
+        assert!(message.contains("http://127.0.0.1:8077/api/meta"));
+        assert!(message.contains("HTTP 503"));
+    }
+
+    #[test]
+    fn unexpected_child_exit_message_points_to_process_logs() {
+        #[cfg(unix)]
+        let status = std::process::Command::new("sh")
+            .arg("-c")
+            .arg("exit 7")
+            .status()
+            .expect("quick command should run");
+        #[cfg(windows)]
+        let status = std::process::Command::new("cmd")
+            .args(["/C", "exit /B 7"])
+            .status()
+            .expect("quick command should run");
+        let message = unexpected_child_exit_message("hone-console-page", &status);
+
+        assert!(message.contains("hone-console-page"));
+        assert!(message.contains("status="));
+        assert!(message.contains("日志"));
     }
 
     fn long_running_command() -> Command {
