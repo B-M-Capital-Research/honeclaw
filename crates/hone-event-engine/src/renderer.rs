@@ -345,72 +345,72 @@ mod tests {
 
     #[test]
     fn plain_high_starts_with_text_severity_tag() {
-        let s = render_immediate(&sample(EventKind::EarningsReleased), RenderFormat::Plain);
-        let first_line = s.lines().next().unwrap();
+        let rendered = render_immediate(&sample(EventKind::EarningsReleased), RenderFormat::Plain);
+        let first_line = rendered.lines().next().unwrap();
         assert!(
             first_line.starts_with("【要闻】 $AAPL · "),
             "got: {first_line}"
         );
         assert!(first_line.contains("财报发布"));
-        assert!(!s.contains("🔴"), "不应再带 emoji 颜色球徽标");
-        assert!(!s.contains("🔗"), "URL 应裸贴，不带 🔗 前缀");
-        assert!(s.contains("Q2 results"));
-        assert!(s.contains("EPS beat"));
-        assert!(s.contains("https://x.example.com/path"));
+        assert!(!rendered.contains("🔴"), "不应再带 emoji 颜色球徽标");
+        assert!(!rendered.contains("🔗"), "URL 应裸贴，不带 🔗 前缀");
+        assert!(rendered.contains("Q2 results"));
+        assert!(rendered.contains("EPS beat"));
+        assert!(rendered.contains("https://x.example.com/path"));
     }
 
     #[test]
     fn sec_filing_includes_form_code() {
-        let ev = sample(EventKind::SecFiling { form: "8-K".into() });
-        let s = render_immediate(&ev, RenderFormat::Plain);
-        assert!(s.contains("SEC 8-K"));
+        let event = sample(EventKind::SecFiling { form: "8-K".into() });
+        let rendered = render_immediate(&event, RenderFormat::Plain);
+        assert!(rendered.contains("SEC 8-K"));
     }
 
     #[test]
     fn sec_filing_prefers_llm_summary_over_event_summary() {
-        let mut ev = sample(EventKind::SecFiling {
+        let mut event = sample(EventKind::SecFiling {
             form: "10-Q".into(),
         });
-        ev.summary = "2026-04-20".into();
-        ev.payload = serde_json::json!({
+        event.summary = "2026-04-20".into();
+        event.payload = serde_json::json!({
             "llm_summary": "这份 filing 最值得 长期主线投资者关注的是 GE Vernova 的 backlog 同比增加 25%。"
         });
-        let s = render_immediate(&ev, RenderFormat::Plain);
+        let rendered = render_immediate(&event, RenderFormat::Plain);
         assert!(
-            s.contains("这份 filing 最值得"),
-            "expected LLM summary in body, got:\n{s}"
+            rendered.contains("这份 filing 最值得"),
+            "expected LLM summary in body, got:\n{rendered}"
         );
         assert!(
-            !s.contains("2026-04-20"),
-            "expected filing date to be replaced by LLM summary, got:\n{s}"
+            !rendered.contains("2026-04-20"),
+            "expected filing date to be replaced by LLM summary, got:\n{rendered}"
         );
     }
 
     #[test]
     fn sec_filing_falls_back_to_summary_when_no_llm_summary() {
-        let mut ev = sample(EventKind::SecFiling {
+        let mut event = sample(EventKind::SecFiling {
             form: "10-Q".into(),
         });
-        ev.summary = "2026-04-20".into();
-        ev.payload = serde_json::Value::Null;
-        let s = render_immediate(&ev, RenderFormat::Plain);
+        event.summary = "2026-04-20".into();
+        event.payload = serde_json::Value::Null;
+        let rendered = render_immediate(&event, RenderFormat::Plain);
         assert!(
-            s.contains("2026-04-20"),
-            "expected fallback to filing date, got:\n{s}"
+            rendered.contains("2026-04-20"),
+            "expected fallback to filing date, got:\n{rendered}"
         );
     }
 
     #[test]
     fn sec_filing_falls_back_when_llm_summary_blank() {
-        let mut ev = sample(EventKind::SecFiling {
+        let mut event = sample(EventKind::SecFiling {
             form: "10-Q".into(),
         });
-        ev.summary = "2026-04-20".into();
-        ev.payload = serde_json::json!({"llm_summary": "   "});
-        let s = render_immediate(&ev, RenderFormat::Plain);
+        event.summary = "2026-04-20".into();
+        event.payload = serde_json::json!({"llm_summary": "   "});
+        let rendered = render_immediate(&event, RenderFormat::Plain);
         assert!(
-            s.contains("2026-04-20"),
-            "blank llm_summary should fallback to summary; got:\n{s}"
+            rendered.contains("2026-04-20"),
+            "blank llm_summary should fallback to summary; got:\n{rendered}"
         );
     }
 
@@ -418,112 +418,112 @@ mod tests {
     fn non_secfiling_ignores_llm_summary_payload() {
         // 防御回归:effective_body 只在 SecFiling 上看 payload.llm_summary,
         // 其他 kind 即使 payload 里有 llm_summary 也应保持原 summary 行为。
-        let mut ev = sample(EventKind::EarningsReleased);
-        ev.summary = "EPS beat".into();
-        ev.payload = serde_json::json!({"llm_summary": "should not show up"});
-        let s = render_immediate(&ev, RenderFormat::Plain);
-        assert!(s.contains("EPS beat"));
-        assert!(!s.contains("should not show up"));
+        let mut event = sample(EventKind::EarningsReleased);
+        event.summary = "EPS beat".into();
+        event.payload = serde_json::json!({"llm_summary": "should not show up"});
+        let rendered = render_immediate(&event, RenderFormat::Plain);
+        assert!(rendered.contains("EPS beat"));
+        assert!(!rendered.contains("should not show up"));
     }
 
     #[test]
     fn omits_symbols_cleanly_when_absent() {
-        let mut ev = sample(EventKind::MacroEvent);
-        ev.symbols.clear();
-        ev.url = None;
-        ev.summary = String::new();
-        let s = render_immediate(&ev, RenderFormat::Plain);
-        let first = s.lines().next().unwrap();
+        let mut event = sample(EventKind::MacroEvent);
+        event.symbols.clear();
+        event.url = None;
+        event.summary = String::new();
+        let rendered = render_immediate(&event, RenderFormat::Plain);
+        let first = rendered.lines().next().unwrap();
         assert!(!first.contains(" · "));
         assert!(first.contains("宏观"));
-        assert!(!s.contains("$"));
+        assert!(!rendered.contains("$"));
     }
 
     #[test]
     fn many_symbols_collapse_with_plus_n() {
-        let mut ev = sample(EventKind::NewsCritical);
-        ev.symbols = vec!["AAPL", "MSFT", "NVDA", "TSLA", "GOOG"]
+        let mut event = sample(EventKind::NewsCritical);
+        event.symbols = vec!["AAPL", "MSFT", "NVDA", "TSLA", "GOOG"]
             .into_iter()
             .map(String::from)
             .collect();
-        let head = header_line(&ev);
+        let head = header_line(&event);
         assert!(head.starts_with("$AAPL $MSFT $NVDA +2"), "got: {head}");
     }
 
     #[test]
     fn compact_header_for_digest_rows() {
-        let ev = sample(EventKind::Split);
-        let s = header_line_compact(&ev);
-        assert_eq!(s, "$AAPL [拆股]");
+        let event = sample(EventKind::Split);
+        let rendered = header_line_compact(&event);
+        assert_eq!(rendered, "$AAPL [拆股]");
     }
 
     #[test]
     fn severity_tags_are_distinct_and_low_is_unprefixed() {
-        let mut ev = sample(EventKind::EarningsReleased);
-        ev.severity = Severity::Medium;
-        let s_med = render_immediate(&ev, RenderFormat::Plain);
-        assert!(s_med.starts_with("【简讯】 "));
-        ev.severity = Severity::Low;
-        let s_low = render_immediate(&ev, RenderFormat::Plain);
+        let mut event = sample(EventKind::EarningsReleased);
+        event.severity = Severity::Medium;
+        let medium_rendered = render_immediate(&event, RenderFormat::Plain);
+        assert!(medium_rendered.starts_with("【简讯】 "));
+        event.severity = Severity::Low;
+        let low_rendered = render_immediate(&event, RenderFormat::Plain);
         assert!(
-            s_low.starts_with("$AAPL · "),
-            "Low 不应有前缀，应直接以 cashtag 开头；got: {s_low}"
+            low_rendered.starts_with("$AAPL · "),
+            "Low 不应有前缀，应直接以 cashtag 开头；got: {low_rendered}"
         );
     }
 
     #[test]
     fn telegram_html_wraps_header_and_anchor_url() {
-        let s = render_immediate(
+        let rendered = render_immediate(
             &sample(EventKind::EarningsReleased),
             RenderFormat::TelegramHtml,
         );
-        let first = s.lines().next().unwrap();
+        let first = rendered.lines().next().unwrap();
         assert!(
             first.starts_with("<b>【要闻】 $AAPL · "),
             "头行应包在 <b>…</b>；got: {first}"
         );
         assert!(first.ends_with("</b>"));
         assert!(
-            s.contains(r#"<a href="https://x.example.com/path">x.example.com</a>"#),
-            "URL 应折成 host 锚文本；got: {s}"
+            rendered.contains(r#"<a href="https://x.example.com/path">x.example.com</a>"#),
+            "URL 应折成 host 锚文本；got: {rendered}"
         );
     }
 
     #[test]
     fn telegram_html_escapes_dangerous_chars_in_title() {
-        let mut ev = sample(EventKind::NewsCritical);
-        ev.title = "AT&T <div> hack".into();
-        ev.url = None;
-        ev.summary = String::new();
-        let s = render_immediate(&ev, RenderFormat::TelegramHtml);
-        assert!(s.contains("AT&amp;T &lt;div&gt; hack"));
-        assert!(!s.contains("<div>"));
+        let mut event = sample(EventKind::NewsCritical);
+        event.title = "AT&T <div> hack".into();
+        event.url = None;
+        event.summary = String::new();
+        let rendered = render_immediate(&event, RenderFormat::TelegramHtml);
+        assert!(rendered.contains("AT&amp;T &lt;div&gt; hack"));
+        assert!(!rendered.contains("<div>"));
     }
 
     #[test]
     fn discord_markdown_uses_bold_and_link_syntax() {
-        let s = render_immediate(
+        let rendered = render_immediate(
             &sample(EventKind::EarningsReleased),
             RenderFormat::DiscordMarkdown,
         );
-        let first = s.lines().next().unwrap();
+        let first = rendered.lines().next().unwrap();
         assert!(
             first.starts_with("**【要闻】 $AAPL · ") && first.ends_with("**"),
             "头行应用 **…** 加粗；got: {first}"
         );
         assert!(
-            s.contains("[x.example.com](https://x.example.com/path)"),
-            "URL 应为 Markdown 链接语法；got: {s}"
+            rendered.contains("[x.example.com](https://x.example.com/path)"),
+            "URL 应为 Markdown 链接语法；got: {rendered}"
         );
     }
 
     #[test]
     fn feishu_post_renders_link_icon_element() {
-        let s = render_immediate(
+        let rendered = render_immediate(
             &sample(EventKind::EarningsReleased),
             RenderFormat::FeishuPost,
         );
-        let parsed: serde_json::Value = serde_json::from_str(&s).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&rendered).unwrap();
         assert_eq!(
             parsed
                 .pointer("/zh_cn/title")
@@ -549,14 +549,14 @@ mod tests {
 
     #[test]
     fn immediate_render_omits_unstable_thefly_ajax_url() {
-        let mut ev = sample(EventKind::AnalystGrade);
-        ev.url = Some("https://thefly.com/ajax/news_get.php?id=4357265".into());
+        let mut event = sample(EventKind::AnalystGrade);
+        event.url = Some("https://thefly.com/ajax/news_get.php?id=4357265".into());
 
-        let plain = render_immediate(&ev, RenderFormat::Plain);
+        let plain = render_immediate(&event, RenderFormat::Plain);
         assert!(!plain.contains("news_get.php"), "got:\n{plain}");
 
-        ev.url = Some("https://news.example.com/path".into());
-        let plain = render_immediate(&ev, RenderFormat::Plain);
+        event.url = Some("https://news.example.com/path".into());
+        let plain = render_immediate(&event, RenderFormat::Plain);
         assert!(plain.contains("https://news.example.com/path"));
     }
 }

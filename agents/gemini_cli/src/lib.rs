@@ -136,11 +136,11 @@ pub fn parse_stream_event(line: &str) -> Option<GeminiStreamEvent> {
                 Value::String(s) => s.clone(),
                 other => other.to_string(),
             };
-            let s = text.trim();
-            if s.is_empty() {
+            let trimmed_text = text.trim();
+            if trimmed_text.is_empty() {
                 None
             } else {
-                Some(GeminiStreamEvent::Content(s.to_string()))
+                Some(GeminiStreamEvent::Content(trimmed_text.to_string()))
             }
         }
 
@@ -199,9 +199,9 @@ pub fn parse_stream_event(line: &str) -> Option<GeminiStreamEvent> {
             let role = json.get("role").and_then(|v| v.as_str()).unwrap_or("");
             if role == "assistant" {
                 if let Some(content) = json.get("content").and_then(|v| v.as_str()) {
-                    let s = content.trim();
-                    if !s.is_empty() {
-                        return Some(GeminiStreamEvent::Content(s.to_string()));
+                    let trimmed_content = content.trim();
+                    if !trimmed_content.is_empty() {
+                        return Some(GeminiStreamEvent::Content(trimmed_content.to_string()));
                     }
                 }
             }
@@ -229,9 +229,9 @@ pub fn parse_stream_event(line: &str) -> Option<GeminiStreamEvent> {
         // ── 无 type 字段：尝试旧格式 {"response":"..."} ───────────────────────
         _ => {
             if let Some(resp) = json.get("response").and_then(|v| v.as_str()) {
-                let s = resp.trim();
-                if !s.is_empty() {
-                    return Some(GeminiStreamEvent::Content(s.to_string()));
+                let trimmed_response = resp.trim();
+                if !trimmed_response.is_empty() {
+                    return Some(GeminiStreamEvent::Content(trimmed_response.to_string()));
                 }
             }
             None

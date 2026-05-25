@@ -924,9 +924,9 @@ mod tests {
 
     #[tokio::test]
     async fn noop_summarizer_returns_none() {
-        let s = NoopSecFilingSummarizer;
-        let ev = make_filing_event("sec:TSLA:abc", Some("https://sec.gov/x.htm"), "10-Q");
-        assert!(s.summarize(&ev).await.is_none());
+        let summarizer = NoopSecFilingSummarizer;
+        let filing_event = make_filing_event("sec:TSLA:abc", Some("https://sec.gov/x.htm"), "10-Q");
+        assert!(summarizer.summarize(&filing_event).await.is_none());
     }
 
     /// 模拟 LlmProvider —— 直接 echo 一个固定 summary,用来验证 cache + LLM 调用路径
@@ -963,35 +963,35 @@ mod tests {
     #[tokio::test]
     async fn llm_summarizer_returns_none_when_url_fetch_fails() {
         let provider: Arc<dyn LlmProvider> = Arc::new(PanicProvider);
-        let s =
+        let summarizer =
             LlmSecFilingSummarizer::new(provider, "x-ai/grok-4.3", 800, "test-ua test@example.com");
         // 真实但 unroutable 的 URL —— reqwest 应该 timeout / error 出来,触发 None 路径
         // 而非走到 LLM call。
-        let ev = make_filing_event(
+        let filing_event = make_filing_event(
             "sec:TSLA:offline",
             Some("http://127.0.0.1:1/never-listening"),
             "10-Q",
         );
         // 触发 fetch 失败路径
-        assert!(s.summarize(&ev).await.is_none());
+        assert!(summarizer.summarize(&filing_event).await.is_none());
     }
 
     #[tokio::test]
     async fn llm_summarizer_returns_none_for_non_secfiling_event() {
         let provider: Arc<dyn LlmProvider> = Arc::new(PanicProvider);
-        let s =
+        let summarizer =
             LlmSecFilingSummarizer::new(provider, "x-ai/grok-4.3", 800, "test-ua test@example.com");
-        let mut ev = make_filing_event("x", Some("https://x"), "10-Q");
-        ev.kind = EventKind::Split; // 不是 SecFiling
-        assert!(s.summarize(&ev).await.is_none());
+        let mut filing_event = make_filing_event("x", Some("https://x"), "10-Q");
+        filing_event.kind = EventKind::Split; // 不是 SecFiling
+        assert!(summarizer.summarize(&filing_event).await.is_none());
     }
 
     #[tokio::test]
     async fn llm_summarizer_returns_none_for_empty_url() {
         let provider: Arc<dyn LlmProvider> = Arc::new(PanicProvider);
-        let s =
+        let summarizer =
             LlmSecFilingSummarizer::new(provider, "x-ai/grok-4.3", 800, "test-ua test@example.com");
-        let ev = make_filing_event("x", None, "10-Q");
-        assert!(s.summarize(&ev).await.is_none());
+        let filing_event = make_filing_event("x", None, "10-Q");
+        assert!(summarizer.summarize(&filing_event).await.is_none());
     }
 }

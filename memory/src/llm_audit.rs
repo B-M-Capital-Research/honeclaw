@@ -580,16 +580,19 @@ mod tests {
         assert_eq!(res_all.1, 2);
 
         // 2. Test filtering by actor_channel
-        let res = storage
+        let filtered_records = storage
             .list_audit_records(&AuditQueryFilter {
                 actor_channel: Some("feishu".to_string()),
                 ..Default::default()
             })
             .unwrap();
-        assert_eq!(res.1, 1);
-        assert_eq!(res.0[0].actor_channel.as_deref(), Some("feishu"));
-        assert_eq!(res.0[0].latency_ms, Some(150));
-        assert_eq!(res.0[0].prompt_tokens, None);
+        assert_eq!(filtered_records.1, 1);
+        assert_eq!(
+            filtered_records.0[0].actor_channel.as_deref(),
+            Some("feishu")
+        );
+        assert_eq!(filtered_records.0[0].latency_ms, Some(150));
+        assert_eq!(filtered_records.0[0].prompt_tokens, None);
 
         // 3. Test success boolean filtering
         let res_success = storage

@@ -1250,9 +1250,9 @@ mod tests {
     fn insert_is_idempotent_per_id() {
         let dir = tempdir().unwrap();
         let store = EventStore::open(dir.path().join("events.db")).unwrap();
-        let ev = sample_event("earnings:AAPL:2026-04-30");
-        assert!(store.insert_event(&ev).unwrap()); // 首次
-        assert!(!store.insert_event(&ev).unwrap()); // 重复
+        let event = sample_event("earnings:AAPL:2026-04-30");
+        assert!(store.insert_event(&event).unwrap()); // 首次
+        assert!(!store.insert_event(&event).unwrap()); // 重复
         assert_eq!(store.count_events().unwrap(), 1);
     }
 

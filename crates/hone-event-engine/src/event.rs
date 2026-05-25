@@ -313,7 +313,7 @@ mod tests {
 
     #[test]
     fn touches_is_case_insensitive() {
-        let ev = MarketEvent {
+        let event = MarketEvent {
             id: "earnings:AAPL:2026-04-30".into(),
             kind: EventKind::EarningsUpcoming,
             severity: Severity::Medium,
@@ -325,14 +325,14 @@ mod tests {
             source: "fmp.earning_calendar".into(),
             payload: serde_json::Value::Null,
         };
-        assert!(ev.touches("aapl"));
-        assert!(ev.touches("AAPL"));
-        assert!(!ev.touches("TSLA"));
+        assert!(event.touches("aapl"));
+        assert!(event.touches("AAPL"));
+        assert!(!event.touches("TSLA"));
     }
 
     #[test]
     fn user_visible_url_filters_unstable_thefly_entrypoints() {
-        let mut ev = MarketEvent {
+        let mut event = MarketEvent {
             id: "grade:AMD:test".into(),
             kind: EventKind::AnalystGrade,
             severity: Severity::High,
@@ -345,21 +345,21 @@ mod tests {
             payload: serde_json::Value::Null,
         };
 
-        assert_eq!(ev.user_visible_url(), None);
+        assert_eq!(event.user_visible_url(), None);
 
-        ev.url = Some("https://apim.thefly.com/news.php?symbol=AMD".into());
-        assert_eq!(ev.user_visible_url(), None);
+        event.url = Some("https://apim.thefly.com/news.php?symbol=AMD".into());
+        assert_eq!(event.user_visible_url(), None);
 
-        ev.url = Some("https://thefly.com/permalinks/entry.php/id4191882/TEL-test".into());
+        event.url = Some("https://thefly.com/permalinks/entry.php/id4191882/TEL-test".into());
         assert_eq!(
-            ev.user_visible_url(),
+            event.user_visible_url(),
             Some("https://thefly.com/permalinks/entry.php/id4191882/TEL-test")
         );
     }
 
     #[test]
     fn detects_noop_analyst_grade_hold() {
-        let ev = MarketEvent {
+        let event = MarketEvent {
             id: "grade:GEV:test".into(),
             kind: EventKind::AnalystGrade,
             severity: Severity::Low,
@@ -376,12 +376,12 @@ mod tests {
             }),
         };
 
-        assert!(is_noop_analyst_grade(&ev));
+        assert!(is_noop_analyst_grade(&event));
     }
 
     #[test]
     fn detects_noop_analyst_grade_dirty_downgrade_label() {
-        let ev = MarketEvent {
+        let event = MarketEvent {
             id: "grade:AMD:test".into(),
             kind: EventKind::AnalystGrade,
             severity: Severity::High,
@@ -400,14 +400,14 @@ mod tests {
         };
 
         assert!(
-            is_noop_analyst_grade(&ev),
+            is_noop_analyst_grade(&event),
             "same-rating dirty downgrade rows should not force immediate delivery"
         );
     }
 
     #[test]
     fn target_change_with_same_rating_is_not_noop_grade() {
-        let ev = MarketEvent {
+        let event = MarketEvent {
             id: "grade:GEV:test".into(),
             kind: EventKind::AnalystGrade,
             severity: Severity::Medium,
@@ -424,12 +424,12 @@ mod tests {
             }),
         };
 
-        assert!(!is_noop_analyst_grade(&ev));
+        assert!(!is_noop_analyst_grade(&event));
     }
 
     #[test]
     fn target_change_news_title_with_hold_action_is_not_noop_grade() {
-        let ev = MarketEvent {
+        let event = MarketEvent {
             id: "grade:GOOGL:test".into(),
             kind: EventKind::AnalystGrade,
             severity: Severity::Low,
@@ -447,12 +447,12 @@ mod tests {
             }),
         };
 
-        assert!(!is_noop_analyst_grade(&ev));
+        assert!(!is_noop_analyst_grade(&event));
     }
 
     #[test]
     fn event_roundtrip_json() {
-        let ev = MarketEvent {
+        let event = MarketEvent {
             id: "price:NVDA:2026-04-21T15:00".into(),
             kind: EventKind::PriceAlert {
                 pct_change_bps: 1200,
@@ -467,9 +467,9 @@ mod tests {
             source: "fmp.quote".into(),
             payload: serde_json::json!({"price": 940.5}),
         };
-        let s = serde_json::to_string(&ev).unwrap();
-        let back: MarketEvent = serde_json::from_str(&s).unwrap();
-        assert_eq!(back.id, ev.id);
+        let serialized = serde_json::to_string(&event).unwrap();
+        let back: MarketEvent = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(back.id, event.id);
         assert_eq!(back.severity, Severity::High);
     }
 }

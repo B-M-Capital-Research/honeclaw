@@ -245,29 +245,32 @@ mod tests {
     fn parses_messages_with_core_fields() {
         let events = parse_telegram_preview(SAMPLE_HTML, "watcherguru", true);
         assert_eq!(events.len(), 2, "empty-text message should be skipped");
-        let e = &events[0];
-        assert_eq!(e.kind, EventKind::SocialPost);
-        assert_eq!(e.severity, Severity::Low);
-        assert_eq!(e.source, "telegram.watcherguru");
-        assert_eq!(e.id, "telegram:watcherguru:12345");
-        assert_eq!(e.url.as_deref(), Some("https://t.me/watcherguru/12345"));
+        let event = &events[0];
+        assert_eq!(event.kind, EventKind::SocialPost);
+        assert_eq!(event.severity, Severity::Low);
+        assert_eq!(event.source, "telegram.watcherguru");
+        assert_eq!(event.id, "telegram:watcherguru:12345");
+        assert_eq!(event.url.as_deref(), Some("https://t.me/watcherguru/12345"));
         assert_eq!(
-            e.payload.get("source_class").and_then(|v| v.as_str()),
+            event.payload.get("source_class").and_then(|v| v.as_str()),
             Some("uncertain")
         );
         assert_eq!(
-            e.payload.get("channel").and_then(|v| v.as_str()),
+            event.payload.get("channel").and_then(|v| v.as_str()),
             Some("watcherguru")
         );
-        assert!(e.title.contains("BREAKING"));
-        assert!(e.symbols.contains(&"BTC".to_string()));
+        assert!(event.title.contains("BREAKING"));
+        assert!(event.symbols.contains(&"BTC".to_string()));
     }
 
     #[test]
     fn occurred_at_parses_iso() {
         let events = parse_telegram_preview(SAMPLE_HTML, "watcherguru", false);
-        let e = events.iter().find(|e| e.id.ends_with("12345")).unwrap();
-        assert_eq!(e.occurred_at.to_rfc3339(), "2026-04-20T12:34:56+00:00");
+        let event = events
+            .iter()
+            .find(|event| event.id.ends_with("12345"))
+            .unwrap();
+        assert_eq!(event.occurred_at.to_rfc3339(), "2026-04-20T12:34:56+00:00");
     }
 
     #[test]

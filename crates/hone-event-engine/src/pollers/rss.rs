@@ -429,23 +429,24 @@ mod tests {
             pub_date: Some(Utc::now()),
             summary: "Space Force contract for satellite crosslink demo".into(),
         };
-        let ev = poller.into_event(item, Utc::now()).unwrap();
-        assert_eq!(ev.source, "rss:spacenews");
-        assert_eq!(ev.severity, Severity::High);
-        assert!(matches!(ev.kind, EventKind::NewsCritical));
-        assert!(ev.id.starts_with("news:https://spacenews.com/"));
+        let event = poller.into_event(item, Utc::now()).unwrap();
+        assert_eq!(event.source, "rss:spacenews");
+        assert_eq!(event.severity, Severity::High);
+        assert!(matches!(event.kind, EventKind::NewsCritical));
+        assert!(event.id.starts_with("news:https://spacenews.com/"));
         // payload 模拟 FMP shape
         assert_eq!(
-            ev.payload.get("source_class").and_then(|v| v.as_str()),
+            event.payload.get("source_class").and_then(|v| v.as_str()),
             Some("trusted")
         );
         assert_eq!(
-            ev.payload
+            event
+                .payload
                 .get("legal_ad_template")
                 .and_then(|v| v.as_bool()),
             Some(false)
         );
-        let fmp = ev.payload.get("fmp").unwrap();
+        let fmp = event.payload.get("fmp").unwrap();
         assert_eq!(fmp.get("site").and_then(|v| v.as_str()), Some("spacenews"));
         assert!(
             fmp.get("text")

@@ -621,10 +621,10 @@ mod tests {
 
     #[test]
     fn render_overview_discord_uses_codeblock_table() {
-        let ov = make_overview();
-        let s = render_overview(&ov, RenderFormat::DiscordMarkdown);
+        let overview = make_overview();
+        let rendered = render_overview(&overview, RenderFormat::DiscordMarkdown);
         assert_text_contains_all(
-            &s,
+            &rendered,
             &[
                 "你的推送日程",
                 "Asia/Shanghai",
@@ -634,33 +634,33 @@ mod tests {
                 "类型",
             ],
         );
-        assert_text_contains_none(&s, &["| --- |", "## "]);
+        assert_text_contains_none(&rendered, &["| --- |", "## "]);
     }
 
     #[test]
     fn render_overview_telegram_uses_pre_block() {
-        let ov = make_overview();
-        let s = render_overview(&ov, RenderFormat::TelegramHtml);
-        assert_text_contains_all(&s, &["<pre>\n", "\n</pre>", "时刻"]);
+        let overview = make_overview();
+        let rendered = render_overview(&overview, RenderFormat::TelegramHtml);
+        assert_text_contains_all(&rendered, &["<pre>\n", "\n</pre>", "时刻"]);
     }
 
     #[test]
     fn render_overview_feishu_and_imessage_use_bullet_list() {
-        let ov = make_overview();
+        let overview = make_overview();
         for fmt in [RenderFormat::FeishuPost, RenderFormat::Plain] {
-            let s = render_overview(&ov, fmt);
-            assert_text_contains_all(&s, &["你的推送日程", "定时推送："]);
+            let rendered = render_overview(&overview, fmt);
+            assert_text_contains_all(&rendered, &["你的推送日程", "定时推送："]);
             // 不应出现代码块或 HTML 标签
-            assert_text_contains_none(&s, &["```", "<pre>"]);
+            assert_text_contains_none(&rendered, &["```", "<pre>"]);
             // 每条 schedule 单行带 •
-            assert!(s.contains("• 07:30") || s.contains("• 08:30"));
+            assert!(rendered.contains("• 07:30") || rendered.contains("• 08:30"));
         }
     }
 
     #[test]
     #[ignore]
     fn dump_all_renders_for_visual_inspection() {
-        let ov = make_overview();
+        let overview = make_overview();
         for (label, fmt) in [
             ("Discord", RenderFormat::DiscordMarkdown),
             ("Telegram", RenderFormat::TelegramHtml),
@@ -668,7 +668,7 @@ mod tests {
             ("iMessage (Plain)", RenderFormat::Plain),
         ] {
             println!("\n========== {label} ==========");
-            println!("{}", render_overview(&ov, fmt));
+            println!("{}", render_overview(&overview, fmt));
         }
     }
 
