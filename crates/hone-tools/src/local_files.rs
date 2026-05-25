@@ -117,7 +117,7 @@ impl LocalSandboxAccess {
 
     fn resolve_file(&self, raw: &str) -> HoneResult<(PathBuf, PathBuf)> {
         let relative = self.normalize_relative_path(raw)?;
-        if relative == PathBuf::from(".") {
+        if relative == Path::new(".") {
             return Err(HoneError::Tool("请提供具体文件路径".to_string()));
         }
         let joined = self.sandbox_root().join(&relative);
@@ -240,10 +240,10 @@ impl Tool for LocalListFilesTool {
                 continue;
             }
             let rel = LocalSandboxAccess::relative_to_root(&root, entry.path())?;
-            if let Some(pattern) = &pattern {
-                if !pattern.matches_path(Path::new(&rel)) {
-                    continue;
-                }
+            if let Some(pattern) = &pattern
+                && !pattern.matches_path(Path::new(&rel))
+            {
+                continue;
             }
             let kind = if entry.file_type().is_dir() {
                 "dir"
@@ -379,10 +379,10 @@ impl Tool for LocalSearchFilesTool {
                     continue;
                 }
                 let rel = LocalSandboxAccess::relative_to_root(&root, entry.path())?;
-                if let Some(pattern) = &pattern {
-                    if !pattern.matches_path(Path::new(&rel)) {
-                        continue;
-                    }
+                if let Some(pattern) = &pattern
+                    && !pattern.matches_path(Path::new(&rel))
+                {
+                    continue;
                 }
                 if entry.metadata().map(|meta| meta.len()).unwrap_or(0) > MAX_SEARCH_FILE_BYTES {
                     continue;
@@ -436,16 +436,16 @@ impl Tool for LocalSearchFilesTool {
         } else {
             let (display_path, file) = self.access.resolve_file(path)?;
             let rel = display_path.to_string_lossy().to_string();
-            if let Some(pattern) = &pattern {
-                if !pattern.matches_path(Path::new(&rel)) {
-                    return Ok(json!({
-                        "query": query,
-                        "path": rel,
-                        "matches": [],
-                        "count": 0,
-                        "truncated": false,
-                    }));
-                }
+            if let Some(pattern) = &pattern
+                && !pattern.matches_path(Path::new(&rel))
+            {
+                return Ok(json!({
+                    "query": query,
+                    "path": rel,
+                    "matches": [],
+                    "count": 0,
+                    "truncated": false,
+                }));
             }
             if fs::metadata(&file)?.len() > MAX_SEARCH_FILE_BYTES {
                 return Ok(json!({

@@ -69,19 +69,18 @@ impl Tool for RestartHoneTool {
         let restart_script = project_root.join("scripts/restart_hone.sh");
 
         // 防止并发重启：检查 lock 文件（超过 60s 的旧锁视为无效）
-        if restart_lock.exists() {
-            if let Ok(meta) = std::fs::metadata(&restart_lock) {
-                if let Ok(modified) = meta.modified() {
-                    let age = std::time::SystemTime::now()
-                        .duration_since(modified)
-                        .unwrap_or_default();
-                    if age.as_secs() < 60 {
-                        return Ok(serde_json::json!({
-                            "success": false,
-                            "error": "重启已在进行中，请等待约 1-3 分钟后重试"
-                        }));
-                    }
-                }
+        if restart_lock.exists()
+            && let Ok(meta) = std::fs::metadata(&restart_lock)
+            && let Ok(modified) = meta.modified()
+        {
+            let age = std::time::SystemTime::now()
+                .duration_since(modified)
+                .unwrap_or_default();
+            if age.as_secs() < 60 {
+                return Ok(serde_json::json!({
+                    "success": false,
+                    "error": "重启已在进行中，请等待约 1-3 分钟后重试"
+                }));
             }
         }
 

@@ -374,10 +374,10 @@ fn write_immediate_section(out: &mut String, overview: &ScheduleOverview) {
             overview.immediate.blocked_kinds.join(", ")
         );
     }
-    if let Some(allow) = overview.immediate.allow_kinds.as_ref() {
-        if !allow.is_empty() {
-            let _ = writeln!(out, "• 仅允许 kind：{}", allow.join(", "));
-        }
+    if let Some(allow) = overview.immediate.allow_kinds.as_ref()
+        && !allow.is_empty()
+    {
+        let _ = writeln!(out, "• 仅允许 kind：{}", allow.join(", "));
     }
     if !overview.immediate.exempt_in_quiet.is_empty() {
         let _ = writeln!(

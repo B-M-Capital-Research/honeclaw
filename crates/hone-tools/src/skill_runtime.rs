@@ -400,14 +400,13 @@ impl SkillRuntime {
             return Err("skill_name 不能为空".to_string());
         }
 
-        if let Some(skill) = self
+        if self
             .load_registered_skills()
             .into_iter()
             .find(|skill| skill_matches_reference(skill, normalized))
+            .is_some_and(|skill| !skill.enabled)
         {
-            if !skill.enabled {
-                return Err(skill_disabled_error(normalized));
-            }
+            return Err(skill_disabled_error(normalized));
         }
 
         self.load_active_skills(file_paths)
@@ -520,7 +519,7 @@ impl SkillRuntime {
         let relative = requested_script
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .or_else(|| skill.script.as_deref())
+            .or(skill.script.as_deref())
             .ok_or_else(|| format!("技能 '{}' 未声明可执行 script", skill.id))?;
 
         let requested = PathBuf::from(relative);
