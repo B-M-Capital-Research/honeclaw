@@ -65,15 +65,15 @@ impl FmpClient {
     }
 
     async fn fetch_once(&self, url: &str) -> anyhow::Result<Value> {
-        let resp = self
+        let response = self
             .http
             .get(url)
             .timeout(self.timeout)
             .send()
             .await
             .map_err(|err| format_fmp_transport_error("请求", &err))?;
-        let status = resp.status();
-        let body = resp
+        let status = response.status();
+        let body = response
             .text()
             .await
             .map_err(|err| format_fmp_transport_error("读取响应", &err))?;

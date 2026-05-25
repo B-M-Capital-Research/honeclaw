@@ -125,7 +125,7 @@ pub fn purge_old_task_runs(runtime_dir: &Path, retention_days: i64) {
     }
     let cutoff = Utc::now().date_naive() - chrono::Duration::days(retention_days);
     let read = match fs::read_dir(runtime_dir) {
-        Ok(r) => r,
+        Ok(entries) => entries,
         Err(e) => {
             warn!("task_runs purge: read_dir failed: {e:#}");
             return;

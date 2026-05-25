@@ -36,7 +36,7 @@ pub(crate) struct ResearchDownloadQuery {
 /// 代理到外部 API：POST /api/pdf/deep-research/start
 pub(crate) async fn handle_research_start(
     State(state): State<Arc<AppState>>,
-    Json(req): Json<ResearchStartRequest>,
+    Json(payload): Json<ResearchStartRequest>,
 ) -> impl IntoResponse {
     let url = match build_research_url(
         &state.core.config.web.research_api_base,
@@ -45,14 +45,14 @@ pub(crate) async fn handle_research_start(
         Ok(url) => url,
         Err(err) => return json_error(StatusCode::BAD_GATEWAY, err),
     };
-    let resp = match state
+    let response = match state
         .http_client
         .post(url)
-        .json(&json!({ "company_name": req.company_name }))
+        .json(&json!({ "company_name": payload.company_name }))
         .send()
         .await
     {
-        Ok(resp) => resp,
+        Ok(response) => response,
         Err(e) => {
             return (
                 StatusCode::BAD_GATEWAY,
@@ -62,8 +62,8 @@ pub(crate) async fn handle_research_start(
         }
     };
 
-    let status = resp.status();
-    let body = resp.text().await.unwrap_or_else(|_| "{}".to_string());
+    let status = response.status();
+    let body = response.text().await.unwrap_or_else(|_| "{}".to_string());
     (status, body).into_response()
 }
 
@@ -83,8 +83,8 @@ pub(crate) async fn handle_research_status(
         Ok(url) => url,
         Err(err) => return json_error(StatusCode::BAD_GATEWAY, err),
     };
-    let resp = match state.http_client.get(url).send().await {
-        Ok(resp) => resp,
+    let response = match state.http_client.get(url).send().await {
+        Ok(response) => response,
         Err(e) => {
             return (
                 StatusCode::BAD_GATEWAY,
@@ -94,8 +94,8 @@ pub(crate) async fn handle_research_status(
         }
     };
 
-    let status = resp.status();
-    let body = resp.text().await.unwrap_or_else(|_| "{}".to_string());
+    let status = response.status();
+    let body = response.text().await.unwrap_or_else(|_| "{}".to_string());
     (status, body).into_response()
 }
 
@@ -103,21 +103,21 @@ pub(crate) async fn handle_research_status(
 /// 代理到外部 API：POST /api/pdf/generate
 pub(crate) async fn handle_research_generate_pdf(
     State(state): State<Arc<AppState>>,
-    Json(req): Json<ResearchGeneratePdfRequest>,
+    Json(payload): Json<ResearchGeneratePdfRequest>,
 ) -> impl IntoResponse {
     let url = match build_research_url(&state.core.config.web.research_api_base, "api/pdf/generate")
     {
         Ok(url) => url,
         Err(err) => return json_error(StatusCode::BAD_GATEWAY, err),
     };
-    let resp = match state
+    let response = match state
         .http_client
         .post(url)
-        .json(&json!({ "task_id": req.task_id }))
+        .json(&json!({ "task_id": payload.task_id }))
         .send()
         .await
     {
-        Ok(resp) => resp,
+        Ok(response) => response,
         Err(e) => {
             return (
                 StatusCode::BAD_GATEWAY,
@@ -127,8 +127,8 @@ pub(crate) async fn handle_research_generate_pdf(
         }
     };
 
-    let status = resp.status();
-    let body = resp.text().await.unwrap_or_else(|_| "{}".to_string());
+    let status = response.status();
+    let body = response.text().await.unwrap_or_else(|_| "{}".to_string());
     (status, body).into_response()
 }
 
@@ -144,8 +144,8 @@ pub(crate) async fn handle_research_download_pdf(
         Err(err) => return json_error(StatusCode::BAD_GATEWAY, err),
     };
     url.query_pairs_mut().append_pair("path", query.path.trim());
-    let resp = match state.http_client.get(url).send().await {
-        Ok(resp) => resp,
+    let response = match state.http_client.get(url).send().await {
+        Ok(response) => response,
         Err(e) => {
             return (
                 StatusCode::BAD_GATEWAY,
@@ -155,13 +155,13 @@ pub(crate) async fn handle_research_download_pdf(
         }
     };
 
-    let status = resp.status();
+    let status = response.status();
     if !status.is_success() {
-        let body = resp.text().await.unwrap_or_else(|_| "{}".to_string());
+        let body = response.text().await.unwrap_or_else(|_| "{}".to_string());
         return (status, body).into_response();
     }
 
-    let bytes = match resp.bytes().await {
+    let bytes = match response.bytes().await {
         Ok(bytes) => bytes,
         Err(e) => {
             return json_error(StatusCode::BAD_GATEWAY, format!("读取响应内容失败: {e}"));

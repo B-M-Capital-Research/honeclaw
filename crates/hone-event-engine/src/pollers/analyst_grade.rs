@@ -49,16 +49,16 @@ impl AnalystGradePoller {
     /// 按指定 ticker 列表拉评级变更。`EventSource::poll` 调它,从 registry 取
     /// watch pool 后传入;测试可以直接用任意 ticker 列表调本函数(不需要 registry)。
     pub async fn fetch(&self, tickers: &[String]) -> anyhow::Result<Vec<MarketEvent>> {
-        let mut out = Vec::new();
+        let mut events = Vec::new();
         let cutoff = Utc::now() - chrono::Duration::days(self.lookback_days);
         for t in tickers {
             let path = format!("/v4/upgrades-downgrades?symbol={t}");
             match self.client.get_json(&path).await {
-                Ok(v) => out.extend(events_from_grades(&v, t, cutoff)),
+                Ok(response_json) => events.extend(events_from_grades(&response_json, t, cutoff)),
                 Err(e) => tracing::warn!("analyst grade fetch failed for {t}: {e:#}"),
             }
         }
-        Ok(out)
+        Ok(events)
     }
 }
 
@@ -347,7 +347,7 @@ fn target_change_from_news_title(title: &str) -> Option<TargetChange> {
 
 fn dollar_amounts(title: &str) -> Vec<String> {
     let chars: Vec<char> = title.chars().collect();
-    let mut out = Vec::new();
+    let mut amounts = Vec::new();
     let mut i = 0usize;
     while i < chars.len() {
         if chars[i] != '$' {
@@ -360,10 +360,10 @@ fn dollar_amounts(title: &str) -> Vec<String> {
             i += 1;
         }
         if i > start + 1 {
-            out.push(chars[start..i].iter().collect());
+            amounts.push(chars[start..i].iter().collect());
         }
     }
-    out
+    amounts
 }
 
 fn parse_fmp_datetime(s: &str) -> Option<DateTime<Utc>> {

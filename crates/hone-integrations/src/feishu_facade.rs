@@ -153,43 +153,43 @@ impl FeishuFacadeClient {
         TParams: Serialize,
         TResult: for<'de> Deserialize<'de>,
     {
-        let req = JsonRpcRequest {
+        let rpc_request = JsonRpcRequest {
             jsonrpc: "2.0",
             id: chrono::Utc::now().timestamp_millis().unsigned_abs(),
             method,
             params,
         };
 
-        let resp = self
+        let response = self
             .http
             .post(&self.rpc_url)
-            .json(&req)
+            .json(&rpc_request)
             .timeout(std::time::Duration::from_secs(20))
             .send()
             .await
             .map_err(|e| HoneError::Integration(format!("Feishu facade 请求失败: {e}")))?;
 
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
             return Err(HoneError::Integration(format_facade_http_error(
                 status, &body,
             )));
         }
 
-        let rpc_resp: JsonRpcResponse<TResult> = resp
+        let rpc_response: JsonRpcResponse<TResult> = response
             .json()
             .await
             .map_err(|e| HoneError::Integration(format!("Feishu facade 响应解析失败: {e}")))?;
 
-        if let Some(error) = rpc_resp.error {
+        if let Some(error) = rpc_response.error {
             return Err(HoneError::Integration(format!(
                 "Feishu facade RPC 错误 (code={}): {}",
                 error.code, error.message
             )));
         }
 
-        rpc_resp
+        rpc_response
             .result
             .ok_or_else(|| HoneError::Integration("Feishu facade 返回空结果".to_string()))
     }
@@ -259,12 +259,12 @@ mod tests {
             if let Ok((mut stream, _)) = listener.accept() {
                 let mut buf = [0u8; 4096];
                 let _ = stream.read(&mut buf);
-                let resp = format!(
+                let http_response = format!(
                     "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                     body.len(),
                     body
                 );
-                let _ = stream.write_all(resp.as_bytes());
+                let _ = stream.write_all(http_response.as_bytes());
             }
         });
         format!("http://{addr}")

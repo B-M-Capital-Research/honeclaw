@@ -100,14 +100,14 @@ impl ExtendedHoursPoller {
             day = previous_weekday(day);
             let path =
                 format!("/v3/historical-price-full/{symbol}?from={day}&to={day}&serietype=line");
-            let resp = match self.client.get_json(&path).await {
-                Ok(v) => v,
+            let response_json = match self.client.get_json(&path).await {
+                Ok(value) => value,
                 Err(e) => {
                     tracing::warn!("extended_hours: prev_close fetch {symbol} {day} failed: {e:#}");
                     continue;
                 }
             };
-            if let Some(close) = resp
+            if let Some(close) = response_json
                 .get("historical")
                 .and_then(|v| v.as_array())
                 .and_then(|arr| arr.first())
@@ -125,9 +125,9 @@ impl ExtendedHoursPoller {
 
     async fn fetch_window_bars(&self, symbol: &str) -> anyhow::Result<Vec<Bar>> {
         let path = format!("/v3/historical-chart/1min/{symbol}?extended=true");
-        let resp = self.client.get_json(&path).await?;
-        let arr = match resp.as_array() {
-            Some(a) => a.clone(),
+        let response_json = self.client.get_json(&path).await?;
+        let arr = match response_json.as_array() {
+            Some(items) => items.clone(),
             None => return Ok(vec![]),
         };
         Ok(arr.into_iter().filter_map(parse_bar).collect())
@@ -155,7 +155,7 @@ impl EventSource for ExtendedHoursPoller {
             return Ok(vec![]);
         }
 
-        let mut out = Vec::new();
+        let mut events = Vec::new();
         for symbol in &symbols {
             let prev_close = match self.fetch_prev_close(symbol, et_date).await {
                 Ok(p) => p,
@@ -182,10 +182,10 @@ impl EventSource for ExtendedHoursPoller {
                 self.high_pct,
                 now,
             ) {
-                out.push(event);
+                events.push(event);
             }
         }
-        Ok(out)
+        Ok(events)
     }
 }
 

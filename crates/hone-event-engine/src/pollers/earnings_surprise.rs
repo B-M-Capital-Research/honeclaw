@@ -103,13 +103,14 @@ impl EarningsSurprisePoller {
     /// 按指定 ticker 列表拉每一只票的最新 surprise。`EventSource::poll` 调它,
     /// 测试也可以直接用任意 ticker 列表调本函数。
     pub async fn fetch(&self, tickers: &[String]) -> anyhow::Result<Vec<MarketEvent>> {
-        let mut out = Vec::new();
+        let mut events = Vec::new();
         let cutoff = Utc::now() - chrono::Duration::days(self.lookback_days);
         for t in tickers {
             let path = format!("/v3/earnings-surprises/{t}");
             match self.client.get_json(&path).await {
-                Ok(v) => {
-                    let candidates = events_from_surprises(&v, t, cutoff, self.high_threshold_pct);
+                Ok(response_json) => {
+                    let candidates =
+                        events_from_surprises(&response_json, t, cutoff, self.high_threshold_pct);
                     if self.quality_reviewer.is_none() {
                         if !candidates.is_empty() {
                             warn!(
@@ -123,14 +124,14 @@ impl EarningsSurprisePoller {
                     }
                     for mut event in candidates {
                         if self.apply_quality_review(&mut event).await {
-                            out.push(event);
+                            events.push(event);
                         }
                     }
                 }
                 Err(e) => tracing::warn!("earnings surprise fetch failed for {t}: {e:#}"),
             }
         }
-        Ok(out)
+        Ok(events)
     }
 
     async fn apply_quality_review(&self, event: &mut MarketEvent) -> bool {
@@ -196,8 +197,8 @@ impl EarningsSurprisePoller {
         let (url, accepted_at) =
             select_recent_8k_url(&raw, occurred_at, self.quality_sec_recent_hours)?;
 
-        let resp = match self.sec_http.get(&url).send().await {
-            Ok(resp) => resp,
+        let response = match self.sec_http.get(&url).send().await {
+            Ok(response) => response,
             Err(e) => {
                 warn!(
                     symbol = %ticker,
@@ -208,17 +209,17 @@ impl EarningsSurprisePoller {
                 return None;
             }
         };
-        if !resp.status().is_success() {
+        if !response.status().is_success() {
             warn!(
                 symbol = %ticker,
                 url = %url,
-                status = %resp.status(),
+                status = %response.status(),
                 degraded = true,
                 "earnings quality review SEC fetch non-2xx"
             );
             return None;
         }
-        let html = match resp.text().await {
+        let html = match response.text().await {
             Ok(html) => html,
             Err(e) => {
                 warn!(

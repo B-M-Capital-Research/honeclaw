@@ -53,9 +53,9 @@ impl TelegramChannelPoller {
 
     async fn fetch_html(&self) -> anyhow::Result<String> {
         let url = format!("{}/s/{}", self.base_url, self.handle);
-        let resp = self.http.get(&url).send().await?;
-        let status = resp.status();
-        let body = resp.text().await?;
+        let response = self.http.get(&url).send().await?;
+        let status = response.status();
+        let body = response.text().await?;
         if !status.is_success() {
             anyhow::bail!("telegram preview HTTP {status} for {url}");
         }
@@ -97,7 +97,7 @@ pub fn parse_telegram_preview(
     let date_sel = Selector::parse(".tgme_widget_message_date").unwrap();
     let time_sel = Selector::parse("time[datetime]").unwrap();
 
-    let mut out = Vec::new();
+    let mut events = Vec::new();
     for msg in doc.select(&msg_sel) {
         let data_post = match msg.value().attr("data-post") {
             Some(v) => v,
@@ -148,7 +148,7 @@ pub fn parse_telegram_preview(
         payload.insert("raw_text".into(), Value::String(text));
         payload.insert("post_id".into(), Value::String(post_id.clone()));
 
-        out.push(MarketEvent {
+        events.push(MarketEvent {
             id: format!("telegram:{handle}:{post_id}"),
             kind: EventKind::SocialPost,
             severity: Severity::Low,
@@ -161,7 +161,7 @@ pub fn parse_telegram_preview(
             payload: Value::Object(payload),
         });
     }
-    out
+    events
 }
 
 fn extract_text(node: scraper::ElementRef) -> String {
@@ -194,17 +194,17 @@ fn truncate(s: &str, max_chars: usize) -> String {
 
 /// 简单 `$TICKER` 提取:匹配 `$` + 1-5 位大写字母,去重保序。
 fn extract_cashtag_symbols(text: &str) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
+    let mut symbols: Vec<String> = Vec::new();
     for token in text.split(|c: char| !c.is_ascii_alphanumeric() && c != '$') {
         if let Some(rest) = token.strip_prefix('$')
             && (1..=5).contains(&rest.len())
             && rest.chars().all(|c| c.is_ascii_uppercase())
-            && !out.contains(&rest.to_string())
+            && !symbols.contains(&rest.to_string())
         {
-            out.push(rest.to_string());
+            symbols.push(rest.to_string());
         }
     }
-    out
+    symbols
 }
 
 #[cfg(test)]

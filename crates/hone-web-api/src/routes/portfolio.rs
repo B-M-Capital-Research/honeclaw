@@ -320,7 +320,7 @@ mod tests {
             tracking_only: None,
         };
 
-        let req = PortfolioHoldingRequest {
+        let request = PortfolioHoldingRequest {
             channel: Some("discord".to_string()),
             user_id: Some("alice".to_string()),
             channel_scope: None,
@@ -341,10 +341,16 @@ mod tests {
             tracking_only: None,
         };
 
-        let shares = req.quantity.or(req.shares).unwrap_or(existing.shares);
-        let avg_cost = req.cost_basis.or(req.avg_cost).unwrap_or(existing.avg_cost);
-        let holding_horizon = req.holding_horizon.or(existing.holding_horizon.clone());
-        let strategy_notes = req.strategy_notes.or(existing.strategy_notes.clone());
+        let shares = request
+            .quantity
+            .or(request.shares)
+            .unwrap_or(existing.shares);
+        let avg_cost = request
+            .cost_basis
+            .or(request.avg_cost)
+            .unwrap_or(existing.avg_cost);
+        let holding_horizon = request.holding_horizon.or(existing.holding_horizon.clone());
+        let strategy_notes = request.strategy_notes.or(existing.strategy_notes.clone());
 
         assert_eq!(shares, 12.0);
         assert_eq!(avg_cost, -1.25);

@@ -351,7 +351,7 @@ impl UnifiedDigestScheduler {
 
                 // ── 1) per-actor 池:buffer + synth ───────────────────
                 let buffered = match self.buffer.drain_actor(&actor) {
-                    Ok(v) => v,
+                    Ok(buffered_events) => buffered_events,
                     Err(e) => {
                         warn!(
                             actor = %actor_key_str,
@@ -406,7 +406,7 @@ impl UnifiedDigestScheduler {
                             )
                             .await
                         {
-                            Ok(v) => v,
+                            Ok(personalized_items) => personalized_items,
                             Err(e) => {
                                 warn!(
                                     actor = %actor_key_str,
@@ -706,7 +706,7 @@ impl UnifiedDigestScheduler {
             .pass1_select(&candidates, &audience, self.pass2_top_n as usize)
             .await
         {
-            Ok(v) => v,
+            Ok(ranked_candidates) => ranked_candidates,
             Err(e) => {
                 warn!(slot = %slot.id, "pass1 failed: {e:#}");
                 let cache = GlobalSlotCache {
@@ -860,7 +860,7 @@ impl UnifiedDigestScheduler {
             Err(e) => warn!(actor = %actor_key_str, "list_quiet_held_since failed: {e:#}"),
         }
         let buffered = match self.buffer.drain_actor(actor) {
-            Ok(v) => v,
+            Ok(buffered_events) => buffered_events,
             Err(e) => {
                 warn!(
                     actor = %actor_key_str,

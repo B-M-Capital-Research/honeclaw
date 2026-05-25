@@ -134,7 +134,7 @@ pub(crate) async fn handle_put_global_digest(
         return resp;
     }
     let yaml_value = match serde_yaml::to_value(&body.config) {
-        Ok(v) => v,
+        Ok(value) => value,
         Err(e) => {
             return json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -149,7 +149,7 @@ pub(crate) async fn handle_put_global_digest(
             value: yaml_value,
         }],
     ) {
-        Ok(r) => r,
+        Ok(result) => result,
         Err(e) => {
             return json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -230,7 +230,7 @@ fn build_rss_feed(body: UpsertRssFeedBody) -> Result<RssFeedConfig, Response> {
 
 fn write_rss_feeds(feeds: Vec<RssFeedConfig>) -> Result<Vec<RssFeedConfig>, Response> {
     let yaml_value = match serde_yaml::to_value(&feeds) {
-        Ok(v) => v,
+        Ok(value) => value,
         Err(e) => {
             return Err(json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,

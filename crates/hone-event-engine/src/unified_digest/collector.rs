@@ -62,8 +62,8 @@ impl<'a> UnifiedCollector<'a> {
         actor: &ActorIdentity,
         now: DateTime<Utc>,
     ) -> Vec<UnifiedCandidate> {
-        let mut out = match self.buffer.drain(actor) {
-            Ok(v) => v,
+        let mut candidates = match self.buffer.drain(actor) {
+            Ok(buffered) => buffered,
             Err(e) => {
                 tracing::warn!(actor = ?actor, "buffer drain failed: {e:#}");
                 Vec::new()
@@ -71,11 +71,11 @@ impl<'a> UnifiedCollector<'a> {
         };
         if let Some(synth) = &self.synth {
             match synth.synthesize_for_actor(actor, now) {
-                Ok(mut v) => out.append(&mut v),
+                Ok(mut synthesized) => candidates.append(&mut synthesized),
                 Err(e) => tracing::warn!(actor = ?actor, "synth failed: {e:#}"),
             }
         }
-        out
+        candidates
     }
 
     /// shared global pool;`global` 未配置时返回空。
@@ -89,7 +89,7 @@ impl<'a> UnifiedCollector<'a> {
             return Vec::new();
         };
         match g.collect(until, lookback_hours, dedup_lookback_hours) {
-            Ok(v) => v,
+            Ok(global_candidates) => global_candidates,
             Err(e) => {
                 tracing::warn!(
                     until = %until,

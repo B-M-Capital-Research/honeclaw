@@ -57,7 +57,7 @@ impl DiscordSink {
                 return Ok(id.clone());
             }
         }
-        let resp = self
+        let response = self
             .client
             .post(format!("{DISCORD_API_BASE}/users/@me/channels"))
             .header("Authorization", self.auth_header())
@@ -65,9 +65,9 @@ impl DiscordSink {
             .send()
             .await
             .map_err(|err| anyhow::anyhow!(format_transport_error("discord", "create DM", &err)))?;
-        let status = resp.status();
+        let status = response.status();
         if !status.is_success() {
-            let detail = resp.text().await.unwrap_or_default();
+            let detail = response.text().await.unwrap_or_default();
             anyhow::bail!(format_upstream_http_error(
                 "discord",
                 "create DM",
@@ -75,7 +75,7 @@ impl DiscordSink {
                 &detail
             ));
         }
-        let parsed: CreateDmResp = resp.json().await?;
+        let parsed: CreateDmResp = response.json().await?;
         self.dm_channel_cache
             .write()
             .await
@@ -88,7 +88,7 @@ impl DiscordSink {
     }
 
     async fn send_to_channel(&self, channel_id: &str, body: &str) -> anyhow::Result<()> {
-        let resp = self
+        let response = self
             .client
             .post(format!("{DISCORD_API_BASE}/channels/{channel_id}/messages"))
             .header("Authorization", self.auth_header())
@@ -96,9 +96,9 @@ impl DiscordSink {
             .send()
             .await
             .map_err(|err| anyhow::anyhow!(format_transport_error("discord", "send", &err)))?;
-        let status = resp.status();
+        let status = response.status();
         if !status.is_success() {
-            let detail = resp.text().await.unwrap_or_default();
+            let detail = response.text().await.unwrap_or_default();
             anyhow::bail!(format_upstream_http_error(
                 "discord", "send", status, &detail
             ));
@@ -111,7 +111,7 @@ impl DiscordSink {
         channel_id: &str,
         payload: serde_json::Value,
     ) -> anyhow::Result<()> {
-        let resp = self
+        let response = self
             .client
             .post(format!("{DISCORD_API_BASE}/channels/{channel_id}/messages"))
             .header("Authorization", self.auth_header())
@@ -119,9 +119,9 @@ impl DiscordSink {
             .send()
             .await
             .map_err(|err| anyhow::anyhow!(format_transport_error("discord", "send", &err)))?;
-        let status = resp.status();
+        let status = response.status();
         if !status.is_success() {
-            let detail = resp.text().await.unwrap_or_default();
+            let detail = response.text().await.unwrap_or_default();
             anyhow::bail!(format_upstream_http_error(
                 "discord", "send", status, &detail
             ));

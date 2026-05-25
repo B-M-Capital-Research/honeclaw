@@ -126,23 +126,23 @@ impl LlmSecFilingSummarizer {
     }
 
     async fn fetch_filing_html(&self, url: &str) -> Option<String> {
-        let resp = match self.http.get(url).send().await {
-            Ok(r) => r,
+        let response = match self.http.get(url).send().await {
+            Ok(response) => response,
             Err(e) => {
                 warn!(url = %url, "SEC filing fetch failed: {e:#}");
                 return None;
             }
         };
-        if !resp.status().is_success() {
+        if !response.status().is_success() {
             warn!(
                 url = %url,
-                status = %resp.status(),
+                status = %response.status(),
                 ua = %self.user_agent,
                 "SEC filing non-2xx — 检查 User-Agent 是否含联系邮箱"
             );
             return None;
         }
-        match resp.text().await {
+        match response.text().await {
             Ok(t) => Some(t),
             Err(e) => {
                 warn!(url = %url, "SEC filing body read failed: {e:#}");

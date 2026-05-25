@@ -65,23 +65,23 @@ impl EventSource for CorpActionCalendarPoller {
         let from_str = today.format("%Y-%m-%d").to_string();
         let to_str = to.format("%Y-%m-%d").to_string();
 
-        let mut out = Vec::new();
+        let mut events = Vec::new();
 
         // Splits
         let splits_path = format!("/v3/stock_split_calendar?from={from_str}&to={to_str}");
         match self.client.get_json(&splits_path).await {
-            Ok(v) => out.extend(events_from_splits(&v)),
+            Ok(response_json) => events.extend(events_from_splits(&response_json)),
             Err(e) => warn!("split calendar fetch failed: {e:#}"),
         }
 
         // Dividends
         let div_path = format!("/v3/stock_dividend_calendar?from={from_str}&to={to_str}");
         match self.client.get_json(&div_path).await {
-            Ok(v) => out.extend(events_from_dividends(&v)),
+            Ok(response_json) => events.extend(events_from_dividends(&response_json)),
             Err(e) => warn!("dividend calendar fetch failed: {e:#}"),
         }
 
-        Ok(out)
+        Ok(events)
     }
 }
 
@@ -146,13 +146,13 @@ impl SecFilingsPoller {
     /// join_all 收益不抵复杂度。
     pub async fn fetch(&self, ticker: &str) -> anyhow::Result<Vec<MarketEvent>> {
         let cutoff = Utc::now() - chrono::Duration::hours(self.sec_recent_hours);
-        let mut out = Vec::new();
+        let mut events = Vec::new();
         for form in &self.forms {
             let encoded = encode_form(form);
             let path = format!("/v3/sec_filings/{ticker}?type={encoded}&page=0");
             match self.client.get_json(&path).await {
-                Ok(raw) => out.extend(
-                    events_from_sec_filings(&raw, ticker)
+                Ok(response_json) => events.extend(
+                    events_from_sec_filings(&response_json, ticker)
                         .into_iter()
                         .filter(|e| e.occurred_at >= cutoff),
                 ),
@@ -166,7 +166,7 @@ impl SecFilingsPoller {
             }
         }
         if let Some(summarizer) = &self.summarizer {
-            for ev in out.iter_mut() {
+            for ev in events.iter_mut() {
                 if let Some(summary) = summarizer.summarize(ev).await
                     && let Some(obj) = ev.payload.as_object_mut()
                 {
@@ -174,7 +174,7 @@ impl SecFilingsPoller {
                 }
             }
         }
-        Ok(out)
+        Ok(events)
     }
 }
 
@@ -209,10 +209,10 @@ impl EventSource for SecFilingsPoller {
         if symbols.is_empty() {
             return Ok(vec![]);
         }
-        let mut out = Vec::new();
+        let mut events = Vec::new();
         for sym in &symbols {
             match self.fetch(sym).await {
-                Ok(v) => out.extend(v),
+                Ok(symbol_events) => events.extend(symbol_events),
                 Err(e) => warn!(
                     poller = "fmp.sec_filings",
                     symbol = %sym,
@@ -221,7 +221,7 @@ impl EventSource for SecFilingsPoller {
                 ),
             }
         }
-        Ok(out)
+        Ok(events)
     }
 }
 

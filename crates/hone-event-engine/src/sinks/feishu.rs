@@ -116,7 +116,7 @@ impl FeishuSink {
                 return Ok(t.clone());
             }
         }
-        let resp = self
+        let response = self
             .client
             .post(FEISHU_TOKEN_URL)
             .json(&serde_json::json!({
@@ -126,14 +126,14 @@ impl FeishuSink {
             .send()
             .await
             .map_err(|err| anyhow::anyhow!(format_transport_error("feishu", "token", &err)))?;
-        let status = resp.status();
+        let status = response.status();
         if !status.is_success() {
-            let detail = resp.text().await.unwrap_or_default();
+            let detail = response.text().await.unwrap_or_default();
             anyhow::bail!(format_upstream_http_error(
                 "feishu", "token", status, &detail
             ));
         }
-        let parsed: TokenResp = resp.json().await?;
+        let parsed: TokenResp = response.json().await?;
         if parsed.code != 0 {
             anyhow::bail!(format_provider_api_error(
                 "feishu",
@@ -221,7 +221,7 @@ impl FeishuSink {
         if !contacts.mobiles.is_empty() {
             body.insert("mobiles".to_string(), serde_json::json!(contacts.mobiles));
         }
-        let resp = self
+        let response = self
             .client
             .post("https://open.feishu.cn/open-apis/contact/v3/users/batch_get_id?user_id_type=open_id")
             .bearer_auth(&token)
@@ -235,9 +235,9 @@ impl FeishuSink {
                     &err
                 ))
             })?;
-        let status = resp.status();
+        let status = response.status();
         if !status.is_success() {
-            let detail = resp.text().await.unwrap_or_default();
+            let detail = response.text().await.unwrap_or_default();
             anyhow::bail!(format_upstream_http_error(
                 "feishu",
                 "resolve direct contact",
@@ -245,7 +245,7 @@ impl FeishuSink {
                 &detail
             ));
         }
-        let parsed: BatchGetIdResp = resp.json().await?;
+        let parsed: BatchGetIdResp = response.json().await?;
         if parsed.code != 0 {
             anyhow::bail!(format_provider_api_error(
                 "feishu",
@@ -360,7 +360,7 @@ impl FeishuSink {
     ) -> anyhow::Result<()> {
         let token = self.token().await?;
         let (receive_id_type, receive_id) = self.receive_target(actor).await?;
-        let resp = self
+        let response = self
             .client
             .post(format!(
                 "{FEISHU_SEND_URL}?receive_id_type={receive_id_type}"
@@ -374,14 +374,14 @@ impl FeishuSink {
             .send()
             .await
             .map_err(|err| anyhow::anyhow!(format_transport_error("feishu", "send", &err)))?;
-        let status = resp.status();
+        let status = response.status();
         if !status.is_success() {
-            let detail = resp.text().await.unwrap_or_default();
+            let detail = response.text().await.unwrap_or_default();
             anyhow::bail!(format_upstream_http_error(
                 "feishu", "send", status, &detail
             ));
         }
-        let parsed: SendResp = resp.json().await?;
+        let parsed: SendResp = response.json().await?;
         if parsed.code != 0 {
             anyhow::bail!(format_provider_api_error(
                 "feishu",

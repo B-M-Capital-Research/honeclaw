@@ -45,7 +45,7 @@ impl TelegramSink {
     async fn post_html(&self, actor: &ActorIdentity, text: &str) -> anyhow::Result<()> {
         let url = format!("https://api.telegram.org/bot{}/sendMessage", self.bot_token);
         let chat_id = Self::chat_id_for(actor);
-        let resp = self
+        let response = self
             .client
             .post(&url)
             .json(&serde_json::json!({
@@ -59,9 +59,9 @@ impl TelegramSink {
             .map_err(|err| {
                 anyhow::anyhow!(format_transport_error("telegram", "sendMessage", &err))
             })?;
-        let status = resp.status();
+        let status = response.status();
         if !status.is_success() {
-            let detail = resp.text().await.unwrap_or_default();
+            let detail = response.text().await.unwrap_or_default();
             anyhow::bail!(format_upstream_http_error(
                 "telegram",
                 "sendMessage",

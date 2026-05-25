@@ -154,7 +154,7 @@ impl NanoBananaClient {
             "temperature": 0.7
         });
 
-        let resp = match self
+        let response = match self
             .http
             .post(&url)
             .header("Authorization", format!("Bearer {api_key}"))
@@ -165,7 +165,7 @@ impl NanoBananaClient {
             .send()
             .await
         {
-            Ok(r) => r,
+            Ok(response) => response,
             Err(e) => {
                 return serde_json::json!({
                     "success": false,
@@ -174,8 +174,8 @@ impl NanoBananaClient {
             }
         };
 
-        let raw: Value = match resp.json().await {
-            Ok(v) => v,
+        let response_json: Value = match response.json().await {
+            Ok(value) => value,
             Err(e) => {
                 return serde_json::json!({
                     "success": false,
@@ -184,7 +184,7 @@ impl NanoBananaClient {
             }
         };
 
-        let mut image_urls = Self::extract_image_urls(&raw);
+        let mut image_urls = Self::extract_image_urls(&response_json);
         if let Some(count) = image_count {
             image_urls.truncate(count as usize);
         }
@@ -193,16 +193,16 @@ impl NanoBananaClient {
             return serde_json::json!({
                 "success": false,
                 "error": "OpenRouter 返回成功但未提取到图片 URL",
-                "raw": raw
+                "raw": response_json
             });
         }
 
         serde_json::json!({
             "success": true,
-            "task_id": raw.get("id").and_then(|v| v.as_str()).unwrap_or(""),
+            "task_id": response_json.get("id").and_then(|v| v.as_str()).unwrap_or(""),
             "status": "completed",
             "image_urls": image_urls,
-            "raw": raw
+            "raw": response_json
         })
     }
 
@@ -249,7 +249,7 @@ impl NanoBananaClient {
             }
 
             // HTTP download
-            let resp = self
+            let response = self
                 .http
                 .get(url)
                 .timeout(std::time::Duration::from_secs(30))
@@ -257,7 +257,7 @@ impl NanoBananaClient {
                 .await
                 .map_err(|e| hone_core::HoneError::Integration(e.to_string()))?;
 
-            let content_type = resp
+            let content_type = response
                 .headers()
                 .get("content-type")
                 .and_then(|v| v.to_str().ok())
@@ -272,7 +272,7 @@ impl NanoBananaClient {
                 ".jpg"
             };
 
-            let bytes = resp
+            let bytes = response
                 .bytes()
                 .await
                 .map_err(|e| hone_core::HoneError::Integration(e.to_string()))?;

@@ -27,14 +27,14 @@ struct TelegramSink {
 impl TelegramSink {
     async fn send(&self, chat_id: &str, text: &str) -> Result<()> {
         let url = format!("https://api.telegram.org/bot{}/sendMessage", self.token);
-        let resp = self
+        let response = self
             .client
             .post(&url)
             .json(&serde_json::json!({ "chat_id": chat_id, "text": text }))
             .send()
             .await?;
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
         if !status.is_success() {
             anyhow::bail!("telegram API {status}: {body}");
         }

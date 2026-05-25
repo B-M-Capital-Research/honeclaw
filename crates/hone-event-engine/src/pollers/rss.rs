@@ -75,27 +75,27 @@ impl EventSource for RssNewsPoller {
     }
 
     async fn poll(&self) -> anyhow::Result<Vec<MarketEvent>> {
-        let resp = self
+        let response = self
             .http
             .get(&self.url)
             .send()
             .await
             .with_context(|| format!("rss fetch {}", self.url))?;
-        let status = resp.status();
+        let status = response.status();
         if !status.is_success() {
             anyhow::bail!("rss {} returned HTTP {status}", self.url);
         }
-        let body = resp
+        let body = response
             .text()
             .await
             .with_context(|| format!("rss body decode {}", self.url))?;
         let items = parse_rss_2(&body)?;
         let now = Utc::now();
-        let out = items
+        let events = items
             .into_iter()
             .filter_map(|it| self.into_event(it, now))
             .collect();
-        Ok(out)
+        Ok(events)
     }
 }
 
@@ -158,16 +158,16 @@ const RSS_TITLE_ENTITY_ALIASES: &[(&str, &[&str])] = &[
 ];
 
 fn infer_symbols_from_rss_title(title: &str) -> Vec<String> {
-    let mut out = Vec::new();
+    let mut symbols = Vec::new();
     for (symbol, aliases) in RSS_TITLE_ENTITY_ALIASES {
         if aliases
             .iter()
             .any(|alias| contains_ascii_phrase_ci(title, alias))
         {
-            out.push((*symbol).to_string());
+            symbols.push((*symbol).to_string());
         }
     }
-    out
+    symbols
 }
 
 fn contains_ascii_phrase_ci(text: &str, phrase: &str) -> bool {
