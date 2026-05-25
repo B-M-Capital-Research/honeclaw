@@ -4,7 +4,7 @@
 // locale switcher, common buttons, status pills, toast verbs, and other
 // chrome-level strings. Per-page strings live in sibling files
 // (admin-content/<page>.ts). Both ZH and EN trees MUST share the exact same
-// shape — `structure.test.ts` enforces parity at build time.
+// shape — `structure.test.ts` enforces parity in the web test suite.
 
 import { makeContentProxy } from "../i18n"
 

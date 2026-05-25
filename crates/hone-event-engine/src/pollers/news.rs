@@ -177,7 +177,7 @@ pub fn is_earnings_call_transcript_title(title: &str) -> bool {
     lower.contains("earnings call transcript") || lower.contains("earnings transcript")
 }
 
-/// 默认高影响关键词（小写匹配）。后续可从 config 注入覆盖。
+/// 默认高影响关键词（小写匹配）。测试或调用方可通过 `with_keywords` 覆盖。
 const DEFAULT_CRITICAL_KEYWORDS: &[&str] = &[
     "bankruptcy",
     "bankrupt",

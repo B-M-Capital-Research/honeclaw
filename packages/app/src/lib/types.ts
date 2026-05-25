@@ -146,7 +146,7 @@ export type DesktopChannelSettings = {
   discordAllowFrom?: string[];
 };
 
-/** agent.runner values; gemini_acp is legacy/parseable but disabled at runtime. */
+/** agent.runner values accepted by config/admin surfaces; gemini_acp is legacy/parseable but disabled at runtime. */
 export type AgentProvider =
   | "function_calling"
   | "gemini_cli"
@@ -216,7 +216,7 @@ export type LlmProfileSettings = {
 };
 
 export type AgentSettings = {
-  /** function_calling | gemini_cli | codex_cli | codex_acp | opencode_acp | multi-agent | hone_cloud; gemini_acp is legacy/disabled */
+  /** AgentProvider value; gemini_acp is legacy/disabled at runtime. */
   runner: AgentProvider;
   /** codex_cli 专用；其他 provider 留空 */
   codexModel: string;

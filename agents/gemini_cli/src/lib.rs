@@ -18,7 +18,7 @@
 //! 已知事件类型（对照 aioncli-core ServerGeminiEventType）：
 //! - `content`          — 模型输出的文本增量
 //! - `thought`          — 模型的思考过程（隐藏，不展示给用户）
-//! - `tool_call_request`— 模型请求调用工具（当前使用文本协议替代）
+//! - `tool_call_request`— 模型请求调用工具（当前解析但工具派发仍使用文本协议）
 //! - `error`            — 错误事件
 //! - `finished`         — 流结束，含 token 统计
 //! - `retry`            — 服务端要求重试
@@ -354,7 +354,7 @@ impl GeminiCliAgent {
         format!("{}…[内容过长已截断]", &s[..end])
     }
 
-    /// 公有静态版 build_prompt，供 hone-imessage / hone-feishu 流式路径直接调用
+    /// 公有静态版 build_prompt，供 channel streaming runner 直接构建 Gemini prompt
     ///
     /// ## 内存安全策略
     ///
@@ -449,7 +449,7 @@ impl GeminiCliAgent {
 
     /// 构建发送给 Gemini CLI 的完整 prompt
     ///
-    /// 包含：System Instructions、工具调用协议说明、工具列表、对话历史、当前用户输入
+    /// 包含：System Instructions、工具调用协议说明、工具列表、对话历史、工具结果和输出要求
     ///
     /// ## 内存安全策略
     ///
@@ -543,7 +543,7 @@ impl GeminiCliAgent {
     ///
     /// 返回 `(visible_text, Option<(name, arguments_value, reasoning)>)`：
     /// - `visible_text`：去掉 `<tool_call>` 标签后用户可见的文本部分
-    /// - `Some((name, args))`：当检测到完整的工具调用标签时
+    /// - `Some((name, args, reasoning))`：当检测到完整的工具调用标签时
     pub fn parse_tool_call(text: &str) -> (String, Option<(String, Value, Option<String>)>) {
         const OPEN: &str = "<tool_call>";
         const CLOSE: &str = "</tool_call>";

@@ -72,7 +72,7 @@ export function hasLocaleOverride(): boolean {
  * locale flips.
  *
  * Both trees MUST share the same shape — drift will surface as undefined
- * reads. The structure.test.ts harness in lib/admin-content/ enforces parity.
+ * reads. Admin content and public content each have parity tests for this.
  */
 export function makeContentProxy<T extends object>(zh: T, en: T): T {
   const sources: Record<Locale, T> = { zh, en }

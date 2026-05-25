@@ -7,8 +7,8 @@ import { useSymbolDrawer } from "@/context/symbol-drawer"
  * 跨模块的实体引用链接 — 在日志/审计/任务等纯文本视图里把实体 ID 渲染成可点击 chip,
  * 提供"反向查"动线(从一条错误 → 跳到引发它的用户 / 会话 / 任务)。
  *
- * Phase 1 支持 kind: actor / session / task。
- * symbol / research / skill 在后续 phase 接入(symbol 需要 SymbolDrawer)。
+ * 支持 kind: actor / session / task / research / skill,以及通过 SymbolDrawer
+ * 打开的 symbol 引用。
  */
 type EntityKind =
   | "actor"
