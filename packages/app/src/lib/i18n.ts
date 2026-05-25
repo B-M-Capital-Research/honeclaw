@@ -77,12 +77,12 @@ export function hasLocaleOverride(): boolean {
 export function makeContentProxy<T extends object>(zh: T, en: T): T {
   const sources: Record<Locale, T> = { zh, en }
   const resolveAt = (path: readonly (string | symbol)[]): unknown => {
-    let v: unknown = sources[useLocale()]
+    let current: unknown = sources[useLocale()]
     for (const seg of path) {
-      if (v == null) return undefined
-      v = (v as Record<string | symbol, unknown>)[seg as string]
+      if (current == null) return undefined
+      current = (current as Record<string | symbol, unknown>)[seg as string]
     }
-    return v
+    return current
   }
   const build = (path: readonly (string | symbol)[]): T => {
     return new Proxy(Object.create(null), {
@@ -98,23 +98,23 @@ export function makeContentProxy<T extends object>(zh: T, en: T): T {
         return build([...path, key])
       },
       has(_target, key) {
-        const v = resolveAt(path)
-        return v != null && typeof v === "object" && key in (v as object)
+        const resolved = resolveAt(path)
+        return resolved != null && typeof resolved === "object" && key in (resolved as object)
       },
       ownKeys() {
-        const v = resolveAt(path)
-        if (v == null || typeof v !== "object") return []
-        return Reflect.ownKeys(v as object)
+        const resolved = resolveAt(path)
+        if (resolved == null || typeof resolved !== "object") return []
+        return Reflect.ownKeys(resolved as object)
       },
       getOwnPropertyDescriptor(_target, key) {
-        const v = resolveAt(path)
-        if (v == null || typeof v !== "object") return undefined
-        if (!(key in (v as object))) return undefined
+        const resolved = resolveAt(path)
+        if (resolved == null || typeof resolved !== "object") return undefined
+        if (!(key in (resolved as object))) return undefined
         return {
           enumerable: true,
           configurable: true,
           writable: false,
-          value: (v as Record<string | symbol, unknown>)[key as string],
+          value: (resolved as Record<string | symbol, unknown>)[key as string],
         }
       },
     }) as T
@@ -129,8 +129,8 @@ export function makeContentProxy<T extends object>(zh: T, en: T): T {
  */
 export function tpl(s: string, vars: Record<string, string | number> = {}): string {
   return s.replace(/\{(\w+)\}/g, (_, k) => {
-    const v = vars[k]
-    return v === undefined || v === null ? "" : String(v)
+    const replacement = vars[k]
+    return replacement === undefined || replacement === null ? "" : String(replacement)
   })
 }
 

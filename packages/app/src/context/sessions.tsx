@@ -509,26 +509,26 @@ function createSessionsState() {
 
       // ── 定时任务消息 ──────────────────────────────────────────────────────────
       source.addEventListener("scheduled_message", (event) => {
-        const data = JSON.parse(event.data || "{}") as {
+        const scheduledPayload = JSON.parse(event.data || "{}") as {
           text?: string;
           job_name?: string;
         };
         append(key, {
           id: messageId(),
           kind: "scheduled",
-          content: data.text ?? "",
-          jobName: data.job_name,
+          content: scheduledPayload.text ?? "",
+          jobName: scheduledPayload.job_name,
         });
         void refreshUsers();
       });
 
       // ── 主动推送消息 ──────────────────────────────────────────────────────────
       source.addEventListener("push_message", (event) => {
-        const data = JSON.parse(event.data || "{}") as { text?: string };
+        const pushPayload = JSON.parse(event.data || "{}") as { text?: string };
         append(key, {
           id: messageId(),
           kind: "assistant",
-          content: data.text ?? "",
+          content: pushPayload.text ?? "",
         });
         void refreshUsers();
       });
@@ -552,16 +552,16 @@ function createSessionsState() {
 
       source.addEventListener("imessage_progress", (event) => {
         if (!isImessage) return;
-        const data = JSON.parse(event.data || "{}") as {
+        const progressPayload = JSON.parse(event.data || "{}") as {
           stage?: string;
           tool?: string;
           iteration?: number;
         };
-        const text = data.tool
-          ? `调用工具：${data.tool}`
-          : data.stage === "gemini.spawn"
-            ? `Gemini 正在思考… (轮次 ${data.iteration ?? 1})`
-            : `处理中 (${data.stage ?? ""})`;
+        const text = progressPayload.tool
+          ? `调用工具：${progressPayload.tool}`
+          : progressPayload.stage === "gemini.spawn"
+            ? `Gemini 正在思考… (轮次 ${progressPayload.iteration ?? 1})`
+            : `处理中 (${progressPayload.stage ?? ""})`;
         // 更新 pending 状态而不是 append 系统消息（减少气泡噪音）
         if (state.pendingByKey[key]) {
           updatePending(key, { phase: "running", statusText: text });

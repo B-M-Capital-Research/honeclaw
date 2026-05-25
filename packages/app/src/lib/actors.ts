@@ -94,45 +94,54 @@ export function mergeActorSummaries(input: {
   const map = new Map<string, ActorListItem>()
   const ensure = (actor: ActorRef): ActorListItem => {
     const key = actorKey(actor)
-    let item = map.get(key)
-    if (!item) {
-      item = { actor, key }
-      map.set(key, item)
+    let actorSummary = map.get(key)
+    if (!actorSummary) {
+      actorSummary = { actor, key }
+      map.set(key, actorSummary)
     }
-    return item
+    return actorSummary
   }
 
-  for (const p of input.portfolios ?? []) {
-    const item = ensure({
-      channel: p.channel,
-      user_id: p.user_id,
-      channel_scope: p.channel_scope,
+  for (const portfolio of input.portfolios ?? []) {
+    const actorSummary = ensure({
+      channel: portfolio.channel,
+      user_id: portfolio.user_id,
+      channel_scope: portfolio.channel_scope,
     })
-    item.holdingsCount = p.holdings_count
-    item.watchlistCount = p.watchlist_count
-    if (p.updated_at && (!item.updatedAt || p.updated_at > item.updatedAt)) {
-      item.updatedAt = p.updated_at
+    actorSummary.holdingsCount = portfolio.holdings_count
+    actorSummary.watchlistCount = portfolio.watchlist_count
+    if (
+      portfolio.updated_at &&
+      (!actorSummary.updatedAt || portfolio.updated_at > actorSummary.updatedAt)
+    ) {
+      actorSummary.updatedAt = portfolio.updated_at
     }
   }
 
-  for (const sp of input.profiles ?? []) {
-    const item = ensure({
-      channel: sp.channel,
-      user_id: sp.user_id,
-      channel_scope: sp.channel_scope,
+  for (const profileSpace of input.profiles ?? []) {
+    const actorSummary = ensure({
+      channel: profileSpace.channel,
+      user_id: profileSpace.user_id,
+      channel_scope: profileSpace.channel_scope,
     })
-    item.profileCount = sp.profile_count
-    if (sp.updated_at && (!item.updatedAt || sp.updated_at > item.updatedAt)) {
-      item.updatedAt = sp.updated_at
+    actorSummary.profileCount = profileSpace.profile_count
+    if (
+      profileSpace.updated_at &&
+      (!actorSummary.updatedAt || profileSpace.updated_at > actorSummary.updatedAt)
+    ) {
+      actorSummary.updatedAt = profileSpace.updated_at
     }
   }
 
-  for (const u of input.sessions ?? []) {
-    const item = ensure(actorFromUser(u))
-    item.sessionLabel = u.session_label
-    if (u.last_time) {
-      if (!item.lastSessionTime || u.last_time > item.lastSessionTime) {
-        item.lastSessionTime = u.last_time
+  for (const sessionUser of input.sessions ?? []) {
+    const actorSummary = ensure(actorFromUser(sessionUser))
+    actorSummary.sessionLabel = sessionUser.session_label
+    if (sessionUser.last_time) {
+      if (
+        !actorSummary.lastSessionTime ||
+        sessionUser.last_time > actorSummary.lastSessionTime
+      ) {
+        actorSummary.lastSessionTime = sessionUser.last_time
       }
     }
   }

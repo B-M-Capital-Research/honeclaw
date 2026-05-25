@@ -12,16 +12,25 @@ const FS_KEY = "hone.public.fs";
 
 function readTheme(): PublicTheme {
   try {
-    const v = localStorage.getItem(THEME_KEY);
-    if (v === "light" || v === "dark" || v === "auto") return v;
+    const storedTheme = localStorage.getItem(THEME_KEY);
+    if (storedTheme === "light" || storedTheme === "dark" || storedTheme === "auto") {
+      return storedTheme;
+    }
   } catch {}
   return "auto";
 }
 
 function readFontScale(): PublicFontScale {
   try {
-    const v = localStorage.getItem(FS_KEY);
-    if (v === "s" || v === "m" || v === "l" || v === "xl") return v;
+    const storedFontScale = localStorage.getItem(FS_KEY);
+    if (
+      storedFontScale === "s" ||
+      storedFontScale === "m" ||
+      storedFontScale === "l" ||
+      storedFontScale === "xl"
+    ) {
+      return storedFontScale;
+    }
   } catch {}
   return "m";
 }

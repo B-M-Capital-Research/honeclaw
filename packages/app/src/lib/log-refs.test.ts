@@ -117,14 +117,14 @@ describe("extractLogRefs", () => {
 
 describe("logMatchesUser", () => {
   it("matches by structured actor user_id", () => {
-    const e = entry({ extra: { actor: { channel: "imessage", user_id: "alice" } } })
-    expect(logMatchesUser(e, "alice")).toBe(true)
-    expect(logMatchesUser(e, "bob")).toBe(false)
+    const logEntry = entry({ extra: { actor: { channel: "imessage", user_id: "alice" } } })
+    expect(logMatchesUser(logEntry, "alice")).toBe(true)
+    expect(logMatchesUser(logEntry, "bob")).toBe(false)
   })
 
   it("matches via session_id-derived actor", () => {
-    const e = entry({ extra: { session_id: "Actor_web__direct__ME" } })
-    expect(logMatchesUser(e, "ME")).toBe(true)
+    const logEntry = entry({ extra: { session_id: "Actor_web__direct__ME" } })
+    expect(logMatchesUser(logEntry, "ME")).toBe(true)
   })
 
   it("falls back to message substring", () => {

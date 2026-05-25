@@ -16,8 +16,8 @@ type LogRef =
 const SESSION_ID_PATTERN = /Actor_[A-Za-z0-9_-]+__[A-Za-z0-9_-]+__[A-Za-z0-9_-]+/g
 
 function readString(record: Record<string, unknown> | undefined, key: string): string | undefined {
-  const v = record?.[key]
-  return typeof v === "string" && v.trim() ? v.trim() : undefined
+  const rawValue = record?.[key]
+  return typeof rawValue === "string" && rawValue.trim() ? rawValue.trim() : undefined
 }
 
 function readActorFromExtra(extra: Record<string, unknown> | undefined): ActorRef | undefined {

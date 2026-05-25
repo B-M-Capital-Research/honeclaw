@@ -52,13 +52,13 @@ function createResearchState() {
       return
     }
     try {
-      const resp = await getResearchStatus(taskId)
+      const statusResponse = await getResearchStatus(taskId)
 
       // 映射外部状态到内部状态
       let newStatus: ResearchTask["status"] = "running"
-      if (resp.status === "已完成") {
+      if (statusResponse.status === "已完成") {
         newStatus = "completed"
-      } else if (resp.status === "异常") {
+      } else if (statusResponse.status === "异常") {
         newStatus = "error"
       }
 
@@ -67,12 +67,12 @@ function createResearchState() {
         (t) => t.task_id === taskId,
         produce((t) => {
           t.status = newStatus
-          t.progress = resp.progress
-          t.updated_at = resp.updated_at
-          if (resp.completed_at) t.completed_at = resp.completed_at
-          if (resp.answer_file_path) t.answer_file_path = resp.answer_file_path
+          t.progress = statusResponse.progress
+          t.updated_at = statusResponse.updated_at
+          if (statusResponse.completed_at) t.completed_at = statusResponse.completed_at
+          if (statusResponse.answer_file_path) t.answer_file_path = statusResponse.answer_file_path
           // 完成时直接存储 Markdown 原文
-          if (resp.answer_markdown) t.answer_markdown = resp.answer_markdown
+          if (statusResponse.answer_markdown) t.answer_markdown = statusResponse.answer_markdown
         }),
       )
     } catch (err) {
@@ -123,12 +123,12 @@ function createResearchState() {
       if (!backend.state.connected || !backend.hasCapability("research")) {
         throw new Error(RESEARCH.context.backend_unsupported)
       }
-      const resp = await startResearch(companyName)
+      const startResponse = await startResearch(companyName)
 
       const newTask: ResearchTask = {
         id: `local-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        task_id: resp.task_id,
-        task_name: resp.task_name,
+        task_id: startResponse.task_id,
+        task_name: startResponse.task_name,
         company_name: companyName,
         status: "running",
         progress: "0%",

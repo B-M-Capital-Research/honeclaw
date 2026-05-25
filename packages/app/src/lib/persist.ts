@@ -46,9 +46,9 @@ function writeValue<T>(key: string, value: T) {
 }
 
 export function readStoredModule(): StoredModule {
-  const v = readValue<string>(moduleKey, "start")
-  if (v === "help") return "start"
-  return v as StoredModule
+  const storedModule = readValue<string>(moduleKey, "start")
+  if (storedModule === "help") return "start"
+  return storedModule as StoredModule
 }
 
 export function writeStoredModule(value: StoredModule) {

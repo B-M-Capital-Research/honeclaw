@@ -36,11 +36,11 @@ export async function fetchGithubStars(): Promise<string> {
       },
     });
     if (!response.ok) return displayGithubStars(undefined);
-    const data = (await response.json()) as { stargazers_count?: unknown };
-    if (typeof data.stargazers_count !== "number") {
+    const repoPayload = (await response.json()) as { stargazers_count?: unknown };
+    if (typeof repoPayload.stargazers_count !== "number") {
       return displayGithubStars(undefined);
     }
-    const next = formatGithubStars(data.stargazers_count);
+    const next = formatGithubStars(repoPayload.stargazers_count);
     writeCachedGithubStars(next);
     return next;
   } catch {
