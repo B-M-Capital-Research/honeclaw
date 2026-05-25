@@ -3,8 +3,24 @@
 - **发现时间**: 2026-05-25 19:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，当前不是 P1。
+
+## 修复记录（2026-05-26 03:05 CST）
+
+- 当前 HEAD 已把普通 scheduler commodity guard 的触发范围收窄到“商品任务”或“正文主体本身就是商品播报”的场景；对 `A股港股收盘后跨市场复盘`、`每日美股大盘风险简报` 这类广义市场复盘，只因局部出现“油价回落”“油气板块承压”等从句，不再整篇替换成原油 / 大宗商品安全提示。
+- 具体实现位于 [`/Users/fengming2/Desktop/honeclaw/crates/hone-channels/src/scheduler.rs`](/Users/fengming2/Desktop/honeclaw/crates/hone-channels/src/scheduler.rs)：新增 broad-market-review 识别，要求普通非商品任务同时满足“任务/提示明显是市场复盘”与“正文存在多处股指/市场上下文锚点”时跳过 commodity rewrite；原油任务与正文主体明显为商品播报的普通 scheduler 仍继续命中原 guard。
+- 新增回归：
+  - `commodity_guard_skips_broad_market_review_with_secondary_oil_clause`
+  - `commodity_guard_skips_cross_market_review_with_oil_sector_mention`
+- 验证：
+  - `cargo test -p hone-channels commodity_guard_covers_non_heartbeat_market_scheduler_output --lib -- --nocapture`
+  - `cargo test -p hone-channels commodity_guard_skips_broad_market_review_with_secondary_oil_clause --lib -- --nocapture`
+  - `cargo test -p hone-channels commodity_guard_skips_cross_market_review_with_oil_sector_mention --lib -- --nocapture`
+  - `cargo test -p hone-channels commodity_ --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+  - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs`
+- 当前未重启 live 服务，也未做运行态复核，因此状态先记 `Fixed`，待后续正常部署 / 重启后的真实 scheduler 窗口再决定是否 `Closed`。
 
 ## 证据来源
 

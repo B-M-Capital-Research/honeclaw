@@ -1149,11 +1149,41 @@ fn scheduler_event_is_commodity_related(event: &SchedulerEvent) -> bool {
         || haystack.contains("oil price")
 }
 
+fn scheduler_event_is_broad_market_review(event: &SchedulerEvent) -> bool {
+    let haystack = compact_lowercase_text(&format!("{} {}", event.job_name, event.task_prompt));
+    [
+        "复盘",
+        "简报",
+        "风控",
+        "温度",
+        "收盘",
+        "盘后",
+        "盘前",
+        "大盘",
+        "市场",
+        "指数",
+        "情绪",
+        "marketreview",
+        "postmarket",
+        "premarket",
+        "riskbrief",
+    ]
+    .iter()
+    .any(|term| haystack.contains(term))
+}
+
 fn compact_lowercase_text(text: &str) -> String {
     text.chars()
         .filter(|ch| !ch.is_whitespace())
         .collect::<String>()
         .to_ascii_lowercase()
+}
+
+fn count_distinct_keyword_hits(compact: &str, keywords: &[&str]) -> usize {
+    keywords
+        .iter()
+        .filter(|term| compact.contains(**term))
+        .count()
 }
 
 fn text_has_commodity_causality_claim(text: &str) -> bool {
@@ -1414,6 +1444,40 @@ fn text_has_explicit_grounded_commodity_source(text: &str) -> bool {
     .any(|term| compact.contains(term))
 }
 
+fn text_has_broad_market_review_context(text: &str) -> bool {
+    let compact = compact_lowercase_text(text);
+    let anchor_hits = count_distinct_keyword_hits(
+        &compact,
+        &[
+            "a股",
+            "港股",
+            "美股",
+            "纳指",
+            "nasdaq",
+            "qqq",
+            "标普",
+            "s&p",
+            "sp500",
+            "道指",
+            "dow",
+            "vix",
+            "fear&greed",
+            "feargreed",
+            "恒生",
+            "hsi",
+            "上证",
+            "深成指",
+            "创业板",
+            "科技股",
+            "半导体",
+            "国债收益率",
+            "10年期美债",
+            "风险偏好",
+        ],
+    );
+    anchor_hits >= 2
+}
+
 fn rewrite_commodity_causality_message(text: &str) -> String {
     let mut retained_segments = Vec::new();
     for segment in split_commodity_message_segments(text) {
@@ -1452,7 +1516,14 @@ fn guard_commodity_causality_for_event(text: &str, event: &SchedulerEvent) -> Op
     if !has_unsafe_commodity_claim {
         return None;
     }
-    if !scheduler_event_is_commodity_related(event) && !text_looks_commodity_related(text) {
+    let event_is_commodity_related = scheduler_event_is_commodity_related(event);
+    if !event_is_commodity_related && !text_looks_commodity_related(text) {
+        return None;
+    }
+    if !event_is_commodity_related
+        && scheduler_event_is_broad_market_review(event)
+        && text_has_broad_market_review_context(text)
+    {
         return None;
     }
 
@@ -4133,6 +4204,68 @@ mod tests {
         assert!(!guarded.contains("101.02"));
         assert!(!guarded.contains("105.63"));
         assert!(!guarded.contains("风险偏好修复"));
+    }
+
+    #[test]
+    fn commodity_guard_skips_broad_market_review_with_secondary_oil_clause() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_market", None::<String>).expect("actor"),
+            job_id: "job-market-review".to_string(),
+            job_name: "每日美股大盘风险简报".to_string(),
+            task_prompt: "生成包含 Nasdaq、S&P 500、VIX 与风险偏好的市场复盘".to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_market".to_string(),
+            delivery_key: "delivery-market-review".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: false,
+            schedule_hour: 20,
+            schedule_minute: 0,
+            schedule_repeat: "daily".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        let original = "美股因 Memorial Day 休市，纳指期货与标普期货波动有限，VIX 回落到 13 附近，Fear & Greed 维持中性。科技股整体等待英伟达链条与长端利率信号，能源板块则受油价回落与库存预期压制。";
+
+        assert_eq!(
+            guard_commodity_causality_for_event(original, &event),
+            None,
+            "broad market reviews should not be fully replaced by the commodity guard"
+        );
+    }
+
+    #[test]
+    fn commodity_guard_skips_cross_market_review_with_oil_sector_mention() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_market", None::<String>).expect("actor"),
+            job_id: "job-ah-review".to_string(),
+            job_name: "A股港股收盘后跨市场复盘".to_string(),
+            task_prompt: "总结 A 股、港股与美股休市背景下的跨市场结构变化".to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_market".to_string(),
+            delivery_key: "delivery-ah-review".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: false,
+            schedule_hour: 17,
+            schedule_minute: 30,
+            schedule_repeat: "daily".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        let original = "A股今日由算力和机器人链领涨，港股因佛诞翌日休市，美股则因 Memorial Day 休市。上证与恒生科技相关映射资产仍偏强，油气板块因油价回落承压，但这只是结构分化的一部分。";
+
+        assert_eq!(
+            guard_commodity_causality_for_event(original, &event),
+            None,
+            "cross-market reviews should keep their main content when oil is only one sector clause"
+        );
     }
 
     #[test]

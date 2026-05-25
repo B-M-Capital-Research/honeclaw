@@ -3,7 +3,7 @@
 - title: Active Bug Burn-down 2026-04-28
 - status: in_progress
 - created_at: 2026-04-28
-- updated_at: 2026-05-23 12:04 CST
+- updated_at: 2026-05-26 03:05 CST
 - owner: Codex
 - related_files:
   - `docs/bugs/README.md`
@@ -91,6 +91,7 @@ Clear the current active bug queue as far as software changes can responsibly do
 - 2026-05-22 10:05: Closed the active P2 Feishu PDF CMap parser panic bug. Shared PDF extraction now catches `pdf_extract` / `adobe-cmap-parser` panics and returns stable `pdf_text_extract_failed`; attachment prompt lines, PDF notes, and ack messages sanitize historical `task panicked`, crate source path, and local absolute-path details before they can enter LLM-visible context. Active bug queue is empty again. No GitHub Issue is linked to this bug.
 - 2026-05-23 12:04: Closed the reopened P2 heartbeat context-window overflow status bug. Heartbeat runner context overflow is no longer converted into `ContextOverflowNoop`; it now keeps `ScheduledTaskExecution.error` and records `failure_kind=context_window_overflow` plus `parse_kind=ContextOverflowError`, so channel histories land as `execution_failed + skipped_error` instead of `noop + skipped_noop`. No GitHub Issue is linked to the context-overflow bug.
 - 2026-05-23 12:13: Closed the remaining active P2 heartbeat structured-status degradation bug. Heartbeat JSON status aliases now normalize common `not_triggered` / `condition_met` shapes, complete internal-only `<think>` outputs that explicitly say no trigger normalize to `PlainTextNoop`, and the heartbeat prompt now blocks tool/task/profile configuration fragments such as `set_immediate_kinds` / `cron_job` as final output. Active bug queue is empty again. No GitHub Issue is linked to this bug.
+- 2026-05-26 03:05: Closed the remaining active P2 `scheduler_commodity_guard_false_positive_market_review`. Ordinary scheduler commodity rewrite now stays limited to commodity-first tasks or commodity-dominant content, while broad market reviews with only secondary oil/energy clauses skip the full rewrite. Added focused `hone-channels` regressions for US market risk briefs and cross-market close reviews plus reran the `commodity_` suite and `cargo check -p hone-channels --tests`. Active bug queue is empty again.
 
 ## Validation
 
