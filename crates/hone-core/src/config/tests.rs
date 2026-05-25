@@ -140,6 +140,17 @@ fn assert_config_example_multi_agent_fallback_docs(example: &str) {
     );
 }
 
+fn assert_openrouter_provider_key_pool_docs(label: &str, doc: &str) {
+    assert!(
+        doc.contains("llm.providers.openrouter.api_key/api_keys"),
+        "{label} should document the OpenRouter provider key pool as api_key/api_keys"
+    );
+    assert!(
+        doc.contains("legacy single-key") || doc.contains("legacy `llm.openrouter.*`"),
+        "{label} should document the legacy OpenRouter single-key fallback"
+    );
+}
+
 fn assert_config_example_storage_and_logging(root: &serde_yaml::Mapping) {
     let storage = yaml_key(root, "storage").unwrap().as_mapping().unwrap();
     assert!(!yaml_has_key(storage, "base_path"));
@@ -1702,8 +1713,21 @@ fn config_example_avoids_stale_config_knobs() {
     assert_config_example_event_sections(root);
     assert_config_example_agent_section(root);
     assert_config_example_multi_agent_fallback_docs(&example);
+    assert_openrouter_provider_key_pool_docs("config.example.yaml", &example);
     assert_config_example_storage_and_logging(root);
     assert_config_example_public_auth_env_docs(&example);
+
+    let wiki = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/wiki.md"),
+    )
+    .unwrap();
+    assert_openrouter_provider_key_pool_docs("docs/wiki.md", &wiki);
+
+    let technical_spec = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/technical-spec.md"),
+    )
+    .unwrap();
+    assert_openrouter_provider_key_pool_docs("docs/technical-spec.md", &technical_spec);
 
     let backend_runbook = std::fs::read_to_string(
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/runbooks/backend-deployment.md"),
@@ -1723,4 +1747,14 @@ fn config_example_avoids_stale_config_knobs() {
     )
     .unwrap();
     assert_opencode_runbook_config_file_docs(&opencode_runbook);
+
+    let install_runbook = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../docs/runbooks/hone-cli-install-and-start.md"),
+    )
+    .unwrap();
+    assert_openrouter_provider_key_pool_docs(
+        "docs/runbooks/hone-cli-install-and-start.md",
+        &install_runbook,
+    );
 }

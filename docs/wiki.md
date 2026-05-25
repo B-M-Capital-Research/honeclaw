@@ -298,6 +298,7 @@ Important config areas:
 
 Admin/public Web ports are runtime environment settings, primarily `HONE_WEB_PORT` and `HONE_PUBLIC_WEB_PORT`, rather than `config.yaml` keys.
 Public SMS login and optional Aliyun Captcha are also runtime environment settings; use `config.example.yaml` and `docs/runbooks/backend-deployment.md` as the reference for `ALIBABA_CLOUD_*`, `HONE_ALIYUN_SMS_*`, `HONE_ALIYUN_CAPTCHA_*`, and `HONE_PUBLIC_SECURE_COOKIE`. For the public session cookie, `HONE_PUBLIC_SECURE_COOKIE` accepts `true/1/yes` and `false/0/no`; invalid non-empty values keep `Secure=true`.
+For OpenRouter credentials, prefer the `llm.providers.openrouter.api_key/api_keys` pool; legacy `llm.openrouter.*` key fields are migration fallbacks only.
 
 Never commit local secrets in `config.yaml`.
 
@@ -314,7 +315,7 @@ Common runner choices:
 | `codex_acp` | You use Codex ACP and want ACP session integration. |
 | `codex_cli` | You use Codex CLI directly. |
 | `function_calling` | You want the built-in OpenAI-compatible function-calling path. |
-| `multi-agent` | You want separate search and OpenCode ACP answer stages; search keys come from `agent.multi_agent.search.api_key` or legacy `llm.auxiliary.api_key`, while answer keys can inherit `llm.providers.openrouter.api_key/api_keys`. |
+| `multi-agent` | You want separate search and OpenCode ACP answer stages; search keys come from `agent.multi_agent.search.api_key` or legacy `llm.auxiliary.api_key`, while answer can inherit the `llm.providers.openrouter.api_key/api_keys` pool when `agent.multi_agent.answer.api_key` is empty. |
 
 Typical OpenCode setup:
 

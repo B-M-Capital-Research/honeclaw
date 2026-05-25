@@ -247,7 +247,7 @@ This rule is already applied to:
 #### `multi-agent`
 
 - Runs a direct search stage from `agent.multi_agent.search`
-- Runs the answer stage through OpenCode ACP using `agent.multi_agent.answer` plus the OpenRouter key pool fallback when Hone manages that route
+- Runs the answer stage through OpenCode ACP using `agent.multi_agent.answer` plus the `llm.providers.openrouter.api_key/api_keys` pool fallback when Hone manages that route and no answer key is set
 
 ### 5.5 Tool Layer
 

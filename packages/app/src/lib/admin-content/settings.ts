@@ -50,9 +50,9 @@ const ZH = {
     multi_agent: {
       name: "Multi-Agent",
       description:
-        "Search Agent 使用 MiniMax 工具调用，Answer Agent 通过 OpenAI 兼容接口收束回复。",
+        "Search Agent 使用 MiniMax 工具调用，Answer Agent 通过本机 OpenCode ACP 收束回复。",
       search_title: "Search Agent (MiniMax / OpenAI-compatible)",
-      answer_title: "Answer Agent (OpenAI-compatible)",
+      answer_title: "Answer Agent (OpenCode ACP)",
       test_search: "测试 Search Agent",
       test_answer: "测试 Answer Agent",
       check_opencode: "检查 opencode",
@@ -314,9 +314,9 @@ const EN: typeof ZH = {
     multi_agent: {
       name: "Multi-Agent",
       description:
-        "Search Agent uses MiniMax function calling; Answer Agent finalizes the reply through an OpenAI-compatible route.",
+        "Search Agent uses MiniMax function calling; Answer Agent finalizes the reply through local OpenCode ACP.",
       search_title: "Search Agent (MiniMax / OpenAI-compatible)",
-      answer_title: "Answer Agent (OpenAI-compatible)",
+      answer_title: "Answer Agent (OpenCode ACP)",
       test_search: "Test Search Agent",
       test_answer: "Test Answer Agent",
       check_opencode: "Check opencode",

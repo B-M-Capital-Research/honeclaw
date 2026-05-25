@@ -86,7 +86,7 @@ mod tests {
         step_header(2, 7, "Runner");
         subsection("Multi-Agent");
         bullet(
-            "前置：multi-agent search API key、本机可运行的 opencode，以及 answer 可用的 OpenRouter key pool。",
+            "前置：multi-agent search API key、本机可运行的 opencode，以及 answer key 或 `llm.providers.openrouter.api_key/api_keys`。",
         );
         bullet("原理：第一段 search 用小模型拉证据，第二段 answer 用主模型总结。");
         ok_line("opencode 已检测到可用。");
