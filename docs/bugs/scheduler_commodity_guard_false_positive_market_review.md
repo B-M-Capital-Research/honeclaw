@@ -24,6 +24,11 @@
 
 ## 证据来源
 
+- 2026-05-26 07:03 CST 复核补充：代码修复后，旧 live 进程仍在最近四小时窗口复现同一 false positive；但 `hone-console-page` / `hone-feishu` 当前进程启动于 2026-05-22 22:52 CST，早于 2026-05-26 03:10 CST 修复提交 `63442662`，因此本轮只记录为“代码已修、旧运行态未部署/未重启”的证据，不把状态从 `Fixed` 回退为 `New`。
+  - `run_id=33558`，`job_name=OWALERT_PostMarket`，`executed_at=2026-05-26T04:32:06.154009+08:00`，`completed + sent + delivered=1`，`detail_json.scheduler.commodity_causality_guarded=true`。同一 session assistant final 是 Memorial Day 休市下的持仓股 / 观察池盘后扫描与宏观新闻复盘，但最终 `response_preview` / `deliver_preview` 被替换成“本轮原油/大宗商品播报包含未完成同窗来源核验”的安全提示。
+  - `run_id=33596`，`job_name=美股收盘后跨市场复盘`，`executed_at=2026-05-26T05:31:29.535191+08:00`，同样命中 `commodity_causality_guarded=true`。原始 assistant final 明确说明美股因 Memorial Day 休市，只做 5 月 22 日简短复盘；最终送达预览仍被替换成原油 / 大宗商品提示。
+  - 同窗 `run_id=33547`，`job_name=Oil_Price_Monitor_Closing`，`executed_at=2026-05-26T04:01:46.977762+08:00`，也命中 `commodity_causality_guarded=true`，但该任务本身是原油价格播报，属于修复后仍应保留的 commodity guard 适用范围，不计入 false positive。
+  - 这组样本说明生产运行态仍需要重启 / 部署后复核；如果重启到包含 `63442662` 的二进制后仍在 `OWALERT_PostMarket` 或跨市场复盘上复现，应重新打开为 `New`。
 - 2026-05-25 23:03 CST 复核补充：本缺陷在最近四小时继续复发，且不再局限于 A/H 复盘；普通美股大盘风控 / 温度任务也被整篇替换成原油 / 大宗商品安全提示。
   - `run_id=33277`，`job_name=每日美股大盘温度检查`，`executed_at=2026-05-25T20:01:06.183612+08:00`，`completed + sent + delivered=1`，`detail_json.scheduler.commodity_causality_guarded=true`。`raw_preview` 是 Memorial Day 休市下的美股大盘温度检查，包含 Nasdaq、S&P 500、VIX、Fear & Greed 等口径；`response_preview` 被替换为原油 / 大宗商品归因提示。
   - `run_id=33259`，`job_name=每日美股大盘风险简报`，`executed_at=2026-05-25T20:01:26.102944+08:00`，同样命中 `commodity_causality_guarded=true`。`raw_preview` 是美股大盘风险简报，非原油或大宗商品播报。
