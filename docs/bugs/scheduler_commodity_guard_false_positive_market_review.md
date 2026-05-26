@@ -3,8 +3,20 @@
 - **发现时间**: 2026-05-25 19:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
+
+## 复发记录（2026-05-27 07:03 CST）
+
+- 最近四小时真实窗口再次确认同一 scheduler 出站 guard false positive 仍活跃：`2026-05-27 03:03-07:03 CST` 普通 scheduler 共有 6 条 `completed + sent + delivered=1`，其中 4 条命中 `detail_json.scheduler.commodity_causality_guarded=true`。
+- 4 条 guard 命中里，`Oil_Price_Monitor_Closing` 是专门原油任务，属于预期商品 guard；其余 3 条是非商品市场复盘 / 盘后扫描任务，原始完整市场分析被全量替换成“本轮原油/大宗商品播报包含未完成同窗来源核验...”安全提示并仍记已送达。
+- `data/sessions.sqlite3` -> `cron_job_runs` 关键样本：
+  - `run_id=34402`，`job_name=OWALERT_PostMarket`，`executed_at=2026-05-27T04:32:40.645488+08:00`，`completed + sent + delivered=1`，`detail_json.scheduler.commodity_causality_guarded=true`。`raw_preview` 是美股 2026-05-26 盘后、AI 内存链、MU、BE、COHR、CIEN、SNDK、RKLB 等盘后扫描，不是原油或大宗商品播报。
+  - `run_id=34431`，`job_name=美股收盘后跨市场复盘`，`executed_at=2026-05-27T05:32:31.506304+08:00`，同样被替换。`raw_preview` 是纳指 / 半导体 / AI 硬件 / A股港股映射的跨市场复盘。
+  - `run_id=34452`，`job_name=每日美股盘后收盘复盘`，`executed_at=2026-05-27T06:01:24.890149+08:00`，同样被替换。`raw_preview` 是美股 2026-05-26 收盘后纳指、标普、道指、VIX、10 年期美债、美元指数、板块和 AI / 半导体主线复盘。
+- 同一任务会话落库保留原始完整复盘，例如 `session_id=Actor_feishu__direct__ou_5f11da38ad70c47cf87c0b106b6408b190` 在 `2026-05-27T06:01:21.127398+08:00` 的 assistant final 长度约 2033，正文是完整美股盘后收盘复盘；错误发生在 scheduler 出站 guard 后。
+- `data/runtime/logs/web.log.2026-05-26` 同窗记录 `[SchedulerDiag] commodity_causality_guarded`，覆盖 `OWALERT_PostMarket`、`美股收盘后跨市场复盘` 与 `每日美股盘后收盘复盘`。
+- 这是既有缺陷的同一根因 / 同一受影响链路，不新建重复文档；严重等级仍为 P2，状态从 `Fixed` 调回 `New`。修复侧需要优先确认 00:09 CST 的代码条件是否仍遗漏盘后 / 收盘后市场任务，或当前运行态是否没有真正部署到包含修复的二进制。
 
 ## 修复记录（2026-05-27 00:09 CST）
 
