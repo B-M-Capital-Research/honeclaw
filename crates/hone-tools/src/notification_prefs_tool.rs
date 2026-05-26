@@ -88,19 +88,19 @@ fn extract_string_array(value: &Value) -> HoneResult<Vec<String>> {
 }
 
 fn validate_tags(tags: &[String]) -> HoneResult<()> {
-    if let Some(bad) = first_invalid_kind_tag(tags.iter().map(|s| s.as_str())) {
+    if let Some(invalid_tag) = first_invalid_kind_tag(tags.iter().map(|tag| tag.as_str())) {
         return Err(HoneError::Tool(format!(
-            "未知的 kind tag '{bad}';合法清单:{}",
+            "未知的 kind tag '{invalid_tag}';合法清单:{}",
             ALL_KIND_TAGS.join(", ")
         )));
     }
     Ok(())
 }
 
-fn validate_hhmm(s: &str) -> HoneResult<()> {
-    chrono::NaiveTime::parse_from_str(s, "%H:%M")
+fn validate_hhmm(time_text: &str) -> HoneResult<()> {
+    chrono::NaiveTime::parse_from_str(time_text, "%H:%M")
         .map(|_| ())
-        .map_err(|_| HoneError::Tool(format!("时间格式必须为 HH:MM (24h),收到 {s:?}")))
+        .map_err(|_| HoneError::Tool(format!("时间格式必须为 HH:MM (24h),收到 {time_text:?}")))
 }
 
 fn parse_bool_flag(value: &Value, action: &str) -> HoneResult<bool> {
@@ -157,9 +157,9 @@ fn digest_slot_times_inside_quiet(slots: &[DigestSlot], quiet_hours: &QuietHours
 }
 
 fn parse_price_high_pct(value: &Value) -> HoneResult<f64> {
-    let pct = match value {
-        Value::Number(n) => n.as_f64(),
-        Value::String(s) => s.trim().parse::<f64>().ok(),
+    let percentage = match value {
+        Value::Number(number) => number.as_f64(),
+        Value::String(raw_text) => raw_text.trim().parse::<f64>().ok(),
         Value::Null => None,
         _ => None,
     }
@@ -168,12 +168,12 @@ fn parse_price_high_pct(value: &Value) -> HoneResult<f64> {
             "set_price_high_pct 需要数字 (0<x≤50,例 3.5);传 null 清空回到全局阈值".into(),
         )
     })?;
-    if !(pct.is_finite() && pct > 0.0 && pct <= 50.0) {
+    if !(percentage.is_finite() && percentage > 0.0 && percentage <= 50.0) {
         return Err(HoneError::Tool(format!(
-            "price_high_pct 必须在 (0, 50] 范围,收到 {pct}"
+            "price_high_pct 必须在 (0, 50] 范围,收到 {percentage}"
         )));
     }
-    Ok(pct)
+    Ok(percentage)
 }
 
 fn parse_quiet_hours(value: &Value) -> HoneResult<QuietHours> {
@@ -231,10 +231,10 @@ fn prefs_to_json(prefs: &NotificationPrefs) -> Value {
         "immediate_kinds": prefs.immediate_kinds,
         "mainline_style": prefs.mainline_style,
         "mainline_by_ticker": prefs.mainline_by_ticker,
-        "quiet_hours": prefs.quiet_hours.as_ref().map(|qh| json!({
-            "from": qh.from,
-            "to": qh.to,
-            "exempt_kinds": qh.exempt_kinds,
+        "quiet_hours": prefs.quiet_hours.as_ref().map(|quiet_hours| json!({
+            "from": quiet_hours.from,
+            "to": quiet_hours.to,
+            "exempt_kinds": quiet_hours.exempt_kinds,
         })),
     })
 }
@@ -410,15 +410,15 @@ impl Tool for NotificationPrefsTool {
                 // 任何 slot 落在现有 quiet_hours 内都会被 scheduler 让位给
                 // quiet_flush,等于 digest slot 配置静默失效。这里 hard error,
                 // 逼 LLM 自动改时间或先 clear_quiet_hours。
-                if let Some(qh) = prefs.quiet_hours.as_ref() {
-                    let blocked_slots = digest_slot_times_inside_quiet(&slots, qh);
+                if let Some(quiet_hours) = prefs.quiet_hours.as_ref() {
+                    let blocked_slots = digest_slot_times_inside_quiet(&slots, quiet_hours);
                     if !blocked_slots.is_empty() {
                         return Err(HoneError::Tool(format!(
                             "digest slot 时间 [{}] 落在 quiet_hours {}–{} 内,scheduler 不会触发;\
                              改 slot 时间或先 clear_quiet_hours / 缩短 quiet 区间。",
                             blocked_slots.join(", "),
-                            qh.from,
-                            qh.to,
+                            quiet_hours.from,
+                            quiet_hours.to,
                         )));
                     }
                 }
@@ -435,14 +435,14 @@ impl Tool for NotificationPrefsTool {
                 // 报错让用户先调 slot。
                 let candidate = parse_quiet_hours(&value)?;
                 if let Some(slots) = prefs.digest_slots.as_ref() {
-                    let bad = digest_slot_times_inside_quiet(slots, &candidate);
-                    if !bad.is_empty() {
+                    let overlapping_slots = digest_slot_times_inside_quiet(slots, &candidate);
+                    if !overlapping_slots.is_empty() {
                         return Err(HoneError::Tool(format!(
                             "新 quiet_hours {}–{} 会吞掉现有 digest slot [{}],它们将不再触发;\
                              请先 set_digest_slots 调整时间,或缩短 quiet 区间。",
                             candidate.from,
                             candidate.to,
-                            bad.join(", "),
+                            overlapping_slots.join(", "),
                         )));
                     }
                 }
@@ -471,7 +471,7 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
 
-    fn test_digest_defaults() -> crate::schedule_view::DigestDefaults {
+    fn digest_defaults_fixture() -> crate::schedule_view::DigestDefaults {
         crate::schedule_view::DigestDefaults {
             slots: vec![
                 crate::schedule_view::DigestDefaultSlot {
@@ -486,15 +486,15 @@ mod tests {
         }
     }
 
-    fn make_tool(dir: &std::path::Path) -> NotificationPrefsTool {
+    fn make_tool(prefs_dir: &std::path::Path) -> NotificationPrefsTool {
         let actor = ActorIdentity::new("telegram", "u1", None::<&str>).unwrap();
-        let cron_dir = dir.join("__test_cron__");
+        let cron_dir = prefs_dir.join("__test_cron__");
         std::fs::create_dir_all(&cron_dir).unwrap();
         NotificationPrefsTool::new(
-            dir.to_path_buf(),
+            prefs_dir.to_path_buf(),
             Some(actor),
             cron_dir,
-            test_digest_defaults(),
+            digest_defaults_fixture(),
         )
     }
 
@@ -636,7 +636,7 @@ mod tests {
             .as_array()
             .unwrap()
             .iter()
-            .map(|v| v["time"].as_str().unwrap().to_string())
+            .map(|slot_value| slot_value["time"].as_str().unwrap().to_string())
             .collect();
         assert_eq!(times, vec!["19:00", "02:30", "09:00"]);
 
@@ -733,7 +733,7 @@ mod tests {
             dir.path().to_path_buf(),
             None,
             cron_dir,
-            test_digest_defaults(),
+            digest_defaults_fixture(),
         );
         let err = tool.execute(json!({"action":"get"})).await.unwrap_err();
         match err {
@@ -858,7 +858,7 @@ mod tests {
             dir.path().to_path_buf(),
             Some(actor),
             cron_dir,
-            test_digest_defaults(),
+            digest_defaults_fixture(),
         );
         let response = tool
             .execute(json!({"action":"get_overview"}))
@@ -883,7 +883,7 @@ mod tests {
             dir.path().to_path_buf(),
             Some(actor),
             cron_dir,
-            test_digest_defaults(),
+            digest_defaults_fixture(),
         );
         let response = tool
             .execute(json!({"action":"get_overview"}))
@@ -966,7 +966,7 @@ mod tests {
             .as_array()
             .unwrap()
             .iter()
-            .map(|v| v["time"].as_str().unwrap().to_string())
+            .map(|slot_value| slot_value["time"].as_str().unwrap().to_string())
             .collect();
         assert_eq!(times, vec!["09:00", "19:00"]);
     }

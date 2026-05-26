@@ -121,12 +121,12 @@ pub fn build_overview(
     let slot_entries: Vec<(String, Option<String>)> = match prefs.digest_slots.as_deref() {
         Some(slots) => slots
             .iter()
-            .map(|s| (s.time.clone(), s.label.clone()))
+            .map(|slot| (slot.time.clone(), slot.label.clone()))
             .collect(),
         None => digest_defaults
             .slots
             .iter()
-            .map(|s| (s.time.clone(), s.label.clone()))
+            .map(|slot| (slot.time.clone(), slot.label.clone()))
             .collect(),
     };
     for (window, label) in &slot_entries {
@@ -148,7 +148,7 @@ pub fn build_overview(
     }
 
     // 2. 自定义 cron jobs
-    for job in jobs.iter().filter(|j| j.enabled) {
+    for job in jobs.iter().filter(|job| job.enabled) {
         let time_local = format!("{:02}:{:02}", job.schedule.hour, job.schedule.minute);
         let frequency = describe_cron_frequency(job);
         let in_quiet = time_in_quiet(&time_local, prefs.quiet_hours.as_ref());
@@ -181,17 +181,17 @@ pub fn build_overview(
         exempt_in_quiet: prefs
             .quiet_hours
             .as_ref()
-            .map(|qh| qh.exempt_kinds.clone())
+            .map(|quiet_hours| quiet_hours.exempt_kinds.clone())
             .unwrap_or_default(),
     };
 
     Ok(ScheduleOverview {
         actor: actor_key,
         timezone,
-        quiet_hours: prefs.quiet_hours.map(|qh| QuietHoursView {
-            from: qh.from,
-            to: qh.to,
-            exempt_kinds: qh.exempt_kinds,
+        quiet_hours: prefs.quiet_hours.map(|quiet_hours| QuietHoursView {
+            from: quiet_hours.from,
+            to: quiet_hours.to,
+            exempt_kinds: quiet_hours.exempt_kinds,
         }),
         schedule,
         immediate,
@@ -335,13 +335,17 @@ fn write_header(output: &mut String, overview: &ScheduleOverview) {
     use std::fmt::Write;
     let _ = writeln!(output, "你的推送日程");
     let _ = writeln!(output, "时区：{}", overview.timezone);
-    if let Some(qh) = &overview.quiet_hours {
-        let exempt = if qh.exempt_kinds.is_empty() {
+    if let Some(quiet_hours) = &overview.quiet_hours {
+        let exempt = if quiet_hours.exempt_kinds.is_empty() {
             String::new()
         } else {
-            format!("（豁免: {}）", qh.exempt_kinds.join(", "))
+            format!("（豁免: {}）", quiet_hours.exempt_kinds.join(", "))
         };
-        let _ = writeln!(output, "勿扰时段：🌙 {} – {}{}", qh.from, qh.to, exempt);
+        let _ = writeln!(
+            output,
+            "勿扰时段：🌙 {} – {}{}",
+            quiet_hours.from, quiet_hours.to, exempt
+        );
     } else {
         let _ = writeln!(output, "勿扰时段：未启用");
     }
@@ -364,8 +368,8 @@ fn write_immediate_section(output: &mut String, overview: &ScheduleOverview) {
     if overview.immediate.portfolio_only {
         let _ = writeln!(output, "• 只推命中持仓的事件");
     }
-    if let Some(p) = overview.immediate.price_high_pct {
-        let _ = writeln!(output, "• 价格异动阈值：{p}%");
+    if let Some(price_high_pct) = overview.immediate.price_high_pct {
+        let _ = writeln!(output, "• 价格异动阈值：{price_high_pct}%");
     }
     if !overview.immediate.blocked_kinds.is_empty() {
         let _ = writeln!(
@@ -388,8 +392,8 @@ fn write_immediate_section(output: &mut String, overview: &ScheduleOverview) {
     }
 }
 
-fn source_label(s: ScheduleSource) -> &'static str {
-    match s {
+fn source_label(source: ScheduleSource) -> &'static str {
+    match source {
         ScheduleSource::Digest => "Digest",
         ScheduleSource::CronJob => "自定义",
     }
@@ -397,22 +401,24 @@ fn source_label(s: ScheduleSource) -> &'static str {
 
 /// 简化的 display width:ASCII = 1,其它(CJK / emoji) = 2。
 /// 不引入 unicode-width crate,对中文场景已经够用。
-fn display_width(s: &str) -> usize {
-    s.chars().map(|c| if c.is_ascii() { 1 } else { 2 }).sum()
+fn display_width(text: &str) -> usize {
+    text.chars()
+        .map(|character| if character.is_ascii() { 1 } else { 2 })
+        .sum()
 }
 
-fn pad_to(s: &str, width: usize) -> String {
-    let cur = display_width(s);
-    if cur >= width {
-        s.to_string()
+fn pad_to(text: &str, width: usize) -> String {
+    let current_width = display_width(text);
+    if current_width >= width {
+        text.to_string()
     } else {
-        let pad = " ".repeat(width - cur);
-        format!("{s}{pad}")
+        let padding = " ".repeat(width - current_width);
+        format!("{text}{padding}")
     }
 }
 
-fn severity_str(s: &Severity) -> String {
-    match s {
+fn severity_str(severity: &Severity) -> String {
+    match severity {
         Severity::Low => "low".into(),
         Severity::Medium => "medium".into(),
         Severity::High => "high".into(),
@@ -444,29 +450,29 @@ fn describe_cron_frequency(job: &CronJob) -> String {
 
 /// 判断给定本地 HH:MM 是否落在 quiet_hours 区间内。语义跟
 /// `hone_core::quiet::quiet_window_active` 对齐，但只看本地时刻不需要 now。
-pub(crate) fn time_in_quiet(local_hhmm: &str, qh: Option<&QuietHours>) -> bool {
-    let Some(qh) = qh else {
+pub(crate) fn time_in_quiet(local_hhmm: &str, quiet_hours: Option<&QuietHours>) -> bool {
+    let Some(quiet_hours) = quiet_hours else {
         return false;
     };
-    let Ok(t) = NaiveTime::parse_from_str(local_hhmm, "%H:%M") else {
+    let Ok(local_time) = NaiveTime::parse_from_str(local_hhmm, "%H:%M") else {
         return false;
     };
-    let Ok(from_t) = NaiveTime::parse_from_str(&qh.from, "%H:%M") else {
+    let Ok(start_time) = NaiveTime::parse_from_str(&quiet_hours.from, "%H:%M") else {
         return false;
     };
-    let Ok(to_t) = NaiveTime::parse_from_str(&qh.to, "%H:%M") else {
+    let Ok(end_time) = NaiveTime::parse_from_str(&quiet_hours.to, "%H:%M") else {
         return false;
     };
-    let now_min = t.hour() as i32 * 60 + t.minute() as i32;
-    let from_min = from_t.hour() as i32 * 60 + from_t.minute() as i32;
-    let to_min = to_t.hour() as i32 * 60 + to_t.minute() as i32;
-    if from_min == to_min {
+    let local_minute = local_time.hour() as i32 * 60 + local_time.minute() as i32;
+    let start_minute = start_time.hour() as i32 * 60 + start_time.minute() as i32;
+    let end_minute = end_time.hour() as i32 * 60 + end_time.minute() as i32;
+    if start_minute == end_minute {
         return false;
     }
-    if from_min < to_min {
-        now_min >= from_min && now_min < to_min
+    if start_minute < end_minute {
+        local_minute >= start_minute && local_minute < end_minute
     } else {
-        now_min >= from_min || now_min < to_min
+        local_minute >= start_minute || local_minute < end_minute
     }
 }
 
@@ -477,11 +483,11 @@ mod tests {
     use hone_event_engine::prefs::{NotificationPrefs, QuietHours as QH};
     use tempfile::tempdir;
 
-    fn actor() -> ActorIdentity {
+    fn actor_fixture() -> ActorIdentity {
         ActorIdentity::new("imessage", "u1", None::<String>).unwrap()
     }
 
-    fn defaults() -> DigestDefaults {
+    fn digest_defaults_fixture() -> DigestDefaults {
         DigestDefaults {
             slots: vec![
                 DigestDefaultSlot {
@@ -498,14 +504,20 @@ mod tests {
 
     #[test]
     fn build_overview_with_no_cron_or_prefs_returns_default_slots() {
-        let dir = tempdir().unwrap();
-        let prefs_dir = dir.path().join("prefs");
-        let cron_dir = dir.path().join("cron");
+        let temp_root = tempdir().unwrap();
+        let prefs_dir = temp_root.path().join("prefs");
+        let cron_dir = temp_root.path().join("cron");
         std::fs::create_dir_all(&prefs_dir).unwrap();
         std::fs::create_dir_all(&cron_dir).unwrap();
-        let default_slots = defaults();
-        let overview =
-            build_overview(&prefs_dir, &cron_dir, &actor(), &default_slots, Utc::now()).unwrap();
+        let default_slots = digest_defaults_fixture();
+        let overview = build_overview(
+            &prefs_dir,
+            &cron_dir,
+            &actor_fixture(),
+            &default_slots,
+            Utc::now(),
+        )
+        .unwrap();
         // 无 prefs → 默认 2 条 unified digest slot
         assert_eq!(overview.schedule.len(), 2);
         assert!(overview.quiet_hours.is_none());
@@ -532,9 +544,9 @@ mod tests {
 
     #[test]
     fn build_overview_marks_cron_skipped_by_quiet() {
-        let dir = tempdir().unwrap();
-        let prefs_dir = dir.path().join("prefs");
-        let cron_dir = dir.path().join("cron");
+        let temp_root = tempdir().unwrap();
+        let prefs_dir = temp_root.path().join("prefs");
+        let cron_dir = temp_root.path().join("cron");
         std::fs::create_dir_all(&prefs_dir).unwrap();
         std::fs::create_dir_all(&cron_dir).unwrap();
 
@@ -547,12 +559,12 @@ mod tests {
             }),
             ..Default::default()
         };
-        prefs_storage.save(&actor(), &prefs).unwrap();
+        prefs_storage.save(&actor_fixture(), &prefs).unwrap();
 
         let cron_storage = CronJobStorage::new(&cron_dir);
         // 02:00 触发 → 在 quiet 内
         let night_job_result = cron_storage.add_job(
-            &actor(),
+            &actor_fixture(),
             "夜半监控",
             Some(2),
             Some(0),
@@ -573,7 +585,7 @@ mod tests {
         );
         // 09:00 触发 → 不在 quiet 内
         let morning_job_result = cron_storage.add_job(
-            &actor(),
+            &actor_fixture(),
             "盘后总结",
             Some(9),
             Some(0),
@@ -593,9 +605,15 @@ mod tests {
             "add_job 2 failed: {morning_job_result}"
         );
 
-        let default_slots = defaults();
-        let overview =
-            build_overview(&prefs_dir, &cron_dir, &actor(), &default_slots, Utc::now()).unwrap();
+        let default_slots = digest_defaults_fixture();
+        let overview = build_overview(
+            &prefs_dir,
+            &cron_dir,
+            &actor_fixture(),
+            &default_slots,
+            Utc::now(),
+        )
+        .unwrap();
 
         let night_job = overview
             .schedule
@@ -630,13 +648,20 @@ mod tests {
     }
 
     fn make_overview() -> ScheduleOverview {
-        let dir = tempdir().unwrap();
-        let prefs_dir = dir.path().join("prefs");
-        let cron_dir = dir.path().join("cron");
+        let temp_root = tempdir().unwrap();
+        let prefs_dir = temp_root.path().join("prefs");
+        let cron_dir = temp_root.path().join("cron");
         std::fs::create_dir_all(&prefs_dir).unwrap();
         std::fs::create_dir_all(&cron_dir).unwrap();
-        let default_slots = defaults();
-        build_overview(&prefs_dir, &cron_dir, &actor(), &default_slots, Utc::now()).unwrap()
+        let default_slots = digest_defaults_fixture();
+        build_overview(
+            &prefs_dir,
+            &cron_dir,
+            &actor_fixture(),
+            &default_slots,
+            Utc::now(),
+        )
+        .unwrap()
     }
 
     #[test]

@@ -205,7 +205,7 @@ impl Tool for CronJobTool {
                 let tags = args.get("tags").and_then(|v| v.as_array()).map(|items| {
                     items
                         .iter()
-                        .filter_map(|item| item.as_str().map(|s| s.to_string()))
+                        .filter_map(|item| item.as_str().map(|tag| tag.to_string()))
                         .collect::<Vec<_>>()
                 });
                 let task_prompt = args
@@ -219,7 +219,7 @@ impl Tool for CronJobTool {
                 let date = args
                     .get("date")
                     .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
+                    .map(|date_text| date_text.to_string());
 
                 let result = storage.add_job(
                     actor,
@@ -245,7 +245,7 @@ impl Tool for CronJobTool {
                 let data = storage.load_jobs(actor);
 
                 let matched_job = if !job_id.is_empty() {
-                    match data.jobs.iter().find(|j| j.id == job_id) {
+                    match data.jobs.iter().find(|job| job.id == job_id) {
                         Some(job) => job.clone(),
                         None => {
                             return Ok(serde_json::json!({
@@ -259,7 +259,7 @@ impl Tool for CronJobTool {
                     let matches: Vec<_> = data
                         .jobs
                         .iter()
-                        .filter(|j| j.name.to_lowercase().contains(&name_lower))
+                        .filter(|job| job.name.to_lowercase().contains(&name_lower))
                         .collect();
                     match matches.len() {
                         0 => {
@@ -338,7 +338,7 @@ impl Tool for CronJobTool {
                 let tags = args.get("tags").and_then(|v| v.as_array()).map(|items| {
                     items
                         .iter()
-                        .filter_map(|item| item.as_str().map(|s| s.to_string()))
+                        .filter_map(|item| item.as_str().map(|tag| tag.to_string()))
                         .collect::<Vec<_>>()
                 });
                 let bypass_quiet_hours = args.get("bypass_quiet_hours").and_then(|v| v.as_bool());
@@ -347,7 +347,7 @@ impl Tool for CronJobTool {
                 let new_name: Option<String> = if !job_id.is_empty() {
                     args.get("name")
                         .and_then(|v| v.as_str())
-                        .map(|s| s.to_string())
+                        .map(|name| name.to_string())
                 } else {
                     None
                 };
@@ -356,7 +356,7 @@ impl Tool for CronJobTool {
 
                 // Resolve the target job: by job_id first, then by name fuzzy match.
                 let resolved_id: String = if !job_id.is_empty()
-                    && data.jobs.iter().any(|j| j.id == job_id)
+                    && data.jobs.iter().any(|job| job.id == job_id)
                 {
                     job_id.to_string()
                 } else if !name_query.is_empty() {
@@ -364,7 +364,7 @@ impl Tool for CronJobTool {
                     let matches: Vec<_> = data
                         .jobs
                         .iter()
-                        .filter(|j| j.enabled && j.name.to_lowercase().contains(&name_lower))
+                        .filter(|job| job.enabled && job.name.to_lowercase().contains(&name_lower))
                         .collect();
                     match matches.len() {
                         0 => {
@@ -375,7 +375,7 @@ impl Tool for CronJobTool {
                         }
                         1 => matches[0].id.clone(),
                         _ => {
-                            let names: Vec<_> = matches.iter().map(|j| &j.name).collect();
+                            let names: Vec<_> = matches.iter().map(|job| &job.name).collect();
                             return Ok(serde_json::json!({
                                 "success": false,
                                 "error": format!("名称「{name_query}」匹配到多个任务：{names:?}，请提供 job_id 精确定位")
@@ -393,7 +393,8 @@ impl Tool for CronJobTool {
                     }));
                 };
 
-                let Some(existing_job) = data.jobs.iter().find(|j| j.id == resolved_id).cloned()
+                let Some(existing_job) =
+                    data.jobs.iter().find(|job| job.id == resolved_id).cloned()
                 else {
                     return Ok(serde_json::json!({
                         "success": false,
@@ -415,7 +416,7 @@ impl Tool for CronJobTool {
                         updates
                             .get("date")
                             .and_then(|v| v.as_str())
-                            .map(|s| s.to_string())
+                            .map(|date_text| date_text.to_string())
                             .or(existing_job.schedule.date.clone())
                     } else {
                         None
@@ -449,7 +450,7 @@ impl Tool for CronJobTool {
                     task_prompt: updates
                         .get("task_prompt")
                         .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
+                        .map(|prompt| prompt.to_string()),
                     push: None,
                     enabled: None,
                     channel_target: None,

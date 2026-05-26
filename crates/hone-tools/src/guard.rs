@@ -39,12 +39,16 @@ impl ToolExecutionGuard {
         }
     }
 
-    pub fn from_config(cfg: &ToolGuardConfig) -> Self {
+    pub fn from_config(config: &ToolGuardConfig) -> Self {
         Self {
-            enabled: cfg.enabled,
-            mode: ToolGuardMode::from_str(&cfg.mode),
-            apply_tools: cfg.apply_tools.clone(),
-            deny_patterns: cfg.deny_patterns.iter().map(|s| s.to_lowercase()).collect(),
+            enabled: config.enabled,
+            mode: ToolGuardMode::from_str(&config.mode),
+            apply_tools: config.apply_tools.clone(),
+            deny_patterns: config
+                .deny_patterns
+                .iter()
+                .map(|pattern| pattern.to_lowercase())
+                .collect(),
         }
     }
 
