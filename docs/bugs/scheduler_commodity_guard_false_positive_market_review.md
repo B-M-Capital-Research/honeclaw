@@ -3,8 +3,35 @@
 - **发现时间**: 2026-05-25 19:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
+
+## 复发记录（2026-05-26 19:05 CST）
+
+- 最近四小时真实窗口再次确认同一根因复发，且有用户侧反馈：`A股港股收盘后跨市场复盘` 在 2026-05-26 17:30 CST 生成了完整 A/H 市场复盘，但 `cron_job_runs.run_id=34001` 出站前被 `commodity_causality_guarded=true` 替换成原油 / 大宗商品安全提示，仍记录为 `completed + sent + delivered=1`。
+- `data/sessions.sqlite3` -> `cron_job_runs`：
+  - `run_id=34001`
+  - `job_id=j_fddd1589`
+  - `job_name=A股港股收盘后跨市场复盘`
+  - `actor_channel=feishu`
+  - `executed_at=2026-05-26T17:32:32.987564+08:00`
+  - `execution_status=completed`
+  - `message_send_status=sent`
+  - `delivered=1`
+  - `detail_json.scheduler.commodity_causality_guarded=true`
+  - `detail_json.scheduler.raw_preview` 开头为“北京时间 2026年5月26日 17:30。A股、港股今天均正常开市；今天不是普涨，而是指数稳住、个股分化...”，属于非商品主任务市场复盘。
+  - `response_preview` / `deliver_preview` 被替换为“本轮原油/大宗商品播报包含未完成同窗来源核验...本轮未保留原正文中的价格或归因句...”，与任务主题不符。
+- 同一任务的会话落库保留原始完整复盘：
+  - `session_id=Actor_feishu__direct__ou_5f636d6d7c80d333e41b86ae79d07adca8`
+  - `ordinal=319`
+  - `timestamp=2026-05-26T17:32:30.206326+08:00`
+  - assistant final 是完整 A 股 / 港股收盘复盘，包含事实、主线、美股预判、映射代码池、估值分层、风险与证伪条件。
+- 用户侧随后在同一 Feishu 会话反馈没有看到 17:30 复盘：
+  - `ordinal=320`
+  - `timestamp=2026-05-26T18:07:14.409410+08:00`
+  - 用户摘要：“今天17点30的复盘我没看到，重新发一遍。已经好几次这样了，你找下原因”
+  - `ordinal=321` assistant 重发了复盘，但误判为飞书展示 / 投递链路边界，没有识别到台账里 `commodity_causality_guarded=true` 已把最终送达内容替换。
+- 这是既有缺陷的同一 scheduler 出站 guard 链路复发，不新建重复缺陷；但当前 live 仍影响用户可见内容，导航页应回到活跃待修复。若确认只是旧二进制未重启，应以部署 / 重启 / 运行态复核作为关闭条件；若已是含 `63442662` 的二进制，则说明代码修复不足，需要继续收窄 guard 条件。
 
 ## 修复记录（2026-05-26 03:05 CST）
 
@@ -20,7 +47,7 @@
   - `cargo test -p hone-channels commodity_ --lib -- --nocapture`
   - `cargo check -p hone-channels --tests`
   - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs`
-- 当前未重启 live 服务，也未做运行态复核，因此状态先记 `Fixed`，待后续正常部署 / 重启后的真实 scheduler 窗口再决定是否 `Closed`。
+- 当前 live 在 2026-05-26 17:30 CST 再次复现用户可见错误，因此本缺陷状态已从 `Fixed` 调回 `New`。后续需要区分“旧二进制未重启”与“修复条件仍不足”。
 
 ## 证据来源
 
