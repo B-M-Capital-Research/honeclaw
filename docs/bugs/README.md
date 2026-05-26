@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-26 11:08 CST
+最后更新：2026-05-26 15:04 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -21,6 +21,9 @@
 - Later / 待复现：9
 - 已修复 / 已关闭：113
 - 历史分析 / 部分止血：5
+- 本轮 15:04 CST 未发现新的独立活跃 P1，也未新增独立缺陷。11:08-15:04 CST 按消息时间共有 32 个 user turn 与 32 个 assistant final，Feishu / Web direct 与普通 scheduler 会话均以 assistant final 收口；assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`；最近四小时无非文档代码提交。
+- 本轮 15:04 CST 继续看到既有 heartbeat 旧/未确认部署运行态坏信号：11:08-15:04 CST heartbeat 新增 71 条 `execution_failed + skipped_error + delivered=0`（Feishu 48 条、Web 23 条）、56 条 `noop + skipped_noop + delivered=0`（Feishu 47 条、Web 9 条）和 1 条 Feishu `completed + sent + delivered=1`。失败形态仍主要对应已修复表中的结构化状态退化（`heartbeat 输出不是结构化 JSON` 59 条、未知状态 5 条、缺少状态 2 条）与迭代耗尽旧信号（`max_iterations_exceeded:10` 5 条）；本轮不因这些重复信号新增缺陷或从 `Fixed` 回退。
+- 本轮 15:04 CST 未观察到 `Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice` 新复发：11:08-15:04 CST 普通 scheduler 2 条 `completed + sent + delivered=1` 均未见 `detail_json.scheduler.commodity_causality_guarded=true`；运行日志仍有内部 `session/update` 流式片段、Tavily key quota/deactivated 警告与 heartbeat `notification_prefs` 参数错误，但未进入用户可见 final 或形成新的独立影响链路。
 - 本轮 11:08 CST 未发现新的独立活跃 P1，也未新增独立缺陷。07:03-11:08 CST 按消息时间共有 34 个 user turn 与 34 个 assistant final，Feishu / Web / Discord direct 与普通 scheduler 会话均以 assistant final 收口；11:02 CST Feishu direct “博通可以加仓吗”一度处于运行中，11:04 CST 已成功落库并发送 final。assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`；最近四小时无非文档代码提交。
 - 本轮 11:08 CST 继续看到既有 heartbeat 旧/未确认部署运行态坏信号：07:03-11:08 CST heartbeat 新增 73 条 `execution_failed + skipped_error + delivered=0`（Feishu 51 条、Web 22 条）、53 条 `noop + skipped_noop + delivered=0`（Feishu 43 条、Web 10 条）和 2 条 Feishu `completed + sent + delivered=1`。失败形态仍主要对应已修复表中的结构化状态退化与迭代耗尽旧信号；本轮不因这些重复信号新增缺陷或从 `Fixed` 回退。
 - 本轮 11:08 CST 观察到 `Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice` 在旧 live 进程上继续复现：`Hone_AI_Morning_Briefing`（`run_id=33693`）、`早9点市场复盘(XME及加密ETF)`（`run_id=33720`）和 Discord `每日美股降息概率推送`（`run_id=33745`）均生成了非商品主任务完整报告并落库，但出站前被 `commodity_causality_guarded=true` 替换成原油 / 大宗商品安全提示。当前 `hone-console-page` / `hone-feishu` live 进程启动于 2026-05-22 22:52 CST，早于 2026-05-26 03:10 CST 修复提交 `63442662`，因此只补充旧运行态证据，状态仍保持 `Fixed`，待 live 重启 / 部署后复核。
@@ -288,7 +291,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| 暂无 | - | - | 2026-05-26 07:03 CST 当前导航表无 `New` / `Approved` / `Fixing` 活跃缺陷。 | - |
+| 暂无 | - | - | 2026-05-26 15:04 CST 当前导航表无 `New` / `Approved` / `Fixing` 活跃缺陷。 | - |
 
 ## Later / 待复现
 
@@ -309,12 +312,12 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice | P2 | Fixed | 2026-05-26 03:05 普通 scheduler commodity guard 现仅对商品任务或正文主体明显为商品播报的场景做整篇 rewrite；广义市场复盘若仅局部提到油价/油气板块，不再被整篇替换。2026-05-26 07:03 旧 live 进程仍在 `OWALERT_PostMarket` / `美股收盘后跨市场复盘` 上复现，但进程启动早于修复提交 `63442662`，不回退状态；待 live 重启 / 部署后复核。无关联 GitHub Issue | [scheduler_commodity_guard_false_positive_market_review.md](./scheduler_commodity_guard_false_positive_market_review.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixed | 2026-05-26 03:03 live 仍见 68 条结构化/状态解析旧信号失败（`PlainTextSuppressed` 62 条、`JsonUnknownStatus` 3 条、`Empty` 1 条、其它 JSON/status 缺口 2 条），但 2026-05-25 12:13 当前代码已通过 status 别名归一、完整 `<think>` 内部-only noop 兼容和配置路径护栏修复；本轮不回退状态。无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixed | 2026-05-26 15:04 live 仍见 66 条结构化/状态解析旧信号失败（非结构化 JSON 59 条、未知状态 5 条、缺少状态 2 条），但 2026-05-25 12:13 当前代码已通过 status 别名归一、完整 `<think>` 内部-only noop 兼容和配置路径护栏修复；本轮不回退状态。无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 监控任务触发 `context window exceeds limit` 后缺少恢复，故障会在不同任务间漂移复现 | P2 | Fixed | 2026-05-25 15:04 live 仍见 11 条 `ContextOverflowNoop` 旧/未确认部署运行态，但 12:04 当前代码已改为保留 `error` 并写入 `failure_kind=context_window_overflow` / `parse_kind=ContextOverflowError`；本轮不回退状态。无关联 GitHub Issue | [scheduler_heartbeat_context_window_limit_no_recovery.md](./scheduler_heartbeat_context_window_limit_no_recovery.md) |
 | Feishu 直聊在 FUTU 盘前暴跌时仍用常规交易旧价给抄底区间 | P3 | Fixed | 2026-05-23 00:03 共享金融系统 prompt 新增强时效行情建议约束；含 `今天/盘前/盘后/现在/抄底/买点/卖点` 等语义时必须核实最新可得价格、数据时间和交易时段，若只得常规收盘或延迟价必须标注未覆盖扩展时段，不能把旧价作为当前决策锚。无关联 GitHub Issue | [feishu_direct_futu_premarket_stale_price_advice.md](./feishu_direct_futu_premarket_stale_price_advice.md) |
 | Feishu 大佬跟踪把 ARK TEM 持仓差异误表述为近期卖出 | P3 | Fixed | 2026-05-23 00:03 共享金融系统 prompt 新增基金/ETF 披露口径约束；ARK/ETF/基金持仓分析必须区分持仓文件、全机构合计、主动交易清单、申赎/再平衡和披露日期，没有可核验主动交易披露时只能写持仓文件股数变化。无关联 GitHub Issue | [feishu_scheduler_ark_tem_trade_direction_misread.md](./feishu_scheduler_ark_tem_trade_direction_misread.md) |
 | Feishu PDF 文本提取在 CMap 解析越界 panic 后只能降级读首页 | P2 | Fixed | 2026-05-22 10:05 PDF 文本提取的 `pdf_extract` panic 现被捕获并归一化为 `pdf_text_extract_failed`；附件 prompt/ack 清洗 panic、crate 路径和本机绝对路径，避免内部错误细节进入 LLM 上下文。无关联 GitHub Issue | [feishu_pdf_text_extraction_panics_on_cmap_index.md](./feishu_pdf_text_extraction_panics_on_cmap_index.md) |
-| Heartbeat 重大事件监控触发 `max_iterations_exceeded` 后整轮跳过，下一窗又回摆成 `noop/sent` | P2 | Fixed | 2026-05-26 03:03 继续仅见旧/未确认部署运行态：23:02-03:02 CST 新增 5 条 `max_iterations_exceeded:10`，但当前仓库 03:06 已把 heartbeat 预算提升到 18 并有回归；本轮不回退状态。无关联 GitHub Issue | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
+| Heartbeat 重大事件监控触发 `max_iterations_exceeded` 后整轮跳过，下一窗又回摆成 `noop/sent` | P2 | Fixed | 2026-05-26 15:04 继续仅见旧/未确认部署运行态：11:08-15:04 CST 新增 5 条 `max_iterations_exceeded:10`，但当前仓库 03:06 已把 heartbeat 预算提升到 18 并有回归；本轮不回退状态。无关联 GitHub Issue | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 | Web 直聊生成 Excel/CSV 只回文件名，手机端无法下载或打开 | P2 | Fixed | 2026-05-21 20:09 Web direct 会把本轮新生成且正文提到文件名的 sandbox 文件追加为附件 marker，public history 可返回下载 metadata；前端非图片附件卡片现在使用 `/api/public/file` 下载链接。无关联 GitHub Issue | [web_direct_generated_files_not_downloadable.md](./web_direct_generated_files_not_downloadable.md) |
 | Feishu 定时任务目标解析链路再次失败，内容已生成但在 contact 阶段被拦截未送达 | P2 | Fixed | 2026-05-22 09:38 contact lookup 的 `code=1663` / `internal error` 现按临时上游错误做最多 3 次短重试，避免首次 Feishu 内部错误直接落成 `target_resolution_failed`；新增 `contact_lookup_internal_errors_are_retryable` 与 `contact_lookup_retry_budget_matches_request_retry_budget` 回归。关联 Issue [#32](https://github.com/B-M-Capital-Research/honeclaw/issues/32) | [feishu_scheduler_target_resolution_failed.md](./feishu_scheduler_target_resolution_failed.md) |
 | Heartbeat `mimo-v2.5-pro` 429 quota exhaustion drops alerts | P1 | Fixed | 2026-05-22 23:01 继续仅见当前机器旧/未确认部署运行态：19:13-22:30 CST 新增 105 条 heartbeat `execution_failed + skipped_error + delivered=0` 的 quota 失败，错误集中为 429 quota exhausted；当前 HEAD 已有多 key fallback 与 429 分类回归，不回退状态；关联 Issue [#44](https://github.com/B-M-Capital-Research/honeclaw/issues/44) | [scheduler_heartbeat_mimo_429_quota_exhausted.md](./scheduler_heartbeat_mimo_429_quota_exhausted.md) |
