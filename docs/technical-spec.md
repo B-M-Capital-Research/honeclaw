@@ -351,14 +351,14 @@ The backend remains local-first and does not depend on an external database serv
 
 Main directories come from `config.storage.*`:
 
-- `./data/sessions`
-- `./data/sessions.sqlite3`
-- `./data/portfolio`
-- `./data/cron_jobs`
-- `./data/gen_images`
-- `./data/notif_prefs`
-- `./data/conversation_quota`
-- `./data/llm_audit.sqlite3`
+- `sessions_dir`: `./data/sessions`
+- `session_sqlite_db_path`: `./data/sessions.sqlite3`
+- `portfolio_dir`: `./data/portfolio`
+- `cron_jobs_dir`: `./data/cron_jobs`
+- `gen_images_dir`: `./data/gen_images`
+- `notif_prefs_dir`: `./data/notif_prefs`
+- `conversation_quota_dir`: `./data/conversation_quota`
+- `llm_audit_db_path`: `./data/llm_audit.sqlite3`
 
 ### 6.2 Session
 

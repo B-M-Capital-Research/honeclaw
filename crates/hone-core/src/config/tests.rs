@@ -377,6 +377,67 @@ fn assert_opencode_runbook_config_file_docs(runbook: &str) {
     );
 }
 
+fn assert_wiki_config_overview_matches_current_schema(wiki: &str) {
+    for expected in [
+        "`daily_conversation_limit`",
+        "`conversation_quota_dir`",
+        "`llm_audit_db_path`",
+        "`notif_prefs_dir`",
+        "`event_engine.*`",
+        "`language`",
+    ] {
+        assert!(
+            wiki.contains(expected),
+            "docs/wiki.md config overview should mention {expected}"
+        );
+    }
+}
+
+fn assert_technical_spec_config_sections_match_roots(technical_spec: &str) {
+    for expected in [
+        "- `llm`",
+        "- `agent`",
+        "- `imessage`",
+        "- `feishu`",
+        "- `telegram`",
+        "- `discord`",
+        "- `group_context`",
+        "- `nano_banana`",
+        "- `fmp`",
+        "- `search`",
+        "- `storage`",
+        "- `logging`",
+        "- `admins`",
+        "- `web`",
+        "- `security`",
+        "- `event_engine`",
+        "- `language`",
+    ] {
+        assert!(
+            technical_spec.contains(expected),
+            "docs/technical-spec.md key config sections should mention {expected}"
+        );
+    }
+}
+
+fn assert_technical_spec_storage_keys_match_schema(technical_spec: &str) {
+    for expected in [
+        "`sessions_dir`: `./data/sessions`",
+        "`session_sqlite_db_path`: `./data/sessions.sqlite3`",
+        "`portfolio_dir`: `./data/portfolio`",
+        "`cron_jobs_dir`: `./data/cron_jobs`",
+        "`gen_images_dir`: `./data/gen_images`",
+        "`notif_prefs_dir`: `./data/notif_prefs`",
+        "`conversation_quota_dir`: `./data/conversation_quota`",
+        "`llm_audit_db_path`: `./data/llm_audit.sqlite3`",
+    ] {
+        assert!(
+            technical_spec.contains(expected),
+            "docs/technical-spec.md storage overview should mention {expected}"
+        );
+    }
+}
+
 fn legacy_agent_migration_canonical_yaml() -> &'static str {
     r#"
 agent:
@@ -1798,6 +1859,7 @@ fn config_example_avoids_stale_config_knobs() {
     )
     .unwrap();
     assert_openrouter_provider_key_pool_docs("docs/wiki.md", &wiki);
+    assert_wiki_config_overview_matches_current_schema(&wiki);
 
     let readme_en = std::fs::read_to_string(
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../README_EN.md"),
@@ -1810,6 +1872,8 @@ fn config_example_avoids_stale_config_knobs() {
     )
     .unwrap();
     assert_openrouter_provider_key_pool_docs("docs/technical-spec.md", &technical_spec);
+    assert_technical_spec_config_sections_match_roots(&technical_spec);
+    assert_technical_spec_storage_keys_match_schema(&technical_spec);
 
     let backend_runbook = std::fs::read_to_string(
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/runbooks/backend-deployment.md"),

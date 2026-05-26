@@ -283,11 +283,11 @@ hone-cli models set --runner opencode_acp --model openrouter/openai/gpt-5.4 --va
 
 Important config areas:
 
-- `agent.*`: runner choice, model routing, timeout behavior.
+- `agent.*`: runner choice, model routing, `daily_conversation_limit`, and timeout behavior.
 - `llm.*`: provider keys and OpenAI-compatible/OpenRouter routes.
 - `imessage.*`, `feishu.*`, `telegram.*`, `discord.*`: channel enablement, credentials, allowlists, and chat scope.
 - `web.*`: Web console auth token and workflow/research integration settings.
-- `storage.*`: session data paths and backend selection, especially `sessions_dir`, `session_sqlite_db_path`, `session_sqlite_shadow_write_enabled`, and `session_runtime_backend`.
+- `storage.*`: session data paths and backend selection, especially `sessions_dir`, `session_sqlite_db_path`, `session_sqlite_shadow_write_enabled`, `session_runtime_backend`, `conversation_quota_dir`, `llm_audit_db_path`, and `notif_prefs_dir`.
 - `admins.*`: channel admin identities and runtime admin registration passphrase.
 - `event_engine.*`: market/news event monitoring and delivery.
 - `logging.*`: runtime log level, file output, console output, and optional UDP sink.
