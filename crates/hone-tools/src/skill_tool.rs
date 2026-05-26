@@ -181,8 +181,10 @@ fn sanitize_skill_script_stderr(stderr: &str) -> String {
 }
 
 fn redact_skill_script_stderr_secrets(text: &str) -> String {
-    let mut output = redact_skill_script_marker_value(&redact_url_userinfo(text), "Bearer ");
-    output = redact_skill_script_marker_value(&output, "Basic ");
+    let mut output = redact_url_userinfo(text);
+    for marker in ["Bearer ", "bearer ", "Basic ", "basic "] {
+        output = redact_skill_script_marker_value(&output, marker);
+    }
     for key in SENSITIVE_SKILL_SCRIPT_STDERR_KEYS {
         output = redact_skill_script_marker_value(&output, &format!("{key}="));
         output = redact_skill_script_marker_value(&output, &format!("{key}:"));
@@ -269,6 +271,7 @@ fn redact_skill_script_marker_value(text: &str, marker: &str) -> String {
                 (ch == '&'
                     || ch == ')'
                     || ch == ','
+                    || ch == ';'
                     || ch == '"'
                     || ch == '\''
                     || ch == '}'
@@ -364,7 +367,7 @@ mod tests {
 
     #[test]
     fn skill_script_stderr_preview_redacts_common_credentials() {
-        let stderr = r#"failed https://user:password@api.test/path?api_key=abc&token=tok auth=Bearer xyz apiKey: header-secret OPENROUTER_API_KEY=env-secret X-API-Key: gateway-secret Authorization: Basic basic-secret {"secret": "json-secret","client_secret":"json-client","authorization":"Basic json-basic"}"#;
+        let stderr = r#"failed https://user:password@api.test/path?api_key=abc&token=tok auth=Bearer xyz apiKey: header-secret; OPENROUTER_API_KEY=env-secret X-API-Key: gateway-secret Authorization: Basic basic-secret authorization: bearer lower-secret {"secret": "json-secret","client_secret":"json-client","authorization":"Basic json-basic"}"#;
         let detail = sanitize_skill_script_stderr(stderr);
 
         assert_text_contains_all(
@@ -374,10 +377,11 @@ mod tests {
                 "api_key=<redacted>",
                 "token=<redacted>",
                 "Bearer <redacted>",
-                "apiKey: <redacted>",
+                "apiKey: <redacted>;",
                 "OPENROUTER_API_KEY=<redacted>",
                 "X-API-Key: <redacted>",
                 "Basic <redacted>",
+                "bearer <redacted>",
                 "\"secret\": \"<redacted>\"",
                 "\"client_secret\":\"<redacted>\"",
                 "\"authorization\":\"<redacted>\"",

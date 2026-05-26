@@ -330,6 +330,7 @@ fn redact_delimited_fmp_secret_value(text: &str, needle: &str) -> String {
                 (ch == '&'
                     || ch == ')'
                     || ch == ','
+                    || ch == ';'
                     || ch == '"'
                     || ch == '\''
                     || ch == '}'
@@ -568,6 +569,17 @@ mod tests {
         assert_eq!(
             detail,
             "https://example.com/api/v3/quote/AAPL?api_key=<redacted>&apiKey=<redacted>&apikey=<redacted> apiKey: <redacted>"
+        );
+    }
+
+    #[test]
+    fn fmp_error_detail_redacts_api_key_aliases_before_semicolon_delimiter() {
+        let detail = sanitize_fmp_error_detail(
+            "https://example.com/api/v3/quote/AAPL?api_key=one;apiKey=two apikey: three;",
+        );
+        assert_eq!(
+            detail,
+            "https://example.com/api/v3/quote/AAPL?api_key=<redacted>;apiKey=<redacted> apikey: <redacted>;"
         );
     }
 

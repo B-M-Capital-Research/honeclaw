@@ -234,8 +234,11 @@ fn redact_json_secrets(value: &Value) -> Value {
 }
 
 fn redact_bearer_secret(text: &str) -> String {
-    let output = redact_delimited_secret_value(text, "Bearer ");
-    redact_delimited_secret_value(&output, "Basic ")
+    ["Bearer ", "bearer ", "Basic ", "basic "]
+        .into_iter()
+        .fold(text.to_string(), |output, marker| {
+            redact_delimited_secret_value(&output, marker)
+        })
 }
 
 fn redact_url_userinfo(text: &str) -> String {
@@ -320,6 +323,7 @@ fn redact_delimited_secret_value(text: &str, needle: &str) -> String {
                 (ch == '&'
                     || ch == ')'
                     || ch == ','
+                    || ch == ';'
                     || ch == '"'
                     || ch == '\''
                     || ch == '}'
@@ -390,22 +394,22 @@ mod tests {
     #[test]
     fn deep_research_error_detail_redacts_url_credentials() {
         let detail = sanitize_deep_research_error_detail(
-            "request failed for https://user:pass@example.test/path?api_key=abc&ok=1",
+            "request failed for https://user:pass@example.test/path?api_key=abc;ok=1",
         );
         assert_eq!(
             detail,
-            "request failed for https://<redacted>@example.test/path?api_key=<redacted>&ok=1"
+            "request failed for https://<redacted>@example.test/path?api_key=<redacted>;ok=1"
         );
     }
 
     #[test]
     fn deep_research_error_detail_redacts_bearer_credentials() {
         let detail = sanitize_deep_research_error_detail(
-            "request failed with Authorization: Bearer abc123 and Authorization: Basic basic-secret",
+            "request failed with Authorization: Bearer abc123 and Authorization: Basic basic-secret plus authorization: bearer lower-secret",
         );
         assert_eq!(
             detail,
-            "request failed with Authorization: Bearer <redacted> and Authorization: Basic <redacted>"
+            "request failed with Authorization: Bearer <redacted> and Authorization: Basic <redacted> plus authorization: bearer <redacted>"
         );
     }
 

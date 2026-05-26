@@ -3,6 +3,29 @@ use serde_json::Value;
 
 const MAX_UPSTREAM_ERROR_CHARS: usize = 500;
 const MAX_TRANSPORT_ERROR_CHARS: usize = 300;
+const SECRET_KEYS: &[&str] = &[
+    "access_token",
+    "accessToken",
+    "api_key",
+    "apiKey",
+    "apikey",
+    "app_secret",
+    "appSecret",
+    "client_secret",
+    "clientSecret",
+    "id_token",
+    "idToken",
+    "password",
+    "refresh_token",
+    "refreshToken",
+    "secret",
+    "tenant_access_token",
+    "tenantAccessToken",
+    "token",
+    "x-api-key",
+    "X-Api-Key",
+    "X-API-Key",
+];
 
 pub(super) fn format_upstream_http_error(
     service: &str,
@@ -137,17 +160,7 @@ fn redact_telegram_bot_tokens(text: &str) -> String {
 
 fn redact_query_secrets(text: &str) -> String {
     let mut output = text.to_string();
-    for key in [
-        "access_token",
-        "accessToken",
-        "api_key",
-        "apiKey",
-        "apikey",
-        "token",
-        "app_secret",
-        "appSecret",
-        "password",
-    ] {
+    for key in SECRET_KEYS {
         output = redact_query_value(&output, key);
         output = redact_marker_value(&output, &format!("{key}:"));
     }
@@ -155,13 +168,24 @@ fn redact_query_secrets(text: &str) -> String {
 }
 
 fn redact_bearer_tokens(text: &str) -> String {
-    const MARKER: &str = "Bearer ";
-    redact_marker_value(text, MARKER)
+    ["Bearer ", "bearer "]
+        .into_iter()
+        .fold(text.to_string(), |output, marker| {
+            redact_marker_value(&output, marker)
+        })
 }
 
 fn redact_discord_bot_tokens(text: &str) -> String {
-    const MARKER: &str = "Authorization: Bot ";
-    redact_marker_value(text, MARKER)
+    [
+        "Authorization: Bot ",
+        "Authorization: bot ",
+        "authorization: Bot ",
+        "authorization: bot ",
+    ]
+    .into_iter()
+    .fold(text.to_string(), |output, marker| {
+        redact_marker_value(&output, marker)
+    })
 }
 
 fn redact_marker_value(text: &str, marker: &str) -> String {
@@ -184,7 +208,8 @@ fn redact_marker_value(text: &str, marker: &str) -> String {
         let value_tail = remaining[value_start..]
             .char_indices()
             .find_map(|(idx, ch)| {
-                (ch.is_whitespace() || matches!(ch, ')' | ',' | '"' | '&')).then_some(idx)
+                (ch.is_whitespace() || matches!(ch, ')' | ',' | ';' | '"' | '\'' | '&' | '}' | ']'))
+                    .then_some(idx)
             })
             .unwrap_or(remaining[value_start..].len());
         remaining = &remaining[value_start + value_tail..];
@@ -195,17 +220,7 @@ fn redact_marker_value(text: &str, marker: &str) -> String {
 
 fn redact_json_string_fields(text: &str) -> String {
     let mut output = text.to_string();
-    for key in [
-        "access_token",
-        "accessToken",
-        "api_key",
-        "apiKey",
-        "apikey",
-        "token",
-        "app_secret",
-        "appSecret",
-        "password",
-    ] {
+    for key in SECRET_KEYS {
         output = redact_json_string_field(&output, key);
     }
     output
@@ -260,7 +275,18 @@ fn redact_query_value(text: &str, key: &str) -> String {
         output.push_str("<redacted>");
         let value_tail = remaining[value_start..]
             .char_indices()
-            .find_map(|(idx, ch)| (ch == '&' || ch == ')' || ch == ' ').then_some(idx))
+            .find_map(|(idx, ch)| {
+                (ch == '&'
+                    || ch == ')'
+                    || ch == ','
+                    || ch == ';'
+                    || ch == '"'
+                    || ch == '\''
+                    || ch == '}'
+                    || ch == ']'
+                    || ch.is_whitespace())
+                .then_some(idx)
+            })
             .unwrap_or(remaining[value_start..].len());
         remaining = &remaining[value_start + value_tail..];
     }
@@ -358,10 +384,28 @@ mod tests {
     }
 
     #[test]
+    fn redacts_extended_query_secret_names_and_delimiters() {
+        let detail = sanitize_transport_error_detail(
+            "callback https://example.test/cb?client_secret=abc;refresh_token=def&id_token=ghi\"&ok=1 tenant_access_token=tenant]",
+        );
+        assert_eq!(
+            detail,
+            "callback https://example.test/cb?client_secret=<redacted>;refresh_token=<redacted>&id_token=<redacted>\"&ok=1 tenant_access_token=<redacted>]"
+        );
+    }
+
+    #[test]
     fn redacts_bearer_token_from_transport_error_detail() {
         let detail =
             sanitize_transport_error_detail("upstream rejected Authorization: Bearer secret-token");
         assert_eq!(detail, "upstream rejected Authorization: Bearer <redacted>");
+    }
+
+    #[test]
+    fn redacts_lowercase_bearer_token_from_transport_error_detail() {
+        let detail =
+            sanitize_transport_error_detail("upstream rejected authorization: bearer secret-token");
+        assert_eq!(detail, "upstream rejected authorization: bearer <redacted>");
     }
 
     #[test]
@@ -383,6 +427,13 @@ mod tests {
     }
 
     #[test]
+    fn redacts_lowercase_discord_bot_token_from_transport_error_detail() {
+        let detail =
+            sanitize_transport_error_detail("upstream rejected authorization: bot secret-token");
+        assert_eq!(detail, "upstream rejected authorization: bot <redacted>");
+    }
+
+    #[test]
     fn redacts_query_secrets_from_upstream_body_detail() {
         let body = r#"{"error":{"message":"callback failed: https://x.test/a?token=abc&ok=1"}}"#;
         let detail = format_upstream_http_error("discord", "send", StatusCode::BAD_REQUEST, body);
@@ -400,6 +451,30 @@ mod tests {
         assert_eq!(
             detail,
             r#"feishu token HTTP 400 Bad Request: {"debug":{"app_secret":"<redacted>","token":"<redacted>"},"reason":"denied"}"#
+        );
+    }
+
+    #[test]
+    fn redacts_extended_json_secret_fields_from_unstructured_body_detail() {
+        let body = r#"{"debug":{"client_secret":"client","tenant_access_token":"tenant","x-api-key":"api"},"reason":"denied"}"#;
+        let detail = format_upstream_http_error("feishu", "token", StatusCode::BAD_REQUEST, body);
+        assert_eq!(
+            detail,
+            r#"feishu token HTTP 400 Bad Request: {"debug":{"client_secret":"<redacted>","tenant_access_token":"<redacted>","x-api-key":"<redacted>"},"reason":"denied"}"#
+        );
+    }
+
+    #[test]
+    fn redacts_extended_marker_secret_fields_from_provider_errors() {
+        let detail = format_provider_api_error(
+            "feishu",
+            "send",
+            99991663,
+            "bad request client_secret: raw; refreshToken: newer, x-api-key: key}",
+        );
+        assert_eq!(
+            detail,
+            "feishu send error code=99991663 msg=bad request client_secret: <redacted>; refreshToken: <redacted>, x-api-key: <redacted>}"
         );
     }
 

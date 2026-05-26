@@ -169,7 +169,18 @@ fn redact_query_value(text: &str, key: &str) -> String {
         output.push_str("<redacted>");
         let value_tail = remaining[value_start..]
             .char_indices()
-            .find_map(|(idx, ch)| (ch == '&' || ch == ')' || ch == ' ').then_some(idx))
+            .find_map(|(idx, ch)| {
+                (ch == '&'
+                    || ch == ')'
+                    || ch == ','
+                    || ch == ';'
+                    || ch == '"'
+                    || ch == '\''
+                    || ch == '}'
+                    || ch == ']'
+                    || ch.is_whitespace())
+                .then_some(idx)
+            })
             .unwrap_or(remaining[value_start..].len());
         remaining = &remaining[value_start + value_tail..];
     }
@@ -197,7 +208,8 @@ fn redact_marker_value(text: &str, marker: &str) -> String {
         let value_tail = remaining[value_start..]
             .char_indices()
             .find_map(|(idx, ch)| {
-                (ch.is_whitespace() || matches!(ch, ')' | ',' | '"' | '&')).then_some(idx)
+                (ch.is_whitespace() || matches!(ch, ')' | ',' | ';' | '"' | '\'' | '&' | '}' | ']'))
+                    .then_some(idx)
             })
             .unwrap_or(remaining[value_start..].len());
         remaining = &remaining[value_start + value_tail..];
@@ -268,6 +280,17 @@ mod tests {
         assert_eq!(
             detail,
             "https://fmp.test/v3/quote/AAPL?api_key=<redacted>&apiKey=<redacted>&apikey=<redacted>"
+        );
+    }
+
+    #[test]
+    fn fmp_error_detail_redacts_api_key_aliases_before_extra_delimiters() {
+        let detail = sanitize_fmp_error_detail(
+            r#"https://fmp.test/v3/quote/AAPL?api_key=one;apiKey=two" apikey: three]"#,
+        );
+        assert_eq!(
+            detail,
+            r#"https://fmp.test/v3/quote/AAPL?api_key=<redacted>;apiKey=<redacted>" apikey: <redacted>]"#
         );
     }
 

@@ -175,8 +175,10 @@ impl WebSearchTool {
 }
 
 fn sanitize_tavily_error_detail(text: &str) -> String {
-    let mut output = redact_tavily_marker_value(&redact_url_userinfo(text), "Bearer ");
-    output = redact_tavily_marker_value(&output, "Basic ");
+    let mut output = redact_url_userinfo(text);
+    for marker in ["Bearer ", "bearer ", "Basic ", "basic "] {
+        output = redact_tavily_marker_value(&output, marker);
+    }
     for key in SENSITIVE_TAVILY_ERROR_KEYS {
         output = redact_tavily_marker_value(&output, &format!("{key}="));
         output = redact_tavily_marker_value(&output, &format!("{key}:"));
@@ -270,6 +272,7 @@ fn redact_tavily_marker_value(text: &str, marker: &str) -> String {
                 (ch == '&'
                     || ch == ')'
                     || ch == ','
+                    || ch == ';'
                     || ch == '"'
                     || ch == '\''
                     || ch == '}'
@@ -460,13 +463,13 @@ mod tests {
     fn response_error_message_reads_nested_detail_error() {
         let payload = serde_json::json!({
             "detail": {
-                "error": "This request exceeds your plan's set usage limit. Please upgrade your plan or contact support@tavily.com apiKey: leaked-key TAVILY_API_KEY=env-secret Authorization: Basic basic-secret"
+                "error": "This request exceeds your plan's set usage limit. Please upgrade your plan or contact support@tavily.com apiKey: leaked-key; TAVILY_API_KEY=env-secret Authorization: Basic basic-secret authorization: bearer lower-secret"
             }
         });
         assert_eq!(
             WebSearchTool::response_error_message(&payload).as_deref(),
             Some(
-                "This request exceeds your plan's set usage limit. Please upgrade your plan or contact support@tavily.com apiKey: <redacted> TAVILY_API_KEY=<redacted> Authorization: Basic <redacted>"
+                "This request exceeds your plan's set usage limit. Please upgrade your plan or contact support@tavily.com apiKey: <redacted>; TAVILY_API_KEY=<redacted> Authorization: Basic <redacted> authorization: bearer <redacted>"
             )
         );
     }
