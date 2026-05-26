@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-26 19:05 CST
+最后更新：2026-05-26 23:05 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -21,6 +21,9 @@
 - Later / 待复现：10
 - 已修复 / 已关闭：112
 - 历史分析 / 部分止血：5
+- 本轮 23:05 CST 确认活跃 P2 `Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice` 继续大面积复发：19:02-23:02 CST 普通 scheduler 37 条 `completed + sent + delivered=1` 中 12 条命中 `detail_json.scheduler.commodity_causality_guarded=true`，其中 `Oil_Price_Monitor_Premarket` 属预期商品任务，其余至少 11 条为美股大盘晚间/盘前/风控/温度/宏观日历/盘前推演类广义市场任务（`run_id=34084/34102/34087/34098/34088/34110/34116/34140/34148/34135/34172`），原始完整市场分析被全量替换成原油 / 大宗商品安全提示并仍记已送达。该证据补充到原缺陷文档，不新建重复缺陷；严重等级仍为 P2，状态保持 `New`，无关联 GitHub Issue。
+- 本轮 23:05 CST 未发现新的独立活跃 P1。19:02-23:02 CST 按消息时间共有 58 个 user turn 与 58 个 assistant final，Feishu / Web direct 与普通 scheduler 会话均以 assistant final 收口；assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`；最近四小时无非文档代码提交。
+- 本轮 23:05 CST 继续看到既有 heartbeat 旧/未确认部署运行态坏信号：19:02-23:02 CST heartbeat 新增 69 条 `execution_failed + skipped_error + delivered=0`（Feishu 51 条、Web 18 条）、57 条 `noop + skipped_noop + delivered=0`（Feishu 43 条、Web 14 条）和 2 条 Feishu `completed + sent + delivered=1`。失败形态仍主要对应已修复表中的结构化状态退化（`heartbeat 输出不是结构化 JSON`、未知/缺失状态）与迭代耗尽旧信号（`max_iterations_exceeded:10` 6 条），另有 1 条 Web upstream HTTP 500；本轮不因这些重复信号新增缺陷或从 `Fixed` 回退。
 - 本轮 19:05 CST 重新打开 P2 `Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice`：17:30 `A股港股收盘后跨市场复盘` 生成完整 A/H 市场复盘并落库，但 `cron_job_runs.run_id=34001` 出站前再次被 `commodity_causality_guarded=true` 全量替换成原油 / 大宗商品安全提示，仍记 `completed + sent + delivered=1`；18:07 用户反馈“17点30的复盘没看到，已经好几次这样”，assistant 重发时还误判为飞书展示 / 投递链路边界。该证据补充到原缺陷文档，不新建重复缺陷；严重等级仍为 P2，状态从 `Fixed` 调回 `New`，无关联 GitHub Issue。
 - 本轮 19:05 CST 未发现新的独立活跃 P1。15:02-19:02 CST 按消息时间共有 11 个 user turn 与 11 个 assistant final，Feishu / Web direct 与普通 scheduler 均以 assistant final 收口；普通 scheduler 1 条 Feishu `completed + sent + delivered=1` 即上述 commodity guard false positive。assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`；最近四小时无非文档代码提交。
 - 本轮 19:05 CST 继续看到既有 heartbeat 旧/未确认部署运行态坏信号：15:02-19:02 CST heartbeat 新增 73 条 `execution_failed + skipped_error + delivered=0`（Feishu 55 条、Web 18 条）、53 条 `noop + skipped_noop + delivered=0`（Feishu 38 条、Web 15 条）和 3 条 Feishu `completed + sent + delivered=1`。失败形态仍主要对应已修复表中的结构化状态退化（`heartbeat 输出不是结构化 JSON` 等）与迭代耗尽旧信号（`max_iterations_exceeded:10` 5 条）；本轮不因这些重复信号新增缺陷或从 `Fixed` 回退。
@@ -299,7 +302,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice | P2 | New | 2026-05-26 19:05 live 窗口再次复现：`A股港股收盘后跨市场复盘` 原始完整复盘被 `commodity_causality_guarded=true` 替换成原油 / 大宗商品安全提示，仍记 `completed + sent + delivered=1`，且用户 18:07 反馈没看到 17:30 复盘。需区分旧二进制未重启与修复条件不足；无关联 GitHub Issue。 | [scheduler_commodity_guard_false_positive_market_review.md](./scheduler_commodity_guard_false_positive_market_review.md) |
+| Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice | P2 | New | 2026-05-26 23:05 live 窗口继续大面积复现：19:02-23:02 CST 普通 scheduler 37 条已送达中 12 条命中 `commodity_causality_guarded=true`，除 `Oil_Price_Monitor_Premarket` 外，至少 11 条美股大盘/盘前/风控/温度/宏观日历/盘前推演类广义市场任务被替换成原油 / 大宗商品安全提示。需区分旧二进制未重启与修复条件不足；无关联 GitHub Issue。 | [scheduler_commodity_guard_false_positive_market_review.md](./scheduler_commodity_guard_false_positive_market_review.md) |
 
 ## Later / 待复现
 

@@ -6,6 +6,24 @@
 - **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
 
+## 复发记录（2026-05-26 23:05 CST）
+
+- 最近四小时真实窗口确认同一根因继续大面积复发：`2026-05-26 19:02-23:02 CST` 普通 scheduler 共有 37 条 `completed + sent + delivered=1`，其中 12 条命中 `detail_json.scheduler.commodity_causality_guarded=true`。
+- 12 条 guard 命中里，`Oil_Price_Monitor_Premarket` 是原油价格播报，属于预期商品任务；其余至少 11 条为非商品或广义市场/盘前分析任务，原始完整市场分析被全量替换为“本轮原油/大宗商品播报包含未完成同窗来源核验...”安全提示并仍记录为已送达。
+- `data/sessions.sqlite3` -> `cron_job_runs` 关键样本：
+  - `run_id=34084`，`job_name=美股大盘晚间简报`，`executed_at=2026-05-26T20:01:06.477788+08:00`，`completed + sent + delivered=1`，`detail_json.scheduler.commodity_causality_guarded=true`。`raw_preview` 是美股盘前大盘风险偏好、利率、油价和 AI 预期分析；`response_preview` 被替换为原油 / 大宗商品安全提示。
+  - `run_id=34102`，`job_name=每日20点美股大盘风控简报`，`executed_at=2026-05-26T20:01:10.539120+08:00`，同样被替换。原始正文是 Memorial Day 后美股恢复交易、指数高位和情绪区间风控。
+  - `run_id=34087`，`job_name=每日美股大盘温度检查`，`executed_at=2026-05-26T20:01:23.762620+08:00`，同样被替换。原始正文是美股盘前温度检查，包含 Nasdaq、S&P 500、VIX 和风险偏好。
+  - `run_id=34098`，`job_name=每日美股大盘晚间复盘`，`executed_at=2026-05-26T20:01:28.389959+08:00`，同样被替换。原始正文是休市后现货指数和盘前风险偏好复盘。
+  - `run_id=34088`，`job_name=美股大盘晚间风控简报`，`executed_at=2026-05-26T20:01:33.478830+08:00`，同样被替换。原始正文是纳指期货、标普期货、伊朗和平谈判预期、AI 芯片情绪与追涨风险。
+  - `run_id=34110`，`job_name=美股纳斯达克盘前简报`，`executed_at=2026-05-26T20:31:43.309816+08:00`，同样被替换。原始正文是纳斯达克盘前、AI 半导体、美债收益率和中东局势分析。
+  - `run_id=34116`，`job_name=美股盘前宏观与财报日历梳理`，`executed_at=2026-05-26T20:32:14.881555+08:00`，同样被替换。原始正文是房价数据、消费者信心、AI 芯片/云/电力和财报日历。
+  - `run_id=34140`，`job_name=OWALERT_PreMarket`，`executed_at=2026-05-26T21:02:06.668531+08:00`，同样被替换。原始正文是油价低于 100、美股期货/QQQ 修复和 AI 二阶链跟踪的盘前结论，不是纯原油价格播报。
+  - `run_id=34148`，`job_name=晚9点盘前推演(XME及加密ETF)`，`executed_at=2026-05-26T21:02:29.992905+08:00`，同样被替换。原始正文是美股节后复盘、期指、加密底层和 XME / ETF 盘前推演。
+  - `run_id=34135`，`job_name=美股盘前分析与个股推荐`，`executed_at=2026-05-26T21:03:00.655689+08:00`，同样被替换。原始正文是 risk-on 盘面、AI/半导体领涨和追高赔率分析。
+  - `run_id=34172`，`job_name=每日美股大盘风控简报`，`executed_at=2026-05-26T21:46:47.203221+08:00`，同样被替换。原始正文是美股开盘后 09:45 早盘风险偏好和指数表现分析。
+- 本轮未发现新的独立 P1；这是已打开缺陷的同一 scheduler 出站 guard false positive 链路，严重等级仍为 P2，状态保持 `New`。当前影响已经从单条 A/H 收盘复盘扩展到多条美股盘前/开盘/风控类定时任务，修复优先级应保持在活跃队列。
+
 ## 复发记录（2026-05-26 19:05 CST）
 
 - 最近四小时真实窗口再次确认同一根因复发，且有用户侧反馈：`A股港股收盘后跨市场复盘` 在 2026-05-26 17:30 CST 生成了完整 A/H 市场复盘，但 `cron_job_runs.run_id=34001` 出站前被 `commodity_causality_guarded=true` 替换成原油 / 大宗商品安全提示，仍记录为 `completed + sent + delivered=1`。
