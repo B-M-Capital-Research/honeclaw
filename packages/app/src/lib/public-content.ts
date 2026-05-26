@@ -526,7 +526,7 @@ const CONTENT_ZH = {
           {
             name: "Cron 定时任务",
             status: "stable",
-            note: "scheduled_task skill + /api/cron-jobs",
+            note: "scheduled_task skill + /api/cron-jobs + 普通市场复盘 guard 回归",
           },
           {
             name: "自定义 Skill",
@@ -660,6 +660,7 @@ const CONTENT_ZH = {
         "公司画像与跨会话长期记忆",
         "管理端用户视图聚合持仓、画像、会话与研究任务；公司画像可按 actor 空间查看详情、删除、导出 zip、导入预览并处理冲突",
         "Cron 定时任务系统",
+        "定时任务投递安全 guard：原油 / 大宗商品归因防护仍覆盖商品播报，但不会因市场复盘中的局部油价从句整篇替换 A/H 或美股大盘复盘",
         "事件引擎推送质量收口：digest 去重 / min-gap / topic memory / 分类预算 / 方向性价格阈值 / Feishu scheduler heartbeat revision 去重",
         "Event-engine 默认模型与示例配置已替换为 `x-ai/grok-4.3`，避免 Grok 4.1 Fast 下线导致新闻分类、global digest、mainline distill 等 LLM 增强链路失效",
         "LLM provider 配置收口到 `config.yaml`，OpenRouter 与通用 OpenAI-compatible provider 支持 `api_key/api_keys` 轮换，并保留上游错误详情便于诊断",
@@ -2055,7 +2056,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           {
             name: "Cron scheduled tasks",
             status: "stable",
-            note: "scheduled_task skill + /api/cron-jobs",
+            note: "scheduled_task skill + /api/cron-jobs + broad-market review guard regression",
           },
           {
             name: "Custom skills",
@@ -2226,6 +2227,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         "Company profiles + cross-session long memory",
         "Admin user views group holdings, profiles, sessions, and research tasks; company profiles can be inspected by actor space, deleted, exported as zip bundles, preview-imported, and imported with conflict decisions",
         "Cron-driven scheduled tasks",
+        "Scheduled-delivery safety guard: crude oil / commodity causality protection still covers commodity briefings, while broad A/H or U.S. market reviews are not fully replaced just because they contain a secondary oil-price clause",
         "Event-engine push-quality pass: digest dedupe / min-gap / topic memory / category budgets / directional price thresholds / Feishu scheduler heartbeat revision dedupe",
         "Event-engine default models and sample config now use `x-ai/grok-4.3`, avoiding failures from the retired Grok 4.1 Fast in news classification, global digest, and mainline distillation paths",
         "LLM provider config is consolidated into `config.yaml`; OpenRouter and generic OpenAI-compatible providers support `api_key/api_keys` rotation and preserve upstream error details for diagnosis",
