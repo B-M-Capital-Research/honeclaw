@@ -54,59 +54,63 @@ pub(crate) struct PutGlobalDigestBody {
     pub config: GlobalDigestConfig,
 }
 
-fn validate_global_digest(cfg: &GlobalDigestConfig) -> Result<(), Response> {
-    if cfg.timezone.trim().is_empty() {
+fn validate_global_digest(global_digest_config: &GlobalDigestConfig) -> Result<(), Response> {
+    if global_digest_config.timezone.trim().is_empty() {
         return Err(json_error(
             StatusCode::BAD_REQUEST,
             "global_digest.timezone 不能为空 (例 \"Asia/Shanghai\")",
         ));
     }
     use std::str::FromStr;
-    if chrono_tz::Tz::from_str(cfg.timezone.trim()).is_err() {
+    if chrono_tz::Tz::from_str(global_digest_config.timezone.trim()).is_err() {
         return Err(json_error(
             StatusCode::BAD_REQUEST,
             format!(
                 "global_digest.timezone {:?} 不是合法 IANA 名;示例:Asia/Shanghai、America/New_York、Europe/London",
-                cfg.timezone
+                global_digest_config.timezone
             ),
         ));
     }
-    if cfg.final_pick_n == 0 {
+    if global_digest_config.final_pick_n == 0 {
         return Err(json_error(
             StatusCode::BAD_REQUEST,
             "global_digest.final_pick_n 必须 > 0",
         ));
     }
-    if cfg.pass2_top_n < cfg.final_pick_n {
+    if global_digest_config.pass2_top_n < global_digest_config.final_pick_n {
         return Err(json_error(
             StatusCode::BAD_REQUEST,
             format!(
                 "global_digest.pass2_top_n ({}) 必须 >= final_pick_n ({})",
-                cfg.pass2_top_n, cfg.final_pick_n
+                global_digest_config.pass2_top_n, global_digest_config.final_pick_n
             ),
         ));
     }
-    if cfg.lookback_hours == 0 {
+    if global_digest_config.lookback_hours == 0 {
         return Err(json_error(
             StatusCode::BAD_REQUEST,
             "global_digest.lookback_hours 必须 > 0",
         ));
     }
-    if cfg.pass1_model.trim().is_empty() && cfg.pass1_llm.trim().is_empty() {
+    if global_digest_config.pass1_model.trim().is_empty()
+        && global_digest_config.pass1_llm.trim().is_empty()
+    {
         return Err(json_error(
             StatusCode::BAD_REQUEST,
             "global_digest.pass1_model 或 pass1_llm 不能为空",
         ));
     }
-    if cfg.pass2_model.trim().is_empty() && cfg.pass2_llm.trim().is_empty() {
+    if global_digest_config.pass2_model.trim().is_empty()
+        && global_digest_config.pass2_llm.trim().is_empty()
+    {
         return Err(json_error(
             StatusCode::BAD_REQUEST,
             "global_digest.pass2_model 或 pass2_llm 不能为空",
         ));
     }
-    if cfg.event_dedupe_enabled
-        && cfg.event_dedupe_model.trim().is_empty()
-        && cfg.event_dedupe_llm.trim().is_empty()
+    if global_digest_config.event_dedupe_enabled
+        && global_digest_config.event_dedupe_model.trim().is_empty()
+        && global_digest_config.event_dedupe_llm.trim().is_empty()
     {
         return Err(json_error(
             StatusCode::BAD_REQUEST,
@@ -118,9 +122,9 @@ fn validate_global_digest(cfg: &GlobalDigestConfig) -> Result<(), Response> {
 
 /// GET /api/event-engine/global-digest
 pub(crate) async fn handle_get_global_digest(State(state): State<Arc<AppState>>) -> Response {
-    let cfg = &state.core.config.event_engine.global_digest;
+    let global_digest_config = &state.core.config.event_engine.global_digest;
     Json(json!({
-        "config": cfg,
+        "config": global_digest_config,
     }))
     .into_response()
 }

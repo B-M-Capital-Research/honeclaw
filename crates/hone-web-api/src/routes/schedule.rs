@@ -39,9 +39,9 @@ pub(crate) async fn handle_schedule(
         )
     })?;
 
-    let cfg = &state.core.config;
+    let app_config = &state.core.config;
     let digest_defaults = DigestDefaults {
-        slots: cfg
+        slots: app_config
             .event_engine
             .digest
             .default_slots
@@ -53,8 +53,8 @@ pub(crate) async fn handle_schedule(
             .collect(),
     };
 
-    let prefs_dir = std::path::Path::new(&cfg.storage.notif_prefs_dir);
-    let cron_dir = std::path::Path::new(&cfg.storage.cron_jobs_dir);
+    let prefs_dir = std::path::Path::new(&app_config.storage.notif_prefs_dir);
+    let cron_dir = std::path::Path::new(&app_config.storage.cron_jobs_dir);
 
     let overview = build_overview(prefs_dir, cron_dir, &actor, &digest_defaults, Utc::now())
         .map_err(|e| {

@@ -363,13 +363,13 @@ mod tests {
     async fn live_fmp_earnings_smoke() {
         use std::time::Duration;
         let key = std::env::var("HONE_FMP_API_KEY").expect("需要 HONE_FMP_API_KEY");
-        let cfg = hone_core::config::FmpConfig {
+        let fmp_config = hone_core::config::FmpConfig {
             api_key: key,
             api_keys: vec![],
             base_url: "https://financialmodelingprep.com/api".into(),
             timeout: 30,
         };
-        let client = crate::fmp::FmpClient::from_config(&cfg);
+        let client = crate::fmp::FmpClient::from_config(&fmp_config);
         let poller = EarningsPoller::new(
             client,
             SourceSchedule::FixedInterval(Duration::from_secs(60)),

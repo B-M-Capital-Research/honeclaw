@@ -176,12 +176,12 @@ def http_json_request(method: str, url: str, timeout: float, body=None, headers=
         data = json.dumps(body).encode("utf-8")
         request_headers.setdefault("Content-Type", "application/json")
 
-    req = urllib.request.Request(url, data=data, method=method, headers=request_headers)
+    request = urllib.request.Request(url, data=data, method=method, headers=request_headers)
     started = time.perf_counter()
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            raw = resp.read().decode("utf-8", errors="replace")
-            status = resp.getcode()
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            raw = response.read().decode("utf-8", errors="replace")
+            status = response.getcode()
     except urllib.error.HTTPError as exc:
         raw = exc.read().decode("utf-8", errors="replace")
         status = exc.code

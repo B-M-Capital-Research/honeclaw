@@ -1316,8 +1316,8 @@ fn apply_overlay_mutations_unset_removes_from_overlay() {
     assert!(!overlay_path.exists());
 
     // effective 回到 base 值
-    let cfg = HoneConfig::from_file(&config_path).unwrap();
-    assert!(!cfg.event_engine.global_digest.enabled);
+    let config = HoneConfig::from_file(&config_path).unwrap();
+    assert!(!config.event_engine.global_digest.enabled);
 }
 
 #[test]

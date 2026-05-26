@@ -860,29 +860,41 @@ mod tests {
 
     #[test]
     fn sec_filings_enrichment_max_tokens_uses_configured_cap() {
-        let mut cfg = HoneConfig::default();
-        cfg.event_engine.sec_filings.enrichment.max_summary_tokens = 800;
+        let mut config = HoneConfig::default();
+        config
+            .event_engine
+            .sec_filings
+            .enrichment
+            .max_summary_tokens = 800;
 
-        assert_eq!(sec_filings_enrichment_max_tokens(&cfg), 800);
+        assert_eq!(sec_filings_enrichment_max_tokens(&config), 800);
     }
 
     #[test]
     fn sec_filings_enrichment_max_tokens_clamps_to_valid_u16_range() {
-        let mut cfg = HoneConfig::default();
+        let mut config = HoneConfig::default();
 
-        cfg.event_engine.sec_filings.enrichment.max_summary_tokens = 0;
-        assert_eq!(sec_filings_enrichment_max_tokens(&cfg), 1);
+        config
+            .event_engine
+            .sec_filings
+            .enrichment
+            .max_summary_tokens = 0;
+        assert_eq!(sec_filings_enrichment_max_tokens(&config), 1);
 
-        cfg.event_engine.sec_filings.enrichment.max_summary_tokens = 70_000;
-        assert_eq!(sec_filings_enrichment_max_tokens(&cfg), u16::MAX);
+        config
+            .event_engine
+            .sec_filings
+            .enrichment
+            .max_summary_tokens = 70_000;
+        assert_eq!(sec_filings_enrichment_max_tokens(&config), u16::MAX);
     }
 
     #[test]
     fn mainline_distill_uses_short_completion_budget() {
-        let mut cfg = HoneConfig::default();
-        cfg.llm.openrouter.max_tokens = 30_000;
+        let mut config = HoneConfig::default();
+        config.llm.openrouter.max_tokens = 30_000;
 
-        assert_eq!(mainline_distill_max_tokens(&cfg), 1200);
+        assert_eq!(mainline_distill_max_tokens(&config), 1200);
     }
 
     #[test]

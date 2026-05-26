@@ -39,10 +39,10 @@ if os.environ.get("RUN_EVENT_ENGINE_LLM_BASELINE") != "1":
 
 
 def openrouter_key() -> str:
-    cfg = Path("config.yaml")
-    if not cfg.exists():
+    config_path = Path("config.yaml")
+    if not config_path.exists():
         raise SystemExit("[FAIL] config.yaml missing")
-    text = cfg.read_text()
+    text = config_path.read_text()
 
     patterns = [
         r"(?ms)^llm:\s+.*?^\s+providers:\s+.*?^\s+openrouter:\s+.*?^\s+api_key:\s*[\"']?([^\"'\n#]+)",

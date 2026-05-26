@@ -10,9 +10,9 @@ async fn start_respects_disabled_flag() {
 
 #[tokio::test]
 async fn start_warns_when_enabled_but_no_key() {
-    let mut cfg = EventEngineConfig::default();
-    cfg.enabled = true;
-    let engine = EventEngine::new(cfg, FmpConfig::default());
+    let mut event_engine_config = EventEngineConfig::default();
+    event_engine_config.enabled = true;
+    let engine = EventEngine::new(event_engine_config, FmpConfig::default());
     engine.start().await.unwrap();
 }
 

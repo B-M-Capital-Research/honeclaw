@@ -136,9 +136,9 @@ sep
 info "步骤 3/5: 代理环境变量检测"
 proxy_found=false
 for var in http_proxy https_proxy HTTP_PROXY HTTPS_PROXY all_proxy ALL_PROXY; do
-  val="${!var:-}"
-  if [ -n "$val" ]; then
-    info "  $var = $val"
+  proxy_value="${!var:-}"
+  if [ -n "$proxy_value" ]; then
+    info "  $var = $proxy_value"
     proxy_found=true
   fi
 done

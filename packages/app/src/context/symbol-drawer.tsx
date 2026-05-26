@@ -62,7 +62,7 @@ export function SymbolDrawerProvider(props: ParentProps) {
 }
 
 export function useSymbolDrawer() {
-  const ctx = useContext(SymbolDrawerContext)
-  if (!ctx) throw new Error("SymbolDrawerProvider missing")
-  return ctx
+  const contextValue = useContext(SymbolDrawerContext)
+  if (!contextValue) throw new Error("SymbolDrawerProvider missing")
+  return contextValue
 }

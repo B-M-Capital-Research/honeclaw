@@ -789,16 +789,16 @@ impl EventEngine {
         // maybe_llm_upgrade_for_actor)。symbols 多数为空,靠 social
         // GlobalSubscription(见 subscription::registry_from_portfolios)
         // 把事件 fanout 给所有 actor 后再过 LLM。
-        for cfg in &sources.telegram_channels {
+        for telegram_channel in &sources.telegram_channels {
             let poller = TelegramChannelPoller::new(
-                cfg.handle.clone(),
-                Duration::from_secs(cfg.interval_secs),
-                cfg.extract_cashtags,
+                telegram_channel.handle.clone(),
+                Duration::from_secs(telegram_channel.interval_secs),
+                telegram_channel.extract_cashtags,
             );
             info!(
-                handle = %cfg.handle,
-                interval_secs = cfg.interval_secs,
-                extract_cashtags = cfg.extract_cashtags,
+                handle = %telegram_channel.handle,
+                interval_secs = telegram_channel.interval_secs,
+                extract_cashtags = telegram_channel.extract_cashtags,
                 "telegram channel poller starting"
             );
             spawn_event_source(
@@ -810,16 +810,16 @@ impl EventEngine {
         }
         // 通用 RSS 源 —— global_digest 的核心数据补充。事件直接落 source="rss:{handle}"
         // 入 events 表,collector 与 FMP news 一同拉,curator 不区分来源。
-        for cfg in &sources.rss_feeds {
+        for rss_feed in &sources.rss_feeds {
             let poller = RssNewsPoller::new(
-                cfg.handle.clone(),
-                cfg.url.clone(),
-                Duration::from_secs(cfg.interval_secs),
+                rss_feed.handle.clone(),
+                rss_feed.url.clone(),
+                Duration::from_secs(rss_feed.interval_secs),
             );
             info!(
-                handle = %cfg.handle,
-                url = %cfg.url,
-                interval_secs = cfg.interval_secs,
+                handle = %rss_feed.handle,
+                url = %rss_feed.url,
+                interval_secs = rss_feed.interval_secs,
                 "rss feed poller starting"
             );
             spawn_event_source(
