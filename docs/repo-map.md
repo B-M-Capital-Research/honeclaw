@@ -1,6 +1,6 @@
 # Repo Map
 
-Last updated: 2026-05-21
+Last updated: 2026-05-26
 
 ## Purpose
 
@@ -71,7 +71,7 @@ Last updated: 2026-05-21
   - Global skill enabled/disabled override layer for registered skills
 - `tests/regression/`
   - `ci/`: CI-safe
-  - `manual/`: manual regression tests that depend on an external CLI or account
+  - `manual/`: manual regression tests that depend on an external CLI, external account, or local machine state; live wrappers that call real services must stay opt-in behind explicit `RUN_*_LIVE_SMOKES=1` gates
 
 ## Key Entry Points
 
@@ -242,7 +242,7 @@ Last updated: 2026-05-21
 - `ChatMode` only means "this message came from a direct chat or a group chat"; do not treat it as the source of truth for session ownership. Use `SessionIdentity` for shared group context.
 - Telegram / Discord / Feishu now gate direct-vs-group ingress through per-channel `chat_scope` (`DM_ONLY | GROUPCHAT_ONLY | ALL`), while group chats still share one model: untriggered text is buffered in a short pretrigger window, and only an explicit `@bot` / reply-to-bot trigger flushes that buffered text into the shared group session before `AgentSession::run()`.
 - Group explicit triggers now expose a busy lifecycle: if one group session is still processing, the next explicit trigger gets an immediate “wait for the previous message” reply and its text is re-buffered into the pretrigger window instead of starting a second concurrent run.
-- Scripts in `tests/regression/manual/` depend on local environment state or external accounts and must not be promoted to default CI gates
+- Scripts in `tests/regression/manual/` depend on local environment state or external accounts and must not be promoted to default CI gates; wrappers that call real services, send messages, or consume provider quota should skip by default unless their `RUN_*_LIVE_SMOKES=1` gate is set
 - iMessage capabilities depend on local macOS permissions and cannot be assumed to work in CI or on non-macOS environments
 - Desktop packaging depends on a local Rust + Tauri toolchain; if `cargo` or `bun` is missing, only static changes are possible, not a full compile verification
 - Default repo-wide Rust verification should keep using `cargo check --workspace --all-targets --exclude hone-desktop`; desktop packaging is a separate validation lane.

@@ -66,6 +66,14 @@
 
 ## 2026-05-23 - 测试可维护性
 
+### Manual regression runner can trigger live service smokes without per-script gates
+
+- status: open
+- direction: 测试可维护性
+- evidence: `tests/regression/run_manual.sh` expands and runs every `tests/regression/manual/test_*.sh` file. Some existing manual scripts are intentionally live-provider checks but do not have an explicit opt-in gate, for example `tests/regression/manual/test_earnings_calendar_live.sh` and `tests/regression/manual/test_finance_snapshot_live.sh` build `hone-mcp` and call the `data_fetch` tool against the runtime config immediately, while `tests/regression/manual/test_install_brew_smoke.sh` and `test_install_bundle_smoke.sh` start local services and probe ports. The newer live smoke wrappers added on 2026-05-26 skip by default unless `RUN_*_LIVE_SMOKES=1` is set, so the manual directory now has mixed execution semantics.
+- risk: a maintainer following `bash tests/regression/run_manual.sh` from `AGENTS.md` or `tests/regression/README.md` can accidentally spend provider quota, depend on local credentials/config, send real messages, or mutate local installed-service state. Changing this directly is a workflow contract change because some existing scripts may be expected to run when invoked from the aggregate manual runner.
+- suggested_fix: add a small manual-regression metadata convention or split runner modes, such as `run_manual.sh --safe` for no-network/no-send checks and `RUN_ALL_MANUAL_LIVE=1` for live/provider scripts. Then retrofit existing live scripts with explicit gates, preserve single-script invocation ergonomics, and update `AGENTS.md`, `docs/invariants.md`, `docs/repo-map.md`, and `tests/regression/README.md` together.
+
 ### Hone-tools skill script tests trip strict clippy on async env locking and module layout
 
 - status: open
@@ -76,11 +84,12 @@
 
 ### Ignored live smoke tests remain scattered outside manual regression entry points
 
-- status: open
+- status: done
 - direction: 测试可维护性
 - evidence: `AGENTS.md` and `docs/invariants.md` say external-account, external-CLI, or local-machine-state checks should live under `tests/regression/manual/`, but `rg "#\\[ignore\\]|live_|HONE_.*KEY|HONE_.*TOKEN"` still finds credential-backed ignored tests in crate modules. Examples include `crates/hone-web-api/src/aliyun_captcha.rs::live_probe_smoke`, `crates/hone-web-api/src/aliyun_sms.rs::live_send_verify_code_smoke`, and event-engine poller smokes such as `crates/hone-event-engine/src/pollers/news.rs::live_fmp_news_smoke`, `pollers/price.rs::live_fmp_price_smoke`, `pollers/earnings.rs::live_fmp_earnings_smoke`, `pollers/analyst_grade.rs::live_fmp_analyst_grade_smoke`, `pollers/corp_action.rs::live_fmp_corp_action_smoke`, `pollers/earnings_surprise.rs::live_fmp_earnings_surprise_smoke`, and `pollers/macro_events.rs::live_fmp_macro_smoke`.
 - risk: these tests are ignored and do not block CI, but their command surface is hard to discover from `tests/regression/manual/` and remains mixed into unit-test modules. Moving them in a patrol-sized patch could lose useful smoke commands, required environment notes, or fixture setup for live provider checks.
 - suggested_fix: create manual regression wrappers for Aliyun SMS/Captcha and event-engine FMP poller smokes, preserving required env vars, command examples, and expected success criteria. Keep deterministic parsing/auth/signature coverage in Rust unit tests, then update `tests/regression/README.md` if new manual entry points are added.
+- resolution: 2026-05-26 patrol added guarded manual wrappers for Aliyun SMS/Captcha and the event-engine FMP poller live smokes, plus README commands. The Rust ignored tests remain as the implementation targets, but the operator entry points now live under `tests/regression/manual/` and skip by default unless the explicit `RUN_*_LIVE_SMOKES=1` gate is set.
 
 ## 2026-05-22 - 注释准确性
 
@@ -101,6 +110,7 @@
 - evidence: `AGENTS.md` and `docs/invariants.md` both say external-account or local-machine-state checks should live under `tests/regression/manual/`, but `crates/hone-event-engine/src/tests.rs` still contains ignored live tests such as `live_engine_e2e`, `live_telegram_push_demo`, `live_telegram_push_llm_polished_demo`, `live_portfolio_backtest_push`, and `live_social_engine_e2e`. These tests read `HONE_FMP_API_KEY`, `HONE_TG_BOT_TOKEN`, `HONE_TG_CHAT_ID`, `HONE_OPENROUTER_KEY`, local `data/portfolio/...`, or live Telegram/FMP network state directly from the crate test module.
 - risk: the tests are ignored, so they do not block CI, but their placement makes the manual verification contract hard to discover from `tests/regression/manual/` and keeps long external workflows mixed with unit/integration test code. Moving them directly in a patrol could lose useful operator commands or accidentally change the live smoke setup.
 - suggested_fix: migrate the live event-engine checks into one or more `tests/regression/manual/test_event_engine_*.sh` wrappers or documented manual fixtures, keeping deterministic contract/unit coverage in Rust. Preserve the current trigger commands, required env vars, and expected artifacts, then update `docs/repo-map.md` if the manual regression entry points change.
+- progress: 2026-05-26 patrol added `tests/regression/manual/test_event_engine_live_integration_smokes.sh` as a guarded wrapper for the existing ignored tests. The tests still live in the crate module, so this remains open until the implementation is migrated or the retained-in-crate contract is documented.
 
 ## 2026-05-14 - 配置文档漂移
 
