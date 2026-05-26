@@ -172,7 +172,7 @@ fn actor_dbg(actor: &ActorIdentity) -> String {
 /// 每小时 tick 一次,实际触发由 `distill_tick` 里的 staleness 判断决定。
 ///
 /// `task_runs_dir` 不为 `None` 时每次 tick 末尾会写一行
-/// `data/runtime/task_runs.YYYY-MM-DD.jsonl`(Stage 3 任务观测,跟 heartbeat 同级)。
+/// `data/runtime/task_runs.YYYY-MM-DD.jsonl`,跟 heartbeat 同级。
 pub async fn distill_cron_loop(
     distiller: Arc<dyn MainlineDistiller>,
     prefs: Arc<dyn PrefsProvider>,

@@ -1,5 +1,15 @@
 # Code Quality Patrol Findings
 
+## 2026-05-26 - 注释准确性
+
+### Periodic task convention and mainline distill cron disagree on missed-tick behavior
+
+- status: open
+- direction: 注释准确性
+- evidence: `docs/conventions/periodic_tasks.md` says periodic loops must set `MissedTickBehavior::Delay` and describes `Delay` as the shared convention for avoiding burst recovery after long work. `crates/hone-event-engine/src/global_digest/mainline_cron.rs` instead sets `MissedTickBehavior::Skip` in `distill_cron_loop`, while the same document lists `mainline_cron` among the periodic tasks in scope.
+- risk: changing `Skip` to `Delay` directly could alter how missed hourly distillation windows recover after machine sleep or long-running LLM calls; changing the convention directly would weaken a cross-task workflow rule. This needs an explicit decision about whether mainline distillation is an intentional exception or should follow the standard loop behavior.
+- suggested_fix: in a focused periodic-task pass, decide whether `mainline_cron` should use `Delay` like other internal tasks or stay as a documented exception. If aligning behavior, cover machine-sleep / long-tick recovery expectations with a small unit or manual regression note; if keeping `Skip`, update `docs/conventions/periodic_tasks.md` with a bounded exception and rationale.
+
 ## 2026-05-23 - 测试可维护性
 
 ### Hone-tools skill script tests trip strict clippy on async env locking and module layout

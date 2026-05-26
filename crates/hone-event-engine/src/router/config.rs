@@ -41,8 +41,8 @@ pub struct NotificationRouter {
     /// 用户价格阈值覆盖的系统级最小即时推阈值。
     pub(super) price_min_direct_pct: f64,
     /// 价格 band 单一推送规则:新档 pct 必须比当日已 sink-sent 最大档 pct 高出
-    /// 本字段值,否则降级 digest。0 = 关闭(等于无脑全推);默认 2.0 = 「每跨一个
-    /// 新 band 必推」。替代旧的 daily cap + intraday gap 双保险机制。
+    /// 本字段值,否则降级 digest。0 = 关闭(等于无脑全推);生产配置默认 2.0
+    /// = 「每跨一个新 band 必推」。替代旧的 daily cap + intraday gap 双保险机制。
     pub(super) price_band_min_advance_pct: f64,
     /// 收盘价格异动是否允许即时推；默认只进入摘要。
     pub(super) price_close_direct_enabled: bool,

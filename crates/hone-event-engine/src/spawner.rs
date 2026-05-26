@@ -1,9 +1,9 @@
 //! `spawn_event_source` —— 唯一的 EventSource 任务驱动入口。
 //!
 //! 所有 FMP / RSS / 社交源都用同一条路径接入:`impl EventSource` → 调一次
-//! `spawn_event_source(Arc::new(poller), store, router)` 即可。FixedInterval / CronAligned 两种调度策略由
-//! `source.schedule()` 返回值决定,本函数内嵌两条循环,不再有专属
-//! `spawn_*_poller` 函数。
+//! `spawn_event_source(Arc::new(poller), store, router, task_runs_dir)` 即可。
+//! FixedInterval / CronAligned 两种调度策略由 `source.schedule()` 返回值决定,
+//! 本函数内嵌两条循环,不再有专属 `spawn_*_poller` 函数。
 //!
 //! 内部细节:
 //! - 冷启动立即拉一次,避免用户重启 Hone 后等到下一 tick 才有数据

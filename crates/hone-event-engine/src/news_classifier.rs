@@ -56,7 +56,8 @@ impl NewsClassifier for NoopClassifier {
 
 /// OpenRouter / OpenAI 兼容 LLM 实现。
 ///
-/// 默认走 `google/gemini-3-flash-preview`(由 `model` 字段控制)。请求 prompt
+/// 生产默认模型由 `EventEngineConfig.news_classifier_model` 或
+/// `news_classifier_llm` profile 控制；当前默认是 `x-ai/grok-4.3`。请求 prompt
 /// 强制要求一行 `yes`/`no` 输出,解析失败按 NotImportant 处理(保守降级)。
 ///
 /// 缓存策略:

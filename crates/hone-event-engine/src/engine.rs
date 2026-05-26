@@ -785,9 +785,9 @@ impl EventEngine {
         // ── 社交源监听(通用 EventSource trait)─────────────────────────
         // Telegram channel web preview。
         // 事件一律 Low + payload.source_class="uncertain",交给 router 的
-        // LLM 仲裁链路按"是否重要"决定升 Medium 即时推(见 router.rs
+        // LLM 仲裁链路按"是否重要"决定升 Medium 即时推(见 router::classify 的
         // maybe_llm_upgrade_for_actor)。symbols 多数为空,靠 social
-        // GlobalSubscription(见 subscription.rs registry_from_portfolios)
+        // GlobalSubscription(见 subscription::registry_from_portfolios)
         // 把事件 fanout 给所有 actor 后再过 LLM。
         for cfg in &sources.telegram_channels {
             let poller = TelegramChannelPoller::new(
