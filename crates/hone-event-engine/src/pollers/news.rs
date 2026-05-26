@@ -2,7 +2,8 @@
 //!
 //! 当前行为：
 //! - `poll()` 从 FMP 拉一页最新新闻（可选 ticker 过滤，`None` 表示全局流）
-//! - 默认 severity = Low；title/text 命中关键词库 → 升级为 High
+//! - 默认 severity = Low；trusted 来源命中关键词库才升 High
+//! - legal-ad / PR wire / opinion blog 保持 Low；uncertain 来源留给 router LLM 仲裁
 //! - id 直接用文章 URL 做稳定去重；缺 URL 则回落到 "title+date" 组合
 //! - 关键词库先内置一组保守的"高影响"词（破产、SEC 调查、召回、被起诉、CEO 辞任、收购等）
 

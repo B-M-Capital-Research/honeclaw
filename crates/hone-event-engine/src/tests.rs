@@ -719,7 +719,7 @@ async fn live_portfolio_backtest_push() {
             .collect();
 
         // #13 财报窗口标记：对每条 news,看是否同 ticker 有 earnings 事件落在
-        // [news - 1d, news + 2d] 窗口内,若有则 🔔 标记——这些是 Router 里
+        // [news - 12h, news + 2d] 窗口内,若有则 🔔 标记——这些是 Router 里
         // `maybe_upgrade_news` 会把 Low 升到 Medium 的那一批,肉眼可验证。
         let earn_by_sym: std::collections::HashMap<&str, &crate::event::MarketEvent> = earn_filt
             .iter()
@@ -728,7 +728,7 @@ async fn live_portfolio_backtest_push() {
         let in_earnings_window = |ev: &crate::event::MarketEvent| -> Option<i64> {
             let sym = ev.symbols.first()?.as_str();
             let earn = earn_by_sym.get(sym)?;
-            let start = ev.occurred_at - chrono::Duration::days(1);
+            let start = ev.occurred_at - chrono::Duration::hours(12);
             let end = ev.occurred_at + chrono::Duration::days(2);
             if earn.occurred_at >= start && earn.occurred_at <= end {
                 Some((earn.occurred_at.date_naive() - ev.occurred_at.date_naive()).num_days())

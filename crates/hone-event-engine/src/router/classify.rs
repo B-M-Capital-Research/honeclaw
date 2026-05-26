@@ -11,8 +11,8 @@ use crate::prefs::NotificationPrefs;
 
 use super::config::NotificationRouter;
 
-/// 同日命中后可以把 Low 新闻升到 Medium 的硬信号 kind tag 集合。
-/// 语义：ticker 当天已出现过这些"事实性"事件时,同 ticker 的低优先级新闻
+/// 近期命中后可以把 Low 新闻升到 Medium 的硬信号 kind tag 集合。
+/// 语义：ticker 刚出现过这些"事实性"事件时,同 ticker 的低优先级新闻
 /// 很可能是相关解读,升到 Medium 让它进 digest 而不是沉底。
 const NEWS_CONVERGENCE_HARD_SIGNALS: &[&str] = &[
     "price_alert",
@@ -24,13 +24,13 @@ const NEWS_CONVERGENCE_HARD_SIGNALS: &[&str] = &[
 
 impl NotificationRouter {
     /// 新闻多信号合流 + 财报窗口升级:当事件为 `NewsCritical + Low`,且同一 ticker
-    /// 在 `[news_ts - 1d, news_ts + 2d]` 窗口内出现过硬信号
-    /// (price_alert / earnings_released / earnings_upcoming / sec_filing /
-    /// analyst_grade),把 severity 升到 Medium。
+    /// 在近期窗口内出现过事实性硬信号,或在临近财报窗口内有 `earnings_upcoming`,
+    /// 把 severity 升到 Medium。
     ///
-    /// 窗口既覆盖"前 24h 内已发生"的硬信号(#10 多信号合流),也覆盖"未来 48h 内"
-    /// 的 earnings_upcoming(#13 财报窗口——因为 earnings_upcoming 的 occurred_at
-    /// 是财报当日 00:00,T-1/T 新闻必须向未来扩窗才能命中)。
+    /// 近期硬信号窗口是 `[news_ts - 6h, news_ts + 1h]`,覆盖 price_alert /
+    /// earnings_released / sec_filing / analyst_grade 等刚发生或稍晚入库的信号。
+    /// 财报窗口单独查 `[news_ts - 12h, news_ts + 2d]` 的 earnings_upcoming:
+    /// 这类事件的 occurred_at 是财报当日 00:00,T-1/T 新闻必须向未来扩窗才能命中。
     ///
     /// 升级是幂等 clone,原事件不被修改。
     pub(super) fn maybe_upgrade_news(&self, event: &MarketEvent) -> MarketEvent {

@@ -912,7 +912,7 @@ async fn legal_ad_high_is_demoted_before_sink() {
 
 #[tokio::test]
 async fn low_news_upgrades_to_medium_when_same_day_hard_signal_exists() {
-    // 构造一条今日 AAPL 的 price_alert 先入 store,再 dispatch 一条 Low NewsCritical,
+    // 构造一条近期 AAPL 的 price_alert 先入 store,再 dispatch 一条 Low NewsCritical,
     // 应升级为 Medium 并进 digest(sent=0, pending=1)。
     let mut reg = SubscriptionRegistry::new();
     reg.register(Box::new(PortfolioSubscription::new(
@@ -1026,7 +1026,7 @@ async fn opinion_blog_news_does_not_upgrade_on_hard_signal() {
 #[tokio::test]
 async fn low_news_upgrades_inside_earnings_window() {
     // earnings_upcoming 的 occurred_at 是未来的财报日 00:00;今天的 Low 新闻
-    // 应命中 [news - 1d, news + 2d] 窗口被升到 Medium。
+    // 应命中 [news - 12h, news + 2d] 财报窗口被升到 Medium。
     let mut reg = SubscriptionRegistry::new();
     reg.register(Box::new(PortfolioSubscription::new(
         actor("u1"),

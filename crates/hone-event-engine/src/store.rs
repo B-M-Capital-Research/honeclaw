@@ -239,9 +239,9 @@ impl EventStore {
     /// 字符串,如 `"price_alert"` / `"earnings_released"` / `"sec_filing"`)。
     ///
     /// 用途:
-    /// - 新闻多信号合流:`[news_ts - 12h, news_ts + 1h]` 查硬信号
-    /// - 财报窗口升级:`[news_ts - 1d, news_ts + 2d]` 查 earnings_upcoming /
-    ///   earnings_released (含未来财报日)
+    /// - 新闻多信号合流:`[news_ts - 6h, news_ts + 1h]` 查近期硬信号
+    /// - 财报窗口升级:`[news_ts - 12h, news_ts + 2d]` 查 earnings_upcoming
+    ///   (含未来财报日)
     ///
     /// 注意:`occurred_at` 是**事件真实发生时刻**,不是入库时刻——所以
     /// `earnings_upcoming` 在财报日当天 00:00,查询窗口必须向未来延伸才能命中。
