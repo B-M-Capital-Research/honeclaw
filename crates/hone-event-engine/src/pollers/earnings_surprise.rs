@@ -750,8 +750,11 @@ mod tests {
             .await
             .expect("FMP poll failed");
         println!("earnings surprise events pulled: {}", events.len());
-        for ev in events.iter().take(5) {
-            println!("  [{:?}] {} · {}", ev.severity, ev.title, ev.summary);
+        for event in events.iter().take(5) {
+            println!(
+                "  [{:?}] {} · {}",
+                event.severity, event.title, event.summary
+            );
         }
     }
 }

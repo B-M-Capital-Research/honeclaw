@@ -44,13 +44,15 @@ impl<'a> SynthSource<'a> {
         let synth_pool = synthesize_countdowns(&teasers, local_today);
         let registry = self.registry.load();
         let mut candidates = Vec::new();
-        for ev in synth_pool {
+        for synth_event in synth_pool {
             if registry
-                .resolve(&ev)
+                .resolve(&synth_event)
                 .into_iter()
-                .any(|(a, _sev)| &a == actor && a.is_direct())
+                .any(|(resolved_actor, _severity)| {
+                    &resolved_actor == actor && resolved_actor.is_direct()
+                })
             {
-                candidates.push(UnifiedCandidate::from_synth(ev, now));
+                candidates.push(UnifiedCandidate::from_synth(synth_event, now));
             }
         }
         Ok(candidates)

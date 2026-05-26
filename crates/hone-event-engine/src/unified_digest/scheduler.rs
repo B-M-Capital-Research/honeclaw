@@ -224,10 +224,13 @@ impl UnifiedDigestScheduler {
                 let synth_pool =
                     crate::pollers::earnings::synthesize_countdowns(&teasers, local_today);
                 let registry_snapshot = self.registry.load();
-                for ev in &synth_pool {
-                    for (actor, _sev) in registry_snapshot.resolve(ev) {
-                        if actor.is_direct() {
-                            synth_by_actor.entry(actor).or_default().push(ev.clone());
+                for synth_event in &synth_pool {
+                    for (resolved_actor, _severity) in registry_snapshot.resolve(synth_event) {
+                        if resolved_actor.is_direct() {
+                            synth_by_actor
+                                .entry(resolved_actor)
+                                .or_default()
+                                .push(synth_event.clone());
                         }
                     }
                 }
@@ -242,8 +245,8 @@ impl UnifiedDigestScheduler {
         // ── actor 集合 = buffer 待 flush ∪ synth 命中 ∪ quiet_held ─────
         let mut actors: HashSet<ActorIdentity> =
             self.buffer.list_pending_actors().into_iter().collect();
-        for a in synth_by_actor.keys() {
-            actors.insert(a.clone());
+        for actor_with_synth in synth_by_actor.keys() {
+            actors.insert(actor_with_synth.clone());
         }
         // 还要把所有有 portfolio 的 direct actor 拉进来 —— 即使本 tick 没 buffer
         // 没 synth,他们仍可能命中 slot 拿到 global news 推送。
@@ -256,8 +259,8 @@ impl UnifiedDigestScheduler {
         match self.store.list_actors_with_quiet_held_since(since) {
             Ok(keys) => {
                 for key in keys {
-                    if let Some(a) = actor_from_key(&key) {
-                        actors.insert(a);
+                    if let Some(actor_with_quiet_held) = actor_from_key(&key) {
+                        actors.insert(actor_with_quiet_held);
                     }
                 }
             }
@@ -369,7 +372,7 @@ impl UnifiedDigestScheduler {
                     .delivered_event_ids_since(&actor_key_str, day_start_utc)
                 {
                     let pre_count = synths_this_slot.len();
-                    synths_this_slot.retain(|ev| !seen.contains(&ev.id));
+                    synths_this_slot.retain(|synth_event| !seen.contains(&synth_event.id));
                     if synths_this_slot.len() < pre_count {
                         info!(
                             actor = %actor_key_str,
@@ -432,47 +435,47 @@ impl UnifiedDigestScheduler {
                 let mut other_events: Vec<MarketEvent> = Vec::new();
 
                 let push_classified =
-                    |ev: MarketEvent,
+                    |event: MarketEvent,
                      force_floor: Option<FloorTag>,
                      floor_bin: &mut Vec<MarketEvent>,
                      other_bin: &mut Vec<MarketEvent>| {
-                        let tag = force_floor.or_else(|| classify_floor(&ev, &user_prefs));
+                        let tag = force_floor.or_else(|| classify_floor(&event, &user_prefs));
                         if tag.is_some() {
-                            floor_bin.push(ev);
+                            floor_bin.push(event);
                         } else {
-                            other_bin.push(ev);
+                            other_bin.push(event);
                         }
                     };
 
                 // Buffered + synth:走 prefs filter,再分 floor / 普通
-                for ev in buffered.into_iter().chain(synths_this_slot.into_iter()) {
-                    if !user_prefs.should_deliver(&ev) {
+                for event in buffered.into_iter().chain(synths_this_slot.into_iter()) {
+                    if !user_prefs.should_deliver(&event) {
                         continue;
                     }
-                    push_classified(ev, None, &mut floor_events, &mut other_events);
+                    push_classified(event, None, &mut floor_events, &mut other_events);
                 }
                 // Personalized 全球新闻:LLM 给的 PickCategory::MacroFloor 直接 floor
-                for pi in &personalized {
-                    let ev = pi.candidate.event.clone();
-                    if !user_prefs.should_deliver(&ev) {
+                for personalized_item in &personalized {
+                    let event = personalized_item.candidate.event.clone();
+                    if !user_prefs.should_deliver(&event) {
                         continue;
                     }
-                    if !global_pick_matches_actor_focus(&ev, &focus_symbols) {
+                    if !global_pick_matches_actor_focus(&event, &focus_symbols) {
                         let _ = self.store.log_delivery(
-                            &ev.id,
+                            &event.id,
                             &actor_key_str,
                             "global_digest_item",
-                            ev.severity,
+                            event.severity,
                             "filtered_focus",
                             None,
                         );
                         continue;
                     }
-                    let force_floor = match pi.category {
+                    let force_floor = match personalized_item.category {
                         PickCategory::MacroFloor => Some(FloorTag::MacroFloor),
                         _ => None,
                     };
-                    push_classified(ev, force_floor, &mut floor_events, &mut other_events);
+                    push_classified(event, force_floor, &mut floor_events, &mut other_events);
                 }
 
                 if floor_events.is_empty() && other_events.is_empty() {
@@ -989,16 +992,16 @@ impl UnifiedDigestScheduler {
 // ─────────────────────────── helpers ─────────────────────────────────
 
 fn unified_to_global_candidate(
-    c: UnifiedCandidate,
+    candidate: UnifiedCandidate,
 ) -> Option<crate::global_digest::collector::GlobalDigestCandidate> {
-    if c.origin != ItemOrigin::Global {
+    if candidate.origin != ItemOrigin::Global {
         return None;
     }
     Some(crate::global_digest::collector::GlobalDigestCandidate {
-        event: c.event,
-        source_class: c.source_class?,
-        fmp_text: c.fmp_text.unwrap_or_default(),
-        site: c.site.unwrap_or_default(),
+        event: candidate.event,
+        source_class: candidate.source_class?,
+        fmp_text: candidate.fmp_text.unwrap_or_default(),
+        site: candidate.site.unwrap_or_default(),
     })
 }
 
@@ -1033,12 +1036,12 @@ fn actor_from_key(key: &str) -> Option<ActorIdentity> {
     ActorIdentity::new(channel, user_id, scope_opt).ok()
 }
 
-fn actor_key(a: &ActorIdentity) -> String {
+fn actor_key(actor: &ActorIdentity) -> String {
     format!(
         "{}::{}::{}",
-        a.channel,
-        a.channel_scope.clone().unwrap_or_default(),
-        a.user_id
+        actor.channel,
+        actor.channel_scope.clone().unwrap_or_default(),
+        actor.user_id
     )
 }
 
@@ -1140,7 +1143,7 @@ mod tests {
         ActorIdentity::new("telegram", "u1", None::<&str>).unwrap()
     }
 
-    fn news(symbols: Vec<&str>) -> MarketEvent {
+    fn news_event(symbols: Vec<&str>) -> MarketEvent {
         MarketEvent {
             id: "news:1".into(),
             kind: EventKind::NewsCritical,
@@ -1210,7 +1213,7 @@ mod tests {
     fn mark_as_overnight_recap_is_idempotent_for_already_marked() {
         // 防御性:即便上游错误地重复 mark,标记前缀稳定可识别(不强求只 mark 一次,
         // 但 grep "🌙 凌晨曾过" 时数量与原始批次条数对齐)。
-        let ev = MarketEvent {
+        let event = MarketEvent {
             id: "p".into(),
             kind: EventKind::PriceAlert {
                 pct_change_bps: 800,
@@ -1225,9 +1228,9 @@ mod tests {
             source: "fmp.quote".into(),
             payload: serde_json::Value::Null,
         };
-        let twice = mark_as_overnight_recap(ev.clone());
+        let marked_again = mark_as_overnight_recap(event.clone());
         // 当前实现允许双重 prefix,但前缀始终在最左侧,grep 不会漏。
-        assert!(twice.title.starts_with("🌙 凌晨曾过 · "));
+        assert!(marked_again.title.starts_with("🌙 凌晨曾过 · "));
     }
 
     #[test]
@@ -1235,10 +1238,13 @@ mod tests {
         let focus = HashSet::from(["AAPL".to_string(), "MU".to_string()]);
 
         assert!(!global_pick_matches_actor_focus(
-            &news(vec!["META"]),
+            &news_event(vec!["META"]),
             &focus
         ));
-        assert!(global_pick_matches_actor_focus(&news(vec!["AAPL"]), &focus));
-        assert!(global_pick_matches_actor_focus(&news(vec![]), &focus));
+        assert!(global_pick_matches_actor_focus(
+            &news_event(vec!["AAPL"]),
+            &focus
+        ));
+        assert!(global_pick_matches_actor_focus(&news_event(vec![]), &focus));
     }
 }

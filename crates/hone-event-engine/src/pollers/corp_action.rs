@@ -535,8 +535,8 @@ mod tests {
         );
         let events = poller.poll().await.expect("FMP poll failed");
         println!("corp_action events pulled: {}", events.len());
-        for ev in events.iter().take(5) {
-            println!("  [{:?}] {} · {}", ev.severity, ev.id, ev.summary);
+        for event in events.iter().take(5) {
+            println!("  [{:?}] {} · {}", event.severity, event.id, event.summary);
         }
     }
 }

@@ -396,7 +396,7 @@ fn curation_caps_social_and_source_noise() {
     assert!(
         curated
             .iter()
-            .all(|e| matches!(e.kind, EventKind::SocialPost))
+            .all(|event| matches!(event.kind, EventKind::SocialPost))
     );
 }
 
@@ -480,7 +480,11 @@ fn curation_omits_low_quality_social_after_llm_no_even_with_symbols() {
     let curation =
         curate_digest_events_with_omitted_at(vec![no_symbol, symbol_low, symbol_medium], now);
 
-    let kept_ids: Vec<&str> = curation.kept.iter().map(|e| e.id.as_str()).collect();
+    let kept_ids: Vec<&str> = curation
+        .kept
+        .iter()
+        .map(|event| event.id.as_str())
+        .collect();
     assert_eq!(kept_ids, vec!["social-usdt"]);
     assert_eq!(curation.omitted.len(), 2);
 }
@@ -508,7 +512,11 @@ fn curation_omits_low_or_far_future_macro_calendar() {
     let curation =
         curate_digest_events_with_omitted_at(vec![near_medium, near_low, far_medium], now);
 
-    let kept_ids: Vec<&str> = curation.kept.iter().map(|e| e.id.as_str()).collect();
+    let kept_ids: Vec<&str> = curation
+        .kept
+        .iter()
+        .map(|event| event.id.as_str())
+        .collect();
     assert_eq!(kept_ids, vec!["macro-near-medium"]);
     assert_eq!(curation.omitted.len(), 2);
 }
@@ -556,7 +564,7 @@ fn curation_dedupes_repeated_news_titles() {
     distinct.url = Some("https://site-c.example/story".into());
 
     let curated = curate_digest_events(vec![first, duplicate, distinct]);
-    let ids: Vec<&str> = curated.iter().map(|e| e.id.as_str()).collect();
+    let ids: Vec<&str> = curated.iter().map(|event| event.id.as_str()).collect();
     assert_eq!(ids, vec!["news-1", "news-3"]);
 }
 
@@ -667,7 +675,7 @@ fn curation_keeps_high_items_even_when_caps_are_hit() {
 
     let curated = curate_digest_events(events);
     assert!(
-        curated.iter().any(|e| e.id == "aapl-high"),
+        curated.iter().any(|event| event.id == "aapl-high"),
         "high severity digest item must not be dropped by curation caps"
     );
 }

@@ -29,7 +29,7 @@ impl<'a> BufferSource<'a> {
         let events = self.buffer.drain_actor(actor)?;
         Ok(events
             .into_iter()
-            .map(|e| UnifiedCandidate::from_buffered(e, now))
+            .map(|event| UnifiedCandidate::from_buffered(event, now))
             .collect())
     }
 }
@@ -80,13 +80,20 @@ mod tests {
         let buffer_source = BufferSource::new(&digest_buffer);
         let candidates = buffer_source.drain(&test_actor).unwrap();
         assert_eq!(candidates.len(), 2);
-        assert!(candidates.iter().all(|c| c.origin == ItemOrigin::Buffered));
         assert!(
             candidates
                 .iter()
-                .all(|c| c.fmp_text.is_none() && c.site.is_none())
+                .all(|candidate| candidate.origin == ItemOrigin::Buffered)
         );
-        let ids: Vec<_> = candidates.iter().map(|c| c.event.id.as_str()).collect();
+        assert!(
+            candidates
+                .iter()
+                .all(|candidate| candidate.fmp_text.is_none() && candidate.site.is_none())
+        );
+        let ids: Vec<_> = candidates
+            .iter()
+            .map(|candidate| candidate.event.id.as_str())
+            .collect();
         assert!(ids.contains(&"e1") && ids.contains(&"e2"));
     }
 

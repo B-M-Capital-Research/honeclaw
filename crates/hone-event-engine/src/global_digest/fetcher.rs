@@ -627,7 +627,7 @@ mod tests {
 
     #[test]
     fn paywall_domain_detection() {
-        for u in [
+        for url in [
             "https://www.reuters.com/foo",
             "https://reuters.com/foo",
             "https://www.wsj.com/x",
@@ -637,27 +637,30 @@ mod tests {
             "https://www.ft.com/x",
             "https://www.economist.com/x",
         ] {
-            assert!(is_paywall_domain(u), "{u} should be paywall");
+            assert!(is_paywall_domain(url), "{url} should be paywall");
         }
-        for u in [
+        for url in [
             "https://www.cnbc.com/x",
             "https://seekingalpha.com/x",
             "https://example.com/wsj.com",
         ] {
-            assert!(!is_paywall_domain(u), "{u} should NOT be paywall");
+            assert!(!is_paywall_domain(url), "{url} should NOT be paywall");
         }
     }
 
     #[test]
     fn fetcher_constructors_normalize_empty_key_to_none() {
-        let f1 = ArticleFetcher::with_jina_api_key(None);
-        assert!(f1.jina_api_key.is_none());
-        let f2 = ArticleFetcher::with_jina_api_key(Some("".into()));
-        assert!(f2.jina_api_key.is_none());
-        let f3 = ArticleFetcher::with_jina_api_key(Some("   ".into()));
-        assert!(f3.jina_api_key.is_none());
-        let f4 = ArticleFetcher::with_jina_api_key(Some("jina_xyz".into()));
-        assert_eq!(f4.jina_api_key.as_deref(), Some("jina_xyz"));
+        let missing_key_fetcher = ArticleFetcher::with_jina_api_key(None);
+        assert!(missing_key_fetcher.jina_api_key.is_none());
+        let empty_key_fetcher = ArticleFetcher::with_jina_api_key(Some("".into()));
+        assert!(empty_key_fetcher.jina_api_key.is_none());
+        let blank_key_fetcher = ArticleFetcher::with_jina_api_key(Some("   ".into()));
+        assert!(blank_key_fetcher.jina_api_key.is_none());
+        let configured_key_fetcher = ArticleFetcher::with_jina_api_key(Some("jina_xyz".into()));
+        assert_eq!(
+            configured_key_fetcher.jina_api_key.as_deref(),
+            Some("jina_xyz")
+        );
     }
 
     #[test]

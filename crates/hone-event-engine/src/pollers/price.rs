@@ -866,8 +866,11 @@ mod tests {
             .await
             .expect("FMP poll failed");
         println!("price events pulled: {}", events.len());
-        for ev in events.iter().take(10) {
-            println!("  [{:?}] {} · {}", ev.severity, ev.title, ev.summary);
+        for event in events.iter().take(10) {
+            println!(
+                "  [{:?}] {} · {}",
+                event.severity, event.title, event.summary
+            );
         }
     }
 }

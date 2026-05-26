@@ -40,11 +40,11 @@ mod tests {
     use crate::event::EventKind;
     use chrono::Utc;
 
-    fn ev(id: &str, kind: EventKind, sev: Severity) -> MarketEvent {
+    fn market_event(id: &str, kind: EventKind, severity: Severity) -> MarketEvent {
         MarketEvent {
             id: id.into(),
             kind,
-            severity: sev,
+            severity,
             symbols: vec!["AAPL".into()],
             occurred_at: Utc::now(),
             title: "t".into(),
@@ -57,22 +57,22 @@ mod tests {
 
     #[test]
     fn high_severity_wins() {
-        let e = ev("e1", EventKind::NewsCritical, Severity::High);
+        let event = market_event("e1", EventKind::NewsCritical, Severity::High);
         assert_eq!(
-            classify_floor(&e, &NotificationPrefs::default()),
+            classify_floor(&event, &NotificationPrefs::default()),
             Some(FloorTag::HighSeverity)
         );
     }
 
     #[test]
     fn synth_countdown_id_matches() {
-        let e = ev(
+        let event = market_event(
             "synth:earnings:GOOGL:2026-04-29:countdown:2026-04-27",
             EventKind::EarningsUpcoming,
             Severity::Medium,
         );
         assert_eq!(
-            classify_floor(&e, &NotificationPrefs::default()),
+            classify_floor(&event, &NotificationPrefs::default()),
             Some(FloorTag::Countdown)
         );
     }
@@ -81,45 +81,48 @@ mod tests {
     fn immediate_kinds_match_uses_kind_tag() {
         let mut prefs = NotificationPrefs::default();
         prefs.immediate_kinds = Some(vec!["sec_filing".into()]);
-        let e = ev(
+        let event = market_event(
             "id1",
             EventKind::SecFiling { form: "8-K".into() },
             Severity::Medium,
         );
-        assert_eq!(classify_floor(&e, &prefs), Some(FloorTag::UserImmediate));
+        assert_eq!(
+            classify_floor(&event, &prefs),
+            Some(FloorTag::UserImmediate)
+        );
     }
 
     #[test]
     fn immediate_kinds_does_not_floor_noop_analyst_grade() {
         let mut prefs = NotificationPrefs::default();
         prefs.immediate_kinds = Some(vec!["analyst_grade".into()]);
-        let mut e = ev("grade-1", EventKind::AnalystGrade, Severity::Low);
-        e.source = "fmp.upgrades_downgrades".into();
-        e.summary = "Overweight → Overweight".into();
-        e.payload = serde_json::json!({
+        let mut event = market_event("grade-1", EventKind::AnalystGrade, Severity::Low);
+        event.source = "fmp.upgrades_downgrades".into();
+        event.summary = "Overweight → Overweight".into();
+        event.payload = serde_json::json!({
             "action": "hold",
             "previousGrade": "Overweight",
             "newGrade": "Overweight"
         });
 
-        assert_eq!(classify_floor(&e, &prefs), None);
+        assert_eq!(classify_floor(&event, &prefs), None);
     }
 
     #[test]
     fn medium_without_match_returns_none() {
-        let e = ev("id1", EventKind::NewsCritical, Severity::Medium);
-        assert_eq!(classify_floor(&e, &NotificationPrefs::default()), None);
+        let event = market_event("id1", EventKind::NewsCritical, Severity::Medium);
+        assert_eq!(classify_floor(&event, &NotificationPrefs::default()), None);
     }
 
     #[test]
     fn high_beats_synth_id() {
-        let e = ev(
+        let event = market_event(
             "synth:earnings:X:2026-04-29:countdown:2026-04-27",
             EventKind::EarningsUpcoming,
             Severity::High,
         );
         assert_eq!(
-            classify_floor(&e, &NotificationPrefs::default()),
+            classify_floor(&event, &NotificationPrefs::default()),
             Some(FloorTag::HighSeverity)
         );
     }

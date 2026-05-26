@@ -376,8 +376,8 @@ mod tests {
         );
         let events = poller.poll().await.expect("FMP poll failed");
         println!("earnings events pulled: {}", events.len());
-        for ev in events.iter().take(5) {
-            println!("  {} · {} · {}", ev.id, ev.title, ev.summary);
+        for event in events.iter().take(5) {
+            println!("  {} · {} · {}", event.id, event.title, event.summary);
         }
         assert!(!events.is_empty(), "14 天窗口内应至少有 1 条财报");
     }

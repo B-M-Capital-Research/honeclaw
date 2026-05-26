@@ -846,8 +846,8 @@ mod tests {
         .with_page_limit(5);
         let events = poller.poll().await.expect("FMP poll failed");
         println!("news events pulled: {}", events.len());
-        for ev in events.iter().take(5) {
-            println!("  [{:?}] {} · {}", ev.severity, ev.title, ev.id);
+        for event in events.iter().take(5) {
+            println!("  [{:?}] {} · {}", event.severity, event.title, event.id);
         }
         assert!(!events.is_empty());
     }

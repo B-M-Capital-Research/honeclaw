@@ -277,10 +277,16 @@ mod tests {
     fn cashtag_extraction_toggle() {
         let events_on = parse_telegram_preview(SAMPLE_HTML, "watcherguru", true);
         let events_off = parse_telegram_preview(SAMPLE_HTML, "watcherguru", false);
-        let e_on = events_on.iter().find(|e| e.id.ends_with("12345")).unwrap();
-        let e_off = events_off.iter().find(|e| e.id.ends_with("12345")).unwrap();
-        assert!(e_on.symbols.contains(&"BTC".to_string()));
-        assert!(e_off.symbols.is_empty());
+        let event_with_cashtag = events_on
+            .iter()
+            .find(|event| event.id.ends_with("12345"))
+            .unwrap();
+        let event_without_cashtag = events_off
+            .iter()
+            .find(|event| event.id.ends_with("12345"))
+            .unwrap();
+        assert!(event_with_cashtag.symbols.contains(&"BTC".to_string()));
+        assert!(event_without_cashtag.symbols.is_empty());
     }
 
     #[test]
