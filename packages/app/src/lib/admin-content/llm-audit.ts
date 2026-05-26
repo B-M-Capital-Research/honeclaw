@@ -6,7 +6,7 @@ const ZH = {
   },
   toolbar: {
     title: "LLM 审计",
-    filter_user_placeholder: "过滤用户 ID",
+    filter_user_placeholder: "过滤账号",
     filter_session_placeholder: "过滤会话",
     status_all: "全部状态",
     status_success: "成功",
@@ -54,7 +54,7 @@ const EN: typeof ZH = {
   },
   toolbar: {
     title: "LLM audit",
-    filter_user_placeholder: "Filter user ID",
+    filter_user_placeholder: "Filter account",
     filter_session_placeholder: "Filter session",
     status_all: "All statuses",
     status_success: "Success",

@@ -213,25 +213,25 @@ const ZH = {
   invite: {
     title: "Web 用户白名单",
     subtitle:
-      "新增手机号会同步创建一个 `web` 用户。用户通过 `/chat` 使用手机号和短信验证码登录后，复用当前每日对话额度；历史邀请码保留用于兼容和管理。",
+      "新增手机号会同步创建一个 `web` 用户。用户通过 `/chat` 使用手机号和短信验证码登录后，复用当前每日对话额度；邀请码仍可用于管理和迁移。",
     refresh: "刷新",
     phone_label: "手机号",
     phone_placeholder: "输入要加入白名单的手机号",
     create: "加入白名单",
     creating: "加入中…",
     phone_required: "请输入手机号",
-    created: "已将 {phone} 加入白名单（兼容邀请码 {code}）",
-    created_copied: "已将 {phone} 加入白名单，并复制兼容邀请码 {code}",
+    created: "已将 {phone} 加入白名单（邀请码 {code}）",
+    created_copied: "已将 {phone} 加入白名单，并复制邀请码 {code}",
     created_with_api_key:
-      "已将 {phone} 加入白名单，并生成兼容邀请码 {code} 和 API Key {apiKey}",
+      "已将 {phone} 加入白名单，并生成邀请码 {code} 和 API Key {apiKey}",
     created_with_api_key_copied:
-      "已将 {phone} 加入白名单，并生成兼容邀请码 {code} 和 API Key；均已复制",
+      "已将 {phone} 加入白名单，并生成邀请码 {code} 和 API Key；均已复制",
     copied: "已复制邀请码 {code}",
     copy_unsupported: "当前环境不支持复制",
     disable_confirm:
       "停用 {userId} 的白名单后，现有 Web 登录态会立即失效。继续吗？",
     reset_confirm:
-      "将为 {userId} 生成新兼容邀请码，并让旧邀请码和现有 Web 登录态立即失效。继续吗？",
+      "将为 {userId} 生成新邀请码，并让旧邀请码和现有 Web 登录态立即失效。继续吗？",
     api_key_reset_confirm:
       "将为 {userId} 生成新的 API Key，旧 API Key 会立即失效，但不会清理登录态。继续吗？",
     reset_copied_suffix: "{message}，新邀请码已复制",
@@ -481,26 +481,26 @@ const EN: typeof ZH = {
   invite: {
     title: "Web user whitelist",
     subtitle:
-      "Adding a phone number creates a `web` user. Users sign in from `/chat` with phone + SMS code and share the current daily chat quota. Historical invite codes are kept for compatibility and management.",
+      "Adding a phone number creates a `web` user. Users sign in from `/chat` with phone + SMS code and share the current daily chat quota. Invite codes remain available for management and migration.",
     refresh: "Refresh",
     phone_label: "Phone number",
     phone_placeholder: "Phone number to whitelist",
     create: "Add to whitelist",
     creating: "Adding…",
     phone_required: "Enter a phone number",
-    created: "Added {phone} to the whitelist (legacy invite code {code})",
+    created: "Added {phone} to the whitelist (invite code {code})",
     created_copied:
-      "Added {phone} to the whitelist and copied legacy invite code {code}",
+      "Added {phone} to the whitelist and copied invite code {code}",
     created_with_api_key:
-      "Added {phone} to the whitelist with legacy invite code {code} and API key {apiKey}",
+      "Added {phone} to the whitelist with invite code {code} and API key {apiKey}",
     created_with_api_key_copied:
-      "Added {phone} to the whitelist with legacy invite code {code} and API key; both copied",
+      "Added {phone} to the whitelist with invite code {code} and API key; both copied",
     copied: "Copied invite code {code}",
     copy_unsupported: "Clipboard not available in this environment",
     disable_confirm:
       "Disabling the whitelist entry for {userId} will immediately log out the existing web session. Continue?",
     reset_confirm:
-      "This will issue a new legacy invite code for {userId} and immediately invalidate the old code and any active web session. Continue?",
+      "This will issue a new invite code for {userId} and immediately invalidate the old code and any active web session. Continue?",
     api_key_reset_confirm:
       "This will issue a new API key for {userId}. The old API key stops working, but web sessions stay signed in. Continue?",
     reset_copied_suffix: "{message}; new invite code copied",

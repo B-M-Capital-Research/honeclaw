@@ -13,7 +13,7 @@ const ZH = {
   list: {
     title: "会话",
     subtitle: "按渠道查看会话，并打开对应历史",
-    isolation_hint: "不同渠道的用户 ID 相互独立，无法共享上下文。",
+    isolation_hint: "同一账号在不同渠道的上下文相互独立，无法自动共享。",
     search_placeholder: "搜索用户名",
     channel_all: "全部渠道",
     channel_unknown: "未知",
@@ -75,7 +75,7 @@ const EN: typeof ZH = {
   list: {
     title: "Sessions",
     subtitle: "Browse sessions by channel and open their history.",
-    isolation_hint: "User IDs are isolated per channel — context is not shared across channels.",
+    isolation_hint: "Accounts are isolated per channel, so context is not shared automatically.",
     search_placeholder: "Search user",
     channel_all: "All channels",
     channel_unknown: "Unknown",

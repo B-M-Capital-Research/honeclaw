@@ -726,8 +726,8 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "provider.openrouter.note_3",
-        "支持一次填写多个 key，运行时会自动切换备用 key。",
-        "Multiple keys are supported; runtime will fall back automatically.",
+        "支持一次填写多个 key，Hone 会自动尝试备用 key。",
+        "Multiple keys are supported; Hone will try backup keys automatically.",
     ),
     ("provider.fmp.label", "FMP", "FMP"),
     (
@@ -742,8 +742,8 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "provider.fmp.note_2",
-        "支持一次填写多个 key，运行时会自动切换备用 key。",
-        "Multiple keys are supported; runtime will fall back automatically.",
+        "支持一次填写多个 key，Hone 会自动尝试备用 key。",
+        "Multiple keys are supported; Hone will try backup keys automatically.",
     ),
     ("provider.tavily.label", "Tavily", "Tavily"),
     (
@@ -758,8 +758,8 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "provider.tavily.note_2",
-        "支持一次填写多个 key，运行时会自动切换备用 key。",
-        "Multiple keys are supported; runtime will fall back automatically.",
+        "支持一次填写多个 key，Hone 会自动尝试备用 key。",
+        "Multiple keys are supported; Hone will try backup keys automatically.",
     ),
     // ── Notifications step ───────────────────────────────────────────────
     (
