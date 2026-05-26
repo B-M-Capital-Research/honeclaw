@@ -261,6 +261,14 @@ fn assert_config_example_public_auth_env_docs(example: &str) {
         "config.example.yaml should not claim every token is config-owned"
     );
     assert!(
+        !example.contains("public login whitelist"),
+        "config.example.yaml should describe public-login admission as an invite list"
+    );
+    assert!(
+        example.contains("public-login invite list"),
+        "config.example.yaml should document that admin invite users are the public-login invite list"
+    );
+    assert!(
         example.contains("public SMS/Captcha"),
         "config.example.yaml should call out public auth runtime env"
     );
@@ -302,6 +310,10 @@ fn assert_public_auth_runbook_env_docs(runbook: &str) {
     assert!(
         runbook.contains("Public Auth Runtime Env"),
         "backend deployment runbook should keep a public auth env section"
+    );
+    assert!(
+        runbook.contains("public-login invite-list admission source"),
+        "backend deployment runbook should document the invite-list admission source"
     );
     for env_name in [
         "ALIBABA_CLOUD_ACCESS_KEY_ID",
@@ -391,6 +403,10 @@ fn assert_wiki_config_overview_matches_current_schema(wiki: &str) {
             "docs/wiki.md config overview should mention {expected}"
         );
     }
+    assert!(
+        wiki.contains("public-login invite-list admission source"),
+        "docs/wiki.md should align public auth config notes with the invite-list admission source"
+    );
 }
 
 fn assert_search_config_runtime_docs(label: &str, doc: &str) {

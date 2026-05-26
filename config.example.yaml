@@ -317,7 +317,7 @@ event_engine:
     extended_hours: true # /v3/historical-chart/1min?extended=true → pre/post-market PriceAlert
     earnings_calendar: true # /v3/earning_calendar → EarningsUpcoming
     corp_action: true # 拆股 / 分红日历 → Split / Dividend
-    sec_filings: true # SEC filings per-ticker → SecFiling(form whitelist 见上方 sec_filings.forms)
+    sec_filings: true # SEC filings per-ticker → SecFiling(forms come from sec_filings.forms above)
     macro_calendar: true # /v3/economic_calendar → MacroEvent
     analyst_grade: true # 按 watch pool 拉 → AnalystGrade
     earnings_surprise: true # 按 watch pool 拉 → EarningsReleased
@@ -521,7 +521,7 @@ web:
   # - HONE_ALIYUN_SMS_TEMPLATE_PARAM (default: {"code":"##code##","min":"5"})
   # - HONE_PUBLIC_SECURE_COOKIE=true/1/yes or false/0/no may force the public
   #   session cookie Secure flag; invalid values keep Secure=true.
-  # Existing admin-created Web invite users are treated as the public login whitelist.
+  # Existing admin-created Web invite users are treated as the public-login invite list.
   # Optional Aliyun Captcha 2.0 guard for public SMS sends is configured by env:
   # - ALIBABA_CLOUD_ACCESS_KEY_ID / ALIBABA_CLOUD_ACCESS_KEY_SECRET (same AccessKey env as SMS)
   # - HONE_ALIYUN_CAPTCHA_PREFIX / HONE_ALIYUN_CAPTCHA_SCENE_ID (required to enable)

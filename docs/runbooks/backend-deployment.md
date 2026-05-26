@@ -1,6 +1,6 @@
 # Runbook: Backend Deployment
 
-Last updated: 2026-05-13
+Last updated: 2026-05-27
 
 ## When to Use
 
@@ -89,7 +89,7 @@ Expected unauthenticated result is `401` with an application JSON error. A Cloud
 
 ## Public Auth Runtime Env
 
-Public SMS login and optional captcha are runtime env configuration, not `config.yaml` fields. Keep real values in the backend host environment or supervisor, never in committed files.
+Public SMS login and optional captcha are runtime env configuration, not `config.yaml` fields. Keep real values in the backend host environment or supervisor, never in committed files. The active admin-created Web invite users remain the public-login invite-list admission source before any SMS send/check.
 
 Required for SMS send/check:
 
