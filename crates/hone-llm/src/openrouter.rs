@@ -1,7 +1,8 @@
 //! OpenRouter LLM Provider
 //!
-//! 使用 async-openai 库与 OpenRouter API 通信。
-//! OpenRouter 兼容 OpenAI API 格式，只需修改 base_url。
+//! 默认请求使用 async-openai SDK 连接 OpenRouter；profile options、SDK
+//! 反序列化失败兜底和原始错误体保留走 raw HTTP 路径。
+//! OpenRouter 兼容 OpenAI API 格式，只需调整 base_url。
 //!
 //! 非 streaming 请求支持多 API Key fallback：若某个 Key 返回错误，自动尝试下一个。
 //! Streaming 请求已开始传输后不适合切 key，因此只使用第一个可用 client。
@@ -43,7 +44,7 @@ struct OpenRouterClient {
     base_url: String,
 }
 
-/// OpenRouter Provider（非 streaming 请求支持多 Key fallback）
+/// OpenRouter Provider（非 streaming chat/chat_with_tools 支持多 Key fallback）
 pub struct OpenRouterProvider {
     /// 每个 Key 对应一个 Client，按顺序尝试
     clients: Vec<OpenRouterClient>,

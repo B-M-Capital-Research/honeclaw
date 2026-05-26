@@ -1,4 +1,8 @@
 //! Generic OpenAI-compatible LLM provider.
+//!
+//! The default non-profile path uses the async-openai SDK. Profile-specific
+//! request options, reasoning-content replay, and provider error-body recovery
+//! use the raw HTTP path so Hone can preserve fields the SDK does not model.
 
 use async_openai::{
     Client,

@@ -42,7 +42,7 @@ impl Default for LlmConfig {
 }
 
 impl LlmConfig {
-    /// Config-only OpenRouter key pool. New configs should write
+    /// Config-only `OpenRouter` key pool. New configs should write
     /// `llm.providers.openrouter.api_key/api_keys`; legacy
     /// `llm.openrouter.api_key/api_keys` remains readable as a config-only
     /// fallback during migration.
@@ -65,7 +65,7 @@ pub struct OpenRouterConfig {
     /// 单 Key 向后兼容字段（优先于 `api_keys[0]`）
     #[serde(default)]
     pub api_key: String,
-    /// 多 Key 列表，支持多账号 fallback（与 api_key 合并后去重使用）
+    /// 多 Key 列表，支持多账号 fallback（与 `api_key` 合并后去重使用）
     #[serde(default)]
     pub api_keys: Vec<String>,
     #[serde(default = "default_model")]
@@ -604,7 +604,7 @@ pub struct OpencodeAcpConfig {
     /// 可选的 Hone 侧 API key 覆盖；留空则继承用户本机 opencode 登录态 / provider 配置
     #[serde(default)]
     pub api_key: String,
-    /// OpenRouter API Key（运行时注入，来自 config.yaml 的 OpenRouter key pool，不写入 YAML）
+    /// `OpenRouter` API Key（运行时注入，来自 config.yaml 的 `OpenRouter` key pool，不写入 YAML）
     #[serde(skip)]
     pub openrouter_api_key: Option<String>,
 }
@@ -638,7 +638,7 @@ pub struct AdminConfig {
     /// Feishu 管理员手机号列表
     #[serde(default)]
     pub feishu_mobiles: Vec<String>,
-    /// Feishu 管理员 open_id 列表
+    /// Feishu 管理员 `open_id` 列表
     #[serde(default)]
     pub feishu_open_ids: Vec<String>,
     /// Discord 管理员用户 ID 列表（数字字符串，如 "123456789012345678"）

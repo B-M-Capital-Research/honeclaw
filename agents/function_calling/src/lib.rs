@@ -1,7 +1,8 @@
 //! Hone Agent — Function Calling Agent 核心
 //!
-//! 基于 Function Calling 模式的 Agent 实现，
-//! 支持多轮工具调用循环和流式输出。
+//! 基于 `OpenAI` Function Calling 模式的 legacy Agent 适配器。
+//! 这里负责多轮工具调用循环，并把最终结果聚合成 `AgentResponse`；
+//! 渠道级流式输出由 `hone-channels` 的 runner 层处理。
 
 use async_trait::async_trait;
 use hone_core::agent::{Agent, AgentContext, AgentResponse, ToolCallMade};
@@ -140,11 +141,11 @@ impl FunctionCallingAgent {
 
 #[async_trait]
 impl Agent for FunctionCallingAgent {
-    /// 运行 Agent — 多轮工具调用循环
+    /// 运行一次非流式 Agent turn，直到没有新的工具调用或达到迭代上限。
     ///
     /// 1. 接收用户输入
     /// 2. 调用 LLM，传入可用工具列表
-    /// 3. 如果 LLM 返回 tool_calls，执行对应工具
+    /// 3. 如果 LLM 返回 `tool_calls`，执行对应工具
     /// 4. 将工具结果反馈给 LLM
     /// 5. 重复 2-4 直到 LLM 返回最终答案
     async fn run(&self, user_input: &str, context: &mut AgentContext) -> AgentResponse {

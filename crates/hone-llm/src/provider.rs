@@ -65,7 +65,8 @@ pub struct ChatResponse {
 ///
 /// Legacy callers still pass only `model` through the trait. Providers created
 /// from `llm.profiles.*` carry these options internally and merge them into
-/// non-streaming OpenAI-compatible request bodies.
+/// non-streaming chat/chat_with_tools request bodies for OpenRouter and generic
+/// OpenAI-compatible providers.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct LlmRequestOptions {
     pub max_tokens: Option<u32>,

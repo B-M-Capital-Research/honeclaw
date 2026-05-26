@@ -1,6 +1,6 @@
 # Repo Map
 
-Last updated: 2026-05-26
+Last updated: 2026-05-27
 
 ## Purpose
 
@@ -26,7 +26,7 @@ Last updated: 2026-05-26
   - `open-source-prep.md`: allowlist / denylist and cleanup checklist before copying to a public repo
 - `crates/`
   - `hone-core`: foundational capabilities such as the config façade / submodules, logging, errors, and agent context
-  - `hone-llm`: model provider abstraction, OpenRouter integration, and generic OpenAI-compatible provider plumbing used by the desktop `multi-agent` search stage
+  - `hone-llm`: model provider abstraction, profile resolver, OpenRouter integration, and generic OpenAI-compatible provider plumbing used by configured LLM routes such as auxiliary/background tasks and selected `multi-agent` stages
   - `hone-tools`: tool traits, registry, and built-in tools; the skill subsystem centers on `src/skill_runtime.rs`, `skill_tool`, the local `discover_skills` index, the `skill_registry` enabled/disabled override layer, and the compatibility `load_skill` shim. `skill_tool` still parses structured script `stdout` and validates local image artifact roots/extensions before exposing them to the model.
   - `hone-integrations`: external integrations such as X, Feishu, and image generation
   - `hone-scheduler`: scheduled task orchestration
