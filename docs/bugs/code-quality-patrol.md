@@ -10,6 +10,22 @@
 - risk: these paths combine user-visible tool descriptions, JSON parameter schemas, argument parsing, storage calls, validation, and returned error text. Splitting them mechanically could change MCP tool schemas, LLM-facing guidance, validation order, or localized error wording, so they need focused per-tool extraction rather than a broad patrol sweep.
 - suggested_fix: tackle one tool at a time. First extract pure parameter-schema builders and parse/validation helpers behind private functions, then split execute branches only when focused tests lock the current JSON shape and error messages. For each tool, run the relevant `cargo test -p hone-tools <tool_filter>` slice, `cargo check -p hone-tools --tests`, and the repo guardrails before moving to the next implementation.
 
+### LLM audit listing builds query, count, pagination, and row mapping in one path
+
+- status: open
+- direction: 复杂度热点
+- evidence: `cargo clippy -p hone-memory --tests -- -W clippy::cognitive_complexity -W clippy::too_many_lines` reports `memory/src/llm_audit.rs::list_audit_records` at `108/100` lines. The function selects schema-compatible token columns, appends every optional filter to both the data query and count query, owns pagination bounds, builds boxed rusqlite params, runs the count, maps rows into `AuditRecordSummary`, and collects row errors.
+- risk: this is the admin-facing LLM audit query path. A drive-by split could desynchronize the count and data filters, change placeholder numbering, alter legacy token-column compatibility, or change pagination limits.
+- suggested_fix: extract a small query-builder helper that appends each optional filter once to paired SQL buffers and returns ordered params, then split page normalization and row mapping into private helpers. Cover actor/session/source/provider/date filters, old DBs without token columns, and count/data query parity before changing query structure.
+
+### Session SQLite upsert owns serialization, replacement, metadata, and message writes
+
+- status: open
+- direction: 复杂度热点
+- evidence: `cargo clippy -p hone-memory --tests -- -W clippy::cognitive_complexity -W clippy::too_many_lines` reports `memory/src/session_sqlite.rs::upsert_session` at `180/100` lines. The function serializes every session sidecar field, derives source-file metadata and content hashes, deletes old session rows, inserts the session row, rewrites metadata rows, rewrites every message row, and commits the transaction.
+- risk: this path is the SQLite shadow/runtime session truth writer. Mechanical extraction could change delete-before-insert ordering, metadata/message replacement semantics, source path canonicalization, content hashes, or transaction boundaries.
+- suggested_fix: keep the public method as the transaction coordinator, but extract private helpers for serialized session payload preparation, session-row insert parameters, metadata row writes, and message row writes. Preserve the delete-before-insert order and cover replacement, metadata preservation, message metadata columns, source hash, and rollback behavior with focused `hone-memory` tests.
+
 ## 2026-05-27 - 配置文档漂移
 
 ### Tavily search depth/topic config fields are not wired into runtime requests

@@ -225,6 +225,85 @@ fn assert_config_example_profile_providers_exist(config: &HoneConfig) {
     }
 }
 
+fn assert_config_example_agent_defaults(config: &HoneConfig) {
+    assert_eq!(config.agent.runner, "hone_cloud");
+    assert_eq!(config.agent.hone_cloud.base_url, "https://hone-claw.com");
+    assert_eq!(config.agent.hone_cloud.model, "hone-cloud");
+    assert!(config.agent.hone_cloud.api_key.is_empty());
+    assert!(config.agent.opencode.model.is_empty());
+    assert!(config.agent.opencode.api_base_url.is_empty());
+    assert!(config.agent.opencode.api_key.is_empty());
+}
+
+fn assert_config_example_storage_defaults(config: &HoneConfig) {
+    assert_eq!(config.storage.sessions_dir, "./data/sessions");
+    assert_eq!(
+        config.storage.session_sqlite_db_path,
+        "./data/sessions.sqlite3"
+    );
+    assert!(config.storage.session_sqlite_shadow_write_enabled);
+    assert_eq!(config.storage.session_runtime_backend, "json");
+    assert_eq!(
+        config.storage.conversation_quota_dir,
+        "./data/conversation_quota"
+    );
+}
+
+fn assert_config_example_llm_profiles(config: &HoneConfig) {
+    assert_eq!(config.llm.default_profile, "main");
+    assert_eq!(config.llm.auxiliary_profile, "aux");
+    for profile_name in ["main", "aux", "digest_fast", "digest_strong"] {
+        assert!(
+            config.llm.profiles.contains_key(profile_name),
+            "config.example.yaml should include llm.profiles.{profile_name}"
+        );
+    }
+    assert_config_example_profile_refs(config);
+    assert_config_example_profile_providers_exist(config);
+}
+
+fn assert_config_example_event_engine_defaults(config: &HoneConfig, raw: &str) {
+    assert!(
+        !raw.contains("x-ai/grok-4.1-fast"),
+        "config.example.yaml must not point event-engine defaults at the deprecated Grok 4.1 Fast model"
+    );
+    assert_eq!(config.event_engine.news_classifier_model, "x-ai/grok-4.3");
+    assert_eq!(
+        config.event_engine.earnings.quality_review.model,
+        "x-ai/grok-4.3"
+    );
+    assert_eq!(
+        config.event_engine.sec_filings.enrichment.model,
+        "x-ai/grok-4.3"
+    );
+    assert_eq!(
+        config.event_engine.global_digest.pass1_model,
+        "x-ai/grok-4.3"
+    );
+    assert_eq!(
+        config.event_engine.global_digest.pass2_model,
+        "x-ai/grok-4.3"
+    );
+    assert_eq!(
+        config.event_engine.global_digest.event_dedupe_model,
+        "x-ai/grok-4.3"
+    );
+    assert_eq!(
+        config
+            .llm
+            .profiles
+            .get("mainline_short")
+            .expect("mainline_short profile")
+            .model,
+        "x-ai/grok-4.3"
+    );
+    assert_eq!(
+        config.event_engine.news_importance_prompt,
+        "公司或潜在影响公司长期逻辑和宏观叙事的重大事件"
+    );
+    assert_eq!(config.event_engine.sources.rss_feeds.len(), 3);
+}
+
 fn assert_config_example_storage_and_logging(root: &serde_yaml::Mapping) {
     let storage = yaml_key(root, "storage").unwrap().as_mapping().unwrap();
     assert!(!yaml_has_key(storage, "base_path"));
@@ -637,6 +716,14 @@ fn assert_legacy_agent_migration_config(config: &HoneConfig) {
     assert_eq!(config.discord.chat_scope, ChatScope::All);
 }
 
+fn repo_file(path: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("hone-core crate lives under crates/")
+        .join(path)
+}
+
 #[test]
 fn default_config_sets_current_llm_defaults() {
     let config = HoneConfig::default();
@@ -666,78 +753,13 @@ llm:
 
 #[test]
 fn config_example_yaml_matches_current_schema() {
-    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(Path::parent)
-        .expect("hone-core crate lives under crates/");
-    let raw = std::fs::read_to_string(repo_root.join("config.example.yaml")).unwrap();
+    let raw = std::fs::read_to_string(repo_file("config.example.yaml")).unwrap();
     let config: HoneConfig = serde_yaml::from_str(&raw).unwrap();
 
-    assert_eq!(config.agent.runner, "hone_cloud");
-    assert_eq!(config.agent.hone_cloud.base_url, "https://hone-claw.com");
-    assert_eq!(config.agent.hone_cloud.model, "hone-cloud");
-    assert!(config.agent.hone_cloud.api_key.is_empty());
-    assert!(config.agent.opencode.model.is_empty());
-    assert!(config.agent.opencode.api_base_url.is_empty());
-    assert!(config.agent.opencode.api_key.is_empty());
-    assert_eq!(config.storage.sessions_dir, "./data/sessions");
-    assert_eq!(
-        config.storage.session_sqlite_db_path,
-        "./data/sessions.sqlite3"
-    );
-    assert!(config.storage.session_sqlite_shadow_write_enabled);
-    assert_eq!(config.storage.session_runtime_backend, "json");
-    assert_eq!(
-        config.storage.conversation_quota_dir,
-        "./data/conversation_quota"
-    );
-    assert_eq!(config.llm.default_profile, "main");
-    assert_eq!(config.llm.auxiliary_profile, "aux");
-    assert!(config.llm.profiles.contains_key("main"));
-    assert!(config.llm.profiles.contains_key("aux"));
-    assert!(config.llm.profiles.contains_key("digest_fast"));
-    assert!(config.llm.profiles.contains_key("digest_strong"));
-    assert_config_example_profile_refs(&config);
-    assert_config_example_profile_providers_exist(&config);
-    assert!(
-        !raw.contains("x-ai/grok-4.1-fast"),
-        "config.example.yaml must not point event-engine defaults at the deprecated Grok 4.1 Fast model"
-    );
-    assert_eq!(config.event_engine.news_classifier_model, "x-ai/grok-4.3");
-    assert_eq!(
-        config.event_engine.earnings.quality_review.model,
-        "x-ai/grok-4.3"
-    );
-    assert_eq!(
-        config.event_engine.sec_filings.enrichment.model,
-        "x-ai/grok-4.3"
-    );
-    assert_eq!(
-        config.event_engine.global_digest.pass1_model,
-        "x-ai/grok-4.3"
-    );
-    assert_eq!(
-        config.event_engine.global_digest.pass2_model,
-        "x-ai/grok-4.3"
-    );
-    assert_eq!(
-        config.event_engine.global_digest.event_dedupe_model,
-        "x-ai/grok-4.3"
-    );
-    assert_eq!(
-        config
-            .llm
-            .profiles
-            .get("mainline_short")
-            .expect("mainline_short profile")
-            .model,
-        "x-ai/grok-4.3"
-    );
-    assert_eq!(
-        config.event_engine.news_importance_prompt,
-        "公司或潜在影响公司长期逻辑和宏观叙事的重大事件"
-    );
-    assert_eq!(config.event_engine.sources.rss_feeds.len(), 3);
+    assert_config_example_agent_defaults(&config);
+    assert_config_example_storage_defaults(&config);
+    assert_config_example_llm_profiles(&config);
+    assert_config_example_event_engine_defaults(&config, &raw);
 }
 
 #[test]
@@ -1886,8 +1908,7 @@ fn language_mutation_round_trip() {
 
 #[test]
 fn config_example_avoids_stale_config_knobs() {
-    let example_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../config.example.yaml");
-    let example = std::fs::read_to_string(example_path).unwrap();
+    let example = std::fs::read_to_string(repo_file("config.example.yaml")).unwrap();
     let root_value: Value = serde_yaml::from_str(&example).unwrap();
     HoneConfig::from_merged_value(root_value.clone()).unwrap();
     let root = root_value.as_mapping().unwrap();
@@ -1910,25 +1931,16 @@ fn config_example_avoids_stale_config_knobs() {
     assert_logging_udp_docs_match_runtime("config.example.yaml", &example);
     assert_logging_sink_docs_match_runtime("config.example.yaml", &example);
 
-    let wiki = std::fs::read_to_string(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/wiki.md"),
-    )
-    .unwrap();
+    let wiki = std::fs::read_to_string(repo_file("docs/wiki.md")).unwrap();
     assert_openrouter_provider_key_pool_docs("docs/wiki.md", &wiki);
     assert_wiki_config_overview_matches_current_schema(&wiki);
     assert_search_config_runtime_docs("docs/wiki.md", &wiki);
     assert_logging_sink_docs_match_runtime("docs/wiki.md", &wiki);
 
-    let readme_en = std::fs::read_to_string(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../README_EN.md"),
-    )
-    .unwrap();
+    let readme_en = std::fs::read_to_string(repo_file("README_EN.md")).unwrap();
     assert_openrouter_provider_key_pool_docs("README_EN.md", &readme_en);
 
-    let technical_spec = std::fs::read_to_string(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/technical-spec.md"),
-    )
-    .unwrap();
+    let technical_spec = std::fs::read_to_string(repo_file("docs/technical-spec.md")).unwrap();
     assert_openrouter_provider_key_pool_docs("docs/technical-spec.md", &technical_spec);
     assert_technical_spec_config_sections_match_roots(&technical_spec);
     assert_search_config_runtime_docs("docs/technical-spec.md", &technical_spec);
@@ -1936,30 +1948,21 @@ fn config_example_avoids_stale_config_knobs() {
     assert_logging_sink_docs_match_runtime("docs/technical-spec.md", &technical_spec);
     assert_technical_spec_storage_keys_match_schema(&technical_spec);
 
-    let backend_runbook = std::fs::read_to_string(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/runbooks/backend-deployment.md"),
-    )
-    .unwrap();
+    let backend_runbook =
+        std::fs::read_to_string(repo_file("docs/runbooks/backend-deployment.md")).unwrap();
     assert_public_auth_runbook_env_docs(&backend_runbook);
 
-    let session_sqlite_runbook = std::fs::read_to_string(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../docs/runbooks/session-sqlite-shadow-backfill.md"),
-    )
-    .unwrap();
+    let session_sqlite_runbook =
+        std::fs::read_to_string(repo_file("docs/runbooks/session-sqlite-shadow-backfill.md"))
+            .unwrap();
     assert_session_sqlite_runbook_runtime_docs(&session_sqlite_runbook);
 
-    let opencode_runbook = std::fs::read_to_string(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/runbooks/opencode-setup.md"),
-    )
-    .unwrap();
+    let opencode_runbook =
+        std::fs::read_to_string(repo_file("docs/runbooks/opencode-setup.md")).unwrap();
     assert_opencode_runbook_config_file_docs(&opencode_runbook);
 
-    let install_runbook = std::fs::read_to_string(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../docs/runbooks/hone-cli-install-and-start.md"),
-    )
-    .unwrap();
+    let install_runbook =
+        std::fs::read_to_string(repo_file("docs/runbooks/hone-cli-install-and-start.md")).unwrap();
     assert_openrouter_provider_key_pool_docs(
         "docs/runbooks/hone-cli-install-and-start.md",
         &install_runbook,
