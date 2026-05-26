@@ -3,8 +3,23 @@
 - **发现时间**: 2026-05-25 19:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，当前不是 P1。
+
+## 修复记录（2026-05-27 00:09 CST）
+
+- 本轮确认前次收窄仍遗漏一类配置形态：广义市场 / 盘前 / 风控类 scheduler 的 `task_prompt` 只要包含“油价观察项”、`WTI / Brent` 等局部观察项，就会被 `scheduler_event_is_commodity_related(...)` 提升为商品任务，从而绕过 broad-market-review 跳过逻辑。
+- 当前代码已把“专门商品任务”与“市场任务里的油价观察项”拆开：任务名明确为原油 / 油价 / WTI / Brent / 大宗商品时仍视为商品任务；仅 prompt 局部提到油价的广义市场复盘、盘前宏观、OWALERT 盘前简报不再因此触发整篇 commodity rewrite。
+- 专门原油任务仍保留原 guard：`Oil_Price_Monitor_Closing`、`全天原油价格3小时播报` 这类任务继续拦截未核验 WTI / Brent 价格和地缘 / 供需归因。
+- 新增回归：
+  - `commodity_guard_skips_broad_market_prompt_with_oil_watch_item`
+  - `commodity_guard_skips_owalert_premarket_when_market_context_dominates`
+- 验证：
+  - `cargo test -p hone-channels commodity_guard_ --lib -- --nocapture`
+  - `cargo test -p hone-channels commodity_ --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+  - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs`
+- 状态更新为 `Fixed`。本轮不依赖当前机器生产日志或线上运行态判定；后续若含本修复的运行态仍出现非商品市场任务被整篇替换，应继续在本单追加新样本并重新打开。
 
 ## 复发记录（2026-05-26 23:05 CST）
 

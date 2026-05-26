@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-26 23:05 CST
+最后更新：2026-05-27 00:09 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,10 +17,11 @@
 
 ## 当前概览
 
-- 活跃待修复：1
+- 活跃待修复：0
 - Later / 待复现：10
-- 已修复 / 已关闭：112
+- 已修复 / 已关闭：113
 - 历史分析 / 部分止血：5
+- 本轮 00:09 CST 已修复活跃 P2 `Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice`：普通 scheduler 的商品任务判断不再因为广义市场任务 prompt 里局部出现“油价观察项”、`WTI / Brent` 就绕过 broad-market-review 跳过逻辑；`美股盘前宏观与财报日历梳理`、`OWALERT_PreMarket` 这类市场主任务即使把油价作为风险变量，也不会被整篇替换成原油 / 大宗商品提示。专门原油 / 油价 / WTI / Brent 任务仍保留 commodity guard。验证 `cargo test -p hone-channels commodity_guard_ --lib -- --nocapture`、`cargo test -p hone-channels commodity_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`、`rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs` 通过；无关联 GitHub Issue。
 - 本轮 23:05 CST 确认活跃 P2 `Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice` 继续大面积复发：19:02-23:02 CST 普通 scheduler 37 条 `completed + sent + delivered=1` 中 12 条命中 `detail_json.scheduler.commodity_causality_guarded=true`，其中 `Oil_Price_Monitor_Premarket` 属预期商品任务，其余至少 11 条为美股大盘晚间/盘前/风控/温度/宏观日历/盘前推演类广义市场任务（`run_id=34084/34102/34087/34098/34088/34110/34116/34140/34148/34135/34172`），原始完整市场分析被全量替换成原油 / 大宗商品安全提示并仍记已送达。该证据补充到原缺陷文档，不新建重复缺陷；严重等级仍为 P2，状态保持 `New`，无关联 GitHub Issue。
 - 本轮 23:05 CST 未发现新的独立活跃 P1。19:02-23:02 CST 按消息时间共有 58 个 user turn 与 58 个 assistant final，Feishu / Web direct 与普通 scheduler 会话均以 assistant final 收口；assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`；最近四小时无非文档代码提交。
 - 本轮 23:05 CST 继续看到既有 heartbeat 旧/未确认部署运行态坏信号：19:02-23:02 CST heartbeat 新增 69 条 `execution_failed + skipped_error + delivered=0`（Feishu 51 条、Web 18 条）、57 条 `noop + skipped_noop + delivered=0`（Feishu 43 条、Web 14 条）和 2 条 Feishu `completed + sent + delivered=1`。失败形态仍主要对应已修复表中的结构化状态退化（`heartbeat 输出不是结构化 JSON`、未知/缺失状态）与迭代耗尽旧信号（`max_iterations_exceeded:10` 6 条），另有 1 条 Web upstream HTTP 500；本轮不因这些重复信号新增缺陷或从 `Fixed` 回退。
@@ -302,7 +303,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice | P2 | New | 2026-05-26 23:05 live 窗口继续大面积复现：19:02-23:02 CST 普通 scheduler 37 条已送达中 12 条命中 `commodity_causality_guarded=true`，除 `Oil_Price_Monitor_Premarket` 外，至少 11 条美股大盘/盘前/风控/温度/宏观日历/盘前推演类广义市场任务被替换成原油 / 大宗商品安全提示。需区分旧二进制未重启与修复条件不足；无关联 GitHub Issue。 | [scheduler_commodity_guard_false_positive_market_review.md](./scheduler_commodity_guard_false_positive_market_review.md) |
+| 无 | - | - | 当前无 `New` / `Approved` / `Fixing` 活跃缺陷。 | - |
 
 ## Later / 待复现
 
@@ -323,6 +324,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice | P2 | Fixed | 2026-05-27 00:09 `scheduler_event_is_commodity_related(...)` 不再把广义市场任务 prompt 中的局部油价观察项当成专门商品任务；市场复盘 / 盘前宏观 / OWALERT 盘前简报保留主体内容，专门原油任务仍拦截未核验价格与归因。无关联 GitHub Issue | [scheduler_commodity_guard_false_positive_market_review.md](./scheduler_commodity_guard_false_positive_market_review.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixed | 2026-05-26 15:04 live 仍见 66 条结构化/状态解析旧信号失败（非结构化 JSON 59 条、未知状态 5 条、缺少状态 2 条），但 2026-05-25 12:13 当前代码已通过 status 别名归一、完整 `<think>` 内部-only noop 兼容和配置路径护栏修复；本轮不回退状态。无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 监控任务触发 `context window exceeds limit` 后缺少恢复，故障会在不同任务间漂移复现 | P2 | Fixed | 2026-05-25 15:04 live 仍见 11 条 `ContextOverflowNoop` 旧/未确认部署运行态，但 12:04 当前代码已改为保留 `error` 并写入 `failure_kind=context_window_overflow` / `parse_kind=ContextOverflowError`；本轮不回退状态。无关联 GitHub Issue | [scheduler_heartbeat_context_window_limit_no_recovery.md](./scheduler_heartbeat_context_window_limit_no_recovery.md) |
 | Feishu 直聊在 FUTU 盘前暴跌时仍用常规交易旧价给抄底区间 | P3 | Fixed | 2026-05-23 00:03 共享金融系统 prompt 新增强时效行情建议约束；含 `今天/盘前/盘后/现在/抄底/买点/卖点` 等语义时必须核实最新可得价格、数据时间和交易时段，若只得常规收盘或延迟价必须标注未覆盖扩展时段，不能把旧价作为当前决策锚。无关联 GitHub Issue | [feishu_direct_futu_premarket_stale_price_advice.md](./feishu_direct_futu_premarket_stale_price_advice.md) |

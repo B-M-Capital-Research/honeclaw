@@ -1134,19 +1134,33 @@ fn heartbeat_execution_from_content(
 }
 
 fn scheduler_event_is_commodity_related(event: &SchedulerEvent) -> bool {
-    let haystack = format!("{} {}", event.job_name, event.task_prompt).to_ascii_lowercase();
-    event.job_name.contains("原油")
+    let job_name = event.job_name.to_ascii_lowercase();
+    let prompt = event.task_prompt.to_ascii_lowercase();
+    let job_is_commodity_focused = event.job_name.contains("原油")
         || event.job_name.contains("油价")
         || event.job_name.contains("布伦特")
         || event.job_name.contains("大宗商品")
-        || event.task_prompt.contains("原油")
-        || event.task_prompt.contains("油价")
-        || event.task_prompt.contains("布伦特")
-        || event.task_prompt.contains("大宗商品")
-        || haystack.contains("crude")
-        || haystack.contains("wti")
-        || haystack.contains("brent")
-        || haystack.contains("oil price")
+        || job_name.contains("crude")
+        || job_name.contains("wti")
+        || job_name.contains("brent")
+        || job_name.contains("oil_price")
+        || job_name.contains("oil price");
+    if job_is_commodity_focused {
+        return true;
+    }
+
+    let prompt_is_commodity_focused = event.task_prompt.contains("原油价格")
+        || event.task_prompt.contains("油价播报")
+        || event.task_prompt.contains("大宗商品播报")
+        || event.task_prompt.contains("播报 WTI")
+        || event.task_prompt.contains("播报WTI")
+        || event.task_prompt.contains("汇总 WTI")
+        || event.task_prompt.contains("汇总WTI")
+        || prompt.contains("crude oil")
+        || prompt.contains("oil price monitor")
+        || prompt.contains("wti/brent")
+        || prompt.contains("wti / brent");
+    prompt_is_commodity_focused && !scheduler_event_is_broad_market_review(event)
 }
 
 fn scheduler_event_is_broad_market_review(event: &SchedulerEvent) -> bool {
@@ -4332,6 +4346,69 @@ mod tests {
         assert!(
             guard_commodity_causality_for_event(
                 "【每日美股大盘风控简报】\n美股因 Memorial Day 休市，Nasdaq、S&P 500 和 QQQ 缺少新的收盘确认。\nVIX 与 Fear & Greed 仍指向风险偏好偏谨慎，长端利率是今晚估值压力的主线。\n油价与能源需求担忧只是观察项，不足以解释整个科技股风险温度。\n操作上继续关注 AI 算力、半导体和高 beta 成长股的开盘确认。",
+                &event,
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn commodity_guard_skips_broad_market_prompt_with_oil_watch_item() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_market", None::<String>).expect("actor"),
+            job_id: "job-us-premarket".to_string(),
+            job_name: "美股盘前宏观与财报日历梳理".to_string(),
+            task_prompt: "梳理美股盘前宏观、财报日历、AI 芯片链与油价观察项。".to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_market".to_string(),
+            delivery_key: "delivery-us-premarket".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: false,
+            schedule_hour: 20,
+            schedule_minute: 30,
+            schedule_repeat: "daily".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        assert!(
+            guard_commodity_causality_for_event(
+                "【美股盘前宏观与财报日历梳理】\n今晚美股盘前的主线仍是 Nasdaq、S&P 500 与 QQQ 的风险偏好修复，长端利率和消费者信心数据决定估值压力。\nAI 芯片、半导体和云资本开支是财报日历的重点。\n油价回落受中东谈判预期和能源需求担忧影响，但这只是宏观观察项，不应替代大盘、财报和科技股主线。",
+                &event,
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn commodity_guard_skips_owalert_premarket_when_market_context_dominates() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_market", None::<String>).expect("actor"),
+            job_id: "job-owalert-premarket".to_string(),
+            job_name: "OWALERT_PreMarket".to_string(),
+            task_prompt: "盘前扫描美股期货、QQQ、AI 二阶链、油价与宏观风险，形成市场行动简报。"
+                .to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_market".to_string(),
+            delivery_key: "delivery-owalert-premarket".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: false,
+            schedule_hour: 21,
+            schedule_minute: 0,
+            schedule_repeat: "daily".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        assert!(
+            guard_commodity_causality_for_event(
+                "【OWALERT_PreMarket】\n美股期货修复，QQQ 盘前走强，Nasdaq 与 S&P 500 的风险偏好改善。\nAI 二阶链继续跟踪电力、光模块和半导体设备，开盘后看成交确认。\n油价低于 100 美元，主要受中东谈判预期和需求担忧影响，对今晚市场只是风险变量之一，不是本轮盘前结论的主体。",
                 &event,
             )
             .is_none()
