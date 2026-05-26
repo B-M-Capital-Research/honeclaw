@@ -2537,7 +2537,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         error_copy_image: "Copy failed — try Save image instead",
         error_copy_text: "Text copy failed. Select the text manually.",
         error_render: "Image rendering failed. Try fewer messages.",
-        error_share: "Share cancelled",
+        error_share: "Share canceled",
         error_system_share: "System share failed. Try Save image or Copy instead.",
         role_user: "You",
         role_assistant: "Hone",

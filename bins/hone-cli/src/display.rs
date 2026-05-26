@@ -101,9 +101,9 @@ mod tests {
         hint_line("管理员白名单决定谁能触发 /register-admin /report 等管理指令。");
 
         step_header(5, 7, "Providers");
-        subsection("OpenRouter API keys");
+        subsection("OpenRouter API key");
         bullet("LLM 主路由。function_calling / multi-agent answer / nano_banana 默认走这里。");
-        ok_line("已保存 OpenRouter API keys。");
+        ok_line("已保存 OpenRouter API key。");
         fail_line("Token 必须是三段结构（长度=12）。");
 
         step_header(6, 7, "Notifications");

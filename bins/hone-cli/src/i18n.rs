@@ -426,8 +426,8 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "runner.opencode_acp.warn_not_connected",
-        "继续写入 runner 配置；请记得稍后执行 `opencode` 并 `/connect` 配好 provider，否则 Hone 起 chat 会立刻失败。",
-        "Writing the runner config anyway. Remember to run `opencode` and `/connect` later — Hone chat will fail immediately otherwise.",
+        "继续写入 runner 配置；请记得稍后执行 `opencode` 并 `/connect` 配好 provider，否则 Hone 聊天会立即失败。",
+        "Writing the runner config anyway. Remember to run `opencode` and `/connect` later — Hone chat requests will fail immediately otherwise.",
     ),
     // ── Channels step ────────────────────────────────────────────────────
     (
@@ -541,8 +541,8 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ("channel.telegram.label", "Telegram", "Telegram"),
     (
         "channel.telegram.status_note",
-        "当前仍偏实验/占位模式，不建议当成熟生产渠道使用。",
-        "Currently experimental / placeholder — not yet recommended for production.",
+        "Telegram 渠道仍是实验性能力，暂不建议作为成熟生产渠道使用。",
+        "Telegram is still experimental and is not yet recommended as a production channel.",
     ),
     (
         "channel.telegram.note_1",
@@ -680,28 +680,28 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "provider.api_keys_title",
-        "{label} API keys",
+        "{label} API key",
         "{label} API keys",
     ),
     (
         "provider.configure_prompt",
-        "现在配置 {label} API keys 吗？",
-        "Configure {label} API keys now?",
+        "现在配置 {label} API key 吗？",
+        "Set up {label} API keys now?",
     ),
     (
         "provider.skip_message",
-        "已跳过 {label} API keys 配置。",
-        "Skipped {label} API keys configuration.",
+        "已跳过 {label} API key 设置。",
+        "Skipped {label} API key setup.",
     ),
     (
         "provider.saved_message",
-        "已保存 {label} API keys。",
+        "已保存 {label} API key。",
         "Saved {label} API keys.",
     ),
     (
         "provider.keep_existing_message",
-        "保留现有 {label} API keys 配置。",
-        "Kept existing {label} API keys configuration.",
+        "保留现有 {label} API key 设置。",
+        "Kept existing {label} API key setup.",
     ),
     (
         "provider.keys_required_or_skip",
@@ -711,7 +711,7 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ("provider.openrouter.label", "OpenRouter", "OpenRouter"),
     (
         "provider.openrouter.prompt",
-        "OpenRouter API keys（逗号分隔，可填多个）",
+        "OpenRouter API key（逗号分隔，可填多个）",
         "OpenRouter API keys (comma-separated)",
     ),
     (
@@ -732,7 +732,7 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ("provider.fmp.label", "FMP", "FMP"),
     (
         "provider.fmp.prompt",
-        "FMP API keys（逗号分隔，可填多个）",
+        "FMP API key（逗号分隔，可填多个）",
         "FMP API keys (comma-separated)",
     ),
     (
@@ -748,7 +748,7 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ("provider.tavily.label", "Tavily", "Tavily"),
     (
         "provider.tavily.prompt",
-        "Tavily API keys（逗号分隔，可填多个）",
+        "Tavily API key（逗号分隔，可填多个）",
         "Tavily API keys (comma-separated)",
     ),
     (
@@ -831,8 +831,8 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "recovery.option_provider_skip",
-        "跳过 {label} API keys 配置",
-        "Skip {label} API keys configuration",
+        "跳过 {label} API key 设置",
+        "Skip {label} API key setup",
     ),
     (
         "recovery.provider_empty_prompt",

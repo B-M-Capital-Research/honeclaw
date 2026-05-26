@@ -17,7 +17,7 @@ This page is the practical wiki entry for Honeclaw. It explains the repository l
 - [Desktop Startup Modes](#desktop-startup-modes)
 - [Web Startup Modes](#web-startup-modes)
 - [Configuration](#configuration)
-- [Model And Runner Setup](#model-and-runner-setup)
+- [Model and Runner Setup](#model-and-runner-setup)
 - [Channel Setup](#channel-setup)
 - [Common URLs And Ports](#common-urls-and-ports)
 - [Stop, Restart, And Cleanup](#stop-restart-and-cleanup)
@@ -170,7 +170,7 @@ hone-cli onboard
 hone-cli start
 ```
 
-`hone-cli onboard` guides runner selection, optional channel setup, and provider/API-key setup. `hone-cli start` starts the local backend plus enabled channel listeners in the foreground.
+`hone-cli onboard` guides runner selection, optional channel setup, and provider API key setup. `hone-cli start` starts the local backend plus enabled channel listeners in the foreground.
 
 See the detailed runbook: [`docs/runbooks/hone-cli-install-and-start.md`](./runbooks/hone-cli-install-and-start.md).
 
@@ -302,7 +302,7 @@ For OpenRouter credentials, prefer the `llm.providers.openrouter.api_key/api_key
 
 Never commit local secrets in `config.yaml`.
 
-## Model And Runner Setup
+## Model and Runner Setup
 
 Hone can use Hone Cloud, local CLI/ACP runners, or OpenAI-compatible cloud APIs.
 

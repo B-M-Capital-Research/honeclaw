@@ -43,7 +43,7 @@ fn sequence_mutation(path: &str, csv: &str) -> ConfigMutation {
 
 fn provider_keys_prompt(lang: crate::i18n::Lang, label: &str) -> String {
     match lang {
-        crate::i18n::Lang::Zh => format!("{label} API keys（逗号分隔，可填多个）"),
+        crate::i18n::Lang::Zh => format!("{label} API key（逗号分隔，可填多个）"),
         crate::i18n::Lang::En => format!("{label} API keys (comma-separated)"),
     }
 }
@@ -463,7 +463,7 @@ mod tests {
     fn provider_keys_prompt_matches_configured_language() {
         assert_eq!(
             provider_keys_prompt(Lang::Zh, "OpenRouter"),
-            "OpenRouter API keys（逗号分隔，可填多个）"
+            "OpenRouter API key（逗号分隔，可填多个）"
         );
         assert_eq!(
             provider_keys_prompt(Lang::En, "OpenRouter"),

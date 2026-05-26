@@ -2,7 +2,7 @@ import { makeContentProxy } from "../i18n"
 
 const ZH = {
   capability: {
-    unavailable: "当前后端未开放日志能力。",
+    unavailable: "当前后端未提供日志能力。",
   },
   toolbar: {
     title: "日志",
@@ -24,7 +24,7 @@ const ZH = {
 
 const EN: typeof ZH = {
   capability: {
-    unavailable: "This backend does not expose logs.",
+    unavailable: "Logs are not available from this backend.",
   },
   toolbar: {
     title: "Logs",

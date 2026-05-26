@@ -157,13 +157,13 @@ const EN: typeof ZH = {
     exec: {
       completed: "Success",
       noop: "No match",
-      execution_failed: "Failed",
+      execution_failed: "Execution failed",
       unknown: "Unknown",
     },
     send: {
       sent: "Sent",
       skipped_noop: "Skipped (no match)",
-      skipped_error: "Skipped (failed)",
+      skipped_error: "Skipped (execution failed)",
       send_failed: "Send failed",
       target_resolution_failed: "Target resolution failed",
       duplicate_suppressed: "Duplicate suppressed",
