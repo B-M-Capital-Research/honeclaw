@@ -346,8 +346,8 @@ pub(crate) async fn handle_update_rss_feed(
 
 /// GET /api/event-engine/mainline-context?channel=&user_id=&channel_scope=
 ///
-/// 管理端查看任意 actor 的蒸馏投资主线与画像 inventory。和 public 端
-/// `/api/public/digest-context` 内容一致,但 actor 由 query 指定而非 session。
+/// 管理端查看任意 actor 的蒸馏投资主线与画像 inventory。主体字段对齐 public 端
+/// `/api/public/digest-context`,但 actor 由 query 指定而非 session。
 pub(crate) async fn handle_get_mainline_context(
     State(state): State<Arc<AppState>>,
     axum::extract::Query(params): axum::extract::Query<UserIdQuery>,

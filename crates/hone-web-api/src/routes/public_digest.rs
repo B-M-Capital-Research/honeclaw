@@ -1,14 +1,14 @@
-//! Public 端用户可见的 digest 配置展示 API:
+//! Public 端用户可见的投资上下文读取与刷新 API:
 //!
-//! - GET /api/public/digest-context  → 当前用户(web 邀请登录态)的蒸馏投资主线
+//! - GET /api/public/digest-context  → 当前用户(web session 登录态)的蒸馏投资主线
 //!   map、整体投资风格、上次蒸馏时间、跳过的 ticker 列表、其 sandbox 里现有
 //!   公司画像列表(ticker + dir name + profile.md 摘要前 N 字)
 //! - GET /api/public/company-profile?ticker=XXX → 单只 ticker 完整 profile.md
 //!   (read-only,不暴露写入路径 —— 编辑请通过 chat agent 触发 company_portrait skill)
 //! - POST /api/public/digest-context/refresh → 立即触发一次蒸馏(对当前用户)
 //!
-//! 与 admin 端 /api/event-engine/mainline-distill 区别:public 端 actor 限定为
-//! 自己(由 session 推导),admin 端可以代任何 actor 操作。
+//! 与 admin 端 mainline-context / mainline-distill 端点的区别:public 端 actor
+//! 限定为自己(由 session 推导),admin 端可以代任何 actor 操作。
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -24,7 +24,7 @@ use serde_json::json;
 use crate::routes::json_error;
 use crate::state::AppState;
 
-/// 公开用户的 actor 推导。复制自 public.rs 的逻辑(channel="web",user_id 来自 session)。
+/// 公开用户的 actor 推导。复用 public.rs 的 session 鉴权逻辑(channel="web",user_id 来自 session)。
 fn require_public_actor(state: &AppState, headers: &HeaderMap) -> Result<ActorIdentity, Response> {
     let user = crate::routes::public::require_public_user(state, headers)?;
     ActorIdentity::new("web", &user.user_id, Option::<String>::None).map_err(|e| {

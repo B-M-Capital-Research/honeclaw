@@ -613,8 +613,9 @@ pub(crate) async fn handle_upload(
     Json(json!({ "attachments": stored })).into_response()
 }
 
-/// Per-user upload root. Lives under the configured sessions dir so the existing
-/// `/api/image` and `/api/file` proxy whitelist already covers reads.
+/// Per-user upload root. Lives under the configured sessions dir so the shared
+/// file proxy roots cover `/api/image`, `/api/file`, and their `/api/public/*`
+/// wrappers.
 fn public_upload_dir(state: &AppState, user_id: &str) -> PathBuf {
     let base = PathBuf::from(&state.core.config.storage.sessions_dir);
     base.join("public-uploads").join(sanitize_user_id(user_id))

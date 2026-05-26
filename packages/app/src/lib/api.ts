@@ -315,7 +315,7 @@ export async function getPublicHistory(signal?: AbortSignal) {
   return payload.messages ?? [];
 }
 
-// ── Public digest context (read-only mainline + profiles surface) ─────────
+// ── Public investment context (mainline/profile reads + refresh) ──────────
 
 export type ProfileSummary = {
   dir: string;
