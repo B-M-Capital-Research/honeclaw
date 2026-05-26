@@ -145,7 +145,7 @@ pub(crate) async fn handle_sms_send_code(
         Err(error) => {
             return crate::routes::json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("查询白名单失败: {error}"),
+                format!("查询邀请资格失败: {error}"),
             );
         }
     };
@@ -153,7 +153,7 @@ pub(crate) async fn handle_sms_send_code(
         let _ = state.public_auth_limiter.record_failure(&phone_key);
         return crate::routes::json_error(
             StatusCode::FORBIDDEN,
-            "目前是邀请制，请联系 bm@hone-claw.com 加入白名单",
+            "目前是邀请制，请联系 bm@hone-claw.com 加入邀请名单",
         );
     }
 
@@ -213,13 +213,13 @@ pub(crate) async fn handle_sms_login(
             let _ = state.public_auth_limiter.record_failure(&phone_key);
             return crate::routes::json_error(
                 StatusCode::FORBIDDEN,
-                "目前是邀请制，请联系 bm@hone-claw.com 加入白名单",
+                "目前是邀请制，请联系 bm@hone-claw.com 加入邀请名单",
             );
         }
         Err(error) => {
             return crate::routes::json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("查询白名单失败: {error}"),
+                format!("查询邀请资格失败: {error}"),
             );
         }
     };

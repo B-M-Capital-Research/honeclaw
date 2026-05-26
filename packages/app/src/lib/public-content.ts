@@ -421,7 +421,7 @@ const CONTENT_ZH = {
       },
       {
         title: "公开用户端",
-        desc: "公开用户端路由包含 `/`、`/roadmap`、`/blog`、`/blog/:slug`、`/chat`、`/me`、`/portfolio`、`/terms`、`/privacy`，并保留开发用 `/__share-preview` 分享卡预览页；`/blog` 是双语静态长文内容面，Cloudflare Worker 为文章分享卡注入 crawler 友好的 metadata；`/chat` 使用阿里云行为验证 + 手机短信验证码登录，管理端白名单是准入来源，桌面端为可收起左侧栏 + 右侧对话工作台，侧栏聚合导航、账号、最近对话历史、联系入口和 GitHub stars，支持助手回答复制、图片分享、非图片生成物附件下载与历史回看；`/portfolio` 只读展示推送上下文与公司画像入口，后端公开面收敛在 `/api/public/*`，其中 `/api/public/file` 代理可下载生成物，`/api/public/v1/chat/completions` 提供 API key 鉴权的 OpenAI-compatible 对话接口。",
+        desc: "公开用户端路由包含 `/`、`/roadmap`、`/blog`、`/blog/:slug`、`/chat`、`/me`、`/portfolio`、`/terms`、`/privacy`，并保留开发用 `/__share-preview` 分享卡预览页；`/blog` 是双语静态长文内容面，Cloudflare Worker 为文章分享卡注入 crawler 友好的 metadata；`/chat` 使用阿里云行为验证 + 手机短信验证码登录，管理端邀请名单是准入来源，桌面端为可收起左侧栏 + 右侧对话工作台，侧栏聚合导航、账号、最近对话历史、联系入口和 GitHub stars，支持助手回答复制、图片分享、非图片生成物附件下载与历史回看；`/portfolio` 只读展示推送上下文与公司画像入口，后端公开面收敛在 `/api/public/*`，其中 `/api/public/file` 代理可下载生成物，`/api/public/v1/chat/completions` 提供 API key 鉴权的 OpenAI-compatible 对话接口。",
       },
       {
         title: "管理后台",
@@ -546,7 +546,7 @@ const CONTENT_ZH = {
           {
             name: "公开用户 SMS 登录与验证码守门",
             status: "stable",
-            note: "Aliyun Captcha + Aliyun SMS + 管理端 Web 白名单",
+            note: "Aliyun Captcha + Aliyun SMS + 管理端 Web 邀请名单",
           },
           {
             name: "公开 OpenAI-compatible Chat API",
@@ -573,7 +573,7 @@ const CONTENT_ZH = {
         name: "Web",
         icon: "⚡",
         status: "stable",
-        desc: "手机号 + 短信验证码登录的白名单聊天页",
+        desc: "手机号 + 短信验证码登录的邀请制聊天页",
       },
       {
         name: "iMessage",
@@ -647,7 +647,7 @@ const CONTENT_ZH = {
     now: {
       label: "当前已有",
       items: [
-        "Web 聊天界面（阿里云行为验证 + 手机短信验证码，管理端白名单准入）+ 公开门面站",
+        "Web 聊天界面（阿里云行为验证 + 手机短信验证码，管理端邀请名单准入）+ 公开门面站",
         "公开 `/chat` 桌面工作台布局：可收起左侧栏、账号入口、最近对话历史、联系入口、GitHub stars 与右侧完整高度对话区",
         "公开 `/chat` 助手回答复制与分享：可选择消息，导出品牌长图、复制图片/文字或调用系统分享；分享卡支持 CJK 代码块字体并有开发预览页",
         "公开 `/chat` 非图片生成物附件卡片：runner 新生成且正文提到的 CSV / XLSX / PDF 等文件会追加为可下载附件，经 `/api/public/file` 打开",
@@ -822,7 +822,7 @@ const CONTENT_ZH = {
     logged_out_title: "请先登录",
     logged_out_desc: "登录后查看你的历史记录和账号信息。",
     logged_out_cta: "前往对话页登录",
-    invite_note: "需要手机号加入白名单后才能进入对话",
+    invite_note: "需要手机号加入邀请名单后才能进入对话",
     loading: "加载中…",
     account_info_title: "账号信息",
     usage_today_label: "账号状态",
@@ -985,7 +985,7 @@ const CONTENT_ZH = {
     login: {
       title: "登录 Hone",
       subtitle: "使用手机号和短信验证码登录。",
-      hint_sms: "目前是邀请制，请联系 bm@hone-claw.com 加入白名单。",
+      hint_sms: "目前是邀请制，请联系 bm@hone-claw.com 加入邀请名单。",
       phone_label: "手机号",
       phone_placeholder: "例如 13800138000",
       phone_aria: "手机号",
@@ -1058,7 +1058,7 @@ const CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "您需要使用经我们登记的手机号作为账号，并通过短信验证码完成身份验证。本服务目前为邀请制，未进入白名单的手机号无法登录。",
+                "您需要使用经我们登记的手机号作为账号，并通过短信验证码完成身份验证。本服务目前为邀请制，未进入邀请名单的手机号无法登录。",
               ],
             },
             {
@@ -1290,7 +1290,7 @@ const CONTENT_ZH = {
               items: [
                 [
                   { strong: "账号信息：" },
-                  "手机号（作为账号识别与白名单判断）、短信验证码核验结果、历史邀请码用户记录（作为白名单来源）；",
+                  "手机号（作为账号识别与邀请资格判断）、短信验证码核验结果、历史邀请记录（作为邀请名单来源）；",
                 ],
                 [
                   { strong: "使用数据：" },
@@ -1946,7 +1946,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         title: "Public user app",
-        desc: "The public user app routes `/`, `/roadmap`, `/blog`, `/blog/:slug`, `/chat`, `/me`, `/portfolio`, `/terms`, and `/privacy`, with a dev-only `/__share-preview` page for share-card QA; `/blog` is a bilingual static long-form content surface, with Cloudflare Worker metadata for crawler-friendly article cards; `/chat` signs users in with Aliyun behavior captcha plus phone/SMS verification from the admin whitelist, uses a collapsible desktop left rail plus full-height conversation workspace, and gathers navigation, account access, recent conversation history, contact links, and GitHub stars in that rail while supporting assistant-reply copy, image sharing, non-image generated-file downloads, and history review; `/portfolio` is a read-only investment context surface for push context and company-profile entry points, and the public backend is scoped to `/api/public/*`, including `/api/public/file` for downloadable generated artifacts and `/api/public/v1/chat/completions` for API-key-authenticated OpenAI-compatible chat.",
+        desc: "The public user app routes `/`, `/roadmap`, `/blog`, `/blog/:slug`, `/chat`, `/me`, `/portfolio`, `/terms`, and `/privacy`, with a dev-only `/__share-preview` page for share-card QA; `/blog` is a bilingual static long-form content surface, with Cloudflare Worker metadata for crawler-friendly article cards; `/chat` signs users in with Aliyun behavior captcha plus phone/SMS verification from the admin invite list, uses a collapsible desktop left rail plus full-height conversation workspace, and gathers navigation, account access, recent conversation history, contact links, and GitHub stars in that rail while supporting assistant-reply copy, image sharing, non-image generated-file downloads, and history review; `/portfolio` is a read-only investment context surface for push context and company-profile entry points, and the public backend is scoped to `/api/public/*`, including `/api/public/file` for downloadable generated artifacts and `/api/public/v1/chat/completions` for API-key-authenticated OpenAI-compatible chat.",
       },
       {
         title: "Admin console",
@@ -2075,7 +2075,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           {
             name: "Public SMS login with captcha gate",
             status: "stable",
-            note: "Aliyun Captcha + Aliyun SMS + admin Web whitelist",
+            note: "Aliyun Captcha + Aliyun SMS + admin Web invite list",
           },
           {
             name: "Public OpenAI-compatible Chat API",
@@ -2106,7 +2106,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         name: "Web",
         icon: "⚡",
         status: "stable",
-        desc: "Whitelist chat with phone + SMS code login",
+        desc: "Invite-only chat with phone + SMS code login",
       },
       {
         name: "iMessage",
@@ -2213,7 +2213,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     now: {
       label: "Shipping today",
       items: [
-        "Web chat (Aliyun behavior captcha + phone/SMS verification, admitted by the admin whitelist) + public landing site",
+        "Web chat (Aliyun behavior captcha + phone/SMS verification, admitted by the admin invite list) + public landing site",
         "Public `/chat` desktop workbench layout: collapsible left rail, account entry, recent conversation history, contact links, GitHub stars, and a full-height conversation area",
         "Public `/chat` assistant-reply copy and sharing: select messages, export a branded long image, copy image/text, or invoke native share; share cards support CJK code-block fonts and have a dev preview route",
         "Public `/chat` non-image generated-file cards: new runner-created CSV / XLSX / PDF-style files mentioned in the final answer are attached as downloads through `/api/public/file`",
@@ -2388,7 +2388,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     logged_out_title: "Sign in first",
     logged_out_desc: "Sign in to see your history and account info.",
     logged_out_cta: "Go to chat to sign in",
-    invite_note: "Your phone number must be whitelisted before you can enter chat",
+    invite_note: "Your phone number must be on the invite list before you can enter chat",
     loading: "Loading…",
     account_info_title: "Account info",
     usage_today_label: "Account status",
@@ -2552,7 +2552,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       title: "Sign in to Hone",
       subtitle: "Sign in with your phone number and SMS code.",
       hint_sms:
-        "Hone is currently invite-only. Contact bm@hone-claw.com to join the whitelist.",
+        "Hone is currently invite-only. Contact bm@hone-claw.com to join the invite list.",
       phone_label: "Phone",
       phone_placeholder: "e.g. +1 555 0134",
       phone_aria: "Phone",
@@ -2629,7 +2629,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "You sign in with a phone number we have registered and verify your identity with an SMS code. Hone is currently invite-only, and phone numbers outside the whitelist cannot sign in.",
+                "You sign in with a phone number we have registered and verify your identity with an SMS code. Hone is currently invite-only, and phone numbers outside the invite list cannot sign in.",
               ],
             },
             {
@@ -2874,7 +2874,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
               items: [
                 [
                   { strong: "Account info:" },
-                  " phone number (as account identifier and whitelist key), SMS verification result, and historical invite-user records used as the whitelist source;",
+                  " phone number (as account identifier and invite-list key), SMS verification result, and historical invite records used as the invite-list source;",
                 ],
                 [
                   { strong: "Usage data:" },
