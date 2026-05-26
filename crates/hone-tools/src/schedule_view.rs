@@ -14,12 +14,16 @@ use chrono::{DateTime, NaiveTime, Timelike, Utc};
 use hone_core::ActorIdentity;
 use hone_core::quiet::QuietHours;
 use hone_event_engine::Severity;
-use hone_event_engine::prefs::{FilePrefsStorage, PrefsProvider};
+use hone_event_engine::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider};
 use hone_event_engine::renderer::RenderFormat;
 use hone_memory::CronJobStorage;
 use hone_memory::cron_job::CronJob;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+
+const SCHEDULE_TABLE_COLUMNS: usize = 5;
+const SCHEDULE_TABLE_HEADERS: [&str; SCHEDULE_TABLE_COLUMNS] =
+    ["时刻", "类型", "内容", "频率", "状态"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScheduleOverview {
@@ -104,12 +108,7 @@ pub fn build_overview(
     let cron_storage = CronJobStorage::new(cron_jobs_dir);
     let jobs = cron_storage.list_jobs(actor);
 
-    let actor_key = format!(
-        "{}::{}::{}",
-        actor.channel,
-        actor.channel_scope.clone().unwrap_or_default(),
-        actor.user_id
-    );
+    let actor_key = schedule_actor_key(actor);
     let timezone = prefs
         .timezone
         .clone()
@@ -117,8 +116,48 @@ pub fn build_overview(
 
     let mut schedule: Vec<ScheduleEntry> = Vec::new();
 
-    // 1. Unified digest slots —— 持仓事件 + 全球要闻同槽合发
-    let slot_entries: Vec<(String, Option<String>)> = match prefs.digest_slots.as_deref() {
+    schedule.extend(
+        digest_slot_entries(&prefs, digest_defaults)
+            .into_iter()
+            .map(|(window, label)| {
+                digest_schedule_entry(window, label, prefs.quiet_hours.as_ref())
+            }),
+    );
+
+    schedule.extend(
+        jobs.iter()
+            .filter(|job| job.enabled)
+            .map(|job| cron_schedule_entry(job, prefs.quiet_hours.as_ref())),
+    );
+
+    // 按 time_local 升序排
+    schedule.sort_by(|a, b| a.time_local.cmp(&b.time_local));
+
+    let immediate = immediate_config(&prefs);
+
+    Ok(ScheduleOverview {
+        actor: actor_key,
+        timezone,
+        quiet_hours: quiet_hours_view(prefs.quiet_hours),
+        schedule,
+        immediate,
+    })
+}
+
+fn schedule_actor_key(actor: &ActorIdentity) -> String {
+    format!(
+        "{}::{}::{}",
+        actor.channel,
+        actor.channel_scope.clone().unwrap_or_default(),
+        actor.user_id
+    )
+}
+
+fn digest_slot_entries(
+    prefs: &NotificationPrefs,
+    digest_defaults: &DigestDefaults,
+) -> Vec<(String, Option<String>)> {
+    match prefs.digest_slots.as_deref() {
         Some(slots) => slots
             .iter()
             .map(|slot| (slot.time.clone(), slot.label.clone()))
@@ -128,49 +167,48 @@ pub fn build_overview(
             .iter()
             .map(|slot| (slot.time.clone(), slot.label.clone()))
             .collect(),
-    };
-    for (window, label) in &slot_entries {
-        let hint = label
-            .clone()
-            .unwrap_or_else(|| "今日资讯（持仓 + 全球要闻）".to_string());
-        schedule.push(ScheduleEntry {
-            time_local: window.clone(),
-            source: ScheduleSource::Digest,
-            content_hint: hint,
-            frequency: "daily".to_string(),
-            job_id: None,
-            will_be_held_by_quiet: time_in_quiet(window, prefs.quiet_hours.as_ref()),
-            bypass_quiet_hours: false,
-            edit_hint:
-                "notification_prefs(action=\"set_digest_slots\", value=[{\"id\":\"premarket\",\"time\":\"08:30\"},{\"id\":\"postmarket\",\"time\":\"19:00\"}])"
-                    .to_string(),
-        });
     }
+}
 
-    // 2. 自定义 cron jobs
-    for job in jobs.iter().filter(|job| job.enabled) {
-        let time_local = format!("{:02}:{:02}", job.schedule.hour, job.schedule.minute);
-        let frequency = describe_cron_frequency(job);
-        let in_quiet = time_in_quiet(&time_local, prefs.quiet_hours.as_ref());
-        schedule.push(ScheduleEntry {
-            time_local,
-            source: ScheduleSource::CronJob,
-            content_hint: job.name.clone(),
-            frequency,
-            job_id: Some(job.id.clone()),
-            will_be_held_by_quiet: in_quiet && !job.bypass_quiet_hours,
-            bypass_quiet_hours: job.bypass_quiet_hours,
-            edit_hint: format!(
-                "cron_job(action=\"update\", job_id=\"{}\", hour=8, minute=30) 改时间; bypass_quiet_hours=true 让本任务豁免静音",
-                job.id
-            ),
-        });
+fn digest_schedule_entry(
+    time_local: String,
+    label: Option<String>,
+    quiet_hours: Option<&QuietHours>,
+) -> ScheduleEntry {
+    ScheduleEntry {
+        will_be_held_by_quiet: time_in_quiet(&time_local, quiet_hours),
+        time_local,
+        source: ScheduleSource::Digest,
+        content_hint: label.unwrap_or_else(|| "今日资讯（持仓 + 全球要闻）".to_string()),
+        frequency: "daily".to_string(),
+        job_id: None,
+        bypass_quiet_hours: false,
+        edit_hint:
+            "notification_prefs(action=\"set_digest_slots\", value=[{\"id\":\"premarket\",\"time\":\"08:30\"},{\"id\":\"postmarket\",\"time\":\"19:00\"}])"
+                .to_string(),
     }
+}
 
-    // 按 time_local 升序排
-    schedule.sort_by(|a, b| a.time_local.cmp(&b.time_local));
+fn cron_schedule_entry(job: &CronJob, quiet_hours: Option<&QuietHours>) -> ScheduleEntry {
+    let time_local = format!("{:02}:{:02}", job.schedule.hour, job.schedule.minute);
+    let in_quiet = time_in_quiet(&time_local, quiet_hours);
+    ScheduleEntry {
+        time_local,
+        source: ScheduleSource::CronJob,
+        content_hint: job.name.clone(),
+        frequency: describe_cron_frequency(job),
+        job_id: Some(job.id.clone()),
+        will_be_held_by_quiet: in_quiet && !job.bypass_quiet_hours,
+        bypass_quiet_hours: job.bypass_quiet_hours,
+        edit_hint: format!(
+            "cron_job(action=\"update\", job_id=\"{}\", hour=8, minute=30) 改时间; bypass_quiet_hours=true 让本任务豁免静音",
+            job.id
+        ),
+    }
+}
 
-    let immediate = ImmediateConfig {
+fn immediate_config(prefs: &NotificationPrefs) -> ImmediateConfig {
+    ImmediateConfig {
         enabled: prefs.enabled,
         min_severity: severity_str(&prefs.min_severity),
         portfolio_only: prefs.portfolio_only,
@@ -183,18 +221,14 @@ pub fn build_overview(
             .as_ref()
             .map(|quiet_hours| quiet_hours.exempt_kinds.clone())
             .unwrap_or_default(),
-    };
+    }
+}
 
-    Ok(ScheduleOverview {
-        actor: actor_key,
-        timezone,
-        quiet_hours: prefs.quiet_hours.map(|quiet_hours| QuietHoursView {
-            from: quiet_hours.from,
-            to: quiet_hours.to,
-            exempt_kinds: quiet_hours.exempt_kinds,
-        }),
-        schedule,
-        immediate,
+fn quiet_hours_view(quiet_hours: Option<QuietHours>) -> Option<QuietHoursView> {
+    quiet_hours.map(|quiet_hours| QuietHoursView {
+        from: quiet_hours.from,
+        to: quiet_hours.to,
+        exempt_kinds: quiet_hours.exempt_kinds,
     })
 }
 
@@ -233,59 +267,21 @@ fn render_with_codeblock(overview: &ScheduleOverview, open: &str, close: &str) -
     if overview.schedule.is_empty() {
         let _ = writeln!(output, "（当前没有任何定时推送，所有事件走即时推）");
     } else {
-        // 表格:时刻 / 类型 / 内容 / 频率 / 状态(emoji)
-        let headers = ["时刻", "类型", "内容", "频率", "状态"];
-        let mut rows: Vec<[String; 5]> = Vec::new();
-        for entry in &overview.schedule {
-            let kind = source_label(entry.source);
-            let active = if entry.will_be_held_by_quiet {
-                "🌙 静音吞"
-            } else if entry.bypass_quiet_hours {
-                "✅ 强发"
-            } else {
-                "✅"
-            };
-            rows.push([
-                entry.time_local.clone(),
-                kind.to_string(),
-                entry.content_hint.clone(),
-                entry.frequency.clone(),
-                active.to_string(),
-            ]);
-        }
-        // 计算每列 display-width
-        let mut widths = [0usize; 5];
-        for (column_index, header) in headers.iter().enumerate() {
-            widths[column_index] = display_width(header);
-        }
-        for row in &rows {
-            for column_index in 0..5 {
-                widths[column_index] = widths[column_index].max(display_width(&row[column_index]));
-            }
-        }
+        let rows = schedule_table_rows(overview);
+        let widths = schedule_table_widths(&rows);
         // 表头 + 分隔(用 ─, 单字符宽)
         output.push_str(open);
-        for (column_index, header) in headers.iter().enumerate() {
-            output.push_str(&pad_to(header, widths[column_index]));
-            if column_index + 1 < 5 {
-                output.push_str("  ");
-            }
-        }
+        write_table_header(&mut output, &widths);
         output.push('\n');
         for (column_index, width) in widths.iter().enumerate() {
             output.push_str(&"─".repeat(*width));
-            if column_index + 1 < 5 {
+            if column_index + 1 < SCHEDULE_TABLE_COLUMNS {
                 output.push_str("  ");
             }
         }
         output.push('\n');
         for row in &rows {
-            for column_index in 0..5 {
-                output.push_str(&pad_to(&row[column_index], widths[column_index]));
-                if column_index + 1 < 5 {
-                    output.push_str("  ");
-                }
-            }
+            write_table_row(&mut output, row, &widths);
             output.push('\n');
         }
         // 去掉最后那个 \n,让 close 紧贴
@@ -312,23 +308,93 @@ fn render_as_list(overview: &ScheduleOverview) -> String {
         let _ = writeln!(output, "定时推送：");
         for entry in &overview.schedule {
             let kind = source_label(entry.source);
-            let active = if entry.will_be_held_by_quiet {
-                "🌙 被静音吞"
-            } else if entry.bypass_quiet_hours {
-                "✅ 强制不静音"
-            } else {
-                "✅"
-            };
             let _ = writeln!(
                 output,
                 "• {} {} · {} · {} {}",
-                entry.time_local, kind, entry.content_hint, entry.frequency, active
+                entry.time_local,
+                kind,
+                entry.content_hint,
+                entry.frequency,
+                list_status_label(entry)
             );
         }
     }
     output.push('\n');
     write_immediate_section(&mut output, overview);
     output
+}
+
+fn schedule_table_rows(overview: &ScheduleOverview) -> Vec<[String; SCHEDULE_TABLE_COLUMNS]> {
+    overview
+        .schedule
+        .iter()
+        .map(|entry| {
+            [
+                entry.time_local.clone(),
+                source_label(entry.source).to_string(),
+                entry.content_hint.clone(),
+                entry.frequency.clone(),
+                table_status_label(entry).to_string(),
+            ]
+        })
+        .collect()
+}
+
+fn schedule_table_widths(
+    rows: &[[String; SCHEDULE_TABLE_COLUMNS]],
+) -> [usize; SCHEDULE_TABLE_COLUMNS] {
+    let mut widths = [0usize; SCHEDULE_TABLE_COLUMNS];
+    for (column_index, header) in SCHEDULE_TABLE_HEADERS.iter().enumerate() {
+        widths[column_index] = display_width(header);
+    }
+    for row in rows {
+        for column_index in 0..SCHEDULE_TABLE_COLUMNS {
+            widths[column_index] = widths[column_index].max(display_width(&row[column_index]));
+        }
+    }
+    widths
+}
+
+fn write_table_header(output: &mut String, widths: &[usize; SCHEDULE_TABLE_COLUMNS]) {
+    for (column_index, header) in SCHEDULE_TABLE_HEADERS.iter().enumerate() {
+        output.push_str(&pad_to(header, widths[column_index]));
+        if column_index + 1 < SCHEDULE_TABLE_COLUMNS {
+            output.push_str("  ");
+        }
+    }
+}
+
+fn write_table_row(
+    output: &mut String,
+    row: &[String; SCHEDULE_TABLE_COLUMNS],
+    widths: &[usize; SCHEDULE_TABLE_COLUMNS],
+) {
+    for column_index in 0..SCHEDULE_TABLE_COLUMNS {
+        output.push_str(&pad_to(&row[column_index], widths[column_index]));
+        if column_index + 1 < SCHEDULE_TABLE_COLUMNS {
+            output.push_str("  ");
+        }
+    }
+}
+
+fn table_status_label(entry: &ScheduleEntry) -> &'static str {
+    if entry.will_be_held_by_quiet {
+        "🌙 静音吞"
+    } else if entry.bypass_quiet_hours {
+        "✅ 强发"
+    } else {
+        "✅"
+    }
+}
+
+fn list_status_label(entry: &ScheduleEntry) -> &'static str {
+    if entry.will_be_held_by_quiet {
+        "🌙 被静音吞"
+    } else if entry.bypass_quiet_hours {
+        "✅ 强制不静音"
+    } else {
+        "✅"
+    }
 }
 
 fn write_header(output: &mut String, overview: &ScheduleOverview) {

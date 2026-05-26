@@ -313,39 +313,7 @@ impl SkillRuntime {
     }
 
     pub fn search(&self, query: &str, file_paths: &[String], limit: usize) -> Vec<SkillSummary> {
-        let normalized_query = normalize_skill_text(query);
-        let mut scored = self
-            .load_active_skills(file_paths)
-            .into_iter()
-            .filter_map(|skill| {
-                let summary = SkillSummary::from(&skill);
-                let score = if normalized_query.is_empty() {
-                    1
-                } else {
-                    score_skill(&summary, &normalized_query)
-                };
-                (score > 0).then_some((score, summary))
-            })
-            .collect::<Vec<_>>();
-
-        scored.sort_by(|left, right| {
-            right
-                .0
-                .cmp(&left.0)
-                .then_with(|| left.1.display_name.cmp(&right.1.display_name))
-                .then_with(|| left.1.id.cmp(&right.1.id))
-        });
-
-        let take_n = if limit == 0 {
-            scored.len()
-        } else {
-            scored.len().min(limit)
-        };
-        scored
-            .into_iter()
-            .take(take_n)
-            .map(|(_, skill)| skill)
-            .collect()
+        search_skill_summaries(self.load_active_skills(file_paths), query, limit)
     }
 
     pub fn search_for_stage(
@@ -355,39 +323,11 @@ impl SkillRuntime {
         limit: usize,
         constraints: &SkillStageConstraints,
     ) -> Vec<SkillSummary> {
-        let normalized_query = normalize_skill_text(query);
-        let mut scored = self
-            .load_active_skills_for_stage(file_paths, constraints)
-            .into_iter()
-            .filter_map(|skill| {
-                let summary = SkillSummary::from(&skill);
-                let score = if normalized_query.is_empty() {
-                    1
-                } else {
-                    score_skill(&summary, &normalized_query)
-                };
-                (score > 0).then_some((score, summary))
-            })
-            .collect::<Vec<_>>();
-
-        scored.sort_by(|left, right| {
-            right
-                .0
-                .cmp(&left.0)
-                .then_with(|| left.1.display_name.cmp(&right.1.display_name))
-                .then_with(|| left.1.id.cmp(&right.1.id))
-        });
-
-        let take_n = if limit == 0 {
-            scored.len()
-        } else {
-            scored.len().min(limit)
-        };
-        scored
-            .into_iter()
-            .take(take_n)
-            .map(|(_, skill)| skill)
-            .collect()
+        search_skill_summaries(
+            self.load_active_skills_for_stage(file_paths, constraints),
+            query,
+            limit,
+        )
     }
 
     pub fn load_skill(
@@ -567,16 +507,7 @@ impl SkillRuntime {
         file_paths: &[String],
     ) -> Option<SkillDefinition> {
         let matches = self.search(query, file_paths, 2);
-        let normalized = normalize_skill_text(query);
-        let exact = matches.iter().find(|skill| {
-            normalize_skill_text(&skill.id) == normalized
-                || normalize_skill_text(&skill.display_name) == normalized
-                || skill
-                    .aliases
-                    .iter()
-                    .any(|alias| normalize_skill_text(alias) == normalized)
-        });
-        if let Some(skill) = exact {
+        if let Some(skill) = exact_skill_summary(&matches, query) {
             return self.load_skill(&skill.id, file_paths).ok();
         }
         if matches.len() == 1 {
@@ -592,16 +523,7 @@ impl SkillRuntime {
         constraints: &SkillStageConstraints,
     ) -> Option<SkillDefinition> {
         let matches = self.search_for_stage(query, file_paths, 2, constraints);
-        let normalized = normalize_skill_text(query);
-        let exact = matches.iter().find(|skill| {
-            normalize_skill_text(&skill.id) == normalized
-                || normalize_skill_text(&skill.display_name) == normalized
-                || skill
-                    .aliases
-                    .iter()
-                    .any(|alias| normalize_skill_text(alias) == normalized)
-        });
-        if let Some(skill) = exact {
+        if let Some(skill) = exact_skill_summary(&matches, query) {
             return self
                 .load_skill_for_stage(&skill.id, file_paths, constraints)
                 .ok();
@@ -941,6 +863,57 @@ fn json_value_to_argument(value: &Value) -> Result<String, String> {
             Err("脚本参数必须是字符串、数字、布尔值，或这些值构成的数组".to_string())
         }
     }
+}
+
+fn search_skill_summaries(
+    skills: Vec<SkillDefinition>,
+    query: &str,
+    limit: usize,
+) -> Vec<SkillSummary> {
+    let normalized_query = normalize_skill_text(query);
+    let mut scored = skills
+        .into_iter()
+        .filter_map(|skill| {
+            let summary = SkillSummary::from(&skill);
+            let score = if normalized_query.is_empty() {
+                1
+            } else {
+                score_skill(&summary, &normalized_query)
+            };
+            (score > 0).then_some((score, summary))
+        })
+        .collect::<Vec<_>>();
+
+    scored.sort_by(|left, right| {
+        right
+            .0
+            .cmp(&left.0)
+            .then_with(|| left.1.display_name.cmp(&right.1.display_name))
+            .then_with(|| left.1.id.cmp(&right.1.id))
+    });
+
+    let take_n = if limit == 0 {
+        scored.len()
+    } else {
+        scored.len().min(limit)
+    };
+    scored
+        .into_iter()
+        .take(take_n)
+        .map(|(_, skill)| skill)
+        .collect()
+}
+
+fn exact_skill_summary<'a>(matches: &'a [SkillSummary], query: &str) -> Option<&'a SkillSummary> {
+    let normalized = normalize_skill_text(query);
+    matches.iter().find(|skill| {
+        normalize_skill_text(&skill.id) == normalized
+            || normalize_skill_text(&skill.display_name) == normalized
+            || skill
+                .aliases
+                .iter()
+                .any(|alias| normalize_skill_text(alias) == normalized)
+    })
 }
 
 fn score_skill(skill: &SkillSummary, query: &str) -> i32 {

@@ -1,5 +1,15 @@
 # Code Quality Patrol Findings
 
+## 2026-05-27 - 复杂度热点
+
+### Hone-tools tool implementations still mix schemas, parsing, and execution branches
+
+- status: open
+- direction: 复杂度热点
+- evidence: `cargo clippy -p hone-tools --tests -- -W clippy::cognitive_complexity -W clippy::too_many_lines` still reports oversized async tool impls and schema builders after the 2026-05-27 patrol extracted low-risk helpers from `crates/hone-tools/src/schedule_view.rs` and `crates/hone-tools/src/skill_runtime.rs`. Current examples include `crates/hone-tools/src/cron_job_tool.rs` `parameters` at `120/100` lines and its `#[async_trait]` impl at `283/100`, `crates/hone-tools/src/local_files.rs` async impl at `141/100`, `crates/hone-tools/src/notification_prefs_tool.rs` async impl at `129/100`, and `crates/hone-tools/src/portfolio_tool.rs` `parameters` at `123/100` plus async impl at `252/100`.
+- risk: these paths combine user-visible tool descriptions, JSON parameter schemas, argument parsing, storage calls, validation, and returned error text. Splitting them mechanically could change MCP tool schemas, LLM-facing guidance, validation order, or localized error wording, so they need focused per-tool extraction rather than a broad patrol sweep.
+- suggested_fix: tackle one tool at a time. First extract pure parameter-schema builders and parse/validation helpers behind private functions, then split execute branches only when focused tests lock the current JSON shape and error messages. For each tool, run the relevant `cargo test -p hone-tools <tool_filter>` slice, `cargo check -p hone-tools --tests`, and the repo guardrails before moving to the next implementation.
+
 ## 2026-05-27 - 配置文档漂移
 
 ### Tavily search depth/topic config fields are not wired into runtime requests
