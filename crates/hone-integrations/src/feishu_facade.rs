@@ -185,7 +185,8 @@ impl FeishuFacadeClient {
         if let Some(error) = rpc_response.error {
             return Err(HoneError::Integration(format!(
                 "Feishu facade RPC 错误 (code={}): {}",
-                error.code, error.message
+                error.code,
+                sanitize_facade_error_detail(&error.message)
             )));
         }
 
@@ -210,7 +211,7 @@ fn extract_facade_error_detail(body: &str) -> String {
         return String::new();
     }
     let Ok(value) = serde_json::from_str::<Value>(trimmed) else {
-        return truncate_facade_error_body(trimmed);
+        return sanitize_facade_error_detail(trimmed);
     };
     let message = value
         .get("error")
@@ -221,8 +222,8 @@ fn extract_facade_error_detail(body: &str) -> String {
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|message| !message.is_empty())
-        .map(str::to_string)
-        .unwrap_or_else(|| truncate_facade_error_body(trimmed));
+        .map(sanitize_facade_error_detail)
+        .unwrap_or_else(|| sanitize_facade_error_detail(trimmed));
     let code = value
         .get("error")
         .and_then(|error| error.get("code"))
@@ -232,6 +233,140 @@ fn extract_facade_error_detail(body: &str) -> String {
         Some(Value::Number(code)) => format!("{message} (code: {code})"),
         _ => message,
     }
+}
+
+fn sanitize_facade_error_detail(text: &str) -> String {
+    truncate_facade_error_body(&redact_common_facade_error_secrets(text))
+}
+
+fn redact_common_facade_error_secrets(text: &str) -> String {
+    let mut output = redact_facade_marker_value(&redact_facade_url_userinfo(text), "Bearer ");
+    output = redact_facade_marker_value(&output, "Basic ");
+    for key in SENSITIVE_FACADE_ERROR_KEYS {
+        output = redact_facade_marker_value(&output, &format!("{key}="));
+        output = redact_facade_marker_value(&output, &format!("{key}:"));
+        output = redact_facade_json_string_field(&output, key);
+    }
+    for key in ["authorization", "Authorization"] {
+        output = redact_facade_json_string_field(&output, key);
+    }
+    output
+}
+
+const SENSITIVE_FACADE_ERROR_KEYS: &[&str] = &[
+    "access_token",
+    "accessToken",
+    "api_key",
+    "apiKey",
+    "apikey",
+    "app_secret",
+    "appSecret",
+    "client_secret",
+    "clientSecret",
+    "refresh_token",
+    "refreshToken",
+    "id_token",
+    "idToken",
+    "session_token",
+    "sessionToken",
+    "bot_token",
+    "botToken",
+    "FEISHU_APP_SECRET",
+    "token",
+    "secret",
+    "password",
+    "X-API-Key",
+    "x-api-key",
+];
+
+fn redact_facade_url_userinfo(text: &str) -> String {
+    let mut remaining = text;
+    let mut output = String::with_capacity(text.len());
+    while let Some(index) = remaining.find("://") {
+        let authority_start = index + 3;
+        let authority = &remaining[authority_start..];
+        let authority_end = authority
+            .char_indices()
+            .find_map(|(idx, ch)| {
+                (ch.is_whitespace() || matches!(ch, '/' | '?' | '#' | ')')).then_some(idx)
+            })
+            .unwrap_or(authority.len());
+        let authority_slice = &authority[..authority_end];
+        if let Some(at_index) = authority_slice.rfind('@') {
+            output.push_str(&remaining[..authority_start]);
+            output.push_str("<redacted>@");
+            remaining = &remaining[authority_start + at_index + 1..];
+        } else {
+            output.push_str(&remaining[..authority_start]);
+            remaining = &remaining[authority_start..];
+        }
+    }
+    output.push_str(remaining);
+    output
+}
+
+fn redact_facade_marker_value(text: &str, marker: &str) -> String {
+    let mut remaining = text;
+    let mut output = String::with_capacity(text.len());
+    while let Some(index) = remaining.find(marker) {
+        let value_start = index + marker.len();
+        output.push_str(&remaining[..value_start]);
+        let leading_whitespace = remaining[value_start..]
+            .chars()
+            .take_while(|ch| ch.is_whitespace())
+            .map(char::len_utf8)
+            .sum::<usize>();
+        output.push_str(&remaining[value_start..value_start + leading_whitespace]);
+        output.push_str("<redacted>");
+        let value_tail = remaining[value_start + leading_whitespace..]
+            .char_indices()
+            .find_map(|(idx, ch)| {
+                (ch.is_whitespace() || matches!(ch, ')' | ',' | '"' | '&')).then_some(idx)
+            })
+            .unwrap_or(remaining[value_start + leading_whitespace..].len());
+        remaining = &remaining[value_start + leading_whitespace + value_tail..];
+    }
+    output.push_str(remaining);
+    output
+}
+
+fn redact_facade_json_string_field(text: &str, key: &str) -> String {
+    let needle = format!("\"{key}\"");
+    let mut remaining = text;
+    let mut output = String::with_capacity(text.len());
+    while let Some(index) = remaining.find(&needle) {
+        let after_key = index + needle.len();
+        let Some((value_quote_offset, _)) = remaining[after_key..]
+            .char_indices()
+            .find(|(_, ch)| !ch.is_whitespace() && *ch != ':')
+            .filter(|(_, ch)| *ch == '"')
+        else {
+            output.push_str(&remaining[..after_key]);
+            remaining = &remaining[after_key..];
+            continue;
+        };
+        let value_start = after_key + value_quote_offset + 1;
+        output.push_str(&remaining[..value_start]);
+        output.push_str("<redacted>");
+        let mut escaped = false;
+        let value_tail = remaining[value_start..]
+            .char_indices()
+            .find_map(|(idx, ch)| {
+                if escaped {
+                    escaped = false;
+                    return None;
+                }
+                if ch == '\\' {
+                    escaped = true;
+                    return None;
+                }
+                (ch == '"').then_some(idx)
+            })
+            .unwrap_or(remaining[value_start..].len());
+        remaining = &remaining[value_start + value_tail..];
+    }
+    output.push_str(remaining);
+    output
 }
 
 fn truncate_facade_error_body(text: &str) -> String {
@@ -272,6 +407,15 @@ mod tests {
 
     fn spawn_json_server(body: String) -> String {
         spawn_response_server("200 OK", body)
+    }
+
+    fn assert_text_contains_none(text: &str, needles: &[&str]) {
+        for needle in needles {
+            assert!(
+                !text.contains(needle),
+                "expected text not to contain `{needle}`: {text}"
+            );
+        }
     }
 
     #[tokio::test]
@@ -318,6 +462,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn rpc_error_redacts_secret_message() {
+        let url = spawn_json_server(
+            r#"{"result":null,"error":{"code":32001,"message":"callback failed https://user:pass@example.test/a?token=query-secret Authorization: Bearer bearer-secret app_secret: app-secret {\"client_secret\":\"json-client\"}"}}"#
+                .to_string(),
+        );
+        let client = FeishuFacadeClient::new(url);
+        let err = client
+            .resolve_email("alice@example.com")
+            .await
+            .expect_err("rpc error");
+        let message = err.to_string();
+        assert!(message.contains("token=<redacted>"));
+        assert!(message.contains("Bearer <redacted>"));
+        assert!(message.contains("app_secret: <redacted>"));
+        assert_text_contains_none(
+            &message,
+            &[
+                "user:pass",
+                "query-secret",
+                "bearer-secret",
+                "app-secret",
+                "json-client",
+            ],
+        );
+    }
+
+    #[tokio::test]
     async fn http_error_extracts_message_and_code_without_full_body() {
         let url = spawn_response_server(
             "502 Bad Gateway",
@@ -332,6 +503,27 @@ mod tests {
         assert_eq!(
             err.to_string(),
             "集成错误: Feishu facade HTTP 502 Bad Gateway: upstream offline (code: 32002)"
+        );
+    }
+
+    #[tokio::test]
+    async fn http_error_redacts_secret_detail() {
+        let url = spawn_response_server(
+            "502 Bad Gateway",
+            r#"{"error":{"code":32002,"message":"upstream failed https://user:pass@example.test/a?api_key=query-secret Authorization: Basic basic-secret"},"debug":{"client_secret":"json-client"}}"#
+                .to_string(),
+        );
+        let client = FeishuFacadeClient::new(url);
+        let err = client
+            .resolve_email("alice@example.com")
+            .await
+            .expect_err("http error");
+        let message = err.to_string();
+        assert!(message.contains("api_key=<redacted>"));
+        assert!(message.contains("Basic <redacted>"));
+        assert_text_contains_none(
+            &message,
+            &["user:pass", "query-secret", "basic-secret", "json-client"],
         );
     }
 }
