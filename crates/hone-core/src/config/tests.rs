@@ -151,6 +151,80 @@ fn assert_openrouter_provider_key_pool_docs(label: &str, doc: &str) {
     );
 }
 
+fn assert_profile_exists(config: &HoneConfig, field: &str, profile_name: &str) {
+    let trimmed = profile_name.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+    assert!(
+        config.llm.profiles.contains_key(trimmed),
+        "{field} references missing llm.profiles.{trimmed}"
+    );
+}
+
+fn assert_config_example_profile_refs(config: &HoneConfig) {
+    assert_profile_exists(config, "llm.default_profile", &config.llm.default_profile);
+    assert_profile_exists(
+        config,
+        "llm.auxiliary_profile",
+        &config.llm.auxiliary_profile,
+    );
+    assert_profile_exists(
+        config,
+        "event_engine.news_classifier_llm",
+        &config.event_engine.news_classifier_llm,
+    );
+    assert_profile_exists(
+        config,
+        "event_engine.renderer.polish_llm",
+        &config.event_engine.renderer.polish_llm,
+    );
+    assert_profile_exists(
+        config,
+        "event_engine.earnings.quality_review.llm",
+        &config.event_engine.earnings.quality_review.llm,
+    );
+    assert_profile_exists(
+        config,
+        "event_engine.sec_filings.enrichment.llm",
+        &config.event_engine.sec_filings.enrichment.llm,
+    );
+    assert_profile_exists(
+        config,
+        "event_engine.global_digest.pass1_llm",
+        &config.event_engine.global_digest.pass1_llm,
+    );
+    assert_profile_exists(
+        config,
+        "event_engine.global_digest.pass2_llm",
+        &config.event_engine.global_digest.pass2_llm,
+    );
+    assert_profile_exists(
+        config,
+        "event_engine.global_digest.event_dedupe_llm",
+        &config.event_engine.global_digest.event_dedupe_llm,
+    );
+    assert_profile_exists(
+        config,
+        "event_engine.global_digest.mainline_distill_llm",
+        &config.event_engine.global_digest.mainline_distill_llm,
+    );
+}
+
+fn assert_config_example_profile_providers_exist(config: &HoneConfig) {
+    for (profile_name, profile) in &config.llm.profiles {
+        let provider_name = profile.provider.trim();
+        assert!(
+            !provider_name.is_empty(),
+            "llm.profiles.{profile_name}.provider should not be empty in config.example.yaml"
+        );
+        assert!(
+            config.llm.providers.contains_key(provider_name),
+            "llm.profiles.{profile_name}.provider references missing llm.providers.{provider_name}"
+        );
+    }
+}
+
 fn assert_config_example_storage_and_logging(root: &serde_yaml::Mapping) {
     let storage = yaml_key(root, "storage").unwrap().as_mapping().unwrap();
     assert!(!yaml_has_key(storage, "base_path"));
@@ -509,6 +583,8 @@ fn config_example_yaml_matches_current_schema() {
     assert!(config.llm.profiles.contains_key("aux"));
     assert!(config.llm.profiles.contains_key("digest_fast"));
     assert!(config.llm.profiles.contains_key("digest_strong"));
+    assert_config_example_profile_refs(&config);
+    assert_config_example_profile_providers_exist(&config);
     assert!(
         !raw.contains("x-ai/grok-4.1-fast"),
         "config.example.yaml must not point event-engine defaults at the deprecated Grok 4.1 Fast model"
@@ -1722,6 +1798,12 @@ fn config_example_avoids_stale_config_knobs() {
     )
     .unwrap();
     assert_openrouter_provider_key_pool_docs("docs/wiki.md", &wiki);
+
+    let readme_en = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../README_EN.md"),
+    )
+    .unwrap();
+    assert_openrouter_provider_key_pool_docs("README_EN.md", &readme_en);
 
     let technical_spec = std::fs::read_to_string(
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/technical-spec.md"),

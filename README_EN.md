@@ -140,7 +140,7 @@ hone-cli onboard
 hone-cli configure --section agent --section channels --section providers
 ```
 
-Pick Hone Cloud, a local runner such as Codex ACP or OpenCode ACP, or a legacy local CLI runner such as Gemini / Codex CLI. OpenRouter credentials are configured as provider keys for the routes that need them.
+Pick Hone Cloud, a local runner such as Codex ACP or OpenCode ACP, or a legacy local CLI runner such as Gemini / Codex CLI. OpenRouter credentials should live in `llm.providers.openrouter.api_key/api_keys`; legacy `llm.openrouter.*` key fields remain migration fallbacks only.
 
 The next section’s screenshots show the full **model and channel** setup.
 

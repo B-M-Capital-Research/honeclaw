@@ -370,6 +370,8 @@ llm:
     max_tokens: 32768
   providers:
     openrouter:
+      # OpenRouter-specialized OpenAI-compatible provider kind.
+      # Use openai_compatible for other OpenAI-compatible endpoints.
       kind: openrouter
       base_url: "https://openrouter.ai/api/v1"
       api_key: ""

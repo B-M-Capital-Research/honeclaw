@@ -168,6 +168,26 @@ describe("settings-model", () => {
     ).toBe("x-ai/grok-4.3")
   })
 
+  it("keeps default LLM profile bindings resolvable", () => {
+    const defaults = defaultLlmProfiles()
+    const bindings = [
+      defaults.defaultProfile,
+      defaults.auxiliaryProfile,
+      defaults.polishProfile,
+      defaults.newsClassifierProfile,
+      defaults.filingSummaryProfile,
+      defaults.earningsQualityProfile,
+      defaults.digestPass1Profile,
+      defaults.digestPass2Profile,
+      defaults.digestEventDedupeProfile,
+      defaults.mainlineDistillProfile,
+    ]
+
+    for (const binding of bindings) {
+      profileById(defaults.profiles, binding)
+    }
+  })
+
   it("normalizes empty key lists and derives matching visibility state", () => {
     expect(normalizeApiKeys([])).toEqual([""])
     expect(normalizeApiKeys(["a", "b"])).toEqual(["a", "b"])
