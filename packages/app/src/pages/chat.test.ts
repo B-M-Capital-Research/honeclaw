@@ -94,10 +94,12 @@ describe("toPublicChatMessages", () => {
       { role: "assistant", content: "第二个回答", attachments: [] },
     ];
 
-    const base = toPublicChatMessages(baseHistory);
-    const next = toPublicChatMessages(nextHistory);
+    const baselineMessages = toPublicChatMessages(baseHistory);
+    const appendedMessages = toPublicChatMessages(nextHistory);
 
-    expect(messageIds(next.slice(0, base.length))).toEqual(messageIds(base));
+    expect(messageIds(appendedMessages.slice(0, baselineMessages.length))).toEqual(
+      messageIds(baselineMessages),
+    );
   });
 
   it("tolerates legacy history rows with missing content or attachments", () => {
@@ -155,7 +157,7 @@ describe("stripAttachmentMarkers", () => {
 
 describe("public chat composer state", () => {
   it("derives send eligibility from draft, attachments, busy state, and quota", () => {
-    const base = {
+    const emptyComposerState = {
       draft: "",
       attachmentCount: 0,
       isSending: false,
@@ -164,18 +166,30 @@ describe("public chat composer state", () => {
       dailyLimit: undefined,
     };
 
-    expect(canSendPublicChatMessage(base)).toBe(false);
-    expect(canSendPublicChatMessage({ ...base, draft: "  hello " })).toBe(true);
-    expect(canSendPublicChatMessage({ ...base, attachmentCount: 1 })).toBe(true);
+    expect(canSendPublicChatMessage(emptyComposerState)).toBe(false);
     expect(
-      canSendPublicChatMessage({ ...base, draft: "hello", isSending: true }),
-    ).toBe(false);
+      canSendPublicChatMessage({ ...emptyComposerState, draft: "  hello " }),
+    ).toBe(true);
     expect(
-      canSendPublicChatMessage({ ...base, draft: "hello", uploading: true }),
+      canSendPublicChatMessage({ ...emptyComposerState, attachmentCount: 1 }),
+    ).toBe(true);
+    expect(
+      canSendPublicChatMessage({
+        ...emptyComposerState,
+        draft: "hello",
+        isSending: true,
+      }),
     ).toBe(false);
     expect(
       canSendPublicChatMessage({
-        ...base,
+        ...emptyComposerState,
+        draft: "hello",
+        uploading: true,
+      }),
+    ).toBe(false);
+    expect(
+      canSendPublicChatMessage({
+        ...emptyComposerState,
         draft: "hello",
         remaining: 0,
         dailyLimit: 10,
@@ -183,7 +197,7 @@ describe("public chat composer state", () => {
     ).toBe(false);
     expect(
       canSendPublicChatMessage({
-        ...base,
+        ...emptyComposerState,
         draft: "hello",
         remaining: 0,
         dailyLimit: 0,

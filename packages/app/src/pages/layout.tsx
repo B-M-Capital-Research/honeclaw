@@ -32,28 +32,28 @@ export default function ConsoleLayout(props: ParentProps) {
   const research = useResearch()
 
   createEffect(() => {
-    const p = location.pathname
-    if (p.startsWith("/dashboard") || p.startsWith("/start")) {
+    const currentPath = location.pathname
+    if (currentPath.startsWith("/dashboard") || currentPath.startsWith("/start")) {
       consoleState.setModule("dashboard")
-    } else if (p.startsWith("/skills")) {
+    } else if (currentPath.startsWith("/skills")) {
       consoleState.setModule("skills")
-    } else if (p.startsWith("/tasks")) {
+    } else if (currentPath.startsWith("/tasks")) {
       consoleState.setModule("tasks")
-    } else if (p.startsWith("/users")) {
+    } else if (currentPath.startsWith("/users")) {
       consoleState.setModule("users")
-    } else if (p.startsWith("/research")) {
+    } else if (currentPath.startsWith("/research")) {
       consoleState.setModule("research")
-    } else if (p.startsWith("/llm-audit")) {
+    } else if (currentPath.startsWith("/llm-audit")) {
       consoleState.setModule("llm-audit")
-    } else if (p.startsWith("/logs")) {
+    } else if (currentPath.startsWith("/logs")) {
       consoleState.setModule("logs")
-    } else if (p.startsWith("/task-health")) {
+    } else if (currentPath.startsWith("/task-health")) {
       consoleState.setModule("task-health")
-    } else if (p.startsWith("/notifications")) {
+    } else if (currentPath.startsWith("/notifications")) {
       consoleState.setModule("notifications")
-    } else if (p.startsWith("/schedule")) {
+    } else if (currentPath.startsWith("/schedule")) {
       consoleState.setModule("schedule")
-    } else if (p.startsWith("/settings")) {
+    } else if (currentPath.startsWith("/settings")) {
       consoleState.setModule("settings")
     } else {
       consoleState.setModule("sessions")

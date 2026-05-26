@@ -12,11 +12,11 @@ import {
 } from "./users-model"
 import type { ActorListItem } from "@/lib/actors"
 
-function tabIds(tabs: Array<{ id: string }>): string[] {
+function userTabIds(tabs: Array<{ id: string }>): string[] {
   return tabs.map((tab) => tab.id)
 }
 
-function actorItem(patch: Partial<ActorListItem>): ActorListItem {
+function actorListItemFixture(patch: Partial<ActorListItem>): ActorListItem {
   return {
     actor: { channel: "imessage", user_id: "alice" },
     key: "imessage||alice",
@@ -33,7 +33,7 @@ describe("users-model", () => {
   })
 
   it("keeps user tabs in route order and filters capability-gated tabs", () => {
-    expect(tabIds(USER_TAB_CONFIG)).toEqual([
+    expect(userTabIds(USER_TAB_CONFIG)).toEqual([
       "portfolio",
       "profiles",
       "mainline",
@@ -41,13 +41,13 @@ describe("users-model", () => {
       "research",
     ])
 
-    expect(tabIds(availableUsersTabs(() => false))).toEqual([
+    expect(userTabIds(availableUsersTabs(() => false))).toEqual([
       "portfolio",
       "mainline",
       "sessions",
     ])
     expect(
-      tabIds(availableUsersTabs((capability) => capability === "research")),
+      userTabIds(availableUsersTabs((capability) => capability === "research")),
     ).toEqual(["portfolio", "mainline", "sessions", "research"])
   })
 
@@ -61,31 +61,35 @@ describe("users-model", () => {
   })
 
   it("keeps actor-list filtering in the model layer", () => {
-    const items = [
-      actorItem({ actor: { channel: "imessage", user_id: "alice" } }),
-      actorItem({
+    const actorItems = [
+      actorListItemFixture({ actor: { channel: "imessage", user_id: "alice" } }),
+      actorListItemFixture({
         actor: { channel: "telegram", user_id: "bob", channel_scope: "desk" },
         key: "telegram|desk|bob",
         sessionLabel: "Daily research",
       }),
     ]
 
-    expect(filterActorList(items, "")).toBe(items)
-    expect(filterActorList(items, " TELEGRAM ")).toEqual([items[1]])
-    expect(filterActorList(items, "desk")).toEqual([items[1]])
-    expect(filterActorList(items, "daily")).toEqual([items[1]])
-    expect(filterActorList(items, "missing")).toEqual([])
+    expect(filterActorList(actorItems, "")).toBe(actorItems)
+    expect(filterActorList(actorItems, " TELEGRAM ")).toEqual([actorItems[1]])
+    expect(filterActorList(actorItems, "desk")).toEqual([actorItems[1]])
+    expect(filterActorList(actorItems, "daily")).toEqual([actorItems[1]])
+    expect(filterActorList(actorItems, "missing")).toEqual([])
   })
 
   it("normalizes manual actor draft state before selection", () => {
-    const draft = { channel: " imessage ", user_id: " alice ", channel_scope: " " }
-    expect(actorFromManualDraft(draft)).toEqual({
+    const manualActorDraft = {
+      channel: " imessage ",
+      user_id: " alice ",
+      channel_scope: " ",
+    }
+    expect(actorFromManualDraft(manualActorDraft)).toEqual({
       channel: "imessage",
       user_id: "alice",
       channel_scope: undefined,
     })
-    expect(actorFromManualDraft({ ...draft, user_id: "" })).toBeNull()
-    expect(patchActorDraft(draft, { channel_scope: "family" })).toEqual({
+    expect(actorFromManualDraft({ ...manualActorDraft, user_id: "" })).toBeNull()
+    expect(patchActorDraft(manualActorDraft, { channel_scope: "family" })).toEqual({
       channel: " imessage ",
       user_id: " alice ",
       channel_scope: "family",
@@ -93,10 +97,10 @@ describe("users-model", () => {
   })
 
   it("derives actor-list stat text outside the component", () => {
-    expect(actorListStatsText(actorItem({}))).toBe("暂无数据")
+    expect(actorListStatsText(actorListItemFixture({}))).toBe("暂无数据")
     expect(
       actorListStatsText(
-        actorItem({
+        actorListItemFixture({
           holdingsCount: 2,
           watchlistCount: 1,
           profileCount: 3,

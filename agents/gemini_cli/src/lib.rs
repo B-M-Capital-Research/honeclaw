@@ -115,12 +115,12 @@ impl GeminiStreamEvent {
 /// - `{"type":"init",...}` / `{"type":"result",...}` / `{"type":"user",...}`
 /// - 非 JSON 行（CLI 进度日志等）
 pub fn parse_stream_event(line: &str) -> Option<GeminiStreamEvent> {
-    let t = line.trim();
-    if t.is_empty() {
+    let trimmed_line = line.trim();
+    if trimmed_line.is_empty() {
         return None;
     }
 
-    let Ok(json) = serde_json::from_str::<Value>(t) else {
+    let Ok(json) = serde_json::from_str::<Value>(trimmed_line) else {
         // 非 JSON 行（进度日志等），忽略
         return None;
     };
@@ -227,8 +227,8 @@ pub fn parse_stream_event(line: &str) -> Option<GeminiStreamEvent> {
 
         // ── 无 type 字段：尝试旧格式 {"response":"..."} ───────────────────────
         _ => {
-            if let Some(resp) = json.get("response").and_then(|v| v.as_str()) {
-                let trimmed_response = resp.trim();
+            if let Some(response_text) = json.get("response").and_then(|v| v.as_str()) {
+                let trimmed_response = response_text.trim();
                 if !trimmed_response.is_empty() {
                     return Some(GeminiStreamEvent::Content(trimmed_response.to_string()));
                 }
@@ -655,26 +655,29 @@ impl GeminiCliAgent {
                                 remaining / 1000
                             ));
                         }
-                        Some(GeminiStreamEvent::Finished(val)) => {
+                        Some(GeminiStreamEvent::Finished(finish_event)) => {
                             self.dbg("[GeminiCliAgent] stream finished event received");
-                            if let Some(meta) = val.get("usageMetadata") {
-                                let p = meta
+                            if let Some(meta) = finish_event.get("usageMetadata") {
+                                let prompt_tokens = meta
                                     .get("promptTokenCount")
                                     .and_then(|v| v.as_u64())
                                     .map(|v| v as u32);
-                                let c = meta
+                                let completion_tokens = meta
                                     .get("candidatesTokenCount")
                                     .and_then(|v| v.as_u64())
                                     .map(|v| v as u32);
-                                let t = meta
+                                let total_tokens = meta
                                     .get("totalTokenCount")
                                     .and_then(|v| v.as_u64())
                                     .map(|v| v as u32);
-                                if p.is_some() || c.is_some() || t.is_some() {
+                                if prompt_tokens.is_some()
+                                    || completion_tokens.is_some()
+                                    || total_tokens.is_some()
+                                {
                                     usage = Some(hone_llm::provider::TokenUsage {
-                                        prompt_tokens: p,
-                                        completion_tokens: c,
-                                        total_tokens: t,
+                                        prompt_tokens,
+                                        completion_tokens,
+                                        total_tokens,
                                     });
                                 }
                             }
@@ -687,10 +690,10 @@ impl GeminiCliAgent {
                             tracing::warn!("[GeminiCliAgent] invalid stream event received");
                             // 不立即中止，继续读取剩余行
                         }
-                        Some(GeminiStreamEvent::ToolCallRequest(val)) => {
+                        Some(GeminiStreamEvent::ToolCallRequest(tool_call_event)) => {
                             self.dbg(&format!(
                                 "[GeminiCliAgent] native tool_call_request event (ignored, using text protocol): {}",
-                                val
+                                tool_call_event
                             ));
                         }
                         Some(GeminiStreamEvent::Unknown(type_name)) => {
@@ -781,7 +784,7 @@ impl Agent for GeminiCliAgent {
             let call_started = std::time::Instant::now();
 
             let (content, usage) = match self.call_gemini(&prompt).await {
-                Ok(res) => res,
+                Ok(gemini_response) => gemini_response,
                 Err(e) => {
                     self.record_audit(
                         context,
@@ -904,7 +907,7 @@ impl Agent for GeminiCliAgent {
         let request_payload = serde_json::json!({ "prompt": prompt.clone() });
         let call_started = std::time::Instant::now();
         let (content, usage) = match self.call_gemini(&prompt).await {
-            Ok(res) => res,
+            Ok(gemini_response) => gemini_response,
             Err(e) => {
                 self.record_audit(
                     context,

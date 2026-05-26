@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test"
 import { parseSkillSlashCommand, resolveSkillSlashCommand, searchSkillMatches } from "./skill-command"
 import type { SkillInfo } from "./types"
 
-const skills: SkillInfo[] = [
+const skillFixtures: SkillInfo[] = [
   {
     id: "stock_research",
     display_name: "个股研究",
@@ -56,14 +56,14 @@ function requireValue<T>(value: T | null | undefined, label: string): T {
 
 describe("skill slash command", () => {
   it("opens command mode on slash prefix", () => {
-    const result = requireValue(
-      resolveSkillSlashCommand(skills, "/"),
+    const slashCommandResult = requireValue(
+      resolveSkillSlashCommand(skillFixtures, "/"),
       "slash command result",
     )
-    expect(result.command.stage).toBe("command")
-    expect(requireValue(result.matches[0], "first slash match").id).toBe(
-      "stock_research",
-    )
+    expect(slashCommandResult.command.stage).toBe("command")
+    expect(
+      requireValue(slashCommandResult.matches[0], "first slash match").id,
+    ).toBe("stock_research")
   })
 
   it("keeps partial /skill prefixes in command mode", () => {
@@ -75,36 +75,37 @@ describe("skill slash command", () => {
   })
 
   it("resolves exact id matches", () => {
-    const result = requireValue(
-      resolveSkillSlashCommand(skills, "/skill stock_research"),
+    const exactIdResult = requireValue(
+      resolveSkillSlashCommand(skillFixtures, "/skill stock_research"),
       "exact id result",
     )
-    expect(requireValue(result.exactMatch, "exact id match").id).toBe(
+    expect(requireValue(exactIdResult.exactMatch, "exact id match").id).toBe(
       "stock_research",
     )
   })
 
   it("normalizes surrounding whitespace for exact display-name matches", () => {
-    const result = requireValue(
-      resolveSkillSlashCommand(skills, "   /skill   个股研究   "),
+    const exactDisplayNameResult = requireValue(
+      resolveSkillSlashCommand(skillFixtures, "   /skill   个股研究   "),
       "exact display-name result",
     )
-    expect(requireValue(result.exactMatch, "exact display-name match").id).toBe(
-      "stock_research",
-    )
+    expect(
+      requireValue(exactDisplayNameResult.exactMatch, "exact display-name match")
+        .id,
+    ).toBe("stock_research")
   })
 
   it("matches aliases", () => {
-    const matches = searchSkillMatches(skills, "macro")
+    const matches = searchSkillMatches(skillFixtures, "macro")
     expect(requireValue(matches[0], "first alias match").id).toBe("macro_watch")
   })
 
   it("hides disabled skills from slash search", () => {
-    const matches = searchSkillMatches(skills, "disabled")
+    const matches = searchSkillMatches(skillFixtures, "disabled")
     expect(matches).toEqual([])
   })
 
   it("returns null for unrelated slash commands", () => {
-    expect(resolveSkillSlashCommand(skills, "/help")).toBeNull()
+    expect(resolveSkillSlashCommand(skillFixtures, "/help")).toBeNull()
   })
 })

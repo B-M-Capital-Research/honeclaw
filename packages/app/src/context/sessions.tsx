@@ -728,8 +728,11 @@ function createSessionsState() {
     },
     /** 关闭指定会话的错误/超时 pending 状态（用户主动 dismiss） */
     dismissPending(key: string) {
-      const p = state.pendingByKey[key];
-      if (p && (p.phase === "error" || p.phase === "timeout")) {
+      const pendingState = state.pendingByKey[key];
+      if (
+        pendingState &&
+        (pendingState.phase === "error" || pendingState.phase === "timeout")
+      ) {
         clearPending(key);
       }
     },
@@ -751,9 +754,9 @@ function createSessionsState() {
     },
     async sendCurrentMessage() {
       const key = state.currentUserId;
-      const draft = state.draft.trim();
+      const trimmedDraft = state.draft.trim();
       const user = key ? findUser(key) : undefined;
-      if (!key || !user || !draft) return;
+      if (!key || !user || !trimmedDraft) return;
       // 若处于可重试的终态（error / timeout），自动 dismiss 以允许立即重发
       const existing = state.pendingByKey[key];
       if (existing && (existing.phase === "error" || existing.phase === "timeout")) {
@@ -770,13 +773,13 @@ function createSessionsState() {
       }
 
       setState("draft", "");
-      await sendDraft(actorFromUser(user), key, draft);
+      await sendDraft(actorFromUser(user), key, trimmedDraft);
     },
     async sendPrefilledMessage(message: string) {
       const key = state.currentUserId;
-      const draft = message.trim();
+      const trimmedMessage = message.trim();
       const user = key ? findUser(key) : undefined;
-      if (!key || !user || !draft) return;
+      if (!key || !user || !trimmedMessage) return;
       // 若处于可重试的终态（error / timeout），自动 dismiss 以允许立即重发
       const existing = state.pendingByKey[key];
       if (existing && (existing.phase === "error" || existing.phase === "timeout")) {
@@ -793,7 +796,7 @@ function createSessionsState() {
       }
 
       setState("draft", "");
-      await sendDraft(actorFromUser(user), key, draft);
+      await sendDraft(actorFromUser(user), key, trimmedMessage);
     },
     /** 主动停止当前进行中的请求（中止 HTTP 流、设置"已停止"状态） */
     stopPending(key: string) {
@@ -803,8 +806,11 @@ function createSessionsState() {
         // abort 触发 catch 块，catch 块会将状态设为 error 并显示 AbortError；
         // 覆盖为更友好的"已停止"提示
         setTimeout(() => {
-          const p = state.pendingByKey[key];
-          if (p && (p.phase === "error" || p.phase === "timeout")) {
+          const pendingState = state.pendingByKey[key];
+          if (
+            pendingState &&
+            (pendingState.phase === "error" || pendingState.phase === "timeout")
+          ) {
             updatePending(key, { phase: "error", statusText: "已停止，可重新发送" });
           }
         }, 50);

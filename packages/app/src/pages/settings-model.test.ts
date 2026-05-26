@@ -255,31 +255,51 @@ describe("settings-model", () => {
   })
 
   it("keeps api key draft settings and visibility together", () => {
-    const initial = toApiKeyDraftState({
+    const initialApiKeyDraftState = toApiKeyDraftState({
       apiKeys: ["alpha", "beta"],
       provider: "fmp",
     })
-    expect(initial).toEqual({
+    expect(initialApiKeyDraftState).toEqual({
       settings: { apiKeys: ["alpha", "beta"], provider: "fmp" },
       visibility: [false, false],
     })
 
-    const updated = updateApiKeyDraftState(initial, 1, "next")
-    expect(updated.settings.apiKeys).toEqual(["alpha", "next"])
-    expect(updated.visibility).toBe(initial.visibility)
-    expect(initial.settings.apiKeys).toEqual(["alpha", "beta"])
+    const updatedApiKeyDraftState = updateApiKeyDraftState(
+      initialApiKeyDraftState,
+      1,
+      "next",
+    )
+    expect(updatedApiKeyDraftState.settings.apiKeys).toEqual(["alpha", "next"])
+    expect(updatedApiKeyDraftState.visibility).toBe(
+      initialApiKeyDraftState.visibility,
+    )
+    expect(initialApiKeyDraftState.settings.apiKeys).toEqual(["alpha", "beta"])
 
-    const toggled = toggleApiKeyDraftState(updated, 0)
-    expect(toggled.settings).toBe(updated.settings)
-    expect(toggled.visibility).toEqual([true, false])
+    const toggledApiKeyDraftState = toggleApiKeyDraftState(
+      updatedApiKeyDraftState,
+      0,
+    )
+    expect(toggledApiKeyDraftState.settings).toBe(
+      updatedApiKeyDraftState.settings,
+    )
+    expect(toggledApiKeyDraftState.visibility).toEqual([true, false])
 
-    const appended = appendApiKeyDraftState(toggled)
-    expect(appended.settings.apiKeys).toEqual(["alpha", "next", ""])
-    expect(appended.visibility).toEqual([true, false, false])
+    const appendedApiKeyDraftState = appendApiKeyDraftState(
+      toggledApiKeyDraftState,
+    )
+    expect(appendedApiKeyDraftState.settings.apiKeys).toEqual([
+      "alpha",
+      "next",
+      "",
+    ])
+    expect(appendedApiKeyDraftState.visibility).toEqual([true, false, false])
 
-    const removed = removeApiKeyDraftState(appended, 0)
-    expect(removed.settings.apiKeys).toEqual(["next", ""])
-    expect(removed.visibility).toEqual([false, false])
+    const draftAfterRemovingFirstKey = removeApiKeyDraftState(
+      appendedApiKeyDraftState,
+      0,
+    )
+    expect(draftAfterRemovingFirstKey.settings.apiKeys).toEqual(["next", ""])
+    expect(draftAfterRemovingFirstKey.visibility).toEqual([false, false])
   })
 
   it("converts persisted channel settings into editable draft", () => {

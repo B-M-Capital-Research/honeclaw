@@ -106,8 +106,8 @@ export function ChannelStatusBadge() {
     setCleanupBusy(true)
     setCleanupMessage("")
     try {
-      const result = await cleanupDesktopChannelProcesses()
-      setCleanupMessage(result.message)
+      const cleanupResult = await cleanupDesktopChannelProcesses()
+      setCleanupMessage(cleanupResult.message)
       await consoleState.refreshChannels()
     } catch (error) {
       setCleanupMessage(error instanceof Error ? error.message : String(error))

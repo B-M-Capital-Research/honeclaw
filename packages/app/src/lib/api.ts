@@ -360,14 +360,14 @@ export async function getAdminCompanyProfile(
   actor: ActorRef,
   ticker: string,
 ): Promise<{ ticker: string; dir: string; markdown: string }> {
-  const p = new URLSearchParams({
+  const queryParams = new URLSearchParams({
     channel: actor.channel,
     user_id: actor.user_id,
     ticker,
   });
-  if (actor.channel_scope) p.set("channel_scope", actor.channel_scope);
+  if (actor.channel_scope) queryParams.set("channel_scope", actor.channel_scope);
   const response = await apiFetch(
-    `/api/event-engine/company-profile?${p.toString()}`,
+    `/api/event-engine/company-profile?${queryParams.toString()}`,
   );
   return parseJson(response);
 }

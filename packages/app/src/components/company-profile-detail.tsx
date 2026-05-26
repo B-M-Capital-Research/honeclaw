@@ -49,7 +49,7 @@ export function CompanyProfileDetail() {
   const profile = () => profiles.currentProfile()
   const currentActor = () => profiles.currentActor()
   const preview = () => profiles.state.transfer.preview
-  const result = () => profiles.state.transfer.lastResult
+  const importResult = () => profiles.state.transfer.lastResult
   const transferError = () => profiles.state.transfer.error
   let fileInputRef: HTMLInputElement | undefined
 
@@ -174,14 +174,14 @@ export function CompanyProfileDetail() {
               </div>
             </Show>
 
-            <Show when={result()}>
+            <Show when={importResult()}>
               <div class="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
                 <div class="text-sm font-semibold text-emerald-800">{COMPANY_PROFILES.detail.import_done_title}</div>
                 <div class="mt-1 text-sm text-emerald-700">
                   {tpl(COMPANY_PROFILES.detail.import_done_summary, {
-                    imported: result()!.imported_count,
-                    replaced: result()!.replaced_count,
-                    skipped: result()!.skipped_count,
+                    imported: importResult()!.imported_count,
+                    replaced: importResult()!.replaced_count,
+                    skipped: importResult()!.skipped_count,
                   })}
                 </div>
                 <Show when={profiles.state.transfer.backupBlob}>

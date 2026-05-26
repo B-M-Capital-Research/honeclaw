@@ -64,7 +64,7 @@ function ActionBtn(
   const variant = () => props.variant ?? "default";
 
   const getStyle = () => {
-    const base = {
+    const buttonBaseStyle = {
       padding: "10px 20px",
       "border-radius": "8px",
       cursor: "pointer",
@@ -80,7 +80,7 @@ function ActionBtn(
     };
     if (variant() === "primary") {
       return {
-        ...base,
+        ...buttonBaseStyle,
         background: "#f59e0b",
         border: "1px solid #f59e0b",
         color: "#fff",
@@ -89,7 +89,7 @@ function ActionBtn(
     }
     if (variant() === "ghost") {
       return {
-        ...base,
+        ...buttonBaseStyle,
         background: "transparent",
         border: "1px solid rgba(0,0,0,0.08)",
         color: "#94a3b8",
@@ -97,14 +97,14 @@ function ActionBtn(
     }
     if (variant() === "danger") {
       return {
-        ...base,
+        ...buttonBaseStyle,
         background: "transparent",
         border: "1px solid rgba(239,68,68,0.20)",
         color: "#ef4444",
       };
     }
     return {
-      ...base,
+      ...buttonBaseStyle,
       background: "#fff",
       border: "1px solid rgba(0,0,0,0.10)",
       color: "#475569",

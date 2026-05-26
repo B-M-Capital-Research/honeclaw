@@ -22,7 +22,7 @@ import {
   toggleTag,
 } from "./notification-preferences-model"
 
-function slotIds(slots: Array<{ id: string }>): string[] {
+function digestSlotIds(slots: Array<{ id: string }>): string[] {
   return slots.map((slot) => slot.id)
 }
 
@@ -74,15 +74,17 @@ describe("notification-preferences-model", () => {
   })
 
   it("compares actors by channel, user, and optional scope", () => {
-    const base = { channel: "discord", user_id: "u1" }
-    expect(sameActor(base, { channel: "discord", user_id: "u1" })).toBe(true)
+    const discordActor = { channel: "discord", user_id: "u1" }
+    expect(sameActor(discordActor, { channel: "discord", user_id: "u1" })).toBe(
+      true,
+    )
     expect(
       sameActor(
-        { ...base, channel_scope: "dm" },
-        { ...base, channel_scope: "group" },
+        { ...discordActor, channel_scope: "dm" },
+        { ...discordActor, channel_scope: "group" },
       ),
     ).toBe(false)
-    expect(sameActor(undefined, base)).toBe(false)
+    expect(sameActor(undefined, discordActor)).toBe(false)
   })
 
   it("toggles tags immutably", () => {
@@ -98,12 +100,15 @@ describe("notification-preferences-model", () => {
     expect(isValidDigestSlotTime("24:00")).toBe(false)
     expect(isValidDigestSlotTime("8:00")).toBe(false)
 
-    const slots = [
+    const digestSlots = [
       { id: "late", time: "23:00" },
       { id: "early", time: "08:00" },
     ]
-    expect(slotIds(sortDigestSlots(slots))).toEqual(["early", "late"])
-    expect(slotIds(slots)).toEqual(["late", "early"])
+    expect(digestSlotIds(sortDigestSlots(digestSlots))).toEqual([
+      "early",
+      "late",
+    ])
+    expect(digestSlotIds(digestSlots)).toEqual(["late", "early"])
   })
 
   it("keeps nullable tag preferences normalized while toggling", () => {
@@ -123,42 +128,51 @@ describe("notification-preferences-model", () => {
   })
 
   it("updates digest slots without mutating or duplicating times", () => {
-    const withLateSlot = addDigestSlot(DEFAULT_NOTIFICATION_PREFS, "23:00")
-    const withSortedSlots = addDigestSlot(withLateSlot, "08:00")
-    expect(slotIds(withSortedSlots.digest_slots ?? [])).toEqual([
+    const prefsWithLateSlot = addDigestSlot(DEFAULT_NOTIFICATION_PREFS, "23:00")
+    const prefsWithSortedSlots = addDigestSlot(prefsWithLateSlot, "08:00")
+    expect(digestSlotIds(prefsWithSortedSlots.digest_slots ?? [])).toEqual([
       "slot_1",
       "slot_0",
     ])
     expect(
-      (addDigestSlot(withSortedSlots, "08:00").digest_slots ?? []).length,
+      (addDigestSlot(prefsWithSortedSlots, "08:00").digest_slots ?? []).length,
     ).toBe(2)
-    expect(removeDigestSlot(withSortedSlots, "slot_1").digest_slots).toEqual([
-      { id: "slot_0", time: "23:00" },
-    ])
+    expect(
+      removeDigestSlot(prefsWithSortedSlots, "slot_1").digest_slots,
+    ).toEqual([{ id: "slot_0", time: "23:00" }])
     expect(DEFAULT_NOTIFICATION_PREFS.digest_slots).toBeNull()
   })
 
   it("updates quiet hours through reusable state transforms", () => {
-    const enabled = enableQuietHours(DEFAULT_NOTIFICATION_PREFS)
-    expect(enabled.quiet_hours).toEqual({
+    const prefsWithQuietHours = enableQuietHours(DEFAULT_NOTIFICATION_PREFS)
+    expect(prefsWithQuietHours.quiet_hours).toEqual({
       from: "00:00",
       to: "08:00",
       exempt_kinds: [],
     })
 
-    const movedStart = setQuietHourStart(enabled, "22:00")
-    expect(movedStart.quiet_hours?.from).toBe("22:00")
-    expect(movedStart.quiet_hours?.to).toBe("08:00")
+    const prefsWithMovedQuietStart = setQuietHourStart(
+      prefsWithQuietHours,
+      "22:00",
+    )
+    expect(prefsWithMovedQuietStart.quiet_hours?.from).toBe("22:00")
+    expect(prefsWithMovedQuietStart.quiet_hours?.to).toBe("08:00")
 
-    const movedEnd = setQuietHourEnd(DEFAULT_NOTIFICATION_PREFS, "07:30")
-    expect(movedEnd.quiet_hours).toEqual({
+    const prefsWithMovedQuietEnd = setQuietHourEnd(
+      DEFAULT_NOTIFICATION_PREFS,
+      "07:30",
+    )
+    expect(prefsWithMovedQuietEnd.quiet_hours).toEqual({
       from: "00:00",
       to: "07:30",
       exempt_kinds: [],
     })
 
-    const withExempt = toggleQuietExemptKind(movedStart, "earnings")
-    expect(withExempt.quiet_hours?.exempt_kinds).toEqual(["earnings"])
+    const prefsWithExemptKind = toggleQuietExemptKind(
+      prefsWithMovedQuietStart,
+      "earnings",
+    )
+    expect(prefsWithExemptKind.quiet_hours?.exempt_kinds).toEqual(["earnings"])
     expect(toggleQuietExemptKind(DEFAULT_NOTIFICATION_PREFS, "earnings")).toBe(
       DEFAULT_NOTIFICATION_PREFS,
     )

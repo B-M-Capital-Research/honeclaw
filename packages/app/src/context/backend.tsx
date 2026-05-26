@@ -330,11 +330,11 @@ function createBackendState() {
       }
       setState("saving", true)
       try {
-        const result = await saveDesktopAgentSettings(settings)
-        if (result.backendStatus) {
-          await applyDesktopStatusWithRemoteFallback(result.backendStatus)
+        const saveResult = await saveDesktopAgentSettings(settings)
+        if (saveResult.backendStatus) {
+          await applyDesktopStatusWithRemoteFallback(saveResult.backendStatus)
         }
-        return result
+        return saveResult
       } finally {
         setState("saving", false)
       }
@@ -351,11 +351,11 @@ function createBackendState() {
         if (!state.isDesktop) {
           return await putChannelSettings(settings)
         }
-        const result = await saveDesktopChannelSettings(settings)
-        if (result.backendStatus) {
-          await applyDesktopStatusWithRemoteFallback(result.backendStatus)
+        const saveResult = await saveDesktopChannelSettings(settings)
+        if (saveResult.backendStatus) {
+          await applyDesktopStatusWithRemoteFallback(saveResult.backendStatus)
         }
-        return result
+        return saveResult
       } finally {
         setState("saving", false)
       }

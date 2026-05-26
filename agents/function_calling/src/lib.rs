@@ -445,7 +445,7 @@ mod tests {
             state.chat_with_tools_calls += 1;
             state.seen_tool_messages.push(messages.to_vec());
             match state.next_tool_responses.pop_front() {
-                Some(resp) => Ok(resp),
+                Some(mock_tool_response) => Ok(mock_tool_response),
                 None => Err(hone_core::HoneError::Llm(
                     "no more mock tool responses".to_string(),
                 )),

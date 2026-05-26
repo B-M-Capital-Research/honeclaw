@@ -21,8 +21,14 @@ function requireValue<T>(value: T | null | undefined, label: string): T {
 
 describe("actors", () => {
   it("roundtrips actor keys with optional scope", () => {
-    const actor = { channel: "discord", user_id: "alice", channel_scope: "g:1:c:2" }
-    expect(parseActorKey(actorKey(actor))).toEqual(actor)
+    const scopedDiscordActor = {
+      channel: "discord",
+      user_id: "alice",
+      channel_scope: "g:1:c:2",
+    }
+    expect(parseActorKey(actorKey(scopedDiscordActor))).toEqual(
+      scopedDiscordActor,
+    )
   })
 
   it("parses direct actor keys without scope", () => {
@@ -99,14 +105,13 @@ describe("mergeActorSummaries", () => {
   ]
 
   it("merges by actor key and aggregates per-source fields", () => {
-    const result = mergeActorSummaries({ portfolios, profiles, sessions })
-    expect(result.map((summary) => summary.actor.user_id).sort()).toEqual([
-      "alice",
-      "bob",
-    ])
+    const actorSummaries = mergeActorSummaries({ portfolios, profiles, sessions })
+    expect(actorSummaries.map((summary) => summary.actor.user_id).sort()).toEqual(
+      ["alice", "bob"],
+    )
     const findActor = (userId: string): ActorListItem =>
       requireValue(
-        result.find((r) => r.actor.user_id === userId),
+        actorSummaries.find((summary) => summary.actor.user_id === userId),
         `actor summary ${userId}`,
       )
     const alice = findActor("alice")
@@ -122,10 +127,10 @@ describe("mergeActorSummaries", () => {
   })
 
   it("sorts by lastSessionTime first, falls back to updatedAt", () => {
-    const result = mergeActorSummaries({ portfolios, profiles, sessions })
+    const actorSummaries = mergeActorSummaries({ portfolios, profiles, sessions })
     // bob has session timestamp 2026-04-25 > alice updatedAt 2026-04-22 → bob first
-    expect(result[0].actor.user_id).toBe("bob")
-    expect(result[1].actor.user_id).toBe("alice")
+    expect(actorSummaries[0].actor.user_id).toBe("bob")
+    expect(actorSummaries[1].actor.user_id).toBe("alice")
   })
 
   it("returns an empty list when no source summaries are provided", () => {

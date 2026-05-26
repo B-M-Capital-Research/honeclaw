@@ -368,26 +368,26 @@ function createCompanyProfilesState() {
         setState("transfer", "backupFileName", backup.fileName)
       }
 
-      const result = await applyImportCompanyProfiles(actor, file, request)
-      setState("transfer", "lastResult", result)
+      const importApplyResult = await applyImportCompanyProfiles(actor, file, request)
+      setState("transfer", "lastResult", importApplyResult)
       setState("transfer", "preview", undefined)
       setState("transfer", "importFile", undefined)
       setState("transfer", "decisions", {})
-      setState("highlightedProfileIds", result.changed_profile_ids)
+      setState("highlightedProfileIds", importApplyResult.changed_profile_ids)
 
       await refetchProfiles()
       await refetchActors()
 
-      if (result.changed_profile_ids.length > 0) {
-        setState("currentProfileId", result.changed_profile_ids[0])
+      if (importApplyResult.changed_profile_ids.length > 0) {
+        setState("currentProfileId", importApplyResult.changed_profile_ids[0])
       }
 
       toast.show(
         COMPANY_PROFILES.context.toast_import_done_title,
         tpl(COMPANY_PROFILES.context.toast_import_done_summary, {
-          imported: result.imported_count,
-          replaced: result.replaced_count,
-          skipped: result.skipped_count,
+          imported: importApplyResult.imported_count,
+          replaced: importApplyResult.replaced_count,
+          skipped: importApplyResult.skipped_count,
         }),
       )
     } catch (error) {

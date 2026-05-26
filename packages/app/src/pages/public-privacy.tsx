@@ -33,10 +33,10 @@ function VersionBanner() {
 }
 
 function Inline(props: { part: LegalInline }) {
-  const p = props.part
-  if (typeof p === "string") return <>{p}</>
-  if ("strong" in p) return <strong>{p.strong}</strong>
-  return <code>{p.code}</code>
+  const legalPart = props.part
+  if (typeof legalPart === "string") return <>{legalPart}</>
+  if ("strong" in legalPart) return <strong>{legalPart.strong}</strong>
+  return <code>{legalPart.code}</code>
 }
 
 function Block(props: { block: LegalBlock }) {

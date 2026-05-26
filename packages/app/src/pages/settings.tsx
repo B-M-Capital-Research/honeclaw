@@ -93,9 +93,9 @@ async function runCheckState(
   setStatus("checking");
   setMessage("");
   try {
-    const result = await probe();
-    setStatus(result.ok ? "ok" : "error");
-    setMessage(result.message);
+    const checkResult = await probe();
+    setStatus(checkResult.ok ? "ok" : "error");
+    setMessage(checkResult.message);
   } catch (e) {
     setStatus("error");
     setMessage(e instanceof Error ? e.message : String(e));
@@ -508,11 +508,11 @@ export default function SettingsPage() {
     setAgentMessage("");
     setAgentError("");
     try {
-      const result = await backend.saveAgentSettings(next);
-      if (isAgentSettingsRuntimeMismatch(result)) {
-        setAgentError(result.message);
+      const saveResult = await backend.saveAgentSettings(next);
+      if (isAgentSettingsRuntimeMismatch(saveResult)) {
+        setAgentError(saveResult.message);
       } else {
-        setAgentMessage(result.message);
+        setAgentMessage(saveResult.message);
       }
     } catch (e) {
       setAgentDraft(previous);
@@ -528,11 +528,11 @@ export default function SettingsPage() {
     setAgentMessage("");
     setAgentError("");
     try {
-      const result = await backend.saveAgentSettings(agentDraft());
-      if (isAgentSettingsRuntimeMismatch(result)) {
-        setAgentError(result.message);
+      const saveResult = await backend.saveAgentSettings(agentDraft());
+      if (isAgentSettingsRuntimeMismatch(saveResult)) {
+        setAgentError(saveResult.message);
       } else {
-        setAgentMessage(result.message);
+        setAgentMessage(saveResult.message);
       }
     } catch (e) {
       setAgentError(e instanceof Error ? e.message : String(e));
@@ -577,8 +577,8 @@ export default function SettingsPage() {
   const submitChannels = async (event: Event) => {
     event.preventDefault();
     try {
-      const result = await backend.saveChannelSettings(channelDraft());
-      setDesktopChannelSettings(result.settings);
+      const saveResult = await backend.saveChannelSettings(channelDraft());
+      setDesktopChannelSettings(saveResult.settings);
     } catch {
     }
   };
@@ -675,17 +675,17 @@ export default function SettingsPage() {
       if (!confirmed) return;
     }
     await runInviteAction(invite, "disable", async () => {
-      const result = await disableWebInvite(invite.user_id);
-      replaceInvite(result.invite);
-      setInviteMessage(result.message);
+      const inviteResult = await disableWebInvite(invite.user_id);
+      replaceInvite(inviteResult.invite);
+      setInviteMessage(inviteResult.message);
     });
   };
 
   const handleEnableInvite = async (invite: WebInviteInfo) => {
     await runInviteAction(invite, "enable", async () => {
-      const result = await enableWebInvite(invite.user_id);
-      replaceInvite(result.invite);
-      setInviteMessage(result.message);
+      const inviteResult = await enableWebInvite(invite.user_id);
+      replaceInvite(inviteResult.invite);
+      setInviteMessage(inviteResult.message);
     });
   };
 
@@ -697,13 +697,15 @@ export default function SettingsPage() {
       if (!confirmed) return;
     }
     await runInviteAction(invite, "reset", async () => {
-      const result = await resetWebInvite(invite.user_id);
-      replaceInvite(result.invite);
-      setInviteMessage(result.message);
+      const inviteResult = await resetWebInvite(invite.user_id);
+      replaceInvite(inviteResult.invite);
+      setInviteMessage(inviteResult.message);
       if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(result.invite.invite_code);
+        await navigator.clipboard.writeText(inviteResult.invite.invite_code);
         setInviteMessage(
-          tpl(SETTINGS.invite.reset_copied_suffix, { message: result.message }),
+          tpl(SETTINGS.invite.reset_copied_suffix, {
+            message: inviteResult.message,
+          }),
         );
       }
     });
@@ -724,11 +726,11 @@ export default function SettingsPage() {
 
   const handleGetInviteApiKey = async (invite: WebInviteInfo) => {
     await runInviteAction(invite, "api-key", async () => {
-      const result = await getWebInviteApiKey(invite.user_id);
-      replaceInvite(result.invite);
-      setInviteMessage(result.message);
-      if (result.invite.api_key) {
-        await copyInviteApiKey(result.invite.api_key);
+      const inviteResult = await getWebInviteApiKey(invite.user_id);
+      replaceInvite(inviteResult.invite);
+      setInviteMessage(inviteResult.message);
+      if (inviteResult.invite.api_key) {
+        await copyInviteApiKey(inviteResult.invite.api_key);
       }
     });
   };
@@ -741,11 +743,11 @@ export default function SettingsPage() {
       if (!confirmed) return;
     }
     await runInviteAction(invite, "api-key-reset", async () => {
-      const result = await resetWebInviteApiKey(invite.user_id);
-      replaceInvite(result.invite);
-      setInviteMessage(result.message);
-      if (result.invite.api_key) {
-        await copyInviteApiKey(result.invite.api_key);
+      const inviteResult = await resetWebInviteApiKey(invite.user_id);
+      replaceInvite(inviteResult.invite);
+      setInviteMessage(inviteResult.message);
+      if (inviteResult.invite.api_key) {
+        await copyInviteApiKey(inviteResult.invite.api_key);
       }
     });
   };

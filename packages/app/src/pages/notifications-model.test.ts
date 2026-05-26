@@ -16,11 +16,11 @@ import { setLocale } from "@/lib/i18n"
 
 describe("notifications-model", () => {
   it("builds notification queries from filter state", () => {
-    const now = new Date("2026-05-13T12:00:00.000Z")
+    const referenceNow = new Date("2026-05-13T12:00:00.000Z")
 
     expect(
       buildNotificationsQuery({
-        now,
+        now: referenceNow,
         hours: 6,
         selectedActor: null,
         channel: "discord",
@@ -39,7 +39,7 @@ describe("notifications-model", () => {
 
     expect(
       buildNotificationsQuery({
-        now,
+        now: referenceNow,
         hours: 24,
         selectedActor: {
           channel: "telegram",
@@ -87,7 +87,7 @@ describe("notifications-model", () => {
   })
 
   it("derives chart helper values from histogram data", () => {
-    const peakBucket = {
+    const peakHistogramBucket = {
       bucket_start: "2026-05-13T01:00:00.000Z",
       total: 8,
       sent: 7,
@@ -104,11 +104,11 @@ describe("notifications-model", () => {
           failed: 1,
           skipped: 0,
         },
-        peakBucket,
+        peakHistogramBucket,
       ]),
     ).toBe(8)
 
-    expect(notificationBucketSegments(peakBucket, 8)).toEqual({
+    expect(notificationBucketSegments(peakHistogramBucket, 8)).toEqual({
       heightPct: 100,
       sentPct: 87.5,
       failedPct: 0,

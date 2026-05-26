@@ -194,7 +194,7 @@ function MessageBubble(props: { message: TimelineMessage }) {
   const rendersMarkdown = () =>
     props.message.kind === "assistant" || props.message.kind === "scheduled";
 
-  const base =
+  const bubbleClass =
     props.message.kind === "user"
       ? "ml-auto bg-[color:var(--accent)] text-white"
       : props.message.kind === "scheduled"
@@ -215,7 +215,7 @@ function MessageBubble(props: { message: TimelineMessage }) {
     <div
       class={[
         "max-w-[78%] rounded-2xl px-4 py-3 text-sm leading-7 shadow-sm",
-        base,
+        bubbleClass,
         props.message.synthetic ? "opacity-80" : "",
       ].join(" ")}
     >
