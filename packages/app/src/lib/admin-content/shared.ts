@@ -129,7 +129,8 @@ const ZH = {
 
   layout: {
     not_connected_title: "尚未连接到 Hone 后端",
-    not_connected_hint: "请在「设置 → 后端连接」中检查 baseUrl / token 后重试。",
+    not_connected_prefix: "后端未连接：",
+    not_connected_hint: "请在设置页检查后端连接后重试。",
   },
 
   units: {
@@ -276,8 +277,9 @@ const EN: typeof ZH = {
 
   layout: {
     not_connected_title: "Not connected to the Hone backend",
+    not_connected_prefix: "Backend disconnected: ",
     not_connected_hint:
-      "Check baseUrl / token under Settings → Backend Connection and retry.",
+      "Check the backend connection on the Settings page and retry.",
   },
 
   units: {

@@ -421,7 +421,7 @@ const CONTENT_ZH = {
       },
       {
         title: "公开用户端",
-        desc: "公开用户端路由包含 `/`、`/roadmap`、`/blog`、`/blog/:slug`、`/chat`、`/me`、`/portfolio`、`/terms`、`/privacy`，并保留开发用 `/__share-preview` 分享卡预览页；`/blog` 是双语静态长文内容面，Cloudflare Worker 为文章分享卡注入 crawler 友好的 metadata；`/chat` 使用阿里云行为验证 + 手机短信验证码登录，管理端白名单是准入来源，桌面端为可收起左侧栏 + 右侧对话工作台，侧栏聚合导航、账号、最近对话历史、联系入口和 GitHub stars，支持助手回答复制、图片分享、非图片生成物附件下载与历史回看；`/portfolio` 只读展示推送上下文与公司画像入口，后端公开面收敛在 `/api/public/*`，其中 `/api/public/file` 代理可下载生成物，`/api/public/v1/chat/completions` 提供 API-key 鉴权的 OpenAI-compatible 对话接口。",
+        desc: "公开用户端路由包含 `/`、`/roadmap`、`/blog`、`/blog/:slug`、`/chat`、`/me`、`/portfolio`、`/terms`、`/privacy`，并保留开发用 `/__share-preview` 分享卡预览页；`/blog` 是双语静态长文内容面，Cloudflare Worker 为文章分享卡注入 crawler 友好的 metadata；`/chat` 使用阿里云行为验证 + 手机短信验证码登录，管理端白名单是准入来源，桌面端为可收起左侧栏 + 右侧对话工作台，侧栏聚合导航、账号、最近对话历史、联系入口和 GitHub stars，支持助手回答复制、图片分享、非图片生成物附件下载与历史回看；`/portfolio` 只读展示推送上下文与公司画像入口，后端公开面收敛在 `/api/public/*`，其中 `/api/public/file` 代理可下载生成物，`/api/public/v1/chat/completions` 提供 API key 鉴权的 OpenAI-compatible 对话接口。",
       },
       {
         title: "管理后台",
@@ -665,7 +665,7 @@ const CONTENT_ZH = {
         "LLM provider 配置收口到 `config.yaml`，OpenRouter 与通用 OpenAI-compatible provider 支持 `api_key/api_keys` 轮换，并保留上游 HTTP / schema 错误正文便于诊断",
         "渠道回复收口层可在 runner 只产出过渡性规划句时，从成功的定时任务或持仓工具结果恢复用户可见确认，避免真实成功被空回复 fallback 遮蔽",
         "前端部署资产恢复：service worker 与全局错误处理可识别 stale chunk，并在安全间隔内自动刷新到新版本",
-        "公开 API-key 对话入口：管理端可为 Web 用户生成 API key，客户端可按 OpenAI-compatible `/api/public/v1/chat/completions` 形状调用 Hone",
+        "公开 API key 对话入口：管理端可为 Web 用户生成 API key，客户端可按 OpenAI-compatible `/api/public/v1/chat/completions` 形状调用 Hone",
         "ACP 自管上下文与 compact 防泄漏，支持 codex_acp / opencode_acp 长会话恢复",
         "多 Agent 引擎：OpenAI-compatible / Gemini CLI / Codex CLI/ACP / OpenCode ACP / multi-agent",
         "`scripts/diagnose_llm.sh` 已按当前 LLM provider 配置路径读取 OpenRouter key，保留 legacy 路径兼容",
@@ -930,7 +930,7 @@ const CONTENT_ZH = {
     restoring: {
       title: "正在恢复对话",
       desc: "正在校验当前会话并恢复聊天历史",
-      retrying: "后端响应较慢，正在自动重试（第 {attempt} 次）...",
+      retrying: "后端响应较慢，正在自动重试（第 {attempt} 次）…",
       failed_title: "恢复对话失败",
       failed_desc: "当前会话暂时没有恢复成功，可以立即重新尝试。",
       retry_button: "重新恢复",
@@ -1946,7 +1946,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         title: "Public user app",
-        desc: "The public user app routes `/`, `/roadmap`, `/blog`, `/blog/:slug`, `/chat`, `/me`, `/portfolio`, `/terms`, and `/privacy`, with a dev-only `/__share-preview` page for share-card QA; `/blog` is a bilingual static long-form content surface, with Cloudflare Worker metadata for crawler-friendly article cards; `/chat` signs users in with Aliyun behavior captcha plus phone/SMS verification from the admin whitelist, uses a collapsible desktop left rail plus full-height conversation workspace, and gathers navigation, account access, recent conversation history, contact links, and GitHub stars in that rail while supporting assistant-reply copy, image sharing, non-image generated-file downloads, and history review; `/portfolio` is a read-only investment context surface for push context and company-profile entrypoints, and the public backend is scoped to `/api/public/*`, including `/api/public/file` for downloadable generated artifacts and `/api/public/v1/chat/completions` for API-key-authenticated OpenAI-compatible chat.",
+        desc: "The public user app routes `/`, `/roadmap`, `/blog`, `/blog/:slug`, `/chat`, `/me`, `/portfolio`, `/terms`, and `/privacy`, with a dev-only `/__share-preview` page for share-card QA; `/blog` is a bilingual static long-form content surface, with Cloudflare Worker metadata for crawler-friendly article cards; `/chat` signs users in with Aliyun behavior captcha plus phone/SMS verification from the admin whitelist, uses a collapsible desktop left rail plus full-height conversation workspace, and gathers navigation, account access, recent conversation history, contact links, and GitHub stars in that rail while supporting assistant-reply copy, image sharing, non-image generated-file downloads, and history review; `/portfolio` is a read-only investment context surface for push context and company-profile entry points, and the public backend is scoped to `/api/public/*`, including `/api/public/file` for downloadable generated artifacts and `/api/public/v1/chat/completions` for API-key-authenticated OpenAI-compatible chat.",
       },
       {
         title: "Admin console",
@@ -1954,7 +1954,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         title: "Agent engine layer",
-        desc: "Recommended agent engines are Hone Cloud, Codex ACP, and OpenCode ACP; OpenAI-compatible function calling, Gemini CLI, Codex CLI, and multi-agent remain supported. LLM credentials use `config.yaml` as the only source of truth, and both OpenRouter and generic OpenAI-compatible providers support `llm.providers.*.api_key/api_keys` key pools so the runtime can try the next key after upstream 429 / quota failures; `gemini_acp` is kept only as migration config, not a runtime entrypoint.",
+        desc: "Recommended agent engines are Hone Cloud, Codex ACP, and OpenCode ACP; OpenAI-compatible function calling, Gemini CLI, Codex CLI, and multi-agent remain supported. LLM credentials use `config.yaml` as the only source of truth, and both OpenRouter and generic OpenAI-compatible providers support `llm.providers.*.api_key/api_keys` key pools so the runtime can try the next key after upstream 429 / quota failures; `gemini_acp` is kept only as migration config, not a runtime entry point.",
       },
       {
         title: "Events and tasks",
@@ -2106,7 +2106,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         name: "Web",
         icon: "⚡",
         status: "stable",
-        desc: "Whitelist chat with phone + SMS-code login",
+        desc: "Whitelist chat with phone + SMS code login",
       },
       {
         name: "iMessage",
@@ -2221,7 +2221,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         "Public `/blog` and `/blog/:slug` bilingual long-form pages, with the first Rust migration retrospective checked into the repo and Cloudflare Worker metadata for share cards",
         "Tauri macOS desktop with bundled backend",
         "7 channels: Web / iMessage / Lark / Discord / Telegram / CLI / MCP",
-        "16 public skills (stocks, portfolio, valuation/screening entrypoints, charts, PDF, cron, missed-event recovery, notification prefs…)",
+        "16 public skills (stocks, portfolio, valuation/screening entry points, charts, PDF, cron, missed-event recovery, notification prefs…)",
         "Research discipline & zero-hallucination protocol",
         "Company profiles + cross-session long memory",
         "Admin user views group holdings, profiles, sessions, and research tasks; company profiles can be inspected by actor space, deleted, exported as zip bundles, preview-imported, and imported with conflict decisions",
@@ -2231,7 +2231,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         "LLM provider config is consolidated into `config.yaml`; OpenRouter and generic OpenAI-compatible providers support `api_key/api_keys` rotation and preserve upstream HTTP / schema error bodies for diagnosis",
         "The channel response finalizer can recover user-visible confirmations from successful scheduled-task or portfolio tool results when a runner only emits a transitional planning sentence, so real side effects are not hidden behind an empty-reply fallback",
         "Frontend deploy asset recovery: the service worker and global error handlers detect stale chunks and safely reload onto the new version",
-        "Public API-key chat entrypoint: admins can issue API keys for Web users, and clients can call Hone through the OpenAI-compatible `/api/public/v1/chat/completions` shape",
+        "Public API-key chat entry point: admins can issue API keys for Web users, and clients can call Hone through the OpenAI-compatible `/api/public/v1/chat/completions` shape",
         "ACP self-managed context with compact-leak suppression for long codex_acp / opencode_acp sessions",
         "Multi-engine setup: OpenAI-compatible / Gemini CLI / Codex CLI/ACP / OpenCode ACP / multi-agent",
         "`scripts/diagnose_llm.sh` reads OpenRouter keys from the current LLM provider config paths while keeping legacy path compatibility",
@@ -2496,7 +2496,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     restoring: {
       title: "Restoring chat",
       desc: "Checking the current session and restoring chat history",
-      retrying: "The backend is taking longer than expected. Retrying automatically (attempt {attempt})...",
+      retrying: "The backend is taking longer than expected. Retrying automatically (attempt {attempt})…",
       failed_title: "Could not restore chat",
       failed_desc: "The current session could not be restored. You can try again now.",
       retry_button: "Retry restore",

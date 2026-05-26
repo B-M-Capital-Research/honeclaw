@@ -16,6 +16,7 @@ import { useBackend } from "@/context/backend"
 import { TaskList } from "@/components/task-list"
 import { ResearchList } from "@/components/research-list"
 import { actorKey } from "@/lib/actors"
+import { SHARED } from "@/lib/admin-content/shared"
 import { resolveUsersTab } from "@/pages/users-model"
 
 export default function ConsoleLayout(props: ParentProps) {
@@ -122,7 +123,8 @@ export default function ConsoleLayout(props: ParentProps) {
           <main class="min-h-0 min-w-0 flex-1 overflow-hidden p-3 md:p-4">
             {!backend.state.connected && !backend.state.initializing ? (
               <div class="mb-3 rounded-lg border border-rose-300/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
-                后端未连接：{backend.state.error || "请在设置页检查连接。"}
+                {SHARED.layout.not_connected_prefix}
+                {backend.state.error || SHARED.layout.not_connected_hint}
               </div>
             ) : null}
             {props.children}

@@ -1,5 +1,23 @@
 # Code Quality Patrol Findings
 
+## 2026-05-26 - 用户文案
+
+### Symbol drawer bypasses the admin bilingual content tree
+
+- status: open
+- direction: 用户文案
+- evidence: `packages/app/src/components/symbol-drawer.tsx` is an admin-console surface opened from user/profile/research flows, but visible copy is hardcoded in Chinese instead of routing through `packages/app/src/lib/admin-content/*`. Examples include tab labels (`公司画像`, `研究记录`, `相关会话`, `操作`), fallback states (`先选定用户`, `该用户暂无会话`), watchlist/research actions, feedback text, and the close button `aria-label="关闭"`.
+- risk: English-locale admin users can switch most console navigation and page copy to English, then open the symbol drawer and get a mixed-language workflow. Migrating it directly in this patrol would touch several interaction states, feedback messages, date formatting, and navigation labels in one component, so it needs a focused UI-content pass.
+- suggested_fix: add a small `admin-content/symbol-drawer.ts` tree, wire `SymbolDrawer` and its tab subcomponents through that content, and keep dynamic labels (`{symbol}`, `{user_id}`, counts, timestamps) as placeholders. Validate with the existing admin content shape test plus a focused component/model smoke for profile, research, sessions, and actions states.
+
+### Channel status badge ignores the admin locale switch
+
+- status: open
+- direction: 用户文案
+- evidence: `packages/app/src/components/channel-status-badge-model.ts` and `packages/app/src/components/channel-status-badge.tsx` return and render Chinese strings directly for global admin chrome copy such as `运行中`, `管理端后端未连接`, `渠道加载中`, `系统连接`, `渠道监听`, `清理多余进程`, and duplicate-process hints. The sidebar and page titles around the badge already use `packages/app/src/lib/admin-content/shared.ts`, so switching the admin console to English leaves the top-right runtime status mixed in Chinese.
+- risk: this is global chrome shown on every admin page and has test-covered model helpers. A safe fix needs to preserve the current status derivation while injecting locale-specific labels into both the model tests and component rendering.
+- suggested_fix: move status labels, connection labels, summary templates, and cleanup button/hint text into the shared admin content tree or a dedicated `admin-content/channel-status.ts`. Then update the model helpers to accept a copy bundle or return stable status tokens that the component formats through content, with tests for both locales.
+
 ## 2026-05-26 - 注释准确性
 
 ### Periodic task convention and mainline distill cron disagree on missed-tick behavior
