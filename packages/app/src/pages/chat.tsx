@@ -1175,7 +1175,7 @@ function PendingBubble(props: {
       >
         {/* The header status row only shows in error state — for the
             normal thinking/streaming flow the composer-side status strip
-            is the single source of truth (avoids duplicate "HONE 思考中"). */}
+            is the single source of truth (avoids duplicate "Hone 思考中"). */}
         <Show when={terminal()}>
           <div
             style={{

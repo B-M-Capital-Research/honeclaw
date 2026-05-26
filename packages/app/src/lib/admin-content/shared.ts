@@ -117,6 +117,16 @@ const ZH = {
     all: "全部",
   },
 
+  entity_ref: {
+    actor: "用户",
+    session: "会话",
+    task: "任务",
+    symbol: "标的",
+    research: "研究",
+    skill: "技能",
+    goto_title: "跳转到{kind}：{label}",
+  },
+
   toast: {
     save_failed: "保存失败",
     delete_failed: "删除失败",
@@ -263,6 +273,16 @@ const EN: typeof ZH = {
     optional: "Optional",
     required: "Required",
     all: "All",
+  },
+
+  entity_ref: {
+    actor: "User",
+    session: "Session",
+    task: "Task",
+    symbol: "Symbol",
+    research: "Research",
+    skill: "Skill",
+    goto_title: "Go to {kind}: {label}",
   },
 
   toast: {

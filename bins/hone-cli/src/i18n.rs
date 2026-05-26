@@ -231,8 +231,8 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "runner.hone_cloud.note_1",
-        "前置：一把 Hone Cloud API key。",
-        "Requires: one Hone Cloud API key.",
+        "前置：一个 Hone Cloud API key。",
+        "Requires: a Hone Cloud API key.",
     ),
     (
         "runner.hone_cloud.note_2",

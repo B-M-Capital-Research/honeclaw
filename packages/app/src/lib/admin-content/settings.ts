@@ -213,7 +213,7 @@ const ZH = {
   invite: {
     title: "Web 用户白名单",
     subtitle:
-      "新增手机号会同步创建一个 `web` 用户。用户通过 `/chat` 使用手机号和短信验证码登录后，复用现有 12 次对话额度限制；历史邀请码保留用于兼容和管理。",
+      "新增手机号会同步创建一个 `web` 用户。用户通过 `/chat` 使用手机号和短信验证码登录后，复用当前每日对话额度；历史邀请码保留用于兼容和管理。",
     refresh: "刷新",
     phone_label: "手机号",
     phone_placeholder: "输入要加入白名单的手机号",
@@ -481,7 +481,7 @@ const EN: typeof ZH = {
   invite: {
     title: "Web user whitelist",
     subtitle:
-      "Adding a phone number creates a `web` user. Users sign in from `/chat` with phone + SMS code and share the existing 12-message daily quota. Historical invite codes are kept for compatibility and management.",
+      "Adding a phone number creates a `web` user. Users sign in from `/chat` with phone + SMS code and share the current daily chat quota. Historical invite codes are kept for compatibility and management.",
     refresh: "Refresh",
     phone_label: "Phone number",
     phone_placeholder: "Phone number to whitelist",

@@ -24,7 +24,7 @@ const ZH = {
 
   quick_chat: {
     title: "快速发起对话",
-    subtitle: "输入问题直接发送到 ME 会话，Enter 发送",
+    subtitle: "输入问题直接发送到个人会话，Enter 发送",
     runner_chip_title: "{desc} · 点击前往 Agent 配置",
     placeholder: "输入你想探索的投研问题…",
     shift_enter_hint: "Shift + Enter 换行",
@@ -68,7 +68,7 @@ const EN: typeof ZH = {
 
   quick_chat: {
     title: "Quick chat",
-    subtitle: "Send to your ME session — press Enter to submit",
+    subtitle: "Send to your personal session — press Enter to submit",
     runner_chip_title: "{desc} · click to configure agent settings",
     placeholder: "What research question do you want to explore?",
     shift_enter_hint: "Shift + Enter for newline",
