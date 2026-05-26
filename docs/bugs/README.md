@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-26 07:03 CST
+最后更新：2026-05-26 11:08 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -21,6 +21,9 @@
 - Later / 待复现：9
 - 已修复 / 已关闭：113
 - 历史分析 / 部分止血：5
+- 本轮 11:08 CST 未发现新的独立活跃 P1，也未新增独立缺陷。07:03-11:08 CST 按消息时间共有 34 个 user turn 与 34 个 assistant final，Feishu / Web / Discord direct 与普通 scheduler 会话均以 assistant final 收口；11:02 CST Feishu direct “博通可以加仓吗”一度处于运行中，11:04 CST 已成功落库并发送 final。assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`；最近四小时无非文档代码提交。
+- 本轮 11:08 CST 继续看到既有 heartbeat 旧/未确认部署运行态坏信号：07:03-11:08 CST heartbeat 新增 73 条 `execution_failed + skipped_error + delivered=0`（Feishu 51 条、Web 22 条）、53 条 `noop + skipped_noop + delivered=0`（Feishu 43 条、Web 10 条）和 2 条 Feishu `completed + sent + delivered=1`。失败形态仍主要对应已修复表中的结构化状态退化与迭代耗尽旧信号；本轮不因这些重复信号新增缺陷或从 `Fixed` 回退。
+- 本轮 11:08 CST 观察到 `Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice` 在旧 live 进程上继续复现：`Hone_AI_Morning_Briefing`（`run_id=33693`）、`早9点市场复盘(XME及加密ETF)`（`run_id=33720`）和 Discord `每日美股降息概率推送`（`run_id=33745`）均生成了非商品主任务完整报告并落库，但出站前被 `commodity_causality_guarded=true` 替换成原油 / 大宗商品安全提示。当前 `hone-console-page` / `hone-feishu` live 进程启动于 2026-05-22 22:52 CST，早于 2026-05-26 03:10 CST 修复提交 `63442662`，因此只补充旧运行态证据，状态仍保持 `Fixed`，待 live 重启 / 部署后复核。
 - 本轮 07:03 CST 未发现新的独立活跃 P1，也未新增独立缺陷。03:02-07:03 CST 按消息时间共有 6 个 user turn 与 6 个 assistant final，均为 Feishu 普通 scheduler / direct scheduler 会话且均以 assistant final 收口；assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`。最近四小时非文档代码提交为 `e16ae4d3` 配置文案对齐与 `63442662` commodity guard false positive 修复；无需要新建台账的代码回归证据。
 - 本轮 07:03 CST 继续看到既有 heartbeat 旧/未确认部署运行态坏信号：03:02-07:03 CST heartbeat 新增 70 条 `execution_failed + skipped_error + delivered=0`（Feishu 50 条、Web 20 条）、57 条 `noop + skipped_noop + delivered=0`（Feishu 45 条、Web 12 条）和 1 条 Feishu `completed + sent + delivered=1`。失败形态仍主要对应已修复表中的结构化状态退化（`PlainTextSuppressed` 53 条、`JsonUnknownStatus` 6 条、`JsonEmptyStatus` 2 条、`JsonMalformed` 1 条、`Empty` 1 条）与迭代耗尽旧信号（`max_iterations_exceeded:10` 7 条）；本轮不因这些重复信号新增缺陷或从 `Fixed` 回退。
 - 本轮 07:03 CST 观察到 `Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice` 在旧 live 进程上仍有运行态复现：`OWALERT_PostMarket`（`run_id=33558`）与 `美股收盘后跨市场复盘`（`run_id=33596`）均生成了休市口径市场复盘并落库，但出站前被 `commodity_causality_guarded=true` 替换成原油 / 大宗商品安全提示；同窗 `Oil_Price_Monitor_Closing`（`run_id=33547`）命中 commodity guard 属预期商品任务。当前 `hone-console-page` / `hone-feishu` live 进程启动于 2026-05-22 22:52 CST，早于 2026-05-26 03:10 CST 修复提交 `63442662`，因此只补充旧运行态证据，状态仍保持 `Fixed`，待 live 重启 / 部署后复核。

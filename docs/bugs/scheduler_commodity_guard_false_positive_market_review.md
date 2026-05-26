@@ -24,6 +24,12 @@
 
 ## 证据来源
 
+- 2026-05-26 11:08 CST 复核补充：旧 live 进程在最近四小时窗口继续复现同一 false positive，且样本扩展到 Feishu AI 早报、Feishu XME / 加密 ETF 早盘复盘和 Discord 降息概率推送。`hone-console-page` / `hone-feishu` 当前进程仍启动于 2026-05-22 22:52 CST，早于 2026-05-26 03:10 CST 修复提交 `63442662`，因此本轮只记录为“代码已修、旧运行态未部署/未重启”的证据，不把状态从 `Fixed` 回退为 `New`。
+  - `run_id=33693`，`job_name=Hone_AI_Morning_Briefing`，`executed_at=2026-05-26T08:32:10.854666+08:00`，`completed + sent + delivered=1`，`detail_json.scheduler.commodity_causality_guarded=true`。`raw_preview` 是 AI 基建 / 宏观 / 持仓观察早报，最终 `response_preview` / `deliver_preview` 被替换成“本轮原油/大宗商品播报包含未完成同窗来源核验”的安全提示。
+  - `run_id=33720`，`job_name=早9点市场复盘(XME及加密ETF)`，`executed_at=2026-05-26T09:02:18.175944+08:00`，同样命中 `commodity_causality_guarded=true`。原始 assistant final 是 XME、港股加密 ETF 与宏观大盘早盘复盘，非原油或大宗商品主任务。
+  - `run_id=33745`，`job_name=每日美股降息概率推送`，`actor_channel=discord`，`executed_at=2026-05-26T09:30:53.636006+08:00`，同样命中 `commodity_causality_guarded=true`。同一 session assistant final 是降息概率 / FedWatch / PCE 风险分析，最终送达预览被替换为原油 / 大宗商品归因提示。
+  - `data/runtime/logs/hone-feishu.runtime-recovery.log` 同窗记录 `[SchedulerDiag] commodity_causality_guarded`，覆盖 `Hone_AI_Morning_Briefing` 与 `早9点市场复盘(XME及加密ETF)`；`data/runtime/logs/hone-discord.runtime-recovery.log` 同窗记录 Discord `每日美股降息概率推送` 命中 commodity guard。
+  - 这组样本继续说明生产运行态需要重启 / 部署后复核；如果重启到包含 `63442662` 的二进制后仍在上述非商品主任务上复现，应重新打开为 `New`。
 - 2026-05-26 07:03 CST 复核补充：代码修复后，旧 live 进程仍在最近四小时窗口复现同一 false positive；但 `hone-console-page` / `hone-feishu` 当前进程启动于 2026-05-22 22:52 CST，早于 2026-05-26 03:10 CST 修复提交 `63442662`，因此本轮只记录为“代码已修、旧运行态未部署/未重启”的证据，不把状态从 `Fixed` 回退为 `New`。
   - `run_id=33558`，`job_name=OWALERT_PostMarket`，`executed_at=2026-05-26T04:32:06.154009+08:00`，`completed + sent + delivered=1`，`detail_json.scheduler.commodity_causality_guarded=true`。同一 session assistant final 是 Memorial Day 休市下的持仓股 / 观察池盘后扫描与宏观新闻复盘，但最终 `response_preview` / `deliver_preview` 被替换成“本轮原油/大宗商品播报包含未完成同窗来源核验”的安全提示。
   - `run_id=33596`，`job_name=美股收盘后跨市场复盘`，`executed_at=2026-05-26T05:31:29.535191+08:00`，同样命中 `commodity_causality_guarded=true`。原始 assistant final 明确说明美股因 Memorial Day 休市，只做 5 月 22 日简短复盘；最终送达预览仍被替换成原油 / 大宗商品提示。
