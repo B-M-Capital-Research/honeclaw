@@ -90,14 +90,14 @@ fn binary_search_dirs(source_root: Option<&Path>) -> Vec<PathBuf> {
 
 fn current_exe_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
-    if let Ok(exe) = env::current_exe() {
-        if let Some(parent) = exe.parent() {
-            dirs.push(parent.to_path_buf());
-            if parent.file_name().and_then(OsStr::to_str) == Some("deps") {
-                if let Some(grandparent) = parent.parent() {
-                    dirs.push(grandparent.to_path_buf());
-                }
-            }
+    if let Ok(exe) = env::current_exe()
+        && let Some(parent) = exe.parent()
+    {
+        dirs.push(parent.to_path_buf());
+        if parent.file_name().and_then(OsStr::to_str) == Some("deps")
+            && let Some(grandparent) = parent.parent()
+        {
+            dirs.push(grandparent.to_path_buf());
         }
     }
     if let Some(root) = env::var_os("HONE_INSTALL_ROOT").map(PathBuf::from) {

@@ -1,5 +1,31 @@
 # Code Quality Patrol Findings
 
+## 2026-05-26 - 复杂度热点
+
+### `hone-cli configure` still mixes prompts, section routing, and mutation assembly
+
+- status: open
+- direction: 复杂度热点
+- evidence: `cargo clippy -p hone-cli --bin hone-cli --tests -- -W clippy::too_many_lines -W clippy::cognitive_complexity` reports `bins/hone-cli/src/configure.rs::run_configure` at `357/100` lines. The same scan showed the now-fixed `bins/hone-cli/src/mutations.rs::build_model_mutations` candidate, but `run_configure` still owns section selection, prompt defaults, secret prompts, per-channel allowlist prompting, provider key parsing, mirror writes, and final canonical-config mutation application in one function.
+- risk: a drive-by split could change interactive prompt order, default values, secret-presence handling, or which canonical config paths are mirrored together. This path is operator-facing and shares semantics with `hone-cli models set`, `hone-cli channels set`, and onboarding.
+- suggested_fix: in a focused CLI-configure pass, extract behavior-preserving private builders for agent, channel, and provider sections; reuse the mutation helpers from `bins/hone-cli/src/mutations.rs` where possible; keep prompt order stable; then validate with focused configure/mutation tests plus `cargo check -p hone-cli --tests`.
+
+### Channel onboarding builder owns too many recovery and mutation branches
+
+- status: open
+- direction: 复杂度热点
+- evidence: `cargo clippy -p hone-cli --bin hone-cli --tests -- -W clippy::too_many_lines -W clippy::cognitive_complexity` reports `bins/hone-cli/src/onboard.rs::build_channel_onboard_mutations` at `265/100` lines. The function combines platform skipping, enable prompts, prerequisite copy, allowlist warnings, required-field recovery, disabled-channel detection, chat-scope prompts, per-channel allowlist prompts, iMessage target-handle prompting, and final mutation assembly.
+- risk: the function is interactive and stateful: a user can abandon one required field and the code must reset that channel to `enabled=false` without losing earlier channels. A local split must preserve prompt order, recovery wording, `enabled_channels` side effects, and per-channel mutation order.
+- suggested_fix: extract behavior-preserving private helpers for channel enablement, required-field collection, disabled-channel detection, chat-scope mutation, and allowlist prompts. Keep the current `ChannelOnboardSpec` data shape initially, add tests for required-field abandon paths where possible, then rerun `cargo check -p hone-cli --tests`.
+
+### Top-level CLI dispatch is too broad for safe patrol-sized splitting
+
+- status: open
+- direction: 复杂度热点
+- evidence: `cargo clippy -p hone-cli --bin hone-cli --tests -- -W clippy::too_many_lines -W clippy::cognitive_complexity` reports `bins/hone-cli/src/main.rs::run_cli` at cognitive complexity `33/25` and `340/100` lines. The function parses top-level commands and owns config get/set/unset/validate, models status/set, channel list/set/toggle/targets, web, start, cleanup, probe, doctor, and onboard dispatch paths in one match tree.
+- risk: splitting this directly can change command output ordering, JSON/text behavior, language resolution, mutation application messages, or default `Chat` behavior. It also intersects with large enum-size clippy warnings around `Commands`, `ModelsCommands`, and `ChannelsCommands`, which may require Clap boxing decisions rather than a mechanical extraction.
+- suggested_fix: in a focused CLI-entrypoint pass, extract private `run_config_command`, `run_models_command`, `run_channels_command`, and `run_web_command` helpers while keeping `Cli::parse()` and the default chat branch in `run_cli`. Preserve existing parse tests and add focused output smoke tests for config/model/channel text versus JSON branches before considering enum boxing.
+
 ## 2026-05-26 - 用户文案
 
 ### Symbol drawer bypasses the admin bilingual content tree

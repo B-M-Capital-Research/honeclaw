@@ -288,9 +288,7 @@ pub(crate) fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> 
                 let feishu_scope = prompt_text(
                     &theme,
                     "Feishu chat scope (DM_ONLY/GROUPCHAT_ONLY/ALL)",
-                    &CliChatScope::from_chat_scope(config.feishu.chat_scope)
-                        .label()
-                        .to_string(),
+                    CliChatScope::from_chat_scope(config.feishu.chat_scope).label(),
                 )?;
                 mutations.push(ConfigMutation::Set {
                     path: "feishu.chat_scope".to_string(),
@@ -344,9 +342,7 @@ pub(crate) fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> 
                 let telegram_scope = prompt_text(
                     &theme,
                     "Telegram chat scope (DM_ONLY/GROUPCHAT_ONLY/ALL)",
-                    &CliChatScope::from_chat_scope(config.telegram.chat_scope)
-                        .label()
-                        .to_string(),
+                    CliChatScope::from_chat_scope(config.telegram.chat_scope).label(),
                 )?;
                 mutations.push(ConfigMutation::Set {
                     path: "telegram.chat_scope".to_string(),
@@ -382,9 +378,7 @@ pub(crate) fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> 
                 let discord_scope = prompt_text(
                     &theme,
                     "Discord chat scope (DM_ONLY/GROUPCHAT_ONLY/ALL)",
-                    &CliChatScope::from_chat_scope(config.discord.chat_scope)
-                        .label()
-                        .to_string(),
+                    CliChatScope::from_chat_scope(config.discord.chat_scope).label(),
                 )?;
                 mutations.push(ConfigMutation::Set {
                     path: "discord.chat_scope".to_string(),

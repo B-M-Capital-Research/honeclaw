@@ -116,112 +116,128 @@ pub(crate) struct ChannelToggleArgs {
 pub(crate) fn build_model_mutations(args: &ModelsSetArgs) -> Result<Vec<ConfigMutation>, String> {
     let mut mutations = Vec::new();
 
-    if let Some(value) = &args.runner {
-        push_string_mutation(&mut mutations, "agent.runner", value);
-    }
-    if let Some(value) = &args.codex_model {
-        push_string_mutation(&mut mutations, "agent.codex_model", value);
-    }
-    if let Some(value) = &args.codex_acp_model {
-        push_string_mutation(&mut mutations, "agent.codex_acp.model", value);
-    }
-    if let Some(value) = &args.codex_acp_variant {
-        push_string_mutation(&mut mutations, "agent.codex_acp.variant", value);
-    }
-
-    // 主模型路由：同时写 opencode / multi_agent.answer 两条分支,让用户只感知
-    // 「主模型」一个概念(两个字段实际由不同 runner 使用)。
-    if let Some(value) = &args.base_url {
-        push_string_mutations(
-            &mut mutations,
-            &[
-                "agent.opencode.api_base_url",
-                "agent.multi_agent.answer.api_base_url",
-            ],
-            value,
-        );
-    }
-    if let Some(value) = &args.api_key {
-        push_secret_mutations(
-            &mut mutations,
-            &["agent.opencode.api_key", "agent.multi_agent.answer.api_key"],
-            value,
-        );
-    }
-    if let Some(value) = &args.model {
-        push_string_mutations(
-            &mut mutations,
-            &["agent.opencode.model", "agent.multi_agent.answer.model"],
-            value,
-        );
-    }
-    if let Some(value) = &args.variant {
-        push_string_mutations(
-            &mut mutations,
-            &["agent.opencode.variant", "agent.multi_agent.answer.variant"],
-            value,
-        );
-    }
-
-    // 辅助 LLM（heartbeat / session compaction 等后台任务）。
-    if let Some(value) = &args.aux_base_url {
-        push_string_mutation(&mut mutations, "llm.auxiliary.base_url", value);
-    }
-    if let Some(value) = &args.aux_api_key {
-        push_secret_mutation(&mut mutations, "llm.auxiliary.api_key", value);
-    }
-    if let Some(value) = &args.aux_model {
-        push_string_mutation(&mut mutations, "llm.auxiliary.model", value);
-        // 老字段 `openrouter.sub_model` 仍作为 auxiliary 的 fallback,同步更新。
-        push_string_mutation(&mut mutations, "llm.openrouter.sub_model", value);
-    }
-
-    // Multi-agent 专属(search / answer 两阶段)的独立字段。
-    if let Some(value) = &args.search_base_url {
-        push_string_mutation(&mut mutations, "agent.multi_agent.search.base_url", value);
-    }
-    if let Some(value) = &args.search_api_key {
-        push_secret_mutation(&mut mutations, "agent.multi_agent.search.api_key", value);
-    }
-    if let Some(value) = &args.search_model {
-        push_string_mutation(&mut mutations, "agent.multi_agent.search.model", value);
-    }
-    if let Some(value) = args.search_max_iterations {
-        push_number_mutation(
-            &mut mutations,
-            "agent.multi_agent.search.max_iterations",
-            value,
-        );
-    }
-
-    if let Some(value) = &args.answer_base_url {
-        push_string_mutation(
-            &mut mutations,
-            "agent.multi_agent.answer.api_base_url",
-            value,
-        );
-    }
-    if let Some(value) = &args.answer_api_key {
-        push_secret_mutation(&mut mutations, "agent.multi_agent.answer.api_key", value);
-    }
-    if let Some(value) = &args.answer_model {
-        push_string_mutation(&mut mutations, "agent.multi_agent.answer.model", value);
-    }
-    if let Some(value) = &args.answer_variant {
-        push_string_mutation(&mut mutations, "agent.multi_agent.answer.variant", value);
-    }
-    if let Some(value) = args.answer_max_tool_calls {
-        push_number_mutation(
-            &mut mutations,
-            "agent.multi_agent.answer.max_tool_calls",
-            value,
-        );
-    }
+    push_model_runner_mutations(&mut mutations, args);
+    push_primary_model_route_mutations(&mut mutations, args);
+    push_auxiliary_model_mutations(&mut mutations, args);
+    push_multi_agent_model_mutations(&mut mutations, args);
 
     if mutations.is_empty() {
         return Err("至少提供一个 models set 参数".to_string());
     }
     Ok(mutations)
+}
+
+fn push_model_runner_mutations(mutations: &mut Vec<ConfigMutation>, args: &ModelsSetArgs) {
+    push_optional_string_mutation(mutations, "agent.runner", args.runner.as_deref());
+    push_optional_string_mutation(mutations, "agent.codex_model", args.codex_model.as_deref());
+    push_optional_string_mutation(
+        mutations,
+        "agent.codex_acp.model",
+        args.codex_acp_model.as_deref(),
+    );
+    push_optional_string_mutation(
+        mutations,
+        "agent.codex_acp.variant",
+        args.codex_acp_variant.as_deref(),
+    );
+}
+
+fn push_primary_model_route_mutations(mutations: &mut Vec<ConfigMutation>, args: &ModelsSetArgs) {
+    // 主模型路由：同时写 opencode / multi_agent.answer 两条分支,让用户只感知
+    // 「主模型」一个概念(两个字段实际由不同 runner 使用)。
+    push_optional_string_mutations(
+        mutations,
+        &[
+            "agent.opencode.api_base_url",
+            "agent.multi_agent.answer.api_base_url",
+        ],
+        args.base_url.as_deref(),
+    );
+    push_optional_secret_mutations(
+        mutations,
+        &["agent.opencode.api_key", "agent.multi_agent.answer.api_key"],
+        args.api_key.as_deref(),
+    );
+    push_optional_string_mutations(
+        mutations,
+        &["agent.opencode.model", "agent.multi_agent.answer.model"],
+        args.model.as_deref(),
+    );
+    push_optional_string_mutations(
+        mutations,
+        &["agent.opencode.variant", "agent.multi_agent.answer.variant"],
+        args.variant.as_deref(),
+    );
+}
+
+fn push_auxiliary_model_mutations(mutations: &mut Vec<ConfigMutation>, args: &ModelsSetArgs) {
+    // 辅助 LLM（heartbeat / session compaction 等后台任务）。
+    push_optional_string_mutation(
+        mutations,
+        "llm.auxiliary.base_url",
+        args.aux_base_url.as_deref(),
+    );
+    push_optional_secret_mutation(
+        mutations,
+        "llm.auxiliary.api_key",
+        args.aux_api_key.as_deref(),
+    );
+    // 老字段 `openrouter.sub_model` 仍作为 auxiliary 的 fallback,同步更新。
+    push_optional_string_mutations(
+        mutations,
+        &["llm.auxiliary.model", "llm.openrouter.sub_model"],
+        args.aux_model.as_deref(),
+    );
+}
+
+fn push_multi_agent_model_mutations(mutations: &mut Vec<ConfigMutation>, args: &ModelsSetArgs) {
+    // Multi-agent 专属(search / answer 两阶段)的独立字段。
+    push_optional_string_mutation(
+        mutations,
+        "agent.multi_agent.search.base_url",
+        args.search_base_url.as_deref(),
+    );
+    push_optional_secret_mutation(
+        mutations,
+        "agent.multi_agent.search.api_key",
+        args.search_api_key.as_deref(),
+    );
+    push_optional_string_mutation(
+        mutations,
+        "agent.multi_agent.search.model",
+        args.search_model.as_deref(),
+    );
+    push_optional_number_mutation(
+        mutations,
+        "agent.multi_agent.search.max_iterations",
+        args.search_max_iterations,
+    );
+
+    push_optional_string_mutation(
+        mutations,
+        "agent.multi_agent.answer.api_base_url",
+        args.answer_base_url.as_deref(),
+    );
+    push_optional_secret_mutation(
+        mutations,
+        "agent.multi_agent.answer.api_key",
+        args.answer_api_key.as_deref(),
+    );
+    push_optional_string_mutation(
+        mutations,
+        "agent.multi_agent.answer.model",
+        args.answer_model.as_deref(),
+    );
+    push_optional_string_mutation(
+        mutations,
+        "agent.multi_agent.answer.variant",
+        args.answer_variant.as_deref(),
+    );
+    push_optional_number_mutation(
+        mutations,
+        "agent.multi_agent.answer.max_tool_calls",
+        args.answer_max_tool_calls,
+    );
 }
 
 pub(crate) fn build_channel_mutations(
@@ -230,77 +246,71 @@ pub(crate) fn build_channel_mutations(
     let mut mutations = Vec::new();
 
     match args.channel {
-        ChannelKind::Imessage => {
-            if let Some(value) = args.enabled {
-                push_bool_mutation(&mut mutations, "imessage.enabled", value);
-            }
-            if let Some(value) = &args.target_handle {
-                push_string_mutation(&mut mutations, "imessage.target_handle", value);
-            }
-            if let Some(value) = &args.db_path {
-                push_string_mutation(&mut mutations, "imessage.db_path", value);
-            }
-            if let Some(value) = args.poll_interval {
-                push_number_mutation(&mut mutations, "imessage.poll_interval", value);
-            }
-        }
-        ChannelKind::Feishu => {
-            if let Some(value) = args.enabled {
-                push_bool_mutation(&mut mutations, "feishu.enabled", value);
-            }
-            if let Some(value) = &args.app_id {
-                push_string_mutation(&mut mutations, "feishu.app_id", value);
-            }
-            if let Some(value) = &args.app_secret {
-                push_secret_mutation(&mut mutations, "feishu.app_secret", value);
-            }
-            if let Some(value) = &args.chat_scope {
-                push_chat_scope_mutation(&mut mutations, "feishu.chat_scope", value);
-            }
-            if let Some(value) = &args.allow_emails {
-                push_csv_sequence_mutation(&mut mutations, "feishu.allow_emails", value);
-            }
-            if let Some(value) = &args.allow_mobiles {
-                push_csv_sequence_mutation(&mut mutations, "feishu.allow_mobiles", value);
-            }
-            if let Some(value) = &args.allow_open_ids {
-                push_csv_sequence_mutation(&mut mutations, "feishu.allow_open_ids", value);
-            }
-        }
-        ChannelKind::Telegram => {
-            if let Some(value) = args.enabled {
-                push_bool_mutation(&mut mutations, "telegram.enabled", value);
-            }
-            if let Some(value) = &args.bot_token {
-                push_secret_mutation(&mut mutations, "telegram.bot_token", value);
-            }
-            if let Some(value) = &args.chat_scope {
-                push_chat_scope_mutation(&mut mutations, "telegram.chat_scope", value);
-            }
-            if let Some(value) = &args.allow_from {
-                push_csv_sequence_mutation(&mut mutations, "telegram.allow_from", value);
-            }
-        }
-        ChannelKind::Discord => {
-            if let Some(value) = args.enabled {
-                push_bool_mutation(&mut mutations, "discord.enabled", value);
-            }
-            if let Some(value) = &args.bot_token {
-                push_secret_mutation(&mut mutations, "discord.bot_token", value);
-            }
-            if let Some(value) = &args.chat_scope {
-                push_chat_scope_mutation(&mut mutations, "discord.chat_scope", value);
-            }
-            if let Some(value) = &args.allow_from {
-                push_csv_sequence_mutation(&mut mutations, "discord.allow_from", value);
-            }
-        }
+        ChannelKind::Imessage => push_imessage_channel_mutations(&mut mutations, args),
+        ChannelKind::Feishu => push_feishu_channel_mutations(&mut mutations, args),
+        ChannelKind::Telegram => push_telegram_channel_mutations(&mut mutations, args),
+        ChannelKind::Discord => push_discord_channel_mutations(&mut mutations, args),
     }
 
     if mutations.is_empty() {
         return Err("至少提供一个 channels set 参数".to_string());
     }
     Ok(mutations)
+}
+
+fn push_imessage_channel_mutations(mutations: &mut Vec<ConfigMutation>, args: &ChannelSetArgs) {
+    push_optional_bool_mutation(mutations, "imessage.enabled", args.enabled);
+    push_optional_string_mutation(
+        mutations,
+        "imessage.target_handle",
+        args.target_handle.as_deref(),
+    );
+    push_optional_string_mutation(mutations, "imessage.db_path", args.db_path.as_deref());
+    push_optional_number_mutation(mutations, "imessage.poll_interval", args.poll_interval);
+}
+
+fn push_feishu_channel_mutations(mutations: &mut Vec<ConfigMutation>, args: &ChannelSetArgs) {
+    push_optional_bool_mutation(mutations, "feishu.enabled", args.enabled);
+    push_optional_string_mutation(mutations, "feishu.app_id", args.app_id.as_deref());
+    push_optional_secret_mutation(mutations, "feishu.app_secret", args.app_secret.as_deref());
+    push_optional_chat_scope_mutation(mutations, "feishu.chat_scope", args.chat_scope.as_ref());
+    push_optional_csv_sequence_mutation(
+        mutations,
+        "feishu.allow_emails",
+        args.allow_emails.as_deref(),
+    );
+    push_optional_csv_sequence_mutation(
+        mutations,
+        "feishu.allow_mobiles",
+        args.allow_mobiles.as_deref(),
+    );
+    push_optional_csv_sequence_mutation(
+        mutations,
+        "feishu.allow_open_ids",
+        args.allow_open_ids.as_deref(),
+    );
+}
+
+fn push_telegram_channel_mutations(mutations: &mut Vec<ConfigMutation>, args: &ChannelSetArgs) {
+    push_optional_bool_mutation(mutations, "telegram.enabled", args.enabled);
+    push_optional_secret_mutation(mutations, "telegram.bot_token", args.bot_token.as_deref());
+    push_optional_chat_scope_mutation(mutations, "telegram.chat_scope", args.chat_scope.as_ref());
+    push_optional_csv_sequence_mutation(
+        mutations,
+        "telegram.allow_from",
+        args.allow_from.as_deref(),
+    );
+}
+
+fn push_discord_channel_mutations(mutations: &mut Vec<ConfigMutation>, args: &ChannelSetArgs) {
+    push_optional_bool_mutation(mutations, "discord.enabled", args.enabled);
+    push_optional_secret_mutation(mutations, "discord.bot_token", args.bot_token.as_deref());
+    push_optional_chat_scope_mutation(mutations, "discord.chat_scope", args.chat_scope.as_ref());
+    push_optional_csv_sequence_mutation(
+        mutations,
+        "discord.allow_from",
+        args.allow_from.as_deref(),
+    );
 }
 
 fn push_set_mutation(mutations: &mut Vec<ConfigMutation>, path: &str, value: Value) {
@@ -314,14 +324,44 @@ fn push_string_mutation(mutations: &mut Vec<ConfigMutation>, path: &str, value: 
     push_set_mutation(mutations, path, Value::String(value.to_string()));
 }
 
+fn push_optional_string_mutation(
+    mutations: &mut Vec<ConfigMutation>,
+    path: &str,
+    value: Option<&str>,
+) {
+    if let Some(value) = value {
+        push_string_mutation(mutations, path, value);
+    }
+}
+
 fn push_string_mutations(mutations: &mut Vec<ConfigMutation>, paths: &[&str], value: &str) {
     for path in paths {
         push_string_mutation(mutations, path, value);
     }
 }
 
+fn push_optional_string_mutations(
+    mutations: &mut Vec<ConfigMutation>,
+    paths: &[&str],
+    value: Option<&str>,
+) {
+    if let Some(value) = value {
+        push_string_mutations(mutations, paths, value);
+    }
+}
+
 fn push_secret_mutation(mutations: &mut Vec<ConfigMutation>, path: &str, value: &str) {
     push_string_mutation(mutations, path, &normalize_credential_value(value));
+}
+
+fn push_optional_secret_mutation(
+    mutations: &mut Vec<ConfigMutation>,
+    path: &str,
+    value: Option<&str>,
+) {
+    if let Some(value) = value {
+        push_secret_mutation(mutations, path, value);
+    }
 }
 
 fn push_secret_mutations(mutations: &mut Vec<ConfigMutation>, paths: &[&str], value: &str) {
@@ -331,8 +371,28 @@ fn push_secret_mutations(mutations: &mut Vec<ConfigMutation>, paths: &[&str], va
     }
 }
 
+fn push_optional_secret_mutations(
+    mutations: &mut Vec<ConfigMutation>,
+    paths: &[&str],
+    value: Option<&str>,
+) {
+    if let Some(value) = value {
+        push_secret_mutations(mutations, paths, value);
+    }
+}
+
 fn push_bool_mutation(mutations: &mut Vec<ConfigMutation>, path: &str, value: bool) {
     push_set_mutation(mutations, path, Value::Bool(value));
+}
+
+fn push_optional_bool_mutation(
+    mutations: &mut Vec<ConfigMutation>,
+    path: &str,
+    value: Option<bool>,
+) {
+    if let Some(value) = value {
+        push_bool_mutation(mutations, path, value);
+    }
 }
 
 fn push_number_mutation<N>(mutations: &mut Vec<ConfigMutation>, path: &str, value: N)
@@ -342,8 +402,30 @@ where
     push_set_mutation(mutations, path, Value::Number(value.into()));
 }
 
+fn push_optional_number_mutation<N>(
+    mutations: &mut Vec<ConfigMutation>,
+    path: &str,
+    value: Option<N>,
+) where
+    N: Into<serde_yaml::Number>,
+{
+    if let Some(value) = value {
+        push_number_mutation(mutations, path, value);
+    }
+}
+
 fn push_chat_scope_mutation(mutations: &mut Vec<ConfigMutation>, path: &str, value: &CliChatScope) {
     push_string_mutation(mutations, path, value.as_config_value());
+}
+
+fn push_optional_chat_scope_mutation(
+    mutations: &mut Vec<ConfigMutation>,
+    path: &str,
+    value: Option<&CliChatScope>,
+) {
+    if let Some(value) = value {
+        push_chat_scope_mutation(mutations, path, value);
+    }
 }
 
 fn push_csv_sequence_mutation(mutations: &mut Vec<ConfigMutation>, path: &str, value: &str) {
@@ -357,6 +439,16 @@ fn push_csv_sequence_mutation(mutations: &mut Vec<ConfigMutation>, path: &str, v
                 .collect(),
         ),
     );
+}
+
+fn push_optional_csv_sequence_mutation(
+    mutations: &mut Vec<ConfigMutation>,
+    path: &str,
+    value: Option<&str>,
+) {
+    if let Some(value) = value {
+        push_csv_sequence_mutation(mutations, path, value);
+    }
 }
 
 /// 把一串 key 压成一个 `Sequence<String>` mutation(`search.api_keys` / `fmp.api_keys` 等)。

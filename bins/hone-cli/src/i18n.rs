@@ -53,10 +53,10 @@ impl Default for Lang {
 /// config first; falls back to host-locale detection so subcommands run
 /// before onboarding still pick a sensible language.
 pub(crate) fn resolve_lang(config_path: Option<&std::path::Path>) -> Lang {
-    if let Ok(paths) = crate::common::resolve_runtime_paths(config_path, false) {
-        if let Ok(config) = hone_core::HoneConfig::from_file(&paths.canonical_config_path) {
-            return Lang::from_locale(config.language);
-        }
+    if let Ok(paths) = crate::common::resolve_runtime_paths(config_path, false)
+        && let Ok(config) = hone_core::HoneConfig::from_file(&paths.canonical_config_path)
+    {
+        return Lang::from_locale(config.language);
     }
     detect_initial_lang()
 }
