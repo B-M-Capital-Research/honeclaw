@@ -1,5 +1,31 @@
 # Code Quality Patrol Findings
 
+## 2026-05-27 - 配置文档漂移
+
+### Tavily search depth/topic config fields are not wired into runtime requests
+
+- status: open
+- direction: 配置文档漂移
+- evidence: `crates/hone-core/src/config/server.rs` exposes `search.provider`, `search.search_depth`, `search.topic`, and `search.max_results`; `config.example.yaml` also shows all four fields. Runtime construction in `crates/hone-tools/src/web_search.rs::WebSearchTool::from_config` only reads `config.search.api_keys` and `config.search.max_results`, and `search_with_key` hardcodes `"search_depth": "basic"` while omitting `topic` entirely. No existing `docs/bugs` entry mentioned this mismatch.
+- risk: operators can set `search.search_depth: "advanced"` or `search.topic: "news"` in `config.yaml` and believe Tavily requests changed, while runtime behavior remains basic/general. Wiring this directly would change external-provider request semantics for existing non-default configs, so it needs a focused tool/request regression pass rather than a patrol-sized documentation edit.
+- suggested_fix: decide whether `provider/search_depth/topic` should become active runtime knobs or be deprecated. If activating them, extend `WebSearchTool` to store sanitized `search_depth` and optional `topic`, include them in the Tavily request body, and cover default plus non-default config with a local test server that asserts the outgoing JSON body. If deprecating them, remove or hide the fields from examples and update migration docs.
+
+### UDP logging cannot be disabled even though the old sample said `null` disables it
+
+- status: open
+- direction: 配置文档漂移
+- evidence: `config.example.yaml` previously described `logging.udp_port: null` as disabling the UDP sink. Runtime initialization in `crates/hone-core/src/logging.rs::UdpLogLayer::new` instead calls `udp_port.unwrap_or(18118)` and always installs the UDP layer; `crates/hone-web-api/src/lib.rs` also treats `None` as port `18118` when probing log subscribers.
+- risk: operators may set `udp_port: null` expecting no UDP log traffic, but Hone still emits a local UDP copy to the default port. Changing this directly would alter observability behavior and may affect console log streaming, so it needs a focused logging/config decision rather than a patrol-sized behavior change.
+- suggested_fix: decide whether `None` should mean disabled or default port. If disabling is desired, change `setup_logging` to only attach `UdpLogLayer` when `udp_port` is `Some`, update the Web API subscriber probe, and add logging tests for `None`, `Some(18118)`, and custom ports. If default-port semantics are desired, consider renaming or documenting a separate future `logging.udp_enabled` knob.
+
+### Logging console/file config fields are parsed but not applied
+
+- status: open
+- direction: 配置文档漂移
+- evidence: `crates/hone-core/src/config/server.rs::LoggingConfig` exposes `console: bool` and `file: Option<String>`, and `config.example.yaml` shows `console: true` plus `file: "./data/logs/hone.log"`. Runtime initialization in `crates/hone-core/src/logging.rs::setup_logging` only reads `config.level` and `config.udp_port`; it always installs the tracing console formatter and never creates a file appender from `logging.file`. `rg` found no other production reads of `config.logging.console` or `config.logging.file`.
+- risk: operators can set `logging.console: false` or change `logging.file` expecting output routing to change, but runtime logging remains console + local UDP only. Wiring this directly changes observability behavior and may interact with desktop/CLI log collection paths, so it needs a focused logging contract pass.
+- suggested_fix: decide whether `console` and `file` should become active sinks or be deprecated. If activating them, make `setup_logging` conditionally attach the console formatter, add a rolling or plain file appender for `logging.file`, preserve current defaults, and cover `console=false`, `file=null`, and file-path cases with logging initialization tests that avoid double global subscriber setup. If deprecating, remove or hide the fields from examples and migration docs.
+
 ## 2026-05-26 - 错误与日志质量
 
 ### FMP data fetch can treat non-auth HTTP failures as successful data

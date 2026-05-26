@@ -465,9 +465,12 @@ storage:
 
 logging:
   level: "INFO"
+  # Parsed for compatibility, but setup_logging currently always installs the
+  # console formatter and does not create a file appender from logging.file.
   console: true
   file: "./data/logs/hone.log"
-  # Optional UDP log sink port; null disables it.
+  # Local UDP log sink port. null uses the runtime default port 18118; there is
+  # currently no config-level disable switch.
   udp_port: null
 
 admins:
@@ -620,7 +623,7 @@ agent:
     # Optional Hone-side API key override; leave empty to inherit local opencode auth/provider config
     api_key: ""
   hone_cloud:
-    # Default user-facing service; runtime appends /api/public/v1/chat/completions when needed.
+    # Hosted service route seeded by this sample; runtime appends /api/public/v1/chat/completions when needed.
     base_url: "https://hone-claw.com"
     # Per-user Hone Cloud API key. Contact bm@hone-claw.com for an invite and key.
     api_key: ""
@@ -646,6 +649,10 @@ agent:
       max_tool_calls: 3
 
 search:
+  # Tavily is the only runtime search provider today. search.provider /
+  # search.search_depth / search.topic stay in the config schema for compatibility
+  # but are not wired into requests yet; the current web_search tool reads
+  # search.api_keys and search.max_results only.
   provider: tavily
   # Tavily API key pool with failover support
   api_keys:

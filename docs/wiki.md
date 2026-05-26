@@ -290,7 +290,7 @@ Important config areas:
 - `storage.*`: session data paths and backend selection, especially `sessions_dir`, `session_sqlite_db_path`, `session_sqlite_shadow_write_enabled`, `session_runtime_backend`, `conversation_quota_dir`, `llm_audit_db_path`, and `notif_prefs_dir`.
 - `admins.*`: channel admin identities and runtime admin registration passphrase.
 - `event_engine.*`: market/news event monitoring and delivery.
-- `logging.*`: runtime log level, file output, console output, and optional UDP sink.
+- `logging.*`: runtime log level and local UDP sink port/default; `console` and `file` remain parsed compatibility fields until file/console sinks are wired.
 - `security.*`: actor isolation and tool-guard policy.
 - `nano_banana.*`: OpenRouter-backed image generation defaults.
 - `search.*`, `fmp.*`: external data/search providers.
@@ -299,6 +299,7 @@ Important config areas:
 Admin/public Web ports are runtime environment settings, primarily `HONE_WEB_PORT` and `HONE_PUBLIC_WEB_PORT`, rather than `config.yaml` keys.
 Public SMS login and optional Aliyun Captcha are also runtime environment settings; use `config.example.yaml` and `docs/runbooks/backend-deployment.md` as the reference for `ALIBABA_CLOUD_*`, `HONE_ALIYUN_SMS_*`, `HONE_ALIYUN_CAPTCHA_*`, and `HONE_PUBLIC_SECURE_COOKIE`. For the public session cookie, `HONE_PUBLIC_SECURE_COOKIE` accepts `true/1/yes` and `false/0/no`; invalid non-empty values keep `Secure=true`.
 For OpenRouter credentials, prefer the `llm.providers.openrouter.api_key/api_keys` pool; legacy `llm.openrouter.*` key fields are migration fallbacks only.
+For Tavily web search, the current runtime tool reads `search.api_keys` and `search.max_results`; `search.provider`, `search.search_depth`, and `search.topic` are preserved schema fields but are not wired into the request yet.
 
 Never commit local secrets in `config.yaml`.
 
@@ -310,7 +311,7 @@ Common runner choices:
 
 | Runner | Use When |
 | --- | --- |
-| `hone_cloud` | You want the default hosted Hone service from `config.example.yaml`; set `agent.hone_cloud.api_key` before starting. |
+| `hone_cloud` | You want the hosted Hone service seeded by `config.example.yaml`; set `agent.hone_cloud.api_key` before starting. |
 | `opencode_acp` | You want Hone to inherit local OpenCode provider/model config. |
 | `codex_acp` | You use Codex ACP and want ACP session integration. |
 | `codex_cli` | You use Codex CLI directly. |

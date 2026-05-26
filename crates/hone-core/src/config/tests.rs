@@ -393,6 +393,43 @@ fn assert_wiki_config_overview_matches_current_schema(wiki: &str) {
     }
 }
 
+fn assert_search_config_runtime_docs(label: &str, doc: &str) {
+    assert!(
+        doc.contains("search.api_keys") && doc.contains("search.max_results"),
+        "{label} should document active Tavily search config fields"
+    );
+    assert!(
+        doc.contains("search.search_depth") && doc.contains("not wired"),
+        "{label} should mark search depth/topic/provider as schema fields until runtime wiring exists"
+    );
+}
+
+fn assert_logging_udp_docs_match_runtime(label: &str, doc: &str) {
+    assert!(
+        doc.contains("logging.udp_port") || doc.contains("udp_port"),
+        "{label} should document the UDP logging config field"
+    );
+    assert!(
+        doc.contains("18118") && doc.contains("no config-level disable"),
+        "{label} should document that null uses the default UDP logging port today"
+    );
+}
+
+fn assert_logging_sink_docs_match_runtime(label: &str, doc: &str) {
+    assert!(
+        doc.contains("logging.console") || doc.contains("console"),
+        "{label} should document the logging console field"
+    );
+    assert!(
+        doc.contains("logging.file") || doc.contains("file"),
+        "{label} should document the logging file field"
+    );
+    assert!(
+        doc.contains("parsed compatibility fields") || doc.contains("Parsed for compatibility"),
+        "{label} should not imply logging.console/logging.file are active sinks today"
+    );
+}
+
 fn assert_technical_spec_config_sections_match_roots(technical_spec: &str) {
     for expected in [
         "- `llm`",
@@ -1853,6 +1890,9 @@ fn config_example_avoids_stale_config_knobs() {
     assert_openrouter_provider_key_pool_docs("config.example.yaml", &example);
     assert_config_example_storage_and_logging(root);
     assert_config_example_public_auth_env_docs(&example);
+    assert_search_config_runtime_docs("config.example.yaml", &example);
+    assert_logging_udp_docs_match_runtime("config.example.yaml", &example);
+    assert_logging_sink_docs_match_runtime("config.example.yaml", &example);
 
     let wiki = std::fs::read_to_string(
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/wiki.md"),
@@ -1860,6 +1900,8 @@ fn config_example_avoids_stale_config_knobs() {
     .unwrap();
     assert_openrouter_provider_key_pool_docs("docs/wiki.md", &wiki);
     assert_wiki_config_overview_matches_current_schema(&wiki);
+    assert_search_config_runtime_docs("docs/wiki.md", &wiki);
+    assert_logging_sink_docs_match_runtime("docs/wiki.md", &wiki);
 
     let readme_en = std::fs::read_to_string(
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../README_EN.md"),
@@ -1873,6 +1915,9 @@ fn config_example_avoids_stale_config_knobs() {
     .unwrap();
     assert_openrouter_provider_key_pool_docs("docs/technical-spec.md", &technical_spec);
     assert_technical_spec_config_sections_match_roots(&technical_spec);
+    assert_search_config_runtime_docs("docs/technical-spec.md", &technical_spec);
+    assert_logging_udp_docs_match_runtime("docs/technical-spec.md", &technical_spec);
+    assert_logging_sink_docs_match_runtime("docs/technical-spec.md", &technical_spec);
     assert_technical_spec_storage_keys_match_schema(&technical_spec);
 
     let backend_runbook = std::fs::read_to_string(
