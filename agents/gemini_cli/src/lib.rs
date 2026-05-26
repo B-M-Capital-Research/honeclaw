@@ -3,10 +3,10 @@
 //! 通过 `std::process::Command` 调用本地 `gemini` CLI，
 //! 实现 `Agent` trait 以接入系统。
 //!
-//! ## 工具调用机制（Text-Based Tool Dispatch）
+//! ## 工具调用机制（Text-Tag Tool Dispatch）
 //!
-//! Gemini CLI 以 `--prompt` 非交互模式运行，无法使用原生 Function Calling API。
-//! 因此采用文本协议：在系统 prompt 中注入调用规范，要求 LLM 以
+//! Gemini CLI 在本地 `--prompt` 非交互路径下仍以文本协议驱动 Hone 工具调度：
+//! 在系统 prompt 中注入调用规范，要求 LLM 以
 //! `<tool_call>{"name":"...","arguments":{...},"reasoning":"正在..."}</tool_call>` 格式标记工具调用。
 //! Rust 层解析该标签，执行 ToolRegistry 中的工具，将结果注入对话，循环直到无工具调用。
 //!
@@ -15,10 +15,10 @@
 //! Gemini CLI 以 `-o stream-json` 模式运行，每行输出一个 JSON 事件对象。
 //! `parse_stream_event` 统一解析所有已知事件类型，同时兼容旧版 CLI 输出格式。
 //!
-//! 已知事件类型（对照 aioncli-core ServerGeminiEventType）：
+//! 当前解析器识别的事件类型：
 //! - `content`          — 模型输出的文本增量
 //! - `thought`          — 模型的思考过程（隐藏，不展示给用户）
-//! - `tool_call_request`— 模型请求调用工具（当前解析但工具派发仍使用文本协议）
+//! - `tool_call_request`— 模型请求调用工具（当前识别并记录，实际派发仍走 `<tool_call>` 文本标签）
 //! - `error`            — 错误事件
 //! - `finished`         — 流结束，含 token 统计
 //! - `retry`            — 服务端要求重试
@@ -40,8 +40,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 
 /// Gemini CLI `-o stream-json` 每行输出的结构化事件。
 ///
-/// 对照 AionUI / aioncli-core 的 `ServerGeminiEventType`，覆盖所有已知类型，
-/// 并兼容旧版 Gemini CLI 输出格式。
+/// 覆盖当前代码显式处理的 `stream-json` 事件类型，并兼容旧版 Gemini CLI 输出格式。
 #[derive(Debug, Clone)]
 pub enum GeminiStreamEvent {
     /// 模型输出的文本内容增量（新格式 `type=content`，旧格式 `type=message/role=assistant`）
@@ -98,7 +97,7 @@ impl GeminiStreamEvent {
 ///
 /// 支持格式：
 ///
-/// **新格式（aioncli-core / gemini CLI ≥ v0.3x）**
+/// **结构化 `stream-json` 格式**
 /// - `{"type":"content","value":"文本"}`
 /// - `{"type":"thought","value":"思考内容"}`
 /// - `{"type":"tool_call_request","value":{...}}`
@@ -354,9 +353,9 @@ impl GeminiCliAgent {
         format!("{}…[内容过长已截断]", &s[..end])
     }
 
-    /// 公有静态版 build_prompt，供 channel streaming runner 直接构建 Gemini prompt
+    /// 公有静态版 `build_streaming_prompt`，供 channel runner 直接构建 Gemini prompt。
     ///
-    /// ## 内存安全策略
+    /// ## 参数大小安全策略
     ///
     /// 为防止 `--prompt` 参数超出 OS `ARG_MAX` 限制（E2BIG / os error 7），本函数
     /// 严格限制最终 prompt 的字节大小：
@@ -451,7 +450,7 @@ impl GeminiCliAgent {
     ///
     /// 包含：System Instructions、工具调用协议说明、工具列表、对话历史、工具结果和输出要求
     ///
-    /// ## 内存安全策略
+    /// ## 参数大小安全策略
     ///
     /// 同 `build_streaming_prompt`，限制最终 prompt 字节大小以防止 E2BIG 错误。
     fn build_prompt(
@@ -748,7 +747,7 @@ impl GeminiCliAgent {
 
 #[async_trait]
 impl Agent for GeminiCliAgent {
-    /// 运行单次交互，支持 Text-Based Tool Dispatch 多轮循环
+    /// 运行单次交互，支持 `<tool_call>` 文本标签多轮工具调度。
     ///
     /// 流程：
     /// 1. 构建 prompt（含工具调用协议说明）

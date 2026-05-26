@@ -274,7 +274,7 @@ export async function saveDesktopAgentSettings(settings: AgentSettings) {
   return invokeDesktop<AgentSettingsUpdateResult>("set_agent_settings", { settings })
 }
 
-/** 检测本地 CLI/ACP runner 是否可用（运行 --version，超时 8s）；gemini_acp 仅兼容旧配置。 */
+/** 检测本地 CLI/ACP runner 是否可用（运行对应轻量 probe，超时 8s）；gemini_acp 仅兼容旧配置。 */
 export async function checkDesktopAgentCli(
   runner: "gemini_cli" | "gemini_acp" | "codex_cli" | "codex_acp" | "opencode_acp" | "multi-agent",
 ) {
