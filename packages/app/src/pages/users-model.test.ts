@@ -10,6 +10,7 @@ import {
   uniqueSortedSymbols,
   USER_TAB_CONFIG,
 } from "./users-model"
+import { setLocale } from "@/lib/i18n"
 import type { ActorListItem } from "@/lib/actors"
 
 function userTabIds(tabs: Array<{ id: string }>): string[] {
@@ -97,6 +98,8 @@ describe("users-model", () => {
   })
 
   it("derives actor-list stat text outside the component", () => {
+    setLocale("zh")
+
     expect(actorListStatsText(actorListItemFixture({}))).toBe("暂无数据")
     expect(
       actorListStatsText(
