@@ -68,7 +68,9 @@ const ZH = {
     skipped_prefix: "跳过 {count} 只：",
     distill_button: "立即触发蒸馏",
     distilling_button: "蒸馏中…",
-    distill_success: "蒸馏完成：{count} 条投资主线，跳过 {skipped} 只",
+    distill_success: "蒸馏完成：{count} 条投资主线",
+    distill_success_with_skips:
+      "蒸馏完成：{count} 条投资主线，{skipped} 只跳过",
     distill_failure: "蒸馏失败：{error}",
     style_title: "整体投资风格",
     style_empty: "尚未蒸馏 — 至少需要一个公司画像。",
@@ -160,7 +162,8 @@ const EN: typeof ZH = {
     skipped_prefix: "Skipped {count}:",
     distill_button: "Distill now",
     distilling_button: "Distilling…",
-    distill_success:
+    distill_success: "Done: {count} investment mainlines",
+    distill_success_with_skips:
       "Done: {count} investment mainlines, {skipped} skipped",
     distill_failure: "Distill failed: {error}",
     style_title: "Overall investment style",

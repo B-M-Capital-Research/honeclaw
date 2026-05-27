@@ -232,7 +232,7 @@
 
 - status: open
 - direction: 用户文案
-- evidence: `packages/app/src/pages/public-portfolio.tsx` imports `PublicNav`, `PublicFooter`, and `PublicLoginForm`, but does not import `CONTENT` or `useLocale`; visible strings such as `查看画像`, `投资上下文`, `加载失败`, `立即刷新`, `整体投资风格`, and `公司画像 inventory` are hardcoded in Chinese. The adjacent public chat, login, home, roadmap, and contact surfaces already route visible copy through the bilingual `CONTENT` tree.
+- evidence: `packages/app/src/pages/public-portfolio.tsx` imports `PublicNav`, `PublicFooter`, and `PublicLoginForm`, but does not import `CONTENT` or `useLocale`; visible strings such as `查看画像`, `投资上下文`, `加载失败`, `立即更新`, `整体投资风格`, and `公司画像` are hardcoded in Chinese. The adjacent public chat, login, home, roadmap, and contact surfaces already route visible copy through the bilingual `CONTENT` tree.
 - risk: English-locale users can navigate from the bilingual public site into `/portfolio` and see a mixed-language account surface. Migrating this in a patrol-sized patch would touch many strings plus date formatting and refresh/error messages, with UI regression risk on an authenticated page.
 - suggested_fix: add a focused public-portfolio localization pass: move portfolio copy and relative-date labels into `packages/app/src/lib/public-content.ts`, switch timestamps through locale-aware formatting, and validate `/portfolio` in both `zh` and `en` locales with a lightweight UI smoke or model test around loading, error, empty, and refreshed states.
 

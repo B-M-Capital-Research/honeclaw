@@ -40,6 +40,12 @@ describe("public-portfolio-model", () => {
     expect(
       publicRefreshMessage({
         mainline_count: 3,
+        skipped_tickers: [],
+      }),
+    ).toBe("更新完成：3 条投资主线")
+    expect(
+      publicRefreshMessage({
+        mainline_count: 3,
         skipped_tickers: ["AAPL", "MSFT"],
       }),
     ).toBe("更新完成：3 条投资主线，2 只跳过")

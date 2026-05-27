@@ -151,8 +151,12 @@ export function UserMainlineView(props: { actor: ActorRef }) {
     setRefreshMsg(null)
     try {
       const refreshResult = await adminTriggerMainlineDistill(props.actor)
+      const successTemplate =
+        refreshResult.skipped_tickers.length > 0
+          ? USERS.mainline.distill_success_with_skips
+          : USERS.mainline.distill_success
       setRefreshMsg(
-        tpl(USERS.mainline.distill_success, {
+        tpl(successTemplate, {
           count: refreshResult.mainline_count,
           skipped: refreshResult.skipped_tickers.length,
         }),

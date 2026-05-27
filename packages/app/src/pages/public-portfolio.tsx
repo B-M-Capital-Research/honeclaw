@@ -86,12 +86,12 @@ function MainlineCard(props: {
               fallback={
                 <>
                   <strong style={{ color: "#d97706" }}>暂无公司画像</strong> —— 跟 Hone 说
-                  “建立 {props.ticker} 的公司画像”，下次自动更新就会带上它。
+                  “建立 {props.ticker} 的公司画像”，立即更新或下一次自动检查后就会带上它。
                 </>
               }
             >
               <strong style={{ color: "#d97706" }}>画像存在，但投资主线生成失败 / 跳过</strong>
-              {props.isSkipped ? "（上次跳过）" : ""}—— 点击「立即更新」重试。
+              {props.isSkipped ? "（上次跳过）" : ""}—— 可立即更新重试，或等下一次自动检查。
             </Show>
           </div>
         }
@@ -301,7 +301,7 @@ function PortfolioContextView() {
             投资上下文
           </h1>
           <p style={{ "font-size": "13px", color: "#64748b", "margin-top": "8px", "line-height": "1.7" }}>
-            Hone 每周自动从你的公司画像里整理出投资主线，用来过滤每日推送的相关性。要修改画像，直接跟 Hone 对话即可。
+            Hone 会从你的公司画像里整理投资主线；新增画像或持仓后通常会在下一次自动检查里尝试更新，覆盖完整后约每周刷新一次。要修改画像，直接跟 Hone 对话即可。
           </p>
         </div>
 

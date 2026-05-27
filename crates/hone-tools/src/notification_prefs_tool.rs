@@ -264,10 +264,10 @@ impl Tool for NotificationPrefsTool {
          (PriceAlert 2h, Weekly52 8h, Social 12h, 其它事实性事件不过期)。\
          exempt_kinds 命中的 kind 即使在 quiet 内仍立即推(例如想财报夜里也响:[\"earnings_released\"])。\
          clear_quiet_hours 关掉勿扰。\
-         **注意**:每只持仓的 thesis 与整体 investment_style 现在由系统每周自动从用户\
-         自己写的公司画像(走 company_portrait skill)蒸馏,**不再支持手动通过本工具编辑**。\
+         **注意**:每只持仓的 thesis 与整体 investment_style 现在由系统从用户\
+         自己写的公司画像(走 company_portrait skill)按需蒸馏,**不再支持手动通过本工具编辑**。\
          若用户问\"为什么我的 thesis 是 X / 想改 Y\",指引他更新对应公司画像即可,\
-         系统会在下次蒸馏(默认 7 天周期)自动反映。\
+         新建画像/新增持仓后通常在下一次小时级检查里尝试更新;覆盖完整后约每 7 天刷新一次。\
          kind tag 必须选自:earnings_upcoming / earnings_released / earnings_call_transcript / \
          news_critical / price_alert / weekly52_high / weekly52_low / dividend / split / \
          sec_filing / analyst_grade / macro_event / social_post。"
