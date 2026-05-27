@@ -4,7 +4,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use chrono::Datelike;
+use chrono::{Datelike, NaiveDate};
 use hone_scheduler::SchedulerEvent;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -63,6 +63,23 @@ static RE_HEARTBEAT_TRIGGER_PRICE_BEFORE_CURRENT: LazyLock<regex::Regex> = LazyL
         .expect("valid heartbeat trigger price regex")
 });
 
+static RE_HEARTBEAT_PRICE_TIMESTAMP_DATE: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r"(?isx)
+        (?:当前(?:价格|价)?|最新(?:价格|价)?|现价|现报|收盘价|跌至|跌到|降至|回落至|current(?:\s*price)?|last(?:\s*price)?|quote)
+        [^\n。；;]{0,120}
+        (?:
+            (?P<year_cn>20\d{2})年(?P<month_cn>\d{1,2})月(?P<day_cn>\d{1,2})日
+            |
+            (?P<year_iso>20\d{2})[-/](?P<month_iso>\d{1,2})[-/](?P<day_iso>\d{1,2})
+        )
+        ",
+    )
+    .expect("valid heartbeat price timestamp regex")
+});
+
+const HEARTBEAT_PRICE_TIMESTAMP_MAX_AGE_DAYS: i64 = 3;
+
 static RE_HEARTBEAT_FACT_TOKEN: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
         r"(?ix)
@@ -93,15 +110,6 @@ static RE_HEARTBEAT_REVISION_FACT_TOKEN: LazyLock<regex::Regex> = LazyLock::new(
         ",
     )
     .expect("valid heartbeat revision fact regex")
-});
-
-static RE_HEARTBEAT_STALE_PRICE_DATE: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(
-        r"(?x)
-        (?P<year>20\d{2})[-年/](?P<month>\d{1,2})[-月/](?P<day>\d{1,2})日?
-        ",
-    )
-    .expect("valid heartbeat stale price date regex")
 });
 
 #[derive(Debug, PartialEq, Eq)]
@@ -583,68 +591,64 @@ fn heartbeat_lower_trigger_price_contradiction(text: &str, compact: &str) -> boo
     })
 }
 
-fn heartbeat_trigger_mentions_stale_price_date(
-    text: &str,
-    current_date: chrono::NaiveDate,
-) -> bool {
+fn heartbeat_price_timestamp_context_date(captures: &regex::Captures<'_>) -> Option<NaiveDate> {
+    let year = captures
+        .name("year_cn")
+        .or_else(|| captures.name("year_iso"))
+        .and_then(|m| m.as_str().parse::<i32>().ok())?;
+    let month = captures
+        .name("month_cn")
+        .or_else(|| captures.name("month_iso"))
+        .and_then(|m| m.as_str().parse::<u32>().ok())?;
+    let day = captures
+        .name("day_cn")
+        .or_else(|| captures.name("day_iso"))
+        .and_then(|m| m.as_str().parse::<u32>().ok())?;
+    NaiveDate::from_ymd_opt(year, month, day)
+}
+
+fn heartbeat_triggered_price_threshold_context(text: &str) -> bool {
     let compact = text
         .chars()
         .filter(|ch| !ch.is_whitespace())
         .collect::<String>()
         .to_ascii_lowercase();
-    let has_current_price_language = [
-        "当前价格",
-        "当前价",
-        "最新价格",
-        "最新价",
-        "现价",
-        "现报",
-        "currentprice",
-        "latestprice",
-    ]
-    .iter()
-    .any(|term| compact.contains(term));
-    let is_price_trigger = [
+    [
         "阈值",
         "触发价",
         "触发线",
         "配置线",
+        "警戒线",
         "跌破",
         "低于",
-        "高于",
         "突破",
+        "高于",
         "threshold",
         "triggerprice",
+        "triggerline",
+        "below",
+        "above",
     ]
     .iter()
-    .any(|term| compact.contains(term));
-    let has_price_figure = text.contains('$')
-        || text.contains("美元")
-        || text.contains("港元")
-        || text.contains("人民币");
-    if !has_current_price_language || !is_price_trigger || !has_price_figure {
-        return false;
-    }
+    .any(|term| compact.contains(term))
+}
 
-    RE_HEARTBEAT_STALE_PRICE_DATE.captures_iter(text).any(|captures| {
-        let year = captures
-            .name("year")
-            .and_then(|m| m.as_str().parse::<i32>().ok());
-        let month = captures
-            .name("month")
-            .and_then(|m| m.as_str().parse::<u32>().ok());
-        let day = captures
-            .name("day")
-            .and_then(|m| m.as_str().parse::<u32>().ok());
-        let Some(date) = year
-            .zip(month)
-            .zip(day)
-            .and_then(|((year, month), day)| chrono::NaiveDate::from_ymd_opt(year, month, day))
-        else {
-            return false;
-        };
-        date < current_date
-    })
+fn heartbeat_stale_price_timestamp(text: &str, reference_date: NaiveDate) -> Option<NaiveDate> {
+    if !heartbeat_triggered_price_threshold_context(text) {
+        return None;
+    }
+    RE_HEARTBEAT_PRICE_TIMESTAMP_DATE
+        .captures_iter(text)
+        .filter_map(|captures| heartbeat_price_timestamp_context_date(&captures))
+        .find(|date| {
+            reference_date.signed_duration_since(*date).num_days()
+                > HEARTBEAT_PRICE_TIMESTAMP_MAX_AGE_DAYS
+        })
+}
+
+fn heartbeat_reference_date_now() -> NaiveDate {
+    let beijing_tz = chrono::FixedOffset::east_opt(8 * 3600).expect("valid beijing offset");
+    chrono::Utc::now().with_timezone(&beijing_tz).date_naive()
 }
 
 /// 直接从 `notif_prefs_dir/{actor_slug}.json` 读 actor 的 quiet_hours + timezone。
@@ -1121,6 +1125,14 @@ fn heartbeat_execution_from_content(
     content: &str,
     heartbeat_model: &str,
 ) -> ScheduledTaskExecution {
+    heartbeat_execution_from_content_at(content, heartbeat_model, heartbeat_reference_date_now())
+}
+
+fn heartbeat_execution_from_content_at(
+    content: &str,
+    heartbeat_model: &str,
+    reference_date: NaiveDate,
+) -> ScheduledTaskExecution {
     let raw_preview = truncate_for_log(content.trim(), 280);
     let raw_chars = content.chars().count();
     let starts_with_json = content.trim_start().starts_with('{');
@@ -1188,10 +1200,9 @@ fn heartbeat_execution_from_content(
                     session_id: None,
                 };
             }
-            if heartbeat_trigger_mentions_stale_price_date(
-                &sanitized_message,
-                hone_core::beijing_now().date_naive(),
-            ) {
+            if let Some(stale_price_timestamp) =
+                heartbeat_stale_price_timestamp(&sanitized_message, reference_date)
+            {
                 return ScheduledTaskExecution {
                     should_deliver: false,
                     content: String::new(),
@@ -1204,6 +1215,8 @@ fn heartbeat_execution_from_content(
                         "raw_preview": raw_preview,
                         "deliver_preview": deliver_preview,
                         "failure_kind": "stale_price_timestamp",
+                        "stale_price_timestamp": stale_price_timestamp.to_string(),
+                        "stale_price_timestamp_suppressed": true,
                     }),
                     session_id: None,
                 };
@@ -2334,7 +2347,7 @@ pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
 6b. 如果你发现用户条件、交易动作边界、来源归因或输出契约之间存在冲突，不要解释冲突、不要复述规则、不要输出空文本；必须返回 `{{\"status\":\"noop\"}}`，除非你能用合规的 `triggered` JSON 只报告触发事实和条件化风险提示。\n\
 6c. 严禁输出工具配置、任务配置、画像建档说明、`set_immediate_kinds`、`cron_job` 或任何“已配置/将创建监控”的说明；如果本轮误入配置/建档/任务治理路径，必须返回 `{{\"status\":\"noop\"}}`。\n\
 7. 时间一致性约束：对于发射、财报、业绩会等有明确时间窗口的事件，必须先判断当前时间是否已越过事件预定时间，才能输出完成态结论。若当前时间早于事件计划时间，必须返回 noop，不允许把未来计划误报成已完成。\n\
-8. 价格时间口径约束：引用股价时，必须核实价格的时间戳。若市场已停盘、股票停牌或价格来自上一交易日，必须在 message 中明确标注（最新可得价格为停牌前/上一交易日），不允许把旧价格包装成事件发生后的即时市场反应。\n\
+8. 价格时间口径约束：引用股价、金价、汇率或商品价格时，必须核实价格的时间戳。价格阈值 / 跌破 / 突破类 heartbeat 只有在最新可得价格属于当前检查窗口或最近可解释交易窗口时才能 triggered；若工具只返回明显旧日期、缺少价格时间戳，或无法证明该价格仍是最新可得价格，必须返回 noop，不允许把旧价格包装成当前触发依据。\n\
 9. 价格阈值口径约束：除非用户条件里明确写的是“日内最高/最低/振幅/区间波动”，否则“盘中涨跌幅超过 X%”一律按最新可得价格相对昨收的涨跌幅判断；不允许用日内高点相对昨收、日内低点相对昨收，或高低点振幅去替代当前涨跌幅。\n\
 10. 若最新可得价格相对昨收尚未达到阈值，但日内高点、日内低点或盘中振幅达到阈值，且任务没有明确要求这些口径，本轮必须返回 noop，不允许触发。\n\
 11. 重复事件约束：若某条件（如某只股票的某次发射或某次事件）已经在前一轮被判定为 noop 或 triggered，本轮如果没有获取到新的独立行情时间戳或新的独立事件窗口，就不允许改变结论，也不允许重复 triggered。\n\
@@ -2802,11 +2815,11 @@ mod tests {
         build_scheduled_prompt_with_recovered_local_context, execute_scheduler_event,
         guard_commodity_causality_for_event, guard_direct_trade_instruction_for_event,
         has_skip_delivery_signal, heartbeat_duplicate_preview_match,
-        heartbeat_execution_from_content, heartbeat_execution_from_runner_error,
-        heartbeat_runner_selection, inspect_heartbeat_result, is_empty_success_fallback,
-        is_stale_market_data_success_fallback, load_actor_quiet_hours,
-        persist_suppressed_scheduler_failure_turn, rollback_skipped_scheduler_assistant_turn,
-        sanitize_scheduler_delivery_text, heartbeat_trigger_mentions_stale_price_date,
+        heartbeat_execution_from_content, heartbeat_execution_from_content_at,
+        heartbeat_execution_from_runner_error, heartbeat_runner_selection,
+        inspect_heartbeat_result, is_empty_success_fallback, is_stale_market_data_success_fallback,
+        load_actor_quiet_hours, persist_suppressed_scheduler_failure_turn,
+        rollback_skipped_scheduler_assistant_turn, sanitize_scheduler_delivery_text,
     };
     use crate::HoneBotCore;
     use crate::agent_session::{AgentRunOptions, AgentRunQuotaMode};
@@ -3087,6 +3100,46 @@ mod tests {
         assert!(execution.error.is_none());
         assert_ne!(
             execution.metadata["near_threshold_suppressed"].as_bool(),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn heartbeat_stale_price_timestamp_trigger_is_suppressed() {
+        let execution = heartbeat_execution_from_content_at(
+            r#"{"status":"triggered","message":"XAU/USD 现货黄金当前价格已跌破 $4,500 阈值，现报 $4,483.12（2026年4月4日），较昨收下跌约 0.54%。"}"#,
+            "MiniMax-M2.7-highspeed",
+            chrono::NaiveDate::from_ymd_opt(2026, 5, 27).expect("date"),
+        );
+
+        assert!(!execution.should_deliver);
+        assert!(execution.error.is_none());
+        assert_eq!(
+            execution.metadata["failure_kind"].as_str(),
+            Some("stale_price_timestamp")
+        );
+        assert_eq!(
+            execution.metadata["stale_price_timestamp"].as_str(),
+            Some("2026-04-04")
+        );
+        assert_eq!(
+            execution.metadata["stale_price_timestamp_suppressed"].as_bool(),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn heartbeat_recent_price_timestamp_trigger_is_allowed() {
+        let execution = heartbeat_execution_from_content_at(
+            r#"{"status":"triggered","message":"XAU/USD 现货黄金当前价格已跌破 $4,500 阈值，现报 $4,483.12（2026年5月26日），检查时间 2026年5月27日。"}"#,
+            "MiniMax-M2.7-highspeed",
+            chrono::NaiveDate::from_ymd_opt(2026, 5, 27).expect("date"),
+        );
+
+        assert!(execution.should_deliver);
+        assert!(execution.error.is_none());
+        assert_ne!(
+            execution.metadata["stale_price_timestamp_suppressed"].as_bool(),
             Some(true)
         );
     }
@@ -4033,6 +4086,8 @@ mod tests {
 
         let prompt = build_scheduled_prompt(&event);
         assert!(prompt.contains("盘中涨跌幅超过 X%"));
+        assert!(prompt.contains("明显旧日期、缺少价格时间戳"));
+        assert!(prompt.contains("旧价格包装成当前触发依据"));
         assert!(prompt.contains("不允许用日内高点相对昨收"));
         assert!(prompt.contains("本轮必须返回 noop"));
     }
