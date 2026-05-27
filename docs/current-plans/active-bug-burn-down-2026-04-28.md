@@ -3,7 +3,7 @@
 - title: Active Bug Burn-down 2026-04-28
 - status: in_progress
 - created_at: 2026-04-28
-- updated_at: 2026-05-27 03:04 CST
+- updated_at: 2026-05-28 03:11 CST
 - owner: Codex
 - related_files:
   - `docs/bugs/README.md`
@@ -34,6 +34,7 @@ Clear the current active bug queue as far as software changes can responsibly do
 
 ## Progress
 
+- 2026-05-28 03:11: Re-closed the reopened P1 event-engine Feishu direct digest `open_id cross app` regression by restoring the intended “all stable contacts resolve to one current-app open_id” contract end-to-end: Web API now forwards every stable direct contact target per actor, and `FeishuSink` now merges repeated actor entries instead of overwriting them. The same run also closed the active P2 heartbeat stale gold-price trigger by suppressing `JsonTriggered` deliveries whose current/latest-price message carries an explicit date older than the current Beijing date. Targeted `hone-event-engine` / `hone-web-api` / `hone-channels` tests and `cargo check -p hone-event-engine -p hone-web-api -p hone-channels --tests` passed. The remaining active bug is the scheduler commodity-guard false positive; current local regressions already pass, so the next run needs a live sample shape that still reproduces before making another code change.
 - 2026-04-28: Started from a clean `main...origin/main` workspace, then pulled latest before the burn-down.
 - 2026-04-28: Closed 6 active bugs with code changes and moved them to `Fixed` in `docs/bugs/README.md`:
   - Desktop bundled restart 8077 port conflict

@@ -3,7 +3,16 @@
 - **发现时间**: 2026-05-27 19:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
+
+## 修复记录（2026-05-28 03:11 CST）
+
+- 已修复。heartbeat `JsonTriggered` 送达前新增旧日期价格 guard：当前/最新价格触发文案若含显式价格日期，且该日期早于当前北京时间，则本轮抑制送达并写入 `failure_kind=stale_price_timestamp`，避免把历史价格包装成当前阈值触发证据。
+- 新增回归覆盖：
+  - `heartbeat_trigger_detects_stale_price_date_in_current_price_message`
+  - `heartbeat_trigger_allows_same_day_price_date`
+  - `heartbeat_execution_suppresses_stale_price_timestamp_trigger`
+- 验证：`cargo test -p hone-channels heartbeat_trigger_detects_stale_price_date_in_current_price_message --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_trigger_allows_same_day_price_date --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_execution_suppresses_stale_price_timestamp_trigger --lib -- --nocapture`、`cargo check -p hone-event-engine -p hone-web-api -p hone-channels --tests` 通过。
 
 ## 证据来源
 

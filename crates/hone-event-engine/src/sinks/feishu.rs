@@ -94,16 +94,29 @@ impl FeishuSink {
         A: Into<String>,
         T: Into<String>,
     {
-        self.direct_actor_contacts = targets
-            .into_iter()
-            .filter_map(|(actor_user_id, target)| {
-                let actor_user_id = actor_user_id.into().trim().to_string();
-                if actor_user_id.is_empty() {
-                    return None;
-                }
-                direct_contact_from_target(&target.into()).map(|contacts| (actor_user_id, contacts))
-            })
-            .collect();
+        let mut contacts_by_actor: HashMap<String, FeishuDirectContacts> = HashMap::new();
+        for (actor_user_id, target) in targets {
+            let actor_user_id = actor_user_id.into().trim().to_string();
+            if actor_user_id.is_empty() {
+                continue;
+            }
+            let Some(contacts) = direct_contact_from_target(&target.into()) else {
+                continue;
+            };
+            let entry = contacts_by_actor
+                .entry(actor_user_id)
+                .or_insert_with(|| FeishuDirectContacts {
+                    emails: Vec::new(),
+                    mobiles: Vec::new(),
+                });
+            entry.emails.extend(contacts.emails);
+            entry.mobiles.extend(contacts.mobiles);
+            entry.emails.sort();
+            entry.emails.dedup();
+            entry.mobiles.sort();
+            entry.mobiles.dedup();
+        }
+        self.direct_actor_contacts = contacts_by_actor;
         self
     }
 
@@ -500,6 +513,8 @@ mod tests {
     fn direct_actor_contact_targets_keep_only_resolvable_contacts() {
         let sink = FeishuSink::new("app", "secret").with_direct_actor_contact_targets(vec![
             ("ou_email", "alice@example.com"),
+            ("ou_both", "alice@example.com"),
+            ("ou_both", "+8613800138000"),
             ("ou_mobile", "+8613800138000"),
             ("ou_open", "ou_stale"),
             ("", "bob@example.com"),
@@ -515,6 +530,13 @@ mod tests {
             sink.direct_actor_contacts.get("ou_mobile"),
             Some(&FeishuDirectContacts {
                 emails: vec![],
+                mobiles: vec!["+8613800138000".to_string()],
+            })
+        );
+        assert_eq!(
+            sink.direct_actor_contacts.get("ou_both"),
+            Some(&FeishuDirectContacts {
+                emails: vec!["alice@example.com".to_string()],
                 mobiles: vec!["+8613800138000".to_string()],
             })
         );

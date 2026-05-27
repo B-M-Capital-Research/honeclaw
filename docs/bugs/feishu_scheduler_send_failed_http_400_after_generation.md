@@ -3,8 +3,11 @@
 - **发现时间**: 2026-04-16 22:08 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)
+- **修复记录**:
+  - 2026-05-28 03:11 CST：已修复。`feishu_direct_actor_contact_targets_from_records(...)` 不再把同一 actor 的多稳定联系人压成“只保留单一 target”，`FeishuSink::with_direct_actor_contact_targets(...)` 也改为聚合同一 actor 的全部 email/mobile 后再统一解析 current-app `open_id`。这样 event-engine Feishu direct digest sink 不会因为 email+mobile 组合被上游丢弃或在 sink 侧被后写覆盖，而退回跨 app 旧 `open_id`。
+  - 验证：`cargo test -p hone-event-engine direct_actor_contact_targets_keep_only_resolvable_contacts --lib -- --nocapture`、`cargo test -p hone-web-api feishu_direct_actor_targets_ --lib -- --nocapture`、`cargo check -p hone-event-engine -p hone-web-api -p hone-channels --tests` 通过。
 - **证据来源**:
   - 2026-05-27 11:03 最近四小时最新样本：
     - `data/runtime/logs/hone-console-page-prod.log`

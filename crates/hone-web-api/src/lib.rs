@@ -378,15 +378,10 @@ fn feishu_direct_actor_contact_targets_from_records(
     }
     targets_by_actor
         .into_iter()
-        .filter_map(|(actor_user_id, targets)| {
-            if targets.len() == 1 {
-                targets
-                    .into_iter()
-                    .next()
-                    .map(|target| (actor_user_id, target))
-            } else {
-                None
-            }
+        .flat_map(|(actor_user_id, targets)| {
+            targets
+                .into_iter()
+                .map(move |target| (actor_user_id.clone(), target))
         })
         .collect()
 }
@@ -980,6 +975,7 @@ mod tests {
     fn feishu_direct_actor_targets_use_unambiguous_contact_targets() {
         let targets = feishu_direct_actor_contact_targets_from_records(vec![
             channel_target_record("feishu", None, "+8613800138000", vec!["ou_old"]),
+            channel_target_record("feishu", None, "alice@example.com", vec!["ou_old"]),
             channel_target_record("telegram", None, "+8613800138000", vec!["tg_user"]),
             channel_target_record(
                 "feishu",
@@ -996,18 +992,25 @@ mod tests {
             vec![
                 ("ou_email".to_string(), "alice@example.com".to_string()),
                 ("ou_old".to_string(), "+8613800138000".to_string()),
+                ("ou_old".to_string(), "alice@example.com".to_string()),
             ]
         );
     }
 
     #[test]
-    fn feishu_direct_actor_targets_skip_ambiguous_actor_targets() {
+    fn feishu_direct_actor_targets_keep_multiple_stable_contacts_per_actor() {
         let targets = feishu_direct_actor_contact_targets_from_records(vec![
             channel_target_record("feishu", None, "+8613800138000", vec!["ou_old"]),
             channel_target_record("feishu", None, "+8613800138001", vec!["ou_old"]),
         ]);
 
-        assert!(targets.is_empty());
+        assert_eq!(
+            targets,
+            vec![
+                ("ou_old".to_string(), "+8613800138000".to_string()),
+                ("ou_old".to_string(), "+8613800138001".to_string()),
+            ]
+        );
     }
 
     fn channel_target_record(
