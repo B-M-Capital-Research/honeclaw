@@ -7,12 +7,12 @@
 
 ## 修复记录（2026-05-28 03:11 CST）
 
-- 已修复。heartbeat `JsonTriggered` 送达前新增旧日期价格 guard：当前/最新价格触发文案若含显式价格日期，且该日期早于当前北京时间，则本轮抑制送达并写入 `failure_kind=stale_price_timestamp`，避免把历史价格包装成当前阈值触发证据。
+- 已修复。heartbeat `JsonTriggered` 送达前新增旧日期价格 guard：价格阈值触发文案若把当前 / 最新 / 现报价格绑定到明显过旧的显式价格日期，则本轮抑制送达并写入 `failure_kind=stale_price_timestamp`、`stale_price_timestamp` 与 `stale_price_timestamp_suppressed=true`，避免把历史价格包装成当前阈值触发证据。
 - 新增回归覆盖：
-  - `heartbeat_trigger_detects_stale_price_date_in_current_price_message`
-  - `heartbeat_trigger_allows_same_day_price_date`
-  - `heartbeat_execution_suppresses_stale_price_timestamp_trigger`
-- 验证：`cargo test -p hone-channels heartbeat_trigger_detects_stale_price_date_in_current_price_message --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_trigger_allows_same_day_price_date --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_execution_suppresses_stale_price_timestamp_trigger --lib -- --nocapture`、`cargo check -p hone-event-engine -p hone-web-api -p hone-channels --tests` 通过。
+  - `heartbeat_stale_price_timestamp_trigger_is_suppressed`
+  - `heartbeat_recent_price_timestamp_trigger_is_allowed`
+  - `heartbeat_prompt_clarifies_price_threshold_semantics`
+- 验证：`cargo test -p hone-channels heartbeat_stale_price_timestamp --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_prompt_clarifies_price_threshold_semantics --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_near_threshold_ --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`、`rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs` 通过。
 
 ## 证据来源
 

@@ -3060,37 +3060,6 @@ mod tests {
     }
 
     #[test]
-    fn heartbeat_trigger_detects_stale_price_date_in_current_price_message() {
-        let current_date = chrono::NaiveDate::from_ymd_opt(2026, 5, 27).expect("date");
-        assert!(heartbeat_trigger_mentions_stale_price_date(
-            "XAU/USD 现货黄金当前价格已跌破 $4,500 阈值，现报 $4,483.12（2026年4月4日），较昨收下跌约 0.54%。",
-            current_date,
-        ));
-    }
-
-    #[test]
-    fn heartbeat_trigger_allows_same_day_price_date() {
-        let current_date = chrono::NaiveDate::from_ymd_opt(2026, 5, 27).expect("date");
-        assert!(!heartbeat_trigger_mentions_stale_price_date(
-            "XAU/USD 现货黄金当前价格已跌破 $4,500 阈值，现报 $4,483.12（2026年5月27日），较昨收下跌约 0.54%。",
-            current_date,
-        ));
-    }
-
-    #[test]
-    fn heartbeat_execution_suppresses_stale_price_timestamp_trigger() {
-        let execution = heartbeat_execution_from_content(
-            r#"{"status":"triggered","message":"XAU/USD 现货黄金当前价格已跌破 $4,500 阈值，现报 $4,483.12（2026年4月4日），较昨收下跌约 0.54%。"}"#,
-            "model-x",
-        );
-        assert!(!execution.should_deliver);
-        assert_eq!(
-            execution.metadata["failure_kind"].as_str(),
-            Some("stale_price_timestamp")
-        );
-    }
-
-    #[test]
     fn heartbeat_record_high_trigger_is_not_near_threshold_suppressed() {
         let execution = heartbeat_execution_from_content(
             r#"{"status":"triggered","message":"【DRAM 心跳监控】触发条件：DRAM 盘中创历史新高（满足条件2）。盘中最高 $56.38 = 上市以来历史最高价，本轮应发送提醒。"}"#,
