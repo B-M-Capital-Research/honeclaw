@@ -1270,6 +1270,12 @@ fn scheduler_event_is_broad_market_review(event: &SchedulerEvent) -> bool {
         "市场",
         "指数",
         "情绪",
+        "早报",
+        "降息",
+        "概率",
+        "宏观",
+        "briefing",
+        "morningbriefing",
         "marketreview",
         "postmarket",
         "premarket",
@@ -1577,6 +1583,16 @@ fn text_has_broad_market_review_context(text: &str) -> bool {
             "创业板",
             "科技股",
             "半导体",
+            "ai",
+            "etf",
+            "xme",
+            "加密",
+            "降息",
+            "fomc",
+            "fedwatch",
+            "pce",
+            "利率",
+            "宏观",
             "国债收益率",
             "10年期美债",
             "风险偏好",
@@ -1624,16 +1640,10 @@ fn guard_commodity_causality_for_event(text: &str, event: &SchedulerEvent) -> Op
         return None;
     }
     let event_is_commodity_related = scheduler_event_is_commodity_related(event);
-    if !event_is_commodity_related && !text_is_predominantly_commodity_related(text) {
+    let text_is_predominantly_commodity_related = text_is_predominantly_commodity_related(text);
+    if !event_is_commodity_related && !text_is_predominantly_commodity_related {
         return None;
     }
-    if !event_is_commodity_related
-        && scheduler_event_is_broad_market_review(event)
-        && text_has_broad_market_review_context(text)
-    {
-        return None;
-    }
-
     let rewritten = rewrite_commodity_causality_message(text);
     if rewritten.trim() == text.trim() {
         None
@@ -1664,7 +1674,21 @@ fn text_is_predominantly_commodity_related(text: &str) -> bool {
         return true;
     }
     if meaningful_segments.len() <= 2 {
-        return true;
+        let compact = compact_lowercase_text(text);
+        let commodity_hits = count_distinct_keyword_hits(
+            &compact,
+            &[
+                "原油",
+                "油价",
+                "布伦特",
+                "wti",
+                "brent",
+                "crude",
+                "oil",
+                "uso",
+            ],
+        );
+        return commodity_hits >= 3 || !text_has_broad_market_review_context(text);
     }
 
     let total_chars: usize = meaningful_segments
@@ -4533,6 +4557,69 @@ mod tests {
         assert!(
             guard_commodity_causality_for_event(
                 "【OWALERT_PreMarket】\n美股期货修复，QQQ 盘前走强，Nasdaq 与 S&P 500 的风险偏好改善。\nAI 二阶链继续跟踪电力、光模块和半导体设备，开盘后看成交确认。\n油价低于 100 美元，主要受中东谈判预期和需求担忧影响，对今晚市场只是风险变量之一，不是本轮盘前结论的主体。",
+                &event,
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn commodity_guard_skips_ai_morning_briefing_with_secondary_oil_clause() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_market", None::<String>).expect("actor"),
+            job_id: "job-ai-morning".to_string(),
+            job_name: "Hone_AI_Morning_Briefing".to_string(),
+            task_prompt: "生成 AI 科技前沿、宏观风险、持仓标的和油价观察项的早间 briefing。"
+                .to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_market".to_string(),
+            delivery_key: "delivery-ai-morning".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: false,
+            schedule_hour: 8,
+            schedule_minute: 30,
+            schedule_repeat: "daily".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        assert!(
+            guard_commodity_causality_for_event(
+                "【Hone AI Morning Briefing】AI 基建和半导体仍是今日主线，QQQ 与 Nasdaq 的风险偏好需要看长端利率确认。宏观侧关注 PCE、FOMC 纪要和美元指数。油价回落主要受中东谈判预期影响，但这只是组合风险变量，不能替代 AI 科技和持仓标的早报主体。",
+                &event,
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn commodity_guard_skips_rate_cut_probability_digest() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("discord", "rate-cut", None::<String>).expect("actor"),
+            job_id: "job-rate-cut".to_string(),
+            job_name: "每日美股降息概率推送".to_string(),
+            task_prompt: "汇总 FedWatch、FOMC、PCE 风险和美股降息概率。".to_string(),
+            channel: "discord".to_string(),
+            channel_scope: None,
+            channel_target: "rate-cut".to_string(),
+            delivery_key: "delivery-rate-cut".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: false,
+            schedule_hour: 9,
+            schedule_minute: 30,
+            schedule_repeat: "daily".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        assert!(
+            guard_commodity_causality_for_event(
+                "【每日美股降息概率推送】FedWatch 显示市场继续押注年内降息，FOMC 纪要和 PCE 是本周利率路径的核心变量。美股方面，Nasdaq 与 S&P 500 对长端利率更敏感。油价上行会影响通胀预期，但不是本轮降息概率分析的主体。",
                 &event,
             )
             .is_none()

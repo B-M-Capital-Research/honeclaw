@@ -393,3 +393,20 @@
   - 复核当前 live 配置下 event-engine Feishu sink 的 `actor_user_id -> channel_target` 映射是否实际加载到运行态。
   - 增加脱敏诊断字段，记录 direct digest sink 在发送前是否使用 per-actor contact fallback、解析结果是否唯一、最终是否仍保留历史 open_id。
   - 修复后用真实 digest sink 窗口验证至少两个此前失败 actor 不再落入 log fallback。
+
+## 修复记录（2026-05-27 16:26 CST）
+
+- 状态更新为 `Fixed`。
+- 本轮修复不依赖当前机器生产投递状态，只针对仓库侧可解释缺口做通用加固：event-engine Feishu sink 之前会永久缓存通过联系人解析出的 current-app `open_id`；如果 Feishu app 绑定域变化、联系人解析结果过期，后续 digest 会持续复用坏缓存并命中 `99992361 / open_id cross app`，直到进程重启。
+- `crates/hone-event-engine/src/sinks/feishu.rs` 现在把 `99992361 / open_id cross app` 识别为可恢复缓存失效信号：
+  - 如果本轮发送目标来自 per-actor cron channel-target 联系人映射，清除该 actor 的 direct open_id cache，重新通过 email/mobile 解析 current-app open_id，并重发一次。
+  - 如果本轮发送目标来自唯一联系人 fallback，同样清除对应 cache、重新解析并重发一次。
+  - 如果没有可解析联系人映射，仍不会猜测其它 actor 或配置里的联系人，避免误投。
+- 用户可见影响：event-engine digest / 价格异动卡片不再因为运行中缓存了旧 app 域 `open_id` 而持续降级为 log fallback；有稳定联系人映射的 direct actor 会在跨 app 错误后自愈一次。
+- 回归：
+  - `open_id_cross_app_cache_can_be_invalidated_for_retry`
+- 验证：
+  - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-event-engine/src/sinks/feishu.rs crates/hone-channels/src/scheduler.rs`
+  - `cargo test -p hone-event-engine feishu --lib -- --nocapture`
+  - `cargo check -p hone-event-engine -p hone-channels --tests`
+- 关联 GitHub Issue：[#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)。提交并推送后需要在 issue 下回写脱敏修复摘要。
