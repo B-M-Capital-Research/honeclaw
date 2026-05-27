@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-27 23:03 CST
+最后更新：2026-05-28 03:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -21,6 +21,10 @@
 - Later / 待复现：10
 - 已修复 / 已关闭：111
 - 历史分析 / 部分止血：5
+- 本轮 03:03 CST 未发现新的独立活跃 P1，也未新增独立缺陷。23:03-03:03 CST 按消息时间共有 18 个 user turn 与 18 个 assistant final；Feishu direct 与普通 scheduler 会话均以 assistant final 收口。assistant final 污染扫描未命中空回复、`/Users/`、`data/agent-sandboxes`、`~/.codex`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、`reasoning_content`、`<think>`、provider 原始 `Param Incorrect` / `quota exhausted` / `Resource temporarily unavailable`、`panic` 或 `index out of bounds`；最近四小时无非文档代码提交。event-engine / Feishu digest sink 未在本窗确认 `99992361 / open_id cross app` 或 `HTTP 400` 新复发证据。
+- 本轮 03:03 CST 未观察到活跃 P2 `Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice` 新复发：23:03-03:03 CST 普通 scheduler 4 条 `completed + sent + delivered=1`，均未见 `detail_json.scheduler.commodity_causality_guarded=true`。该缺陷因既有真实复发证据仍保持 `New`，但本窗不补充新证据、不新增重复文档。
+- 本轮 03:03 CST 未观察到活跃 P2 `Heartbeat 金价阈值提醒把旧日期价格当作当前触发价送达` 新误送达：23:03-03:03 CST `伦敦金跌破4500提醒` 新增 7 条 `execution_failed + skipped_error + delivered=0` 与 1 条 `noop + skipped_noop + delivered=0`，无 `delivered=1` 的旧日期价格提醒。该缺陷因既有成功误送达证据仍保持 `New`，但本窗不补充新送达样本。
+- 本轮 03:03 CST 继续看到既有 heartbeat 旧/未确认部署运行态坏信号：23:03-03:03 CST heartbeat 新增 84 条 `execution_failed + skipped_error + delivered=0`、43 条 `noop + skipped_noop + delivered=0` 和 1 条 `completed + sent + delivered=1`。失败形态仍主要对应已修复表中的结构化状态退化（非结构化 JSON 74 条、非法 JSON 2 条、缺少状态 1 条、未知状态 3 条、空输出 2 条）、context overflow noop 7 条与迭代耗尽旧信号（`max_iterations_exceeded:10` 2 条）；本轮不因这些重复信号新增缺陷或从 `Fixed` 回退。唯一成功 heartbeat `DRAM 心跳监控` 的 “Micron 加入万亿美元市值俱乐部” 经行情与公开报道交叉核对属当前事实，不按质量缺陷登记。
 - 本轮 23:03 CST 确认活跃 P2 `Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice` 继续复发且影响范围扩大：19:02-23:02 CST 普通 scheduler 37 条 `completed + sent + delivered=1` 中 11 条命中 `detail_json.scheduler.commodity_causality_guarded=true`，其中 `Oil_Price_Monitor_Premarket` 属专门原油任务，其余 10 条为美股大盘晚间/温度/风控/盘前宏观/纳斯达克盘前/盘前推演类非商品主任务（`run_id=34929/34926/34927/34919/34932/34961/34946/34974/34972/34973`）。这些任务原始完整市场分析被全量替换成原油 / 大宗商品安全提示并仍记已送达；该证据补充到原缺陷文档，不新建重复缺陷，严重等级仍为 P2，状态保持 `New`，无关联 GitHub Issue。
 - 本轮 23:03 CST 未发现新的独立活跃 P1。19:02-23:02 CST 按消息时间共有 59 个 user turn 与 59 个 assistant final；Feishu / Web direct 与普通 scheduler 会话均以 assistant final 收口。assistant final 抽样与污染扫描未见空回复、`/Users/`、`data/agent-sandboxes`、`~/.codex`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、`reasoning_content`、`<think>`、provider 原始 `Param Incorrect` / `quota exhausted` / `Resource temporarily unavailable`、`panic` 或 `index out of bounds`；最近四小时无非文档代码提交。event-engine digest sink 未在本窗确认新的 P1 复发证据。
 - 本轮 23:03 CST 继续看到既有 heartbeat 旧/未确认部署运行态坏信号：19:02-23:02 CST heartbeat 新增 85 条 `execution_failed + skipped_error + delivered=0`（Feishu 64 条、Web 21 条）、39 条 `noop + skipped_noop + delivered=0`（Feishu 28 条、Web 11 条）和 4 条 Feishu `completed + sent + delivered=1`。失败形态仍主要对应已修复表中的结构化状态退化（非结构化 JSON 70 条、非法 JSON 1 条、缺少状态 3 条、未知状态 5 条）与迭代耗尽旧信号（`max_iterations_exceeded:10` 6 条）；本轮不因这些重复信号新增缺陷或从 `Fixed` 回退。
