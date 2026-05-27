@@ -74,8 +74,8 @@
     <g transform="translate(1380, 0)">
       <rect x="0" y="6" width="280" height="98" fill="#fdfaf2" stroke="#d8cdb8"/>
       <text x="14" y="26" class="section-meta">CURRENT RELEASE</text>
-      <text x="14" y="56" class="serif" font-size="34" font-weight="700" fill="#1a1a2e">v0.10.0</text>
-      <text x="14" y="76" font-size="11" fill="#6a6478">2026·05·11 — config-only LLM keys</text>
+      <text x="14" y="56" class="serif" font-size="34" font-weight="700" fill="#1a1a2e">v0.12.4</text>
+      <text x="14" y="76" font-size="11" fill="#6a6478">2026·05·27 — cloud runtime + guard fixes</text>
       <text x="14" y="92" font-size="10" fill="#8a8497" letter-spacing="0.05em">github · B-M-Capital-Research/honeclaw · MIT</text>
       <rect x="270" y="6" width="6" height="98" fill="#e85d04"/>
     </g>
@@ -84,7 +84,7 @@
     <g transform="translate(0, 130)">
       <g transform="translate(0, 0)">
         <text x="0" y="0" class="section-meta">RUST CRATES</text>
-        <text x="0" y="22" font-size="22" font-weight="700" fill="#1a1a2e" class="serif">8</text>
+        <text x="0" y="22" font-size="22" font-weight="700" fill="#1a1a2e" class="serif">20</text>
       </g>
       <g transform="translate(110, 0)">
         <text x="0" y="0" class="section-meta">CHANNEL BINS</text>
@@ -839,29 +839,29 @@
     <g transform="translate(556, 0)">
       <rect x="0" y="0" width="540" height="180" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
       <rect x="0" y="0" width="3" height="180" fill="#7a6a52"/>
-      <text x="16" y="22" class="card-title">Storage · file system + SQLite</text>
-      <text x="16" y="37" class="card-mono">data/ · per-actor JSON · single SQLite</text>
+      <text x="16" y="22" class="card-title">Storage · cloud config + local fallback</text>
+      <text x="16" y="37" class="card-mono">cloud.postgres · cloud.oss · data/ fallback</text>
 
       <g transform="translate(16, 50)">
         <rect x="0" y="0" width="510" height="36" rx="3" fill="#f5f0e6" stroke="#c8b898"/>
-        <text x="10" y="14" font-size="10" font-weight="700" fill="#1a1a2e">data/events.db · SQLite</text>
-        <text x="10" y="28" font-size="9.5" fill="#5a5a6e" font-family="monospace">events · engine_meta · delivery_log · INSERT OR IGNORE dedup</text>
+        <text x="10" y="14" font-size="10" font-weight="700" fill="#1a1a2e">Cloud runtime env · Postgres + Aliyun OSS</text>
+        <text x="10" y="28" font-size="9.5" fill="#5a5a6e" font-family="monospace">/api/meta capabilities · strict_no_local_storage guard</text>
       </g>
 
       <g transform="translate(0, 92)">
         <rect x="0" y="0" width="510" height="32" rx="3" fill="#f5f0e6" stroke="#c8b898"/>
-        <text x="10" y="13" font-size="10" font-weight="700" fill="#1a1a2e">Per-actor prefs · data/notif_prefs/{ch}__{scope}__{uid}.json</text>
-        <text x="10" y="26" font-size="9.5" fill="#5a5a6e">digest_slots · quiet_hours · timezone · investment_theses · disabled_kinds</text>
+        <text x="10" y="13" font-size="10" font-weight="700" fill="#1a1a2e">Public uploads · OSS when configured</text>
+        <text x="10" y="26" font-size="9.5" fill="#5a5a6e">oss://bucket/key · public image/file proxy · local fallback</text>
       </g>
 
       <g transform="translate(0, 130)">
         <rect x="0" y="0" width="250" height="36" rx="3" fill="#f5f0e6" stroke="#c8b898"/>
-        <text x="10" y="14" font-size="10" font-weight="700" fill="#1a1a2e">Sessions / portfolios / company_profiles</text>
-        <text x="10" y="28" font-size="9.5" fill="#5a5a6e">hone-memory crate · markdown</text>
+        <text x="10" y="14" font-size="10" font-weight="700" fill="#1a1a2e">Local state still explicit</text>
+        <text x="10" y="28" font-size="9.5" fill="#5a5a6e">sessions · quota · audit · cron · prefs</text>
       </g>
       <g transform="translate(258, 130)">
         <rect x="0" y="0" width="252" height="36" rx="3" fill="#f5f0e6" stroke="#c8b898"/>
-        <text x="10" y="14" font-size="10" font-weight="700" fill="#1a1a2e">Skills · agent sandboxes</text>
+        <text x="10" y="14" font-size="10" font-weight="700" fill="#1a1a2e">Skills · generated artifacts · logs</text>
         <text x="10" y="28" font-size="9.5" fill="#5a5a6e" font-family="monospace">$HONE_DATA_DIR/agent-sandboxes/{ch}/{uid}/</text>
       </g>
     </g>
@@ -915,40 +915,40 @@
   <g transform="translate(72, 1948)">
     <text x="0" y="0" class="section-meta" letter-spacing="0.18em">RECENT MILESTONES</text>
     <line x1="200" y1="-4" x2="1656" y2="-4" class="footer-line"/>
-    <text x="1660" y="0" class="section-meta" text-anchor="end">v0.10.0 · 2026·05·11</text>
+    <text x="1660" y="0" class="section-meta" text-anchor="end">v0.12.4 · 2026·05·27</text>
 
     <g transform="translate(0, 14)">
       <g transform="translate(0, 0)">
         <rect x="0" y="0" width="404" height="76" rx="4" fill="#fff0d6" stroke="#e85d04"/>
         <rect x="0" y="0" width="3" height="76" fill="#e85d04"/>
-        <text x="14" y="20" font-size="10" font-weight="800" fill="#b8542a" letter-spacing="0.08em">v0.10.0 · CONFIG KEYS</text>
-        <text x="14" y="38" class="card-title">LLM credentials live in config.yaml</text>
-        <text x="14" y="54" class="card-detail">CLI/Web write provider key pools directly</text>
-        <text x="14" y="68" class="card-detail">env-only LLM fallback removed</text>
+        <text x="14" y="20" font-size="10" font-weight="800" fill="#b8542a" letter-spacing="0.08em">v0.12.4 · CLOUD RUNTIME</text>
+        <text x="14" y="38" class="card-title">PG / OSS env contract lands</text>
+        <text x="14" y="54" class="card-detail">public uploads prefer OSS when configured</text>
+        <text x="14" y="68" class="card-detail">scheduler commodity guard false positive fixed</text>
       </g>
       <g transform="translate(416, 0)">
         <rect x="0" y="0" width="404" height="76" rx="4" fill="#fff0d6" stroke="#e85d04"/>
         <rect x="0" y="0" width="3" height="76" fill="#e85d04"/>
-        <text x="14" y="20" font-size="10" font-weight="800" fill="#b8542a" letter-spacing="0.08em">v0.9.1 · LLM PROFILES</text>
-        <text x="14" y="38" class="card-title">provider registry · profile symbols</text>
-        <text x="14" y="54" class="card-detail">Settings UI edits model params + reasoning</text>
-        <text x="14" y="68" class="card-detail">event-engine stages resolve named profiles</text>
+        <text x="14" y="20" font-size="10" font-weight="800" fill="#b8542a" letter-spacing="0.08em">v0.12.3 · PUBLIC WEB</text>
+        <text x="14" y="38" class="card-title">Blog / public chat / share previews</text>
+        <text x="14" y="54" class="card-detail">desktop remote backend diagnostics tightened</text>
+        <text x="14" y="68" class="card-detail">Feishu and event-engine reliability pass</text>
       </g>
       <g transform="translate(832, 0)">
         <rect x="0" y="0" width="404" height="76" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
         <rect x="0" y="0" width="3" height="76" fill="#7a6a52"/>
-        <text x="14" y="20" font-size="10" font-weight="800" fill="#5a5a6e" letter-spacing="0.08em">v0.9.0 · CHANNEL CONFIG</text>
-        <text x="14" y="38" class="card-title">Origin-bound delivery · CLI/Web settings</text>
-        <text x="14" y="54" class="card-detail">allowlists · chat_scope · iMessage target handles</text>
-        <text x="14" y="68" class="card-detail">/channel-settings · hone-cli channels targets</text>
+        <text x="14" y="20" font-size="10" font-weight="800" fill="#5a5a6e" letter-spacing="0.08em">v0.12.2 · HEARTBEAT DEDUPE</text>
+        <text x="14" y="38" class="card-title">scheduler revision dedupe fixed</text>
+        <text x="14" y="54" class="card-detail">share-card CJK code font alignment</text>
+        <text x="14" y="68" class="card-detail">LLM diagnostics follow new config layout</text>
       </g>
       <g transform="translate(1248, 0)">
         <rect x="0" y="0" width="408" height="76" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
         <rect x="0" y="0" width="3" height="76" fill="#7a6a52"/>
-        <text x="14" y="20" font-size="10" font-weight="800" fill="#5a5a6e" letter-spacing="0.08em">v0.8.0 · HONE CLOUD RUNNER</text>
-        <text x="14" y="38" class="card-title">HoneCloudRunner · API key auth</text>
-        <text x="14" y="54" class="card-detail">hone_cloud.rs · REST · managed credentials</text>
-        <text x="14" y="68" class="card-detail">Admin Settings API Key panel · /public/v1/cloud-runner/*</text>
+        <text x="14" y="20" font-size="10" font-weight="800" fill="#5a5a6e" letter-spacing="0.08em">v0.12.0 · SHARE EXPERIENCE</text>
+        <text x="14" y="38" class="card-title">public chat sharing and packaged app flow</text>
+        <text x="14" y="54" class="card-detail">config/runtime apply path hardened</text>
+        <text x="14" y="68" class="card-detail">release docs and install paths aligned</text>
       </g>
     </g>
   </g>

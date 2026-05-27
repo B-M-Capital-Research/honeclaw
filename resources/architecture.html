@@ -373,7 +373,7 @@
     <h1>HONE Research Agent - Full Architecture Map</h1>
     <div class="sub">What happens after a single message arrives, and which modules are involved</div>
   </div>
-  <div class="tag">2026-03-14 · Honeclaw</div>
+  <div class="tag">2026-05-27 · v0.12.4</div>
 </div>
 
 <hr class="divider" style="margin-bottom:18px" />
@@ -557,19 +557,27 @@
 
   <div class="row" style="margin-bottom:6px">
     <div class="agent-box">
-      <div class="box-title">Three execution engines (selected by <code style="font-size:10px">config.yaml agent.provider</code>)</div>
+      <div class="box-title">Five execution engines (selected by <code style="font-size:10px">config.yaml agent.runner</code>)</div>
       <div class="agent-variants">
         <div class="variant v-primary">
-          <div class="v-name">function_calling</div>
-          <div class="v-desc">Default - built-in LLM<br/>multi-turn iteration + tool_call<br/>configurable max rounds</div>
+          <div class="v-name">codex_acp</div>
+          <div class="v-desc">Default local ACP<br/>native file/tool work<br/>managed transcript</div>
+        </div>
+        <div class="variant v-secondary">
+          <div class="v-name">hone_cloud</div>
+          <div class="v-desc">REST runner<br/>API key auth<br/>managed credentials</div>
+        </div>
+        <div class="variant v-secondary">
+          <div class="v-name">opencode_acp</div>
+          <div class="v-desc">OpenCode ACP<br/>local coding agent<br/>MCP bridge</div>
         </div>
         <div class="variant v-secondary">
           <div class="v-name">gemini_cli</div>
-          <div class="v-desc">Local Gemini CLI<br/>subprocess spawn<br/>streaming output parsing</div>
+          <div class="v-desc">Gemini CLI<br/>subprocess stream<br/>legacy fallback</div>
         </div>
         <div class="variant v-secondary">
-          <div class="v-name">codex_cli</div>
-          <div class="v-desc">Local Codex CLI<br/>code / docs tasks<br/>configurable model</div>
+          <div class="v-name">multi-agent</div>
+          <div class="v-desc">search + answer<br/>cascaded context<br/>stage-aware tools</div>
         </div>
       </div>
     </div>
@@ -661,34 +669,34 @@
   <!-- PHASE 5: Local Storage -->
   <div class="phase-band">
     <div class="dot"></div>
-    Local storage (memory crate)
+    Cloud runtime config + explicit local fallback
     <div class="phase-num">⑤ STORAGE</div>
   </div>
 
   <div class="row" style="margin-bottom:6px">
     <div class="card theme-gray">
-      <div class="card-title">💬 sessions/</div>
-      <div class="card-sub">JSON session history<br/>summary compression storage</div>
+      <div class="card-title">☁️ cloud.postgres</div>
+      <div class="card-sub">runtime env contract<br/>strict_no_local_storage guard</div>
     </div>
     <div class="card theme-gray">
-      <div class="card-title">📁 portfolio/</div>
-      <div class="card-sub">Holdings data<br/>isolated by Actor</div>
+      <div class="card-title">🪣 cloud.oss</div>
+      <div class="card-sub">public uploads<br/>oss:// proxy reads</div>
     </div>
     <div class="card theme-gray">
-      <div class="card-title">⏰ cron_jobs/</div>
-      <div class="card-sub">Scheduled task JSON<br/>minute-level polling</div>
+      <div class="card-title">💬 sessions / quota</div>
+      <div class="card-sub">local fallback remains<br/>until PG repositories land</div>
     </div>
     <div class="card theme-gray">
-      <div class="card-title">🗂 kb/</div>
-      <div class="card-sub">Knowledge base files<br/>vector search index</div>
+      <div class="card-title">⏰ cron / prefs</div>
+      <div class="card-sub">JSON + SQLite state<br/>actor isolated</div>
     </div>
     <div class="card theme-gray">
-      <div class="card-title">📋 llm_audit.sqlite3</div>
-      <div class="card-sub">LLM call audit<br/>archived by ActorIdentity<br/>configurable retention days</div>
+      <div class="card-title">📋 audit / portfolio</div>
+      <div class="card-sub">local SQLite / JSON<br/>explicit dependency report</div>
     </div>
     <div class="card theme-gray">
-      <div class="card-title">📝 Drafts &amp; Images</div>
-      <div class="card-sub">generated images only<br/>gen_images</div>
+      <div class="card-title">📝 artifacts &amp; logs</div>
+      <div class="card-sub">generated files<br/>agent sandboxes / logs</div>
     </div>
   </div>
 
@@ -785,7 +793,7 @@
 
 <!-- ══ Legend / Footer ══ -->
 <div class="footer-note">
-  Honeclaw · Rust workspace · local-first · multi-channel · multi-agent engines · message flow: channel entrypoint -> hone-channels -> Agent -> Tools -> Memory -> response output
+  Honeclaw · Rust workspace · cloud-aware local fallback · multi-channel · multi-agent engines · message flow: channel entrypoint -> hone-channels -> Agent -> Tools -> Memory -> response output
   <br/>
   <span style="color:#c8962a; font-weight:600">config.yaml + effective runtime config</span> are the source of truth &nbsp;|&nbsp;
   <span style="color:#5aab96; font-weight:600">ActorIdentity</span> is the foundation of data isolation &nbsp;|&nbsp;

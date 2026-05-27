@@ -377,15 +377,25 @@ mod tests {
 
     #[tokio::test]
     async fn execute_network_failure_returns_structured_error() {
-        // 使用一个必然失败的端口
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind local test port");
+        let addr = listener.local_addr().expect("read local addr");
+        let server = tokio::spawn(async move {
+            if let Ok((socket, _)) = listener.accept().await {
+                drop(socket);
+            }
+        });
+
         let tool = DeepResearchTool::new(
-            "http://user:pass@127.0.0.1:19/api/research/start?token=secret&ok=1",
+            &format!("http://user:pass@{addr}/api/research/start?token=secret&ok=1"),
             "",
         );
         let result = tool
             .execute(serde_json::json!({"company_name": "NVIDIA"}))
             .await
             .expect("execute should not panic");
+        let _ = server.await;
         let err = expect_failed_tool_result(&result);
         assert_text_contains_all(err, &["token=<redacted>", "<redacted>@127.0.0.1"]);
         assert_text_contains_none(err, &["secret", "user:pass"]);

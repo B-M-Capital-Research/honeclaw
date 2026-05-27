@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-05-23
+Last updated: 2026-05-27
+
+## 2026-05-27
+
+### v0.12.4 Formal Release
+
+- Status: done
+- Date: 2026-05-27
+- Plan: N/A, single-session formal release execution
+- Handoff: `docs/handoffs/2026-05-27-v0.12.4-release.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo check --workspace --all-targets --exclude hone-desktop`, `cargo test --workspace --all-targets --exclude hone-desktop`, `bun run test:web`, `bash tests/regression/run_ci.sh`, `bash scripts/prepare_release_notes.sh v0.12.4 /tmp/release-notes-v0.12.4.md`
+- Current conclusion: `v0.12.4` ships the Cloud PG / OSS runtime config slice, public upload OSS proxy path, scheduler commodity guard false-positive fix, Feishu/external error diagnostics, guarded live smoke wrappers, refreshed architecture SVG, and release notes.
+- Next entry point: `docs/releases/v0.12.4.md`, then `docs/current-plans/cloud-pg-oss-runtime-migration.md` for remaining cloud storage follow-up.
 
 ## 2026-05-23
 

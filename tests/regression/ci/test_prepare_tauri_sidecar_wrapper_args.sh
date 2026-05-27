@@ -24,8 +24,12 @@ EOF
 chmod +x "$TOOLS_DIR/bun"
 
 run_wrapper() {
+  local home_dir="$TMP_ROOT/home-without-bun"
+  mkdir -p "$home_dir"
+
   : > "$ARGS_LOG"
   env \
+    HOME="$home_dir" \
     PATH="$TOOLS_DIR:/usr/bin:/bin" \
     HONE_TEST_BUN_ARGS_LOG="$ARGS_LOG" \
     bash "$WRAPPER_SCRIPT" "$@"
