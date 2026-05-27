@@ -97,24 +97,44 @@ pub fn task_runs_path(runtime_dir: &Path, date: chrono::NaiveDate) -> PathBuf {
 /// tick 开始时的 `Utc::now()`,`ended_at` 取写入前的 `Utc::now()`。
 pub fn record_task_run(runtime_dir: &Path, record: &TaskRunRecord) {
     if let Err(e) = record_task_run_inner(runtime_dir, record) {
+        let path = task_runs_path(runtime_dir, record.started_at.date_naive());
         warn!(
             task = %record.task,
             outcome = record.outcome.as_str(),
+            file = %path.display(),
             "failed to write task_runs jsonl: {e:#}"
         );
     }
 }
 
 fn record_task_run_inner(runtime_dir: &Path, record: &TaskRunRecord) -> std::io::Result<()> {
-    fs::create_dir_all(runtime_dir)?;
+    fs::create_dir_all(runtime_dir)
+        .map_err(|err| task_runs_io_error("create task_runs directory", runtime_dir, err))?;
     let path = task_runs_path(runtime_dir, record.started_at.date_naive());
     let line = serde_json::to_string(record)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        .map_err(|err| task_runs_data_error("serialize task_runs record", &path, err))?;
     let _guard = WRITE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    let mut f = OpenOptions::new().create(true).append(true).open(&path)?;
-    f.write_all(line.as_bytes())?;
-    f.write_all(b"\n")?;
+    let mut f = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|err| task_runs_io_error("open task_runs jsonl", &path, err))?;
+    f.write_all(line.as_bytes())
+        .map_err(|err| task_runs_io_error("write task_runs jsonl", &path, err))?;
+    f.write_all(b"\n")
+        .map_err(|err| task_runs_io_error("write task_runs newline", &path, err))?;
     Ok(())
+}
+
+fn task_runs_io_error(action: &str, path: &Path, err: std::io::Error) -> std::io::Error {
+    std::io::Error::new(err.kind(), format!("{action} ({}): {err}", path.display()))
+}
+
+fn task_runs_data_error(action: &str, path: &Path, err: impl std::fmt::Display) -> std::io::Error {
+    std::io::Error::new(
+        std::io::ErrorKind::InvalidData,
+        format!("{action} ({}): {err}", path.display()),
+    )
 }
 
 /// 删除 `runtime_dir` 下早于 `retention_days` 的 task_runs.*.jsonl 文件。
@@ -127,7 +147,10 @@ pub fn purge_old_task_runs(runtime_dir: &Path, retention_days: i64) {
     let read = match fs::read_dir(runtime_dir) {
         Ok(entries) => entries,
         Err(e) => {
-            warn!("task_runs purge: read_dir failed: {e:#}");
+            warn!(
+                dir = %runtime_dir.display(),
+                "task_runs purge: read_dir failed: {e:#}"
+            );
             return;
         }
     };
@@ -381,6 +404,35 @@ mod tests {
         assert_eq!(parsed[1].outcome, TaskOutcome::Skipped);
         assert_eq!(parsed[2].outcome, TaskOutcome::Failed);
         assert_eq!(parsed[2].error.as_deref(), Some("disk full"));
+    }
+
+    #[test]
+    fn record_task_run_inner_reports_runtime_dir_path() {
+        let temp_dir = tempdir().unwrap();
+        let runtime_dir = temp_dir.path().join("not-a-dir");
+        std::fs::write(&runtime_dir, "plain file").unwrap();
+        let now = Utc::now();
+        let record = TaskRunRecord {
+            task: "poller.test".into(),
+            started_at: now,
+            ended_at: now,
+            outcome: TaskOutcome::Failed,
+            items: 0,
+            error: Some("disk full".into()),
+        };
+
+        let error = record_task_run_inner(&runtime_dir, &record)
+            .unwrap_err()
+            .to_string();
+
+        assert!(
+            error.contains("create task_runs directory"),
+            "error={error}"
+        );
+        assert!(
+            error.contains(&runtime_dir.display().to_string()),
+            "error={error}"
+        );
     }
 
     #[test]

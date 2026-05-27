@@ -229,8 +229,9 @@ pub fn apply_config_mutations(
     }
 
     HoneConfig::from_merged_value(current.clone())?;
-    let yaml = serde_yaml::to_string(&current)
-        .map_err(|e| crate::HoneError::Config(format!("配置序列化失败: {e}")))?;
+    let yaml = serde_yaml::to_string(&current).map_err(|e| {
+        crate::HoneError::Config(format!("配置序列化失败 ({}): {e}", config_path.display()))
+    })?;
     atomic_write_yaml(config_path, &yaml)?;
     Ok(ConfigMutationResult {
         config: HoneConfig::from_file(config_path)?,

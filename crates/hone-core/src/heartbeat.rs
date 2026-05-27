@@ -130,8 +130,9 @@ pub fn runtime_heartbeat_error_path(runtime_dir: &Path, channel: &str) -> PathBu
 }
 
 pub fn read_process_heartbeat(path: &Path) -> io::Result<ProcessHeartbeatSnapshot> {
-    let raw = fs::read_to_string(path)?;
-    serde_json::from_str(&raw).map_err(io::Error::other)
+    let raw =
+        fs::read_to_string(path).map_err(|err| heartbeat_io_error("read heartbeat", path, err))?;
+    serde_json::from_str(&raw).map_err(|err| heartbeat_data_error("parse heartbeat", path, err))
 }
 
 pub fn read_heartbeat_error(path: &Path) -> Option<HeartbeatErrorRecord> {
@@ -141,7 +142,8 @@ pub fn read_heartbeat_error(path: &Path) -> Option<HeartbeatErrorRecord> {
 
 pub fn spawn_process_heartbeat(config: &HoneConfig, channel: &str) -> io::Result<ProcessHeartbeat> {
     let runtime_dir = runtime_heartbeat_dir(config);
-    fs::create_dir_all(&runtime_dir)?;
+    fs::create_dir_all(&runtime_dir)
+        .map_err(|err| heartbeat_io_error("create heartbeat directory", &runtime_dir, err))?;
 
     let path = runtime_heartbeat_path(&runtime_dir, channel);
     let error_path = runtime_heartbeat_error_path(&runtime_dir, channel);
@@ -248,13 +250,27 @@ pub fn spawn_process_heartbeat(config: &HoneConfig, channel: &str) -> io::Result
 }
 
 fn write_snapshot(path: &Path, snapshot: &ProcessHeartbeatSnapshot) -> io::Result<()> {
-    let content = serde_json::to_vec_pretty(snapshot).map_err(io::Error::other)?;
-    fs::write(path, content)
+    let content = serde_json::to_vec_pretty(snapshot)
+        .map_err(|err| heartbeat_data_error("serialize heartbeat", path, err))?;
+    fs::write(path, content).map_err(|err| heartbeat_io_error("write heartbeat", path, err))
 }
 
 fn write_error_sidecar(path: &Path, record: &HeartbeatErrorRecord) -> io::Result<()> {
-    let content = serde_json::to_vec(record).map_err(io::Error::other)?;
+    let content = serde_json::to_vec(record)
+        .map_err(|err| heartbeat_data_error("serialize heartbeat error sidecar", path, err))?;
     fs::write(path, content)
+        .map_err(|err| heartbeat_io_error("write heartbeat error sidecar", path, err))
+}
+
+fn heartbeat_io_error(action: &str, path: &Path, err: io::Error) -> io::Error {
+    io::Error::new(err.kind(), format!("{action} ({}): {err}", path.display()))
+}
+
+fn heartbeat_data_error(action: &str, path: &Path, err: impl std::fmt::Display) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidData,
+        format!("{action} ({}): {err}", path.display()),
+    )
 }
 
 fn heartbeat_http_client(bearer_token: Option<&str>) -> Option<reqwest::Client> {
@@ -303,6 +319,40 @@ mod tests {
     fn heartbeat_error_path_uses_error_suffix() {
         let path = runtime_heartbeat_error_path(Path::new("/tmp/runtime"), "discord");
         assert_eq!(path, PathBuf::from("/tmp/runtime/discord.heartbeat.error"));
+    }
+
+    #[test]
+    fn read_process_heartbeat_reports_path_for_parse_error() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = runtime_heartbeat_path(temp_dir.path(), "discord");
+        fs::write(&path, "not json").unwrap();
+
+        let error = read_process_heartbeat(&path).unwrap_err().to_string();
+
+        assert!(error.contains("parse heartbeat"), "error={error}");
+        assert!(error.contains(&path.display().to_string()), "error={error}");
+    }
+
+    #[test]
+    fn write_snapshot_reports_path_for_missing_parent() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = temp_dir.path().join("missing/discord.heartbeat.json");
+        let now = Utc::now();
+
+        let error = write_snapshot(
+            &path,
+            &ProcessHeartbeatSnapshot {
+                channel: "discord".into(),
+                pid: 4242,
+                started_at: now,
+                updated_at: now,
+            },
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(error.contains("write heartbeat"), "error={error}");
+        assert!(error.contains(&path.display().to_string()), "error={error}");
     }
 
     #[test]

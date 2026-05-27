@@ -54,13 +54,13 @@
 
 ## 2026-05-26 - 错误与日志质量
 
-### FMP data fetch can treat non-auth HTTP failures as successful data
+### FMP clients can treat non-auth HTTP failures as successful data
 
 - status: open
 - direction: 错误与日志质量
-- evidence: `crates/hone-tools/src/data_fetch.rs::fetch_with_key` parses the HTTP response body as JSON, then only turns `401`/`403` and JSON `"Error Message"` authentication/quota text into errors. For any other non-success HTTP status, such as a provider `500`, `502`, or `404` returning JSON without `"Error Message"`, the function currently falls through to `Ok(response_json)`.
-- risk: a provider outage or endpoint mismatch can be surfaced to callers as normal data, causing key fallback to stop early and hiding the real HTTP status from operator diagnostics. Changing this directly would alter tool behavior and fallback semantics, so it needs a focused FMP regression pass rather than a patrol-side wording patch.
-- suggested_fix: after the `401`/`403` branch and provider `"Error Message"` extraction, add a generic `!status.is_success()` error path that includes the HTTP status plus a bounded, sanitized response preview. Cover JSON error bodies, HTML/non-JSON parse errors, and multi-key fallback with focused `DataFetchTool` tests.
+- evidence: `crates/hone-tools/src/data_fetch.rs::fetch_with_key` and `crates/hone-event-engine/src/fmp.rs::FmpClient::fetch_once` both parse the HTTP response body as JSON, then only turn `401`/`403` and JSON `"Error Message"` authentication/quota text into errors. For any other non-success HTTP status, such as a provider `500`, `502`, or `404` returning JSON without `"Error Message"`, both paths currently fall through to `Ok(response_json)` / `Ok(data)`.
+- risk: a provider outage or endpoint mismatch can be surfaced to callers as normal data, causing key fallback to stop early and hiding the real HTTP status from operator diagnostics. The event-engine client feeds pollers while the tool client feeds interactive data fetches, so changing this directly affects fallback and poller error semantics across two call surfaces.
+- suggested_fix: after the `401`/`403` branch and provider `"Error Message"` extraction in both FMP clients, add a generic `!status.is_success()` error path that includes the HTTP status plus a bounded, sanitized response preview. Cover JSON error bodies, HTML/non-JSON parse errors, and multi-key fallback with focused `DataFetchTool` and `FmpClient` tests before changing runtime behavior.
 
 ## 2026-05-26 - 复杂度热点
 

@@ -14,6 +14,14 @@ use serde_yaml::{Mapping, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+pub(super) fn config_io_error(
+    action: &str,
+    path: &Path,
+    err: impl std::fmt::Display,
+) -> crate::HoneError {
+    crate::HoneError::Config(format!("{action} ({}): {err}", path.display()))
+}
+
 /// `ConfigMutation` 路径的单段：`foo.bar[0].baz` → `[Key("foo"), Key("bar"), Index(0), Key("baz")]`。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum ConfigPathSegment {
@@ -43,13 +51,13 @@ pub fn runtime_overlay_path(path: impl AsRef<Path>) -> PathBuf {
 
 /// 读取 YAML 到通用 `Value`，供合并和补丁生成使用。
 pub fn read_yaml_value(path: impl AsRef<Path>) -> crate::HoneResult<Value> {
-    let content = std::fs::read_to_string(path.as_ref())
-        .map_err(|e| crate::HoneError::Config(format!("无法读取配置文件: {e}")))?;
+    let path = path.as_ref();
+    let content =
+        std::fs::read_to_string(path).map_err(|e| config_io_error("无法读取配置文件", path, e))?;
     if content.trim().is_empty() {
         return Ok(Value::Null);
     }
-    serde_yaml::from_str(&content)
-        .map_err(|e| crate::HoneError::Config(format!("配置文件解析失败: {e}")))
+    serde_yaml::from_str(&content).map_err(|e| config_io_error("配置文件解析失败", path, e))
 }
 
 /// 读取基础配置并叠加同目录 overlay，返回“当前有效 YAML 值”。
@@ -341,7 +349,7 @@ fn yaml_kind(value: &Value) -> &'static str {
 /// 不能覆盖已有文件的情况。
 pub(super) fn atomic_write_yaml(path: &Path, yaml: &str) -> crate::HoneResult<()> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
+        fs::create_dir_all(parent).map_err(|e| config_io_error("创建配置目录失败", parent, e))?;
     }
 
     let parent = path.parent().ok_or_else(|| {
@@ -357,7 +365,8 @@ pub(super) fn atomic_write_yaml(path: &Path, yaml: &str) -> crate::HoneResult<()
         .unwrap_or("config");
     let tmp_path = parent.join(format!(".{file_name}.{stamp}.tmp"));
 
-    fs::write(&tmp_path, yaml)?;
+    fs::write(&tmp_path, yaml)
+        .map_err(|e| config_io_error("写入配置临时文件失败", &tmp_path, e))?;
     match fs::rename(&tmp_path, path) {
         Ok(()) => Ok(()),
         Err(first_err) => {
@@ -380,19 +389,20 @@ pub fn write_overlay_patch(path: &Path, patch: Option<Value>) -> crate::HoneResu
     match patch {
         None => {
             if path.exists() {
-                fs::remove_file(path)?;
+                fs::remove_file(path).map_err(|e| config_io_error("删除空覆盖层失败", path, e))?;
             }
             Ok(())
         }
         Some(Value::Mapping(map)) if map.is_empty() => {
             if path.exists() {
-                fs::remove_file(path)?;
+                fs::remove_file(path).map_err(|e| config_io_error("删除空覆盖层失败", path, e))?;
             }
             Ok(())
         }
         Some(value) => {
-            let yaml = serde_yaml::to_string(&value)
-                .map_err(|e| crate::HoneError::Config(format!("覆盖层序列化失败: {e}")))?;
+            let yaml = serde_yaml::to_string(&value).map_err(|e| {
+                crate::HoneError::Config(format!("覆盖层序列化失败 ({}): {e}", path.display()))
+            })?;
             atomic_write_yaml(path, &yaml)
         }
     }

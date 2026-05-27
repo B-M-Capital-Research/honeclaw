@@ -1016,6 +1016,54 @@ custom_section:
 }
 
 #[test]
+fn read_yaml_value_reports_path_for_missing_file() {
+    let dir = temp_test_dir("missing-file");
+    let config_path = dir.join("missing-config.yaml");
+
+    let error = read_yaml_value(&config_path).unwrap_err().to_string();
+
+    assert!(error.contains("无法读取配置文件"), "error={error}");
+    assert!(
+        error.contains(&config_path.display().to_string()),
+        "error={error}"
+    );
+}
+
+#[test]
+fn read_yaml_value_reports_path_for_parse_error() {
+    let dir = temp_test_dir("parse-error");
+    let config_path = dir.join("config.yaml");
+    std::fs::write(&config_path, "agent:\n  runner: [").unwrap();
+
+    let error = read_yaml_value(&config_path).unwrap_err().to_string();
+
+    assert!(error.contains("配置文件解析失败"), "error={error}");
+    assert!(
+        error.contains(&config_path.display().to_string()),
+        "error={error}"
+    );
+}
+
+#[test]
+fn write_overlay_patch_reports_path_for_directory_errors() {
+    let dir = temp_test_dir("overlay-dir-error");
+    let file_as_parent = dir.join("not-a-dir");
+    std::fs::write(&file_as_parent, "plain file").unwrap();
+    let overlay_path = file_as_parent.join("config.overrides.yaml");
+    let patch: Value = serde_yaml::from_str("agent:\n  runner: codex_cli\n").unwrap();
+
+    let error = write_overlay_patch(&overlay_path, Some(patch))
+        .unwrap_err()
+        .to_string();
+
+    assert!(error.contains("创建配置目录失败"), "error={error}");
+    assert!(
+        error.contains(&file_as_parent.display().to_string()),
+        "error={error}"
+    );
+}
+
+#[test]
 fn from_file_applies_runtime_overlay() {
     let dir = temp_test_dir("from-file-runtime-overlay");
     let config_path = dir.join("config.yaml");
@@ -1611,6 +1659,29 @@ agent:
     assert_eq!(
         std::fs::read_to_string(runtime_dir.join("soul.md")).unwrap(),
         "prompt"
+    );
+}
+
+#[test]
+fn seed_canonical_config_reports_path_for_directory_errors() {
+    let dir = temp_test_dir("seed-dir-error");
+    let source = dir.join("source.yaml");
+    let file_as_parent = dir.join("not-a-dir");
+    let canonical = file_as_parent.join("config.yaml");
+    std::fs::write(&source, "agent:\n  runner: codex_cli\n").unwrap();
+    std::fs::write(&file_as_parent, "plain file").unwrap();
+
+    let error = seed_canonical_config_from_source(&canonical, &source)
+        .unwrap_err()
+        .to_string();
+
+    assert!(
+        error.contains("创建 canonical 配置目录失败"),
+        "error={error}"
+    );
+    assert!(
+        error.contains(&file_as_parent.display().to_string()),
+        "error={error}"
     );
 }
 

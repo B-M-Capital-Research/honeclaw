@@ -40,7 +40,8 @@ pub fn process_lock_path(runtime_dir: &Path, name: &str) -> PathBuf {
 
 pub fn acquire_process_lock(runtime_dir: &Path, name: &str) -> io::Result<ProcessLockGuard> {
     let lock_dir = runtime_lock_dir(runtime_dir);
-    fs::create_dir_all(&lock_dir)?;
+    fs::create_dir_all(&lock_dir)
+        .map_err(|err| process_lock_io_error("create process lock directory", &lock_dir, err))?;
 
     let path = process_lock_path(runtime_dir, name);
     let mut file = OpenOptions::new()
@@ -48,10 +49,13 @@ pub fn acquire_process_lock(runtime_dir: &Path, name: &str) -> io::Result<Proces
         .read(true)
         .write(true)
         .truncate(false)
-        .open(&path)?;
-    file.try_lock_exclusive()?;
+        .open(&path)
+        .map_err(|err| process_lock_io_error("open process lock", &path, err))?;
+    file.try_lock_exclusive()
+        .map_err(|err| process_lock_io_error("acquire process lock", &path, err))?;
 
-    file.set_len(0)?;
+    file.set_len(0)
+        .map_err(|err| process_lock_io_error("truncate process lock", &path, err))?;
     file.write_all(
         format!(
             "pid={}\nprocess={}\nlocked_at={}\n",
@@ -60,14 +64,20 @@ pub fn acquire_process_lock(runtime_dir: &Path, name: &str) -> io::Result<Proces
             Utc::now().to_rfc3339()
         )
         .as_bytes(),
-    )?;
-    file.sync_data()?;
+    )
+    .map_err(|err| process_lock_io_error("write process lock metadata", &path, err))?;
+    file.sync_data()
+        .map_err(|err| process_lock_io_error("sync process lock", &path, err))?;
 
     Ok(ProcessLockGuard {
         name: name.to_string(),
         path,
         file,
     })
+}
+
+fn process_lock_io_error(action: &str, path: &Path, err: io::Error) -> io::Error {
+    io::Error::new(err.kind(), format!("{action} ({}): {err}", path.display()))
 }
 
 pub fn acquire_runtime_process_lock(
@@ -327,9 +337,37 @@ mod tests {
             let err = acquire_process_lock(&runtime_dir, PROCESS_LOCK_TELEGRAM)
                 .expect_err("second lock should fail");
             assert_eq!(err.kind(), io::ErrorKind::WouldBlock);
+            assert!(err.to_string().contains("acquire process lock"));
+            assert!(
+                err.to_string().contains(
+                    &process_lock_path(&runtime_dir, PROCESS_LOCK_TELEGRAM)
+                        .display()
+                        .to_string()
+                )
+            );
         }
 
         let _ = fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn acquire_process_lock_reports_lock_directory_path() {
+        let runtime_dir = std::env::temp_dir().join(format!(
+            "hone-process-lock-dir-error-{}-{}",
+            std::process::id(),
+            Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        fs::write(&runtime_dir, "plain file").expect("file as runtime dir");
+
+        let err = acquire_process_lock(&runtime_dir, PROCESS_LOCK_TELEGRAM)
+            .expect_err("file runtime dir should fail");
+
+        assert!(err.to_string().contains("create process lock directory"));
+        assert!(
+            err.to_string()
+                .contains(&runtime_lock_dir(&runtime_dir).display().to_string())
+        );
+        let _ = fs::remove_file(&runtime_dir);
     }
 
     #[test]

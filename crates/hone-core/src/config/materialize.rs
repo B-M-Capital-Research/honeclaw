@@ -18,9 +18,9 @@ use std::path::{Path, PathBuf};
 
 use super::HoneConfig;
 use super::yaml::{
-    atomic_write_yaml, bool_path_is_false_or_missing, get_string_at_path, get_value_at_path,
-    read_yaml_value, sequence_path_is_empty, set_value_at_path, string_path_is_blank,
-    yaml_revision,
+    atomic_write_yaml, bool_path_is_false_or_missing, config_io_error, get_string_at_path,
+    get_value_at_path, read_yaml_value, sequence_path_is_empty, set_value_at_path,
+    string_path_is_blank, yaml_revision,
 };
 
 pub fn effective_config_path(runtime_dir: impl AsRef<Path>) -> PathBuf {
@@ -40,8 +40,12 @@ fn read_yaml_value_or_empty_mapping(path: &Path) -> crate::HoneResult<Value> {
 }
 
 fn write_yaml_value(path: &Path, value: &Value, config_label: &str) -> crate::HoneResult<()> {
-    let yaml = serde_yaml::to_string(value)
-        .map_err(|e| crate::HoneError::Config(format!("{config_label} 配置序列化失败: {e}")))?;
+    let yaml = serde_yaml::to_string(value).map_err(|e| {
+        crate::HoneError::Config(format!(
+            "{config_label} 配置序列化失败 ({}): {e}",
+            path.display()
+        ))
+    })?;
     atomic_write_yaml(path, &yaml)
 }
 
@@ -77,10 +81,17 @@ fn copy_relative_system_prompt_asset(
 
     let dest = runtime_parent.join(prompt_path);
     if let Some(parent) = dest.parent() {
-        fs::create_dir_all(parent)?;
+        fs::create_dir_all(parent)
+            .map_err(|e| config_io_error("创建 system_prompt_path 目录失败", parent, e))?;
     }
     if !dest.exists() {
-        fs::copy(&source, &dest)?;
+        fs::copy(&source, &dest).map_err(|e| {
+            crate::HoneError::Config(format!(
+                "复制 system_prompt_path 失败 ({} -> {}): {e}",
+                source.display(),
+                dest.display()
+            ))
+        })?;
     }
     Ok(())
 }
@@ -98,8 +109,15 @@ pub fn seed_canonical_config_from_source(
             canonical_config_path.display()
         )));
     };
-    fs::create_dir_all(parent)?;
-    fs::copy(source_config_path, canonical_config_path)?;
+    fs::create_dir_all(parent)
+        .map_err(|e| config_io_error("创建 canonical 配置目录失败", parent, e))?;
+    fs::copy(source_config_path, canonical_config_path).map_err(|e| {
+        crate::HoneError::Config(format!(
+            "复制 canonical 配置失败 ({} -> {}): {e}",
+            source_config_path.display(),
+            canonical_config_path.display()
+        ))
+    })?;
     copy_relative_system_prompt_asset(source_config_path, canonical_config_path)?;
     Ok(())
 }
