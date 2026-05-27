@@ -293,7 +293,7 @@ const CONTENT_ZH = {
       "透明、务实、长期主义。下面是 Hone 目前能做什么、接下来做什么、以及如何接入你的投研工作流。",
     hero_meta: "ROADMAP · DOCS · API",
     sidebar_title: "ON THIS PAGE",
-    version: "v0.12.2",
+    version: "v0.12.4",
 
     toc: [
       { id: "quick-start", label: "快速开始", sub: "Quick Start" },
@@ -330,7 +330,7 @@ const CONTENT_ZH = {
         eyebrow: "§ 04 · ARCHITECTURE",
         title: "系统架构",
         intro:
-          "Rust 核心引擎 · 多 Agent 引擎抽象 · SolidJS 前端。公开用户端、管理后台和渠道进程共用同一套后端能力，但按界面、端口和进程边界隔离。",
+          "Rust 核心引擎 · 多 Agent 引擎抽象 · SolidJS 前端。公开用户端、管理后台和渠道进程共用同一套后端能力，但按界面、端口和进程边界隔离；Cloud PG / OSS 正在分阶段接管运行时存储。",
         footnote_prefix: "完整模块说明见",
         footnote_link: "docs/repo-map.md ↗",
       },
@@ -424,6 +424,10 @@ const CONTENT_ZH = {
         desc: "公开用户端路由包含 `/`、`/roadmap`、`/blog`、`/blog/:slug`、`/chat`、`/me`、`/portfolio`、`/terms`、`/privacy`，并保留开发用 `/__share-preview` 分享卡预览页；`/blog` 是双语静态长文内容面，Cloudflare Worker 为文章分享卡注入 crawler 友好的 metadata；`/chat` 使用阿里云行为验证 + 手机短信验证码登录，管理端邀请名单是准入来源，桌面端为可收起左侧栏 + 右侧对话工作台，侧栏聚合导航、账号、最近对话历史、联系入口和 GitHub stars，支持助手回答复制、图片分享、非图片生成物附件下载与历史回看；`/portfolio` 只读展示推送上下文与公司画像入口，后端公开面收敛在 `/api/public/*`，其中 `/api/public/file` 代理可下载生成物，`/api/public/v1/chat/completions` 提供 API key 鉴权的 OpenAI-compatible 对话接口。",
       },
       {
+        title: "存储与云运行时",
+        desc: "`cloud.postgres` / `cloud.oss` 是 v0.12.4 起的一等配置项，并通过 env 引用真实凭证；配置 OSS 后，公开 Web 上传会写入 `public-uploads/...` 并返回 `oss://bucket/key`，`/api/public/image` 与 `/api/public/file` 可代理托管对象；`/api/meta` 暴露 `cloud_runtime`、`cloud_postgres`、`cloud_oss`、`oss_file_proxy` 等能力。迁移仍在进行中，sessions、quota、audit、portfolio、cron、notification prefs、生成物和日志仍保留本地 fallback，`cloud.strict_no_local_storage=true` 只适合确认无本地依赖后启用。",
+      },
+      {
         title: "管理后台",
         desc: "管理后台提供 dashboard、sessions、skills、tasks、users、research、llm-audit、task-health、notifications、schedule、settings、logs 等维护入口；users 页把持仓、公司画像、会话与研究任务按用户主体聚合，公司画像支持 actor 空间列表、详情查看、删除、zip 导出、导入预览与冲突处理后导入。",
       },
@@ -507,6 +511,11 @@ const CONTENT_ZH = {
             name: "LLM provider key pool 与上游错误保真",
             status: "stable",
             note: "config.yaml llm.providers.*.api_key/api_keys · OpenRouter / OpenAI-compatible fallback",
+          },
+          {
+            name: "Cloud PG / OSS 运行时迁移",
+            status: "beta",
+            note: "cloud.postgres / cloud.oss env refs · OSS 公开上传代理 · 本地 fallback 仍保留",
           },
           {
             name: "渠道回复收口与副作用确认",
@@ -664,6 +673,8 @@ const CONTENT_ZH = {
         "事件引擎推送质量收口：digest 去重 / min-gap / topic memory / 分类预算 / 方向性价格阈值 / Feishu scheduler heartbeat revision 去重",
         "Event-engine 默认模型与示例配置已替换为 `x-ai/grok-4.3`，避免 Grok 4.1 Fast 下线导致新闻分类、global digest、mainline distill 等 LLM 增强链路失效",
         "LLM provider 配置收口到 `config.yaml`，OpenRouter 与通用 OpenAI-compatible provider 支持 `api_key/api_keys` 轮换，并保留上游错误详情便于诊断",
+        "Cloud PG / OSS 运行时第一段：`cloud.postgres` / `cloud.oss` 可通过 env 配置，公开上传可写入 OSS，公开图片 / 文件代理可读取 `oss://bucket/key` 托管对象，`/api/meta` 会暴露云能力状态",
+        "云迁移边界清晰：sessions、quota、audit、portfolio、cron、notification prefs、生成物和日志仍保留本地 fallback；`cloud.strict_no_local_storage=true` 会在仍有本地依赖时阻止启动",
         "渠道回复收口层可在 runner 只产出过渡性规划句时，从成功的定时任务或持仓工具结果恢复用户可见确认，避免真实成功被空回复 fallback 遮蔽",
         "前端部署资产恢复：service worker 与全局错误处理可识别 stale chunk，并在安全间隔内自动刷新到新版本",
         "公开 API key 对话入口：管理端可为 Web 用户生成 API key，客户端可按 OpenAI-compatible `/api/public/v1/chat/completions` 形状调用 Hone",
@@ -678,6 +689,7 @@ const CONTENT_ZH = {
         "Windows / Linux 桌面端打包",
         "用户自定义 Skill 编辑器（前端化的 skill_manager）",
         "更广泛的数据导入 / 导出工具（公司画像包转移已上线，继续补持仓、研究结果等迁移面）",
+        "继续补齐 PG-backed repositories，逐步减少 sessions、quota、audit、portfolio、cron、notification prefs、生成物和日志的本地 fallback",
         "公开 Skill 文档与示例集",
         "向量检索增强长期记忆",
       ],
@@ -724,6 +736,11 @@ const CONTENT_ZH = {
         title: "Wiki",
         url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/wiki.md",
         desc: "安装、启动、端口、配置、验证与排障入口",
+      },
+      {
+        title: "Release Notes v0.12.4",
+        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/releases/v0.12.4.md",
+        desc: "最新 release 的用户影响、升级方式与已知注意事项",
       },
       {
         title: "Hone Blog",
@@ -808,7 +825,7 @@ const CONTENT_ZH = {
       },
       {
         q: "数据存在哪里？",
-        a: "所有会话、公司画像、研究结果默认存储在本地（macOS 桌面端用户目录 ~/.honeclaw 或自部署服务器）。Hone 官方不托管用户数据。",
+        a: "默认仍在本地或自部署服务器存储（macOS 桌面端用户目录 ~/.honeclaw）。v0.12.4 已加入 Cloud PG / OSS 运行时配置第一段：OSS 可托管公开上传和公开图片 / 文件代理对象，但 sessions、quota、audit、portfolio、cron、notification prefs、生成物和日志仍保留本地 fallback；Hone 官方不默认托管你的数据。",
       },
       {
         q: "和 Codex / RooCode 等 coding agent 的关系？",
@@ -1829,7 +1846,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       "Transparent, pragmatic, long-term. Here's what Hone does today, what's next, and how to bring it into your research workflow.",
     hero_meta: "ROADMAP · DOCS · API",
     sidebar_title: "ON THIS PAGE",
-    version: "v0.12.2",
+    version: "v0.12.4",
 
     toc: [
       { id: "quick-start", label: "Quick Start", sub: "Quick Start" },
@@ -1866,7 +1883,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         eyebrow: "§ 04 · ARCHITECTURE",
         title: "Architecture",
         intro:
-          "Rust core · multi-engine abstraction · SolidJS frontend. The public user app, admin console, and channel processes share backend capabilities while staying separated by interface, port, and process boundary.",
+          "Rust core · multi-engine abstraction · SolidJS frontend. The public user app, admin console, and channel processes share backend capabilities while staying separated by interface, port, and process boundary; Cloud PG / OSS is taking over runtime storage in stages.",
         footnote_prefix: "Full module walkthrough in",
         footnote_link: "docs/repo-map.md ↗",
       },
@@ -1948,6 +1965,10 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       {
         title: "Public user app",
         desc: "The public user app routes `/`, `/roadmap`, `/blog`, `/blog/:slug`, `/chat`, `/me`, `/portfolio`, `/terms`, and `/privacy`, with a dev-only `/__share-preview` page for share-card QA; `/blog` is a bilingual static long-form content surface, with Cloudflare Worker metadata for crawler-friendly article cards; `/chat` signs users in with Aliyun behavior captcha plus phone/SMS verification from the admin invite list, uses a collapsible desktop left rail plus full-height conversation workspace, and gathers navigation, account access, recent conversation history, contact links, and GitHub stars in that rail while supporting assistant-reply copy, image sharing, non-image generated-file downloads, and history review; `/portfolio` is a read-only investment context surface for push context and company-profile entry points, and the public backend is scoped to `/api/public/*`, including `/api/public/file` for downloadable generated artifacts and `/api/public/v1/chat/completions` for API-key-authenticated OpenAI-compatible chat.",
+      },
+      {
+        title: "Storage and cloud runtime",
+        desc: "`cloud.postgres` / `cloud.oss` are first-class config sections as of v0.12.4 and reference real credentials through env vars; once OSS is configured, public Web uploads write under `public-uploads/...` and return `oss://bucket/key`, while `/api/public/image` and `/api/public/file` can proxy managed objects; `/api/meta` reports capabilities such as `cloud_runtime`, `cloud_postgres`, `cloud_oss`, and `oss_file_proxy`. The migration is still in progress: sessions, quota, audit, portfolio, cron, notification prefs, generated artifacts, and logs keep local fallbacks, and `cloud.strict_no_local_storage=true` should only be enabled after those dependencies are gone.",
       },
       {
         title: "Admin console",
@@ -2037,6 +2058,11 @@ const CONTENT_EN: typeof CONTENT_ZH = {
             name: "LLM provider key pools and upstream error fidelity",
             status: "stable",
             note: "config.yaml llm.providers.*.api_key/api_keys · OpenRouter / OpenAI-compatible fallback",
+          },
+          {
+            name: "Cloud PG / OSS runtime migration",
+            status: "beta",
+            note: "cloud.postgres / cloud.oss env refs · OSS public-upload proxy · local fallbacks remain",
           },
           {
             name: "Channel finalization and side-effect confirmations",
@@ -2231,6 +2257,8 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         "Event-engine push-quality pass: digest dedupe / min-gap / topic memory / category budgets / directional price thresholds / Feishu scheduler heartbeat revision dedupe",
         "Event-engine default models and sample config now use `x-ai/grok-4.3`, avoiding failures from the retired Grok 4.1 Fast in news classification, global digest, and mainline distillation paths",
         "LLM provider config is consolidated into `config.yaml`; OpenRouter and generic OpenAI-compatible providers support `api_key/api_keys` rotation and preserve upstream error details for diagnosis",
+        "First Cloud PG / OSS runtime slice: `cloud.postgres` / `cloud.oss` can be configured through env references, public uploads can write to OSS, public image / file proxies can read `oss://bucket/key` managed objects, and `/api/meta` exposes cloud capability state",
+        "Cloud migration boundaries are explicit: sessions, quota, audit, portfolio, cron, notification prefs, generated artifacts, and logs still keep local fallbacks; `cloud.strict_no_local_storage=true` blocks startup while local dependencies remain",
         "The channel response finalizer can recover user-visible confirmations from successful scheduled-task or portfolio tool results when a runner only emits a transitional planning sentence, so real side effects are not hidden behind an empty-reply fallback",
         "Frontend deploy asset recovery: the service worker and global error handlers detect stale chunks and safely reload onto the new version",
         "Public API-key chat entry point: admins can issue API keys for Web users, and clients can call Hone through the OpenAI-compatible `/api/public/v1/chat/completions` shape",
@@ -2245,6 +2273,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         "Windows / Linux desktop builds",
         "User-facing skill editor (frontend for skill_manager)",
         "Broader data import / export tools (company-profile bundle transfer is live; portfolio and research-result migration surfaces still need coverage)",
+        "Continue adding PG-backed repositories so sessions, quota, audit, portfolio, cron, notification prefs, generated artifacts, and logs can gradually lose their local fallbacks",
         "Public skill documentation and example pack",
         "Vector-augmented long memory",
       ],
@@ -2291,6 +2320,11 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         title: "Wiki",
         url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/wiki.md",
         desc: "Install, startup, ports, configuration, verification, and troubleshooting",
+      },
+      {
+        title: "Release Notes v0.12.4",
+        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/releases/v0.12.4.md",
+        desc: "Latest release user impact, upgrade path, and known notes",
       },
       {
         title: "Hone Blog",
@@ -2375,7 +2409,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         q: "Where is data stored?",
-        a: "Sessions, company profiles, and research results default to local storage (macOS desktop's `~/.honeclaw` or your self-hosted server). Hone does not host user data.",
+        a: "Data still defaults to local storage or your self-hosted server (macOS desktop's `~/.honeclaw`). v0.12.4 adds the first Cloud PG / OSS runtime slice: OSS can host public uploads and public image / file proxy objects, but sessions, quota, audit, portfolio, cron, notification prefs, generated artifacts, and logs still keep local fallbacks. Hone does not host your data by default.",
       },
       {
         q: "How does Hone relate to Codex / RooCode and other coding agents?",
