@@ -1,5 +1,23 @@
 # Code Quality Patrol Findings
 
+## 2026-05-27 - 注释准确性
+
+### Mainline distill partial failures can drop old ticker mainlines
+
+- status: open
+- direction: 注释准确性
+- evidence: `crates/hone-event-engine/src/global_digest/mainline_distill.rs::distill_for_actor` skips failed tickers but still returns successful tickers in `DistilledMainlines.by_ticker`; `merge_into_prefs` then replaces the entire `NotificationPrefs.mainline_by_ticker` map whenever `by_ticker` is non-empty. The 2026-05-27 comment-accuracy patrol corrected the stale comment that implied failed tickers keep their old mainlines, but did not change runtime behavior.
+- risk: if an actor has old mainlines for `MU` and `RKLB`, and a later run succeeds for `RKLB` but fails for `MU`, the persisted map can lose the old `MU` mainline even though `MU` is only marked in `mainline_distill_skipped`. Changing this directly could alter how intentional removals, missing profile files, and partial LLM failures are reconciled.
+- suggested_fix: decide whether partial distill should merge successful ticker updates into the existing map while preserving skipped tickers, or whether whole-map replacement is intentional. If preserving skipped tickers, add a focused regression around existing prefs with two tickers, one failed distill, one successful distill, then update `merge_into_prefs` and its comments together.
+
+### Periodic task convention still misses real loop exceptions
+
+- status: open
+- direction: 注释准确性
+- evidence: `docs/conventions/periodic_tasks.md` says fixed interval loops in `crates/hone-event-engine/`, `crates/hone-core/heartbeat.rs`, and `crates/hone-web-api/src/lib.rs` must explicitly set `MissedTickBehavior::Delay`. Current code still has intentional-looking exceptions: `crates/hone-core/src/heartbeat.rs::spawn_process_heartbeat` sets `MissedTickBehavior::Skip`, `crates/hone-event-engine/src/global_digest/mainline_cron.rs::distill_cron_loop` sets `Skip`, and `crates/hone-web-api/src/lib.rs::spawn_acp_events_log_rotator` creates a one-hour interval without setting a missed-tick behavior.
+- risk: contributors reading the convention cannot tell which loops are non-compliant bugs versus deliberate exceptions. Changing all three to `Delay` could alter heartbeat freshness, mainline distill recovery after sleep, and log-rotation catch-up behavior; changing the convention without a decision could weaken the shared periodic-task contract.
+- suggested_fix: make a focused periodic-task decision: either align these loops with `Delay`, or document bounded exceptions with rationale and tests/manual notes for sleep or long-task recovery. Then update `docs/conventions/periodic_tasks.md`, the code comments near each exception, and the existing mainline-cron finding together.
+
 ## 2026-05-27 - 复杂度热点
 
 ### Hone-tools tool implementations still mix schemas, parsing, and execution branches

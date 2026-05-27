@@ -498,7 +498,7 @@ fn list_profile_summaries_admin(sandbox_root: &PathBuf) -> Vec<serde_json::Value
 /// POST /api/event-engine/mainline-distill?channel=&user_id=&channel_scope=
 ///
 /// 立即对指定 actor 跑一次投资主线蒸馏 —— admin 调试 / 用户主动刷新用。
-/// 平时由 web-api 启动的 cron 每 7 天自动跑,不需要走这条。
+/// 平时由 web-api 启动的 cron 每小时 tick,再按 staleness 策略决定是否自动跑。
 pub(crate) async fn handle_distill_mainline_now(
     State(state): State<Arc<AppState>>,
     axum::extract::Query(params): axum::extract::Query<UserIdQuery>,

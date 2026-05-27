@@ -699,7 +699,7 @@ pub async fn start_server(
             engine_cfg.global_digest.event_dedupe_model = event_dedupe.model.clone();
         }
 
-        // ── 投资主线蒸馏 cron(每 7 天扫一次,独立 task,挂掉不影响 digest)──
+        // ── 投资主线蒸馏 cron(每小时 tick,由 staleness 策略决定是否执行)──
         if let Some(created) = mainline_distill {
             let p = created.provider;
             let distill_model = created.model;

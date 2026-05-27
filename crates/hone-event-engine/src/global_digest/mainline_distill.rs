@@ -5,8 +5,7 @@
 //! 设计要点:
 //! - **read-only on profile.md**:本模块只读用户画像,不改;写出方向只到 prefs。
 //! - **per-actor**:每个有 portfolio 的 actor 跑一次,扫他的 sandbox profile 目录。
-//! - **失败降级**:任一 ticker 蒸馏失败 → 跳过该 ticker(保留旧主线不变),
-//!   不让一个失败影响其他 ticker。
+//! - **失败降级**:任一 ticker 蒸馏失败 → 标入 skipped,继续处理其他 ticker。
 //! - **整文喂 LLM**:不靠 section header 切分(framework 允许 agent 把用户视角
 //!   合并到主线主文 / 单列 用户视角 / 日期 update log,各种写法都常见),
 //!   POC 验证整文喂 grok 1-2k tokens 完全 OK。
@@ -300,7 +299,7 @@ fn is_plausible_ticker(raw_ticker: &str) -> bool {
 /// 行为:
 /// 1. scan_profiles(sandbox_root, Some(holdings)) → ProfileSource 列表
 /// 2. 并发蒸馏每只 ticker 的主线(任一失败 → 加入 skipped,继续)
-/// 3. 用全部 profile 蒸馏一条整体风格(失败 → None,不影响主线)
+/// 3. 用全部 profile 蒸馏一条整体风格(失败 → None,merge 时保留旧 style)
 /// 4. 返回 DistilledMainlines(可序列化,调用方 merge 进 prefs JSON)
 pub async fn distill_for_actor(
     distiller: &dyn MainlineDistiller,
@@ -396,11 +395,12 @@ pub async fn distill_and_persist_one(
 /// 把蒸馏结果合并写回 actor 的 NotificationPrefs 文件。
 ///
 /// 行为:
-/// - 如果 `by_ticker` 非空 → 覆盖整个 `mainline_by_ticker` 字段(系统全权管)
-/// - 如果 `by_ticker` 为空(扫不到任何画像) → **不覆盖** 现有主线,只更新 last_distilled_at
-///   和 skipped 列表。这样用户单次画像目录被误删不会立刻丢历史主线。
-/// - `style` 同样:有就覆盖,无就保留旧的
-/// - 总是更新 `last_mainline_distilled_at` 和 `mainline_distill_skipped`
+/// - 如果 `by_ticker` 非空 → 覆盖整个 `mainline_by_ticker` 字段(系统全权管)。
+/// - 如果 `by_ticker` 为空(没有可写入的新主线) → **不覆盖** 现有主线,只更新
+///   distill 时间和 skipped 列表。这样用户单次画像目录被误删不会立刻丢历史主线。
+/// - `style` 同样:有就覆盖,无就保留旧的。
+/// - `last_mainline_distilled_at` 只在结果携带时间戳时更新;`mainline_distill_skipped`
+///   每次 merge 都替换为本轮 skipped 列表。
 ///
 /// 返回写入后的 prefs 副本。
 pub fn merge_into_prefs(
