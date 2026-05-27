@@ -263,16 +263,16 @@ impl EventStore {
         let rows = stmt.query_map(params![start.timestamp(), end.timestamp(), needle], |row| {
             row.get::<_, String>(0)
         })?;
-        let mut out: Vec<String> = Vec::new();
-        for r in rows {
-            let json = r?;
+        let mut signal_kinds: Vec<String> = Vec::new();
+        for row_result in rows {
+            let json = row_result?;
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&json)
                 && let Some(t) = v.get("type").and_then(|v| v.as_str())
             {
-                out.push(t.to_string());
+                signal_kinds.push(t.to_string());
             }
         }
-        Ok(out)
+        Ok(signal_kinds)
     }
 
     /// 历史兼容:旧的 "since 12h" 语义 shim,内部委派给窗口查询。
@@ -320,9 +320,10 @@ impl EventStore {
                 row.get::<_, String>(9)?,
             ))
         })?;
-        let mut out = Vec::new();
-        for r in rows {
-            let (id, kind_json, sev, syms_json, ts, title, summary, url, source, payload_json) = r?;
+        let mut upcoming_earnings_events = Vec::new();
+        for row_result in rows {
+            let (id, kind_json, sev, syms_json, ts, title, summary, url, source, payload_json) =
+                row_result?;
             let Ok(kind) = serde_json::from_str(&kind_json) else {
                 continue;
             };
@@ -337,7 +338,7 @@ impl EventStore {
             let Some(occurred_at) = DateTime::<Utc>::from_timestamp(ts, 0) else {
                 continue;
             };
-            out.push(MarketEvent {
+            upcoming_earnings_events.push(MarketEvent {
                 id,
                 kind,
                 severity,
@@ -350,7 +351,7 @@ impl EventStore {
                 payload,
             });
         }
-        Ok(out)
+        Ok(upcoming_earnings_events)
     }
 
     /// 该 actor 在 `[since, now]` 窗口内通过 sink 成功送达的 High 事件数。
@@ -574,8 +575,8 @@ impl EventStore {
             row.get::<_, String>(0)
         })?;
         let mut max_bps: Option<i64> = None;
-        for r in rows {
-            let id = r?;
+        for row_result in rows {
+            let id = row_result?;
             if let Some(bps) = parse_bps_from_band_id(&id) {
                 max_bps = Some(max_bps.map_or(bps, |m| m.max(bps)));
             }
@@ -642,8 +643,8 @@ impl EventStore {
                 row.get::<_, String>(10)?,
             ))
         })?;
-        let mut out = Vec::new();
-        for r in rows {
+        let mut missed_digest_items = Vec::new();
+        for row_result in rows {
             let (
                 id,
                 kind_json,
@@ -656,7 +657,7 @@ impl EventStore {
                 source,
                 payload_json,
                 status,
-            ) = r?;
+            ) = row_result?;
             let Ok(kind) = serde_json::from_str(&kind_json) else {
                 continue;
             };
@@ -671,7 +672,7 @@ impl EventStore {
             let Some(occurred_at) = DateTime::<Utc>::from_timestamp(ts, 0) else {
                 continue;
             };
-            out.push((
+            missed_digest_items.push((
                 MarketEvent {
                     id,
                     kind,
@@ -687,7 +688,7 @@ impl EventStore {
                 status,
             ));
         }
-        Ok(out)
+        Ok(missed_digest_items)
     }
 
     /// 列出 `since` 之后某 actor 已经成功推送过的 event_id 集合。
@@ -712,11 +713,11 @@ impl EventStore {
         let rows = stmt.query_map(params![actor, since.timestamp()], |row| {
             row.get::<_, String>(0)
         })?;
-        let mut out = std::collections::HashSet::new();
-        for r in rows.flatten() {
-            out.insert(r);
+        let mut delivered_event_ids = std::collections::HashSet::new();
+        for event_id in rows.flatten() {
+            delivered_event_ids.insert(event_id);
         }
-        Ok(out)
+        Ok(delivered_event_ids)
     }
 
     /// 列出在 `since` 之后有 `quiet_held` 行的 distinct actor key。供 UnifiedDigestScheduler
@@ -736,11 +737,11 @@ impl EventStore {
             "#,
         )?;
         let rows = stmt.query_map(params![since.timestamp()], |row| row.get::<_, String>(0))?;
-        let mut out = Vec::new();
-        for r in rows {
-            out.push(r?);
+        let mut actors = Vec::new();
+        for row_result in rows {
+            actors.push(row_result?);
         }
-        Ok(out)
+        Ok(actors)
     }
 
     /// 列出某 actor 在 `since` 之后被 router 因 quiet_hours hold 住的事件。
@@ -781,8 +782,8 @@ impl EventStore {
                 row.get::<_, i64>(10)?,
             ))
         })?;
-        let mut out = Vec::new();
-        for r in rows {
+        let mut quiet_held_events = Vec::new();
+        for row_result in rows {
             let (
                 id,
                 kind_json,
@@ -795,7 +796,7 @@ impl EventStore {
                 source,
                 payload_json,
                 sent_at,
-            ) = r?;
+            ) = row_result?;
             let Ok(kind) = serde_json::from_str(&kind_json) else {
                 continue;
             };
@@ -810,7 +811,7 @@ impl EventStore {
             let Some(occurred_at) = DateTime::<Utc>::from_timestamp(ts, 0) else {
                 continue;
             };
-            out.push((
+            quiet_held_events.push((
                 MarketEvent {
                     id,
                     kind,
@@ -826,7 +827,7 @@ impl EventStore {
                 sent_at,
             ));
         }
-        Ok(out)
+        Ok(quiet_held_events)
     }
 
     pub fn list_recent_digest_item_events(
@@ -861,9 +862,10 @@ impl EventStore {
                 row.get::<_, String>(9)?,
             ))
         })?;
-        let mut out = Vec::new();
-        for r in rows {
-            let (id, kind_json, sev, syms_json, ts, title, summary, url, source, payload_json) = r?;
+        let mut delivered_digest_events = Vec::new();
+        for row_result in rows {
+            let (id, kind_json, sev, syms_json, ts, title, summary, url, source, payload_json) =
+                row_result?;
             let Ok(kind) = serde_json::from_str(&kind_json) else {
                 continue;
             };
@@ -878,7 +880,7 @@ impl EventStore {
             let Some(occurred_at) = DateTime::<Utc>::from_timestamp(ts, 0) else {
                 continue;
             };
-            out.push(MarketEvent {
+            delivered_digest_events.push(MarketEvent {
                 id,
                 kind,
                 severity,
@@ -891,7 +893,7 @@ impl EventStore {
                 payload,
             });
         }
-        Ok(out)
+        Ok(delivered_digest_events)
     }
 
     /// 按 `occurred_at_ts` 拉一段窗口内的 `NewsCritical` 事件,供 global_digest
@@ -946,9 +948,10 @@ impl EventStore {
                 row.get::<_, String>(9)?,
             ))
         })?;
-        let mut out = Vec::new();
-        for r in rows {
-            let (id, kind_json, sev, syms_json, ts, title, summary, url, source, payload_json) = r?;
+        let mut news_candidates = Vec::new();
+        for row_result in rows {
+            let (id, kind_json, sev, syms_json, ts, title, summary, url, source, payload_json) =
+                row_result?;
             let Ok(kind) = serde_json::from_str(&kind_json) else {
                 continue;
             };
@@ -963,7 +966,7 @@ impl EventStore {
             let Some(occurred_at) = DateTime::<Utc>::from_timestamp(ts, 0) else {
                 continue;
             };
-            out.push(MarketEvent {
+            news_candidates.push(MarketEvent {
                 id,
                 kind,
                 severity,
@@ -976,7 +979,7 @@ impl EventStore {
                 payload,
             });
         }
-        Ok(out)
+        Ok(news_candidates)
     }
 
     /// 列出某 channel 在 `since` 之后所有 actor 的成功投递 event_id 集合。

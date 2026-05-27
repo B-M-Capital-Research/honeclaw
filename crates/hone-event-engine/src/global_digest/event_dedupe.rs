@@ -502,13 +502,13 @@ mod tests {
                 300,
             ),
         ];
-        let response = r#"{"clusters":[
+        let cluster_response_json = r#"{"clusters":[
             {"id":"hormuz-crisis","items":[0,1,2]},
             {"id":"microsoft-buyout","items":[3,4]},
             {"id":"nasa-mars","items":[5]}
         ]}"#;
         let provider = Arc::new(FixedResponseProvider {
-            response: response.into(),
+            response: cluster_response_json.into(),
             calls: AtomicUsize::new(0),
             last_prompt: Mutex::new(None),
         });
@@ -556,9 +556,9 @@ mod tests {
                 200,
             ),
         ];
-        let response = r#"{"clusters":[{"id":"only-cluster","items":[0,1]}]}"#;
+        let cluster_response_json = r#"{"clusters":[{"id":"only-cluster","items":[0,1]}]}"#;
         let provider = Arc::new(FixedResponseProvider {
-            response: response.into(),
+            response: cluster_response_json.into(),
             calls: AtomicUsize::new(0),
             last_prompt: Mutex::new(None),
         });
@@ -596,9 +596,10 @@ mod tests {
             digest_candidate_fixture("a", "first", "x", NewsSourceClass::Trusted, 0),
             digest_candidate_fixture("b", "second", "y", NewsSourceClass::Trusted, 100),
         ];
-        let response = r#"{"clusters":[{"id":"first","items":[0,1]},{"id":"second","items":[0]}]}"#;
+        let cluster_response_json =
+            r#"{"clusters":[{"id":"first","items":[0,1]},{"id":"second","items":[0]}]}"#;
         let provider = Arc::new(FixedResponseProvider {
-            response: response.into(),
+            response: cluster_response_json.into(),
             calls: AtomicUsize::new(0),
             last_prompt: Mutex::new(None),
         });
@@ -618,9 +619,9 @@ mod tests {
             NewsSourceClass::Trusted,
             0,
         )];
-        let response = r#"{"clusters":[{"id":"bad","items":[0,99,42]}]}"#;
+        let cluster_response_json = r#"{"clusters":[{"id":"bad","items":[0,99,42]}]}"#;
         let provider = Arc::new(FixedResponseProvider {
-            response: response.into(),
+            response: cluster_response_json.into(),
             calls: AtomicUsize::new(0),
             last_prompt: Mutex::new(None),
         });
@@ -670,9 +671,9 @@ mod tests {
             digest_candidate_fixture("a", "x", "y", NewsSourceClass::Trusted, 0),
             digest_candidate_fixture("b", "z", "w", NewsSourceClass::Trusted, 100),
         ];
-        let response = "```json\n{\"clusters\":[{\"id\":\"c\",\"items\":[0,1]}]}\n```";
+        let cluster_response_json = "```json\n{\"clusters\":[{\"id\":\"c\",\"items\":[0,1]}]}\n```";
         let provider = Arc::new(FixedResponseProvider {
-            response: response.into(),
+            response: cluster_response_json.into(),
             calls: AtomicUsize::new(0),
             last_prompt: Mutex::new(None),
         });
@@ -701,9 +702,9 @@ mod tests {
                 100,
             ),
         ];
-        let response = r#"{"clusters":[{"id":"hormuz","items":[0,1]}]}"#;
+        let cluster_response_json = r#"{"clusters":[{"id":"hormuz","items":[0,1]}]}"#;
         let provider = Arc::new(FixedResponseProvider {
-            response: response.into(),
+            response: cluster_response_json.into(),
             calls: AtomicUsize::new(0),
             last_prompt: Mutex::new(None),
         });

@@ -2418,11 +2418,13 @@ export default function PublicChatPage() {
   });
 
   // Flash "本轮已完成" when a background-pending run resolves.
-  let bgPrev = false;
+  let hadBackgroundPending = false;
   createEffect(() => {
-    const cur = !!backgroundPending();
-    if (bgPrev && !cur && !isSending()) flashJustFinished();
-    bgPrev = cur;
+    const hasBackgroundPending = !!backgroundPending();
+    if (hadBackgroundPending && !hasBackgroundPending && !isSending()) {
+      flashJustFinished();
+    }
+    hadBackgroundPending = hasBackgroundPending;
   });
 
   onMount(() => {

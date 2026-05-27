@@ -145,8 +145,8 @@ function createSessionsState() {
     activeSendingKeys.add(key);
 
     // 2. 响应式锁：阻止 UI 上的重复操作
-    const existing = state.pendingByKey[key];
-    if (existing && existing.phase !== "error" && existing.phase !== "timeout") {
+    const existingPending = state.pendingByKey[key];
+    if (existingPending && existingPending.phase !== "error" && existingPending.phase !== "timeout") {
       activeSendingKeys.delete(key);
       return;
     }
@@ -184,30 +184,30 @@ function createSessionsState() {
       const stream = await sendChat(actor, draft, controller.signal);
       const reader = stream.getReader();
       const decoder = new TextDecoder();
-      let pending = "";
+      let sseBuffer = "";
 
       outer: while (true) {
         const chunk = await reader.read();
         if (chunk.done) break;
-        pending += decoder.decode(chunk.value, { stream: true });
-        const parsed = parseSseChunks(pending);
-        pending = parsed.pending;
+        sseBuffer += decoder.decode(chunk.value, { stream: true });
+        const parsed = parseSseChunks(sseBuffer);
+        sseBuffer = parsed.pending;
 
         for (const event of parsed.events) {
           if (event.event === "run_started") {
-            const text = event.data.text;
+            const startedStatusText = event.data.text;
             updatePending(key, {
               phase: "thinking",
-              statusText: text || "正在思考…",
+              statusText: startedStatusText || "正在思考…",
             });
           }
 
           if (event.event === "tool_call") {
-            const tool = event.data.tool;
-            const display = event.data.text?.trim() || event.data.reasoning?.trim();
+            const toolName = event.data.tool;
+            const toolStatusText = event.data.text?.trim() || event.data.reasoning?.trim();
             updatePending(key, {
               phase: "running",
-              statusText: display || (tool ? `调用工具：${tool}` : "处理中…"),
+              statusText: toolStatusText || (toolName ? `调用工具：${toolName}` : "处理中…"),
             });
           }
 
@@ -224,10 +224,10 @@ function createSessionsState() {
           }
 
           if (event.event === "error") {
-            const msg = event.data.text?.trim() || "请求失败";
+            const eventErrorText = event.data.text?.trim() || "请求失败";
             updatePending(key, {
               phase: "error",
-              statusText: msg,
+              statusText: eventErrorText,
             });
             continue;
           }
@@ -270,17 +270,17 @@ function createSessionsState() {
 
           if (event.event === "done") {
             if (timeoutHandleRef.current) clearTimeout(timeoutHandleRef.current);
-            const cur = state.pendingByKey[key];
+            const donePending = state.pendingByKey[key];
             if (
-              cur &&
-              cur.phase !== "error" &&
-              cur.phase !== "timeout"
+              donePending &&
+              donePending.phase !== "error" &&
+              donePending.phase !== "timeout"
             ) {
-              if (cur.partialContent) {
+              if (donePending.partialContent) {
                 append(key, {
-                  id: cur.id,
+                  id: donePending.id,
                   kind: "assistant",
-                  content: cur.partialContent,
+                  content: donePending.partialContent,
                 });
                 clearPending(key);
               } else {
@@ -313,18 +313,18 @@ function createSessionsState() {
 
       // ── 防御性清理：若 pending 仍处于"活跃"阶段（流意外关闭，未收到 run_finished）──
       // 此情形包括网络断开、服务端崩溃等，防止气泡永久停留、阻塞后续发送
-      const lingering = state.pendingByKey[key];
+      const lingeringPending = state.pendingByKey[key];
       if (
-        lingering &&
-        lingering.phase !== "error" &&
-        lingering.phase !== "timeout"
+        lingeringPending &&
+        lingeringPending.phase !== "error" &&
+        lingeringPending.phase !== "timeout"
       ) {
-        if (lingering.partialContent) {
+        if (lingeringPending.partialContent) {
           // 有部分流式内容 → 提交为正式消息后清除
           append(key, {
-            id: lingering.id,
+            id: lingeringPending.id,
             kind: "assistant",
-            content: lingering.partialContent,
+            content: lingeringPending.partialContent,
           });
           clearPending(key);
         } else {
@@ -337,8 +337,8 @@ function createSessionsState() {
       }
 
       // ── 释放发送锁；error/timeout 终态保留 pending 供用户 dismiss ──
-      const tail = state.pendingByKey[key];
-      if (!tail || isPendingPhaseActive(tail.phase)) {
+      const finalPending = state.pendingByKey[key];
+      if (!finalPending || isPendingPhaseActive(finalPending.phase)) {
         clearPending(key);
       }
       activeSendingKeys.delete(key);
@@ -404,38 +404,38 @@ function createSessionsState() {
     }
     try {
       const history = await getHistory(user.session_id);
-      const newTimeline = historyToTimeline(history);
-      const current = state.histories[key] ?? [];
+      const serverTimeline = historyToTimeline(history);
+      const currentTimeline = state.histories[key] ?? [];
 
       // 只在内容有变化时才更新（避免不必要的重渲染）
-      const lastNew = newTimeline[newTimeline.length - 1];
-      const lastCurrent = current[current.length - 1];
-      const hasChanges =
-        newTimeline.length !== current.length ||
-        (lastNew !== undefined &&
-          lastNew.content !== (lastCurrent?.content ?? ""));
+      const lastServerMessage = serverTimeline[serverTimeline.length - 1];
+      const lastCurrentMessage = currentTimeline[currentTimeline.length - 1];
+      const timelineChanged =
+        serverTimeline.length !== currentTimeline.length ||
+        (lastServerMessage !== undefined &&
+          lastServerMessage.content !== (lastCurrentMessage?.content ?? ""));
 
-      if (hasChanges) {
+      if (timelineChanged) {
         // 若服务端消息数 >= 本地且前缀内容一致，只追加增量（最快路径）
         if (
-          newTimeline.length > current.length &&
-          current.length > 0 &&
-          newTimeline[current.length - 1]?.content === lastCurrent?.content
+          serverTimeline.length > currentTimeline.length &&
+          currentTimeline.length > 0 &&
+          serverTimeline[currentTimeline.length - 1]?.content === lastCurrentMessage?.content
         ) {
-          const added = newTimeline.slice(current.length);
-          setState("histories", key, (prev = []) => [...prev, ...added]);
+          const appendedMessages = serverTimeline.slice(currentTimeline.length);
+          setState("histories", key, (prev = []) => [...prev, ...appendedMessages]);
         } else {
           // 全量替换时使用 reconcile 做精准 diff：
           // 配合 stableHistoryId，相同内容的消息 ID 不变，SolidJS 只更新真正变化的节点，
           // 避免 VList 触发全量重渲染导致的闪烁
-          setState("histories", key, reconcile(newTimeline, { key: "id" }));
+          setState("histories", key, reconcile(serverTimeline, { key: "id" }));
         }
       }
 
       // iMessage：根据最后一条消息推断 pending 状态
       if (updatePendingState && !state.pendingByKey[key]) {
-        const last = newTimeline[newTimeline.length - 1];
-        if (last?.kind === "user") {
+        const latestServerMessage = serverTimeline[serverTimeline.length - 1];
+        if (latestServerMessage?.kind === "user") {
           // 最后是用户消息，说明 bot 还没回复，显示 thinking
           setPending(key, {
             id: messageId(),
@@ -444,7 +444,7 @@ function createSessionsState() {
             statusText: "正在思考…",
             partialContent: "",
           });
-        } else if (last?.kind === "assistant") {
+        } else if (latestServerMessage?.kind === "assistant") {
           // 已有回复，清除 pending
           clearPending(key);
         }

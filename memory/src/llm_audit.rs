@@ -282,12 +282,12 @@ impl LlmAuditStorage {
             })
             .map_err(sql_err)?;
 
-        let mut vec = Vec::new();
-        for r in rows {
-            vec.push(r.map_err(sql_err)?);
+        let mut records = Vec::new();
+        for row_result in rows {
+            records.push(row_result.map_err(sql_err)?);
         }
 
-        Ok((vec, count))
+        Ok((records, count))
     }
 
     pub fn get_audit_record(&self, id: &str) -> HoneResult<Option<LlmAuditRecord>> {
@@ -428,18 +428,18 @@ fn detect_token_columns(conn: &Connection) -> HoneResult<bool> {
         .query_map([], |row| row.get::<_, String>(1))
         .map_err(sql_err)?;
 
-    let mut prompt = false;
-    let mut completion = false;
-    let mut total = false;
+    let mut has_prompt_tokens_column = false;
+    let mut has_completion_tokens_column = false;
+    let mut has_total_tokens_column = false;
     for row in rows {
         match row.map_err(sql_err)?.as_str() {
-            "prompt_tokens" => prompt = true,
-            "completion_tokens" => completion = true,
-            "total_tokens" => total = true,
+            "prompt_tokens" => has_prompt_tokens_column = true,
+            "completion_tokens" => has_completion_tokens_column = true,
+            "total_tokens" => has_total_tokens_column = true,
             _ => {}
         }
     }
-    Ok(prompt && completion && total)
+    Ok(has_prompt_tokens_column && has_completion_tokens_column && has_total_tokens_column)
 }
 
 fn migrate_token_columns(conn: &Connection) -> HoneResult<()> {
@@ -450,9 +450,9 @@ fn migrate_token_columns(conn: &Connection) -> HoneResult<()> {
         .query_map([], |row| row.get::<_, String>(1))
         .map_err(sql_err)?;
 
-    let mut columns = Vec::new();
+    let mut existing_columns = Vec::new();
     for row in rows {
-        columns.push(row.map_err(sql_err)?);
+        existing_columns.push(row.map_err(sql_err)?);
     }
 
     for (name, ty) in [
@@ -460,7 +460,7 @@ fn migrate_token_columns(conn: &Connection) -> HoneResult<()> {
         ("completion_tokens", "INTEGER"),
         ("total_tokens", "INTEGER"),
     ] {
-        if !columns.iter().any(|column| column == name) {
+        if !existing_columns.iter().any(|column| column == name) {
             conn.execute(
                 &format!("ALTER TABLE llm_audit_records ADD COLUMN {name} {ty}"),
                 [],
@@ -548,7 +548,7 @@ mod tests {
         let db_path = root.join("audit.sqlite3");
         let storage = LlmAuditStorage::new(&db_path, 30).expect("storage");
 
-        let mut r1 = LlmAuditRecord::new(
+        let mut chat_audit_record = LlmAuditRecord::new(
             "sess1",
             Some(ActorIdentity::new("wx", "bob", None::<String>).expect("actor")),
             "agent",
@@ -557,10 +557,10 @@ mod tests {
             Some("gpt-4".to_string()),
             json!({"q": 1}),
         );
-        r1.success = true;
-        storage.record(r1.clone()).unwrap();
+        chat_audit_record.success = true;
+        storage.record(chat_audit_record.clone()).unwrap();
 
-        let mut r2 = LlmAuditRecord::new(
+        let mut search_audit_record = LlmAuditRecord::new(
             "sess2",
             Some(ActorIdentity::new("feishu", "alice", None::<String>).expect("actor")),
             "tool",
@@ -569,15 +569,15 @@ mod tests {
             None,
             json!({"q": 2}),
         );
-        r2.success = false;
-        r2.latency_ms = Some(150);
-        storage.record(r2.clone()).unwrap();
+        search_audit_record.success = false;
+        search_audit_record.latency_ms = Some(150);
+        storage.record(search_audit_record.clone()).unwrap();
 
         // 1. 无条件过滤
-        let res_all = storage
+        let all_records_result = storage
             .list_audit_records(&AuditQueryFilter::default())
             .unwrap();
-        assert_eq!(res_all.1, 2);
+        assert_eq!(all_records_result.1, 2);
 
         // 2. Test filtering by actor_channel
         let filtered_records = storage
@@ -595,28 +595,31 @@ mod tests {
         assert_eq!(filtered_records.0[0].prompt_tokens, None);
 
         // 3. Test success boolean filtering
-        let res_success = storage
+        let successful_records_result = storage
             .list_audit_records(&AuditQueryFilter {
                 success: Some(true),
                 ..Default::default()
             })
             .unwrap();
-        assert_eq!(res_success.1, 1);
-        assert_eq!(res_success.0[0].session_id, "sess1");
+        assert_eq!(successful_records_result.1, 1);
+        assert_eq!(successful_records_result.0[0].session_id, "sess1");
 
         // 4. Test pagination
-        let res2 = storage
+        let first_page_result = storage
             .list_audit_records(&AuditQueryFilter {
                 page: Some(1),
                 page_size: Some(1),
                 ..Default::default()
             })
             .unwrap();
-        assert_eq!(res2.1, 2); // Total count is 2
-        assert_eq!(res2.0.len(), 1);
+        assert_eq!(first_page_result.1, 2); // Total count is 2
+        assert_eq!(first_page_result.0.len(), 1);
 
         // 5. Test detail query
-        let detail = storage.get_audit_record(&r1.id).unwrap().unwrap();
+        let detail = storage
+            .get_audit_record(&chat_audit_record.id)
+            .unwrap()
+            .unwrap();
         assert_eq!(detail.request, json!({"q": 1}));
         assert_eq!(detail.session_id, "sess1");
 
