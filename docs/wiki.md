@@ -288,10 +288,10 @@ Important config areas:
 - `imessage.*`, `feishu.*`, `telegram.*`, `discord.*`: channel enablement, credentials, allowlists, and chat scope.
 - `web.*`: Web console auth token and workflow/research integration settings.
 - `storage.*`: session data paths and backend selection, especially `sessions_dir`, `session_sqlite_db_path`, `session_sqlite_shadow_write_enabled`, `session_runtime_backend`, `conversation_quota_dir`, `llm_audit_db_path`, and `notif_prefs_dir`.
-- `cloud.*`: migration-time managed Postgres / OSS env references; keep actual `DATABASE_URL`, `HONE_POSTGRES_*`, and `HONE_OSS_*` values outside committed config.
+- `cloud.*`: migration-time managed Postgres / OSS env references. `cloud.enabled` may also become effectively enabled when `HONE_CLOUD_ENABLED` is true or the referenced env vars are present; `cloud.strict_no_local_storage` / `HONE_CLOUD_STRICT_NO_LOCAL_STORAGE` fail startup while local storage dependencies remain.
 - `admins.*`: channel admin identities and runtime admin registration passphrase.
 - `event_engine.*`: market/news event monitoring and delivery.
-- `logging.*`: runtime log level and local UDP sink port/default; `console` and `file` remain parsed compatibility fields until file/console sinks are wired.
+- `logging.*`: runtime log level and local UDP sink port. `udp_port: null` uses the default `18118` UDP sink, with no config-level disable switch today; `console` and `file` remain parsed compatibility fields until file/console sinks are wired.
 - `security.*`: actor isolation and tool-guard policy.
 - `nano_banana.*`: OpenRouter-backed image generation defaults.
 - `search.*`, `fmp.*`: external data/search providers.
@@ -301,6 +301,7 @@ Admin/public Web ports are runtime environment settings, primarily `HONE_WEB_POR
 Public SMS login and optional Aliyun Captcha are also runtime environment settings; use `config.example.yaml` and `docs/runbooks/backend-deployment.md` as the reference for `ALIBABA_CLOUD_*`, `HONE_ALIYUN_SMS_*`, `HONE_ALIYUN_CAPTCHA_*`, and `HONE_PUBLIC_SECURE_COOKIE`. Active admin-created Web invite users remain the public-login invite-list admission source. For the public session cookie, `HONE_PUBLIC_SECURE_COOKIE` accepts `true/1/yes` and `false/0/no`; invalid non-empty values keep `Secure=true`.
 For OpenRouter credentials, prefer the `llm.providers.openrouter.api_key/api_keys` pool; legacy `llm.openrouter.*` key fields are migration fallbacks only.
 For Tavily web search, the current runtime tool reads `search.api_keys` and `search.max_results`; `search.provider`, `search.search_depth`, and `search.topic` are preserved schema fields but are not wired into the request yet.
+For managed cloud storage, keep actual `DATABASE_URL`, `HONE_POSTGRES_*`, and `HONE_OSS_*` values outside committed config. `cloud.strict_no_local_storage` is only safe after the remaining local session, cron, audit, portfolio, notification preference, KB, and log stores have managed backends.
 
 Never commit local secrets in `config.yaml`.
 

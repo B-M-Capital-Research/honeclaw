@@ -476,6 +476,8 @@ fn assert_wiki_config_overview_matches_current_schema(wiki: &str) {
         "`llm_audit_db_path`",
         "`notif_prefs_dir`",
         "`event_engine.*`",
+        "`cloud.strict_no_local_storage`",
+        "`HONE_CLOUD_STRICT_NO_LOCAL_STORAGE`",
         "`language`",
     ] {
         assert!(
@@ -486,6 +488,18 @@ fn assert_wiki_config_overview_matches_current_schema(wiki: &str) {
     assert!(
         wiki.contains("public-login invite-list admission source"),
         "docs/wiki.md should align public auth config notes with the invite-list admission source"
+    );
+}
+
+fn assert_cloud_config_runtime_docs(label: &str, doc: &str) {
+    assert!(
+        doc.contains("cloud.enabled") && doc.contains("HONE_CLOUD_ENABLED"),
+        "{label} should document effective cloud enablement"
+    );
+    assert!(
+        doc.contains("cloud.strict_no_local_storage")
+            && doc.contains("HONE_CLOUD_STRICT_NO_LOCAL_STORAGE"),
+        "{label} should document strict local-storage enforcement"
     );
 }
 
@@ -2001,6 +2015,7 @@ fn config_example_avoids_stale_config_knobs() {
     assert_config_example_storage_and_logging(root);
     assert_config_example_public_auth_env_docs(&example);
     assert_search_config_runtime_docs("config.example.yaml", &example);
+    assert_cloud_config_runtime_docs("config.example.yaml", &example);
     assert_logging_udp_docs_match_runtime("config.example.yaml", &example);
     assert_logging_sink_docs_match_runtime("config.example.yaml", &example);
 
@@ -2008,7 +2023,9 @@ fn config_example_avoids_stale_config_knobs() {
     assert_openrouter_provider_key_pool_docs("docs/wiki.md", &wiki);
     assert_wiki_config_overview_matches_current_schema(&wiki);
     assert_search_config_runtime_docs("docs/wiki.md", &wiki);
+    assert_logging_udp_docs_match_runtime("docs/wiki.md", &wiki);
     assert_logging_sink_docs_match_runtime("docs/wiki.md", &wiki);
+    assert_cloud_config_runtime_docs("docs/wiki.md", &wiki);
 
     let readme_en = std::fs::read_to_string(repo_file("README_EN.md")).unwrap();
     assert_openrouter_provider_key_pool_docs("README_EN.md", &readme_en);
@@ -2017,6 +2034,7 @@ fn config_example_avoids_stale_config_knobs() {
     assert_openrouter_provider_key_pool_docs("docs/technical-spec.md", &technical_spec);
     assert_technical_spec_config_sections_match_roots(&technical_spec);
     assert_search_config_runtime_docs("docs/technical-spec.md", &technical_spec);
+    assert_cloud_config_runtime_docs("docs/technical-spec.md", &technical_spec);
     assert_logging_udp_docs_match_runtime("docs/technical-spec.md", &technical_spec);
     assert_logging_sink_docs_match_runtime("docs/technical-spec.md", &technical_spec);
     assert_technical_spec_storage_keys_match_schema(&technical_spec);

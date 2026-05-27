@@ -465,9 +465,11 @@ storage:
 
 cloud:
   # Enables managed backend resources when the referenced env vars are present.
+  # cloud.enabled is also effectively true when HONE_CLOUD_ENABLED=true.
   # Keep real PG / OSS credentials in the process environment or local .env only.
   enabled: false
-  # Set true only after all storage backends have PG / OSS implementations.
+  # Set cloud.strict_no_local_storage true only after all storage backends have PG / OSS implementations.
+  # HONE_CLOUD_STRICT_NO_LOCAL_STORAGE=true has the same startup-fail effect.
   strict_no_local_storage: false
   postgres:
     database_url: ""

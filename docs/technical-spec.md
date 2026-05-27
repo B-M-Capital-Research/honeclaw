@@ -547,7 +547,9 @@ Important constraints:
 
 - LLM provider/profile credentials are config-owned. Prefer `llm.providers.<symbol>.api_key/api_keys`; legacy `llm.openrouter.*` remains readable only as a config fallback during migration.
 - Tavily web search currently consumes `search.api_keys` and `search.max_results`; `search.provider`, `search.search_depth`, and `search.topic` remain schema/compatibility fields and are not wired into requests until the search tool request builder is widened.
+- `cloud.enabled` is effectively enabled when set directly, when `HONE_CLOUD_ENABLED` is true, or when `cloud.postgres` / `cloud.oss` resolve enough env-backed credentials to be configured.
 - `cloud.postgres` and `cloud.oss` prefer env references such as `DATABASE_URL`, `HONE_POSTGRES_*`, and `HONE_OSS_*`; committed config should keep the actual credentials empty.
+- `cloud.strict_no_local_storage` / `HONE_CLOUD_STRICT_NO_LOCAL_STORAGE` fail startup while declared local storage dependencies remain, so they should stay false until managed replacements exist for all listed stores.
 - `logging.udp_port: null` uses the default local UDP log sink port `18118`; there is currently no config-level disable switch for UDP logging.
 - `logging.console` and `logging.file` are parsed compatibility fields; `setup_logging` currently installs the console formatter unconditionally and does not create a file appender from `logging.file`.
 - External-account capabilities must not enter the default CI gate
