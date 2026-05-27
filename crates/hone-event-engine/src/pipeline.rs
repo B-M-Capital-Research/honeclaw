@@ -36,9 +36,10 @@ pub(crate) async fn process_events(
     let total = events.len();
     // 按 tick 重置 per-symbol 升级计数,使新一批事件不会受到上一 tick 残留计数干扰。
     router.reset_tick_counters();
-    let (mut new_cnt, mut dup_cnt, mut sent, mut pending) = (0u32, 0u32, 0u32, 0u32);
-    for ev in &events {
-        let is_new = match store.insert_event(ev) {
+    let (mut new_count, mut duplicate_count, mut sent_count, mut pending_digest_count) =
+        (0u32, 0u32, 0u32, 0u32);
+    for event in &events {
+        let is_new = match store.insert_event(event) {
             Ok(is_new) => is_new,
             Err(e) => {
                 warn!(poller = name, "insert_event failed: {e:#}");
@@ -46,25 +47,25 @@ pub(crate) async fn process_events(
             }
         };
         if is_new {
-            new_cnt += 1;
-            match router.dispatch(ev).await {
-                Ok((s, p)) => {
-                    sent += s;
-                    pending += p;
+            new_count += 1;
+            match router.dispatch(event).await {
+                Ok((dispatch_sent, dispatch_pending)) => {
+                    sent_count += dispatch_sent;
+                    pending_digest_count += dispatch_pending;
                 }
                 Err(e) => warn!(poller = name, "router dispatch failed: {e:#}"),
             }
         } else {
-            dup_cnt += 1;
+            duplicate_count += 1;
         }
     }
     info!(
         poller = name,
         total,
-        new = new_cnt,
-        duplicate = dup_cnt,
-        sent,
-        pending_digest = pending,
+        new = new_count,
+        duplicate = duplicate_count,
+        sent = sent_count,
+        pending_digest = pending_digest_count,
         "poller ok"
     );
     let news_stats = router.news_upgrade_tick_stats_snapshot();

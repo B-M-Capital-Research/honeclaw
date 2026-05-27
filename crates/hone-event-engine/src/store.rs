@@ -140,23 +140,23 @@ impl EventStore {
 
     pub fn baseline_at(&self) -> anyhow::Result<DateTime<Utc>> {
         let conn = self.conn.lock().unwrap();
-        let ts: Option<i64> = conn
+        let baseline_ts: Option<i64> = conn
             .query_row(
                 "SELECT CAST(value AS INTEGER) FROM engine_meta WHERE key='baseline_at_ts'",
                 [],
                 |row| row.get(0),
             )
             .optional()?;
-        let ts = ts.ok_or_else(|| anyhow::anyhow!("baseline 未初始化"))?;
-        Utc.timestamp_opt(ts, 0)
+        let baseline_ts = baseline_ts.ok_or_else(|| anyhow::anyhow!("baseline 未初始化"))?;
+        Utc.timestamp_opt(baseline_ts, 0)
             .single()
-            .ok_or_else(|| anyhow::anyhow!("baseline 时间戳无效: {ts}"))
+            .ok_or_else(|| anyhow::anyhow!("baseline 时间戳无效: {baseline_ts}"))
     }
 
     /// 插入一条事件。若 `id` 已存在，返回 `Ok(false)`；首次写入返回 `Ok(true)`。
     /// 首次写入成功 + 启用了 JSONL 镜像时，同步 append 一行事件 JSON；写失败只
     /// 记 warn，不影响 SQLite 事务结果。
-    pub fn insert_event(&self, ev: &MarketEvent) -> anyhow::Result<bool> {
+    pub fn insert_event(&self, event: &MarketEvent) -> anyhow::Result<bool> {
         let affected = {
             let conn = self.conn.lock().unwrap();
             conn.execute(
@@ -167,38 +167,38 @@ impl EventStore {
                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
                 "#,
                 params![
-                    ev.id,
-                    serde_json::to_string(&ev.kind)?,
-                    severity_tag(&ev.severity),
-                    serde_json::to_string(&ev.symbols)?,
-                    ev.occurred_at.timestamp(),
-                    ev.title,
-                    ev.summary,
-                    ev.url,
-                    ev.source,
-                    serde_json::to_string(&ev.payload)?,
+                    event.id,
+                    serde_json::to_string(&event.kind)?,
+                    severity_tag(&event.severity),
+                    serde_json::to_string(&event.symbols)?,
+                    event.occurred_at.timestamp(),
+                    event.title,
+                    event.summary,
+                    event.url,
+                    event.source,
+                    serde_json::to_string(&event.payload)?,
                     Utc::now().timestamp(),
                 ],
             )?
         };
         let is_new = affected > 0;
-        if is_new && let Err(e) = self.append_jsonl_mirror(ev) {
+        if is_new && let Err(e) = self.append_jsonl_mirror(event) {
             tracing::warn!(
-                event_id = %ev.id,
-                source = %ev.source,
-                symbols = ?ev.symbols,
+                event_id = %event.id,
+                source = %event.source,
+                symbols = ?event.symbols,
                 "events jsonl mirror append failed: {e:#}"
             );
         }
         Ok(is_new)
     }
 
-    fn append_jsonl_mirror(&self, ev: &MarketEvent) -> anyhow::Result<()> {
+    fn append_jsonl_mirror(&self, event: &MarketEvent) -> anyhow::Result<()> {
         let Some(path) = self.jsonl_path.as_ref() else {
             return Ok(());
         };
         use std::io::Write;
-        let line = serde_json::to_string(ev)?;
+        let line = serde_json::to_string(event)?;
         let mut f = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -212,27 +212,28 @@ impl EventStore {
     pub fn purge_events_older_than(&self, cutoff_days: i64) -> anyhow::Result<usize> {
         let cutoff = Utc::now().timestamp() - cutoff_days * 86_400;
         let conn = self.conn.lock().unwrap();
-        let n = conn.execute(
+        let deleted_count = conn.execute(
             "DELETE FROM events WHERE created_at_ts < ?1",
             params![cutoff],
         )?;
-        Ok(n)
+        Ok(deleted_count)
     }
 
     pub fn purge_delivery_log_older_than(&self, cutoff_days: i64) -> anyhow::Result<usize> {
         let cutoff = Utc::now().timestamp() - cutoff_days * 86_400;
         let conn = self.conn.lock().unwrap();
-        let n = conn.execute(
+        let deleted_count = conn.execute(
             "DELETE FROM delivery_log WHERE sent_at_ts < ?1",
             params![cutoff],
         )?;
-        Ok(n)
+        Ok(deleted_count)
     }
 
     pub fn count_events(&self) -> anyhow::Result<i64> {
         let conn = self.conn.lock().unwrap();
-        let n: i64 = conn.query_row("SELECT COUNT(*) FROM events", [], |row| row.get(0))?;
-        Ok(n)
+        let event_count: i64 =
+            conn.query_row("SELECT COUNT(*) FROM events", [], |row| row.get(0))?;
+        Ok(event_count)
     }
 
     /// 列出 `[start, end]` 窗口内、`symbol` 命中的事件的 kind tag (snake_case
@@ -322,20 +323,30 @@ impl EventStore {
         })?;
         let mut upcoming_earnings_events = Vec::new();
         for row_result in rows {
-            let (id, kind_json, sev, syms_json, ts, title, summary, url, source, payload_json) =
-                row_result?;
+            let (
+                id,
+                kind_json,
+                severity_label,
+                symbols_json,
+                occurred_at_ts,
+                title,
+                summary,
+                url,
+                source,
+                payload_json,
+            ) = row_result?;
             let Ok(kind) = serde_json::from_str(&kind_json) else {
                 continue;
             };
-            let severity = match sev.as_str() {
+            let severity = match severity_label.as_str() {
                 "high" => crate::event::Severity::High,
                 "medium" => crate::event::Severity::Medium,
                 _ => crate::event::Severity::Low,
             };
-            let symbols: Vec<String> = serde_json::from_str(&syms_json).unwrap_or_default();
+            let symbols: Vec<String> = serde_json::from_str(&symbols_json).unwrap_or_default();
             let payload: serde_json::Value =
                 serde_json::from_str(&payload_json).unwrap_or(serde_json::Value::Null);
-            let Some(occurred_at) = DateTime::<Utc>::from_timestamp(ts, 0) else {
+            let Some(occurred_at) = DateTime::<Utc>::from_timestamp(occurred_at_ts, 0) else {
                 continue;
             };
             upcoming_earnings_events.push(MarketEvent {
@@ -396,13 +407,13 @@ impl EventStore {
             values.push(SqlValue::Text(format!("%\"{tag}\"%")));
         }
         let conn = self.conn.lock().unwrap();
-        let n: i64 = conn.query_row(&sql, params_from_iter(values), |row| row.get(0))?;
-        Ok(n)
+        let sent_count: i64 = conn.query_row(&sql, params_from_iter(values), |row| row.get(0))?;
+        Ok(sent_count)
     }
 
     fn count_high_sent_since_all(&self, actor: &str, since: DateTime<Utc>) -> anyhow::Result<i64> {
         let conn = self.conn.lock().unwrap();
-        let n: i64 = conn.query_row(
+        let sent_count: i64 = conn.query_row(
             r#"
             SELECT COUNT(*) FROM delivery_log
             WHERE actor = ?1
@@ -414,7 +425,7 @@ impl EventStore {
             params![actor, since.timestamp()],
             |row| row.get(0),
         )?;
-        Ok(n)
+        Ok(sent_count)
     }
 
     /// 该 actor 针对 `symbol` 最近一次 High 成功送达 sink 的时刻。
@@ -478,7 +489,7 @@ impl EventStore {
         let row: Option<i64> = conn.query_row(&sql, params_from_iter(values), |row| {
             row.get::<_, Option<i64>>(0)
         })?;
-        Ok(row.and_then(|ts| DateTime::<Utc>::from_timestamp(ts, 0)))
+        Ok(row.and_then(|sent_at_ts| DateTime::<Utc>::from_timestamp(sent_at_ts, 0)))
     }
 
     fn last_high_sink_send_for_symbol_all(
@@ -501,7 +512,7 @@ impl EventStore {
             params![actor, needle],
             |row| row.get::<_, Option<i64>>(0),
         )?;
-        Ok(row.and_then(|ts| DateTime::<Utc>::from_timestamp(ts, 0)))
+        Ok(row.and_then(|sent_at_ts| DateTime::<Utc>::from_timestamp(sent_at_ts, 0)))
     }
 
     /// 该 actor 针对同一 ticker + analyst source article 最近一次 High sink 成功送达。
@@ -539,7 +550,7 @@ impl EventStore {
             params![actor, since.timestamp(), needle, news_url],
             |row| row.get::<_, Option<i64>>(0),
         )?;
-        Ok(row.and_then(|ts| DateTime::<Utc>::from_timestamp(ts, 0)))
+        Ok(row.and_then(|sent_at_ts| DateTime::<Utc>::from_timestamp(sent_at_ts, 0)))
     }
 
     /// 返回 `since` 之后 actor 在 (symbol, direction) 上**已被 sink 推过的最大
@@ -596,7 +607,7 @@ impl EventStore {
             params![actor],
             |row| row.get::<_, Option<i64>>(0),
         )?;
-        Ok(row.and_then(|ts| DateTime::<Utc>::from_timestamp(ts, 0)))
+        Ok(row.and_then(|sent_at_ts| DateTime::<Utc>::from_timestamp(sent_at_ts, 0)))
     }
 
     /// 列出 `since` 之后某 actor 在 digest 流程里**被吞掉**的事件 + 各自的吞掉
@@ -648,9 +659,9 @@ impl EventStore {
             let (
                 id,
                 kind_json,
-                sev,
-                syms_json,
-                ts,
+                severity_label,
+                symbols_json,
+                occurred_at_ts,
                 title,
                 summary,
                 url,
@@ -661,15 +672,15 @@ impl EventStore {
             let Ok(kind) = serde_json::from_str(&kind_json) else {
                 continue;
             };
-            let severity = match sev.as_str() {
+            let severity = match severity_label.as_str() {
                 "high" => crate::event::Severity::High,
                 "medium" => crate::event::Severity::Medium,
                 _ => crate::event::Severity::Low,
             };
-            let symbols: Vec<String> = serde_json::from_str(&syms_json).unwrap_or_default();
+            let symbols: Vec<String> = serde_json::from_str(&symbols_json).unwrap_or_default();
             let payload: serde_json::Value =
                 serde_json::from_str(&payload_json).unwrap_or(serde_json::Value::Null);
-            let Some(occurred_at) = DateTime::<Utc>::from_timestamp(ts, 0) else {
+            let Some(occurred_at) = DateTime::<Utc>::from_timestamp(occurred_at_ts, 0) else {
                 continue;
             };
             missed_digest_items.push((
@@ -787,9 +798,9 @@ impl EventStore {
             let (
                 id,
                 kind_json,
-                sev,
-                syms_json,
-                ts,
+                severity_label,
+                symbols_json,
+                occurred_at_ts,
                 title,
                 summary,
                 url,
@@ -800,15 +811,15 @@ impl EventStore {
             let Ok(kind) = serde_json::from_str(&kind_json) else {
                 continue;
             };
-            let severity = match sev.as_str() {
+            let severity = match severity_label.as_str() {
                 "high" => crate::event::Severity::High,
                 "medium" => crate::event::Severity::Medium,
                 _ => crate::event::Severity::Low,
             };
-            let symbols: Vec<String> = serde_json::from_str(&syms_json).unwrap_or_default();
+            let symbols: Vec<String> = serde_json::from_str(&symbols_json).unwrap_or_default();
             let payload: serde_json::Value =
                 serde_json::from_str(&payload_json).unwrap_or(serde_json::Value::Null);
-            let Some(occurred_at) = DateTime::<Utc>::from_timestamp(ts, 0) else {
+            let Some(occurred_at) = DateTime::<Utc>::from_timestamp(occurred_at_ts, 0) else {
                 continue;
             };
             quiet_held_events.push((
@@ -864,20 +875,30 @@ impl EventStore {
         })?;
         let mut delivered_digest_events = Vec::new();
         for row_result in rows {
-            let (id, kind_json, sev, syms_json, ts, title, summary, url, source, payload_json) =
-                row_result?;
+            let (
+                id,
+                kind_json,
+                severity_label,
+                symbols_json,
+                occurred_at_ts,
+                title,
+                summary,
+                url,
+                source,
+                payload_json,
+            ) = row_result?;
             let Ok(kind) = serde_json::from_str(&kind_json) else {
                 continue;
             };
-            let severity = match sev.as_str() {
+            let severity = match severity_label.as_str() {
                 "high" => crate::event::Severity::High,
                 "medium" => crate::event::Severity::Medium,
                 _ => crate::event::Severity::Low,
             };
-            let symbols: Vec<String> = serde_json::from_str(&syms_json).unwrap_or_default();
+            let symbols: Vec<String> = serde_json::from_str(&symbols_json).unwrap_or_default();
             let payload: serde_json::Value =
                 serde_json::from_str(&payload_json).unwrap_or(serde_json::Value::Null);
-            let Some(occurred_at) = DateTime::<Utc>::from_timestamp(ts, 0) else {
+            let Some(occurred_at) = DateTime::<Utc>::from_timestamp(occurred_at_ts, 0) else {
                 continue;
             };
             delivered_digest_events.push(MarketEvent {
@@ -950,20 +971,30 @@ impl EventStore {
         })?;
         let mut news_candidates = Vec::new();
         for row_result in rows {
-            let (id, kind_json, sev, syms_json, ts, title, summary, url, source, payload_json) =
-                row_result?;
+            let (
+                id,
+                kind_json,
+                severity_label,
+                symbols_json,
+                occurred_at_ts,
+                title,
+                summary,
+                url,
+                source,
+                payload_json,
+            ) = row_result?;
             let Ok(kind) = serde_json::from_str(&kind_json) else {
                 continue;
             };
-            let severity = match sev.as_str() {
+            let severity = match severity_label.as_str() {
                 "high" => crate::event::Severity::High,
                 "medium" => crate::event::Severity::Medium,
                 _ => crate::event::Severity::Low,
             };
-            let symbols: Vec<String> = serde_json::from_str(&syms_json).unwrap_or_default();
+            let symbols: Vec<String> = serde_json::from_str(&symbols_json).unwrap_or_default();
             let payload: serde_json::Value =
                 serde_json::from_str(&payload_json).unwrap_or(serde_json::Value::Null);
-            let Some(occurred_at) = DateTime::<Utc>::from_timestamp(ts, 0) else {
+            let Some(occurred_at) = DateTime::<Utc>::from_timestamp(occurred_at_ts, 0) else {
                 continue;
             };
             news_candidates.push(MarketEvent {
@@ -1056,13 +1087,13 @@ impl EventStore {
         );
         let mut values: Vec<SqlValue> = Vec::new();
 
-        if let Some(ts) = filter.since_ts {
+        if let Some(since_ts) = filter.since_ts {
             sql.push_str(" AND d.sent_at_ts >= ?");
-            values.push(SqlValue::Integer(ts));
+            values.push(SqlValue::Integer(since_ts));
         }
-        if let Some(ts) = filter.until_ts {
+        if let Some(until_ts) = filter.until_ts {
             sql.push_str(" AND d.sent_at_ts <= ?");
-            values.push(SqlValue::Integer(ts));
+            values.push(SqlValue::Integer(until_ts));
         }
         if let Some(actor) = filter.actor.as_deref().filter(|v| !v.is_empty()) {
             sql.push_str(" AND d.actor = ?");
@@ -1184,8 +1215,8 @@ pub fn delivery_breakdown_per_actor(
         .map_err(anyhow::Error::from)
 }
 
-fn severity_tag(s: &crate::event::Severity) -> &'static str {
-    match s {
+fn severity_tag(severity: &crate::event::Severity) -> &'static str {
+    match severity {
         crate::event::Severity::Low => "low",
         crate::event::Severity::Medium => "medium",
         crate::event::Severity::High => "high",
@@ -1310,14 +1341,14 @@ mod tests {
             )
             .unwrap();
         let conn = store.conn.lock().unwrap();
-        let n: i64 = conn
+        let attempt_count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM delivery_log WHERE event_id='ev1' AND actor='imessage:u1'",
                 [],
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(n, 2, "delivery_log 应 append-only 保留每次尝试");
+        assert_eq!(attempt_count, 2, "delivery_log 应 append-only 保留每次尝试");
         let last_status: String = conn
             .query_row(
                 "SELECT status FROM delivery_log WHERE event_id='ev1' ORDER BY sent_at_ts DESC, id DESC LIMIT 1",
@@ -1414,10 +1445,10 @@ mod tests {
         let store = EventStore::open(dir.path().join("events.db"))
             .unwrap()
             .with_jsonl_path(&mirror);
-        let ev = sample_event("e-jsonl");
-        assert!(store.insert_event(&ev).unwrap());
+        let event = sample_event("e-jsonl");
+        assert!(store.insert_event(&event).unwrap());
         // 重复入库走 IGNORE，不再 append 镜像
-        assert!(!store.insert_event(&ev).unwrap());
+        assert!(!store.insert_event(&event).unwrap());
         let lines = std::fs::read_to_string(&mirror).unwrap();
         assert_eq!(lines.lines().count(), 1);
         assert!(lines.contains("e-jsonl"));

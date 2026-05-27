@@ -38,11 +38,11 @@ fn actor(user: &str) -> ActorIdentity {
     ActorIdentity::new("imessage", user, None::<&str>).unwrap()
 }
 
-fn ev(sev: Severity) -> MarketEvent {
+fn sample_event(severity: Severity) -> MarketEvent {
     MarketEvent {
         id: "e1".into(),
         kind: EventKind::EarningsReleased,
-        severity: sev,
+        severity,
         symbols: vec!["AAPL".into()],
         occurred_at: Utc::now(),
         title: "earnings".into(),
@@ -102,7 +102,10 @@ fn router_with_aapl_actor() -> (NotificationRouter, Arc<CapturingSink>, tempfile
 #[tokio::test]
 async fn high_severity_goes_to_sink_immediately() {
     let (router, sink, _tmp) = router_with_aapl_actor();
-    let (sent, pending) = router.dispatch(&ev(Severity::High)).await.unwrap();
+    let (sent, pending) = router
+        .dispatch(&sample_event(Severity::High))
+        .await
+        .unwrap();
     assert_eq!(sent, 1);
     assert_eq!(pending, 0);
     let calls = sink.calls.lock().unwrap();
@@ -197,7 +200,7 @@ async fn high_daily_cap_zero_means_no_cap() {
     .with_high_daily_cap(0);
 
     for i in 0..5 {
-        let mut event = ev(Severity::High);
+        let mut event = sample_event(Severity::High);
         event.id = format!("h{i}");
         let (s, _) = router.dispatch(&event).await.unwrap();
         assert_eq!(s, 1, "cap=0 时每条 High 都应走 sink");
@@ -457,11 +460,11 @@ async fn cooldown_zero_means_no_throttle() {
     .with_same_symbol_cooldown_minutes(0);
 
     for i in 0..3 {
-        let mut e = ev(Severity::High);
-        e.id = format!("h{i}");
-        store.insert_event(&e).unwrap();
-        let (s, _) = router.dispatch(&e).await.unwrap();
-        assert_eq!(s, 1, "cooldown=0 时不应降级");
+        let mut event = sample_event(Severity::High);
+        event.id = format!("h{i}");
+        store.insert_event(&event).unwrap();
+        let (sent_count, _) = router.dispatch(&event).await.unwrap();
+        assert_eq!(sent_count, 1, "cooldown=0 时不应降级");
     }
     assert_eq!(sink.calls.lock().unwrap().len(), 3);
 }
@@ -659,8 +662,11 @@ async fn price_band_advance_rule_disabled_when_zero() {
 #[tokio::test]
 async fn medium_and_low_are_deferred_to_digest() {
     let (router, sink, _tmp) = router_with_aapl_actor();
-    let (sent_m, pending_m) = router.dispatch(&ev(Severity::Medium)).await.unwrap();
-    let (sent_l, pending_l) = router.dispatch(&ev(Severity::Low)).await.unwrap();
+    let (sent_m, pending_m) = router
+        .dispatch(&sample_event(Severity::Medium))
+        .await
+        .unwrap();
+    let (sent_l, pending_l) = router.dispatch(&sample_event(Severity::Low)).await.unwrap();
     assert_eq!(sent_m + sent_l, 0);
     assert_eq!(pending_m + pending_l, 2);
     sink.assert_no_calls();
@@ -695,7 +701,10 @@ async fn polisher_body_overrides_default_template() {
     )
     .with_polisher(Arc::new(FixedPolisher));
 
-    let _ = router.dispatch(&ev(Severity::High)).await.unwrap();
+    let _ = router
+        .dispatch(&sample_event(Severity::High))
+        .await
+        .unwrap();
     let calls = sink.calls.lock().unwrap();
     assert_eq!(calls[0].1, "POLISHED BODY");
 }
@@ -731,8 +740,14 @@ async fn disabled_prefs_skip_send_and_enqueue() {
     )
     .with_prefs(prefs_store);
 
-    let (sent_h, pending_h) = router.dispatch(&ev(Severity::High)).await.unwrap();
-    let (sent_m, pending_m) = router.dispatch(&ev(Severity::Medium)).await.unwrap();
+    let (sent_h, pending_h) = router
+        .dispatch(&sample_event(Severity::High))
+        .await
+        .unwrap();
+    let (sent_m, pending_m) = router
+        .dispatch(&sample_event(Severity::Medium))
+        .await
+        .unwrap();
     assert_eq!(sent_h + sent_m, 0);
     assert_eq!(pending_h + pending_m, 0);
     sink.assert_no_calls();
@@ -787,7 +802,7 @@ async fn portfolio_only_prefs_drop_symbolless_events() {
     .with_prefs(prefs_store);
 
     // 无 symbol 的 macro 事件应被过滤
-    let mut macro_ev = ev(Severity::High);
+    let mut macro_ev = sample_event(Severity::High);
     macro_ev.kind = crate::event::EventKind::MacroEvent;
     macro_ev.symbols.clear();
     let (sent, _pending) = router.dispatch(&macro_ev).await.unwrap();
@@ -795,7 +810,10 @@ async fn portfolio_only_prefs_drop_symbolless_events() {
     sink.assert_no_calls();
 
     // 命中 symbol 的事件仍应送达
-    let (sent, _pending) = router.dispatch(&ev(Severity::High)).await.unwrap();
+    let (sent, _pending) = router
+        .dispatch(&sample_event(Severity::High))
+        .await
+        .unwrap();
     assert_eq!(sent, 1);
 }
 
@@ -828,7 +846,7 @@ async fn macro_high_is_digest_until_due_window_then_immediate() {
     )
     .with_macro_immediate_window(6, 2);
 
-    let mut future_macro = ev(Severity::High);
+    let mut future_macro = sample_event(Severity::High);
     future_macro.id = "macro:future:cpi".into();
     future_macro.kind = EventKind::MacroEvent;
     future_macro.symbols.clear();
@@ -864,7 +882,7 @@ async fn far_earnings_preview_is_low_priority_digest() {
         store,
         digest.clone(),
     );
-    let mut event = ev(Severity::Medium);
+    let mut event = sample_event(Severity::Medium);
     event.id = "earnings:AAPL:far".into();
     event.kind = EventKind::EarningsUpcoming;
     event.occurred_at = Utc::now() + chrono::Duration::days(10);
@@ -1138,7 +1156,10 @@ async fn globally_disabled_kind_is_dropped_before_prefs() {
     sink.assert_no_calls();
 
     // 非黑名单 kind 不受影响
-    let (sent, _) = router.dispatch(&ev(Severity::High)).await.unwrap();
+    let (sent, _) = router
+        .dispatch(&sample_event(Severity::High))
+        .await
+        .unwrap();
     assert_eq!(sent, 1);
 }
 
@@ -2135,7 +2156,7 @@ async fn quiet_mode_demotes_news_but_keeps_sec_immediate() {
     )
     .with_prefs(prefs_store);
 
-    let mut news = ev(Severity::High);
+    let mut news = sample_event(Severity::High);
     news.id = "news:AAPL:quiet".into();
     news.kind = EventKind::NewsCritical;
     news.title = "AAPL high news".into();
@@ -2143,7 +2164,7 @@ async fn quiet_mode_demotes_news_but_keeps_sec_immediate() {
     assert_eq!(sent, 0);
     assert_eq!(pending, 1, "quiet mode 下新闻 High 应进 digest");
 
-    let mut filing = ev(Severity::High);
+    let mut filing = sample_event(Severity::High);
     filing.id = "sec:AAPL:8k".into();
     filing.kind = EventKind::SecFiling { form: "8-K".into() };
     let (sent, pending) = router.dispatch(&filing).await.unwrap();
@@ -2167,7 +2188,7 @@ async fn dryrun_sink_success_is_not_counted_as_sent_ack() {
         store.clone(),
         digest,
     );
-    let event = ev(Severity::High);
+    let event = sample_event(Severity::High);
     store.insert_event(&event).unwrap();
     let (sent, pending) = router.dispatch(&event).await.unwrap();
     assert_eq!(sent, 1, "dispatch 计数代表 sink 调用成功");
@@ -2210,9 +2231,9 @@ async fn per_actor_overrides_default_off_keeps_legacy_behavior() {
 #[tokio::test]
 async fn event_without_subscribers_is_no_op() {
     let (router, sink, _tmp) = router_with_aapl_actor();
-    let mut e = ev(Severity::High);
-    e.symbols = vec!["TSLA".into()]; // 无人持仓
-    let (sent, pending) = router.dispatch(&e).await.unwrap();
+    let mut event = sample_event(Severity::High);
+    event.symbols = vec!["TSLA".into()]; // 无人持仓
+    let (sent, pending) = router.dispatch(&event).await.unwrap();
     assert_eq!(sent, 0);
     assert_eq!(pending, 0);
     sink.assert_no_calls();
@@ -2271,7 +2292,7 @@ fn router_with_quiet_hours_for_aapl(
 async fn quiet_held_logs_status_and_skips_sink() {
     let qh = quiet_hours_around_now();
     let (router, sink, store, _tmp) = router_with_quiet_hours_for_aapl(qh);
-    let mut event = ev(Severity::High);
+    let mut event = sample_event(Severity::High);
     event.id = "earnings_in_quiet".into();
     store.insert_event(&event).unwrap();
     let (sent, pending) = router.dispatch(&event).await.unwrap();
@@ -2298,7 +2319,7 @@ async fn exempt_kind_bypasses_quiet_hold() {
     let mut qh = quiet_hours_around_now();
     qh.exempt_kinds = vec!["earnings_released".into()];
     let (router, sink, _store, _tmp) = router_with_quiet_hours_for_aapl(qh);
-    let event = ev(Severity::High); // EarningsReleased
+    let event = sample_event(Severity::High); // EarningsReleased
     let (sent, _pending) = router.dispatch(&event).await.unwrap();
     assert_eq!(sent, 1, "exempt kind must still go to sink during quiet");
     assert_eq!(sink.calls.lock().unwrap().len(), 1);
@@ -2317,7 +2338,7 @@ async fn quiet_outside_window_does_not_hold() {
         exempt_kinds: Vec::new(),
     };
     let (router, sink, _store, _tmp) = router_with_quiet_hours_for_aapl(qh);
-    let event = ev(Severity::High);
+    let event = sample_event(Severity::High);
     let (sent, _pending) = router.dispatch(&event).await.unwrap();
     assert_eq!(sent, 1);
     assert_eq!(sink.calls.lock().unwrap().len(), 1);
@@ -2328,7 +2349,7 @@ async fn quiet_does_not_hold_medium_to_digest() {
     // 验证 quiet_hours 只拦 High,Medium 仍走 digest enqueue
     let qh = quiet_hours_around_now();
     let (router, sink, _store, _tmp) = router_with_quiet_hours_for_aapl(qh);
-    let event = ev(Severity::Medium);
+    let event = sample_event(Severity::Medium);
     let (sent, pending) = router.dispatch(&event).await.unwrap();
     assert_eq!(sent, 0);
     assert_eq!(pending, 1, "Medium event should still enqueue to digest");

@@ -67,8 +67,14 @@ impl DailyReport {
         write_report(&self.report_dir, &date, &body)?;
 
         // 紧凑日志:便于 grep 线上 "daily_report"
-        let total_events: i64 = events_by_source.iter().map(|(_, n)| n).sum();
-        let total_deliveries: i64 = deliveries.iter().map(|(_, _, n)| n).sum();
+        let total_events: i64 = events_by_source
+            .iter()
+            .map(|(_, event_count)| event_count)
+            .sum();
+        let total_deliveries: i64 = deliveries
+            .iter()
+            .map(|(_, _, delivery_count)| delivery_count)
+            .sum();
         tracing::info!(
             date = %date,
             events_ingested = total_events,
@@ -108,7 +114,10 @@ pub fn render_body(
     events_by_source: &[(String, i64)],
     deliveries: &[(String, String, i64)],
 ) -> String {
-    let total_events: i64 = events_by_source.iter().map(|(_, n)| n).sum();
+    let total_events: i64 = events_by_source
+        .iter()
+        .map(|(_, event_count)| event_count)
+        .sum();
     let mut out = format!("# Hone 日报 · {date}\n\n");
 
     out.push_str("## 事件入库\n\n");
@@ -117,8 +126,8 @@ pub fn render_body(
     } else {
         out.push_str(&format!("合计 **{total_events}** 条\n\n"));
         out.push_str("| source | count |\n|---|--:|\n");
-        for (src, n) in events_by_source {
-            out.push_str(&format!("| `{src}` | {n} |\n"));
+        for (source, event_count) in events_by_source {
+            out.push_str(&format!("| `{source}` | {event_count} |\n"));
         }
     }
 
@@ -129,26 +138,26 @@ pub fn render_body(
         // 按 actor 聚合
         use std::collections::BTreeMap;
         let mut by_actor: BTreeMap<&str, Vec<(&str, i64)>> = BTreeMap::new();
-        for (actor, status, n) in deliveries {
+        for (actor, status, delivery_count) in deliveries {
             by_actor
                 .entry(actor.as_str())
                 .or_default()
-                .push((status.as_str(), *n));
+                .push((status.as_str(), *delivery_count));
         }
         out.push_str("| actor | sent | queued | filtered | failed |\n|---|--:|--:|--:|--:|\n");
         for (actor, rows) in by_actor {
-            let get = |s: &str| {
+            let delivery_count_for_status = |target_status: &str| {
                 rows.iter()
-                    .find(|(st, _)| *st == s)
-                    .map(|(_, n)| *n)
+                    .find(|(status, _)| *status == target_status)
+                    .map(|(_, delivery_count)| *delivery_count)
                     .unwrap_or(0)
             };
             out.push_str(&format!(
                 "| `{actor}` | {} | {} | {} | {} |\n",
-                get("sent"),
-                get("queued"),
-                get("filtered"),
-                get("failed"),
+                delivery_count_for_status("sent"),
+                delivery_count_for_status("queued"),
+                delivery_count_for_status("filtered"),
+                delivery_count_for_status("failed"),
             ));
         }
     }
@@ -173,12 +182,12 @@ mod tests {
             ("fmp.stock_news".into(), 42_i64),
             ("fmp.earning_calendar".into(), 5_i64),
         ];
-        let delivs = vec![
+        let deliveries = vec![
             ("tg::::u1".into(), "sent".into(), 3_i64),
             ("tg::::u1".into(), "queued".into(), 28_i64),
             ("tg::::u2".into(), "filtered".into(), 2_i64),
         ];
-        let body = render_body("2026-04-21", &sources, &delivs);
+        let body = render_body("2026-04-21", &sources, &deliveries);
         assert!(body.contains("合计 **47** 条"));
         assert!(body.contains("| `fmp.stock_news` | 42 |"));
         assert!(body.contains("| `tg::::u1` | 3 | 28 | 0 | 0 |"));
@@ -189,9 +198,9 @@ mod tests {
     async fn tick_once_writes_file_inside_window_and_no_fire_outside() {
         use tempfile::tempdir;
 
-        let tmp = tempdir().unwrap();
-        let store = Arc::new(EventStore::open(tmp.path().join("events.db")).unwrap());
-        let report_dir = tmp.path().join("reports");
+        let temp_dir = tempdir().unwrap();
+        let store = Arc::new(EventStore::open(temp_dir.path().join("events.db")).unwrap());
+        let report_dir = temp_dir.path().join("reports");
 
         let report = DailyReport::new(store, &report_dir)
             .with_trigger_time("22:00")
