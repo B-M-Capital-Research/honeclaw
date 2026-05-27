@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-27 07:03 CST
+最后更新：2026-05-27 11:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,10 +17,14 @@
 
 ## 当前概览
 
-- 活跃待修复：1
+- 活跃待修复：2
 - Later / 待复现：10
-- 已修复 / 已关闭：112
+- 已修复 / 已关闭：111
 - 历史分析 / 部分止血：5
+- 本轮 11:03 CST 重新打开 P1 `Feishu 直达定时任务生成完成后仍在发送阶段落成 HTTP 400 Bad Request`：07:02-11:01 CST 真实运行窗口里 event-engine Feishu digest sink 在 `2026-05-27T00:30:48Z` 与 `00:30:52Z` 两次 `channel digest sink failed, falling back to log`，Feishu 返回 `99992361 / open_id cross app`，digest 内容已生成但真实 Feishu 投递未送达；同窗普通 Feishu direct / 普通 scheduler 仍可送达，故障集中在 direct digest sink 标识域。该证据补充到原缺陷文档，状态从 `Fixed` 调回 `New`；已有 GitHub Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)，不重复创建。
+- 本轮 11:03 CST 确认活跃 P2 `Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice` 继续复发：07:02-11:01 CST 普通 scheduler 19 条 `completed + sent + delivered=1` 中 3 条命中 `detail_json.scheduler.commodity_causality_guarded=true`，且 3 条均为非商品主任务：`Hone_AI_Morning_Briefing`、`早9点市场复盘(XME及加密ETF)`、`每日美股降息概率推送`（`run_id=34534/34560/34582`）。原始完整市场 / 宏观 / 降息概率报告被全量替换成原油 / 大宗商品安全提示并仍记已送达；该证据补充到原缺陷文档，不新建重复缺陷，严重等级仍为 P2，状态保持 `New`。
+- 本轮 11:03 CST 未发现新的独立 P1。07:02-11:01 CST 按消息时间共有 27 个 user turn 与 28 个 assistant final，其中 1 条 assistant final 是 07:00 scheduler 结果落在窗口内；Feishu / Web direct 与普通 scheduler 会话均以 assistant final 收口。assistant final 污染扫描未命中空回复、`/Users/`、`data/agent-sandboxes`、`~/.codex`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、`reasoning_content`、`<think>`、provider 原始 `Param Incorrect` / `quota exhausted` / `Resource temporarily unavailable`、`panic` 或 `index out of bounds`；最近四小时无非文档代码提交。
+- 本轮 11:03 CST 继续看到既有 heartbeat 旧/未确认部署运行态坏信号：07:02-11:01 CST heartbeat 新增 86 条 `execution_failed + skipped_error + delivered=0`（Feishu 64 条、Web 22 条）、41 条 `noop + skipped_noop + delivered=0`（Feishu 31 条、Web 10 条）和 1 条 Feishu `completed + sent + delivered=1`。失败形态仍主要对应已修复表中的结构化状态退化（非结构化 JSON 68 条、非法 JSON 2 条、缺少状态 2 条、空输出 1 条、未知状态 1 条）与迭代耗尽旧信号（`max_iterations_exceeded:10` 12 条）；本轮不因这些重复信号新增缺陷或从 `Fixed` 回退。
 - 本轮 07:03 CST 重新打开 P2 `Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice`：03:03-07:03 CST 普通 scheduler 6 条 Feishu `completed + sent + delivered=1` 中 4 条命中 `detail_json.scheduler.commodity_causality_guarded=true`；其中 `Oil_Price_Monitor_Closing` 属预期商品任务，其余 3 条 `OWALERT_PostMarket`、`美股收盘后跨市场复盘`、`每日美股盘后收盘复盘` 均为非商品市场复盘 / 盘后扫描，原始完整市场分析被全量替换成原油 / 大宗商品安全提示并仍记已送达（`run_id=34402/34431/34452`）。该证据补充到原缺陷文档，不新建重复缺陷；严重等级仍为 P2，状态从 `Fixed` 调回 `New`，无关联 GitHub Issue。
 - 本轮 07:03 CST 未发现新的独立活跃 P1。03:03-07:03 CST 按消息时间共有 8 个 user turn 与 8 个 assistant final，Feishu / Web direct 与普通 scheduler 会话均以 assistant final 收口；assistant final 污染扫描未命中空回复、通用失败、`/Users/`、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、compact marker、`Param Incorrect`、`Resource temporarily unavailable`、`reasoning_content`、`panic`、`index out of bounds`、`Searching the Web`、`本地命令`、`内容可能不完整`、provider 原始 `quota exhausted` 或 `<think>`；最近四小时无非文档代码提交。
 - 本轮 07:03 CST 继续看到既有 heartbeat 旧/未确认部署运行态坏信号：03:03-07:03 CST heartbeat 新增 77 条 `execution_failed + skipped_error + delivered=0`（Feishu 56 条、Web 21 条）、48 条 `noop + skipped_noop + delivered=0`（Feishu 37 条、Web 11 条）和 3 条 Feishu `completed + sent + delivered=1`。失败形态仍主要对应已修复表中的结构化状态退化（`heartbeat 输出不是结构化 JSON` 57 条、未知状态 6 条、缺少状态 1 条、非法 JSON 4 条）与迭代耗尽旧信号（`max_iterations_exceeded:10` 9 条）；本轮不因这些重复信号新增缺陷或从 `Fixed` 回退。
@@ -309,7 +313,8 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice | P2 | New | 2026-05-27 07:03 真实窗口复发：`OWALERT_PostMarket`、`美股收盘后跨市场复盘`、`每日美股盘后收盘复盘` 仍被 `commodity_causality_guarded=true` 全量替换成原油 / 大宗商品安全提示并记已送达。无关联 GitHub Issue | [scheduler_commodity_guard_false_positive_market_review.md](./scheduler_commodity_guard_false_positive_market_review.md) |
+| Feishu 直达定时任务生成完成后仍在发送阶段落成 `HTTP 400 Bad Request` | P1 | New | 2026-05-27 11:03 真实窗口复发：event-engine Feishu digest sink 两次 `99992361 / open_id cross app` 后降级为 log fallback，digest 已生成但未真实送达；已有 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)，不重复创建 | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
+| Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice | P2 | New | 2026-05-27 11:03 真实窗口复发：`Hone_AI_Morning_Briefing`、`早9点市场复盘(XME及加密ETF)`、`每日美股降息概率推送` 仍被 `commodity_causality_guarded=true` 全量替换成原油 / 大宗商品安全提示并记已送达。无关联 GitHub Issue | [scheduler_commodity_guard_false_positive_market_review.md](./scheduler_commodity_guard_false_positive_market_review.md) |
 
 ## Later / 待复现
 
@@ -343,7 +348,6 @@
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixed | 2026-05-19 08:06 `portfolio view` 的成功状态读取也能恢复为用户可见确认；覆盖 `result.portfolio.holdings/watchlist`、按工具参数 ticker 过滤相关持仓，并保留股数、成本价与备注摘要。关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29) | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Event-engine still uses deprecated `x-ai/grok-4.1-fast` and loses LLM-backed enrichment | P2 | Fixed | 2026-05-19 11:03 继续仅见当前机器旧运行态失败：08:03-10:28 CST SEC enrichment、event dedupe、mainline distill / style distill 仍请求 `x-ai/grok-4.1-fast` 并收到 OpenRouter `HTTP 404`；当前 HEAD 已切到 `x-ai/grok-4.3`，不回退状态。无关联 GitHub Issue | [event_engine_grok41_deprecated_404.md](./event_engine_grok41_deprecated_404.md) |
 | Web scheduler 让用户以为会发送手机系统通知，但实际只写入 Web 会话 / SSE 事件 | P2 | Fixed | 2026-05-16 00:06 Web cron 提示新增手机系统通知能力边界，Web scheduler detail 区分会话/SSE 与 `system_push_supported=false`；修复提交 `fbba5342`；无关联 GitHub Issue | [web_scheduler_mobile_push_not_delivered.md](./web_scheduler_mobile_push_not_delivered.md) |
-| Feishu 直达定时任务已生成最终播报，但 event-engine / scheduler 发送阶段再次稳定返回 `open_id cross app` | P1 | Fixed | 2026-05-15 event-engine Feishu sink 已接入 cron channel-target 目录，为 direct actor 使用无歧义 email/mobile 重新解析 current-app open_id；关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
 | Daily macOS build release app 启动后 Web/API 生命周期不可验证 | P1 | Fixed | 2026-05-15 08:07 新增 `HONE_DESKTOP_SMOKE_SERVER=1`，打包桌面可在无窗口 smoke 模式下保持 Web/API 进程，`/api/meta`、用户端页面和 disabled channels 检查通过；关联 Issue [#42](https://github.com/B-M-Capital-Research/honeclaw/issues/42) | [daily_macos_build_release_app_api_not_persistent.md](./daily_macos_build_release_app_api_not_persistent.md) |
 | 原油定时播报在价格 / 日期 / 背景口径上继续输出未核验或错误事实 | P2 | Fixed | 2026-05-21 07:03 继续仅见修复前 live 旧运行态：04:01 / 04:32 CST 普通 scheduler 仍送达 WTI / Brent 价格和油价对科技股的因果判断，`hone-console-page-prod.log` 启动早于 2026-05-14 普通 scheduler guard 修复，不回退状态；无关联 GitHub Issue | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Heartbeat 监控使用 `mimo-v2.5-pro` 时批量命中 `Param Incorrect` 并漏发 | P2 | Fixed | 2026-05-19 11:03 继续仅见当前机器旧运行态失败：07:30-11:00 CST 80 条同类失败覆盖 11 个 job；当前机器无可确认已重启到 2026-05-15 04:05 修复后的 live 进程，不回退状态；无关联 GitHub Issue | [scheduler_heartbeat_mimo_param_incorrect_batch_failures.md](./scheduler_heartbeat_mimo_param_incorrect_batch_failures.md) |

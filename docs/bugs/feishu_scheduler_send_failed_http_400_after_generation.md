@@ -3,9 +3,15 @@
 - **发现时间**: 2026-04-16 22:08 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)
 - **证据来源**:
+  - 2026-05-27 11:03 最近四小时最新样本：
+    - `data/runtime/logs/hone-console-page-prod.log`
+      - `2026-05-27T00:30:48.318Z` 与 `2026-05-27T00:30:52.228Z` 连续记录 `channel digest sink failed, falling back to log`，Feishu 返回 `HTTP 400 Bad Request`，错误码为 `99992361 / open_id cross app`。
+      - 两条失败均发生在 event-engine digest sink，覆盖两个 Feishu direct actor；失败后只剩 log fallback，说明 digest 内容已生成但真实 Feishu 投递未送达。
+      - 同窗普通 Feishu direct、普通 scheduler 和部分 event-engine sink 仍可成功送达，说明不是 Feishu 全局出站中断，而是 direct digest sink 仍会复用跨 app 域 open_id。
+    - 本轮没有新建 GitHub issue，因为已有 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) 覆盖同一根因和同一发送链路；导航页需从“已修复 / 已关闭”移回“活跃待修复”。
   - 2026-04-30 22:33 最近一小时最新样本：
     - `data/runtime/logs/acp-events.log`
       - `22:33:03.251`、`22:33:08.142` 连续两次记录 `channel sink failed, falling back to log: feishu send HTTP 400 Bad Request`，返回体明确 `code=99992361`、`msg="open_id cross app"`；紧接着只剩 `[dryrun sink]` 的 `RKLB 跨过 +6% 档` 事件卡片
@@ -346,3 +352,23 @@
   - `docs/bugs/README.md` 已将本单从“活跃待修复”移入“已修复 / 已关闭”。
   - `docs/repo-map.md` 已补充 event-engine Feishu sink 现在会复用 cron channel-target 目录解析 direct actor 的 current-app open_id。
 - 后续建议：如果某个 actor 没有 email/mobile 型 cron channel target，或同一 actor 存在多个不同 direct targets，本轮代码会继续拒绝猜测映射；应补齐对应 actor 的稳定 channel target 或在配置层提供可唯一解析的联系人，而不是在代码里硬编码 open_id。
+
+## 状态更新（2026-05-27 11:03 CST）
+
+- 本轮巡检确认：`2026-05-27 07:02-11:01 CST` 真实运行窗口再次出现同一 event-engine Feishu digest sink `open_id cross app` 投递失败，本单从 `Fixed` 重新打开为 `New`。
+- 证据来源：
+  - `data/runtime/logs/hone-console-page-prod.log`
+  - `2026-05-27T00:30:48.318Z`：`channel digest sink failed, falling back to log`，Feishu 返回 `HTTP 400 Bad Request`，错误码 `99992361 / open_id cross app`。
+  - `2026-05-27T00:30:52.228Z`：同一窗口第二条 direct digest sink 命中相同 `open_id cross app` 失败。
+- 端到端链路：
+  1. event-engine digest 生成 Feishu 卡片正文。
+  2. multi sink 对 Feishu direct actor 发起发送。
+  3. Feishu API 拒绝当前 open_id，返回跨 app 标识域错误。
+  4. 系统降级为 log fallback，用户侧收不到本该送达的 digest 卡片。
+- 当前判断：
+  - 这是功能性 `System Error`，不是回答质量问题。内容已生成但最终投递丢失，影响事件 digest / 提醒主链路，继续定级 `P1`。
+  - 本轮没有新建 GitHub issue，因为已有 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) 覆盖同一根因和同一发送链路。
+- 下一步建议：
+  - 复核当前 live 配置下 event-engine Feishu sink 的 `actor_user_id -> channel_target` 映射是否实际加载到运行态。
+  - 增加脱敏诊断字段，记录 direct digest sink 在发送前是否使用 per-actor contact fallback、解析结果是否唯一、最终是否仍保留历史 open_id。
+  - 修复后用真实 digest sink 窗口验证至少两个此前失败 actor 不再落入 log fallback。

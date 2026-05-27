@@ -6,6 +6,17 @@
 - **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
 
+## 复发记录（2026-05-27 11:03 CST）
+
+- 最近四小时真实窗口继续确认同一 scheduler 出站 guard false positive 活跃：`2026-05-27 07:02-11:01 CST` 普通 scheduler 共有 19 条 `completed + sent + delivered=1`，其中 3 条命中 `detail_json.scheduler.commodity_causality_guarded=true`。
+- 本窗口 3 条 guard 命中均不是专门原油 / 大宗商品任务，原始完整市场 / 宏观 / 降息概率报告被全量替换成“本轮原油/大宗商品播报包含未完成同窗来源核验...”安全提示并仍记已送达。
+- `data/sessions.sqlite3` -> `cron_job_runs` 关键样本：
+  - `run_id=34534`，`job_name=Hone_AI_Morning_Briefing`，`executed_at=2026-05-27T08:32:12.407828+08:00`，`completed + sent + delivered=1`，`detail_json.scheduler.commodity_causality_guarded=true`。同一 session assistant final 是宏观、AI 科技前沿和持仓标的早报，不是原油或大宗商品播报。
+  - `run_id=34560`，`job_name=早9点市场复盘(XME及加密ETF)`，`executed_at=2026-05-27T09:01:54.463250+08:00`，同样被替换。原始正文是 XME、港股加密 ETF 与宏观大盘隔夜行情复盘。
+  - `run_id=34582`，`job_name=每日美股降息概率推送`，`actor_channel=discord`，`executed_at=2026-05-27T09:31:13.928882+08:00`，同样被替换。原始正文是 FedWatch、FOMC 纪要、PCE 风险和降息概率分析。
+- `data/runtime/logs/hone-feishu.runtime-recovery.log` 在 `2026-05-27T00:32:10Z` 记录 `[SchedulerDiag] commodity_causality_guarded job=Hone_AI_Morning_Briefing`；`cron_job_runs.response_preview` / `detail_json.scheduler.deliver_preview` 均为原油 / 大宗商品安全提示。
+- 这是既有缺陷的同一根因 / 同一出站 guard 链路，不新建重复文档；严重等级仍为 P2，状态保持 `New`。当前影响继续覆盖 Feishu 普通 scheduler 与 Discord scheduler，修复侧应把 AI 早报、XME/加密市场复盘和降息概率推送加入非商品主任务回归。
+
 ## 复发记录（2026-05-27 07:03 CST）
 
 - 最近四小时真实窗口再次确认同一 scheduler 出站 guard false positive 仍活跃：`2026-05-27 03:03-07:03 CST` 普通 scheduler 共有 6 条 `completed + sent + delivered=1`，其中 4 条命中 `detail_json.scheduler.commodity_causality_guarded=true`。
