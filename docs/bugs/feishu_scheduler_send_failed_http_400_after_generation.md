@@ -3,12 +3,19 @@
 - **发现时间**: 2026-04-16 22:08 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)
 - **修复记录**:
+  - 2026-05-28 07:02 CST：本轮巡检确认 03:14 修复提交之后仍复发，状态从 `Fixed` 重新打开为 `New`；已有 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)，不重复创建。
   - 2026-05-28 03:11 CST：已修复。`feishu_direct_actor_contact_targets_from_records(...)` 不再把同一 actor 的多稳定联系人压成“只保留单一 target”，`FeishuSink::with_direct_actor_contact_targets(...)` 也改为聚合同一 actor 的全部 email/mobile 后再统一解析 current-app `open_id`。这样 event-engine Feishu direct digest sink 不会因为 email+mobile 组合被上游丢弃或在 sink 侧被后写覆盖，而退回跨 app 旧 `open_id`。
   - 验证：`cargo test -p hone-event-engine direct_actor_contact_targets_keep_only_resolvable_contacts --lib -- --nocapture`、`cargo test -p hone-web-api feishu_direct_actor_targets_ --lib -- --nocapture`、`cargo check -p hone-event-engine -p hone-web-api -p hone-channels --tests` 通过。
 - **证据来源**:
+  - 2026-05-28 07:02 最近四小时最新样本：
+    - `data/runtime/logs/hone-console-page-prod.log`
+      - `2026-05-27T21:24:51.284819Z`（北京时间 `2026-05-28 05:24:51`）记录 `channel sink failed, falling back to log`，Feishu 返回 `HTTP 400 Bad Request`，错误码为 `99992361 / open_id cross app`。
+      - 该样本发生在 `35766e49 2026-05-28 03:14:00 +0800 fix: close feishu digest and stale price alerts` 之后，说明 03:11 的修复结论在真实 event-engine sink 路径中仍未完全闭合。
+      - 同窗 Feishu direct / Web direct 共有 12 个 user turn 与 12 个 assistant final，普通 Feishu scheduler 6 条 `completed + sent + delivered=1`；因此不是 Feishu 出站全局不可用，而是 event-engine sink 某类目标仍会选到跨 app `open_id`。
+    - 本轮没有新建 GitHub issue，因为已有 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) 覆盖同一根因和同一发送链路。
   - 2026-05-27 11:03 最近四小时最新样本：
     - `data/runtime/logs/hone-console-page-prod.log`
       - `2026-05-27T00:30:48.318Z` 与 `2026-05-27T00:30:52.228Z` 连续记录 `channel digest sink failed, falling back to log`，Feishu 返回 `HTTP 400 Bad Request`，错误码为 `99992361 / open_id cross app`。
@@ -189,6 +196,7 @@
 ## 当前实现效果
 
 - `2026-04-30 22:33` 的最近一小时最新样本说明，这条缺陷已经重新回到活跃态：同一窗口里 `RKLB`、`TEM` 两类事件卡片都已生成，但最终 Feishu sink 连续四次命中 `code=99992361 / open_id cross app`，用户只剩 dryrun log，看不到真实推送。
+- `2026-05-28 05:24` 的真实窗口说明 03:11 修复后的 event-engine sink 路径仍会复发：Feishu 返回 `code=99992361 / open_id cross app`，失败后回退到 log sink；同窗普通 Feishu direct 与普通 scheduler 可用，问题仍集中在 event-engine sink 目标标识域。
 - `2026-04-28 08:00` 的真实窗口说明，这条缺陷仍在最新一小时活跃：同一时窗里普通 `每日美股收盘与持仓早报` 已成功 `completed + sent + delivered=1`，但事件推送链路仍在 `08:00:50.373` 命中 `HTTP 400 / code=99992361 / open_id cross app`，且失败后只剩 dryrun log，用户侧收不到这条已生成的卡片。
 - `2026-04-21 21:02` 的 `OWALERT_PreMarket` 说明，这条缺陷在最新巡检窗口仍活跃：同一目标又一次落成 `completed + send_failed + code=99992361/open_id cross app`，用户仍收不到已经生成并落库的盘前扫描。
 - `2026-04-20 21:31` 的 `Oil_Price_Monitor_Premarket` 说明，在 `21:01` 的盘前扫描失败后，同一目标的盘前油价播报又再次落成 `completed + send_failed + code=99992361/open_id cross app`。
@@ -218,6 +226,7 @@
 ## 根因判断
 
 - `2026-04-30 22:33` 的四连发 `open_id cross app` 说明，当前 event-engine / sink 实际发送路径仍有一段没有用到 `2026-04-28` 所说的 current-app open_id fallback，或者 fallback 命中的联系人集与真实发送对象仍不一致。
+- `2026-05-28 05:24` 的复发发生在 event-engine Feishu direct digest sink 聚合 email/mobile 并统一解析 current-app `open_id` 的修复提交之后，说明仍存在未覆盖的 actor 受众来源、联系人缺失/歧义 fallback，或非 digest sink 分支继续直传历史 `ou_...` 的路径。
 - `2026-04-28 08:00` 同窗里既有 `run_id=8507` 这种正常 `completed + sent + delivered=1` 的日报，也有 `08:00:50.373` 的 `open_id cross app` 发送失败；这进一步收敛出问题不在 Feishu token、全局网络或全部发送请求，而仍在某一类事件 sink 最终选择的 `receive_id/open_id` 标识域。
 - `2026-04-21 21:02` 的 `OWALERT_PreMarket` 新样本进一步说明，问题仍不依赖某一份特定 prompt 或某一天的模板；只要命中同一目标，scheduler 最终发送到 Feishu API 时仍可能收到 `open_id cross app`。
 - `2026-04-20 21:31` 的 `Oil_Price_Monitor_Premarket` 样本说明，问题不依赖某一份特定 prompt 或持仓扫描模板；即使是另一条油价播报任务，只要命中同一目标，scheduler 最终发送到 Feishu API 时仍会稳定收到 `open_id cross app`。

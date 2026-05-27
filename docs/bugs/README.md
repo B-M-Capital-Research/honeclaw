@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-28 03:11 CST
+最后更新：2026-05-28 07:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,10 +17,14 @@
 
 ## 当前概览
 
-- 活跃待修复：1
+- 活跃待修复：2
 - Later / 待复现：10
-- 已修复 / 已关闭：113
+- 已修复 / 已关闭：112
 - 历史分析 / 部分止血：5
+- 本轮 07:02 CST 重新打开 P1 `Feishu 直达定时任务生成完成后仍在发送阶段落成 HTTP 400 Bad Request`：03:14 修复提交之后，05:24 CST `hone-console-page-prod.log` 又记录 event-engine Feishu sink `channel sink failed, falling back to log`，Feishu 返回 `HTTP 400 Bad Request` / `99992361 open_id cross app`；同窗普通 Feishu direct 与普通 scheduler 仍有 assistant final / `completed + sent + delivered=1` 收口，说明不是 Feishu 全局不可用，而是 event-engine sink 仍会在某类目标上选到跨 app `open_id`。已有 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)，不重复创建。
+- 本轮 07:02 CST 未发现新的独立缺陷。03:02-07:02 CST 按消息时间共有 12 个 user turn 与 12 个 assistant final；Feishu direct、Web direct 与普通 scheduler 均以 assistant final 收口。assistant final 污染扫描未命中空回复、`/Users/`、`data/agent-sandboxes`、`~/.codex`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、`reasoning_content`、`<think>`、provider 原始 `Param Incorrect` / `quota exhausted` / `Resource temporarily unavailable`、`panic` 或 `index out of bounds`；最近四小时唯一非文档提交为 03:14 修复 `feishu digest and stale price alerts`。
+- 本轮 07:02 CST 确认 P2 `Heartbeat 金价阈值提醒把旧日期价格当作当前触发价送达` 未见新误送达：03:02-07:02 CST `伦敦金跌破4500提醒` 无 `delivered=1` 样本，新增 `execution_failed/skipped_error`、`noop/skipped_noop` 与 `JsonTriggered` 但未送达记录；状态保持 `Fixed`。
+- 本轮 07:02 CST 继续观察到 heartbeat 结构化输出退化、`ContextOverflowNoop` 与少量 `max_iterations_exceeded` 旧/已知运行态信号：03:02-07:02 CST heartbeat 新增 89 条 `execution_failed + skipped_error + delivered=0`、39 条 `noop + skipped_noop + delivered=0` 和 1 条 Feishu `completed + sent + delivered=1`。这些形态仍对应已修复表中的结构化状态退化、context window overflow 与迭代耗尽旧信号，本轮不因重复信号新增缺陷或从 `Fixed` 回退。
 - 本轮 03:11 CST 已修复原活跃 P1 `Feishu 直达定时任务生成完成后仍在发送阶段落成 HTTP 400 Bad Request`：event-engine Feishu direct digest sink 现在会为同一 actor 聚合全部稳定 email/mobile 联系方式，再统一解析 current-app `open_id`，不再因为 Web API 单 target 过滤或 sink 覆盖式收集退回跨 app 旧 `open_id`。验证 `cargo test -p hone-event-engine direct_actor_contact_targets_keep_only_resolvable_contacts --lib -- --nocapture`、`cargo test -p hone-web-api feishu_direct_actor_targets_ --lib -- --nocapture`、`cargo check -p hone-event-engine -p hone-web-api -p hone-channels --tests` 通过；状态更新为 `Fixed`，已有 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)。
 - 本轮 03:11 CST 已修复原活跃 P2 `Heartbeat 金价阈值提醒把旧日期价格当作当前触发价送达`：heartbeat `JsonTriggered` 出站前新增旧日期价格 guard，若当前/最新价格触发文案里出现早于当前北京时间的显式价格日期，则抑制送达并记 `failure_kind=stale_price_timestamp`。验证 `cargo test -p hone-channels heartbeat_trigger_detects_stale_price_date_in_current_price_message --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_trigger_allows_same_day_price_date --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_execution_suppresses_stale_price_timestamp_trigger --lib -- --nocapture`、`cargo check -p hone-event-engine -p hone-web-api -p hone-channels --tests` 通过；状态更新为 `Fixed`，无关联 GitHub Issue。
 - 本轮 03:03 CST 未发现新的独立活跃 P1，也未新增独立缺陷。23:03-03:03 CST 按消息时间共有 18 个 user turn 与 18 个 assistant final；Feishu direct 与普通 scheduler 会话均以 assistant final 收口。assistant final 污染扫描未命中空回复、`/Users/`、`data/agent-sandboxes`、`~/.codex`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、`reasoning_content`、`<think>`、provider 原始 `Param Incorrect` / `quota exhausted` / `Resource temporarily unavailable`、`panic` 或 `index out of bounds`；最近四小时无非文档代码提交。event-engine / Feishu digest sink 未在本窗确认 `99992361 / open_id cross app` 或 `HTTP 400` 新复发证据。
@@ -326,6 +330,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Feishu 直达定时任务生成完成后仍在发送阶段落成 `HTTP 400 Bad Request` | P1 | New | 2026-05-28 07:02 真实窗口复发：03:14 修复提交后，05:24 CST event-engine Feishu sink 再次 `channel sink failed, falling back to log`，Feishu 返回 `99992361 / open_id cross app`；普通 Feishu direct / scheduler 同窗仍可收口，故障仍集中在 event-engine sink 目标标识域。关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
 | Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice | P2 | New | 2026-05-27 23:03 真实窗口复发：普通 scheduler 37 条成功送达中 11 条被 `commodity_causality_guarded=true` 替换，其中 10 条为美股大盘晚间/温度/风控/盘前宏观/纳斯达克盘前/盘前推演类非商品主任务。无关联 GitHub Issue | [scheduler_commodity_guard_false_positive_market_review.md](./scheduler_commodity_guard_false_positive_market_review.md) |
 
 ## Later / 待复现
@@ -347,7 +352,6 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Feishu 直达定时任务生成完成后仍在发送阶段落成 `HTTP 400 Bad Request` | P1 | Fixed | 2026-05-28 03:11 event-engine Feishu direct digest sink 改为聚合同一 actor 的全部稳定 email/mobile 联系方式，再统一解析 current-app `open_id`，避免 Web API 单 target 过滤和 sink 覆盖式收集把 direct digest 退回跨 app 旧 `open_id`。验证 `cargo test -p hone-event-engine direct_actor_contact_targets_keep_only_resolvable_contacts --lib -- --nocapture`、`cargo test -p hone-web-api feishu_direct_actor_targets_ --lib -- --nocapture`、`cargo check -p hone-event-engine -p hone-web-api -p hone-channels --tests` 通过；关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
 | Heartbeat 金价阈值提醒把旧日期价格当作当前触发价送达 | P2 | Fixed | 2026-05-28 03:11 heartbeat `JsonTriggered` 出站前新增旧日期价格 guard：当前/最新价格触发文案若含早于当前北京时间的显式价格日期，则抑制送达并记 `failure_kind=stale_price_timestamp`。验证 `cargo test -p hone-channels heartbeat_trigger_detects_stale_price_date_in_current_price_message --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_trigger_allows_same_day_price_date --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_execution_suppresses_stale_price_timestamp_trigger --lib -- --nocapture`、`cargo check -p hone-event-engine -p hone-web-api -p hone-channels --tests` 通过。无关联 GitHub Issue | [scheduler_heartbeat_gold_stale_price_trigger.md](./scheduler_heartbeat_gold_stale_price_trigger.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixed | 2026-05-26 15:04 live 仍见 66 条结构化/状态解析旧信号失败（非结构化 JSON 59 条、未知状态 5 条、缺少状态 2 条），但 2026-05-25 12:13 当前代码已通过 status 别名归一、完整 `<think>` 内部-only noop 兼容和配置路径护栏修复；本轮不回退状态。无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 监控任务触发 `context window exceeds limit` 后缺少恢复，故障会在不同任务间漂移复现 | P2 | Fixed | 2026-05-25 15:04 live 仍见 11 条 `ContextOverflowNoop` 旧/未确认部署运行态，但 12:04 当前代码已改为保留 `error` 并写入 `failure_kind=context_window_overflow` / `parse_kind=ContextOverflowError`；本轮不回退状态。无关联 GitHub Issue | [scheduler_heartbeat_context_window_limit_no_recovery.md](./scheduler_heartbeat_context_window_limit_no_recovery.md) |
