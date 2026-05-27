@@ -5,6 +5,7 @@
 
 mod aliyun_captcha;
 mod aliyun_sms;
+mod cloud_oss;
 pub mod logging;
 mod public_auth;
 pub mod routes;
@@ -549,6 +550,7 @@ pub async fn start_server(
     let log_buffer = global_log_buffer().clone();
     let log_level = core.config.logging.level.clone();
     init_logging(&log_buffer, &log_level);
+    report_cloud_runtime_storage_state(&core.config, data_dir)?;
 
     // ── 文件日志（仅首次 start_server 时启动写入任务）────────────────
     // web.log:走 tracing-appender DAILY rolling,保留最近 15 天,文件名形如
@@ -852,6 +854,83 @@ pub async fn start_server(
         public_port,
         task_handles,
     })
+}
+
+fn report_cloud_runtime_storage_state(
+    config: &HoneConfig,
+    data_dir: Option<&Path>,
+) -> Result<(), String> {
+    if !config.cloud.effective_enabled() {
+        return Ok(());
+    }
+
+    let local_dependencies = local_storage_dependencies(config, data_dir);
+    info!(
+        cloud_postgres = config.cloud.postgres.is_configured(),
+        cloud_oss = config.cloud.oss.is_configured(),
+        local_dependency_count = local_dependencies.len(),
+        "cloud runtime config detected"
+    );
+
+    if local_dependencies.is_empty() {
+        info!("cloud runtime has no declared local storage dependencies");
+        return Ok(());
+    }
+
+    let summary = local_dependencies
+        .iter()
+        .map(|(name, path)| format!("{name}={path}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    if config.cloud.effective_strict_no_local_storage() {
+        return Err(format!(
+            "cloud.strict_no_local_storage=true 但仍存在本地存储依赖: {summary}"
+        ));
+    }
+
+    tracing::warn!("cloud runtime still has local storage dependencies: {summary}");
+    Ok(())
+}
+
+fn local_storage_dependencies(
+    config: &HoneConfig,
+    data_dir: Option<&Path>,
+) -> Vec<(&'static str, String)> {
+    let mut deps = vec![
+        ("sessions_dir", config.storage.sessions_dir.clone()),
+        (
+            "session_sqlite_db_path",
+            config.storage.session_sqlite_db_path.clone(),
+        ),
+        (
+            "conversation_quota_dir",
+            config.storage.conversation_quota_dir.clone(),
+        ),
+        (
+            "llm_audit_db_path",
+            config.storage.llm_audit_db_path.clone(),
+        ),
+        ("portfolio_dir", config.storage.portfolio_dir.clone()),
+        ("cron_jobs_dir", config.storage.cron_jobs_dir.clone()),
+        ("gen_images_dir", config.storage.gen_images_dir.clone()),
+        ("notif_prefs_dir", config.storage.notif_prefs_dir.clone()),
+    ];
+
+    if let Some(data_dir) = data_dir {
+        deps.push((
+            "runtime_logs_dir",
+            data_dir
+                .join("runtime")
+                .join("logs")
+                .to_string_lossy()
+                .to_string(),
+        ));
+    }
+    if config.imessage.enabled {
+        deps.push(("imessage_chat_db", config.imessage.db_path.clone()));
+    }
+    deps.retain(|(_, path)| !path.trim().is_empty());
+    deps
 }
 
 #[cfg(test)]

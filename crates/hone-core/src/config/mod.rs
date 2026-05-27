@@ -49,8 +49,8 @@ pub use mutation::{
     read_config_path_value, redact_sensitive_value,
 };
 pub use server::{
-    FmpConfig, LoggingConfig, NanoBananaConfig, SearchConfig, SecurityConfig, StorageConfig,
-    ToolGuardConfig, WebConfig,
+    CloudConfig, FmpConfig, LoggingConfig, NanoBananaConfig, OssConfig, PostgresConfig,
+    SearchConfig, SecurityConfig, StorageConfig, ToolGuardConfig, WebConfig,
 };
 pub use yaml::{
     diff_yaml_value, merge_yaml_value, read_merged_yaml_value, read_yaml_value,
@@ -122,6 +122,9 @@ pub struct HoneConfig {
     /// Web 控制台配置
     #[serde(default)]
     pub web: WebConfig,
+    /// Cloud runtime config for managed database and object storage.
+    #[serde(default)]
+    pub cloud: CloudConfig,
     /// 安全策略配置
     #[serde(default)]
     pub security: SecurityConfig,
@@ -161,6 +164,7 @@ impl HoneConfig {
         mutation::validate_channel_chat_scope("feishu", self.feishu.chat_scope)?;
         mutation::validate_channel_chat_scope("telegram", self.telegram.chat_scope)?;
         mutation::validate_channel_chat_scope("discord", self.discord.chat_scope)?;
+        self.cloud.validate()?;
         Ok(())
     }
 

@@ -130,6 +130,39 @@ HONE_PUBLIC_SECURE_COOKIE=true
 
 Use `HONE_PUBLIC_SECURE_COOKIE=true`, `1`, or `yes` when the backend origin cannot reliably infer HTTPS from proxy headers. Use `false`, `0`, or `no` only for local HTTP diagnostics. Invalid non-empty values intentionally keep `Secure=true`.
 
+## Cloud Storage Runtime Env
+
+Managed PG / OSS settings are runtime env configuration. Keep real values in the backend host environment, local ignored `.env`, or process supervisor, never in committed config or docs. `config.example.yaml` documents the env var names under `cloud.*` with empty credential fields.
+
+Postgres migration target:
+
+```text
+HONE_CLOUD_ENABLED=true
+DATABASE_URL=<postgres-url>
+```
+
+Compatibility pieces accepted when `DATABASE_URL` is not set:
+
+```text
+HONE_POSTGRES_HOST=<host>
+HONE_POSTGRES_PORT=5432
+HONE_POSTGRES_USER=<user>
+HONE_POSTGRES_PASSWORD=<password>
+HONE_POSTGRES_DATABASE=<database>
+```
+
+Aliyun OSS for public uploads:
+
+```text
+HONE_OSS_ACCESS_KEY_ID=<access-key-id>
+HONE_OSS_ACCESS_KEY_SECRET=<access-key-secret>
+HONE_OSS_BUCKET=<bucket>
+HONE_OSS_ENDPOINT=https://oss-cn-beijing.aliyuncs.com
+HONE_OSS_REGION=oss-cn-beijing
+```
+
+When OSS is configured, `/api/public/upload` writes objects under `public-uploads/<user>/<date>/...` and returns `oss://bucket/key`. `/api/public/image` and `/api/public/file` can proxy those managed OSS paths back through the backend. Session, quota, audit, portfolio, cron, notification preference, KB, and log stores are still local until their PG-backed repositories are implemented.
+
 ## Worker Route
 
 The Cloudflare Worker must route:

@@ -54,6 +54,7 @@ Last updated: 2026-05-27
 - `config.yaml` / `data/runtime/`
   - `config.yaml` is the canonical user-writable config; dev uses the repo root copy, and packaged installs seed one under the user config dir
   - LLM provider credentials are config-owned: prefer `llm.providers.<symbol>.api_key/api_keys`, with legacy `llm.openrouter.*` readable only as config fallback; runtime LLM paths do not read parent process API-key env vars
+  - `cloud.postgres` / `cloud.oss` define the managed PG / OSS migration contract through env references only; real values belong in local `.env` or the deployment supervisor. With OSS configured, public Web uploads use `oss://bucket/key` paths and the file proxy reads managed OSS objects.
   - `data/runtime/effective-config.yaml` is the generated runtime snapshot for processes that want a materialized runtime config file
   - legacy `data/runtime/config_runtime.yaml` and sibling `.overrides.yaml` should not be recreated
 - Actor sandbox research docs live under a repo-external `agent-sandboxes/<channel>/<scope__user>/company_profiles/<profile_id>/profile.md` plus `events/*.md`; this actor-local directory is the source of truth for company portraits and long-term fundamental tracking. Portfolio JSON must stay in `storage.portfolio_dir`, never inside actor sandboxes.

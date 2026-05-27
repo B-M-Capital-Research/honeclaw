@@ -168,6 +168,16 @@ fn meta_capabilities(config: &HoneConfig, deployment_mode: &str) -> Vec<String> 
     if deployment_mode == "local" {
         capabilities.push("local_file_proxy".to_string());
     }
+    if config.cloud.effective_enabled() {
+        capabilities.push("cloud_runtime".to_string());
+    }
+    if config.cloud.postgres.is_configured() {
+        capabilities.push("cloud_postgres".to_string());
+    }
+    if config.cloud.oss.is_configured() {
+        capabilities.push("cloud_oss".to_string());
+        capabilities.push("oss_file_proxy".to_string());
+    }
 
     if cfg!(target_os = "macos") && config.imessage.enabled {
         capabilities.push("imessage".to_string());

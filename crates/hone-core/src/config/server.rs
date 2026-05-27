@@ -334,3 +334,313 @@ fn default_gen_images_dir() -> String {
 fn default_notif_prefs_dir() -> String {
     "./data/notif_prefs".to_string()
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CloudConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub strict_no_local_storage: bool,
+    #[serde(default)]
+    pub postgres: PostgresConfig,
+    #[serde(default)]
+    pub oss: OssConfig,
+}
+
+impl CloudConfig {
+    pub fn effective_enabled(&self) -> bool {
+        self.enabled
+            || env_bool("HONE_CLOUD_ENABLED")
+            || self.postgres.is_configured()
+            || self.oss.is_configured()
+    }
+
+    pub fn effective_strict_no_local_storage(&self) -> bool {
+        self.strict_no_local_storage || env_bool("HONE_CLOUD_STRICT_NO_LOCAL_STORAGE")
+    }
+
+    pub fn validate(&self) -> crate::HoneResult<()> {
+        if self.postgres.is_partially_configured() && !self.postgres.is_configured() {
+            return Err(crate::HoneError::Config(
+                "cloud.postgres 配置不完整：需要 database_url 或 host/user/password/database"
+                    .to_string(),
+            ));
+        }
+        if self.oss.is_partially_configured() && !self.oss.is_configured() {
+            return Err(crate::HoneError::Config(
+                "cloud.oss 配置不完整：需要 access_key_id/access_key_secret/bucket/endpoint"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PostgresConfig {
+    #[serde(default)]
+    pub database_url: String,
+    #[serde(default = "default_database_url_env")]
+    pub database_url_env: String,
+    #[serde(default)]
+    pub host: String,
+    #[serde(default = "default_pg_host_env")]
+    pub host_env: String,
+    #[serde(default)]
+    pub port: u16,
+    #[serde(default = "default_pg_port_env")]
+    pub port_env: String,
+    #[serde(default)]
+    pub user: String,
+    #[serde(default = "default_pg_user_env")]
+    pub user_env: String,
+    #[serde(default)]
+    pub password: String,
+    #[serde(default = "default_pg_password_env")]
+    pub password_env: String,
+    #[serde(default)]
+    pub database: String,
+    #[serde(default = "default_pg_database_env")]
+    pub database_env: String,
+    #[serde(default = "default_pg_sslmode")]
+    pub sslmode: String,
+}
+
+impl Default for PostgresConfig {
+    fn default() -> Self {
+        Self {
+            database_url: String::new(),
+            database_url_env: default_database_url_env(),
+            host: String::new(),
+            host_env: default_pg_host_env(),
+            port: 0,
+            port_env: default_pg_port_env(),
+            user: String::new(),
+            user_env: default_pg_user_env(),
+            password: String::new(),
+            password_env: default_pg_password_env(),
+            database: String::new(),
+            database_env: default_pg_database_env(),
+            sslmode: default_pg_sslmode(),
+        }
+    }
+}
+
+impl PostgresConfig {
+    pub fn resolved_database_url(&self) -> String {
+        let direct = self.database_url.trim();
+        if !direct.is_empty() {
+            return direct.to_string();
+        }
+
+        let env_url = env_value(&self.database_url_env);
+        if !env_url.is_empty() {
+            return env_url;
+        }
+
+        let host = self.resolved_host();
+        let user = self.resolved_user();
+        let password = self.resolved_password();
+        let database = self.resolved_database();
+        if host.is_empty() || user.is_empty() || password.is_empty() || database.is_empty() {
+            return String::new();
+        }
+        let port = self.resolved_port().unwrap_or(5432);
+        let sslmode = self.sslmode.trim();
+        let suffix = if sslmode.is_empty() {
+            String::new()
+        } else {
+            format!("?sslmode={sslmode}")
+        };
+        format!("postgres://{user}:{password}@{host}:{port}/{database}{suffix}")
+    }
+
+    pub fn resolved_host(&self) -> String {
+        direct_or_env(&self.host, &self.host_env)
+    }
+
+    pub fn resolved_port(&self) -> Option<u16> {
+        if self.port != 0 {
+            return Some(self.port);
+        }
+        env_value(&self.port_env).parse::<u16>().ok()
+    }
+
+    pub fn resolved_user(&self) -> String {
+        direct_or_env(&self.user, &self.user_env)
+    }
+
+    pub fn resolved_password(&self) -> String {
+        direct_or_env(&self.password, &self.password_env)
+    }
+
+    pub fn resolved_database(&self) -> String {
+        direct_or_env(&self.database, &self.database_env)
+    }
+
+    pub fn is_configured(&self) -> bool {
+        !self.resolved_database_url().is_empty()
+    }
+
+    fn is_partially_configured(&self) -> bool {
+        let fields = [
+            !self.resolved_database_url().is_empty(),
+            !self.resolved_host().is_empty(),
+            self.resolved_port().is_some(),
+            !self.resolved_user().is_empty(),
+            !self.resolved_password().is_empty(),
+            !self.resolved_database().is_empty(),
+        ];
+        fields.iter().any(|value| *value)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OssConfig {
+    #[serde(default)]
+    pub access_key_id: String,
+    #[serde(default = "default_oss_access_key_id_env")]
+    pub access_key_id_env: String,
+    #[serde(default)]
+    pub access_key_secret: String,
+    #[serde(default = "default_oss_access_key_secret_env")]
+    pub access_key_secret_env: String,
+    #[serde(default)]
+    pub bucket: String,
+    #[serde(default = "default_oss_bucket_env")]
+    pub bucket_env: String,
+    #[serde(default)]
+    pub endpoint: String,
+    #[serde(default = "default_oss_endpoint_env")]
+    pub endpoint_env: String,
+    #[serde(default)]
+    pub region: String,
+    #[serde(default = "default_oss_region_env")]
+    pub region_env: String,
+    #[serde(default = "default_oss_public_upload_prefix")]
+    pub public_upload_prefix: String,
+}
+
+impl Default for OssConfig {
+    fn default() -> Self {
+        Self {
+            access_key_id: String::new(),
+            access_key_id_env: default_oss_access_key_id_env(),
+            access_key_secret: String::new(),
+            access_key_secret_env: default_oss_access_key_secret_env(),
+            bucket: String::new(),
+            bucket_env: default_oss_bucket_env(),
+            endpoint: String::new(),
+            endpoint_env: default_oss_endpoint_env(),
+            region: String::new(),
+            region_env: default_oss_region_env(),
+            public_upload_prefix: default_oss_public_upload_prefix(),
+        }
+    }
+}
+
+impl OssConfig {
+    pub fn resolved_access_key_id(&self) -> String {
+        direct_or_env(&self.access_key_id, &self.access_key_id_env)
+    }
+
+    pub fn resolved_access_key_secret(&self) -> String {
+        direct_or_env(&self.access_key_secret, &self.access_key_secret_env)
+    }
+
+    pub fn resolved_bucket(&self) -> String {
+        direct_or_env(&self.bucket, &self.bucket_env)
+    }
+
+    pub fn resolved_endpoint(&self) -> String {
+        direct_or_env(&self.endpoint, &self.endpoint_env)
+            .trim_end_matches('/')
+            .to_string()
+    }
+
+    pub fn resolved_region(&self) -> String {
+        direct_or_env(&self.region, &self.region_env)
+    }
+
+    pub fn is_configured(&self) -> bool {
+        !self.resolved_access_key_id().is_empty()
+            && !self.resolved_access_key_secret().is_empty()
+            && !self.resolved_bucket().is_empty()
+            && !self.resolved_endpoint().is_empty()
+    }
+
+    fn is_partially_configured(&self) -> bool {
+        [
+            !self.resolved_access_key_id().is_empty(),
+            !self.resolved_access_key_secret().is_empty(),
+            !self.resolved_bucket().is_empty(),
+            !self.resolved_endpoint().is_empty(),
+            !self.resolved_region().is_empty(),
+        ]
+        .iter()
+        .any(|value| *value)
+    }
+}
+
+fn direct_or_env(value: &str, env_name: &str) -> String {
+    let direct = value.trim();
+    if !direct.is_empty() {
+        return direct.to_string();
+    }
+    env_value(env_name)
+}
+
+fn env_value(env_name: &str) -> String {
+    let name = env_name.trim();
+    if name.is_empty() {
+        return String::new();
+    }
+    std::env::var(name).unwrap_or_default().trim().to_string()
+}
+
+fn env_bool(env_name: &str) -> bool {
+    matches!(
+        env_value(env_name).to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
+}
+
+fn default_database_url_env() -> String {
+    "DATABASE_URL".to_string()
+}
+fn default_pg_host_env() -> String {
+    "HONE_POSTGRES_HOST".to_string()
+}
+fn default_pg_port_env() -> String {
+    "HONE_POSTGRES_PORT".to_string()
+}
+fn default_pg_user_env() -> String {
+    "HONE_POSTGRES_USER".to_string()
+}
+fn default_pg_password_env() -> String {
+    "HONE_POSTGRES_PASSWORD".to_string()
+}
+fn default_pg_database_env() -> String {
+    "HONE_POSTGRES_DATABASE".to_string()
+}
+fn default_pg_sslmode() -> String {
+    "disable".to_string()
+}
+fn default_oss_access_key_id_env() -> String {
+    "HONE_OSS_ACCESS_KEY_ID".to_string()
+}
+fn default_oss_access_key_secret_env() -> String {
+    "HONE_OSS_ACCESS_KEY_SECRET".to_string()
+}
+fn default_oss_bucket_env() -> String {
+    "HONE_OSS_BUCKET".to_string()
+}
+fn default_oss_endpoint_env() -> String {
+    "HONE_OSS_ENDPOINT".to_string()
+}
+fn default_oss_region_env() -> String {
+    "HONE_OSS_REGION".to_string()
+}
+fn default_oss_public_upload_prefix() -> String {
+    "public-uploads".to_string()
+}

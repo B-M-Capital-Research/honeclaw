@@ -347,7 +347,7 @@ Precedence is:
 
 ### 6.1 Storage Strategy
 
-The backend remains local-first and does not depend on an external database service. JSON files are still the default session runtime read path, while SQLite-backed session indexes/runtime reads are available through `storage.session_sqlite_db_path` and `storage.session_runtime_backend`; cron run history, Web auth sessions, and LLM audit records also use local SQLite tables.
+The backend still keeps core runtime state local-first today. JSON files are the default session runtime read path, while SQLite-backed session indexes/runtime reads are available through `storage.session_sqlite_db_path` and `storage.session_runtime_backend`; cron run history, Web auth sessions, and LLM audit records also use local SQLite tables. `cloud.postgres` now records the managed Postgres env contract for the migration target, but PG-backed repositories are not yet the default runtime storage path.
 
 Main directories come from `config.storage.*`:
 
@@ -359,6 +359,8 @@ Main directories come from `config.storage.*`:
 - `notif_prefs_dir`: `./data/notif_prefs`
 - `conversation_quota_dir`: `./data/conversation_quota`
 - `llm_audit_db_path`: `./data/llm_audit.sqlite3`
+
+When `cloud.oss` is configured through runtime env, public Web uploads are stored in OSS under `cloud.oss.public_upload_prefix`, and `/api/public/image` / `/api/public/file` can proxy managed `oss://bucket/key` paths. Other generated files remain under `config.storage.*` until their cloud storage adapters land.
 
 ### 6.2 Session
 
@@ -529,6 +531,7 @@ Key config sections:
 - `fmp`
 - `search`
 - `storage`
+- `cloud`
 - `logging`
 - `admins`
 - `web`
@@ -544,6 +547,7 @@ Important constraints:
 
 - LLM provider/profile credentials are config-owned. Prefer `llm.providers.<symbol>.api_key/api_keys`; legacy `llm.openrouter.*` remains readable only as a config fallback during migration.
 - Tavily web search currently consumes `search.api_keys` and `search.max_results`; `search.provider`, `search.search_depth`, and `search.topic` remain schema/compatibility fields and are not wired into requests until the search tool request builder is widened.
+- `cloud.postgres` and `cloud.oss` prefer env references such as `DATABASE_URL`, `HONE_POSTGRES_*`, and `HONE_OSS_*`; committed config should keep the actual credentials empty.
 - `logging.udp_port: null` uses the default local UDP log sink port `18118`; there is currently no config-level disable switch for UDP logging.
 - `logging.console` and `logging.file` are parsed compatibility fields; `setup_logging` currently installs the console formatter unconditionally and does not create a file appender from `logging.file`.
 - External-account capabilities must not enter the default CI gate

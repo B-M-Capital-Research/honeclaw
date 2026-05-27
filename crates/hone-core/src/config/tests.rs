@@ -25,6 +25,7 @@ fn assert_config_example_roots(root: &serde_yaml::Mapping) {
     let expected_roots = [
         "admins",
         "agent",
+        "cloud",
         "discord",
         "event_engine",
         "feishu",
@@ -538,6 +539,7 @@ fn assert_technical_spec_config_sections_match_roots(technical_spec: &str) {
         "- `fmp`",
         "- `search`",
         "- `storage`",
+        "- `cloud`",
         "- `logging`",
         "- `admins`",
         "- `web`",

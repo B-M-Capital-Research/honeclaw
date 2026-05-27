@@ -454,9 +454,15 @@ pub(crate) async fn handle_chat(
     }
 
     let user_upload_root = public_upload_dir(&state, &user.user_id);
+    let oss = crate::cloud_oss::OssClient::from_config(&state.core.config.cloud.oss);
     let mut validated_paths = Vec::with_capacity(attachments.len());
     for attachment in &attachments {
-        match validate_public_upload_path(&user_upload_root, &attachment.path) {
+        match validate_public_upload_path(
+            &user_upload_root,
+            oss.as_ref(),
+            &user.user_id,
+            &attachment.path,
+        ) {
             Ok(path) => validated_paths.push(path),
             Err(response) => return response,
         }
@@ -531,8 +537,11 @@ pub(crate) async fn handle_upload(
 
     let upload_root = public_upload_dir(&state, &user.user_id);
     let day = hone_core::beijing_now().format("%Y-%m-%d").to_string();
+    let oss = crate::cloud_oss::OssClient::from_config(&state.core.config.cloud.oss);
     let target_dir = upload_root.join(&day);
-    if let Err(error) = std::fs::create_dir_all(&target_dir) {
+    if oss.is_none()
+        && let Err(error) = std::fs::create_dir_all(&target_dir)
+    {
         return crate::routes::json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("创建上传目录失败: {error}"),
@@ -590,16 +599,32 @@ pub(crate) async fn handle_upload(
 
         let safe_name = sanitize_attachment_name(&original_name);
         let stored_name = format!("{}-{}", Uuid::new_v4().simple(), safe_name);
-        let final_path = target_dir.join(&stored_name);
-        if let Err(error) = std::fs::write(&final_path, &bytes) {
-            return crate::routes::json_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("写入附件失败: {error}"),
-            );
-        }
+        let stored_path = if let Some(oss) = oss.as_ref() {
+            let key = oss.public_upload_key(&user.user_id, &day, &stored_name);
+            if let Err(error) = oss
+                .put_object(
+                    &key,
+                    bytes.to_vec(),
+                    content_type_for_attachment(&original_name),
+                )
+                .await
+            {
+                return crate::routes::json_error(StatusCode::BAD_GATEWAY, error);
+            }
+            oss.object_uri(&key)
+        } else {
+            let final_path = target_dir.join(&stored_name);
+            if let Err(error) = std::fs::write(&final_path, &bytes) {
+                return crate::routes::json_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("写入附件失败: {error}"),
+                );
+            }
+            final_path.to_string_lossy().to_string()
+        };
 
         stored.push(PublicUploadedAttachment {
-            path: final_path.to_string_lossy().to_string(),
+            path: stored_path,
             name: safe_name,
             kind: classify_attachment_kind(&original_name),
             size: bytes.len() as u64,
@@ -621,13 +646,13 @@ fn public_upload_dir(state: &AppState, user_id: &str) -> PathBuf {
     base.join("public-uploads").join(sanitize_user_id(user_id))
 }
 
-fn compose_message_with_attachments(message: &str, attachment_paths: &[PathBuf]) -> String {
+fn compose_message_with_attachments(message: &str, attachment_paths: &[String]) -> String {
     if attachment_paths.is_empty() {
         return message.to_string();
     }
     let att = attachment_paths
         .iter()
-        .map(|path| format!("[附件: {}]", path.to_string_lossy()))
+        .map(|path| format!("[附件: {path}]"))
         .collect::<Vec<_>>()
         .join("\n");
     if message.is_empty() {
@@ -639,7 +664,18 @@ fn compose_message_with_attachments(message: &str, attachment_paths: &[PathBuf])
 
 /// Only accept attachment paths that sit inside this user's upload root, so the
 /// chat endpoint can't be used to reference arbitrary files on disk.
-fn validate_public_upload_path(upload_root: &Path, raw_path: &str) -> Result<PathBuf, Response> {
+fn validate_public_upload_path(
+    upload_root: &Path,
+    oss: Option<&crate::cloud_oss::OssClient>,
+    user_id: &str,
+    raw_path: &str,
+) -> Result<String, Response> {
+    if let Some(oss) = oss
+        && oss.is_public_upload_uri_for_user(raw_path, user_id)
+    {
+        return Ok(raw_path.trim().to_string());
+    }
+
     let cleaned = raw_path.trim().strip_prefix("file://").unwrap_or(raw_path);
     if cleaned.is_empty() {
         return Err(crate::routes::json_error(
@@ -663,7 +699,7 @@ fn validate_public_upload_path(upload_root: &Path, raw_path: &str) -> Result<Pat
             "附件不存在",
         ));
     }
-    Ok(canonical_target)
+    Ok(canonical_target.to_string_lossy().to_string())
 }
 
 fn sanitize_user_id(raw: &str) -> String {
@@ -718,6 +754,23 @@ fn classify_attachment_kind(name: &str) -> String {
         "pdf".to_string()
     } else {
         "file".to_string()
+    }
+}
+
+fn content_type_for_attachment(name: &str) -> &'static str {
+    let lower = name.to_ascii_lowercase();
+    if lower.ends_with(".png") {
+        "image/png"
+    } else if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
+        "image/jpeg"
+    } else if lower.ends_with(".gif") {
+        "image/gif"
+    } else if lower.ends_with(".webp") {
+        "image/webp"
+    } else if lower.ends_with(".pdf") {
+        "application/pdf"
+    } else {
+        "application/octet-stream"
     }
 }
 

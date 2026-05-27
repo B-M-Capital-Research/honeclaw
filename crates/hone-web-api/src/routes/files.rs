@@ -25,6 +25,10 @@ pub(crate) async fn handle_image(
         return json_error(StatusCode::BAD_REQUEST, "缺少 path");
     };
 
+    if let Some(response) = handle_oss_proxy(&state, &raw_path).await {
+        return response;
+    }
+
     let path = match resolve_file_proxy_path(&state, &raw_path) {
         Ok(p) => p,
         Err(resp) => return resp,
@@ -57,6 +61,10 @@ pub(crate) async fn handle_file(
         return json_error(StatusCode::BAD_REQUEST, "缺少 path");
     };
 
+    if let Some(response) = handle_oss_proxy(&state, &raw_path).await {
+        return response;
+    }
+
     let path = match resolve_file_proxy_path(&state, &raw_path) {
         Ok(p) => p,
         Err(resp) => return resp,
@@ -66,6 +74,25 @@ pub(crate) async fn handle_file(
     };
 
     ([(header::CONTENT_TYPE, "application/octet-stream")], bytes).into_response()
+}
+
+async fn handle_oss_proxy(state: &AppState, raw_path: &str) -> Option<Response> {
+    if !raw_path.trim().starts_with("oss://") {
+        return None;
+    }
+    let Some(client) = crate::cloud_oss::OssClient::from_config(&state.core.config.cloud.oss)
+    else {
+        return Some(json_error(StatusCode::FORBIDDEN, "OSS 未配置"));
+    };
+    let Some(key) = client.parse_managed_uri(raw_path) else {
+        return Some(json_error(StatusCode::FORBIDDEN, "OSS 路径不允许访问"));
+    };
+    match client.get_object(key).await {
+        Ok(object) => {
+            Some(([(header::CONTENT_TYPE, object.content_type)], object.bytes).into_response())
+        }
+        Err(error) => Some(json_error(StatusCode::BAD_GATEWAY, error)),
+    }
 }
 
 fn file_proxy_roots(config: &hone_core::config::HoneConfig) -> Vec<PathBuf> {

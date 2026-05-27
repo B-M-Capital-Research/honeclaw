@@ -288,6 +288,7 @@ Important config areas:
 - `imessage.*`, `feishu.*`, `telegram.*`, `discord.*`: channel enablement, credentials, allowlists, and chat scope.
 - `web.*`: Web console auth token and workflow/research integration settings.
 - `storage.*`: session data paths and backend selection, especially `sessions_dir`, `session_sqlite_db_path`, `session_sqlite_shadow_write_enabled`, `session_runtime_backend`, `conversation_quota_dir`, `llm_audit_db_path`, and `notif_prefs_dir`.
+- `cloud.*`: migration-time managed Postgres / OSS env references; keep actual `DATABASE_URL`, `HONE_POSTGRES_*`, and `HONE_OSS_*` values outside committed config.
 - `admins.*`: channel admin identities and runtime admin registration passphrase.
 - `event_engine.*`: market/news event monitoring and delivery.
 - `logging.*`: runtime log level and local UDP sink port/default; `console` and `file` remain parsed compatibility fields until file/console sinks are wired.

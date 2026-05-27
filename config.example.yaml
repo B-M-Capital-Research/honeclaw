@@ -463,6 +463,39 @@ storage:
   gen_images_dir: "./data/gen_images"
   notif_prefs_dir: "./data/notif_prefs"
 
+cloud:
+  # Enables managed backend resources when the referenced env vars are present.
+  # Keep real PG / OSS credentials in the process environment or local .env only.
+  enabled: false
+  # Set true only after all storage backends have PG / OSS implementations.
+  strict_no_local_storage: false
+  postgres:
+    database_url: ""
+    database_url_env: "DATABASE_URL"
+    host: ""
+    host_env: "HONE_POSTGRES_HOST"
+    port: 0
+    port_env: "HONE_POSTGRES_PORT"
+    user: ""
+    user_env: "HONE_POSTGRES_USER"
+    password: ""
+    password_env: "HONE_POSTGRES_PASSWORD"
+    database: ""
+    database_env: "HONE_POSTGRES_DATABASE"
+    sslmode: "disable"
+  oss:
+    access_key_id: ""
+    access_key_id_env: "HONE_OSS_ACCESS_KEY_ID"
+    access_key_secret: ""
+    access_key_secret_env: "HONE_OSS_ACCESS_KEY_SECRET"
+    bucket: ""
+    bucket_env: "HONE_OSS_BUCKET"
+    endpoint: ""
+    endpoint_env: "HONE_OSS_ENDPOINT"
+    region: ""
+    region_env: "HONE_OSS_REGION"
+    public_upload_prefix: "public-uploads"
+
 logging:
   level: "INFO"
   # Parsed for compatibility, but setup_logging currently always installs the
