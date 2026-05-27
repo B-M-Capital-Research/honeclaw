@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-27 11:03 CST
+最后更新：2026-05-27 19:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,10 +17,13 @@
 
 ## 当前概览
 
-- 活跃待修复：2
+- 活跃待修复：3
 - Later / 待复现：10
 - 已修复 / 已关闭：111
 - 历史分析 / 部分止血：5
+- 本轮 19:03 CST 新增 P2 `Heartbeat 金价阈值提醒把旧日期价格当作当前触发价送达`：15:00-19:03 CST 真实 heartbeat 窗口中，`伦敦金跌破4500提醒` 在 `run_id=34789` / `2026-05-27T16:00:22+08:00` 落成 `completed + sent + delivered=1`，但用户可见正文写 `XAU/USD ... 现报 $4,483.12（2026年4月4日）` 并据此宣称已跌破 `$4,500`。这不是单纯措辞问题，自动阈值提醒把旧日期价格包装成当前触发证据，会影响用户对预警真实性和仓位风险的判断；定级 P2 / New，非 P1，不创建 GitHub Issue。
+- 本轮 19:03 CST 未发现新的独立活跃 P1。15:00-19:03 CST 按消息时间共有 15 个 user turn 与 15 个 assistant final；Feishu / Web direct 与普通 scheduler 会话均以 assistant final 收口。assistant final 污染扫描未命中空回复、`/Users/`、`data/agent-sandboxes`、`~/.codex`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、`reasoning_content`、`<think>`、provider 原始 `Param Incorrect` / `quota exhausted` / `Resource temporarily unavailable`、`panic` 或 `index out of bounds`；最近四小时无非文档代码提交。普通 scheduler 仅 `run_id=34844` / `A股港股收盘后跨市场复盘` 成功送达，未见 `commodity_causality_guarded=true` 新复发；event-engine digest sink 未在本窗确认新的 P1 复发证据。
+- 本轮 19:03 CST 继续看到既有 heartbeat 旧/未确认部署运行态坏信号：15:00-19:03 CST heartbeat 新增 100 条 `execution_failed + skipped_error + delivered=0`（Feishu 77 条、Web 23 条）、43 条 `noop + skipped_noop + delivered=0`（Feishu 30 条、Web 13 条）和 1 条 Feishu `completed + sent + delivered=1`。失败形态仍主要对应已修复表中的结构化状态退化（非结构化 JSON 81 条、非法 JSON 2 条、缺少状态 1 条、未知状态 3 条）、迭代耗尽旧信号（`max_iterations_exceeded:10` 10 条）与 3 条临时 upstream HTTP 500；本轮不因这些重复信号新增缺陷或从 `Fixed` 回退。
 - 本轮 11:03 CST 重新打开 P1 `Feishu 直达定时任务生成完成后仍在发送阶段落成 HTTP 400 Bad Request`：07:02-11:01 CST 真实运行窗口里 event-engine Feishu digest sink 在 `2026-05-27T00:30:48Z` 与 `00:30:52Z` 两次 `channel digest sink failed, falling back to log`，Feishu 返回 `99992361 / open_id cross app`，digest 内容已生成但真实 Feishu 投递未送达；同窗普通 Feishu direct / 普通 scheduler 仍可送达，故障集中在 direct digest sink 标识域。该证据补充到原缺陷文档，状态从 `Fixed` 调回 `New`；已有 GitHub Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)，不重复创建。
 - 本轮 11:03 CST 确认活跃 P2 `Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice` 继续复发：07:02-11:01 CST 普通 scheduler 19 条 `completed + sent + delivered=1` 中 3 条命中 `detail_json.scheduler.commodity_causality_guarded=true`，且 3 条均为非商品主任务：`Hone_AI_Morning_Briefing`、`早9点市场复盘(XME及加密ETF)`、`每日美股降息概率推送`（`run_id=34534/34560/34582`）。原始完整市场 / 宏观 / 降息概率报告被全量替换成原油 / 大宗商品安全提示并仍记已送达；该证据补充到原缺陷文档，不新建重复缺陷，严重等级仍为 P2，状态保持 `New`。
 - 本轮 11:03 CST 未发现新的独立 P1。07:02-11:01 CST 按消息时间共有 27 个 user turn 与 28 个 assistant final，其中 1 条 assistant final 是 07:00 scheduler 结果落在窗口内；Feishu / Web direct 与普通 scheduler 会话均以 assistant final 收口。assistant final 污染扫描未命中空回复、`/Users/`、`data/agent-sandboxes`、`~/.codex`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、`reasoning_content`、`<think>`、provider 原始 `Param Incorrect` / `quota exhausted` / `Resource temporarily unavailable`、`panic` 或 `index out of bounds`；最近四小时无非文档代码提交。
@@ -315,6 +318,7 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Feishu 直达定时任务生成完成后仍在发送阶段落成 `HTTP 400 Bad Request` | P1 | New | 2026-05-27 11:03 真实窗口复发：event-engine Feishu digest sink 两次 `99992361 / open_id cross app` 后降级为 log fallback，digest 已生成但未真实送达；已有 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)，不重复创建 | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
+| Heartbeat 金价阈值提醒把旧日期价格当作当前触发价送达 | P2 | New | 2026-05-27 19:03 新增：`伦敦金跌破4500提醒` 在 `run_id=34789` 成功送达，但正文把 `2026年4月4日` 的 XAU/USD `$4,483.12` 写成当前跌破 `$4,500` 的触发证据。无关联 GitHub Issue | [scheduler_heartbeat_gold_stale_price_trigger.md](./scheduler_heartbeat_gold_stale_price_trigger.md) |
 | Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice | P2 | New | 2026-05-27 11:03 真实窗口复发：`Hone_AI_Morning_Briefing`、`早9点市场复盘(XME及加密ETF)`、`每日美股降息概率推送` 仍被 `commodity_causality_guarded=true` 全量替换成原油 / 大宗商品安全提示并记已送达。无关联 GitHub Issue | [scheduler_commodity_guard_false_positive_market_review.md](./scheduler_commodity_guard_false_positive_market_review.md) |
 
 ## Later / 待复现
