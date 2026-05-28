@@ -125,12 +125,13 @@ impl FeishuSink {
             let Some(contacts) = direct_contact_from_target(&target.into()) else {
                 continue;
             };
-            let entry = contacts_by_actor
-                .entry(actor_user_id)
-                .or_insert_with(|| FeishuDirectContacts {
-                    emails: Vec::new(),
-                    mobiles: Vec::new(),
-                });
+            let entry =
+                contacts_by_actor
+                    .entry(actor_user_id)
+                    .or_insert_with(|| FeishuDirectContacts {
+                        emails: Vec::new(),
+                        mobiles: Vec::new(),
+                    });
             entry.emails.extend(contacts.emails);
             entry.mobiles.extend(contacts.mobiles);
             entry.emails.sort();

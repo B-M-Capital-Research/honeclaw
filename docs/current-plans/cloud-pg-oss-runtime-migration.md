@@ -3,7 +3,7 @@
 - title: Cloud PG / OSS Runtime Migration
 - status: in_progress
 - created_at: 2026-05-27
-- updated_at: 2026-05-27
+- updated_at: 2026-05-28
 - owner: Codex
 - related_files:
   - `config.example.yaml`
@@ -18,6 +18,7 @@
   - `docs/repo-map.md`
   - `docs/runbooks/backend-deployment.md`
   - `docs/handoffs/cloud-pg-oss-runtime-migration-2026-05-27.md`
+  - `docs/handoffs/cloud-runtime-impact-report-2026-05-28.md`
 
 ## Goal
 
@@ -47,8 +48,12 @@ Move the local runtime toward remote ownership for database and object storage: 
 
 Current handoff: `docs/handoffs/cloud-pg-oss-runtime-migration-2026-05-27.md`
 
+Current impact report: `docs/handoffs/cloud-runtime-impact-report-2026-05-28.md`
+
 ## Risks / Open Questions
 
 - Direct local TCP to the Aliyun PG endpoint timed out; current verified PG health uses the local SOCKS proxy path.
+- Direct OSS bucket HTTPS also timed out; the bucket was reachable through the local SOCKS proxy, but the runtime does not yet honor `HONE_OSS_PROXY`.
+- `/api/meta` currently reports cloud capabilities from config presence, not live PG / OSS authority. It does not yet expose `runtime_role`, `cloud_storage_authoritative`, or `local_durable_dependency_count`.
 - Existing session, quota, audit, portfolio, cron, notification prefs, KB, and log stores are still local JSON / SQLite / directories until PG-backed repository implementations are added.
 - `https://hone-claw.com/api/meta` previously timed out, so desktop remote-backend health remains separate from PG / OSS credential health.
