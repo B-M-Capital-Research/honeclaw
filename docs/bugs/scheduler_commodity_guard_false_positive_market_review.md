@@ -6,6 +6,17 @@
 - **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
 
+## 复发记录（2026-05-28 11:03 CST）
+
+- 最近四小时真实窗口继续确认同一 scheduler 出站 guard false positive 活跃：`2026-05-28 07:02-11:02 CST` 普通 scheduler 共有 19 条 `completed + sent + delivered=1`，其中 3 条命中 `detail_json.scheduler.commodity_causality_guarded=true`。
+- 本窗口 3 条 guard 命中均不是专门原油 / 大宗商品任务，原始完整市场 / 宏观 / 降息概率报告被全量替换成“本轮原油/大宗商品播报包含未完成同窗来源核验...”安全提示并仍记已送达。
+- `data/sessions.sqlite3` -> `cron_job_runs` 关键样本：
+  - `run_id=35369`，`job_name=Hone_AI_Morning_Briefing`，`executed_at=2026-05-28T08:32:43.525324+08:00`，`actor_channel=feishu`，`completed + sent + delivered=1`，`detail_json.scheduler.commodity_causality_guarded=true`。同一 session assistant final 是隔夜美股、AI 二阶链、油价和美债对科技股风险偏好的综合早报，不是原油或大宗商品播报。
+  - `run_id=35391`，`job_name=早9点市场复盘(XME及加密ETF)`，`executed_at=2026-05-28T09:02:17.661890+08:00`，`actor_channel=feishu`，同样被替换。原始正文是 XME、港股加密 ETF 与美股 / 宏观大盘隔夜行情复盘。
+  - `run_id=35416`，`job_name=每日美股降息概率推送`，`executed_at=2026-05-28T09:31:13.102205+08:00`，`actor_channel=discord`，同样被替换。原始正文是 FOMC、PCE 风险、油价回落和降息概率分析。
+- `response_preview` / `detail_json.scheduler.deliver_preview` 均被替换为“本轮未保留原正文中的价格或归因句；请等待下一轮核验或手动查询交易所/官方数据。”，导致用户收到的不是早报 / 市场复盘 / 降息概率主体内容。
+- 这是既有缺陷的同一根因 / 同一出站 guard 链路，不新建重复文档；严重等级仍为 P2，状态保持 `New`。当前影响继续覆盖 Feishu 普通 scheduler 与 Discord scheduler，修复侧应把这三类任务继续作为非商品主任务回归样本。
+
 ## 复发记录（2026-05-27 23:03 CST）
 
 - 最近四小时真实窗口继续确认同一 scheduler 出站 guard false positive 活跃且影响范围扩大：`2026-05-27 19:02-23:02 CST` 普通 scheduler 共有 37 条 `completed + sent + delivered=1`，其中 11 条命中 `detail_json.scheduler.commodity_causality_guarded=true`。
