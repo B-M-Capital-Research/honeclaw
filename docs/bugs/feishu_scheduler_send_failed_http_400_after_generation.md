@@ -6,12 +6,18 @@
 - **状态**: New
 - **GitHub Issue**: [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)
 - **修复记录**:
+  - 2026-05-29 03:04 CST：本轮巡检确认同一 event-engine Feishu sink 继续复发；已有 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)，不重复创建。
   - 2026-05-28 23:03 CST：本轮巡检确认同一 event-engine Feishu sink 继续复发；已有 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)，不重复创建。
   - 2026-05-28 11:03 CST：本轮巡检确认同一 event-engine Feishu digest sink 继续复发；已有 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)，不重复创建。
   - 2026-05-28 07:02 CST：本轮巡检确认 03:14 修复提交之后仍复发，状态从 `Fixed` 重新打开为 `New`；已有 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)，不重复创建。
   - 2026-05-28 03:11 CST：已修复。`feishu_direct_actor_contact_targets_from_records(...)` 不再把同一 actor 的多稳定联系人压成“只保留单一 target”，`FeishuSink::with_direct_actor_contact_targets(...)` 也改为聚合同一 actor 的全部 email/mobile 后再统一解析 current-app `open_id`。这样 event-engine Feishu direct digest sink 不会因为 email+mobile 组合被上游丢弃或在 sink 侧被后写覆盖，而退回跨 app 旧 `open_id`。
   - 验证：`cargo test -p hone-event-engine direct_actor_contact_targets_keep_only_resolvable_contacts --lib -- --nocapture`、`cargo test -p hone-web-api feishu_direct_actor_targets_ --lib -- --nocapture`、`cargo check -p hone-event-engine -p hone-web-api -p hone-channels --tests` 通过。
 - **证据来源**:
+  - 2026-05-29 03:04 最近四小时最新样本：
+    - `data/runtime/logs/hone-console-page-prod.log`
+      - `2026-05-28T15:23:04.935341Z`（北京时间 `2026-05-28 23:23:04`）、`2026-05-28T18:37:55.517662Z` 与 `2026-05-28T18:37:56.079955Z`（北京时间 `2026-05-29 02:37:55/56`）记录 `channel sink failed, falling back to log`，Feishu 返回 `HTTP 400 Bad Request`，错误码为 `99992361 / open_id cross app`。
+      - 同窗 Feishu direct / Web direct 会话均无 user-heavy 未收口 session，普通 Feishu scheduler 5 条 `completed + sent + delivered=1`；说明不是 Feishu 全局不可用，而是 event-engine sink 仍会在某类目标上选到跨 app `open_id`。
+    - 本轮没有新建 GitHub issue，因为已有 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) 覆盖同一根因和同一发送链路。
   - 2026-05-28 23:03 最近四小时最新样本：
     - `data/runtime/logs/hone-console-page-prod.log`
       - `2026-05-28T13:33:00.248078Z`（北京时间 `2026-05-28 21:33:00`）、`2026-05-28T13:58:06.366902Z`（北京时间 `21:58:06`）与 `2026-05-28T13:58:09.931604Z`（北京时间 `21:58:09`）记录 `channel sink failed, falling back to log`，Feishu 返回 `HTTP 400 Bad Request`，错误码为 `99992361 / open_id cross app`。
