@@ -29,7 +29,8 @@ use hone_event_engine::{
     OutboundSink, TelegramSink, parse_polish_levels,
 };
 use hone_llm::{CreatedLlmProvider, LlmResolver};
-use hone_memory::{ChannelTargetRecord, CronJobStorage};
+use hone_memory::session::Session;
+use hone_memory::{ChannelTargetRecord, CronJobStorage, SessionStorage};
 use tokio::sync::broadcast;
 use tracing::info;
 use tracing_subscriber::prelude::*;
@@ -347,13 +348,34 @@ fn feishu_direct_actor_contact_targets(core_cfg: &HoneConfig) -> Vec<(String, St
         &core_cfg.storage.cron_jobs_dir,
         &core_cfg.storage.session_sqlite_db_path,
     );
-    feishu_direct_actor_contact_targets_from_records(storage.list_channel_targets())
+    let session_storage = SessionStorage::from_storage_config(&core_cfg.storage);
+    feishu_direct_actor_contact_targets_from_sources(
+        storage.list_channel_targets(),
+        session_storage.list_sessions().unwrap_or_default(),
+    )
 }
 
-fn feishu_direct_actor_contact_targets_from_records(
+fn feishu_direct_actor_contact_targets_from_sources(
     records: Vec<ChannelTargetRecord>,
+    sessions: Vec<Session>,
 ) -> Vec<(String, String)> {
     let mut targets_by_actor: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    collect_feishu_direct_actor_contact_targets_from_records(&mut targets_by_actor, records);
+    collect_feishu_direct_actor_contact_targets_from_sessions(&mut targets_by_actor, sessions);
+    targets_by_actor
+        .into_iter()
+        .flat_map(|(actor_user_id, targets)| {
+            targets
+                .into_iter()
+                .map(move |target| (actor_user_id.clone(), target))
+        })
+        .collect()
+}
+
+fn collect_feishu_direct_actor_contact_targets_from_records(
+    targets_by_actor: &mut BTreeMap<String, BTreeSet<String>>,
+    records: Vec<ChannelTargetRecord>,
+) {
     for record in records {
         if record.channel.trim() != "feishu" {
             continue;
@@ -376,14 +398,46 @@ fn feishu_direct_actor_contact_targets_from_records(
                 .insert(target.to_string());
         }
     }
-    targets_by_actor
-        .into_iter()
-        .flat_map(|(actor_user_id, targets)| {
-            targets
-                .into_iter()
-                .map(move |target| (actor_user_id.clone(), target))
-        })
-        .collect()
+}
+
+fn collect_feishu_direct_actor_contact_targets_from_sessions(
+    targets_by_actor: &mut BTreeMap<String, BTreeSet<String>>,
+    sessions: Vec<Session>,
+) {
+    for session in sessions {
+        let Some(actor) = session.actor.as_ref() else {
+            continue;
+        };
+        if actor.channel.trim() != "feishu" {
+            continue;
+        }
+        if matches!(actor.channel_scope.as_deref(), Some(scope) if scope != "direct") {
+            continue;
+        }
+        let actor_user_id = actor.user_id.trim();
+        if actor_user_id.is_empty() {
+            continue;
+        }
+        for key in ["mobile", "email"] {
+            let Some(target) = session.metadata.get(key).and_then(|value| value.as_str()) else {
+                continue;
+            };
+            let target = target.trim();
+            if !looks_like_contact_target(target) {
+                continue;
+            }
+            targets_by_actor
+                .entry(actor_user_id.to_string())
+                .or_default()
+                .insert(target.to_string());
+        }
+    }
+}
+
+fn feishu_direct_actor_contact_targets_from_records(
+    records: Vec<ChannelTargetRecord>,
+) -> Vec<(String, String)> {
+    feishu_direct_actor_contact_targets_from_sources(records, Vec::new())
 }
 
 fn looks_like_contact_target(target: &str) -> bool {
@@ -931,6 +985,9 @@ fn local_storage_dependencies(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hone_core::ActorIdentity;
+    use hone_memory::session::{Session, SessionRuntimeState};
+    use serde_json::Value;
 
     #[test]
     fn sec_filings_enrichment_max_tokens_uses_configured_cap() {
@@ -1013,6 +1070,51 @@ mod tests {
         );
     }
 
+    #[test]
+    fn feishu_direct_actor_targets_include_session_metadata_contacts() {
+        let targets = feishu_direct_actor_contact_targets_from_sources(
+            Vec::new(),
+            vec![
+                feishu_direct_session("ou_event_only", Some("+8619106838169"), None),
+                feishu_direct_session("ou_email_only", None, Some("alice@example.com")),
+                non_direct_session("ou_group", Some("+8613800138000")),
+            ],
+        );
+
+        assert_eq!(
+            targets,
+            vec![
+                ("ou_email_only".to_string(), "alice@example.com".to_string()),
+                ("ou_event_only".to_string(), "+8619106838169".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn feishu_direct_actor_targets_merge_cron_and_session_contacts() {
+        let targets = feishu_direct_actor_contact_targets_from_sources(
+            vec![channel_target_record(
+                "feishu",
+                None,
+                "+8613800138000",
+                vec!["ou_old"],
+            )],
+            vec![feishu_direct_session(
+                "ou_old",
+                Some("+8613800138000"),
+                Some("alice@example.com"),
+            )],
+        );
+
+        assert_eq!(
+            targets,
+            vec![
+                ("ou_old".to_string(), "+8613800138000".to_string()),
+                ("ou_old".to_string(), "alice@example.com".to_string()),
+            ]
+        );
+    }
+
     fn channel_target_record(
         channel: &str,
         channel_scope: Option<&str>,
@@ -1028,6 +1130,48 @@ mod tests {
             scheduled_jobs: 1,
             enabled_jobs: 1,
             last_seen_at: None,
+        }
+    }
+
+    fn feishu_direct_session(
+        actor_user_id: &str,
+        mobile: Option<&str>,
+        email: Option<&str>,
+    ) -> Session {
+        session_with_actor("feishu", actor_user_id, None, mobile, email)
+    }
+
+    fn non_direct_session(actor_user_id: &str, mobile: Option<&str>) -> Session {
+        session_with_actor("feishu", actor_user_id, Some("chat_oc_1"), mobile, None)
+    }
+
+    fn session_with_actor(
+        channel: &str,
+        actor_user_id: &str,
+        channel_scope: Option<&str>,
+        mobile: Option<&str>,
+        email: Option<&str>,
+    ) -> Session {
+        let actor =
+            ActorIdentity::new(channel, actor_user_id, channel_scope.map(str::to_string)).unwrap();
+        let mut metadata = HashMap::new();
+        if let Some(mobile) = mobile {
+            metadata.insert("mobile".to_string(), Value::String(mobile.to_string()));
+        }
+        if let Some(email) = email {
+            metadata.insert("email".to_string(), Value::String(email.to_string()));
+        }
+        Session {
+            version: 4,
+            id: actor.session_id(),
+            actor: Some(actor),
+            session_identity: None,
+            created_at: "2026-05-29T03:00:00+08:00".to_string(),
+            updated_at: "2026-05-29T03:00:00+08:00".to_string(),
+            messages: Vec::new(),
+            metadata,
+            runtime: SessionRuntimeState::default(),
+            summary: None,
         }
     }
 }

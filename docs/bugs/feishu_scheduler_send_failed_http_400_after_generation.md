@@ -3,9 +3,10 @@
 - **发现时间**: 2026-04-16 22:08 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)
 - **修复记录**:
+  - 2026-05-29 04:05 CST：已修复仓库侧可解释缺口。`crates/hone-web-api/src/lib.rs` 组装 event-engine Feishu sink 时，除 cron channel-target 目录外，也会读取 Feishu direct session metadata 里的 `mobile/email` 并合并为 `actor_user_id -> contact targets`；这补上了只有 portfolio / session、没有 direct cron target 的 actor 仍会退回历史 `ou_...` open_id 的路径。验证 `cargo test -p hone-web-api feishu_direct_actor_targets --lib -- --nocapture`、`cargo test -p hone-event-engine feishu --lib -- --nocapture`、`cargo check -p hone-web-api -p hone-event-engine --tests` 通过。当前未在本轮执行真实 Feishu runtime 投递验证。
   - 2026-05-29 03:04 CST：本轮巡检确认同一 event-engine Feishu sink 继续复发；已有 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)，不重复创建。
   - 2026-05-28 23:03 CST：本轮巡检确认同一 event-engine Feishu sink 继续复发；已有 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)，不重复创建。
   - 2026-05-28 11:03 CST：本轮巡检确认同一 event-engine Feishu digest sink 继续复发；已有 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)，不重复创建。
