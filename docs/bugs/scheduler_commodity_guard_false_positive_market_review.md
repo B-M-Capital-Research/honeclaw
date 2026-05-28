@@ -6,6 +6,22 @@
 - **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
 
+## 复发记录（2026-05-28 19:03 CST）
+
+- 最近四小时真实窗口继续确认同一 scheduler 出站 guard false positive 活跃：`2026-05-28 15:01-19:02 CST` 普通 scheduler 仅 1 条 `completed + sent + delivered=1`，且该条命中 `detail_json.scheduler.commodity_causality_guarded=true`。
+- 本窗口命中样本不是专门原油 / 大宗商品任务，原始完整 A/H 市场复盘被全量替换成“本轮原油/大宗商品播报包含未完成同窗来源核验...”安全提示并仍记已送达。
+- `data/sessions.sqlite3` -> `cron_job_runs` 关键样本：
+  - `run_id=35657`，`job_name=A股港股收盘后跨市场复盘`，`executed_at=2026-05-28T17:33:33.246153+08:00`，`actor_channel=feishu`，`completed + sent + delivered=1`，`detail_json.scheduler.commodity_causality_guarded=true`。
+  - `detail_json.scheduler.raw_preview` 开头为“北京时间 2026年5月28日 17:30。A股、港股今天均正常开市；结论是：A股走出‘早盘分歧、午后硬科技修复’，港股指数仍弱，但光通信、PCB、AI概念局部爆发。”，主体是 A/H 收盘复盘、AI 算力硬件、光通信、PCB、半导体制造与美股映射分析，不是原油或大宗商品播报。
+  - `response_preview` / `detail_json.scheduler.deliver_preview` 被替换为“本轮未保留原正文中的价格或归因句；请等待下一轮核验或手动查询交易所/官方数据。”，导致用户收到的不是 A/H 收盘复盘主体内容。
+- 同一任务会话落库仍保留原始完整复盘：
+  - `session_id=Actor_feishu__direct__ou_5f636d6d7c80d333e41b86ae79d07adca8`
+  - `ordinal=355`
+  - `timestamp=2026-05-28T17:33:28.654231+08:00`
+  - assistant final 是完整 A 股 / 港股收盘复盘；错误发生在 scheduler 出站 guard 后。
+- 用户侧随后在同一 Feishu 会话 `2026-05-28T18:00:45+08:00` 反馈“没看到 重新发”，assistant 于 `18:01:46+08:00` 手动重发完整 17:30 复盘。该反馈与历史复发形态一致：会话落库有原文，但用户侧未收到有用的 scheduler 内容。
+- 这是既有缺陷的同一根因 / 同一出站 guard 链路，不新建重复文档；严重等级仍为 P2，状态保持 `New`。修复侧应继续把 `A股港股收盘后跨市场复盘` 作为非商品主任务回归样本，并验证 `cron_job_runs.response_preview`、`detail_json.scheduler.deliver_preview` 与实际 Feishu 送达正文不再分叉。
+
 ## 复发记录（2026-05-28 11:03 CST）
 
 - 最近四小时真实窗口继续确认同一 scheduler 出站 guard false positive 活跃：`2026-05-28 07:02-11:02 CST` 普通 scheduler 共有 19 条 `completed + sent + delivered=1`，其中 3 条命中 `detail_json.scheduler.commodity_causality_guarded=true`。
