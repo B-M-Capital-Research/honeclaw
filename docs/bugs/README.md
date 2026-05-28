@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-28 11:03 CST
+最后更新：2026-05-28 15:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -21,6 +21,10 @@
 - Later / 待复现：10
 - 已修复 / 已关闭：112
 - 历史分析 / 部分止血：5
+- 本轮 15:03 CST 未发现新的独立缺陷，也未发现活跃 P1 / P2 状态变化。11:02-15:02 CST 按消息时间共有 72 个 user turn 与 72 个 assistant final；Feishu direct、Web direct、Discord group 与普通 scheduler 均以 assistant final 或 `completed + sent + delivered=1` 收口。assistant final 污染扫描未命中空回复、`/Users/`、`data/agent-sandboxes`、`~/.codex`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、`reasoning_content`、`<think>`、provider 原始 `Param Incorrect` / `quota exhausted` / `Resource temporarily unavailable`、`panic`、`index out of bounds`、`HTTP 400 Bad Request` 或 `open_id cross app`；最近四小时无非文档代码提交。
+- 本轮 15:03 CST 未观察到活跃 P1 `Feishu 直达定时任务生成完成后仍在发送阶段落成 HTTP 400 Bad Request` 新复发：11:02-15:02 CST `web.log.2026-05-28` 与 `hone-console-page-prod.log` 均未出现新的 `HTTP 400 Bad Request` / `99992361 open_id cross app` / `channel digest sink failed` 样本；该缺陷因 07:02 与 11:03 CST 既有复发证据仍保持 `New`，已有 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)，本轮不重复创建。
+- 本轮 15:03 CST 未观察到活跃 P2 `Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice` 新复发：11:02-15:02 CST 普通 scheduler 仅 2 条 `completed + sent + delivered=1`，分别为 Feishu `每日公司资讯与分析总结`（`run_id=35492`）和 Web `A股持仓调仓观察`（`run_id=35571`），均未见 `detail_json.scheduler.commodity_causality_guarded=true`。该缺陷因既有真实复发证据仍保持 `New`，但本窗不补充新证据、不新增重复文档。
+- 本轮 15:03 CST 继续观察到 heartbeat 结构化输出退化、`max_iterations_exceeded:10` 与 Tavily key quota/deactivated 警告：11:02-15:02 CST heartbeat 新增 85 条 `execution_failed + skipped_error + delivered=0` 和 35 条 `noop + skipped_noop + delivered=0`；失败形态为 `heartbeat 输出不是结构化 JSON` 72 条、`max_iterations_exceeded:10` 9 条、未知状态 3 条、缺少状态 1 条。日志中 15:00 CST 附近可见 Tavily 9 个 key 均因额度或鉴权被拒绝、以及 heartbeat `notification_prefs` 参数错误，但这些错误未进入用户可见 assistant final，且仍对应已知 heartbeat 结构化状态退化 / 迭代耗尽旧信号；本轮不因重复信号新增缺陷或从 `Fixed` 回退。
 - 本轮 11:03 CST 确认活跃 P1 `Feishu 直达定时任务生成完成后仍在发送阶段落成 HTTP 400 Bad Request` 继续复发：07:02-11:02 CST 日志中 `hone-console-page-prod.log` 在 08:30:57 / 08:31:09 CST 连续记录 event-engine Feishu digest sink `channel digest sink failed, falling back to log`，Feishu 返回 `HTTP 400 Bad Request` / `99992361 open_id cross app`。同窗 Feishu direct、Web direct、Discord direct 与普通 scheduler 均有 assistant final 或 `completed + sent + delivered=1` 收口，说明不是 Feishu 全局不可用，而是 event-engine sink 仍会在某类 direct actor 目标上选到跨 app `open_id`。已有 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)，不重复创建。
 - 本轮 11:03 CST 确认活跃 P2 `Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice` 继续复发：07:02-11:02 CST 普通 scheduler 19 条 `completed + sent + delivered=1` 中 3 条命中 `detail_json.scheduler.commodity_causality_guarded=true`，且三条均为非商品主任务：`Hone_AI_Morning_Briefing`、`早9点市场复盘(XME及加密ETF)`、`每日美股降息概率推送`（`run_id=35369/35391/35416`）。原始完整早报 / 市场复盘 / 降息概率报告被全量替换成原油 / 大宗商品安全提示并仍记已送达；该证据补充到原缺陷文档，不新建重复缺陷，严重等级仍为 P2，状态保持 `New`。
 - 本轮 11:03 CST 未发现新的独立缺陷。07:02-11:02 CST 按消息时间共有 34 个 user turn 与 35 个 assistant final；多出的 1 条 assistant final 是 07:00 scheduler 结果落在窗口内。assistant final 污染扫描未命中空回复、`/Users/`、`data/agent-sandboxes`、`~/.codex`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、`reasoning_content`、`<think>`、provider 原始 `Param Incorrect` / `quota exhausted` / `Resource temporarily unavailable`、`panic`、`index out of bounds`、`HTTP 400 Bad Request` 或 `open_id cross app`；最近四小时无非文档代码提交。
