@@ -3,7 +3,7 @@
 - title: Active Bug Burn-down 2026-04-28
 - status: in_progress
 - created_at: 2026-04-28
-- updated_at: 2026-05-28 03:11 CST
+- updated_at: 2026-05-29 00:13 CST
 - owner: Codex
 - related_files:
   - `docs/bugs/README.md`
@@ -34,6 +34,7 @@ Clear the current active bug queue as far as software changes can responsibly do
 
 ## Progress
 
+- 2026-05-29 00:13: Reconciled the active queue after `a78d3f2e fix: harden event digest and commodity guards` landed on `origin/main`. Current HEAD already covers both remaining active bugs: Feishu event digest `open_id cross app` now invalidates direct open_id cache and retries after `99992361`, while scheduler commodity guard skips broad-market review samples that only mention oil as a secondary risk variable. Verified `cargo test -p hone-event-engine feishu --lib -- --nocapture` and `cargo test -p hone-channels commodity_guard_ --lib -- --nocapture`; `docs/bugs/README.md` active queue is back to 0. This run did not require a new code patch because the code fix was already present; it synchronized the ledger and issue follow-up state.
 - 2026-05-28 03:11: Re-closed the reopened P1 event-engine Feishu direct digest `open_id cross app` regression by restoring the intended “all stable contacts resolve to one current-app open_id” contract end-to-end: Web API now forwards every stable direct contact target per actor, and `FeishuSink` now merges repeated actor entries instead of overwriting them. The same run also closed the active P2 heartbeat stale gold-price trigger by suppressing `JsonTriggered` deliveries whose current/latest-price message carries an explicit date older than the current Beijing date. Targeted `hone-event-engine` / `hone-web-api` / `hone-channels` tests and `cargo check -p hone-event-engine -p hone-web-api -p hone-channels --tests` passed. The remaining active bug is the scheduler commodity-guard false positive; current local regressions already pass, so the next run needs a live sample shape that still reproduces before making another code change.
 - 2026-04-28: Started from a clean `main...origin/main` workspace, then pulled latest before the burn-down.
 - 2026-04-28: Closed 6 active bugs with code changes and moved them to `Fixed` in `docs/bugs/README.md`:

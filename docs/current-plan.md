@@ -1,6 +1,6 @@
 # Current Plan Index
 
-最后更新：2026-05-28
+最后更新：2026-05-29
 状态：有 7 个活跃任务
 
 ## 说明
@@ -23,7 +23,7 @@
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/active-bug-burn-down-2026-04-28.md`
-  - 摘要：集中清理 `docs/bugs/README.md` 活跃缺陷；2026-05-28 已收口 heartbeat 金价阈值旧日期价格误触发，当前活跃待修复队列为空
+  - 摘要：集中清理 `docs/bugs/README.md` 活跃缺陷；2026-05-29 已复核当前 HEAD 覆盖 Feishu event digest open_id 与 scheduler commodity guard 两条剩余活跃项，当前活跃待修复队列为空
 - **Chart Visualization Skill 与多通道 PNG 投递**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/chart-visualization-skill.md`
