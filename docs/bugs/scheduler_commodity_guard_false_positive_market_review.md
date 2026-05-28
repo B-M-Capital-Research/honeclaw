@@ -6,6 +6,24 @@
 - **状态**: Fixed
 - **GitHub Issue**: 无，当前不是 P1。
 
+## 复发记录（2026-05-28 23:03 CST）
+
+- 最近四小时真实窗口继续确认同一 scheduler 出站 guard false positive 活跃且影响范围扩大：`2026-05-28 19:02-23:02 CST` 普通 scheduler 共有 36 条 `completed + sent + delivered=1`，其中 11 条命中 `detail_json.scheduler.commodity_causality_guarded=true`。
+- 11 条 guard 命中里，`Oil_Price_Monitor_Premarket` 是专门原油任务，属于预期商品 guard；其余 10 条是美股大盘晚间/温度/风控/盘前宏观/纳斯达克盘前/AI 产业链推演/盘前推演类非商品主任务，原始完整市场分析被全量替换成“本轮原油/大宗商品播报包含未完成同窗来源核验...”安全提示并仍记已送达。
+- `data/sessions.sqlite3` -> `cron_job_runs` 关键样本：
+  - `run_id=35736`，`job_name=美股大盘晚间风控简报`，`executed_at=2026-05-28T20:01:56.422672+08:00`，`completed + sent + delivered=1`，`detail_json.scheduler.commodity_causality_guarded=true`。`raw_preview` 是美股盘前、PCE / GDP / 伊朗局势、油价和利率扰动的广义风控简报，不是原油或大宗商品播报。
+  - `run_id=35745`，`job_name=每日美股大盘温度检查`，`executed_at=2026-05-28T20:01:58.579781+08:00`，同样被替换。原始正文是美股盘前风险偏好、AI 主线、PCE 数据和追涨赔率分析。
+  - `run_id=35738`，`job_name=每日美股大盘晚间复盘`，`executed_at=2026-05-28T20:01:59.995986+08:00`，同样被替换。原始正文是纳指、标普、VIX、Fear & Greed 和 AI 主线的市场复盘。
+  - `run_id=35744`，`job_name=每日20点美股大盘风控简报`，`executed_at=2026-05-28T20:02:16.823275+08:00`，同样被替换。
+  - `run_id=35743`，`job_name=每日美股大盘风险简报`，`executed_at=2026-05-28T20:03:30.231740+08:00`，同样被替换。
+  - `run_id=35768`，`job_name=美股纳斯达克盘前简报`，`executed_at=2026-05-28T20:32:37.360273+08:00`，同样被替换。
+  - `run_id=35776`，`job_name=美股盘后AI及高景气产业链推演`，`executed_at=2026-05-28T20:46:57.811055+08:00`，同样被替换。原始正文是 AI 硬件、CPO、PCB、服务器、液冷电源与美股盘前映射分析，不是商品播报。
+  - `run_id=35785`，`job_name=晚9点盘前推演(XME及加密ETF)`，`executed_at=2026-05-28T21:02:38.423857+08:00`，同样被替换。
+  - `run_id=35793`，`job_name=OWALERT_PreMarket`，`executed_at=2026-05-28T21:02:42.106350+08:00`，同样被替换。
+  - `run_id=35818`，`job_name=每日美股大盘风控简报`，`executed_at=2026-05-28T21:46:35.850883+08:00`，同样被替换。
+- `response_preview` / `detail_json.scheduler.deliver_preview` 均被替换为“本轮未保留原正文中的价格或归因句；请等待下一轮核验或手动查询交易所/官方数据。”，导致用户收到的不是市场简报主体内容。
+- 这是既有缺陷的同一根因 / 同一出站 guard 链路，不新建重复文档；严重等级仍为 P2，状态保持 `New`。修复侧应继续把上述 20:00-21:45 的大盘、风控、纳斯达克盘前、AI 产业链推演与 OWALERT 类任务作为非商品主任务回归样本。
+
 ## 复发记录（2026-05-28 19:03 CST）
 
 - 最近四小时真实窗口继续确认同一 scheduler 出站 guard false positive 活跃：`2026-05-28 15:01-19:02 CST` 普通 scheduler 仅 1 条 `completed + sent + delivered=1`，且该条命中 `detail_json.scheduler.commodity_causality_guarded=true`。
