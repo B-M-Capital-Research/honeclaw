@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-29 03:04 CST
+最后更新：2026-05-29 04:06 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -21,6 +21,7 @@
 - Later / 待复现：10
 - 已修复 / 已关闭：113
 - 历史分析 / 部分止血：5
+- 本轮 04:06 CST Daily macOS build 默认 SSH 拉取再次失败：工作区干净，`HEAD=f2d3204b`、本地 upstream tracking ref 为 `ccf20a21`，但默认 SSH `github.com:22` 超时，SSH-over-443 `ssh.github.com:443` 无路由，未继承代理的 HTTPS `github.com:443` 75 秒后连接失败；随后显式使用系统 HTTP(S) 代理 `127.0.0.1:1082` 通过 HTTPS fetch/rebase 到远端 `51bad5b2`，并完成 `.app` / `.dmg` 打包与隔离 smoke。既有 P3 文档已补证，状态仍按默认传输/代理继承风险保持 `Later`。
 - 本轮 03:04 CST 未发现新的独立缺陷，也未发现严重等级变化。23:03-03:03 CST 按消息时间共有 28 个 user turn 与 31 个 assistant final；Feishu / Web direct 会话均无 user-heavy 未收口 session，普通 scheduler 5 条 Feishu `completed + sent + delivered=1`。assistant final 污染扫描未命中空回复、`/Users/`、`data/agent-sandboxes`、`~/.codex`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、`reasoning_content`、`<think>`、provider 原始 `Param Incorrect` / `quota exhausted` / `Resource temporarily unavailable`、`panic`、`index out of bounds`、`HTTP 400 Bad Request` 或 `open_id cross app`；最近四小时无非文档代码提交。
 - 本轮 03:04 CST 确认活跃 P1 `Feishu 直达定时任务生成完成后仍在发送阶段落成 HTTP 400 Bad Request` 继续复发：23:03-03:03 CST `hone-console-page-prod.log` 在 23:23 / 02:37 CST 记录 event-engine Feishu sink `channel sink failed, falling back to log`，Feishu 返回 `HTTP 400 Bad Request` / `99992361 open_id cross app`；同窗 Feishu direct、Web direct 与普通 scheduler 均有 assistant final 或 `completed + sent + delivered=1` 收口，说明不是 Feishu 全局不可用，而是 event-engine sink 仍会在某类目标上选到跨 app `open_id`。已有 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)，本轮不重复创建。
 - 本轮 03:04 CST 未观察到活跃 P2 `Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice` 新复发：23:03-03:03 CST 普通 scheduler 5 条 Feishu `completed + sent + delivered=1`，均未见 `detail_json.scheduler.commodity_causality_guarded=true`。该缺陷因既有真实复发证据仍保持 `New`，但本窗不补充新证据、不新增重复文档。
@@ -356,7 +357,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Daily macOS build 无法从 GitHub 拉取最新 main | P3 | Later | 2026-05-27 04:06 复现：默认 SSH 22、SSH-over-443、HTTPS 443 均超时，当前 shell 无 HTTP(S) proxy 且无 `gh` CLI；无法确认远端最新 `main`，未执行打包/smoke。问题继续归类为外部网络/出口阻塞，待同机每日自动化恢复可用传输方式后重跑。无关联 GitHub Issue | [daily_macos_build_github_unreachable.md](./daily_macos_build_github_unreachable.md) |
+| Daily macOS build 无法从 GitHub 拉取最新 main | P3 | Later | 2026-05-29 04:06 复现：默认 SSH 22 超时、SSH-over-443 无路由、未继承代理的 HTTPS 443 连接失败；显式使用系统代理 `127.0.0.1:1082` 后可通过 HTTPS fetch/rebase 并完成本轮打包/smoke。问题继续归类为默认传输/代理继承风险。无关联 GitHub Issue | [daily_macos_build_github_unreachable.md](./daily_macos_build_github_unreachable.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | Later | 2026-05-08 11:06 当前证据集中在 `Invalid bot token`、旧进程启动锁与 Telegram `GetUpdates` 网络失败，依赖外部凭据/网络/旧运行态；当前机器不再作为生产机器，本轮不针对单次外部错误写特殊兼容。若有效 token + 干净启动锁 + 可达网络下仍无法监听，再改回 `New` | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
 | Feishu 定时任务在 Answer 阶段返回空/无效回复后，调度台账仍记为 `completed + sent` | P1 | Later | 2026-04-26 已把 `EMPTY_SUCCESS_FALLBACK_MESSAGE` 与 `empty_success_exhausted` 提升为失败信号；若 scheduler 仍把同类 fallback 记为完成再改回 `New` | [feishu_scheduler_empty_reply_false_success.md](./archive/feishu_scheduler_empty_reply_false_success.md) |
 | Feishu 出站 `send/update message` 请求传输失败，定时任务和直聊回复都已生成但无法送达 | P1 | Later | 2026-04-26 已为 Feishu send/reply/update 出站请求补 3 次短重试，仅吸收传输错误、`429` 与 `5xx`；若真实出站窗口继续复现再改回 `New` | [feishu_send_message_request_transport_failure.md](./archive/feishu_send_message_request_transport_failure.md) |
