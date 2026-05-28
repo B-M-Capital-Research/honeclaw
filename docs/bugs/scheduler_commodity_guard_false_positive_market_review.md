@@ -6,6 +6,17 @@
 - **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
 
+## 复发记录（2026-05-29 07:03 CST）
+
+- 最近四小时真实窗口继续确认同一 scheduler 出站 guard false positive 活跃：`2026-05-29 03:02-07:02 CST` 普通 scheduler 共有 8 条 `completed + sent + delivered=1`，其中 4 条命中 `detail_json.scheduler.commodity_causality_guarded=true`。
+- 4 条 guard 命中里，`Oil_Price_Monitor_Closing` 是专门原油任务，属于预期商品 guard；其余 3 条为非商品主任务，原始完整市场 / 盘后 / 收盘复盘被全量替换成“本轮原油/大宗商品播报包含未完成同窗来源核验...”安全提示并仍记已送达。
+- `data/sessions.sqlite3` -> `cron_job_runs` 关键样本：
+  - `run_id=36034`，`job_name=OWALERT_PostMarket`，`executed_at=2026-05-29T04:32:30.733047+08:00`，`actor_channel=feishu`，`completed + sent + delivered=1`，`detail_json.scheduler.commodity_causality_guarded=true`。
+  - `run_id=36064`，`job_name=美股收盘后跨市场复盘`，`executed_at=2026-05-29T05:32:15.701184+08:00`，`actor_channel=feishu`，同样被替换。
+  - `run_id=36074`，`job_name=每日美股盘后收盘复盘`，`executed_at=2026-05-29T06:02:35.995727+08:00`，`actor_channel=feishu`，同样被替换。
+- `response_preview` 均被替换为“本轮未保留原正文中的价格或归因句；请等待下一轮核验或手动查询交易所/官方数据。”，导致用户收到的不是盘后 / 收盘复盘主体内容。
+- 这是既有缺陷的同一根因 / 同一出站 guard 链路，不新建重复文档；严重等级仍为 P2，状态保持 `New`。修复侧应继续把 `OWALERT_PostMarket`、`美股收盘后跨市场复盘`、`每日美股盘后收盘复盘` 作为非商品主任务回归样本。
+
 ## 复发记录（2026-05-28 23:03 CST）
 
 - 最近四小时真实窗口继续确认同一 scheduler 出站 guard false positive 活跃且影响范围扩大：`2026-05-28 19:02-23:02 CST` 普通 scheduler 共有 36 条 `completed + sent + delivered=1`，其中 11 条命中 `detail_json.scheduler.commodity_causality_guarded=true`。
