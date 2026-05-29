@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-29 16:09 CST
+最后更新：2026-05-29 16:35 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,12 +17,13 @@
 
 ## 当前概览
 
-- 活跃待修复：1
+- 活跃待修复：0
 - Later / 待复现：10
-- 已修复 / 已关闭：114
+- 已修复 / 已关闭：115
 - 历史分析 / 部分止血：5
+- 本轮 16:35 CST `bug-2` 已修复 P3 `Heartbeat 触发提醒把实际执行时间写成错误的北京时间`：heartbeat prompt 注入本轮权威北京时间检查时间，并要求 triggered message 使用该时间；出站前新增轻量归一化，若正文把 `北京时间 HH:MM ...监控/检查/心跳/任务触发` 写成与 scheduler 当前北京时间不一致的时间，会归一到权威检查时间并在 metadata 记录原始时间。验证 `cargo test -p hone-channels heartbeat_normalizes_conflicting_beijing_trigger_time --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture` 通过；无关联 GitHub Issue。
 - 本轮 15:03 CST 新增 P3 `Heartbeat 触发提醒把实际执行时间写成错误的北京时间`：11:02-15:03 CST 按消息时间共有 47 个 user turn 与 47 个 assistant final，最新活跃会话均已 assistant final 收口；普通 scheduler 2 条 `completed + sent + delivered=1`，均未见 `detail_json.scheduler.commodity_causality_guarded=true`；heartbeat 1 条 `completed + sent + delivered=1` 中，Web `AI与科技持仓观察关键事件心跳提醒`（`run_id=36255`）实际 `executed_at=2026-05-29T11:31:32+08:00`，但送达正文开头写成 `北京时间 04:00 盘后监控触发`。该问题不影响执行、落库、投递主链路，也未给出错误交易指令，因此按 P3 质量 / 时间口径问题建档。assistant final 污染扫描未命中空回复、本机绝对路径、`rawOutput`、`tool_call`、`session/update`、`reasoning_content`、`<think>`、provider 原始错误、`HTTP 400 Bad Request` 或 `open_id cross app`；最近四小时无非文档代码提交。
-- 本轮 16:09 CST `bug-2` 复核 11:03 活跃表项：`Feishu 直达定时任务生成完成后仍在发送阶段落成 HTTP 400 Bad Request` 与 `Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice` 的入口文档均已是 `Fixed`，当前 HEAD 已有本地可验证修复与回归覆盖；本轮不再以当前机器旧/非生产运行态样本作为重新打开依据。验证 `cargo test -p hone-web-api feishu_direct_actor_targets_ --lib -- --nocapture`、`cargo test -p hone-event-engine feishu --lib -- --nocapture`、`cargo test -p hone-channels commodity_guard_ --lib -- --nocapture` 均通过。同步修正两项不再占活跃修复队列，当前活跃队列仅保留 15:03 CST 新增的 P3 heartbeat 时间口径问题；Feishu 条目继续关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)。
+- 本轮 16:09 CST `bug-2` 复核 11:03 活跃表项：`Feishu 直达定时任务生成完成后仍在发送阶段落成 HTTP 400 Bad Request` 与 `Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice` 的入口文档均已是 `Fixed`，当前 HEAD 已有本地可验证修复与回归覆盖；本轮不再以当前机器旧/非生产运行态样本作为重新打开依据。验证 `cargo test -p hone-web-api feishu_direct_actor_targets_ --lib -- --nocapture`、`cargo test -p hone-event-engine feishu --lib -- --nocapture`、`cargo test -p hone-channels commodity_guard_ --lib -- --nocapture` 均通过。同步修正两项不再占活跃修复队列；Feishu 条目继续关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)。
 - 本轮 11:03 CST 未发现新的独立缺陷，但确认两个既有活跃缺陷继续复发。07:01-11:02 CST 按消息时间共有 45 个 user turn 与 46 个 assistant final，最新活跃会话均以 assistant final 收口；普通 scheduler 19 条 `completed + sent + delivered=1`。assistant final 污染扫描未命中空回复、`/Users/`、`data/agent-sandboxes`、`~/.codex`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、`reasoning_content`、`<think>`、provider 原始 `Param Incorrect` / `quota exhausted` / `Resource temporarily unavailable`、`panic`、`index out of bounds`、`HTTP 400 Bad Request` 或 `open_id cross app`；最近四小时无非文档代码提交。
 - 本轮 11:03 CST 确认 P1 `Feishu 直达定时任务生成完成后仍在发送阶段落成 HTTP 400 Bad Request` 继续复发：07:01-11:02 CST `hone-console-page-prod.log` 在 08:31:02 / 08:31:03 CST 记录 event-engine Feishu digest sink `channel digest sink failed, falling back to log`，Feishu 返回 `HTTP 400 Bad Request` / `99992361 open_id cross app`；同窗 Feishu direct、Web direct、Discord group 与普通 scheduler 均有 assistant final 或 `completed + sent + delivered=1` 收口，说明不是 Feishu 全局不可用，而是 event-engine sink 仍会在某类 direct actor 目标上选到跨 app `open_id`。已有 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)，本轮不重复创建。
 - 本轮 11:03 CST 确认活跃 P2 `Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice` 继续复发：07:01-11:02 CST 普通 scheduler 19 条 `completed + sent + delivered=1` 中 3 条命中 `detail_json.scheduler.commodity_causality_guarded=true`，且三条均为非商品主任务：`美股AI产业链盘后报告`、`早9点市场复盘(XME及加密ETF)`、`每日美股降息概率推送`（`run_id=36158/36181/36206`）。这些任务原始完整盘后 / 市场 / 降息概率报告被全量替换成原油 / 大宗商品安全提示并仍记已送达；同窗 09:13 CST 用户在相关 Feishu 会话反馈“没看到 重新发”，进一步说明用户可见内容与台账成功态不一致。该证据补充到原缺陷文档，不新建重复缺陷，严重等级仍为 P2，状态保持 `New`，无关联 GitHub Issue。
@@ -363,7 +364,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Heartbeat 触发提醒把实际执行时间写成错误的北京时间 | P3 | New | 2026-05-29 15:03 新增：Web heartbeat `AI与科技持仓观察关键事件心跳提醒`（`run_id=36255`）实际 11:31 CST 执行并送达，但正文写成 `北京时间 04:00 盘后监控触发`；不影响执行 / 落库 / 投递主链路，按 P3 时间口径质量问题跟踪。无关联 GitHub Issue | [scheduler_heartbeat_trigger_time_mismatch.md](./scheduler_heartbeat_trigger_time_mismatch.md) |
+| 当前无活跃待修复缺陷 | - | - | 2026-05-29 16:35 `bug-2` 已清理当前活跃队列；下一轮从新发现或重新打开的 `New` / `Approved` / `Fixing` 条目继续。 | - |
 
 ## Later / 待复现
 
@@ -384,6 +385,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Heartbeat 触发提醒把实际执行时间写成错误的北京时间 | P3 | Fixed | 2026-05-29 16:35 已修复 heartbeat triggered message 的北京时间触发口径漂移：prompt 注入权威检查时间，出站前将明显冲突的 `北京时间 HH:MM ...监控/检查/心跳/任务触发` 归一到 scheduler 当前北京时间并记录 metadata。验证 `cargo test -p hone-channels heartbeat_normalizes_conflicting_beijing_trigger_time --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture` 通过。无关联 GitHub Issue | [scheduler_heartbeat_trigger_time_mismatch.md](./scheduler_heartbeat_trigger_time_mismatch.md) |
 | Feishu 直达定时任务生成完成后仍在发送阶段落成 `HTTP 400 Bad Request` | P1 | Fixed | 2026-05-29 16:09 复核当前 HEAD 已覆盖 event-engine Feishu direct/digest sink 的 current-app `open_id` 解析链路：direct actor contact targets 会合并 cron 与 session metadata，并在 primary session listing 失败时回退 JSON sessions。验证 `cargo test -p hone-web-api feishu_direct_actor_targets_ --lib -- --nocapture`、`cargo test -p hone-event-engine feishu --lib -- --nocapture` 通过；本轮不再以当前机器旧/非生产运行态样本重新打开。关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
 | Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice | P2 | Fixed | 2026-05-29 16:09 复核当前 HEAD 已覆盖广义市场、盘前/盘后、AI 产业链和降息概率等非商品主任务 false positive；`cargo test -p hone-channels commodity_guard_ --lib -- --nocapture` 通过，12 条 commodity guard 回归均通过。本轮不再以当前机器旧/非生产运行态样本重新打开。无关联 GitHub Issue | [scheduler_commodity_guard_false_positive_market_review.md](./scheduler_commodity_guard_false_positive_market_review.md) |
 | Heartbeat 金价阈值提醒把旧日期价格当作当前触发价送达 | P2 | Fixed | 2026-05-28 03:11 heartbeat `JsonTriggered` 出站前新增旧日期价格 guard：当前/最新价格触发文案若含早于当前北京时间的显式价格日期，则抑制送达并记 `failure_kind=stale_price_timestamp`。验证 `cargo test -p hone-channels heartbeat_trigger_detects_stale_price_date_in_current_price_message --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_trigger_allows_same_day_price_date --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_execution_suppresses_stale_price_timestamp_trigger --lib -- --nocapture`、`cargo check -p hone-event-engine -p hone-web-api -p hone-channels --tests` 通过。无关联 GitHub Issue | [scheduler_heartbeat_gold_stale_price_trigger.md](./scheduler_heartbeat_gold_stale_price_trigger.md) |

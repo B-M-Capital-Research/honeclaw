@@ -4,7 +4,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use chrono::{Datelike, NaiveDate};
+use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, Timelike};
 use hone_scheduler::SchedulerEvent;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -79,6 +79,13 @@ static RE_HEARTBEAT_PRICE_TIMESTAMP_DATE: LazyLock<regex::Regex> = LazyLock::new
 });
 
 const HEARTBEAT_PRICE_TIMESTAMP_MAX_AGE_DAYS: i64 = 3;
+
+static RE_HEARTBEAT_BEIJING_TRIGGER_TIME: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r"北京时间\s*(?P<hour>\d{1,2})(?:[:：点时](?P<minute>\d{1,2})?)?(?:分)?(?P<tail>\s*[^\n。；;]{0,24}(?:监控|检查|心跳|任务|本轮)[^\n。；;]{0,16}触发)",
+    )
+    .expect("valid heartbeat beijing trigger time regex")
+});
 
 static RE_HEARTBEAT_FACT_TOKEN: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
@@ -646,9 +653,58 @@ fn heartbeat_stale_price_timestamp(text: &str, reference_date: NaiveDate) -> Opt
         })
 }
 
-fn heartbeat_reference_date_now() -> NaiveDate {
+fn heartbeat_reference_now_beijing() -> DateTime<FixedOffset> {
     let beijing_tz = chrono::FixedOffset::east_opt(8 * 3600).expect("valid beijing offset");
-    chrono::Utc::now().with_timezone(&beijing_tz).date_naive()
+    chrono::Utc::now().with_timezone(&beijing_tz)
+}
+
+fn heartbeat_check_time_text(now: DateTime<FixedOffset>) -> String {
+    format!(
+        "{:04}-{:02}-{:02} {:02}:{:02}",
+        now.year(),
+        now.month(),
+        now.day(),
+        now.hour(),
+        now.minute()
+    )
+}
+
+fn heartbeat_current_check_time_text() -> String {
+    heartbeat_check_time_text(heartbeat_reference_now_beijing())
+}
+
+fn normalize_heartbeat_beijing_trigger_time(
+    text: &str,
+    reference_now: DateTime<FixedOffset>,
+) -> (String, Option<String>) {
+    let reference_hour = reference_now.hour();
+    let reference_minute = reference_now.minute();
+    let mut normalized_from = None;
+    let normalized = RE_HEARTBEAT_BEIJING_TRIGGER_TIME
+        .replace_all(text, |captures: &regex::Captures<'_>| {
+            let hour = captures
+                .name("hour")
+                .and_then(|matched| matched.as_str().parse::<u32>().ok());
+            let minute = captures
+                .name("minute")
+                .and_then(|matched| matched.as_str().parse::<u32>().ok())
+                .unwrap_or(0);
+            let Some(hour) = hour else {
+                return captures[0].to_string();
+            };
+            if hour >= 24 || minute >= 60 || (hour == reference_hour && minute == reference_minute)
+            {
+                return captures[0].to_string();
+            }
+            normalized_from.get_or_insert_with(|| format!("{hour:02}:{minute:02}"));
+            let tail = captures
+                .name("tail")
+                .map(|m| m.as_str())
+                .unwrap_or_default();
+            format!("北京时间 {reference_hour:02}:{reference_minute:02}{tail}")
+        })
+        .into_owned();
+    (normalized, normalized_from)
 }
 
 /// 直接从 `notif_prefs_dir/{actor_slug}.json` 读 actor 的 quiet_hours + timezone。
@@ -1125,13 +1181,39 @@ fn heartbeat_execution_from_content(
     content: &str,
     heartbeat_model: &str,
 ) -> ScheduledTaskExecution {
-    heartbeat_execution_from_content_at(content, heartbeat_model, heartbeat_reference_date_now())
+    heartbeat_execution_from_content_at_beijing(
+        content,
+        heartbeat_model,
+        heartbeat_reference_now_beijing(),
+    )
 }
 
 fn heartbeat_execution_from_content_at(
     content: &str,
     heartbeat_model: &str,
     reference_date: NaiveDate,
+) -> ScheduledTaskExecution {
+    heartbeat_execution_from_content_internal(content, heartbeat_model, reference_date, None)
+}
+
+fn heartbeat_execution_from_content_at_beijing(
+    content: &str,
+    heartbeat_model: &str,
+    reference_now: DateTime<FixedOffset>,
+) -> ScheduledTaskExecution {
+    heartbeat_execution_from_content_internal(
+        content,
+        heartbeat_model,
+        reference_now.date_naive(),
+        Some(reference_now),
+    )
+}
+
+fn heartbeat_execution_from_content_internal(
+    content: &str,
+    heartbeat_model: &str,
+    reference_date: NaiveDate,
+    reference_now: Option<DateTime<FixedOffset>>,
 ) -> ScheduledTaskExecution {
     let raw_preview = truncate_for_log(content.trim(), 280);
     let raw_chars = content.chars().count();
@@ -1164,7 +1246,7 @@ fn heartbeat_execution_from_content_at(
             session_id: None,
         },
         HeartbeatOutcome::Deliver(message) => {
-            let sanitized_message = sanitize_scheduler_delivery_text(&message);
+            let mut sanitized_message = sanitize_scheduler_delivery_text(&message);
             if sanitized_message.trim().is_empty() {
                 return ScheduledTaskExecution {
                     should_deliver: false,
@@ -1182,7 +1264,13 @@ fn heartbeat_execution_from_content_at(
                     session_id: None,
                 };
             }
-            let deliver_preview = truncate_for_log(message.trim(), 200);
+            let normalized_beijing_trigger_time = reference_now.and_then(|reference_now| {
+                let (normalized, normalized_from) =
+                    normalize_heartbeat_beijing_trigger_time(&sanitized_message, reference_now);
+                sanitized_message = normalized;
+                normalized_from
+            });
+            let deliver_preview = truncate_for_log(sanitized_message.trim(), 200);
             if heartbeat_near_threshold_without_crossing(&sanitized_message) {
                 return ScheduledTaskExecution {
                     should_deliver: false,
@@ -1232,6 +1320,8 @@ fn heartbeat_execution_from_content_at(
                     "starts_with_json": starts_with_json,
                     "raw_preview": raw_preview,
                     "deliver_preview": deliver_preview,
+                    "beijing_trigger_time_normalized": normalized_beijing_trigger_time.is_some(),
+                    "original_beijing_trigger_time": normalized_beijing_trigger_time,
                 }),
                 session_id: None,
             }
@@ -2321,6 +2411,7 @@ fn build_scheduled_prompt_with_recovered_local_context(
 
 pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
     if event.heartbeat {
+        let check_time = heartbeat_current_check_time_text();
         let history_section = if event.last_delivered_previews.is_empty() {
             String::new()
         } else {
@@ -2339,12 +2430,13 @@ pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
         return format!(
             "[心跳检测任务] 任务名称：{}。\n\
 你正在执行一个每 30 分钟运行一次的后台条件检查。\n\
+本轮权威检查时间（北京时间）：{}。\n\
 请使用可用工具检查用户设置的触发条件是否已经满足。\n\
 \n\
 规则：\n\
 1. 如果条件尚未满足，优先只输出 `{{\"status\":\"noop\"}}`；为兼容旧行为，也允许只输出 `{{}}`。\n\
 2. 如果条件已满足，只输出一段 JSON：`{{\"status\":\"triggered\",\"message\":\"...\"}}`。\n\
-3. `message` 必须是一条可以直接发给用户的提醒消息，包含：满足的条件、关键数据、检查时间。\n\
+3. `message` 必须是一条可以直接发给用户的提醒消息，包含：满足的条件、关键数据、检查时间；检查时间必须使用上方“本轮权威检查时间（北京时间）”，不得自行换算或推断另一个北京时间。\n\
 4. 不要创建新的定时任务，也不要修改现有任务。\n\
 5. 不要输出 Markdown 代码块，不要输出额外解释，不要暴露任何内部控制标记。\n\
 6. 如果你不确定是否满足条件，或者输出格式不是严格 JSON，就必须返回 noop，不允许发送自由文本。\n\
@@ -2352,6 +2444,7 @@ pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
 6b. 如果你发现用户条件、交易动作边界、来源归因或输出契约之间存在冲突，不要解释冲突、不要复述规则、不要输出空文本；必须返回 `{{\"status\":\"noop\"}}`，除非你能用合规的 `triggered` JSON 只报告触发事实和条件化风险提示。\n\
 6c. 严禁输出工具配置、任务配置、画像建档说明、`set_immediate_kinds`、`cron_job` 或任何“已配置/将创建监控”的说明；如果本轮误入配置/建档/任务治理路径，必须返回 `{{\"status\":\"noop\"}}`。\n\
 7. 时间一致性约束：对于发射、财报、业绩会等有明确时间窗口的事件，必须先判断当前时间是否已越过事件预定时间，才能输出完成态结论。若当前时间早于事件计划时间，必须返回 noop，不允许把未来计划误报成已完成。\n\
+7a. 时间口径命名约束：`message` 中写“北京时间 HH:MM 触发/监控触发/检查触发”时，只能使用上方权威检查时间；市场时段、数据时间或美东盘前/盘后只能标注为“数据时间”“美东时间”“交易时段”，不能写成另一个“北京时间触发”。\n\
 8. 价格时间口径约束：引用股价、金价、汇率或商品价格时，必须核实价格的时间戳。价格阈值 / 跌破 / 突破类 heartbeat 只有在最新可得价格属于当前检查窗口或最近可解释交易窗口时才能 triggered；若工具只返回明显旧日期、缺少价格时间戳，或无法证明该价格仍是最新可得价格，必须返回 noop，不允许把旧价格包装成当前触发依据。\n\
 9. 价格阈值口径约束：除非用户条件里明确写的是“日内最高/最低/振幅/区间波动”，否则“盘中涨跌幅超过 X%”一律按最新可得价格相对昨收的涨跌幅判断；不允许用日内高点相对昨收、日内低点相对昨收，或高低点振幅去替代当前涨跌幅。\n\
 10. 若最新可得价格相对昨收尚未达到阈值，但日内高点、日内低点或盘中振幅达到阈值，且任务没有明确要求这些口径，本轮必须返回 noop，不允许触发。\n\
@@ -2361,7 +2454,7 @@ pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
 14. 工具预算约束：必须以最少工具调用收口。优先复用本轮已经拿到的价格、新闻、组合和文件信息；若需要逐标的穷举或反复重复同一查询才能确认，本轮只检查最可能触发的少数候选并尽快返回 noop 或 triggered，禁止为了展示分析过程反复调用相同工具。\n\
 {}\
 \n以下是需要检查的用户条件：\n{}",
-            event.job_name, history_section, event.task_prompt
+            event.job_name, check_time, history_section, event.task_prompt
         );
     }
     let trigger_note = format!(
@@ -2821,10 +2914,11 @@ mod tests {
         guard_commodity_causality_for_event, guard_direct_trade_instruction_for_event,
         has_skip_delivery_signal, heartbeat_duplicate_preview_match,
         heartbeat_execution_from_content, heartbeat_execution_from_content_at,
-        heartbeat_execution_from_runner_error, heartbeat_runner_selection,
-        inspect_heartbeat_result, is_empty_success_fallback, is_stale_market_data_success_fallback,
-        load_actor_quiet_hours, persist_suppressed_scheduler_failure_turn,
-        rollback_skipped_scheduler_assistant_turn, sanitize_scheduler_delivery_text,
+        heartbeat_execution_from_content_at_beijing, heartbeat_execution_from_runner_error,
+        heartbeat_runner_selection, inspect_heartbeat_result, is_empty_success_fallback,
+        is_stale_market_data_success_fallback, load_actor_quiet_hours,
+        persist_suppressed_scheduler_failure_turn, rollback_skipped_scheduler_assistant_turn,
+        sanitize_scheduler_delivery_text,
     };
     use crate::HoneBotCore;
     use crate::agent_session::{AgentRunOptions, AgentRunQuotaMode};
@@ -3115,6 +3209,30 @@ mod tests {
         assert_ne!(
             execution.metadata["stale_price_timestamp_suppressed"].as_bool(),
             Some(true)
+        );
+    }
+
+    #[test]
+    fn heartbeat_normalizes_conflicting_beijing_trigger_time() {
+        let reference_now =
+            chrono::DateTime::parse_from_rfc3339("2026-05-29T11:31:32+08:00").expect("time");
+        let execution = heartbeat_execution_from_content_at_beijing(
+            r#"{"status":"triggered","message":"2026年5月29日 北京时间 04:00 盘后监控触发。已核验事实：AI 产业链出现关键事件。"}"#,
+            "MiniMax-M2.7-highspeed",
+            reference_now,
+        );
+
+        assert!(execution.should_deliver);
+        assert!(execution.error.is_none());
+        assert!(execution.content.contains("北京时间 11:31 盘后监控触发"));
+        assert!(!execution.content.contains("北京时间 04:00 盘后监控触发"));
+        assert_eq!(
+            execution.metadata["beijing_trigger_time_normalized"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(
+            execution.metadata["original_beijing_trigger_time"].as_str(),
+            Some("04:00")
         );
     }
 
@@ -3772,6 +3890,9 @@ mod tests {
         };
 
         let prompt = build_scheduled_prompt(&event);
+        assert!(prompt.contains("本轮权威检查时间（北京时间）"));
+        assert!(prompt.contains("检查时间必须使用上方"));
+        assert!(prompt.contains("时间口径命名约束"));
         assert!(prompt.contains("也允许只输出 `{}`。"));
         assert!(!prompt.contains("[[HEARTBEAT_NOOP]]"));
     }
