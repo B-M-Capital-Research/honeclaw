@@ -6,6 +6,13 @@
 - **状态**: Fixed
 - **GitHub Issue**: 无，当前不是 P1。
 
+## 复核记录（2026-05-29 16:09 CST）
+
+- `bug-2` 复核当前 HEAD 与导航页状态。当前机器已不再作为生产运行态依据；本轮不再用 11:03 的旧/非生产运行态 `commodity_causality_guarded=true` 样本重新打开本单。
+- 当前 HEAD 已覆盖广义市场、盘前/盘后、AI 产业链和降息概率等非商品主任务 false positive；专门原油 / WTI / Brent / 大宗商品任务仍保留 guard。
+- 验证：`cargo test -p hone-channels commodity_guard_ --lib -- --nocapture` 通过，12 条 commodity guard 回归均通过。
+- 状态保持 `Fixed`。后续只有在包含当前 HEAD 的运行态仍可本地复现非商品市场任务被整篇替换时，再以新证据重新打开。
+
 ## 修复记录（2026-05-29 08:08 CST）
 
 - 本轮修复最近复发的 20:00-21:45 广义市场任务 false positive：`text_is_predominantly_commodity_related(...)` 对已具备 broad-market review 上下文的正文，不再用简单半数段落/字符判断“商品占主导”，而是要求商品相关段落和字符同时达到约三分之二才允许非商品 job 因正文占比触发整篇 commodity rewrite。
