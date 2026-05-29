@@ -213,11 +213,12 @@ Runtime checks:
 hone-cli cloud doctor --ensure-schema --json
 hone-cli cloud object-bench --size-kib 256 --iterations 3 --json
 hone-cli cloud migrate --from-data-dir ./data --json
+hone-cli cloud migrate --from-data-dir ./data --quota-only --apply --json
 hone-cli cloud migrate --from-data-dir ./data --upload-oss --apply --concurrency 12 --json
 hone-cli cloud migrate --from-data-dir ./data --upload-oss --apply --reuse-existing --concurrency 4 --json
 ```
 
-The migrator uploads recognized durable files and indexes them in PG `cloud_documents`. Use the lower-concurrency `--reuse-existing` retry when proxy or OSS connections drop during a large upload. SQLite files are currently counted but skipped because they need structured row-wise import into PG. Session, quota, auth, audit, portfolio, cron, notification preference, KB, and company-profile hot-path repositories are still local until their dedicated PG-backed adapters are completed.
+The migrator uploads recognized durable files and indexes them in PG `cloud_documents`. It also imports legacy `conversation_quota/*.json` into PG; use `--quota-only --apply` for a fast idempotent quota pass before the larger object migration. Use the lower-concurrency `--reuse-existing` retry when proxy or OSS connections drop during a large upload. SQLite files are currently counted but skipped because they need structured row-wise import into PG. Session, auth, audit, portfolio, cron, notification preference, KB, and company-profile hot-path repositories are still local until their dedicated PG-backed adapters are completed; quota is PG-backed in `cloud.mode=cloud`.
 
 ## Worker Route
 

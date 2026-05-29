@@ -7,10 +7,12 @@
 - owner: Codex
 - related_files:
   - `config.example.yaml`
-  - `crates/hone-core/src/config/server.rs`
-  - `crates/hone-core/src/cloud_runtime.rs`
-  - `bins/hone-cli/src/cloud.rs`
-  - `crates/hone-tools/src/local_files.rs`
+- `crates/hone-core/src/config/server.rs`
+- `crates/hone-core/src/cloud_runtime.rs`
+- `bins/hone-cli/src/cloud.rs`
+- `memory/src/quota.rs`
+- `crates/hone-channels/src/core/bot_core.rs`
+- `crates/hone-tools/src/local_files.rs`
   - `crates/hone-channels/src/attachments/ingest.rs`
   - `crates/hone-channels/src/response_finalizer.rs`
   - `crates/hone-web-api/src/cloud_oss.rs`
@@ -36,7 +38,6 @@ Core runtime state is not fully cloud-backed yet. These paths are still local by
 
 - sessions JSON and `sessions.sqlite3`
 - public Web auth sessions in the shared SQLite DB
-- conversation quota JSON
 - LLM audit SQLite
 - portfolio JSON
 - cron definitions JSON and cron history SQLite
@@ -44,6 +45,8 @@ Core runtime state is not fully cloud-backed yet. These paths are still local by
 - generated images and KB/data artifacts
 - runtime logs
 - iMessage `chat.db` when that channel is enabled
+
+Conversation quota is no longer a local durable dependency in `cloud.mode=cloud` when PG is configured: reserve / commit / release now use PG `conversation_quota`, and the legacy JSON files are migration input / rollback evidence only.
 
 Startup now logs a redacted local-dependency summary whenever cloud runtime config is detected. If `cloud.strict_no_local_storage` or `HONE_CLOUD_STRICT_NO_LOCAL_STORAGE` is set true before PG-backed repositories are implemented, startup fails with the remaining dependency list.
 
@@ -85,10 +88,19 @@ Cloudflare R2 comparison added:
 - `hone-cli cloud object-bench --size-kib 1024 --iterations 3 --json` through proxy: Aliyun average PUT / HEAD / GET was 5594ms / 470ms / 4811ms; R2 was 3358ms / 235ms / 4921ms.
 - Conclusion for this machine: R2 should remain the runtime object store for now; Aliyun is retained as fallback because network/proxy behavior can vary.
 
+Conversation quota PG cutover added:
+
+- `HoneBotCore::new` selects `ConversationQuotaStorage::new_cloud(...)` in `cloud.mode=cloud` when PG is configured; local mode keeps the existing JSON store.
+- PG reserve / commit / release are implemented in `hone-core::cloud_runtime` against `conversation_quota`.
+- `hone-cli cloud migrate --from-data-dir ./data --quota-only --apply --json` imports legacy quota JSON into PG with a single JSONB batch upsert.
+- Live result on this machine: first apply imported 698 quota JSON rows with 366 changed / 332 skipped; second apply changed 0 / skipped 698 with 0 conflicts.
+- `hone-cli cloud doctor --ensure-schema --json` now reports `local_durable_dependency_count=9`; quota disappeared from the remaining durable local dependency list.
+- Validation: `cargo test -p hone-core cloud_runtime --lib`, `cargo test -p hone-memory quota --lib`, and `cargo check --workspace --all-targets --exclude hone-desktop` passed.
+
 ## Risks / Open Questions
 
-- PG-backed implementations still need to replace the local JSON / SQLite hot-path stores before this can honestly be called “all local removed.”
-- Some durable file surfaces now have OSS paths in cloud mode: public uploads, channel attachment ingest, generated image finalization, and local file tools. Company profile / session / quota / auth / audit / cron hot paths still need dedicated PG / OSS adapters.
+- PG-backed implementations still need to replace the remaining local JSON / SQLite hot-path stores before this can honestly be called “all local removed.”
+- Some durable file surfaces now have OSS paths in cloud mode: public uploads, channel attachment ingest, generated image finalization, and local file tools. Company profile / session / auth / audit / cron hot paths still need dedicated PG / OSS adapters; quota is the first hot-path store cut over to PG.
 - SQLite structured import is pending; do not upload `llm_audit.sqlite3` as a blob as a substitute for PG audit rows. This is now the main migration gap for historical local state.
 - The local desktop remote-backend health at `https://hone-claw.com/api/meta` was not revalidated in this slice.
 - `.env`, `config.yaml`, `data/`, logs, and runtime backend JSON must remain untracked.

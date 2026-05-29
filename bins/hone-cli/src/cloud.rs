@@ -5,8 +5,8 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use clap::{Args, Subcommand};
 use futures::{StreamExt, stream};
 use hone_core::cloud_runtime::{
-    CloudDocumentIndex, CloudPgRuntime, OssObjectStore, RuntimeRole, local_durable_dependencies,
-    sanitize_key_component, sha256_hex,
+    CloudConversationQuotaImport, CloudDocumentIndex, CloudPgRuntime, OssObjectStore, RuntimeRole,
+    local_durable_dependencies, sanitize_key_component, sha256_hex,
 };
 use hone_core::config::OssConfig;
 use hone_core::{ActorIdentity, HoneError, HoneResult};
@@ -47,6 +47,9 @@ pub(crate) struct CloudMigrateArgs {
     /// Number of concurrent object uploads. Applies only with --upload-oss --apply.
     #[arg(long, default_value_t = 6)]
     pub(crate) concurrency: usize,
+    /// Only import conversation quota JSON into PG; skip object uploads and document indexing.
+    #[arg(long = "quota-only")]
+    pub(crate) quota_only: bool,
     #[arg(long)]
     pub(crate) apply: bool,
     #[arg(long)]
@@ -109,8 +112,20 @@ struct MigrationReport {
     uploaded_objects: usize,
     reused_objects: usize,
     indexed_documents: usize,
+    changed_quota_rows: usize,
+    skipped_quota_rows: usize,
     skipped_objects: usize,
     conflicts: Vec<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct LegacyQuotaJson {
+    #[serde(default)]
+    quota_date: String,
+    #[serde(default)]
+    success_count: u32,
+    #[serde(default)]
+    in_flight: u32,
 }
 
 #[derive(Debug, Serialize)]
@@ -442,6 +457,8 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
         uploaded_objects: 0,
         reused_objects: 0,
         indexed_documents: 0,
+        changed_quota_rows: 0,
+        skipped_quota_rows: 0,
         skipped_objects: 0,
         conflicts: Vec::new(),
     };
@@ -452,6 +469,27 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
         let pg = CloudPgRuntime::from_cloud_config(&config.cloud)
             .ok_or_else(|| "Postgres 未配置，不能 apply migration".to_string())?;
         pg.ensure_schema().await.map_err(|err| err.to_string())?;
+        let quota_imports = collect_quota_imports(&candidates);
+        let quota_report = pg
+            .import_conversation_quota(&quota_imports)
+            .await
+            .map_err(|err| err.to_string())?;
+        report.changed_quota_rows = quota_report.changed_rows;
+        report.skipped_quota_rows = quota_report.skipped_rows;
+        if args.quota_only {
+            return if args.json {
+                print_json(&report)
+            } else {
+                println!(
+                    "mode={} quota_json={} changed_quota_rows={} skipped_quota_rows={}",
+                    report.mode,
+                    report.counted.quota_json,
+                    report.changed_quota_rows,
+                    report.skipped_quota_rows
+                );
+                Ok(())
+            };
+        }
         let oss = if args.upload_oss {
             Some(
                 OssObjectStore::from_config(&config.cloud.oss)
@@ -514,11 +552,47 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
             report.reused_objects,
             report.indexed_documents
         );
+        println!(
+            "quota_json={} changed_quota_rows={} skipped_quota_rows={}",
+            report.counted.quota_json, report.changed_quota_rows, report.skipped_quota_rows
+        );
         for conflict in &report.conflicts {
             println!("conflict: {conflict}");
         }
         Ok(())
     }
+}
+
+fn collect_quota_imports(candidates: &[MigrationCandidate]) -> Vec<CloudConversationQuotaImport> {
+    candidates
+        .iter()
+        .filter(|candidate| candidate.kind == "quota")
+        .filter_map(|candidate| {
+            let actor_storage_key = candidate.actor_storage_key.clone()?;
+            let text = std::fs::read_to_string(&candidate.path).ok()?;
+            let parsed = serde_json::from_str::<LegacyQuotaJson>(&text).ok()?;
+            let quota_date = if parsed.quota_date.trim().is_empty() {
+                candidate
+                    .path
+                    .file_stem()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or_default()
+                    .to_string()
+            } else {
+                parsed.quota_date
+            };
+            if quota_date.trim().is_empty() {
+                return None;
+            }
+            Some(CloudConversationQuotaImport {
+                actor_storage_key,
+                quota_date,
+                success_count: parsed.success_count,
+                in_flight: parsed.in_flight,
+                limit: parsed.success_count.saturating_add(parsed.in_flight),
+            })
+        })
+        .collect()
 }
 
 struct MigrationOneResult {
@@ -707,7 +781,7 @@ fn classify_path(rel: &str) -> Option<Classification> {
         _ => "application/octet-stream",
     };
     let parts = rel.split('/').collect::<Vec<_>>();
-    let actor = parts
+    let mut actor = parts
         .iter()
         .find_map(|part| part.strip_prefix("Actor_"))
         .and_then(ActorIdentity::from_session_id)
@@ -728,6 +802,9 @@ fn classify_path(rel: &str) -> Option<Classification> {
     } else if rel.starts_with("notif_prefs/") && ext == "json" {
         "notification_prefs"
     } else if rel.starts_with("conversation_quota/") && ext == "json" {
+        if actor.is_none() {
+            actor = parts.get(1).map(|value| (*value).to_string());
+        }
         "quota"
     } else if matches!(ext.as_str(), "sqlite" | "sqlite3" | "db") {
         "sqlite"

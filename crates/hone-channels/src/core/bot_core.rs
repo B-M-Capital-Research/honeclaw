@@ -18,6 +18,7 @@ use std::sync::Arc;
 use std::sync::RwLock;
 use std::time::Duration;
 
+use hone_core::cloud_runtime::CloudPgRuntime;
 use hone_core::config::{AgentRunnerKind, HoneConfig};
 use hone_core::{ActorIdentity, LlmAuditSink};
 use hone_llm::{LlmProvider, LlmResolver};
@@ -68,9 +69,18 @@ impl HoneBotCore {
     /// 从配置创建
     pub fn new(config: HoneConfig) -> Self {
         let session_storage = SessionStorage::from_storage_config(&config.storage);
-        let conversation_quota_storage =
+        let conversation_quota_storage = if config.cloud.effective_mode().is_cloud_authoritative()
+            && config.cloud.postgres.is_configured()
+        {
+            ConversationQuotaStorage::new_cloud(
+                CloudPgRuntime::from_cloud_config(&config.cloud)
+                    .expect("cloud postgres configured"),
+            )
+            .expect("failed to initialize cloud conversation quota storage")
+        } else {
             ConversationQuotaStorage::new(&config.storage.conversation_quota_dir)
-                .expect("failed to initialize conversation quota storage");
+                .expect("failed to initialize conversation quota storage")
+        };
         let company_profile_storage = CompanyProfileStorage::new(sandbox_base_dir());
         let llm = Self::create_llm_provider(&config);
         let auxiliary_llm = Self::create_auxiliary_llm_provider(&config);

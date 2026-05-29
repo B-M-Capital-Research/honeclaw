@@ -81,6 +81,36 @@ pub struct CloudDocumentIndex {
     pub metadata: serde_json::Value,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct CloudConversationQuotaSnapshot {
+    pub quota_date: String,
+    pub success_count: u32,
+    pub in_flight: u32,
+    pub limit: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CloudConversationQuotaReserveOutcome {
+    pub reserved: bool,
+    pub snapshot: CloudConversationQuotaSnapshot,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CloudConversationQuotaImport {
+    pub actor_storage_key: String,
+    pub quota_date: String,
+    pub success_count: u32,
+    pub in_flight: u32,
+    #[serde(rename = "limit_count")]
+    pub limit: u32,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct CloudConversationQuotaImportReport {
+    pub changed_rows: usize,
+    pub skipped_rows: usize,
+}
+
 impl CloudPgRuntime {
     pub fn from_cloud_config(config: &CloudConfig) -> Option<Self> {
         config.postgres.is_configured().then(|| Self {
@@ -233,6 +263,190 @@ ON CONFLICT (version) DO NOTHING;
             .await
             .map_err(|err| HoneError::Config(format!("Postgres schema 初始化失败: {err}")))?;
         Ok(())
+    }
+
+    pub async fn try_reserve_conversation_quota(
+        &self,
+        actor_storage_key: &str,
+        quota_date: &str,
+        daily_limit: u32,
+    ) -> HoneResult<CloudConversationQuotaReserveOutcome> {
+        let client = self.connect_client().await?;
+        let daily_limit = i32::try_from(daily_limit)
+            .map_err(|_| HoneError::Config("daily conversation limit exceeds i32".to_string()))?;
+        let row = client
+            .query_one(
+                r#"
+WITH inserted AS (
+  INSERT INTO conversation_quota(actor_storage_key, quota_date, limit_count)
+  VALUES ($1, $2::text::date, $3)
+  ON CONFLICT (actor_storage_key, quota_date) DO NOTHING
+),
+updated AS (
+  UPDATE conversation_quota
+  SET
+    reserved_count = reserved_count + 1,
+    limit_count = $3,
+    updated_at = now()
+  WHERE actor_storage_key = $1
+    AND quota_date = $2::text::date
+    AND committed_count + reserved_count < $3
+  RETURNING true AS reserved, quota_date::text, limit_count, reserved_count, committed_count
+),
+current_row AS (
+  SELECT false AS reserved, quota_date::text, $3 AS limit_count, reserved_count, committed_count
+  FROM conversation_quota
+  WHERE actor_storage_key = $1
+    AND quota_date = $2::text::date
+    AND NOT EXISTS (SELECT 1 FROM updated)
+  FOR UPDATE
+)
+SELECT reserved, quota_date, limit_count, reserved_count, committed_count FROM updated
+UNION ALL
+SELECT reserved, quota_date, limit_count, reserved_count, committed_count FROM current_row
+LIMIT 1
+"#,
+                &[&actor_storage_key, &quota_date, &daily_limit],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres quota reserve 失败: {err}")))?;
+        let reserved: bool = row.get(0);
+        let quota_date: String = row.get(1);
+        let limit_count: i32 = row.get(2);
+        let reserved_count: i32 = row.get(3);
+        let committed_count: i32 = row.get(4);
+        Ok(CloudConversationQuotaReserveOutcome {
+            reserved,
+            snapshot: CloudConversationQuotaSnapshot {
+                quota_date,
+                success_count: committed_count.max(0) as u32,
+                in_flight: reserved_count.max(0) as u32,
+                limit: limit_count.max(0) as u32,
+            },
+        })
+    }
+
+    pub async fn finish_conversation_quota(
+        &self,
+        actor_storage_key: &str,
+        quota_date: &str,
+        committed: bool,
+    ) -> HoneResult<()> {
+        let client = self.connect_client().await?;
+        let committed_increment = if committed { 1i32 } else { 0i32 };
+        client
+            .execute(
+                r#"
+UPDATE conversation_quota
+SET
+  reserved_count = GREATEST(reserved_count - 1, 0),
+  committed_count = committed_count + $3,
+  updated_at = now()
+WHERE actor_storage_key = $1
+  AND quota_date = $2::text::date
+"#,
+                &[&actor_storage_key, &quota_date, &committed_increment],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres quota finish 失败: {err}")))?;
+        Ok(())
+    }
+
+    pub async fn conversation_quota_snapshot(
+        &self,
+        actor_storage_key: &str,
+        quota_date: &str,
+    ) -> HoneResult<Option<CloudConversationQuotaSnapshot>> {
+        let client = self.connect_client().await?;
+        let row = client
+            .query_opt(
+                r#"
+SELECT quota_date::text, limit_count, reserved_count, committed_count
+FROM conversation_quota
+WHERE actor_storage_key = $1
+  AND quota_date = $2::text::date
+"#,
+                &[&actor_storage_key, &quota_date],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres quota snapshot 失败: {err}")))?;
+        Ok(row.map(|row| {
+            let quota_date: String = row.get(0);
+            let limit_count: i32 = row.get(1);
+            let reserved_count: i32 = row.get(2);
+            let committed_count: i32 = row.get(3);
+            CloudConversationQuotaSnapshot {
+                quota_date,
+                success_count: committed_count.max(0) as u32,
+                in_flight: reserved_count.max(0) as u32,
+                limit: limit_count.max(0) as u32,
+            }
+        }))
+    }
+
+    pub async fn import_conversation_quota(
+        &self,
+        snapshots: &[CloudConversationQuotaImport],
+    ) -> HoneResult<CloudConversationQuotaImportReport> {
+        if snapshots.is_empty() {
+            return Ok(CloudConversationQuotaImportReport::default());
+        }
+        let client = self.connect_client().await?;
+        let payload = serde_json::to_value(snapshots)
+            .map_err(|err| HoneError::Serialization(err.to_string()))?;
+        let row = client
+            .query_one(
+                r#"
+WITH input_rows AS (
+  SELECT *
+  FROM jsonb_to_recordset($1::jsonb) AS x(
+    actor_storage_key TEXT,
+    quota_date TEXT,
+    success_count INTEGER,
+    in_flight INTEGER,
+    limit_count INTEGER
+  )
+),
+upserted AS (
+INSERT INTO conversation_quota(
+  actor_storage_key,
+  quota_date,
+  limit_count,
+  reserved_count,
+  committed_count
+)
+SELECT
+  actor_storage_key,
+  quota_date::date,
+  limit_count,
+  in_flight,
+  success_count
+FROM input_rows
+ON CONFLICT (actor_storage_key, quota_date)
+DO UPDATE SET
+  limit_count = GREATEST(conversation_quota.limit_count, EXCLUDED.limit_count),
+  reserved_count = GREATEST(conversation_quota.reserved_count, EXCLUDED.reserved_count),
+  committed_count = GREATEST(conversation_quota.committed_count, EXCLUDED.committed_count),
+  updated_at = now()
+WHERE conversation_quota.limit_count < EXCLUDED.limit_count
+   OR conversation_quota.reserved_count < EXCLUDED.reserved_count
+   OR conversation_quota.committed_count < EXCLUDED.committed_count
+RETURNING 1
+)
+SELECT
+  (SELECT count(*)::bigint FROM upserted) AS changed_rows,
+  (SELECT count(*)::bigint FROM input_rows) AS total_rows
+"#,
+                &[&payload],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres quota import 失败: {err}")))?;
+        let changed_rows = row.get::<_, i64>(0).max(0) as usize;
+        let total_rows = row.get::<_, i64>(1).max(0) as usize;
+        Ok(CloudConversationQuotaImportReport {
+            changed_rows,
+            skipped_rows: total_rows.saturating_sub(changed_rows),
+        })
     }
 
     pub async fn upsert_document_index(
@@ -891,7 +1105,6 @@ pub fn local_durable_dependencies(config: &HoneConfig) -> Vec<String> {
     let mut deps = vec![
         config.storage.sessions_dir.clone(),
         config.storage.session_sqlite_db_path.clone(),
-        config.storage.conversation_quota_dir.clone(),
         config.storage.llm_audit_db_path.clone(),
         config.storage.portfolio_dir.clone(),
         config.storage.cron_jobs_dir.clone(),
@@ -900,6 +1113,9 @@ pub fn local_durable_dependencies(config: &HoneConfig) -> Vec<String> {
         "./data/runtime/skill_registry.json".to_string(),
         "./data/agent-sandboxes".to_string(),
     ];
+    if !config.cloud.postgres.is_configured() {
+        deps.push(config.storage.conversation_quota_dir.clone());
+    }
     deps.sort();
     deps.dedup();
     deps
@@ -1161,5 +1377,45 @@ mod tests {
             store.s3_canonical_uri("users/a b/doc.json"),
             "/honeclaw/users/a%20b/doc.json"
         );
+    }
+
+    #[test]
+    fn cloud_local_dependency_report_omits_quota_when_postgres_is_configured() {
+        unsafe {
+            std::env::set_var("HONE_CLOUD_MODE", "cloud");
+        }
+        let mut config = HoneConfig::default();
+        config.cloud.mode = "cloud".to_string();
+        config.cloud.postgres.host = "localhost".to_string();
+        config.cloud.postgres.user = "user".to_string();
+        config.cloud.postgres.password = "password".to_string();
+        config.cloud.postgres.database = "hone".to_string();
+        config.storage.conversation_quota_dir = "/tmp/hone/quota".to_string();
+        let deps = local_durable_dependencies(&config);
+        assert!(!deps.iter().any(|dep| dep == "/tmp/hone/quota"));
+        assert!(deps.iter().any(|dep| dep == &config.storage.sessions_dir));
+        unsafe {
+            std::env::remove_var("HONE_CLOUD_MODE");
+        }
+    }
+
+    #[test]
+    fn cloud_local_dependency_report_keeps_quota_without_postgres() {
+        unsafe {
+            std::env::set_var("HONE_CLOUD_MODE", "cloud");
+        }
+        let mut config = HoneConfig::default();
+        config.cloud.mode = "cloud".to_string();
+        config.cloud.postgres.database_url_env = "HONE_TEST_UNUSED_PG_URL".to_string();
+        config.cloud.postgres.host_env = "HONE_TEST_UNUSED_PG_HOST".to_string();
+        config.cloud.postgres.user_env = "HONE_TEST_UNUSED_PG_USER".to_string();
+        config.cloud.postgres.password_env = "HONE_TEST_UNUSED_PG_PASSWORD".to_string();
+        config.cloud.postgres.database_env = "HONE_TEST_UNUSED_PG_DATABASE".to_string();
+        config.storage.conversation_quota_dir = "/tmp/hone/quota".to_string();
+        let deps = local_durable_dependencies(&config);
+        assert!(deps.iter().any(|dep| dep == "/tmp/hone/quota"));
+        unsafe {
+            std::env::remove_var("HONE_CLOUD_MODE");
+        }
     }
 }

@@ -1,6 +1,8 @@
+use hone_core::cloud_runtime::CloudPgRuntime;
 use hone_core::{ActorIdentity, HoneError, HoneResult, beijing_now_rfc3339};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -43,8 +45,29 @@ struct ConversationQuotaFile {
     updated_at: String,
 }
 
+enum ConversationQuotaBackend {
+    Local { root_dir: PathBuf },
+    Cloud { postgres: CloudPgRuntime },
+}
+
 pub struct ConversationQuotaStorage {
-    root_dir: PathBuf,
+    backend: ConversationQuotaBackend,
+}
+
+impl std::fmt::Debug for ConversationQuotaStorage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.backend {
+            ConversationQuotaBackend::Local { root_dir } => f
+                .debug_struct("ConversationQuotaStorage")
+                .field("backend", &"local")
+                .field("root_dir", root_dir)
+                .finish(),
+            ConversationQuotaBackend::Cloud { .. } => f
+                .debug_struct("ConversationQuotaStorage")
+                .field("backend", &"cloud")
+                .finish_non_exhaustive(),
+        }
+    }
 }
 
 static QUOTA_LOCKS: OnceLock<Mutex<HashMap<String, Arc<Mutex<()>>>>> = OnceLock::new();
@@ -66,7 +89,17 @@ impl ConversationQuotaStorage {
         let root_dir = path.as_ref().to_path_buf();
         std::fs::create_dir_all(&root_dir)
             .map_err(|e| HoneError::Config(format!("创建 quota 目录失败: {e}")))?;
-        Ok(Self { root_dir })
+        Ok(Self {
+            backend: ConversationQuotaBackend::Local { root_dir },
+        })
+    }
+
+    pub fn new_cloud(postgres: CloudPgRuntime) -> HoneResult<Self> {
+        let schema_postgres = postgres.clone();
+        run_cloud(async move { schema_postgres.ensure_schema().await })?;
+        Ok(Self {
+            backend: ConversationQuotaBackend::Cloud { postgres },
+        })
     }
 
     pub fn try_reserve_daily_conversation(
@@ -102,6 +135,36 @@ impl ConversationQuotaStorage {
     ) -> HoneResult<ConversationQuotaReserveResult> {
         if bypass {
             return Ok(ConversationQuotaReserveResult::Bypassed);
+        }
+        if let ConversationQuotaBackend::Cloud { postgres } = &self.backend {
+            let postgres = postgres.clone();
+            let actor_storage_key = actor.storage_key();
+            let quota_date_owned = quota_date.to_string();
+            let outcome = run_cloud(async move {
+                postgres
+                    .try_reserve_conversation_quota(
+                        &actor_storage_key,
+                        &quota_date_owned,
+                        daily_limit,
+                    )
+                    .await
+            })?;
+            if outcome.reserved {
+                return Ok(ConversationQuotaReserveResult::Reserved(
+                    ConversationQuotaReservation {
+                        actor: actor.clone(),
+                        quota_date: quota_date.to_string(),
+                    },
+                ));
+            }
+            return Ok(ConversationQuotaReserveResult::Rejected(
+                ConversationQuotaSnapshot {
+                    quota_date: outcome.snapshot.quota_date,
+                    success_count: outcome.snapshot.success_count,
+                    in_flight: outcome.snapshot.in_flight,
+                    limit: outcome.snapshot.limit,
+                },
+            ));
         }
 
         let lock = get_quota_lock(&quota_lock_key(actor, quota_date));
@@ -139,6 +202,16 @@ impl ConversationQuotaStorage {
         reservation: &ConversationQuotaReservation,
         committed: bool,
     ) -> HoneResult<()> {
+        if let ConversationQuotaBackend::Cloud { postgres } = &self.backend {
+            let postgres = postgres.clone();
+            let actor_storage_key = reservation.actor.storage_key();
+            let quota_date = reservation.quota_date.clone();
+            return run_cloud(async move {
+                postgres
+                    .finish_conversation_quota(&actor_storage_key, &quota_date, committed)
+                    .await
+            });
+        }
         let lock = get_quota_lock(&quota_lock_key(&reservation.actor, &reservation.quota_date));
         let _guard = lock.lock().map_err(lock_err)?;
         let Some(mut current) =
@@ -161,6 +234,24 @@ impl ConversationQuotaStorage {
         actor: &ActorIdentity,
         quota_date: &str,
     ) -> HoneResult<Option<ConversationQuotaSnapshot>> {
+        if let ConversationQuotaBackend::Cloud { postgres } = &self.backend {
+            let postgres = postgres.clone();
+            let actor_storage_key = actor.storage_key();
+            let quota_date = quota_date.to_string();
+            return run_cloud(async move {
+                postgres
+                    .conversation_quota_snapshot(&actor_storage_key, &quota_date)
+                    .await
+            })
+            .map(|snapshot| {
+                snapshot.map(|snapshot| ConversationQuotaSnapshot {
+                    quota_date: snapshot.quota_date,
+                    success_count: snapshot.success_count,
+                    in_flight: snapshot.in_flight,
+                    limit: snapshot.limit,
+                })
+            });
+        }
         Ok(self
             .read_quota_file(actor, quota_date)?
             .map(|file| ConversationQuotaSnapshot {
@@ -172,7 +263,10 @@ impl ConversationQuotaStorage {
     }
 
     fn actor_dir(&self, actor: &ActorIdentity) -> PathBuf {
-        self.root_dir.join(actor.storage_key())
+        match &self.backend {
+            ConversationQuotaBackend::Local { root_dir } => root_dir.join(actor.storage_key()),
+            ConversationQuotaBackend::Cloud { .. } => PathBuf::new(),
+        }
     }
 
     fn quota_file_path(&self, actor: &ActorIdentity, quota_date: &str) -> PathBuf {
@@ -208,6 +302,24 @@ impl ConversationQuotaStorage {
         std::fs::write(path, content).map_err(|e| HoneError::Storage(e.to_string()))?;
         Ok(())
     }
+}
+
+fn run_cloud<T, F>(future: F) -> HoneResult<T>
+where
+    T: Send + 'static,
+    F: Future<Output = HoneResult<T>> + Send + 'static,
+{
+    if tokio::runtime::Handle::try_current().is_ok() {
+        return std::thread::spawn(move || {
+            let runtime =
+                tokio::runtime::Runtime::new().map_err(|e| HoneError::Config(e.to_string()))?;
+            runtime.block_on(future)
+        })
+        .join()
+        .map_err(|_| HoneError::Storage("cloud quota worker panicked".to_string()))?;
+    }
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| HoneError::Config(e.to_string()))?;
+    runtime.block_on(future)
 }
 
 fn quota_date_today() -> String {
