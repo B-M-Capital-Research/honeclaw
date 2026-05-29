@@ -3,15 +3,26 @@
 - **发现时间**: 2026-05-25 19:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
+
+## 复发记录（2026-05-29 19:03 CST）
+
+- 最近四小时真实窗口再次确认同一 scheduler 出站 guard false positive 在 08:08 CST 修复后仍复发：`2026-05-29 15:02-19:02 CST` 普通 scheduler 仅 1 条 `completed + sent + delivered=1`，该条命中 `detail_json.scheduler.commodity_causality_guarded=true`。
+- 本窗口命中样本不是专门原油 / 大宗商品任务，原始完整 A/H 收盘复盘被全量替换成“本轮原油/大宗商品播报包含未完成同窗来源核验...”安全提示并仍记已送达。
+- `data/sessions.sqlite3` -> `cron_job_runs` 关键样本：
+  - `run_id=36455`，`job_name=A股港股收盘后跨市场复盘`，`executed_at=2026-05-29T17:34:09.764395+08:00`，`actor_channel=feishu`，`completed + sent + delivered=1`，`detail_json.scheduler.commodity_causality_guarded=true`。
+  - `detail_json.scheduler.raw_preview` 开头为“北京时间 2026年5月29日 17:30。A股、港股今天均实际开市；结论是：A股从昨天硬科技反攻切到高位兑现，港股则靠联想、百度、内房、航空托住指数。”，主体是 A/H 收盘复盘、AI 硬件 / 港股科技 / 美股映射与风险提示，不是原油或大宗商品播报。
+  - `response_preview` / `detail_json.scheduler.deliver_preview` 被替换为“本轮未保留原正文中的价格或归因句；请等待下一轮核验或手动查询交易所/官方数据。”，导致用户收到的不是 A/H 收盘复盘主体内容。
+- `data/runtime/logs/hone-feishu.runtime-recovery.log` 在 `2026-05-29T09:34:05Z` 记录 `[SchedulerDiag] commodity_causality_guarded job=A股港股收盘后跨市场复盘`。
+- 这是既有缺陷的同一根因 / 同一出站 guard 链路，不新建重复文档；严重等级仍为 P2，状态从 `Fixed` 回退为 `New`。修复侧需要重点验证 08:08 CST 的主体占比阈值仍无法覆盖 A/H 收盘复盘这类 broad-market 正文，或当前运行态是否没有部署到包含该修复的二进制。
 
 ## 复核记录（2026-05-29 16:09 CST）
 
 - `bug-2` 复核当前 HEAD 与导航页状态。当前机器已不再作为生产运行态依据；本轮不再用 11:03 的旧/非生产运行态 `commodity_causality_guarded=true` 样本重新打开本单。
 - 当前 HEAD 已覆盖广义市场、盘前/盘后、AI 产业链和降息概率等非商品主任务 false positive；专门原油 / WTI / Brent / 大宗商品任务仍保留 guard。
 - 验证：`cargo test -p hone-channels commodity_guard_ --lib -- --nocapture` 通过，12 条 commodity guard 回归均通过。
-- 状态保持 `Fixed`。后续只有在包含当前 HEAD 的运行态仍可本地复现非商品市场任务被整篇替换时，再以新证据重新打开。
+- 当时状态保持 `Fixed`。但 19:03 CST 巡检已记录新的同根因真实复发样本，本单已重新打开为 `New`。
 
 ## 修复记录（2026-05-29 08:08 CST）
 
