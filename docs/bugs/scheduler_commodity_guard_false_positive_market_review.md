@@ -3,8 +3,22 @@
 - **发现时间**: 2026-05-25 19:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，当前不是 P1。
+
+## 修复记录（2026-05-29 08:08 CST）
+
+- 本轮修复最近复发的 20:00-21:45 广义市场任务 false positive：`text_is_predominantly_commodity_related(...)` 对已具备 broad-market review 上下文的正文，不再用简单半数段落/字符判断“商品占主导”，而是要求商品相关段落和字符同时达到约三分之二才允许非商品 job 因正文占比触发整篇 commodity rewrite。
+- 专门原油 / 油价 / WTI / Brent / 大宗商品任务仍由 `scheduler_event_is_commodity_related(...)` 直接进入 commodity guard；短文本中集中出现 USO / WTI / Brent 等商品报价的异常输出仍会被既有 guard 拦截。
+- 新增回归：
+  - `commodity_guard_skips_us_market_risk_brief_with_repeated_oil_risk_clauses`
+  - `commodity_guard_skips_ai_chain_digest_with_secondary_oil_mentions`
+- 验证：
+  - `cargo test -p hone-channels commodity_guard_ --lib -- --nocapture`
+  - `cargo test -p hone-channels commodity_ --lib -- --nocapture`
+  - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs`
+  - `cargo check -p hone-channels --tests`
+- 状态更新为 `Fixed`。本轮不依赖生产日志或当前机器线上运行态；后续若包含本修复的运行态仍在非商品市场任务上出现 `commodity_causality_guarded=true` 且送达正文被整篇替换，应以新样本重新打开本单。
 
 ## 复发记录（2026-05-29 07:03 CST）
 

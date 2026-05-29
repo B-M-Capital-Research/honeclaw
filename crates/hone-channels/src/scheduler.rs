@@ -1722,6 +1722,11 @@ fn text_is_predominantly_commodity_related(text: &str) -> bool {
         .map(|segment| segment.chars().count())
         .sum();
 
+    if text_has_broad_market_review_context(text) {
+        return commodity_segments * 3 >= meaningful_segments.len() * 2
+            && commodity_chars * 3 >= total_chars * 2;
+    }
+
     commodity_segments * 2 >= meaningful_segments.len() || commodity_chars * 2 >= total_chars
 }
 
@@ -4644,6 +4649,69 @@ mod tests {
         assert!(
             guard_commodity_causality_for_event(
                 "【每日美股降息概率推送】FedWatch 显示市场继续押注年内降息，FOMC 纪要和 PCE 是本周利率路径的核心变量。美股方面，Nasdaq 与 S&P 500 对长端利率更敏感。油价上行会影响通胀预期，但不是本轮降息概率分析的主体。",
+                &event,
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn commodity_guard_skips_us_market_risk_brief_with_repeated_oil_risk_clauses() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_market", None::<String>).expect("actor"),
+            job_id: "job-us-evening-risk".to_string(),
+            job_name: "美股大盘晚间风控简报".to_string(),
+            task_prompt: "生成美股盘前、PCE、GDP、伊朗局势、油价和利率扰动的广义风控简报。"
+                .to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_market".to_string(),
+            delivery_key: "delivery-us-evening-risk".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: false,
+            schedule_hour: 20,
+            schedule_minute: 0,
+            schedule_repeat: "daily".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        assert!(
+            guard_commodity_causality_for_event(
+                "【美股大盘晚间风控简报】Nasdaq、S&P 500、QQQ 盘前维持强势，VIX 与 Fear & Greed 显示风险偏好仍偏热，AI 半导体和电力链是今晚主线。\nPCE 与 GDP 修正值会影响长端利率，科技股仓位需要看开盘后成交和涨跌家数确认。\n油价受伊朗局势、供应担忧和需求预期影响回落，但这只是通胀路径的边际变量。\n若油价继续下行，能源通胀压力会缓和，不过不能把它作为今晚 AI 成长股修复的核心解释。",
+                &event,
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn commodity_guard_skips_ai_chain_digest_with_secondary_oil_mentions() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_market", None::<String>).expect("actor"),
+            job_id: "job-ai-chain".to_string(),
+            job_name: "美股盘后AI及高景气产业链推演".to_string(),
+            task_prompt: "盘后推演 AI 硬件、CPO、PCB、服务器、液冷电源与美股盘前映射。".to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_market".to_string(),
+            delivery_key: "delivery-ai-chain".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: false,
+            schedule_hour: 20,
+            schedule_minute: 45,
+            schedule_repeat: "daily".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        assert!(
+            guard_commodity_causality_for_event(
+                "【美股盘后AI及高景气产业链推演】AI 硬件、CPO、PCB、服务器和液冷电源仍是盘后映射的主体，重点看 NVDA、AVGO、ANET、VRT 与光模块链条。\nNasdaq 与 QQQ 的风险偏好主要取决于长端利率、财报指引和半导体成交强度。\n油价受中东谈判预期和需求担忧影响回落，会降低部分能源通胀压力。\n但油价变化只是宏观噪音，不应覆盖 AI 产业链、半导体和高景气方向的推演正文。",
                 &event,
             )
             .is_none()
