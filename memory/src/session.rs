@@ -17,10 +17,12 @@ use hone_core::agent::{
     AgentMessage, NormalizedConversationMessage, NormalizedConversationPart, ToolCallMade,
     denormalize_normalized_message,
 };
+use hone_core::cloud_runtime::CloudPgRuntime;
 use hone_core::{ActorIdentity, HoneResult, SessionIdentity, beijing_now};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
+use std::future::Future;
 use std::path::Component;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -96,14 +98,107 @@ impl Default for SessionStorageOptions {
 pub enum SessionRuntimeBackend {
     Json,
     Sqlite,
+    CloudPg,
 }
 
 impl SessionRuntimeBackend {
     fn from_config_value(value: &str) -> Self {
         match value.trim() {
             "sqlite" => Self::Sqlite,
+            "cloud_pg" => Self::CloudPg,
             _ => Self::Json,
         }
+    }
+}
+
+pub struct CloudPgSessionIndex {
+    postgres: CloudPgRuntime,
+}
+
+impl CloudPgSessionIndex {
+    pub fn new(postgres: CloudPgRuntime) -> HoneResult<Self> {
+        let schema_postgres = postgres.clone();
+        run_cloud_session(async move { schema_postgres.ensure_schema().await })?;
+        Ok(Self { postgres })
+    }
+}
+
+impl SessionIndex for CloudPgSessionIndex {
+    fn upsert(&self, _source_path: &Path, session: &Session) -> HoneResult<()> {
+        let postgres = self.postgres.clone();
+        let session_id = session.id.clone();
+        let actor_storage_key = session_actor_storage_key(session);
+        let content = serde_json::to_value(session)
+            .map_err(|err| hone_core::HoneError::Serialization(err.to_string()))?;
+        run_cloud_session(async move {
+            postgres
+                .upsert_session_record(&session_id, &actor_storage_key, content)
+                .await
+        })
+    }
+
+    fn load(&self, session_id: &str) -> HoneResult<Option<Session>> {
+        let postgres = self.postgres.clone();
+        let session_id = session_id.to_string();
+        run_cloud_session(async move { postgres.load_session_record(&session_id).await })?
+            .map(serde_json::from_value)
+            .transpose()
+            .map_err(|err| hone_core::HoneError::Serialization(err.to_string()))
+    }
+
+    fn list(&self) -> HoneResult<Vec<Session>> {
+        let postgres = self.postgres.clone();
+        let values = run_cloud_session(async move { postgres.list_session_records().await })?;
+        let mut sessions = Vec::new();
+        for value in values {
+            match serde_json::from_value::<Session>(value) {
+                Ok(session) => sessions.push(session),
+                Err(err) => {
+                    tracing::warn!("failed to parse cloud session record: {err}");
+                }
+            }
+        }
+        Ok(sessions)
+    }
+
+    fn find_interrupted(
+        &self,
+        channel: &str,
+        updated_after_rfc3339: &str,
+        updated_before_rfc3339: &str,
+    ) -> HoneResult<Vec<InterruptedSessionInfo>> {
+        let channel = channel.to_string();
+        let updated_after = updated_after_rfc3339.to_string();
+        let updated_before = updated_before_rfc3339.to_string();
+        Ok(self
+            .list()?
+            .into_iter()
+            .filter(|session| {
+                session.updated_at > updated_after
+                    && session.updated_at < updated_before
+                    && session
+                        .actor
+                        .as_ref()
+                        .map(|actor| {
+                            actor.channel == channel
+                                && actor.channel_scope.is_none()
+                                && session
+                                    .messages
+                                    .last()
+                                    .map(|message| message.role.as_str() == "user")
+                                    .unwrap_or(false)
+                        })
+                        .unwrap_or(false)
+            })
+            .filter_map(|session| {
+                let actor = session.actor?;
+                Some(InterruptedSessionInfo {
+                    session_id: session.id,
+                    actor_user_id: actor.user_id,
+                    actor_channel_scope: actor.channel_scope,
+                })
+            })
+            .collect())
     }
 }
 
@@ -120,6 +215,39 @@ fn get_session_lock(session_id: &str) -> Arc<Mutex<()>> {
         map.insert(session_id.to_string(), lock.clone());
         lock
     }
+}
+
+fn session_actor_storage_key(session: &Session) -> String {
+    session
+        .actor
+        .as_ref()
+        .map(ActorIdentity::storage_key)
+        .or_else(|| {
+            session
+                .session_identity
+                .as_ref()
+                .map(SessionIdentity::session_id)
+        })
+        .unwrap_or_else(|| session.id.clone())
+}
+
+fn run_cloud_session<T, F>(future: F) -> HoneResult<T>
+where
+    T: Send + 'static,
+    F: Future<Output = HoneResult<T>> + Send + 'static,
+{
+    if tokio::runtime::Handle::try_current().is_ok() {
+        return std::thread::spawn(move || {
+            let runtime = tokio::runtime::Runtime::new()
+                .map_err(|err| hone_core::HoneError::Config(err.to_string()))?;
+            runtime.block_on(future)
+        })
+        .join()
+        .map_err(|_| hone_core::HoneError::Storage("cloud session worker panicked".to_string()))?;
+    }
+    let runtime = tokio::runtime::Runtime::new()
+        .map_err(|err| hone_core::HoneError::Config(err.to_string()))?;
+    runtime.block_on(future)
 }
 
 fn default_session_version() -> u32 {
@@ -749,6 +877,16 @@ impl SessionStorage {
         storage
     }
 
+    pub fn new_cloud(postgres: CloudPgRuntime) -> HoneResult<Self> {
+        let index = Arc::new(CloudPgSessionIndex::new(postgres)?) as Arc<dyn SessionIndex>;
+        Ok(Self {
+            data_dir: PathBuf::new(),
+            sqlite_storage: Some(index),
+            runtime_backend: SessionRuntimeBackend::CloudPg,
+            shadow_sqlite_enabled: false,
+        })
+    }
+
     /// 测试 / runtime 层可以注入自定义的 `SessionIndex`（例如 mock）。
     /// 生产流程走 `with_options` 即可，不需要用这个构造器。
     pub fn with_custom_index(
@@ -855,6 +993,12 @@ impl SessionStorage {
     pub fn load_session(&self, session_id: &str) -> hone_core::HoneResult<Option<Session>> {
         match self.runtime_backend {
             SessionRuntimeBackend::Json => self.load_session_from_json(session_id),
+            SessionRuntimeBackend::CloudPg => {
+                if let Some(storage) = &self.sqlite_storage {
+                    return storage.load(session_id);
+                }
+                Ok(None)
+            }
             SessionRuntimeBackend::Sqlite => {
                 if let Some(storage) = &self.sqlite_storage
                     && let Some(session) = storage.load(session_id)?
@@ -966,6 +1110,12 @@ impl SessionStorage {
     pub fn list_sessions(&self) -> hone_core::HoneResult<Vec<Session>> {
         match self.runtime_backend {
             SessionRuntimeBackend::Json => self.list_sessions_from_json(),
+            SessionRuntimeBackend::CloudPg => {
+                if let Some(storage) = &self.sqlite_storage {
+                    return storage.list();
+                }
+                Ok(Vec::new())
+            }
             SessionRuntimeBackend::Sqlite => {
                 // 索引返回空时降级到 JSON 扫描，兼容首次启动尚未回填的情况。
                 if let Some(storage) = &self.sqlite_storage {
@@ -1108,6 +1258,10 @@ impl SessionStorage {
     }
 
     fn write_session(&self, session_id: &str, session: &Session) -> hone_core::HoneResult<()> {
+        if matches!(self.runtime_backend, SessionRuntimeBackend::CloudPg) {
+            let source_path = PathBuf::from(format!("cloud_sessions/{session_id}.json"));
+            return self.write_session_to_sqlite(&source_path, session);
+        }
         let path = self.session_json_path(session_id)?;
         let json = serde_json::to_string_pretty(session)
             .map_err(|e| hone_core::HoneError::Serialization(e.to_string()))?;
@@ -1115,6 +1269,7 @@ impl SessionStorage {
 
         match self.runtime_backend {
             SessionRuntimeBackend::Json => self.shadow_write_session(&path, session),
+            SessionRuntimeBackend::CloudPg => self.write_session_to_sqlite(&path, session)?,
             SessionRuntimeBackend::Sqlite => self.write_session_to_sqlite(&path, session)?,
         }
         Ok(())

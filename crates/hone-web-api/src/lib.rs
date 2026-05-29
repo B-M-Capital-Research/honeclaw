@@ -23,7 +23,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
-use hone_core::cloud_runtime::{RuntimeRole, local_durable_dependencies};
+use hone_core::cloud_runtime::{CloudPgRuntime, RuntimeRole, local_durable_dependencies};
 use hone_core::config::{EventEngineConfig, HoneConfig};
 use hone_event_engine::{
     BodyPolisher, DiscordSink, FeishuSink, IMessageSink, LlmPolisher, LogSink, MultiChannelSink,
@@ -349,7 +349,15 @@ fn feishu_direct_actor_contact_targets(core_cfg: &HoneConfig) -> Vec<(String, St
         &core_cfg.storage.cron_jobs_dir,
         &core_cfg.storage.session_sqlite_db_path,
     );
-    let session_storage = SessionStorage::from_storage_config(&core_cfg.storage);
+    let session_storage = if core_cfg.cloud.effective_mode().is_cloud_authoritative()
+        && core_cfg.cloud.postgres.is_configured()
+    {
+        CloudPgRuntime::from_cloud_config(&core_cfg.cloud)
+            .and_then(|pg| SessionStorage::new_cloud(pg).ok())
+            .unwrap_or_else(|| SessionStorage::from_storage_config(&core_cfg.storage))
+    } else {
+        SessionStorage::from_storage_config(&core_cfg.storage)
+    };
     let sessions = sessions_with_json_fallback(session_storage.list_sessions(), || {
         SessionStorage::with_options(
             &core_cfg.storage.sessions_dir,

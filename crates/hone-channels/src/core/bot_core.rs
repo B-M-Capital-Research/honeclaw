@@ -68,13 +68,23 @@ pub struct HoneBotCore {
 impl HoneBotCore {
     /// 从配置创建
     pub fn new(config: HoneConfig) -> Self {
-        let session_storage = SessionStorage::from_storage_config(&config.storage);
+        let cloud_pg_runtime = if config.cloud.effective_mode().is_cloud_authoritative()
+            && config.cloud.postgres.is_configured()
+        {
+            CloudPgRuntime::from_cloud_config(&config.cloud)
+        } else {
+            None
+        };
+        let session_storage = if let Some(pg) = cloud_pg_runtime.clone() {
+            SessionStorage::new_cloud(pg).expect("failed to initialize cloud session storage")
+        } else {
+            SessionStorage::from_storage_config(&config.storage)
+        };
         let conversation_quota_storage = if config.cloud.effective_mode().is_cloud_authoritative()
             && config.cloud.postgres.is_configured()
         {
             ConversationQuotaStorage::new_cloud(
-                CloudPgRuntime::from_cloud_config(&config.cloud)
-                    .expect("cloud postgres configured"),
+                cloud_pg_runtime.clone().expect("cloud postgres configured"),
             )
             .expect("failed to initialize cloud conversation quota storage")
         } else {

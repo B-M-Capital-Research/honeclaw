@@ -5,8 +5,8 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use clap::{Args, Subcommand};
 use futures::{StreamExt, stream};
 use hone_core::cloud_runtime::{
-    CloudConversationQuotaImport, CloudDocumentIndex, CloudPgRuntime, OssObjectStore, RuntimeRole,
-    local_durable_dependencies, sanitize_key_component, sha256_hex,
+    CloudConversationQuotaImport, CloudDocumentIndex, CloudPgRuntime, CloudSessionRecord,
+    OssObjectStore, RuntimeRole, local_durable_dependencies, sanitize_key_component, sha256_hex,
 };
 use hone_core::config::OssConfig;
 use hone_core::{ActorIdentity, HoneError, HoneResult};
@@ -50,6 +50,9 @@ pub(crate) struct CloudMigrateArgs {
     /// Only import conversation quota JSON into PG; skip object uploads and document indexing.
     #[arg(long = "quota-only")]
     pub(crate) quota_only: bool,
+    /// Only import session JSON into PG; skip object uploads and document indexing.
+    #[arg(long = "session-only")]
+    pub(crate) session_only: bool,
     #[arg(long)]
     pub(crate) apply: bool,
     #[arg(long)]
@@ -114,6 +117,8 @@ struct MigrationReport {
     indexed_documents: usize,
     changed_quota_rows: usize,
     skipped_quota_rows: usize,
+    changed_session_rows: usize,
+    skipped_session_rows: usize,
     skipped_objects: usize,
     conflicts: Vec<String>,
 }
@@ -444,6 +449,9 @@ async fn run_doctor(config_path: Option<&Path>, args: CloudDoctorArgs) -> Result
 }
 
 async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Result<(), String> {
+    if args.quota_only && args.session_only {
+        return Err("--quota-only 和 --session-only 不能同时使用".to_string());
+    }
     let (config, _) = load_cli_config(config_path, false).map_err(|err| err.to_string())?;
     let mut report = MigrationReport {
         mode: if args.apply { "apply" } else { "dry-run" },
@@ -459,6 +467,8 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
         indexed_documents: 0,
         changed_quota_rows: 0,
         skipped_quota_rows: 0,
+        changed_session_rows: 0,
+        skipped_session_rows: 0,
         skipped_objects: 0,
         conflicts: Vec::new(),
     };
@@ -469,20 +479,34 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
         let pg = CloudPgRuntime::from_cloud_config(&config.cloud)
             .ok_or_else(|| "Postgres 未配置，不能 apply migration".to_string())?;
         pg.ensure_schema().await.map_err(|err| err.to_string())?;
-        let quota_imports = collect_quota_imports(&candidates);
-        let quota_report = pg
-            .import_conversation_quota(&quota_imports)
-            .await
-            .map_err(|err| err.to_string())?;
-        report.changed_quota_rows = quota_report.changed_rows;
-        report.skipped_quota_rows = quota_report.skipped_rows;
-        if args.quota_only {
+        if !args.quota_only {
+            let session_imports = collect_session_imports(&candidates);
+            let session_report = pg
+                .import_session_records(&session_imports)
+                .await
+                .map_err(|err| err.to_string())?;
+            report.changed_session_rows = session_report.changed_rows;
+            report.skipped_session_rows = session_report.skipped_rows;
+        }
+        if !args.session_only {
+            let quota_imports = collect_quota_imports(&candidates);
+            let quota_report = pg
+                .import_conversation_quota(&quota_imports)
+                .await
+                .map_err(|err| err.to_string())?;
+            report.changed_quota_rows = quota_report.changed_rows;
+            report.skipped_quota_rows = quota_report.skipped_rows;
+        }
+        if args.quota_only || args.session_only {
             return if args.json {
                 print_json(&report)
             } else {
                 println!(
-                    "mode={} quota_json={} changed_quota_rows={} skipped_quota_rows={}",
+                    "mode={} sessions={} changed_session_rows={} skipped_session_rows={} quota_json={} changed_quota_rows={} skipped_quota_rows={}",
                     report.mode,
+                    report.counted.sessions,
+                    report.changed_session_rows,
+                    report.skipped_session_rows,
                     report.counted.quota_json,
                     report.changed_quota_rows,
                     report.skipped_quota_rows
@@ -553,14 +577,48 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
             report.indexed_documents
         );
         println!(
-            "quota_json={} changed_quota_rows={} skipped_quota_rows={}",
-            report.counted.quota_json, report.changed_quota_rows, report.skipped_quota_rows
+            "sessions={} changed_session_rows={} skipped_session_rows={} quota_json={} changed_quota_rows={} skipped_quota_rows={}",
+            report.counted.sessions,
+            report.changed_session_rows,
+            report.skipped_session_rows,
+            report.counted.quota_json,
+            report.changed_quota_rows,
+            report.skipped_quota_rows
         );
         for conflict in &report.conflicts {
             println!("conflict: {conflict}");
         }
         Ok(())
     }
+}
+
+fn collect_session_imports(candidates: &[MigrationCandidate]) -> Vec<CloudSessionRecord> {
+    candidates
+        .iter()
+        .filter(|candidate| candidate.kind == "session")
+        .filter_map(|candidate| {
+            let text = std::fs::read_to_string(&candidate.path).ok()?;
+            let value = serde_json::from_str::<serde_json::Value>(&text).ok()?;
+            let session =
+                serde_json::from_value::<hone_memory::session::Session>(value.clone()).ok()?;
+            let actor_storage_key = session
+                .actor
+                .as_ref()
+                .map(ActorIdentity::storage_key)
+                .or_else(|| {
+                    session
+                        .session_identity
+                        .as_ref()
+                        .map(|identity| identity.session_id())
+                })
+                .unwrap_or_else(|| session.id.clone());
+            Some(CloudSessionRecord {
+                session_id: session.id,
+                actor_storage_key,
+                content: value,
+            })
+        })
+        .collect()
 }
 
 fn collect_quota_imports(candidates: &[MigrationCandidate]) -> Vec<CloudConversationQuotaImport> {

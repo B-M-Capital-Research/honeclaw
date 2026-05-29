@@ -82,6 +82,19 @@ pub struct CloudDocumentIndex {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct CloudSessionRecord {
+    pub session_id: String,
+    pub actor_storage_key: String,
+    pub content: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct CloudSessionImportReport {
+    pub changed_rows: usize,
+    pub skipped_rows: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct CloudConversationQuotaSnapshot {
     pub quota_date: String,
     pub success_count: u32,
@@ -444,6 +457,110 @@ SELECT
         let changed_rows = row.get::<_, i64>(0).max(0) as usize;
         let total_rows = row.get::<_, i64>(1).max(0) as usize;
         Ok(CloudConversationQuotaImportReport {
+            changed_rows,
+            skipped_rows: total_rows.saturating_sub(changed_rows),
+        })
+    }
+
+    pub async fn upsert_session_record(
+        &self,
+        session_id: &str,
+        actor_storage_key: &str,
+        content: serde_json::Value,
+    ) -> HoneResult<()> {
+        let client = self.connect_client().await?;
+        client
+            .execute(
+                r#"
+INSERT INTO cloud_sessions(session_id, actor_storage_key, content)
+VALUES ($1, $2, $3)
+ON CONFLICT (session_id)
+DO UPDATE SET
+  actor_storage_key = EXCLUDED.actor_storage_key,
+  content = EXCLUDED.content,
+  version = cloud_sessions.version + CASE WHEN cloud_sessions.content = EXCLUDED.content THEN 0 ELSE 1 END,
+  updated_at = now()
+"#,
+                &[&session_id, &actor_storage_key, &content],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres session 写入失败: {err}")))?;
+        Ok(())
+    }
+
+    pub async fn load_session_record(
+        &self,
+        session_id: &str,
+    ) -> HoneResult<Option<serde_json::Value>> {
+        let client = self.connect_client().await?;
+        let row = client
+            .query_opt(
+                "SELECT content FROM cloud_sessions WHERE session_id = $1",
+                &[&session_id],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres session 读取失败: {err}")))?;
+        Ok(row.map(|row| row.get(0)))
+    }
+
+    pub async fn list_session_records(&self) -> HoneResult<Vec<serde_json::Value>> {
+        let client = self.connect_client().await?;
+        let rows = client
+            .query(
+                "SELECT content FROM cloud_sessions ORDER BY updated_at DESC",
+                &[],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres session 列表读取失败: {err}")))?;
+        Ok(rows.into_iter().map(|row| row.get(0)).collect())
+    }
+
+    pub async fn import_session_records(
+        &self,
+        records: &[CloudSessionRecord],
+    ) -> HoneResult<CloudSessionImportReport> {
+        if records.is_empty() {
+            return Ok(CloudSessionImportReport::default());
+        }
+        let client = self.connect_client().await?;
+        let payload = serde_json::to_value(records)
+            .map_err(|err| HoneError::Serialization(err.to_string()))?;
+        let row = client
+            .query_one(
+                r#"
+WITH input_rows AS (
+  SELECT *
+  FROM jsonb_to_recordset($1::jsonb) AS x(
+    session_id TEXT,
+    actor_storage_key TEXT,
+    content JSONB
+  )
+),
+upserted AS (
+INSERT INTO cloud_sessions(session_id, actor_storage_key, content)
+SELECT session_id, actor_storage_key, content
+FROM input_rows
+ON CONFLICT (session_id)
+DO UPDATE SET
+  actor_storage_key = EXCLUDED.actor_storage_key,
+  content = EXCLUDED.content,
+  version = cloud_sessions.version + CASE WHEN cloud_sessions.content = EXCLUDED.content THEN 0 ELSE 1 END,
+  updated_at = now()
+WHERE cloud_sessions.actor_storage_key IS DISTINCT FROM EXCLUDED.actor_storage_key
+   OR cloud_sessions.content IS DISTINCT FROM EXCLUDED.content
+RETURNING 1
+)
+SELECT
+  (SELECT count(*)::bigint FROM upserted) AS changed_rows,
+  (SELECT count(*)::bigint FROM input_rows) AS total_rows
+"#,
+                &[&payload],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres session import 失败: {err}")))?;
+        let changed_rows = row.get::<_, i64>(0).max(0) as usize;
+        let total_rows = row.get::<_, i64>(1).max(0) as usize;
+        Ok(CloudSessionImportReport {
             changed_rows,
             skipped_rows: total_rows.saturating_sub(changed_rows),
         })
@@ -1103,7 +1220,6 @@ pub fn local_durable_dependencies(config: &HoneConfig) -> Vec<String> {
         return Vec::new();
     }
     let mut deps = vec![
-        config.storage.sessions_dir.clone(),
         config.storage.session_sqlite_db_path.clone(),
         config.storage.llm_audit_db_path.clone(),
         config.storage.portfolio_dir.clone(),
@@ -1114,6 +1230,7 @@ pub fn local_durable_dependencies(config: &HoneConfig) -> Vec<String> {
         "./data/agent-sandboxes".to_string(),
     ];
     if !config.cloud.postgres.is_configured() {
+        deps.push(config.storage.sessions_dir.clone());
         deps.push(config.storage.conversation_quota_dir.clone());
     }
     deps.sort();
@@ -1380,7 +1497,7 @@ mod tests {
     }
 
     #[test]
-    fn cloud_local_dependency_report_omits_quota_when_postgres_is_configured() {
+    fn cloud_local_dependency_report_omits_pg_backed_stores_when_postgres_is_configured() {
         unsafe {
             std::env::set_var("HONE_CLOUD_MODE", "cloud");
         }
@@ -1390,10 +1507,15 @@ mod tests {
         config.cloud.postgres.user = "user".to_string();
         config.cloud.postgres.password = "password".to_string();
         config.cloud.postgres.database = "hone".to_string();
+        config.storage.sessions_dir = "/tmp/hone/sessions".to_string();
         config.storage.conversation_quota_dir = "/tmp/hone/quota".to_string();
         let deps = local_durable_dependencies(&config);
         assert!(!deps.iter().any(|dep| dep == "/tmp/hone/quota"));
-        assert!(deps.iter().any(|dep| dep == &config.storage.sessions_dir));
+        assert!(!deps.iter().any(|dep| dep == "/tmp/hone/sessions"));
+        assert!(
+            deps.iter()
+                .any(|dep| dep == &config.storage.session_sqlite_db_path)
+        );
         unsafe {
             std::env::remove_var("HONE_CLOUD_MODE");
         }
@@ -1411,9 +1533,11 @@ mod tests {
         config.cloud.postgres.user_env = "HONE_TEST_UNUSED_PG_USER".to_string();
         config.cloud.postgres.password_env = "HONE_TEST_UNUSED_PG_PASSWORD".to_string();
         config.cloud.postgres.database_env = "HONE_TEST_UNUSED_PG_DATABASE".to_string();
+        config.storage.sessions_dir = "/tmp/hone/sessions".to_string();
         config.storage.conversation_quota_dir = "/tmp/hone/quota".to_string();
         let deps = local_durable_dependencies(&config);
         assert!(deps.iter().any(|dep| dep == "/tmp/hone/quota"));
+        assert!(deps.iter().any(|dep| dep == "/tmp/hone/sessions"));
         unsafe {
             std::env::remove_var("HONE_CLOUD_MODE");
         }
