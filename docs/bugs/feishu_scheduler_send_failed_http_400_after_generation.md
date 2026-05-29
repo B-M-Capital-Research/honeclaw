@@ -436,3 +436,24 @@
   - `cargo test -p hone-event-engine feishu --lib -- --nocapture`
   - `cargo check -p hone-event-engine -p hone-channels --tests`
 - 关联 GitHub Issue：[#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)。提交并推送后需要在 issue 下回写脱敏修复摘要。
+
+## 状态更新（2026-05-29 11:03 CST）
+
+- 本轮巡检确认：`2026-05-29 07:01-11:02 CST` 真实运行窗口继续出现同一 event-engine Feishu digest sink `open_id cross app` 投递失败，本单保持 `New`。
+- 证据来源：
+  - `data/runtime/logs/hone-console-page-prod.log`
+  - `2026-05-29T00:31:02.985Z`：`channel digest sink failed, falling back to log`，Feishu 返回 `HTTP 400 Bad Request`，错误码 `99992361 / open_id cross app`。
+  - `2026-05-29T00:31:03.723Z`：同一分钟第二条 direct digest sink 命中相同 `open_id cross app` 失败。
+- 端到端链路：
+  1. event-engine digest 生成 Feishu 卡片正文。
+  2. multi sink 对 Feishu direct actor 发起发送。
+  3. Feishu API 拒绝当前 open_id，返回跨 app 标识域错误。
+  4. 系统降级为 log fallback，用户侧收不到本该送达的 digest 卡片。
+- 当前判断：
+  - 这是功能性 `System Error`，不是回答质量问题。内容已生成但最终投递丢失，影响事件 digest / 提醒主链路，继续定级 `P1`。
+  - 同窗 Feishu direct、Web direct、Discord group 与普通 scheduler 均有 assistant final 或 `completed + sent + delivered=1` 收口，说明不是 Feishu 全局不可用。
+  - 本轮没有新建 GitHub issue，因为已有 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) 覆盖同一根因和同一发送链路。
+- 下一步建议：
+  - 复核当前 live 配置下 event-engine Feishu sink 的 `actor_user_id -> channel_target` 映射是否实际加载到运行态。
+  - 增加脱敏诊断字段，记录 direct digest sink 在发送前是否使用 per-actor contact fallback、解析结果是否唯一、最终是否仍保留历史 open_id。
+  - 修复后用真实 digest sink 窗口验证至少两个此前失败 actor 不再落入 log fallback。

@@ -288,3 +288,33 @@
 - `cargo test -p hone-channels commodity_guard_ --lib -- --nocapture`：通过，5 passed。
 - `cargo test -p hone-channels commodity_ --lib -- --nocapture`：通过，13 passed。
 - `cargo check -p hone-channels --tests`：通过。
+
+## 状态更新（2026-05-29 11:03 CST）
+
+- 本轮巡检确认：`2026-05-29 07:01-11:02 CST` 真实运行窗口继续复发同一 scheduler 出站 guard false positive，本单保持 `New`。
+- 证据来源：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+  - `data/runtime/logs/hone-feishu.runtime-recovery.log`
+  - `data/runtime/logs/hone-discord.runtime-recovery.log`
+- 07:01-11:02 CST 普通 scheduler 19 条 `completed + sent + delivered=1` 中，3 条非商品主任务被 `detail_json.scheduler.commodity_causality_guarded=true` 全量替换为原油 / 大宗商品安全提示：
+  - `run_id=36158`，`job_name=美股AI产业链盘后报告`，`executed_at=2026-05-29T08:32:17.436109+08:00`，Feishu，最终 `response_preview` 为“本轮原油/大宗商品播报包含未完成同窗来源核验...”。
+  - `run_id=36181`，`job_name=早9点市场复盘(XME及加密ETF)`，`executed_at=2026-05-29T09:02:39.806080+08:00`，Feishu，最终 `response_preview` 同样被替换为原油 / 大宗商品提示。
+  - `run_id=36206`，`job_name=每日美股降息概率推送`，`executed_at=2026-05-29T09:31:04.886849+08:00`，Discord，最终 `response_preview` 同样被替换为原油 / 大宗商品提示。
+- 用户侧同窗反馈：
+  - `session_id=Actor_feishu__direct__ou_5f636d6d7c80d333e41b86ae79d07adca8`
+  - `timestamp=2026-05-29T09:13:44.884586+08:00`
+  - 用户摘要：“没看到 重新发”
+  - 该反馈与近几轮相同，说明调度台账 `delivered=1` 不等于用户收到了任务预期的完整市场复盘 / 报告内容。
+- 端到端链路：
+  1. 普通 scheduler 触发非商品主任务。
+  2. LLM 生成完整市场 / 产业链 / 降息概率报告并写入会话。
+  3. 出站前 commodity causality guard 命中。
+  4. guard 将最终送达内容全量替换为原油 / 大宗商品归因提示。
+  5. `cron_job_runs` 仍记录 `completed + sent + delivered=1`，导致健康台账与用户可见内容分叉。
+- 当前判断：
+  - 这是功能性 `Business Error`，不是单纯表达质量问题；用户应收到的非商品报告被系统 guard 替换为无关内容，影响 scheduler 主链路正确性和台账可信度。
+  - 继续定级 `P2`：影响内容正确性与可用性，但不是全局无回复、误投、数据泄露或大面积投递失败，因此不升 P1。
+- 下一步建议：
+  - 修复时优先把 commodity rewrite 限定到商品任务或正文主体明显为商品播报的任务。
+  - 增加覆盖 `美股AI产业链盘后报告`、`早9点市场复盘(XME及加密ETF)`、`每日美股降息概率推送` 这三类非商品主任务的回归。
+  - 修复后复核 `detail_json.scheduler.raw_preview`、`response_preview`、实际渠道送达内容三者一致，不只看 `delivered=1`。

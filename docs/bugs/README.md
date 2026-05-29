@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-29 08:22 CST
+最后更新：2026-05-29 11:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,10 +17,14 @@
 
 ## 当前概览
 
-- 活跃待修复：0
+- 活跃待修复：2
 - Later / 待复现：10
-- 已修复 / 已关闭：114
+- 已修复 / 已关闭：112
 - 历史分析 / 部分止血：5
+- 本轮 11:03 CST 未发现新的独立缺陷，但确认两个既有活跃缺陷继续复发。07:01-11:02 CST 按消息时间共有 45 个 user turn 与 46 个 assistant final，最新活跃会话均以 assistant final 收口；普通 scheduler 19 条 `completed + sent + delivered=1`。assistant final 污染扫描未命中空回复、`/Users/`、`data/agent-sandboxes`、`~/.codex`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、`reasoning_content`、`<think>`、provider 原始 `Param Incorrect` / `quota exhausted` / `Resource temporarily unavailable`、`panic`、`index out of bounds`、`HTTP 400 Bad Request` 或 `open_id cross app`；最近四小时无非文档代码提交。
+- 本轮 11:03 CST 确认 P1 `Feishu 直达定时任务生成完成后仍在发送阶段落成 HTTP 400 Bad Request` 继续复发：07:01-11:02 CST `hone-console-page-prod.log` 在 08:31:02 / 08:31:03 CST 记录 event-engine Feishu digest sink `channel digest sink failed, falling back to log`，Feishu 返回 `HTTP 400 Bad Request` / `99992361 open_id cross app`；同窗 Feishu direct、Web direct、Discord group 与普通 scheduler 均有 assistant final 或 `completed + sent + delivered=1` 收口，说明不是 Feishu 全局不可用，而是 event-engine sink 仍会在某类 direct actor 目标上选到跨 app `open_id`。已有 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)，本轮不重复创建。
+- 本轮 11:03 CST 确认活跃 P2 `Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice` 继续复发：07:01-11:02 CST 普通 scheduler 19 条 `completed + sent + delivered=1` 中 3 条命中 `detail_json.scheduler.commodity_causality_guarded=true`，且三条均为非商品主任务：`美股AI产业链盘后报告`、`早9点市场复盘(XME及加密ETF)`、`每日美股降息概率推送`（`run_id=36158/36181/36206`）。这些任务原始完整盘后 / 市场 / 降息概率报告被全量替换成原油 / 大宗商品安全提示并仍记已送达；同窗 09:13 CST 用户在相关 Feishu 会话反馈“没看到 重新发”，进一步说明用户可见内容与台账成功态不一致。该证据补充到原缺陷文档，不新建重复缺陷，严重等级仍为 P2，状态保持 `New`，无关联 GitHub Issue。
+- 本轮 11:03 CST 继续观察到 heartbeat 结构化输出退化与少量 `max_iterations_exceeded:10`：07:01-11:02 CST heartbeat 新增 83 条 `execution_failed + skipped_error + delivered=0`、37 条 `noop + skipped_noop + delivered=0`，失败形态为 `heartbeat 输出不是结构化 JSON` 72 条、`max_iterations_exceeded:10` 7 条、未知状态 4 条。这些错误未进入用户可见 assistant final，且仍对应已知 heartbeat 结构化状态退化 / 迭代耗尽旧信号；本轮不因重复信号新增缺陷或从 `Fixed` 回退。
 - 本轮 08:22 CST 已修复活跃 P1 `Feishu 直达定时任务生成完成后仍在发送阶段落成 HTTP 400 Bad Request`：event-engine Feishu sink 装配 direct actor 联系人时，`SessionStorage::list_sessions()` 若因 sqlite runtime backend 暂时锁表 / 读失败而报错，不再静默丢弃全部 session metadata；现在会记录 warning 并回退扫描 JSON session 文件，继续从 direct session metadata 收集 `mobile/email` 来解析 current-app `open_id`。验证 `cargo test -p hone-web-api feishu_direct_actor_targets_ --lib -- --nocapture`、`cargo test -p hone-event-engine feishu --lib -- --nocapture`、`cargo check -p hone-web-api -p hone-event-engine --tests` 通过。关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)。
 - 本轮 08:08 CST 已修复活跃 P2 `Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice`：非商品广义市场正文若已具备大盘 / 盘前 / 风控 / AI 产业链等上下文，不再因油价风险段落达到简单半数就被判为商品主导并整篇替换；现在要求商品相关段落和字符同时达到约三分之二才允许正文占比触发整篇 rewrite。专门原油 / WTI / Brent / 大宗商品任务仍保留 guard，短文本集中商品报价仍会拦截。验证 `cargo test -p hone-channels commodity_guard_ --lib -- --nocapture`、`cargo test -p hone-channels commodity_ --lib -- --nocapture`、`rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue。
 - 本轮 07:03 CST 未发现新的独立缺陷，但确认两个既有活跃缺陷继续复发。03:02-07:02 CST 按消息时间共有 16 个 user turn 与 16 个 assistant final；Feishu direct / Web direct 与普通 scheduler 均以 assistant final 或 `completed + sent + delivered=1` 收口。assistant final 污染扫描未命中空回复、`/Users/`、`data/agent-sandboxes`、`~/.codex`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、`reasoning_content`、`<think>`、provider 原始 `Param Incorrect` / `quota exhausted` / `Resource temporarily unavailable`、`panic`、`index out of bounds`、`HTTP 400 Bad Request` 或 `open_id cross app`；最近四小时唯一非文档提交为 `51bad5b2` 修复 Feishu event sink direct contact fallback。
@@ -357,6 +361,8 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Feishu 直达定时任务生成完成后仍在发送阶段落成 `HTTP 400 Bad Request` | P1 | New | 2026-05-29 11:03 真实窗口继续复发：event-engine Feishu digest sink 在 08:31 CST 两次命中 `HTTP 400 / 99992361 open_id cross app` 并回退到 log sink；普通 Feishu direct / Web direct / Discord group / scheduler 同窗收口正常，说明故障仍集中在 event-engine sink 目标标识域。关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
+| Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice | P2 | New | 2026-05-29 11:03 真实窗口继续复发：普通 scheduler 19 条成功送达中 3 条非商品主任务被 `commodity_causality_guarded=true` 替换，`美股AI产业链盘后报告`、`早9点市场复盘(XME及加密ETF)`、`每日美股降息概率推送` 的完整报告被原油 / 大宗商品安全提示覆盖；09:13 CST 用户反馈“没看到 重新发”。无关联 GitHub Issue | [scheduler_commodity_guard_false_positive_market_review.md](./scheduler_commodity_guard_false_positive_market_review.md) |
 
 ## Later / 待复现
 
@@ -377,8 +383,6 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Feishu 直达定时任务生成完成后仍在发送阶段落成 `HTTP 400 Bad Request` | P1 | Fixed | 2026-05-29 08:22 event-engine Feishu sink 装配 direct actor 联系人时，sqlite session index 暂时锁表 / 读失败不再导致 session metadata 联系人被静默丢弃；现在回退扫描 JSON session 文件并继续收集 `mobile/email` 来解析 current-app `open_id`。验证 `cargo test -p hone-web-api feishu_direct_actor_targets_ --lib -- --nocapture`、`cargo test -p hone-event-engine feishu --lib -- --nocapture`、`cargo check -p hone-web-api -p hone-event-engine --tests` 通过。关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
-| Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice | P2 | Fixed | 2026-05-29 08:08 非商品广义市场正文若已具备大盘 / 盘前 / 风控 / AI 产业链等上下文，不再因油价风险段落达到简单半数就整篇替换；现在要求商品相关段落和字符同时达到约三分之二才允许正文占比触发 rewrite。专门原油 / WTI / Brent / 大宗商品任务仍保留 guard。验证 `cargo test -p hone-channels commodity_guard_ --lib -- --nocapture`、`cargo test -p hone-channels commodity_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过。无关联 GitHub Issue | [scheduler_commodity_guard_false_positive_market_review.md](./scheduler_commodity_guard_false_positive_market_review.md) |
 | Heartbeat 金价阈值提醒把旧日期价格当作当前触发价送达 | P2 | Fixed | 2026-05-28 03:11 heartbeat `JsonTriggered` 出站前新增旧日期价格 guard：当前/最新价格触发文案若含早于当前北京时间的显式价格日期，则抑制送达并记 `failure_kind=stale_price_timestamp`。验证 `cargo test -p hone-channels heartbeat_trigger_detects_stale_price_date_in_current_price_message --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_trigger_allows_same_day_price_date --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_execution_suppresses_stale_price_timestamp_trigger --lib -- --nocapture`、`cargo check -p hone-event-engine -p hone-web-api -p hone-channels --tests` 通过。无关联 GitHub Issue | [scheduler_heartbeat_gold_stale_price_trigger.md](./scheduler_heartbeat_gold_stale_price_trigger.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixed | 2026-05-26 15:04 live 仍见 66 条结构化/状态解析旧信号失败（非结构化 JSON 59 条、未知状态 5 条、缺少状态 2 条），但 2026-05-25 12:13 当前代码已通过 status 别名归一、完整 `<think>` 内部-only noop 兼容和配置路径护栏修复；本轮不回退状态。无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 监控任务触发 `context window exceeds limit` 后缺少恢复，故障会在不同任务间漂移复现 | P2 | Fixed | 2026-05-25 15:04 live 仍见 11 条 `ContextOverflowNoop` 旧/未确认部署运行态，但 12:04 当前代码已改为保留 `error` 并写入 `failure_kind=context_window_overflow` / `parse_kind=ContextOverflowError`；本轮不回退状态。无关联 GitHub Issue | [scheduler_heartbeat_context_window_limit_no_recovery.md](./scheduler_heartbeat_context_window_limit_no_recovery.md) |
