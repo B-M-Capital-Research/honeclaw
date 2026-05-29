@@ -1661,8 +1661,12 @@ fn text_has_explicit_grounded_commodity_source(text: &str) -> bool {
 }
 
 fn text_has_broad_market_review_context(text: &str) -> bool {
+    broad_market_review_anchor_hits(text) >= 2
+}
+
+fn broad_market_review_anchor_hits(text: &str) -> usize {
     let compact = compact_lowercase_text(text);
-    let anchor_hits = count_distinct_keyword_hits(
+    count_distinct_keyword_hits(
         &compact,
         &[
             "a股",
@@ -1700,8 +1704,7 @@ fn text_has_broad_market_review_context(text: &str) -> bool {
             "10年期美债",
             "风险偏好",
         ],
-    );
-    anchor_hits >= 2
+    )
 }
 
 fn rewrite_commodity_causality_message(text: &str) -> String {
@@ -1791,6 +1794,10 @@ fn text_is_predominantly_commodity_related(text: &str) -> bool {
                 "uso",
             ],
         );
+        let broad_market_hits = broad_market_review_anchor_hits(text);
+        if broad_market_hits >= 3 {
+            return commodity_hits >= 4 && commodity_hits > broad_market_hits;
+        }
         return commodity_hits >= 3 || !text_has_broad_market_review_context(text);
     }
 
@@ -4616,6 +4623,37 @@ mod tests {
             guard_commodity_causality_for_event(original, &event),
             None,
             "cross-market reviews should keep their main content when oil is only one sector clause"
+        );
+    }
+
+    #[test]
+    fn commodity_guard_skips_low_segmentation_ah_market_review_with_oil_risk_note() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_market", None::<String>).expect("actor"),
+            job_id: "job-ah-close-review".to_string(),
+            job_name: "A股港股收盘后跨市场复盘".to_string(),
+            task_prompt: "复盘 A 股、港股、美股映射、AI 硬件链和跨市场风险提示。".to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_market".to_string(),
+            delivery_key: "delivery-ah-close-review".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: false,
+            schedule_hour: 17,
+            schedule_minute: 30,
+            schedule_repeat: "daily".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        let original = "北京时间 2026年5月29日 17:30，A股、港股今天均实际开市；结论是：A股从昨天硬科技反攻切到高位兑现，港股则靠联想、百度、内房、航空托住指数，AI 硬件、港股科技和美股映射仍是正文主体，风险提示里只把 WTI、Brent 与油价波动作为通胀和航空成本的边际变量，不能把它当成本轮 A/H 收盘复盘的主因。";
+
+        assert_eq!(
+            guard_commodity_causality_for_event(original, &event),
+            None,
+            "low-segmentation A/H market reviews should not be treated as commodity-first text"
         );
     }
 

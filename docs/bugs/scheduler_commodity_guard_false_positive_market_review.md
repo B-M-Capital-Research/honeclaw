@@ -3,8 +3,23 @@
 - **发现时间**: 2026-05-25 19:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，当前不是 P1。
+
+## 修复记录（2026-05-30 00:09 CST）
+
+- 本轮修复 2026-05-29 19:03 复发样本的低分段长正文形态：`A股港股收盘后跨市场复盘` 这类 A/H broad-market review 如果正文里同时出现 `WTI`、`Brent`、油价与风险提示，但 A 股 / 港股 / 美股 / AI / 科技 / 风险提示等 broad-market 锚点更多，不再被当作商品主体整篇 rewrite。
+- `text_is_predominantly_commodity_related(...)` 对句段数小于等于 2 的正文，不再只按 commodity 关键词命中数判定；当 broad-market 锚点达到 3 个及以上时，要求 commodity 锚点至少达到 4 个且多于 broad-market 锚点，才允许低分段正文走商品主体 rewrite。
+- 专门原油 / 油价 / WTI / Brent / 大宗商品任务仍保留 commodity guard；真正油价主体、未核验价格或归因正文仍会被替换为安全提示。
+- 新增回归：
+  - `commodity_guard_skips_low_segmentation_ah_market_review_with_oil_risk_note`
+- 验证：
+  - `cargo test -p hone-channels commodity_guard_skips_low_segmentation_ah_market_review_with_oil_risk_note --lib -- --nocapture`
+  - `cargo test -p hone-channels commodity_guard_ --lib -- --nocapture`
+  - `cargo test -p hone-channels commodity_ --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+  - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs`
+- 状态更新为 `Fixed`。本轮不重启服务、不使用当前机器旧运行态作为验证依据；后续若包含本修复的运行态仍在低分段 broad-market review 上出现 `commodity_causality_guarded=true`，应追加新样本并重新打开。
 
 ## 复发记录（2026-05-29 19:03 CST）
 

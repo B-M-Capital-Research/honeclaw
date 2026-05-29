@@ -1,7 +1,7 @@
 - title: Scheduler Commodity Guard False Positive
 - status: done
 - created_at: 2026-05-27 03:04 CST
-- updated_at: 2026-05-27 03:04 CST
+- updated_at: 2026-05-30 00:09 CST
 - owner: Codex
 - related_files:
   - `crates/hone-channels/src/scheduler.rs`
@@ -15,11 +15,12 @@
 
 ## Summary
 
-Re-closed the reopened scheduler commodity-guard false positive so broad market / cross-asset scheduled reports are no longer fully replaced by the oil safety notice when they only mention oil as one observation item.
+Re-closed the reopened scheduler commodity-guard false positive so broad market / cross-asset scheduled reports are no longer fully replaced by the oil safety notice when they only mention oil as one observation item. A 2026-05-30 follow-up also covers low-segmentation A/H market reviews where WTI / Brent / oil appears only in a risk note.
 
 ## What Changed
 
 - Tightened `guard_commodity_causality_for_event(...)` in [`/Users/fengming2/Desktop/honeclaw/crates/hone-channels/src/scheduler.rs`](/Users/fengming2/Desktop/honeclaw/crates/hone-channels/src/scheduler.rs) to compare broad-market anchors against commodity anchors before treating a long or low-segmentation body as predominantly commodity-related.
+- 2026-05-30 follow-up: tightened the one/two-segment branch of `text_is_predominantly_commodity_related(...)` so broad-market anchor count must lose to commodity anchor count before a low-segmentation A/H market review can be rewritten.
 - Kept the commodity guard active for true oil-dominant bodies, including ordinary non-heartbeat jobs whose正文主体仍然是原油播报。
 - Updated the bug doc and bug navigation so this item is `Fixed` rather than active.
 
