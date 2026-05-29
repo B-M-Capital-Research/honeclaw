@@ -29,10 +29,10 @@ use hone_event_engine::{
     OutboundSink, TelegramSink, parse_polish_levels,
 };
 use hone_llm::{CreatedLlmProvider, LlmResolver};
-use hone_memory::session::Session;
+use hone_memory::session::{Session, SessionRuntimeBackend, SessionStorageOptions};
 use hone_memory::{ChannelTargetRecord, CronJobStorage, SessionStorage};
 use tokio::sync::broadcast;
-use tracing::info;
+use tracing::{info, warn};
 use tracing_subscriber::prelude::*;
 
 use crate::routes::events::handle_scheduler_events;
@@ -349,10 +349,43 @@ fn feishu_direct_actor_contact_targets(core_cfg: &HoneConfig) -> Vec<(String, St
         &core_cfg.storage.session_sqlite_db_path,
     );
     let session_storage = SessionStorage::from_storage_config(&core_cfg.storage);
-    feishu_direct_actor_contact_targets_from_sources(
-        storage.list_channel_targets(),
-        session_storage.list_sessions().unwrap_or_default(),
-    )
+    let sessions = sessions_with_json_fallback(session_storage.list_sessions(), || {
+        SessionStorage::with_options(
+            &core_cfg.storage.sessions_dir,
+            SessionStorageOptions {
+                shadow_sqlite_db_path: None,
+                shadow_sqlite_enabled: false,
+                runtime_backend: SessionRuntimeBackend::Json,
+            },
+        )
+        .list_sessions()
+    });
+    feishu_direct_actor_contact_targets_from_sources(storage.list_channel_targets(), sessions)
+}
+
+fn sessions_with_json_fallback<F>(
+    primary: hone_core::HoneResult<Vec<Session>>,
+    fallback: F,
+) -> Vec<Session>
+where
+    F: FnOnce() -> hone_core::HoneResult<Vec<Session>>,
+{
+    match primary {
+        Ok(sessions) => sessions,
+        Err(err) => {
+            warn!(
+                error = %err,
+                "failed to list sessions for Feishu direct actor contacts; falling back to JSON sessions"
+            );
+            fallback().unwrap_or_else(|fallback_err| {
+                warn!(
+                    error = %fallback_err,
+                    "failed to list fallback JSON sessions for Feishu direct actor contacts"
+                );
+                Vec::new()
+            })
+        }
+    }
 }
 
 fn feishu_direct_actor_contact_targets_from_sources(
@@ -1112,6 +1145,28 @@ mod tests {
                 ("ou_old".to_string(), "+8613800138000".to_string()),
                 ("ou_old".to_string(), "alice@example.com".to_string()),
             ]
+        );
+    }
+
+    #[test]
+    fn feishu_direct_actor_targets_fall_back_to_json_sessions_on_primary_error() {
+        let sessions = sessions_with_json_fallback(
+            Err(hone_core::HoneError::Storage(
+                "database is locked".to_string(),
+            )),
+            || {
+                Ok(vec![feishu_direct_session(
+                    "ou_event_only",
+                    Some("+8619106838169"),
+                    None,
+                )])
+            },
+        );
+        let targets = feishu_direct_actor_contact_targets_from_sources(Vec::new(), sessions);
+
+        assert_eq!(
+            targets,
+            vec![("ou_event_only".to_string(), "+8619106838169".to_string())]
         );
     }
 
