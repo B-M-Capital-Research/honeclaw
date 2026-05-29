@@ -496,7 +496,7 @@ mod tests {
                 .unwrap()
                 .as_nanos()
         ));
-        let debug_dir = root.join("target/debug");
+        let debug_dir = source_target_debug_dir(&root);
         std::fs::create_dir_all(&debug_dir).unwrap();
         let binary = debug_dir.join(executable_name("hone-console-page"));
         std::fs::write(&binary, "mock").unwrap();

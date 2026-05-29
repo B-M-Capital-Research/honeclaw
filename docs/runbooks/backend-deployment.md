@@ -1,6 +1,6 @@
 # Runbook: Backend Deployment
 
-Last updated: 2026-05-27
+Last updated: 2026-05-29
 
 ## When to Use
 
@@ -161,9 +161,10 @@ HONE_POSTGRES_PASSWORD=<password>
 HONE_POSTGRES_DATABASE=<database>
 ```
 
-Aliyun OSS for public uploads:
+Object storage for public uploads and durable cloud files:
 
 ```text
+HONE_OSS_PROVIDER=aliyun_oss|r2|s3
 HONE_OSS_ACCESS_KEY_ID=<access-key-id>
 HONE_OSS_ACCESS_KEY_SECRET=<access-key-secret>
 HONE_OSS_BUCKET=<bucket>
@@ -172,12 +173,45 @@ HONE_OSS_REGION=oss-cn-beijing
 HONE_OSS_PROXY=socks5://127.0.0.1:1082
 ```
 
+For Cloudflare R2, use the S3-compatible endpoint and region:
+
+```text
+HONE_OSS_PROVIDER=r2
+HONE_OSS_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
+HONE_OSS_REGION=auto
+```
+
+To compare Aliyun OSS and R2 without losing rollback settings, keep runtime `HONE_OSS_*` pointed at the active provider and store the alternate Aliyun settings under:
+
+```text
+HONE_ALIYUN_OSS_PROVIDER=aliyun_oss
+HONE_ALIYUN_OSS_ACCESS_KEY_ID=<access-key-id>
+HONE_ALIYUN_OSS_ACCESS_KEY_SECRET=<access-key-secret>
+HONE_ALIYUN_OSS_BUCKET=<bucket>
+HONE_ALIYUN_OSS_ENDPOINT=https://oss-cn-beijing.aliyuncs.com
+HONE_ALIYUN_OSS_REGION=oss-cn-beijing
+HONE_ALIYUN_OSS_PROXY=socks5://127.0.0.1:1082
+```
+
+And R2 comparison settings under:
+
+```text
+HONE_R2_PROVIDER=r2
+HONE_R2_ACCESS_KEY_ID=<access-key-id>
+HONE_R2_ACCESS_KEY_SECRET=<access-key-secret>
+HONE_R2_BUCKET=<bucket>
+HONE_R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
+HONE_R2_REGION=auto
+HONE_R2_PROXY=socks5://127.0.0.1:1082
+```
+
 When OSS is configured, `/api/public/upload` writes objects under `public-uploads/<user>/<date>/...` and returns `oss://bucket/key`. Actor durable files use `users/{actor_storage_key}/...` namespaces. `/api/public/image` and `/api/public/file` can proxy managed OSS paths back through the backend.
 
 Runtime checks:
 
 ```bash
 hone-cli cloud doctor --ensure-schema --json
+hone-cli cloud object-bench --size-kib 256 --iterations 3 --json
 hone-cli cloud migrate --from-data-dir ./data --json
 hone-cli cloud migrate --from-data-dir ./data --upload-oss --apply --concurrency 12 --json
 hone-cli cloud migrate --from-data-dir ./data --upload-oss --apply --reuse-existing --concurrency 4 --json

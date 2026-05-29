@@ -26,9 +26,9 @@
 
 ## Summary
 
-The local ignored `.env` now contains the cloud runtime manifest for the managed Postgres and Aliyun OSS resources. Real credentials remain outside git. Direct local TCP to the PG host still times out, but authenticated PG access succeeds through the available SOCKS path. OSS bucket list succeeds through the same network path.
+The local ignored `.env` now contains the cloud runtime manifest for the managed Postgres and object storage resources. Runtime `HONE_OSS_*` currently points at Cloudflare R2 because live benchmarks show materially faster writes than Aliyun OSS on this machine; the previous Aliyun OSS settings are preserved under `HONE_ALIYUN_OSS_*` for rollback and comparison. Real credentials remain outside git. Direct local TCP to the PG host still times out, but authenticated PG access succeeds through the available SOCKS path. Object-store health succeeds through the same network path.
 
-Code now has first-class `cloud.postgres` and `cloud.oss` config sections with env fallbacks. When OSS is configured, public Web uploads are written to OSS under `public-uploads/<user>/<date>/...`, the API returns `oss://bucket/key`, and `/api/public/image` / `/api/public/file` can proxy managed OSS objects. `/api/meta` reports `cloud_runtime`, `cloud_postgres`, `cloud_oss`, and `oss_file_proxy` capabilities when the runtime env is present.
+Code now has first-class `cloud.postgres` and `cloud.oss` config sections with env fallbacks. `cloud.oss.provider` supports `aliyun_oss`, `r2`, and S3-compatible endpoints; `.env` loading can be set to override stale parent env with `HONE_DOTENV_OVERRIDE=true`. When object storage is configured, public Web uploads are written under `public-uploads/<user>/<date>/...`, the API returns `oss://bucket/key`, and `/api/public/image` / `/api/public/file` can proxy managed objects. `/api/meta` reports `cloud_runtime`, `cloud_postgres`, `cloud_oss`, and `oss_file_proxy` capabilities when the runtime env is present.
 
 ## Local Dependencies Remaining
 
@@ -77,6 +77,13 @@ A one-file live apply succeeded and wrote OSS + PG index. The migrator now suppo
 - Retry pass: `hone-cli cloud migrate --from-data-dir ./data --upload-oss --apply --reuse-existing --concurrency 4 --json`
 - Final result: 1282 non-SQLite durable files uploaded or reused in OSS and indexed in PG `cloud_documents`.
 - Remaining: 50 SQLite files intentionally skipped for structured row-wise PG import.
+
+Cloudflare R2 comparison added:
+
+- Current runtime `HONE_OSS_*` points to R2; Aliyun OSS remains available through `HONE_ALIYUN_OSS_*`.
+- `hone-cli cloud object-bench --size-kib 256 --iterations 3 --json` through proxy: Aliyun average PUT / HEAD / GET was 12284ms / 584ms / 1958ms; R2 was 1062ms / 217ms / 1180ms.
+- `hone-cli cloud object-bench --size-kib 1024 --iterations 3 --json` through proxy: Aliyun average PUT / HEAD / GET was 5594ms / 470ms / 4811ms; R2 was 3358ms / 235ms / 4921ms.
+- Conclusion for this machine: R2 should remain the runtime object store for now; Aliyun is retained as fallback because network/proxy behavior can vary.
 
 ## Risks / Open Questions
 

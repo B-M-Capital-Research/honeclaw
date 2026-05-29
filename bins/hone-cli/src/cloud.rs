@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use clap::{Args, Subcommand};
 use futures::{StreamExt, stream};
@@ -7,6 +8,7 @@ use hone_core::cloud_runtime::{
     CloudDocumentIndex, CloudPgRuntime, OssObjectStore, RuntimeRole, local_durable_dependencies,
     sanitize_key_component, sha256_hex,
 };
+use hone_core::config::OssConfig;
 use hone_core::{ActorIdentity, HoneError, HoneResult};
 use serde::Serialize;
 use serde_json::json;
@@ -21,6 +23,8 @@ pub(crate) enum CloudCommands {
     Doctor(CloudDoctorArgs),
     /// 从本机 data/ dry-run 或幂等导入 PG/OSS。
     Migrate(CloudMigrateArgs),
+    /// 对比当前 Aliyun OSS 和 Cloudflare R2 的小对象读写延迟。
+    ObjectBench(ObjectBenchArgs),
 }
 
 #[derive(Args, Debug)]
@@ -45,6 +49,18 @@ pub(crate) struct CloudMigrateArgs {
     pub(crate) concurrency: usize,
     #[arg(long)]
     pub(crate) apply: bool,
+    #[arg(long)]
+    pub(crate) json: bool,
+}
+
+#[derive(Args, Debug)]
+pub(crate) struct ObjectBenchArgs {
+    #[arg(long, default_value_t = 64)]
+    pub(crate) size_kib: usize,
+    #[arg(long, default_value_t = 3)]
+    pub(crate) iterations: usize,
+    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+    pub(crate) cleanup: bool,
     #[arg(long)]
     pub(crate) json: bool,
 }
@@ -97,6 +113,36 @@ struct MigrationReport {
     conflicts: Vec<String>,
 }
 
+#[derive(Debug, Serialize)]
+struct ObjectBenchReport {
+    size_kib: usize,
+    iterations: usize,
+    results: Vec<ObjectBenchProviderReport>,
+}
+
+#[derive(Debug, Serialize)]
+struct ObjectBenchProviderReport {
+    provider: String,
+    configured: bool,
+    ok: bool,
+    bucket: Option<String>,
+    endpoint: Option<String>,
+    proxy_configured: bool,
+    iterations: Vec<ObjectBenchIteration>,
+    avg_put_ms: Option<u128>,
+    avg_head_ms: Option<u128>,
+    avg_get_ms: Option<u128>,
+    errors: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct ObjectBenchIteration {
+    put_ms: u128,
+    head_ms: u128,
+    get_ms: u128,
+    bytes: usize,
+}
+
 pub(crate) async fn run_cloud_command(
     config_path: Option<&Path>,
     command: CloudCommands,
@@ -104,6 +150,218 @@ pub(crate) async fn run_cloud_command(
     match command {
         CloudCommands::Doctor(args) => run_doctor(config_path, args).await,
         CloudCommands::Migrate(args) => run_migrate(config_path, args).await,
+        CloudCommands::ObjectBench(args) => run_object_bench(config_path, args).await,
+    }
+}
+
+async fn run_object_bench(config_path: Option<&Path>, args: ObjectBenchArgs) -> Result<(), String> {
+    let (config, _) = load_cli_config(config_path, false).map_err(|err| err.to_string())?;
+    let size = args.size_kib.max(1) * 1024;
+    let iterations = args.iterations.max(1);
+    let payload = deterministic_payload(size);
+    let mut results = Vec::new();
+    let aliyun_config = aliyun_config_for_bench(&config.cloud.oss);
+    results.push(
+        bench_provider(
+            "aliyun_oss",
+            &aliyun_config,
+            &payload,
+            iterations,
+            args.cleanup,
+        )
+        .await,
+    );
+    let r2_config = r2_config_from_env(&config.cloud.oss);
+    results.push(
+        bench_provider(
+            "cloudflare_r2",
+            &r2_config,
+            &payload,
+            iterations,
+            args.cleanup,
+        )
+        .await,
+    );
+    let report = ObjectBenchReport {
+        size_kib: args.size_kib.max(1),
+        iterations,
+        results,
+    };
+    if args.json {
+        print_json(&report)
+    } else {
+        for result in &report.results {
+            println!(
+                "{} configured={} ok={} avg_put_ms={:?} avg_head_ms={:?} avg_get_ms={:?}",
+                result.provider,
+                result.configured,
+                result.ok,
+                result.avg_put_ms,
+                result.avg_head_ms,
+                result.avg_get_ms
+            );
+            for error in &result.errors {
+                println!("{} error: {error}", result.provider);
+            }
+        }
+        Ok(())
+    }
+}
+
+async fn bench_provider(
+    label: &str,
+    config: &OssConfig,
+    payload: &[u8],
+    iterations: usize,
+    cleanup: bool,
+) -> ObjectBenchProviderReport {
+    let configured = config.is_configured();
+    let proxy_configured = !config.resolved_proxy().trim().is_empty();
+    let mut report = ObjectBenchProviderReport {
+        provider: label.to_string(),
+        configured,
+        ok: false,
+        bucket: configured.then(|| config.resolved_bucket()),
+        endpoint: configured.then(|| config.resolved_endpoint()),
+        proxy_configured,
+        iterations: Vec::new(),
+        avg_put_ms: None,
+        avg_head_ms: None,
+        avg_get_ms: None,
+        errors: Vec::new(),
+    };
+    let Some(store) = OssObjectStore::from_config(config) else {
+        report.errors.push("not configured".to_string());
+        return report;
+    };
+    let run_id = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|value| value.as_millis())
+        .unwrap_or_default();
+    for index in 0..iterations {
+        let key = format!("bench/codex/{run_id}-{label}-{index}.bin");
+        let put_start = Instant::now();
+        if let Err(error) = store
+            .put_object(&key, payload.to_vec(), "application/octet-stream")
+            .await
+        {
+            report.errors.push(format!("put {index}: {error}"));
+            continue;
+        }
+        let put_ms = put_start.elapsed().as_millis();
+
+        let head_start = Instant::now();
+        match store.object_exists(&key).await {
+            Ok(true) => {}
+            Ok(false) => {
+                report
+                    .errors
+                    .push(format!("head {index}: uploaded object not found"));
+                continue;
+            }
+            Err(error) => {
+                report.errors.push(format!("head {index}: {error}"));
+                continue;
+            }
+        }
+        let head_ms = head_start.elapsed().as_millis();
+
+        let get_start = Instant::now();
+        match store.get_object(&key).await {
+            Ok(object) if object.bytes.len() == payload.len() => {}
+            Ok(object) => {
+                report.errors.push(format!(
+                    "get {index}: size mismatch expected={} actual={}",
+                    payload.len(),
+                    object.bytes.len()
+                ));
+                continue;
+            }
+            Err(error) => {
+                report.errors.push(format!("get {index}: {error}"));
+                continue;
+            }
+        }
+        let get_ms = get_start.elapsed().as_millis();
+        if cleanup {
+            let _ = store.delete_object(&key).await;
+        }
+        report.iterations.push(ObjectBenchIteration {
+            put_ms,
+            head_ms,
+            get_ms,
+            bytes: payload.len(),
+        });
+    }
+    if !report.iterations.is_empty() {
+        report.ok = report.errors.is_empty();
+        report.avg_put_ms = Some(avg_ms(report.iterations.iter().map(|item| item.put_ms)));
+        report.avg_head_ms = Some(avg_ms(report.iterations.iter().map(|item| item.head_ms)));
+        report.avg_get_ms = Some(avg_ms(report.iterations.iter().map(|item| item.get_ms)));
+    }
+    report
+}
+
+fn avg_ms(values: impl Iterator<Item = u128>) -> u128 {
+    let mut count = 0u128;
+    let mut sum = 0u128;
+    for value in values {
+        count += 1;
+        sum += value;
+    }
+    if count == 0 { 0 } else { sum / count }
+}
+
+fn deterministic_payload(size: usize) -> Vec<u8> {
+    (0..size)
+        .map(|idx| ((idx.wrapping_mul(31).wrapping_add(17)) % 251) as u8)
+        .collect()
+}
+
+fn r2_config_from_env(fallback: &OssConfig) -> OssConfig {
+    OssConfig {
+        provider: "r2".to_string(),
+        provider_env: "HONE_R2_PROVIDER".to_string(),
+        access_key_id: String::new(),
+        access_key_id_env: "HONE_R2_ACCESS_KEY_ID".to_string(),
+        access_key_secret: String::new(),
+        access_key_secret_env: "HONE_R2_ACCESS_KEY_SECRET".to_string(),
+        bucket: fallback.resolved_bucket(),
+        bucket_env: "HONE_R2_BUCKET".to_string(),
+        endpoint: String::new(),
+        endpoint_env: "HONE_R2_ENDPOINT".to_string(),
+        region: "auto".to_string(),
+        region_env: "HONE_R2_REGION".to_string(),
+        public_upload_prefix: fallback.public_upload_prefix.clone(),
+        proxy: String::new(),
+        proxy_env: "HONE_R2_PROXY".to_string(),
+    }
+}
+
+fn aliyun_config_for_bench(fallback: &OssConfig) -> OssConfig {
+    if std::env::var("HONE_ALIYUN_OSS_ACCESS_KEY_ID")
+        .unwrap_or_default()
+        .trim()
+        .is_empty()
+    {
+        return fallback.clone();
+    }
+    OssConfig {
+        provider: "aliyun_oss".to_string(),
+        provider_env: "HONE_ALIYUN_OSS_PROVIDER".to_string(),
+        access_key_id: String::new(),
+        access_key_id_env: "HONE_ALIYUN_OSS_ACCESS_KEY_ID".to_string(),
+        access_key_secret: String::new(),
+        access_key_secret_env: "HONE_ALIYUN_OSS_ACCESS_KEY_SECRET".to_string(),
+        bucket: fallback.resolved_bucket(),
+        bucket_env: "HONE_ALIYUN_OSS_BUCKET".to_string(),
+        endpoint: String::new(),
+        endpoint_env: "HONE_ALIYUN_OSS_ENDPOINT".to_string(),
+        region: String::new(),
+        region_env: "HONE_ALIYUN_OSS_REGION".to_string(),
+        public_upload_prefix: fallback.public_upload_prefix.clone(),
+        proxy: String::new(),
+        proxy_env: "HONE_ALIYUN_OSS_PROXY".to_string(),
     }
 }
 

@@ -470,7 +470,7 @@ cloud:
   # - auto: development compatibility; env presence can enable cloud_runtime capability.
   # HONE_CLOUD_MODE overrides this field.
   mode: "local"
-  # Legacy compatibility flag used only in cloud.mode=auto.
+  # Legacy cloud.enabled compatibility flag used only in cloud.mode=auto.
   # HONE_CLOUD_ENABLED=true also only has effect in auto mode.
   # Keep real PG / OSS credentials in the process environment or local .env only.
   enabled: false
@@ -495,6 +495,9 @@ cloud:
     proxy: ""
     proxy_env: "HONE_POSTGRES_PROXY"
   oss:
+    # aliyun_oss | r2 | s3
+    provider: "aliyun_oss"
+    provider_env: "HONE_OSS_PROVIDER"
     access_key_id: ""
     access_key_id_env: "HONE_OSS_ACCESS_KEY_ID"
     access_key_secret: ""

@@ -7,7 +7,9 @@ use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use chrono::{DateTime, Utc};
 use hmac::{Hmac, Mac};
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
-use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, DATE, HeaderMap, HeaderValue};
+use reqwest::header::{
+    AUTHORIZATION, CONTENT_TYPE, DATE, HOST, HeaderMap, HeaderName, HeaderValue,
+};
 use serde::Serialize;
 use sha1::Sha1;
 use sha2::{Digest, Sha256};
@@ -20,6 +22,7 @@ use crate::config::{CloudConfig, HoneConfig, OssConfig, PostgresConfig};
 use crate::{ActorIdentity, HoneError, HoneResult};
 
 type HmacSha1 = Hmac<Sha1>;
+type HmacSha256 = Hmac<sha2::Sha256>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -404,12 +407,36 @@ async fn connect_via_proxy(
 
 #[derive(Debug, Clone)]
 pub struct OssObjectStore {
+    provider: ObjectStoreProvider,
     access_key_id: String,
     access_key_secret: String,
     bucket: String,
     endpoint: String,
+    region: String,
     public_upload_prefix: String,
     client: reqwest::Client,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ObjectStoreProvider {
+    AliyunOss,
+    S3,
+}
+
+impl ObjectStoreProvider {
+    fn from_raw(raw: &str) -> Self {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "r2" | "cloudflare_r2" | "s3" | "s3_compatible" => Self::S3,
+            _ => Self::AliyunOss,
+        }
+    }
+
+    fn service_name(&self) -> &'static str {
+        match self {
+            Self::AliyunOss => "OSS",
+            Self::S3 => "S3",
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -433,10 +460,19 @@ impl OssObjectStore {
             builder = builder.proxy(req_proxy);
         }
         Some(Self {
+            provider: ObjectStoreProvider::from_raw(&config.resolved_provider()),
             access_key_id: config.resolved_access_key_id(),
             access_key_secret: config.resolved_access_key_secret(),
             bucket: config.resolved_bucket(),
             endpoint: config.resolved_endpoint(),
+            region: {
+                let region = config.resolved_region();
+                if region.trim().is_empty() {
+                    "auto".to_string()
+                } else {
+                    region
+                }
+            },
             public_upload_prefix: sanitize_prefix(&config.public_upload_prefix),
             client: builder.build().ok()?,
         })
@@ -508,7 +544,7 @@ impl OssObjectStore {
         match tokio::time::timeout(Duration::from_secs(5), self.list_objects("", 1)).await {
             Ok(Ok(_)) => CloudHealth {
                 ok: true,
-                detail: "oss connected".to_string(),
+                detail: format!("{} connected", self.provider.service_name()),
             },
             Ok(Err(error)) => CloudHealth {
                 ok: false,
@@ -528,10 +564,8 @@ impl OssObjectStore {
         content_type: &str,
     ) -> Result<(), String> {
         let date = oss_date();
-        let authorization = self.authorization("PUT", content_type, &date, key, None)?;
         let mut headers = HeaderMap::new();
-        headers.insert(DATE, header_value(&date)?);
-        headers.insert(AUTHORIZATION, header_value(&authorization)?);
+        self.insert_auth_headers(&mut headers, "PUT", content_type, &date, key, None, &bytes)?;
         headers.insert(CONTENT_TYPE, header_value(content_type)?);
 
         let response = self
@@ -552,10 +586,8 @@ impl OssObjectStore {
 
     pub async fn get_object(&self, key: &str) -> Result<OssObject, String> {
         let date = oss_date();
-        let authorization = self.authorization("GET", "", &date, key, None)?;
         let mut headers = HeaderMap::new();
-        headers.insert(DATE, header_value(&date)?);
-        headers.insert(AUTHORIZATION, header_value(&authorization)?);
+        self.insert_auth_headers(&mut headers, "GET", "", &date, key, None, &[])?;
 
         let response = self
             .client
@@ -589,10 +621,8 @@ impl OssObjectStore {
 
     pub async fn object_exists(&self, key: &str) -> Result<bool, String> {
         let date = oss_date();
-        let authorization = self.authorization("HEAD", "", &date, key, None)?;
         let mut headers = HeaderMap::new();
-        headers.insert(DATE, header_value(&date)?);
-        headers.insert(AUTHORIZATION, header_value(&authorization)?);
+        self.insert_auth_headers(&mut headers, "HEAD", "", &date, key, None, &[])?;
         let response = self
             .client
             .head(self.object_url(key))
@@ -612,15 +642,25 @@ impl OssObjectStore {
 
     pub async fn list_objects(&self, prefix: &str, max_keys: usize) -> Result<Vec<String>, String> {
         let prefix = prefix.trim_start_matches('/');
-        let query = BTreeMap::from([
-            ("max-keys".to_string(), max_keys.max(1).to_string()),
-            ("prefix".to_string(), prefix.to_string()),
-        ]);
+        let query = match self.provider {
+            ObjectStoreProvider::AliyunOss => BTreeMap::from([
+                ("max-keys".to_string(), max_keys.max(1).to_string()),
+                ("prefix".to_string(), prefix.to_string()),
+            ]),
+            ObjectStoreProvider::S3 => BTreeMap::from([
+                ("list-type".to_string(), "2".to_string()),
+                ("max-keys".to_string(), max_keys.max(1).to_string()),
+                ("prefix".to_string(), prefix.to_string()),
+            ]),
+        };
         let date = oss_date();
-        let authorization = self.authorization("GET", "", &date, "", None)?;
         let mut headers = HeaderMap::new();
-        headers.insert(DATE, header_value(&date)?);
-        headers.insert(AUTHORIZATION, header_value(&authorization)?);
+        let signed_query = if self.provider == ObjectStoreProvider::AliyunOss {
+            None
+        } else {
+            Some(&query)
+        };
+        self.insert_auth_headers(&mut headers, "GET", "", &date, "", signed_query, &[])?;
         let response = self
             .client
             .get(self.bucket_url())
@@ -645,7 +685,53 @@ impl OssObjectStore {
             .collect())
     }
 
-    fn authorization(
+    pub async fn delete_object(&self, key: &str) -> Result<(), String> {
+        let date = oss_date();
+        let mut headers = HeaderMap::new();
+        self.insert_auth_headers(&mut headers, "DELETE", "", &date, key, None, &[])?;
+        let response = self
+            .client
+            .delete(self.object_url(key))
+            .headers(headers)
+            .send()
+            .await
+            .map_err(|error| format!("{} 删除请求失败: {error}", self.provider.service_name()))?;
+        if response.status().is_success() || response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(());
+        }
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        Err(format!(
+            "{} 删除失败: {status} {body}",
+            self.provider.service_name()
+        ))
+    }
+
+    fn insert_auth_headers(
+        &self,
+        headers: &mut HeaderMap,
+        method: &str,
+        content_type: &str,
+        date: &str,
+        key: &str,
+        query: Option<&BTreeMap<String, String>>,
+        body: &[u8],
+    ) -> Result<(), String> {
+        match self.provider {
+            ObjectStoreProvider::AliyunOss => {
+                let authorization =
+                    self.aliyun_authorization(method, content_type, date, key, query)?;
+                headers.insert(DATE, header_value(date)?);
+                headers.insert(AUTHORIZATION, header_value(&authorization)?);
+            }
+            ObjectStoreProvider::S3 => {
+                self.insert_s3_auth_headers(headers, method, content_type, date, key, query, body)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn aliyun_authorization(
         &self,
         method: &str,
         content_type: &str,
@@ -678,12 +764,109 @@ impl OssObjectStore {
         Ok(format!("OSS {}:{signature}", self.access_key_id))
     }
 
+    fn insert_s3_auth_headers(
+        &self,
+        headers: &mut HeaderMap,
+        method: &str,
+        content_type: &str,
+        date: &str,
+        key: &str,
+        query: Option<&BTreeMap<String, String>>,
+        body: &[u8],
+    ) -> Result<(), String> {
+        let amz_date = s3_amz_date_from_oss_date(date)?;
+        let date_scope = &amz_date[..8];
+        let payload_hash = sha256_hex(body);
+        let host = self.request_host()?;
+        headers.insert(HOST, header_value(&host)?);
+        headers.insert(
+            header_name("x-amz-content-sha256")?,
+            header_value(&payload_hash)?,
+        );
+        headers.insert(header_name("x-amz-date")?, header_value(&amz_date)?);
+        if !content_type.is_empty() {
+            headers.insert(CONTENT_TYPE, header_value(content_type)?);
+        }
+
+        let canonical_uri = self.s3_canonical_uri(key);
+        let canonical_query = query.map(s3_canonical_query).unwrap_or_default();
+        let signed_headers = if content_type.is_empty() {
+            "host;x-amz-content-sha256;x-amz-date"
+        } else {
+            "content-type;host;x-amz-content-sha256;x-amz-date"
+        };
+        let canonical_headers = if content_type.is_empty() {
+            format!("host:{host}\nx-amz-content-sha256:{payload_hash}\nx-amz-date:{amz_date}\n")
+        } else {
+            format!(
+                "content-type:{content_type}\nhost:{host}\nx-amz-content-sha256:{payload_hash}\nx-amz-date:{amz_date}\n"
+            )
+        };
+        let canonical_request = format!(
+            "{method}\n{canonical_uri}\n{canonical_query}\n{canonical_headers}\n{signed_headers}\n{payload_hash}"
+        );
+        let credential_scope = format!("{date_scope}/{}/s3/aws4_request", self.s3_region());
+        let string_to_sign = format!(
+            "AWS4-HMAC-SHA256\n{amz_date}\n{credential_scope}\n{}",
+            sha256_hex(canonical_request.as_bytes())
+        );
+        let signing_key = s3_signing_key(&self.access_key_secret, date_scope, self.s3_region());
+        let signature = hmac_sha256_hex(&signing_key, string_to_sign.as_bytes())?;
+        let authorization = format!(
+            "AWS4-HMAC-SHA256 Credential={}/{credential_scope}, SignedHeaders={signed_headers}, Signature={signature}",
+            self.access_key_id
+        );
+        headers.insert(AUTHORIZATION, header_value(&authorization)?);
+        Ok(())
+    }
+
     fn bucket_url(&self) -> String {
-        bucket_host(&self.endpoint, &self.bucket)
+        match self.provider {
+            ObjectStoreProvider::AliyunOss => bucket_host(&self.endpoint, &self.bucket),
+            ObjectStoreProvider::S3 => format!(
+                "{}/{}",
+                self.endpoint.trim_end_matches('/'),
+                s3_uri_encode_segment(&self.bucket)
+            ),
+        }
     }
 
     fn object_url(&self, key: &str) -> String {
-        format!("{}/{}", self.bucket_url(), encode_key(key))
+        match self.provider {
+            ObjectStoreProvider::AliyunOss => format!("{}/{}", self.bucket_url(), encode_key(key)),
+            ObjectStoreProvider::S3 => {
+                format!("{}/{}", self.bucket_url(), encode_key_s3(key))
+            }
+        }
+    }
+
+    fn request_host(&self) -> Result<String, String> {
+        let parsed = url::Url::parse(&self.bucket_url())
+            .map_err(|error| format!("object store endpoint 无效: {error}"))?;
+        Ok(match parsed.port() {
+            Some(port) => format!("{}:{port}", parsed.host_str().unwrap_or_default()),
+            None => parsed.host_str().unwrap_or_default().to_string(),
+        })
+    }
+
+    fn s3_canonical_uri(&self, key: &str) -> String {
+        if key.trim_start_matches('/').is_empty() {
+            format!("/{}", s3_uri_encode_segment(&self.bucket))
+        } else {
+            format!(
+                "/{}/{}",
+                s3_uri_encode_segment(&self.bucket),
+                encode_key_s3(key)
+            )
+        }
+    }
+
+    fn s3_region(&self) -> &str {
+        if self.region.trim().is_empty() {
+            "auto"
+        } else {
+            self.region.trim()
+        }
     }
 }
 
@@ -727,6 +910,18 @@ pub fn load_dotenv_if_present() {
     let Ok(text) = std::fs::read_to_string(path) else {
         return;
     };
+    let override_existing = text.lines().any(|line| {
+        let trimmed = line.trim();
+        trimmed
+            .strip_prefix("HONE_DOTENV_OVERRIDE=")
+            .map(|value| {
+                matches!(
+                    value.trim().to_ascii_lowercase().as_str(),
+                    "1" | "true" | "yes" | "on"
+                )
+            })
+            .unwrap_or(false)
+    });
     for line in text.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() || trimmed.starts_with('#') {
@@ -736,7 +931,7 @@ pub fn load_dotenv_if_present() {
             continue;
         };
         let key = key.trim();
-        if key.is_empty() || std::env::var_os(key).is_some() {
+        if key.is_empty() || (!override_existing && std::env::var_os(key).is_some()) {
             continue;
         }
         let value = value.trim().trim_matches('"').trim_matches('\'');
@@ -762,7 +957,12 @@ fn oss_date() -> String {
 }
 
 fn header_value(value: &str) -> Result<HeaderValue, String> {
-    HeaderValue::from_str(value).map_err(|error| format!("OSS header 无效: {error}"))
+    HeaderValue::from_str(value).map_err(|error| format!("object store header 无效: {error}"))
+}
+
+fn header_name(value: &'static str) -> Result<HeaderName, String> {
+    HeaderName::from_lowercase(value.as_bytes())
+        .map_err(|error| format!("object store header name 无效: {error}"))
 }
 
 fn encode_key(key: &str) -> String {
@@ -771,6 +971,72 @@ fn encode_key(key: &str) -> String {
         .map(|segment| utf8_percent_encode(segment, NON_ALPHANUMERIC).to_string())
         .collect::<Vec<_>>()
         .join("/")
+}
+
+fn encode_key_s3(key: &str) -> String {
+    key.trim_start_matches('/')
+        .split('/')
+        .map(s3_uri_encode_segment)
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn s3_uri_encode_segment(raw: &str) -> String {
+    let mut out = String::new();
+    for byte in raw.as_bytes() {
+        let ch = *byte as char;
+        if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.' | '~') {
+            out.push(ch);
+        } else {
+            out.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    out
+}
+
+fn s3_canonical_query(query: &BTreeMap<String, String>) -> String {
+    query
+        .iter()
+        .map(|(key, value)| {
+            format!(
+                "{}={}",
+                s3_uri_encode_segment(key),
+                s3_uri_encode_segment(value)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("&")
+}
+
+fn s3_amz_date_from_oss_date(date: &str) -> Result<String, String> {
+    let parsed = chrono::DateTime::parse_from_rfc2822(date)
+        .map_err(|error| format!("object store date parse failed: {error}"))?;
+    Ok(parsed
+        .with_timezone(&Utc)
+        .format("%Y%m%dT%H%M%SZ")
+        .to_string())
+}
+
+fn hmac_sha256_bytes(key: &[u8], data: &[u8]) -> Result<Vec<u8>, String> {
+    let mut mac =
+        HmacSha256::new_from_slice(key).map_err(|error| format!("S3 签名初始化失败: {error}"))?;
+    mac.update(data);
+    Ok(mac.finalize().into_bytes().to_vec())
+}
+
+fn hmac_sha256_hex(key: &[u8], data: &[u8]) -> Result<String, String> {
+    Ok(hmac_sha256_bytes(key, data)?
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
+}
+
+fn s3_signing_key(secret: &str, date_scope: &str, region: &str) -> Vec<u8> {
+    let k_date = hmac_sha256_bytes(format!("AWS4{secret}").as_bytes(), date_scope.as_bytes())
+        .unwrap_or_default();
+    let k_region = hmac_sha256_bytes(&k_date, region.as_bytes()).unwrap_or_default();
+    let k_service = hmac_sha256_bytes(&k_region, b"s3").unwrap_or_default();
+    hmac_sha256_bytes(&k_service, b"aws4_request").unwrap_or_default()
 }
 
 fn sanitize_prefix(raw: &str) -> String {
@@ -836,6 +1102,64 @@ mod tests {
             store
                 .actor_prefix(&actor)
                 .starts_with("users/telegram__group__u1/")
+        );
+    }
+
+    #[test]
+    fn oss_provider_env_overrides_default_provider() {
+        unsafe {
+            std::env::set_var("HONE_TEST_R2_PROVIDER", "r2");
+        }
+        let cfg = OssConfig {
+            provider: "aliyun_oss".into(),
+            provider_env: "HONE_TEST_R2_PROVIDER".into(),
+            ..OssConfig::default()
+        };
+        assert_eq!(cfg.resolved_provider(), "r2");
+        unsafe {
+            std::env::remove_var("HONE_TEST_R2_PROVIDER");
+        }
+    }
+
+    #[test]
+    fn s3_key_and_query_encoding_follow_sigv4_rules() {
+        assert_eq!(
+            encode_key_s3("/dir/a b/中文.txt"),
+            "dir/a%20b/%E4%B8%AD%E6%96%87.txt"
+        );
+        let query = BTreeMap::from([
+            ("list-type".to_string(), "2".to_string()),
+            ("prefix".to_string(), "a b/中文".to_string()),
+        ]);
+        assert_eq!(
+            s3_canonical_query(&query),
+            "list-type=2&prefix=a%20b%2F%E4%B8%AD%E6%96%87"
+        );
+    }
+
+    #[test]
+    fn r2_provider_uses_s3_path_style_urls() {
+        let cfg = OssConfig {
+            provider: "r2".into(),
+            access_key_id: "id".into(),
+            access_key_secret: "secret".into(),
+            bucket: "honeclaw".into(),
+            endpoint: "https://example.r2.cloudflarestorage.com".into(),
+            region: "auto".into(),
+            ..OssConfig::default()
+        };
+        let store = OssObjectStore::from_config(&cfg).expect("store");
+        assert_eq!(
+            store.bucket_url(),
+            "https://example.r2.cloudflarestorage.com/honeclaw"
+        );
+        assert_eq!(
+            store.object_url("users/a b/doc.json"),
+            "https://example.r2.cloudflarestorage.com/honeclaw/users/a%20b/doc.json"
+        );
+        assert_eq!(
+            store.s3_canonical_uri("users/a b/doc.json"),
+            "/honeclaw/users/a%20b/doc.json"
         );
     }
 }

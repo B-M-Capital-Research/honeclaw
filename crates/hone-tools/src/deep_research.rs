@@ -25,7 +25,10 @@ impl DeepResearchTool {
         Self {
             api_url: api_url.to_string(),
             api_key: api_key.to_string(),
-            http: reqwest::Client::new(),
+            http: reqwest::Client::builder()
+                .no_proxy()
+                .build()
+                .unwrap_or_else(|_| reqwest::Client::new()),
         }
     }
 

@@ -560,6 +560,10 @@ impl PostgresConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OssConfig {
+    #[serde(default = "default_oss_provider")]
+    pub provider: String,
+    #[serde(default = "default_oss_provider_env")]
+    pub provider_env: String,
     #[serde(default)]
     pub access_key_id: String,
     #[serde(default = "default_oss_access_key_id_env")]
@@ -591,6 +595,8 @@ pub struct OssConfig {
 impl Default for OssConfig {
     fn default() -> Self {
         Self {
+            provider: default_oss_provider(),
+            provider_env: default_oss_provider_env(),
             access_key_id: String::new(),
             access_key_id_env: default_oss_access_key_id_env(),
             access_key_secret: String::new(),
@@ -609,6 +615,19 @@ impl Default for OssConfig {
 }
 
 impl OssConfig {
+    pub fn resolved_provider(&self) -> String {
+        let env = env_value(&self.provider_env);
+        if !env.trim().is_empty() {
+            return env.trim().to_ascii_lowercase();
+        }
+        let value = self.provider.trim();
+        if value.trim().is_empty() {
+            default_oss_provider()
+        } else {
+            value.trim().to_ascii_lowercase()
+        }
+    }
+
     pub fn resolved_access_key_id(&self) -> String {
         direct_or_env(&self.access_key_id, &self.access_key_id_env)
     }
@@ -708,6 +727,12 @@ fn default_pg_proxy_env() -> String {
 }
 fn default_oss_access_key_id_env() -> String {
     "HONE_OSS_ACCESS_KEY_ID".to_string()
+}
+fn default_oss_provider() -> String {
+    "aliyun_oss".to_string()
+}
+fn default_oss_provider_env() -> String {
+    "HONE_OSS_PROVIDER".to_string()
 }
 fn default_oss_access_key_secret_env() -> String {
     "HONE_OSS_ACCESS_KEY_SECRET".to_string()

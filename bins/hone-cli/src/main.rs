@@ -798,6 +798,34 @@ mod tests {
     }
 
     #[test]
+    fn cli_parses_cloud_object_bench_command() {
+        let cli = Cli::try_parse_from([
+            "hone-cli",
+            "cloud",
+            "object-bench",
+            "--size-kib",
+            "256",
+            "--iterations",
+            "2",
+            "--cleanup",
+            "false",
+            "--json",
+        ])
+        .unwrap();
+        match cli.command {
+            Some(Commands::Cloud {
+                command: CloudCommands::ObjectBench(args),
+            }) => {
+                assert_eq!(args.size_kib, 256);
+                assert_eq!(args.iterations, 2);
+                assert!(!args.cleanup);
+                assert!(args.json);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
     fn cli_parses_probe_command() {
         let cli = Cli::try_parse_from([
             "hone-cli",
