@@ -362,18 +362,39 @@ impl HoneBotCore {
 
         if let Some(actor) = actor.cloned() {
             let sandbox_base = sandbox_base_dir();
-            registry.register(Box::new(hone_tools::LocalListFilesTool::new(
-                sandbox_base.clone(),
-                actor.clone(),
-            )));
-            registry.register(Box::new(hone_tools::LocalSearchFilesTool::new(
-                sandbox_base.clone(),
-                actor.clone(),
-            )));
-            registry.register(Box::new(hone_tools::LocalReadFileTool::new(
-                sandbox_base,
-                actor,
-            )));
+            if self.config.cloud.effective_mode().is_cloud_authoritative()
+                && let Some(oss) =
+                    hone_core::cloud_runtime::OssObjectStore::from_config(&self.config.cloud.oss)
+            {
+                registry.register(Box::new(hone_tools::LocalListFilesTool::new_cloud(
+                    sandbox_base.clone(),
+                    actor.clone(),
+                    oss.clone(),
+                )));
+                registry.register(Box::new(hone_tools::LocalSearchFilesTool::new_cloud(
+                    sandbox_base.clone(),
+                    actor.clone(),
+                    oss.clone(),
+                )));
+                registry.register(Box::new(hone_tools::LocalReadFileTool::new_cloud(
+                    sandbox_base,
+                    actor,
+                    oss,
+                )));
+            } else {
+                registry.register(Box::new(hone_tools::LocalListFilesTool::new(
+                    sandbox_base.clone(),
+                    actor.clone(),
+                )));
+                registry.register(Box::new(hone_tools::LocalSearchFilesTool::new(
+                    sandbox_base.clone(),
+                    actor.clone(),
+                )));
+                registry.register(Box::new(hone_tools::LocalReadFileTool::new(
+                    sandbox_base,
+                    actor,
+                )));
+            }
         }
 
         // 注册金融数据获取工具

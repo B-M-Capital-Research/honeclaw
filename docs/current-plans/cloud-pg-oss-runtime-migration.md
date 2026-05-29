@@ -3,12 +3,17 @@
 - title: Cloud PG / OSS Runtime Migration
 - status: in_progress
 - created_at: 2026-05-27
-- updated_at: 2026-05-28
+- updated_at: 2026-05-29
 - owner: Codex
 - related_files:
   - `config.example.yaml`
   - `crates/hone-core/src/config/server.rs`
   - `crates/hone-core/src/config/mod.rs`
+  - `crates/hone-core/src/cloud_runtime.rs`
+  - `bins/hone-cli/src/cloud.rs`
+  - `crates/hone-tools/src/local_files.rs`
+  - `crates/hone-channels/src/attachments/ingest.rs`
+  - `crates/hone-channels/src/response_finalizer.rs`
   - `crates/hone-web-api/src/routes/public.rs`
   - `crates/hone-web-api/src/routes/files.rs`
   - `crates/hone-web-api/src/cloud_oss.rs`
@@ -22,15 +27,16 @@
 
 ## Goal
 
-Move the local runtime toward remote ownership for database and object storage: load PG / OSS settings from local runtime env, route public uploads and file proxy reads through OSS when configured, and make remaining local dependencies explicit so follow-up PG-backed storage work is not hidden.
+Move the local runtime toward explicit local/cloud storage switching: default to local mode, use PG for cloud schema/index/locks and OSS for durable file objects when `cloud.mode=cloud`, and make remaining local durable dependencies visible so follow-up PG-backed store work is not hidden.
 
 ## Scope
 
-- Add first-class cloud runtime config for Postgres and Aliyun OSS without committing secrets.
-- Materialize the local `.env` with PG / OSS runtime variables.
-- Switch public web upload storage from local filesystem to OSS when OSS config is present.
-- Keep existing local JSON / SQLite / directory storage as fallback until PG-backed stores land.
-- Document the remaining local dependencies and the exact verification gap.
+- Add explicit `cloud.mode=local|cloud|auto`, where `local` is the default and PG/OSS env presence alone no longer hijacks local storage mode.
+- Add `HONE_RUNTIME_ROLE=web|worker|all` and gate Web API scheduler/event-engine/channel sidecar startup for web-only deployments.
+- Add PG/OSS runtime helpers, proxy support, schema bootstrap, `/api/meta` health fields, and `hone-cli cloud doctor`.
+- Add `hone-cli cloud migrate` dry-run/apply: recognized durable files upload to actor-scoped OSS document keys and are indexed in PG `cloud_documents`; SQLite blobs are counted but skipped until structured table import lands.
+- Switch local file tools to use actor-scoped OSS namespace when cloud mode is authoritative; keep local sandbox walk/read/search in local mode.
+- Upload channel attachments and generated images to OSS in cloud mode where the current call site has enough context; local mode keeps current filesystem behavior.
 
 ## Validation
 
@@ -38,6 +44,10 @@ Move the local runtime toward remote ownership for database and object storage: 
 - Targeted config / web-api tests where practical.
 - Manual PG / OSS health probe through the available network path.
 - Confirm `.env`, `config.yaml`, `data/`, logs, and runtime backend JSON remain untracked.
+- 2026-05-29 verified: `cargo check --offline -p hone-core -p hone-tools -p hone-channels -p hone-web-api -p hone-cli --tests`.
+- 2026-05-29 verified: `hone-cli cloud doctor --ensure-schema --json` reports PG connected through proxy, OSS connected through proxy, and schema ensured.
+- 2026-05-29 verified: migration dry-run counts 117 sessions, 193 uploads/attachments, 204 company profiles, 25 portfolio JSON, 23 cron JSON, 22 notification prefs, 698 quota JSON, 50 SQLite files.
+- 2026-05-29 verified: full live migrate apply now completes with `--concurrency 12` plus a follow-up `--reuse-existing --concurrency 4` retry. Result: 1282 non-SQLite durable files uploaded/reused in OSS and indexed in PG `cloud_documents`; 50 SQLite files intentionally skipped for structured row-wise PG import.
 
 ## Documentation Sync
 
@@ -52,8 +62,9 @@ Current impact report: `docs/handoffs/cloud-runtime-impact-report-2026-05-28.md`
 
 ## Risks / Open Questions
 
-- Direct local TCP to the Aliyun PG endpoint timed out; current verified PG health uses the local SOCKS proxy path.
-- Direct OSS bucket HTTPS also timed out; the bucket was reachable through the local SOCKS proxy, but the runtime does not yet honor `HONE_OSS_PROXY`.
-- `/api/meta` currently reports cloud capabilities from config presence, not live PG / OSS authority. It does not yet expose `runtime_role`, `cloud_storage_authoritative`, or `local_durable_dependency_count`.
-- Existing session, quota, audit, portfolio, cron, notification prefs, KB, and log stores are still local JSON / SQLite / directories until PG-backed repository implementations are added.
+- Direct local TCP to the Aliyun PG endpoint still depends on proxy availability; verified path uses `HONE_POSTGRES_PROXY`.
+- OSS runtime honors `HONE_OSS_PROXY`; live bucket health passed through proxy.
+- `/api/meta` now exposes `cloud_mode`, `runtime_role`, `cloud_storage_authoritative`, local durable dependency count, and PG/OSS health.
+- Existing session, quota, audit, portfolio, cron, notification prefs, KB, and company profile runtime stores are not fully PG-backed yet. Durable files from the local `data/` snapshot have been uploaded/indexed, and selected runtime file surfaces now write OSS in cloud mode, but the hot-path repositories remain local until follow-up adapters land.
+- SQLite structured import is pending; the migrator intentionally skips SQLite blob upload because LLM audit is large (about 1.5GB locally) and should be imported row-wise into PG tables.
 - `https://hone-claw.com/api/meta` previously timed out, so desktop remote-backend health remains separate from PG / OSS credential health.

@@ -142,7 +142,7 @@ pub async fn fetch_and_enrich<F: AttachmentFetcher + ?Sized>(
 }
 
 pub async fn ingest_raw_attachments(
-    _core: &HoneBotCore,
+    core: &HoneBotCore,
     request: AttachmentIngestRequest,
 ) -> Vec<ReceivedAttachment> {
     let upload_dir = attachment_upload_dir(&request.actor, &request.session_id);
@@ -155,8 +155,50 @@ pub async fn ingest_raw_attachments(
     }
 
     let mut out = Vec::with_capacity(request.attachments.len());
+    let cloud_oss = if core.config.cloud.effective_mode().is_cloud_authoritative() {
+        hone_core::cloud_runtime::OssObjectStore::from_config(&core.config.cloud.oss)
+    } else {
+        None
+    };
     for (index, attachment) in request.attachments.into_iter().enumerate() {
-        out.push(ingest_one_raw_attachment(&upload_dir, index, attachment).await);
+        let mut received = ingest_one_raw_attachment(&upload_dir, index, attachment).await;
+        if received.error.is_none()
+            && let (Some(oss), Some(local_path)) = (&cloud_oss, received.local_path.as_ref())
+        {
+            match tokio::fs::read(local_path).await {
+                Ok(bytes) => {
+                    let key = oss.actor_upload_key(
+                        &request.actor,
+                        &request.session_id,
+                        &received.filename,
+                    );
+                    let content_type = received
+                        .content_type
+                        .as_deref()
+                        .unwrap_or("application/octet-stream");
+                    match oss.put_object(&key, bytes, content_type).await {
+                        Ok(()) => {
+                            let uri = oss.object_uri(&key);
+                            received.url = uri.clone();
+                            received.local_path = Some(uri);
+                        }
+                        Err(err) => {
+                            warn!(
+                                "[Attachments] OSS upload failed session_id={} filename={} err={}",
+                                request.session_id, received.filename, err
+                            );
+                        }
+                    }
+                }
+                Err(err) => {
+                    warn!(
+                        "[Attachments] failed to read materialized attachment for OSS upload {}: {}",
+                        local_path, err
+                    );
+                }
+            }
+        }
+        out.push(received);
     }
     out
 }
@@ -303,7 +345,7 @@ async fn cleanup_raw_attachment_staging_file(attachment: &RawAttachment) {
 }
 
 async fn persist_attachment_manifest(
-    _core: Arc<HoneBotCore>,
+    core: Arc<HoneBotCore>,
     request: AttachmentPersistRequest,
 ) -> Result<(), String> {
     if request.attachments.is_empty() {
@@ -315,6 +357,8 @@ async fn persist_attachment_manifest(
         .await
         .map_err(|err| format!("创建附件持久化目录失败: {err}"))?;
 
+    let session_id = request.session_id.clone();
+    let actor = request.actor.clone();
     let manifest = AttachmentPersistManifest {
         channel: request.channel,
         user_id: request.user_id,
@@ -323,6 +367,16 @@ async fn persist_attachment_manifest(
     };
     let manifest_json = serde_json::to_vec_pretty(&manifest)
         .map_err(|err| format!("序列化附件 manifest 失败: {err}"))?;
+    if core.config.cloud.effective_mode().is_cloud_authoritative()
+        && let Some(oss) =
+            hone_core::cloud_runtime::OssObjectStore::from_config(&core.config.cloud.oss)
+    {
+        let key = oss.actor_upload_key(&actor, &session_id, "attachments.manifest.json");
+        oss.put_object(&key, manifest_json, "application/json")
+            .await
+            .map_err(|err| format!("上传附件 manifest 到 OSS 失败: {err}"))?;
+        return Ok(());
+    }
     tokio::fs::write(upload_dir.join("attachments.manifest.json"), manifest_json)
         .await
         .map_err(|err| format!("写入附件 manifest 失败: {err}"))?;

@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use hone_core::cloud_runtime::CloudHealth;
 use hone_memory::cron_job::{CronJob, CronJobExecutionRecord};
 #[derive(Deserialize)]
 pub struct UserIdQuery {
@@ -143,6 +144,13 @@ pub struct MetaInfo {
     pub deployment_mode: String,
     /// 当前管理员控制台默认语言（"zh" / "en"）
     pub language: String,
+    pub cloud_mode: String,
+    pub runtime_role: String,
+    pub worker_leader: Option<bool>,
+    pub cloud_storage_authoritative: bool,
+    pub local_durable_dependency_count: usize,
+    pub cloud_postgres_health: Option<CloudHealth>,
+    pub cloud_oss_health: Option<CloudHealth>,
 }
 
 #[derive(Serialize)]

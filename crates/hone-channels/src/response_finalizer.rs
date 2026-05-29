@@ -501,7 +501,9 @@ pub(crate) fn normalize_local_image_references(
                 if let Some(stable_path) =
                     stabilize_local_image_path(core, session_id, &marker.path)
                 {
-                    normalized.push_str("file://");
+                    if !stable_path.starts_with("oss://") {
+                        normalized.push_str("file://");
+                    }
                     normalized.push_str(&stable_path);
                 } else {
                     normalized.push_str(MISSING_LOCAL_IMAGE_FALLBACK_MESSAGE);
@@ -526,6 +528,52 @@ fn stabilize_local_image_path(core: &HoneBotCore, session_id: &str, path: &str) 
     let sandbox_root = sandbox_base_dir();
     if !source.starts_with(&sandbox_root) {
         return Some(source.to_string_lossy().to_string());
+    }
+
+    if core.config.cloud.effective_mode().is_cloud_authoritative()
+        && let Some(oss) =
+            hone_core::cloud_runtime::OssObjectStore::from_config(&core.config.cloud.oss)
+        && let Ok(bytes) = std::fs::read(source)
+    {
+        let target_name = unique_stable_image_name(source);
+        let key = format!(
+            "migration/generated/images/{}/{}",
+            hone_core::cloud_runtime::sanitize_key_component(session_id),
+            hone_core::cloud_runtime::sanitize_key_component(&target_name)
+        );
+        let content_type = match source
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "png" => "image/png",
+            "jpg" | "jpeg" => "image/jpeg",
+            "webp" => "image/webp",
+            "gif" => "image/gif",
+            _ => "application/octet-stream",
+        };
+        let result = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            tokio::task::block_in_place(|| {
+                handle.block_on(oss.put_object(&key, bytes, content_type))
+            })
+        } else {
+            tokio::runtime::Runtime::new()
+                .ok()
+                .and_then(|rt| rt.block_on(oss.put_object(&key, bytes, content_type)).ok())
+                .map(|_| ())
+                .ok_or_else(|| "runtime unavailable".to_string())
+        };
+        match result {
+            Ok(()) => return Some(oss.object_uri(&key)),
+            Err(err) => tracing::warn!(
+                "[AgentSession] failed to upload generated image to OSS session_id={} source={} err={}",
+                session_id,
+                source.display(),
+                err
+            ),
+        }
     }
 
     let target_dir = gen_images_root.join(session_id);

@@ -49,7 +49,7 @@ pub use mutation::{
     read_config_path_value, redact_sensitive_value,
 };
 pub use server::{
-    CloudConfig, FmpConfig, LoggingConfig, NanoBananaConfig, OssConfig, PostgresConfig,
+    CloudConfig, CloudMode, FmpConfig, LoggingConfig, NanoBananaConfig, OssConfig, PostgresConfig,
     SearchConfig, SecurityConfig, StorageConfig, ToolGuardConfig, WebConfig,
 };
 pub use yaml::{

@@ -40,7 +40,7 @@ serde_json = "1"
 serde_yaml = "0.9"
 
 # HTTP
-reqwest = { version = "0.12", features = ["json", "multipart", "stream", "gzip"] }
+reqwest = { version = "0.12", features = ["json", "multipart", "stream", "gzip", "socks"] }
 axum = { version = "0.8", features = ["macros", "multipart"] }
 tower-http = { version = "0.6", features = ["fs", "cors"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
@@ -88,6 +88,8 @@ base64 = "0.22"
 hmac = "0.12"
 sha1 = "0.10"
 percent-encoding = "2"
+tokio-postgres = { version = "0.7", features = ["with-serde_json-1", "with-chrono-0_4"] }
+url = "2"
 
 # Internal crates
 hone-core = { path = "crates/hone-core" }

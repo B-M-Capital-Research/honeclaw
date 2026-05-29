@@ -7,6 +7,7 @@ pub mod agent;
 pub mod api_key_pool;
 pub mod audit;
 pub mod channel_process;
+pub mod cloud_runtime;
 pub mod config;
 pub mod error;
 pub mod heartbeat;

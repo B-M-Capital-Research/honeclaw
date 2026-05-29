@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use glob::Pattern;
+use hone_core::cloud_runtime::OssObjectStore;
 use hone_core::{ActorIdentity, HoneError, HoneResult, truncate_chars_append};
 use serde_json::{Value, json};
 use std::fs;
@@ -154,12 +155,21 @@ impl LocalSandboxAccess {
 
 pub struct LocalListFilesTool {
     access: LocalSandboxAccess,
+    oss: Option<OssObjectStore>,
 }
 
 impl LocalListFilesTool {
     pub fn new(sandbox_base_dir: PathBuf, actor: ActorIdentity) -> Self {
         Self {
             access: LocalSandboxAccess::new(sandbox_base_dir, actor),
+            oss: None,
+        }
+    }
+
+    pub fn new_cloud(sandbox_base_dir: PathBuf, actor: ActorIdentity, oss: OssObjectStore) -> Self {
+        Self {
+            access: LocalSandboxAccess::new(sandbox_base_dir, actor),
+            oss: Some(oss),
         }
     }
 }
@@ -212,6 +222,9 @@ impl Tool for LocalListFilesTool {
     }
 
     async fn execute(&self, args: Value) -> HoneResult<Value> {
+        if let Some(oss) = &self.oss {
+            return execute_oss_list(oss, &self.access.actor, args).await;
+        }
         let path = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
         let max_depth = args
             .get("max_depth")
@@ -286,12 +299,21 @@ impl Tool for LocalListFilesTool {
 
 pub struct LocalSearchFilesTool {
     access: LocalSandboxAccess,
+    oss: Option<OssObjectStore>,
 }
 
 impl LocalSearchFilesTool {
     pub fn new(sandbox_base_dir: PathBuf, actor: ActorIdentity) -> Self {
         Self {
             access: LocalSandboxAccess::new(sandbox_base_dir, actor),
+            oss: None,
+        }
+    }
+
+    pub fn new_cloud(sandbox_base_dir: PathBuf, actor: ActorIdentity, oss: OssObjectStore) -> Self {
+        Self {
+            access: LocalSandboxAccess::new(sandbox_base_dir, actor),
+            oss: Some(oss),
         }
     }
 }
@@ -344,6 +366,9 @@ impl Tool for LocalSearchFilesTool {
     }
 
     async fn execute(&self, args: Value) -> HoneResult<Value> {
+        if let Some(oss) = &self.oss {
+            return execute_oss_search(oss, &self.access.actor, args).await;
+        }
         let query = args
             .get("query")
             .and_then(|v| v.as_str())
@@ -494,12 +519,21 @@ impl Tool for LocalSearchFilesTool {
 
 pub struct LocalReadFileTool {
     access: LocalSandboxAccess,
+    oss: Option<OssObjectStore>,
 }
 
 impl LocalReadFileTool {
     pub fn new(sandbox_base_dir: PathBuf, actor: ActorIdentity) -> Self {
         Self {
             access: LocalSandboxAccess::new(sandbox_base_dir, actor),
+            oss: None,
+        }
+    }
+
+    pub fn new_cloud(sandbox_base_dir: PathBuf, actor: ActorIdentity, oss: OssObjectStore) -> Self {
+        Self {
+            access: LocalSandboxAccess::new(sandbox_base_dir, actor),
+            oss: Some(oss),
         }
     }
 }
@@ -544,6 +578,9 @@ impl Tool for LocalReadFileTool {
     }
 
     async fn execute(&self, args: Value) -> HoneResult<Value> {
+        if let Some(oss) = &self.oss {
+            return execute_oss_read(oss, &self.access.actor, args).await;
+        }
         let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
         let start_line = args
             .get("start_line")
@@ -598,6 +635,215 @@ impl Tool for LocalReadFileTool {
 
 fn truncate_chars(input: &str, max_chars: usize) -> String {
     truncate_chars_append(input, max_chars.saturating_sub(1), "…")
+}
+
+fn normalize_oss_relative_path(raw: &str) -> HoneResult<String> {
+    let trimmed = raw.trim();
+    let input = if trimmed.is_empty() { "." } else { trimmed };
+    let path = Path::new(input);
+    if path.is_absolute() {
+        return Err(HoneError::Tool(
+            "只允许访问当前 actor OSS sandbox 内的相对路径".to_string(),
+        ));
+    }
+    let mut parts = Vec::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::Normal(part) => parts.push(part.to_string_lossy().to_string()),
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err(HoneError::Tool(
+                    "路径不能包含绝对路径、.. 或跨 sandbox 的前缀".to_string(),
+                ));
+            }
+        }
+    }
+    Ok(parts.join("/"))
+}
+
+async fn execute_oss_list(
+    oss: &OssObjectStore,
+    actor: &ActorIdentity,
+    args: Value,
+) -> HoneResult<Value> {
+    let path =
+        normalize_oss_relative_path(args.get("path").and_then(|v| v.as_str()).unwrap_or("."))?;
+    let max_results = args
+        .get("max_results")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(DEFAULT_LIST_MAX_RESULTS as u64) as usize;
+    let prefix = format!("{}{}", oss.actor_prefix(actor), path.trim_matches('/'));
+    let prefix = if prefix.ends_with('/') || path.is_empty() {
+        prefix
+    } else {
+        format!("{prefix}/")
+    };
+    let keys = oss
+        .list_objects(&prefix, max_results + 1)
+        .await
+        .map_err(HoneError::Tool)?;
+    let truncated = keys.len() > max_results;
+    let entries = keys
+        .into_iter()
+        .take(max_results)
+        .map(|key| {
+            let rel = key
+                .strip_prefix(&oss.actor_prefix(actor))
+                .unwrap_or(&key)
+                .to_string();
+            json!({
+                "path": rel,
+                "kind": "file",
+                "backend": "oss",
+                "uri": oss.object_uri(&key),
+            })
+        })
+        .collect::<Vec<_>>();
+    Ok(json!({
+        "path": if path.is_empty() { "." } else { &path },
+        "entries": entries,
+        "count": entries.len(),
+        "truncated": truncated,
+    }))
+}
+
+async fn execute_oss_search(
+    oss: &OssObjectStore,
+    actor: &ActorIdentity,
+    args: Value,
+) -> HoneResult<Value> {
+    let query = args
+        .get("query")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if query.is_empty() {
+        return Err(HoneError::Tool("query 不能为空".to_string()));
+    }
+    let path =
+        normalize_oss_relative_path(args.get("path").and_then(|v| v.as_str()).unwrap_or("."))?;
+    let max_results = args
+        .get("max_results")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(DEFAULT_SEARCH_MAX_RESULTS as u64) as usize;
+    let prefix = format!("{}{}", oss.actor_prefix(actor), path.trim_matches('/'));
+    let keys = oss
+        .list_objects(&prefix, max_results.saturating_mul(5).max(10))
+        .await
+        .map_err(HoneError::Tool)?;
+    let lower_query = query.to_lowercase();
+    let mut matches = Vec::new();
+    let actor_prefix = oss.actor_prefix(actor);
+    for key in keys {
+        if matches.len() >= max_results {
+            break;
+        }
+        if !is_text_like_key(&key) {
+            continue;
+        }
+        let object = match oss.get_object(&key).await {
+            Ok(object) => object,
+            Err(_) => continue,
+        };
+        if object.bytes.len() as u64 > MAX_SEARCH_FILE_BYTES || object.bytes.contains(&0) {
+            continue;
+        }
+        let Ok(text) = String::from_utf8(object.bytes) else {
+            continue;
+        };
+        let rel = key.strip_prefix(&actor_prefix).unwrap_or(&key);
+        for (index, line) in text.lines().enumerate() {
+            if !line.to_lowercase().contains(&lower_query) {
+                continue;
+            }
+            matches.push(json!({
+                "path": rel,
+                "line": index + 1,
+                "excerpt": truncate_chars(line.trim(), MAX_SEARCH_EXCERPT_CHARS),
+                "backend": "oss",
+                "uri": oss.object_uri(&key),
+            }));
+            if matches.len() >= max_results {
+                break;
+            }
+        }
+    }
+    Ok(json!({
+        "query": query,
+        "path": if path.is_empty() { "." } else { &path },
+        "matches": matches,
+        "count": matches.len(),
+        "truncated": matches.len() >= max_results,
+    }))
+}
+
+async fn execute_oss_read(
+    oss: &OssObjectStore,
+    actor: &ActorIdentity,
+    args: Value,
+) -> HoneResult<Value> {
+    let path =
+        normalize_oss_relative_path(args.get("path").and_then(|v| v.as_str()).unwrap_or(""))?;
+    if path.is_empty() {
+        return Err(HoneError::Tool("请提供具体文件路径".to_string()));
+    }
+    let start_line = args
+        .get("start_line")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(DEFAULT_READ_START_LINE as u64) as usize;
+    if start_line == 0 {
+        return Err(HoneError::Tool("start_line 必须从 1 开始".to_string()));
+    }
+    let requested_end = args
+        .get("end_line")
+        .and_then(|v| v.as_u64())
+        .map(|v| v as usize);
+    let default_end = start_line + DEFAULT_READ_MAX_LINES - 1;
+    let end_line = requested_end.unwrap_or(default_end).min(default_end);
+    let key = format!("{}{}", oss.actor_prefix(actor), path);
+    let object = oss.get_object(&key).await.map_err(HoneError::Tool)?;
+    if object.bytes.contains(&0) {
+        return Err(HoneError::Tool("只支持读取文本文件".to_string()));
+    }
+    let text = String::from_utf8(object.bytes)
+        .map_err(|_| HoneError::Tool("只支持 UTF-8 文本文件".to_string()))?;
+    let all_lines: Vec<&str> = text.lines().collect();
+    let start_idx = start_line.saturating_sub(1).min(all_lines.len());
+    let end_idx = end_line.min(all_lines.len());
+    let selected = if start_idx < end_idx {
+        &all_lines[start_idx..end_idx]
+    } else {
+        &[]
+    };
+    let mut content = selected.join("\n");
+    let mut truncated = requested_end.is_none() && all_lines.len() > end_line;
+    if content.chars().count() > MAX_READ_CHARS {
+        content = truncate_chars(&content, MAX_READ_CHARS);
+        truncated = true;
+    }
+    Ok(json!({
+        "path": path,
+        "backend": "oss",
+        "uri": oss.object_uri(&key),
+        "start_line": start_line,
+        "end_line": if selected.is_empty() { start_line.saturating_sub(1) } else { start_line + selected.len() - 1 },
+        "total_lines": all_lines.len(),
+        "content": content,
+        "truncated": truncated,
+    }))
+}
+
+fn is_text_like_key(key: &str) -> bool {
+    matches!(
+        Path::new(key)
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase()
+            .as_str(),
+        "md" | "txt" | "json" | "csv" | "yaml" | "yml"
+    )
 }
 
 #[cfg(test)]

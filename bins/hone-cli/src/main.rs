@@ -1,4 +1,5 @@
 mod cleanup;
+mod cloud;
 mod common;
 mod configure;
 mod discord_token;
@@ -15,6 +16,7 @@ mod web;
 mod yaml_io;
 
 use cleanup::{CleanupArgs, run_cleanup};
+use cloud::{CloudCommands, run_cloud_command};
 use configure::{ConfigureArgs, run_configure};
 use mutations::{
     ChannelKind, ChannelSetArgs, ChannelToggleArgs, ModelsSetArgs, build_channel_mutations,
@@ -90,6 +92,11 @@ enum Commands {
     Web {
         #[command(subcommand)]
         command: WebCommands,
+    },
+    /// 云端 PG/OSS 运行时诊断与迁移。
+    Cloud {
+        #[command(subcommand)]
+        command: CloudCommands,
     },
     /// 启动渠道协议 probe，方便排查外部渠道连接问题。
     Probe(ProbeArgs),
@@ -592,6 +599,9 @@ async fn run_cli() -> Result<(), String> {
         }
         Some(Commands::Start(args)) => start::run_start(cli.config.as_deref(), args).await,
         Some(Commands::Web { command }) => run_web_command(cli.config.as_deref(), command).await,
+        Some(Commands::Cloud { command }) => {
+            run_cloud_command(cli.config.as_deref(), command).await
+        }
         Some(Commands::Probe(args)) => {
             let (core, paths) = load_cli_core(cli.config.as_deref()).map_err(|e| e.to_string())?;
             probe::run_probe(core, &paths.canonical_config_path.to_string_lossy(), args).await
@@ -601,6 +611,7 @@ async fn run_cli() -> Result<(), String> {
 
 #[tokio::main]
 async fn main() {
+    hone_core::cloud_runtime::load_dotenv_if_present();
     if let Err(error) = run_cli().await {
         eprintln!("❌ {error}");
         std::process::exit(1);
@@ -738,6 +749,49 @@ mod tests {
             Some(Commands::Cleanup(args)) => {
                 assert!(args.all);
                 assert!(args.yes);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_cloud_doctor_command() {
+        let cli = Cli::try_parse_from(["hone-cli", "cloud", "doctor", "--ensure-schema", "--json"])
+            .unwrap();
+        match cli.command {
+            Some(Commands::Cloud {
+                command: CloudCommands::Doctor(args),
+            }) => {
+                assert!(args.ensure_schema);
+                assert!(args.json);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_cloud_migrate_command() {
+        let cli = Cli::try_parse_from([
+            "hone-cli",
+            "cloud",
+            "migrate",
+            "--from-data-dir",
+            "./data",
+            "--upload-oss",
+            "--apply",
+            "--json",
+        ])
+        .unwrap();
+        match cli.command {
+            Some(Commands::Cloud {
+                command: CloudCommands::Migrate(args),
+            }) => {
+                assert_eq!(args.from_data_dir, PathBuf::from("./data"));
+                assert!(args.upload_oss);
+                assert!(!args.reuse_existing);
+                assert_eq!(args.concurrency, 6);
+                assert!(args.apply);
+                assert!(args.json);
             }
             other => panic!("unexpected command: {other:?}"),
         }

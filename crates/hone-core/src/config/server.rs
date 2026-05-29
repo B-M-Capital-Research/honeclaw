@@ -337,6 +337,8 @@ fn default_notif_prefs_dir() -> String {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CloudConfig {
+    #[serde(default = "default_cloud_mode")]
+    pub mode: String,
     #[serde(default)]
     pub enabled: bool,
     #[serde(default)]
@@ -347,12 +349,56 @@ pub struct CloudConfig {
     pub oss: OssConfig,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CloudMode {
+    Local,
+    Cloud,
+    Auto,
+}
+
+impl CloudMode {
+    pub fn from_config_value(raw: &str) -> Self {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "cloud" => Self::Cloud,
+            "auto" => Self::Auto,
+            _ => Self::Local,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Local => "local",
+            Self::Cloud => "cloud",
+            Self::Auto => "auto",
+        }
+    }
+
+    pub fn is_cloud_authoritative(&self) -> bool {
+        matches!(self, Self::Cloud)
+    }
+}
+
 impl CloudConfig {
+    pub fn effective_mode(&self) -> CloudMode {
+        let env_mode = env_value("HONE_CLOUD_MODE");
+        if !env_mode.is_empty() {
+            return CloudMode::from_config_value(&env_mode);
+        }
+        CloudMode::from_config_value(&self.mode)
+    }
+
     pub fn effective_enabled(&self) -> bool {
-        self.enabled
-            || env_bool("HONE_CLOUD_ENABLED")
-            || self.postgres.is_configured()
-            || self.oss.is_configured()
+        match self.effective_mode() {
+            CloudMode::Local => false,
+            CloudMode::Cloud => true,
+            CloudMode::Auto => {
+                self.enabled
+                    || env_bool("HONE_CLOUD_ENABLED")
+                    || self.postgres.is_configured()
+                    || self.oss.is_configured()
+            }
+        }
     }
 
     pub fn effective_strict_no_local_storage(&self) -> bool {
@@ -360,6 +406,13 @@ impl CloudConfig {
     }
 
     pub fn validate(&self) -> crate::HoneResult<()> {
+        if matches!(self.effective_mode(), CloudMode::Cloud)
+            && !(self.postgres.is_configured() && self.oss.is_configured())
+        {
+            return Err(crate::HoneError::Config(
+                "cloud.mode=cloud 需要同时配置 cloud.postgres 和 cloud.oss".to_string(),
+            ));
+        }
         if self.postgres.is_partially_configured() && !self.postgres.is_configured() {
             return Err(crate::HoneError::Config(
                 "cloud.postgres 配置不完整：需要 database_url 或 host/user/password/database"
@@ -404,6 +457,10 @@ pub struct PostgresConfig {
     pub database_env: String,
     #[serde(default = "default_pg_sslmode")]
     pub sslmode: String,
+    #[serde(default)]
+    pub proxy: String,
+    #[serde(default = "default_pg_proxy_env")]
+    pub proxy_env: String,
 }
 
 impl Default for PostgresConfig {
@@ -422,6 +479,8 @@ impl Default for PostgresConfig {
             database: String::new(),
             database_env: default_pg_database_env(),
             sslmode: default_pg_sslmode(),
+            proxy: String::new(),
+            proxy_env: default_pg_proxy_env(),
         }
     }
 }
@@ -478,6 +537,10 @@ impl PostgresConfig {
         direct_or_env(&self.database, &self.database_env)
     }
 
+    pub fn resolved_proxy(&self) -> String {
+        direct_or_env(&self.proxy, &self.proxy_env)
+    }
+
     pub fn is_configured(&self) -> bool {
         !self.resolved_database_url().is_empty()
     }
@@ -519,6 +582,10 @@ pub struct OssConfig {
     pub region_env: String,
     #[serde(default = "default_oss_public_upload_prefix")]
     pub public_upload_prefix: String,
+    #[serde(default)]
+    pub proxy: String,
+    #[serde(default = "default_oss_proxy_env")]
+    pub proxy_env: String,
 }
 
 impl Default for OssConfig {
@@ -535,6 +602,8 @@ impl Default for OssConfig {
             region: String::new(),
             region_env: default_oss_region_env(),
             public_upload_prefix: default_oss_public_upload_prefix(),
+            proxy: String::new(),
+            proxy_env: default_oss_proxy_env(),
         }
     }
 }
@@ -560,6 +629,10 @@ impl OssConfig {
 
     pub fn resolved_region(&self) -> String {
         direct_or_env(&self.region, &self.region_env)
+    }
+
+    pub fn resolved_proxy(&self) -> String {
+        direct_or_env(&self.proxy, &self.proxy_env)
     }
 
     pub fn is_configured(&self) -> bool {
@@ -605,6 +678,10 @@ fn env_bool(env_name: &str) -> bool {
     )
 }
 
+fn default_cloud_mode() -> String {
+    "local".to_string()
+}
+
 fn default_database_url_env() -> String {
     "DATABASE_URL".to_string()
 }
@@ -626,6 +703,9 @@ fn default_pg_database_env() -> String {
 fn default_pg_sslmode() -> String {
     "disable".to_string()
 }
+fn default_pg_proxy_env() -> String {
+    "HONE_POSTGRES_PROXY".to_string()
+}
 fn default_oss_access_key_id_env() -> String {
     "HONE_OSS_ACCESS_KEY_ID".to_string()
 }
@@ -643,4 +723,7 @@ fn default_oss_region_env() -> String {
 }
 fn default_oss_public_upload_prefix() -> String {
     "public-uploads".to_string()
+}
+fn default_oss_proxy_env() -> String {
+    "HONE_OSS_PROXY".to_string()
 }

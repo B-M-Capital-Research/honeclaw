@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 #[tokio::main]
 async fn main() {
+    hone_core::cloud_runtime::load_dotenv_if_present();
     let config_path =
         std::env::var("HONE_CONFIG_PATH").unwrap_or_else(|_| "config.yaml".to_string());
     let data_dir = std::env::var("HONE_DATA_DIR").ok().map(PathBuf::from);

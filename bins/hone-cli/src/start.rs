@@ -10,6 +10,7 @@ use reqwest::StatusCode;
 use tokio::process::{Child, Command};
 
 use crate::common::{ResolvedRuntimePaths, load_cli_config, resolve_runtime_paths};
+use hone_core::cloud_runtime::RuntimeRole;
 
 const SOURCE_RUNTIME_PACKAGES: &[&str] = &[
     "hone-cli",
@@ -357,6 +358,7 @@ pub(crate) async fn run_start(
     }
 
     let (config, paths) = load_cli_config(explicit_config, true).map_err(|e| e.to_string())?;
+    let runtime_role = RuntimeRole::from_env();
     let _ = resolve_runtime_paths(explicit_config, true).map_err(|e| e.to_string())?;
 
     let lock_names = hone_core::enabled_process_lock_names(&config);
@@ -397,27 +399,30 @@ pub(crate) async fn run_start(
     children.push(backend);
     labels.push("hone-console-page");
 
-    if config.imessage.enabled {
+    if runtime_role.runs_worker_tasks() && config.imessage.enabled {
         children.push(
             spawn_channel("hone-imessage", "iMessage", &paths, source_root.as_deref()).await?,
         );
         labels.push("hone-imessage");
     }
-    if config.discord.enabled {
+    if runtime_role.runs_worker_tasks() && config.discord.enabled {
         children
             .push(spawn_channel("hone-discord", "Discord", &paths, source_root.as_deref()).await?);
         labels.push("hone-discord");
     }
-    if config.feishu.enabled {
+    if runtime_role.runs_worker_tasks() && config.feishu.enabled {
         children
             .push(spawn_channel("hone-feishu", "Feishu", &paths, source_root.as_deref()).await?);
         labels.push("hone-feishu");
     }
-    if config.telegram.enabled {
+    if runtime_role.runs_worker_tasks() && config.telegram.enabled {
         children.push(
             spawn_channel("hone-telegram", "Telegram", &paths, source_root.as_deref()).await?,
         );
         labels.push("hone-telegram");
+    }
+    if !runtime_role.runs_worker_tasks() {
+        println!("[INFO] HONE_RUNTIME_ROLE=web: channel sidecars disabled");
     }
 
     write_current_pid(&paths)?;

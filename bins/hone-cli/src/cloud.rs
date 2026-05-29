@@ -1,0 +1,485 @@
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use clap::{Args, Subcommand};
+use futures::{StreamExt, stream};
+use hone_core::cloud_runtime::{
+    CloudDocumentIndex, CloudPgRuntime, OssObjectStore, RuntimeRole, local_durable_dependencies,
+    sanitize_key_component, sha256_hex,
+};
+use hone_core::{ActorIdentity, HoneError, HoneResult};
+use serde::Serialize;
+use serde_json::json;
+use walkdir::WalkDir;
+
+use crate::common::load_cli_config;
+use crate::yaml_io::print_json;
+
+#[derive(Subcommand, Debug)]
+pub(crate) enum CloudCommands {
+    /// 检查 cloud.mode、runtime role、PG、OSS、schema 和本地 durable 依赖。
+    Doctor(CloudDoctorArgs),
+    /// 从本机 data/ dry-run 或幂等导入 PG/OSS。
+    Migrate(CloudMigrateArgs),
+}
+
+#[derive(Args, Debug)]
+pub(crate) struct CloudDoctorArgs {
+    #[arg(long)]
+    pub(crate) json: bool,
+    #[arg(long = "ensure-schema")]
+    pub(crate) ensure_schema: bool,
+}
+
+#[derive(Args, Debug)]
+pub(crate) struct CloudMigrateArgs {
+    #[arg(long = "from-data-dir", value_name = "DIR")]
+    pub(crate) from_data_dir: PathBuf,
+    #[arg(long = "upload-oss")]
+    pub(crate) upload_oss: bool,
+    /// Reuse existing OSS objects after a HEAD check instead of blindly overwriting.
+    #[arg(long = "reuse-existing")]
+    pub(crate) reuse_existing: bool,
+    /// Number of concurrent object uploads. Applies only with --upload-oss --apply.
+    #[arg(long, default_value_t = 6)]
+    pub(crate) concurrency: usize,
+    #[arg(long)]
+    pub(crate) apply: bool,
+    #[arg(long)]
+    pub(crate) json: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct CloudDoctorReport {
+    cloud_mode: String,
+    cloud_enabled: bool,
+    strict_no_local_storage: bool,
+    runtime_role: String,
+    postgres_configured: bool,
+    postgres_proxy_configured: bool,
+    postgres_health: Option<hone_core::cloud_runtime::CloudHealth>,
+    schema_ensured: bool,
+    oss_configured: bool,
+    oss_proxy_configured: bool,
+    oss_health: Option<hone_core::cloud_runtime::CloudHealth>,
+    local_durable_dependency_count: usize,
+    local_durable_dependencies: Vec<String>,
+}
+
+#[derive(Debug, Default, Serialize)]
+struct MigrationCounts {
+    sessions: usize,
+    uploads_and_attachments: usize,
+    generated_images: usize,
+    company_profiles: usize,
+    portfolio_json: usize,
+    cron_json: usize,
+    notification_prefs: usize,
+    quota_json: usize,
+    sqlite_files: usize,
+    other_files: usize,
+}
+
+#[derive(Debug, Serialize)]
+struct MigrationReport {
+    mode: &'static str,
+    from_data_dir: String,
+    upload_oss: bool,
+    reuse_existing: bool,
+    concurrency: usize,
+    postgres_configured: bool,
+    oss_configured: bool,
+    counted: MigrationCounts,
+    uploaded_objects: usize,
+    reused_objects: usize,
+    indexed_documents: usize,
+    skipped_objects: usize,
+    conflicts: Vec<String>,
+}
+
+pub(crate) async fn run_cloud_command(
+    config_path: Option<&Path>,
+    command: CloudCommands,
+) -> Result<(), String> {
+    match command {
+        CloudCommands::Doctor(args) => run_doctor(config_path, args).await,
+        CloudCommands::Migrate(args) => run_migrate(config_path, args).await,
+    }
+}
+
+async fn run_doctor(config_path: Option<&Path>, args: CloudDoctorArgs) -> Result<(), String> {
+    let (config, _) = load_cli_config(config_path, false).map_err(|err| err.to_string())?;
+    let pg = CloudPgRuntime::from_cloud_config(&config.cloud);
+    let oss = OssObjectStore::from_config(&config.cloud.oss);
+    let mut schema_ensured = false;
+    let postgres_health = if let Some(pg_runtime) = &pg {
+        let health = pg_runtime.health().await;
+        if args.ensure_schema && health.ok {
+            tokio::time::timeout(
+                std::time::Duration::from_secs(15),
+                pg_runtime.ensure_schema(),
+            )
+            .await
+            .map_err(|_| "Postgres schema 初始化超时".to_string())?
+            .map_err(|err| err.to_string())?;
+            schema_ensured = true;
+        }
+        Some(health)
+    } else {
+        None
+    };
+    let oss_health = if let Some(oss_store) = &oss {
+        Some(oss_store.health().await)
+    } else {
+        None
+    };
+    let local_deps = local_durable_dependencies(&config);
+    let report = CloudDoctorReport {
+        cloud_mode: config.cloud.effective_mode().as_str().to_string(),
+        cloud_enabled: config.cloud.effective_enabled(),
+        strict_no_local_storage: config.cloud.effective_strict_no_local_storage(),
+        runtime_role: RuntimeRole::from_env().as_str().to_string(),
+        postgres_configured: config.cloud.postgres.is_configured(),
+        postgres_proxy_configured: !config.cloud.postgres.resolved_proxy().is_empty(),
+        postgres_health,
+        schema_ensured,
+        oss_configured: config.cloud.oss.is_configured(),
+        oss_proxy_configured: !config.cloud.oss.resolved_proxy().is_empty(),
+        oss_health,
+        local_durable_dependency_count: local_deps.len(),
+        local_durable_dependencies: local_deps,
+    };
+    if args.json {
+        print_json(&report)
+    } else {
+        println!("cloud_mode={}", report.cloud_mode);
+        println!("runtime_role={}", report.runtime_role);
+        println!("postgres_configured={}", report.postgres_configured);
+        println!("oss_configured={}", report.oss_configured);
+        println!(
+            "local_durable_dependency_count={}",
+            report.local_durable_dependency_count
+        );
+        if let Some(health) = report.postgres_health {
+            println!("postgres_ok={} detail={}", health.ok, health.detail);
+        }
+        if let Some(health) = report.oss_health {
+            println!("oss_ok={} detail={}", health.ok, health.detail);
+        }
+        Ok(())
+    }
+}
+
+async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Result<(), String> {
+    let (config, _) = load_cli_config(config_path, false).map_err(|err| err.to_string())?;
+    let mut report = MigrationReport {
+        mode: if args.apply { "apply" } else { "dry-run" },
+        from_data_dir: args.from_data_dir.to_string_lossy().to_string(),
+        upload_oss: args.upload_oss,
+        reuse_existing: args.reuse_existing,
+        concurrency: args.concurrency.max(1),
+        postgres_configured: config.cloud.postgres.is_configured(),
+        oss_configured: config.cloud.oss.is_configured(),
+        counted: MigrationCounts::default(),
+        uploaded_objects: 0,
+        reused_objects: 0,
+        indexed_documents: 0,
+        skipped_objects: 0,
+        conflicts: Vec::new(),
+    };
+
+    let candidates = collect_candidates(&args.from_data_dir, &mut report.counted)
+        .map_err(|err| err.to_string())?;
+    if args.apply {
+        let pg = CloudPgRuntime::from_cloud_config(&config.cloud)
+            .ok_or_else(|| "Postgres 未配置，不能 apply migration".to_string())?;
+        pg.ensure_schema().await.map_err(|err| err.to_string())?;
+        let oss = if args.upload_oss {
+            Some(
+                OssObjectStore::from_config(&config.cloud.oss)
+                    .ok_or_else(|| "OSS 未配置，不能 --upload-oss apply".to_string())?,
+            )
+        } else {
+            None
+        };
+
+        let total = candidates.len();
+        let mut records = Vec::new();
+        let oss = oss.map(Arc::new);
+        let mut completed = 0usize;
+        let mut results =
+            stream::iter(candidates.into_iter().enumerate().map(|(idx, candidate)| {
+                let oss = oss.clone();
+                let reuse_existing = args.reuse_existing;
+                async move { migrate_one_candidate(idx, candidate, oss, reuse_existing).await }
+            }))
+            .buffer_unordered(args.concurrency.max(1));
+
+        while let Some(result) = results.next().await {
+            completed += 1;
+            if completed % 100 == 0 || completed == total {
+                eprintln!("[cloud migrate] processed {completed}/{total}");
+            }
+            let result = result;
+            report.uploaded_objects += result.uploaded_objects;
+            report.reused_objects += result.reused_objects;
+            report.skipped_objects += result.skipped_objects;
+            report.conflicts.extend(result.conflicts);
+            let Some(record) = result.record else {
+                continue;
+            };
+            records.push(record);
+            report.indexed_documents += 1;
+            if records.len() >= 100 {
+                pg.upsert_document_indexes(&records)
+                    .await
+                    .map_err(|err| err.to_string())?;
+                records.clear();
+            }
+        }
+        pg.upsert_document_indexes(&records)
+            .await
+            .map_err(|err| err.to_string())?;
+    }
+
+    if args.json {
+        print_json(&report)
+    } else {
+        println!(
+            "mode={} sessions={} uploads={} company_profiles={} sqlite_files={} uploaded={} reused={} indexed={}",
+            report.mode,
+            report.counted.sessions,
+            report.counted.uploads_and_attachments,
+            report.counted.company_profiles,
+            report.counted.sqlite_files,
+            report.uploaded_objects,
+            report.reused_objects,
+            report.indexed_documents
+        );
+        for conflict in &report.conflicts {
+            println!("conflict: {conflict}");
+        }
+        Ok(())
+    }
+}
+
+struct MigrationOneResult {
+    record: Option<CloudDocumentIndex>,
+    uploaded_objects: usize,
+    reused_objects: usize,
+    skipped_objects: usize,
+    conflicts: Vec<String>,
+}
+
+async fn migrate_one_candidate(
+    _idx: usize,
+    candidate: MigrationCandidate,
+    oss: Option<Arc<OssObjectStore>>,
+    reuse_existing: bool,
+) -> MigrationOneResult {
+    let mut result = MigrationOneResult {
+        record: None,
+        uploaded_objects: 0,
+        reused_objects: 0,
+        skipped_objects: 0,
+        conflicts: Vec::new(),
+    };
+    if candidate.kind == "sqlite" {
+        result.skipped_objects += 1;
+        result.conflicts.push(format!(
+            "sqlite structured import pending, skipped blob upload: {}",
+            candidate.path.display()
+        ));
+        return result;
+    }
+    let bytes = match std::fs::read(&candidate.path) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            result
+                .conflicts
+                .push(format!("read failed {}: {error}", candidate.path.display()));
+            return result;
+        }
+    };
+    let hash = sha256_hex(&bytes);
+    let actor_key = candidate
+        .actor_storage_key
+        .unwrap_or_else(|| "migration".to_string());
+    let doc_id = candidate.document_id;
+    let mut oss_uri = format!("local://{}", candidate.path.display());
+    if let Some(oss_store) = &oss {
+        let key = format!(
+            "users/{}/documents/{}/{}",
+            sanitize_key_component(&actor_key),
+            sanitize_key_component(&candidate.kind),
+            sanitize_key_component(&doc_id)
+        );
+        let mut should_upload = true;
+        if reuse_existing {
+            let exists = tokio::time::timeout(
+                std::time::Duration::from_secs(8),
+                oss_store.object_exists(&key),
+            )
+            .await
+            .ok()
+            .and_then(Result::ok)
+            .unwrap_or(false);
+            if exists {
+                should_upload = false;
+                result.reused_objects += 1;
+                oss_uri = oss_store.object_uri(&key);
+            }
+        }
+        if should_upload {
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(90),
+                oss_store.put_object(&key, bytes.clone(), candidate.content_type),
+            )
+            .await
+            {
+                Ok(Ok(())) => {
+                    result.uploaded_objects += 1;
+                    oss_uri = oss_store.object_uri(&key);
+                }
+                Ok(Err(error)) => {
+                    result
+                        .conflicts
+                        .push(format!("oss upload failed {key}: {error}"));
+                    return result;
+                }
+                Err(_) => {
+                    result.conflicts.push(format!("oss upload timeout {key}"));
+                    return result;
+                }
+            }
+        }
+    } else {
+        result.skipped_objects += 1;
+    }
+    result.record = Some(CloudDocumentIndex {
+        actor_storage_key: actor_key,
+        kind: candidate.kind,
+        document_id: doc_id,
+        oss_uri,
+        sha256: hash,
+        size_bytes: bytes.len() as i64,
+        metadata: json!({ "source_path": candidate.path.to_string_lossy() }),
+    });
+    result
+}
+
+struct MigrationCandidate {
+    path: PathBuf,
+    actor_storage_key: Option<String>,
+    kind: String,
+    document_id: String,
+    content_type: &'static str,
+}
+
+fn collect_candidates(
+    root: &Path,
+    counts: &mut MigrationCounts,
+) -> HoneResult<Vec<MigrationCandidate>> {
+    if !root.exists() {
+        return Err(HoneError::Config(format!(
+            "data dir 不存在: {}",
+            root.display()
+        )));
+    }
+    let mut candidates = Vec::new();
+    for entry in WalkDir::new(root).follow_links(false) {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(_) => continue,
+        };
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let path = entry.path().to_path_buf();
+        let rel = path.strip_prefix(root).unwrap_or(&path);
+        let rel_string = rel.to_string_lossy().replace('\\', "/");
+        let Some(classification) = classify_path(&rel_string) else {
+            counts.other_files += 1;
+            continue;
+        };
+        match classification.kind.as_str() {
+            "session" => counts.sessions += 1,
+            "upload" => counts.uploads_and_attachments += 1,
+            "generated_image" => counts.generated_images += 1,
+            "company_profile" => counts.company_profiles += 1,
+            "portfolio" => counts.portfolio_json += 1,
+            "cron" => counts.cron_json += 1,
+            "notification_prefs" => counts.notification_prefs += 1,
+            "quota" => counts.quota_json += 1,
+            "sqlite" => counts.sqlite_files += 1,
+            _ => counts.other_files += 1,
+        }
+        candidates.push(MigrationCandidate {
+            path,
+            actor_storage_key: classification.actor_storage_key,
+            kind: classification.kind,
+            document_id: classification.document_id,
+            content_type: classification.content_type,
+        });
+    }
+    Ok(candidates)
+}
+
+struct Classification {
+    actor_storage_key: Option<String>,
+    kind: String,
+    document_id: String,
+    content_type: &'static str,
+}
+
+fn classify_path(rel: &str) -> Option<Classification> {
+    let ext = Path::new(rel)
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let content_type = match ext.as_str() {
+        "json" => "application/json",
+        "md" | "txt" => "text/plain; charset=utf-8",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
+        "sqlite" | "sqlite3" | "db" => "application/octet-stream",
+        _ => "application/octet-stream",
+    };
+    let parts = rel.split('/').collect::<Vec<_>>();
+    let actor = parts
+        .iter()
+        .find_map(|part| part.strip_prefix("Actor_"))
+        .and_then(ActorIdentity::from_session_id)
+        .map(|actor| actor.storage_key());
+    let doc_id = rel.replace('/', "__");
+    let kind = if rel.starts_with("sessions/") && ext == "json" {
+        "session"
+    } else if rel.contains("/uploads/") || rel.starts_with("uploads/") {
+        "upload"
+    } else if rel.starts_with("gen_images/") {
+        "generated_image"
+    } else if rel.contains("company_profiles/") && (ext == "md" || ext == "json") {
+        "company_profile"
+    } else if rel.starts_with("portfolio/") && ext == "json" {
+        "portfolio"
+    } else if rel.starts_with("cron_jobs/") && ext == "json" {
+        "cron"
+    } else if rel.starts_with("notif_prefs/") && ext == "json" {
+        "notification_prefs"
+    } else if rel.starts_with("conversation_quota/") && ext == "json" {
+        "quota"
+    } else if matches!(ext.as_str(), "sqlite" | "sqlite3" | "db") {
+        "sqlite"
+    } else {
+        return None;
+    };
+    Some(Classification {
+        actor_storage_key: actor,
+        kind: kind.to_string(),
+        document_id: doc_id,
+        content_type,
+    })
+}

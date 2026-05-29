@@ -134,11 +134,21 @@ Use `HONE_PUBLIC_SECURE_COOKIE=true`, `1`, or `yes` when the backend origin cann
 
 Managed PG / OSS settings are runtime env configuration. Keep real values in the backend host environment, local ignored `.env`, or process supervisor, never in committed config or docs. `config.example.yaml` documents the env var names under `cloud.*` with empty credential fields.
 
+Storage authority mode:
+
+```text
+HONE_CLOUD_MODE=local|cloud|auto
+HONE_RUNTIME_ROLE=web|worker|all
+```
+
+Use `HONE_CLOUD_MODE=local` for local fallback. Use `cloud` only when PG and OSS are both configured and intended to be authoritative. Use `auto` only for development compatibility with older env-presence behavior.
+
 Postgres migration target:
 
 ```text
-HONE_CLOUD_ENABLED=true
+HONE_CLOUD_MODE=cloud
 DATABASE_URL=<postgres-url>
+HONE_POSTGRES_PROXY=socks5://127.0.0.1:1082
 ```
 
 Compatibility pieces accepted when `DATABASE_URL` is not set:
@@ -159,9 +169,21 @@ HONE_OSS_ACCESS_KEY_SECRET=<access-key-secret>
 HONE_OSS_BUCKET=<bucket>
 HONE_OSS_ENDPOINT=https://oss-cn-beijing.aliyuncs.com
 HONE_OSS_REGION=oss-cn-beijing
+HONE_OSS_PROXY=socks5://127.0.0.1:1082
 ```
 
-When OSS is configured, `/api/public/upload` writes objects under `public-uploads/<user>/<date>/...` and returns `oss://bucket/key`. `/api/public/image` and `/api/public/file` can proxy those managed OSS paths back through the backend. Session, quota, audit, portfolio, cron, notification preference, KB, and log stores are still local until their PG-backed repositories are implemented.
+When OSS is configured, `/api/public/upload` writes objects under `public-uploads/<user>/<date>/...` and returns `oss://bucket/key`. Actor durable files use `users/{actor_storage_key}/...` namespaces. `/api/public/image` and `/api/public/file` can proxy managed OSS paths back through the backend.
+
+Runtime checks:
+
+```bash
+hone-cli cloud doctor --ensure-schema --json
+hone-cli cloud migrate --from-data-dir ./data --json
+hone-cli cloud migrate --from-data-dir ./data --upload-oss --apply --concurrency 12 --json
+hone-cli cloud migrate --from-data-dir ./data --upload-oss --apply --reuse-existing --concurrency 4 --json
+```
+
+The migrator uploads recognized durable files and indexes them in PG `cloud_documents`. Use the lower-concurrency `--reuse-existing` retry when proxy or OSS connections drop during a large upload. SQLite files are currently counted but skipped because they need structured row-wise import into PG. Session, quota, auth, audit, portfolio, cron, notification preference, KB, and company-profile hot-path repositories are still local until their dedicated PG-backed adapters are completed.
 
 ## Worker Route
 

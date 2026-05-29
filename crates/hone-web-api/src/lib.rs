@@ -23,6 +23,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
+use hone_core::cloud_runtime::{RuntimeRole, local_durable_dependencies};
 use hone_core::config::{EventEngineConfig, HoneConfig};
 use hone_event_engine::{
     BodyPolisher, DiscordSink, FeishuSink, IMessageSink, LlmPolisher, LogSink, MultiChannelSink,
@@ -613,6 +614,7 @@ pub async fn start_server(
     skills_dir: Option<&Path>,
     deployment_mode: &str,
 ) -> Result<StartedServer, String> {
+    hone_core::cloud_runtime::load_dotenv_if_present();
     let mut task_handles = Vec::new();
     let mut config =
         HoneConfig::from_file(config_path).map_err(|e| format!("配置加载失败: {e}"))?;
@@ -712,6 +714,7 @@ pub async fn start_server(
         },
         heartbeat_registry: Default::default(),
     });
+    let runtime_role = RuntimeRole::from_env();
 
     // ── UDP 日志接收（收集各 channel sidecar 的日志）────────────────
     let udp_port = state.core.config.logging.udp_port.unwrap_or(18118);
@@ -732,7 +735,7 @@ pub async fn start_server(
     }));
 
     // ── 事件引擎（主动消息 feed，默认 enabled=false；config 开启后启动）──
-    {
+    if runtime_role.runs_worker_tasks() {
         let mut engine_cfg = state.core.config.event_engine.clone();
         let fmp_cfg = state.core.config.fmp.clone();
         let portfolio_dir = state.core.config.storage.portfolio_dir.clone();
@@ -863,16 +866,20 @@ pub async fn start_server(
     }
 
     // ── 调度器 ─────────────────────────────────────────────────────
-    let mut scheduler_channels = vec!["web".to_string()];
-    if state.core.config.imessage.enabled {
-        scheduler_channels.insert(0, "imessage".to_string());
+    if runtime_role.runs_worker_tasks() {
+        let mut scheduler_channels = vec!["web".to_string()];
+        if state.core.config.imessage.enabled {
+            scheduler_channels.insert(0, "imessage".to_string());
+        }
+        let (scheduler, event_rx) = state.core.create_scheduler(scheduler_channels);
+        task_handles.push(tokio::spawn(async move { scheduler.start().await }));
+        let state_for_scheduler = state.clone();
+        task_handles.push(tokio::spawn(async move {
+            handle_scheduler_events(state_for_scheduler, event_rx).await
+        }));
+    } else {
+        info!("runtime_role=web: scheduler/event-engine/channel worker tasks disabled");
     }
-    let (scheduler, event_rx) = state.core.create_scheduler(scheduler_channels);
-    task_handles.push(tokio::spawn(async move { scheduler.start().await }));
-    let state_for_scheduler = state.clone();
-    task_handles.push(tokio::spawn(async move {
-        handle_scheduler_events(state_for_scheduler, event_rx).await
-    }));
 
     // ── 绑定管理端口（默认 8077，可通过 HONE_WEB_PORT 覆盖）─────────────
     let bind_addr = format!("127.0.0.1:{}", runtime_port());
@@ -940,13 +947,13 @@ pub async fn start_server(
 
 fn report_cloud_runtime_storage_state(
     config: &HoneConfig,
-    data_dir: Option<&Path>,
+    _data_dir: Option<&Path>,
 ) -> Result<(), String> {
     if !config.cloud.effective_enabled() {
         return Ok(());
     }
 
-    let local_dependencies = local_storage_dependencies(config, data_dir);
+    let local_dependencies = local_durable_dependencies(config);
     info!(
         cloud_postgres = config.cloud.postgres.is_configured(),
         cloud_oss = config.cloud.oss.is_configured(),
@@ -961,7 +968,7 @@ fn report_cloud_runtime_storage_state(
 
     let summary = local_dependencies
         .iter()
-        .map(|(name, path)| format!("{name}={path}"))
+        .map(|path| path.to_string())
         .collect::<Vec<_>>()
         .join(", ");
     if config.cloud.effective_strict_no_local_storage() {
@@ -972,47 +979,6 @@ fn report_cloud_runtime_storage_state(
 
     tracing::warn!("cloud runtime still has local storage dependencies: {summary}");
     Ok(())
-}
-
-fn local_storage_dependencies(
-    config: &HoneConfig,
-    data_dir: Option<&Path>,
-) -> Vec<(&'static str, String)> {
-    let mut deps = vec![
-        ("sessions_dir", config.storage.sessions_dir.clone()),
-        (
-            "session_sqlite_db_path",
-            config.storage.session_sqlite_db_path.clone(),
-        ),
-        (
-            "conversation_quota_dir",
-            config.storage.conversation_quota_dir.clone(),
-        ),
-        (
-            "llm_audit_db_path",
-            config.storage.llm_audit_db_path.clone(),
-        ),
-        ("portfolio_dir", config.storage.portfolio_dir.clone()),
-        ("cron_jobs_dir", config.storage.cron_jobs_dir.clone()),
-        ("gen_images_dir", config.storage.gen_images_dir.clone()),
-        ("notif_prefs_dir", config.storage.notif_prefs_dir.clone()),
-    ];
-
-    if let Some(data_dir) = data_dir {
-        deps.push((
-            "runtime_logs_dir",
-            data_dir
-                .join("runtime")
-                .join("logs")
-                .to_string_lossy()
-                .to_string(),
-        ));
-    }
-    if config.imessage.enabled {
-        deps.push(("imessage_chat_db", config.imessage.db_path.clone()));
-    }
-    deps.retain(|(_, path)| !path.trim().is_empty());
-    deps
 }
 
 #[cfg(test)]

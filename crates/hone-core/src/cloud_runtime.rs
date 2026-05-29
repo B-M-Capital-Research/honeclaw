@@ -1,0 +1,841 @@
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+use std::time::Duration;
+
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use chrono::{DateTime, Utc};
+use hmac::{Hmac, Mac};
+use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, DATE, HeaderMap, HeaderValue};
+use serde::Serialize;
+use sha1::Sha1;
+use sha2::{Digest, Sha256};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
+use tokio_postgres::{Client as PgClient, Config as PgConfig, NoTls};
+use url::Url;
+
+use crate::config::{CloudConfig, HoneConfig, OssConfig, PostgresConfig};
+use crate::{ActorIdentity, HoneError, HoneResult};
+
+type HmacSha1 = Hmac<Sha1>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RuntimeRole {
+    Web,
+    Worker,
+    All,
+}
+
+impl RuntimeRole {
+    pub fn from_env() -> Self {
+        match std::env::var("HONE_RUNTIME_ROLE")
+            .unwrap_or_else(|_| "all".to_string())
+            .trim()
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "web" => Self::Web,
+            "worker" => Self::Worker,
+            _ => Self::All,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Web => "web",
+            Self::Worker => "worker",
+            Self::All => "all",
+        }
+    }
+
+    pub fn runs_worker_tasks(&self) -> bool {
+        matches!(self, Self::Worker | Self::All)
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CloudHealth {
+    pub ok: bool,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct CloudPgRuntime {
+    config: PostgresConfig,
+}
+
+#[derive(Debug, Clone)]
+pub struct CloudDocumentIndex {
+    pub actor_storage_key: String,
+    pub kind: String,
+    pub document_id: String,
+    pub oss_uri: String,
+    pub sha256: String,
+    pub size_bytes: i64,
+    pub metadata: serde_json::Value,
+}
+
+impl CloudPgRuntime {
+    pub fn from_cloud_config(config: &CloudConfig) -> Option<Self> {
+        config.postgres.is_configured().then(|| Self {
+            config: config.postgres.clone(),
+        })
+    }
+
+    async fn connect_client(&self) -> HoneResult<PgClient> {
+        let proxy = self.config.resolved_proxy();
+        if proxy.trim().is_empty() {
+            let (client, connection) =
+                tokio_postgres::connect(&self.config.resolved_database_url(), NoTls)
+                    .await
+                    .map_err(|err| HoneError::Config(format!("Postgres 连接失败: {err}")))?;
+            tokio::spawn(async move {
+                if let Err(error) = connection.await {
+                    tracing::warn!("postgres connection task ended: {error}");
+                }
+            });
+            return Ok(client);
+        }
+
+        let host = self.config.resolved_host();
+        let port = self.config.resolved_port().unwrap_or(5432);
+        let stream = connect_via_proxy(&proxy, &host, port).await?;
+        let mut pg = PgConfig::new();
+        pg.host(&host);
+        pg.port(port);
+        pg.user(&self.config.resolved_user());
+        pg.password(self.config.resolved_password());
+        pg.dbname(&self.config.resolved_database());
+        let (client, connection) = pg
+            .connect_raw(stream, NoTls)
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres 代理连接失败: {err}")))?;
+        tokio::spawn(async move {
+            if let Err(error) = connection.await {
+                tracing::warn!("postgres proxied connection task ended: {error}");
+            }
+        });
+        Ok(client)
+    }
+
+    pub async fn health(&self) -> CloudHealth {
+        match tokio::time::timeout(Duration::from_secs(5), self.connect_client()).await {
+            Ok(Ok(client)) => match client.query_one("SELECT 1", &[]).await {
+                Ok(_) => CloudHealth {
+                    ok: true,
+                    detail: "postgres connected".to_string(),
+                },
+                Err(error) => CloudHealth {
+                    ok: false,
+                    detail: format!("postgres query failed: {error}"),
+                },
+            },
+            Ok(Err(error)) => CloudHealth {
+                ok: false,
+                detail: error.to_string(),
+            },
+            Err(_) => CloudHealth {
+                ok: false,
+                detail: "postgres health timeout".to_string(),
+            },
+        }
+    }
+
+    pub async fn ensure_schema(&self) -> HoneResult<()> {
+        let client = self.connect_client().await?;
+        client
+            .batch_execute(
+                r#"
+CREATE TABLE IF NOT EXISTS cloud_schema_migrations (
+  version TEXT PRIMARY KEY,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS cloud_documents (
+  actor_storage_key TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  document_id TEXT NOT NULL,
+  oss_uri TEXT NOT NULL,
+  sha256 TEXT NOT NULL,
+  size_bytes BIGINT NOT NULL,
+  version BIGINT NOT NULL DEFAULT 1,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (actor_storage_key, kind, document_id)
+);
+CREATE TABLE IF NOT EXISTS distributed_leases (
+  lease_name TEXT PRIMARY KEY,
+  owner_id TEXT NOT NULL,
+  fencing_token BIGSERIAL NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS runtime_locks (
+  lock_name TEXT PRIMARY KEY,
+  owner_id TEXT NOT NULL,
+  fencing_token BIGSERIAL NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS conversation_quota (
+  actor_storage_key TEXT NOT NULL,
+  quota_date DATE NOT NULL,
+  limit_count INTEGER NOT NULL,
+  reserved_count INTEGER NOT NULL DEFAULT 0,
+  committed_count INTEGER NOT NULL DEFAULT 0,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (actor_storage_key, quota_date)
+);
+CREATE TABLE IF NOT EXISTS cron_job_claims (
+  job_id TEXT NOT NULL,
+  due_at TIMESTAMPTZ NOT NULL,
+  owner_id TEXT NOT NULL,
+  claimed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (job_id, due_at)
+);
+CREATE TABLE IF NOT EXISTS cloud_sessions (
+  session_id TEXT PRIMARY KEY,
+  actor_storage_key TEXT NOT NULL,
+  version BIGINT NOT NULL DEFAULT 1,
+  fencing_token BIGINT,
+  content JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS cloud_web_invite_users (
+  user_id TEXT PRIMARY KEY,
+  phone_number TEXT,
+  record JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS cloud_web_auth_sessions (
+  session_hash TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  record JSONB NOT NULL,
+  expires_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS cloud_llm_audit_records (
+  id TEXT PRIMARY KEY,
+  actor_storage_key TEXT,
+  record JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+INSERT INTO cloud_schema_migrations(version)
+VALUES ('20260529_pg_oss_runtime_foundation')
+ON CONFLICT (version) DO NOTHING;
+"#,
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres schema 初始化失败: {err}")))?;
+        Ok(())
+    }
+
+    pub async fn upsert_document_index(
+        &self,
+        actor_storage_key: &str,
+        kind: &str,
+        document_id: &str,
+        oss_uri: &str,
+        sha256: &str,
+        size_bytes: i64,
+        metadata: serde_json::Value,
+    ) -> HoneResult<()> {
+        let client = self.connect_client().await?;
+        client
+            .execute(
+                r#"
+INSERT INTO cloud_documents(actor_storage_key, kind, document_id, oss_uri, sha256, size_bytes, metadata)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (actor_storage_key, kind, document_id)
+DO UPDATE SET
+  oss_uri = EXCLUDED.oss_uri,
+  sha256 = EXCLUDED.sha256,
+  size_bytes = EXCLUDED.size_bytes,
+  metadata = EXCLUDED.metadata,
+  version = cloud_documents.version + CASE WHEN cloud_documents.sha256 = EXCLUDED.sha256 THEN 0 ELSE 1 END,
+  updated_at = now()
+"#,
+                &[
+                    &actor_storage_key,
+                    &kind,
+                    &document_id,
+                    &oss_uri,
+                    &sha256,
+                    &size_bytes,
+                    &metadata,
+                ],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres document index 写入失败: {err}")))?;
+        Ok(())
+    }
+
+    pub async fn upsert_document_indexes(&self, records: &[CloudDocumentIndex]) -> HoneResult<()> {
+        if records.is_empty() {
+            return Ok(());
+        }
+        let client = self.connect_client().await?;
+        let statement = client
+            .prepare(
+                r#"
+INSERT INTO cloud_documents(actor_storage_key, kind, document_id, oss_uri, sha256, size_bytes, metadata)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (actor_storage_key, kind, document_id)
+DO UPDATE SET
+  oss_uri = EXCLUDED.oss_uri,
+  sha256 = EXCLUDED.sha256,
+  size_bytes = EXCLUDED.size_bytes,
+  metadata = EXCLUDED.metadata,
+  version = cloud_documents.version + CASE WHEN cloud_documents.sha256 = EXCLUDED.sha256 THEN 0 ELSE 1 END,
+  updated_at = now()
+"#,
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres document index prepare 失败: {err}")))?;
+        for record in records {
+            client
+                .execute(
+                    &statement,
+                    &[
+                        &record.actor_storage_key,
+                        &record.kind,
+                        &record.document_id,
+                        &record.oss_uri,
+                        &record.sha256,
+                        &record.size_bytes,
+                        &record.metadata,
+                    ],
+                )
+                .await
+                .map_err(|err| {
+                    HoneError::Config(format!(
+                        "Postgres document index 写入失败 kind={} document_id={}: {err}",
+                        record.kind, record.document_id
+                    ))
+                })?;
+        }
+        Ok(())
+    }
+}
+
+async fn connect_via_proxy(
+    proxy: &str,
+    target_host: &str,
+    target_port: u16,
+) -> HoneResult<TcpStream> {
+    let url = Url::parse(proxy)
+        .map_err(|err| HoneError::Config(format!("HONE_POSTGRES_PROXY 无效: {err}")))?;
+    let proxy_host = url
+        .host_str()
+        .ok_or_else(|| HoneError::Config("HONE_POSTGRES_PROXY 缺少 host".to_string()))?;
+    let proxy_port = url
+        .port_or_known_default()
+        .ok_or_else(|| HoneError::Config("HONE_POSTGRES_PROXY 缺少 port".to_string()))?;
+    let mut stream = TcpStream::connect((proxy_host, proxy_port))
+        .await
+        .map_err(|err| HoneError::Config(format!("连接 Postgres proxy 失败: {err}")))?;
+    match url.scheme() {
+        "socks5" | "socks5h" => {
+            stream.write_all(&[0x05, 0x01, 0x00]).await?;
+            let mut resp = [0u8; 2];
+            stream.read_exact(&mut resp).await?;
+            if resp != [0x05, 0x00] {
+                return Err(HoneError::Config("SOCKS5 proxy 不支持 no-auth".to_string()));
+            }
+            let host = target_host.as_bytes();
+            if host.len() > u8::MAX as usize {
+                return Err(HoneError::Config("Postgres host 过长".to_string()));
+            }
+            let mut req = vec![0x05, 0x01, 0x00, 0x03, host.len() as u8];
+            req.extend_from_slice(host);
+            req.extend_from_slice(&target_port.to_be_bytes());
+            stream.write_all(&req).await?;
+            let mut head = [0u8; 4];
+            stream.read_exact(&mut head).await?;
+            if head[1] != 0x00 {
+                return Err(HoneError::Config(format!(
+                    "SOCKS5 connect 失败: reply={}",
+                    head[1]
+                )));
+            }
+            match head[3] {
+                0x01 => {
+                    let mut skip = [0u8; 6];
+                    stream.read_exact(&mut skip).await?;
+                }
+                0x03 => {
+                    let mut len = [0u8; 1];
+                    stream.read_exact(&mut len).await?;
+                    let mut skip = vec![0u8; len[0] as usize + 2];
+                    stream.read_exact(&mut skip).await?;
+                }
+                0x04 => {
+                    let mut skip = [0u8; 18];
+                    stream.read_exact(&mut skip).await?;
+                }
+                _ => return Err(HoneError::Config("SOCKS5 地址类型无效".to_string())),
+            }
+        }
+        "http" | "https" => {
+            let request = format!(
+                "CONNECT {target_host}:{target_port} HTTP/1.1\r\nHost: {target_host}:{target_port}\r\n\r\n"
+            );
+            stream.write_all(request.as_bytes()).await?;
+            let mut buf = vec![0u8; 4096];
+            let n = stream.read(&mut buf).await?;
+            let text = String::from_utf8_lossy(&buf[..n]);
+            if !text.starts_with("HTTP/1.1 200") && !text.starts_with("HTTP/1.0 200") {
+                return Err(HoneError::Config(format!(
+                    "HTTP CONNECT proxy 失败: {}",
+                    text.lines().next().unwrap_or("empty response")
+                )));
+            }
+        }
+        other => {
+            return Err(HoneError::Config(format!(
+                "不支持的 Postgres proxy scheme: {other}"
+            )));
+        }
+    }
+    Ok(stream)
+}
+
+#[derive(Debug, Clone)]
+pub struct OssObjectStore {
+    access_key_id: String,
+    access_key_secret: String,
+    bucket: String,
+    endpoint: String,
+    public_upload_prefix: String,
+    client: reqwest::Client,
+}
+
+#[derive(Debug, Clone)]
+pub struct OssObject {
+    pub bytes: Vec<u8>,
+    pub content_type: String,
+}
+
+impl OssObjectStore {
+    pub fn from_config(config: &OssConfig) -> Option<Self> {
+        if !config.is_configured() {
+            return None;
+        }
+        let mut builder = reqwest::Client::builder()
+            .timeout(Duration::from_secs(20))
+            .pool_idle_timeout(Duration::from_secs(60));
+        let proxy = config.resolved_proxy();
+        if !proxy.trim().is_empty()
+            && let Ok(req_proxy) = reqwest::Proxy::all(proxy.trim())
+        {
+            builder = builder.proxy(req_proxy);
+        }
+        Some(Self {
+            access_key_id: config.resolved_access_key_id(),
+            access_key_secret: config.resolved_access_key_secret(),
+            bucket: config.resolved_bucket(),
+            endpoint: config.resolved_endpoint(),
+            public_upload_prefix: sanitize_prefix(&config.public_upload_prefix),
+            client: builder.build().ok()?,
+        })
+    }
+
+    pub fn bucket(&self) -> &str {
+        &self.bucket
+    }
+
+    pub fn object_uri(&self, key: &str) -> String {
+        format!("oss://{}/{}", self.bucket, key.trim_start_matches('/'))
+    }
+
+    pub fn actor_prefix(&self, actor: &ActorIdentity) -> String {
+        format!("users/{}/", sanitize_key_component(&actor.storage_key()))
+    }
+
+    pub fn actor_upload_key(
+        &self,
+        actor: &ActorIdentity,
+        session_id: &str,
+        stored_name: &str,
+    ) -> String {
+        format!(
+            "{}uploads/{}/{}",
+            self.actor_prefix(actor),
+            sanitize_key_component(session_id),
+            sanitize_key_component(stored_name)
+        )
+    }
+
+    pub fn actor_document_key(&self, actor: &ActorIdentity, kind: &str, id: &str) -> String {
+        format!(
+            "{}documents/{}/{}",
+            self.actor_prefix(actor),
+            sanitize_key_component(kind),
+            sanitize_key_component(id)
+        )
+    }
+
+    pub fn public_upload_key(&self, user_id: &str, day: &str, stored_name: &str) -> String {
+        format!(
+            "{}/{}/{}/{}",
+            self.public_upload_prefix,
+            sanitize_key_component(user_id),
+            sanitize_key_component(day),
+            sanitize_key_component(stored_name)
+        )
+    }
+
+    pub fn is_public_upload_uri_for_user(&self, raw: &str, user_id: &str) -> bool {
+        let Some((bucket, key)) = parse_oss_uri(raw) else {
+            return false;
+        };
+        bucket == self.bucket
+            && key.starts_with(&format!(
+                "{}/{}/",
+                self.public_upload_prefix,
+                sanitize_key_component(user_id)
+            ))
+    }
+
+    pub fn parse_managed_uri<'a>(&self, raw: &'a str) -> Option<&'a str> {
+        let (bucket, key) = parse_oss_uri(raw)?;
+        (bucket == self.bucket).then_some(key)
+    }
+
+    pub async fn health(&self) -> CloudHealth {
+        match tokio::time::timeout(Duration::from_secs(5), self.list_objects("", 1)).await {
+            Ok(Ok(_)) => CloudHealth {
+                ok: true,
+                detail: "oss connected".to_string(),
+            },
+            Ok(Err(error)) => CloudHealth {
+                ok: false,
+                detail: error,
+            },
+            Err(_) => CloudHealth {
+                ok: false,
+                detail: "oss health timeout".to_string(),
+            },
+        }
+    }
+
+    pub async fn put_object(
+        &self,
+        key: &str,
+        bytes: Vec<u8>,
+        content_type: &str,
+    ) -> Result<(), String> {
+        let date = oss_date();
+        let authorization = self.authorization("PUT", content_type, &date, key, None)?;
+        let mut headers = HeaderMap::new();
+        headers.insert(DATE, header_value(&date)?);
+        headers.insert(AUTHORIZATION, header_value(&authorization)?);
+        headers.insert(CONTENT_TYPE, header_value(content_type)?);
+
+        let response = self
+            .client
+            .put(self.object_url(key))
+            .headers(headers)
+            .body(bytes)
+            .send()
+            .await
+            .map_err(|error| format!("OSS 上传请求失败: {error}"))?;
+        if response.status().is_success() {
+            return Ok(());
+        }
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        Err(format!("OSS 上传失败: {status} {body}"))
+    }
+
+    pub async fn get_object(&self, key: &str) -> Result<OssObject, String> {
+        let date = oss_date();
+        let authorization = self.authorization("GET", "", &date, key, None)?;
+        let mut headers = HeaderMap::new();
+        headers.insert(DATE, header_value(&date)?);
+        headers.insert(AUTHORIZATION, header_value(&authorization)?);
+
+        let response = self
+            .client
+            .get(self.object_url(key))
+            .headers(headers)
+            .send()
+            .await
+            .map_err(|error| format!("OSS 读取请求失败: {error}"))?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(format!("OSS 读取失败: {status} {body}"));
+        }
+        let content_type = response
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or("application/octet-stream")
+            .to_string();
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|error| format!("OSS 响应读取失败: {error}"))?
+            .to_vec();
+        Ok(OssObject {
+            bytes,
+            content_type,
+        })
+    }
+
+    pub async fn object_exists(&self, key: &str) -> Result<bool, String> {
+        let date = oss_date();
+        let authorization = self.authorization("HEAD", "", &date, key, None)?;
+        let mut headers = HeaderMap::new();
+        headers.insert(DATE, header_value(&date)?);
+        headers.insert(AUTHORIZATION, header_value(&authorization)?);
+        let response = self
+            .client
+            .head(self.object_url(key))
+            .headers(headers)
+            .send()
+            .await
+            .map_err(|error| format!("OSS HEAD 请求失败: {error}"))?;
+        if response.status().is_success() {
+            return Ok(true);
+        }
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(false);
+        }
+        let status = response.status();
+        Err(format!("OSS HEAD 失败: {status}"))
+    }
+
+    pub async fn list_objects(&self, prefix: &str, max_keys: usize) -> Result<Vec<String>, String> {
+        let prefix = prefix.trim_start_matches('/');
+        let query = BTreeMap::from([
+            ("max-keys".to_string(), max_keys.max(1).to_string()),
+            ("prefix".to_string(), prefix.to_string()),
+        ]);
+        let date = oss_date();
+        let authorization = self.authorization("GET", "", &date, "", None)?;
+        let mut headers = HeaderMap::new();
+        headers.insert(DATE, header_value(&date)?);
+        headers.insert(AUTHORIZATION, header_value(&authorization)?);
+        let response = self
+            .client
+            .get(self.bucket_url())
+            .query(&query)
+            .headers(headers)
+            .send()
+            .await
+            .map_err(|error| format!("OSS 列表请求失败: {error}"))?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(format!("OSS 列表失败: {status} {body}"));
+        }
+        let text = response
+            .text()
+            .await
+            .map_err(|error| format!("OSS 列表响应读取失败: {error}"))?;
+        Ok(text
+            .split("<Key>")
+            .skip(1)
+            .filter_map(|chunk| chunk.split_once("</Key>").map(|(key, _)| key.to_string()))
+            .collect())
+    }
+
+    fn authorization(
+        &self,
+        method: &str,
+        content_type: &str,
+        date: &str,
+        key: &str,
+        query: Option<&BTreeMap<String, String>>,
+    ) -> Result<String, String> {
+        let mut canonical_resource = if key.trim_start_matches('/').is_empty() {
+            format!("/{}/", self.bucket)
+        } else {
+            format!("/{}/{}", self.bucket, key.trim_start_matches('/'))
+        };
+        if let Some(query) = query
+            && !query.is_empty()
+        {
+            canonical_resource.push('?');
+            canonical_resource.push_str(
+                &query
+                    .iter()
+                    .map(|(key, value)| format!("{key}={value}"))
+                    .collect::<Vec<_>>()
+                    .join("&"),
+            );
+        }
+        let string_to_sign = format!("{method}\n\n{content_type}\n{date}\n{canonical_resource}");
+        let mut mac = HmacSha1::new_from_slice(self.access_key_secret.as_bytes())
+            .map_err(|error| format!("OSS 签名初始化失败: {error}"))?;
+        mac.update(string_to_sign.as_bytes());
+        let signature = BASE64_STANDARD.encode(mac.finalize().into_bytes());
+        Ok(format!("OSS {}:{signature}", self.access_key_id))
+    }
+
+    fn bucket_url(&self) -> String {
+        bucket_host(&self.endpoint, &self.bucket)
+    }
+
+    fn object_url(&self, key: &str) -> String {
+        format!("{}/{}", self.bucket_url(), encode_key(key))
+    }
+}
+
+pub fn parse_oss_uri(raw: &str) -> Option<(&str, &str)> {
+    let value = raw.trim();
+    let rest = value.strip_prefix("oss://")?;
+    let (bucket, key) = rest.split_once('/')?;
+    if bucket.is_empty() || key.trim_matches('/').is_empty() {
+        return None;
+    }
+    Some((bucket, key.trim_start_matches('/')))
+}
+
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(bytes))
+}
+
+pub fn local_durable_dependencies(config: &HoneConfig) -> Vec<String> {
+    if !config.cloud.effective_mode().is_cloud_authoritative() {
+        return Vec::new();
+    }
+    let mut deps = vec![
+        config.storage.sessions_dir.clone(),
+        config.storage.session_sqlite_db_path.clone(),
+        config.storage.conversation_quota_dir.clone(),
+        config.storage.llm_audit_db_path.clone(),
+        config.storage.portfolio_dir.clone(),
+        config.storage.cron_jobs_dir.clone(),
+        config.storage.gen_images_dir.clone(),
+        config.storage.notif_prefs_dir.clone(),
+        "./data/runtime/skill_registry.json".to_string(),
+        "./data/agent-sandboxes".to_string(),
+    ];
+    deps.sort();
+    deps.dedup();
+    deps
+}
+
+pub fn load_dotenv_if_present() {
+    let path = PathBuf::from(".env");
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return;
+    };
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let Some((key, value)) = trimmed.split_once('=') else {
+            continue;
+        };
+        let key = key.trim();
+        if key.is_empty() || std::env::var_os(key).is_some() {
+            continue;
+        }
+        let value = value.trim().trim_matches('"').trim_matches('\'');
+        unsafe {
+            std::env::set_var(key, value);
+        }
+    }
+}
+
+fn bucket_host(endpoint: &str, bucket: &str) -> String {
+    let endpoint = endpoint.trim_end_matches('/');
+    if let Some(rest) = endpoint.strip_prefix("https://") {
+        format!("https://{bucket}.{rest}")
+    } else if let Some(rest) = endpoint.strip_prefix("http://") {
+        format!("http://{bucket}.{rest}")
+    } else {
+        format!("https://{bucket}.{endpoint}")
+    }
+}
+
+fn oss_date() -> String {
+    Utc::now().format("%a, %d %b %Y %H:%M:%S GMT").to_string()
+}
+
+fn header_value(value: &str) -> Result<HeaderValue, String> {
+    HeaderValue::from_str(value).map_err(|error| format!("OSS header 无效: {error}"))
+}
+
+fn encode_key(key: &str) -> String {
+    key.trim_start_matches('/')
+        .split('/')
+        .map(|segment| utf8_percent_encode(segment, NON_ALPHANUMERIC).to_string())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn sanitize_prefix(raw: &str) -> String {
+    let trimmed = raw.trim().trim_matches('/');
+    if trimmed.is_empty() {
+        "public-uploads".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+pub fn sanitize_key_component(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    for ch in raw.chars() {
+        if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') {
+            out.push(ch);
+        } else {
+            out.push('-');
+        }
+    }
+    let trimmed = out.trim_matches('-');
+    if trimmed.is_empty() {
+        "unknown".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+#[allow(dead_code)]
+fn _assert_send_sync_time(_: DateTime<Utc>) {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn runtime_role_defaults_to_all() {
+        unsafe {
+            std::env::remove_var("HONE_RUNTIME_ROLE");
+        }
+        assert_eq!(RuntimeRole::from_env(), RuntimeRole::All);
+    }
+
+    #[test]
+    fn oss_uri_parse_requires_bucket_and_key() {
+        assert_eq!(parse_oss_uri("oss://bucket/a/b"), Some(("bucket", "a/b")));
+        assert!(parse_oss_uri("oss://bucket").is_none());
+        assert!(parse_oss_uri("file:///tmp/a").is_none());
+    }
+
+    #[test]
+    fn actor_prefix_is_scoped() {
+        let actor = ActorIdentity::new("telegram", "u1", Some("group")).expect("actor");
+        let cfg = OssConfig {
+            access_key_id: "id".into(),
+            access_key_secret: "secret".into(),
+            bucket: "bucket".into(),
+            endpoint: "https://oss-cn-hangzhou.aliyuncs.com".into(),
+            ..OssConfig::default()
+        };
+        let store = OssObjectStore::from_config(&cfg).expect("store");
+        assert!(
+            store
+                .actor_prefix(&actor)
+                .starts_with("users/telegram__group__u1/")
+        );
+    }
+}

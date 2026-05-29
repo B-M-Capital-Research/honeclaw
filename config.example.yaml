@@ -464,8 +464,14 @@ storage:
   notif_prefs_dir: "./data/notif_prefs"
 
 cloud:
-  # Enables managed backend resources when the referenced env vars are present.
-  # cloud.enabled is also effectively true when HONE_CLOUD_ENABLED=true.
+  # Storage runtime mode:
+  # - local: default; keep JSON/SQLite/std::fs local even if PG/OSS env exists.
+  # - cloud: require PG + OSS and use them for cloud runtime surfaces.
+  # - auto: development compatibility; env presence can enable cloud_runtime capability.
+  # HONE_CLOUD_MODE overrides this field.
+  mode: "local"
+  # Legacy compatibility flag used only in cloud.mode=auto.
+  # HONE_CLOUD_ENABLED=true also only has effect in auto mode.
   # Keep real PG / OSS credentials in the process environment or local .env only.
   enabled: false
   # Set cloud.strict_no_local_storage true only after all storage backends have PG / OSS implementations.
@@ -485,6 +491,9 @@ cloud:
     database: ""
     database_env: "HONE_POSTGRES_DATABASE"
     sslmode: "disable"
+    # Optional local proxy, for example socks5://127.0.0.1:1082.
+    proxy: ""
+    proxy_env: "HONE_POSTGRES_PROXY"
   oss:
     access_key_id: ""
     access_key_id_env: "HONE_OSS_ACCESS_KEY_ID"
@@ -497,6 +506,9 @@ cloud:
     region: ""
     region_env: "HONE_OSS_REGION"
     public_upload_prefix: "public-uploads"
+    # Optional reqwest proxy, for example socks5://127.0.0.1:1082.
+    proxy: ""
+    proxy_env: "HONE_OSS_PROXY"
 
 logging:
   level: "INFO"
