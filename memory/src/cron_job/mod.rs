@@ -1,4 +1,4 @@
-//! 定时任务存储 — JSON 文件 + SQLite 执行记录
+//! 定时任务存储 — 本地 JSON/SQLite 或 cloud PG 执行记录
 //!
 //! 管理按 actor（channel + user_id + channel_scope）隔离的定时任务持久化存储。
 //!
@@ -10,6 +10,7 @@
 
 use std::path::{Path, PathBuf};
 
+use hone_core::cloud_runtime::CloudPgRuntime;
 use tracing::warn;
 
 pub mod history;
@@ -28,6 +29,7 @@ pub use types::{
 pub struct CronJobStorage {
     pub(super) data_dir: PathBuf,
     pub(super) sqlite_path: Option<PathBuf>,
+    pub(super) postgres: Option<CloudPgRuntime>,
 }
 
 impl CronJobStorage {
@@ -37,6 +39,7 @@ impl CronJobStorage {
         Self {
             data_dir,
             sqlite_path: None,
+            postgres: None,
         }
     }
 
@@ -46,12 +49,46 @@ impl CronJobStorage {
         let storage = Self {
             data_dir,
             sqlite_path: Some(sqlite_path.as_ref().to_path_buf()),
+            postgres: None,
         };
         if let Err(err) = storage.init_execution_schema() {
             warn!("failed to initialize cron execution sqlite schema: {err}");
         }
         storage
     }
+
+    pub fn new_cloud(postgres: CloudPgRuntime) -> hone_core::HoneResult<Self> {
+        let schema_postgres = postgres.clone();
+        run_cloud_cron(async move { schema_postgres.ensure_schema().await })?;
+        Ok(Self {
+            data_dir: PathBuf::new(),
+            sqlite_path: None,
+            postgres: Some(postgres),
+        })
+    }
+
+    pub(super) fn cloud_postgres(&self) -> Option<CloudPgRuntime> {
+        self.postgres.clone()
+    }
+}
+
+pub(super) fn run_cloud_cron<T, F>(future: F) -> hone_core::HoneResult<T>
+where
+    T: Send + 'static,
+    F: std::future::Future<Output = hone_core::HoneResult<T>> + Send + 'static,
+{
+    if tokio::runtime::Handle::try_current().is_ok() {
+        return std::thread::spawn(move || {
+            let runtime = tokio::runtime::Runtime::new()
+                .map_err(|err| hone_core::HoneError::Config(err.to_string()))?;
+            runtime.block_on(future)
+        })
+        .join()
+        .map_err(|_| hone_core::HoneError::Storage("cloud cron worker panicked".to_string()))?;
+    }
+    let runtime = tokio::runtime::Runtime::new()
+        .map_err(|err| hone_core::HoneError::Config(err.to_string()))?;
+    runtime.block_on(future)
 }
 
 #[cfg(test)]

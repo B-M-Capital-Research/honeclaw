@@ -5,8 +5,9 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use clap::{Args, Subcommand};
 use futures::{StreamExt, stream};
 use hone_core::cloud_runtime::{
-    CloudConversationQuotaImport, CloudDocumentIndex, CloudPgRuntime, CloudSessionRecord,
-    OssObjectStore, RuntimeRole, local_durable_dependencies, sanitize_key_component, sha256_hex,
+    CloudConversationQuotaImport, CloudCronJobRecord, CloudDocumentIndex, CloudPgRuntime,
+    CloudSessionRecord, OssObjectStore, RuntimeRole, local_durable_dependencies,
+    sanitize_key_component, sha256_hex,
 };
 use hone_core::config::OssConfig;
 use hone_core::{ActorIdentity, HoneError, HoneResult};
@@ -56,6 +57,9 @@ pub(crate) struct CloudMigrateArgs {
     /// Only import Web invite users and auth sessions from the configured SQLite DB into PG.
     #[arg(long = "web-auth-only")]
     pub(crate) web_auth_only: bool,
+    /// Only import cron job JSON into PG.
+    #[arg(long = "cron-only")]
+    pub(crate) cron_only: bool,
     #[arg(long)]
     pub(crate) apply: bool,
     #[arg(long)]
@@ -126,6 +130,8 @@ struct MigrationReport {
     skipped_web_auth_users: usize,
     changed_web_auth_sessions: usize,
     skipped_web_auth_sessions: usize,
+    changed_cron_rows: usize,
+    skipped_cron_rows: usize,
     skipped_objects: usize,
     conflicts: Vec<String>,
 }
@@ -456,12 +462,20 @@ async fn run_doctor(config_path: Option<&Path>, args: CloudDoctorArgs) -> Result
 }
 
 async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Result<(), String> {
-    let narrow_modes = [args.quota_only, args.session_only, args.web_auth_only]
-        .into_iter()
-        .filter(|enabled| *enabled)
-        .count();
+    let narrow_modes = [
+        args.quota_only,
+        args.session_only,
+        args.web_auth_only,
+        args.cron_only,
+    ]
+    .into_iter()
+    .filter(|enabled| *enabled)
+    .count();
     if narrow_modes > 1 {
-        return Err("--quota-only / --session-only / --web-auth-only 不能同时使用".to_string());
+        return Err(
+            "--quota-only / --session-only / --web-auth-only / --cron-only 不能同时使用"
+                .to_string(),
+        );
     }
     let (config, _) = load_cli_config(config_path, false).map_err(|err| err.to_string())?;
     let mut report = MigrationReport {
@@ -484,6 +498,8 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
         skipped_web_auth_users: 0,
         changed_web_auth_sessions: 0,
         skipped_web_auth_sessions: 0,
+        changed_cron_rows: 0,
+        skipped_cron_rows: 0,
         skipped_objects: 0,
         conflicts: Vec::new(),
     };
@@ -494,7 +510,7 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
         let pg = CloudPgRuntime::from_cloud_config(&config.cloud)
             .ok_or_else(|| "Postgres 未配置，不能 apply migration".to_string())?;
         pg.ensure_schema().await.map_err(|err| err.to_string())?;
-        if !args.quota_only && !args.web_auth_only {
+        if !args.quota_only && !args.web_auth_only && !args.cron_only {
             let session_imports = collect_session_imports(&candidates);
             let session_report = pg
                 .import_session_records(&session_imports)
@@ -503,7 +519,7 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
             report.changed_session_rows = session_report.changed_rows;
             report.skipped_session_rows = session_report.skipped_rows;
         }
-        if !args.session_only && !args.web_auth_only {
+        if !args.session_only && !args.web_auth_only && !args.cron_only {
             let quota_imports = collect_quota_imports(&candidates);
             let quota_report = pg
                 .import_conversation_quota(&quota_imports)
@@ -512,7 +528,7 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
             report.changed_quota_rows = quota_report.changed_rows;
             report.skipped_quota_rows = quota_report.skipped_rows;
         }
-        if !args.quota_only && !args.session_only {
+        if !args.quota_only && !args.session_only && !args.cron_only {
             let web_auth_storage =
                 hone_memory::WebAuthStorage::new(&config.storage.session_sqlite_db_path)
                     .map_err(|err| err.to_string())?;
@@ -528,12 +544,21 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
             report.changed_web_auth_sessions = auth_report.changed_sessions;
             report.skipped_web_auth_sessions = auth_report.skipped_sessions;
         }
-        if args.quota_only || args.session_only || args.web_auth_only {
+        if !args.quota_only && !args.session_only && !args.web_auth_only {
+            let cron_imports = collect_cron_imports(&candidates);
+            let cron_report = pg
+                .import_cron_job_records(&cron_imports)
+                .await
+                .map_err(|err| err.to_string())?;
+            report.changed_cron_rows = cron_report.changed_rows;
+            report.skipped_cron_rows = cron_report.skipped_rows;
+        }
+        if args.quota_only || args.session_only || args.web_auth_only || args.cron_only {
             return if args.json {
                 print_json(&report)
             } else {
                 println!(
-                    "mode={} sessions={} changed_session_rows={} skipped_session_rows={} quota_json={} changed_quota_rows={} skipped_quota_rows={} changed_web_auth_users={} skipped_web_auth_users={} changed_web_auth_sessions={} skipped_web_auth_sessions={}",
+                    "mode={} sessions={} changed_session_rows={} skipped_session_rows={} quota_json={} changed_quota_rows={} skipped_quota_rows={} changed_web_auth_users={} skipped_web_auth_users={} changed_web_auth_sessions={} skipped_web_auth_sessions={} cron_json={} changed_cron_rows={} skipped_cron_rows={}",
                     report.mode,
                     report.counted.sessions,
                     report.changed_session_rows,
@@ -544,7 +569,10 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
                     report.changed_web_auth_users,
                     report.skipped_web_auth_users,
                     report.changed_web_auth_sessions,
-                    report.skipped_web_auth_sessions
+                    report.skipped_web_auth_sessions,
+                    report.counted.cron_json,
+                    report.changed_cron_rows,
+                    report.skipped_cron_rows
                 );
                 Ok(())
             };
@@ -624,6 +652,10 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
             report.changed_web_auth_sessions,
             report.skipped_web_auth_sessions
         );
+        println!(
+            "cron_json={} changed_cron_rows={} skipped_cron_rows={}",
+            report.counted.cron_json, report.changed_cron_rows, report.skipped_cron_rows
+        );
         for conflict in &report.conflicts {
             println!("conflict: {conflict}");
         }
@@ -690,6 +722,57 @@ fn collect_quota_imports(candidates: &[MigrationCandidate]) -> Vec<CloudConversa
             })
         })
         .collect()
+}
+
+fn collect_cron_imports(candidates: &[MigrationCandidate]) -> Vec<CloudCronJobRecord> {
+    let mut records = Vec::new();
+    for candidate in candidates
+        .iter()
+        .filter(|candidate| candidate.kind == "cron")
+    {
+        let Ok(text) = std::fs::read_to_string(&candidate.path) else {
+            continue;
+        };
+        let Ok(data) = serde_json::from_str::<hone_memory::cron_job::CronJobData>(&text) else {
+            continue;
+        };
+        let Some(actor) = cron_actor_from_data(&data) else {
+            continue;
+        };
+        let actor_storage_key = actor.storage_key();
+        let Ok(actor_value) = serde_json::to_value(&actor) else {
+            continue;
+        };
+        for job in data.jobs {
+            let Ok(job_value) = serde_json::to_value(&job) else {
+                continue;
+            };
+            records.push(CloudCronJobRecord {
+                actor_storage_key: actor_storage_key.clone(),
+                job_id: job.id.clone(),
+                actor: actor_value.clone(),
+                job: job_value,
+            });
+        }
+    }
+    records
+}
+
+fn cron_actor_from_data(data: &hone_memory::cron_job::CronJobData) -> Option<ActorIdentity> {
+    if let Some(actor) = data.actor.clone() {
+        return Some(actor);
+    }
+    if data.user_id.trim().is_empty() {
+        return None;
+    }
+    let channel = data
+        .jobs
+        .first()
+        .map(|job| job.channel.clone())
+        .filter(|channel| !channel.trim().is_empty())
+        .unwrap_or_else(|| "imessage".to_string());
+    let scope = data.jobs.first().and_then(|job| job.channel_scope.clone());
+    ActorIdentity::new(channel, data.user_id.clone(), scope).ok()
 }
 
 struct MigrationOneResult {

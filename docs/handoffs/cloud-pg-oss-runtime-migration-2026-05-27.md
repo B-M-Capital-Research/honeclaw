@@ -3,7 +3,7 @@
 - title: Cloud PG / OSS Runtime Migration Handoff
 - status: in_progress
 - created_at: 2026-05-27
-- updated_at: 2026-05-29
+- updated_at: 2026-05-30
 - owner: Codex
 - related_files:
   - `config.example.yaml`
@@ -13,8 +13,15 @@
 - `memory/src/quota.rs`
 - `memory/src/session.rs`
 - `memory/src/web_auth.rs`
+- `memory/src/cron_job/mod.rs`
+- `memory/src/cron_job/storage.rs`
+- `memory/src/cron_job/history.rs`
+- `crates/hone-tools/src/cron_job_tool.rs`
+- `crates/hone-tools/src/notification_prefs_tool.rs`
+- `crates/hone-tools/src/schedule_view.rs`
 - `crates/hone-channels/src/core/bot_core.rs`
 - `crates/hone-web-api/src/lib.rs`
+- `crates/hone-web-api/src/routes/schedule.rs`
 - `crates/hone-tools/src/local_files.rs`
   - `crates/hone-channels/src/attachments/ingest.rs`
   - `crates/hone-channels/src/response_finalizer.rs`
@@ -41,7 +48,6 @@ Core runtime state is not fully cloud-backed yet. These paths are still local by
 
 - LLM audit SQLite
 - portfolio JSON
-- cron definitions JSON and cron history SQLite
 - notification preferences JSON
 - generated images and KB/data artifacts
 - runtime logs
@@ -52,6 +58,8 @@ Conversation quota is no longer a local durable dependency in `cloud.mode=cloud`
 Session JSON is no longer a local durable dependency in `cloud.mode=cloud` when PG is configured: create / load / list / append / replace now use PG `cloud_sessions`, and the legacy JSON files are migration input / rollback evidence only.
 
 Web auth is no longer a local durable dependency in `cloud.mode=cloud` when PG is configured: invite users, API key hashes, and public login sessions now use PG `cloud_web_invite_users` / `cloud_web_auth_sessions`, and the shared SQLite rows are migration input / rollback evidence only.
+
+Cron definitions and execution history are no longer local durable dependencies in `cloud.mode=cloud` when PG is configured: definitions use PG `cloud_cron_jobs`, execution history uses PG `cloud_cron_job_runs`, and due-slot dedupe uses PG `cloud_cron_job_claims` before execution. Legacy cron JSON files are migration input / rollback evidence only.
 
 Startup now logs a redacted local-dependency summary whenever cloud runtime config is detected. If `cloud.strict_no_local_storage` or `HONE_CLOUD_STRICT_NO_LOCAL_STORAGE` is set true before PG-backed repositories are implemented, startup fails with the remaining dependency list.
 
@@ -121,10 +129,19 @@ Web auth PG cutover added:
 - `hone-cli cloud doctor --ensure-schema --json` now reports `local_durable_dependency_count=7`; `sessions.sqlite3` disappeared from the remaining durable local dependency list.
 - Validation: `cargo test -p hone-memory web_auth --lib`, `cargo test -p hone-core cloud_runtime --lib`, and `cargo check --workspace --all-targets --exclude hone-desktop` passed.
 
+Cron PG cutover added:
+
+- `HoneBotCore::cron_job_storage()` selects `CronJobStorage::new_cloud(...)` in `cloud.mode=cloud` when PG is configured; local mode keeps JSON definitions plus SQLite execution history. Scheduler, admin cron API, the `cron_job` tool, notification overview, and schedule overview now all go through the cloud-aware cron storage path.
+- PG cron definition / execution-history / due-claim helpers are implemented in `hone-core::cloud_runtime` against `cloud_cron_jobs`, `cloud_cron_job_runs`, and `cloud_cron_job_claims`.
+- `hone-cli cloud migrate --from-data-dir ./data --cron-only --apply --json` imports legacy cron JSON definitions into PG.
+- Live result on this machine: first apply imported 54 cron jobs from 23 cron JSON files; second apply changed 0 / skipped 54 with 0 conflicts.
+- `hone-cli cloud doctor --ensure-schema --json` now reports `local_durable_dependency_count=6`; `cron_jobs_dir` disappeared from the remaining durable local dependency list.
+- Validation: `cargo test -p hone-memory cron_job --lib`, `cargo test -p hone-core cloud_runtime --lib`, and `cargo check --workspace --all-targets --exclude hone-desktop` passed.
+
 ## Risks / Open Questions
 
 - PG-backed implementations still need to replace the remaining local JSON / SQLite hot-path stores before this can honestly be called “all local removed.”
-- Some durable file surfaces now have OSS paths in cloud mode: public uploads, channel attachment ingest, generated image finalization, and local file tools. Company profile / audit / cron hot paths still need dedicated PG / OSS adapters; sessions, web auth, and quota are the first hot-path stores cut over to PG.
+- Some durable file surfaces now have OSS paths in cloud mode: public uploads, channel attachment ingest, generated image finalization, and local file tools. Company profile / audit / portfolio / notification prefs hot paths still need dedicated PG / OSS adapters; sessions, web auth, quota, and cron are now cut over to PG in cloud mode.
 - SQLite structured import is pending; do not upload `llm_audit.sqlite3` as a blob as a substitute for PG audit rows. This is now the main migration gap for historical local state.
 - The local desktop remote-backend health at `https://hone-claw.com/api/meta` was not revalidated in this slice.
 - `.env`, `config.yaml`, `data/`, logs, and runtime backend JSON must remain untracked.

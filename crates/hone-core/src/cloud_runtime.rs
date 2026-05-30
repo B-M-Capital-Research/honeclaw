@@ -118,6 +118,64 @@ pub struct CloudWebAuthImportReport {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct CloudCronJobRecord {
+    pub actor_storage_key: String,
+    pub job_id: String,
+    pub actor: serde_json::Value,
+    pub job: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct CloudCronJobImportReport {
+    pub changed_rows: usize,
+    pub skipped_rows: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct CloudCronExecutionInput {
+    pub execution_status: String,
+    pub message_send_status: String,
+    pub should_deliver: bool,
+    pub delivered: bool,
+    pub response_preview: Option<String>,
+    pub error_message: Option<String>,
+    pub detail: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct CloudCronExecutionFilter {
+    pub since: Option<String>,
+    pub until: Option<String>,
+    pub channel: Option<String>,
+    pub user_id: Option<String>,
+    pub job_id: Option<String>,
+    pub execution_status: Option<String>,
+    pub message_send_status: Option<String>,
+    pub heartbeat_only: Option<bool>,
+    pub limit: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CloudCronExecutionRecord {
+    pub run_id: i64,
+    pub job_id: String,
+    pub job_name: String,
+    pub channel: String,
+    pub user_id: String,
+    pub channel_scope: Option<String>,
+    pub channel_target: String,
+    pub heartbeat: bool,
+    pub executed_at: String,
+    pub execution_status: String,
+    pub message_send_status: String,
+    pub should_deliver: bool,
+    pub delivered: bool,
+    pub response_preview: Option<String>,
+    pub error_message: Option<String>,
+    pub detail: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct CloudConversationQuotaSnapshot {
     pub quota_date: String,
     pub success_count: u32,
@@ -264,6 +322,45 @@ CREATE TABLE IF NOT EXISTS cron_job_claims (
   claimed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (job_id, due_at)
 );
+CREATE TABLE IF NOT EXISTS cloud_cron_jobs (
+  actor_storage_key TEXT NOT NULL,
+  job_id TEXT NOT NULL,
+  actor JSONB NOT NULL,
+  job JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (actor_storage_key, job_id)
+);
+CREATE TABLE IF NOT EXISTS cloud_cron_job_claims (
+  job_key TEXT NOT NULL,
+  due_key TEXT NOT NULL,
+  owner_id TEXT NOT NULL,
+  claimed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (job_key, due_key)
+);
+CREATE TABLE IF NOT EXISTS cloud_cron_job_runs (
+  run_id BIGSERIAL PRIMARY KEY,
+  job_id TEXT NOT NULL,
+  job_name TEXT NOT NULL,
+  actor_channel TEXT NOT NULL,
+  actor_user_id TEXT NOT NULL,
+  actor_channel_scope TEXT,
+  channel_target TEXT NOT NULL,
+  heartbeat BOOLEAN NOT NULL DEFAULT false,
+  executed_at TEXT NOT NULL,
+  execution_status TEXT NOT NULL,
+  message_send_status TEXT NOT NULL,
+  should_deliver BOOLEAN NOT NULL DEFAULT false,
+  delivered BOOLEAN NOT NULL DEFAULT false,
+  response_preview TEXT,
+  error_message TEXT,
+  detail JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+CREATE INDEX IF NOT EXISTS idx_cloud_cron_jobs_actor
+  ON cloud_cron_jobs(actor_storage_key, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_cloud_cron_job_runs_job_time
+  ON cloud_cron_job_runs(job_id, executed_at DESC, run_id DESC);
+CREATE INDEX IF NOT EXISTS idx_cloud_cron_job_runs_actor_time
+  ON cloud_cron_job_runs(actor_channel, actor_user_id, executed_at DESC);
 CREATE TABLE IF NOT EXISTS cloud_sessions (
   session_id TEXT PRIMARY KEY,
   actor_storage_key TEXT NOT NULL,
@@ -843,6 +940,453 @@ SELECT
             changed_sessions,
             skipped_sessions: total_sessions.saturating_sub(changed_sessions),
         })
+    }
+
+    pub async fn list_cron_job_records(&self) -> HoneResult<Vec<CloudCronJobRecord>> {
+        let client = self.connect_client().await?;
+        let rows = client
+            .query(
+                r#"
+SELECT actor_storage_key, job_id, actor, job
+FROM cloud_cron_jobs
+ORDER BY updated_at DESC
+"#,
+                &[],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres cron 列表读取失败: {err}")))?;
+        Ok(rows
+            .into_iter()
+            .map(|row| CloudCronJobRecord {
+                actor_storage_key: row.get(0),
+                job_id: row.get(1),
+                actor: row.get(2),
+                job: row.get(3),
+            })
+            .collect())
+    }
+
+    pub async fn list_cron_job_records_for_actor(
+        &self,
+        actor_storage_key: &str,
+    ) -> HoneResult<Vec<CloudCronJobRecord>> {
+        let client = self.connect_client().await?;
+        let rows = client
+            .query(
+                r#"
+SELECT actor_storage_key, job_id, actor, job
+FROM cloud_cron_jobs
+WHERE actor_storage_key = $1
+ORDER BY updated_at DESC
+"#,
+                &[&actor_storage_key],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres cron actor 列表读取失败: {err}")))?;
+        Ok(rows
+            .into_iter()
+            .map(|row| CloudCronJobRecord {
+                actor_storage_key: row.get(0),
+                job_id: row.get(1),
+                actor: row.get(2),
+                job: row.get(3),
+            })
+            .collect())
+    }
+
+    pub async fn upsert_cron_job_record(
+        &self,
+        actor_storage_key: &str,
+        job_id: &str,
+        actor: serde_json::Value,
+        job: serde_json::Value,
+    ) -> HoneResult<()> {
+        let client = self.connect_client().await?;
+        client
+            .execute(
+                r#"
+INSERT INTO cloud_cron_jobs(actor_storage_key, job_id, actor, job)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (actor_storage_key, job_id)
+DO UPDATE SET
+  actor = EXCLUDED.actor,
+  job = EXCLUDED.job,
+  updated_at = now()
+"#,
+                &[&actor_storage_key, &job_id, &actor, &job],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres cron 写入失败: {err}")))?;
+        Ok(())
+    }
+
+    pub async fn delete_cron_job_record(
+        &self,
+        actor_storage_key: &str,
+        job_id: &str,
+    ) -> HoneResult<()> {
+        let client = self.connect_client().await?;
+        client
+            .execute(
+                "DELETE FROM cloud_cron_jobs WHERE actor_storage_key = $1 AND job_id = $2",
+                &[&actor_storage_key, &job_id],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres cron 删除失败: {err}")))?;
+        Ok(())
+    }
+
+    pub async fn import_cron_job_records(
+        &self,
+        records: &[CloudCronJobRecord],
+    ) -> HoneResult<CloudCronJobImportReport> {
+        if records.is_empty() {
+            return Ok(CloudCronJobImportReport::default());
+        }
+        let client = self.connect_client().await?;
+        let payload = serde_json::to_value(records)
+            .map_err(|err| HoneError::Serialization(err.to_string()))?;
+        let row = client
+            .query_one(
+                r#"
+WITH input_rows AS (
+  SELECT *
+  FROM jsonb_to_recordset($1::jsonb) AS x(
+    actor_storage_key TEXT,
+    job_id TEXT,
+    actor JSONB,
+    job JSONB
+  )
+),
+upserted AS (
+INSERT INTO cloud_cron_jobs(actor_storage_key, job_id, actor, job)
+SELECT actor_storage_key, job_id, actor, job FROM input_rows
+ON CONFLICT (actor_storage_key, job_id)
+DO UPDATE SET
+  actor = EXCLUDED.actor,
+  job = EXCLUDED.job,
+  updated_at = now()
+WHERE cloud_cron_jobs.actor IS DISTINCT FROM EXCLUDED.actor
+   OR cloud_cron_jobs.job IS DISTINCT FROM EXCLUDED.job
+RETURNING 1
+)
+SELECT
+  (SELECT count(*)::bigint FROM upserted),
+  (SELECT count(*)::bigint FROM input_rows)
+"#,
+                &[&payload],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres cron import 失败: {err}")))?;
+        let changed_rows = row.get::<_, i64>(0).max(0) as usize;
+        let total_rows = row.get::<_, i64>(1).max(0) as usize;
+        Ok(CloudCronJobImportReport {
+            changed_rows,
+            skipped_rows: total_rows.saturating_sub(changed_rows),
+        })
+    }
+
+    pub async fn try_claim_cron_due_job(
+        &self,
+        job_key: &str,
+        due_key: &str,
+        owner_id: &str,
+    ) -> HoneResult<bool> {
+        let client = self.connect_client().await?;
+        let rows = client
+            .execute(
+                r#"
+INSERT INTO cloud_cron_job_claims(job_key, due_key, owner_id)
+VALUES ($1, $2, $3)
+ON CONFLICT (job_key, due_key) DO NOTHING
+"#,
+                &[&job_key, &due_key, &owner_id],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres cron claim 失败: {err}")))?;
+        Ok(rows > 0)
+    }
+
+    pub async fn record_cron_execution_event(
+        &self,
+        actor: &ActorIdentity,
+        job_id: &str,
+        job_name: &str,
+        channel_target: &str,
+        heartbeat: bool,
+        input: CloudCronExecutionInput,
+    ) -> HoneResult<()> {
+        let client = self.connect_client().await?;
+        let executed_at = crate::beijing_now_rfc3339();
+        let started_threshold = (crate::beijing_now() - chrono::Duration::hours(2)).to_rfc3339();
+        let response_preview = input.response_preview;
+        let error_message = input.error_message;
+        if input.execution_status != "running" && input.message_send_status != "pending" {
+            if let Some(delivery_key) = input
+                .detail
+                .get("delivery_key")
+                .and_then(|value| value.as_str())
+                && !delivery_key.trim().is_empty()
+            {
+                let updated = client
+                    .execute(
+                        r#"
+UPDATE cloud_cron_job_runs
+SET
+  executed_at = $1,
+  execution_status = $2,
+  message_send_status = $3,
+  should_deliver = $4,
+  delivered = $5,
+  response_preview = $6,
+  error_message = $7,
+  detail = $8
+WHERE run_id = (
+  SELECT run_id
+  FROM cloud_cron_job_runs
+  WHERE job_id = $9
+    AND actor_channel = $10
+    AND actor_user_id = $11
+    AND COALESCE(actor_channel_scope, '') = COALESCE($12, '')
+    AND channel_target = $13
+    AND heartbeat = $14
+    AND execution_status = 'running'
+    AND message_send_status = 'pending'
+    AND detail->>'delivery_key' = $15
+  ORDER BY executed_at DESC, run_id DESC
+  LIMIT 1
+)
+"#,
+                        &[
+                            &executed_at,
+                            &input.execution_status,
+                            &input.message_send_status,
+                            &input.should_deliver,
+                            &input.delivered,
+                            &response_preview,
+                            &error_message,
+                            &input.detail,
+                            &job_id,
+                            &actor.channel,
+                            &actor.user_id,
+                            &actor.channel_scope,
+                            &channel_target,
+                            &heartbeat,
+                            &delivery_key.trim(),
+                        ],
+                    )
+                    .await
+                    .map_err(|err| {
+                        HoneError::Config(format!("Postgres cron 执行记录更新失败: {err}"))
+                    })?;
+                if updated > 0 {
+                    return Ok(());
+                }
+            }
+            let updated = client
+                .execute(
+                    r#"
+UPDATE cloud_cron_job_runs
+SET
+  executed_at = $1,
+  execution_status = $2,
+  message_send_status = $3,
+  should_deliver = $4,
+  delivered = $5,
+  response_preview = $6,
+  error_message = $7,
+  detail = $8
+WHERE run_id = (
+  SELECT run_id
+  FROM cloud_cron_job_runs
+  WHERE job_id = $9
+    AND actor_channel = $10
+    AND actor_user_id = $11
+    AND COALESCE(actor_channel_scope, '') = COALESCE($12, '')
+    AND channel_target = $13
+    AND heartbeat = $14
+    AND execution_status = 'running'
+    AND message_send_status = 'pending'
+    AND detail->>'phase' = 'started'
+    AND executed_at >= $15
+  ORDER BY executed_at DESC, run_id DESC
+  LIMIT 1
+)
+"#,
+                    &[
+                        &executed_at,
+                        &input.execution_status,
+                        &input.message_send_status,
+                        &input.should_deliver,
+                        &input.delivered,
+                        &response_preview,
+                        &error_message,
+                        &input.detail,
+                        &job_id,
+                        &actor.channel,
+                        &actor.user_id,
+                        &actor.channel_scope,
+                        &channel_target,
+                        &heartbeat,
+                        &started_threshold,
+                    ],
+                )
+                .await
+                .map_err(|err| {
+                    HoneError::Config(format!("Postgres cron 执行记录更新失败: {err}"))
+                })?;
+            if updated > 0 {
+                return Ok(());
+            }
+        }
+        client
+            .execute(
+                r#"
+INSERT INTO cloud_cron_job_runs (
+  job_id, job_name,
+  actor_channel, actor_user_id, actor_channel_scope,
+  channel_target, heartbeat,
+  executed_at, execution_status, message_send_status,
+  should_deliver, delivered, response_preview, error_message, detail
+) VALUES (
+  $1, $2,
+  $3, $4, $5,
+  $6, $7,
+  $8, $9, $10,
+  $11, $12, $13, $14, $15
+)
+"#,
+                &[
+                    &job_id,
+                    &job_name,
+                    &actor.channel,
+                    &actor.user_id,
+                    &actor.channel_scope,
+                    &channel_target,
+                    &heartbeat,
+                    &executed_at,
+                    &input.execution_status,
+                    &input.message_send_status,
+                    &input.should_deliver,
+                    &input.delivered,
+                    &response_preview,
+                    &error_message,
+                    &input.detail,
+                ],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres cron 执行记录写入失败: {err}")))?;
+        Ok(())
+    }
+
+    pub async fn recover_stale_cron_started_executions(
+        &self,
+        channel: &str,
+        stale_before_rfc3339: &str,
+        recovered_by: &str,
+        reason: &str,
+    ) -> HoneResult<usize> {
+        let client = self.connect_client().await?;
+        let interrupted_at = crate::beijing_now_rfc3339();
+        let detail = serde_json::json!({
+            "phase": "recovered_stale_pending",
+            "recovered_at": interrupted_at,
+            "recovered_by": recovered_by,
+        });
+        let updated = client
+            .execute(
+                r#"
+UPDATE cloud_cron_job_runs
+SET
+  executed_at = $1,
+  execution_status = 'execution_failed',
+  message_send_status = 'send_failed',
+  should_deliver = false,
+  delivered = false,
+  response_preview = NULL,
+  error_message = $2,
+  detail = detail || $3::jsonb
+WHERE actor_channel = $4
+  AND execution_status = 'running'
+  AND message_send_status = 'pending'
+  AND detail->>'phase' = 'started'
+  AND executed_at < $5
+"#,
+                &[
+                    &interrupted_at,
+                    &reason,
+                    &detail,
+                    &channel,
+                    &stale_before_rfc3339,
+                ],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres cron stale 恢复失败: {err}")))?;
+        Ok(updated as usize)
+    }
+
+    pub async fn list_cron_execution_records(
+        &self,
+        filter: CloudCronExecutionFilter,
+    ) -> HoneResult<Vec<CloudCronExecutionRecord>> {
+        let client = self.connect_client().await?;
+        let limit = i64::try_from(filter.limit.max(1)).unwrap_or(1000);
+        let rows = client
+            .query(
+                r#"
+SELECT
+  run_id, job_id, job_name,
+  actor_channel, actor_user_id, actor_channel_scope,
+  channel_target, heartbeat,
+  executed_at, execution_status, message_send_status,
+  should_deliver, delivered, response_preview, error_message, detail
+FROM cloud_cron_job_runs
+WHERE ($1::text IS NULL OR executed_at >= $1)
+  AND ($2::text IS NULL OR executed_at <= $2)
+  AND ($3::text IS NULL OR actor_channel = $3)
+  AND ($4::text IS NULL OR actor_user_id = $4)
+  AND ($5::text IS NULL OR job_id = $5)
+  AND ($6::text IS NULL OR execution_status = $6)
+  AND ($7::text IS NULL OR message_send_status = $7)
+  AND ($8::boolean IS NULL OR heartbeat = $8)
+ORDER BY executed_at DESC, run_id DESC
+LIMIT $9
+"#,
+                &[
+                    &filter.since,
+                    &filter.until,
+                    &filter.channel,
+                    &filter.user_id,
+                    &filter.job_id,
+                    &filter.execution_status,
+                    &filter.message_send_status,
+                    &filter.heartbeat_only,
+                    &limit,
+                ],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres cron 执行记录读取失败: {err}")))?;
+        Ok(rows
+            .into_iter()
+            .map(|row| CloudCronExecutionRecord {
+                run_id: row.get(0),
+                job_id: row.get(1),
+                job_name: row.get(2),
+                channel: row.get(3),
+                user_id: row.get(4),
+                channel_scope: row.get(5),
+                channel_target: row.get(6),
+                heartbeat: row.get(7),
+                executed_at: row.get(8),
+                execution_status: row.get(9),
+                message_send_status: row.get(10),
+                should_deliver: row.get(11),
+                delivered: row.get(12),
+                response_preview: row.get(13),
+                error_message: row.get(14),
+                detail: row.get(15),
+            })
+            .collect())
     }
 
     pub async fn upsert_document_index(
@@ -1501,13 +2045,13 @@ pub fn local_durable_dependencies(config: &HoneConfig) -> Vec<String> {
     let mut deps = vec![
         config.storage.llm_audit_db_path.clone(),
         config.storage.portfolio_dir.clone(),
-        config.storage.cron_jobs_dir.clone(),
         config.storage.gen_images_dir.clone(),
         config.storage.notif_prefs_dir.clone(),
         "./data/runtime/skill_registry.json".to_string(),
         "./data/agent-sandboxes".to_string(),
     ];
     if !config.cloud.postgres.is_configured() {
+        deps.push(config.storage.cron_jobs_dir.clone());
         deps.push(config.storage.sessions_dir.clone());
         deps.push(config.storage.session_sqlite_db_path.clone());
         deps.push(config.storage.conversation_quota_dir.clone());
@@ -1789,10 +2333,12 @@ mod tests {
         config.storage.sessions_dir = "/tmp/hone/sessions".to_string();
         config.storage.session_sqlite_db_path = "/tmp/hone/sessions.sqlite3".to_string();
         config.storage.conversation_quota_dir = "/tmp/hone/quota".to_string();
+        config.storage.cron_jobs_dir = "/tmp/hone/cron".to_string();
         assert!(config.cloud.postgres.is_configured());
         let deps = local_durable_dependencies(&config);
         assert!(!deps.iter().any(|dep| dep == "/tmp/hone/quota"));
         assert!(!deps.iter().any(|dep| dep == "/tmp/hone/sessions"));
+        assert!(!deps.iter().any(|dep| dep == "/tmp/hone/cron"));
         assert!(
             !deps
                 .iter()
@@ -1821,9 +2367,11 @@ mod tests {
         config.cloud.postgres.database_env = "HONE_TEST_UNUSED_PG_DATABASE".to_string();
         config.storage.sessions_dir = "/tmp/hone/sessions".to_string();
         config.storage.conversation_quota_dir = "/tmp/hone/quota".to_string();
+        config.storage.cron_jobs_dir = "/tmp/hone/cron".to_string();
         let deps = local_durable_dependencies(&config);
         assert!(deps.iter().any(|dep| dep == "/tmp/hone/quota"));
         assert!(deps.iter().any(|dep| dep == "/tmp/hone/sessions"));
+        assert!(deps.iter().any(|dep| dep == "/tmp/hone/cron"));
         unsafe {
             std::env::remove_var("HONE_CLOUD_MODE");
         }

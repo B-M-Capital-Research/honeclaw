@@ -4,6 +4,7 @@
 
 use async_trait::async_trait;
 use hone_core::ActorIdentity;
+use hone_core::cloud_runtime::CloudPgRuntime;
 use hone_memory::cron_job::{CronJobUpdate, CronSchedule};
 use serde_json::Value;
 
@@ -15,6 +16,7 @@ pub struct CronJobTool {
     actor: Option<ActorIdentity>,
     channel_target: String,
     admin_bypass: bool,
+    postgres: Option<CloudPgRuntime>,
 }
 
 impl CronJobTool {
@@ -29,6 +31,23 @@ impl CronJobTool {
             actor,
             channel_target: channel_target.to_string(),
             admin_bypass,
+            postgres: None,
+        }
+    }
+
+    pub fn new_cloud(
+        data_dir: &str,
+        actor: Option<ActorIdentity>,
+        channel_target: &str,
+        admin_bypass: bool,
+        postgres: CloudPgRuntime,
+    ) -> Self {
+        Self {
+            data_dir: data_dir.to_string(),
+            actor,
+            channel_target: channel_target.to_string(),
+            admin_bypass,
+            postgres: Some(postgres),
         }
     }
 
@@ -36,6 +55,13 @@ impl CronJobTool {
         self.actor
             .as_ref()
             .ok_or_else(|| hone_core::HoneError::Tool("缺少 actor 身份，无法管理定时任务".into()))
+    }
+
+    fn storage(&self) -> hone_core::HoneResult<hone_memory::CronJobStorage> {
+        if let Some(postgres) = self.postgres.clone() {
+            return hone_memory::CronJobStorage::new_cloud(postgres);
+        }
+        Ok(hone_memory::CronJobStorage::new(&self.data_dir))
     }
 }
 
@@ -173,7 +199,7 @@ impl Tool for CronJobTool {
     }
 
     async fn execute(&self, args: Value) -> hone_core::HoneResult<Value> {
-        let storage = hone_memory::CronJobStorage::new(&self.data_dir);
+        let storage = self.storage()?;
         let actor = self.actor()?;
         let action = args
             .get("action")

@@ -10,6 +10,7 @@
 //!   合法清单——LLM 自动纠错。
 
 use async_trait::async_trait;
+use hone_core::cloud_runtime::CloudPgRuntime;
 use hone_core::{ActorIdentity, HoneError, HoneResult};
 use hone_event_engine::Severity;
 use hone_event_engine::prefs::{
@@ -29,6 +30,7 @@ pub struct NotificationPrefsTool {
     /// 保证用户问「我的推送怎么配的」时拿到的是含 cron + unified digest 的完整表格。
     cron_jobs_dir: PathBuf,
     digest_defaults: crate::schedule_view::DigestDefaults,
+    postgres: Option<CloudPgRuntime>,
 }
 
 impl NotificationPrefsTool {
@@ -43,6 +45,23 @@ impl NotificationPrefsTool {
             actor,
             cron_jobs_dir: cron_jobs_dir.into(),
             digest_defaults,
+            postgres: None,
+        }
+    }
+
+    pub fn new_cloud(
+        prefs_dir: impl Into<PathBuf>,
+        actor: Option<ActorIdentity>,
+        cron_jobs_dir: impl Into<PathBuf>,
+        digest_defaults: crate::schedule_view::DigestDefaults,
+        postgres: CloudPgRuntime,
+    ) -> Self {
+        Self {
+            prefs_dir: prefs_dir.into(),
+            actor,
+            cron_jobs_dir: cron_jobs_dir.into(),
+            digest_defaults,
+            postgres: Some(postgres),
         }
     }
 
@@ -342,13 +361,24 @@ impl Tool for NotificationPrefsTool {
                 // 构造时已强制注入 cron_jobs_dir + digest_defaults,这里直接组装。
                 // 渲染按 actor.channel 选格式:Discord/Telegram 用 monospace 代码块表,
                 // Feishu/iMessage 用项目符号列表(后两者不支持 markdown/HTML)。
-                let overview = crate::schedule_view::build_overview(
-                    &self.prefs_dir,
-                    &self.cron_jobs_dir,
-                    &actor,
-                    &self.digest_defaults,
-                    chrono::Utc::now(),
-                )
+                let overview = if let Some(postgres) = self.postgres.clone() {
+                    let cron_storage = hone_memory::CronJobStorage::new_cloud(postgres)
+                        .map_err(|e| HoneError::Tool(format!("打开云端 cron 存储失败: {e}")))?;
+                    crate::schedule_view::build_overview_with_cron_jobs(
+                        &self.prefs_dir,
+                        cron_storage.list_jobs(&actor),
+                        &actor,
+                        &self.digest_defaults,
+                    )
+                } else {
+                    crate::schedule_view::build_overview(
+                        &self.prefs_dir,
+                        &self.cron_jobs_dir,
+                        &actor,
+                        &self.digest_defaults,
+                        chrono::Utc::now(),
+                    )
+                }
                 .map_err(|e| HoneError::Tool(format!("聚合推送日程失败: {e}")))?;
                 let fmt = crate::schedule_view::channel_render_format(&actor.channel);
                 let display_text = crate::schedule_view::render_overview(&overview, fmt);

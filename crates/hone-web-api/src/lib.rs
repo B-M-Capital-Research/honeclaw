@@ -345,10 +345,23 @@ fn build_event_engine_sink(core_cfg: &HoneConfig) -> Arc<dyn OutboundSink> {
 }
 
 fn feishu_direct_actor_contact_targets(core_cfg: &HoneConfig) -> Vec<(String, String)> {
-    let storage = CronJobStorage::with_sqlite(
-        &core_cfg.storage.cron_jobs_dir,
-        &core_cfg.storage.session_sqlite_db_path,
-    );
+    let storage = if core_cfg.cloud.effective_mode().is_cloud_authoritative()
+        && core_cfg.cloud.postgres.is_configured()
+    {
+        CloudPgRuntime::from_cloud_config(&core_cfg.cloud)
+            .and_then(|pg| CronJobStorage::new_cloud(pg).ok())
+            .unwrap_or_else(|| {
+                CronJobStorage::with_sqlite(
+                    &core_cfg.storage.cron_jobs_dir,
+                    &core_cfg.storage.session_sqlite_db_path,
+                )
+            })
+    } else {
+        CronJobStorage::with_sqlite(
+            &core_cfg.storage.cron_jobs_dir,
+            &core_cfg.storage.session_sqlite_db_path,
+        )
+    };
     let session_storage = if core_cfg.cloud.effective_mode().is_cloud_authoritative()
         && core_cfg.cloud.postgres.is_configured()
     {

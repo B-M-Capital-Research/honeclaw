@@ -4,11 +4,13 @@ use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use chrono::{Datelike, FixedOffset, NaiveDate, Timelike};
-use hone_core::ActorIdentity;
+use hone_core::cloud_runtime::CloudCronJobRecord;
+use hone_core::{ActorIdentity, HoneError};
 use tracing::warn;
 use uuid::Uuid;
 
 use super::CronJobStorage;
+use super::run_cloud_cron;
 use super::schedule::{
     DUE_WINDOW_MINUTES, is_holiday, is_trading_day, is_workday, job_existed_before_slot,
     normalize_schedule_date, normalized_repeat, normalized_tags, prompt_schedule_conflict,
@@ -131,6 +133,19 @@ impl CronJobStorage {
     }
 
     pub fn list_all_jobs(&self) -> Vec<(ActorIdentity, CronJob)> {
+        if let Some(postgres) = self.cloud_postgres() {
+            return match run_cloud_cron(async move { postgres.list_cron_job_records().await }) {
+                Ok(records) => records
+                    .into_iter()
+                    .filter_map(cron_pair_from_cloud_record)
+                    .collect(),
+                Err(error) => {
+                    warn!("failed to list cloud cron jobs: {error}");
+                    Vec::new()
+                }
+            };
+        }
+
         let mut jobs = Vec::new();
         let entries = match std::fs::read_dir(&self.data_dir) {
             Ok(entries) => entries,
@@ -173,6 +188,36 @@ impl CronJobStorage {
 
     /// 加载 actor 的定时任务数据
     pub fn load_jobs(&self, actor: &ActorIdentity) -> CronJobData {
+        if let Some(postgres) = self.cloud_postgres() {
+            let actor_key = actor.storage_key();
+            return match run_cloud_cron(async move {
+                postgres.list_cron_job_records_for_actor(&actor_key).await
+            }) {
+                Ok(records) => CronJobData {
+                    actor: Some(actor.clone()),
+                    user_id: actor.user_id.clone(),
+                    jobs: records
+                        .into_iter()
+                        .filter_map(cron_pair_from_cloud_record)
+                        .map(|(_, job)| job)
+                        .collect(),
+                    pending_updates: Vec::new(),
+                },
+                Err(error) => {
+                    warn!(
+                        actor = %actor.storage_key(),
+                        "failed to load cloud cron jobs: {error}"
+                    );
+                    CronJobData {
+                        actor: Some(actor.clone()),
+                        user_id: actor.user_id.clone(),
+                        jobs: Vec::new(),
+                        pending_updates: Vec::new(),
+                    }
+                }
+            };
+        }
+
         let path = self.get_actor_file(actor);
         if path.exists()
             && let Ok(content) = std::fs::read_to_string(&path)
@@ -194,6 +239,50 @@ impl CronJobStorage {
         actor: &ActorIdentity,
         data: &CronJobData,
     ) -> hone_core::HoneResult<()> {
+        if let Some(postgres) = self.cloud_postgres() {
+            let actor_key = actor.storage_key();
+            let actor_value = serde_json::to_value(actor)
+                .map_err(|err| hone_core::HoneError::Serialization(err.to_string()))?;
+            let records = data
+                .jobs
+                .iter()
+                .map(|job| {
+                    Ok(CloudCronJobRecord {
+                        actor_storage_key: actor_key.clone(),
+                        job_id: job.id.clone(),
+                        actor: actor_value.clone(),
+                        job: serde_json::to_value(job)
+                            .map_err(|err| HoneError::Serialization(err.to_string()))?,
+                    })
+                })
+                .collect::<hone_core::HoneResult<Vec<_>>>()?;
+            return run_cloud_cron(async move {
+                let existing = postgres.list_cron_job_records_for_actor(&actor_key).await?;
+                let wanted = records
+                    .iter()
+                    .map(|record| record.job_id.clone())
+                    .collect::<HashSet<_>>();
+                for record in existing {
+                    if !wanted.contains(&record.job_id) {
+                        postgres
+                            .delete_cron_job_record(&actor_key, &record.job_id)
+                            .await?;
+                    }
+                }
+                for record in records {
+                    postgres
+                        .upsert_cron_job_record(
+                            &record.actor_storage_key,
+                            &record.job_id,
+                            record.actor,
+                            record.job,
+                        )
+                        .await?;
+                }
+                Ok(())
+            });
+        }
+
         let path = self.get_actor_file(actor);
         let content = serde_json::to_string_pretty(data)
             .map_err(|e| hone_core::HoneError::Storage(e.to_string()))?;
@@ -534,6 +623,65 @@ impl CronJobStorage {
         let current_day = now.date_naive();
         let current_total = current_hour * 60 + current_minute;
 
+        if let Some(postgres) = self.cloud_postgres() {
+            let owner_id = cron_owner_id();
+            for (actor, job) in self.list_all_jobs() {
+                if !job.enabled {
+                    continue;
+                }
+
+                if !job_channel_allowed(&job, channels) {
+                    continue;
+                }
+
+                if !job_due_in_current_window(&job, current_total, current_day) {
+                    continue;
+                }
+
+                let repeat_kind = normalized_repeat(&job.schedule.repeat, &job.tags);
+                if !repeat_matches_current_day(&job, repeat_kind, current_day, current_weekday) {
+                    continue;
+                }
+
+                if already_ran_in_current_period(&job, repeat_kind, now, current_total) {
+                    continue;
+                }
+
+                let dedup_key = due_job_dedup_key(&job);
+                if !seen_due_keys.insert(dedup_key) {
+                    warn!(
+                        "skipping duplicate due cloud cron job actor={} job_id={} target={}",
+                        actor.storage_key(),
+                        job.id,
+                        job.channel_target
+                    );
+                    continue;
+                }
+
+                let job_key = cron_claim_job_key(&actor, &job);
+                let due_key = cron_claim_due_key(&job, repeat_kind, current_total, current_day);
+                let claim = run_cloud_cron({
+                    let postgres = postgres.clone();
+                    let owner_id = owner_id.clone();
+                    async move {
+                        postgres
+                            .try_claim_cron_due_job(&job_key, &due_key, &owner_id)
+                            .await
+                    }
+                });
+                match claim {
+                    Ok(true) => due.push((actor, job)),
+                    Ok(false) => {}
+                    Err(error) => warn!(
+                        "failed to claim cloud cron due job actor={} job_id={}: {error}",
+                        actor.storage_key(),
+                        job.id
+                    ),
+                }
+            }
+            return due;
+        }
+
         // 只扫描 `cron_jobs_*.json` 文件；无法读取或解析的跳过，避免一个坏文件阻塞全部扫描。
 
         let entries = match std::fs::read_dir(&self.data_dir) {
@@ -699,6 +847,44 @@ impl CronJobStorage {
         self.save_jobs(actor, &data)?;
         Ok(Some((actor.clone(), removed)))
     }
+}
+
+fn cron_pair_from_cloud_record(record: CloudCronJobRecord) -> Option<(ActorIdentity, CronJob)> {
+    let actor = serde_json::from_value::<ActorIdentity>(record.actor).ok()?;
+    let job = serde_json::from_value::<CronJob>(record.job).ok()?;
+    Some((actor, job))
+}
+
+fn cron_owner_id() -> String {
+    std::env::var("HONE_RUNTIME_OWNER_ID")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| std::env::var("HOSTNAME").ok())
+        .unwrap_or_else(|| "localhost".to_string())
+        + &format!(":{}", std::process::id())
+}
+
+fn cron_claim_job_key(actor: &ActorIdentity, job: &CronJob) -> String {
+    format!("{}::{}::{}", actor.storage_key(), job.channel, job.id)
+}
+
+fn cron_claim_due_key(
+    job: &CronJob,
+    repeat_kind: &str,
+    current_total: i32,
+    current_day: NaiveDate,
+) -> String {
+    if repeat_kind == "heartbeat" {
+        let slot_minute = (current_total / 30) * 30;
+        return format!("heartbeat:{}:{slot_minute}", current_day.format("%F"));
+    }
+    format!(
+        "{}:{}:{:02}:{:02}",
+        repeat_kind,
+        current_day.format("%F"),
+        job.schedule.hour,
+        job.schedule.minute
+    )
 }
 
 fn actor_from_cron_data(data: &CronJobData) -> Option<ActorIdentity> {

@@ -3,7 +3,7 @@
 - title: Cloud PG / OSS Runtime Migration
 - status: in_progress
 - created_at: 2026-05-27
-- updated_at: 2026-05-29
+- updated_at: 2026-05-30
 - owner: Codex
 - related_files:
   - `config.example.yaml`
@@ -14,8 +14,15 @@
   - `memory/src/quota.rs`
   - `memory/src/session.rs`
   - `memory/src/web_auth.rs`
+  - `memory/src/cron_job/mod.rs`
+  - `memory/src/cron_job/storage.rs`
+  - `memory/src/cron_job/history.rs`
+  - `crates/hone-tools/src/cron_job_tool.rs`
+  - `crates/hone-tools/src/notification_prefs_tool.rs`
+  - `crates/hone-tools/src/schedule_view.rs`
   - `crates/hone-channels/src/core/bot_core.rs`
   - `crates/hone-web-api/src/lib.rs`
+  - `crates/hone-web-api/src/routes/schedule.rs`
   - `crates/hone-tools/src/local_files.rs`
   - `crates/hone-channels/src/attachments/ingest.rs`
   - `crates/hone-channels/src/response_finalizer.rs`
@@ -43,6 +50,7 @@ Move the local runtime toward explicit local/cloud storage switching: default to
 - Switch conversation quota hot path to PG in `cloud.mode=cloud`: reserve / commit / release now use PG rows instead of local JSON, and `hone-cli cloud migrate --quota-only --apply` imports legacy quota JSON idempotently.
 - Switch session hot path to PG in `cloud.mode=cloud`: `SessionStorage` writes / loads / lists `cloud_sessions` instead of local JSON files, and `hone-cli cloud migrate --session-only --apply` imports legacy session JSON idempotently.
 - Switch Web invite users, API keys, and public login sessions to PG in `cloud.mode=cloud`: `WebAuthStorage` uses `cloud_web_invite_users` / `cloud_web_auth_sessions`, and `hone-cli cloud migrate --web-auth-only --apply` imports the legacy SQLite auth tables idempotently.
+- Switch cron definitions, execution history, and due-job claims to PG in `cloud.mode=cloud`: `CronJobStorage::new_cloud` uses `cloud_cron_jobs`, `cloud_cron_job_runs`, and `cloud_cron_job_claims`, while local mode keeps JSON definitions plus SQLite execution history. Scheduler, admin cron API, `cron_job` tool, channel-target directory, and schedule overview now all resolve cron through the same cloud-aware storage factory.
 - Add S3-compatible object-store support for Cloudflare R2. The local ignored `.env` currently points runtime `HONE_OSS_*` at R2, preserves Aliyun OSS under `HONE_ALIYUN_OSS_*` for rollback / benchmark comparison, and enables dotenv override so stale shell env cannot silently force the old provider.
 - Switch local file tools to use actor-scoped OSS namespace when cloud mode is authoritative; keep local sandbox walk/read/search in local mode.
 - Upload channel attachments and generated images to OSS in cloud mode where the current call site has enough context; local mode keeps current filesystem behavior.
@@ -67,6 +75,9 @@ Move the local runtime toward explicit local/cloud storage switching: default to
 - 2026-05-30 verified: `HONE_CLOUD_MODE=cloud cargo run --offline -p hone-cli -- cloud migrate --from-data-dir ./data --web-auth-only --apply --json` imported 30 legacy web invite users and 3 auth sessions into PG; second run changed 0 users / 0 sessions and skipped 30 users / 3 sessions with 0 conflicts.
 - 2026-05-30 verified: `HONE_CLOUD_MODE=cloud hone-cli cloud doctor --ensure-schema --json` reports PG/R2 healthy and `local_durable_dependency_count=7`; `sessions.sqlite3` is no longer counted as a durable local dependency when PG is configured.
 - 2026-05-30 verified: `cargo test -p hone-memory web_auth --lib`, `cargo test -p hone-core cloud_runtime --lib`, and `cargo check --workspace --all-targets --exclude hone-desktop`.
+- 2026-05-30 verified: `HONE_CLOUD_MODE=cloud cargo run --offline -p hone-cli -- cloud migrate --from-data-dir ./data --cron-only --apply --json` imported 54 cron jobs from 23 legacy cron JSON files into PG; second run changed 0 / skipped 54 with 0 conflicts.
+- 2026-05-30 verified: `HONE_CLOUD_MODE=cloud cargo run --offline -p hone-cli -- cloud doctor --ensure-schema --json` reports PG/R2 healthy and `local_durable_dependency_count=6`; `cron_jobs_dir` is no longer counted as a durable local dependency when PG is configured.
+- 2026-05-30 verified: `cargo test -p hone-memory cron_job --lib`, `cargo test -p hone-core cloud_runtime --lib`, and `cargo check --workspace --all-targets --exclude hone-desktop`.
 
 ## Documentation Sync
 
@@ -84,6 +95,6 @@ Current impact report: `docs/handoffs/cloud-runtime-impact-report-2026-05-28.md`
 - Direct local TCP to the Aliyun PG endpoint still depends on proxy availability; verified path uses `HONE_POSTGRES_PROXY`.
 - Object runtime honors `HONE_OSS_PROVIDER=aliyun_oss|r2|s3` and `HONE_OSS_PROXY`; live R2 bucket health passed through proxy.
 - `/api/meta` now exposes `cloud_mode`, `runtime_role`, `cloud_storage_authoritative`, local durable dependency count, and PG/OSS health.
-- Existing audit, portfolio, cron, notification prefs, KB, and company profile runtime stores are not fully PG-backed yet. Durable files from the local `data/` snapshot have been uploaded/indexed, sessions / quota / web auth are PG-backed in cloud mode, and selected runtime file surfaces now write OSS in cloud mode, but the remaining hot-path repositories stay local until follow-up adapters land.
+- Existing audit, portfolio, notification prefs, KB, and company profile runtime stores are not fully PG-backed yet. Durable files from the local `data/` snapshot have been uploaded/indexed, sessions / quota / web auth / cron are PG-backed in cloud mode, and selected runtime file surfaces now write OSS in cloud mode, but the remaining hot-path repositories stay local until follow-up adapters land.
 - SQLite structured import is still pending for non-auth tables; the migrator intentionally skips SQLite blob upload because LLM audit is large (about 1.5GB locally) and should be imported row-wise into PG tables.
 - `https://hone-claw.com/api/meta` previously timed out, so desktop remote-backend health remains separate from PG / OSS credential health.

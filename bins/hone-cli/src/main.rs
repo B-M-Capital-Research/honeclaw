@@ -235,6 +235,14 @@ pub(crate) fn non_empty(value: &str) -> bool {
 }
 
 fn cron_storage_from_config(config: &hone_core::HoneConfig) -> CronJobStorage {
+    if config.cloud.effective_mode().is_cloud_authoritative()
+        && config.cloud.postgres.is_configured()
+        && let Some(postgres) =
+            hone_core::cloud_runtime::CloudPgRuntime::from_cloud_config(&config.cloud)
+        && let Ok(storage) = CronJobStorage::new_cloud(postgres)
+    {
+        return storage;
+    }
     if config.storage.session_sqlite_db_path.trim().is_empty() {
         CronJobStorage::new(&config.storage.cron_jobs_dir)
     } else {

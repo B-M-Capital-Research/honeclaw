@@ -12,12 +12,11 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
-use chrono::Utc;
 use serde::Deserialize;
 
 use hone_core::ActorIdentity;
 use hone_tools::schedule_view::{
-    DigestDefaultSlot, DigestDefaults, ScheduleOverview, build_overview,
+    DigestDefaultSlot, DigestDefaults, ScheduleOverview, build_overview_with_cron_jobs,
 };
 
 use crate::state::AppState;
@@ -54,9 +53,9 @@ pub(crate) async fn handle_schedule(
     };
 
     let prefs_dir = std::path::Path::new(&app_config.storage.notif_prefs_dir);
-    let cron_dir = std::path::Path::new(&app_config.storage.cron_jobs_dir);
+    let cron_jobs = state.core.cron_job_storage().list_jobs(&actor);
 
-    let overview = build_overview(prefs_dir, cron_dir, &actor, &digest_defaults, Utc::now())
+    let overview = build_overview_with_cron_jobs(prefs_dir, cron_jobs, &actor, &digest_defaults)
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,

@@ -103,10 +103,19 @@ pub fn build_overview(
     digest_defaults: &DigestDefaults,
     _now: DateTime<Utc>,
 ) -> anyhow::Result<ScheduleOverview> {
-    let prefs_storage = FilePrefsStorage::new(prefs_dir)?;
-    let prefs = prefs_storage.load(actor);
     let cron_storage = CronJobStorage::new(cron_jobs_dir);
     let jobs = cron_storage.list_jobs(actor);
+    build_overview_with_cron_jobs(prefs_dir, jobs, actor, digest_defaults)
+}
+
+pub fn build_overview_with_cron_jobs(
+    prefs_dir: &Path,
+    jobs: Vec<CronJob>,
+    actor: &ActorIdentity,
+    digest_defaults: &DigestDefaults,
+) -> anyhow::Result<ScheduleOverview> {
+    let prefs_storage = FilePrefsStorage::new(prefs_dir)?;
+    let prefs = prefs_storage.load(actor);
 
     let actor_key = schedule_actor_key(actor);
     let timezone = prefs
