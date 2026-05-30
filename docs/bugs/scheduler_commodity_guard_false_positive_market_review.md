@@ -6,6 +6,19 @@
 - **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
 
+## 复发记录（2026-05-30 23:02 CST）
+
+- 最近四小时真实窗口继续确认同一 scheduler 出站 guard false positive 活跃：`2026-05-30 19:02-23:02 CST` 普通 scheduler 共有 18 条 `completed + sent + delivered=1`，其中 3 条命中 `detail_json.scheduler.commodity_causality_guarded=true`。
+- 3 条 guard 命中均不是专门原油 / 大宗商品任务，而是周末美股大盘 / 风控 / 温度检查类任务；原始完整市场风险复盘被全量替换成“本轮原油/大宗商品播报包含未完成同窗来源核验...”安全提示并仍记已送达。
+- `data/sessions.sqlite3` -> `cron_job_runs` 关键样本：
+  - `run_id=37476`，`job_name=每日20点美股大盘风控简报`，`executed_at=2026-05-30T20:01:01.549493+08:00`，`actor_channel=feishu`，`completed + sent + delivered=1`，`detail_json.scheduler.commodity_causality_guarded=true`。`raw_preview` 开头为“当前北京时间2026年5月30日20:00，美东时间周六08:00，美股现货与期货均处于周末休市阶段。结论：风险偏好仍偏强...”，主体是美股高位、低波动、贪婪情绪和追涨风险，不是原油或大宗商品播报。
+  - `run_id=37484`，`job_name=每日美股大盘温度检查`，`executed_at=2026-05-30T20:01:01.759838+08:00`，同样被替换。`raw_preview` 是周六按最近完整美股交易日收盘口径做的大盘温度检查，包含 Nasdaq / S&P 500 / Greed 情绪与追涨赔率分析。
+  - `run_id=37483`，`job_name=每日美股大盘风险简报`，`executed_at=2026-05-30T20:01:13.720433+08:00`，同样被替换。`raw_preview` 是周末按 2026-05-29 收盘口径做的大盘风险简报，包含 AI 硬件盈利兑现、利率 / 油价压制缓和与高位偏热风险。
+- `response_preview` 长度均只有 111，且被替换为“本轮未保留原正文中的价格或归因句；请等待下一轮核验或手动查询交易所/官方数据。”，导致用户收到的不是大盘风控 / 温度 / 风险主体内容。
+- `data/runtime/logs/hone-feishu.runtime-recovery.log` 在 `2026-05-30T12:00:57Z` / `12:00:58Z` / `12:01:10Z` 记录 `[SchedulerDiag] commodity_causality_guarded`，覆盖上述 3 个 job。
+- 会话质量对照：同窗按消息时间共有 36 个 user turn 与 36 个 assistant final，最近活跃会话均已 assistant final 收口；assistant final 污染扫描未命中空回复、本机绝对路径、工具轨迹、原始 provider 错误、`HTTP 400 Bad Request`、`open_id cross app`、`failed to probe codex` 或 `Resource temporarily unavailable`；最近四小时无非文档代码提交。
+- 这是既有缺陷的同一根因 / 同一出站 guard 链路，不新建重复文档；严重等级仍为 P2，状态保持 `New`。修复侧需要把 20:00 周末美股大盘风控、温度检查和风险简报加入非商品主任务回归，尤其覆盖“市场风险正文中局部提到油价”的场景。
+
 ## 复发记录（2026-05-30 19:03 CST）
 
 - 最近四小时真实窗口再次确认同一 scheduler 出站 guard false positive 在 00:09 CST 修复后仍复发：`2026-05-30 15:02-19:02 CST` 普通 scheduler 仅 1 条 `completed + sent + delivered=1`，该条命中 `detail_json.scheduler.commodity_causality_guarded=true`。
