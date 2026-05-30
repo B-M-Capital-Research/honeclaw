@@ -3,7 +3,7 @@
 - 发现时间：2026-05-20 11:06 CST
 - Bug Type：System Error
 - 严重等级：P1
-- 状态：Fixed
+- 状态：New
 - GitHub Issue：[#43](https://github.com/B-M-Capital-Research/honeclaw/issues/43)
 
 ## 证据来源
@@ -53,6 +53,7 @@
 - 直聊用户的真实任务没有被执行，只收到原始 runner probe 错误。
 - 多个普通 scheduler 任务落成 `execution_failed + sent + delivered=1`，其中多数 `response_preview` 就是原始错误文本。
 - 同一根因同时影响 Feishu、Web、Discord 三类入口，说明不是单个用户 prompt 或单个任务配置问题。
+- 2026-05-30 11:03 CST 复核：原始 runner 错误外露已被 2026-05-20 修复净化，但 runner probe 资源耗尽本身仍在真实直聊和普通 scheduler 中批量复发；用户可见回复变为脱敏文案，任务正文仍未执行。
 
 ## 用户影响
 
@@ -65,6 +66,15 @@
 - 直接根因是 Codex runner 启动前的 version probe 受本机资源限制影响，返回 `Resource temporarily unavailable (os error 35)`。
 - 下游错误净化层没有覆盖 `failed to probe codex version via codex` / `SpawnFailed` / `os error 35` 这类 runner 启动前失败，导致原始错误进入用户可见内容。
 - scheduler 对部分 runner 启动前失败仍按 `sent + delivered=1` 登记，使台账更像“发送了有效失败回复”，而不是“任务未能进入 agent 执行”。
+- 2026-05-30 复发证据显示：错误净化边界已经生效，`cron_job_runs.detail_json.scheduler.failure_kind=internal_error_suppressed`，但 runner 启动健康、并发 / 资源保护、重试或退避机制仍不足，导致主功能链路继续失败。
+
+## 复发记录
+
+- 2026-05-30 11:03 CST：按最近四小时窗口 `2026-05-30 07:02-11:02 CST` 复核真实会话与日志，确认同根因从 `Fixed` 回退为 `New`。
+  - `session_messages` 中至少 5 条 Feishu direct assistant final 向用户返回脱敏失败文案 `当前本机执行环境暂时不可用，请稍后再试。`：`Actor_feishu__direct__ou_5fdb997ed67ac0b7f5403701682185d67a`（07:52）、`Actor_feishu__direct__ou_5f85509d35510291f93cd79a3b1c9eebf3`（08:46 / 09:44）、`Actor_feishu__direct__ou_5fe40dc70caa78ad6cb0185c21b53c4732`（09:21）、`Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5`（09:49）。
+  - `cron_job_runs` 普通 scheduler 有 10 条 `execution_failed + sent + delivered=1`，覆盖 Feishu / Web / Discord；代表任务包括 `每日SemiAnalysis与Citrini文章追踪`、`AI硬件与云厂商相关新闻晨报`、`每日CNN贪婪指数`、`创新药持仓每日动态推送`、`OKLO每日重要事件跟踪`、`09:00 美股AI与航空科技晨报`、`特斯拉与火箭实验室新闻日报`、`核心观察池早间简报`、`每日美股降息概率推送`。
+  - `data/runtime/logs/web.log.2026-05-30` 在 08:46-09:49 CST 多次记录 `runner.error kind=SpawnFailed`，底层仍是 `failed to probe codex version via codex: Resource temporarily unavailable (os error 35)`；Web direct `web-user-879a3b18fce2` 在 09:04 / 09:43 / 09:44 也连续命中该失败。
+  - 用户可见侧未再暴露原始 `failed to probe` / `os error 35`，但真实请求和定时任务正文未完成，影响直聊与 scheduler 主链路，仍符合 P1。
 
 ## 修复记录
 

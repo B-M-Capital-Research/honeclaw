@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-30 00:09 CST
+最后更新：2026-05-30 11:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,10 +17,12 @@
 
 ## 当前概览
 
-- 活跃待修复：0
+- 活跃待修复：1
 - Later / 待复现：10
-- 已修复 / 已关闭：115
+- 已修复 / 已关闭：114
 - 历史分析 / 部分止血：5
+- 本轮 11:03 CST 未新增独立缺陷，但确认已标 `Fixed` 的 P1 `Codex version probe 资源耗尽导致直聊和定时任务批量失败并外露原始 runner 错误` 复发并回退为 `New`：07:02-11:02 CST 按消息时间共有 31 个 user turn 与 19 个 assistant final，最近成功直聊会话仍可正常收口，但同窗至少 5 条 Feishu direct assistant final 只返回脱敏失败文案 `当前本机执行环境暂时不可用，请稍后再试。`；普通 scheduler 有 10 条 `execution_failed + sent + delivered=1`，覆盖 Feishu / Web / Discord，包括 `每日SemiAnalysis与Citrini文章追踪`、`AI硬件与云厂商相关新闻晨报`、`每日CNN贪婪指数`、`创新药持仓每日动态推送`、`OKLO每日重要事件跟踪`、`09:00 美股AI与航空科技晨报`、`特斯拉与火箭实验室新闻日报`、`核心观察池早间简报`、`每日美股降息概率推送`。日志在 08:46-09:49 CST 多次记录 `runner.error kind=SpawnFailed`，底层仍是 `failed to probe codex version via codex: Resource temporarily unavailable (os error 35)`。2026-05-20 的修复已阻止原始错误外露，但主功能链路仍批量未执行；已有 Issue [#43](https://github.com/B-M-Capital-Research/honeclaw/issues/43)，本轮不重复创建。最近四小时无非文档代码提交。
+- 本轮 11:03 CST 继续观察到 heartbeat 结构化输出退化、`max_iterations_exceeded:10` 与少量 started 残留：heartbeat 新增 97 条 `execution_failed + skipped_error + delivered=0`、45 条 `noop + skipped_noop + delivered=0`、1 条 `completed + sent + delivered=1` 和 1 条 `running + pending`；失败形态主要为 `PlainTextSuppressed`、未知 / 缺失 / 非法 JSON、`ContextOverflowNoop` 与迭代耗尽。这些错误未形成新的用户可见 assistant final，且对应已知 heartbeat 结构化 / 迭代耗尽旧信号，本轮不新建重复缺陷。
 - 本轮 00:09 CST `bug-2` 已修复活跃 P2 `Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice`：低分段长市场复盘不再只因同时出现 `WTI`、`Brent` 与油价风险提示就被判为商品主体；普通 scheduler 对具备 A/H / 美股 / AI / 科技 / 风险提示等 broad-market 锚点的正文，会比较 broad-market 锚点与 commodity 锚点后再决定是否整篇 rewrite。专门原油 / 油价 / WTI / Brent 任务仍保留 commodity guard。验证 `cargo test -p hone-channels commodity_guard_skips_low_segmentation_ah_market_review_with_oil_risk_note --lib -- --nocapture`、`cargo test -p hone-channels commodity_guard_ --lib -- --nocapture`、`cargo test -p hone-channels commodity_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`、`rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs` 通过；无关联 GitHub Issue。
 - 本轮 19:03 CST 未新增独立缺陷或活跃 P1，但确认已标 `Fixed` 的 P2 `Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice` 复发并回退为 `New`：15:02-19:02 CST 按消息时间共有 59 个 user turn 与 59 个 assistant final，最新直聊会话均已 assistant final 收口；assistant final 污染扫描未命中空回复、本机绝对路径、`rawOutput`、`tool_call`、`session/update`、`reasoning_content`、`<think>`、provider 原始错误、`HTTP 400 Bad Request` 或 `open_id cross app`；最近四小时无非文档代码提交。普通 scheduler 仅 1 条 `completed + sent + delivered=1`，Feishu `A股港股收盘后跨市场复盘`（`run_id=36455`）命中 `detail_json.scheduler.commodity_causality_guarded=true`：原始 `raw_preview` 是 A/H 收盘复盘、AI 硬件 / 港股科技 / 美股映射与风险提示，最终 `response_preview` / `deliver_preview` 被全量替换成原油 / 大宗商品安全提示并仍记已送达。这是既有同根因复发，不新建重复文档；严重等级仍为 P2，状态从 `Fixed` 回退为 `New`。最近四小时 heartbeat 新增 91 条 `execution_failed + skipped_error + delivered=0` 与 50 条 `noop + skipped_noop + delivered=0`，失败形态主要为已知结构化输出退化、`max_iterations_exceeded:10` 与 Tavily key quota/deactivated 警告，未形成新的用户可见独立缺陷；无 heartbeat 成功送达样本，因此未观察到 P3 时间口径缺陷新复发。
 - 本轮 16:35 CST `bug-2` 已修复 P3 `Heartbeat 触发提醒把实际执行时间写成错误的北京时间`：heartbeat prompt 注入本轮权威北京时间检查时间，并要求 triggered message 使用该时间；出站前新增轻量归一化，若正文把 `北京时间 HH:MM ...监控/检查/心跳/任务触发` 写成与 scheduler 当前北京时间不一致的时间，会归一到权威检查时间并在 metadata 记录原始时间。验证 `cargo test -p hone-channels heartbeat_normalizes_conflicting_beijing_trigger_time --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture` 通过；无关联 GitHub Issue。
@@ -366,7 +368,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| _暂无_ | - | - | - | - |
+| Codex version probe 资源耗尽导致直聊和定时任务批量失败并外露原始 runner 错误 | P1 | New | 2026-05-30 11:03 复发并从 `Fixed` 回退：原始 runner 错误外露已被 2026-05-20 修复净化，但 07:02-11:02 CST 真实窗口仍有多条 Feishu direct 与 10 条普通 scheduler 因 `failed to probe codex version via codex: Resource temporarily unavailable (os error 35)` 未执行正文，只返回脱敏失败文案；关联 Issue [#43](https://github.com/B-M-Capital-Research/honeclaw/issues/43) | [codex_version_probe_resource_unavailable_raw_failure.md](./codex_version_probe_resource_unavailable_raw_failure.md) |
 
 ## Later / 待复现
 
@@ -400,7 +402,6 @@
 | Web 直聊生成 Excel/CSV 只回文件名，手机端无法下载或打开 | P2 | Fixed | 2026-05-21 20:09 Web direct 会把本轮新生成且正文提到文件名的 sandbox 文件追加为附件 marker，public history 可返回下载 metadata；前端非图片附件卡片现在使用 `/api/public/file` 下载链接。无关联 GitHub Issue | [web_direct_generated_files_not_downloadable.md](./web_direct_generated_files_not_downloadable.md) |
 | Feishu 定时任务目标解析链路再次失败，内容已生成但在 contact 阶段被拦截未送达 | P2 | Fixed | 2026-05-22 09:38 contact lookup 的 `code=1663` / `internal error` 现按临时上游错误做最多 3 次短重试，避免首次 Feishu 内部错误直接落成 `target_resolution_failed`；新增 `contact_lookup_internal_errors_are_retryable` 与 `contact_lookup_retry_budget_matches_request_retry_budget` 回归。关联 Issue [#32](https://github.com/B-M-Capital-Research/honeclaw/issues/32) | [feishu_scheduler_target_resolution_failed.md](./feishu_scheduler_target_resolution_failed.md) |
 | Heartbeat `mimo-v2.5-pro` 429 quota exhaustion drops alerts | P1 | Fixed | 2026-05-22 23:01 继续仅见当前机器旧/未确认部署运行态：19:13-22:30 CST 新增 105 条 heartbeat `execution_failed + skipped_error + delivered=0` 的 quota 失败，错误集中为 429 quota exhausted；当前 HEAD 已有多 key fallback 与 429 分类回归，不回退状态；关联 Issue [#44](https://github.com/B-M-Capital-Research/honeclaw/issues/44) | [scheduler_heartbeat_mimo_429_quota_exhausted.md](./scheduler_heartbeat_mimo_429_quota_exhausted.md) |
-| Codex version probe 资源耗尽导致直聊和定时任务批量失败并外露原始 runner 错误 | P1 | Fixed | 2026-05-20 12:10 共享错误净化层新增 runner resource-unavailable 分类；Codex / codex-acp 版本探针或 spawn 阶段的本机资源错误不再原样外发，直聊与 scheduler 均映射为“当前本机执行环境暂时不可用，请稍后再试。”；关联 Issue [#43](https://github.com/B-M-Capital-Research/honeclaw/issues/43) | [codex_version_probe_resource_unavailable_raw_failure.md](./codex_version_probe_resource_unavailable_raw_failure.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixed | 2026-05-19 08:06 `portfolio view` 的成功状态读取也能恢复为用户可见确认；覆盖 `result.portfolio.holdings/watchlist`、按工具参数 ticker 过滤相关持仓，并保留股数、成本价与备注摘要。关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29) | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Event-engine still uses deprecated `x-ai/grok-4.1-fast` and loses LLM-backed enrichment | P2 | Fixed | 2026-05-19 11:03 继续仅见当前机器旧运行态失败：08:03-10:28 CST SEC enrichment、event dedupe、mainline distill / style distill 仍请求 `x-ai/grok-4.1-fast` 并收到 OpenRouter `HTTP 404`；当前 HEAD 已切到 `x-ai/grok-4.3`，不回退状态。无关联 GitHub Issue | [event_engine_grok41_deprecated_404.md](./event_engine_grok41_deprecated_404.md) |
 | Web scheduler 让用户以为会发送手机系统通知，但实际只写入 Web 会话 / SSE 事件 | P2 | Fixed | 2026-05-16 00:06 Web cron 提示新增手机系统通知能力边界，Web scheduler detail 区分会话/SSE 与 `system_push_supported=false`；修复提交 `fbba5342`；无关联 GitHub Issue | [web_scheduler_mobile_push_not_delivered.md](./web_scheduler_mobile_push_not_delivered.md) |
