@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-30 15:03 CST
+最后更新：2026-05-30 16:10 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,10 +17,11 @@
 
 ## 当前概览
 
-- 活跃待修复：1
+- 活跃待修复：0
 - Later / 待复现：10
-- 已修复 / 已关闭：114
+- 已修复 / 已关闭：115
 - 历史分析 / 部分止血：5
+- 本轮 16:10 CST `bug-2` 已修复活跃 P1 `Codex version probe 资源耗尽导致直聊和定时任务批量失败并外露原始 runner 错误`：Codex ACP 成功版本校验现在按有效 runner 配置做进程内缓存，避免每轮 direct / scheduler 请求都额外 spawn `codex --version` 和 codex-acp version probe；若仅 version-probe 阶段命中 `Resource temporarily unavailable` / `os error 35` / `would block` 这类瞬时资源限制，会记录 warning 并继续进入真实 runner 启动路径，缺失二进制、版本过低或非资源类错误仍会阻断。验证 `cargo test -p hone-channels codex_version_probe_ --lib -- --nocapture`、`cargo test -p hone-channels codex_version_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`、`rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/runners/codex_acp.rs crates/hone-channels/src/runners/tests.rs` 通过；关联 Issue [#43](https://github.com/B-M-Capital-Research/honeclaw/issues/43)。
 - 本轮 15:03 CST 未新增独立缺陷，也未发现活跃 P1 / P2 状态变化。11:02-15:02 CST 按消息时间共有 17 个 user turn 与 16 个 assistant final，最近活跃会话均以 assistant final 收口；assistant final 污染扫描未命中空回复、本机绝对路径、`rawOutput`、`tool_call`、`session/update`、`reasoning_content`、`<think>`、provider 原始错误、`Resource temporarily unavailable`、`HTTP 400 Bad Request` 或 `open_id cross app`。普通 scheduler 仅 1 条 `completed + sent + delivered=1`，未命中 `detail_json.scheduler.commodity_causality_guarded=true`；最近四小时无非文档代码提交。
 - 本轮 15:03 CST 未观察到活跃 P1 `Codex version probe 资源耗尽导致直聊和定时任务批量失败并外露原始 runner 错误` 新复发：11:02-15:02 CST 直聊与普通 scheduler 未出现新的 `failed to probe codex version via codex` / `Resource temporarily unavailable (os error 35)` 样本。该缺陷因 07:02-11:02 CST 既有批量失败证据仍保持 `New`，已有 Issue [#43](https://github.com/B-M-Capital-Research/honeclaw/issues/43)，本轮不重复创建。
 - 本轮 15:03 CST 继续观察到 heartbeat 结构化输出退化、`max_iterations_exceeded:10`、Tavily key quota/deactivated 警告与 1 条 MiniMax 上游 `HTTP 500`：heartbeat 新增 101 条 `execution_failed + skipped_error + delivered=0` 与 43 条 `noop + skipped_noop + delivered=0`，失败形态主要为 `heartbeat 输出不是结构化 JSON` 86 条、`max_iterations_exceeded:10` 9 条、未知 / 空 / 缺失状态 5 条，以及 1 条 `provider_http_error`。这些错误未形成新的用户可见 assistant final，且对应既有 heartbeat 结构化 / 迭代耗尽 / 上游降级旧信号，本轮不新建重复缺陷。
@@ -371,7 +372,6 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Codex version probe 资源耗尽导致直聊和定时任务批量失败并外露原始 runner 错误 | P1 | New | 2026-05-30 11:03 复发并从 `Fixed` 回退：原始 runner 错误外露已被 2026-05-20 修复净化，但 07:02-11:02 CST 真实窗口仍有多条 Feishu direct 与 10 条普通 scheduler 因 `failed to probe codex version via codex: Resource temporarily unavailable (os error 35)` 未执行正文，只返回脱敏失败文案；15:03 巡检未见 11:02-15:02 CST 新复发，因既有批量失败证据仍保持 `New`；关联 Issue [#43](https://github.com/B-M-Capital-Research/honeclaw/issues/43) | [codex_version_probe_resource_unavailable_raw_failure.md](./codex_version_probe_resource_unavailable_raw_failure.md) |
 
 ## Later / 待复现
 
@@ -392,6 +392,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Codex version probe 资源耗尽导致直聊和定时任务批量失败并外露原始 runner 错误 | P1 | Fixed | 2026-05-30 16:10 Codex ACP 版本预检成功后按有效 runner 配置缓存；仅 version-probe 阶段的 `Resource temporarily unavailable` / `os error 35` / `would block` 资源瞬时失败会旁路预检并进入真实 runner 启动，缺失二进制与版本不兼容仍阻断。验证 `cargo test -p hone-channels codex_version_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；关联 Issue [#43](https://github.com/B-M-Capital-Research/honeclaw/issues/43) | [codex_version_probe_resource_unavailable_raw_failure.md](./codex_version_probe_resource_unavailable_raw_failure.md) |
 | Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice | P2 | Fixed | 2026-05-30 00:09 低分段长市场复盘会比较 broad-market 锚点与 commodity 锚点，不再因 `WTI` / `Brent` / 油价风险提示局部共现就整篇替换；专门原油任务仍保留 guard。验证 `cargo test -p hone-channels commodity_guard_ --lib -- --nocapture`、`cargo test -p hone-channels commodity_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过。无关联 GitHub Issue | [scheduler_commodity_guard_false_positive_market_review.md](./scheduler_commodity_guard_false_positive_market_review.md) |
 | Heartbeat 触发提醒把实际执行时间写成错误的北京时间 | P3 | Fixed | 2026-05-29 16:35 已修复 heartbeat triggered message 的北京时间触发口径漂移：prompt 注入权威检查时间，出站前将明显冲突的 `北京时间 HH:MM ...监控/检查/心跳/任务触发` 归一到 scheduler 当前北京时间并记录 metadata。验证 `cargo test -p hone-channels heartbeat_normalizes_conflicting_beijing_trigger_time --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture` 通过。无关联 GitHub Issue | [scheduler_heartbeat_trigger_time_mismatch.md](./scheduler_heartbeat_trigger_time_mismatch.md) |
 | Feishu 直达定时任务生成完成后仍在发送阶段落成 `HTTP 400 Bad Request` | P1 | Fixed | 2026-05-29 16:09 复核当前 HEAD 已覆盖 event-engine Feishu direct/digest sink 的 current-app `open_id` 解析链路：direct actor contact targets 会合并 cron 与 session metadata，并在 primary session listing 失败时回退 JSON sessions。验证 `cargo test -p hone-web-api feishu_direct_actor_targets_ --lib -- --nocapture`、`cargo test -p hone-event-engine feishu --lib -- --nocapture` 通过；本轮不再以当前机器旧/非生产运行态样本重新打开。关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |

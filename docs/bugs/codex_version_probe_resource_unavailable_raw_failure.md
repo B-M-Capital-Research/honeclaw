@@ -3,7 +3,7 @@
 - 发现时间：2026-05-20 11:06 CST
 - Bug Type：System Error
 - 严重等级：P1
-- 状态：New
+- 状态：Fixed
 - GitHub Issue：[#43](https://github.com/B-M-Capital-Research/honeclaw/issues/43)
 
 ## 证据来源
@@ -50,10 +50,10 @@
 
 ## 当前实现效果
 
-- 直聊用户的真实任务没有被执行，只收到原始 runner probe 错误。
-- 多个普通 scheduler 任务落成 `execution_failed + sent + delivered=1`，其中多数 `response_preview` 就是原始错误文本。
-- 同一根因同时影响 Feishu、Web、Discord 三类入口，说明不是单个用户 prompt 或单个任务配置问题。
-- 2026-05-30 11:03 CST 复核：原始 runner 错误外露已被 2026-05-20 修复净化，但 runner probe 资源耗尽本身仍在真实直聊和普通 scheduler 中批量复发；用户可见回复变为脱敏文案，任务正文仍未执行。
+- 2026-05-20 修复后，用户可见侧不再暴露原始 runner probe 错误，改为脱敏的本机执行环境不可用提示。
+- 2026-05-30 11:03 CST 复核：原始错误外露已被修复净化，但 runner probe 资源耗尽本身仍在真实直聊和普通 scheduler 中批量复发；用户可见回复变为脱敏文案，任务正文仍未执行。
+- 2026-05-30 16:10 CST 当前 HEAD：同一进程内成功版本校验会缓存，且 version-probe 阶段的瞬时资源限制不再直接阻断本轮请求，而是继续进入真实 runner 启动路径。
+- 缺失二进制、版本过低、不可解析版本和真实 runner 启动失败仍保持失败，不会被该旁路吞掉。
 
 ## 用户影响
 
@@ -67,6 +67,7 @@
 - 下游错误净化层没有覆盖 `failed to probe codex version via codex` / `SpawnFailed` / `os error 35` 这类 runner 启动前失败，导致原始错误进入用户可见内容。
 - scheduler 对部分 runner 启动前失败仍按 `sent + delivered=1` 登记，使台账更像“发送了有效失败回复”，而不是“任务未能进入 agent 执行”。
 - 2026-05-30 复发证据显示：错误净化边界已经生效，`cron_job_runs.detail_json.scheduler.failure_kind=internal_error_suppressed`，但 runner 启动健康、并发 / 资源保护、重试或退避机制仍不足，导致主功能链路继续失败。
+- 2026-05-30 16:10 CST 修复后，Codex ACP 版本预检不再是每轮 direct / scheduler 请求的强制额外 spawn 放大器：成功校验会按有效 runner 配置缓存；仅 version-probe 阶段的瞬时资源限制会旁路预检并继续真实 runner 启动。
 
 ## 复发记录
 
@@ -83,6 +84,10 @@
 - 直聊和通用出站错误映射为：`当前本机执行环境暂时不可用，请稍后再试。`
 - scheduler 的 `user_visible_error_message_or_none(...)` 同样返回该脱敏文案，避免 `response_preview` / 用户送达内容包含原始 runner 错误。
 - 本修复只做通用错误边界加固，不为单次资源耗尽写重试、绕过或硬编码特殊流程。
+- 2026-05-30 16:10 CST：`crates/hone-channels/src/runners/codex_acp.rs` 新增 Codex ACP 版本校验缓存与瞬时资源限制旁路。
+- 成功完成 `codex --version` + codex-acp initialize version probe 后，当前进程会按 `codex_command`、codex-acp command、locked-down 有效 args 和最低版本约束缓存结果，避免同一配置每轮请求都重复创建两个 probe 子进程。
+- 若失败只发生在 version-probe 阶段，且错误是 `Resource temporarily unavailable` / `os error 35` / `would block` / `temporarily unavailable` 等瞬时资源限制，预检会记录 warning 并继续进入真实 runner 启动路径；缺失二进制、版本过低、不可解析版本和非资源类 spawn 错误仍会失败。
+- 本轮修复不针对单次外部状态写特判，而是降低可控的进程创建放大效应，并保留真实 runner 启动失败的统一错误净化与可观测性。
 
 ## 验证
 
@@ -91,9 +96,15 @@
 - `cargo test -p hone-channels user_visible_error_message --lib -- --nocapture`
 - `cargo check -p hone-channels --tests`
 - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/runtime.rs`
+- 2026-05-30 16:10 CST：
+  - `cargo test -p hone-channels codex_version_probe_ --lib -- --nocapture`
+  - `cargo test -p hone-channels codex_version_validation_cache_key_tracks_effective_runner_args --lib -- --nocapture`
+  - `cargo test -p hone-channels codex_version_ --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+  - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/runners/codex_acp.rs crates/hone-channels/src/runners/tests.rs`
 
 ## 后续建议
 
-- 为 Codex runner version probe 评估缓存、超时、退避或启动健康检查，避免每轮请求都因短时进程资源耗尽同步失败。
+- 若仍观察到真实 runner 启动阶段的资源耗尽，可继续评估全局并发保护、短退避或启动健康检查；不要把这次 version-probe 旁路扩展成忽略真实 runner 启动失败。
 - 为 scheduler 增加 runner 启动前失败分类，例如 `runner_spawn_failed`，便于区分“任务未进入 agent 执行”和“模型执行中失败”。
 - 若部署后仍出现 runner 启动前错误原文外发，保留脱敏错误关键词并扩展同一分类函数，不要针对单个日志样本写渠道特判。

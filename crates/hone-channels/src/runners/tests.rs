@@ -36,6 +36,8 @@ use super::tool_reasoning::{render_runner_tool_label, runner_context_messages};
 use super::types::{AgentRunnerEmitter, AgentRunnerEvent};
 use uuid::Uuid;
 
+use crate::agent_session::{AgentSessionError, AgentSessionErrorKind};
+
 struct NoopEmitter;
 
 #[async_trait]
@@ -629,6 +631,45 @@ fn codex_version_matrix_rejects_old_adapter() {
         },
     );
     assert_error_contains(result, "@zed-industries/codex-acp@latest");
+}
+
+#[test]
+fn codex_version_probe_resource_limit_errors_are_bypassable() {
+    let err = AgentSessionError {
+        kind: AgentSessionErrorKind::SpawnFailed,
+        message: "failed to probe codex version via `codex`: Resource temporarily unavailable (os error 35)"
+            .to_string(),
+    };
+
+    assert!(super::codex_acp::codex_version_probe_error_is_transient_resource_unavailable(&err));
+}
+
+#[test]
+fn codex_version_probe_missing_binary_is_not_bypassable() {
+    let err = AgentSessionError {
+        kind: AgentSessionErrorKind::SpawnFailed,
+        message:
+            "failed to probe codex version via `codex`: No such file or directory (os error 2)"
+                .to_string(),
+    };
+
+    assert!(!super::codex_acp::codex_version_probe_error_is_transient_resource_unavailable(&err));
+}
+
+#[test]
+fn codex_version_validation_cache_key_tracks_effective_runner_args() {
+    let base = CodexAcpConfig {
+        command: "codex-acp".to_string(),
+        codex_command: "codex".to_string(),
+        ..CodexAcpConfig::default()
+    };
+    let mut with_effort = base.clone();
+    with_effort.variant = "high".to_string();
+
+    assert_ne!(
+        super::codex_acp::codex_acp_version_validation_cache_key(&base),
+        super::codex_acp::codex_acp_version_validation_cache_key(&with_effort)
+    );
 }
 
 #[test]

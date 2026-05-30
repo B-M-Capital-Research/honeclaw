@@ -4,8 +4,8 @@ use hone_core::agent::{
 };
 use hone_core::config::CodexAcpConfig;
 use serde_json::Value;
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
@@ -35,6 +35,8 @@ const MIN_CODEX_ACP_VERSION: CliVersion = CliVersion {
     minor: 12,
     patch: 0,
 };
+static CODEX_ACP_VERSION_VALIDATION_CACHE: LazyLock<tokio::sync::Mutex<HashSet<String>>> =
+    LazyLock::new(|| tokio::sync::Mutex::new(HashSet::new()));
 
 pub(crate) fn reusable_codex_acp_session_id(
     _session_metadata: &HashMap<String, Value>,
@@ -203,6 +205,67 @@ pub(crate) fn validate_codex_version_matrix(
 }
 
 async fn validate_codex_acp_versions(
+    config: &CodexAcpConfig,
+    step_timeout: Duration,
+) -> Result<(), AgentSessionError> {
+    let cache_key = codex_acp_version_validation_cache_key(config);
+    {
+        let cache = CODEX_ACP_VERSION_VALIDATION_CACHE.lock().await;
+        if cache.contains(&cache_key) {
+            return Ok(());
+        }
+    }
+
+    match validate_codex_acp_versions_uncached(config, step_timeout).await {
+        Ok(()) => {
+            CODEX_ACP_VERSION_VALIDATION_CACHE
+                .lock()
+                .await
+                .insert(cache_key);
+            Ok(())
+        }
+        Err(err) if codex_version_probe_error_is_transient_resource_unavailable(&err) => {
+            tracing::warn!(
+                error = %err.message,
+                "codex-acp version probe hit a transient resource limit; continuing to runner startup"
+            );
+            Ok(())
+        }
+        Err(err) => Err(err),
+    }
+}
+
+pub(crate) fn codex_acp_version_validation_cache_key(config: &CodexAcpConfig) -> String {
+    serde_json::json!({
+        "codex_command": config.codex_command,
+        "command": config.command,
+        "args": codex_acp_effective_args(config, true),
+        "min_codex": MIN_CODEX_VERSION.to_string(),
+        "min_codex_acp": MIN_CODEX_ACP_VERSION.to_string(),
+    })
+    .to_string()
+}
+
+pub(crate) fn codex_version_probe_error_is_transient_resource_unavailable(
+    err: &AgentSessionError,
+) -> bool {
+    if err.kind != AgentSessionErrorKind::SpawnFailed {
+        return false;
+    }
+
+    let message = err.message.to_ascii_lowercase();
+    let from_version_probe =
+        message.contains("version probe") || message.contains("failed to probe codex version");
+    let resource_unavailable = message.contains("resource temporarily unavailable")
+        || message.contains("os error 35")
+        || message.contains("would block")
+        || message.contains("resource busy")
+        || message.contains("temporarily unavailable");
+
+    from_version_probe && resource_unavailable
+}
+
+async fn validate_codex_acp_versions_uncached(
     config: &CodexAcpConfig,
     step_timeout: Duration,
 ) -> Result<(), AgentSessionError> {

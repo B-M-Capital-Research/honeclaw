@@ -3,12 +3,14 @@
 - title: Active Bug Burn-down 2026-04-28
 - status: in_progress
 - created_at: 2026-04-28
-- updated_at: 2026-05-30 00:09 CST
+- updated_at: 2026-05-30 16:10 CST
 - owner: Codex
 - related_files:
   - `docs/bugs/README.md`
   - `docs/bugs/*.md`
   - `crates/hone-channels/src/scheduler.rs`
+  - `crates/hone-channels/src/runners/codex_acp.rs`
+  - `crates/hone-channels/src/runners/tests.rs`
   - `crates/hone-event-engine/src/**`
   - `crates/hone-web-api/src/routes/**`
   - `memory/src/**`
@@ -34,6 +36,7 @@ Clear the current active bug queue as far as software changes can responsibly do
 
 ## Progress
 
+- 2026-05-30 16:10: Re-closed the reopened P1 Codex version-probe resource exhaustion bug linked to Issue #43. Codex ACP version validation now caches successful `codex --version` + codex-acp initialize checks by effective runner config, so direct / scheduler traffic does not create two extra probe children on every turn. If only the version-probe step hits a transient local resource limit such as `Resource temporarily unavailable` / `os error 35` / `would block`, the preflight logs a warning and continues to the real runner startup path; missing binaries, old versions, unparsable versions, and real runner startup failures still fail normally. Active bug queue is back to 0.
 - 2026-05-30 00:09: Re-closed the reopened P2 scheduler commodity-guard false positive for low-segmentation A/H market reviews. `text_is_predominantly_commodity_related(...)` now compares broad-market anchors against commodity anchors even when the response has only one or two sentence segments, so an A股/港股/美股/AI market review with WTI/Brent/oil only in a risk note is not fully replaced by the commodity safety notice. Added `commodity_guard_skips_low_segmentation_ah_market_review_with_oil_risk_note`; `commodity_guard_`, `commodity_`, `cargo check -p hone-channels --tests`, and rustfmt check passed. Active bug queue is back to 0.
 - 2026-05-29 00:13: Reconciled the active queue after `a78d3f2e fix: harden event digest and commodity guards` landed on `origin/main`. Current HEAD already covers both remaining active bugs: Feishu event digest `open_id cross app` now invalidates direct open_id cache and retries after `99992361`, while scheduler commodity guard skips broad-market review samples that only mention oil as a secondary risk variable. Verified `cargo test -p hone-event-engine feishu --lib -- --nocapture` and `cargo test -p hone-channels commodity_guard_ --lib -- --nocapture`; `docs/bugs/README.md` active queue is back to 0. This run did not require a new code patch because the code fix was already present; it synchronized the ledger and issue follow-up state.
 - 2026-05-28 03:11: Re-closed the reopened P1 event-engine Feishu direct digest `open_id cross app` regression by restoring the intended “all stable contacts resolve to one current-app open_id” contract end-to-end: Web API now forwards every stable direct contact target per actor, and `FeishuSink` now merges repeated actor entries instead of overwriting them. The same run also closed the active P2 heartbeat stale gold-price trigger by suppressing `JsonTriggered` deliveries whose current/latest-price message carries an explicit date older than the current Beijing date. Targeted `hone-event-engine` / `hone-web-api` / `hone-channels` tests and `cargo check -p hone-event-engine -p hone-web-api -p hone-channels --tests` passed. The remaining active bug is the scheduler commodity-guard false positive; current local regressions already pass, so the next run needs a live sample shape that still reproduces before making another code change.
@@ -178,6 +181,11 @@ Completed this round:
 - `cargo test -p hone-channels pdf_extract --lib -- --nocapture`
 - `cargo test -p hone-channels pdf_note_contains_extracted_text --lib -- --nocapture`
 - `cargo check -p hone-channels --tests`
+- `cargo test -p hone-channels codex_version_probe_ --lib -- --nocapture`
+- `cargo test -p hone-channels codex_version_validation_cache_key_tracks_effective_runner_args --lib -- --nocapture`
+- `cargo test -p hone-channels codex_version_ --lib -- --nocapture`
+- `cargo check -p hone-channels --tests`
+- `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/runners/codex_acp.rs crates/hone-channels/src/runners/tests.rs`
 - `rustfmt --edition 2024 --check crates/hone-channels/src/attachments/vector_store.rs crates/hone-channels/src/attachments/ingest.rs`
 - `git diff --check`
 - `cargo fmt --all -- --check`
