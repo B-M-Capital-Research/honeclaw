@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-30 11:03 CST
+最后更新：2026-05-30 15:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -21,6 +21,9 @@
 - Later / 待复现：10
 - 已修复 / 已关闭：114
 - 历史分析 / 部分止血：5
+- 本轮 15:03 CST 未新增独立缺陷，也未发现活跃 P1 / P2 状态变化。11:02-15:02 CST 按消息时间共有 17 个 user turn 与 16 个 assistant final，最近活跃会话均以 assistant final 收口；assistant final 污染扫描未命中空回复、本机绝对路径、`rawOutput`、`tool_call`、`session/update`、`reasoning_content`、`<think>`、provider 原始错误、`Resource temporarily unavailable`、`HTTP 400 Bad Request` 或 `open_id cross app`。普通 scheduler 仅 1 条 `completed + sent + delivered=1`，未命中 `detail_json.scheduler.commodity_causality_guarded=true`；最近四小时无非文档代码提交。
+- 本轮 15:03 CST 未观察到活跃 P1 `Codex version probe 资源耗尽导致直聊和定时任务批量失败并外露原始 runner 错误` 新复发：11:02-15:02 CST 直聊与普通 scheduler 未出现新的 `failed to probe codex version via codex` / `Resource temporarily unavailable (os error 35)` 样本。该缺陷因 07:02-11:02 CST 既有批量失败证据仍保持 `New`，已有 Issue [#43](https://github.com/B-M-Capital-Research/honeclaw/issues/43)，本轮不重复创建。
+- 本轮 15:03 CST 继续观察到 heartbeat 结构化输出退化、`max_iterations_exceeded:10`、Tavily key quota/deactivated 警告与 1 条 MiniMax 上游 `HTTP 500`：heartbeat 新增 101 条 `execution_failed + skipped_error + delivered=0` 与 43 条 `noop + skipped_noop + delivered=0`，失败形态主要为 `heartbeat 输出不是结构化 JSON` 86 条、`max_iterations_exceeded:10` 9 条、未知 / 空 / 缺失状态 5 条，以及 1 条 `provider_http_error`。这些错误未形成新的用户可见 assistant final，且对应既有 heartbeat 结构化 / 迭代耗尽 / 上游降级旧信号，本轮不新建重复缺陷。
 - 本轮 11:03 CST 未新增独立缺陷，但确认已标 `Fixed` 的 P1 `Codex version probe 资源耗尽导致直聊和定时任务批量失败并外露原始 runner 错误` 复发并回退为 `New`：07:02-11:02 CST 按消息时间共有 31 个 user turn 与 19 个 assistant final，最近成功直聊会话仍可正常收口，但同窗至少 5 条 Feishu direct assistant final 只返回脱敏失败文案 `当前本机执行环境暂时不可用，请稍后再试。`；普通 scheduler 有 10 条 `execution_failed + sent + delivered=1`，覆盖 Feishu / Web / Discord，包括 `每日SemiAnalysis与Citrini文章追踪`、`AI硬件与云厂商相关新闻晨报`、`每日CNN贪婪指数`、`创新药持仓每日动态推送`、`OKLO每日重要事件跟踪`、`09:00 美股AI与航空科技晨报`、`特斯拉与火箭实验室新闻日报`、`核心观察池早间简报`、`每日美股降息概率推送`。日志在 08:46-09:49 CST 多次记录 `runner.error kind=SpawnFailed`，底层仍是 `failed to probe codex version via codex: Resource temporarily unavailable (os error 35)`。2026-05-20 的修复已阻止原始错误外露，但主功能链路仍批量未执行；已有 Issue [#43](https://github.com/B-M-Capital-Research/honeclaw/issues/43)，本轮不重复创建。最近四小时无非文档代码提交。
 - 本轮 11:03 CST 继续观察到 heartbeat 结构化输出退化、`max_iterations_exceeded:10` 与少量 started 残留：heartbeat 新增 97 条 `execution_failed + skipped_error + delivered=0`、45 条 `noop + skipped_noop + delivered=0`、1 条 `completed + sent + delivered=1` 和 1 条 `running + pending`；失败形态主要为 `PlainTextSuppressed`、未知 / 缺失 / 非法 JSON、`ContextOverflowNoop` 与迭代耗尽。这些错误未形成新的用户可见 assistant final，且对应已知 heartbeat 结构化 / 迭代耗尽旧信号，本轮不新建重复缺陷。
 - 本轮 00:09 CST `bug-2` 已修复活跃 P2 `Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice`：低分段长市场复盘不再只因同时出现 `WTI`、`Brent` 与油价风险提示就被判为商品主体；普通 scheduler 对具备 A/H / 美股 / AI / 科技 / 风险提示等 broad-market 锚点的正文，会比较 broad-market 锚点与 commodity 锚点后再决定是否整篇 rewrite。专门原油 / 油价 / WTI / Brent 任务仍保留 commodity guard。验证 `cargo test -p hone-channels commodity_guard_skips_low_segmentation_ah_market_review_with_oil_risk_note --lib -- --nocapture`、`cargo test -p hone-channels commodity_guard_ --lib -- --nocapture`、`cargo test -p hone-channels commodity_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`、`rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs` 通过；无关联 GitHub Issue。
@@ -368,7 +371,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Codex version probe 资源耗尽导致直聊和定时任务批量失败并外露原始 runner 错误 | P1 | New | 2026-05-30 11:03 复发并从 `Fixed` 回退：原始 runner 错误外露已被 2026-05-20 修复净化，但 07:02-11:02 CST 真实窗口仍有多条 Feishu direct 与 10 条普通 scheduler 因 `failed to probe codex version via codex: Resource temporarily unavailable (os error 35)` 未执行正文，只返回脱敏失败文案；关联 Issue [#43](https://github.com/B-M-Capital-Research/honeclaw/issues/43) | [codex_version_probe_resource_unavailable_raw_failure.md](./codex_version_probe_resource_unavailable_raw_failure.md) |
+| Codex version probe 资源耗尽导致直聊和定时任务批量失败并外露原始 runner 错误 | P1 | New | 2026-05-30 11:03 复发并从 `Fixed` 回退：原始 runner 错误外露已被 2026-05-20 修复净化，但 07:02-11:02 CST 真实窗口仍有多条 Feishu direct 与 10 条普通 scheduler 因 `failed to probe codex version via codex: Resource temporarily unavailable (os error 35)` 未执行正文，只返回脱敏失败文案；15:03 巡检未见 11:02-15:02 CST 新复发，因既有批量失败证据仍保持 `New`；关联 Issue [#43](https://github.com/B-M-Capital-Research/honeclaw/issues/43) | [codex_version_probe_resource_unavailable_raw_failure.md](./codex_version_probe_resource_unavailable_raw_failure.md) |
 
 ## Later / 待复现
 
