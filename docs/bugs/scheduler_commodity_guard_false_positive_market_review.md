@@ -3,8 +3,19 @@
 - **发现时间**: 2026-05-25 19:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
+
+## 复发记录（2026-05-30 19:03 CST）
+
+- 最近四小时真实窗口再次确认同一 scheduler 出站 guard false positive 在 00:09 CST 修复后仍复发：`2026-05-30 15:02-19:02 CST` 普通 scheduler 仅 1 条 `completed + sent + delivered=1`，该条命中 `detail_json.scheduler.commodity_causality_guarded=true`。
+- 本窗口命中样本不是专门原油 / 大宗商品任务，原始完整 A/H 收盘复盘被全量替换成“本轮原油/大宗商品播报包含未完成同窗来源核验...”安全提示并仍记已送达。
+- `data/sessions.sqlite3` -> `cron_job_runs` 关键样本：
+  - `run_id=37387`，`job_name=A股港股收盘后跨市场复盘`，`executed_at=2026-05-30T17:32:28.902888+08:00`，`actor_channel=feishu`，`completed + sent + delivered=1`，`detail_json.scheduler.commodity_causality_guarded=true`。
+  - `detail_json.scheduler.raw_preview` 开头为“北京时间2026-05-30 17:30，今天是周六，A股和港股均非正常交易日；本轮只复盘最近一个交易日 2026-05-29，不编造周六盘面。”，主体是 2026-05-29 A/H 收盘复盘、AI 硬件 / 港股科技 / 美股映射与风险提示，不是原油或大宗商品播报。
+  - `response_preview` / `detail_json.scheduler.deliver_preview` 被替换为“本轮未保留原正文中的价格或归因句；请等待下一轮核验或手动查询交易所/官方数据。”，导致用户收到的不是 A/H 收盘复盘主体内容。
+- 会话质量对照：同窗按消息时间共有 7 个 user turn 与 7 个 assistant final，最新直聊会话均已 assistant final 收口；assistant final 污染扫描未命中空回复、本机绝对路径、工具轨迹、原始 provider 错误、`HTTP 400 Bad Request` 或 `open_id cross app`；最近四小时无非文档代码提交。
+- 这是既有缺陷的同一根因 / 同一出站 guard 链路，不新建重复文档；严重等级仍为 P2，状态从 `Fixed` 回退为 `New`。修复侧需要验证 00:09 CST 的 low-segmentation broad-market 判断仍未覆盖“周六复盘最近交易日”的 A/H 收盘复盘形态，或确认当前运行态是否未部署到包含该修复的二进制。
 
 ## 修复记录（2026-05-30 00:09 CST）
 
