@@ -301,7 +301,7 @@ Admin/public Web ports are runtime environment settings, primarily `HONE_WEB_POR
 Public SMS login and optional Aliyun Captcha are also runtime environment settings; use `config.example.yaml` and `docs/runbooks/backend-deployment.md` as the reference for `ALIBABA_CLOUD_*`, `HONE_ALIYUN_SMS_*`, `HONE_ALIYUN_CAPTCHA_*`, and `HONE_PUBLIC_SECURE_COOKIE`. Active admin-created Web invite users remain the public-login invite-list admission source. For the public session cookie, `HONE_PUBLIC_SECURE_COOKIE` accepts `true/1/yes` and `false/0/no`; invalid non-empty values keep `Secure=true`.
 For OpenRouter credentials, prefer the `llm.providers.openrouter.api_key/api_keys` pool; legacy `llm.openrouter.*` key fields are migration fallbacks only.
 For Tavily web search, the current runtime tool reads `search.api_keys` and `search.max_results`; `search.provider`, `search.search_depth`, and `search.topic` are preserved schema fields but are not wired into the request yet.
-For managed cloud storage, keep actual `DATABASE_URL`, `HONE_POSTGRES_*`, and `HONE_OSS_*` values outside committed config. `cloud.strict_no_local_storage` is only safe after the remaining local session, cron, audit, portfolio, notification preference, KB, and log stores have managed backends.
+For managed cloud storage, keep actual `DATABASE_URL`, `HONE_POSTGRES_*`, and `HONE_OSS_*` values outside committed config. Current cloud mode has PG hot paths for sessions, Web auth, conversation quota, and cron jobs/runs; `cloud.strict_no_local_storage` is only safe after the remaining local LLM audit, portfolio, notification preference, generated image, skill registry, and actor sandbox stores have managed backends.
 
 Never commit local secrets in `config.yaml`.
 
