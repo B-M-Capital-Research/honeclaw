@@ -17,6 +17,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
 reqwest = { workspace = true }
+rusqlite = { workspace = true }
 clap = { version = "4.5", features = ["derive"] }
 dialoguer = "0.11"
 # `console` 已经是 dialoguer 的 transitive 依赖;提成直接依赖,用来在 onboard /

@@ -95,6 +95,29 @@ pub struct CloudSessionImportReport {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct CloudWebInviteUserRecord {
+    pub user_id: String,
+    pub phone_number: String,
+    pub record: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CloudWebAuthSessionRecord {
+    pub session_hash: String,
+    pub user_id: String,
+    pub expires_at: Option<String>,
+    pub record: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct CloudWebAuthImportReport {
+    pub changed_users: usize,
+    pub skipped_users: usize,
+    pub changed_sessions: usize,
+    pub skipped_sessions: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct CloudConversationQuotaSnapshot {
     pub quota_date: String,
     pub success_count: u32,
@@ -563,6 +586,262 @@ SELECT
         Ok(CloudSessionImportReport {
             changed_rows,
             skipped_rows: total_rows.saturating_sub(changed_rows),
+        })
+    }
+
+    pub async fn upsert_web_invite_user_record(
+        &self,
+        user_id: &str,
+        phone_number: &str,
+        record: serde_json::Value,
+    ) -> HoneResult<()> {
+        let client = self.connect_client().await?;
+        client
+            .execute(
+                r#"
+INSERT INTO cloud_web_invite_users(user_id, phone_number, record)
+VALUES ($1, $2, $3)
+ON CONFLICT (user_id)
+DO UPDATE SET
+  phone_number = EXCLUDED.phone_number,
+  record = EXCLUDED.record,
+  updated_at = now()
+"#,
+                &[&user_id, &phone_number, &record],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres web invite 写入失败: {err}")))?;
+        Ok(())
+    }
+
+    pub async fn list_web_invite_user_records(&self) -> HoneResult<Vec<serde_json::Value>> {
+        let client = self.connect_client().await?;
+        let rows = client
+            .query(
+                "SELECT record FROM cloud_web_invite_users ORDER BY record->>'created_at' DESC",
+                &[],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres web invite 列表读取失败: {err}")))?;
+        Ok(rows.into_iter().map(|row| row.get(0)).collect())
+    }
+
+    pub async fn find_web_invite_user_record(
+        &self,
+        field: &str,
+        value: &str,
+    ) -> HoneResult<Option<serde_json::Value>> {
+        let client = self.connect_client().await?;
+        let sql = match field {
+            "user_id" => "SELECT record FROM cloud_web_invite_users WHERE user_id = $1",
+            "invite_code" => {
+                "SELECT record FROM cloud_web_invite_users WHERE record->>'invite_code' = $1"
+            }
+            "phone_number" => "SELECT record FROM cloud_web_invite_users WHERE phone_number = $1",
+            "api_key_hash" => {
+                "SELECT record FROM cloud_web_invite_users WHERE record->>'api_key_hash' = $1"
+            }
+            _ => {
+                return Err(HoneError::Config(format!(
+                    "unsupported web invite lookup field: {field}"
+                )));
+            }
+        };
+        let row = client
+            .query_opt(sql, &[&value])
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres web invite 读取失败: {err}")))?;
+        Ok(row.map(|row| row.get(0)))
+    }
+
+    pub async fn delete_web_auth_sessions_for_user(&self, user_id: &str) -> HoneResult<u64> {
+        let client = self.connect_client().await?;
+        client
+            .execute(
+                "DELETE FROM cloud_web_auth_sessions WHERE user_id = $1",
+                &[&user_id],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres web auth session 删除失败: {err}")))
+    }
+
+    pub async fn upsert_web_auth_session_record(
+        &self,
+        session_hash: &str,
+        user_id: &str,
+        record: serde_json::Value,
+        expires_at: Option<&str>,
+    ) -> HoneResult<()> {
+        let client = self.connect_client().await?;
+        client
+            .execute(
+                r#"
+INSERT INTO cloud_web_auth_sessions(session_hash, user_id, record, expires_at)
+VALUES ($1, $2, $3, $4::text::timestamptz)
+ON CONFLICT (session_hash)
+DO UPDATE SET
+  user_id = EXCLUDED.user_id,
+  record = EXCLUDED.record,
+  expires_at = EXCLUDED.expires_at,
+  updated_at = now()
+"#,
+                &[&session_hash, &user_id, &record, &expires_at],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres web auth session 写入失败: {err}"))
+            })?;
+        Ok(())
+    }
+
+    pub async fn find_web_auth_session_record(
+        &self,
+        session_hash: &str,
+        legacy_token: &str,
+    ) -> HoneResult<Option<serde_json::Value>> {
+        let client = self.connect_client().await?;
+        let row = client
+            .query_opt(
+                "SELECT record FROM cloud_web_auth_sessions WHERE session_hash = $1 OR session_hash = $2",
+                &[&session_hash, &legacy_token],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres web auth session 读取失败: {err}")))?;
+        Ok(row.map(|row| row.get(0)))
+    }
+
+    pub async fn delete_web_auth_session(
+        &self,
+        session_hash: &str,
+        legacy_token: &str,
+    ) -> HoneResult<()> {
+        let client = self.connect_client().await?;
+        client
+            .execute(
+                "DELETE FROM cloud_web_auth_sessions WHERE session_hash = $1 OR session_hash = $2",
+                &[&session_hash, &legacy_token],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres web auth session 删除失败: {err}"))
+            })?;
+        Ok(())
+    }
+
+    pub async fn purge_expired_web_auth_sessions(&self, now: &str) -> HoneResult<u64> {
+        let client = self.connect_client().await?;
+        client
+            .execute(
+                "DELETE FROM cloud_web_auth_sessions WHERE record->>'expires_at' <= $1",
+                &[&now],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres web auth session 清理失败: {err}")))
+    }
+
+    pub async fn count_active_web_auth_sessions(
+        &self,
+        user_id: &str,
+        now: &str,
+    ) -> HoneResult<u32> {
+        let client = self.connect_client().await?;
+        let row = client
+            .query_one(
+                "SELECT count(*)::bigint FROM cloud_web_auth_sessions WHERE user_id = $1 AND record->>'expires_at' > $2",
+                &[&user_id, &now],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres web auth session 计数失败: {err}")))?;
+        let count = row.get::<_, i64>(0).max(0) as u32;
+        Ok(count)
+    }
+
+    pub async fn import_web_auth_records(
+        &self,
+        users: &[CloudWebInviteUserRecord],
+        sessions: &[CloudWebAuthSessionRecord],
+    ) -> HoneResult<CloudWebAuthImportReport> {
+        let client = self.connect_client().await?;
+        let user_payload =
+            serde_json::to_value(users).map_err(|err| HoneError::Serialization(err.to_string()))?;
+        let session_payload = serde_json::to_value(sessions)
+            .map_err(|err| HoneError::Serialization(err.to_string()))?;
+        let user_row = client
+            .query_one(
+                r#"
+WITH input_rows AS (
+  SELECT *
+  FROM jsonb_to_recordset($1::jsonb) AS x(
+    user_id TEXT,
+    phone_number TEXT,
+    record JSONB
+  )
+),
+upserted AS (
+INSERT INTO cloud_web_invite_users(user_id, phone_number, record)
+SELECT user_id, phone_number, record FROM input_rows
+ON CONFLICT (user_id)
+DO UPDATE SET
+  phone_number = EXCLUDED.phone_number,
+  record = EXCLUDED.record,
+  updated_at = now()
+WHERE cloud_web_invite_users.phone_number IS DISTINCT FROM EXCLUDED.phone_number
+   OR cloud_web_invite_users.record IS DISTINCT FROM EXCLUDED.record
+RETURNING 1
+)
+SELECT
+  (SELECT count(*)::bigint FROM upserted),
+  (SELECT count(*)::bigint FROM input_rows)
+"#,
+                &[&user_payload],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres web invite import 失败: {err}")))?;
+        let session_row = client
+            .query_one(
+                r#"
+WITH input_rows AS (
+  SELECT *
+  FROM jsonb_to_recordset($1::jsonb) AS x(
+    session_hash TEXT,
+    user_id TEXT,
+    expires_at TEXT,
+    record JSONB
+  )
+),
+upserted AS (
+INSERT INTO cloud_web_auth_sessions(session_hash, user_id, expires_at, record)
+SELECT session_hash, user_id, expires_at::timestamptz, record FROM input_rows
+ON CONFLICT (session_hash)
+DO UPDATE SET
+  user_id = EXCLUDED.user_id,
+  expires_at = EXCLUDED.expires_at,
+  record = EXCLUDED.record,
+  updated_at = now()
+WHERE cloud_web_auth_sessions.user_id IS DISTINCT FROM EXCLUDED.user_id
+   OR cloud_web_auth_sessions.expires_at IS DISTINCT FROM EXCLUDED.expires_at
+   OR cloud_web_auth_sessions.record IS DISTINCT FROM EXCLUDED.record
+RETURNING 1
+)
+SELECT
+  (SELECT count(*)::bigint FROM upserted),
+  (SELECT count(*)::bigint FROM input_rows)
+"#,
+                &[&session_payload],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres web auth session import 失败: {err}"))
+            })?;
+        let changed_users = user_row.get::<_, i64>(0).max(0) as usize;
+        let total_users = user_row.get::<_, i64>(1).max(0) as usize;
+        let changed_sessions = session_row.get::<_, i64>(0).max(0) as usize;
+        let total_sessions = session_row.get::<_, i64>(1).max(0) as usize;
+        Ok(CloudWebAuthImportReport {
+            changed_users,
+            skipped_users: total_users.saturating_sub(changed_users),
+            changed_sessions,
+            skipped_sessions: total_sessions.saturating_sub(changed_sessions),
         })
     }
 
@@ -1220,7 +1499,6 @@ pub fn local_durable_dependencies(config: &HoneConfig) -> Vec<String> {
         return Vec::new();
     }
     let mut deps = vec![
-        config.storage.session_sqlite_db_path.clone(),
         config.storage.llm_audit_db_path.clone(),
         config.storage.portfolio_dir.clone(),
         config.storage.cron_jobs_dir.clone(),
@@ -1231,6 +1509,7 @@ pub fn local_durable_dependencies(config: &HoneConfig) -> Vec<String> {
     ];
     if !config.cloud.postgres.is_configured() {
         deps.push(config.storage.sessions_dir.clone());
+        deps.push(config.storage.session_sqlite_db_path.clone());
         deps.push(config.storage.conversation_quota_dir.clone());
     }
     deps.sort();
@@ -1508,13 +1787,20 @@ mod tests {
         config.cloud.postgres.password = "password".to_string();
         config.cloud.postgres.database = "hone".to_string();
         config.storage.sessions_dir = "/tmp/hone/sessions".to_string();
+        config.storage.session_sqlite_db_path = "/tmp/hone/sessions.sqlite3".to_string();
         config.storage.conversation_quota_dir = "/tmp/hone/quota".to_string();
+        assert!(config.cloud.postgres.is_configured());
         let deps = local_durable_dependencies(&config);
         assert!(!deps.iter().any(|dep| dep == "/tmp/hone/quota"));
         assert!(!deps.iter().any(|dep| dep == "/tmp/hone/sessions"));
         assert!(
-            deps.iter()
+            !deps
+                .iter()
                 .any(|dep| dep == &config.storage.session_sqlite_db_path)
+        );
+        assert!(
+            deps.iter()
+                .any(|dep| dep == &config.storage.llm_audit_db_path)
         );
         unsafe {
             std::env::remove_var("HONE_CLOUD_MODE");

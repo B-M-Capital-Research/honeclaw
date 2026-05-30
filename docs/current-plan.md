@@ -19,7 +19,7 @@
 - **Cloud PG / OSS Runtime Migration**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/cloud-pg-oss-runtime-migration.md`
-  - 摘要：把本地 runtime 切向显式 local/cloud 存储模式；2026-05-29 已落地 `cloud.mode`、`HONE_RUNTIME_ROLE`、PG/OSS proxy health/schema、`hone-cli cloud doctor/migrate`、actor OSS namespace 和部分 durable file surfaces。本机非 SQLite durable 文件迁移已完成：1282 个对象上传/复用并写入 PG `cloud_documents`；conversation quota 和 session hot path 已在 cloud 模式切 PG，698 条 quota JSON 与 117 条 session JSON 已幂等导入 PG；PG-backed auth/audit/cron/company profile hot-path adapters 与 50 个 SQLite 文件结构化导入仍需继续收口
+  - 摘要：把本地 runtime 切向显式 local/cloud 存储模式；2026-05-29 已落地 `cloud.mode`、`HONE_RUNTIME_ROLE`、PG/OSS proxy health/schema、`hone-cli cloud doctor/migrate`、actor OSS namespace 和部分 durable file surfaces。本机非 SQLite durable 文件迁移已完成：1282 个对象上传/复用并写入 PG `cloud_documents`；conversation quota、session、Web auth hot path 已在 cloud 模式切 PG，698 条 quota JSON、117 条 session JSON、30 个 web invite user 和 3 个 auth session 已幂等导入 PG；PG-backed audit/cron/company profile hot-path adapters 与剩余 SQLite 结构化导入仍需继续收口
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/active-bug-burn-down-2026-04-28.md`

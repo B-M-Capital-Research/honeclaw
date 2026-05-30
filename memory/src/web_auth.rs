@@ -1,14 +1,17 @@
+use std::future::Future;
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 
+use hone_core::cloud_runtime::CloudPgRuntime;
 use hone_core::{HoneError, HoneResult, beijing_now, beijing_now_rfc3339};
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 pub const SESSION_TTL_DAYS_LONG: i64 = 30;
 pub const SESSION_TTL_DAYS_SHORT: i64 = 1;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WebInviteUser {
     pub user_id: String,
     pub invite_code: String,
@@ -27,7 +30,7 @@ pub struct WebInviteUser {
     pub api_key_plaintext: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WebInviteSession {
     pub session_token: String,
     pub user_id: String,
@@ -52,7 +55,29 @@ pub enum WebSessionAuthResult {
 }
 
 pub struct WebAuthStorage {
-    conn: Mutex<Connection>,
+    backend: WebAuthBackend,
+}
+
+enum WebAuthBackend {
+    Sqlite { conn: Mutex<Connection> },
+    Cloud { postgres: CloudPgRuntime },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CloudWebInviteRecord {
+    #[serde(flatten)]
+    user: WebInviteUser,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    api_key_hash: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CloudWebAuthSessionRecord {
+    session_hash: String,
+    user_id: String,
+    created_at: String,
+    expires_at: String,
+    last_seen_at: String,
 }
 
 impl WebAuthStorage {
@@ -72,14 +97,27 @@ impl WebAuthStorage {
             .map_err(sql_err)?;
 
         let storage = Self {
-            conn: Mutex::new(conn),
+            backend: WebAuthBackend::Sqlite {
+                conn: Mutex::new(conn),
+            },
         };
         storage.init_schema()?;
         Ok(storage)
     }
 
+    pub fn new_cloud(postgres: CloudPgRuntime) -> HoneResult<Self> {
+        let schema_postgres = postgres.clone();
+        run_cloud_web_auth(async move { schema_postgres.ensure_schema().await })?;
+        Ok(Self {
+            backend: WebAuthBackend::Cloud { postgres },
+        })
+    }
+
     fn init_schema(&self) -> HoneResult<()> {
-        let conn = self.conn.lock().map_err(lock_err)?;
+        let WebAuthBackend::Sqlite { conn } = &self.backend else {
+            return Ok(());
+        };
+        let conn = conn.lock().map_err(lock_err)?;
         conn.execute_batch(
             "
             CREATE TABLE IF NOT EXISTS web_invite_users (
@@ -137,11 +175,126 @@ impl WebAuthStorage {
         Ok(())
     }
 
+    fn sqlite_conn(&self) -> HoneResult<MutexGuard<'_, Connection>> {
+        match &self.backend {
+            WebAuthBackend::Sqlite { conn } => conn.lock().map_err(lock_err),
+            WebAuthBackend::Cloud { .. } => Err(HoneError::Storage(
+                "web auth sqlite connection requested in cloud mode".to_string(),
+            )),
+        }
+    }
+
+    fn cloud_postgres(&self) -> Option<CloudPgRuntime> {
+        match &self.backend {
+            WebAuthBackend::Cloud { postgres } => Some(postgres.clone()),
+            WebAuthBackend::Sqlite { .. } => None,
+        }
+    }
+
+    fn cloud_upsert_invite(
+        &self,
+        user: &WebInviteUser,
+        api_key_hash: Option<String>,
+    ) -> HoneResult<()> {
+        let Some(postgres) = self.cloud_postgres() else {
+            return Ok(());
+        };
+        let record = CloudWebInviteRecord {
+            user: user.clone(),
+            api_key_hash,
+        };
+        let value = serde_json::to_value(&record)
+            .map_err(|err| HoneError::Serialization(err.to_string()))?;
+        let user_id = user.user_id.clone();
+        let phone_number = user.phone_number.clone();
+        run_cloud_web_auth(async move {
+            postgres
+                .upsert_web_invite_user_record(&user_id, &phone_number, value)
+                .await
+        })
+    }
+
+    fn cloud_record_to_user(
+        value: serde_json::Value,
+    ) -> HoneResult<(WebInviteUser, Option<String>)> {
+        let record: CloudWebInviteRecord = serde_json::from_value(value)
+            .map_err(|err| HoneError::Serialization(err.to_string()))?;
+        Ok((record.user, record.api_key_hash))
+    }
+
+    fn cloud_find_invite_by(
+        &self,
+        field: &str,
+        value: &str,
+    ) -> HoneResult<Option<(WebInviteUser, Option<String>)>> {
+        let Some(postgres) = self.cloud_postgres() else {
+            return Ok(None);
+        };
+        let field = field.to_string();
+        let value = value.to_string();
+        run_cloud_web_auth(
+            async move { postgres.find_web_invite_user_record(&field, &value).await },
+        )?
+        .map(Self::cloud_record_to_user)
+        .transpose()
+    }
+
+    fn cloud_upsert_session(&self, session: &CloudWebAuthSessionRecord) -> HoneResult<()> {
+        let Some(postgres) = self.cloud_postgres() else {
+            return Ok(());
+        };
+        let record = serde_json::to_value(session)
+            .map_err(|err| HoneError::Serialization(err.to_string()))?;
+        let session_hash = session.session_hash.clone();
+        let user_id = session.user_id.clone();
+        let expires_at = session.expires_at.clone();
+        run_cloud_web_auth(async move {
+            postgres
+                .upsert_web_auth_session_record(&session_hash, &user_id, record, Some(&expires_at))
+                .await
+        })
+    }
+
+    fn cloud_purge_expired_sessions(&self, now: &str) -> HoneResult<()> {
+        let Some(postgres) = self.cloud_postgres() else {
+            return Ok(());
+        };
+        let now = now.to_string();
+        run_cloud_web_auth(async move {
+            postgres.purge_expired_web_auth_sessions(&now).await?;
+            Ok(())
+        })
+    }
+
     pub fn create_invite_user(&self, phone_number: &str) -> HoneResult<WebInviteUser> {
         let created_at = beijing_now_rfc3339();
         let user_id = generate_user_id();
         let phone_number = validate_phone_number(phone_number)?;
-        let conn = self.conn.lock().map_err(lock_err)?;
+        if self.cloud_postgres().is_some() {
+            let invite_code = generate_unique_invite_code_cloud(self)?;
+            let api_key = generate_unique_api_key_cloud(self)?;
+            let api_key_hash = hash_api_key(&api_key);
+            let api_key_prefix = api_key_prefix(&api_key);
+            let user = WebInviteUser {
+                user_id,
+                invite_code,
+                phone_number,
+                created_at: created_at.clone(),
+                last_login_at: None,
+                revoked_at: None,
+                password_hash: None,
+                password_set_at: None,
+                tos_accepted_at: None,
+                tos_version: None,
+                api_key_prefix: Some(api_key_prefix),
+                api_key_created_at: Some(created_at),
+                api_key_last_used_at: None,
+                api_key_plaintext: Some(api_key),
+            };
+            self.cloud_upsert_invite(&user, Some(api_key_hash))?;
+            return Ok(user);
+        }
+        let conn = self.sqlite_conn()?;
         let tx = conn.unchecked_transaction().map_err(sql_err)?;
         let invite_code = generate_unique_invite_code(&tx)?;
         let api_key = generate_unique_api_key(&tx)?;
@@ -190,7 +343,16 @@ impl WebAuthStorage {
     }
 
     pub fn list_invite_users(&self) -> HoneResult<Vec<WebInviteUser>> {
-        let conn = self.conn.lock().map_err(lock_err)?;
+        if let Some(postgres) = self.cloud_postgres() {
+            let records =
+                run_cloud_web_auth(async move { postgres.list_web_invite_user_records().await })?;
+            return records
+                .into_iter()
+                .map(Self::cloud_record_to_user)
+                .map(|result| result.map(|(user, _)| user))
+                .collect();
+        }
+        let conn = self.sqlite_conn()?;
         let mut stmt = conn
             .prepare(
                 "
@@ -213,7 +375,12 @@ impl WebAuthStorage {
 
     pub fn find_invite_user_by_code(&self, invite_code: &str) -> HoneResult<Option<WebInviteUser>> {
         let invite_code = normalize_invite_code(invite_code);
-        let conn = self.conn.lock().map_err(lock_err)?;
+        if self.cloud_postgres().is_some() {
+            return Ok(self
+                .cloud_find_invite_by("invite_code", &invite_code)?
+                .map(|(user, _)| user));
+        }
+        let conn = self.sqlite_conn()?;
         conn.query_row(
             "
             SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at,
@@ -239,7 +406,14 @@ impl WebAuthStorage {
         if phone.is_empty() {
             return Ok(None);
         }
-        let conn = self.conn.lock().map_err(lock_err)?;
+        if self.cloud_postgres().is_some() {
+            let user = self
+                .cloud_find_invite_by("phone_number", &phone)?
+                .map(|(user, _)| user)
+                .filter(|user| user.revoked_at.is_none());
+            return Ok(user);
+        }
+        let conn = self.sqlite_conn()?;
         conn.query_row(
             "
             SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at,
@@ -256,7 +430,12 @@ impl WebAuthStorage {
     }
 
     pub fn find_invite_user(&self, user_id: &str) -> HoneResult<Option<WebInviteUser>> {
-        let conn = self.conn.lock().map_err(lock_err)?;
+        if self.cloud_postgres().is_some() {
+            return Ok(self
+                .cloud_find_invite_by("user_id", user_id)?
+                .map(|(user, _)| user));
+        }
+        let conn = self.sqlite_conn()?;
         conn.query_row(
             "
             SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at,
@@ -279,7 +458,21 @@ impl WebAuthStorage {
         }
         let now = beijing_now_rfc3339();
         let api_key_hash = hash_api_key(api_key);
-        let conn = self.conn.lock().map_err(lock_err)?;
+        if self.cloud_postgres().is_some() {
+            let Some((mut user, stored_hash)) =
+                self.cloud_find_invite_by("api_key_hash", &api_key_hash)?
+            else {
+                return Ok(None);
+            };
+            if user.revoked_at.is_some() || stored_hash.as_deref() != Some(api_key_hash.as_str()) {
+                return Ok(None);
+            }
+            user.api_key_last_used_at = Some(now);
+            user.api_key_plaintext = None;
+            self.cloud_upsert_invite(&user, stored_hash)?;
+            return Ok(Some(user));
+        }
+        let conn = self.sqlite_conn()?;
         let tx = conn.unchecked_transaction().map_err(sql_err)?;
         let user = tx
             .query_row(
@@ -318,7 +511,26 @@ impl WebAuthStorage {
 
     pub fn ensure_api_key_for_user(&self, user_id: &str) -> HoneResult<Option<WebInviteUser>> {
         let now = beijing_now_rfc3339();
-        let conn = self.conn.lock().map_err(lock_err)?;
+        if self.cloud_postgres().is_some() {
+            let Some((mut existing, _existing_hash)) =
+                self.cloud_find_invite_by("user_id", user_id)?
+            else {
+                return Ok(None);
+            };
+            if existing.api_key_prefix.is_some() {
+                existing.api_key_plaintext = None;
+                return Ok(Some(existing));
+            }
+            let api_key = generate_unique_api_key_cloud(self)?;
+            let api_key_hash = hash_api_key(&api_key);
+            existing.api_key_prefix = Some(api_key_prefix(&api_key));
+            existing.api_key_created_at = Some(now);
+            existing.api_key_last_used_at = None;
+            existing.api_key_plaintext = Some(api_key);
+            self.cloud_upsert_invite(&existing, Some(api_key_hash))?;
+            return Ok(Some(existing));
+        }
+        let conn = self.sqlite_conn()?;
         let tx = conn.unchecked_transaction().map_err(sql_err)?;
         let Some(mut existing) = find_invite_user_tx(&tx, user_id)? else {
             tx.rollback().map_err(sql_err)?;
@@ -355,7 +567,20 @@ impl WebAuthStorage {
 
     pub fn reset_api_key_for_user(&self, user_id: &str) -> HoneResult<Option<WebInviteUser>> {
         let now = beijing_now_rfc3339();
-        let conn = self.conn.lock().map_err(lock_err)?;
+        if self.cloud_postgres().is_some() {
+            let Some((mut invite, _)) = self.cloud_find_invite_by("user_id", user_id)? else {
+                return Ok(None);
+            };
+            let api_key = generate_unique_api_key_cloud(self)?;
+            let api_key_hash = hash_api_key(&api_key);
+            invite.api_key_prefix = Some(api_key_prefix(&api_key));
+            invite.api_key_created_at = Some(now);
+            invite.api_key_last_used_at = None;
+            invite.api_key_plaintext = Some(api_key);
+            self.cloud_upsert_invite(&invite, Some(api_key_hash))?;
+            return Ok(Some(invite));
+        }
+        let conn = self.sqlite_conn()?;
         let tx = conn.unchecked_transaction().map_err(sql_err)?;
         let Some(_) = find_invite_user_tx(&tx, user_id)? else {
             tx.rollback().map_err(sql_err)?;
@@ -396,7 +621,35 @@ impl WebAuthStorage {
         let expires_at = (now + chrono::Duration::days(SESSION_TTL_DAYS_LONG)).to_rfc3339();
         let token = generate_session_token();
         let token_hash = hash_session_token(&token);
-        let conn = self.conn.lock().map_err(lock_err)?;
+        if self.cloud_postgres().is_some() {
+            self.cloud_purge_expired_sessions(&created_at)?;
+            let Some((mut user, api_key_hash)) =
+                self.cloud_find_invite_by("invite_code", &invite_code)?
+            else {
+                return Ok(None);
+            };
+            if user.phone_number != phone_number || user.revoked_at.is_some() {
+                return Ok(None);
+            }
+            user.last_login_at = Some(created_at.clone());
+            self.cloud_upsert_invite(&user, api_key_hash)?;
+            let session = CloudWebAuthSessionRecord {
+                session_hash: token_hash,
+                user_id: user.user_id.clone(),
+                created_at: created_at.clone(),
+                expires_at: expires_at.clone(),
+                last_seen_at: created_at.clone(),
+            };
+            self.cloud_upsert_session(&session)?;
+            return Ok(Some(WebInviteSession {
+                session_token: token,
+                user_id: user.user_id,
+                created_at: created_at.clone(),
+                expires_at,
+                last_seen_at: created_at,
+            }));
+        }
+        let conn = self.sqlite_conn()?;
         purge_expired_sessions_inner(&conn, &created_at)?;
 
         let tx = conn.unchecked_transaction().map_err(sql_err)?;
@@ -469,7 +722,42 @@ impl WebAuthStorage {
     ) -> HoneResult<WebSessionAuthResult> {
         let now = beijing_now_rfc3339();
         let token_hash = hash_session_token(session_token);
-        let conn = self.conn.lock().map_err(lock_err)?;
+        if let Some(postgres) = self.cloud_postgres() {
+            let value = run_cloud_web_auth({
+                let token_hash = token_hash.clone();
+                let session_token = session_token.to_string();
+                async move {
+                    postgres
+                        .find_web_auth_session_record(&token_hash, &session_token)
+                        .await
+                }
+            })?;
+            let Some(value) = value else {
+                return Ok(WebSessionAuthResult::Missing);
+            };
+            let mut session: CloudWebAuthSessionRecord = serde_json::from_value(value)
+                .map_err(|err| HoneError::Serialization(err.to_string()))?;
+            if session.expires_at <= now {
+                self.delete_session(session_token)?;
+                return Ok(WebSessionAuthResult::Expired {
+                    user_id: session.user_id,
+                });
+            }
+            let Some((user, _)) = self.cloud_find_invite_by("user_id", &session.user_id)? else {
+                return Ok(WebSessionAuthResult::UserMissing {
+                    user_id: session.user_id,
+                });
+            };
+            if user.revoked_at.is_some() {
+                return Ok(WebSessionAuthResult::UserRevoked {
+                    user_id: user.user_id,
+                });
+            }
+            session.last_seen_at = now;
+            self.cloud_upsert_session(&session)?;
+            return Ok(WebSessionAuthResult::Authenticated(user));
+        }
+        let conn = self.sqlite_conn()?;
         let tx = conn.unchecked_transaction().map_err(sql_err)?;
         let session = tx
             .query_row(
@@ -544,7 +832,15 @@ impl WebAuthStorage {
 
     pub fn delete_session(&self, session_token: &str) -> HoneResult<()> {
         let token_hash = hash_session_token(session_token);
-        let conn = self.conn.lock().map_err(lock_err)?;
+        if let Some(postgres) = self.cloud_postgres() {
+            let session_token = session_token.to_string();
+            return run_cloud_web_auth(async move {
+                postgres
+                    .delete_web_auth_session(&token_hash, &session_token)
+                    .await
+            });
+        }
+        let conn = self.sqlite_conn()?;
         conn.execute(
             "DELETE FROM web_auth_sessions WHERE session_token = ?1 OR session_token = ?2",
             params![&token_hash, session_token],
@@ -555,7 +851,16 @@ impl WebAuthStorage {
 
     pub fn count_active_sessions_for_user(&self, user_id: &str) -> HoneResult<u32> {
         let now = beijing_now_rfc3339();
-        let conn = self.conn.lock().map_err(lock_err)?;
+        if let Some(postgres) = self.cloud_postgres() {
+            self.cloud_purge_expired_sessions(&now)?;
+            let user_id = user_id.to_string();
+            return run_cloud_web_auth(async move {
+                postgres
+                    .count_active_web_auth_sessions(&user_id, &now)
+                    .await
+            });
+        }
+        let conn = self.sqlite_conn()?;
         purge_expired_sessions_inner(&conn, &now)?;
         let count = conn
             .query_row(
@@ -573,7 +878,31 @@ impl WebAuthStorage {
         revoked: bool,
     ) -> HoneResult<Option<WebInviteMutation>> {
         let now = beijing_now_rfc3339();
-        let conn = self.conn.lock().map_err(lock_err)?;
+        if self.cloud_postgres().is_some() {
+            self.cloud_purge_expired_sessions(&now)?;
+            let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id)?
+            else {
+                return Ok(None);
+            };
+            let cleared_session_count = if revoked {
+                let postgres = self.cloud_postgres().expect("cloud postgres");
+                let user_id_owned = user_id.to_string();
+                run_cloud_web_auth(async move {
+                    postgres
+                        .delete_web_auth_sessions_for_user(&user_id_owned)
+                        .await
+                })? as u32
+            } else {
+                0
+            };
+            user.revoked_at = if revoked { Some(now) } else { None };
+            self.cloud_upsert_invite(&user, api_key_hash)?;
+            return Ok(Some(WebInviteMutation {
+                invite: user,
+                cleared_session_count,
+            }));
+        }
+        let conn = self.sqlite_conn()?;
         purge_expired_sessions_inner(&conn, &now)?;
         let tx = conn.unchecked_transaction().map_err(sql_err)?;
         let Some(_) = find_invite_user_tx(&tx, user_id)? else {
@@ -608,7 +937,29 @@ impl WebAuthStorage {
 
     pub fn reset_invite_code(&self, user_id: &str) -> HoneResult<Option<WebInviteMutation>> {
         let now = beijing_now_rfc3339();
-        let conn = self.conn.lock().map_err(lock_err)?;
+        if self.cloud_postgres().is_some() {
+            self.cloud_purge_expired_sessions(&now)?;
+            let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id)?
+            else {
+                return Ok(None);
+            };
+            let invite_code = generate_unique_invite_code_cloud(self)?;
+            let postgres = self.cloud_postgres().expect("cloud postgres");
+            let user_id_owned = user_id.to_string();
+            let cleared_session_count = run_cloud_web_auth(async move {
+                postgres
+                    .delete_web_auth_sessions_for_user(&user_id_owned)
+                    .await
+            })? as u32;
+            user.invite_code = invite_code;
+            user.revoked_at = None;
+            self.cloud_upsert_invite(&user, api_key_hash)?;
+            return Ok(Some(WebInviteMutation {
+                invite: user,
+                cleared_session_count,
+            }));
+        }
+        let conn = self.sqlite_conn()?;
         purge_expired_sessions_inner(&conn, &now)?;
         let tx = conn.unchecked_transaction().map_err(sql_err)?;
         let Some(_) = find_invite_user_tx(&tx, user_id)? else {
@@ -645,7 +996,13 @@ impl WebAuthStorage {
         if phone.is_empty() {
             return Ok(None);
         }
-        let conn = self.conn.lock().map_err(lock_err)?;
+        if self.cloud_postgres().is_some() {
+            return Ok(self
+                .cloud_find_invite_by("phone_number", &phone)?
+                .map(|(user, _)| user)
+                .filter(|user| user.revoked_at.is_none() && user.password_hash.is_some()));
+        }
+        let conn = self.sqlite_conn()?;
         conn.query_row(
             "
             SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at,
@@ -672,7 +1029,22 @@ impl WebAuthStorage {
         tos_version: &str,
     ) -> HoneResult<bool> {
         let now = beijing_now_rfc3339();
-        let conn = self.conn.lock().map_err(lock_err)?;
+        if self.cloud_postgres().is_some() {
+            let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id)?
+            else {
+                return Ok(false);
+            };
+            if user.password_hash.is_some() {
+                return Ok(false);
+            }
+            user.password_hash = Some(password_hash.to_string());
+            user.password_set_at = Some(now.clone());
+            user.tos_accepted_at = Some(now);
+            user.tos_version = Some(tos_version.to_string());
+            self.cloud_upsert_invite(&user, api_key_hash)?;
+            return Ok(true);
+        }
+        let conn = self.sqlite_conn()?;
         let updated = conn
             .execute(
                 "
@@ -692,7 +1064,20 @@ impl WebAuthStorage {
     /// 已设置密码后用于修改密码(/me 页)。不动 tos_accepted_at / tos_version。
     pub fn change_password(&self, user_id: &str, password_hash: &str) -> HoneResult<bool> {
         let now = beijing_now_rfc3339();
-        let conn = self.conn.lock().map_err(lock_err)?;
+        if self.cloud_postgres().is_some() {
+            let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id)?
+            else {
+                return Ok(false);
+            };
+            if user.password_hash.is_none() {
+                return Ok(false);
+            }
+            user.password_hash = Some(password_hash.to_string());
+            user.password_set_at = Some(now);
+            self.cloud_upsert_invite(&user, api_key_hash)?;
+            return Ok(true);
+        }
+        let conn = self.sqlite_conn()?;
         let updated = conn
             .execute(
                 "
@@ -708,7 +1093,20 @@ impl WebAuthStorage {
 
     pub fn record_tos_acceptance(&self, user_id: &str, tos_version: &str) -> HoneResult<bool> {
         let now = beijing_now_rfc3339();
-        let conn = self.conn.lock().map_err(lock_err)?;
+        if self.cloud_postgres().is_some() {
+            let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id)?
+            else {
+                return Ok(false);
+            };
+            if user.revoked_at.is_some() {
+                return Ok(false);
+            }
+            user.tos_accepted_at = Some(now);
+            user.tos_version = Some(tos_version.to_string());
+            self.cloud_upsert_invite(&user, api_key_hash)?;
+            return Ok(true);
+        }
+        let conn = self.sqlite_conn()?;
         let updated = conn
             .execute(
                 "
@@ -737,7 +1135,35 @@ impl WebAuthStorage {
         let token = generate_session_token();
         let token_hash = hash_session_token(&token);
 
-        let conn = self.conn.lock().map_err(lock_err)?;
+        if self.cloud_postgres().is_some() {
+            self.cloud_purge_expired_sessions(&created_at)?;
+            let Some((mut user, api_key_hash)) = self.cloud_find_invite_by("user_id", user_id)?
+            else {
+                return Ok(None);
+            };
+            if user.revoked_at.is_some() {
+                return Ok(None);
+            }
+            user.last_login_at = Some(created_at.clone());
+            self.cloud_upsert_invite(&user, api_key_hash)?;
+            let session = CloudWebAuthSessionRecord {
+                session_hash: token_hash,
+                user_id: user.user_id.clone(),
+                created_at: created_at.clone(),
+                expires_at: expires_at.clone(),
+                last_seen_at: created_at.clone(),
+            };
+            self.cloud_upsert_session(&session)?;
+            return Ok(Some(WebInviteSession {
+                session_token: token,
+                user_id: user.user_id,
+                created_at: created_at.clone(),
+                expires_at,
+                last_seen_at: created_at,
+            }));
+        }
+
+        let conn = self.sqlite_conn()?;
         purge_expired_sessions_inner(&conn, &created_at)?;
 
         let tx = conn.unchecked_transaction().map_err(sql_err)?;
@@ -783,6 +1209,145 @@ impl WebAuthStorage {
             last_seen_at: created_at,
         }))
     }
+
+    pub fn export_cloud_records(
+        &self,
+    ) -> HoneResult<(
+        Vec<hone_core::cloud_runtime::CloudWebInviteUserRecord>,
+        Vec<hone_core::cloud_runtime::CloudWebAuthSessionRecord>,
+    )> {
+        let conn = self.sqlite_conn()?;
+        let mut users_stmt = conn
+            .prepare(
+                "
+                SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at,
+                       password_hash, password_set_at, tos_accepted_at, tos_version,
+                       api_key_prefix, api_key_created_at, api_key_last_used_at, api_key_hash
+                FROM web_invite_users
+                ORDER BY created_at DESC
+                ",
+            )
+            .map_err(sql_err)?;
+        let user_rows = users_stmt
+            .query_map([], |row| {
+                let user = WebInviteUser {
+                    user_id: row.get(0)?,
+                    invite_code: row.get(1)?,
+                    phone_number: row.get(2)?,
+                    created_at: row.get(3)?,
+                    last_login_at: row.get(4)?,
+                    revoked_at: row.get(5)?,
+                    password_hash: row.get(6)?,
+                    password_set_at: row.get(7)?,
+                    tos_accepted_at: row.get(8)?,
+                    tos_version: row.get(9)?,
+                    api_key_prefix: row.get(10)?,
+                    api_key_created_at: row.get(11)?,
+                    api_key_last_used_at: row.get(12)?,
+                    api_key_plaintext: None,
+                };
+                let api_key_hash: Option<String> = row.get(13)?;
+                Ok((user, api_key_hash))
+            })
+            .map_err(sql_err)?;
+        let mut users = Vec::new();
+        for row in user_rows {
+            let (user, api_key_hash) = row.map_err(sql_err)?;
+            let phone_number = user.phone_number.clone();
+            let user_id = user.user_id.clone();
+            let record = serde_json::to_value(CloudWebInviteRecord { user, api_key_hash })
+                .map_err(|err| HoneError::Serialization(err.to_string()))?;
+            users.push(hone_core::cloud_runtime::CloudWebInviteUserRecord {
+                user_id,
+                phone_number,
+                record,
+            });
+        }
+
+        let mut sessions_stmt = conn
+            .prepare(
+                "
+                SELECT session_token, user_id, created_at, expires_at, last_seen_at
+                FROM web_auth_sessions
+                ORDER BY created_at DESC
+                ",
+            )
+            .map_err(sql_err)?;
+        let session_rows = sessions_stmt
+            .query_map([], |row| {
+                Ok(CloudWebAuthSessionRecord {
+                    session_hash: row.get(0)?,
+                    user_id: row.get(1)?,
+                    created_at: row.get(2)?,
+                    expires_at: row.get(3)?,
+                    last_seen_at: row.get(4)?,
+                })
+            })
+            .map_err(sql_err)?;
+        let mut sessions = Vec::new();
+        for row in session_rows {
+            let session = row.map_err(sql_err)?;
+            let record = serde_json::to_value(&session)
+                .map_err(|err| HoneError::Serialization(err.to_string()))?;
+            sessions.push(hone_core::cloud_runtime::CloudWebAuthSessionRecord {
+                session_hash: session.session_hash,
+                user_id: session.user_id,
+                expires_at: Some(session.expires_at),
+                record,
+            });
+        }
+        Ok((users, sessions))
+    }
+}
+
+fn run_cloud_web_auth<T, F>(future: F) -> HoneResult<T>
+where
+    T: Send + 'static,
+    F: Future<Output = HoneResult<T>> + Send + 'static,
+{
+    if tokio::runtime::Handle::try_current().is_ok() {
+        return std::thread::spawn(move || {
+            let runtime =
+                tokio::runtime::Runtime::new().map_err(|err| HoneError::Config(err.to_string()))?;
+            runtime.block_on(future)
+        })
+        .join()
+        .map_err(|_| HoneError::Storage("cloud web auth worker panicked".to_string()))?;
+    }
+    let runtime =
+        tokio::runtime::Runtime::new().map_err(|err| HoneError::Config(err.to_string()))?;
+    runtime.block_on(future)
+}
+
+fn generate_unique_invite_code_cloud(storage: &WebAuthStorage) -> HoneResult<String> {
+    for _ in 0..16 {
+        let invite_code = generate_invite_code();
+        if storage
+            .cloud_find_invite_by("invite_code", &invite_code)?
+            .is_none()
+        {
+            return Ok(invite_code);
+        }
+    }
+    Err(HoneError::Storage(
+        "failed to generate unique cloud web invite code".to_string(),
+    ))
+}
+
+fn generate_unique_api_key_cloud(storage: &WebAuthStorage) -> HoneResult<String> {
+    for _ in 0..16 {
+        let api_key = generate_api_key();
+        let api_key_hash = hash_api_key(&api_key);
+        if storage
+            .cloud_find_invite_by("api_key_hash", &api_key_hash)?
+            .is_none()
+        {
+            return Ok(api_key);
+        }
+    }
+    Err(HoneError::Storage(
+        "failed to generate unique cloud web api key".to_string(),
+    ))
 }
 
 fn purge_expired_sessions_inner(conn: &Connection, now: &str) -> HoneResult<()> {
@@ -1155,7 +1720,7 @@ mod tests {
         let storage = test_storage();
         let created = storage.create_invite_user("13800138000").expect("create");
         {
-            let conn = storage.conn.lock().expect("conn");
+            let conn = storage.sqlite_conn().expect("conn");
             conn.execute(
                 "UPDATE web_invite_users SET api_key_hash = NULL, api_key_prefix = NULL, api_key_created_at = NULL WHERE user_id = ?1",
                 params![&created.user_id],
@@ -1189,7 +1754,7 @@ mod tests {
             .expect("user");
 
         assert_eq!(authed.user_id, created.user_id);
-        let conn = storage.conn.lock().expect("conn");
+        let conn = storage.sqlite_conn().expect("conn");
         let stored_token: String = conn
             .query_row(
                 "SELECT session_token FROM web_auth_sessions WHERE user_id = ?1",
@@ -1217,7 +1782,7 @@ mod tests {
         let expires_at = (now + chrono::Duration::days(SESSION_TTL_DAYS_LONG)).to_rfc3339();
         let legacy_token = "legacy-plaintext-session-token";
         {
-            let conn = storage.conn.lock().expect("conn");
+            let conn = storage.sqlite_conn().expect("conn");
             conn.execute(
                 "
                 INSERT INTO web_auth_sessions (session_token, user_id, created_at, expires_at, last_seen_at)
@@ -1252,7 +1817,7 @@ mod tests {
         let raw_token = "expired-session-token";
         let token_hash = hash_session_token(raw_token);
         {
-            let conn = storage.conn.lock().expect("conn");
+            let conn = storage.sqlite_conn().expect("conn");
             conn.execute(
                 "
                 INSERT INTO web_auth_sessions (session_token, user_id, created_at, expires_at, last_seen_at)

@@ -53,6 +53,9 @@ pub(crate) struct CloudMigrateArgs {
     /// Only import session JSON into PG; skip object uploads and document indexing.
     #[arg(long = "session-only")]
     pub(crate) session_only: bool,
+    /// Only import Web invite users and auth sessions from the configured SQLite DB into PG.
+    #[arg(long = "web-auth-only")]
+    pub(crate) web_auth_only: bool,
     #[arg(long)]
     pub(crate) apply: bool,
     #[arg(long)]
@@ -119,6 +122,10 @@ struct MigrationReport {
     skipped_quota_rows: usize,
     changed_session_rows: usize,
     skipped_session_rows: usize,
+    changed_web_auth_users: usize,
+    skipped_web_auth_users: usize,
+    changed_web_auth_sessions: usize,
+    skipped_web_auth_sessions: usize,
     skipped_objects: usize,
     conflicts: Vec<String>,
 }
@@ -449,8 +456,12 @@ async fn run_doctor(config_path: Option<&Path>, args: CloudDoctorArgs) -> Result
 }
 
 async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Result<(), String> {
-    if args.quota_only && args.session_only {
-        return Err("--quota-only 和 --session-only 不能同时使用".to_string());
+    let narrow_modes = [args.quota_only, args.session_only, args.web_auth_only]
+        .into_iter()
+        .filter(|enabled| *enabled)
+        .count();
+    if narrow_modes > 1 {
+        return Err("--quota-only / --session-only / --web-auth-only 不能同时使用".to_string());
     }
     let (config, _) = load_cli_config(config_path, false).map_err(|err| err.to_string())?;
     let mut report = MigrationReport {
@@ -469,6 +480,10 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
         skipped_quota_rows: 0,
         changed_session_rows: 0,
         skipped_session_rows: 0,
+        changed_web_auth_users: 0,
+        skipped_web_auth_users: 0,
+        changed_web_auth_sessions: 0,
+        skipped_web_auth_sessions: 0,
         skipped_objects: 0,
         conflicts: Vec::new(),
     };
@@ -479,7 +494,7 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
         let pg = CloudPgRuntime::from_cloud_config(&config.cloud)
             .ok_or_else(|| "Postgres 未配置，不能 apply migration".to_string())?;
         pg.ensure_schema().await.map_err(|err| err.to_string())?;
-        if !args.quota_only {
+        if !args.quota_only && !args.web_auth_only {
             let session_imports = collect_session_imports(&candidates);
             let session_report = pg
                 .import_session_records(&session_imports)
@@ -488,7 +503,7 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
             report.changed_session_rows = session_report.changed_rows;
             report.skipped_session_rows = session_report.skipped_rows;
         }
-        if !args.session_only {
+        if !args.session_only && !args.web_auth_only {
             let quota_imports = collect_quota_imports(&candidates);
             let quota_report = pg
                 .import_conversation_quota(&quota_imports)
@@ -497,19 +512,39 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
             report.changed_quota_rows = quota_report.changed_rows;
             report.skipped_quota_rows = quota_report.skipped_rows;
         }
-        if args.quota_only || args.session_only {
+        if !args.quota_only && !args.session_only {
+            let web_auth_storage =
+                hone_memory::WebAuthStorage::new(&config.storage.session_sqlite_db_path)
+                    .map_err(|err| err.to_string())?;
+            let (users, sessions) = web_auth_storage
+                .export_cloud_records()
+                .map_err(|err| err.to_string())?;
+            let auth_report = pg
+                .import_web_auth_records(&users, &sessions)
+                .await
+                .map_err(|err| err.to_string())?;
+            report.changed_web_auth_users = auth_report.changed_users;
+            report.skipped_web_auth_users = auth_report.skipped_users;
+            report.changed_web_auth_sessions = auth_report.changed_sessions;
+            report.skipped_web_auth_sessions = auth_report.skipped_sessions;
+        }
+        if args.quota_only || args.session_only || args.web_auth_only {
             return if args.json {
                 print_json(&report)
             } else {
                 println!(
-                    "mode={} sessions={} changed_session_rows={} skipped_session_rows={} quota_json={} changed_quota_rows={} skipped_quota_rows={}",
+                    "mode={} sessions={} changed_session_rows={} skipped_session_rows={} quota_json={} changed_quota_rows={} skipped_quota_rows={} changed_web_auth_users={} skipped_web_auth_users={} changed_web_auth_sessions={} skipped_web_auth_sessions={}",
                     report.mode,
                     report.counted.sessions,
                     report.changed_session_rows,
                     report.skipped_session_rows,
                     report.counted.quota_json,
                     report.changed_quota_rows,
-                    report.skipped_quota_rows
+                    report.skipped_quota_rows,
+                    report.changed_web_auth_users,
+                    report.skipped_web_auth_users,
+                    report.changed_web_auth_sessions,
+                    report.skipped_web_auth_sessions
                 );
                 Ok(())
             };
@@ -577,13 +612,17 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
             report.indexed_documents
         );
         println!(
-            "sessions={} changed_session_rows={} skipped_session_rows={} quota_json={} changed_quota_rows={} skipped_quota_rows={}",
+            "sessions={} changed_session_rows={} skipped_session_rows={} quota_json={} changed_quota_rows={} skipped_quota_rows={} changed_web_auth_users={} skipped_web_auth_users={} changed_web_auth_sessions={} skipped_web_auth_sessions={}",
             report.counted.sessions,
             report.changed_session_rows,
             report.skipped_session_rows,
             report.counted.quota_json,
             report.changed_quota_rows,
-            report.skipped_quota_rows
+            report.skipped_quota_rows,
+            report.changed_web_auth_users,
+            report.skipped_web_auth_users,
+            report.changed_web_auth_sessions,
+            report.skipped_web_auth_sessions
         );
         for conflict in &report.conflicts {
             println!("conflict: {conflict}");

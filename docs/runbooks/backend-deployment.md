@@ -214,12 +214,13 @@ hone-cli cloud doctor --ensure-schema --json
 hone-cli cloud object-bench --size-kib 256 --iterations 3 --json
 hone-cli cloud migrate --from-data-dir ./data --json
 hone-cli cloud migrate --from-data-dir ./data --session-only --apply --json
+hone-cli cloud migrate --from-data-dir ./data --web-auth-only --apply --json
 hone-cli cloud migrate --from-data-dir ./data --quota-only --apply --json
 hone-cli cloud migrate --from-data-dir ./data --upload-oss --apply --concurrency 12 --json
 hone-cli cloud migrate --from-data-dir ./data --upload-oss --apply --reuse-existing --concurrency 4 --json
 ```
 
-The migrator uploads recognized durable files and indexes them in PG `cloud_documents`. It also imports legacy `sessions/*.json` into PG `cloud_sessions` and `conversation_quota/*.json` into PG; use `--session-only --apply` or `--quota-only --apply` for fast idempotent passes before the larger object migration. Use the lower-concurrency `--reuse-existing` retry when proxy or OSS connections drop during a large upload. SQLite files are currently counted but skipped because they need structured row-wise import into PG. Auth, audit, portfolio, cron, notification preference, KB, and company-profile hot-path repositories are still local until their dedicated PG-backed adapters are completed; sessions and quota are PG-backed in `cloud.mode=cloud`.
+The migrator uploads recognized durable files and indexes them in PG `cloud_documents`. It also imports legacy `sessions/*.json` into PG `cloud_sessions`, web invite users / auth sessions from the configured SQLite DB into PG, and `conversation_quota/*.json` into PG; use `--session-only --apply`, `--web-auth-only --apply`, or `--quota-only --apply` for fast idempotent passes before the larger object migration. Use the lower-concurrency `--reuse-existing` retry when proxy or OSS connections drop during a large upload. SQLite files are currently counted but skipped when they still need dedicated structured import. Audit, portfolio, cron, notification preference, KB, and company-profile hot-path repositories are still local until their dedicated PG-backed adapters are completed; sessions, web auth, and quota are PG-backed in `cloud.mode=cloud`.
 
 ## Worker Route
 

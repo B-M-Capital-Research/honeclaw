@@ -631,8 +631,18 @@ pub async fn start_server(
 
     let core = Arc::new(hone_channels::HoneBotCore::new(config));
     let web_auth = Arc::new(
-        hone_memory::WebAuthStorage::new(&core.config.storage.session_sqlite_db_path)
-            .map_err(|e| format!("Web Auth 存储初始化失败: {e}"))?,
+        if core.config.cloud.effective_mode().is_cloud_authoritative()
+            && core.config.cloud.postgres.is_configured()
+        {
+            CloudPgRuntime::from_cloud_config(&core.config.cloud)
+                .map(hone_memory::WebAuthStorage::new_cloud)
+                .transpose()
+                .map_err(|e| format!("Web Auth cloud 存储初始化失败: {e}"))?
+                .ok_or_else(|| "Web Auth cloud 存储初始化失败: Postgres 未配置".to_string())?
+        } else {
+            hone_memory::WebAuthStorage::new(&core.config.storage.session_sqlite_db_path)
+                .map_err(|e| format!("Web Auth 存储初始化失败: {e}"))?
+        },
     );
 
     // ── 日志系统（全局唯一 buffer，订阅者只初始化一次）──────────────

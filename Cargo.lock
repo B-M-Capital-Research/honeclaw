@@ -2885,6 +2885,7 @@ dependencies = [
  "hone-core",
  "hone-memory",
  "reqwest 0.12.28",
+ "rusqlite",
  "serde",
  "serde_json",
  "serde_yaml",
