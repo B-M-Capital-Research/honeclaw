@@ -3,8 +3,25 @@
 - **发现时间**: 2026-05-25 19:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，当前不是 P1。
+
+## 修复记录（2026-05-31 04:07 CST）
+
+- 本轮修复 2026-05-30 23:02 复发的周末美股大盘 / 风控 / 温度检查形态：非商品 scheduler 的正文如果具备明显 broad-market review 锚点，且 broad-market 锚点显著多于商品锚点，不再仅因局部出现“油价压制缓和”“利率和油价风险变量”等措辞被判定为商品主体并整篇 rewrite。
+- `broad_market_review_anchor_hits(...)` 补充 `大盘`、`风控`、`温度`、`休市`、`交易日`、`情绪`、`Greed`、`追涨`、`赔率`、`高位`、`低波动`、`偏热`、`盈利兑现`、`硬件` 等周末/温度/风险简报常见市场锚点，覆盖 `每日20点美股大盘风控简报`、`每日美股大盘温度检查`、`每日美股大盘风险简报` 这类非商品主任务。
+- 专门原油 / WTI / Brent / 大宗商品任务仍保留 commodity guard；非商品 job 里若正文实际是单条 WTI / Brent / USO 价格归因，仍会被 `commodity_guard_covers_non_heartbeat_market_scheduler_output` 覆盖并 rewrite。
+- 新增回归：
+  - `commodity_guard_skips_weekend_us_market_temperature_review`
+  - `commodity_guard_skips_weekend_us_market_risk_brief_with_oil_risk_variable`
+- 验证：
+  - `cargo test -p hone-channels commodity_guard_skips_weekend_us_market_ --lib -- --nocapture`
+  - `cargo test -p hone-channels commodity_guard_covers_non_heartbeat_market_scheduler_output --lib -- --nocapture`
+  - `cargo test -p hone-channels commodity_guard_ --lib -- --nocapture`
+  - `cargo test -p hone-channels commodity_ --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+  - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs`
+- 状态更新为 `Fixed`。本轮不重启服务、不使用当前机器旧运行态作为线上恢复证据；后续若包含本修复的运行态仍在非商品大盘 / 温度 / 风控任务上出现 `commodity_causality_guarded=true` 且送达正文被整篇替换，应以新样本重新打开本单。
 
 ## 复发记录（2026-05-30 23:02 CST）
 

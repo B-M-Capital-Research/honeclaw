@@ -1672,6 +1672,7 @@ fn broad_market_review_anchor_hits(text: &str) -> usize {
             "a股",
             "港股",
             "美股",
+            "大盘",
             "纳指",
             "nasdaq",
             "qqq",
@@ -1691,6 +1692,7 @@ fn broad_market_review_anchor_hits(text: &str) -> usize {
             "科技股",
             "半导体",
             "ai",
+            "硬件",
             "etf",
             "xme",
             "加密",
@@ -1703,6 +1705,19 @@ fn broad_market_review_anchor_hits(text: &str) -> usize {
             "国债收益率",
             "10年期美债",
             "风险偏好",
+            "风控",
+            "温度",
+            "休市",
+            "交易日",
+            "情绪",
+            "贪婪",
+            "greed",
+            "追涨",
+            "赔率",
+            "高位",
+            "低波动",
+            "偏热",
+            "盈利兑现",
         ],
     )
 }
@@ -1765,8 +1780,31 @@ fn text_looks_commodity_related(text: &str) -> bool {
         .any(|term| compact.contains(term))
 }
 
+fn commodity_keyword_hits(text: &str) -> usize {
+    let compact = compact_lowercase_text(text);
+    count_distinct_keyword_hits(
+        &compact,
+        &[
+            "原油",
+            "油价",
+            "布伦特",
+            "wti",
+            "brent",
+            "crude",
+            "oil",
+            "uso",
+        ],
+    )
+}
+
 fn text_is_predominantly_commodity_related(text: &str) -> bool {
     if !text_looks_commodity_related(text) {
+        return false;
+    }
+
+    let commodity_hits = commodity_keyword_hits(text);
+    let broad_market_hits = broad_market_review_anchor_hits(text);
+    if broad_market_hits >= 4 && broad_market_hits >= commodity_hits + 2 {
         return false;
     }
 
@@ -1780,21 +1818,6 @@ fn text_is_predominantly_commodity_related(text: &str) -> bool {
         return true;
     }
     if meaningful_segments.len() <= 2 {
-        let compact = compact_lowercase_text(text);
-        let commodity_hits = count_distinct_keyword_hits(
-            &compact,
-            &[
-                "原油",
-                "油价",
-                "布伦特",
-                "wti",
-                "brent",
-                "crude",
-                "oil",
-                "uso",
-            ],
-        );
-        let broad_market_hits = broad_market_review_anchor_hits(text);
         if broad_market_hits >= 3 {
             return commodity_hits >= 4 && commodity_hits > broad_market_hits;
         }
@@ -4871,6 +4894,70 @@ mod tests {
         assert!(
             guard_commodity_causality_for_event(
                 "【美股盘后AI及高景气产业链推演】AI 硬件、CPO、PCB、服务器和液冷电源仍是盘后映射的主体，重点看 NVDA、AVGO、ANET、VRT 与光模块链条。\nNasdaq 与 QQQ 的风险偏好主要取决于长端利率、财报指引和半导体成交强度。\n油价受中东谈判预期和需求担忧影响回落，会降低部分能源通胀压力。\n但油价变化只是宏观噪音，不应覆盖 AI 产业链、半导体和高景气方向的推演正文。",
+                &event,
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn commodity_guard_skips_weekend_us_market_temperature_review() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_market", None::<String>).expect("actor"),
+            job_id: "job-us-weekend-temperature".to_string(),
+            job_name: "每日美股大盘温度检查".to_string(),
+            task_prompt: "周末按最近完整交易日收盘口径检查 Nasdaq、S&P 500、Greed 情绪与追涨赔率。"
+                .to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_market".to_string(),
+            delivery_key: "delivery-us-weekend-temperature".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: false,
+            schedule_hour: 20,
+            schedule_minute: 0,
+            schedule_repeat: "daily".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        assert!(
+            guard_commodity_causality_for_event(
+                "【每日美股大盘温度检查】当前北京时间 2026年5月30日20:00，美东时间周六08:00，美股现货与期货均处于周末休市阶段，只能按最近完整交易日收盘口径复盘。Nasdaq 与 S&P 500 仍在高位，低波动、Greed 情绪和追涨赔率显示风险偏好偏强但偏热。\nAI 硬件盈利兑现后仍是主线，利率和油价压制边际缓和，但这只是大盘温度的风险变量，不是原油或大宗商品播报。",
+                &event,
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn commodity_guard_skips_weekend_us_market_risk_brief_with_oil_risk_variable() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_market", None::<String>).expect("actor"),
+            job_id: "job-us-weekend-risk".to_string(),
+            job_name: "每日美股大盘风险简报".to_string(),
+            task_prompt: "周末按最近完整交易日收盘口径复盘 AI 硬件、利率、油价压制和高位偏热风险。"
+                .to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_market".to_string(),
+            delivery_key: "delivery-us-weekend-risk".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: false,
+            schedule_hour: 20,
+            schedule_minute: 0,
+            schedule_repeat: "daily".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        assert!(
+            guard_commodity_causality_for_event(
+                "【每日美股大盘风险简报】当前北京时间 2026年5月30日20:00，美股周末休市，本轮按 2026-05-29 最近完整交易日收盘口径评估。结论：Nasdaq、S&P 500 和 QQQ 的风险偏好仍偏强，AI 硬件盈利兑现、半导体高位震荡和追涨赔率是正文主体。\n风险提示：利率与油价压制有所缓和，但高位偏热和低波动更需要警惕；油价只是宏观风险变量，不能把本轮大盘风险简报改写成原油/大宗商品归因。",
                 &event,
             )
             .is_none()
