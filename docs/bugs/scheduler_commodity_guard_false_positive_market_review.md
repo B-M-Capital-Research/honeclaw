@@ -3,8 +3,19 @@
 - **发现时间**: 2026-05-25 19:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
+
+## 复发记录（2026-05-31 11:03 CST）
+
+- 最近四小时真实窗口继续确认同一 scheduler 出站 guard false positive 活跃：`2026-05-31 07:03-11:03 CST` 普通 scheduler 共有 12 条 `completed + sent + delivered=1`，其中 1 条命中 `detail_json.scheduler.commodity_causality_guarded=true`。
+- 本窗口命中样本不是专门原油 / 大宗商品任务，而是 Discord `每日美股降息概率推送`；原始完整降息概率与宏观口径分析被全量替换成“本轮原油/大宗商品播报包含未完成同窗来源核验...”安全提示并仍记已送达。
+- `data/sessions.sqlite3` -> `cron_job_runs` 关键样本：
+  - `run_id=38062`，`job_name=每日美股降息概率推送`，`executed_at=2026-05-31T09:31:37.418674+08:00`，`actor_channel=discord`，`completed + sent + delivered=1`，`detail_json.scheduler.commodity_causality_guarded=true`。
+  - `detail_json.scheduler.raw_preview` 开头为“当前时间：2026年5月31日09:30（北京时间）。今天是周日，美股休市，最新有效市场口径来自5月29日美股收盘；当前降息预期仍偏冷，但4月核心PCE低于预期后，加息尾部风险较前一周有所缓和。”，主体是 FedWatch / PCE / CPI / 科技盈利与降息预期分析，不是原油或大宗商品播报。
+  - `response_preview` / `detail_json.scheduler.deliver_preview` 被替换为“本轮未保留原正文中的价格或归因句；请等待下一轮核验或手动查询交易所/官方数据。”，导致用户收到的不是降息概率主体内容。
+- 会话质量对照：同窗按消息时间共有 27 个 user turn 与 27 个 assistant final，最近活跃 Feishu / Web / Discord 会话均已 assistant final 收口；assistant final 污染扫描未命中空回复、本机绝对路径、工具轨迹、原始 provider / runner 错误、`HTTP 400 Bad Request`、`open_id cross app`、`failed to probe codex` 或 `Resource temporarily unavailable`；最近四小时无非文档代码提交。
+- 这是 04:07 修复记录之后的最新真实窗口复发，仍属既有缺陷的同一根因 / 同一出站 guard 链路，不新建重复文档；严重等级仍为 P2，状态从 `Fixed` 回退为 `New`。修复侧需要继续把 `每日美股降息概率推送` 作为非商品主任务回归样本，尤其覆盖“宏观降息概率正文中局部提到油价回落”的场景。
 
 ## 修复记录（2026-05-31 04:07 CST）
 
