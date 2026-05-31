@@ -2150,9 +2150,7 @@ export default function SettingsPage() {
       >
         <form onSubmit={(event) => void submitChannels(event)}>
           <fieldset
-            disabled={
-              !backend.state.connected || desktopChannelSettings.loading
-            }
+            disabled={!backend.state.connected || !desktopChannelSettings()}
             class="space-y-6 disabled:opacity-60"
           >
             <div class="flex items-start justify-between gap-4">

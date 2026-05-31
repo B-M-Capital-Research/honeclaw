@@ -36,7 +36,7 @@ Hone is a multi-process local assistant stack:
 - `hone-imessage`, `hone-discord`, `hone-feishu`, `hone-telegram`: optional channel listeners.
 - `packages/app`: SolidJS Web UI for admin console, public chat, memory, settings, and runtime views.
 - `skills/`: built-in skill prompts and optional script-backed skill entrypoints.
-- `memory/`: local persistence for sessions, cron jobs, portfolios, quotas, company profiles, and audit logs.
+- `memory/`: persistence abstractions for sessions, cron jobs, portfolios, quotas, company profiles, and audit logs; local mode uses files/SQLite, while cloud mode routes supported stores through PG / OSS.
 
 At runtime, user messages enter through Web, desktop, or an IM channel. The channel builds a normalized request, `hone-channels` selects and runs the configured agent runner, `hone-tools` exposes tools and skills, `memory` persists state, and the final response is rendered back to the source channel.
 
@@ -301,7 +301,7 @@ Admin/public Web ports are runtime environment settings, primarily `HONE_WEB_POR
 Public SMS login and optional Aliyun Captcha are also runtime environment settings; use `config.example.yaml` and `docs/runbooks/backend-deployment.md` as the reference for `ALIBABA_CLOUD_*`, `HONE_ALIYUN_SMS_*`, `HONE_ALIYUN_CAPTCHA_*`, and `HONE_PUBLIC_SECURE_COOKIE`. Active admin-created Web invite users remain the public-login invite-list admission source. For the public session cookie, `HONE_PUBLIC_SECURE_COOKIE` accepts `true/1/yes` and `false/0/no`; invalid non-empty values keep `Secure=true`.
 For OpenRouter credentials, prefer the `llm.providers.openrouter.api_key/api_keys` pool; legacy `llm.openrouter.*` key fields are migration fallbacks only.
 For Tavily web search, the current runtime tool reads `search.api_keys` and `search.max_results`; `search.provider`, `search.search_depth`, and `search.topic` are preserved schema fields but are not wired into the request yet.
-For managed cloud storage, keep actual `DATABASE_URL`, `HONE_POSTGRES_*`, and `HONE_OSS_*` values outside committed config. Current cloud mode has PG hot paths for sessions, Web auth, conversation quota, and cron jobs/runs; `cloud.strict_no_local_storage` is only safe after the remaining local LLM audit, portfolio, notification preference, generated image, skill registry, and actor sandbox stores have managed backends.
+For managed cloud storage, keep actual `DATABASE_URL`, `HONE_POSTGRES_*`, and `HONE_OSS_*` values outside committed config. Current cloud mode has PG hot paths for sessions, Web auth, conversation quota, cron jobs/runs, skill registry, notification preferences, portfolios, LLM audit records, and company profile files; OSS covers public uploads, generated image/file objects, and migrated document objects. `cloud.strict_no_local_storage` blocks startup whenever the current cloud config still reports durable local dependencies, and is intended for deployments that have both PG and OSS configured.
 
 Never commit local secrets in `config.yaml`.
 

@@ -425,7 +425,7 @@ const CONTENT_ZH = {
       },
       {
         title: "存储与云运行时",
-        desc: "`cloud.postgres` / `cloud.oss` 是 v0.12.4 起的一等配置项，并通过 env 引用真实凭证；配置 OSS 后，公开 Web 上传会写入 `public-uploads/...` 并返回 `oss://bucket/key`，`/api/public/image` 与 `/api/public/file` 可代理托管对象；`/api/meta` 暴露 `cloud_runtime`、`cloud_postgres`、`cloud_oss`、`oss_file_proxy` 等能力。当前 main 的 PG 热路径已覆盖 sessions、Web invite/auth sessions、conversation quota、cron jobs/runs 与 due-job claims；`hone-cli cloud doctor / migrate / object-bench` 可做云端体检、本地 `data/` dry-run 或幂等导入、OSS/R2 小对象延迟对比。迁移仍在进行中：LLM audit、portfolio、notification prefs、生成图片、skill registry 与 actor sandboxes 仍是本地 durable 依赖，`cloud.strict_no_local_storage=true` 只适合这些依赖清零后启用。",
+        desc: "`cloud.postgres` / `cloud.oss` 是 v0.12.4 起的一等配置项，并通过 env 引用真实凭证；配置 OSS 后，公开 Web 上传会写入 `public-uploads/...` 并返回 `oss://bucket/key`，`/api/public/image` 与 `/api/public/file` 可代理托管对象；`/api/meta` 暴露 `cloud_runtime`、`cloud_postgres`、`cloud_oss`、`oss_file_proxy` 与本地 durable dependency 计数。当前 main 的 PG 热路径已覆盖 sessions、Web invite/auth sessions、conversation quota、cron jobs/runs、due-job claims、skill registry、notification prefs、portfolio、LLM audit 与 company profile files；`hone-cli cloud doctor / migrate / object-bench` 可做云端体检、本地 `data/` dry-run 或幂等导入、OSS/R2 小对象延迟对比。`cloud.strict_no_local_storage=true` 会依据当前配置阻止仍有 durable 本地依赖的启动；在 cloud 模式同时配置 PG 与 OSS 后，已知 durable 数据面不再被这些本地存储阻塞。",
       },
       {
         title: "管理后台",
@@ -673,9 +673,9 @@ const CONTENT_ZH = {
         "事件引擎推送质量收口：digest 去重 / min-gap / topic memory / 分类预算 / 方向性价格阈值 / Feishu scheduler heartbeat revision 去重",
         "Event-engine 默认模型与示例配置已替换为 `x-ai/grok-4.3`，避免 Grok 4.1 Fast 下线导致新闻分类、global digest、mainline distill 等 LLM 增强链路失效",
         "LLM provider 配置收口到 `config.yaml`，OpenRouter 与通用 OpenAI-compatible provider 支持 `api_key/api_keys` 轮换，并保留上游错误详情便于诊断",
-        "Cloud PG / OSS 运行时第一段：`cloud.postgres` / `cloud.oss` 可通过 env 配置，公开上传可写入 OSS，公开图片 / 文件代理可读取 `oss://bucket/key` 托管对象，`/api/meta` 会暴露云能力状态",
-        "云迁移边界清晰：sessions、Web invite/auth sessions、conversation quota、cron jobs/runs 与 due-job claims 已有 PG 热路径；LLM audit、portfolio、notification prefs、生成图片、skill registry 与 actor sandboxes 仍是本地 durable 依赖；`cloud.strict_no_local_storage=true` 会在仍有本地依赖时阻止启动",
-        "`hone-cli cloud doctor / migrate / object-bench` 已可做云端体检、本地 data dry-run / 幂等导入、以及 OSS/R2 小对象延迟对比",
+        "Cloud PG / OSS 运行时：`cloud.postgres` / `cloud.oss` 可通过 env 配置，公开上传、生成图片 / 文件与迁移文档可写入 OSS，公开图片 / 文件代理可读取 `oss://bucket/key` 托管对象，`/api/meta` 会暴露云能力状态和本地 durable dependency 计数",
+        "云迁移边界清晰：sessions、Web invite/auth sessions、conversation quota、cron jobs/runs、due-job claims、skill registry、notification prefs、portfolio、LLM audit 与 company profile files 已有 PG 热路径；`cloud.strict_no_local_storage=true` 会在当前配置仍有 durable 本地依赖时阻止启动",
+        "`hone-cli cloud doctor / migrate / object-bench` 已可做云端体检、本地 data dry-run / 幂等导入、以及 OSS/R2 小对象延迟对比；迁移器支持 session、Web auth、quota、cron、skill registry、notification prefs、portfolio、LLM audit 与 company profiles 的单项导入开关",
         "渠道回复收口层可在 runner 只产出过渡性规划句时，从成功的定时任务或持仓工具结果恢复用户可见确认，避免真实成功被空回复 fallback 遮蔽",
         "前端部署资产恢复：service worker 与全局错误处理可识别 stale chunk，并在安全间隔内自动刷新到新版本",
         "公开 API key 对话入口：管理端可为 Web 用户生成 API key，客户端可按 OpenAI-compatible `/api/public/v1/chat/completions` 形状调用 Hone",
@@ -689,8 +689,8 @@ const CONTENT_ZH = {
       items: [
         "Windows / Linux 桌面端打包",
         "用户自定义 Skill 编辑器（前端化的 skill_manager）",
-        "更广泛的数据导入 / 导出工具（公司画像包转移已上线，继续补持仓、研究结果等迁移面）",
-        "继续补齐 PG / OSS-backed repositories，逐步减少 LLM audit、portfolio、notification prefs、生成图片、skill registry 与 actor sandboxes 的本地 durable 依赖",
+        "更广泛的数据导入 / 导出工具（公司画像包转移已上线，继续补持仓、研究结果等用户可见迁移面）",
+        "继续加固 cloud migration 的观测、回滚和后台运维入口，确保 PG / OSS 模式的严格无本地 durable 依赖检查可被部署者稳定验证",
         "公开 Skill 文档与示例集",
         "向量检索增强长期记忆",
       ],
@@ -826,7 +826,7 @@ const CONTENT_ZH = {
       },
       {
         q: "数据存在哪里？",
-        a: "默认仍在本地或自部署服务器存储（macOS 桌面端用户目录 ~/.honeclaw）。v0.12.4 已加入 Cloud PG / OSS 运行时配置第一段；当前 main 的 cloud 模式可把 sessions、Web invite/auth sessions、conversation quota、cron jobs/runs 和 due-job claims 放到 PG，把公开上传与迁移文档放到 OSS。LLM audit、portfolio、notification prefs、生成图片、skill registry 与 actor sandboxes 仍是本地 durable 依赖；Hone 官方不默认托管你的数据。",
+        a: "默认仍在本地或自部署服务器存储（macOS 桌面端用户目录 ~/.honeclaw）。v0.12.4 已加入 Cloud PG / OSS 运行时配置；当前 main 的 cloud 模式可把 sessions、Web invite/auth sessions、conversation quota、cron jobs/runs、due-job claims、skill registry、notification prefs、portfolio、LLM audit 与 company profile files 放到 PG，把公开上传、生成图片 / 文件与迁移文档放到 OSS。`cloud.strict_no_local_storage=true` 会按配置检查是否仍有 durable 本地依赖；Hone 官方不默认托管你的数据。",
       },
       {
         q: "和 Codex / RooCode 等 coding agent 的关系？",
@@ -1969,7 +1969,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         title: "Storage and cloud runtime",
-        desc: "`cloud.postgres` / `cloud.oss` are first-class config sections as of v0.12.4 and reference real credentials through env vars; once OSS is configured, public Web uploads write under `public-uploads/...` and return `oss://bucket/key`, while `/api/public/image` and `/api/public/file` can proxy managed objects; `/api/meta` reports capabilities such as `cloud_runtime`, `cloud_postgres`, `cloud_oss`, and `oss_file_proxy`. Current main already has PG hot paths for sessions, Web invites/auth sessions, conversation quota, cron jobs/runs, and due-job claims; `hone-cli cloud doctor / migrate / object-bench` covers cloud health checks, local `data/` dry-runs or idempotent imports, and OSS/R2 small-object latency checks. The migration is still in progress: LLM audit, portfolio, notification prefs, generated images, the skill registry, and actor sandboxes remain local durable dependencies, so `cloud.strict_no_local_storage=true` should only be enabled after those dependencies are gone.",
+        desc: "`cloud.postgres` / `cloud.oss` are first-class config sections as of v0.12.4 and reference real credentials through env vars; once OSS is configured, public Web uploads write under `public-uploads/...` and return `oss://bucket/key`, while `/api/public/image` and `/api/public/file` can proxy managed objects; `/api/meta` reports capabilities such as `cloud_runtime`, `cloud_postgres`, `cloud_oss`, `oss_file_proxy`, and the local durable dependency count. Current main already has PG hot paths for sessions, Web invites/auth sessions, conversation quota, cron jobs/runs, due-job claims, the skill registry, notification prefs, portfolio, LLM audit, and company profile files; `hone-cli cloud doctor / migrate / object-bench` covers cloud health checks, local `data/` dry-runs or idempotent imports, and OSS/R2 small-object latency checks. `cloud.strict_no_local_storage=true` blocks startup when the current config still has durable local dependencies; with cloud mode plus both PG and OSS configured, the known durable data plane is no longer blocked by those local stores.",
       },
       {
         title: "Admin console",
@@ -2258,9 +2258,9 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         "Event-engine push-quality pass: digest dedupe / min-gap / topic memory / category budgets / directional price thresholds / Feishu scheduler heartbeat revision dedupe",
         "Event-engine default models and sample config now use `x-ai/grok-4.3`, avoiding failures from the retired Grok 4.1 Fast in news classification, global digest, and mainline distillation paths",
         "LLM provider config is consolidated into `config.yaml`; OpenRouter and generic OpenAI-compatible providers support `api_key/api_keys` rotation and preserve upstream error details for diagnosis",
-        "First Cloud PG / OSS runtime slice: `cloud.postgres` / `cloud.oss` can be configured through env references, public uploads can write to OSS, public image / file proxies can read `oss://bucket/key` managed objects, and `/api/meta` exposes cloud capability state",
-        "Cloud migration boundaries are explicit: sessions, Web invites/auth sessions, conversation quota, cron jobs/runs, and due-job claims have PG hot paths; LLM audit, portfolio, notification prefs, generated images, the skill registry, and actor sandboxes remain local durable dependencies; `cloud.strict_no_local_storage=true` blocks startup while local dependencies remain",
-        "`hone-cli cloud doctor / migrate / object-bench` now covers cloud health checks, local data dry-runs / idempotent imports, and OSS/R2 small-object latency checks",
+        "Cloud PG / OSS runtime: `cloud.postgres` / `cloud.oss` can be configured through env references; public uploads, generated images / files, and migrated documents can write to OSS; public image / file proxies can read `oss://bucket/key` managed objects; `/api/meta` exposes cloud capability state and the local durable dependency count",
+        "Cloud migration boundaries are explicit: sessions, Web invites/auth sessions, conversation quota, cron jobs/runs, due-job claims, the skill registry, notification prefs, portfolio, LLM audit, and company profile files have PG hot paths; `cloud.strict_no_local_storage=true` blocks startup while the current config still has durable local dependencies",
+        "`hone-cli cloud doctor / migrate / object-bench` now covers cloud health checks, local data dry-runs / idempotent imports, and OSS/R2 small-object latency checks; the migrator has per-store import switches for sessions, Web auth, quota, cron, skill registry, notification prefs, portfolio, LLM audit, and company profiles",
         "The channel response finalizer can recover user-visible confirmations from successful scheduled-task or portfolio tool results when a runner only emits a transitional planning sentence, so real side effects are not hidden behind an empty-reply fallback",
         "Frontend deploy asset recovery: the service worker and global error handlers detect stale chunks and safely reload onto the new version",
         "Public API-key chat entry point: admins can issue API keys for Web users, and clients can call Hone through the OpenAI-compatible `/api/public/v1/chat/completions` shape",
@@ -2274,8 +2274,8 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       items: [
         "Windows / Linux desktop builds",
         "User-facing skill editor (frontend for skill_manager)",
-        "Broader data import / export tools (company-profile bundle transfer is live; portfolio and research-result migration surfaces still need coverage)",
-        "Continue adding PG / OSS-backed repositories so LLM audit, portfolio, notification prefs, generated images, the skill registry, and actor sandboxes can gradually lose their local durable dependencies",
+        "Broader data import / export tools (company-profile bundle transfer is live; portfolio and research-result user-facing migration surfaces still need coverage)",
+        "Continue hardening cloud migration observability, rollback, and admin operations so deployers can reliably verify strict no-local-durable-dependency mode for PG / OSS deployments",
         "Public skill documentation and example pack",
         "Vector-augmented long memory",
       ],
@@ -2411,7 +2411,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         q: "Where is data stored?",
-        a: "Data still defaults to local storage or your self-hosted server (macOS desktop's `~/.honeclaw`). v0.12.4 adds the first Cloud PG / OSS runtime slice; current main can place sessions, Web invites/auth sessions, conversation quota, cron jobs/runs, and due-job claims in PG, plus public uploads and migrated documents in OSS. LLM audit, portfolio, notification prefs, generated images, the skill registry, and actor sandboxes remain local durable dependencies. Hone does not host your data by default.",
+        a: "Data still defaults to local storage or your self-hosted server (macOS desktop's `~/.honeclaw`). v0.12.4 adds Cloud PG / OSS runtime config; current main can place sessions, Web invites/auth sessions, conversation quota, cron jobs/runs, due-job claims, the skill registry, notification prefs, portfolio, LLM audit, and company profile files in PG, plus public uploads, generated images / files, and migrated documents in OSS. `cloud.strict_no_local_storage=true` checks the current config for remaining durable local dependencies. Hone does not host your data by default.",
       },
       {
         q: "How does Hone relate to Codex / RooCode and other coding agents?",
