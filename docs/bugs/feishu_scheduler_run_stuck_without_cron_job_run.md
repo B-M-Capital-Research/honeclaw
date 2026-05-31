@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-24 09:03 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Closed
+- **状态**: New
 
 ## 观测落地（2026-04-24）
 
@@ -193,3 +193,25 @@
 - **结论**：
   - 本轮 10:22 CST 的 4380 条 `execution_failed + send_failed` 不是新的用户可见批量故障，而是既有修复对历史 `running/pending` 脏行的启动回收结果。
   - 原 P1 关注点是“进入执行后长期无终态、台账停在 running/pending 或缺账”；当前 live 已证明启动恢复能补终态，且新窗口没有继续产生 pending 残留，因此关闭。
+
+## 复发证据（2026-06-01）
+
+- **2026-06-01 03:03 CST 巡检结论**：本缺陷从 `Closed` 重新调整为 `New`。最新真实窗口里，台账缺失仍被 started 行止血覆盖，但 Feishu scheduler 再次留下超过常规超时收口预期的 `running/pending` 任务，说明“运行中任务必须按 timeout 收口为终态”的后半段问题仍活跃。
+- **证据来源**：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 截至 `2026-06-01 03:02 CST`，最近四小时有 3 条普通 Feishu scheduler 仍为 `execution_status=running + message_send_status=pending + should_deliver=1 + delivered=0`。
+    - `run_id=38426`：`AAOI 每日动态监控`，`executed_at=2026-06-01T00:26:00.908862+08:00`，`detail_json={"delivery_key":"j_101f5e64:2026-06-01:00:00","phase":"started"}`。
+    - `run_id=38427`：`RKLB 每日动态监控`，`executed_at=2026-06-01T00:26:00.908921+08:00`，`detail_json={"delivery_key":"j_5f0b686a:2026-06-01:00:00","phase":"started"}`。
+    - `run_id=38428`：`TEM 每日动态监控`，`executed_at=2026-06-01T00:26:00.908925+08:00`，`detail_json={"delivery_key":"j_379acc40:2026-06-01:00:00","phase":"started"}`。
+  - `data/sessions.sqlite3` -> `sessions` / `session_messages`
+    - `session_id=Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b` 的 `last_message_role=user`，`last_message_at=2026-06-01T00:26:00.926676+08:00`。
+    - 最新消息 `ordinal=235` 是 `[定时任务触发] 任务名称：AAOI 每日动态监控`，到本轮巡检结束仍无后续 assistant final。
+    - 同一会话 2026-05-31 00:00-00:05 的 RKLB / TEM / AAOI 日更任务曾正常收口，说明本轮不是该会话天然不可写，而是 2026-06-01 00:26 这组 scheduler run 未完成。
+  - 同窗对照：
+    - 23:02-03:02 CST 按消息时间共有 18 个 user turn 与 17 个 assistant final；差额即来自上述 scheduler session。
+    - assistant final 污染扫描未命中空回复、本机绝对路径、工具轨迹、`reasoning_content`、provider 原始错误或 panic；本轮主损害是 scheduler 任务未终结、未投递。
+    - Feishu scheduler 启动同时回收普通 scheduler 31 条、heartbeat 192 条旧 pending 行为 `execution_failed + send_failed`，错误为 `Feishu scheduler runtime restarted before this run reached a terminal status`，`detail.phase=recovered_stale_pending`。这说明启动 stale recovery 仍在发挥作用，但不能替代当前进程内超时收口。
+- **严重等级维持 P1**：
+  - 这是功能性缺陷，不是回答质量问题；AAOI / RKLB / TEM 三条用户配置的每日动态监控没有最终回复和送达。
+  - 台账虽然有 started row，但长期停在 `running/pending`，会阻断补发、失败告警和人工排障判断。
+  - 已有 GitHub Issue [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39)，本轮不重复创建。
