@@ -39,5 +39,6 @@ pub use mainline_cron::{
 pub use mainline_distill::{
     DistilledMainlines, LlmMainlineDistiller, MainlineDistiller, ProfileSource, actor_sandbox_dir,
     distill_and_persist_one, distill_for_actor, extract_tickers, merge_into_prefs, scan_profiles,
+    scan_profiles_for_actor,
 };
 pub use renderer::render_global_digest;

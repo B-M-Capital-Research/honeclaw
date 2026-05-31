@@ -1,7 +1,7 @@
 # Current Plan Index
 
-最后更新：2026-05-30
-状态：有 7 个活跃任务
+最后更新：2026-05-31
+状态：有 6 个活跃任务
 
 ## 说明
 
@@ -16,10 +16,6 @@
 
 ## 活跃任务
 
-- **Cloud PG / OSS Runtime Migration**
-  - 状态：`in_progress`
-  - 计划：`docs/current-plans/cloud-pg-oss-runtime-migration.md`
-  - 摘要：把本地 runtime 切向显式 local/cloud 存储模式；2026-05-29 已落地 `cloud.mode`、`HONE_RUNTIME_ROLE`、PG/OSS proxy health/schema、`hone-cli cloud doctor/migrate`、actor OSS namespace 和部分 durable file surfaces。本机非 SQLite durable 文件迁移已完成：1282 个对象上传/复用并写入 PG `cloud_documents`；conversation quota、session、Web auth、cron hot path 已在 cloud 模式切 PG，698 条 quota JSON、117 条 session JSON、30 个 web invite user、3 个 auth session 和 54 条 cron job 已幂等导入 PG；PG-backed audit/company profile/portfolio/prefs adapters 与剩余 SQLite 结构化导入仍需继续收口
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/active-bug-burn-down-2026-04-28.md`

@@ -5,9 +5,10 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use clap::{Args, Subcommand};
 use futures::{StreamExt, stream};
 use hone_core::cloud_runtime::{
-    CloudConversationQuotaImport, CloudCronJobRecord, CloudDocumentIndex, CloudPgRuntime,
-    CloudSessionRecord, OssObjectStore, RuntimeRole, local_durable_dependencies,
-    sanitize_key_component, sha256_hex,
+    CloudCompanyProfileFileRecord, CloudConversationQuotaImport, CloudCronJobRecord,
+    CloudDocumentIndex, CloudLlmAuditRecord, CloudNotificationPrefsRecord, CloudPgRuntime,
+    CloudPortfolioRecord, CloudSessionRecord, OssObjectStore, RuntimeRole,
+    local_durable_dependencies, sanitize_key_component, sha256_hex,
 };
 use hone_core::config::OssConfig;
 use hone_core::{ActorIdentity, HoneError, HoneResult};
@@ -60,6 +61,21 @@ pub(crate) struct CloudMigrateArgs {
     /// Only import cron job JSON into PG.
     #[arg(long = "cron-only")]
     pub(crate) cron_only: bool,
+    /// Only import runtime skill registry JSON into PG.
+    #[arg(long = "skill-registry-only")]
+    pub(crate) skill_registry_only: bool,
+    /// Only import notification preferences JSON into PG.
+    #[arg(long = "notification-prefs-only")]
+    pub(crate) notification_prefs_only: bool,
+    /// Only import portfolio JSON into PG.
+    #[arg(long = "portfolio-only")]
+    pub(crate) portfolio_only: bool,
+    /// Only import LLM audit SQLite rows into PG.
+    #[arg(long = "llm-audit-only")]
+    pub(crate) llm_audit_only: bool,
+    /// Only import actor-scoped company profile markdown files into PG.
+    #[arg(long = "company-profiles-only")]
+    pub(crate) company_profiles_only: bool,
     #[arg(long)]
     pub(crate) apply: bool,
     #[arg(long)]
@@ -105,6 +121,7 @@ struct MigrationCounts {
     cron_json: usize,
     notification_prefs: usize,
     quota_json: usize,
+    skill_registry_json: usize,
     sqlite_files: usize,
     other_files: usize,
 }
@@ -132,6 +149,16 @@ struct MigrationReport {
     skipped_web_auth_sessions: usize,
     changed_cron_rows: usize,
     skipped_cron_rows: usize,
+    changed_skill_registry_rows: usize,
+    skipped_skill_registry_rows: usize,
+    changed_notification_prefs_rows: usize,
+    skipped_notification_prefs_rows: usize,
+    changed_portfolio_rows: usize,
+    skipped_portfolio_rows: usize,
+    changed_company_profile_files: usize,
+    skipped_company_profile_files: usize,
+    changed_llm_audit_rows: usize,
+    skipped_llm_audit_rows: usize,
     skipped_objects: usize,
     conflicts: Vec<String>,
 }
@@ -467,13 +494,18 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
         args.session_only,
         args.web_auth_only,
         args.cron_only,
+        args.skill_registry_only,
+        args.notification_prefs_only,
+        args.portfolio_only,
+        args.llm_audit_only,
+        args.company_profiles_only,
     ]
     .into_iter()
     .filter(|enabled| *enabled)
     .count();
     if narrow_modes > 1 {
         return Err(
-            "--quota-only / --session-only / --web-auth-only / --cron-only 不能同时使用"
+            "--quota-only / --session-only / --web-auth-only / --cron-only / --skill-registry-only / --notification-prefs-only / --portfolio-only / --llm-audit-only / --company-profiles-only 不能同时使用"
                 .to_string(),
         );
     }
@@ -500,6 +532,16 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
         skipped_web_auth_sessions: 0,
         changed_cron_rows: 0,
         skipped_cron_rows: 0,
+        changed_skill_registry_rows: 0,
+        skipped_skill_registry_rows: 0,
+        changed_notification_prefs_rows: 0,
+        skipped_notification_prefs_rows: 0,
+        changed_portfolio_rows: 0,
+        skipped_portfolio_rows: 0,
+        changed_company_profile_files: 0,
+        skipped_company_profile_files: 0,
+        changed_llm_audit_rows: 0,
+        skipped_llm_audit_rows: 0,
         skipped_objects: 0,
         conflicts: Vec::new(),
     };
@@ -510,7 +552,15 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
         let pg = CloudPgRuntime::from_cloud_config(&config.cloud)
             .ok_or_else(|| "Postgres 未配置，不能 apply migration".to_string())?;
         pg.ensure_schema().await.map_err(|err| err.to_string())?;
-        if !args.quota_only && !args.web_auth_only && !args.cron_only {
+        if !args.quota_only
+            && !args.web_auth_only
+            && !args.cron_only
+            && !args.skill_registry_only
+            && !args.notification_prefs_only
+            && !args.portfolio_only
+            && !args.llm_audit_only
+            && !args.company_profiles_only
+        {
             let session_imports = collect_session_imports(&candidates);
             let session_report = pg
                 .import_session_records(&session_imports)
@@ -519,7 +569,15 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
             report.changed_session_rows = session_report.changed_rows;
             report.skipped_session_rows = session_report.skipped_rows;
         }
-        if !args.session_only && !args.web_auth_only && !args.cron_only {
+        if !args.session_only
+            && !args.web_auth_only
+            && !args.cron_only
+            && !args.skill_registry_only
+            && !args.notification_prefs_only
+            && !args.portfolio_only
+            && !args.llm_audit_only
+            && !args.company_profiles_only
+        {
             let quota_imports = collect_quota_imports(&candidates);
             let quota_report = pg
                 .import_conversation_quota(&quota_imports)
@@ -528,7 +586,15 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
             report.changed_quota_rows = quota_report.changed_rows;
             report.skipped_quota_rows = quota_report.skipped_rows;
         }
-        if !args.quota_only && !args.session_only && !args.cron_only {
+        if !args.quota_only
+            && !args.session_only
+            && !args.cron_only
+            && !args.skill_registry_only
+            && !args.notification_prefs_only
+            && !args.portfolio_only
+            && !args.llm_audit_only
+            && !args.company_profiles_only
+        {
             let web_auth_storage =
                 hone_memory::WebAuthStorage::new(&config.storage.session_sqlite_db_path)
                     .map_err(|err| err.to_string())?;
@@ -544,7 +610,15 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
             report.changed_web_auth_sessions = auth_report.changed_sessions;
             report.skipped_web_auth_sessions = auth_report.skipped_sessions;
         }
-        if !args.quota_only && !args.session_only && !args.web_auth_only {
+        if !args.quota_only
+            && !args.session_only
+            && !args.web_auth_only
+            && !args.skill_registry_only
+            && !args.notification_prefs_only
+            && !args.portfolio_only
+            && !args.llm_audit_only
+            && !args.company_profiles_only
+        {
             let cron_imports = collect_cron_imports(&candidates);
             let cron_report = pg
                 .import_cron_job_records(&cron_imports)
@@ -553,12 +627,98 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
             report.changed_cron_rows = cron_report.changed_rows;
             report.skipped_cron_rows = cron_report.skipped_rows;
         }
-        if args.quota_only || args.session_only || args.web_auth_only || args.cron_only {
+        if !args.quota_only
+            && !args.session_only
+            && !args.web_auth_only
+            && !args.cron_only
+            && !args.notification_prefs_only
+            && !args.portfolio_only
+            && !args.llm_audit_only
+            && !args.company_profiles_only
+        {
+            import_skill_registry(&pg, &args.from_data_dir, &mut report)
+                .await
+                .map_err(|err| err.to_string())?;
+        }
+        if !args.quota_only
+            && !args.session_only
+            && !args.web_auth_only
+            && !args.cron_only
+            && !args.skill_registry_only
+            && !args.portfolio_only
+            && !args.llm_audit_only
+            && !args.company_profiles_only
+        {
+            let prefs_imports = collect_notification_prefs_imports(&candidates);
+            let prefs_report = pg
+                .import_notification_prefs(&prefs_imports)
+                .await
+                .map_err(|err| err.to_string())?;
+            report.changed_notification_prefs_rows = prefs_report.changed_rows;
+            report.skipped_notification_prefs_rows = prefs_report.skipped_rows;
+        }
+        if !args.quota_only
+            && !args.session_only
+            && !args.web_auth_only
+            && !args.cron_only
+            && !args.skill_registry_only
+            && !args.notification_prefs_only
+            && !args.llm_audit_only
+            && !args.company_profiles_only
+        {
+            let portfolio_imports = collect_portfolio_imports(&candidates);
+            let portfolio_report = pg
+                .import_portfolios(&portfolio_imports)
+                .await
+                .map_err(|err| err.to_string())?;
+            report.changed_portfolio_rows = portfolio_report.changed_rows;
+            report.skipped_portfolio_rows = portfolio_report.skipped_rows;
+        }
+        if !args.quota_only
+            && !args.session_only
+            && !args.web_auth_only
+            && !args.cron_only
+            && !args.skill_registry_only
+            && !args.notification_prefs_only
+            && !args.portfolio_only
+            && !args.llm_audit_only
+        {
+            let company_profile_imports = collect_company_profile_imports(&candidates);
+            let company_profile_report = pg
+                .import_company_profile_files(&company_profile_imports)
+                .await
+                .map_err(|err| err.to_string())?;
+            report.changed_company_profile_files = company_profile_report.changed_rows;
+            report.skipped_company_profile_files = company_profile_report.skipped_rows;
+        }
+        if !args.quota_only
+            && !args.session_only
+            && !args.web_auth_only
+            && !args.cron_only
+            && !args.skill_registry_only
+            && !args.notification_prefs_only
+            && !args.portfolio_only
+            && !args.company_profiles_only
+        {
+            import_llm_audit(&pg, &args.from_data_dir, &mut report)
+                .await
+                .map_err(|err| err.to_string())?;
+        }
+        if args.quota_only
+            || args.session_only
+            || args.web_auth_only
+            || args.cron_only
+            || args.skill_registry_only
+            || args.notification_prefs_only
+            || args.portfolio_only
+            || args.llm_audit_only
+            || args.company_profiles_only
+        {
             return if args.json {
                 print_json(&report)
             } else {
                 println!(
-                    "mode={} sessions={} changed_session_rows={} skipped_session_rows={} quota_json={} changed_quota_rows={} skipped_quota_rows={} changed_web_auth_users={} skipped_web_auth_users={} changed_web_auth_sessions={} skipped_web_auth_sessions={} cron_json={} changed_cron_rows={} skipped_cron_rows={}",
+                    "mode={} sessions={} changed_session_rows={} skipped_session_rows={} quota_json={} changed_quota_rows={} skipped_quota_rows={} changed_web_auth_users={} skipped_web_auth_users={} changed_web_auth_sessions={} skipped_web_auth_sessions={} cron_json={} changed_cron_rows={} skipped_cron_rows={} skill_registry_json={} changed_skill_registry_rows={} skipped_skill_registry_rows={} notification_prefs={} changed_notification_prefs_rows={} skipped_notification_prefs_rows={} portfolio_json={} changed_portfolio_rows={} skipped_portfolio_rows={} company_profiles={} changed_company_profile_files={} skipped_company_profile_files={} changed_llm_audit_rows={} skipped_llm_audit_rows={}",
                     report.mode,
                     report.counted.sessions,
                     report.changed_session_rows,
@@ -572,7 +732,21 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
                     report.skipped_web_auth_sessions,
                     report.counted.cron_json,
                     report.changed_cron_rows,
-                    report.skipped_cron_rows
+                    report.skipped_cron_rows,
+                    report.counted.skill_registry_json,
+                    report.changed_skill_registry_rows,
+                    report.skipped_skill_registry_rows,
+                    report.counted.notification_prefs,
+                    report.changed_notification_prefs_rows,
+                    report.skipped_notification_prefs_rows,
+                    report.counted.portfolio_json,
+                    report.changed_portfolio_rows,
+                    report.skipped_portfolio_rows,
+                    report.counted.company_profiles,
+                    report.changed_company_profile_files,
+                    report.skipped_company_profile_files,
+                    report.changed_llm_audit_rows,
+                    report.skipped_llm_audit_rows
                 );
                 Ok(())
             };
@@ -655,6 +829,34 @@ async fn run_migrate(config_path: Option<&Path>, args: CloudMigrateArgs) -> Resu
         println!(
             "cron_json={} changed_cron_rows={} skipped_cron_rows={}",
             report.counted.cron_json, report.changed_cron_rows, report.skipped_cron_rows
+        );
+        println!(
+            "skill_registry_json={} changed_skill_registry_rows={} skipped_skill_registry_rows={}",
+            report.counted.skill_registry_json,
+            report.changed_skill_registry_rows,
+            report.skipped_skill_registry_rows
+        );
+        println!(
+            "notification_prefs={} changed_notification_prefs_rows={} skipped_notification_prefs_rows={}",
+            report.counted.notification_prefs,
+            report.changed_notification_prefs_rows,
+            report.skipped_notification_prefs_rows
+        );
+        println!(
+            "portfolio_json={} changed_portfolio_rows={} skipped_portfolio_rows={}",
+            report.counted.portfolio_json,
+            report.changed_portfolio_rows,
+            report.skipped_portfolio_rows
+        );
+        println!(
+            "company_profiles={} changed_company_profile_files={} skipped_company_profile_files={}",
+            report.counted.company_profiles,
+            report.changed_company_profile_files,
+            report.skipped_company_profile_files
+        );
+        println!(
+            "changed_llm_audit_rows={} skipped_llm_audit_rows={}",
+            report.changed_llm_audit_rows, report.skipped_llm_audit_rows
         );
         for conflict in &report.conflicts {
             println!("conflict: {conflict}");
@@ -758,6 +960,216 @@ fn collect_cron_imports(candidates: &[MigrationCandidate]) -> Vec<CloudCronJobRe
     records
 }
 
+async fn import_skill_registry(
+    pg: &CloudPgRuntime,
+    from_data_dir: &Path,
+    report: &mut MigrationReport,
+) -> HoneResult<()> {
+    let path = from_data_dir.join("runtime").join("skill_registry.json");
+    if !path.exists() {
+        return Ok(());
+    }
+    report.counted.skill_registry_json = 1;
+    let raw = std::fs::read_to_string(&path)?;
+    let registry = serde_json::from_str::<serde_json::Value>(&raw)
+        .map_err(|err| HoneError::Serialization(err.to_string()))?;
+    let import_report = pg.import_skill_registry(Some(registry)).await?;
+    report.changed_skill_registry_rows = import_report.changed_rows;
+    report.skipped_skill_registry_rows = import_report.skipped_rows;
+    Ok(())
+}
+
+fn collect_notification_prefs_imports(
+    candidates: &[MigrationCandidate],
+) -> Vec<CloudNotificationPrefsRecord> {
+    candidates
+        .iter()
+        .filter(|candidate| candidate.kind == "notification_prefs")
+        .filter_map(|candidate| {
+            let actor_storage_key = candidate.path.file_stem()?.to_string_lossy().to_string();
+            if actor_storage_key.trim().is_empty() {
+                return None;
+            }
+            let text = std::fs::read_to_string(&candidate.path).ok()?;
+            let prefs = serde_json::from_str::<serde_json::Value>(&text).ok()?;
+            Some(CloudNotificationPrefsRecord {
+                actor_storage_key,
+                prefs,
+            })
+        })
+        .collect()
+}
+
+fn collect_portfolio_imports(candidates: &[MigrationCandidate]) -> Vec<CloudPortfolioRecord> {
+    candidates
+        .iter()
+        .filter(|candidate| candidate.kind == "portfolio")
+        .filter_map(|candidate| {
+            let text = std::fs::read_to_string(&candidate.path).ok()?;
+            let mut portfolio = serde_json::from_str::<serde_json::Value>(&text).ok()?;
+            let stem = candidate.path.file_stem()?.to_string_lossy().to_string();
+            let legacy_key = stem.strip_prefix("portfolio_").unwrap_or(&stem);
+            let actor = portfolio
+                .get("actor")
+                .cloned()
+                .and_then(|value| serde_json::from_value::<ActorIdentity>(value).ok())
+                .or_else(|| ActorIdentity::from_session_id(&format!("Actor_{legacy_key}")))
+                .or_else(|| {
+                    if legacy_key.trim().is_empty() {
+                        None
+                    } else {
+                        ActorIdentity::new("legacy", legacy_key.to_string(), None::<String>).ok()
+                    }
+                })?;
+            if let Some(object) = portfolio.as_object_mut() {
+                object.insert("actor".to_string(), serde_json::to_value(&actor).ok()?);
+                object.insert(
+                    "user_id".to_string(),
+                    serde_json::Value::String(actor.user_id.clone()),
+                );
+            }
+            Some(CloudPortfolioRecord {
+                actor_storage_key: actor.storage_key(),
+                actor: serde_json::to_value(&actor).ok()?,
+                portfolio,
+            })
+        })
+        .collect()
+}
+
+fn collect_company_profile_imports(
+    candidates: &[MigrationCandidate],
+) -> Vec<CloudCompanyProfileFileRecord> {
+    let mut records = Vec::new();
+    for candidate in candidates
+        .iter()
+        .filter(|candidate| candidate.kind == "company_profile")
+    {
+        let Some((actor, profile_id, relative_path)) =
+            company_profile_identity_from_rel_path(&candidate.relative_path)
+        else {
+            continue;
+        };
+        if !relative_path.ends_with(".md") {
+            continue;
+        }
+        let Ok(content) = std::fs::read_to_string(&candidate.path) else {
+            continue;
+        };
+        let updated_at = candidate
+            .path
+            .metadata()
+            .ok()
+            .and_then(|metadata| metadata.modified().ok())
+            .map(system_time_to_rfc3339)
+            .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
+        let Ok(actor_value) = serde_json::to_value(&actor) else {
+            continue;
+        };
+        records.push(CloudCompanyProfileFileRecord {
+            actor_storage_key: actor.storage_key(),
+            actor: actor_value,
+            profile_id,
+            relative_path,
+            content,
+            updated_at,
+        });
+    }
+    records
+}
+
+fn company_profile_identity_from_rel_path(rel: &str) -> Option<(ActorIdentity, String, String)> {
+    let parts = rel.split('/').collect::<Vec<_>>();
+    let cp_idx = parts.iter().position(|part| *part == "company_profiles")?;
+    if cp_idx < 2 || parts.len() < cp_idx + 3 {
+        return None;
+    }
+    let channel = decode_fs_component(parts[cp_idx - 2]);
+    let scoped_user = parts[cp_idx - 1];
+    let (channel_scope, user_id) = actor_scope_and_user_from_scoped_key(scoped_user)?;
+    let actor = ActorIdentity::new(channel, user_id, channel_scope).ok()?;
+    let profile_id = parts[cp_idx + 1].to_string();
+    let relative_path = parts[(cp_idx + 2)..].join("/");
+    if profile_id.trim().is_empty() || relative_path.trim().is_empty() {
+        return None;
+    }
+    Some((actor, profile_id, relative_path))
+}
+
+fn actor_scope_and_user_from_scoped_key(key: &str) -> Option<(Option<String>, String)> {
+    let (scope_raw, user_raw) = key.split_once("__")?;
+    let scope = decode_fs_component(scope_raw);
+    let user_id = decode_fs_component(user_raw);
+    if user_id.trim().is_empty() {
+        return None;
+    }
+    let channel_scope = if scope == "direct" { None } else { Some(scope) };
+    Some((channel_scope, user_id))
+}
+
+fn decode_fs_component(encoded: &str) -> String {
+    let mut out = String::with_capacity(encoded.len());
+    let bytes = encoded.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'_' && i + 2 < bytes.len() {
+            let hi = bytes[i + 1];
+            let lo = bytes[i + 2];
+            if let (Some(h), Some(l)) = (hex_digit(hi), hex_digit(lo)) {
+                out.push(char::from(h * 16 + l));
+                i += 3;
+                continue;
+            }
+        }
+        out.push(char::from(bytes[i]));
+        i += 1;
+    }
+    out
+}
+
+fn hex_digit(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
+}
+
+fn system_time_to_rfc3339(value: SystemTime) -> String {
+    let datetime: chrono::DateTime<chrono::Utc> = value.into();
+    datetime.to_rfc3339()
+}
+
+async fn import_llm_audit(
+    pg: &CloudPgRuntime,
+    from_data_dir: &Path,
+    report: &mut MigrationReport,
+) -> HoneResult<()> {
+    let path = from_data_dir.join("llm_audit.sqlite3");
+    if !path.exists() {
+        return Ok(());
+    }
+    let storage = hone_memory::LlmAuditStorage::new_readonly_local(&path)?;
+    let batch_size = 500usize;
+    let mut offset = 0usize;
+    loop {
+        let records: Vec<CloudLlmAuditRecord> =
+            storage.export_cloud_records_page(batch_size, offset)?;
+        if records.is_empty() {
+            break;
+        }
+        let import_report = pg.import_llm_audit_records(&records).await?;
+        report.changed_llm_audit_rows += import_report.changed_rows;
+        report.skipped_llm_audit_rows += import_report.skipped_rows;
+        offset += records.len();
+        if records.len() < batch_size {
+            break;
+        }
+    }
+    Ok(())
+}
+
 fn cron_actor_from_data(data: &hone_memory::cron_job::CronJobData) -> Option<ActorIdentity> {
     if let Some(actor) = data.actor.clone() {
         return Some(actor);
@@ -802,6 +1214,18 @@ async fn migrate_one_candidate(
             "sqlite structured import pending, skipped blob upload: {}",
             candidate.path.display()
         ));
+        return result;
+    }
+    if candidate.kind == "skill_registry" {
+        result.skipped_objects += 1;
+        return result;
+    }
+    if candidate.kind == "notification_prefs" {
+        result.skipped_objects += 1;
+        return result;
+    }
+    if candidate.kind == "portfolio" {
+        result.skipped_objects += 1;
         return result;
     }
     let bytes = match std::fs::read(&candidate.path) {
@@ -882,6 +1306,7 @@ async fn migrate_one_candidate(
 
 struct MigrationCandidate {
     path: PathBuf,
+    relative_path: String,
     actor_storage_key: Option<String>,
     kind: String,
     document_id: String,
@@ -923,11 +1348,13 @@ fn collect_candidates(
             "cron" => counts.cron_json += 1,
             "notification_prefs" => counts.notification_prefs += 1,
             "quota" => counts.quota_json += 1,
+            "skill_registry" => counts.skill_registry_json += 1,
             "sqlite" => counts.sqlite_files += 1,
             _ => counts.other_files += 1,
         }
         candidates.push(MigrationCandidate {
             path,
+            relative_path: rel_string,
             actor_storage_key: classification.actor_storage_key,
             kind: classification.kind,
             document_id: classification.document_id,
@@ -981,6 +1408,8 @@ fn classify_path(rel: &str) -> Option<Classification> {
         "cron"
     } else if rel.starts_with("notif_prefs/") && ext == "json" {
         "notification_prefs"
+    } else if rel == "runtime/skill_registry.json" {
+        "skill_registry"
     } else if rel.starts_with("conversation_quota/") && ext == "json" {
         if actor.is_none() {
             actor = parts.get(1).map(|value| (*value).to_string());

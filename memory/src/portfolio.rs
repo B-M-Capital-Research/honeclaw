@@ -1,9 +1,12 @@
-//! 持仓存储 — JSON 文件（按 actor 隔离）
+//! 持仓存储 — local 模式使用 JSON 文件，cloud 模式使用 PG（按 actor 隔离）
 
-use hone_core::ActorIdentity;
+use hone_core::cloud_runtime::{CloudPgRuntime, CloudPortfolioRecord};
+use hone_core::{ActorIdentity, HoneError, HoneResult};
 use serde::{Deserialize, Serialize};
 
+use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::sync::{OnceLock, RwLock};
 
 pub const HOLDING_HORIZON_LONG_TERM: &str = "long_term";
 pub const HOLDING_HORIZON_SHORT_TERM: &str = "short_term";
@@ -11,6 +14,23 @@ pub const HOLDING_HORIZON_SHORT_TERM: &str = "short_term";
 /// 持仓存储管理器
 pub struct PortfolioStorage {
     data_dir: PathBuf,
+    cloud: Option<CloudPgRuntime>,
+}
+
+static CLOUD_PORTFOLIO_STORAGE: OnceLock<RwLock<Option<CloudPgRuntime>>> = OnceLock::new();
+
+pub fn configure_cloud_portfolio_storage(postgres: Option<CloudPgRuntime>) {
+    let lock = CLOUD_PORTFOLIO_STORAGE.get_or_init(|| RwLock::new(None));
+    match lock.write() {
+        Ok(mut guard) => *guard = postgres,
+        Err(error) => tracing::warn!("portfolio cloud runtime lock poisoned: {error}"),
+    }
+}
+
+fn cloud_portfolio_storage() -> Option<CloudPgRuntime> {
+    CLOUD_PORTFOLIO_STORAGE
+        .get()
+        .and_then(|lock| lock.read().ok().and_then(|guard| guard.clone()))
 }
 
 /// 持仓数据
@@ -141,8 +161,14 @@ fn hex_digit(b: u8) -> Option<u8> {
 impl PortfolioStorage {
     pub fn new(data_dir: impl AsRef<Path>) -> Self {
         let dir = data_dir.as_ref().to_path_buf();
-        std::fs::create_dir_all(&dir).ok();
-        Self { data_dir: dir }
+        let cloud = cloud_portfolio_storage();
+        if cloud.is_none() {
+            std::fs::create_dir_all(&dir).ok();
+        }
+        Self {
+            data_dir: dir,
+            cloud,
+        }
     }
 
     fn actor_path(&self, actor: &ActorIdentity) -> PathBuf {
@@ -151,7 +177,23 @@ impl PortfolioStorage {
     }
 
     /// 加载 actor 持仓
-    pub fn load(&self, actor: &ActorIdentity) -> hone_core::HoneResult<Option<Portfolio>> {
+    pub fn load(&self, actor: &ActorIdentity) -> HoneResult<Option<Portfolio>> {
+        if let Some(postgres) = self.cloud.clone() {
+            let actor_storage_key = actor.storage_key();
+            let Some(record) =
+                run_cloud_portfolio(
+                    async move { postgres.get_portfolio(&actor_storage_key).await },
+                )?
+            else {
+                return Ok(None);
+            };
+            let mut portfolio: Portfolio = serde_json::from_value(record.portfolio)
+                .map_err(|err| HoneError::Serialization(err.to_string()))?;
+            portfolio.actor = Some(actor.clone());
+            portfolio.user_id = actor.user_id.clone();
+            return Ok(Some(portfolio));
+        }
+
         let path = self.actor_path(actor);
         if !path.exists() {
             return Ok(None);
@@ -165,7 +207,23 @@ impl PortfolioStorage {
     }
 
     /// 保存 actor 持仓
-    pub fn save(&self, actor: &ActorIdentity, portfolio: &Portfolio) -> hone_core::HoneResult<()> {
+    pub fn save(&self, actor: &ActorIdentity, portfolio: &Portfolio) -> HoneResult<()> {
+        if let Some(postgres) = self.cloud.clone() {
+            let mut payload = portfolio.clone();
+            payload.actor = Some(actor.clone());
+            payload.user_id = actor.user_id.clone();
+            let actor_value = serde_json::to_value(actor)
+                .map_err(|err| HoneError::Serialization(err.to_string()))?;
+            let portfolio_value = serde_json::to_value(&payload)
+                .map_err(|err| HoneError::Serialization(err.to_string()))?;
+            let record = CloudPortfolioRecord {
+                actor_storage_key: actor.storage_key(),
+                actor: actor_value,
+                portfolio: portfolio_value,
+            };
+            return run_cloud_portfolio(async move { postgres.upsert_portfolio(record).await });
+        }
+
         let path = self.actor_path(actor);
         let mut payload = portfolio.clone();
         payload.actor = Some(actor.clone());
@@ -176,11 +234,7 @@ impl PortfolioStorage {
         Ok(())
     }
 
-    pub fn upsert_holding(
-        &self,
-        actor: &ActorIdentity,
-        holding: Holding,
-    ) -> hone_core::HoneResult<Portfolio> {
+    pub fn upsert_holding(&self, actor: &ActorIdentity, holding: Holding) -> HoneResult<Portfolio> {
         let mut portfolio = self.load(actor)?.unwrap_or_else(|| Portfolio {
             actor: Some(actor.clone()),
             user_id: actor.user_id.clone(),
@@ -205,6 +259,45 @@ impl PortfolioStorage {
 
     /// 列出所有有持仓数据的 actor（扫描目录中的 portfolio_*.json 文件）
     pub fn list_all(&self) -> Vec<(ActorIdentity, Portfolio)> {
+        if let Some(postgres) = self.cloud.clone() {
+            let records = match run_cloud_portfolio(async move { postgres.list_portfolios().await })
+            {
+                Ok(records) => records,
+                Err(error) => {
+                    tracing::warn!("cloud portfolio list failed: {error}");
+                    return Vec::new();
+                }
+            };
+            let mut results = Vec::new();
+            for record in records {
+                let Ok(mut portfolio) = serde_json::from_value::<Portfolio>(record.portfolio)
+                else {
+                    tracing::warn!(
+                        actor_storage_key = %record.actor_storage_key,
+                        "cloud portfolio parse failed"
+                    );
+                    continue;
+                };
+                let actor = serde_json::from_value::<ActorIdentity>(record.actor)
+                    .ok()
+                    .or_else(|| actor_from_storage_key(&record.actor_storage_key));
+                let Some(actor) = actor else {
+                    tracing::warn!(
+                        actor_storage_key = %record.actor_storage_key,
+                        "cloud portfolio actor parse failed"
+                    );
+                    continue;
+                };
+                portfolio.actor = Some(actor.clone());
+                if portfolio.user_id.is_empty() {
+                    portfolio.user_id = actor.user_id.clone();
+                }
+                results.push((actor, portfolio));
+            }
+            results.sort_by(|a, b| b.1.updated_at.cmp(&a.1.updated_at));
+            return results;
+        }
+
         let entries = match std::fs::read_dir(&self.data_dir) {
             Ok(entries) => entries,
             Err(_) => return vec![],
@@ -252,7 +345,7 @@ impl PortfolioStorage {
         actor: &ActorIdentity,
         symbol: &str,
         asset_type: &str,
-    ) -> hone_core::HoneResult<Portfolio> {
+    ) -> HoneResult<Portfolio> {
         let mut portfolio = self.load(actor)?.unwrap_or_else(|| Portfolio {
             actor: Some(actor.clone()),
             user_id: actor.user_id.clone(),
@@ -299,7 +392,7 @@ impl PortfolioStorage {
         asset_type: &str,
         shares: f64,
         avg_cost: f64,
-    ) -> hone_core::HoneResult<Option<(Portfolio, bool)>> {
+    ) -> HoneResult<Option<(Portfolio, bool)>> {
         let Some(mut portfolio) = self.load(actor)? else {
             return Ok(None);
         };
@@ -326,7 +419,7 @@ impl PortfolioStorage {
         &self,
         actor: &ActorIdentity,
         symbol: &str,
-    ) -> hone_core::HoneResult<Option<Portfolio>> {
+    ) -> HoneResult<Option<Portfolio>> {
         let Some(mut portfolio) = self.load(actor)? else {
             return Ok(None);
         };
@@ -343,6 +436,25 @@ impl PortfolioStorage {
         self.save(actor, &portfolio)?;
         Ok(Some(portfolio))
     }
+}
+
+fn run_cloud_portfolio<T, F>(future: F) -> HoneResult<T>
+where
+    T: Send + 'static,
+    F: Future<Output = HoneResult<T>> + Send + 'static,
+{
+    if tokio::runtime::Handle::try_current().is_ok() {
+        return std::thread::spawn(move || {
+            let runtime =
+                tokio::runtime::Runtime::new().map_err(|err| HoneError::Config(err.to_string()))?;
+            runtime.block_on(future)
+        })
+        .join()
+        .map_err(|_| HoneError::Storage("cloud portfolio worker panicked".to_string()))?;
+    }
+    let runtime =
+        tokio::runtime::Runtime::new().map_err(|err| HoneError::Config(err.to_string()))?;
+    runtime.block_on(future)
 }
 
 #[cfg(test)]
@@ -362,6 +474,15 @@ mod tests {
 
     fn actor(channel: &str, user_id: &str, channel_scope: Option<&str>) -> ActorIdentity {
         ActorIdentity::new(channel, user_id, channel_scope).expect("actor")
+    }
+
+    #[test]
+    fn configure_cloud_portfolio_storage_accepts_none() {
+        configure_cloud_portfolio_storage(None);
+        let dir = make_temp_dir("hone_portfolio_storage_config");
+        let storage = PortfolioStorage::new(&dir);
+        assert!(storage.cloud.is_none());
+        assert!(dir.exists());
     }
 
     #[test]

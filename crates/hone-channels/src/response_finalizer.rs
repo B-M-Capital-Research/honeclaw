@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
 
+use hone_core::ActorIdentity;
 use hone_core::agent::{AgentResponse, ToolCallMade};
+use hone_core::cloud_runtime::{CloudCompanyProfileFileRecord, CloudPgRuntime};
 use serde_json::Value;
 
 use crate::HoneBotCore;
@@ -91,8 +93,140 @@ pub(crate) fn finalize_agent_response(
         response.content = sanitized.content;
     }
 
+    sync_company_profiles_to_cloud(core, session_id);
     response.content = normalize_local_image_references(core, session_id, &response.content);
     outcome
+}
+
+fn sync_company_profiles_to_cloud(core: &HoneBotCore, session_id: &str) {
+    if !core.config.cloud.effective_mode().is_cloud_authoritative()
+        || !core.config.cloud.postgres.is_configured()
+    {
+        return;
+    }
+    let Some(actor) = ActorIdentity::from_session_id(session_id) else {
+        return;
+    };
+    let root = sandbox_base_dir()
+        .join(actor.channel_fs_component())
+        .join(actor.scoped_user_fs_key())
+        .join("company_profiles");
+    if !root.is_dir() {
+        return;
+    }
+    let Some(postgres) = CloudPgRuntime::from_cloud_config(&core.config.cloud) else {
+        return;
+    };
+    let Ok(actor_value) = serde_json::to_value(&actor) else {
+        return;
+    };
+    let mut records = Vec::new();
+    let Ok(entries) = std::fs::read_dir(&root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let profile_dir = entry.path();
+        if !profile_dir.is_dir() {
+            continue;
+        }
+        let Some(profile_id) = profile_dir
+            .file_name()
+            .and_then(|value| value.to_str())
+            .map(str::to_string)
+        else {
+            continue;
+        };
+        push_company_profile_file_record(
+            &mut records,
+            &actor,
+            &actor_value,
+            &profile_id,
+            "profile.md",
+            &profile_dir.join("profile.md"),
+        );
+        let events_dir = profile_dir.join("events");
+        let Ok(event_entries) = std::fs::read_dir(&events_dir) else {
+            continue;
+        };
+        for event_entry in event_entries.flatten() {
+            let path = event_entry.path();
+            if path.extension().and_then(|value| value.to_str()) != Some("md") {
+                continue;
+            }
+            let Some(filename) = path.file_name().and_then(|value| value.to_str()) else {
+                continue;
+            };
+            push_company_profile_file_record(
+                &mut records,
+                &actor,
+                &actor_value,
+                &profile_id,
+                &format!("events/{filename}"),
+                &path,
+            );
+        }
+    }
+    if records.is_empty() {
+        return;
+    }
+    let import_result = run_cloud_company_profile_sync(async move {
+        postgres.import_company_profile_files(&records).await
+    });
+    if let Err(error) = import_result {
+        tracing::warn!(session_id, "cloud company profile sync failed: {error}");
+    }
+}
+
+fn push_company_profile_file_record(
+    records: &mut Vec<CloudCompanyProfileFileRecord>,
+    actor: &ActorIdentity,
+    actor_value: &serde_json::Value,
+    profile_id: &str,
+    relative_path: &str,
+    path: &Path,
+) {
+    if !path.is_file() {
+        return;
+    }
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return;
+    };
+    let updated_at = path
+        .metadata()
+        .ok()
+        .and_then(|metadata| metadata.modified().ok())
+        .map(system_time_to_rfc3339)
+        .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
+    records.push(CloudCompanyProfileFileRecord {
+        actor_storage_key: actor.storage_key(),
+        actor: actor_value.clone(),
+        profile_id: profile_id.to_string(),
+        relative_path: relative_path.to_string(),
+        content,
+        updated_at,
+    });
+}
+
+fn run_cloud_company_profile_sync<T, F>(future: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: std::future::Future<Output = hone_core::HoneResult<T>> + Send + 'static,
+{
+    if tokio::runtime::Handle::try_current().is_ok() {
+        return std::thread::spawn(move || {
+            let runtime = tokio::runtime::Runtime::new().map_err(|err| err.to_string())?;
+            runtime.block_on(future).map_err(|err| err.to_string())
+        })
+        .join()
+        .map_err(|_| "cloud company profile sync worker panicked".to_string())?;
+    }
+    let runtime = tokio::runtime::Runtime::new().map_err(|err| err.to_string())?;
+    runtime.block_on(future).map_err(|err| err.to_string())
+}
+
+fn system_time_to_rfc3339(value: std::time::SystemTime) -> String {
+    let datetime: chrono::DateTime<chrono::Utc> = value.into();
+    datetime.to_rfc3339()
 }
 
 fn recover_successful_side_effect_confirmation(tool_calls: &[ToolCallMade]) -> Option<String> {
@@ -521,16 +655,12 @@ fn stabilize_local_image_path(core: &HoneBotCore, session_id: &str, path: &str) 
     }
 
     let gen_images_root = PathBuf::from(&core.config.storage.gen_images_dir);
-    if source.starts_with(&gen_images_root) {
-        return Some(source.to_string_lossy().to_string());
-    }
-
     let sandbox_root = sandbox_base_dir();
-    if !source.starts_with(&sandbox_root) {
-        return Some(source.to_string_lossy().to_string());
-    }
+    let is_generated_image = source.starts_with(&gen_images_root);
+    let is_sandbox_image = source.starts_with(&sandbox_root);
 
     if core.config.cloud.effective_mode().is_cloud_authoritative()
+        && (is_generated_image || is_sandbox_image)
         && let Some(oss) =
             hone_core::cloud_runtime::OssObjectStore::from_config(&core.config.cloud.oss)
         && let Ok(bytes) = std::fs::read(source)
@@ -574,6 +704,14 @@ fn stabilize_local_image_path(core: &HoneBotCore, session_id: &str, path: &str) 
                 err
             ),
         }
+    }
+
+    if is_generated_image {
+        return Some(source.to_string_lossy().to_string());
+    }
+
+    if !is_sandbox_image {
+        return Some(source.to_string_lossy().to_string());
     }
 
     let target_dir = gen_images_root.join(session_id);

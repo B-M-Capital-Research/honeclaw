@@ -1,9 +1,12 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
+use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::sync::{OnceLock, RwLock};
 
 use chrono::Utc;
 use hone_core::ActorIdentity;
+use hone_core::cloud_runtime::{CloudCompanyProfileFileRecord, CloudPgRuntime};
 
 use super::markdown::{
     build_initial_sections, create_profile_body, extract_title_from_markdown,
@@ -21,10 +24,14 @@ use super::{
 impl CompanyProfileStorage {
     pub fn new(root_dir: impl AsRef<Path>) -> Self {
         let root_dir = root_dir.as_ref().to_path_buf();
-        let _ = fs::create_dir_all(&root_dir);
+        let cloud = cloud_company_profile_storage();
+        if cloud.is_none() {
+            let _ = fs::create_dir_all(&root_dir);
+        }
         Self {
             root_dir,
             actor: None,
+            cloud,
         }
     }
 
@@ -32,6 +39,7 @@ impl CompanyProfileStorage {
         Self {
             root_dir: self.root_dir.clone(),
             actor: Some(actor.clone()),
+            cloud: self.cloud.clone(),
         }
     }
 
@@ -53,6 +61,32 @@ impl CompanyProfileStorage {
         company_name: Option<&str>,
         stock_code: Option<&str>,
     ) -> Option<String> {
+        if self.cloud.is_some() {
+            let company_name = company_name
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(normalize_company_name);
+            let stock_code = stock_code
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(normalize_stock_code);
+            return self.list_profiles().into_iter().find_map(|document| {
+                let code_match = stock_code
+                    .as_ref()
+                    .map(|value| normalize_stock_code(&document.stock_code) == *value)
+                    .unwrap_or(false);
+                let name_match = company_name
+                    .as_ref()
+                    .map(|value| normalize_company_name(&document.company_name) == *value)
+                    .unwrap_or(false);
+                if code_match || name_match {
+                    Some(document.profile_id)
+                } else {
+                    None
+                }
+            });
+        }
+
         let root_dir = self.scoped_root().ok()?;
         let company_name = company_name
             .map(str::trim)
@@ -98,6 +132,10 @@ impl CompanyProfileStorage {
     }
 
     pub fn list_profiles(&self) -> Vec<ProfileSummary> {
+        if self.cloud.is_some() {
+            return self.cloud_list_profiles();
+        }
+
         let Ok(root_dir) = self.scoped_root() else {
             return Vec::new();
         };
@@ -138,6 +176,10 @@ impl CompanyProfileStorage {
     }
 
     pub fn list_profile_spaces(&self) -> Vec<ProfileSpaceSummary> {
+        if self.cloud.is_some() {
+            return self.cloud_list_profile_spaces(false);
+        }
+
         let mut spaces = Vec::new();
         let channels = match fs::read_dir(&self.root_dir) {
             Ok(entries) => entries,
@@ -212,6 +254,10 @@ impl CompanyProfileStorage {
     }
 
     pub fn list_profile_spaces_raw(&self) -> Vec<ProfileSpaceSummary> {
+        if self.cloud.is_some() {
+            return self.cloud_list_profile_spaces(true);
+        }
+
         let mut spaces = Vec::new();
         let channels = match fs::read_dir(&self.root_dir) {
             Ok(entries) => entries,
@@ -284,6 +330,10 @@ impl CompanyProfileStorage {
     }
 
     pub fn list_profiles_raw(&self) -> Vec<RawProfileSummary> {
+        if self.cloud.is_some() {
+            return self.cloud_list_profiles_raw();
+        }
+
         let Ok(root_dir) = self.scoped_root() else {
             return Vec::new();
         };
@@ -315,6 +365,10 @@ impl CompanyProfileStorage {
     }
 
     pub fn get_profile(&self, profile_id: &str) -> Result<Option<CompanyProfileDocument>, String> {
+        if self.cloud.is_some() {
+            return self.cloud_get_profile(profile_id);
+        }
+
         let root_dir = self.scoped_root()?;
         let Some(profile_dir) = safe_component_join(&root_dir, profile_id) else {
             return Ok(None);
@@ -323,6 +377,10 @@ impl CompanyProfileStorage {
     }
 
     pub fn get_profile_raw(&self, profile_id: &str) -> Result<Option<RawProfileDocument>, String> {
+        if self.cloud.is_some() {
+            return self.cloud_get_profile_raw(profile_id);
+        }
+
         let root_dir = self.scoped_root()?;
         let Some(profile_dir) = safe_component_join(&root_dir, profile_id) else {
             return Ok(None);
@@ -378,9 +436,11 @@ impl CompanyProfileStorage {
         if profile_id.is_empty() {
             return Err("profile_id 非法".to_string());
         }
-        let profile_dir = self.scoped_root()?.join(&profile_id);
-        fs::create_dir_all(profile_dir.join("events"))
-            .map_err(|err| format!("创建画像目录失败: {err}"))?;
+        if self.cloud.is_none() {
+            let profile_dir = self.scoped_root()?.join(&profile_id);
+            fs::create_dir_all(profile_dir.join("events"))
+                .map_err(|err| format!("创建画像目录失败: {err}"))?;
+        }
 
         let metadata = ProfileMetadata {
             company_name: company_name.to_string(),
@@ -496,6 +556,46 @@ impl CompanyProfileStorage {
             slugify(&input.title)
         );
         let event_id = event_filename.trim_end_matches(".md").to_string();
+        if self.cloud.is_some() {
+            let relative_path = format!("events/{event_filename}");
+            if let Some(record) = self.cloud_get_file(&document.profile_id, &relative_path)? {
+                return Ok(Some(parse_event_markdown_relaxed(
+                    &event_id,
+                    &event_filename,
+                    &record.content,
+                    Some(record.updated_at),
+                )?));
+            }
+            let metadata = ProfileEventMetadata {
+                event_type: input.event_type.trim().to_string(),
+                occurred_at: input.occurred_at.trim().to_string(),
+                captured_at: Utc::now().to_rfc3339(),
+                mainline_impact: input.mainline_impact.trim().to_string(),
+                changed_sections: unique_strings(&input.changed_sections),
+                refs: unique_strings(&input.refs),
+            };
+            let markdown = render_event_markdown(&input.title, &metadata, &input);
+            self.cloud_upsert_file(&document.profile_id, &relative_path, &markdown)?;
+
+            document.metadata.updated_at = Utc::now().to_rfc3339();
+            let sections = parse_profile_sections(&document.markdown).0;
+            document.markdown = render_profile_markdown(
+                &document.metadata,
+                &sections,
+                &create_profile_body(&sections),
+            )
+            .map_err(|err| format!("更新 profile.md 时间戳失败: {err}"))?;
+            self.write_profile(&document, Some(sections))?;
+
+            return Ok(Some(CompanyProfileEventDocument {
+                id: event_id,
+                filename: event_filename,
+                title: input.title.trim().to_string(),
+                metadata,
+                markdown,
+            }));
+        }
+
         let event_path = self
             .scoped_root()?
             .join(&document.profile_id)
@@ -545,6 +645,16 @@ impl CompanyProfileStorage {
     }
 
     pub fn delete_profile(&self, profile_id: &str) -> Result<bool, String> {
+        if let Some(postgres) = self.cloud.clone() {
+            let actor_storage_key = self.actor_storage_key()?;
+            let profile_id = profile_id.to_string();
+            return run_cloud_company_profile(async move {
+                postgres
+                    .delete_company_profile(&actor_storage_key, &profile_id)
+                    .await
+            });
+        }
+
         let root_dir = self.scoped_root()?;
         let Some(profile_dir) = safe_component_join(&root_dir, profile_id) else {
             return Ok(false);
@@ -561,6 +671,26 @@ impl CompanyProfileStorage {
         document: &CompanyProfileDocument,
         sections: Option<Vec<(String, String)>>,
     ) -> Result<(), String> {
+        if self.cloud.is_some() {
+            let markdown = if let Some(sections) = sections {
+                render_profile_markdown(
+                    &document.metadata,
+                    &sections,
+                    &create_profile_body(&sections),
+                )
+                .map_err(|err| format!("渲染 profile.md 失败: {err}"))?
+            } else {
+                let (parsed_sections, _) = parse_profile_sections(&document.markdown);
+                render_profile_markdown(
+                    &document.metadata,
+                    &parsed_sections,
+                    &create_profile_body(&parsed_sections),
+                )
+                .map_err(|err| format!("渲染 profile.md 失败: {err}"))?
+            };
+            return self.cloud_upsert_file(&document.profile_id, "profile.md", &markdown);
+        }
+
         let profile_dir = self.scoped_root()?.join(&document.profile_id);
         fs::create_dir_all(profile_dir.join("events"))
             .map_err(|err| format!("创建画像目录失败: {err}"))?;
@@ -780,6 +910,353 @@ impl CompanyProfileStorage {
             .join(actor.scoped_user_fs_key())
             .join("company_profiles"))
     }
+
+    fn actor_storage_key(&self) -> Result<String, String> {
+        self.actor
+            .as_ref()
+            .map(ActorIdentity::storage_key)
+            .ok_or_else(|| "company profile storage requires actor scope".to_string())
+    }
+
+    fn actor_json(&self) -> Result<serde_json::Value, String> {
+        let Some(actor) = &self.actor else {
+            return Err("company profile storage requires actor scope".to_string());
+        };
+        serde_json::to_value(actor).map_err(|err| format!("序列化 actor 失败: {err}"))
+    }
+
+    fn cloud_get_file(
+        &self,
+        profile_id: &str,
+        relative_path: &str,
+    ) -> Result<Option<CloudCompanyProfileFileRecord>, String> {
+        let Some(postgres) = self.cloud.clone() else {
+            return Ok(None);
+        };
+        let actor_storage_key = self.actor_storage_key()?;
+        let profile_id = profile_id.to_string();
+        let relative_path = relative_path.to_string();
+        run_cloud_company_profile(async move {
+            postgres
+                .get_company_profile_file(&actor_storage_key, &profile_id, &relative_path)
+                .await
+        })
+        .map_err(|err| err.to_string())
+    }
+
+    fn cloud_upsert_file(
+        &self,
+        profile_id: &str,
+        relative_path: &str,
+        content: &str,
+    ) -> Result<(), String> {
+        let Some(postgres) = self.cloud.clone() else {
+            return Ok(());
+        };
+        let record = CloudCompanyProfileFileRecord {
+            actor_storage_key: self.actor_storage_key()?,
+            actor: self.actor_json()?,
+            profile_id: profile_id.to_string(),
+            relative_path: relative_path.to_string(),
+            content: content.to_string(),
+            updated_at: Utc::now().to_rfc3339(),
+        };
+        run_cloud_company_profile(async move { postgres.upsert_company_profile_file(record).await })
+            .map_err(|err| err.to_string())
+    }
+
+    fn cloud_files_for_actor(&self) -> Result<Vec<CloudCompanyProfileFileRecord>, String> {
+        let Some(postgres) = self.cloud.clone() else {
+            return Ok(Vec::new());
+        };
+        let actor_storage_key = self.actor_storage_key()?;
+        run_cloud_company_profile(async move {
+            postgres
+                .list_company_profile_files(Some(&actor_storage_key))
+                .await
+        })
+        .map_err(|err| err.to_string())
+    }
+
+    fn cloud_all_files(&self) -> Result<Vec<CloudCompanyProfileFileRecord>, String> {
+        let Some(postgres) = self.cloud.clone() else {
+            return Ok(Vec::new());
+        };
+        run_cloud_company_profile(async move { postgres.list_company_profile_files(None).await })
+            .map_err(|err| err.to_string())
+    }
+
+    fn cloud_get_profile(
+        &self,
+        profile_id: &str,
+    ) -> Result<Option<CompanyProfileDocument>, String> {
+        let files = self.cloud_files_for_actor()?;
+        let profile = files
+            .iter()
+            .find(|file| file.profile_id == profile_id && file.relative_path == "profile.md");
+        let Some(profile) = profile else {
+            return Ok(None);
+        };
+        let metadata = parse_profile_metadata_relaxed(
+            profile_id,
+            &profile.content,
+            Some(profile.updated_at.clone()),
+        )?;
+        let mut events = Vec::new();
+        for file in files.iter().filter(|file| {
+            file.profile_id == profile_id
+                && file.relative_path.starts_with("events/")
+                && file.relative_path.ends_with(".md")
+        }) {
+            let filename = file.relative_path.trim_start_matches("events/").to_string();
+            let id = filename.trim_end_matches(".md").to_string();
+            events.push(parse_event_markdown_relaxed(
+                &id,
+                &filename,
+                &file.content,
+                Some(file.updated_at.clone()),
+            )?);
+        }
+        events.sort_by(|a, b| {
+            b.metadata
+                .occurred_at
+                .cmp(&a.metadata.occurred_at)
+                .then_with(|| b.filename.cmp(&a.filename))
+        });
+        Ok(Some(CompanyProfileDocument {
+            profile_id: profile_id.to_string(),
+            metadata,
+            markdown: profile.content.clone(),
+            events,
+        }))
+    }
+
+    fn cloud_get_profile_raw(
+        &self,
+        profile_id: &str,
+    ) -> Result<Option<RawProfileDocument>, String> {
+        let files = self.cloud_files_for_actor()?;
+        let profile = files
+            .iter()
+            .find(|file| file.profile_id == profile_id && file.relative_path == "profile.md");
+        let Some(profile) = profile else {
+            return Ok(None);
+        };
+        let mut events = Vec::new();
+        for file in files.iter().filter(|file| {
+            file.profile_id == profile_id
+                && file.relative_path.starts_with("events/")
+                && file.relative_path.ends_with(".md")
+        }) {
+            let filename = file.relative_path.trim_start_matches("events/").to_string();
+            let id = filename.trim_end_matches(".md").to_string();
+            events.push(RawProfileEventDocument {
+                id,
+                title: extract_title_from_markdown(&file.content, &file.relative_path),
+                filename,
+                updated_at: Some(file.updated_at.clone()),
+                markdown: file.content.clone(),
+            });
+        }
+        events.sort_by(|a, b| {
+            b.updated_at
+                .as_deref()
+                .unwrap_or_default()
+                .cmp(a.updated_at.as_deref().unwrap_or_default())
+                .then_with(|| b.filename.cmp(&a.filename))
+        });
+        Ok(Some(RawProfileDocument {
+            profile_id: profile_id.to_string(),
+            title: extract_title_from_markdown(&profile.content, profile_id),
+            updated_at: Some(profile.updated_at.clone()),
+            markdown: profile.content.clone(),
+            events,
+        }))
+    }
+
+    fn cloud_list_profiles(&self) -> Vec<ProfileSummary> {
+        let files = match self.cloud_files_for_actor() {
+            Ok(files) => files,
+            Err(error) => {
+                tracing::warn!("cloud company profile list failed: {error}");
+                return Vec::new();
+            }
+        };
+        let mut profile_ids = files
+            .iter()
+            .filter(|file| file.relative_path == "profile.md")
+            .map(|file| file.profile_id.clone())
+            .collect::<Vec<_>>();
+        profile_ids.sort();
+        profile_ids.dedup();
+
+        let mut profiles = Vec::new();
+        for profile_id in profile_ids {
+            let Ok(Some(document)) = self.cloud_get_profile(&profile_id) else {
+                continue;
+            };
+            profiles.push(ProfileSummary {
+                profile_id: document.profile_id,
+                company_name: document.metadata.company_name.clone(),
+                stock_code: document.metadata.stock_code.clone(),
+                sector: document.metadata.sector.clone(),
+                industry_template: document.metadata.industry_template.clone(),
+                status: document.metadata.status.clone(),
+                tracking_enabled: document.metadata.tracking.enabled,
+                tracking_cadence: document.metadata.tracking.cadence.clone(),
+                updated_at: document.metadata.updated_at.clone(),
+                last_reviewed_at: document.metadata.last_reviewed_at.clone(),
+                event_count: document.events.len(),
+            });
+        }
+        profiles.sort_by(|a, b| {
+            b.updated_at
+                .cmp(&a.updated_at)
+                .then_with(|| a.company_name.cmp(&b.company_name))
+        });
+        profiles
+    }
+
+    fn cloud_list_profiles_raw(&self) -> Vec<RawProfileSummary> {
+        let files = match self.cloud_files_for_actor() {
+            Ok(files) => files,
+            Err(error) => {
+                tracing::warn!("cloud raw company profile list failed: {error}");
+                return Vec::new();
+            }
+        };
+        let event_counts = event_counts_by_profile(&files);
+        let mut profiles = files
+            .iter()
+            .filter(|file| file.relative_path == "profile.md")
+            .map(|file| RawProfileSummary {
+                profile_id: file.profile_id.clone(),
+                title: extract_title_from_markdown(&file.content, &file.profile_id),
+                updated_at: Some(file.updated_at.clone()),
+                event_count: event_counts.get(&file.profile_id).copied().unwrap_or(0),
+            })
+            .collect::<Vec<_>>();
+        profiles.sort_by(|a, b| {
+            b.updated_at
+                .as_deref()
+                .unwrap_or_default()
+                .cmp(a.updated_at.as_deref().unwrap_or_default())
+                .then_with(|| a.title.cmp(&b.title))
+        });
+        profiles
+    }
+
+    fn cloud_list_profile_spaces(&self, raw: bool) -> Vec<ProfileSpaceSummary> {
+        let files = match self.cloud_all_files() {
+            Ok(files) => files,
+            Err(error) => {
+                tracing::warn!("cloud company profile space list failed: {error}");
+                return Vec::new();
+            }
+        };
+        let mut grouped: BTreeMap<String, Vec<CloudCompanyProfileFileRecord>> = BTreeMap::new();
+        for file in files {
+            grouped
+                .entry(file.actor_storage_key.clone())
+                .or_default()
+                .push(file);
+        }
+
+        let mut spaces = Vec::new();
+        for (_key, files) in grouped {
+            let Some(actor) = files
+                .first()
+                .and_then(|file| serde_json::from_value::<ActorIdentity>(file.actor.clone()).ok())
+            else {
+                continue;
+            };
+            let profile_count = files
+                .iter()
+                .filter(|file| file.relative_path == "profile.md")
+                .map(|file| &file.profile_id)
+                .collect::<HashSet<_>>()
+                .len();
+            if profile_count == 0 {
+                continue;
+            }
+            let updated_at = if raw {
+                files.iter().map(|file| file.updated_at.clone()).max()
+            } else {
+                files
+                    .iter()
+                    .filter(|file| file.relative_path == "profile.md")
+                    .filter_map(|file| {
+                        parse_profile_metadata_relaxed(
+                            &file.profile_id,
+                            &file.content,
+                            Some(file.updated_at.clone()),
+                        )
+                        .ok()
+                        .map(|metadata| metadata.updated_at)
+                    })
+                    .max()
+            };
+            spaces.push(ProfileSpaceSummary {
+                channel: actor.channel,
+                user_id: actor.user_id,
+                channel_scope: actor.channel_scope,
+                profile_count,
+                updated_at,
+            });
+        }
+        spaces.sort_by(|a, b| {
+            b.updated_at
+                .as_deref()
+                .unwrap_or_default()
+                .cmp(a.updated_at.as_deref().unwrap_or_default())
+                .then_with(|| a.channel.cmp(&b.channel))
+                .then_with(|| a.user_id.cmp(&b.user_id))
+        });
+        spaces
+    }
+}
+
+static CLOUD_COMPANY_PROFILE_STORAGE: OnceLock<RwLock<Option<CloudPgRuntime>>> = OnceLock::new();
+
+pub fn configure_cloud_company_profile_storage(postgres: Option<CloudPgRuntime>) {
+    let lock = CLOUD_COMPANY_PROFILE_STORAGE.get_or_init(|| RwLock::new(None));
+    match lock.write() {
+        Ok(mut guard) => *guard = postgres,
+        Err(error) => tracing::warn!("company profile cloud runtime lock poisoned: {error}"),
+    }
+}
+
+fn cloud_company_profile_storage() -> Option<CloudPgRuntime> {
+    CLOUD_COMPANY_PROFILE_STORAGE
+        .get()
+        .and_then(|lock| lock.read().ok().and_then(|guard| guard.clone()))
+}
+
+fn run_cloud_company_profile<T, F>(future: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: Future<Output = hone_core::HoneResult<T>> + Send + 'static,
+{
+    if tokio::runtime::Handle::try_current().is_ok() {
+        return std::thread::spawn(move || {
+            let runtime = tokio::runtime::Runtime::new().map_err(|err| err.to_string())?;
+            runtime.block_on(future).map_err(|err| err.to_string())
+        })
+        .join()
+        .map_err(|_| "cloud company profile worker panicked".to_string())?;
+    }
+    let runtime = tokio::runtime::Runtime::new().map_err(|err| err.to_string())?;
+    runtime.block_on(future).map_err(|err| err.to_string())
+}
+
+fn event_counts_by_profile(files: &[CloudCompanyProfileFileRecord]) -> HashMap<String, usize> {
+    let mut counts = HashMap::new();
+    for file in files {
+        if file.relative_path.starts_with("events/") && file.relative_path.ends_with(".md") {
+            *counts.entry(file.profile_id.clone()).or_insert(0) += 1;
+        }
+    }
+    counts
 }
 
 fn unique_strings(values: &[String]) -> Vec<String> {

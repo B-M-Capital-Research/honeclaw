@@ -10,7 +10,6 @@
 //! 与 admin 端 mainline-context / mainline-distill 端点的区别:public 端 actor
 //! 限定为自己(由 session 推导),admin 端可以代任何 actor 操作。
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::Json;
@@ -70,8 +69,9 @@ pub(crate) async fn handle_get_digest_context(
 
     // sandbox 里现存的画像列表
     let sandbox_base = hone_channels::sandbox_base_dir();
-    let sandbox_root = hone_event_engine::global_digest::actor_sandbox_dir(&sandbox_base, &actor);
-    let profile_summaries = list_profile_summaries(&sandbox_root);
+    let profiles =
+        hone_event_engine::global_digest::scan_profiles_for_actor(&sandbox_base, &actor, None);
+    let profile_summaries = profile_summaries_from_sources(&profiles);
 
     Json(json!({
         "actor": {
@@ -110,8 +110,8 @@ pub(crate) async fn handle_get_company_profile(
     }
 
     let sandbox_base = hone_channels::sandbox_base_dir();
-    let sandbox_root = hone_event_engine::global_digest::actor_sandbox_dir(&sandbox_base, &actor);
-    let profiles = hone_event_engine::global_digest::scan_profiles(&sandbox_root, None);
+    let profiles =
+        hone_event_engine::global_digest::scan_profiles_for_actor(&sandbox_base, &actor, None);
     let hit = profiles.iter().find(|p| p.ticker == target);
     match hit {
         Some(p) => Json(json!({
@@ -229,50 +229,17 @@ pub(crate) async fn handle_refresh_digest_context(
     .into_response()
 }
 
-/// 扫 sandbox/company_profiles 列出所有画像的元信息(不回传完整 markdown,只 200 字预览)。
-fn list_profile_summaries(sandbox_root: &PathBuf) -> Vec<serde_json::Value> {
-    let cp = sandbox_root.join("company_profiles");
-    if !cp.is_dir() {
-        return Vec::new();
-    }
-    let mut out = Vec::new();
-    let entries = match std::fs::read_dir(&cp) {
-        Ok(e) => e,
-        Err(_) => return out,
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-        let dir_name = match path.file_name().and_then(|s| s.to_str()) {
-            Some(s) => s.to_string(),
-            None => continue,
-        };
-        let profile_md = path.join("profile.md");
-        if !profile_md.is_file() {
-            continue;
-        }
-        let md = match std::fs::read_to_string(&profile_md) {
-            Ok(s) => s,
-            Err(_) => continue,
-        };
-        let tickers = hone_event_engine::global_digest::extract_tickers(&md);
-        let title = md
-            .lines()
-            .next()
-            .unwrap_or("")
-            .trim_start_matches('#')
-            .trim();
-        let preview: String = md.chars().take(200).collect();
-        let bytes = md.len();
-        out.push(json!({
-            "dir": dir_name,
-            "tickers": tickers,
-            "title": title,
-            "preview": preview,
-            "bytes": bytes,
-        }));
-    }
-    out
+fn profile_summaries_from_sources(
+    profiles: &[hone_event_engine::global_digest::ProfileSource],
+) -> Vec<serde_json::Value> {
+    profiles
+        .iter()
+        .map(|profile| {
+            json!({
+                "ticker": profile.ticker,
+                "dir": profile.dir_name,
+                "preview": profile.markdown.chars().take(200).collect::<String>(),
+            })
+        })
+        .collect()
 }

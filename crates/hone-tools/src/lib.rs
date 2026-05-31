@@ -29,16 +29,18 @@ pub use data_fetch::DataFetchTool;
 pub use deep_research::DeepResearchTool;
 pub use discover_skills::DiscoverSkillsTool;
 pub use guard::ToolExecutionGuard;
+pub use hone_event_engine::prefs::configure_cloud_notification_prefs;
 pub use load_skill::LoadSkillTool;
 pub use local_files::{LocalListFilesTool, LocalReadFileTool, LocalSearchFilesTool};
 pub use missed_events_tool::MissedEventsTool;
-pub use notification_prefs_tool::NotificationPrefsTool;
+pub use notification_prefs_tool::{NotificationPrefsTool, load_notification_quiet_hours};
 pub use portfolio_tool::PortfolioTool;
 pub use registry::ToolRegistry;
 pub use restart_hone::RestartHoneTool;
 pub use skill_registry::{
-    SkillRegistry, SkillRegistryEntry, default_skill_registry_path, load_skill_registry,
-    read_skill_registry, reset_skill_registry, set_skill_enabled, write_skill_registry,
+    SkillRegistry, SkillRegistryEntry, configure_cloud_skill_registry, default_skill_registry_path,
+    load_skill_registry, read_skill_registry, reset_skill_registry, set_skill_enabled,
+    write_skill_registry,
 };
 pub use skill_runtime::{
     SkillDefinition, SkillExecutionContext, SkillRuntime, SkillSource, SkillSummary,

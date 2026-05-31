@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-05-27
+Last updated: 2026-05-31
+
+## 2026-05-31
+
+### Cloud PG / OSS Runtime Migration
+
+- Status: done
+- Date: 2026-05-31
+- Plan: `docs/archive/plans/cloud-pg-oss-runtime-migration.md`
+- Handoff: `docs/handoffs/cloud-pg-oss-runtime-migration-2026-05-27.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`, `cargo test --offline -p hone-core cloud_runtime --lib`, `cargo test --offline -p hone-memory company_profile --lib`, `cargo test --offline -p hone-event-engine mainline_distill --lib`, `cargo test --offline -p hone-channels normalize_local_image_references --lib`, `cargo check --offline -p hone-core -p hone-memory -p hone-event-engine -p hone-channels -p hone-web-api -p hone-cli --tests`, `HONE_CLOUD_MODE=cloud cargo run --offline -p hone-cli -- cloud doctor --ensure-schema --json`, `HONE_CLOUD_MODE=local cargo run --offline -p hone-cli -- cloud doctor --json`
+- Current conclusion: `cloud.mode=cloud` now uses PG/R2 for all current runtime durable dependencies covered by cloud doctor: sessions, web auth, quota, cron, skill registry, notification prefs, portfolio, LLM audit, company profiles, uploads/attachments, generated images, and cloud document indexing. The final doctor result is `local_durable_dependency_count=0`; local mode remains compatible and reports 0 cloud durable dependencies.
+- Next entry point: `docs/handoffs/cloud-pg-oss-runtime-migration-2026-05-27.md` for operational notes and `docs/runbooks/backend-deployment.md` for migration commands.
 
 ## 2026-05-27
 
@@ -14,7 +28,7 @@ Last updated: 2026-05-27
 - Related PRs / commits: N/A
 - Related runbooks / regressions: `cargo check --workspace --all-targets --exclude hone-desktop`, `cargo test --workspace --all-targets --exclude hone-desktop`, `bun run test:web`, `bash tests/regression/run_ci.sh`, `bash scripts/prepare_release_notes.sh v0.12.4 /tmp/release-notes-v0.12.4.md`
 - Current conclusion: `v0.12.4` ships the Cloud PG / OSS runtime config slice, public upload OSS proxy path, scheduler commodity guard false-positive fix, Feishu/external error diagnostics, guarded live smoke wrappers, refreshed architecture SVG, and release notes.
-- Next entry point: `docs/releases/v0.12.4.md`, then `docs/current-plans/cloud-pg-oss-runtime-migration.md` for remaining cloud storage follow-up.
+- Next entry point: `docs/releases/v0.12.4.md`, then `docs/archive/plans/cloud-pg-oss-runtime-migration.md` for the completed cloud storage follow-up record.
 
 ## 2026-05-23
 

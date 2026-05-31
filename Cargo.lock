@@ -2877,6 +2877,7 @@ name = "hone-cli"
 version = "0.12.4"
 dependencies = [
  "async-trait",
+ "chrono",
  "clap",
  "console",
  "dialoguer",

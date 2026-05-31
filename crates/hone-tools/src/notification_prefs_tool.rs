@@ -77,6 +77,15 @@ impl NotificationPrefsTool {
     }
 }
 
+pub fn load_notification_quiet_hours(
+    prefs_dir: impl Into<PathBuf>,
+    actor: &ActorIdentity,
+) -> Option<(QuietHours, Option<String>)> {
+    let storage = FilePrefsStorage::new(prefs_dir).ok()?;
+    let prefs = storage.load(actor);
+    Some((prefs.quiet_hours?, prefs.timezone))
+}
+
 fn parse_severity(raw: &str) -> HoneResult<Severity> {
     match raw.trim().to_ascii_lowercase().as_str() {
         "low" => Ok(Severity::Low),

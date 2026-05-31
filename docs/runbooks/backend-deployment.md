@@ -216,11 +216,16 @@ hone-cli cloud migrate --from-data-dir ./data --json
 hone-cli cloud migrate --from-data-dir ./data --session-only --apply --json
 hone-cli cloud migrate --from-data-dir ./data --web-auth-only --apply --json
 hone-cli cloud migrate --from-data-dir ./data --quota-only --apply --json
+hone-cli cloud migrate --from-data-dir ./data --skill-registry-only --apply --json
+hone-cli cloud migrate --from-data-dir ./data --notification-prefs-only --apply --json
+hone-cli cloud migrate --from-data-dir ./data --portfolio-only --apply --json
+hone-cli cloud migrate --from-data-dir ./data --llm-audit-only --apply --json
+hone-cli cloud migrate --from-data-dir ./data --company-profiles-only --apply --json
 hone-cli cloud migrate --from-data-dir ./data --upload-oss --apply --concurrency 12 --json
 hone-cli cloud migrate --from-data-dir ./data --upload-oss --apply --reuse-existing --concurrency 4 --json
 ```
 
-The migrator uploads recognized durable files and indexes them in PG `cloud_documents`. It also imports legacy `sessions/*.json` into PG `cloud_sessions`, web invite users / auth sessions from the configured SQLite DB into PG, and `conversation_quota/*.json` into PG; use `--session-only --apply`, `--web-auth-only --apply`, or `--quota-only --apply` for fast idempotent passes before the larger object migration. Use the lower-concurrency `--reuse-existing` retry when proxy or OSS connections drop during a large upload. SQLite files are currently counted but skipped when they still need dedicated structured import. Audit, portfolio, cron, notification preference, KB, and company-profile hot-path repositories are still local until their dedicated PG-backed adapters are completed; sessions, web auth, and quota are PG-backed in `cloud.mode=cloud`.
+The migrator uploads recognized durable files and indexes them in PG `cloud_documents`. It also imports legacy `sessions/*.json` into PG `cloud_sessions`, web invite users / auth sessions from the configured SQLite DB into PG, `conversation_quota/*.json` into PG, `runtime/skill_registry.json` into PG, `notif_prefs/*.json` into PG, `portfolio/*.json` into PG, `llm_audit.sqlite3` rows into PG, and actor-scoped `company_profiles/**/*.md` into PG `cloud_company_profile_files`; use `--session-only --apply`, `--web-auth-only --apply`, `--quota-only --apply`, `--skill-registry-only --apply`, `--notification-prefs-only --apply`, `--portfolio-only --apply`, `--llm-audit-only --apply`, or `--company-profiles-only --apply` for fast idempotent passes before the larger object migration. Use the lower-concurrency `--reuse-existing` retry when proxy or OSS connections drop during a large upload. Historical SQLite files outside sessions / web auth / LLM audit are still counted by the broad migrator but are not current runtime hot-path dependencies. Sessions, web auth, quota, cron, skill registry, notification prefs, portfolio, LLM audit, and company profiles are PG-backed in `cloud.mode=cloud`; generated images, uploads, and attachment/document surfaces are OSS-backed where the runtime has actor/file context.
 
 ## Worker Route
 

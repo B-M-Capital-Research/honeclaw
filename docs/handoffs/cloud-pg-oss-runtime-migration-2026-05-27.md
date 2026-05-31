@@ -1,9 +1,9 @@
 # Cloud PG / OSS Runtime Migration Handoff
 
 - title: Cloud PG / OSS Runtime Migration Handoff
-- status: in_progress
+- status: done
 - created_at: 2026-05-27
-- updated_at: 2026-05-30
+- updated_at: 2026-05-31
 - owner: Codex
 - related_files:
   - `config.example.yaml`
@@ -13,6 +13,8 @@
 - `memory/src/quota.rs`
 - `memory/src/session.rs`
 - `memory/src/web_auth.rs`
+- `memory/src/llm_audit.rs`
+- `memory/src/portfolio.rs`
 - `memory/src/cron_job/mod.rs`
 - `memory/src/cron_job/storage.rs`
 - `memory/src/cron_job/history.rs`
@@ -28,7 +30,7 @@
   - `crates/hone-web-api/src/cloud_oss.rs`
   - `crates/hone-web-api/src/routes/public.rs`
   - `crates/hone-web-api/src/routes/files.rs`
-  - `docs/current-plans/cloud-pg-oss-runtime-migration.md`
+  - `docs/archive/plans/cloud-pg-oss-runtime-migration.md`
 - related_docs:
   - `docs/current-plan.md`
   - `docs/repo-map.md`
@@ -46,10 +48,7 @@ Code now has first-class `cloud.postgres` and `cloud.oss` config sections with e
 
 Core runtime state is not fully cloud-backed yet. These paths are still local by design:
 
-- LLM audit SQLite
-- portfolio JSON
-- notification preferences JSON
-- generated images and KB/data artifacts
+- KB/data artifacts and actor sandbox research docs
 - runtime logs
 - iMessage `chat.db` when that channel is enabled
 
@@ -60,6 +59,10 @@ Session JSON is no longer a local durable dependency in `cloud.mode=cloud` when 
 Web auth is no longer a local durable dependency in `cloud.mode=cloud` when PG is configured: invite users, API key hashes, and public login sessions now use PG `cloud_web_invite_users` / `cloud_web_auth_sessions`, and the shared SQLite rows are migration input / rollback evidence only.
 
 Cron definitions and execution history are no longer local durable dependencies in `cloud.mode=cloud` when PG is configured: definitions use PG `cloud_cron_jobs`, execution history uses PG `cloud_cron_job_runs`, and due-slot dedupe uses PG `cloud_cron_job_claims` before execution. Legacy cron JSON files are migration input / rollback evidence only.
+
+Skill registry, notification prefs, portfolio state, and LLM audit records are no longer local durable dependencies in `cloud.mode=cloud` when PG is configured: global skill toggles use PG `cloud_skill_registry`, notification preferences use PG `cloud_notification_prefs`, portfolio state uses PG `cloud_portfolios`, and LLM audit uses PG `cloud_llm_audit_records`. Legacy JSON / SQLite files remain migration input / rollback evidence only.
+
+Generated images are no longer a declared local durable dependency in `cloud.mode=cloud` when OSS is configured: response finalization uploads both sandbox-local generated images and existing `gen_images` files to OSS and returns `oss://...` markers. Local mode keeps `file://` markers and local `gen_images` behavior.
 
 Startup now logs a redacted local-dependency summary whenever cloud runtime config is detected. If `cloud.strict_no_local_storage` or `HONE_CLOUD_STRICT_NO_LOCAL_STORAGE` is set true before PG-backed repositories are implemented, startup fails with the remaining dependency list.
 
@@ -138,10 +141,58 @@ Cron PG cutover added:
 - `hone-cli cloud doctor --ensure-schema --json` now reports `local_durable_dependency_count=6`; `cron_jobs_dir` disappeared from the remaining durable local dependency list.
 - Validation: `cargo test -p hone-memory cron_job --lib`, `cargo test -p hone-core cloud_runtime --lib`, and `cargo check --workspace --all-targets --exclude hone-desktop` passed.
 
+Skill registry PG cutover added:
+
+- `hone_tools::skill_registry` keeps the existing local JSON API, but `HoneBotCore::new` now injects PG `CloudPgRuntime` in `cloud.mode=cloud` when PG is configured.
+- Runtime/tool/Web skill reads and Web skill enabled/disabled writes now use PG `cloud_skill_registry` in cloud mode; local mode keeps `data/runtime/skill_registry.json`.
+- `hone-cli cloud migrate --from-data-dir ./data --skill-registry-only --apply --json` imports a legacy runtime skill registry JSON into PG when present. On this machine the file is absent, so the verification run returned 0 changed / 0 skipped with 0 conflicts and did not overwrite any existing PG row.
+- `hone-cli cloud doctor --ensure-schema --json` now reports `local_durable_dependency_count=5`; `data/runtime/skill_registry.json` disappeared from the remaining durable local dependency list.
+- Validation: `cargo test --offline -p hone-tools skill_registry --lib`, `cargo test --offline -p hone-core cloud_runtime --lib`, `cargo check --offline -p hone-core -p hone-tools -p hone-channels -p hone-web-api -p hone-cli --tests`, and `HONE_CLOUD_MODE=local hone-cli cloud doctor --json` passed.
+
+Notification prefs PG cutover added:
+
+- `hone_event_engine::prefs::FilePrefsStorage` keeps the existing local JSON API, but `HoneBotCore::new` now injects PG `CloudPgRuntime` in `cloud.mode=cloud` when PG is configured.
+- Runtime notification routing, `notification_prefs` tool edits, Web notification prefs API, schedule overview, and mainline distill now go through `cloud_notification_prefs` in cloud mode; local mode keeps `data/notif_prefs/*.json`.
+- `hone-cli cloud migrate --from-data-dir ./data --notification-prefs-only --apply --json` imports legacy notification prefs JSON into PG. On this machine a final verification run counted 22 JSON files, changed 0 rows, skipped 22 rows, and had 0 conflicts.
+- `hone-cli cloud doctor --ensure-schema --json` now reports `local_durable_dependency_count=4`; `data/notif_prefs` disappeared from the remaining durable local dependency list.
+- Validation: `cargo test --offline -p hone-event-engine prefs --lib`, `cargo test --offline -p hone-core cloud_runtime --lib`, `cargo check --offline -p hone-core -p hone-event-engine -p hone-tools -p hone-channels -p hone-web-api -p hone-cli --tests`, and `HONE_CLOUD_MODE=local hone-cli cloud doctor --json` passed.
+
+Portfolio PG cutover added:
+
+- `PortfolioStorage` keeps the existing local JSON API, but `HoneBotCore::new` now injects PG `CloudPgRuntime` in `cloud.mode=cloud` when PG is configured.
+- Portfolio tool, Web portfolio API, public digest/admin event-engine reads, and event-engine subscription registry refresh now go through `cloud_portfolios` in cloud mode; local mode keeps `data/portfolio/portfolio_*.json`.
+- `hone-cli cloud migrate --from-data-dir ./data --portfolio-only --apply --json` imports legacy portfolio JSON into PG. On this machine a verification run counted 25 JSON files, changed 1 row, skipped 24 rows, and had 0 conflicts.
+- `hone-cli cloud doctor --ensure-schema --json` now reports `local_durable_dependency_count=3`; `data/portfolio` disappeared from the remaining durable local dependency list. The remaining listed paths are `./data/agent-sandboxes`, `data/gen_images`, and `data/llm_audit.sqlite3`.
+- Validation: `cargo test --offline -p hone-memory portfolio --lib`, `cargo test --offline -p hone-core cloud_runtime --lib`, `cargo check --offline -p hone-core -p hone-memory -p hone-event-engine -p hone-tools -p hone-channels -p hone-web-api -p hone-cli --tests`, and `HONE_CLOUD_MODE=local hone-cli cloud doctor --json` passed.
+
+LLM audit PG cutover added:
+
+- `LlmAuditStorage` keeps the existing local SQLite API, but `HoneBotCore::new` now injects PG `CloudPgRuntime` in `cloud.mode=cloud` when PG is configured.
+- Runtime LLM audit writes and Web audit list/detail reads now go through `cloud_llm_audit_records` in cloud mode; local mode keeps `data/llm_audit.sqlite3`.
+- `hone-cli cloud migrate --from-data-dir ./data --llm-audit-only --apply --json` imports legacy SQLite audit rows into PG in 500-row batches. On this machine a verification run counted 1028 rows, changed 0 rows, skipped 1028 rows, and had 0 conflicts.
+- `hone-cli cloud doctor --ensure-schema --json` now reports `local_durable_dependency_count=2`; `data/llm_audit.sqlite3` disappeared from the remaining durable local dependency list. The remaining listed paths are `./data/agent-sandboxes` and `data/gen_images`.
+- Validation: `cargo test --offline -p hone-memory llm_audit --lib`, `cargo test --offline -p hone-core cloud_runtime --lib`, `cargo check --offline -p hone-core -p hone-memory -p hone-channels -p hone-web-api -p hone-cli --tests`, and `HONE_CLOUD_MODE=local hone-cli cloud doctor --json` passed.
+
+Generated image OSS finalization tightened:
+
+- `response_finalizer` now uploads images already under `data/gen_images` to OSS in cloud mode instead of returning a durable local `file://` path.
+- `hone-cli cloud doctor --ensure-schema --json` now reports `local_durable_dependency_count=1`; `data/gen_images` disappeared from the remaining durable local dependency list. The only listed path is `./data/agent-sandboxes`.
+- Validation: `cargo test --offline -p hone-channels normalize_local_image_references --lib`, `cargo test --offline -p hone-core cloud_runtime --lib`, `cargo check --offline -p hone-core -p hone-memory -p hone-channels -p hone-web-api -p hone-cli --tests`, and `HONE_CLOUD_MODE=local hone-cli cloud doctor --json` passed.
+
+Company profile PG cutover completed:
+
+- `CompanyProfileStorage` keeps the existing actor-scoped Markdown API, but `HoneBotCore::new` now injects PG `CloudPgRuntime` in `cloud.mode=cloud` when PG is configured.
+- Cloud mode stores `profile.md` and `events/*.md` rows in PG `cloud_company_profile_files`; local mode keeps repo-external actor sandbox files.
+- Event-engine mainline distill, admin digest context, public digest context, company profile API reads, and company profile transfer/import paths now go through `CompanyProfileStorage`, so they resolve the same backend as the current mode.
+- Existing `company_portrait` / native-file runner behavior remains compatible: successful response finalization scans the current actor sandbox `company_profiles/` and upserts touched Markdown files to PG in cloud mode.
+- `hone-cli cloud migrate --from-data-dir ./data --company-profiles-only --apply --json` imports legacy actor-scoped company profile Markdown into PG. On this machine it counted 204 company-profile files, imported 172 actor-scoped Markdown files, and had 0 conflicts.
+- `hone-cli cloud doctor --ensure-schema --json` now reports `local_durable_dependency_count=0`; `./data/agent-sandboxes` disappeared from the remaining durable local dependency list. Local mode also reports 0 local durable dependencies.
+- Validation: `cargo test --offline -p hone-core cloud_runtime --lib`, `cargo test --offline -p hone-memory company_profile --lib`, `cargo test --offline -p hone-event-engine mainline_distill --lib`, `cargo test --offline -p hone-channels normalize_local_image_references --lib`, `cargo check --offline -p hone-core -p hone-memory -p hone-event-engine -p hone-channels -p hone-web-api -p hone-cli --tests`, `HONE_CLOUD_MODE=cloud cargo run --offline -p hone-cli -- cloud doctor --ensure-schema --json`, and `HONE_CLOUD_MODE=local cargo run --offline -p hone-cli -- cloud doctor --json` passed.
+
 ## Risks / Open Questions
 
-- PG-backed implementations still need to replace the remaining local JSON / SQLite hot-path stores before this can honestly be called “all local removed.”
-- Some durable file surfaces now have OSS paths in cloud mode: public uploads, channel attachment ingest, generated image finalization, and local file tools. Company profile / audit / portfolio / notification prefs hot paths still need dedicated PG / OSS adapters; sessions, web auth, quota, and cron are now cut over to PG in cloud mode.
-- SQLite structured import is pending; do not upload `llm_audit.sqlite3` as a blob as a substitute for PG audit rows. This is now the main migration gap for historical local state.
+- The migration objective is complete for current runtime durable dependencies: cloud doctor is 0 when PG/R2 are configured, and local mode remains compatible.
+- Agent native-file company-profile edits sync to PG at successful response finalization. If a runner crashes or is killed before finalization, run `HONE_CLOUD_MODE=cloud hone-cli cloud migrate --from-data-dir ./data --company-profiles-only --apply --json` to backfill the local sandbox copy.
+- Historical SQLite files that are not sessions / web auth / LLM audit remain counted by the broad file migrator but are not current runtime hot-path dependencies.
 - The local desktop remote-backend health at `https://hone-claw.com/api/meta` was not revalidated in this slice.
 - `.env`, `config.yaml`, `data/`, logs, and runtime backend JSON must remain untracked.

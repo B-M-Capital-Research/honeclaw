@@ -24,12 +24,13 @@ use hone_core::{ActorIdentity, LlmAuditSink};
 use hone_llm::{LlmProvider, LlmResolver};
 use hone_memory::{
     CompanyProfileStorage, ConversationQuotaStorage, CronJobStorage, LlmAuditStorage,
-    SessionStorage,
+    SessionStorage, configure_cloud_company_profile_storage, configure_cloud_llm_audit_storage,
+    configure_cloud_portfolio_storage,
 };
 use hone_scheduler::{HoneScheduler, SchedulerEvent};
 use hone_tools::{
     CronJobTool, DeepResearchTool, DiscoverSkillsTool, LoadSkillTool, ToolExecutionGuard,
-    ToolRegistry,
+    ToolRegistry, configure_cloud_notification_prefs, configure_cloud_skill_registry,
 };
 use tokio::sync::mpsc;
 
@@ -91,6 +92,11 @@ impl HoneBotCore {
             ConversationQuotaStorage::new(&config.storage.conversation_quota_dir)
                 .expect("failed to initialize conversation quota storage")
         };
+        configure_cloud_skill_registry(cloud_pg_runtime.clone());
+        configure_cloud_notification_prefs(cloud_pg_runtime.clone());
+        configure_cloud_portfolio_storage(cloud_pg_runtime.clone());
+        configure_cloud_llm_audit_storage(cloud_pg_runtime.clone());
+        configure_cloud_company_profile_storage(cloud_pg_runtime.clone());
         let company_profile_storage = CompanyProfileStorage::new(sandbox_base_dir());
         let llm = Self::create_llm_provider(&config);
         let auxiliary_llm = Self::create_auxiliary_llm_provider(&config);

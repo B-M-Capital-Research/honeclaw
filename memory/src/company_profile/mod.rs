@@ -15,6 +15,7 @@ mod storage;
 mod transfer;
 mod types;
 
+pub use storage::configure_cloud_company_profile_storage;
 pub use types::{
     AppendEventInput, CompanyProfileConflictDecision, CompanyProfileDocument,
     CompanyProfileEventDocument, CompanyProfileImportApplyInput, CompanyProfileImportApplyResult,

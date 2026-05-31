@@ -707,50 +707,13 @@ fn normalize_heartbeat_beijing_trigger_time(
     (normalized, normalized_from)
 }
 
-/// 直接从 `notif_prefs_dir/{actor_slug}.json` 读 actor 的 quiet_hours + timezone。
-/// 不依赖 hone-event-engine,只解析需要的两个字段；老 prefs JSON 缺字段返回 None。
+/// 通过 cloud-aware notification prefs 后端读 actor 的 quiet_hours + timezone。
 /// 第二个返回值是 actor 的 timezone（IANA 名），用于 `quiet_window_active` 解释 from/to。
 fn load_actor_quiet_hours(
     core: &HoneBotCore,
     actor: &hone_core::ActorIdentity,
 ) -> Option<(hone_core::quiet::QuietHours, Option<String>)> {
-    #[derive(serde::Deserialize)]
-    struct Probe {
-        #[serde(default)]
-        timezone: Option<String>,
-        #[serde(default)]
-        quiet_hours: Option<hone_core::quiet::QuietHours>,
-    }
-    let dir = std::path::Path::new(&core.config.storage.notif_prefs_dir);
-    // 与 hone-event-engine::prefs::actor_slug 保持一致(scope 为空时用 "direct"
-    // 占位,字符按 alnum/'-' 之外替换 '_'),否则文件路径不匹配,quiet_hours 永远
-    // 读不到。这里复制实现避免引入 hone-event-engine 依赖。
-    let scope = actor
-        .channel_scope
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .unwrap_or("direct");
-    let sanitize = |s: &str| -> String {
-        s.chars()
-            .map(|c| {
-                if c.is_alphanumeric() || c == '-' {
-                    c
-                } else {
-                    '_'
-                }
-            })
-            .collect()
-    };
-    let slug = format!(
-        "{}__{}__{}",
-        sanitize(&actor.channel),
-        sanitize(scope),
-        sanitize(&actor.user_id)
-    );
-    let path = dir.join(format!("{slug}.json"));
-    let text = std::fs::read_to_string(&path).ok()?;
-    let probe: Probe = serde_json::from_str(&text).ok()?;
-    Some((probe.quiet_hours?, probe.timezone))
+    hone_tools::load_notification_quiet_hours(&core.config.storage.notif_prefs_dir, actor)
 }
 
 fn truncate_for_log(text: &str, max_chars: usize) -> String {
@@ -1188,6 +1151,7 @@ fn heartbeat_execution_from_content(
     )
 }
 
+#[cfg(test)]
 fn heartbeat_execution_from_content_at(
     content: &str,
     heartbeat_model: &str,

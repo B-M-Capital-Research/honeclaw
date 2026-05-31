@@ -19,7 +19,7 @@ use tokio_postgres::{Client as PgClient, Config as PgConfig, NoTls};
 use url::Url;
 
 use crate::config::{CloudConfig, HoneConfig, OssConfig, PostgresConfig};
-use crate::{ActorIdentity, HoneError, HoneResult};
+use crate::{ActorIdentity, HoneError, HoneResult, LlmAuditRecord};
 
 type HmacSha1 = Hmac<Sha1>;
 type HmacSha256 = Hmac<sha2::Sha256>;
@@ -79,6 +79,94 @@ pub struct CloudDocumentIndex {
     pub sha256: String,
     pub size_bytes: i64,
     pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct CloudSkillRegistryImportReport {
+    pub changed_rows: usize,
+    pub skipped_rows: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CloudNotificationPrefsRecord {
+    pub actor_storage_key: String,
+    pub prefs: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct CloudNotificationPrefsImportReport {
+    pub changed_rows: usize,
+    pub skipped_rows: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CloudPortfolioRecord {
+    pub actor_storage_key: String,
+    pub actor: serde_json::Value,
+    pub portfolio: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct CloudPortfolioImportReport {
+    pub changed_rows: usize,
+    pub skipped_rows: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CloudCompanyProfileFileRecord {
+    pub actor_storage_key: String,
+    pub actor: serde_json::Value,
+    pub profile_id: String,
+    pub relative_path: String,
+    pub content: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct CloudCompanyProfileImportReport {
+    pub changed_rows: usize,
+    pub skipped_rows: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CloudLlmAuditRecord {
+    pub id: String,
+    pub actor_storage_key: Option<String>,
+    pub created_at: String,
+    pub record: serde_json::Value,
+}
+
+impl CloudLlmAuditRecord {
+    pub fn from_audit_record(record: &LlmAuditRecord) -> HoneResult<Self> {
+        Ok(Self {
+            id: record.id.clone(),
+            actor_storage_key: record.actor.as_ref().map(ActorIdentity::storage_key),
+            created_at: record.created_at.clone(),
+            record: serde_json::to_value(record)
+                .map_err(|err| HoneError::Serialization(err.to_string()))?,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct CloudLlmAuditFilter {
+    pub actor_channel: Option<String>,
+    pub actor_user_id: Option<String>,
+    pub actor_scope: Option<String>,
+    pub session_id: Option<String>,
+    pub success: Option<bool>,
+    pub source: Option<String>,
+    pub provider: Option<String>,
+    pub date_from: Option<String>,
+    pub date_to: Option<String>,
+    pub page: Option<u32>,
+    pub page_size: Option<u32>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct CloudLlmAuditImportReport {
+    pub changed_rows: usize,
+    pub skipped_rows: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -388,6 +476,37 @@ CREATE TABLE IF NOT EXISTS cloud_llm_audit_records (
   record JSONB NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE INDEX IF NOT EXISTS idx_cloud_llm_audit_created_at
+  ON cloud_llm_audit_records(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_cloud_llm_audit_actor_time
+  ON cloud_llm_audit_records(actor_storage_key, created_at DESC);
+CREATE TABLE IF NOT EXISTS cloud_skill_registry (
+  registry_key TEXT PRIMARY KEY,
+  registry JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS cloud_notification_prefs (
+  actor_storage_key TEXT PRIMARY KEY,
+  prefs JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS cloud_portfolios (
+  actor_storage_key TEXT PRIMARY KEY,
+  actor JSONB NOT NULL,
+  portfolio JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS cloud_company_profile_files (
+  actor_storage_key TEXT NOT NULL,
+  actor JSONB NOT NULL,
+  profile_id TEXT NOT NULL,
+  relative_path TEXT NOT NULL,
+  content TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (actor_storage_key, profile_id, relative_path)
+);
+CREATE INDEX IF NOT EXISTS idx_cloud_company_profile_files_actor
+  ON cloud_company_profile_files(actor_storage_key, updated_at DESC);
 INSERT INTO cloud_schema_migrations(version)
 VALUES ('20260529_pg_oss_runtime_foundation')
 ON CONFLICT (version) DO NOTHING;
@@ -1389,6 +1508,621 @@ LIMIT $9
             .collect())
     }
 
+    pub async fn get_skill_registry(&self) -> HoneResult<Option<serde_json::Value>> {
+        let client = self.connect_client().await?;
+        let row = client
+            .query_opt(
+                "SELECT registry FROM cloud_skill_registry WHERE registry_key = 'global'",
+                &[],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres skill registry 读取失败: {err}")))?;
+        Ok(row.map(|row| row.get(0)))
+    }
+
+    pub async fn import_skill_registry(
+        &self,
+        registry: Option<serde_json::Value>,
+    ) -> HoneResult<CloudSkillRegistryImportReport> {
+        let Some(registry) = registry else {
+            return Ok(CloudSkillRegistryImportReport::default());
+        };
+        let client = self.connect_client().await?;
+        let row = client
+            .query_one(
+                r#"
+WITH upserted AS (
+INSERT INTO cloud_skill_registry(registry_key, registry)
+VALUES ('global', $1)
+ON CONFLICT(registry_key)
+DO UPDATE SET registry = EXCLUDED.registry, updated_at = now()
+WHERE cloud_skill_registry.registry IS DISTINCT FROM EXCLUDED.registry
+RETURNING 1
+)
+SELECT (SELECT count(*)::bigint FROM upserted)
+"#,
+                &[&registry],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres skill registry import 失败: {err:?}"))
+            })?;
+        let changed_rows = row.get::<_, i64>(0).max(0) as usize;
+        Ok(CloudSkillRegistryImportReport {
+            changed_rows,
+            skipped_rows: if changed_rows == 0 { 1 } else { 0 },
+        })
+    }
+
+    pub async fn get_notification_prefs(
+        &self,
+        actor_storage_key: &str,
+    ) -> HoneResult<Option<serde_json::Value>> {
+        let client = self.connect_client().await?;
+        let row = client
+            .query_opt(
+                "SELECT prefs FROM cloud_notification_prefs WHERE actor_storage_key = $1",
+                &[&actor_storage_key],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres notification prefs 读取失败: {err}"))
+            })?;
+        Ok(row.map(|row| row.get(0)))
+    }
+
+    pub async fn upsert_notification_prefs(
+        &self,
+        actor_storage_key: &str,
+        prefs: serde_json::Value,
+    ) -> HoneResult<()> {
+        let client = self.connect_client().await?;
+        client
+            .execute(
+                r#"
+INSERT INTO cloud_notification_prefs(actor_storage_key, prefs)
+VALUES ($1, $2)
+ON CONFLICT(actor_storage_key)
+DO UPDATE SET prefs = EXCLUDED.prefs, updated_at = now()
+"#,
+                &[&actor_storage_key, &prefs],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres notification prefs 写入失败: {err}"))
+            })?;
+        Ok(())
+    }
+
+    pub async fn import_notification_prefs(
+        &self,
+        records: &[CloudNotificationPrefsRecord],
+    ) -> HoneResult<CloudNotificationPrefsImportReport> {
+        if records.is_empty() {
+            return Ok(CloudNotificationPrefsImportReport::default());
+        }
+        let client = self.connect_client().await?;
+        let payload = serde_json::to_value(records)
+            .map_err(|err| HoneError::Serialization(err.to_string()))?;
+        let row = client
+            .query_one(
+                r#"
+WITH input_rows AS (
+  SELECT * FROM jsonb_to_recordset($1::jsonb) AS x(
+    actor_storage_key TEXT,
+    prefs JSONB
+  )
+),
+upserted AS (
+INSERT INTO cloud_notification_prefs(actor_storage_key, prefs)
+SELECT actor_storage_key, prefs FROM input_rows
+ON CONFLICT(actor_storage_key)
+DO UPDATE SET prefs = EXCLUDED.prefs, updated_at = now()
+WHERE cloud_notification_prefs.prefs IS DISTINCT FROM EXCLUDED.prefs
+RETURNING 1
+)
+SELECT
+  (SELECT count(*)::bigint FROM upserted),
+  (SELECT count(*)::bigint FROM input_rows)
+"#,
+                &[&payload],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres notification prefs import 失败: {err:?}"))
+            })?;
+        let changed_rows = row.get::<_, i64>(0).max(0) as usize;
+        let total_rows = row.get::<_, i64>(1).max(0) as usize;
+        Ok(CloudNotificationPrefsImportReport {
+            changed_rows,
+            skipped_rows: total_rows.saturating_sub(changed_rows),
+        })
+    }
+
+    pub async fn get_portfolio(
+        &self,
+        actor_storage_key: &str,
+    ) -> HoneResult<Option<CloudPortfolioRecord>> {
+        let client = self.connect_client().await?;
+        let row = client
+            .query_opt(
+                r#"
+SELECT actor_storage_key, actor, portfolio
+FROM cloud_portfolios
+WHERE actor_storage_key = $1
+"#,
+                &[&actor_storage_key],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres portfolio 读取失败: {err}")))?;
+        Ok(row.map(|row| CloudPortfolioRecord {
+            actor_storage_key: row.get(0),
+            actor: row.get(1),
+            portfolio: row.get(2),
+        }))
+    }
+
+    pub async fn list_portfolios(&self) -> HoneResult<Vec<CloudPortfolioRecord>> {
+        let client = self.connect_client().await?;
+        let rows = client
+            .query(
+                r#"
+SELECT actor_storage_key, actor, portfolio
+FROM cloud_portfolios
+ORDER BY COALESCE(portfolio->>'updated_at', '') DESC, updated_at DESC
+"#,
+                &[],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres portfolio 列表读取失败: {err}")))?;
+        Ok(rows
+            .into_iter()
+            .map(|row| CloudPortfolioRecord {
+                actor_storage_key: row.get(0),
+                actor: row.get(1),
+                portfolio: row.get(2),
+            })
+            .collect())
+    }
+
+    pub async fn upsert_portfolio(&self, record: CloudPortfolioRecord) -> HoneResult<()> {
+        let client = self.connect_client().await?;
+        client
+            .execute(
+                r#"
+INSERT INTO cloud_portfolios(actor_storage_key, actor, portfolio)
+VALUES ($1, $2, $3)
+ON CONFLICT(actor_storage_key)
+DO UPDATE SET
+  actor = EXCLUDED.actor,
+  portfolio = EXCLUDED.portfolio,
+  updated_at = now()
+"#,
+                &[&record.actor_storage_key, &record.actor, &record.portfolio],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres portfolio 写入失败: {err}")))?;
+        Ok(())
+    }
+
+    pub async fn import_portfolios(
+        &self,
+        records: &[CloudPortfolioRecord],
+    ) -> HoneResult<CloudPortfolioImportReport> {
+        if records.is_empty() {
+            return Ok(CloudPortfolioImportReport::default());
+        }
+        let client = self.connect_client().await?;
+        let payload = serde_json::to_value(records)
+            .map_err(|err| HoneError::Serialization(err.to_string()))?;
+        let row = client
+            .query_one(
+                r#"
+WITH input_rows AS (
+  SELECT * FROM jsonb_to_recordset($1::jsonb) AS x(
+    actor_storage_key TEXT,
+    actor JSONB,
+    portfolio JSONB
+  )
+),
+upserted AS (
+INSERT INTO cloud_portfolios(actor_storage_key, actor, portfolio)
+SELECT actor_storage_key, actor, portfolio FROM input_rows
+ON CONFLICT(actor_storage_key)
+DO UPDATE SET
+  actor = EXCLUDED.actor,
+  portfolio = EXCLUDED.portfolio,
+  updated_at = now()
+WHERE cloud_portfolios.actor IS DISTINCT FROM EXCLUDED.actor
+   OR cloud_portfolios.portfolio IS DISTINCT FROM EXCLUDED.portfolio
+RETURNING 1
+)
+SELECT
+  (SELECT count(*)::bigint FROM upserted),
+  (SELECT count(*)::bigint FROM input_rows)
+"#,
+                &[&payload],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres portfolio import 失败: {err:?}")))?;
+        let changed_rows = row.get::<_, i64>(0).max(0) as usize;
+        let total_rows = row.get::<_, i64>(1).max(0) as usize;
+        Ok(CloudPortfolioImportReport {
+            changed_rows,
+            skipped_rows: total_rows.saturating_sub(changed_rows),
+        })
+    }
+
+    pub async fn list_company_profile_files(
+        &self,
+        actor_storage_key: Option<&str>,
+    ) -> HoneResult<Vec<CloudCompanyProfileFileRecord>> {
+        let client = self.connect_client().await?;
+        let actor_storage_key = actor_storage_key.map(str::to_string);
+        let rows = client
+            .query(
+                r#"
+SELECT
+  actor_storage_key,
+  actor,
+  profile_id,
+  relative_path,
+  content,
+  updated_at::text
+FROM cloud_company_profile_files
+WHERE ($1::text IS NULL OR actor_storage_key = $1)
+ORDER BY actor_storage_key ASC, profile_id ASC, relative_path ASC
+"#,
+                &[&actor_storage_key],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres company profile 列表读取失败: {err}"))
+            })?;
+        Ok(rows
+            .into_iter()
+            .map(|row| CloudCompanyProfileFileRecord {
+                actor_storage_key: row.get(0),
+                actor: row.get(1),
+                profile_id: row.get(2),
+                relative_path: row.get(3),
+                content: row.get(4),
+                updated_at: row.get(5),
+            })
+            .collect())
+    }
+
+    pub async fn get_company_profile_file(
+        &self,
+        actor_storage_key: &str,
+        profile_id: &str,
+        relative_path: &str,
+    ) -> HoneResult<Option<CloudCompanyProfileFileRecord>> {
+        let client = self.connect_client().await?;
+        let row = client
+            .query_opt(
+                r#"
+SELECT
+  actor_storage_key,
+  actor,
+  profile_id,
+  relative_path,
+  content,
+  updated_at::text
+FROM cloud_company_profile_files
+WHERE actor_storage_key = $1
+  AND profile_id = $2
+  AND relative_path = $3
+"#,
+                &[&actor_storage_key, &profile_id, &relative_path],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres company profile 文件读取失败: {err}"))
+            })?;
+        Ok(row.map(|row| CloudCompanyProfileFileRecord {
+            actor_storage_key: row.get(0),
+            actor: row.get(1),
+            profile_id: row.get(2),
+            relative_path: row.get(3),
+            content: row.get(4),
+            updated_at: row.get(5),
+        }))
+    }
+
+    pub async fn upsert_company_profile_file(
+        &self,
+        record: CloudCompanyProfileFileRecord,
+    ) -> HoneResult<()> {
+        let client = self.connect_client().await?;
+        client
+            .execute(
+                r#"
+INSERT INTO cloud_company_profile_files(
+  actor_storage_key,
+  actor,
+  profile_id,
+  relative_path,
+  content,
+  updated_at
+)
+VALUES ($1, $2, $3, $4, $5, $6::timestamptz)
+ON CONFLICT(actor_storage_key, profile_id, relative_path)
+DO UPDATE SET
+  actor = EXCLUDED.actor,
+  content = EXCLUDED.content,
+  updated_at = EXCLUDED.updated_at
+"#,
+                &[
+                    &record.actor_storage_key,
+                    &record.actor,
+                    &record.profile_id,
+                    &record.relative_path,
+                    &record.content,
+                    &record.updated_at,
+                ],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres company profile 文件写入失败: {err}"))
+            })?;
+        Ok(())
+    }
+
+    pub async fn delete_company_profile(
+        &self,
+        actor_storage_key: &str,
+        profile_id: &str,
+    ) -> HoneResult<bool> {
+        let client = self.connect_client().await?;
+        let deleted = client
+            .execute(
+                r#"
+DELETE FROM cloud_company_profile_files
+WHERE actor_storage_key = $1 AND profile_id = $2
+"#,
+                &[&actor_storage_key, &profile_id],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres company profile 删除失败: {err}"))
+            })?;
+        Ok(deleted > 0)
+    }
+
+    pub async fn import_company_profile_files(
+        &self,
+        records: &[CloudCompanyProfileFileRecord],
+    ) -> HoneResult<CloudCompanyProfileImportReport> {
+        if records.is_empty() {
+            return Ok(CloudCompanyProfileImportReport::default());
+        }
+        let client = self.connect_client().await?;
+        let payload = serde_json::to_value(records)
+            .map_err(|err| HoneError::Serialization(err.to_string()))?;
+        let row = client
+            .query_one(
+                r#"
+WITH input_rows AS (
+  SELECT * FROM jsonb_to_recordset($1::jsonb) AS x(
+    actor_storage_key TEXT,
+    actor JSONB,
+    profile_id TEXT,
+    relative_path TEXT,
+    content TEXT,
+    updated_at TEXT
+  )
+),
+upserted AS (
+INSERT INTO cloud_company_profile_files(
+  actor_storage_key,
+  actor,
+  profile_id,
+  relative_path,
+  content,
+  updated_at
+)
+SELECT
+  actor_storage_key,
+  actor,
+  profile_id,
+  relative_path,
+  content,
+  updated_at::timestamptz
+FROM input_rows
+ON CONFLICT(actor_storage_key, profile_id, relative_path)
+DO UPDATE SET
+  actor = EXCLUDED.actor,
+  content = EXCLUDED.content,
+  updated_at = EXCLUDED.updated_at
+WHERE cloud_company_profile_files.actor IS DISTINCT FROM EXCLUDED.actor
+   OR cloud_company_profile_files.content IS DISTINCT FROM EXCLUDED.content
+   OR cloud_company_profile_files.updated_at IS DISTINCT FROM EXCLUDED.updated_at
+RETURNING 1
+)
+SELECT
+  (SELECT count(*)::bigint FROM upserted),
+  (SELECT count(*)::bigint FROM input_rows)
+"#,
+                &[&payload],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres company profile import 失败: {err:?}"))
+            })?;
+        let changed_rows = row.get::<_, i64>(0).max(0) as usize;
+        let total_rows = row.get::<_, i64>(1).max(0) as usize;
+        Ok(CloudCompanyProfileImportReport {
+            changed_rows,
+            skipped_rows: total_rows.saturating_sub(changed_rows),
+        })
+    }
+
+    pub async fn upsert_llm_audit_record(&self, record: LlmAuditRecord) -> HoneResult<()> {
+        let cloud_record = CloudLlmAuditRecord::from_audit_record(&record)?;
+        let client = self.connect_client().await?;
+        client
+            .execute(
+                r#"
+INSERT INTO cloud_llm_audit_records(id, actor_storage_key, record, created_at)
+VALUES ($1, $2, $3, $4::timestamptz)
+ON CONFLICT(id)
+DO UPDATE SET
+  actor_storage_key = EXCLUDED.actor_storage_key,
+  record = EXCLUDED.record,
+  created_at = EXCLUDED.created_at
+"#,
+                &[
+                    &cloud_record.id,
+                    &cloud_record.actor_storage_key,
+                    &cloud_record.record,
+                    &cloud_record.created_at,
+                ],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres LLM audit 写入失败: {err}")))?;
+        Ok(())
+    }
+
+    pub async fn get_llm_audit_record(&self, id: &str) -> HoneResult<Option<serde_json::Value>> {
+        let client = self.connect_client().await?;
+        let row = client
+            .query_opt(
+                "SELECT record FROM cloud_llm_audit_records WHERE id = $1",
+                &[&id],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres LLM audit 详情读取失败: {err}")))?;
+        Ok(row.map(|row| row.get(0)))
+    }
+
+    pub async fn list_llm_audit_records(
+        &self,
+        filter: CloudLlmAuditFilter,
+    ) -> HoneResult<(Vec<serde_json::Value>, i64)> {
+        let client = self.connect_client().await?;
+        let page = filter.page.unwrap_or(1).max(1);
+        let page_size = filter.page_size.unwrap_or(50).clamp(1, 100);
+        let limit = i64::from(page_size);
+        let offset = i64::from((page - 1) * page_size);
+        let success = filter.success;
+        let count_row = client
+            .query_one(
+                r#"
+SELECT count(*)::bigint
+FROM cloud_llm_audit_records
+WHERE ($1::text IS NULL OR record->'actor'->>'channel' = $1)
+  AND ($2::text IS NULL OR record->'actor'->>'user_id' = $2)
+  AND ($3::text IS NULL OR COALESCE(record->'actor'->>'channel_scope', '') = $3)
+  AND ($4::text IS NULL OR record->>'session_id' = $4)
+  AND ($5::boolean IS NULL OR (record->>'success')::boolean = $5)
+  AND ($6::text IS NULL OR record->>'source' = $6)
+  AND ($7::text IS NULL OR record->>'provider' = $7)
+  AND ($8::text IS NULL OR created_at >= $8::timestamptz)
+  AND ($9::text IS NULL OR created_at <= $9::timestamptz)
+"#,
+                &[
+                    &filter.actor_channel,
+                    &filter.actor_user_id,
+                    &filter.actor_scope,
+                    &filter.session_id,
+                    &success,
+                    &filter.source,
+                    &filter.provider,
+                    &filter.date_from,
+                    &filter.date_to,
+                ],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres LLM audit 计数失败: {err}")))?;
+        let total = count_row.get::<_, i64>(0).max(0);
+        let rows = client
+            .query(
+                r#"
+SELECT record
+FROM cloud_llm_audit_records
+WHERE ($1::text IS NULL OR record->'actor'->>'channel' = $1)
+  AND ($2::text IS NULL OR record->'actor'->>'user_id' = $2)
+  AND ($3::text IS NULL OR COALESCE(record->'actor'->>'channel_scope', '') = $3)
+  AND ($4::text IS NULL OR record->>'session_id' = $4)
+  AND ($5::boolean IS NULL OR (record->>'success')::boolean = $5)
+  AND ($6::text IS NULL OR record->>'source' = $6)
+  AND ($7::text IS NULL OR record->>'provider' = $7)
+  AND ($8::text IS NULL OR created_at >= $8::timestamptz)
+  AND ($9::text IS NULL OR created_at <= $9::timestamptz)
+ORDER BY created_at DESC, id DESC
+LIMIT $10 OFFSET $11
+"#,
+                &[
+                    &filter.actor_channel,
+                    &filter.actor_user_id,
+                    &filter.actor_scope,
+                    &filter.session_id,
+                    &success,
+                    &filter.source,
+                    &filter.provider,
+                    &filter.date_from,
+                    &filter.date_to,
+                    &limit,
+                    &offset,
+                ],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres LLM audit 列表读取失败: {err}")))?;
+        Ok((rows.into_iter().map(|row| row.get(0)).collect(), total))
+    }
+
+    pub async fn import_llm_audit_records(
+        &self,
+        records: &[CloudLlmAuditRecord],
+    ) -> HoneResult<CloudLlmAuditImportReport> {
+        if records.is_empty() {
+            return Ok(CloudLlmAuditImportReport::default());
+        }
+        let client = self.connect_client().await?;
+        let payload = serde_json::to_value(records)
+            .map_err(|err| HoneError::Serialization(err.to_string()))?;
+        let row = client
+            .query_one(
+                r#"
+WITH input_rows AS (
+  SELECT * FROM jsonb_to_recordset($1::jsonb) AS x(
+    id TEXT,
+    actor_storage_key TEXT,
+    created_at TEXT,
+    record JSONB
+  )
+),
+upserted AS (
+INSERT INTO cloud_llm_audit_records(id, actor_storage_key, record, created_at)
+SELECT id, actor_storage_key, record, created_at::timestamptz
+FROM input_rows
+ON CONFLICT(id)
+DO UPDATE SET
+  actor_storage_key = EXCLUDED.actor_storage_key,
+  record = EXCLUDED.record,
+  created_at = EXCLUDED.created_at
+WHERE cloud_llm_audit_records.actor_storage_key IS DISTINCT FROM EXCLUDED.actor_storage_key
+   OR cloud_llm_audit_records.record IS DISTINCT FROM EXCLUDED.record
+   OR cloud_llm_audit_records.created_at IS DISTINCT FROM EXCLUDED.created_at
+RETURNING 1
+)
+SELECT
+  (SELECT count(*)::bigint FROM upserted),
+  (SELECT count(*)::bigint FROM input_rows)
+"#,
+                &[&payload],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres LLM audit import 失败: {err:?}")))?;
+        let changed_rows = row.get::<_, i64>(0).max(0) as usize;
+        let total_rows = row.get::<_, i64>(1).max(0) as usize;
+        Ok(CloudLlmAuditImportReport {
+            changed_rows,
+            skipped_rows: total_rows.saturating_sub(changed_rows),
+        })
+    }
+
     pub async fn upsert_document_index(
         &self,
         actor_storage_key: &str,
@@ -2042,20 +2776,22 @@ pub fn local_durable_dependencies(config: &HoneConfig) -> Vec<String> {
     if !config.cloud.effective_mode().is_cloud_authoritative() {
         return Vec::new();
     }
-    let mut deps = vec![
-        config.storage.llm_audit_db_path.clone(),
-        config.storage.portfolio_dir.clone(),
-        config.storage.gen_images_dir.clone(),
-        config.storage.notif_prefs_dir.clone(),
-        "./data/runtime/skill_registry.json".to_string(),
-        "./data/agent-sandboxes".to_string(),
-    ];
+    let mut deps = Vec::new();
+    if !config.cloud.oss.is_configured() {
+        deps.push(config.storage.gen_images_dir.clone());
+    }
     if !config.cloud.postgres.is_configured() {
+        deps.push("./data/agent-sandboxes".to_string());
+        deps.push(config.storage.llm_audit_db_path.clone());
+        deps.push(config.storage.portfolio_dir.clone());
+        deps.push("./data/runtime/skill_registry.json".to_string());
+        deps.push(config.storage.notif_prefs_dir.clone());
         deps.push(config.storage.cron_jobs_dir.clone());
         deps.push(config.storage.sessions_dir.clone());
         deps.push(config.storage.session_sqlite_db_path.clone());
         deps.push(config.storage.conversation_quota_dir.clone());
     }
+    deps.retain(|dep| !dep.trim().is_empty());
     deps.sort();
     deps.dedup();
     deps
@@ -2330,22 +3066,30 @@ mod tests {
         config.cloud.postgres.user = "user".to_string();
         config.cloud.postgres.password = "password".to_string();
         config.cloud.postgres.database = "hone".to_string();
+        config.cloud.oss.access_key_id = "access".to_string();
+        config.cloud.oss.access_key_secret = "secret".to_string();
+        config.cloud.oss.bucket = "bucket".to_string();
+        config.cloud.oss.endpoint = "https://example.com".to_string();
         config.storage.sessions_dir = "/tmp/hone/sessions".to_string();
         config.storage.session_sqlite_db_path = "/tmp/hone/sessions.sqlite3".to_string();
         config.storage.conversation_quota_dir = "/tmp/hone/quota".to_string();
         config.storage.cron_jobs_dir = "/tmp/hone/cron".to_string();
+        config.storage.gen_images_dir = "/tmp/hone/gen_images".to_string();
         assert!(config.cloud.postgres.is_configured());
+        assert!(config.cloud.oss.is_configured());
         let deps = local_durable_dependencies(&config);
         assert!(!deps.iter().any(|dep| dep == "/tmp/hone/quota"));
         assert!(!deps.iter().any(|dep| dep == "/tmp/hone/sessions"));
         assert!(!deps.iter().any(|dep| dep == "/tmp/hone/cron"));
+        assert!(!deps.iter().any(|dep| dep == "/tmp/hone/gen_images"));
         assert!(
             !deps
                 .iter()
                 .any(|dep| dep == &config.storage.session_sqlite_db_path)
         );
         assert!(
-            deps.iter()
+            !deps
+                .iter()
                 .any(|dep| dep == &config.storage.llm_audit_db_path)
         );
         unsafe {

@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use hone_core::ActorIdentity;
+use hone_core::cloud_runtime::CloudPgRuntime;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -380,4 +381,5 @@ pub struct AppendEventInput {
 pub struct CompanyProfileStorage {
     pub(crate) root_dir: PathBuf,
     pub(crate) actor: Option<ActorIdentity>,
+    pub(crate) cloud: Option<CloudPgRuntime>,
 }

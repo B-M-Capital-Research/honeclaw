@@ -1,9 +1,11 @@
+use hone_core::cloud_runtime::{CloudLlmAuditFilter, CloudLlmAuditRecord, CloudPgRuntime};
 use hone_core::{HoneError, HoneResult, LlmAuditRecord, LlmAuditSink};
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
+use std::future::Future;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Mutex, OnceLock, RwLock};
 
 #[derive(Debug, Deserialize, Default)]
 pub struct AuditQueryFilter {
@@ -40,14 +42,41 @@ pub struct AuditRecordSummary {
 }
 
 pub struct LlmAuditStorage {
-    conn: Mutex<Connection>,
+    conn: Option<Mutex<Connection>>,
     retention_days: u32,
     write_count: AtomicU64,
     has_token_columns: AtomicBool,
+    cloud: Option<CloudPgRuntime>,
+}
+
+static CLOUD_LLM_AUDIT_STORAGE: OnceLock<RwLock<Option<CloudPgRuntime>>> = OnceLock::new();
+
+pub fn configure_cloud_llm_audit_storage(postgres: Option<CloudPgRuntime>) {
+    let lock = CLOUD_LLM_AUDIT_STORAGE.get_or_init(|| RwLock::new(None));
+    match lock.write() {
+        Ok(mut guard) => *guard = postgres,
+        Err(error) => tracing::warn!("llm audit cloud runtime lock poisoned: {error}"),
+    }
+}
+
+fn cloud_llm_audit_storage() -> Option<CloudPgRuntime> {
+    CLOUD_LLM_AUDIT_STORAGE
+        .get()
+        .and_then(|lock| lock.read().ok().and_then(|guard| guard.clone()))
 }
 
 impl LlmAuditStorage {
     pub fn new(path: impl AsRef<Path>, retention_days: u32) -> HoneResult<Self> {
+        if let Some(cloud) = cloud_llm_audit_storage() {
+            return Ok(Self {
+                conn: None,
+                retention_days: retention_days.max(1),
+                write_count: AtomicU64::new(0),
+                has_token_columns: AtomicBool::new(true),
+                cloud: Some(cloud),
+            });
+        }
+
         let path = path.as_ref().to_path_buf();
         ensure_parent_dir(&path)?;
 
@@ -61,10 +90,11 @@ impl LlmAuditStorage {
             .map_err(sql_err)?;
 
         let storage = Self {
-            conn: Mutex::new(conn),
+            conn: Some(Mutex::new(conn)),
             retention_days: retention_days.max(1),
             write_count: AtomicU64::new(0),
             has_token_columns: AtomicBool::new(false),
+            cloud: None,
         };
         storage.init_schema()?;
         storage.migrate_schema()?;
@@ -74,6 +104,16 @@ impl LlmAuditStorage {
     }
 
     pub fn new_readonly(path: impl AsRef<Path>) -> HoneResult<Self> {
+        if let Some(cloud) = cloud_llm_audit_storage() {
+            return Ok(Self {
+                conn: None,
+                retention_days: 0,
+                write_count: AtomicU64::new(0),
+                has_token_columns: AtomicBool::new(true),
+                cloud: Some(cloud),
+            });
+        }
+
         let conn = Connection::open_with_flags(
             path,
             rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI,
@@ -82,15 +122,66 @@ impl LlmAuditStorage {
         let has_token_columns = detect_token_columns(&conn)?;
 
         Ok(Self {
-            conn: Mutex::new(conn),
+            conn: Some(Mutex::new(conn)),
             retention_days: 0,
             write_count: AtomicU64::new(0),
             has_token_columns: AtomicBool::new(has_token_columns),
+            cloud: None,
         })
     }
 
+    pub fn new_local(path: impl AsRef<Path>, retention_days: u32) -> HoneResult<Self> {
+        let path = path.as_ref().to_path_buf();
+        ensure_parent_dir(&path)?;
+
+        let conn = Connection::open(&path)
+            .map_err(|e| HoneError::Config(format!("打开 LLM 审计 SQLite 失败: {e}")))?;
+        conn.pragma_update(None, "journal_mode", "WAL")
+            .map_err(sql_err)?;
+        conn.pragma_update(None, "synchronous", "NORMAL")
+            .map_err(sql_err)?;
+        conn.pragma_update(None, "busy_timeout", 5000)
+            .map_err(sql_err)?;
+
+        let storage = Self {
+            conn: Some(Mutex::new(conn)),
+            retention_days: retention_days.max(1),
+            write_count: AtomicU64::new(0),
+            has_token_columns: AtomicBool::new(false),
+            cloud: None,
+        };
+        storage.init_schema()?;
+        storage.migrate_schema()?;
+        storage.refresh_schema_flags()?;
+        storage.prune_expired()?;
+        Ok(storage)
+    }
+
+    pub fn new_readonly_local(path: impl AsRef<Path>) -> HoneResult<Self> {
+        let conn = Connection::open_with_flags(
+            path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI,
+        )
+        .map_err(|e| HoneError::Config(format!("以只读模式打开 LLM 审计 SQLite 失败: {e}")))?;
+        let has_token_columns = detect_token_columns(&conn)?;
+
+        Ok(Self {
+            conn: Some(Mutex::new(conn)),
+            retention_days: 0,
+            write_count: AtomicU64::new(0),
+            has_token_columns: AtomicBool::new(has_token_columns),
+            cloud: None,
+        })
+    }
+
+    fn local_conn(&self) -> HoneResult<&Mutex<Connection>> {
+        self.conn
+            .as_ref()
+            .ok_or_else(|| HoneError::Config("LLM audit storage is cloud-backed".to_string()))
+    }
+
     fn init_schema(&self) -> HoneResult<()> {
-        let conn = self.conn.lock().map_err(lock_err)?;
+        let conn = self.local_conn()?.lock().map_err(lock_err)?;
         conn.execute_batch(
             "
             CREATE TABLE IF NOT EXISTS llm_audit_records (
@@ -127,20 +218,23 @@ impl LlmAuditStorage {
     }
 
     fn migrate_schema(&self) -> HoneResult<()> {
-        let conn = self.conn.lock().map_err(lock_err)?;
+        let conn = self.local_conn()?.lock().map_err(lock_err)?;
         migrate_token_columns(&conn)
     }
 
     fn refresh_schema_flags(&self) -> HoneResult<()> {
-        let conn = self.conn.lock().map_err(lock_err)?;
+        let conn = self.local_conn()?.lock().map_err(lock_err)?;
         self.has_token_columns
             .store(detect_token_columns(&conn)?, Ordering::Relaxed);
         Ok(())
     }
 
     pub fn prune_expired(&self) -> HoneResult<()> {
+        if self.cloud.is_some() {
+            return Ok(());
+        }
         let cutoff = hone_core::beijing_now() - chrono::Duration::days(self.retention_days as i64);
-        let conn = self.conn.lock().map_err(lock_err)?;
+        let conn = self.local_conn()?.lock().map_err(lock_err)?;
         conn.execute(
             "DELETE FROM llm_audit_records WHERE created_at < ?1",
             params![cutoff.to_rfc3339()],
@@ -151,7 +245,7 @@ impl LlmAuditStorage {
 
     #[cfg(test)]
     pub fn count_records(&self) -> HoneResult<i64> {
-        let conn = self.conn.lock().map_err(lock_err)?;
+        let conn = self.local_conn()?.lock().map_err(lock_err)?;
         let count = conn
             .query_row("SELECT COUNT(*) FROM llm_audit_records", [], |row| {
                 row.get(0)
@@ -172,7 +266,36 @@ impl LlmAuditStorage {
         &self,
         filter: &AuditQueryFilter,
     ) -> HoneResult<(Vec<AuditRecordSummary>, i64)> {
-        let conn = self.conn.lock().map_err(lock_err)?;
+        if let Some(postgres) = self.cloud.clone() {
+            let cloud_filter = CloudLlmAuditFilter {
+                actor_channel: filter.actor_channel.clone(),
+                actor_user_id: filter.actor_user_id.clone(),
+                actor_scope: filter.actor_scope.clone(),
+                session_id: filter.session_id.clone(),
+                success: filter.success,
+                source: filter.source.clone(),
+                provider: filter.provider.clone(),
+                date_from: filter.date_from.clone(),
+                date_to: filter.date_to.clone(),
+                page: filter.page,
+                page_size: filter.page_size,
+            };
+            let (records, total) =
+                run_cloud_llm_audit(
+                    async move { postgres.list_llm_audit_records(cloud_filter).await },
+                )?;
+            let summaries = records
+                .into_iter()
+                .filter_map(|value| {
+                    serde_json::from_value::<LlmAuditRecord>(value)
+                        .ok()
+                        .map(audit_summary_from_record)
+                })
+                .collect();
+            return Ok((summaries, total));
+        }
+
+        let conn = self.local_conn()?.lock().map_err(lock_err)?;
         let token_select = if self.has_token_columns.load(Ordering::Relaxed) {
             "prompt_tokens, completion_tokens, total_tokens"
         } else {
@@ -292,7 +415,17 @@ impl LlmAuditStorage {
 
     pub fn get_audit_record(&self, id: &str) -> HoneResult<Option<LlmAuditRecord>> {
         use hone_core::ActorIdentity;
-        let conn = self.conn.lock().map_err(lock_err)?;
+        if let Some(postgres) = self.cloud.clone() {
+            let id = id.to_string();
+            let value =
+                run_cloud_llm_audit(async move { postgres.get_llm_audit_record(&id).await })?;
+            return value
+                .map(serde_json::from_value::<LlmAuditRecord>)
+                .transpose()
+                .map_err(|err| HoneError::Serialization(err.to_string()));
+        }
+
+        let conn = self.local_conn()?.lock().map_err(lock_err)?;
         let token_select = if self.has_token_columns.load(Ordering::Relaxed) {
             "prompt_tokens, completion_tokens, total_tokens"
         } else {
@@ -359,10 +492,57 @@ impl LlmAuditStorage {
             Ok(None)
         }
     }
+
+    pub fn export_records_page(
+        &self,
+        limit: usize,
+        offset: usize,
+    ) -> HoneResult<Vec<LlmAuditRecord>> {
+        let conn = self.local_conn()?.lock().map_err(lock_err)?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id FROM llm_audit_records ORDER BY created_at ASC, id ASC LIMIT ?1 OFFSET ?2",
+            )
+            .map_err(sql_err)?;
+        let ids = stmt
+            .query_map(params![limit as i64, offset as i64], |row| {
+                row.get::<_, String>(0)
+            })
+            .map_err(sql_err)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(sql_err)?;
+        drop(stmt);
+        drop(conn);
+
+        let mut records = Vec::new();
+        for id in ids {
+            if let Some(record) = self.get_audit_record(&id)? {
+                records.push(record);
+            }
+        }
+        Ok(records)
+    }
+
+    pub fn export_cloud_records_page(
+        &self,
+        limit: usize,
+        offset: usize,
+    ) -> HoneResult<Vec<CloudLlmAuditRecord>> {
+        self.export_records_page(limit, offset)?
+            .iter()
+            .map(CloudLlmAuditRecord::from_audit_record)
+            .collect()
+    }
 }
 
 impl LlmAuditSink for LlmAuditStorage {
     fn record(&self, record: LlmAuditRecord) -> HoneResult<()> {
+        if let Some(postgres) = self.cloud.clone() {
+            return run_cloud_llm_audit(
+                async move { postgres.upsert_llm_audit_record(record).await },
+            );
+        }
+
         let actor_channel = record.actor.as_ref().map(|actor| actor.channel.as_str());
         let actor_user_id = record.actor.as_ref().map(|actor| actor.user_id.as_str());
         let actor_scope = record
@@ -381,7 +561,7 @@ impl LlmAuditSink for LlmAuditStorage {
         let metadata_json = serde_json::to_string(&record.metadata)
             .map_err(|e| HoneError::Serialization(e.to_string()))?;
 
-        let conn = self.conn.lock().map_err(lock_err)?;
+        let conn = self.local_conn()?.lock().map_err(lock_err)?;
         conn.execute(
             "INSERT INTO llm_audit_records (
                 id, created_at, session_id,
@@ -418,6 +598,48 @@ impl LlmAuditSink for LlmAuditStorage {
         self.maybe_prune_after_write()?;
         Ok(())
     }
+}
+
+fn audit_summary_from_record(record: LlmAuditRecord) -> AuditRecordSummary {
+    AuditRecordSummary {
+        id: record.id,
+        created_at: record.created_at,
+        session_id: record.session_id,
+        actor_channel: record.actor.as_ref().map(|actor| actor.channel.clone()),
+        actor_user_id: record.actor.as_ref().map(|actor| actor.user_id.clone()),
+        actor_scope: record
+            .actor
+            .as_ref()
+            .and_then(|actor| actor.channel_scope.clone()),
+        source: record.source,
+        operation: record.operation,
+        provider: record.provider,
+        model: record.model,
+        success: record.success,
+        latency_ms: record.latency_ms,
+        prompt_tokens: record.prompt_tokens,
+        completion_tokens: record.completion_tokens,
+        total_tokens: record.total_tokens,
+    }
+}
+
+fn run_cloud_llm_audit<T, F>(future: F) -> HoneResult<T>
+where
+    T: Send + 'static,
+    F: Future<Output = HoneResult<T>> + Send + 'static,
+{
+    if tokio::runtime::Handle::try_current().is_ok() {
+        return std::thread::spawn(move || {
+            let runtime =
+                tokio::runtime::Runtime::new().map_err(|err| HoneError::Config(err.to_string()))?;
+            runtime.block_on(future)
+        })
+        .join()
+        .map_err(|_| HoneError::Storage("cloud llm audit worker panicked".to_string()))?;
+    }
+    let runtime =
+        tokio::runtime::Runtime::new().map_err(|err| HoneError::Config(err.to_string()))?;
+    runtime.block_on(future)
 }
 
 fn detect_token_columns(conn: &Connection) -> HoneResult<bool> {

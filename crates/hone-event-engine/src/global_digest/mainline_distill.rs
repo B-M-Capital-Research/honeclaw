@@ -26,6 +26,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use hone_core::ActorIdentity;
 use hone_llm::{LlmProvider, Message};
+use hone_memory::CompanyProfileStorage;
 use serde::{Deserialize, Serialize};
 
 /// 一只 ticker 的画像,蒸馏前的原料。
@@ -307,6 +308,14 @@ pub async fn distill_for_actor(
     holdings: &[String],
 ) -> DistilledMainlines {
     let profiles = scan_profiles(sandbox_root, Some(holdings));
+    distill_from_profiles(distiller, profiles, holdings).await
+}
+
+pub async fn distill_from_profiles(
+    distiller: &dyn MainlineDistiller,
+    profiles: Vec<ProfileSource>,
+    holdings: &[String],
+) -> DistilledMainlines {
     if profiles.is_empty() {
         return DistilledMainlines {
             by_ticker: HashMap::new(),
@@ -377,6 +386,43 @@ pub fn actor_sandbox_dir(base: &Path, actor: &ActorIdentity) -> PathBuf {
         .join(actor.scoped_user_fs_key())
 }
 
+pub fn scan_profiles_for_actor(
+    sandbox_base: &Path,
+    actor: &ActorIdentity,
+    holdings_filter: Option<&[String]>,
+) -> Vec<ProfileSource> {
+    let storage = CompanyProfileStorage::new(sandbox_base).for_actor(actor);
+    let holdings_set: Option<std::collections::HashSet<String>> =
+        holdings_filter.map(|hs| hs.iter().map(|h| h.to_uppercase()).collect());
+    let mut profiles = Vec::new();
+    for summary in storage.list_profiles_raw() {
+        let Ok(Some(document)) = storage.get_profile_raw(&summary.profile_id) else {
+            continue;
+        };
+        let tickers = extract_tickers(&document.markdown);
+        if tickers.is_empty() {
+            tracing::warn!(
+                dir = %summary.profile_id,
+                "mainline_distill: profile.md 没找到 ticker 标识,跳过"
+            );
+            continue;
+        }
+        for ticker in tickers {
+            if let Some(filter) = &holdings_set
+                && !filter.contains(&ticker)
+            {
+                continue;
+            }
+            profiles.push(ProfileSource {
+                ticker,
+                dir_name: summary.profile_id.clone(),
+                markdown: document.markdown.clone(),
+            });
+        }
+    }
+    profiles
+}
+
 /// 一次性蒸馏单个 actor 并写回 prefs。封装 scan + LLM call + merge。
 ///
 /// 适合 admin "立即跑一次" 端点 / cron job 内部循环。
@@ -387,8 +433,8 @@ pub async fn distill_and_persist_one(
     actor: &ActorIdentity,
     holdings: &[String],
 ) -> anyhow::Result<crate::prefs::NotificationPrefs> {
-    let sandbox_root = actor_sandbox_dir(sandbox_base, actor);
-    let distilled_mainlines = distill_for_actor(distiller, &sandbox_root, holdings).await;
+    let profiles = scan_profiles_for_actor(sandbox_base, actor, Some(holdings));
+    let distilled_mainlines = distill_from_profiles(distiller, profiles, holdings).await;
     merge_into_prefs(prefs_storage, actor, distilled_mainlines)
 }
 
