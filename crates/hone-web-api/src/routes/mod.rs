@@ -119,6 +119,10 @@ pub fn build_admin_app(state: Arc<AppState>) -> Router {
         .route("/portfolio/actors", get(portfolio::handle_portfolio_actors))
         .route("/portfolio", get(portfolio::handle_portfolio))
         .route(
+            "/notification-prefs/batch",
+            post(notification_prefs::handle_batch_get_prefs),
+        )
+        .route(
             "/notification-prefs",
             get(notification_prefs::handle_get_prefs).put(notification_prefs::handle_put_prefs),
         )

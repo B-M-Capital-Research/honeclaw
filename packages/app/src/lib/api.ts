@@ -981,6 +981,16 @@ export type NotificationPrefsBundle = {
   kind_tags: string[];
 };
 
+export type NotificationPrefsBatchEntry = {
+  actor: ActorRef;
+  prefs: NotificationPrefs;
+};
+
+export type NotificationPrefsBatchBundle = {
+  entries: NotificationPrefsBatchEntry[];
+  kind_tags: string[];
+};
+
 export async function getNotificationPrefs(
   actor: ActorRef,
 ): Promise<NotificationPrefsBundle> {
@@ -988,6 +998,17 @@ export async function getNotificationPrefs(
     `/api/notification-prefs?${actorQuery(actor)}`,
   );
   return parseJson<NotificationPrefsBundle>(response);
+}
+
+export async function getNotificationPrefsBatch(
+  actors: ActorRef[],
+): Promise<NotificationPrefsBatchBundle> {
+  const response = await apiFetch("/api/notification-prefs/batch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ actors }),
+  });
+  return parseJson<NotificationPrefsBatchBundle>(response);
 }
 
 export async function putNotificationPrefs(

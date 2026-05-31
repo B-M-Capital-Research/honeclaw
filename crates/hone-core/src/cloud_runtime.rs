@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
 use base64::Engine;
@@ -23,6 +24,32 @@ use crate::{ActorIdentity, HoneError, HoneResult, LlmAuditRecord};
 
 type HmacSha1 = Hmac<Sha1>;
 type HmacSha256 = Hmac<sha2::Sha256>;
+
+const RESERVE_CONVERSATION_QUOTA_SQL: &str = r#"
+WITH inserted AS (
+  INSERT INTO conversation_quota(actor_storage_key, quota_date, limit_count, reserved_count)
+  VALUES ($1, $2::text::date, $3, 1)
+  ON CONFLICT (actor_storage_key, quota_date) DO UPDATE
+  SET
+    reserved_count = conversation_quota.reserved_count + 1,
+    limit_count = $3,
+    updated_at = now()
+  WHERE conversation_quota.committed_count + conversation_quota.reserved_count < $3
+  RETURNING true AS reserved, quota_date::text, limit_count, reserved_count, committed_count
+),
+current_row AS (
+  SELECT false AS reserved, quota_date::text, $3 AS limit_count, reserved_count, committed_count
+  FROM conversation_quota
+  WHERE actor_storage_key = $1
+    AND quota_date = $2::text::date
+    AND NOT EXISTS (SELECT 1 FROM inserted)
+  FOR UPDATE
+)
+SELECT reserved, quota_date, limit_count, reserved_count, committed_count FROM inserted
+UNION ALL
+SELECT reserved, quota_date, limit_count, reserved_count, committed_count FROM current_row
+LIMIT 1
+"#;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -120,6 +147,14 @@ pub struct CloudCompanyProfileFileRecord {
     pub relative_path: String,
     pub content: String,
     pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CloudCompanyProfileSpaceRecord {
+    pub actor_storage_key: String,
+    pub actor: serde_json::Value,
+    pub profile_count: usize,
+    pub updated_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -293,6 +328,19 @@ pub struct CloudConversationQuotaImportReport {
     pub skipped_rows: usize,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct CloudSessionListEntry {
+    pub session_id: String,
+    pub actor: Option<serde_json::Value>,
+    pub session_identity: Option<serde_json::Value>,
+    pub updated_at: String,
+    pub last_message: Option<serde_json::Value>,
+    pub message_count: usize,
+}
+
+static PG_CLIENT_CACHE: LazyLock<Mutex<BTreeMap<String, Arc<PgClient>>>> =
+    LazyLock::new(|| Mutex::new(BTreeMap::new()));
+
 impl CloudPgRuntime {
     pub fn from_cloud_config(config: &CloudConfig) -> Option<Self> {
         config.postgres.is_configured().then(|| Self {
@@ -300,7 +348,42 @@ impl CloudPgRuntime {
         })
     }
 
-    async fn connect_client(&self) -> HoneResult<PgClient> {
+    async fn connect_client(&self) -> HoneResult<Arc<PgClient>> {
+        self.connect_new_client().await.map(Arc::new)
+    }
+
+    async fn connect_cached_client(&self) -> HoneResult<Arc<PgClient>> {
+        let cache_key = self.client_cache_key();
+        if let Some(client) = PG_CLIENT_CACHE
+            .lock()
+            .map_err(|err| HoneError::Config(format!("Postgres client cache 锁失败: {err}")))?
+            .get(&cache_key)
+            .cloned()
+        {
+            return Ok(client);
+        }
+
+        let client = Arc::new(self.connect_new_client().await?);
+        PG_CLIENT_CACHE
+            .lock()
+            .map_err(|err| HoneError::Config(format!("Postgres client cache 锁失败: {err}")))?
+            .insert(cache_key, client.clone());
+        Ok(client)
+    }
+
+    fn client_cache_key(&self) -> String {
+        format!(
+            "{}|{}|{}|{}|{}|{}",
+            self.config.resolved_proxy(),
+            self.config.resolved_host(),
+            self.config.resolved_port().unwrap_or(5432),
+            self.config.resolved_user(),
+            self.config.resolved_database(),
+            self.config.resolved_database_url(),
+        )
+    }
+
+    async fn connect_new_client(&self) -> HoneResult<PgClient> {
         let proxy = self.config.resolved_proxy();
         if proxy.trim().is_empty() {
             let (client, connection) =
@@ -528,36 +611,7 @@ ON CONFLICT (version) DO NOTHING;
             .map_err(|_| HoneError::Config("daily conversation limit exceeds i32".to_string()))?;
         let row = client
             .query_one(
-                r#"
-WITH inserted AS (
-  INSERT INTO conversation_quota(actor_storage_key, quota_date, limit_count)
-  VALUES ($1, $2::text::date, $3)
-  ON CONFLICT (actor_storage_key, quota_date) DO NOTHING
-),
-updated AS (
-  UPDATE conversation_quota
-  SET
-    reserved_count = reserved_count + 1,
-    limit_count = $3,
-    updated_at = now()
-  WHERE actor_storage_key = $1
-    AND quota_date = $2::text::date
-    AND committed_count + reserved_count < $3
-  RETURNING true AS reserved, quota_date::text, limit_count, reserved_count, committed_count
-),
-current_row AS (
-  SELECT false AS reserved, quota_date::text, $3 AS limit_count, reserved_count, committed_count
-  FROM conversation_quota
-  WHERE actor_storage_key = $1
-    AND quota_date = $2::text::date
-    AND NOT EXISTS (SELECT 1 FROM updated)
-  FOR UPDATE
-)
-SELECT reserved, quota_date, limit_count, reserved_count, committed_count FROM updated
-UNION ALL
-SELECT reserved, quota_date, limit_count, reserved_count, committed_count FROM current_row
-LIMIT 1
-"#,
+                RESERVE_CONVERSATION_QUOTA_SQL,
                 &[&actor_storage_key, &quota_date, &daily_limit],
             )
             .await
@@ -754,6 +808,50 @@ DO UPDATE SET
         Ok(rows.into_iter().map(|row| row.get(0)).collect())
     }
 
+    pub async fn list_session_summaries(&self) -> HoneResult<Vec<CloudSessionListEntry>> {
+        let client = self.connect_cached_client().await?;
+        let rows = client
+            .query(
+                r#"
+SELECT
+  session_id,
+  content->'actor' AS actor,
+  content->'session_identity' AS session_identity,
+  COALESCE(content->>'updated_at', updated_at::text) AS updated_at,
+  (
+    SELECT message
+    FROM jsonb_array_elements(COALESCE(content->'messages', '[]'::jsonb)) WITH ORDINALITY AS messages(message, ord)
+    WHERE message->>'role' IN ('user', 'assistant')
+    ORDER BY ord DESC
+    LIMIT 1
+  ) AS last_message,
+  (
+    SELECT count(*)::bigint
+    FROM jsonb_array_elements(COALESCE(content->'messages', '[]'::jsonb)) AS messages(message)
+    WHERE message->>'role' IN ('user', 'assistant')
+  ) AS message_count
+FROM cloud_sessions
+ORDER BY updated_at DESC
+"#,
+                &[],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres session 摘要列表读取失败: {err}")))?;
+        rows.into_iter()
+            .map(|row| {
+                let message_count = row.get::<_, i64>("message_count").max(0) as usize;
+                Ok(CloudSessionListEntry {
+                    session_id: row.get("session_id"),
+                    actor: row.get("actor"),
+                    session_identity: row.get("session_identity"),
+                    updated_at: row.get("updated_at"),
+                    last_message: row.get("last_message"),
+                    message_count,
+                })
+            })
+            .collect()
+    }
+
     pub async fn import_session_records(
         &self,
         records: &[CloudSessionRecord],
@@ -832,6 +930,18 @@ DO UPDATE SET
 
     pub async fn list_web_invite_user_records(&self) -> HoneResult<Vec<serde_json::Value>> {
         let client = self.connect_client().await?;
+        let rows = client
+            .query(
+                "SELECT record FROM cloud_web_invite_users ORDER BY record->>'created_at' DESC",
+                &[],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres web invite 列表读取失败: {err}")))?;
+        Ok(rows.into_iter().map(|row| row.get(0)).collect())
+    }
+
+    pub async fn list_web_invite_user_records_cached(&self) -> HoneResult<Vec<serde_json::Value>> {
+        let client = self.connect_cached_client().await?;
         let rows = client
             .query(
                 "SELECT record FROM cloud_web_invite_users ORDER BY record->>'created_at' DESC",
@@ -1571,6 +1681,33 @@ SELECT (SELECT count(*)::bigint FROM upserted)
         Ok(row.map(|row| row.get(0)))
     }
 
+    pub async fn get_notification_prefs_many_cached(
+        &self,
+        actor_storage_keys: &[String],
+    ) -> HoneResult<BTreeMap<String, serde_json::Value>> {
+        if actor_storage_keys.is_empty() {
+            return Ok(BTreeMap::new());
+        }
+        let client = self.connect_cached_client().await?;
+        let rows = client
+            .query(
+                r#"
+SELECT actor_storage_key, prefs
+FROM cloud_notification_prefs
+WHERE actor_storage_key = ANY($1)
+"#,
+                &[&actor_storage_keys],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres notification prefs 批量读取失败: {err}"))
+            })?;
+        Ok(rows
+            .into_iter()
+            .map(|row| (row.get(0), row.get(1)))
+            .collect())
+    }
+
     pub async fn upsert_notification_prefs(
         &self,
         actor_storage_key: &str,
@@ -1664,6 +1801,18 @@ WHERE actor_storage_key = $1
 
     pub async fn list_portfolios(&self) -> HoneResult<Vec<CloudPortfolioRecord>> {
         let client = self.connect_client().await?;
+        self.list_portfolios_with_client(&client).await
+    }
+
+    pub async fn list_portfolios_cached(&self) -> HoneResult<Vec<CloudPortfolioRecord>> {
+        let client = self.connect_cached_client().await?;
+        self.list_portfolios_with_client(&client).await
+    }
+
+    async fn list_portfolios_with_client(
+        &self,
+        client: &PgClient,
+    ) -> HoneResult<Vec<CloudPortfolioRecord>> {
         let rows = client
             .query(
                 r#"
@@ -1788,6 +1937,43 @@ ORDER BY actor_storage_key ASC, profile_id ASC, relative_path ASC
                 relative_path: row.get(3),
                 content: row.get(4),
                 updated_at: row.get(5),
+            })
+            .collect())
+    }
+
+    pub async fn list_company_profile_spaces_cached(
+        &self,
+    ) -> HoneResult<Vec<CloudCompanyProfileSpaceRecord>> {
+        let client = self.connect_cached_client().await?;
+        let rows = client
+            .query(
+                r#"
+SELECT
+  actor_storage_key,
+  actor,
+  count(DISTINCT profile_id)::bigint AS profile_count,
+  max(updated_at)::text AS updated_at
+FROM cloud_company_profile_files
+WHERE relative_path = 'profile.md'
+GROUP BY actor_storage_key, actor
+HAVING count(DISTINCT profile_id) > 0
+ORDER BY max(updated_at) DESC, actor_storage_key ASC
+"#,
+                &[],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!(
+                    "Postgres company profile space 列表读取失败: {err}"
+                ))
+            })?;
+        Ok(rows
+            .into_iter()
+            .map(|row| CloudCompanyProfileSpaceRecord {
+                actor_storage_key: row.get(0),
+                actor: row.get(1),
+                profile_count: row.get::<_, i64>(2).max(0) as usize,
+                updated_at: row.get(3),
             })
             .collect())
     }
@@ -3052,6 +3238,20 @@ mod tests {
         assert_eq!(
             store.s3_canonical_uri("users/a b/doc.json"),
             "/honeclaw/users/a%20b/doc.json"
+        );
+    }
+
+    #[test]
+    fn quota_reserve_sql_returns_inserted_rows_for_new_actor_date() {
+        assert!(RESERVE_CONVERSATION_QUOTA_SQL.contains("reserved_count)"));
+        assert!(RESERVE_CONVERSATION_QUOTA_SQL.contains("VALUES ($1, $2::text::date, $3, 1)"));
+        assert!(
+            RESERVE_CONVERSATION_QUOTA_SQL
+                .contains("ON CONFLICT (actor_storage_key, quota_date) DO UPDATE")
+        );
+        assert!(
+            RESERVE_CONVERSATION_QUOTA_SQL
+                .contains("SELECT reserved, quota_date, limit_count, reserved_count, committed_count FROM inserted")
         );
     }
 

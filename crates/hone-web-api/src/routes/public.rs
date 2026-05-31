@@ -779,7 +779,11 @@ pub(crate) async fn handle_public_image(
     headers: HeaderMap,
     query: axum::extract::Query<crate::types::ImageQuery>,
 ) -> Response {
-    if let Err(response) = require_public_user(&state, &headers) {
+    let user = match require_public_user(&state, &headers) {
+        Ok(user) => user,
+        Err(response) => return response,
+    };
+    if let Err(response) = validate_public_proxy_path(&state, &user.user_id, &query.path) {
         return response;
     }
     crate::routes::files::handle_image(state, query)
@@ -792,12 +796,32 @@ pub(crate) async fn handle_public_file(
     headers: HeaderMap,
     query: axum::extract::Query<crate::types::ImageQuery>,
 ) -> Response {
-    if let Err(response) = require_public_user(&state, &headers) {
+    let user = match require_public_user(&state, &headers) {
+        Ok(user) => user,
+        Err(response) => return response,
+    };
+    if let Err(response) = validate_public_proxy_path(&state, &user.user_id, &query.path) {
         return response;
     }
     crate::routes::files::handle_file(state, query)
         .await
         .into_response()
+}
+
+fn validate_public_proxy_path(
+    state: &AppState,
+    user_id: &str,
+    raw_path: &Option<String>,
+) -> Result<(), Response> {
+    let Some(raw_path) = raw_path.as_deref() else {
+        return Err(crate::routes::json_error(
+            StatusCode::BAD_REQUEST,
+            "缺少 path",
+        ));
+    };
+    let user_upload_root = public_upload_dir(state, user_id);
+    let oss = crate::cloud_oss::OssClient::from_config(&state.core.config.cloud.oss);
+    validate_public_upload_path(&user_upload_root, oss.as_ref(), user_id, raw_path).map(|_| ())
 }
 
 pub(crate) async fn handle_events(
@@ -1279,8 +1303,10 @@ mod tests {
     use super::{
         WEB_SESSION_MAX_AGE_LONG_SECS, WEB_SESSION_MAX_AGE_SHORT_SECS, aliyun_sms_phone_number,
         build_session_cookie, clear_session_cookie, public_client_key, public_sms_phone_candidates,
+        validate_public_upload_path,
     };
     use axum::http::{HeaderMap, HeaderValue, header};
+    use std::fs;
     const SECURE_COOKIE_ENV: &str = "HONE_PUBLIC_SECURE_COOKIE";
 
     struct EnvVarGuard {
@@ -1470,5 +1496,44 @@ mod tests {
             cookie_with_https.contains("Secure"),
             "empty env should fall back to https headers"
         );
+    }
+
+    #[test]
+    fn public_upload_path_rejects_traversal_outside_user_root() {
+        let root = std::env::temp_dir().join(format!(
+            "hone-public-upload-test-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let upload_root = root.join("public-uploads").join("web-user-a");
+        fs::create_dir_all(&upload_root).expect("upload root");
+        let allowed = upload_root.join("ok.txt");
+        fs::write(&allowed, "ok").expect("allowed file");
+        let sibling = root.join("config.yaml");
+        fs::write(&sibling, "secret").expect("sibling file");
+
+        assert!(
+            validate_public_upload_path(
+                &upload_root,
+                None,
+                "web-user-a",
+                &allowed.to_string_lossy()
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_public_upload_path(&upload_root, None, "web-user-a", "../config.yaml")
+                .is_err()
+        );
+        assert!(
+            validate_public_upload_path(
+                &upload_root,
+                None,
+                "web-user-a",
+                &sibling.to_string_lossy()
+            )
+            .is_err()
+        );
+
+        let _ = fs::remove_dir_all(root);
     }
 }

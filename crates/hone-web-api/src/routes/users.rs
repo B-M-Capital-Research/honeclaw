@@ -1,19 +1,90 @@
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock, Mutex};
+use std::time::{Duration, Instant};
 
 use axum::Json;
 use axum::extract::State;
 use axum::response::IntoResponse;
+use hone_core::cloud_runtime::{CloudPgRuntime, CloudSessionListEntry};
+use hone_core::{ActorIdentity, SessionIdentity};
+use hone_memory::session::SessionMessage;
 use hone_memory::session_message_text;
+use tracing::warn;
 
 use crate::state::AppState;
 use crate::types::UserInfo;
 
+#[derive(Default)]
+struct UsersRouteCache {
+    users: Vec<UserInfo>,
+    updated_at: Option<Instant>,
+    refreshing: bool,
+}
+
+static USERS_ROUTE_CACHE: LazyLock<Mutex<UsersRouteCache>> =
+    LazyLock::new(|| Mutex::new(UsersRouteCache::default()));
+const USERS_ROUTE_CACHE_TTL: Duration = Duration::from_secs(30);
+
 /// GET /api/users — 列出所有有会话记录的 session，按最后活跃时间降序
 pub(crate) async fn handle_users(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    if state
+        .core
+        .config
+        .cloud
+        .effective_mode()
+        .is_cloud_authoritative()
+        && let Some(postgres) = CloudPgRuntime::from_cloud_config(&state.core.config.cloud)
+    {
+        if let Some(cached) = cached_cloud_users(false) {
+            return Json(serde_json::to_value(&cached).unwrap_or(serde_json::json!([])));
+        }
+        if !mark_cloud_users_refreshing() {
+            let cached = cached_cloud_users(true).unwrap_or_default();
+            return Json(serde_json::to_value(&cached).unwrap_or(serde_json::json!([])));
+        }
+        let summaries_result =
+            tokio::time::timeout(Duration::from_secs(8), postgres.list_session_summaries()).await;
+        let summaries = match summaries_result {
+            Ok(Ok(summaries)) => summaries,
+            Ok(Err(error)) => {
+                warn!(%error, "failed to list cloud session summaries for users route");
+                clear_cloud_users_refreshing();
+                return Json(serde_json::json!([]));
+            }
+            Err(_) => {
+                warn!("cloud session summary list timed out for users route");
+                clear_cloud_users_refreshing();
+                return Json(serde_json::json!([]));
+            }
+        };
+        let users = summaries
+            .into_iter()
+            .filter_map(user_info_from_cloud_summary)
+            .collect::<Vec<_>>();
+        update_cloud_users_cache(users.clone());
+        return Json(serde_json::to_value(&users).unwrap_or(serde_json::json!([])));
+    }
+
     let mut users: Vec<UserInfo> = Vec::new();
-    let sessions = match state.core.session_storage.list_sessions() {
-        Ok(sessions) => sessions,
-        Err(_) => return Json(serde_json::json!([])),
+    let core = state.core.clone();
+    let sessions_result = tokio::time::timeout(
+        Duration::from_secs(8),
+        tokio::task::spawn_blocking(move || core.session_storage.list_sessions()),
+    )
+    .await;
+    let sessions = match sessions_result {
+        Ok(Ok(Ok(sessions))) => sessions,
+        Ok(Ok(Err(error))) => {
+            warn!(%error, "failed to list sessions for users route");
+            return Json(serde_json::json!([]));
+        }
+        Ok(Err(error)) => {
+            warn!(%error, "users route session list worker failed");
+            return Json(serde_json::json!([]));
+        }
+        Err(_) => {
+            warn!("users route session list timed out");
+            return Json(serde_json::json!([]));
+        }
     };
 
     for session in sessions {
@@ -104,6 +175,117 @@ pub(crate) async fn handle_users(State(state): State<Arc<AppState>>) -> impl Int
     users.sort_by(|a, b| b.last_time.cmp(&a.last_time));
 
     Json(serde_json::to_value(&users).unwrap_or(serde_json::json!([])))
+}
+
+fn cached_cloud_users(allow_stale: bool) -> Option<Vec<UserInfo>> {
+    let cache = USERS_ROUTE_CACHE.lock().ok()?;
+    if cache.users.is_empty() {
+        return None;
+    }
+    if allow_stale
+        || cache
+            .updated_at
+            .map(|updated_at| updated_at.elapsed() < USERS_ROUTE_CACHE_TTL)
+            .unwrap_or(false)
+    {
+        return Some(cache.users.clone());
+    }
+    None
+}
+
+fn mark_cloud_users_refreshing() -> bool {
+    let Ok(mut cache) = USERS_ROUTE_CACHE.lock() else {
+        return true;
+    };
+    if cache.refreshing {
+        return false;
+    }
+    cache.refreshing = true;
+    true
+}
+
+fn clear_cloud_users_refreshing() {
+    if let Ok(mut cache) = USERS_ROUTE_CACHE.lock() {
+        cache.refreshing = false;
+    }
+}
+
+fn update_cloud_users_cache(users: Vec<UserInfo>) {
+    if let Ok(mut cache) = USERS_ROUTE_CACHE.lock() {
+        cache.users = users;
+        cache.updated_at = Some(Instant::now());
+        cache.refreshing = false;
+    }
+}
+
+fn user_info_from_cloud_summary(summary: CloudSessionListEntry) -> Option<UserInfo> {
+    let actor = summary
+        .actor
+        .and_then(|value| serde_json::from_value::<ActorIdentity>(value).ok())
+        .or_else(|| ActorIdentity::from_session_id(&summary.session_id));
+    let session_identity = summary
+        .session_identity
+        .and_then(|value| serde_json::from_value::<SessionIdentity>(value).ok())
+        .or_else(|| {
+            actor
+                .as_ref()
+                .and_then(|value| SessionIdentity::from_actor(value).ok())
+        })
+        .or_else(|| SessionIdentity::from_session_id(&summary.session_id))?;
+
+    let last_message = summary
+        .last_message
+        .and_then(|value| serde_json::from_value::<SessionMessage>(value).ok());
+    let (last_message, last_role, last_time) = match last_message {
+        Some(message) => {
+            let content = session_message_text(&message);
+            let preview: String = content.chars().take(60).collect();
+            let preview = if content.chars().count() > 60 {
+                format!("{}…", preview)
+            } else {
+                preview
+            };
+            (preview, message.role, message.timestamp)
+        }
+        None => (
+            "暂无消息".to_string(),
+            "".to_string(),
+            summary.updated_at.clone(),
+        ),
+    };
+
+    Some(UserInfo {
+        channel: session_identity.channel.clone(),
+        user_id: actor
+            .as_ref()
+            .map(|value| value.user_id.clone())
+            .or_else(|| session_identity.user_id.clone())
+            .unwrap_or_else(|| "group".to_string()),
+        channel_scope: session_identity.channel_scope.clone(),
+        session_id: summary.session_id,
+        session_kind: if session_identity.is_group() {
+            "group".to_string()
+        } else {
+            "direct".to_string()
+        },
+        session_label: if session_identity.is_group() {
+            session_identity
+                .channel_scope
+                .clone()
+                .unwrap_or_else(|| "群聊".to_string())
+        } else {
+            actor
+                .as_ref()
+                .map(|value| value.user_id.clone())
+                .or_else(|| session_identity.user_id.clone())
+                .unwrap_or_else(|| "direct".to_string())
+        },
+        actor_user_id: actor.as_ref().map(|value| value.user_id.clone()),
+        last_message,
+        last_role,
+        last_time,
+        message_count: summary.message_count,
+    })
 }
 
 #[cfg(test)]

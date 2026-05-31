@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::{Arc, LazyLock, Mutex};
+use std::time::{Duration, Instant};
 
 use axum::Json;
 use axum::extract::State;
@@ -29,6 +29,16 @@ fn config_path_buf() -> std::path::PathBuf {
 }
 
 const API_VERSION: &str = "desktop-v1";
+const META_CACHE_TTL: Duration = Duration::from_secs(30);
+
+#[derive(Default)]
+struct MetaRouteCache {
+    value: Option<serde_json::Value>,
+    updated_at: Option<Instant>,
+}
+
+static META_ROUTE_CACHE: LazyLock<Mutex<MetaRouteCache>> =
+    LazyLock::new(|| Mutex::new(MetaRouteCache::default()));
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct PutLanguageBody {
@@ -51,7 +61,10 @@ pub(crate) async fn handle_put_language(
         value: serde_yaml::Value::String(normalized.clone()),
     };
     match apply_overlay_mutations(&config_path_buf(), &[mutation]) {
-        Ok(_) => Json(json!({ "language": normalized })).into_response(),
+        Ok(_) => {
+            clear_meta_cache();
+            Json(json!({ "language": normalized })).into_response()
+        }
         Err(e) => json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("failed to write language: {e}"),
@@ -60,6 +73,9 @@ pub(crate) async fn handle_put_language(
 }
 
 pub(crate) async fn handle_meta(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    if let Some(cached) = cached_meta() {
+        return Json(cached);
+    }
     let runtime_role = RuntimeRole::from_env();
     let local_deps = local_durable_dependencies(&state.core.config);
     let postgres_health = match CloudPgRuntime::from_cloud_config(&state.core.config.cloud) {
@@ -79,7 +95,7 @@ pub(crate) async fn handle_meta(State(state): State<Arc<AppState>>) -> impl Into
         && postgres_health.as_ref().is_some_and(|health| health.ok)
         && oss_health.as_ref().is_some_and(|health| health.ok)
         && local_deps.is_empty();
-    Json(json!(MetaInfo {
+    let value = json!(MetaInfo {
         name: "Hone".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         channel: "imessage".to_string(),
@@ -101,7 +117,31 @@ pub(crate) async fn handle_meta(State(state): State<Arc<AppState>>) -> impl Into
         local_durable_dependency_count: local_deps.len(),
         cloud_postgres_health: postgres_health,
         cloud_oss_health: oss_health,
-    }))
+    });
+    update_meta_cache(value.clone());
+    Json(value)
+}
+
+fn cached_meta() -> Option<serde_json::Value> {
+    let guard = META_ROUTE_CACHE.lock().ok()?;
+    let updated_at = guard.updated_at?;
+    (updated_at.elapsed() < META_CACHE_TTL)
+        .then(|| guard.value.clone())
+        .flatten()
+}
+
+fn update_meta_cache(value: serde_json::Value) {
+    if let Ok(mut guard) = META_ROUTE_CACHE.lock() {
+        guard.value = Some(value);
+        guard.updated_at = Some(Instant::now());
+    }
+}
+
+fn clear_meta_cache() {
+    if let Ok(mut guard) = META_ROUTE_CACHE.lock() {
+        guard.value = None;
+        guard.updated_at = None;
+    }
 }
 
 pub(crate) async fn handle_channels(State(state): State<Arc<AppState>>) -> impl IntoResponse {

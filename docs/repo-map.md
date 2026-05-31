@@ -47,6 +47,7 @@ Last updated: 2026-05-27
   - `memory/src/portfolio.rs` stores actor portfolios. Local mode uses `data/portfolio/portfolio_*.json`; `cloud.mode=cloud` uses PG `cloud_portfolios` for tool, Web, and event-engine reads/writes.
   - `memory/src/llm_audit.rs` stores LLM audit records. Local mode uses SQLite at `storage.llm_audit_db_path`; `cloud.mode=cloud` uses PG `cloud_llm_audit_records` for runtime writes and Web audit list/detail reads.
 - Event-engine Feishu direct delivery is assembled by `crates/hone-web-api/src/lib.rs` plus `crates/hone-event-engine/src/sinks/feishu.rs`: when building the event-engine sink, Web API reads both the cron-backed channel-target directory and direct Feishu session metadata, then passes unambiguous per-actor email/mobile targets into the Feishu sink so digest/card sends can resolve current-app `open_id` instead of reusing stale portfolio actor IDs. Ambiguous or non-contact targets are intentionally ignored to avoid cross-user delivery.
+- Event-engine Web delivery is also wired in `crates/hone-web-api/src/lib.rs`: the Web API registers a `web` `OutboundSink` that emits `push_message` through the shared `PushEvent` broadcast channel. Admin sessions consume it via `/api/events`, while the public user chat consumes it via `/api/public/events`; this path is separate from cron `scheduled_message` delivery but uses the same SSE transport to reach an open browser session.
 - `bins/`
   - `hone-console-page`: Web console backend, static asset hosting, and API
   - `hone-cli`: local REPL

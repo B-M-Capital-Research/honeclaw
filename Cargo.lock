@@ -3140,6 +3140,7 @@ dependencies = [
 name = "hone-web-api"
 version = "0.12.4"
 dependencies = [
+ "anyhow",
  "async-trait",
  "axum",
  "base64 0.22.1",

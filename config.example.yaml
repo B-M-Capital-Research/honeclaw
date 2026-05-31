@@ -494,6 +494,9 @@ cloud:
     # Optional local proxy, for example socks5://127.0.0.1:1082.
     proxy: ""
     proxy_env: "HONE_POSTGRES_PROXY"
+    # Force direct TCP for PG even if proxy is configured in env/config.
+    no_proxy: false
+    no_proxy_env: "HONE_POSTGRES_NO_PROXY"
   oss:
     # aliyun_oss | r2 | s3
     provider: "aliyun_oss"

@@ -33,6 +33,7 @@ import "./public-site.css";
 import {
   getPublicAuthMe,
   getPublicHistory,
+  connectPublicEvents,
   isUnauthorizedApiError,
   publicLogout,
   sendPublicChat,
@@ -2459,6 +2460,49 @@ export default function PublicChatPage() {
     const locked = authState() === "ready";
     document.documentElement.classList.toggle("public-chat-scroll-lock", locked);
     document.body.classList.toggle("public-chat-scroll-lock", locked);
+  });
+  createEffect(() => {
+    if (authState() !== "ready" || !currentUser()) return;
+
+    let closed = false;
+    let source: EventSource | undefined;
+    const appendServerPush = (event: MessageEvent) => {
+      const payload = JSON.parse(event.data || "{}") as {
+        text?: string;
+        job_name?: string;
+      };
+      const text = (payload.text ?? "").trim();
+      if (!text) return;
+      const shouldStayAtBottom =
+        stickToBottom || isBottomPinned() || distanceFromBottom() < 160;
+      setMessages(messages.length, {
+        id: messageId(),
+        role: "assistant",
+        content: payload.job_name ? `【${payload.job_name}】\n\n${text}` : text,
+        phase: "done",
+      });
+      setVisibleMessageCount((c) => Math.max(c + 1, HISTORY_PAGE_SIZE));
+      if (shouldStayAtBottom) pinToBottom(1200);
+    };
+
+    void connectPublicEvents()
+      .then((eventSource) => {
+        if (closed) {
+          eventSource.close();
+          return;
+        }
+        source = eventSource;
+        eventSource.addEventListener("push_message", appendServerPush);
+        eventSource.addEventListener("scheduled_message", appendServerPush);
+      })
+      .catch(() => {
+        // History restore remains the fallback when the live event stream is down.
+      });
+
+    onCleanup(() => {
+      closed = true;
+      source?.close();
+    });
   });
   onCleanup(() => {
     sessionSyncGeneration += 1;

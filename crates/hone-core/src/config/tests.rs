@@ -47,6 +47,33 @@ fn assert_config_example_roots(root: &serde_yaml::Mapping) {
     assert_eq!(actual_roots, expected_roots);
 }
 
+#[test]
+fn postgres_no_proxy_env_overrides_proxy_env() {
+    let proxy_env = format!("HONE_TEST_POSTGRES_PROXY_{}", uuid::Uuid::new_v4().simple());
+    let no_proxy_env = format!(
+        "HONE_TEST_POSTGRES_NO_PROXY_{}",
+        uuid::Uuid::new_v4().simple()
+    );
+    unsafe {
+        std::env::set_var(&proxy_env, "socks5://127.0.0.1:1082");
+        std::env::set_var(&no_proxy_env, "true");
+    }
+
+    let config = PostgresConfig {
+        proxy_env: proxy_env.clone(),
+        no_proxy_env: no_proxy_env.clone(),
+        ..PostgresConfig::default()
+    };
+
+    assert!(config.resolved_no_proxy());
+    assert_eq!(config.resolved_proxy(), "");
+
+    unsafe {
+        std::env::remove_var(proxy_env);
+        std::env::remove_var(no_proxy_env);
+    }
+}
+
 fn assert_yaml_omits_keys(mapping: &serde_yaml::Mapping, prefix: &str, keys: &[&str]) {
     for stale_key in keys {
         assert!(

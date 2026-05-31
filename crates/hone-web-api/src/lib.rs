@@ -23,6 +23,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
+use async_trait::async_trait;
+use hone_core::ActorIdentity;
 use hone_core::cloud_runtime::{CloudPgRuntime, RuntimeRole, local_durable_dependencies};
 use hone_core::config::{EventEngineConfig, HoneConfig};
 use hone_event_engine::{
@@ -32,6 +34,7 @@ use hone_event_engine::{
 use hone_llm::{CreatedLlmProvider, LlmResolver};
 use hone_memory::session::{Session, SessionRuntimeBackend, SessionStorageOptions};
 use hone_memory::{ChannelTargetRecord, CronJobStorage, SessionStorage};
+use serde_json::json;
 use tokio::sync::broadcast;
 use tracing::{info, warn};
 use tracing_subscriber::prelude::*;
@@ -295,8 +298,38 @@ fn build_global_digest_llms(
 /// - 按每个 channel 的 `enabled` 以及必要凭据是否就绪,逐个 attach 真 sink
 ///   到 MultiChannelSink 上;未 attach 的渠道 fall back 到 LogSink
 /// - 没有 channel 启用(极端情况) → 退化成纯 LogSink,语义不变
-fn build_event_engine_sink(core_cfg: &HoneConfig) -> Arc<dyn OutboundSink> {
+struct WebBroadcastSink {
+    push_tx: broadcast::Sender<PushEvent>,
+}
+
+impl WebBroadcastSink {
+    fn new(push_tx: broadcast::Sender<PushEvent>) -> Self {
+        Self { push_tx }
+    }
+}
+
+#[async_trait]
+impl OutboundSink for WebBroadcastSink {
+    async fn send(&self, actor: &ActorIdentity, body: &str) -> anyhow::Result<()> {
+        self.push_tx
+            .send(PushEvent {
+                channel: actor.channel.clone(),
+                user_id: actor.user_id.clone(),
+                channel_scope: actor.channel_scope.clone(),
+                event: "push_message".to_string(),
+                data: json!({ "text": body }),
+            })
+            .map(|_| ())
+            .map_err(|err| anyhow::anyhow!("web push broadcast failed: {err}"))
+    }
+}
+
+fn build_event_engine_sink(
+    core_cfg: &HoneConfig,
+    push_tx: broadcast::Sender<PushEvent>,
+) -> Arc<dyn OutboundSink> {
     let mut multi = MultiChannelSink::with_log_fallback();
+    multi = multi.with_channel("web", Arc::new(WebBroadcastSink::new(push_tx)));
     if core_cfg.telegram.enabled && !core_cfg.telegram.bot_token.trim().is_empty() {
         multi = multi.with_channel(
             "telegram",
@@ -765,6 +798,62 @@ pub async fn start_server(
         }
     }));
 
+    // ── 先绑定 Web 端口，再启动较重的 worker 初始化 ─────────────────────
+    let bind_addr = format!("127.0.0.1:{}", runtime_port());
+    let listener = match tokio::net::TcpListener::bind(&bind_addr).await {
+        Ok(listener) => listener,
+        Err(e) => {
+            for handle in task_handles {
+                handle.abort();
+            }
+            return Err(format!("无法绑定端口 {bind_addr}: {e}"));
+        }
+    };
+    let port = listener
+        .local_addr()
+        .map_err(|e| format!("获取端口失败: {e}"))?
+        .port();
+
+    let public_listener = if let Some(configured_public_port) = runtime_public_port() {
+        let public_bind_addr = format!("127.0.0.1:{configured_public_port}");
+        let public_listener = match tokio::net::TcpListener::bind(&public_bind_addr).await {
+            Ok(listener) => listener,
+            Err(e) => {
+                for handle in task_handles {
+                    handle.abort();
+                }
+                return Err(format!("无法绑定用户端口 {public_bind_addr}: {e}"));
+            }
+        };
+        let public_port = public_listener
+            .local_addr()
+            .map_err(|e| format!("获取用户端口失败: {e}"))?
+            .port();
+        Some((public_listener, public_port))
+    } else {
+        None
+    };
+    let public_port = public_listener
+        .as_ref()
+        .map(|(_, public_port)| *public_port);
+
+    let admin_app = build_admin_app(state.clone());
+    task_handles.push(tokio::spawn(async move {
+        axum::serve(listener, admin_app).await.ok();
+    }));
+
+    if let Some((public_listener, _)) = public_listener {
+        let public_app = build_public_app(state.clone());
+        task_handles.push(tokio::spawn(async move {
+            axum::serve(public_listener, public_app).await.ok();
+        }));
+    }
+
+    info!("Hone Web API 管理端已启动，端口 {port}");
+    if let Some(public_port) = public_port {
+        info!("Hone Web API 用户端已启动，端口 {public_port}");
+    }
+
     // ── 事件引擎（主动消息 feed，默认 enabled=false；config 开启后启动）──
     if runtime_role.runs_worker_tasks() {
         let mut engine_cfg = state.core.config.event_engine.clone();
@@ -795,7 +884,7 @@ pub async fn start_server(
         };
         // 可选 LLM 润色：当 llm_polish_for 非空且 llm provider 可用时装配 LlmPolisher。
         let polisher = build_event_engine_polisher(&state.core.config, &engine_cfg);
-        let sink = build_event_engine_sink(&state.core.config);
+        let sink = build_event_engine_sink(&state.core.config, state.push_tx.clone());
         let news_classifier = build_event_engine_news_classifier(&state.core.config);
         let sec_filings_enrichment = build_sec_filings_enrichment_llm(&state.core.config);
         if let Some(created) = &sec_filings_enrichment {
@@ -912,62 +1001,6 @@ pub async fn start_server(
         info!("runtime_role=web: scheduler/event-engine/channel worker tasks disabled");
     }
 
-    // ── 绑定管理端口（默认 8077，可通过 HONE_WEB_PORT 覆盖）─────────────
-    let bind_addr = format!("127.0.0.1:{}", runtime_port());
-    let listener = match tokio::net::TcpListener::bind(&bind_addr).await {
-        Ok(listener) => listener,
-        Err(e) => {
-            for handle in task_handles {
-                handle.abort();
-            }
-            return Err(format!("无法绑定端口 {bind_addr}: {e}"));
-        }
-    };
-    let port = listener
-        .local_addr()
-        .map_err(|e| format!("获取端口失败: {e}"))?
-        .port();
-
-    let public_listener = if let Some(configured_public_port) = runtime_public_port() {
-        let public_bind_addr = format!("127.0.0.1:{configured_public_port}");
-        let public_listener = match tokio::net::TcpListener::bind(&public_bind_addr).await {
-            Ok(listener) => listener,
-            Err(e) => {
-                for handle in task_handles {
-                    handle.abort();
-                }
-                return Err(format!("无法绑定用户端口 {public_bind_addr}: {e}"));
-            }
-        };
-        let public_port = public_listener
-            .local_addr()
-            .map_err(|e| format!("获取用户端口失败: {e}"))?
-            .port();
-        Some((public_listener, public_port))
-    } else {
-        None
-    };
-    let public_port = public_listener
-        .as_ref()
-        .map(|(_, public_port)| *public_port);
-
-    // ── 启动管理端 Axum 服务 ───────────────────────────────────────
-    let admin_app = build_admin_app(state.clone());
-    task_handles.push(tokio::spawn(async move {
-        axum::serve(listener, admin_app).await.ok();
-    }));
-
-    if let Some((public_listener, _)) = public_listener {
-        let public_app = build_public_app(state.clone());
-        task_handles.push(tokio::spawn(async move {
-            axum::serve(public_listener, public_app).await.ok();
-        }));
-    }
-
-    info!("Hone Web API 管理端已启动，端口 {port}");
-    if let Some(public_port) = public_port {
-        info!("Hone Web API 用户端已启动，端口 {public_port}");
-    }
     Ok(StartedServer {
         state,
         admin_port: port,

@@ -32,6 +32,7 @@ import { NotificationPreferencesCard } from "@/components/notification-preferenc
 import type {
   AgentProvider,
   AgentSettings,
+  DesktopChannelSettings,
   DesktopChannelSettingsInput,
   WebInviteInfo,
 } from "@/lib/types";
@@ -190,19 +191,29 @@ export default function SettingsPage() {
   const updateChannelDraft = (patch: Partial<DesktopChannelSettingsInput>) => {
     setChannelDraft((prev) => ({ ...prev, ...patch }));
   };
-  const [
-    desktopChannelSettings,
-    {
-      refetch: refetchDesktopChannelSettings,
-      mutate: setDesktopChannelSettings,
-    },
-  ] = createResource(
-    () => backend.state.connected,
-    async (connected) => {
-      if (!connected) return undefined;
-      return backend.loadChannelSettings();
-    },
-  );
+  const [desktopChannelSettings, setDesktopChannelSettings] =
+    createSignal<DesktopChannelSettings>();
+  const [channelSettingsReloadToken, setChannelSettingsReloadToken] =
+    createSignal(0);
+  const refetchDesktopChannelSettings = async () => {
+    if (!backend.state.connected) {
+      setDesktopChannelSettings(undefined);
+      return undefined;
+    }
+    const settings = await backend.loadChannelSettings();
+    setDesktopChannelSettings(settings);
+    return settings;
+  };
+  createEffect(() => {
+    channelSettingsReloadToken();
+    if (!backend.state.connected) {
+      setDesktopChannelSettings(undefined);
+      return;
+    }
+    void refetchDesktopChannelSettings().catch((error) => {
+      console.warn("loadChannelSettings failed", error);
+    });
+  });
 
   // ── 界面语言 ────────────────────────────────────────────────────────────────
   const [languageDraft, setLanguageDraft] = createSignal<LanguageDraft>(
@@ -314,14 +325,28 @@ export default function SettingsPage() {
     setInviteError("");
   };
 
-  const [webInvites, { refetch: refetchWebInvites, mutate: setWebInvites }] =
-    createResource(
-      () => backend.state.connected && backend.hasCapability("web_invites"),
-      async (enabled) => {
-        if (!enabled) return [];
-        return getWebInvites();
-      },
-    );
+  const [webInvites, setWebInvites] = createSignal<WebInviteInfo[]>([]);
+  const [webInvitesReloadToken, setWebInvitesReloadToken] = createSignal(0);
+  const refetchWebInvites = async () => {
+    if (!backend.state.connected || !backend.hasCapability("web_invites")) {
+      setWebInvites([]);
+      return [];
+    }
+    const invites = await getWebInvites();
+    setWebInvites(invites);
+    return invites;
+  };
+  createEffect(() => {
+    webInvitesReloadToken();
+    if (!backend.state.connected || !backend.hasCapability("web_invites")) {
+      setWebInvites([]);
+      return;
+    }
+    void refetchWebInvites().catch((error) => {
+      console.warn("getWebInvites failed", error);
+      setWebInvites([]);
+    });
+  });
 
   const [agentSettingsRes] = createResource(
     () => backend.state.isDesktop,
@@ -1584,7 +1609,7 @@ export default function SettingsPage() {
               <button
                 type="button"
                 class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-1.5 text-xs text-[color:var(--text-primary)] transition hover:bg-black/5"
-                onClick={() => void refetchWebInvites()}
+                onClick={() => setWebInvitesReloadToken((value) => value + 1)}
               >
                 {SETTINGS.invite.refresh}
               </button>
@@ -2155,7 +2180,9 @@ export default function SettingsPage() {
               <button
                 type="button"
                 class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-1.5 text-xs text-[color:var(--text-primary)] transition hover:bg-black/5"
-                onClick={() => void refetchDesktopChannelSettings()}
+                onClick={() =>
+                  setChannelSettingsReloadToken((value) => value + 1)
+                }
               >
                 {SETTINGS.channel.refresh}
               </button>

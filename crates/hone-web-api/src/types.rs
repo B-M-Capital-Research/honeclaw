@@ -86,7 +86,7 @@ pub struct ImageQuery {
 }
 
 /// GET /api/users 响应体中的单条用户信息
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct UserInfo {
     pub channel: String,
     pub user_id: String,
@@ -159,7 +159,7 @@ pub struct SseTicketResponse {
     pub expires_at: String,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct WebInviteInfo {
     pub user_id: String,
     pub invite_code: String,
@@ -253,7 +253,7 @@ pub struct PortfolioHoldingRequest {
     pub tracking_only: Option<bool>,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct PortfolioSummary {
     pub channel: String,
     pub user_id: String,

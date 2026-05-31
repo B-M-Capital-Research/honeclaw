@@ -7,6 +7,7 @@ import {
 } from "solid-js";
 import {
   getNotificationPrefs,
+  getNotificationPrefsBatch,
   getUsers,
   listPortfolioActors,
   putNotificationPrefs,
@@ -188,20 +189,20 @@ export function NotificationPreferencesCard() {
     setRosterError("");
     try {
       const actors = await loadActorsList();
-      const bundles = await Promise.all(
-        actors.map(async (actor) => {
-          try {
-            return await fetchEntry(actor);
-          } catch {
-            return {
-              actor,
-              prefs: { ...DEFAULT_NOTIFICATION_PREFS },
-              kindTags: [],
-            } satisfies RosterEntry;
-          }
+      const bundle = await getNotificationPrefsBatch(actors);
+      const entriesByKey = new Map(
+        bundle.entries.map((entry) => [actorKey(entry.actor), entry]),
+      );
+      setRoster(
+        actors.map((actor) => {
+          const entry = entriesByKey.get(actorKey(actor));
+          return {
+            actor,
+            prefs: entry?.prefs ?? { ...DEFAULT_NOTIFICATION_PREFS },
+            kindTags: bundle.kind_tags,
+          };
         }),
       );
-      setRoster(bundles);
     } catch (e) {
       setRosterError(e instanceof Error ? e.message : String(e));
     } finally {

@@ -17,7 +17,7 @@ use axum::Json;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use hone_event_engine::prefs::{
@@ -34,6 +34,24 @@ pub(crate) struct PutPrefsBody {
     pub user_id: Option<String>,
     pub channel_scope: Option<String>,
     pub prefs: NotificationPrefs,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct BatchPrefsBody {
+    pub actors: Vec<BatchPrefsActor>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub(crate) struct BatchPrefsActor {
+    pub channel: String,
+    pub user_id: String,
+    pub channel_scope: Option<String>,
+}
+
+#[derive(Serialize)]
+struct BatchPrefsEntry {
+    actor: BatchPrefsActor,
+    prefs: NotificationPrefs,
 }
 
 fn prefs_dir(state: &AppState) -> PathBuf {
@@ -126,6 +144,55 @@ pub(crate) async fn handle_get_prefs(
     };
     Json(json!({
         "prefs": storage.load(&actor),
+        "kind_tags": ALL_KIND_TAGS,
+    }))
+    .into_response()
+}
+
+/// POST /api/notification-prefs/batch
+pub(crate) async fn handle_batch_get_prefs(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<BatchPrefsBody>,
+) -> Response {
+    if body.actors.len() > 500 {
+        return json_error(
+            StatusCode::BAD_REQUEST,
+            format!("actors 过多，最多支持 500 个，收到 {}", body.actors.len()),
+        );
+    }
+
+    let mut actor_refs = Vec::with_capacity(body.actors.len());
+    let mut actors = Vec::with_capacity(body.actors.len());
+    for actor in body.actors {
+        let identity = match require_actor(
+            Some(actor.channel.clone()),
+            Some(actor.user_id.clone()),
+            actor.channel_scope.clone(),
+        ) {
+            Ok(actor) => actor,
+            Err(resp) => return resp,
+        };
+        actor_refs.push(actor);
+        actors.push(identity);
+    }
+
+    let storage = match FilePrefsStorage::new(prefs_dir(&state)) {
+        Ok(s) => s,
+        Err(e) => {
+            return json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("打开 prefs 目录失败: {e}"),
+            );
+        }
+    };
+    let prefs = storage.load_many(&actors);
+    let entries = actor_refs
+        .into_iter()
+        .zip(prefs)
+        .map(|(actor, prefs)| BatchPrefsEntry { actor, prefs })
+        .collect::<Vec<_>>();
+    Json(json!({
+        "entries": entries,
         "kind_tags": ALL_KIND_TAGS,
     }))
     .into_response()

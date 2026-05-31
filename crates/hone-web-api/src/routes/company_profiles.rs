@@ -1,27 +1,79 @@
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock, Mutex};
+use std::time::{Duration, Instant};
 
 use axum::Json;
 use axum::extract::{Multipart, Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::IntoResponse;
 use chrono::Utc;
+use hone_core::ActorIdentity;
+use hone_core::cloud_runtime::{CloudCompanyProfileSpaceRecord, CloudPgRuntime};
 use hone_memory::{
     CompanyProfileConflictDecision, CompanyProfileImportApplyInput, CompanyProfileImportMode,
+    ProfileSpaceSummary,
 };
 use serde_json::json;
+use tracing::warn;
 
 use crate::routes::{json_error, require_actor};
 use crate::state::AppState;
 use crate::types::UserIdQuery;
 
 const COMPANY_PROFILE_TRANSFER_MAX_BYTES: usize = 20 * 1024 * 1024;
+const COMPANY_PROFILE_SPACES_CACHE_TTL: Duration = Duration::from_secs(30);
+
+#[derive(Default)]
+struct CompanyProfileSpacesCache {
+    value: Option<serde_json::Value>,
+    updated_at: Option<Instant>,
+    refreshing: bool,
+}
+
+static COMPANY_PROFILE_SPACES_CACHE: LazyLock<Mutex<CompanyProfileSpacesCache>> =
+    LazyLock::new(|| Mutex::new(CompanyProfileSpacesCache::default()));
 
 pub(crate) async fn handle_company_profile_spaces(
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    let spaces = state.core.company_profile_storage.list_profile_spaces_raw();
-    Json(json!({ "actors": spaces }))
+    if let Some(cached) = cached_company_profile_spaces(false) {
+        return Json(cached);
+    }
+    if !mark_company_profile_spaces_refreshing() {
+        return Json(
+            cached_company_profile_spaces(true).unwrap_or_else(|| json!({ "actors": [] })),
+        );
+    }
+
+    let result = if state
+        .core
+        .config
+        .cloud
+        .effective_mode()
+        .is_cloud_authoritative()
+    {
+        if let Some(postgres) = CloudPgRuntime::from_cloud_config(&state.core.config.cloud) {
+            list_cloud_company_profile_spaces(postgres).await
+        } else {
+            Ok(Vec::new())
+        }
+    } else {
+        Ok(state.core.company_profile_storage.list_profile_spaces_raw())
+    };
+
+    let spaces = match result {
+        Ok(spaces) => spaces,
+        Err(error) => {
+            warn!(%error, "failed to list company profile spaces");
+            clear_company_profile_spaces_refreshing();
+            return Json(
+                cached_company_profile_spaces(true).unwrap_or_else(|| json!({ "actors": [] })),
+            );
+        }
+    };
+    let value = json!({ "actors": spaces });
+    update_company_profile_spaces_cache(value.clone());
+    Json(value)
 }
 
 pub(crate) async fn handle_company_profiles(
@@ -76,7 +128,10 @@ pub(crate) async fn handle_delete_company_profile(
         .for_actor(&actor)
         .delete_profile(&id)
     {
-        Ok(true) => Json(json!({ "ok": true })).into_response(),
+        Ok(true) => {
+            clear_company_profile_spaces_cache();
+            Json(json!({ "ok": true })).into_response()
+        }
         Ok(false) => json_error(StatusCode::NOT_FOUND, "company profile not found"),
         Err(err) => json_error(StatusCode::INTERNAL_SERVER_ERROR, err),
     }
@@ -189,8 +244,82 @@ pub(crate) async fn handle_apply_import_company_profiles(
         .for_actor(&actor)
         .apply_import_bundle(&bundle, CompanyProfileImportApplyInput { mode, decisions })
     {
-        Ok(result) => Json(json!({ "result": result })).into_response(),
+        Ok(result) => {
+            clear_company_profile_spaces_cache();
+            Json(json!({ "result": result })).into_response()
+        }
         Err(err) => json_error(StatusCode::BAD_REQUEST, err),
+    }
+}
+
+async fn list_cloud_company_profile_spaces(
+    postgres: CloudPgRuntime,
+) -> Result<Vec<ProfileSpaceSummary>, String> {
+    let records = tokio::time::timeout(
+        Duration::from_secs(8),
+        postgres.list_company_profile_spaces_cached(),
+    )
+    .await
+    .map_err(|_| "company profile space list timed out".to_string())?
+    .map_err(|error| error.to_string())?;
+    Ok(records
+        .into_iter()
+        .filter_map(company_profile_space_from_cloud_record)
+        .collect())
+}
+
+fn company_profile_space_from_cloud_record(
+    record: CloudCompanyProfileSpaceRecord,
+) -> Option<ProfileSpaceSummary> {
+    let actor = serde_json::from_value::<ActorIdentity>(record.actor).ok()?;
+    Some(ProfileSpaceSummary {
+        channel: actor.channel,
+        user_id: actor.user_id,
+        channel_scope: actor.channel_scope,
+        profile_count: record.profile_count,
+        updated_at: record.updated_at,
+    })
+}
+
+fn cached_company_profile_spaces(allow_stale: bool) -> Option<serde_json::Value> {
+    let guard = COMPANY_PROFILE_SPACES_CACHE.lock().ok()?;
+    let updated_at = guard.updated_at?;
+    if allow_stale || updated_at.elapsed() < COMPANY_PROFILE_SPACES_CACHE_TTL {
+        return guard.value.clone();
+    }
+    None
+}
+
+fn mark_company_profile_spaces_refreshing() -> bool {
+    let Ok(mut guard) = COMPANY_PROFILE_SPACES_CACHE.lock() else {
+        return true;
+    };
+    if guard.refreshing {
+        return false;
+    }
+    guard.refreshing = true;
+    true
+}
+
+fn clear_company_profile_spaces_refreshing() {
+    if let Ok(mut guard) = COMPANY_PROFILE_SPACES_CACHE.lock() {
+        guard.refreshing = false;
+    }
+}
+
+fn update_company_profile_spaces_cache(value: serde_json::Value) {
+    if let Ok(mut guard) = COMPANY_PROFILE_SPACES_CACHE.lock() {
+        guard.value = Some(value);
+        guard.updated_at = Some(Instant::now());
+        guard.refreshing = false;
+    }
+}
+
+fn clear_company_profile_spaces_cache() {
+    if let Ok(mut guard) = COMPANY_PROFILE_SPACES_CACHE.lock() {
+        guard.value = None;
+        guard.updated_at = None;
+        guard.refreshing = false;
     }
 }
 

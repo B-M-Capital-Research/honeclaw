@@ -461,6 +461,10 @@ pub struct PostgresConfig {
     pub proxy: String,
     #[serde(default = "default_pg_proxy_env")]
     pub proxy_env: String,
+    #[serde(default)]
+    pub no_proxy: bool,
+    #[serde(default = "default_pg_no_proxy_env")]
+    pub no_proxy_env: String,
 }
 
 impl Default for PostgresConfig {
@@ -481,6 +485,8 @@ impl Default for PostgresConfig {
             sslmode: default_pg_sslmode(),
             proxy: String::new(),
             proxy_env: default_pg_proxy_env(),
+            no_proxy: false,
+            no_proxy_env: default_pg_no_proxy_env(),
         }
     }
 }
@@ -538,7 +544,14 @@ impl PostgresConfig {
     }
 
     pub fn resolved_proxy(&self) -> String {
+        if self.resolved_no_proxy() {
+            return String::new();
+        }
         direct_or_env(&self.proxy, &self.proxy_env)
+    }
+
+    pub fn resolved_no_proxy(&self) -> bool {
+        self.no_proxy || env_bool(&self.no_proxy_env)
     }
 
     pub fn is_configured(&self) -> bool {
@@ -724,6 +737,9 @@ fn default_pg_sslmode() -> String {
 }
 fn default_pg_proxy_env() -> String {
     "HONE_POSTGRES_PROXY".to_string()
+}
+fn default_pg_no_proxy_env() -> String {
+    "HONE_POSTGRES_NO_PROXY".to_string()
 }
 fn default_oss_access_key_id_env() -> String {
     "HONE_OSS_ACCESS_KEY_ID".to_string()

@@ -299,6 +299,48 @@ impl FilePrefsStorage {
     pub fn path_for(&self, actor: &ActorIdentity) -> PathBuf {
         self.dir.join(format!("{}.json", actor_slug(actor)))
     }
+
+    pub fn load_many(&self, actors: &[ActorIdentity]) -> Vec<NotificationPrefs> {
+        if let Some(postgres) = self.cloud.clone() {
+            let actor_storage_keys = actors.iter().map(actor_slug).collect::<Vec<_>>();
+            let query_keys = actor_storage_keys.clone();
+            match run_cloud_notification_prefs(async move {
+                postgres
+                    .get_notification_prefs_many_cached(&query_keys)
+                    .await
+            }) {
+                Ok(records) => {
+                    return actor_storage_keys
+                        .iter()
+                        .map(|key| {
+                            records
+                                .get(key)
+                                .cloned()
+                                .and_then(|value| {
+                                    serde_json::from_value::<NotificationPrefs>(value)
+                                        .map_err(|err| {
+                                            tracing::warn!(
+                                                actor_storage_key = %key,
+                                                "cloud notif prefs parse failed in batch: {err}"
+                                            );
+                                            err
+                                        })
+                                        .ok()
+                                })
+                                .unwrap_or_default()
+                        })
+                        .collect();
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        "cloud notif prefs batch load failed: {err}; falling back to per-actor load"
+                    );
+                }
+            }
+        }
+
+        actors.iter().map(|actor| self.load(actor)).collect()
+    }
 }
 
 impl PrefsProvider for FilePrefsStorage {

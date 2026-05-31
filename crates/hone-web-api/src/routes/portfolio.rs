@@ -1,4 +1,5 @@
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock, Mutex};
+use std::time::{Duration, Instant};
 
 use axum::Json;
 use axum::extract::{Path, Query, State};
@@ -6,24 +7,85 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use serde_json::json;
 
-use hone_core::ActorIdentity;
+use hone_core::cloud_runtime::{CloudPgRuntime, CloudPortfolioRecord};
+use hone_core::{ActorIdentity, HoneResult};
 use hone_memory::portfolio::{Holding, Portfolio, PortfolioStorage, normalize_holding_horizon};
+use tracing::warn;
 
 use crate::routes::{json_error, normalize_optional_string, require_actor, require_string};
 use crate::state::AppState;
 use crate::types::{PortfolioHoldingRequest, PortfolioSummary, UserIdQuery};
 
+const PORTFOLIO_ACTORS_CACHE_TTL: Duration = Duration::from_secs(30);
+
+#[derive(Default)]
+struct PortfolioActorsCache {
+    value: Option<serde_json::Value>,
+    updated_at: Option<Instant>,
+    refreshing: bool,
+}
+
+static PORTFOLIO_ACTORS_CACHE: LazyLock<Mutex<PortfolioActorsCache>> =
+    LazyLock::new(|| Mutex::new(PortfolioActorsCache::default()));
+
 /// GET /api/portfolio/actors — 列出所有有持仓数据的 actor
 pub(crate) async fn handle_portfolio_actors(
     State(state): State<Arc<AppState>>,
 ) -> axum::response::Response {
-    let storage = portfolio_storage(&state);
-    let all = storage.list_all();
-    let summaries: Vec<PortfolioSummary> = all
-        .iter()
-        .map(|(actor, portfolio)| portfolio_summary(actor, Some(portfolio)))
-        .collect();
-    Json(json!({ "actors": summaries })).into_response()
+    if let Some(cached) = cached_portfolio_actors(false) {
+        return Json(cached).into_response();
+    }
+    if !mark_portfolio_actors_refreshing() {
+        return Json(cached_portfolio_actors(true).unwrap_or_else(|| json!({ "actors": [] })))
+            .into_response();
+    }
+
+    let result = if state
+        .core
+        .config
+        .cloud
+        .effective_mode()
+        .is_cloud_authoritative()
+    {
+        if let Some(postgres) = CloudPgRuntime::from_cloud_config(&state.core.config.cloud) {
+            list_cloud_portfolio_actor_summaries(postgres).await
+        } else {
+            Ok(Vec::new())
+        }
+    } else {
+        let storage = portfolio_storage(&state);
+        match tokio::time::timeout(
+            Duration::from_secs(8),
+            tokio::task::spawn_blocking(move || {
+                storage
+                    .list_all()
+                    .iter()
+                    .map(|(actor, portfolio)| portfolio_summary(actor, Some(portfolio)))
+                    .collect::<Vec<_>>()
+            }),
+        )
+        .await
+        {
+            Ok(Ok(summaries)) => Ok(summaries),
+            Ok(Err(error)) => Err(hone_core::HoneError::Config(error.to_string())),
+            Err(_) => Err(hone_core::HoneError::Config(
+                "portfolio actors list timed out".to_string(),
+            )),
+        }
+    };
+
+    let summaries = match result {
+        Ok(summaries) => summaries,
+        Err(error) => {
+            warn!(%error, "failed to list portfolio actors");
+            clear_portfolio_actors_refreshing();
+            return Json(cached_portfolio_actors(true).unwrap_or_else(|| json!({ "actors": [] })))
+                .into_response();
+        }
+    };
+    let value = json!({ "actors": summaries });
+    update_portfolio_actors_cache(value.clone());
+    Json(value).into_response()
 }
 
 /// GET /api/portfolio?user_id=... — 查看用户持仓
@@ -86,14 +148,17 @@ pub(crate) async fn handle_create_holding(
             },
         },
     ) {
-        Ok(portfolio) => (
-            StatusCode::CREATED,
-            Json(json!({
-                "portfolio": portfolio,
-                "summary": portfolio_summary(&actor, Some(&portfolio))
-            })),
-        )
-            .into_response(),
+        Ok(portfolio) => {
+            clear_portfolio_actors_cache();
+            (
+                StatusCode::CREATED,
+                Json(json!({
+                    "portfolio": portfolio,
+                    "summary": portfolio_summary(&actor, Some(&portfolio))
+                })),
+            )
+                .into_response()
+        }
         Err(error) => json_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
     }
 }
@@ -172,11 +237,14 @@ pub(crate) async fn handle_update_holding(
             tracking_only,
         },
     ) {
-        Ok(portfolio) => Json(json!({
-            "portfolio": portfolio,
-            "summary": portfolio_summary(&actor, Some(&portfolio))
-        }))
-        .into_response(),
+        Ok(portfolio) => {
+            clear_portfolio_actors_cache();
+            Json(json!({
+                "portfolio": portfolio,
+                "summary": portfolio_summary(&actor, Some(&portfolio))
+            }))
+            .into_response()
+        }
         Err(error) => json_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
     }
 }
@@ -195,11 +263,14 @@ pub(crate) async fn handle_delete_holding(
     let symbol = normalize_symbol(&symbol);
 
     match storage.remove_holding(&actor, &symbol) {
-        Ok(Some(portfolio)) => Json(json!({
-            "portfolio": portfolio,
-            "summary": portfolio_summary(&actor, Some(&portfolio))
-        }))
-        .into_response(),
+        Ok(Some(portfolio)) => {
+            clear_portfolio_actors_cache();
+            Json(json!({
+                "portfolio": portfolio,
+                "summary": portfolio_summary(&actor, Some(&portfolio))
+            }))
+            .into_response()
+        }
         Ok(None) => json_error(StatusCode::NOT_FOUND, format!("未找到持仓 {symbol}")),
         Err(error) => json_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
     }
@@ -207,6 +278,72 @@ pub(crate) async fn handle_delete_holding(
 
 fn portfolio_storage(state: &AppState) -> PortfolioStorage {
     PortfolioStorage::new(&state.core.config.storage.portfolio_dir)
+}
+
+async fn list_cloud_portfolio_actor_summaries(
+    postgres: CloudPgRuntime,
+) -> HoneResult<Vec<PortfolioSummary>> {
+    let records = tokio::time::timeout(Duration::from_secs(8), postgres.list_portfolios_cached())
+        .await
+        .map_err(|_| {
+            hone_core::HoneError::Config("portfolio actors list timed out".to_string())
+        })??;
+    Ok(records
+        .into_iter()
+        .filter_map(portfolio_summary_from_cloud_record)
+        .collect())
+}
+
+fn portfolio_summary_from_cloud_record(record: CloudPortfolioRecord) -> Option<PortfolioSummary> {
+    let mut portfolio = serde_json::from_value::<Portfolio>(record.portfolio).ok()?;
+    let actor = serde_json::from_value::<ActorIdentity>(record.actor).ok()?;
+    portfolio.actor = Some(actor.clone());
+    if portfolio.user_id.is_empty() {
+        portfolio.user_id = actor.user_id.clone();
+    }
+    Some(portfolio_summary(&actor, Some(&portfolio)))
+}
+
+fn cached_portfolio_actors(allow_stale: bool) -> Option<serde_json::Value> {
+    let guard = PORTFOLIO_ACTORS_CACHE.lock().ok()?;
+    let updated_at = guard.updated_at?;
+    if allow_stale || updated_at.elapsed() < PORTFOLIO_ACTORS_CACHE_TTL {
+        return guard.value.clone();
+    }
+    None
+}
+
+fn mark_portfolio_actors_refreshing() -> bool {
+    let Ok(mut guard) = PORTFOLIO_ACTORS_CACHE.lock() else {
+        return true;
+    };
+    if guard.refreshing {
+        return false;
+    }
+    guard.refreshing = true;
+    true
+}
+
+fn clear_portfolio_actors_refreshing() {
+    if let Ok(mut guard) = PORTFOLIO_ACTORS_CACHE.lock() {
+        guard.refreshing = false;
+    }
+}
+
+fn update_portfolio_actors_cache(value: serde_json::Value) {
+    if let Ok(mut guard) = PORTFOLIO_ACTORS_CACHE.lock() {
+        guard.value = Some(value);
+        guard.updated_at = Some(Instant::now());
+        guard.refreshing = false;
+    }
+}
+
+fn clear_portfolio_actors_cache() {
+    if let Ok(mut guard) = PORTFOLIO_ACTORS_CACHE.lock() {
+        guard.value = None;
+        guard.updated_at = None;
+        guard.refreshing = false;
+    }
 }
 
 fn is_tracking_only(holding: &Holding) -> bool {
