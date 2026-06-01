@@ -1,4 +1,11 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
 
 use hone_channels::agent_session::AgentRunOptions;
 use hone_channels::prompt::PromptOptions;
@@ -17,6 +24,7 @@ use crate::types::AppState;
 
 const SCHEDULER_EXECUTION_GRACE_SECS: u64 = 30;
 const SCHEDULER_STALE_RECOVERY_GRACE_SECS: u64 = 30;
+const SCHEDULER_HANDLER_WATCHDOG_GRACE_SECS: u64 = 5;
 const SCHEDULER_TIMEOUT_FAILURE_TRANSCRIPT_MESSAGE: &str =
     "本轮定时任务未能完成，系统已记录失败并将在下一次触发时重试。";
 
@@ -53,7 +61,24 @@ pub(crate) async fn handle_scheduler_events(
                     }),
                 },
             );
+            let handler_completed = Arc::new(AtomicBool::new(false));
+            let watchdog_recovered = Arc::new(AtomicBool::new(false));
+            let watchdog = spawn_scheduler_timeout_watchdog(
+                state_clone.clone(),
+                event.clone(),
+                handler_completed.clone(),
+                watchdog_recovered.clone(),
+            );
             let result = run_scheduled_task(&state_clone, &event).await;
+            handler_completed.store(true, Ordering::SeqCst);
+            if watchdog_recovered.load(Ordering::SeqCst) {
+                warn!(
+                    "[Feishu] 定时任务已由独立 watchdog 收口，跳过迟到结果: job={} target={} delivery_key={}",
+                    event.job_name, event.channel_target, event.delivery_key
+                );
+                return;
+            }
+            watchdog.abort();
             if !result.should_deliver {
                 if let Some(err) = result.error.as_deref() {
                     error!(
@@ -299,6 +324,73 @@ fn scheduler_execution_timeout(state: &AppState) -> Duration {
         .agent
         .overall_timeout()
         .saturating_add(Duration::from_secs(SCHEDULER_EXECUTION_GRACE_SECS))
+}
+
+fn scheduler_handler_watchdog_timeout(state: &AppState) -> Duration {
+    scheduler_execution_timeout(state)
+        .saturating_add(Duration::from_secs(SCHEDULER_HANDLER_WATCHDOG_GRACE_SECS))
+}
+
+fn spawn_scheduler_timeout_watchdog(
+    state: Arc<AppState>,
+    event: SchedulerEvent,
+    handler_completed: Arc<AtomicBool>,
+    watchdog_recovered: Arc<AtomicBool>,
+) -> tokio::task::JoinHandle<()> {
+    let timeout = scheduler_handler_watchdog_timeout(&state);
+    tokio::spawn(async move {
+        tokio::time::sleep(timeout).await;
+        if handler_completed.load(Ordering::SeqCst) {
+            return;
+        }
+        if mark_scheduler_handler_watchdog_timeout(&state, &event, timeout) {
+            watchdog_recovered.store(true, Ordering::SeqCst);
+            warn!(
+                "[Feishu] scheduler watchdog 已将超时定时任务收口为失败: job={} target={} timeout_secs={} delivery_key={}",
+                event.job_name,
+                event.channel_target,
+                timeout.as_secs(),
+                event.delivery_key
+            );
+        }
+    })
+}
+
+fn mark_scheduler_handler_watchdog_timeout(
+    state: &AppState,
+    event: &SchedulerEvent,
+    timeout: Duration,
+) -> bool {
+    let reason = format!("scheduler_handler_watchdog_timeout:{}s", timeout.as_secs());
+    match state
+        .core
+        .cron_job_storage()
+        .mark_started_execution_failed_by_delivery_key(
+            &event.actor,
+            &event.job_id,
+            &event.channel_target,
+            event.heartbeat,
+            &event.delivery_key,
+            "feishu_scheduler_handler_watchdog",
+            &reason,
+        ) {
+        Ok(0) => false,
+        Ok(_) => {
+            persist_scheduler_timeout_failure_turn(
+                &state.core.session_storage,
+                &event.actor.session_id(),
+                "scheduler_handler_watchdog_timeout",
+            );
+            true
+        }
+        Err(err) => {
+            warn!(
+                "[Feishu] scheduler watchdog 超时收口失败: job={} target={} err={}",
+                event.job_name, event.channel_target, err
+            );
+            false
+        }
+    }
 }
 
 fn recover_stale_started_rows(state: &AppState) {

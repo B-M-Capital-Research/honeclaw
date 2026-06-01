@@ -984,6 +984,104 @@ mod tests {
     }
 
     #[test]
+    fn started_execution_can_be_failed_by_exact_delivery_key_watchdog() {
+        let dir = make_temp_dir("hone_cron_storage_watchdog_pending");
+        let sqlite_path = dir.join("sessions.sqlite3");
+        let storage = CronJobStorage::with_sqlite(&dir, &sqlite_path);
+        let target_actor = actor("feishu", "ou_watchdog", None);
+        let other_actor = actor("feishu", "ou_watchdog_other", None);
+
+        for (actor, job_id, delivery_key) in [
+            (&target_actor, "j_watchdog", "delivery-watchdog"),
+            (&target_actor, "j_other_key", "delivery-other"),
+            (&other_actor, "j_watchdog", "delivery-watchdog"),
+        ] {
+            storage
+                .record_execution_event(
+                    actor,
+                    job_id,
+                    "pending job",
+                    &actor.user_id,
+                    false,
+                    CronJobExecutionInput {
+                        execution_status: "running".to_string(),
+                        message_send_status: "pending".to_string(),
+                        should_deliver: true,
+                        delivered: false,
+                        response_preview: None,
+                        error_message: None,
+                        detail: serde_json::json!({
+                            "phase": "started",
+                            "delivery_key": delivery_key,
+                        }),
+                    },
+                )
+                .expect("record started");
+        }
+
+        let updated = storage
+            .mark_started_execution_failed_by_delivery_key(
+                &target_actor,
+                "j_watchdog",
+                &target_actor.user_id,
+                false,
+                "delivery-watchdog",
+                "feishu_scheduler_handler_watchdog",
+                "scheduler_handler_watchdog_timeout:1235s",
+            )
+            .expect("watchdog finalize");
+        assert_eq!(updated, 1);
+
+        let second = storage
+            .mark_started_execution_failed_by_delivery_key(
+                &target_actor,
+                "j_watchdog",
+                &target_actor.user_id,
+                false,
+                "delivery-watchdog",
+                "feishu_scheduler_handler_watchdog",
+                "scheduler_handler_watchdog_timeout:1235s",
+            )
+            .expect("watchdog finalize is idempotent");
+        assert_eq!(second, 0);
+
+        let finalized = storage
+            .list_execution_records("j_watchdog", 10)
+            .expect("list finalized");
+        assert_eq!(finalized.len(), 2);
+        let target = finalized
+            .iter()
+            .find(|record| record.user_id == target_actor.user_id)
+            .expect("target record");
+        assert_eq!(target.execution_status, "execution_failed");
+        assert_eq!(target.message_send_status, "skipped_error");
+        assert!(!target.should_deliver);
+        assert!(!target.delivered);
+        assert_eq!(
+            target.error_message.as_deref(),
+            Some("scheduler_handler_watchdog_timeout:1235s")
+        );
+        assert_eq!(target.detail["phase"], "scheduler_handler_watchdog_timeout");
+        assert_eq!(
+            target.detail["recovered_by"],
+            "feishu_scheduler_handler_watchdog"
+        );
+
+        let other_key = storage
+            .list_execution_records("j_other_key", 10)
+            .expect("list other key");
+        assert_eq!(other_key[0].execution_status, "running");
+        assert_eq!(other_key[0].message_send_status, "pending");
+
+        let other_actor_records = finalized
+            .iter()
+            .find(|record| record.user_id == other_actor.user_id)
+            .expect("other actor record");
+        assert_eq!(other_actor_records.execution_status, "running");
+        assert_eq!(other_actor_records.message_send_status, "pending");
+    }
+
+    #[test]
     fn stale_started_rows_can_be_recovered_as_failed() {
         let dir = make_temp_dir("hone_cron_storage_interrupted_pending");
         let sqlite_path = dir.join("sessions.sqlite3");

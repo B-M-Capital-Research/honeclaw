@@ -3,7 +3,8 @@
 - **发现时间**: 2026-04-24 09:03 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
+- **GitHub Issue**: [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39)
 
 ## 观测落地（2026-04-24）
 
@@ -215,3 +216,20 @@
   - 这是功能性缺陷，不是回答质量问题；AAOI / RKLB / TEM 三条用户配置的每日动态监控没有最终回复和送达。
   - 台账虽然有 started row，但长期停在 `running/pending`，会阻断补发、失败告警和人工排障判断。
   - 已有 GitHub Issue [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39)，本轮不重复创建。
+
+## 修复与验证（2026-06-01）
+
+- 本轮修复把 Feishu scheduler 的超时兜底从主 handler future 内部扩展到入口层独立 watchdog：
+  - started row 写入后立即启动独立 watchdog，deadline 为 `agent.overall_timeout + 30s + 5s`。
+  - 如果主 handler 在 deadline 后仍未完成，watchdog 只按同一 actor / job / target / heartbeat / `delivery_key` 精确更新匹配的 `running + pending + phase=started` 行为 `execution_failed + skipped_error`，不会新插入重复 run。
+  - watchdog 同步向对应 direct session 追加幂等失败痕迹，避免会话长期停在 scheduler user turn。
+  - 如果主 handler 在 watchdog 收口后迟到返回，会跳过迟到结果和投递，避免超时后重复发送。
+- `CronJobStorage` / Cloud Postgres runtime 新增按 `delivery_key` 精确失败收口 API，覆盖 SQLite 与 cloud PG 两种执行台账后端。
+- 关联 GitHub Issue: [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39)。
+- 验证：
+  - `cargo test -p hone-memory started_execution_can_be_failed_by_exact_delivery_key_watchdog -- --nocapture`
+  - `cargo test -p hone-feishu persist_scheduler_timeout_failure_turn_is_idempotent -- --nocapture`
+  - `cargo test -p hone-memory stale_started_rows_can_be_recovered_as_failed -- --nocapture`
+  - `cargo check -p hone-feishu --tests`
+  - `rustfmt --edition 2024 --config skip_children=true --check memory/src/cron_job/history.rs memory/src/cron_job/mod.rs crates/hone-core/src/cloud_runtime.rs bins/hone-feishu/src/scheduler.rs`
+- 状态调整为 `Fixed`。本轮没有依赖当前机器生产日志或线上健康检查来判定修复，只用 bug 台账、代码路径和本地回归测试闭环。

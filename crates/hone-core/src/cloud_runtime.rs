@@ -1508,6 +1508,70 @@ INSERT INTO cloud_cron_job_runs (
         Ok(())
     }
 
+    pub async fn mark_cron_started_execution_failed_by_delivery_key(
+        &self,
+        actor: &ActorIdentity,
+        job_id: &str,
+        channel_target: &str,
+        heartbeat: bool,
+        delivery_key: &str,
+        recovered_by: &str,
+        reason: &str,
+    ) -> HoneResult<usize> {
+        let client = self.connect_client().await?;
+        let recovered_at = crate::beijing_now_rfc3339();
+        let detail = serde_json::json!({
+            "phase": "scheduler_handler_watchdog_timeout",
+            "recovered_at": recovered_at,
+            "recovered_by": recovered_by,
+            "delivery_key": delivery_key,
+        });
+        let updated = client
+            .execute(
+                r#"
+UPDATE cloud_cron_job_runs
+SET
+  executed_at = $1,
+  execution_status = 'execution_failed',
+  message_send_status = 'skipped_error',
+  should_deliver = false,
+  delivered = false,
+  response_preview = NULL,
+  error_message = $2,
+  detail = detail || $3::jsonb
+WHERE job_id = $4
+  AND actor_channel = $5
+  AND actor_user_id = $6
+  AND COALESCE(actor_channel_scope, '') = COALESCE($7, '')
+  AND channel_target = $8
+  AND heartbeat = $9
+  AND execution_status = 'running'
+  AND message_send_status = 'pending'
+  AND detail->>'phase' = 'started'
+  AND detail->>'delivery_key' = $10
+"#,
+                &[
+                    &recovered_at,
+                    &reason,
+                    &detail,
+                    &job_id,
+                    &actor.channel,
+                    &actor.user_id,
+                    &actor.channel_scope,
+                    &channel_target,
+                    &heartbeat,
+                    &delivery_key,
+                ],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!(
+                    "Postgres cron delivery_key watchdog 恢复失败: {err}"
+                ))
+            })?;
+        Ok(updated as usize)
+    }
+
     pub async fn recover_stale_cron_started_executions(
         &self,
         channel: &str,

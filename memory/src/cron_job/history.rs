@@ -33,6 +33,94 @@ pub struct ExecutionFilter {
 }
 
 impl CronJobStorage {
+    pub fn mark_started_execution_failed_by_delivery_key(
+        &self,
+        actor: &ActorIdentity,
+        job_id: &str,
+        channel_target: &str,
+        heartbeat: bool,
+        delivery_key: &str,
+        recovered_by: &str,
+        reason: &str,
+    ) -> HoneResult<usize> {
+        let delivery_key = delivery_key.trim();
+        if delivery_key.is_empty() {
+            return Ok(0);
+        }
+        if let Some(postgres) = self.cloud_postgres() {
+            let actor = actor.clone();
+            let job_id = job_id.to_string();
+            let channel_target = channel_target.to_string();
+            let delivery_key = delivery_key.to_string();
+            let recovered_by = recovered_by.to_string();
+            let reason = truncate_chars_append(reason, 500, "...");
+            return run_cloud_cron(async move {
+                postgres
+                    .mark_cron_started_execution_failed_by_delivery_key(
+                        &actor,
+                        &job_id,
+                        &channel_target,
+                        heartbeat,
+                        &delivery_key,
+                        &recovered_by,
+                        &reason,
+                    )
+                    .await
+            });
+        }
+
+        let Some(conn) = self.open_execution_conn()? else {
+            return Ok(0);
+        };
+        let recovered_at = hone_core::beijing_now_rfc3339();
+        let error_message = truncate_chars_append(reason, 500, "...");
+        let updated = conn
+            .execute(
+                "
+                UPDATE cron_job_runs
+                SET
+                    executed_at = ?1,
+                    execution_status = 'execution_failed',
+                    message_send_status = 'skipped_error',
+                    should_deliver = 0,
+                    delivered = 0,
+                    response_preview = NULL,
+                    error_message = ?2,
+                    detail_json = json_object(
+                        'phase', 'scheduler_handler_watchdog_timeout',
+                        'recovered_at', ?1,
+                        'recovered_by', ?3,
+                        'delivery_key', json_extract(detail_json, '$.delivery_key'),
+                        'previous_phase', json_extract(detail_json, '$.phase')
+                    )
+                WHERE job_id = ?4
+                  AND actor_channel = ?5
+                  AND actor_user_id = ?6
+                  AND COALESCE(actor_channel_scope, '') = COALESCE(?7, '')
+                  AND channel_target = ?8
+                  AND heartbeat = ?9
+                  AND execution_status = 'running'
+                  AND message_send_status = 'pending'
+                  AND json_extract(detail_json, '$.phase') = 'started'
+                  AND json_extract(detail_json, '$.delivery_key') = ?10
+                ",
+                params![
+                    recovered_at,
+                    error_message,
+                    recovered_by,
+                    job_id,
+                    actor.channel,
+                    actor.user_id,
+                    actor.channel_scope,
+                    channel_target,
+                    if heartbeat { 1 } else { 0 },
+                    delivery_key,
+                ],
+            )
+            .map_err(sqlite_err)?;
+        Ok(updated)
+    }
+
     pub fn recover_stale_started_executions(
         &self,
         channel: &str,

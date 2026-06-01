@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-06-01 07:02 CST
+最后更新：2026-06-01 08:10 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,12 +17,13 @@
 
 ## 当前概览
 
-- 活跃待修复：2
+- 活跃待修复：1
 - Later / 待复现：10
-- 已修复 / 已关闭：114
+- 已修复 / 已关闭：116
 - 历史分析 / 部分止血：5
 - 本轮 07:02 CST 新增 P2 `Web direct replies stream to ACP but are not persisted to session history`：03:02-07:02 CST `session_messages` 仅有 1 个 Feishu user turn 与 1 个 assistant final，且 assistant final 污染扫描未命中空回复、本机绝对路径、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、`reasoning_content`、`<think>`、provider 原始错误、`HTTP 400 Bad Request`、`open_id cross app`、`failed to probe codex`、`Resource temporarily unavailable`、`Param Incorrect`、`quota exhausted`、`panic` 或 `index out of bounds`；但 `acp-events.log` 同窗显示 2 条 Web direct 会话已流式输出并 `stopReason=end_turn`，对应 canonical JSON session 与 `sessions.sqlite3` 都没有追加本轮 user / assistant 消息。该问题阻断 Web direct 历史恢复、上下文续聊和巡检主数据源完整性，定为功能性 P2；非 P1，本轮不创建 GitHub issue。
 - 本轮 07:02 CST 未发现新的活跃 P1。`cron_job_runs` 最近条目仍停在 2026-06-01 00:26 CST 上一轮已记录的 `AAOI / RKLB / TEM 每日动态监控` running/pending 样本，本窗无新增 scheduler run；最近四小时无非文档代码提交。
+- 本轮 08:10 CST `bug-2` 已修复活跃 P1 `Feishu scheduler 部分定时任务已进入执行和工具调用，但长期停在 running/pending 且无最终回复`：Feishu scheduler started row 写入后新增入口层独立 watchdog，若主 handler 在 `agent.overall_timeout + 30s + 5s` 后仍未完成，会按 actor / job / target / heartbeat / `delivery_key` 精确把匹配 pending row 收口为 `execution_failed + skipped_error`，并给 direct session 追加幂等失败痕迹；迟到结果会跳过投递，避免超时后重复发送。SQLite 与 cloud PG 台账均新增精确 `delivery_key` 失败收口 API。验证 `cargo test -p hone-memory started_execution_can_be_failed_by_exact_delivery_key_watchdog -- --nocapture`、`cargo test -p hone-feishu persist_scheduler_timeout_failure_turn_is_idempotent -- --nocapture`、`cargo test -p hone-memory stale_started_rows_can_be_recovered_as_failed -- --nocapture`、`cargo check -p hone-feishu --tests`、`rustfmt --edition 2024 --config skip_children=true --check memory/src/cron_job/history.rs memory/src/cron_job/mod.rs crates/hone-core/src/cloud_runtime.rs bins/hone-feishu/src/scheduler.rs` 通过；关联 Issue [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39)。
 - 本轮 03:03 CST 未新增独立缺陷，但确认已 `Closed` 的 P1 `Feishu scheduler 部分定时任务已进入执行和工具调用，但长期停在 running/pending 且无最终回复` 复发并回退为 `New`：23:02-03:02 CST 按消息时间共有 18 个 user turn 与 17 个 assistant final；差额来自 2026-06-01 00:26 CST Feishu scheduler session `Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b` 的 3 条日更任务触发，其中 `AAOI 每日动态监控` 是会话最新 user turn，到 03:02 CST 仍无 assistant final。`cron_job_runs` 同窗有 `run_id=38426/38427/38428`（AAOI / RKLB / TEM）保持 `running + pending + should_deliver=1 + delivered=0`，`detail.phase=started`，已超过常规 scheduler 超时收口预期。该问题与既有 Issue [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39) 同根因，不重复创建 GitHub issue。assistant final 污染扫描未命中空回复、本机绝对路径、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、`reasoning_content`、`<think>`、provider 原始错误、`HTTP 400 Bad Request`、`open_id cross app`、`failed to probe codex`、`Resource temporarily unavailable`、`Param Incorrect`、`quota exhausted`、`panic` 或 `index out of bounds`；最近四小时唯一非文档提交为 `794b48eb fix: restore web event push delivery`，未单独触发本轮缺陷建档。
 - 本轮 03:03 CST 还观察到 Feishu scheduler 启动回收旧 pending 行：普通 scheduler 31 条、heartbeat 192 条 `execution_failed + send_failed + delivered=0`，错误统一为 `Feishu scheduler runtime restarted before this run reached a terminal status`，`detail.phase=recovered_stale_pending`；这属于既有启动 stale recovery 生效证据，不作为新缺陷。最近四小时 heartbeat 没有成功送达样本，未观察到已修复的 heartbeat 时间口径 / 直接交易指令 / stale price 类用户可见复发。
 - 本轮 19:03 CST 未新增独立缺陷或活跃 P1 / P2 状态变化。15:01-19:01 CST 按消息时间共有 21 个 user turn 与 20 个 assistant final；差额来自 17:04 CST Web direct `Actor_web__direct__web-user-457f3a8f45d3` 的 NOK 投研孤立 user turn，但 17:05-17:09 CST 另一个 Web direct session `Actor_web__direct__web-user-ba50cb9401c0` 已对同主题 NOK 投研请求完整收口，因此按并行 / 旧 session 孤立记录观察，不单独建档。assistant final 污染扫描未命中空回复、本机绝对路径、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、`reasoning_content`、`<think>`、provider 原始错误、`HTTP 400 Bad Request`、`open_id cross app`、`failed to probe codex`、`Resource temporarily unavailable`、`Param Incorrect`、`quota exhausted`、`panic` 或 `index out of bounds`。本窗普通 scheduler 无新增送达样本，`detail_json.scheduler.commodity_causality_guarded=true` 命中 0；最近四小时唯一非文档提交为 `2d43a3d3 Complete cloud PG and OSS migration`，未触发本轮缺陷状态调整。
@@ -384,7 +385,6 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Feishu scheduler 部分定时任务已进入执行和工具调用，但长期停在 `running/pending` 且无最终回复 | P1 | New | 2026-06-01 03:03 复发：00:26 CST Feishu `AAOI / RKLB / TEM 每日动态监控` 三条 started row 到 03:02 仍为 `running + pending + should_deliver=1 + delivered=0`，同会话最后停在 scheduler user turn，无 assistant final；既有 Issue [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39)，不重复创建 | [feishu_scheduler_run_stuck_without_cron_job_run.md](./feishu_scheduler_run_stuck_without_cron_job_run.md) |
 | Web direct replies stream to ACP but are not persisted to session history | P2 | New | 2026-06-01 07:02 新增：06:30 / 06:52 CST 两条 Web direct 会话在 `acp-events.log` 已持续输出并 `stopReason=end_turn`，但对应 JSON session 与 `sessions.sqlite3` 均未写入本轮 user / assistant 消息；影响历史恢复、上下文续聊和巡检数据完整性。无关联 GitHub Issue | [web_direct_acp_stream_not_persisted.md](./web_direct_acp_stream_not_persisted.md) |
 
 ## Later / 待复现
@@ -406,6 +406,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Feishu scheduler 部分定时任务已进入执行和工具调用，但长期停在 `running/pending` 且无最终回复 | P1 | Fixed | 2026-06-01 08:10 新增入口层独立 watchdog，超时后按 `delivery_key` 精确把仍 pending 的 started row 收口为 `execution_failed + skipped_error`，并给 direct session 追加幂等失败痕迹；迟到结果跳过投递。验证 `cargo test -p hone-memory started_execution_can_be_failed_by_exact_delivery_key_watchdog -- --nocapture`、`cargo test -p hone-feishu persist_scheduler_timeout_failure_turn_is_idempotent -- --nocapture`、`cargo test -p hone-memory stale_started_rows_can_be_recovered_as_failed -- --nocapture`、`cargo check -p hone-feishu --tests` 通过；关联 Issue [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39) | [feishu_scheduler_run_stuck_without_cron_job_run.md](./feishu_scheduler_run_stuck_without_cron_job_run.md) |
 | Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice | P2 | Fixed | 2026-05-31 14:05 `Greed` / `贪婪` 被纳入 broad-market 锚点，周末/休市口径的美股风控、温度检查与降息概率复盘不再因局部油价风险提示被整篇替换；低分段里 `USO/WTI/Brent` + 明确价格数字的 commodity 主体仍保留 guard。验证 `cargo test -p hone-channels commodity_guard_ --lib -- --nocapture`、`cargo test -p hone-channels commodity_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过。无关联 GitHub Issue | [scheduler_commodity_guard_false_positive_market_review.md](./scheduler_commodity_guard_false_positive_market_review.md) |
 | Codex version probe 资源耗尽导致直聊和定时任务批量失败并外露原始 runner 错误 | P1 | Fixed | 2026-05-30 16:10 Codex ACP 版本预检成功后按有效 runner 配置缓存；仅 version-probe 阶段的 `Resource temporarily unavailable` / `os error 35` / `would block` 资源瞬时失败会旁路预检并进入真实 runner 启动，缺失二进制与版本不兼容仍阻断。验证 `cargo test -p hone-channels codex_version_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；关联 Issue [#43](https://github.com/B-M-Capital-Research/honeclaw/issues/43) | [codex_version_probe_resource_unavailable_raw_failure.md](./codex_version_probe_resource_unavailable_raw_failure.md) |
 | Heartbeat 触发提醒把实际执行时间写成错误的北京时间 | P3 | Fixed | 2026-05-29 16:35 已修复 heartbeat triggered message 的北京时间触发口径漂移：prompt 注入权威检查时间，出站前将明显冲突的 `北京时间 HH:MM ...监控/检查/心跳/任务触发` 归一到 scheduler 当前北京时间并记录 metadata。验证 `cargo test -p hone-channels heartbeat_normalizes_conflicting_beijing_trigger_time --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture` 通过。无关联 GitHub Issue | [scheduler_heartbeat_trigger_time_mismatch.md](./scheduler_heartbeat_trigger_time_mismatch.md) |
