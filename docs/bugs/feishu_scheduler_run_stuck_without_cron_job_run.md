@@ -233,3 +233,9 @@
   - `cargo check -p hone-feishu --tests`
   - `rustfmt --edition 2024 --config skip_children=true --check memory/src/cron_job/history.rs memory/src/cron_job/mod.rs crates/hone-core/src/cloud_runtime.rs bins/hone-feishu/src/scheduler.rs`
 - 状态调整为 `Fixed`。本轮没有依赖当前机器生产日志或线上健康检查来判定修复，只用 bug 台账、代码路径和本地回归测试闭环。
+
+## 修复后运行态观察（2026-06-01 11:03 CST）
+
+- 本机 live SQLite 仍可看到 00:26 CST `run_id=38426/38427/38428`（`AAOI / RKLB / TEM 每日动态监控`）保持 `running + pending + should_deliver=1 + delivered=0`，到 11:03 CST 未见终态或投递记录。
+- 但远端最新 `main` 已在 08:10 CST 合入入口层 watchdog 修复，并用本地回归覆盖精确 `delivery_key` 失败收口、幂等失败痕迹和 stale started recovery。
+- 因此本轮把该 live 样本视为修复前 / 未确认部署运行态证据，不把状态从 `Fixed` 回退为 `New`。后续只有在确认运行进程已包含 08:10 修复后仍新增同类 pending row，才重新打开。

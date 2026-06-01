@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-06-01 08:10 CST
+最后更新：2026-06-01 11:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -21,6 +21,7 @@
 - Later / 待复现：10
 - 已修复 / 已关闭：116
 - 历史分析 / 部分止血：5
+- 本轮 11:03 CST 未新增独立缺陷或活跃 P1 / P2 状态回退。07:03-11:03 CST 按消息时间共有 24 个 user turn 与 24 个 assistant final，最近 Feishu direct 会话均已 assistant final 收口；assistant final 污染扫描未命中空回复、本机绝对路径、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、`reasoning_content`、`<think>`、provider 原始错误、`HTTP 400 Bad Request`、`open_id cross app`、`failed to probe codex`、`Resource temporarily unavailable`、`Param Incorrect`、`quota exhausted`、`panic` 或 `index out of bounds`。本轮曾在本机 live SQLite 看到 2026-06-01 00:26 CST `AAOI / RKLB / TEM 每日动态监控` 三条 `running + pending` started row 到 11:03 仍未收口，但远端最新 `main` 已在 08:10 CST 通过 Feishu scheduler 入口层 watchdog 修复同一 P1，并有本地回归验证；因此该 live 样本按修复前 / 未确认部署运行态处理，不把缺陷从 `Fixed` 回退，也不重复创建 Issue [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39)。最近四小时无新增 scheduler run、无非文档代码提交；`acp-events.log` 最近仅见 Feishu direct 正常 `stopReason=end_turn`，未见新的 Web direct 持久化缺失样本。
 - 本轮 07:02 CST 新增 P2 `Web direct replies stream to ACP but are not persisted to session history`：03:02-07:02 CST `session_messages` 仅有 1 个 Feishu user turn 与 1 个 assistant final，且 assistant final 污染扫描未命中空回复、本机绝对路径、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、`reasoning_content`、`<think>`、provider 原始错误、`HTTP 400 Bad Request`、`open_id cross app`、`failed to probe codex`、`Resource temporarily unavailable`、`Param Incorrect`、`quota exhausted`、`panic` 或 `index out of bounds`；但 `acp-events.log` 同窗显示 2 条 Web direct 会话已流式输出并 `stopReason=end_turn`，对应 canonical JSON session 与 `sessions.sqlite3` 都没有追加本轮 user / assistant 消息。该问题阻断 Web direct 历史恢复、上下文续聊和巡检主数据源完整性，定为功能性 P2；非 P1，本轮不创建 GitHub issue。
 - 本轮 07:02 CST 未发现新的活跃 P1。`cron_job_runs` 最近条目仍停在 2026-06-01 00:26 CST 上一轮已记录的 `AAOI / RKLB / TEM 每日动态监控` running/pending 样本，本窗无新增 scheduler run；最近四小时无非文档代码提交。
 - 本轮 08:10 CST `bug-2` 已修复活跃 P1 `Feishu scheduler 部分定时任务已进入执行和工具调用，但长期停在 running/pending 且无最终回复`：Feishu scheduler started row 写入后新增入口层独立 watchdog，若主 handler 在 `agent.overall_timeout + 30s + 5s` 后仍未完成，会按 actor / job / target / heartbeat / `delivery_key` 精确把匹配 pending row 收口为 `execution_failed + skipped_error`，并给 direct session 追加幂等失败痕迹；迟到结果会跳过投递，避免超时后重复发送。SQLite 与 cloud PG 台账均新增精确 `delivery_key` 失败收口 API。验证 `cargo test -p hone-memory started_execution_can_be_failed_by_exact_delivery_key_watchdog -- --nocapture`、`cargo test -p hone-feishu persist_scheduler_timeout_failure_turn_is_idempotent -- --nocapture`、`cargo test -p hone-memory stale_started_rows_can_be_recovered_as_failed -- --nocapture`、`cargo check -p hone-feishu --tests`、`rustfmt --edition 2024 --config skip_children=true --check memory/src/cron_job/history.rs memory/src/cron_job/mod.rs crates/hone-core/src/cloud_runtime.rs bins/hone-feishu/src/scheduler.rs` 通过；关联 Issue [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39)。
