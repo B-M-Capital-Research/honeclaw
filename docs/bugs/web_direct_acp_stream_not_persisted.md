@@ -3,8 +3,28 @@
 - 发现时间：2026-06-01 07:02 CST
 - Bug Type：System Error
 - 严重等级：P2
-- 状态：New
+- 状态：Closed
 - GitHub Issue：无
+
+## 2026-06-01 12:10 CST 复核结论
+
+- 本缺陷关闭为“证据不足 / 不成立”，本轮不改业务代码。
+- 代码侧 `crates/hone-web-api/src/routes/chat.rs` 的 Web direct SSE 路径调用统一的 `AgentSession::run(...)`；`AgentSession::run(...)` 会先持久化 user turn，成功后持久化 assistant turn。
+- 当前仓库长期文档已明确：cloud mode 下 `SessionStorage::new_cloud` 直接使用 PG `cloud_sessions` 作为 session read / write 后端；`docs/repo-map.md` 也说明云模式不再以本地 `data/sessions/*.json` 或 `data/sessions.sqlite3` 作为权威会话存储。
+- 原证据只对比了 `acp-events.log` 与本地 JSON / SQLite，没有查询 PG `cloud_sessions` 或通过 Web API history/read path 验证，因此不能证明 Web direct 成功回复未进入真实 session history。
+- 该问题不关联 GitHub Issue；本轮只同步 bug 台账，避免继续把云迁移后的本地镜像缺口误判为 Web direct 持久化缺陷。
+
+## 影响范围
+
+- 无需回滚或迁移数据。
+- 后续缺陷巡检若运行在 cloud mode，应以 `SessionStorage` 抽象、Web API history route 或 PG `cloud_sessions` 为会话真相源；本地 JSON / SQLite 只能作为 local mode 或迁移/回退证据。
+
+## 验证
+
+- 代码复核：`crates/hone-web-api/src/routes/chat.rs` -> `build_chat_sse(...)` -> `AgentSession::run(...)`。
+- 代码复核：`crates/hone-channels/src/agent_session/core.rs` 的 `AgentSession::run(...)` 包含 `session.persist_user` 与成功路径 `session.persist_assistant`。
+- 文档复核：`docs/repo-map.md` 记录 cloud mode 下 `SessionStorage::new_cloud` 使用 PG `cloud_sessions`；`docs/handoffs/cloud-pg-oss-runtime-migration-2026-05-27.md` 记录 `sessions_dir` / `sessions.sqlite3` 已从云模式本地 durable dependency 中移除。
+- 未运行业务测试：本轮没有业务代码变更；原缺陷无法在不访问云 PG 权威会话存储的前提下本地复现。
 
 ## 证据来源
 
