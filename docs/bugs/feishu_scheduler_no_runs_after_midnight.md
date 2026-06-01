@@ -8,6 +8,15 @@
 
 ## 证据来源
 
+- 2026-06-02 03:03 CST 运行态复核：
+  - `data/sessions.sqlite3` -> `session_messages` 在 `2026-06-01T23:03:00+08:00` 到 `2026-06-02T03:04:00+08:00` 共有 `20` 个 user turn 与 `20` 个 assistant final，Feishu direct 最新会话均已 assistant final 收口。
+  - 同窗 assistant final 污染扫描未命中空回复、通用失败、本机绝对路径、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、`reasoning_content`、`<think>`、provider 原始错误、`HTTP 400 Bad Request`、`open_id cross app`、`failed to probe codex`、`Resource temporarily unavailable`、`Param Incorrect`、`quota exhausted`、`panic` 或 `index out of bounds`。
+  - `data/sessions.sqlite3` -> `cron_job_runs` 全库 `max(executed_at)` 仍为 `2026-06-01T00:26:00.908925+08:00`；本窗没有任何新增 scheduler run。
+  - 最新三条 run 仍是 `run_id=38426/38427/38428`（`AAOI / RKLB / TEM 每日动态监控`）的 `running + pending + should_deliver=1 + delivered=0` started row。
+  - 上一轮用户确认漏跑的 `20:00` 常规任务与 `21:30` 一次性补跑任务仍没有出现在 `cron_job_runs` 中。
+  - 远端最新 main 已在 2026-06-02 00:09 CST 补齐 cloud cron 同步桥超时边界并通过验证；上述 live SQLite 停滞样本按本机未确认部署运行态处理，不把缺陷状态从 `Fixed` 回退。
+  - `data/runtime/logs/acp-events.log` 本窗可见 Web direct 流式事件与 `stopReason=end_turn`。日志中保留内部 `tool_call_update.rawOutput` / sandbox 临时路径 payload，但当前 `SessionEventEmitter` 会对用户态 progress / tool status / stream delta 做路径相对化、内部 marker 抑制、结构化 payload 屏蔽；结合既有 `web_direct_tool_call_raw_output_leak.md` 修复记录，本轮不把该内部 ACP 诊断日志视为用户可见污染复发。
+  - 最近四小时无非文档代码提交。
 - `data/sessions.sqlite3` -> `session_messages`
   - 本轮巡检窗口按 `datetime(timestamp)` 归一化为 `2026-06-01 18:58:34` 到 `2026-06-01 22:58:34` CST。
   - 窗口内共有 `34` 个 user turn 与 `35` 个 assistant turn；Feishu direct 最新会话均有 assistant 收口，多出的 assistant 是 `21:58` 的对话上限提示，不构成未回复缺陷。
@@ -47,6 +56,7 @@
 - `session_messages` 说明 Feishu direct 直聊仍可正常收发，底层会话写入没有全局停摆。
 - 但 `cron_job_runs` 在 `2026-06-01 00:26 CST` 后完全没有新记录。
 - 用户确认的 `20:00` trading_day 任务漏执行；系统侧补建的 `21:30` 一次性任务也没有落入 run 台账。
+- 2026-06-02 03:03 CST 本机 live SQLite 仍显示 run 台账未推进；但远端最新 main 已有代码修复，本轮不依赖该未确认部署运行态作为状态回退依据。
 
 ## 用户影响
 
