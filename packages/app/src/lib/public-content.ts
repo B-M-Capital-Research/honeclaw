@@ -437,7 +437,7 @@ const CONTENT_ZH = {
       },
       {
         title: "事件与任务",
-        desc: "Cron 任务、事件引擎摘要、`/missed` 回查、通知偏好与渠道投递共享 Rust 后端、SQLite/JSON 存储和用户归属模型；Feishu 等渠道的 scheduler heartbeat 已补齐 revision-aware 重复抑制与 running 行终结回归覆盖，event-engine 默认 LLM 配置已切到当前可用的 `x-ai/grok-4.3`，避免继续依赖已下线的 Grok 4.1 Fast。",
+        desc: "Cron 任务、事件引擎摘要、`/missed` 回查、通知偏好与渠道投递共享 Rust 后端、SQLite/JSON 或 PG 执行历史和用户归属模型；Feishu 等渠道的 scheduler heartbeat 已补齐 revision-aware 重复抑制、stale running 行终结、cloud cron 操作超时保护与 listener 内 scheduler loop 监督重启，event-engine 默认 LLM 配置已切到当前可用的 `x-ai/grok-4.3`，避免继续依赖已下线的 Grok 4.1 Fast。",
       },
     ],
 
@@ -535,7 +535,7 @@ const CONTENT_ZH = {
           {
             name: "Cron 定时任务",
             status: "stable",
-            note: "scheduled_task skill + /api/cron-jobs + 普通市场复盘 guard 回归",
+            note: "scheduled_task skill + /api/cron-jobs + 执行历史 / heartbeat / quiet_hours / guard 回归",
           },
           {
             name: "自定义 Skill",
@@ -594,7 +594,7 @@ const CONTENT_ZH = {
         name: "Lark / Feishu",
         icon: "◈",
         status: "stable",
-        desc: "飞书机器人双向通信与 scheduler heartbeat 推送",
+        desc: "飞书机器人双向通信、scheduler heartbeat 推送与 loop 监督恢复",
       },
       {
         name: "Discord",
@@ -670,7 +670,7 @@ const CONTENT_ZH = {
         "管理端用户视图聚合持仓、画像、会话与研究任务；公司画像可按 actor 空间查看详情、删除、导出 zip、导入预览并处理冲突",
         "Cron 定时任务系统",
         "定时任务投递安全 guard：原油 / 大宗商品归因防护仍覆盖商品播报，但不会因市场复盘中的局部油价从句整篇替换 A/H 或美股大盘复盘",
-        "事件引擎推送质量收口：digest 去重 / min-gap / topic memory / 分类预算 / 方向性价格阈值 / Feishu scheduler heartbeat revision 去重",
+        "事件引擎与 scheduler 质量收口：digest 去重 / min-gap / topic memory / 分类预算 / 方向性价格阈值 / Feishu heartbeat revision 去重 / stale running 记录恢复 / scheduler loop 监督重启",
         "Event-engine 默认模型与示例配置已替换为 `x-ai/grok-4.3`，避免 Grok 4.1 Fast 下线导致新闻分类、global digest、mainline distill 等 LLM 增强链路失效",
         "LLM provider 配置收口到 `config.yaml`，OpenRouter 与通用 OpenAI-compatible provider 支持 `api_key/api_keys` 轮换，并保留上游错误详情便于诊断",
         "Cloud PG / OSS 运行时：`cloud.postgres` / `cloud.oss` 可通过 env 配置，公开上传、生成图片 / 文件与迁移文档可写入 OSS，公开图片 / 文件代理可读取 `oss://bucket/key` 托管对象，`/api/meta` 会暴露云能力状态和本地 durable dependency 计数",
@@ -1981,7 +1981,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         title: "Events and tasks",
-        desc: "Cron jobs, event-engine digests, `/missed` recovery, notification preferences, and channel delivery share the Rust backend, SQLite/JSON storage, and user ownership model; Feishu and other channel scheduler heartbeats now include revision-aware duplicate suppression and running-row finalization coverage, and event-engine default LLM config now uses the currently available `x-ai/grok-4.3` instead of the retired Grok 4.1 Fast.",
+        desc: "Cron jobs, event-engine digests, `/missed` recovery, notification preferences, and channel delivery share the Rust backend, SQLite/JSON or PG execution history, and user ownership model; Feishu and other channel scheduler heartbeats now include revision-aware duplicate suppression, stale running-row finalization, cloud cron operation timeouts, and supervised scheduler-loop restarts inside the listener, and event-engine default LLM config now uses the currently available `x-ai/grok-4.3` instead of the retired Grok 4.1 Fast.",
       },
     ],
 
@@ -2083,7 +2083,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           {
             name: "Cron scheduled tasks",
             status: "stable",
-            note: "scheduled_task skill + /api/cron-jobs + broad-market review guard regression",
+            note: "scheduled_task skill + /api/cron-jobs + execution history / heartbeat / quiet_hours / guard regressions",
           },
           {
             name: "Custom skills",
@@ -2146,7 +2146,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         name: "Lark / Feishu",
         icon: "◈",
         status: "stable",
-        desc: "Two-way Feishu bot with scheduler heartbeat pushes",
+        desc: "Two-way Feishu bot with scheduler heartbeat pushes and loop supervision recovery",
       },
       {
         name: "Discord",
@@ -2255,7 +2255,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         "Admin user views group holdings, profiles, sessions, and research tasks; company profiles can be inspected by actor space, deleted, exported as zip bundles, preview-imported, and imported with conflict decisions",
         "Cron-driven scheduled tasks",
         "Scheduled-delivery safety guard: crude oil / commodity causality protection still covers commodity briefings, while broad A/H or U.S. market reviews are not fully replaced just because they contain a secondary oil-price clause",
-        "Event-engine push-quality pass: digest dedupe / min-gap / topic memory / category budgets / directional price thresholds / Feishu scheduler heartbeat revision dedupe",
+        "Event-engine and scheduler quality pass: digest dedupe / min-gap / topic memory / category budgets / directional price thresholds / Feishu heartbeat revision dedupe / stale running-row recovery / scheduler-loop supervision",
         "Event-engine default models and sample config now use `x-ai/grok-4.3`, avoiding failures from the retired Grok 4.1 Fast in news classification, global digest, and mainline distillation paths",
         "LLM provider config is consolidated into `config.yaml`; OpenRouter and generic OpenAI-compatible providers support `api_key/api_keys` rotation and preserve upstream error details for diagnosis",
         "Cloud PG / OSS runtime: `cloud.postgres` / `cloud.oss` can be configured through env references; public uploads, generated images / files, and migrated documents can write to OSS; public image / file proxies can read `oss://bucket/key` managed objects; `/api/meta` exposes cloud capability state and the local durable dependency count",
