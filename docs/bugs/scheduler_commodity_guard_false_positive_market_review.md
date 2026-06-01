@@ -3,8 +3,14 @@
 - **发现时间**: 2026-05-25 19:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，当前不是 P1。
+
+## 状态同步（2026-06-01 bug-2）
+
+- 本轮复核 `docs/bugs/README.md`、当前 HEAD 修复记录与本文件，确认 2026-05-31 14:05 CST 已补齐 `Greed` / `贪婪` broad-market 锚点与 `USO/WTI/Brent + 明确价格数字` commodity 主体回归，导航表已列为 `Fixed`。
+- 本文件头部仍停留在修复前 `New`，本轮仅同步为 `Fixed`；未发现关联 GitHub Issue，也未做业务代码改动。
+- 验证沿用既有修复记录：`cargo test -p hone-channels commodity_guard_ --lib -- --nocapture`、`cargo test -p hone-channels commodity_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`。
 
 ## 复发记录（2026-05-31 11:03 CST）
 
