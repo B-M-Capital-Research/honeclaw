@@ -14,6 +14,12 @@
 - 原证据只对比了 `acp-events.log` 与本地 JSON / SQLite，没有查询 PG `cloud_sessions` 或通过 Web API history/read path 验证，因此不能证明 Web direct 成功回复未进入真实 session history。
 - 该问题不关联 GitHub Issue；本轮只同步 bug 台账，避免继续把云迁移后的本地镜像缺口误判为 Web direct 持久化缺陷。
 
+## 2026-06-01 15:03 CST 复核结论
+
+- 15:00 CST Web direct session `Actor_web__direct__web-user-f40ae1caa720` 在 `acp-events.log` 中已流式输出并返回 `stopReason=end_turn`，但本地 `sessions.sqlite3` 仍停在 2026-05-30 20:32 CST。
+- 该观测只证明本地 SQLite / JSON 镜像没有追踪到 cloud mode Web direct 新会话；结合 12:10 CST 的代码与文档复核，仍不能证明 Web API history read path 或 PG `cloud_sessions` 丢失该轮回复。
+- 本轮不重新打开缺陷，状态保持 `Closed`；后续若要重开，必须补充 PG `cloud_sessions` 查询或 Web API history/read path 返回缺失的证据。
+
 ## 影响范围
 
 - 无需回滚或迁移数据。
