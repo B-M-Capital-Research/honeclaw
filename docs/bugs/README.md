@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-06-02 03:03 CST
+最后更新：2026-06-02 03:12 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -21,6 +21,7 @@
 - Later / 待复现：10
 - 已修复 / 已关闭：118
 - 历史分析 / 部分止血：5
+- 本轮 03:12 CST 对已修复 P1 `Feishu scheduler 00:26 后不再产生新 run，导致 trading_day 任务漏执行` 再补运行态硬化：`hone-feishu` 启动 Feishu cron producer 时改为 supervised spawn，若 `scheduler.start()` 因 panic 或异常退出而结束，会记录错误并在 1 秒后自动拉起，避免单次异常把整夜 due-scan 静默打死。新增回归 `cargo test -p hone-feishu supervised_task_restarts_after_panic -- --nocapture`，并再次确认 `cargo check -p hone-feishu --tests` 通过。该改动不改变 bug 的 `Fixed` 状态，但补齐“异常退出后自恢复”边界。
 - 本轮 00:09 CST 已修复 P1 `Feishu scheduler 00:26 后不再产生新 run，导致 trading_day 任务漏执行`：cloud cron 同步桥 `run_cloud_cron(...)` 新增 15s 默认超时（可由 `HONE_CLOUD_CRON_TIMEOUT_SECS` 调整），避免 PG `list_cron_job_records` / due-claim 等 cloud cron future 无界等待时卡死单一 scheduler tick loop，导致 Feishu heartbeat 仍健康但后续不再创建 `cron_job_runs`。验证 `cargo test -p hone-memory cloud_cron_timeout_returns_storage_error_instead_of_blocking -- --nocapture`、`cargo test -p hone-memory --lib -- --nocapture`、`cargo check -p hone-scheduler --tests`、`rustfmt --edition 2024 --config skip_children=true --check memory/src/cron_job/mod.rs` 通过；关联 Issue [#47](https://github.com/B-M-Capital-Research/honeclaw/issues/47)。
 - 本轮 03:03 CST 复核 P1 `Feishu scheduler 00:26 后不再产生新 run，导致 trading_day 任务漏执行`：23:03-03:03 CST `session_messages` 共有 20 个 user turn 与 20 个 assistant final，Feishu direct 最新会话均已收口；assistant final 污染扫描未命中空回复、通用失败、本机绝对路径、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、`reasoning_content`、`<think>`、provider 原始错误、`HTTP 400 Bad Request`、`open_id cross app`、`failed to probe codex`、`Resource temporarily unavailable`、`Param Incorrect`、`quota exhausted`、`panic` 或 `index out of bounds`。本机 live SQLite 的 `cron_job_runs.max(executed_at)` 仍停在 `2026-06-01T00:26:00.908925+08:00`，但远端最新 main 已在 00:09 CST 补齐 cloud cron 同步桥超时边界并通过验证；本轮按未确认部署运行态处理，不把状态从 `Fixed` 回退。`acp-events.log` 本窗有 Web direct `stopReason=end_turn` 与内部 `tool_call_update.rawOutput` 诊断 payload；结合当前 `SessionEventEmitter` 用户态净化与既有修复记录，该 raw payload 仅作为内部日志证据，不把 Web rawOutput 旧缺陷回退。沿用 Issue [#47](https://github.com/B-M-Capital-Research/honeclaw/issues/47)。
 - 本轮 23:04 CST 新增 P1 `Feishu scheduler 00:26 后不再产生新 run，导致 trading_day 任务漏执行`：18:58-22:58 CST `session_messages` 共有 34 个 user turn 与 35 个 assistant turn，Feishu direct 直聊均有收口；多出的 assistant 是 21:58 CST 对话上限提示。assistant final 污染扫描未命中空回复、通用失败、本机绝对路径、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、`reasoning_content`、`<think>`、provider 原始错误、`HTTP 400 Bad Request`、`open_id cross app`、`failed to probe codex`、`Resource temporarily unavailable`、`Param Incorrect`、`quota exhausted`、`panic` 或 `index out of bounds`。但用户在 21:25 CST 明确反馈 `20:00` 的 `美股持仓开盘前晚报` 未执行，assistant 查询后确认该任务仍启用且最后成功运行停在 2026-05-29 20:00；用户随后要求补跑，assistant 声称已补建 21:30 CST 一次性任务 `j_15913f67`。`cron_job_runs.max(executed_at)` 到本轮仍停在 2026-06-01 00:26:00 CST，既无 20:00 常规 run，也无 21:30 补跑 run。该问题区别于既有 started row 不收口：本轮是 00:26 后 scheduler 不再产生新 run，阻断定时任务核心交付链路，定为功能性 P1。已创建脱敏 Issue [#47](https://github.com/B-M-Capital-Research/honeclaw/issues/47)。

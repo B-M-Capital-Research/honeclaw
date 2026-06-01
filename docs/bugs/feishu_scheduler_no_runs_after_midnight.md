@@ -78,12 +78,18 @@
   - `run_cloud_cron(...)` 新增默认 15 秒超时边界。
   - 可通过 `HONE_CLOUD_CRON_TIMEOUT_SECS` 调整超时时间。
   - cloud cron future 超时后返回 `HoneError::Storage("cloud cron operation timed out ...")`，由现有调用方按错误记录 warning / 跳过本次操作，避免永久卡死 scheduler loop。
+- `bins/hone-feishu/src/handler.rs`
+  - Feishu scheduler producer 改为 supervised spawn，不再使用无监管的裸 `tokio::spawn`。
+  - 若 `scheduler.start()` 因 panic 或异常提前退出，会记录错误并在 1 秒后自动重启 due-scan loop，避免单次异常导致后续整夜不再产出新的 `cron_job_runs`。
 - 新增回归 `cloud_cron_timeout_returns_storage_error_instead_of_blocking`，证明 stuck cloud cron future 会在有界时间内返回 storage error。
+- 新增回归 `supervised_task_restarts_after_panic`，证明 Feishu scheduler producer 的监督器会在一次 panic 后自动重新拉起任务。
 - 验证通过：
   - `cargo test -p hone-memory cloud_cron_timeout_returns_storage_error_instead_of_blocking -- --nocapture`
   - `cargo test -p hone-memory --lib -- --nocapture`
   - `cargo check -p hone-scheduler --tests`
   - `rustfmt --edition 2024 --config skip_children=true --check memory/src/cron_job/mod.rs`
+  - `cargo test -p hone-feishu supervised_task_restarts_after_panic -- --nocapture`
+  - `cargo check -p hone-feishu --tests`
 
 ## 剩余观察点
 

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::future::Future;
+use std::panic::AssertUnwindSafe;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
@@ -8,6 +9,7 @@ use async_trait::async_trait;
 use feishu_sdk::core::{Config as FeishuConfig, LogLevel as FeishuLogLevel, new_logger};
 use feishu_sdk::event::{Event, EventDispatcher, EventDispatcherConfig, EventHandler, EventResp};
 use feishu_sdk::ws::StreamClient;
+use futures::FutureExt;
 use hone_channels::ChatMode;
 use hone_channels::agent_session::{AgentRunOptions, AgentSession, MessageMetadata};
 use hone_channels::attachments::{
@@ -356,8 +358,12 @@ pub(crate) async fn run() {
         warn!("HONE_FEISHU_DISABLE_SCHEDULER is set; Feishu cron scheduler is disabled");
     } else {
         let (scheduler, event_rx) = core.create_scheduler(vec!["feishu".to_string()]);
-        tokio::spawn(async move {
-            scheduler.start().await;
+        let scheduler = Arc::new(scheduler);
+        spawn_supervised_task("feishu_scheduler_loop", move || {
+            let scheduler = scheduler.clone();
+            async move {
+                scheduler.start().await;
+            }
         });
 
         let scheduler_state = state.clone();
@@ -1620,10 +1626,36 @@ fn collect_raw_attachments(msg: &FeishuIncomingMessage) -> Vec<RawAttachment> {
     out
 }
 
+fn spawn_supervised_task<F, Fut>(
+    task_name: &'static str,
+    mut task_factory: F,
+) -> tokio::task::JoinHandle<()>
+where
+    F: FnMut() -> Fut + Send + 'static,
+    Fut: Future<Output = ()> + Send + 'static,
+{
+    tokio::spawn(async move {
+        loop {
+            let result = AssertUnwindSafe(task_factory()).catch_unwind().await;
+            match result {
+                Ok(()) => error!(
+                    "[Feishu] supervised task exited unexpectedly: task={task_name}; restarting in 1s"
+                ),
+                Err(_) => {
+                    error!("[Feishu] supervised task panicked: task={task_name}; restarting in 1s")
+                }
+            }
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use hone_core::ActorIdentity;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn allow_list_empty_means_allow_all() {
@@ -1927,5 +1959,39 @@ mod tests {
         assert!(has_actionable_user_input("1", 0, 0));
         assert!(has_actionable_user_input("", 1, 0));
         assert!(has_actionable_user_input("", 0, 1));
+    }
+
+    #[tokio::test]
+    async fn supervised_task_restarts_after_panic() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let notify = Arc::new(tokio::sync::Notify::new());
+        let handle = spawn_supervised_task("test_supervisor", {
+            let attempts = attempts.clone();
+            let notify = notify.clone();
+            move || {
+                let attempts = attempts.clone();
+                let notify = notify.clone();
+                async move {
+                    let attempt = attempts.fetch_add(1, Ordering::SeqCst);
+                    notify.notify_waiters();
+                    if attempt == 0 {
+                        panic!("boom");
+                    }
+                }
+            }
+        });
+
+        tokio::time::timeout(Duration::from_secs(3), async {
+            loop {
+                if attempts.load(Ordering::SeqCst) >= 2 {
+                    break;
+                }
+                notify.notified().await;
+            }
+        })
+        .await
+        .expect("supervisor should restart the task");
+
+        handle.abort();
     }
 }

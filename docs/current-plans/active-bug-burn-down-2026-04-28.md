@@ -3,7 +3,7 @@
 - title: Active Bug Burn-down 2026-04-28
 - status: in_progress
 - created_at: 2026-04-28
-- updated_at: 2026-05-30 16:10 CST
+- updated_at: 2026-06-02 03:12 CST
 - owner: Codex
 - related_files:
   - `docs/bugs/README.md`
@@ -36,6 +36,7 @@ Clear the current active bug queue as far as software changes can responsibly do
 
 ## Progress
 
+- 2026-06-02 03:12: Added another reliability guard on top of the already-fixed P1 `feishu_scheduler_no_runs_after_midnight`. `hone-feishu` now starts the Feishu cron producer through a supervised spawn, so if `scheduler.start()` ever panics or exits unexpectedly, the runtime logs the failure and restarts the due-scan loop after 1 second instead of silently abandoning all future cron ticks. Added `handler::tests::supervised_task_restarts_after_panic`; `cargo test -p hone-feishu supervised_task_restarts_after_panic -- --nocapture` and `cargo check -p hone-feishu --tests` passed. Active bug queue remains 0.
 - 2026-05-30 16:10: Re-closed the reopened P1 Codex version-probe resource exhaustion bug linked to Issue #43. Codex ACP version validation now caches successful `codex --version` + codex-acp initialize checks by effective runner config, so direct / scheduler traffic does not create two extra probe children on every turn. If only the version-probe step hits a transient local resource limit such as `Resource temporarily unavailable` / `os error 35` / `would block`, the preflight logs a warning and continues to the real runner startup path; missing binaries, old versions, unparsable versions, and real runner startup failures still fail normally. Active bug queue is back to 0.
 - 2026-05-30 00:09: Re-closed the reopened P2 scheduler commodity-guard false positive for low-segmentation A/H market reviews. `text_is_predominantly_commodity_related(...)` now compares broad-market anchors against commodity anchors even when the response has only one or two sentence segments, so an A股/港股/美股/AI market review with WTI/Brent/oil only in a risk note is not fully replaced by the commodity safety notice. Added `commodity_guard_skips_low_segmentation_ah_market_review_with_oil_risk_note`; `commodity_guard_`, `commodity_`, `cargo check -p hone-channels --tests`, and rustfmt check passed. Active bug queue is back to 0.
 - 2026-05-29 00:13: Reconciled the active queue after `a78d3f2e fix: harden event digest and commodity guards` landed on `origin/main`. Current HEAD already covers both remaining active bugs: Feishu event digest `open_id cross app` now invalidates direct open_id cache and retries after `99992361`, while scheduler commodity guard skips broad-market review samples that only mention oil as a secondary risk variable. Verified `cargo test -p hone-event-engine feishu --lib -- --nocapture` and `cargo test -p hone-channels commodity_guard_ --lib -- --nocapture`; `docs/bugs/README.md` active queue is back to 0. This run did not require a new code patch because the code fix was already present; it synchronized the ledger and issue follow-up state.
