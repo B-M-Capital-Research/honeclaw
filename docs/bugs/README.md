@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-06-01 23:04 CST
+最后更新：2026-06-02 00:09 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,10 +17,11 @@
 
 ## 当前概览
 
-- 活跃待修复：1
+- 活跃待修复：0
 - Later / 待复现：10
-- 已修复 / 已关闭：117
+- 已修复 / 已关闭：118
 - 历史分析 / 部分止血：5
+- 本轮 00:09 CST 已修复 P1 `Feishu scheduler 00:26 后不再产生新 run，导致 trading_day 任务漏执行`：cloud cron 同步桥 `run_cloud_cron(...)` 新增 15s 默认超时（可由 `HONE_CLOUD_CRON_TIMEOUT_SECS` 调整），避免 PG `list_cron_job_records` / due-claim 等 cloud cron future 无界等待时卡死单一 scheduler tick loop，导致 Feishu heartbeat 仍健康但后续不再创建 `cron_job_runs`。验证 `cargo test -p hone-memory cloud_cron_timeout_returns_storage_error_instead_of_blocking -- --nocapture`、`cargo test -p hone-memory --lib -- --nocapture`、`cargo check -p hone-scheduler --tests`、`rustfmt --edition 2024 --config skip_children=true --check memory/src/cron_job/mod.rs` 通过；关联 Issue [#47](https://github.com/B-M-Capital-Research/honeclaw/issues/47)。
 - 本轮 23:04 CST 新增 P1 `Feishu scheduler 00:26 后不再产生新 run，导致 trading_day 任务漏执行`：18:58-22:58 CST `session_messages` 共有 34 个 user turn 与 35 个 assistant turn，Feishu direct 直聊均有收口；多出的 assistant 是 21:58 CST 对话上限提示。assistant final 污染扫描未命中空回复、通用失败、本机绝对路径、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、`reasoning_content`、`<think>`、provider 原始错误、`HTTP 400 Bad Request`、`open_id cross app`、`failed to probe codex`、`Resource temporarily unavailable`、`Param Incorrect`、`quota exhausted`、`panic` 或 `index out of bounds`。但用户在 21:25 CST 明确反馈 `20:00` 的 `美股持仓开盘前晚报` 未执行，assistant 查询后确认该任务仍启用且最后成功运行停在 2026-05-29 20:00；用户随后要求补跑，assistant 声称已补建 21:30 CST 一次性任务 `j_15913f67`。`cron_job_runs.max(executed_at)` 到本轮仍停在 2026-06-01 00:26:00 CST，既无 20:00 常规 run，也无 21:30 补跑 run。该问题区别于既有 started row 不收口：本轮是 00:26 后 scheduler 不再产生新 run，阻断定时任务核心交付链路，定为功能性 P1。已创建脱敏 Issue [#47](https://github.com/B-M-Capital-Research/honeclaw/issues/47)。
 - 本轮 12:10 CST 关闭 P2 `Web direct replies stream to ACP but are not persisted to session history` 为证据不足 / 不成立：Web direct SSE 路径已调用统一 `AgentSession::run(...)`，而云模式下 `SessionStorage::new_cloud` 使用 PG `cloud_sessions` 作为 session read/write 后端；原证据只对比 `acp-events.log` 与本地 `data/sessions/*.json` / `data/sessions.sqlite3`，没有查询 PG 或 Web API history read path，因此不能证明真实 Web direct session history 丢失。本轮无业务代码改动、无关联 GitHub Issue。
 - 本轮 19:03 CST 未新增独立缺陷或活跃 P1 / P2 状态变化。15:01-19:02 CST `session_messages` 共有 37 个 user turn 与 37 个 assistant final，最近 Feishu direct 会话均已 assistant final 收口；最新会话末尾没有孤立 user turn。assistant final 污染扫描未命中空回复、通用失败、本机绝对路径、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、`reasoning_content`、`<think>`、provider 原始错误、`HTTP 400 Bad Request`、`open_id cross app`、`failed to probe codex`、`Resource temporarily unavailable`、`Param Incorrect`、`quota exhausted`、`panic` 或 `index out of bounds`。本窗没有新增 `cron_job_runs`，最近条目仍停在 2026-06-01 00:26 CST；`acp-events.log` 同窗仅见直聊流式 tool / chunk 事件与 `stopReason=end_turn`，未见用户可见污染或 runner 失败。最近四小时无非文档代码提交，本轮不新增 bug 文档、不创建 GitHub issue。
@@ -390,7 +391,6 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Feishu scheduler 00:26 后不再产生新 run，导致 trading_day 任务漏执行 | P1 | New | 2026-06-01 23:04 巡检新增：`cron_job_runs.max(executed_at)` 停在 00:26 CST；用户 21:25 确认 20:00 `美股持仓开盘前晚报` 漏执行，21:30 补跑任务也没有 run 记录。待修复 scheduler due scan / runtime 健康检查；Issue [#47](https://github.com/B-M-Capital-Research/honeclaw/issues/47) | [feishu_scheduler_no_runs_after_midnight.md](./feishu_scheduler_no_runs_after_midnight.md) |
 
 ## Later / 待复现
 
@@ -411,6 +411,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Feishu scheduler 00:26 后不再产生新 run，导致 trading_day 任务漏执行 | P1 | Fixed | 2026-06-02 00:09 cloud cron 同步桥 `run_cloud_cron(...)` 新增 15s 默认超时（`HONE_CLOUD_CRON_TIMEOUT_SECS` 可调），避免 cloud PG cron list / claim future 无界等待时卡死 scheduler tick loop，导致 Feishu heartbeat 仍健康但后续不再创建 `cron_job_runs`。验证 `cargo test -p hone-memory cloud_cron_timeout_returns_storage_error_instead_of_blocking -- --nocapture`、`cargo test -p hone-memory --lib -- --nocapture`、`cargo check -p hone-scheduler --tests` 通过；关联 Issue [#47](https://github.com/B-M-Capital-Research/honeclaw/issues/47) | [feishu_scheduler_no_runs_after_midnight.md](./feishu_scheduler_no_runs_after_midnight.md) |
 | Web direct replies stream to ACP but are not persisted to session history | P2 | Closed | 2026-06-01 12:10 复核关闭为证据不足 / 不成立：Web direct 已走统一 `AgentSession::run(...)` 持久化路径，cloud mode 的 session 权威后端是 PG `cloud_sessions`；原证据只看本地 JSON / SQLite，不能证明真实历史丢失。本轮无业务代码改动、无关联 GitHub Issue | [web_direct_acp_stream_not_persisted.md](./web_direct_acp_stream_not_persisted.md) |
 | Feishu scheduler 部分定时任务已进入执行和工具调用，但长期停在 `running/pending` 且无最终回复 | P1 | Fixed | 2026-06-01 08:10 新增入口层独立 watchdog，超时后按 `delivery_key` 精确把仍 pending 的 started row 收口为 `execution_failed + skipped_error`，并给 direct session 追加幂等失败痕迹；迟到结果跳过投递。验证 `cargo test -p hone-memory started_execution_can_be_failed_by_exact_delivery_key_watchdog -- --nocapture`、`cargo test -p hone-feishu persist_scheduler_timeout_failure_turn_is_idempotent -- --nocapture`、`cargo test -p hone-memory stale_started_rows_can_be_recovered_as_failed -- --nocapture`、`cargo check -p hone-feishu --tests` 通过；关联 Issue [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39) | [feishu_scheduler_run_stuck_without_cron_job_run.md](./feishu_scheduler_run_stuck_without_cron_job_run.md) |
 | Scheduler commodity guard falsely replaces non-commodity market reviews with oil guard notice | P2 | Fixed | 2026-05-31 14:05 `Greed` / `贪婪` 被纳入 broad-market 锚点，周末/休市口径的美股风控、温度检查与降息概率复盘不再因局部油价风险提示被整篇替换；低分段里 `USO/WTI/Brent` + 明确价格数字的 commodity 主体仍保留 guard。验证 `cargo test -p hone-channels commodity_guard_ --lib -- --nocapture`、`cargo test -p hone-channels commodity_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过。无关联 GitHub Issue | [scheduler_commodity_guard_false_positive_market_review.md](./scheduler_commodity_guard_false_positive_market_review.md) |

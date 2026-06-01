@@ -3,7 +3,7 @@
 - **发现时间**: 2026-06-01 23:04 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#47](https://github.com/B-M-Capital-Research/honeclaw/issues/47)
 
 ## 证据来源
@@ -59,17 +59,23 @@
 
 - 该问题不同于 `feishu_scheduler_run_stuck_without_cron_job_run.md` 中的“任务已注入会话 / started row 长期不收口”：本轮新增证据显示 `00:26` 之后 due job 根本没有进入 `cron_job_runs`。
 - 该问题也不同于 `feishu_scheduler_running_rows_never_finalized.md` 的 started-row finalize 噪音：这里的主要损害是新任务不再触发 / 不再落账。
-- 初步怀疑方向：
-  - Feishu scheduler due scan loop 在 `00:26` 后停止或未被重启。
-  - 某个 `00:26` started run 或入口层 watchdog 修复后，调度循环被阻塞、退出或未继续 poll。
-  - 任务创建路径返回成功，但未唤醒或未连接到实际 scheduler runtime。
+- 代码复核确认一个可本地加固的根因：cloud mode 下 `CronJobStorage::get_due_jobs(...)` 会通过 `run_cloud_cron(...)` 同步桥访问 PG authoritative cron backend；此前该桥对 `list_cron_job_records` / `try_claim_cron_due_job` 等 future 没有超时边界。
+- `HoneScheduler::check_due_jobs()` 在单一 scheduler loop 内执行。只要一次 cloud cron future 无界等待，Feishu runtime heartbeat 和直聊仍可继续，但 scheduler loop 会停在该 tick，后续不再扫描 due jobs，也不会创建新的 `cron_job_runs`。
 
-## 下一步建议
+## 修复与验证（2026-06-02）
 
-- 优先排查 Feishu scheduler runtime 在 `2026-06-01 00:26` 后是否仍有 due scan tick / handler loop 日志。
-- 对 scheduler 主循环增加健康心跳：若超过一个扫描周期没有任何 scan 结果或 run 写入，应记录可巡检的错误。
-- 补一条回归或诊断脚本，覆盖“创建一次性 due job 后必须在预期窗口内写入 `cron_job_runs` started/terminal row”。
-- 修复后需要用真实或本地模拟 Feishu scheduler 验证：
-  - 常规 `trading_day` 任务能按 due 时间写入 run。
-  - 用户补建的一次性任务能触发。
-  - `cron_job_runs.max(executed_at)` 会随 due scan 推进，而不是长期停在旧时间。
+- `memory/src/cron_job/mod.rs`
+  - `run_cloud_cron(...)` 新增默认 15 秒超时边界。
+  - 可通过 `HONE_CLOUD_CRON_TIMEOUT_SECS` 调整超时时间。
+  - cloud cron future 超时后返回 `HoneError::Storage("cloud cron operation timed out ...")`，由现有调用方按错误记录 warning / 跳过本次操作，避免永久卡死 scheduler loop。
+- 新增回归 `cloud_cron_timeout_returns_storage_error_instead_of_blocking`，证明 stuck cloud cron future 会在有界时间内返回 storage error。
+- 验证通过：
+  - `cargo test -p hone-memory cloud_cron_timeout_returns_storage_error_instead_of_blocking -- --nocapture`
+  - `cargo test -p hone-memory --lib -- --nocapture`
+  - `cargo check -p hone-scheduler --tests`
+  - `rustfmt --edition 2024 --config skip_children=true --check memory/src/cron_job/mod.rs`
+
+## 剩余观察点
+
+- 本轮不依赖当前机器生产运行态作为恢复证据；当前机器不是生产机器，不能用 live `cron_job_runs` 推断线上已恢复。
+- 若后续继续出现 cloud cron timeout warning，应优先排查 PG 连接池、网络延迟或 cloud runtime schema/claim SQL 性能，而不是写 Feishu 渠道特判。

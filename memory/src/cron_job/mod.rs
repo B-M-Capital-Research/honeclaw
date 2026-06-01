@@ -8,7 +8,10 @@
 //! - [`storage`] —— `CronJobStorage` 的 JSON CRUD 与 `get_due_jobs`
 //! - [`history`] —— `CronJobStorage` 的 SQLite 执行历史读写
 
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use hone_core::cloud_runtime::CloudPgRuntime;
 use tracing::warn;
@@ -31,6 +34,8 @@ pub struct CronJobStorage {
     pub(super) sqlite_path: Option<PathBuf>,
     pub(super) postgres: Option<CloudPgRuntime>,
 }
+
+const DEFAULT_CLOUD_CRON_TIMEOUT_SECS: u64 = 15;
 
 impl CronJobStorage {
     pub fn new(data_dir: impl AsRef<Path>) -> Self {
@@ -77,18 +82,47 @@ where
     T: Send + 'static,
     F: std::future::Future<Output = hone_core::HoneResult<T>> + Send + 'static,
 {
-    if tokio::runtime::Handle::try_current().is_ok() {
-        return std::thread::spawn(move || {
-            let runtime = tokio::runtime::Runtime::new()
-                .map_err(|err| hone_core::HoneError::Config(err.to_string()))?;
-            runtime.block_on(future)
+    run_cloud_cron_with_timeout(future, cloud_cron_operation_timeout())
+}
+
+fn cloud_cron_operation_timeout() -> Duration {
+    std::env::var("HONE_CLOUD_CRON_TIMEOUT_SECS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|seconds| *seconds > 0)
+        .map(Duration::from_secs)
+        .unwrap_or_else(|| Duration::from_secs(DEFAULT_CLOUD_CRON_TIMEOUT_SECS))
+}
+
+fn run_cloud_cron_with_timeout<T, F>(
+    future: F,
+    operation_timeout: Duration,
+) -> hone_core::HoneResult<T>
+where
+    T: Send + 'static,
+    F: std::future::Future<Output = hone_core::HoneResult<T>> + Send + 'static,
+{
+    let execute = move || {
+        let runtime = tokio::runtime::Runtime::new()
+            .map_err(|err| hone_core::HoneError::Config(err.to_string()))?;
+        runtime.block_on(async move {
+            match tokio::time::timeout(operation_timeout, future).await {
+                Ok(result) => result,
+                Err(_) => Err(hone_core::HoneError::Storage(format!(
+                    "cloud cron operation timed out after {}ms",
+                    operation_timeout.as_millis()
+                ))),
+            }
         })
-        .join()
-        .map_err(|_| hone_core::HoneError::Storage("cloud cron worker panicked".to_string()))?;
+    };
+
+    if tokio::runtime::Handle::try_current().is_ok() {
+        return std::thread::spawn(execute).join().map_err(|_| {
+            hone_core::HoneError::Storage("cloud cron worker panicked".to_string())
+        })?;
     }
-    let runtime = tokio::runtime::Runtime::new()
-        .map_err(|err| hone_core::HoneError::Config(err.to_string()))?;
-    runtime.block_on(future)
+
+    execute()
 }
 
 #[cfg(test)]
@@ -96,9 +130,9 @@ mod tests {
     use super::schedule::beijing_slot_time;
     use super::*;
     use chrono::{Datelike, Timelike};
-    use hone_core::{ActorIdentity, beijing_offset};
+    use hone_core::{ActorIdentity, HoneError, beijing_offset};
     use serde_json::Value;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     fn make_temp_dir(prefix: &str) -> std::path::PathBuf {
         let ts = SystemTime::now()
@@ -108,6 +142,29 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("{prefix}_{}_{}", std::process::id(), ts));
         std::fs::create_dir_all(&dir).expect("create temp dir");
         dir
+    }
+
+    #[test]
+    fn cloud_cron_timeout_returns_storage_error_instead_of_blocking() {
+        let started = Instant::now();
+        let err = run_cloud_cron_with_timeout(
+            async {
+                tokio::time::sleep(Duration::from_millis(200)).await;
+                Ok::<(), HoneError>(())
+            },
+            Duration::from_millis(20),
+        )
+        .expect_err("cloud cron bridge should time out");
+
+        assert!(
+            started.elapsed() < Duration::from_secs(1),
+            "timeout should bound a stuck cloud cron operation"
+        );
+        let message = err.to_string();
+        assert!(
+            message.contains("cloud cron operation timed out"),
+            "unexpected error: {message}"
+        );
     }
 
     fn actor(channel: &str, user_id: &str, channel_scope: Option<&str>) -> ActorIdentity {
