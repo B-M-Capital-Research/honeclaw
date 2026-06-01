@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-06-02 03:12 CST
+最后更新：2026-06-02 07:04 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,10 +17,11 @@
 
 ## 当前概览
 
-- 活跃待修复：0
+- 活跃待修复：1
 - Later / 待复现：10
 - 已修复 / 已关闭：118
 - 历史分析 / 部分止血：5
+- 本轮 07:04 CST 新增 P3 `Web 定时任务回复外露“技能未加载”内部降级措辞`：03:02-07:02 CST `acp-events.log` 有 7 个 Web direct prompt、33 个 response，主要 session 均以 `stopReason=end_turn` 收口；内部日志有 tool_call_update `rawOutput`，但未见用户可见 raw JSON、`<think>`、provider 原始错误、panic、quota、HTTP 400、`reasoning_content` 等污染。`sessions.sqlite3` 的 `session_messages.max(timestamp)` 停在 `2026-06-02T01:24:40+08:00`，`cron_job_runs.max(executed_at)` 仍停在 `2026-06-01T00:26:00+08:00`，结合既有 cloud mode / 当前机器旧运行态记录，本轮不把会话镜像或 scheduler 已修复缺陷回退。唯一新用户可见质量问题来自 06:30 CST Web 定时任务 session `Actor_web__direct__web-user-14f4cadb069f`：最终复盘完成并收口，但开头写出“定时任务技能在当前运行器里没有成功加载”，暴露内部降级措辞。该问题不影响投递、收口或业务复盘完成，按质量性 `P3 / New` 建档；非 P1，不创建 GitHub issue。
 - 本轮 03:12 CST 对已修复 P1 `Feishu scheduler 00:26 后不再产生新 run，导致 trading_day 任务漏执行` 再补运行态硬化：`hone-feishu` 启动 Feishu cron producer 时改为 supervised spawn，若 `scheduler.start()` 因 panic 或异常退出而结束，会记录错误并在 1 秒后自动拉起，避免单次异常把整夜 due-scan 静默打死。新增回归 `cargo test -p hone-feishu supervised_task_restarts_after_panic -- --nocapture`，并再次确认 `cargo check -p hone-feishu --tests` 通过。该改动不改变 bug 的 `Fixed` 状态，但补齐“异常退出后自恢复”边界。
 - 本轮 00:09 CST 已修复 P1 `Feishu scheduler 00:26 后不再产生新 run，导致 trading_day 任务漏执行`：cloud cron 同步桥 `run_cloud_cron(...)` 新增 15s 默认超时（可由 `HONE_CLOUD_CRON_TIMEOUT_SECS` 调整），避免 PG `list_cron_job_records` / due-claim 等 cloud cron future 无界等待时卡死单一 scheduler tick loop，导致 Feishu heartbeat 仍健康但后续不再创建 `cron_job_runs`。验证 `cargo test -p hone-memory cloud_cron_timeout_returns_storage_error_instead_of_blocking -- --nocapture`、`cargo test -p hone-memory --lib -- --nocapture`、`cargo check -p hone-scheduler --tests`、`rustfmt --edition 2024 --config skip_children=true --check memory/src/cron_job/mod.rs` 通过；关联 Issue [#47](https://github.com/B-M-Capital-Research/honeclaw/issues/47)。
 - 本轮 03:03 CST 复核 P1 `Feishu scheduler 00:26 后不再产生新 run，导致 trading_day 任务漏执行`：23:03-03:03 CST `session_messages` 共有 20 个 user turn 与 20 个 assistant final，Feishu direct 最新会话均已收口；assistant final 污染扫描未命中空回复、通用失败、本机绝对路径、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、`reasoning_content`、`<think>`、provider 原始错误、`HTTP 400 Bad Request`、`open_id cross app`、`failed to probe codex`、`Resource temporarily unavailable`、`Param Incorrect`、`quota exhausted`、`panic` 或 `index out of bounds`。本机 live SQLite 的 `cron_job_runs.max(executed_at)` 仍停在 `2026-06-01T00:26:00.908925+08:00`，但远端最新 main 已在 00:09 CST 补齐 cloud cron 同步桥超时边界并通过验证；本轮按未确认部署运行态处理，不把状态从 `Fixed` 回退。`acp-events.log` 本窗有 Web direct `stopReason=end_turn` 与内部 `tool_call_update.rawOutput` 诊断 payload；结合当前 `SessionEventEmitter` 用户态净化与既有修复记录，该 raw payload 仅作为内部日志证据，不把 Web rawOutput 旧缺陷回退。沿用 Issue [#47](https://github.com/B-M-Capital-Research/honeclaw/issues/47)。
@@ -393,6 +394,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Web 定时任务回复外露“技能未加载”内部降级措辞 | P3 | New | 2026-06-02 07:04 Web scheduler 组合复盘已成功收口并完成主要业务内容，但最终回复开头向用户暴露“定时任务技能在当前运行器里没有成功加载”。不影响投递、收口或业务复盘完成，按质量性 P3 跟踪；无关联 GitHub Issue | [web_scheduler_skill_load_failure_phrase_exposed.md](./web_scheduler_skill_load_failure_phrase_exposed.md) |
 
 ## Later / 待复现
 
