@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-06-01 19:03 CST
+最后更新：2026-06-01 23:04 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,10 +17,11 @@
 
 ## 当前概览
 
-- 活跃待修复：0
+- 活跃待修复：1
 - Later / 待复现：10
 - 已修复 / 已关闭：117
 - 历史分析 / 部分止血：5
+- 本轮 23:04 CST 新增 P1 `Feishu scheduler 00:26 后不再产生新 run，导致 trading_day 任务漏执行`：18:58-22:58 CST `session_messages` 共有 34 个 user turn 与 35 个 assistant turn，Feishu direct 直聊均有收口；多出的 assistant 是 21:58 CST 对话上限提示。assistant final 污染扫描未命中空回复、通用失败、本机绝对路径、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、`reasoning_content`、`<think>`、provider 原始错误、`HTTP 400 Bad Request`、`open_id cross app`、`failed to probe codex`、`Resource temporarily unavailable`、`Param Incorrect`、`quota exhausted`、`panic` 或 `index out of bounds`。但用户在 21:25 CST 明确反馈 `20:00` 的 `美股持仓开盘前晚报` 未执行，assistant 查询后确认该任务仍启用且最后成功运行停在 2026-05-29 20:00；用户随后要求补跑，assistant 声称已补建 21:30 CST 一次性任务 `j_15913f67`。`cron_job_runs.max(executed_at)` 到本轮仍停在 2026-06-01 00:26:00 CST，既无 20:00 常规 run，也无 21:30 补跑 run。该问题区别于既有 started row 不收口：本轮是 00:26 后 scheduler 不再产生新 run，阻断定时任务核心交付链路，定为功能性 P1。已创建脱敏 Issue [#47](https://github.com/B-M-Capital-Research/honeclaw/issues/47)。
 - 本轮 12:10 CST 关闭 P2 `Web direct replies stream to ACP but are not persisted to session history` 为证据不足 / 不成立：Web direct SSE 路径已调用统一 `AgentSession::run(...)`，而云模式下 `SessionStorage::new_cloud` 使用 PG `cloud_sessions` 作为 session read/write 后端；原证据只对比 `acp-events.log` 与本地 `data/sessions/*.json` / `data/sessions.sqlite3`，没有查询 PG 或 Web API history read path，因此不能证明真实 Web direct session history 丢失。本轮无业务代码改动、无关联 GitHub Issue。
 - 本轮 19:03 CST 未新增独立缺陷或活跃 P1 / P2 状态变化。15:01-19:02 CST `session_messages` 共有 37 个 user turn 与 37 个 assistant final，最近 Feishu direct 会话均已 assistant final 收口；最新会话末尾没有孤立 user turn。assistant final 污染扫描未命中空回复、通用失败、本机绝对路径、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、`reasoning_content`、`<think>`、provider 原始错误、`HTTP 400 Bad Request`、`open_id cross app`、`failed to probe codex`、`Resource temporarily unavailable`、`Param Incorrect`、`quota exhausted`、`panic` 或 `index out of bounds`。本窗没有新增 `cron_job_runs`，最近条目仍停在 2026-06-01 00:26 CST；`acp-events.log` 同窗仅见直聊流式 tool / chunk 事件与 `stopReason=end_turn`，未见用户可见污染或 runner 失败。最近四小时无非文档代码提交，本轮不新增 bug 文档、不创建 GitHub issue。
 - 本轮 15:03 CST 未新增独立缺陷或活跃 P1 / P2 状态变化。11:01-15:01 CST `session_messages` 共有 24 个 user turn 与 25 个 assistant final，最近 Feishu direct 会话均已 assistant final 收口；多出的 1 条 assistant 来自 15:00 CST Feishu daily-limit 友好提示同时记录 final / text 两种 assistant transcript，不构成新缺陷。assistant final 污染扫描未命中空回复、本机绝对路径、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、`reasoning_content`、`<think>`、provider 原始错误、`HTTP 400 Bad Request`、`open_id cross app`、`failed to probe codex`、`Resource temporarily unavailable`、`Param Incorrect`、`quota exhausted`、`panic` 或 `index out of bounds`。本窗没有新的 `cron_job_runs`，最近条目仍停在 2026-06-01 00:26 CST；最近四小时无非文档代码提交。15:00 CST Web direct `Actor_web__direct__web-user-f40ae1caa720` 虽在 `acp-events.log` 中已流式输出并 `stopReason=end_turn`、本地 `sessions.sqlite3` 仍停在 2026-05-30 20:32 CST，但结合 12:10 CST 代码 / 文档复核结论，cloud mode 下本地 SQLite / JSON 不是 Web direct session truth source；本轮不把已关闭的 Web direct 持久化缺陷重新打开，也不创建 GitHub issue。
@@ -389,6 +390,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Feishu scheduler 00:26 后不再产生新 run，导致 trading_day 任务漏执行 | P1 | New | 2026-06-01 23:04 巡检新增：`cron_job_runs.max(executed_at)` 停在 00:26 CST；用户 21:25 确认 20:00 `美股持仓开盘前晚报` 漏执行，21:30 补跑任务也没有 run 记录。待修复 scheduler due scan / runtime 健康检查；Issue [#47](https://github.com/B-M-Capital-Research/honeclaw/issues/47) | [feishu_scheduler_no_runs_after_midnight.md](./feishu_scheduler_no_runs_after_midnight.md) |
 
 ## Later / 待复现
 
