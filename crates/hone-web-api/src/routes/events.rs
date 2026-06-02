@@ -21,6 +21,8 @@ use crate::routes::normalized_query_actor;
 use crate::state::{AppState, PushEvent};
 use crate::types::UserIdQuery;
 
+const SCHEDULER_EXECUTION_GRACE_SECS: u64 = 30;
+
 /// GET /api/events?user_id=... — 长连接 SSE 推送通道（调度器消息用）
 pub(crate) async fn handle_events(
     State(state): State<Arc<AppState>>,
@@ -108,6 +110,29 @@ fn emit_web_scheduler_push(
 ) -> bool {
     build_web_scheduler_push_event(event, response)
         .is_some_and(|push_event| push_tx.send(push_event).is_ok())
+}
+
+fn scheduler_execution_timeout_for(overall_timeout: Duration) -> Duration {
+    overall_timeout.saturating_add(Duration::from_secs(SCHEDULER_EXECUTION_GRACE_SECS))
+}
+
+fn scheduler_handler_timeout_execution(
+    event: &SchedulerEvent,
+    timeout: Duration,
+) -> scheduler::ScheduledTaskExecution {
+    scheduler::ScheduledTaskExecution {
+        should_deliver: false,
+        content: String::new(),
+        error: Some(format!(
+            "web_scheduler_handler_timeout:{}s",
+            timeout.as_secs()
+        )),
+        metadata: json!({
+            "failure_kind": "web_scheduler_handler_timeout",
+            "timeout_secs": timeout.as_secs(),
+        }),
+        session_id: Some(event.actor.session_id()),
+    }
 }
 
 /// 接收调度器事件，为每个触发的任务启动独立处理协程
@@ -353,9 +378,25 @@ async fn run_scheduled_task(
         quota_mode: hone_channels::agent_session::AgentRunQuotaMode::ScheduledTask,
         model_override: None,
     };
-    let result =
-        scheduler::execute_scheduler_event(state.core.clone(), event, prompt_options, run_options)
-            .await;
+    let timeout = scheduler_execution_timeout_for(state.core.config.agent.overall_timeout());
+    let result = match tokio::time::timeout(
+        timeout,
+        scheduler::execute_scheduler_event(state.core.clone(), event, prompt_options, run_options),
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(_) => {
+            warn!(
+                "⏰ [{}] Web/iMessage scheduler 执行超时: job={} target={} timeout_secs={}",
+                actor.user_id,
+                event.job_name,
+                event.channel_target,
+                timeout.as_secs()
+            );
+            scheduler_handler_timeout_execution(event, timeout)
+        }
+    };
     if !result.should_deliver {
         if let Some(err) = result.error.as_deref() {
             error!(
@@ -494,6 +535,52 @@ mod tests {
             }),
         );
         assert!(scheduler_failure_trace_required(&result));
+    }
+
+    #[test]
+    fn scheduler_handler_timeout_execution_is_failure_trace() {
+        let actor =
+            hone_core::ActorIdentity::new("web", "web-user-timeout", None::<String>).unwrap();
+        let event = SchedulerEvent {
+            actor: actor.clone(),
+            channel: "web".to_string(),
+            channel_target: "web-user-timeout".to_string(),
+            job_id: "job-timeout".to_string(),
+            job_name: "timeout job".to_string(),
+            task_prompt: "run".to_string(),
+            channel_scope: None,
+            push: json!({}),
+            tags: Vec::new(),
+            schedule_repeat: "daily".to_string(),
+            schedule_hour: 20,
+            schedule_minute: 0,
+            schedule_date: None,
+            last_delivered_previews: Vec::new(),
+            heartbeat: false,
+            bypass_quiet_hours: false,
+            delivery_key: "delivery-timeout".to_string(),
+        };
+        let result = scheduler_handler_timeout_execution(&event, Duration::from_secs(630));
+
+        assert!(!result.should_deliver);
+        assert_eq!(
+            result.session_id.as_deref(),
+            Some(actor.session_id().as_str())
+        );
+        assert_eq!(
+            result.metadata["failure_kind"].as_str(),
+            Some("web_scheduler_handler_timeout")
+        );
+        assert!(result.error.as_deref().unwrap().contains("630s"));
+        assert!(scheduler_failure_trace_required(&result));
+    }
+
+    #[test]
+    fn scheduler_execution_timeout_includes_grace_period() {
+        assert_eq!(
+            scheduler_execution_timeout_for(Duration::from_secs(600)),
+            Duration::from_secs(630)
+        );
     }
 
     #[test]

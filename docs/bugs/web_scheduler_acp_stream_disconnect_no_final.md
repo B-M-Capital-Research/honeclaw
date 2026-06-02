@@ -58,16 +58,24 @@
   - `crates/hone-web-api/src/routes/events.rs` 现在会把 Web scheduler 的产品化失败提示同时广播为 `scheduled_message` SSE 事件，不再只落库到 session history。
   - 失败路径仍保持 `execution_failed + skipped_error` 台账语义，但在线 Web 会话会像成功的 scheduler 回复一样，立即收到 `定时任务「...」执行出错，请稍后重试。`。
   - execution detail 现补充 `console_event_sent`，便于区分“失败提示已落库但当前无在线 SSE 会话”和“在线前端已实时收到失败提示”。
+- `2026-06-03 04:09 CST` 已补齐超时收口：
+  - Web / iMessage scheduler 入口 `run_scheduled_task(...)` 现在对整次 `execute_scheduler_event(...)` 包一层执行预算：`agent.overall_timeout + 30s`。
+  - 如果底层 ACP runner 因 stream disconnect、无最终 response 或其它挂起路径未返回，入口会合成 `web_scheduler_handler_timeout` 失败结果。
+  - 合成失败结果复用既有 Web scheduler 失败路径：写入非敏感用户可见失败提示，`cron_job_runs` 落成 `execution_failed + skipped_error`，并通过 `delivery_key` 与 started row 对齐。
+  - 已有 `session/prompt` internal error 返回路径继续由 `execute_scheduler_event(...)` 转成失败结果；本轮补齐的是“没有返回 / 未收口”边界。
 
 ## 验证
 
-- `cargo test -p hone-web-api scheduler_failure_trace_required_ -- --nocapture`
-- `cargo test -p hone-web-api web_scheduler_ -- --nocapture`
-- `cargo test -p hone-web-api build_web_scheduler_push_event_uses_scheduled_message_payload -- --nocapture`
-- `cargo test -p hone-web-api emit_web_scheduler_push_broadcasts_failure_prompt -- --nocapture`
-- `cargo check -p hone-web-api --tests`
+- `cargo test -p hone-web-api scheduler_failure_trace_required_ -- --nocapture` 通过。
+- `cargo test -p hone-web-api web_scheduler_ -- --nocapture` 通过。
+- `cargo test -p hone-web-api build_web_scheduler_push_event_uses_scheduled_message_payload -- --nocapture` 通过。
+- `cargo test -p hone-web-api emit_web_scheduler_push_broadcasts_failure_prompt -- --nocapture` 通过。
+- `cargo test -p hone-web-api scheduler_ -- --nocapture` 通过。
+- `cargo check -p hone-web-api --tests` 通过。
+- `rustfmt --edition 2024 --config skip_children=true --check crates/hone-web-api/src/routes/events.rs` 通过。
 
-## 下一步建议
+## 后续关注
 
-- 后续仍需在真实 cloud/Web 运行态复核一次：确认 `stream disconnected before completion` 再现时，在线用户会立刻看到 scheduler 失败提示，而不必等 history restore。
+- 当前机器不是生产机器，本轮未用线上投递状态判定修复闭环。
+- 若部署后仍出现 Web scheduler prompt 无终态，应优先检查 `cron_job_runs.detail.delivery_key` 是否已有 `web_scheduler_handler_timeout` 失败终态、Web session 是否追加了 scheduler failure assistant turn，以及在线 Web SSE 是否收到失败提示。
 - 本轮未改 ACP transport 本身；若后续仍频繁出现同类断流，应继续在 runner / protocol 层补 transport watchdog 与失败分类。
