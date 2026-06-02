@@ -3489,6 +3489,18 @@ mod tests {
     }
 
     #[test]
+    fn scheduler_delivery_text_strips_skill_load_degradation_prelude() {
+        let raw = "定时任务技能在当前运行器里没有成功加载，我改用行情和新闻工具直接完成这次复盘。\n\n组合今日核心变化：ORCL 与 AMD 对组合贡献最大，QCOM 和 IBM 权重漂移较小，后续重点看云业务订单和 AI 服务器出货节奏。";
+        let sanitized = sanitize_scheduler_delivery_text(raw);
+        assert_eq!(
+            sanitized,
+            "组合今日核心变化：ORCL 与 AMD 对组合贡献最大，QCOM 和 IBM 权重漂移较小，后续重点看云业务订单和 AI 服务器出货节奏。"
+        );
+        assert!(!sanitized.contains("当前运行器"));
+        assert!(!sanitized.contains("技能"));
+    }
+
+    #[test]
     fn scheduler_delivery_text_keeps_user_visible_json_message() {
         let raw = r#"{"status":"triggered","message":"今晚 20:30 继续复盘"}"#;
         let sanitized = sanitize_scheduler_delivery_text(raw);

@@ -596,6 +596,15 @@ fn looks_like_internal_workflow_prelude(text: &str) -> bool {
             "工作流",
             "检查本地是否已有相关公司画像",
             "检查本地公司画像",
+            "技能未加载",
+            "技能没有成功加载",
+            "技能没成功加载",
+            "当前运行器",
+            "tool unavailable",
+            "tool is unavailable",
+            "skill unavailable",
+            "skill is unavailable",
+            "failed to load skill",
         ],
     ) {
         return true;
