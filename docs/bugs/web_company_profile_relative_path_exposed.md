@@ -3,7 +3,7 @@
 - **发现时间**: 2026-06-02 11:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，非 P1
 
 ## 证据来源
@@ -52,3 +52,18 @@
 - 在公司画像 / 长期跟踪最终回复模板或共享出站净化层中，将 `company_profiles/<ticker>.md`、`events/*.md` 等内部相对路径改写为自然语言。
 - 对 Web / Feishu direct 增加一条回归：当 runner 成功写入公司画像文件时，最终用户可见文本只说明已沉淀，不包含内部文件路径。
 - 后续巡检继续区分两类证据：绝对路径 / sandbox 标识泄漏应回看既有路径脱敏缺陷；仅相对内部路径进入自然语言回复时按本单跟踪。
+
+## 修复记录
+
+- **修复时间**: 2026-06-02 12:15 CST
+- **修复状态**: Fixed
+- **修复摘要**:
+  - 共享 `sanitize_user_visible_output(...)` 的路径脱敏层新增 `company_profiles/...` 与 `events/*.md` 内部相对路径改写。
+  - 最终用户可见文本会把这类 runner sandbox 文件组织路径替换为自然的“公司画像”表述，保留“已沉淀 / 后续可对照更新”的业务语义。
+  - 新增 `sanitize_user_visible_output_redacts_internal_relative_company_profile_paths` 回归，覆盖 `company_profiles/AVGO.md` 进入 Web direct final 的复发形态。
+- **验证**:
+  - `cargo test -p hone-channels sanitize_user_visible_output_redacts_internal_relative_company_profile_paths --lib -- --nocapture`
+  - `cargo test -p hone-channels sanitize_user_visible_output_redacts_bare_absolute_paths --lib -- --nocapture`
+- **文档同步**:
+  - 已同步 `docs/bugs/README.md` 活跃计数、状态和已修复表。
+  - 本修复不改变模块边界、入口、长期约束或运行工作流，不需要更新 `docs/repo-map.md`、`docs/current-plan.md` 或新增 handoff。

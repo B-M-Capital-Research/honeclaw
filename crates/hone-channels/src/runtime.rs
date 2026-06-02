@@ -238,6 +238,12 @@ static RE_ABSOLUTE_PATH: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(r#"(?P<prefix>^|[\s\(\[\{<"'`])(?P<path>(?:[A-Za-z]:[\\/]|/)[^\s<>"'`]+)"#)
         .expect("valid regex")
 });
+static RE_INTERNAL_RELATIVE_PROFILE_PATH: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r#"(?P<prefix>^|[\s\(\[\{<"'`])(?P<path>(?:company_profiles/[^\s<>"'`，。；、）\)\]\}]+|events/[^\s<>"'`，。；、）\)\]\}]+\.md))"#,
+    )
+    .expect("valid regex")
+});
 
 // ── skip-buffer 检测正则 ──────────────────────────────────────────────────────
 static RE_ONLY_PUNCT: LazyLock<regex::Regex> =
@@ -392,8 +398,21 @@ fn redact_user_visible_local_paths(text: &str) -> (String, bool) {
         let (path, suffix) = split_trailing_path_punctuation(raw);
         format!("{prefix}{}{suffix}", mask_absolute_path(path))
     });
+    sanitized = absolute_stripped.into_owned();
 
-    (absolute_stripped.into_owned(), removed)
+    let internal_relative_stripped =
+        RE_INTERNAL_RELATIVE_PROFILE_PATH.replace_all(&sanitized, |caps: &regex::Captures| {
+            removed = true;
+            let prefix = caps.name("prefix").map(|m| m.as_str()).unwrap_or_default();
+            let display_prefix = if prefix.chars().all(char::is_whitespace) {
+                ""
+            } else {
+                prefix
+            };
+            format!("{display_prefix}公司画像")
+        });
+
+    (internal_relative_stripped.into_owned(), removed)
 }
 
 pub fn user_visible_error_message(raw: Option<&str>) -> String {
@@ -1011,6 +1030,19 @@ mod tests {
         assert!(!sanitized.content.contains("/Users/"));
         assert!(!sanitized.content.contains("C:\\Users"));
         assert!(!sanitized.content.contains("direct__secret"));
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_redacts_internal_relative_company_profile_paths() {
+        let raw =
+            "我已把 AVGO 财报前框架沉淀到 company_profiles/AVGO.md，后续财报出来可以直接对照更新。";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(sanitized.removed_internal);
+        assert_eq!(
+            sanitized.content,
+            "我已把 AVGO 财报前框架沉淀到公司画像，后续财报出来可以直接对照更新。"
+        );
+        assert!(!sanitized.content.contains("company_profiles/"));
     }
 
     #[test]
