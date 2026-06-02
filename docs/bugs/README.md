@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-06-02 23:06 CST
+最后更新：2026-06-03 03:07 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,10 +17,11 @@
 
 ## 当前概览
 
-- 活跃待修复：1
+- 活跃待修复：0
 - Later / 待复现：10
-- 已修复 / 已关闭：121
+- 已修复 / 已关闭：122
 - 历史分析 / 部分止血：5
+- 本轮 03:07 CST 已修复 P2 `Web scheduler ACP stream disconnects without final reply`：`crates/hone-web-api/src/routes/events.rs` 现在会把 Web scheduler 的产品化失败提示同时广播为 `scheduled_message` SSE 事件，而不只是落库到 session history；在线 Web 会话会立即收到 `定时任务「...」执行出错，请稍后重试。`，execution detail 也新增 `console_event_sent` 便于区分“仅落库”与“已实时推送”。验证 `cargo test -p hone-web-api scheduler_failure_trace_required_ -- --nocapture`、`cargo test -p hone-web-api web_scheduler_ -- --nocapture`、`cargo test -p hone-web-api build_web_scheduler_push_event_uses_scheduled_message_payload -- --nocapture`、`cargo test -p hone-web-api emit_web_scheduler_push_broadcasts_failure_prompt -- --nocapture`、`cargo check -p hone-web-api --tests` 通过；无关联 GitHub Issue。
 - 本轮 12:15 CST 已修复 P3 `Web 直聊公司画像沉淀后向用户暴露内部相对文件路径`：共享用户可见输出净化器新增 `company_profiles/...` 与 `events/*.md` 内部相对路径改写，将这类 runner sandbox 文件组织路径替换为自然的“公司画像”表述，避免 Web / Feishu direct final 误把内部目录当成产品入口。新增回归 `sanitize_user_visible_output_redacts_internal_relative_company_profile_paths`，验证 `cargo test -p hone-channels sanitize_user_visible_output_redacts_internal_relative_company_profile_paths --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_redacts_bare_absolute_paths --lib -- --nocapture` 通过；无关联 GitHub Issue。
 - 本轮 23:06 CST 新增 P2 `Web scheduler ACP stream disconnects without final reply`：19:02-23:02 CST `session_messages` 有 16 个 user turn 与 16 个 assistant final，Feishu direct 均成对收口；assistant final 污染扫描仅命中一次轻微文案重复 / 内部相对画像词段，不构成独立新 P3。`cron_job_runs.max(executed_at)` 仍停在 `2026-06-01T00:26:00.908925+08:00`，本轮无非文档代码提交。`acp-events.log` 显示 20:00-21:05 CST 多个 Web scheduler prompt 没有对应 `stopReason=end_turn`，其中 `20:00 持仓股重要新闻晚报` 在 20:04 CST 返回 `stream disconnected before completion` internal error；`英伟达每日消息`、`10万元计划投资提醒 + A股持仓观察`、`持仓关键事件每日汇总` 停在 transport fallback 后无最终回复。22:46 CST 后 Web direct / scheduler 又有正常 `end_turn`，故障范围限定为本窗 Web scheduler ACP transport / no-final 收口问题。该问题阻断 Web scheduler 定时结果正文或产品化失败提示交付，按功能性 `P2 / New` 建档；非 P1，不创建 GitHub issue。
 - 本轮 23:06 CST 复核 P3 `Web / Feishu 直聊公司画像沉淀后向用户暴露内部相对文件路径`：23:01 CST Feishu direct `HPE现在可以建仓吗` 已完成建仓判断并正常收口，但最终正文末尾写出 `company_profiles/hpe/profile.md` 与 `company_profiles/hpe/events/2026-06-02-build-position-check.md`。由于远端最新 main 已在 12:15 CST 合入共享净化修复并有回归，本轮按 live 未确认部署 / 旧运行态证据补充到原文档，不把状态从 `Fixed` 回退，也不重复建档；非 P1。
@@ -399,7 +400,6 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Web scheduler ACP stream disconnects without final reply | P2 | New | 2026-06-02 23:06 多个 Web scheduler prompt 在 transport fallback 后没有最终 `end_turn`，其中 20:00 持仓股晚报返回 `stream disconnected before completion` internal error；定时结果正文或产品化失败提示未收口。功能性 P2；无关联 GitHub Issue | [web_scheduler_acp_stream_disconnect_no_final.md](./web_scheduler_acp_stream_disconnect_no_final.md) |
 
 ## Later / 待复现
 
@@ -422,6 +422,7 @@
 | --- | --- | --- | --- | --- |
 | Web / Feishu 直聊公司画像沉淀后向用户暴露内部相对文件路径 | P3 | Fixed | 2026-06-02 12:15 共享用户可见输出净化器将 `company_profiles/...` 与 `events/*.md` 内部相对路径改写为“公司画像”，保留“已沉淀/后续可对照更新”的业务语义，不再向 Web / Feishu 用户展示 runner sandbox 目录；23:06 CST HPE live 样本按未确认部署运行态保留，不回退状态。验证 `cargo test -p hone-channels sanitize_user_visible_output_redacts_internal_relative_company_profile_paths --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_redacts_bare_absolute_paths --lib -- --nocapture` 通过；无关联 GitHub Issue | [web_company_profile_relative_path_exposed.md](./web_company_profile_relative_path_exposed.md) |
 | Web 定时任务回复外露“技能未加载”内部降级措辞 | P3 | Fixed | 2026-06-02 12:06 共享用户可见输出净化器新增 skill/tool 降级前言识别，scheduler delivery 出站净化会剥离开头的“当前运行器 / 技能未加载 / skill unavailable”等内部实现说明，同时保留业务复盘正文。验证 `cargo test -p hone-channels scheduler_delivery_text_strips_skill_load_degradation_prelude --lib -- --nocapture`、`cargo test -p hone-channels scheduler_delivery_text_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [web_scheduler_skill_load_failure_phrase_exposed.md](./web_scheduler_skill_load_failure_phrase_exposed.md) |
+| Web scheduler ACP stream disconnects without final reply | P2 | Fixed | 2026-06-03 03:07 Web scheduler 的产品化失败提示现在会同时广播为 `scheduled_message` SSE 事件，而不只是落库；在线 Web 会话会立即收到失败提示，execution detail 新增 `console_event_sent` 区分实时推送与仅落库。验证 `cargo test -p hone-web-api scheduler_failure_trace_required_ -- --nocapture`、`cargo test -p hone-web-api web_scheduler_ -- --nocapture`、`cargo test -p hone-web-api build_web_scheduler_push_event_uses_scheduled_message_payload -- --nocapture`、`cargo test -p hone-web-api emit_web_scheduler_push_broadcasts_failure_prompt -- --nocapture`、`cargo check -p hone-web-api --tests` 通过；无关联 GitHub Issue | [web_scheduler_acp_stream_disconnect_no_final.md](./web_scheduler_acp_stream_disconnect_no_final.md) |
 | Feishu scheduler 00:26 后不再产生新 run，导致 trading_day 任务漏执行 | P1 | Fixed | 2026-06-02 00:09 cloud cron 同步桥 `run_cloud_cron(...)` 新增 15s 默认超时（`HONE_CLOUD_CRON_TIMEOUT_SECS` 可调），避免 cloud PG cron list / claim future 无界等待时卡死 scheduler tick loop，导致 Feishu heartbeat 仍健康但后续不再创建 `cron_job_runs`。验证 `cargo test -p hone-memory cloud_cron_timeout_returns_storage_error_instead_of_blocking -- --nocapture`、`cargo test -p hone-memory --lib -- --nocapture`、`cargo check -p hone-scheduler --tests` 通过；关联 Issue [#47](https://github.com/B-M-Capital-Research/honeclaw/issues/47) | [feishu_scheduler_no_runs_after_midnight.md](./feishu_scheduler_no_runs_after_midnight.md) |
 | Web direct replies stream to ACP but are not persisted to session history | P2 | Closed | 2026-06-01 12:10 复核关闭为证据不足 / 不成立：Web direct 已走统一 `AgentSession::run(...)` 持久化路径，cloud mode 的 session 权威后端是 PG `cloud_sessions`；原证据只看本地 JSON / SQLite，不能证明真实历史丢失。本轮无业务代码改动、无关联 GitHub Issue | [web_direct_acp_stream_not_persisted.md](./web_direct_acp_stream_not_persisted.md) |
 | Feishu scheduler 部分定时任务已进入执行和工具调用，但长期停在 `running/pending` 且无最终回复 | P1 | Fixed | 2026-06-01 08:10 新增入口层独立 watchdog，超时后按 `delivery_key` 精确把仍 pending 的 started row 收口为 `execution_failed + skipped_error`，并给 direct session 追加幂等失败痕迹；迟到结果跳过投递。验证 `cargo test -p hone-memory started_execution_can_be_failed_by_exact_delivery_key_watchdog -- --nocapture`、`cargo test -p hone-feishu persist_scheduler_timeout_failure_turn_is_idempotent -- --nocapture`、`cargo test -p hone-memory stale_started_rows_can_be_recovered_as_failed -- --nocapture`、`cargo check -p hone-feishu --tests` 通过；关联 Issue [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39) | [feishu_scheduler_run_stuck_without_cron_job_run.md](./feishu_scheduler_run_stuck_without_cron_job_run.md) |

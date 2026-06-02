@@ -3,7 +3,7 @@
 - title: Active Bug Burn-down 2026-04-28
 - status: in_progress
 - created_at: 2026-04-28
-- updated_at: 2026-06-02 03:12 CST
+- updated_at: 2026-06-03 03:07 CST
 - owner: Codex
 - related_files:
   - `docs/bugs/README.md`
@@ -36,6 +36,7 @@ Clear the current active bug queue as far as software changes can responsibly do
 
 ## Progress
 
+- 2026-06-03 03:07: Closed the active P2 `web_scheduler_acp_stream_disconnect_no_final` enough for code-level closure. `crates/hone-web-api/src/routes/events.rs` now broadcasts the productized Web scheduler failure reply through the same `scheduled_message` SSE path used by successful runs, instead of only persisting it into session history. This means an online Web chat sees `定时任务「...」执行出错，请稍后重试。` immediately when ACP transport disconnect/internal-error paths are suppressed into a generic scheduler failure. Added `build_web_scheduler_push_event_uses_scheduled_message_payload` and `emit_web_scheduler_push_broadcasts_failure_prompt`; `cargo test -p hone-web-api scheduler_failure_trace_required_ -- --nocapture`, `cargo test -p hone-web-api web_scheduler_ -- --nocapture`, the two new focused tests, and `cargo check -p hone-web-api --tests` passed. Active bug queue is back to 0 pending live cloud/Web verification.
 - 2026-06-02 03:12: Added another reliability guard on top of the already-fixed P1 `feishu_scheduler_no_runs_after_midnight`. `hone-feishu` now starts the Feishu cron producer through a supervised spawn, so if `scheduler.start()` ever panics or exits unexpectedly, the runtime logs the failure and restarts the due-scan loop after 1 second instead of silently abandoning all future cron ticks. Added `handler::tests::supervised_task_restarts_after_panic`; `cargo test -p hone-feishu supervised_task_restarts_after_panic -- --nocapture` and `cargo check -p hone-feishu --tests` passed. Active bug queue remains 0.
 - 2026-05-30 16:10: Re-closed the reopened P1 Codex version-probe resource exhaustion bug linked to Issue #43. Codex ACP version validation now caches successful `codex --version` + codex-acp initialize checks by effective runner config, so direct / scheduler traffic does not create two extra probe children on every turn. If only the version-probe step hits a transient local resource limit such as `Resource temporarily unavailable` / `os error 35` / `would block`, the preflight logs a warning and continues to the real runner startup path; missing binaries, old versions, unparsable versions, and real runner startup failures still fail normally. Active bug queue is back to 0.
 - 2026-05-30 00:09: Re-closed the reopened P2 scheduler commodity-guard false positive for low-segmentation A/H market reviews. `text_is_predominantly_commodity_related(...)` now compares broad-market anchors against commodity anchors even when the response has only one or two sentence segments, so an A股/港股/美股/AI market review with WTI/Brent/oil only in a risk note is not fully replaced by the commodity safety notice. Added `commodity_guard_skips_low_segmentation_ah_market_review_with_oil_risk_note`; `commodity_guard_`, `commodity_`, `cargo check -p hone-channels --tests`, and rustfmt check passed. Active bug queue is back to 0.

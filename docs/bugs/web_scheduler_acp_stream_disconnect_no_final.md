@@ -3,7 +3,7 @@
 - 发现时间：2026-06-02 23:06 CST
 - Bug Type：System Error
 - 严重等级：P2
-- 状态：New
+- 状态：Fixed
 - GitHub Issue：无，非 P1
 
 ## 证据来源
@@ -52,8 +52,22 @@
 - 该问题不同于 `web_scheduler_mobile_push_not_delivered.md`：本轮不是手机系统通知能力边界，而是定时任务正文本身没有成功生成 / 收口。
 - 该问题也不同于已归档的 unfinished tool send_failed：本轮没有看到已产出正文后 SSE 离线或工具未完成尾部，而是 ACP transport 断连和缺失最终 `end_turn`。
 
+## 修复记录
+
+- `2026-06-03 03:07 CST` 已修复：
+  - `crates/hone-web-api/src/routes/events.rs` 现在会把 Web scheduler 的产品化失败提示同时广播为 `scheduled_message` SSE 事件，不再只落库到 session history。
+  - 失败路径仍保持 `execution_failed + skipped_error` 台账语义，但在线 Web 会话会像成功的 scheduler 回复一样，立即收到 `定时任务「...」执行出错，请稍后重试。`。
+  - execution detail 现补充 `console_event_sent`，便于区分“失败提示已落库但当前无在线 SSE 会话”和“在线前端已实时收到失败提示”。
+
+## 验证
+
+- `cargo test -p hone-web-api scheduler_failure_trace_required_ -- --nocapture`
+- `cargo test -p hone-web-api web_scheduler_ -- --nocapture`
+- `cargo test -p hone-web-api build_web_scheduler_push_event_uses_scheduled_message_payload -- --nocapture`
+- `cargo test -p hone-web-api emit_web_scheduler_push_broadcasts_failure_prompt -- --nocapture`
+- `cargo check -p hone-web-api --tests`
+
 ## 下一步建议
 
-- 在 Web scheduler 执行入口增加 ACP prompt 级 watchdog：超过任务预算或收到 runner internal error 时，必须写入产品化失败回复并落成失败终态。
-- 将 `stream disconnected before completion`、transport fallback 后长时间无 `end_turn`、`session/prompt` internal error 统一分类为 scheduler execution failure。
-- 增加回归：模拟 ACP `session/prompt` 返回 internal error 或永不返回 `end_turn` 时，Web scheduler transcript 与台账都能留下非敏感失败提示。
+- 后续仍需在真实 cloud/Web 运行态复核一次：确认 `stream disconnected before completion` 再现时，在线用户会立刻看到 scheduler 失败提示，而不必等 history restore。
+- 本轮未改 ACP transport 本身；若后续仍频繁出现同类断流，应继续在 runner / protocol 层补 transport watchdog 与失败分类。

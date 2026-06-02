@@ -19,7 +19,7 @@
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/active-bug-burn-down-2026-04-28.md`
-  - 摘要：集中清理 `docs/bugs/README.md` 活跃缺陷；2026-05-30 已修复 scheduler commodity guard 对低分段 A/H 市场复盘的 false positive，当前活跃待修复队列为空
+  - 摘要：集中清理 `docs/bugs/README.md` 活跃缺陷；2026-06-03 已修复 Web scheduler ACP 断流后失败提示只落库不实时推送的问题，当前活跃待修复队列为空
 - **Chart Visualization Skill 与多通道 PNG 投递**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/chart-visualization-skill.md`
