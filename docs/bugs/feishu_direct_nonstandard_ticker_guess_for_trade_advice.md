@@ -1,0 +1,60 @@
+# Bug: Feishu 直聊对非标准 ticker 拼写直接猜测实体并给出建仓建议
+
+- 发现时间：2026-06-04 03:02 CST
+- Bug Type：Business Error
+- 严重等级：P3
+- 状态：New
+- GitHub Issue：无，非 P1
+
+## 证据来源
+
+- `data/sessions.sqlite3`
+  - 时间窗：2026-06-03 23:02 到 2026-06-04 03:02 CST。
+  - 本窗共有 14 个 Feishu user turn 与 14 个 assistant final，均成对收口。
+  - assistant final 污染扫描未命中空回复、`hone-mcp binary not found`、本机绝对路径、`data/agent-sandboxes`、`rawOutput`、`tool_call`、`assistant.tool_calls`、`session/update`、`reasoning_content`、`<think>`、provider 原始错误、`HTTP 400`、`Param Incorrect`、`Resource temporarily unavailable`、`quota exhausted`、panic、`index out of bounds` 或 `company_profiles/...`。
+- `data/runtime/logs/acp-events.log`
+  - 同窗 Feishu / Web direct prompt 均有对应 `stopReason=end_turn`，未见 `stream disconnected before completion`、runner no-final 或通用失败收口。
+- 真实会话：`session_id=Actor_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c`
+  - `2026-06-03T23:30:36.122592+08:00` 用户输入摘要：`MFST的建仓建议`。
+  - `2026-06-03T23:31:40.344069+08:00` assistant 回复摘要：先写 `若你说的“MFST”是 Microsoft（MSFT）`，随后直接给出 `现在 427 美元附近可以开始建首仓`、计划仓位比例、买入区间、Bull / Bear 与证伪条件。
+  - `2026-06-03T23:42:24.591853+08:00` 用户输入摘要：`MPVL可以加仓吗`。
+  - `2026-06-03T23:43:37.176739+08:00` assistant 回复摘要：先写 `“MPVL”我未查到常见美股代码，以下按你大概率想问的 MRVL（Marvell）回答`，随后直接给出 `现在不适合明显加仓`、仓位比例、价格区间和证伪条件。
+- 最近四小时无非文档代码提交。
+- `cron_job_runs.max(executed_at)` 仍停在 `2026-06-01T00:26:00.908925+08:00`，本轮没有新的 scheduler 执行记录；该观测沿用既有 scheduler / actor scope 缺陷，不作为本单新根因。
+
+## 端到端链路
+
+1. Feishu direct 用户用非标准 ticker 拼写询问建仓或加仓建议。
+2. 系统识别出输入不是常见美股代码，或只能推测一个相近 ticker。
+3. assistant 没有先短句澄清目标实体，而是直接按相近实体展开完整操作建议。
+4. 用户若原本不是想问该实体，会收到答非所问的交易分析，并可能基于错误实体继续决策。
+
+## 期望效果
+
+- 当用户输入 `MFST`、`MPVL` 这类非标准 ticker 或明显拼写疑似错误的代码时，系统应先要求用户确认目标实体。
+- 若只能高概率猜测一个实体，也只能用一句话澄清，例如“你是指 MSFT / Microsoft 吗？确认后我再给建仓建议。”
+- 涉及建仓、加仓、减仓、买点和仓位比例时，实体确认门槛应高于普通科普问答，不能在未确认实体下给完整操作建议。
+
+## 当前实现效果
+
+- assistant 已意识到 `MFST` / `MPVL` 不是标准或常见 ticker，但仍直接按 `MSFT` / `MRVL` 输出完整建仓或加仓建议。
+- 两条回复都包含具体价格区间、仓位比例和操作节奏，属于会影响用户投资动作的回答。
+- 本轮没有用户后续纠正，因此不能证明实际误导已发生；但链路确实越过了“模糊实体先确认”的安全边界。
+
+## 用户影响
+
+- 这是质量性 bug，不是功能性 bug。
+- 本轮 Feishu direct 消息正常投递、assistant final 正常收口，工具调用和日志没有显示系统失败、错投、空回复、重复回复或内部错误外泄。
+- 问题主要是实体确认不足导致潜在答非所问和错误投资建议风险；它影响回答质量与可信度，但不阻断功能链路，因此定级为 `P3`，而不是 `P1/P2`。
+
+## 根因判断
+
+- 金融领域 prompt 已有“实体歧义约束”，但模型对“非标准 ticker 拼写 + 单一高概率相近实体”的场景仍倾向直接猜测并作答。
+- 历史归档 `docs/bugs/archive/feishu_ambiguous_lite_entity_guessed_as_litecoin.md` 覆盖的是 `lite` 在股票 / 加密资产之间直接猜错实体；本轮是相近 ticker 拼写疑似错误时直接给交易建议，受影响链路相邻但样本与风险形态不同。
+- 初步判断需要把“非标准 ticker / 拼写疑似错误 + 操作建议”纳入更严格的澄清门槛，而不是只处理多资产歧义。
+
+## 下一步建议
+
+- 在金融系统 prompt 或实体解析前置逻辑中补充约束：未识别 ticker、拼写疑似错误、编辑距离相近但未唯一确认时，涉及交易动作的问题必须先澄清。
+- 对 `MFST -> MSFT`、`MPVL -> MRVL` 这类样本增加回归或 prompt fixture：最终回复不得给仓位比例、买入区间或直接建仓建议，只能请求确认。
+- 后续巡检继续关注用户是否因同类猜测而纠正实体；若出现已确认答错且影响交易动作，可按影响范围重新评估严重等级。

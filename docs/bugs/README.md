@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-06-03 23:02 CST
+最后更新：2026-06-04 03:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,10 +17,11 @@
 
 ## 当前概览
 
-- 活跃待修复：3
+- 活跃待修复：4
 - Later / 待复现：10
 - 已修复 / 已关闭：121
 - 历史分析 / 部分止血：5
+- 本轮 03:02 CST 新增 P3 `Feishu 直聊对非标准 ticker 拼写直接猜测实体并给出建仓建议`：23:02-03:02 CST `session_messages` 有 14 个 Feishu user turn 与 14 个 assistant final，均成对收口；assistant final 污染扫描未命中空回复、`hone-mcp binary not found`、绝对路径、raw tool 字段、思维痕迹、provider 原始错误或 `company_profiles/...` 相对路径。`cron_job_runs` 仍无 2026-06-01 之后新执行记录，本轮没有非文档代码提交。质量候选来自 Feishu direct session `Actor_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c`：用户 23:30 输入 `MFST的建仓建议`，assistant 直接按 Microsoft / `MSFT` 展开完整建仓建议；用户 23:42 输入 `MPVL可以加仓吗`，assistant 又按 Marvell / `MRVL` 展开完整加仓建议。两轮都先承认原 ticker 不标准或未查到常见代码，但仍越过“模糊实体先确认”的约束给出操作建议。该问题不影响会话投递、收口、工具执行或系统稳定性，因此按质量性 `P3 / New` 建档；非 P1，不创建 GitHub issue。
 - 本轮 23:02 CST 新增 P1 `Feishu direct actor 读取 Cron 与持仓作用域为空，导致任务和投资上下文丢失`：19:02-23:02 CST `session_messages` 有 21 个 user turn 与 22 个 assistant 记录，Feishu direct 最近会话均已收口；多出的 assistant 是 daily-limit final/text 双记录，不构成重复回复缺陷。assistant final 污染扫描未命中空回复、`hone-mcp binary not found`、绝对路径、raw tool 字段、思维痕迹或 provider 原始错误。但同窗真实 Feishu direct 会话中，用户 21:08 CST 反馈盘前 Cron 未执行，assistant 21:10 CST 查询后反馈当前任务列表为 `jobs=[]`；用户同意重建任务后，assistant 21:13 CST 又反馈持仓工具返回 `holdings=[]`、`watchlist=[]`，用户随后被迫重建 13 条持仓；21:28 CST 补建的 once 任务 `j_a9e14511` 到 21:31 CST 仍 `last_run_at=null`、未生成 `cron_job_runs`。全库 `cron_job_runs.max(executed_at)` 仍停在 `2026-06-01T00:26:00.908925+08:00`。该问题不同于已修复的 scheduler loop 停扫：本轮是 Cron 与 portfolio 业务数据在同一 actor 作用域下读成空，影响持久化投资上下文和定时任务交付，按功能性 `P1 / New` 建档；已创建脱敏 Issue [#49](https://github.com/B-M-Capital-Research/honeclaw/issues/49)。
 - 本轮 23:02 CST 继续确认 P3 `Web / Feishu 直聊公司画像沉淀后向用户暴露内部相对文件路径` 活跃：19:02-23:02 CST assistant final 污染扫描只命中 2 条内部相对路径。19:38 CST Feishu direct XFAB 画像沉淀列出 `company_profiles/xfab/profile.md` 与 `company_profiles/xfab/events/...`；22:58 CST HPE 深度分析写出 `company_profiles/HPE.md`。两轮分析正文均正常收口，未见绝对路径、raw tool 字段、思维痕迹或 provider 原始错误；该缺陷仍不影响分析正文、文件写入或投递收口，严重等级保持 `P3 / New`，非 P1，不创建 GitHub issue。
 - 本轮 19:03 CST 重新打开 P3 `Web / Feishu 直聊公司画像沉淀后向用户暴露内部相对文件路径`：15:01-19:02 CST `session_messages` 有 19 个 Feishu user turn 与 19 个 assistant final，Feishu direct 均成对收口；assistant final 污染扫描未命中 `hone-mcp binary not found`、原始工具字段、绝对路径、provider 报错或思维痕迹。`acp-events.log` 同窗 Web direct session `Actor_web__direct__web-user-c394f2531362` 对 `帮我评估一下nok` 已完成 NOK 分析并 `stopReason=end_turn` 收口，但最终用户可见流式 chunk 仍输出 `本地画像：company_profiles/NOK.md`。这是 6 月 2 日修复后的新真实 Web direct 样本，因此原缺陷从 `Fixed` 回退为 `P3 / New`；不影响分析正文、文件写入或投递收口，非 P1，不创建 GitHub issue。
@@ -409,6 +410,7 @@
 | --- | --- | --- | --- | --- |
 | Feishu direct actor 读取 Cron 与持仓作用域为空，导致任务和投资上下文丢失 | P1 | New | 2026-06-03 23:02 最近四小时真实 Feishu direct 会话里，当前 actor 的 Cron 任务列表返回 `jobs=[]`，随后 portfolio 工具返回 `holdings=[]` / `watchlist=[]`；用户被迫重建两条常规任务和 13 条持仓，补建 once 任务到点后仍未生成 `cron_job_runs`。该问题影响持久化业务数据正确性和 scheduler 核心交付链路；已有 Issue [#49](https://github.com/B-M-Capital-Research/honeclaw/issues/49) | [feishu_actor_scope_cron_portfolio_empty.md](./feishu_actor_scope_cron_portfolio_empty.md) |
 | Feishu 直聊批量返回 `hone-mcp binary not found` 内部错误 | P1 | New | 2026-06-03 15:02 最近四小时真实会话里又有 9 个 Feishu direct assistant final 外露 `hone-mcp binary not found near current executable...` 原始错误；13:43 后有正常收口，说明运行态可能部分恢复，但代码级 `HONE_MCP_BIN` 自动传递与用户可见错误净化尚未进入当前 `main`。已有 Issue [#48](https://github.com/B-M-Capital-Research/honeclaw/issues/48) | [feishu_direct_hone_mcp_binary_missing_raw_error.md](./feishu_direct_hone_mcp_binary_missing_raw_error.md) |
+| Feishu 直聊对非标准 ticker 拼写直接猜测实体并给出建仓建议 | P3 | New | 2026-06-04 03:02 最近四小时真实 Feishu direct 会话里，用户输入 `MFST`、`MPVL` 这类非标准 ticker 拼写时，assistant 先承认不标准但仍按 `MSFT` / `MRVL` 展开完整建仓或加仓建议；会话均正常收口，未影响投递或系统链路，归类为质量性 P3。无关联 GitHub Issue | [feishu_direct_nonstandard_ticker_guess_for_trade_advice.md](./feishu_direct_nonstandard_ticker_guess_for_trade_advice.md) |
 | Web / Feishu 直聊公司画像沉淀后向用户暴露内部相对文件路径 | P3 | New | 2026-06-03 23:02 Feishu direct XFAB / HPE 两条正常收口回复继续外露 `company_profiles/...` 内部相对路径；分析正文、文件写入和投递收口未受阻，仍为质量性 P3。无关联 GitHub Issue | [web_company_profile_relative_path_exposed.md](./web_company_profile_relative_path_exposed.md) |
 
 ## Later / 待复现
