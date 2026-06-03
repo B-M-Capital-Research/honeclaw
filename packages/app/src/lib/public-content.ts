@@ -437,7 +437,7 @@ const CONTENT_ZH = {
       },
       {
         title: "事件与任务",
-        desc: "Cron 任务、事件引擎摘要、`/missed` 回查、通知偏好与渠道投递共享 Rust 后端、SQLite/JSON 或 PG 执行历史和用户归属模型；Feishu 等渠道的 scheduler heartbeat 已补齐 revision-aware 重复抑制、stale running 行终结、cloud cron 操作超时保护与 listener 内 scheduler loop 监督重启，event-engine 默认 LLM 配置已切到当前可用的 `x-ai/grok-4.3`，避免继续依赖已下线的 Grok 4.1 Fast。",
+        desc: "Cron 任务、事件引擎摘要、`/missed` 回查、通知偏好与渠道投递共享 Rust 后端、SQLite/JSON 或 PG 执行历史和用户归属模型；Web scheduler 结果先落入会话历史，SSE 只负责在线实时提示，因此浏览器离线不会把已落库结果误记为送达失败，执行错误会写入产品化失败提示并通过同一 `scheduled_message` 事件推送给在线控制台；Feishu 等渠道的 scheduler heartbeat 已补齐 revision-aware 重复抑制、stale running 行终结、cloud cron 操作超时保护与 listener 内 scheduler loop 监督重启，event-engine 默认 LLM 配置已切到当前可用的 `x-ai/grok-4.3`，避免继续依赖已下线的 Grok 4.1 Fast。",
       },
     ],
 
@@ -520,7 +520,7 @@ const CONTENT_ZH = {
           {
             name: "渠道回复收口与副作用确认",
             status: "stable",
-            note: "response_finalizer 可从成功 cron / portfolio 工具结果恢复用户可见确认",
+            note: "response_finalizer + 输出净化层可恢复成功副作用确认并隐藏内部路径 / skill 降级措辞",
           },
           {
             name: "Windows / Linux 桌面端",
@@ -535,7 +535,7 @@ const CONTENT_ZH = {
           {
             name: "Cron 定时任务",
             status: "stable",
-            note: "scheduled_task skill + /api/cron-jobs + 执行历史 / heartbeat / quiet_hours / guard 回归",
+            note: "scheduled_task skill + /api/cron-jobs + 执行历史 / heartbeat / quiet_hours / guard / Web SSE 投递回归",
           },
           {
             name: "自定义 Skill",
@@ -582,7 +582,7 @@ const CONTENT_ZH = {
         name: "Web",
         icon: "⚡",
         status: "stable",
-        desc: "手机号 + 短信验证码登录的邀请制聊天页",
+        desc: "手机号 + 短信验证码登录的邀请制聊天页，定时任务结果会落入历史并用 SSE 做在线提示",
       },
       {
         name: "iMessage",
@@ -670,13 +670,14 @@ const CONTENT_ZH = {
         "管理端用户视图聚合持仓、画像、会话与研究任务；公司画像可按 actor 空间查看详情、删除、导出 zip、导入预览并处理冲突",
         "Cron 定时任务系统",
         "定时任务投递安全 guard：原油 / 大宗商品归因防护仍覆盖商品播报，但不会因市场复盘中的局部油价从句整篇替换 A/H 或美股大盘复盘",
+        "Web 定时任务可靠性收口：结果先写入会话历史，在线浏览器通过 `scheduled_message` SSE 看到成功或失败提示，离线浏览器不会把已落库结果误标为 send_failed，handler 超时会记录为可排查的失败 trace",
         "事件引擎与 scheduler 质量收口：digest 去重 / min-gap / topic memory / 分类预算 / 方向性价格阈值 / Feishu heartbeat revision 去重 / stale running 记录恢复 / scheduler loop 监督重启",
         "Event-engine 默认模型与示例配置已替换为 `x-ai/grok-4.3`，避免 Grok 4.1 Fast 下线导致新闻分类、global digest、mainline distill 等 LLM 增强链路失效",
         "LLM provider 配置收口到 `config.yaml`，OpenRouter 与通用 OpenAI-compatible provider 支持 `api_key/api_keys` 轮换，并保留上游错误详情便于诊断",
         "Cloud PG / OSS 运行时：`cloud.postgres` / `cloud.oss` 可通过 env 配置，公开上传、生成图片 / 文件与迁移文档可写入 OSS，公开图片 / 文件代理可读取 `oss://bucket/key` 托管对象，`/api/meta` 会暴露云能力状态和本地 durable dependency 计数",
         "云迁移边界清晰：sessions、Web invite/auth sessions、conversation quota、cron jobs/runs、due-job claims、skill registry、notification prefs、portfolio、LLM audit 与 company profile files 已有 PG 热路径；`cloud.strict_no_local_storage=true` 会在当前配置仍有 durable 本地依赖时阻止启动",
         "`hone-cli cloud doctor / migrate / object-bench` 已可做云端体检、本地 data dry-run / 幂等导入、以及 OSS/R2 小对象延迟对比；迁移器支持 session、Web auth、quota、cron、skill registry、notification prefs、portfolio、LLM audit 与 company profiles 的单项导入开关",
-        "渠道回复收口层可在 runner 只产出过渡性规划句时，从成功的定时任务或持仓工具结果恢复用户可见确认，避免真实成功被空回复 fallback 遮蔽",
+        "渠道回复收口层可在 runner 只产出过渡性规划句时，从成功的定时任务或持仓工具结果恢复用户可见确认；共享输出净化层会隐藏内部绝对路径、公司画像落点和 skill/tool 降级前言，避免实现细节进入 Web / Feishu final",
         "前端部署资产恢复：service worker 与全局错误处理可识别 stale chunk，并在安全间隔内自动刷新到新版本",
         "公开 API key 对话入口：管理端可为 Web 用户生成 API key，客户端可按 OpenAI-compatible `/api/public/v1/chat/completions` 形状调用 Hone",
         "ACP 自管上下文与 compact 防泄漏，支持 codex_acp / opencode_acp 长会话恢复",
@@ -1981,7 +1982,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         title: "Events and tasks",
-        desc: "Cron jobs, event-engine digests, `/missed` recovery, notification preferences, and channel delivery share the Rust backend, SQLite/JSON or PG execution history, and user ownership model; Feishu and other channel scheduler heartbeats now include revision-aware duplicate suppression, stale running-row finalization, cloud cron operation timeouts, and supervised scheduler-loop restarts inside the listener, and event-engine default LLM config now uses the currently available `x-ai/grok-4.3` instead of the retired Grok 4.1 Fast.",
+        desc: "Cron jobs, event-engine digests, `/missed` recovery, notification preferences, and channel delivery share the Rust backend, SQLite/JSON or PG execution history, and user ownership model; Web scheduler results are persisted to conversation history first and use SSE only for live hints, so an offline browser no longer turns persisted results into false delivery failures, while execution errors are stored as productized failure messages and broadcast through the same `scheduled_message` event for online consoles; Feishu and other channel scheduler heartbeats now include revision-aware duplicate suppression, stale running-row finalization, cloud cron operation timeouts, and supervised scheduler-loop restarts inside the listener, and event-engine default LLM config now uses the currently available `x-ai/grok-4.3` instead of the retired Grok 4.1 Fast.",
       },
     ],
 
@@ -2068,7 +2069,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           {
             name: "Channel finalization and side-effect confirmations",
             status: "stable",
-            note: "response_finalizer can recover user-visible confirmations from successful cron / portfolio tool results",
+            note: "response_finalizer + output sanitizer recover successful side-effect confirmations and hide internal paths / skill degradation text",
           },
           {
             name: "Windows / Linux desktop",
@@ -2083,7 +2084,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           {
             name: "Cron scheduled tasks",
             status: "stable",
-            note: "scheduled_task skill + /api/cron-jobs + execution history / heartbeat / quiet_hours / guard regressions",
+            note: "scheduled_task skill + /api/cron-jobs + execution history / heartbeat / quiet_hours / guard / Web SSE delivery regressions",
           },
           {
             name: "Custom skills",
@@ -2134,7 +2135,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         name: "Web",
         icon: "⚡",
         status: "stable",
-        desc: "Invite-only chat with phone + SMS code login",
+        desc: "Invite-only chat with phone + SMS login; scheduled results persist to history and use SSE for live hints",
       },
       {
         name: "iMessage",
@@ -2255,13 +2256,14 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         "Admin user views group holdings, profiles, sessions, and research tasks; company profiles can be inspected by actor space, deleted, exported as zip bundles, preview-imported, and imported with conflict decisions",
         "Cron-driven scheduled tasks",
         "Scheduled-delivery safety guard: crude oil / commodity causality protection still covers commodity briefings, while broad A/H or U.S. market reviews are not fully replaced just because they contain a secondary oil-price clause",
+        "Web scheduled-task reliability pass: results are written to conversation history first, online browsers receive success or failure hints through `scheduled_message` SSE, offline browsers no longer mark persisted results as send_failed, and handler timeouts become diagnosable failure traces",
         "Event-engine and scheduler quality pass: digest dedupe / min-gap / topic memory / category budgets / directional price thresholds / Feishu heartbeat revision dedupe / stale running-row recovery / scheduler-loop supervision",
         "Event-engine default models and sample config now use `x-ai/grok-4.3`, avoiding failures from the retired Grok 4.1 Fast in news classification, global digest, and mainline distillation paths",
         "LLM provider config is consolidated into `config.yaml`; OpenRouter and generic OpenAI-compatible providers support `api_key/api_keys` rotation and preserve upstream error details for diagnosis",
         "Cloud PG / OSS runtime: `cloud.postgres` / `cloud.oss` can be configured through env references; public uploads, generated images / files, and migrated documents can write to OSS; public image / file proxies can read `oss://bucket/key` managed objects; `/api/meta` exposes cloud capability state and the local durable dependency count",
         "Cloud migration boundaries are explicit: sessions, Web invites/auth sessions, conversation quota, cron jobs/runs, due-job claims, the skill registry, notification prefs, portfolio, LLM audit, and company profile files have PG hot paths; `cloud.strict_no_local_storage=true` blocks startup while the current config still has durable local dependencies",
         "`hone-cli cloud doctor / migrate / object-bench` now covers cloud health checks, local data dry-runs / idempotent imports, and OSS/R2 small-object latency checks; the migrator has per-store import switches for sessions, Web auth, quota, cron, skill registry, notification prefs, portfolio, LLM audit, and company profiles",
-        "The channel response finalizer can recover user-visible confirmations from successful scheduled-task or portfolio tool results when a runner only emits a transitional planning sentence, so real side effects are not hidden behind an empty-reply fallback",
+        "The channel response finalizer can recover user-visible confirmations from successful scheduled-task or portfolio tool results when a runner only emits a transitional planning sentence; the shared output sanitizer hides internal absolute paths, company-profile storage paths, and skill/tool degradation preludes before Web / Feishu finals",
         "Frontend deploy asset recovery: the service worker and global error handlers detect stale chunks and safely reload onto the new version",
         "Public API-key chat entry point: admins can issue API keys for Web users, and clients can call Hone through the OpenAI-compatible `/api/public/v1/chat/completions` shape",
         "ACP self-managed context with compact-leak suppression for long codex_acp / opencode_acp sessions",
