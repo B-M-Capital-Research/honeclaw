@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-06-03 04:09 CST
+最后更新：2026-06-03 11:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,10 +17,11 @@
 
 ## 当前概览
 
-- 活跃待修复：0
+- 活跃待修复：1
 - Later / 待复现：10
 - 已修复 / 已关闭：122
 - 历史分析 / 部分止血：5
+- 本轮 11:02 CST 新增 P1 `Feishu 直聊批量返回 hone-mcp binary not found 内部错误`：07:01-11:01 CST `session_messages` 有 14 个 Feishu user turn 与 14 个 assistant turn，07:14-08:33 CST 仍有正常投研答复，但 10:32-10:57 CST 连续 7 个 Feishu direct assistant final 都返回 `hone-mcp binary not found near current executable...`，覆盖投研、文章分析、定时任务创建与图片附件请求。该问题阻断 Feishu direct 主链路，并向用户暴露内部二进制查找和 `HONE_MCP_BIN` 配置细节，按功能性 `P1 / New` 建档；已创建脱敏 Issue [#48](https://github.com/B-M-Capital-Research/honeclaw/issues/48)。
 - 本轮 03:07 CST 已修复 P2 `Web scheduler ACP stream disconnects without final reply`：`crates/hone-web-api/src/routes/events.rs` 现在会把 Web scheduler 的产品化失败提示同时广播为 `scheduled_message` SSE 事件，而不只是落库到 session history；在线 Web 会话会立即收到 `定时任务「...」执行出错，请稍后重试。`，execution detail 也新增 `console_event_sent` 便于区分“仅落库”与“已实时推送”。验证 `cargo test -p hone-web-api scheduler_failure_trace_required_ -- --nocapture`、`cargo test -p hone-web-api web_scheduler_ -- --nocapture`、`cargo test -p hone-web-api build_web_scheduler_push_event_uses_scheduled_message_payload -- --nocapture`、`cargo test -p hone-web-api emit_web_scheduler_push_broadcasts_failure_prompt -- --nocapture`、`cargo check -p hone-web-api --tests` 通过；无关联 GitHub Issue。
 - 本轮 04:09 CST 已修复 P2 `Web scheduler ACP stream disconnects without final reply`：Web / iMessage scheduler 入口为整次 `execute_scheduler_event(...)` 增加 `agent.overall_timeout + 30s` 执行预算，底层 ACP stream disconnect / 无最终 response / handler 挂起时会合成 `web_scheduler_handler_timeout` 失败结果，复用既有 Web scheduler 失败提示落库和 `cron_job_runs` `execution_failed + skipped_error` 终态记录，避免定时任务只停在 started / fallback / internal error。新增回归覆盖超时失败对象与 grace 预算；验证 `cargo test -p hone-web-api scheduler_ -- --nocapture`、`cargo check -p hone-web-api --tests`、`rustfmt --edition 2024 --config skip_children=true --check crates/hone-web-api/src/routes/events.rs` 通过；无关联 GitHub Issue。
 - 本轮 12:15 CST 已修复 P3 `Web 直聊公司画像沉淀后向用户暴露内部相对文件路径`：共享用户可见输出净化器新增 `company_profiles/...` 与 `events/*.md` 内部相对路径改写，将这类 runner sandbox 文件组织路径替换为自然的“公司画像”表述，避免 Web / Feishu direct final 误把内部目录当成产品入口。新增回归 `sanitize_user_visible_output_redacts_internal_relative_company_profile_paths`，验证 `cargo test -p hone-channels sanitize_user_visible_output_redacts_internal_relative_company_profile_paths --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_redacts_bare_absolute_paths --lib -- --nocapture` 通过；无关联 GitHub Issue。
@@ -401,6 +402,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Feishu 直聊批量返回 `hone-mcp binary not found` 内部错误 | P1 | New | 2026-06-03 11:02 最近四小时真实会话里，10:32-10:57 CST 连续 7 个 Feishu direct 请求只收到 `hone-mcp binary not found near current executable...` 原始内部错误；阻断投研、文章分析、定时任务创建和图片附件处理，并暴露二进制查找 / `HONE_MCP_BIN` 实现细节。已创建 Issue [#48](https://github.com/B-M-Capital-Research/honeclaw/issues/48) | [feishu_direct_hone_mcp_binary_missing_raw_error.md](./feishu_direct_hone_mcp_binary_missing_raw_error.md) |
 
 ## Later / 待复现
 
