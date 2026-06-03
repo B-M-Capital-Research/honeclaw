@@ -23,6 +23,12 @@
   - `docs/bugs/telegram_update_listener_connection_refused.md` 仅在 Telegram 历史证据里提过相同 `hone-mcp binary not found` 字符串，影响渠道和当前表现不同，不能复用为同一缺陷。
 - `cron_job_runs.max(executed_at)` 仍停在 `2026-06-01T00:26:00.908925+08:00`；本轮没有新增 scheduler run 证据，因此本缺陷先限定为 Feishu direct 直聊链路。
 - 最近四小时无非文档代码提交；本轮只维护缺陷台账。
+- `2026-06-03 15:02 CST` 复核最近四小时真实会话窗口（`2026-06-03 11:02-15:02 CST`）：
+  - `session_messages` 共有 20 个 Feishu user turn 与 20 个 Feishu assistant turn，整体没有孤立未回复 user turn。
+  - `2026-06-03T11:30:18-12:18:23+08:00` 又有 9 个 Feishu direct assistant final 返回同一 `hone-mcp binary not found near current executable...` 原始错误，跨 5 个 direct session。
+  - `2026-06-03T13:43-14:50+08:00` 出现 11 条非同类错误的正常 assistant final，说明当前运行态已有部分恢复迹象，但不能证明代码级修复已合入。
+  - `cron_job_runs` 在该窗口无新增 run；最近四小时无非文档代码提交。
+  - 本轮开始前存在 `bins/hone-cli/src/start.rs` 与 `crates/hone-channels/src/runtime.rs` 的未提交代码改动，内容分别涉及自动传递 `HONE_MCP_BIN` 与净化该原始错误；由于本自动化只允许维护 `docs/bugs/`，这些代码改动已按任务边界清理，不能作为 `Fixed` 依据。
 
 ## 端到端链路
 
@@ -42,8 +48,9 @@
 ## 当前实现效果
 
 - `2026-06-03 10:32-10:57 CST` 连续 7 个真实 Feishu direct 请求都没有完成用户任务，只返回 `hone-mcp binary not found near current executable...`。
+- `2026-06-03 11:30-12:18 CST` 又有 9 个真实 Feishu direct 请求继续只返回同类原始错误；这是本轮确认仍活跃的关键证据。
 - 回复内容暴露内部可执行文件布局、平台变体名和 `HONE_MCP_BIN` 配置入口；虽然绝对路径已被 `<absolute-path>` 替换，但仍是面向工程实现的原始错误。
-- 本窗前段同渠道可正常产出投研回复，后段连续失败，说明这是当前运行态刚发生变化的功能性缺陷，不是历史静态文档问题。
+- 本窗前段同渠道可正常产出投研回复，后段连续失败；13:43 CST 之后又出现正常 Feishu direct final，说明当前运行态可能已被临时止血，但底层路径查找与错误净化仍需要代码级修复。
 
 ## 用户影响
 
@@ -58,9 +65,15 @@
 - 错误净化层没有覆盖 `hone-mcp binary not found near current executable` 这类 dependency startup failure，导致原始工程错误进入用户可见 assistant final。
 - 这不同于已修复的 `Codex version probe 资源耗尽`：本轮不是瞬时资源限制或 `codex` version probe，而是 `hone-mcp` 二进制缺失 / 路径解析失败。
 
-## 下一步建议
+## 巡检更新
 
-- 修复 Feishu direct runtime 的 `hone-mcp` 二进制打包 / 部署 / 查找路径，确认生产启动方式下 `HONE_MCP_BIN` 或邻近二进制存在。
+- `2026-06-03 12:31 CST` 有运行态止血尝试：重新构建 `hone-mcp`，并用显式 `HONE_MCP_BIN` 重启本机 `hone-console-page` 与 `hone-feishu`；部分健康检查与 13:43 后 Feishu direct normal final 表明运行态可能已恢复。
+- 但本轮巡检确认，支撑“启动路径修复”和“用户可见错误净化”的代码仍只是未提交本地改动，不属于当前 `main`。因此状态不能登记为 `Fixed`，仍保持 `New`。
+- 已有脱敏 GitHub Issue [#48](https://github.com/B-M-Capital-Research/honeclaw/issues/48)，本轮不重复创建。
+
+## 后续建议
+
 - 在启动健康检查中验证 `hone-mcp` 可执行，失败时不要接收 Feishu direct 流量。
-- 扩展共享用户可见错误净化，把 dependency startup failure 映射为脱敏系统不可用文案，并在日志 / metadata 中保留结构化失败原因。
-- 修复后用 Feishu direct 的真实或本地 contract smoke 覆盖：普通文本投研、定时任务创建和图片附件请求至少各一条能正常进入 agent 或返回脱敏失败。
+- 修复 `hone-cli start` / 运行时启动链路，让子进程稳定获得 `HONE_MCP_BIN` 或能从 source root / `target/debug` 定位 `hone-mcp`。
+- 扩展共享用户可见错误净化，把 `hone-mcp binary not found near current executable`、`HONE_MCP_BIN`、`near current executable` 等 dependency startup failure 映射为脱敏系统不可用文案。
+- 修复后补 Feishu direct 的真实或本地 contract smoke 覆盖：普通文本投研、定时任务创建和图片附件请求至少各一条能正常进入 agent 或返回脱敏失败。
