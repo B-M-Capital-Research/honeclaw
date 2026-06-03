@@ -146,6 +146,12 @@ pub(crate) fn child_envs(paths: &ResolvedRuntimePaths) -> Vec<(String, String)> 
         ("HONE_WEB_PORT".to_string(), paths.web_port.to_string()),
         ("HONE_DISABLE_AUTO_OPEN".to_string(), "1".to_string()),
     ];
+    if let Some(hone_mcp_bin) = locate_binary_with_source("hone-mcp", Some(&paths.root_dir)) {
+        envs.push((
+            "HONE_MCP_BIN".to_string(),
+            hone_mcp_bin.to_string_lossy().to_string(),
+        ));
+    }
     if let Some(root) = env::var_os("HONE_HOME") {
         envs.push((
             "HONE_HOME".to_string(),
@@ -532,6 +538,41 @@ mod tests {
 
         assert!(message.contains("http://127.0.0.1:8077/api/meta"));
         assert!(message.contains("HTTP 503"));
+    }
+
+    #[test]
+    fn child_envs_exports_hone_mcp_bin_from_source_root() {
+        let root = std::env::temp_dir().join(format!(
+            "hone_child_envs_mcp_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let debug_dir = source_target_debug_dir(&root);
+        let runtime_dir = root.join("data/runtime");
+        std::fs::create_dir_all(&debug_dir).unwrap();
+        std::fs::create_dir_all(&runtime_dir).unwrap();
+        let hone_mcp = debug_dir.join(executable_name("hone-mcp"));
+        std::fs::write(&hone_mcp, "mock").unwrap();
+
+        let paths = ResolvedRuntimePaths {
+            canonical_config_path: root.join("config.yaml"),
+            effective_config_path: runtime_dir.join("effective-config.yaml"),
+            data_dir: root.join("data"),
+            runtime_dir,
+            skills_dir: root.join("skills"),
+            root_dir: root.clone(),
+            web_port: 8077,
+        };
+        let envs = child_envs(&paths);
+
+        assert!(envs.iter().any(|(key, value)| {
+            key == "HONE_MCP_BIN" && value == &hone_mcp.to_string_lossy().to_string()
+        }));
+
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

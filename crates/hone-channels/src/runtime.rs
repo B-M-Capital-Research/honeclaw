@@ -338,6 +338,12 @@ pub fn sanitize_user_visible_output(text: &str) -> SanitizedUserVisibleOutput {
     }
 }
 
+fn is_hone_mcp_binary_missing_error(text: &str) -> bool {
+    let normalized = text.trim().to_ascii_lowercase();
+    normalized.contains("hone-mcp binary not found")
+        || (normalized.contains("hone_mcp_bin") && normalized.contains("not found"))
+}
+
 fn strip_internal_protocol_blocks(mut value: String) -> (String, bool) {
     let mut removed_internal = false;
 
@@ -421,6 +427,9 @@ pub fn user_visible_error_message(raw: Option<&str>) -> String {
     };
 
     let lowered = sanitized.to_ascii_lowercase();
+    if is_hone_mcp_binary_missing_error(&sanitized) {
+        return RUNNER_RESOURCE_UNAVAILABLE_USER_ERROR_MESSAGE.to_string();
+    }
     if let Some(message) = user_actionable_error_message(&sanitized, &lowered) {
         return message;
     }
@@ -1060,6 +1069,14 @@ mod tests {
         let err =
             user_visible_error_message(Some("opencode acp session/prompt idle timeout (180s)"));
         assert_eq!(err, TIMEOUT_USER_ERROR_MESSAGE);
+    }
+
+    #[test]
+    fn user_visible_error_message_rewrites_missing_hone_mcp_binary_errors() {
+        let err = user_visible_error_message(Some(
+            "hone-mcp binary not found near current executable; tried: /tmp/hone-mcp, /tmp/hone-mcp-aarch64-apple-darwin (set HONE_MCP_BIN to override)",
+        ));
+        assert_eq!(err, RUNNER_RESOURCE_UNAVAILABLE_USER_ERROR_MESSAGE);
     }
 
     #[test]

@@ -28,7 +28,11 @@ pub fn hone_mcp_servers(request: &AgentRunnerRequest) -> Result<Value, String> {
     if let Some(scope) = &request.actor.channel_scope {
         env_entries.push(mcp_env_entry("HONE_MCP_ACTOR_SCOPE", scope.as_str()));
     }
-    push_env_var_if_present(&mut env_entries, "HONE_DATA_DIR");
+    push_env_var_or_derived(&mut env_entries, "HONE_DATA_DIR", || {
+        PathBuf::from(&request.runtime_dir)
+            .parent()
+            .map(|path| path.to_string_lossy().to_string())
+    });
     push_env_var_if_present(&mut env_entries, "HONE_SKILLS_DIR");
     push_env_var_if_present(&mut env_entries, "HONE_AGENT_SANDBOX_DIR");
     if let Some(allowed_tools) = &request.allowed_tools {
@@ -63,6 +67,18 @@ fn mcp_env_entry(name: &str, value: impl Into<String>) -> Value {
 
 fn push_env_var_if_present(env_entries: &mut Vec<Value>, name: &str) {
     if let Ok(value) = env::var(name) {
+        env_entries.push(mcp_env_entry(name, value));
+    }
+}
+
+fn push_env_var_or_derived(
+    env_entries: &mut Vec<Value>,
+    name: &str,
+    derived: impl FnOnce() -> Option<String>,
+) {
+    if let Ok(value) = env::var(name) {
+        env_entries.push(mcp_env_entry(name, value));
+    } else if let Some(value) = derived().filter(|value| !value.trim().is_empty()) {
         env_entries.push(mcp_env_entry(name, value));
     }
 }
@@ -797,6 +813,27 @@ mod tests {
         assert!(env_entries.iter().any(|entry| {
             entry.get("name").and_then(|v| v.as_str()) == Some("HONE_AGENT_SANDBOX_DIR")
                 && entry.get("value").and_then(|v| v.as_str()) == Some("/tmp/hone-sandboxes")
+        }));
+    }
+
+    #[test]
+    fn hone_mcp_servers_derives_data_dir_from_runtime_dir_when_env_missing() {
+        let _guard = env_lock();
+        clear_test_env();
+
+        let payload = hone_mcp_servers(&make_request()).expect("payload");
+        let server = payload
+            .as_array()
+            .and_then(|items| items.first())
+            .expect("server entry");
+        let env_entries = server
+            .get("env")
+            .and_then(|value| value.as_array())
+            .expect("env entries");
+
+        assert!(env_entries.iter().any(|entry| {
+            entry.get("name").and_then(|v| v.as_str()) == Some("HONE_DATA_DIR")
+                && entry.get("value").and_then(|v| v.as_str()) == Some("/tmp")
         }));
     }
 

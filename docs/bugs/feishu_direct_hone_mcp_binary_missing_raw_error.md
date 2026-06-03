@@ -3,7 +3,7 @@
 - 发现时间：2026-06-03 11:02 CST
 - Bug Type：System Error
 - 严重等级：P1
-- 状态：New
+- 状态：Fixed
 - GitHub Issue：[#48](https://github.com/B-M-Capital-Research/honeclaw/issues/48)
 
 ## 证据来源
@@ -71,9 +71,20 @@
 - 但本轮巡检确认，支撑“启动路径修复”和“用户可见错误净化”的代码仍只是未提交本地改动，不属于当前 `main`。因此状态不能登记为 `Fixed`，仍保持 `New`。
 - 已有脱敏 GitHub Issue [#48](https://github.com/B-M-Capital-Research/honeclaw/issues/48)，本轮不重复创建。
 
-## 后续建议
+## 修复记录
 
-- 在启动健康检查中验证 `hone-mcp` 可执行，失败时不要接收 Feishu direct 流量。
-- 修复 `hone-cli start` / 运行时启动链路，让子进程稳定获得 `HONE_MCP_BIN` 或能从 source root / `target/debug` 定位 `hone-mcp`。
-- 扩展共享用户可见错误净化，把 `hone-mcp binary not found near current executable`、`HONE_MCP_BIN`、`near current executable` 等 dependency startup failure 映射为脱敏系统不可用文案。
-- 修复后补 Feishu direct 的真实或本地 contract smoke 覆盖：普通文本投研、定时任务创建和图片附件请求至少各一条能正常进入 agent 或返回脱敏失败。
+- `2026-06-04` 已修复：
+  - `bins/hone-cli/src/start.rs` 现在会在源码/CLI 启动链路里显式透传 `HONE_MCP_BIN`，优先把当前 root 下已定位到的 `hone-mcp` 二进制传给子进程，避免 Feishu / Web / scheduler runner 只依赖“当前可执行文件附近碰巧有 hone-mcp”。
+  - `crates/hone-channels/src/runtime.rs` 现在把 `hone-mcp binary not found near current executable ... (set HONE_MCP_BIN to override)` 这类 dependency startup failure 统一映射为用户态文案 `当前本机执行环境暂时不可用，请稍后再试。`，不再向 Feishu 用户暴露二进制名、探测路径和环境变量。
+  - 配合同轮 `execution.rs` / `mcp_bridge.rs` 的绝对配置路径与数据根透传，runner 子进程的启动/依赖环境边界已收口到代码，不再依赖手工脏改或临时 shell 环境。
+
+## 验证
+
+- `cargo test -p hone-cli child_envs_exports_hone_mcp_bin_from_source_root -- --nocapture`
+- `cargo test -p hone-channels user_visible_error_message_rewrites_missing_hone_mcp_binary_errors -- --nocapture`
+- `cargo check -p hone-channels -p hone-cli --tests`
+
+## 后续关注
+
+- 本轮没有重启当前 Feishu 服务做 live 复核；若后续仍出现同类错误，应优先核对实际启动入口是否经过 `hone-cli start` / desktop runtime env 物料化链路。
+- 若运行态仍偶发 `hone-mcp` 缺失，应继续补启动前健康检查，把坏进程挡在接流量之前。

@@ -3,7 +3,7 @@
 - **发现时间**: 2026-06-03 23:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#49](https://github.com/B-M-Capital-Research/honeclaw/issues/49)
 
 ## 证据来源
@@ -53,12 +53,24 @@
 
 ## 根因判断
 
-- 初步判断是 Feishu direct / scheduler / portfolio 工具之间的 actor identity、channel target、cloud/local 存储后端或作用域解析不一致，导致同一用户的 Cron 与 portfolio 读取落到空作用域。
-- 该问题不同于 `feishu_scheduler_no_runs_after_midnight.md`：旧 P1 主要是任务仍存在但 scheduler loop 不再产生 run；本轮新证据显示任务列表本身读成空，且 portfolio/watchlist 也同时为空。
-- 该问题也不同于 `sessions_sqlite_mirror_stalled_after_successful_direct_replies.md`：本轮 `session_messages` 仍在更新，异常不在会话镜像停滞，而在业务数据读取与 scheduler due-run。
+- 直接根因不是 Feishu actor key 计算错误，而是 `hone-mcp` 作为独立进程在 actor sandbox `cwd` 下启动时，没有稳定拿到绝对 `HONE_DATA_DIR`。
+- 当父进程本身依赖 repo root `cwd` 读取 `config.yaml` 中的相对 `./data/portfolio` / `./data/cron_jobs` 路径，而 `hone-mcp` 子进程改在 sandbox `cwd` 下加载同一配置时，这些相对路径会落到 sandbox 内的新空数据树，于是 `portfolio view` 与 `cron_job list` 同时返回空。
+- 该问题与 `feishu_scheduler_no_runs_after_midnight.md` 不同：旧 P1 是任务存在但 scheduler loop 不再产生 run；本轮是工具读错数据根，直接把任务表和持仓表看成空。
 
-## 下一步建议
+## 修复记录
 
-- 优先核对 Feishu direct actor 的 canonical identity、Cron job owner、portfolio owner 与 cloud/local 后端选择是否一致。
-- 增加端到端回归：同一 Feishu actor 创建 Cron 与 portfolio 后，后续 direct 查询、scheduler due scan 与 once 补跑都必须读到同一份数据。
-- 在 Cron / portfolio 工具返回空列表时增加可观测性：记录 actor id、channel scope、backend、storage source 与查询条件，避免把作用域错读伪装成“用户没有数据”。
+- `2026-06-04` 已修复：
+  - `crates/hone-channels/src/execution.rs` 现在会把 runner 下发给 ACP/MCP 的 `HONE_CONFIG_PATH` 固定成绝对路径，避免 `hone-mcp` 在 sandbox `cwd` 下误读相对 `config.yaml`。
+  - `crates/hone-channels/src/mcp_bridge.rs` 现在即使父进程环境里没有显式 `HONE_DATA_DIR`，也会从 `runtime_dir` 反推出数据根并透传给 `hone-mcp`，确保 `portfolio` / `cron_job` 继续读取同一份 repo/runtime 数据。
+  - 这会把 direct 会话、scheduler 工具和同 actor 的持仓/任务存储重新收敛到同一数据根，不再把 sandbox 内空目录误判成“用户没有数据”。
+
+## 验证
+
+- `cargo test -p hone-channels prepare_absolutizes_relative_runtime_config_path -- --nocapture`
+- `cargo test -p hone-channels hone_mcp_servers_derives_data_dir_from_runtime_dir_when_env_missing -- --nocapture`
+- `cargo check -p hone-channels -p hone-cli --tests`
+
+## 后续关注
+
+- 本轮是代码级闭环，没有重启现有服务做 live 复核；如需运行态确认，可在不重启当前服务的前提下优先检查新进程是否持有绝对 `HONE_CONFIG_PATH` / `HONE_DATA_DIR`。
+- 若后续仍出现 `jobs=[]` + `holdings=[]` 组合症状，应优先检查对应进程的 `HONE_DATA_DIR` 与 `cwd`，而不是先怀疑 actor identity 漂移。
