@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-06-03 15:02 CST
+最后更新：2026-06-03 19:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,10 +17,11 @@
 
 ## 当前概览
 
-- 活跃待修复：1
+- 活跃待修复：2
 - Later / 待复现：10
-- 已修复 / 已关闭：122
+- 已修复 / 已关闭：121
 - 历史分析 / 部分止血：5
+- 本轮 19:03 CST 重新打开 P3 `Web / Feishu 直聊公司画像沉淀后向用户暴露内部相对文件路径`：15:01-19:02 CST `session_messages` 有 19 个 Feishu user turn 与 19 个 assistant final，Feishu direct 均成对收口；assistant final 污染扫描未命中 `hone-mcp binary not found`、原始工具字段、绝对路径、provider 报错或思维痕迹。`acp-events.log` 同窗 Web direct session `Actor_web__direct__web-user-c394f2531362` 对 `帮我评估一下nok` 已完成 NOK 分析并 `stopReason=end_turn` 收口，但最终用户可见流式 chunk 仍输出 `本地画像：company_profiles/NOK.md`。这是 6 月 2 日修复后的新真实 Web direct 样本，因此原缺陷从 `Fixed` 回退为 `P3 / New`；不影响分析正文、文件写入或投递收口，非 P1，不创建 GitHub issue。
 - 本轮 15:02 CST 确认 P1 `Feishu 直聊批量返回 hone-mcp binary not found 内部错误` 仍应处于活跃待修复：11:02-15:02 CST `session_messages` 有 20 个 Feishu user turn 与 20 个 assistant turn，其中 11:30-12:18 CST 又有 9 个 Feishu direct assistant final 外露同一 `hone-mcp binary not found near current executable...` 原始错误；13:43-14:50 CST 已出现 11 条非同类错误的正常 assistant final，说明运行态有部分恢复迹象，但本轮清理工作区时发现“自动定位 `HONE_MCP_BIN` / 错误净化”相关代码只是未提交脏改动，不属于当前 `main`。因此不把该缺陷登记为 `Fixed`，状态保持 `P1 / New`；已有 Issue [#48](https://github.com/B-M-Capital-Research/honeclaw/issues/48)，不重复创建。
 - 本轮 12:31 CST 曾有运行态止血尝试：重新构建 `hone-mcp` 并用显式 `HONE_MCP_BIN` 重启本机 `hone-console-page` / `hone-feishu`，部分接口和后续直聊恢复正常；但因代码级路径修复与错误净化未进入本轮允许提交范围，不能作为已修复结论。
 - 本轮 11:02 CST 新增 P1 `Feishu 直聊批量返回 hone-mcp binary not found 内部错误`：07:01-11:01 CST `session_messages` 有 14 个 Feishu user turn 与 14 个 assistant turn，07:14-08:33 CST 仍有正常投研答复，但 10:32-10:57 CST 连续 7 个 Feishu direct assistant final 都返回 `hone-mcp binary not found near current executable...`，覆盖投研、文章分析、定时任务创建与图片附件请求。该问题阻断 Feishu direct 主链路，并向用户暴露内部二进制查找和 `HONE_MCP_BIN` 配置细节，按功能性 `P1 / New` 建档；已创建脱敏 Issue [#48](https://github.com/B-M-Capital-Research/honeclaw/issues/48)。
@@ -405,6 +406,7 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Feishu 直聊批量返回 `hone-mcp binary not found` 内部错误 | P1 | New | 2026-06-03 15:02 最近四小时真实会话里又有 9 个 Feishu direct assistant final 外露 `hone-mcp binary not found near current executable...` 原始错误；13:43 后有正常收口，说明运行态可能部分恢复，但代码级 `HONE_MCP_BIN` 自动传递与用户可见错误净化尚未进入当前 `main`。已有 Issue [#48](https://github.com/B-M-Capital-Research/honeclaw/issues/48) | [feishu_direct_hone_mcp_binary_missing_raw_error.md](./feishu_direct_hone_mcp_binary_missing_raw_error.md) |
+| Web / Feishu 直聊公司画像沉淀后向用户暴露内部相对文件路径 | P3 | New | 2026-06-03 19:03 Web direct NOK 分析已正常收口，但用户可见流式 chunk 仍输出 `本地画像：company_profiles/NOK.md`；这是 6 月 2 日共享净化修复后的新真实 Web direct 样本，回退为活跃 P3。分析正文、文件写入和投递收口未受阻；无关联 GitHub Issue | [web_company_profile_relative_path_exposed.md](./web_company_profile_relative_path_exposed.md) |
 
 ## Later / 待复现
 
@@ -426,7 +428,6 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Web scheduler ACP stream disconnects without final reply | P2 | Fixed | 2026-06-03 04:09 Web scheduler 失败提示已同时落库并广播为 `scheduled_message` SSE；Web / iMessage scheduler 入口新增 `agent.overall_timeout + 30s` 执行预算，ACP stream disconnect / 无最终 response / handler 挂起会合成 `web_scheduler_handler_timeout`，复用 Web failure transcript 与 `cron_job_runs` `execution_failed + skipped_error` 终态。验证 `cargo test -p hone-web-api scheduler_ -- --nocapture`、`cargo check -p hone-web-api --tests` 通过；无关联 GitHub Issue | [web_scheduler_acp_stream_disconnect_no_final.md](./web_scheduler_acp_stream_disconnect_no_final.md) |
-| Web / Feishu 直聊公司画像沉淀后向用户暴露内部相对文件路径 | P3 | Fixed | 2026-06-02 12:15 共享用户可见输出净化器将 `company_profiles/...` 与 `events/*.md` 内部相对路径改写为“公司画像”，保留“已沉淀/后续可对照更新”的业务语义，不再向 Web / Feishu 用户展示 runner sandbox 目录；23:06 CST HPE live 样本按未确认部署运行态保留，不回退状态。验证 `cargo test -p hone-channels sanitize_user_visible_output_redacts_internal_relative_company_profile_paths --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_redacts_bare_absolute_paths --lib -- --nocapture` 通过；无关联 GitHub Issue | [web_company_profile_relative_path_exposed.md](./web_company_profile_relative_path_exposed.md) |
 | Web 定时任务回复外露“技能未加载”内部降级措辞 | P3 | Fixed | 2026-06-02 12:06 共享用户可见输出净化器新增 skill/tool 降级前言识别，scheduler delivery 出站净化会剥离开头的“当前运行器 / 技能未加载 / skill unavailable”等内部实现说明，同时保留业务复盘正文。验证 `cargo test -p hone-channels scheduler_delivery_text_strips_skill_load_degradation_prelude --lib -- --nocapture`、`cargo test -p hone-channels scheduler_delivery_text_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [web_scheduler_skill_load_failure_phrase_exposed.md](./web_scheduler_skill_load_failure_phrase_exposed.md) |
 | Feishu scheduler 00:26 后不再产生新 run，导致 trading_day 任务漏执行 | P1 | Fixed | 2026-06-02 00:09 cloud cron 同步桥 `run_cloud_cron(...)` 新增 15s 默认超时（`HONE_CLOUD_CRON_TIMEOUT_SECS` 可调），避免 cloud PG cron list / claim future 无界等待时卡死 scheduler tick loop，导致 Feishu heartbeat 仍健康但后续不再创建 `cron_job_runs`。验证 `cargo test -p hone-memory cloud_cron_timeout_returns_storage_error_instead_of_blocking -- --nocapture`、`cargo test -p hone-memory --lib -- --nocapture`、`cargo check -p hone-scheduler --tests` 通过；关联 Issue [#47](https://github.com/B-M-Capital-Research/honeclaw/issues/47) | [feishu_scheduler_no_runs_after_midnight.md](./feishu_scheduler_no_runs_after_midnight.md) |
 | Web direct replies stream to ACP but are not persisted to session history | P2 | Closed | 2026-06-01 12:10 复核关闭为证据不足 / 不成立：Web direct 已走统一 `AgentSession::run(...)` 持久化路径，cloud mode 的 session 权威后端是 PG `cloud_sessions`；原证据只看本地 JSON / SQLite，不能证明真实历史丢失。本轮无业务代码改动、无关联 GitHub Issue | [web_direct_acp_stream_not_persisted.md](./web_direct_acp_stream_not_persisted.md) |
