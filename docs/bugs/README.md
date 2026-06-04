@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-06-04 11:02 CST
+最后更新：2026-06-04 23:05 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -21,6 +21,7 @@
 - Later / 待复现：10
 - 已修复 / 已关闭：123
 - 历史分析 / 部分止血：5
+- 本轮 23:05 CST 未新增独立缺陷或活跃 P1/P2 状态变化。19:02-23:05 CST `data/sessions.sqlite3` 有 5 个 Feishu user turn 与 3 个 assistant final；CIEN、NOK、DXYZ 三条已正常收口，TSEM / TEM 两条更晚请求截至轮询仍处于 user / streaming 状态，未作为未回复缺陷登记。assistant final 污染扫描只命中 2 条既有公司画像相对路径外露：23:03 CST CIEN 财报分析末尾写出 `company_profiles/Ciena_CIEN.md`，23:04 CST NOK 建仓分析末尾写出 `company_profiles/NOK.md`；两条正文均完成分析、估值或操作建议并正常投递，不影响文件写入或主链路，继续归入既有 P3 `Web / Feishu 直聊公司画像沉淀后向用户暴露内部相对文件路径`，不新建重复缺陷。`acp-events.log` 同窗有 4 个 `stopReason=end_turn`，未见 `hone-mcp binary not found`、provider 原始错误、quota、HTTP 400/429、panic、空回复、思维痕迹或 raw tool 字段进入 final；`cron_job_runs` 同窗无新记录，最近四小时无非文档代码提交；非 P1，不创建 GitHub issue。
 - 本轮 11:02 CST 未新增独立缺陷或活跃 P1/P2 状态变化。07:02-11:01 CST `data/sessions.sqlite3` 有 14 个 Feishu user turn 与 14 个 assistant final，均成对收口；assistant final 污染扫描未命中空回复、`company_profiles/...`、本机绝对路径、`data/agent-sandboxes`、`hone-mcp binary not found`、raw tool 字段、`reasoning_content`、`<think>`、provider 原始错误、`HTTP 400`、`Resource temporarily unavailable`、`quota exhausted`、`Param Incorrect`、panic 或 `index out of bounds`。同窗 `acp-events.log` 有 22 个 prompt 与 22 个 `stopReason=end_turn`；日志内 `rawInput/rawOutput`、sandbox cwd 和本机路径只停留在内部 ACP event payload，未进入 SQLite assistant final。唯一用户可见质量候选来自 Feishu direct session `Actor_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c`：10:32 CST 用户要求“腾讯控股的画像”，assistant 完成画像正文并正常收口，但开头写出“路径是：公司画像公司画像”。这不再泄露 `company_profiles/...`，但仍是既有公司画像路径净化链路的产品文案退化，因此只补充到原 P3 文档，不新建重复缺陷；该问题不影响画像生成、投递或直聊收口，非 P1，不创建 GitHub issue。`cron_job_runs.max(executed_at)` 仍停在 `2026-06-01T00:26:00.908925+08:00`，本轮按已修复 P1 的未确认部署运行态旧信号处理，不把 `feishu_actor_scope_cron_portfolio_empty.md` 或 scheduler 旧缺陷回退；最近四小时无非文档代码提交。
 - 本轮 07:02 CST 未新增独立缺陷或活跃 P1/P2 状态变化。03:01-07:02 CST `data/sessions.sqlite3` 只有 2 个 user turn 与 2 个 assistant final，均成对收口；assistant final 污染扫描未命中空回复、`company_profiles/...`、本机绝对路径、`hone-mcp binary not found`、raw tool 字段、`reasoning_content`、`<think>`、provider 原始错误、`HTTP 400`、`Resource temporarily unavailable` 或 `quota exhausted`。`acp-events.log` 同窗另有 06:30 Web scheduler 与 06:52 Web direct 两轮，均有 `stopReason=end_turn`，用户可见 chunk 未命中内部路径、rawOutput、错误栈或思维痕迹；06:52 AVGO 回复开头有“先核验 / 再检查本地画像”式工作流前言，但没有 `todo/current-plan` 等内部治理文本、没有链路失败或结论偏离，证据不足以登记新缺陷。最近四小时唯一非文档代码提交 `7ef4ae90` 已修复 `hone-mcp` runtime env propagation，导航页里对应 P1 已在已修复表记录；本轮不创建 GitHub issue。
 - 本轮 03:02 CST 新增 P3 `Feishu 直聊对非标准 ticker 拼写直接猜测实体并给出建仓建议`：23:02-03:02 CST `session_messages` 有 14 个 Feishu user turn 与 14 个 assistant final，均成对收口；assistant final 污染扫描未命中空回复、`hone-mcp binary not found`、绝对路径、raw tool 字段、思维痕迹、provider 原始错误或 `company_profiles/...` 相对路径。`cron_job_runs` 仍无 2026-06-01 之后新执行记录，本轮没有非文档代码提交。质量候选来自 Feishu direct session `Actor_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c`：用户 23:30 输入 `MFST的建仓建议`，assistant 直接按 Microsoft / `MSFT` 展开完整建仓建议；用户 23:42 输入 `MPVL可以加仓吗`，assistant 又按 Marvell / `MRVL` 展开完整加仓建议。两轮都先承认原 ticker 不标准或未查到常见代码，但仍越过“模糊实体先确认”的约束给出操作建议。该问题不影响会话投递、收口、工具执行或系统稳定性，因此按质量性 `P3 / New` 建档；非 P1，不创建 GitHub issue。
@@ -411,7 +412,7 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Feishu 直聊对非标准 ticker 拼写直接猜测实体并给出建仓建议 | P3 | New | 2026-06-04 03:02 最近四小时真实 Feishu direct 会话里，用户输入 `MFST`、`MPVL` 这类非标准 ticker 拼写时，assistant 先承认不标准但仍按 `MSFT` / `MRVL` 展开完整建仓或加仓建议；会话均正常收口，未影响投递或系统链路，归类为质量性 P3。无关联 GitHub Issue | [feishu_direct_nonstandard_ticker_guess_for_trade_advice.md](./feishu_direct_nonstandard_ticker_guess_for_trade_advice.md) |
-| Web / Feishu 直聊公司画像沉淀后向用户暴露内部相对文件路径 | P3 | New | 2026-06-04 11:02 Feishu direct 腾讯画像样本已不再外露 `company_profiles/...`，但净化后出现“路径是：公司画像公司画像”的重复替换文本；画像正文、文件写入和投递收口未受阻，仍为质量性 P3。无关联 GitHub Issue | [web_company_profile_relative_path_exposed.md](./web_company_profile_relative_path_exposed.md) |
+| Web / Feishu 直聊公司画像沉淀后向用户暴露内部相对文件路径 | P3 | New | 2026-06-04 23:05 Feishu direct CIEN / NOK 两条最新 final 再次外露 `company_profiles/Ciena_CIEN.md` 与 `company_profiles/NOK.md`；分析正文、文件写入和投递收口未受阻，仍为质量性 P3。无关联 GitHub Issue | [web_company_profile_relative_path_exposed.md](./web_company_profile_relative_path_exposed.md) |
 
 ## Later / 待复现
 

@@ -36,6 +36,13 @@
   - `session_id=Actor_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c` 在 10:32 CST 收到用户输入“腾讯控股的画像”。
   - 10:35 CST assistant final 已完成腾讯控股长期画像正文并正常收口；本轮没有 `company_profiles/...` 相对路径、绝对路径、raw tool 字段、思维痕迹或 provider 原始错误进入 final。
   - 但最终用户可见开头写出：`我已为腾讯控股建立长期画像，路径是：\n公司画像公司画像`。这说明相对路径净化已生效，但替换结果仍保留“路径”概念并产生重复“公司画像”文本，属于同一公司画像沉淀输出边界的产品文案退化。
+- `data/sessions.sqlite3`
+  - 时间窗：2026-06-04 19:02-23:05 CST
+  - `session_id=Actor_feishu__direct__ou_5fea712445d905e8418bde07dbcf2cbfb2` 在 23:01 CST 收到用户输入“分析一下cien的财报”，23:03 CST assistant final 已完成 CIEN 财报分析并正常收口。
+  - 该 final 末尾仍写出内部相对路径：`我已把这次 FY2026 Q2 财报结论沉淀到本地公司画像：company_profiles/Ciena_CIEN.md`。
+  - `session_id=Actor_feishu__direct__ou_5fdb997ed67ac0b7f5403701682185d67a` 在 23:02 CST 收到用户输入“美股NOK详细分析，和建仓价格”，23:04 CST assistant final 已完成 NOK 分析、估值区间与建仓建议并正常收口。
+  - 该 final 末尾仍写出内部相对路径：`本轮已新增长期画像：company_profiles/NOK.md。`
+  - 同窗另有两个更晚 Feishu direct 用户请求截至本轮轮询仍停在 user / streaming 状态，未作为未回复缺陷登记；`cron_job_runs` 在 19:02-23:05 CST 无新记录。
 
 ## 端到端链路
 
@@ -58,6 +65,7 @@
 - 2026-06-03 19:03 CST Web direct NOK 回复再次把 `company_profiles/NOK.md` 作为“本地画像”位置发给用户，说明真实用户可见输出路径仍未被完全净化。
 - 2026-06-03 19:38-22:58 CST Feishu direct 又出现 XFAB / HPE 两条同类样本，说明复发范围继续覆盖 Feishu direct 的公司画像沉淀与深度分析回复。
 - 2026-06-04 10:35 CST Feishu direct 腾讯画像回复已不再出现 `company_profiles/...`，但路径短语被净化成 `公司画像公司画像`，用户仍看到不自然的内部落点说明。该现象说明当前净化层可能只做路径片段替换，没有把整句“路径是 ...”重写成稳定的业务口径。
+- 2026-06-04 23:03-23:04 CST Feishu direct CIEN / NOK 两条最新 assistant final 再次直接包含 `company_profiles/Ciena_CIEN.md` 与 `company_profiles/NOK.md`，说明相对路径净化在当前运行态仍未覆盖公司画像沉淀 final。
 - 本轮没有看到 `/Users/...`、`data/agent-sandboxes/...`、`/var/folders/...` 等绝对路径进入最终正文；绝对路径只出现在 ACP tool update 诊断事件中。
 
 ## 用户影响
@@ -86,6 +94,7 @@
 - 2026-06-03 19:03 CST 复发后回退：15:01-19:02 CST `session_messages` 共有 19 个 Feishu user turn 与 19 个 assistant final，Feishu direct 均成对收口，污染关键字扫描未命中 `hone-mcp binary not found`、原始工具字段、绝对路径、provider 报错或思维痕迹；但 `acp-events.log` 同窗 Web direct session `Actor_web__direct__web-user-c394f2531362` 对 `帮我评估一下nok` 已完成 NOK 分析并 `stopReason=end_turn` 收口，用户可见流式 chunk 仍输出 `本地画像：company_profiles/NOK.md`。由于这是 6 月 2 日修复后新的真实 Web direct 用户可见样本，本缺陷从 `Fixed` 回退为 `New`。该问题不影响分析正文、文件写入或投递收口，仍为质量性 `P3`，非 P1，不创建 GitHub issue。
 - 2026-06-03 23:02 CST 复核：19:02-23:02 CST `session_messages` 有 21 个 user turn 与 22 个 assistant 记录，Feishu direct 最近会话均已收口；多出的 assistant 是 daily-limit final/text 双记录，不构成重复回复缺陷。assistant final 污染扫描只命中 2 条 `company_profiles/...` 内部相对路径：19:38 CST XFAB 画像沉淀列出 profile / events 路径，22:58 CST HPE 深度分析写出 `company_profiles/HPE.md`。本轮没有绝对路径、raw tool 字段、思维痕迹或 provider 原始错误进入 final；该问题仍不影响分析正文、文件写入或投递收口，严重等级保持 `P3 / New`，非 P1，不创建 GitHub issue。
 - 2026-06-04 11:02 CST 复核：07:02-11:01 CST `session_messages` 有 14 个 Feishu user turn 与 14 个 assistant final，均成对收口；assistant final 污染扫描未命中 `company_profiles/...`、本机绝对路径、raw tool 字段、思维痕迹或 provider 原始错误，但 10:35 CST 腾讯画像回复出现 `路径是：公司画像公司画像`。该样本不再是原始路径外露，而是同一净化链路的重复替换 / 内部落点文案残留；不影响画像正文、文件写入或投递收口，严重等级保持 `P3 / New`，非 P1，不创建 GitHub issue。
+- 2026-06-04 23:05 CST 复核：19:02-23:05 CST `session_messages` 有 5 个 Feishu user turn 与 3 个 assistant final；CIEN 和 NOK 两条 assistant final 均已完成分析正文并正常收口，但末尾分别写出 `company_profiles/Ciena_CIEN.md` 与 `company_profiles/NOK.md`。同窗 `acp-events.log` 有 4 个 `stopReason=end_turn`，未见 `hone-mcp binary not found`、provider 原始错误、quota、HTTP 400/429、panic、空回复或思维痕迹进入 final；该问题仍只影响用户可见文案和产品感，不影响分析正文、文件写入或投递收口，严重等级保持 `P3 / New`，非 P1，不创建 GitHub issue。
 - 2026-06-02 23:06 CST 复核：本轮在 Feishu direct HPE 建仓回复中观察到同类相对路径外泄，但当前远端 main 已在 12:15 CST 合入共享净化修复并有回归；该样本按 live 未确认部署 / 旧运行态证据保留，不把状态从 `Fixed` 回退。
 - **修复时间**: 2026-06-02 12:15 CST
 - **上次修复状态**: Fixed，2026-06-03 19:03 CST 已因新真实样本回退为 `New`
