@@ -49,6 +49,11 @@
   - `session_id=Actor_feishu__direct__ou_5fdb997ed67ac0b7f5403701682185d67a` 在 23:04 / 23:21 / 23:33 / 23:41 CST 分别完成 NOK、DXYZ、NASA ETF、NBIS 分析并正常收口，但 final 末尾分别写出 `company_profiles/NOK.md`、`company_profiles/DXYZ.md`、`company_profiles/NASA.md`、`company_profiles/NBIS.md`。
   - 同窗 `session_messages` 有 31 个 user turn 与 31 个 assistant turn，Feishu / Discord 会话均成对收口；普通 scheduler 只有 1 条记录，状态为 `completed + sent + delivered=1`。
   - assistant final 污染扫描未命中空回复、`hone-mcp binary not found`、本机绝对路径、`data/agent-sandboxes`、raw tool 字段、思维痕迹、provider 原始错误、`HTTP 400/429`、`Resource temporarily unavailable`、`quota exhausted`、panic 或 `index out of bounds`。
+- `data/sessions.sqlite3`
+  - 时间窗：2026-06-05 03:01-07:01 CST
+  - 本窗有 10 个 user turn 与 10 个 assistant final，Feishu direct 均成对收口；普通 scheduler 本窗没有新增 `cron_job_runs`。
+  - assistant final 污染扫描未命中空回复、`hone-mcp binary not found`、本机绝对路径、`data/agent-sandboxes`、raw tool 字段、思维痕迹、provider 原始错误、`HTTP 400/429`、`Resource temporarily unavailable`、`quota exhausted`、panic 或 `index out of bounds`。
+  - 唯一用户可见污染命中 `session_id=Actor_feishu__direct__ou_5fea712445d905e8418bde07dbcf2cbfb2`：04:36 CST 用户输入“分析一下cien的财报”，04:37 CST assistant final 已完成 CIEN 财报分析、动作建议、证伪条件与来源并正常收口，但末尾写出 `我已把本轮更新补进本地画像：company_profiles/Ciena_CIEN.md`。
 
 ## 端到端链路
 
@@ -73,6 +78,7 @@
 - 2026-06-04 10:35 CST Feishu direct 腾讯画像回复已不再出现 `company_profiles/...`，但路径短语被净化成 `公司画像公司画像`，用户仍看到不自然的内部落点说明。该现象说明当前净化层可能只做路径片段替换，没有把整句“路径是 ...”重写成稳定的业务口径。
 - 2026-06-04 23:03-23:04 CST Feishu direct CIEN / NOK 两条最新 assistant final 再次直接包含 `company_profiles/Ciena_CIEN.md` 与 `company_profiles/NOK.md`，说明相对路径净化在当前运行态仍未覆盖公司画像沉淀 final。
 - 2026-06-04 23:21-23:41 CST 同一 Feishu direct 会话又在 DXYZ / NASA / NBIS 三条分析 final 末尾写出 `company_profiles/DXYZ.md`、`company_profiles/NASA.md`、`company_profiles/NBIS.md`，说明问题不局限于个别 ticker，也不只是上一轮 CIEN / NOK 样本。
+- 2026-06-05 04:37 CST Feishu direct CIEN 财报分析再次写出 `company_profiles/Ciena_CIEN.md`，说明 03:03 CST 的补充净化修复后，当前运行态仍有真实用户可见复现；导航页一度把本项列为 `Fixed`，本轮已按单文档和最新证据修正回活跃 `New`。
 - 本轮没有看到 `/Users/...`、`data/agent-sandboxes/...`、`/var/folders/...` 等绝对路径进入最终正文；绝对路径只出现在 ACP tool update 诊断事件中。
 
 ## 用户影响
@@ -103,6 +109,7 @@
 - 2026-06-04 11:02 CST 复核：07:02-11:01 CST `session_messages` 有 14 个 Feishu user turn 与 14 个 assistant final，均成对收口；assistant final 污染扫描未命中 `company_profiles/...`、本机绝对路径、raw tool 字段、思维痕迹或 provider 原始错误，但 10:35 CST 腾讯画像回复出现 `路径是：公司画像公司画像`。该样本不再是原始路径外露，而是同一净化链路的重复替换 / 内部落点文案残留；不影响画像正文、文件写入或投递收口，严重等级保持 `P3 / New`，非 P1，不创建 GitHub issue。
 - 2026-06-04 23:05 CST 复核：19:02-23:05 CST `session_messages` 有 5 个 Feishu user turn 与 3 个 assistant final；CIEN 和 NOK 两条 assistant final 均已完成分析正文并正常收口，但末尾分别写出 `company_profiles/Ciena_CIEN.md` 与 `company_profiles/NOK.md`。同窗 `acp-events.log` 有 4 个 `stopReason=end_turn`，未见 `hone-mcp binary not found`、provider 原始错误、quota、HTTP 400/429、panic、空回复或思维痕迹进入 final；该问题仍只影响用户可见文案和产品感，不影响分析正文、文件写入或投递收口，严重等级保持 `P3 / New`，非 P1，不创建 GitHub issue。
 - 2026-06-05 03:02 CST 复核：23:01-03:02 CST `session_messages` 有 31 个 user turn 与 31 个 assistant turn，Feishu / Discord 会话均成对收口；普通 scheduler 只有 1 条 `completed + sent + delivered=1`。assistant final 污染扫描只命中 5 条 `company_profiles/...` 相对路径外露：23:03 CIEN、23:04 NOK、23:21 DXYZ、23:33 NASA、23:41 NBIS。`acp-events.log` 同窗显示 Feishu / Discord / Web direct 均有 `stopReason=end_turn`，未见 runner error；该问题仍只影响用户可见文案和产品感，不影响分析正文、文件写入、会话收口或投递，严重等级保持 `P3 / New`，非 P1，不创建 GitHub issue。
+- 2026-06-05 07:02 CST 复核并修正导航一致性：03:01-07:01 CST `session_messages` 有 10 个 user turn 与 10 个 assistant final，Feishu direct 均成对收口；普通 scheduler 本窗没有新增 `cron_job_runs`。assistant final 污染扫描只命中 1 条 `company_profiles/...` 相对路径外露：04:37 CST CIEN 财报分析末尾写出 `company_profiles/Ciena_CIEN.md`。本轮未见空回复、内部绝对路径、raw tool 字段、思维痕迹、provider 原始错误或投递失败；该问题仍不影响分析正文、文件写入、会话收口或投递，严重等级保持 `P3 / New`，非 P1，不创建 GitHub issue。
 - 2026-06-02 23:06 CST 复核：本轮在 Feishu direct HPE 建仓回复中观察到同类相对路径外泄，但当前远端 main 已在 12:15 CST 合入共享净化修复并有回归；该样本按 live 未确认部署 / 旧运行态证据保留，不把状态从 `Fixed` 回退。
 - **修复时间**: 2026-06-02 12:15 CST
 - **上次修复状态**: Fixed，2026-06-03 19:03 CST 已因新真实样本回退为 `New`

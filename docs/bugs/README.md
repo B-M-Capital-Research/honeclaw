@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-06-05 03:04 CST
+最后更新：2026-06-05 07:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,10 +17,12 @@
 
 ## 当前概览
 
-- 活跃待修复：0
+- 活跃待修复：2
 - Later / 待复现：10
-- 已修复 / 已关闭：125
+- 已修复 / 已关闭：123
 - 历史分析 / 部分止血：5
+- 本轮 07:02 CST 重新打开 P1 `Feishu direct actor 读取 Cron 与持仓作用域为空，导致任务和投资上下文丢失`：03:01-07:01 CST `data/sessions.sqlite3` 有 10 个 user turn 与 10 个 assistant final，Feishu direct 均成对收口；普通 scheduler 本窗无新增 `cron_job_runs`。04:50 CST Feishu direct 用户询问“我的每天提醒没了吗？”，assistant 查询后明确回复“定时任务列表是空的”；但本地权威文件 `data/cron_jobs/cron_jobs_feishu__direct__ou_5f58ff884640e647a1792f618f45209251.json` 仍有 2 条 enabled 任务：每日 20:00 美股大盘风控简报与交易日 21:30 开盘技术简报。05:28 CST 用户追问“？”，assistant 再次确认“每日20点和21:30那两个提醒都不在了”。这与既有 P1 的“工具读取 Cron 作用域为空”同根同链路，影响持久化定时任务正确性和用户恢复判断，状态从 `Fixed` 回退为 `P1 / New`；已有 Issue [#49](https://github.com/B-M-Capital-Research/honeclaw/issues/49)，不重复创建。
+- 本轮 07:02 CST 重新确认 P3 `Web / Feishu 直聊公司画像沉淀后向用户暴露内部相对文件路径` 活跃，并修正导航页与单文档不一致：04:37 CST Feishu direct CIEN 财报分析正常收口，但 final 末尾仍写出 `company_profiles/Ciena_CIEN.md`。同窗 assistant final 污染扫描未命中空回复、`hone-mcp binary not found`、本机绝对路径、`data/agent-sandboxes`、raw tool 字段、思维痕迹、provider 原始错误、`HTTP 400/429`、`Resource temporarily unavailable`、`quota exhausted`、panic 或 `index out of bounds`；该问题仍只影响用户可见文案和产品感，不影响分析正文、文件写入、会话收口或投递，因此维持 `P3 / New`，非 P1，不创建 GitHub issue。
 - 本轮 03:04 CST 已修复 P3 `Feishu 直聊对非标准 ticker 拼写直接猜测实体并给出建仓建议`：金融系统 prompt 与 multi-agent search-stage guidance 现在都明确要求，遇到 non-standard / near-match ticker 且用户请求建仓、加仓、减仓、买点、卖点、止损、仓位等交易动作时，必须先确认标的，禁止按“最像的代码”直接给出价格区间、仓位比例或交易建议。验证 `build_prompt_bundle_always_includes_finance_domain_policy`、`search_input_guidance_allows_direct_replies_for_greetings` 与 `cargo check -p hone-channels --tests` 通过。当前活跃待修复为 0。
 - 本轮 03:03 CST 已修复 P3 `Web / Feishu 直聊公司画像沉淀后向用户暴露内部相对文件路径`：共享 `sanitize_user_visible_output(...)` 现在覆盖 `路径是：company_profiles/...` / `本地画像：company_profiles/...` 这类冒号前缀句式，并在替换后把“路径是 ...”重写为自然业务文案，避免 `公司画像公司画像` 退化或继续暴露内部目录名。新增 `sanitize_user_visible_output_rewrites_company_profile_path_sentence_copy` 与 `sanitize_user_visible_output_rewrites_local_profile_label_copy` 回归；三条 `hone-channels` 定向单测通过。当前活跃待修复仅剩 `Feishu 直聊对非标准 ticker 拼写直接猜测实体并给出建仓建议`，本轮没有活跃 `P0/P1`。
 - 本轮 03:02 CST 未新增独立缺陷或活跃 P1/P2 状态变化。23:01-03:02 CST `data/sessions.sqlite3` 有 31 个 user turn 与 31 个 assistant turn，Feishu / Discord 会话均成对收口；普通 scheduler 只有 1 条记录，状态为 `completed + sent + delivered=1`。assistant final 污染扫描未命中空回复、`hone-mcp binary not found`、本机绝对路径、`data/agent-sandboxes`、raw tool 字段、思维痕迹、provider 原始错误、`HTTP 400/429`、`Resource temporarily unavailable`、`quota exhausted`、panic 或 `index out of bounds`。用户可见污染只命中 5 条既有公司画像相对路径外露：23:03 CIEN、23:04 NOK、23:21 DXYZ、23:33 NASA、23:41 NBIS；这些回复均完成分析正文、估值或操作建议并正常投递，不影响文件写入、会话收口或主链路，继续归入既有 P3 `Web / Feishu 直聊公司画像沉淀后向用户暴露内部相对文件路径`。`acp-events.log` 同窗显示 Feishu / Discord / Web direct 均有 `stopReason=end_turn`，未见 runner error；其中 02:26 和 02:32 CST 两轮 Web direct 只出现在 ACP 日志、本地 SQLite 仍无新增 Web direct message，但既有 `web_direct_acp_stream_not_persisted.md` 已关闭为 cloud mode 本地镜像非权威证据，本轮仍无 PG `cloud_sessions` 或 Web API history 缺失证据，因此不重新打开。最近四小时无非文档代码提交；非 P1，不创建 GitHub issue。
@@ -414,7 +416,8 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| 当前无活跃待修复项 | - | - | 2026-06-05 03:04 本轮已闭环现有活跃缺陷；后续若再有新证据，由 `bug` 自动化重新开单并回填此表。 | - |
+| Feishu direct actor 读取 Cron 与持仓作用域为空，导致任务和投资上下文丢失 | P1 | New | 2026-06-05 07:02 真实 Feishu direct 再次把仍存在的用户定时任务读成空：用户问“我的每天提醒没了吗？”，assistant 回复任务列表为空；但本地 `data/cron_jobs/cron_jobs_feishu__direct__ou_5f58ff884640e647a1792f618f45209251.json` 仍有 2 条 enabled daily/trading_day 任务。既有 Issue [#49](https://github.com/B-M-Capital-Research/honeclaw/issues/49)，不重复创建 | [feishu_actor_scope_cron_portfolio_empty.md](./feishu_actor_scope_cron_portfolio_empty.md) |
+| Web / Feishu 直聊公司画像沉淀后向用户暴露内部相对文件路径 | P3 | New | 2026-06-05 07:02 04:37 CST CIEN 财报分析 final 仍外露 `company_profiles/Ciena_CIEN.md`；该问题不影响分析正文、文件写入、会话收口或投递，维持质量性 P3。无关联 GitHub Issue | [web_company_profile_relative_path_exposed.md](./web_company_profile_relative_path_exposed.md) |
 
 ## Later / 待复现
 
@@ -436,8 +439,6 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Feishu 直聊对非标准 ticker 拼写直接猜测实体并给出建仓建议 | P3 | Fixed | 2026-06-05 03:04 共享金融系统 prompt 与 multi-agent search-stage guidance 新增 non-standard / near-match ticker 交易动作护栏：涉及建仓、加仓、减仓、买点、卖点、止损、仓位时必须先确认标的，禁止按“最像的代码”直接给价格区间、仓位比例或交易建议。验证 `build_prompt_bundle_always_includes_finance_domain_policy`、`search_input_guidance_allows_direct_replies_for_greetings`、`cargo check -p hone-channels --tests` 通过。无关联 GitHub Issue | [feishu_direct_nonstandard_ticker_guess_for_trade_advice.md](./feishu_direct_nonstandard_ticker_guess_for_trade_advice.md) |
-| Web / Feishu 直聊公司画像沉淀后向用户暴露内部相对文件路径 | P3 | Fixed | 2026-06-05 03:03 共享净化层补上 `:` / `：` 前缀后的内部相对路径识别，并把“路径是：...”/“本地画像：...”重写成自然业务文案；新增 3 条 `hone-channels` 定向回归通过，当前活跃待修复不再包含该项。无关联 GitHub Issue | [web_company_profile_relative_path_exposed.md](./web_company_profile_relative_path_exposed.md) |
-| Feishu direct actor 读取 Cron 与持仓作用域为空，导致任务和投资上下文丢失 | P1 | Fixed | 2026-06-04 已把 runner 下发给 `hone-mcp` 的 `HONE_CONFIG_PATH` 固定为绝对路径，并在父进程缺少显式 `HONE_DATA_DIR` 时从 `runtime_dir` 反推出数据根透传，避免 `hone-mcp` 在 actor sandbox `cwd` 下把相对 `./data/portfolio` / `./data/cron_jobs` 解析到空目录。验证 `cargo test -p hone-channels prepare_absolutizes_relative_runtime_config_path -- --nocapture`、`cargo test -p hone-channels hone_mcp_servers_derives_data_dir_from_runtime_dir_when_env_missing -- --nocapture`、`cargo check -p hone-channels -p hone-cli --tests` 通过；关联 Issue [#49](https://github.com/B-M-Capital-Research/honeclaw/issues/49) | [feishu_actor_scope_cron_portfolio_empty.md](./feishu_actor_scope_cron_portfolio_empty.md) |
 | Feishu 直聊批量返回 `hone-mcp binary not found` 内部错误 | P1 | Fixed | 2026-06-04 `hone-cli start` 现在会显式透传已定位的 `HONE_MCP_BIN`，共享错误净化同时把 `hone-mcp binary not found ... (set HONE_MCP_BIN to override)` 收口为用户态 `当前本机执行环境暂时不可用，请稍后再试。`，不再外露二进制名、探测路径和环境变量。验证 `cargo test -p hone-cli child_envs_exports_hone_mcp_bin_from_source_root -- --nocapture`、`cargo test -p hone-channels user_visible_error_message_rewrites_missing_hone_mcp_binary_errors -- --nocapture`、`cargo check -p hone-channels -p hone-cli --tests` 通过；关联 Issue [#48](https://github.com/B-M-Capital-Research/honeclaw/issues/48) | [feishu_direct_hone_mcp_binary_missing_raw_error.md](./feishu_direct_hone_mcp_binary_missing_raw_error.md) |
 | Web scheduler ACP stream disconnects without final reply | P2 | Fixed | 2026-06-03 04:09 Web scheduler 失败提示已同时落库并广播为 `scheduled_message` SSE；Web / iMessage scheduler 入口新增 `agent.overall_timeout + 30s` 执行预算，ACP stream disconnect / 无最终 response / handler 挂起会合成 `web_scheduler_handler_timeout`，复用 Web failure transcript 与 `cron_job_runs` `execution_failed + skipped_error` 终态。验证 `cargo test -p hone-web-api scheduler_ -- --nocapture`、`cargo check -p hone-web-api --tests` 通过；无关联 GitHub Issue | [web_scheduler_acp_stream_disconnect_no_final.md](./web_scheduler_acp_stream_disconnect_no_final.md) |
 | Web 定时任务回复外露“技能未加载”内部降级措辞 | P3 | Fixed | 2026-06-02 12:06 共享用户可见输出净化器新增 skill/tool 降级前言识别，scheduler delivery 出站净化会剥离开头的“当前运行器 / 技能未加载 / skill unavailable”等内部实现说明，同时保留业务复盘正文。验证 `cargo test -p hone-channels scheduler_delivery_text_strips_skill_load_degradation_prelude --lib -- --nocapture`、`cargo test -p hone-channels scheduler_delivery_text_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [web_scheduler_skill_load_failure_phrase_exposed.md](./web_scheduler_skill_load_failure_phrase_exposed.md) |
