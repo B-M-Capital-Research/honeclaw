@@ -31,6 +31,11 @@
   - `session_id=Actor_feishu__direct__ou_5f64ee7ca7af22d44a83a31054e6fb92a3` 在 19:38 CST 完成 XFAB 长期画像沉淀，但最终用户可见正文列出 `company_profiles/xfab/profile.md`、`company_profiles/xfab/events/2026-06-03-q1-2026-research.md` 与后续长期画像事件路径。
   - `session_id=Actor_feishu__direct__ou_5fdb997ed67ac0b7f5403701682185d67a` 在 22:58 CST 完成 HPE 深度分析并正常收口，但正文末尾写出 `本轮已新增长期画像：company_profiles/HPE.md`。
   - 同窗 assistant final 污染扫描只命中上述 2 条内部相对路径；未命中空回复、`hone-mcp binary not found`、本机绝对路径、raw tool 字段、思维痕迹或 provider 原始错误。
+- `data/sessions.sqlite3`
+  - 时间窗：2026-06-04 07:02-11:01 CST
+  - `session_id=Actor_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c` 在 10:32 CST 收到用户输入“腾讯控股的画像”。
+  - 10:35 CST assistant final 已完成腾讯控股长期画像正文并正常收口；本轮没有 `company_profiles/...` 相对路径、绝对路径、raw tool 字段、思维痕迹或 provider 原始错误进入 final。
+  - 但最终用户可见开头写出：`我已为腾讯控股建立长期画像，路径是：\n公司画像公司画像`。这说明相对路径净化已生效，但替换结果仍保留“路径”概念并产生重复“公司画像”文本，属于同一公司画像沉淀输出边界的产品文案退化。
 
 ## 端到端链路
 
@@ -52,6 +57,7 @@
 - 23:01 CST Feishu direct HPE 建仓回复也把 `company_profiles/hpe/profile.md` 与 `company_profiles/hpe/events/2026-06-02-build-position-check.md` 发给用户，说明问题不局限于 Web direct。
 - 2026-06-03 19:03 CST Web direct NOK 回复再次把 `company_profiles/NOK.md` 作为“本地画像”位置发给用户，说明真实用户可见输出路径仍未被完全净化。
 - 2026-06-03 19:38-22:58 CST Feishu direct 又出现 XFAB / HPE 两条同类样本，说明复发范围继续覆盖 Feishu direct 的公司画像沉淀与深度分析回复。
+- 2026-06-04 10:35 CST Feishu direct 腾讯画像回复已不再出现 `company_profiles/...`，但路径短语被净化成 `公司画像公司画像`，用户仍看到不自然的内部落点说明。该现象说明当前净化层可能只做路径片段替换，没有把整句“路径是 ...”重写成稳定的业务口径。
 - 本轮没有看到 `/Users/...`、`data/agent-sandboxes/...`、`/var/folders/...` 等绝对路径进入最终正文；绝对路径只出现在 ACP tool update 诊断事件中。
 
 ## 用户影响
@@ -65,11 +71,13 @@
 
 - 初步判断是公司画像沉淀流程把 runner 原生文件路径作为“沉淀完成”的证明写入最终用户回复。
 - 既有 `feishu_company_profile_absolute_path_leak.md` 修复覆盖的是绝对路径、本地 Markdown 链接和 sandbox 标识脱敏；本轮新增证据是 Web direct 最终正文里的内部相对路径，属于相邻但独立的用户态文案边界。
+- 2026-06-04 腾讯画像样本显示，修复后的路径替换策略仍可能保留原句结构，把 `路径是：<internal path>` 变成 `路径是：公司画像公司画像`。这更像净化层缺少整句级 rewrite，而不是新的存储、投递或工具执行故障。
 - 该问题也不同于 `web_direct_tool_call_raw_output_leak`：本轮最终正文没有 raw JSON、工具协议或 provider 报错外泄。
 
 ## 下一步建议
 
 - 在公司画像 / 长期跟踪最终回复模板或共享出站净化层中，将 `company_profiles/<ticker>.md`、`events/*.md` 等内部相对路径改写为自然语言。
+- 对“路径是：...”这类整句做业务级重写，例如改为“已沉淀为公司画像，后续可继续基于该画像更新”，避免片段替换后产生 `公司画像公司画像`。
 - 对 Web / Feishu direct 增加一条回归：当 runner 成功写入公司画像文件时，最终用户可见文本只说明已沉淀，不包含内部文件路径。
 - 后续巡检继续区分两类证据：绝对路径 / sandbox 标识泄漏应回看既有路径脱敏缺陷；仅相对内部路径进入自然语言回复时按本单跟踪。
 
@@ -77,6 +85,7 @@
 
 - 2026-06-03 19:03 CST 复发后回退：15:01-19:02 CST `session_messages` 共有 19 个 Feishu user turn 与 19 个 assistant final，Feishu direct 均成对收口，污染关键字扫描未命中 `hone-mcp binary not found`、原始工具字段、绝对路径、provider 报错或思维痕迹；但 `acp-events.log` 同窗 Web direct session `Actor_web__direct__web-user-c394f2531362` 对 `帮我评估一下nok` 已完成 NOK 分析并 `stopReason=end_turn` 收口，用户可见流式 chunk 仍输出 `本地画像：company_profiles/NOK.md`。由于这是 6 月 2 日修复后新的真实 Web direct 用户可见样本，本缺陷从 `Fixed` 回退为 `New`。该问题不影响分析正文、文件写入或投递收口，仍为质量性 `P3`，非 P1，不创建 GitHub issue。
 - 2026-06-03 23:02 CST 复核：19:02-23:02 CST `session_messages` 有 21 个 user turn 与 22 个 assistant 记录，Feishu direct 最近会话均已收口；多出的 assistant 是 daily-limit final/text 双记录，不构成重复回复缺陷。assistant final 污染扫描只命中 2 条 `company_profiles/...` 内部相对路径：19:38 CST XFAB 画像沉淀列出 profile / events 路径，22:58 CST HPE 深度分析写出 `company_profiles/HPE.md`。本轮没有绝对路径、raw tool 字段、思维痕迹或 provider 原始错误进入 final；该问题仍不影响分析正文、文件写入或投递收口，严重等级保持 `P3 / New`，非 P1，不创建 GitHub issue。
+- 2026-06-04 11:02 CST 复核：07:02-11:01 CST `session_messages` 有 14 个 Feishu user turn 与 14 个 assistant final，均成对收口；assistant final 污染扫描未命中 `company_profiles/...`、本机绝对路径、raw tool 字段、思维痕迹或 provider 原始错误，但 10:35 CST 腾讯画像回复出现 `路径是：公司画像公司画像`。该样本不再是原始路径外露，而是同一净化链路的重复替换 / 内部落点文案残留；不影响画像正文、文件写入或投递收口，严重等级保持 `P3 / New`，非 P1，不创建 GitHub issue。
 - 2026-06-02 23:06 CST 复核：本轮在 Feishu direct HPE 建仓回复中观察到同类相对路径外泄，但当前远端 main 已在 12:15 CST 合入共享净化修复并有回归；该样本按 live 未确认部署 / 旧运行态证据保留，不把状态从 `Fixed` 回退。
 - **修复时间**: 2026-06-02 12:15 CST
 - **上次修复状态**: Fixed，2026-06-03 19:03 CST 已因新真实样本回退为 `New`
