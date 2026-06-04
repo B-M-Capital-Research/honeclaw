@@ -3,7 +3,7 @@
 - 发现时间：2026-06-04 03:02 CST
 - Bug Type：Business Error
 - 严重等级：P3
-- 状态：New
+- 状态：Fixed
 - GitHub Issue：无，非 P1
 
 ## 证据来源
@@ -58,3 +58,17 @@
 - 在金融系统 prompt 或实体解析前置逻辑中补充约束：未识别 ticker、拼写疑似错误、编辑距离相近但未唯一确认时，涉及交易动作的问题必须先澄清。
 - 对 `MFST -> MSFT`、`MPVL -> MRVL` 这类样本增加回归或 prompt fixture：最终回复不得给仓位比例、买入区间或直接建仓建议，只能请求确认。
 - 后续巡检继续关注用户是否因同类猜测而纠正实体；若出现已确认答错且影响交易动作，可按影响范围重新评估严重等级。
+
+## 修复记录
+
+- 2026-06-05 03:03 CST 已修复：
+  - `crates/hone-channels/src/prompt.rs` 的金融系统 prompt 新增“非标准 ticker 约束”：当输入是疑似拼写错误、少字母/多字母或并非常见证券代码的 ticker，且问题涉及建仓、加仓、减仓、买点、卖点、止损、仓位等交易动作时，必须先确认具体标的，禁止按“最像的代码”直接给出价格区间、仓位比例或交易建议。
+  - `crates/hone-channels/src/runners/multi_agent.rs` 的 search-stage guidance 同步加入相同护栏，要求遇到 non-standard / near-match ticker 时先发一条澄清问题，不得在确认前输出 price targets、position sizing 或 trade advice。
+  - 这次修复不依赖新增工具或运行态重启，直接收紧所有共享 prompt / multi-agent 搜索阶段的行为边界。
+- 验证：
+  - `cargo test -p hone-channels build_prompt_bundle_always_includes_finance_domain_policy --lib -- --nocapture`
+  - `cargo test -p hone-channels search_input_guidance_allows_direct_replies_for_greetings --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+- 文档同步：
+  - 已同步 `docs/bugs/README.md` 活跃计数、状态与修复表。
+  - 本修复只收紧共享 prompt 与 search-stage 行为约束，不改变模块边界、长期约束或运行工作流，无需更新 `docs/repo-map.md`、`docs/invariants.md` 或新增 handoff。
