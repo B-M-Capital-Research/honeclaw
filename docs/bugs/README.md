@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-06-05 23:02 CST
+最后更新：2026-06-06 03:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -21,6 +21,7 @@
 - Later / 待复现：10
 - 已修复 / 已关闭：123
 - 历史分析 / 部分止血：5
+- 本轮 03:02 CST 未新增独立缺陷或活跃 P1/P2 状态变化。23:01-03:02 CST `data/sessions.sqlite3` 有 5 个 user turn 与 5 个 assistant final，均为 Feishu direct 且最新会话均以 assistant 收口；assistant final 污染扫描未命中空回复、`company_profiles/...`、本机绝对路径、`data/agent-sandboxes`、`hone-mcp binary not found`、raw tool 字段、`reasoning_content`、`<think>`、provider 原始错误、`HTTP 400/429`、`Resource temporarily unavailable`、`quota exhausted`、`Param Incorrect`、panic 或 `index out of bounds`。同窗 `cron_job_runs` 无新记录，未出现用户可见 Cron/持仓读取请求，因此既有 P1 `Feishu direct actor 读取 Cron 与持仓作用域为空，导致任务和投资上下文丢失` 维持 `New` 但无新增复现证据；`acp-events.log` 同窗有 5 个 Feishu prompt / 5 个 `stopReason=end_turn` 与 3 个 Web prompt / 3 个 `stopReason=end_turn`，未见 runner error、stream disconnect 或用户可见污染。3 个 Web direct 只出现在 ACP 日志、本地 SQLite 仍无新增 Web direct message，但既有 `web_direct_acp_stream_not_persisted.md` 已关闭为 cloud mode 本地镜像非权威证据，本轮仍无 PG `cloud_sessions` 或 Web API history 缺失证据，因此不重新打开。最近四小时无非文档代码提交；本轮不创建 GitHub issue。
 - 本轮 23:02 CST 未新增独立缺陷或活跃 P1/P2 状态变化。19:02-22:57 CST `data/sessions.sqlite3` 有 27 个 user turn 与 28 个 assistant 记录，7 个 Feishu direct 活跃会话最新均以 assistant 收口；多出的 1 条 assistant 是 daily-limit final/text 双记录，不构成重复回复缺陷。assistant final 污染扫描未命中空回复、`company_profiles/...`、本机绝对路径、`data/agent-sandboxes`、`hone-mcp binary not found`、raw tool 字段、`reasoning_content`、`<think>`、provider 原始错误、`HTTP 400/429`、`Resource temporarily unavailable`、`quota exhausted`、`Param Incorrect`、panic 或 `index out of bounds`。同窗 `cron_job_runs` 无新记录，未出现用户可见 Cron/持仓读取请求，因此既有 P1 `Feishu direct actor 读取 Cron 与持仓作用域为空，导致任务和投资上下文丢失` 维持 `New` 但无新增复现证据；`acp-events.log` 内部有 SEC `curl` 解析失败和 sandbox 路径，但只停留在 tool update / raw payload，最终 AUR 回复正常 `stopReason=end_turn` 且未把原始错误外发。最近四小时无非文档代码提交；本轮不创建 GitHub issue。
 - 本轮 07:02 CST 重新打开 P1 `Feishu direct actor 读取 Cron 与持仓作用域为空，导致任务和投资上下文丢失`：03:01-07:01 CST `data/sessions.sqlite3` 有 10 个 user turn 与 10 个 assistant final，Feishu direct 均成对收口；普通 scheduler 本窗无新增 `cron_job_runs`。04:50 CST Feishu direct 用户询问“我的每天提醒没了吗？”，assistant 查询后明确回复“定时任务列表是空的”；但本地权威文件 `data/cron_jobs/cron_jobs_feishu__direct__ou_5f58ff884640e647a1792f618f45209251.json` 仍有 2 条 enabled 任务：每日 20:00 美股大盘风控简报与交易日 21:30 开盘技术简报。05:28 CST 用户追问“？”，assistant 再次确认“每日20点和21:30那两个提醒都不在了”。这与既有 P1 的“工具读取 Cron 作用域为空”同根同链路，影响持久化定时任务正确性和用户恢复判断，状态从 `Fixed` 回退为 `P1 / New`；已有 Issue [#49](https://github.com/B-M-Capital-Research/honeclaw/issues/49)，不重复创建。
 - 本轮 07:02 CST 重新确认 P3 `Web / Feishu 直聊公司画像沉淀后向用户暴露内部相对文件路径` 活跃，并修正导航页与单文档不一致：04:37 CST Feishu direct CIEN 财报分析正常收口，但 final 末尾仍写出 `company_profiles/Ciena_CIEN.md`。同窗 assistant final 污染扫描未命中空回复、`hone-mcp binary not found`、本机绝对路径、`data/agent-sandboxes`、raw tool 字段、思维痕迹、provider 原始错误、`HTTP 400/429`、`Resource temporarily unavailable`、`quota exhausted`、panic 或 `index out of bounds`；该问题仍只影响用户可见文案和产品感，不影响分析正文、文件写入、会话收口或投递，因此维持 `P3 / New`，非 P1，不创建 GitHub issue。
