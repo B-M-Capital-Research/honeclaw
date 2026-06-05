@@ -29,9 +29,7 @@ pub fn hone_mcp_servers(request: &AgentRunnerRequest) -> Result<Value, String> {
         env_entries.push(mcp_env_entry("HONE_MCP_ACTOR_SCOPE", scope.as_str()));
     }
     push_env_var_or_derived(&mut env_entries, "HONE_DATA_DIR", || {
-        PathBuf::from(&request.runtime_dir)
-            .parent()
-            .map(|path| path.to_string_lossy().to_string())
+        absolute_parent_dir(&request.runtime_dir)
     });
     push_env_var_if_present(&mut env_entries, "HONE_SKILLS_DIR");
     push_env_var_if_present(&mut env_entries, "HONE_AGENT_SANDBOX_DIR");
@@ -81,6 +79,20 @@ fn push_env_var_or_derived(
     } else if let Some(value) = derived().filter(|value| !value.trim().is_empty()) {
         env_entries.push(mcp_env_entry(name, value));
     }
+}
+
+fn absolute_parent_dir(path: &str) -> Option<String> {
+    let candidate = PathBuf::from(path);
+    let absolute = if candidate.is_absolute() {
+        candidate
+    } else {
+        env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(candidate)
+    };
+    absolute
+        .parent()
+        .map(|path| path.to_string_lossy().to_string())
 }
 
 fn hone_mcp_command_path() -> Result<String, String> {
@@ -835,6 +847,42 @@ mod tests {
             entry.get("name").and_then(|v| v.as_str()) == Some("HONE_DATA_DIR")
                 && entry.get("value").and_then(|v| v.as_str()) == Some("/tmp")
         }));
+    }
+
+    #[test]
+    fn hone_mcp_servers_absolutizes_relative_runtime_dir_before_deriving_data_dir() {
+        let _guard = env_lock();
+        clear_test_env();
+        let previous_dir = env::current_dir().expect("cwd");
+        let temp = tempfile::tempdir().expect("tempdir");
+        env::set_current_dir(temp.path()).expect("chdir");
+
+        let mut request = make_request();
+        request.runtime_dir = "data/runtime".to_string();
+
+        let payload = hone_mcp_servers(&request).expect("payload");
+        let server = payload
+            .as_array()
+            .and_then(|items| items.first())
+            .expect("server entry");
+        let env_entries = server
+            .get("env")
+            .and_then(|value| value.as_array())
+            .expect("env entries");
+        let actual = env_entries
+            .iter()
+            .find(|entry| entry.get("name").and_then(|v| v.as_str()) == Some("HONE_DATA_DIR"))
+            .and_then(|entry| entry.get("value").and_then(|v| v.as_str()))
+            .map(str::to_string)
+            .expect("HONE_DATA_DIR");
+        let expected = temp
+            .path()
+            .canonicalize()
+            .expect("canonical temp path")
+            .join("data");
+
+        env::set_current_dir(previous_dir).expect("restore cwd");
+        assert_eq!(actual, expected.to_string_lossy());
     }
 
     #[test]

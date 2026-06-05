@@ -13,7 +13,7 @@ use crate::prompt_audit::{PromptAuditMetadata, write_prompt_audit};
 use crate::runners::{AgentRunner, AgentRunnerRequest, FunctionCallingReasoningRunner};
 use crate::sandbox::ensure_actor_sandbox;
 
-fn absolute_runtime_config_path(path: &str) -> String {
+fn absolute_runtime_path(path: &str) -> String {
     let candidate = std::path::PathBuf::from(path);
     if candidate.is_absolute() {
         return candidate.to_string_lossy().to_string();
@@ -145,12 +145,10 @@ impl ExecutionService {
                 actor: request.actor,
                 channel_target: request.channel_target,
                 allow_cron: request.allow_cron,
-                config_path: absolute_runtime_config_path(&runtime_config_path()),
-                runtime_dir: self
-                    .core
-                    .configured_runtime_dir()
-                    .to_string_lossy()
-                    .to_string(),
+                config_path: absolute_runtime_path(&runtime_config_path()),
+                runtime_dir: absolute_runtime_path(
+                    &self.core.configured_runtime_dir().to_string_lossy(),
+                ),
                 system_prompt: request.system_prompt,
                 runtime_input: request.runtime_input,
                 context: request.context,
@@ -308,7 +306,7 @@ mod tests {
     }
 
     #[test]
-    fn prepare_absolutizes_relative_runtime_config_path() {
+    fn prepare_absolutizes_relative_runtime_paths() {
         let root = temp_root("execution_absolute_runtime_config");
         let core = make_test_core(&root, "codex_cli", false);
         let actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");
@@ -326,6 +324,7 @@ mod tests {
             .expect("prepare should succeed");
 
         assert!(std::path::Path::new(&prepared.runner_request.config_path).is_absolute());
+        assert!(std::path::Path::new(&prepared.runner_request.runtime_dir).is_absolute());
 
         match previous {
             Some(value) => unsafe { std::env::set_var("HONE_CONFIG_PATH", value) },

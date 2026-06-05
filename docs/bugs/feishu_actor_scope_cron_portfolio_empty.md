@@ -3,7 +3,7 @@
 - **发现时间**: 2026-06-03 23:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#49](https://github.com/B-M-Capital-Research/honeclaw/issues/49)
 
 ## 证据来源
@@ -72,6 +72,15 @@
 
 ## 修复记录
 
+- `2026-06-06 03:04 CST` 再次修复：
+  - `crates/hone-channels/src/execution.rs` 现在会把传给 runner 的 `runtime_dir` 也固定成绝对路径，不再把相对 `data/runtime` 原样传下去。
+  - `crates/hone-channels/src/mcp_bridge.rs` 在父进程未显式设置 `HONE_DATA_DIR` 时，改为先把 `request.runtime_dir` 绝对化，再取其父目录作为 `HONE_DATA_DIR` 透传给 `hone-mcp`。
+  - 这补上了前次修复遗漏的链路：即使父进程本身已正确加载配置，只要 `runtime_dir` 仍是相对路径，`hone-mcp` 在 actor sandbox `cwd` 下就可能把 `HONE_DATA_DIR=data` 重新解释到 sandbox 内空目录，继续把 Cron / portfolio 读成空。
+  - 本轮新增回归 `prepare_absolutizes_relative_runtime_paths`（同时断言 `config_path` / `runtime_dir` 为绝对路径）与 `hone_mcp_servers_absolutizes_relative_runtime_dir_before_deriving_data_dir`，锁住“相对 `runtime_dir` => sandbox 空数据根”复发形态。
+- `2026-06-06 03:04 CST` 状态更新为 `Fixed`：
+  - 本轮是代码级闭环，定向单测与 `cargo check` 已通过。
+  - 尚未重启当前 live 服务做运行态复核，因此先记 `Fixed` 而不是 `Closed`；若后续真实 Feishu direct 再次出现“Cron 文件仍存在但工具返回空列表”，应基于新样本重新评估是否还有其它作用域链路未覆盖。
+
 - `2026-06-04` 已修复：
   - `crates/hone-channels/src/execution.rs` 现在会把 runner 下发给 ACP/MCP 的 `HONE_CONFIG_PATH` 固定成绝对路径，避免 `hone-mcp` 在 sandbox `cwd` 下误读相对 `config.yaml`。
   - `crates/hone-channels/src/mcp_bridge.rs` 现在即使父进程环境里没有显式 `HONE_DATA_DIR`，也会从 `runtime_dir` 反推出数据根并透传给 `hone-mcp`，确保 `portfolio` / `cron_job` 继续读取同一份 repo/runtime 数据。
@@ -83,7 +92,10 @@
 
 ## 验证
 
-- `cargo test -p hone-channels prepare_absolutizes_relative_runtime_config_path -- --nocapture`
+- `cargo test -p hone-channels prepare_absolutizes_relative_runtime_paths -- --nocapture`
+- `cargo test -p hone-channels hone_mcp_servers_derives_data_dir_from_runtime_dir_when_env_missing -- --nocapture`
+- `cargo test -p hone-channels hone_mcp_servers_absolutizes_relative_runtime_dir_before_deriving_data_dir -- --nocapture`
+- `cargo check -p hone-channels --tests`
 - `cargo test -p hone-channels hone_mcp_servers_derives_data_dir_from_runtime_dir_when_env_missing -- --nocapture`
 - `cargo check -p hone-channels -p hone-cli --tests`
 
