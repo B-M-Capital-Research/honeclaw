@@ -3,7 +3,7 @@
 - **发现时间**: 2026-06-03 23:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: [#49](https://github.com/B-M-Capital-Research/honeclaw/issues/49)
 
 ## 证据来源
@@ -31,10 +31,19 @@
     - `j_a22da26c`：每日 20:00 美股大盘风控简报，`repeat=daily`，`last_run_at=2026-05-30T20:00:04.862655+08:00`。
     - `j_91c512c1`：美股开盘道氏理论点位简报，`repeat=trading_day`，`last_run_at=2026-05-29T21:30:04.388419+08:00`。
   - 这说明用户可见工具链把仍存在的 Cron 数据读成空，而不是该用户从未创建过提醒。
+- `data/sessions.sqlite3`
+  - 巡检时间窗：2026-06-06 03:02-07:02 CST。
+  - 本窗有 9 个 user turn 与 9 个 assistant final，3 个 Feishu direct 会话均成对收口；assistant final 污染扫描未命中空回复、`company_profiles/...`、本机绝对路径、`data/agent-sandboxes`、`hone-mcp binary not found`、raw tool 字段、`reasoning_content`、`<think>`、provider 原始错误、`HTTP 400/429`、`Resource temporarily unavailable`、`quota exhausted`、`Param Incorrect`、panic 或 `index out of bounds`。
+  - `session_id=Actor_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c` 在 2026-06-06 06:24 CST 收到用户输入摘要：`最值得加仓的3支股票`。
+  - 06:26 CST assistant final 明确写出：按最近研究池且账本当前显示“暂无持仓”，给出 MSFT / GEV / CRCL 加仓优先级。
+- `data/portfolio/portfolio_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c.json`
+  - 同一 actor 用户本地 portfolio 权威文件仍存在，`updated_at=2026-04-21T04:03:09.557122+00:00`。
+  - 文件内 `holdings` 仍包含 NVO 60 股、NFLX 25 股、UNH 30 股及成本 / 策略备注。
+  - 这说明用户可见工具链再次把仍存在的持仓数据读成空，而不是该用户真实没有账本。
 - `data/runtime/logs/acp-events.log`
   - 同窗可见 Feishu direct runner tool / chunk / `stopReason=end_turn`，说明直聊生成链路仍可收口。
   - 未见新的用户可见 `hone-mcp binary not found` 或 provider 原始失败；异常集中在 actor 业务数据读取与 scheduler due-run 链路。
-- 最近四小时非文档代码提交：无。
+- 最近四小时非文档代码提交：`f20ea8ea Fix MCP data dir path for feishu actor scope`，是本缺陷 03:04 CST 代码修复；但 06:26 CST live 真实会话仍复现 portfolio 读取为空，因此本轮按运行态仍活跃处理。
 
 ## 端到端链路
 
@@ -56,6 +65,7 @@
 - 用户的定时任务交付被阻断：20:00 常规任务未执行，21:29 once 补跑也没有生成 run 台账。
 - 用户投资上下文被迫重建：原持仓/关注数据在当前工具链下不可见，后续定时简报若使用空上下文会失真。
 - 2026-06-05 04:50 CST 新样本中，用户已有两个 enabled Cron 任务，但直聊工具仍反馈任务列表为空，并引导用户“恢复这两个”，说明修复后的运行态仍可能读错 Cron 数据根或作用域。
+- 2026-06-06 06:26 CST 新样本中，用户 portfolio 文件仍有 NVO / NFLX / UNH 持仓，但直聊工具仍反馈“暂无持仓”，说明代码修复后 live 侧仍有可见回退或部署未生效风险。
 
 ## 用户影响
 
@@ -69,6 +79,7 @@
 - 当父进程本身依赖 repo root `cwd` 读取 `config.yaml` 中的相对 `./data/portfolio` / `./data/cron_jobs` 路径，而 `hone-mcp` 子进程改在 sandbox `cwd` 下加载同一配置时，这些相对路径会落到 sandbox 内的新空数据树，于是 `portfolio view` 与 `cron_job list` 同时返回空。
 - 该问题与 `feishu_scheduler_no_runs_after_midnight.md` 不同：旧 P1 是任务存在但 scheduler loop 不再产生 run；本轮是工具读错数据根，直接把任务表和持仓表看成空。
 - 2026-06-05 04:50 CST 新样本只直接证明 Cron 读取为空，未同时证明 portfolio / watchlist 也读空；但它复用同一 actor scope / data dir 读取链路，且影响范围仍是持久化 Cron 数据正确性，因此不新建重复缺陷，按本单回退状态。
+- 2026-06-06 06:26 CST 新样本直接证明 portfolio 读取为空：同一 actor 有本地 portfolio 文件与非空 `holdings`，assistant 却按“账本当前显示暂无持仓”生成建议。该证据与 Cron 读空同属 actor data dir / storage schema 读取链路，不新建重复缺陷。
 
 ## 修复记录
 
@@ -89,6 +100,9 @@
   - `Actor_feishu__direct__ou_5f58ff884640e647a1792f618f45209251` 的本地 Cron 文件仍有 2 条 enabled 任务，但 Feishu direct assistant 两次向用户确认任务列表为空。
   - 这是同一 Cron 作用域读取链路的真实用户可见错误，影响定时任务是否存在的判断和恢复动作。
   - 已有 GitHub Issue [#49](https://github.com/B-M-Capital-Research/honeclaw/issues/49)，本轮不重复创建。
+- `2026-06-06 07:02 CST` 运行态再次复现，状态从 `Fixed` 回退为 `New`：
+  - `f20ea8ea` 已在 03:08 CST 合入本缺陷的代码级修复，但 06:26 CST 新 Feishu direct 回复仍把同一 actor 现存 portfolio 文件读成“暂无持仓”。
+  - 本轮只补充既有 P1 证据，不新建重复缺陷；已有 GitHub Issue [#49](https://github.com/B-M-Capital-Research/honeclaw/issues/49)，不重复创建。
 
 ## 验证
 
