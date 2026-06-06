@@ -3,7 +3,7 @@
 - **发现时间**: 2026-06-03 23:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#49](https://github.com/B-M-Capital-Research/honeclaw/issues/49)
 
 ## 证据来源
@@ -83,6 +83,13 @@
 
 ## 修复记录
 
+- `2026-06-07 03:03 CST` 再次修复：
+  - `crates/hone-channels/src/mcp_bridge.rs` 不再盲目透传父进程里的 `HONE_DATA_DIR`；若父进程把它设成相对路径（如 `data`）或空串，`hone-mcp` 之前会优先继承这个脏值，从而绕过 `runtime_dir -> data dir` 推导，并在 actor sandbox `cwd` 下把持久化根重新解释到空目录。
+  - 当前修复把 `HONE_DATA_DIR` 透传收敛为两条规则：非空时先在父进程侧绝对化；空串则直接忽略并回退到 `request.runtime_dir` 的父目录。
+  - 这解释了为什么 2026-06-06 03:04 已补过 `runtime_dir` 绝对化，live 仍可能复现：只要长跑父进程自身持有相对 `HONE_DATA_DIR`，旧逻辑就会优先拿它，导致前次修复被绕过。
+  - 新增回归 `hone_mcp_servers_absolutizes_relative_hone_data_dir_env` 与 `hone_mcp_servers_ignores_empty_hone_data_dir_env_and_uses_runtime_dir`，锁住“父进程环境脏值覆盖正确 data root”这一复发形态。
+  - 当前未重启 live 服务或渠道进程，先记 `Fixed` 而不是 `Closed`；若后续真实 Feishu direct 仍出现 `jobs=[]` / `holdings=[]` 且权威文件非空，再继续沿启动链路核对父进程实际环境。
+
 - `2026-06-06 03:04 CST` 再次修复：
   - `crates/hone-channels/src/execution.rs` 现在会把传给 runner 的 `runtime_dir` 也固定成绝对路径，不再把相对 `data/runtime` 原样传下去。
   - `crates/hone-channels/src/mcp_bridge.rs` 在父进程未显式设置 `HONE_DATA_DIR` 时，改为先把 `request.runtime_dir` 绝对化，再取其父目录作为 `HONE_DATA_DIR` 透传给 `hone-mcp`。
@@ -109,6 +116,7 @@
 - `cargo test -p hone-channels prepare_absolutizes_relative_runtime_paths -- --nocapture`
 - `cargo test -p hone-channels hone_mcp_servers_derives_data_dir_from_runtime_dir_when_env_missing -- --nocapture`
 - `cargo test -p hone-channels hone_mcp_servers_absolutizes_relative_runtime_dir_before_deriving_data_dir -- --nocapture`
+- `cargo test -p hone-channels hone_mcp_servers_ -- --nocapture`
 - `cargo check -p hone-channels --tests`
 - `cargo test -p hone-channels hone_mcp_servers_derives_data_dir_from_runtime_dir_when_env_missing -- --nocapture`
 - `cargo check -p hone-channels -p hone-cli --tests`

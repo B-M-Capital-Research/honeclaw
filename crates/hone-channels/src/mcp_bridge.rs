@@ -28,9 +28,7 @@ pub fn hone_mcp_servers(request: &AgentRunnerRequest) -> Result<Value, String> {
     if let Some(scope) = &request.actor.channel_scope {
         env_entries.push(mcp_env_entry("HONE_MCP_ACTOR_SCOPE", scope.as_str()));
     }
-    push_env_var_or_derived(&mut env_entries, "HONE_DATA_DIR", || {
-        absolute_parent_dir(&request.runtime_dir)
-    });
+    push_data_dir_env_or_derived(&mut env_entries, || absolute_parent_dir(&request.runtime_dir));
     push_env_var_if_present(&mut env_entries, "HONE_SKILLS_DIR");
     push_env_var_if_present(&mut env_entries, "HONE_AGENT_SANDBOX_DIR");
     if let Some(allowed_tools) = &request.allowed_tools {
@@ -69,16 +67,31 @@ fn push_env_var_if_present(env_entries: &mut Vec<Value>, name: &str) {
     }
 }
 
-fn push_env_var_or_derived(
+fn push_data_dir_env_or_derived(
     env_entries: &mut Vec<Value>,
-    name: &str,
     derived: impl FnOnce() -> Option<String>,
 ) {
-    if let Ok(value) = env::var(name) {
-        env_entries.push(mcp_env_entry(name, value));
+    if let Some(value) = normalized_env_dir("HONE_DATA_DIR") {
+        env_entries.push(mcp_env_entry("HONE_DATA_DIR", value));
     } else if let Some(value) = derived().filter(|value| !value.trim().is_empty()) {
-        env_entries.push(mcp_env_entry(name, value));
+        env_entries.push(mcp_env_entry("HONE_DATA_DIR", value));
     }
+}
+
+fn normalized_env_dir(name: &str) -> Option<String> {
+    let value = env::var(name).ok()?;
+    if value.trim().is_empty() {
+        return None;
+    }
+    let candidate = PathBuf::from(value);
+    let absolute = if candidate.is_absolute() {
+        candidate
+    } else {
+        env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(candidate)
+    };
+    Some(absolute.to_string_lossy().to_string())
 }
 
 fn absolute_parent_dir(path: &str) -> Option<String> {
@@ -832,6 +845,66 @@ mod tests {
     fn hone_mcp_servers_derives_data_dir_from_runtime_dir_when_env_missing() {
         let _guard = env_lock();
         clear_test_env();
+
+        let payload = hone_mcp_servers(&make_request()).expect("payload");
+        let server = payload
+            .as_array()
+            .and_then(|items| items.first())
+            .expect("server entry");
+        let env_entries = server
+            .get("env")
+            .and_then(|value| value.as_array())
+            .expect("env entries");
+
+        assert!(env_entries.iter().any(|entry| {
+            entry.get("name").and_then(|v| v.as_str()) == Some("HONE_DATA_DIR")
+                && entry.get("value").and_then(|v| v.as_str()) == Some("/tmp")
+        }));
+    }
+
+    #[test]
+    fn hone_mcp_servers_absolutizes_relative_hone_data_dir_env() {
+        let _guard = env_lock();
+        clear_test_env();
+        let previous_dir = env::current_dir().expect("cwd");
+        let temp = tempfile::tempdir().expect("tempdir");
+        env::set_current_dir(temp.path()).expect("chdir");
+        unsafe {
+            env::set_var("HONE_DATA_DIR", "data");
+        }
+
+        let payload = hone_mcp_servers(&make_request()).expect("payload");
+        let server = payload
+            .as_array()
+            .and_then(|items| items.first())
+            .expect("server entry");
+        let env_entries = server
+            .get("env")
+            .and_then(|value| value.as_array())
+            .expect("env entries");
+        let actual = env_entries
+            .iter()
+            .find(|entry| entry.get("name").and_then(|v| v.as_str()) == Some("HONE_DATA_DIR"))
+            .and_then(|entry| entry.get("value").and_then(|v| v.as_str()))
+            .map(str::to_string)
+            .expect("HONE_DATA_DIR");
+        let expected = temp
+            .path()
+            .canonicalize()
+            .expect("canonical temp path")
+            .join("data");
+
+        env::set_current_dir(previous_dir).expect("restore cwd");
+        assert_eq!(actual, expected.to_string_lossy());
+    }
+
+    #[test]
+    fn hone_mcp_servers_ignores_empty_hone_data_dir_env_and_uses_runtime_dir() {
+        let _guard = env_lock();
+        clear_test_env();
+        unsafe {
+            env::set_var("HONE_DATA_DIR", "");
+        }
 
         let payload = hone_mcp_servers(&make_request()).expect("payload");
         let server = payload
