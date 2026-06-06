@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-06-06 11:02 CST
+最后更新：2026-06-06 15:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -20,6 +20,8 @@
 - 活跃待修复：3
 - Later / 待复现：10
 - 已修复 / 已关闭：123
+- 本轮 15:02 CST 未新增独立缺陷或活跃 P1/P2/P3 状态变化。11:02-15:02 CST `data/sessions.sqlite3` 有 6 个 Feishu user turn 与 6 个 assistant final，均成对收口；assistant final 污染扫描未命中空回复、`company_profiles/...`、`公司画像公司画像`、本机绝对路径、`data/agent-sandboxes`、`hone-mcp binary not found`、raw tool 字段、`reasoning_content`、`<think>`、provider 原始错误、`HTTP 400/429`、`Resource temporarily unavailable`、`quota exhausted`、`Param Incorrect`、panic 或 `index out of bounds`。
+- 本轮 15:02 CST `acp-events.log` 同窗有 9 个 Web prompt / 9 个 `stopReason=end_turn` 与 6 个 Feishu prompt / 6 个 `stopReason=end_turn`，未见 `stream disconnected before completion` 或 runner error；Web direct 仍只出现在 ACP 日志、本地 SQLite 无 Web message，但既有 `web_direct_acp_stream_not_persisted.md` 已关闭为 cloud mode 本地镜像非权威证据，本轮仍无 Web API history 缺失证据，因此不重新打开。14:27 CST Feishu 持仓查询触发一次 `session/request_permission`，但 portfolio tool 返回同一 actor 的 LITE / COHR / QCOM 三条 holdings，assistant 正常收口；该样本未复现既有 P1 的 Cron / portfolio 作用域读空。`cron_job_runs` 同窗无新记录，最近四小时无非文档代码提交；本轮不创建 GitHub issue。
 - 本轮 11:02 CST 新增 P2 `Codex ACP transport 断连导致直聊和定时请求失败且缺少自动恢复`：07:01-11:01 CST `data/sessions.sqlite3` 有 12 个 user turn 与 12 个 assistant final，Feishu direct / Discord scheduler 均有 assistant 记录收口；assistant final 污染扫描未命中空回复、`company_profiles/...`、本机绝对路径、`data/agent-sandboxes`、raw tool 字段、思维痕迹、provider 原始错误、quota、panic 或 `index out of bounds`。09:25 CST Feishu direct 用户追问小分子化学药 / 生物药用药方式 / 是否借助 AI 研发，09:29 CST assistant 只返回通用失败文案；`acp-events.log` 同轮显示 `stream disconnected before completion`。09:30-09:34 CST Discord scheduler 也出现同类 ACP transport 断连，`cron_job_runs.run_id=38431` 落成 `noop + skipped_noop + should_deliver=0 + delivered=0` 且 `failure_kind=internal_error_suppressed`。该问题影响请求完成率，但本窗只有 1 条用户可见 direct 失败和 1 条 scheduler 抑制失败，且原始错误未外泄，因此定级功能性 `P2 / New`；非 P1，不创建 GitHub issue。
 - 本轮 11:02 CST 未发现新的活跃 P1 状态变化。既有 P1 `Feishu direct actor 读取 Cron 与持仓作用域为空，导致任务和投资上下文丢失` 本窗没有 Cron/portfolio 读空新样本，状态维持 `New`；既有 P3 公司画像相对路径外露本窗未命中 `company_profiles/...` 或 `公司画像公司画像`，状态维持 `New`。最近四小时无非文档代码提交；普通 cron 只有 1 条 Discord 抑制失败记录。
 - 本轮 07:02 CST 重新打开 P1 `Feishu direct actor 读取 Cron 与持仓作用域为空，导致任务和投资上下文丢失`：03:02-07:02 CST `data/sessions.sqlite3` 有 9 个 user turn 与 9 个 assistant final，3 个 Feishu direct 会话均以 assistant 收口；assistant final 污染扫描未命中空回复、`company_profiles/...`、本机绝对路径、`data/agent-sandboxes`、`hone-mcp binary not found`、raw tool 字段、`reasoning_content`、`<think>`、provider 原始错误、`HTTP 400/429`、`Resource temporarily unavailable`、`quota exhausted`、`Param Incorrect`、panic 或 `index out of bounds`。06:26 CST Feishu direct session `Actor_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c` 在用户询问“最值得加仓的3支股票”后，assistant 明确按“账本当前显示暂无持仓”给出建议；但同一 actor 的 `data/portfolio/portfolio_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c.json` 仍有 NVO / NFLX / UNH 三条 holdings。这与既有 P1 的 portfolio / Cron 数据读取为空同根同链路，状态从 `Fixed` 回退为 `P1 / New`；已有 Issue [#49](https://github.com/B-M-Capital-Research/honeclaw/issues/49)，不重复创建。
