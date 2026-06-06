@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-06-06 07:02 CST
+最后更新：2026-06-06 11:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,9 +17,11 @@
 
 ## 当前概览
 
-- 活跃待修复：2
+- 活跃待修复：3
 - Later / 待复现：10
 - 已修复 / 已关闭：123
+- 本轮 11:02 CST 新增 P2 `Codex ACP transport 断连导致直聊和定时请求失败且缺少自动恢复`：07:01-11:01 CST `data/sessions.sqlite3` 有 12 个 user turn 与 12 个 assistant final，Feishu direct / Discord scheduler 均有 assistant 记录收口；assistant final 污染扫描未命中空回复、`company_profiles/...`、本机绝对路径、`data/agent-sandboxes`、raw tool 字段、思维痕迹、provider 原始错误、quota、panic 或 `index out of bounds`。09:25 CST Feishu direct 用户追问小分子化学药 / 生物药用药方式 / 是否借助 AI 研发，09:29 CST assistant 只返回通用失败文案；`acp-events.log` 同轮显示 `stream disconnected before completion`。09:30-09:34 CST Discord scheduler 也出现同类 ACP transport 断连，`cron_job_runs.run_id=38431` 落成 `noop + skipped_noop + should_deliver=0 + delivered=0` 且 `failure_kind=internal_error_suppressed`。该问题影响请求完成率，但本窗只有 1 条用户可见 direct 失败和 1 条 scheduler 抑制失败，且原始错误未外泄，因此定级功能性 `P2 / New`；非 P1，不创建 GitHub issue。
+- 本轮 11:02 CST 未发现新的活跃 P1 状态变化。既有 P1 `Feishu direct actor 读取 Cron 与持仓作用域为空，导致任务和投资上下文丢失` 本窗没有 Cron/portfolio 读空新样本，状态维持 `New`；既有 P3 公司画像相对路径外露本窗未命中 `company_profiles/...` 或 `公司画像公司画像`，状态维持 `New`。最近四小时无非文档代码提交；普通 cron 只有 1 条 Discord 抑制失败记录。
 - 本轮 07:02 CST 重新打开 P1 `Feishu direct actor 读取 Cron 与持仓作用域为空，导致任务和投资上下文丢失`：03:02-07:02 CST `data/sessions.sqlite3` 有 9 个 user turn 与 9 个 assistant final，3 个 Feishu direct 会话均以 assistant 收口；assistant final 污染扫描未命中空回复、`company_profiles/...`、本机绝对路径、`data/agent-sandboxes`、`hone-mcp binary not found`、raw tool 字段、`reasoning_content`、`<think>`、provider 原始错误、`HTTP 400/429`、`Resource temporarily unavailable`、`quota exhausted`、`Param Incorrect`、panic 或 `index out of bounds`。06:26 CST Feishu direct session `Actor_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c` 在用户询问“最值得加仓的3支股票”后，assistant 明确按“账本当前显示暂无持仓”给出建议；但同一 actor 的 `data/portfolio/portfolio_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c.json` 仍有 NVO / NFLX / UNH 三条 holdings。这与既有 P1 的 portfolio / Cron 数据读取为空同根同链路，状态从 `Fixed` 回退为 `P1 / New`；已有 Issue [#49](https://github.com/B-M-Capital-Research/honeclaw/issues/49)，不重复创建。
 - 本轮 07:02 CST 未新增独立缺陷。`cron_job_runs` 同窗无新记录；最近四小时唯一非文档提交 `f20ea8ea Fix MCP data dir path for feishu actor scope` 是该 P1 的代码级修复，但 06:26 CST live 仍有用户可见 portfolio 读空证据，因此按运行态仍活跃处理。
 - 本轮 03:04 CST 已修复 P1 `Feishu direct actor 读取 Cron 与持仓作用域为空，导致任务和投资上下文丢失`：`crates/hone-channels/src/execution.rs` 现在会把 runner `runtime_dir` 固定成绝对路径，`crates/hone-channels/src/mcp_bridge.rs` 在父进程未显式设置 `HONE_DATA_DIR` 时也会先把 `runtime_dir` 绝对化，再取父目录透传给 `hone-mcp`，避免子进程在 actor sandbox `cwd` 下把相对 `data/runtime` 重新解释成 sandbox 内空数据根，继续把 Cron / portfolio 读成空。新增 `hone_mcp_servers_absolutizes_relative_runtime_dir_before_deriving_data_dir` 回归；验证 `cargo test -p hone-channels prepare_absolutizes_relative_runtime_paths -- --nocapture`、`cargo test -p hone-channels hone_mcp_servers_derives_data_dir_from_runtime_dir_when_env_missing -- --nocapture`、`cargo test -p hone-channels hone_mcp_servers_absolutizes_relative_runtime_dir_before_deriving_data_dir -- --nocapture` 与 `cargo check -p hone-channels --tests` 通过。当前未重启 live 服务，先记 `Fixed`，保留既有 Issue [#49](https://github.com/B-M-Capital-Research/honeclaw/issues/49)。
@@ -422,6 +424,7 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Feishu direct actor 读取 Cron 与持仓作用域为空，导致任务和投资上下文丢失 | P1 | New | 2026-06-06 07:02 live 真实 Feishu direct 再次把同一 actor 现存 portfolio 文件读成“暂无持仓”：`data/portfolio/portfolio_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c.json` 仍有 NVO / NFLX / UNH 三条 holdings，但 06:26 CST assistant 按账本为空给出加仓建议。与既有 Cron / portfolio 读空同根同链路；已有 Issue [#49](https://github.com/B-M-Capital-Research/honeclaw/issues/49)，不重复创建 | [feishu_actor_scope_cron_portfolio_empty.md](./feishu_actor_scope_cron_portfolio_empty.md) |
+| Codex ACP transport 断连导致直聊和定时请求失败且缺少自动恢复 | P2 | New | 2026-06-06 11:02 live 真实窗口出现 1 条 Feishu direct 用户主动追问只收到通用失败，ACP 事件为 `stream disconnected before completion`；同窗 1 条 Discord scheduler 同类断连被抑制为 `should_deliver=0`，但台账仍表现为 `noop + skipped_noop + failure_kind=internal_error_suppressed`。原始错误未外泄，非 P1 | [codex_acp_transport_disconnect_request_failure.md](./codex_acp_transport_disconnect_request_failure.md) |
 | Web / Feishu 直聊公司画像沉淀后向用户暴露内部相对文件路径 | P3 | New | 2026-06-05 07:02 04:37 CST CIEN 财报分析 final 仍外露 `company_profiles/Ciena_CIEN.md`；该问题不影响分析正文、文件写入、会话收口或投递，维持质量性 P3。无关联 GitHub Issue | [web_company_profile_relative_path_exposed.md](./web_company_profile_relative_path_exposed.md) |
 
 ## Later / 待复现
