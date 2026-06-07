@@ -30,7 +30,16 @@
 - `data/runtime/logs/acp-events.log`
   - 同轮 12:33 CST tool update 显示 runner 把上述 MU、SNDK、DRAM ETF 精确行情与估值数值写入 sandbox `company_profiles/MU.md`、`company_profiles/SNDK.md`、`company_profiles/DRAM_ETF.md`。
   - 同轮最终以 `stopReason=end_turn` 收口，未见 `stream disconnected before completion`、runner error、quota、panic 或用户可见内部错误。
-- 最近四小时非文档提交仅有 `26d4aa57 docs: record web direct image attachment bug`，不涉及行情校验链路修复。
+- `data/sessions.sqlite3`
+  - 2026-06-07 15:03-19:03 CST 复核窗口有 8 个 Feishu user turn 与 8 个 assistant final，4 个 Feishu direct 会话最新均以 assistant 收口；`cron_job_runs` 同窗无新增记录。
+  - assistant final 污染扫描未命中空回复、`company_profiles/...`、本机绝对路径、`data/agent-sandboxes`、raw tool 字段、`reasoning_content`、`<think>`、provider 原始错误、`HTTP 400/429`、`Resource temporarily unavailable`、`quota exhausted`、`Param Incorrect`、panic、`index out of bounds`、`stream disconnected`、`hone-mcp binary not found`、`技能未加载` 或 `当前运行器`。
+  - `session_id=Actor_feishu__direct__ou_5f58ff884640e647a1792f618f45209251` 在 2026-06-07 15:55 CST 收到用户输入摘要：`周五跌得很可怕，什么时候可以抄底？`。上一轮上下文仍是 MU / SNDK 存储股回调与配置建议。
+  - 15:58 CST assistant final 再次输出 MU `周五收盘 864.01` / `盘后参考约 857.2 到 857.4`、SNDK `周五收盘 1,559.32` / `盘后参考 1,528.87` / `周五日内低点 1,514.36`，并据此给出 MU `800-850` 试探、`720-780` 高值博、SNDK `1,250-1,350` 与 `1,050-1,180` 等抄底区间。
+- `data/runtime/logs/acp-events.log`
+  - 同轮 15:56 CST 完成 `finance: MU`、`finance: MU`、`June 5 2026 MU stock close after hours price Micron, June 5 2026 SNDK stock close after hours price Sandisk` 搜索，以及 MarketBeat SNDK chart 页面读取。
+  - 15:56:52 CST assistant 已开始流式说明“MU 盘后约 857，SNDK 盘后约 1529”，随后 15:57 CST 读取本地 `MU.md` 与 `SNDK.md` 公司画像，并在 15:58 CST 输出完整抄底区间。
+  - 该轮最终以 `stopReason=end_turn` 收口，未见 response error、runner error、stream disconnect、quota、panic 或用户可见内部错误。
+- 最近四小时无非文档代码提交，不涉及行情校验链路修复。
 
 ## 端到端链路
 
@@ -53,6 +62,7 @@
 - 对 SNDK 没有看到明确页面读取完成证据，final 仍给出了完整行情字段和交易节奏判断。
 - 这会让用户把未充分校验的价格当成最新行情锚点。
 - 2026-06-07 12:31 CST 同根复发时，assistant 不只把同一组精确行情数字用于用户可见投资对比，还把这些数字沉淀进 sandbox 公司画像，后续会话可能继续复用该画像中的未充分校验行情。
+- 2026-06-07 15:55 CST 同根复发时，assistant 在用户询问抄底节奏时继续复用同一组 MU / SNDK 异常精确行情锚，并把它转化为具体分档抄底区间；这说明画像沉淀后的未充分校验行情已进入后续操作型建议链路。
 
 ## 用户影响
 
@@ -67,6 +77,7 @@
 - 该问题与 `feishu_direct_futu_premarket_stale_price_advice.md` 不同：FUTU 缺陷是盘前大跌场景把常规交易旧价当决策锚；本轮是周末行情查询中，精确价格输出早于工具链完成，并且 SNDK 独立核验证据不足。
 - 该问题与 `feishu_direct_partial_reply_before_tool_completion.md` 也不同：本轮不是半成品短答提前持久化，而是完整 final 在行情核验边界上过早输出精确数值。
 - 2026-06-07 12:31 CST 复发说明问题不只发生在“用户明确问最新价格”的单轮，还会在多标的对比/配置建议中复用上次未充分校验的精确行情，并进一步写入公司画像；根因仍是强时效行情与操作建议缺少“必须重新校验或降级为未验证框架”的硬边界。
+- 2026-06-07 15:55 CST 复发进一步说明，该根因会沿本地公司画像延续到后续抄底/买点建议：即使本轮有行情搜索与页面读取，assistant 仍把此前未充分校验的价格锚作为可操作区间基础，没有显式降级为“需重新核价后再定档”。
 
 ## 下一步建议
 
@@ -79,3 +90,4 @@
 - 本轮为缺陷台账维护任务，未修改业务代码，未运行代码测试。
 - 已验证范围：SQLite 会话收口、assistant final 污染扫描、ACP tool call / final chunk 时序、`cron_job_runs` 同窗无新增、最近四小时提交检查。
 - 2026-06-07 15:02 CST 复核为缺陷台账维护任务，未修改业务代码，未运行代码测试；已验证范围：SQLite 会话收口、assistant final 污染扫描、ACP `end_turn`、本轮 `cron_job_runs` 无新增、最近四小时无非文档代码提交。
+- 2026-06-07 19:03 CST 复核为缺陷台账维护任务，未修改业务代码，未运行代码测试；已验证范围：SQLite 会话收口、assistant final 污染扫描、ACP prompt / `end_turn` 对齐、相关 tool call 时序、本轮 `cron_job_runs` 无新增、最近四小时无非文档代码提交。
