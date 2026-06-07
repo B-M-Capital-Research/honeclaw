@@ -26,12 +26,17 @@
   - 2026-06-07 03:01-07:01 CST 后续四小时继续复现：`poller.fmp.price` 再新增 48 次 `failed + items=0`，`poller.fmp.news` 再新增 16 次 `failed + items=0`。
   - 同窗 `poller.fmp.extended_hours` 仍有 8 次 `ok + items=0`，`internal.unified_digest_scheduler` 与 `internal.daily_report` 仍按分钟 tick 记录 `skipped`，说明 runtime tick 未整体停摆。
   - 失败形态仍是 FMP quote/news 请求发送失败，没有观察到恢复样本。
+- `data/runtime/task_runs.2026-06-06.jsonl` 与 `data/runtime/task_runs.2026-06-07.jsonl`
+  - 2026-06-07 07:00-11:04 CST 后续四小时继续复现：`poller.fmp.price` 再新增 48 次 `failed + items=0`，`poller.fmp.news` 再新增 16 次 `failed + items=0`。
+  - 同窗 `poller.fmp.earnings` 与 `poller.fmp.macro` 各新增 2 次 `failed + items=0`，错误同为 FMP 请求发送失败；`poller.fmp.extended_hours` 仍有 8 次 `ok + items=0`，`poller.fmp.corp_action`、`poller.fmp.sec_filings`、`poller.fmp.analyst_grade` 各 2 次 `ok + items=0`。
+  - `internal.unified_digest_scheduler` 同窗有 2 次 `ok + items=46`，说明 event-engine runtime 仍在运行，失败集中在 FMP 部分 API 请求链路。
 - 当天更早记录显示：
   - 2026-06-06 08:04-09:24 CST `poller.fmp.price` 曾连续成功 18 次，`poller.fmp.news` 曾成功 5 次。
   - 2026-06-06 09:29 CST 起，price/news poller 开始持续失败；截至 2026-06-07 03:01 CST 最近四小时仍未恢复。
 - `data/sessions.sqlite3`
   - 2026-06-06 23:01-2026-06-07 03:01 CST 有 3 个 Feishu user turn 与 3 个 assistant final，均成对收口；本轮没有直接用户可见投递失败或原始 FMP 错误外泄。
   - 2026-06-07 03:01-07:01 CST 没有新增可判定直聊质量的新消息；SQLite 最新消息仍停在 2026-06-07 00:41 CST。
+  - 2026-06-07 07:00-11:04 CST 有 5 个 user turn 与 5 个 assistant final，Feishu direct 与 Discord scheduler 均有 assistant 记录收口；assistant final 污染扫描未命中空回复、内部路径、raw tool 字段、思维痕迹、provider 原始错误或 panic。
 
 ## 端到端链路
 
@@ -50,6 +55,7 @@
 
 - 最近四小时内 quote/news poller 全部失败且 `items=0`，没有观察到恢复样本。
 - 后续 2026-06-07 03:01-07:01 CST 复核窗口内，quote/news poller 仍全部失败且 `items=0`，持续失败时长继续扩大。
+- 后续 2026-06-07 07:00-11:04 CST 复核窗口内，quote/news poller 仍全部失败且 `items=0`；earnings / macro 也出现同类请求发送失败，说明影响面从 price/news 扩展到更多 FMP API。
 - 同一 runtime 的 extended-hours poller 仍按节奏运行并返回 `ok`，说明不是调度器完全停止。
 - 当前缺陷尚未在本轮直接表现为用户可见错误、错投或格式污染，但已构成事件引擎数据摄取链路退化。
 

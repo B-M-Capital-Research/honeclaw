@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-06-07 07:01 CST
+最后更新：2026-06-07 11:05 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,9 +17,11 @@
 
 ## 当前概览
 
-- 活跃待修复：5
+- 活跃待修复：6
 - Later / 待复现：10
 - 已修复 / 已关闭：124
+- 本轮 11:05 CST 新增 P2 `Discord scheduler 已生成报告但发送阶段失败且缺少错误原因`：07:00-11:04 CST `data/sessions.sqlite3` 有 5 个 user turn 与 5 个 assistant final，Feishu direct 与 Discord scheduler 均有 assistant 记录收口；assistant final 污染扫描未命中空回复、`company_profiles/...`、本机绝对路径、`data/agent-sandboxes`、raw tool 字段、`reasoning_content`、`<think>`、provider 原始错误、`HTTP 400/429`、`Resource temporarily unavailable`、`quota exhausted`、`Param Incorrect`、panic 或 `index out of bounds`。09:30 CST Discord `每日美股降息概率推送` 已生成完整报告并以 `stopReason=end_turn` 收口，但 `cron_job_runs.run_id=38432` 落成 `completed + send_failed + should_deliver=1 + delivered=0`，`detail_json` 仅有 `sent_segments=0,total_segments=3` 且 `error_message` 为空。该问题是完整报告生成后的 Discord 出站漏发与可观测性缺口，不同于 06-06 ACP 断连，也不同于历史空回复缺陷；影响单个 scheduler 交付，非 P1，不创建 GitHub issue。
+- 本轮 11:05 CST 继续确认 P2 `Event-engine FMP price/news poller 持续请求失败导致行情与新闻增量退化` 活跃：07:00-11:04 CST `data/runtime/task_runs.2026-06-06.jsonl` 与 `data/runtime/task_runs.2026-06-07.jsonl` 又新增 `poller.fmp.price` 48 次、`poller.fmp.news` 16 次 `failed + items=0`；同窗 `poller.fmp.earnings` 与 `poller.fmp.macro` 各 2 次同类失败，而 `poller.fmp.extended_hours` 仍 8 次 `ok`，`internal.unified_digest_scheduler` 仍有 2 次 `ok + items=46`。失败仍是 FMP 请求发送链路持续退化，已追加到既有文档；尚无用户可见 FMP 原始错误，非 P1。
 - 本轮 07:01 CST 未新增独立缺陷或活跃 P1 状态变化。`data/sessions.sqlite3` 最新消息停在 2026-06-07 00:41 CST，`acp-events.log` 最新 ACP response 也停在 00:41 CST；03:01-07:01 CST 窗口没有可用于判定直聊质量、格式污染、未回复或投递异常的新会话证据。最近四小时唯一非文档代码提交 `b55b04b8 Fix hone-mcp data dir propagation` 属于既有 P1 `Feishu direct actor 读取 Cron 与持仓作用域为空` 的代码修复；本轮没有新的 Cron/portfolio 真实用户复现，状态维持 `Fixed` 而非 `Closed`。
 - 本轮 07:01 CST 继续确认 P2 `Event-engine FMP price/news poller 持续请求失败导致行情与新闻增量退化` 活跃：03:01-07:01 CST `data/runtime/task_runs.2026-06-06.jsonl` 又新增 `poller.fmp.price` 48 次、`poller.fmp.news` 16 次 `failed + items=0`，同窗 `poller.fmp.extended_hours` 8 次 `ok + items=0`；失败仍集中在 FMP quote/news 请求发送链路。该问题已在既有文档建档，本轮仅追加持续复现证据；尚无用户可见失败，非 P1，不创建 GitHub issue。
 - 本轮 03:03 CST 已修复 P1 `Feishu direct actor 读取 Cron 与持仓作用域为空，导致任务和投资上下文丢失`：`crates/hone-channels/src/mcp_bridge.rs` 现在会先绝对化父进程传入的 `HONE_DATA_DIR`，并在该值为空串时回退到 `runtime_dir` 的父目录，避免 `hone-mcp` 在 actor sandbox `cwd` 下把 Cron / portfolio 根重新解释成空数据树。新增 `hone_mcp_servers_absolutizes_relative_hone_data_dir_env` 与 `hone_mcp_servers_ignores_empty_hone_data_dir_env_and_uses_runtime_dir` 回归；`cargo test -p hone-channels hone_mcp_servers_ -- --nocapture` 与 `cargo check -p hone-channels --tests` 通过。当前未重启 live 服务，先记 `Fixed`，保留既有 Issue [#49](https://github.com/B-M-Capital-Research/honeclaw/issues/49)。
@@ -432,8 +434,9 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Discord scheduler 已生成报告但发送阶段失败且缺少错误原因 | P2 | New | 2026-06-07 11:05 Discord `每日美股降息概率推送` 已生成完整报告并 `end_turn` 收口，但 `cron_job_runs.run_id=38432` 落成 `completed + send_failed + should_deliver=1 + delivered=0`；`detail_json` 只有 `sent_segments=0,total_segments=3`，`error_message` 为空。影响单个 Discord scheduler 交付与可诊断性，非 P1 | [discord_scheduler_completed_report_send_failed_without_error.md](./discord_scheduler_completed_report_send_failed_without_error.md) |
 | Web direct 图片附件未进入可读/OCR 链路且回复外露内部排障口径 | P2 | New | 2026-06-06 19:02 Web direct 图片会话正常 `end_turn`，但截图没有进入可读文件/OCR 输入；assistant 要求用户粘贴文字，并向用户展示“uploads、/tmp、会话数据库、OSS 引用、当前工具链”等内部排障口径。阻断图片附件理解链路，非 P1 | [web_direct_image_attachment_not_readable_internal_debug_leak.md](./web_direct_image_attachment_not_readable_internal_debug_leak.md) |
-| Event-engine FMP price/news poller 持续请求失败导致行情与新闻增量退化 | P2 | New | 2026-06-07 07:01 最近四小时继续复现：`poller.fmp.price` 48 次、`poller.fmp.news` 16 次全部 `failed + items=0`，同 runtime 的 `poller.fmp.extended_hours` 仍 8 次 `ok`；尚无本轮用户可见错误，但 event-engine 行情/新闻增量、digest 候选和监控触发会退化，非 P1 | [event_engine_fmp_price_news_poller_persistent_request_failure.md](./event_engine_fmp_price_news_poller_persistent_request_failure.md) |
+| Event-engine FMP price/news poller 持续请求失败导致行情与新闻增量退化 | P2 | New | 2026-06-07 11:05 最近四小时继续复现：`poller.fmp.price` 48 次、`poller.fmp.news` 16 次全部 `failed + items=0`，`poller.fmp.earnings` / `macro` 各 2 次同类失败；同 runtime 的 `poller.fmp.extended_hours` 仍 8 次 `ok`，`internal.unified_digest_scheduler` 仍有 `ok + items=46`，说明失败集中在 FMP 请求链路，非 P1 | [event_engine_fmp_price_news_poller_persistent_request_failure.md](./event_engine_fmp_price_news_poller_persistent_request_failure.md) |
 | Codex ACP transport 断连导致直聊和定时请求失败且缺少自动恢复 | P2 | New | 2026-06-06 11:02 live 真实窗口出现 1 条 Feishu direct 用户主动追问只收到通用失败，ACP 事件为 `stream disconnected before completion`；同窗 1 条 Discord scheduler 同类断连被抑制为 `should_deliver=0`，但台账仍表现为 `noop + skipped_noop + failure_kind=internal_error_suppressed`。原始错误未外泄，非 P1 | [codex_acp_transport_disconnect_request_failure.md](./codex_acp_transport_disconnect_request_failure.md) |
 | Web / Feishu 直聊公司画像沉淀后向用户暴露内部相对文件路径 | P3 | New | 2026-06-05 07:02 04:37 CST CIEN 财报分析 final 仍外露 `company_profiles/Ciena_CIEN.md`；该问题不影响分析正文、文件写入、会话收口或投递，维持质量性 P3。无关联 GitHub Issue | [web_company_profile_relative_path_exposed.md](./web_company_profile_relative_path_exposed.md) |
 | Feishu 直聊存储股最新价格回复在行情工具未完成时输出未充分校验数值 | P3 | New | 2026-06-06 23:04 Feishu direct 用户要求看 MU / SNDK 最新价格，assistant 在行情页面 tool call 尚未完成时已经流式输出精确收盘/盘后数字，并基于这些数值给出加仓节奏判断；会话正常收口、无投递失败或内部错误外泄，因此为质量性 P3，非 P1 | [feishu_direct_storage_price_unverified_before_tool_complete.md](./feishu_direct_storage_price_unverified_before_tool_complete.md) |
