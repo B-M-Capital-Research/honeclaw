@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-06-07 23:02 CST
+最后更新：2026-06-08 03:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,9 +17,12 @@
 
 ## 当前概览
 
-- 活跃待修复：7
+- 活跃待修复：8
 - Later / 待复现：10
 - 已修复 / 已关闭：124
+- 本轮 03:02 CST 新增 P3 `Web direct 在 all-in 高潜力单票请求中给出具体股票排序`：23:02-03:02 CST 本地 SQLite 只有 1 个 Feishu user turn 与 1 个 assistant final，成对收口；但 `acp-events.log` 同窗 Web direct session `Actor_web__direct__web-user-be13e1f84d14` 在用户明确表达 all in 高潜力个股、目标 8 到 10 倍并询问是否现在买/建议什么股票后，assistant 虽先写“不建议现在直接 all in”和风险提示，仍给出 `TEM / CRCL / RDDT / RKLB` 排序、“如果坚持只买一只”的单票映射，以及“先买计划仓位的 30% 到 50%”操作节奏。该问题不阻断 Web direct 收口、未见投递失败或内部错误外泄，但属于高风险金融建议边界质量缺口，因此按 P3 登记；非 P1，不创建 GitHub issue。
+- 本轮 03:02 CST 继续确认 P2 `Event-engine FMP price/news poller 持续请求失败导致行情与新闻增量退化` 活跃：23:02-03:02 CST `data/runtime/task_runs.2026-06-07.jsonl` 又新增 `poller.fmp.price` 48 次、`poller.fmp.news` 16 次 `failed + items=0`；同窗 `poller.fmp.extended_hours` 仍 8 次 `ok`，`internal.unified_digest_scheduler` 与 `internal.daily_report` 仅周期性 `skipped`。失败仍集中在 FMP price/news 请求发送链路，尚无本轮用户可见 FMP 原始错误，非 P1。
+- 本轮 03:02 CST 未发现活跃 P1 状态变化。`cron_job_runs` 同窗无新增记录，最近四小时无非文档代码提交；Feishu assistant final 污染扫描未命中空回复、`company_profiles/...`、本机绝对路径、`data/agent-sandboxes`、raw tool 字段、`reasoning_content`、`<think>`、provider 原始错误、`HTTP 400/429`、`Resource temporarily unavailable`、`quota exhausted`、`Param Incorrect`、panic、`index out of bounds`、`stream disconnected`、`hone-mcp binary not found`、`技能未加载` 或 `当前运行器`。`acp-events.log` 同窗可见上述 Web direct `stopReason=end_turn`，未见 response error、runner error 或 stream disconnect。
 - 本轮 23:02 CST 新增 P3 `Feishu 直聊今日对话上限提示在会话历史中重复落库`：19:02-23:02 CST `data/sessions.sqlite3` 有 14 个 Feishu user turn 与 15 个 assistant 记录，7 个 Feishu direct 活跃会话最新均以 assistant 收口；多出的 1 条 assistant 来自 20:57 CST 同一用户 `message_id=om_x100b6d62e52c98a0b1cdf6c2a489edc` 后连续落库 daily-limit `final` 与 Feishu `text` 两条同义 assistant 记录。历史样本显示 2026-06-03、06-05 与 06-02 也有同类 final/text 双记录。当前没有证据证明 Feishu 用户实际收到两次消息，且 daily-limit 文案清晰、会话已收口，因此不影响主功能链路，按质量/持久化 P3 登记；非 P1，不创建 GitHub issue。
 - 本轮 23:02 CST 继续确认 P2 `Event-engine FMP price/news poller 持续请求失败导致行情与新闻增量退化` 活跃：19:02-23:02 CST `data/runtime/task_runs.2026-06-07.jsonl` 又新增 `poller.fmp.price` 48 次、`poller.fmp.news` 16 次 `failed + items=0`；同窗 `poller.fmp.extended_hours` 仍 8 次 `ok`，`internal.daily_report` 有 1 次 `ok + items=1`，`internal.unified_digest_scheduler` 有 2 次 `ok`，说明 runtime 未整体停摆。失败仍集中在 FMP price/news 请求发送链路，尚无本轮用户可见 FMP 原始错误，非 P1。
 - 本轮 23:02 CST 未发现活跃 P1 状态变化。`cron_job_runs` 同窗无新增记录，最近四小时无非文档代码提交；assistant final 污染扫描未命中空回复、`company_profiles/...`、本机绝对路径、`data/agent-sandboxes`、raw tool 字段、`reasoning_content`、`<think>`、provider 原始错误、`HTTP 400/429`、`Resource temporarily unavailable`、`quota exhausted`、`Param Incorrect`、panic、`index out of bounds`、`stream disconnected`、`hone-mcp binary not found`、`技能未加载` 或 `当前运行器`。`acp-events.log` 同窗 13 个 Feishu prompt 与 4 个 Web prompt 均 `stopReason=end_turn`，未见 response error、runner error 或 stream disconnect。
@@ -445,11 +448,12 @@
 | --- | --- | --- | --- | --- |
 | Discord scheduler 已生成报告但发送阶段失败且缺少错误原因 | P2 | New | 2026-06-07 11:05 Discord `每日美股降息概率推送` 已生成完整报告并 `end_turn` 收口，但 `cron_job_runs.run_id=38432` 落成 `completed + send_failed + should_deliver=1 + delivered=0`；`detail_json` 只有 `sent_segments=0,total_segments=3`，`error_message` 为空。影响单个 Discord scheduler 交付与可诊断性，非 P1 | [discord_scheduler_completed_report_send_failed_without_error.md](./discord_scheduler_completed_report_send_failed_without_error.md) |
 | Web direct 图片附件未进入可读/OCR 链路且回复外露内部排障口径 | P2 | New | 2026-06-06 19:02 Web direct 图片会话正常 `end_turn`，但截图没有进入可读文件/OCR 输入；assistant 要求用户粘贴文字，并向用户展示“uploads、/tmp、会话数据库、OSS 引用、当前工具链”等内部排障口径。阻断图片附件理解链路，非 P1 | [web_direct_image_attachment_not_readable_internal_debug_leak.md](./web_direct_image_attachment_not_readable_internal_debug_leak.md) |
-| Event-engine FMP price/news poller 持续请求失败导致行情与新闻增量退化 | P2 | New | 2026-06-07 23:02 最近四小时继续复现：`poller.fmp.price` 48 次、`poller.fmp.news` 16 次全部 `failed + items=0`；同 runtime 的 `poller.fmp.extended_hours` 仍 8 次 `ok`，`internal.daily_report` 与 `internal.unified_digest_scheduler` 均有 `ok` 样本，说明 runtime 未整体停摆，失败继续集中在 FMP price/news 请求发送链路，非 P1 | [event_engine_fmp_price_news_poller_persistent_request_failure.md](./event_engine_fmp_price_news_poller_persistent_request_failure.md) |
+| Event-engine FMP price/news poller 持续请求失败导致行情与新闻增量退化 | P2 | New | 2026-06-08 03:02 最近四小时继续复现：`poller.fmp.price` 48 次、`poller.fmp.news` 16 次全部 `failed + items=0`；同 runtime 的 `poller.fmp.extended_hours` 仍 8 次 `ok`，`internal.unified_digest_scheduler` 与 `internal.daily_report` 仅周期性 `skipped`，说明 runtime 未整体停摆，失败继续集中在 FMP price/news 请求发送链路，非 P1 | [event_engine_fmp_price_news_poller_persistent_request_failure.md](./event_engine_fmp_price_news_poller_persistent_request_failure.md) |
 | Codex ACP transport 断连导致直聊和定时请求失败且缺少自动恢复 | P2 | New | 2026-06-06 11:02 live 真实窗口出现 1 条 Feishu direct 用户主动追问只收到通用失败，ACP 事件为 `stream disconnected before completion`；同窗 1 条 Discord scheduler 同类断连被抑制为 `should_deliver=0`，但台账仍表现为 `noop + skipped_noop + failure_kind=internal_error_suppressed`。原始错误未外泄，非 P1 | [codex_acp_transport_disconnect_request_failure.md](./codex_acp_transport_disconnect_request_failure.md) |
 | Web / Feishu 直聊公司画像沉淀后向用户暴露内部相对文件路径 | P3 | New | 2026-06-05 07:02 04:37 CST CIEN 财报分析 final 仍外露 `company_profiles/Ciena_CIEN.md`；该问题不影响分析正文、文件写入、会话收口或投递，维持质量性 P3。无关联 GitHub Issue | [web_company_profile_relative_path_exposed.md](./web_company_profile_relative_path_exposed.md) |
 | Feishu 直聊存储股最新价格回复在行情工具未完成时输出未充分校验数值 | P3 | New | 2026-06-07 19:03 复发：15:55 CST Feishu direct 用户询问周五大跌后何时抄底，assistant 再次复用 MU `864.01 / 857.2-857.4`、SNDK `1,559.32 / 1,528.87` 等异常精确行情，并据此给出 MU / SNDK 抄底区间；会话正常收口、无投递失败或内部错误外泄，因此仍为质量性 P3，非 P1 | [feishu_direct_storage_price_unverified_before_tool_complete.md](./feishu_direct_storage_price_unverified_before_tool_complete.md) |
 | Feishu 直聊今日对话上限提示在会话历史中重复落库 | P3 | New | 2026-06-07 23:02 20:57 CST 同一 Feishu direct 用户消息后，`session_messages` 连续落库 daily-limit `final` 与 Feishu `text` 两条同义 assistant 记录，使用同一 `message_id`；历史样本显示 06-02、06-03、06-05 也有同类双记录。当前无证据证明用户实际收到重复消息，且不阻断 direct 主链路，因此按 P3 跟踪，非 P1 | [feishu_direct_daily_limit_duplicate_assistant_transcript.md](./feishu_direct_daily_limit_duplicate_assistant_transcript.md) |
+| Web direct 在 all-in 高潜力单票请求中给出具体股票排序 | P3 | New | 2026-06-08 03:02 Web direct 用户明确表达 all in 高潜力个股、目标 8 到 10 倍并询问是否现在买/建议什么股票；assistant 虽有风险提示，仍给出 `TEM / CRCL / RDDT / RKLB` 排序、单票映射和 30%-50% 计划仓位节奏。不阻断会话收口或投递，按高风险金融建议边界质量缺口 P3 跟踪，非 P1 | [web_direct_all_in_stock_recommendation_quality_gap.md](./web_direct_all_in_stock_recommendation_quality_gap.md) |
 
 ## Later / 待复现
 
