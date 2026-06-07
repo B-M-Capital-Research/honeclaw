@@ -285,7 +285,7 @@ pub(crate) async fn send_response_segments(
                     continue;
                 }
                 let parts = DiscordSplitter.split_markdown(trimmed, max_len);
-                let (count, last) = send_or_edit_segments_with_previous(
+                let (count, last, _error) = send_or_edit_segments_with_previous(
                     http,
                     channel_id,
                     placeholder,
@@ -300,7 +300,7 @@ pub(crate) async fn send_response_segments(
             }
             ResponseContentSegment::LocalImage(marker) => {
                 if placeholder.is_some() && previous.is_none() {
-                    let (count, last) = send_or_edit_segments_with_previous(
+                    let (count, last, _error) = send_or_edit_segments_with_previous(
                         http,
                         channel_id,
                         placeholder,
@@ -325,7 +325,7 @@ pub(crate) async fn send_response_segments(
                         let note =
                             format!("（图表发送失败：{}）", file_label_from_path(&marker.path));
                         let parts = DiscordSplitter.split_markdown(&note, max_len);
-                        let (count, last) = send_or_edit_segments_with_previous(
+                        let (count, last, _error) = send_or_edit_segments_with_previous(
                             http,
                             channel_id,
                             placeholder,
@@ -344,7 +344,7 @@ pub(crate) async fn send_response_segments(
     }
 
     if sent == 0 {
-        let (count, _last) = send_or_edit_segments_with_previous(
+        let (count, _last, _error) = send_or_edit_segments_with_previous(
             http,
             channel_id,
             placeholder,
@@ -363,20 +363,28 @@ pub(crate) async fn send_or_edit_segments(
     channel_id: ChannelId,
     placeholder: Option<&mut Message>,
     segments: Vec<String>,
-) -> (usize, usize) {
+) -> SegmentSendResult {
     let total = segments.len();
     let mut placeholder = placeholder.cloned();
-    let (sent, last) =
+    let (sent, last, error) =
         send_or_edit_segments_with_previous(http, channel_id, &mut placeholder, None, segments)
             .await;
-    (
+    SegmentSendResult {
         sent,
-        if total == 0 {
+        total: if total == 0 {
             usize::from(last.is_some())
         } else {
             total
         },
-    )
+        error,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SegmentSendResult {
+    pub sent: usize,
+    pub total: usize,
+    pub error: Option<String>,
 }
 
 async fn send_or_edit_segments_with_previous(
@@ -385,13 +393,14 @@ async fn send_or_edit_segments_with_previous(
     placeholder: &mut Option<Message>,
     mut previous: Option<Message>,
     segments: Vec<String>,
-) -> (usize, Option<Message>) {
+) -> (usize, Option<Message>, Option<String>) {
     let total = segments.len();
     if total == 0 {
-        return (0, previous);
+        return (0, previous, None);
     }
 
     let mut sent = 0usize;
+    let mut error: Option<String> = None;
     let mut iter = segments.into_iter();
     if let Some(first) = iter.next() {
         if let Some(mut msg) = placeholder.take() {
@@ -422,8 +431,10 @@ async fn send_or_edit_segments_with_previous(
                         Ok(message) => {
                             previous = Some(message);
                             sent += 1;
+                            error = None;
                         }
                         Err(err) => {
+                            error = Some(format!("发送 Discord 消息失败: {err}"));
                             warn!("[Discord] 发送消息失败: {}", err);
                         }
                     }
@@ -441,7 +452,10 @@ async fn send_or_edit_segments_with_previous(
                     previous = Some(message);
                     sent += 1;
                 }
-                Err(err) => warn!("[Discord] 发送消息失败: {}", err),
+                Err(err) => {
+                    error = Some(format!("发送 Discord 消息失败: {err}"));
+                    warn!("[Discord] 发送消息失败: {}", err);
+                }
             }
         }
     }
@@ -460,13 +474,14 @@ async fn send_or_edit_segments_with_previous(
                 sent += 1;
             }
             Err(e) => {
+                error = Some(format!("发送 Discord 回复消息失败: {e}"));
                 warn!("发送 Discord 回复消息失败: {}", e);
                 break;
             }
         }
     }
 
-    (sent, previous)
+    (sent, previous, error)
 }
 
 async fn send_local_image(
@@ -546,6 +561,20 @@ mod tests {
         assert_eq!(
             parse_channel_id_from_target("guild:111:channel:222:slash"),
             Some(222)
+        );
+    }
+
+    #[test]
+    fn segment_send_result_keeps_error_message() {
+        let result = SegmentSendResult {
+            sent: 0,
+            total: 1,
+            error: Some("发送 Discord 消息失败: missing access".to_string()),
+        };
+        assert_eq!(result.total, 1);
+        assert_eq!(
+            result.error.as_deref(),
+            Some("发送 Discord 消息失败: missing access")
         );
     }
 }

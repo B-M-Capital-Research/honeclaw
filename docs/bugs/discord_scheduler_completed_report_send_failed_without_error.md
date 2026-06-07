@@ -14,7 +14,7 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## GitHub Issue
 
@@ -77,14 +77,21 @@
 - `error_message` 为空是独立可观测性缺口，会放大后续定位成本。
 - 需要结合 Discord sender 日志或发送 API 返回路径确认是否是目标频道权限、分段格式、网络传输、rate limit 或错误吞噬。
 
+## 修复记录
+
+- `2026-06-08 03:06 CST` 已修复：
+  - `bins/hone-discord/src/utils.rs` 的分段发送结果现在会保留底层发送/编辑失败文案，而不是只回传 `sent_segments` 计数。
+  - `bins/hone-discord/src/scheduler.rs` 记录 `cron_job_runs` 时，`error_message` 现在优先保留 runner error，其次保留 Discord 发送失败文案；如果 `sent_segments=0 && total_segments>0` 且底层库没有给出明确错误，也会至少回写通用 `Discord 定时任务发送失败`。
+  - 这样即使报告正文已经生成，但 Discord 出站第一段就失败，台账也不会再落成 `send_failed + delivered=0 + error_message=''` 的不可诊断坏态。
+
 ## 下一步建议
 
-- 检查 Discord scheduler sender 在分段发送失败时是否把底层错误写入 `cron_job_runs.error_message` 或 `detail_json.failure_kind`。
-- 为 Discord 发送失败增加脱敏分类，例如 `discord_send_transport_error`、`discord_send_permission_error`、`discord_send_rate_limited`、`discord_send_payload_invalid`。
-- 对 `sent_segments=0 && total_segments>0 && error_message=''` 增加回归测试，确保后续至少有可审计失败原因。
-- 评估对 transient 发送失败增加短重试；若重试后仍失败，保持 `send_failed + delivered=0`，但必须保留归一化错误。
+- 若后续 live 再出现 Discord `send_failed`，优先看 `cron_job_runs.error_message` 是否已经能区分权限、网络或 payload 失败。
+- 本轮只修复了发送失败可观测性，尚未为 Discord 出站增加自动重试；如果 live 继续出现明显的 transient transport 失败，再单独评估是否补短重试。
 
 ## 验证
 
-- 本轮为缺陷台账维护任务，未修改业务代码、测试代码或配置代码。
-- 已验证范围：SQLite 会话收口、assistant final 污染扫描、ACP `end_turn` 事件、`cron_job_runs` 终态、同任务历史状态、FMP poller 既有缺陷排重与最近四小时非文档提交检查。
+- `cargo test -p hone-discord scheduler_error_message_ -- --nocapture`
+- `cargo test -p hone-discord segment_send_result_keeps_error_message -- --nocapture`
+- `cargo check -p hone-discord --tests`
+- `rustfmt --edition 2024 --check bins/hone-discord/src/scheduler.rs bins/hone-discord/src/utils.rs`

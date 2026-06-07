@@ -1,6 +1,6 @@
 # Current Plan Index
 
-最后更新：2026-05-31
+最后更新：2026-06-08
 状态：有 6 个活跃任务
 
 ## 说明
@@ -19,7 +19,7 @@
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/active-bug-burn-down-2026-04-28.md`
-  - 摘要：集中清理 `docs/bugs/README.md` 活跃缺陷；2026-06-03 已修复 Web scheduler ACP 断流后失败提示只落库不实时推送的问题，当前活跃待修复队列为空
+  - 摘要：集中清理 `docs/bugs/README.md` 活跃缺陷；2026-06-08 已修复 Discord scheduler 发送失败缺少错误原因的问题，当前活跃队列已无 `P0/P1`
 - **Chart Visualization Skill 与多通道 PNG 投递**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/chart-visualization-skill.md`

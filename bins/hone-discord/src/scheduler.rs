@@ -112,22 +112,24 @@ pub(crate) async fn handle_scheduler_events(
 
             let segments =
                 split_into_segments(&response, core_clone.config.discord.max_message_length);
-            let (sent, total) = send_or_edit_segments(
+            let send_result = send_or_edit_segments(
                 http_clone.as_ref(),
                 ChannelId::new(channel_id),
                 None,
                 segments,
             )
             .await;
-            let message_send_status = if sent > 0 {
+            let message_send_status = if send_result.sent > 0 {
                 "sent".to_string()
             } else {
                 "send_failed".to_string()
             };
-            if sent == 0 && total > 0 {
+            if send_result.sent == 0 && send_result.total > 0 {
                 warn!(
-                    "[Discord] 定时任务投递失败: job={} target={} sent=0",
-                    event.job_name, event.channel_target
+                    "[Discord] 定时任务投递失败: job={} target={} sent=0 error={}",
+                    event.job_name,
+                    event.channel_target,
+                    send_result.error.as_deref().unwrap_or("unknown")
                 );
             }
             let _ = storage.record_execution_event(
@@ -144,19 +146,83 @@ pub(crate) async fn handle_scheduler_events(
                     },
                     message_send_status,
                     should_deliver: true,
-                    delivered: sent > 0,
+                    delivered: send_result.sent > 0,
                     response_preview: Some(response),
-                    error_message: result
-                        .error
-                        .clone()
-                        .filter(|value| !value.trim().is_empty()),
+                    error_message: scheduler_error_message(
+                        result.error.clone(),
+                        send_result.error.clone(),
+                        send_result.sent,
+                        send_result.total,
+                    ),
                     detail: serde_json::json!({
-                        "sent_segments": sent,
-                        "total_segments": total,
+                        "sent_segments": send_result.sent,
+                        "total_segments": send_result.total,
                         "scheduler": result.metadata,
                     }),
                 },
             );
         });
+    }
+}
+
+fn scheduler_error_message(
+    run_error: Option<String>,
+    send_error: Option<String>,
+    sent_segments: usize,
+    total_segments: usize,
+) -> Option<String> {
+    let run_error = run_error.and_then(|value| {
+        let trimmed = value.trim();
+        (!trimmed.is_empty()).then(|| trimmed.to_string())
+    });
+    if run_error.is_some() {
+        return run_error;
+    }
+    let send_error = send_error.and_then(|value| {
+        let trimmed = value.trim();
+        (!trimmed.is_empty()).then(|| trimmed.to_string())
+    });
+    if send_error.is_some() {
+        return send_error;
+    }
+    if sent_segments == 0 && total_segments > 0 {
+        return Some("Discord 定时任务发送失败".to_string());
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::scheduler_error_message;
+
+    #[test]
+    fn scheduler_error_message_prefers_run_error() {
+        let error = scheduler_error_message(
+            Some("runner failed".to_string()),
+            Some("send failed".to_string()),
+            0,
+            3,
+        );
+        assert_eq!(error.as_deref(), Some("runner failed"));
+    }
+
+    #[test]
+    fn scheduler_error_message_uses_send_error_when_delivery_fails() {
+        let error = scheduler_error_message(
+            None,
+            Some("发送 Discord 消息失败: missing access".to_string()),
+            0,
+            3,
+        );
+        assert_eq!(
+            error.as_deref(),
+            Some("发送 Discord 消息失败: missing access")
+        );
+    }
+
+    #[test]
+    fn scheduler_error_message_falls_back_to_generic_send_failure() {
+        let error = scheduler_error_message(None, None, 0, 3);
+        assert_eq!(error.as_deref(), Some("Discord 定时任务发送失败"));
     }
 }
