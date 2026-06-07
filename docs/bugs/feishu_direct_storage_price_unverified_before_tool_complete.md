@@ -22,6 +22,14 @@
   - 20:54:38-20:54:39 CST 已经开始向用户流式输出 MU `收盘价：864.01` 与 `盘后价：857.20` 等精确行情数字。
   - 20:54:50 CST `stockanalysis.com/stocks/mu/` 对应 tool call 才标记 `completed`，即用户可见精确价格在至少一个行情页面读取完成前已经生成。
   - 本轮没有看到同等明确的 SNDK 行情页面打开记录；但 final 同样输出了 SNDK 精确收盘价、盘后价、日内区间、52 周区间和 Forward PE。
+- `data/sessions.sqlite3`
+  - 2026-06-07 11:02-15:02 CST 复核窗口有 2 个 Feishu user turn 与 2 个 assistant final，均成对收口；`cron_job_runs` 同窗无新增记录。
+  - assistant final 污染扫描未命中空回复、`company_profiles/...`、本机绝对路径、`data/agent-sandboxes`、raw tool 字段、`reasoning_content`、`<think>`、provider 原始错误、`HTTP 400/429`、`Resource temporarily unavailable`、`quota exhausted`、`Param Incorrect`、panic 或 `index out of bounds`。
+  - `session_id=Actor_feishu__direct__ou_5f175714e91a60d34339460cdd1268f8fb` 在 2026-06-07 12:31 CST 收到用户输入摘要：`存储美光，闪迪，dram基金做下对比`。
+  - 12:33 CST assistant final 再次输出 MU `6月5日收盘 864.01` / `盘后 857.20`、SNDK `6月5日收盘 1559.32` / `盘后 1529.50`、DRAM ETF `6月5日收盘 55.79`，并给出 Forward PE、AUM、持仓、以及 5000 美元配置框架。
+- `data/runtime/logs/acp-events.log`
+  - 同轮 12:33 CST tool update 显示 runner 把上述 MU、SNDK、DRAM ETF 精确行情与估值数值写入 sandbox `company_profiles/MU.md`、`company_profiles/SNDK.md`、`company_profiles/DRAM_ETF.md`。
+  - 同轮最终以 `stopReason=end_turn` 收口，未见 `stream disconnected before completion`、runner error、quota、panic 或用户可见内部错误。
 - 最近四小时非文档提交仅有 `26d4aa57 docs: record web direct image attachment bug`，不涉及行情校验链路修复。
 
 ## 端到端链路
@@ -44,6 +52,7 @@
 - 但精确行情数字在至少一个行情工具完成前已经进入用户可见流式回复。
 - 对 SNDK 没有看到明确页面读取完成证据，final 仍给出了完整行情字段和交易节奏判断。
 - 这会让用户把未充分校验的价格当成最新行情锚点。
+- 2026-06-07 12:31 CST 同根复发时，assistant 不只把同一组精确行情数字用于用户可见投资对比，还把这些数字沉淀进 sandbox 公司画像，后续会话可能继续复用该画像中的未充分校验行情。
 
 ## 用户影响
 
@@ -57,6 +66,7 @@
 - 初步判断是强时效金融回答没有严格等待行情工具完成，也没有把“工具仍在读取 / 某标的未完成独立核验”的状态转化为保守输出。
 - 该问题与 `feishu_direct_futu_premarket_stale_price_advice.md` 不同：FUTU 缺陷是盘前大跌场景把常规交易旧价当决策锚；本轮是周末行情查询中，精确价格输出早于工具链完成，并且 SNDK 独立核验证据不足。
 - 该问题与 `feishu_direct_partial_reply_before_tool_completion.md` 也不同：本轮不是半成品短答提前持久化，而是完整 final 在行情核验边界上过早输出精确数值。
+- 2026-06-07 12:31 CST 复发说明问题不只发生在“用户明确问最新价格”的单轮，还会在多标的对比/配置建议中复用上次未充分校验的精确行情，并进一步写入公司画像；根因仍是强时效行情与操作建议缺少“必须重新校验或降级为未验证框架”的硬边界。
 
 ## 下一步建议
 
@@ -68,3 +78,4 @@
 
 - 本轮为缺陷台账维护任务，未修改业务代码，未运行代码测试。
 - 已验证范围：SQLite 会话收口、assistant final 污染扫描、ACP tool call / final chunk 时序、`cron_job_runs` 同窗无新增、最近四小时提交检查。
+- 2026-06-07 15:02 CST 复核为缺陷台账维护任务，未修改业务代码，未运行代码测试；已验证范围：SQLite 会话收口、assistant final 污染扫描、ACP `end_turn`、本轮 `cron_job_runs` 无新增、最近四小时无非文档代码提交。
