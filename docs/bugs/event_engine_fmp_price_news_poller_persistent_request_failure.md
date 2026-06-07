@@ -46,6 +46,10 @@
   - 2026-06-07 23:02-2026-06-08 03:02 CST 后续四小时继续复现：`poller.fmp.price` 再新增 48 次 `failed + items=0`，`poller.fmp.news` 再新增 16 次 `failed + items=0`。
   - 同窗 `poller.fmp.extended_hours` 仍有 8 次 `ok + items=0`；`internal.unified_digest_scheduler` 与 `internal.daily_report` 仅记录周期性 `skipped`，说明 runtime tick 仍运行，但 FMP price/news 增量继续不可用。
   - 错误仍为脱敏后的 FMP quote/news 请求发送失败，尚未观察到恢复样本或用户可见 FMP 原始错误外泄。
+- `data/runtime/task_runs.2026-06-07.jsonl`
+  - 2026-06-08 03:02-07:02 CST 后续四小时继续复现：`poller.fmp.price` 再新增 48 次 `failed + items=0`，`poller.fmp.news` 再新增 16 次 `failed + items=0`。
+  - 同窗 `poller.fmp.extended_hours` 仍有 8 次 `ok + items=0`；`internal.daily_report` 与 `internal.unified_digest_scheduler` 仅记录周期性 `skipped`，说明 runtime tick 仍运行，但 FMP price/news 增量继续不可用。
+  - 错误仍为脱敏后的 FMP quote/news 请求发送失败，尚未观察到恢复样本或用户可见原始 FMP 错误外泄。
 - 当天更早记录显示：
   - 2026-06-06 08:04-09:24 CST `poller.fmp.price` 曾连续成功 18 次，`poller.fmp.news` 曾成功 5 次。
   - 2026-06-06 09:29 CST 起，price/news poller 开始持续失败；截至 2026-06-07 03:01 CST 最近四小时仍未恢复。
@@ -56,6 +60,7 @@
   - 2026-06-07 15:03-19:03 CST 有 8 个 Feishu user turn 与 8 个 assistant final，4 个 Feishu direct 会话最新均以 assistant 收口；`cron_job_runs` 同窗无新增记录，assistant final 污染扫描未命中 FMP 原始错误、空回复、内部路径、raw tool 字段、思维痕迹、provider 原始错误、panic 或 stream disconnect。
   - 2026-06-07 19:02-23:02 CST 有 14 个 Feishu user turn 与 15 个 assistant 记录，7 个 Feishu direct 活跃会话最新均以 assistant 收口；多出的 1 条 assistant 是 daily-limit final/text 双记录，另立 P3 跟踪。`cron_job_runs` 同窗无新增记录，assistant final 污染扫描未命中 FMP 原始错误、空回复、内部路径、raw tool 字段、思维痕迹、provider 原始错误、panic 或 stream disconnect。
   - 2026-06-07 23:02-2026-06-08 03:02 CST 本地 SQLite 只新增 1 个 Feishu user turn 与 1 个 assistant final，成对收口；`cron_job_runs` 同窗无新增记录，assistant final 污染扫描未命中 FMP 原始错误、空回复、内部路径、raw tool 字段、思维痕迹、provider 原始错误、panic 或 stream disconnect。
+  - 2026-06-08 03:02-07:02 CST SQLite 没有新增 Feishu / Discord 落库会话或 scheduler 台账记录；`data/runtime/logs/acp-events.log` 同窗有 7 个 Web direct prompt，均以 `stopReason=end_turn` 收口，未见 response error、runner error、stream disconnect、quota、panic 或 provider 原始错误。
 
 ## 端到端链路
 
@@ -79,6 +84,7 @@
 - 后续 2026-06-07 15:03-19:03 CST 复核窗口内，quote/news poller 仍全部失败且 `items=0`；extended-hours 仍按节奏 `ok`，说明持续失败尚未恢复。
 - 后续 2026-06-07 19:02-23:02 CST 复核窗口内，quote/news poller 仍全部失败且 `items=0`；extended-hours、daily report 与 unified digest scheduler 均有 `ok` 样本，说明失败继续集中在 FMP price/news 请求链路。
 - 后续 2026-06-07 23:02-2026-06-08 03:02 CST 复核窗口内，quote/news poller 仍全部失败且 `items=0`；extended-hours 仍按节奏 `ok`，说明失败尚未恢复。
+- 后续 2026-06-08 03:02-07:02 CST 复核窗口内，quote/news poller 仍全部失败且 `items=0`；extended-hours 仍按节奏 `ok`，说明失败尚未恢复。
 - 同一 runtime 的 extended-hours poller 仍按节奏运行并返回 `ok`，说明不是调度器完全停止。
 - 当前缺陷尚未在本轮直接表现为用户可见错误、错投或格式污染，但已构成事件引擎数据摄取链路退化。
 
