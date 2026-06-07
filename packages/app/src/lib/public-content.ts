@@ -437,7 +437,7 @@ const CONTENT_ZH = {
       },
       {
         title: "事件与任务",
-        desc: "Cron 任务、事件引擎摘要、`/missed` 回查、通知偏好与渠道投递共享 Rust 后端、SQLite/JSON 或 PG 执行历史和用户归属模型；Web scheduler 结果先落入会话历史，SSE 只负责在线实时提示，因此浏览器离线不会把已落库结果误记为送达失败，执行错误会写入产品化失败提示并通过同一 `scheduled_message` 事件推送给在线控制台；MCP/ACP runner 现在使用绝对 `HONE_CONFIG_PATH`，并在父进程没有显式 `HONE_DATA_DIR` 时从 runtime dir 反推数据根，目标是让 Feishu / Web / scheduler 工具读取同一份 Cron 与持仓数据；但最新 bug ledger 仍在跟踪 Feishu direct Cron 与 portfolio 作用域读空的 P1 运行态复现，公开文案不把这条链路表述为完全闭环；Feishu 等渠道的 scheduler heartbeat 已补齐 revision-aware 重复抑制、stale running 行终结、cloud cron 操作超时保护与 listener 内 scheduler loop 监督重启，event-engine 默认 LLM 配置已切到当前可用的 `x-ai/grok-4.3`，避免继续依赖已下线的 Grok 4.1 Fast。",
+        desc: "Cron 任务、事件引擎摘要、`/missed` 回查、通知偏好与渠道投递共享 Rust 后端、SQLite/JSON 或 PG 执行历史和用户归属模型；Web scheduler 结果先落入会话历史，SSE 只负责在线实时提示，因此浏览器离线不会把已落库结果误记为送达失败，执行错误会写入产品化失败提示并通过同一 `scheduled_message` 事件推送给在线控制台；MCP/ACP runner 现在使用绝对 `HONE_CONFIG_PATH`，并会绝对化父进程传入的 `HONE_DATA_DIR`、忽略空串后从 runtime dir 反推数据根，目标是让 Feishu / Web / scheduler 工具读取同一份 Cron 与持仓数据；Feishu direct Cron 与 portfolio 作用域读空当前是代码级 Fixed 但尚未 Closed，仍需 live 重启 / 复核后才能表述为完全闭环；Feishu 等渠道的 scheduler heartbeat 已补齐 revision-aware 重复抑制、stale running 行终结、cloud cron 操作超时保护与 listener 内 scheduler loop 监督重启，event-engine 默认 LLM 配置已切到当前可用的 `x-ai/grok-4.3`，避免继续依赖已下线的 Grok 4.1 Fast。",
       },
     ],
 
@@ -463,7 +463,7 @@ const CONTENT_ZH = {
           {
             name: "持仓追踪与提醒",
             status: "stable",
-            note: "portfolio_management + cron；Feishu direct 作用域仍按 P1 bug ledger 复核",
+            note: "portfolio_management + cron；Feishu direct 作用域读空已代码级 Fixed，待 live 复核关闭",
           },
           {
             name: "估值 / 选股 / 仓位建议",
@@ -545,7 +545,7 @@ const CONTENT_ZH = {
           {
             name: "MCP 协议",
             status: "stable",
-            note: "hone-mcp server + HONE_MCP_BIN / HONE_DATA_DIR 运行时透传",
+            note: "hone-mcp server + HONE_MCP_BIN / HONE_CONFIG_PATH / HONE_DATA_DIR 绝对化与透传",
           },
           {
             name: "HTTP + SSE 内部 API",
@@ -676,12 +676,13 @@ const CONTENT_ZH = {
         "Web 定时任务可靠性收口：结果先写入会话历史，在线浏览器通过 `scheduled_message` SSE 看到成功或失败提示，离线浏览器不会把已落库结果误标为 send_failed，handler 超时会记录为可排查的失败 trace",
         "事件引擎与 scheduler 质量收口：digest 去重 / min-gap / topic memory / 分类预算 / 方向性价格阈值 / Feishu heartbeat revision 去重 / stale running 记录恢复 / scheduler loop 监督重启",
         "Event-engine 默认模型与示例配置已替换为 `x-ai/grok-4.3`，避免 Grok 4.1 Fast 下线导致新闻分类、global digest、mainline distill 等 LLM 增强链路失效",
+        "Event-engine FMP 行情 / 新闻 poller 持续请求失败仍在 active P2 跟踪；这会影响实时行情、新闻增量和 digest 候选新鲜度，公开页不把这条摄取链路表述为完全健康",
         "LLM provider 配置收口到 `config.yaml`，OpenRouter 与通用 OpenAI-compatible provider 支持 `api_key/api_keys` 轮换，并保留上游错误详情便于诊断",
         "Cloud PG / OSS 运行时：`cloud.postgres` / `cloud.oss` 可通过 env 配置，公开上传、生成图片 / 文件与迁移文档可写入 OSS，公开图片 / 文件代理可读取 `oss://bucket/key` 托管对象，`/api/meta` 会暴露云能力状态和本地 durable dependency 计数",
         "云迁移边界清晰：sessions、Web invite/auth sessions、conversation quota、cron jobs/runs、due-job claims、skill registry、notification prefs、portfolio、LLM audit 与 company profile files 已有 PG 热路径；`cloud.strict_no_local_storage=true` 会在当前配置仍有 durable 本地依赖时阻止启动",
         "`hone-cli cloud doctor / migrate / object-bench` 已可做云端体检、本地 data dry-run / 幂等导入、以及 OSS/R2 小对象延迟对比；迁移器支持 session、Web auth、quota、cron、skill registry、notification prefs、portfolio、LLM audit 与 company profiles 的单项导入开关",
         "渠道回复收口层可在 runner 只产出过渡性规划句时，从成功的定时任务或持仓工具结果恢复用户可见确认；共享输出净化层会隐藏内部绝对路径、hone-mcp 依赖启动错误和 skill/tool 降级前言。公司画像相对路径措辞仍有活跃 P3 质量缺陷在 bug ledger 跟踪，公开页不把它表述为完全解决",
-        "MCP / ACP 子进程运行时边界已收口：`hone-cli start` 会显式传递 `HONE_MCP_BIN`，runner 请求使用绝对配置路径，MCP server 会继承或反推出同一份 `HONE_DATA_DIR`。该改动用于收敛 sandbox cwd 下误读空数据树的问题；Feishu direct Cron 与 portfolio 作用域读空仍有活跃 P1 运行态复现，继续以 bug ledger 为准",
+        "MCP / ACP 子进程运行时边界已收口：`hone-cli start` 会显式传递 `HONE_MCP_BIN`，runner 请求使用绝对配置路径，MCP server 会继承、绝对化或反推出同一份 `HONE_DATA_DIR`。该改动用于收敛 sandbox cwd 下误读空数据树的问题；Feishu direct Cron 与 portfolio 作用域读空目前是代码级 Fixed 但未 Closed，继续以 live 复核和 bug ledger 为准",
         "前端部署资产恢复：service worker 与全局错误处理可识别 stale chunk，并在安全间隔内自动刷新到新版本",
         "公开 API key 对话入口：管理端可为 Web 用户生成 API key，客户端可按 OpenAI-compatible `/api/public/v1/chat/completions` 形状调用 Hone",
         "ACP 自管上下文与 compact 防泄漏，支持 codex_acp / opencode_acp 长会话恢复",
@@ -1986,7 +1987,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         title: "Events and tasks",
-        desc: "Cron jobs, event-engine digests, `/missed` recovery, notification preferences, and channel delivery share the Rust backend, SQLite/JSON or PG execution history, and user ownership model; Web scheduler results are persisted to conversation history first and use SSE only for live hints, so an offline browser no longer turns persisted results into false delivery failures, while execution errors are stored as productized failure messages and broadcast through the same `scheduled_message` event for online consoles; MCP/ACP runners now receive an absolute `HONE_CONFIG_PATH`, and when the parent process has no explicit `HONE_DATA_DIR`, the MCP bridge derives the data root from the runtime dir so Feishu / Web / scheduler tools are intended to read the same Cron and portfolio stores; however, the latest bug ledger still tracks an active P1 live recurrence where Feishu direct reads empty Cron and portfolio scopes, so the public page does not describe that path as fully closed; Feishu and other channel scheduler heartbeats now include revision-aware duplicate suppression, stale running-row finalization, cloud cron operation timeouts, and supervised scheduler-loop restarts inside the listener, and event-engine default LLM config now uses the currently available `x-ai/grok-4.3` instead of the retired Grok 4.1 Fast.",
+        desc: "Cron jobs, event-engine digests, `/missed` recovery, notification preferences, and channel delivery share the Rust backend, SQLite/JSON or PG execution history, and user ownership model; Web scheduler results are persisted to conversation history first and use SSE only for live hints, so an offline browser no longer turns persisted results into false delivery failures, while execution errors are stored as productized failure messages and broadcast through the same `scheduled_message` event for online consoles; MCP/ACP runners now receive an absolute `HONE_CONFIG_PATH`, and the MCP bridge absolutizes inherited `HONE_DATA_DIR` values or ignores empty ones before deriving the data root from the runtime dir, so Feishu / Web / scheduler tools are intended to read the same Cron and portfolio stores; the Feishu direct empty Cron / portfolio-scope bug is code-level Fixed but not yet Closed, so the public page still waits for live restart / verification before describing that path as fully closed; Feishu and other channel scheduler heartbeats now include revision-aware duplicate suppression, stale running-row finalization, cloud cron operation timeouts, and supervised scheduler-loop restarts inside the listener, and event-engine default LLM config now uses the currently available `x-ai/grok-4.3` instead of the retired Grok 4.1 Fast.",
       },
     ],
 
@@ -2012,7 +2013,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           {
             name: "Portfolio tracking & alerts",
             status: "stable",
-            note: "portfolio_management + cron; Feishu direct scope remains under P1 bug-ledger verification",
+            note: "portfolio_management + cron; Feishu direct empty-scope bug is code-level Fixed pending live verification",
           },
           {
             name: "Valuation / selection / position advice",
@@ -2098,7 +2099,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           {
             name: "MCP protocol",
             status: "stable",
-            note: "hone-mcp server + HONE_MCP_BIN / HONE_DATA_DIR runtime propagation",
+            note: "hone-mcp server + HONE_MCP_BIN / HONE_CONFIG_PATH / HONE_DATA_DIR absolutization and propagation",
           },
           {
             name: "Admin HTTP + SSE API",
@@ -2263,12 +2264,13 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         "Web scheduled-task reliability pass: results are written to conversation history first, online browsers receive success or failure hints through `scheduled_message` SSE, offline browsers no longer mark persisted results as send_failed, and handler timeouts become diagnosable failure traces",
         "Event-engine and scheduler quality pass: digest dedupe / min-gap / topic memory / category budgets / directional price thresholds / Feishu heartbeat revision dedupe / stale running-row recovery / scheduler-loop supervision",
         "Event-engine default models and sample config now use `x-ai/grok-4.3`, avoiding failures from the retired Grok 4.1 Fast in news classification, global digest, and mainline distillation paths",
+        "Event-engine FMP price/news poller persistent request failures remain tracked as an active P2; they can degrade real-time quote, news-ingest, and digest-candidate freshness, so the public page does not describe that ingest path as fully healthy",
         "LLM provider config is consolidated into `config.yaml`; OpenRouter and generic OpenAI-compatible providers support `api_key/api_keys` rotation and preserve upstream error details for diagnosis",
         "Cloud PG / OSS runtime: `cloud.postgres` / `cloud.oss` can be configured through env references; public uploads, generated images / files, and migrated documents can write to OSS; public image / file proxies can read `oss://bucket/key` managed objects; `/api/meta` exposes cloud capability state and the local durable dependency count",
         "Cloud migration boundaries are explicit: sessions, Web invites/auth sessions, conversation quota, cron jobs/runs, due-job claims, the skill registry, notification prefs, portfolio, LLM audit, and company profile files have PG hot paths; `cloud.strict_no_local_storage=true` blocks startup while the current config still has durable local dependencies",
         "`hone-cli cloud doctor / migrate / object-bench` now covers cloud health checks, local data dry-runs / idempotent imports, and OSS/R2 small-object latency checks; the migrator has per-store import switches for sessions, Web auth, quota, cron, skill registry, notification prefs, portfolio, LLM audit, and company profiles",
         "The channel response finalizer can recover user-visible confirmations from successful scheduled-task or portfolio tool results when a runner only emits a transitional planning sentence; the shared output sanitizer hides internal absolute paths, hone-mcp dependency startup errors, and skill/tool degradation preludes. Relative company-profile path wording is still tracked as an active P3 quality bug in the bug ledger, so the public page no longer describes it as fully solved",
-        "MCP / ACP child-process runtime boundaries are now explicit: `hone-cli start` passes `HONE_MCP_BIN`, runner requests use an absolute config path, and the MCP server inherits or derives the same `HONE_DATA_DIR`. This is the code-side fix for empty data trees under sandbox cwd; Feishu direct Cron and portfolio scope reads still have an active P1 live recurrence in the bug ledger, so that path remains under verification",
+        "MCP / ACP child-process runtime boundaries are now explicit: `hone-cli start` passes `HONE_MCP_BIN`, runner requests use an absolute config path, and the MCP server inherits, absolutizes, or derives the same `HONE_DATA_DIR`. This is the code-side fix for empty data trees under sandbox cwd; Feishu direct Cron and portfolio scope reads are currently code-level Fixed but not Closed, so live verification and the bug ledger remain the source of truth",
         "Frontend deploy asset recovery: the service worker and global error handlers detect stale chunks and safely reload onto the new version",
         "Public API-key chat entry point: admins can issue API keys for Web users, and clients can call Hone through the OpenAI-compatible `/api/public/v1/chat/completions` shape",
         "ACP self-managed context with compact-leak suppression for long codex_acp / opencode_acp sessions",
