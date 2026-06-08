@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-06-08 16:11 CST
+最后更新：2026-06-08 19:01 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,9 +17,11 @@
 
 ## 当前概览
 
-- 活跃待修复：6
+- 活跃待修复：7
 - Later / 待复现：10
 - 已修复 / 已关闭：123
+- 本轮 19:01 CST 新增 P3 `Feishu 直聊列出定时任务时外露 enabled=true 实现字段`：15:01-19:01 CST `data/sessions.sqlite3` 有 7 个 Feishu user turn 与 7 个 assistant final，均成对收口；`cron_job_runs` 同窗无新增记录；assistant final 污染扫描未命中空回复、内部路径、raw tool 字段、思维痕迹、provider 原始错误、quota、panic 或 stream disconnect。17:55 CST Feishu direct 用户问“我有哪些定时任务”，assistant 正常列出 3 个启用任务并以 `stopReason=end_turn` 收口，但结尾写出“这 3 个任务目前都是 `enabled=true`”。该问题不阻断任务查询主链路、无投递失败或状态错乱，因此按质量性 P3 登记，非 P1，不创建 GitHub issue。
+- 本轮 19:01 CST 未发现活跃 P1 状态变化。`acp-events.log` 同窗 Feishu prompt 均以 `stopReason=end_turn` 收口，未见 response error、runner error、stream disconnect、quota、panic 或 provider 原始错误；最近四小时无非文档代码提交。`data/runtime/task_runs.2026-06-08.jsonl` 中 `poller.fmp.price` 48 次、`poller.fmp.news` 16 次均为 `ok + items=0`，未触发已关闭 FMP price/news 缺陷回退；`poller.fmp.extended_hours` 7 次 `ok`、1 次 `failed`，单次失败不足以登记新缺陷。
 - 本轮 16:11 CST 已修复 P2 `Web direct 图片附件未进入可读/OCR 链路且回复外露内部排障口径`：Public Web chat 附件入口现在复用共享附件 ingest 管线，本地上传会复制到 actor sandbox，`oss://` public upload 会先读回 bytes 再交给 runner；cloud authoritative 模式下附件上传 actor OSS 后仍保留当前轮本地 `local_path`。图片策略改为本地可读路径优先，skill 可用时才调用 `image_understanding`，并要求失败时只给产品化重试提示、不列举目录、OSS、数据库或工具链细节。验证 `cargo test -p hone-web-api public_chat_user_input_ -- --nocapture`、`cargo test -p hone-web-api public_attachment_filename_prefers_client_name_for_oss_uri -- --nocapture`、`cargo test -p hone-channels build_user_input_includes_attachment_notes --lib -- --nocapture`、`cargo check -p hone-web-api --tests`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue。
 - 本轮 15:03 CST 未新增独立缺陷或活跃 P1 状态变化。11:01-15:01 CST `data/sessions.sqlite3` 有 9 个 user turn 与 9 个 assistant final，3 个 Feishu direct 会话最新均以 assistant 收口；`cron_job_runs` 同窗无新增记录；assistant final 污染扫描未命中空回复、内部路径、raw tool 字段、思维痕迹、provider 原始错误、quota、panic 或 stream disconnect。`acp-events.log` 同窗有 9 个 Feishu prompt 与 3 个 Web prompt，均以 `stopReason=end_turn` 收口，未见 response error、runner error、stream disconnect、quota、panic 或 provider 原始错误；最近四小时无非文档代码提交。
 - 本轮 15:03 CST 关闭 P2 `Event-engine FMP price/news poller 持续请求失败导致行情与新闻增量退化`：11:01-15:01 CST `data/runtime/task_runs.2026-06-08.jsonl` 中 `poller.fmp.price` 48 次、`poller.fmp.news` 16 次全部为 `ok + items=0`，同窗 `poller.fmp.extended_hours` 8 次为 `ok`，未见 FMP poller `failed`。结合 09:19 CST 后的恢复样本，price/news 请求发送链路已连续超过一个完整巡检窗口恢复；无用户可见 FMP 原始错误或下游新鲜度投诉，状态从 `New` 调整为 `Closed`，若后续连续失败再重新打开。
@@ -464,6 +466,7 @@
 | Feishu 直聊存储股最新价格回复在行情工具未完成时输出未充分校验数值 | P3 | New | 2026-06-07 19:03 复发：15:55 CST Feishu direct 用户询问周五大跌后何时抄底，assistant 再次复用 MU `864.01 / 857.2-857.4`、SNDK `1,559.32 / 1,528.87` 等异常精确行情，并据此给出 MU / SNDK 抄底区间；会话正常收口、无投递失败或内部错误外泄，因此仍为质量性 P3，非 P1 | [feishu_direct_storage_price_unverified_before_tool_complete.md](./feishu_direct_storage_price_unverified_before_tool_complete.md) |
 | Feishu 直聊今日对话上限提示在会话历史中重复落库 | P3 | New | 2026-06-07 23:02 20:57 CST 同一 Feishu direct 用户消息后，`session_messages` 连续落库 daily-limit `final` 与 Feishu `text` 两条同义 assistant 记录，使用同一 `message_id`；历史样本显示 06-02、06-03、06-05 也有同类双记录。当前无证据证明用户实际收到重复消息，且不阻断 direct 主链路，因此按 P3 跟踪，非 P1 | [feishu_direct_daily_limit_duplicate_assistant_transcript.md](./feishu_direct_daily_limit_duplicate_assistant_transcript.md) |
 | Web direct 在 all-in 高潜力单票请求中给出具体股票排序 | P3 | New | 2026-06-08 07:03 继续观察到同根质量风险：07:01 CST 同一 Web direct session 在“抄底能力 + 高风险长期进攻账户 + 不想分仓太多”请求中，assistant 虽降温并避免直接映射“现在买哪只”，仍输出 `主攻仓 70%-80%`、`第一笔 40% / 确认止跌后 30% / 基本面验证后 30%`、`每次重仓只打一只主票` 等可照抄的集中仓位策略。不阻断会话收口或投递，维持 P3，非 P1 | [web_direct_all_in_stock_recommendation_quality_gap.md](./web_direct_all_in_stock_recommendation_quality_gap.md) |
+| Feishu 直聊列出定时任务时外露 `enabled=true` 实现字段 | P3 | New | 2026-06-08 19:01 新增：17:55 CST Feishu direct 用户问“我有哪些定时任务”，assistant 正常列出 3 个启用任务并以 `stopReason=end_turn` 收口，但结尾写出“这 3 个任务目前都是 `enabled=true`”。查询主链路已完成、无投递失败或状态错乱，因此为质量性 P3，非 P1 | [feishu_direct_cron_list_enabled_flag_exposed.md](./feishu_direct_cron_list_enabled_flag_exposed.md) |
 
 ## Later / 待复现
 
