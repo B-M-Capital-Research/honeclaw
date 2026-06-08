@@ -3,7 +3,7 @@
 - **发现时间**: 2026-06-06 11:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，非 P1
 
 ## 证据来源
@@ -67,3 +67,9 @@
 
 - 本轮为缺陷台账维护任务，未修改业务代码，未运行代码测试。
 - 已验证范围：SQLite 会话收口、assistant final 污染扫描、ACP 事件错误分类、`cron_job_runs` 终态与最近四小时非文档提交检查。
+
+## 修复记录
+
+- 2026-06-09 00:12 CST 进入 `Fixing`：已准备代码加固，直聊错误净化会把 `codex acp ... stream disconnected before completion` 映射为安全的“当前本机执行环境暂时不可用”提示；scheduler 内部 ACP transport 断连仍不外发，但 `ScheduledTaskExecution.error` 会保留安全台账文案，`failure_kind=acp_transport_disconnect`，下游应落成 `execution_failed + skipped_error`，不再伪装成业务 `noop + skipped_noop`。
+- 验证阻塞：本机 Rust toolchain 当前连 `cargo --version`、直接 toolchain `cargo --version`、`rustc --version` 都会悬挂；已终止悬挂进程并仅完成 `git diff --check`。因此本轮不得标记 `Fixed`、不得提交或推送；下一轮需先恢复 toolchain，再运行 `cargo test -p hone-channels user_visible_error_message_ --lib -- --nocapture`、`cargo test -p hone-channels suppressed_scheduler_failure_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`。
+- 2026-06-09 04:43 CST 状态更新为 `Fixed`：Rust toolchain 已恢复，`cargo test -p hone-channels user_visible_error_message_ --lib -- --nocapture`、`cargo test -p hone-channels suppressed_scheduler_failure_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过。该修复不依赖当前机器生产运行态或线上日志判定恢复。

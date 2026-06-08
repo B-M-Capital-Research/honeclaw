@@ -130,3 +130,5 @@
 - **文档同步**:
   - 已同步 `docs/bugs/README.md` 活跃计数、状态和已修复表。
   - 本修复不改变模块边界、入口、长期约束或运行工作流，不需要更新 `docs/repo-map.md`、`docs/current-plan.md` 或新增 handoff。
+- 2026-06-09 00:12 CST 复核当前代码：`sanitize_user_visible_output(...)` 已有 `sanitize_user_visible_output_redacts_internal_relative_company_profile_paths` 回归覆盖 `company_profiles/AVGO.md` 用户可见文本净化，本轮未新增代码；但 Rust toolchain 当前悬挂，无法重跑该回归，因此状态先记为 `Fixing` 而不是 `Fixed`。下一轮需恢复 toolchain 后运行 `cargo test -p hone-channels sanitize_user_visible_output_redacts_internal_relative_company_profile_paths --lib -- --nocapture`，通过后再从活跃队列移出。
+- 2026-06-09 04:43 CST 状态更新为 `Fixed`：Rust toolchain 已恢复，`cargo test -p hone-channels sanitize_user_visible_output_redacts_internal_relative_company_profile_paths --lib -- --nocapture` 与 `cargo check -p hone-channels --tests` 通过。本轮未新增业务代码，仅以当前代码和回归确认该相对路径净化缺陷可退出活跃队列。

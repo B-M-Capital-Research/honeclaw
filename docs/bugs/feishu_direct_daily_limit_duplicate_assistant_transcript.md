@@ -14,7 +14,7 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## 证据来源
 
@@ -70,3 +70,9 @@
 - 若 `session_messages` 是用户可见 transcript，应只保留一条 assistant 记录，并把 Feishu delivery metadata 合并进同一条记录。
 - 增加回归：同一用户消息触发 daily-limit 后，`session_messages` 中只新增一条 assistant turn，且后续 user/assistant 计数保持成对。
 - 若后续确认 Feishu API 实际发送了两次相同文本，应将严重等级从 P3 提升为 P2，并补充出站投递证据。
+
+## 修复记录
+
+- 2026-06-09 00:12 CST 进入 `Fixing`：Feishu handler 的 `persist_visible_assistant_message(...)` 已增加尾部 assistant 文本幂等保护。若 agent session 的 quota short-circuit 已经在同一 session 尾部写入同一条 daily-limit assistant final，handler failure fallback 不再追加同义 Feishu text mirror；新增 `session_tail_assistant_matches_detects_duplicate_quota_reply` 回归。
+- 验证阻塞：本机 Rust toolchain 当前 `cargo` / `rustc` 均悬挂，本轮仅完成 `git diff --check`，不能标记 `Fixed`。下一轮需运行 `cargo test -p hone-feishu session_tail_assistant_matches_detects_duplicate_quota_reply -- --nocapture` 与 `cargo check -p hone-feishu --tests`。
+- 2026-06-09 04:43 CST 状态更新为 `Fixed`：`cargo test -p hone-feishu session_tail_assistant_matches_detects_duplicate_quota_reply -- --nocapture` 通过；默认 target 下 `cargo check -p hone-feishu --tests` 曾在 rustc 0% CPU 状态悬挂，使用 fresh target 规避本地缓存问题后 `CARGO_TARGET_DIR=/tmp/honeclaw-feishu-check CARGO_INCREMENTAL=0 cargo check -p hone-feishu --tests` 通过。

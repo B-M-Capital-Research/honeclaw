@@ -787,6 +787,25 @@ fn resolve_prompt_input_warns_web_cron_cannot_send_mobile_system_push() {
 }
 
 #[test]
+fn resolve_prompt_input_maps_cron_enabled_flags_to_user_language() {
+    let root = make_temp_dir("hone_channels_prompt_cron_enabled_language");
+    std::fs::create_dir_all(&root).expect("create root");
+    let llm = MockLlmProvider::with_tool_responses(Vec::new());
+    let core = make_test_core(&root, llm);
+    let actor = ActorIdentity::new("feishu", "ou_cron", None::<String>).expect("actor");
+    let session = AgentSession::new(core, actor, "ou_cron").with_cron_allowed(true);
+
+    let (system_prompt, _) = session.resolve_prompt_input("session-demo", "我有哪些定时任务");
+
+    assert!(system_prompt.contains("【定时任务 / 心跳任务策略】"));
+    assert!(system_prompt.contains("不要直接复述 `enabled=true`"));
+    assert!(system_prompt.contains("已启用 / 已停用"));
+    assert!(system_prompt.contains("豁免勿扰"));
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn resolve_prompt_input_places_recv_extra_before_compact_summary() {
     let root = make_temp_dir("hone_channels_prompt_recv_extra_priority");
     let storage = SessionStorage::new(root.join("sessions"));

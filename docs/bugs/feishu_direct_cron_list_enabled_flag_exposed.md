@@ -64,10 +64,14 @@
 - 2026-06-09 已修复：
   - 共享 `sanitize_user_visible_output(...)` 新增 `enabled=true/false` 到“已启用 / 已停用”的用户态映射，并把“这 3 个任务目前都是 `enabled=true`”归一成“这 3 个任务目前均已启用”。
   - 修复落在共享净化层，因此 Feishu/Web direct 与 scheduler 共用同一用户态文案边界。
+- 2026-06-09 04:43 CST 追加 prompt 层防线：
+  - `DEFAULT_CRON_TASK_POLICY` 已补充用户态任务状态措辞约束，要求列出/说明任务状态时不要直接复述 `enabled=true`、`enabled=false`、`bypass_quiet_hours=true` 等实现层 key/value，而要改写为“已启用 / 已停用 / 遵守勿扰 / 豁免勿扰”等自然语言。
+  - 新增 `resolve_prompt_input_maps_cron_enabled_flags_to_user_language` 回归，避免仅依赖出站净化兜底。
 
 ## 验证
 
 - `cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`
+- `cargo test -p hone-channels resolve_prompt_input_maps_cron_enabled_flags_to_user_language --lib -- --nocapture`
 - `cargo check -p hone-channels --tests`
 
 ## 文档同步

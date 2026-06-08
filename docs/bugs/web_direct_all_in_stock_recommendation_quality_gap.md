@@ -14,7 +14,7 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## GitHub Issue
 
@@ -74,3 +74,9 @@
 - 在金融系统 prompt 或出站 guard 中增加 all-in / 单票 / 目标倍数请求的专门约束：只给研究框架、候选池条件和证伪清单，不输出“如果只买一只就选 X”。
 - 对“建议什么股票 / 现在买吗 / all in / 仓位比例”组合语义增加回归样本，确保回复不生成可直接照抄的 ticker 排序和买入比例。
 - 若产品仍希望支持候选池输出，应统一表述为“待研究候选，不构成买入建议”，并避免按用户执行偏好做单票映射。
+
+## 修复记录
+
+- 2026-06-09 00:12 CST 进入 `Fixing`：`DEFAULT_FINANCE_DOMAIN_POLICY` 已补充 all-in / 满仓 / 单票 / 高风险进攻 / 快速翻倍 / 不想分仓场景的强约束，禁止输出可照抄的单票排序、唯一主攻标的映射、`70%-80%` 这类集中仓位模板，要求先降温并收敛到风险暴露上限、分散原则、触发条件和证伪条件；`build_prompt_bundle_always_includes_finance_domain_policy` 已补断言。
+- 验证阻塞：本机 Rust toolchain 当前 `cargo` / `rustc` 均悬挂，本轮仅完成 `git diff --check`，不能标记 `Fixed`。下一轮需运行 `cargo test -p hone-channels build_prompt_bundle_always_includes_finance_domain_policy --lib -- --nocapture` 与 `cargo check -p hone-channels --tests`。
+- 2026-06-09 04:43 CST 状态更新为 `Fixed`：`cargo test -p hone-channels build_prompt_bundle_always_includes_finance_domain_policy --lib -- --nocapture` 与 `cargo check -p hone-channels --tests` 通过。

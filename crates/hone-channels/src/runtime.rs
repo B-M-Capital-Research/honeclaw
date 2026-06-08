@@ -529,6 +529,9 @@ pub fn user_visible_error_message(raw: Option<&str>) -> String {
     if is_hone_mcp_binary_missing_error(&sanitized) {
         return RUNNER_RESOURCE_UNAVAILABLE_USER_ERROR_MESSAGE.to_string();
     }
+    if looks_runner_transport_disconnect_error_lowered(&lowered) {
+        return RUNNER_RESOURCE_UNAVAILABLE_USER_ERROR_MESSAGE.to_string();
+    }
     if let Some(message) = user_actionable_error_message(&sanitized, &lowered) {
         return message;
     }
@@ -619,6 +622,14 @@ fn looks_runner_resource_unavailable_error_lowered(lowered: &str) -> bool {
             || lowered.contains("not found near current executable"))
 }
 
+fn looks_runner_transport_disconnect_error_lowered(lowered: &str) -> bool {
+    (lowered.contains("codex") || lowered.contains("runner") || lowered.contains("acp"))
+        && (lowered.contains("stream disconnected before completion")
+            || lowered.contains("stream closed before response")
+            || lowered.contains("acp stream disconnected")
+            || lowered.contains("transport disconnected"))
+}
+
 fn looks_timeout_error_lowered(lowered: &str) -> bool {
     lowered.contains("timeout") || lowered.contains("timed out")
 }
@@ -673,6 +684,7 @@ fn looks_internal_error_detail(sanitized: &str, lowered: &str) -> bool {
         || lowered.contains("provider")
         || lowered.contains("session/prompt")
         || lowered.contains("codex acp")
+        || lowered.contains("stream disconnected before completion")
         || lowered.contains("stream closed before response")
         || lowered.contains("acp stream")
 }
@@ -1247,6 +1259,16 @@ mod tests {
     }
 
     #[test]
+    fn user_visible_error_message_maps_acp_transport_disconnect_errors() {
+        let err = user_visible_error_message(Some(
+            "codex acp error: stream disconnected before completion",
+        ));
+        assert_eq!(err, RUNNER_RESOURCE_UNAVAILABLE_USER_ERROR_MESSAGE);
+        assert!(!err.contains("stream disconnected"));
+        assert!(!err.contains("codex acp"));
+    }
+
+    #[test]
     fn user_visible_error_message_maps_hone_mcp_startup_errors() {
         let err = user_visible_error_message(Some(
             "hone-mcp binary not found near current executable; tried: /private/app/hone-mcp, /private/app/hone-mcp-aarch64-apple-darwin (set HONE_MCP_BIN to override)",
@@ -1271,6 +1293,14 @@ mod tests {
     fn user_visible_error_message_or_none_suppresses_internal_acp_errors() {
         let err = user_visible_error_message_or_none(Some(
             "codex acp prompt ended before tool completion: Searching the Web",
+        ));
+        assert!(err.is_none());
+    }
+
+    #[test]
+    fn user_visible_error_message_or_none_suppresses_acp_transport_disconnect_errors() {
+        let err = user_visible_error_message_or_none(Some(
+            "codex acp error: stream disconnected before completion",
         ));
         assert!(err.is_none());
     }

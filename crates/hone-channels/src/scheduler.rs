@@ -46,6 +46,8 @@ fn heartbeat_runner_selection() -> ExecutionRunnerSelection {
 }
 const SCHEDULER_INTERNAL_FAILURE_TRANSCRIPT_MESSAGE: &str =
     "本轮定时任务未能完成，系统已记录失败并将在下一次触发时重试。";
+const SCHEDULER_INTERNAL_FAILURE_LEDGER_MESSAGE: &str =
+    "定时任务执行环境暂时不可用，系统已记录失败并将在下一次触发时重试。";
 const STALE_MARKET_DATA_FAILURE_MESSAGE: &str =
     "本轮定时任务未能完成：关键行情数据获取失败，系统已跳过旧价格版本，并将在下一次触发时重试。";
 
@@ -1958,6 +1960,24 @@ fn heartbeat_execution_from_runner_error(
     }
 }
 
+fn scheduler_suppressed_failure_kind(raw_error: Option<&str>) -> &'static str {
+    let Some(error) = raw_error else {
+        return "internal_error_suppressed";
+    };
+    let lower = error.to_ascii_lowercase();
+    if lower.contains("stream disconnected before completion")
+        || lower.contains("stream closed before response")
+        || lower.contains("acp stream disconnected")
+        || lower.contains("transport disconnected")
+    {
+        return "acp_transport_disconnect";
+    }
+    if lower.contains("timeout") || lower.contains("timed out") {
+        return "scheduler_runner_timeout";
+    }
+    "internal_error_suppressed"
+}
+
 pub fn scheduled_task_failure_kind(execution: &ScheduledTaskExecution) -> Option<&str> {
     execution
         .metadata
@@ -2620,25 +2640,31 @@ pub async fn execute_scheduler_event(
             }
         } else {
             let sanitized_error = user_visible_error_message_or_none(response.error.as_deref());
+            let suppressed_failure_kind =
+                scheduler_suppressed_failure_kind(response.error.as_deref());
             if sanitized_error.is_none() {
                 tracing::warn!(
-                    "[SchedulerDiag] suppressed internal failure fallback job_id={} job={} error=\"{}\"",
+                    "[SchedulerDiag] suppressed internal failure fallback job_id={} job={} failure_kind={} error=\"{}\"",
                     event.job_id,
                     event.job_name,
+                    suppressed_failure_kind,
                     response.error.as_deref().unwrap_or("").replace('\n', "\\n"),
                 );
                 persist_suppressed_scheduler_failure_turn(
                     &core.session_storage,
                     &session_id,
-                    "internal_error_suppressed",
+                    suppressed_failure_kind,
                 );
             }
+            let should_deliver = sanitized_error.is_some();
             ScheduledTaskExecution {
-                should_deliver: sanitized_error.is_some(),
+                should_deliver,
                 content: String::new(),
-                error: sanitized_error,
+                error: sanitized_error.or_else(|| {
+                    Some(SCHEDULER_INTERNAL_FAILURE_LEDGER_MESSAGE.to_string())
+                }),
                 metadata: json!({
-                    "failure_kind": "internal_error_suppressed",
+                    "failure_kind": suppressed_failure_kind,
                 }),
                 session_id: Some(session_id),
             }
@@ -2912,7 +2938,7 @@ mod tests {
         heartbeat_runner_selection, inspect_heartbeat_result, is_empty_success_fallback,
         is_stale_market_data_success_fallback, load_actor_quiet_hours,
         persist_suppressed_scheduler_failure_turn, rollback_skipped_scheduler_assistant_turn,
-        sanitize_scheduler_delivery_text,
+        sanitize_scheduler_delivery_text, scheduler_suppressed_failure_kind,
     };
     use crate::HoneBotCore;
     use crate::agent_session::{AgentRunOptions, AgentRunQuotaMode};
@@ -3619,6 +3645,24 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn suppressed_scheduler_failure_kind_classifies_acp_disconnect() {
+        assert_eq!(
+            scheduler_suppressed_failure_kind(Some(
+                "codex acp error: stream disconnected before completion"
+            )),
+            "acp_transport_disconnect"
+        );
+        assert_eq!(
+            scheduler_suppressed_failure_kind(Some("codex acp session/prompt idle timeout (180s)")),
+            "scheduler_runner_timeout"
+        );
+        assert_eq!(
+            scheduler_suppressed_failure_kind(Some("codex acp prompt ended before tool completion")),
+            "internal_error_suppressed"
+        );
     }
 
     #[test]

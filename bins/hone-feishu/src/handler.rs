@@ -27,6 +27,7 @@ use hone_channels::runtime::{
 };
 use hone_channels::think::{ThinkRenderStyle, ThinkStreamFormatter, render_think_blocks};
 use hone_core::{ActorIdentity, SessionIdentity};
+use hone_memory::{SessionStorage, session_message_text};
 use serde_json::{Value, json};
 use tracing::{error, info, warn};
 
@@ -188,10 +189,31 @@ fn persist_visible_assistant_message(
     content: &str,
     metadata: Option<HashMap<String, Value>>,
 ) {
+    if session_tail_assistant_matches(&state.core.session_storage, session_id, content) {
+        return;
+    }
     let _ = state
         .core
         .session_storage
         .add_message(session_id, "assistant", content, metadata);
+}
+
+fn session_tail_assistant_matches(
+    storage: &SessionStorage,
+    session_id: &str,
+    content: &str,
+) -> bool {
+    let expected = content.trim();
+    if expected.is_empty() {
+        return false;
+    }
+    storage
+        .get_messages(session_id, Some(1))
+        .ok()
+        .and_then(|messages| messages.into_iter().next())
+        .is_some_and(|message| {
+            message.role == "assistant" && session_message_text(&message).trim() == expected
+        })
 }
 
 #[async_trait]
@@ -1656,6 +1678,47 @@ mod tests {
     use hone_core::ActorIdentity;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn session_tail_assistant_matches_detects_duplicate_quota_reply() {
+        let root = std::env::temp_dir().join(format!(
+            "hone_feishu_tail_match_{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&root).expect("create root");
+        let storage = SessionStorage::new(root.join("sessions"));
+        let actor = ActorIdentity::new("feishu", "ou_quota", None::<String>).expect("actor");
+        let session_id = storage
+            .create_session_for_actor(&actor)
+            .expect("create session");
+        let daily_limit_reply =
+            "已达到今日对话上限（12/12，北京时间 2026-06-07），请明天再试";
+
+        storage
+            .add_message(&session_id, "user", "继续", None)
+            .expect("add user");
+        assert!(!session_tail_assistant_matches(
+            &storage,
+            &session_id,
+            daily_limit_reply
+        ));
+        storage
+            .add_message(&session_id, "assistant", daily_limit_reply, None)
+            .expect("add assistant");
+
+        assert!(session_tail_assistant_matches(
+            &storage,
+            &session_id,
+            daily_limit_reply
+        ));
+        assert!(!session_tail_assistant_matches(
+            &storage,
+            &session_id,
+            "其它回复"
+        ));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
 
     #[test]
     fn allow_list_empty_means_allow_all() {

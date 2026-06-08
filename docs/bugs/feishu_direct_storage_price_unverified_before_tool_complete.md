@@ -3,7 +3,7 @@
 - **发现时间**: 2026-06-06 23:04 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，非 P1
 
 ## 证据来源
@@ -91,3 +91,9 @@
 - 已验证范围：SQLite 会话收口、assistant final 污染扫描、ACP tool call / final chunk 时序、`cron_job_runs` 同窗无新增、最近四小时提交检查。
 - 2026-06-07 15:02 CST 复核为缺陷台账维护任务，未修改业务代码，未运行代码测试；已验证范围：SQLite 会话收口、assistant final 污染扫描、ACP `end_turn`、本轮 `cron_job_runs` 无新增、最近四小时无非文档代码提交。
 - 2026-06-07 19:03 CST 复核为缺陷台账维护任务，未修改业务代码，未运行代码测试；已验证范围：SQLite 会话收口、assistant final 污染扫描、ACP prompt / `end_turn` 对齐、相关 tool call 时序、本轮 `cron_job_runs` 无新增、最近四小时无非文档代码提交。
+
+## 修复记录
+
+- 2026-06-09 00:12 CST 进入 `Fixing`：`DEFAULT_FINANCE_DOMAIN_POLICY` 已新增“多标的最新行情约束”，要求多个股票 / ETF / 基金的最新价格、盘后价、日内区间、估值倍数或配置/抄底区间必须逐一具备本轮独立核验的来源、时间戳和交易时段口径；不得复用其它标的搜索结果、历史公司画像或未完成工具读取中的数字作为精确行情锚点；未完成稳定校验时不得输出精确价格、Forward PE 或操作区间。`build_prompt_bundle_always_includes_finance_domain_policy` 已补断言。
+- 验证阻塞：本机 Rust toolchain 当前 `cargo` / `rustc` 均悬挂，本轮仅完成 `git diff --check`，不能标记 `Fixed`。下一轮需运行 `cargo test -p hone-channels build_prompt_bundle_always_includes_finance_domain_policy --lib -- --nocapture` 与 `cargo check -p hone-channels --tests`。
+- 2026-06-09 04:43 CST 状态更新为 `Fixed`：`cargo test -p hone-channels build_prompt_bundle_always_includes_finance_domain_policy --lib -- --nocapture` 与 `cargo check -p hone-channels --tests` 通过。

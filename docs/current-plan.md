@@ -1,6 +1,6 @@
 # Current Plan Index
 
-最后更新：2026-06-08
+最后更新：2026-06-09
 状态：有 6 个活跃任务
 
 ## 说明
@@ -19,7 +19,7 @@
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/active-bug-burn-down-2026-04-28.md`
-  - 摘要：集中清理 `docs/bugs/README.md` 活跃缺陷；2026-06-08 已修复 Web public 图片附件未进入 runner 可读上下文的问题，当前活跃队列已无 `P0/P1`
+  - 摘要：集中清理 `docs/bugs/README.md` 活跃缺陷；2026-06-09 远端先关闭 3 条文案污染 P3，本轮继续验证并修复剩余 4 条活跃 bug，当前活跃待修复队列清空
 - **Chart Visualization Skill 与多通道 PNG 投递**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/chart-visualization-skill.md`
