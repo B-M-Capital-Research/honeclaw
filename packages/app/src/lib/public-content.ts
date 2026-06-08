@@ -437,7 +437,7 @@ const CONTENT_ZH = {
       },
       {
         title: "事件与任务",
-        desc: "Cron 任务、事件引擎摘要、`/missed` 回查、通知偏好与渠道投递共享 Rust 后端、SQLite/JSON 或 PG 执行历史和用户归属模型；Web scheduler 结果先落入会话历史，SSE 只负责在线实时提示，因此浏览器离线不会把已落库结果误记为送达失败，执行错误会写入产品化失败提示并通过同一 `scheduled_message` 事件推送给在线控制台；MCP/ACP runner 现在使用绝对 `HONE_CONFIG_PATH`，并会绝对化父进程传入的 `HONE_DATA_DIR`、忽略空串后从 runtime dir 反推数据根，目标是让 Feishu / Web / scheduler 工具读取同一份 Cron 与持仓数据；Feishu direct Cron 与 portfolio 作用域读空当前是代码级 Fixed 但尚未 Closed，仍需 live 重启 / 复核后才能表述为完全闭环；Feishu 等渠道的 scheduler heartbeat 已补齐 revision-aware 重复抑制、stale running 行终结、cloud cron 操作超时保护与 listener 内 scheduler loop 监督重启，event-engine 默认 LLM 配置已切到当前可用的 `x-ai/grok-4.3`，避免继续依赖已下线的 Grok 4.1 Fast。",
+        desc: "Cron 任务、事件引擎摘要、`/missed` 回查、通知偏好与渠道投递共享 Rust 后端、SQLite/JSON 或 PG 执行历史和用户归属模型；Web scheduler 结果先落入会话历史，SSE 只负责在线实时提示，因此浏览器离线不会把已落库结果误记为送达失败，执行错误会写入产品化失败提示并通过同一 `scheduled_message` 事件推送给在线控制台；MCP/ACP runner 现在使用绝对 `HONE_CONFIG_PATH`，并会绝对化父进程传入的 `HONE_DATA_DIR`、忽略空串后从 runtime dir 反推数据根，目标是让 Feishu / Web / scheduler 工具读取同一份 Cron 与持仓数据；Feishu direct Cron 与 portfolio 作用域读空当前是代码级 Fixed 但尚未 Closed，仍需 live 重启 / 复核后才能表述为完全闭环；Feishu 等渠道的 scheduler heartbeat 已补齐 revision-aware 重复抑制、stale running 行终结、cloud cron 操作超时保护与 listener 内 scheduler loop 监督重启；Discord scheduler 发送失败台账现在会优先保留 runner 错误或 Discord 发送错误，没有上游文案时也会写入脱敏的通用失败原因；event-engine 默认 LLM 配置已切到当前可用的 `x-ai/grok-4.3`，避免继续依赖已下线的 Grok 4.1 Fast。",
       },
     ],
 
@@ -535,7 +535,7 @@ const CONTENT_ZH = {
           {
             name: "Cron 定时任务",
             status: "stable",
-            note: "scheduled_task skill + /api/cron-jobs + 执行历史 / heartbeat / quiet_hours / guard / Web SSE 投递回归",
+            note: "scheduled_task skill + /api/cron-jobs + 执行历史 / heartbeat / quiet_hours / guard / Web SSE 与 Discord 发送失败诊断回归",
           },
           {
             name: "自定义 Skill",
@@ -600,7 +600,7 @@ const CONTENT_ZH = {
         name: "Discord",
         icon: "∞",
         status: "stable",
-        desc: "Bot 应用集成",
+        desc: "Bot 应用集成；scheduler 发送失败会保留脱敏错误原因",
       },
       {
         name: "Telegram",
@@ -642,7 +642,7 @@ const CONTENT_ZH = {
       { name: "image_generation", desc: "持仓截图、研究图卡、说明图" },
       {
         name: "image_understanding",
-        desc: "解析可读图片输入；Web direct 上传截图桥接仍按 P2 bug ledger 复核",
+        desc: "解析可读图片输入；Web direct 图片附件进入 OCR / 可读链路仍按 active P2 bug ledger 复核",
       },
       {
         name: "pdf_understanding",
@@ -677,6 +677,7 @@ const CONTENT_ZH = {
         "事件引擎与 scheduler 质量收口：digest 去重 / min-gap / topic memory / 分类预算 / 方向性价格阈值 / Feishu heartbeat revision 去重 / stale running 记录恢复 / scheduler loop 监督重启",
         "Event-engine 默认模型与示例配置已替换为 `x-ai/grok-4.3`，避免 Grok 4.1 Fast 下线导致新闻分类、global digest、mainline distill 等 LLM 增强链路失效",
         "Event-engine FMP 行情 / 新闻 poller 持续请求失败仍在 active P2 跟踪；这会影响实时行情、新闻增量和 digest 候选新鲜度，公开页不把这条摄取链路表述为完全健康",
+        "截至 2026-06-08 07:03 CST，活跃 bug ledger 没有 P0 / P1；仍有 Web 图片附件 OCR / 内部排障口径、FMP price/news poller、Codex ACP transport 断连三条 P2，以及公司画像路径、行情未校验、daily-limit 重复落库、all-in 高风险仓位建议等 P3，公开文案按这些边界保守描述能力",
         "LLM provider 配置收口到 `config.yaml`，OpenRouter 与通用 OpenAI-compatible provider 支持 `api_key/api_keys` 轮换，并保留上游错误详情便于诊断",
         "Cloud PG / OSS 运行时：`cloud.postgres` / `cloud.oss` 可通过 env 配置，公开上传、生成图片 / 文件与迁移文档可写入 OSS，公开图片 / 文件代理可读取 `oss://bucket/key` 托管对象，`/api/meta` 会暴露云能力状态和本地 durable dependency 计数",
         "云迁移边界清晰：sessions、Web invite/auth sessions、conversation quota、cron jobs/runs、due-job claims、skill registry、notification prefs、portfolio、LLM audit 与 company profile files 已有 PG 热路径；`cloud.strict_no_local_storage=true` 会在当前配置仍有 durable 本地依赖时阻止启动",
@@ -1987,7 +1988,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         title: "Events and tasks",
-        desc: "Cron jobs, event-engine digests, `/missed` recovery, notification preferences, and channel delivery share the Rust backend, SQLite/JSON or PG execution history, and user ownership model; Web scheduler results are persisted to conversation history first and use SSE only for live hints, so an offline browser no longer turns persisted results into false delivery failures, while execution errors are stored as productized failure messages and broadcast through the same `scheduled_message` event for online consoles; MCP/ACP runners now receive an absolute `HONE_CONFIG_PATH`, and the MCP bridge absolutizes inherited `HONE_DATA_DIR` values or ignores empty ones before deriving the data root from the runtime dir, so Feishu / Web / scheduler tools are intended to read the same Cron and portfolio stores; the Feishu direct empty Cron / portfolio-scope bug is code-level Fixed but not yet Closed, so the public page still waits for live restart / verification before describing that path as fully closed; Feishu and other channel scheduler heartbeats now include revision-aware duplicate suppression, stale running-row finalization, cloud cron operation timeouts, and supervised scheduler-loop restarts inside the listener, and event-engine default LLM config now uses the currently available `x-ai/grok-4.3` instead of the retired Grok 4.1 Fast.",
+        desc: "Cron jobs, event-engine digests, `/missed` recovery, notification preferences, and channel delivery share the Rust backend, SQLite/JSON or PG execution history, and user ownership model; Web scheduler results are persisted to conversation history first and use SSE only for live hints, so an offline browser no longer turns persisted results into false delivery failures, while execution errors are stored as productized failure messages and broadcast through the same `scheduled_message` event for online consoles; MCP/ACP runners now receive an absolute `HONE_CONFIG_PATH`, and the MCP bridge absolutizes inherited `HONE_DATA_DIR` values or ignores empty ones before deriving the data root from the runtime dir, so Feishu / Web / scheduler tools are intended to read the same Cron and portfolio stores; the Feishu direct empty Cron / portfolio-scope bug is code-level Fixed but not yet Closed, so the public page still waits for live restart / verification before describing that path as fully closed; Feishu and other channel scheduler heartbeats now include revision-aware duplicate suppression, stale running-row finalization, cloud cron operation timeouts, and supervised scheduler-loop restarts inside the listener; Discord scheduler failure records now preserve the runner error or Discord send error first, and fall back to a redacted generic send-failure reason when the upstream API gives no detail; event-engine default LLM config now uses the currently available `x-ai/grok-4.3` instead of the retired Grok 4.1 Fast.",
       },
     ],
 
@@ -2089,7 +2090,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           {
             name: "Cron scheduled tasks",
             status: "stable",
-            note: "scheduled_task skill + /api/cron-jobs + execution history / heartbeat / quiet_hours / guard / Web SSE delivery regressions",
+            note: "scheduled_task skill + /api/cron-jobs + execution history / heartbeat / quiet_hours / guard / Web SSE and Discord send-failure diagnostics regressions",
           },
           {
             name: "Custom skills",
@@ -2158,7 +2159,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         name: "Discord",
         icon: "∞",
         status: "stable",
-        desc: "Bot application integration",
+        desc: "Bot integration; scheduler send failures keep redacted error reasons",
       },
       {
         name: "Telegram",
@@ -2227,7 +2228,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         name: "image_understanding",
-        desc: "Parse readable image inputs; Web direct uploaded-screenshot bridging remains under P2 bug-ledger verification",
+        desc: "Parse readable image inputs; Web direct image attachments entering OCR / readable context remain under active P2 bug-ledger verification",
       },
       {
         name: "pdf_understanding",
@@ -2265,6 +2266,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         "Event-engine and scheduler quality pass: digest dedupe / min-gap / topic memory / category budgets / directional price thresholds / Feishu heartbeat revision dedupe / stale running-row recovery / scheduler-loop supervision",
         "Event-engine default models and sample config now use `x-ai/grok-4.3`, avoiding failures from the retired Grok 4.1 Fast in news classification, global digest, and mainline distillation paths",
         "Event-engine FMP price/news poller persistent request failures remain tracked as an active P2; they can degrade real-time quote, news-ingest, and digest-candidate freshness, so the public page does not describe that ingest path as fully healthy",
+        "As of 2026-06-08 07:03 CST, the active bug ledger has no P0 / P1 items; Web image-attachment OCR / internal-debug wording, the FMP price/news poller, and Codex ACP transport disconnects remain P2, while company-profile path wording, unverified quote numbers, daily-limit duplicate transcript rows, and all-in high-risk sizing advice remain P3, so public copy keeps those capability boundaries conservative",
         "LLM provider config is consolidated into `config.yaml`; OpenRouter and generic OpenAI-compatible providers support `api_key/api_keys` rotation and preserve upstream error details for diagnosis",
         "Cloud PG / OSS runtime: `cloud.postgres` / `cloud.oss` can be configured through env references; public uploads, generated images / files, and migrated documents can write to OSS; public image / file proxies can read `oss://bucket/key` managed objects; `/api/meta` exposes cloud capability state and the local durable dependency count",
         "Cloud migration boundaries are explicit: sessions, Web invites/auth sessions, conversation quota, cron jobs/runs, due-job claims, the skill registry, notification prefs, portfolio, LLM audit, and company profile files have PG hot paths; `cloud.strict_no_local_storage=true` blocks startup while the current config still has durable local dependencies",
