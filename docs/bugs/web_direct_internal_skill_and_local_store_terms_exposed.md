@@ -3,7 +3,7 @@
 - **发现时间**: 2026-06-08 23:04 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，非 P1
 
 ## 证据来源
@@ -65,3 +65,19 @@
   - `工具返回了全市场列表而不是按标的过滤`
 - 对 Web direct 增加回归样本：内部 skill 不可用、持仓本地文件与权威工具不一致时，最终回复应只保留业务化数据口径，不出现内部目录、文件格式或 skill 激活状态。
 - 后续巡检若仅在 `tool_call_update.rawOutput` 内看到这类信息，但最终用户可见 final 已自然化，不应补充为本缺陷复发。
+
+## 修复记录
+
+- 2026-06-09 已修复：
+  - 共享 `sanitize_user_visible_output(...)` 新增内部执行说明剥离规则：会过滤 `stock_research` / `skill` 未激活、改用其它技能框架、`data/portfolio` / 本地 `json` 文件口径，以及“返回全市场列表而不是按标的过滤”等自然语言内部说明。
+  - 保留最终业务结论与“以权威持仓工具为准”这类用户态口径，不再把 Web direct 的内部排障过程当成 final 正文。
+
+## 验证
+
+- `cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`
+- `cargo check -p hone-channels --tests`
+
+## 文档同步
+
+- 已同步更新 `docs/bugs/README.md` 活跃表与已修复表。
+- 本修复只收紧共享用户态文案净化边界，不改变模块边界、长期约束或运行工作流，无需更新 `docs/repo-map.md`、`docs/invariants.md` 或新增 handoff。

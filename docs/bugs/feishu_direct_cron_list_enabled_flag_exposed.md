@@ -3,7 +3,7 @@
 - **发现时间**: 2026-06-08 19:01 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，非 P1
 
 ## 证据来源
@@ -58,3 +58,19 @@
 - 在 cron/list 工具展示层或 answer guidance 中把 `enabled=true/false` 映射为“已启用 / 已停用”，避免模型直接复述布尔字段。
 - 对 Feishu direct “列出我的定时任务”增加一条回归样本：最终可见文本不应包含 `enabled=true`、`enabled=false` 或其它裸 key/value 实现字段。
 - 后续巡检若只看到内部工具结果包含 `enabled`，但最终用户可见文本已自然化，不应继续补充本缺陷证据。
+
+## 修复记录
+
+- 2026-06-09 已修复：
+  - 共享 `sanitize_user_visible_output(...)` 新增 `enabled=true/false` 到“已启用 / 已停用”的用户态映射，并把“这 3 个任务目前都是 `enabled=true`”归一成“这 3 个任务目前均已启用”。
+  - 修复落在共享净化层，因此 Feishu/Web direct 与 scheduler 共用同一用户态文案边界。
+
+## 验证
+
+- `cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`
+- `cargo check -p hone-channels --tests`
+
+## 文档同步
+
+- 已同步更新 `docs/bugs/README.md` 活跃表与已修复表。
+- 本修复只调整共享用户态文案净化，不改变模块边界、长期约束或运行工作流，无需更新 `docs/repo-map.md`、`docs/invariants.md` 或新增 handoff。

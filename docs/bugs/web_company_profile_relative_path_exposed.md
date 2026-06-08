@@ -3,7 +3,7 @@
 - **发现时间**: 2026-06-02 11:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，非 P1
 
 ## 证据来源
@@ -104,6 +104,11 @@
 
 ## 修复记录
 
+- 2026-06-09 继续补齐并关闭：
+  - 共享 `sanitize_user_visible_output(...)` 在原有 `company_profiles/...` / `events/*.md` 相对路径脱敏基础上，新增公司画像落点文案重写：`路径是：公司画像公司画像`、`本地画像：公司画像`、`本地公司画像：公司画像`、`把本轮更新补进本地画像：公司画像` 等退化文本会统一改成自然业务表达。
+  - 新增回归覆盖公司画像路径净化后的二次文案退化，避免只替换路径片段却把“路径”概念或重复“公司画像”继续暴露给用户。
+  - 本轮按代码与回归验证将状态更新为 `Fixed`；未依赖当前机器 live 重启做运行态复核。
+
 - 2026-06-03 19:03 CST 复发后回退：15:01-19:02 CST `session_messages` 共有 19 个 Feishu user turn 与 19 个 assistant final，Feishu direct 均成对收口，污染关键字扫描未命中 `hone-mcp binary not found`、原始工具字段、绝对路径、provider 报错或思维痕迹；但 `acp-events.log` 同窗 Web direct session `Actor_web__direct__web-user-c394f2531362` 对 `帮我评估一下nok` 已完成 NOK 分析并 `stopReason=end_turn` 收口，用户可见流式 chunk 仍输出 `本地画像：company_profiles/NOK.md`。由于这是 6 月 2 日修复后新的真实 Web direct 用户可见样本，本缺陷从 `Fixed` 回退为 `New`。该问题不影响分析正文、文件写入或投递收口，仍为质量性 `P3`，非 P1，不创建 GitHub issue。
 - 2026-06-03 23:02 CST 复核：19:02-23:02 CST `session_messages` 有 21 个 user turn 与 22 个 assistant 记录，Feishu direct 最近会话均已收口；多出的 assistant 是 daily-limit final/text 双记录，不构成重复回复缺陷。assistant final 污染扫描只命中 2 条 `company_profiles/...` 内部相对路径：19:38 CST XFAB 画像沉淀列出 profile / events 路径，22:58 CST HPE 深度分析写出 `company_profiles/HPE.md`。本轮没有绝对路径、raw tool 字段、思维痕迹或 provider 原始错误进入 final；该问题仍不影响分析正文、文件写入或投递收口，严重等级保持 `P3 / New`，非 P1，不创建 GitHub issue。
 - 2026-06-04 11:02 CST 复核：07:02-11:01 CST `session_messages` 有 14 个 Feishu user turn 与 14 个 assistant final，均成对收口；assistant final 污染扫描未命中 `company_profiles/...`、本机绝对路径、raw tool 字段、思维痕迹或 provider 原始错误，但 10:35 CST 腾讯画像回复出现 `路径是：公司画像公司画像`。该样本不再是原始路径外露，而是同一净化链路的重复替换 / 内部落点文案残留；不影响画像正文、文件写入或投递收口，严重等级保持 `P3 / New`，非 P1，不创建 GitHub issue。
@@ -120,6 +125,8 @@
 - **验证**:
   - `cargo test -p hone-channels sanitize_user_visible_output_redacts_internal_relative_company_profile_paths --lib -- --nocapture`
   - `cargo test -p hone-channels sanitize_user_visible_output_redacts_bare_absolute_paths --lib -- --nocapture`
+  - `cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
 - **文档同步**:
   - 已同步 `docs/bugs/README.md` 活跃计数、状态和已修复表。
   - 本修复不改变模块边界、入口、长期约束或运行工作流，不需要更新 `docs/repo-map.md`、`docs/current-plan.md` 或新增 handoff。

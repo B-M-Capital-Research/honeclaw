@@ -244,6 +244,50 @@ static RE_INTERNAL_RELATIVE_PROFILE_PATH: LazyLock<regex::Regex> = LazyLock::new
     )
     .expect("valid regex")
 });
+static RE_ENABLED_BOOLEAN: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r#"(?i)`?enabled\s*=\s*(?P<value>true|false)`?"#).expect("valid regex")
+});
+static RE_ENABLED_BOOLEAN_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r#"(?P<prefix>这\s*\d+\s*个任务目前)(?:都|全部都|都是)\s*已(?P<state>启用|停用)"#,
+    )
+    .expect("valid regex")
+});
+static RE_INTERNAL_SKILL_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r#"(?i)[^\n。！？]*(?:stock_research|deep_stock_research|skill)[^\n。！？]*(?:未激活|没有激活|未加载|未成功加载)[^\n。！？]*[。！？]?"#,
+    )
+    .expect("valid regex")
+});
+static RE_INTERNAL_FRAMEWORK_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r#"[^\n。！？]*(?:改用|改为|转而使用)[^\n。！？]*(?:技能框架|skill|tool)[^\n。！？]*[。！？]?"#)
+        .expect("valid regex")
+});
+static RE_INTERNAL_STORAGE_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r#"[^\n。！？]*(?:账本文件已定位到|本地\s*data/|data/portfolio|本地json文件|本地 json 文件|本地json|本地 json|本地文件仍只显示|json文件仍只显示)[^\n。！？]*[。！？]?"#,
+    )
+    .expect("valid regex")
+});
+static RE_INTERNAL_TOOLING_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r#"[^\n。！？]*(?:返回了?全市场列表|全市场列表而不是按标的过滤|工具过滤异常)[^\n。！？]*[。！？]?"#,
+    )
+    .expect("valid regex")
+});
+static RE_COMPANY_PROFILE_COPY_GLITCH: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r#"(?:路径是[:：]?\s*公司画像(?:公司画像)?|本地画像[:：]?\s*公司画像|本地公司画像[:：]?\s*公司画像)"#,
+    )
+    .expect("valid regex")
+});
+static RE_COMPANY_PROFILE_UPDATE_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r#"(?:我已|并)?把本轮更新补进本地画像[:：]?\s*公司画像"#)
+        .expect("valid regex")
+});
+static RE_COMPANY_PROFILE_WRITE_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r#"沉淀到本地公司画像[:：]?\s*公司画像"#).expect("valid regex")
+});
 
 // ── skip-buffer 检测正则 ──────────────────────────────────────────────────────
 static RE_ONLY_PUNCT: LazyLock<regex::Regex> =
@@ -327,6 +371,9 @@ pub fn sanitize_user_visible_output(text: &str) -> SanitizedUserVisibleOutput {
     let (path_sanitized, removed_paths) = redact_user_visible_local_paths(&sanitized);
     sanitized = path_sanitized;
     removed_internal |= removed_paths;
+    let (copy_rewritten, removed_copy) = rewrite_user_visible_internal_copy(&sanitized);
+    sanitized = copy_rewritten;
+    removed_internal |= removed_copy;
     sanitized = RE_WS.replace_all(&sanitized, " ").to_string();
     sanitized = RE_NL.replace_all(&sanitized, "\n\n").to_string();
     sanitized = sanitized.trim().to_string();
@@ -419,6 +466,58 @@ fn redact_user_visible_local_paths(text: &str) -> (String, bool) {
         });
 
     (internal_relative_stripped.into_owned(), removed)
+}
+
+fn rewrite_user_visible_internal_copy(text: &str) -> (String, bool) {
+    let mut removed = false;
+
+    let enabled_rewritten = RE_ENABLED_BOOLEAN.replace_all(text, |caps: &regex::Captures| {
+        removed = true;
+        match caps
+            .name("value")
+            .map(|value| value.as_str().to_ascii_lowercase())
+            .as_deref()
+        {
+            Some("true") => "已启用".to_string(),
+            Some("false") => "已停用".to_string(),
+            _ => caps[0].to_string(),
+        }
+    });
+    let mut rewritten = enabled_rewritten.into_owned();
+
+    let normalized_enabled =
+        RE_ENABLED_BOOLEAN_COPY.replace_all(&rewritten, "${prefix}均已${state}");
+    if normalized_enabled != rewritten {
+        removed = true;
+        rewritten = normalized_enabled.into_owned();
+    }
+
+    for re in [
+        &RE_INTERNAL_SKILL_COPY_SENTENCE,
+        &RE_INTERNAL_FRAMEWORK_COPY_SENTENCE,
+        &RE_INTERNAL_STORAGE_COPY_SENTENCE,
+        &RE_INTERNAL_TOOLING_COPY_SENTENCE,
+    ] {
+        let next = re.replace_all(&rewritten, "");
+        if next != rewritten {
+            removed = true;
+            rewritten = next.into_owned();
+        }
+    }
+
+    for (re, replacement) in [
+        (&RE_COMPANY_PROFILE_UPDATE_COPY, "把本轮更新补进公司画像"),
+        (&RE_COMPANY_PROFILE_WRITE_COPY, "沉淀到公司画像"),
+        (&RE_COMPANY_PROFILE_COPY_GLITCH, "已沉淀为公司画像"),
+    ] {
+        let next = re.replace_all(&rewritten, replacement);
+        if next != rewritten {
+            removed = true;
+            rewritten = next.into_owned();
+        }
+    }
+
+    (rewritten, removed)
 }
 
 pub fn user_visible_error_message(raw: Option<&str>) -> String {
@@ -1055,6 +1154,41 @@ mod tests {
             "我已把 AVGO 财报前框架沉淀到公司画像，后续财报出来可以直接对照更新。"
         );
         assert!(!sanitized.content.contains("company_profiles/"));
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_rewrites_enabled_boolean_copy() {
+        let raw = "这 3 个任务目前都是 `enabled=true`。";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(sanitized.removed_internal);
+        assert_eq!(sanitized.content, "这 3 个任务目前均已启用。");
+        assert!(!sanitized.content.contains("enabled=true"));
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_strips_internal_skill_and_storage_copy() {
+        let raw = "Hone 的 stock_research 技能名当前没有激活，所以我改用其它技能框架。账本文件已定位到本地 data/portfolio 下，本地 json 文件仍只显示旧仓位。以下以 Hone 持仓工具为准，并补充过去 24 小时的新闻和风险。";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(sanitized.removed_internal);
+        assert_eq!(
+            sanitized.content,
+            "以下以 Hone 持仓工具为准，并补充过去 24 小时的新闻和风险。"
+        );
+        assert!(!sanitized.content.contains("stock_research"));
+        assert!(!sanitized.content.contains("data/portfolio"));
+        assert!(!sanitized.content.contains("本地 json"));
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_rewrites_company_profile_copy_glitches() {
+        let raw = "我已为腾讯控股建立长期画像，路径是：\n公司画像公司画像。并把本轮更新补进本地画像：公司画像。";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(sanitized.removed_internal);
+        assert_eq!(
+            sanitized.content,
+            "我已为腾讯控股建立长期画像，已沉淀为公司画像。把本轮更新补进公司画像。"
+        );
+        assert!(!sanitized.content.contains("公司画像公司画像"));
     }
 
     #[test]
