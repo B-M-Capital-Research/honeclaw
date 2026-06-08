@@ -180,7 +180,6 @@ pub async fn ingest_raw_attachments(
                         Ok(()) => {
                             let uri = oss.object_uri(&key);
                             received.url = uri.clone();
-                            received.local_path = Some(uri);
                         }
                         Err(err) => {
                             warn!(
@@ -744,7 +743,7 @@ fn build_attachment_strategy_note_from_refs(attachments: &[&ReceivedAttachment])
 
     if has_image {
         lines.push(
-            "- 图片：优先调用 skill_tool(skill_name=\"image_understanding\")，按截图/图表理解流程处理。"
+            "- 图片：优先基于附件行里的本地可读路径理解截图/图表；若当前阶段明确暴露 `image_understanding` skill，可调用 `skill_tool(skill_name=\"image_understanding\")`。如果既不能读取图片也没有可用 OCR，不要列举目录、OSS、数据库或工具链细节，只简短请用户重新上传或粘贴文字。"
                 .to_string(),
         );
     }

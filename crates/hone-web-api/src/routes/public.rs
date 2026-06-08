@@ -17,6 +17,10 @@ use uuid::Uuid;
 use hone_channels::agent_session::{
     AgentRunOptions, AgentRunQuotaMode, AgentSession, AgentSessionEvent, AgentSessionListener,
 };
+use hone_channels::attachments::{
+    AttachmentIngestRequest, AttachmentPersistRequest, RawAttachment, build_attachment_ack_message,
+    build_user_input, ingest_raw_attachments, spawn_attachment_persist_pipeline,
+};
 use hone_channels::prompt::PromptOptions;
 use hone_channels::run_event::RunEvent;
 use hone_core::{ActorIdentity, HoneError};
@@ -27,8 +31,8 @@ use crate::routes::chat::build_chat_sse;
 use crate::routes::history::history_from_messages;
 use crate::state::{AppState, PushEvent};
 use crate::types::{
-    PublicAuthUserInfo, PublicChatRequest, PublicSmsLoginRequest, PublicSmsSendRequest,
-    PublicUploadedAttachment,
+    PublicAuthUserInfo, PublicChatAttachmentInput, PublicChatRequest, PublicSmsLoginRequest,
+    PublicSmsSendRequest, PublicUploadedAttachment,
 };
 
 /// Upper bounds enforced when users upload files through the public chat.
@@ -453,23 +457,11 @@ pub(crate) async fn handle_chat(
         return crate::routes::json_error(StatusCode::BAD_REQUEST, "消息不能为空");
     }
 
-    let user_upload_root = public_upload_dir(&state, &user.user_id);
-    let oss = crate::cloud_oss::OssClient::from_config(&state.core.config.cloud.oss);
-    let mut validated_paths = Vec::with_capacity(attachments.len());
-    for attachment in &attachments {
-        match validate_public_upload_path(
-            &user_upload_root,
-            oss.as_ref(),
-            &user.user_id,
-            &attachment.path,
-        ) {
-            Ok(path) => validated_paths.push(path),
+    let (combined_message, attachments_count) =
+        match build_public_chat_input(&state, &actor, &user.user_id, &message, attachments).await {
+            Ok(value) => value,
             Err(response) => return response,
-        }
-    }
-
-    let attachments_count = validated_paths.len();
-    let combined_message = compose_message_with_attachments(&message, &validated_paths);
+        };
 
     build_chat_sse(state, Ok(actor), combined_message, attachments_count).into_response()
 }
@@ -646,20 +638,164 @@ fn public_upload_dir(state: &AppState, user_id: &str) -> PathBuf {
     base.join("public-uploads").join(sanitize_user_id(user_id))
 }
 
-fn compose_message_with_attachments(message: &str, attachment_paths: &[String]) -> String {
-    if attachment_paths.is_empty() {
-        return message.to_string();
+async fn build_public_chat_input(
+    state: &Arc<AppState>,
+    actor: &ActorIdentity,
+    user_id: &str,
+    message: &str,
+    attachments: Vec<PublicChatAttachmentInput>,
+) -> Result<(String, usize), Response> {
+    if attachments.is_empty() {
+        return Ok((message.to_string(), 0));
     }
-    let att = attachment_paths
+
+    let upload_root = public_upload_dir(state, user_id);
+    let oss = crate::cloud_oss::OssClient::from_config(&state.core.config.cloud.oss);
+    let mut raw_attachments = Vec::with_capacity(attachments.len());
+    for attachment in attachments {
+        raw_attachments.push(
+            public_chat_raw_attachment(&upload_root, oss.as_ref(), user_id, attachment).await?,
+        );
+    }
+
+    let session_id = actor.session_id();
+    let received = ingest_raw_attachments(
+        state.core.as_ref(),
+        AttachmentIngestRequest {
+            channel: "web".to_string(),
+            actor: actor.clone(),
+            session_id: session_id.clone(),
+            attachments: raw_attachments,
+        },
+    )
+    .await;
+    if !received.is_empty() {
+        spawn_attachment_persist_pipeline(
+            state.core.clone(),
+            AttachmentPersistRequest {
+                channel: "web".to_string(),
+                actor: actor.clone(),
+                user_id: user_id.to_string(),
+                session_id,
+                attachments: received.clone(),
+            },
+        );
+    }
+
+    build_public_chat_user_input(message, &received).map(|input| (input, received.len()))
+}
+
+async fn public_chat_raw_attachment(
+    upload_root: &Path,
+    oss: Option<&crate::cloud_oss::OssClient>,
+    user_id: &str,
+    attachment: PublicChatAttachmentInput,
+) -> Result<RawAttachment, Response> {
+    let validated_path = validate_public_upload_path(upload_root, oss, user_id, &attachment.path)?;
+    let filename = public_attachment_filename(&attachment, &validated_path);
+
+    if let Some(oss) = oss
+        && oss.is_public_upload_uri_for_user(&validated_path, user_id)
+    {
+        let Some(key) = oss.parse_managed_uri(&validated_path) else {
+            return Err(crate::routes::json_error(
+                StatusCode::BAD_REQUEST,
+                "附件路径不在允许范围内",
+            ));
+        };
+        let object = oss.get_object(key).await.map_err(|error| {
+            warn!(
+                user_id = %user_id,
+                attachment = %filename,
+                "读取 public OSS 附件失败: {error}"
+            );
+            crate::routes::json_error(
+                StatusCode::BAD_GATEWAY,
+                "附件读取失败，请重新上传后重试，或直接粘贴图片中的文字。",
+            )
+        })?;
+        let size = u32::try_from(object.bytes.len()).unwrap_or(u32::MAX);
+        let content_type = if object.content_type.trim().is_empty() {
+            content_type_for_attachment(&filename).to_string()
+        } else {
+            object.content_type
+        };
+        return Ok(RawAttachment {
+            filename,
+            content_type: Some(content_type),
+            size: Some(size),
+            url: validated_path,
+            local_path: None,
+            data: Some(object.bytes),
+            error: None,
+        });
+    }
+
+    let local_path = PathBuf::from(&validated_path);
+    let metadata = std::fs::metadata(&local_path).map_err(|_| {
+        crate::routes::json_error(
+            StatusCode::NOT_FOUND,
+            "附件不存在，请重新上传后重试，或直接粘贴附件中的文字。",
+        )
+    })?;
+    let size = u32::try_from(metadata.len()).unwrap_or(u32::MAX);
+    let content_type = content_type_for_attachment(&filename).to_string();
+    Ok(RawAttachment {
+        filename,
+        content_type: Some(content_type),
+        size: Some(size),
+        url: format!("file://{}", local_path.display()),
+        local_path: Some(local_path),
+        data: None,
+        error: None,
+    })
+}
+
+fn public_attachment_filename(
+    attachment: &PublicChatAttachmentInput,
+    validated_path: &str,
+) -> String {
+    attachment
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(sanitize_attachment_name)
+        .or_else(|| {
+            Path::new(validated_path)
+                .file_name()
+                .and_then(|value| value.to_str())
+                .map(sanitize_attachment_name)
+        })
+        .unwrap_or_else(|| "attachment".to_string())
+}
+
+fn build_public_chat_user_input(
+    message: &str,
+    attachments: &[hone_channels::attachments::ReceivedAttachment],
+) -> Result<String, Response> {
+    if attachments.is_empty() {
+        return Ok(message.to_string());
+    }
+
+    if attachments
         .iter()
-        .map(|path| format!("[附件: {path}]"))
-        .collect::<Vec<_>>()
-        .join("\n");
-    if message.is_empty() {
-        att
-    } else {
-        format!("{message}\n{att}")
+        .all(|attachment| attachment.error.is_some())
+    {
+        return Err(crate::routes::json_error(
+            StatusCode::BAD_REQUEST,
+            build_attachment_ack_message(attachments),
+        ));
     }
+
+    let input = build_user_input(message, attachments);
+    if input.trim().is_empty() {
+        return Err(crate::routes::json_error(
+            StatusCode::BAD_REQUEST,
+            "附件暂时无法读取，请重新上传后重试，或直接粘贴附件中的文字。",
+        ));
+    }
+    Ok(input)
 }
 
 /// Only accept attachment paths that sit inside this user's upload root, so the
@@ -735,6 +871,8 @@ fn sanitize_attachment_name(raw: &str) -> String {
     let trimmed = out.trim_matches('_').to_string();
     if trimmed.is_empty() {
         "attachment".to_string()
+    } else if trimmed.starts_with('.') {
+        format!("attachment{trimmed}")
     } else {
         trimmed
     }
@@ -1302,10 +1440,12 @@ fn to_public_auth_user(
 mod tests {
     use super::{
         WEB_SESSION_MAX_AGE_LONG_SECS, WEB_SESSION_MAX_AGE_SHORT_SECS, aliyun_sms_phone_number,
-        build_session_cookie, clear_session_cookie, public_client_key, public_sms_phone_candidates,
+        build_public_chat_user_input, build_session_cookie, clear_session_cookie,
+        public_attachment_filename, public_client_key, public_sms_phone_candidates,
         validate_public_upload_path,
     };
     use axum::http::{HeaderMap, HeaderValue, header};
+    use hone_channels::attachments::{AttachmentKind, ReceivedAttachment};
     use std::fs;
     const SECURE_COOKIE_ENV: &str = "HONE_PUBLIC_SECURE_COOKIE";
 
@@ -1535,5 +1675,67 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn public_chat_user_input_uses_shared_attachment_context() {
+        let attachments = vec![ReceivedAttachment {
+            filename: "portfolio.png".to_string(),
+            content_type: Some("image/png".to_string()),
+            size: 1024,
+            url: "oss://bucket/public/web-user-a/portfolio.png".to_string(),
+            kind: AttachmentKind::Image,
+            local_path: Some(
+                "/tmp/hone-agent-sandboxes/web/direct/uploads/portfolio.png".to_string(),
+            ),
+            error: None,
+            extracted_files: vec![],
+            extraction_error: None,
+            pdf_text_preview: None,
+            pdf_extract_error: None,
+        }];
+
+        let input = build_public_chat_user_input("帮我看持仓截图", &attachments)
+            .expect("public chat input");
+
+        assert!(input.contains("用户上传了附件"));
+        assert!(input.contains("文件名=portfolio.png"));
+        assert!(input.contains("本地路径="));
+        assert!(input.contains("优先基于附件行里的本地可读路径理解截图/图表"));
+        assert!(!input.contains("[附件:"));
+        assert!(!input.contains("当前工具链"));
+        assert!(!input.contains("会话数据库"));
+    }
+
+    #[test]
+    fn public_chat_user_input_rejects_all_rejected_attachments() {
+        let attachments = vec![ReceivedAttachment {
+            filename: "large.png".to_string(),
+            content_type: Some("image/png".to_string()),
+            size: 5 * 1024 * 1024,
+            url: "oss://bucket/public/web-user-a/large.png".to_string(),
+            kind: AttachmentKind::Image,
+            local_path: None,
+            error: Some("附件未通过准入限制：图片大小 5.0MB 超过 3MB 上限".to_string()),
+            extracted_files: vec![],
+            extraction_error: None,
+            pdf_text_preview: None,
+            pdf_extract_error: None,
+        }];
+
+        assert!(build_public_chat_user_input("", &attachments).is_err());
+    }
+
+    #[test]
+    fn public_attachment_filename_prefers_client_name_for_oss_uri() {
+        let attachment = crate::types::PublicChatAttachmentInput {
+            path: "oss://bucket/public/web-user-a/2026-06-08/uuid.bin".to_string(),
+            name: Some("截图 组合.png".to_string()),
+        };
+
+        assert_eq!(
+            public_attachment_filename(&attachment, &attachment.path),
+            "attachment.png"
+        );
     }
 }

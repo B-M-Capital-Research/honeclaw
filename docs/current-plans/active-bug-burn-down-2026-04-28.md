@@ -3,7 +3,7 @@
 - title: Active Bug Burn-down 2026-04-28
 - status: in_progress
 - created_at: 2026-04-28
-- updated_at: 2026-06-08 03:06 CST
+- updated_at: 2026-06-08 16:11 CST
 - owner: Codex
 - related_files:
   - `docs/bugs/README.md`
@@ -36,6 +36,7 @@ Clear the current active bug queue as far as software changes can responsibly do
 
 ## Progress
 
+- 2026-06-08 16:11: Closed the active P2 `web_direct_image_attachment_not_readable_internal_debug_leak` at code level. Public Web chat now routes uploaded attachments through the shared `hone-channels` ingest path instead of appending raw `[附件: path]` lines; local uploads are copied into the actor sandbox, and cloud `oss://` public uploads are downloaded via OSS before being handed to the runner. Shared attachment ingest now keeps the current-turn local path even after uploading the artifact to actor OSS in cloud mode, and image attachment guidance now prefers the local readable path while calling `image_understanding` only when the skill is actually exposed. Added focused public attachment regressions and reran `cargo check -p hone-web-api --tests` plus `cargo check -p hone-channels --tests`. Active queue is 7 and still has no `P0/P1`.
 - 2026-06-08 03:06: Closed the active P2 `discord_scheduler_completed_report_send_failed_without_error` at code level and re-confirmed the stale P1 rows are already fixed in current HEAD. `bins/hone-discord/src/utils.rs` now returns segment-send errors alongside `sent_segments/total_segments`, and `bins/hone-discord/src/scheduler.rs` now persists a non-empty `error_message` whenever Discord delivery fails before any segment is sent, falling back to a generic `Discord 定时任务发送失败` if the SDK surfaces no detail. Added focused `hone-discord` tests for the error-message selection path; `cargo test -p hone-discord scheduler_error_message_ -- --nocapture`, `cargo test -p hone-discord segment_send_result_keeps_error_message -- --nocapture`, `cargo check -p hone-discord --tests`, and `rustfmt --edition 2024 --check bins/hone-discord/src/scheduler.rs bins/hone-discord/src/utils.rs` passed. Current active queue has no `P0/P1`; remaining active items are `P2/P3`.
 - 2026-06-03 03:07: Closed the active P2 `web_scheduler_acp_stream_disconnect_no_final` enough for code-level closure. `crates/hone-web-api/src/routes/events.rs` now broadcasts the productized Web scheduler failure reply through the same `scheduled_message` SSE path used by successful runs, instead of only persisting it into session history. This means an online Web chat sees `定时任务「...」执行出错，请稍后重试。` immediately when ACP transport disconnect/internal-error paths are suppressed into a generic scheduler failure. Added `build_web_scheduler_push_event_uses_scheduled_message_payload` and `emit_web_scheduler_push_broadcasts_failure_prompt`; `cargo test -p hone-web-api scheduler_failure_trace_required_ -- --nocapture`, `cargo test -p hone-web-api web_scheduler_ -- --nocapture`, the two new focused tests, and `cargo check -p hone-web-api --tests` passed. Active bug queue is back to 0 pending live cloud/Web verification.
 - 2026-06-02 03:12: Added another reliability guard on top of the already-fixed P1 `feishu_scheduler_no_runs_after_midnight`. `hone-feishu` now starts the Feishu cron producer through a supervised spawn, so if `scheduler.start()` ever panics or exits unexpectedly, the runtime logs the failure and restarts the due-scan loop after 1 second instead of silently abandoning all future cron ticks. Added `handler::tests::supervised_task_restarts_after_panic`; `cargo test -p hone-feishu supervised_task_restarts_after_panic -- --nocapture` and `cargo check -p hone-feishu --tests` passed. Active bug queue remains 0.
@@ -131,6 +132,11 @@ Completed this round:
 - `bash -n launch.sh`
 - `cargo test -p hone-memory execution_terminal_event_updates_matching_pending_row -- --nocapture`
 - `cargo test -p hone-channels scheduled_watchlist_ --lib -- --nocapture`
+- `cargo check -p hone-channels --tests`
+- `cargo test -p hone-web-api public_chat_user_input_ -- --nocapture`
+- `cargo test -p hone-web-api public_attachment_filename_prefers_client_name_for_oss_uri -- --nocapture`
+- `cargo test -p hone-channels build_user_input_includes_attachment_notes --lib -- --nocapture`
+- `cargo check -p hone-web-api --tests`
 - `cargo check -p hone-channels --tests`
 - `rustfmt --edition 2024 --check crates/hone-channels/src/scheduler.rs`
 - `cargo test -p hone-channels heartbeat_near_threshold_trigger_is_suppressed -- --nocapture`

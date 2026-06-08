@@ -3,7 +3,7 @@
 - **发现时间**: 2026-06-06 19:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无；本单不是 P1，暂不创建。
 
 ## 证据来源
@@ -43,9 +43,12 @@
 
 ## 当前实现效果
 
-- 真实 Web direct 图片会话正常收口，但图片本体/OCR 没有进入可消费上下文，assistant 无法基于截图完成用户原始任务。
-- 用户需要改为手工粘贴持仓文字，才能让后续组合分析继续。
-- final 没有原样外泄 `image_understanding` 错误 JSON，但外露了内部附件落地、目录扫描和数据库排查口径。
+- 2026-06-08 16:11 CST 已修复：
+  - Public Web chat 入口不再把附件简化成裸 `[附件: path]` 文本，而是对用户上传路径做作用域校验后复用共享附件 ingest 管线。
+  - 本地上传文件会复制到 actor sandbox 的本轮 `uploads/<session_id>/`，云模式 `oss://...` public upload 会先通过 OSS client 读回 bytes，再交给同一 ingest 管线生成可读本地附件。
+  - 共享附件层在 cloud authoritative 模式下继续把附件上传到 actor OSS URL，但保留当前轮 runner 需要的 `local_path`，避免 prompt 中只剩 `oss://...`。
+  - 图片附件策略不再强制模型调用可能被禁用的 `image_understanding` skill；现在优先基于附件行里的本地可读路径理解图片，只有当前阶段明确暴露该 skill 时才调用。若无法读取图片，也要求给产品化重试提示，不列举目录、OSS、数据库或工具链细节。
+- 修复后，Web public direct 图片附件至少会以共享附件上下文进入 runner；当附件被准入策略全部拒绝时，API 直接返回产品化错误，不进入 LLM 自行排障。
 
 ## 用户影响
 
@@ -55,12 +58,31 @@
 
 ## 根因判断
 
-- 初步判断是 Web direct 附件引用与 runner 可读本地文件/OCR 输入之间缺少稳定桥接，导致 prompt 中只有远端/OSS 线索而没有可直接读取的图片内容。
-- `image_understanding` skill 在该运行上下文不可用，且失败没有被产品层识别成统一附件读取失败。
-- 出站净化层当前能阻止 raw JSON 进入 final，但没有剥离自然语言中的“根目录 / uploads / /tmp / 会话数据库 / OSS 引用 / 当前工具链”这类内部排障短语。
+- 根因确认：
+  - Public Web chat 上传链路绕过了 `hone-channels::attachments` 共享 ingest，只把上传路径拼进 prompt，云模式下尤其容易只暴露 `oss://...` 引用而没有本地可读文件。
+  - 共享 ingest 在 cloud authoritative 模式下上传 actor OSS 后覆盖了 `local_path`，导致当前轮 runner 也只能看到 OSS URI。
+  - 图片附件策略把 `image_understanding` 写成必选优先路径，skill 未激活时容易诱发模型围绕目录、OSS、工具链做自然语言排障。
 
 ## 下一步建议
 
-- 检查 Web direct 附件进入 ACP prompt 的路径：上传后应传入可访问图片 URL、文件路径或 OCR 文本，且与 actor sandbox 权限一致。
-- 为图片附件读取失败增加统一用户态错误文案，并避免模型自行列举目录、数据库、OSS 引用等实现细节。
-- 增加回归：Web direct 带图片附件时，runner 可获得可读 image input；当 image/OCR 不可用时，final 只给产品化重试提示，不包含内部排障词。
+- 下一轮只读复核真实 Web 图片上传会话：确认 runner final 不再要求用户绕路粘贴文字，且不再出现“根目录 / uploads / /tmp / 会话数据库 / OSS 引用 / 当前工具链”等用户可见排障口径。
+- 如果后续仍出现图片理解失败，应优先检查运行阶段实际可用的本地图片读取能力或 `image_understanding` skill 激活状态；不要回退到让模型自行扫描目录/数据库。
+
+## 修复记录
+
+- `2026-06-08 16:11 CST` 已修复：
+  - `crates/hone-web-api/src/routes/public.rs`
+    - Public chat 收到附件时构造 `RawAttachment` 并调用 `ingest_raw_attachments(...)`。
+    - `oss://` public upload 会经 `OssObjectStore::get_object(...)` 拉回 bytes；读取失败直接返回“附件读取失败，请重新上传后重试，或直接粘贴图片中的文字。”。
+    - 全部附件被共享准入策略拒绝时，API 直接返回产品化附件状态，不把空附件 prompt 交给 runner。
+  - `crates/hone-channels/src/attachments/ingest.rs`
+    - cloud authoritative 模式下保留当前轮本地 `local_path`，同时把 `url` 更新为 actor OSS URI。
+    - 图片附件默认策略改为本地可读路径优先，skill 可用时才调用 `image_understanding`，并禁止把目录、OSS、数据库或工具链细节当作用户回复。
+
+## 验证
+
+- `cargo test -p hone-web-api public_chat_user_input_ -- --nocapture`
+- `cargo test -p hone-web-api public_attachment_filename_prefers_client_name_for_oss_uri -- --nocapture`
+- `cargo test -p hone-channels build_user_input_includes_attachment_notes --lib -- --nocapture`
+- `cargo check -p hone-web-api --tests`
+- `cargo check -p hone-channels --tests`
