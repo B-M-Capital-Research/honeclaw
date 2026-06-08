@@ -14,7 +14,7 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## GitHub Issue
 
@@ -86,6 +86,12 @@
 
 ## 修复记录
 
+- `2026-06-08 20:06 CST` 再次修复：
+  - `bins/hone-discord/src/scheduler.rs` 现在与 Feishu / Web scheduler 一样，通过 `execution_detail_with_delivery_key(...)` 给所有 Discord scheduler 终态 detail 补齐顶层 `delivery_key`，避免终态记录与 started row / delivery key 审计链路脱节。
+  - Discord 发送阶段 detail 现在保留 `sent_segments` / `total_segments` 的同时，在 `sent_segments=0 && total_segments>0` 时写入 `failure_kind=discord_send_failed`；如果 sender 返回底层发送错误，也会写入 `send_error`，便于区分权限、网络、payload 或其它出站失败。
+  - 新增回归 `scheduler_delivery_detail_keeps_delivery_key_and_send_failure`，锁住 Discord 发送失败终态必须同时带 `delivery_key`、分段计数、失败分类和发送错误文本。
+  - 本轮只做代码级闭环，不依赖当前机器 live 服务、生产日志或真实 Discord 投递状态来判定恢复；状态更新为 `Fixed`，后续若新运行态仍出现 `send_failed + delivered=0`，应优先检查 `error_message`、`detail.failure_kind` 与 `detail.send_error` 是否已可诊断。
+
 - `2026-06-08 03:06 CST` 已修复：
   - `bins/hone-discord/src/utils.rs` 的分段发送结果现在会保留底层发送/编辑失败文案，而不是只回传 `sent_segments` 计数。
   - `bins/hone-discord/src/scheduler.rs` 记录 `cron_job_runs` 时，`error_message` 现在优先保留 runner error，其次保留 Discord 发送失败文案；如果 `sent_segments=0 && total_segments>0` 且底层库没有给出明确错误，也会至少回写通用 `Discord 定时任务发送失败`。
@@ -102,6 +108,9 @@
 
 ## 验证
 
+- `cargo test -p hone-discord scheduler_ -- --nocapture`
+- `cargo check -p hone-discord --tests`
+- `rustfmt --edition 2024 --config skip_children=true --check bins/hone-discord/src/scheduler.rs`
 - `cargo test -p hone-discord scheduler_error_message_ -- --nocapture`
 - `cargo test -p hone-discord segment_send_result_keeps_error_message -- --nocapture`
 - `cargo check -p hone-discord --tests`

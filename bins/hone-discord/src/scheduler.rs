@@ -4,7 +4,8 @@ use hone_channels::agent_session::AgentRunOptions;
 use hone_channels::prompt::PromptOptions;
 use hone_channels::scheduler as channel_scheduler;
 use hone_memory::cron_job::CronJobExecutionInput;
-use hone_scheduler::SchedulerEvent;
+use hone_scheduler::{SchedulerEvent, execution_detail_with_delivery_key};
+use serde_json::{Value, json};
 use serenity::all::ChannelId;
 use serenity::http::Http;
 use tracing::{error, info, warn};
@@ -69,7 +70,10 @@ pub(crate) async fn handle_scheduler_events(
                         delivered: false,
                         response_preview: None,
                         error_message: result.error.clone(),
-                        detail: result.metadata.clone(),
+                        detail: execution_detail_with_delivery_key(
+                            result.metadata.clone(),
+                            &event.delivery_key,
+                        ),
                     },
                 );
                 return;
@@ -103,7 +107,13 @@ pub(crate) async fn handle_scheduler_events(
                             delivered: false,
                             response_preview: Some(response.clone()),
                             error_message: Some("Discord 定时任务目标解析失败".to_string()),
-                            detail: result.metadata.clone(),
+                            detail: execution_detail_with_delivery_key(
+                                json!({
+                                    "failure_kind": "discord_target_resolution_failed",
+                                    "scheduler": result.metadata,
+                                }),
+                                &event.delivery_key,
+                            ),
                         },
                     );
                     return;
@@ -154,11 +164,13 @@ pub(crate) async fn handle_scheduler_events(
                         send_result.sent,
                         send_result.total,
                     ),
-                    detail: serde_json::json!({
-                        "sent_segments": send_result.sent,
-                        "total_segments": send_result.total,
-                        "scheduler": result.metadata,
-                    }),
+                    detail: scheduler_delivery_detail(
+                        result.metadata,
+                        &event.delivery_key,
+                        send_result.sent,
+                        send_result.total,
+                        send_result.error.as_deref(),
+                    ),
                 },
             );
         });
@@ -191,9 +203,33 @@ fn scheduler_error_message(
     None
 }
 
+fn scheduler_delivery_detail(
+    metadata: Value,
+    delivery_key: &str,
+    sent_segments: usize,
+    total_segments: usize,
+    send_error: Option<&str>,
+) -> Value {
+    let mut detail = json!({
+        "sent_segments": sent_segments,
+        "total_segments": total_segments,
+        "scheduler": metadata,
+    });
+
+    if sent_segments == 0 && total_segments > 0 {
+        detail["failure_kind"] = Value::String("discord_send_failed".to_string());
+    }
+    if let Some(error) = send_error.map(str::trim).filter(|value| !value.is_empty()) {
+        detail["send_error"] = Value::String(error.to_string());
+    }
+
+    execution_detail_with_delivery_key(detail, delivery_key)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::scheduler_error_message;
+    use super::{scheduler_delivery_detail, scheduler_error_message};
+    use serde_json::json;
 
     #[test]
     fn scheduler_error_message_prefers_run_error() {
@@ -224,5 +260,23 @@ mod tests {
     fn scheduler_error_message_falls_back_to_generic_send_failure() {
         let error = scheduler_error_message(None, None, 0, 3);
         assert_eq!(error.as_deref(), Some("Discord 定时任务发送失败"));
+    }
+
+    #[test]
+    fn scheduler_delivery_detail_keeps_delivery_key_and_send_failure() {
+        let detail = scheduler_delivery_detail(
+            json!({"runner": "ok"}),
+            "delivery-123",
+            0,
+            3,
+            Some("missing channel access"),
+        );
+
+        assert_eq!(detail["delivery_key"], "delivery-123");
+        assert_eq!(detail["sent_segments"], 0);
+        assert_eq!(detail["total_segments"], 3);
+        assert_eq!(detail["failure_kind"], "discord_send_failed");
+        assert_eq!(detail["send_error"], "missing channel access");
+        assert_eq!(detail["scheduler"]["runner"], "ok");
     }
 }

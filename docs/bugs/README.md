@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-06-08 19:01 CST
+最后更新：2026-06-08 20:06 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,9 +17,10 @@
 
 ## 当前概览
 
-- 活跃待修复：7
+- 活跃待修复：6
 - Later / 待复现：10
-- 已修复 / 已关闭：123
+- 已修复 / 已关闭：124
+- 本轮 20:06 CST 已修复 P2 `Discord scheduler 已生成报告但发送阶段失败且缺少错误原因`：Discord scheduler 终态台账现在与 Feishu / Web 一样通过 `execution_detail_with_delivery_key(...)` 写入顶层 `delivery_key`，发送失败时 detail 额外记录 `failure_kind=discord_send_failed` 与可用的 `send_error`，避免 `sent_segments=0,total_segments>0` 的 Discord 出站失败只留下不可关联、不可分类的 detail。验证 `cargo test -p hone-discord scheduler_ -- --nocapture`、`cargo check -p hone-discord --tests`、`rustfmt --edition 2024 --config skip_children=true --check bins/hone-discord/src/scheduler.rs` 通过；无关联 GitHub Issue。本轮不依赖当前机器 live 服务或生产日志判定恢复。
 - 本轮 19:01 CST 新增 P3 `Feishu 直聊列出定时任务时外露 enabled=true 实现字段`：15:01-19:01 CST `data/sessions.sqlite3` 有 7 个 Feishu user turn 与 7 个 assistant final，均成对收口；`cron_job_runs` 同窗无新增记录；assistant final 污染扫描未命中空回复、内部路径、raw tool 字段、思维痕迹、provider 原始错误、quota、panic 或 stream disconnect。17:55 CST Feishu direct 用户问“我有哪些定时任务”，assistant 正常列出 3 个启用任务并以 `stopReason=end_turn` 收口，但结尾写出“这 3 个任务目前都是 `enabled=true`”。该问题不阻断任务查询主链路、无投递失败或状态错乱，因此按质量性 P3 登记，非 P1，不创建 GitHub issue。
 - 本轮 19:01 CST 未发现活跃 P1 状态变化。`acp-events.log` 同窗 Feishu prompt 均以 `stopReason=end_turn` 收口，未见 response error、runner error、stream disconnect、quota、panic 或 provider 原始错误；最近四小时无非文档代码提交。`data/runtime/task_runs.2026-06-08.jsonl` 中 `poller.fmp.price` 48 次、`poller.fmp.news` 16 次均为 `ok + items=0`，未触发已关闭 FMP price/news 缺陷回退；`poller.fmp.extended_hours` 7 次 `ok`、1 次 `failed`，单次失败不足以登记新缺陷。
 - 本轮 16:11 CST 已修复 P2 `Web direct 图片附件未进入可读/OCR 链路且回复外露内部排障口径`：Public Web chat 附件入口现在复用共享附件 ingest 管线，本地上传会复制到 actor sandbox，`oss://` public upload 会先读回 bytes 再交给 runner；cloud authoritative 模式下附件上传 actor OSS 后仍保留当前轮本地 `local_path`。图片策略改为本地可读路径优先，skill 可用时才调用 `image_understanding`，并要求失败时只给产品化重试提示、不列举目录、OSS、数据库或工具链细节。验证 `cargo test -p hone-web-api public_chat_user_input_ -- --nocapture`、`cargo test -p hone-web-api public_attachment_filename_prefers_client_name_for_oss_uri -- --nocapture`、`cargo test -p hone-channels build_user_input_includes_attachment_notes --lib -- --nocapture`、`cargo check -p hone-web-api --tests`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue。
@@ -460,7 +461,6 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Discord scheduler 已生成报告但发送阶段失败且缺少错误原因 | P2 | New | 2026-06-08 11:03 重新打开：09:31 CST `run_id=38433` 在完整报告生成、ACP `end_turn` 后仍落成 `completed + send_failed + delivered=0`，`sent_segments=0,total_segments=3` 且 `error_message` 为空；03:06 CST 修复结论未在真实台账兑现。非 P1，无关联 GitHub Issue | [discord_scheduler_completed_report_send_failed_without_error.md](./discord_scheduler_completed_report_send_failed_without_error.md) |
 | Codex ACP transport 断连导致直聊和定时请求失败且缺少自动恢复 | P2 | New | 2026-06-06 11:02 live 真实窗口出现 1 条 Feishu direct 用户主动追问只收到通用失败，ACP 事件为 `stream disconnected before completion`；同窗 1 条 Discord scheduler 同类断连被抑制为 `should_deliver=0`，但台账仍表现为 `noop + skipped_noop + failure_kind=internal_error_suppressed`。原始错误未外泄，非 P1 | [codex_acp_transport_disconnect_request_failure.md](./codex_acp_transport_disconnect_request_failure.md) |
 | Web / Feishu 直聊公司画像沉淀后向用户暴露内部相对文件路径 | P3 | New | 2026-06-05 07:02 04:37 CST CIEN 财报分析 final 仍外露 `company_profiles/Ciena_CIEN.md`；该问题不影响分析正文、文件写入、会话收口或投递，维持质量性 P3。无关联 GitHub Issue | [web_company_profile_relative_path_exposed.md](./web_company_profile_relative_path_exposed.md) |
 | Feishu 直聊存储股最新价格回复在行情工具未完成时输出未充分校验数值 | P3 | New | 2026-06-07 19:03 复发：15:55 CST Feishu direct 用户询问周五大跌后何时抄底，assistant 再次复用 MU `864.01 / 857.2-857.4`、SNDK `1,559.32 / 1,528.87` 等异常精确行情，并据此给出 MU / SNDK 抄底区间；会话正常收口、无投递失败或内部错误外泄，因此仍为质量性 P3，非 P1 | [feishu_direct_storage_price_unverified_before_tool_complete.md](./feishu_direct_storage_price_unverified_before_tool_complete.md) |
@@ -487,6 +487,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Discord scheduler 已生成报告但发送阶段失败且缺少错误原因 | P2 | Fixed | 2026-06-08 20:06 Discord scheduler 终态 detail 补齐顶层 `delivery_key`，发送失败时写入 `failure_kind=discord_send_failed` 与可用 `send_error`，同时保留 `sent_segments` / `total_segments`，与 Feishu / Web 的 started-row 匹配和审计口径对齐。验证 `cargo test -p hone-discord scheduler_ -- --nocapture`、`cargo check -p hone-discord --tests`、`rustfmt --edition 2024 --config skip_children=true --check bins/hone-discord/src/scheduler.rs` 通过。无关联 GitHub Issue | [discord_scheduler_completed_report_send_failed_without_error.md](./discord_scheduler_completed_report_send_failed_without_error.md) |
 | Web direct 图片附件未进入可读/OCR 链路且回复外露内部排障口径 | P2 | Fixed | 2026-06-08 16:11 Public Web chat 附件入口复用共享附件 ingest：本地上传复制到 actor sandbox，`oss://` public upload 读回 bytes 后进入 runner；cloud authoritative 模式下保留当前轮本地 `local_path`；图片策略改为本地可读路径优先且失败时只给产品化重试提示。验证 `cargo test -p hone-web-api public_chat_user_input_ -- --nocapture`、`cargo test -p hone-web-api public_attachment_filename_prefers_client_name_for_oss_uri -- --nocapture`、`cargo test -p hone-channels build_user_input_includes_attachment_notes --lib -- --nocapture`、`cargo check -p hone-web-api --tests`、`cargo check -p hone-channels --tests` 通过。无关联 GitHub Issue | [web_direct_image_attachment_not_readable_internal_debug_leak.md](./web_direct_image_attachment_not_readable_internal_debug_leak.md) |
 | Event-engine FMP price/news poller 持续请求失败导致行情与新闻增量退化 | P2 | Closed | 2026-06-08 15:03 11:01-15:01 CST `poller.fmp.price` 48 次、`poller.fmp.news` 16 次全部恢复为 `ok + items=0`；结合 09:19 CST 后恢复样本，链路已连续超过一个完整巡检窗口恢复，且无用户可见 FMP 原始错误或下游新鲜度投诉。无关联 GitHub Issue | [event_engine_fmp_price_news_poller_persistent_request_failure.md](./event_engine_fmp_price_news_poller_persistent_request_failure.md) |
 | Feishu direct actor 读取 Cron 与持仓作用域为空，导致任务和投资上下文丢失 | P1 | Fixed | 2026-06-08 12:08 在既有 `HONE_DATA_DIR` 绝对化 / runtime-dir 回退修复上追加 cloud runtime env 转发：`hone-mcp` server 配置现在包含默认与 config 自定义的 PG / OSS env 名称，避免 MCP 子进程因缺少 env-backed cloud 配置读到空 local cron / portfolio。验证 `cargo test -p hone-channels hone_mcp_servers_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；关联 Issue [#49](https://github.com/B-M-Capital-Research/honeclaw/issues/49) | [feishu_actor_scope_cron_portfolio_empty.md](./feishu_actor_scope_cron_portfolio_empty.md) |
