@@ -4482,3 +4482,15 @@
   - 简单阈值预警仍会输出缺少合法状态字段的 JSON 片段；
   - 复杂 watchlist / 大事件模板则继续输出整段自然语言解释后被后台静默吸收。
 - 因此本单继续维持 `Fixing`、严重等级保持 `P2`。本轮没有发现需要拆分的新根因；最近一小时新增证据仍完全落在“heartbeat 输出结构持续漂移，链路以 `skipped_noop` 吸收”的既有缺陷范围内。
+
+## 最新真实样本复核（2026-06-09 03:01-07:01 CST）
+
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - 巡检窗口内 heartbeat 新增 107 条记录：78 条 `noop + skipped_noop + delivered=0`、28 条 `execution_failed + skipped_error + delivered=0`、1 条 `completed + sent + delivered=1`。
+  - 失败分布为 `PlainTextSuppressed` 20 条、`JsonUnknownStatus` 6 条、`ContextOverflowError` 1 条、`JsonMalformed` 1 条；同窗还有 `JsonNoop` 50 条、`JsonTriggered` 14 条、`PlainTextNoop` 11 条、`JsonEmptyStatus` 3 条落成 noop。
+  - 07:00 左右仍可见 `持仓重大事件心跳检测`、`Cerebras IPO与业务进展心跳监控` 以 `PlainTextSuppressed + execution_failed` 收口，`AAOI 1.6T 光模块心跳检测` 以 `ContextOverflowError + execution_failed` 收口。
+- `data/sessions.sqlite3` -> `session_messages`
+  - 同窗 assistant final 污染扫描未命中 `<think>`、`reasoning_content`、provider 原始错误、raw tool 字段、内部路径或 stream disconnect；这些 heartbeat 坏态没有进入用户可见 assistant final。
+- 本轮判断
+  - 最新证据仍落在既有 heartbeat 结构化输出 / context overflow 运行态范围，且当前代码已有后续修复记录与回归，暂按旧/未确认部署运行态处理。
+  - 本轮不新建重复缺陷，也不把已修复结论回退为 `New`；若后续 live 重启/部署后仍持续出现同类 `PlainTextSuppressed` / `JsonUnknownStatus` / `ContextOverflowError`，再按最新代码状态重新评估是否回退。
