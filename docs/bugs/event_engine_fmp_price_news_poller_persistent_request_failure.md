@@ -50,6 +50,10 @@
   - 2026-06-08 03:02-07:02 CST 后续四小时继续复现：`poller.fmp.price` 再新增 48 次 `failed + items=0`，`poller.fmp.news` 再新增 16 次 `failed + items=0`。
   - 同窗 `poller.fmp.extended_hours` 仍有 8 次 `ok + items=0`；`internal.daily_report` 与 `internal.unified_digest_scheduler` 仅记录周期性 `skipped`，说明 runtime tick 仍运行，但 FMP price/news 增量继续不可用。
   - 错误仍为脱敏后的 FMP quote/news 请求发送失败，尚未观察到恢复样本或用户可见原始 FMP 错误外泄。
+- `data/runtime/task_runs.2026-06-07.jsonl` 与 `data/runtime/task_runs.2026-06-08.jsonl`
+  - 2026-06-08 07:01-11:02 CST 复核窗口内，前半段仍失败：`poller.fmp.price` 27 次、`poller.fmp.news` 9 次 `failed + items=0`，失败持续到 09:14 CST。
+  - 2026-06-08 09:19 CST 起出现恢复样本：`poller.fmp.price` 后续 21 次、`poller.fmp.news` 后续 7 次为 `ok + items=0`；`poller.fmp.earnings` 与 `poller.fmp.macro` 也各有 1 次从失败转为 `ok`。
+  - 这说明 FMP 请求发送链路在本窗后半段部分恢复，但恢复窗口不足两小时，且 `poller.fmp.sec_filings` 同窗仍有 1 次 `failed`；本轮只记录状态变化，不直接关闭缺陷。
 - 当天更早记录显示：
   - 2026-06-06 08:04-09:24 CST `poller.fmp.price` 曾连续成功 18 次，`poller.fmp.news` 曾成功 5 次。
   - 2026-06-06 09:29 CST 起，price/news poller 开始持续失败；截至 2026-06-07 03:01 CST 最近四小时仍未恢复。
@@ -85,6 +89,7 @@
 - 后续 2026-06-07 19:02-23:02 CST 复核窗口内，quote/news poller 仍全部失败且 `items=0`；extended-hours、daily report 与 unified digest scheduler 均有 `ok` 样本，说明失败继续集中在 FMP price/news 请求链路。
 - 后续 2026-06-07 23:02-2026-06-08 03:02 CST 复核窗口内，quote/news poller 仍全部失败且 `items=0`；extended-hours 仍按节奏 `ok`，说明失败尚未恢复。
 - 后续 2026-06-08 03:02-07:02 CST 复核窗口内，quote/news poller 仍全部失败且 `items=0`；extended-hours 仍按节奏 `ok`，说明失败尚未恢复。
+- 后续 2026-06-08 07:01-11:02 CST 复核窗口内，quote/news poller 在 09:14 CST 前仍失败，09:19 CST 起 price/news 转为连续 `ok + items=0`；当前按“部分恢复待复核”处理，状态暂不关闭。
 - 同一 runtime 的 extended-hours poller 仍按节奏运行并返回 `ok`，说明不是调度器完全停止。
 - 当前缺陷尚未在本轮直接表现为用户可见错误、错投或格式污染，但已构成事件引擎数据摄取链路退化。
 
@@ -105,5 +110,6 @@
 
 - 先检查 event-engine FMP client 对 `error sending request` 的错误分类、重试和超时设置，确认是否需要按网络/上游/配置分别记录 `failure_kind`。
 - 对 price/news poller 增加连续失败阈值告警，避免长时间只写 `task_runs` 而没有运行态告警。
+- 下一轮优先复核 2026-06-08 09:19 CST 后的 `ok` 是否持续；若连续多个巡检窗口保持恢复且没有用户可见数据新鲜度问题，再评估是否转为 `Fixed` 或 `Closed`。
 - 检查失败期间是否仍有其它行情源或缓存被下游使用；若没有，应在 digest / alert 生成前显式注入数据新鲜度缺口。
 - 对比 FMP quote/news 与 extended-hours 的请求域名、batch 大小、timeout、key 使用路径，定位为何 extended-hours 仍 ok 而 quote/news 持续失败。

@@ -14,7 +14,7 @@
 
 ## 状态
 
-- Fixed
+- New
 
 ## GitHub Issue
 
@@ -39,6 +39,12 @@
 - `data/runtime/task_runs.2026-06-07.jsonl`
   - 同窗 event-engine poller 仍有 FMP 持续失败，但该问题已由 `event_engine_fmp_price_news_poller_persistent_request_failure.md` 跟踪；与本 Discord scheduler 出站失败不是同一链路。
 - 最近四小时无非文档代码提交。
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-06-08 07:01-11:02 CST 复核窗口内，同一 Discord scheduler 再次复现。
+  - `run_id=38433` / `job_name=每日美股降息概率推送` 在 2026-06-08 09:31 CST 落成 `execution_status=completed + message_send_status=send_failed + should_deliver=1 + delivered=0`。
+  - 同一 session 在 09:30-09:31 CST 已生成完整 assistant final，`acp-events.log` 也以 `stopReason=end_turn` 收口，说明模型生成与 ACP 链路完成。
+  - `detail_json={"scheduler":null,"sent_segments":0,"total_segments":3}` 且 `error_message` 仍为空；这与 2026-06-08 03:06 CST 修复记录中“不再出现空 error_message”的期望不一致。
+  - 同窗 14 个 user turn 与 14 个 assistant final 成对收口，assistant final 污染扫描未命中空回复、内部路径、raw tool 字段、思维痕迹、provider 原始错误、quota、panic 或 stream disconnect；本轮问题集中在 Discord 出站发送和可观测性。
 
 ## 端到端链路
 
@@ -60,6 +66,7 @@
 - Answer 与会话落库阶段正常完成，用户应收到的报告已经生成。
 - 出站投递阶段全部分段失败，最终 `delivered=0`。
 - 台账只记录 `send_failed` 和分段计数，没有保存失败原因。
+- 2026-06-08 09:31 CST 复核样本显示，03:06 CST 的代码修复结论尚未在真实台账中兑现：仍出现 `send_failed + delivered=0 + error_message=''`。
 - 这不是已有 `codex_acp_transport_disconnect_request_failure.md` 的同一表现：本轮 ACP 已正常 `end_turn`，问题发生在 Discord 发送阶段。
 - 也不是归档的 `discord_scheduler_empty_reply_send_failed.md` 同一表现：本轮不是空回复或 fallback 伪成功，而是完整报告生成后未送达。
 
@@ -83,9 +90,13 @@
   - `bins/hone-discord/src/utils.rs` 的分段发送结果现在会保留底层发送/编辑失败文案，而不是只回传 `sent_segments` 计数。
   - `bins/hone-discord/src/scheduler.rs` 记录 `cron_job_runs` 时，`error_message` 现在优先保留 runner error，其次保留 Discord 发送失败文案；如果 `sent_segments=0 && total_segments>0` 且底层库没有给出明确错误，也会至少回写通用 `Discord 定时任务发送失败`。
   - 这样即使报告正文已经生成，但 Discord 出站第一段就失败，台账也不会再落成 `send_failed + delivered=0 + error_message=''` 的不可诊断坏态。
+- `2026-06-08 11:03 CST` 复核重新打开：
+  - 09:31 CST `run_id=38433` 再次落成同一坏态，且 `error_message` 仍为空。
+  - 当前状态从 `Fixed` 调回 `New`；优先判断修复未覆盖真实 Discord scheduler 发送路径，或运行态未使用已修复二进制。
 
 ## 下一步建议
 
+- 先确认 09:31 CST 运行的 Discord scheduler 是否已经加载 `958fe17a` 后的二进制；若未加载，补部署/重启后用下一次 scheduler 复核。
 - 若后续 live 再出现 Discord `send_failed`，优先看 `cron_job_runs.error_message` 是否已经能区分权限、网络或 payload 失败。
 - 本轮只修复了发送失败可观测性，尚未为 Discord 出站增加自动重试；如果 live 继续出现明显的 transient transport 失败，再单独评估是否补短重试。
 
