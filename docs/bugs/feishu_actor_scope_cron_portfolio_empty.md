@@ -83,6 +83,12 @@
 
 ## 修复记录
 
+- `2026-06-08 12:08 CST` 追加 cloud runtime 加固：
+  - `crates/hone-channels/src/mcp_bridge.rs` 在构造 `hone-mcp` MCP server env 时，除了继续处理 `HONE_DATA_DIR` 绝对化和 `runtime_dir` 回退，也会把父进程 cloud runtime 相关环境变量透传给子进程。
+  - 透传范围包含默认 PG / OSS env 名称，以及 `config.yaml` 中 `cloud.postgres.*_env`、`cloud.oss.*_env` 配置出的自定义 env 名称，避免 cloud-backed 运行态下 `hone-mcp` 子进程缺少数据库或对象存储上下文后回退到空本地数据根。
+  - 新增回归 `hone_mcp_servers_exports_configured_cloud_runtime_env`，锁住自定义 cloud env 名称和值必须进入 MCP 子进程环境。
+  - 本轮仍不依赖当前机器 live 服务、生产日志或渠道健康状态来判定修复；状态维持代码级 `Fixed`，等待正常部署/重启后的真实运行态复测。
+
 - `2026-06-07 03:03 CST` 再次修复：
   - `crates/hone-channels/src/mcp_bridge.rs` 不再盲目透传父进程里的 `HONE_DATA_DIR`；若父进程把它设成相对路径（如 `data`）或空串，`hone-mcp` 之前会优先继承这个脏值，从而绕过 `runtime_dir -> data dir` 推导，并在 actor sandbox `cwd` 下把持久化根重新解释到空目录。
   - 当前修复把 `HONE_DATA_DIR` 透传收敛为两条规则：非空时先在父进程侧绝对化；空串则直接忽略并回退到 `request.runtime_dir` 的父目录。
@@ -120,6 +126,8 @@
 - `cargo check -p hone-channels --tests`
 - `cargo test -p hone-channels hone_mcp_servers_derives_data_dir_from_runtime_dir_when_env_missing -- --nocapture`
 - `cargo check -p hone-channels -p hone-cli --tests`
+- `cargo test -p hone-channels hone_mcp_servers_ --lib -- --nocapture`
+- `cargo check -p hone-channels --tests`
 
 ## 后续关注
 

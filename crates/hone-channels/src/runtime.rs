@@ -507,6 +507,7 @@ fn looks_runner_usage_limit_error_lowered(lowered: &str) -> bool {
 fn looks_runner_resource_unavailable_error_lowered(lowered: &str) -> bool {
     (lowered.contains("codex")
         || lowered.contains("codex-acp")
+        || lowered.contains("hone-mcp")
         || lowered.contains("runner")
         || lowered.contains("acp"))
         && (lowered.contains("resource temporarily unavailable")
@@ -514,7 +515,9 @@ fn looks_runner_resource_unavailable_error_lowered(lowered: &str) -> bool {
             || lowered.contains("would block")
             || lowered.contains("failed to probe")
             || lowered.contains("version probe")
-            || lowered.contains("failed to spawn"))
+            || lowered.contains("failed to spawn")
+            || lowered.contains("binary not found")
+            || lowered.contains("not found near current executable"))
 }
 
 fn looks_timeout_error_lowered(lowered: &str) -> bool {
@@ -1110,6 +1113,17 @@ mod tests {
     }
 
     #[test]
+    fn user_visible_error_message_maps_hone_mcp_startup_errors() {
+        let err = user_visible_error_message(Some(
+            "hone-mcp binary not found near current executable; tried: /private/app/hone-mcp, /private/app/hone-mcp-aarch64-apple-darwin (set HONE_MCP_BIN to override)",
+        ));
+        assert_eq!(err, RUNNER_RESOURCE_UNAVAILABLE_USER_ERROR_MESSAGE);
+        assert!(!err.contains("hone-mcp binary"));
+        assert!(!err.contains("/private/app"));
+        assert!(!err.contains("HONE_MCP_BIN"));
+    }
+
+    #[test]
     fn user_visible_error_message_hides_sensitive_error_details() {
         let err = user_visible_error_message(Some(
             "upstream failed OPENROUTER_API_KEY=sk-secret Authorization: Basic basic-secret",
@@ -1150,6 +1164,17 @@ mod tests {
     fn user_visible_error_message_or_none_keeps_codex_probe_resource_errors_sanitized() {
         let err = user_visible_error_message_or_none(Some(
             "failed to probe codex version via `codex`: Resource temporarily unavailable (os error 35)",
+        ));
+        assert_eq!(
+            err.as_deref(),
+            Some(RUNNER_RESOURCE_UNAVAILABLE_USER_ERROR_MESSAGE)
+        );
+    }
+
+    #[test]
+    fn user_visible_error_message_or_none_keeps_hone_mcp_startup_errors_sanitized() {
+        let err = user_visible_error_message_or_none(Some(
+            "hone-mcp binary not found near current executable; tried: /private/app/hone-mcp (set HONE_MCP_BIN to override)",
         ));
         assert_eq!(
             err.as_deref(),

@@ -73,6 +73,12 @@
 
 ## 修复记录
 
+- `2026-06-08 12:08 CST` 追加错误边界加固：
+  - `crates/hone-channels/src/runtime.rs` 的共享用户可见错误边界继续补齐 `hone-mcp` 启动依赖失败分类，新增识别 `binary not found` 与 `not found near current executable` 这类启动依赖缺失信号。
+  - `user_visible_error_message` 与 `user_visible_error_message_or_none` 都会把该类错误映射为稳定的本机执行环境不可用文案，避免向 Feishu 用户暴露候选二进制路径、`HONE_MCP_BIN` 细节或其它工程化启动信息。
+  - 新增回归 `user_visible_error_message_maps_hone_mcp_startup_errors` 与 `user_visible_error_message_or_none_keeps_hone_mcp_startup_errors_sanitized`，锁住 Feishu direct / scheduler 共用错误净化层的行为。
+  - 本轮未重启当前 Feishu 服务，也不把当前机器运行态作为线上恢复证据；状态维持代码级 `Fixed`，建议正常部署/重启后复测。
+
 - `2026-06-04` 已修复：
   - `bins/hone-cli/src/start.rs` 现在会在源码/CLI 启动链路里显式透传 `HONE_MCP_BIN`，优先把当前 root 下已定位到的 `hone-mcp` 二进制传给子进程，避免 Feishu / Web / scheduler runner 只依赖“当前可执行文件附近碰巧有 hone-mcp”。
   - `crates/hone-channels/src/runtime.rs` 现在把 `hone-mcp binary not found near current executable ... (set HONE_MCP_BIN to override)` 这类 dependency startup failure 统一映射为用户态文案 `当前本机执行环境暂时不可用，请稍后再试。`，不再向 Feishu 用户暴露二进制名、探测路径和环境变量。
@@ -83,6 +89,8 @@
 - `cargo test -p hone-cli child_envs_exports_hone_mcp_bin_from_source_root -- --nocapture`
 - `cargo test -p hone-channels user_visible_error_message_rewrites_missing_hone_mcp_binary_errors -- --nocapture`
 - `cargo check -p hone-channels -p hone-cli --tests`
+- `cargo test -p hone-channels user_visible_error_message_ --lib -- --nocapture`
+- `cargo check -p hone-channels --tests`
 
 ## 后续关注
 

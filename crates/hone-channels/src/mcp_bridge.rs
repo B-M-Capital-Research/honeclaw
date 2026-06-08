@@ -1,4 +1,5 @@
 use hone_core::ActorIdentity;
+use hone_core::config::HoneConfig;
 use hone_tools::ToolRegistry;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
@@ -28,9 +29,12 @@ pub fn hone_mcp_servers(request: &AgentRunnerRequest) -> Result<Value, String> {
     if let Some(scope) = &request.actor.channel_scope {
         env_entries.push(mcp_env_entry("HONE_MCP_ACTOR_SCOPE", scope.as_str()));
     }
-    push_data_dir_env_or_derived(&mut env_entries, || absolute_parent_dir(&request.runtime_dir));
+    push_data_dir_env_or_derived(&mut env_entries, || {
+        absolute_parent_dir(&request.runtime_dir)
+    });
     push_env_var_if_present(&mut env_entries, "HONE_SKILLS_DIR");
     push_env_var_if_present(&mut env_entries, "HONE_AGENT_SANDBOX_DIR");
+    push_runtime_env_vars_from_config(&mut env_entries, &request.config_path);
     if let Some(allowed_tools) = &request.allowed_tools {
         env_entries.push(mcp_env_entry(
             "HONE_MCP_ALLOWED_TOOLS",
@@ -106,6 +110,67 @@ fn absolute_parent_dir(path: &str) -> Option<String> {
     absolute
         .parent()
         .map(|path| path.to_string_lossy().to_string())
+}
+
+fn push_runtime_env_vars_from_config(env_entries: &mut Vec<Value>, config_path: &str) {
+    let mut names = vec![
+        "HONE_CLOUD_MODE".to_string(),
+        "HONE_CLOUD_ENABLED".to_string(),
+        "HONE_CLOUD_STRICT_NO_LOCAL_STORAGE".to_string(),
+        "DATABASE_URL".to_string(),
+        "HONE_POSTGRES_HOST".to_string(),
+        "HONE_POSTGRES_PORT".to_string(),
+        "HONE_POSTGRES_USER".to_string(),
+        "HONE_POSTGRES_PASSWORD".to_string(),
+        "HONE_POSTGRES_DATABASE".to_string(),
+        "HONE_POSTGRES_PROXY".to_string(),
+        "HONE_POSTGRES_NO_PROXY".to_string(),
+        "HONE_OSS_PROVIDER".to_string(),
+        "HONE_OSS_ACCESS_KEY_ID".to_string(),
+        "HONE_OSS_ACCESS_KEY_SECRET".to_string(),
+        "HONE_OSS_BUCKET".to_string(),
+        "HONE_OSS_ENDPOINT".to_string(),
+        "HONE_OSS_REGION".to_string(),
+        "HONE_OSS_PROXY".to_string(),
+    ];
+
+    if let Ok(config) = HoneConfig::from_file(config_path) {
+        let pg = &config.cloud.postgres;
+        names.extend([
+            pg.database_url_env.clone(),
+            pg.host_env.clone(),
+            pg.port_env.clone(),
+            pg.user_env.clone(),
+            pg.password_env.clone(),
+            pg.database_env.clone(),
+            pg.proxy_env.clone(),
+            pg.no_proxy_env.clone(),
+        ]);
+
+        let oss = &config.cloud.oss;
+        names.extend([
+            oss.provider_env.clone(),
+            oss.access_key_id_env.clone(),
+            oss.access_key_secret_env.clone(),
+            oss.bucket_env.clone(),
+            oss.endpoint_env.clone(),
+            oss.region_env.clone(),
+            oss.proxy_env.clone(),
+        ]);
+    }
+
+    let mut seen: HashSet<String> = env_entries
+        .iter()
+        .filter_map(|entry| entry.get("name").and_then(|value| value.as_str()))
+        .map(|name| name.to_string())
+        .collect();
+    for name in names {
+        let trimmed = name.trim();
+        if trimmed.is_empty() || !seen.insert(trimmed.to_string()) {
+            continue;
+        }
+        push_env_var_if_present(env_entries, trimmed);
+    }
 }
 
 fn hone_mcp_command_path() -> Result<String, String> {
@@ -749,6 +814,17 @@ mod tests {
             .expect("env lock")
     }
 
+    fn temp_root(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "{}_{}_{}",
+            name,
+            std::process::id(),
+            hone_core::beijing_now()
+                .timestamp_nanos_opt()
+                .unwrap_or_default()
+        ))
+    }
+
     fn clear_test_env() {
         for key in [
             "HONE_MCP_BIN",
@@ -761,6 +837,24 @@ mod tests {
             "HONE_DATA_DIR",
             "HONE_SKILLS_DIR",
             "HONE_AGENT_SANDBOX_DIR",
+            "HONE_CLOUD_MODE",
+            "HONE_CLOUD_ENABLED",
+            "HONE_CLOUD_STRICT_NO_LOCAL_STORAGE",
+            "DATABASE_URL",
+            "HONE_POSTGRES_HOST",
+            "HONE_POSTGRES_PORT",
+            "HONE_POSTGRES_USER",
+            "HONE_POSTGRES_PASSWORD",
+            "HONE_POSTGRES_DATABASE",
+            "HONE_POSTGRES_PROXY",
+            "HONE_POSTGRES_NO_PROXY",
+            "HONE_OSS_PROVIDER",
+            "HONE_OSS_ACCESS_KEY_ID",
+            "HONE_OSS_ACCESS_KEY_SECRET",
+            "HONE_OSS_BUCKET",
+            "HONE_OSS_ENDPOINT",
+            "HONE_OSS_REGION",
+            "HONE_OSS_PROXY",
         ] {
             unsafe { env::remove_var(key) };
         }
@@ -956,6 +1050,90 @@ mod tests {
 
         env::set_current_dir(previous_dir).expect("restore cwd");
         assert_eq!(actual, expected.to_string_lossy());
+    }
+
+    #[test]
+    fn hone_mcp_servers_exports_configured_cloud_runtime_env() {
+        let _guard = env_lock();
+        clear_test_env();
+        let unique = format!(
+            "{}_{}",
+            std::process::id(),
+            hone_core::beijing_now()
+                .timestamp_nanos_opt()
+                .unwrap_or_default()
+        );
+        let pg_url_env = format!("HONE_TEST_MCP_DATABASE_URL_{unique}");
+        let oss_key_env = format!("HONE_TEST_MCP_OSS_KEY_{unique}");
+        let oss_secret_env = format!("HONE_TEST_MCP_OSS_SECRET_{unique}");
+        let oss_bucket_env = format!("HONE_TEST_MCP_OSS_BUCKET_{unique}");
+        let oss_endpoint_env = format!("HONE_TEST_MCP_OSS_ENDPOINT_{unique}");
+        let temp_dir = temp_root("hone_mcp_cloud_env");
+        std::fs::create_dir_all(&temp_dir).expect("temp dir");
+        let config_path = temp_dir.join("config.yaml");
+        std::fs::write(
+            &config_path,
+            format!(
+                r#"
+cloud:
+  mode: cloud
+  postgres:
+    database_url_env: "{pg_url_env}"
+  oss:
+    access_key_id_env: "{oss_key_env}"
+    access_key_secret_env: "{oss_secret_env}"
+    bucket_env: "{oss_bucket_env}"
+    endpoint_env: "{oss_endpoint_env}"
+"#
+            ),
+        )
+        .expect("write config");
+        unsafe {
+            env::set_var("HONE_MCP_BIN", "/tmp/hone-mcp-custom");
+            env::set_var("HONE_CLOUD_MODE", "cloud");
+            env::set_var(
+                &pg_url_env,
+                "postgres://user:pass@example.invalid:5432/hone",
+            );
+            env::set_var(&oss_key_env, "oss-key");
+            env::set_var(&oss_secret_env, "oss-secret");
+            env::set_var(&oss_bucket_env, "oss-bucket");
+            env::set_var(&oss_endpoint_env, "https://oss.example.invalid");
+        }
+
+        let mut request = make_request();
+        request.config_path = config_path.to_string_lossy().to_string();
+
+        let payload = hone_mcp_servers(&request).expect("payload");
+        let env_entries = payload[0]["env"].as_array().expect("env entries");
+        let env_value = |name: &str| {
+            env_entries
+                .iter()
+                .find(|entry| entry.get("name").and_then(|v| v.as_str()) == Some(name))
+                .and_then(|entry| entry.get("value").and_then(|v| v.as_str()))
+                .map(|value| value.to_string())
+        };
+
+        assert_eq!(env_value("HONE_CLOUD_MODE").as_deref(), Some("cloud"));
+        assert_eq!(
+            env_value(&pg_url_env).as_deref(),
+            Some("postgres://user:pass@example.invalid:5432/hone")
+        );
+        assert_eq!(env_value(&oss_key_env).as_deref(), Some("oss-key"));
+        assert_eq!(env_value(&oss_secret_env).as_deref(), Some("oss-secret"));
+        assert_eq!(env_value(&oss_bucket_env).as_deref(), Some("oss-bucket"));
+        assert_eq!(
+            env_value(&oss_endpoint_env).as_deref(),
+            Some("https://oss.example.invalid")
+        );
+
+        unsafe {
+            env::remove_var(pg_url_env);
+            env::remove_var(oss_key_env);
+            env::remove_var(oss_secret_env);
+            env::remove_var(oss_bucket_env);
+            env::remove_var(oss_endpoint_env);
+        }
     }
 
     #[test]
