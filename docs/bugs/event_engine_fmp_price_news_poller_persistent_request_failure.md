@@ -14,7 +14,7 @@
 
 ## 状态
 
-- New
+- Closed
 
 ## 证据来源
 
@@ -54,6 +54,10 @@
   - 2026-06-08 07:01-11:02 CST 复核窗口内，前半段仍失败：`poller.fmp.price` 27 次、`poller.fmp.news` 9 次 `failed + items=0`，失败持续到 09:14 CST。
   - 2026-06-08 09:19 CST 起出现恢复样本：`poller.fmp.price` 后续 21 次、`poller.fmp.news` 后续 7 次为 `ok + items=0`；`poller.fmp.earnings` 与 `poller.fmp.macro` 也各有 1 次从失败转为 `ok`。
   - 这说明 FMP 请求发送链路在本窗后半段部分恢复，但恢复窗口不足两小时，且 `poller.fmp.sec_filings` 同窗仍有 1 次 `failed`；本轮只记录状态变化，不直接关闭缺陷。
+- `data/runtime/task_runs.2026-06-08.jsonl`
+  - 2026-06-08 11:01-15:01 CST 复核窗口内，`poller.fmp.price` 48 次、`poller.fmp.news` 16 次全部为 `ok + items=0`。
+  - 同窗 `poller.fmp.extended_hours` 8 次为 `ok + items=0`，未见 FMP poller `failed` 记录；`internal.daily_report` 与 `internal.unified_digest_scheduler` 仅按周期记录 `skipped`。
+  - 结合 2026-06-08 09:19 CST 起的恢复样本，price/news 请求发送链路已连续超过一个完整巡检窗口恢复；本轮将状态从 `New` 调整为 `Closed`，后续若再次出现连续失败再重新打开。
 - 当天更早记录显示：
   - 2026-06-06 08:04-09:24 CST `poller.fmp.price` 曾连续成功 18 次，`poller.fmp.news` 曾成功 5 次。
   - 2026-06-06 09:29 CST 起，price/news poller 开始持续失败；截至 2026-06-07 03:01 CST 最近四小时仍未恢复。
@@ -65,6 +69,8 @@
   - 2026-06-07 19:02-23:02 CST 有 14 个 Feishu user turn 与 15 个 assistant 记录，7 个 Feishu direct 活跃会话最新均以 assistant 收口；多出的 1 条 assistant 是 daily-limit final/text 双记录，另立 P3 跟踪。`cron_job_runs` 同窗无新增记录，assistant final 污染扫描未命中 FMP 原始错误、空回复、内部路径、raw tool 字段、思维痕迹、provider 原始错误、panic 或 stream disconnect。
   - 2026-06-07 23:02-2026-06-08 03:02 CST 本地 SQLite 只新增 1 个 Feishu user turn 与 1 个 assistant final，成对收口；`cron_job_runs` 同窗无新增记录，assistant final 污染扫描未命中 FMP 原始错误、空回复、内部路径、raw tool 字段、思维痕迹、provider 原始错误、panic 或 stream disconnect。
   - 2026-06-08 03:02-07:02 CST SQLite 没有新增 Feishu / Discord 落库会话或 scheduler 台账记录；`data/runtime/logs/acp-events.log` 同窗有 7 个 Web direct prompt，均以 `stopReason=end_turn` 收口，未见 response error、runner error、stream disconnect、quota、panic 或 provider 原始错误。
+  - 2026-06-08 11:01-15:01 CST `data/sessions.sqlite3` 有 9 个 user turn 与 9 个 assistant final，3 个 Feishu direct 会话最新均以 assistant 收口；`cron_job_runs` 同窗无新增记录，assistant final 污染扫描未命中 FMP 原始错误、空回复、内部路径、raw tool 字段、思维痕迹、provider 原始错误、panic 或 stream disconnect。
+  - 同窗 `acp-events.log` 有 9 个 Feishu prompt 与 3 个 Web prompt，均以 `stopReason=end_turn` 收口，未见 response error、runner error、stream disconnect、quota、panic 或 provider 原始错误。
 
 ## 端到端链路
 
@@ -90,8 +96,9 @@
 - 后续 2026-06-07 23:02-2026-06-08 03:02 CST 复核窗口内，quote/news poller 仍全部失败且 `items=0`；extended-hours 仍按节奏 `ok`，说明失败尚未恢复。
 - 后续 2026-06-08 03:02-07:02 CST 复核窗口内，quote/news poller 仍全部失败且 `items=0`；extended-hours 仍按节奏 `ok`，说明失败尚未恢复。
 - 后续 2026-06-08 07:01-11:02 CST 复核窗口内，quote/news poller 在 09:14 CST 前仍失败，09:19 CST 起 price/news 转为连续 `ok + items=0`；当前按“部分恢复待复核”处理，状态暂不关闭。
+- 后续 2026-06-08 11:01-15:01 CST 复核窗口内，quote/news poller 已连续恢复为 `ok + items=0`；当前没有新的 FMP 请求发送失败、用户可见 FMP 原始错误或下游新鲜度投诉，因此本轮关闭该缺陷。
 - 同一 runtime 的 extended-hours poller 仍按节奏运行并返回 `ok`，说明不是调度器完全停止。
-- 当前缺陷尚未在本轮直接表现为用户可见错误、错投或格式污染，但已构成事件引擎数据摄取链路退化。
+- 该缺陷关闭前未直接表现为用户可见错误、错投或格式污染；此前影响集中在事件引擎数据摄取链路退化。
 
 ## 用户影响
 
@@ -102,7 +109,7 @@
 ## 根因判断
 
 - 直接原因是 FMP quote/news HTTP 请求在 poller 层持续 `error sending request`。
-- 当前证据不足以确认是本机网络、FMP 上游、key/plan 限制、请求 batch 形态或客户端超时配置导致。
+- 当前证据不足以确认是本机网络、FMP 上游、key/plan 限制、请求 batch 形态或客户端超时配置导致；2026-06-08 09:19 CST 后链路自行恢复，更像上游/网络/运行态瞬时退化恢复，而不是已知代码修复闭环。
 - 该问题不同于已关闭的 `event_engine_price_poller_transient_fetch_failure.md`：本轮不是单 tick 抖动，而是从 2026-06-06 09:29 CST 起持续到最近四小时的 price/news poller 全失败。
 - 也不同于历史 `event_engine_price_poller_unbounded_quote_batch.md` 的已修复 batch 拆分问题：本轮错误信息是请求发送失败，尚未证明为 URL path 过长或单 batch 丢弃其它成功 batch。
 
@@ -110,6 +117,6 @@
 
 - 先检查 event-engine FMP client 对 `error sending request` 的错误分类、重试和超时设置，确认是否需要按网络/上游/配置分别记录 `failure_kind`。
 - 对 price/news poller 增加连续失败阈值告警，避免长时间只写 `task_runs` 而没有运行态告警。
-- 下一轮优先复核 2026-06-08 09:19 CST 后的 `ok` 是否持续；若连续多个巡检窗口保持恢复且没有用户可见数据新鲜度问题，再评估是否转为 `Fixed` 或 `Closed`。
+- 后续巡检继续统计 FMP price/news poller；若再次连续一个巡检窗口出现 `failed + items=0`，重新打开本缺陷并补充新证据。
 - 检查失败期间是否仍有其它行情源或缓存被下游使用；若没有，应在 digest / alert 生成前显式注入数据新鲜度缺口。
 - 对比 FMP quote/news 与 extended-hours 的请求域名、batch 大小、timeout、key 使用路径，定位为何 extended-hours 仍 ok 而 quote/news 持续失败。

@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-06-08 12:08 CST
+最后更新：2026-06-08 15:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,9 +17,11 @@
 
 ## 当前概览
 
-- 活跃待修复：8
+- 活跃待修复：7
 - Later / 待复现：10
-- 已修复 / 已关闭：121
+- 已修复 / 已关闭：122
+- 本轮 15:03 CST 未新增独立缺陷或活跃 P1 状态变化。11:01-15:01 CST `data/sessions.sqlite3` 有 9 个 user turn 与 9 个 assistant final，3 个 Feishu direct 会话最新均以 assistant 收口；`cron_job_runs` 同窗无新增记录；assistant final 污染扫描未命中空回复、内部路径、raw tool 字段、思维痕迹、provider 原始错误、quota、panic 或 stream disconnect。`acp-events.log` 同窗有 9 个 Feishu prompt 与 3 个 Web prompt，均以 `stopReason=end_turn` 收口，未见 response error、runner error、stream disconnect、quota、panic 或 provider 原始错误；最近四小时无非文档代码提交。
+- 本轮 15:03 CST 关闭 P2 `Event-engine FMP price/news poller 持续请求失败导致行情与新闻增量退化`：11:01-15:01 CST `data/runtime/task_runs.2026-06-08.jsonl` 中 `poller.fmp.price` 48 次、`poller.fmp.news` 16 次全部为 `ok + items=0`，同窗 `poller.fmp.extended_hours` 8 次为 `ok`，未见 FMP poller `failed`。结合 09:19 CST 后的恢复样本，price/news 请求发送链路已连续超过一个完整巡检窗口恢复；无用户可见 FMP 原始错误或下游新鲜度投诉，状态从 `New` 调整为 `Closed`，若后续连续失败再重新打开。
 - 本轮 12:08 CST 对已修复 P1 `Feishu direct actor 读取 Cron 与持仓作用域为空，导致任务和投资上下文丢失` 追加 cloud runtime 加固：ACP `hone-mcp` server 配置现在会转发父进程中 cloud runtime 需要的 env，包括 `HONE_CLOUD_MODE`、默认 `HONE_POSTGRES_*` / `HONE_OSS_*` / `DATABASE_URL`，以及 runtime config 中自定义的 `cloud.postgres.*_env`、`cloud.oss.*_env` 名称，避免 MCP 子进程因缺少 PG / OSS env-backed 配置而退回本地空 store，导致 cron 与 portfolio 同时读空。验证 `cargo test -p hone-channels hone_mcp_servers_ --lib -- --nocapture` 通过；关联 Issue [#49](https://github.com/B-M-Capital-Research/honeclaw/issues/49)。
 - 本轮 12:08 CST 对已修复 P1 `Feishu direct returns hone-mcp startup error` 追加错误边界加固：共享错误净化层新增 `hone-mcp binary not found` / `not found near current executable` 启动依赖错误识别，直聊与 scheduler 失败路径会返回统一“当前本机执行环境暂时不可用，请稍后再试。”，不再向用户暴露候选二进制路径或 `HONE_MCP_BIN`。验证 `cargo test -p hone-channels user_visible_error_message_ --lib -- --nocapture` 通过；关联 Issue [#48](https://github.com/B-M-Capital-Research/honeclaw/issues/48)。
 - 本轮 11:03 CST 未新增独立缺陷或活跃 P1 状态变化。07:01-11:02 CST `data/sessions.sqlite3` 有 14 个 user turn 与 14 个 assistant final，Feishu direct 与 Discord scheduler 均成对收口；assistant final 污染扫描未命中空回复、内部路径、raw tool 字段、思维痕迹、provider 原始错误、quota、panic 或 stream disconnect。最近四小时无非文档代码提交。
@@ -457,7 +459,6 @@
 | --- | --- | --- | --- | --- |
 | Web direct 图片附件未进入可读/OCR 链路且回复外露内部排障口径 | P2 | New | 2026-06-06 19:02 Web direct 图片会话正常 `end_turn`，但截图没有进入可读文件/OCR 输入；assistant 要求用户粘贴文字，并向用户展示“uploads、/tmp、会话数据库、OSS 引用、当前工具链”等内部排障口径。阻断图片附件理解链路，非 P1 | [web_direct_image_attachment_not_readable_internal_debug_leak.md](./web_direct_image_attachment_not_readable_internal_debug_leak.md) |
 | Discord scheduler 已生成报告但发送阶段失败且缺少错误原因 | P2 | New | 2026-06-08 11:03 重新打开：09:31 CST `run_id=38433` 在完整报告生成、ACP `end_turn` 后仍落成 `completed + send_failed + delivered=0`，`sent_segments=0,total_segments=3` 且 `error_message` 为空；03:06 CST 修复结论未在真实台账兑现。非 P1，无关联 GitHub Issue | [discord_scheduler_completed_report_send_failed_without_error.md](./discord_scheduler_completed_report_send_failed_without_error.md) |
-| Event-engine FMP price/news poller 持续请求失败导致行情与新闻增量退化 | P2 | New | 2026-06-08 11:03 07:01-09:14 CST 仍有 price/news 请求失败，09:19 CST 起 price/news 转为连续 `ok + items=0`；恢复窗口不足两小时且同窗仍有 `sec_filings` 单次失败，暂按部分恢复待复核处理，不关闭。非 P1 | [event_engine_fmp_price_news_poller_persistent_request_failure.md](./event_engine_fmp_price_news_poller_persistent_request_failure.md) |
 | Codex ACP transport 断连导致直聊和定时请求失败且缺少自动恢复 | P2 | New | 2026-06-06 11:02 live 真实窗口出现 1 条 Feishu direct 用户主动追问只收到通用失败，ACP 事件为 `stream disconnected before completion`；同窗 1 条 Discord scheduler 同类断连被抑制为 `should_deliver=0`，但台账仍表现为 `noop + skipped_noop + failure_kind=internal_error_suppressed`。原始错误未外泄，非 P1 | [codex_acp_transport_disconnect_request_failure.md](./codex_acp_transport_disconnect_request_failure.md) |
 | Web / Feishu 直聊公司画像沉淀后向用户暴露内部相对文件路径 | P3 | New | 2026-06-05 07:02 04:37 CST CIEN 财报分析 final 仍外露 `company_profiles/Ciena_CIEN.md`；该问题不影响分析正文、文件写入、会话收口或投递，维持质量性 P3。无关联 GitHub Issue | [web_company_profile_relative_path_exposed.md](./web_company_profile_relative_path_exposed.md) |
 | Feishu 直聊存储股最新价格回复在行情工具未完成时输出未充分校验数值 | P3 | New | 2026-06-07 19:03 复发：15:55 CST Feishu direct 用户询问周五大跌后何时抄底，assistant 再次复用 MU `864.01 / 857.2-857.4`、SNDK `1,559.32 / 1,528.87` 等异常精确行情，并据此给出 MU / SNDK 抄底区间；会话正常收口、无投递失败或内部错误外泄，因此仍为质量性 P3，非 P1 | [feishu_direct_storage_price_unverified_before_tool_complete.md](./feishu_direct_storage_price_unverified_before_tool_complete.md) |
@@ -483,6 +484,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Event-engine FMP price/news poller 持续请求失败导致行情与新闻增量退化 | P2 | Closed | 2026-06-08 15:03 11:01-15:01 CST `poller.fmp.price` 48 次、`poller.fmp.news` 16 次全部恢复为 `ok + items=0`；结合 09:19 CST 后恢复样本，链路已连续超过一个完整巡检窗口恢复，且无用户可见 FMP 原始错误或下游新鲜度投诉。无关联 GitHub Issue | [event_engine_fmp_price_news_poller_persistent_request_failure.md](./event_engine_fmp_price_news_poller_persistent_request_failure.md) |
 | Feishu direct actor 读取 Cron 与持仓作用域为空，导致任务和投资上下文丢失 | P1 | Fixed | 2026-06-08 12:08 在既有 `HONE_DATA_DIR` 绝对化 / runtime-dir 回退修复上追加 cloud runtime env 转发：`hone-mcp` server 配置现在包含默认与 config 自定义的 PG / OSS env 名称，避免 MCP 子进程因缺少 env-backed cloud 配置读到空 local cron / portfolio。验证 `cargo test -p hone-channels hone_mcp_servers_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；关联 Issue [#49](https://github.com/B-M-Capital-Research/honeclaw/issues/49) | [feishu_actor_scope_cron_portfolio_empty.md](./feishu_actor_scope_cron_portfolio_empty.md) |
 | Feishu 直聊对非标准 ticker 拼写直接猜测实体并给出建仓建议 | P3 | Fixed | 2026-06-05 03:04 共享金融系统 prompt 与 multi-agent search-stage guidance 新增 non-standard / near-match ticker 交易动作护栏：涉及建仓、加仓、减仓、买点、卖点、止损、仓位时必须先确认标的，禁止按“最像的代码”直接给价格区间、仓位比例或交易建议。验证 `build_prompt_bundle_always_includes_finance_domain_policy`、`search_input_guidance_allows_direct_replies_for_greetings`、`cargo check -p hone-channels --tests` 通过。无关联 GitHub Issue | [feishu_direct_nonstandard_ticker_guess_for_trade_advice.md](./feishu_direct_nonstandard_ticker_guess_for_trade_advice.md) |
 | Feishu 直聊批量返回 `hone-mcp binary not found` 内部错误 | P1 | Fixed | 2026-06-08 12:08 共享错误净化层继续补齐 `hone-mcp` 启动依赖错误分类，将 `binary not found` / `not found near current executable` 映射为产品化本机执行环境不可用提示；保留 2026-06-04 `hone-cli start` 显式透传 `HONE_MCP_BIN` 修复。验证 `cargo test -p hone-channels user_visible_error_message_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；关联 Issue [#48](https://github.com/B-M-Capital-Research/honeclaw/issues/48) | [feishu_direct_hone_mcp_binary_missing_raw_error.md](./feishu_direct_hone_mcp_binary_missing_raw_error.md) |
