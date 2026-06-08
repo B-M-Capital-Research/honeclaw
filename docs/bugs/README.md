@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-06-08 20:06 CST
+最后更新：2026-06-08 23:04 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,9 +17,11 @@
 
 ## 当前概览
 
-- 活跃待修复：6
+- 活跃待修复：7
 - Later / 待复现：10
 - 已修复 / 已关闭：124
+- 本轮 23:04 CST 新增 P3 `Web direct 投研回复外露内部 skill 与本地存储口径`：19:03-23:03 CST `data/sessions.sqlite3` 按真实消息时间有 11 个 Feishu user turn 与 11 个 assistant final，均成对收口；Web direct 证据来自 `acp-events.log`，同窗 Web / Feishu direct 均有 `stopReason=end_turn`，未见 response error、runner error、stream disconnect、quota、panic 或 provider 原始错误。20:11 CST Web direct 投研回复在最终文本中写出 `stock_research` 技能未激活、改用其它技能框架、财报日历工具返回全市场列表等内部执行说明；20:30 CST Web direct 持仓复盘回复写出 `本地 data/portfolio`、本地文件和本地 json 口径。两轮均完成业务分析并正常收口，未见投递失败、空回复、错投、绝对路径或 raw tool output 外泄，因此按质量性 P3 登记，非 P1，不创建 GitHub issue。
+- 本轮 23:04 CST 未发现活跃 P1 状态变化。`cron_job_runs` 同窗无新增记录；最近四小时无非文档代码提交。`data/runtime/task_runs.2026-06-08.jsonl` 中 `poller.fmp.price` 48 次、`poller.fmp.news` 16 次、`poller.fmp.extended_hours` 8 次均为 `ok + items=0`，未触发已关闭 FMP price/news 缺陷回退。
 - 本轮 20:06 CST 已修复 P2 `Discord scheduler 已生成报告但发送阶段失败且缺少错误原因`：Discord scheduler 终态台账现在与 Feishu / Web 一样通过 `execution_detail_with_delivery_key(...)` 写入顶层 `delivery_key`，发送失败时 detail 额外记录 `failure_kind=discord_send_failed` 与可用的 `send_error`，避免 `sent_segments=0,total_segments>0` 的 Discord 出站失败只留下不可关联、不可分类的 detail。验证 `cargo test -p hone-discord scheduler_ -- --nocapture`、`cargo check -p hone-discord --tests`、`rustfmt --edition 2024 --config skip_children=true --check bins/hone-discord/src/scheduler.rs` 通过；无关联 GitHub Issue。本轮不依赖当前机器 live 服务或生产日志判定恢复。
 - 本轮 19:01 CST 新增 P3 `Feishu 直聊列出定时任务时外露 enabled=true 实现字段`：15:01-19:01 CST `data/sessions.sqlite3` 有 7 个 Feishu user turn 与 7 个 assistant final，均成对收口；`cron_job_runs` 同窗无新增记录；assistant final 污染扫描未命中空回复、内部路径、raw tool 字段、思维痕迹、provider 原始错误、quota、panic 或 stream disconnect。17:55 CST Feishu direct 用户问“我有哪些定时任务”，assistant 正常列出 3 个启用任务并以 `stopReason=end_turn` 收口，但结尾写出“这 3 个任务目前都是 `enabled=true`”。该问题不阻断任务查询主链路、无投递失败或状态错乱，因此按质量性 P3 登记，非 P1，不创建 GitHub issue。
 - 本轮 19:01 CST 未发现活跃 P1 状态变化。`acp-events.log` 同窗 Feishu prompt 均以 `stopReason=end_turn` 收口，未见 response error、runner error、stream disconnect、quota、panic 或 provider 原始错误；最近四小时无非文档代码提交。`data/runtime/task_runs.2026-06-08.jsonl` 中 `poller.fmp.price` 48 次、`poller.fmp.news` 16 次均为 `ok + items=0`，未触发已关闭 FMP price/news 缺陷回退；`poller.fmp.extended_hours` 7 次 `ok`、1 次 `failed`，单次失败不足以登记新缺陷。
@@ -467,6 +469,7 @@
 | Feishu 直聊今日对话上限提示在会话历史中重复落库 | P3 | New | 2026-06-07 23:02 20:57 CST 同一 Feishu direct 用户消息后，`session_messages` 连续落库 daily-limit `final` 与 Feishu `text` 两条同义 assistant 记录，使用同一 `message_id`；历史样本显示 06-02、06-03、06-05 也有同类双记录。当前无证据证明用户实际收到重复消息，且不阻断 direct 主链路，因此按 P3 跟踪，非 P1 | [feishu_direct_daily_limit_duplicate_assistant_transcript.md](./feishu_direct_daily_limit_duplicate_assistant_transcript.md) |
 | Web direct 在 all-in 高潜力单票请求中给出具体股票排序 | P3 | New | 2026-06-08 07:03 继续观察到同根质量风险：07:01 CST 同一 Web direct session 在“抄底能力 + 高风险长期进攻账户 + 不想分仓太多”请求中，assistant 虽降温并避免直接映射“现在买哪只”，仍输出 `主攻仓 70%-80%`、`第一笔 40% / 确认止跌后 30% / 基本面验证后 30%`、`每次重仓只打一只主票` 等可照抄的集中仓位策略。不阻断会话收口或投递，维持 P3，非 P1 | [web_direct_all_in_stock_recommendation_quality_gap.md](./web_direct_all_in_stock_recommendation_quality_gap.md) |
 | Feishu 直聊列出定时任务时外露 `enabled=true` 实现字段 | P3 | New | 2026-06-08 19:01 新增：17:55 CST Feishu direct 用户问“我有哪些定时任务”，assistant 正常列出 3 个启用任务并以 `stopReason=end_turn` 收口，但结尾写出“这 3 个任务目前都是 `enabled=true`”。查询主链路已完成、无投递失败或状态错乱，因此为质量性 P3，非 P1 | [feishu_direct_cron_list_enabled_flag_exposed.md](./feishu_direct_cron_list_enabled_flag_exposed.md) |
+| Web direct 投研回复外露内部 skill 与本地存储口径 | P3 | New | 2026-06-08 23:04 新增：20:11 CST Web direct 投研回复写出 `stock_research` 技能未激活、改用其它技能框架和工具过滤异常；20:30 CST Web direct 持仓复盘回复写出 `本地 data/portfolio`、本地文件和本地 json 口径。两轮均完成业务分析并以 `stopReason=end_turn` 收口，不阻断主链路，非 P1 | [web_direct_internal_skill_and_local_store_terms_exposed.md](./web_direct_internal_skill_and_local_store_terms_exposed.md) |
 
 ## Later / 待复现
 
