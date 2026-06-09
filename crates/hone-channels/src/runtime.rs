@@ -277,7 +277,7 @@ static RE_INTERNAL_TOOLING_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock::new
 });
 static RE_COMPANY_PROFILE_COPY_GLITCH: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
-        r#"(?:路径是[:：]?\s*公司画像(?:公司画像)?|本地画像[:：]?\s*公司画像|本地公司画像[:：]?\s*公司画像)"#,
+        r#"(?:路径是[:：]?\s*公司画像(?:公司画像)?|本地画像[:：]?\s*公司画像|本地公司画像[:：]?\s*公司画像|画像已更新[:：]?\s*公司画像(?:公司画像)?)"#,
     )
     .expect("valid regex")
 });
@@ -287,6 +287,12 @@ static RE_COMPANY_PROFILE_UPDATE_COPY: LazyLock<regex::Regex> = LazyLock::new(||
 });
 static RE_COMPANY_PROFILE_WRITE_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(r#"沉淀到本地公司画像[:：]?\s*公司画像"#).expect("valid regex")
+});
+static RE_MARKET_DATA_FALLBACK_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r#"(?i)(?:^|[\s，。；：])data_fetch\s*本轮未返回可用结果(?:\s*[,，]\s*已用\s*stockanalysis\s*补充校验)?"#,
+    )
+    .expect("valid regex")
 });
 
 // ── skip-buffer 检测正则 ──────────────────────────────────────────────────────
@@ -509,6 +515,10 @@ fn rewrite_user_visible_internal_copy(text: &str) -> (String, bool) {
         (&RE_COMPANY_PROFILE_UPDATE_COPY, "把本轮更新补进公司画像"),
         (&RE_COMPANY_PROFILE_WRITE_COPY, "沉淀到公司画像"),
         (&RE_COMPANY_PROFILE_COPY_GLITCH, "已沉淀为公司画像"),
+        (
+            &RE_MARKET_DATA_FALLBACK_COPY,
+            "主行情源本轮未返回可用结果，已改用公开页面补充校验",
+        ),
     ] {
         let next = re.replace_all(&rewritten, replacement);
         if next != rewritten {
@@ -1206,14 +1216,27 @@ mod tests {
 
     #[test]
     fn sanitize_user_visible_output_rewrites_company_profile_copy_glitches() {
-        let raw = "我已为腾讯控股建立长期画像，路径是：\n公司画像公司画像。并把本轮更新补进本地画像：公司画像。";
+        let raw = "我已为腾讯控股建立长期画像，路径是：\n公司画像公司画像。画像已更新：公司画像公司画像。并把本轮更新补进本地画像：公司画像。";
         let sanitized = sanitize_user_visible_output(raw);
         assert!(sanitized.removed_internal);
         assert_eq!(
             sanitized.content,
-            "我已为腾讯控股建立长期画像，已沉淀为公司画像。把本轮更新补进公司画像。"
+            "我已为腾讯控股建立长期画像，已沉淀为公司画像。已沉淀为公司画像。把本轮更新补进公司画像。"
         );
         assert!(!sanitized.content.contains("公司画像公司画像"));
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_rewrites_market_data_tool_fallback_copy() {
+        let raw = "data_fetch 本轮未返回可用结果，已用 StockAnalysis 补充校验。以下是今晚观察池更新。";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(sanitized.removed_internal);
+        assert_eq!(
+            sanitized.content,
+            "主行情源本轮未返回可用结果，已改用公开页面补充校验。以下是今晚观察池更新。"
+        );
+        assert!(!sanitized.content.contains("data_fetch"));
+        assert!(!sanitized.content.contains("StockAnalysis"));
     }
 
     #[test]

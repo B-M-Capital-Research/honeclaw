@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-06-10 03:03 CST
+最后更新：2026-06-10 03:27 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,9 +17,10 @@
 
 ## 当前概览
 
-- 活跃待修复：3
+- 活跃待修复：1
 - Later / 待复现：10
-- 已修复 / 已关闭：130
+- 已修复 / 已关闭：132
+- 本轮 03:27 CST 已修复 2 个共享净化层 `P3` 文案缺陷：`sanitize_user_visible_output(...)` 现会把 `画像已更新：公司画像公司画像` 重写为自然业务文案，并把 `data_fetch 本轮未返回可用结果，已用 StockAnalysis 补充校验` 改写为“主行情源本轮未返回可用结果，已改用公开页面补充校验”，避免公司画像落点退化文案与内部行情工具名进入用户可见 final。验证 `cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_rewrites_company_profile_copy_glitches --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_rewrites_market_data_tool_fallback_copy --lib -- --nocapture`、`cargo check -p hone-channels --tests`、`git diff --check` 通过。当前无活跃 `P0/P1`，剩余活跃项仅 1 个 `P3` Feishu daily-limit 重复落库问题。
 - 本轮 03:03 CST 回退 P3 `Feishu 直聊今日对话上限提示在会话历史中重复落库`：23:02-03:03 CST `data/sessions.sqlite3` 有 9 个 user turn 与 11 个 assistant 记录；多出的 2 条 assistant 均来自 Feishu direct session `Actor_feishu__direct__ou_5f64ee7ca7af22d44a83a31054e6fb92a3` 在 23:47 / 23:53 CST daily-limit 短路后连续落库同义 `final` 与 Feishu `text`。该样本晚于 2026-06-09 04:43 CST 修复确认，说明幂等保护未覆盖当前 live 路径；当前无证据证明 Feishu 端重复投递，且用户仍收到清晰额度提示，不影响主功能链路，因此保持质量性 `P3 / New`。非 P1，不创建 GitHub issue。
 - 本轮 03:03 CST 未发现新的独立缺陷或活跃 P1 状态变化。最近四小时普通 Feishu scheduler 5 条均 `completed + sent + delivered=1`；assistant final 污染扫描未命中空回复、本机绝对路径、`data/agent-sandboxes`、raw tool 字段、思维痕迹、provider 原始错误、`enabled=true`、`company_profiles/...`、`公司画像公司画像`、skill/tool 内部状态或新的 `data_fetch` 外泄。23:02 CST `核心观察股池晚间快报` 的 `data_fetch` 文案仍是上一轮已登记 P3。heartbeat 新增 65 条 `noop + skipped_noop + delivered=0`、37 条 `execution_failed + skipped_error + delivered=0` 与 2 条 `completed + sent + delivered=1`，失败仍以 `PlainTextSuppressed`、`JsonUnknownStatus`、`ContextOverflowError` 为主，落在既有 heartbeat 结构化 / context overflow 文档范围，未进入用户可见 final；最近四小时无非文档代码提交。
 - 本轮 00:11 CST 已修复 P2 `Feishu 直聊图片附件未稳定进入可读链路且外露内部技能状态`：Feishu image 下载缺失 content-type 时会兜底为 `image/unknown`，避免 `image_<key>.bin` 被共享附件 ingest 归为普通文件；共享附件 prompt 明确 `.bin` 图片仍按图片处理，读取失败不得暴露目录、OSS、数据库、工具链或技能加载状态；共享 sanitizer 覆盖“图片理解工具没有成功激活 / 图片分析技能没成功加载”等中文内部能力状态。验证 `cargo test -p hone-channels build_user_input_keeps_unknown_type_feishu_image_readable --lib -- --nocapture`、`CARGO_TARGET_DIR=/tmp/honeclaw-bug2-check CARGO_INCREMENTAL=0 cargo test -p hone-channels sanitize_user_visible_output_strips_image_skill_state_copy --lib -- --nocapture`、`cargo test -p hone-feishu image_download_without_content_type_still_enters_image_pipeline -- --nocapture`、`cargo check -p hone-channels --tests`、`CARGO_TARGET_DIR=/tmp/honeclaw-bug2-check CARGO_INCREMENTAL=0 cargo check -p hone-feishu --tests` 通过；无关联 GitHub Issue。本轮未依赖当前机器生产日志或线上渠道状态。
@@ -483,8 +484,6 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Feishu 直聊今日对话上限提示在会话历史中重复落库 | P3 | New | 2026-06-10 03:03 回退：Feishu direct session `Actor_feishu__direct__ou_5f64ee7ca7af22d44a83a31054e6fb92a3` 在 23:47 / 23:53 CST 两次 daily-limit 短路后均连续落库同义 `final` 与 Feishu `text` assistant 记录，晚于 2026-06-09 04:43 修复确认。当前没有证据证明 Feishu 端重复投递，且用户仍收到清晰额度提示，按质量性 P3 保持活跃。非 P1，无 GitHub Issue | [feishu_direct_daily_limit_duplicate_assistant_transcript.md](./feishu_direct_daily_limit_duplicate_assistant_transcript.md) |
-| Feishu scheduler 降级说明外露 `data_fetch` 内部工具名 | P3 | New | 2026-06-09 23:04 新增：Feishu scheduler `核心观察股池晚间快报` `run_id=39170` 已 `completed + sent + delivered=1`，final 完整输出观察池价格、击球区和来源，但开头写出 `data_fetch 本轮未返回可用结果`，把内部行情工具名当作用户态降级说明。主链路未中断，按质量性 P3 登记。非 P1，无 GitHub Issue | [feishu_scheduler_data_fetch_tool_name_exposed.md](./feishu_scheduler_data_fetch_tool_name_exposed.md) |
-| Web / Feishu 直聊公司画像沉淀后向用户暴露内部相对文件路径 | P3 | New | 2026-06-09 23:04 回退：Feishu direct session `Actor_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c` 22:50 CST MRVL / AAOI 加仓判断已正常收口，但 final 在业务分析前写出 `画像已更新：公司画像公司画像`；该样本晚于 04:43 CST 的修复确认，说明公司画像落点退化文案仍可进入用户可见回复。非 P1，无 GitHub Issue | [web_company_profile_relative_path_exposed.md](./web_company_profile_relative_path_exposed.md) |
 
 ## Later / 待复现
 
@@ -505,6 +504,8 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Feishu scheduler 降级说明外露 `data_fetch` 内部工具名 | P3 | Fixed | 2026-06-10 03:27 共享 `sanitize_user_visible_output(...)` 新增内部行情工具降级口径改写：`data_fetch 本轮未返回可用结果，已用 StockAnalysis 补充校验` 会统一改成“主行情源本轮未返回可用结果，已改用公开页面补充校验”，避免内部工具名与站点名进入 Feishu scheduler final。验证 `cargo test -p hone-channels sanitize_user_visible_output_rewrites_market_data_tool_fallback_copy --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [feishu_scheduler_data_fetch_tool_name_exposed.md](./feishu_scheduler_data_fetch_tool_name_exposed.md) |
+| Web / Feishu 直聊公司画像沉淀后向用户暴露内部相对文件路径 | P3 | Fixed | 2026-06-10 03:27 共享 `sanitize_user_visible_output(...)` 扩展覆盖 `画像已更新：公司画像公司画像` 退化句式，和既有 `路径是：公司画像公司画像` / `本地画像：公司画像` 一并统一改写为自然业务文案，避免公司画像落点占位词重复进入 Web / Feishu final。验证 `cargo test -p hone-channels sanitize_user_visible_output_rewrites_company_profile_copy_glitches --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [web_company_profile_relative_path_exposed.md](./web_company_profile_relative_path_exposed.md) |
 | Feishu 直聊图片附件未稳定进入可读链路且外露内部技能状态 | P2 | Fixed | 2026-06-10 00:11 Feishu image 下载缺失 content-type 时兜底为 `image/unknown`，避免 `image_<key>.bin` 被共享附件 ingest 归为普通文件；图片附件 prompt 明确 `.bin` 图片仍按图片处理，失败时不得暴露工具链或技能加载状态；共享 sanitizer 覆盖“图片理解工具没有成功激活 / 图片分析技能没成功加载”等中文内部能力状态。验证 `cargo test -p hone-channels build_user_input_keeps_unknown_type_feishu_image_readable --lib -- --nocapture`、`CARGO_TARGET_DIR=/tmp/honeclaw-bug2-check CARGO_INCREMENTAL=0 cargo test -p hone-channels sanitize_user_visible_output_strips_image_skill_state_copy --lib -- --nocapture`、`cargo test -p hone-feishu image_download_without_content_type_still_enters_image_pipeline -- --nocapture`、`cargo check -p hone-channels --tests`、`CARGO_TARGET_DIR=/tmp/honeclaw-bug2-check CARGO_INCREMENTAL=0 cargo check -p hone-feishu --tests` 通过。无关联 GitHub Issue | [feishu_direct_image_attachment_not_readable_skill_phrase_exposed.md](./feishu_direct_image_attachment_not_readable_skill_phrase_exposed.md) |
 | Discord scheduler 已生成报告但发送阶段失败且缺少错误原因 | P2 | Fixed | 2026-06-09 16:08 `CronJobStorage::record_execution_event(...)` 写入层新增 send_failed 归一化 backstop：`sent_segments=0,total_segments>0,error_message=None` 的终态会补用户态错误原因，Discord 额外补 `failure_kind=discord_send_failed`；覆盖旧终态路径或未带新版 Discord detail 的不可诊断记录。验证 `cargo test -p hone-memory --lib -- --nocapture`、`cargo test -p hone-discord scheduler_ -- --nocapture`、`cargo check -p hone-memory --tests`、`cargo check -p hone-discord --tests` 通过。无关联 GitHub Issue | [discord_scheduler_completed_report_send_failed_without_error.md](./discord_scheduler_completed_report_send_failed_without_error.md) |
 | Codex ACP transport 断连导致直聊和定时请求失败且缺少自动恢复 | P2 | Fixed | 2026-06-09 04:43 直聊将 ACP stream disconnect 映射为安全执行环境不可用提示；scheduler 内部断连不外发，但台账保留安全错误文案与 `failure_kind=acp_transport_disconnect`，落成可诊断失败而非业务 noop。验证 `cargo test -p hone-channels user_visible_error_message_ --lib -- --nocapture`、`cargo test -p hone-channels suppressed_scheduler_failure_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [codex_acp_transport_disconnect_request_failure.md](./codex_acp_transport_disconnect_request_failure.md) |

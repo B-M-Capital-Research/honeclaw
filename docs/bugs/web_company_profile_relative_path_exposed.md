@@ -3,7 +3,7 @@
 - **发现时间**: 2026-06-02 11:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，非 P1
 
 ## 证据来源
@@ -114,6 +114,11 @@
 
 ## 修复记录
 
+- 2026-06-10 03:27 CST 再次修复：
+  - 共享 `sanitize_user_visible_output(...)` 扩展覆盖 `画像已更新：公司画像公司画像`，与既有 `路径是：公司画像公司画像`、`本地画像：公司画像`、`本地公司画像：公司画像` 一并统一改写为自然业务文案。
+  - `sanitize_user_visible_output_rewrites_company_profile_copy_glitches` 回归补到新复发表达，避免只替换路径片段却让重复“公司画像”继续进入用户可见 final。
+  - 本轮只修共享净化层文案边界，不改公司画像写入、云同步或投递链路。
+
 - 2026-06-09 23:04 CST 复发后回退：
   - 19:03-23:04 CST `session_messages` 有 97 个 user turn 与 99 个 assistant 记录，最近活跃 Feishu direct / scheduler session 均以 assistant final 收口；普通 Feishu scheduler 34 条均 `completed + sent + delivered=1`。
   - assistant final 污染扫描未命中空回复、本机绝对路径、`data/agent-sandboxes`、`company_profiles/...`、raw tool 字段、思维痕迹、provider 原始错误、quota、panic 或 stream disconnect。
@@ -143,6 +148,11 @@
   - `cargo test -p hone-channels sanitize_user_visible_output_redacts_bare_absolute_paths --lib -- --nocapture`
   - `cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`
   - `cargo check -p hone-channels --tests`
+- **本轮补充验证（2026-06-10 03:27 CST）**:
+  - `cargo test -p hone-channels sanitize_user_visible_output_rewrites_company_profile_copy_glitches --lib -- --nocapture`
+  - `cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+  - `git diff --check`
 - **文档同步**:
   - 已同步 `docs/bugs/README.md` 活跃计数、状态和已修复表。
   - 本修复不改变模块边界、入口、长期约束或运行工作流，不需要更新 `docs/repo-map.md`、`docs/current-plan.md` 或新增 handoff。

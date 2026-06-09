@@ -14,7 +14,7 @@ P3
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
@@ -79,3 +79,17 @@ New
 - 扩展共享出站净化或 scheduler prompt guard，将 `data_fetch 本轮未返回可用结果` 等内部工具名口径改写为“主行情源本轮未返回可用结果”。
 - 对 Feishu scheduler final 增加回归样本：当内部行情工具失败但有公开来源补充校验时，用户可见文本不得出现 `data_fetch`、tool 名称或内部执行状态。
 - 后续巡检继续区分两类证据：若同时复用旧价格并记成功，应回看 stale-price fallback 缺陷；若只是工具名进入最终回复，则按本单跟踪。
+
+## 修复记录
+
+- 2026-06-10 03:27 CST 修复：
+  - 共享 `sanitize_user_visible_output(...)` 新增内部行情工具降级口径改写：`data_fetch 本轮未返回可用结果，已用 StockAnalysis 补充校验` 会统一改成“主行情源本轮未返回可用结果，已改用公开页面补充校验”。
+  - 新增 `sanitize_user_visible_output_rewrites_market_data_tool_fallback_copy` 回归，锁定内部工具名和站点名不再进入 scheduler 用户态 final。
+  - 本轮只修用户可见文案边界，不涉及 scheduler 执行流、行情 fallback 策略或旧价格成功态判定。
+
+## 验证
+
+- `cargo test -p hone-channels sanitize_user_visible_output_rewrites_market_data_tool_fallback_copy --lib -- --nocapture`
+- `cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`
+- `cargo check -p hone-channels --tests`
+- `git diff --check`
