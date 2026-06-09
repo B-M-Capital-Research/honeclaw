@@ -14,7 +14,7 @@
 
 ## 状态
 
-- Fixed
+- New
 
 ## 证据来源
 
@@ -70,6 +70,15 @@
 - 若 `session_messages` 是用户可见 transcript，应只保留一条 assistant 记录，并把 Feishu delivery metadata 合并进同一条记录。
 - 增加回归：同一用户消息触发 daily-limit 后，`session_messages` 中只新增一条 assistant turn，且后续 user/assistant 计数保持成对。
 - 若后续确认 Feishu API 实际发送了两次相同文本，应将严重等级从 P3 提升为 P2，并补充出站投递证据。
+
+## 复发记录
+
+- 2026-06-10 03:03 CST 复核 `data/sessions.sqlite3`，确认该缺陷在 2026-06-09 04:43 CST 标记 `Fixed` 后重新出现：
+  - 2026-06-09 23:47:30 CST，session `Actor_feishu__direct__ou_5f64ee7ca7af22d44a83a31054e6fb92a3` 在用户消息 ordinal `739` 后，连续落库 ordinal `740` daily-limit `final` 与 ordinal `741` Feishu `text`，两条 assistant 文本均为“已达到今日对话上限（12/12，北京时间 2026-06-09），请明天再试”，且 `text` 记录绑定同一 Feishu `message_id=om_x100b6d4952d030a4c26450c63ff1f40`。
+  - 2026-06-09 23:53:15 CST，同一 session 在空内容图片/附件类 user turn ordinal `742` 后，再次连续落库 ordinal `743` daily-limit `final` 与 ordinal `744` Feishu `text`，`text` 记录绑定 `message_type=image` 与 `message_id=om_x100b6d497c805c90c3f831e172a11ea`。
+  - 最近窗口 `2026-06-09 23:02-2026-06-10 03:03 CST` 中，`session_messages` 有 9 个 user turn 与 11 个 assistant 记录；多出的 2 条 assistant 均来自上述 daily-limit final/text 双记录。
+- 本轮没有证据证明 Feishu 用户实际收到两次相同提示；用户仍收到清晰 daily-limit 文案，主功能链路没有被阻断，也没有内部错误外泄。因此该问题仍按会话历史质量 / 持久化准确性缺陷定级 `P3`，状态从 `Fixed` 回退为 `New`；非 P1，不创建 GitHub issue。
+- 同窗普通 Feishu scheduler 5 条均为 `completed + sent + delivered=1`；heartbeat 新增 65 条 `noop + skipped_noop + delivered=0`、37 条 `execution_failed + skipped_error + delivered=0` 与 2 条 `completed + sent + delivered=1`，失败形态仍落在既有 heartbeat 结构化输出 / context overflow 文档范围，未进入用户可见 final。
 
 ## 修复记录
 
