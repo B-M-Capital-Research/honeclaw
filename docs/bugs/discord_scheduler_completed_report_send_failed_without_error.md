@@ -14,7 +14,7 @@
 
 ## 状态
 
-- Fixed
+- New
 
 ## GitHub Issue
 
@@ -45,6 +45,12 @@
   - 同一 session 在 09:30-09:31 CST 已生成完整 assistant final，`acp-events.log` 也以 `stopReason=end_turn` 收口，说明模型生成与 ACP 链路完成。
   - `detail_json={"scheduler":null,"sent_segments":0,"total_segments":3}` 且 `error_message` 仍为空；这与 2026-06-08 03:06 CST 修复记录中“不再出现空 error_message”的期望不一致。
   - 同窗 14 个 user turn 与 14 个 assistant final 成对收口，assistant final 污染扫描未命中空回复、内部路径、raw tool 字段、思维痕迹、provider 原始错误、quota、panic 或 stream disconnect；本轮问题集中在 Discord 出站发送和可观测性。
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-06-09 07:02-11:03 CST 复核窗口内，同一 Discord scheduler 在 2026-06-08 20:06 CST 二次修复记录之后再次复现。
+  - `run_id=38790` / `job_id=j_910d8dcb` / `job_name=每日美股降息概率推送` 在 2026-06-09 09:31 CST 落成 `execution_status=completed + message_send_status=send_failed + should_deliver=1 + delivered=0`。
+  - 同一 session 在 09:30-09:31 CST 已生成完整 assistant final，`data/runtime/logs/acp-events.log` 也以 `stopReason=end_turn` 收口，说明模型生成与 ACP 链路完成。
+  - `detail_json={"scheduler":null,"sent_segments":0,"total_segments":2}` 且 `error_message` 仍为空；同时缺少 2026-06-08 20:06 CST 修复记录中预期的顶层 `delivery_key`、`failure_kind=discord_send_failed` 与 `send_error`。
+  - 同窗 23 个 user turn 与 24 个 assistant 记录，Feishu direct / scheduler 与 Discord scheduler 均有 assistant 收口；已落库 assistant final 污染扫描未命中空回复、内部路径、raw tool 字段、思维痕迹、provider 原始错误、quota、panic、stream disconnect 或 `enabled=true/false`。本轮问题继续集中在 Discord 出站发送和可观测性。
 
 ## 端到端链路
 
@@ -67,6 +73,7 @@
 - 出站投递阶段全部分段失败，最终 `delivered=0`。
 - 台账只记录 `send_failed` 和分段计数，没有保存失败原因。
 - 2026-06-08 09:31 CST 复核样本显示，03:06 CST 的代码修复结论尚未在真实台账中兑现：仍出现 `send_failed + delivered=0 + error_message=''`。
+- 2026-06-09 09:31 CST 复核样本显示，20:06 CST 的二次代码修复结论也尚未在真实台账中兑现：仍出现 `send_failed + delivered=0 + error_message=''`，且 detail 未带 `delivery_key` / `failure_kind` / `send_error`。
 - 这不是已有 `codex_acp_transport_disconnect_request_failure.md` 的同一表现：本轮 ACP 已正常 `end_turn`，问题发生在 Discord 发送阶段。
 - 也不是归档的 `discord_scheduler_empty_reply_send_failed.md` 同一表现：本轮不是空回复或 fallback 伪成功，而是完整报告生成后未送达。
 
@@ -83,6 +90,7 @@
 - `sent_segments=0/3` 表明失败发生在第一段发送前或第一段发送时。
 - `error_message` 为空是独立可观测性缺口，会放大后续定位成本。
 - 需要结合 Discord sender 日志或发送 API 返回路径确认是否是目标频道权限、分段格式、网络传输、rate limit 或错误吞噬。
+- 2026-06-09 新样本已经处于二次修复记录之后，但终态 detail 仍是旧形态；优先判断真实运行态未加载最新 Discord scheduler 二进制，或仍存在另一条未覆盖的 Discord 终态写入路径。
 
 ## 修复记录
 
@@ -91,6 +99,10 @@
   - Discord 发送阶段 detail 现在保留 `sent_segments` / `total_segments` 的同时，在 `sent_segments=0 && total_segments>0` 时写入 `failure_kind=discord_send_failed`；如果 sender 返回底层发送错误，也会写入 `send_error`，便于区分权限、网络、payload 或其它出站失败。
   - 新增回归 `scheduler_delivery_detail_keeps_delivery_key_and_send_failure`，锁住 Discord 发送失败终态必须同时带 `delivery_key`、分段计数、失败分类和发送错误文本。
   - 本轮只做代码级闭环，不依赖当前机器 live 服务、生产日志或真实 Discord 投递状态来判定恢复；状态更新为 `Fixed`，后续若新运行态仍出现 `send_failed + delivered=0`，应优先检查 `error_message`、`detail.failure_kind` 与 `detail.send_error` 是否已可诊断。
+- `2026-06-09 11:04 CST` 复核重新打开：
+  - 09:31 CST `run_id=38790` 再次落成同一坏态，且 `error_message` 仍为空。
+  - `detail_json` 仍缺少二次修复预期的 `delivery_key`、`failure_kind=discord_send_failed` 与 `send_error`。
+  - 当前状态从 `Fixed` 调回 `New`；优先判断 live Discord scheduler 未加载最新修复，或修复没有覆盖真实发送失败终态写入路径。
 
 - `2026-06-08 03:06 CST` 已修复：
   - `bins/hone-discord/src/utils.rs` 的分段发送结果现在会保留底层发送/编辑失败文案，而不是只回传 `sent_segments` 计数。
