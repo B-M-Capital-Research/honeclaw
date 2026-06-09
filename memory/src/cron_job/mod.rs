@@ -968,6 +968,49 @@ mod tests {
     }
 
     #[test]
+    fn discord_send_failed_without_error_is_classified_by_storage_backstop() {
+        let dir = make_temp_dir("hone_cron_storage_discord_send_failed_backstop");
+        let sqlite_path = dir.join("sessions.sqlite3");
+        let storage = CronJobStorage::with_sqlite(&dir, &sqlite_path);
+        let actor = actor("discord", "g_exec", Some("channel-1"));
+
+        storage
+            .record_execution_event(
+                &actor,
+                "j_discord",
+                "daily report",
+                "channel-1",
+                false,
+                CronJobExecutionInput {
+                    execution_status: "completed".to_string(),
+                    message_send_status: "send_failed".to_string(),
+                    should_deliver: true,
+                    delivered: false,
+                    response_preview: Some("final report".to_string()),
+                    error_message: None,
+                    detail: serde_json::json!({
+                        "scheduler": null,
+                        "sent_segments": 0,
+                        "total_segments": 2,
+                    }),
+                },
+            )
+            .expect("record execution");
+
+        let records = storage
+            .list_execution_records("j_discord", 10)
+            .expect("list execution records");
+        assert_eq!(records.len(), 1);
+        assert_eq!(
+            records[0].error_message.as_deref(),
+            Some("Discord 定时任务发送失败")
+        );
+        assert_eq!(records[0].detail["failure_kind"], "discord_send_failed");
+        assert_eq!(records[0].detail["sent_segments"], 0);
+        assert_eq!(records[0].detail["total_segments"], 2);
+    }
+
+    #[test]
     fn execution_terminal_event_updates_matching_pending_row() {
         let dir = make_temp_dir("hone_cron_storage_exec_update_pending");
         let sqlite_path = dir.join("sessions.sqlite3");

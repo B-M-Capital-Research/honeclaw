@@ -196,6 +196,7 @@ impl CronJobStorage {
         heartbeat: bool,
         input: CronJobExecutionInput,
     ) -> HoneResult<()> {
+        let input = normalize_cron_execution_input_for_storage(actor, input);
         if let Some(postgres) = self.cloud_postgres() {
             let actor = actor.clone();
             let job_id = job_id.to_string();
@@ -631,6 +632,66 @@ impl CronJobStorage {
         .map_err(sqlite_err)?;
         Ok(())
     }
+}
+
+fn normalize_cron_execution_input_for_storage(
+    actor: &ActorIdentity,
+    mut input: CronJobExecutionInput,
+) -> CronJobExecutionInput {
+    if input.message_send_status != "send_failed" || input.delivered {
+        return input;
+    }
+
+    let sent_segments = input
+        .detail
+        .get("sent_segments")
+        .and_then(Value::as_u64)
+        .unwrap_or_default();
+    let total_segments = input
+        .detail
+        .get("total_segments")
+        .and_then(Value::as_u64)
+        .unwrap_or_default();
+    if sent_segments != 0 || total_segments == 0 {
+        return input;
+    }
+
+    let fallback_error = match actor.channel.as_str() {
+        "discord" => "Discord 定时任务发送失败",
+        _ => "定时任务发送失败",
+    };
+    if input
+        .error_message
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or_default()
+        .is_empty()
+    {
+        input.error_message = Some(fallback_error.to_string());
+    }
+
+    if let Value::Object(detail) = &mut input.detail
+        && detail
+            .get("failure_kind")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .unwrap_or_default()
+            .is_empty()
+    {
+        let failure_kind = match actor.channel.as_str() {
+            "discord" => "discord_send_failed",
+            "feishu" => "feishu_send_failed",
+            "telegram" => "telegram_send_failed",
+            "web" => "web_send_failed",
+            _ => "channel_send_failed",
+        };
+        detail.insert(
+            "failure_kind".to_string(),
+            Value::String(failure_kind.to_string()),
+        );
+    }
+
+    input
 }
 
 fn cron_execution_from_cloud(

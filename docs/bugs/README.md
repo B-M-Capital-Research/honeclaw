@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-06-09 15:03 CST
+最后更新：2026-06-09 16:08 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,9 +17,10 @@
 
 ## 当前概览
 
-- 活跃待修复：1
+- 活跃待修复：0
 - Later / 待复现：10
-- 已修复 / 已关闭：130
+- 已修复 / 已关闭：131
+- 本轮 16:08 CST 已修复 P2 `Discord scheduler 已生成报告但发送阶段失败且缺少错误原因`：在 Discord scheduler 既有 `error_message` / `failure_kind` 修复之外，`CronJobStorage::record_execution_event(...)` 写入层新增发送失败归一化 backstop；任何渠道若落成 `send_failed + delivered=0 + sent_segments=0 + total_segments>0` 且未提供错误，会自动补用户态错误原因，Discord 额外补 `failure_kind=discord_send_failed`。新增回归复现 09:31 CST 旧形态 `detail_json={"scheduler":null,"sent_segments":0,"total_segments":2}` 且 `error_message` 为空时不再写出不可诊断台账。验证 `cargo test -p hone-memory --lib -- --nocapture`、`cargo test -p hone-discord scheduler_ -- --nocapture`、`cargo check -p hone-memory --tests`、`cargo check -p hone-discord --tests`、`rustfmt --edition 2024 --config skip_children=true --check memory/src/cron_job/history.rs memory/src/cron_job/mod.rs bins/hone-discord/src/scheduler.rs` 通过；无关联 GitHub Issue。本轮不依赖当前机器 live 服务或生产日志判定恢复。
 - 本轮 15:03 CST 未发现新的独立缺陷或活跃 P1 状态变化。11:03-15:03 CST `data/sessions.sqlite3` 有 7 个 user turn 与 7 个 assistant final，5 个活跃 Feishu direct / scheduler session 均以 assistant 收口；普通 scheduler 仅 12:00 CST `每日公司资讯与分析总结` 1 条，台账为 `completed + sent + delivered=1`。assistant final 污染扫描未命中空回复、内部路径、`data/agent-sandboxes`、raw tool 字段、思维痕迹、provider 原始错误、quota、panic、stream disconnect、`enabled=true/false` 或 `company_profiles/...`；`acp-events.log` 同窗只有 `session/prompt` / `end_turn` 正常收口信号，未见 response error、runner error、stream disconnect、quota 或 panic。当前唯一活跃 P2 `Discord scheduler 已生成报告但发送阶段失败且缺少错误原因` 本轮无新的 Discord run，状态保持 `New`，非 P1，不创建 GitHub issue；最近四小时无非文档代码提交。
 - 本轮 15:03 CST 继续观察到已修复 P2 `Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移` 的旧/未确认部署运行态证据：heartbeat 新增 76 条 `noop + skipped_noop + delivered=0`、28 条 `execution_failed + skipped_error + delivered=0` 与 0 条用户可见投递；失败分布为 `PlainTextSuppressed` 20 条、`JsonUnknownStatus` 4 条、`JsonMalformed` 2 条、`ContextOverflowError` 1 条、`Empty` 1 条。该信号仍落在既有 heartbeat 结构化 / context overflow 文档范围，未进入用户可见 assistant final，且当前代码已有修复记录与回归，因此不新建重复缺陷，也不从 `Fixed` 回退。`data/runtime/task_runs.2026-06-09.jsonl` 同窗 `poller.fmp.price` 48 次 `ok`、`poller.fmp.news` 15 次 `ok` + 1 次 FMP 502、`poller.fmp.extended_hours` 8 次 `ok`；单次 news 502 未造成用户可见失败，不重开 FMP poller 缺陷。
 - 本轮 11:04 CST 重新打开 P2 `Discord scheduler 已生成报告但发送阶段失败且缺少错误原因`：07:02-11:03 CST `data/sessions.sqlite3` 有 23 个 user turn 与 24 个 assistant 记录，Feishu direct / scheduler 与 Discord scheduler 均有 assistant 收口；已落库 assistant final 污染扫描未命中空回复、内部路径、raw tool 字段、思维痕迹、provider 原始错误、quota、panic、stream disconnect 或 `enabled=true/false`。09:30 CST Discord `每日美股降息概率推送` 已生成完整 assistant final，`acp-events.log` 同轮以 `stopReason=end_turn` 收口，但 `cron_job_runs.run_id=38790` 仍落成 `completed + send_failed + should_deliver=1 + delivered=0`，`detail_json={"scheduler":null,"sent_segments":0,"total_segments":2}` 且 `error_message` 为空，未出现 06-08 20:06 修复预期中的 `delivery_key`、`failure_kind=discord_send_failed` 或 `send_error`。这是同一 Discord 出站投递 / 可观测性缺陷的真实复发，状态从 `Fixed` 调回 `New`；非 P1，不创建 GitHub issue。
@@ -474,7 +475,6 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Discord scheduler 已生成报告但发送阶段失败且缺少错误原因 | P2 | New | 2026-06-09 11:04 真实 Discord scheduler 再次复发：`run_id=38790` 已生成完整降息概率报告且 ACP `stopReason=end_turn`，但台账仍是 `completed + send_failed + should_deliver=1 + delivered=0`，`error_message` 为空，`detail_json` 只有 `sent_segments=0,total_segments=2`，缺少 06-08 修复预期的 `delivery_key` / `failure_kind=discord_send_failed` / `send_error`。非 P1，无 GitHub Issue | [discord_scheduler_completed_report_send_failed_without_error.md](./discord_scheduler_completed_report_send_failed_without_error.md) |
 
 ## Later / 待复现
 
@@ -495,6 +495,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Discord scheduler 已生成报告但发送阶段失败且缺少错误原因 | P2 | Fixed | 2026-06-09 16:08 `CronJobStorage::record_execution_event(...)` 写入层新增 send_failed 归一化 backstop：`sent_segments=0,total_segments>0,error_message=None` 的终态会补用户态错误原因，Discord 额外补 `failure_kind=discord_send_failed`；覆盖旧终态路径或未带新版 Discord detail 的不可诊断记录。验证 `cargo test -p hone-memory --lib -- --nocapture`、`cargo test -p hone-discord scheduler_ -- --nocapture`、`cargo check -p hone-memory --tests`、`cargo check -p hone-discord --tests` 通过。无关联 GitHub Issue | [discord_scheduler_completed_report_send_failed_without_error.md](./discord_scheduler_completed_report_send_failed_without_error.md) |
 | Codex ACP transport 断连导致直聊和定时请求失败且缺少自动恢复 | P2 | Fixed | 2026-06-09 04:43 直聊将 ACP stream disconnect 映射为安全执行环境不可用提示；scheduler 内部断连不外发，但台账保留安全错误文案与 `failure_kind=acp_transport_disconnect`，落成可诊断失败而非业务 noop。验证 `cargo test -p hone-channels user_visible_error_message_ --lib -- --nocapture`、`cargo test -p hone-channels suppressed_scheduler_failure_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [codex_acp_transport_disconnect_request_failure.md](./codex_acp_transport_disconnect_request_failure.md) |
 | Feishu 直聊存储股最新价格回复在行情工具未完成时输出未充分校验数值 | P3 | Fixed | 2026-06-09 04:43 金融系统 prompt 新增“多标的最新行情约束”，要求每个标的逐一具备本轮独立来源、时间戳与交易时段口径；未稳定校验时不得给精确价格、Forward PE 或操作区间。验证 `cargo test -p hone-channels build_prompt_bundle_always_includes_finance_domain_policy --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过 | [feishu_direct_storage_price_unverified_before_tool_complete.md](./feishu_direct_storage_price_unverified_before_tool_complete.md) |
 | Feishu 直聊今日对话上限提示在会话历史中重复落库 | P3 | Fixed | 2026-06-09 04:43 Feishu handler failure fallback 增加尾部 assistant 文本幂等保护，避免 daily-limit short-circuit 已写 `final` 后再追加同义 `text`。验证 `cargo test -p hone-feishu session_tail_assistant_matches_detects_duplicate_quota_reply -- --nocapture`、`CARGO_TARGET_DIR=/tmp/honeclaw-feishu-check CARGO_INCREMENTAL=0 cargo check -p hone-feishu --tests` 通过 | [feishu_direct_daily_limit_duplicate_assistant_transcript.md](./feishu_direct_daily_limit_duplicate_assistant_transcript.md) |

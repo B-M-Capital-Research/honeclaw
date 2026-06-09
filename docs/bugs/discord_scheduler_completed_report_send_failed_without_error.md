@@ -14,7 +14,7 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## GitHub Issue
 
@@ -94,6 +94,12 @@
 
 ## 修复记录
 
+- `2026-06-09 16:08 CST` 修复：
+  - 在 Discord scheduler 既有 `scheduler_error_message(...)` 与 `scheduler_delivery_detail(...)` 修复之外，`memory/src/cron_job/history.rs` 的 `CronJobStorage::record_execution_event(...)` 写入入口新增发送失败归一化 backstop。
+  - 任意渠道若终态落成 `send_failed + delivered=0`，且 detail 显示 `sent_segments=0,total_segments>0` 但 `error_message` 为空，写入层会补用户态通用错误，避免再次留下不可诊断空错误。
+  - Discord 渠道额外补 `failure_kind=discord_send_failed`，覆盖旧终态路径或未带新版 Discord detail 的记录形态；若上层已经提供具体 `send_error` / `failure_kind`，写入层不覆盖。
+  - 新增回归 `discord_send_failed_without_error_is_classified_by_storage_backstop`，复现 2026-06-09 09:31 CST 坏态 `detail_json={"scheduler":null,"sent_segments":0,"total_segments":2}` 且 `error_message` 为空，锁定后续不再写出空错误台账。
+  - 本轮只做代码级闭环，不依赖当前机器 live 服务、生产日志或真实 Discord 投递状态来判定恢复；状态更新为 `Fixed`。若后续已部署当前代码后仍出现 Discord `send_failed`，应优先检查是否至少已有 `error_message` 和 `failure_kind=discord_send_failed`。
 - `2026-06-08 20:06 CST` 再次修复：
   - `bins/hone-discord/src/scheduler.rs` 现在与 Feishu / Web scheduler 一样，通过 `execution_detail_with_delivery_key(...)` 给所有 Discord scheduler 终态 detail 补齐顶层 `delivery_key`，避免终态记录与 started row / delivery key 审计链路脱节。
   - Discord 发送阶段 detail 现在保留 `sent_segments` / `total_segments` 的同时，在 `sent_segments=0 && total_segments>0` 时写入 `failure_kind=discord_send_failed`；如果 sender 返回底层发送错误，也会写入 `send_error`，便于区分权限、网络、payload 或其它出站失败。
@@ -120,6 +126,11 @@
 
 ## 验证
 
+- `cargo test -p hone-memory --lib -- --nocapture`
+- `cargo test -p hone-discord scheduler_ -- --nocapture`
+- `cargo check -p hone-memory --tests`
+- `cargo check -p hone-discord --tests`
+- `rustfmt --edition 2024 --config skip_children=true --check memory/src/cron_job/history.rs memory/src/cron_job/mod.rs bins/hone-discord/src/scheduler.rs`
 - `cargo test -p hone-discord scheduler_ -- --nocapture`
 - `cargo check -p hone-discord --tests`
 - `rustfmt --edition 2024 --config skip_children=true --check bins/hone-discord/src/scheduler.rs`
