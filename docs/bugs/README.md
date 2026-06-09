@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-06-09 16:08 CST
+最后更新：2026-06-09 19:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,9 +17,11 @@
 
 ## 当前概览
 
-- 活跃待修复：0
+- 活跃待修复：1
 - Later / 待复现：10
 - 已修复 / 已关闭：131
+- 本轮 19:03 CST 新增 P2 `Feishu 直聊图片附件未稳定进入可读链路且外露内部技能状态`：15:03-19:03 CST `data/sessions.sqlite3` 有 35 个 user turn 与 35 个 assistant turn，最近活跃 Feishu direct session 均以 assistant final 收口；普通 scheduler 1 条 `A股港股收盘后跨市场复盘` 为 `completed + sent + delivered=1`。assistant final 污染扫描未命中空回复、本机绝对路径、`data/agent-sandboxes`、`company_profiles/...`、raw tool 字段、思维痕迹、provider 原始错误、quota、panic、stream disconnect、`enabled=true/false`、`HONE_MCP_BIN` 或 `data/portfolio`。16:41 / 16:47 CST Feishu direct session `Actor_feishu__direct__ou_5f64ee7ca7af22d44a83a31054e6fb92a3` 两轮 prompt 均带 `attachments=1` 且 ACP `stopReason=end_turn`，但 final 分别称没有拿到可解析附件，并外露“图片理解工具没有成功激活 / 图片分析技能没成功加载”；16:53 后同会话才成功读图并分析。该问题阻断 Feishu 图片附件理解主链路并外露内部技能状态，定级功能性 `P2 / New`；非 P1，不创建 GitHub issue。
+- 本轮 19:03 CST 未发现活跃 P1 状态变化。16:08 CST 远端已把 P2 `Discord scheduler 已生成报告但发送阶段失败且缺少错误原因` 标为 `Fixed`，本窗无新的 Discord run，不再保留为活跃项。heartbeat 新增 65 条 `noop + skipped_noop + delivered=0`、38 条 `execution_failed + skipped_error + delivered=0` 与 1 条 `completed + sent + delivered=1`；失败分布为 `PlainTextSuppressed` 30 条、`ContextOverflowError` 4 条、`JsonMalformed` 2 条、`JsonUnknownStatus` 2 条。该信号仍落在既有 heartbeat 结构化 / context overflow 文档范围，未进入用户可见 assistant final，不新建重复缺陷；最近四小时无非文档代码提交。
 - 本轮 16:08 CST 已修复 P2 `Discord scheduler 已生成报告但发送阶段失败且缺少错误原因`：在 Discord scheduler 既有 `error_message` / `failure_kind` 修复之外，`CronJobStorage::record_execution_event(...)` 写入层新增发送失败归一化 backstop；任何渠道若落成 `send_failed + delivered=0 + sent_segments=0 + total_segments>0` 且未提供错误，会自动补用户态错误原因，Discord 额外补 `failure_kind=discord_send_failed`。新增回归复现 09:31 CST 旧形态 `detail_json={"scheduler":null,"sent_segments":0,"total_segments":2}` 且 `error_message` 为空时不再写出不可诊断台账。验证 `cargo test -p hone-memory --lib -- --nocapture`、`cargo test -p hone-discord scheduler_ -- --nocapture`、`cargo check -p hone-memory --tests`、`cargo check -p hone-discord --tests`、`rustfmt --edition 2024 --config skip_children=true --check memory/src/cron_job/history.rs memory/src/cron_job/mod.rs bins/hone-discord/src/scheduler.rs` 通过；无关联 GitHub Issue。本轮不依赖当前机器 live 服务或生产日志判定恢复。
 - 本轮 15:03 CST 未发现新的独立缺陷或活跃 P1 状态变化。11:03-15:03 CST `data/sessions.sqlite3` 有 7 个 user turn 与 7 个 assistant final，5 个活跃 Feishu direct / scheduler session 均以 assistant 收口；普通 scheduler 仅 12:00 CST `每日公司资讯与分析总结` 1 条，台账为 `completed + sent + delivered=1`。assistant final 污染扫描未命中空回复、内部路径、`data/agent-sandboxes`、raw tool 字段、思维痕迹、provider 原始错误、quota、panic、stream disconnect、`enabled=true/false` 或 `company_profiles/...`；`acp-events.log` 同窗只有 `session/prompt` / `end_turn` 正常收口信号，未见 response error、runner error、stream disconnect、quota 或 panic。当前唯一活跃 P2 `Discord scheduler 已生成报告但发送阶段失败且缺少错误原因` 本轮无新的 Discord run，状态保持 `New`，非 P1，不创建 GitHub issue；最近四小时无非文档代码提交。
 - 本轮 15:03 CST 继续观察到已修复 P2 `Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移` 的旧/未确认部署运行态证据：heartbeat 新增 76 条 `noop + skipped_noop + delivered=0`、28 条 `execution_failed + skipped_error + delivered=0` 与 0 条用户可见投递；失败分布为 `PlainTextSuppressed` 20 条、`JsonUnknownStatus` 4 条、`JsonMalformed` 2 条、`ContextOverflowError` 1 条、`Empty` 1 条。该信号仍落在既有 heartbeat 结构化 / context overflow 文档范围，未进入用户可见 assistant final，且当前代码已有修复记录与回归，因此不新建重复缺陷，也不从 `Fixed` 回退。`data/runtime/task_runs.2026-06-09.jsonl` 同窗 `poller.fmp.price` 48 次 `ok`、`poller.fmp.news` 15 次 `ok` + 1 次 FMP 502、`poller.fmp.extended_hours` 8 次 `ok`；单次 news 502 未造成用户可见失败，不重开 FMP poller 缺陷。
@@ -475,6 +477,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Feishu 直聊图片附件未稳定进入可读链路且外露内部技能状态 | P2 | New | 2026-06-09 19:03 新增：Feishu direct session `Actor_feishu__direct__ou_5f64ee7ca7af22d44a83a31054e6fb92a3` 在 16:41 / 16:47 两轮 prompt 均带 `attachments=1` 且 ACP `stopReason=end_turn`，但 final 未完成图片分析，并外露“图片理解工具没有成功激活 / 图片分析技能没成功加载”；16:53 后同会话才成功读图。非 P1，无 GitHub Issue | [feishu_direct_image_attachment_not_readable_skill_phrase_exposed.md](./feishu_direct_image_attachment_not_readable_skill_phrase_exposed.md) |
 
 ## Later / 待复现
 
