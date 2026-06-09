@@ -1184,6 +1184,23 @@ fn preferred_extension_for_content_type(content_type: &str) -> Option<&'static s
     }
 }
 
+fn normalize_downloaded_content_type(
+    resource_type: &str,
+    content_type: Option<String>,
+) -> Option<String> {
+    if content_type
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty())
+    {
+        return content_type;
+    }
+    if resource_type == "image" {
+        return Some("image/unknown".to_string());
+    }
+    content_type
+}
+
 async fn parse_feishu_event(state: &Arc<AppState>, event: Event) -> Option<FeishuIncomingMessage> {
     let payload = event.event?;
     let message = payload.get("message")?;
@@ -1387,10 +1404,11 @@ async fn download_attachment(
     {
         Ok((bytes, content_type)) => {
             attachment.size = Some(u32::try_from(bytes.len()).unwrap_or(u32::MAX));
-            attachment.content_type = content_type.clone();
+            attachment.content_type =
+                normalize_downloaded_content_type(resource_type, content_type);
 
             let mut final_filename = fallback_name.to_string();
-            if let Some(ct) = &content_type
+            if let Some(ct) = &attachment.content_type
                 && let Some(ext) = preferred_extension_for_content_type(ct)
                 && (final_filename.ends_with(".bin")
                     || final_filename.ends_with(".dat")
@@ -1681,18 +1699,15 @@ mod tests {
 
     #[test]
     fn session_tail_assistant_matches_detects_duplicate_quota_reply() {
-        let root = std::env::temp_dir().join(format!(
-            "hone_feishu_tail_match_{}",
-            uuid::Uuid::new_v4()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("hone_feishu_tail_match_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).expect("create root");
         let storage = SessionStorage::new(root.join("sessions"));
         let actor = ActorIdentity::new("feishu", "ou_quota", None::<String>).expect("actor");
         let session_id = storage
             .create_session_for_actor(&actor)
             .expect("create session");
-        let daily_limit_reply =
-            "已达到今日对话上限（12/12，北京时间 2026-06-07），请明天再试";
+        let daily_limit_reply = "已达到今日对话上限（12/12，北京时间 2026-06-07），请明天再试";
 
         storage
             .add_message(&session_id, "user", "继续", None)
@@ -1876,6 +1891,19 @@ mod tests {
             None
         );
         assert_eq!(scheduler_receive_id_for_target(&actor, "ou_other"), None);
+    }
+
+    #[test]
+    fn image_download_without_content_type_still_enters_image_pipeline() {
+        assert_eq!(
+            normalize_downloaded_content_type("image", None),
+            Some("image/unknown".to_string())
+        );
+        assert_eq!(
+            normalize_downloaded_content_type("image", Some("   ".to_string())),
+            Some("image/unknown".to_string())
+        );
+        assert_eq!(normalize_downloaded_content_type("file", None), None);
     }
 
     #[test]

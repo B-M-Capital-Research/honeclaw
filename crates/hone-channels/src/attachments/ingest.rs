@@ -743,7 +743,7 @@ fn build_attachment_strategy_note_from_refs(attachments: &[&ReceivedAttachment])
 
     if has_image {
         lines.push(
-            "- 图片：优先基于附件行里的本地可读路径理解截图/图表；若当前阶段明确暴露 `image_understanding` skill，可调用 `skill_tool(skill_name=\"image_understanding\")`。如果既不能读取图片也没有可用 OCR，不要列举目录、OSS、数据库或工具链细节，只简短请用户重新上传或粘贴文字。"
+            "- 图片：优先基于附件行里的本地可读路径理解截图/图表；若当前阶段明确暴露 `image_understanding` skill，可调用 `skill_tool(skill_name=\"image_understanding\")`。不要因为图片文件名后缀是 `.bin` 就忽略它，附件分类为图片时应按图片处理。如果既不能读取图片也没有可用 OCR，不要列举目录、OSS、数据库、工具链或技能加载状态，只简短请用户重新上传或粘贴文字。"
                 .to_string(),
         );
     }
@@ -1149,6 +1149,28 @@ mod tests {
         assert!(prompt.contains("用户上传了附件"));
         assert!(prompt.contains("PDF提取文本"));
         assert!(prompt.contains("Revenue up 20% YoY."));
+    }
+
+    #[test]
+    fn build_user_input_keeps_unknown_type_feishu_image_readable() {
+        let attachments = vec![ReceivedAttachment {
+            filename: "image_key.bin".to_string(),
+            content_type: Some("image/unknown".to_string()),
+            size: 12,
+            url: "feishu://message/m1/image/key".to_string(),
+            kind: AttachmentKind::Image,
+            local_path: Some("/tmp/uploads/image_key.bin".to_string()),
+            error: None,
+            extracted_files: vec![],
+            extraction_error: None,
+            pdf_text_preview: None,
+            pdf_extract_error: None,
+        }];
+        let prompt = build_user_input("用大白话分析给我看", &attachments);
+        assert!(prompt.contains("分类=图片"));
+        assert!(prompt.contains("本地路径=/tmp/uploads/image_key.bin"));
+        assert!(prompt.contains("不要因为图片文件名后缀是 `.bin` 就忽略它"));
+        assert!(prompt.contains("不要列举目录、OSS、数据库、工具链或技能加载状态"));
     }
 
     #[test]

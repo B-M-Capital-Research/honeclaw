@@ -14,7 +14,7 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## GitHub Issue
 
@@ -55,10 +55,10 @@
 
 ## 当前实现效果
 
-- 前两轮 prompt 已带 `attachments=1`，但 answer 阶段仍认为没有可解析附件内容。
-- 用户可见回复没有完成“分析这张图”的核心任务，只给出绕路建议。
-- 回复同时外露内部能力状态：“图片理解工具没有成功激活”“图片分析技能没成功加载”。
-- 第三轮同一 session 才成功给出图片分析，说明问题具备短时不稳定性，不是简单的用户问题不清楚。
+- 2026-06-10 00:11 CST 已修复。
+- Feishu 图片下载在上游未返回 `content_type` 时会兜底标记为 `image/unknown`，避免 `image_<key>.bin` 被共享附件分类误判为普通文件，导致图片附件策略和相关图片处理能力不稳定。
+- 共享附件 prompt 明确要求：附件分类为图片时，即使文件名后缀是 `.bin` 也应按图片处理；读取失败时不得列举目录、OSS、数据库、工具链或技能加载状态，只能给产品化重传/粘贴文字提示。
+- 共享用户可见净化层会剥离“图片理解工具没有成功激活”“图片分析技能没成功加载”等中文内部能力状态，防止同类 runner 输出继续外露给 Feishu / Web / scheduler 用户。
 
 ## 用户影响
 
@@ -70,17 +70,27 @@
 ## 根因判断
 
 - 直接证据只能确认：Feishu prompt metadata 已带 `attachments=1`，但 answer 阶段没有拿到可解析图片内容，并把内部图片工具/技能状态写入 final。
+- 代码复核发现 Feishu 图片消息的 fallback 文件名为 `image_<key>.bin`，图片分类依赖下载返回的 content-type；当 Feishu 下载响应缺少或返回空 content-type 时，图片会以 `.bin + None` 进入共享附件 ingest，被归为 `Other`，从而绕过图片专用附件策略。
+- 共享用户可见净化层原先只覆盖 `stock_research` / 英文 `skill` 等内部 skill 状态，未覆盖“图片理解工具 / 图片分析技能”这类中文内部能力状态。
 - 与 `web_direct_image_attachment_not_readable_internal_debug_leak.md` 相似，都是图片附件未进入可读/OCR链路并外露内部排障口径；但该旧文档覆盖 Web public direct 上传链路，且已在 Web API / shared attachment ingest 上修复。本轮受影响链路是 Feishu direct，不能复用 Web-only 修复结论。
 - 与 `web_scheduler_skill_load_failure_phrase_exposed.md` 不同：本轮不是 Web scheduler 回复前言污染，而是 Feishu direct 图片附件主链路未完成。
-- 初步怀疑 Feishu ingress 附件解析、post/image 消息落库、共享附件 ingest 到 runner prompt 的连接，或图片理解 fallback 判断存在不稳定边界。
 
-## 下一步建议
+## 修复情况
 
-- 先复核 Feishu direct 的 post / image 附件入口：确认 `attachments=1` 时实际附件 bytes、本地路径、MIME、OCR 文本或图片可读路径是否进入 runner。
-- 对 Feishu direct 增加附件回归：当 prompt metadata 含图片附件时，最终用户可见回复不得出现“图片理解工具/图片分析技能未激活”等内部能力状态；读取失败时只能返回产品化重传提示。
-- 对比 16:41/16:47 失败轮与 16:53 成功轮的附件 metadata 差异，确认是否是首次 post 附件未下载完成、消息类型兼容问题，还是 answer 阶段过早判断。
+- `bins/hone-feishu/src/handler.rs`
+  - 新增 `normalize_downloaded_content_type(...)`：Feishu `resource_type=image` 且下载未带 content-type 时，兜底写入 `image/unknown`。
+  - 保留既有基于真实 content-type 修正扩展名的逻辑；非图片文件不做伪装。
+- `crates/hone-channels/src/attachments/ingest.rs`
+  - 图片附件策略补充 `.bin` 图片处理约束和用户态失败边界。
+- `crates/hone-channels/src/runtime.rs`
+  - 内部 skill/tool 文案净化覆盖 `image_understanding`、`pdf_understanding`、图片理解、图片分析、附件处理、OCR、技能、工具等中文/英文能力状态。
+- GitHub Issue：无，原缺陷定级为 P2，未创建 issue。
 
 ## 验证
 
-- 本轮是缺陷台账维护任务，未修改业务代码、测试代码或配置代码。
-- 已验证范围：SQLite 会话收口、assistant final 污染扫描、同 session prompt `attachments=1` 抽取、ACP `end_turn` 收口、cron_job_runs 普通 scheduler / heartbeat 同窗状态、最近四小时非文档代码提交检查。
+- `cargo test -p hone-channels build_user_input_keeps_unknown_type_feishu_image_readable --lib -- --nocapture`
+- `CARGO_TARGET_DIR=/tmp/honeclaw-bug2-check CARGO_INCREMENTAL=0 cargo test -p hone-channels sanitize_user_visible_output_strips_image_skill_state_copy --lib -- --nocapture`
+- `cargo test -p hone-feishu image_download_without_content_type_still_enters_image_pipeline -- --nocapture`
+- `cargo check -p hone-channels --tests`
+- `CARGO_TARGET_DIR=/tmp/honeclaw-bug2-check CARGO_INCREMENTAL=0 cargo check -p hone-feishu --tests`
+- 未重启本地服务，未依赖当前机器生产日志、线上渠道状态或真实投递状态判定修复。
