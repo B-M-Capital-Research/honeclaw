@@ -3,11 +3,19 @@
 - **发现时间**: 2026-06-02 11:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无，非 P1
 
 ## 证据来源
 
+- `data/sessions.sqlite3`
+  - 时间窗：2026-06-09 22:48-22:51 CST
+  - `session_id=Actor_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c`
+  - assistant `ordinal=362`
+  - `timestamp=2026-06-09T22:50:56.666338+08:00`
+  - 用户请求 MRVL / AAOI 加仓判断后，assistant final 已完成两家公司业务、估值、加仓区间、仓位与证伪条件分析并正常收口。
+  - 但最终用户可见正文在业务分析前写出：`画像已更新：公司画像公司画像`。
+  - 该样本发生在 2026-06-09 04:43 CST 当前代码与回归确认修复之后，因此不是前序修复前的旧样本；本轮将状态从 `Fixed` 回退为 `New`。
 - `data/sessions.sqlite3`
   - 时间窗：2026-06-02 22:59-23:01 CST
   - session_id: `Actor_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c`
@@ -79,6 +87,7 @@
 - 2026-06-04 23:03-23:04 CST Feishu direct CIEN / NOK 两条最新 assistant final 再次直接包含 `company_profiles/Ciena_CIEN.md` 与 `company_profiles/NOK.md`，说明相对路径净化在当前运行态仍未覆盖公司画像沉淀 final。
 - 2026-06-04 23:21-23:41 CST 同一 Feishu direct 会话又在 DXYZ / NASA / NBIS 三条分析 final 末尾写出 `company_profiles/DXYZ.md`、`company_profiles/NASA.md`、`company_profiles/NBIS.md`，说明问题不局限于个别 ticker，也不只是上一轮 CIEN / NOK 样本。
 - 2026-06-05 04:37 CST Feishu direct CIEN 财报分析再次写出 `company_profiles/Ciena_CIEN.md`，说明 03:03 CST 的补充净化修复后，当前运行态仍有真实用户可见复现；导航页一度把本项列为 `Fixed`，本轮已按单文档和最新证据修正回活跃 `New`。
+- 2026-06-09 22:50 CST Feishu direct MRVL / AAOI 加仓判断未再出现 `company_profiles/...` 相对路径，但又出现 `画像已更新：公司画像公司画像`。该样本晚于 2026-06-09 04:43 CST 的代码级修复与回归确认，说明公司画像落点退化文案仍会进入真实用户可见 final。
 - 本轮没有看到 `/Users/...`、`data/agent-sandboxes/...`、`/var/folders/...` 等绝对路径进入最终正文；绝对路径只出现在 ACP tool update 诊断事件中。
 
 ## 用户影响
@@ -93,6 +102,7 @@
 - 初步判断是公司画像沉淀流程把 runner 原生文件路径作为“沉淀完成”的证明写入最终用户回复。
 - 既有 `feishu_company_profile_absolute_path_leak.md` 修复覆盖的是绝对路径、本地 Markdown 链接和 sandbox 标识脱敏；本轮新增证据是 Web direct 最终正文里的内部相对路径，属于相邻但独立的用户态文案边界。
 - 2026-06-04 腾讯画像样本显示，修复后的路径替换策略仍可能保留原句结构，把 `路径是：<internal path>` 变成 `路径是：公司画像公司画像`。这更像净化层缺少整句级 rewrite，而不是新的存储、投递或工具执行故障。
+- 2026-06-09 MRVL / AAOI 样本显示，当前净化或生成约束仍可能把公司画像落点压缩成重复业务占位词，尤其是 `画像已更新：公司画像公司画像` 这类冒号前缀句式未被完全重写。
 - 该问题也不同于 `web_direct_tool_call_raw_output_leak`：本轮最终正文没有 raw JSON、工具协议或 provider 报错外泄。
 
 ## 下一步建议
@@ -103,6 +113,12 @@
 - 后续巡检继续区分两类证据：绝对路径 / sandbox 标识泄漏应回看既有路径脱敏缺陷；仅相对内部路径进入自然语言回复时按本单跟踪。
 
 ## 修复记录
+
+- 2026-06-09 23:04 CST 复发后回退：
+  - 19:03-23:04 CST `session_messages` 有 97 个 user turn 与 99 个 assistant 记录，最近活跃 Feishu direct / scheduler session 均以 assistant final 收口；普通 Feishu scheduler 34 条均 `completed + sent + delivered=1`。
+  - assistant final 污染扫描未命中空回复、本机绝对路径、`data/agent-sandboxes`、`company_profiles/...`、raw tool 字段、思维痕迹、provider 原始错误、quota、panic 或 stream disconnect。
+  - 但 22:50 CST `Actor_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c` 的 MRVL / AAOI 加仓判断 final 在完整业务分析前写出 `画像已更新：公司画像公司画像`。
+  - 这是同一公司画像落点文案净化边界的真实复发，不新建重复文档；该问题不影响分析正文、画像更新、会话收口或投递，严重等级保持 `P3 / New`，非 P1，不创建 GitHub issue。
 
 - 2026-06-09 继续补齐并关闭：
   - 共享 `sanitize_user_visible_output(...)` 在原有 `company_profiles/...` / `events/*.md` 相对路径脱敏基础上，新增公司画像落点文案重写：`路径是：公司画像公司画像`、`本地画像：公司画像`、`本地公司画像：公司画像`、`把本轮更新补进本地画像：公司画像` 等退化文本会统一改成自然业务表达。
