@@ -3,11 +3,20 @@
 - **发现时间**: 2026-06-02 11:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无，非 P1
 
 ## 证据来源
 
+- `data/sessions.sqlite3`
+  - 时间窗：2026-06-10 14:32-14:36 CST
+  - `session_id=Actor_feishu__direct__ou_5fe31244b1208749f16773dce0c822801a`
+  - assistant `ordinal=317`
+  - `timestamp=2026-06-10T14:35:53.711950+08:00`
+  - 用户输入摘要：`雅克科技看看咋样`
+  - assistant final 已完成雅克科技基本面、护城河、Bull / Bear thesis、动作建议、证伪条件与来源，并正常写入会话；同窗无空回复、错投、投递失败或链路中断证据。
+  - 但最终用户可见正文末尾写出：`已为你建立长期画像：company_profiles/002409_雅克科技.md`。
+  - 该样本发生在 2026-06-10 03:27 CST 共享 sanitizer 再次修复并确认回归之后，因此不是前序修复前旧样本；本轮将状态从 `Fixed` 回退为 `New`。
 - `data/sessions.sqlite3`
   - 时间窗：2026-06-09 22:48-22:51 CST
   - `session_id=Actor_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c`
@@ -103,6 +112,7 @@
 - 既有 `feishu_company_profile_absolute_path_leak.md` 修复覆盖的是绝对路径、本地 Markdown 链接和 sandbox 标识脱敏；本轮新增证据是 Web direct 最终正文里的内部相对路径，属于相邻但独立的用户态文案边界。
 - 2026-06-04 腾讯画像样本显示，修复后的路径替换策略仍可能保留原句结构，把 `路径是：<internal path>` 变成 `路径是：公司画像公司画像`。这更像净化层缺少整句级 rewrite，而不是新的存储、投递或工具执行故障。
 - 2026-06-09 MRVL / AAOI 样本显示，当前净化或生成约束仍可能把公司画像落点压缩成重复业务占位词，尤其是 `画像已更新：公司画像公司画像` 这类冒号前缀句式未被完全重写。
+- 2026-06-10 雅克科技样本显示，`公司画像公司画像` 类文案被修复后，真实 Feishu direct final 仍可能直接输出 `company_profiles/<ticker>.md`，说明共享净化或最终回复模板仍没有覆盖所有“已建立长期画像：<relative-path>”句式。
 - 该问题也不同于 `web_direct_tool_call_raw_output_leak`：本轮最终正文没有 raw JSON、工具协议或 provider 报错外泄。
 
 ## 下一步建议
@@ -113,6 +123,12 @@
 - 后续巡检继续区分两类证据：绝对路径 / sandbox 标识泄漏应回看既有路径脱敏缺陷；仅相对内部路径进入自然语言回复时按本单跟踪。
 
 ## 修复记录
+
+- 2026-06-10 15:04 CST 复发后回退：
+  - 11:03-15:04 CST `data/sessions.sqlite3` 有 5 个 user turn 与 5 个 assistant final，3 个 Feishu direct / scheduler 会话均以 assistant 收口；普通 scheduler 1 条 `completed + sent + delivered=1`，无普通 scheduler 发送失败。
+  - assistant final 污染扫描只命中 1 条用户可见 `company_profiles/...`：14:35 CST `Actor_feishu__direct__ou_5fe31244b1208749f16773dce0c822801a` 对“雅克科技看看咋样”完成业务分析并正常收口，但 final 末尾写出 `已为你建立长期画像：company_profiles/002409_雅克科技.md`。
+  - 这是 03:27 CST 共享 sanitizer 修复确认之后的同根因真实复发，不新建重复文档；该问题不影响分析正文、画像写入、会话收口或投递，严重等级保持 `P3 / New`。
+  - 最近四小时无非文档代码提交；非 P1，不创建 GitHub issue。
 
 - 2026-06-10 03:27 CST 再次修复：
   - 共享 `sanitize_user_visible_output(...)` 扩展覆盖 `画像已更新：公司画像公司画像`，与既有 `路径是：公司画像公司画像`、`本地画像：公司画像`、`本地公司画像：公司画像` 一并统一改写为自然业务文案。

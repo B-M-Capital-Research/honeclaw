@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-06-10 11:03 CST
+最后更新：2026-06-10 15:04 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,9 +17,11 @@
 
 ## 当前概览
 
-- 活跃待修复：4
+- 活跃待修复：5
 - Later / 待复现：10
-- 已修复 / 已关闭：130
+- 已修复 / 已关闭：129
+- 本轮 15:04 CST 回退 1 个非 P1 缺陷：11:03-15:04 CST `data/sessions.sqlite3` 有 5 个 user turn 与 5 个 assistant final，3 个 Feishu direct / scheduler 会话均以 assistant 收口；普通 scheduler 1 条 `completed + sent + delivered=1`，无普通 scheduler 发送失败。assistant final 污染扫描只命中 1 条用户可见 `company_profiles/...`：14:35 CST Feishu direct session `Actor_feishu__direct__ou_5fe31244b1208749f16773dce0c822801a` 对“雅克科技看看咋样”完成业务分析并正常收口，但 final 末尾写出 `已为你建立长期画像：company_profiles/002409_雅克科技.md`，晚于 03:27 共享 sanitizer 修复确认，故将既有公司画像相对路径外露 P3 从 `Fixed` 调回 `New`。该问题不影响分析正文、画像写入、会话收口或投递，按质量性 P3 保持活跃；非 P1，不创建 GitHub Issue。
+- 本轮 15:04 CST 未发现活跃 P1 状态变化。最近四小时没有 daily-limit 新样本，既有 Feishu daily-limit 重复落库 P3 保持 `New`；最近四小时无非文档代码提交。heartbeat 新增 69 条 `noop + skipped_noop + delivered=0`、34 条 `execution_failed + skipped_error + delivered=0`、1 条 `completed + sent + delivered=1` 与 1 条约 15:00 CST 的 `running + pending`，失败仍以 `PlainTextSuppressed`、`JsonUnknownStatus`、`JsonMalformed`、`ContextOverflowError` 与 `max_iterations_exceeded` 为主，落在既有 heartbeat 结构化 / context overflow / 迭代预算文档范围，未进入用户可见 assistant final，不新建重复缺陷。
 - 本轮 11:03 CST 新增 / 回退 3 个非 P1 缺陷：07:03-11:03 CST `data/sessions.sqlite3` 有 25 个 user turn 与 26 个 assistant 记录；普通 scheduler 16 条 `completed + sent + delivered=1`、1 条 `completed + send_failed + delivered=0`，heartbeat 新增 67 条 `noop + skipped_noop + delivered=0`、35 条 `execution_failed + skipped_error + delivered=0` 与 2 条 `completed + sent + delivered=1`。09:32 CST Discord `每日美股降息概率推送` 已生成完整 assistant final，但 `cron_job_runs.run_id=39475` 仍是 `completed + send_failed + delivered=0`、`detail_json={"scheduler":null,"sent_segments":0,"total_segments":2}` 且 `error_message` 为空，故将既有 Discord 出站可观测性 P2 从 `Fixed` 调回 `New`。09:03 CST Feishu scheduler `核心观察池早间简报` final 再次外露 `data_fetch 当前未返回可用行情，已用 StockAnalysis...`，晚于 03:27 sanitizer 修复，故将既有 `data_fetch` 文案 P3 从 `Fixed` 调回 `New`。07:57 CST Feishu direct session `Actor_feishu__direct__ou_5fe40dc70caa78ad6cb0185c21b53c4732` 在通俗化改写回答开头外露“本地技能文件路径不可读”，业务回答仍完成且无投递失败，按新的质量性 P3 登记。三项均非 P1，不创建 GitHub Issue。
 - 本轮 11:03 CST 未发现活跃 P1 状态变化。最近四小时没有 daily-limit 新样本，既有 Feishu daily-limit 重复落库 P3 保持 `New`；assistant final 污染扫描未命中空回复、本机绝对路径、`data/agent-sandboxes`、`company_profiles/...`、raw tool 字段、思维痕迹、provider 原始错误、quota、panic、`enabled=true/false` 或 `画像已更新：公司画像公司画像`；最近四小时无非文档代码提交。heartbeat 失败仍以 `PlainTextSuppressed`、`PlainTextNoop`、`JsonUnknownStatus`、`JsonEmptyStatus` 等既有 heartbeat 结构化 / context overflow 文档范围为主，未进入用户可见 assistant final，不新建重复缺陷。
 - 本轮 03:27 CST 已修复 2 个共享净化层 `P3` 文案缺陷：`sanitize_user_visible_output(...)` 现会把 `画像已更新：公司画像公司画像` 重写为自然业务文案，并把 `data_fetch 本轮未返回可用结果，已用 StockAnalysis 补充校验` 改写为“主行情源本轮未返回可用结果，已改用公开页面补充校验”，避免公司画像落点退化文案与内部行情工具名进入用户可见 final。验证 `cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_rewrites_company_profile_copy_glitches --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_rewrites_market_data_tool_fallback_copy --lib -- --nocapture`、`cargo check -p hone-channels --tests`、`git diff --check` 通过。当前无活跃 `P0/P1`，剩余活跃项仅 1 个 `P3` Feishu daily-limit 重复落库问题。
@@ -486,6 +488,7 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Discord scheduler 已生成报告但发送阶段失败且缺少错误原因 | P2 | New | 2026-06-10 11:03 回退：09:32 CST `每日美股降息概率推送` 已生成完整 assistant final，但 `cron_job_runs.run_id=39475` 仍为 `completed + send_failed + should_deliver=1 + delivered=0`，`detail_json={"scheduler":null,"sent_segments":0,"total_segments":2}` 且 `error_message` 为空，晚于 2026-06-09 16:08 写入层 backstop 修复确认。影响单个 Discord scheduler 投递与可诊断性，非 P1，无 GitHub Issue | [discord_scheduler_completed_report_send_failed_without_error.md](./discord_scheduler_completed_report_send_failed_without_error.md) |
+| Web / Feishu 直聊公司画像沉淀后向用户暴露内部相对文件路径 | P3 | New | 2026-06-10 15:04 回退：14:35 CST Feishu direct session `Actor_feishu__direct__ou_5fe31244b1208749f16773dce0c822801a` 对“雅克科技看看咋样”完成业务分析并正常收口，但 final 末尾写出 `已为你建立长期画像：company_profiles/002409_雅克科技.md`，晚于 03:27 共享 sanitizer 修复确认。该问题不影响分析正文、画像写入、会话收口或投递，按质量性 P3 保持活跃。非 P1，无 GitHub Issue | [web_company_profile_relative_path_exposed.md](./web_company_profile_relative_path_exposed.md) |
 | Feishu scheduler 降级说明外露 `data_fetch` 内部工具名 | P3 | New | 2026-06-10 11:03 回退：09:03 CST `核心观察池早间简报` 正常送达，但 final 开头写出 `data_fetch 当前未返回可用行情，已用 StockAnalysis 实时页补充校验价格与页面显示财报日期`，晚于 03:27 共享 sanitizer 修复确认。任务内容完整，不影响主功能链路，按质量性 P3 保持活跃。非 P1，无 GitHub Issue | [feishu_scheduler_data_fetch_tool_name_exposed.md](./feishu_scheduler_data_fetch_tool_name_exposed.md) |
 | Feishu 直聊通俗化改写回复外露本地技能文件路径不可读 | P3 | New | 2026-06-10 11:03 新增：07:57 CST Feishu direct session `Actor_feishu__direct__ou_5fe40dc70caa78ad6cb0185c21b53c4732` 在技术分析通俗化改写 final 开头写出“本地技能文件路径不可读”，外露内部技能 / 本地文件状态。回答仍完成、正常落库和投递，无空回复、错投或功能阻断，因此定级质量性 P3。非 P1，无 GitHub Issue | [feishu_direct_local_skill_file_path_unreadable_exposed.md](./feishu_direct_local_skill_file_path_unreadable_exposed.md) |
 | Feishu 直聊今日对话上限提示在会话历史中重复落库 | P3 | New | 2026-06-10 03:03 回退：Feishu direct session `Actor_feishu__direct__ou_5f64ee7ca7af22d44a83a31054e6fb92a3` 在 23:47 / 23:53 CST 两次 daily-limit 短路后均连续落库同义 `final` 与 Feishu `text` assistant 记录，晚于 2026-06-09 04:43 修复确认。当前没有证据证明 Feishu 端重复投递，且用户仍收到清晰额度提示，按质量性 P3 保持活跃。非 P1，无 GitHub Issue | [feishu_direct_daily_limit_duplicate_assistant_transcript.md](./feishu_direct_daily_limit_duplicate_assistant_transcript.md) |
