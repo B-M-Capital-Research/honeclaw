@@ -650,6 +650,9 @@ fn heartbeat_stale_price_timestamp(text: &str, reference_date: NaiveDate) -> Opt
         .captures_iter(text)
         .filter_map(|captures| heartbeat_price_timestamp_context_date(&captures))
         .find(|date| {
+            if *date > reference_date {
+                return true;
+            }
             reference_date.signed_duration_since(*date).num_days()
                 > HEARTBEAT_PRICE_TIMESTAMP_MAX_AGE_DAYS
         })
@@ -3227,6 +3230,30 @@ mod tests {
         assert!(execution.should_deliver);
         assert!(execution.error.is_none());
         assert_ne!(
+            execution.metadata["stale_price_timestamp_suppressed"].as_bool(),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn heartbeat_future_price_timestamp_trigger_is_suppressed() {
+        let execution = heartbeat_execution_from_content_at(
+            r#"{"status":"triggered","message":"【黄金急跌预警】XAU/USD 现货黄金当前价 4161.56 美元/盎司（数据时间：2026年6月18日 北京时间 13:10，盘中日低 4130.62 美元/盎司），已跌破 4500 美元/盎司阈值。"}"#,
+            "MiniMax-M2.7-highspeed",
+            chrono::NaiveDate::from_ymd_opt(2026, 6, 10).expect("date"),
+        );
+
+        assert!(!execution.should_deliver);
+        assert!(execution.error.is_none());
+        assert_eq!(
+            execution.metadata["failure_kind"].as_str(),
+            Some("stale_price_timestamp")
+        );
+        assert_eq!(
+            execution.metadata["stale_price_timestamp"].as_str(),
+            Some("2026-06-18")
+        );
+        assert_eq!(
             execution.metadata["stale_price_timestamp_suppressed"].as_bool(),
             Some(true)
         );

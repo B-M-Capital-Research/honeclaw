@@ -3,7 +3,14 @@
 - **发现时间**: 2026-05-27 19:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
+
+## 修复记录（2026-06-11 03:03 CST）
+
+- 已补齐 heartbeat 价格时间戳 guard 的未来日期分支：价格阈值触发文案若把未来日期价格包装成“当前价 / 现报 / 数据时间”证据，本轮同样抑制送达并继续落 `failure_kind=stale_price_timestamp`，避免把未来窗口或错窗口价格当作当前阈值触发依据。
+- 新增回归覆盖：
+  - `heartbeat_future_price_timestamp_trigger_is_suppressed`
+- 验证：`cargo test -p hone-channels heartbeat_stale_price_timestamp --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_prompt_clarifies_price_threshold_semantics --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_near_threshold_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过。
 
 ## 修复记录（2026-05-28 03:11 CST）
 
