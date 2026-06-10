@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-06-10 15:04 CST
+最后更新：2026-06-10 19:01 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,9 +17,11 @@
 
 ## 当前概览
 
-- 活跃待修复：5
-- Later / 待复现：10
+- 活跃待修复：6
+- Later / 待复现：9
 - 已修复 / 已关闭：129
+- 本轮 19:01 CST 回退 1 个非 P1 缺陷：15:02-19:01 CST `data/sessions.sqlite3` 有 11 个 user turn 与 11 个 assistant final，最近 Feishu direct / scheduler 会话均以 assistant final 收口；普通 scheduler 1 条 `completed + sent + delivered=1`，未命中 commodity guard，未见发送失败。assistant final 污染扫描未命中空回复、本机路径、`data/agent-sandboxes`、`company_profiles/...`、raw tool 字段、思维痕迹、provider 原始错误、quota、panic、`enabled=true/false`、`data_fetch` 或技能状态外露；最近四小时无非文档代码提交。heartbeat 新增 59 条 `noop + skipped_noop + delivered=0`、46 条 `execution_failed + skipped_error + delivered=0` 与 1 条 `completed + sent + delivered=1`，其中 18:30 CST 同批 13 条 Feishu heartbeat 任务落成 `runner_error`，错误为 MiniMax/OpenAI-compatible `error sending request for url (https://api.minimaxi.com/v1/chat/completions)`；这与既有 Later 缺陷的回退条件一致，故将 `Heartbeat 定时任务命中 MiniMax HTTP 发送失败后仍整轮失败` 从 `Later` 调回 `New` 并移回活跃表。该问题影响 heartbeat 监控覆盖但未进入用户可见 final，仍为功能性 P2；非 P1，不创建 GitHub Issue。
+- 本轮 19:01 CST 未发现活跃 P1 状态变化。其余 heartbeat 失败仍以 `PlainTextSuppressed`、`PlainTextNoop`、`JsonMalformed`、`JsonUnknownStatus`、`Empty` 等既有结构化 / 状态解析信号为主，落在 `scheduler_heartbeat_unknown_status_silent_skip.md` 范围；未形成新的独立用户可见缺陷。
 - 本轮 15:04 CST 回退 1 个非 P1 缺陷：11:03-15:04 CST `data/sessions.sqlite3` 有 5 个 user turn 与 5 个 assistant final，3 个 Feishu direct / scheduler 会话均以 assistant 收口；普通 scheduler 1 条 `completed + sent + delivered=1`，无普通 scheduler 发送失败。assistant final 污染扫描只命中 1 条用户可见 `company_profiles/...`：14:35 CST Feishu direct session `Actor_feishu__direct__ou_5fe31244b1208749f16773dce0c822801a` 对“雅克科技看看咋样”完成业务分析并正常收口，但 final 末尾写出 `已为你建立长期画像：company_profiles/002409_雅克科技.md`，晚于 03:27 共享 sanitizer 修复确认，故将既有公司画像相对路径外露 P3 从 `Fixed` 调回 `New`。该问题不影响分析正文、画像写入、会话收口或投递，按质量性 P3 保持活跃；非 P1，不创建 GitHub Issue。
 - 本轮 15:04 CST 未发现活跃 P1 状态变化。最近四小时没有 daily-limit 新样本，既有 Feishu daily-limit 重复落库 P3 保持 `New`；最近四小时无非文档代码提交。heartbeat 新增 69 条 `noop + skipped_noop + delivered=0`、34 条 `execution_failed + skipped_error + delivered=0`、1 条 `completed + sent + delivered=1` 与 1 条约 15:00 CST 的 `running + pending`，失败仍以 `PlainTextSuppressed`、`JsonUnknownStatus`、`JsonMalformed`、`ContextOverflowError` 与 `max_iterations_exceeded` 为主，落在既有 heartbeat 结构化 / context overflow / 迭代预算文档范围，未进入用户可见 assistant final，不新建重复缺陷。
 - 本轮 11:03 CST 新增 / 回退 3 个非 P1 缺陷：07:03-11:03 CST `data/sessions.sqlite3` 有 25 个 user turn 与 26 个 assistant 记录；普通 scheduler 16 条 `completed + sent + delivered=1`、1 条 `completed + send_failed + delivered=0`，heartbeat 新增 67 条 `noop + skipped_noop + delivered=0`、35 条 `execution_failed + skipped_error + delivered=0` 与 2 条 `completed + sent + delivered=1`。09:32 CST Discord `每日美股降息概率推送` 已生成完整 assistant final，但 `cron_job_runs.run_id=39475` 仍是 `completed + send_failed + delivered=0`、`detail_json={"scheduler":null,"sent_segments":0,"total_segments":2}` 且 `error_message` 为空，故将既有 Discord 出站可观测性 P2 从 `Fixed` 调回 `New`。09:03 CST Feishu scheduler `核心观察池早间简报` final 再次外露 `data_fetch 当前未返回可用行情，已用 StockAnalysis...`，晚于 03:27 sanitizer 修复，故将既有 `data_fetch` 文案 P3 从 `Fixed` 调回 `New`。07:57 CST Feishu direct session `Actor_feishu__direct__ou_5fe40dc70caa78ad6cb0185c21b53c4732` 在通俗化改写回答开头外露“本地技能文件路径不可读”，业务回答仍完成且无投递失败，按新的质量性 P3 登记。三项均非 P1，不创建 GitHub Issue。
@@ -488,6 +490,7 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Discord scheduler 已生成报告但发送阶段失败且缺少错误原因 | P2 | New | 2026-06-10 11:03 回退：09:32 CST `每日美股降息概率推送` 已生成完整 assistant final，但 `cron_job_runs.run_id=39475` 仍为 `completed + send_failed + should_deliver=1 + delivered=0`，`detail_json={"scheduler":null,"sent_segments":0,"total_segments":2}` 且 `error_message` 为空，晚于 2026-06-09 16:08 写入层 backstop 修复确认。影响单个 Discord scheduler 投递与可诊断性，非 P1，无 GitHub Issue | [discord_scheduler_completed_report_send_failed_without_error.md](./discord_scheduler_completed_report_send_failed_without_error.md) |
+| Heartbeat 定时任务命中 MiniMax HTTP 发送失败后仍整轮失败 | P2 | New | 2026-06-10 19:01 回退：18:30 CST Feishu heartbeat 同批 13 条任务落成 `execution_failed + skipped_error + delivered=0`，`detail_json.failure_kind=runner_error`，错误为 MiniMax/OpenAI-compatible `error sending request for url (https://api.minimaxi.com/v1/chat/completions)`，晚于 2026-04-26 provider 级短重试止血结论。影响 heartbeat 自动监控覆盖，但没有进入用户可见 assistant final，仍为功能性 P2；非 P1，无 GitHub Issue | [scheduler_heartbeat_minimax_http_transport_failure_no_retry.md](./scheduler_heartbeat_minimax_http_transport_failure_no_retry.md) |
 | Web / Feishu 直聊公司画像沉淀后向用户暴露内部相对文件路径 | P3 | New | 2026-06-10 15:04 回退：14:35 CST Feishu direct session `Actor_feishu__direct__ou_5fe31244b1208749f16773dce0c822801a` 对“雅克科技看看咋样”完成业务分析并正常收口，但 final 末尾写出 `已为你建立长期画像：company_profiles/002409_雅克科技.md`，晚于 03:27 共享 sanitizer 修复确认。该问题不影响分析正文、画像写入、会话收口或投递，按质量性 P3 保持活跃。非 P1，无 GitHub Issue | [web_company_profile_relative_path_exposed.md](./web_company_profile_relative_path_exposed.md) |
 | Feishu scheduler 降级说明外露 `data_fetch` 内部工具名 | P3 | New | 2026-06-10 11:03 回退：09:03 CST `核心观察池早间简报` 正常送达，但 final 开头写出 `data_fetch 当前未返回可用行情，已用 StockAnalysis 实时页补充校验价格与页面显示财报日期`，晚于 03:27 共享 sanitizer 修复确认。任务内容完整，不影响主功能链路，按质量性 P3 保持活跃。非 P1，无 GitHub Issue | [feishu_scheduler_data_fetch_tool_name_exposed.md](./feishu_scheduler_data_fetch_tool_name_exposed.md) |
 | Feishu 直聊通俗化改写回复外露本地技能文件路径不可读 | P3 | New | 2026-06-10 11:03 新增：07:57 CST Feishu direct session `Actor_feishu__direct__ou_5fe40dc70caa78ad6cb0185c21b53c4732` 在技术分析通俗化改写 final 开头写出“本地技能文件路径不可读”，外露内部技能 / 本地文件状态。回答仍完成、正常落库和投递，无空回复、错投或功能阻断，因此定级质量性 P3。非 P1，无 GitHub Issue | [feishu_direct_local_skill_file_path_unreadable_exposed.md](./feishu_direct_local_skill_file_path_unreadable_exposed.md) |
@@ -505,7 +508,6 @@
 | Feishu 直聊自动 compact 后仍无法完成新话题回答，旧会话会反复卡在“仍无法继续” | P2 | Later | 2026-04-26 已把 compact fallback 固定为用户态 `/compact` 文案，并将 answer 空成功重试耗尽改为失败态；若旧会话新话题仍稳定失败再改回 `New` | [feishu_direct_compact_retry_still_cannot_answer_new_topic.md](./archive/feishu_direct_compact_retry_still_cannot_answer_new_topic.md) |
 | Feishu 定时汇总旧会话在自动 compact 后仍无法完成日报，最终退化为“当前会话上下文过长”失败提示 | P2 | Later | 2026-04-26 已统一 overflow fallback 文案并保留执行失败态；若真实日报窗口继续只投失败提示再改回 `New` | [feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md](./archive/feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md) |
 | Discord 定时任务在 Answer 阶段返回空/无效回复后，仍被记为成功执行 | P2 | Later | 2026-04-26 已通过共享 `empty_success_exhausted -> success=false + error` 修复，Discord scheduler 后续会把通用 fallback 记为 `execution_failed` 而不是 `completed + sent`；若再次伪成功再改回 `New` | [discord_scheduler_empty_reply_send_failed.md](./archive/discord_scheduler_empty_reply_send_failed.md) |
-| Heartbeat 定时任务命中 MiniMax HTTP 发送失败后仍整轮失败，09:00 到 12:00 多个窗口大面积静默失效 | P2 | Later | 2026-04-26 代码确认 OpenAI-compatible provider 已对 `error sending request`、连接重置、超时等传输错误执行一次短重试，覆盖 heartbeat MiniMax 主要失败形态；若生产窗口继续复现再改回 `New` | [scheduler_heartbeat_minimax_http_transport_failure_no_retry.md](./archive/scheduler_heartbeat_minimax_http_transport_failure_no_retry.md) |
 | Feishu 直聊在 Answer 阶段触发 idle timeout / Codex state migration 错误后整轮无最终回复 | P1 | Later | 2026-04-28 当前代码已对 idle timeout / state migration / 纯工具轨迹 partial 做用户态失败文案和落库清洗；底层 Codex ACP state DB 迁移类失败属于外部 runner 状态，若真实窗口仍无用户可见失败回复再改回 `New` | [feishu_direct_answer_idle_timeout_no_reply.md](./archive/feishu_direct_answer_idle_timeout_no_reply.md) |
 
 ## 已修复 / 已关闭

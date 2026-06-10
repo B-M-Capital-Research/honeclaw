@@ -3,9 +3,24 @@
 - **发现时间**: 2026-04-17 16:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Later
+- **状态**: New
 
 ## 修复进展（2026-04-26）
+
+- **2026-06-10 19:01 CST 回退为 `New`**：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 15:02-19:01 CST heartbeat 新增 `59` 条 `noop + skipped_noop + delivered=0`、`46` 条 `execution_failed + skipped_error + delivered=0` 与 `1` 条 `completed + sent + delivered=1`。
+    - 18:30 CST 同批 `13` 条 Feishu heartbeat 任务落成 `execution_failed + skipped_error + delivered=0`，覆盖 `伦敦金跌破4500提醒`、`DRAM 心跳监控`、`持仓重大事件心跳检测`、`heartbeat_绿田机械基本面跟踪`、`TEM大事件心跳监控`、`Monitor_Watchlist_11`、`TSLA 正负触发条件心跳监控`、`SIVE POET/Nokia/1.6T DFB 心跳检测`、`Cerebras IPO与业务进展心跳监控`、`RKLB异动监控`、`AAOI 1.6T 光模块心跳检测` 等任务。
+    - 代表性样本：`run_id=39708/39712/39713/39706/39703/39705/39710/39701/39704/39711/39709/39702/39707`，`detail_json.failure_kind=runner_error`，`heartbeat_model=MiniMax-M2.7-highspeed`。
+    - 错误体均为 MiniMax/OpenAI-compatible `error sending request for url (https://api.minimaxi.com/v1/chat/completions)`，且最终没有 heartbeat 用户可见提醒送达。
+  - 会话质量对照：
+    - 同窗 `session_messages` 有 `11` 个 user turn 与 `11` 个 assistant final；最近 Feishu direct / scheduler 会话均以 assistant final 收口。
+    - 普通 scheduler 仅 `A股港股收盘后跨市场复盘` 1 条，为 `completed + sent + delivered=1`，未见发送失败或 commodity guard 误替换。
+    - assistant final 污染扫描未命中空回复、本机路径、`data/agent-sandboxes`、`company_profiles/...`、raw tool 字段、思维痕迹、provider 原始错误、quota、panic、`enabled=true/false`、`data_fetch` 或技能状态外露；最近四小时无非文档代码提交。
+  - 判断：
+    - 2026-04-26 的 `Later` 结论基于 provider 级短重试已覆盖主要 `error sending request` 形态；本轮真实生产窗口再次出现成批同类失败，满足“若真实 heartbeat 窗口仍有同类成批传输失败，再改回 `New`”的回退条件。
+    - 该问题与 `PlainTextSuppressed` / `JsonMalformed` / `JsonUnknownStatus` 等 heartbeat 输出协议退化不同；本轮 18:30 样本在请求传输层失败，导致 heartbeat 监控覆盖缺口。
+    - 没有用户可见 final 污染，也没有普通 scheduler 或 Feishu direct 全局不可用证据；严重等级保持功能性 `P2`，非 P1，不创建 GitHub Issue。
 
 - 代码层确认 `crates/hone-llm/src/openai_compatible.rs` 已在 `chat` 与 `chat_with_tools` 两条路径对主要瞬时传输错误执行一次短重试，覆盖：
   - `error sending request`
@@ -14,7 +29,7 @@
   - `operation timed out`
   - `tcp connect error`
 - heartbeat scheduler 调用 MiniMax 辅助模型走 OpenAI-compatible provider，因此该 provider 级吸震已覆盖本单记录的 `https://api.minimaxi.com/v1/chat/completions` 发送失败形态。
-- 状态调整为 `Later`：provider 级吸震已覆盖当前失败形态，不再占活跃修复队列；若真实 heartbeat 窗口仍有同类成批传输失败，再改回 `New` 并评估更多重试、退避或 provider fallback。
+- 2026-04-26 状态曾调整为 `Later`：provider 级吸震已覆盖当前失败形态，不再占活跃修复队列；若真实 heartbeat 窗口仍有同类成批传输失败，再改回 `New` 并评估更多重试、退避或 provider fallback。2026-06-10 18:30 CST 已再次成批复现，因此本单当前为 `New`。
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
   - 2026-04-21 19:30-20:00 最新巡检样本：
@@ -130,6 +145,7 @@
 
 ## 当前实现效果
 
+- `2026-06-10 18:30` 最新窗口再次出现 13 条 Feishu heartbeat MiniMax/OpenAI-compatible `chat/completions` 发送失败，均落成 `execution_failed + skipped_error + delivered=0`。这说明 2026-04-26 的 provider 级短重试止血没有在当前真实 heartbeat 窗口里稳定吸收同类传输失败。
 - `2026-04-21 19:30` 最新窗口继续出现 `Monitor_Watchlist_11` MiniMax `chat/completions` 发送失败；`20:00` 虽又漂移到结构化状态失败，但同类传输失败仍在生产窗口单点复现，说明 heartbeat 上游吸震仍未稳定证明收口。
 - `2026-04-21 18:30` 最新窗口继续出现 `TEM破位预警` 与 `小米30港元破位预警` MiniMax `chat/completions` 发送失败；`19:00` 虽未继续同类传输失败，但漂移到结构化状态失败，说明 heartbeat 上游吸震仍未稳定证明收口。
 - `2026-04-21 17:31-18:00` 最新窗口继续出现 `ASTS / 小米30港元 / 小米` 三条 MiniMax `chat/completions` 发送失败；虽不再是 11:00-12:00 的全批次失败，但足以证明吸震策略仍未在生产稳定收口。
@@ -155,6 +171,7 @@
 
 ## 根因判断
 
+- 2026-06-10 的新样本表明，当前线上仍会在同一 heartbeat 批次里成批命中 MiniMax/OpenAI-compatible 请求发送失败；即使 provider 层存在短重试，真实结果仍未被稳定吸收。
 - 最新 `09:00/09:31` 成批复现说明，至少在当前仓库对应的线上链路里，并没有看到“provider 级重试已覆盖 heartbeat”的稳定证据；如果相关修补曾存在，也没有被最新运行事实证明已经生效。
 - 直接触发点是 heartbeat scheduler 调用 MiniMax `https://api.minimaxi.com/v1/chat/completions` 时发生 HTTP 传输失败。
 - 现有 scheduler 链路对这类传输错误缺少自动重试与降级策略，因此单次抖动就会让整轮执行失败。
