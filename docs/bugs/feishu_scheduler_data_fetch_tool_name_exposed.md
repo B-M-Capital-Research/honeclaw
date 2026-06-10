@@ -49,6 +49,16 @@ New
 - 同窗摘要：
   - 最近四小时共有 25 个 user turn 与 26 个 assistant 记录，普通 scheduler 16 条 `completed + sent + delivered=1`。
   - assistant final 污染扫描未命中空回复、本机绝对路径、`data/agent-sandboxes`、`company_profiles/...`、raw tool 字段、思维痕迹、provider 原始错误、quota、panic 或 `enabled=true/false`；本轮问题集中在内部行情工具名 / 站点名进入用户可见降级说明。
+- `data/sessions.sqlite3` -> `session_messages`
+  - 2026-06-10 23:02 CST 巡检窗口：2026-06-10 19:01-23:02 CST。
+  - session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 在 21:35 CST 收到 `[定时任务触发] 任务名称：科技核心股池 · 晚间击球区快报`，assistant `ordinal=318` 于 21:37:52 CST 正常落库 final。
+  - final 开头写出：`本轮使用 StockAnalysis 最新可见美股价格... data_fetch 当前不可用，已用可靠网页源补充校验`。
+  - 同 session 在 23:00 CST 收到 `[定时任务触发] 任务名称：核心观察股池晚间快报`，assistant `ordinal=320` 于 23:02:04 CST 正常落库 final。
+  - final 开头写出：`本轮 23:00 刷新未能取得新的 data_fetch / 网页行情返回；以下沿用本会话 21:35 已校验的 StockAnalysis 最新可见美股价格...`。
+- 同窗摘要：
+  - 2026-06-10 19:01-23:02 CST `data/sessions.sqlite3` 有 53 个 user turn 与 54 个 assistant 记录，最近 Feishu direct / scheduler 会话均以 assistant final 收口。
+  - 普通 Feishu scheduler 33 条均 `completed + sent + delivered=1`，最近四小时无非文档代码提交。
+  - 本轮两个样本都正常完成观察池快报，没有投递失败、空回复、错投或数据破坏证据；复发仍集中在内部工具名 / 站点名进入用户可见降级说明。
 
 ## 端到端链路
 
@@ -68,6 +78,7 @@ New
 - 任务按时完成并送达，核心股 / 拓展股列表、击球区、价格口径和来源均可读。
 - 但 final 开头直接写出 `data_fetch 本轮未返回可用结果`，把内部工具名当作业务说明暴露给 Feishu 用户。
 - 2026-06-10 09:03 CST 复发样本改写为 `data_fetch 当前未返回可用行情，已用 StockAnalysis 实时页补充校验...`，仍把内部工具名和站点名作为用户态说明暴露。
+- 2026-06-10 21:35 / 23:00 CST 复发样本继续使用 `data_fetch 当前不可用`、`未能取得新的 data_fetch / 网页行情返回` 与 `StockAnalysis 最新可见美股价格` 等措辞，说明 sanitizer / prompt guard 仍未覆盖同义降级句族。
 - 该样本不同于旧的 `Feishu 晨报在 data_fetch 连续失败后仍以成功态发送旧价格早报`：本轮没有看到旧价格被当作实时价送达，且使用 StockAnalysis 明确补充校验；主要问题是内部工具名外露。
 
 ## 用户影响
@@ -97,6 +108,10 @@ New
   - 09:03 CST `核心观察池早间简报` final 再次外露 `data_fetch 当前未返回可用行情，已用 StockAnalysis 实时页补充校验价格与页面显示财报日期`。
   - 该任务仍正常输出核心股 / 拓展股价格、击球区与财报日期，也没有投递失败、空回复、错投或数据破坏证据。
   - 因为问题只影响用户可见文案边界和产品感，不阻断 scheduler 主功能链路，仍按质量性 `P3` 处理；非 P1，不创建 GitHub Issue。
+- 2026-06-10 23:02 CST 补充同根复发证据：
+  - 21:35 CST `科技核心股池 · 晚间击球区快报` final 外露 `data_fetch 当前不可用，已用可靠网页源补充校验`。
+  - 23:00 CST `核心观察股池晚间快报` final 外露 `未能取得新的 data_fetch / 网页行情返回`，并继续提 `StockAnalysis 最新可见美股价格`。
+  - 两轮都正常送达并输出观察池列表，因此仍不影响主功能链路，保持质量性 `P3 / New`；非 P1，不创建 GitHub Issue。
 
 ## 修复记录
 
