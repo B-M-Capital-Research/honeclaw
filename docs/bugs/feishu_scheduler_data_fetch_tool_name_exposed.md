@@ -14,7 +14,7 @@ P3
 
 ## 状态
 
-Fixed
+New
 
 ## GitHub Issue
 
@@ -41,6 +41,14 @@ Fixed
   - 2026-06-09 19:03-23:04 CST `data/sessions.sqlite3` 有 97 个 user turn 与 99 个 assistant 记录；最近活跃 Feishu direct / scheduler session 均以 assistant final 收口。
   - 普通 Feishu scheduler 34 条均为 `completed + sent + delivered=1`。
   - assistant final 污染扫描未命中空回复、本机绝对路径、`data/agent-sandboxes`、raw tool 字段、思维痕迹、provider 原始错误、quota、panic 或 stream disconnect。
+- `data/sessions.sqlite3` -> `session_messages`
+  - 2026-06-10 11:03 CST 巡检窗口：2026-06-10 07:03-11:03 CST。
+  - session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 在 09:00 CST 收到 `核心观察池早间简报` 定时触发，assistant `ordinal=316` 于 09:03:28 CST 正常落库 final。
+  - final 开头写出：`data_fetch 当前未返回可用行情，已用 StockAnalysis 实时页补充校验价格与页面显示财报日期`。
+  - 该样本晚于 2026-06-10 03:27 CST 共享 sanitizer 修复确认，且措辞从旧样本的 `本轮未返回可用结果` 变成 `当前未返回可用行情`，说明现有净化规则没有覆盖同义变体。
+- 同窗摘要：
+  - 最近四小时共有 25 个 user turn 与 26 个 assistant 记录，普通 scheduler 16 条 `completed + sent + delivered=1`。
+  - assistant final 污染扫描未命中空回复、本机绝对路径、`data/agent-sandboxes`、`company_profiles/...`、raw tool 字段、思维痕迹、provider 原始错误、quota、panic 或 `enabled=true/false`；本轮问题集中在内部行情工具名 / 站点名进入用户可见降级说明。
 
 ## 端到端链路
 
@@ -59,6 +67,7 @@ Fixed
 
 - 任务按时完成并送达，核心股 / 拓展股列表、击球区、价格口径和来源均可读。
 - 但 final 开头直接写出 `data_fetch 本轮未返回可用结果`，把内部工具名当作业务说明暴露给 Feishu 用户。
+- 2026-06-10 09:03 CST 复发样本改写为 `data_fetch 当前未返回可用行情，已用 StockAnalysis 实时页补充校验...`，仍把内部工具名和站点名作为用户态说明暴露。
 - 该样本不同于旧的 `Feishu 晨报在 data_fetch 连续失败后仍以成功态发送旧价格早报`：本轮没有看到旧价格被当作实时价送达，且使用 StockAnalysis 明确补充校验；主要问题是内部工具名外露。
 
 ## 用户影响
@@ -71,6 +80,7 @@ Fixed
 ## 根因判断
 
 - 初步判断是 scheduler final guidance 或共享用户可见输出净化层没有覆盖自然语言形式的 `data_fetch` 降级说明。
+- 2026-06-10 03:27 修复只覆盖了 `data_fetch 本轮未返回可用结果，已用 StockAnalysis 补充校验` 这一精确或窄形态，未覆盖 `data_fetch 当前未返回可用行情，已用 StockAnalysis 实时页补充校验价格与页面显示财报日期` 等同义变体。
 - 现有 `web_direct_internal_skill_and_local_store_terms_exposed.md` 覆盖 Web direct 的 `skill` / `data/portfolio` / 本地 json 口径；本轮是 Feishu 普通 scheduler 的行情工具降级说明，链路和触发位置不同。
 - 现有 `feishu_scheduler_stale_price_fallback_after_data_fetch_failure.md` 覆盖关键行情失败后旧价格 fallback 被记成功；本轮证据不足以判断旧价成功态复发，只确认内部工具名外露。
 
@@ -79,6 +89,14 @@ Fixed
 - 扩展共享出站净化或 scheduler prompt guard，将 `data_fetch 本轮未返回可用结果` 等内部工具名口径改写为“主行情源本轮未返回可用结果”。
 - 对 Feishu scheduler final 增加回归样本：当内部行情工具失败但有公开来源补充校验时，用户可见文本不得出现 `data_fetch`、tool 名称或内部执行状态。
 - 后续巡检继续区分两类证据：若同时复用旧价格并记成功，应回看 stale-price fallback 缺陷；若只是工具名进入最终回复，则按本单跟踪。
+- 扩展 sanitizer / prompt guard 时应按语义覆盖 `data_fetch` + `StockAnalysis` 降级句族，而不是只匹配单个固定句。
+
+## 复发记录
+
+- 2026-06-10 11:03 CST 状态从 `Fixed` 回退为 `New`：
+  - 09:03 CST `核心观察池早间简报` final 再次外露 `data_fetch 当前未返回可用行情，已用 StockAnalysis 实时页补充校验价格与页面显示财报日期`。
+  - 该任务仍正常输出核心股 / 拓展股价格、击球区与财报日期，也没有投递失败、空回复、错投或数据破坏证据。
+  - 因为问题只影响用户可见文案边界和产品感，不阻断 scheduler 主功能链路，仍按质量性 `P3` 处理；非 P1，不创建 GitHub Issue。
 
 ## 修复记录
 
