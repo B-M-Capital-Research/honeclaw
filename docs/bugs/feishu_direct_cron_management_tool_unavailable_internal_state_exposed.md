@@ -21,6 +21,14 @@
 - `data/sessions.sqlite3` -> `cron_job_runs`
   - 同窗普通 scheduler 仍有 4 条 `completed + sent + delivered=1`，heartbeat 有 72 条 `noop + skipped_noop + delivered=0`、30 条 `execution_failed + skipped_error + delivered=0` 与 2 条 `completed + sent + delivered=1`。
   - 这说明全局 scheduler 执行台账仍在推进，本轮异常集中在 Feishu direct 的定时任务管理工具暴露 / 调用链路，而不是整个调度器完全停摆。
+- `data/sessions.sqlite3` -> `session_messages`
+  - 2026-06-11 23:03 CST 巡检窗口：2026-06-11 19:02-23:02 CST。
+  - 同一 session `Actor_feishu__direct__ou_5f44eaaa05cec98860b5336c3bddcc22d1` 在 20:55 CST 再次出现定时任务创建请求失败样本，assistant `ordinal=354` 于 `2026-06-11T20:55:37.563050+08:00` 正常落库 final。
+  - final 写出：`本轮未暴露可执行的定时任务创建接口，因此这两个推送任务没有成功创建`，随后只整理了用户希望创建的 08:30 / 20:00 推送规格。
+  - 本次没有继续外露 `data/cron_jobs` / `data/sessions.sqlite3` 等存储路径，但主链路仍未能真实创建用户要求的定时任务。
+- 同窗摘要：
+  - 2026-06-11 19:02-23:02 CST `data/sessions.sqlite3` 有 39 个 user turn 与 39 个 assistant final，最近 Feishu direct / scheduler 会话均以 assistant final 收口。
+  - 普通 scheduler 33 条均为 `completed + sent + delivered=1`；异常仍集中在 Feishu direct 任务管理工具未暴露 / 未注入，不是全局 scheduler 停摆。
 
 ## 端到端链路
 
@@ -40,6 +48,7 @@
 
 - 取消、列出、创建定时任务均未完成。
 - 回复虽然没有谎称成功，但连续暴露内部运行状态：`data/cron_jobs` 空目录、`data/sessions.sqlite3`、`session_messages`、`session_metadata`、`cron_job / scheduled_task` 工具名与“当前沙盒”。
+- 2026-06-11 20:55 CST 复发样本已经没有继续暴露本地路径 / SQLite 表名，但仍明确写出“定时任务创建接口未暴露”，并且没有真实创建用户要求的两个定时任务。
 - 普通 scheduler 仍在执行，说明当前不是全局 cron loop 停摆，而是 direct 管理入口不可用或未随该会话注入。
 
 ## 用户影响
@@ -61,3 +70,9 @@
 - 如果工具因权限、额度或后端故障不可用，统一返回用户态“任务管理暂时不可用，请稍后重试”类文案，并在内部日志记录 `failure_kind`，不要把沙盒目录、SQLite 表名或工具接口名发给用户。
 - 增加 Feishu direct 回归样本：用户要求列出 / 取消 / 创建定时任务时，最终回复不得包含 `data/cron_jobs`、`data/sessions.sqlite3`、`session_messages`、`session_metadata`、`cron_job / scheduled_task`、`工具未暴露`，且成功路径必须给出真实任务 ID 或状态。
 
+## 复发记录
+
+- 2026-06-11 23:03 CST 补充同根复发证据：
+  - 20:55 CST 同一 Feishu direct session `Actor_feishu__direct__ou_5f44eaaa05cec98860b5336c3bddcc22d1` 再次处理用户创建 08:30 / 20:00 推送任务请求。
+  - assistant 回复 `本轮未暴露可执行的定时任务创建接口，因此这两个推送任务没有成功创建`，只整理任务规格，没有真实创建任务。
+  - 本次没有继续外露本地路径或 SQLite 表名，说明用户态文案有所收敛；但 Feishu direct 定时任务创建主链路仍不可用，因此状态保持 `P2 / New`。非 P1，不创建 GitHub Issue。
