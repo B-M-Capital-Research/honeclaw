@@ -14,7 +14,7 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## GitHub Issue
 
@@ -109,6 +109,12 @@
 - 2026-06-11 新样本继续保持旧形态；优先级应从“等待下一次复核”提升为确认 live Discord scheduler / cron storage 写入路径是否长期停留在旧二进制或绕过 backstop。
 
 ## 修复记录
+
+- `2026-06-12 00:07 CST` 复核纠偏：
+  - 当前代码已有 Discord scheduler 出站失败通用错误、`delivery_key`、`failure_kind=discord_send_failed`、`send_error` 以及 `CronJobStorage::record_execution_event(...)` 写入层 backstop。
+  - 本轮按“当前机器不再作为生产运行态证据”的自动化边界，不再用旧 live 样本把该代码级闭环缺陷维持在活跃队列。
+  - 验证：`cargo test -p hone-memory discord_send_failed_without_error_is_classified_by_storage_backstop --lib -- --nocapture`、`cargo test -p hone-discord scheduler_ -- --nocapture` 通过。
+  - 若后续在已确认加载当前代码的新运行态仍出现 `send_failed + delivered=0 + error_message=''`，再重新打开并优先排查是否存在绕过写入层 backstop 的新路径。
 
 - `2026-06-09 16:08 CST` 修复：
   - 在 Discord scheduler 既有 `scheduler_error_message(...)` 与 `scheduler_delivery_detail(...)` 修复之外，`memory/src/cron_job/history.rs` 的 `CronJobStorage::record_execution_event(...)` 写入入口新增发送失败归一化 backstop。

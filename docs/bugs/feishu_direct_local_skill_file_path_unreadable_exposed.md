@@ -14,11 +14,19 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## GitHub Issue
 
 - 无，非 P1
+
+## 修复记录
+
+- `2026-06-12 00:07 CST` 已修复：
+  - 共享 `sanitize_user_visible_output(...)` 的内部技能状态句过滤补齐 `不可读`、`无法读取`、`读取失败` 同义形态，覆盖“本地技能文件路径不可读”这类普通文本直聊降级说明。
+  - 新增 `sanitize_user_visible_output_strips_local_skill_file_unreadable_copy` 回归，确认 final 只保留业务改写正文，不再暴露本地技能 / 文件路径状态。
+  - 验证：`cargo test -p hone-channels sanitize_user_visible_output_strips_local_skill_file_unreadable_copy --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_strips_internal_skill_and_storage_copy --lib -- --nocapture` 通过。
+  - 本轮无关联 GitHub Issue；不依赖当前机器 live 服务复核。
 
 ## 证据来源
 

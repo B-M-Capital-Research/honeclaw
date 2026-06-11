@@ -3,7 +3,18 @@
 - **发现时间**: 2026-05-27 19:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
+
+## 修复记录（2026-06-12 00:07 CST）
+
+- 已补齐 heartbeat 价格时间戳 guard 的“日期在前、最新价在后”分支：`北京时间 2026年6月13日 20:20，现货黄金（XAU/USD）最新价格...` 这类句首时间戳现在会和括号内 `数据时间` 一样进入 `stale_price_timestamp` 抑制路径。
+- 新增回归覆盖：
+  - `heartbeat_leading_future_price_timestamp_trigger_is_suppressed`
+- 复核既有回归：
+  - `heartbeat_stale_price_timestamp_trigger_is_suppressed`
+  - `heartbeat_future_price_timestamp_trigger_is_suppressed`
+- 验证：`cargo test -p hone-channels heartbeat_stale_price_timestamp --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_future_price_timestamp_trigger_is_suppressed --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_leading_future_price_timestamp_trigger_is_suppressed --lib -- --nocapture` 通过。
+- 本轮不依赖当前机器 live / 生产日志判定恢复；状态按代码与回归证据更新为 `Fixed`。
 
 ## 修复记录（2026-06-11 03:03 CST）
 

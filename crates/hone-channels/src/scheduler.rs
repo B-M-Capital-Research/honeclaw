@@ -80,6 +80,25 @@ static RE_HEARTBEAT_PRICE_TIMESTAMP_DATE: LazyLock<regex::Regex> = LazyLock::new
     .expect("valid heartbeat price timestamp regex")
 });
 
+static RE_HEARTBEAT_PRICE_TIMESTAMP_DATE_BEFORE_PRICE: LazyLock<regex::Regex> = LazyLock::new(
+    || {
+        regex::Regex::new(
+            r"(?isx)
+            (?:北京时间|数据时间|截至|as\s+of|quote\s+time)?\s*
+            (?:
+                (?P<year_cn>20\d{2})年(?P<month_cn>\d{1,2})月(?P<day_cn>\d{1,2})日
+                |
+                (?P<year_iso>20\d{2})[-/](?P<month_iso>\d{1,2})[-/](?P<day_iso>\d{1,2})
+            )
+            (?:\s*\d{1,2}(?:[:：点时]\d{1,2})?(?:分)?)?
+            [^\n。；;]{0,120}
+            (?:当前(?:价格|价)?|最新(?:价格|价)?|现价|现报|收盘价|跌至|跌到|降至|回落至|current(?:\s*price)?|last(?:\s*price)?|quote)
+            ",
+        )
+        .expect("valid heartbeat leading price timestamp regex")
+    },
+);
+
 const HEARTBEAT_PRICE_TIMESTAMP_MAX_AGE_DAYS: i64 = 3;
 
 static RE_HEARTBEAT_BEIJING_TRIGGER_TIME: LazyLock<regex::Regex> = LazyLock::new(|| {
@@ -648,6 +667,7 @@ fn heartbeat_stale_price_timestamp(text: &str, reference_date: NaiveDate) -> Opt
     }
     RE_HEARTBEAT_PRICE_TIMESTAMP_DATE
         .captures_iter(text)
+        .chain(RE_HEARTBEAT_PRICE_TIMESTAMP_DATE_BEFORE_PRICE.captures_iter(text))
         .filter_map(|captures| heartbeat_price_timestamp_context_date(&captures))
         .find(|date| {
             if *date > reference_date {
@@ -3251,6 +3271,30 @@ mod tests {
         assert_eq!(
             execution.metadata["stale_price_timestamp"].as_str(),
             Some("2026-06-18")
+        );
+        assert_eq!(
+            execution.metadata["stale_price_timestamp_suppressed"].as_bool(),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn heartbeat_leading_future_price_timestamp_trigger_is_suppressed() {
+        let execution = heartbeat_execution_from_content_at(
+            r#"{"status":"triggered","message":"北京时间 2026年6月13日 20:20，现货黄金（XAU/USD）最新价格为 $4098.71/盎司。当前价格已低于您设置的 $4500 预警阈值。"}"#,
+            "MiniMax-M2.7-highspeed",
+            chrono::NaiveDate::from_ymd_opt(2026, 6, 11).expect("date"),
+        );
+
+        assert!(!execution.should_deliver);
+        assert!(execution.error.is_none());
+        assert_eq!(
+            execution.metadata["failure_kind"].as_str(),
+            Some("stale_price_timestamp")
+        );
+        assert_eq!(
+            execution.metadata["stale_price_timestamp"].as_str(),
+            Some("2026-06-13")
         );
         assert_eq!(
             execution.metadata["stale_price_timestamp_suppressed"].as_bool(),

@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-17 16:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Later
 
 ## 修复进展（2026-04-26）
 
@@ -21,6 +21,10 @@
     - 2026-04-26 的 `Later` 结论基于 provider 级短重试已覆盖主要 `error sending request` 形态；本轮真实生产窗口再次出现成批同类失败，满足“若真实 heartbeat 窗口仍有同类成批传输失败，再改回 `New`”的回退条件。
     - 该问题与 `PlainTextSuppressed` / `JsonMalformed` / `JsonUnknownStatus` 等 heartbeat 输出协议退化不同；本轮 18:30 样本在请求传输层失败，导致 heartbeat 监控覆盖缺口。
     - 没有用户可见 final 污染，也没有普通 scheduler 或 Feishu direct 全局不可用证据；严重等级保持功能性 `P2`，非 P1，不创建 GitHub Issue。
+- **2026-06-12 00:07 CST 调整为 `Later`**：
+  - 本轮复核确认当前仓库代码已在 OpenAI-compatible `chat` / `chat_with_tools` 两条路径对 `error sending request`、connection reset、timeout 等瞬时传输错误做 provider 级短重试。
+  - 2026-06-10 样本属于 MiniMax/OpenAI-compatible 外部传输失败；当前机器不再作为生产运行态证据，且本任务不为单次网络/第三方抖动写特殊兼容。
+  - 因此本单不再占活跃修复队列，改为 `Later`：若在已确认加载当前代码且网络/供应商状态稳定的新运行态中仍成批复现，再评估通用 provider fallback、退避或告警聚合，而不是写渠道/单次错误特判。
 
 - 代码层确认 `crates/hone-llm/src/openai_compatible.rs` 已在 `chat` 与 `chat_with_tools` 两条路径对主要瞬时传输错误执行一次短重试，覆盖：
   - `error sending request`

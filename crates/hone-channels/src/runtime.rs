@@ -255,7 +255,7 @@ static RE_ENABLED_BOOLEAN_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
 });
 static RE_INTERNAL_SKILL_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
-        r#"(?i)[^\n。！？]*(?:stock_research|deep_stock_research|image_understanding|pdf_understanding|skill|技能|工具|图片理解|图片分析|附件处理|OCR)[^\n。！？]*(?:未激活|没有激活|没激活|未成功激活|没有成功激活|没成功激活|未加载|没有加载|没加载|未成功加载|没有成功加载|没成功加载)[^\n。！？]*[。！？]?"#,
+        r#"(?i)[^\n。！？]*(?:stock_research|deep_stock_research|image_understanding|pdf_understanding|skill|技能|工具|图片理解|图片分析|附件处理|OCR)[^\n。！？]*(?:未激活|没有激活|没激活|未成功激活|没有成功激活|没成功激活|未加载|没有加载|没加载|未成功加载|没有成功加载|没成功加载|不可读|无法读取|读取失败)[^\n。！？]*[。！？]?"#,
     )
     .expect("valid regex")
 });
@@ -1206,6 +1206,19 @@ mod tests {
         assert!(!sanitized.content.contains("stock_research"));
         assert!(!sanitized.content.contains("data/portfolio"));
         assert!(!sanitized.content.contains("本地 json"));
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_strips_local_skill_file_unreadable_copy() {
+        let raw = "本地技能文件路径不可读，我继续按你给的原文做通俗化改写；这轮不需要实时行情，所以不做价格结论。\n\n这段话的意思是：黄金像一辆正在下坡的车，短线还没完全刹住。";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(sanitized.removed_internal);
+        assert_eq!(
+            sanitized.content,
+            "这段话的意思是：黄金像一辆正在下坡的车，短线还没完全刹住。"
+        );
+        assert!(!sanitized.content.contains("本地技能"));
+        assert!(!sanitized.content.contains("路径不可读"));
     }
 
     #[test]
