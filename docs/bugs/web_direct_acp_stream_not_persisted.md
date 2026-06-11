@@ -27,6 +27,14 @@
 - 这与 2026-06-01 的复核一致：只能证明本地 SQLite 镜像未追踪 cloud mode Web direct 新会话，不能证明云端 PG `cloud_sessions` 或 Web API history/read path 丢失该轮回复。
 - 本轮没有 PG `cloud_sessions` 查询、Web API history 缺失、用户刷新后丢历史、续聊上下文丢失或前端历史为空的证据，因此状态保持 `Closed`，不重新打开；若后续要重开，仍需补充权威 history/read path 缺失证据。
 
+## 2026-06-12 03:04 CST 复核结论
+
+- 01:01 CST Web direct session `Actor_web__direct__web-user-266454c88ed6` 在 `data/runtime/logs/acp-events.log` 中收到用户原油期权大单查询 prompt。
+- 01:04 CST 同一 session 持续输出 `agent_message_chunk`，并最终返回 `stopReason=end_turn`；日志片段显示回复已包含 CME WTI options 页面与 Barron's 原油价格口径等来源说明，说明实时 ACP stream 已完成。
+- 本地 `data/sessions.sqlite3` 中同一 session 仍停在 `2026-05-30T02:13:00.502476+08:00` 的旧 user turn，未追加 2026-06-12 01:01 CST 的 user turn 或 assistant final。
+- 该样本与 2026-06-01 / 2026-06-05 复核一致：只能证明本地 SQLite 镜像没有追踪 cloud mode Web direct 新会话，不能证明云端 PG `cloud_sessions` 或 Web API history/read path 丢失该轮回复。
+- 本轮仍没有 PG `cloud_sessions` 查询、Web API history 缺失、用户刷新后丢历史、续聊上下文丢失或前端历史为空的证据，因此状态保持 `Closed`，不重新打开；后续若要重开，仍需补充权威 history/read path 缺失证据。
+
 ## 影响范围
 
 - 无需回滚或迁移数据。
