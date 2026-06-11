@@ -9,6 +9,15 @@
 ## 证据来源
 
 - `data/sessions.sqlite3`
+  - 时间窗：2026-06-11 15:02-19:02 CST
+  - `session_id=Actor_feishu__direct__ou_5fdb997ed67ac0b7f5403701682185d67a`
+  - assistant `ordinal=80`
+  - `timestamp=2026-06-11T18:02:38.046545+08:00`
+  - 用户输入摘要：`美股dell详细分析`
+  - assistant final 已完成 DELL 业务、财务、估值、风险、建仓区间与来源说明，并正常写入会话；同窗 17 个 user turn 与 17 个 assistant final 成对收口，普通 Feishu scheduler 1 条 `completed + sent + delivered=1`，无空回复、错投、投递失败或链路中断证据。
+  - 但最终用户可见正文末尾写出：`本轮已新增长期画像：company_profiles/DELL.md。`
+  - 该样本发生在 2026-06-10 03:27 CST 共享 sanitizer 再次修复并确认回归之后，且晚于 2026-06-10 15:04 CST 雅克科技复发登记；本轮只补充同根因证据，状态保持 `New`。
+- `data/sessions.sqlite3`
   - 时间窗：2026-06-10 14:32-14:36 CST
   - `session_id=Actor_feishu__direct__ou_5fe31244b1208749f16773dce0c822801a`
   - assistant `ordinal=317`
@@ -113,6 +122,7 @@
 - 2026-06-04 腾讯画像样本显示，修复后的路径替换策略仍可能保留原句结构，把 `路径是：<internal path>` 变成 `路径是：公司画像公司画像`。这更像净化层缺少整句级 rewrite，而不是新的存储、投递或工具执行故障。
 - 2026-06-09 MRVL / AAOI 样本显示，当前净化或生成约束仍可能把公司画像落点压缩成重复业务占位词，尤其是 `画像已更新：公司画像公司画像` 这类冒号前缀句式未被完全重写。
 - 2026-06-10 雅克科技样本显示，`公司画像公司画像` 类文案被修复后，真实 Feishu direct final 仍可能直接输出 `company_profiles/<ticker>.md`，说明共享净化或最终回复模板仍没有覆盖所有“已建立长期画像：<relative-path>”句式。
+- 2026-06-11 DELL 样本显示，最新 Feishu direct 深度分析仍会输出 `本轮已新增长期画像：company_profiles/DELL.md`，说明“本轮已新增长期画像：<relative-path>”句式同样未被净化层覆盖。
 - 该问题也不同于 `web_direct_tool_call_raw_output_leak`：本轮最终正文没有 raw JSON、工具协议或 provider 报错外泄。
 
 ## 下一步建议
@@ -123,6 +133,12 @@
 - 后续巡检继续区分两类证据：绝对路径 / sandbox 标识泄漏应回看既有路径脱敏缺陷；仅相对内部路径进入自然语言回复时按本单跟踪。
 
 ## 修复记录
+
+- 2026-06-11 19:02 CST 补充复发证据：
+  - 15:02-19:02 CST `data/sessions.sqlite3` 有 17 个 user turn 与 17 个 assistant final，10 个最近会话均以 assistant 收口；普通 Feishu scheduler 1 条 `completed + sent + delivered=1`，最近四小时无非文档代码提交。
+  - assistant final 污染扫描只命中 1 条用户可见 `company_profiles/...`：18:02 CST `Actor_feishu__direct__ou_5fdb997ed67ac0b7f5403701682185d67a` 对“美股dell详细分析”完成业务分析并正常收口，但 final 末尾写出 `本轮已新增长期画像：company_profiles/DELL.md。`
+  - 这是 2026-06-10 03:27 CST 共享 sanitizer 修复确认之后的同根因真实复发，不新建重复文档；该问题不影响分析正文、画像写入、会话收口或投递，严重等级保持 `P3 / New`。
+  - 非 P1，不创建 GitHub issue。
 
 - 2026-06-10 15:04 CST 复发后回退：
   - 11:03-15:04 CST `data/sessions.sqlite3` 有 5 个 user turn 与 5 个 assistant final，3 个 Feishu direct / scheduler 会话均以 assistant 收口；普通 scheduler 1 条 `completed + sent + delivered=1`，无普通 scheduler 发送失败。
