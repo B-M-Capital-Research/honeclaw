@@ -265,6 +265,66 @@ pub struct CloudCronExecutionInput {
     pub detail: serde_json::Value,
 }
 
+fn normalize_cloud_cron_execution_input_for_storage(
+    actor: &ActorIdentity,
+    mut input: CloudCronExecutionInput,
+) -> CloudCronExecutionInput {
+    if input.message_send_status != "send_failed" || input.delivered {
+        return input;
+    }
+
+    let sent_segments = input
+        .detail
+        .get("sent_segments")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or_default();
+    let total_segments = input
+        .detail
+        .get("total_segments")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or_default();
+    if sent_segments != 0 || total_segments == 0 {
+        return input;
+    }
+
+    let fallback_error = match actor.channel.as_str() {
+        "discord" => "Discord 定时任务发送失败",
+        _ => "定时任务发送失败",
+    };
+    if input
+        .error_message
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or_default()
+        .is_empty()
+    {
+        input.error_message = Some(fallback_error.to_string());
+    }
+
+    if let serde_json::Value::Object(detail) = &mut input.detail
+        && detail
+            .get("failure_kind")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .unwrap_or_default()
+            .is_empty()
+    {
+        let failure_kind = match actor.channel.as_str() {
+            "discord" => "discord_send_failed",
+            "feishu" => "feishu_send_failed",
+            "telegram" => "telegram_send_failed",
+            "web" => "web_send_failed",
+            _ => "channel_send_failed",
+        };
+        detail.insert(
+            "failure_kind".to_string(),
+            serde_json::Value::String(failure_kind.to_string()),
+        );
+    }
+
+    input
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct CloudCronExecutionFilter {
     pub since: Option<String>,
@@ -1346,6 +1406,7 @@ ON CONFLICT (job_key, due_key) DO NOTHING
         input: CloudCronExecutionInput,
     ) -> HoneResult<()> {
         let client = self.connect_client().await?;
+        let input = normalize_cloud_cron_execution_input_for_storage(actor, input);
         let executed_at = crate::beijing_now_rfc3339();
         let started_threshold = (crate::beijing_now() - chrono::Duration::hours(2)).to_rfc3339();
         let response_preview = input.response_preview;
@@ -3383,5 +3444,62 @@ mod tests {
         unsafe {
             std::env::remove_var("HONE_CLOUD_MODE");
         }
+    }
+
+    #[test]
+    fn cloud_cron_send_failed_backstop_fills_discord_error_message() {
+        let actor = ActorIdentity::new("discord", "g_exec", Some("channel-1")).expect("actor");
+        let normalized = normalize_cloud_cron_execution_input_for_storage(
+            &actor,
+            CloudCronExecutionInput {
+                execution_status: "completed".to_string(),
+                message_send_status: "send_failed".to_string(),
+                should_deliver: true,
+                delivered: false,
+                response_preview: Some("final report".to_string()),
+                error_message: None,
+                detail: serde_json::json!({
+                    "scheduler": null,
+                    "sent_segments": 0,
+                    "total_segments": 2,
+                }),
+            },
+        );
+
+        assert_eq!(
+            normalized.error_message.as_deref(),
+            Some("Discord 定时任务发送失败")
+        );
+        assert_eq!(normalized.detail["failure_kind"], "discord_send_failed");
+    }
+
+    #[test]
+    fn cloud_cron_send_failed_backstop_preserves_existing_failure_metadata() {
+        let actor = ActorIdentity::new("discord", "g_exec", Some("channel-1")).expect("actor");
+        let normalized = normalize_cloud_cron_execution_input_for_storage(
+            &actor,
+            CloudCronExecutionInput {
+                execution_status: "completed".to_string(),
+                message_send_status: "send_failed".to_string(),
+                should_deliver: true,
+                delivered: false,
+                response_preview: Some("final report".to_string()),
+                error_message: Some("发送 Discord 消息失败: missing access".to_string()),
+                detail: serde_json::json!({
+                    "scheduler": null,
+                    "sent_segments": 0,
+                    "total_segments": 2,
+                    "failure_kind": "discord_missing_access",
+                    "send_error": "missing access",
+                }),
+            },
+        );
+
+        assert_eq!(
+            normalized.error_message.as_deref(),
+            Some("发送 Discord 消息失败: missing access")
+        );
+        assert_eq!(normalized.detail["failure_kind"], "discord_missing_access");
+        assert_eq!(normalized.detail["send_error"], "missing access");
     }
 }
