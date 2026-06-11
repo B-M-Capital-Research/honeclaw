@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-06-11 11:01 CST
+最后更新：2026-06-11 15:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,9 +17,11 @@
 
 ## 当前概览
 
-- 活跃待修复：8
+- 活跃待修复：9
 - Later / 待复现：9
 - 已修复 / 已关闭：128
+- 本轮 15:02 CST 新增 1 个非 P1 质量缺陷：11:02-15:02 CST `data/sessions.sqlite3` 有 3 个 user turn 与 3 个 assistant final，均正常成对收口；普通 Feishu scheduler 1 条 `completed + sent + delivered=1`，最近四小时只有文档提交 `8cd36b4f`，无非文档代码提交。14:05 CST Feishu direct session `Actor_feishu__direct__ou_5fe31244b1208749f16773dce0c822801a` 用户问 `预估sapcex上市多少钱，多少钱能买`，assistant 按 SpaceX 作答并给出 `135 美元 / 1.75 万亿美元` IPO 锚点、多个媒体来源链接和分档买入区间；但该 assistant row 的 `metadata_json` 没有 `assistant.tool_calls`，本轮没有可审计来源核验工具结果。回复正常投递且无内部实现外露，因此不影响主功能链路，按质量性 P3 登记；非 P1，不创建 GitHub Issue。
+- 本轮 15:02 CST heartbeat 新增 68 条 `noop + skipped_noop + delivered=0`、37 条 `execution_failed + skipped_error + delivered=0`。失败形态仍以 `PlainTextSuppressed`、`JsonNoop`、`PlainTextNoop`、`JsonTriggered` 误归 noop、`JsonUnknownStatus`、`JsonMalformed` 与 1 条 `ContextOverflowError` 为主，落在既有 heartbeat 结构化 / context overflow 文档范围，未进入用户可见 assistant final，不新建重复缺陷；本窗未见活跃 P1 状态变化。
 - 本轮 11:01 CST 回退 1 个非 P1 缺陷，并补充 2 个既有缺陷证据：07:01-11:01 CST `data/sessions.sqlite3` 有 19 个 user turn 与 20 个 assistant 记录，最近 Feishu direct / scheduler 与 Discord scheduler 会话均以 assistant final 收口；普通 scheduler 17 条 `completed + sent + delivered=1`，另有 1 条 Discord `completed + send_failed + delivered=0`。10:00 CST heartbeat `伦敦金跌破4500提醒` 的 `cron_job_runs.run_id=40172` 成功送达，但用户可见正文写出 `北京时间 2026年6月13日 20:20，现货黄金（XAU/USD）最新价格为 $4098.71/盎司`，在 2026-06-11 执行窗口使用未来日期价格作为跌破阈值证据，晚于 03:04 CST 未来日期 guard 修复确认，故将既有金价时间戳 P2 从 `Fixed` 调回 `New` 并移回活跃表。09:32 CST Discord `每日美股降息概率推送` `run_id=40161` 再次 `completed + send_failed + delivered=0` 且 `error_message` 为空，补充到既有 Discord P2；09:04 CST `核心观察池早间简报` final 外露“可用行情接口未返回有效结果，已用 StockAnalysis 页面补充校验”，补充到既有 Feishu scheduler P3。三项均非 P1，不创建 GitHub Issue。
 - 本轮 11:01 CST heartbeat 新增 74 条 `noop + skipped_noop + delivered=0`、29 条 `execution_failed + skipped_error + delivered=0`、2 条 `completed + sent + delivered=1` 与 1 条 `running + pending`。除金价成功误送达外，其余失败仍以结构化状态退化、context window overflow、runner error 等既有信号为主，未进入用户可见 final，不新建重复缺陷；本窗未见 commodity guard 复发，最近四小时无新的非文档代码提交。
 - 本轮 03:02 CST 新增 1 个非 P1 缺陷：23:02-03:02 CST `data/sessions.sqlite3` 有 11 个 user turn 与 11 个 assistant final，最近 Feishu direct / scheduler 会话均以 assistant final 收口；普通 scheduler 4 条均 `completed + sent + delivered=1`。最近四小时另有非文档提交 `ecb993aa` 修复 heartbeat 未来日期价格时间戳 guard，不改变本轮新缺陷判断。23:43-00:09 CST Feishu direct session `Actor_feishu__direct__ou_5f44eaaa05cec98860b5336c3bddcc22d1` 连续请求取消、列出、创建定时任务，assistant 均回复任务管理工具未暴露 / 无法真实执行，并外露 `data/cron_jobs`、`data/sessions.sqlite3`、`session_messages`、`session_metadata`、`cron_job / scheduled_task` 等内部存储和工具链口径。该问题阻断 Feishu direct 任务管理主链路，但当前证据只覆盖单个 actor，普通 scheduler 仍在推进，定级功能性 P2；非 P1，不创建 GitHub Issue。
@@ -502,6 +504,7 @@
 | Heartbeat 金价阈值提醒把旧日期/非当前窗口价格当作当前触发价送达 | P2 | New | 2026-06-11 11:01 回退：10:00 CST `伦敦金跌破4500提醒` `cron_job_runs.run_id=40172` 成功送达，正文把 `2026年6月13日 20:20` 的未来时间戳作为当前最新金价和跌破 `$4500` 阈值证据，晚于 03:04 CST 未来日期 guard 修复确认。自动金融阈值提醒触发证据与执行窗口不一致，影响风险判断；非 P1，无 GitHub Issue | [scheduler_heartbeat_gold_stale_price_trigger.md](./scheduler_heartbeat_gold_stale_price_trigger.md) |
 | Web / Feishu 直聊公司画像沉淀后向用户暴露内部相对文件路径 | P3 | New | 2026-06-10 15:04 回退：14:35 CST Feishu direct session `Actor_feishu__direct__ou_5fe31244b1208749f16773dce0c822801a` 对“雅克科技看看咋样”完成业务分析并正常收口，但 final 末尾写出 `已为你建立长期画像：company_profiles/002409_雅克科技.md`，晚于 03:27 共享 sanitizer 修复确认。该问题不影响分析正文、画像写入、会话收口或投递，按质量性 P3 保持活跃。非 P1，无 GitHub Issue | [web_company_profile_relative_path_exposed.md](./web_company_profile_relative_path_exposed.md) |
 | Feishu scheduler 降级说明外露 `data_fetch` 内部工具名 | P3 | New | 2026-06-11 11:01 补证：09:04 `核心观察池早间简报` final 写 `可用行情接口未返回有效结果，已用 StockAnalysis 页面补充校验；击球区沿用本地固定区间`。任务内容完整并正常送达，没有旧价格成功态或投递失败证据；不影响主功能链路，按质量性 P3 保持活跃。非 P1，无 GitHub Issue | [feishu_scheduler_data_fetch_tool_name_exposed.md](./feishu_scheduler_data_fetch_tool_name_exposed.md) |
+| Feishu 直聊 SpaceX IPO 估值问答输出未核验来源和精确买入区间 | P3 | New | 2026-06-11 15:02 新增：14:05 CST Feishu direct session `Actor_feishu__direct__ou_5fe31244b1208749f16773dce0c822801a` 用户问 `预估sapcex上市多少钱，多少钱能买`，assistant 输出 SpaceX IPO `135 美元 / 1.75 万亿美元` 锚点、媒体来源链接和具体买入区间；但该 assistant row 没有 `assistant.tool_calls`，本轮缺少可审计来源核验工具结果。回复正常投递且无内部实现外露，不影响主功能链路，按质量性 P3 登记。非 P1，无 GitHub Issue | [feishu_direct_spacex_ipo_unverified_source_price_advice.md](./feishu_direct_spacex_ipo_unverified_source_price_advice.md) |
 | Feishu 直聊通俗化改写回复外露本地技能文件路径不可读 | P3 | New | 2026-06-10 11:03 新增：07:57 CST Feishu direct session `Actor_feishu__direct__ou_5fe40dc70caa78ad6cb0185c21b53c4732` 在技术分析通俗化改写 final 开头写出“本地技能文件路径不可读”，外露内部技能 / 本地文件状态。回答仍完成、正常落库和投递，无空回复、错投或功能阻断，因此定级质量性 P3。非 P1，无 GitHub Issue | [feishu_direct_local_skill_file_path_unreadable_exposed.md](./feishu_direct_local_skill_file_path_unreadable_exposed.md) |
 | Feishu 直聊今日对话上限提示在会话历史中重复落库 | P3 | New | 2026-06-10 03:03 回退：Feishu direct session `Actor_feishu__direct__ou_5f64ee7ca7af22d44a83a31054e6fb92a3` 在 23:47 / 23:53 CST 两次 daily-limit 短路后均连续落库同义 `final` 与 Feishu `text` assistant 记录，晚于 2026-06-09 04:43 修复确认。当前没有证据证明 Feishu 端重复投递，且用户仍收到清晰额度提示，按质量性 P3 保持活跃。非 P1，无 GitHub Issue | [feishu_direct_daily_limit_duplicate_assistant_transcript.md](./feishu_direct_daily_limit_duplicate_assistant_transcript.md) |
 
