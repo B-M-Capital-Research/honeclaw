@@ -59,6 +59,15 @@ New
   - 2026-06-10 19:01-23:02 CST `data/sessions.sqlite3` 有 53 个 user turn 与 54 个 assistant 记录，最近 Feishu direct / scheduler 会话均以 assistant final 收口。
   - 普通 Feishu scheduler 33 条均 `completed + sent + delivered=1`，最近四小时无非文档代码提交。
   - 本轮两个样本都正常完成观察池快报，没有投递失败、空回复、错投或数据破坏证据；复发仍集中在内部工具名 / 站点名进入用户可见降级说明。
+- `data/sessions.sqlite3` -> `session_messages`
+  - 2026-06-11 11:01 CST 巡检窗口：2026-06-11 07:01-11:01 CST。
+  - session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 在 09:00 CST 收到 `核心观察池早间简报` 定时触发，assistant `ordinal=322` 于 09:04:12 CST 正常落库 final。
+  - final 开头写出：`可用行情接口未返回有效结果，已用 StockAnalysis 页面补充校验；击球区沿用本地固定区间。`
+  - 本样本没有继续出现字面量 `data_fetch`，但仍把内部/实现侧行情接口失败和 `StockAnalysis` 站点名作为用户态降级说明发出，说明已有净化没有覆盖同一链路的站点名 / 内部数据链路同义口径。
+- 同窗摘要：
+  - 2026-06-11 07:01-11:01 CST `data/sessions.sqlite3` 有 19 个 user turn 与 20 个 assistant 记录，最近 Feishu direct / scheduler 与 Discord scheduler 会话均以 assistant final 收口。
+  - 普通 scheduler 17 条为 `completed + sent + delivered=1`，本条 Feishu scheduler 正常完成观察池早间简报，没有投递失败、空回复、错投或数据破坏证据。
+  - assistant final 污染扫描未命中空回复、本机绝对路径、`data/agent-sandboxes`、raw tool 字段、思维痕迹、provider 原始错误、quota、panic、`company_profiles/...`、技能状态或 cron 内部存储口径；本轮问题仍集中在内部行情链路 / 站点名进入用户可见降级说明。
 
 ## 端到端链路
 
@@ -79,6 +88,7 @@ New
 - 但 final 开头直接写出 `data_fetch 本轮未返回可用结果`，把内部工具名当作业务说明暴露给 Feishu 用户。
 - 2026-06-10 09:03 CST 复发样本改写为 `data_fetch 当前未返回可用行情，已用 StockAnalysis 实时页补充校验...`，仍把内部工具名和站点名作为用户态说明暴露。
 - 2026-06-10 21:35 / 23:00 CST 复发样本继续使用 `data_fetch 当前不可用`、`未能取得新的 data_fetch / 网页行情返回` 与 `StockAnalysis 最新可见美股价格` 等措辞，说明 sanitizer / prompt guard 仍未覆盖同义降级句族。
+- 2026-06-11 09:04 CST 复发样本虽然没有字面量 `data_fetch`，但仍写出“可用行情接口未返回有效结果，已用 StockAnalysis 页面补充校验”，把内部数据链路失败和站点名继续作为用户态说明暴露。
 - 该样本不同于旧的 `Feishu 晨报在 data_fetch 连续失败后仍以成功态发送旧价格早报`：本轮没有看到旧价格被当作实时价送达，且使用 StockAnalysis 明确补充校验；主要问题是内部工具名外露。
 
 ## 用户影响
@@ -92,6 +102,7 @@ New
 
 - 初步判断是 scheduler final guidance 或共享用户可见输出净化层没有覆盖自然语言形式的 `data_fetch` 降级说明。
 - 2026-06-10 03:27 修复只覆盖了 `data_fetch 本轮未返回可用结果，已用 StockAnalysis 补充校验` 这一精确或窄形态，未覆盖 `data_fetch 当前未返回可用行情，已用 StockAnalysis 实时页补充校验价格与页面显示财报日期` 等同义变体。
+- 2026-06-11 新样本进一步说明，修复还未覆盖不含 `data_fetch` 字面量、但表达为“行情接口未返回有效结果 + StockAnalysis 页面补充校验”的同链路降级句族。
 - 现有 `web_direct_internal_skill_and_local_store_terms_exposed.md` 覆盖 Web direct 的 `skill` / `data/portfolio` / 本地 json 口径；本轮是 Feishu 普通 scheduler 的行情工具降级说明，链路和触发位置不同。
 - 现有 `feishu_scheduler_stale_price_fallback_after_data_fetch_failure.md` 覆盖关键行情失败后旧价格 fallback 被记成功；本轮证据不足以判断旧价成功态复发，只确认内部工具名外露。
 
@@ -112,6 +123,9 @@ New
   - 21:35 CST `科技核心股池 · 晚间击球区快报` final 外露 `data_fetch 当前不可用，已用可靠网页源补充校验`。
   - 23:00 CST `核心观察股池晚间快报` final 外露 `未能取得新的 data_fetch / 网页行情返回`，并继续提 `StockAnalysis 最新可见美股价格`。
   - 两轮都正常送达并输出观察池列表，因此仍不影响主功能链路，保持质量性 `P3 / New`；非 P1，不创建 GitHub Issue。
+- 2026-06-11 11:01 CST 补充同根复发证据：
+  - 09:04 CST `核心观察池早间简报` final 写出 `可用行情接口未返回有效结果，已用 StockAnalysis 页面补充校验；击球区沿用本地固定区间`。
+  - 任务仍正常送达并输出核心股 / 拓展股列表、击球区与财报日期；没有旧价格成功态、投递失败或功能阻断证据，因此仍不影响主功能链路，保持质量性 `P3 / New`；非 P1，不创建 GitHub Issue。
 
 ## 修复记录
 
