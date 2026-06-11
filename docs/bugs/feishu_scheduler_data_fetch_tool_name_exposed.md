@@ -14,7 +14,7 @@ P3
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
@@ -134,9 +134,17 @@ New
   - 新增 `sanitize_user_visible_output_rewrites_market_data_tool_fallback_copy` 回归，锁定内部工具名和站点名不再进入 scheduler 用户态 final。
   - 本轮只修用户可见文案边界，不涉及 scheduler 执行流、行情 fallback 策略或旧价格成功态判定。
 
+- 2026-06-11 20:12 CST 语义扩展修复并关闭：
+  - 共享 `sanitize_user_visible_output(...)` 将 `data_fetch` / `StockAnalysis` 降级句族扩展到 `data_fetch 当前不可用`、`data_fetch 当前未返回可用行情`、`未能取得新的 data_fetch / 网页行情返回`、`可用行情接口未返回有效结果，已用 StockAnalysis 页面补充校验` 等同义形态。
+  - Feishu scheduler 出站文本复用该净化链路，用户可见降级说明统一为“主行情源本轮未返回可用结果，已改用公开页面补充校验”，不再暴露内部工具名或具体站点名。
+  - 新增 / 扩展 runtime 与 scheduler 回归，覆盖 2026-06-10 09:03、21:35、23:00 与 2026-06-11 09:04 CST 复发句族。
+  - 无关联 GitHub Issue；本轮未依赖生产日志、线上渠道状态或本机 live 服务复核。
+
 ## 验证
 
 - `cargo test -p hone-channels sanitize_user_visible_output_rewrites_market_data_tool_fallback_copy --lib -- --nocapture`
 - `cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`
+- `cargo test -p hone-channels scheduler_delivery_text_rewrites_data_fetch_degradation_copy --lib -- --nocapture`
+- `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/runtime.rs crates/hone-channels/src/scheduler.rs`
 - `cargo check -p hone-channels --tests`
 - `git diff --check`

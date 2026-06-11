@@ -288,9 +288,15 @@ static RE_COMPANY_PROFILE_UPDATE_COPY: LazyLock<regex::Regex> = LazyLock::new(||
 static RE_COMPANY_PROFILE_WRITE_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(r#"沉淀到本地公司画像[:：]?\s*公司画像"#).expect("valid regex")
 });
+static RE_COMPANY_PROFILE_CREATED_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r#"(?:已为你建立长期画像|本轮已新增长期画像)[:：]?\s*(?:公司画像|company_profiles/[^\s<>"'`，。；、）\)\]\}]+)"#,
+    )
+    .expect("valid regex")
+});
 static RE_MARKET_DATA_FALLBACK_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
-        r#"(?i)(?:^|[\s，。；：])data_fetch\s*本轮未返回可用结果(?:\s*[,，]\s*已用\s*stockanalysis\s*补充校验)?"#,
+        r#"(?i)(?:[^。\n；]*data_fetch[^。\n；]*|可用行情接口未返回有效结果[^。\n；]*(?:stockanalysis|页面补充校验|公开页面)[^。\n；]*)"#,
     )
     .expect("valid regex")
 });
@@ -512,6 +518,7 @@ fn rewrite_user_visible_internal_copy(text: &str) -> (String, bool) {
     }
 
     for (re, replacement) in [
+        (&RE_COMPANY_PROFILE_CREATED_COPY, "公司画像已更新"),
         (&RE_COMPANY_PROFILE_UPDATE_COPY, "把本轮更新补进公司画像"),
         (&RE_COMPANY_PROFILE_WRITE_COPY, "沉淀到公司画像"),
         (&RE_COMPANY_PROFILE_COPY_GLITCH, "已沉淀为公司画像"),
@@ -1228,7 +1235,8 @@ mod tests {
 
     #[test]
     fn sanitize_user_visible_output_rewrites_market_data_tool_fallback_copy() {
-        let raw = "data_fetch 本轮未返回可用结果，已用 StockAnalysis 补充校验。以下是今晚观察池更新。";
+        let raw =
+            "data_fetch 本轮未返回可用结果，已用 StockAnalysis 补充校验。以下是今晚观察池更新。";
         let sanitized = sanitize_user_visible_output(raw);
         assert!(sanitized.removed_internal);
         assert_eq!(
@@ -1237,6 +1245,39 @@ mod tests {
         );
         assert!(!sanitized.content.contains("data_fetch"));
         assert!(!sanitized.content.contains("StockAnalysis"));
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_rewrites_market_data_fallback_variants() {
+        for (raw, expected) in [
+            (
+                "data_fetch 当前未返回可用行情，已用 StockAnalysis 实时页补充校验价格与页面显示财报日期。核心股如下。",
+                "主行情源本轮未返回可用结果，已改用公开页面补充校验。核心股如下。",
+            ),
+            (
+                "本轮使用 StockAnalysis 最新可见美股价格，data_fetch 当前不可用，已用可靠网页源补充校验。核心股如下。",
+                "主行情源本轮未返回可用结果，已改用公开页面补充校验。核心股如下。",
+            ),
+            (
+                "可用行情接口未返回有效结果，已用 StockAnalysis 页面补充校验；击球区沿用本地固定区间。",
+                "主行情源本轮未返回可用结果，已改用公开页面补充校验；击球区沿用本地固定区间。",
+            ),
+        ] {
+            let sanitized = sanitize_user_visible_output(raw);
+            assert!(sanitized.removed_internal, "raw={raw}");
+            assert_eq!(sanitized.content, expected);
+            assert!(!sanitized.content.contains("data_fetch"));
+            assert!(!sanitized.content.contains("StockAnalysis"));
+        }
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_rewrites_company_profile_created_copy() {
+        let raw = "本轮已新增长期画像：company_profiles/DELL.md。后续可继续补充。";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(sanitized.removed_internal);
+        assert_eq!(sanitized.content, "公司画像已更新。后续可继续补充。");
+        assert!(!sanitized.content.contains("company_profiles"));
     }
 
     #[test]

@@ -2663,9 +2663,8 @@ pub async fn execute_scheduler_event(
             ScheduledTaskExecution {
                 should_deliver,
                 content: String::new(),
-                error: sanitized_error.or_else(|| {
-                    Some(SCHEDULER_INTERNAL_FAILURE_LEDGER_MESSAGE.to_string())
-                }),
+                error: sanitized_error
+                    .or_else(|| Some(SCHEDULER_INTERNAL_FAILURE_LEDGER_MESSAGE.to_string())),
                 metadata: json!({
                     "failure_kind": suppressed_failure_kind,
                 }),
@@ -3561,6 +3560,18 @@ mod tests {
     }
 
     #[test]
+    fn scheduler_delivery_text_rewrites_data_fetch_degradation_copy() {
+        let raw = "data_fetch 本轮未返回可用结果，已用 StockAnalysis 补充校验；以下价格保留页面来源和时间口径。";
+        let sanitized = sanitize_scheduler_delivery_text(raw);
+        assert_eq!(
+            sanitized,
+            "主行情源本轮未返回可用结果，已改用公开页面补充校验；以下价格保留页面来源和时间口径。"
+        );
+        assert!(!sanitized.contains("data_fetch"));
+        assert!(!sanitized.contains("StockAnalysis"));
+    }
+
+    #[test]
     fn scheduler_detects_empty_success_fallback_as_failure_content() {
         assert!(is_empty_success_fallback(EMPTY_SUCCESS_FALLBACK_MESSAGE));
         assert!(is_empty_success_fallback(&format!(
@@ -3687,7 +3698,9 @@ mod tests {
             "scheduler_runner_timeout"
         );
         assert_eq!(
-            scheduler_suppressed_failure_kind(Some("codex acp prompt ended before tool completion")),
+            scheduler_suppressed_failure_kind(Some(
+                "codex acp prompt ended before tool completion"
+            )),
             "internal_error_suppressed"
         );
     }
