@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-06-12 07:04 CST
+最后更新：2026-06-12 08:06 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,9 +17,10 @@
 
 ## 当前概览
 
-- 活跃待修复：5
+- 活跃待修复：4
 - Later / 待复现：10
-- 已修复 / 已关闭：132
+- 已修复 / 已关闭：133
+- 本轮 08:06 CST 已修复 P2 `Feishu 直聊定时任务管理工具未暴露且外露沙盒存储细节`：Feishu direct 定时任务策略现在明确要求列出、检查、创建、更新、取消或删除任务时必须调用真实 `cron_job` 工具，不能用沙盒目录、SQLite、会话历史或文件列表自查替代；共享 `sanitize_user_visible_output(...)` 同步改写 `工具/接口未暴露`、`cron_job / scheduled_task` 和 cron / SQLite / session 存储自查句，统一收敛为用户态“定时任务管理暂时不可用，请稍后再试”或剥离内部诊断。验证 `cargo test -p hone-channels sanitize_user_visible_output_rewrites_cron_tool_unavailable_copy --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_strips_cron_storage_self_inspection_copy --lib -- --nocapture`、`cargo test -p hone-channels resolve_prompt_input_maps_cron_enabled_flags_to_user_language --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture` 通过；非 P1，无 GitHub Issue。本轮不依赖生产日志、线上渠道状态或当前机器 live 进程复核。
 - 本轮 07:04 CST 回退 1 个非 P1 质量缺陷：03:02-07:04 CST `data/sessions.sqlite3` 有 10 个 user turn 与 8 个 assistant 记录；最新 07:01 图片直聊已在 07:03 收口，07:00 普通 scheduler pending 已在 07:03:59 收口送达，最终无 user-only 残留；普通 scheduler 5 条 `completed + sent + delivered=1`，assistant final 空回复 / 通用失败 / 内部路径 / raw tool / provider 报错扫描未命中新独立链路缺陷。05:35 CST Feishu direct session `Actor_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c` 用户要求“更新一下微软的画像”，assistant 完成 MSFT 画像更新并正常投递，但用户可见正文写出 `已写入：1.公司画像 2.公司画像`；该样本晚于 2026-06-11 20:12 CST 共享 sanitizer 修复确认，说明公司画像落点说明仍会退化成重复占位词，故将既有公司画像相对路径 / 落点文案 P3 从 `Fixed` 调回 `New`。该问题不影响画像正文、文件写入、会话收口或投递，非 P1，不创建 GitHub Issue。
 - 本轮 07:04 CST heartbeat 新增 72 条 `noop + skipped_noop + delivered=0`、32 条 `execution_failed + skipped_error + delivered=0` 与 1 条 `completed + sent + delivered=1`；失败分布为 `heartbeat 输出不是结构化 JSON` 26 条、`heartbeat 输出不是合法 JSON` 3 条、`heartbeat 输出包含未知状态` 2 条、`heartbeat 输出为空` 1 条，仍落在既有 heartbeat 结构化状态退化文档范围，未进入用户可见 assistant final，不新建重复缺陷。最近四小时有非文档提交 `a1da0e9a fix: normalize cloud cron send failures`，本窗未见普通 scheduler `send_failed` 或空错误复发。
 - 本轮 04:03 CST 新增 P2 `Daily macOS build blocked by local process spawn resource exhaustion`：`honeclaw-mac` 每日 macOS 打包验证已 fetch 并 rebase 到远端 `main=a1da0e9a`，但 `build:desktop` 两次在 shell/Bun/Tauri prep 子进程创建前失败，错误为 `/bin/bash: fork: Resource temporarily unavailable` 与 `EAGAIN ... Resource temporarily unavailable (posix_spawn())`。进程表显示大量 `<defunct>` 子进程集中挂在 Codex 桌面父进程下，当前无法进入真实 Rust/Tauri 打包，因此未生成或确认 `.app/.dmg`，也未启动隔离 smoke runtime。未触碰真实 Feishu / Telegram / Discord / iMessage 渠道；无 GitHub Issue。
@@ -509,7 +510,6 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Feishu 直聊定时任务管理工具未暴露且外露沙盒存储细节 | P2 | New | 2026-06-11 23:03 补证：20:55 CST 同一 Feishu direct session `Actor_feishu__direct__ou_5f44eaaa05cec98860b5336c3bddcc22d1` 再次请求创建 08:30 / 20:00 推送任务，assistant 回复 `本轮未暴露可执行的定时任务创建接口，因此这两个推送任务没有成功创建`，只整理任务规格，没有真实创建任务。本次未继续外露路径 / SQLite 表名，但任务管理主链路仍不可用；保持 P2/New。非 P1，无 GitHub Issue | [feishu_direct_cron_management_tool_unavailable_internal_state_exposed.md](./feishu_direct_cron_management_tool_unavailable_internal_state_exposed.md) |
 | Web / Feishu 直聊公司画像沉淀后向用户暴露内部相对文件路径 | P3 | New | 2026-06-12 07:04 回退：05:35 CST Feishu direct session `Actor_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c` 对“更新一下微软的画像”完成画像更新并正常投递，但 final 写出 `已写入：1.公司画像 2.公司画像`。该样本晚于 2026-06-11 20:12 共享 sanitizer 修复确认；相对路径未再外露，但公司画像落点说明仍退化成重复占位词。回复正文、文件写入、会话收口和投递均正常，因此按质量性 P3 保持活跃。非 P1，无 GitHub Issue | [web_company_profile_relative_path_exposed.md](./web_company_profile_relative_path_exposed.md) |
 | Daily macOS build 被本机进程创建资源耗尽阻断 | P2 | New | 2026-06-12 04:03 新增：每日 macOS 验证已更新到远端 `main=a1da0e9a`，但 `build:desktop` 在 `tauri:prep:build` 启动阶段两次失败，错误为 `/bin/bash: fork: Resource temporarily unavailable` 与 `EAGAIN ... Resource temporarily unavailable (posix_spawn())`。未进入真实 Tauri/Rust 打包，未确认 `.app/.dmg`，也未启动 smoke runtime；证据指向本机 Codex 进程/僵尸进程资源耗尽。非 P1，无 GitHub Issue | [daily_macos_build_spawn_resource_exhausted.md](./daily_macos_build_spawn_resource_exhausted.md) |
 | Feishu 直聊强时效金融问答输出未核验来源和精确买入区间 | P3 | New | 2026-06-11 19:02 补证：18:02 CST Feishu direct session `Actor_feishu__direct__ou_5fdb997ed67ac0b7f5403701682185d67a` 用户问 `美股dell详细分析`，assistant 输出 DELL 收盘/盘前价、Forward PE/PS、FY2027 Q1、来源链接和分档建仓区间；但该 assistant row 的 `assistant.tool_calls` 只包含本地 `date/rg` 与公司画像写入，没有网页/行情核验工具结果。回复正常投递且无内部实现外露，不影响主功能链路，按质量性 P3 保持活跃。非 P1，无 GitHub Issue | [feishu_direct_spacex_ipo_unverified_source_price_advice.md](./feishu_direct_spacex_ipo_unverified_source_price_advice.md) |
@@ -534,6 +534,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Feishu 直聊定时任务管理工具未暴露且外露沙盒存储细节 | P2 | Fixed | 2026-06-12 08:06 定时任务策略明确要求任务 list/create/update/remove 走真实 `cron_job`，禁止用沙盒目录、SQLite、会话历史或文件列表自查替代；共享 sanitizer 改写“工具/接口未暴露”并剥离 `cron_job / scheduled_task`、`data/cron_jobs`、`sessions.sqlite3`、`session_messages`、`session_metadata` 等内部诊断。验证 `cargo test -p hone-channels sanitize_user_visible_output_rewrites_cron_tool_unavailable_copy --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_strips_cron_storage_self_inspection_copy --lib -- --nocapture`、`cargo test -p hone-channels resolve_prompt_input_maps_cron_enabled_flags_to_user_language --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture` 通过。无关联 GitHub Issue | [feishu_direct_cron_management_tool_unavailable_internal_state_exposed.md](./feishu_direct_cron_management_tool_unavailable_internal_state_exposed.md) |
 | Heartbeat 金价阈值提醒把旧日期/非当前窗口价格当作当前触发价送达 | P2 | Fixed | 2026-06-12 00:07 heartbeat 价格时间戳 guard 补齐“日期在前、最新价在后”的文案形态，`北京时间 2026年6月13日 20:20，现货黄金最新价格...` 现在会落入 `stale_price_timestamp` 抑制路径，不再把未来窗口价格作为当前触发证据送达。验证 `cargo test -p hone-channels heartbeat_stale_price_timestamp --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_future_price_timestamp_trigger_is_suppressed --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_leading_future_price_timestamp_trigger_is_suppressed --lib -- --nocapture` 通过。无关联 GitHub Issue | [scheduler_heartbeat_gold_stale_price_trigger.md](./scheduler_heartbeat_gold_stale_price_trigger.md) |
 | Feishu 直聊通俗化改写回复外露本地技能文件路径不可读 | P3 | Fixed | 2026-06-12 00:07 共享 `sanitize_user_visible_output(...)` 的内部技能状态句过滤补齐 `不可读`、`无法读取`、`读取失败` 同义形态，避免“本地技能文件路径不可读”等本地文件 / 技能状态进入用户可见 final。验证 `cargo test -p hone-channels sanitize_user_visible_output_strips_local_skill_file_unreadable_copy --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_strips_internal_skill_and_storage_copy --lib -- --nocapture` 通过。无关联 GitHub Issue | [feishu_direct_local_skill_file_path_unreadable_exposed.md](./feishu_direct_local_skill_file_path_unreadable_exposed.md) |
 | Discord scheduler 已生成报告但发送阶段失败且缺少错误原因 | P2 | Fixed | 2026-06-12 00:07 按当前代码与回归证据纠偏：Discord scheduler 与 `CronJobStorage::record_execution_event(...)` 已有发送失败通用错误、`delivery_key`、`failure_kind=discord_send_failed`、`send_error` 和写入层 backstop；旧 live 样本不再作为活跃依据。验证 `cargo test -p hone-memory discord_send_failed_without_error_is_classified_by_storage_backstop --lib -- --nocapture`、`cargo test -p hone-discord scheduler_ -- --nocapture` 通过。无关联 GitHub Issue | [discord_scheduler_completed_report_send_failed_without_error.md](./discord_scheduler_completed_report_send_failed_without_error.md) |

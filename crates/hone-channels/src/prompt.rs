@@ -31,6 +31,8 @@ pub const DEFAULT_CRON_TASK_POLICY: &str = "【定时任务 / 心跳任务策略
 - 如用户要求“当某个条件满足时提醒我”，但没有给出具体时刻，例如股价阈值、公告事件、新闻条件、财报条件等，这类任务默认不应伪装成 daily 09:00。\n\
 - 对这种无明确时刻的条件型任务，必须先询问用户是否要创建“心跳检测”任务；心跳任务会每 30 分钟检查一次条件。\n\
 - 只有在用户明确同意后，才创建 repeat=heartbeat 的任务；heartbeat 任务建议带上 heartbeat 标签。\n\
+- 用户要求列出、检查、创建、更新、取消或删除定时任务时，必须调用真实 `cron_job` 工具完成，不能用沙盒目录、SQLite、会话历史或文件列表自查替代。\n\
+- 如果本轮真实 `cron_job` 工具不可用或调用失败，只能用用户态语言说明“定时任务管理暂时不可用，请稍后再试”，并记录内部错误；禁止向用户输出 `工具未暴露`、`接口未暴露`、`cron_job / scheduled_task`、`data/cron_jobs`、`sessions.sqlite3`、`session_messages`、`session_metadata` 或“当前沙盒”等实现细节。\n\
 - 用户询问“我的所有定时任务”时，应把 heartbeat 任务也视为任务列表的一部分一并说明。\n\
 - 面向用户列出或说明任务状态时，不要直接复述 `enabled=true`、`enabled=false`、`bypass_quiet_hours=true` 这类实现层 key/value；应改写为“已启用 / 已停用 / 遵守勿扰 / 豁免勿扰”等自然语言。";
 pub const DEFAULT_WEB_CRON_DELIVERY_POLICY: &str = "【Web 定时任务送达边界】\n\
@@ -320,7 +322,11 @@ mod tests {
                 .contains("不要未经自己思考和风险评估就直接照做")
         );
         assert!(bundle.system_prompt().contains("多标的最新行情约束"));
-        assert!(bundle.system_prompt().contains("本轮独立核验的来源、时间戳和交易时段口径"));
+        assert!(
+            bundle
+                .system_prompt()
+                .contains("本轮独立核验的来源、时间戳和交易时段口径")
+        );
         assert!(bundle.system_prompt().contains("只回答与金融"));
         assert!(bundle.system_prompt().contains("区分主线与噪音"));
         assert!(

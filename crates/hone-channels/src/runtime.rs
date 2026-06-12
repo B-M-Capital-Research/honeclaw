@@ -20,6 +20,7 @@ const RUNNER_USAGE_LIMIT_USER_ERROR_MESSAGE: &str =
     "当前执行额度已用尽，暂时无法继续处理。请稍后再试。";
 const RUNNER_RESOURCE_UNAVAILABLE_USER_ERROR_MESSAGE: &str =
     "当前本机执行环境暂时不可用，请稍后再试。";
+const CRON_TASK_MANAGEMENT_UNAVAILABLE_USER_MESSAGE: &str = "定时任务管理暂时不可用，请稍后再试。";
 
 /// 流式处理结果
 #[derive(Debug, Clone)]
@@ -265,13 +266,19 @@ static RE_INTERNAL_FRAMEWORK_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock::n
 });
 static RE_INTERNAL_STORAGE_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
-        r#"[^\n。！？]*(?:账本文件已定位到|本地\s*data/|data/portfolio|本地json文件|本地 json 文件|本地json|本地 json|本地文件仍只显示|json文件仍只显示)[^\n。！？]*[。！？]?"#,
+        r#"[^\n。！？]*(?:账本文件已定位到|本地\s*data/|data/portfolio|data/cron_jobs|data/sessions\.sqlite3|sessions\.sqlite3|session_messages|session_metadata|当前沙盒|本地json文件|本地 json 文件|本地json|本地 json|本地文件仍只显示|json文件仍只显示)[^\n。！？]*[。！？]?"#,
     )
     .expect("valid regex")
 });
 static RE_INTERNAL_TOOLING_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
         r#"[^\n。！？]*(?:返回了?全市场列表|全市场列表而不是按标的过滤|工具过滤异常)[^\n。！？]*[。！？]?"#,
+    )
+    .expect("valid regex")
+});
+static RE_CRON_TOOL_UNAVAILABLE_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r#"(?:[^\n。！？]*(?:定时任务|推送任务|cron_job|scheduled_task)[^\n。！？]*(?:工具未暴露|接口未暴露|未暴露可执行|没有拿到可操作|没有写入接口|没有\s*cron_job|没有\s*scheduled_task|工具列表里没有|无法真实执行|不能真实执行|不能真实创建|没有成功创建)[^\n。！？]*|[^\n。！？]*(?:没有\s*cron_job|没有\s*scheduled_task|工具列表里没有)[^\n。！？]*(?:cron_job|scheduled_task|定时任务|推送任务)[^\n。！？]*)[。！？]?"#,
     )
     .expect("valid regex")
 });
@@ -502,6 +509,13 @@ fn rewrite_user_visible_internal_copy(text: &str) -> (String, bool) {
     if normalized_enabled != rewritten {
         removed = true;
         rewritten = normalized_enabled.into_owned();
+    }
+
+    let cron_tool_unavailable = RE_CRON_TOOL_UNAVAILABLE_COPY_SENTENCE
+        .replace_all(&rewritten, CRON_TASK_MANAGEMENT_UNAVAILABLE_USER_MESSAGE);
+    if cron_tool_unavailable != rewritten {
+        removed = true;
+        rewritten = cron_tool_unavailable.into_owned();
     }
 
     for re in [
@@ -1206,6 +1220,40 @@ mod tests {
         assert!(!sanitized.content.contains("stock_research"));
         assert!(!sanitized.content.contains("data/portfolio"));
         assert!(!sanitized.content.contains("本地 json"));
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_rewrites_cron_tool_unavailable_copy() {
+        for raw in [
+            "本轮未暴露可执行的定时任务创建接口，因此这两个推送任务没有成功创建。任务规格如下。",
+            "工具列表里没有 cron_job / scheduled_task 的 list 或 remove 接口，取消动作未完成。",
+        ] {
+            let sanitized = sanitize_user_visible_output(raw);
+            assert!(sanitized.removed_internal, "raw={raw}");
+            assert!(
+                sanitized
+                    .content
+                    .contains(CRON_TASK_MANAGEMENT_UNAVAILABLE_USER_MESSAGE),
+                "content={}",
+                sanitized.content
+            );
+            assert!(!sanitized.content.contains("工具"));
+            assert!(!sanitized.content.contains("接口未暴露"));
+            assert!(!sanitized.content.contains("cron_job"));
+            assert!(!sanitized.content.contains("scheduled_task"));
+        }
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_strips_cron_storage_self_inspection_copy() {
+        let raw = "当前目录只看到 data/sessions.sqlite3，sessions.sqlite3 当前没有可查询的任务表，session_messages 和 session_metadata 也不能代表真实任务。请稍后再试。";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(sanitized.removed_internal);
+        assert_eq!(sanitized.content, "请稍后再试。");
+        assert!(!sanitized.content.contains("data/sessions.sqlite3"));
+        assert!(!sanitized.content.contains("sessions.sqlite3"));
+        assert!(!sanitized.content.contains("session_messages"));
+        assert!(!sanitized.content.contains("session_metadata"));
     }
 
     #[test]

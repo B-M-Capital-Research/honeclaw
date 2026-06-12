@@ -3,7 +3,7 @@
 - **发现时间**: 2026-06-11 03:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，非 P1
 
 ## 证据来源
@@ -76,3 +76,13 @@
   - 20:55 CST 同一 Feishu direct session `Actor_feishu__direct__ou_5f44eaaa05cec98860b5336c3bddcc22d1` 再次处理用户创建 08:30 / 20:00 推送任务请求。
   - assistant 回复 `本轮未暴露可执行的定时任务创建接口，因此这两个推送任务没有成功创建`，只整理任务规格，没有真实创建任务。
   - 本次没有继续外露本地路径或 SQLite 表名，说明用户态文案有所收敛；但 Feishu direct 定时任务创建主链路仍不可用，因此状态保持 `P2 / New`。非 P1，不创建 GitHub Issue。
+
+## 修复记录
+
+- 2026-06-12 08:06 CST 代码级修复：
+  - `crates/hone-channels/src/prompt.rs` 的默认定时任务策略明确要求列出、检查、创建、更新、取消或删除任务时必须调用真实 `cron_job` 工具完成，不能用沙盒目录、SQLite、会话历史或文件列表自查替代。
+  - 同一策略补充故障边界：若真实 `cron_job` 工具不可用或调用失败，只能返回用户态“定时任务管理暂时不可用，请稍后再试”，禁止向用户输出 `工具未暴露`、`接口未暴露`、`cron_job / scheduled_task`、`data/cron_jobs`、`sessions.sqlite3`、`session_messages`、`session_metadata` 或“当前沙盒”等实现细节。
+  - `crates/hone-channels/src/runtime.rs` 的共享 `sanitize_user_visible_output(...)` 补齐定时任务工具不可用文案改写和 cron / SQLite / session 存储自查句过滤，避免同类实现层诊断进入 Feishu direct 最终回复。
+  - 本轮复核代码确认 Feishu direct 私聊仍通过 `ChatMode::Direct -> with_cron_allowed(true)` 进入 cron-enabled runner，`CronJobTool` 已支持 `list/add/update/remove`；本次修复收敛 prompt 执行约束与用户可见安全边界，不依赖当前机器 live 进程或生产日志。
+  - 验证通过：`cargo test -p hone-channels sanitize_user_visible_output_rewrites_cron_tool_unavailable_copy --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_strips_cron_storage_self_inspection_copy --lib -- --nocapture`、`cargo test -p hone-channels resolve_prompt_input_maps_cron_enabled_flags_to_user_language --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`。
+  - 本轮未重启 Feishu 服务，也不使用当前机器运行态作为恢复证据；状态更新为代码级 `Fixed`，后续若部署当前代码后仍出现真实 `cron_job` 工具不可用，应基于新样本重新打开。

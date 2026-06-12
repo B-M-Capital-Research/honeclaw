@@ -798,6 +798,11 @@ fn resolve_prompt_input_maps_cron_enabled_flags_to_user_language() {
     let (system_prompt, _) = session.resolve_prompt_input("session-demo", "我有哪些定时任务");
 
     assert!(system_prompt.contains("【定时任务 / 心跳任务策略】"));
+    assert!(system_prompt.contains("必须调用真实 `cron_job` 工具完成"));
+    assert!(system_prompt.contains("不能用沙盒目录、SQLite、会话历史或文件列表自查替代"));
+    assert!(system_prompt.contains("定时任务管理暂时不可用，请稍后再试"));
+    assert!(system_prompt.contains("禁止向用户输出 `工具未暴露`"));
+    assert!(system_prompt.contains("`sessions.sqlite3`"));
     assert!(system_prompt.contains("不要直接复述 `enabled=true`"));
     assert!(system_prompt.contains("已启用 / 已停用"));
     assert!(system_prompt.contains("豁免勿扰"));
