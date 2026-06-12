@@ -14,7 +14,7 @@
 
 ## 状态
 
-- Fixed
+- New
 
 ## GitHub Issue
 
@@ -63,6 +63,12 @@
   - 同一 session `Session_discord__group__g_3a1469549745654468692_3ac_3a1469549746518622371` 已在 09:32 CST 生成完整 assistant final，说明模型生成与会话落库完成。
   - `detail_json={"scheduler":null,"sent_segments":0,"total_segments":2}` 且 `error_message` 仍为空；仍未出现写入层 backstop 预期中的用户态错误原因、`delivery_key`、`failure_kind=discord_send_failed` 或 `send_error`。
   - 同窗普通 scheduler 17 条 `completed + sent + delivered=1`，另有本条 Discord `completed + send_failed + delivered=0`；assistant final 污染扫描未命中空回复、内部路径、raw tool 字段、思维痕迹、provider 原始错误、quota、panic 或 stream disconnect。
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-06-12 07:01-11:01 CST 复核窗口内，同一 Discord scheduler 在 2026-06-12 00:07 CST 代码级纠偏记录之后再次复现。
+  - `run_id=40847` / `job_name=每日美股降息概率推送` 在 2026-06-12 09:31 CST 落成 `execution_status=completed + message_send_status=send_failed + should_deliver=1 + delivered=0`。
+  - 同一 session `Session_discord__group__g_3a1469549745654468692_3ac_3a1469549746518622371` 已在 09:31 CST 生成完整 assistant final，说明模型生成与会话落库完成。
+  - `detail_json={"scheduler":null,"sent_segments":0,"total_segments":3}` 且 `error_message` 仍为空；仍未出现写入层 backstop 预期中的用户态错误原因、`delivery_key`、`failure_kind=discord_send_failed` 或 `send_error`。
+  - 同窗普通 scheduler 17 条 `completed + sent + delivered=1`，另有本条 Discord `completed + send_failed + delivered=0`；最近 Feishu direct / scheduler 与 Discord scheduler 会话均以 assistant 收口，无 user-only 残留。
 
 ## 端到端链路
 
@@ -88,6 +94,7 @@
 - 2026-06-09 09:31 CST 复核样本显示，20:06 CST 的二次代码修复结论也尚未在真实台账中兑现：仍出现 `send_failed + delivered=0 + error_message=''`，且 detail 未带 `delivery_key` / `failure_kind` / `send_error`。
 - 2026-06-10 09:32 CST 复核样本显示，16:08 CST 写入层 backstop 修复结论仍未在真实台账中兑现：同一任务再次写出 `send_failed + delivered=0 + error_message=''`，detail 仍只有 `scheduler:null` 与分段计数。
 - 2026-06-11 09:32 CST 复核样本显示，同一任务连续第二天写出 `send_failed + delivered=0 + error_message=''`，detail 仍只有 `scheduler:null` 与分段计数，说明 live Discord scheduler 或终态写入路径仍未兑现可诊断失败记录。
+- 2026-06-12 09:31 CST 复核样本显示，00:07 CST 代码级纠偏后真实台账仍写出 `send_failed + delivered=0 + error_message=''`，detail 仍只有 `scheduler:null` 与分段计数，说明该链路不能继续按已修复状态留在已关闭队列。
 - 这不是已有 `codex_acp_transport_disconnect_request_failure.md` 的同一表现：本轮 ACP 已正常 `end_turn`，问题发生在 Discord 发送阶段。
 - 也不是归档的 `discord_scheduler_empty_reply_send_failed.md` 同一表现：本轮不是空回复或 fallback 伪成功，而是完整报告生成后未送达。
 
@@ -107,6 +114,7 @@
 - 2026-06-09 新样本已经处于二次修复记录之后，但终态 detail 仍是旧形态；优先判断真实运行态未加载最新 Discord scheduler 二进制，或仍存在另一条未覆盖的 Discord 终态写入路径。
 - 2026-06-10 新样本已经处于写入层 backstop 修复记录之后，但终态仍是旧形态；除 live 二进制未加载最新修复外，也需要排查 `cron_job_runs` 是否存在绕过 `CronJobStorage::record_execution_event(...)` 的写入路径或后续覆盖写入。
 - 2026-06-11 新样本继续保持旧形态；优先级应从“等待下一次复核”提升为确认 live Discord scheduler / cron storage 写入路径是否长期停留在旧二进制或绕过 backstop。
+- 2026-06-12 新样本继续保持旧形态；即使当前代码已有 backstop，真实运行台账仍没有兑现该字段，优先排查 live Discord scheduler 是否未加载当前代码、是否存在旧写入路径覆盖终态，或 Discord sender 返回结果在进入 storage 前被丢弃。
 
 ## 修复记录
 
@@ -115,6 +123,11 @@
   - 本轮按“当前机器不再作为生产运行态证据”的自动化边界，不再用旧 live 样本把该代码级闭环缺陷维持在活跃队列。
   - 验证：`cargo test -p hone-memory discord_send_failed_without_error_is_classified_by_storage_backstop --lib -- --nocapture`、`cargo test -p hone-discord scheduler_ -- --nocapture` 通过。
   - 若后续在已确认加载当前代码的新运行态仍出现 `send_failed + delivered=0 + error_message=''`，再重新打开并优先排查是否存在绕过写入层 backstop 的新路径。
+
+- `2026-06-12 11:01 CST` 复核重新打开：
+  - 09:31 CST `run_id=40847` 再次落成同一坏态，且 `error_message` 仍为空。
+  - `detail_json` 仍缺少 `delivery_key`、`failure_kind=discord_send_failed`、`send_error` 或用户态错误原因。
+  - 当前状态从 `Fixed` 调回 `New`；该问题继续影响单个 Discord scheduler 的实际投递和失败诊断，非 P1，不创建 GitHub Issue。
 
 - `2026-06-09 16:08 CST` 修复：
   - 在 Discord scheduler 既有 `scheduler_error_message(...)` 与 `scheduler_delivery_detail(...)` 修复之外，`memory/src/cron_job/history.rs` 的 `CronJobStorage::record_execution_event(...)` 写入入口新增发送失败归一化 backstop。
@@ -152,7 +165,7 @@
 
 ## 下一步建议
 
-- 先确认 2026-06-11 09:32 CST 运行的 Discord scheduler 和 cron storage 写入层是否已经加载 2026-06-09 16:08 CST 后的修复；若未加载，补部署/重启后用下一次 scheduler 复核。
+- 先确认 2026-06-12 09:31 CST 运行的 Discord scheduler 和 cron storage 写入层是否已经加载 2026-06-12 00:07 CST 前后的修复；若未加载，补部署/重启后用下一次 scheduler 复核。
 - 若确认已经加载最新代码，优先排查是否存在绕过 `CronJobStorage::record_execution_event(...)` 的终态写入路径，或先写入可诊断 detail 后又被旧 detail 覆盖。
 - 若后续 live 再出现 Discord `send_failed`，优先看 `cron_job_runs.error_message` 是否已经能区分权限、网络或 payload 失败。
 - 本轮只修复了发送失败可观测性，尚未为 Discord 出站增加自动重试；如果 live 继续出现明显的 transient transport 失败，再单独评估是否补短重试。
