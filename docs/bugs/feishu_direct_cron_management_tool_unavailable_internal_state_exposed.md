@@ -97,3 +97,14 @@
   - 回复只整理了任务规格建议，没有返回真实任务 ID，也没有完成用户要求的任务创建。
 - 该样本晚于 2026-06-12 08:06 CST 代码级修复记录；虽然本轮没有继续外露本地路径、SQLite 表名或 `cron_job / scheduled_task` 裸工具名，但 Feishu direct 定时任务创建主链路仍不可用。
 - 状态从 `Fixed` 调回 `New`。仍定级 `P2`：本轮证据覆盖单个 Feishu direct actor 的任务创建失败，普通 scheduler 同窗仍有 `completed + sent + delivered=1`，未见跨用户批量失败、错投、数据破坏或敏感信息泄露。非 P1，不创建 GitHub Issue。
+
+## 复发补证（2026-06-12 23:02 CST）
+
+- 巡检窗口：2026-06-12 19:02-23:02 CST。
+- `data/sessions.sqlite3` -> `session_messages` 显示同窗有 42 个 user turn 与 42 个 assistant turn，最近 Feishu direct / scheduler 会话均以 assistant 收口，无新的 user-only 残留；普通 scheduler 34 条为 `completed + sent + delivered=1`。
+- `session_id=Actor_feishu__direct__ou_5f9f2cd3505aab8fed0a6ffd582df285b1`：
+  - `2026-06-12T20:00:39.195441+08:00` 用户重发持仓列表，并要求每天北京时间 20:00 整理持仓盘前美股要闻、宏观数据与评级变化后发送。
+  - `2026-06-12T20:01:54.690960+08:00` assistant 正常落库 final，但回复写出：`当前环境没有可用的定时任务写入工具，所以我不能确认“每天20:00自动推送”已经创建成功`。
+  - 回复称“关注列表已写入成功，共 12 个标的”，但没有返回真实任务 ID，也没有完成用户明确要求的每天 20:00 自动推送创建。
+- 本次仍未继续外露本地路径、SQLite 表名或裸 `cron_job / scheduled_task` 工具名；用户态文案比 2026-06-11 初始样本有所收敛。
+- 但该样本晚于 2026-06-12 08:06 CST 代码级修复记录，且晚于 18:37 CST 复发样本；说明 Feishu direct 定时任务创建主链路仍不可用。状态保持 `P2 / New`。非 P1，不创建 GitHub Issue。

@@ -154,6 +154,11 @@ New
   - 09:02 CST `核心观察池早间简报` final 写出 `data_fetch 未返回有效结果，价格与财报日期用 StockAnalysis 页面补充校验；击球区沿用本地固定区间`。
   - 对应 `cron_job_runs.run_id=40830` 为 `completed + sent + delivered=1`，观察池列表、价格口径和击球区正常输出；没有旧价格成功态、投递失败或功能阻断证据。
   - 因问题只影响用户可见文案边界和产品感，不阻断 scheduler 主功能链路，仍为质量性 `P3`；非 P1，不创建 GitHub Issue。
+- 2026-06-12 23:02 CST 补充同根复发证据：
+  - 23:00 CST `核心观察股池晚间快报` final 写出 `本轮专用 data_fetch 未返回可调用结果；价格改用 StockAnalysis 页面校验`。
+  - 对应 `cron_job_runs.run_id=41224` 为 `completed + sent + delivered=1`，观察池列表、价格口径、击球区和财报日期仍正常输出；没有投递失败、空回复、错投或数据破坏证据。
+  - 本轮 19:02-23:02 CST `data/sessions.sqlite3` 有 42 个 user turn 与 42 个 assistant turn，最近 Feishu direct / scheduler 会话均以 assistant 收口；普通 scheduler 34 条均为 `completed + sent + delivered=1`。
+  - 该样本晚于 2026-06-11 20:12 CST 语义扩展修复记录，且重新出现 `data_fetch` 与 `StockAnalysis` 字面量外露；状态保持 `P3 / New`。因为不阻断 scheduler 主功能链路，非 P1，不创建 GitHub Issue。
 
 ## 修复记录
 

@@ -140,6 +140,14 @@
 - 状态从 `Later` 调回 `New`。继续定级 `P1`：用户主动请求创建关键定时任务，单轮主链路超过 2.5 小时没有任何可见收口；这不是质量波动，而是直聊主功能链路未完成。
 - GitHub Issue：[B-M-Capital-Research/honeclaw#50](https://github.com/B-M-Capital-Research/honeclaw/issues/50)。Issue 正文已脱敏，只保留问题摘要、影响范围、严重等级、状态和本缺陷文档路径。
 
+## 迟到收口证据（2026-06-12 23:02 CST）
+
+- 巡检窗口：2026-06-12 19:02-23:02 CST。
+- `data/sessions.sqlite3` 显示同窗有 42 个 user turn 与 42 个 assistant turn，最近 Feishu direct / scheduler 会话均以 assistant 收口，无新的 user-only 残留。
+- 同一 `session_id=Actor_feishu__direct__ou_5f9f2cd3505aab8fed0a6ffd582df285b1` 在 `2026-06-12T20:00:39.195441+08:00` 收到用户重发的持仓 + 每天 20:00 推送请求，并在 `2026-06-12T20:01:54.690960+08:00` 落库 assistant final。
+- 这说明 19:02 CST 巡检时的悬挂会话后来在用户重试后收口；但原 `2026-06-12T16:23:19.067522+08:00` user turn 直到用户约 3 小时 37 分后重发才得到同类处理，且期间没有产品化失败提示落库。
+- 因没有代码修复或 runner 故障收口机制证据，本单不降级、不关闭，状态保持 `P1 / New`；已有 GitHub Issue [#50](https://github.com/B-M-Capital-Research/honeclaw/issues/50)，本轮不重复创建。
+
 ## 结论
 
 - 该缺陷在 2026-04-16 曾由 `02d01d2` 方向修复，但 2026-04-21 14:52 真实会话出现回归/变体：超时失败后只留下半成品进度和工具轨迹，没有正式回答。
