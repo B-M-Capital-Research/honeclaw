@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-06-12 11:01 CST
+最后更新：2026-06-12 15:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -20,6 +20,8 @@
 - 活跃待修复：6
 - Later / 待复现：10
 - 已修复 / 已关闭：131
+- 本轮 15:03 CST 未新增独立缺陷或活跃 P1 状态变化：11:00-15:03 CST `data/sessions.sqlite3` 有 5 个 user turn 与 5 个 assistant 记录，最近 Feishu direct 与普通 scheduler 会话均以 assistant 收口，无 user-only 残留；普通 scheduler 1 条 `completed + sent + delivered=1`，assistant final 污染扫描未命中新本机路径、raw tool 字段、思维痕迹、provider 原始错误、panic、`data_fetch`、`company_profiles/...`、`cron_job`、SQLite 或本地沙盒路径外露。11:40 CST Feishu direct `Actor_feishu__direct__ou_5fafffb73abeaf5d05fb7e674b210c76f4` 的敏实估值回复因关键数据未完成稳定校验而只给估值框架；该样本没有工具成功后被忽略的证据，且未外露内部工具名或报错，只作为质量降级观察，不重新打开归档缺陷。14:54 CST 同一会话对富途链接不可访问的兜底要求用户贴正文，属于受控不可访问处理，不建档。本轮最近四小时无非文档代码提交。
+- 本轮 15:03 CST heartbeat 新增 74 条 `noop + skipped_noop + delivered=0`、42 条 `execution_failed + skipped_error + delivered=0` 与 1 条 `completed + sent + delivered=1`；失败分布为 `heartbeat 输出不是结构化 JSON` 34 条、`heartbeat 输出不是合法 JSON` 5 条、`heartbeat 输出包含未知状态` 2 条、`context window exceeds limit` 1 条，仍落在既有 heartbeat 结构化 / context overflow 文档范围，未进入用户可见 assistant final，不新建重复缺陷。
 - 本轮 11:01 CST 回退 2 个非 P1 既有缺陷：07:01-11:01 CST `data/sessions.sqlite3` 有 19 个 user turn 与 20 个 assistant 记录，最近 Feishu direct / scheduler 与 Discord scheduler 会话均以 assistant 收口，无 user-only 残留；普通 scheduler 17 条 `completed + sent + delivered=1`，另有 1 条 Discord `completed + send_failed + delivered=0`。09:31 CST Discord `每日美股降息概率推送` 已生成完整 assistant final，但 `cron_job_runs.run_id=40847` 仍为 `send_failed + delivered=0`，`error_message` 为空且 `detail_json={"scheduler":null,"sent_segments":0,"total_segments":3}`，说明既有 Discord 出站失败 / 可观测性缺陷在真实台账中复发，状态从 `Fixed` 调回 `New`。09:02 CST Feishu scheduler `核心观察池早间简报` final 再次写出 `data_fetch 未返回有效结果，价格与财报日期用 StockAnalysis 页面补充校验`，晚于 2026-06-11 20:12 语义扩展修复记录，说明既有降级说明外露缺陷仍会进入用户可见回复，状态从 `Fixed` 调回 `New`。两项均非 P1，不创建 GitHub Issue。
 - 本轮 11:01 CST heartbeat 新增 69 条 `noop + skipped_noop + delivered=0`、34 条 `execution_failed + skipped_error + delivered=0` 与 3 条 `completed + sent + delivered=1`；失败分布为 `heartbeat 输出不是结构化 JSON` 27 条、`heartbeat 输出不是合法 JSON` 5 条、`heartbeat 输出包含未知状态` 1 条、`context window exceeds limit` 1 条，仍落在既有 heartbeat 结构化 / context overflow 文档范围，未进入用户可见 assistant final，不新建重复缺陷。本轮最近四小时无非文档代码提交。
 - 本轮 08:06 CST 已修复 P2 `Feishu 直聊定时任务管理工具未暴露且外露沙盒存储细节`：Feishu direct 定时任务策略现在明确要求列出、检查、创建、更新、取消或删除任务时必须调用真实 `cron_job` 工具，不能用沙盒目录、SQLite、会话历史或文件列表自查替代；共享 `sanitize_user_visible_output(...)` 同步改写 `工具/接口未暴露`、`cron_job / scheduled_task` 和 cron / SQLite / session 存储自查句，统一收敛为用户态“定时任务管理暂时不可用，请稍后再试”或剥离内部诊断。验证 `cargo test -p hone-channels sanitize_user_visible_output_rewrites_cron_tool_unavailable_copy --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_strips_cron_storage_self_inspection_copy --lib -- --nocapture`、`cargo test -p hone-channels resolve_prompt_input_maps_cron_enabled_flags_to_user_language --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture` 通过；非 P1，无 GitHub Issue。本轮不依赖生产日志、线上渠道状态或当前机器 live 进程复核。
