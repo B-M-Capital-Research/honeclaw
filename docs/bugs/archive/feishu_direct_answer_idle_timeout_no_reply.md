@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 23:12 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **修复提交**:
   - `02d01d2 fix channel error message sanitization`
   - `3e769d7 test feishu timeout fallback reply`
@@ -147,6 +147,21 @@
 - 同一 `session_id=Actor_feishu__direct__ou_5f9f2cd3505aab8fed0a6ffd582df285b1` 在 `2026-06-12T20:00:39.195441+08:00` 收到用户重发的持仓 + 每天 20:00 推送请求，并在 `2026-06-12T20:01:54.690960+08:00` 落库 assistant final。
 - 这说明 19:02 CST 巡检时的悬挂会话后来在用户重试后收口；但原 `2026-06-12T16:23:19.067522+08:00` user turn 直到用户约 3 小时 37 分后重发才得到同类处理，且期间没有产品化失败提示落库。
 - 因没有代码修复或 runner 故障收口机制证据，本单不降级、不关闭，状态保持 `P1 / New`；已有 GitHub Issue [#50](https://github.com/B-M-Capital-Research/honeclaw/issues/50)，本轮不重复创建。
+
+## 修复进展（2026-06-13 03:06 CST）
+
+- `bins/hone-feishu/src/handler.rs` 的中断会话补偿从“启动时只跑一次”扩展为受监督的周期性恢复循环：进程启动后先执行一次补偿，随后每 60 秒扫描最近 30 分钟内 `last_message_role=user` 且已超过 30 秒 grace window 的 Feishu direct 会话。
+- 恢复前会过滤仍在 `SessionLockRegistry` 活跃执行中的 session，避免把正常运行超过 30 秒的直聊误判成中断并提前发送失败提示。
+- 命中过滤后的 direct session 会继续发送 `服务重启，之前的消息处理已中断，请稍后重试。`，并立刻把同文案落库为 assistant turn，防止 user-only 会话在“启动后很久才发现”的场景里长期悬挂到下一次重启。
+- `crates/hone-channels/src/ingress.rs` 新增 `SessionLockRegistry::is_active(...)` 只读查询，专供恢复循环跳过活跃 run。
+- 验证通过：
+  - `cargo test -p hone-feishu recoverable_interrupted_sessions_skip_group_and_active_sessions -- --nocapture`
+  - `cargo test -p hone-feishu supervised_task_restarts_after_panic -- --nocapture`
+  - `cargo test -p hone-channels active_session_guard_reports_busy_and_releases_on_drop --lib -- --nocapture`
+  - `cargo check -p hone-feishu -p hone-channels --tests`
+  - `rustfmt --edition 2024 --check bins/hone-feishu/src/handler.rs crates/hone-channels/src/ingress.rs`
+  - `git diff --check`
+- 状态更新为 `Fixed`。本轮没有重启 live 服务，因此先按代码级闭环保留 `Fixed`；若后续仍出现“session 早已不活跃但直到下一次重启前都没有 assistant failure reply”的真实样本，再回退为 `New`。
 
 ## 结论
 

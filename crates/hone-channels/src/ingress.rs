@@ -371,6 +371,13 @@ impl SessionLockRegistry {
         Self::default()
     }
 
+    pub fn is_active(&self, session_id: &str) -> bool {
+        self.busy
+            .lock()
+            .expect("session busy registry poisoned")
+            .contains_key(session_id)
+    }
+
     pub async fn lock(&self, session_id: &str) -> tokio::sync::OwnedMutexGuard<()> {
         let lock = {
             let mut guard = self.inner.lock().expect("session lock registry poisoned");
@@ -516,7 +523,9 @@ mod tests {
             }
         );
 
+        assert!(registry.is_active("group:1"));
         drop(guard);
+        assert!(!registry.is_active("group:1"));
 
         let reopened = registry
             .try_begin_active(

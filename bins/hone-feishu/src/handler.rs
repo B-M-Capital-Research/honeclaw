@@ -254,16 +254,30 @@ impl EventHandler for FeishuEventHandler {
 
 const RESTART_RECOVERY_WINDOW_MINUTES: i64 = 30;
 const RESTART_RECOVERY_GRACE_SECONDS: i64 = 30;
+const RESTART_RECOVERY_SWEEP_SECONDS: u64 = 60;
 const RESTART_RECOVERY_TEXT: &str = "服务重启，之前的消息处理已中断，请稍后重试。";
 
-async fn recover_interrupted_sessions(core: &hone_channels::HoneBotCore, facade: &FeishuApiClient) {
+fn recoverable_interrupted_sessions(
+    interrupted: Vec<hone_memory::session_sqlite::InterruptedSessionInfo>,
+    session_locks: &SessionLockRegistry,
+) -> Vec<hone_memory::session_sqlite::InterruptedSessionInfo> {
+    interrupted
+        .into_iter()
+        .filter(|session_info| {
+            session_info.actor_channel_scope.is_none()
+                && !session_locks.is_active(&session_info.session_id)
+        })
+        .collect()
+}
+
+async fn recover_interrupted_sessions(state: &Arc<AppState>) {
     let now = chrono::Utc::now();
     let updated_after =
         (now - chrono::TimeDelta::minutes(RESTART_RECOVERY_WINDOW_MINUTES)).to_rfc3339();
     let updated_before =
         (now - chrono::TimeDelta::seconds(RESTART_RECOVERY_GRACE_SECONDS)).to_rfc3339();
 
-    let interrupted = match core.session_storage.find_interrupted_sessions(
+    let interrupted = match state.core.session_storage.find_interrupted_sessions(
         "feishu",
         &updated_after,
         &updated_before,
@@ -274,6 +288,7 @@ async fn recover_interrupted_sessions(core: &hone_channels::HoneBotCore, facade:
             return;
         }
     };
+    let interrupted = recoverable_interrupted_sessions(interrupted, &state.session_locks);
 
     if interrupted.is_empty() {
         return;
@@ -284,14 +299,9 @@ async fn recover_interrupted_sessions(core: &hone_channels::HoneBotCore, facade:
     );
 
     for session_info in &interrupted {
-        // Only recover unscoped (direct) sessions — group sessions would need
-        // a chat_id to reply to, which we don't have here.
-        if session_info.actor_channel_scope.is_some() {
-            continue;
-        }
         let receive_id = &session_info.actor_user_id;
         if let Err(err) =
-            send_plain_text(facade, receive_id, "open_id", RESTART_RECOVERY_TEXT).await
+            send_plain_text(&state.facade, receive_id, "open_id", RESTART_RECOVERY_TEXT).await
         {
             warn!(
                 "[Feishu] 启动恢复：补发失败提示失败: session_id={} err={}",
@@ -300,7 +310,7 @@ async fn recover_interrupted_sessions(core: &hone_channels::HoneBotCore, facade:
         } else {
             // Record the failure reply in the session so last_message_role
             // flips to 'assistant' and we don't re-notify on the next restart.
-            let _ = core.session_storage.add_message(
+            let _ = state.core.session_storage.add_message(
                 &session_info.session_id,
                 "assistant",
                 RESTART_RECOVERY_TEXT,
@@ -312,6 +322,21 @@ async fn recover_interrupted_sessions(core: &hone_channels::HoneBotCore, facade:
             );
         }
     }
+}
+
+fn spawn_interrupted_session_recovery_loop(state: Arc<AppState>) -> tokio::task::JoinHandle<()> {
+    spawn_supervised_task("feishu_interrupted_session_recovery", move || {
+        let state = state.clone();
+        async move {
+            let mut interval =
+                tokio::time::interval(Duration::from_secs(RESTART_RECOVERY_SWEEP_SECONDS));
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                interval.tick().await;
+                recover_interrupted_sessions(&state).await;
+            }
+        }
+    })
 }
 
 pub(crate) async fn run() {
@@ -354,7 +379,8 @@ pub(crate) async fn run() {
     // We look for direct sessions whose last message was from the user (no reply
     // persisted) in the past 30 minutes but at least 30 seconds ago (grace period
     // for sessions just starting).
-    recover_interrupted_sessions(&core, &facade).await;
+    recover_interrupted_sessions(&state).await;
+    let _recovery_loop = spawn_interrupted_session_recovery_loop(state.clone());
 
     let sdk_logger = new_logger(FeishuLogLevel::Info);
     let event_config = EventDispatcherConfig::new();
@@ -2084,5 +2110,53 @@ mod tests {
         .expect("supervisor should restart the task");
 
         handle.abort();
+    }
+
+    #[test]
+    fn recoverable_interrupted_sessions_skip_group_and_active_sessions() {
+        let registry = SessionLockRegistry::new();
+        let active_guard = registry
+            .try_begin_active(
+                "s_active",
+                ActiveSessionInfo {
+                    speaker_label: "alice".to_string(),
+                    message_id: Some("m1".to_string()),
+                },
+            )
+            .expect("active session");
+
+        let interrupted = vec![
+            hone_memory::session_sqlite::InterruptedSessionInfo {
+                session_id: "s_active".to_string(),
+                actor_user_id: "ou_active".to_string(),
+                actor_channel_scope: None,
+            },
+            hone_memory::session_sqlite::InterruptedSessionInfo {
+                session_id: "s_group".to_string(),
+                actor_user_id: "ou_group".to_string(),
+                actor_channel_scope: Some("chat:123".to_string()),
+            },
+            hone_memory::session_sqlite::InterruptedSessionInfo {
+                session_id: "s_direct".to_string(),
+                actor_user_id: "ou_direct".to_string(),
+                actor_channel_scope: None,
+            },
+        ];
+
+        let recoverable = recoverable_interrupted_sessions(interrupted, &registry);
+        assert_eq!(recoverable.len(), 1);
+        assert_eq!(recoverable[0].session_id, "s_direct");
+
+        drop(active_guard);
+        let recoverable_after_release = recoverable_interrupted_sessions(
+            vec![hone_memory::session_sqlite::InterruptedSessionInfo {
+                session_id: "s_active".to_string(),
+                actor_user_id: "ou_active".to_string(),
+                actor_channel_scope: None,
+            }],
+            &registry,
+        );
+        assert_eq!(recoverable_after_release.len(), 1);
+        assert_eq!(recoverable_after_release[0].session_id, "s_active");
     }
 }
