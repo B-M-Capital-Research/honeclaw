@@ -3,8 +3,20 @@
 - **发现时间**: 2026-04-18 11:06 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: Fixed
+- **状态**: New
 - **证据来源**:
+  - `2026-06-13 03:01 CST` 巡检补充复发证据：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=41301`
+    - `job_id=j_4756be4d`
+    - `job_name=伦敦金跌破4500提醒`
+    - `executed_at=2026-06-13T01:30:14.803841+08:00`
+    - `execution_status=completed`
+    - `message_send_status=sent`
+    - `delivered=1`
+    - `detail_json.scheduler.parse_kind=JsonTriggered`
+    - `response_preview` 前半段已经是自然语言提醒，但尾部仍拼入 JSON 字段残片：`"direction":"below_threshold","beat_threshold":"281.83`
+    - `detail_json.scheduler.deliver_preview` 同步保留该残片，说明不是单纯台账截断，而是准备投递的用户可见正文已经被结构化字段污染
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=2398`
     - `job_id=j_818f0150`
@@ -43,6 +55,7 @@
 
 ## 当前实现效果
 
+- `2026-06-13 01:30` 的 `伦敦金跌破4500提醒` 已经成功触发并送达，正文主体是自然语言提醒，但末尾仍外露 JSON 字段残片 `direction` / `beat_threshold`。这晚于 2026-04-20 `unwrap_nested_json_message` 修复记录，说明修复只覆盖了完整 `{"trigger": ...}` 对象直出，未覆盖“自然语言 + 结构化字段尾巴”的混合输出形态。
 - `2026-04-18 10:31` 的 `TEM大事件心跳监控` 已经成功命中触发并送达，但送达内容退化为原始 JSON 对象字符串。
 - 这一轮不是简单的“记录脏了但用户侧正常”：`detail_json.scheduler.deliver_preview` 已直接等于 JSON 字符串，说明调度器准备发送的正文本身就是未格式化对象。
 - 同一个任务在 `09:01` 和 `11:01` 又都恢复为自然语言提醒，进一步说明这是格式化链路的不稳定抖动。
@@ -52,11 +65,12 @@
 
 - 这是质量类缺陷。任务已执行、已投递，也没有发生错投、漏投或系统级失败。
 - 但用户收到的是原始结构化对象，而不是产品化提醒文案，阅读体验和可信度明显下降，也会暴露内部协议形态。
-- 之所以定级为 `P3`，是因为它没有阻断 heartbeat 主功能链路，用户仍能从 JSON 中读到大部分关键信息；当前伤害主要是格式与质量退化，而不是功能不可用。
+- 之所以定级为 `P3`，是因为它没有阻断 heartbeat 主功能链路，用户仍收到触发提醒和核心价格信息；当前伤害主要是格式与质量退化，而不是功能不可用。
 
 ## 根因判断
 
 - heartbeat `JsonTriggered` 分支的结果规范化不稳定；同一任务有时会把提取出的对象渲染成自然语言，有时却直接把 JSON 字符串作为最终正文。
+- `2026-06-13` 复发样本显示，格式化入口还可能只剥离对象开头或主体字段，却没有完整截断尾随结构化字段，导致自然语言正文后拼接 `direction` / `beat_threshold`。
 - 结合最近一小时其它 heartbeat 仍保留 `<think>` 污染输出，可以推断当前格式化逻辑仍依赖脆弱的“先解析结构，再拼装文案”路径，不同轮次对对象形态或字段内容的兼容不一致。
 - 这与 [`scheduler_heartbeat_unknown_status_silent_skip.md`](./scheduler_heartbeat_unknown_status_silent_skip.md) 共享同一协议脆弱背景，但这里的直接症状已从“失败跳过”变成“成功送达但格式退化”。
 
