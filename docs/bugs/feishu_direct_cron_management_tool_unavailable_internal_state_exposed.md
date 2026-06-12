@@ -3,7 +3,7 @@
 - **发现时间**: 2026-06-11 03:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无，非 P1
 
 ## 证据来源
@@ -86,3 +86,14 @@
   - 本轮复核代码确认 Feishu direct 私聊仍通过 `ChatMode::Direct -> with_cron_allowed(true)` 进入 cron-enabled runner，`CronJobTool` 已支持 `list/add/update/remove`；本次修复收敛 prompt 执行约束与用户可见安全边界，不依赖当前机器 live 进程或生产日志。
   - 验证通过：`cargo test -p hone-channels sanitize_user_visible_output_rewrites_cron_tool_unavailable_copy --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_strips_cron_storage_self_inspection_copy --lib -- --nocapture`、`cargo test -p hone-channels resolve_prompt_input_maps_cron_enabled_flags_to_user_language --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`。
   - 本轮未重启 Feishu 服务，也不使用当前机器运行态作为恢复证据；状态更新为代码级 `Fixed`，后续若部署当前代码后仍出现真实 `cron_job` 工具不可用，应基于新样本重新打开。
+
+## 复发确认（2026-06-12 19:02 CST）
+
+- 巡检窗口：2026-06-12 15:02-19:02 CST。
+- `data/sessions.sqlite3` -> `session_messages` 显示同窗有 16 个 user turn 与 15 个 assistant turn；多数 Feishu direct 会话正常收口。
+- `session_id=Actor_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c`：
+  - `2026-06-12T18:37:04.068615+08:00` 用户请求：每天早上 8 点发送昨日收盘总结并复盘持仓股。
+  - `2026-06-12T18:37:55.822231+08:00` assistant 正常落库 final，但回复写出：`本轮没有可用的定时任务注册入口，因此不能直接完成自动创建`。
+  - 回复只整理了任务规格建议，没有返回真实任务 ID，也没有完成用户要求的任务创建。
+- 该样本晚于 2026-06-12 08:06 CST 代码级修复记录；虽然本轮没有继续外露本地路径、SQLite 表名或 `cron_job / scheduled_task` 裸工具名，但 Feishu direct 定时任务创建主链路仍不可用。
+- 状态从 `Fixed` 调回 `New`。仍定级 `P2`：本轮证据覆盖单个 Feishu direct actor 的任务创建失败，普通 scheduler 同窗仍有 `completed + sent + delivered=1`，未见跨用户批量失败、错投、数据破坏或敏感信息泄露。非 P1，不创建 GitHub Issue。

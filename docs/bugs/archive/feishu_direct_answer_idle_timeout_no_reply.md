@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 23:12 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Later
+- **状态**: New
 - **修复提交**:
   - `02d01d2 fix channel error message sanitization`
   - `3e769d7 test feishu timeout fallback reply`
@@ -127,6 +127,18 @@
   - 纯工具/进度轨迹 partial 会被丢弃，不再作为 assistant 正文污染用户会话。
   - `codex acp` / `session/prompt` / state migration 一类内部细节会被共享净化层压成产品化失败文案，不直接外露。
 - 剩余的 Codex ACP state DB migration / idle timeout 属于外部 runner 状态和长尾模型收敛问题；当前代码侧已保证“失败可见、失败落库、不发工具轨迹”。若后续真实 Feishu 直聊再次出现“placeholder 后完全没有 assistant 失败回复”，再改回 `New`。
+
+## 复发确认（2026-06-12 19:02 CST）
+
+- 巡检窗口：2026-06-12 15:02-19:02 CST。
+- `data/sessions.sqlite3` -> `session_messages` 显示同窗有 16 个 user turn 与 15 个 assistant turn；同一分钟附近其它 Feishu direct 请求均在 16:20-16:24 CST 正常落库 assistant final。
+- `session_id=Actor_feishu__direct__ou_5f9f2cd3505aab8fed0a6ffd582df285b1`：
+  - `2026-06-12T16:23:19.067522+08:00` 用户请求记录持仓 `Rklb, nbis, Iren, sndk, dram, BE, CRCL, arm, ONDS, RDW, hood, poet`，并要求每天北京时间 20:00 发送盘前美股要闻、宏观数据和持仓相关评级变化。
+  - 到 `2026-06-12T19:02:19+08:00` 本轮巡检时，`sessions.last_message_role=user`，`last_message_at=2026-06-12T16:23:19.067522+08:00`，该 user turn 后没有任何 assistant 成功回复或失败提示落库。
+  - 同窗另一个用户在 `2026-06-12T16:21:53.362742+08:00` 发起几乎相同的 20:00 盘前任务创建请求，并在 `2026-06-12T16:23:20.377897+08:00` 收到 `已设置`、任务 ID 和执行口径，说明不是全局任务创建/直聊完全停摆。
+- 这符合本单 2026-04-28 留下的复发条件：真实 Feishu direct 会话再次出现“用户请求后完全没有 assistant 失败回复”。本轮没有足够日志证明根因一定是 idle timeout、state migration 或 runtime restart，因此先作为同一用户可见症状回退，不新建重复文档。
+- 状态从 `Later` 调回 `New`。继续定级 `P1`：用户主动请求创建关键定时任务，单轮主链路超过 2.5 小时没有任何可见收口；这不是质量波动，而是直聊主功能链路未完成。
+- GitHub Issue：[B-M-Capital-Research/honeclaw#50](https://github.com/B-M-Capital-Research/honeclaw/issues/50)。Issue 正文已脱敏，只保留问题摘要、影响范围、严重等级、状态和本缺陷文档路径。
 
 ## 结论
 
