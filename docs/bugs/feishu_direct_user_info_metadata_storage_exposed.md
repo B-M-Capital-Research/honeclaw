@@ -3,7 +3,7 @@
 - 发现时间：2026-06-13 15:03 CST
 - Bug Type：Business Error
 - 严重等级：P2
-- 状态：New
+- 状态：Fixed
 - GitHub Issue：无，非 P1
 
 ## 证据来源
@@ -61,3 +61,19 @@
 - 在 Feishu direct / 共享 prompt policy 中补“用户信息汇总边界”：允许列出业务画像和用户可管理资料，禁止列出 raw channel identifiers、session id、手机号 metadata 字段名、本地文件 / 数据库 / 目录状态。
 - 扩展用户可见输出净化，覆盖 `open_id`、`chat_id`、`手机号等元数据`、`当前会话 ID`、`data/sessions.sqlite3`、`data/portfolio`、`data/notif_prefs` 等短语在 final 中的泄漏。
 - 增加回归样本：当用户要求“列出你掌握的所有用户信息”时，final 应给出业务资料摘要和隐私边界说明，但不得包含内部字段名、本地存储路径或会话 ID。
+
+## 修复记录
+
+- `2026-06-14 03:03 CST` 已修复：
+  - `crates/hone-channels/src/prompt.rs` 新增 `【用户信息汇总边界】` 提示，要求这类请求只能汇总用户可理解、可核验、可更正的业务资料，禁止把 `open_id`、`chat_id`、内部 session id、手机号 metadata、数据库 / 表名、本地目录和文件路径当作“用户信息”输出。
+  - `crates/hone-channels/src/runtime.rs` 的共享 `sanitize_user_visible_output(...)` 新增用户信息场景兜底：会剥离 `当前会话 ID`、`open_id / chat_id / 手机号等元数据` 以及 `当前工作区可见 data/sessions.sqlite3 / company_profiles / data/cron_jobs / data/portfolio / data/notif_prefs / uploads` 这类内部身份字段和本地存储枚举，只保留业务画像正文。
+  - 新增回归 `build_prompt_bundle_includes_user_info_boundary_policy` 与 `sanitize_user_visible_output_strips_user_info_metadata_and_storage_copy`，锁住 prompt 与 sanitizer 两层边界。
+  - 本轮未重启 Feishu 服务，也不把当前机器 live 渠道状态当作恢复证据；状态更新为代码级 `Fixed`，若部署当前代码后仍出现新样本，再按新证据重新打开。
+
+## 验证
+
+- `cargo test -p hone-channels build_prompt_bundle_includes_user_info_boundary_policy --lib -- --nocapture`
+- `cargo test -p hone-channels sanitize_user_visible_output_strips_user_info_metadata_and_storage_copy --lib -- --nocapture`
+- `cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`
+- `cargo test -p hone-channels build_prompt_bundle_always_includes_finance_domain_policy --lib -- --nocapture`
+- `cargo check -p hone-channels --tests`

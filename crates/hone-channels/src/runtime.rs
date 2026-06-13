@@ -270,6 +270,19 @@ static RE_INTERNAL_STORAGE_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock::new
     )
     .expect("valid regex")
 });
+static RE_INTERNAL_USER_INFO_IDENTITY_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r#"[^\n。！？]*(?:当前会话\s*ID|会话\s*ID|session[_\s-]*id|open_id|chat_id|手机号等?元数据|手机号\s*metadata|飞书\s*open_id|飞书\s*chat_id)[^\n。！？]*[。！？]?"#,
+    )
+    .expect("valid regex")
+});
+static RE_INTERNAL_USER_INFO_STORAGE_ENUM_COPY_SENTENCE: LazyLock<regex::Regex> =
+    LazyLock::new(|| {
+        regex::Regex::new(
+            r#"[^\n。！？]*(?:当前工作区|当前目录|当前本地|本地可见|存在公司画像目录)[^\n。！？]*(?:company_profiles|data/notif_prefs|data/portfolio|data/cron_jobs|data/sessions\.sqlite3|uploads|公司画像公司画像)[^\n。！？]*[。！？]?"#,
+        )
+        .expect("valid regex")
+    });
 static RE_INTERNAL_TOOLING_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
         r#"[^\n。！？]*(?:返回了?全市场列表|全市场列表而不是按标的过滤|工具过滤异常)[^\n。！？]*[。！？]?"#,
@@ -522,6 +535,8 @@ fn rewrite_user_visible_internal_copy(text: &str) -> (String, bool) {
         &RE_INTERNAL_SKILL_COPY_SENTENCE,
         &RE_INTERNAL_FRAMEWORK_COPY_SENTENCE,
         &RE_INTERNAL_STORAGE_COPY_SENTENCE,
+        &RE_INTERNAL_USER_INFO_IDENTITY_COPY_SENTENCE,
+        &RE_INTERNAL_USER_INFO_STORAGE_ENUM_COPY_SENTENCE,
         &RE_INTERNAL_TOOLING_COPY_SENTENCE,
     ] {
         let next = re.replace_all(&rewritten, "");
@@ -1339,6 +1354,23 @@ mod tests {
         assert!(sanitized.removed_internal);
         assert_eq!(sanitized.content, "公司画像已更新。后续可继续补充。");
         assert!(!sanitized.content.contains("company_profiles"));
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_strips_user_info_metadata_and_storage_copy() {
+        let raw = "当前会话 ID：Actor_feishu__direct__ou_123。\n我能看到飞书 open_id、chat_id、手机号等元数据。\n当前工作区可见：data/sessions.sqlite3 / company_profiles 目录 / data/cron_jobs 目录 / data/portfolio 目录 / data/notif_prefs 目录 / uploads 目录。\n你当前让我长期跟踪的重点是美股 AI、半导体 和 黄金。";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(sanitized.removed_internal);
+        assert_eq!(
+            sanitized.content,
+            "你当前让我长期跟踪的重点是美股 AI、半导体 和 黄金。"
+        );
+        assert!(!sanitized.content.contains("会话 ID"));
+        assert!(!sanitized.content.contains("open_id"));
+        assert!(!sanitized.content.contains("chat_id"));
+        assert!(!sanitized.content.contains("data/sessions.sqlite3"));
+        assert!(!sanitized.content.contains("company_profiles"));
+        assert!(!sanitized.content.contains("uploads"));
     }
 
     #[test]

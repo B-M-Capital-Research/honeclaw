@@ -35,6 +35,11 @@ pub const DEFAULT_CRON_TASK_POLICY: &str = "【定时任务 / 心跳任务策略
 - 如果本轮真实 `cron_job` 工具不可用或调用失败，只能用用户态语言说明“定时任务管理暂时不可用，请稍后再试”，并记录内部错误；禁止向用户输出 `工具未暴露`、`接口未暴露`、`cron_job / scheduled_task`、`data/cron_jobs`、`sessions.sqlite3`、`session_messages`、`session_metadata` 或“当前沙盒”等实现细节。\n\
 - 用户询问“我的所有定时任务”时，应把 heartbeat 任务也视为任务列表的一部分一并说明。\n\
 - 面向用户列出或说明任务状态时，不要直接复述 `enabled=true`、`enabled=false`、`bypass_quiet_hours=true` 这类实现层 key/value；应改写为“已启用 / 已停用 / 遵守勿扰 / 豁免勿扰”等自然语言。";
+pub const DEFAULT_USER_INFO_BOUNDARY_POLICY: &str = "【用户信息汇总边界】\n\
+- 当用户要求列出“你掌握的我的信息”“我的资料”“你记得什么”时，只能汇总用户可理解、可核验、可更正的业务信息，例如投资偏好、关注标的、持仓摘要、定时任务摘要、画像结论与这些信息的大致来源边界。\n\
+- 禁止把内部渠道标识或实现层字段当作“用户信息”输出，包括但不限于 `open_id`、`chat_id`、内部 session id、手机号 metadata 字段名、工具名、数据库名、表名、本地目录、文件路径、SQLite/JSON/沙盒状态。\n\
+- 如果需要说明身份识别边界，只能用产品化语言，例如“我会根据当前会话身份来区分你的历史记录和任务”；不要列出原始字段名、目录名或存储位置。\n\
+- 若某类信息本轮无法可靠确认，应直接说明“这部分信息我目前不能可靠确认”，不要通过枚举本地文件、运行目录或内部状态来自证。";
 pub const DEFAULT_WEB_CRON_DELIVERY_POLICY: &str = "【Web 定时任务送达边界】\n\
 - 当前 Web 渠道的定时任务结果只保证写入当前 Hone 会话，并在网页在线且 SSE 连接存在时实时追加到页面。\n\
 - 当前没有 Web Push / 手机系统通知能力；不要承诺会出现在手机通知中心，也不要引导用户排查手机通知权限。\n\
@@ -154,6 +159,8 @@ pub fn build_prompt_bundle(
 
     static_system.push_str("\n\n");
     static_system.push_str(DEFAULT_FINANCE_DOMAIN_POLICY);
+    static_system.push_str("\n\n");
+    static_system.push_str(DEFAULT_USER_INFO_BOUNDARY_POLICY);
     static_system.push_str("\n\n");
     static_system.push_str(DEFAULT_COMPANY_PROFILE_POLICY);
 
@@ -398,6 +405,40 @@ mod tests {
         assert!(system_prompt.contains("相似公司里与当前问题相关的记录"));
         assert!(system_prompt.contains("宏观叙事与行业框架应尽量保持一致"));
         assert!(system_prompt.contains("不要把公司画像写成流水账"));
+
+        let _ = fs::remove_dir_all(&data_dir);
+    }
+
+    #[test]
+    fn build_prompt_bundle_includes_user_info_boundary_policy() {
+        let data_dir = std::env::temp_dir().join(format!(
+            "hone-prompt-user-info-{}-{}",
+            std::process::id(),
+            hone_core::beijing_now()
+                .timestamp_nanos_opt()
+                .unwrap_or_default()
+        ));
+        fs::create_dir_all(&data_dir).expect("session storage dir should init");
+        let storage = SessionStorage::new(data_dir.join("sessions"));
+        let mut config = HoneConfig::default();
+        config.agent.system_prompt = "你是 Hone。".to_string();
+
+        let bundle = build_prompt_bundle(
+            &config,
+            &storage,
+            "feishu",
+            "session-demo",
+            &SessionPromptState::default(),
+            &PromptOptions::default(),
+        );
+        let system_prompt = bundle.system_prompt();
+
+        assert!(system_prompt.contains("【用户信息汇总边界】"));
+        assert!(system_prompt.contains("只能汇总用户可理解、可核验、可更正的业务信息"));
+        assert!(system_prompt.contains("禁止把内部渠道标识或实现层字段当作“用户信息”输出"));
+        assert!(system_prompt.contains("open_id"));
+        assert!(system_prompt.contains("chat_id"));
+        assert!(system_prompt.contains("不要列出原始字段名、目录名或存储位置"));
 
         let _ = fs::remove_dir_all(&data_dir);
     }
