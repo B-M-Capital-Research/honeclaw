@@ -314,6 +314,10 @@ static RE_COMPANY_PROFILE_CREATED_COPY: LazyLock<regex::Regex> = LazyLock::new(|
     )
     .expect("valid regex")
 });
+static RE_COMPANY_PROFILE_WRITTEN_LIST_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r#"已写入[:：]?\s*(?:\d+\.\s*公司画像(?:\s|$|[，,；;。])*){1,}"#)
+        .expect("valid regex")
+});
 static RE_MARKET_DATA_FALLBACK_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
         r#"(?i)(?:[^。\n；]*data_fetch[^。\n；]*|可用行情接口未返回有效结果[^。\n；]*(?:stockanalysis|页面补充校验|公开页面)[^。\n；]*)"#,
@@ -550,6 +554,7 @@ fn rewrite_user_visible_internal_copy(text: &str) -> (String, bool) {
         (&RE_COMPANY_PROFILE_CREATED_COPY, "公司画像已更新"),
         (&RE_COMPANY_PROFILE_UPDATE_COPY, "把本轮更新补进公司画像"),
         (&RE_COMPANY_PROFILE_WRITE_COPY, "沉淀到公司画像"),
+        (&RE_COMPANY_PROFILE_WRITTEN_LIST_COPY, "已写入公司画像"),
         (&RE_COMPANY_PROFILE_COPY_GLITCH, "已沉淀为公司画像"),
         (
             &RE_MARKET_DATA_FALLBACK_COPY,
@@ -1307,6 +1312,16 @@ mod tests {
             "我已为腾讯控股建立长期画像，已沉淀为公司画像。已沉淀为公司画像。把本轮更新补进公司画像。"
         );
         assert!(!sanitized.content.contains("公司画像公司画像"));
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_rewrites_company_profile_written_numbered_list() {
+        let raw = "微软画像已更新。\n已写入：\n1.公司画像\n2.公司画像";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(sanitized.removed_internal);
+        assert_eq!(sanitized.content, "微软画像已更新。\n已写入公司画像");
+        assert!(!sanitized.content.contains("1.公司画像"));
+        assert!(!sanitized.content.contains("2.公司画像"));
     }
 
     #[test]

@@ -3,7 +3,7 @@
 - **发现时间**: 2026-06-02 11:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，非 P1
 
 ## 证据来源
@@ -145,6 +145,12 @@
 - 后续巡检继续区分两类证据：绝对路径 / sandbox 标识泄漏应回看既有路径脱敏缺陷；仅相对内部路径进入自然语言回复时按本单跟踪。
 
 ## 修复记录
+
+- 2026-06-15 03:22 CST 再次修复并关闭：
+  - 共享 `sanitize_user_visible_output(...)` 新增对 `已写入：1.公司画像 2.公司画像` 这类编号列表退化文案的整句级改写，统一收口为自然用户态表达 `已写入公司画像`。
+  - 新增回归 `sanitize_user_visible_output_rewrites_company_profile_written_numbered_list`，覆盖 2026-06-12 05:35 CST 微软画像更新后的真实复发形态。
+  - 验证通过：`cargo test -p hone-channels sanitize_user_visible_output_rewrites_company_profile_written_numbered_list --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`。
+  - 本轮只修共享净化层文案边界，不改公司画像写入、云同步或投递链路；状态更新为代码级 `Fixed`，若后续再出现新的落点退化措辞，再基于新样本重新打开。
 
 - 2026-06-12 07:04 CST 复发后回退：
   - 03:02-07:04 CST `data/sessions.sqlite3` 有 10 个 user turn 与 8 个 assistant 记录；最新 07:01 图片直聊已在 07:03 收口，07:00 普通 scheduler pending 已在 07:03:59 收口送达，最终无 user-only 残留；普通 scheduler 5 条 `completed + sent + delivered=1`，assistant final 空回复 / 通用失败 / 内部路径 / raw tool / provider 报错扫描未命中新独立链路缺陷。
