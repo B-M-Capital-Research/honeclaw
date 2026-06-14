@@ -13,12 +13,18 @@
     - `run_id=42332`，`executed_at=2026-06-14T15:00:27.251567+08:00`，再次落成 `completed + sent + delivered=1`。
     - 用户可见 `response_preview` 再次写出：`触发条件：单日跌幅超8%（实际-10.79%，昨收$114.78→现价$102.39）`，并把 `SpaceX今日（6月12日）IPO上市` 作为触发原因。
     - 这说明同一 2026-06-12 RKLB 下跌 / SpaceX IPO 旧事件在 00:30 已送达、连续多窗未触发后，于 15:00 又被重新包装成当前触发提醒。
+    - `2026-06-14 23:02 CST` 巡检窗口：同一 `RKLB异动监控` 在 19:30 CST `run_id=42450` 结构化失败、20:00 CST `run_id=42471` 为 `noop`、20:30 CST `run_id=42480` 结构化失败、21:00 / 21:30 / 22:00 / 22:30 CST 均为 `noop` 后，23:00 CST `run_id=42556` 又落成 `completed + sent + delivered=1`。
+    - 23:00 用户可见 `response_preview` 写出：`RKLB 今日（2026-06-12）下跌 -10.79%，最新价 $102.39，跌破昨收 $114.78`，并继续把 SpaceX IPO 资金虹吸叙事作为触发主因。
+    - 这说明同一 2026-06-12 RKLB 下跌 / SpaceX IPO 旧事件已在 00:30 与 15:00 CST 两次送达后，仍会在多轮 `noop` / 结构化失败之后于 23:00 再次被包装成当前提醒。
   - 同窗摘要：
     - 2026-06-14 11:02-15:02 CST `data/sessions.sqlite3` 有 5 个 user turn 与 5 个 assistant turn，最近 Feishu direct / scheduler 会话均以 assistant 收口，无 user-only 残留。
     - 普通 scheduler 1 条 `completed + sent + delivered=1`。
     - Heartbeat 新增 73 条 `noop + skipped_noop + delivered=0`、30 条 `execution_failed + skipped_error + delivered=0` 与 1 条 `completed + sent + delivered=1`；本条 RKLB 是唯一用户可见 heartbeat 成功送达复发样本。
     - assistant final 污染扫描仅命中用户可见金融回答中的正常公司画像落点语句，没有命中本机绝对路径、raw tool 字段、`session/update`、`reasoning_content`、provider 原始错误、`open_id / chat_id`、SQLite 或 `data_fetch` 外露。
     - 最近四小时无非文档代码提交。
+    - 2026-06-14 19:02-23:02 CST `data/sessions.sqlite3` 有 18 个 user turn 与 18 个 assistant turn，最近 Feishu scheduler 会话均以 assistant 收口；普通 scheduler 18 条均为 `completed + sent + delivered=1`。
+    - Heartbeat 同窗新增 75 条 `noop + skipped_noop + delivered=0`、27 条 `execution_failed + skipped_error + delivered=0`、1 条 `running + pending` started 残留与 1 条 `completed + sent + delivered=1`；本条 RKLB 是唯一用户可见 heartbeat 成功送达复发样本。
+    - 该样本不阻断调度、解析、落库或投递；受损点仍是旧事件反复送达造成提醒噪音和时间新鲜度误导，因此保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
   - `2026-05-08 11:06 CST` 复核当前代码后关闭本单：heartbeat 调度事件已加载同 actor 最近送达历史，且 `heartbeat_duplicate_preview_match(...)` 会基于事实 token 与实体 anchor 抑制跨 job / 跨窗口的同一旧事件重复投递，同时保留不同实体与同 ticker 新事件的通过路径。定向验证通过：`cargo test -p hone-scheduler heartbeat_history_includes_actor_cross_job_deliveries -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-core -p hone-channels -p hone-scheduler --tests`。当前机器旧窗口重复样本不再作为仓库活跃判据。
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `2026-05-08 15:02 CST` 最新巡检样本：
@@ -650,6 +656,7 @@
 - 这是质量与业务语义缺陷。Heartbeat 主功能仍可运行，用户也确实收到了提醒。
 - 但同一催化在无新增进展时被反复推送，会制造噪音并削弱提醒系统的可信度，用户难以分辨“真正的新进展”与“重复播报”。
 - 之所以定级为 `P3`，是因为它没有造成漏报、错投、系统失败或数据错误；当前主要伤害是提醒语义失真与消息噪音增加，而非主链路不可用。
+- 2026-06-14 23:00 CST RKLB 复发样本同样完成投递并包含可读风险提示，没有 JSON 残片、内部字段或发送失败；因此仍是不影响 heartbeat 主链路的质量性 P3，而不是 P1/P2。
 
 ## 根因判断
 
