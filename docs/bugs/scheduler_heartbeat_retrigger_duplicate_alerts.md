@@ -19,6 +19,9 @@
     - `2026-06-15 07:03 CST` 巡检窗口：同一 `RKLB异动监控` 在 2026-06-14 00:30、15:00、23:00 CST 已三次送达同一 `RKLB -10.79% / SpaceX IPO` 6月12日旧事件后，2026-06-15 00:00 / 00:30 回落为 `noop`，01:00 / 02:00 为结构化失败，01:30 / 02:30 / 03:00 / 03:30 均为 `noop`，随后 04:00 CST `run_id=42688` 再次落成 `completed + sent + delivered=1`。
     - 04:00 用户可见 `response_preview` 写出：`最新行情（2026-06-12）：昨收 $114.78，当前价 $102.39，单日跌幅约 -10.79%，已触发 8% 阈值`，并继续把 `SpaceX 今日正式 IPO`、太空股资金轮动和 `RKLB 同步下跌约 10.79%` 作为触发原因。
     - 这说明同一 2026-06-12 RKLB 下跌 / SpaceX IPO 旧事件跨过午夜后仍会在多轮 `noop` / 结构化失败之后重新回摆为 `triggered + sent`，不是单个窗口的短暂重复。
+    - `2026-06-15 19:03 CST` 巡检窗口：同一 `RKLB异动监控` 在 2026-06-14 00:30、15:00、23:00 CST 与 2026-06-15 04:00 CST 已多次送达同一 `RKLB -10.79% / SpaceX IPO` 6月12日旧事件后，2026-06-15 15:30 / 16:00 CST 又因 MiniMax 传输失败落成 `execution_failed + skipped_error`，16:30 CST 为结构化失败，随后 17:00 CST `run_id=43046` 再次落成 `completed + sent + delivered=1`。
+    - 17:00 用户可见 `response_preview` 写出：`触发条件：单日跌幅 10.79%，超过 8% 阈值`，并继续引用 `北京时间 2026 年 6 月 12 日，RKLB 收于 $102.39`、Motley Fool 与 247wallst 的同一跌幅/资金轮动叙事。
+    - 这说明同一 2026-06-12 RKLB 下跌事件在多次已送达后，仍会在传输失败、结构化失败与 `noop` 窗口之后被重新包装成当前触发提醒。
   - 同窗摘要：
     - 2026-06-14 11:02-15:02 CST `data/sessions.sqlite3` 有 5 个 user turn 与 5 个 assistant turn，最近 Feishu direct / scheduler 会话均以 assistant 收口，无 user-only 残留。
     - 普通 scheduler 1 条 `completed + sent + delivered=1`。
@@ -32,6 +35,9 @@
     - Heartbeat 同窗新增 76 条 `noop + skipped_noop + delivered=0`、27 条 `execution_failed + skipped_error + delivered=0` 与 1 条 `completed + sent + delivered=1`；本条 RKLB 仍是唯一用户可见 heartbeat 成功送达复发样本。
     - assistant final 污染扫描未命中空回复、本机路径、raw tool 字段、`session/update`、`reasoning_content`、provider 原始错误、`open_id / chat_id`、SQLite 或 `data_fetch` 外露；最近四小时无非文档代码提交。
     - 该样本同样不阻断调度、解析、落库或投递；问题仍限定为重复提醒噪音与时间新鲜度误导，因此保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+    - 2026-06-15 15:03-19:03 CST `data/sessions.sqlite3` 有 5 个 user turn 与 5 个 assistant turn，Feishu direct 与普通 scheduler 会话均以 assistant 收口；普通 scheduler 1 条 `A股港股收盘后跨市场复盘` 为 `completed + sent + delivered=1`。
+    - Heartbeat 同窗新增 66 条 `noop + skipped_noop + delivered=0`、37 条 `execution_failed + skipped_error + delivered=0` 与 1 条 `completed + sent + delivered=1`；本条 RKLB 仍是唯一用户可见 heartbeat 成功送达复发样本。
+    - 该样本不阻断调度、解析、落库或投递；受损点仍是重复提醒噪音和时间新鲜度误导，因此继续按质量性 `P3 / New` 跟踪，非 P1，不创建 GitHub Issue。
   - `2026-05-08 11:06 CST` 复核当前代码后关闭本单：heartbeat 调度事件已加载同 actor 最近送达历史，且 `heartbeat_duplicate_preview_match(...)` 会基于事实 token 与实体 anchor 抑制跨 job / 跨窗口的同一旧事件重复投递，同时保留不同实体与同 ticker 新事件的通过路径。定向验证通过：`cargo test -p hone-scheduler heartbeat_history_includes_actor_cross_job_deliveries -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-core -p hone-channels -p hone-scheduler --tests`。当前机器旧窗口重复样本不再作为仓库活跃判据。
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `2026-05-08 15:02 CST` 最新巡检样本：

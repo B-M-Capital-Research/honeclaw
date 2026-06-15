@@ -3,9 +3,26 @@
 - **发现时间**: 2026-04-17 16:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Later
+- **状态**: New
 
 ## 修复进展（2026-04-26）
+
+- **2026-06-15 19:03 CST 回退为 `New`**：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 15:03-19:03 CST heartbeat 新增 `66` 条 `noop + skipped_noop + delivered=0`、`37` 条 `execution_failed + skipped_error + delivered=0` 与 `1` 条 `completed + sent + delivered=1`。
+    - 15:30 CST 同批 `13` 条 Feishu heartbeat 任务落成 `execution_failed + skipped_error + delivered=0`，覆盖 `RKLB异动监控`、`SIVE POET/Nokia/1.6T DFB 心跳检测`、`DRAM 心跳监控`、`全天原油价格3小时播报`、`Monitor_Watchlist_11`、`持仓重大事件心跳检测`、`TEM大事件心跳监控`、`Cerebras IPO与业务进展心跳监控`、`heartbeat_绿田机械基本面跟踪`、`TSLA 正负触发条件心跳监控`、`TEM破位预警`、`AAOI 1.6T 光模块心跳检测`、`伦敦金跌破4100提醒`。
+    - 16:00 CST 同类失败继续成批出现，新增 `13` 条 Feishu heartbeat `runner_error`，覆盖 `SIVE POET/Nokia/1.6T DFB 心跳检测`、`Cerebras IPO与业务进展心跳监控`、`Monitor_Watchlist_11`、`伦敦金跌破4100提醒`、`DRAM 心跳监控`、`持仓重大事件心跳检测`、`TEM破位预警`、`RKLB异动监控`、`heartbeat_绿田机械基本面跟踪`、`全天原油价格3小时播报`、`AAOI 1.6T 光模块心跳检测`、`TEM大事件心跳监控`、`TSLA 正负触发条件心跳监控`。
+    - 代表性样本：`run_id=43004-43016` 与 `run_id=43017-43029`，`detail_json.failure_kind=runner_error`，`heartbeat_model=MiniMax-M2.7-highspeed`。
+    - 错误体均为 MiniMax/OpenAI-compatible `error sending request for url (https://api.minimaxi.com/v1/chat/completions)`，最终没有 heartbeat 用户可见提醒送达。
+  - 会话质量对照：
+    - 同窗 `session_messages` 有 `5` 个 user turn 与 `5` 个 assistant turn；最近 Feishu direct 与普通 scheduler 会话均以 assistant 收口，无 user-only 残留。
+    - 普通 scheduler 仅 `A股港股收盘后跨市场复盘` 1 条，为 `completed + sent + delivered=1`，未见 `commodity_causality_guarded=true`、send_failed 或空回复。
+    - 15:10 / 15:15 CST 同一 Feishu direct 请求两次返回产品化通用失败文案，16:15 CST 第三次重试成功完成同一问题；该短时直聊失败缺少独立根因证据，未单独建档。
+    - 最近四小时无非文档代码提交。
+  - 判断：
+    - 2026-06-12 的 `Later` 结论依赖“当前代码已有 provider 级短重试，真实窗口若确认仍成批复现再回退”的条件；本轮真实 heartbeat 窗口连续两个半小时批次共 `26` 条同类传输失败，满足回退条件。
+    - 该问题与 heartbeat 结构化 JSON 退化、context window overflow、重复提醒噪音不同；本轮失败发生在 MiniMax/OpenAI-compatible 请求传输层，直接造成 heartbeat 监控覆盖缺口。
+    - 没有证据显示普通 scheduler、Feishu direct 或 Feishu 出站整体不可用；严重等级保持功能性 `P2`，非 P1，不创建 GitHub Issue。
 
 - **2026-06-10 19:01 CST 回退为 `New`**：
   - `data/sessions.sqlite3` -> `cron_job_runs`
