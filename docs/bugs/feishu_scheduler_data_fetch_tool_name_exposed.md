@@ -214,6 +214,12 @@ New
   - 23:00 CST `核心观察股池晚间快报` final 写出 `本轮 data_fetch 已返回最新可得 quote，口径为 2026-06-12 美股收盘附近行情`；对应 `cron_job_runs.run_id=42559` 同样为 `completed + sent + delivered=1`。
   - 本轮 19:02-23:02 CST `data/sessions.sqlite3` 有 18 个 user turn 与 18 个 assistant turn，最近 Feishu scheduler 会话均以 assistant 收口；普通 scheduler 18 条均为 `completed + sent + delivered=1`。
   - 因问题只影响用户可见文案边界和产品感，不阻断 scheduler 主功能链路，仍为质量性 `P3 / New`；非 P1，不创建 GitHub Issue。
+- 2026-06-15 11:01 CST 补充同根复发证据：
+  - 09:03 CST `核心观察池早间简报` final 写出 `本轮未取得 data_fetch 返回，价格用 StockAnalysis 页面校验；财报日期优先沿用最近一次已校验结果，页面仍显示已过日期的标的标注为待确认`。
+  - 对应 `cron_job_runs.run_id=42838` 为 `completed + sent + delivered=1`，观察池列表、击球区、价格和财报日期正常输出；没有投递失败、空回复、错投、会话悬挂或链路级数据破坏证据。
+  - 本轮 07:02-11:01 CST `data/sessions.sqlite3` 有 20 个 user turn 与 21 个 assistant turn，其中 1 条 assistant 是 07:00 scheduler 结果落在窗口内；最近 Feishu direct / scheduler 与 Discord scheduler 会话均以 assistant 收口，无 user-only 残留。
+  - 普通 scheduler 19 条均为 `completed + sent + delivered=1`，未命中 `commodity_causality_guarded=true`、send_failed 或空回复；assistant final 污染扫描只命中本条 `data_fetch` 外露样本，未命中本机路径、raw tool 字段、思维痕迹、provider 原始错误、`open_id / chat_id`、SQLite 或技能状态外露。
+  - 因问题只影响用户可见文案边界和产品感，不阻断 scheduler 主功能链路，仍为质量性 `P3 / New`；非 P1，不创建 GitHub Issue。
 
 ## 修复记录
 
