@@ -3,11 +3,21 @@
 - **发现时间**: 2026-06-02 11:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无，非 P1
 
 ## 证据来源
 
+- `data/sessions.sqlite3`
+  - 时间窗：2026-06-15 19:03-23:04 CST
+  - `session_id=Actor_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c`
+  - assistant timestamp=`2026-06-15T22:31:04.276584+08:00`
+  - 用户输入摘要：`@更新一下 ABSI画像`
+  - assistant final 已完成 ABSI 画像更新、临床催化、现金跑道、股价 / 市值和后续数据读出窗口，并正常投递；同窗有 45 个 user turn 与 45 个 assistant turn，最近 Feishu direct / scheduler 会话均以 assistant 收口，普通 scheduler 34 条均 `completed + sent + delivered=1`。
+  - 但最终用户可见正文在“已写入”下再次输出：
+    - `1.公司画像`
+    - `2.公司画像`
+  - 该样本晚于 2026-06-15 03:22 CST 共享 sanitizer 针对同一编号列表退化文案的代码级修复记录，说明 live 回复仍会出现同根因复发。本轮从 `Fixed` 回退为 `New`。
 - `data/sessions.sqlite3`
   - 时间窗：2026-06-12 03:02-07:04 CST
   - `session_id=Actor_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c`
@@ -135,6 +145,7 @@
 - 2026-06-10 雅克科技样本显示，`公司画像公司画像` 类文案被修复后，真实 Feishu direct final 仍可能直接输出 `company_profiles/<ticker>.md`，说明共享净化或最终回复模板仍没有覆盖所有“已建立长期画像：<relative-path>”句式。
 - 2026-06-11 DELL 样本显示，最新 Feishu direct 深度分析仍会输出 `本轮已新增长期画像：company_profiles/DELL.md`，说明“本轮已新增长期画像：<relative-path>”句式同样未被净化层覆盖。
 - 2026-06-12 MSFT 样本显示，最新共享 sanitizer 已能避免 `company_profiles/...` 原始路径外露，但仍会把 profile 与 event 两个内部写入结果分别替换成同一个用户不可用的 `公司画像` 占位词，形成重复列表。根因更接近“路径片段替换后未整句重写 / 未合并多落点写入说明”，而不是新的存储或投递故障。
+- 2026-06-15 ABSI 样本晚于 03:22 CST 针对 `已写入：1.公司画像 2.公司画像` 的修复和回归记录，但 live Feishu direct final 仍输出同一编号列表退化文案。当前证据说明修复未稳定进入运行态，或仍有生成 / 出站路径绕过共享净化。状态从 `Fixed` 回退为 `New`；仍按质量性 `P3` 处理。
 - 该问题也不同于 `web_direct_tool_call_raw_output_leak`：本轮最终正文没有 raw JSON、工具协议或 provider 报错外泄。
 
 ## 下一步建议
@@ -145,6 +156,12 @@
 - 后续巡检继续区分两类证据：绝对路径 / sandbox 标识泄漏应回看既有路径脱敏缺陷；仅相对内部路径进入自然语言回复时按本单跟踪。
 
 ## 修复记录
+
+- 2026-06-15 23:04 CST 复发后回退：
+  - 19:03-23:04 CST `data/sessions.sqlite3` 有 45 个 user turn 与 45 个 assistant turn，最近 Feishu direct / scheduler 会话均以 assistant 收口；普通 scheduler 34 条均 `completed + sent + delivered=1`。
+  - 22:28 CST Feishu direct session `Actor_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c` 对 `@更新一下 ABSI画像` 完成画像更新后，用户可见 final 写出 `已写入：1.公司画像 2.公司画像`。
+  - 这是 2026-06-15 03:22 CST 代码级修复和回归确认后的同根因真实复发；不新建重复文档。
+  - 该问题不影响画像正文、画像写入、会话收口或投递，严重等级保持质量性 `P3 / New`。因不影响主功能链路，非 P1，不创建 GitHub Issue。
 
 - 2026-06-15 03:22 CST 再次修复并关闭：
   - 共享 `sanitize_user_visible_output(...)` 新增对 `已写入：1.公司画像 2.公司画像` 这类编号列表退化文案的整句级改写，统一收口为自然用户态表达 `已写入公司画像`。

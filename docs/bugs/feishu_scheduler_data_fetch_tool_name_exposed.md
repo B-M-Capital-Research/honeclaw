@@ -113,6 +113,14 @@ New
   - 23:00 final 开头写出：`本轮 data_fetch 已返回最新可得 quote，口径为 2026-06-12 美股收盘附近行情`。
   - 同窗 `data/sessions.sqlite3` 有 18 个 user turn 与 18 个 assistant turn，最近 Feishu scheduler 会话均以 assistant 收口；普通 scheduler 18 条均为 `completed + sent + delivered=1`。
   - 本轮没有投递失败、空回复、错投、会话悬挂或链路级数据破坏证据；两条样本分别覆盖“失败降级说明”和“工具名作为来源背书”两类句型。
+- `data/sessions.sqlite3` -> `session_messages` / `cron_job_runs`
+  - 2026-06-15 23:04 CST 巡检窗口：2026-06-15 19:03-23:04 CST。
+  - session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 在 21:35 CST 收到 `科技核心股池 · 晚间击球区快报` 定时触发，assistant 于 21:37:31 CST 正常落库 final；对应 `cron_job_runs.run_id=43191` 为 `completed + sent + delivered=1`。
+  - 21:35 final 开头写出：`专用 data_fetch 未返回可用结果，以下改用 StockAnalysis 校验`。
+  - 同 session 在 23:00 CST 收到 `核心观察股池晚间快报` 定时触发，assistant 于 23:02:31 CST 正常落库 final；对应 `cron_job_runs.run_id=43244` 为 `completed + sent + delivered=1`。
+  - 23:00 final 开头写出：`data_fetch 本轮未返回可用结果，价格改用公开行情页校验`。
+  - 同窗 `data/sessions.sqlite3` 有 45 个 user turn 与 45 个 assistant turn，最近 Feishu direct / scheduler 会话均以 assistant 收口；普通 scheduler 34 条均为 `completed + sent + delivered=1`。
+  - 两轮均输出观察池列表、击球区、价格和财报日期；没有投递失败、空回复、错投、会话悬挂或链路级数据破坏证据。
 
 ## 端到端链路
 
@@ -155,6 +163,7 @@ New
 - 2026-06-13 23:04 CST 样本继续证明同一“工具名作为来源背书”句型会进入 scheduler final；23:00 同会话已出现产品化替代表达，说明问题可能有路径/上下文差异，但不能视为已修复。状态保持 `New`，仍按质量性 `P3` 处理。
 - 2026-06-14 11:03 CST 样本又回到“当前未取得新的 data_fetch 返回”的失败 / 降级解释句型，说明现有净化或 prompt guard 同时未稳定覆盖“失败降级说明”和“工具名作为来源背书”两类表达。状态保持 `New`，仍按质量性 `P3` 处理。
 - 2026-06-14 23:02 CST 样本继续同时覆盖两类表达：21:35 CST 为“专用 data_fetch 本轮未返回可用结果”的失败降级说明，23:00 CST 为“本轮 data_fetch 已返回最新可得 quote”的来源背书。两轮都正常完成并送达，说明主功能链路未受阻；状态保持 `New`，仍按质量性 `P3` 处理。
+- 2026-06-15 23:04 CST 样本继续覆盖“失败降级说明”表达：21:35 CST 写出 `专用 data_fetch 未返回可用结果`，23:00 CST 写出 `data_fetch 本轮未返回可用结果`。两轮都正常完成并送达，观察池列表、击球区、价格和财报日期可用；状态保持 `New`，仍按质量性 `P3` 处理。
 - 现有 `web_direct_internal_skill_and_local_store_terms_exposed.md` 覆盖 Web direct 的 `skill` / `data/portfolio` / 本地 json 口径；本轮是 Feishu 普通 scheduler 的行情工具降级说明，链路和触发位置不同。
 - 现有 `feishu_scheduler_stale_price_fallback_after_data_fetch_failure.md` 覆盖关键行情失败后旧价格 fallback 被记成功；本轮证据不足以判断旧价成功态复发，只确认内部工具名外露。
 
@@ -219,6 +228,12 @@ New
   - 对应 `cron_job_runs.run_id=42838` 为 `completed + sent + delivered=1`，观察池列表、击球区、价格和财报日期正常输出；没有投递失败、空回复、错投、会话悬挂或链路级数据破坏证据。
   - 本轮 07:02-11:01 CST `data/sessions.sqlite3` 有 20 个 user turn 与 21 个 assistant turn，其中 1 条 assistant 是 07:00 scheduler 结果落在窗口内；最近 Feishu direct / scheduler 与 Discord scheduler 会话均以 assistant 收口，无 user-only 残留。
   - 普通 scheduler 19 条均为 `completed + sent + delivered=1`，未命中 `commodity_causality_guarded=true`、send_failed 或空回复；assistant final 污染扫描只命中本条 `data_fetch` 外露样本，未命中本机路径、raw tool 字段、思维痕迹、provider 原始错误、`open_id / chat_id`、SQLite 或技能状态外露。
+  - 因问题只影响用户可见文案边界和产品感，不阻断 scheduler 主功能链路，仍为质量性 `P3 / New`；非 P1，不创建 GitHub Issue。
+- 2026-06-15 23:04 CST 补充同根复发证据：
+  - 21:35 CST `科技核心股池 · 晚间击球区快报` final 写出 `专用 data_fetch 未返回可用结果，以下改用 StockAnalysis 校验`。
+  - 23:00 CST `核心观察股池晚间快报` final 写出 `data_fetch 本轮未返回可用结果，价格改用公开行情页校验`。
+  - 对应 `cron_job_runs.run_id=43191/43244` 均为 `completed + sent + delivered=1`；观察池列表、击球区、价格和财报日期正常输出。
+  - 本轮 19:03-23:04 CST `data/sessions.sqlite3` 有 45 个 user turn 与 45 个 assistant turn，最近 Feishu direct / scheduler 会话均以 assistant 收口；普通 scheduler 34 条均为 `completed + sent + delivered=1`。
   - 因问题只影响用户可见文案边界和产品感，不阻断 scheduler 主功能链路，仍为质量性 `P3 / New`；非 P1，不创建 GitHub Issue。
 
 ## 修复记录

@@ -29,6 +29,14 @@
 - 同窗摘要：
   - 2026-06-11 19:02-23:02 CST `data/sessions.sqlite3` 有 39 个 user turn 与 39 个 assistant final，最近 Feishu direct / scheduler 会话均以 assistant final 收口。
   - 普通 scheduler 33 条均为 `completed + sent + delivered=1`；异常仍集中在 Feishu direct 任务管理工具未暴露 / 未注入，不是全局 scheduler 停摆。
+- `data/sessions.sqlite3` -> `session_messages`
+  - 2026-06-15 23:04 CST 巡检窗口：2026-06-15 19:03-23:04 CST。
+  - `session_id=Actor_feishu__direct__ou_5fba037d8699a7194dfe01a1fda5ced052` 在 21:31 CST 收到用户请求：`请每两周检查一次 PKE，只有接近合理买入区才提醒我，谢谢。`
+  - assistant 于 21:33 CST 回复：已把 PKE 条件写入长期画像，但“本轮尚未正式创建自动推送任务”，并要求用户补充每两周的具体检查时间。
+  - 用户于 21:42 CST 补齐：`隔周一 09:00 可以。另外，请只提示买入机会，不用提示风险复查。`
+  - assistant 于 21:43 CST 正常落库 final，但回复写出：`自动定时任务注册工具没有暴露出来，所以我不能确认任务已经正式创建成功`。
+  - 回复只更新画像 / 条件，没有返回真实任务 ID，也没有确认创建每两周 PKE 自动检查任务。
+  - 同窗 `data/sessions.sqlite3` 有 45 个 user turn 与 45 个 assistant turn，最近 Feishu direct / scheduler 会话均以 assistant 收口；普通 scheduler 34 条均为 `completed + sent + delivered=1`，说明异常仍集中在 Feishu direct 任务创建入口。
 
 ## 端到端链路
 
@@ -49,6 +57,7 @@
 - 取消、列出、创建定时任务均未完成。
 - 回复虽然没有谎称成功，但连续暴露内部运行状态：`data/cron_jobs` 空目录、`data/sessions.sqlite3`、`session_messages`、`session_metadata`、`cron_job / scheduled_task` 工具名与“当前沙盒”。
 - 2026-06-11 20:55 CST 复发样本已经没有继续暴露本地路径 / SQLite 表名，但仍明确写出“定时任务创建接口未暴露”，并且没有真实创建用户要求的两个定时任务。
+- 2026-06-15 21:43 CST 复发样本继续写出“自动定时任务注册工具没有暴露出来”，并在用户已经补齐检查时间后仍未创建 PKE 双周提醒任务；该样本没有继续外露本地路径或 SQLite 表名，但 direct 定时任务创建主链路仍不可用。
 - 普通 scheduler 仍在执行，说明当前不是全局 cron loop 停摆，而是 direct 管理入口不可用或未随该会话注入。
 
 ## 用户影响
@@ -108,3 +117,15 @@
   - 回复称“关注列表已写入成功，共 12 个标的”，但没有返回真实任务 ID，也没有完成用户明确要求的每天 20:00 自动推送创建。
 - 本次仍未继续外露本地路径、SQLite 表名或裸 `cron_job / scheduled_task` 工具名；用户态文案比 2026-06-11 初始样本有所收敛。
 - 但该样本晚于 2026-06-12 08:06 CST 代码级修复记录，且晚于 18:37 CST 复发样本；说明 Feishu direct 定时任务创建主链路仍不可用。状态保持 `P2 / New`。非 P1，不创建 GitHub Issue。
+
+## 复发补证（2026-06-15 23:04 CST）
+
+- 巡检窗口：2026-06-15 19:03-23:04 CST。
+- `data/sessions.sqlite3` -> `session_messages` 显示同窗有 45 个 user turn 与 45 个 assistant turn，最近 Feishu direct / scheduler 会话均以 assistant 收口；普通 scheduler 34 条为 `completed + sent + delivered=1`。
+- `session_id=Actor_feishu__direct__ou_5fba037d8699a7194dfe01a1fda5ced052`：
+  - `2026-06-15T21:31:16.483718+08:00` 用户请求：每两周检查一次 PKE，只有接近合理买入区才提醒。
+  - `2026-06-15T21:33:09.951835+08:00` assistant 要求补充检查时间，建议隔周一 09:00。
+  - `2026-06-15T21:42:08.994357+08:00` 用户确认：隔周一 09:00，并只提示买入机会。
+  - `2026-06-15T21:43:31.329261+08:00` assistant 正常落库 final，但回复写出：`自动定时任务注册工具没有暴露出来，所以我不能确认任务已经正式创建成功`。
+- 本次未继续外露 `data/cron_jobs`、`data/sessions.sqlite3` 或裸 `cron_job / scheduled_task` 工具名；用户态文案较 2026-06-11 初始样本有所收敛。
+- 但该样本发生在用户补齐任务创建条件后，仍没有真实任务 ID 或创建确认，说明 Feishu direct 定时任务创建主链路仍不可用。状态保持 `P2 / New`。非 P1，不创建 GitHub Issue。
