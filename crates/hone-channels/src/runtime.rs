@@ -291,7 +291,7 @@ static RE_INTERNAL_TOOLING_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock::new
 });
 static RE_CRON_TOOL_UNAVAILABLE_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
-        r#"(?:[^\n。！？]*(?:定时任务|推送任务|cron_job|scheduled_task)[^\n。！？]*(?:工具未暴露|接口未暴露|未暴露可执行|没有拿到可操作|没有写入接口|没有\s*cron_job|没有\s*scheduled_task|工具列表里没有|无法真实执行|不能真实执行|不能真实创建|没有成功创建)[^\n。！？]*|[^\n。！？]*(?:没有\s*cron_job|没有\s*scheduled_task|工具列表里没有)[^\n。！？]*(?:cron_job|scheduled_task|定时任务|推送任务)[^\n。！？]*)[。！？]?"#,
+        r#"(?:[^\n。！？]*(?:定时任务|推送任务|cron_job|scheduled_task)[^\n。！？]*(?:工具未暴露|接口未暴露|未暴露可执行|没有暴露出来|没有拿到可操作|没有写入接口|没有\s*cron_job|没有\s*scheduled_task|工具列表里没有|没有可用的[^。！？\n]*(?:入口|工具)|无法真实执行|不能真实执行|不能真实创建|不能直接完成自动创建|没有成功创建|不能确认[^。！？\n]*创建成功)[^\n。！？]*|[^\n。！？]*(?:没有\s*cron_job|没有\s*scheduled_task|工具列表里没有)[^\n。！？]*(?:cron_job|scheduled_task|定时任务|推送任务)[^\n。！？]*)[。！？]?"#,
     )
     .expect("valid regex")
 });
@@ -315,12 +315,14 @@ static RE_COMPANY_PROFILE_CREATED_COPY: LazyLock<regex::Regex> = LazyLock::new(|
     .expect("valid regex")
 });
 static RE_COMPANY_PROFILE_WRITTEN_LIST_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r#"已写入[:：]?\s*(?:\d+\.\s*公司画像(?:\s|$|[，,；;。])*){1,}"#)
-        .expect("valid regex")
+    regex::Regex::new(
+        r#"已写入[:：]?\s*(?:(?:[-*]\s*)?\d+\.\s*公司画像(?:\s|$|[\n\r，,；;。:：])*){1,}"#,
+    )
+    .expect("valid regex")
 });
 static RE_MARKET_DATA_FALLBACK_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
-        r#"(?i)(?:[^。\n；]*data_fetch[^。\n；]*|可用行情接口未返回有效结果[^。\n；]*(?:stockanalysis|页面补充校验|公开页面)[^。\n；]*)"#,
+        r#"(?i)(?:[^。\n；]*(?:专用\s*)?data_fetch[^。\n；]*(?:未返回|不可用|校验)[^。\n；]*|[^。\n；]*未取得[^。\n；]*data_fetch[^。\n；]*返回[^。\n；]*|[^。\n]*未能取得新的\s*data_fetch\s*/\s*网页行情返回[^。\n]*|[^。\n]*data_fetch\s+quote[^。\n]*|[^。\n；]*(?:专用行情工具|可用行情接口|主行情源)[^。\n；]*(?:未返回|未取得|不可用)[^。\n；]*(?:stockanalysis|页面补充校验|公开页面|网页源|行情页|校验)[^。\n；]*)"#,
     )
     .expect("valid regex")
 });
@@ -1247,6 +1249,8 @@ mod tests {
         for raw in [
             "本轮未暴露可执行的定时任务创建接口，因此这两个推送任务没有成功创建。任务规格如下。",
             "工具列表里没有 cron_job / scheduled_task 的 list 或 remove 接口，取消动作未完成。",
+            "自动定时任务注册工具没有暴露出来，所以我不能确认任务已经正式创建成功。",
+            "当前环境没有可用的定时任务写入工具，所以我不能确认“每天20:00自动推送”已经创建成功。",
         ] {
             let sanitized = sanitize_user_visible_output(raw);
             assert!(sanitized.removed_internal, "raw={raw}");
@@ -1322,6 +1326,13 @@ mod tests {
         assert_eq!(sanitized.content, "微软画像已更新。\n已写入公司画像");
         assert!(!sanitized.content.contains("1.公司画像"));
         assert!(!sanitized.content.contains("2.公司画像"));
+
+        let bullet_raw = "ABSI 画像已更新。\n已写入：\n- 1.公司画像\n- 2.公司画像";
+        let bullet_sanitized = sanitize_user_visible_output(bullet_raw);
+        assert!(bullet_sanitized.removed_internal);
+        assert_eq!(bullet_sanitized.content, "ABSI 画像已更新。\n已写入公司画像");
+        assert!(!bullet_sanitized.content.contains("1.公司画像"));
+        assert!(!bullet_sanitized.content.contains("2.公司画像"));
     }
 
     #[test]
@@ -1352,6 +1363,22 @@ mod tests {
             (
                 "可用行情接口未返回有效结果，已用 StockAnalysis 页面补充校验；击球区沿用本地固定区间。",
                 "主行情源本轮未返回可用结果，已改用公开页面补充校验；击球区沿用本地固定区间。",
+            ),
+            (
+                "专用 data_fetch 未返回可用结果，以下改用 StockAnalysis 校验。观察池如下。",
+                "主行情源本轮未返回可用结果，已改用公开页面补充校验。观察池如下。",
+            ),
+            (
+                "本轮未取得 data_fetch 返回，价格用 StockAnalysis 页面校验；财报日期优先沿用最近一次已校验结果。",
+                "主行情源本轮未返回可用结果，已改用公开页面补充校验；财报日期优先沿用最近一次已校验结果。",
+            ),
+            (
+                "本轮 23:00 刷新未能取得新的 data_fetch / 网页行情返回；以下沿用本会话 21:35 已校验的 StockAnalysis 最新可见美股价格。",
+                "主行情源本轮未返回可用结果，已改用公开页面补充校验。",
+            ),
+            (
+                "本轮使用 data_fetch quote 校验；当前为周六晚，对应最新可得美股价格为 2026-06-12 美股收盘附近行情。",
+                "主行情源本轮未返回可用结果，已改用公开页面补充校验；当前为周六晚，对应最新可得美股价格为 2026-06-12 美股收盘附近行情。",
             ),
         ] {
             let sanitized = sanitize_user_visible_output(raw);

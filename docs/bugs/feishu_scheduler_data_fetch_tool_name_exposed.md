@@ -14,7 +14,7 @@ P3
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
@@ -237,6 +237,13 @@ New
   - 因问题只影响用户可见文案边界和产品感，不阻断 scheduler 主功能链路，仍为质量性 `P3 / New`；非 P1，不创建 GitHub Issue。
 
 ## 修复记录
+
+- 2026-06-16 04:08 CST 再次修复并收敛更多 live 句型：
+  - `crates/hone-channels/src/runtime.rs` 的共享 `sanitize_user_visible_output(...)` 继续扩展整句级行情降级改写，新增覆盖 `专用 data_fetch 未返回可用结果`、`本轮未取得 data_fetch 返回`、`未能取得新的 data_fetch / 网页行情返回`、`data_fetch quote 校验` 等 6 月 13-15 日真实复发表达。
+  - 改写策略保持“去内部实现词、保留业务边界”：用户可继续看到“主行情源本轮未返回可用结果，已改用公开页面补充校验”或保留必要的交易时段/时间口径，但不再看到 `data_fetch`、`StockAnalysis`、`quote` 这类内部工具名和站点名。
+  - 新增 / 扩展回归 `sanitize_user_visible_output_rewrites_market_data_fallback_variants`，直接锁住 6 月 15 日 `专用 data_fetch 未返回可用结果...`、6 月 14 日 `本轮未取得 data_fetch 返回...`、6 月 10 日 `未能取得新的 data_fetch / 网页行情返回...` 与 6 月 13 日 `data_fetch quote 校验` 等真实样本。
+  - 验证通过：`cargo test -p hone-channels sanitize_user_visible_output_rewrites_market_data_fallback_variants --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`。
+  - 本轮未重启当前 Feishu 服务，也不把当前机器 live 运行态当作恢复证据；状态更新为代码级 `Fixed`，后续若部署当前代码后仍有新句型复发，再基于新样本重新打开。
 
 - 2026-06-10 03:27 CST 修复：
   - 共享 `sanitize_user_visible_output(...)` 新增内部行情工具降级口径改写：`data_fetch 本轮未返回可用结果，已用 StockAnalysis 补充校验` 会统一改成“主行情源本轮未返回可用结果，已改用公开页面补充校验”。

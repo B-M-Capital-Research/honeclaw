@@ -3,7 +3,7 @@
 - **发现时间**: 2026-06-02 11:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，非 P1
 
 ## 证据来源
@@ -156,6 +156,12 @@
 - 后续巡检继续区分两类证据：绝对路径 / sandbox 标识泄漏应回看既有路径脱敏缺陷；仅相对内部路径进入自然语言回复时按本单跟踪。
 
 ## 修复记录
+
+- 2026-06-16 04:08 CST 再次修复并扩大复发覆盖：
+  - `crates/hone-channels/src/runtime.rs` 的共享 `sanitize_user_visible_output(...)` 继续扩展公司画像写入结果的整句级改写，新增覆盖带项目符号的 `已写入：- 1.公司画像 - 2.公司画像` 等编号列表变体，避免 profile / event 写入结果在最终回复里再次退化成重复占位词。
+  - 同轮回归 `sanitize_user_visible_output_rewrites_company_profile_written_numbered_list` 追加 bullet/list 形态，直接锁住 6 月 15 日 ABSI 画像更新后再次出现的“已写入：1.公司画像 2.公司画像”类 live 复发。
+  - 验证通过：`cargo test -p hone-channels sanitize_user_visible_output_rewrites_company_profile_written_numbered_list --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`。
+  - 本轮未重启当前 Feishu/Web 服务，也不把当前机器 live 运行态当作恢复证据；状态更新为代码级 `Fixed`，后续若部署当前代码后仍有新的落点退化文案，再基于新样本重新打开。
 
 - 2026-06-15 23:04 CST 复发后回退：
   - 19:03-23:04 CST `data/sessions.sqlite3` 有 45 个 user turn 与 45 个 assistant turn，最近 Feishu direct / scheduler 会话均以 assistant 收口；普通 scheduler 34 条均 `completed + sent + delivered=1`。
