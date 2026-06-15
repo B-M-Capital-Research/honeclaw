@@ -5,6 +5,19 @@
 - **严重等级**: P3
 - **状态**: New
 - **证据来源**:
+  - `2026-06-16 03:03 CST` 巡检补充复发证据：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=43281`
+    - `job_id=j_9ee85d42`
+    - `job_name=Cerebras IPO与业务进展心跳监控`
+    - `executed_at=2026-06-16T00:31:07.317015+08:00`
+    - `execution_status=completed`
+    - `message_send_status=sent`
+    - `delivered=1`
+    - `detail_json.scheduler.parse_kind=JsonTriggered`
+    - `response_preview` 前半段已经是自然语言提醒，但尾部仍拼入 JSON 字段残片：`","data":{"ticker":"CBRS","exchange":"NASDAQ Global Market`
+    - `detail_json.scheduler.deliver_preview` 同步保留该残片，说明不是单纯台账截断，而是准备投递的用户可见正文已经被结构化字段污染
+    - 同窗另一条 heartbeat `TSLA 正负触发条件心跳监控` `run_id=43290` 正常触发并送达，无 JSON 残片；其余 heartbeat 失败主要是结构化 JSON / context window 既有形态，说明该问题仍是 `JsonTriggered` 成功送达分支的格式化抖动，而不是整批 scheduler 不可用
   - `2026-06-13 03:01 CST` 巡检补充复发证据：
     - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=41301`
@@ -55,6 +68,7 @@
 
 ## 当前实现效果
 
+- `2026-06-16 00:31` 的 `Cerebras IPO与业务进展心跳监控` 已成功触发并送达，正文主体是自然语言提醒，但后面继续拼入 `data.ticker` / `data.exchange` 字段残片。该样本与 `2026-06-13` 的金价样本同属“自然语言 + 结构化字段尾巴”混合输出形态，说明尾随 JSON 字段清理仍未覆盖非金价 heartbeat 任务。
 - `2026-06-13 01:30` 的 `伦敦金跌破4500提醒` 已经成功触发并送达，正文主体是自然语言提醒，但末尾仍外露 JSON 字段残片 `direction` / `beat_threshold`。这晚于 2026-04-20 `unwrap_nested_json_message` 修复记录，说明修复只覆盖了完整 `{"trigger": ...}` 对象直出，未覆盖“自然语言 + 结构化字段尾巴”的混合输出形态。
 - `2026-04-18 10:31` 的 `TEM大事件心跳监控` 已经成功命中触发并送达，但送达内容退化为原始 JSON 对象字符串。
 - 这一轮不是简单的“记录脏了但用户侧正常”：`detail_json.scheduler.deliver_preview` 已直接等于 JSON 字符串，说明调度器准备发送的正文本身就是未格式化对象。
@@ -70,6 +84,7 @@
 ## 根因判断
 
 - heartbeat `JsonTriggered` 分支的结果规范化不稳定；同一任务有时会把提取出的对象渲染成自然语言，有时却直接把 JSON 字符串作为最终正文。
+- `2026-06-16` 复发样本显示污染字段已扩展到通用 `data` 对象字段（如 `ticker` / `exchange`），不是金价阈值任务的专属字段清理遗漏。
 - `2026-06-13` 复发样本显示，格式化入口还可能只剥离对象开头或主体字段，却没有完整截断尾随结构化字段，导致自然语言正文后拼接 `direction` / `beat_threshold`。
 - 结合最近一小时其它 heartbeat 仍保留 `<think>` 污染输出，可以推断当前格式化逻辑仍依赖脆弱的“先解析结构，再拼装文案”路径，不同轮次对对象形态或字段内容的兼容不一致。
 - 这与 [`scheduler_heartbeat_unknown_status_silent_skip.md`](./scheduler_heartbeat_unknown_status_silent_skip.md) 共享同一协议脆弱背景，但这里的直接症状已从“失败跳过”变成“成功送达但格式退化”。
