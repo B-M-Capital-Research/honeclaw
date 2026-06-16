@@ -14,7 +14,7 @@ P3
 
 ## 状态
 
-Fixed
+New
 
 ## GitHub Issue
 
@@ -121,6 +121,13 @@ Fixed
   - 23:00 final 开头写出：`data_fetch 本轮未返回可用结果，价格改用公开行情页校验`。
   - 同窗 `data/sessions.sqlite3` 有 45 个 user turn 与 45 个 assistant turn，最近 Feishu direct / scheduler 会话均以 assistant 收口；普通 scheduler 34 条均为 `completed + sent + delivered=1`。
   - 两轮均输出观察池列表、击球区、价格和财报日期；没有投递失败、空回复、错投、会话悬挂或链路级数据破坏证据。
+- `data/sessions.sqlite3` -> `session_messages` / `cron_job_runs`
+  - 2026-06-16 11:01 CST 巡检窗口：2026-06-16 07:03-11:01 CST。
+  - session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 在 09:00 CST 收到 `核心观察池早间简报` 定时触发，assistant `ordinal=352` 于 09:03:49 CST 正常落库 final；对应 `cron_job_runs.run_id=43527` 为 `completed + sent + delivered=1`。
+  - final 开头写出：`data_fetch 未取得可用返回，价格改用 StockAnalysis 校验，击球区沿用你的本地固定区间`。
+  - 该样本晚于 2026-06-16 04:08 CST 共享净化层代码级修复记录，说明仍有未覆盖句型或 live 出站路径未稳定经过净化。
+  - 同窗 `data/sessions.sqlite3` 有 26 个 user turn 与 26 个 assistant turn，最近 Feishu direct / scheduler 与 Discord scheduler 会话均以 assistant 收口；普通 scheduler 16 条为 `completed + sent + delivered=1`。
+  - 本条 Feishu scheduler 正常完成观察池早间简报，没有投递失败、空回复、错投、会话悬挂或链路级数据破坏证据；问题仍集中在内部行情工具名 / 站点名进入用户可见 scheduler final。
 
 ## 端到端链路
 
@@ -164,6 +171,7 @@ Fixed
 - 2026-06-14 11:03 CST 样本又回到“当前未取得新的 data_fetch 返回”的失败 / 降级解释句型，说明现有净化或 prompt guard 同时未稳定覆盖“失败降级说明”和“工具名作为来源背书”两类表达。状态保持 `New`，仍按质量性 `P3` 处理。
 - 2026-06-14 23:02 CST 样本继续同时覆盖两类表达：21:35 CST 为“专用 data_fetch 本轮未返回可用结果”的失败降级说明，23:00 CST 为“本轮 data_fetch 已返回最新可得 quote”的来源背书。两轮都正常完成并送达，说明主功能链路未受阻；状态保持 `New`，仍按质量性 `P3` 处理。
 - 2026-06-15 23:04 CST 样本继续覆盖“失败降级说明”表达：21:35 CST 写出 `专用 data_fetch 未返回可用结果`，23:00 CST 写出 `data_fetch 本轮未返回可用结果`。两轮都正常完成并送达，观察池列表、击球区、价格和财报日期可用；状态保持 `New`，仍按质量性 `P3` 处理。
+- 2026-06-16 11:01 CST 样本晚于 2026-06-16 04:08 CST 再次修复记录，仍写出 `data_fetch 未取得可用返回，价格改用 StockAnalysis 校验`。当前证据来自真实 scheduler final 与 cron 台账，因此把状态从代码级 `Fixed` 调回 `New`；该任务仍正常完成并送达，问题只影响用户可见文案边界和产品感，仍按质量性 `P3` 处理。
 - 现有 `web_direct_internal_skill_and_local_store_terms_exposed.md` 覆盖 Web direct 的 `skill` / `data/portfolio` / 本地 json 口径；本轮是 Feishu 普通 scheduler 的行情工具降级说明，链路和触发位置不同。
 - 现有 `feishu_scheduler_stale_price_fallback_after_data_fetch_failure.md` 覆盖关键行情失败后旧价格 fallback 被记成功；本轮证据不足以判断旧价成功态复发，只确认内部工具名外露。
 
@@ -235,6 +243,11 @@ Fixed
   - 对应 `cron_job_runs.run_id=43191/43244` 均为 `completed + sent + delivered=1`；观察池列表、击球区、价格和财报日期正常输出。
   - 本轮 19:03-23:04 CST `data/sessions.sqlite3` 有 45 个 user turn 与 45 个 assistant turn，最近 Feishu direct / scheduler 会话均以 assistant 收口；普通 scheduler 34 条均为 `completed + sent + delivered=1`。
   - 因问题只影响用户可见文案边界和产品感，不阻断 scheduler 主功能链路，仍为质量性 `P3 / New`；非 P1，不创建 GitHub Issue。
+- 2026-06-16 11:01 CST 重新打开：
+  - 09:03 CST `核心观察池早间简报` final 写出 `data_fetch 未取得可用返回，价格改用 StockAnalysis 校验，击球区沿用你的本地固定区间`。
+  - 对应 `cron_job_runs.run_id=43527` 为 `completed + sent + delivered=1`，观察池列表、击球区、价格和财报日期正常输出；没有投递失败、空回复、错投、会话悬挂或链路级数据破坏证据。
+  - 该样本晚于 2026-06-16 04:08 CST 再次修复记录，说明修复仍未覆盖 `data_fetch 未取得可用返回` 句型或 live 出站路径未稳定经过净化；状态从代码级 `Fixed` 调回 `New`。
+  - 因问题只影响用户可见文案边界和产品感，不阻断 scheduler 主功能链路，仍为质量性 `P3`；非 P1，不创建 GitHub Issue。
 
 ## 修复记录
 
@@ -243,7 +256,7 @@ Fixed
   - 改写策略保持“去内部实现词、保留业务边界”：用户可继续看到“主行情源本轮未返回可用结果，已改用公开页面补充校验”或保留必要的交易时段/时间口径，但不再看到 `data_fetch`、`StockAnalysis`、`quote` 这类内部工具名和站点名。
   - 新增 / 扩展回归 `sanitize_user_visible_output_rewrites_market_data_fallback_variants`，直接锁住 6 月 15 日 `专用 data_fetch 未返回可用结果...`、6 月 14 日 `本轮未取得 data_fetch 返回...`、6 月 10 日 `未能取得新的 data_fetch / 网页行情返回...` 与 6 月 13 日 `data_fetch quote 校验` 等真实样本。
   - 验证通过：`cargo test -p hone-channels sanitize_user_visible_output_rewrites_market_data_fallback_variants --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`。
-  - 本轮未重启当前 Feishu 服务，也不把当前机器 live 运行态当作恢复证据；状态更新为代码级 `Fixed`，后续若部署当前代码后仍有新句型复发，再基于新样本重新打开。
+  - 本轮未重启当前 Feishu 服务，也不把当前机器 live 运行态当作恢复证据；当时状态更新为代码级 `Fixed`，但 2026-06-16 09:03 CST 真实 scheduler final 已复发，当前状态重新打开为 `New`。
 
 - 2026-06-10 03:27 CST 修复：
   - 共享 `sanitize_user_visible_output(...)` 新增内部行情工具降级口径改写：`data_fetch 本轮未返回可用结果，已用 StockAnalysis 补充校验` 会统一改成“主行情源本轮未返回可用结果，已改用公开页面补充校验”。

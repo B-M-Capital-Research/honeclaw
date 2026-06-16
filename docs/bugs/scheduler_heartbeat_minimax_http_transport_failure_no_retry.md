@@ -7,6 +7,20 @@
 
 ## 修复进展（2026-04-26）
 
+- **2026-06-16 11:01 CST 补充复发证据，状态保持 `New`**：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 07:03-11:01 CST heartbeat 新增 `67` 条 `noop + skipped_noop + delivered=0`、`34` 条 `execution_failed + skipped_error + delivered=0` 与 `3` 条 `running + pending + delivered=0`。
+    - 09:30 CST 同批 `11` 条 Feishu heartbeat 任务落成 `execution_failed + skipped_error + delivered=0`，覆盖 `TEM破位预警`、`RKLB异动监控`、`全天原油价格3小时播报`、`TEM大事件心跳监控`、`持仓重大事件心跳检测`、`Cerebras IPO与业务进展心跳监控`、`heartbeat_绿田机械基本面跟踪`、`AAOI 1.6T 光模块心跳检测`、`Monitor_Watchlist_11`、`DRAM 心跳监控`、`TSLA 正负触发条件心跳监控`。
+    - 代表性样本：`run_id=43531/43533/43535/43536/43537/43539/43540/43541/43542/43543/43544`，均为 `detail_json.failure_kind=runner_error`，`heartbeat_model=MiniMax-M2.7-highspeed`。
+    - 错误体均为 MiniMax/OpenAI-compatible `error sending request for url (https://api.minimaxi.com/v1/chat/completions)`，最终没有 heartbeat 用户可见提醒送达。
+  - 会话质量对照：
+    - 同窗 `session_messages` 有 `26` 个 user turn 与 `26` 个 assistant turn；最近 Feishu direct / scheduler 与 Discord scheduler 会话均以 assistant 收口，无 user-only 残留。
+    - 普通 scheduler `16` 条为 `completed + sent + delivered=1`，未见普通 scheduler 全局不可用；本轮另有 1 条 Feishu scheduler `data_fetch` 文案 P3 复发，已登记到独立文档。
+    - 最近四小时无非文档代码提交。
+  - 判断：
+    - 本轮是 2026-06-15 15:30 / 16:00 CST 成批失败后的下一次真实窗口复发，说明 heartbeat MiniMax 传输失败仍未稳定收口。
+    - 该问题影响 heartbeat 监控覆盖但未进入用户可见 assistant final；普通 scheduler 和直聊同窗仍收口，严重等级保持功能性 `P2`，非 P1，不创建 GitHub Issue。
+
 - **2026-06-15 19:03 CST 回退为 `New`**：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - 15:03-19:03 CST heartbeat 新增 `66` 条 `noop + skipped_noop + delivered=0`、`37` 条 `execution_failed + skipped_error + delivered=0` 与 `1` 条 `completed + sent + delivered=1`。
