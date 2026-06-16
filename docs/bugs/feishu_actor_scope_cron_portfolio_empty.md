@@ -3,7 +3,7 @@
 - **发现时间**: 2026-06-03 23:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: [#49](https://github.com/B-M-Capital-Research/honeclaw/issues/49)
 
 ## 证据来源
@@ -36,6 +36,16 @@
   - 本窗有 9 个 user turn 与 9 个 assistant final，3 个 Feishu direct 会话均成对收口；assistant final 污染扫描未命中空回复、`company_profiles/...`、本机绝对路径、`data/agent-sandboxes`、`hone-mcp binary not found`、raw tool 字段、`reasoning_content`、`<think>`、provider 原始错误、`HTTP 400/429`、`Resource temporarily unavailable`、`quota exhausted`、`Param Incorrect`、panic 或 `index out of bounds`。
   - `session_id=Actor_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c` 在 2026-06-06 06:24 CST 收到用户输入摘要：`最值得加仓的3支股票`。
   - 06:26 CST assistant final 明确写出：按最近研究池且账本当前显示“暂无持仓”，给出 MSFT / GEV / CRCL 加仓优先级。
+- `data/sessions.sqlite3`
+  - 巡检时间窗：2026-06-16 19:02-23:02 CST。
+  - 同窗有 41 个 user turn 与 41 个 assistant turn，最近 Feishu direct / scheduler 会话均以 assistant 收口；普通 scheduler 33 条为 `completed + sent + delivered=1`，另有 1 条普通 scheduler `running + pending + delivered=0`。
+  - 20:00 CST Feishu scheduler `美股持仓开盘前晚报`（`session_id=Actor_feishu__direct__ou_5f85509d35510291f93cd79a3b1c9eebf3` / assistant `ordinal=173`）正常送达，但用户可见 final 写出 `data/portfolio 是空目录`、`本轮未读到可展开持仓明细`，随后改用最近已记录股数继续计算组合。
+  - 20:00 CST Feishu scheduler `美股盘前要闻、持仓评级与机会观察`（`session_id=Actor_feishu__direct__ou_5f62439dbed2b381c0023e70a381dbd768` / assistant `ordinal=204`）正常送达，但用户可见 final 写出当前沙盒 `data/portfolio` 目录为空、没有可读 `holdings.json`，随后沿用会话中最后确认过的持仓版本。
+  - 两条样本均不是空回复或投递失败；问题集中在 scheduler / runner 读取持久化 portfolio 数据根时把现存数据读成空，并把内部存储口径暴露给用户。
+- `data/portfolio/`
+  - `portfolio_feishu__direct__ou_5f85509d35510291f93cd79a3b1c9eebf3.json` 真实存在，且包含 RKLB、DRAM、AMD、MU、GOOGL、AAOI、SNDK、QCOM 等非空持仓。
+  - `portfolio_feishu__direct__ou_5f62439dbed2b381c0023e70a381dbd768.json` 真实存在，且包含 LITE、COHR 等非空持仓及多条 tracking-only 标的。
+  - 这说明本轮不是用户没有 portfolio 文件，也不是简单的单条文案问题，而是工具 / scheduler 运行态仍会把权威 portfolio 读取为空。
 - `data/portfolio/portfolio_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c.json`
   - 同一 actor 用户本地 portfolio 权威文件仍存在，`updated_at=2026-04-21T04:03:09.557122+00:00`。
   - 文件内 `holdings` 仍包含 NVO 60 股、NFLX 25 股、UNH 30 股及成本 / 策略备注。
@@ -66,6 +76,7 @@
 - 用户投资上下文被迫重建：原持仓/关注数据在当前工具链下不可见，后续定时简报若使用空上下文会失真。
 - 2026-06-05 04:50 CST 新样本中，用户已有两个 enabled Cron 任务，但直聊工具仍反馈任务列表为空，并引导用户“恢复这两个”，说明修复后的运行态仍可能读错 Cron 数据根或作用域。
 - 2026-06-06 06:26 CST 新样本中，用户 portfolio 文件仍有 NVO / NFLX / UNH 持仓，但直聊工具仍反馈“暂无持仓”，说明代码修复后 live 侧仍有可见回退或部署未生效风险。
+- 2026-06-16 20:00 CST 两条 scheduler 样本中，相关 actor 的 portfolio 文件均存在且非空，但 final 仍说 `data/portfolio` / 当前沙盒 portfolio 为空，并继续用历史记忆重建持仓口径，说明 2026-06-08 cloud runtime env 加固后的 live 窗口仍有真实复发。
 
 ## 用户影响
 
@@ -80,6 +91,7 @@
 - 该问题与 `feishu_scheduler_no_runs_after_midnight.md` 不同：旧 P1 是任务存在但 scheduler loop 不再产生 run；本轮是工具读错数据根，直接把任务表和持仓表看成空。
 - 2026-06-05 04:50 CST 新样本只直接证明 Cron 读取为空，未同时证明 portfolio / watchlist 也读空；但它复用同一 actor scope / data dir 读取链路，且影响范围仍是持久化 Cron 数据正确性，因此不新建重复缺陷，按本单回退状态。
 - 2026-06-06 06:26 CST 新样本直接证明 portfolio 读取为空：同一 actor 有本地 portfolio 文件与非空 `holdings`，assistant 却按“账本当前显示暂无持仓”生成建议。该证据与 Cron 读空同属 actor data dir / storage schema 读取链路，不新建重复缺陷。
+- 2026-06-16 20:00 CST 新样本再次直接证明 portfolio 读取为空：两个 Feishu scheduler actor 都有本地 portfolio 文件与非空 `holdings`，assistant final 却把当前 `data/portfolio` / 沙盒 portfolio 视为空目录。该证据与原 P1 同属 actor data dir / storage schema 读取链路，不新建重复缺陷；状态从 `Fixed` 回退为 `New`。
 
 ## 修复记录
 
@@ -116,6 +128,10 @@
 - `2026-06-06 07:02 CST` 运行态再次复现，状态从 `Fixed` 回退为 `New`：
   - `f20ea8ea` 已在 03:08 CST 合入本缺陷的代码级修复，但 06:26 CST 新 Feishu direct 回复仍把同一 actor 现存 portfolio 文件读成“暂无持仓”。
   - 本轮只补充既有 P1 证据，不新建重复缺陷；已有 GitHub Issue [#49](https://github.com/B-M-Capital-Research/honeclaw/issues/49)，不重复创建。
+- `2026-06-16 23:02 CST` 运行态再次复现，状态从 `Fixed` 回退为 `New`：
+  - 20:00 CST 两条 Feishu scheduler 均成功送达，但都在用户可见 final 中把现存 portfolio 数据根读成空，并退回历史记忆口径生成持仓 / 组合分析。
+  - 对应 actor 的 `data/portfolio/portfolio_feishu__direct__*.json` 文件真实存在且非空，因此这是持久化投资上下文读取链路复发，而不是用户数据缺失。
+  - 已有 GitHub Issue [#49](https://github.com/B-M-Capital-Research/honeclaw/issues/49)，本轮不重复创建。
 
 ## 验证
 
