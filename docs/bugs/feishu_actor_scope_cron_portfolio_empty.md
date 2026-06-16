@@ -3,7 +3,7 @@
 - **发现时间**: 2026-06-03 23:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#49](https://github.com/B-M-Capital-Research/honeclaw/issues/49)
 
 ## 证据来源
@@ -95,6 +95,13 @@
 
 ## 修复记录
 
+- `2026-06-17 03:08 CST` 再次修复：
+  - `crates/hone-core/src/config/materialize.rs` 生成 `data/runtime/effective-config.yaml` 时，现会按该 runtime 目录的父 `data` 根显式固化 `storage.sessions_dir`、`storage.portfolio_dir`、`storage.cron_jobs_dir` 等 storage 路径，避免 effective config 继续保留相对 `./data/...` 并在子进程/沙盒 `cwd` 下被重新解释到空目录。
+  - `crates/hone-channels/src/prompt.rs` 的共享 Cron/heartbeat 策略新增真相源约束：凡是“我的持仓 / 关注列表 / 定时任务 / 心跳任务”查询、核对或更新，必须优先调用 `portfolio` / `cron_job` 工具，禁止通过沙盒 `data/portfolio`、`data/cron_jobs`、`holdings.json`、文件列表或当前工作目录自行推断“为空 / 不存在 / 没创建”。
+  - `crates/hone-channels/src/runtime.rs` 的共享净化层新增 `holdings.json` / `空目录` 自查口径过滤，继续兜住“当前沙盒 data/portfolio 为空、没有可读 holdings.json”这类内部存储判断，避免再次进入用户可见 final。
+  - 新增回归 `generate_effective_config_absolutizes_storage_paths_from_runtime_dir`、`build_prompt_bundle_includes_portfolio_and_cron_truth_source_policy`、`sanitize_user_visible_output_strips_portfolio_empty_dir_self_inspection_copy`。
+  - 本轮仍未重启当前 live 服务，也没有做运行态复核，因此先记代码级 `Fixed`，待后续真实 Feishu direct / scheduler 窗口复核是否可进一步转 `Closed`。
+
 - `2026-06-08 12:08 CST` 追加 cloud runtime 加固：
   - `crates/hone-channels/src/mcp_bridge.rs` 在构造 `hone-mcp` MCP server env 时，除了继续处理 `HONE_DATA_DIR` 绝对化和 `runtime_dir` 回退，也会把父进程 cloud runtime 相关环境变量透传给子进程。
   - 透传范围包含默认 PG / OSS env 名称，以及 `config.yaml` 中 `cloud.postgres.*_env`、`cloud.oss.*_env` 配置出的自定义 env 名称，避免 cloud-backed 运行态下 `hone-mcp` 子进程缺少数据库或对象存储上下文后回退到空本地数据根。
@@ -144,6 +151,10 @@
 - `cargo check -p hone-channels -p hone-cli --tests`
 - `cargo test -p hone-channels hone_mcp_servers_ --lib -- --nocapture`
 - `cargo check -p hone-channels --tests`
+- `cargo test -p hone-core generate_effective_config_ -- --nocapture`
+- `cargo test -p hone-channels build_prompt_bundle_includes_portfolio_and_cron_truth_source_policy --lib -- --nocapture`
+- `cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`
+- `cargo check -p hone-core -p hone-channels --tests`
 
 ## 后续关注
 

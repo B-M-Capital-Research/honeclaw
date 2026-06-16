@@ -526,10 +526,25 @@ pub fn generate_effective_config(
     effective_config_path: &Path,
 ) -> crate::HoneResult<String> {
     let value = read_yaml_value(canonical_config_path)?;
-    HoneConfig::from_merged_value(value.clone())?;
-    write_yaml_value(effective_config_path, &value, "effective")?;
+    let mut config = HoneConfig::from_merged_value(value)?;
+    let runtime_dir = effective_config_path.parent().ok_or_else(|| {
+        crate::HoneError::Config(format!(
+            "effective 配置路径缺少 runtime 父目录: {}",
+            effective_config_path.display()
+        ))
+    })?;
+    let data_dir = runtime_dir.parent().ok_or_else(|| {
+        crate::HoneError::Config(format!(
+            "effective 配置路径缺少 data 父目录: {}",
+            effective_config_path.display()
+        ))
+    })?;
+    config.storage.apply_data_root(data_dir);
+    let effective_value = serde_yaml::to_value(&config)
+        .map_err(|e| crate::HoneError::Config(format!("effective 配置序列化失败: {e}")))?;
+    write_yaml_value(effective_config_path, &effective_value, "effective")?;
     copy_relative_system_prompt_asset(canonical_config_path, effective_config_path)?;
-    yaml_revision(&value)
+    yaml_revision(&effective_value)
 }
 
 pub(super) fn apply_system_prompt_path(

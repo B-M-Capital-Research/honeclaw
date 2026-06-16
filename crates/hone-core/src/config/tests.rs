@@ -1706,6 +1706,46 @@ agent:
 }
 
 #[test]
+fn generate_effective_config_absolutizes_storage_paths_from_runtime_dir() {
+    let dir = temp_test_dir("effective-config-storage-root");
+    let canonical = dir.join("config.yaml");
+    let runtime_dir = dir.join("custom-data/runtime");
+    let effective = effective_config_path(&runtime_dir);
+
+    std::fs::create_dir_all(&runtime_dir).unwrap();
+    std::fs::write(
+        &canonical,
+        r#"
+agent:
+  runner: codex_cli
+storage:
+  sessions_dir: "./data/sessions"
+  portfolio_dir: "./data/portfolio"
+  cron_jobs_dir: "./data/cron_jobs"
+"#,
+    )
+    .unwrap();
+
+    let revision = generate_effective_config(&canonical, &effective).unwrap();
+    assert!(!revision.is_empty());
+
+    let effective_config = HoneConfig::from_file(&effective).unwrap();
+    let expected_data_dir = runtime_dir.parent().unwrap();
+    assert_eq!(
+        effective_config.storage.sessions_dir,
+        expected_data_dir.join("sessions").to_string_lossy()
+    );
+    assert_eq!(
+        effective_config.storage.portfolio_dir,
+        expected_data_dir.join("portfolio").to_string_lossy()
+    );
+    assert_eq!(
+        effective_config.storage.cron_jobs_dir,
+        expected_data_dir.join("cron_jobs").to_string_lossy()
+    );
+}
+
+#[test]
 fn seed_canonical_config_reports_path_for_directory_errors() {
     let dir = temp_test_dir("seed-dir-error");
     let source = dir.join("source.yaml");

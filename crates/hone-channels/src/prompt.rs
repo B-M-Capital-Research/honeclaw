@@ -31,6 +31,7 @@ pub const DEFAULT_CRON_TASK_POLICY: &str = "【定时任务 / 心跳任务策略
 - 如用户要求“当某个条件满足时提醒我”，但没有给出具体时刻，例如股价阈值、公告事件、新闻条件、财报条件等，这类任务默认不应伪装成 daily 09:00。\n\
 - 对这种无明确时刻的条件型任务，必须先询问用户是否要创建“心跳检测”任务；心跳任务会每 30 分钟检查一次条件。\n\
 - 只有在用户明确同意后，才创建 repeat=heartbeat 的任务；heartbeat 任务建议带上 heartbeat 标签。\n\
+- 用户要求查看、核对、更新或引用“我的持仓 / 关注列表 / 定时任务 / 心跳任务”时，必须优先调用真实 `portfolio` / `cron_job` 工具，把工具结果视为本轮权威真相源；禁止通过沙盒里的 `data/portfolio`、`data/cron_jobs`、`holdings.json`、文件列表、当前工作目录或会话历史自行推断“为空 / 不存在 / 没创建”。\n\
 - 用户要求列出、检查、创建、更新、取消或删除定时任务时，必须调用真实 `cron_job` 工具完成，不能用沙盒目录、SQLite、会话历史或文件列表自查替代。\n\
 - 如果本轮真实 `cron_job` 工具不可用或调用失败，只能用用户态语言说明“定时任务管理暂时不可用，请稍后再试”，并记录内部错误；禁止向用户输出 `工具未暴露`、`接口未暴露`、`cron_job / scheduled_task`、`data/cron_jobs`、`sessions.sqlite3`、`session_messages`、`session_metadata` 或“当前沙盒”等实现细节。\n\
 - 用户询问“我的所有定时任务”时，应把 heartbeat 任务也视为任务列表的一部分一并说明。\n\
@@ -394,7 +395,10 @@ mod tests {
             "feishu",
             "session-demo",
             &SessionPromptState::default(),
-            &PromptOptions::default(),
+            &PromptOptions {
+                extra_sections: vec![DEFAULT_CRON_TASK_POLICY.to_string()],
+                ..PromptOptions::default()
+            },
         );
         let system_prompt = bundle.system_prompt();
 
@@ -429,7 +433,10 @@ mod tests {
             "feishu",
             "session-demo",
             &SessionPromptState::default(),
-            &PromptOptions::default(),
+            &PromptOptions {
+                extra_sections: vec![DEFAULT_CRON_TASK_POLICY.to_string()],
+                ..PromptOptions::default()
+            },
         );
         let system_prompt = bundle.system_prompt();
 
@@ -439,6 +446,43 @@ mod tests {
         assert!(system_prompt.contains("open_id"));
         assert!(system_prompt.contains("chat_id"));
         assert!(system_prompt.contains("不要列出原始字段名、目录名或存储位置"));
+
+        let _ = fs::remove_dir_all(&data_dir);
+    }
+
+    #[test]
+    fn build_prompt_bundle_includes_portfolio_and_cron_truth_source_policy() {
+        let data_dir = std::env::temp_dir().join(format!(
+            "hone-prompt-portfolio-cron-{}-{}",
+            std::process::id(),
+            hone_core::beijing_now()
+                .timestamp_nanos_opt()
+                .unwrap_or_default()
+        ));
+        fs::create_dir_all(&data_dir).expect("session storage dir should init");
+        let storage = SessionStorage::new(data_dir.join("sessions"));
+        let mut config = HoneConfig::default();
+        config.agent.system_prompt = "你是 Hone。".to_string();
+
+        let bundle = build_prompt_bundle(
+            &config,
+            &storage,
+            "feishu",
+            "session-demo",
+            &SessionPromptState::default(),
+            &PromptOptions {
+                extra_sections: vec![DEFAULT_CRON_TASK_POLICY.to_string()],
+                ..PromptOptions::default()
+            },
+        );
+        let system_prompt = bundle.system_prompt();
+
+        assert!(system_prompt.contains("我的持仓 / 关注列表 / 定时任务 / 心跳任务"));
+        assert!(system_prompt.contains("必须优先调用真实"));
+        assert!(system_prompt.contains("本轮权威真相源"));
+        assert!(system_prompt.contains("holdings.json"));
+        assert!(system_prompt.contains("禁止通过沙盒里的"));
+        assert!(system_prompt.contains("data/portfolio"));
 
         let _ = fs::remove_dir_all(&data_dir);
     }

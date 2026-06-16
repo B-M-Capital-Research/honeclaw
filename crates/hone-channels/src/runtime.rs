@@ -266,7 +266,7 @@ static RE_INTERNAL_FRAMEWORK_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock::n
 });
 static RE_INTERNAL_STORAGE_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
-        r#"[^\n。！？]*(?:账本文件已定位到|本地\s*data/|data/portfolio|data/cron_jobs|data/sessions\.sqlite3|sessions\.sqlite3|session_messages|session_metadata|当前沙盒|本地json文件|本地 json 文件|本地json|本地 json|本地文件仍只显示|json文件仍只显示)[^\n。！？]*[。！？]?"#,
+        r#"[^\n。！？]*(?:账本文件已定位到|本地\s*data/|data/portfolio|data/cron_jobs|data/sessions\.sqlite3|sessions\.sqlite3|session_messages|session_metadata|当前沙盒|holdings\.json|空目录|本地json文件|本地 json 文件|本地json|本地 json|本地文件仍只显示|json文件仍只显示)[^\n。！？]*[。！？]?"#,
     )
     .expect("valid regex")
 });
@@ -1278,6 +1278,17 @@ mod tests {
         assert!(!sanitized.content.contains("sessions.sqlite3"));
         assert!(!sanitized.content.contains("session_messages"));
         assert!(!sanitized.content.contains("session_metadata"));
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_strips_portfolio_empty_dir_self_inspection_copy() {
+        let raw = "当前沙盒 data/portfolio 是空目录，没有可读 holdings.json，所以我先沿用历史记忆里的持仓版本继续分析。";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(sanitized.removed_internal);
+        assert!(sanitized.content.is_empty());
+        assert!(!sanitized.content.contains("data/portfolio"));
+        assert!(!sanitized.content.contains("holdings.json"));
+        assert!(!sanitized.content.contains("空目录"));
     }
 
     #[test]
