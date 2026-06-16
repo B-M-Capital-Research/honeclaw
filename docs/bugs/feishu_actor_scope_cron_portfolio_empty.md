@@ -42,10 +42,16 @@
   - 20:00 CST Feishu scheduler `美股持仓开盘前晚报`（`session_id=Actor_feishu__direct__ou_5f85509d35510291f93cd79a3b1c9eebf3` / assistant `ordinal=173`）正常送达，但用户可见 final 写出 `data/portfolio 是空目录`、`本轮未读到可展开持仓明细`，随后改用最近已记录股数继续计算组合。
   - 20:00 CST Feishu scheduler `美股盘前要闻、持仓评级与机会观察`（`session_id=Actor_feishu__direct__ou_5f62439dbed2b381c0023e70a381dbd768` / assistant `ordinal=204`）正常送达，但用户可见 final 写出当前沙盒 `data/portfolio` 目录为空、没有可读 `holdings.json`，随后沿用会话中最后确认过的持仓版本。
   - 两条样本均不是空回复或投递失败；问题集中在 scheduler / runner 读取持久化 portfolio 数据根时把现存数据读成空，并把内部存储口径暴露给用户。
+- `data/sessions.sqlite3`
+  - 巡检时间窗：2026-06-17 03:03-07:03 CST。
+  - 同窗有 13 个 user turn 与 13 个 assistant turn，最近 Feishu direct / scheduler 会话均以 assistant 收口；普通 scheduler 6 条为 `completed + sent + delivered=1`。
+  - 07:00 CST Feishu scheduler `美股持仓收盘后早报`（`cron_job_runs.run_id=44148` / `session_id=Actor_feishu__direct__ou_5f85509d35510291f93cd79a3b1c9eebf3` / assistant `ordinal=175`）正常送达，但用户可见 final 写出 `本地 data/portfolio 仍为空目录，本轮沿用最近已记录股数`，随后按历史记忆口径继续计算组合。
+  - 该样本晚于 2026-06-17 03:10 CST 非文档修复提交 `1669e0aa Fix feishu actor scope portfolio/cron truth source`，但当前 live 服务此前已注明尚未重启；因此本轮按“代码级 Fixed、live 旧进程仍影响用户”补证，不回退为 `New`。
 - `data/portfolio/`
   - `portfolio_feishu__direct__ou_5f85509d35510291f93cd79a3b1c9eebf3.json` 真实存在，且包含 RKLB、DRAM、AMD、MU、GOOGL、AAOI、SNDK、QCOM 等非空持仓。
   - `portfolio_feishu__direct__ou_5f62439dbed2b381c0023e70a381dbd768.json` 真实存在，且包含 LITE、COHR 等非空持仓及多条 tracking-only 标的。
   - 这说明本轮不是用户没有 portfolio 文件，也不是简单的单条文案问题，而是工具 / scheduler 运行态仍会把权威 portfolio 读取为空。
+  - 2026-06-17 07:00 CST 新样本对应的 `portfolio_feishu__direct__ou_5f85509d35510291f93cd79a3b1c9eebf3.json` 仍真实存在且非空，包含 RKLB、DRAM、AMD、MU、GOOGL、AAOI 等持仓；因此 07:00 final 中的 `data/portfolio 仍为空目录` 不是用户数据缺失。
 - `data/portfolio/portfolio_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c.json`
   - 同一 actor 用户本地 portfolio 权威文件仍存在，`updated_at=2026-04-21T04:03:09.557122+00:00`。
   - 文件内 `holdings` 仍包含 NVO 60 股、NFLX 25 股、UNH 30 股及成本 / 策略备注。
@@ -77,6 +83,7 @@
 - 2026-06-05 04:50 CST 新样本中，用户已有两个 enabled Cron 任务，但直聊工具仍反馈任务列表为空，并引导用户“恢复这两个”，说明修复后的运行态仍可能读错 Cron 数据根或作用域。
 - 2026-06-06 06:26 CST 新样本中，用户 portfolio 文件仍有 NVO / NFLX / UNH 持仓，但直聊工具仍反馈“暂无持仓”，说明代码修复后 live 侧仍有可见回退或部署未生效风险。
 - 2026-06-16 20:00 CST 两条 scheduler 样本中，相关 actor 的 portfolio 文件均存在且非空，但 final 仍说 `data/portfolio` / 当前沙盒 portfolio 为空，并继续用历史记忆重建持仓口径，说明 2026-06-08 cloud runtime env 加固后的 live 窗口仍有真实复发。
+- 2026-06-17 07:00 CST `美股持仓收盘后早报` 样本发生在 03:10 CST 修复提交之后，但当前 live 服务未重启，用户可见 final 仍把现存 portfolio 数据根读成空；这说明代码修复尚未在 live 旧进程中生效，仍需重启后复核，不能按 `Closed` 处理。
 
 ## 用户影响
 
@@ -101,6 +108,11 @@
   - `crates/hone-channels/src/runtime.rs` 的共享净化层新增 `holdings.json` / `空目录` 自查口径过滤，继续兜住“当前沙盒 data/portfolio 为空、没有可读 holdings.json”这类内部存储判断，避免再次进入用户可见 final。
   - 新增回归 `generate_effective_config_absolutizes_storage_paths_from_runtime_dir`、`build_prompt_bundle_includes_portfolio_and_cron_truth_source_policy`、`sanitize_user_visible_output_strips_portfolio_empty_dir_self_inspection_copy`。
   - 本轮仍未重启当前 live 服务，也没有做运行态复核，因此先记代码级 `Fixed`，待后续真实 Feishu direct / scheduler 窗口复核是否可进一步转 `Closed`。
+
+- `2026-06-17 07:03 CST` live 旧进程补证：
+  - 03:10 CST 修复提交 `1669e0aa` 已在仓库落地，但当前 live 服务尚未重启；07:00 CST `美股持仓收盘后早报` `run_id=44148` 仍在用户可见 final 中写出 `本地 data/portfolio 仍为空目录`。
+  - 对应 actor 的 portfolio 文件真实存在且非空，因此这是同一 P1 在 live 旧运行态继续影响用户的证据。
+  - 按“代码级 `Fixed`、等待 live 重启/部署后复核”记录，不重新登记为 `New`，已有 GitHub Issue [#49](https://github.com/B-M-Capital-Research/honeclaw/issues/49) 不重复创建。
 
 - `2026-06-08 12:08 CST` 追加 cloud runtime 加固：
   - `crates/hone-channels/src/mcp_bridge.rs` 在构造 `hone-mcp` MCP server env 时，除了继续处理 `HONE_DATA_DIR` 绝对化和 `runtime_dir` 回退，也会把父进程 cloud runtime 相关环境变量透传给子进程。
@@ -159,5 +171,6 @@
 ## 后续关注
 
 - 本轮是代码级闭环，没有重启现有服务做 live 复核；如需运行态确认，可在不重启当前服务的前提下优先检查新进程是否持有绝对 `HONE_CONFIG_PATH` / `HONE_DATA_DIR`。
+- 2026-06-17 07:00 CST 已确认旧 live 进程仍会向用户输出 `data/portfolio` 空目录口径；重启/部署后应优先复核同一 actor 的下一次持仓 scheduler 是否直接读取真实 portfolio，而不是继续沿用历史记忆。
 - 若后续仍出现 `jobs=[]` + `holdings=[]` 组合症状，应优先检查对应进程的 `HONE_DATA_DIR` 与 `cwd`，而不是先怀疑 actor identity 漂移。
 - 当前还需进一步确认 2026-06-05 04:50 运行态进程实际持有的 `HONE_CONFIG_PATH` / `HONE_DATA_DIR`，以及 `hone-mcp` 读取 Cron 文件时是否落到了 sandbox 或 runtime 下的空数据树。
