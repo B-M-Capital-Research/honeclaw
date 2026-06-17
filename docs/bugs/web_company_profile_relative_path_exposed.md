@@ -3,8 +3,16 @@
 - **发现时间**: 2026-06-02 11:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，非 P1
+
+## 修复记录
+
+- 2026-06-18 03:04 CST 再次修复：
+  - 共享 `sanitize_user_visible_output(...)` 新增 `已创建：1.公司画像 2.公司画像` 列表改写，和既有 `已写入：...` / `company_profiles/...` / `公司画像公司画像` 退化句型一起收口到自然业务文案。
+  - 既有回归 `sanitize_user_visible_output_rewrites_company_profile_written_numbered_list` 追加 `已创建` 形态，锁住 2026-06-16 SPCX 样本的真实复发表达。
+  - 验证通过：`cargo test -p hone-channels sanitize_user_visible_output_rewrites_company_profile_written_numbered_list --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`。
+  - 本轮未重启当前 Feishu/Web 服务，也不把当前机器 live 运行态当作恢复证据；状态更新为代码级 `Fixed`，后续若部署后仍有新的公司画像落点退化文案，再基于新样本重新打开。
 
 ## 证据来源
 

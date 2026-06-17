@@ -14,11 +14,19 @@ P3
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
 无，非 P1
+
+## 修复记录
+
+- 2026-06-18 03:04 CST 再次修复：
+  - 共享 `sanitize_user_visible_output(...)` 现将“失败降级说明”和“成功校验背书”拆成两类规则处理：失败句型继续统一收口为 `主行情源本轮未返回可用结果，已改用公开页面补充校验`，成功句型则改写为不含内部工具名的“已完成校验”表达，不再把 `data_fetch quote` 成功样本误改成失败口径。
+  - 新增回归 `sanitize_user_visible_output_rewrites_market_data_verified_copy`，并扩展既有 `sanitize_user_visible_output_rewrites_market_data_fallback_variants`，锁住 `data_fetch` / `StockAnalysis` / `quote` 句族的失败与成功两条路径。
+  - 验证通过：`cargo test -p hone-channels sanitize_user_visible_output_rewrites_market_data_fallback_variants --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_rewrites_market_data_verified_copy --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`。
+  - 本轮未重启当前 Feishu 服务，也不把当前机器 live 运行态当作恢复证据；状态更新为代码级 `Fixed`，后续若部署后仍有新的内部行情工具名进入最终回复，再基于新样本重新打开。
 
 ## 证据来源
 

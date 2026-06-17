@@ -289,6 +289,12 @@ static RE_INTERNAL_TOOLING_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock::new
     )
     .expect("valid regex")
 });
+static RE_INTERNAL_RUNTIME_PROGRESS_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r#"[^\n。！？]*(?:本机没有\s*python(?:\s*命令)?|改用\s*python3|已加载股票研究流程|Hone\s*的实时检索工具|实时检索工具再查一遍|把(?:数据|结果|内容)补进[^。\n！？]*(?:画像|公司画像)|本地没有已有的[^。\n！？]*公司画像|检查本地是否已有[^。\n！？]*公司画像|我先核(?:对|验|一下)[^。\n！？]*(?:对应实体|股价口径|财报|指引|背景|公司表述)|沉淀成[^。\n！？]*(?:画像|公司画像)|沉淀为[^。\n！？]*(?:画像|公司画像)|我会新增[^。\n！？]*(?:长期画像|公司画像))[^\n。！？]*[。！？]?"#,
+    )
+    .expect("valid regex")
+});
 static RE_CRON_TOOL_UNAVAILABLE_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
         r#"(?:[^\n。！？]*(?:定时任务|推送任务|cron_job|scheduled_task)[^\n。！？]*(?:工具未暴露|接口未暴露|未暴露可执行|没有暴露出来|没有拿到可操作|没有写入接口|没有\s*cron_job|没有\s*scheduled_task|工具列表里没有|没有可用的[^。！？\n]*(?:入口|工具)|无法真实执行|不能真实执行|不能真实创建|不能直接完成自动创建|没有成功创建|不能确认[^。！？\n]*创建成功)[^\n。！？]*|[^\n。！？]*(?:没有\s*cron_job|没有\s*scheduled_task|工具列表里没有)[^\n。！？]*(?:cron_job|scheduled_task|定时任务|推送任务)[^\n。！？]*)[。！？]?"#,
@@ -320,9 +326,21 @@ static RE_COMPANY_PROFILE_WRITTEN_LIST_COPY: LazyLock<regex::Regex> = LazyLock::
     )
     .expect("valid regex")
 });
+static RE_COMPANY_PROFILE_CREATED_LIST_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r#"已创建[:：]?\s*(?:(?:[-*]\s*)?\d+\.\s*公司画像(?:\s|$|[\n\r，,；;。:：])*){1,}"#,
+    )
+    .expect("valid regex")
+});
 static RE_MARKET_DATA_FALLBACK_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
-        r#"(?i)(?:[^。\n；]*(?:专用\s*)?data_fetch[^。\n；]*(?:未返回|不可用|校验)[^。\n；]*|[^。\n；]*未取得[^。\n；]*data_fetch[^。\n；]*返回[^。\n；]*|[^。\n]*未能取得新的\s*data_fetch\s*/\s*网页行情返回[^。\n]*|[^。\n]*data_fetch\s+quote[^。\n]*|[^。\n；]*(?:专用行情工具|可用行情接口|主行情源)[^。\n；]*(?:未返回|未取得|不可用)[^。\n；]*(?:stockanalysis|页面补充校验|公开页面|网页源|行情页|校验)[^。\n；]*)"#,
+        r#"(?i)(?:[^。\n；]*(?:专用\s*)?data_fetch[^。\n；]*(?:未返回|不可用)[^。\n；]*|[^。\n；]*未取得[^。\n；]*data_fetch[^。\n；]*返回[^。\n；]*|[^。\n]*未能取得新的\s*data_fetch\s*/\s*网页行情返回[^。\n]*|[^。\n；]*(?:专用行情工具|可用行情接口|主行情源)[^。\n；]*(?:未返回|未取得|不可用)[^。\n；]*(?:stockanalysis|页面补充校验|公开页面|网页源|行情页|校验)[^。\n；]*)"#,
+    )
+    .expect("valid regex")
+});
+static RE_MARKET_DATA_VERIFIED_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r#"(?i)(?:本轮使用\s*data_fetch\s+quote\s+校验|本轮\s*\d+\s*支价格和下一次财报日期均由\s*data_fetch\s+quote\s+返回|本轮\s*data_fetch\s+已返回最新可得\s*quote)"#,
     )
     .expect("valid regex")
 });
@@ -544,6 +562,7 @@ fn rewrite_user_visible_internal_copy(text: &str) -> (String, bool) {
         &RE_INTERNAL_USER_INFO_IDENTITY_COPY_SENTENCE,
         &RE_INTERNAL_USER_INFO_STORAGE_ENUM_COPY_SENTENCE,
         &RE_INTERNAL_TOOLING_COPY_SENTENCE,
+        &RE_INTERNAL_RUNTIME_PROGRESS_COPY_SENTENCE,
     ] {
         let next = re.replace_all(&rewritten, "");
         if next != rewritten {
@@ -557,10 +576,15 @@ fn rewrite_user_visible_internal_copy(text: &str) -> (String, bool) {
         (&RE_COMPANY_PROFILE_UPDATE_COPY, "把本轮更新补进公司画像"),
         (&RE_COMPANY_PROFILE_WRITE_COPY, "沉淀到公司画像"),
         (&RE_COMPANY_PROFILE_WRITTEN_LIST_COPY, "已写入公司画像"),
+        (&RE_COMPANY_PROFILE_CREATED_LIST_COPY, "已创建公司画像"),
         (&RE_COMPANY_PROFILE_COPY_GLITCH, "已沉淀为公司画像"),
         (
             &RE_MARKET_DATA_FALLBACK_COPY,
             "主行情源本轮未返回可用结果，已改用公开页面补充校验",
+        ),
+        (
+            &RE_MARKET_DATA_VERIFIED_COPY,
+            "本轮价格与财报日期已完成校验",
         ),
     ] {
         let next = re.replace_all(&rewritten, replacement);
@@ -1344,6 +1368,13 @@ mod tests {
         assert_eq!(bullet_sanitized.content, "ABSI 画像已更新。\n已写入公司画像");
         assert!(!bullet_sanitized.content.contains("1.公司画像"));
         assert!(!bullet_sanitized.content.contains("2.公司画像"));
+
+        let created_raw = "SPCX 画像已更新。\n已创建：\n1.公司画像\n2.公司画像";
+        let created_sanitized = sanitize_user_visible_output(created_raw);
+        assert!(created_sanitized.removed_internal);
+        assert_eq!(created_sanitized.content, "SPCX 画像已更新。\n已创建公司画像");
+        assert!(!created_sanitized.content.contains("1.公司画像"));
+        assert!(!created_sanitized.content.contains("2.公司画像"));
     }
 
     #[test]
@@ -1389,7 +1420,7 @@ mod tests {
             ),
             (
                 "本轮使用 data_fetch quote 校验；当前为周六晚，对应最新可得美股价格为 2026-06-12 美股收盘附近行情。",
-                "主行情源本轮未返回可用结果，已改用公开页面补充校验；当前为周六晚，对应最新可得美股价格为 2026-06-12 美股收盘附近行情。",
+                "本轮价格与财报日期已完成校验；当前为周六晚，对应最新可得美股价格为 2026-06-12 美股收盘附近行情。",
             ),
         ] {
             let sanitized = sanitize_user_visible_output(raw);
@@ -1398,6 +1429,42 @@ mod tests {
             assert!(!sanitized.content.contains("data_fetch"));
             assert!(!sanitized.content.contains("StockAnalysis"));
         }
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_rewrites_market_data_verified_copy() {
+        let raw =
+            "本轮 25 支价格和下一次财报日期均由 data_fetch quote 返回，价格口径统一到最新可得行情。";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(sanitized.removed_internal);
+        assert_eq!(
+            sanitized.content,
+            "本轮价格与财报日期已完成校验，价格口径统一到最新可得行情。"
+        );
+        assert!(!sanitized.content.contains("data_fetch"));
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_strips_internal_runtime_progress_copy() {
+        let raw = "本机没有 python 命令，我改用 python3 继续查。已加载股票研究流程。现在用 Hone 的实时检索工具再查一遍。我会把数据补进老铺黄金画像。先说结论：老铺黄金本轮更应该以公告口径为准。";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(sanitized.removed_internal);
+        assert_eq!(sanitized.content, "先说结论：老铺黄金本轮更应该以公告口径为准。");
+        assert!(!sanitized.content.contains("python3"));
+        assert!(!sanitized.content.contains("实时检索工具"));
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_strips_natural_language_profile_progress_copy() {
+        let raw = "我先核对泛林集团对应实体、最新财报/指引和近期关于产能与需求的公司表述。本地没有已有的 LRCX 公司画像。我会把这轮形成的长期主线沉淀成画像。LRCX 在 AI 半导体设备链里仍是刻蚀核心资产。";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(sanitized.removed_internal);
+        assert_eq!(
+            sanitized.content,
+            "LRCX 在 AI 半导体设备链里仍是刻蚀核心资产。"
+        );
+        assert!(!sanitized.content.contains("公司画像"));
+        assert!(!sanitized.content.contains("沉淀成画像"));
     }
 
     #[test]

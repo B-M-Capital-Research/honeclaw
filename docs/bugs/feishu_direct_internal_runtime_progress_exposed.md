@@ -14,11 +14,19 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## GitHub Issue
 
 - 无，非 P1
+
+## 修复记录
+
+- 2026-06-18 03:04 CST 代码级修复：
+  - 共享 `sanitize_user_visible_output(...)` 新增净化本机命令切换、内部研究流程和画像沉淀前言，覆盖 `本机没有 python 命令，我改用 python3`、`已加载股票研究流程`、`Hone 的实时检索工具`、`把数据补进...画像` 等真实复发表达。
+  - 新增回归 `sanitize_user_visible_output_strips_internal_runtime_progress_copy`，锁住“去内部执行过程、保留业务结论”的行为。
+  - 验证通过：`cargo test -p hone-channels sanitize_user_visible_output_strips_internal_runtime_progress_copy --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`。
+  - 本轮未重启 live 服务，也不把当前机器运行态当作恢复证据；状态更新为代码级 `Fixed`，后续若部署后仍有新的自然语言内部流程前言进入 final，再基于新样本重新打开。
 
 ## 证据来源
 

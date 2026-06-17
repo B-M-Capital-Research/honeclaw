@@ -3,7 +3,7 @@
 - **发现时间**: 2026-06-08 23:04 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，非 P1
 
 ## 证据来源
@@ -78,6 +78,12 @@
 - 后续巡检若仅在 `tool_call_update.rawOutput` 内看到这类信息，但最终用户可见 final 已自然化，不应补充为本缺陷复发。
 
 ## 修复记录
+
+- 2026-06-18 03:04 CST 再次修复：
+  - 共享 `sanitize_user_visible_output(...)` 继续扩展自然语言内部执行进度净化，新增覆盖 `本地没有已有的 ... 公司画像`、`我先核对...`、`沉淀成画像`、`我会新增...长期画像` 等无路径、无 `skill` 关键词的画像存储 / 调研前言句式。
+  - 新增回归 `sanitize_user_visible_output_strips_natural_language_profile_progress_copy`，锁住 2026-06-18 02:51 CST Web direct LRCX 样本；共享 `sanitize_user_visible_output_strips_internal_runtime_progress_copy` 同步覆盖 Feishu direct 的本机命令 / 内部流程前言。
+  - 验证通过：`cargo test -p hone-channels sanitize_user_visible_output_strips_natural_language_profile_progress_copy --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_strips_internal_runtime_progress_copy --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`。
+  - 本轮未重启 live 服务，也不把当前机器运行态当作恢复证据；状态更新为代码级 `Fixed`，后续若部署后仍有新的自然语言内部存储动作进入 final，再基于新样本重新打开。
 
 - 2026-06-18 03:02 CST 修复结论回退：
   - 最近四小时 Web direct 真实 final 再次外露本地画像存在性和沉淀动作，说明 2026-06-09 修复未覆盖无路径、无 `skill` 关键词的自然语言化内部存储过程。
