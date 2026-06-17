@@ -6,6 +6,11 @@
 - **状态**: Fixed
 - **GitHub Issue**: 无
 - **修复结论复核**:
+- `2026-06-17 23:02 CST` 本轮继续观察到 SQLite 会话镜像落后于真实 ACP 会话源：
+  - `data/sessions.sqlite3` 中 `session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(imported_at)=2026-06-17T10:37:41.827657+08:00`，`cron_job_runs.max(executed_at)=2026-06-17T11:01:42.353141+08:00`。
+  - 但 `data/runtime/logs/acp-events.log` 在 19:00-23:02 CST 窗口内有 55 个 ACP session 启动、55 个 prompt、220 个 response、55 个 `stopReason=end_turn`，最近事件到 23:01 CST。
+  - 同窗 `data/sessions/*.json` 有 5 个会话源文件在 20:00-21:21 CST 更新。
+  - 结论同 19:01 CST：当前巡检仍不能仅依赖 `sessions.updated_at` / `session_messages.timestamp` 判断最近四小时是否安静；因当前代码已有启动回填修复且本轮未证明已重启 / 部署到新代码后仍失效，状态仍维持代码级 `Fixed`，不回退为 `New`。
 - `2026-06-17 19:01 CST` 本轮在当前机器再次观察到 SQLite 会话镜像落后于真实 JSON / ACP 会话源：
   - `data/sessions.sqlite3` 中 `session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(imported_at)=2026-06-17T10:37:41.827657+08:00`，`cron_job_runs.max(executed_at)=2026-06-17T11:01:42.353141+08:00`。
   - 但 `data/runtime/logs/acp-events.log` 文件 mtime 到 18:33 CST，15:17-18:33 CST 窗口内有 43 个 ACP session 启动、18 个 `stopReason=end_turn` 与约 20k 条 `session/update`。
