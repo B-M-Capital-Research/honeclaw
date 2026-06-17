@@ -6,6 +6,12 @@
 - **状态**: Fixed
 - **GitHub Issue**: 无
 - **修复结论复核**:
+- `2026-06-17 19:01 CST` 本轮在当前机器再次观察到 SQLite 会话镜像落后于真实 JSON / ACP 会话源：
+  - `data/sessions.sqlite3` 中 `session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(imported_at)=2026-06-17T10:37:41.827657+08:00`，`cron_job_runs.max(executed_at)=2026-06-17T11:01:42.353141+08:00`。
+  - 但 `data/runtime/logs/acp-events.log` 文件 mtime 到 18:33 CST，15:17-18:33 CST 窗口内有 43 个 ACP session 启动、18 个 `stopReason=end_turn` 与约 20k 条 `session/update`。
+  - 同窗 `data/sessions/*.json` 有 9 个会话源文件在 15:30-17:48 CST 更新，示例包括 `Actor_feishu__direct__ou_5f44eaaa05cec98860b5336c3bddcc22d1.json`（17:48 CST）、`Actor_feishu__direct__ou_5f64ee7ca7af22d44a83a31054e6fb92a3.json`（16:50 CST）、`Actor_feishu__direct__ou_5fe31244b1208749f16773dce0c822801a.json`（15:36 CST）。
+  - 结论：当前巡检不能仅依赖 `sessions.updated_at` / `session_messages.timestamp` 判断最近四小时是否安静；本轮已改用 JSON 与 ACP 日志补充真实会话核对。
+  - 因 2026-05-11 已有代码级修复覆盖 `runtime_backend=sqlite + shadow_write=false` 的启动 JSON -> SQLite 回填，本轮证据仍按当前 live / 索引滞后观察保留，不直接把状态从 `Fixed` 回退为 `New`。后续只有在确认已重启/部署到当前代码后仍不追平，才应重新打开。
 - `2026-05-11 23:02 CST` 本轮在当前机器未重启 live 数据中继续看到 `sessions/session_messages` 镜像停在 `2026-04-27T16:54:20+08:00`，而同一 sqlite 库的 `cron_job_runs` 已推进到 `2026-05-11T23:01:45.296030+08:00`，最近四小时真实 JSON 会话也继续更新到 `23:01 CST`。该证据保留为旧运行态观察；鉴于当前仓库代码已覆盖 `runtime_backend=sqlite + shadow_write=false` 的启动 JSON -> SQLite 回填，本轮不据此重新打开，状态维持 `Fixed`。
 - `2026-05-11 19:02 CST` 本轮在当前机器未重启 live 数据中继续看到 `sessions/session_messages` 镜像停在 `2026-04-27T16:54:20+08:00`，而同一 sqlite 库的 `cron_job_runs` 已推进到 `2026-05-11T19:01:38.264435+08:00`，最近四小时真实 JSON 会话也继续更新到 `19:01 CST`。该证据保留为旧运行态观察；鉴于当前仓库代码已覆盖 `runtime_backend=sqlite + shadow_write=false` 的启动 JSON -> SQLite 回填，本轮不据此重新打开，状态维持 `Fixed`。
 - `2026-05-11 15:05 CST` 本轮按当前自动化约束重新复核：当前机器旧运行态 / 未重启进程的 live 数据不再作为重新打开本单的依据。仓库代码层面已满足本单的可维护闭环：
