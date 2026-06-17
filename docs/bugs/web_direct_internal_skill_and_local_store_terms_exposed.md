@@ -3,11 +3,18 @@
 - **发现时间**: 2026-06-08 23:04 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无，非 P1
 
 ## 证据来源
 
+- `data/runtime/logs/acp-events.log`
+  - 时间窗：2026-06-17 23:01-2026-06-18 03:01 CST。
+  - session_id: `Actor_web__direct__web-user-12b12fcf502c`
+    - `2026-06-18 02:51 CST` assistant final 以 `stopReason=end_turn` 收口，业务上回答了 LRCX / 泛林集团在 AI 半导体设备链中的位置，但开头写出“本地没有已有的 LRCX 公司画像”“我会把这轮形成的长期主线沉淀成画像”等本地画像存储与执行过程口径。
+    - 同一 web session 在 `2026-06-18 02:51 CST` 的前一轮 final 也把“我先核对泛林集团对应实体、最新财报/指引和近期关于产能与需求的公司表述”这类执行进度拼进最终用户可见正文。
+  - 同窗 ACP 重构出 24 条用户可见 assistant final，全部以 `end_turn` 收口；未见 Web direct response error、stream disconnect、quota、panic、provider 原始错误、绝对路径或 token 外露。
+  - `data/sessions.sqlite3` 在同窗没有 `session_messages` 新增，Web direct 证据来自 ACP 流式日志重构。
 - `data/runtime/logs/acp-events.log`
   - 时间窗：2026-06-08 20:11-20:30 CST
   - session_id: `Actor_web__direct__web-user-879a3b18fce2`
@@ -41,6 +48,7 @@
 
 - 回复完成了投研分析、持仓复盘和风险提示，用户主要问题被回答。
 - 但最终可见文本包含内部能力编排与存储细节，包括 skill 名未激活、本地账本目录、本地 json 文件和工具过滤异常。
+- 2026-06-18 03:02 CST 复核显示，修复后仍有 Web direct final 外露更自然语言化的本地画像存储 / 沉淀动作，虽不再出现原始 `skill 未激活` 或 `data/portfolio` 目录名，但仍把内部长期画像写入计划当成用户态正文。
 - 这类文本没有泄露绝对路径或原始 token，但仍把内部运行机制当作用户态解释，影响产品专业度。
 
 ## 用户影响
@@ -54,6 +62,7 @@
 
 - 直接证据只能证明 Web direct answer 阶段把内部执行状态和本地存储口径写入最终用户可见文本。
 - 初步判断是共享用户可见输出净化已覆盖部分 scheduler skill 降级前言和公司画像路径，但 Web direct 对自然语言形式的 `skill 未激活`、`本地 data/portfolio`、`本地 json 文件` 等口径缺少足够过滤或改写。
+- 2026-06-18 03:02 CST 的复发说明现有净化规则仍偏短语匹配，覆盖了显式 `skill` / 路径 / json 口径，但没有覆盖“本地没有画像 / 沉淀成画像 / 写入长期跟踪框架”这类无路径的内部存储动作。
 - 该问题不同于 `web_scheduler_skill_load_failure_phrase_exposed.md`：本轮是 Web direct 直聊最终回复，且同时包含本地存储口径外露；旧缺陷只覆盖 Web scheduler 的“技能未加载 / 当前运行器”降级措辞。
 - 该问题也不同于 raw tool output 外泄：本轮没有原始 JSON、工具日志、绝对路径、provider 报错或 `<think>` 进入 final，而是模型自然语言层面复述内部执行过程。
 
@@ -63,10 +72,16 @@
   - `技能名当前没有激活`、`某 skill/tool 未激活`、`改用某技能框架`
   - `本地 data/...`、`本地 json 文件`、`账本文件已定位到...`
   - `工具返回了全市场列表而不是按标的过滤`
+  - `本地没有已有公司画像`、`沉淀成画像`、`写入长期跟踪框架`、`记录本轮结论` 等画像存储 / 执行过程句式
 - 对 Web direct 增加回归样本：内部 skill 不可用、持仓本地文件与权威工具不一致时，最终回复应只保留业务化数据口径，不出现内部目录、文件格式或 skill 激活状态。
+- 增加 Web direct 公司画像沉淀回归：即使内部写入或更新画像，final 也只说“后续可沿用本轮框架”这类产品化口径，不出现本地画像是否存在或写入动作。
 - 后续巡检若仅在 `tool_call_update.rawOutput` 内看到这类信息，但最终用户可见 final 已自然化，不应补充为本缺陷复发。
 
 ## 修复记录
+
+- 2026-06-18 03:02 CST 修复结论回退：
+  - 最近四小时 Web direct 真实 final 再次外露本地画像存在性和沉淀动作，说明 2026-06-09 修复未覆盖无路径、无 `skill` 关键词的自然语言化内部存储过程。
+  - 主功能链路仍正常，按质量性 `P3 / New` 重新进入活跃待修复；非 P1，不创建 GitHub Issue。
 
 - 2026-06-09 已修复：
   - 共享 `sanitize_user_visible_output(...)` 新增内部执行说明剥离规则：会过滤 `stock_research` / `skill` 未激活、改用其它技能框架、`data/portfolio` / 本地 `json` 文件口径，以及“返回全市场列表而不是按标的过滤”等自然语言内部说明。

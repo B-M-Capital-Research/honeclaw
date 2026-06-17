@@ -23,6 +23,15 @@
 ## 证据来源
 
 - `data/runtime/logs/acp-events.log`
+  - 巡检窗口：2026-06-17 23:01-2026-06-18 03:01 CST。
+  - 本窗从 ACP 流式日志重构出 24 条用户可见 assistant final，全部以 `stopReason=end_turn` 收口；未见未回复、response error、stream disconnect、quota、panic 或 provider 原始错误。
+  - 其中多条 Feishu direct final 继续把执行进度和内部沉淀动作写进用户可见正文：
+    - `2026-06-17 23:59 CST` session_id `Actor_feishu__direct__ou_5f64ee7ca7af22d44a83a31054e6fb92a3`，VST 问答开头连续写出“我先核一下 VST 当前股价口径、业务/财务和最新利率背景”“接下来我再看一下你本地有没有 VST 画像”等执行过程。
+    - `2026-06-18 00:11 CST` session_id `Actor_feishu__direct__ou_5f9f2cd3505aab8fed0a6ffd582df285b1`，FCEL 问答写出“我会把这次 FCEL 的长期跟踪重点沉淀成公司画像”。
+    - `2026-06-18 00:24 CST` 同 session 的 FCEL / FLNC 对比写出“我会新增 FLNC 的长期画像和本轮 FCEL/FLNC 对比事件”。
+    - `2026-06-18 00:46 CST` session_id `Actor_feishu__direct__ou_5f62439dbed2b381c0023e70a381dbd768`，EOSE 深度研究写出“这个问题属于单股深度研究，也会检查本地是否已有公司画像”“我会把本轮形成的长期投资主线、估值纪律和证伪条件沉淀成 EOSE 画像”。
+  - 上述样本的业务回答主体仍完整，且无本机绝对路径、token、原始工具 JSON 或 provider 报错外露；问题继续限定在用户可见文案边界。
+- `data/runtime/logs/acp-events.log`
   - 巡检窗口：2026-06-17 19:00-23:02 CST。
   - session_id: `Actor_feishu__direct__ou_5f6ac070b0b574f2bc3ba49f9678b675a3`。
   - ACP 事件在 2026-06-17T13:22:56Z 以 `stopReason=end_turn` 收口，说明 Feishu direct 链路完成。
@@ -50,6 +59,7 @@
 
 - 回复主体回答了用户问题，并明确区分“结构化财务口径”和“官方 PDF 直链未稳定打开”。
 - 但 final 前段把多句执行过程当作用户态正文输出，暴露本机命令状态、内部工具名和画像沉淀流程。
+- 2026-06-18 03:02 CST 复核显示，外露形态从“本机命令 / 工具名”扩展到更自然语言化的执行进度和画像沉淀动作，例如先核验、检查本地画像、新增画像、沉淀长期跟踪框架等。
 - 这不是链路失败：没有未回复、空回复、错投、重复投递、原始 provider 错误或内部 prompt 泄露证据。
 
 ## 用户影响
@@ -68,5 +78,6 @@
 ## 下一步建议
 
 - 扩展共享用户可见净化或 Feishu direct final guidance，过滤 / 改写“本机没有 python / 改用 python3”“Hone 的实时检索工具”“已加载股票研究流程”“补进公司画像”等内部执行说明。
+- 同步覆盖自然语言化的执行进度句式，例如“我先核验 / 我会检查本地画像 / 我会新增画像 / 沉淀成公司画像 / 记录到长期跟踪框架”，最终回复应直接呈现已完成后的业务结论。
 - 对 Feishu direct 投研问答增加回归：当 runner 需要切换命令或内部工具时，最终回复只保留数据来源和口径边界，不出现命令、工具名或画像写入过程。
 - 后续巡检若只在 tool update / rawOutput 中看到这些词，但 final 没有外露，不应补充为本缺陷复发。
