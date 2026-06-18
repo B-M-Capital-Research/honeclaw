@@ -22,6 +22,12 @@
 
 ## 修复记录
 
+- 2026-06-18 23:03 CST 补充同根复发证据，状态保持 `New`：
+  - 19:03-23:03 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 19:36 CST Feishu direct session `Actor_feishu__direct__ou_5f10f4be9ab6fe3b7fca71f37c8cdbc2c8` 对 HPE 投研问题完成公司定位、财报、投资逻辑、风险、击球区与结论，但 final 前段写出 `本地还没有HPE画像` 与“沉淀下来”这类内部画像动作。
+  - 23:01 CST Feishu direct / scheduler actor session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 的观察池快报外露 `主行情工具返回额度限制，无法完成 data_fetch 校验`，把内部工具名与工具失败状态写进 final。
+  - 两个样本均以 `stopReason=end_turn` 收口，业务主体可用，没有空回复、错投、投递失败、原始工具 JSON、token 或本机绝对路径；问题仍限定在用户可见文案边界，按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-06-18 15:03 CST 运行态复发，状态从代码级 `Fixed` 回退为 `New`：
   - 11:03-15:03 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages` 与 `cron_job_runs` 在本窗均为 0；本轮证据来自 `data/runtime/logs/acp-events.log` 重构出的用户可见 final。
   - 15:00 CST Feishu direct session `Actor_feishu__direct__ou_5f8d3431a2b9ca4af0044ff8970fa36a52` 对三只 A 股“现在入手”问题完成行情、财务、排序、动作和证伪条件分析，并以 `stopReason=end_turn` 收口。
@@ -36,6 +42,11 @@
 
 ## 证据来源
 
+- `data/runtime/logs/acp-events.log`
+  - 巡检窗口：2026-06-18 19:03-23:03 CST。
+  - ACP 同窗有 55 次 prompt、55 次 `stopReason=end_turn`，未见 response error、runner error、stream disconnect 或 panic 进入用户可见 final。
+  - `Actor_feishu__direct__ou_5f10f4be9ab6fe3b7fca71f37c8cdbc2c8` 在 19:36 CST 附近的 HPE 投研 final 外露 `本地还没有HPE画像` 与画像沉淀动作；回复主体完整分析 HPE 的 AI 服务器、Juniper 网络业务、财报和风险。
+  - `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 在 23:01 CST 附近的核心股池快报 final 外露 `data_fetch` 与主行情工具额度限制；回复主体仍输出观察池价格边界、击球区和来源口径。
 - `data/runtime/logs/acp-events.log`
   - 巡检窗口：2026-06-18 11:03-15:03 CST。
   - session_id: `Actor_feishu__direct__ou_5f8d3431a2b9ca4af0044ff8970fa36a52`。

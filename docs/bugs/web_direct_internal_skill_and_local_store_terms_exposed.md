@@ -9,6 +9,14 @@
 ## 证据来源
 
 - `data/runtime/logs/acp-events.log`
+  - 时间窗：2026-06-18 19:03-23:03 CST。
+  - session_id: `Actor_web__direct__web-user-e05f5e5f74a3`
+    - `2026-06-18 20:02 CST` 用户要求分析 NVDA 最新消息与基本面；assistant final 以 `stopReason=end_turn` 收口，完成行情、官方消息、客户线索、资本开支压力和结论。
+    - 但 final 前段写出“我会把今天的有效增量写回 NVDA 公司画像”，把内部画像写入动作当作用户态正文。
+  - session_id: `Actor_web__direct__web-user-2dca3d98a31b`
+    - `2026-06-18 22:04 CST` 用户要求分析 AAOI；assistant final 完成基本面、估值、多空逻辑和结论，但前段写出 `我没有找到本地已有的 AAOI 公司画像` 与“沉淀成 AAOI 画像”。
+  - 两个样本均正常完成业务回答并收口，没有空回复、投递失败、错投、原始工具 JSON、token 或绝对路径外露；问题仍只影响 Web direct 用户可见文案边界，保持 `P3 / New`。
+- `data/runtime/logs/acp-events.log`
   - 时间窗：2026-06-18 15:03-19:03 CST。
   - session_id: `Actor_web__direct__web-user-e1ed2ef04d14`
     - `2026-06-18 15:40 CST` 用户上传持仓截图并要求用中文给出持仓建议；ACP chunks 显示该轮最终以 `stopReason=end_turn` 收口。
@@ -86,6 +94,11 @@
 - 后续巡检若仅在 `tool_call_update.rawOutput` 内看到这类信息，但最终用户可见 final 已自然化，不应补充为本缺陷复发。
 
 ## 修复记录
+
+- 2026-06-18 23:03 CST 补充同根复发证据：
+  - 最近四小时 Web direct 投研 final 继续外露“写回 / 沉淀公司画像”“本地已有画像”等自然语言内部存储动作。
+  - 代表样本为 20:02 CST NVDA 投研与 22:04 CST AAOI 投研；两个回复主体均完整，ACP `end_turn` 收口，不影响主功能链路。
+  - 因此状态保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
 
 - 2026-06-18 19:03 CST 修复结论回退：
   - 最近四小时 Web direct 真实 final 再次外露本机命令可用性和内部行情读取排障过程，说明 03:04 CST 共享净化层代码级修复未覆盖 Web direct 图片 / 持仓分析场景里的 `本地环境没有 python 命令，我改用 python3` 句式。

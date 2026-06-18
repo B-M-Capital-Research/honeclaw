@@ -22,6 +22,11 @@ New
 
 ## 修复记录
 
+- 2026-06-18 23:03 CST 补充同根复发证据，状态保持 `New`：
+  - 19:03-23:03 CST `data/sessions.sqlite3` 仍未追平最近真实会话；本轮以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 23:01 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 的核心股池快报以 `stopReason=end_turn` 收口，但 final 前段写出 `主行情工具返回额度限制，无法完成 data_fetch 校验`。
+  - 该 final 正常输出核心股与拓展股池、击球区、财报日期和数据口径边界；没有投递失败、空回复、错投、原始 provider 报错或链路级数据破坏证据。问题仍是 scheduler final 外露内部工具名 / 工具状态，保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-06-18 15:03 CST 补充同根复发证据，状态保持 `New`：
   - 11:03-15:03 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages` 与 `cron_job_runs` 在本窗均为 0；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
   - 12:00 CST Feishu scheduler `每日公司资讯与分析总结`（`session_id=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5`）以 `stopReason=end_turn` 收口，final 前段写出 `本地长期画像目录当前没有可读内容`，并说明会为 AI 基建与医疗 AI 跟踪链补记录。
@@ -47,6 +52,11 @@ New
 
 ## 证据来源
 
+- `data/runtime/logs/acp-events.log`
+  - 2026-06-18 23:03 CST 巡检窗口：2026-06-18 19:03-23:03 CST。
+  - ACP 同窗有 55 次 prompt、55 次 `stopReason=end_turn`，未见 response error、runner error、stream disconnect、quota、panic 或 provider 原始错误进入用户可见 final。
+  - 23:01 CST `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` final 写出 `主行情工具返回额度限制，无法完成 data_fetch 校验`，随后以“今日 09:00 已校验参考”输出观察池快报。
+  - 该样本正常完成快报主体和风险口径，没有旧价格被包装成实时价的证据；复发仍集中在内部行情工具名 / 工具失败状态进入用户可见 scheduler final。
 - `data/runtime/logs/acp-events.log`
   - 2026-06-18 15:03 CST 巡检窗口：2026-06-18 11:03-15:03 CST。
   - 同窗 `data/sessions.sqlite3` 未追平最近真实会话；`data/sessions/*.json` 仅 `Actor_feishu__direct__ou_5f8d3431a2b9ca4af0044ff8970fa36a52.json` 在 15:02 CST 更新，因此本轮仍使用 ACP 事件重构 final。
