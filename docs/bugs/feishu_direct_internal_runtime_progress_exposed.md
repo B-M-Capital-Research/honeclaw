@@ -14,13 +14,19 @@
 
 ## 状态
 
-- Fixed
+- New
 
 ## GitHub Issue
 
 - 无，非 P1
 
 ## 修复记录
+
+- 2026-06-18 15:03 CST 运行态复发，状态从代码级 `Fixed` 回退为 `New`：
+  - 11:03-15:03 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages` 与 `cron_job_runs` 在本窗均为 0；本轮证据来自 `data/runtime/logs/acp-events.log` 重构出的用户可见 final。
+  - 15:00 CST Feishu direct session `Actor_feishu__direct__ou_5f8d3431a2b9ca4af0044ff8970fa36a52` 对三只 A 股“现在入手”问题完成行情、财务、排序、动作和证伪条件分析，并以 `stopReason=end_turn` 收口。
+  - 但 final 前段继续外露内部流程和本地上下文动作，包括 `本地只有画像目录`、`已加载 stock_research 技能`、以及“正式答复前把长期判断沉淀到公司画像”等表达。
+  - 该样本晚于 2026-06-18 03:04 CST 共享净化层修复记录；业务回答主体可用、投递 / 收口正常、没有空回复、错投或链路级数据破坏证据，因此仍为质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
 
 - 2026-06-18 03:04 CST 代码级修复：
   - 共享 `sanitize_user_visible_output(...)` 新增净化本机命令切换、内部研究流程和画像沉淀前言，覆盖 `本机没有 python 命令，我改用 python3`、`已加载股票研究流程`、`Hone 的实时检索工具`、`把数据补进...画像` 等真实复发表达。
@@ -30,6 +36,13 @@
 
 ## 证据来源
 
+- `data/runtime/logs/acp-events.log`
+  - 巡检窗口：2026-06-18 11:03-15:03 CST。
+  - session_id: `Actor_feishu__direct__ou_5f8d3431a2b9ca4af0044ff8970fa36a52`。
+  - ACP 事件在 2026-06-18T07:04:27Z 前后以 `stopReason=end_turn` 收口；同窗未见 response error、runner error、stream disconnect、quota、panic 或 provider 原始错误进入用户可见 final。
+  - 用户请求是比较生益电子、沪电股份、兆易创新当前是否适合入手；assistant final 完成三家公司行情、估值、财务、排序、风险和证伪条件。
+  - 但 final 前段写出“本地只有画像目录，暂时没看到这三只的现成画像文件”“已加载 stock_research 技能”“正式答复前我会把这轮可复用的长期判断沉淀到公司画像”等内部状态 / 执行过程。
+  - 该回复没有本机绝对路径、token、原始工具 JSON、思维痕迹或 provider 报错外露；问题仍限定在用户可见文案边界。
 - `data/runtime/logs/acp-events.log`
   - 巡检窗口：2026-06-17 23:01-2026-06-18 03:01 CST。
   - 本窗从 ACP 流式日志重构出 24 条用户可见 assistant final，全部以 `stopReason=end_turn` 收口；未见未回复、response error、stream disconnect、quota、panic 或 provider 原始错误。

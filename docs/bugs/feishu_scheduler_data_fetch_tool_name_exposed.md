@@ -22,6 +22,12 @@ New
 
 ## 修复记录
 
+- 2026-06-18 15:03 CST 补充同根复发证据，状态保持 `New`：
+  - 11:03-15:03 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages` 与 `cron_job_runs` 在本窗均为 0；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 12:00 CST Feishu scheduler `每日公司资讯与分析总结`（`session_id=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5`）以 `stopReason=end_turn` 收口，final 前段写出 `本地长期画像目录当前没有可读内容`，并说明会为 AI 基建与医疗 AI 跟踪链补记录。
+  - 该样本正常输出 TEM / CAI / NBIS / CRWV / NVDA / GOOGL / TSM 等观察结论、目标价 / 催化 / 财报节点和来源，没有投递失败、空回复、错投、会话悬挂或链路级数据破坏证据。
+  - 问题与 08:30 / 09:30 CST 样本同根，仍是 scheduler final 外露本地画像 / 内部流程动作；不影响主功能链路，保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-06-18 11:04 CST 补充同根复发证据，状态保持 `New`：
   - 07:01-11:04 CST 真实窗口中，`data/sessions.sqlite3` 仍未追平最近会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`cron_job_runs.max(executed_at)=2026-06-17T11:01:42.353141+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
   - 09:30 CST Feishu scheduler `美股收盘资金流复盘`（`session_id=Actor_feishu__direct__ou_5f62439dbed2b381c0023e70a381dbd768`）以 `stopReason=end_turn` 收口，final 开头写出 `已加载市场分析流程`，尾部来源写出 `Hone data_fetch：SPY、QQQ、11只 Select Sector SPDR ETF 收盘行情`。
@@ -41,6 +47,12 @@ New
 
 ## 证据来源
 
+- `data/runtime/logs/acp-events.log`
+  - 2026-06-18 15:03 CST 巡检窗口：2026-06-18 11:03-15:03 CST。
+  - 同窗 `data/sessions.sqlite3` 未追平最近真实会话；`data/sessions/*.json` 仅 `Actor_feishu__direct__ou_5f8d3431a2b9ca4af0044ff8970fa36a52.json` 在 15:02 CST 更新，因此本轮仍使用 ACP 事件重构 final。
+  - ACP 同窗有 14 个 session、10 次 `stopReason=end_turn`，未见 response error、runner error、stream disconnect、quota、panic 或 provider 原始错误进入用户可见 final。
+  - 12:00 CST Feishu scheduler `每日公司资讯与分析总结`（`session_id=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5`）final 写出 `本地长期画像目录当前没有可读内容`，并继续说明会补 AI 基建与医疗 AI 跟踪链记录。
+  - 该 final 主体完成公司资讯、分析师口径、下一次财报日期、分层结论和来源列表；没有旧价格成功态、投递失败、空回复、错投或功能阻断证据。
 - `data/sessions.sqlite3` -> `cron_job_runs`
   - `run_id=39170`
   - `job_name=核心观察股池晚间快报`
