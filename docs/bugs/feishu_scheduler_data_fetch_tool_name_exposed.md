@@ -22,6 +22,11 @@ New
 
 ## 修复记录
 
+- 2026-06-19 07:04 CST 补充同根复发证据，状态保持 `New`：
+  - 03:02-07:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 06:00 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f11da38ad70c47cf87c0b106b6408b190` 的美股盘后复盘以 `stopReason=end_turn` 收口，但 final 前段写出 `已加载市场分析技能` 和“把检索词改写为绝对日期口径”等内部流程动作。
+  - 该 final 正常输出指数、VIX、利率、美元、板块、AI / 半导体与宏观事件归因；没有投递失败、空回复、错投、原始 provider 报错或链路级数据破坏证据。问题仍是 scheduler final 外露内部流程状态，保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-06-18 23:03 CST 补充同根复发证据，状态保持 `New`：
   - 19:03-23:03 CST `data/sessions.sqlite3` 仍未追平最近真实会话；本轮以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
   - 23:01 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 的核心股池快报以 `stopReason=end_turn` 收口，但 final 前段写出 `主行情工具返回额度限制，无法完成 data_fetch 校验`。
@@ -52,6 +57,11 @@ New
 
 ## 证据来源
 
+- `data/runtime/logs/acp-events.log`
+  - 2026-06-19 07:04 CST 巡检窗口：2026-06-19 03:02-07:02 CST。
+  - ACP 同窗有 3 个 session、3 次 `stopReason=end_turn`，未见 response error、runner error、stream disconnect、quota、panic 或 provider 原始错误进入用户可见 final。
+  - 06:00 CST `Actor_feishu__direct__ou_5f11da38ad70c47cf87c0b106b6408b190` final 写出 `已加载市场分析技能`，并说明把检索词改写为绝对日期口径。
+  - 该样本正常完成美股 2026-06-18 收盘复盘、Juneteenth 休市口径、指数 / 波动率 / 利率 / 板块和 AI 半导体归因，没有旧价格成功态、投递失败、空回复、错投或功能阻断证据。
 - `data/runtime/logs/acp-events.log`
   - 2026-06-18 23:03 CST 巡检窗口：2026-06-18 19:03-23:03 CST。
   - ACP 同窗有 55 次 prompt、55 次 `stopReason=end_turn`，未见 response error、runner error、stream disconnect、quota、panic 或 provider 原始错误进入用户可见 final。

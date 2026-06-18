@@ -23,6 +23,13 @@
 ## 证据来源
 
 - `data/runtime/logs/web.log.2026-06-18`
+  - 巡检窗口：2026-06-19 03:02-07:02 CST。
+  - 03:02:00-07:01:09 CST 仍出现 671 条同类告警：
+    - `[LlmAudit] failed to persist function_calling audit: 配置错误: Postgres LLM audit 写入失败: error serializing parameter 3`
+  - 同窗存在非文档代码提交 `fa7f0734 Fix cloud LLM audit jsonb binding`（2026-06-19 03:07 CST），但运行日志在该提交之后仍继续出现旧错误。
+  - 本轮尚未确认当前 live web / worker 已重启并加载 `fa7f0734`，因此该证据只作为“代码级修复后的运行态待复核”记录，不直接把状态从 `Fixed` 回退为 `New`。
+  - 同窗 `data/runtime/logs/acp-events.log` 可重构 3 个 session、3 次 `stopReason=end_turn`；用户回复主链路仍有收口，故障仍集中在 LLM audit 持久化链路。
+- `data/runtime/logs/web.log.2026-06-18`
   - 巡检窗口：2026-06-18 23:03-2026-06-19 03:02 CST。
   - 23:30:06-03:01:40 CST 再次出现 684 条同类告警：
     - `[LlmAudit] failed to persist function_calling audit: 配置错误: Postgres LLM audit 写入失败: error serializing parameter 3`
@@ -51,6 +58,7 @@
 
 ## 当前实现效果
 
+- 2026-06-19 07:04 CST 最近四小时内 function-calling audit 写入继续失败 671 次；03:07 CST 代码修复提交后仍有运行态旧错误，但本轮不能确认当前服务是否已加载新二进制。
 - 2026-06-19 03:02 CST 最近四小时内 function-calling audit 写入继续失败 684 次；这不是 19:03-23:03 CST 窗口的一次性波动。
 - 日志只暴露 `error serializing parameter 3`，缺少字段名、record id、provider/model 或可脱敏定位信息。
 - 用户回复主链路仍正常收口，因此这不是直聊 / scheduler 投递 P1。
@@ -62,6 +70,7 @@
   - `upsert_llm_audit_record(...)` 改为显式使用 `tokio_postgres::types::Json(&cloud_record.record)` 绑定 `$3::jsonb`，不再把原始 `serde_json::Value` 直接作为 PostgreSQL 第 3 个参数透传。
   - 新增 `llm_audit_record_payload_encodes_as_jsonb_parameter` 回归测试，直接覆盖含 request / response / metadata 的完整 `LlmAuditRecord` payload 能按 PostgreSQL `JSONB` 参数成功编码。
   - 本修复只影响 cloud audit 持久化链路，不改用户回复收口逻辑，也不要求本轮重启当前服务。
+- `2026-06-19 07:04 CST` 运行态复核显示当前 web 日志仍有同类告警，最近到 07:01 CST；由于尚未确认 live web / worker 已部署或重启到 `fa7f0734`，本单状态仍保持代码级 `Fixed`，待新运行态再复核是否真正止住。
 
 ## 用户影响
 

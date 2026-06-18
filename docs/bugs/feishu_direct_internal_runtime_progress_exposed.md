@@ -22,6 +22,11 @@
 
 ## 修复记录
 
+- 2026-06-19 07:04 CST 补充同根复发证据，状态保持 `New`：
+  - 03:02-07:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 04:56 CST Feishu direct session `Actor_feishu__direct__ou_5fe1213e63da238b10e346a384843b434c` 对 AMZN 深度投研问题完成 AWS、广告、零售、资本开支、估值与风险分析，但 final 前段写出 `本地只有公司画像目录`、`沉淀成画像` 和“先写入画像再给完整分析”等内部画像动作。
+  - 该样本以 `stopReason=end_turn` 收口，业务主体可用，没有空回复、错投、投递失败、原始工具 JSON、token 或本机绝对路径；问题仍限定在用户可见文案边界，按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-06-19 03:02 CST 补充同根复发证据，状态保持 `New`：
   - 23:03-03:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
   - 23:35 CST Feishu direct session `Actor_feishu__direct__ou_5f0e57a9914d61ae96d437cdeb65e43593` 对 Firefly / FLY 投研问题完成实体消歧、业务、财务、估值、买点和风险分析，但 final 前段写出“本地已有/没有画像”和“沉淀到 Firefly 的长期画像”等内部画像动作。
@@ -48,6 +53,11 @@
 
 ## 证据来源
 
+- `data/runtime/logs/acp-events.log`
+  - 巡检窗口：2026-06-19 03:02-07:02 CST。
+  - ACP 同窗可重构 3 个 session、3 次 `stopReason=end_turn`，未见 response error、runner error、stream disconnect、quota、panic 或 provider 原始错误进入用户可见 final。
+  - `Actor_feishu__direct__ou_5fe1213e63da238b10e346a384843b434c` 在 04:56 CST 附近的 AMZN 深度投研 final 外露“本地只有公司画像目录”“沉淀成画像”“先写入画像”等内部状态 / 执行过程；回复主体仍完成公司业务、AWS、广告、capex、估值和风险分析。
+  - 该样本没有本机绝对路径、token、原始工具 JSON、思维痕迹或 provider 报错外露；问题仍限定在用户可见文案边界。
 - `data/runtime/logs/acp-events.log`
   - 巡检窗口：2026-06-18 23:03-2026-06-19 03:02 CST。
   - ACP 同窗可重构 12 个 session、24 次 `stopReason=end_turn`，未见 response error、runner error、stream disconnect、quota、panic 或 provider 原始错误进入用户可见 final。
