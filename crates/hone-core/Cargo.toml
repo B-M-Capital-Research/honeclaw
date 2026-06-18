@@ -26,4 +26,5 @@ tokio-postgres = { workspace = true }
 url = { workspace = true }
 
 [dev-dependencies]
+bytes = "1"
 tempfile = "3"

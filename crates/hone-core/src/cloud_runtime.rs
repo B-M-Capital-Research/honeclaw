@@ -16,6 +16,7 @@ use sha1::Sha1;
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
+use tokio_postgres::types::Json;
 use tokio_postgres::{Client as PgClient, Config as PgConfig, NoTls};
 use url::Url;
 
@@ -2272,11 +2273,12 @@ SELECT
     pub async fn upsert_llm_audit_record(&self, record: LlmAuditRecord) -> HoneResult<()> {
         let cloud_record = CloudLlmAuditRecord::from_audit_record(&record)?;
         let client = self.connect_client().await?;
+        let payload = Json(&cloud_record.record);
         client
             .execute(
                 r#"
 INSERT INTO cloud_llm_audit_records(id, actor_storage_key, record, created_at)
-VALUES ($1, $2, $3, $4::timestamptz)
+VALUES ($1, $2, $3::jsonb, $4::timestamptz)
 ON CONFLICT(id)
 DO UPDATE SET
   actor_storage_key = EXCLUDED.actor_storage_key,
@@ -2286,7 +2288,7 @@ DO UPDATE SET
                 &[
                     &cloud_record.id,
                     &cloud_record.actor_storage_key,
-                    &cloud_record.record,
+                    &payload,
                     &cloud_record.created_at,
                 ],
             )
@@ -3274,6 +3276,8 @@ fn _assert_send_sync_time(_: DateTime<Utc>) {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bytes::BytesMut;
+    use tokio_postgres::types::{ToSql, Type};
 
     #[test]
     fn runtime_role_defaults_to_all() {
@@ -3501,5 +3505,37 @@ mod tests {
         );
         assert_eq!(normalized.detail["failure_kind"], "discord_missing_access");
         assert_eq!(normalized.detail["send_error"], "missing access");
+    }
+
+    #[test]
+    fn llm_audit_record_payload_encodes_as_jsonb_parameter() {
+        let actor = ActorIdentity::new("web", "audit-user", Some("scope-1")).expect("actor");
+        let mut record = LlmAuditRecord::new(
+            "session-1",
+            Some(actor),
+            "function_calling",
+            "chat",
+            "openrouter",
+            Some("gpt-test".to_string()),
+            serde_json::json!({
+                "messages": [{"role": "user", "content": "hello"}],
+            }),
+        );
+        record.success = true;
+        record.response = Some(serde_json::json!({
+            "output": [{"type": "text", "text": "world"}],
+        }));
+        record.metadata = serde_json::json!({
+            "tool_calls": [{"name": "search", "arguments": {"q": "hello"}}],
+            "heartbeat": {"job_id": "hb-1", "triggered": true},
+        });
+
+        let cloud_record = CloudLlmAuditRecord::from_audit_record(&record).expect("cloud record");
+        let mut bytes = BytesMut::new();
+        Json(&cloud_record.record)
+            .to_sql_checked(&Type::JSONB, &mut bytes)
+            .expect("jsonb parameter encoding");
+
+        assert!(!bytes.is_empty(), "jsonb payload should not be empty");
     }
 }
