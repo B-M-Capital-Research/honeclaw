@@ -14,7 +14,7 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## GitHub Issue
 
@@ -22,6 +22,12 @@
 
 ## 证据来源
 
+- `data/runtime/logs/web.log.2026-06-18`
+  - 巡检窗口：2026-06-18 23:03-2026-06-19 03:02 CST。
+  - 23:30:06-03:01:40 CST 再次出现 684 条同类告警：
+    - `[LlmAudit] failed to persist function_calling audit: 配置错误: Postgres LLM audit 写入失败: error serializing parameter 3`
+  - 同窗 `data/runtime/logs/acp-events.log` 可重构 12 个 session、24 次 `stopReason=end_turn`、0 个 response error；说明用户回复主链路仍在收口，故障继续集中在 LLM audit 持久化链路。
+  - 同窗还可见 heartbeat / Tavily / tool registry 运行事件持续推进，说明这不是日志单点偶发，而是 function-calling runner audit 写入路径继续稳定失败。
 - `data/runtime/logs/web.log.2026-06-18`
   - 巡检窗口：2026-06-18 19:03-23:03 CST。
   - 19:30:04-23:01:05 CST 共 684 条同类告警：
@@ -45,10 +51,17 @@
 
 ## 当前实现效果
 
-- 最近四小时内 function-calling audit 写入持续失败 684 次。
+- 2026-06-19 03:02 CST 最近四小时内 function-calling audit 写入继续失败 684 次；这不是 19:03-23:03 CST 窗口的一次性波动。
 - 日志只暴露 `error serializing parameter 3`，缺少字段名、record id、provider/model 或可脱敏定位信息。
 - 用户回复主链路仍正常收口，因此这不是直聊 / scheduler 投递 P1。
 - 但审计记录持续丢失会削弱后续问题追踪、模型调用复盘、成本 / 质量分析与合规留痕，因此按功能性系统错误定级为 P2。
+
+## 修复情况
+
+- `2026-06-19 03:03 CST` 已在 [`crates/hone-core/src/cloud_runtime.rs`](/Users/fengming2/Desktop/honeclaw/crates/hone-core/src/cloud_runtime.rs) 修复 PostgreSQL LLM audit 写入的 JSONB 参数绑定：
+  - `upsert_llm_audit_record(...)` 改为显式使用 `tokio_postgres::types::Json(&cloud_record.record)` 绑定 `$3::jsonb`，不再把原始 `serde_json::Value` 直接作为 PostgreSQL 第 3 个参数透传。
+  - 新增 `llm_audit_record_payload_encodes_as_jsonb_parameter` 回归测试，直接覆盖含 request / response / metadata 的完整 `LlmAuditRecord` payload 能按 PostgreSQL `JSONB` 参数成功编码。
+  - 本修复只影响 cloud audit 持久化链路，不改用户回复收口逻辑，也不要求本轮重启当前服务。
 
 ## 用户影响
 
@@ -64,6 +77,12 @@
 
 ## 下一步建议
 
-- 在 `CloudPgRuntime::upsert_llm_audit_record(...)` 写入失败时补充脱敏字段级定位：record id、source、provider/model、失败参数对应字段名。
-- 增加覆盖 function-calling audit metadata 的 PostgreSQL 写入回归，复现含工具调用 / heartbeat metadata 的记录。
-- 若 PostgreSQL schema 已漂移，补 migration 或兼容序列化；若是单字段无法写入，应先降级清洗该字段，避免整条 audit 丢失。
+- 后续 live 窗口若再出现同类告警，先确认运行中的 web / worker 已加载包含本修复的二进制，而不是继续把问题归因到 schema 漂移。
+- 如仍有零星失败，再补脱敏字段级日志，区分 JSONB bind、连接失败与 schema 侧问题。
+
+## 验证
+
+- `cargo test -p hone-core llm_audit_record_payload_encodes_as_jsonb_parameter --lib -- --nocapture`
+- `cargo test -p hone-core cloud_cron_send_failed_backstop_ --lib -- --nocapture`
+- `cargo check -p hone-core --tests`
+- `git diff --check`
