@@ -22,6 +22,12 @@
 
 ## 修复记录
 
+- 2026-06-19 15:01 CST 补充同根复发证据，状态保持 `New`：
+  - 11:02-15:01 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 11:13-11:31 CST Feishu direct session `Actor_feishu__direct__ou_5fd95df4ac94ca2c298b74956d07cf288d` 的 GOOG/GOOGL / CBRS 等投研 final 外露 `本地没有现成的 Alphabet 公司画像`、`已加载 stock_research 技能`、`当前本地没有 CBRS 的长期公司画像` 与“沉淀到画像”等内部画像 / 技能流程。
+  - 13:39 CST Feishu direct session `Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21` 的 COIN 投研 final 外露“检查本地是否已有 Coinbase 画像”“把本轮形成的 Coinbase 长期跟踪框架沉淀为公司画像”等内部画像动作。
+  - 这些回复均以 `stopReason=end_turn` 收口，主体完成行情口径、财务、估值、风险和来源说明；没有空回复、错投、投递失败、原始工具 JSON、token 或本机绝对路径。问题仍限定在用户可见文案边界，按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-06-19 11:02 CST 补充同根复发证据，状态保持 `New`：
   - 07:02-11:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
   - 08:30 CST Feishu direct session `Actor_feishu__direct__ou_5fba037d8699a7194dfe01a1fda5ced052` 的 OKLO 日报 final 外露 `核对 OKLO 画像`、`写入 OKLO 画像` 等内部画像动作；回复主体完成 DOE / NRC / FT 线索核验并 `end_turn` 收口。
@@ -59,6 +65,12 @@
 
 ## 证据来源
 
+- `data/runtime/logs/acp-events.log`
+  - 巡检窗口：2026-06-19 11:02-15:01 CST。
+  - ACP 同窗可重构 8 个 session、21 次 `session/prompt`、21 次 prompt 均有 response，未见 response error；可见回复均以 `stopReason=end_turn` 收口。
+  - `Actor_feishu__direct__ou_5fd95df4ac94ca2c298b74956d07cf288d` 在 11:13-11:31 CST 的投研 final 外露本地公司画像存在性、`stock_research` 技能加载和画像沉淀动作；回复主体仍完成 GOOG/GOOGL 与 CBRS 的行情、估值、风险和来源说明。
+  - `Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21` 在 13:39 CST 的 COIN 投研 final 外露本地 Coinbase 画像检查和画像沉淀动作；回复主体仍完成 Coinbase 业务、财务、估值和风险分析。
+  - 这些样本没有本机绝对路径、token、原始工具 JSON 或思维痕迹；问题仍限定在用户可见文案边界。
 - `data/runtime/logs/acp-events.log`
   - 巡检窗口：2026-06-19 03:02-07:02 CST。
   - ACP 同窗可重构 3 个 session、3 次 `stopReason=end_turn`，未见 response error、runner error、stream disconnect、quota、panic 或 provider 原始错误进入用户可见 final。
