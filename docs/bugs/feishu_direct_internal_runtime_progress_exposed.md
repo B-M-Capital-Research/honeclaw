@@ -22,6 +22,13 @@
 
 ## 修复记录
 
+- 2026-06-20 07:02 CST 补充同根复发证据，状态保持 `New`：
+  - 03:05-07:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 本窗 ACP 可见 4 个真实 prompt、4 次 `stopReason=end_turn`，没有 response error、空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径或思维痕迹进入 final。
+  - 05:47 CST Feishu direct session `Actor_feishu__direct__ou_5f0e001c305cfc075babe830a9b2c6079c` 对微信文章 / INTC 观点评论 final 外露 `本轮核心结论沉淀到本地公司画像` 等内部画像动作；回复主体仍完成微信不可读边界、Intel 行情 / 估值 / Apple 传闻 / 18A-P 风险生产等分析。
+  - 06:28 CST Feishu direct session `Actor_feishu__direct__ou_5f95ab3697246ded86446fcc260e27e1e2` 的 AAOI 估值分析 final 外露 `没有找到本地已有的 AAOI 公司画像`、`沉淀为一份长期跟踪画像` 等内部画像动作；回复主体仍完成 Juneteenth 休市口径、公司业务、行情、估值和风险分析。
+  - 这些样本均完成业务主体并正常收口，问题仍限定在用户可见文案边界，不影响主功能链路，因此保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-06-20 03:01 CST 补充同根复发证据，状态保持 `New`：
   - 23:01-03:01 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
   - 本窗 ACP 可见 2 个 session、4 次 `stopReason=end_turn`，其中 1 次属于上轮 23:01 边界收口；00:00-00:04 CST Feishu direct / scheduler actor session `Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b` 连续 3 次 final 均正常收口。
@@ -78,6 +85,12 @@
 
 ## 证据来源
 
+- `data/runtime/logs/acp-events.log`
+  - 巡检窗口：2026-06-20 03:05-07:02 CST。
+  - ACP 本窗可见 4 个真实 prompt、4 次 `stopReason=end_turn`；另有 12 条空 stopReason response，来自 initialize / session control 等非 final 响应。
+  - `Actor_feishu__direct__ou_5f0e001c305cfc075babe830a9b2c6079c` 在 05:47 CST 的 INTC 评论 final 外露本地公司画像沉淀动作；业务主体完成可核验观点评论与风险边界。
+  - `Actor_feishu__direct__ou_5f95ab3697246ded86446fcc260e27e1e2` 在 06:28 CST 的 AAOI 估值 final 外露本地 AAOI 画像缺失和长期画像沉淀动作；业务主体完成休市口径、行情、估值和证伪条件。
+  - 同窗未观察到空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径、ACP transport trace 或思维痕迹进入用户可见 final。
 - `data/runtime/logs/acp-events.log`
   - 巡检窗口：2026-06-19 23:01-2026-06-20 03:01 CST。
   - ACP 本窗可见 2 个 session、4 次 `stopReason=end_turn`；最近写入到 2026-06-19T16:04:16Z / 2026-06-20 00:04 CST，00:04 之后未见新的 ACP 用户可见回复流。
