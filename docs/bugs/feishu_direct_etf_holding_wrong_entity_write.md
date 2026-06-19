@@ -3,8 +3,15 @@
 - 发现时间：2026-06-19 11:02 CST
 - Bug Type：Business Error
 - 严重等级：P2
-- 状态：New
+- 状态：Fixed
 - GitHub Issue：无，非 P1
+
+## 修复记录
+
+- 2026-06-20 03:05 CST 已修复：
+  - `crates/hone-channels/src/prompt.rs` 的共享金融系统 prompt 新增“副作用写入确认约束”：当当前 user turn 只用“这只 / 这一只 / 这个 / 它 / 上一个 ETF”等模糊指代，且请求会写入持仓、成本、心跳任务、定时任务或公司画像时，必须先确认唯一标的；在确认前不得调用 `portfolio`、`cron_job`、画像等持久化写入工具，也不能先按上一轮标的代写再让用户纠正。
+  - `crates/hone-channels/src/runners/multi_agent.rs` 的 search-stage guidance 同步加入 deictic ETF / 持久化写入护栏，明确禁止仅凭旧上下文 ticker 推断目标并发起 write-oriented tool call。
+  - 这次修复复用既有 “non-standard ticker” 行为边界，但把约束提升到“模糊指代 + 有副作用写入”场景，覆盖持仓、心跳任务和画像写入这类会污染用户长期状态的路径。
 
 ## 证据来源
 
@@ -53,13 +60,13 @@
 - 既有 `feishu_direct_nonstandard_ticker_guess_for_trade_advice.md` 覆盖的是非标准 ticker 被猜成相近实体后输出交易建议；本缺陷是未确认标的前已经执行持仓、任务和画像写入，受影响链路与风险等级不同，不能合并。
 - 当前 prompt 里虽然有“模糊指令不猜”和“持仓更新最少需要标的、动作、股数、成交均价”，但模型在承接上下文时仍把上一轮推断当作足够确定的标的。
 
-## 下一步建议
+## 后续观察点
 
-- 在持仓 / cron / 画像写入工具调用前增加硬校验：用户当前轮未显式给出 ticker 或唯一实体时，不允许执行有副作用工具，只能请求确认。
-- 对“这一只 ETF / 这个 / 它 + 建立画像 / 建心跳 / 买了 N 股 / 均价 X”增加回归：若上下文存在多个候选或最近实体非显式唯一，应先确认，不得写入。
-- 在工具层或 turn builder 记录 `entity_confirmation_required=true`，避免只靠模型 prompt 自律。
+- 当前代码级修复已把共享 prompt / search-stage 边界补齐，但还没有新增工具层硬拒绝；后续若运行态仍出现“模糊指代先写入再纠正”的样本，可再把约束下沉到工具调用前校验。
+- 后续巡检重点观察 Feishu / Web direct 中“这只 ETF / 这个 / 它 + 建档 / 建心跳 / 买了 N 股 / 均价 X”是否还能越过确认门槛。
 
 ## 验证
 
-- 本轮为缺陷台账维护任务，未修改业务代码，未运行代码测试。
-- 已验证范围：ACP prompt / final 重构、用户纠正链路、`end_turn` 收口、SQLite 镜像滞后、最近四小时非文档代码提交检查。
+- `cargo test -p hone-channels build_prompt_bundle_always_includes_finance_domain_policy --lib -- --nocapture`
+- `cargo test -p hone-channels search_input_guidance_allows_direct_replies_for_greetings --lib -- --nocapture`
+- `cargo check -p hone-channels --tests`
