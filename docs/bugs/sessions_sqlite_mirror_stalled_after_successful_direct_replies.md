@@ -6,6 +6,10 @@
 - **状态**: Fixed
 - **GitHub Issue**: 无
 - **修复结论复核**:
+- `2026-06-19 11:02 CST` 本轮继续观察到 SQLite 会话镜像落后于真实 ACP / Web runtime 事件：
+  - `data/sessions.sqlite3` 在最近四小时窗口 `2026-06-19 07:02-11:02 CST` 内仍无新增 `sessions` / `session_messages` / `cron_job_runs`，`sessions.max(updated_at)=2026-06-17T10:37:37.207669+08:00`、`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`cron_job_runs.max(executed_at)=2026-06-17T11:01:42.353141+08:00`。
+  - 但 `data/runtime/logs/acp-events.log` 同窗可重构 15 个 session、26 次 prompt、26 次 `stopReason=end_turn`、0 个 response error；`data/runtime/logs/web.log.2026-06-19` 继续更新到 `2026-06-19 11:01 CST`，可见 heartbeat / FMP / Tavily / audit 运行事件。
+  - 结论同 2026-06-19 07:04 CST：当前巡检仍不能仅依赖 `sessions.updated_at` / `session_messages.timestamp` 判断最近四小时是否安静；因当前代码已有启动 JSON -> SQLite 回填修复且本轮未证明已重启 / 部署到新代码后仍失效，状态仍维持代码级 `Fixed`，不回退为 `New`。
 - `2026-06-19 07:04 CST` 本轮继续观察到 SQLite 会话镜像落后于真实 ACP / Web runtime 事件：
   - `data/sessions.sqlite3` 在最近四小时窗口 `2026-06-19 03:02-07:02 CST` 内仍无新增 `sessions` / `session_messages` / `cron_job_runs`，`sessions.max(updated_at)=2026-06-17T10:37:37.207669+08:00`、`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`cron_job_runs.max(executed_at)=2026-06-17T11:01:42.353141+08:00`。
   - 但 `data/runtime/logs/acp-events.log` 同窗可重构 3 个 session、3 次 `stopReason=end_turn`；`data/runtime/logs/web.log.2026-06-18` 继续更新到 `2026-06-19 07:02 CST`，可见 heartbeat / FMP / Tavily / audit 运行事件。

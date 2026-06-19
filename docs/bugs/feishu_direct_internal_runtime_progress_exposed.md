@@ -22,6 +22,12 @@
 
 ## 修复记录
 
+- 2026-06-19 11:02 CST 补充同根复发证据，状态保持 `New`：
+  - 07:02-11:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 08:30 CST Feishu direct session `Actor_feishu__direct__ou_5fba037d8699a7194dfe01a1fda5ced052` 的 OKLO 日报 final 外露 `核对 OKLO 画像`、`写入 OKLO 画像` 等内部画像动作；回复主体完成 DOE / NRC / FT 线索核验并 `end_turn` 收口。
+  - 08:52-10:35 CST Feishu direct session `Actor_feishu__direct__ou_5fce891d255ae588dde3bd7b1494a28d1e` 与 `Actor_feishu__direct__ou_5f64ee7ca7af22d44a83a31054e6fb92a3` 的投研 / 建档 final 继续外露 `本地画像`、`沉淀`、画像写入、任务更新和工具可用性判断。
+  - 上述样本均完成业务主体，没有空回复、错投、投递失败、原始工具 JSON、token 或本机绝对路径；问题仍限定在用户可见文案边界，按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-06-19 07:04 CST 补充同根复发证据，状态保持 `New`：
   - 03:02-07:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
   - 04:56 CST Feishu direct session `Actor_feishu__direct__ou_5fe1213e63da238b10e346a384843b434c` 对 AMZN 深度投研问题完成 AWS、广告、零售、资本开支、估值与风险分析，但 final 前段写出 `本地只有公司画像目录`、`沉淀成画像` 和“先写入画像再给完整分析”等内部画像动作。

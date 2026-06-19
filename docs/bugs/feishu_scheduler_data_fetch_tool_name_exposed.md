@@ -22,6 +22,12 @@ New
 
 ## 修复记录
 
+- 2026-06-19 11:02 CST 补充同根复发证据，状态保持 `New`：
+  - 07:02-11:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 08:30 CST Web scheduler / direct actor session `Actor_web__direct__web-user-fe88bce3a53f` 的 AI 硬件晨报以 `stopReason=end_turn` 收口，final 虽完成 AMZN / INTC / DELL / TSM / AMAT / GLW 等主体，但仍写出 `主行情工具` 这类内部工具口径。
+  - 09:00 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 的核心观察池早间简报以 `stopReason=end_turn` 收口，final 写出 `主行情工具本轮未返回可用结果，已用 StockAnalysis 公开行情页校验`，把内部工具状态和站点名作为用户态降级说明。
+  - 相关报告主体均完整输出并收口，没有投递失败、空回复、错投、原始 provider 报错或链路级数据破坏证据。问题仍是 scheduler final 外露内部工具 / 数据源执行状态，保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-06-19 07:04 CST 补充同根复发证据，状态保持 `New`：
   - 03:02-07:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
   - 06:00 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f11da38ad70c47cf87c0b106b6408b190` 的美股盘后复盘以 `stopReason=end_turn` 收口，但 final 前段写出 `已加载市场分析技能` 和“把检索词改写为绝对日期口径”等内部流程动作。
