@@ -23,6 +23,12 @@
 ## 证据来源
 
 - `data/runtime/logs/web.log.2026-06-19`
+  - 巡检窗口：2026-06-19 23:01-2026-06-20 03:01 CST。
+  - 23:01:07-03:01:03 CST 仍出现 687 条同类告警：
+    - `[LlmAudit] failed to persist function_calling audit: 配置错误: Postgres LLM audit 写入失败: error serializing parameter 3`
+  - 同窗 `data/runtime/logs/acp-events.log` 可见 2 个 session、4 次 `stopReason=end_turn`；用户回复主链路仍有收口，故障继续集中在 LLM audit 持久化链路。
+  - 本轮尚未确认当前 live web / worker 已重启并加载 `fa7f0734`，因此该证据只作为“代码级修复后的运行态待复核”记录，不直接把状态从 `Fixed` 回退为 `New`。
+- `data/runtime/logs/web.log.2026-06-19`
   - 巡检窗口：2026-06-19 19:01-23:01 CST。
   - 19:01:04-23:01:19 CST 仍出现 785 条同类告警：
     - `[LlmAudit] failed to persist function_calling audit: 配置错误: Postgres LLM audit 写入失败: error serializing parameter 3`
@@ -92,6 +98,7 @@
 - `2026-06-19 11:02 CST` 运行态复核显示当前 web 日志仍有同类告警 625 条，最近到 11:01 CST；由于尚未确认 live web / worker 已部署或重启到 `fa7f0734`，本单状态仍保持代码级 `Fixed`，待新运行态再复核是否真正止住。
 - `2026-06-19 19:01 CST` 运行态复核显示当前 web 日志仍有同类告警 798 条，最近到 19:00 CST；由于尚未确认 live web / worker 已部署或重启到 `fa7f0734`，本单状态仍保持代码级 `Fixed`，待新运行态再复核是否真正止住。
 - `2026-06-19 23:01 CST` 运行态复核显示当前 web 日志仍有同类告警 785 条，最近到 23:01 CST；由于尚未确认 live web / worker 已部署或重启到 `fa7f0734`，本单状态仍保持代码级 `Fixed`，待新运行态再复核是否真正止住。
+- `2026-06-20 03:01 CST` 运行态复核显示当前 web 日志仍有同类告警 687 条，最近到 03:01 CST；由于尚未确认 live web / worker 已部署或重启到 `fa7f0734`，本单状态仍保持代码级 `Fixed`，待新运行态再复核是否真正止住。
 
 ## 用户影响
 
