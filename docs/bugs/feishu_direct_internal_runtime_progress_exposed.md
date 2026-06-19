@@ -22,6 +22,13 @@
 
 ## 修复记录
 
+- 2026-06-19 23:01 CST 补充同根复发证据，状态保持 `New`：
+  - 19:01-23:01 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 同窗 ACP 可重构 21 个 session、29 次 prompt、29 次 `stopReason=end_turn`、0 个 response error。
+  - 21:24 CST Feishu direct session `Actor_feishu__direct__ou_5f01b20218487e01a6d48c881ce6893123` 的 AXTI 单票研究 final 外露“没有找到现有 AXTI 画像”和“把核心判断沉淀成公司画像”等内部画像动作；回复主体仍完成实体识别、业务、行情、估值与风险分析。
+  - 21:29 CST Feishu direct session `Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21` 的 AXTI 研究 final 继续外露“没有本地画像”“写入 AXTI 首版画像”等内部画像动作；回复主体仍完成 InP 基板、扩产、财务、估值、风险和证伪条件分析。
+  - 两个样本均以 `stopReason=end_turn` 收口，没有空回复、错投、投递失败、原始工具 JSON、token 或本机绝对路径。问题仍限定在用户可见文案边界，按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-06-19 15:01 CST 补充同根复发证据，状态保持 `New`：
   - 11:02-15:01 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
   - 11:13-11:31 CST Feishu direct session `Actor_feishu__direct__ou_5fd95df4ac94ca2c298b74956d07cf288d` 的 GOOG/GOOGL / CBRS 等投研 final 外露 `本地没有现成的 Alphabet 公司画像`、`已加载 stock_research 技能`、`当前本地没有 CBRS 的长期公司画像` 与“沉淀到画像”等内部画像 / 技能流程。
@@ -65,6 +72,12 @@
 
 ## 证据来源
 
+- `data/runtime/logs/acp-events.log`
+  - 巡检窗口：2026-06-19 19:01-23:01 CST。
+  - ACP 同窗可重构 21 个 session、29 次 prompt、29 次 `stopReason=end_turn`，未见 response error、runner error、stream disconnect、quota、panic 或 provider 原始错误进入用户可见 final。
+  - `Actor_feishu__direct__ou_5f01b20218487e01a6d48c881ce6893123` 在 21:24 CST 的 AXTI 单票研究 final 外露本地 AXTI 画像缺失和画像沉淀动作；回复主体仍完成业务、行情、估值和风险分析。
+  - `Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21` 在 21:29 CST 的 AXTI 研究 final 外露本地画像检查、画像写入和长期变量沉淀动作；回复主体仍完成公司业务、财务、扩产、估值和证伪条件分析。
+  - 这些样本没有本机绝对路径、token、原始工具 JSON 或思维痕迹；问题仍限定在用户可见文案边界。
 - `data/runtime/logs/acp-events.log`
   - 巡检窗口：2026-06-19 11:02-15:01 CST。
   - ACP 同窗可重构 8 个 session、21 次 `session/prompt`、21 次 prompt 均有 response，未见 response error；可见回复均以 `stopReason=end_turn` 收口。
