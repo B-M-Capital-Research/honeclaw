@@ -4483,7 +4483,18 @@
   - 复杂 watchlist / 大事件模板则继续输出整段自然语言解释后被后台静默吸收。
 - 因此本单继续维持 `Fixing`、严重等级保持 `P2`。本轮没有发现需要拆分的新根因；最近一小时新增证据仍完全落在“heartbeat 输出结构持续漂移，链路以 `skipped_noop` 吸收”的既有缺陷范围内。
 
-## 最新真实样本复核（2026-06-09 03:01-07:01 CST）
+## 最新运行态复核（2026-06-19 15:00-19:01 CST）
+
+- `data/runtime/logs/web.log.2026-06-19`
+  - 巡检窗口内新增 62 条 `heartbeat 输出不是结构化 JSON`，主要落成 `execution_failed + skipped_error + delivered=0` 的日志形态。
+  - 同窗未见新的 `max_iterations_exceeded`、`Param Incorrect` 或 provider `quota exhausted` 关键词；也未见这些 heartbeat 坏态进入用户可见 assistant final。
+- `data/runtime/logs/acp-events.log`
+  - 同窗可重构 4 个 session、5 次 prompt、5 次 `stopReason=end_turn`、0 个 response error；用户可见 final 污染扫描未命中 `<think>`、`reasoning_content`、provider 原始错误、raw tool 字段、内部路径或 stream disconnect。
+- 本轮判断
+  - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因或新的用户可见污染链路。
+  - 本轮不新建重复缺陷，也不把已修复/部分止血结论回退；若后续确认 live 已部署当前修复后仍持续出现同类结构化退化，再按最新代码状态重新评估是否回退。
+
+## 历史真实样本复核（2026-06-09 03:01-07:01 CST）
 
 - `data/sessions.sqlite3` -> `cron_job_runs`
   - 巡检窗口内 heartbeat 新增 107 条记录：78 条 `noop + skipped_noop + delivered=0`、28 条 `execution_failed + skipped_error + delivered=0`、1 条 `completed + sent + delivered=1`。
