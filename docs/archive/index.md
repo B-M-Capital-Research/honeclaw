@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-05-31
+Last updated: 2026-06-21
+
+## 2026-06-21
+
+### Feishu Direct Cron Result Recovery
+
+- Status: done
+- Date: 2026-06-21
+- Plan: N/A, single-session active bug fix did not need dynamic plan tracking
+- Handoff: `docs/handoffs/2026-06-21-feishu-direct-cron-tool-result-recovery.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-channels finalize_agent_response_recovers_cron_job_ --lib -- --nocapture`, `cargo test -p hone-channels finalize_agent_response_recovers_portfolio_confirmation --lib -- --nocapture`, `cargo check -p hone-channels --tests`
+- Current conclusion: Feishu direct 定时任务治理相关 turn 在真实 `cron_job` 工具已经返回结果时，最终回复现在会优先恢复任务列表、创建/更新确认或删除确认，而不是继续退化成过渡句或通用“定时任务管理暂时不可用”提示。
+- Next entry point: `docs/bugs/feishu_direct_cron_management_tool_unavailable_internal_state_exposed.md`
 
 ## 2026-05-31
 

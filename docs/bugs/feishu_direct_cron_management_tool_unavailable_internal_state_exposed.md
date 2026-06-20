@@ -3,7 +3,7 @@
 - **发现时间**: 2026-06-11 03:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，非 P1
 
 ## 证据来源
@@ -87,6 +87,19 @@
   - 本次没有继续外露本地路径或 SQLite 表名，说明用户态文案有所收敛；但 Feishu direct 定时任务创建主链路仍不可用，因此状态保持 `P2 / New`。非 P1，不创建 GitHub Issue。
 
 ## 修复记录
+
+- 2026-06-21 03:06 CST：本轮继续修复 Feishu direct 定时任务管理回复的确定性收口，而不再只依赖 prompt 文案约束。
+  - `crates/hone-channels/src/response_finalizer.rs` 现在会在模型最终回复退化成过渡句或被共享净化层统一改写成“定时任务管理暂时不可用，请稍后再试”时，优先从真实 `cron_job` 工具结果恢复用户态答复。
+  - 新增覆盖面包括：
+    - `cron_job(action="list")`：直接把任务列表恢复成用户可读摘要，避免调用成功后仍只回“我先查一下”或“工具没暴露”。
+    - `cron_job(action="remove")` 且 `needs_confirmation=true`：恢复成明确的删除确认提示或候选任务列表，而不是暴露内部工具状态。
+    - `cron_job(action="add"/"update")`：即使原始模型文案被净化层压成通用失败提示，只要真实工具已成功写入，最终仍回写真实任务名、时间与任务 ID。
+  - 新增回归：
+    - `finalize_agent_response_recovers_cron_job_list_from_tool_result`
+    - `finalize_agent_response_recovers_cron_job_remove_confirmation_from_tool_result`
+    - `finalize_agent_response_recovers_cron_job_result_after_sanitization_strips_internal_copy`
+  - 本轮验证：`cargo test -p hone-channels finalize_agent_response_recovers_cron_job_ --lib -- --nocapture`、`cargo test -p hone-channels finalize_agent_response_recovers_portfolio_confirmation --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过。
+  - 当前仍未重启 Feishu live 服务，也没有新的运行态会话样本，因此先按代码级 `Fixed` 记录；若部署当前代码后 Feishu direct 仍把已成功的 `cron_job` 调用收口成“工具没暴露/暂时不可用”，再按新样本重新打开。
 
 - 2026-06-12 08:06 CST 代码级修复：
   - `crates/hone-channels/src/prompt.rs` 的默认定时任务策略明确要求列出、检查、创建、更新、取消或删除任务时必须调用真实 `cron_job` 工具完成，不能用沙盒目录、SQLite、会话历史或文件列表自查替代。

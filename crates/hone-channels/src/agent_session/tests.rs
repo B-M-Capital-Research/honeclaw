@@ -968,6 +968,150 @@ fn finalize_agent_response_recovers_cron_job_confirmation_from_tool_result() {
 }
 
 #[test]
+fn finalize_agent_response_recovers_cron_job_list_from_tool_result() {
+    let root = make_temp_dir("hone_channels_finalize_cron_list_confirmation");
+    std::fs::create_dir_all(&root).expect("create root");
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let mut response = AgentResponse {
+        content: "我先查一下你现有的定时任务。".to_string(),
+        tool_calls_made: vec![ToolCallMade {
+            name: "cron_job".to_string(),
+            arguments: serde_json::json!({"action": "list"}),
+            result: serde_json::json!({
+                "action": "list",
+                "jobs": [
+                    {
+                        "id": "j_open",
+                        "name": "盘前简报",
+                        "enabled": true,
+                        "schedule": {
+                            "hour": 8,
+                            "minute": 30,
+                            "repeat": "trading_day"
+                        }
+                    },
+                    {
+                        "id": "j_close",
+                        "name": "收盘复盘",
+                        "enabled": false,
+                        "schedule": {
+                            "hour": 20,
+                            "minute": 0,
+                            "repeat": "daily"
+                        }
+                    }
+                ]
+            }),
+            tool_call_id: None,
+        }],
+        iterations: 1,
+        success: true,
+        error: None,
+    };
+
+    let outcome = finalize_agent_response(&core, "session", "mock", &mut response);
+
+    assert!(response.success);
+    assert!(response.error.is_none());
+    assert_eq!(
+        response.content,
+        "你当前有 2 个定时任务：盘前简报（交易日 08:30），任务 ID：j_open；收盘复盘（每天 20:00，已停用），任务 ID：j_close。"
+    );
+    assert!(outcome.fallback_reason.is_none());
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn finalize_agent_response_recovers_cron_job_remove_confirmation_from_tool_result() {
+    let root = make_temp_dir("hone_channels_finalize_cron_remove_confirmation");
+    std::fs::create_dir_all(&root).expect("create root");
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let mut response = AgentResponse {
+        content: "当前没有可用的定时任务注册入口，因此不能直接完成自动创建。".to_string(),
+        tool_calls_made: vec![ToolCallMade {
+            name: "cron_job".to_string(),
+            arguments: serde_json::json!({"action": "remove", "job_id": "j_open"}),
+            result: serde_json::json!({
+                "action": "remove",
+                "success": false,
+                "needs_confirmation": true,
+                "job": {
+                    "id": "j_open",
+                    "name": "盘前简报",
+                    "enabled": true,
+                    "schedule": {
+                        "hour": 8,
+                        "minute": 30,
+                        "repeat": "trading_day"
+                    }
+                }
+            }),
+            tool_call_id: None,
+        }],
+        iterations: 1,
+        success: true,
+        error: None,
+    };
+
+    let outcome = finalize_agent_response(&core, "session", "mock", &mut response);
+
+    assert!(response.success);
+    assert!(response.error.is_none());
+    assert_eq!(
+        response.content,
+        "删除前需要你确认：盘前简报（交易日 08:30），任务 ID：j_open。如果确认删除，请明确回复要删除这个任务。"
+    );
+    assert!(outcome.fallback_reason.is_none());
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn finalize_agent_response_recovers_cron_job_result_after_sanitization_strips_internal_copy() {
+    let root = make_temp_dir("hone_channels_finalize_cron_sanitized_empty_recovery");
+    std::fs::create_dir_all(&root).expect("create root");
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let mut response = AgentResponse {
+        content: "自动定时任务注册工具没有暴露出来，所以我不能确认任务已经正式创建成功。"
+            .to_string(),
+        tool_calls_made: vec![ToolCallMade {
+            name: "cron_job".to_string(),
+            arguments: serde_json::json!({"action": "add"}),
+            result: serde_json::json!({
+                "success": true,
+                "job": {
+                    "id": "j_pke",
+                    "name": "PKE 双周检查",
+                    "schedule": {
+                        "hour": 9,
+                        "minute": 0,
+                        "repeat": "weekly",
+                        "weekday": 0
+                    }
+                }
+            }),
+            tool_call_id: None,
+        }],
+        iterations: 1,
+        success: true,
+        error: None,
+    };
+
+    let outcome = finalize_agent_response(&core, "session", "mock", &mut response);
+
+    assert!(response.success);
+    assert!(response.error.is_none());
+    assert_eq!(
+        response.content,
+        "已创建定时任务：PKE 双周检查（每周一 09:00）。任务 ID：j_pke。"
+    );
+    assert!(outcome.fallback_reason.is_none());
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn finalize_agent_response_recovers_portfolio_confirmation_from_tool_result() {
     let root = make_temp_dir("hone_channels_finalize_portfolio_confirmation");
     std::fs::create_dir_all(&root).expect("create root");

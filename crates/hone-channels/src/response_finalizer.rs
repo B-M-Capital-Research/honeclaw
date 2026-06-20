@@ -13,6 +13,7 @@ use crate::sandbox::sandbox_base_dir;
 pub(crate) const EMPTY_SUCCESS_FALLBACK_MESSAGE: &str =
     "这次没有成功产出完整回复。我已经自动重试过了，请再发一次，或换个问法。";
 const MISSING_LOCAL_IMAGE_FALLBACK_MESSAGE: &str = "（图表文件不可用，请重新生成）";
+const CRON_TASK_MANAGEMENT_UNAVAILABLE_USER_MESSAGE: &str = "定时任务管理暂时不可用，请稍后再试。";
 
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct FinalizeResponseOutcome {
@@ -56,6 +57,19 @@ pub(crate) fn finalize_agent_response(
     }
 
     if sanitized.content.trim().is_empty() {
+        if let Some(recovered) = recover_user_facing_tool_outcome(&response.tool_calls_made) {
+            tracing::info!(
+                "[AgentSession] recovered user-facing tool outcome from sanitized-empty output runner={} session_id={}",
+                runner_name,
+                session_id
+            );
+            response.content = recovered;
+            response.error = None;
+            sync_company_profiles_to_cloud(core, session_id);
+            response.content =
+                normalize_local_image_references(core, session_id, &response.content);
+            return outcome;
+        }
         tracing::warn!(
             "[AgentSession] empty visible output after sanitization runner={} session_id={} removed_internal={}",
             runner_name,
@@ -67,11 +81,9 @@ pub(crate) fn finalize_agent_response(
         response.error = Some(EMPTY_SUCCESS_FALLBACK_MESSAGE.to_string());
         outcome.fallback_reason = Some("sanitized_empty_success");
     } else if is_transitional_planning_sentence(sanitized.content.trim()) {
-        if let Some(recovered) =
-            recover_successful_side_effect_confirmation(&response.tool_calls_made)
-        {
+        if let Some(recovered) = recover_user_facing_tool_outcome(&response.tool_calls_made) {
             tracing::info!(
-                "[AgentSession] recovered side-effect confirmation from tool result runner={} session_id={}",
+                "[AgentSession] recovered user-facing tool outcome from planning sentence runner={} session_id={}",
                 runner_name,
                 session_id
             );
@@ -90,6 +102,21 @@ pub(crate) fn finalize_agent_response(
         response.error = Some(EMPTY_SUCCESS_FALLBACK_MESSAGE.to_string());
         outcome.fallback_reason = Some("planning_sentence_suppressed");
     } else {
+        if sanitized.content.trim() == CRON_TASK_MANAGEMENT_UNAVAILABLE_USER_MESSAGE
+            && let Some(recovered) = recover_user_facing_tool_outcome(&response.tool_calls_made)
+        {
+            tracing::info!(
+                "[AgentSession] recovered user-facing tool outcome from generic cron unavailable copy runner={} session_id={}",
+                runner_name,
+                session_id
+            );
+            response.content = recovered;
+            response.error = None;
+            sync_company_profiles_to_cloud(core, session_id);
+            response.content =
+                normalize_local_image_references(core, session_id, &response.content);
+            return outcome;
+        }
         response.content = sanitized.content;
     }
 
@@ -229,34 +256,26 @@ fn system_time_to_rfc3339(value: std::time::SystemTime) -> String {
     datetime.to_rfc3339()
 }
 
-fn recover_successful_side_effect_confirmation(tool_calls: &[ToolCallMade]) -> Option<String> {
-    tool_calls.iter().rev().find_map(|call| {
-        if !tool_call_succeeded_for_recovery(call) {
-            return None;
-        }
-        match call.name.as_str() {
+fn recover_user_facing_tool_outcome(tool_calls: &[ToolCallMade]) -> Option<String> {
+    tool_calls
+        .iter()
+        .rev()
+        .find_map(|call| match call.name.as_str() {
             "cron_job" => recover_cron_job_confirmation(call),
             "portfolio" => recover_portfolio_confirmation(call),
             _ => None,
-        }
-    })
-}
-
-fn tool_call_succeeded_for_recovery(call: &ToolCallMade) -> bool {
-    if call.result.get("success").and_then(|value| value.as_bool()) == Some(true) {
-        return true;
-    }
-
-    call.name == "portfolio"
-        && tool_action(call).as_deref() == Some("view")
-        && call.result.get("portfolio").is_some()
+        })
 }
 
 fn recover_cron_job_confirmation(call: &ToolCallMade) -> Option<String> {
     let action = tool_action(call);
     match action.as_deref() {
+        Some("list") => recover_cron_job_list_confirmation(call),
         Some("add") => cron_job_confirmation_message("已创建定时任务", call),
         Some("update") => cron_job_confirmation_message("已更新定时任务", call),
+        Some("remove") if call.result.get("needs_confirmation").is_some() => {
+            recover_cron_job_remove_confirmation(call)
+        }
         Some("remove") => call
             .result
             .get("removed_job_id")
@@ -264,6 +283,94 @@ fn recover_cron_job_confirmation(call: &ToolCallMade) -> Option<String> {
             .map(|job_id| format!("已删除定时任务：{job_id}。")),
         _ => None,
     }
+}
+
+fn recover_cron_job_list_confirmation(call: &ToolCallMade) -> Option<String> {
+    let jobs = call.result.get("jobs")?.as_array()?;
+    if jobs.is_empty() {
+        return Some("你当前没有定时任务。".to_string());
+    }
+
+    let shown: Vec<String> = jobs
+        .iter()
+        .take(5)
+        .filter_map(format_cron_job_list_entry)
+        .collect();
+    if shown.is_empty() {
+        return None;
+    }
+
+    let mut message = format!("你当前有 {} 个定时任务：{}", jobs.len(), shown.join("；"));
+    if jobs.len() > shown.len() {
+        message.push_str(&format!("；另有 {} 个任务", jobs.len() - shown.len()));
+    }
+    message.push('。');
+    Some(message)
+}
+
+fn recover_cron_job_remove_confirmation(call: &ToolCallMade) -> Option<String> {
+    if let Some(job) = call.result.get("job") {
+        let entry = format_cron_job_list_entry(job)?;
+        return Some(format!(
+            "删除前需要你确认：{}。如果确认删除，请明确回复要删除这个任务。",
+            entry
+        ));
+    }
+
+    let candidates = call.result.get("candidates")?.as_array()?;
+    let shown: Vec<String> = candidates
+        .iter()
+        .take(5)
+        .filter_map(format_cron_job_list_entry)
+        .collect();
+    if shown.is_empty() {
+        return None;
+    }
+
+    let mut message = format!(
+        "匹配到多个定时任务：{}。请指定要删除的任务 ID。",
+        shown.join("；")
+    );
+    if candidates.len() > shown.len() {
+        message.push_str(&format!(
+            " 另有 {} 个候选任务。",
+            candidates.len() - shown.len()
+        ));
+    }
+    Some(message)
+}
+
+fn format_cron_job_list_entry(job: &Value) -> Option<String> {
+    let name = job.get("name").and_then(Value::as_str)?.trim();
+    if name.is_empty() {
+        return None;
+    }
+    let schedule = job
+        .get("schedule")
+        .map(format_cron_schedule)
+        .filter(|value| !value.trim().is_empty());
+    let job_id = job
+        .get("id")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty());
+    let enabled = job.get("enabled").and_then(Value::as_bool);
+
+    let mut entry = name.to_string();
+    if let Some(schedule) = schedule {
+        entry.push_str("（");
+        entry.push_str(&schedule);
+        if matches!(enabled, Some(false)) {
+            entry.push_str("，已停用");
+        }
+        entry.push('）');
+    } else if matches!(enabled, Some(false)) {
+        entry.push_str("（已停用）");
+    }
+    if let Some(job_id) = job_id {
+        entry.push_str("，任务 ID：");
+        entry.push_str(job_id);
+    }
+    Some(entry)
 }
 
 fn cron_job_confirmation_message(prefix: &str, call: &ToolCallMade) -> Option<String> {
