@@ -20,8 +20,25 @@ New
 
 无，非 P1
 
+## 修复记录
+
+- 2026-06-20 23:03 CST 补充同根复发证据，状态保持 `New`：
+  - 19:01-23:01 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 本窗 ACP 可重构 25 次 `session/prompt`、25 次 `stopReason=end_turn`（含 23:00 CST 边界 prompt 于 23:02:38 CST 收口）、0 个 ACP response error。
+  - 21:02 CST Feishu direct session `Actor_feishu__direct__ou_5f64ee7ca7af22d44a83a31054e6fb92a3` 用户输入为 `spcx有没有什么利好消息 去搜一下`。
+  - assistant final 直接写出 `我按 Nasdaq: SPCX，也就是 SpaceX 股票来查`，随后输出 SpaceX IPO 后续融资、散户买入、Cursor / Anysphere 收购、期权交易和指数纳入预期等强时效金融叙事，并附多条外部链接。
+  - 该回答正常 `end_turn` 收口，没有空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径或思维痕迹进入 final；但它把 `SPCX` 与 SpaceX 股票直接等同，并输出高度可操作的当前利好判断，实体与来源核验边界不可靠。
+  - 当前没有发现持仓 / 画像 / 定时任务等持久化副作用写坏证据，主投递链路也未中断；按规则保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 ## 证据来源
 
+- `data/runtime/logs/acp-events.log`
+  - 巡检时间窗：2026-06-20 19:01-23:01 CST。
+  - `session_id=Actor_feishu__direct__ou_5f64ee7ca7af22d44a83a31054e6fb92a3`。
+  - 2026-06-20 21:02 CST `session/prompt` 中的本轮用户输入为 `spcx有没有什么利好消息 去搜一下`。
+  - 2026-06-20 21:02 CST assistant final 直接把 `SPCX` 解释为 `Nasdaq: SPCX，也就是 SpaceX 股票`，并输出 SpaceX IPO / 融资 / Cursor 收购 / 期权与指数预期等最新利好判断。
+  - 本窗 ACP 没有 response error；该 final 以 `stopReason=end_turn` 收口，回复没有内部工具协议、路径、token 或思维痕迹外泄。
+  - 本轮问题集中在强时效金融实体识别与来源核验边界，而不是消息投递或格式链路故障。
 - `data/sessions.sqlite3` -> `session_messages`
   - 巡检时间窗：2026-06-11 15:02-19:02 CST。
   - 本窗有 17 个 user turn 与 17 个 assistant final，10 个最近会话均以 assistant 收口；普通 Feishu scheduler 1 条为 `completed + sent + delivered=1`。
@@ -65,6 +82,7 @@ New
 - 但 final 把未见本轮工具核验证据的“公开报道”当作事实锚点，并给出具体价格区间和操作分档。
 - 2026-06-11 18:02 CST DELL 样本进一步显示，即使是上市公司详细分析，assistant 也会在没有网页 / 行情 / 财务工具核验证据的情况下列出来源 URL、最新价格、财务指标和建仓区间；本地写入公司画像的工具调用不等同于来源核验。
 - 这会让用户误以为系统已经完成了最新 IPO 来源核验，并可能把精确区间当作可执行交易纪律。
+- 2026-06-20 21:02 CST SPCX 样本进一步显示，用户输入真实 ticker 后，answer 阶段仍可能把 ticker 直接等同为高热度叙事实体，并输出未充分约束的强时效 IPO / 融资 / 收购利好链条；问题从“精确价格区间未核验”扩展到“实体识别与强时效来源核验未形成硬边界”。
 
 ## 用户影响
 
@@ -79,6 +97,7 @@ New
 - 初步判断是 Feishu direct 的金融 prompt / answer 阶段只要求“涉及实时信息必须调用真实数据工具”，但实际 final 没有强制校验“本轮是否存在支持当前来源和精确数字的工具结果”。
 - `feishu_direct_storage_price_unverified_before_tool_complete.md` 覆盖的是已发起行情工具但未充分等待 / 消费结果时输出精确行情；本轮是未上市公司 IPO 估值与媒体来源链接没有本轮可审计工具证据，链路相邻但触发条件不同。
 - 2026-06-11 DELL 样本说明根因不局限于未上市 IPO：当 assistant 只执行本地公司画像读写时，answer 阶段仍可能生成看似来自网页和财务页的精确数字与来源链接，缺少“final 中每个来源链接 / 精确行情 / 交易区间必须对应本轮工具证据”的一致性校验。
+- 2026-06-20 SPCX 样本说明根因还包括非标准 / 高歧义 ticker 与热门私营公司叙事之间缺少实体确认门槛；即使用户要求“去搜一下”，final 也应先确认 `SPCX` 的证券实体与来源支持，而不是直接写成 SpaceX 股票并展开当前利好分析。
 - 该问题也不同于路径或内部工具名外露缺陷：本轮用户可见文本没有泄露内部实现，问题是强时效金融来源和可操作价格区间的核验边界不足。
 
 ## 下一步建议
@@ -87,6 +106,7 @@ New
 - 对“来源”段增加一致性检查：final 中列出的外部链接必须来自本轮工具结果或明确标注为用户提供 / 历史上下文，不能凭模型记忆生成。
 - 增加回归样本：
   - 用户问 `预估 sapcex 上市多少钱，多少钱能买`，无工具结果时 final 只能给核验缺失说明和估值框架，不得给 `135 美元`、`1.75 万亿美元` 或具体买入区间。
+  - 用户问 `spcx有没有什么利好消息 去搜一下`，answer 阶段必须先确认 `SPCX` 对应的证券实体和来源支持；不得直接把 `SPCX` 写成 SpaceX 股票并输出 IPO / 融资 / 收购利好链条。
   - 用户问 `美股dell详细分析`，若本轮只有本地画像读写工具调用，final 不得列出来源链接、盘前价、精确财务/估值指标或建仓区间。
 
 ## 验证

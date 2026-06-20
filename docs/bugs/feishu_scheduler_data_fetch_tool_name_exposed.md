@@ -22,6 +22,13 @@ New
 
 ## 修复记录
 
+- 2026-06-20 23:03 CST 补充同根复发证据，状态保持 `New`：
+  - 19:01-23:01 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 本窗 ACP 可重构 25 次 `session/prompt`、25 次 `stopReason=end_turn`、0 个 ACP response error。
+  - 20:01 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f58ff884640e647a1792f618f45209251` 的期权墙 / 市场口径 final 正常收口，但开头写出 `本地没有可直接调用的 yfinance 包，我改用公开网页和行情接口做交叉核验`，把本机依赖与执行路径暴露给用户。
+  - 23:00 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 的核心观察池快报正常收口，但开头写出 `主行情工具返回额度错误，不能作为本轮价格源`，来源段继续写出 `StockAnalysis` 作为用户态校验口径。
+  - 两条报告主体均完成休市 / 行情口径、观察或风险说明，没有空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径或链路级数据破坏证据；问题仍只影响用户可见文案边界和产品感，因此保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-06-20 15:03 CST 补充同根复发证据，状态保持 `New`：
   - 11:02-15:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
   - 12:00 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5` 的 `每日公司资讯与分析总结` 以 `stopReason=end_turn` 收口，final 写出“把能复用的结论沉淀到本地公司画像”和“追加一条 2026-06-20 更新”等内部画像流程口径。
@@ -80,6 +87,12 @@ New
 
 ## 证据来源
 
+- `data/runtime/logs/acp-events.log`
+  - 2026-06-20 23:03 CST 巡检窗口：2026-06-20 19:01-23:01 CST。
+  - ACP 本窗可重构 25 次 `session/prompt`、25 次 `stopReason=end_turn`（含 23:00 CST 边界 prompt 于 23:02:38 CST 收口）、0 个 ACP response error；本条 scheduler / direct actor final 均正常收口。
+  - 20:01 CST `Actor_feishu__direct__ou_5f58ff884640e647a1792f618f45209251` final 写出本机 `yfinance` 包不可用和改用网页 / 行情接口的执行路径。
+  - 23:00 CST `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` final 写出 `主行情工具返回额度错误`，并在来源段把 `StockAnalysis` 作为用户态校验口径。
+  - 两个样本没有旧价格 fallback 成功态、投递失败、空回复、错投或功能阻断证据；本单只记录内部工具 / 数据源 / 本机执行环境口径外露。
 - `data/runtime/logs/acp-events.log`
   - 2026-06-20 15:03 CST 巡检窗口：2026-06-20 11:02-15:02 CST。
   - ACP 本窗可重构 9 次 `session/prompt`、8 次 `stopReason=end_turn`、0 个 ACP response error；本条 scheduler / direct actor final 正常收口。

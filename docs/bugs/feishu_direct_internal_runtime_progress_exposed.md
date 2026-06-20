@@ -22,6 +22,12 @@
 
 ## 修复记录
 
+- 2026-06-20 23:03 CST 补充同根复发证据，状态保持 `New`：
+  - 19:01-23:01 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 本窗 ACP 可重构 25 次 `session/prompt`、25 次 `stopReason=end_turn`（含 23:00 CST 边界 prompt 于 23:02:38 CST 收口）、0 个 ACP response error；未见空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径或思维痕迹进入 final。
+  - 21:01 CST Feishu direct session `Actor_feishu__direct__ou_5f49e2e252460a05eee0ff98f685cf9f16` 的 Intel 估值 final 完成产品业务 / foundry 亏损 / 估值拆分 / bull-bear / 证伪条件分析，但中段外露“把本轮判断沉淀成 Intel 的长期跟踪画像”和“正在把估值锚改成更严谨的股本口径”等内部画像写入 / 修正动作。
+  - 该样本正常 `end_turn` 收口，业务主体可用；问题仍限定在用户可见文案边界，不影响主功能链路，因此保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-06-20 15:03 CST 补充同根复发证据，状态保持 `New`：
   - 11:02-15:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
   - 本窗 ACP 可重构 9 次 `session/prompt`、8 次 `stopReason=end_turn`、0 个 ACP response error；另有 1 条 13:52 CST Feishu direct prompt 在日志窗口内尚未看到终态。
@@ -99,6 +105,11 @@
 
 ## 证据来源
 
+- `data/runtime/logs/acp-events.log`
+  - 巡检窗口：2026-06-20 19:01-23:01 CST。
+  - ACP 本窗可重构 25 次 `session/prompt`、25 次 `stopReason=end_turn`，未见 ACP response error、空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径或思维痕迹进入 final。
+  - `Actor_feishu__direct__ou_5f49e2e252460a05eee0ff98f685cf9f16` 在 21:01 CST 的 INTC 估值 final 外露长期画像沉淀和画像股本口径修正动作；回复主体完成 Intel 业务修复、代工亏损、估值框架和风险条件分析。
+  - 该样本没有本机绝对路径、token、原始工具 JSON 或思维痕迹；问题仍限定在用户可见文案边界。
 - `data/runtime/logs/acp-events.log`
   - 巡检窗口：2026-06-20 11:02-15:02 CST。
   - ACP 本窗可重构 9 次 `session/prompt`、8 次 `stopReason=end_turn`；未见 ACP response error、空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径或思维痕迹进入已收口 final。
