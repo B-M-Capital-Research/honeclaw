@@ -22,6 +22,12 @@ New
 
 ## 修复记录
 
+- 2026-06-21 03:02 CST 补充同根复发证据，状态保持 `New`：
+  - 23:03-03:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 本窗 ACP 可重构 7 次 `session/prompt`、7 次 `stopReason=end_turn`、0 个 ACP response error；相关 scheduler / direct actor final 均正常收口。
+  - 00:00-00:04 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b` 的 AAOI / TEM / RKLB 休市监控 final 均完成行情口径、催化筛选、风险和证伪条件，但继续写出 `StockAnalysis` 作为用户态来源 / 估值口径，并外露“长期画像 / 公司画像事件 / 不追加画像事件”等内部画像流程。
+  - 三条报告主体均完成休市 / 行情口径和风险说明，没有空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径或链路级数据破坏证据；问题仍只影响用户可见文案边界和产品感，因此保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-06-20 23:03 CST 补充同根复发证据，状态保持 `New`：
   - 19:01-23:01 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
   - 本窗 ACP 可重构 25 次 `session/prompt`、25 次 `stopReason=end_turn`、0 个 ACP response error。
@@ -87,6 +93,12 @@ New
 
 ## 证据来源
 
+- `data/runtime/logs/acp-events.log`
+  - 2026-06-21 03:02 CST 巡检窗口：2026-06-20 23:03-2026-06-21 03:02 CST。
+  - ACP 本窗可重构 7 次 `session/prompt`、7 次 `stopReason=end_turn`，0 个 ACP response error；本条 scheduler / direct actor final 均正常收口。
+  - 00:00 CST `Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b` 的 AAOI 监控 final 写出 `StockAnalysis` 作为行情 / 估值口径，并出现“长期画像 / 公司画像事件”类内部流程表达。
+  - 00:01 CST 同 session 的 TEM 监控 final 写出本地画像核验和 `StockAnalysis` 估值 / 财报日期口径；00:02 CST RKLB 监控 final 继续写出 `StockAnalysis` 与“不追加 RKLB 长期画像事件”。
+  - 三个样本没有旧价格 fallback 成功态、投递失败、空回复、错投或功能阻断证据；本单只记录内部工具 / 数据源 / 画像流程口径外露。
 - `data/runtime/logs/acp-events.log`
   - 2026-06-20 23:03 CST 巡检窗口：2026-06-20 19:01-23:01 CST。
   - ACP 本窗可重构 25 次 `session/prompt`、25 次 `stopReason=end_turn`（含 23:00 CST 边界 prompt 于 23:02:38 CST 收口）、0 个 ACP response error；本条 scheduler / direct actor final 均正常收口。

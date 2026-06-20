@@ -22,6 +22,13 @@
 
 ## 修复记录
 
+- 2026-06-21 03:02 CST 补充同根复发证据，状态保持 `New`：
+  - 23:03-03:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 本窗 ACP 可重构 7 次 `session/prompt`、7 次 `stopReason=end_turn`、0 个 ACP response error；未见空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径、transport trace 或思维痕迹进入 final。
+  - 00:16 CST Feishu direct session `Actor_feishu__direct__ou_5f44da57b6746474d4497f091b9f772b87` 对晶方科技 / `603005.SH` 投研 final 在行情和搜索工具多次失败后仍完成公司定位、护城河、财务观察项、估值框架、Bull / Bear thesis、动作建议与证伪条件。
+  - 但该 final 开头外露“本地没有晶方科技画像”“准备把本轮结论沉淀为晶方科技的公司画像”，结尾继续写出“本轮已把晶方科技写入本地公司画像”；这是内部画像状态 / 写入动作进入用户态正文。
+  - 该样本正常 `end_turn` 收口，业务主体可用；问题仍限定在用户可见文案边界，不影响主功能链路，因此保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-06-20 23:03 CST 补充同根复发证据，状态保持 `New`：
   - 19:01-23:01 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
   - 本窗 ACP 可重构 25 次 `session/prompt`、25 次 `stopReason=end_turn`（含 23:00 CST 边界 prompt 于 23:02:38 CST 收口）、0 个 ACP response error；未见空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径或思维痕迹进入 final。
@@ -105,6 +112,11 @@
 
 ## 证据来源
 
+- `data/runtime/logs/acp-events.log`
+  - 巡检窗口：2026-06-20 23:03-2026-06-21 03:02 CST。
+  - ACP 本窗可重构 7 次 `session/prompt`、7 次 `stopReason=end_turn`，未见 ACP response error、空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径、transport trace 或思维痕迹进入 final。
+  - `Actor_feishu__direct__ou_5f44da57b6746474d4497f091b9f772b87` 在 00:16 CST 的晶方科技投研 final 外露本地画像缺失、画像沉淀准备和画像写入完成等内部动作；回复主体完成公司定位、封装技术、财务质量、估值框架与风险条件分析。
+  - 该样本没有本机绝对路径、token、原始工具 JSON 或思维痕迹；问题仍限定在用户可见文案边界。
 - `data/runtime/logs/acp-events.log`
   - 巡检窗口：2026-06-20 19:01-23:01 CST。
   - ACP 本窗可重构 25 次 `session/prompt`、25 次 `stopReason=end_turn`，未见 ACP response error、空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径或思维痕迹进入 final。
