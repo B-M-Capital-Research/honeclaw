@@ -22,6 +22,13 @@
 
 ## 修复记录
 
+- 2026-06-20 15:03 CST 补充同根复发证据，状态保持 `New`：
+  - 11:02-15:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 本窗 ACP 可重构 9 次 `session/prompt`、8 次 `stopReason=end_turn`、0 个 ACP response error；另有 1 条 13:52 CST Feishu direct prompt 在日志窗口内尚未看到终态。
+  - 13:30 CST Feishu direct session `Actor_feishu__direct__ou_5fce891d255ae588dde3bd7b1494a28d1e` 对华特气体 / ASML 供应商问题完成公开披露核验、客户表述和证据边界说明，但开头外露“先核华特气体本地画像”等内部画像核验口径。
+  - 14:00 CST 同 session 对氧化锆粉体 / TOTO 限供叙事完成消息真实性、产业链受益环节和 A 股映射分析，但写出“把这次氧化锆粉体主题和国瓷材料的证据边界沉淀到本地画像”等内部画像沉淀动作。
+  - 上述样本均正常 `end_turn` 收口，业务主体可用；问题仍限定在用户可见文案边界，不影响主功能链路，因此保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-06-20 11:02 CST 补充同根复发证据，状态保持 `New`：
   - 07:02-11:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
   - 本窗 ACP 可重构 13 个 session、20 次 `session/prompt`、20 次 `stopReason=end_turn`，没有 response error、空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径或思维痕迹进入 final。
@@ -92,6 +99,12 @@
 
 ## 证据来源
 
+- `data/runtime/logs/acp-events.log`
+  - 巡检窗口：2026-06-20 11:02-15:02 CST。
+  - ACP 本窗可重构 9 次 `session/prompt`、8 次 `stopReason=end_turn`；未见 ACP response error、空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径或思维痕迹进入已收口 final。
+  - `Actor_feishu__direct__ou_5fce891d255ae588dde3bd7b1494a28d1e` 在 13:30 CST 的华特气体 / ASML 供应商核验 final 外露本地画像核验口径；回复主体完成公开披露和证据边界分析。
+  - 同 session 在 14:00 CST 的氧化锆粉体主题 final 外露本地画像沉淀动作；回复主体完成消息真实性、产业链受益和风险边界分析。
+  - 两个样本没有本机绝对路径、token、原始工具 JSON 或思维痕迹；问题仍限定在用户可见文案边界。
 - `data/runtime/logs/acp-events.log`
   - 巡检窗口：2026-06-20 07:02-11:02 CST。
   - ACP 本窗可重构 13 个 session、20 次 `session/prompt`、20 次 `stopReason=end_turn`，未见 response error、runner error、stream disconnect、quota、panic 或 provider 原始错误进入用户可见 final。

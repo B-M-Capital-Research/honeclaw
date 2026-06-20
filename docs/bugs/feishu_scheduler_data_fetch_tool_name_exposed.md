@@ -22,6 +22,11 @@ New
 
 ## 修复记录
 
+- 2026-06-20 15:03 CST 补充同根复发证据，状态保持 `New`：
+  - 11:02-15:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 12:00 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5` 的 `每日公司资讯与分析总结` 以 `stopReason=end_turn` 收口，final 写出“把能复用的结论沉淀到本地公司画像”和“追加一条 2026-06-20 更新”等内部画像流程口径。
+  - 报告主体仍完成公司资讯总结、指数纳入、目标价分歧、休市口径和风险边界说明，没有投递失败、空回复、错投或链路级数据破坏证据。问题仍是 scheduler final 文案边界，保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-06-20 11:02 CST 补充同根复发证据，状态保持 `New`：
   - 07:02-11:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
   - 08:30 CST Web scheduler / direct actor session `Actor_web__direct__web-user-fe88bce3a53f` 的 AI 硬件晨报以 `stopReason=end_turn` 收口，final 正常完成 AMZN / INTC / DELL / TSM / AMAT / GLW 等高权重增量筛选，但仍写出 `主行情工具` 这类内部工具口径。
@@ -75,6 +80,11 @@ New
 
 ## 证据来源
 
+- `data/runtime/logs/acp-events.log`
+  - 2026-06-20 15:03 CST 巡检窗口：2026-06-20 11:02-15:02 CST。
+  - ACP 本窗可重构 9 次 `session/prompt`、8 次 `stopReason=end_turn`、0 个 ACP response error；本条 scheduler / direct actor final 正常收口。
+  - 12:00 CST `Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5` final 写出本地公司画像沉淀与追加更新动作；报告主体完成公司资讯总结与可复用结论。
+  - 该样本没有旧价格 fallback 成功态、投递失败、空回复、错投或功能阻断证据；本单只记录内部工具 / 数据源 / 画像流程口径外露。
 - `data/runtime/logs/acp-events.log`
   - 2026-06-20 11:02 CST 巡检窗口：2026-06-20 07:02-11:02 CST。
   - ACP 本窗可重构 13 个 session、20 次 `session/prompt`、20 次 `stopReason=end_turn`，未见 response error、runner error、stream disconnect、quota、panic 或 provider 原始错误进入用户可见 final。
