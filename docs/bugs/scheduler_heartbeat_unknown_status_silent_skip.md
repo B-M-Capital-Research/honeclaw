@@ -7,6 +7,17 @@
 
 ## 修复进展
 
+- `2026-06-20 19:02 CST` 本轮仅补充旧/未确认部署运行态证据，不把本单从 `Fixed` 回退：
+  - `data/runtime/logs/web.log.2026-06-20`
+    - 15:02-19:02 CST live 窗口仍有 heartbeat 结构化 / 状态解析退化相关日志：46 条 `heartbeat 输出不是结构化 JSON`、46 条 `PlainTextSuppressed`、137 条 `JsonNoop`；终态多为 `execution_failed + skipped_error + delivered=0` 或 `noop + skipped_noop + delivered=0`。
+    - 同窗还有 594 条 `tool_execute_error name=web_search`、2673 条 Tavily key quota/deactivated warning、648 条 FMP 限额 warning 与 174 条 `notification_prefs` / `Param Incorrect` 参数类日志；这些上游工具与参数错误会诱发 heartbeat 输出降级，但未进入用户可见 final。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 仍停在 2026-06-17；本轮以 `data/runtime/logs/acp-events.log` 重构用户可见回复。
+    - ACP 本窗可见 6 次 `session/prompt`、6 次 `stopReason=end_turn`、0 个 response error；final 污染扫描未命中空回复、内部路径、工具 JSON、provider 原始错误、transport fallback、模型元数据警告、画像沉淀话术或思维痕迹。
+  - 判断：
+    - 当前仓库已有 heartbeat 状态归一与结构化收口修复，本轮仍按旧/未确认部署运行态证据处理，不新建重复缺陷，不创建 GitHub Issue。
+    - 若后续确认 live web / worker 已加载当前代码后仍持续出现同类结构化收口失败，再重新打开本单。
+
 - `2026-06-20 03:01 CST` 本轮仅补充旧/未确认部署运行态证据，不把本单从 `Fixed` 回退：
   - `data/runtime/logs/web.log.2026-06-19`
     - 23:01-03:01 CST live 窗口仍有 274 条 heartbeat 结构化 / 状态解析退化相关日志，覆盖 `heartbeat 输出不是结构化 JSON`、`heartbeat 输出包含未知状态`、`PlainTextSuppressed`、`JsonNoop`、`JsonUnknownStatus` 等形态；终态日志多为 `execution_failed + skipped_error + delivered=0` 或 `noop + skipped_noop + delivered=0`。
