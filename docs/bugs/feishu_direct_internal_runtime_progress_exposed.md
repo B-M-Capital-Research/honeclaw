@@ -22,6 +22,13 @@
 
 ## 修复记录
 
+- 2026-06-20 11:02 CST 补充同根复发证据，状态保持 `New`：
+  - 07:02-11:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 本窗 ACP 可重构 13 个 session、20 次 `session/prompt`、20 次 `stopReason=end_turn`，没有 response error、空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径或思维痕迹进入 final。
+  - 07:22 CST Feishu direct session `Actor_feishu__direct__ou_5f49e2e252460a05eee0ff98f685cf9f16` 对 AI 材料 / A 股映射问题完成材料线拆解、A 股公司映射、投资判断和风险提示，但开头外露 `本地没有可复用画像`。
+  - 08:30 CST Feishu direct session `Actor_feishu__direct__ou_5fba037d8699a7194dfe01a1fda5ced052` 的 OKLO 每日检查 final 外露 `本地画像显示...`、`沉淀到本地画像日期` 等内部画像动作；业务主体仍完成官方 / NRC / SEC 口径核验与无新增结论。
+  - 上述样本均正常 `end_turn` 收口，业务主体可用；问题仍限定在用户可见文案边界，不影响主功能链路，因此保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-06-20 07:02 CST 补充同根复发证据，状态保持 `New`：
   - 03:05-07:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
   - 本窗 ACP 可见 4 个真实 prompt、4 次 `stopReason=end_turn`，没有 response error、空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径或思维痕迹进入 final。
@@ -85,6 +92,12 @@
 
 ## 证据来源
 
+- `data/runtime/logs/acp-events.log`
+  - 巡检窗口：2026-06-20 07:02-11:02 CST。
+  - ACP 本窗可重构 13 个 session、20 次 `session/prompt`、20 次 `stopReason=end_turn`，未见 response error、runner error、stream disconnect、quota、panic 或 provider 原始错误进入用户可见 final。
+  - `Actor_feishu__direct__ou_5f49e2e252460a05eee0ff98f685cf9f16` 在 07:22 CST 的 AI 材料映射 final 外露本地画像缺失口径；回复主体完成材料层级、A 股映射和风险提示。
+  - `Actor_feishu__direct__ou_5fba037d8699a7194dfe01a1fda5ced052` 在 08:30 CST 的 OKLO 每日检查 final 外露本地画像参考和沉淀动作；回复主体完成无新增官方变化结论。
+  - 两个样本没有本机绝对路径、token、原始工具 JSON 或思维痕迹；问题仍限定在用户可见文案边界。
 - `data/runtime/logs/acp-events.log`
   - 巡检窗口：2026-06-20 03:05-07:02 CST。
   - ACP 本窗可见 4 个真实 prompt、4 次 `stopReason=end_turn`；另有 12 条空 stopReason response，来自 initialize / session control 等非 final 响应。
