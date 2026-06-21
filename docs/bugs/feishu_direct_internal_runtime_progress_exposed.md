@@ -22,6 +22,13 @@
 
 ## 修复记录
 
+- 2026-06-21 11:03 CST 补充同根复发证据，状态保持 `New`：
+  - 07:01-11:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 本窗 ACP 可重构 14 个 session、20 次 `session/prompt`、20 次 `stopReason=end_turn`、0 个 ACP response error；未见空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径、transport trace 或思维痕迹进入 final。
+  - 08:30 CST Feishu direct session `Actor_feishu__direct__ou_5fba037d8699a7194dfe01a1fda5ced052` 的 OKLO 每日检查 final 完成官方公告、NRC / SEC 线索和近期媒体信号核验，并输出无新增高权重官方基本面变化的结论。
+  - 但该 final 前段外露 `本地画像显示 OKLO 的主线...`，随后写出“把今天的检查结果回写到 OKLO 长期画像”等内部画像读取 / 写入动作。
+  - 该样本正常 `end_turn` 收口，业务主体可用；问题仍限定在用户可见文案边界，不影响主功能链路，因此保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-06-21 03:02 CST 补充同根复发证据，状态保持 `New`：
   - 23:03-03:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
   - 本窗 ACP 可重构 7 次 `session/prompt`、7 次 `stopReason=end_turn`、0 个 ACP response error；未见空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径、transport trace 或思维痕迹进入 final。
@@ -112,6 +119,11 @@
 
 ## 证据来源
 
+- `data/runtime/logs/acp-events.log`
+  - 巡检窗口：2026-06-21 07:01-11:02 CST。
+  - ACP 本窗可重构 14 个 session、20 次 `session/prompt`、20 次 `stopReason=end_turn`，未见 ACP response error、空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径、transport trace 或思维痕迹进入 final。
+  - `Actor_feishu__direct__ou_5fba037d8699a7194dfe01a1fda5ced052` 在 08:30 CST 的 OKLO 每日检查 final 外露本地画像状态和长期画像回写动作；回复主体完成 DOE / NRC / SEC 口径核验与无新增官方高权重变化结论。
+  - 该样本没有本机绝对路径、token、原始工具 JSON 或思维痕迹；问题仍限定在用户可见文案边界。
 - `data/runtime/logs/acp-events.log`
   - 巡检窗口：2026-06-20 23:03-2026-06-21 03:02 CST。
   - ACP 本窗可重构 7 次 `session/prompt`、7 次 `stopReason=end_turn`，未见 ACP response error、空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径、transport trace 或思维痕迹进入 final。

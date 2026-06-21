@@ -22,6 +22,13 @@ New
 
 ## 修复记录
 
+- 2026-06-21 11:03 CST 补充同根复发证据，状态保持 `New`：
+  - 07:01-11:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 本窗 ACP 可重构 14 个 session、20 次 `session/prompt`、20 次 `stopReason=end_turn`、0 个 ACP response error；未见空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径、transport trace 或思维痕迹进入 final。
+  - 09:00 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 的核心观察池早间简报正常收口，但来源段继续写出 `StockAnalysis` 作为用户态行情来源 / 执行口径。
+  - 该报告主体完成周末 / Juneteenth 休市价格口径、核心股与拓展股分组、击球区和数据待确认说明；没有旧价格 fallback 成功态、投递失败、空回复、错投或功能阻断证据。
+  - 问题仍只影响 scheduler final 的用户可见文案边界和产品感，不影响主功能链路，因此保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-06-21 03:02 CST 补充同根复发证据，状态保持 `New`：
   - 23:03-03:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
   - 本窗 ACP 可重构 7 次 `session/prompt`、7 次 `stopReason=end_turn`、0 个 ACP response error；相关 scheduler / direct actor final 均正常收口。
@@ -93,6 +100,11 @@ New
 
 ## 证据来源
 
+- `data/runtime/logs/acp-events.log`
+  - 2026-06-21 11:03 CST 巡检窗口：2026-06-21 07:01-11:02 CST。
+  - ACP 本窗可重构 14 个 session、20 次 `session/prompt`、20 次 `stopReason=end_turn`，0 个 ACP response error；本条 scheduler / direct actor final 正常收口。
+  - 09:00 CST `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` final 在“来源”段写出 `StockAnalysis`，作为用户态行情 / 财报日期校验口径。
+  - 该样本没有旧价格 fallback 成功态、投递失败、空回复、错投或功能阻断证据；本单只记录内部工具 / 数据源 / 执行口径外露。
 - `data/runtime/logs/acp-events.log`
   - 2026-06-21 03:02 CST 巡检窗口：2026-06-20 23:03-2026-06-21 03:02 CST。
   - ACP 本窗可重构 7 次 `session/prompt`、7 次 `stopReason=end_turn`，0 个 ACP response error；本条 scheduler / direct actor final 均正常收口。
