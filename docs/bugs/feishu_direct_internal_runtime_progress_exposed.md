@@ -22,6 +22,13 @@
 
 ## 修复记录
 
+- 2026-06-21 19:03 CST 补充同根复发证据，状态保持 `New`：
+  - 15:03-19:03 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 本窗 ACP 可重构 2 个 session、2 次 `session/prompt`、2 次 `stopReason=end_turn`、0 个 ACP response error；未见空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径、transport trace、provider 原始错误或思维痕迹进入 final。
+  - 16:55 CST Feishu direct session `Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21` 的 KEYS 投研 final 完成 Keysight Technologies 实体识别、AI 光互联 / 高速网络测试定位、行情口径、估值、财务和风险分析。
+  - 但该 final 前段外露“本地没有既有画像”“我会同步建立 KEYS 的长期画像”“重点记录当前投资主线、估值判断和证伪条件”等内部画像缺失 / 写入动作。
+  - 该样本正常 `end_turn` 收口，业务主体可用；问题仍限定在用户可见文案边界，不影响主功能链路，因此保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-06-21 11:03 CST 补充同根复发证据，状态保持 `New`：
   - 07:01-11:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
   - 本窗 ACP 可重构 14 个 session、20 次 `session/prompt`、20 次 `stopReason=end_turn`、0 个 ACP response error；未见空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径、transport trace 或思维痕迹进入 final。
@@ -119,6 +126,11 @@
 
 ## 证据来源
 
+- `data/runtime/logs/acp-events.log`
+  - 巡检窗口：2026-06-21 15:03-19:03 CST。
+  - ACP 本窗可重构 2 个 session、2 次 `session/prompt`、2 次 `stopReason=end_turn`，未见 ACP response error、空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径、transport trace 或思维痕迹进入 final。
+  - `Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21` 在 16:55 CST 的 KEYS 投研 final 外露本地画像缺失和长期画像建立 / 沉淀动作；回复主体完成公司定位、财务、估值、AI 网络测试主线和风险分析。
+  - 该样本没有本机绝对路径、token、原始工具 JSON 或思维痕迹；问题仍限定在用户可见文案边界。
 - `data/runtime/logs/acp-events.log`
   - 巡检窗口：2026-06-21 07:01-11:02 CST。
   - ACP 本窗可重构 14 个 session、20 次 `session/prompt`、20 次 `stopReason=end_turn`，未见 ACP response error、空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径、transport trace 或思维痕迹进入 final。

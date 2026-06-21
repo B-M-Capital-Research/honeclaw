@@ -22,6 +22,13 @@ New
 
 ## 修复记录
 
+- 2026-06-21 19:03 CST 补充同根复发证据，状态保持 `New`：
+  - 15:03-19:03 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`cron_job_runs.max(executed_at)=2026-06-17T11:01:42.353141+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 本窗 ACP 可重构 2 个 session、2 次 `session/prompt`、2 次 `stopReason=end_turn`、0 个 ACP response error；未见空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径、transport trace 或思维痕迹进入 final。
+  - 17:30 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f636d6d7c80d333e41b86ae79d07adca8` 的 `A股港股收盘后复盘` 正常收口，但开头写出“我会先核实交易日与最近可用盘面”“接下来只补充可核验的最近交易日信号”“我再核验核心个股估值口径”等执行过程口径，尾部来源继续写出 `Hone行情工具`。
+  - 该报告主体完成周日 / 端午 / Juneteenth 休市口径、QQQ/SMH/SOXX 等 ETF 与核心个股估值分层；没有投递失败、空回复、错投或链路级数据破坏证据。
+  - 问题仍只影响 scheduler final 的用户可见文案边界和产品感，不影响主功能链路，因此保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-06-21 15:03 CST 补充同根复发证据，状态保持 `New`：
   - 11:03-15:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`cron_job_runs.max(executed_at)=2026-06-17T11:01:42.353141+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
   - 本窗 ACP 可重构 2 个 session、3 次 `session/prompt`、3 次 `stopReason=end_turn`、0 个 ACP response error；未见空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径、transport trace 或思维痕迹进入 final。
@@ -107,6 +114,11 @@ New
 
 ## 证据来源
 
+- `data/runtime/logs/acp-events.log`
+  - 2026-06-21 19:03 CST 巡检窗口：2026-06-21 15:03-19:03 CST。
+  - ACP 本窗可重构 2 个 session、2 次 `session/prompt`、2 次 `stopReason=end_turn`，0 个 ACP response error；本条 scheduler / direct actor final 正常收口。
+  - 17:30 CST `Actor_feishu__direct__ou_5f636d6d7c80d333e41b86ae79d07adca8` final 写出交易日核实、最近可用盘面核验、核心个股估值核验等执行过程口径，并在来源中继续出现 `Hone行情工具`。
+  - 该样本没有旧价格 fallback 成功态、投递失败、空回复、错投或功能阻断证据；本单只记录内部工具 / 数据源 / 执行口径外露。
 - `data/runtime/logs/acp-events.log`
   - 2026-06-21 15:03 CST 巡检窗口：2026-06-21 11:03-15:02 CST。
   - ACP 本窗可重构 2 个 session、3 次 `session/prompt`、3 次 `stopReason=end_turn`，0 个 ACP response error；本条 scheduler / direct actor final 正常收口。

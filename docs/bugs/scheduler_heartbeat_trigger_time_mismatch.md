@@ -3,8 +3,21 @@
 - **发现时间**: 2026-05-29 15:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
+
+## 最新进展（2026-06-21 19:03 CST）
+
+- 本轮最近四小时真实运行态复发，状态从 `Fixed` 回退为 `New`：
+  - `data/runtime/logs/web.log.2026-06-21`
+    - 19:00:02 CST Web heartbeat `NBIS关键事件心跳提醒` 启动，target=`web-user-c2776780c59d`。
+    - 19:01:02 CST 同 job 收口为 `success=true`、`parse_kind=JsonTriggered`。
+    - 19:01:02 CST deliver preview 开头写成 `【NBIS 高权重事件监控 · 北京时间 2026-06-19 17:30】`。
+  - 该送达标题时间与实际调度执行窗口 `2026-06-21 19:01 CST` 明显不一致，且 raw preview 中模型自行推断 `It's approximately 17:30 Beijing time on June 19, 2026`。
+  - 代码对照显示当前调度路径仍调用 `heartbeat_execution_from_content(&content, &heartbeat_model)`，没有把 scheduler 当前北京时间传入 `heartbeat_execution_from_content_at_beijing(...)`，因此 2026-05-29 的触发时间归一化修复没有覆盖这条 live 出站路径。
+- 用户影响：
+  - 调度、解析、投递链路成功，用户能收到提醒；但用户可见标题把提醒时间写早两天，容易误判提醒新鲜度和交易时段。
+  - 该问题不涉及错投、漏投、数据安全或系统级失败，因此保持 `P3 / New`，非 P1，不创建 GitHub Issue。
 
 ## 修复记录（2026-05-29 16:35 CST）
 
@@ -15,6 +28,14 @@
 
 ## 证据来源
 
+- `data/runtime/logs/web.log.2026-06-21`
+  - 巡检窗口：2026-06-21 15:03-19:03 CST。
+  - 19:00:02 CST `NBIS关键事件心跳提醒` 触发，target=`web-user-c2776780c59d`。
+  - 19:01:02 CST `run_finish job_id=j_eab1a3b2 job=NBIS关键事件心跳提醒 ... success=true content_chars=4179`，随后 `parse_kind=JsonTriggered`。
+  - 同一秒 `deliver_preview` 开头为 `【NBIS 高权重事件监控 · 北京时间 2026-06-19 17:30】`，但本轮运行日志时间为 2026-06-21 19:01 CST。
+- `crates/hone-channels/src/scheduler.rs`
+  - 当前调度路径在 heartbeat 内容收口后调用 `heartbeat_execution_from_content(&content, &heartbeat_model)`。
+  - 带权威北京时间的 `heartbeat_execution_from_content_at_beijing(...)` 只在测试 / helper 路径出现，未接入本条 live 调度路径。
 - `data/sessions.sqlite3` -> `cron_job_runs`
   - `run_id=36255`
   - `job_id=j_bb4bbb99`

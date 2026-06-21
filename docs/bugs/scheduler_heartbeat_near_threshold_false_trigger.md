@@ -3,7 +3,20 @@
 - **发现时间**: 2026-04-29 10:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
+
+## 最新进展（2026-06-21 19:03 CST）
+
+- 本轮最近四小时真实运行态确认同根复发，状态从 `Fixed` 回退为 `New`：
+  - `data/runtime/logs/web.log.2026-06-21`
+    - 16:30 CST `小米30港元破位预警` `job_id=j_654aef9b` 返回 `parse_kind=JsonTriggered`，raw preview 明确写出 `当前价格：24.58 港元`、`现价 24.58 港元 <= 30 港元 -> 触发`，随后仍记录 `心跳任务未命中，本轮不发送`。
+    - 17:30 CST 同 job 再次返回 `parse_kind=JsonTriggered`，raw preview 写出 `latest price is HKD 24.58, which is below 30 HKD` 和 `status: triggered`，随后仍记录未发送。
+    - 18:00 / 18:30 / 19:00 CST 同 job 继续多次返回 `JsonTriggered`，raw preview 均明确低于 30 港元阈值，最终仍被压成“未命中，本轮不发送”。
+  - 该样本与 2026-05-12 DRAM 创历史新高被送达前 guard 压成 `noop + skipped_noop` 的分支同根：模型已给出 `JsonTriggered` 且触发条件明确满足，但 scheduler 最终没有投递。
+  - 代码对照显示 heartbeat 出站前仍会在 `JsonTriggered` 之后执行 `heartbeat_near_threshold_without_crossing(...)` 等送达前 guard；当前文案包含 `心理止损/观察线`、`52周新低`、`24.58 <= 30` 等混合表达，疑似被 guard 或后续送达判定误抑制。
+- 用户影响：
+  - 这是功能性告警漏发：用户设置的小米 30 港元破位条件已经满足，但连续多个半小时窗口没有收到提醒。
+  - 它不涉及 P1 的错对象投递、数据安全或批量全链路不可用；当前按单任务 heartbeat 漏发定为 `P2 / New`，不创建 GitHub Issue。
 
 ## 修复结论复核（2026-05-12 11:16 CST）
 
@@ -19,6 +32,12 @@
 
 ## 证据来源
 
+- `data/runtime/logs/web.log.2026-06-21`
+  - 巡检窗口：2026-06-21 15:03-19:03 CST。
+  - 16:30:30 CST `job_id=j_654aef9b job=小米30港元破位预警` 收口为 `parse_kind=JsonTriggered`，raw preview 明确写出 `当前价格：24.58 港元`、`现价 24.58 港元 <= 30 港元 -> 触发`；紧接着 Feishu 记录 `心跳任务未命中，本轮不发送`。
+  - 17:30:18 CST 同 job 再次 `parse_kind=JsonTriggered`，raw preview 写出 `latest price is HKD 24.58, which is below 30 HKD` 与 `status: triggered`；随后仍未发送。
+  - 18:00:31 / 18:30:27 / 19:00:31 CST 同 job 继续多次 `JsonTriggered`，raw preview 均围绕 `24.58` 低于 `30` 的阈值触发条件，最终仍记录未命中不发送。
+  - 同窗普通 Feishu / Web direct 会话仍有 `end_turn` 收口；该问题集中在 heartbeat triggered 结果到最终送达的判定链路。
 - `2026-05-12 11:02 CST` 本轮巡检把本单从 `Fixed` 回退为 `New`：最近四小时真实 heartbeat 窗口出现相反方向的坏态，模型已返回 `JsonTriggered` 且正文明确说 `DRAM 盘中创历史新高（满足条件2）`，但送达前 near-threshold guard 把它压成 `noop + skipped_noop`：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=19216`
