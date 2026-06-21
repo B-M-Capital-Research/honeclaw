@@ -20,6 +20,18 @@
 
 - 无，非 P1
 
+## 最新进展（2026-06-21 23:03 CST）
+
+- 本轮 19:02-23:01 CST 真实运行态继续确认同根复发，状态维持 `New`：
+  - `data/runtime/logs/acp-events.log`
+    - 本窗 ACP 可重构 21 次 `session/prompt`、21 次 `stopReason=end_turn`、0 个 ACP response error。
+    - `session_id=Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 在 21:35 CST 的观察池快报以 `end_turn` 收口，正文再次把多只观察池标的输出为明显异常数量级价格：`MU $1,151.95`、`SNDK $2,209.28`、`STX $1,075.77`、`WDC $754.10` 等，并继续给出击球区和财报日期。
+    - 同条 final 来源段继续出现 `StockAnalysis 各标的行情页`，说明问题不只是内部来源标签外露，而是异常行情数值仍被当作正式观察池价格锚。
+  - `data/sessions.sqlite3` 仍停在 2026-06-17，最近会话证据继续以 ACP 日志为准。
+- 用户影响：
+  - 回复正常收口，观察池主链路仍可用，未见空回复、错投、投递失败或原始工具 JSON；因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+  - 但异常价格已经在 6 月 20 日早间简报和 6 月 21 日晚间观察池快报复现，说明需要优先修复价格 sanity check，而不仅是改写 `StockAnalysis` 这个用户可见标签。
+
 ## 证据来源
 
 - `data/runtime/logs/acp-events.log`

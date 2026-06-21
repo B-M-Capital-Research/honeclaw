@@ -5,6 +5,18 @@
 - **严重等级**: P2
 - **状态**: New
 
+## 最新进展（2026-06-21 23:03 CST）
+
+- 本轮 19:02-23:01 CST 真实运行态继续确认同根复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-06-21`
+    - 19:30 / 20:00 / 20:30 / 21:00 / 21:30 / 22:00 / 22:30 / 23:00 CST `小米30港元破位预警` 多次返回 `parse_kind=JsonTriggered`，raw preview 或 deliver preview 明确写出 `24.58 < 30`、`24.58 <= 30`、`condition=现价≤30港元`、`status=triggered` 等触发条件；调度随后仍记录 `心跳任务未命中，本轮不发送`。
+    - 21:01 / 23:00 CST `光迅科技关键事件心跳提醒` 返回 `JsonTriggered`，raw preview 写出价格 `266.2`、`up 10%`、`limit-up/涨停` 等触发语义；同一 target 后续仍落到跳过发送分支。
+    - 23:00 CST `闪迪关键事件心跳提醒` 返回 `JsonTriggered`，raw preview 写出 `Current price: $2,184.75`、`up 11.54%`、`new all-time high` 等触发语义；同一窗口仍未形成用户可见送达。
+  - 同窗统计：`parse_kind=JsonTriggered` 26 条、`心跳任务未命中` 128 条、`heartbeat 输出不是结构化 JSON` 71 条、ACP response error 0；未见 Feishu 400、panic、transport disconnect 或资源耗尽。
+- 用户影响：
+  - 这仍是功能性 heartbeat 漏发 / 抑制问题，不是文案质量问题；用户设置的价格或重大事件条件已由模型判为 triggered，但最终没有送达。
+  - 影响集中在 heartbeat 判定到投递之间的链路；没有错对象投递、数据安全或全渠道不可用证据，严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 ## 最新进展（2026-06-21 19:03 CST）
 
 - 本轮最近四小时真实运行态确认同根复发，状态从 `Fixed` 回退为 `New`：
@@ -250,7 +262,7 @@
 - 2026-04-29 11:30-12:01 最新真实窗口仍复现回归：`run_id=9912` 把 ORCL `跌幅 4.07%` 写成“接近 5% 阈值”并送达，下一窗口 `run_id=9941` 才恢复 `noop`；说明近阈值保险闸尚未稳定覆盖所有单标的 heartbeat 变体，本单改回 `New`。
 - 2026-04-29 19:04: 本轮补强同一保险闸，新增 `门槛 / 未触及 / 未命中 / 未满足 / 未达` 等否认命中措辞覆盖；`触发条件：超过 8%` 但正文写出 `当前跌幅未达到 8% 阈值，日内振幅未触及 8% 门槛` 的 `triggered` 输出会被落成 `near_threshold_suppressed`，不再投递。回归验证：`cargo test -p hone-channels heartbeat_ -- --nocapture`。
 
-## 后续建议
+## 下一步建议
 
 - 后续仍可把 heartbeat `triggered` 结果升级成机器可校验的数值字段，例如 `metric`, `threshold`, `observed_value`, `comparison_passed`，进一步减少模型自由文本判断空间。
 - 在 ASTS / ORCL / watchlist 这类价格阈值模板里明确禁止把“接近阈值”“距离阈值不远”“建议关注波动”解释成 `triggered`。
