@@ -8,10 +8,24 @@
 use async_trait::async_trait;
 use chrono::{Duration, NaiveDate};
 use serde_json::Value;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration as StdDuration, Instant};
 
 use crate::base::{Tool, ToolParameter};
 
 const MAX_FMP_TRANSPORT_ERROR_CHARS: usize = 300;
+const FMP_TTL_FAST: StdDuration = StdDuration::from_secs(5 * 60);
+const FMP_TTL_NEWS: StdDuration = StdDuration::from_secs(15 * 60);
+const FMP_TTL_PROFILE: StdDuration = StdDuration::from_secs(24 * 60 * 60);
+const FMP_TTL_FINANCIALS: StdDuration = StdDuration::from_secs(6 * 60 * 60);
+const FMP_TTL_EARNINGS: StdDuration = StdDuration::from_secs(60 * 60);
+
+#[derive(Clone)]
+struct CachedFmpValue {
+    expires_at: Instant,
+    value: Value,
+}
 
 /// DataFetchTool — 金融数据获取（FMP，多 Key fallback）
 pub struct DataFetchTool {
@@ -20,6 +34,7 @@ pub struct DataFetchTool {
     base_url: String,
     timeout: u64,
     http: reqwest::Client,
+    cache: Arc<Mutex<HashMap<String, CachedFmpValue>>>,
 }
 
 impl DataFetchTool {
@@ -30,6 +45,7 @@ impl DataFetchTool {
             base_url: base_url.trim_end_matches('/').to_string(),
             timeout,
             http: reqwest::Client::new(),
+            cache: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -40,6 +56,7 @@ impl DataFetchTool {
             base_url: config.fmp.base_url.trim_end_matches('/').to_string(),
             timeout: config.fmp.timeout,
             http: reqwest::Client::new(),
+            cache: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -98,6 +115,11 @@ impl DataFetchTool {
     fn build_url(&self, data_type: &str, ticker: &str) -> Result<String, String> {
         match data_type {
             "quote" => Ok(format!("{}/v3/quote/{}", self.base_url, ticker)),
+            "quote_short" => Ok(format!(
+                "{}/stable/batch-quote-short?symbols={}",
+                self.stable_base_url(),
+                ticker
+            )),
             "profile" => Ok(format!("{}/v3/profile/{}", self.base_url, ticker)),
             "search" => Ok(format!(
                 "{}/v3/search?query={}&limit=10",
@@ -164,13 +186,50 @@ impl DataFetchTool {
         )
     }
 
+    fn stable_base_url(&self) -> String {
+        self.base_url
+            .strip_suffix("/api")
+            .unwrap_or(&self.base_url)
+            .trim_end_matches('/')
+            .to_string()
+    }
+
     async fn fetch_data_type(&self, data_type: &str, ticker: &str) -> Result<Value, String> {
         let url = self.build_url(data_type, ticker)?;
+        self.fetch_from_url_cached(&url, ttl_for_data_type(data_type), data_type)
+            .await
+    }
+
+    async fn fetch_from_url_cached(
+        &self,
+        url: &str,
+        ttl: Option<StdDuration>,
+        data_type: &str,
+    ) -> Result<Value, String> {
+        let cache_key = fmp_cache_key_for_url(url);
+        if let Some(ttl) = ttl
+            && let Some(value) = self.cached_value(&cache_key)
+        {
+            tracing::info!(
+                tool = "data_fetch",
+                data_type,
+                cache_key = %cache_key,
+                ttl_secs = ttl.as_secs(),
+                "FMP data_fetch cache hit"
+            );
+            return Ok(value);
+        }
+
         let mut last_err = String::new();
 
         for key in &self.keys {
             match self.fetch_with_key(key, &url).await {
-                Ok(data) => return Ok(data),
+                Ok(data) => {
+                    if let Some(ttl) = ttl {
+                        self.store_cache_value(cache_key.clone(), ttl, data.clone());
+                    }
+                    return Ok(data);
+                }
                 Err(e) => last_err = e,
             }
         }
@@ -182,21 +241,31 @@ impl DataFetchTool {
         ))
     }
 
-    async fn fetch_from_url(&self, url: &str) -> Result<Value, String> {
-        let mut last_err = String::new();
-
-        for key in &self.keys {
-            match self.fetch_with_key(key, url).await {
-                Ok(data) => return Ok(data),
-                Err(e) => last_err = e,
-            }
+    fn cached_value(&self, cache_key: &str) -> Option<Value> {
+        let Ok(mut cache) = self.cache.lock() else {
+            return None;
+        };
+        let Some(entry) = cache.get(cache_key) else {
+            return None;
+        };
+        if entry.expires_at <= Instant::now() {
+            cache.remove(cache_key);
+            return None;
         }
+        Some(entry.value.clone())
+    }
 
-        Err(format!(
-            "所有 FMP API Key 均失败（共 {} 个）。最后错误：{}",
-            self.keys.len(),
-            last_err
-        ))
+    fn store_cache_value(&self, cache_key: String, ttl: StdDuration, value: Value) {
+        let Ok(mut cache) = self.cache.lock() else {
+            return;
+        };
+        cache.insert(
+            cache_key,
+            CachedFmpValue {
+                expires_at: Instant::now() + ttl,
+                value,
+            },
+        );
     }
 
     fn build_snapshot_response(
@@ -273,6 +342,64 @@ fn sanitize_fmp_error_detail(text: &str) -> String {
         .take(MAX_FMP_TRANSPORT_ERROR_CHARS)
         .collect::<String>()
         + "..."
+}
+
+fn ttl_for_data_type(data_type: &str) -> Option<StdDuration> {
+    match data_type {
+        "quote" | "quote_short" | "crypto_quote" | "gainers_losers" | "sector_performance" => {
+            Some(FMP_TTL_FAST)
+        }
+        "news" => Some(FMP_TTL_NEWS),
+        "profile" | "search" | "etf_holdings" => Some(FMP_TTL_PROFILE),
+        "financials" => Some(FMP_TTL_FINANCIALS),
+        "earnings_calendar" => Some(FMP_TTL_EARNINGS),
+        _ => None,
+    }
+}
+
+fn fmp_cache_key_for_url(url: &str) -> String {
+    let Ok(parsed) = reqwest::Url::parse(url) else {
+        return strip_apikey_like_params(url);
+    };
+
+    let pairs = parsed
+        .query_pairs()
+        .filter(|(key, _)| !is_fmp_api_key_param(key))
+        .map(|(key, value)| (key.to_string(), value.to_string()))
+        .collect::<Vec<_>>();
+    let mut sanitized = parsed;
+    sanitized.set_query(None);
+    if !pairs.is_empty() {
+        {
+            let mut query = sanitized.query_pairs_mut();
+            for (key, value) in pairs {
+                query.append_pair(&key, &value);
+            }
+        }
+    }
+    sanitized.to_string()
+}
+
+fn is_fmp_api_key_param(key: &str) -> bool {
+    matches!(key.to_ascii_lowercase().as_str(), "apikey" | "api_key") || key == "apiKey"
+}
+
+fn strip_apikey_like_params(url: &str) -> String {
+    let Some((prefix, query)) = url.split_once('?') else {
+        return url.to_string();
+    };
+    let kept = query
+        .split('&')
+        .filter(|part| {
+            let key = part.split_once('=').map(|(key, _)| key).unwrap_or(part);
+            !is_fmp_api_key_param(key)
+        })
+        .collect::<Vec<_>>();
+    if kept.is_empty() {
+        prefix.to_string()
+    } else {
+        format!("{prefix}?{}", kept.join("&"))
+    }
 }
 
 fn redact_url_userinfo(text: &str) -> String {
@@ -393,7 +520,7 @@ impl Tool for DataFetchTool {
     }
 
     fn description(&self) -> &str {
-        "获取金融数据（股票/ETF/加密货币的行情、基本面、新闻等）。支持的数据类型：quote（实时行情）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、financials（财务数据）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历，默认查询当前北京时间起未来 14 天，也支持 from/to 覆盖窗口）。"
+        "获取金融数据（股票/ETF/加密货币的行情、基本面、新闻等）。支持的数据类型：quote（实时行情）、quote_short（低带宽简版批量行情）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、financials（财务数据）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历，默认查询当前北京时间起未来 14 天，也支持 from/to 覆盖窗口）。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -405,6 +532,7 @@ impl Tool for DataFetchTool {
                 required: true,
                 r#enum: Some(vec![
                     "quote".into(),
+                    "quote_short".into(),
                     "profile".into(),
                     "snapshot".into(),
                     "financials".into(),
@@ -487,7 +615,10 @@ impl Tool for DataFetchTool {
                 Err(err) => return Ok(serde_json::json!({ "error": err })),
             };
             let url = self.build_earnings_calendar_url(from, to);
-            return match self.fetch_from_url(&url).await {
+            return match self
+                .fetch_from_url_cached(&url, ttl_for_data_type(data_type), data_type)
+                .await
+            {
                 Ok(data) => Ok(serde_json::json!({
                     "data_type": data_type,
                     "ticker": ticker,
@@ -547,6 +678,15 @@ mod tests {
         assert_eq!(
             full_url2,
             "https://example.com/api/v3/income-statement/AAPL?limit=4&apikey=test_key"
+        );
+
+        let url3 = tool
+            .build_url("quote_short", "AAPL,MSFT")
+            .expect("quote_short url");
+        let full_url3 = format!("{}&apikey=test_key", url3);
+        assert_eq!(
+            full_url3,
+            "https://example.com/stable/batch-quote-short?symbols=AAPL,MSFT&apikey=test_key"
         );
     }
 
@@ -622,6 +762,7 @@ mod tests {
             .expect("data_type parameter");
         let enum_values = data_type.r#enum.as_ref().expect("enum values");
         assert!(enum_values.iter().any(|value| value == "snapshot"));
+        assert!(enum_values.iter().any(|value| value == "quote_short"));
     }
 
     #[test]
@@ -695,5 +836,76 @@ mod tests {
             url,
             "https://example.com/api/v3/earning_calendar?from=2026-04-09&to=2026-04-23"
         );
+    }
+
+    #[test]
+    fn fmp_cache_key_strips_api_key_params() {
+        let key = super::fmp_cache_key_for_url(
+            "https://example.com/api/v3/quote/AAPL?apikey=secret&limit=10&api_key=two&apiKey=three",
+        );
+        assert_eq!(key, "https://example.com/api/v3/quote/AAPL?limit=10");
+    }
+
+    #[tokio::test]
+    async fn repeated_snapshot_reuses_child_fetch_cache() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test server");
+        let addr = listener.local_addr().expect("local addr");
+        let request_count = Arc::new(AtomicUsize::new(0));
+        let request_count_for_server = request_count.clone();
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut socket, _)) = listener.accept().await else {
+                    break;
+                };
+                request_count_for_server.fetch_add(1, Ordering::SeqCst);
+                tokio::spawn(async move {
+                    let mut buf = [0_u8; 4096];
+                    let n = socket.read(&mut buf).await.unwrap_or(0);
+                    let request = String::from_utf8_lossy(&buf[..n]);
+                    let body = if request.contains("/profile/") {
+                        r#"[{"symbol":"AAPL","companyName":"Apple Inc."}]"#
+                    } else if request.contains("/stock_news") {
+                        r#"[{"title":"Apple headline"}]"#
+                    } else {
+                        r#"[{"symbol":"AAPL","price":100.0}]"#
+                    };
+                    let response = format!(
+                        "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    );
+                    let _ = socket.write_all(response.as_bytes()).await;
+                    let _ = socket.shutdown().await;
+                });
+            }
+        });
+
+        let tool = DataFetchTool::new(
+            vec!["test_key".to_string()],
+            &format!("http://{addr}/api"),
+            30,
+        );
+
+        let first = tool
+            .execute(json!({"data_type": "snapshot", "ticker": "AAPL"}))
+            .await
+            .expect("first snapshot");
+        let second = tool
+            .execute(json!({"data_type": "snapshot", "ticker": "AAPL"}))
+            .await
+            .expect("second snapshot");
+
+        assert_eq!(first["data"]["quote"][0]["symbol"], "AAPL");
+        assert_eq!(second["data"]["profile"][0]["companyName"], "Apple Inc.");
+        assert_eq!(request_count.load(Ordering::SeqCst), 3);
     }
 }

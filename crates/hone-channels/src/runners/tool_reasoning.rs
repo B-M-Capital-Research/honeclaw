@@ -341,7 +341,11 @@ impl AgentRunner for FunctionCallingReasoningRunner {
             self.max_iterations,
             self.llm_audit.clone(),
         )
-        .with_tool_observer(Some(observer));
+        .with_tool_observer(Some(observer))
+        .with_tool_call_budget(
+            request.max_tool_calls,
+            request.tool_call_limits.clone().unwrap_or_default(),
+        );
 
         let mut context = request.context;
         let response = agent.run(&request.runtime_input, &mut context).await;

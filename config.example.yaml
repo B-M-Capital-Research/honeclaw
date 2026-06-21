@@ -149,11 +149,11 @@ event_engine:
   poll_intervals:
     # 新闻。最小推荐 300 (5m)，典型 600-1800 (10-30m)，最大 3600 (1h)。
     # 低于 300 时 FMP 返回不会更新，只是多烧配额。
-    news_secs: 900 # 15 min
+    news_secs: 1800 # 30 min
     # 盘中价格异动。最小推荐 60 (1m)，典型 180-600 (3-10m)，最大 900 (15m)。
     # 降到 60 时 N 只持仓 × 每分钟一次 quote，会显著吃 FMP 配额；
     # 非交易时段 poller 会自动 skip，不必担心夜里空烧。
-    price_secs: 300 # 5 min
+    price_secs: 900 # 15 min
   digest:
     # 管理员视角默认槽位时刻 —— 在 actor 没有自定义 prefs.digest_slots 时,
     # UnifiedDigestScheduler 用这组时刻作为默认 slot 触发推送。每个 slot 可配
@@ -295,7 +295,7 @@ event_engine:
     pass2_model: x-ai/grok-4.3 # 替代已下线的 Grok 4.1 Fast；实际价格 / context / reasoning 能力以 OpenRouter 当前模型为准
     pass2_top_n: 15 # Pass 1 排序后送 Pass 2 精读的候选数上限
     final_pick_n: 8 # 单次推送最终保留的条数上限
-    fetch_full_text: true # Pass 2 是否 GET 原文 → html2text;失败 fallback FMP text
+    fetch_full_text: false # Pass 2 是否 GET 原文 → html2text;失败 fallback FMP text
     # Jina Reader API key,用于 Pass 2 抓不到原文时(reuters / wsj / barrons / nyt 等
     # 付费墙站点)走 r.jina.ai 二次抓取。免费层 1M tokens/月,jina.ai 注册即得。
     # 留空则跳过 Jina fallback,直接落到 FMP text。
@@ -705,11 +705,12 @@ search:
   # Tavily is the only runtime search provider today. search.provider /
   # search.search_depth / search.topic stay in the config schema for compatibility
   # but are not wired into requests yet; the current web_search tool reads
-  # search.api_keys and search.max_results only.
+  # search.api_keys and search.max_results only. Runtime caps max_results to 3
+  # to keep Tavily response size and credits predictable for heartbeat workloads.
   provider: tavily
   # Tavily API key pool with failover support
   api_keys:
     - ""
   search_depth: "basic"
   topic: "general"
-  max_results: 5
+  max_results: 3

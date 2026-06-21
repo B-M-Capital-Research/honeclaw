@@ -38,6 +38,7 @@ pub struct AgentRunnerRequest {
     pub working_directory: String,
     pub allowed_tools: Option<Vec<String>>,
     pub max_tool_calls: Option<u32>,
+    pub tool_call_limits: Option<HashMap<String, u32>>,
 }
 
 pub struct AgentRunnerResult {

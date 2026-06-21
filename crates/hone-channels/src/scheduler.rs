@@ -37,6 +37,16 @@ const HEARTBEAT_ALLOWED_TOOLS: &[&str] = &[
     "local_search_files",
     "local_read_file",
 ];
+const HEARTBEAT_MAX_TOOL_CALLS: u32 = 3;
+const HEARTBEAT_WEB_SEARCH_MAX_CALLS: u32 = 1;
+const HEARTBEAT_DATA_FETCH_MAX_CALLS: u32 = 2;
+
+fn heartbeat_tool_call_limits() -> HashMap<String, u32> {
+    HashMap::from([
+        ("web_search".to_string(), HEARTBEAT_WEB_SEARCH_MAX_CALLS),
+        ("data_fetch".to_string(), HEARTBEAT_DATA_FETCH_MAX_CALLS),
+    ])
+}
 
 fn heartbeat_runner_selection() -> ExecutionRunnerSelection {
     ExecutionRunnerSelection::AuxiliaryFunctionCalling {
@@ -2488,7 +2498,7 @@ pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
 11. 重复事件约束：若某条件（如某只股票的某次发射或某次事件）已经在前一轮被判定为 noop 或 triggered，本轮如果没有获取到新的独立行情时间戳或新的独立事件窗口，就不允许改变结论，也不允许重复 triggered。\n\
 12. 来源归因约束：引用 Reuters、WSJ、Bloomberg、官方公告等来源时，必须确认本轮工具结果明确出现该来源与对应事实；没有明确来源时，只能写“未核验/市场传闻/需继续确认”，不得把地缘政治、谈判、航运限制等叙述写成已被权威媒体共同确认的事实。\n\
 13. 交易动作边界：预警只能报告触发事实、价格/成交量/时间口径和条件化风险管理框架，不得输出“无条件止损”“必须卖出”“立即清仓”“马上买入”等直接交易指令；涉及买卖、止损、加仓、减仓时必须明确这是分析参考，并要求用户结合仓位、成本、流动性和风险承受能力复核。\n\
-14. 工具预算约束：必须以最少工具调用收口。优先复用本轮已经拿到的价格、新闻、组合和文件信息；若需要逐标的穷举或反复重复同一查询才能确认，本轮只检查最可能触发的少数候选并尽快返回 noop 或 triggered，禁止为了展示分析过程反复调用相同工具。\n\
+14. 工具预算约束：必须以最少工具调用收口。优先使用本地事件、组合、文件和 FMP 缓存；只有本地/缓存证据不足时才搜索 Tavily。单轮最多 1 次 `web_search`、2 次 `data_fetch`、3 次工具调用；若需要逐标的穷举或反复重复同一查询才能确认，本轮只检查最可能触发的少数候选并尽快返回 noop 或 triggered，禁止为了展示分析过程反复调用相同工具。\n\
 {}\
 \n以下是需要检查的用户条件：\n{}",
             event.job_name, check_time, history_section, event.task_prompt
@@ -2896,7 +2906,8 @@ async fn run_heartbeat_task(
                 .map(|tool| (*tool).to_string())
                 .collect(),
         ),
-        max_tool_calls: None,
+        max_tool_calls: Some(HEARTBEAT_MAX_TOOL_CALLS),
+        tool_call_limits: Some(heartbeat_tool_call_limits()),
         prompt_audit: None,
     })?;
     tracing::info!(
@@ -4002,6 +4013,15 @@ mod tests {
     }
 
     #[test]
+    fn heartbeat_tool_budget_stays_conservative() {
+        let limits = super::heartbeat_tool_call_limits();
+        assert_eq!(super::HEARTBEAT_MAX_TOOL_CALLS, 3);
+        assert_eq!(limits.get("web_search"), Some(&1));
+        assert_eq!(limits.get("data_fetch"), Some(&2));
+        assert_eq!(limits.len(), 2);
+    }
+
+    #[test]
     fn heartbeat_prompt_keeps_legacy_empty_json_example_literal() {
         let event = SchedulerEvent {
             actor: ActorIdentity::new("discord", "alice", Some("dm")).expect("actor"),
@@ -4028,6 +4048,8 @@ mod tests {
         assert!(prompt.contains("检查时间必须使用上方"));
         assert!(prompt.contains("时间口径命名约束"));
         assert!(prompt.contains("也允许只输出 `{}`。"));
+        assert!(prompt.contains("优先使用本地事件、组合、文件和 FMP 缓存"));
+        assert!(prompt.contains("单轮最多 1 次 `web_search`、2 次 `data_fetch`"));
         assert!(!prompt.contains("[[HEARTBEAT_NOOP]]"));
     }
 

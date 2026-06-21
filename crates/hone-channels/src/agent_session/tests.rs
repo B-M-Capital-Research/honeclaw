@@ -402,6 +402,7 @@ async fn empty_success_with_tool_calls_uses_fallback_after_retries() {
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
+        tool_call_limits: None,
     };
 
     let result = session

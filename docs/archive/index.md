@@ -1225,3 +1225,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: `docs/runbooks/desktop-release-app-runtime.md`, `bun run build:web:public`, `cargo build --release -p hone-console-page`, `bun --filter @hone-financial/app test -- public-sms-login`
 - Current conclusion: Public login failure came from runtime artifact skew: the public bundle and `hone-console-page` binary did not agree on `TOS_VERSION`. Port 8088 now serves the rebuilt public bundle with ToS `2.1`, and the rebuilt backend accepts `2.1` while rejecting stale `2.0`.
 - Next entry point: `docs/handoffs/2026-05-20-public-login-tos-runtime-mismatch.md`
+
+### FMP/Tavily Usage Throttle
+
+- Status: done
+- Date: 2026-06-21
+- Plan: N/A
+- Handoff: `docs/handoffs/2026-06-21-fmp-tavily-usage-throttle.md`
+- Decision / ADR: N/A
+- Related PRs / commits: this change set
+- Related runbooks / regressions: `cargo test -p hone-tools --lib`, `cargo test -p hone-agent --lib`, `cargo test -p hone-event-engine pollers::price --lib`, `cargo test -p hone-channels heartbeat_tool --lib`, `cargo check --workspace --all-targets --exclude hone-desktop`, `bash scripts/diagnose_fmp_tavily.sh --tavily-query 'health check'`
+- Current conclusion: Tavily search now uses low-bandwidth Bearer requests, usage logging, and key cooldowns; FMP data_fetch now has TTL caching; heartbeat tool calls are capped; FMP price polling now runs only during US regular-session windows by default.
+- Next entry point: `docs/handoffs/2026-06-21-fmp-tavily-usage-throttle.md`

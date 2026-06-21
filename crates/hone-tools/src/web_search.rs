@@ -7,16 +7,28 @@
 
 use async_trait::async_trait;
 use serde_json::Value;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use crate::base::{Tool, ToolParameter};
 
 const DEFAULT_TAVILY_SEARCH_ENDPOINT: &str = "https://api.tavily.com/search";
 const MAX_TAVILY_ERROR_CHARS: usize = 300;
+const MAX_LOW_BANDWIDTH_RESULTS: u32 = 3;
+const TAVILY_AUTH_COOLDOWN: Duration = Duration::from_secs(24 * 60 * 60);
+const TAVILY_QUOTA_COOLDOWN: Duration = Duration::from_secs(6 * 60 * 60);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TavilyErrorKind {
     KeyRejected,
     TemporaryFailure,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TavilyCooldown {
+    Auth,
+    Quota,
 }
 
 /// WebSearchTool — 网络搜索（Tavily，多 Key fallback）
@@ -26,6 +38,7 @@ pub struct WebSearchTool {
     max_results: u32,
     endpoint: String,
     http: reqwest::Client,
+    disabled_until: Arc<Mutex<HashMap<usize, Instant>>>,
 }
 
 impl WebSearchTool {
@@ -33,9 +46,10 @@ impl WebSearchTool {
         let pool = hone_core::ApiKeyPool::new(keys);
         Self {
             keys: pool.keys().to_vec(),
-            max_results,
+            max_results: low_bandwidth_max_results(max_results),
             endpoint: DEFAULT_TAVILY_SEARCH_ENDPOINT.to_string(),
             http: reqwest::Client::new(),
+            disabled_until: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -43,9 +57,10 @@ impl WebSearchTool {
         let pool = hone_core::ApiKeyPool::new(config.search.api_keys.iter().cloned());
         Self {
             keys: pool.keys().to_vec(),
-            max_results: config.search.max_results,
+            max_results: low_bandwidth_max_results(config.search.max_results),
             endpoint: DEFAULT_TAVILY_SEARCH_ENDPOINT.to_string(),
             http: reqwest::Client::new(),
+            disabled_until: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -107,17 +122,19 @@ impl WebSearchTool {
     /// 用指定 key 执行一次 Tavily 搜索，返回结果或错误
     async fn search_with_key(&self, key: &str, query: &str) -> Result<Value, String> {
         let body = serde_json::json!({
-            "api_key": key,
             "query": query,
             "search_depth": "basic",
             "max_results": self.max_results,
-            "include_answer": true,
-            "include_raw_content": false
+            "include_answer": false,
+            "include_raw_content": false,
+            "include_images": false,
+            "include_usage": true
         });
 
         let response = self
             .http
             .post(&self.endpoint)
+            .bearer_auth(key)
             .json(&body)
             .timeout(std::time::Duration::from_secs(30))
             .send()
@@ -131,6 +148,61 @@ impl WebSearchTool {
             .map_err(|e| format!("Tavily 响应解析失败: {e}"))?;
 
         Self::interpret_response(status, response_json)
+    }
+
+    fn cooldown_for_error(error: &str) -> Option<TavilyCooldown> {
+        let lower = error.to_lowercase();
+        if lower.contains("http 401")
+            || lower.contains("http 403")
+            || lower.contains("invalid api key")
+        {
+            Some(TavilyCooldown::Auth)
+        } else if lower.contains("http 429")
+            || lower.contains("http 432")
+            || lower.contains("exceeded your plan")
+            || lower.contains("quota")
+            || lower.contains("rate limit")
+            || lower.contains("usage limit")
+            || lower.contains("credits")
+        {
+            Some(TavilyCooldown::Quota)
+        } else {
+            None
+        }
+    }
+
+    fn mark_key_disabled(&self, key_index: usize, cooldown: TavilyCooldown) {
+        let duration = match cooldown {
+            TavilyCooldown::Auth => TAVILY_AUTH_COOLDOWN,
+            TavilyCooldown::Quota => TAVILY_QUOTA_COOLDOWN,
+        };
+        if let Ok(mut disabled) = self.disabled_until.lock() {
+            disabled.insert(key_index, Instant::now() + duration);
+        }
+    }
+
+    fn key_disabled(&self, key_index: usize) -> bool {
+        let Ok(mut disabled) = self.disabled_until.lock() else {
+            return false;
+        };
+        let Some(until) = disabled.get(&key_index).copied() else {
+            return false;
+        };
+        if until <= Instant::now() {
+            disabled.remove(&key_index);
+            false
+        } else {
+            true
+        }
+    }
+
+    fn disabled_key_count(&self) -> usize {
+        let Ok(mut disabled) = self.disabled_until.lock() else {
+            return 0;
+        };
+        let now = Instant::now();
+        disabled.retain(|_, until| *until > now);
+        disabled.len()
     }
 
     fn classify_attempt_error(error: &str) -> TavilyErrorKind {
@@ -172,6 +244,10 @@ impl WebSearchTool {
             )
         }
     }
+}
+
+fn low_bandwidth_max_results(max_results: u32) -> u32 {
+    max_results.clamp(1, MAX_LOW_BANDWIDTH_RESULTS)
 }
 
 fn sanitize_tavily_error_detail(text: &str) -> String {
@@ -362,13 +438,38 @@ impl Tool for WebSearchTool {
 
         let mut key_rejected_count = 0usize;
         let mut temporary_failures = 0usize;
+        let mut skipped_disabled = 0usize;
 
         for (index, key) in self.keys.iter().enumerate() {
+            if self.key_disabled(index) {
+                skipped_disabled += 1;
+                continue;
+            }
             match self.search_with_key(key, query).await {
-                Ok(data) => return Ok(data),
+                Ok(data) => {
+                    if let Some(credits) = data
+                        .get("usage")
+                        .and_then(|usage| usage.get("credits"))
+                        .and_then(|credits| credits.as_f64())
+                    {
+                        tracing::info!(
+                            tool = "web_search",
+                            tavily_credits = credits,
+                            max_results = self.max_results,
+                            "tavily request succeeded"
+                        );
+                    }
+                    return Ok(data);
+                }
                 Err(e) => {
-                    match Self::classify_attempt_error(&e) {
-                        TavilyErrorKind::KeyRejected => key_rejected_count += 1,
+                    let kind = Self::classify_attempt_error(&e);
+                    match kind {
+                        TavilyErrorKind::KeyRejected => {
+                            key_rejected_count += 1;
+                            if let Some(cooldown) = Self::cooldown_for_error(&e) {
+                                self.mark_key_disabled(index, cooldown);
+                            }
+                        }
                         TavilyErrorKind::TemporaryFailure => temporary_failures += 1,
                     }
                     tracing::warn!(
@@ -378,7 +479,9 @@ impl Tool for WebSearchTool {
                         "tavily request failed for current api key: {}",
                         e
                     );
-                    // 继续尝试下一个 key
+                    if kind == TavilyErrorKind::KeyRejected {
+                        break;
+                    }
                 }
             }
         }
@@ -387,6 +490,8 @@ impl Tool for WebSearchTool {
         tracing::warn!(
             tool = "web_search",
             key_count = self.keys.len(),
+            skipped_disabled,
+            disabled_key_count = self.disabled_key_count(),
             key_rejected_count,
             temporary_failures,
             "{}",
@@ -414,14 +519,14 @@ mod tests {
     }
 
     #[test]
-    fn from_config_keeps_configured_search_limits() {
+    fn from_config_caps_search_limits_for_low_bandwidth() {
         let mut config = HoneConfig::default();
         config.search.api_keys = owned_keys(&["config_key"]);
         config.search.max_results = 10;
 
         let tool = WebSearchTool::from_config(&config);
         assert_eq!(tool.keys, vec!["config_key"]);
-        assert_eq!(tool.max_results, 10);
+        assert_eq!(tool.max_results, 3);
     }
 
     #[test]
@@ -432,14 +537,14 @@ mod tests {
 
         let tool = WebSearchTool::from_config(&config);
         assert_eq!(tool.keys, vec!["key1", "key2"]);
-        assert_eq!(tool.max_results, 5);
+        assert_eq!(tool.max_results, 3);
     }
 
     #[test]
     fn new_records_empty_key_pool() {
         let tool = WebSearchTool::new(vec![], 5);
         assert!(tool.keys.is_empty());
-        assert_eq!(tool.max_results, 5);
+        assert_eq!(tool.max_results, 3);
     }
 
     #[test]
@@ -580,6 +685,10 @@ mod tests {
 
     #[tokio::test]
     async fn execute_with_failed_keys_returns_sanitized_error() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         use tokio::net::TcpListener;
 
@@ -587,11 +696,14 @@ mod tests {
             .await
             .expect("bind test server");
         let addr = listener.local_addr().expect("read local addr");
+        let request_count = Arc::new(AtomicUsize::new(0));
+        let request_count_for_server = request_count.clone();
         tokio::spawn(async move {
             loop {
                 let Ok((mut socket, _)) = listener.accept().await else {
                     break;
                 };
+                request_count_for_server.fetch_add(1, Ordering::SeqCst);
                 tokio::spawn(async move {
                     let mut buf = [0_u8; 4096];
                     let _ = socket.read(&mut buf).await;
@@ -609,9 +721,10 @@ mod tests {
 
         let tool = WebSearchTool {
             keys: vec!["key1".to_string(), "key2".to_string()],
-            max_results: 5,
+            max_results: 3,
             endpoint: format!("http://{addr}"),
             http: reqwest::Client::new(),
+            disabled_until: Arc::new(Mutex::new(HashMap::new())),
         };
 
         let error = tool
@@ -621,5 +734,69 @@ mod tests {
         let message = error.to_string();
         assert_text_contains_all(&message, &["Tavily 搜索当前"]);
         assert_message_hides_raw_tavily_upgrade_copy(&message);
+        assert_eq!(request_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn execute_uses_bearer_auth_and_low_bandwidth_body() {
+        use std::sync::{Arc, Mutex};
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+
+        let captured_request = Arc::new(Mutex::new(String::new()));
+        let captured_for_server = captured_request.clone();
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test server");
+        let addr = listener.local_addr().expect("read local addr");
+        tokio::spawn(async move {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                return;
+            };
+            let mut buf = [0_u8; 4096];
+            let n = socket.read(&mut buf).await.unwrap_or(0);
+            *captured_for_server.lock().expect("captured request lock") =
+                String::from_utf8_lossy(&buf[..n]).to_string();
+            let body = r#"{"results":[{"title":"ok"}],"usage":{"credits":1}}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            let _ = socket.write_all(response.as_bytes()).await;
+            let _ = socket.shutdown().await;
+        });
+
+        let tool = WebSearchTool {
+            keys: vec!["key1".to_string()],
+            max_results: 3,
+            endpoint: format!("http://{addr}"),
+            http: reqwest::Client::new(),
+            disabled_until: Arc::new(Mutex::new(HashMap::new())),
+        };
+
+        let result = tool
+            .execute(serde_json::json!({"query": "AAPL news"}))
+            .await
+            .expect("search should succeed");
+        assert_eq!(result["usage"]["credits"], 1);
+
+        let request = captured_request
+            .lock()
+            .expect("captured request lock")
+            .clone();
+        assert!(
+            request.contains("authorization: Bearer key1")
+                || request.contains("Authorization: Bearer key1")
+        );
+        let body = request.split("\r\n\r\n").nth(1).expect("request body");
+        let payload: Value = serde_json::from_str(body).expect("json body");
+        assert_eq!(payload["search_depth"], "basic");
+        assert_eq!(payload["max_results"], 3);
+        assert_eq!(payload["include_answer"], false);
+        assert_eq!(payload["include_raw_content"], false);
+        assert_eq!(payload["include_images"], false);
+        assert_eq!(payload["include_usage"], true);
+        assert!(payload.get("api_key").is_none());
     }
 }

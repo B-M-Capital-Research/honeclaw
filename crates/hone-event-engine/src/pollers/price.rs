@@ -10,7 +10,8 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use chrono::{DateTime, TimeZone, Timelike, Utc};
+use chrono::{DateTime, Datelike, TimeZone, Timelike, Utc, Weekday};
+use chrono_tz::US::Eastern;
 use serde_json::Value;
 
 use crate::event::{EventKind, MarketEvent, Severity};
@@ -191,6 +192,14 @@ impl EventSource for PricePoller {
     }
 
     async fn poll(&self) -> anyhow::Result<Vec<MarketEvent>> {
+        if !is_us_regular_market_poll_window(Utc::now()) {
+            tracing::debug!(
+                poller = "fmp.price",
+                "skip FMP quote poll outside US regular market window"
+            );
+            return Ok(vec![]);
+        }
+
         let symbols = self.registry.load().watch_pool();
         if symbols.is_empty() {
             return Ok(vec![]);
@@ -361,6 +370,18 @@ fn quote_time_and_window(
 
 fn is_us_regular_close_quote(quote_time: DateTime<Utc>) -> bool {
     matches!(quote_time.hour(), 20 | 21) && quote_time.minute() <= 10
+}
+
+fn is_us_regular_market_poll_window(now: DateTime<Utc>) -> bool {
+    let et = now.with_timezone(&Eastern);
+    if matches!(et.weekday(), Weekday::Sat | Weekday::Sun) {
+        return false;
+    }
+
+    let minutes = et.hour() * 60 + et.minute();
+    let open = 9 * 60 + 30;
+    let close_buffer = 16 * 60 + 5;
+    minutes >= open && minutes <= close_buffer
 }
 
 fn closing_move_severity(abs_pct: f64, high_pct: f64) -> Severity {
@@ -764,6 +785,26 @@ mod tests {
         ]);
         let events = events_from_quotes_at(&raw, 2.5, 6.0, 2.0, 0.001, now);
         assert!(events.is_empty());
+    }
+
+    #[test]
+    fn regular_market_poll_window_is_dst_aware_and_weekday_only() {
+        // 2026-06-22 is during US daylight saving time: 09:29 ET = 13:29 UTC.
+        assert!(!is_us_regular_market_poll_window(
+            Utc.with_ymd_and_hms(2026, 6, 22, 13, 29, 0).unwrap()
+        ));
+        assert!(is_us_regular_market_poll_window(
+            Utc.with_ymd_and_hms(2026, 6, 22, 13, 30, 0).unwrap()
+        ));
+        assert!(is_us_regular_market_poll_window(
+            Utc.with_ymd_and_hms(2026, 6, 22, 20, 5, 0).unwrap()
+        ));
+        assert!(!is_us_regular_market_poll_window(
+            Utc.with_ymd_and_hms(2026, 6, 22, 20, 6, 0).unwrap()
+        ));
+        assert!(!is_us_regular_market_poll_window(
+            Utc.with_ymd_and_hms(2026, 6, 21, 15, 0, 0).unwrap()
+        ));
     }
 
     #[test]

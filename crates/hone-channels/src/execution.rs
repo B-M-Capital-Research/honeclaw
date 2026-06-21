@@ -57,6 +57,7 @@ pub(crate) struct ExecutionRequest {
     pub runner_selection: ExecutionRunnerSelection,
     pub allowed_tools: Option<Vec<String>>,
     pub max_tool_calls: Option<u32>,
+    pub tool_call_limits: Option<HashMap<String, u32>>,
     pub prompt_audit: Option<PromptAuditMetadata>,
 }
 
@@ -158,6 +159,7 @@ impl ExecutionService {
                 working_directory,
                 allowed_tools: request.allowed_tools,
                 max_tool_calls: request.max_tool_calls,
+                tool_call_limits: request.tool_call_limits,
             },
         })
     }
@@ -266,6 +268,7 @@ mod tests {
             runner_selection,
             allowed_tools: None,
             max_tool_calls: None,
+            tool_call_limits: None,
             prompt_audit: None,
         }
     }

@@ -286,6 +286,7 @@ impl AgentSession {
                 runner_selection: ExecutionRunnerSelection::Configured,
                 allowed_tools: None,
                 max_tool_calls: None,
+                tool_call_limits: None,
                 prompt_audit: Some(PromptAuditMetadata {
                     session_identity: self.session_identity.clone(),
                     message_id: self.message_id.clone(),

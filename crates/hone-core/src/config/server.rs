@@ -141,7 +141,7 @@ fn default_search_topic() -> String {
     "general".to_string()
 }
 fn default_search_max_results() -> u32 {
-    5
+    3
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

@@ -10,6 +10,7 @@ use hone_core::{LlmAuditRecord, LlmAuditSink, ToolExecutionObserver};
 use hone_llm::{ChatResponse, LlmProvider, Message};
 use hone_tools::ToolRegistry;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 const REASONING_CONTENT_METADATA_KEY: &str = "reasoning_content";
@@ -23,6 +24,8 @@ pub struct FunctionCallingAgent {
     pub debug_log: bool,
     pub llm_audit: Option<Arc<dyn LlmAuditSink>>,
     pub tool_observer: Option<Arc<dyn ToolExecutionObserver>>,
+    pub max_tool_calls: Option<u32>,
+    pub tool_call_limits: HashMap<String, u32>,
 }
 
 impl FunctionCallingAgent {
@@ -45,11 +48,23 @@ impl FunctionCallingAgent {
             debug_log,
             llm_audit,
             tool_observer: None,
+            max_tool_calls: None,
+            tool_call_limits: HashMap::new(),
         }
     }
 
     pub fn with_tool_observer(mut self, observer: Option<Arc<dyn ToolExecutionObserver>>) -> Self {
         self.tool_observer = observer;
+        self
+    }
+
+    pub fn with_tool_call_budget(
+        mut self,
+        max_tool_calls: Option<u32>,
+        tool_call_limits: HashMap<String, u32>,
+    ) -> Self {
+        self.max_tool_calls = max_tool_calls;
+        self.tool_call_limits = tool_call_limits;
         self
     }
 
@@ -139,6 +154,44 @@ impl FunctionCallingAgent {
     }
 }
 
+fn tool_budget_error(
+    tool_name: &str,
+    max_tool_calls: Option<u32>,
+    tool_call_limits: &HashMap<String, u32>,
+    total_tool_calls: u32,
+    tool_call_counts: &HashMap<String, u32>,
+) -> Option<Value> {
+    if let Some(limit) = max_tool_calls
+        && total_tool_calls >= limit
+    {
+        tracing::warn!(
+            tool = tool_name,
+            limit,
+            "function_calling tool call rejected by global budget"
+        );
+        return Some(serde_json::json!({
+            "error": format!("tool call limit reached ({limit})")
+        }));
+    }
+
+    let Some(limit) = tool_call_limits.get(tool_name).copied() else {
+        return None;
+    };
+    let used = tool_call_counts.get(tool_name).copied().unwrap_or(0);
+    if used >= limit {
+        tracing::warn!(
+            tool = tool_name,
+            limit,
+            used,
+            "function_calling tool call rejected by per-tool budget"
+        );
+        return Some(serde_json::json!({
+            "error": format!("tool `{tool_name}` call limit reached ({limit})")
+        }));
+    }
+    None
+}
+
 #[async_trait]
 impl Agent for FunctionCallingAgent {
     /// 运行一次非流式 Agent turn，直到没有新的工具调用或达到迭代上限。
@@ -154,6 +207,8 @@ impl Agent for FunctionCallingAgent {
         let tools: Vec<Value> = self.tools.get_tools_schema();
         let has_tools = !tools.is_empty();
         let mut tool_calls_made: Vec<ToolCallMade> = Vec::new();
+        let mut tool_call_counts: HashMap<String, u32> = HashMap::new();
+        let mut total_tool_calls = 0u32;
         let mut iterations: u32 = 0;
 
         self.dbg(&format!(
@@ -281,6 +336,20 @@ impl Agent for FunctionCallingAgent {
                         match serde_json::from_str::<Value>(tool_args_str) {
                             Ok(tool_args) => {
                                 self.dbg(&format!("[Agent] tool_call name={tool_name}"));
+                                if let Some(error_result) = tool_budget_error(
+                                    tool_name,
+                                    self.max_tool_calls,
+                                    &self.tool_call_limits,
+                                    total_tool_calls,
+                                    &tool_call_counts,
+                                ) {
+                                    let result_str =
+                                        serde_json::to_string(&error_result).unwrap_or_default();
+                                    context.add_tool_result(tool_call_id, tool_name, &result_str);
+                                    continue;
+                                }
+                                total_tool_calls += 1;
+                                *tool_call_counts.entry(tool_name.clone()).or_insert(0) += 1;
                                 if let Some(observer) = &self.tool_observer {
                                     observer.on_tool_start(tool_name, &tool_args, None).await;
                                 }
@@ -377,7 +446,10 @@ mod tests {
     use hone_tools::{Tool, ToolParameter};
     use serde_json::{Value, json};
     use std::collections::VecDeque;
-    use std::sync::{Arc, Mutex};
+    use std::sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    };
 
     #[derive(Clone)]
     struct MockLlmProvider {
@@ -489,6 +561,30 @@ mod tests {
             Ok(json!({
                 "echo": args.get("text").and_then(|v| v.as_str()).unwrap_or_default()
             }))
+        }
+    }
+
+    struct CountingTool {
+        calls: Arc<AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl Tool for CountingTool {
+        fn name(&self) -> &str {
+            "counting_tool"
+        }
+
+        fn description(&self) -> &str {
+            "count"
+        }
+
+        fn parameters(&self) -> Vec<ToolParameter> {
+            vec![]
+        }
+
+        async fn execute(&self, _args: Value) -> hone_core::HoneResult<Value> {
+            let calls = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
+            Ok(json!({ "calls": calls }))
         }
     }
 
@@ -633,6 +729,75 @@ mod tests {
         assert_eq!(tool_msgs.len(), 1);
         let tool_msg_content = tool_msgs[0].content.clone().unwrap_or_default();
         assert!(tool_msg_content.contains("参数解析失败"));
+    }
+
+    #[tokio::test]
+    async fn run_rejects_tool_calls_after_per_tool_budget() {
+        let first_tool_call = hone_llm::ToolCall {
+            id: "tc_1".to_string(),
+            call_type: "function".to_string(),
+            function: hone_llm::FunctionCall {
+                name: "counting_tool".to_string(),
+                arguments: "{}".to_string(),
+            },
+        };
+        let second_tool_call = hone_llm::ToolCall {
+            id: "tc_2".to_string(),
+            call_type: "function".to_string(),
+            function: hone_llm::FunctionCall {
+                name: "counting_tool".to_string(),
+                arguments: "{}".to_string(),
+            },
+        };
+        let llm = MockLlmProvider::with_tool_responses(vec![
+            ChatResponse {
+                content: "call once".to_string(),
+                reasoning_content: None,
+                tool_calls: Some(vec![first_tool_call]),
+                usage: None,
+            },
+            ChatResponse {
+                content: "call twice".to_string(),
+                reasoning_content: None,
+                tool_calls: Some(vec![second_tool_call]),
+                usage: None,
+            },
+            ChatResponse {
+                content: "done".to_string(),
+                reasoning_content: None,
+                tool_calls: None,
+                usage: None,
+            },
+        ]);
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(CountingTool {
+            calls: calls.clone(),
+        }));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 4, None)
+                .with_tool_call_budget(None, HashMap::from([("counting_tool".to_string(), 1)]));
+        let mut context = AgentContext::new("budget".to_string());
+
+        let response = agent.run("budget", &mut context).await;
+
+        assert!(response.success);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(response.tool_calls_made.len(), 1);
+        let tool_messages = context
+            .messages
+            .iter()
+            .filter(|message| message.role == "tool")
+            .collect::<Vec<_>>();
+        assert_eq!(tool_messages.len(), 2);
+        assert!(
+            tool_messages[1]
+                .content
+                .as_deref()
+                .unwrap_or_default()
+                .contains("call limit reached")
+        );
     }
 
     #[tokio::test]
