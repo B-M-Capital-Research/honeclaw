@@ -14,13 +14,20 @@
 
 ## 状态
 
-- Fixed
+- New
 
 ## GitHub Issue
 
 - 无，非 P1
 
 ## 修复记录
+
+- 2026-06-22 03:02 CST 运行态复发，状态从代码级 `Fixed` 回退为 `New`：
+  - 23:02-03:01 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 本窗 ACP 有 8 次 `session/prompt`、8 个 session、0 个 response error；未见空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径、transport trace、provider 原始错误或思维痕迹进入用户可见 chunk。
+  - 00:00-00:03 CST `Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b` 的 TEM 简报用户可见 chunk 写出“本地长期画像”和“本轮没有新增事实改变 TEM 长期画像”等内部画像读取 / 写入口径。
+  - 该样本晚于 2026-06-21 19:09 CST 共享净化层修复记录；回复主体完成官方公告、行情、财务、动作和证伪条件，链路正常。
+  - 因为问题不影响投研主链路、落库或投递，只影响用户可见文案边界和产品感，仍按质量性 `P3 / New`；非 P1，不创建 GitHub Issue。
 
 - 2026-06-21 19:09 CST 修复：
   - 共享 `sanitize_user_visible_output(...)` 继续补齐 Feishu direct 投研 final 的内部流程净化，覆盖 `本地画像显示`、`本地已有的 ... 公司画像`、`回写到 ... 长期画像`、`写回 ... 公司画像`、`不追加 ... 长期画像事件` 等自然语言化画像状态 / 写入动作。

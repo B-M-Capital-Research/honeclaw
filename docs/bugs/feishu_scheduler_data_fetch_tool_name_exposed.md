@@ -14,13 +14,20 @@ P3
 
 ## 状态
 
-Fixed
+New
 
 ## GitHub Issue
 
 无，非 P1
 
 ## 修复记录
+
+- 2026-06-22 03:02 CST 运行态复发，状态从代码级 `Fixed` 回退为 `New`：
+  - 23:02-03:01 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 本窗 ACP 有 8 次 `session/prompt`、8 个 session、0 个 response error；未见空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径、transport trace、provider 原始错误或思维痕迹进入用户可见 chunk。
+  - 00:00-00:03 CST Feishu direct / scheduler actor session `Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b` 的 TEM 简报正常收口，但用户可见 chunk 开头写出“核验 TEM 的官方公告、最新行情口径和本地长期画像”，正文继续写出“本轮没有新增事实改变 TEM 长期画像”。
+  - 同批样本仍命中既有 `StockAnalysis` / 画像流程文案边界；该样本晚于 2026-06-21 19:09 CST 共享净化层修复记录，因此按真实运行态回退。
+  - 回复主体完成官方公告、行情、财务口径、动作和证伪条件；没有投递失败、空回复、错投或功能阻断证据。问题仍只影响用户可见文案边界和产品感，因此为质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
 
 - 2026-06-21 19:09 CST 修复：
   - 共享 `sanitize_user_visible_output(...)` 扩展用户可见净化规则，新增剥离自然语言画像读取 / 写入过程句式（如“已有的公司画像里...”“只更新本轮...”“追加到画像”“回写到长期画像”）和 runner warning 句族，并把 `StockAnalysis` 用户态执行口径统一改写为“公开行情页”。

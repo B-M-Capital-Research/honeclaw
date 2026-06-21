@@ -15,6 +15,18 @@
   - `cargo test -p hone-channels heartbeat_ --lib -- --nocapture`
 - 无关联 GitHub Issue；当前按本地代码和回归验证更新为 `Fixed`，未依赖当前机器生产日志、线上渠道状态或 live 服务重启复核。
 
+## 最新进展（2026-06-22 03:02 CST）
+
+- 本轮 23:02-03:01 CST 真实运行态继续确认同根复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-06-21`
+    - 23:30 CST `小米30港元破位预警` `job_id=j_654aef9b` 返回 `parse_kind=JsonTriggered`，raw preview 明确写出 latest price `24.58 HKD` below `30 HKD`，并生成 `status=triggered`。
+    - 同一窗口紧接着出现 deliver preview：`【强烈提醒】小米（1810.HK）现价 24.58 港元... 当前价格已远低于30港元心理观察线...`，说明触发提醒正文已生成。
+    - Feishu 随后仍记录 `心跳任务未命中，本轮不发送: job=小米30港元破位预警`，用户未收到该 triggered alert。
+  - 同窗统计：`parse_kind=JsonTriggered` 18 条、`heartbeat 输出不是结构化 JSON` 64 条、`JsonNoop` 99 条、`JsonUnknownStatus` 16 条、`JsonMalformed` 6 条；未见 Feishu 400、panic、transport disconnect 或 P1 级错投 / 全链路不可用证据。
+- 用户影响：
+  - 这仍是功能性 heartbeat 漏发：模型和 deliver preview 均已确认低于阈值，但最终投递分支仍被压成未命中。
+  - 影响集中在单任务 heartbeat triggered 结果到 Feishu 发送之间的判定链路；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 ## 最新进展（2026-06-21 23:03 CST）
 
 - 本轮 19:02-23:01 CST 真实运行态继续确认同根复发，状态维持 `New`：
