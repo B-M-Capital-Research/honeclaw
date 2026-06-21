@@ -146,6 +146,10 @@ static RE_HEARTBEAT_FACT_TOKEN: LazyLock<regex::Regex> = LazyLock::new(|| {
     )
     .expect("valid heartbeat fact token regex")
 });
+static RE_SCHEDULER_REPORT_RESTART_OPENER: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r"北京时间\s*20\d{2}年\d{1,2}月\d{1,2}日\s*\d{1,2}[:：]\d{2}。结论[:：]")
+        .expect("valid scheduler report restart opener regex")
+});
 
 static RE_HEARTBEAT_ENTITY_ANCHOR: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(r"[A-Za-z][A-Za-z0-9.-]{1,}").expect("valid heartbeat entity anchor regex")
@@ -2192,7 +2196,24 @@ fn sanitize_scheduler_delivery_text(text: &str) -> String {
         .filter(|line| !is_scheduler_protocol_residue(line))
         .collect::<Vec<_>>()
         .join("\n");
-    trim_scheduler_trailing_json_field_residue(kept_lines.trim())
+    let deduped = trim_repeated_scheduler_report_restart(kept_lines.trim());
+    trim_scheduler_trailing_json_field_residue(deduped.trim())
+}
+
+fn trim_repeated_scheduler_report_restart(text: &str) -> String {
+    let Some(first) = RE_SCHEDULER_REPORT_RESTART_OPENER.find(text) else {
+        return text.to_string();
+    };
+    let opener = first.as_str();
+    let search_from = first.end();
+    let Some(relative_second_start) = text[search_from..].find(opener) else {
+        return text.to_string();
+    };
+    let second_start = search_from + relative_second_start;
+    if first.start() > 300 || second_start < 800 {
+        return text.to_string();
+    }
+    text[..second_start].trim_end().to_string()
 }
 
 fn trim_scheduler_trailing_json_field_residue(text: &str) -> String {
@@ -3819,6 +3840,21 @@ mod tests {
         let raw = "结论：管理层强调“谨慎扩产”，并未给出新的 JSON 字段。";
         let sanitized = sanitize_scheduler_delivery_text(raw);
         assert_eq!(sanitized, raw);
+    }
+
+    #[test]
+    fn scheduler_delivery_text_trims_repeated_report_restart() {
+        let raw = "北京时间 2026年6月16日 12:00。结论：今天没有看到七家公司出现同一方向的重大新变量。\n\nTEM：订单和现金流仍是主线，重点看美国商保扩张、现金消耗和新适应症推进，当前没有看到足以改变长期判断的新公告。\n\nCAI：新上市后的信息仍需跟踪，公开材料仍以客户拓展和平台兑现为主，暂未看到需要上调或下调主线的事实。\n\nNBIS：云需求和资本开支是核心，短期新闻仍围绕 GPU 供给、客户签约和融资节奏，结论需要继续看订单转收入。\n\nCRWV：客户集中度仍需观察，新增报道主要围绕 AI 云容量和大客户采购，风险仍在毛利率、资本开支和债务成本。\n\nGOOGL：广告、云和 Gemini 分发是主线，本轮没有看到监管或产品侧出现足以重写框架的新变量。\n\nTSM：先进制程供需和美国厂进度仍是核心，短期报道没有改变 AI 需求强度判断。\n\nNVDA：Blackwell 供给和客户节奏是核心，Wolfe 等继续偏北京时间 2026年6月16日 12:00。结论：今天没有看到七家公司出现同一方向的重大新变量。\n\nTEM：订单和现金流仍是主线。\n\nCAI：新上市后的信息仍需跟踪。";
+        let sanitized = sanitize_scheduler_delivery_text(raw);
+        assert!(sanitized.contains("TEM：订单和现金流仍是主线"));
+        assert!(sanitized.contains("NVDA：Blackwell"));
+        assert_eq!(
+            sanitized
+                .matches("北京时间 2026年6月16日 12:00。结论：")
+                .count(),
+            1
+        );
+        assert_eq!(sanitized.matches("TEM：订单和现金流仍是主线").count(), 1);
     }
 
     #[test]

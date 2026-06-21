@@ -14,11 +14,22 @@ P3
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
 无，非 P1
+
+## 修复记录（2026-06-22 07:08 CST）
+
+- scheduler 出站净化新增同一报告开头重复检测：
+  - 若长报告中同一 `北京时间 YYYY年M月D日 HH:MM。结论：` 开头在正文中段再次出现，且第二次出现位置已超过短文本保护阈值，则截断重复尾段。
+  - 该规则只匹配完全相同的报告时间 + 结论开头，避免误伤正常多公司、多小节报告里的普通“结论”措辞。
+- 新增回归 `scheduler_delivery_text_trims_repeated_report_restart`，覆盖 NVIDIA 段落中途重新拼入同一报告开头的坏态。
+- 验证：
+  - `cargo test -p hone-channels scheduler_delivery_text_ --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+- 无关联 GitHub Issue；状态更新为 `Fixed`。
 
 ## 证据来源
 

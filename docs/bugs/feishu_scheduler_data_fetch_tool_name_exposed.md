@@ -14,13 +14,20 @@ P3
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
 无，非 P1
 
 ## 修复记录
+
+- 2026-06-22 07:08 CST 修复：
+  - 共享 `sanitize_user_visible_output(...)` 补齐 TEM 样本里的漏网句式，新增覆盖 `本地长期画像`、`本轮没有新增事实改变 ... 长期画像`、`我先核验 ... 行情口径 / 本地长期画像`。
+  - scheduler delivery 仍复用同一净化入口，因此 Feishu scheduler / direct actor final 会统一剥离内部画像读取 / 写入口径，同时保留业务主体结论。
+  - 保留 2026-06-21 已有 `StockAnalysis` / `data_fetch` 用户态改写规则。
+  - 验证：`cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`、`cargo test -p hone-channels scheduler_delivery_text_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过。
+  - 无关联 GitHub Issue；状态更新为 `Fixed`。
 
 - 2026-06-22 03:02 CST 运行态复发，状态从代码级 `Fixed` 回退为 `New`：
   - 23:02-03:01 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。

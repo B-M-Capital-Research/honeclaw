@@ -14,13 +14,19 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## GitHub Issue
 
 - 无，非 P1
 
 ## 修复记录
+
+- 2026-06-22 07:08 CST 修复：
+  - 共享 `sanitize_user_visible_output(...)` 补齐 `本地长期画像`、`本轮没有新增事实改变 ... 长期画像`、`我先核验 ... 行情口径 / 本地长期画像` 等自然语言内部画像流程句式。
+  - 本轮新增回归 `sanitize_user_visible_output_strips_local_long_term_profile_progress`，确认 TEM 样本会剥离内部画像读取 / 写入口径，只保留业务主体结论。
+  - 验证：`cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过。
+  - 无关联 GitHub Issue；状态更新为 `Fixed`。
 
 - 2026-06-22 03:02 CST 运行态复发，状态从代码级 `Fixed` 回退为 `New`：
   - 23:02-03:01 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。

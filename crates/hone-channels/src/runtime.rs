@@ -292,7 +292,7 @@ static RE_INTERNAL_TOOLING_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock::new
 });
 static RE_INTERNAL_RUNTIME_PROGRESS_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
-        r#"[^\n。！？]*(?:本机没有\s*python(?:\s*命令)?|改用\s*python3|已加载股票研究流程|Hone\s*的实时检索工具|实时检索工具再查一遍|把(?:数据|结果|内容)补进[^。\n！？]*(?:画像|公司画像)|本地没有已有的[^。\n！？]*公司画像|本地已有的[^。\n！？]*公司画像|本地画像显示|本地公司画像|检查本地是否已有[^。\n！？]*公司画像|已有的公司画像里[^。\n！？]*|画像里[^。\n！？]*沉淀|只更新本轮能核验到的新增事实|追加到画像|回写到[^。\n！？]*(?:长期画像|公司画像)|写回[^。\n！？]*(?:长期画像|公司画像)|不追加[^。\n！？]*(?:长期画像|公司画像)事件|公司画像事件|我先核(?:对|验|一下)[^。\n！？]*(?:对应实体|股价口径|财报|指引|背景|公司表述)|沉淀成[^。\n！？]*(?:画像|公司画像)|沉淀为[^。\n！？]*(?:画像|公司画像)|我会新增[^。\n！？]*(?:长期画像|公司画像))[^\n。！？]*[。！？]?"#,
+        r#"[^\n。！？]*(?:本机没有\s*python(?:\s*命令)?|改用\s*python3|已加载股票研究流程|Hone\s*的实时检索工具|实时检索工具再查一遍|把(?:数据|结果|内容)补进[^。\n！？]*(?:画像|公司画像)|本地没有已有的[^。\n！？]*公司画像|本地已有的[^。\n！？]*公司画像|本地画像显示|本地公司画像|本地长期画像|检查本地是否已有[^。\n！？]*公司画像|已有的公司画像里[^。\n！？]*|画像里[^。\n！？]*沉淀|只更新本轮能核验到的新增事实|追加到画像|回写到[^。\n！？]*(?:长期画像|公司画像)|写回[^。\n！？]*(?:长期画像|公司画像)|不追加[^。\n！？]*(?:长期画像|公司画像)事件|本轮没有新增事实改变[^。\n！？]*(?:长期画像|公司画像)|公司画像事件|我先核(?:对|验|一下)[^。\n！？]*(?:对应实体|股价口径|行情口径|财报|指引|背景|公司表述|本地长期画像)|沉淀成[^。\n！？]*(?:画像|公司画像)|沉淀为[^。\n！？]*(?:画像|公司画像)|我会新增[^。\n！？]*(?:长期画像|公司画像))[^\n。！？]*[。！？]?"#,
     )
     .expect("valid regex")
 });
@@ -1519,6 +1519,19 @@ mod tests {
         assert!(!sanitized.content.contains("本地画像"));
         assert!(!sanitized.content.contains("追加到画像"));
         assert!(!sanitized.content.contains("回写到"));
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_strips_local_long_term_profile_progress() {
+        let raw = "我先核验 TEM 的官方公告、最新行情口径和本地长期画像。本轮没有新增事实改变 TEM 长期画像。主体结论：TEM 本轮更适合继续跟踪公告和订单兑现。";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(sanitized.removed_internal);
+        assert_eq!(
+            sanitized.content,
+            "主体结论：TEM 本轮更适合继续跟踪公告和订单兑现。"
+        );
+        assert!(!sanitized.content.contains("本地长期画像"));
+        assert!(!sanitized.content.contains("长期画像"));
     }
 
     #[test]

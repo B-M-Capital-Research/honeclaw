@@ -3,7 +3,7 @@
 - 发现时间：2026-06-22 04:08 CST
 - Bug Type：Daily macOS build verification / desktop packaging
 - 严重等级：P1
-- 状态：New
+- 状态：Later
 - GitHub Issue：未创建
 - 证据来源：`honeclaw-mac` 每日 macOS 完整打包验证
 
@@ -61,6 +61,16 @@
 3. 如确认是本机 runtime / 缓存问题，清理 Bun/Tauri CLI 缓存或固定使用可工作的 Tauri CLI 调用方式。
 4. 修复后重新运行完整 `honeclaw-mac` 链路，必须生成本轮 `.app` / `.dmg` 并完成隔离 smoke。
 
+## 状态更新（2026-06-22 07:08 CST）
+
+- `bug-2` 本轮复核没有复现 04:08 记录中的“`bunx tauri --version` 立即退出 `137`”形态：
+  - 直接执行 `bunx tauri --version` 后进程挂起超过 60 秒，没有输出，也没有返回 `137`；为避免占用自动化，本轮手动中断，退出码为 `130`。
+  - 本轮没有重跑完整 `build:desktop`，也没有生成新的 `.app` / `.dmg`，因此不能宣称 macOS 打包恢复。
+- 结论：
+  - 当前证据仍集中在本机 Bun/Tauri CLI、缓存、OS 杀进程或工具链状态，尚未定位到仓库代码 / Tauri 配置可修缺口。
+  - 按当前自动化约束，不为单机工具链瞬时 `SIGKILL` / 挂起写仓库特判；本单从活跃 `New` 移入 `Later`。
+  - 后续若在干净工具链下能稳定复现，或失败推进到具体仓库代码 / Tauri 配置阶段，再改回 `New`。
+
 ## 验证结果
 
 - `git status --short`：通过，开始时无输出。
@@ -73,3 +83,4 @@
 - `.dmg` 产物确认：失败，现有 `.dmg` 为 2026-06-02 旧产物，不是本轮构建。
 - `.app/Contents/MacOS/hone-desktop` 隔离 smoke：未执行，因为本轮未生成新 bundle。
 - 渠道隔离：未启动任何本轮验证 runtime 或真实 IM sidecar。
+- `2026-06-22 07:08 CST` 复核：`bunx tauri --version` 挂起超过 60 秒后手动中断，退出码 `130`；未复现立即 `137`，未生成新 bundle。

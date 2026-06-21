@@ -15,6 +15,16 @@
   - `cargo test -p hone-channels heartbeat_ --lib -- --nocapture`
 - 无关联 GitHub Issue；当前按本地代码和回归验证更新为 `Fixed`，未依赖当前机器生产日志、线上渠道状态或 live 服务重启复核。
 
+## 修复结论复核（2026-06-22 07:08 CST）
+
+- 本轮不再用当前机器旧运行态 / 未确认部署进程作为重新打开依据，只按当前仓库代码和本地回归验证复核。
+- 当前代码已覆盖 2026-06-22 03:02 补证里的小米 30 港元破位样本：
+  - `heartbeat_explicit_lower_price_crossing_is_not_near_threshold_suppressed` 覆盖中文 `24.58 <= 30` 与英文 `HKD 24.58 ... below 30 HKD` triggered 文案。
+  - 回归确认当前不会写入 `near_threshold_suppressed=true`，`should_deliver` 保持 `true`。
+- 验证：
+  - `cargo test -p hone-channels heartbeat_explicit_lower_price_crossing_is_not_near_threshold_suppressed --lib -- --nocapture`
+- 结论：状态维持代码级 `Fixed`；后续只有在确认运行当前代码后，仍有本地可复现或代码路径证据证明 triggered alert 被送达前 guard 抑制时，才重新打开。
+
 ## 最新进展（2026-06-22 03:02 CST）
 
 - 本轮 23:02-03:01 CST 真实运行态继续确认同根复发，状态维持 `New`：
