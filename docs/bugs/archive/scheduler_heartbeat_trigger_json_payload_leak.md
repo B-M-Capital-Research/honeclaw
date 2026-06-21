@@ -15,6 +15,13 @@
   - `cargo test -p hone-channels scheduler_delivery_text_ --lib -- --nocapture`
   - `cargo check -p hone-channels --tests`
 - 当前按代码与回归验证更新为 `Fixed`；若后续在最新代码运行态仍看到 heartbeat final 拼入新的结构化字段尾巴，再用新样本重新打开。
+
+## 修复记录（2026-06-22 03:08 CST）
+
+- heartbeat 畸形 `triggered` JSON 恢复逻辑已把 `data`、`direction`、`beat_threshold`、`threshold` 识别为 `message` 后续结构化字段，遇到自然语言提醒后拼入这些字段尾巴时会在出站前截断，避免 `","data":...` 或阈值字段残片进入用户可见提醒。
+- 验证：
+  - `cargo test -p hone-channels heartbeat_malformed_triggered_message_strips --lib -- --nocapture`
+- 无关联 GitHub Issue；本轮按代码级修复关闭，不依赖生产日志、线上渠道状态或 live 重启。
 - **证据来源**:
   - `2026-06-16 03:03 CST` 巡检补充复发证据：
     - `data/sessions.sqlite3` -> `cron_job_runs`

@@ -14,7 +14,7 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## 证据来源
 
@@ -81,6 +81,12 @@
 - 同窗普通 Feishu scheduler 5 条均为 `completed + sent + delivered=1`；heartbeat 新增 65 条 `noop + skipped_noop + delivered=0`、37 条 `execution_failed + skipped_error + delivered=0` 与 2 条 `completed + sent + delivered=1`，失败形态仍落在既有 heartbeat 结构化输出 / context overflow 文档范围，未进入用户可见 final。
 
 ## 修复记录
+
+- 2026-06-22 03:08 CST 状态更新为 `Fixed`：
+  - 复核当前 Feishu handler 已有尾部 assistant 文本幂等保护：若 agent session 的 quota short-circuit 已经在同一 session 尾部写入同一条 daily-limit assistant final，handler failure fallback 不再追加同义 Feishu text mirror。
+  - 本轮未追加代码改动；按当前代码和回归验证回写代码级 `Fixed`。
+  - 验证：`cargo test -p hone-feishu session_tail_assistant_matches_detects_duplicate_quota_reply -- --nocapture` 通过。
+  - 无关联 GitHub Issue；本轮不依赖生产日志、线上渠道状态或 live 重启。
 
 - 2026-06-09 00:12 CST 进入 `Fixing`：Feishu handler 的 `persist_visible_assistant_message(...)` 已增加尾部 assistant 文本幂等保护。若 agent session 的 quota short-circuit 已经在同一 session 尾部写入同一条 daily-limit assistant final，handler failure fallback 不再追加同义 Feishu text mirror；新增 `session_tail_assistant_matches_detects_duplicate_quota_reply` 回归。
 - 验证阻塞：本机 Rust toolchain 当前 `cargo` / `rustc` 均悬挂，本轮仅完成 `git diff --check`，不能标记 `Fixed`。下一轮需运行 `cargo test -p hone-feishu session_tail_assistant_matches_detects_duplicate_quota_reply -- --nocapture` 与 `cargo check -p hone-feishu --tests`。

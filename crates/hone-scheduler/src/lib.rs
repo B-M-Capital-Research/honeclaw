@@ -9,7 +9,7 @@ use hone_memory::{
     cron_job::{CronJobExecutionInput, ExecutionFilter},
 };
 use serde_json::{Value, json};
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 use tokio::sync::mpsc;
 use tracing::{info, warn};
 
@@ -170,7 +170,7 @@ impl HoneScheduler {
                 continue;
             }
             let last_delivered_previews = if job.is_heartbeat() {
-                load_heartbeat_delivery_history(&self.storage, &actor)
+                load_heartbeat_delivery_history(&self.storage, &actor, &job.id)
             } else {
                 Vec::new()
             };
@@ -215,22 +215,53 @@ impl HoneScheduler {
 fn load_heartbeat_delivery_history(
     storage: &CronJobStorage,
     actor: &ActorIdentity,
+    job_id: &str,
 ) -> Vec<(String, String)> {
-    let filter = ExecutionFilter {
+    fn delivered_previews(
+        storage: &CronJobStorage,
+        filter: ExecutionFilter,
+        limit: usize,
+    ) -> Vec<(String, String)> {
+        storage
+            .list_recent_executions(&filter)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|r| r.delivered && r.response_preview.is_some())
+            .take(limit)
+            .map(|r| (r.executed_at, r.response_preview.unwrap_or_default()))
+            .collect()
+    }
+
+    let same_job_filter = ExecutionFilter {
+        channel: Some(actor.channel.clone()),
+        user_id: Some(actor.user_id.clone()),
+        job_id: Some(job_id.to_string()),
+        heartbeat_only: Some(true),
+        limit: 60,
+        ..ExecutionFilter::default()
+    };
+    let actor_filter = ExecutionFilter {
         channel: Some(actor.channel.clone()),
         user_id: Some(actor.user_id.clone()),
         heartbeat_only: Some(true),
-        limit: 20,
+        limit: 40,
         ..ExecutionFilter::default()
     };
-    storage
-        .list_recent_executions(&filter)
-        .unwrap_or_default()
+
+    let mut seen = HashSet::new();
+    let mut history = Vec::new();
+    for item in delivered_previews(storage, same_job_filter, 8)
         .into_iter()
-        .filter(|r| r.delivered && r.response_preview.is_some())
-        .take(8)
-        .map(|r| (r.executed_at, r.response_preview.unwrap_or_default()))
-        .collect()
+        .chain(delivered_previews(storage, actor_filter, 8))
+    {
+        if seen.insert(item.clone()) {
+            history.push(item);
+        }
+        if history.len() >= 12 {
+            break;
+        }
+    }
+    history
 }
 
 fn scheduled_delivery_key(
@@ -319,9 +350,69 @@ mod tests {
             )
             .expect("record job b noop");
 
-        let history = load_heartbeat_delivery_history(&storage, &actor);
+        let history = load_heartbeat_delivery_history(&storage, &actor, "job-b");
         assert_eq!(history.len(), 1);
         assert!(history[0].1.contains("小米跌破 30 港元"));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn heartbeat_history_keeps_same_job_delivery_when_actor_history_is_busy() {
+        let dir = make_temp_dir("hone_scheduler_same_job_history");
+        let sqlite_path = dir.join("sessions.sqlite3");
+        let storage = CronJobStorage::with_sqlite(&dir, &sqlite_path);
+        let actor = ActorIdentity::new("feishu", "ou_same_job", None::<String>).expect("actor");
+
+        storage
+            .record_execution_event(
+                &actor,
+                "job-rklb",
+                "RKLB异动监控",
+                "ou_same_job",
+                true,
+                CronJobExecutionInput {
+                    execution_status: "completed".to_string(),
+                    message_send_status: "sent".to_string(),
+                    should_deliver: true,
+                    delivered: true,
+                    response_preview: Some(
+                        "RKLB 6月12日下跌 -10.79%，SpaceX IPO 资金虹吸已提醒".to_string(),
+                    ),
+                    error_message: None,
+                    detail: serde_json::json!({"delivery_key": "rklb-old"}),
+                },
+            )
+            .expect("record old rklb");
+
+        for idx in 0..14 {
+            storage
+                .record_execution_event(
+                    &actor,
+                    &format!("job-other-{idx}"),
+                    "其它心跳",
+                    "ou_same_job",
+                    true,
+                    CronJobExecutionInput {
+                        execution_status: "completed".to_string(),
+                        message_send_status: "sent".to_string(),
+                        should_deliver: true,
+                        delivered: true,
+                        response_preview: Some(format!("其它标的新事件 {idx}")),
+                        error_message: None,
+                        detail: serde_json::json!({"delivery_key": format!("other-{idx}")}),
+                    },
+                )
+                .expect("record other");
+        }
+
+        let history = load_heartbeat_delivery_history(&storage, &actor, "job-rklb");
+        assert!(
+            history
+                .iter()
+                .any(|(_, preview)| preview.contains("RKLB 6月12日下跌 -10.79%")),
+            "same-job delivery should not be evicted by other heartbeat deliveries: {history:?}"
+        );
 
         let _ = std::fs::remove_dir_all(dir);
     }

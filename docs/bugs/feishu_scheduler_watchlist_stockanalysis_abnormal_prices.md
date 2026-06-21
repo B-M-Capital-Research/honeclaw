@@ -14,7 +14,7 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## GitHub Issue
 
@@ -31,6 +31,14 @@
 - 用户影响：
   - 回复正常收口，观察池主链路仍可用，未见空回复、错投、投递失败或原始工具 JSON；因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
   - 但异常价格已经在 6 月 20 日早间简报和 6 月 21 日晚间观察池快报复现，说明需要优先修复价格 sanity check，而不仅是改写 `StockAnalysis` 这个用户可见标签。
+
+## 修复记录
+
+- 2026-06-22 03:08 CST 状态更新为 `Fixed`：
+  - 观察池 scheduler prompt 增加价格 sanity 约束：如果某个标的最新价相对固定击球区或近期有效价明显偏离一个数量级，或疑似把市值、复权 / 拆股口径、页面其它数字误当股价，必须把该标的价格写为“最新行情未完成稳定校验”。
+  - 同类异常价不得继续输出为精确价格，也不得基于该异常价计算距离击球区或给出交易判断。
+  - 验证：`cargo test -p hone-channels scheduled_watchlist_hit_zone_prompt_keeps_stable_local_fields --lib -- --nocapture` 通过。
+  - 无关联 GitHub Issue；本轮按本地代码与回归验证关闭，不依赖生产日志、线上渠道状态或 live 重启。
 
 ## 证据来源
 

@@ -14,13 +14,19 @@ P3
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
 无，非 P1
 
 ## 修复记录
+
+- 2026-06-22 03:08 CST 状态更新为 `Fixed`：
+  - 金融系统 prompt 已扩展非标准 / 高歧义 ticker 约束：当这类 ticker/简称被用于强时效新闻、利好 / 利空、IPO、融资、收购、并购或上市进展问题时，必须先确认证券实体与来源支持。
+  - 在用户确认前，不得把近似代码直接等同为热门私营公司或未上市公司股票，也不得基于该假设展开强时效叙事。
+  - 验证：`cargo test -p hone-channels build_prompt_bundle_always_includes_finance_domain_policy --lib -- --nocapture` 通过。
+  - 无关联 GitHub Issue；本轮按本地代码与回归验证关闭，不依赖生产日志、线上渠道状态或 live 重启。
 
 - 2026-06-20 23:03 CST 补充同根复发证据，状态保持 `New`：
   - 19:01-23:01 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮以 `data/runtime/logs/acp-events.log` 重构用户可见 final。

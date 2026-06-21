@@ -3,7 +3,12 @@
 - **发现时间**: 2026-04-19 10:04 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
+- **修复记录**:
+  - `2026-06-22 03:08 CST` 状态更新为 `Fixed`：scheduler 构造 heartbeat event 时会传入当前 `job_id`，去重历史加载改为优先保留同 job 的已送达提醒，再用 actor 级其它 heartbeat 已送达记录补充，避免同一 job 的旧触发事件被其它 heartbeat 送达挤出最近窗口后失去去重基线。
+  - 新增回归覆盖同 job `RKLB` 旧事件被 14 条其它 heartbeat 送达挤出 actor 最近历史时仍能进入 `last_delivered_previews`。
+  - 验证：`cargo test -p hone-scheduler heartbeat_history_ -- --nocapture`、`cargo test -p hone-channels heartbeat_duplicate_preview_match_ --lib -- --nocapture` 通过。
+  - 无关联 GitHub Issue；本轮按本地代码与回归验证关闭，不依赖生产日志、线上渠道状态或 live 重启。
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `2026-06-14 15:03 CST` 巡检窗口：2026-06-14 11:02-15:02 CST。

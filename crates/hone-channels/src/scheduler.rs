@@ -354,6 +354,10 @@ fn heartbeat_message_trailing_field(field: &str) -> bool {
             | "severity"
             | "risk"
             | "trigger"
+            | "direction"
+            | "beat_threshold"
+            | "threshold"
+            | "data"
             | "metadata"
     )
 }
@@ -2637,7 +2641,7 @@ pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
         event.schedule_minute
     );
     let stable_context_note = if scheduled_prompt_needs_stable_local_context(event) {
-        "\n\n稳定本地字段约束：本任务里的观察池、击球区、策略纪律等固定配置属于用户本地状态，不属于 `data_fetch` 行情结果。涉及击球区时，先使用任务正文、已恢复会话上下文、portfolio/local state 或本地文件中的既有区间；`data_fetch` 只校验最新价格和财报日期。不要因为行情工具没有返回击球区字段，就把已经存在于上下文或本地状态里的区间统一降级为“待确认”。只有本轮任务正文和已恢复上下文都没有给出某个标的的区间时，才可标注该标的击球区待确认。"
+        "\n\n稳定本地字段约束：本任务里的观察池、击球区、策略纪律等固定配置属于用户本地状态，不属于 `data_fetch` 行情结果。涉及击球区时，先使用任务正文、已恢复会话上下文、portfolio/local state 或本地文件中的既有区间；`data_fetch` 只校验最新价格和财报日期。不要因为行情工具没有返回击球区字段，就把已经存在于上下文或本地状态里的区间统一降级为“待确认”。只有本轮任务正文和已恢复上下文都没有给出某个标的的区间时，才可标注该标的击球区待确认。价格 sanity 约束：若某个标的的最新价相对其固定击球区或近期有效价明显偏离一个数量级，或疑似把市值、复权/拆股口径、其它页面数字误当股价，必须把该标的价格写为“最新行情未完成稳定校验”，不得输出精确价格，也不得基于该异常价格计算距离击球区或给出交易判断。"
     } else {
         ""
     };
@@ -4090,6 +4094,33 @@ mod tests {
     }
 
     #[test]
+    fn heartbeat_malformed_triggered_message_strips_trailing_data_object() {
+        let raw = r#"{"status":"triggered","message":"【CBRS 心跳提醒】Cerebras IPO 文件更新，检查时间：北京时间 2026-06-16 00:31。","data":{"ticker":"CBRS","exchange":"NASDAQ Global Market""#;
+        let (outcome, parse_kind) = inspect_heartbeat_result(raw);
+        assert_eq!(parse_kind, HeartbeatParseKind::JsonTriggered);
+        assert_eq!(
+            outcome,
+            HeartbeatOutcome::Deliver(
+                "【CBRS 心跳提醒】Cerebras IPO 文件更新，检查时间：北京时间 2026-06-16 00:31。"
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn heartbeat_malformed_triggered_message_strips_trailing_threshold_fields() {
+        let raw = r#"{"status":"triggered","message":"【伦敦金提醒】金价已跌破 4500，检查时间：北京时间 2026-06-13 01:30。","direction":"below_threshold","beat_threshold":"281.83""#;
+        let (outcome, parse_kind) = inspect_heartbeat_result(raw);
+        assert_eq!(parse_kind, HeartbeatParseKind::JsonTriggered);
+        assert_eq!(
+            outcome,
+            HeartbeatOutcome::Deliver(
+                "【伦敦金提醒】金价已跌破 4500，检查时间：北京时间 2026-06-13 01:30。".to_string()
+            )
+        );
+    }
+
+    #[test]
     fn heartbeat_malformed_json_marks_execution_failed() {
         let execution = heartbeat_execution_from_content(r#"{"status":"noop"#, "model-x");
         assert!(!execution.should_deliver);
@@ -5341,6 +5372,9 @@ mod tests {
         assert!(prompt.contains("data_fetch` 只校验最新价格和财报日期"));
         assert!(prompt.contains("不要因为行情工具没有返回击球区字段"));
         assert!(prompt.contains("统一降级为“待确认”"));
+        assert!(prompt.contains("价格 sanity 约束"));
+        assert!(prompt.contains("最新行情未完成稳定校验"));
+        assert!(prompt.contains("不得输出精确价格"));
     }
 
     #[test]
