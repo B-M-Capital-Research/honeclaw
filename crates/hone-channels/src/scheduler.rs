@@ -2188,7 +2188,41 @@ fn sanitize_scheduler_delivery_text(text: &str) -> String {
         .filter(|line| !is_scheduler_protocol_residue(line))
         .collect::<Vec<_>>()
         .join("\n");
-    kept_lines.trim().to_string()
+    trim_scheduler_trailing_json_field_residue(kept_lines.trim())
+}
+
+fn trim_scheduler_trailing_json_field_residue(text: &str) -> String {
+    let suspicious_keys = [
+        "data",
+        "direction",
+        "exchange",
+        "ticker",
+        "threshold",
+        "beat_threshold",
+        "triggered",
+        "alert_level",
+        "currency",
+    ];
+    let mut cut_at = None;
+    for key in suspicious_keys {
+        for marker in [
+            format!(r#"","{key}":"#),
+            format!(r#"\",\"{key}\":"#),
+            format!(r#"","{key}":{{"#),
+            format!(r#"\",\"{key}\":{{"#),
+        ] {
+            if let Some(idx) = text.find(&marker) {
+                cut_at = Some(cut_at.map_or(idx, |current: usize| current.min(idx)));
+            }
+        }
+    }
+    let Some(idx) = cut_at else {
+        return text.to_string();
+    };
+    text[..idx]
+        .trim_end_matches(['\\', '"', ',', ' '])
+        .trim_end()
+        .to_string()
 }
 
 fn is_empty_success_fallback(text: &str) -> bool {
@@ -3764,6 +3798,23 @@ mod tests {
         );
         assert!(!sanitized.contains("data_fetch"));
         assert!(!sanitized.contains("StockAnalysis"));
+    }
+
+    #[test]
+    fn scheduler_delivery_text_trims_trailing_json_field_residue() {
+        let raw = r#"【提醒】Cerebras 触发重大事件监控。已核验 Cerebras 相关业务进展。\",\"data\":{\"ticker\":\"CBRS\",\"exchange\":\"NASDAQ Global Market\"}"#;
+        let sanitized = sanitize_scheduler_delivery_text(raw);
+        assert_eq!(
+            sanitized,
+            "【提醒】Cerebras 触发重大事件监控。已核验 Cerebras 相关业务进展。"
+        );
+    }
+
+    #[test]
+    fn scheduler_delivery_text_keeps_normal_quotes_without_json_tail() {
+        let raw = "结论：管理层强调“谨慎扩产”，并未给出新的 JSON 字段。";
+        let sanitized = sanitize_scheduler_delivery_text(raw);
+        assert_eq!(sanitized, raw);
     }
 
     #[test]

@@ -3,7 +3,18 @@
 - **发现时间**: 2026-04-18 11:06 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
+
+## 修复记录（2026-06-22 03:28 CST）
+
+- 本轮在 `sanitize_scheduler_delivery_text(...)` 增加 heartbeat / scheduler 正文尾随结构化字段残片裁剪：
+  - 当用户可见正文已经形成自然语言提醒，但尾部继续拼入 `","data":{...}`、`"direction":...`、`"ticker":...`、`"exchange":...`、`"threshold":...` 等结构化字段时，现在会在第一段可疑 JSON 字段标记前截断。
+  - 清理同时兼容未转义和 `\"...\"` 转义残片，避免 `deliver_preview` / 最终投递正文继续暴露协议字段尾巴。
+  - 不会影响正常引号文本；新增回归专门覆盖“正常中文引号说明”不被误裁剪。
+- 验证：
+  - `cargo test -p hone-channels scheduler_delivery_text_ --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+- 当前按代码与回归验证更新为 `Fixed`；若后续在最新代码运行态仍看到 heartbeat final 拼入新的结构化字段尾巴，再用新样本重新打开。
 - **证据来源**:
   - `2026-06-16 03:03 CST` 巡检补充复发证据：
     - `data/sessions.sqlite3` -> `cron_job_runs`
