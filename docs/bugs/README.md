@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-06-22 03:02 CST
+最后更新：2026-06-22 04:08 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,9 +17,10 @@
 
 ## 当前概览
 
-- 活跃待修复：4
+- 活跃待修复：5
 - Later / 待复现：10
 - 已修复 / 已关闭：141
+- 本轮 04:08 CST 新增 P1 `Daily macOS build Tauri CLI killed before bundling`：`honeclaw-mac` 每日 macOS 打包验证已成功 fetch / rebase 到远端 `main=cbbd792b`，`build:desktop` 的 sidecar release 编译完成并生成 Tauri 配置，但 `bunx tauri build --config bins/hone-desktop/tauri.generated.conf.json` 被 `Killed: 9` 终止，脚本退出码 `137`；直接重试 `bunx tauri build --config ...` 与 `bunx tauri --version` 也均立即退出 `137`。现有 `.app/.dmg` 仍是 2026-06-02 旧产物，因此本轮未生成可验证的新 bundle，未启动隔离 smoke 或真实 IM 渠道；无 GitHub Issue。
 - 本轮 03:08 CST `bug-2` 修复 / 复核关闭 5 个活跃 P3：heartbeat triggered 畸形 JSON 恢复新增 `data` / `direction` / `beat_threshold` / `threshold` 尾字段截断，避免自然语言提醒后继续拼入结构化字段；heartbeat 去重历史改为同 job 已送达优先，避免同一旧事件被其它 heartbeat 送达挤出 actor 最近窗口后跨窗口重报；金融 prompt 对高歧义 / 非标准 ticker 的强时效新闻、利好、IPO、融资、收购、上市进展问题要求先确认证券实体与来源支持；观察池 scheduler prompt 增加价格 sanity 约束，明显偏离固定击球区 / 近期有效价一个数量级的价格必须降级为“最新行情未完成稳定校验”；Feishu daily-limit 重复 transcript 复核当前代码已有尾部 assistant 幂等保护且回归通过，按代码级 `Fixed` 回写。验证：`cargo test -p hone-channels heartbeat_malformed_triggered_message_strips --lib -- --nocapture`、`cargo test -p hone-channels build_prompt_bundle_always_includes_finance_domain_policy --lib -- --nocapture`、`cargo test -p hone-channels scheduled_watchlist_hit_zone_prompt_keeps_stable_local_fields --lib -- --nocapture`、`cargo test -p hone-scheduler heartbeat_history_ -- --nocapture`、`cargo test -p hone-channels heartbeat_duplicate_preview_match_ --lib -- --nocapture`、`cargo test -p hone-feishu session_tail_assistant_matches_detects_duplicate_quota_reply -- --nocapture` 通过；本轮未依赖生产日志、线上渠道状态或 live 重启。
 - 本轮 03:02 CST 回退 2 个既有 P3 净化类缺陷，并补充 1 个既有 P2 heartbeat 漏发缺陷证据，未新增独立缺陷、未发现活跃 P1：23:02-03:01 CST `data/sessions.sqlite3` 只读快照仍停在 `sessions.max(updated_at)=2026-06-17T10:37:37.207669+08:00`、`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`cron_job_runs.max(executed_at)=2026-06-17T11:01:42.353141+08:00`，真实会话继续以 `data/runtime/logs/acp-events.log` 和 `data/runtime/logs/web.log.2026-06-21` 重构。本窗 ACP 有 8 次 `session/prompt`、8 个 session、0 个 response error；用户可见 chunk 未见空回复、错投、投递失败、原始工具 JSON、本机绝对路径、transport trace、provider 原始错误或思维痕迹。00:00-00:03 CST Feishu direct / scheduler actor `Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b` 的 TEM 简报正常收口，但继续外露“本地长期画像 / 长期画像”口径，且同批样本仍命中既有 `StockAnalysis` / 画像流程文案边界，因此将 `feishu_scheduler_data_fetch_tool_name_exposed.md` 与 `feishu_direct_internal_runtime_progress_exposed.md` 从 `Fixed` 回退为 `New`；两者均不影响主功能链路，按质量性 P3，非 P1，不创建 GitHub Issue。Heartbeat 方面，23:30 CST `小米30港元破位预警` 再次 `parse_kind=JsonTriggered`，deliver preview 已生成 `现价 24.58 港元` 低于 30 港元阈值的提醒，但 Feishu 随后仍记录 `心跳任务未命中，本轮不发送`，晚于 23:07 CST 代码级修复记录，补入既有 P2 `scheduler_heartbeat_near_threshold_false_trigger.md` 并按运行态回退为 `New`。同窗 `web.log.2026-06-21` 仍有 643 条 LLM audit JSONB 序列化失败、64 条 heartbeat 非结构化 JSON、99 条 `JsonNoop`、16 条 `JsonUnknownStatus`、6 条 `JsonMalformed`、12 条 `context_window_overflow`、152 条 `notification_prefs` 日志；未形成新的用户可见独立缺陷。最近四小时无非文档代码提交。
 - 本轮 23:07 CST `bug-2` 修复 2 个共享 heartbeat scheduler guard 缺陷：`heartbeat_near_threshold_without_crossing(...)` 新增明确下穿识别，`当前价 <= 阈值`、`低于 / 跌破 / below / under` 且数值满足 `current <= threshold` 时不再被 near-threshold 保险闸误抑制；`normalize_heartbeat_beijing_trigger_time(...)` 补齐 `【...监控 · 北京时间 YYYY-MM-DD HH:MM】` 标题型触发时间归一化，改写到 scheduler 权威北京时间日期和分钟，同时保留原始时间 metadata。验证 `cargo test -p hone-channels heartbeat_ --lib -- --nocapture` 通过；两项均无关联 GitHub Issue，本轮按本地代码和回归验证更新为 `Fixed`，未依赖生产日志、线上渠道状态或 live 服务重启。
@@ -579,6 +580,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Daily macOS build Tauri CLI killed before bundling | P1 | New | 2026-06-22 04:08 新增：`main` 已同步到 `cbbd792b`，sidecar release prep 完成，但 `bunx tauri build --config bins/hone-desktop/tauri.generated.conf.json` 被 `Killed: 9` 终止并返回 `137`；直接执行 `bunx tauri build --config ...` 和 `bunx tauri --version` 也均返回 `137`。现有 `.app/.dmg` 仍是 2026-06-02 旧产物，未进入 smoke 验证。无 GitHub Issue | [daily_macos_build_tauri_cli_sigkill.md](./daily_macos_build_tauri_cli_sigkill.md) |
 | 单标的 heartbeat near-threshold guard 会误判触发状态并导致误发或漏发 | P2 | New | 2026-06-22 03:02 补证：23:30 CST `小米30港元破位预警` 再次返回 `parse_kind=JsonTriggered`，deliver preview 已生成 `现价 24.58 港元` 低于 30 港元阈值的提醒，但 Feishu 随后仍记录 `心跳任务未命中，本轮不发送`。影响 heartbeat 告警漏发，非 P1，无 GitHub Issue | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
 | Feishu scheduler 外露内部工具 / 画像流程与 `data_fetch` 名称 | P3 | New | 2026-06-22 03:02 回退：00:00-00:03 CST Feishu direct / scheduler actor `Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b` 的 TEM 简报正常 `end_turn` 收口，但用户可见 chunk 继续写出 `本地长期画像`、`长期画像`，同批样本仍命中 `StockAnalysis` / 画像流程文案边界。主体业务可用，不影响主功能链路，按质量性 P3；非 P1，无 GitHub Issue | [feishu_scheduler_data_fetch_tool_name_exposed.md](./feishu_scheduler_data_fetch_tool_name_exposed.md) |
 | Feishu direct 投研回复外露本机命令与内部工具流程 | P3 | New | 2026-06-22 03:02 回退：00:00-00:03 CST `Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b` TEM 简报用户可见 chunk 写出 `本地长期画像`、`本轮没有新增事实改变 TEM 长期画像` 等内部画像读取 / 写入口径。回复主体完成公告、行情、财务和证伪条件，链路正常，因此为质量性 P3；非 P1，无 GitHub Issue | [feishu_direct_internal_runtime_progress_exposed.md](./feishu_direct_internal_runtime_progress_exposed.md) |
