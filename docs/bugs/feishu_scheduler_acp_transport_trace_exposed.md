@@ -14,7 +14,7 @@ P3
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
@@ -60,6 +60,13 @@ New
 - 共享错误净化曾覆盖失败分支中的 transport trace，但本轮说明成功 final 中的前缀污染仍可能绕过或晚于净化边界。
 - 与 `codex_acp_transport_disconnect_request_failure.md` 不同：本轮没有最终失败或缺失 final，而是成功回复夹带 raw transport trace。
 - 与归档的 `channel_raw_llm_error_exposure.md` 同属“底层传输错误痕迹进入用户态文本”大类，但本轮没有外泄 URL / cf-ray，严重等级低于历史 P1 样本。
+
+## 修复记录
+
+- 2026-06-21 19:09 CST 修复：
+  - 共享 `sanitize_user_visible_output(...)` 新增 runner warning 句族剥离，覆盖成功 final 中夹带的 `Falling back from WebSockets to HTTPS transport`、`stream disconnected before completion`、`tls handshake eof` 等 transport trace。
+  - 回归样本确认 warning 被剥离后仍保留后续业务正文，不把成功报告误判为空输出。
+  - 验证：`cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过。
 
 ## 下一步建议
 

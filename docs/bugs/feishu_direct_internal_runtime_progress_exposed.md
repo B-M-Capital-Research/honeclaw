@@ -14,13 +14,18 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## GitHub Issue
 
 - 无，非 P1
 
 ## 修复记录
+
+- 2026-06-21 19:09 CST 修复：
+  - 共享 `sanitize_user_visible_output(...)` 继续补齐 Feishu direct 投研 final 的内部流程净化，覆盖 `本地画像显示`、`本地已有的 ... 公司画像`、`回写到 ... 长期画像`、`写回 ... 公司画像`、`不追加 ... 长期画像事件` 等自然语言化画像状态 / 写入动作。
+  - 同步保留业务主体结论，只移除内部画像和本机执行流程说明，避免把正常投研分析误判为空回复。
+  - 验证：`cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过。
 
 - 2026-06-21 19:03 CST 补充同根复发证据，状态保持 `New`：
   - 15:03-19:03 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。

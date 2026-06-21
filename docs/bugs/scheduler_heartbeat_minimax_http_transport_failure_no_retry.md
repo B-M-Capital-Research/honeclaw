@@ -3,9 +3,14 @@
 - **发现时间**: 2026-04-17 16:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Later
 
 ## 修复进展（2026-04-26）
+
+- **2026-06-21 19:09 CST 调整为 `Later`**：
+  - 本轮复核边界按 bug-2 最新规则执行：当前机器不再作为生产运行态依据，且本单核心失败是 MiniMax / OpenAI-compatible `chat/completions` 外部传输失败。
+  - 当前仓库已有 OpenAI-compatible provider 级短重试覆盖 `error sending request`、connection reset、timeout、tcp connect error 等瞬时传输错误；本轮不为供应商偶发失败继续叠加渠道 / 单任务特判。
+  - 若未来在已确认加载当前代码、网络与供应商状态稳定的新运行态中仍成批复现，可再重新打开并评估通用退避、provider fallback 或告警聚合，而不是按当前旧窗口证据保持活跃。
 
 - **2026-06-16 11:01 CST 补充复发证据，状态保持 `New`**：
   - `data/sessions.sqlite3` -> `cron_job_runs`

@@ -3,7 +3,7 @@
 - 发现时间：2026-06-12 04:03 CST
 - Bug Type：Daily macOS build verification / local build environment
 - 严重等级：P2
-- 状态：New
+- 状态：Later
 - GitHub Issue：未创建
 - 证据来源：`honeclaw-mac` 每日 macOS 完整打包验证
 
@@ -46,6 +46,7 @@
 - 失败集中在 macOS 进程创建资源：`fork`、`posix_spawn()`、`EAGAIN`、`Resource temporarily unavailable`。
 - 本轮 `ps` 输出显示超过两千个进程/僵尸进程，且大量 `<defunct>` 的父进程为 Codex 桌面主进程；僵尸进程不能由本轮构建命令直接回收。
 - 因该问题阻断每日 macOS 产物交付验证，但尚未证明影响用户安装包或仓库代码，暂按 `P2 / New` 登记。
+- 2026-06-21 19:09 CST 复核：本单证据仍指向宿主机进程 / 磁盘等本机自动化环境问题，而不是仓库代码、Tauri 配置或桌面 runtime 行为回归；当前 bug-2 规则也明确不再依赖本机线上运行态作为缺陷依据。本轮仅清理可再生 Cargo build artifacts 以恢复测试空间，没有重启 Codex 桌面父进程或执行完整 macOS 打包验证；状态改为 `Later`，待每日 macOS 构建链路在资源恢复后重新复现代码 / 打包阶段错误时再进入活跃修复队列。
 
 ## 下一步建议
 

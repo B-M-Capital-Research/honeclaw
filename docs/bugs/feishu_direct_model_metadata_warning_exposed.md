@@ -14,7 +14,7 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## GitHub Issue
 
@@ -60,6 +60,13 @@
 - 直接根因是 Codex ACP / runner 的模型元数据 fallback warning 被写入了 assistant 用户可见文本流。
 - 该问题不同于 `feishu_scheduler_acp_transport_trace_exposed.md`：本轮不是 transport fallback 或 stream disconnect，而是模型元数据 fallback warning。
 - 该问题也不同于 `feishu_direct_internal_runtime_progress_exposed.md`：本轮不是模型自然语言复述内部研究流程，而是英文运行器警告被拼接到 final。
+
+## 修复记录
+
+- 2026-06-21 19:09 CST 修复：
+  - 共享 `sanitize_user_visible_output(...)` 新增模型元数据 fallback warning 剥离，覆盖 `Model metadata for ... not found`、`Defaulting to fallback metadata`、`this can degrade performance...` 等句族。
+  - 回归样本确认警告删除后仍保留 MLCC 正文，不影响后续业务回答。
+  - 验证：`cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过。
 
 ## 下一步建议
 

@@ -14,7 +14,7 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## GitHub Issue
 
@@ -117,6 +117,11 @@
 - 2026-06-12 新样本继续保持旧形态；即使当前代码已有 backstop，真实运行台账仍没有兑现该字段，优先排查 live Discord scheduler 是否未加载当前代码、是否存在旧写入路径覆盖终态，或 Discord sender 返回结果在进入 storage 前被丢弃。
 
 ## 修复记录
+
+- `2026-06-21 19:09 CST` 复核闭环：
+  - 当前代码层已经具备两道可诊断失败记录保护：Discord scheduler 会把发送失败写入 `send_error` / `failure_kind=discord_send_failed`，`CronJobStorage::record_execution_event(...)` 也会对 `send_failed + delivered=0 + error_message=''` 的旧形态补 backstop。
+  - 本轮按自动化规则不再用当前机器旧运行态 / 非生产样本回退代码级修复结论；若未来在已确认加载当前代码的新运行态仍出现同一空错误形态，再以新证据重新打开。
+  - 验证：`cargo test -p hone-memory discord_send_failed_without_error_is_classified_by_storage_backstop --lib -- --nocapture`、`cargo test -p hone-discord scheduler_ -- --nocapture` 通过。
 
 - `2026-06-12 00:07 CST` 复核纠偏：
   - 当前代码已有 Discord scheduler 出站失败通用错误、`delivery_key`、`failure_kind=discord_send_failed`、`send_error` 以及 `CronJobStorage::record_execution_event(...)` 写入层 backstop。

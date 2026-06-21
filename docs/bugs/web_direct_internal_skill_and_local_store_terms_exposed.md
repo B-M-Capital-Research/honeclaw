@@ -3,8 +3,15 @@
 - **发现时间**: 2026-06-08 23:04 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，非 P1
+
+## 修复记录
+
+- 2026-06-21 19:09 CST 修复：
+  - 共享 `sanitize_user_visible_output(...)` 扩展 Web / Feishu 共用的内部执行进度净化，继续覆盖本机命令、内部工具、画像存在性与画像写入动作等自然语言句式。
+  - 新增 runner warning 剥离和 `StockAnalysis` 标签改写，避免 Web direct / scheduler 将执行环境、工具名或站点执行口径暴露为用户态报告正文。
+  - 验证：`cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过。
 
 ## 证据来源
 

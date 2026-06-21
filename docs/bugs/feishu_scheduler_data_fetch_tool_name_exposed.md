@@ -14,13 +14,18 @@ P3
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
 无，非 P1
 
 ## 修复记录
+
+- 2026-06-21 19:09 CST 修复：
+  - 共享 `sanitize_user_visible_output(...)` 扩展用户可见净化规则，新增剥离自然语言画像读取 / 写入过程句式（如“已有的公司画像里...”“只更新本轮...”“追加到画像”“回写到长期画像”）和 runner warning 句族，并把 `StockAnalysis` 用户态执行口径统一改写为“公开行情页”。
+  - `主行情工具返回额度错误` 等内部行情工具状态现在统一收口为“主行情源本轮未返回可用结果，已改用公开页面补充校验”，不再把内部工具名 / 额度状态当作报告正文。
+  - 验证：`cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过。
 
 - 2026-06-21 19:03 CST 补充同根复发证据，状态保持 `New`：
   - 15:03-19:03 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`cron_job_runs.max(executed_at)=2026-06-17T11:01:42.353141+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
