@@ -75,6 +75,13 @@ static RE_HEARTBEAT_TRIGGER_PRICE_BEFORE_CURRENT: LazyLock<regex::Regex> = LazyL
         .expect("valid heartbeat trigger price regex")
 });
 
+static RE_HEARTBEAT_EXPLICIT_LOWER_PRICE_CROSSING: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+            r"(?is)(?:当前(?:价格|价)?|最新(?:价格|价)?|现价|latest\s+price(?:\s+is)?|current(?:\s*price)?)[^\d]{0,30}(?:HKD|港币|港元|\$)?\s*(?P<current>\d+(?:\.\d+)?)[\s\S]{0,80}(?:<=|≤|低于|跌破|below|under)[^\d]{0,30}(?:HKD|港币|港元|\$)?\s*(?P<threshold>\d+(?:\.\d+)?)",
+        )
+        .expect("valid heartbeat lower price crossing regex")
+});
+
 static RE_HEARTBEAT_PRICE_TIMESTAMP_DATE: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
         r"(?isx)
@@ -110,6 +117,13 @@ static RE_HEARTBEAT_PRICE_TIMESTAMP_DATE_BEFORE_PRICE: LazyLock<regex::Regex> = 
 );
 
 const HEARTBEAT_PRICE_TIMESTAMP_MAX_AGE_DAYS: i64 = 3;
+
+static RE_HEARTBEAT_BEIJING_TRIGGER_DATETIME: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r"(?P<prefix>[^\n。；;]{0,64}(?:监控|检查|心跳|任务|触发)[^\n。；;]{0,40}北京时间\s*)(?P<year>\d{4})(?:年|-)(?P<month>\d{1,2})(?:月|-)(?P<day>\d{1,2})(?:日)?\s*(?P<hour>\d{1,2})[:：](?P<minute>\d{1,2})(?P<tail>[^\n。；;]{0,32})",
+    )
+    .expect("valid heartbeat beijing trigger datetime regex")
+});
 
 static RE_HEARTBEAT_BEIJING_TRIGGER_TIME: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
@@ -528,6 +542,9 @@ fn heartbeat_near_threshold_without_crossing(text: &str) -> bool {
     if compact.is_empty() {
         return false;
     }
+    if heartbeat_explicit_lower_price_crossing(text) {
+        return false;
+    }
 
     let threshold_terms = [
         "阈值",
@@ -581,6 +598,20 @@ fn heartbeat_near_threshold_without_crossing(text: &str) -> bool {
     let has_near_threshold_language = threshold_terms.iter().any(|term| compact.contains(term))
         && proximity_terms.iter().any(|term| compact.contains(term));
     has_near_threshold_language || heartbeat_lower_trigger_price_contradiction(text, &compact)
+}
+
+fn heartbeat_explicit_lower_price_crossing(text: &str) -> bool {
+    RE_HEARTBEAT_EXPLICIT_LOWER_PRICE_CROSSING
+        .captures_iter(text)
+        .any(|captures| {
+            let current = captures
+                .name("current")
+                .and_then(|m| m.as_str().parse::<f64>().ok());
+            let threshold = captures
+                .name("threshold")
+                .and_then(|m| m.as_str().parse::<f64>().ok());
+            matches!((current, threshold), (Some(current), Some(threshold)) if current <= threshold)
+        })
 }
 
 fn heartbeat_lower_trigger_price_contradiction(text: &str, compact: &str) -> bool {
@@ -715,8 +746,63 @@ fn normalize_heartbeat_beijing_trigger_time(
     let reference_hour = reference_now.hour();
     let reference_minute = reference_now.minute();
     let mut normalized_from = None;
-    let normalized = RE_HEARTBEAT_BEIJING_TRIGGER_TIME
+    let normalized_datetime = RE_HEARTBEAT_BEIJING_TRIGGER_DATETIME
         .replace_all(text, |captures: &regex::Captures<'_>| {
+            let year = captures
+                .name("year")
+                .and_then(|matched| matched.as_str().parse::<i32>().ok());
+            let month = captures
+                .name("month")
+                .and_then(|matched| matched.as_str().parse::<u32>().ok());
+            let day = captures
+                .name("day")
+                .and_then(|matched| matched.as_str().parse::<u32>().ok());
+            let hour = captures
+                .name("hour")
+                .and_then(|matched| matched.as_str().parse::<u32>().ok());
+            let minute = captures
+                .name("minute")
+                .and_then(|matched| matched.as_str().parse::<u32>().ok());
+            let (Some(year), Some(month), Some(day), Some(hour), Some(minute)) =
+                (year, month, day, hour, minute)
+            else {
+                return captures[0].to_string();
+            };
+            if hour >= 24 || minute >= 60 {
+                return captures[0].to_string();
+            }
+            if year == reference_now.year()
+                && month == reference_now.month()
+                && day == reference_now.day()
+                && hour == reference_hour
+                && minute == reference_minute
+            {
+                return captures[0].to_string();
+            }
+            normalized_from.get_or_insert_with(|| {
+                format!("{year:04}-{month:02}-{day:02} {hour:02}:{minute:02}")
+            });
+            let prefix = captures
+                .name("prefix")
+                .map(|m| m.as_str())
+                .unwrap_or_default();
+            let tail = captures
+                .name("tail")
+                .map(|m| m.as_str())
+                .unwrap_or_default();
+            format!(
+                "{prefix}{:04}-{:02}-{:02} {reference_hour:02}:{reference_minute:02}{tail}",
+                reference_now.year(),
+                reference_now.month(),
+                reference_now.day()
+            )
+        })
+        .into_owned();
+    if normalized_from.is_some() {
+        return (normalized_datetime, normalized_from);
+    }
+    let normalized = RE_HEARTBEAT_BEIJING_TRIGGER_TIME
+        .replace_all(&normalized_datetime, |captures: &regex::Captures<'_>| {
             let hour = captures
                 .name("hour")
                 .and_then(|matched| matched.as_str().parse::<u32>().ok());
@@ -3226,6 +3312,32 @@ mod tests {
     }
 
     #[test]
+    fn heartbeat_explicit_lower_price_crossing_is_not_near_threshold_suppressed() {
+        let execution = heartbeat_execution_from_content(
+            r#"{"status":"triggered","message":"【小米30港元破位预警】当前价格：24.58 港元，现价 24.58 港元 <= 30 港元 -> 触发，本轮应发送提醒。"}"#,
+            "MiniMax-M2.7-highspeed",
+        );
+
+        assert!(execution.should_deliver);
+        assert!(execution.error.is_none());
+        assert_ne!(
+            execution.metadata["near_threshold_suppressed"].as_bool(),
+            Some(true)
+        );
+
+        let english_execution = heartbeat_execution_from_content(
+            r#"{"status":"triggered","message":"Xiaomi latest price is HKD 24.58, which is below 30 HKD, so the configured alert is triggered."}"#,
+            "MiniMax-M2.7-highspeed",
+        );
+        assert!(english_execution.should_deliver);
+        assert!(english_execution.error.is_none());
+        assert_ne!(
+            english_execution.metadata["near_threshold_suppressed"].as_bool(),
+            Some(true)
+        );
+    }
+
+    #[test]
     fn heartbeat_stale_price_timestamp_trigger_is_suppressed() {
         let execution = heartbeat_execution_from_content_at(
             r#"{"status":"triggered","message":"XAU/USD 现货黄金当前价格已跌破 $4,500 阈值，现报 $4,483.12（2026年4月4日），较昨收下跌约 0.54%。"}"#,
@@ -3334,6 +3446,34 @@ mod tests {
         assert_eq!(
             execution.metadata["original_beijing_trigger_time"].as_str(),
             Some("04:00")
+        );
+    }
+
+    #[test]
+    fn heartbeat_normalizes_conflicting_beijing_trigger_datetime_title() {
+        let reference_now =
+            chrono::DateTime::parse_from_rfc3339("2026-06-21T19:01:02+08:00").expect("time");
+        let execution = heartbeat_execution_from_content_at_beijing(
+            r#"{"status":"triggered","message":"【NBIS 高权重事件监控 · 北京时间 2026-06-19 17:30】已核验到关键事件，本轮触发提醒。"}"#,
+            "MiniMax-M2.7-highspeed",
+            reference_now,
+        );
+
+        assert!(execution.should_deliver);
+        assert!(execution.error.is_none());
+        assert!(
+            execution.content.contains("北京时间 2026-06-21 19:01"),
+            "{}",
+            execution.content
+        );
+        assert!(!execution.content.contains("北京时间 2026-06-19 17:30"));
+        assert_eq!(
+            execution.metadata["beijing_trigger_time_normalized"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(
+            execution.metadata["original_beijing_trigger_time"].as_str(),
+            Some("2026-06-19 17:30")
         );
     }
 

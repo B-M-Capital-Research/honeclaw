@@ -3,8 +3,19 @@
 - **发现时间**: 2026-05-29 15:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，当前不是 P1。
+
+## 修复记录（2026-06-21 23:07 CST）
+
+- 本轮补齐 2026-06-21 19:03 回退样本的日期型标题归一化：
+  - `normalize_heartbeat_beijing_trigger_time(...)` 现在不仅处理 `北京时间 HH:MM ...触发`，也处理 `【...监控 · 北京时间 YYYY-MM-DD HH:MM】` 这类 heartbeat 标题时间。
+  - 归一化仍限制在 `监控 / 检查 / 心跳 / 任务 / 触发` 上下文，避免把普通数据时间误写成执行时间。
+  - 命中日期型触发时间后会把标题改写为 scheduler 权威北京时间日期和分钟，并在 metadata 保留 `beijing_trigger_time_normalized=true` 与原始 `YYYY-MM-DD HH:MM`。
+  - 新增回归 `heartbeat_normalizes_conflicting_beijing_trigger_datetime_title`，覆盖 `NBIS 高权重事件监控 · 北京时间 2026-06-19 17:30` 在 2026-06-21 19:01 CST 执行窗口内被归一到 `北京时间 2026-06-21 19:01`。
+- 验证：
+  - `cargo test -p hone-channels heartbeat_ --lib -- --nocapture`
+- 无关联 GitHub Issue；当前按本地代码和回归验证更新为 `Fixed`，未依赖当前机器生产日志、线上渠道状态或 live 服务重启复核。
 
 ## 最新进展（2026-06-21 19:03 CST）
 

@@ -3,7 +3,17 @@
 - **发现时间**: 2026-04-29 10:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
+
+## 修复记录（2026-06-21 23:07 CST）
+
+- 本轮修复 2026-06-21 19:03 回退样本中“真实下穿阈值仍被送达前 guard 压成未命中”的代码边界：
+  - `heartbeat_near_threshold_without_crossing(...)` 新增明确下穿识别：当用户可见 triggered message 中有可解析的当前价与阈值，且正文写明 `当前价 <= 阈值`、`低于 / 跌破 / below / under` 且数值上 `current <= threshold` 时，不再进入 near-threshold 抑制。
+  - 继续保留既有反向保护：`当前价 > 触发价` 却声称“已低于触发价”、`接近但未达`、`未触发 / 未超过 / 未触及` 等文案仍会被抑制。
+  - 新增回归 `heartbeat_explicit_lower_price_crossing_is_not_near_threshold_suppressed`，覆盖 `小米30港元破位预警` 的 `24.58 <= 30` 中文样本和 `latest price is HKD 24.58 ... below 30 HKD` 英文样本。
+- 验证：
+  - `cargo test -p hone-channels heartbeat_ --lib -- --nocapture`
+- 无关联 GitHub Issue；当前按本地代码和回归验证更新为 `Fixed`，未依赖当前机器生产日志、线上渠道状态或 live 服务重启复核。
 
 ## 最新进展（2026-06-21 23:03 CST）
 
