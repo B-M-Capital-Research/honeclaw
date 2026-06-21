@@ -22,6 +22,13 @@ New
 
 ## 修复记录
 
+- 2026-06-21 15:03 CST 补充同根复发证据，状态保持 `New`：
+  - 11:03-15:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`cron_job_runs.max(executed_at)=2026-06-17T11:01:42.353141+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 本窗 ACP 可重构 2 个 session、3 次 `session/prompt`、3 次 `stopReason=end_turn`、0 个 ACP response error；未见空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径、transport trace 或思维痕迹进入 final。
+  - 12:00 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5` 的 `每日公司资讯与分析总结` 正常收口，但开头写出 `已有的公司画像里长期框架没有变化`、`只更新本轮能核验到的新增事实` 和 `追加到画像` 等内部画像读取 / 写入流程。
+  - 该报告主体完成周末休市口径、Nasdaq 100 调整、AI 基建 / 医疗 AI 分层、财报日期和分析师口径摘要；没有投递失败、空回复、错投或链路级数据破坏证据。
+  - 问题仍只影响 scheduler final 的用户可见文案边界和产品感，不影响主功能链路，因此保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-06-21 11:03 CST 补充同根复发证据，状态保持 `New`：
   - 07:01-11:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
   - 本窗 ACP 可重构 14 个 session、20 次 `session/prompt`、20 次 `stopReason=end_turn`、0 个 ACP response error；未见空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径、transport trace 或思维痕迹进入 final。
@@ -100,6 +107,11 @@ New
 
 ## 证据来源
 
+- `data/runtime/logs/acp-events.log`
+  - 2026-06-21 15:03 CST 巡检窗口：2026-06-21 11:03-15:02 CST。
+  - ACP 本窗可重构 2 个 session、3 次 `session/prompt`、3 次 `stopReason=end_turn`，0 个 ACP response error；本条 scheduler / direct actor final 正常收口。
+  - 12:00 CST `Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5` final 写出本地公司画像长期框架、只更新新增事实和追加画像等内部画像流程动作。
+  - 该样本没有旧价格 fallback 成功态、投递失败、空回复、错投或功能阻断证据；本单只记录内部工具 / 数据源 / 画像流程口径外露。
 - `data/runtime/logs/acp-events.log`
   - 2026-06-21 11:03 CST 巡检窗口：2026-06-21 07:01-11:02 CST。
   - ACP 本窗可重构 14 个 session、20 次 `session/prompt`、20 次 `stopReason=end_turn`，0 个 ACP response error；本条 scheduler / direct actor final 正常收口。
