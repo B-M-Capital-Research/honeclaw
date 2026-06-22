@@ -28,12 +28,12 @@
   - 验证：`cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过。
   - 本轮未重启当前服务；按当前代码与回归验证回写 `Fixed`，后续仅在确认加载当前代码的新运行态仍复现时重新打开。
 
-- 2026-06-23 03:02 CST 运行态继续复核，状态维持 `New`：
+- 2026-06-23 03:02 CST 修复前运行态继续复核，作为本轮 03:04 代码级修复的输入证据：
   - 23:03-03:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
   - 本窗 ACP 可重构 7 次 `session/prompt`、3 个 session、0 个 response error；未见空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径、transport trace、provider 原始错误或思维痕迹进入 final。
   - 23:30 CST Feishu direct session `Actor_feishu__direct__ou_5f895bed1573d53053e89bfc382b523a44` 的 BE / RKLB / TEM 纪律复核正常输出价格、风险回报和动作建议，但 final 中继续把 `StockAnalysis` 作为行情 / 来源口径写给用户。
   - 00:00 CST Feishu direct / scheduler actor session `Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b` 的 AAOI 核验正常收口，但 final 前段继续写出 `行情工具这次没有返回稳定的盘前/盘后实时价`，正文中又写出 `本轮没有新增事实改变 AAOI 长期画像`，把内部工具与画像状态混入用户态报告。
-  - 上述样本均正常完成主体投研或监控结论，不影响投研主链路、落库或投递；问题仍限定在用户可见文案边界，因此保持质量性 `P3 / New`。非 P1，不创建 GitHub Issue。
+  - 上述样本均正常完成主体投研或监控结论，不影响投研主链路、落库或投递；问题仍限定在用户可见文案边界，因此按质量性 P3 处理。该复发表达已由 03:04 CST 共享净化层修复覆盖；本单当前状态以最新代码级结论为 `Fixed`。非 P1，不创建 GitHub Issue。
 
 - 2026-06-22 23:03 CST 运行态继续复核，状态维持 `New`：
   - 19:00-23:03 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。

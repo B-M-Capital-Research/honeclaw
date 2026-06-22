@@ -7,6 +7,18 @@
 
 ## 修复进展
 
+- `2026-06-23 03:02 CST` 本轮确认当前 web runtime 进程继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-06-22`
+    - 23:03-03:02 CST heartbeat 窗口新增 56 条 `heartbeat 输出不是结构化 JSON`、9 条 `heartbeat 输出包含未知状态`、8 条 `JsonMalformed`、56 条 `PlainTextSuppressed`、18 条 `JsonUnknownStatus` 与 69 条 `execution_failed`。
+    - 同窗 parse / raw preview 继续大量以 `<think>` 开头：185 条 heartbeat raw preview 命中 `<think>`；代表样本包括 `全天原油价格3小时播报`、`FOTO 光子学ETF心跳检测`、`TEM大事件心跳监控`、`SIVE POET/Nokia/1.6T DFB 心跳检测` 等最终落为 `execution_failed + skipped_error`。
+    - 另有 8 条 `context_window_overflow` 与 12 条 `HTTP 400 ... context window exceeds limit` 日志，仍表现为 heartbeat 监控任务失败或跳过发送，未进入用户可见 direct final。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 只读快照仍停在 2026-06-17；本轮以 `data/runtime/logs/acp-events.log` 与 `web.log.2026-06-22` 重构真实运行态。
+    - ACP 本窗可重构 7 次 `session/prompt`、3 个 session、0 个 response error；用户可见 direct final 未命中空回复、错投、投递失败、原始工具 JSON、本机绝对路径、transport trace、provider 原始错误或思维痕迹。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因或新的用户可见污染链路。
+    - 该问题会导致 heartbeat 监控任务整轮失败或跳过发送，属于功能性监控漏发 / 降级；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-06-22 23:03 CST` 本轮确认当前 web runtime 进程继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-06-22`
     - 19:00-23:03 CST heartbeat 窗口新增 75 条 `heartbeat 输出不是结构化 JSON`、11 条 `heartbeat 输出包含未知状态`、8 条 malformed、75 条 `PlainTextSuppressed`、22 条 `JsonUnknownStatus` 与 8 条 `JsonMalformed`。

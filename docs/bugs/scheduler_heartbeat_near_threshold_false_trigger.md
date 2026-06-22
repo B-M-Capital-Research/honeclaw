@@ -7,6 +7,18 @@
 
 ## 最新进展（2026-06-22 23:03 CST）
 
+- 本轮 2026-06-22 23:03-2026-06-23 03:02 CST 继续确认同根复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-06-22`
+    - 23:30 CST `小米30港元破位预警` `job_id=j_654aef9b` 返回 `parse_kind=JsonTriggered`，raw preview 明确写出 `现价：23.72 港元`、`现价 23.72 港元 <= 30 港元？YES，23.72 < 30，条件触发`，随后 Feishu 仍记录 `心跳任务未命中，本轮不发送`。
+    - 00:00 CST 同 job 再次 `JsonTriggered`，raw preview 写出 `触发事实：小米（1810.HK）现价 23.72 港元，触及 <=30 港元心理止损/观察线`，最终仍未发送。
+    - 00:30 CST 同 job 生成 `deliver_preview`，正文明确 `现价：23.72 港元（-3.50%，日低 23.52 港元创年内新低）`，但随后仍记录 `心跳任务未命中，本轮不发送`。
+    - 01:30 CST 同 job 退化为 `JsonMalformed + execution_failed`；raw preview 仍写出 `小米当前价格为23.72港元，明显低于30港元阈值` 与 `status:"triggered"`。
+    - 02:30 / 03:00 CST 同 job 继续 `JsonTriggered` 且 raw preview 明确 `当前价格 23.72港元`、`低于30港元`、`应该触发提醒`，最终仍记录未发送。
+  - 同窗还观察到 AAOI / ORCL heartbeat triggered 后未发送样本，但与本单同属 heartbeat triggered 结果到投递分支之间的漏发 / 抑制问题，不新建重复缺陷。
+- 用户影响：
+  - 用户设定的小米 30 港元破位条件在多个半小时窗口被模型明确判定为触发，甚至生成送达正文，但最终没有投递。
+  - 这仍是功能性 heartbeat 漏发，影响监控提醒正确性；没有错对象投递、数据安全或全渠道不可用证据，严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - 本轮 19:00-23:03 CST 继续确认同根复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-06-22`
     - 19:00 CST `小米30港元破位预警` `job_id=j_654aef9b` 返回 `parse_kind=JsonTriggered`，raw preview 明确写出 `当前价格：23.72 港元`、`触发阈值：≤ 30 港元`、`状态：已触发（23.72 < 30）`，随后 Feishu 仍记录 `心跳任务未命中，本轮不发送`。
