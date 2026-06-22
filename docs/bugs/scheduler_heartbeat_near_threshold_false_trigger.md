@@ -7,6 +7,16 @@
 
 ## 最新进展（2026-06-22 15:04 CST）
 
+- 本轮 15:04-19:00 CST 同根缺陷继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-06-22`
+    - 16:00 CST `小米30港元破位预警` `job_id=j_654aef9b` 返回 `parse_kind=JsonTriggered`，raw preview 明确写出 `现价：23.72 港元`、`用户设定条件：现价 ≤ 30港元`、`当前价格 23.72 港元 < 30 港元，已触发提醒条件`，随后 Feishu 仍记录 `心跳任务未命中，本轮不发送`。
+    - 17:00 / 17:30 / 18:00 / 18:30 / 19:00 CST 同 job 继续多次 `JsonTriggered`，raw preview 分别写出 `23.72 港元` 低于 `30 港元`、`条件已触发`、`23.72 < 30` 等触发语义，但最终均落入未发送分支。
+    - 15:30 / 16:30 CST 同 job 还出现 `PlainTextSuppressed`，raw preview 同样可见 23.72 港元低于 30 港元的判断；这些样本归入 heartbeat 结构化退化缺陷，不单独新建文档。
+  - 同窗 `data/runtime/logs/acp-events.log` 可重构 5 次 `session/prompt`、5 次 `stopReason=end_turn`、0 个 response error；用户可见 final 未见空回复、错投、投递失败、原始工具 JSON、本机绝对路径、transport trace 或思维痕迹。
+- 用户影响：
+  - 该问题仍是功能性 heartbeat 漏发：模型已明确判定价格阈值触发，但最终未送达提醒。
+  - 影响范围集中在单个 heartbeat job 的 triggered 结果到 Feishu 发送之间；没有错对象投递、数据安全或全渠道不可用证据，严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - 本轮 11:02-15:04 CST 确认同根缺陷在当前 web runtime 进程中继续复发，状态从 `Fixed` 回退为 `New`：
   - `data/runtime/logs/web.log.2026-06-22`
     - 10:30 CST 后日志出现 schema migration / cloud table 初始化信息，说明 web runtime 已重新加载当前服务进程；后续样本不再按 11:03 巡检中的“未确认部署运行态”处理。

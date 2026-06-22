@@ -14,11 +14,20 @@
 
 ## 状态
 
-- Fixed
+- New
 
 ## GitHub Issue
 
 - 无，非 P1
+
+## 最新进展
+
+- 2026-06-22 19:00 CST 运行态复发，状态从 `Fixed` 回退为 `New`：
+  - 15:04-19:00 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 本窗 ACP 可重构 5 次 `session/prompt`、4 个 session、5 次 `stopReason=end_turn`、0 个 response error；未见空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径、transport trace、provider 原始错误或思维痕迹进入 final。
+  - 18:00 CST Feishu direct session `Actor_feishu__direct__ou_5fe1213e63da238b10e346a384843b434c` 的 LITE / Lumentum 深度投研 final 正常完成公司定位、AI 光互连业务、财务、估值、买点、风险和来源。
+  - 但该 final 开头外露 `我没有找到本地已有的 LITE 画像`、`把长期可复用的主线、估值框架和证伪条件沉淀到公司画像`、`我会新建 LITE 公司画像` 等内部画像读取 / 写入动作。
+  - 该样本晚于 2026-06-22 07:08 CST 共享净化修复记录；回复主体正常 `end_turn` 收口，不影响投研主链路、落库或投递，因此按质量性 `P3 / New` 处理，非 P1，不创建 GitHub Issue。
 
 ## 修复记录
 

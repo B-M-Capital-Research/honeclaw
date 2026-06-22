@@ -7,6 +7,18 @@
 
 ## 修复进展
 
+- `2026-06-22 19:00 CST` 本轮确认当前 web runtime 进程继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-06-22`
+    - 15:04-19:00 CST heartbeat 窗口新增 57 条 `heartbeat 输出不是结构化 JSON`、11 条 `heartbeat 输出包含未知状态`、3 条 malformed、57 条 `PlainTextSuppressed`、22 条 `JsonUnknownStatus`、6 条 `JsonMalformed` 与 6 条 `context_window_overflow`。
+    - 代表性样本包括 `FOTO 光子学ETF心跳检测`、`光迅科技关键事件心跳提醒`、`TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`、`闪迪关键事件心跳提醒`、`Cerebras IPO与业务进展心跳监控`、`NVDA 关键事件心跳提醒` 等，终态多为 `execution_failed + skipped_error` 或 `context_window_overflow`。
+    - 同窗还出现 350 条 function-calling tool budget reject；部分 heartbeat raw preview 明确写出“工具调用次数已达上限”后转为自然语言或非契约状态，继续触发结构化收口失败。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 只读快照仍停在 2026-06-17；本轮以 `data/runtime/logs/acp-events.log` 重构用户可见回复。
+    - ACP 本窗可重构 5 次 `session/prompt`、5 次 `stopReason=end_turn`、0 个 response error；用户可见 final 未见空回复、错投、投递失败、原始工具 JSON、本机绝对路径、transport trace、provider 原始错误或思维痕迹。
+  - 判断：
+    - 坏态仍主要阻断 heartbeat 监控任务，不直接污染用户可见 direct final；但它导致监控任务整轮失败或跳过发送，属于功能性监控漏发 / 降级。
+    - 普通 direct / final 主链路仍可收口，未见错对象投递或数据安全问题；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-06-22 15:04 CST` 本轮确认当前 web runtime 进程仍持续复发，状态从 `Fixed` 回退为 `New`：
   - `data/runtime/logs/web.log.2026-06-22`
     - 10:30 CST 后日志出现 schema migration / cloud table 初始化信息，说明 web runtime 已重新加载当前服务进程；后续 heartbeat 坏态不再按旧/未确认部署证据处理。

@@ -3,10 +3,16 @@
 - **发现时间**: 2026-06-08 23:04 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无，非 P1
 
 ## 修复记录
+
+- 2026-06-22 19:00 CST 修复结论回退：
+  - 15:04-19:00 CST `data/sessions.sqlite3` 仍未追平最近真实会话；本轮以 `data/runtime/logs/acp-events.log` 重构 Web direct 用户可见 final。
+  - 15:06 CST Web direct session `Actor_web__direct__web-user-c3cef1bfa64d` 的 DRAM / Roundhill Memory ETF 投研 final 以 `stopReason=end_turn` 收口，主体完成 ETF 定位、持仓、周期弹性、风险、动作建议和来源。
+  - 但 final 来源段继续写出 `StockAnalysis DRAM holdings`，把内部/实现侧行情站点口径作为用户态来源说明发出；这晚于 2026-06-21 19:09 CST 共享净化修复记录。
+  - 同窗未见 Web direct response error、stream disconnect、quota、panic、provider 原始错误、绝对路径或 token 外露。问题不影响主功能链路，因此按质量性 `P3 / New` 重新进入活跃待修复；非 P1，不创建 GitHub Issue。
 
 - 2026-06-21 19:09 CST 修复：
   - 共享 `sanitize_user_visible_output(...)` 扩展 Web / Feishu 共用的内部执行进度净化，继续覆盖本机命令、内部工具、画像存在性与画像写入动作等自然语言句式。

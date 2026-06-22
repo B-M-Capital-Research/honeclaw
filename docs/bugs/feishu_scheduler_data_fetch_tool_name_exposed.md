@@ -14,11 +14,20 @@ P3
 
 ## 状态
 
-Fixed
+New
 
 ## GitHub Issue
 
 无，非 P1
+
+## 最新进展
+
+- 2026-06-22 19:00 CST 运行态复发，状态从 `Fixed` 回退为 `New`：
+  - 15:04-19:00 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 本窗 ACP 可重构 5 次 `session/prompt`、4 个 session、5 次 `stopReason=end_turn`、0 个 response error；未见空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径、transport trace、provider 原始错误或思维痕迹进入 final。
+  - 17:30 CST Feishu direct / scheduler actor session `Actor_feishu__direct__ou_5f636d6d7c80d333e41b86ae79d07adca8` 的 A/H 收盘后复盘正常收口，但开头写出“我先按北京时间 2026-06-22 17:30 对齐交易日，再核验...”等执行过程，正文继续写出 `Hone 行情口径`，来源段写出 `Hone 行情工具：000001.SS、^HSI...`。
+  - 该报告主体完成 A股 / 港股收盘后复盘、AI 硬件、A/H 个股与美股盘前变量梳理；没有投递失败、空回复、错投或链路级数据破坏证据。
+  - 该样本晚于 2026-06-22 07:08 CST scheduler / 共享净化修复记录；问题仍只影响用户可见文案边界和产品感，不影响主功能链路，因此为质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
 
 ## 修复记录
 
