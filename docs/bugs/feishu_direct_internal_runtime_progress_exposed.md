@@ -22,6 +22,14 @@
 
 ## 最新进展
 
+- 2026-06-22 23:03 CST 运行态继续复核，状态维持 `New`：
+  - 19:00-23:03 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 本窗 ACP 可重构 48 次 `session/prompt`、29 个 session、47 次 `stopReason=end_turn`、0 个 response error；未见空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径、transport trace、provider 原始错误或思维痕迹进入 final。
+  - 21:35 CST Feishu direct session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 的核心观察池快报正常完成行情口径说明、击球区列表与风险提示，但 final 前段继续外露 `本地没有 python 命令可用`、`shell 环境里可用的解释器`、`本地观察池配置` 等本机命令 / 本地配置口径。
+  - 21:22 CST session `Actor_feishu__direct__ou_5f0e001c305cfc075babe830a9b2c6079c` 与 21:30 CST session `Actor_feishu__direct__ou_5f895bed1573d53053e89bfc382b523a44` 的投研 final 继续把 `StockAnalysis` 作为盘前涨幅榜、来源或盘口口径写给用户。
+  - 22:50 CST session `Actor_feishu__direct__ou_5fafffb73abeaf5d05fb7e674b210c76f4` 的 RKLB 投研主体完成估值、Neutron、backlog 与证伪条件分析，但中段写出准备建立 RKLB 公司画像并记录框架。
+  - 上述样本均正常 `end_turn` 收口，业务主体可用；问题仍限定在用户可见文案边界，不影响投研主链路、落库或投递，因此保持质量性 `P3 / New`。非 P1，不创建 GitHub Issue。
+
 - 2026-06-22 19:00 CST 运行态复发，状态从 `Fixed` 回退为 `New`：
   - 15:04-19:00 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
   - 本窗 ACP 可重构 5 次 `session/prompt`、4 个 session、5 次 `stopReason=end_turn`、0 个 response error；未见空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径、transport trace、provider 原始错误或思维痕迹进入 final。

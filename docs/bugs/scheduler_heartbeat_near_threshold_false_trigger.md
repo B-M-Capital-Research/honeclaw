@@ -5,6 +5,19 @@
 - **严重等级**: P2
 - **状态**: New
 
+## 最新进展（2026-06-22 23:03 CST）
+
+- 本轮 19:00-23:03 CST 继续确认同根复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-06-22`
+    - 19:00 CST `小米30港元破位预警` `job_id=j_654aef9b` 返回 `parse_kind=JsonTriggered`，raw preview 明确写出 `当前价格：23.72 港元`、`触发阈值：≤ 30 港元`、`状态：已触发（23.72 < 30）`，随后 Feishu 仍记录 `心跳任务未命中，本轮不发送`。
+    - 19:30 CST 同 job 退化为 `parse_kind=JsonMalformed + execution_failed`；raw preview 仍包含 `status:"triggered"`、`price:23.72`、`threshold:30.00`、`direction:"below_threshold"`，但最终记录 `heartbeat 输出不是合法 JSON，任务已标记失败`。
+    - 20:00 / 20:30 CST 同 job 生成 `deliver_preview`，正文明确 `现价：23.72 港元` 并写出当前价格已低于 30 港元观察线；20:30 后仍记录 `心跳任务未命中，本轮不发送`。
+    - 21:00 CST 同 job 再次返回 `JsonTriggered`，raw preview 写出 `价格23.72港元，低于30港元阈值，需要发送提醒`，最终仍记录 `心跳任务未命中，本轮不发送`。
+  - 同窗统计：`JsonTriggered` 22 条、`heartbeat 输出不是结构化 JSON` 75 条、`JsonMalformed` 8 条、`心跳任务未命中` 146 条；ACP 同窗 47 次 `stopReason=end_turn`、0 个 response error，未见 Feishu 400、panic、transport disconnect 或 P1 级错投 / 全链路不可用证据。
+- 用户影响：
+  - 这仍是功能性 heartbeat 漏发 / 状态消费问题：模型多次判断低于阈值且可生成送达正文，但最终投递分支仍可能落成未命中或失败。
+  - 影响集中在单任务 heartbeat triggered 结果到 Feishu 发送之间的判定链路；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 ## 最新进展（2026-06-22 15:04 CST）
 
 - 本轮 15:04-19:00 CST 同根缺陷继续复发，状态维持 `New`：

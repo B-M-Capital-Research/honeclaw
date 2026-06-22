@@ -7,6 +7,18 @@
 
 ## 修复进展
 
+- `2026-06-22 23:03 CST` 本轮确认当前 web runtime 进程继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-06-22`
+    - 19:00-23:03 CST heartbeat 窗口新增 75 条 `heartbeat 输出不是结构化 JSON`、11 条 `heartbeat 输出包含未知状态`、8 条 malformed、75 条 `PlainTextSuppressed`、22 条 `JsonUnknownStatus` 与 8 条 `JsonMalformed`。
+    - 同窗 parse kind 分布为 `JsonNoop` 103 条、`PlainTextSuppressed` 75 条、`PlainTextNoop` 25 条、`JsonTriggered` 22 条、`JsonUnknownStatus` 22 条、`JsonMalformed` 8 条、`Empty` 1 条。
+    - 代表性样本包括 `小米30港元破位预警` 在 19:30 CST 输出包含 triggered 字段的畸形 JSON 并落成 `JsonMalformed + execution_failed`，`闪迪关键事件心跳提醒` 在 20:00 / 21:00 CST 多次 `JsonUnknownStatus + parse failure escalated`，以及 `光模块板块关键事件心跳提醒`、`持仓财报与重大新闻心跳提醒`、`AI与科技持仓观察关键事件心跳提醒` 等在 23:00 CST 前后继续以 `PlainTextSuppressed` 失败。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 只读快照仍停在 2026-06-17；本轮以 `data/runtime/logs/acp-events.log` 重构用户可见回复。
+    - ACP 本窗可重构 48 次 `session/prompt`、29 个 session、47 次 `stopReason=end_turn`、0 个 response error；用户可见 direct / scheduler final 污染扫描未命中 `<think>`、`reasoning_content`、provider 原始错误、raw tool 字段、内部路径或 stream disconnect。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因或新的用户可见污染链路。
+    - 该问题已是活跃 `New`，本轮只补充运行态证据；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-06-22 19:00 CST` 本轮确认当前 web runtime 进程继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-06-22`
     - 15:04-19:00 CST heartbeat 窗口新增 57 条 `heartbeat 输出不是结构化 JSON`、11 条 `heartbeat 输出包含未知状态`、3 条 malformed、57 条 `PlainTextSuppressed`、22 条 `JsonUnknownStatus`、6 条 `JsonMalformed` 与 6 条 `context_window_overflow`。
