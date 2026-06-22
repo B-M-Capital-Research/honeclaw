@@ -7,6 +7,18 @@
 
 ## 修复进展
 
+- `2026-06-23 07:06 CST` 本轮确认当前 web runtime 进程继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-06-22`
+    - 03:04-07:02 CST heartbeat 窗口新增 150 条 heartbeat 非结构化 / `PlainTextSuppressed` 相关信号、33 条 `JsonUnknownStatus` / 未知状态、21 条 `JsonMalformed` / 非法 JSON 与 93 条 `execution_failed`。
+    - 代表性样本覆盖 `小米30港元破位预警`、`闪迪关键事件心跳提醒`、`光模块板块关键事件心跳提醒`、`TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`、`持仓重大事件心跳检测`、`TSLA 正负触发条件心跳监控` 等；多条 raw preview 仍以 `<think>`、工具调用限制、自然语言报告或 Markdown 表格开头，最终落为 `execution_failed + skipped_error` 或 `noop + skipped_noop`。
+    - 同窗仍有 OpenAI-compatible `context window exceeds limit` heartbeat 失败，但这些样本继续落在既有 heartbeat 结构化 / context overflow 范围，未形成新的独立根因。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 只读快照仍停在 2026-06-17；本轮以 runtime 日志重构真实运行态。
+    - ACP 本窗文本扫描可见 8 次 `session/prompt`、7 个 session、8 次 `stopReason=end_turn`、0 个 response error；用户可见 direct final 未见空回复、错投、本机绝对路径、原始工具 JSON、provider 原始错误或思维痕迹。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因或新的用户可见污染链路。
+    - 该问题会导致 heartbeat 监控任务整轮失败或跳过发送，属于功能性监控漏发 / 降级；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-06-23 03:02 CST` 本轮确认当前 web runtime 进程继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-06-22`
     - 23:03-03:02 CST heartbeat 窗口新增 56 条 `heartbeat 输出不是结构化 JSON`、9 条 `heartbeat 输出包含未知状态`、8 条 `JsonMalformed`、56 条 `PlainTextSuppressed`、18 条 `JsonUnknownStatus` 与 69 条 `execution_failed`。
