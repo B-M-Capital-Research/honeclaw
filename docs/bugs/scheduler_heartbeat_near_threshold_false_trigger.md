@@ -25,6 +25,19 @@
   - `cargo test -p hone-channels heartbeat_explicit_lower_price_crossing_is_not_near_threshold_suppressed --lib -- --nocapture`
 - 结论：状态维持代码级 `Fixed`；后续只有在确认运行当前代码后，仍有本地可复现或代码路径证据证明 triggered alert 被送达前 guard 抑制时，才重新打开。
 
+## 运行态观察（2026-06-22 11:03 CST）
+
+- 本轮 07:02-11:02 CST 当前机器 live 日志仍可观察到旧形态，但未确认进程已加载 2026-06-22 07:08 CST 的当前代码修复；因此只补证为旧/未确认部署运行态观察，不把状态从 `Fixed` 回退：
+  - `data/runtime/logs/web.log.2026-06-22`
+    - 08:00 CST `小米30港元破位预警` `job_id=j_654aef9b` 返回 `parse_kind=JsonTriggered`，raw preview 明确写出 current price `~24.58 HKD` below `30 HKD` / condition triggered，随后 Feishu 仍记录 `心跳任务未命中，本轮不发送`。
+    - 08:30 CST 同 job 再次 `parse_kind=JsonTriggered`，raw preview 写出 `24.58港元` 明显低于 `30港元`、触发条件已满足，随后仍记录未发送。
+    - 10:30 CST 同 job 生成触发正文，raw preview 写出 `现价：23.62 港元`、`当前价格 23.62 港元 <= 30 港元，条件触发`，但因输出不是结构化 JSON 被标记 `execution_failed`，本轮不发送。
+    - 11:00 CST 同 job 再次 `parse_kind=JsonTriggered`，raw preview 写出 current price `23.68 HKD` significantly below `30 HKD`，Feishu 仍记录 `心跳任务未命中，本轮不发送`。
+  - 同窗统计：`JsonTriggered` 13 条、`heartbeat 输出不是结构化 JSON` 54 条、`JsonNoop` 86 条、`JsonUnknownStatus` 12 条、`JsonMalformed` 2 条；未见 Feishu 400、panic、transport disconnect、错对象投递或全渠道不可用证据。
+- 处理结论：
+  - 当前代码已有定向回归覆盖本轮小米破位语义，状态继续保持 `Fixed`。
+  - 若确认已部署 / 重启到当前代码后仍有同样 triggered alert 被送达前 guard 抑制，再重新打开；本轮非 P1，不创建 GitHub Issue。
+
 ## 最新进展（2026-06-22 03:02 CST）
 
 - 本轮 23:02-03:01 CST 真实运行态继续确认同根复发，状态维持 `New`：

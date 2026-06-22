@@ -29,6 +29,13 @@ Fixed
   - 验证：`cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`、`cargo test -p hone-channels scheduler_delivery_text_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过。
   - 无关联 GitHub Issue；状态更新为 `Fixed`。
 
+- 2026-06-22 11:03 CST 旧/未确认部署运行态观察，状态保持 `Fixed`：
+  - 07:02-11:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 本窗 ACP 可重构 27 次 `session/prompt`、20 个 session、28 次 `stopReason=end_turn`、0 个 response error；未见空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径、transport trace、provider 原始错误或思维痕迹进入 final。
+  - 08:30 CST Feishu direct / scheduler actor session `Actor_feishu__direct__ou_5f1fdfeceacb0f2ece1a2c88c5a7d17e34` 的 SNDK 简报正常收口，但用户可见 final 开头写出“我先核行情、新闻和本地 SNDK 画像”，并继续写出“我会把今天的结论沉淀到 SNDK 画像”等内部画像读取 / 写入动作。
+  - 该报告主体完成 Juneteenth 休市口径、行情边界、风险与简报结论；没有投递失败、空回复、错投或功能阻断证据。
+  - 当前机器 live 进程未确认已加载 2026-06-22 07:08 CST 的 scheduler / 共享净化修复，因此本轮只补充观察，不回退状态。若部署 / 重启到当前代码后仍复现，再改回 `New`；非 P1，不创建 GitHub Issue。
+
 - 2026-06-22 03:02 CST 运行态复发，状态从代码级 `Fixed` 回退为 `New`：
   - 23:02-03:01 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
   - 本窗 ACP 有 8 次 `session/prompt`、8 个 session、0 个 response error；未见空回复、错投、投递失败、原始工具 JSON、token、本机绝对路径、transport trace、provider 原始错误或思维痕迹进入用户可见 chunk。
