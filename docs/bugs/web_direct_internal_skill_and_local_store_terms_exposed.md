@@ -3,10 +3,16 @@
 - **发现时间**: 2026-06-08 23:04 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，非 P1
 
 ## 修复记录
+
+- 2026-06-23 03:04 CST 再次修复：
+  - 共享 `sanitize_user_visible_output(...)` 补齐 `StockAnalysis DRAM holdings` 这类站点名 + 持仓后缀来源口径，并与新增的画像简写/沉淀句式收口共用同一净化规则。
+  - 新增回归 `sanitize_user_visible_output_rewrites_hone_market_tool_copy`、`sanitize_user_visible_output_strips_profile_creation_progress_variants`，既有 `RE_STOCKANALYSIS_LABEL` 改写继续覆盖 Web direct 来源段。
+  - 验证：`cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过。
+  - 本轮未重启当前 Web 服务；按当前代码与回归验证回写 `Fixed`，后续若确认加载当前代码的新运行态仍复现，再重新打开。
 
 - 2026-06-22 19:00 CST 修复结论回退：
   - 15:04-19:00 CST `data/sessions.sqlite3` 仍未追平最近真实会话；本轮以 `data/runtime/logs/acp-events.log` 重构 Web direct 用户可见 final。

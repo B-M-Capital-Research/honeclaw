@@ -292,7 +292,7 @@ static RE_INTERNAL_TOOLING_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock::new
 });
 static RE_INTERNAL_RUNTIME_PROGRESS_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
-        r#"[^\n。！？]*(?:本机没有\s*python(?:\s*命令)?|改用\s*python3|已加载股票研究流程|Hone\s*的实时检索工具|实时检索工具再查一遍|把(?:数据|结果|内容)补进[^。\n！？]*(?:画像|公司画像)|本地没有已有的[^。\n！？]*公司画像|本地已有的[^。\n！？]*公司画像|本地画像显示|本地公司画像|本地长期画像|检查本地是否已有[^。\n！？]*公司画像|已有的公司画像里[^。\n！？]*|画像里[^。\n！？]*沉淀|只更新本轮能核验到的新增事实|追加到画像|回写到[^。\n！？]*(?:长期画像|公司画像)|写回[^。\n！？]*(?:长期画像|公司画像)|不追加[^。\n！？]*(?:长期画像|公司画像)事件|本轮没有新增事实改变[^。\n！？]*(?:长期画像|公司画像)|公司画像事件|我先核(?:对|验|一下)[^。\n！？]*(?:对应实体|股价口径|行情口径|财报|指引|背景|公司表述|本地长期画像)|沉淀成[^。\n！？]*(?:画像|公司画像)|沉淀为[^。\n！？]*(?:画像|公司画像)|我会新增[^。\n！？]*(?:长期画像|公司画像))[^\n。！？]*[。！？]?"#,
+        r#"[^\n。！？]*(?:本机没有\s*python(?:\s*命令)?(?:可用)?|本地没有\s*python(?:\s*命令)?(?:可用)?|shell\s*环境里可用的解释器|改用\s*python3|已加载股票研究流程|Hone\s*的实时检索工具|实时检索工具再查一遍|本地观察池配置|把(?:数据|结果|内容)补进[^。\n！？]*(?:画像|公司画像)|本地没有已有的[^。\n！？]*(?:画像|公司画像)|本地已有的[^。\n！？]*(?:画像|公司画像)|我没有找到本地已有的[^。\n！？]*(?:画像|公司画像)|本地画像显示|本地公司画像|本地长期画像|检查本地是否已有[^。\n！？]*(?:画像|公司画像)|已有的公司画像里[^。\n！？]*|画像里[^。\n！？]*沉淀|只更新本轮能核验到的新增事实|追加到画像|回写到[^。\n！？]*(?:长期画像|画像|公司画像)|写回[^。\n！？]*(?:长期画像|画像|公司画像)|不追加[^。\n！？]*(?:长期画像|画像|公司画像)事件|本轮没有新增事实改变[^。\n！？]*(?:长期画像|画像|公司画像)|公司画像事件|我(?:先|再)核(?:对|验|一下)?[^。\n！？]*(?:交易日|对应实体|股价口径|行情口径|财报|指引|背景|公司表述|本地长期画像)|我先按北京时间[^。\n！？]*对齐交易日|沉淀成[^。\n！？]*(?:画像|公司画像)|沉淀为[^。\n！？]*(?:画像|公司画像)|我会新增[^。\n！？]*(?:长期画像|画像|公司画像)|我会新建[^。\n！？]*(?:长期画像|画像|公司画像)|准备建立[^。\n！？]*(?:长期画像|画像|公司画像)|把长期可复用的[^。\n！？]*沉淀到[^。\n！？]*(?:画像|公司画像))[^\n。！？]*[。！？]?"#,
     )
     .expect("valid regex")
 });
@@ -353,6 +353,9 @@ static RE_MARKET_DATA_VERIFIED_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
 });
 static RE_STOCKANALYSIS_LABEL: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(r#"(?i)[ \t]*\bStockAnalysis\b[ \t]*"#).expect("valid regex")
+});
+static RE_HONE_MARKET_TOOL_LABEL: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r#"Hone\s*行情(?:工具|口径)"#).expect("valid regex")
 });
 
 // ── skip-buffer 检测正则 ──────────────────────────────────────────────────────
@@ -609,6 +612,12 @@ fn rewrite_user_visible_internal_copy(text: &str) -> (String, bool) {
     if public_market_label != rewritten {
         removed = true;
         rewritten = public_market_label.into_owned();
+    }
+
+    let hone_market_label = RE_HONE_MARKET_TOOL_LABEL.replace_all(&rewritten, "公开行情页");
+    if hone_market_label != rewritten {
+        removed = true;
+        rewritten = hone_market_label.into_owned();
     }
 
     (rewritten, removed)
@@ -1532,6 +1541,44 @@ mod tests {
         );
         assert!(!sanitized.content.contains("本地长期画像"));
         assert!(!sanitized.content.contains("长期画像"));
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_strips_watchlist_runtime_progress_variants() {
+        let raw = "本地没有 python 命令可用。shell 环境里可用的解释器只有 python3。本地观察池配置需要重新核一遍。主体结论：核心观察池今晚继续优先看 NVDA 和 MSFT。";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(sanitized.removed_internal);
+        assert_eq!(
+            sanitized.content,
+            "主体结论：核心观察池今晚继续优先看 NVDA 和 MSFT。"
+        );
+        assert!(!sanitized.content.contains("python"));
+        assert!(!sanitized.content.contains("解释器"));
+        assert!(!sanitized.content.contains("观察池配置"));
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_rewrites_hone_market_tool_copy() {
+        let raw =
+            "来源：Hone 行情工具：000001.SS、^HSI、700.HK。补充说明：Hone 行情口径与公开页面一致。";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(sanitized.removed_internal);
+        assert_eq!(
+            sanitized.content,
+            "来源：公开行情页：000001.SS、^HSI、700.HK。补充说明：公开行情页与公开页面一致。"
+        );
+        assert!(!sanitized.content.contains("Hone 行情"));
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_strips_profile_creation_progress_variants() {
+        let raw = "我没有找到本地已有的 LITE 画像。我会新建 LITE 公司画像。准备建立 RKLB 公司画像并记录框架。把长期可复用的主线、估值框架和证伪条件沉淀到公司画像。结论：LITE 更适合继续观察订单兑现。";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(sanitized.removed_internal);
+        assert_eq!(sanitized.content, "结论：LITE 更适合继续观察订单兑现。");
+        assert!(!sanitized.content.contains("LITE 画像"));
+        assert!(!sanitized.content.contains("RKLB 公司画像"));
+        assert!(!sanitized.content.contains("沉淀到公司画像"));
     }
 
     #[test]

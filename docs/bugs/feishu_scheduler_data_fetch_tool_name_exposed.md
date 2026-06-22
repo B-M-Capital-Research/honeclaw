@@ -14,13 +14,19 @@ P3
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
 无，非 P1
 
 ## 最新进展
+
+- 2026-06-23 03:04 CST 代码级修复，状态更新为 `Fixed`：
+  - 共享 `sanitize_user_visible_output(...)` 新增 `Hone 行情工具` / `Hone 行情口径` 改写为 `公开行情页`，并补齐“我先按北京时间 ... 对齐交易日”“我再核验 ...”这类执行过程句式收口。
+  - 新增回归 `sanitize_user_visible_output_rewrites_hone_market_tool_copy`，并复用既有 `sanitize_user_visible_output_` 套件覆盖 scheduler 共享净化入口。
+  - 验证：`cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过。
+  - 本轮未重启当前服务；按当前代码与回归验证回写 `Fixed`，后续仅在确认加载当前代码的新运行态仍复现时重新打开。
 
 - 2026-06-22 19:00 CST 运行态复发，状态从 `Fixed` 回退为 `New`：
   - 15:04-19:00 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
