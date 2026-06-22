@@ -14,7 +14,7 @@
 
 ## 状态
 
-- Fixed
+- New
 
 ## GitHub Issue
 
@@ -22,6 +22,13 @@
 
 ## 证据来源
 
+- `data/runtime/logs/web.log.2026-06-22`
+  - 巡检窗口：2026-06-22 11:02-15:04 CST。
+  - 10:30 CST 后日志出现 schema migration / cloud table 初始化信息，说明 web runtime 已重新加载当前服务进程；后续坏态不再按“未确认 live web / worker 已加载修复”处理。
+  - 11:02-15:04 CST 仍出现 614 条同类告警：
+    - `[LlmAudit] failed to persist function_calling audit: 配置错误: Postgres LLM audit 写入失败: error serializing parameter 3`
+  - 同窗 `data/runtime/logs/acp-events.log` 可重构 3 个 session、3 次 `session/prompt`、3 次 `stopReason=end_turn`、0 个 response error；用户回复主链路仍正常收口，故障继续集中在 LLM audit 持久化链路。
+  - 结论：2026-06-19 的代码级修复未能在当前 runtime 窗口消除 PostgreSQL 参数序列化失败，审计记录继续丢失；状态从 `Fixed` 回退为 `New`。该问题影响排障 / 回归审计，不直接阻断用户答复或投递，严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
 - `data/runtime/logs/web.log.2026-06-20`
   - 巡检窗口：2026-06-20 15:02-19:02 CST。
   - 15:02-19:02 CST 仍出现 628 条同类告警：

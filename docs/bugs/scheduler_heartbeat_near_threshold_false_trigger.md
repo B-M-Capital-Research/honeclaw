@@ -3,7 +3,19 @@
 - **发现时间**: 2026-04-29 10:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
+
+## 最新进展（2026-06-22 15:04 CST）
+
+- 本轮 11:02-15:04 CST 确认同根缺陷在当前 web runtime 进程中继续复发，状态从 `Fixed` 回退为 `New`：
+  - `data/runtime/logs/web.log.2026-06-22`
+    - 10:30 CST 后日志出现 schema migration / cloud table 初始化信息，说明 web runtime 已重新加载当前服务进程；后续样本不再按 11:03 巡检中的“未确认部署运行态”处理。
+    - 12:00 CST `小米30港元破位预警` `job_id=j_654aef9b` 返回 `parse_kind=JsonTriggered`，raw preview 明确写出 `当前价格：23.76 港元`、`触发条件：≤ 30 港元`、`23.76 < 30`，随后 Feishu 仍记录 `心跳任务未命中，本轮不发送`。
+    - 12:30 / 13:00 / 13:30 / 14:00 / 14:30 / 15:00 CST 同 job 继续多次 `JsonTriggered`，raw preview 分别写出 `23.68 HKD`、`23.58港元`、`23.6 港元`、`23.9 港元`、`23.72港元` 等低于 30 港元阈值的触发条件，但最终均落入未发送分支。
+  - 同窗 ACP 可重构 3 次 `session/prompt`、3 次 `stopReason=end_turn`、0 个 response error；用户可见 final 未见空回复、错投、原始工具 JSON、本机绝对路径、transport trace 或思维痕迹。
+- 用户影响：
+  - 这是功能性 heartbeat 漏发：模型已明确判定用户设置的价格阈值触发，但最终未送达提醒。
+  - 影响集中在单任务 heartbeat triggered 结果到 Feishu 发送之间的判定链路；没有错对象投递、数据安全或全渠道不可用证据，严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
 
 ## 修复记录（2026-06-21 23:07 CST）
 

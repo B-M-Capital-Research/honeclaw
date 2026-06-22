@@ -3,9 +3,21 @@
 - **发现时间**: 2026-04-15 14:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 
 ## 修复进展
+
+- `2026-06-22 15:04 CST` 本轮确认当前 web runtime 进程仍持续复发，状态从 `Fixed` 回退为 `New`：
+  - `data/runtime/logs/web.log.2026-06-22`
+    - 10:30 CST 后日志出现 schema migration / cloud table 初始化信息，说明 web runtime 已重新加载当前服务进程；后续 heartbeat 坏态不再按旧/未确认部署证据处理。
+    - 11:02-15:04 CST heartbeat 窗口仍新增 61 条 `heartbeat 输出不是结构化 JSON`、9 条 `heartbeat 输出包含未知状态`、12 条 `JsonMalformed`、61 条 `PlainTextSuppressed`、18 条 `JsonUnknownStatus` 与 8 条 `context_window` 相关失败。
+    - 代表性样本包括 `持仓关键事件心跳检测`、`TEM大事件心跳监控`、`全天原油价格3小时播报`、`中际旭创关键事件心跳提醒`、`存储板块关键事件心跳提醒`、`持仓重大事件心跳检测`、`Monitor_Watchlist_11`、`NBIS关键事件心跳提醒`、`闪迪关键事件心跳提醒`、`TSLA 正负触发条件心跳监控` 等，终态多为 `execution_failed + skipped_error`。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 只读快照仍停在 2026-06-17；本轮以 `data/runtime/logs/acp-events.log` 重构用户可见回复。
+    - ACP 本窗可重构 3 次 `session/prompt`、3 次 `stopReason=end_turn`、0 个 response error；用户可见 final 未见空回复、错投、投递失败、原始工具 JSON、本机绝对路径、transport trace、provider 原始错误或思维痕迹。
+  - 判断：
+    - 该坏态未直接污染用户可见 final，但会导致 heartbeat 监控任务整轮失败或跳过发送，属于功能性监控漏发 / 降级，而不是单纯文案质量问题。
+    - 普通 direct / final 主链路仍可收口，且未见错对象投递或数据安全问题；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
 
 - `2026-06-20 19:02 CST` 本轮仅补充旧/未确认部署运行态证据，不把本单从 `Fixed` 回退：
   - `data/runtime/logs/web.log.2026-06-20`
