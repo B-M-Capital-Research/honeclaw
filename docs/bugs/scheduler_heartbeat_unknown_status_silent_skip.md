@@ -7,6 +7,17 @@
 
 ## 修复进展
 
+- `2026-06-24 07:02 CST` 本轮确认当前 runtime 进程继续复发，状态维持 `New`：
+  - `data/runtime/logs/hone_cli_screen.log`
+    - 03:02-07:02 CST heartbeat 窗口新增 `run_finish` 216 条，其中 `parse_kind=PlainTextSuppressed` 77 条、`JsonUnknownStatus` 12 条、`JsonMalformed` 20 条、`PlainTextNoop` 25 条、`JsonNoop` 71 条，另有 93 条 `failure_kind=execution_failed` 与 116 条 `心跳任务未命中`。
+    - 代表性样本覆盖 `NVDA 关键事件心跳提醒`、`持仓关键事件提醒：SMH BRK.B MRVL DRAM LITE NBIS SPCX NASA AXTI TLT`、`TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`、`持仓财报与重大新闻心跳提醒`、`美股黄金坑信号心跳检测` 等；多条 raw preview 仍以 `<think>`、工具预算耗尽、自然语言总结或非契约状态开头，最终落为 `execution_failed + skipped_error`、`noop + skipped_noop` 或未发送。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 只读快照仍停在 2026-06-17；本轮以 runtime 日志重构真实运行态。
+    - `data/runtime/logs/acp-events.log` 本窗可见 9 次 `session/prompt`、8 个 session、9 次 `stopReason=end_turn`、0 个 response error；用户可见 chunk 污染扫描未命中内部路径、raw tool 字段、思维痕迹、provider 原始错误或 panic。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因或新的用户可见污染链路。
+    - 该问题会导致 heartbeat 监控任务整轮失败或跳过发送，属于功能性监控漏发 / 降级；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-06-24 03:03 CST` 本轮确认当前 web runtime 进程继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-06-23` 与 `data/runtime/logs/hone_cli_screen.log`
     - 23:02-03:00 CST heartbeat 窗口新增 `run_finish` 432 条，其中 `parse_kind=PlainTextSuppressed` 120 条、`JsonUnknownStatus` 16 条、`JsonMalformed` 12 条、`PlainTextNoop` 48 条、`JsonNoop` 182 条，另有 134 条 `failure_kind=execution_failed` 与 286 条 `心跳任务未命中`。

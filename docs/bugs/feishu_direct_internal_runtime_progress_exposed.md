@@ -22,6 +22,12 @@
 
 ## 最新进展
 
+- 2026-06-24 07:02 CST 运行态继续复发，状态维持 `New`：
+  - 03:02-07:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(imported_at)=2026-06-17T10:37:41.827657+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 本窗 ACP 可重构 8 个 session、9 次 `stopReason=end_turn`、0 个 response error；未见空回复、错投、投递失败、绝对路径、token、provider 原始错误或思维痕迹进入用户可见 final。
+  - 03:17 CST Feishu direct session `Actor_feishu__direct__ou_5fb47bd113e7776b05e7a5c2c56e310652` 的 AAOI 投研 final 正常完成业务催化、估值压力、年底路径、Bull / Bear 条件和风险判断，但前段继续写出“把 AAOI 的长期跟踪框架也沉淀到本地公司画像”。
+  - 该样本主体正常 `end_turn` 收口，不影响投研主链路、落库或投递，因此仍按质量性 `P3 / New` 处理。为何不影响功能链路：用户仍获得完整投研结论，问题只在内部画像流程口径外露。非 P1，不创建 GitHub Issue。
+
 - 2026-06-23 23:02 CST 运行态复发，状态从 `Fixed` 回退为 `New`：
   - 19:02-23:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(imported_at)=2026-06-17T10:37:41.827657+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
   - 本窗 ACP 可重构 29 个 session、49 次 `stopReason=end_turn`、0 个 response error；未见空回复、错投、投递失败、绝对路径、token、provider 原始错误或思维痕迹进入用户可见 final。

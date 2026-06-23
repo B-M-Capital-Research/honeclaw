@@ -7,6 +7,15 @@
 
 ## 修复进展（2026-04-28）
 
+- `2026-06-24 07:02 CST` 本轮确认预算提升到 18 后继续复发，状态维持 `New`：
+  - `data/runtime/logs/hone_cli_screen.log`
+    - 05:01:33 CST `AAOI 1.6T 光模块心跳检测` `job_id=j_b340c988` 记录 `run_finish ... success=false error="max_iterations_exceeded:18"`。
+    - 同一秒继续记录 `runner_error ... failure_kind=runner_error error="max_iterations_exceeded:18"`，Feishu 出站层落成 `execution_failed + skipped_error + delivered=0`，用户本轮收不到应发 / 应判定的 heartbeat 结果。
+  - 判断：
+    - 这是 03:03 CST 重新打开后的同根复发补证；不再是旧 `max_iterations_exceeded:10` 未部署样本，而是当前 18 次预算仍触顶。
+    - 同窗 `data/runtime/logs/acp-events.log` 直聊侧 9 次 `stopReason=end_turn`、0 个 response error，用户可见 chunk 污染扫描为 0；故障集中在 heartbeat function-calling 预算触顶导致的整轮漏发，不是全局直聊或投递链路不可用。
+    - 影响为单类 heartbeat 监控任务漏发 / 降级，未见错对象投递、数据安全或全渠道不可用证据；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-06-24 03:03 CST` 本轮确认当前 web runtime 进程在预算提升到 18 后继续复发，状态从 `Fixed` 回退为 `New`：
   - `data/runtime/logs/web.log.2026-06-23`
     - 01:31:12 CST `Monitor_Watchlist_11` `job_id=j_ab7e8fb1` 记录 `run_finish ... success=false error="max_iterations_exceeded:18"`。
