@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-06-23 11:02 CST
+最后更新：2026-06-23 15:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,9 +17,10 @@
 
 ## 当前概览
 
-- 活跃待修复：3
+- 活跃待修复：4
 - Later / 待复现：11
 - 已修复 / 已关闭：142
+- 本轮 15:02 CST `bug` 巡检新增 1 个活跃 P2，并继续确认 3 个既有活跃 P2，未发现活跃 P1：11:02-15:02 CST `data/sessions.sqlite3` 只读快照仍停在 `sessions.max(updated_at)=2026-06-17T10:37:37.207669+08:00`、`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(imported_at)=2026-06-17T10:37:41.827657+08:00`，真实运行态以 `data/runtime/logs/web.log.2026-06-23` 与 `data/runtime/logs/acp-events.log` 重构。ACP 本窗可重构 9 次 `session/prompt`、7 个 session、2 个 response error，两个 error 均来自同一 Web direct 旧会话 `Actor_web__direct__web-user-f40ae1caa720`，11:14 CST “取消所有定时任务”和 15:01 CST “你能为我干什么”两次短请求均因 `context_window_exceeded` 失败，新增 `web_direct_context_window_exceeded_no_recovery.md`。Heartbeat 方面，`小米30港元破位预警` 在 14:30 / 15:00 CST 明确低于 30 港元并生成或接近生成触发提醒，最终仍记录 `心跳任务未命中，本轮不发送`；同窗 web runtime 另有 618 条 LLM audit PostgreSQL 序列化失败、80 条 `PlainTextSuppressed`、14 条 `JsonUnknownStatus`、4 条 `JsonMalformed`、89 条 `execution_failed`、104 条 `心跳任务未命中`。最近四小时无非文档代码提交，无活跃 P1，不创建 GitHub Issue。
 - 本轮 11:02 CST `bug` 巡检继续确认 3 个活跃 P2，未新增独立缺陷、未发现活跃 P1：07:02-11:02 CST `data/sessions.sqlite3` 只读快照仍停在 `sessions.max(updated_at)=2026-06-17T10:37:37.207669+08:00`、`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(imported_at)=2026-06-17T10:37:41.827657+08:00`、`cron_job_runs.max(executed_at)=2026-06-17T11:01:42.353141+08:00`，真实运行态以 `data/runtime/logs/web.log.2026-06-23` 与 `data/runtime/logs/acp-events.log` 重构。ACP 本窗 JSON 事件统计可见 33 次 `session/prompt`、21 个 session、33 次 `stopReason=end_turn`、0 个 response error；`agent_message_chunk` 用户可见流未命中 `rawOutput`、`tool_call`、`assistant.tool_calls`、`/Users/`、`data/agent-sandboxes`、`reasoning_content`、`<think>`、资源耗尽、provider 原始错误或 panic。Heartbeat 方面，`小米30港元破位预警` 在 08:00、08:30、11:00 CST 多次 `JsonTriggered` 且明确 `23.72/23 HKD < 30 HKD`，最终仍记录 `心跳任务未命中，本轮不发送`；同窗 web runtime 另有 562 条 LLM audit PostgreSQL 序列化失败、68 条 heartbeat 非结构化 / `PlainTextSuppressed` 信号、14 条 `JsonUnknownStatus`、8 条 `JsonMalformed`、80 条 `execution_failed`、106 条 `心跳任务未命中`。最近四小时无非文档代码提交，无活跃 P1，不创建 GitHub Issue。
 - 本轮 07:06 CST `bug` 巡检继续确认 3 个活跃 P2，未新增独立缺陷、未发现活跃 P1：03:04-07:02 CST `data/sessions.sqlite3` 只读快照仍停在 `sessions.max(updated_at)=2026-06-17T10:37:37.207669+08:00`、`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`cron_job_runs.max(executed_at)=2026-06-17T11:01:42.353141+08:00`，真实会话继续以 `data/runtime/logs/web.log.2026-06-22` 与 `data/runtime/logs/acp-events.log` 重构。ACP 本窗文本扫描可见 8 次 `session/prompt`、7 个 session、8 次 `stopReason=end_turn`、0 个 response error；Feishu / Web direct 均有 assistant 落库收口，未见空回复、错投、Feishu 400、transport disconnect、资源耗尽、原始工具 JSON、本机绝对路径、provider 原始错误或思维痕迹进入用户可见 final。Heartbeat 方面，`小米30港元破位预警` 在 03:30、05:30、06:30、07:00 CST 多次 `JsonTriggered` 且明确 `23.72 HKD < 30 HKD`，07:00 已生成 `deliver_preview` 后又被 `duplicate_suppressed` 并记录 `心跳任务未命中，本轮不发送`；04:00、04:30、05:00、06:00 CST 同 job 则退化为 `PlainTextSuppressed + execution_failed`。同窗 web runtime 另有 640 条 LLM audit PostgreSQL 序列化失败、150 条 heartbeat 非结构化 / `PlainTextSuppressed` 信号、33 条未知状态、21 条 malformed、93 条 `execution_failed`。03:06 CST 非文档提交 `e8f5f242` 已修复 3 个 P3 用户可见输出边界，03:04 后未发现这些 P3 复发；本轮不创建 GitHub Issue。
 - 本轮 2026-06-23 03:04 CST `bug-2` 通过共享 `sanitize_user_visible_output(...)` 再次补齐 3 个活跃 P3：新增覆盖 `Hone 行情工具/口径`、`本地没有 python 命令可用`、`shell 环境里可用的解释器`、`本地观察池配置`、`我会新建 ... 画像`、`准备建立 ... 公司画像`、`把长期可复用的 ... 沉淀到公司画像` 等复发表达，并新增 3 条回归 `sanitize_user_visible_output_rewrites_hone_market_tool_copy`、`sanitize_user_visible_output_strips_watchlist_runtime_progress_variants`、`sanitize_user_visible_output_strips_profile_creation_progress_variants`；`cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture` 与 `cargo check -p hone-channels --tests` 通过。`feishu_scheduler_data_fetch_tool_name_exposed.md`、`feishu_direct_internal_runtime_progress_exposed.md`、`web_direct_internal_skill_and_local_store_terms_exposed.md` 按代码级 `Fixed` 回写。剩余 3 个活跃 P2 这轮未动：heartbeat 两项仍缺足够稳定的本地代码级复现窗口，`llm_audit` 现有症状更像运行中二进制/写入路径未完全对齐，仓库内未找到新的安全收敛点；本轮不冒进提交无证据修复。
@@ -589,9 +590,10 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| 单标的 heartbeat near-threshold guard 会误判触发状态并导致误发或漏发 | P2 | New | 2026-06-23 11:02 复核：08:00 / 08:30 / 11:00 CST `小米30港元破位预警` 多次明确 `23.72/23 HKD < 30 HKD`，均为 `JsonTriggered` 后仍记录 `心跳任务未命中，本轮不发送`。无关联 GitHub Issue | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | New | 2026-06-23 11:02 复核：07:02-11:02 CST web runtime 当前进程仍新增 68 条 heartbeat 非结构化 / `PlainTextSuppressed` 信号、14 条 `JsonUnknownStatus`、8 条 `JsonMalformed` 与 80 条 `execution_failed`，覆盖 Feishu / Web heartbeat。无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
-| function_calling LLM audit 写入 PostgreSQL 持续序列化失败 | P2 | New | 2026-06-23 11:02 复核：07:02-11:02 CST 继续记录 562 条 `[LlmAudit] failed to persist function_calling audit ... error serializing parameter 3`，审计记录继续丢失。无关联 GitHub Issue | [llm_audit_postgres_serialization_failure.md](./llm_audit_postgres_serialization_failure.md) |
+| Web direct 旧会话上下文耗尽后简单请求也无法回复 | P2 | New | 2026-06-23 15:02 新增：同一 Web direct 旧会话在 11:14 CST “取消所有定时任务”和 15:01 CST “你能为我干什么”两次短请求均因 `context_window_exceeded` 落成 `AgentFailed` / `处理失败`，未见 assistant final 收口。无关联 GitHub Issue | [web_direct_context_window_exceeded_no_recovery.md](./web_direct_context_window_exceeded_no_recovery.md) |
+| 单标的 heartbeat near-threshold guard 会误判触发状态并导致误发或漏发 | P2 | New | 2026-06-23 15:02 复核：14:30 / 15:00 CST `小米30港元破位预警` 明确 `22.66/22.62 HKD < 30 HKD`，15:00 已生成 `deliver_preview` 后仍记录 `心跳任务未命中，本轮不发送`。无关联 GitHub Issue | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | New | 2026-06-23 15:02 复核：11:02-15:02 CST web runtime 当前进程仍新增 80 条 `PlainTextSuppressed`、14 条 `JsonUnknownStatus`、4 条 `JsonMalformed` 与 89 条 `execution_failed`，覆盖 Feishu / Web heartbeat。无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| function_calling LLM audit 写入 PostgreSQL 持续序列化失败 | P2 | New | 2026-06-23 15:02 复核：11:02-15:02 CST 继续记录 618 条 `[LlmAudit] failed to persist function_calling audit ... error serializing parameter 3`，审计记录继续丢失。无关联 GitHub Issue | [llm_audit_postgres_serialization_failure.md](./llm_audit_postgres_serialization_failure.md) |
 
 ## Later / 待复现
 

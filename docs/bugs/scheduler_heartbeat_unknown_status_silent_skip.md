@@ -7,6 +7,15 @@
 
 ## 修复进展
 
+- `2026-06-23 15:02 CST` 本轮确认当前 web runtime 进程继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-06-23`
+    - 11:02-15:02 CST heartbeat 窗口新增 80 条 `PlainTextSuppressed`、14 条 `JsonUnknownStatus`、4 条 `JsonMalformed`、89 条 `execution_failed` 与 104 条 `心跳任务未命中`。
+    - 代表性样本覆盖 `FOTO 光子学ETF心跳检测`、`闪迪关键事件心跳提醒`、`AI与科技持仓观察关键事件心跳提醒`、`Monitor_Watchlist_11`、`TSLA 正负触发条件心跳监控`、`SIVE POET/Nokia/1.6T DFB 心跳检测`、`中际旭创关键事件心跳提醒`、`光迅科技关键事件心跳提醒` 等；多条 raw preview 仍以 `<think>`、工具调用预算耗尽、自然语言报告或非契约状态开头，最终落为 `execution_failed + skipped_error` 或未发送。
+    - 同窗还出现 12 条 `context_window` 相关 heartbeat 失败；这些继续归入既有 heartbeat context/结构化退化范围，未形成新的独立根因。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立用户可见污染链路。
+    - 该问题会导致 heartbeat 监控任务整轮失败或跳过发送，属于功能性监控漏发 / 降级；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-06-23 11:02 CST` 本轮确认当前 web runtime 进程继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-06-23`
     - 07:02-11:02 CST heartbeat 窗口新增 68 条 heartbeat 非结构化 / `PlainTextSuppressed` 相关信号、14 条 `JsonUnknownStatus`、8 条 `JsonMalformed`、80 条 `execution_failed`、106 条 `心跳任务未命中`。
