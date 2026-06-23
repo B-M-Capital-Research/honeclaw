@@ -3,9 +3,18 @@
 - **发现时间**: 2026-04-20 06:01 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 
 ## 修复进展（2026-04-28）
+
+- `2026-06-24 03:03 CST` 本轮确认当前 web runtime 进程在预算提升到 18 后继续复发，状态从 `Fixed` 回退为 `New`：
+  - `data/runtime/logs/web.log.2026-06-23`
+    - 01:31:12 CST `Monitor_Watchlist_11` `job_id=j_ab7e8fb1` 记录 `run_finish ... success=false error="max_iterations_exceeded:18"`。
+    - 同一秒继续记录 `runner_error ... failure_kind=runner_error error="max_iterations_exceeded:18"`，Feishu 出站层落成 `execution_failed + skipped_error + delivered=0`，用户本轮收不到应发 / 应判定的 heartbeat 结果。
+  - 判断：
+    - 2026-05-26 之后多轮 `max_iterations_exceeded:10` 被视为旧 / 未确认部署运行态；本轮已明确出现 `max_iterations_exceeded:18`，符合本文档此前写明的重新打开条件。
+    - 同窗 `data/runtime/logs/acp-events.log` 直聊侧 9 次 `stopReason=end_turn`、0 个 response error，用户可见 chunk 污染扫描为 0；故障集中在 heartbeat function-calling 预算触顶导致的整轮漏发，不是全局直聊或投递链路不可用。
+    - 影响为单类 heartbeat 监控任务漏发 / 降级，未见错对象投递、数据安全或全渠道不可用证据；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
 
 - `2026-05-26 15:04 CST` 本轮仅补充旧/未确认部署运行态证据，不把本单从 `Fixed` 回退：
   - `data/sessions.sqlite3` -> `cron_job_runs`

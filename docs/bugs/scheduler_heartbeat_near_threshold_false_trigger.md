@@ -5,6 +5,17 @@
 - **严重等级**: P2
 - **状态**: New
 
+## 最新进展（2026-06-24 03:03 CST）
+
+- 本轮 2026-06-23 23:02-2026-06-24 03:00 CST 继续确认同根复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-06-23`
+    - 00:00 CST `小米30港元破位预警` `job_id=j_654aef9b` 返回 `parse_kind=JsonTriggered` 并生成 `deliver_preview`，正文明确 `现价：22.62 港元`、`已触及 30 港元心理止损/观察线`；随后记录 `duplicate_suppressed` 与 `心跳任务未命中，本轮不发送`。
+    - 02:30 CST 同 job 再次 `JsonTriggered + deliver_preview`，正文明确 `现价22.62港元，已触及30港元心理止损/观察线`；随后仍被 `duplicate_suppressed` 压成不发送。
+    - 03:00 CST 同 job 继续 `JsonTriggered + deliver_preview`，正文明确 `现价22.62港元，已显著低于30港元心理止损/观察线`，随后再次 `duplicate_suppressed` 并记录未发送。
+  - 判断：
+    - 本窗坏态继续表现为 triggered 结果到投递分支之间被 duplicate / 未命中压制，而不是数据未取到或模型未识别阈值。
+    - 这是功能性 heartbeat 漏发 / 状态消费问题；影响集中在单个 heartbeat job，没有错对象投递、数据安全或全渠道不可用证据，严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 ## 最新进展（2026-06-23 23:02 CST）
 
 - 本轮 2026-06-23 19:02-23:02 CST 继续确认同根复发，状态维持 `New`：
