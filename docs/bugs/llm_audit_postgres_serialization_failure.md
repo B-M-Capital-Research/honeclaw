@@ -22,6 +22,12 @@
 
 ## 证据来源
 
+- `data/runtime/logs/web.log.2026-06-23`
+  - 巡检窗口：2026-06-23 07:02-11:02 CST。
+  - 07:02-11:02 CST 仍出现 562 条同类告警：
+    - `[LlmAudit] failed to persist function_calling audit: 配置错误: Postgres LLM audit 写入失败: error serializing parameter 3`
+  - 同窗 `data/runtime/logs/acp-events.log` JSON 事件统计可见 33 次 `session/prompt`、21 个 session、33 次 `stopReason=end_turn`、0 个 response error；用户可见 `agent_message_chunk` 流未见原始工具 JSON、本机绝对路径、provider 原始错误或思维痕迹，故障继续集中在 LLM audit 持久化链路。
+  - 结论：当前 runtime 窗口继续丢失 function-calling audit 记录，状态维持 `New`。该问题影响排障 / 回归审计，不直接阻断用户答复或投递，严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
 - `data/runtime/logs/web.log.2026-06-22`
   - 巡检窗口：2026-06-23 03:04-07:02 CST。
   - 03:04-07:02 CST 仍出现 640 条同类告警：

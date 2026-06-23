@@ -7,6 +7,18 @@
 
 ## 修复进展
 
+- `2026-06-23 11:02 CST` 本轮确认当前 web runtime 进程继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-06-23`
+    - 07:02-11:02 CST heartbeat 窗口新增 68 条 heartbeat 非结构化 / `PlainTextSuppressed` 相关信号、14 条 `JsonUnknownStatus`、8 条 `JsonMalformed`、80 条 `execution_failed`、106 条 `心跳任务未命中`。
+    - 代表性样本覆盖 `Monitor_Watchlist_11`、`NVDA 关键事件心跳提醒`、`TSLA 正负触发条件心跳监控`、`持仓重大事件心跳检测`、`TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`、`闪迪关键事件心跳提醒`、`中际旭创关键事件心跳提醒`、`SIVE POET/Nokia/1.6T DFB 心跳检测` 等；多条 raw preview 仍以 `<think>`、工具调用预算耗尽、自然语言报告或非契约状态开头，最终落为 `execution_failed + skipped_error` 或 `noop + skipped_noop`。
+    - 同窗 web runtime 另有 202 条 heartbeat raw preview 命中 `<think>`；这些仍停留在 heartbeat 运行台账 / 内部日志，未进入用户可见 direct final。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 只读快照仍停在 2026-06-17；本轮以 runtime 日志重构真实运行态。
+    - ACP 本窗 JSON 事件统计可见 33 次 `session/prompt`、21 个 session、33 次 `stopReason=end_turn`、0 个 response error；`agent_message_chunk` 用户可见流未命中 `rawOutput`、`tool_call`、`assistant.tool_calls`、`/Users/`、`data/agent-sandboxes`、`reasoning_content`、`<think>`、资源耗尽、provider 原始错误或 panic。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因或新的用户可见污染链路。
+    - 该问题会导致 heartbeat 监控任务整轮失败或跳过发送，属于功能性监控漏发 / 降级；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-06-23 07:06 CST` 本轮确认当前 web runtime 进程继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-06-22`
     - 03:04-07:02 CST heartbeat 窗口新增 150 条 heartbeat 非结构化 / `PlainTextSuppressed` 相关信号、33 条 `JsonUnknownStatus` / 未知状态、21 条 `JsonMalformed` / 非法 JSON 与 93 条 `execution_failed`。
