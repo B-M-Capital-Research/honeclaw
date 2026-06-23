@@ -3,10 +3,16 @@
 - **发现时间**: 2026-06-08 23:04 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无，非 P1
 
 ## 修复记录
+
+- 2026-06-23 23:02 CST 修复结论回退：
+  - 19:02-23:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话；本轮以 `data/runtime/logs/acp-events.log` 重构 Web direct 用户可见 final。
+  - 20:01 CST Web direct session `Actor_web__direct__web-user-e05f5e5f74a3` 的 NVDA 投研 final 以 `stopReason=end_turn` 收口，主体完成行情、财报、官方消息、估值和风险条件，但正文继续写出 `StockAnalysis` 行情口径，并在结尾写出“已更新 NVDA 公司画像”。
+  - 22:36-22:38 CST Web direct session `Actor_web__direct__web-user-7c0d676f10ee` 的 CBRS / Cerebras 财报前瞻 final 正常输出财报时间、市场预期和风险框架，但前段继续写出“我本地没有看到 CBRS/Cerebras 的既有公司画像”和“沉淀成一份简洁画像”。
+  - 两个样本晚于 2026-06-23 03:04 CST 共享净化修复记录；本窗未见 Web direct response error、stream disconnect、quota、panic、provider 原始错误、绝对路径或 token 外露。问题不影响主功能链路，因此按质量性 `P3 / New` 重新进入活跃待修复；非 P1，不创建 GitHub Issue。
 
 - 2026-06-23 03:04 CST 再次修复：
   - 共享 `sanitize_user_visible_output(...)` 补齐 `StockAnalysis DRAM holdings` 这类站点名 + 持仓后缀来源口径，并与新增的画像简写/沉淀句式收口共用同一净化规则。
