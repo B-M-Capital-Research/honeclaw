@@ -14,7 +14,19 @@
 
 ## 状态
 
-- New
+- Fixed
+
+## 修复记录
+
+- 2026-06-24 10:05 CST
+  - `crates/hone-core/src/cloud_runtime.rs` 的 `upsert_llm_audit_record(...)` 不再把 `created_at: String` 直接绑定到 `$4::timestamptz`；现在先按 RFC3339 解析为 `chrono::DateTime<Utc>` 再写入 PostgreSQL。
+  - 这次修复针对运行态长期出现的 `error serializing parameter 3`。结合 `tokio-postgres` 的参数序列化行为，根因更符合“第 4 个参数 `created_at` 以 `String` 绑定到 `timestamptz` 失败”，而不是此前只覆盖到的 JSONB `$3` 参数。
+  - 新增回归 `llm_audit_record_created_at_encodes_as_timestamptz_parameter`，补上“完整 SQL 参数绑定里时间戳参数可序列化”的缺口；既有 `llm_audit_record_payload_encodes_as_jsonb_parameter` 继续保留，用于覆盖 `$3::jsonb`。
+  - 验证通过：
+    - `cargo test -p hone-core llm_audit_record_ --lib -- --nocapture`
+    - `cargo check -p hone-core --tests`
+    - `git diff --check`
+  - 本轮未重启当前 web / worker 进程；运行态日志是否止血仍待后续巡检窗口复核。
 
 ## GitHub Issue
 
@@ -155,7 +167,7 @@
 - 用户回复主链路仍正常收口，因此这不是直聊 / scheduler 投递 P1。
 - 但审计记录持续丢失会削弱后续问题追踪、模型调用复盘、成本 / 质量分析与合规留痕，因此按功能性系统错误定级为 P2。
 
-## 修复情况
+## 历史修复情况
 
 - `2026-06-19 03:03 CST` 已在 [`crates/hone-core/src/cloud_runtime.rs`](/Users/fengming2/Desktop/honeclaw/crates/hone-core/src/cloud_runtime.rs) 修复 PostgreSQL LLM audit 写入的 JSONB 参数绑定：
   - `upsert_llm_audit_record(...)` 改为显式使用 `tokio_postgres::types::Json(&cloud_record.record)` 绑定 `$3::jsonb`，不再把原始 `serde_json::Value` 直接作为 PostgreSQL 第 3 个参数透传。

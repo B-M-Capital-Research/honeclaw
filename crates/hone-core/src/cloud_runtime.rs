@@ -2274,6 +2274,14 @@ SELECT
         let cloud_record = CloudLlmAuditRecord::from_audit_record(&record)?;
         let client = self.connect_client().await?;
         let payload = Json(&cloud_record.record);
+        let created_at = DateTime::parse_from_rfc3339(&cloud_record.created_at)
+            .map_err(|err| {
+                HoneError::Config(format!(
+                    "Postgres LLM audit created_at 非法 RFC3339 时间戳: {} ({err})",
+                    cloud_record.created_at
+                ))
+            })?
+            .with_timezone(&Utc);
         client
             .execute(
                 r#"
@@ -2289,7 +2297,7 @@ DO UPDATE SET
                     &cloud_record.id,
                     &cloud_record.actor_storage_key,
                     &payload,
-                    &cloud_record.created_at,
+                    &created_at,
                 ],
             )
             .await
@@ -3537,5 +3545,34 @@ mod tests {
             .expect("jsonb parameter encoding");
 
         assert!(!bytes.is_empty(), "jsonb payload should not be empty");
+    }
+
+    #[test]
+    fn llm_audit_record_created_at_encodes_as_timestamptz_parameter() {
+        let actor = ActorIdentity::new("web", "audit-user", Some("scope-1")).expect("actor");
+        let record = LlmAuditRecord::new(
+            "session-1",
+            Some(actor),
+            "function_calling",
+            "chat",
+            "openrouter",
+            Some("gpt-test".to_string()),
+            serde_json::json!({
+                "messages": [{"role": "user", "content": "hello"}],
+            }),
+        );
+        let cloud_record = CloudLlmAuditRecord::from_audit_record(&record).expect("cloud record");
+        let created_at = DateTime::parse_from_rfc3339(&cloud_record.created_at)
+            .expect("created_at should parse as rfc3339")
+            .with_timezone(&Utc);
+        let mut bytes = BytesMut::new();
+        created_at
+            .to_sql_checked(&Type::TIMESTAMPTZ, &mut bytes)
+            .expect("timestamptz parameter encoding");
+
+        assert!(
+            !bytes.is_empty(),
+            "timestamptz payload should not be empty"
+        );
     }
 }
