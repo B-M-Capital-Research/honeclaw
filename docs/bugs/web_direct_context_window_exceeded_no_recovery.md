@@ -7,6 +7,11 @@
 
 ## 证据来源
 
+- `data/runtime/logs/web.log.2026-06-23` / `data/runtime/logs/acp-events.log`
+  - 复核窗口：2026-06-23 15:02-19:02 CST。
+  - 本窗只有 15:02 CST 边界上的同一 Web direct 旧会话 `Actor_web__direct__web-user-f40ae1caa720` `context_window_exceeded` response error；15:02 之后未观察到新的 Web direct 短请求复发样本。
+  - `acp-events.log` 本窗可重构 5 次 `session/prompt`、4 个 session、5 次 `stopReason=end_turn`、1 个 response error；用户可见 `agent_message_chunk` 污染扫描未命中内部路径、raw tool 字段、思维痕迹、provider 原始错误或 panic。
+  - 结论：本单仍保持 `New`，原因是 15:02 新增样本尚无代码修复或明确恢复结论；本轮没有升级为 P1 的批量直聊失败、错投或敏感数据泄露证据。
 - `data/runtime/logs/web.log.2026-06-23`
   - 巡检窗口：2026-06-23 11:02-15:02 CST。
   - `2026-06-23 11:14:39 CST`，Web direct 会话 `Actor_web__direct__web-user-f40ae1caa720` 收到用户短请求“取消所有定时任务”，随后 `11:14:57 CST` 记录 `runner.error kind=AgentFailed` 与 `处理失败`，底层错误为 `context_window_exceeded`。
