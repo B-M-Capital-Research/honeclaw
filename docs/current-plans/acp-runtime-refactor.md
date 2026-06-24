@@ -3,7 +3,7 @@
 - title: ACP 对齐的 Agent Runtime 全栈重构
 - status: in_progress
 - created_at: 2026-03-17
-- updated_at: 2026-05-13
+- updated_at: 2026-06-24
 - owner: shared
 - related_files:
   - `docs/current-plan.md`
@@ -47,6 +47,7 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
 - `gemini_acp` is no longer offered as an active runtime path: factory creation now errors with a migration hint because Gemini ACP does not emit reliable `usage_update` signals and is unsafe for Hone's long-session compact detection model.
 - `codex_acp` now treats `agent.codex_acp.variant` as Codex CLI `model_reasoning_effort` instead of appending it to the model id; legacy `model/variant` strings are stripped back to the base model before starting the ACP session.
 - Remaining work is still needed around runner contract coverage and end-to-end runtime behavior alignment.
+- 2026-06-24: Fixed ACP child-process lifecycle leaks where `codex_acp` / `opencode_acp` error or timeout paths could leave their stdio `hone-mcp` grandchildren running after the turn exits. ACP CLI children now run in their own process group and are cleaned up through a shared guard that terminates the group before returning from the runner.
 
 ## Validation
 
@@ -76,6 +77,14 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
 - 2026-04-24:
   - `cargo test -p hone-channels configured_codex`
   - `cargo test -p hone-channels codex_acp_effective_args`
+- 2026-06-24:
+  - `rustfmt --edition 2024 --config skip_children=true crates/hone-channels/src/runners/acp_common/process.rs crates/hone-channels/src/runners/acp_common/mod.rs crates/hone-channels/src/runners/codex_acp.rs crates/hone-channels/src/runners/opencode_acp.rs`
+  - `cargo test -p hone-channels acp_child_guard_terminates_grandchild_process_group -- --nocapture`
+  - `cargo test -p hone-channels codex_acp -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+  - `pgrep -fl 'hone-mcp' || true` returned no `hone-mcp` processes after cleanup and tests
+  - Note: repository-wide `cargo fmt --check` still reports pre-existing formatting diffs in `crates/hone-channels/src/runtime.rs` and `crates/hone-core/src/cloud_runtime.rs`; those files were not changed by this task.
+  - Note: one unrelated Clash Verge `<defunct>` process remains because killing its parent `verge-mihomo` returned `operation not permitted`; it is outside the Hone process tree.
 
 ## Documentation Sync
 
@@ -86,6 +95,7 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
 - Compact leak handling and Gemini ACP disablement must stay aligned with `docs/bugs/session_compact_summary_report_hallucination.md` and `config.example.yaml`.
 - If runner-specific transcript metadata is added later, keep it under the owning runner/channel namespace and avoid introducing a shared ACP-wide event schema in `memory` or other common storage helpers.
 - If the normalized history model expands again, preserve runner interchangeability: prompt restoration should keep consuming the shared `user/assistant` model rather than any single runner’s raw event stream.
+- If ACP process lifecycle semantics change, keep `docs/repo-map.md` aligned because it documents the MCP bridge and runner process boundaries.
 
 ## Risks / Open Questions
 
@@ -94,3 +104,4 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
 - `opencode_acp` and `codex_acp` now consume the same normalized history for prompt restore, but their raw ACP event shapes still differ; raw-session persistence and replay must remain runner-owned.
 - Runner-specific transcript metadata can still grow session files; any future expansion should be validated against real session size and restore cost.
 - ACP compact detection currently depends on codex literal markers plus opencode usage-drop heuristics; if upstream protocols change those signals, the detection path needs fresh live validation.
+- ACP CLI cleanup must account for grandchildren such as `hone-mcp`; killing only the direct ACP process can leave orphaned MCP servers when the upstream CLI does not close them itself.

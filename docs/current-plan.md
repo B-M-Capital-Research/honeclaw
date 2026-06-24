@@ -1,6 +1,6 @@
 # Current Plan Index
 
-最后更新：2026-06-09
+最后更新：2026-06-24
 状态：有 6 个活跃任务
 
 ## 说明
@@ -39,4 +39,4 @@
 - **ACP 对齐的 Agent Runtime 全栈重构**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/acp-runtime-refactor.md`
-  - 摘要：ACP runners 已接入 Hone MCP bridge；runner timeout 已收敛到顶层 `step=3 分钟 / overall=20 分钟` 两档，`session/load timeout` 也已改为自动回退新 session；当前继续收口 ACP transcript 边界、compact 防泄漏与 system prompt reseed 语义。session 持久化已切到 `version=4 + user/assistant + content[] + status` 统一模型，codex/opencode 可互相切换恢复，`codex_cli` 也纳入同一 normalized 持久化契约，`multi-agent` 会把 search/answer 两阶段 transcript 一并回写 session；`gemini_acp` 已禁用并给出迁移提示
+  - 摘要：ACP runners 已接入 Hone MCP bridge；runner timeout 已收敛到顶层 `step=3 分钟 / overall=20 分钟` 两档，`session/load timeout` 也已改为自动回退新 session；当前继续收口 ACP transcript 边界、compact 防泄漏、system prompt reseed 语义，以及 2026-06-24 新增的 ACP 子进程 / `hone-mcp` 生命周期泄漏修复。session 持久化已切到 `version=4 + user/assistant + content[] + status` 统一模型，codex/opencode 可互相切换恢复，`codex_cli` 也纳入同一 normalized 持久化契约，`multi-agent` 会把 search/answer 两阶段 transcript 一并回写 session；`gemini_acp` 已禁用并给出迁移提示

@@ -13,10 +13,11 @@ use crate::agent_session::{AgentSessionError, AgentSessionErrorKind};
 use crate::mcp_bridge::hone_mcp_servers;
 
 use super::acp_common::{
-    ACP_NEEDS_SP_RESEED_KEY, ACP_PREV_PROMPT_PEAK_KEY, AcpEventLogContext, AcpPermissionDecision,
-    AcpPromptState, AcpRenderedToolStatus, AcpResponseTimeouts, AcpToolRenderPhase, CliVersion,
-    acp_prompt_succeeded, create_acp_session, finalize_context_messages,
-    log_acp_prompt_stop_diagnostics, parse_cli_version, set_acp_session_model, wait_for_response,
+    ACP_NEEDS_SP_RESEED_KEY, ACP_PREV_PROMPT_PEAK_KEY, AcpChildGuard, AcpEventLogContext,
+    AcpPermissionDecision, AcpPromptState, AcpRenderedToolStatus, AcpResponseTimeouts,
+    AcpToolRenderPhase, CliVersion, acp_prompt_succeeded, configure_acp_command_process_group,
+    create_acp_session, finalize_context_messages, log_acp_prompt_stop_diagnostics,
+    parse_cli_version, set_acp_session_model, wait_for_response,
     wait_for_response_with_timeouts_and_renderer, write_jsonrpc_request,
 };
 use super::types::{
@@ -310,12 +311,18 @@ async fn inspect_codex_acp_version(
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null());
+    configure_acp_command_process_group(&mut command);
 
-    let mut child = command.spawn().map_err(|e| AgentSessionError {
+    let child = command.spawn().map_err(|e| AgentSessionError {
         kind: AgentSessionErrorKind::SpawnFailed,
         message: format!("failed to spawn codex-acp for version probe: {e}"),
     })?;
+    let mut child_guard = AcpChildGuard::new("codex", child, None);
 
+    let child = child_guard.child_mut().ok_or(AgentSessionError {
+        kind: AgentSessionErrorKind::Io,
+        message: "codex-acp version probe child unavailable".to_string(),
+    })?;
     let mut stdin = child.stdin.take().ok_or(AgentSessionError {
         kind: AgentSessionErrorKind::Io,
         message: "codex-acp version probe stdin unavailable".to_string(),
@@ -356,7 +363,7 @@ async fn inspect_codex_acp_version(
         .to_string();
 
     let _ = stdin.shutdown().await;
-    let _ = child.kill().await;
+    child_guard.terminate().await;
 
     parse_cli_version(&version_text).ok_or(AgentSessionError {
         kind: AgentSessionErrorKind::AgentFailed,
@@ -400,12 +407,18 @@ async fn run_codex_acp(
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
+    configure_acp_command_process_group(&mut command);
 
-    let mut child = command.spawn().map_err(|e| AgentSessionError {
+    let child = command.spawn().map_err(|e| AgentSessionError {
         kind: AgentSessionErrorKind::SpawnFailed,
         message: format!("failed to spawn codex acp: {e}"),
     })?;
+    let mut child_guard = AcpChildGuard::new("codex", child, None);
 
+    let child = child_guard.child_mut().ok_or(AgentSessionError {
+        kind: AgentSessionErrorKind::Io,
+        message: "codex acp child unavailable".to_string(),
+    })?;
     let mut stdin = child.stdin.take().ok_or(AgentSessionError {
         kind: AgentSessionErrorKind::Io,
         message: "codex acp stdin unavailable".to_string(),
@@ -430,132 +443,141 @@ async fn run_codex_acp(
             }
         })
     });
+    child_guard.set_stderr_task(stderr_task);
 
     let mut reader = tokio::io::BufReader::new(stdout).lines();
-    let mut next_id = 1u64;
+    let run_result: Result<(Value, AcpPromptState), AgentSessionError> = async {
+        let mut next_id = 1u64;
 
-    write_jsonrpc_request(
-        &mut stdin,
-        next_id,
-        "initialize",
-        serde_json::json!({
-            "protocolVersion": 1,
-            "clientCapabilities": {}
-        }),
-        Some(&acp_log),
-    )
-    .await?;
-    let _ = tokio::time::timeout(
-        startup_timeout,
-        wait_for_response(
-            "codex",
-            &mut reader,
+        write_jsonrpc_request(
             &mut stdin,
             next_id,
-            None,
-            None,
-            Some(stderr_buffer.clone()),
+            "initialize",
+            serde_json::json!({
+                "protocolVersion": 1,
+                "clientCapabilities": {}
+            }),
             Some(&acp_log),
-        ),
-    )
-    .await
-    .map_err(|_| AgentSessionError {
-        kind: AgentSessionErrorKind::TimeoutOverall,
-        message: "codex acp initialize timeout".to_string(),
-    })??;
-    next_id += 1;
+        )
+        .await?;
+        let _ = tokio::time::timeout(
+            startup_timeout,
+            wait_for_response(
+                "codex",
+                &mut reader,
+                &mut stdin,
+                next_id,
+                None,
+                None,
+                Some(stderr_buffer.clone()),
+                Some(&acp_log),
+            ),
+        )
+        .await
+        .map_err(|_| AgentSessionError {
+            kind: AgentSessionErrorKind::TimeoutOverall,
+            message: "codex acp initialize timeout".to_string(),
+        })??;
+        next_id += 1;
 
-    if let Some(session_id) = reusable_codex_acp_session_id(&request.session_metadata) {
-        tracing::debug!(
-            "[AgentRunner/codex] session={} ignoring reusable acp session candidate={session_id}",
+        if let Some(session_id) = reusable_codex_acp_session_id(&request.session_metadata) {
+            tracing::debug!(
+                "[AgentRunner/codex] session={} ignoring reusable acp session candidate={session_id}",
+                request.session_id,
+            );
+        }
+        tracing::info!(
+            "[AgentRunner/codex] session={} creating fresh acp session",
             request.session_id,
         );
-    }
-    tracing::info!(
-        "[AgentRunner/codex] session={} creating fresh acp session",
-        request.session_id,
-    );
-    let codex_session_id = create_acp_session(
-        "codex",
-        &mut stdin,
-        &mut reader,
-        next_id,
-        &request.working_directory,
-        mcp_servers.clone(),
-        startup_timeout,
-        stderr_buffer.clone(),
-        Some(&acp_log),
-    )
-    .await?;
-    next_id += 1;
-
-    metadata_updates.insert(
-        CODEX_ACP_SESSION_KEY.to_string(),
-        Value::String(codex_session_id.clone()),
-    );
-
-    if let Some(model_id) = configured_codex_model_id(config) {
-        set_acp_session_model(
+        let codex_session_id = create_acp_session(
             "codex",
             &mut stdin,
             &mut reader,
             next_id,
-            &codex_session_id,
-            &model_id,
-            model_timeout,
+            &request.working_directory,
+            mcp_servers.clone(),
+            startup_timeout,
             stderr_buffer.clone(),
             Some(&acp_log),
         )
         .await?;
         next_id += 1;
-    }
 
-    let mut codex_state = AcpPromptState {
-        prev_prompt_peak_used: request
-            .session_metadata
-            .get(ACP_PREV_PROMPT_PEAK_KEY)
-            .and_then(|value| value.as_u64()),
-        ..AcpPromptState::default()
-    };
-    let prompt_text = build_codex_acp_prompt_text(
-        &request.system_prompt,
-        &request.runtime_input,
-        Some(&request.context),
-    );
-    write_jsonrpc_request(
-        &mut stdin,
-        next_id,
-        "session/prompt",
-        serde_json::json!({
-            "sessionId": codex_session_id,
-            "prompt": [
-                {
-                    "type": "text",
-                    "text": prompt_text,
-                }
-            ]
-        }),
-        Some(&acp_log),
-    )
-    .await?;
-    let prompt_result = wait_for_response_with_timeouts_and_renderer(
-        "codex",
-        &mut reader,
-        &mut stdin,
-        next_id,
-        Some(emitter.clone()),
-        Some(&mut codex_state),
-        Some(stderr_buffer.clone()),
-        AcpResponseTimeouts {
-            idle: prompt_idle_timeout,
-            overall: prompt_overall_timeout,
-        },
-        Some(render_codex_tool_status),
-        Some(patch_codex_session_update_params),
-        AcpPermissionDecision::ApproveForSession,
-        Some(&acp_log),
-    )
-    .await?;
+        metadata_updates.insert(
+            CODEX_ACP_SESSION_KEY.to_string(),
+            Value::String(codex_session_id.clone()),
+        );
+
+        if let Some(model_id) = configured_codex_model_id(config) {
+            set_acp_session_model(
+                "codex",
+                &mut stdin,
+                &mut reader,
+                next_id,
+                &codex_session_id,
+                &model_id,
+                model_timeout,
+                stderr_buffer.clone(),
+                Some(&acp_log),
+            )
+            .await?;
+            next_id += 1;
+        }
+
+        let mut codex_state = AcpPromptState {
+            prev_prompt_peak_used: request
+                .session_metadata
+                .get(ACP_PREV_PROMPT_PEAK_KEY)
+                .and_then(|value| value.as_u64()),
+            ..AcpPromptState::default()
+        };
+        let prompt_text = build_codex_acp_prompt_text(
+            &request.system_prompt,
+            &request.runtime_input,
+            Some(&request.context),
+        );
+        write_jsonrpc_request(
+            &mut stdin,
+            next_id,
+            "session/prompt",
+            serde_json::json!({
+                "sessionId": codex_session_id,
+                "prompt": [
+                    {
+                        "type": "text",
+                        "text": prompt_text,
+                    }
+                ]
+            }),
+            Some(&acp_log),
+        )
+        .await?;
+        let prompt_result = wait_for_response_with_timeouts_and_renderer(
+            "codex",
+            &mut reader,
+            &mut stdin,
+            next_id,
+            Some(emitter.clone()),
+            Some(&mut codex_state),
+            Some(stderr_buffer.clone()),
+            AcpResponseTimeouts {
+                idle: prompt_idle_timeout,
+                overall: prompt_overall_timeout,
+            },
+            Some(render_codex_tool_status),
+            Some(patch_codex_session_update_params),
+            AcpPermissionDecision::ApproveForSession,
+            Some(&acp_log),
+        )
+        .await?;
+        Ok((prompt_result, codex_state))
+    }
+    .await;
+
+    let _ = stdin.shutdown().await;
+    child_guard.terminate().await;
+    let (prompt_result, mut codex_state) = run_result?;
 
     let stop_reason_value = prompt_result
         .get("stopReason")
@@ -574,11 +596,6 @@ async fn run_codex_acp(
         .await;
     }
 
-    let _ = stdin.shutdown().await;
-    let _ = child.kill().await;
-    if let Some(task) = stderr_task {
-        task.abort();
-    }
     // ACP runner 内置 compact 状态写回 session_metadata：
     //  * 总是回写本轮 used 峰值，下一轮作为 used-drop 检测基线
     //  * 若本轮检测到 compact，置 acp_needs_sp_reseed=true，下一轮 prompt 构建层

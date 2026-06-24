@@ -16,11 +16,12 @@ use crate::agent_session::{AgentSessionError, AgentSessionErrorKind};
 use crate::mcp_bridge::hone_mcp_servers;
 
 use super::acp_common::{
-    ACP_NEEDS_SP_RESEED_KEY, ACP_PREV_PROMPT_PEAK_KEY, AcpEventLogContext, AcpPromptState,
-    AcpResponseTimeouts, AcpToolCallRecord, acp_diagnostic_excerpt_for_log,
-    acp_error_detail_for_message, acp_prompt_succeeded, create_acp_session, log_acp_payload,
-    log_acp_prompt_stop_diagnostics, log_acp_raw_parse_error, message_with_bounded_stderr,
-    set_acp_session_model, timeout_message_with_stderr, wait_for_response, write_jsonrpc_request,
+    ACP_NEEDS_SP_RESEED_KEY, ACP_PREV_PROMPT_PEAK_KEY, AcpChildGuard, AcpEventLogContext,
+    AcpPromptState, AcpResponseTimeouts, AcpToolCallRecord, acp_diagnostic_excerpt_for_log,
+    acp_error_detail_for_message, acp_prompt_succeeded, configure_acp_command_process_group,
+    create_acp_session, log_acp_payload, log_acp_prompt_stop_diagnostics, log_acp_raw_parse_error,
+    message_with_bounded_stderr, set_acp_session_model, timeout_message_with_stderr,
+    wait_for_response, write_jsonrpc_request,
 };
 use super::types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
@@ -435,6 +436,7 @@ async fn run_opencode_acp(
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
+    configure_acp_command_process_group(&mut command);
     // opencode 的 provider.openrouter 配置不支持 apiKey 字段；Hone 只在用户把 key
     // 写入 config.yaml 时把它桥接给子进程。若 Hone 未显式注入，则继续使用用户本机
     // opencode 的 auth / provider 配置。
@@ -442,11 +444,16 @@ async fn run_opencode_acp(
         command.env("OPENROUTER_API_KEY", api_key);
     }
 
-    let mut child = command.spawn().map_err(|e| AgentSessionError {
+    let child = command.spawn().map_err(|e| AgentSessionError {
         kind: AgentSessionErrorKind::SpawnFailed,
         message: format!("failed to spawn opencode acp: {e}"),
     })?;
+    let mut child_guard = AcpChildGuard::new("opencode", child, None);
 
+    let child = child_guard.child_mut().ok_or(AgentSessionError {
+        kind: AgentSessionErrorKind::Io,
+        message: "opencode acp child unavailable".to_string(),
+    })?;
     let mut stdin = child.stdin.take().ok_or(AgentSessionError {
         kind: AgentSessionErrorKind::Io,
         message: "opencode acp stdin unavailable".to_string(),
@@ -471,141 +478,150 @@ async fn run_opencode_acp(
             }
         })
     });
+    child_guard.set_stderr_task(stderr_task);
 
     let mut reader = tokio::io::BufReader::new(stdout).lines();
-    let mut next_id = 1u64;
+    let run_result: Result<(Value, AcpPromptState), AgentSessionError> = async {
+        let mut next_id = 1u64;
 
-    write_jsonrpc_request(
-        &mut stdin,
-        next_id,
-        "initialize",
-        serde_json::json!({
-            "protocolVersion": 1,
-            "clientCapabilities": {}
-        }),
-        Some(&acp_log),
-    )
-    .await?;
-    let _ = tokio::time::timeout(
-        startup_timeout,
-        wait_for_response(
-            "opencode",
-            &mut reader,
+        write_jsonrpc_request(
             &mut stdin,
             next_id,
-            None,
-            None,
-            Some(stderr_buffer.clone()),
+            "initialize",
+            serde_json::json!({
+                "protocolVersion": 1,
+                "clientCapabilities": {}
+            }),
             Some(&acp_log),
-        ),
-    )
-    .await
-    .map_err(|_| AgentSessionError {
-        kind: AgentSessionErrorKind::TimeoutOverall,
-        message: "opencode acp initialize timeout".to_string(),
-    })??;
-    next_id += 1;
+        )
+        .await?;
+        let _ = tokio::time::timeout(
+            startup_timeout,
+            wait_for_response(
+                "opencode",
+                &mut reader,
+                &mut stdin,
+                next_id,
+                None,
+                None,
+                Some(stderr_buffer.clone()),
+                Some(&acp_log),
+            ),
+        )
+        .await
+        .map_err(|_| AgentSessionError {
+            kind: AgentSessionErrorKind::TimeoutOverall,
+            message: "opencode acp initialize timeout".to_string(),
+        })??;
+        next_id += 1;
 
-    // 始终创建新的 opencode 会话，而不是复用旧会话。
-    // 原因：如果复用 session (session/load)，opencode 会在 session/prompt 响应期间
-    // 异步回放旧会话的所有 agent_message_chunk 事件，这些历史片段会混入当前流式输出，
-    // 导致前端 assistant_delta 包含所有历史回复，最终造成消息重复显示。
-    tracing::info!(
-        "[AgentRunner/opencode] session={} creating fresh acp session",
-        request.session_id,
-    );
-    let opencode_session_id = create_acp_session(
-        "opencode",
-        &mut stdin,
-        &mut reader,
-        next_id,
-        &request.working_directory,
-        mcp_servers.clone(),
-        startup_timeout,
-        stderr_buffer.clone(),
-        Some(&acp_log),
-    )
-    .await?;
-    next_id += 1;
-
-    metadata_updates.insert(
-        OPENCODE_ACP_SESSION_KEY.to_string(),
-        Value::String(opencode_session_id.clone()),
-    );
-    tracing::info!(
-        "[AgentRunner/opencode] session={} acp_session={opencode_session_id} ready",
-        request.session_id,
-    );
-
-    if let Some(model_id) = configured_opencode_model_id(config) {
+        // 始终创建新的 opencode 会话，而不是复用旧会话。
+        // 原因：如果复用 session (session/load)，opencode 会在 session/prompt 响应期间
+        // 异步回放旧会话的所有 agent_message_chunk 事件，这些历史片段会混入当前流式输出，
+        // 导致前端 assistant_delta 包含所有历史回复，最终造成消息重复显示。
         tracing::info!(
-            "[AgentRunner/opencode] session={} setting model to {}",
+            "[AgentRunner/opencode] session={} creating fresh acp session",
             request.session_id,
-            opencode_log_detail(&model_id),
         );
-        set_acp_session_model(
+        let opencode_session_id = create_acp_session(
             "opencode",
             &mut stdin,
             &mut reader,
             next_id,
-            &opencode_session_id,
-            &model_id,
-            model_timeout,
+            &request.working_directory,
+            mcp_servers.clone(),
+            startup_timeout,
             stderr_buffer.clone(),
             Some(&acp_log),
         )
         .await?;
         next_id += 1;
-    }
 
-    tracing::info!(
-        "[AgentRunner/opencode] session={} sending session/prompt (idle_timeout={}s overall_timeout={}s)",
-        request.session_id,
-        prompt_idle_timeout.as_secs(),
-        prompt_overall_timeout.as_secs(),
-    );
-    let mut opencode_state = AcpPromptState {
-        prev_prompt_peak_used: request
-            .session_metadata
-            .get(ACP_PREV_PROMPT_PEAK_KEY)
-            .and_then(|value| value.as_u64()),
-        ..AcpPromptState::default()
-    };
-    let prompt_text = build_opencode_acp_prompt_text(
-        &request.system_prompt,
-        &request.runtime_input,
-        Some(&request.context),
-    );
-    write_jsonrpc_request(
-        &mut stdin,
-        next_id,
-        "session/prompt",
-        serde_json::json!({
-            "sessionId": opencode_session_id,
-            "prompt": [
-                {
-                    "type": "text",
-                    "text": prompt_text,
-                }
-            ]
-        }),
-        Some(&acp_log),
-    )
-    .await?;
-    let prompt_result = wait_for_opencode_response_with_timeouts(
-        &mut reader,
-        &mut stdin,
-        next_id,
-        emitter.clone(),
-        &mut opencode_state,
-        stderr_buffer.clone(),
-        AcpResponseTimeouts {
-            idle: prompt_idle_timeout,
-            overall: prompt_overall_timeout,
-        },
-        &acp_log,
-    )
-    .await?;
+        metadata_updates.insert(
+            OPENCODE_ACP_SESSION_KEY.to_string(),
+            Value::String(opencode_session_id.clone()),
+        );
+        tracing::info!(
+            "[AgentRunner/opencode] session={} acp_session={opencode_session_id} ready",
+            request.session_id,
+        );
+
+        if let Some(model_id) = configured_opencode_model_id(config) {
+            tracing::info!(
+                "[AgentRunner/opencode] session={} setting model to {}",
+                request.session_id,
+                opencode_log_detail(&model_id),
+            );
+            set_acp_session_model(
+                "opencode",
+                &mut stdin,
+                &mut reader,
+                next_id,
+                &opencode_session_id,
+                &model_id,
+                model_timeout,
+                stderr_buffer.clone(),
+                Some(&acp_log),
+            )
+            .await?;
+            next_id += 1;
+        }
+
+        tracing::info!(
+            "[AgentRunner/opencode] session={} sending session/prompt (idle_timeout={}s overall_timeout={}s)",
+            request.session_id,
+            prompt_idle_timeout.as_secs(),
+            prompt_overall_timeout.as_secs(),
+        );
+        let mut opencode_state = AcpPromptState {
+            prev_prompt_peak_used: request
+                .session_metadata
+                .get(ACP_PREV_PROMPT_PEAK_KEY)
+                .and_then(|value| value.as_u64()),
+            ..AcpPromptState::default()
+        };
+        let prompt_text = build_opencode_acp_prompt_text(
+            &request.system_prompt,
+            &request.runtime_input,
+            Some(&request.context),
+        );
+        write_jsonrpc_request(
+            &mut stdin,
+            next_id,
+            "session/prompt",
+            serde_json::json!({
+                "sessionId": opencode_session_id,
+                "prompt": [
+                    {
+                        "type": "text",
+                        "text": prompt_text,
+                    }
+                ]
+            }),
+            Some(&acp_log),
+        )
+        .await?;
+        let prompt_result = wait_for_opencode_response_with_timeouts(
+            &mut reader,
+            &mut stdin,
+            next_id,
+            emitter.clone(),
+            &mut opencode_state,
+            stderr_buffer.clone(),
+            AcpResponseTimeouts {
+                idle: prompt_idle_timeout,
+                overall: prompt_overall_timeout,
+            },
+            &acp_log,
+        )
+        .await?;
+        Ok((prompt_result, opencode_state))
+    }
+    .await;
+
+    let _ = stdin.shutdown().await;
+    child_guard.terminate().await;
+    let (prompt_result, mut opencode_state) = run_result?;
 
     let stop_reason_value = prompt_result
         .get("stopReason")
@@ -624,11 +640,6 @@ async fn run_opencode_acp(
         .await;
     }
 
-    let _ = stdin.shutdown().await;
-    let _ = child.kill().await;
-    if let Some(task) = stderr_task {
-        task.abort();
-    }
     // ACP runner 内置 compact 状态写回 metadata（含义同 codex_acp.rs）
     metadata_updates.insert(
         ACP_PREV_PROMPT_PEAK_KEY.to_string(),

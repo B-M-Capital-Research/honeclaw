@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-06-21
+Last updated: 2026-06-24
+
+## 2026-06-24
+
+### ACP `hone-mcp` Process Cleanup
+
+- Status: done
+- Date: 2026-06-24
+- Plan: `docs/current-plans/acp-runtime-refactor.md`
+- Handoff: `docs/handoffs/2026-06-24-acp-hone-mcp-process-cleanup.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-channels acp_child_guard_terminates_grandchild_process_group -- --nocapture`, `cargo test -p hone-channels codex_acp -- --nocapture`, `cargo check -p hone-channels --tests`
+- Current conclusion: ACP CLI children now run in an isolated process group and are cleaned up through `AcpChildGuard`, so `codex_acp` / `opencode_acp` success, error, and timeout paths terminate stdio MCP grandchildren such as `hone-mcp` instead of leaving local process leaks.
+- Next entry point: `crates/hone-channels/src/runners/acp_common/process.rs`
 
 ## 2026-06-21
 

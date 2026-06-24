@@ -21,6 +21,7 @@
 mod extract;
 mod ingest;
 mod log;
+mod process;
 mod protocol;
 mod state;
 mod tool_state;
@@ -39,6 +40,7 @@ pub(crate) use log::{
     log_acp_payload, log_acp_prompt_stop_diagnostics, log_acp_raw_parse_error,
     message_with_bounded_stderr, timeout_message_with_stderr,
 };
+pub(crate) use process::{AcpChildGuard, configure_acp_command_process_group};
 pub(crate) use protocol::{
     create_acp_session, set_acp_session_model, wait_for_response,
     wait_for_response_with_timeouts_and_renderer, write_jsonrpc_request,

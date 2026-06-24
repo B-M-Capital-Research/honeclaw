@@ -108,7 +108,7 @@ Last updated: 2026-05-27
 - Runner contract and ACP / Gemini execution layer: `crates/hone-channels/src/runners/`
   - `crates/hone-channels/src/runners.rs`: runner module wiring and exports
   - `types.rs`: shared runner trait / request / event / result types
-  - `acp_common/`: shared helpers for ACP stdio / JSON-RPC
+  - `acp_common/`: shared helpers for ACP stdio / JSON-RPC, including ACP child-process-group cleanup so stdio MCP grandchildren such as `hone-mcp` are terminated on success, error, and timeout paths
   - `gemini_cli.rs`, `codex_acp.rs`, `opencode_acp.rs`, `multi_agent.rs`, `hone_cloud.rs`: active runner implementations; `gemini_acp.rs` only keeps legacy argument/version test helpers and runtime creation rejects `agent.runner=gemini_acp`; `hone_cloud` calls the public user service through the OpenAI-compatible `/api/public/v1/chat/completions` shape
 - Prompt layering: `crates/hone-channels/src/prompt.rs`
   - Injects the global finance-domain constraints in one place: no stock-picking recommendations, reject non-finance questions, warn users not to blindly follow buy or sell advice, and keep greetings short
@@ -137,7 +137,7 @@ Last updated: 2026-05-27
     - `ActorIdentity`: who is executing this request
     - `SessionIdentity`: which history this message should be written into (group-chat shared sessions are controlled by it)
 5. `hone-channels::execution` builds the concrete execution plan for both persistent conversations and transient tasks: prompt audit, tool registry, runner selection, and actor-sandbox-backed `AgentRunnerRequest`
-6. `hone-channels::runners` executes the chosen runtime based on `agent.runner` and maps provider / CLI events back into unified session events. ACP runners now include a local `hone-mcp` server so Hone built-in tools are exposed as MCP tools to the underlying agent. Channel runners default to a repo-external actor sandbox.
+6. `hone-channels::runners` executes the chosen runtime based on `agent.runner` and maps provider / CLI events back into unified session events. ACP runners now include a local `hone-mcp` stdio server so Hone built-in tools are exposed as MCP tools to the underlying agent; ACP CLI children run in an isolated process group so runner cleanup also terminates MCP grandchildren on success, error, and timeout paths. Channel runners default to a repo-external actor sandbox.
 7. `hone-channels::AgentSession::run()` stores parseable tool-call results returned by the runner into the session for future cross-turn recovery; `hone-channels::outbound` and each channel adapter consume the unified events and finish placeholder / reasoning / chunked / streaming responses according to platform capability。Local mode keeps generated chart/media markers as inline `file://` paths: Web renders them inline, while Feishu / Telegram / Discord send them as ordered image messages. Cloud mode uploads generated images from either actor sandboxes or `gen_images` to OSS during response finalization and returns `oss://...` markers. Web direct 成功回复还会把本轮新生成、且 final 正文提到文件名的 actor sandbox 文件追加为 `[附件: ...]` marker，供 public history 转成可下载附件 metadata。
 8. `hone-tools` provides data, skills, search, scheduled-task, and other capabilities
    - Skill disclosure is now two-phase: the model first sees a compact listing, and full `SKILL.md` bodies are only expanded into the turn after `skill_tool(...)` or a user slash skill is invoked
