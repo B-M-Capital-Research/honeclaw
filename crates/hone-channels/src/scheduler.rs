@@ -40,6 +40,21 @@ const HEARTBEAT_ALLOWED_TOOLS: &[&str] = &[
 const HEARTBEAT_MAX_TOOL_CALLS: u32 = 3;
 const HEARTBEAT_WEB_SEARCH_MAX_CALLS: u32 = 1;
 const HEARTBEAT_DATA_FETCH_MAX_CALLS: u32 = 2;
+const HEARTBEAT_RECOVERY_MAX_TOOL_CALLS: u32 = 2;
+const HEARTBEAT_RECOVERY_WEB_SEARCH_MAX_CALLS: u32 = 1;
+const HEARTBEAT_RECOVERY_DATA_FETCH_MAX_CALLS: u32 = 1;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum HeartbeatExecutionProfile {
+    Primary,
+    BudgetRecovery { reason: HeartbeatRecoveryReason },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum HeartbeatRecoveryReason {
+    ContextOverflow,
+    MaxIterationsExceeded,
+}
 
 fn heartbeat_tool_call_limits() -> HashMap<String, u32> {
     HashMap::from([
@@ -52,6 +67,49 @@ fn heartbeat_runner_selection() -> ExecutionRunnerSelection {
     ExecutionRunnerSelection::AuxiliaryFunctionCalling {
         max_iterations: HEARTBEAT_MAX_ITERATIONS,
         max_tokens_override: Some(HEARTBEAT_MAX_TOKENS),
+    }
+}
+
+fn heartbeat_max_tool_calls(profile: HeartbeatExecutionProfile) -> u32 {
+    match profile {
+        HeartbeatExecutionProfile::Primary => HEARTBEAT_MAX_TOOL_CALLS,
+        HeartbeatExecutionProfile::BudgetRecovery { .. } => HEARTBEAT_RECOVERY_MAX_TOOL_CALLS,
+    }
+}
+
+fn heartbeat_tool_call_limits_for_profile(
+    profile: HeartbeatExecutionProfile,
+) -> HashMap<String, u32> {
+    match profile {
+        HeartbeatExecutionProfile::Primary => heartbeat_tool_call_limits(),
+        HeartbeatExecutionProfile::BudgetRecovery { .. } => HashMap::from([
+            (
+                "web_search".to_string(),
+                HEARTBEAT_RECOVERY_WEB_SEARCH_MAX_CALLS,
+            ),
+            (
+                "data_fetch".to_string(),
+                HEARTBEAT_RECOVERY_DATA_FETCH_MAX_CALLS,
+            ),
+        ]),
+    }
+}
+
+fn heartbeat_recovery_reason(error: &str) -> Option<HeartbeatRecoveryReason> {
+    if is_context_overflow_error(error) {
+        return Some(HeartbeatRecoveryReason::ContextOverflow);
+    }
+    let lower = error.to_ascii_lowercase();
+    if lower.contains("max_iterations_exceeded") {
+        return Some(HeartbeatRecoveryReason::MaxIterationsExceeded);
+    }
+    None
+}
+
+fn heartbeat_recovery_reason_label(reason: HeartbeatRecoveryReason) -> &'static str {
+    match reason {
+        HeartbeatRecoveryReason::ContextOverflow => "context_overflow",
+        HeartbeatRecoveryReason::MaxIterationsExceeded => "max_iterations_exceeded",
     }
 }
 const SCHEDULER_INTERNAL_FAILURE_TRANSCRIPT_MESSAGE: &str =
@@ -2672,6 +2730,39 @@ pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
     )
 }
 
+fn build_heartbeat_recovery_prompt(
+    event: &SchedulerEvent,
+    reason: HeartbeatRecoveryReason,
+) -> String {
+    let reason_note = match reason {
+        HeartbeatRecoveryReason::ContextOverflow => {
+            "上一轮因为上下文预算超限失败，本轮必须用更短路径收口。"
+        }
+        HeartbeatRecoveryReason::MaxIterationsExceeded => {
+            "上一轮因为工具迭代预算耗尽失败，本轮必须减少工具调用并快速收口。"
+        }
+    };
+    format!(
+        "[心跳检测恢复重试] 任务名称：{}。\n\
+本轮权威检查时间（北京时间）：{}。\n\
+{}\
+\n\
+恢复重试规则：\n\
+1. 整条回复必须是单段 JSON：只允许 `{{\"status\":\"noop\"}}` 或 `{{\"status\":\"triggered\",\"message\":\"...\"}}`。\n\
+2. `triggered.message` 只写用户可见提醒：触发条件、关键数据、检查时间；检查时间必须使用上方权威北京时间。\n\
+3. 本轮最多允许 2 次工具调用：优先复用本地文件、组合和一次行情/新闻确认；若仍不能确认，直接返回 noop。\n\
+4. 不要输出分析过程、Markdown 代码块、任务配置、画像流程、工具名或内部错误。\n\
+5. 不要给直接买卖指令；只能报告触发事实和条件化风险提示。\n\
+6. 若来源、时间戳、价格口径或事件窗口无法确认，也必须返回 noop。\n\
+\n\
+以下是需要检查的用户条件：\n{}",
+        event.job_name,
+        heartbeat_current_check_time_text(),
+        reason_note,
+        event.task_prompt
+    )
+}
+
 pub async fn run_scheduled_task(
     core: Arc<HoneBotCore>,
     event: &SchedulerEvent,
@@ -3023,100 +3114,123 @@ async fn run_heartbeat_task(
         bundle.conversation_context = None;
     }
     let timeout = run_options.timeout;
-    let execution = ExecutionService::new(core.clone()).prepare(ExecutionRequest {
-        mode: ExecutionMode::TransientTask,
-        session_id: transient_session_id.clone(),
-        actor: event.actor.clone(),
-        channel_target: event.channel_target.clone(),
-        allow_cron: false,
-        system_prompt: bundle.system_prompt(),
-        runtime_input: bundle.compose_user_input(
-            &build_scheduled_prompt_with_recovered_local_context(&core, event),
-        ),
-        context: hone_core::agent::AgentContext::new(transient_session_id),
-        timeout,
-        gemini_stream: timeout
-            .map(|duration| GeminiStreamOptions {
-                overall_timeout: duration,
-                per_line_timeout: core.config.agent.step_timeout(),
-                ..GeminiStreamOptions::default()
-            })
-            .unwrap_or_default(),
-        session_metadata: std::collections::HashMap::new(),
-        model_override: run_options.model_override.clone(),
-        runner_selection: heartbeat_runner_selection(),
-        allowed_tools: Some(
-            HEARTBEAT_ALLOWED_TOOLS
-                .iter()
-                .map(|tool| (*tool).to_string())
-                .collect(),
-        ),
-        max_tool_calls: Some(HEARTBEAT_MAX_TOOL_CALLS),
-        tool_call_limits: Some(heartbeat_tool_call_limits()),
-        prompt_audit: None,
-    })?;
-    tracing::info!(
-        "[HeartbeatDiag] run_start job_id={} job={} target={} runner={} model_override={} max_tokens={} timeout_secs={}",
-        event.job_id,
-        event.job_name,
-        event.channel_target,
-        execution.runner_name,
-        run_options.model_override.as_deref().unwrap_or(""),
-        HEARTBEAT_MAX_TOKENS,
-        timeout.map(|duration| duration.as_secs()).unwrap_or(0),
-    );
-    let result = execution
-        .runner
-        .run(execution.runner_request, Arc::new(NoopEmitter))
-        .await;
-    if result.response.success {
+    let mut profile = HeartbeatExecutionProfile::Primary;
+    loop {
+        let prompt = match profile {
+            HeartbeatExecutionProfile::Primary => {
+                build_scheduled_prompt_with_recovered_local_context(&core, event)
+            }
+            HeartbeatExecutionProfile::BudgetRecovery { reason } => {
+                build_heartbeat_recovery_prompt(event, reason)
+            }
+        };
+        let execution = ExecutionService::new(core.clone()).prepare(ExecutionRequest {
+            mode: ExecutionMode::TransientTask,
+            session_id: transient_session_id.clone(),
+            actor: event.actor.clone(),
+            channel_target: event.channel_target.clone(),
+            allow_cron: false,
+            system_prompt: bundle.system_prompt(),
+            runtime_input: bundle.compose_user_input(&prompt),
+            context: hone_core::agent::AgentContext::new(transient_session_id.clone()),
+            timeout,
+            gemini_stream: timeout
+                .map(|duration| GeminiStreamOptions {
+                    overall_timeout: duration,
+                    per_line_timeout: core.config.agent.step_timeout(),
+                    ..GeminiStreamOptions::default()
+                })
+                .unwrap_or_default(),
+            session_metadata: std::collections::HashMap::new(),
+            model_override: run_options.model_override.clone(),
+            runner_selection: heartbeat_runner_selection(),
+            allowed_tools: Some(
+                HEARTBEAT_ALLOWED_TOOLS
+                    .iter()
+                    .map(|tool| (*tool).to_string())
+                    .collect(),
+            ),
+            max_tool_calls: Some(heartbeat_max_tool_calls(profile)),
+            tool_call_limits: Some(heartbeat_tool_call_limits_for_profile(profile)),
+            prompt_audit: None,
+        })?;
         tracing::info!(
-            "[HeartbeatDiag] run_finish job_id={} job={} target={} runner={} success=true content_chars={}",
+            "[HeartbeatDiag] run_start job_id={} job={} target={} runner={} model_override={} max_tokens={} timeout_secs={} profile={:?}",
             event.job_id,
             event.job_name,
             event.channel_target,
             execution.runner_name,
-            result.response.content.chars().count(),
+            run_options.model_override.as_deref().unwrap_or(""),
+            HEARTBEAT_MAX_TOKENS,
+            timeout.map(|duration| duration.as_secs()).unwrap_or(0),
+            profile,
         );
-        Ok(result.response.content)
-    } else {
-        tracing::warn!(
-            "[HeartbeatDiag] run_finish job_id={} job={} target={} runner={} success=false error=\"{}\"",
-            event.job_id,
-            event.job_name,
-            event.channel_target,
-            execution.runner_name,
-            truncate_for_log(
-                result
-                    .response
-                    .error
-                    .as_deref()
-                    .unwrap_or("心跳检测执行失败"),
-                280
-            )
-            .replace('\n', "\\n"),
-        );
-        Err(result
+        let result = execution
+            .runner
+            .run(execution.runner_request, Arc::new(NoopEmitter))
+            .await;
+        if result.response.success {
+            tracing::info!(
+                "[HeartbeatDiag] run_finish job_id={} job={} target={} runner={} success=true content_chars={} profile={:?}",
+                event.job_id,
+                event.job_name,
+                event.channel_target,
+                execution.runner_name,
+                result.response.content.chars().count(),
+                profile,
+            );
+            return Ok(result.response.content);
+        }
+
+        let error = result
             .response
             .error
-            .unwrap_or_else(|| "心跳检测执行失败".to_string()))
+            .unwrap_or_else(|| "心跳检测执行失败".to_string());
+        tracing::warn!(
+            "[HeartbeatDiag] run_finish job_id={} job={} target={} runner={} success=false profile={:?} error=\"{}\"",
+            event.job_id,
+            event.job_name,
+            event.channel_target,
+            execution.runner_name,
+            profile,
+            truncate_for_log(&error, 280).replace('\n', "\\n"),
+        );
+
+        if profile == HeartbeatExecutionProfile::Primary
+            && let Some(reason) = heartbeat_recovery_reason(&error)
+        {
+            tracing::warn!(
+                "[HeartbeatDiag] retry_with_budget_recovery job_id={} job={} target={} reason={}",
+                event.job_id,
+                event.job_name,
+                event.channel_target,
+                heartbeat_recovery_reason_label(reason),
+            );
+            profile = HeartbeatExecutionProfile::BudgetRecovery { reason };
+            continue;
+        }
+
+        return Err(error);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        HeartbeatOutcome, HeartbeatParseKind, SCHEDULER_INTERNAL_FAILURE_TRANSCRIPT_MESSAGE,
-        ScheduledTaskExecution, build_scheduled_prompt,
+        HeartbeatExecutionProfile, HeartbeatOutcome, HeartbeatParseKind, HeartbeatRecoveryReason,
+        SCHEDULER_INTERNAL_FAILURE_TRANSCRIPT_MESSAGE, ScheduledTaskExecution,
+        build_heartbeat_recovery_prompt, build_scheduled_prompt,
         build_scheduled_prompt_with_recovered_local_context, execute_scheduler_event,
         guard_commodity_causality_for_event, guard_direct_trade_instruction_for_event,
         has_skip_delivery_signal, heartbeat_duplicate_preview_match,
         heartbeat_execution_from_content, heartbeat_execution_from_content_at,
         heartbeat_execution_from_content_at_beijing, heartbeat_execution_from_runner_error,
-        heartbeat_runner_selection, inspect_heartbeat_result, is_empty_success_fallback,
-        is_stale_market_data_success_fallback, load_actor_quiet_hours,
-        persist_suppressed_scheduler_failure_turn, rollback_skipped_scheduler_assistant_turn,
-        sanitize_scheduler_delivery_text, scheduler_suppressed_failure_kind,
+        heartbeat_max_tool_calls, heartbeat_recovery_reason, heartbeat_recovery_reason_label,
+        heartbeat_runner_selection, heartbeat_tool_call_limits_for_profile,
+        inspect_heartbeat_result, is_empty_success_fallback, is_stale_market_data_success_fallback,
+        load_actor_quiet_hours, persist_suppressed_scheduler_failure_turn,
+        rollback_skipped_scheduler_assistant_turn, sanitize_scheduler_delivery_text,
+        scheduler_suppressed_failure_kind,
     };
     use crate::HoneBotCore;
     use crate::agent_session::{AgentRunOptions, AgentRunQuotaMode};
@@ -4277,6 +4391,80 @@ mod tests {
         assert_eq!(limits.get("web_search"), Some(&1));
         assert_eq!(limits.get("data_fetch"), Some(&2));
         assert_eq!(limits.len(), 2);
+    }
+
+    #[test]
+    fn heartbeat_recovery_reason_covers_context_and_iteration_failures() {
+        assert_eq!(
+            heartbeat_recovery_reason("context window exceeds limit (2013)"),
+            Some(HeartbeatRecoveryReason::ContextOverflow)
+        );
+        assert_eq!(
+            heartbeat_recovery_reason("max_iterations_exceeded:18"),
+            Some(HeartbeatRecoveryReason::MaxIterationsExceeded)
+        );
+        assert_eq!(heartbeat_recovery_reason("timeout"), None);
+        assert_eq!(
+            heartbeat_recovery_reason_label(HeartbeatRecoveryReason::ContextOverflow),
+            "context_overflow"
+        );
+        assert_eq!(
+            heartbeat_recovery_reason_label(HeartbeatRecoveryReason::MaxIterationsExceeded),
+            "max_iterations_exceeded"
+        );
+    }
+
+    #[test]
+    fn heartbeat_recovery_profile_tightens_tool_budget() {
+        let limits =
+            heartbeat_tool_call_limits_for_profile(HeartbeatExecutionProfile::BudgetRecovery {
+                reason: HeartbeatRecoveryReason::MaxIterationsExceeded,
+            });
+        assert_eq!(
+            heartbeat_max_tool_calls(HeartbeatExecutionProfile::Primary),
+            3
+        );
+        assert_eq!(
+            heartbeat_max_tool_calls(HeartbeatExecutionProfile::BudgetRecovery {
+                reason: HeartbeatRecoveryReason::ContextOverflow,
+            }),
+            2
+        );
+        assert_eq!(limits.get("web_search"), Some(&1));
+        assert_eq!(limits.get("data_fetch"), Some(&1));
+        assert_eq!(limits.len(), 2);
+    }
+
+    #[test]
+    fn heartbeat_recovery_prompt_preserves_json_contract() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("discord", "alice", Some("dm")).expect("actor"),
+            job_id: "job-retry".to_string(),
+            job_name: "heartbeat".to_string(),
+            task_prompt: "检查 NVDA 是否出现新的重大事件或价格阈值触发".to_string(),
+            channel: "discord".to_string(),
+            channel_scope: Some("dm".to_string()),
+            channel_target: "alice".to_string(),
+            delivery_key: "delivery-retry".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: true,
+            schedule_repeat: "heartbeat".to_string(),
+            schedule_date: None,
+            schedule_hour: 0,
+            schedule_minute: 0,
+            last_delivered_previews: vec![(
+                "2026-06-25T02:30:00+08:00".to_string(),
+                "旧提醒".to_string(),
+            )],
+            bypass_quiet_hours: false,
+        };
+        let prompt =
+            build_heartbeat_recovery_prompt(&event, HeartbeatRecoveryReason::MaxIterationsExceeded);
+        assert!(prompt.contains("只允许 `{\"status\":\"noop\"}`"));
+        assert!(prompt.contains("最多允许 2 次工具调用"));
+        assert!(prompt.contains("若仍不能确认，直接返回 noop"));
+        assert!(!prompt.contains("最近几轮已送达的提醒"));
     }
 
     #[test]
