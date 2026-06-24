@@ -14,10 +14,13 @@
 
 ## 状态
 
-- Fixed
+- New
 
 ## 修复记录
 
+- 2026-06-24 15:03 CST
+  - 10:05 CST 的 `created_at` 参数绑定修复后，当前 live 运行态在 11:30-15:02 CST 仍持续输出同类 PostgreSQL 参数序列化失败，最近到 15:02:17 CST。
+  - 本轮将状态从 `Fixed` 回退为 `New`。该问题仍只影响 function-calling audit 持久化与后续排障审计，没有证据显示用户回复、投递或渠道主链路被直接阻断，因此严重等级保持 P2，非 P1。
 - 2026-06-24 10:05 CST
   - `crates/hone-core/src/cloud_runtime.rs` 的 `upsert_llm_audit_record(...)` 不再把 `created_at: String` 直接绑定到 `$4::timestamptz`；现在先按 RFC3339 解析为 `chrono::DateTime<Utc>` 再写入 PostgreSQL。
   - 这次修复针对运行态长期出现的 `error serializing parameter 3`。结合 `tokio-postgres` 的参数序列化行为，根因更符合“第 4 个参数 `created_at` 以 `String` 绑定到 `timestamptz` 失败”，而不是此前只覆盖到的 JSONB `$3` 参数。
@@ -34,6 +37,12 @@
 
 ## 证据来源
 
+- `data/runtime/logs/web.log.2026-06-24`
+  - 巡检窗口：2026-06-24 11:02-15:02 CST。
+  - 10:05 CST 代码级修复后，11:30-15:02 CST 仍出现 696 条同类告警，最近到 15:02:17 CST：
+    - `[LlmAudit] failed to persist function_calling audit: 配置错误: Postgres LLM audit 写入失败: error serializing parameter 3`
+  - 同窗 `data/runtime/logs/acp-events.log` 可重构 4 个 session、4 次 `session/prompt`、4 次 `stopReason=end_turn`、0 个 response error、1141 个用户可见 chunk 污染命中 0；故障继续集中在 function-calling audit 持久化链路。
+  - 结论：当前 runtime 窗口继续丢失 function-calling audit 记录，状态从 `Fixed` 回退为 `New`。该问题影响排障 / 回归审计，不直接阻断用户答复或投递，严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
 - `data/runtime/logs/web.log.2026-06-23`
   - 巡检窗口：2026-06-23 19:02-23:02 CST。
   - 19:02-23:02 CST 仍出现 677 条同类告警：
@@ -161,6 +170,7 @@
 
 ## 当前实现效果
 
+- 2026-06-24 15:03 CST 最近四小时内 function-calling audit 写入继续失败 696 次；这些日志晚于 10:05 CST `created_at` 绑定修复，且当前 `web.log.2026-06-24` 仍在持续写入同一错误。
 - 2026-06-19 07:04 CST 最近四小时内 function-calling audit 写入继续失败 671 次；03:07 CST 代码修复提交后仍有运行态旧错误，但本轮不能确认当前服务是否已加载新二进制。
 - 2026-06-19 03:02 CST 最近四小时内 function-calling audit 写入继续失败 684 次；这不是 19:03-23:03 CST 窗口的一次性波动。
 - 日志只暴露 `error serializing parameter 3`，缺少字段名、record id、provider/model 或可脱敏定位信息。
@@ -180,6 +190,8 @@
 - `2026-06-20 03:01 CST` 运行态复核显示当前 web 日志仍有同类告警 687 条，最近到 03:01 CST；由于尚未确认 live web / worker 已部署或重启到 `fa7f0734`，本单状态仍保持代码级 `Fixed`，待新运行态再复核是否真正止住。
 - `2026-06-20 07:02 CST` 运行态复核显示当前 web 日志仍有同类告警 656 条，最近到 07:00 CST；由于尚未确认 live web / worker 已部署或重启到 `fa7f0734`，本单状态仍保持代码级 `Fixed`，待新运行态再复核是否真正止住。
 - `2026-06-20 19:02 CST` 运行态复核显示当前 web 日志仍有同类告警 628 条，最近到 19:00 CST；由于尚未确认 live web / worker 已部署或重启到 `fa7f0734`，本单状态仍保持代码级 `Fixed`，待新运行态再复核是否真正止住。
+- `2026-06-24 10:05 CST` 已在 [`crates/hone-core/src/cloud_runtime.rs`](/Users/fengming2/Desktop/honeclaw/crates/hone-core/src/cloud_runtime.rs) 修复遗漏的 `created_at` 参数绑定：先把 RFC3339 字符串解析为 `chrono::DateTime<Utc>`，再绑定到 `$4::timestamptz`；验证 `cargo test -p hone-core llm_audit_record_ --lib -- --nocapture`、`cargo check -p hone-core --tests` 与 `git diff --check` 通过。
+- `2026-06-24 15:03 CST` 运行态复核显示 10:05 CST 修复后仍有同类告警 696 条，最近到 15:02:17 CST；本轮按当前 live 证据将状态从代码级 `Fixed` 回退为 `New`。
 
 ## 用户影响
 
@@ -189,14 +201,14 @@
 
 ## 根因判断
 
-- 当前证据只能确认 cloud PostgreSQL audit 写入路径在序列化第 3 个参数时稳定失败。
-- 初步判断可能是 `LlmAuditRecord` 到 `CloudLlmAuditRecord` 的某个 JSON / timestamp / metadata 字段类型与 SQL bind 类型不匹配，或 cloud runtime schema 与写入代码漂移。
+- 当前证据只能确认 cloud PostgreSQL audit 写入路径在序列化第 3 个参数时稳定失败；两次已知代码级修复分别覆盖 JSONB 与 `created_at` timestamptz 绑定，但 live 运行态仍复现同一错误。
+- 初步判断仍可能是 `LlmAuditRecord` 到 `CloudLlmAuditRecord` 的某个 JSON / timestamp / metadata 字段类型与 SQL bind 类型不匹配、参数序号与日志口径存在偏移，或 live cloud runtime schema / SQL 绑定路径并非已修复测试覆盖的那一支。
 - 该问题不同于 `sessions_sqlite_mirror_stalled_after_successful_direct_replies.md`：本轮不是会话镜像停滞，而是 LLM audit 写入 PostgreSQL 失败。
 
 ## 下一步建议
 
-- 后续 live 窗口若再出现同类告警，先确认运行中的 web / worker 已加载包含本修复的二进制，而不是继续把问题归因到 schema 漂移。
-- 如仍有零星失败，再补脱敏字段级日志，区分 JSONB bind、连接失败与 schema 侧问题。
+- 先在 cloud audit 写入路径补一条脱敏字段级诊断，至少记录 SQL 参数序号、逻辑字段名、Rust 类型类别和 audit record id 哈希，避免继续只能看到 `parameter 3`。
+- 复核 live web / worker 实际加载的二进制版本；若已确认加载 10:05 CST 修复，则下一步应对完整 SQL bind 列表逐项加编码回归，而不是继续只猜 JSONB / timestamptz 两个字段。
 
 ## 验证
 
