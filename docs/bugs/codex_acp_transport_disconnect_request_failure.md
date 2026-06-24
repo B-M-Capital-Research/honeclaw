@@ -3,7 +3,7 @@
 - **发现时间**: 2026-06-06 11:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无，非 P1
 
 ## 证据来源
@@ -18,6 +18,8 @@
   - 2026-06-06 09:26 CST 同一 Feishu direct prompt 已启动，随后 runner 输出内部 transport fallback 事件。
   - 2026-06-06 09:29 CST 同一 prompt 返回 `stream disconnected before completion` 内部错误；用户侧没有看到原始 URL 或 transport 细节。
   - 2026-06-06 09:30-09:34 CST Discord scheduler session `Session_discord__group__g_3a1469549745654468692_3ac_3a1469549746518622371` 也出现同类 transport fallback 和 `stream disconnected before completion` 错误。
+  - 2026-06-24 09:01-09:33 CST 同根因复发：Feishu direct、Web direct 与 Discord group / scheduler 路径合计 10 个 ACP response 返回 `Internal error`，`payload.error.data.message` 均为 `stream disconnected before completion: error sending request for url (https://chatgpt.com/backend-api/codex/responses)`。
+  - 同窗 ACP 可重构 31 次 `session/prompt`、18 个 session、22 次 `stopReason=end_turn`；错误集中在 09:01-09:33 CST，09:52 CST 非文档提交 `3679c4c5 fix: clean up acp mcp process groups` 后到 11:03 CST 未再见同类 response error，但该提交只清理 ACP/MCP 子进程进程组，未证明已覆盖 transport 断连重试 / fallback 根因。
 - `data/sessions.sqlite3` -> `cron_job_runs`
   - `run_id=38431` / `job_name=每日美股降息概率推送` 在 2026-06-06 09:34 CST 落成 `noop + skipped_noop + should_deliver=0 + delivered=0`。
   - `detail_json.failure_kind=internal_error_suppressed`，说明 scheduler 没有把内部失败外发，但这轮定时任务也没有产出正文。
@@ -43,12 +45,14 @@
 - Feishu direct 对用户可见的结果是通用失败，原始错误没有外泄，说明错误净化是生效的。
 - 但主请求没有完成，且系统没有在同轮自动恢复或基于既有上下文降级回答。
 - Discord scheduler 没有外发通用失败，`should_deliver=0` 是正确止血；但 `execution_status=noop` 与 `failure_kind=internal_error_suppressed` 同时出现，容易把 transport 失败和真正无须发送的业务 `noop` 混在一起。
+- 2026-06-24 复发窗中，Feishu / Web direct 用户主动请求与 Discord group / scheduler 均仍会在 ACP transport 断连时整轮失败；日志侧保留内部 URL 和 raw error，用户可见侧未见原始 URL 外泄。
 
 ## 用户影响
 
 - 这是功能性 bug，不是单纯输出质量问题。
 - Feishu 用户主动追问没有得到答案，定时任务也有一轮因同类 runner transport 断连未产出正文。
 - 定级为 `P2`：影响请求完成率和 scheduler 结果生成，但本窗只有 1 条 Feishu direct 用户可见失败和 1 条 Discord scheduler 抑制失败；没有跨用户大面积不可用、错投、数据破坏或原始错误外泄证据，因此不是 `P1`。
+- 2026-06-24 复发窗覆盖 Feishu direct、Web direct 与 Discord group / scheduler 多条请求，影响范围比首发更广；仍未观察到原始错误外泄、错投或数据破坏，因此严重等级保持 `P2`，状态从 `Fixed` 回退为 `New`。
 
 ## 根因判断
 
@@ -56,6 +60,7 @@
 - 与 `web_scheduler_acp_stream_disconnect_no_final.md` 同属 ACP transport 断连大类，但本轮新增受影响链路是 Feishu direct 用户主动提问和 Discord scheduler 抑制失败，不是原 Web scheduler SSE / 无终态问题。
 - 与 `channel_raw_llm_error_exposure.md` 不同：本轮没有把 `chatgpt.com/backend-api/codex/responses`、transport fallback 或内部错误文本暴露给最终用户。
 - 与 `feishu_direct_codex_usage_limit_generic_failure.md` 不同：本轮不是 usage limit / quota，错误分类为 transport disconnect。
+- 2026-06-24 的非文档提交 `3679c4c5` 改善 ACP/MCP 子进程清理，可能降低进程泄漏导致的运行压力；但本轮证据中的直接失败是 ChatGPT Codex backend transport 断连，当前文档不能仅凭该提交判定根因已修复。
 
 ## 下一步建议
 
@@ -67,9 +72,11 @@
 
 - 本轮为缺陷台账维护任务，未修改业务代码，未运行代码测试。
 - 已验证范围：SQLite 会话收口、assistant final 污染扫描、ACP 事件错误分类、`cron_job_runs` 终态与最近四小时非文档提交检查。
+- 2026-06-24 11:03 CST 复核：SQLite 本地镜像仍停在 2026-06-17，真实会话以 `acp-events.log` / `web.log.2026-06-24` 重构；09:01-09:33 CST 有 10 条同类 ACP response error，09:52 CST 后到 11:03 CST 未见同类 response error。未修改业务代码，未运行代码测试。
 
 ## 修复记录
 
 - 2026-06-09 00:12 CST 进入 `Fixing`：已准备代码加固，直聊错误净化会把 `codex acp ... stream disconnected before completion` 映射为安全的“当前本机执行环境暂时不可用”提示；scheduler 内部 ACP transport 断连仍不外发，但 `ScheduledTaskExecution.error` 会保留安全台账文案，`failure_kind=acp_transport_disconnect`，下游应落成 `execution_failed + skipped_error`，不再伪装成业务 `noop + skipped_noop`。
 - 验证阻塞：本机 Rust toolchain 当前连 `cargo --version`、直接 toolchain `cargo --version`、`rustc --version` 都会悬挂；已终止悬挂进程并仅完成 `git diff --check`。因此本轮不得标记 `Fixed`、不得提交或推送；下一轮需先恢复 toolchain，再运行 `cargo test -p hone-channels user_visible_error_message_ --lib -- --nocapture`、`cargo test -p hone-channels suppressed_scheduler_failure_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`。
 - 2026-06-09 04:43 CST 状态更新为 `Fixed`：Rust toolchain 已恢复，`cargo test -p hone-channels user_visible_error_message_ --lib -- --nocapture`、`cargo test -p hone-channels suppressed_scheduler_failure_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过。该修复不依赖当前机器生产运行态或线上日志判定恢复。
+- 2026-06-24 11:03 CST 回退为 `New`：07:02-11:03 CST 巡检确认同根因在 Feishu direct、Web direct 与 Discord group / scheduler 多链路复发；错误已净化但请求未完成。09:52 CST 后未见新增同类 response error，需后续巡检确认 `3679c4c5` 或运行态重启是否真正止血。
