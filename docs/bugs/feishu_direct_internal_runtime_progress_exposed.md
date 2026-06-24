@@ -22,6 +22,13 @@
 
 ## 最新进展
 
+- 2026-06-25 03:04 CST 运行态继续复发，状态维持 `New`：
+  - 23:02-03:04 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(imported_at)=2026-06-17T10:37:41.827657+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 本窗 ACP 可重构 8 个 session、15 次 `stopReason=end_turn`、0 个 response error；未见空回复、错投、投递失败、绝对路径、token、provider 原始错误或思维痕迹进入用户可见 final。
+  - 23:44 CST Feishu direct session `Actor_feishu__direct__ou_5f175714e91a60d34339460cdd1268f8fb` 的 Cerebras / CBRS 财报后分析正常完成收入、毛利率、商业模式和动作建议，但正文写出“看一下本地是否已有 Cerebras 画像”“沉淀进去”“本地没有看到 Cerebras/CBRS 画像”等内部画像检查 / 写入口径。
+  - 00:00-00:02 CST Feishu direct / scheduler actor session `Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b` 的 AAOI / RKLB 监控汇总正常收口，但继续写出“核验 AAOI 官方公告、近期行情和本地长期画像”“VICTUS HAZE 已在上一轮沉淀”等内部画像 / 沉淀口径。
+  - 这些样本主体正常 `end_turn` 收口，不影响投研主链路、落库或投递，因此仍按质量性 `P3 / New` 处理。为何不影响功能链路：用户仍获得完整投研或监控结论，问题只在内部工具 / 画像流程口径外露。非 P1，不创建 GitHub Issue。
+
 - 2026-06-24 23:02 CST 运行态继续复发，状态维持 `New`：
   - 19:00-23:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(imported_at)=2026-06-17T10:37:41.827657+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
   - 本窗 ACP 可重构 30 个 session、42 次 `stopReason=end_turn`、0 个 response error；未见空回复、错投、投递失败、绝对路径、token、provider 原始错误或思维痕迹进入用户可见 final。

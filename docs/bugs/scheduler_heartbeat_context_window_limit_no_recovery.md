@@ -3,8 +3,25 @@
 - **发现时间**: 2026-04-16 14:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
+  - `2026-06-25 03:06 CST` 代码级修复：
+    - `crates/hone-channels/src/scheduler.rs` 为 heartbeat transient task 增加一次预算恢复重试：首轮若命中 `context window exceeds limit`，第二轮会切到更短的恢复提示词，不再携带“最近已送达”历史段，并把工具预算收紧到 `max_tool_calls=2`、`data_fetch<=1`、`web_search<=1`，要求无法确认时直接返回 `noop`，避免继续整轮漏发。
+    - 该修复不改变 heartbeat 的失败留痕契约：恢复轮若仍失败，依旧保留 `execution_failed + skipped_error` 与 `failure_kind=context_window_overflow`，不会重新伪装成 `noop`。
+    - 新增 / 保留回归：`heartbeat_recovery_reason_covers_context_and_iteration_failures`、`heartbeat_recovery_profile_tightens_tool_budget`、`heartbeat_recovery_prompt_preserves_json_contract`、`heartbeat_context_overflow_error_is_not_classified_as_noop`。
+    - 验证通过：`cargo test -p hone-channels heartbeat_recovery_reason_covers_context_and_iteration_failures --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_recovery_profile_tightens_tool_budget --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_recovery_prompt_preserves_json_contract --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_context_overflow_error_is_not_classified_as_noop --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_runner_uses_capped_completion_budget --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_tool_budget_stays_conservative --lib -- --nocapture`、`cargo check -p hone-channels --tests`、`rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs`、`git diff --check`。
+    - 当前未重启 live runtime；运行态止血待后续巡检窗口确认。
+  - `2026-06-25 03:04 CST` 本轮补充同根活跃证据，状态维持 `New`：
+    - `data/runtime/logs/web.log.2026-06-24`
+      - 23:02-03:04 CST 当前 runtime 新增 3 组 heartbeat `context window exceeds limit (2013)` runner error，均落成 `failure_kind=context_window_overflow + execution_failed + skipped_error`。
+      - 样本覆盖 Feishu `heartbeat_绿田机械基本面跟踪`（23:30 CST）、Feishu `AAOI 1.6T 光模块心跳检测`（01:00 CST）与 Web `持仓财报与重大新闻心跳提醒`（01:00 CST）。
+      - 当前坏态继续不是历史 `ContextOverflowNoop` 静默伪成功；台账能识别失败。但 heartbeat 仍缺自动压缩、重试或任务级恢复，导致监控任务本轮漏发。
+    - 会话质量对照：
+      - `data/sessions.sqlite3` 仍停在 2026-06-17；本轮以 runtime 日志和 `data/runtime/logs/acp-events.log` 重构。
+      - ACP 本窗 15 次 `session/prompt`、8 个 session、15 次 `stopReason=end_turn`、0 个 response error；故障集中在 heartbeat function-calling 超窗链路。
+    - 判断：
+      - 这是功能性 bug。当前仍没有自动收缩上下文、压缩任务负载或重试，导致监控任务整轮漏发。
+      - 影响为多条 heartbeat 监控任务阶段性不可用，未见错对象投递、数据安全或全渠道不可用证据；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
   - `2026-06-24 23:02 CST` 本轮补充同根活跃证据，状态维持 `New`：
     - `data/runtime/logs/web.log.2026-06-24`
       - 19:00-23:02 CST 当前 runtime 新增 4 组 heartbeat `context window exceeds limit (2013)` runner error，均落成 `failure_kind=context_window_overflow + execution_failed + skipped_error`。
@@ -176,6 +193,7 @@
 
 ## 当前实现效果
 
+- `2026-06-25 03:06 CST` 当前代码会在 heartbeat 首轮命中 `context window` 时自动做一次轻量恢复重试：用更短的恢复提示词和更紧的工具预算再次检查；若恢复轮仍不能确认，返回 `noop` 或保留失败留痕，而不是继续只靠首轮失败直接漏发。
 - `2026-06-24 19:01 CST` 当前 runtime 已不再把 heartbeat 超窗伪装为合法 noop；但 `context window exceeds limit (2013)` 仍会直接落成 `execution_failed + skipped_error`，且没有自动压缩、重试或降级恢复，造成多个 Web / Feishu heartbeat 任务本轮不发送。
 - `2026-05-23 12:04 CST` 当前 HEAD 已不再把 heartbeat runner 的 context overflow 吸收成 `ContextOverflowNoop`；错误会保留为执行失败并携带 `failure_kind=context_window_overflow` / `parse_kind=ContextOverflowError`，使调度台账、渠道日志和通知页能够区分“条件未触发”和“本轮未能执行”。
 - `2026-05-23 07:08 CST` 最新真实窗口表明，现有 `ContextOverflowNoop` 止血不足：它确实避免了原始 `context window exceeds limit` 外泄，但把 runner 超窗错误写成 `noop + skipped_noop`，导致台账和用户侧都无法区分“条件未触发”和“本轮根本没跑起来”。
