@@ -8,6 +8,12 @@
 
 ## 修复记录
 
+- 2026-06-24 23:02 CST 继续补充同根复发证据：
+  - 19:00-23:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话；本轮以 `data/runtime/logs/acp-events.log` 重构 Web direct 用户可见 final。
+  - 20:01 CST Web direct session `Actor_web__direct__web-user-e05f5e5f74a3` 的 NVDA 投研 final 以 `stopReason=end_turn` 收口，主体完成行情、财报、官方消息、估值和风险条件，但结尾继续写出“已更新 NVDA 公司画像”。
+  - 21:43 CST Web direct session `Actor_web__direct__web-user-680003db2007` 的 ABSI 事件驱动分析正常收口，但正文写出“把这轮 ABSI 的关键事实沉淀成公司画像”。
+  - 本窗未见 Web direct response error、stream disconnect、quota、panic、provider 原始错误、绝对路径或 token 外露。问题不影响主功能链路，因此按质量性 `P3 / New` 继续跟踪；非 P1，不创建 GitHub Issue。
+
 - 2026-06-24 07:02 CST 继续补充同根复发证据：
   - 03:02-07:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话；本轮以 `data/runtime/logs/acp-events.log` 重构 Web direct 用户可见 final。
   - 06:30 CST Web direct session `Actor_web__direct__web-user-14f4cadb069f` 的组合复盘 final 以 `stopReason=end_turn` 收口，主体完成 2026-06-23 美股常规收盘价格、组合当日贡献、个股归因和风险提示。

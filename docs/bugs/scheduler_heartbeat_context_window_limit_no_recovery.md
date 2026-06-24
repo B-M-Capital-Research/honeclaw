@@ -5,6 +5,17 @@
 - **严重等级**: P2
 - **状态**: New
 - **证据来源**:
+  - `2026-06-24 23:02 CST` 本轮补充同根活跃证据，状态维持 `New`：
+    - `data/runtime/logs/web.log.2026-06-24`
+      - 19:00-23:02 CST 当前 runtime 新增 4 组 heartbeat `context window exceeds limit (2013)` runner error，均落成 `failure_kind=context_window_overflow + execution_failed + skipped_error`。
+      - 样本覆盖 Web `AI与科技持仓观察关键事件心跳提醒`（20:00、22:30、23:00 CST）与 Feishu `heartbeat_绿田机械基本面跟踪`（22:00 CST）。
+      - 当前坏态继续不是历史 `ContextOverflowNoop` 静默伪成功；台账能识别失败。但 heartbeat 仍缺自动压缩、重试或任务级恢复，导致监控任务本轮漏发。
+    - 会话质量对照：
+      - `data/sessions.sqlite3` 仍停在 2026-06-17；本轮以 runtime 日志和 `data/runtime/logs/acp-events.log` 重构。
+      - ACP 本窗 43 次 `session/prompt`、30 个 session、42 次 `stopReason=end_turn`、0 个 response error；故障集中在 heartbeat function-calling 超窗链路。
+    - 判断：
+      - 这是功能性 bug。当前仍没有自动收缩上下文、压缩任务负载或重试，导致监控任务整轮漏发。
+      - 影响为多条 heartbeat 监控任务阶段性不可用，未见错对象投递、数据安全或全渠道不可用证据；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
   - `2026-06-24 19:01 CST` 本轮从 `Fixed` 回退为 `New`：
     - `data/runtime/logs/web.log.2026-06-24`
       - 15:01-19:01 CST 当前 runtime 新增 10 组 heartbeat `context window exceeds limit (2013)`，均落成 `failure_kind=context_window_overflow + execution_failed + skipped_error`，覆盖 Web `持仓财报与重大新闻心跳提醒`、`中际旭创关键事件心跳提醒`、`AI与科技持仓观察关键事件心跳提醒`，以及 Feishu `heartbeat_绿田机械基本面跟踪`、`AAOI 1.6T 光模块心跳检测`。

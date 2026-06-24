@@ -22,6 +22,13 @@
 
 ## 最新进展
 
+- 2026-06-24 23:02 CST 运行态继续复发，状态维持 `New`：
+  - 19:00-23:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(imported_at)=2026-06-17T10:37:41.827657+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 本窗 ACP 可重构 30 个 session、42 次 `stopReason=end_turn`、0 个 response error；未见空回复、错投、投递失败、绝对路径、token、provider 原始错误或思维痕迹进入用户可见 final。
+  - 20:00 CST Feishu direct session `Actor_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c` 的 ABSI 加仓判断正常完成催化、稀释、仓位和风险分析，但正文写出“按行情工具返回的 7.41 美元参考价”。
+  - 22:48 CST Feishu direct session `Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21` 的 KLAC 投研正常收口，但结尾写出“本轮已将 KLAC 建立为长期公司画像”。
+  - 这些样本主体正常 `end_turn` 收口，不影响投研主链路、落库或投递，因此仍按质量性 `P3 / New` 处理。为何不影响功能链路：用户仍获得完整投研结论，问题只在内部工具 / 画像流程口径外露。非 P1，不创建 GitHub Issue。
+
 - 2026-06-24 07:02 CST 运行态继续复发，状态维持 `New`：
   - 03:02-07:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(imported_at)=2026-06-17T10:37:41.827657+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
   - 本窗 ACP 可重构 8 个 session、9 次 `stopReason=end_turn`、0 个 response error；未见空回复、错投、投递失败、绝对路径、token、provider 原始错误或思维痕迹进入用户可见 final。

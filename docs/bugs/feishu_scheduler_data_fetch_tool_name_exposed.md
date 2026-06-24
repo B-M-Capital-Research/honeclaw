@@ -22,6 +22,14 @@ New
 
 ## 最新进展
 
+- 2026-06-24 23:02 CST 运行态继续复发，状态维持 `New`：
+  - 19:00-23:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(imported_at)=2026-06-17T10:37:41.827657+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 本窗 ACP 可重构 30 个 session、42 次 `stopReason=end_turn`、0 个 response error；未见空回复、错投、投递失败、绝对路径、token、provider 原始错误或思维痕迹进入 final。
+  - 20:48 CST Feishu direct / scheduler actor session `Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7` 的 A股 / AI 硬件复盘完成事实、映射和动作建议，但正文继续写出 `StockAnalysis` 作为行情口径。
+  - 21:35 CST session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 的 25 支观察池晚间快报完成分组简表，但开头写出“用行情工具校验 25 支观察池的最新价格和财报字段”。
+  - 21:45 CST session `Actor_feishu__direct__ou_5fea712445d905e8418bde07dbcf2cbfb2` 的美股早盘口径复盘正常收口，但正文写出“再尝试用行情工具补 QQQ、SPY、VIX 的同源报价”。
+  - 三个样本报告主体均正常收口，未见投递失败、空回复或链路级数据破坏证据。问题仍只影响用户可见文案边界和产品感，因此为质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-06-23 23:02 CST 运行态复发，状态从 `Fixed` 回退为 `New`：
   - 19:02-23:02 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(imported_at)=2026-06-17T10:37:41.827657+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
   - 本窗 ACP 可重构 29 个 session、49 次 `stopReason=end_turn`、0 个 response error；未见空回复、错投、投递失败、绝对路径、token、provider 原始错误或思维痕迹进入 final。
