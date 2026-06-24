@@ -18,6 +18,9 @@
 
 ## 修复记录
 
+- 2026-06-24 19:01 CST
+  - 15:01-19:01 CST 当前 live 运行态仍持续输出同类 PostgreSQL 参数序列化失败，共 653 条，最近到 19:00:54 CST。
+  - 状态维持 `New`。同窗 ACP 直聊侧 11 次 `session/prompt` 均 `stopReason=end_turn`，0 个 response error，用户可见 chunk 污染扫描为 0；问题仍集中在 function-calling audit 持久化与后续排障审计，不直接阻断用户回复或投递，严重等级维持 P2，非 P1。
 - 2026-06-24 15:03 CST
   - 10:05 CST 的 `created_at` 参数绑定修复后，当前 live 运行态在 11:30-15:02 CST 仍持续输出同类 PostgreSQL 参数序列化失败，最近到 15:02:17 CST。
   - 本轮将状态从 `Fixed` 回退为 `New`。该问题仍只影响 function-calling audit 持久化与后续排障审计，没有证据显示用户回复、投递或渠道主链路被直接阻断，因此严重等级保持 P2，非 P1。
@@ -37,6 +40,12 @@
 
 ## 证据来源
 
+- `data/runtime/logs/web.log.2026-06-24`
+  - 巡检窗口：2026-06-24 15:01-19:01 CST。
+  - 同窗继续出现 653 条同类告警，最近到 19:00:54 CST：
+    - `[LlmAudit] failed to persist function_calling audit: 配置错误: Postgres LLM audit 写入失败: error serializing parameter 3`
+  - 同窗 `data/runtime/logs/acp-events.log` 可见 11 次 `session/prompt`、6 个 session、11 次 `stopReason=end_turn`、0 个 response error；用户可见 chunk 污染扫描未命中内部路径、raw tool 字段、思维痕迹、provider 原始错误或 panic。
+  - 结论：当前 runtime 窗口继续丢失 function-calling audit 记录，状态维持 `New`。该问题影响排障 / 回归审计，不直接阻断用户答复或投递，严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
 - `data/runtime/logs/web.log.2026-06-24`
   - 巡检窗口：2026-06-24 11:02-15:02 CST。
   - 10:05 CST 代码级修复后，11:30-15:02 CST 仍出现 696 条同类告警，最近到 15:02:17 CST：
