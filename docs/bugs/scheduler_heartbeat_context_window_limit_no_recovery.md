@@ -5,6 +5,10 @@
 - **严重等级**: P2
 - **状态**: Fixed
 - **证据来源**:
+  - `2026-06-25 07:04 CST` 巡检复核：
+    - 03:01-07:04 CST `data/runtime/logs/web.log.2026-06-24` 与 `data/runtime/logs/hone_cli_screen.log` 仍可见 24 条 `context window` 相关信号，但当前 live 是否已重启并加载 03:13 CST `fix: retry heartbeat budget failures with lean fallback` 未确认。
+    - 03:13 代码级修复的预期并不是吞掉所有恢复轮失败；恢复轮若仍失败仍应保留 `execution_failed + skipped_error` 留痕。因此本轮 context 信号只作为运行态待复核，不把状态从 `Fixed` 回退。
+    - 同窗 ACP 直聊 / scheduler 侧 9 次 `session/prompt`、8 个 session、9 次 `stopReason=end_turn`、0 个 response error，未见新的全局直聊或投递链路异常。
   - `2026-06-25 03:06 CST` 代码级修复：
     - `crates/hone-channels/src/scheduler.rs` 为 heartbeat transient task 增加一次预算恢复重试：首轮若命中 `context window exceeds limit`，第二轮会切到更短的恢复提示词，不再携带“最近已送达”历史段，并把工具预算收紧到 `max_tool_calls=2`、`data_fetch<=1`、`web_search<=1`，要求无法确认时直接返回 `noop`，避免继续整轮漏发。
     - 该修复不改变 heartbeat 的失败留痕契约：恢复轮若仍失败，依旧保留 `execution_failed + skipped_error` 与 `failure_kind=context_window_overflow`，不会重新伪装成 `noop`。

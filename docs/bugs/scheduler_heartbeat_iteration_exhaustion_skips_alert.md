@@ -7,6 +7,13 @@
 
 ## 修复进展（2026-04-28）
 
+- `2026-06-25 07:04 CST` 巡检复核，状态维持 `Fixed`：
+  - `data/runtime/logs/web.log.2026-06-24` 与 `data/runtime/logs/hone_cli_screen.log`
+    - 03:01-07:04 CST 未命中新的 `max_iterations_exceeded` / `最大迭代` heartbeat 预算触顶样本。
+    - 同窗 heartbeat 仍有大量 `PlainTextSuppressed`、`JsonUnknownStatus`、`JsonMalformed`、`execution_failed` 与 `心跳任务未命中`，这些继续归入 `scheduler_heartbeat_unknown_status_silent_skip.md`，不是本单“预算触顶导致整轮跳过”的新复发证据。
+  - 判断：
+    - 03:13 CST 非文档提交 `1a329389 fix: retry heartbeat budget failures with lean fallback` 已为 `max_iterations_exceeded` 首轮失败补一次轻量恢复重试；本窗没有出现新的预算触顶样本，故不回退状态。
+
 - `2026-06-24 19:01 CST` 本轮确认预算提升到 18 后继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-06-24`
     - 15:02:17 CST Web `中际旭创关键事件心跳提醒` `job_id=j_348d0f87` 记录 `run_finish ... success=false error="max_iterations_exceeded:18"`。
