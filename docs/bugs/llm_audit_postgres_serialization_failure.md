@@ -18,6 +18,9 @@
 
 ## 修复记录
 
+- 2026-06-25 19:01 CST
+  - 15:01-19:01 CST 当前 live 运行态仍持续输出同类 PostgreSQL 参数序列化失败，共 692 条，最近到 19:00 CST。
+  - 状态维持 `New`。同窗 ACP 直聊 / scheduler 侧 2 次 `session/prompt`、2 次 `stopReason=end_turn`、0 个 response error；问题仍集中在 function-calling audit 持久化与后续排障审计，不直接阻断用户回复或投递，严重等级维持 P2，非 P1。
 - 2026-06-25 15:01 CST
   - 11:01-15:01 CST 当前 live 运行态仍持续输出同类 PostgreSQL 参数序列化失败，共 670 条，最近到 15:01 CST。
   - 状态维持 `New`。同窗 ACP 直聊 / scheduler 侧 6 次 `session/prompt`、6 次 `stopReason=end_turn`、0 个 response error；问题仍集中在 function-calling audit 持久化与后续排障审计，不直接阻断用户回复或投递，严重等级维持 P2，非 P1。
