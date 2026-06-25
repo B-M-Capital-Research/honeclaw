@@ -6,6 +6,10 @@
 - **状态**: New
 - **GitHub Issue**: 无
 - **修复结论复核**:
+- `2026-06-26 03:01 CST` 本轮确认当前 runtime 下仍不追平，状态维持 `New`：
+  - `data/sessions.sqlite3` 只读快照在最近四小时窗口 `2026-06-25 23:01-2026-06-26 03:01 CST` 内仍无新增 `sessions` / `session_messages` / `cron_job_runs`，`sessions.max(updated_at)=2026-06-17T10:37:37.207669+08:00`、`sessions.max(last_message_at)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(imported_at)=2026-06-17T10:37:41.827657+08:00`、`cron_job_runs.max(executed_at)=2026-06-17T11:01:42.353141+08:00`。
+  - `data/runtime/logs/hone_cli_screen.log` 与 `data/runtime/logs/web.log.2026-06-25` 同窗持续写入 heartbeat / audit 运行事件，`data/runtime/logs/acp-events.log` 可重构 13 次 `session/prompt`、6 个 session、14 次 `stopReason=end_turn`、0 个 response error；真实 ACP 会话仍在推进，但 SQLite 会话镜像完全没有追平。
+  - 结论：该问题继续直接削弱本巡检任务“优先看最近四小时真实会话”的主数据源，也影响依赖 sqlite 会话索引的历史检索与质量回溯；这是功能性 `P2`，不是单纯质量问题。无活跃 P1，不创建 GitHub Issue。
 - `2026-06-25 23:02 CST` 本轮确认当前 runtime 下仍不追平，状态维持 `New`：
   - `data/sessions.sqlite3` 只读快照在最近四小时窗口 `2026-06-25 19:01-23:02 CST` 内仍无新增 `sessions` / `session_messages` / `cron_job_runs`，`sessions.max(updated_at)=2026-06-17T10:37:37.207669+08:00`、`sessions.max(last_message_at)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(imported_at)=2026-06-17T10:37:41.827657+08:00`、`cron_job_runs.max(executed_at)=2026-06-17T11:01:42.353141+08:00`。
   - `data/runtime/logs/hone_cli_screen.log` 同窗持续写入 heartbeat / audit 运行事件，`data/runtime/logs/acp-events.log` 可重构 41 次 `session/prompt`、41 次 `stopReason=end_turn`、0 个 response error；真实 ACP 会话仍在推进，但 SQLite 会话镜像完全没有追平。

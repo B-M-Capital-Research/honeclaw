@@ -14,10 +14,22 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## 修复记录
 
+- 2026-06-26 03:04 CST
+  - `crates/hone-core/src/cloud_runtime.rs` 的 `upsert_llm_audit_record(...)` 现改为把 audit payload 先序列化为 JSON 文本，再以 `$3::text::jsonb` 写入 PostgreSQL；`created_at` 也先做 RFC3339 校验，再以 `$4::text::timestamptz` 写入。
+  - 这次修复不再依赖 `tokio-postgres` 对 `Json<T>` 和 `chrono::DateTime` 的参数编码分支，直接收敛到 PostgreSQL 自身的 `jsonb/timestamptz` 文本 cast，覆盖此前两轮“单测通过但 live 仍报 `error serializing parameter 3`”的剩余缺口。
+  - 新增回归 `llm_audit_record_uses_text_cast_inputs_for_postgres_insert`，直接覆盖当前真实写入路径使用的文本参数编码；既有 `llm_audit_record_payload_encodes_as_jsonb_parameter` 与 `llm_audit_record_created_at_encodes_as_timestamptz_parameter` 继续保留，分别覆盖 JSONB / `timestamptz` 的底层类型编码。
+  - 验证通过：
+    - `cargo test -p hone-core llm_audit_record_ --lib -- --nocapture`
+    - `cargo check -p hone-core --tests`
+    - `git diff --check`
+  - 本轮未重启当前 web / worker 进程；运行态日志是否止血仍待后续巡检窗口复核，因此本单为代码级 `Fixed`，未直接标 `Closed`。
+- 2026-06-26 03:01 CST
+  - 23:01-03:01 CST 当前 live 运行态仍持续输出同类 PostgreSQL 参数序列化失败，共 632 条。
+  - 状态维持 `New`。同窗 ACP 直聊 / scheduler 侧 13 次 `session/prompt`、14 次 `stopReason=end_turn`、0 个 response error；问题仍集中在 function-calling audit 持久化与后续排障审计，不直接阻断用户回复或投递，严重等级维持 P2，非 P1。
 - 2026-06-25 23:02 CST
   - 19:01-23:02 CST 当前 live 运行态仍持续输出同类 PostgreSQL 参数序列化失败，共 659 条。
   - 状态维持 `New`。同窗 ACP 直聊 / scheduler 侧 41 次 `session/prompt`、41 次 `stopReason=end_turn`、0 个 response error；问题仍集中在 function-calling audit 持久化与后续排障审计，不直接阻断用户回复或投递，严重等级维持 P2，非 P1。
@@ -252,6 +264,7 @@
 - `2026-06-20 19:02 CST` 运行态复核显示当前 web 日志仍有同类告警 628 条，最近到 19:00 CST；由于尚未确认 live web / worker 已部署或重启到 `fa7f0734`，本单状态仍保持代码级 `Fixed`，待新运行态再复核是否真正止住。
 - `2026-06-24 10:05 CST` 已在 [`crates/hone-core/src/cloud_runtime.rs`](/Users/fengming2/Desktop/honeclaw/crates/hone-core/src/cloud_runtime.rs) 修复遗漏的 `created_at` 参数绑定：先把 RFC3339 字符串解析为 `chrono::DateTime<Utc>`，再绑定到 `$4::timestamptz`；验证 `cargo test -p hone-core llm_audit_record_ --lib -- --nocapture`、`cargo check -p hone-core --tests` 与 `git diff --check` 通过。
 - `2026-06-24 15:03 CST` 运行态复核显示 10:05 CST 修复后仍有同类告警 696 条，最近到 15:02:17 CST；本轮按当前 live 证据将状态从代码级 `Fixed` 回退为 `New`。
+- `2026-06-26 03:04 CST` 已在 [`crates/hone-core/src/cloud_runtime.rs`](/Users/fengming2/Desktop/honeclaw/crates/hone-core/src/cloud_runtime.rs) 把 LLM audit 写入参数统一收敛为文本输入再由 PostgreSQL 显式 cast：`record` 用 `$3::text::jsonb`，`created_at` 用 `$4::text::timestamptz`。这样不再依赖 Rust 侧 `Json<T>` / `chrono` 参数编码分支，可直接覆盖 live 一直报的 `error serializing parameter 3`。新增回归 `llm_audit_record_uses_text_cast_inputs_for_postgres_insert`，并通过 `cargo test -p hone-core llm_audit_record_ --lib -- --nocapture`、`cargo check -p hone-core --tests`、`git diff --check`。当前运行态是否止血仍待后续巡检窗口复核，因此状态回到代码级 `Fixed`。
 
 ## 用户影响
 
