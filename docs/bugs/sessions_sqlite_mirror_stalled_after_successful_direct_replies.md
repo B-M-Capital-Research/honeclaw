@@ -3,9 +3,14 @@
 - **发现时间**: 2026-04-28 01:05 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无
 - **修复结论复核**:
+- `2026-06-25 15:01 CST` 本轮确认重启 / 当前 runtime 后仍不追平，状态从 `Fixed` 回退为 `New`：
+  - `data/sessions.sqlite3` 只读快照在最近四小时窗口 `2026-06-25 11:01-15:01 CST` 内仍无新增 `sessions` / `session_messages` / `cron_job_runs`，`sessions.max(updated_at)=2026-06-17T10:37:37.207669+08:00`、`sessions.max(last_message_at)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(imported_at)=2026-06-17T10:37:41.827657+08:00`、`cron_job_runs.max(executed_at)=2026-06-17T11:01:42.353141+08:00`。
+  - `data/runtime/logs/web.log.2026-06-25` 已在 08:00 CST 后重新初始化 cloud 表并持续写入 heartbeat / audit 运行事件，不能再简单归为 6 月 17 日前旧进程未重启。
+  - `data/runtime/logs/acp-events.log` 同窗可重构 6 次 `session/prompt`、4 个有可见输出的 Feishu direct session、6 次 `stopReason=end_turn`、0 个 response error；真实 ACP 会话仍在推进，但 SQLite 会话镜像完全没有追平。
+  - 结论：该问题继续直接削弱本巡检任务“优先看最近四小时真实会话”的主数据源，也影响依赖 sqlite 会话索引的历史检索与质量回溯；这是功能性 `P2`，不是单纯质量问题。无活跃 P1，不创建 GitHub Issue。
 - `2026-06-23 03:02 CST` 本轮继续观察到 SQLite 会话镜像落后于真实 ACP / Web runtime 事件：
   - `data/sessions.sqlite3` 只读快照在最近四小时窗口 `2026-06-22 23:03-2026-06-23 03:02 CST` 内仍无新增 `sessions` / `session_messages` / `cron_job_runs`，`sessions.max(updated_at)=2026-06-17T10:37:37.207669+08:00`、`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`cron_job_runs.max(executed_at)=2026-06-17T11:01:42.353141+08:00`。
   - 但 `data/runtime/logs/acp-events.log` 同窗可重构 7 次 `session/prompt`、3 个 session 与 0 个 response error；`data/runtime/logs/web.log.2026-06-22` 继续更新到 `2026-06-23 03:01 CST`，可见 heartbeat / audit / tool budget 运行事件。
