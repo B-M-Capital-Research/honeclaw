@@ -22,6 +22,13 @@ New
 
 ## 最新进展
 
+- 2026-06-25 11:01 CST 运行态继续复发，状态维持 `New`：
+  - 07:04-11:01 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(imported_at)=2026-06-17T10:37:41.827657+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
+  - 本窗 ACP 可重构 36 次 `session/prompt`、36 次 `stopReason=end_turn`、0 个 response error；未见空回复、错投、投递失败、绝对路径、token、provider 原始错误或思维痕迹进入 final。
+  - 08:30 CST Feishu direct / scheduler actor session `Actor_feishu__direct__ou_5f1fdfeceacb0f2ece1a2c88c5a7d17e34` 的 SNDK / 存储链复盘正常收口，但正文继续写出 `StockAnalysis` 作为行情 / 评级口径。
+  - 09:00 CST session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 的 25 支观察池节奏管理正常收口，但正文写出 `data_fetch 返回的是 2026-06-24 美股常规盘收盘附近 quote`，并继续把工具字段当作用户态数据来源说明。
+  - 两个样本报告主体均正常收口，未见投递失败、空回复或链路级数据破坏证据。问题仍只影响用户可见文案边界和产品感，不影响主功能链路，因此为质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-06-25 03:04 CST 运行态继续复发，状态维持 `New`：
   - 23:02-03:04 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(imported_at)=2026-06-17T10:37:41.827657+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
   - 本窗 ACP 可重构 8 个 session、15 次 `stopReason=end_turn`、0 个 response error；未见空回复、错投、投递失败、绝对路径、token、provider 原始错误或思维痕迹进入 final。

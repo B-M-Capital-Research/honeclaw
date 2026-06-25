@@ -3,8 +3,20 @@
 - **发现时间**: 2026-04-16 14:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 - **证据来源**:
+  - `2026-06-25 11:01 CST` 本轮从 `Fixed` 回退为 `New`：
+    - `data/runtime/logs/web.log.2026-06-25`
+      - 08:00 CST 日志从到期任务触发和 cloud table 初始化开始，晚于 03:13 CST `fix: retry heartbeat budget failures with lean fallback`，说明本窗不能再简单归为旧进程未加载修复。
+      - 08:00-11:01 CST 当前 runtime 仍新增 5 组 heartbeat `context window exceeds limit (2013)` runner error，均落成 `failure_kind=context_window_overflow + execution_failed + skipped_error`。
+      - 样本覆盖 Feishu `heartbeat_绿田机械基本面跟踪`（08:00 CST）、Web `NVDA 关键事件心跳提醒`（08:30 / 11:00 CST）与 Feishu `AAOI 1.6T 光模块心跳检测`（09:00 CST）。
+      - 同窗搜索未见 `retry_with_budget_recovery` / `budget_recovery` 相关日志；实际表现仍是首轮超窗后直接失败并跳过发送。
+    - 会话质量对照：
+      - `data/sessions.sqlite3` 仍停在 2026-06-17；本轮以 runtime 日志和 `data/runtime/logs/acp-events.log` 重构。
+      - ACP 本窗 36 次 `session/prompt`、36 次 `stopReason=end_turn`、0 个 response error；故障集中在 heartbeat function-calling 超窗链路，不是直聊或出站整体不可用。
+    - 判断：
+      - 这是 03:13 预算恢复修复后的运行态复发，仍导致 heartbeat 监控任务本轮漏发 / 降级。
+      - 影响为多条 heartbeat 监控任务阶段性不可用，未见错对象投递、数据安全或全渠道不可用证据；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
   - `2026-06-25 07:04 CST` 巡检复核：
     - 03:01-07:04 CST `data/runtime/logs/web.log.2026-06-24` 与 `data/runtime/logs/hone_cli_screen.log` 仍可见 24 条 `context window` 相关信号，但当前 live 是否已重启并加载 03:13 CST `fix: retry heartbeat budget failures with lean fallback` 未确认。
     - 03:13 代码级修复的预期并不是吞掉所有恢复轮失败；恢复轮若仍失败仍应保留 `execution_failed + skipped_error` 留痕。因此本轮 context 信号只作为运行态待复核，不把状态从 `Fixed` 回退。
