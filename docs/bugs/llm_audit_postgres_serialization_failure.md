@@ -18,6 +18,10 @@
 
 ## 修复记录
 
+- 2026-06-26 07:01 CST
+  - 03:00-07:01 CST 当前 live 运行态仍持续输出同类 PostgreSQL 参数序列化失败，共 706 条。
+  - 同窗存在 03:07 CST 非文档代码提交 `952af973 fix: harden llm audit postgres writes`，但本轮未见 web / worker 进程重启并加载该提交的明确证据；因此这批 live 错误先按旧运行态 / 待重启复核处理。
+  - 状态仍保持代码级 `Fixed`。同窗 ACP 直聊 / scheduler 侧 7 次 `session/prompt`、7 次 `stopReason=end_turn`、0 个 response error；问题仍集中在 function-calling audit 持久化与后续排障审计，不直接阻断用户回复或投递，严重等级维持 P2，非 P1。
 - 2026-06-26 03:04 CST
   - `crates/hone-core/src/cloud_runtime.rs` 的 `upsert_llm_audit_record(...)` 现改为把 audit payload 先序列化为 JSON 文本，再以 `$3::text::jsonb` 写入 PostgreSQL；`created_at` 也先做 RFC3339 校验，再以 `$4::text::timestamptz` 写入。
   - 这次修复不再依赖 `tokio-postgres` 对 `Json<T>` 和 `chrono::DateTime` 的参数编码分支，直接收敛到 PostgreSQL 自身的 `jsonb/timestamptz` 文本 cast，覆盖此前两轮“单测通过但 live 仍报 `error serializing parameter 3`”的剩余缺口。
