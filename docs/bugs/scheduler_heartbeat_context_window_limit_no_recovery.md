@@ -5,6 +5,17 @@
 - **严重等级**: P2
 - **状态**: New
 - **证据来源**:
+  - `2026-06-25 23:02 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
+    - `data/runtime/logs/hone_cli_screen.log`
+      - 19:01-23:02 CST 当前 runtime 新增 9 条 `context window` 相关 heartbeat 信号，其中 6 条落成 `failure_kind=context_window_overflow + execution_failed + skipped_error`。
+      - 代表性样本覆盖 `AAOI 1.6T 光模块心跳检测` 等 Web / Feishu heartbeat function-calling 任务。
+      - 同窗搜索未见 `retry_with_budget_recovery` / `budget_recovery` 相关日志；实际表现仍是首轮超窗后直接失败并跳过发送。
+    - 会话质量对照：
+      - `data/sessions.sqlite3` 仍停在 2026-06-17；本轮以 runtime 日志和 `data/runtime/logs/acp-events.log` 重构。
+      - ACP 本窗 41 次 `session/prompt`、41 次 `stopReason=end_turn`、0 个 response error；故障集中在 heartbeat function-calling 超窗链路，不是直聊或出站整体不可用。
+    - 判断：
+      - 这是 03:13 预算恢复修复后的持续运行态复发，仍导致 heartbeat 监控任务本轮漏发 / 降级。
+      - 影响为多条 heartbeat 监控任务阶段性不可用，未见错对象投递、数据安全或全渠道不可用证据；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
   - `2026-06-25 19:01 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
     - `data/runtime/logs/web.log.2026-06-25` 与 `data/runtime/logs/hone_cli_screen.log`
       - 15:01-19:01 CST 当前 runtime 新增 18 条 `context window` 相关 heartbeat 信号，其中 12 条落成 `failure_kind=context_window_overflow + execution_failed + skipped_error`。
