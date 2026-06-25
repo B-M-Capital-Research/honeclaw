@@ -182,6 +182,22 @@ impl CloudLlmAuditRecord {
                 .map_err(|err| HoneError::Serialization(err.to_string()))?,
         })
     }
+
+    fn payload_json_for_postgres(&self) -> HoneResult<String> {
+        serde_json::to_string(&self.record)
+            .map_err(|err| HoneError::Serialization(format!("LLM audit JSON 序列化失败: {err}")))
+    }
+
+    fn created_at_text_for_postgres(&self) -> HoneResult<String> {
+        DateTime::parse_from_rfc3339(&self.created_at)
+            .map_err(|err| {
+                HoneError::Config(format!(
+                    "Postgres LLM audit created_at 非法 RFC3339 时间戳: {} ({err})",
+                    self.created_at
+                ))
+            })?;
+        Ok(self.created_at.clone())
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -2273,20 +2289,13 @@ SELECT
     pub async fn upsert_llm_audit_record(&self, record: LlmAuditRecord) -> HoneResult<()> {
         let cloud_record = CloudLlmAuditRecord::from_audit_record(&record)?;
         let client = self.connect_client().await?;
-        let payload = Json(&cloud_record.record);
-        let created_at = DateTime::parse_from_rfc3339(&cloud_record.created_at)
-            .map_err(|err| {
-                HoneError::Config(format!(
-                    "Postgres LLM audit created_at 非法 RFC3339 时间戳: {} ({err})",
-                    cloud_record.created_at
-                ))
-            })?
-            .with_timezone(&Utc);
+        let payload = cloud_record.payload_json_for_postgres()?;
+        let created_at = cloud_record.created_at_text_for_postgres()?;
         client
             .execute(
                 r#"
 INSERT INTO cloud_llm_audit_records(id, actor_storage_key, record, created_at)
-VALUES ($1, $2, $3::jsonb, $4::timestamptz)
+VALUES ($1, $2, $3::text::jsonb, $4::text::timestamptz)
 ON CONFLICT(id)
 DO UPDATE SET
   actor_storage_key = EXCLUDED.actor_storage_key,
@@ -2301,7 +2310,12 @@ DO UPDATE SET
                 ],
             )
             .await
-            .map_err(|err| HoneError::Config(format!("Postgres LLM audit 写入失败: {err}")))?;
+            .map_err(|err| {
+                HoneError::Config(format!(
+                    "Postgres LLM audit 写入失败: id={} actor_storage_key={:?}: {err}",
+                    cloud_record.id, cloud_record.actor_storage_key
+                ))
+            })?;
         Ok(())
     }
 
@@ -3574,5 +3588,58 @@ mod tests {
             !bytes.is_empty(),
             "timestamptz payload should not be empty"
         );
+    }
+
+    #[test]
+    fn llm_audit_record_uses_text_cast_inputs_for_postgres_insert() {
+        let actor = ActorIdentity::new("web", "audit-user", Some("scope-1")).expect("actor");
+        let mut record = LlmAuditRecord::new(
+            "session-1",
+            Some(actor),
+            "agent.function_calling",
+            "chat",
+            "openrouter",
+            Some("gpt-test".to_string()),
+            serde_json::json!({
+                "messages": [{"role": "user", "content": "hello"}],
+            }),
+        );
+        record.success = true;
+        record.response = Some(serde_json::json!({
+            "output": [{"type": "text", "text": "world"}],
+        }));
+        record.metadata = serde_json::json!({
+            "tool_calls": [{"name": "search", "arguments": {"q": "hello"}}],
+            "heartbeat": {"job_id": "hb-1", "triggered": true},
+            "budget": {"global_used": 3, "tool_used": 2},
+        });
+
+        let cloud_record = CloudLlmAuditRecord::from_audit_record(&record).expect("cloud record");
+        let payload = cloud_record
+            .payload_json_for_postgres()
+            .expect("payload text");
+        let created_at = cloud_record
+            .created_at_text_for_postgres()
+            .expect("created_at text");
+
+        let mut payload_bytes = BytesMut::new();
+        payload
+            .to_sql_checked(&Type::TEXT, &mut payload_bytes)
+            .expect("text payload encoding");
+        assert!(!payload_bytes.is_empty(), "text payload should not be empty");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&payload).expect("payload json"),
+            cloud_record.record
+        );
+
+        let mut created_at_bytes = BytesMut::new();
+        created_at
+            .to_sql_checked(&Type::TEXT, &mut created_at_bytes)
+            .expect("text timestamp encoding");
+        assert!(
+            !created_at_bytes.is_empty(),
+            "text timestamp payload should not be empty"
+        );
+        DateTime::parse_from_rfc3339(&created_at).expect("created_at should stay rfc3339");
     }
 }
