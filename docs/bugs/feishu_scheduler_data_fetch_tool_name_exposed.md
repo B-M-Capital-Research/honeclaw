@@ -22,6 +22,12 @@ New
 
 ## 最新进展
 
+- 2026-06-27 03:01 CST 运行态继续复发，状态维持 `New`：
+  - 23:03-03:01 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(imported_at)=2026-06-17T10:37:41.827657+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 chunk。
+  - 本窗 ACP 可见 9 个 prompt session、16 次 `stopReason=end_turn`、0 个 response error；未见空回复、错投、投递失败、绝对路径、token、provider 原始错误或思维痕迹进入 final。
+  - 用户可见污染扫描仅命中 Feishu direct / scheduler actor session `Actor_feishu__direct__ou_5f895bed1573d53053e89bfc382b523a44` 的 `Hone data_fetch 实时` 片段，继续把内部工具名作为用户态数据来源说明。
+  - 该样本没有链路级失败证据；问题仍只影响用户可见文案边界和产品感，不影响主功能链路，因此为质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-06-25 11:01 CST 运行态继续复发，状态维持 `New`：
   - 07:04-11:01 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(imported_at)=2026-06-17T10:37:41.827657+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
   - 本窗 ACP 可重构 36 次 `session/prompt`、36 次 `stopReason=end_turn`、0 个 response error；未见空回复、错投、投递失败、绝对路径、token、provider 原始错误或思维痕迹进入 final。
