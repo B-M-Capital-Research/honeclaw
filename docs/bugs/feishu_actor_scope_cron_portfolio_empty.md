@@ -3,7 +3,7 @@
 - **发现时间**: 2026-06-03 23:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: [#49](https://github.com/B-M-Capital-Research/honeclaw/issues/49)
 
 ## 证据来源
@@ -66,6 +66,13 @@
   - 同窗可见 Feishu direct runner tool / chunk / `stopReason=end_turn`，说明直聊生成链路仍可收口。
   - 未见新的用户可见 `hone-mcp binary not found` 或 provider 原始失败；异常集中在 actor 业务数据读取与 scheduler due-run 链路。
 - 最近四小时非文档代码提交：`f20ea8ea Fix MCP data dir path for feishu actor scope`，是本缺陷 03:04 CST 代码修复；但 06:26 CST live 真实会话仍复现 portfolio 读取为空，因此本轮按运行态仍活跃处理。
+- `data/runtime/logs/acp-events.log` / `data/runtime/logs/web.log.2026-06-26`
+  - 巡检时间窗：2026-06-26 19:02-23:03 CST；`data/sessions.sqlite3` 只读快照仍停在 2026-06-17，不能作为该窗口真实会话源。
+  - 同窗 ACP 可见 42 次 `session/prompt`、42 次 `stopReason=end_turn`、0 个 response error，说明 direct / scheduler 生成链路能正常收口。
+  - 20:01 CST Feishu direct actor `Actor_feishu__direct__ou_5f85509d35510291f93cd79a3b1c9eebf3` 用户可见 final 写出“当前持仓管理暂时不可用，本轮会沿用最近一次早报里的持仓清单”，随后继续基于历史清单生成盘前持仓框架。
+  - 该 actor 此前已在本单中确认存在非空 portfolio 权威文件；本轮新样本不是用户无持仓，而是 live 运行态仍会把持仓读取能力降级为不可用，并回退到历史记忆口径。
+  - 23:01 CST 同窗 Feishu direct / scheduler 仍能 `persist_assistant` 并 `reply.chars=1342` 正常完成，异常集中在持久化 portfolio 读取/可用性判断，而不是 Feishu 出站或 ACP transport 普遍故障。
+  - 最近四小时无非文档代码提交；本轮不是代码修复后的待复核，而是真实运行态继续复现同一持久化投资上下文读取缺陷。
 
 ## 端到端链路
 
@@ -91,6 +98,7 @@
 - 2026-06-16 20:00 CST 两条 scheduler 样本中，相关 actor 的 portfolio 文件均存在且非空，但 final 仍说 `data/portfolio` / 当前沙盒 portfolio 为空，并继续用历史记忆重建持仓口径，说明 2026-06-08 cloud runtime env 加固后的 live 窗口仍有真实复发。
 - 2026-06-17 07:00 CST `美股持仓收盘后早报` 样本发生在 03:10 CST 修复提交之后，但当前 live 服务未重启，用户可见 final 仍把现存 portfolio 数据根读成空；这说明代码修复尚未在 live 旧进程中生效，仍需重启后复核，不能按 `Closed` 处理。
 - 2026-06-17 15:30 CST JSON 会话源继续出现同一读空口径：`美股盘前要闻、持仓评级与机会观察` final 未读取到沙盒 `data/portfolio/holdings.json`，而对应 actor 的 portfolio 权威文件非空。该样本进一步说明旧 live 进程仍会影响用户，但本轮没有证据证明重启到 03:10 修复后的新进程仍失败。
+- 2026-06-26 20:01 CST Feishu direct / scheduler 运行态再次把同一类持仓读取链路降级为“持仓管理暂时不可用”，并回退到最近一次早报里的历史清单；这已经晚于 2026-06-17 多轮代码级修复与 live 运行观察，因此本单从代码级 `Fixed` 回退为运行态 `New`。
 
 ## 用户影响
 
@@ -106,6 +114,7 @@
 - 2026-06-05 04:50 CST 新样本只直接证明 Cron 读取为空，未同时证明 portfolio / watchlist 也读空；但它复用同一 actor scope / data dir 读取链路，且影响范围仍是持久化 Cron 数据正确性，因此不新建重复缺陷，按本单回退状态。
 - 2026-06-06 06:26 CST 新样本直接证明 portfolio 读取为空：同一 actor 有本地 portfolio 文件与非空 `holdings`，assistant 却按“账本当前显示暂无持仓”生成建议。该证据与 Cron 读空同属 actor data dir / storage schema 读取链路，不新建重复缺陷。
 - 2026-06-16 20:00 CST 新样本再次直接证明 portfolio 读取为空：两个 Feishu scheduler actor 都有本地 portfolio 文件与非空 `holdings`，assistant final 却把当前 `data/portfolio` / 沙盒 portfolio 视为空目录。该证据与原 P1 同属 actor data dir / storage schema 读取链路，不新建重复缺陷；状态从 `Fixed` 回退为 `New`。
+- 2026-06-26 20:01 CST 新样本不再直接外露 `data/portfolio` / `holdings.json` 路径，但用户态仍表现为“持仓管理暂时不可用 + 沿用历史早报清单”。这说明净化层可能遮住了内部路径口径，但 portfolio 真相源读取/降级链路仍未恢复；同根因仍是 actor 持久化业务数据读取不可用或未被 answer 阶段正确消费。
 
 ## 修复记录
 
@@ -163,6 +172,10 @@
   - 20:00 CST 两条 Feishu scheduler 均成功送达，但都在用户可见 final 中把现存 portfolio 数据根读成空，并退回历史记忆口径生成持仓 / 组合分析。
   - 对应 actor 的 `data/portfolio/portfolio_feishu__direct__*.json` 文件真实存在且非空，因此这是持久化投资上下文读取链路复发，而不是用户数据缺失。
   - 已有 GitHub Issue [#49](https://github.com/B-M-Capital-Research/honeclaw/issues/49)，本轮不重复创建。
+- `2026-06-26 23:03 CST` 运行态再次复现，状态从 `Fixed` 回退为 `New`：
+  - 20:01 CST Feishu direct / scheduler 样本正常 `end_turn` 和投递收口，但用户可见 final 写出“当前持仓管理暂时不可用”，并以最近一次早报里的持仓清单替代当前 portfolio 真相源。
+  - 该形态与 06-16 / 06-17 的 `data/portfolio` 空目录口径同根：持久化 portfolio 读取不可用后，answer 阶段没有用真实账本纠偏，只是换成更产品化的降级话术。
+  - 已有 GitHub Issue [#49](https://github.com/B-M-Capital-Research/honeclaw/issues/49)，本轮不重复创建。
 
 ## 验证
 
@@ -182,7 +195,7 @@
 
 ## 后续关注
 
-- 本轮是代码级闭环，没有重启现有服务做 live 复核；如需运行态确认，可在不重启当前服务的前提下优先检查新进程是否持有绝对 `HONE_CONFIG_PATH` / `HONE_DATA_DIR`。
+- 本轮已确认 2026-06-26 live 运行态仍复现，不再按单纯“待 live 重启复核”的代码级 `Fixed` 处理；下一步应直接排查当前 live 进程的 portfolio / cron 真相源配置、cloud env 透传和 answer 阶段工具结果消费。
 - 2026-06-17 07:00 与 15:30 CST 已确认旧 live 进程仍会向用户输出 `data/portfolio` / `holdings.json` 空目录口径；重启/部署后应优先复核同一 actor 的下一次持仓 scheduler 是否直接读取真实 portfolio，而不是继续沿用历史记忆。
 - 若后续仍出现 `jobs=[]` + `holdings=[]` 组合症状，应优先检查对应进程的 `HONE_DATA_DIR` 与 `cwd`，而不是先怀疑 actor identity 漂移。
 - 当前还需进一步确认 2026-06-05 04:50 运行态进程实际持有的 `HONE_CONFIG_PATH` / `HONE_DATA_DIR`，以及 `hone-mcp` 读取 Cron 文件时是否落到了 sandbox 或 runtime 下的空数据树。
