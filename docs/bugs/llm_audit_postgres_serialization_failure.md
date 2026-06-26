@@ -18,6 +18,10 @@
 
 ## 修复记录
 
+- 2026-06-26 15:01 CST
+  - 11:05-15:01 CST 当前 live 运行态仍持续输出同类 PostgreSQL 参数序列化失败，共 682 条。
+  - 同窗 `data/runtime/logs/acp-events.log` 可用窗口可见 3 次 `session/prompt`、3 次 `stopReason=end_turn`、0 个 response error；问题仍集中在 function-calling audit 持久化与后续排障审计，不直接阻断用户回复或投递，严重等级维持 P2，非 P1。
+  - 状态维持 `New`，不创建 GitHub Issue。
 - 2026-06-26 11:05 CST
   - 07:01-11:05 CST 当前 live 运行态仍持续输出同类 PostgreSQL 参数序列化失败，共 549 条。
   - 11:00 CST `data/runtime/logs/web.log.2026-06-26` 出现 cloud table / `conversation_quota` 初始化日志，晚于 03:07 CST 非文档代码提交 `952af973 fix: harden llm audit postgres writes`；同一 11:00 CST 窗口仍继续输出 `error serializing parameter 3`。

@@ -7,6 +7,16 @@
 
 ## 修复进展（2026-04-28）
 
+- `2026-06-26 15:01 CST` 本轮确认预算恢复修复后继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-06-26` 与 `data/runtime/logs/hone_cli_screen.log`
+    - 11:05-15:01 CST 继续出现 3 条 `max_iterations_exceeded` 相关 heartbeat 信号。
+    - 代表性样本为 13:31 CST Feishu `TSLA 正负触发条件心跳监控`，仍落成 `runner_error ... failure_kind=runner_error error="max_iterations_exceeded:18"`，并由出站层记录为 `execution_failed + skipped_error + delivered=0`；用户本轮收不到应发 / 应判定的 heartbeat 结果。
+    - 同窗日志未见 `retry_with_budget_recovery` / `budget_recovery` 相关恢复重试痕迹；实际表现仍是预算触顶后直接失败并跳过发送。
+  - 判断：
+    - 这是 03:13 CST 重新修复后的同根持续运行态复发，不再是旧 `max_iterations_exceeded:10` 或未部署样本。
+    - 同窗 `data/runtime/logs/acp-events.log` 可用窗口 3 次 `stopReason=end_turn`、0 个 response error；故障集中在 heartbeat function-calling 预算触顶导致的整轮漏发，不是全局直聊或投递链路不可用。
+    - 影响为单类 heartbeat 监控任务漏发 / 降级，未见错对象投递、数据安全或全渠道不可用证据；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-06-25 23:02 CST` 本轮确认预算恢复修复后继续复发，状态维持 `New`：
   - `data/runtime/logs/hone_cli_screen.log`
     - 19:01-23:02 CST 继续出现 3 条 `max_iterations_exceeded` 相关 heartbeat 信号。
