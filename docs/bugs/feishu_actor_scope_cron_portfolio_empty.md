@@ -3,7 +3,7 @@
 - **发现时间**: 2026-06-03 23:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#49](https://github.com/B-M-Capital-Research/honeclaw/issues/49)
 
 ## 证据来源
@@ -99,6 +99,7 @@
 - 2026-06-17 07:00 CST `美股持仓收盘后早报` 样本发生在 03:10 CST 修复提交之后，但当前 live 服务未重启，用户可见 final 仍把现存 portfolio 数据根读成空；这说明代码修复尚未在 live 旧进程中生效，仍需重启后复核，不能按 `Closed` 处理。
 - 2026-06-17 15:30 CST JSON 会话源继续出现同一读空口径：`美股盘前要闻、持仓评级与机会观察` final 未读取到沙盒 `data/portfolio/holdings.json`，而对应 actor 的 portfolio 权威文件非空。该样本进一步说明旧 live 进程仍会影响用户，但本轮没有证据证明重启到 03:10 修复后的新进程仍失败。
 - 2026-06-26 20:01 CST Feishu direct / scheduler 运行态再次把同一类持仓读取链路降级为“持仓管理暂时不可用”，并回退到最近一次早报里的历史清单；这已经晚于 2026-06-17 多轮代码级修复与 live 运行观察，因此本单从代码级 `Fixed` 回退为运行态 `New`。
+- 2026-06-27 03:00 CST 补查当前 live 日志后发现，同窗 `hone_cli_screen.log` 明确有多次 `tool_execute_success name=portfolio`，说明 06-26 20:00 样本并非 `portfolio` 工具不可用或直接读空；问题进一步收敛为 multi-agent answer 阶段没有稳定消费 search-stage 已验证的持仓真相源，导致最终文案继续回退到“持仓管理暂时不可用 / 沿用历史早报清单”。
 
 ## 用户影响
 
@@ -115,6 +116,7 @@
 - 2026-06-06 06:26 CST 新样本直接证明 portfolio 读取为空：同一 actor 有本地 portfolio 文件与非空 `holdings`，assistant 却按“账本当前显示暂无持仓”生成建议。该证据与 Cron 读空同属 actor data dir / storage schema 读取链路，不新建重复缺陷。
 - 2026-06-16 20:00 CST 新样本再次直接证明 portfolio 读取为空：两个 Feishu scheduler actor 都有本地 portfolio 文件与非空 `holdings`，assistant final 却把当前 `data/portfolio` / 沙盒 portfolio 视为空目录。该证据与原 P1 同属 actor data dir / storage schema 读取链路，不新建重复缺陷；状态从 `Fixed` 回退为 `New`。
 - 2026-06-26 20:01 CST 新样本不再直接外露 `data/portfolio` / `holdings.json` 路径，但用户态仍表现为“持仓管理暂时不可用 + 沿用历史早报清单”。这说明净化层可能遮住了内部路径口径，但 portfolio 真相源读取/降级链路仍未恢复；同根因仍是 actor 持久化业务数据读取不可用或未被 answer 阶段正确消费。
+- 2026-06-27 03:00 CST 日志补证后，根因判断进一步更新：06-26 20:00 样本里 `portfolio` 工具实际执行成功，新的薄弱点不是 MCP data root 再次读空，而是 multi-agent handoff 只把 `portfolio` / `cron_job` 真相源埋在冗长 JSON transcript 里，answer 阶段更容易忽略这些已验证状态，转而沿用历史记忆或退化话术。
 
 ## 修复记录
 
@@ -124,6 +126,12 @@
   - `crates/hone-channels/src/runtime.rs` 的共享净化层新增 `holdings.json` / `空目录` 自查口径过滤，继续兜住“当前沙盒 data/portfolio 为空、没有可读 holdings.json”这类内部存储判断，避免再次进入用户可见 final。
   - 新增回归 `generate_effective_config_absolutizes_storage_paths_from_runtime_dir`、`build_prompt_bundle_includes_portfolio_and_cron_truth_source_policy`、`sanitize_user_visible_output_strips_portfolio_empty_dir_self_inspection_copy`。
   - 本轮仍未重启当前 live 服务，也没有做运行态复核，因此先记代码级 `Fixed`，待后续真实 Feishu direct / scheduler 窗口复核是否可进一步转 `Closed`。
+
+- `2026-06-27 03:20 CST` 再次修复：
+  - `crates/hone-channels/src/runners/multi_agent.rs` 的 answer-stage handoff 现在会先从 search-stage 成功工具结果里提炼 `portfolio` / `cron_job` 的“已验证用户状态摘要”，把持仓数、持仓 ticker、watchlist 和任务概览提升为 answer prompt 里的高优先级事实，而不再只埋在大段 JSON transcript 中。
+  - handoff 指令新增显式约束：若摘要里已有成功的 `portfolio` / `cron_job` 结果，answer 阶段不得再声称“持仓/任务不可用、为空、需要重建”，除非这些同一批工具结果本身就是空或失败。
+  - 新增回归 `handoff_text_surfaces_verified_portfolio_state_summary` 与 `handoff_text_surfaces_verified_cron_state_summary`，锁住 `portfolio` / `cron_job` 成功结果必须在 handoff 里被前置摘要。
+  - 本轮未重启 live 服务，也不涉及渠道进程切换，因此先记代码级 `Fixed`；后续仍需观察真实 Feishu direct / scheduler 是否不再回退到“沿用历史早报清单”。
 
 - `2026-06-17 07:03 CST` live 旧进程补证：
   - 03:10 CST 修复提交 `1669e0aa` 已在仓库落地，但当前 live 服务尚未重启；07:00 CST `美股持仓收盘后早报` `run_id=44148` 仍在用户可见 final 中写出 `本地 data/portfolio 仍为空目录`。
@@ -192,6 +200,9 @@
 - `cargo test -p hone-channels build_prompt_bundle_includes_portfolio_and_cron_truth_source_policy --lib -- --nocapture`
 - `cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`
 - `cargo check -p hone-core -p hone-channels --tests`
+- `cargo test -p hone-channels handoff_text_surfaces_verified_ -- --nocapture`
+- `cargo test -p hone-channels handoff_text_reasserts_final_format_priority -- --nocapture`
+- `cargo check -p hone-channels --tests`
 
 ## 后续关注
 

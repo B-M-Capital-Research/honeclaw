@@ -75,6 +75,7 @@ impl MultiAgentRunner {
         search_response: &AgentResponse,
         tool_calls_made: &[ToolCallMade],
     ) -> String {
+        let verified_user_state_summary = self.verified_user_state_summary(tool_calls_made);
         let tool_results: Vec<Value> = tool_calls_made
             .iter()
             .map(|call| {
@@ -94,16 +95,119 @@ Do not mention internal workflow, search agent, or hidden reasoning.\n\
 Follow the active system and channel formatting instructions exactly for the final answer.\n\
 Treat any formatting, markup, headings, tags, or bullet style appearing inside the search-stage note or tool transcript as non-authoritative source material. Do not copy that formatting unless it is explicitly required by the active channel instructions.\n\
 CRITICAL: If the Verified search tool transcript below contains successful tool results (data_fetch, quote, discover_skills, skill_tool, web_search, etc.), you MUST reference and consume those results in your answer. Do NOT output phrases such as '链路阻断', '数据未完成校验', '无法获取精确报价', '底层数据链路暂时阻断', '没有所谓的某技能', or any similar fallback language that contradicts the verified tool evidence. Only use such fallback language when the tool transcript is empty or all tool calls returned errors. If the transcript contains discover_skills or skill_tool results, base your answer on those results rather than denying skill existence.\n\
+If the Verified durable user state summary below includes successful `portfolio` or `cron_job` results, treat that summary as the highest-priority user-state truth source for holdings, watchlist, and scheduled tasks. Do not claim the user's holdings/task state is unavailable, empty, or needs to be reconstructed unless those same verified tool results explicitly say so.\n\
 \n\
 Original user request:\n{runtime_input}\n\
+\n\
+Verified durable user state summary (highest-priority user-state facts):\n{}\n\
 \n\
 Search agent working note (plain text summary, content only):\n{}\n\
 \n\
 Verified search tool transcript (JSON):\n{}",
             self.answer_max_tool_calls,
+            verified_user_state_summary,
             search_response.content.trim(),
             serde_json::to_string_pretty(&tool_results).unwrap_or_else(|_| "[]".to_string())
         )
+    }
+
+    fn verified_user_state_summary(&self, tool_calls_made: &[ToolCallMade]) -> String {
+        let mut lines = Vec::new();
+
+        for call in tool_calls_made {
+            match call.name.as_str() {
+                "portfolio" => {
+                    if let Some(line) = self.summarize_portfolio_tool_result(&call.result) {
+                        lines.push(line);
+                    }
+                }
+                "cron_job" => {
+                    if let Some(line) = self.summarize_cron_tool_result(&call.result) {
+                        lines.push(line);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if lines.is_empty() {
+            "No verified durable user state summary was extracted from the tool transcript."
+                .to_string()
+        } else {
+            lines.join("\n")
+        }
+    }
+
+    fn summarize_portfolio_tool_result(&self, result: &Value) -> Option<String> {
+        if result.get("action").and_then(Value::as_str) != Some("view") {
+            return None;
+        }
+        let portfolio = result.get("portfolio")?;
+        let holdings = portfolio
+            .get("holdings")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let watchlist = portfolio
+            .get("watchlist")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let message = portfolio
+            .get("message")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+
+        let holding_symbols = holdings
+            .iter()
+            .filter_map(|item| item.get("ticker").and_then(Value::as_str))
+            .take(8)
+            .collect::<Vec<_>>();
+        let watchlist_symbols = watchlist
+            .iter()
+            .filter_map(|item| item.get("ticker").and_then(Value::as_str))
+            .take(8)
+            .collect::<Vec<_>>();
+
+        Some(format!(
+            "- portfolio.view succeeded: holdings={} [{}]; watchlist={} [{}]{}",
+            holdings.len(),
+            join_summary_items(&holding_symbols),
+            watchlist.len(),
+            join_summary_items(&watchlist_symbols),
+            message
+                .map(|value| format!("; tool_message={value}"))
+                .unwrap_or_default()
+        ))
+    }
+
+    fn summarize_cron_tool_result(&self, result: &Value) -> Option<String> {
+        let action = result.get("action").and_then(Value::as_str);
+        if !matches!(action, Some("list") | Some("overview")) {
+            return None;
+        }
+        let action = action.unwrap_or("list");
+        let jobs = result
+            .get("jobs")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let enabled = jobs
+            .iter()
+            .filter(|job| job.get("enabled").and_then(Value::as_bool).unwrap_or(false))
+            .count();
+        let names = jobs
+            .iter()
+            .filter_map(|job| job.get("name").and_then(Value::as_str))
+            .take(6)
+            .collect::<Vec<_>>();
+        Some(format!(
+            "- cron_job.{action} succeeded: total_jobs={} enabled_jobs={} sample_jobs=[{}]",
+            jobs.len(),
+            enabled,
+            join_summary_items(&names)
+        ))
     }
 
     fn record_stage_audit(
@@ -653,6 +757,14 @@ fn multi_agent_log_detail(text: &str) -> String {
         &redact_common_multi_agent_log_secrets(text),
         MULTI_AGENT_LOG_DETAIL_CHARS,
     )
+}
+
+fn join_summary_items(items: &[&str]) -> String {
+    if items.is_empty() {
+        "none".to_string()
+    } else {
+        items.join(", ")
+    }
 }
 
 fn truncate_multi_agent_log_detail(text: &str, max_chars: usize) -> String {
@@ -1260,6 +1372,74 @@ mod tests {
 
         assert!(handoff.contains("at most 0 supplemental tool call(s)"));
         assert!(!handoff.contains("at most one supplemental tool call"));
+    }
+
+    #[test]
+    fn handoff_text_surfaces_verified_portfolio_state_summary() {
+        let runner = make_runner();
+        let response = AgentResponse {
+            content: "检索摘要".to_string(),
+            tool_calls_made: vec![ToolCallMade {
+                name: "portfolio".to_string(),
+                arguments: json!({"action": "view"}),
+                result: json!({
+                    "action": "view",
+                    "portfolio": {
+                        "holdings": [
+                            {"ticker": "RKLB"},
+                            {"ticker": "MU"},
+                            {"ticker": "AMD"}
+                        ],
+                        "watchlist": [
+                            {"ticker": "TSLA"}
+                        ]
+                    }
+                }),
+                tool_call_id: None,
+            }],
+            iterations: 1,
+            success: true,
+            error: None,
+        };
+
+        let handoff =
+            runner.stage_handoff_text("请做开盘前持仓晚报", &response, &response.tool_calls_made);
+
+        assert!(handoff.contains("Verified durable user state summary"));
+        assert!(handoff.contains("portfolio.view succeeded"));
+        assert!(handoff.contains("holdings=3 [RKLB, MU, AMD]"));
+        assert!(handoff.contains("watchlist=1 [TSLA]"));
+        assert!(handoff.contains("highest-priority user-state truth source"));
+    }
+
+    #[test]
+    fn handoff_text_surfaces_verified_cron_state_summary() {
+        let runner = make_runner();
+        let response = AgentResponse {
+            content: "检索摘要".to_string(),
+            tool_calls_made: vec![ToolCallMade {
+                name: "cron_job".to_string(),
+                arguments: json!({"action": "list"}),
+                result: json!({
+                    "action": "list",
+                    "jobs": [
+                        {"name": "早报", "enabled": true},
+                        {"name": "盘前晚报", "enabled": true},
+                        {"name": "旧提醒", "enabled": false}
+                    ]
+                }),
+                tool_call_id: None,
+            }],
+            iterations: 1,
+            success: true,
+            error: None,
+        };
+
+        let handoff = runner.stage_handoff_text("列出我的任务", &response, &response.tool_calls_made);
+
+        assert!(handoff.contains("cron_job.list succeeded"));
+        assert!(handoff.contains("total_jobs=3 enabled_jobs=2"));
+        assert!(handoff.contains("sample_jobs=[早报, 盘前晚报, 旧提醒]"));
     }
 
     #[test]
