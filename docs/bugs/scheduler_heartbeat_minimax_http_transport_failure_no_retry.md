@@ -7,6 +7,18 @@
 
 ## 修复进展（2026-04-26）
 
+- **2026-06-27 15:02 CST 继续维持 `New`**：
+  - `data/runtime/logs/web.log.2026-06-27` 与 `data/runtime/logs/hone_cli_screen.log`
+    - 11:02-15:02 CST heartbeat function-calling 路径继续出现 `MiniMax-M2.7-highspeed` / OpenAI-compatible `error sending request for url (https://api.minimaxi.com/v1/chat/completions)`。
+    - 同窗记录 27 条 `raw chat_with_tools transport error, retrying`，说明 provider 级短重试已触发；随后仍有 59 条 `runner_error`，11:31 CST 覆盖 `闪迪关键事件心跳提醒`、`持仓关键事件心跳检测`、`光迅科技关键事件心跳提醒`、`持仓财报与重大新闻心跳提醒`、`NVDA 关键事件心跳提醒`、`ORCL 大事件监控`、`小米30港元破位预警`、`RKLB异动监控` 等。
+    - 错误均停留在 runtime 日志 / scheduler 失败台账侧，未见用户可见 assistant final 外露原始 provider 错误。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 仍停在 2026-06-17；本轮以 runtime 日志和 `data/runtime/logs/acp-events.log` 重构真实运行态。
+    - 同窗 ACP 可见 2 次 `session/prompt`、2 次 `stopReason=end_turn`、0 个 response error；没有证据显示 Feishu direct、Web direct 或出站全局不可用。
+  - 判断：
+    - 最新证据仍满足“provider 短重试后仍成批失败”的活跃条件。
+    - 该问题影响 heartbeat 监控覆盖但未造成错投、数据破坏或全渠道不可用；严重等级保持功能性 `P2`，非 P1，不创建 GitHub Issue。
+
 - **2026-06-27 11:01 CST 回退为 `New`**：
   - `data/runtime/logs/web.log.2026-06-27` 与 `data/runtime/logs/hone_cli_screen.log`
     - 11:00-11:01 CST heartbeat function-calling 路径成批出现 `MiniMax-M2.7-highspeed` / OpenAI-compatible `error sending request for url (https://api.minimaxi.com/v1/chat/completions)`。
