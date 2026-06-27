@@ -188,7 +188,7 @@ impl SqliteSessionMirror {
             .transpose()
             .map_err(|err| HoneError::Serialization(err.to_string()))?;
 
-        let source_meta = std::fs::metadata(source_path)?;
+        let source_meta = std::fs::metadata(source_path).ok();
         let source_path = source_path
             .canonicalize()
             .unwrap_or_else(|_| source_path.to_path_buf());
@@ -196,6 +196,16 @@ impl SqliteSessionMirror {
         let imported_at = hone_core::beijing_now_rfc3339();
         let content_sha256 = sha256_hex(&source_json);
         let last_message = session.messages.last();
+        let source_mtime_ns = source_meta
+            .as_ref()
+            .and_then(|meta| meta.modified().ok())
+            .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|duration| duration.as_nanos() as i64)
+            .unwrap_or(0);
+        let source_size = source_meta
+            .as_ref()
+            .map(|meta| meta.len() as i64)
+            .unwrap_or(source_json.len() as i64);
 
         let conn = self.conn.lock().map_err(lock_err)?;
         let tx = conn.unchecked_transaction().map_err(sql_err)?;
@@ -278,8 +288,8 @@ impl SqliteSessionMirror {
                 metadata_json,
                 String::from_utf8_lossy(&source_json).to_string(),
                 normalized_json,
-                source_meta.modified()?.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos() as i64,
-                source_meta.len() as i64,
+                source_mtime_ns,
+                source_size,
                 content_sha256,
                 imported_at,
             ],
@@ -688,6 +698,38 @@ mod tests {
             loaded.summary.as_ref().map(|v| v.content.as_str()),
             Some("updated summary")
         );
+    }
+
+    #[test]
+    fn upsert_session_accepts_cloud_shadow_source_path_without_local_file() {
+        let root = std::env::temp_dir().join(format!(
+            "hone_session_sqlite_cloud_shadow_{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&root).expect("root");
+        let db_path = root.join("sessions.sqlite3");
+        let source_path = root
+            .join("cloud_sessions")
+            .join("Actor_feishu__direct__alice.json");
+
+        let session = make_session();
+        let mirror = SqliteSessionMirror::new(&db_path).expect("mirror");
+        mirror
+            .upsert_session(&source_path, &session)
+            .expect("upsert synthetic source");
+
+        let conn = sqlite3_connect(&db_path);
+        let (stored_path, source_mtime_ns, source_size): (String, i64, i64) = conn
+            .query_row(
+                "SELECT source_path, source_mtime_ns, source_size FROM sessions WHERE session_id = ?1",
+                params![session.id.clone()],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("stored cloud row");
+
+        assert!(stored_path.ends_with("cloud_sessions/Actor_feishu__direct__alice.json"));
+        assert_eq!(source_mtime_ns, 0);
+        assert!(source_size > 0);
     }
 
     #[test]

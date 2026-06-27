@@ -399,7 +399,17 @@ fn feishu_direct_actor_contact_targets(core_cfg: &HoneConfig) -> Vec<(String, St
         && core_cfg.cloud.postgres.is_configured()
     {
         CloudPgRuntime::from_cloud_config(&core_cfg.cloud)
-            .and_then(|pg| SessionStorage::new_cloud(pg).ok())
+            .and_then(|pg| {
+                SessionStorage::new_cloud(
+                    &core_cfg.storage.sessions_dir,
+                    pg,
+                    Some(std::path::PathBuf::from(
+                        &core_cfg.storage.session_sqlite_db_path,
+                    )),
+                    core_cfg.storage.session_sqlite_shadow_write_enabled,
+                )
+                .ok()
+            })
             .unwrap_or_else(|| SessionStorage::from_storage_config(&core_cfg.storage))
     } else {
         SessionStorage::from_storage_config(&core_cfg.storage)

@@ -3,9 +3,27 @@
 - **发现时间**: 2026-04-28 01:05 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无
 - **修复结论复核**:
+- `2026-06-28 CST` 代码级修复：
+  - 根因补齐到 cloud authoritative 运行态：`HoneBotCore::new(...)` 和 `hone-web-api` 在 `cloud.mode=cloud` 下此前直接走 `SessionStorage::new_cloud(pg)`，只把 PG `cloud_sessions` 作为唯一 session backend 使用；本地 `sessions.sqlite3` mirror 根本没有初始化，也没有 cloud -> sqlite dual-write 或启动回填路径，因此从 2026-06-17 起会持续停滞。
+  - `memory/src/session.rs` 现把 cloud runtime 主存储与本地 sqlite mirror 分离：cloud mode 继续以 PG `cloud_sessions` 作为读写真相源，同时在 `storage.session_sqlite_shadow_write_enabled=true` 且配置了 `storage.session_sqlite_db_path` 时，额外初始化本地 sqlite mirror，并在每次 cloud session 写入后同步 shadow 到 `sessions.sqlite3`。启动时若 cloud backend 与 sqlite mirror 同时存在，还会 best-effort 把现有 PG session 列表回填进 sqlite mirror。
+  - `memory/src/session_sqlite.rs` 现允许 sqlite mirror 接受不存在本地源文件的 synthetic cloud source path（例如 `cloud_sessions/<session_id>.json`）：缺失本地文件时不再硬依赖 `metadata()` / mtime，而是以 `source_mtime_ns=0` 与序列化后的 session 大小落库，保证 cloud session 也能稳定写入 sqlite 索引。
+  - `crates/hone-channels/src/core/bot_core.rs` 与 `crates/hone-web-api/src/lib.rs` 现都会把 `sessions_dir`、`session_sqlite_db_path` 和 `session_sqlite_shadow_write_enabled` 传给 `SessionStorage::new_cloud(...)`，避免 channel runtime 与 Web side 继续绕过本地 sqlite mirror。
+  - 新增回归：
+    - `session::tests::cloud_runtime_backend_dual_writes_sqlite_shadow`
+    - `session_sqlite::tests::upsert_session_accepts_cloud_shadow_source_path_without_local_file`
+  - 验证通过：
+    - `cargo test -p hone-memory cloud_runtime_backend_dual_writes_sqlite_shadow --lib -- --nocapture`
+    - `cargo test -p hone-memory upsert_session_accepts_cloud_shadow_source_path_without_local_file --lib -- --nocapture`
+    - `cargo test -p hone-memory shadow_sqlite_backfills_existing_json_on_startup --lib -- --nocapture`
+    - `cargo test -p hone-memory sqlite_runtime_backend_reads_from_sqlite --lib -- --nocapture`
+    - `cargo check -p hone-memory --tests`
+    - `cargo check -p hone-channels --tests`
+    - `cargo check -p hone-web-api --tests`
+    - `git diff --check`
+  - 本轮按自动化约束未重启当前 live runtime，因此仍缺“现网运行态日志已追平”的只读复核证据；状态先更新为代码级 `Fixed`，待后续正常重启/换进程窗口后再视只读巡检结果决定是否 `Closed`。
 - `2026-06-27 23:01 CST` 本轮确认当前 runtime 下仍不追平，状态维持 `New`：
   - `data/sessions.sqlite3` 只读快照在最近四小时窗口 `2026-06-27 19:01-23:01 CST` 内仍无新增 `sessions` / `session_messages` / `cron_job_runs`，`sessions.max(updated_at)=2026-06-17T10:37:37.207669+08:00`、`sessions.max(last_message_at)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(imported_at)=2026-06-17T10:37:41.827657+08:00`、`cron_job_runs.max(executed_at)=2026-06-17T11:01:42.353141+08:00`。
   - `data/runtime/logs/hone_cli_screen.log` 与 `data/runtime/logs/web.log.2026-06-27` 同窗持续写入 heartbeat / audit 运行事件，`data/runtime/logs/acp-events.log` 可重构 23 次 `session/prompt`、17 个 session、22 次 `stopReason=end_turn`、0 个 response error；真实 ACP 会话仍在推进，但 SQLite 会话镜像完全没有追平。

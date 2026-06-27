@@ -77,7 +77,15 @@ impl HoneBotCore {
             None
         };
         let session_storage = if let Some(pg) = cloud_pg_runtime.clone() {
-            SessionStorage::new_cloud(pg).expect("failed to initialize cloud session storage")
+            SessionStorage::new_cloud(
+                &config.storage.sessions_dir,
+                pg,
+                Some(std::path::PathBuf::from(
+                    &config.storage.session_sqlite_db_path,
+                )),
+                config.storage.session_sqlite_shadow_write_enabled,
+            )
+            .expect("failed to initialize cloud session storage")
         } else {
             SessionStorage::from_storage_config(&config.storage)
         };

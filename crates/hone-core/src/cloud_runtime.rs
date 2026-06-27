@@ -16,7 +16,6 @@ use sha1::Sha1;
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio_postgres::types::Json;
 use tokio_postgres::{Client as PgClient, Config as PgConfig, NoTls};
 use url::Url;
 
@@ -189,13 +188,12 @@ impl CloudLlmAuditRecord {
     }
 
     fn created_at_text_for_postgres(&self) -> HoneResult<String> {
-        DateTime::parse_from_rfc3339(&self.created_at)
-            .map_err(|err| {
-                HoneError::Config(format!(
-                    "Postgres LLM audit created_at 非法 RFC3339 时间戳: {} ({err})",
-                    self.created_at
-                ))
-            })?;
+        DateTime::parse_from_rfc3339(&self.created_at).map_err(|err| {
+            HoneError::Config(format!(
+                "Postgres LLM audit created_at 非法 RFC3339 时间戳: {} ({err})",
+                self.created_at
+            ))
+        })?;
         Ok(self.created_at.clone())
     }
 }
@@ -3299,6 +3297,7 @@ fn _assert_send_sync_time(_: DateTime<Utc>) {}
 mod tests {
     use super::*;
     use bytes::BytesMut;
+    use tokio_postgres::types::Json;
     use tokio_postgres::types::{ToSql, Type};
 
     #[test]
@@ -3584,10 +3583,7 @@ mod tests {
             .to_sql_checked(&Type::TIMESTAMPTZ, &mut bytes)
             .expect("timestamptz parameter encoding");
 
-        assert!(
-            !bytes.is_empty(),
-            "timestamptz payload should not be empty"
-        );
+        assert!(!bytes.is_empty(), "timestamptz payload should not be empty");
     }
 
     #[test]
@@ -3626,7 +3622,10 @@ mod tests {
         payload
             .to_sql_checked(&Type::TEXT, &mut payload_bytes)
             .expect("text payload encoding");
-        assert!(!payload_bytes.is_empty(), "text payload should not be empty");
+        assert!(
+            !payload_bytes.is_empty(),
+            "text payload should not be empty"
+        );
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(&payload).expect("payload json"),
             cloud_record.record

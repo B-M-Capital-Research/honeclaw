@@ -85,6 +85,7 @@ Last updated: 2026-05-27
 - During the current rollout, even when `session_runtime_backend=sqlite`, JSON should continue to dual-write as a rollback mirror until SQLite stability is proven over time
 - Desktop runtime config materialization must normalize historical canonical configs so `storage.session_sqlite_shadow_write_enabled` remains `true`; old generated runtime snapshots or seeded configs must not silently disable JSON -> SQLite session mirror writes
 - `SessionStorage` should best-effort backfill existing JSON sessions into the SQLite index during startup whenever an index is configured, including `session_runtime_backend=sqlite` even if `session_sqlite_shadow_write_enabled=false`; this keeps mirror lag recoverable after any historical window where shadow write was disabled, while preserving the configured runtime read authority
+- In cloud-authoritative mode, PG `cloud_sessions` remains the session truth source, but if `storage.session_sqlite_shadow_write_enabled=true` and `storage.session_sqlite_db_path` is configured, successful session writes should still best-effort dual-write the local `sessions.sqlite3` mirror and allow synthetic `cloud_sessions/<id>.json` source paths so bug triage / recovery tooling does not silently go stale
 
 ## Agent Runtime Constraints
 

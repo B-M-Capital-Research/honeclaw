@@ -73,6 +73,7 @@ pub trait SessionIndex: Send + Sync {
 pub struct SessionStorage {
     data_dir: PathBuf,
     sqlite_storage: Option<Arc<dyn SessionIndex>>,
+    cloud_storage: Option<Arc<dyn SessionIndex>>,
     runtime_backend: SessionRuntimeBackend,
     shadow_sqlite_enabled: bool,
 }
@@ -870,6 +871,7 @@ impl SessionStorage {
         let storage = Self {
             data_dir: dir,
             sqlite_storage,
+            cloud_storage: None,
             runtime_backend: options.runtime_backend,
             shadow_sqlite_enabled: options.shadow_sqlite_enabled,
         };
@@ -877,14 +879,41 @@ impl SessionStorage {
         storage
     }
 
-    pub fn new_cloud(postgres: CloudPgRuntime) -> HoneResult<Self> {
-        let index = Arc::new(CloudPgSessionIndex::new(postgres)?) as Arc<dyn SessionIndex>;
-        Ok(Self {
-            data_dir: PathBuf::new(),
-            sqlite_storage: Some(index),
+    pub fn new_cloud(
+        data_dir: impl AsRef<Path>,
+        postgres: CloudPgRuntime,
+        shadow_sqlite_db_path: Option<PathBuf>,
+        shadow_sqlite_enabled: bool,
+    ) -> HoneResult<Self> {
+        let dir = data_dir.as_ref().to_path_buf();
+        std::fs::create_dir_all(&dir).ok();
+        let cloud_storage = Arc::new(CloudPgSessionIndex::new(postgres)?) as Arc<dyn SessionIndex>;
+        let sqlite_storage = if shadow_sqlite_enabled {
+            shadow_sqlite_db_path
+                .as_ref()
+                .and_then(|path| match SqliteSessionMirror::new(path) {
+                    Ok(storage) => Some(Arc::new(storage) as Arc<dyn SessionIndex>),
+                    Err(err) => {
+                        tracing::warn!(
+                            path = %path.display(),
+                            "failed to initialize cloud session shadow sqlite: {err}"
+                        );
+                        None
+                    }
+                })
+        } else {
+            None
+        };
+        let storage = Self {
+            data_dir: dir,
+            sqlite_storage,
+            cloud_storage: Some(cloud_storage),
             runtime_backend: SessionRuntimeBackend::CloudPg,
-            shadow_sqlite_enabled: false,
-        })
+            shadow_sqlite_enabled,
+        };
+        storage.backfill_shadow_from_cloud_runtime();
+        storage.backfill_shadow_from_json_dir();
+        Ok(storage)
     }
 
     /// 测试 / runtime 层可以注入自定义的 `SessionIndex`（例如 mock）。
@@ -900,9 +929,32 @@ impl SessionStorage {
         Self {
             data_dir: dir,
             sqlite_storage: index,
+            cloud_storage: None,
             runtime_backend,
             shadow_sqlite_enabled,
         }
+    }
+
+    #[cfg(test)]
+    fn with_custom_indexes_for_test(
+        data_dir: impl AsRef<Path>,
+        runtime_backend: SessionRuntimeBackend,
+        shadow_sqlite_enabled: bool,
+        runtime_index: Option<Arc<dyn SessionIndex>>,
+        shadow_sqlite_index: Option<Arc<dyn SessionIndex>>,
+    ) -> Self {
+        let dir = data_dir.as_ref().to_path_buf();
+        std::fs::create_dir_all(&dir).ok();
+        let storage = Self {
+            data_dir: dir,
+            sqlite_storage: shadow_sqlite_index,
+            cloud_storage: runtime_index,
+            runtime_backend,
+            shadow_sqlite_enabled,
+        };
+        storage.backfill_shadow_from_cloud_runtime();
+        storage.backfill_shadow_from_json_dir();
+        storage
     }
 
     pub fn from_storage_config(config: &hone_core::config::StorageConfig) -> Self {
@@ -994,7 +1046,7 @@ impl SessionStorage {
         match self.runtime_backend {
             SessionRuntimeBackend::Json => self.load_session_from_json(session_id),
             SessionRuntimeBackend::CloudPg => {
-                if let Some(storage) = &self.sqlite_storage {
+                if let Some(storage) = &self.cloud_storage {
                     return storage.load(session_id);
                 }
                 Ok(None)
@@ -1111,7 +1163,7 @@ impl SessionStorage {
         match self.runtime_backend {
             SessionRuntimeBackend::Json => self.list_sessions_from_json(),
             SessionRuntimeBackend::CloudPg => {
-                if let Some(storage) = &self.sqlite_storage {
+                if let Some(storage) = &self.cloud_storage {
                     return storage.list();
                 }
                 Ok(Vec::new())
@@ -1138,12 +1190,25 @@ impl SessionStorage {
         updated_after_rfc3339: &str,
         updated_before_rfc3339: &str,
     ) -> hone_core::HoneResult<Vec<crate::session_sqlite::InterruptedSessionInfo>> {
-        if let Some(storage) = &self.sqlite_storage {
-            return storage.find_interrupted(
-                channel,
-                updated_after_rfc3339,
-                updated_before_rfc3339,
-            );
+        match self.runtime_backend {
+            SessionRuntimeBackend::CloudPg => {
+                if let Some(storage) = &self.cloud_storage {
+                    return storage.find_interrupted(
+                        channel,
+                        updated_after_rfc3339,
+                        updated_before_rfc3339,
+                    );
+                }
+            }
+            SessionRuntimeBackend::Json | SessionRuntimeBackend::Sqlite => {
+                if let Some(storage) = &self.sqlite_storage {
+                    return storage.find_interrupted(
+                        channel,
+                        updated_after_rfc3339,
+                        updated_before_rfc3339,
+                    );
+                }
+            }
         }
         Ok(Vec::new())
     }
@@ -1259,8 +1324,9 @@ impl SessionStorage {
 
     fn write_session(&self, session_id: &str, session: &Session) -> hone_core::HoneResult<()> {
         if matches!(self.runtime_backend, SessionRuntimeBackend::CloudPg) {
-            let source_path = PathBuf::from(format!("cloud_sessions/{session_id}.json"));
-            return self.write_session_to_sqlite(&source_path, session);
+            self.write_session_to_cloud(session)?;
+            self.shadow_write_session(&self.cloud_shadow_source_path(session_id), session);
+            return Ok(());
         }
         let path = self.session_json_path(session_id)?;
         let json = serde_json::to_string_pretty(session)
@@ -1294,6 +1360,9 @@ impl SessionStorage {
     }
 
     fn backfill_shadow_from_json_dir(&self) {
+        if !self.shadow_sqlite_enabled {
+            return;
+        }
         let Some(shadow_sqlite) = &self.sqlite_storage else {
             return;
         };
@@ -1362,6 +1431,52 @@ impl SessionStorage {
         }
     }
 
+    fn backfill_shadow_from_cloud_runtime(&self) {
+        if !matches!(self.runtime_backend, SessionRuntimeBackend::CloudPg)
+            || !self.shadow_sqlite_enabled
+        {
+            return;
+        }
+        let Some(cloud_storage) = &self.cloud_storage else {
+            return;
+        };
+        let Some(shadow_sqlite) = &self.sqlite_storage else {
+            return;
+        };
+
+        let sessions = match cloud_storage.list() {
+            Ok(sessions) => sessions,
+            Err(err) => {
+                tracing::warn!("failed to list cloud sessions for sqlite shadow backfill: {err}");
+                return;
+            }
+        };
+
+        let mut imported = 0usize;
+        let mut failed = 0usize;
+        for session in sessions {
+            let path = self.cloud_shadow_source_path(&session.id);
+            if let Err(err) = shadow_sqlite.upsert(&path, &session) {
+                failed += 1;
+                tracing::warn!(
+                    session_id = %session.id,
+                    path = %path.display(),
+                    "failed to backfill cloud session into sqlite shadow: {err}"
+                );
+                continue;
+            }
+            imported += 1;
+        }
+
+        if imported > 0 || failed > 0 {
+            tracing::info!(
+                sessions_imported = imported,
+                sessions_failed = failed,
+                "completed sqlite shadow backfill from cloud session runtime"
+            );
+        }
+    }
+
     fn list_sessions_from_json(&self) -> hone_core::HoneResult<Vec<Session>> {
         let mut sessions = Vec::new();
         let entries = match std::fs::read_dir(&self.data_dir) {
@@ -1411,6 +1526,15 @@ impl SessionStorage {
         Ok(())
     }
 
+    fn write_session_to_cloud(&self, session: &Session) -> hone_core::HoneResult<()> {
+        let Some(cloud_storage) = &self.cloud_storage else {
+            return Err(hone_core::HoneError::Storage(
+                "cloud session runtime backend missing cloud storage".to_string(),
+            ));
+        };
+        cloud_storage.upsert(&self.cloud_shadow_source_path(&session.id), session)
+    }
+
     /// JSON 主后端下的可选镜像写入。未开启 shadow 或没配索引时静默跳过；
     /// 失败只 warn 不抛，因为权威数据（JSON）此时已经落盘成功。
     fn shadow_write_session(&self, path: &Path, session: &Session) {
@@ -1429,6 +1553,12 @@ impl SessionStorage {
                 "failed to shadow-write session into sqlite: {err}"
             );
         }
+    }
+
+    fn cloud_shadow_source_path(&self, session_id: &str) -> PathBuf {
+        self.data_dir
+            .join("cloud_sessions")
+            .join(format!("{session_id}.json"))
     }
 }
 
@@ -1455,6 +1585,50 @@ fn validate_storage_component(value: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
+
+    #[derive(Default)]
+    struct RecordingSessionIndex {
+        sessions: Mutex<BTreeMap<String, Session>>,
+    }
+
+    impl SessionIndex for RecordingSessionIndex {
+        fn upsert(&self, _source_path: &Path, session: &Session) -> HoneResult<()> {
+            self.sessions
+                .lock()
+                .expect("recording index lock")
+                .insert(session.id.clone(), session.clone());
+            Ok(())
+        }
+
+        fn load(&self, session_id: &str) -> HoneResult<Option<Session>> {
+            Ok(self
+                .sessions
+                .lock()
+                .expect("recording index lock")
+                .get(session_id)
+                .cloned())
+        }
+
+        fn list(&self) -> HoneResult<Vec<Session>> {
+            Ok(self
+                .sessions
+                .lock()
+                .expect("recording index lock")
+                .values()
+                .cloned()
+                .collect())
+        }
+
+        fn find_interrupted(
+            &self,
+            _channel: &str,
+            _updated_after_rfc3339: &str,
+            _updated_before_rfc3339: &str,
+        ) -> HoneResult<Vec<InterruptedSessionInfo>> {
+            Ok(Vec::new())
+        }
+    }
 
     fn make_temp_dir(prefix: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!("{prefix}_{}", uuid::Uuid::new_v4()))
@@ -2059,6 +2233,62 @@ mod tests {
             .expect("session");
         assert_eq!(session.messages.len(), 1);
         assert_eq!(session_message_text(&session.messages[0]), "hello sqlite");
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn cloud_runtime_backend_dual_writes_sqlite_shadow() {
+        let root = make_temp_dir("hone_memory_test_cloud_shadow_write");
+        let sessions_dir = root.join("sessions");
+        std::fs::create_dir_all(&sessions_dir).expect("sessions dir");
+        let db_path = root.join("sessions.sqlite3");
+
+        let runtime_index = Arc::new(RecordingSessionIndex::default()) as Arc<dyn SessionIndex>;
+        let shadow_index = Arc::new(SqliteSessionMirror::new(&db_path).expect("sqlite shadow"))
+            as Arc<dyn SessionIndex>;
+        let storage = SessionStorage::with_custom_indexes_for_test(
+            &sessions_dir,
+            SessionRuntimeBackend::CloudPg,
+            true,
+            Some(runtime_index.clone()),
+            Some(shadow_index),
+        );
+
+        let actor = ActorIdentity::new("web", "cloud-shadow", None::<String>).expect("actor");
+        let session_id = storage.create_session_for_actor(&actor).expect("create");
+        storage
+            .add_message(&session_id, "user", "hello cloud mirror", None)
+            .expect("append");
+
+        let runtime_session = runtime_index
+            .load(&session_id)
+            .expect("runtime load")
+            .expect("runtime session");
+        assert_eq!(runtime_session.messages.len(), 1);
+
+        let conn = rusqlite::Connection::open(&db_path).expect("sqlite");
+        let session_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
+            .expect("session count");
+        let source_path: String = conn
+            .query_row(
+                "SELECT source_path FROM sessions WHERE session_id = ?1",
+                [&session_id],
+                |row| row.get(0),
+            )
+            .expect("source path");
+        let message_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM session_messages WHERE session_id = ?1",
+                [&session_id],
+                |row| row.get(0),
+            )
+            .expect("message count");
+
+        assert_eq!(session_count, 1);
+        assert_eq!(message_count, 1);
+        assert!(source_path.ends_with(&format!("cloud_sessions/{session_id}.json")));
 
         let _ = std::fs::remove_dir_all(root);
     }
