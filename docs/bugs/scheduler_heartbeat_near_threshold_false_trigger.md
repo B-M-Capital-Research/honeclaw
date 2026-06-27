@@ -580,3 +580,13 @@
 - 后续仍可把 heartbeat `triggered` 结果升级成机器可校验的数值字段，例如 `metric`, `threshold`, `observed_value`, `comparison_passed`，进一步减少模型自由文本判断空间。
 - 在 ASTS / ORCL / watchlist 这类价格阈值模板里明确禁止把“接近阈值”“距离阈值不远”“建议关注波动”解释成 `triggered`。
 - 为单标的 heartbeat 增加回归样本：当最新涨跌幅仅 `-6.89%` 对 `-8%`、或仅 `-4.07%` 对 `-5%` 时，必须返回 `noop` 或独立的 `near_threshold`，不得发送正式提醒。
+
+## 最新运行态复核（2026-06-28 03:00 CST）
+
+- `data/runtime/logs/hone_cli_screen.log`
+  - 巡检窗口：2026-06-27 23:01-2026-06-28 03:00 CST。
+  - 03:00 CST `小米30港元破位预警` 在当前价 21.42 HKD 低于 30 HKD 条件下仍返回非结构化自然语言，落成 `parse_kind=PlainTextSuppressed + failure_kind=execution_failed`，Feishu scheduler 记录“本轮不发送”。
+  - 同一任务在前几个窗口已经反复于 `PlainTextSuppressed`、`JsonTriggered + deliver_preview`、`JsonNoop`、`duplicate_suppressed` 与未命中之间漂移；本窗说明该触发条件仍未稳定送达。
+- 本轮判断
+  - 最新样本仍是同一单标的 heartbeat 触发 / 抑制边界缺陷，没有新的独立链路。
+  - 问题会影响用户是否收到本应触发的价格提醒，属于功能性 P2；本窗未见错误提醒成功送达或全渠道不可用，不升级为 P1。

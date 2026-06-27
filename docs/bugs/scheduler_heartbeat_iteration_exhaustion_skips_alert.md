@@ -514,3 +514,13 @@
 - 为 heartbeat 链路补专门的“达到最大迭代次数”失败兜底，至少把本轮失败显式记录为可区分的状态，并输出用户可理解的失败说明或内部重试。
 - 在 heartbeat 台账里补记 `iterations`、`tool_calls`、失败阶段与关键查询摘要，避免后续再次只能看到 `heartbeat_model`。
 - 为 `ASTS 重大异动心跳监控` 与 `全天原油价格3小时播报` 增加回归样本，覆盖“旧事件重复检索后触顶”和“时间型 heartbeat 触顶”两类场景。
+
+## 最新运行态复核（2026-06-28 03:00 CST）
+
+- `data/runtime/logs/hone_cli_screen.log`
+  - 巡检窗口：2026-06-27 23:01-2026-06-28 03:00 CST。
+  - 本窗继续出现 3 条 `max_iterations_exceeded` 相关 heartbeat 信号。
+  - 代表样本：`持仓财报与重大新闻心跳提醒` 在 23:01 CST 附近落成 `max_iterations_exceeded:18`，随后渠道侧记录 `failure_kind=runner_error` 并跳过发送。
+- 本轮判断
+  - 最新证据仍落在既有“模型 / 工具迭代耗尽后没有最终 JSON 收口恢复”的 P2 范围。
+  - 同窗 ACP 直聊未见 response error 或用户可见 provider 原始错误，因此不升级为 P1，也不拆新缺陷。

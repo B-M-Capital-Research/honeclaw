@@ -4883,3 +4883,16 @@
 - 本轮判断
   - 最新证据仍落在既有 heartbeat 结构化输出 / context overflow 运行态范围，且当前代码已有后续修复记录与回归，暂按旧/未确认部署运行态处理。
   - 本轮不新建重复缺陷，也不把已修复结论回退为 `New`；若后续 live 重启/部署后仍持续出现同类 `PlainTextSuppressed` / `JsonUnknownStatus` / `ContextOverflowError`，再按最新代码状态重新评估是否回退。
+
+## 最新运行态复核（2026-06-28 03:00 CST）
+
+- `data/runtime/logs/hone_cli_screen.log`
+  - 巡检窗口：2026-06-27 23:01-2026-06-28 03:00 CST。
+  - 本窗 215 条 heartbeat `run_finish` 中继续出现 66 条 `PlainTextSuppressed`、19 条 `PlainTextNoop`、14 条 `JsonUnknownStatus`、2 条 `JsonMalformed`、4 条 `JsonEmptyStatus` 与 75 条 `failure_kind=execution_failed`。
+  - 代表样本包括 Web `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 在工具预算耗尽后输出长段自然语言并落成 `JsonUnknownStatus + execution_failed`，以及 Feishu / Web 多条 heartbeat 以 `<think>` 开头的自然语言被压成 `PlainTextSuppressed` 或 `PlainTextNoop`。
+- `data/runtime/logs/acp-events.log`
+  - 同窗可重构 5 次 `session/prompt`、4 个 session、6 次 `stopReason=end_turn`、0 个 response error。
+  - 用户可见 `agent_message_chunk` 污染扫描未命中绝对路径、raw tool 字段、`<think>`、provider 原始错误、panic、quota、`company_profiles`、`StockAnalysis`、`data_fetch`、`reasoning_content`、`HONE_MCP_BIN` 或 binary-not-found 外泄。
+- 本轮判断
+  - 最新证据仍落在既有 heartbeat 输出结构漂移 / 解析失败范围内，没有形成新的独立根因。
+  - 坏态主要影响 heartbeat 是否能稳定得出 `triggered/noop` 并发送，不是普通直聊投递 P1；状态维持 `New`，严重等级维持 `P2`。

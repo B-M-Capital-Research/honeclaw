@@ -330,3 +330,15 @@
 - `cargo test -p hone-core cloud_cron_send_failed_backstop_ --lib -- --nocapture`
 - `cargo check -p hone-core --tests`
 - `git diff --check`
+
+## 最新运行态复核（2026-06-28 03:00 CST）
+
+- `data/runtime/logs/hone_cli_screen.log`
+  - 巡检窗口：2026-06-27 23:01-2026-06-28 03:00 CST。
+  - 本窗继续出现 666 条同类告警：`[LlmAudit] failed to persist function_calling audit: 配置错误: Postgres LLM audit 写入失败: error serializing parameter 3`。
+  - 告警与 heartbeat / function-calling 工具调用同窗持续出现，说明不是单次启动瞬态。
+- `data/runtime/logs/acp-events.log`
+  - 同窗可重构 5 次 `session/prompt`、6 次 `stopReason=end_turn`、0 个 response error；用户回复主链路仍有收口。
+- 本轮判断
+  - 最新证据继续支持 cloud LLM audit 持久化链路仍未止血，状态维持 `New`、严重等级维持 `P2`。
+  - 由于未阻断用户回复或 scheduler 出站本身，且没有用户可见原始错误，本轮不升级为 P1。

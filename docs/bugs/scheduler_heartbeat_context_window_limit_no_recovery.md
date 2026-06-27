@@ -397,3 +397,15 @@
 - 优先排查 heartbeat/function-calling 路径是否具备与普通会话一致的 overflow 检测、compact 和 retry 逻辑。
 - 为 `cron_job_runs.detail_json` 增补受控长度的请求摘要或 prompt 预算指标，否则后续很难快速判断是模板过长还是上下文继承异常。
 - 后续仍可对 heartbeat 的 `context window exceeds limit` 做聚合告警与任务级重试观察，避免问题在不同监控任务间漂移时被误判成单点偶发。
+
+## 最新运行态复核（2026-06-28 03:00 CST）
+
+- `data/runtime/logs/hone_cli_screen.log`
+  - 巡检窗口：2026-06-27 23:01-2026-06-28 03:00 CST。
+  - 本窗仍有 12 条 `context window` / `context_window` 相关 heartbeat 信号，继续落在失败或跳过发送路径。
+  - 同窗 heartbeat 总体仍有 215 条 `run_finish`、75 条 `failure_kind=execution_failed`，说明超窗不是唯一坏态，但仍与结构化失败一起造成监控本轮不可用。
+- `data/sessions.sqlite3`
+  - 只读快照仍停在 `sessions.max(updated_at)=2026-06-17T10:37:37.207669+08:00`、`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`cron_job_runs.max(executed_at)=2026-06-17T11:01:42.353141+08:00`，因此本轮运行态以 runtime 日志为准。
+- 本轮判断
+  - 最新证据继续支持“heartbeat 超窗后缺少稳定恢复，最终本轮漏发”的功能性 P2 判断。
+  - 未发现该坏态进入普通直聊 final 或造成全渠道不可用；不升级为 P1，不新建重复缺陷。
