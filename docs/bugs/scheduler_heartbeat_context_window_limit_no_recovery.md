@@ -409,3 +409,15 @@
 - 本轮判断
   - 最新证据继续支持“heartbeat 超窗后缺少稳定恢复，最终本轮漏发”的功能性 P2 判断。
   - 未发现该坏态进入普通直聊 final 或造成全渠道不可用；不升级为 P1，不新建重复缺陷。
+
+## 最新运行态复核（2026-06-28 07:02 CST）
+
+- `data/runtime/logs/hone_cli_screen.log`
+  - 巡检窗口：2026-06-28 03:02-07:02 CST。
+  - 本窗仍有 6 条 `context window` / `context_window` 相关 heartbeat 信号。
+  - 代表样本：`TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 在 03:30 CST 与 04:30 CST 两次落成 `failure_kind=context_window_overflow`，渠道侧随后记录跳过发送。
+- `data/sessions.sqlite3`
+  - 只读快照仍停在 `sessions.max(updated_at)=2026-06-17T10:37:37.207669+08:00`、`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`cron_job_runs.max(executed_at)=2026-06-17T11:01:42.353141+08:00`，因此本轮运行态以 runtime 日志为准。
+- 本轮判断
+  - 最新证据继续支持“heartbeat 超窗后缺少稳定恢复，最终本轮漏发”的功能性 P2 判断。
+  - 同窗未见该坏态进入普通直聊 final，也未造成全渠道不可用；不升级为 P1，不新建重复缺陷。

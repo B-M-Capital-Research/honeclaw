@@ -4896,3 +4896,16 @@
 - 本轮判断
   - 最新证据仍落在既有 heartbeat 输出结构漂移 / 解析失败范围内，没有形成新的独立根因。
   - 坏态主要影响 heartbeat 是否能稳定得出 `triggered/noop` 并发送，不是普通直聊投递 P1；状态维持 `New`，严重等级维持 `P2`。
+
+## 最新运行态复核（2026-06-28 07:02 CST）
+
+- `data/runtime/logs/hone_cli_screen.log`
+  - 巡检窗口：2026-06-28 03:02-07:02 CST。
+  - 本窗 216 条 heartbeat `run_finish` 中继续出现 75 条 `PlainTextSuppressed`、25 条 `PlainTextNoop`、14 条 `JsonUnknownStatus`、6 条 `JsonMalformed`、1 条 `JsonEmptyStatus` 与 85 条 `failure_kind=execution_failed`。
+  - 代表样本仍覆盖 Feishu / Web heartbeat：多条任务以 `<think>` 或自然语言前缀开始，最终被解析器压成非结构化、未知状态或失败跳过。
+- `data/runtime/logs/acp-events.log`
+  - 同窗可重构 2 次 `session/prompt`、2 个 session、2 次 `stopReason=end_turn`、0 个 response error。
+  - 用户可见 `agent_message_chunk` 污染扫描未命中绝对路径、raw tool 字段、`<think>`、provider 原始错误、panic、quota、`company_profiles`、`StockAnalysis`、`data_fetch`、`reasoning_content`、`HONE_MCP_BIN` 或 binary-not-found 外泄。
+- 本轮判断
+  - 最新证据仍落在既有 heartbeat 输出结构漂移 / 解析失败范围内，没有形成新的独立根因。
+  - 普通直聊 ACP 本窗正常 `end_turn`，未见用户可见原始错误；状态维持 `New`，严重等级维持 `P2`。
