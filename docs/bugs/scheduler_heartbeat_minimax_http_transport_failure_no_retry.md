@@ -3,9 +3,21 @@
 - **发现时间**: 2026-04-17 16:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Later
+- **状态**: New
 
 ## 修复进展（2026-04-26）
+
+- **2026-06-27 11:01 CST 回退为 `New`**：
+  - `data/runtime/logs/web.log.2026-06-27` 与 `data/runtime/logs/hone_cli_screen.log`
+    - 11:00-11:01 CST heartbeat function-calling 路径成批出现 `MiniMax-M2.7-highspeed` / OpenAI-compatible `error sending request for url (https://api.minimaxi.com/v1/chat/completions)`。
+    - 同窗先记录多条 `raw chat_with_tools transport error, retrying`，说明 provider 级短重试已触发；随后仍有多个 Feishu / Web heartbeat 任务落成 `runner_error + execution_failed`，覆盖 `闪迪关键事件心跳提醒`、`持仓财报与重大新闻心跳提醒`、`NVDA 关键事件心跳提醒`、`小米30港元破位预警`、`SIVE POET/Nokia/1.6T DFB 心跳检测`、`RKLB异动监控`、`全天原油价格3小时播报` 等。
+    - 错误均停留在 runtime 日志 / scheduler 失败台账侧，未见用户可见 assistant final 外露原始 provider 错误。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 仍停在 2026-06-17；本轮以 runtime 日志和 `data/runtime/logs/acp-events.log` 重构真实运行态。
+    - 同窗 ACP 可见 16 次 `session/prompt`、11 个 prompt session、16 次 `stopReason=end_turn`、0 个 response error；没有证据显示 Feishu direct、Web direct 或出站全局不可用。
+  - 判断：
+    - 2026-06-21 的 `Later` 结论明确写入“若已确认加载当前代码且网络 / 供应商状态稳定的新运行态中仍成批复现，再重新打开”。本轮日志已经显示 provider 短重试触发后仍成批失败，满足回退条件。
+    - 该问题影响 heartbeat 监控覆盖但未造成错投、数据破坏或全渠道不可用；严重等级保持功能性 `P2`，非 P1，不创建 GitHub Issue。
 
 - **2026-06-21 19:09 CST 调整为 `Later`**：
   - 本轮复核边界按 bug-2 最新规则执行：当前机器不再作为生产运行态依据，且本单核心失败是 MiniMax / OpenAI-compatible `chat/completions` 外部传输失败。
