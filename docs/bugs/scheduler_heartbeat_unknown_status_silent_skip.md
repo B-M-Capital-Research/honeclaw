@@ -7,6 +7,18 @@
 
 ## 修复进展
 
+- `2026-06-28 15:02 CST` 本轮确认当前 runtime 进程继续复发，状态维持 `New`：
+  - `data/runtime/logs/hone_cli_screen.log` 与 `data/runtime/logs/web.log.2026-06-28`
+    - 11:01-15:02 CST heartbeat 窗口新增 219 条 `run_finish`，其中 `parse_kind=PlainTextSuppressed` 68 条、`PlainTextNoop` 18 条、`JsonUnknownStatus` 14 条、`JsonMalformed` 4 条、`JsonEmptyStatus` 1 条，另有 78 条 `failure_kind=execution_failed`。
+    - 代表性样本覆盖 `全天原油价格3小时播报`、`AI与科技持仓观察关键事件心跳提醒`、`TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`、`持仓重大事件心跳检测`、`AAOI 1.6T 光模块心跳检测` 等；多条 raw preview 继续以 `<think>`、工具预算耗尽、自然语言总结、非法 JSON 或非契约状态开头，最终落为 `execution_failed + skipped_error`、`noop + skipped_noop` 或未发送。
+    - 同窗 4 条 `context_window_overflow` 继续归入 `scheduler_heartbeat_context_window_limit_no_recovery.md`；3 条 `max_iterations_exceeded:18` 继续归入 `scheduler_heartbeat_iteration_exhaustion_skips_alert.md`；未见 MiniMax `raw chat_with_tools transport error` 或 `api.minimaxi.com/v1/chat/completions` 成批复现。本单只记录结构化状态输出退化本身。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 只读快照仍停在 2026-06-17；本轮以 runtime 日志和 `data/runtime/logs/acp-events.log` 重构真实运行态。
+    - `data/runtime/logs/acp-events.log` 本窗可见 8 次 `session/prompt`、6 个 session、8 次 `stopReason=end_turn`、0 个 response error；用户可见 `agent_message_chunk` 污染扫描未命中绝对路径、raw tool 字段、`<think>`、provider 原始错误、panic、quota、`company_profiles`、`StockAnalysis`、`data_fetch`、`context window`、`reasoning_content`、`HONE_MCP_BIN` 或 binary-not-found 外泄。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因或新的用户可见污染链路。
+    - 该问题会导致 heartbeat 监控任务整轮失败或跳过发送，属于功能性监控漏发 / 降级；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-06-28 11:01 CST` 本轮确认当前 runtime 进程继续复发，状态维持 `New`：
   - `data/runtime/logs/hone_cli_screen.log` 与 `data/runtime/logs/web.log.2026-06-28`
     - 07:01-11:01 CST heartbeat 窗口新增 218 条 `run_finish`，其中 `parse_kind=PlainTextSuppressed` 75 条、`PlainTextNoop` 20 条、`JsonUnknownStatus` 18 条、`JsonMalformed` 14 条、`JsonEmptyStatus` 3 条，另有 91 条 `failure_kind=execution_failed`。
