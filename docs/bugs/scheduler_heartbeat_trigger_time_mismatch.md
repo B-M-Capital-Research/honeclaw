@@ -113,3 +113,14 @@
 - 在 heartbeat prompt 或输出 schema 中显式传入并要求使用 `executed_at_beijing`，同时禁止模型自行换算“北京时间”。
 - 在 scheduler 出站前增加轻量校验：若 `JsonTriggered` 正文出现“北京时间 HH:MM”且与 `executed_at` 偏差明显，降级为待复核或重写时间口径。
 - 后续巡检优先观察其它 `JsonTriggered + delivered=1` heartbeat 是否继续出现类似 UTC/CST 混淆，再决定是否提升严重等级。
+
+## 最新运行态复核（2026-06-28 23:02 CST）
+
+- `data/runtime/logs/web.log.2026-06-28` / `data/runtime/logs/hone_cli_screen.log`
+  - 巡检窗口：2026-06-28 19:02-23:02 CST。
+  - 20:00 CST `小米30港元破位预警` 生成 `JsonTriggered + deliver_preview`，但 preview 把当前 2026-06-28 执行窗口写成 `今日（7月3日）`。
+  - 21:00 CST 同一 job 再次生成 `JsonTriggered + deliver_preview`，preview 把当前执行窗口写成 `今日（7月2日）`，随后因重复抑制未正式发送。
+  - 该样本与 17:00 CST 的 `今日（7月1日）` 同根，均为 heartbeat 触发提醒把数据日期 / 模型推断日期写成用户可见“今日”口径。
+- 本轮判断
+  - 最新证据仍属于 heartbeat 成功生成触发提醒后的日期 / 时间口径错误，不新建重复缺陷。
+  - 调度和解析链路仍可运行，问题主要影响用户对提醒新鲜度和交易日的判断，因此维持质量性 `P3 / New`；非 P1，不创建 GitHub Issue。

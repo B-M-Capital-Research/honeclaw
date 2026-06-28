@@ -35,6 +35,18 @@
     - 但用户收到的行情摘要以异常价格作为判断依据，影响投资观察质量和可信度。
     - 因为不阻断功能链路，仍按质量性 `P3`；非 P1，不创建 GitHub Issue。
 
+## 最新进展（2026-06-28 23:02 CST）
+
+- 本轮 2026-06-28 19:02-23:02 CST 真实运行态继续确认同根复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-06-28`
+    - 21:35 CST Feishu scheduler 会话触发 `科技核心股池 · 晚间击球区快报`，21:36 CST `session.persist_assistant` 与 `done ... success=true` 收口。
+    - 同条 final 继续把多只观察池标的输出为明显异常数量级价格：`MU $1,132.33`、`SNDK $2,090.71`、`STX $899.90`、`WDC $586.45` 等，并继续围绕这些价格给出击球区、财报日期和距离表。
+    - 同窗 heartbeat raw preview 也继续围绕 `SNDK $2,090.71`、`MU $1,132.33` 解释，但多数未正式送达；本条 Feishu scheduler 样本已经正常收口，因此可作为用户可见质量证据。
+  - `data/sessions.sqlite3` 仍停在 2026-06-17，最近会话证据继续以 runtime / ACP 日志为准。
+- 用户影响：
+  - 报告主链路正常收口，未见空回复、错投、投递失败或原始工具 JSON；因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+  - 但异常价格继续进入正式观察池快报，说明价格 sanity check 仍未覆盖当前 scheduler / function-calling 路径。
+
 ## 最新进展（2026-06-21 23:03 CST）
 
 - 本轮 19:02-23:01 CST 真实运行态继续确认同根复发，状态维持 `New`：

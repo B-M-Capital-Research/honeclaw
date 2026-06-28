@@ -633,3 +633,13 @@
 - 本轮判断
   - 最新样本仍属于“低于阈值后的 heartbeat 状态在 triggered/noop/重复抑制/失败之间漂移”的既有缺陷范围，不拆新单。
   - 该问题直接影响用户是否收到单标的价格阈值提醒，继续按功能性 `P2 / New` 跟踪。
+
+## 最新运行态复核（2026-06-28 23:02 CST）
+
+- `data/runtime/logs/web.log.2026-06-28` / `data/runtime/logs/hone_cli_screen.log`
+  - 巡检窗口：2026-06-28 19:02-23:02 CST。
+  - `小米30港元破位预警` 继续在 21.42 HKD <= 30 HKD 条件下漂移：19:00 CST 返回 `JsonNoop` 并不发送；19:30 / 20:30 CST 退化为 `PlainTextSuppressed + execution_failed`；20:00 / 21:00 CST 生成 `JsonTriggered + deliver_preview` 后又被 `duplicate_suppressed` 压成未命中；21:30 CST 再次回到 `JsonNoop`；23:00 CST raw preview 仍试图触发。
+  - 同一窗口内该 job 既能生成提醒正文，也会因为去重、noop 或非结构化输出而不发送，说明阈值触发、去重和结构化收口仍没有稳定一致。
+- 本轮判断
+  - 最新样本仍属于“低于阈值后的 heartbeat 状态在 triggered/noop/重复抑制/失败之间漂移”的既有缺陷范围，不拆新单。
+  - 该问题直接影响用户是否收到单标的价格阈值提醒，继续按功能性 `P2 / New` 跟踪；本窗未见全渠道不可用，不升级 P1。
