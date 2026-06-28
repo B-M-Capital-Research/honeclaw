@@ -8,6 +8,12 @@
 
 ## 证据来源
 
+- `data/runtime/logs/hone_cli_screen.log`
+  - 2026-06-29 03:04-07:02 CST 同类 ACP runner 请求失败在 scheduler 链路继续出现，但用户可见错误已被净化。
+  - 04:04 CST Feishu scheduler `Oil_Price_Monitor_Closing` 命中 `codex acp session/prompt idle timeout (180s)`，最终落成 `failure_kind=scheduler_runner_timeout`，Feishu 侧记录本轮不发送。
+  - 05:33 CST Feishu scheduler `美股收盘后跨市场复盘` 命中同类 `scheduler_runner_timeout`，用户只看到产品化失败提示“定时任务执行环境暂时不可用，系统已记录失败并将在下一次触发时重试”。
+  - 06:33 CST Web scheduler `1亿美元AI科技组合每日跟踪` 同样落成 `scheduler_runner_timeout` 并跳过发送。
+  - 同窗错误 stderr 中只在内部日志保留 MCP / plugin startup 细节，用户可见 `agent_message_chunk` 污染扫描未命中绝对路径、raw tool 字段、`HONE_MCP_BIN`、binary-not-found、provider 原始错误或 panic。
 - `data/sessions.sqlite3`
   - 巡检时间窗：2026-06-06 07:01-11:01 CST。
   - 本窗共有 12 个 user turn 与 12 个 assistant final，Feishu direct / Discord scheduler 会话均有 assistant 记录收口。
@@ -46,6 +52,7 @@
 - 但主请求没有完成，且系统没有在同轮自动恢复或基于既有上下文降级回答。
 - Discord scheduler 没有外发通用失败，`should_deliver=0` 是正确止血；但 `execution_status=noop` 与 `failure_kind=internal_error_suppressed` 同时出现，容易把 transport 失败和真正无须发送的业务 `noop` 混在一起。
 - 2026-06-24 复发窗中，Feishu / Web direct 用户主动请求与 Discord group / scheduler 均仍会在 ACP transport 断连时整轮失败；日志侧保留内部 URL 和 raw error，用户可见侧未见原始 URL 外泄。
+- 2026-06-29 07:02 CST 复核窗中，失败形态从 `stream disconnected before completion` 扩展到 `codex acp session/prompt idle timeout (180s)` / `scheduler_runner_timeout`；错误净化生效，但 Feishu / Web scheduler 的业务报告正文没有完成。
 
 ## 用户影响
 
@@ -61,6 +68,7 @@
 - 与 `channel_raw_llm_error_exposure.md` 不同：本轮没有把 `chatgpt.com/backend-api/codex/responses`、transport fallback 或内部错误文本暴露给最终用户。
 - 与 `feishu_direct_codex_usage_limit_generic_failure.md` 不同：本轮不是 usage limit / quota，错误分类为 transport disconnect。
 - 2026-06-24 的非文档提交 `3679c4c5` 改善 ACP/MCP 子进程清理，可能降低进程泄漏导致的运行压力；但本轮证据中的直接失败是 ChatGPT Codex backend transport 断连，当前文档不能仅凭该提交判定根因已修复。
+- 2026-06-29 新样本显示，MCP / plugin startup 事件与 ACP `session/prompt` idle timeout 仍可把 scheduler 正文生成拖到超时。它与本单同属 ACP runner 请求失败后缺少同轮自动恢复，但不同于 heartbeat 结构化 JSON 退化，也不同于 Web scheduler SSE 无终态：本窗已有产品化失败终态，只是业务内容未完成。
 
 ## 下一步建议
 

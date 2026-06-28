@@ -20,6 +20,17 @@
 
 - 无，非 P1
 
+## 最新进展（2026-06-29 07:02 CST）
+
+- 本轮 2026-06-29 03:04-07:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/runtime/logs/hone_cli_screen.log`
+    - 07:00 CST Web heartbeat `持仓关键事件心跳检测` raw preview 继续把 `SNDK -10.46% ($2,090.71)` 作为行情锚，并围绕该异常数量级价格总结板块抛压。
+    - 本窗该样本落在 heartbeat raw preview / 结构化失败路径，未看到新的 Feishu scheduler / Web heartbeat 正式送达异常价格报告。
+  - `data/sessions.sqlite3` 仍停在 2026-06-17，最近会话证据继续以 runtime / ACP 日志为准。
+- 用户影响：
+  - 本窗没有新增正式送达样本，因此不提升严重等级；调度 / 投递主链路没有因该问题被阻断。
+  - 但异常价格仍持续进入 function-calling 结果和 heartbeat 判定上下文，说明价格 sanity check 仍未覆盖当前 scheduler / heartbeat 运行路径；作为既有质量性 `P3 / New` 继续跟踪。
+
 ## 最新进展（2026-06-29 03:01 CST）
 
 - 本轮 2026-06-28 23:02-2026-06-29 03:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
