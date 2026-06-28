@@ -6,6 +6,10 @@
 - **状态**: Fixed
 - **GitHub Issue**: 无
 - **修复结论复核**:
+- `2026-06-28 11:01 CST` 运行态只读复核：代码级 `Fixed` 但当前 live sqlite mirror 仍不可关闭：
+  - `data/sessions.sqlite3` 在 07:01-11:01 CST 窗口仍无新增 `sessions` / `session_messages` / `cron_job_runs`，`sessions.max(updated_at)=2026-06-17T10:37:37.207669+08:00`、`sessions.max(last_message_at)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(imported_at)=2026-06-17T10:37:41.827657+08:00`、`cron_job_runs.max(executed_at)=2026-06-17T11:01:42.353141+08:00`。
+  - `data/runtime/logs/hone_cli_screen.log` / `data/runtime/logs/web.log.2026-06-28` 同窗继续写入真实 heartbeat / audit 运行事件；`data/runtime/logs/acp-events.log` 可见 19 次 `session/prompt`、12 个 session、19 次 `stopReason=end_turn`、0 个 response error。
+  - 最近四小时无非文档代码提交，且 10:00 代码级修复记录已明确未重启 live runtime；因此本轮不把该缺陷关闭。状态维持代码级 `Fixed`，等待后续正常重启 / 换进程后的只读巡检确认 mirror 追平。
 - `2026-06-28 CST` 代码级修复：
   - 根因补齐到 cloud authoritative 运行态：`HoneBotCore::new(...)` 和 `hone-web-api` 在 `cloud.mode=cloud` 下此前直接走 `SessionStorage::new_cloud(pg)`，只把 PG `cloud_sessions` 作为唯一 session backend 使用；本地 `sessions.sqlite3` mirror 根本没有初始化，也没有 cloud -> sqlite dual-write 或启动回填路径，因此从 2026-06-17 起会持续停滞。
   - `memory/src/session.rs` 现把 cloud runtime 主存储与本地 sqlite mirror 分离：cloud mode 继续以 PG `cloud_sessions` 作为读写真相源，同时在 `storage.session_sqlite_shadow_write_enabled=true` 且配置了 `storage.session_sqlite_db_path` 时，额外初始化本地 sqlite mirror，并在每次 cloud session 写入后同步 shadow 到 `sessions.sqlite3`。启动时若 cloud backend 与 sqlite mirror 同时存在，还会 best-effort 把现有 PG session 列表回填进 sqlite mirror。

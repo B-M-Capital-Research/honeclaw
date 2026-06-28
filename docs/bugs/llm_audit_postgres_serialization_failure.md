@@ -18,6 +18,10 @@
 
 ## 修复记录
 
+- 2026-06-28 11:01 CST
+  - 07:01-11:01 CST 当前 live 运行态仍持续输出同类 PostgreSQL 参数序列化失败，共 692 条。
+  - 同窗 `data/runtime/logs/acp-events.log` 可见 19 次 `session/prompt`、12 个 session、19 次 `stopReason=end_turn`、0 个 response error；问题仍集中在 function-calling audit 持久化与后续排障审计，不直接阻断用户回复或投递，严重等级维持 P2，非 P1。
+  - 状态维持 `New`，不创建 GitHub Issue。
 - 2026-06-27 23:01 CST
   - 19:01-23:01 CST 当前 live 运行态仍持续输出同类 PostgreSQL 参数序列化失败，共 692 条。
   - 同窗 `data/runtime/logs/acp-events.log` 可见 23 次 `session/prompt`、17 个 session、22 次 `stopReason=end_turn`、0 个 response error；问题仍集中在 function-calling audit 持久化与后续排障审计，不直接阻断用户回复或投递，严重等级维持 P2，非 P1。

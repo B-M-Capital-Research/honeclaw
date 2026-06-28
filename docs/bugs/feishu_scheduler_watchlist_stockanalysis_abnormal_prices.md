@@ -14,11 +14,26 @@
 
 ## 状态
 
-- Fixed
+- New
 
 ## GitHub Issue
 
 - 无，非 P1
+
+## 最新进展（2026-06-28 11:01 CST）
+
+- 本轮 2026-06-28 07:01-11:01 CST 真实运行态确认同根复发，状态从 `Fixed` 回退为 `New`：
+  - `data/runtime/logs/web.log.2026-06-28` 与 `data/runtime/logs/hone_cli_screen.log`
+    - 11:00 CST Web heartbeat `持仓关键事件心跳检测`（`job_id=j_7a2adc11`，`target=web-user-cb1b46a2add4`）以 `JsonTriggered` 成功投递并记录 `定时任务完成`。
+    - `deliver_preview` 写出 `SNDK -10.46%（$2,090.71）`、`VRT -6.64%（$303.95）`、`MU -6.69%（$1,132.33）` 等明显异常数量级价格，并把这些价格作为“AI 基础设施板块抛压延续”的用户可见摘要锚点。
+    - 同窗其它 heartbeat raw preview 也继续围绕 `SNDK $2,090.71`、`MU $1,132.33` 解释或触发，但多数落为结构化失败 / noop；本条样本已经完成投递，因此不只是内部 raw preview 质量问题。
+  - 查重结论：
+    - 该样本与 2026-06-20/21 的同一缺陷根因一致：scheduler / heartbeat 对行情数值缺少稳定的数量级 sanity check，异常价仍可进入正式用户可见报告。
+    - 这次发生在 Web heartbeat 投递链路，而不是原始 Feishu scheduler 早报，但受影响面仍是 scheduler / heartbeat 观察池行情锚，因此回退本单，不新建重复文档。
+  - 用户影响：
+    - 调度、收口和投递主链路均可用，没有错投、空回复或系统失败证据。
+    - 但用户收到的行情摘要以异常价格作为判断依据，影响投资观察质量和可信度。
+    - 因为不阻断功能链路，仍按质量性 `P3`；非 P1，不创建 GitHub Issue。
 
 ## 最新进展（2026-06-21 23:03 CST）
 
@@ -34,6 +49,9 @@
 
 ## 修复记录
 
+- 2026-06-28 11:01 CST 状态回退为 `New`：
+  - 10:00-11:01 CST 当前 live 运行态再次将异常价格写入 Web heartbeat `deliver_preview` 并完成投递，说明 2026-06-22 的 prompt 级 sanity 约束没有稳定覆盖当前 heartbeat / function_calling 运行路径。
+  - 本轮是缺陷台账维护任务，未修改业务代码、测试代码或配置代码。
 - 2026-06-22 03:08 CST 状态更新为 `Fixed`：
   - 观察池 scheduler prompt 增加价格 sanity 约束：如果某个标的最新价相对固定击球区或近期有效价明显偏离一个数量级，或疑似把市值、复权 / 拆股口径、页面其它数字误当股价，必须把该标的价格写为“最新行情未完成稳定校验”。
   - 同类异常价不得继续输出为精确价格，也不得基于该异常价计算距离击球区或给出交易判断。

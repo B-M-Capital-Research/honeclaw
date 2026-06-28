@@ -5,6 +5,17 @@
 - **严重等级**: P2
 - **状态**: New
 
+## 最新进展（2026-06-28 11:01 CST）
+
+- 本轮 2026-06-28 07:01-11:01 CST 继续确认同根复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-06-28` 与 `data/runtime/logs/hone_cli_screen.log`
+    - 08:00 CST `小米30港元破位预警` `job_id=j_654aef9b` 返回 `JsonTriggered + deliver_preview`，正文明确当前价格 `21.42 港元` 已触及 `30 港元` 心理止损 / 观察线，随后被 `duplicate_suppressed` 压成未命中。
+    - 09:30 CST 同 job 再次返回 `JsonTriggered + deliver_preview`，仍被 `duplicate_suppressed` 压制。
+    - 11:00 CST 同 job 继续返回 `JsonTriggered + deliver_preview`，随后再次 `duplicate_suppressed`，Feishu 侧记录本轮不发送。
+  - 判断：
+    - 本窗坏态继续表现为同一条件在已触发、送达预览、重复抑制和未命中之间漂移，triggered 结果到投递分支之间仍不稳定。
+    - 这是功能性 heartbeat 漏发 / 状态消费问题；影响集中在单个 heartbeat job，没有错对象投递、数据安全或全渠道不可用证据，严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 ## 最新进展（2026-06-27 23:01 CST）
 
 - 本轮 2026-06-27 19:01-23:01 CST 继续确认同根复发，状态维持 `New`：
