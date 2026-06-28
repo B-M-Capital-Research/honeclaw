@@ -2159,6 +2159,41 @@ async fn context_overflow_failure_is_rewritten_to_friendly_message() {
 }
 
 #[tokio::test]
+async fn context_window_exceeded_key_auto_compacts_and_retries_successfully() {
+    let root = make_temp_dir("hone_channels_context_window_exceeded_key_retry_success");
+    std::fs::create_dir_all(&root).expect("create root");
+    let llm = MockLlmProvider::with_chat_and_tool_responses(
+        vec![Ok(ChatResult {
+            content: "压缩后的摘要".to_string(),
+            usage: None,
+        })],
+        vec![
+            Err(hone_core::HoneError::Llm(
+                "codex_error_info=context_window_exceeded".to_string(),
+            )),
+            Ok(ChatResponse {
+                content: "压缩后恢复".to_string(),
+                reasoning_content: None,
+                tool_calls: None,
+                usage: None,
+            }),
+        ],
+    );
+    let core = make_test_core(&root, llm.clone());
+    let actor = ActorIdentity::new("web", "overflow-key", None::<String>).expect("actor");
+    let session = AgentSession::new(core, actor, "direct");
+
+    let result = session.run("取消所有定时任务", AgentRunOptions::default()).await;
+
+    assert!(result.response.success, "{:?}", result.response.error);
+    assert_eq!(result.response.content, "压缩后恢复");
+    assert_eq!(llm.chat_calls(), 1);
+    assert_eq!(llm.chat_with_tools_calls(), 2);
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
 async fn manual_compact_does_not_consume_quota_or_persist_command_message() {
     let root = make_temp_dir("hone_channels_manual_compact");
     std::fs::create_dir_all(&root).expect("create root");

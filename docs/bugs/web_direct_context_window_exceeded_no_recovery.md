@@ -3,7 +3,7 @@
 - 发现时间：2026-06-23 15:02 CST
 - Bug Type：System Error
 - 严重等级：P2
-- 状态：New
+- 状态：Fixed
 
 ## 证据来源
 
@@ -49,8 +49,17 @@
 ## 根因判断
 
 - 高概率是 Web direct 的上下文恢复 / prompt 组装缺少预算上限，或未在 Codex ACP `context_window_exceeded` 后触发与普通会话一致的 compact / retry / 用户态降级。
+- 当前代码确认的直接缺口是：自动恢复只识别自然语言形态的 `context window exceeds limit`，没有把 Codex ACP 真实返回的机器可读错误键 `context_window_exceeded` 纳入同一判定，因此这类 Web direct 旧会话会跳过强制 compact / retry，直接落成 `AgentFailed`。
 - 既有 `scheduler_heartbeat_context_window_limit_no_recovery.md` 覆盖 heartbeat 监控任务超窗，本单覆盖 Web direct 直聊会话；两者影响链路不同，因此单独建档。
 - 既有 `context_overflow_recovery_gap.md` 为历史归档修复项，但本轮真实运行态显示当前 Web direct 旧会话仍会在短请求上复现，因此按新活跃缺陷记录。
+
+## 修复记录
+
+- 2026-06-29 03:04 CST 已修复：
+  - `crates/hone-channels/src/runtime.rs` 的统一超窗检测现在把 `context_window_exceeded` 也视为上下文超限信号，Web direct / scheduler 共用恢复路径不再只依赖自然语言报错变体。
+  - `crates/hone-channels/src/agent_session/tests.rs` 新增回归 `context_window_exceeded_key_auto_compacts_and_retries_successfully`，直接覆盖活跃缺陷里的真实 Codex ACP 错误键，确保旧 Web direct 会话在收到该错误后会触发 compact 并重试，而不是直接失败。
+  - `crates/hone-channels/src/runtime.rs` 同步补充 `is_context_overflow_error_accepts_codex_context_window_exceeded_key`，锁住底层错误归类。
+  - 本轮未重启当前 Web 服务，也未对现有 live 会话做运行态复测；状态先按代码级 `Fixed` 记录，待后续巡检窗口确认是否可 `Closed`。
 
 ## 下一步建议
 
@@ -58,3 +67,10 @@
 - 对 `context_window_exceeded` 增加 Web direct 专用恢复：自动压缩历史、丢弃低价值旧工具 transcript，或明确返回“当前会话过长，请开启新会话 / 已尝试压缩失败”的用户态提示。
 - 为同一会话连续超窗增加健康标记，避免后续短请求继续无效重试。
 - 增加回归覆盖：旧会话含超长历史时，一个短 direct 请求仍能通过 compact/retry 收口，或至少返回产品化失败说明。
+
+## 验证
+
+- `cargo test -p hone-channels is_context_overflow_error_accepts_codex_context_window_exceeded_key --lib -- --nocapture`
+- `cargo test -p hone-channels context_window_exceeded_key_auto_compacts_and_retries_successfully -- --nocapture`
+- `cargo test -p hone-channels context_overflow_ -- --nocapture`
+- `cargo check -p hone-channels --tests`

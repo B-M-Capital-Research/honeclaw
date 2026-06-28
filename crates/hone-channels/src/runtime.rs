@@ -939,6 +939,7 @@ pub(crate) fn is_context_overflow_error(text: &str) -> bool {
     let normalized = text.trim().to_ascii_lowercase();
     normalized.contains("context window exceeds limit")
         || normalized.contains("context window overflow")
+        || normalized.contains("context_window_exceeded")
         || normalized.contains("context_window_will_overflow")
         || normalized.contains("context length exceeded")
         || normalized.contains("maximum context length")
@@ -1781,6 +1782,13 @@ mod tests {
         ));
         assert!(err.contains("当前会话上下文过长"));
         assert!(!err.contains("bad_request_error"));
+    }
+
+    #[test]
+    fn is_context_overflow_error_accepts_codex_context_window_exceeded_key() {
+        assert!(is_context_overflow_error(
+            "codex_error_info=context_window_exceeded"
+        ));
     }
 
     #[test]
