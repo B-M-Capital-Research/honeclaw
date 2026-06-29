@@ -190,6 +190,11 @@ static RE_HEARTBEAT_BEIJING_TRIGGER_TIME: LazyLock<regex::Regex> = LazyLock::new
     .expect("valid heartbeat beijing trigger time regex")
 });
 
+static RE_HEARTBEAT_RELATIVE_TODAY_DATE: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r"(?P<prefix>今(?:日|天)（)(?P<month>\d{1,2})月(?P<day>\d{1,2})日(?P<suffix>）)")
+        .expect("valid heartbeat relative today date regex")
+});
+
 static RE_HEARTBEAT_FACT_TOKEN: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
         r"(?ix)
@@ -358,6 +363,31 @@ fn heartbeat_status_indicates_triggered(status: &str) -> bool {
         || status.contains("触发")
         || status.contains("命中")
         || status.contains("满足")
+}
+
+fn heartbeat_status_indicates_compatible_noop(status: &str) -> bool {
+    let compact = status
+        .split_whitespace()
+        .collect::<String>()
+        .replace(['-', '_'], "")
+        .to_ascii_lowercase();
+    matches!(
+        compact.as_str(),
+        "partial"
+            | "partialresult"
+            | "partialresults"
+            | "created"
+            | "configured"
+            | "updated"
+            | "heartbeatcreated"
+            | "watchlistupdated"
+            | "setupcomplete"
+            | "configupdated"
+    ) || status.contains("已创建")
+        || status.contains("已配置")
+        || status.contains("已更新")
+        || status.contains("部分完成")
+        || status.contains("部分成功")
 }
 
 fn previous_visible_char(content: &str, idx: usize) -> Option<char> {
@@ -867,8 +897,34 @@ fn normalize_heartbeat_beijing_trigger_time(
     if normalized_from.is_some() {
         return (normalized_datetime, normalized_from);
     }
-    let normalized = RE_HEARTBEAT_BEIJING_TRIGGER_TIME
+    let normalized_relative_today = RE_HEARTBEAT_RELATIVE_TODAY_DATE
         .replace_all(&normalized_datetime, |captures: &regex::Captures<'_>| {
+            let month = captures
+                .name("month")
+                .and_then(|matched| matched.as_str().parse::<u32>().ok());
+            let day = captures
+                .name("day")
+                .and_then(|matched| matched.as_str().parse::<u32>().ok());
+            let (Some(month), Some(day)) = (month, day) else {
+                return captures[0].to_string();
+            };
+            if month == reference_now.month() && day == reference_now.day() {
+                return captures[0].to_string();
+            }
+            let prefix = captures
+                .name("prefix")
+                .map(|m| m.as_str())
+                .unwrap_or("今日（");
+            let suffix = captures.name("suffix").map(|m| m.as_str()).unwrap_or("）");
+            format!(
+                "{prefix}{}月{}日{suffix}",
+                reference_now.month(),
+                reference_now.day()
+            )
+        })
+        .into_owned();
+    let normalized = RE_HEARTBEAT_BEIJING_TRIGGER_TIME
+        .replace_all(&normalized_relative_today, |captures: &regex::Captures<'_>| {
             let hour = captures
                 .name("hour")
                 .and_then(|matched| matched.as_str().parse::<u32>().ok());
@@ -1259,6 +1315,9 @@ pub fn inspect_heartbeat_result(content: &str) -> (HeartbeatOutcome, HeartbeatPa
         if heartbeat_status_indicates_noop(&status) {
             return (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonNoop);
         }
+        if heartbeat_status_indicates_compatible_noop(&status) {
+            return (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonNoop);
+        }
         if status.is_empty() {
             return (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonEmptyStatus);
         }
@@ -1286,6 +1345,14 @@ pub fn inspect_heartbeat_result(content: &str) -> (HeartbeatOutcome, HeartbeatPa
             HeartbeatOutcome::Deliver(message),
             HeartbeatParseKind::JsonTriggered,
         );
+    }
+
+    if !trimmed.starts_with('{')
+        && let Some(status) = recover_lossy_json_status_field(trimmed)
+        && (heartbeat_status_indicates_noop(&status)
+            || heartbeat_status_indicates_compatible_noop(&status))
+    {
+        return (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonNoop);
     }
 
     if trimmed.starts_with('{') {
@@ -3651,6 +3718,22 @@ mod tests {
     }
 
     #[test]
+    fn heartbeat_normalizes_conflicting_relative_today_date() {
+        let reference_now =
+            chrono::DateTime::parse_from_rfc3339("2026-06-29T13:00:21+08:00").expect("time");
+        let execution = heartbeat_execution_from_content_at_beijing(
+            r#"{"status":"triggered","message":"【强提醒】小米（1810.HK）当前价格21.86港元，已触及30港元心理止损/观察线。今日（6月30日）高开高走，日内涨幅约+2.05%。"}"#,
+            "MiniMax-M2.7-highspeed",
+            reference_now,
+        );
+
+        assert!(execution.should_deliver);
+        assert!(execution.error.is_none());
+        assert!(execution.content.contains("今日（6月29日）高开高走"));
+        assert!(!execution.content.contains("今日（6月30日）高开高走"));
+    }
+
+    #[test]
     fn heartbeat_prompt_rejects_direct_trade_instructions() {
         let event = SchedulerEvent {
             actor: ActorIdentity::new("feishu", "ou_cai", None::<String>).expect("actor"),
@@ -4160,6 +4243,32 @@ mod tests {
     }
 
     #[test]
+    fn heartbeat_partial_json_status_is_compatible_noop() {
+        let content = r#"{"status":"partial","message":"本轮仅完成部分检查"}"#;
+        assert_eq!(
+            inspect_heartbeat_result(content),
+            (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonNoop)
+        );
+        let execution = heartbeat_execution_from_content(content, "model-x");
+        assert!(!execution.should_deliver);
+        assert!(execution.error.is_none());
+        assert_eq!(execution.metadata["parse_kind"], "JsonNoop");
+    }
+
+    #[test]
+    fn heartbeat_created_json_status_is_compatible_noop() {
+        let content = r#"{"status":"created","cron_job_id":"TSLA_monitor_30min"}"#;
+        assert_eq!(
+            inspect_heartbeat_result(content),
+            (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonNoop)
+        );
+        let execution = heartbeat_execution_from_content(content, "model-x");
+        assert!(!execution.should_deliver);
+        assert!(execution.error.is_none());
+        assert_eq!(execution.metadata["parse_kind"], "JsonNoop");
+    }
+
+    #[test]
     fn heartbeat_trigger_alias_json_status_delivers_message() {
         let content = r#"{"status":"condition_met","message":"触发事实"}"#;
         assert_eq!(
@@ -4279,6 +4388,19 @@ mod tests {
             Some("heartbeat 输出不是合法 JSON，任务已标记失败")
         );
         assert_eq!(execution.metadata["parse_kind"], "JsonMalformed");
+    }
+
+    #[test]
+    fn heartbeat_malformed_partial_json_is_compatible_noop() {
+        let content = r#"<think>工具预算不足。</think>
+
+```json
+{"status":"partial","results":{"ticker":"TEM"}}
+"#;
+        let execution = heartbeat_execution_from_content(content, "model-x");
+        assert!(!execution.should_deliver);
+        assert!(execution.error.is_none());
+        assert_eq!(execution.metadata["parse_kind"], "JsonNoop");
     }
 
     #[test]
