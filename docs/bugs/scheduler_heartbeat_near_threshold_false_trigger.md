@@ -5,6 +5,16 @@
 - **严重等级**: P2
 - **状态**: New
 
+## 最新进展（2026-06-30 03:07 CST）
+
+- 本轮 2026-06-29 23:00-2026-06-30 03:07 CST 继续确认同根复发，状态维持 `New`：
+  - `data/runtime/logs/hone_cli_screen.log`
+    - 23:30 CST `小米30港元破位预警` `job_id=j_654aef9b` 返回 `JsonTriggered` 并生成送达预览，但随后 `duplicate_suppressed`，Feishu 侧记录本轮不发送。
+    - 00:00 CST 同 job 再次返回 `JsonTriggered` 并生成送达预览；00:30 / 01:30 CST 又退化为 `JsonNoop`，17:30 / 18:30 UTC 窗口还可见 `JsonTriggered` 后未发送或未命中分支，03:00 CST 继续在 `JsonTriggered` 与未命中之间漂移。
+  - 判断：
+    - 本窗坏态继续表现为同一条件在触发、送达预览、重复抑制、未命中和结构化失败之间漂移，triggered 结果到投递分支之间仍不稳定。
+    - 这是功能性 heartbeat 漏发 / 状态消费问题；影响集中在单个 heartbeat job，没有错对象投递、数据安全或全渠道不可用证据，严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 ## 最新进展（2026-06-29 23:01 CST）
 
 - 本轮 2026-06-29 19:01-23:01 CST 继续确认同根复发，状态维持 `New`：

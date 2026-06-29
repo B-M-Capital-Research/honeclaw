@@ -3,8 +3,33 @@
 - **发现时间**: 2026-05-29 15:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，当前不是 P1。
+
+## 修复记录（2026-06-30 03:07 CST）
+
+- `crates/hone-channels/src/scheduler.rs` 的 heartbeat 出站归一化新增 `今日（M月D日）` 口径修正：当触发提醒正文把“今日”括号日期写成与 scheduler 权威北京时间不一致的未来/错误日期时，会在送达前自动改写为当前北京时间日期。
+- 该修复与既有 `北京时间 YYYY-MM-DD HH:MM` / `北京时间 HH:MM` 归一化并行生效，避免同一提醒同时把绝对检查时间和“今日（…）”相对日期写错。
+- 新增回归 `heartbeat_normalizes_conflicting_relative_today_date`，覆盖 `今日（6月30日）` 在 `2026-06-29T13:00:21+08:00` 执行窗口内被归一为 `今日（6月29日）`。
+- 验证通过：
+  - `cargo check -p hone-channels --tests`
+  - `cargo test -p hone-channels heartbeat_normalizes_conflicting_relative_today_date --lib -- --nocapture`
+  - `cargo test -p hone-channels heartbeat_ --lib -- --nocapture`
+- 本轮未重启当前 live runtime；线上送达预览是否完全止血仍待后续巡检窗口复核，因此先更新为代码级 `Fixed`，不直接标 `Closed`。
+
+## 最新进展（2026-06-30 03:07 CST）
+
+- 本轮 2026-06-29 23:00-2026-06-30 03:07 CST 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/hone_cli_screen.log`
+    - 23:30 CST `小米30港元破位预警` `job_id=j_654aef9b` 以 `JsonTriggered` 生成送达预览，当前日志窗口仍为 2026-06-29。
+    - 同条 `deliver_preview` 正文把当前窗口写成 `今日（6月30日）高开高走`，与实际执行日 2026-06-29 不一致；随后 `duplicate_suppressed` 也匹配到同一错误日期预览，说明错误时间口径会进入重复抑制判断基线。
+    - 00:00 CST 同 job 再次生成 `deliver_preview`，正文写成 `今日（7月1日）高开高走`，继续与实际执行日不一致。
+    - 03:00 CST Web `持仓关键事件心跳检测` raw preview 还把检查窗口写成 `北京时间 2026-05-30`，但该样本最终为 `PlainTextNoop` 且未送达，本轮仅作为时间上下文漂移的辅助信号，不单独升严重级别。
+  - 查重结论：
+    - 该样本仍属于 heartbeat 成功生成触发提醒后的用户可见时间 / 日期口径错误；与本文档既有“触发提醒时间口径漂移”同一受影响链路，不新建重复缺陷。
+  - 用户影响：
+    - 调度、解析和预览生成链路可用，用户可见正文仍可能误导提醒新鲜度和交易日判断。
+    - 没有错投、数据安全或全渠道不可用证据；因此维持质量性 `P3`，非 P1，不创建 GitHub Issue。
 
 ## 最新进展（2026-06-29 23:01 CST）
 

@@ -3,9 +3,36 @@
 - **发现时间**: 2026-04-15 14:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 
 ## 修复进展
+
+- `2026-06-30 03:07 CST` 代码级修复：
+  - `crates/hone-channels/src/scheduler.rs` 现在把 heartbeat 配置/治理类兼容状态 `partial`、`partial_results`、`created`、`configured`、`updated`、`heartbeat_created`、`watchlist_updated` 等收口为兼容 `noop`，不再落成 `JsonUnknownStatus + execution_failed`。
+  - 同时补了 lossy JSON 兜底：当前缀仍带 `<think>` 或 ```json 围栏、末尾只剩兼容状态对象时，解析器会按兼容 `noop` 吸收；而裸的坏 JSON（如截断的 `{"status":"noop"`）仍保持 `JsonMalformed + execution_failed`，避免把真正损坏的协议误吞。
+  - 新增回归：
+    - `heartbeat_partial_json_status_is_compatible_noop`
+    - `heartbeat_created_json_status_is_compatible_noop`
+    - `heartbeat_malformed_partial_json_is_compatible_noop`
+  - 验证通过：
+    - `cargo check -p hone-channels --tests`
+    - `cargo test -p hone-channels heartbeat_partial_json_status_is_compatible_noop --lib -- --nocapture`
+    - `cargo test -p hone-channels heartbeat_created_json_status_is_compatible_noop --lib -- --nocapture`
+    - `cargo test -p hone-channels heartbeat_malformed_partial_json_is_compatible_noop --lib -- --nocapture`
+    - `cargo test -p hone-channels heartbeat_ --lib -- --nocapture`
+  - 本轮未重启当前 live runtime；是否完全止血仍待后续巡检窗口复核，因此先更新为代码级 `Fixed`，不直接标 `Closed`。
+
+- `2026-06-30 03:07 CST` 本轮确认当前 runtime 进程继续复发，状态维持 `New`：
+  - `data/runtime/logs/hone_cli_screen.log`
+    - 23:00-03:07 CST heartbeat 窗口新增 250 条 `run_finish`，其中 `parse_kind=PlainTextSuppressed` 84 条、`PlainTextNoop` 17 条、`JsonUnknownStatus` 10 条、`JsonMalformed` 8 条、`JsonEmptyStatus` 3 条，另有 93 条 `failure_kind=execution_failed`。
+    - 代表性样本继续覆盖 `持仓财报与重大新闻心跳提醒`、`存储板块关键事件心跳提醒`、`闪迪关键事件心跳提醒`、`小米30港元破位预警`、`Monitor_Watchlist_11`、`ORCL 大事件监控`、`持仓重大事件心跳检测` 等；多条 raw preview 仍以 `<think>`、自然语言总结、工具预算耗尽或非契约 JSON 状态开头，最终落为 `execution_failed + skipped_error`、`noop + skipped_noop` 或未发送。
+    - 同窗 24 条 context-window 相关信号继续归入 `scheduler_heartbeat_context_window_limit_no_recovery.md`；6 条 `max_iterations_exceeded` 继续归入 `scheduler_heartbeat_iteration_exhaustion_skips_alert.md`；本窗未见成批 MiniMax 传输层失败。本单只记录结构化状态输出退化本身。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 只读快照仍停在 2026-06-17；本轮以 runtime 日志和 `data/runtime/logs/acp-events.log` 重构真实运行态。
+    - `data/runtime/logs/acp-events.log` 本窗可见约 10 次 `session/prompt`、10 次 `stopReason=end_turn`；用户可见 `agent_message_chunk` 污染扫描命中 1 条 `company_profiles/AMAT.md`，归入 `web_company_profile_relative_path_exposed.md`。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题会导致 heartbeat 监控任务整轮失败或跳过发送，属于功能性监控漏发 / 降级；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
 
 - `2026-06-29 23:01 CST` 本轮确认当前 runtime 进程继续复发，状态维持 `New`：
   - `data/runtime/logs/hone_cli_screen.log`

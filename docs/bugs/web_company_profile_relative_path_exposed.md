@@ -3,10 +3,16 @@
 - **发现时间**: 2026-06-02 11:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无，非 P1
 
 ## 修复记录
+
+- 2026-06-30 03:07 CST 运行态回退：
+  - `data/runtime/logs/acp-events.log` 在 23:00-03:07 CST 用户可见 `agent_message_chunk` 污染扫描命中 1 条新样本：`session_id=Actor_feishu__direct__ou_5fdb997ed67ac0b7f5403701682185d67a` 于 2026-06-29T15:06:50Z 输出 `company_profiles/AMAT.md。`。
+  - 同窗 ACP 直聊整体可见约 10 次 `session/prompt` 与 10 次 `stopReason=end_turn`；该样本只暴露内部相对路径，未见本机绝对路径、raw tool 字段、provider 原始错误、panic、quota 或错投证据。
+  - 由于该样本晚于 2026-06-18 代码级净化修复，说明当前 live 仍会出现同根公司画像落点文案边界复发；状态从代码级 `Fixed` 回退为 `New`。
+  - 为何仍是 P3：回复主体正常收口，主功能的投研分析、画像写入和渠道投递没有失败；影响集中在用户可见文案与内部目录名外露，不阻断功能链路，因此维持质量性 `P3`，非 P1，不创建 GitHub Issue。
 
 - 2026-06-18 03:04 CST 再次修复：
   - 共享 `sanitize_user_visible_output(...)` 新增 `已创建：1.公司画像 2.公司画像` 列表改写，和既有 `已写入：...` / `company_profiles/...` / `公司画像公司画像` 退化句型一起收口到自然业务文案。
