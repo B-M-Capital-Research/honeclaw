@@ -22,6 +22,12 @@ New
 
 ## 最新进展
 
+- 2026-06-30 07:03 CST 运行态继续复发，状态维持 `New`：
+  - 03:00-07:03 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(imported_at)=2026-06-17T10:37:41.827657+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 chunk。
+  - 本窗 ACP 可见 11 次 `session/prompt`、11 次 `stopReason=end_turn`、0 个未收口会话；未见空回复、错投、投递失败、绝对路径、token、provider 原始错误或思维痕迹进入 final。
+  - 用户可见污染扫描命中 2 条 `data_fetch` 名称片段：Feishu direct session `Actor_feishu__direct__ou_5f895bed1573d53053e89bfc382b523a44` 的 `data_fetch 实时`，以及 Web direct session `Actor_web__direct__web-user-14f4cadb069f` 的 `data_fetch quote`。
+  - 这些样本没有链路级失败证据；问题仍只影响用户可见文案边界和产品感，不影响主功能链路，因此为质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-06-29 23:01 CST 运行态继续复发，状态维持 `New`：
   - 19:01-23:01 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(imported_at)=2026-06-17T10:37:41.827657+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 chunk。
   - 本窗 ACP 可见 43 次 `session/prompt`、41 次 `stopReason=end_turn`、0 个 response error；未见空回复、错投、投递失败、绝对路径、token、provider 原始错误或思维痕迹进入 final。

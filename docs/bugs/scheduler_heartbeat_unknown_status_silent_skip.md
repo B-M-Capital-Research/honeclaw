@@ -3,9 +3,15 @@
 - **发现时间**: 2026-04-15 14:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 
 ## 修复进展
+
+- `2026-06-30 07:03 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
+  - `data/runtime/logs/hone_cli_screen.log`
+    - 03:00-07:03 CST heartbeat 窗口新增 252 条 `run_finish`，其中 `parse_kind=PlainTextSuppressed` 85 条、`PlainTextNoop` 23 条、`JsonUnknownStatus` 10 条、`JsonMalformed` 8 条、`JsonEmptyStatus` 4 条，另有 4 条 `failure_kind=context_window_overflow`。
+    - 同窗 03:12 CST 后已有非文档提交 `a00e5131 fix: harden heartbeat noop compatibility`，但提交后的 live 日志仍新增 224 条 `run_finish`，其中仍有 75 条 `PlainTextSuppressed`、20 条 `PlainTextNoop`、10 条 `JsonUnknownStatus`、8 条 `JsonMalformed`。
+  - 判断：`a00e5131` 对 `partial / created / configured` 等兼容状态有代码级止血价值，但当前 live 窗口仍存在更广义的 heartbeat 结构化输出退化与跳过发送。该问题会导致 heartbeat 监控任务失败或跳过，属于功能性监控漏发 / 降级；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
 
 - `2026-06-30 03:07 CST` 代码级修复：
   - `crates/hone-channels/src/scheduler.rs` 现在把 heartbeat 配置/治理类兼容状态 `partial`、`partial_results`、`created`、`configured`、`updated`、`heartbeat_created`、`watchlist_updated` 等收口为兼容 `noop`，不再落成 `JsonUnknownStatus + execution_failed`。

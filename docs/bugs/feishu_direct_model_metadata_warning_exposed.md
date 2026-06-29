@@ -1,4 +1,4 @@
-# Bug: Feishu direct 回复开头外露 Codex 模型元数据 fallback 警告
+# Bug: Web / Feishu direct 回复开头外露 Codex 模型元数据 fallback 警告
 
 ## 发现时间
 
@@ -14,11 +14,20 @@
 
 ## 状态
 
-- Fixed
+- New
 
 ## GitHub Issue
 
 - 无，非 P1
+
+## 最新进展（2026-06-30 07:03 CST）
+
+- 本轮 2026-06-30 03:00-07:03 CST 真实运行态确认同根复发，状态从 `Fixed` 回退为 `New`：
+  - `data/sessions.sqlite3` 只读快照仍停在 2026-06-17，最近真实会话继续以 `data/runtime/logs/acp-events.log` 重构。
+  - ACP 本窗可见 11 次 `session/prompt`、11 次 `stopReason=end_turn`、0 个未收口会话；用户可见 chunk 聚合里有 2 条 assistant final 开头直接拼入 `Model metadata for gpt-5.5 not found... Defaulting to fallback metadata...`。
+  - 样本覆盖 Web direct session `Actor_web__direct__web-user-266454c88ed6`（2026-06-30 03:02 CST 左右）和 Feishu direct session `Actor_feishu__direct__ou_5f85509d35510291f93cd79a3b1c9eebf3`（2026-06-30 07:00 CST 左右），后续业务正文均正常收口。
+- 查重结论：该问题与本文档既有根因一致；本轮多出 Web direct 样本，但受影响边界仍是 direct 用户可见输出净化，不新建重复文档，仅扩大标题范围。
+- 用户影响：回复主体正常完成，没有错投、空回复、投递失败、数据破坏或主功能链路阻断证据。该警告暴露内部 runner / 模型元数据状态，降低专业感；因此仍为质量性 `P3`，非 P1，不创建 GitHub Issue。
 
 ## 证据来源
 

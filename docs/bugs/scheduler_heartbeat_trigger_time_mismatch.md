@@ -3,7 +3,7 @@
 - **发现时间**: 2026-05-29 15:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
 
 ## 修复记录（2026-06-30 03:07 CST）
@@ -16,6 +16,15 @@
   - `cargo test -p hone-channels heartbeat_normalizes_conflicting_relative_today_date --lib -- --nocapture`
   - `cargo test -p hone-channels heartbeat_ --lib -- --nocapture`
 - 本轮未重启当前 live runtime；线上送达预览是否完全止血仍待后续巡检窗口复核，因此先更新为代码级 `Fixed`，不直接标 `Closed`。
+
+## 最新进展（2026-06-30 07:03 CST）
+
+- 本轮 2026-06-30 03:00-07:03 CST 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/hone_cli_screen.log`
+    - 06:00 CST `小米30港元破位预警` `job_id=j_654aef9b` 以 `JsonTriggered` 生成 `deliver_preview`，正文仍写出 `今日（6月30日）高开高走`。
+    - 07:00 CST 同 job 的 `duplicate_suppressed` 继续匹配带 `今日（6月30日）` 的旧 preview。
+  - 03:12 CST 非文档提交 `a00e5131 fix: harden heartbeat noop compatibility` 已包含 `今日（M月D日）` 归一化回归，但本窗 live 日志仍出现同类错误日期 preview；当前按运行态 `New` 处理，不能关闭。
+  - 调度 / 解析 / 预览生成链路可用，但用户可见提醒新鲜度和交易日判断仍可能被误导；没有错投、数据安全或全渠道不可用证据，因此维持质量性 `P3`，非 P1，不创建 GitHub Issue。
 
 ## 最新进展（2026-06-30 03:07 CST）
 
