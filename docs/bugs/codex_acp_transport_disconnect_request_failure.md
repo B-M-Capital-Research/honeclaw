@@ -9,6 +9,11 @@
 ## 证据来源
 
 - `data/runtime/logs/hone_cli_screen.log`
+  - 2026-06-29 07:00-11:01 CST 同类 ACP runner 请求失败在 scheduler 链路继续出现，但用户可见错误已被净化。
+  - 07:03 CST Feishu scheduler `美股持仓收盘后早报` 命中 `codex acp session/prompt idle timeout (180s)`，最终落成 `failure_kind=scheduler_runner_timeout`，Feishu 侧记录本轮不发送。
+  - 08:10 CST Feishu scheduler `每日美股收盘与持仓早报` 命中同类 `scheduler_runner_timeout`，用户只看到产品化失败提示“定时任务执行环境暂时不可用，系统已记录失败并将在下一次触发时重试”。
+  - 同窗错误 stderr 中只在内部日志保留 plugin manifest / MCP startup 细节，用户可见 `agent_message_chunk` 污染扫描未命中绝对路径、raw tool 字段、`HONE_MCP_BIN`、binary-not-found、provider 原始错误或 panic。
+- `data/runtime/logs/hone_cli_screen.log`
   - 2026-06-29 03:04-07:02 CST 同类 ACP runner 请求失败在 scheduler 链路继续出现，但用户可见错误已被净化。
   - 04:04 CST Feishu scheduler `Oil_Price_Monitor_Closing` 命中 `codex acp session/prompt idle timeout (180s)`，最终落成 `failure_kind=scheduler_runner_timeout`，Feishu 侧记录本轮不发送。
   - 05:33 CST Feishu scheduler `美股收盘后跨市场复盘` 命中同类 `scheduler_runner_timeout`，用户只看到产品化失败提示“定时任务执行环境暂时不可用，系统已记录失败并将在下一次触发时重试”。

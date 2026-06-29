@@ -20,6 +20,19 @@
 
 - 无，非 P1
 
+## 最新进展（2026-06-29 11:01 CST）
+
+- 本轮 2026-06-29 07:00-11:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/runtime/logs/hone_cli_screen.log`
+    - 10:30 CST `Monitor_Watchlist_11` raw preview 继续把 `MU $1,132.33` 作为价格锚，模型自己也写出 “MU at 1132? That seems wrong for Micron”，但该异常数值仍进入 heartbeat 判定上下文。
+    - 本窗该样本落在 heartbeat raw preview / 结构化失败路径，未看到新的 Feishu scheduler / Web heartbeat 正式送达异常价格报告。
+  - `data/runtime/logs/acp-events.log`
+    - 09:19 CST Web direct 用户可见 chunk 出现 `StockAnalysis SND...` / `StockAnalysis` 来源名片段；该样本只证明来源名净化仍漏网，异常价格主证据仍来自 runtime heartbeat raw preview。
+  - `data/sessions.sqlite3` 仍停在 2026-06-17，最近会话证据继续以 runtime / ACP 日志为准。
+- 用户影响：
+  - 本窗没有新增正式送达样本，因此不提升严重等级；调度 / 投递主链路没有因该问题被阻断。
+  - 但异常价格仍持续进入 function-calling 结果和 heartbeat 判定上下文，说明价格 sanity check 仍未覆盖当前 scheduler / heartbeat 运行路径；作为既有质量性 `P3 / New` 继续跟踪。
+
 ## 最新进展（2026-06-29 07:02 CST）
 
 - 本轮 2026-06-29 03:04-07:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：

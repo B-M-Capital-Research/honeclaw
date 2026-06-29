@@ -7,6 +7,18 @@
 
 ## 修复进展
 
+- `2026-06-29 11:01 CST` 本轮确认当前 runtime 进程继续复发，状态维持 `New`：
+  - `data/runtime/logs/hone_cli_screen.log`
+    - 07:00-11:01 CST heartbeat 窗口新增 252 条 `run_finish`，其中 `parse_kind=PlainTextSuppressed` 88 条、`PlainTextNoop` 26 条、`JsonUnknownStatus` 10 条、`JsonMalformed` 14 条、`JsonEmptyStatus` 1 条，另有 100 条 `failure_kind=execution_failed`。
+    - 代表性样本继续覆盖 `小米30港元破位预警`、`全天原油价格3小时播报`、`存储板块关键事件心跳提醒`、`TSLA 正负触发条件心跳监控`、`美股黄金坑信号心跳检测`、`持仓关键事件心跳检测` 等；多条 raw preview 仍以 `<think>`、自然语言总结、工具预算耗尽或非法 JSON 开头，最终落为 `execution_failed + skipped_error` 或未发送。
+    - 同窗 6 条 `context_window_overflow` 继续归入 `scheduler_heartbeat_context_window_limit_no_recovery.md`；2 个 scheduler runner timeout 继续归入 `codex_acp_transport_disconnect_request_failure.md`；本窗未见 `max_iterations_exceeded` 或 MiniMax 传输层成批失败。本单只记录结构化状态输出退化本身。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 只读快照仍停在 2026-06-17；本轮以 runtime 日志和 `data/runtime/logs/acp-events.log` 重构真实运行态。
+    - `data/runtime/logs/acp-events.log` 本窗可见 38 次 `session/prompt`、36 次 `stopReason=end_turn`、0 个 response error；用户可见 `agent_message_chunk` 污染扫描未命中绝对路径、raw tool 字段、`<think>`、provider 原始错误、panic、quota、`company_profiles`、`context window`、`reasoning_content`、`HONE_MCP_BIN` 或 binary-not-found 外泄。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题会导致 heartbeat 监控任务整轮失败或跳过发送，属于功能性监控漏发 / 降级；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-06-29 07:02 CST` 本轮确认当前 runtime 进程继续复发，状态维持 `New`：
   - `data/runtime/logs/hone_cli_screen.log`
     - 03:04-07:02 CST heartbeat 窗口新增 224 条 `run_finish`，其中 `parse_kind=PlainTextSuppressed` 93 条、`PlainTextNoop` 16 条、`JsonUnknownStatus` 10 条、`JsonMalformed` 10 条、`JsonEmptyStatus` 2 条，另有 103 条 `failure_kind=execution_failed`。
