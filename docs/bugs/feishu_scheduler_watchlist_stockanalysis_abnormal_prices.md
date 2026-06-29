@@ -20,6 +20,18 @@
 
 - 无，非 P1
 
+## 最新进展（2026-06-29 15:07 CST）
+
+- 本轮 2026-06-29 11:00-15:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-06-29`
+    - 14:30 CST `闪迪关键事件心跳提醒`（`job_id=j_19dd9a1e`，`target=web-user-c2776780c59d`）以 `JsonTriggered` 生成正式 `deliver_preview`。
+    - 同条预览写出 `最新价 $2,090.71，日内跌幅 -10.46%`、`日内区间 $2,063-$2,256`，继续把 SNDK 异常数量级价格作为用户可见行情锚。
+    - 15:00 CST `持仓关键事件心跳检测` raw preview 又引用 `SNDK -10.46% ($2,090.71)`、`MU -6.69% ($1,132.33)` 等异常价格，但该样本落在 `JsonUnknownStatus + execution_failed` 路径。
+  - `data/sessions.sqlite3` 仍停在 2026-06-17，最近会话证据继续以 runtime / ACP 日志为准。
+- 用户影响：
+  - 14:30 CST 样本已进入正式送达预览，不只是内部 raw preview，因此继续说明价格 sanity check 未覆盖当前 scheduler / heartbeat 运行路径。
+  - 报告主链路正常收口，未见空回复、错投、投递失败或原始工具 JSON；因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
 ## 最新进展（2026-06-29 11:01 CST）
 
 - 本轮 2026-06-29 07:00-11:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
