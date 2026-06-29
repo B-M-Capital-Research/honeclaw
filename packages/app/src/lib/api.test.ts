@@ -2,8 +2,10 @@ import { afterEach, describe, expect, test } from "bun:test";
 import {
   ApiError,
   getPublicAuthMe,
+  getPublicFinanceCalendar,
   isUnauthorizedApiError,
   sendPublicChat,
+  sendPublicFinanceCalendar,
 } from "./api";
 import {
   FRIENDLY_BACKEND_UNAVAILABLE_MESSAGE,
@@ -92,5 +94,57 @@ describe("public API errors", () => {
 
     expect(error.status).toBe(503);
     expect(error.message).toBe(FRIENDLY_BACKEND_UNAVAILABLE_MESSAGE);
+  });
+});
+
+describe("public finance calendar API", () => {
+  test("loads a selected calendar month", async () => {
+    let requestedUrl = "";
+    globalThis.fetch = ((url: RequestInfo | URL) => {
+      requestedUrl = String(url);
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            today: "2026-06-29",
+            month: "2026-07",
+            months: [],
+            holdings: [],
+            events: [],
+            earnings_status: "empty_portfolio",
+            errors: [],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    }) as unknown as typeof fetch;
+
+    const payload = await getPublicFinanceCalendar("2026-07");
+
+    expect(requestedUrl).toContain("/api/public/finance-calendar?month=2026-07");
+    expect(payload.month).toBe("2026-07");
+  });
+
+  test("sends a rendered calendar image", async () => {
+    let requestBody: unknown;
+    globalThis.fetch = ((_: RequestInfo | URL, init?: RequestInit) => {
+      requestBody = JSON.parse(String(init?.body ?? "{}"));
+      return Promise.resolve(
+        new Response(JSON.stringify({ ok: true, message: "done" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    }) as unknown as typeof fetch;
+
+    const result = await sendPublicFinanceCalendar({
+      path: "/tmp/public/web-user/calendar.png",
+      month: "2026-07",
+    });
+
+    expect(requestBody).toEqual({
+      path: "/tmp/public/web-user/calendar.png",
+      month: "2026-07",
+    });
+    expect(result.ok).toBe(true);
   });
 });

@@ -16,6 +16,7 @@ pub(crate) mod notifications;
 pub(crate) mod portfolio;
 pub(crate) mod public;
 pub(crate) mod public_digest;
+pub(crate) mod public_finance_calendar;
 pub(crate) mod research;
 pub(crate) mod schedule;
 pub(crate) mod skills;
@@ -253,6 +254,14 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
             post(public::handle_openai_chat_completions),
         )
         .route("/upload", post(public::handle_upload))
+        .route(
+            "/finance-calendar",
+            get(public_finance_calendar::handle_get_finance_calendar),
+        )
+        .route(
+            "/finance-calendar/send",
+            post(public_finance_calendar::handle_send_finance_calendar),
+        )
         .route("/image", get(public::handle_public_image))
         .route("/file", get(public::handle_public_file))
         .route("/events", get(public::handle_events))

@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-06-24
+Last updated: 2026-06-29
+
+## 2026-06-29
+
+### Public Finance Calendar
+
+- Status: done
+- Date: 2026-06-29
+- Plan: `docs/archive/plans/public-finance-calendar.md`
+- Handoff: `docs/handoffs/2026-06-29-public-finance-calendar.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-web-api finance_calendar` and `bun run test:web` still need to be rerun where Rust/Bun are installed; `bash scripts/ci/check_fmt_changed.sh` skipped because no base ref was discoverable in this workspace.
+- Current conclusion: public chat now includes a “我的财经日历” quick action that fetches actor-scoped macro/FMP earnings data, renders a month-view PNG in the browser, uploads it through the current-user public upload root, appends an assistant image message, and broadcasts `push_message`.
+- Next entry point: `crates/hone-web-api/src/routes/public_finance_calendar.rs`, `packages/app/src/pages/chat.tsx`, and `packages/app/src/components/finance-calendar-card.tsx`
 
 ## 2026-06-24
 

@@ -54,6 +54,14 @@ describe("parseMessageContent", () => {
     ])
   })
 
+  it("extracts OSS image links", () => {
+    expect(parsedTypes("before oss://bucket/users/a/calendar.png after")).toEqual([
+      "text",
+      "image",
+      "text",
+    ])
+  })
+
   it("matches the shared local image marker fixture", () => {
     for (const fixture of localImageMarkerFixtures) {
       expect({

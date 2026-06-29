@@ -24,6 +24,7 @@ import type {
   DesktopChannelSettingsUpdateResult,
   WebInviteActionResult,
   WebInviteInfo,
+  FinanceCalendarPayload,
 } from "./types";
 import type { ActorRef } from "./actors";
 import {
@@ -408,6 +409,28 @@ export async function getCompanyProfileMarkdown(ticker: string): Promise<{
     `/api/public/company-profile?ticker=${encodeURIComponent(ticker)}`,
   );
   return parseJson(response);
+}
+
+export async function getPublicFinanceCalendar(
+  month?: string,
+): Promise<FinanceCalendarPayload> {
+  const query = month ? `?month=${encodeURIComponent(month)}` : "";
+  const response = await apiFetch(`/api/public/finance-calendar${query}`);
+  return parseJson<FinanceCalendarPayload>(response);
+}
+
+export async function sendPublicFinanceCalendar(input: {
+  path: string;
+  month: string;
+}): Promise<{ ok: boolean; message: string }> {
+  const response = await apiFetch("/api/public/finance-calendar/send", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(input),
+  });
+  return parseJson<{ ok: boolean; message: string }>(response);
 }
 
 export type PublicUploadedAttachment = {

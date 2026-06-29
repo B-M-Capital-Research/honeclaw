@@ -2,7 +2,7 @@ import type { HistoryMsg, TimelineMessage } from "./types"
 import { buildApiUrl, hasRuntimeCapability } from "./backend"
 
 const imagePattern =
-  /<a\s+href="(file:\/\/[^\s"]+\.(?:jpg|jpeg|png|webp|gif|bmp))"[^>]*>.*?<\/a>|!?\[[^\]]*]\((file:\/\/[^\s)]+\.(?:jpg|jpeg|png|webp|gif|bmp))\)|(file:\/\/[^\s<>"']+\.(?:jpg|jpeg|png|webp|gif|bmp))/gi
+  /<a\s+href="((?:file|oss):\/\/[^\s"]+\.(?:jpg|jpeg|png|webp|gif|bmp))"[^>]*>.*?<\/a>|!?\[[^\]]*]\(((?:file|oss):\/\/[^\s)]+\.(?:jpg|jpeg|png|webp|gif|bmp))\)|((?:file|oss):\/\/[^\s<>"']+\.(?:jpg|jpeg|png|webp|gif|bmp))/gi
 
 type MessagePart =
   | { type: "text"; value: string }
@@ -66,7 +66,7 @@ export function historyToTimeline(messages: HistoryMsg[]): TimelineMessage[] {
 }
 
 type ParseMessageOptions = {
-  /** Image-proxy endpoint to use when a `file://` URL is rewritten. Defaults to `/api/image`. */
+  /** Image-proxy endpoint to use when a `file://` or `oss://` image URL is rewritten. Defaults to `/api/image`. */
   imageEndpoint?: string
 }
 
@@ -90,7 +90,9 @@ export function parseMessageContent(text: string, options: ParseMessageOptions =
     } else {
       parts.push({
         type: "image",
-        value: buildApiUrl(`${endpoint}?path=${encodeURIComponent(uri.replace("file://", ""))}`),
+        value: buildApiUrl(
+          `${endpoint}?path=${encodeURIComponent(uri.startsWith("file://") ? uri.replace("file://", "") : uri)}`,
+        ),
       })
     }
 

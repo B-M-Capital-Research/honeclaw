@@ -18,6 +18,8 @@ import { useNavigate } from "@solidjs/router";
 import { PublicLoginForm } from "@/components/public-login-form";
 import { PublicNav } from "@/components/public-nav";
 import { ChatShareModal } from "@/components/chat-share-modal";
+import { canvasToPngBlob } from "@/components/chat-share-export";
+import { FinanceCalendarCard } from "@/components/finance-calendar-card";
 import { displayGithubStars, fetchGithubStars } from "@/lib/github-stars";
 import { CONTENT } from "@/lib/public-content";
 import { setLocale, useLocale } from "@/lib/i18n";
@@ -32,14 +34,20 @@ import {
 import "./public-site.css";
 import {
   getPublicAuthMe,
+  getPublicFinanceCalendar,
   getPublicHistory,
   connectPublicEvents,
   isUnauthorizedApiError,
   publicLogout,
   sendPublicChat,
+  sendPublicFinanceCalendar,
   uploadPublicAttachments,
 } from "@/lib/api";
 import { buildApiUrl } from "@/lib/backend";
+import {
+  defaultFinanceCalendarMonth,
+  monthOptionsForSelection,
+} from "@/lib/finance-calendar";
 import { parseMessageContent, messageId } from "@/lib/messages";
 import {
   canSendPublicChatMessage,
@@ -61,7 +69,7 @@ import {
   toPublicChatMessages,
 } from "@/lib/public-chat";
 import { parseSseChunks } from "@/lib/stream";
-import type { PublicAuthUserInfo } from "@/lib/types";
+import type { FinanceCalendarPayload, PublicAuthUserInfo } from "@/lib/types";
 import type {
   PublicChatAttachment,
   PublicChatAuthState as AuthState,
@@ -1630,34 +1638,32 @@ function ProactiveModeTips() {
 
   return (
     <>
-      <div class="public-chat-proactive-tip-wrap">
-        <button
-          type="button"
-          class="public-chat-proactive-tip"
-          aria-haspopup="dialog"
-          aria-expanded={open()}
-          onClick={() => setOpen(true)}
+      <button
+        type="button"
+        class="public-chat-proactive-tip"
+        aria-haspopup="dialog"
+        aria-expanded={open()}
+        onClick={() => setOpen(true)}
+      >
+        <svg
+          class="public-chat-proactive-tip-icon"
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
         >
-          <svg
-            class="public-chat-proactive-tip-icon"
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M9 6V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1" />
-            <path d="M5 6h14a2 2 0 0 1 2 2v10.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z" />
-            <path d="M3 12h18" />
-            <path d="M12 10.5v3" />
-          </svg>
-          <span>{CONTENT.chat_page.composer.proactive_tip}</span>
-        </button>
-      </div>
+          <path d="M9 6V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1" />
+          <path d="M5 6h14a2 2 0 0 1 2 2v10.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z" />
+          <path d="M3 12h18" />
+          <path d="M12 10.5v3" />
+        </svg>
+        <span>{CONTENT.chat_page.composer.proactive_tip}</span>
+      </button>
       <Show when={open()}>
         <div
           class="public-chat-proactive-modal-backdrop"
@@ -1786,6 +1792,218 @@ function ProactiveModeTips() {
   );
 }
 
+function FinanceCalendarQuickAction(props: { onSent: () => void }) {
+  const [open, setOpen] = createSignal(false);
+  const [selectedMonth, setSelectedMonth] = createSignal(
+    defaultFinanceCalendarMonth(),
+  );
+  const [busy, setBusy] = createSignal(false);
+  const [error, setError] = createSignal<string | null>(null);
+  const [payload, setPayload] = createSignal<FinanceCalendarPayload | null>(
+    null,
+  );
+  const monthOptions = createMemo(() =>
+    monthOptionsForSelection(selectedMonth()),
+  );
+  let cardEl: HTMLDivElement | undefined;
+
+  const close = () => {
+    if (busy()) return;
+    setOpen(false);
+    setError(null);
+    setPayload(null);
+  };
+
+  const waitForCard = async () => {
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+    );
+    const fonts = (
+      document as Document & { fonts?: { ready: Promise<unknown> } }
+    ).fonts;
+    await fonts?.ready.catch(() => undefined);
+    if (!cardEl) {
+      throw new Error(CONTENT.chat_page.composer.finance_calendar_render_error);
+    }
+  };
+
+  const renderPngBlob = async (data: FinanceCalendarPayload) => {
+    setPayload(data);
+    await waitForCard();
+    const { default: html2canvas } = await import("html2canvas");
+    const canvas = await html2canvas(cardEl!, {
+      scale: window.devicePixelRatio >= 2 ? 1.6 : 1.3,
+      backgroundColor: "#f8fafc",
+      useCORS: true,
+      logging: false,
+    });
+    return canvasToPngBlob(canvas);
+  };
+
+  const sendCalendar = async () => {
+    if (busy()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const data = await getPublicFinanceCalendar(selectedMonth());
+      const blob = await renderPngBlob(data);
+      const file = new File([blob], `hone-finance-calendar-${data.month}.png`, {
+        type: "image/png",
+      });
+      const uploaded = await uploadPublicAttachments([file]);
+      const image = uploaded[0];
+      if (!image?.path) {
+        throw new Error(CONTENT.chat_page.composer.finance_calendar_upload_error);
+      }
+      await sendPublicFinanceCalendar({ path: image.path, month: data.month });
+      props.onSent();
+      setOpen(false);
+      setPayload(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  createEffect(() => {
+    if (!open()) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    document.addEventListener("keydown", onKey);
+    onCleanup(() => document.removeEventListener("keydown", onKey));
+  });
+
+  return (
+    <>
+      <button
+        type="button"
+        class="public-chat-proactive-tip"
+        aria-haspopup="dialog"
+        aria-expanded={open()}
+        disabled={busy()}
+        onClick={() => {
+          setError(null);
+          setOpen(true);
+        }}
+      >
+        <svg
+          class="public-chat-proactive-tip-icon"
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M8 2v4" />
+          <path d="M16 2v4" />
+          <rect x="3" y="4" width="18" height="18" rx="3" />
+          <path d="M3 10h18" />
+          <path d="m9 16 2 2 4-5" />
+        </svg>
+        <span>{CONTENT.chat_page.composer.finance_calendar_tip}</span>
+      </button>
+      <Show when={open()}>
+        <div
+          class="public-chat-proactive-modal-backdrop"
+          role="presentation"
+          onClick={close}
+        >
+          <div
+            class="public-chat-proactive-modal public-chat-calendar-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="public-chat-calendar-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              class="public-chat-proactive-close"
+              aria-label={CONTENT.chat_page.composer.finance_calendar_close_aria}
+              onClick={close}
+              disabled={busy()}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.4"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+            <h2 id="public-chat-calendar-title">
+              {CONTENT.chat_page.composer.finance_calendar_title}
+            </h2>
+            <p class="public-chat-proactive-intro">
+              {CONTENT.chat_page.composer.finance_calendar_intro}
+            </p>
+            <div class="public-chat-calendar-month-label">
+              {CONTENT.chat_page.composer.finance_calendar_months_label}
+            </div>
+            <div class="public-chat-calendar-month-grid">
+              <For each={monthOptions()}>
+                {(month) => (
+                  <button
+                    type="button"
+                    class="public-chat-calendar-month"
+                    data-selected={month.value === selectedMonth()}
+                    disabled={busy()}
+                    onClick={() => setSelectedMonth(month.value)}
+                  >
+                    {month.label}
+                  </button>
+                )}
+              </For>
+            </div>
+            <Show when={error()}>
+              {(message) => (
+                <div class="public-chat-calendar-error" role="alert">
+                  <strong>
+                    {CONTENT.chat_page.composer.finance_calendar_error}
+                  </strong>
+                  <span>{message()}</span>
+                </div>
+              )}
+            </Show>
+            <button
+              type="button"
+              class="public-chat-proactive-primary"
+              onClick={() => void sendCalendar()}
+              disabled={busy()}
+            >
+              {busy()
+                ? CONTENT.chat_page.composer.finance_calendar_sending
+                : CONTENT.chat_page.composer.finance_calendar_send}
+            </button>
+          </div>
+        </div>
+      </Show>
+      <Show when={payload()}>
+        {(data) => (
+          <FinanceCalendarCard
+            payload={data()}
+            hidden
+            registerRef={(el) => {
+              cardEl = el;
+            }}
+          />
+        )}
+      </Show>
+    </>
+  );
+}
+
 function Composer(props: {
   draft: string;
   onDraftChange: (v: string) => void;
@@ -1794,6 +2012,7 @@ function Composer(props: {
   onPickFiles: (files: File[]) => void;
   uploading: boolean;
   onSend: () => void;
+  onCalendarSent: () => void;
   onStop: () => void;
   isSending: boolean;
   remaining: number | undefined;
@@ -1872,7 +2091,10 @@ function Composer(props: {
         onStop={props.onStop}
         justFinished={props.justFinished}
       />
-      <ProactiveModeTips />
+      <div class="public-chat-proactive-tip-wrap">
+        <ProactiveModeTips />
+        <FinanceCalendarQuickAction onSent={props.onCalendarSent} />
+      </div>
       <input
         data-testid="composer-image-input"
         ref={imgInputRef}
@@ -2600,6 +2822,14 @@ export default function PublicChatPage() {
     }
   };
 
+  const handleCalendarSent = () => {
+    const shouldStayAtBottom =
+      stickToBottom || isBottomPinned() || distanceFromBottom() < 160;
+    if (shouldStayAtBottom) pinToBottom(1400);
+    flashJustFinished();
+    void restoreSession({ keepAtBottom: shouldStayAtBottom });
+  };
+
   return (
     <div
       class={`hone-landing-v4 public-chat-page public-chat-page--${authState()}`}
@@ -2849,6 +3079,7 @@ export default function PublicChatPage() {
                     }}
                     uploading={uploading()}
                     onSend={handleSend}
+                    onCalendarSent={handleCalendarSent}
                     onStop={() => activeController?.abort()}
                     isSending={isSending()}
                     remaining={sessionInfo()?.remainingToday}
@@ -3513,6 +3744,8 @@ export default function PublicChatPage() {
           margin: 0 auto 8px;
           display: flex;
           align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
         }
         .public-chat-proactive-tip {
           display: inline-flex;
@@ -3541,6 +3774,10 @@ export default function PublicChatPage() {
           color: #0f172a;
           border-color: rgba(245,158,11,0.35);
           box-shadow: 0 8px 22px rgba(15,23,42,0.08);
+        }
+        .public-chat-proactive-tip:disabled {
+          cursor: progress;
+          opacity: 0.7;
         }
         .public-chat-proactive-tip-icon {
           width: 15px;
@@ -3704,6 +3941,73 @@ export default function PublicChatPage() {
           font-size: 14px;
           font-weight: 800;
           letter-spacing: 0;
+        }
+        .public-chat-proactive-primary:disabled {
+          cursor: progress;
+          opacity: 0.72;
+        }
+        .public-chat-calendar-modal {
+          width: min(460px, calc(100vw - 32px));
+        }
+        .public-chat-calendar-month-label {
+          margin: 0 0 9px;
+          color: #475569;
+          font-size: 12px;
+          font-weight: 850;
+          line-height: 1.3;
+        }
+        .public-chat-calendar-month-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 8px;
+          margin: 0 0 16px;
+        }
+        .public-chat-calendar-month {
+          min-height: 38px;
+          padding: 0 10px;
+          border: 1px solid rgba(15,23,42,0.08);
+          border-radius: 10px;
+          background: #f8fafc;
+          color: #334155;
+          cursor: pointer;
+          font-size: 13px;
+          font-weight: 800;
+          line-height: 1.2;
+          letter-spacing: 0;
+          transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.06s ease;
+        }
+        .public-chat-calendar-month:hover {
+          background: rgba(245,158,11,0.10);
+          border-color: rgba(245,158,11,0.25);
+          color: #92400e;
+        }
+        .public-chat-calendar-month:active {
+          transform: scale(0.98);
+        }
+        .public-chat-calendar-month[data-selected="true"] {
+          background: #0f172a;
+          border-color: #0f172a;
+          color: #fff;
+        }
+        .public-chat-calendar-month:disabled {
+          cursor: default;
+          opacity: 0.72;
+        }
+        .public-chat-calendar-error {
+          display: grid;
+          gap: 3px;
+          margin: 0 0 14px;
+          padding: 10px 12px;
+          border: 1px solid rgba(220,38,38,0.16);
+          border-radius: 10px;
+          background: #fef2f2;
+          color: #991b1b;
+          font-size: 12.5px;
+          line-height: 1.45;
+        }
+        .public-chat-calendar-error strong {
+          font-size: 12px;
+          font-weight: 850;
         }
         /* Tone down the homepage's animated background blobs on the chat
            page — three near-white surfaces (page bg + bubble + ticker chip)
@@ -4198,6 +4502,29 @@ export default function PublicChatPage() {
           background: #f8fafc !important;
           color: #0a0e16 !important;
         }
+        [data-theme="dark"] .public-chat-calendar-month-label {
+          color: #cbd5e1 !important;
+        }
+        [data-theme="dark"] .public-chat-calendar-month {
+          background: rgba(255,255,255,0.06) !important;
+          border-color: rgba(255,255,255,0.08) !important;
+          color: #dbeafe !important;
+        }
+        [data-theme="dark"] .public-chat-calendar-month:hover {
+          background: rgba(245,158,11,0.16) !important;
+          border-color: rgba(245,158,11,0.32) !important;
+          color: #fbbf24 !important;
+        }
+        [data-theme="dark"] .public-chat-calendar-month[data-selected="true"] {
+          background: #f8fafc !important;
+          border-color: #f8fafc !important;
+          color: #0a0e16 !important;
+        }
+        [data-theme="dark"] .public-chat-calendar-error {
+          background: rgba(127,29,29,0.28) !important;
+          border-color: rgba(248,113,113,0.22) !important;
+          color: #fecaca !important;
+        }
         [data-theme="dark"] .public-chat-sidebar {
           background: rgba(10,14,22,0.9) !important;
           border-right-color: rgba(255,255,255,0.08) !important;
@@ -4347,6 +4674,7 @@ export default function PublicChatPage() {
           }
           .public-chat-proactive-tip-wrap {
             margin: 0 4px 7px !important;
+            gap: 6px !important;
           }
           .public-chat-proactive-tip {
             min-height: 26px !important;
@@ -4365,6 +4693,13 @@ export default function PublicChatPage() {
           }
           .public-chat-proactive-modal h2 {
             font-size: 20px !important;
+          }
+          .public-chat-calendar-month-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+          .public-chat-calendar-month {
+            min-height: 36px !important;
+            font-size: 12.5px !important;
           }
           .public-chat-composer-box {
             width: 100% !important;

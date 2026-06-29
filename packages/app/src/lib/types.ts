@@ -54,6 +54,30 @@ export type HistoryAttachment = {
   kind: "image" | "pdf" | "file" | string;
 };
 
+export type FinanceCalendarEvent = {
+  date: string;
+  title: string;
+  kind: "macro" | "earnings" | string;
+  ticker?: string;
+  subtitle?: string;
+  source: string;
+};
+
+export type FinanceCalendarMonth = {
+  value: string;
+  label: string;
+};
+
+export type FinanceCalendarPayload = {
+  today: string;
+  month: string;
+  months: FinanceCalendarMonth[];
+  holdings: string[];
+  events: FinanceCalendarEvent[];
+  earnings_status: string;
+  errors: string[];
+};
+
 export type WebInviteInfo = {
   user_id: string;
   invite_code: string;

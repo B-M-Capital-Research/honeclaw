@@ -633,7 +633,7 @@ pub(crate) async fn handle_upload(
 /// Per-user upload root. Lives under the configured sessions dir so the shared
 /// file proxy roots cover `/api/image`, `/api/file`, and their `/api/public/*`
 /// wrappers.
-fn public_upload_dir(state: &AppState, user_id: &str) -> PathBuf {
+pub(crate) fn public_upload_dir(state: &AppState, user_id: &str) -> PathBuf {
     let base = PathBuf::from(&state.core.config.storage.sessions_dir);
     base.join("public-uploads").join(sanitize_user_id(user_id))
 }
@@ -800,7 +800,7 @@ fn build_public_chat_user_input(
 
 /// Only accept attachment paths that sit inside this user's upload root, so the
 /// chat endpoint can't be used to reference arbitrary files on disk.
-fn validate_public_upload_path(
+pub(crate) fn validate_public_upload_path(
     upload_root: &Path,
     oss: Option<&crate::cloud_oss::OssClient>,
     user_id: &str,
