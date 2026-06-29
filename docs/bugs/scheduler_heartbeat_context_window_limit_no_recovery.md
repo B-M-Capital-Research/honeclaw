@@ -5,6 +5,17 @@
 - **严重等级**: P2
 - **状态**: New
 - **证据来源**:
+  - `2026-06-29 19:01 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
+    - `data/runtime/logs/hone_cli_screen.log`
+      - 15:00-19:01 CST 当前 runtime 新增 10 条 `context_window_overflow` heartbeat 事件，另有 15 行 `context window` / `context_window` 相关日志信号。
+      - 代表性样本覆盖 Web `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`、Web `持仓财报与重大新闻心跳提醒`、Feishu `持仓重大事件心跳检测` 等，错误体继续包含 `upstream HTTP 400: invalid params, context window exceeds limit (2013)`，并落成失败 / 跳过发送路径。
+      - 同窗搜索未见 `retry_with_budget_recovery` / `budget_recovery` 相关日志；实际表现仍是首轮超窗后直接失败并跳过发送。
+    - 会话质量对照：
+      - `data/sessions.sqlite3` 仍停在 2026-06-17；本轮以 immutable 只读快照、runtime 日志和 `data/runtime/logs/acp-events.log` 重构。
+      - ACP 本窗 5 次 `session/prompt`、5 次 `stopReason=end_turn`、0 个 response error；故障集中在 heartbeat function-calling 超窗链路，不是直聊或出站整体不可用。
+    - 判断：
+      - 这是预算恢复修复后的持续运行态复发，仍导致 heartbeat 监控任务本轮漏发 / 降级。
+      - 影响为 heartbeat 监控任务阶段性不可用，未见错对象投递、数据安全或全渠道不可用证据；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
   - `2026-06-29 15:07 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
     - `data/runtime/logs/web.log.2026-06-29`
       - 11:00-15:01 CST 当前 runtime 新增 1 个 heartbeat `context_window_overflow` 事件；14:00 CST Web `持仓财报与重大新闻心跳提醒` `job_id=j_3c52d213` 落成 `failure_kind=context_window_overflow`，错误体继续包含 `upstream HTTP 400: invalid params, context window exceeds limit (2013)`。

@@ -20,6 +20,17 @@
 
 - 无，非 P1
 
+## 最新进展（2026-06-29 19:01 CST）
+
+- 本轮 2026-06-29 15:00-19:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/runtime/logs/hone_cli_screen.log`
+    - `持仓财报与重大新闻心跳提醒`、`闪迪关键事件心跳提醒`、`存储板块关键事件心跳提醒`、`持仓关键事件心跳检测`、`Monitor_Watchlist_11` 等 heartbeat raw preview 继续把 `SNDK $2,090.71`、`MU $1,132.33` 作为行情锚。
+    - 17:31 CST `闪迪关键事件心跳提醒` 返回 `JsonTriggered`，raw preview 继续围绕 `SNDK $2,090.71`、`-10.46%`、`52-week high $2,354.39` 等异常数量级价格生成触发判断；本窗未确认新的正式送达成功样本。
+  - `data/sessions.sqlite3` 仍停在 2026-06-17，最近会话证据继续以 runtime / ACP 日志为准。
+- 用户影响：
+  - 本窗主要停留在 heartbeat raw preview、未命中或结构化失败路径，未看到新的 Feishu scheduler / Web heartbeat 正式送达异常价格报告，因此不提升严重等级。
+  - 但异常价格仍持续进入 function-calling 结果和 heartbeat 判定上下文，说明价格 sanity check 仍未覆盖当前 scheduler / heartbeat 运行路径；作为既有质量性 `P3 / New` 继续跟踪。
+
 ## 最新进展（2026-06-29 15:07 CST）
 
 - 本轮 2026-06-29 11:00-15:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
