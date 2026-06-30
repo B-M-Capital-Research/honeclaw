@@ -5,6 +5,13 @@
 - **严重等级**: P2
 - **状态**: New
 - **证据来源**:
+  - `2026-06-30 15:02 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
+    - `data/runtime/logs/web.log.2026-06-30`
+      - 11:02-15:02 CST 共检出 9 条 context-window / `BudgetRecovery` 相关 heartbeat 信号。
+      - 12:30 CST Web `NVDA 关键事件心跳提醒` 首轮 `Primary` 失败，错误包含 `context window exceeds limit (2013)`，随后启动 `BudgetRecovery { reason: ContextOverflow }` 并在 12:30:37 CST 生成短答。
+      - 13:30 CST 同一 `NVDA 关键事件心跳提醒` 再次首轮超窗后进入 `BudgetRecovery`，并在 13:30:45 CST 生成 `JsonTriggered + deliver_preview`。
+      - 15:00 CST Feishu `AAOI 1.6T 光模块心跳检测` 再次首轮命中 `context window exceeds limit (2013)` 并进入 `BudgetRecovery`。
+    - 判断：相比早前“直接失败无恢复”，当前运行态已出现预算恢复分支，但首轮超窗仍在多个 heartbeat 任务间复发，且恢复后的内容可能只是短答或继续进入其它质量问题。该问题仍导致 heartbeat 本轮降级 / 不稳定，严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
   - `2026-06-30 11:02 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
     - `data/sessions.sqlite3` -> `cron_job_runs`
       - 09:30 CST Web `持仓财报与重大新闻心跳提醒` 落成 `execution_failed + skipped_error + delivered=0`。

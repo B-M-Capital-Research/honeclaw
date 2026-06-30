@@ -3,9 +3,14 @@
 - **发现时间**: 2026-04-28 01:05 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无
 - **修复结论复核**:
+- `2026-06-30 15:02 CST` 运行态部分复发，状态从代码级 `Fixed` 回退为 `New`：
+  - `data/sessions.sqlite3` 的会话镜像本身已经恢复实时增量：`sessions.max(updated_at)=2026-06-30T14:51:50.614492+08:00`、`sessions.max(last_message_at)=2026-06-30T14:51:50.608902+08:00`、`session_messages.max(timestamp)=2026-06-30T14:51:50.608902+08:00`、`session_messages.max(imported_at)=2026-06-30T14:51:50.628103+08:00`。
+  - 但同一库的 `cron_job_runs.max(executed_at)` 仍停在 `2026-06-30T09:30:52.069168+08:00`；`data/runtime/logs/web.log.2026-06-30` 在 12:31-15:00 CST 仍继续记录 heartbeat `deliver`、`run_finish`、`execution_failed` 与 context-window recovery 信号，证明调度运行台账没有随真实运行态继续追平。
+  - 本窗 SQLite 仅有 1 个真实新 Feishu direct user turn 与 1 个 assistant final，已正常收口；另一个 12:31 CST 更新会话是 6 月 12 日旧消息被重新导入，不作为新用户侧会话缺陷。
+  - 本次不是“所有 session / message 表重新卡死”的完全回退，而是 cloud sqlite shadow 修复后，调度运行台账 `cron_job_runs` 仍存在部分滞后。它继续影响 bug 巡检、调度审计和补发判断，属于功能性可观测性缺陷，严重等级维持 `P2`；非 P1，不创建 GitHub Issue。
 - `2026-06-28 11:01 CST` 运行态只读复核：代码级 `Fixed` 但当前 live sqlite mirror 仍不可关闭：
   - `data/sessions.sqlite3` 在 07:01-11:01 CST 窗口仍无新增 `sessions` / `session_messages` / `cron_job_runs`，`sessions.max(updated_at)=2026-06-17T10:37:37.207669+08:00`、`sessions.max(last_message_at)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(imported_at)=2026-06-17T10:37:41.827657+08:00`、`cron_job_runs.max(executed_at)=2026-06-17T11:01:42.353141+08:00`。
   - `data/runtime/logs/hone_cli_screen.log` / `data/runtime/logs/web.log.2026-06-28` 同窗继续写入真实 heartbeat / audit 运行事件；`data/runtime/logs/acp-events.log` 可见 19 次 `session/prompt`、12 个 session、19 次 `stopReason=end_turn`、0 个 response error。

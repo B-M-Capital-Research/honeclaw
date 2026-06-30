@@ -7,6 +7,17 @@
 
 ## 修复进展
 
+- `2026-06-30 15:02 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-06-30`
+    - 11:02-15:02 CST heartbeat 窗口新增 222 条 `parse_kind` 信号：`JsonNoop` 82 条、`PlainTextSuppressed` 72 条、`JsonTriggered` 38 条、`PlainTextNoop` 17 条、`JsonUnknownStatus` 6 条、`JsonMalformed` 6 条、`JsonEmptyStatus` 1 条。
+    - 同窗失败分布为 72 条 `execution_failed heartbeat 输出不是结构化 JSON，任务已标记失败`、3 条 `heartbeat 输出包含未知状态，任务已标记失败`、3 条 `heartbeat 输出不是合法 JSON，任务已标记失败`。
+    - 代表样本继续覆盖 Web / Feishu heartbeat，包括 `NVDA 关键事件心跳提醒`、`光模块板块关键事件心跳提醒`、`TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`、`SIVE POET/Nokia/1.6T DFB 心跳检测`、`持仓财报与重大新闻心跳提醒` 等；raw preview 仍多以 `<think>`、工具预算耗尽说明、自然语言推理或非契约 JSON 开头。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 本窗只有 1 个真实新 Feishu direct user turn 与 1 个 assistant final，已正常收口；assistant final 污染扫描未命中空回复、内部路径、raw tool 字段、`<think>`、provider 原始错误、panic、quota 或资源耗尽原文。
+  - 判断：
+    - 最新证据仍属于 heartbeat 结构化输出契约退化，没有新的独立根因。
+    - 该问题继续导致 heartbeat 监控任务整轮失败或跳过发送，属于功能性监控漏发 / 降级；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-06-30 11:02 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - 07:00-11:02 CST 已恢复实时 SQLite 镜像，`cron_job_runs.max(executed_at)=2026-06-30T09:30:52.069168+08:00`。
