@@ -22,6 +22,13 @@ New
 
 ## 最新进展
 
+- 2026-06-30 23:01 CST 运行态继续复发，状态维持 `New`：
+  - 19:02-23:01 CST `data/sessions.sqlite3` 已恢复最近会话镜像，`session_messages.max(timestamp)=2026-06-30T23:01:28.103232+08:00`、`session_messages.max(imported_at)=2026-06-30T23:01:28.304784+08:00`。
+  - 本窗 SQLite 有 4 个 user turn 与 4 个 assistant final，均正常收口；assistant final 污染扫描未命中空回复、`company_profiles/`、本机绝对路径、raw tool 字段、`reasoning_content`、`<think>`、provider 原始错误、panic、资源耗尽或 binary-not-found 原文。
+  - 23:00 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 的 `核心观察股池晚间快报` final 开头写出 `本轮 data_fetch 已返回 25 支标的最新行情`，把内部工具名作为用户态来源说明。
+  - `data/runtime/logs/acp-events.log` 同窗可见 56 次 `session/prompt`、56 次 `stopReason=end_turn` 对应 response 无错误；用户可见 chunk 污染扫描共命中 3 个 `data_fetch` 片段。
+  - 这些样本没有链路级失败证据；问题仍只影响用户可见文案边界和产品感，不影响主功能链路，因此为质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-06-30 07:03 CST 运行态继续复发，状态维持 `New`：
   - 03:00-07:03 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(imported_at)=2026-06-17T10:37:41.827657+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 chunk。
   - 本窗 ACP 可见 11 次 `session/prompt`、11 次 `stopReason=end_turn`、0 个未收口会话；未见空回复、错投、投递失败、绝对路径、token、provider 原始错误或思维痕迹进入 final。

@@ -6,6 +6,11 @@
 - **状态**: New
 - **GitHub Issue**: 无
 - **修复结论复核**:
+- `2026-06-30 23:01 CST` 运行态部分复发继续存在，状态维持 `New`：
+  - `data/sessions.sqlite3` 的 direct / scheduler actor 会话镜像继续实时增量：`sessions.max(updated_at)=2026-06-30T23:01:28.138446+08:00`、`sessions.max(last_message_at)=2026-06-30T23:01:28.103232+08:00`、`session_messages.max(timestamp)=2026-06-30T23:01:28.103232+08:00`、`session_messages.max(imported_at)=2026-06-30T23:01:28.304784+08:00`。
+  - 同窗 SQLite 有 4 个 user turn 与 4 个 assistant final，均正常收口；assistant final 污染扫描未命中空回复、内部路径、raw tool 字段、`<think>`、provider 原始错误、panic、quota、资源耗尽或 binary-not-found 原文。
+  - 但同一库的 `cron_job_runs.max(executed_at)` 仍停在 `2026-06-30T09:30:52.069168+08:00`，查询 `executed_at >= 2026-06-30T19:02:00` 无记录；`data/runtime/logs/hone_cli_screen.log` 在 20:00-23:00 CST 继续记录 heartbeat / scheduler `run_finish`、`deliver_preview`、`execution_failed`、`BudgetRecovery` 与 `max_iterations_exceeded` 信号，证明调度运行台账仍没有随真实运行态追平。
+  - 本次仍不是“所有 session / message 表重新卡死”的完全回退，而是 cloud sqlite shadow 修复后，调度运行台账 `cron_job_runs` 仍存在部分滞后。它继续影响 bug 巡检、调度审计和补发判断，属于功能性可观测性缺陷，严重等级维持 `P2`；非 P1，不创建 GitHub Issue。
 - `2026-06-30 19:02 CST` 运行态部分复发继续存在，状态维持 `New`：
   - `data/sessions.sqlite3` 的 direct 会话镜像继续实时增量：`sessions.max(updated_at)=2026-06-30T18:56:58.100156+08:00`、`sessions.max(last_message_at)=2026-06-30T18:56:58.091261+08:00`、`session_messages.max(timestamp)=2026-06-30T18:56:58.091261+08:00`、`session_messages.max(imported_at)=2026-06-30T18:56:58.135501+08:00`。
   - 同窗 SQLite 只有 1 个 Web direct 会话，3 个 user turn 与 3 个 assistant final，均正常收口；assistant final 污染扫描未命中空回复、内部路径、raw tool 字段、`<think>`、provider 原始错误、panic、quota、资源耗尽或 binary-not-found 原文。

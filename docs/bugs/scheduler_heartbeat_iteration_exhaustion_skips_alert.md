@@ -7,6 +7,14 @@
 
 ## 修复进展（2026-04-28）
 
+- `2026-06-30 23:01 CST` 本轮确认预算恢复修复后仍有预算触顶信号，状态维持 `New`：
+  - `data/runtime/logs/hone_cli_screen.log`
+    - 20:00 CST Feishu `Monitor_Watchlist_11` 首轮 `Primary` 记录 `run_finish ... success=false ... error="max_iterations_exceeded:18"`。
+    - 同一秒随后记录 `retry_with_budget_recovery ... reason=max_iterations_exceeded`，并以 `BudgetRecovery { reason: MaxIterationsExceeded }` 在 20:01:13 CST 成功收口，说明当前 live 已出现轻量恢复分支。
+  - 判断：
+    - 该样本说明预算触顶根因仍在当前 heartbeat function-calling 链路复发，但不再完全等同于早前“触顶后直接整轮跳过”的坏态；本窗未看到该样本最终无恢复地漏发。
+    - 因同根预算触顶仍可能导致降级、短答或后续结构化问题，状态暂维持 `New`，但修复情况应标注已有恢复信号。非 P1，不创建 GitHub Issue。
+
 - `2026-06-30 11:02 CST` 本轮确认预算恢复修复后继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - 09:03 CST Feishu `AAOI 1.6T 光模块心跳检测` 落成 `execution_failed + skipped_error + delivered=0`。
