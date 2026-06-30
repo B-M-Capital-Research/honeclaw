@@ -1,12 +1,27 @@
-# Bug: Codex version probe 资源耗尽导致直聊和定时任务批量失败并外露原始 runner 错误
+# Bug: Codex runner 启动资源耗尽导致直聊和定时任务批量失败
 
 - 发现时间：2026-05-20 11:06 CST
 - Bug Type：System Error
 - 严重等级：P1
-- 状态：Fixed
+- 状态：New
 - GitHub Issue：[#43](https://github.com/B-M-Capital-Research/honeclaw/issues/43)
 
 ## 证据来源
+
+- `2026-06-30 11:02 CST` 本轮确认同类 runner 启动资源耗尽链路复发，状态从 `Fixed` 回退为 `New`：
+  - `data/runtime/logs/web.log.2026-06-30` 与 `data/runtime/logs/hone_cli_screen.log`
+    - 08:30-09:30 CST Feishu / Web / Discord 多条 `runner.error kind=SpawnFailed`，错误为 `failed to spawn codex acp: Resource temporarily unavailable (os error 35)`。
+    - 09:02 CST Feishu 普通 scheduler `特斯拉与火箭实验室新闻日报` 进入 MsgFlow 后 6ms 失败，日志记录同一 `failed to spawn codex acp` 资源耗尽错误。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=44284`，`job_name=特斯拉与火箭实验室新闻日报`，`executed_at=2026-06-30T09:02:07.358985+08:00`，落成 `execution_failed + sent + should_deliver=1 + delivered=1`。
+    - `response_preview` 与 `error_message` 均为脱敏提示 `当前本机执行环境暂时不可用，请稍后再试。`，`detail_json.scheduler.failure_kind=internal_error_suppressed`。
+  - 会话质量对照：
+    - 07:00-11:02 CST `session_messages` 只有 1 个 Web direct user turn 与 1 个 assistant final，已正常收口。
+    - assistant final 污染扫描未命中原始 `Resource temporarily unavailable`、`failed to spawn`、`failed to probe`、本机路径、raw tool 字段、`reasoning_content`、`<think>`、panic 或 `company_profiles/`。
+  - 判断：
+    - 2026-05-20 / 2026-05-30 的错误净化仍生效，原始 runner 错误没有进入用户可见回复。
+    - 但主功能链路仍在 runner 启动前失败，覆盖 direct / scheduler 日志窗口并造成普通 scheduler 正文未执行，影响与原 P1 相同；本次把同文档范围从 version probe 资源耗尽扩展到 `codex acp` 真实启动阶段资源耗尽，不新建重复缺陷。
+    - 已有 GitHub Issue [#43](https://github.com/B-M-Capital-Research/honeclaw/issues/43)，本轮不重复创建。
 
 - `data/sessions.sqlite3` 最近四小时真实会话窗口（`2026-05-20 07:02-11:00 CST`）：
   - `session_id=Actor_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c`
@@ -50,6 +65,7 @@
 
 ## 当前实现效果
 
+- 2026-06-30 11:02 CST 复核：用户可见原始错误外露仍被净化，但 `codex acp` 真实启动阶段的 `Resource temporarily unavailable (os error 35)` 仍会让 direct / scheduler 在进入 agent 执行前失败；普通 scheduler 可落成 `execution_failed + sent + delivered=1` 的脱敏失败提示，任务正文未执行。
 - 2026-05-20 修复后，用户可见侧不再暴露原始 runner probe 错误，改为脱敏的本机执行环境不可用提示。
 - 2026-05-30 11:03 CST 复核：原始错误外露已被修复净化，但 runner probe 资源耗尽本身仍在真实直聊和普通 scheduler 中批量复发；用户可见回复变为脱敏文案，任务正文仍未执行。
 - 2026-05-30 16:10 CST 当前 HEAD：同一进程内成功版本校验会缓存，且 version-probe 阶段的瞬时资源限制不再直接阻断本轮请求，而是继续进入真实 runner 启动路径。
@@ -63,6 +79,7 @@
 
 ## 根因判断
 
+- 2026-06-30 复发样本显示，资源耗尽已不局限于 version probe；即使版本预检缓存 / 旁路已经降低额外 spawn 放大效应，真实 `codex acp` 子进程启动仍可能因 `os error 35` 失败。
 - 直接根因是 Codex runner 启动前的 version probe 受本机资源限制影响，返回 `Resource temporarily unavailable (os error 35)`。
 - 下游错误净化层没有覆盖 `failed to probe codex version via codex` / `SpawnFailed` / `os error 35` 这类 runner 启动前失败，导致原始错误进入用户可见内容。
 - scheduler 对部分 runner 启动前失败仍按 `sent + delivered=1` 登记，使台账更像“发送了有效失败回复”，而不是“任务未能进入 agent 执行”。
@@ -70,6 +87,12 @@
 - 2026-05-30 16:10 CST 修复后，Codex ACP 版本预检不再是每轮 direct / scheduler 请求的强制额外 spawn 放大器：成功校验会按有效 runner 配置缓存；仅 version-probe 阶段的瞬时资源限制会旁路预检并继续真实 runner 启动。
 
 ## 复发记录
+
+- 2026-06-30 11:02 CST：按最近四小时窗口 `2026-06-30 07:00-11:02 CST` 复核真实会话、cron run 与 runtime 日志，确认同类 P1 从 `Fixed` 回退为 `New`。
+  - 日志显示 08:30-09:30 CST Feishu / Web / Discord 多条 `failed to spawn codex acp: Resource temporarily unavailable (os error 35)`。
+  - `cron_job_runs.run_id=44284` 普通 Feishu scheduler `特斯拉与火箭实验室新闻日报` 落成 `execution_failed + sent + delivered=1`，只送达脱敏失败提示，任务正文未执行。
+  - 用户可见污染扫描未发现原始 runner 错误外泄；本轮复发重点是功能链路失败，而不是错误文案泄露。
+  - 已有 Issue [#43](https://github.com/B-M-Capital-Research/honeclaw/issues/43)，不重复创建。
 
 - 2026-05-30 11:03 CST：按最近四小时窗口 `2026-05-30 07:02-11:02 CST` 复核真实会话与日志，确认同根因从 `Fixed` 回退为 `New`。
   - `session_messages` 中至少 5 条 Feishu direct assistant final 向用户返回脱敏失败文案 `当前本机执行环境暂时不可用，请稍后再试。`：`Actor_feishu__direct__ou_5fdb997ed67ac0b7f5403701682185d67a`（07:52）、`Actor_feishu__direct__ou_5f85509d35510291f93cd79a3b1c9eebf3`（08:46 / 09:44）、`Actor_feishu__direct__ou_5fe40dc70caa78ad6cb0185c21b53c4732`（09:21）、`Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5`（09:49）。
@@ -106,5 +129,6 @@
 ## 后续建议
 
 - 若仍观察到真实 runner 启动阶段的资源耗尽，可继续评估全局并发保护、短退避或启动健康检查；不要把这次 version-probe 旁路扩展成忽略真实 runner 启动失败。
+- 当前已观察到真实 runner 启动阶段资源耗尽，下一步应优先评估 `codex acp` 启动并发、进程回收、全局 runner admission control 与短退避重试，而不是继续只优化 version probe。
 - 为 scheduler 增加 runner 启动前失败分类，例如 `runner_spawn_failed`，便于区分“任务未进入 agent 执行”和“模型执行中失败”。
 - 若部署后仍出现 runner 启动前错误原文外发，保留脱敏错误关键词并扩展同一分类函数，不要针对单个日志样本写渠道特判。

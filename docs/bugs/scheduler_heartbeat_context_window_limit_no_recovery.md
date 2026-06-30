@@ -5,6 +5,17 @@
 - **严重等级**: P2
 - **状态**: New
 - **证据来源**:
+  - `2026-06-30 11:02 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - 09:30 CST Web `持仓财报与重大新闻心跳提醒` 落成 `execution_failed + skipped_error + delivered=0`。
+      - `error_message=LLM 错误: 所有 OpenAI-compatible API Key 均失败（共 1 个）。最后错误：LLM 错误: upstream HTTP 400: invalid params, context window exceeds limit (2013)`。
+      - 同窗 heartbeat 还有 13 条 `execution_failed + skipped_error`，但本单只记录明确 context-window 样本。
+    - `data/runtime/logs/hone_cli_screen.log` / `web.log.2026-06-30`
+      - 同窗仍能检出 `context window` / `context_window` 相关失败日志；搜索未见 `retry_with_budget_recovery` / `budget_recovery` 恢复痕迹。
+    - 会话质量对照：
+      - 07:00-11:02 CST 仅 1 个 Web direct user turn 与 1 个 assistant final，直聊正常收口；故障集中在 heartbeat function-calling 超窗链路。
+    - 判断：该问题仍导致 heartbeat 监控任务本轮漏发 / 降级。影响为 heartbeat 监控任务阶段性不可用，未见错对象投递、数据安全或全渠道不可用证据；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
   - `2026-06-30 07:03 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
     - `data/runtime/logs/hone_cli_screen.log`
       - 03:00-07:03 CST 当前 runtime 仍有 8 条 `context window` / `context_window` 相关 heartbeat 日志信号，其中 4 条落成 `failure_kind=context_window_overflow`。

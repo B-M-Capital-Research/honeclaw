@@ -7,6 +7,18 @@
 
 ## 修复进展（2026-04-28）
 
+- `2026-06-30 11:02 CST` 本轮确认预算恢复修复后继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 09:03 CST Feishu `AAOI 1.6T 光模块心跳检测` 落成 `execution_failed + skipped_error + delivered=0`。
+    - `error_message=max_iterations_exceeded:18`，说明当前 18 次预算仍触顶，不是旧 `max_iterations_exceeded:10` 未部署样本。
+  - `data/runtime/logs/hone_cli_screen.log`
+    - 同窗可见相同 heartbeat runner error 信号；未见 `retry_with_budget_recovery` / `budget_recovery` 相关恢复重试痕迹。
+  - 会话质量对照：
+    - 07:00-11:02 CST 仅 1 个 Web direct user turn 与 1 个 assistant final，直聊正常收口；故障集中在 heartbeat function-calling 预算触顶导致的整轮漏发。
+  - 判断：
+    - 这是 03:13 CST 重新修复后的同根持续运行态复发，不再是旧 `max_iterations_exceeded:10` 或未部署样本。
+    - 影响为单类 heartbeat 监控任务漏发 / 降级，未见错对象投递、数据安全或全渠道不可用证据；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-06-30 03:07 CST` 本轮确认预算恢复修复后继续复发，状态维持 `New`：
   - `data/runtime/logs/hone_cli_screen.log`
     - 23:00-03:07 CST 继续出现 6 行 `max_iterations_exceeded` 相关 heartbeat 信号，其中样本落成 `failure_kind=runner_error` 或同等执行失败。
