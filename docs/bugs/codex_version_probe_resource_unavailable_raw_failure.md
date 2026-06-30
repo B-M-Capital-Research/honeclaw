@@ -3,7 +3,7 @@
 - 发现时间：2026-05-20 11:06 CST
 - Bug Type：System Error
 - 严重等级：P1
-- 状态：New
+- 状态：Fixed
 - GitHub Issue：[#43](https://github.com/B-M-Capital-Research/honeclaw/issues/43)
 
 ## 证据来源
@@ -65,6 +65,7 @@
 
 ## 当前实现效果
 
+- 2026-07-01 当前 HEAD：真实 `codex acp` 启动新增仅针对瞬时资源耗尽（如 `Resource temporarily unavailable (os error 35)`）的短退避重试，默认在首次失败后再尝试 2 次；缺失二进制、版本过低、不可解析版本和非资源类 spawn 错误仍立即失败。
 - 2026-06-30 11:02 CST 复核：用户可见原始错误外露仍被净化，但 `codex acp` 真实启动阶段的 `Resource temporarily unavailable (os error 35)` 仍会让 direct / scheduler 在进入 agent 执行前失败；普通 scheduler 可落成 `execution_failed + sent + delivered=1` 的脱敏失败提示，任务正文未执行。
 - 2026-05-20 修复后，用户可见侧不再暴露原始 runner probe 错误，改为脱敏的本机执行环境不可用提示。
 - 2026-05-30 11:03 CST 复核：原始错误外露已被修复净化，但 runner probe 资源耗尽本身仍在真实直聊和普通 scheduler 中批量复发；用户可见回复变为脱敏文案，任务正文仍未执行。
@@ -102,6 +103,10 @@
 
 ## 修复记录
 
+- 2026-07-01：`crates/hone-channels/src/runners/codex_acp.rs` 为真实 `codex acp` 子进程启动补齐瞬时资源耗尽短退避重试。
+- 新增 `codex_spawn_error_is_transient_resource_unavailable(...)`，只识别 `failed to spawn codex acp` + `Resource temporarily unavailable` / `os error 35` / `would block` / `resource busy` 等瞬时资源限制。
+- 真实 runner 启动现在会在首次命中该类错误后按 `200ms`、`500ms` 退避重试；最终仍失败时保持原有 `SpawnFailed` 语义和统一错误净化。
+- 非瞬时错误仍不重试：缺失二进制、版本过低、不可解析版本、其它 spawn / IO 失败都会直接返回，避免把硬失败误当成瞬时抖动吞掉。
 - 2026-05-20 12:10 CST：`crates/hone-channels/src/runtime.rs` 新增 runner resource-unavailable 分类。
 - 覆盖包含 `codex` / `codex-acp` / `runner` / `acp` 且同时包含 `Resource temporarily unavailable`、`os error 35`、`would block`、`failed to probe`、`version probe` 或 `failed to spawn` 的错误。
 - 直聊和通用出站错误映射为：`当前本机执行环境暂时不可用，请稍后再试。`
@@ -114,6 +119,7 @@
 
 ## 验证
 
+- `cargo test -p hone-channels codex_spawn_ --lib -- --nocapture`
 - `cargo test -p hone-channels user_visible_error_message_maps_codex_probe_resource_errors --lib -- --nocapture`
 - `cargo test -p hone-channels user_visible_error_message_or_none_keeps_codex_probe_resource_errors_sanitized --lib -- --nocapture`
 - `cargo test -p hone-channels user_visible_error_message --lib -- --nocapture`
@@ -125,6 +131,11 @@
   - `cargo test -p hone-channels codex_version_ --lib -- --nocapture`
   - `cargo check -p hone-channels --tests`
   - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/runners/codex_acp.rs crates/hone-channels/src/runners/tests.rs`
+
+## 本轮结论
+
+- 本轮按代码级 `Fixed` 回写：已覆盖 2026-06-30 复发中暴露的“真实 `codex acp` 启动阶段瞬时资源耗尽”缺口，并补回归测试。
+- 尚未做需要重启服务的 live 复核；若后续运行窗仍出现同类 `failed to spawn codex acp: Resource temporarily unavailable (os error 35)`，优先继续排查全局并发保护或宿主机进程资源上限，再决定是否回退状态。
 
 ## 后续建议
 

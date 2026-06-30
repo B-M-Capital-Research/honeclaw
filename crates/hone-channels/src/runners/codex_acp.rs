@@ -36,6 +36,7 @@ const MIN_CODEX_ACP_VERSION: CliVersion = CliVersion {
     minor: 12,
     patch: 0,
 };
+const CODEX_ACP_TRANSIENT_SPAWN_RETRY_DELAYS_MS: &[u64] = &[200, 500];
 static CODEX_ACP_VERSION_VALIDATION_CACHE: LazyLock<tokio::sync::Mutex<HashSet<String>>> =
     LazyLock::new(|| tokio::sync::Mutex::new(HashSet::new()));
 
@@ -266,6 +267,22 @@ pub(crate) fn codex_version_probe_error_is_transient_resource_unavailable(
     from_version_probe && resource_unavailable
 }
 
+pub(crate) fn codex_spawn_error_is_transient_resource_unavailable(err: &AgentSessionError) -> bool {
+    if err.kind != AgentSessionErrorKind::SpawnFailed {
+        return false;
+    }
+
+    let message = err.message.to_ascii_lowercase();
+    (message.contains("failed to spawn codex acp")
+        || message.contains("failed to spawn codex-acp")
+        || message.contains("failed to spawn codex"))
+        && (message.contains("resource temporarily unavailable")
+            || message.contains("os error 35")
+            || message.contains("would block")
+            || message.contains("resource busy")
+            || message.contains("temporarily unavailable"))
+}
+
 async fn validate_codex_acp_versions_uncached(
     config: &CodexAcpConfig,
     step_timeout: Duration,
@@ -374,6 +391,52 @@ async fn inspect_codex_acp_version(
     })
 }
 
+async fn spawn_codex_acp_child_with_retry(
+    config: &CodexAcpConfig,
+    working_directory: &std::path::Path,
+) -> Result<tokio::process::Child, AgentSessionError> {
+    for (attempt, delay_ms) in CODEX_ACP_TRANSIENT_SPAWN_RETRY_DELAYS_MS
+        .iter()
+        .copied()
+        .enumerate()
+    {
+        match spawn_codex_acp_child(config, working_directory) {
+            Ok(child) => return Ok(child),
+            Err(err) if codex_spawn_error_is_transient_resource_unavailable(&err) => {
+                tracing::warn!(
+                    attempt = attempt + 1,
+                    retry_in_ms = delay_ms,
+                    error = %err.message,
+                    "codex-acp spawn hit a transient resource limit; retrying"
+                );
+                tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+            }
+            Err(err) => return Err(err),
+        }
+    }
+
+    spawn_codex_acp_child(config, working_directory)
+}
+
+fn spawn_codex_acp_child(
+    config: &CodexAcpConfig,
+    working_directory: &std::path::Path,
+) -> Result<tokio::process::Child, AgentSessionError> {
+    let mut command = tokio::process::Command::new(&config.command);
+    command
+        .args(codex_acp_effective_args(config, true))
+        .current_dir(working_directory)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    configure_acp_command_process_group(&mut command);
+
+    command.spawn().map_err(|e| AgentSessionError {
+        kind: AgentSessionErrorKind::SpawnFailed,
+        message: format!("failed to spawn codex acp: {e}"),
+    })
+}
+
 async fn run_codex_acp(
     config: &CodexAcpConfig,
     timeouts: RunnerTimeouts,
@@ -400,19 +463,9 @@ async fn run_codex_acp(
         message,
     })?;
 
-    let mut command = tokio::process::Command::new(&config.command);
-    command
-        .args(codex_acp_effective_args(config, true))
-        .current_dir(&request.working_directory)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
-    configure_acp_command_process_group(&mut command);
-
-    let child = command.spawn().map_err(|e| AgentSessionError {
-        kind: AgentSessionErrorKind::SpawnFailed,
-        message: format!("failed to spawn codex acp: {e}"),
-    })?;
+    let child =
+        spawn_codex_acp_child_with_retry(config, std::path::Path::new(&request.working_directory))
+            .await?;
     let mut child_guard = AcpChildGuard::new("codex", child, None);
 
     let child = child_guard.child_mut().ok_or(AgentSessionError {

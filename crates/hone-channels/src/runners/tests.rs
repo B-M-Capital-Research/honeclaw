@@ -657,6 +657,27 @@ fn codex_version_probe_missing_binary_is_not_bypassable() {
 }
 
 #[test]
+fn codex_spawn_resource_limit_errors_are_retryable() {
+    let err = AgentSessionError {
+        kind: AgentSessionErrorKind::SpawnFailed,
+        message: "failed to spawn codex acp: Resource temporarily unavailable (os error 35)"
+            .to_string(),
+    };
+
+    assert!(super::codex_acp::codex_spawn_error_is_transient_resource_unavailable(&err));
+}
+
+#[test]
+fn codex_spawn_missing_binary_is_not_retryable() {
+    let err = AgentSessionError {
+        kind: AgentSessionErrorKind::SpawnFailed,
+        message: "failed to spawn codex acp: No such file or directory (os error 2)".to_string(),
+    };
+
+    assert!(!super::codex_acp::codex_spawn_error_is_transient_resource_unavailable(&err));
+}
+
+#[test]
 fn codex_version_validation_cache_key_tracks_effective_runner_args() {
     let base = CodexAcpConfig {
         command: "codex-acp".to_string(),
