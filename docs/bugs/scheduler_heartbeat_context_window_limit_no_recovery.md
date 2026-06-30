@@ -5,6 +5,15 @@
 - **严重等级**: P2
 - **状态**: New
 - **证据来源**:
+  - `2026-07-01 03:01 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
+    - `data/runtime/logs/hone_cli_screen.log`
+      - 23:00-03:01 CST 仍检出 4 条明确 `context window exceeds limit (2013)` heartbeat 首轮失败样本，并出现 8 条 `BudgetRecovery { reason: ContextOverflow }` 恢复信号。
+      - 23:00 CST Web `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 首轮 `Primary` 失败，错误包含 `upstream HTTP 400: invalid params, context window exceeds limit (2013)`，随后启动 `BudgetRecovery { reason: ContextOverflow }` 并生成 `JsonTriggered + deliver_preview`。
+      - 23:30 CST Web `持仓财报与重大新闻心跳提醒` 首轮失败后进入 `BudgetRecovery`；01:30 CST Web `AI与科技持仓观察关键事件心跳提醒` 再次首轮超窗后进入 `BudgetRecovery`；02:30 CST Web `持仓财报与重大新闻心跳提醒` 继续命中同类超窗。
+    - 会话质量对照：
+      - 同窗 SQLite 4 轮 Feishu direct user / assistant 均正常收口；故障集中在 heartbeat function-calling 超窗链路，不是直聊或出站整体不可用。
+    - 判断：相比早前“直接失败无恢复”，当前运行态已有预算恢复分支，但首轮超窗仍在多个 heartbeat 任务间复发，且恢复后的内容仍可能进入其它质量问题。该问题仍导致 heartbeat 本轮降级 / 不稳定，严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
   - `2026-06-30 23:01 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
     - `data/runtime/logs/hone_cli_screen.log`
       - 19:02-23:01 CST 仍检出 2 组明确 `context window exceeds limit (2013)` heartbeat 首轮失败与预算恢复信号。

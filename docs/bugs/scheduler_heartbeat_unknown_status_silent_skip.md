@@ -7,6 +7,18 @@
 
 ## 修复进展
 
+- `2026-07-01 03:01 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
+  - `data/runtime/logs/hone_cli_screen.log`
+    - 23:00-03:01 CST heartbeat 窗口新增 224 条 `parse_kind` 信号：`JsonNoop` 111 条、`PlainTextSuppressed` 52 条、`JsonTriggered` 27 条、`PlainTextNoop` 18 条、`JsonMalformed` 12 条、`JsonUnknownStatus` 4 条。
+    - 同窗仍有 59 条 `failure_kind=execution_failed`，代表样本覆盖 Feishu / Web heartbeat，包括 `FOTO 光子学ETF心跳检测`、`AAOI 1.6T 光模块心跳检测`、`持仓财报与重大新闻心跳提醒`、`美股黄金坑信号心跳检测`、`ORCL 大事件监控` 等。
+    - 多条 raw preview 仍以 `<think>`、工具预算耗尽说明、自然语言总结、模型自述或非契约 JSON 开头，最终落为 `execution_failed + skipped_error`、`noop + skipped_noop`、`JsonMalformed` 或 `JsonUnknownStatus`。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 本窗有 4 个 Feishu direct user turn 与 4 个 assistant final，均正常收口；assistant final 污染扫描未命中空回复、内部路径、raw tool 字段、`<think>`、provider 原始错误、panic、quota 或资源耗尽原文。
+    - `data/runtime/logs/acp-events.log` 本窗可见 14 次 `session/prompt`、14 次 `stopReason=end_turn`、0 个 response error；用户可见文案边界问题另归入 `feishu_scheduler_data_fetch_tool_name_exposed.md`。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题继续导致 heartbeat 监控任务整轮失败或跳过发送，属于功能性监控漏发 / 降级；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-06-30 23:01 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
   - `data/runtime/logs/hone_cli_screen.log`
     - 19:02-23:01 CST heartbeat 窗口新增 216 条 `parse_kind` 信号：`JsonNoop` 99 条、`PlainTextSuppressed` 63 条、`JsonTriggered` 25 条、`PlainTextNoop` 18 条、`JsonUnknownStatus` 6 条、`JsonMalformed` 4 条、`Empty` 1 条。

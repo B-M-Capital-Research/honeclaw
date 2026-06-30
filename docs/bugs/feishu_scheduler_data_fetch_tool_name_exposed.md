@@ -22,6 +22,13 @@ New
 
 ## 最新进展
 
+- 2026-07-01 03:01 CST 运行态继续复发，状态维持 `New`：
+  - 23:00-03:01 CST `data/sessions.sqlite3` 已有最近 Feishu direct 会话镜像，`session_messages.max(timestamp)=2026-07-01T00:40:49.460547+08:00`、`session_messages.max(imported_at)=2026-07-01T00:40:49.568582+08:00`。
+  - 本窗 SQLite 有 4 个 Feishu direct user turn 与 4 个 assistant final，均正常收口；assistant final 污染扫描未命中空回复、本机绝对路径、raw tool 字段、`reasoning_content`、`<think>`、provider 原始错误、panic、资源耗尽或 binary-not-found 原文。
+  - `data/runtime/logs/acp-events.log` 同窗可见 14 次 `session/prompt`、14 次 `session/set_model`、14 次 `stopReason=end_turn`、0 个 response error。
+  - 用户可见 chunk 重构继续命中多类内部执行口径：23:00 CST 观察池快报仍写 `本轮 data_fetch 已返回 25 支标的最新行情`；23:20 CST CRCL 分析写 `我已经加载单股研究流程`；23:23 CST HPE 分析写 `本地没有 HPE 画像`、`把长期判断沉淀下来`；00:38 CST OUST 分析来源段把净化后的占位标签拼成 `https://公开行情页.com/stocks/oust/` 等不可用占位域名。
+  - 这些样本都正常输出业务主体并收口，没有投递失败、空回复、错投或链路级数据破坏证据；问题仍只影响用户可见文案边界和产品感，因此为质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-06-30 23:01 CST 运行态继续复发，状态维持 `New`：
   - 19:02-23:01 CST `data/sessions.sqlite3` 已恢复最近会话镜像，`session_messages.max(timestamp)=2026-06-30T23:01:28.103232+08:00`、`session_messages.max(imported_at)=2026-06-30T23:01:28.304784+08:00`。
   - 本窗 SQLite 有 4 个 user turn 与 4 个 assistant final，均正常收口；assistant final 污染扫描未命中空回复、`company_profiles/`、本机绝对路径、raw tool 字段、`reasoning_content`、`<think>`、provider 原始错误、panic、资源耗尽或 binary-not-found 原文。
