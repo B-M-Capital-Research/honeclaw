@@ -5,6 +5,15 @@
 - **严重等级**: P2
 - **状态**: New
 - **证据来源**:
+  - `2026-06-30 19:02 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
+    - `data/runtime/logs/hone_cli_screen.log`
+      - 15:02-19:02 CST 仍检出 3 条明确 `context window exceeds limit (2013)` heartbeat 失败样本。
+      - 17:30 CST Feishu `TEM大事件心跳监控` 与 `ORCL 大事件监控` 首轮失败，错误包含 `upstream HTTP 400: invalid params, context window exceeds limit (2013)`。
+      - 18:30 CST Web `持仓重大事件心跳提醒` 再次命中同类超窗错误。
+    - 会话质量对照：
+      - 同窗 Web direct 3 轮 user / assistant 均正常收口；故障集中在 heartbeat function-calling 超窗链路，不是直聊或出站整体不可用。
+    - 判断：相比 15:02 窗口已出现的 `BudgetRecovery` 信号，本窗仍有首轮超窗失败在不同 heartbeat 任务间漂移。该问题继续导致 heartbeat 本轮降级 / 漏发，严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
   - `2026-06-30 15:02 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
     - `data/runtime/logs/web.log.2026-06-30`
       - 11:02-15:02 CST 共检出 9 条 context-window / `BudgetRecovery` 相关 heartbeat 信号。
