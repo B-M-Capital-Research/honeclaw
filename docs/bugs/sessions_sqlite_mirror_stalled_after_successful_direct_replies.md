@@ -6,6 +6,11 @@
 - **状态**: New
 - **GitHub Issue**: 无
 - **修复结论复核**:
+- `2026-07-02 07:02 CST` 运行态部分复发继续存在，状态维持 `New`：
+  - `data/sessions.sqlite3` 的镜像上界推进到 `sessions.max(updated_at)=2026-07-02T07:02:07.343638+08:00`、`sessions.max(last_message_at)=2026-07-02T07:02:07.320670+08:00`、`session_messages.max(timestamp)=2026-07-02T07:02:07.320670+08:00`、`session_messages.max(imported_at)=2026-07-02T07:02:07.431662+08:00`。
+  - 03:02-07:02 CST SQLite 只有 1 轮 Feishu 07:00 收盘后早报 user turn 与 1 条 assistant final，成对收口；assistant final 污染扫描未命中空回复、内部路径、raw tool 字段、`<think>`、provider 原始错误、panic、quota、资源耗尽、env 字段或模型元数据 warning。
+  - 但同一库的 `cron_job_runs.max(executed_at)` 仍停在 `2026-06-30T09:30:52.069168+08:00`，而 `data/runtime/logs/web.log.2026-07-01` / `hone_cli_screen.log` 在 03:02-07:02 CST 继续记录 heartbeat `run_start`、`run_finish`、`failure_kind=execution_failed`、`BudgetRecovery`、deliver preview 和 raw preview 信号。
+  - 本次说明 session mirror 本身能追入当前 scheduler transcript，但调度运行台账 `cron_job_runs` 仍存在部分滞后。它继续影响 bug 巡检、调度审计和补发判断，属于功能性可观测性缺陷，严重等级维持 `P2`；非 P1。
 - `2026-07-02 03:03 CST` 运行态部分复发继续存在，状态维持 `New`：
   - `data/sessions.sqlite3` 的镜像上界推进到 `sessions.max(updated_at)=2026-07-02T03:02:04.277189+08:00`、`sessions.max(last_message_at)=2026-07-02T03:02:04.277176+08:00`、`session_messages.max(timestamp)=2026-07-02T03:02:04.277176+08:00`、`session_messages.max(imported_at)=2026-07-02T03:02:04.398239+08:00`。
   - 但按真实消息时间筛选，23:01-03:02 CST 没有新的 `session_messages.timestamp >= 2026-07-01T23:01:00+08:00`；`sessions.updated_at` 中出现的 Web direct 会话是 2026-05-29/05-30 旧消息重导入，不作为新用户侧会话缺陷。

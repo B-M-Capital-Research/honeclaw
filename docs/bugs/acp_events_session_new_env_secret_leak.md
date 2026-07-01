@@ -23,6 +23,12 @@ New
 ## 证据来源
 
 - `data/runtime/logs/acp-events.log`
+  - 2026-07-02 03:04 CST 代码修复提交 `f4dc305d fix: redact mcp env values in acp event logs` 之后，2026-07-02 03:04-07:02 CST 窗口仍检出 13 条 `session/new` ACP 事件。
+  - 本轮只做结构化计数与字段类别判断，不复制日志原文：13 条事件累计 273 个 env entry，其中 247 个非低敏白名单 env entry 仍以未红掉值进入持久化事件日志，`<redacted>` 计数为 0。
+  - 同窗可见 14 次 `session/prompt`、14 个 `stopReason=end_turn`，未见 ACP response error、runner error、stream disconnect、panic 或 context-window response error；风险继续集中在日志持久化边界，不是用户可见回复外泄。
+  - 这批样本全部晚于代码修复提交，说明当前 live runtime 仍未加载修复，或修复未覆盖当前 `acp-events.log` 写入路径；状态维持 `New`。
+  - 已有关联 GitHub Issue #51，本轮不重复创建。
+- `data/runtime/logs/acp-events.log`
   - 2026-07-01 23:01-2026-07-02 03:02 CST 窗口内再次检出 17 条 `session/new` ACP 事件。
   - 本轮只做结构化计数与字段类别判断，不复制日志原文：17 条事件均包含 MCP server `env` payload，累计 357 个 env entry；除低敏白名单外，仍有 323 个非白名单 env entry 以未红掉值进入持久化事件日志。
   - 同窗可见 17 次 `session/prompt`、18 个 `stopReason=end_turn`，未见 response error、runner error、stream disconnect、panic、quota 或 context-window ACP response error；风险集中在日志持久化边界，不是用户可见回复外泄。

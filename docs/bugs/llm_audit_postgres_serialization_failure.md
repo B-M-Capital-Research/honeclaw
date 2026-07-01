@@ -14,10 +14,15 @@
 
 ## 状态
 
-- New
+- Closed
 
 ## 修复记录
 
+- 2026-07-02 07:02 CST
+  - 03:02-07:02 CST 当前 live 运行态未再输出同类 PostgreSQL 参数序列化失败，`data/runtime/logs/web.log.2026-07-01` 与 `data/runtime/logs/hone_cli_screen.log` 同窗 `error serializing parameter 3` 计数为 0。
+  - 复核当前 runtime 日志，最近一次同类命中停在 2026-06-30 09:33 CST；2026-07-01 / 2026-07-02 后续日志未再命中。
+  - 同窗 `data/runtime/logs/acp-events.log` 可见 14 次 `session/prompt`、14 次 `stopReason=end_turn`、0 个 response error，说明 function-calling / ACP 会话仍在运行，0 命中不是因为 runtime 完全停摆。
+  - 结合 2026-06-26 文本 cast 修复和连续多个巡检窗口无新错误，运行态已止血；状态从 `New` 调整为 `Closed`。若后续再次出现连续窗口同类序列化失败，再重新打开。
 - 2026-06-30 07:03 CST
   - 03:00-07:03 CST 当前 live 运行态仍持续输出同类 PostgreSQL 参数序列化失败，共 797 条。
   - 同窗 `data/runtime/logs/acp-events.log` 可见 11 次 `session/prompt`、11 次 `stopReason=end_turn`；问题仍集中在 function-calling audit 持久化与后续排障审计，不直接阻断用户回复或投递，严重等级维持 P2，非 P1。

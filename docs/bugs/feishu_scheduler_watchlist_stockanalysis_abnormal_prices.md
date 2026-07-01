@@ -20,6 +20,17 @@
 
 - 无，非 P1
 
+## 最新进展（2026-07-02 07:02 CST）
+
+- 本轮 2026-07-02 03:02-07:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3`
+    - 07:00 CST Feishu `美股持仓收盘后早报` assistant final 正常收口，但正式输出 DRAM `65.86`、AMD `540.88`、MU `1032.28`、SNDK `2032.22`、DELL `425.25`、ARM `337.47` 等明显异常数量级行情。
+    - 同条 final 继续基于这些价格计算组合约 `-6.48%`、单日亏损约 `6004` 美元、MU/DRAM/SNDK 合计约 `40.3%`、AI 硬件相关合计约 `79.1%`，并给出多个次日观察位。
+  - `data/runtime/logs/web.log.2026-07-01`
+    - 同窗 heartbeat raw preview / 判断上下文继续出现 SNDK `$2,058.34`、`$2,032.22` 等异常数量级价格信号。
+- 本窗已有 Feishu scheduler assistant final 正式落库样本，不只是内部 raw preview；价格 sanity check 仍未覆盖当前 scheduler / heartbeat 运行路径。
+- 报告主链路正常收口，未见空回复、错投、投递失败或原始工具 JSON；因此仍按质量性 `P3 / New`。该问题不影响调度 / 投递主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 ## 最新进展（2026-07-02 03:03 CST）
 
 - 本轮 2026-07-01 23:01-2026-07-02 03:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
