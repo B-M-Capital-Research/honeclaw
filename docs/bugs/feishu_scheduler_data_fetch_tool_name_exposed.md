@@ -22,6 +22,12 @@ New
 
 ## 最新进展
 
+- 2026-07-01 23:02 CST 运行态继续复发，状态维持 `New`：
+  - 19:06-23:02 CST `data/sessions.sqlite3` 有 4 条新的 assistant final，均正常收口；assistant final 污染扫描未命中空回复、本机绝对路径、raw tool 字段、`reasoning_content`、`<think>`、provider 原始错误、panic、资源耗尽或 binary-not-found 原文。
+  - 21:35 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 的 `科技核心股池 · 晚间击球区快报` final 开头写出 `本轮 data_fetch 已返回 25 支标的最新行情`。
+  - 23:00 CST 同 actor 的 `核心观察股池晚间快报` final 再次写出 `本轮 data_fetch 已返回 25 支标的最新行情`，并把 `data_fetch quote_short` 作为用户态来源说明。
+  - 两个样本报告主体均正常收口，没有链路级失败证据；问题仍只影响用户可见文案边界和产品感，不影响主功能链路，因此为质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-07-01 03:01 CST 运行态继续复发，状态维持 `New`：
   - 23:00-03:01 CST `data/sessions.sqlite3` 已有最近 Feishu direct 会话镜像，`session_messages.max(timestamp)=2026-07-01T00:40:49.460547+08:00`、`session_messages.max(imported_at)=2026-07-01T00:40:49.568582+08:00`。
   - 本窗 SQLite 有 4 个 Feishu direct user turn 与 4 个 assistant final，均正常收口；assistant final 污染扫描未命中空回复、本机绝对路径、raw tool 字段、`reasoning_content`、`<think>`、provider 原始错误、panic、资源耗尽或 binary-not-found 原文。

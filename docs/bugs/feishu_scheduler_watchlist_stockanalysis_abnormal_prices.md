@@ -20,6 +20,16 @@
 
 - 无，非 P1
 
+## 最新进展（2026-07-01 23:02 CST）
+
+- 本轮 2026-07-01 19:06-23:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3`
+    - 21:35 CST `科技核心股池 · 晚间击球区快报` assistant final 正式输出 MU `$1,068.82`、SNDK `$2,062.00`、STX `$889.01`、WDC `$594.77`、AMD `$552.95` 等异常数量级价格。
+    - 23:00 CST `核心观察股池晚间快报` assistant final 又输出 MU `$1,056.50`、SNDK `$2,034.95`、STX `$900.83`、WDC `$591.83`、AMD `$551.95` 等异常数量级价格。
+  - `data/runtime/logs/web.log.2026-07-01`
+    - 同窗 heartbeat raw preview / 判断上下文继续出现 SNDK、MU 等异常价格，并进入 `PlainTextSuppressed`、`PlainTextNoop` 或正式 final 上下文。
+- 本窗已有 Feishu scheduler assistant final 正式落库样本，但任务主体仍正常收口，未见错投、空回复或投递主链路阻断；问题仍表现为价格 sanity check 未覆盖当前 scheduler / heartbeat 运行路径，按质量性 `P3 / New` 继续跟踪，非 P1。
+
 ## 最新进展（2026-07-01 15:03 CST）
 
 - 本轮 2026-07-01 11:02-15:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
