@@ -279,3 +279,13 @@
 
 - 本轮为缺陷台账维护任务，未修改业务代码、测试代码或配置代码，未运行代码测试。
 - 已验证范围：`docs/bugs/README.md` / 既有 bug 文档查重、`data/sessions.sqlite3` 上界、`data/runtime/logs/acp-events.log` 07:02-11:02 CST 结构化解析、用户可见 final 关键词扫描、最近四小时非文档代码提交检查。
+
+## 最新运行态复核（2026-07-01 19:06 CST）
+
+- `data/runtime/logs/web.log.2026-07-01`
+  - 巡检窗口：2026-07-01 15:00-19:05 CST。
+  - 15:00 CST `Monitor_Watchlist_11` raw preview 继续把 `MU` 现价写为 `$1,154.29`，并明确模型也感知到“price seems very high / data is off”，但仍继续比较触发条件。
+  - 15:00 / 18:30 / 19:00 CST 多条 SNDK / 存储板块 heartbeat raw preview 继续使用 `SNDK $2,273.73`、`MU $1,154.29` 等异常数量级价格、目标价或市值上下文。
+- 本轮判断
+  - 最新证据仍落在 scheduler / heartbeat 批量行情数值 sanity check 缺失范围内，没有新的独立根因。
+  - 本窗未确认新的正式 assistant final 或最终送达正文使用异常价格做交易建议；因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。

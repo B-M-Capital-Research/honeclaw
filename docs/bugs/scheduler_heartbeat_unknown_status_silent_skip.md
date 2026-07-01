@@ -5157,3 +5157,15 @@
 - 本轮判断
   - 最新证据仍属于 heartbeat 输出结构漂移 / 解析失败的既有范围，没有新的独立根因。
   - 坏态继续影响 heartbeat 是否能稳定得出 `triggered/noop` 并发送，状态维持 `New`、严重等级维持 `P2`；本窗未造成普通直聊不可用或全渠道故障，不升级 P1。
+
+## 最新运行态复核（2026-07-01 19:06 CST）
+
+- `data/runtime/logs/web.log.2026-07-01`
+  - 巡检窗口：2026-07-01 15:00-19:05 CST。
+  - 本窗新增 245 条可分类 heartbeat `parse_kind` 信号：`JsonNoop` 113 条、`PlainTextSuppressed` 63 条、`JsonTriggered` 26 条、`PlainTextNoop` 22 条、`JsonMalformed` 8 条、`JsonUnknownStatus` 8 条、`JsonEmptyStatus` 4 条、`Empty` 1 条。
+  - 同窗有 75 条失败 / 降级关键词命中，代表样本包括 `Monitor_Watchlist_11`、`TSLA 正负触发条件心跳监控`、`ORCL 大事件监控`、`持仓重大事件心跳检测` 等任务以 `<think>`、自然语言复盘、未知状态或非法 JSON 开头，随后落成 `failure_kind=execution_failed` 并跳过发送。
+- `data/sessions.sqlite3`
+  - 同窗 Web direct / Web scheduler 均有 assistant final 正常收口；assistant final 污染扫描未命中 `<think>`、`reasoning_content`、raw tool 字段、本机路径、provider 原始错误、panic 或资源耗尽原文。
+- 本轮判断
+  - 最新证据仍属于 heartbeat 输出结构漂移 / 解析失败的既有范围，没有新的独立根因。
+  - 普通 direct / scheduler final 主链路仍可收口，未见错对象投递或数据安全问题；严重等级维持 `P2`，状态维持 `New`，非 P1，不创建 GitHub Issue。

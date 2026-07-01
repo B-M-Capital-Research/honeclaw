@@ -598,3 +598,13 @@
 - 本轮判断
   - 最新证据继续支持“heartbeat 超窗后缺少稳定恢复，最终本轮漏发”的功能性 P2 判断。
   - 未发现该坏态进入普通直聊 final 或造成全渠道不可用；不升级为 P1，不新建重复缺陷。
+
+## 最新运行态复核（2026-07-01 19:06 CST）
+
+- `data/runtime/logs/web.log.2026-07-01`
+  - 巡检窗口：2026-07-01 15:00-19:05 CST。
+  - 19:00 CST `AAOI 1.6T 光模块心跳检测` 先落成 `success=false`，错误为 `context window exceeds limit (2013)`，随后进入 `BudgetRecovery { reason: ContextOverflow }`。
+  - 19:01 CST 同一 job 在恢复分支中 `success=true` 并生成 `JsonTriggered` deliver preview，说明当前恢复分支可偶发挽回送达，但首轮 prompt 预算失控仍在真实窗口复现。
+- 本轮判断
+  - 最新证据继续支持 heartbeat/function-calling 缺少稳定上下文预算控制的判断。
+  - 本窗恢复分支最终送达，未确认用户侧漏发；因此不升级严重等级，状态维持 `P2 / New`，不新建重复缺陷。

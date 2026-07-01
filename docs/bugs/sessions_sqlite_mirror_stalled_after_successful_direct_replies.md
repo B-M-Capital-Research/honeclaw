@@ -932,3 +932,14 @@
   - 同一会话随后在 `08:01:10.297` 完成 `reply.send detail=segments.sent=1/1`；
   - `data/sessions/Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b.json` 已推进到 `updated_at=2026-05-06T08:01:08.285573+08:00`，末尾最新 user turn 为 `Tempus 为什么大跌？它的财报不好吗？哪里没达预期？`。
 - 同一 sqlite 文件里 `cron_job_runs.max(executed_at)` 已推进到 `2026-05-06T08:00:03.352034+08:00` 且最近一小时有 `15` 条新 run，说明数据库文件本身仍在持续写别的表，而 `sessions` / `session_messages` 镜像链路继续完全停摆；本单继续维持活跃 `New`。
+
+## 最新运行态复核（2026-07-01 19:06 CST）
+
+- `data/sessions.sqlite3`
+  - 本轮 `sessions.max(updated_at)=2026-07-01T18:02:13.782703+08:00`、`sessions.max(last_message_at)=2026-07-01T18:02:13.774644+08:00`、`session_messages.max(timestamp)=2026-07-01T18:02:13.774644+08:00`、`session_messages.max(imported_at)=2026-07-01T18:02:13.793577+08:00`。
+  - 但 `cron_job_runs.max(executed_at)` 仍停在 `2026-06-30T09:30:52.069168+08:00`，没有追上 2026-07-01 15:00-19:05 CST 的 heartbeat run / deliver / failure 运行态。
+- `data/runtime/logs/web.log.2026-07-01`
+  - 同窗继续出现大量 heartbeat `run_finish`、`deliver` 与 `failure_kind=execution_failed` 记录，例如 18:00 / 18:30 / 19:00 CST 多批任务均有真实运行结果。
+- 本轮判断
+  - 当前坏态已从早期“direct 会话镜像停滞”演进为“direct / scheduler 消息有增量，但 `cron_job_runs` 调度运行台账滞后于 runtime 真实运行态”。
+  - 这仍会误导巡检和调度排障，但普通用户消息主链路可收口；严重等级维持 `P2`，状态维持 `New`。
