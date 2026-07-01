@@ -5,6 +5,15 @@
 - **严重等级**: P2
 - **状态**: New
 - **证据来源**:
+  - `2026-07-02 03:03 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
+    - `data/runtime/logs/web.log.2026-07-01`
+      - 23:01-03:02 CST 仍检出 2 组明确 `context window exceeds limit (2013)` heartbeat 首轮失败与 `BudgetRecovery { reason: ContextOverflow }` 恢复信号。
+      - 00:30 CST Feishu `AAOI 1.6T 光模块心跳检测` 首轮 `Primary` 失败后进入预算恢复，并在 00:30:53 CST 生成短答。
+      - 02:00 CST Web `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 首轮 `Primary` 再次命中同类超窗错误后进入预算恢复，并在 02:00:48 CST 生成短答。
+    - 会话质量对照：
+      - 同窗 SQLite 没有新的真实 direct message timestamp；ACP direct / scheduler prompt 均以 `stopReason=end_turn` 收口，未见全局 runner 失败。
+    - 判断：当前运行态已有预算恢复分支，但首轮超窗仍在 heartbeat 任务间复发，恢复后的内容仍可能进入结构化输出退化；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
   - `2026-07-01 23:02 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
     - `data/runtime/logs/web.log.2026-07-01`
       - 19:06-23:02 CST 仍检出明确 `context window exceeds limit (2013)` heartbeat 首轮失败样本，并出现 `BudgetRecovery { reason: ContextOverflow }` 恢复信号。

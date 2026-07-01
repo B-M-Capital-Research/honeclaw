@@ -7,6 +7,17 @@
 
 ## 修复进展
 
+- `2026-07-02 03:03 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-01`
+    - 23:01-03:02 CST heartbeat 窗口新增 217 条可分类 `parse_kind` 信号：`JsonNoop` 114 条、`PlainTextSuppressed` 44 条、`JsonTriggered` 28 条、`PlainTextNoop` 24 条、`JsonMalformed` 4 条、`JsonUnknownStatus` 2 条、`JsonEmptyStatus` 1 条。
+    - 同窗仍有 47 条 `failure_kind=execution_failed`，代表样本覆盖 Feishu / Web heartbeat；多条 raw preview 继续以 `<think>`、工具预算耗尽说明、自然语言总结或非契约 JSON 开头，最终落为结构化失败、静默跳过或未发送。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 本窗没有新的真实 `session_messages.timestamp >= 2026-07-01T23:01:00+08:00` 记录；仅 `sessions.updated_at` 因旧 Web direct 会话重导入推进到 2026-07-02 01:35 CST，不作为新用户侧缺陷。
+    - `data/runtime/logs/acp-events.log` 本窗可见 17 次 `session/prompt` 与 18 个 `stopReason=end_turn`，未见 ACP response error、runner error、stream disconnect、panic、quota 或 context-window response error；结构化退化集中在 heartbeat function-calling 输出契约。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题继续导致 heartbeat 监控任务整轮失败或跳过发送，属于功能性监控漏发 / 降级；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-01 23:02 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-01`
     - 19:06-23:02 CST heartbeat 窗口新增 247 条可分类 `parse_kind` 信号：`JsonNoop` 121 条、`PlainTextSuppressed` 51 条、`PlainTextNoop` 30 条、`JsonTriggered` 26 条、`JsonUnknownStatus` 8 条、`JsonMalformed` 6 条、`JsonEmptyStatus` 3 条、`Empty` 2 条。

@@ -14,7 +14,7 @@ P1
 
 ## 状态
 
-Fixed
+New
 
 ## GitHub Issue
 
@@ -22,6 +22,12 @@ Fixed
 
 ## 证据来源
 
+- `data/runtime/logs/acp-events.log`
+  - 2026-07-01 23:01-2026-07-02 03:02 CST 窗口内再次检出 17 条 `session/new` ACP 事件。
+  - 本轮只做结构化计数与字段类别判断，不复制日志原文：17 条事件均包含 MCP server `env` payload，累计 357 个 env entry；除低敏白名单外，仍有 323 个非白名单 env entry 以未红掉值进入持久化事件日志。
+  - 同窗可见 17 次 `session/prompt`、18 个 `stopReason=end_turn`，未见 response error、runner error、stream disconnect、panic、quota 或 context-window ACP response error；风险集中在日志持久化边界，不是用户可见回复外泄。
+  - 该样本晚于 2026-07-02 03:03 CST 代码级修复记录，说明当前 live runtime 仍未加载修复或修复未覆盖当前事件日志路径；状态从 `Fixed` 回退为 `New`。
+  - 已有关联 GitHub Issue #51，本轮不重复创建。
 - `data/runtime/logs/acp-events.log`
   - 2026-07-01 19:35-23:01 CST 窗口内检出 48 条 `session/new` ACP 事件。
   - 每条事件的 MCP server `env` payload 都包含云数据库与对象存储相关敏感字段名，覆盖 Web 与 Feishu actor。
@@ -45,6 +51,8 @@ Fixed
 
 ## 当前实现效果
 
+- 2026-07-02 03:02 CST 运行态复核显示，当前 `acp-events.log` 仍会持久化 `session/new.params.mcpServers[].env` 的非白名单未红掉值。
+- 因此当前 live runtime 下修复结论不能视为生效；缺陷重新进入活跃待修复队列。
 - 2026-07-02 已在 `acp-events.log` 写入前对 `session/new` payload 做结构化脱敏。
 - `params.mcpServers[].env` 现在默认不保留未知 env 明文值；仅 `HONE_CLOUD_MODE`、`HONE_CLOUD_ENABLED`、`HONE_CLOUD_STRICT_NO_LOCAL_STORAGE`、`HONE_MCP_ALLOW_CRON`、`HONE_MCP_MAX_TOOL_CALLS`、`HONE_MCP_ALLOWED_TOOLS` 保留原值，其余统一写成 `<redacted>`。
 - 新增日志回归，覆盖云数据库凭据、对象存储凭据和本地数据目录路径三类敏感值，断言不会进入持久化 JSONL。
