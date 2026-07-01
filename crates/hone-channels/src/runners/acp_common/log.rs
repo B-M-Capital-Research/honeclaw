@@ -22,6 +22,7 @@ use crate::runners::types::AgentRunnerRequest;
 
 const ACP_EVENT_LOG_FILENAME: &str = "acp-events.log";
 const ACP_STDERR_DETAIL_CHARS: usize = 400;
+const REDACTED_VALUE: &str = "<redacted>";
 
 static ACP_EVENT_LOG_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
 
@@ -96,6 +97,7 @@ fn build_acp_event_record(
     direction: &'static str,
     payload: Value,
 ) -> Value {
+    let payload = sanitize_acp_payload_for_log(payload);
     let method = payload
         .get("method")
         .and_then(|value| value.as_str())
@@ -121,6 +123,52 @@ fn build_acp_event_record(
         "actor_channel_scope": log_ctx.actor_channel_scope,
         "payload": payload,
     })
+}
+
+fn sanitize_acp_payload_for_log(mut payload: Value) -> Value {
+    if payload.get("method").and_then(|value| value.as_str()) == Some("session/new") {
+        redact_session_new_mcp_env(&mut payload);
+    }
+    payload
+}
+
+fn redact_session_new_mcp_env(payload: &mut Value) {
+    let Some(servers) = payload
+        .get_mut("params")
+        .and_then(|value| value.get_mut("mcpServers"))
+        .and_then(|value| value.as_array_mut())
+    else {
+        return;
+    };
+
+    for server in servers {
+        let Some(env_entries) = server.get_mut("env").and_then(|value| value.as_array_mut()) else {
+            continue;
+        };
+        for entry in env_entries {
+            let Some(object) = entry.as_object_mut() else {
+                continue;
+            };
+            let Some(name) = object.get("name").and_then(|value| value.as_str()) else {
+                continue;
+            };
+            if !safe_mcp_env_value_for_log(name) {
+                object.insert("value".to_string(), Value::String(REDACTED_VALUE.to_string()));
+            }
+        }
+    }
+}
+
+fn safe_mcp_env_value_for_log(name: &str) -> bool {
+    matches!(
+        name,
+        "HONE_CLOUD_MODE"
+            | "HONE_CLOUD_ENABLED"
+            | "HONE_CLOUD_STRICT_NO_LOCAL_STORAGE"
+            | "HONE_MCP_ALLOW_CRON"
+            | "HONE_MCP_MAX_TOOL_CALLS"
+            | "HONE_MCP_ALLOWED_TOOLS"
+    )
 }
 
 pub(crate) async fn log_acp_payload(
@@ -589,5 +637,70 @@ mod tests {
         assert!(!detail.contains("plain-secret"));
         assert!(detail.ends_with('…'));
         assert!(detail.chars().count() <= ACP_STDERR_DETAIL_CHARS);
+    }
+
+    #[tokio::test]
+    async fn log_acp_payload_redacts_session_new_mcp_env_values() {
+        let temp_root = std::env::temp_dir().join(format!(
+            "hone_acp_session_new_log_{}_{}",
+            std::process::id(),
+            Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        let log_context = AcpEventLogContext {
+            runner_label: "codex",
+            log_path: acp_event_log_path(&temp_root.to_string_lossy()),
+            session_id: "session-1".to_string(),
+            identity: "Actor_web__direct__user-1".to_string(),
+            actor_channel: "web".to_string(),
+            actor_user_id: "user-1".to_string(),
+            actor_channel_scope: Some("direct".to_string()),
+        };
+        let payload = json!({
+            "jsonrpc": "2.0",
+            "id": "session-new-1",
+            "method": "session/new",
+            "params": {
+                "mcpServers": [
+                    {
+                        "name": "hone",
+                        "env": [
+                            {"name": "HONE_CLOUD_MODE", "value": "cloud"},
+                            {"name": "HONE_POSTGRES_PASSWORD", "value": "pg-secret"},
+                            {"name": "HONE_OSS_ACCESS_KEY_SECRET", "value": "oss-secret"},
+                            {"name": "HONE_DATA_DIR", "value": "/private/tmp/hone-data"}
+                        ]
+                    }
+                ]
+            }
+        });
+
+        log_acp_payload(Some(&log_context), "send", &payload).await;
+
+        let content = tokio::fs::read_to_string(&log_context.log_path)
+            .await
+            .expect("read log");
+        let record = serde_json::from_str::<Value>(&content).expect("jsonl record");
+        let env_entries = record["payload"]["params"]["mcpServers"][0]["env"]
+            .as_array()
+            .expect("env entries");
+        let env_value = |name: &str| {
+            env_entries
+                .iter()
+                .find(|entry| entry["name"].as_str() == Some(name))
+                .and_then(|entry| entry["value"].as_str())
+        };
+
+        assert_eq!(env_value("HONE_CLOUD_MODE"), Some("cloud"));
+        assert_eq!(env_value("HONE_POSTGRES_PASSWORD"), Some(REDACTED_VALUE));
+        assert_eq!(
+            env_value("HONE_OSS_ACCESS_KEY_SECRET"),
+            Some(REDACTED_VALUE)
+        );
+        assert_eq!(env_value("HONE_DATA_DIR"), Some(REDACTED_VALUE));
+        assert!(!content.contains("pg-secret"));
+        assert!(!content.contains("oss-secret"));
+        assert!(!content.contains("/private/tmp/hone-data"));
+
+        let _ = tokio::fs::remove_dir_all(&temp_root).await;
     }
 }

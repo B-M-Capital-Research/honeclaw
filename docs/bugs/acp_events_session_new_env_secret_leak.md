@@ -14,7 +14,7 @@ P1
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
@@ -45,9 +45,9 @@ New
 
 ## 当前实现效果
 
-- 最近四小时真实运行日志中，`session/new` 原始 payload 批量保留 MCP server env。
-- 日志中可见的敏感字段类别包括云数据库连接凭据和对象存储访问凭据。
-- 该问题不是单次模型输出质量波动，而是 audit logger 对正常 ACP 控制面事件的结构化记录策略问题。
+- 2026-07-02 已在 `acp-events.log` 写入前对 `session/new` payload 做结构化脱敏。
+- `params.mcpServers[].env` 现在默认不保留未知 env 明文值；仅 `HONE_CLOUD_MODE`、`HONE_CLOUD_ENABLED`、`HONE_CLOUD_STRICT_NO_LOCAL_STORAGE`、`HONE_MCP_ALLOW_CRON`、`HONE_MCP_MAX_TOOL_CALLS`、`HONE_MCP_ALLOWED_TOOLS` 保留原值，其余统一写成 `<redacted>`。
+- 新增日志回归，覆盖云数据库凭据、对象存储凭据和本地数据目录路径三类敏感值，断言不会进入持久化 JSONL。
 
 ## 用户影响
 
@@ -61,9 +61,19 @@ New
 - `session/new` payload 中 MCP server env 的敏感性高于普通 protocol metadata，但当前日志路径没有区分。
 - 需要在写入 `acp-events.log` 前做结构化脱敏，而不是依赖后续巡检或人工不复制日志原文。
 
-## 下一步建议
+## 修复情况
 
-1. 在 ACP event logger 写入前，对 `session/new.params.mcpServers[].env[].value` 做默认脱敏，敏感字段只保留 `<redacted>`。
-2. 对所有 env 字段应用 denylist + allowlist 双层策略：`PASSWORD`、`SECRET`、`KEY`、`TOKEN`、数据库连接、对象存储连接等默认不落明文。
-3. 增加回归测试：构造带数据库和对象存储 env 的 `session/new` 事件，断言日志 JSON 中没有真实值。
-4. 评估历史 `acp-events.log` 的轮转、删除或访问限制；如果这些凭据仍有效，应按内部流程轮换。
+1. `crates/hone-channels/src/runners/acp_common/log.rs` 新增 `sanitize_acp_payload_for_log(...)`，只对 `session/new` 做专项日志净化，避免影响其它 ACP 调试记录。
+2. `session/new.params.mcpServers[].env[].value` 改为默认红掉，未知 env 不再以明文进入 `acp-events.log`。
+3. 新增 `log_acp_payload_redacts_session_new_mcp_env_values` 回归，验证日志 JSON 中只保留安全白名单值。
+
+## 验证
+
+- `cargo test -p hone-channels log_acp_payload_redacts_session_new_mcp_env_values -- --nocapture`
+- `cargo test -p hone-channels parse_error_log_records_bounded_redacted_raw_line_preview -- --nocapture`
+- `cargo check -p hone-channels --tests`
+
+## 后续风险
+
+1. 历史 `data/runtime/logs/acp-events.log*` 里已落盘的旧凭据不会被代码修复自动清除；如这些凭据仍有效，仍需按内部流程轮换并清理旧日志。
+2. 本轮未重启 live 服务、未对当前旧日志做在线验证，因此先记代码级 `Fixed`；若新窗口仍见明文 env，应重新打开该缺陷。
