@@ -7,6 +7,18 @@
 
 ## 修复进展
 
+- `2026-07-01 11:03 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
+  - `data/runtime/logs/hone_cli_screen.log`
+    - 07:02-11:02 CST heartbeat 窗口新增 241 条可分类 `parse_kind` 信号：`JsonNoop` 118 条、`PlainTextSuppressed` 64 条、`PlainTextNoop` 26 条、`JsonTriggered` 20 条、`JsonMalformed` 8 条、`JsonUnknownStatus` 2 条、`JsonEmptyStatus` 2 条、`Empty` 1 条。
+    - 同窗仍有 70 条 `failure_kind=execution_failed`，代表样本覆盖 Feishu / Web heartbeat，包括 `全天原油价格3小时播报`、`AAOI 1.6T 光模块心跳检测`、`持仓重大事件心跳检测`、`SIVE POET/Nokia/1.6T DFB 心跳检测`、`ORCL 大事件监控` 等。
+    - 多条 raw preview 仍以 `<think>`、工具预算耗尽说明、自然语言总结、模型自述或非契约 JSON 开头，最终落为 `execution_failed + skipped_error`、`JsonMalformed`、`JsonUnknownStatus`、`Empty` 或未发送。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 本窗只有 1 个 Feishu direct user turn 与 1 个 assistant final，已正常收口；assistant final 污染扫描未命中空回复、内部路径、raw tool 字段、`<think>`、`reasoning_content`、provider 原始错误、panic、quota、资源耗尽或 `data_fetch` 原文。
+    - 本窗另有 2 条 `scheduler_runner_timeout` 继续归入 `codex_acp_transport_disconnect_request_failure.md`；1 条 provider `HTTP 422 output new_sensitive` 未进入 assistant final，暂作为 heartbeat/provider 降级观察，不新建重复缺陷。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题继续导致 heartbeat 监控任务整轮失败或跳过发送，属于功能性监控漏发 / 降级；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-01 07:01 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-06-30`
     - 03:01-07:01 CST heartbeat 窗口新增 232 条 `parse_kind` 信号：`JsonNoop` 103 条、`PlainTextSuppressed` 59 条、`PlainTextNoop` 24 条、`JsonTriggered` 22 条、`JsonMalformed` 14 条、`JsonUnknownStatus` 10 条。

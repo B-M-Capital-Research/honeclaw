@@ -20,6 +20,16 @@
 
 - 无，非 P1
 
+## 最新进展（2026-07-01 11:03 CST）
+
+- 本轮 2026-07-01 07:02-11:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/runtime/logs/hone_cli_screen.log`
+    - 多条 heartbeat raw preview / 判断上下文继续围绕 SNDK / MU / WDC 等异常数量级价格生成判断。
+    - 07:00-09:00 CST `持仓财报与重大新闻心跳提醒`、`Monitor_Watchlist_11`、`存储板块关键事件心跳提醒` 等仍可见 SNDK `$2,273.73`、MU `$1,154.29`、WDC `$638.72` 等异常价格口径进入 raw preview。
+    - 本窗未确认新的正式送达成功样本；异常价格主要停留在 heartbeat raw preview、结构化失败、未命中或判断上下文。
+  - `data/sessions.sqlite3` 本窗唯一 Feishu direct assistant final 正常收口，未涉及观察池 scheduler 输出；本条证据以 runtime 日志为准。
+- 本窗没有新增正式送达样本，因此不提升严重等级；调度 / 投递主链路没有因该问题被阻断。但异常价格仍进入 function-calling 结果和 heartbeat 判定上下文，说明价格 sanity check 仍未覆盖当前 scheduler / heartbeat 运行路径；作为既有质量性 `P3 / New` 继续跟踪。
+
 ## 最新进展（2026-07-01 07:01 CST）
 
 - 本轮 2026-07-01 03:01-07:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：

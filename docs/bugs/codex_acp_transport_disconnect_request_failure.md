@@ -9,6 +9,11 @@
 ## 证据来源
 
 - `data/runtime/logs/hone_cli_screen.log`
+  - 2026-07-01 07:02-11:02 CST 同类 ACP runner 请求失败在 scheduler 链路继续出现，但用户可见错误已被净化。
+  - 09:03 CST Feishu scheduler `核心观察池早间简报` 命中 `codex acp session/prompt idle timeout (180s)`，最终落成 `failure_kind=scheduler_runner_timeout`，Feishu 侧记录本轮不发送。
+  - 同窗错误 stderr 中只在内部日志保留 plugin manifest / 本机路径细节；对外只保留产品化失败提示“定时任务执行环境暂时不可用，系统已记录失败并将在下一次触发时重试。”。
+  - `data/sessions.sqlite3` 本窗唯一 direct assistant final 污染扫描未命中内部路径、raw tool 字段、`HONE_MCP_BIN`、binary-not-found、provider 原始错误、panic 或资源耗尽原文。
+- `data/runtime/logs/hone_cli_screen.log`
   - 2026-06-29 19:01-23:01 CST 同类 ACP runner 请求失败在 scheduler 链路继续出现，但用户可见错误已被净化。
   - 20:36 CST Feishu scheduler `每日仓位复盘` 命中 `codex acp session/prompt idle timeout (180s)`，最终落成 `failure_kind=scheduler_runner_timeout`，Feishu 侧记录本轮不发送。
   - 同窗错误 stderr 中只在内部日志保留 `Received event for unknown submission ID: auto-compact-* SkillsUpdateAvailable` 细节，用户可见 `agent_message_chunk` 污染扫描未命中绝对路径、raw tool 字段、`HONE_MCP_BIN`、binary-not-found、provider 原始错误或 panic。
@@ -62,6 +67,7 @@
 - Discord scheduler 没有外发通用失败，`should_deliver=0` 是正确止血；但 `execution_status=noop` 与 `failure_kind=internal_error_suppressed` 同时出现，容易把 transport 失败和真正无须发送的业务 `noop` 混在一起。
 - 2026-06-24 复发窗中，Feishu / Web direct 用户主动请求与 Discord group / scheduler 均仍会在 ACP transport 断连时整轮失败；日志侧保留内部 URL 和 raw error，用户可见侧未见原始 URL 外泄。
 - 2026-06-29 07:02 CST 复核窗中，失败形态从 `stream disconnected before completion` 扩展到 `codex acp session/prompt idle timeout (180s)` / `scheduler_runner_timeout`；错误净化生效，但 Feishu / Web scheduler 的业务报告正文没有完成。
+- 2026-07-01 11:03 CST 复核窗中，普通 Feishu scheduler 仍可因 `scheduler_runner_timeout` 跳过发送；错误净化继续生效，但该轮业务报告正文仍没有完成。
 
 ## 用户影响
 

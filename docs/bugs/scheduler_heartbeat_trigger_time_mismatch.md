@@ -6,6 +6,18 @@
 - **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
 
+## 最新进展（2026-07-01 11:03 CST）
+
+- 本轮 2026-07-01 07:02-11:02 CST 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/hone_cli_screen.log`
+    - 08:30 CST Feishu `AAOI 1.6T 光模块心跳检测` raw preview 写出 `AAOI Current Status (as of 2026-04-04)`，与实际执行日 2026-07-01 不一致。
+    - 同窗多条 heartbeat raw preview 仍从旧 reminder 时间、错误 quote timestamp 或模型自述时间推断当前窗口，进入后续 `JsonNoop` / `PlainTextSuppressed` 判断上下文。
+  - 查重结论：
+    - 本窗没有新的正式送达错误日期样本；上述 raw preview 仍属于 heartbeat 模型时间上下文漂移，与本文档既有“触发提醒时间口径漂移”同一链路，不新建重复缺陷。
+  - 用户影响：
+    - 调度、解析和预览生成链路仍可运行，但错误时间上下文可能进入后续触发判断、重复抑制或用户可见提醒新鲜度判断。
+    - 没有错投、数据安全或全渠道不可用证据；因此维持质量性 `P3`，非 P1，不创建 GitHub Issue。
+
 ## 最新进展（2026-07-01 07:01 CST）
 
 - 本轮 2026-07-01 03:01-07:01 CST 真实运行态继续复发，状态维持 `New`：
