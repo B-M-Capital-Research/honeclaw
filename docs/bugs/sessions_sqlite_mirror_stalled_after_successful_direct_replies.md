@@ -6,6 +6,11 @@
 - **状态**: New
 - **GitHub Issue**: 无
 - **修复结论复核**:
+- `2026-07-01 15:03 CST` 运行态部分复发继续存在，状态维持 `New`：
+  - `data/sessions.sqlite3` 的 Web direct 会话镜像已推进到 `sessions.max(updated_at)=2026-07-01T14:44:32.524091+08:00`、`sessions.max(last_message_at)=2026-07-01T14:44:32.519194+08:00`、`session_messages.max(timestamp)=2026-07-01T14:44:32.519194+08:00`、`session_messages.max(imported_at)=2026-07-01T14:44:32.529887+08:00`。
+  - 11:02-15:02 CST SQLite 只有 1 个 Web direct 会话的 3 个真实 user turn 与 3 个 assistant final，用户录入 BE / COHR / MU / RKLB 持仓，assistant 三轮均正常收口并调用 portfolio 记录；assistant final 污染扫描未命中空回复、内部路径、raw tool 字段、`<think>`、provider 原始错误、panic、quota、资源耗尽或 binary-not-found 原文。
+  - 但 `data/runtime/logs/web.log.2026-07-01` / `hone_cli_screen.log` 同窗记录 Feishu direct runtime 在 11:32 / 12:02 / 13:54 / 13:58 / 14:23 CST 多条 `MsgFlow/feishu success=true + reply.send`，对应 Feishu sessions 在 SQLite 里仍停留在旧 `last_message_at`；同一库的 `cron_job_runs.max(executed_at)` 也继续停在 `2026-06-30T09:30:52.069168+08:00`。
+  - 本次仍不是“所有 session / message 表重新卡死”的完全回退，而是 cloud sqlite shadow 修复后，Web direct 可追平，Feishu direct 与调度运行台账仍存在部分滞后。它继续影响 bug 巡检、调度审计和补发判断，属于功能性可观测性缺陷，严重等级维持 `P2`；非 P1，不创建 GitHub Issue。
 - `2026-07-01 11:03 CST` 运行态部分复发继续存在，状态维持 `New`：
   - `data/sessions.sqlite3` 的 direct 会话镜像已继续推进：`sessions.max(updated_at)=2026-07-01T11:02:42.018779+08:00`、`sessions.max(last_message_at)=2026-07-01T11:02:42.001167+08:00`、`session_messages.max(timestamp)=2026-07-01T11:02:42.001167+08:00`、`session_messages.max(imported_at)=2026-07-01T11:02:42.091740+08:00`。
   - 07:02-11:02 CST SQLite 只有 1 个 Feishu direct user turn 与 1 个 assistant final，assistant 正常收口；assistant final 污染扫描未命中空回复、内部路径、raw tool 字段、`<think>`、provider 原始错误、panic、quota、资源耗尽或 binary-not-found 原文。

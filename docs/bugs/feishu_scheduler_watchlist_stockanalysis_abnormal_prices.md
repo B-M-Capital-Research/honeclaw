@@ -20,6 +20,16 @@
 
 - 无，非 P1
 
+## 最新进展（2026-07-01 15:03 CST）
+
+- 本轮 2026-07-01 11:02-15:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-01`
+    - 多条 heartbeat raw preview / 判断上下文继续围绕 SNDK / MU 等异常数量级价格生成判断。
+    - 11:30 CST `闪迪关键事件心跳提醒` raw preview 与 deliver preview 继续写出 SNDK `$2,273.73`、日内高点 `$2,280.52`、52 周高点 `$2,354.39`；14:31 CST `存储板块关键事件心跳提醒` 也生成含 SNDK `$2,273.73` 的 deliver preview。
+    - `Monitor_Watchlist_11` raw preview 在 11:30-14:30 CST 多次继续使用 MU `$1,154.29` 作为当前价参与阈值判断。
+  - `data/sessions.sqlite3` 本窗唯一真实新会话是 Web direct 持仓录入，正常收口，未涉及观察池 scheduler 输出；本条证据以 runtime 日志为准。
+- 本窗已有 Web heartbeat deliver preview 样本，但未确认最终移动/频道送达；调度 / 投递主链路没有因该问题被阻断。异常价格仍进入 function-calling 结果和 heartbeat 判定上下文，说明价格 sanity check 仍未覆盖当前 scheduler / heartbeat 运行路径；作为既有质量性 `P3 / New` 继续跟踪。
+
 ## 最新进展（2026-07-01 11:03 CST）
 
 - 本轮 2026-07-01 07:02-11:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：

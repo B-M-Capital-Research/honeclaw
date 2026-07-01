@@ -7,6 +7,18 @@
 
 ## 修复进展
 
+- `2026-07-01 15:03 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-01`
+    - 11:02-15:02 CST heartbeat 窗口按 `web.log.2026-07-01` 单源统计新增 215 条可分类 `parse_kind` 信号：`JsonNoop` 109 条、`PlainTextSuppressed` 57 条、`PlainTextNoop` 19 条、`JsonTriggered` 19 条、`JsonUnknownStatus` 6 条、`JsonMalformed` 4 条、`Empty` 1 条。
+    - 同窗仍有 63 条 `failure_kind=execution_failed`，代表样本覆盖 Feishu / Web heartbeat，包括 `持仓财报与重大新闻心跳提醒`、`Monitor_Watchlist_11`、`存储板块关键事件心跳提醒`、`全天原油价格3小时播报`、`ORCL 大事件监控`、`SIVE POET/Nokia/1.6T DFB 心跳检测` 等。
+    - 多条 raw preview 仍以 `<think>`、工具预算耗尽说明、自然语言总结、模型自述或非契约 JSON 开头，最终落为 `execution_failed + skipped_error`、`JsonMalformed`、`JsonUnknownStatus`、`Empty`、`noop + skipped_noop` 或未发送。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 本窗只有 1 个 Web direct 会话的 3 个 user turn 与 3 个 assistant final，均正常收口；assistant final 污染扫描未命中空回复、内部路径、raw tool 字段、`<think>`、`reasoning_content`、provider 原始错误、panic、quota、资源耗尽或 `data_fetch` 原文。
+    - 本窗另有 3 条 `context window exceeds limit (2013)` 首轮失败继续归入 `scheduler_heartbeat_context_window_limit_no_recovery.md`；14:30 CST `NVDA 关键事件心跳提醒` 1 个 provider `HTTP 422 output new_sensitive` 失败未进入 assistant final，暂作为 heartbeat/provider 降级观察，不新建重复缺陷。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题继续导致 heartbeat 监控任务整轮失败或跳过发送，属于功能性监控漏发 / 降级；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-01 11:03 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
   - `data/runtime/logs/hone_cli_screen.log`
     - 07:02-11:02 CST heartbeat 窗口新增 241 条可分类 `parse_kind` 信号：`JsonNoop` 118 条、`PlainTextSuppressed` 64 条、`PlainTextNoop` 26 条、`JsonTriggered` 20 条、`JsonMalformed` 8 条、`JsonUnknownStatus` 2 条、`JsonEmptyStatus` 2 条、`Empty` 1 条。

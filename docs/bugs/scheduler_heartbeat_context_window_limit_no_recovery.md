@@ -5,6 +5,15 @@
 - **严重等级**: P2
 - **状态**: New
 - **证据来源**:
+  - `2026-07-01 15:03 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
+    - `data/runtime/logs/web.log.2026-07-01`
+      - 11:02-15:02 CST 仍检出明确 `context window exceeds limit (2013)` heartbeat 首轮失败样本，并出现 `BudgetRecovery { reason: ContextOverflow }` 恢复信号。
+      - 13:00 CST Web `持仓财报与重大新闻心跳提醒` 首轮 `Primary` 失败，错误包含 `upstream HTTP 400: invalid params, context window exceeds limit (2013)`，随后启动 `BudgetRecovery { reason: ContextOverflow }` 并生成短答。
+      - 14:00 CST Feishu `heartbeat_绿田机械基本面跟踪` 与 `AAOI 1.6T 光模块心跳检测` 再次首轮命中同类超窗错误后进入预算恢复。
+    - 会话质量对照：
+      - 同窗 SQLite 仅 Web direct 持仓录入 3 轮正常收口；故障集中在 heartbeat function-calling 超窗链路，不是直聊或出站整体不可用。
+    - 判断：当前运行态已有预算恢复分支，但首轮超窗仍在多个 heartbeat 任务间复发，且恢复后的内容仍可能进入其它结构化输出问题。该问题仍导致 heartbeat 本轮降级 / 不稳定，严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
   - `2026-07-01 07:01 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
     - `data/runtime/logs/web.log.2026-06-30`
       - 03:01-07:01 CST 仍检出明确 `context window exceeds limit (2013)` heartbeat 首轮失败样本，并出现 `BudgetRecovery { reason: ContextOverflow }` 恢复信号。
