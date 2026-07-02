@@ -113,3 +113,14 @@ New
 - 本轮判断
   - live runtime 仍未加载修复，或修复仍未覆盖当前 `acp-events.log` 写入路径；状态维持 `P1 / New`。
   - 已有关联 GitHub Issue #51，本轮不重复创建。
+
+## 最新运行态复核（2026-07-02 19:03 CST）
+
+- `data/runtime/logs/acp-events.log`
+  - 巡检窗口：2026-07-02 15:01-19:03 CST。
+  - 代码修复提交 `f4dc305d fix: redact mcp env values in acp event logs` 之后，当前 live 日志继续检出 7 条 `session/new` ACP 事件。
+  - 本轮只记录结构化计数，不复制日志原文、env 值、账号、手机号、token 或绝对本机路径：7 条事件累计 147 个 env entry，其中 91 个非低敏白名单 env entry 仍未红掉，`<redacted>` 计数为 0。
+  - 同窗可见 7 次 `session/prompt`、28 个 ACP response，未见 response error、runner error、stream disconnect、panic、quota 或 context-window ACP response error；风险仍集中在持久化日志边界，不是用户可见回复外泄。
+- 本轮判断
+  - live runtime 仍未加载修复，或修复仍未覆盖当前 `acp-events.log` 写入路径；状态维持 `P1 / New`。
+  - 已有关联 GitHub Issue #51，本轮不重复创建。

@@ -6,6 +6,11 @@
 - **状态**: New
 - **GitHub Issue**: 无
 - **修复结论复核**:
+- `2026-07-02 19:03 CST` 运行态部分复发继续存在，状态维持 `New`：
+  - `data/sessions.sqlite3` 在 15:01-19:03 CST 只有 18:00 Web scheduler `美股盘前 X 英文帖` 1 个真实 user turn 与 1 条 assistant final，成对收口；`sessions.max(updated_at)=2026-07-02T18:00:50.839073+08:00`、`session_messages.max(timestamp)=2026-07-02T18:00:50.831226+08:00`、`session_messages.max(imported_at)=2026-07-02T18:00:50.851601+08:00`。
+  - 但同一库的 `cron_job_runs.max(executed_at)` 仍停在 `2026-06-30T09:30:52.069168+08:00`，查询 `executed_at >= 2026-07-02T15:01:00+08:00` 无记录。
+  - `data/runtime/logs/hone_cli_screen.log` 同窗继续记录 heartbeat `run_finish`、`failure_kind=execution_failed`、`BudgetRecovery`、raw preview 和 deliver preview 信号。
+  - 本次继续说明 session transcript mirror 已部分恢复，但调度运行台账 `cron_job_runs` 仍未随真实 heartbeat / scheduler 运行态推进。它会影响巡检、调度审计和补发判断，属于功能性可观测性缺陷，严重等级维持 `P2`；非 P1。
 - `2026-07-02 15:01 CST` 运行态部分复发继续存在，状态维持 `New`：
   - `data/sessions.sqlite3` 在 11:01-15:01 CST 有 7 个真实 user turn 与 7 条 assistant 记录，直聊 / scheduler transcript 能成对收口。
   - 但同一库的 `cron_job_runs.max(executed_at)` 仍停在 `2026-06-30T09:30:52.069168+08:00`，查询 `executed_at >= 2026-07-02T11:01:15+08:00` 无记录。
