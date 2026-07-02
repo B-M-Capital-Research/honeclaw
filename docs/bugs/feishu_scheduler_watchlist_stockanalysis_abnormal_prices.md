@@ -20,6 +20,19 @@
 
 - 无，非 P1
 
+## 最新进展（2026-07-02 15:01 CST）
+
+- 本轮 2026-07-02 11:01-15:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3`
+    - 12:45 CST Feishu direct 用户询问 DRAM 长 call 选择，assistant final 正常收口，但把 MU 7 月 1 日收盘价写成 `1032.28` 美元，并基于该价格、跌幅和“未拿到完整实时期权链”的口径继续给出长 call 结构建议。
+    - 14:33-14:44 CST Feishu direct 围绕 Meta 出租算力、存储与海力士上市影响连续问答，均正常收口；未见空回复、错投或 raw tool JSON，但仍处在强时效金融判断场景。
+  - `data/runtime/logs/acp-events.log`
+    - 12:46 CST 同轮 search query 直接携带 `MU stock price July 1 2026 close Micron 1032.28 10.6%`，说明异常价格已被带入检索 / 校验链路，而不是只在最终文案中偶发写错。
+  - `data/runtime/logs/hone_cli_screen.log`
+    - 11:30-15:01 CST heartbeat raw preview / 判断上下文继续出现 MU `1032.28`、SNDK `2032.22`、`2273.73` 等异常数量级价格，并进入 `Monitor_Watchlist_11`、`持仓财报与重大新闻心跳提醒` 等判定上下文。
+- 本窗异常价格已经进入 Feishu direct 用户可见投资建议和 heartbeat 判定上下文，但会话/投递主链路正常收口，未见错对象、空回复或系统失败。
+- 因该问题仍主要影响行情质量和投资建议可信度，不阻断功能链路，因此继续按质量性 `P3 / New`；非 P1，不创建 GitHub Issue。
+
 ## 最新进展（2026-07-02 07:02 CST）
 
 - 本轮 2026-07-02 03:02-07:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：

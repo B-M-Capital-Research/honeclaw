@@ -6,6 +6,11 @@
 - **状态**: New
 - **GitHub Issue**: 无
 - **修复结论复核**:
+- `2026-07-02 15:01 CST` 运行态部分复发继续存在，状态维持 `New`：
+  - `data/sessions.sqlite3` 在 11:01-15:01 CST 有 7 个真实 user turn 与 7 条 assistant 记录，直聊 / scheduler transcript 能成对收口。
+  - 但同一库的 `cron_job_runs.max(executed_at)` 仍停在 `2026-06-30T09:30:52.069168+08:00`，查询 `executed_at >= 2026-07-02T11:01:15+08:00` 无记录。
+  - `data/runtime/logs/hone_cli_screen.log` 同窗继续记录 heartbeat `run_finish`、`failure_kind=execution_failed`、`BudgetRecovery`、raw preview 和 deliver preview 信号。
+  - 本次继续说明 session transcript mirror 已部分恢复，但调度运行台账 `cron_job_runs` 仍未随真实 heartbeat / scheduler 运行态推进。它会影响巡检、调度审计和补发判断，属于功能性可观测性缺陷，严重等级维持 `P2`；非 P1。
 - `2026-07-02 07:02 CST` 运行态部分复发继续存在，状态维持 `New`：
   - `data/sessions.sqlite3` 的镜像上界推进到 `sessions.max(updated_at)=2026-07-02T07:02:07.343638+08:00`、`sessions.max(last_message_at)=2026-07-02T07:02:07.320670+08:00`、`session_messages.max(timestamp)=2026-07-02T07:02:07.320670+08:00`、`session_messages.max(imported_at)=2026-07-02T07:02:07.431662+08:00`。
   - 03:02-07:02 CST SQLite 只有 1 轮 Feishu 07:00 收盘后早报 user turn 与 1 条 assistant final，成对收口；assistant final 污染扫描未命中空回复、内部路径、raw tool 字段、`<think>`、provider 原始错误、panic、quota、资源耗尽、env 字段或模型元数据 warning。
