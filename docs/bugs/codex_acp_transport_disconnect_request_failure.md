@@ -9,6 +9,10 @@
 ## 证据来源
 
 - `data/runtime/logs/hone_cli_screen.log`
+  - 2026-07-03 03:00-07:00 CST 同类 ACP runner 请求失败在 Feishu scheduler 链路继续出现，但用户可见错误已被净化。
+  - 06:00 CST Feishu scheduler `每日美股盘后收盘复盘` 启动后，06:03 CST 命中 `codex acp session/prompt idle timeout (180s)`，最终落成 `failure_kind=scheduler_runner_timeout`，Feishu 侧记录本轮不发送。
+  - 同轮 `data/sessions.sqlite3` 只有 1 个 scheduler user turn 与 1 条 assistant failure final，assistant final 为产品化失败提示，污染扫描未命中本机路径、raw tool 字段、`reasoning_content`、`<think>`、provider 原始错误、panic、quota 或资源耗尽原文。
+- `data/runtime/logs/hone_cli_screen.log`
   - 2026-07-01 07:02-11:02 CST 同类 ACP runner 请求失败在 scheduler 链路继续出现，但用户可见错误已被净化。
   - 09:03 CST Feishu scheduler `核心观察池早间简报` 命中 `codex acp session/prompt idle timeout (180s)`，最终落成 `failure_kind=scheduler_runner_timeout`，Feishu 侧记录本轮不发送。
   - 同窗错误 stderr 中只在内部日志保留 plugin manifest / 本机路径细节；对外只保留产品化失败提示“定时任务执行环境暂时不可用，系统已记录失败并将在下一次触发时重试。”。
@@ -68,6 +72,7 @@
 - 2026-06-24 复发窗中，Feishu / Web direct 用户主动请求与 Discord group / scheduler 均仍会在 ACP transport 断连时整轮失败；日志侧保留内部 URL 和 raw error，用户可见侧未见原始 URL 外泄。
 - 2026-06-29 07:02 CST 复核窗中，失败形态从 `stream disconnected before completion` 扩展到 `codex acp session/prompt idle timeout (180s)` / `scheduler_runner_timeout`；错误净化生效，但 Feishu / Web scheduler 的业务报告正文没有完成。
 - 2026-07-01 11:03 CST 复核窗中，普通 Feishu scheduler 仍可因 `scheduler_runner_timeout` 跳过发送；错误净化继续生效，但该轮业务报告正文仍没有完成。
+- 2026-07-03 07:00 CST 复核窗中，Feishu scheduler `每日美股盘后收盘复盘` 再次因 `scheduler_runner_timeout` 跳过发送；错误净化继续生效，但该轮业务报告正文仍没有完成。
 
 ## 用户影响
 

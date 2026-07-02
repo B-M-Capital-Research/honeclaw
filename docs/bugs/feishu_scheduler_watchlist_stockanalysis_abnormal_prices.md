@@ -381,3 +381,13 @@
 - 本轮判断
   - 最新证据显示异常行情不只影响 Feishu scheduler 早报，也继续进入 Web direct 投研 final 与 Web heartbeat deliver preview；仍属于同一 StockAnalysis / 批量行情 sanity check 缺失根因，不新建重复缺陷。
   - 用户能收到完整分析，未见投递失败或错对象；但行情锚不可信会显著削弱投研质量，因此维持质量性 `P3 / New`。
+
+## 最新运行态复核（2026-07-03 07:00 CST）
+
+- `data/runtime/logs/hone_cli_screen.log`
+  - 巡检窗口：2026-07-03 03:00-07:00 CST。
+  - 本窗至少 21 条 heartbeat raw preview 继续出现明显异常数量级价格或基于异常价格的判断上下文。
+  - 代表样本包括 `闪迪关键事件心跳提醒` 使用 `SNDK` 当前价约 `$1,717.68` / `$1,745` 并与 previous close `$2,032.22` 比较；`Monitor_Watchlist_11` 使用 `MU $975.56` 判断未触发阈值。
+- 本轮判断
+  - 最新证据仍落在 scheduler / heartbeat 批量行情数值 sanity check 缺失范围内，没有新的独立根因。
+  - 本窗未确认新的最终送达正文或 direct final 基于异常价格给出交易建议；调度和投递主链路本身仍可运行，因此维持质量性 `P3 / New`，非 P1。

@@ -676,3 +676,15 @@
 - 本轮判断
   - 恢复分支可偶发挽回送达，但首轮 prompt 预算失控仍在真实窗口复现，且同一类 heartbeat 仍依赖补救路径。
   - 当前证据未显示普通直聊不可用或全渠道故障；严重等级维持 `P2 / New`，不新建重复缺陷。
+
+## 最新运行态复核（2026-07-03 07:00 CST）
+
+- `data/runtime/logs/hone_cli_screen.log`
+  - 巡检窗口：2026-07-03 03:00-07:00 CST。
+  - 本窗新增 3 条 `context window exceeds limit` 与 6 条 `BudgetRecovery { reason: ContextOverflow }` 信号，说明 heartbeat 首轮 prompt 预算失控仍在真实运行态复现。
+  - 同窗 heartbeat 总体还有 71 条 `failure_kind=execution_failed` 与 2 条 `failure_kind=scheduler_runner_timeout`，超窗恢复仍与结构化失败共同影响部分监控本轮可用性。
+- `data/sessions.sqlite3`
+  - 同窗唯一可见 scheduler transcript 以产品化失败提示收口，assistant final 未外露 context window 原始错误。
+- 本轮判断
+  - 最新证据仍落在 heartbeat/function-calling 缺少稳定上下文预算控制与 overflow 恢复的既有范围，不新建重复缺陷。
+  - 普通 direct 链路本窗无新请求，未见全渠道不可用或数据安全问题；严重等级维持 `P2 / New`。
