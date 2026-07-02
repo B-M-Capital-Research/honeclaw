@@ -23,6 +23,11 @@ New
 ## 证据来源
 
 - `data/runtime/logs/acp-events.log`
+  - 2026-07-02 23:02-2026-07-03 03:03 CST 窗口内继续检出 9 条 `session/new` ACP 事件，全部晚于修复提交 `f4dc305d`。
+  - 本轮只做结构化计数与字段类别判断，不复制日志原文：9 条事件累计 189 个 env entry，其中按敏感字段名估算至少 108 个云数据库 / 对象存储 / 凭据相关 env value 仍未红掉，`<redacted>` 计数为 0。
+  - 同窗 `data/sessions.sqlite3` 有 1 个真实 Feishu direct user turn 与 1 条 assistant final，成对收口；风险继续集中在 ACP audit 持久化边界，不是用户可见回复外泄。
+  - 状态维持 `New`；已有 GitHub Issue #51，本轮不重复创建。
+- `data/runtime/logs/acp-events.log`
   - 2026-07-02 03:04 CST 代码修复提交 `f4dc305d fix: redact mcp env values in acp event logs` 之后，2026-07-02 03:04-07:02 CST 窗口仍检出 13 条 `session/new` ACP 事件。
   - 本轮只做结构化计数与字段类别判断，不复制日志原文：13 条事件累计 273 个 env entry，其中 247 个非低敏白名单 env entry 仍以未红掉值进入持久化事件日志，`<redacted>` 计数为 0。
   - 同窗可见 14 次 `session/prompt`、14 个 `stopReason=end_turn`，未见 ACP response error、runner error、stream disconnect、panic 或 context-window response error；风险继续集中在日志持久化边界，不是用户可见回复外泄。

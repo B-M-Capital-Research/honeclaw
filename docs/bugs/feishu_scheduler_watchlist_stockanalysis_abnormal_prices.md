@@ -20,6 +20,17 @@
 
 - 无，非 P1
 
+## 最新进展（2026-07-03 03:02 CST）
+
+- 本轮 2026-07-02 23:02-2026-07-03 03:03 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/runtime/logs/hone_cli_screen.log`
+    - 23:30 CST Web `闪迪关键事件心跳提醒` raw preview 继续使用 SNDK `$1,813.20` 等明显异常数量级行情。
+    - 00:30-03:00 CST `闪迪关键事件心跳提醒`、`存储板块关键事件心跳提醒`、`Monitor_Watchlist_11` 等 heartbeat 判断上下文继续出现 SNDK `$2,032.22`、SNDK `$1,710.70`、MU `$956.08` 等异常价格，并进入 `JsonNoop`、`JsonTriggered`、`PlainTextSuppressed` 或执行失败链路。
+  - `data/sessions.sqlite3`
+    - 本窗只有 02:45 CST Feishu direct `cohr估值分析` 1 条正式 assistant final，正常收口；该 final 给出 COHR 精确行情 / 估值和占位式来源域名，另归入工具 / 来源口径外露文档；本单仅记录同根异常行情数值继续进入 heartbeat 判定上下文。
+- 本窗异常价格主要停留在 heartbeat raw preview、未命中或结构化失败路径，未确认新的正式送达成功样本；调度 / 投递主链路没有因该问题被阻断。
+- 因该问题仍主要影响行情质量和投资建议可信度，不阻断功能链路，因此继续按质量性 `P3 / New`；非 P1，不创建 GitHub Issue。
+
 ## 最新进展（2026-07-02 23:03 CST）
 
 - 本轮 2026-07-02 19:02-23:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
