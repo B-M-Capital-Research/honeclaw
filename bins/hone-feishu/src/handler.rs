@@ -270,12 +270,57 @@ fn recoverable_interrupted_sessions(
         .collect()
 }
 
+fn session_needs_restart_recovery(
+    session: &hone_memory::session::Session,
+    actor_user_id: &str,
+    updated_after: chrono::DateTime<chrono::Utc>,
+    updated_before: chrono::DateTime<chrono::Utc>,
+) -> bool {
+    let Some(actor) = session.actor.as_ref() else {
+        return false;
+    };
+    if actor.channel != "feishu" || actor.user_id != actor_user_id || actor.channel_scope.is_some()
+    {
+        return false;
+    }
+
+    let Some(last_message) = session.messages.last() else {
+        return false;
+    };
+    if last_message.role != "user" {
+        return false;
+    }
+
+    let Ok(last_message_at) = chrono::DateTime::parse_from_rfc3339(&last_message.timestamp) else {
+        return false;
+    };
+    let last_message_at = last_message_at.with_timezone(&chrono::Utc);
+    last_message_at > updated_after && last_message_at < updated_before
+}
+
+fn candidate_still_needs_restart_recovery(
+    storage: &SessionStorage,
+    session_info: &hone_memory::session_sqlite::InterruptedSessionInfo,
+    updated_after: chrono::DateTime<chrono::Utc>,
+    updated_before: chrono::DateTime<chrono::Utc>,
+) -> bool {
+    let Ok(Some(session)) = storage.load_session(&session_info.session_id) else {
+        return false;
+    };
+    session_needs_restart_recovery(
+        &session,
+        &session_info.actor_user_id,
+        updated_after,
+        updated_before,
+    )
+}
+
 async fn recover_interrupted_sessions(state: &Arc<AppState>) {
     let now = chrono::Utc::now();
-    let updated_after =
-        (now - chrono::TimeDelta::minutes(RESTART_RECOVERY_WINDOW_MINUTES)).to_rfc3339();
-    let updated_before =
-        (now - chrono::TimeDelta::seconds(RESTART_RECOVERY_GRACE_SECONDS)).to_rfc3339();
+    let updated_after_at = now - chrono::TimeDelta::minutes(RESTART_RECOVERY_WINDOW_MINUTES);
+    let updated_before_at = now - chrono::TimeDelta::seconds(RESTART_RECOVERY_GRACE_SECONDS);
+    let updated_after = updated_after_at.to_rfc3339();
+    let updated_before = updated_before_at.to_rfc3339();
 
     let interrupted = match state.core.session_storage.find_interrupted_sessions(
         "feishu",
@@ -288,7 +333,17 @@ async fn recover_interrupted_sessions(state: &Arc<AppState>) {
             return;
         }
     };
-    let interrupted = recoverable_interrupted_sessions(interrupted, &state.session_locks);
+    let interrupted = recoverable_interrupted_sessions(interrupted, &state.session_locks)
+        .into_iter()
+        .filter(|session_info| {
+            candidate_still_needs_restart_recovery(
+                &state.core.session_storage,
+                session_info,
+                updated_after_at,
+                updated_before_at,
+            )
+        })
+        .collect::<Vec<_>>();
 
     if interrupted.is_empty() {
         return;
@@ -1720,8 +1775,28 @@ where
 mod tests {
     use super::*;
     use hone_core::ActorIdentity;
+    use hone_memory::session::{Session, SessionRuntimeState, session_message_from_text};
+    use std::collections::HashMap;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    fn test_session(
+        actor: ActorIdentity,
+        messages: Vec<hone_memory::session::SessionMessage>,
+    ) -> Session {
+        Session {
+            version: 1,
+            id: "session_test".to_string(),
+            actor: Some(actor),
+            session_identity: None,
+            created_at: "2026-07-02T12:00:00+08:00".to_string(),
+            updated_at: "2026-07-02T12:00:00+08:00".to_string(),
+            messages,
+            metadata: HashMap::new(),
+            runtime: SessionRuntimeState::default(),
+            summary: None,
+        }
+    }
 
     #[test]
     fn session_tail_assistant_matches_detects_duplicate_quota_reply() {
@@ -2158,5 +2233,64 @@ mod tests {
         );
         assert_eq!(recoverable_after_release.len(), 1);
         assert_eq!(recoverable_after_release[0].session_id, "s_active");
+    }
+
+    #[test]
+    fn session_needs_restart_recovery_requires_recent_user_tail() {
+        let actor = ActorIdentity::new("feishu", "ou_direct", None::<String>).expect("actor");
+        let updated_after = chrono::DateTime::parse_from_rfc3339("2026-07-02T12:00:00+08:00")
+            .expect("after")
+            .with_timezone(&chrono::Utc);
+        let updated_before = chrono::DateTime::parse_from_rfc3339("2026-07-02T12:30:00+08:00")
+            .expect("before")
+            .with_timezone(&chrono::Utc);
+
+        let recent_user = test_session(
+            actor.clone(),
+            vec![session_message_from_text(
+                "user",
+                "hello",
+                "2026-07-02T12:20:00+08:00",
+                None,
+            )],
+        );
+        assert!(session_needs_restart_recovery(
+            &recent_user,
+            "ou_direct",
+            updated_after,
+            updated_before,
+        ));
+
+        let assistant_tail = test_session(
+            actor.clone(),
+            vec![session_message_from_text(
+                "assistant",
+                "done",
+                "2026-07-02T12:20:00+08:00",
+                None,
+            )],
+        );
+        assert!(!session_needs_restart_recovery(
+            &assistant_tail,
+            "ou_direct",
+            updated_after,
+            updated_before,
+        ));
+
+        let stale_user = test_session(
+            actor,
+            vec![session_message_from_text(
+                "user",
+                "old",
+                "2026-06-17T05:01:56+08:00",
+                None,
+            )],
+        );
+        assert!(!session_needs_restart_recovery(
+            &stale_user,
+            "ou_direct",
+            updated_after,
+            updated_before,
+        ));
     }
 }

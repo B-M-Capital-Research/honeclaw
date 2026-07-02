@@ -14,7 +14,7 @@ P2
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
@@ -50,6 +50,7 @@ New
 
 - 2026-07-02 13:02 CST，恢复流程向一个 2026-06-17 已完成的旧 session 补发失败提示。
 - SQLite 会话真相显示该 session 最新业务消息是 assistant final，不符合“仍悬挂 user turn”的恢复条件。
+- 2026-07-03 03:06 CST 已在 Feishu 启动恢复链路补“权威 session 尾消息 + 尾消息时间窗”二次确认：即使索引 / 镜像误把旧 session 列为候选，真正补发前也必须再次从 `SessionStorage::load_session(...)` 读取权威会话，并确认最后一条真实消息仍是窗口内 `user` 才允许补发。
 
 ## 用户影响
 
@@ -63,9 +64,23 @@ New
 - `sessions.updated_at`、导入时间或旧 session 源文件状态可能被当成恢复候选依据，导致已完成旧会话进入补偿队列。
 - 也可能存在 SQLite mirror 与 runtime session source 不一致，恢复流程读取的来源没有反映同一 session 已 assistant final 收口。
 
-## 下一步建议
+## 修复情况
 
-1. 检查 Feishu 启动恢复候选查询，强制要求 `last_message_role=user` 且 `last_message_at` 位于短时间窗内。
-2. 恢复前再次读取 session tail，若最后一条是 assistant / final / failure text，则跳过补发。
-3. 为“已完成旧 session 不补发失败提示”和“导入时间推进不等于用户消息悬挂”补回归测试。
-4. 修复后复核 runtime 日志，确认启动恢复不会再命中过期已完成 session。
+1. `bins/hone-feishu/src/handler.rs` 在现有 `find_interrupted_sessions(...)` 索引筛选之后，新增 `candidate_still_needs_restart_recovery(...)` 二次确认。
+2. 二次确认会重新加载权威 session，强制要求：
+   - actor 仍是当前 Feishu direct 用户；
+   - 最后一条真实消息仍是 `user`；
+   - 该 user 消息时间戳仍落在启动恢复窗口内。
+3. 因此即使 `updated_at`、导入时间或镜像噪声把旧 session 推进到恢复窗口，已 assistant 收口或消息时间明显过期的 session 也不会再被补发失败提示。
+
+## 验证
+
+- `cargo test -p hone-feishu session_needs_restart_recovery_requires_recent_user_tail -- --nocapture`
+- `cargo test -p hone-feishu recoverable_interrupted_sessions_skip_group_and_active_sessions -- --nocapture`
+- `cargo check -p hone-feishu --tests`
+- `rustfmt --edition 2024 --config skip_children=true --check bins/hone-feishu/src/handler.rs`
+
+## 后续风险
+
+1. 本轮没有重启当前 Feishu live 进程，故先记代码级 `Fixed`，待后续真实启动恢复窗口验证后再考虑 `Closed`。
+2. 若云端权威 session 本身存在尾消息时间戳错误或跨源写入乱序，这一层 guard 仍可能漏筛，需要届时再沿 `SessionStorage` 真相源继续排查。
