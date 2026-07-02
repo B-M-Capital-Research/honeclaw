@@ -634,3 +634,13 @@
 - 本轮判断
   - 最新证据继续支持 heartbeat/function-calling 缺少稳定上下文预算控制的判断。
   - 本窗恢复分支最终送达，未确认用户侧漏发；因此不升级严重等级，状态维持 `P2 / New`，不新建重复缺陷。
+
+## 最新运行态复核（2026-07-02 11:01 CST）
+
+- `data/runtime/logs/web.log.2026-07-02`
+  - 巡检窗口：2026-07-02 07:01-11:01 CST。
+  - 09:00 CST `AI与科技持仓观察关键事件心跳提醒` 首轮命中 `context window exceeds limit (2013)`，随后进入 `BudgetRecovery { reason: ContextOverflow }` 并生成恢复分支结果。
+  - 10:30 CST `AAOI 1.6T 光模块心跳检测` 首轮再次命中 `context window exceeds limit (2013)`，随后进入 `BudgetRecovery { reason: ContextOverflow }` 并生成 `JsonTriggered` deliver preview。
+- 本轮判断
+  - 恢复分支可偶发挽回送达，但首轮 prompt 预算失控仍在真实窗口复现，且同一类 heartbeat 仍依赖补救路径。
+  - 当前证据未显示普通直聊不可用或全渠道故障；严重等级维持 `P2 / New`，不新建重复缺陷。

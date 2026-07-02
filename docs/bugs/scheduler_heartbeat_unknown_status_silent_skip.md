@@ -5200,3 +5200,15 @@
 - 本轮判断
   - 最新证据仍属于 heartbeat 输出结构漂移 / 解析失败的既有范围，没有新的独立根因。
   - 普通 direct / scheduler final 主链路仍可收口，未见错对象投递或数据安全问题；严重等级维持 `P2`，状态维持 `New`，非 P1，不创建 GitHub Issue。
+
+## 最新运行态复核（2026-07-02 11:01 CST）
+
+- `data/runtime/logs/web.log.2026-07-02`
+  - 巡检窗口：2026-07-02 07:01-11:01 CST。
+  - 本窗新增 174 条可分类 heartbeat `parse_kind` 信号：`JsonNoop` 77 条、`PlainTextSuppressed` 43 条、`JsonTriggered` 22 条、`PlainTextNoop` 17 条、`JsonUnknownStatus` 12 条、`JsonMalformed` 2 条、`Empty` 1 条。
+  - 同窗有 51 条 `failure_kind=execution_failed`。代表样本包括全天原油、TEM、AAOI、持仓重大事件、存储板块等任务以 `<think>`、自然语言复盘、工具预算耗尽说明、未知状态或非法 JSON 开头，随后落成结构化失败并跳过发送。
+- `data/sessions.sqlite3`
+  - 同窗 3 个 Web direct user turn 均有 assistant final 收口；assistant final 未见空回复、`reasoning_content`、provider 原始错误、panic、资源耗尽原文或 raw tool 字段。
+- 本轮判断
+  - 最新证据仍属于 heartbeat 输出结构漂移 / 解析失败的既有范围，没有新的独立根因。
+  - 坏态影响 heartbeat 是否稳定得出 `triggered/noop` 并发送；普通直聊主链路可用，因此维持 `P2 / New`，非 P1。

@@ -958,3 +958,15 @@
 - 本轮判断
   - 当前坏态已从早期“direct 会话镜像停滞”演进为“direct / scheduler 消息有增量，但 `cron_job_runs` 调度运行台账滞后于 runtime 真实运行态”。
   - 这仍会误导巡检和调度排障，但普通用户消息主链路可收口；严重等级维持 `P2`，状态维持 `New`。
+
+## 最新运行态复核（2026-07-02 11:01 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-07-02 07:01-11:01 CST。
+  - 会话镜像已追入 3 个 Web direct user turn 与 3 条 assistant final，`sessions.max(updated_at)=2026-07-02T10:59:40.750518+08:00`，`session_messages.max(timestamp)=2026-07-02T10:59:40.744209+08:00`。
+  - 但 `cron_job_runs.max(executed_at)` 仍停在 `2026-06-30T09:30:52.069168+08:00`，本窗口 `cron_job_runs` 新增为 0。
+- `data/runtime/logs/web.log.2026-07-02`
+  - 同窗 runtime 继续写入大量 heartbeat run / failure / deliver preview 信号，并在 10:00、10:30、11:00 CST 出现用户可见送达预览或执行失败记录。
+- 本轮判断
+  - 当前会话镜像本身可继续前进，但调度运行台账仍未追入真实 heartbeat runtime；缺陷范围继续按“SQLite 镜像 / 台账滞后于真实运行态”处理。
+  - 普通 Web direct 三轮均以 assistant final 收口，未见未回复或错投；严重等级维持 `P2 / New`。

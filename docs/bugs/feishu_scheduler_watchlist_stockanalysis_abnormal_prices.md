@@ -320,3 +320,16 @@
 - 本轮判断
   - 最新证据仍落在 scheduler / heartbeat 批量行情数值 sanity check 缺失范围内，没有新的独立根因。
   - 本窗未确认新的正式 assistant final 或最终送达正文使用异常价格做交易建议；因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
+## 最新运行态复核（2026-07-02 11:01 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-07-02 07:01-11:01 CST。
+  - `session_id=Actor_web__direct__web-user-8988066ef1ac` 在 10:50 CST 的 Web direct 投研 final 中，继续把 `LITE` 写为 801.16 美元、`MU` 写为 1032.28 美元，并基于这些异常数量级价格讨论估值、回撤和周期风险。
+  - 10:55 CST 同一会话的扩展投研 final 继续使用 `LITE` 801.16 美元、`MU` 相关异常财务 / 价格口径，并把它们纳入长期关注组合分析。
+- `data/runtime/logs/web.log.2026-07-02`
+  - 11:00 CST `闪迪关键事件心跳提醒` deliver preview 正式输出 `SNDK` 收于约 2032 美元、日内低点约 2002 美元、较 52 周高点约 2354 美元等明显异常数量级价格。
+  - 11:00 CST `Monitor_Watchlist_11` raw preview 继续把 `MU` 写为 1032.28 美元，并用该数值判断未触发阈值。
+- 本轮判断
+  - 最新证据显示异常行情不只影响 Feishu scheduler 早报，也继续进入 Web direct 投研 final 与 Web heartbeat deliver preview；仍属于同一 StockAnalysis / 批量行情 sanity check 缺失根因，不新建重复缺陷。
+  - 用户能收到完整分析，未见投递失败或错对象；但行情锚不可信会显著削弱投研质量，因此维持质量性 `P3 / New`。

@@ -91,3 +91,14 @@ New
 
 1. 历史 `data/runtime/logs/acp-events.log*` 里已落盘的旧凭据不会被代码修复自动清除；如这些凭据仍有效，仍需按内部流程轮换并清理旧日志。
 2. 本轮未重启 live 服务、未对当前旧日志做在线验证，因此先记代码级 `Fixed`；若新窗口仍见明文 env，应重新打开该缺陷。
+
+## 最新运行态复核（2026-07-02 11:01 CST）
+
+- `data/runtime/logs/acp-events.log`
+  - 巡检窗口：2026-07-02 07:01-11:01 CST。
+  - 代码修复提交 `f4dc305d fix: redact mcp env values in acp event logs` 之后，当前 live 日志继续检出 31 条 `session/new` ACP 事件，覆盖 Feishu 22 条、Web 8 条、Discord 1 条。
+  - 本轮只记录结构化计数，不复制日志原文或任何 env 值：31 条事件累计 652 个 env entry，其中 590 个非低敏白名单 env entry 仍未红掉，`<redacted>` 计数为 0。
+  - 同窗可见 31 次 `session/prompt`、32 个 `stopReason=end_turn`、0 个 ACP response error；风险仍集中在日志持久化边界，不是用户可见回复外泄。
+- 本轮判断
+  - live runtime 仍未加载修复，或修复仍未覆盖当前 `acp-events.log` 写入路径；状态维持 `P1 / New`。
+  - 已有关联 GitHub Issue #51，本轮不重复创建。

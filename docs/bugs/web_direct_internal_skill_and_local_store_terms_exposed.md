@@ -171,3 +171,13 @@
 
 - 已同步更新 `docs/bugs/README.md` 活跃表与已修复表。
 - 本修复只收紧共享用户态文案净化边界，不改变模块边界、长期约束或运行工作流，无需更新 `docs/repo-map.md`、`docs/invariants.md` 或新增 handoff。
+
+## 最新运行态复核（2026-07-02 11:01 CST）
+
+- `data/runtime/logs/acp-events.log`
+  - 巡检窗口：2026-07-02 07:01-11:01 CST。
+  - `session_id=Actor_web__direct__web-user-8988066ef1ac` 在 10:55-10:59 CST 的 Web direct 投研流式 chunk 中，用户可见文本继续出现“长期研究框架沉淀为组合画像”这类内部画像 / 存储动作口径。
+  - 同一轮最终以 `stopReason=end_turn` 收口，`data/sessions.sqlite3` 也有 assistant final；未见空回复、投递失败、错对象、raw tool output、provider 原始错误或 `<think>` 进入最终落库 final。
+- 本轮判断
+  - 该样本仍是质量性 bug：主功能链路正常，用户获得了完整投研报告，但流式用户可见文本外露内部画像沉淀动作，容易让回复显得像执行过程而非成品答复。
+  - 继续归入本缺陷，不新建重复文档；严重等级维持 `P3 / New`。
