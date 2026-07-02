@@ -20,6 +20,19 @@
 
 - 无，非 P1
 
+## 最新进展（2026-07-02 23:03 CST）
+
+- 本轮 2026-07-02 19:02-23:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3`
+    - 20:00 CST Web scheduler `盘前美股要闻与持仓研报评级日报` assistant final 正常收口，但继续写出 MU `1,032.28`、盘前 `1,007.88` 等明显异常数量级价格。
+    - 21:35 CST Feishu scheduler `科技核心股池 · 晚间击球区快报` assistant final 正式输出 MU `$1,054.23`、SNDK `$2,014.80`、STX `$905.80`、WDC `$599.87` 等异常数量级价格。
+    - 22:55 CST Web direct 用户询问 SNDK 建仓点，assistant final 正常收口，但把 SNDK 最新口径写成约 `1887` 美元、前收 `2032.22` 美元，并据此给出 `1880-1900` 小仓观察、`1500-1750` 主建仓区等操作型区间。
+    - 23:00 CST Feishu scheduler `核心观察股池晚间快报` assistant final 又输出 MU `$993.50`、SNDK `$1,841.00`、STX `$857.33`、WDC `$562.01` 等异常数量级价格。
+  - `data/runtime/logs/hone_cli_screen.log`
+    - 同窗 heartbeat raw preview / 判断上下文继续出现 MU `1032.28`、SNDK `$2,032.22` 等异常价格，并进入 `Monitor_Watchlist_11`、`闪迪关键事件心跳提醒`、`持仓财报与重大新闻心跳提醒` 等判定上下文。
+- 本窗已有 scheduler final 与 Web direct 投资问答正式落库样本，不只是内部 raw preview；价格 sanity check 仍未覆盖当前 scheduler / heartbeat / direct 投研运行路径。
+- 报告和直聊主链路均正常收口，未见空回复、错投、投递失败或原始工具 JSON；因此仍按质量性 `P3 / New`。该问题不影响调度 / 投递主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 ## 最新进展（2026-07-02 19:03 CST）
 
 - 本轮 2026-07-02 15:01-19:03 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
