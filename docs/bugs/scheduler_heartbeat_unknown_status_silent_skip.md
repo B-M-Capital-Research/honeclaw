@@ -7,6 +7,17 @@
 
 ## 修复进展
 
+- `2026-07-03 19:02 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
+  - `data/runtime/logs/hone_cli_screen.log`
+    - 15:10-19:01 CST heartbeat 窗口按行首 UTC 时间新增 221 条可分类 `parse_kind` 信号：`JsonNoop` 86 条、`PlainTextSuppressed` 64 条、`JsonTriggered` 26 条、`PlainTextNoop` 17 条、`JsonUnknownStatus` 14 条、`JsonMalformed` 8 条、`JsonEmptyStatus` 5 条、`Empty` 1 条。
+    - 同窗仍有 76 条 `failure_kind=execution_failed`，代表样本覆盖 Feishu / Web heartbeat；多条 raw preview 继续以 `<think>`、工具预算耗尽说明、自然语言分析或非契约 JSON 开头，最终落为结构化失败、静默跳过或未发送。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 本窗只有 18:00 Web scheduler 1 组 user / assistant final，成对收口；assistant final 污染扫描未命中空回复、`reasoning_content`、`<think>`、provider 原始错误、panic、quota、资源耗尽、本机绝对路径或 raw tool 字段。
+    - `cron_job_runs.max(executed_at)` 仍停在 `2026-06-30T09:30:52.069168+08:00`，本窗 heartbeat 运行态主要以 runtime 日志为准。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题继续导致 heartbeat 监控任务整轮失败或跳过发送，属于功能性监控漏发 / 降级；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-03 15:10 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-03`
     - 11:00-15:10 CST heartbeat 窗口新增 248 条可分类 `parse_kind` 信号：`JsonNoop` 96 条、`PlainTextSuppressed` 70 条、`JsonTriggered` 44 条、`PlainTextNoop` 17 条、`JsonMalformed` 12 条、`JsonUnknownStatus` 4 条、`JsonEmptyStatus` 4 条、`Empty` 1 条。

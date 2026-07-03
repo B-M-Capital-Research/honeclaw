@@ -23,6 +23,11 @@ New
 ## 证据来源
 
 - `data/runtime/logs/acp-events.log`
+  - 2026-07-03 15:10-19:01 CST 窗口按事件时间继续检出 16 条 `session/new` ACP 事件，全部仍携带 `session/new.params.mcpServers[].env` 字段。
+  - 本轮只做结构化计数与字段类别判断，不复制日志原文：`<redacted>` 计数为 0；同窗另有 16 次 `session/prompt` 与 16 个 `stopReason=end_turn`，未见 ACP response error、runner error、stream disconnect、quota、panic 或资源耗尽。
+  - 同窗 `data/sessions.sqlite3` 只有 18:00 Web scheduler 1 个 user turn 与 1 条 assistant final，成对收口；风险继续集中在 ACP audit 持久化边界，不是用户可见回复外泄。
+  - 状态维持 `P1 / New`；已有 GitHub Issue #51，本轮不重复创建。
+- `data/runtime/logs/acp-events.log`
   - 2026-07-03 11:00-15:10 CST 窗口内继续检出 15 条 `session/new` ACP 事件，全部仍携带 `session/new.params.mcpServers[].env` 字段。
   - 本轮只做结构化计数与字段类别判断，不复制日志原文：`<redacted>` 计数为 0，按敏感字段名估算仍有 225 次敏感 env 字段命中。
   - 同窗 `data/sessions.sqlite3` 有 3 个 Feishu direct user turn 与 3 条 assistant final，均成对收口；风险继续集中在 ACP audit 持久化边界，不是用户可见回复外泄。

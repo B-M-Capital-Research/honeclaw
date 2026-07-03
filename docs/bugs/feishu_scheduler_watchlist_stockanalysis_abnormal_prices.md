@@ -20,6 +20,17 @@
 
 - 无，非 P1
 
+## 最新进展（2026-07-03 19:02 CST）
+
+- 本轮 2026-07-03 15:10-19:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/runtime/logs/hone_cli_screen.log`
+    - 15:10-19:01 CST heartbeat raw preview / 判断上下文继续出现 SNDK `$1,745`、SNDK previous close `$2,032.22`、MU `$975.56` 等明显异常数量级价格，并进入 `JsonNoop`、`PlainTextSuppressed`、`JsonTriggered` 或结构化失败链路。
+    - 结构化计数中同窗可检出 SNDK 66 条、MU 61 条、`$1,745` 11 条、`$2,032.22` 8 条、`$975.56` 6 条异常价格信号。
+  - `data/sessions.sqlite3`
+    - 本窗只有 18:00 Web scheduler `美股盘前 X 英文帖` 1 条正式 assistant final，正常收口；该 final 未直接把上述异常价格作为用户可见投资建议。
+- 本窗异常价格主要停留在 heartbeat raw preview、未命中或结构化失败路径；调度 / 投递主链路没有因该问题被阻断。
+- 因该问题仍主要影响行情质量和投资建议可信度，不阻断功能链路，因此继续按质量性 `P3 / New`；非 P1，不创建 GitHub Issue。
+
 ## 最新进展（2026-07-03 15:10 CST）
 
 - 本轮 2026-07-03 11:00-15:10 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
