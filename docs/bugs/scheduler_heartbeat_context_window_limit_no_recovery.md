@@ -5,6 +5,14 @@
 - **严重等级**: P2
 - **状态**: New
 - **证据来源**:
+  - `2026-07-03 23:02 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
+    - `data/runtime/logs/hone_cli_screen.log`
+      - 19:02-23:02 CST 仍检出 3 条明确 `context window exceeds limit` heartbeat 首轮失败信号，并出现 6 条 `BudgetRecovery { reason: ContextOverflow }` / recovery run 信号。
+      - 样本继续集中在 heartbeat function-calling 链路；恢复分支可偶发挽回，但首轮上下文预算失控仍复现，并与结构化输出退化共存。
+    - 会话质量对照：
+      - 同窗 SQLite 有 20:00 Web scheduler 与 21:35 / 23:00 Feishu scheduler 共 3 组 user / assistant final 正常收口；故障集中在 heartbeat function-calling 超窗链路，不是直聊或出站整体不可用。
+    - 判断：当前运行态已有预算恢复分支，但首轮超窗仍在 heartbeat 任务间复发。该问题仍导致 heartbeat 本轮降级 / 不稳定，严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
   - `2026-07-03 19:02 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
     - `data/runtime/logs/hone_cli_screen.log`
       - 15:10-19:01 CST 仍检出 2 条明确 `context window exceeds limit` heartbeat 首轮失败信号，并出现 4 条 `BudgetRecovery { reason: ContextOverflow }` 恢复信号。

@@ -20,6 +20,17 @@
 
 - 无，非 P1
 
+## 最新进展（2026-07-03 23:02 CST）
+
+- 本轮 2026-07-03 19:02-23:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3`
+    - 21:35 CST Feishu scheduler `科技核心股池 · 晚间击球区快报` assistant final 正常收口，但正式输出 MU `$975.56`、SNDK `$1,745.00`、STX `$820.16`、WDC `$539.00`、AMD `$517.82`、INTC `$120.35`、BE `$270.89` 等明显异常数量级价格，并据此给出击球区纪律说明。
+    - 23:00 CST Feishu scheduler `核心观察股池晚间快报` assistant final 再次输出同一批异常数量级价格。
+  - `data/runtime/logs/hone_cli_screen.log`
+    - 同窗 heartbeat raw preview / 判断上下文继续出现 SNDK `$1,745`、SNDK previous close `$2,032.22`、MU `$975.56` 等异常价格，并进入 `JsonNoop`、`PlainTextSuppressed`、`JsonTriggered`、`JsonUnknownStatus` 或结构化失败链路。
+- 本窗已有 scheduler final 正式落库样本，不只是内部 raw preview；价格 sanity check 仍未覆盖当前 scheduler / heartbeat / direct 投研运行路径。
+- 报告主链路正常收口，未见空回复、错投、投递失败或原始工具 JSON；因此仍按质量性 `P3 / New`。该问题不影响调度 / 投递主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 ## 最新进展（2026-07-03 19:02 CST）
 
 - 本轮 2026-07-03 15:10-19:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：

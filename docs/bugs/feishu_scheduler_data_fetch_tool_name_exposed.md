@@ -22,6 +22,12 @@ New
 
 ## 最新进展
 
+- 2026-07-03 23:02 CST 运行态继续复发，状态维持 `New`：
+  - 19:02-23:02 CST `data/sessions.sqlite3` 有 3 条新的 assistant final，均正常收口；assistant final 污染扫描未命中空回复、本机绝对路径、raw tool 字段、`reasoning_content`、`<think>`、provider 原始错误、panic、quota 或资源耗尽原文。
+  - 21:35 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 的 `科技核心股池 · 晚间击球区快报` final 开头写出 `本轮 data_fetch 已返回 25 支标的 quote_short 行情`，数据说明继续写 `价格来自本轮 data_fetch quote_short`。
+  - 23:00 CST 同 actor 的 `核心观察股池晚间快报` final 再次写出同样 `data_fetch quote_short` 用户态工具口径。
+  - 两个样本报告主体均正常收口，没有链路级失败证据；问题仍只影响用户可见文案边界和产品感，不影响主功能链路，因此为质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-07-03 03:02 CST 运行态继续复发，状态维持 `New`：
   - 23:02-03:03 CST `data/sessions.sqlite3` 有 1 条新的 Feishu direct assistant final，正常收口；assistant final 污染扫描未命中空回复、本机绝对路径、raw tool 字段、`reasoning_content`、`<think>`、provider 原始错误、panic、quota 或资源耗尽原文。
   - 02:47 CST Feishu direct session `Actor_feishu__direct__ou_5f95ab3697246ded86446fcc260e27e1e2` 的 `cohr估值分析` final 完成估值分析，但来源段继续出现 `https://公开行情页.com/stocks/cohr/statistics/`、`https://公开行情页.com/stocks/cohr/forecast/` 这类净化占位域名，把内部来源改写残留暴露给用户。
