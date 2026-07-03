@@ -20,6 +20,17 @@
 
 - 无，非 P1
 
+## 最新进展（2026-07-03 11:05 CST）
+
+- 本轮 2026-07-03 07:00-11:05 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-03`
+    - 07:00-11:05 CST heartbeat raw preview / 判断上下文继续出现 SNDK `$1,745`、SNDK previous close `$2,032.22`、MU `$975.56`、WDC `$539` 等明显异常数量级价格，并进入 `JsonNoop`、`PlainTextSuppressed`、`PlainTextNoop` 或结构化失败链路。
+    - 结构化计数中同窗可检出 SNDK 7 条、MU 10 条、WDC 1 条异常价格信号。
+  - `data/sessions.sqlite3`
+    - 本窗 7 个 user turn 与 7 条 assistant final 均正常收口；未确认新的正式 assistant final 直接把上述异常价格作为用户可见投资建议。
+- 本窗异常价格主要停留在 heartbeat raw preview、未命中或结构化失败路径，未确认新的正式送达成功样本；调度 / 投递主链路没有因该问题被阻断。
+- 因该问题仍主要影响行情质量和投资建议可信度，不阻断功能链路，因此继续按质量性 `P3 / New`；非 P1，不创建 GitHub Issue。
+
 ## 最新进展（2026-07-03 03:02 CST）
 
 - 本轮 2026-07-02 23:02-2026-07-03 03:03 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：

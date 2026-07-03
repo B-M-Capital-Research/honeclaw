@@ -14,7 +14,7 @@ P1
 
 ## 状态
 
-Fixed
+New
 
 ## GitHub Issue
 
@@ -63,7 +63,8 @@ Fixed
 ## 当前实现效果
 
 - 2026-07-02 03:02 CST 运行态复核显示，当时 `acp-events.log` 仍会持久化 `session/new.params.mcpServers[].env` 的非白名单未红掉值。
-- 2026-07-03 07:00 CST 运行态复核显示，当前 live `session/new` 事件仍包含 `mcpServers[].env` 字段，但本窗已不再检出 env entry 明文值；代码级修复开始在当前运行态生效。
+- 2026-07-03 07:00 CST 运行态复核显示，当前 live `session/new` 事件仍包含 `mcpServers[].env` 字段，但本窗未检出 env entry 明文值。
+- 2026-07-03 11:05 CST 运行态复核显示，07:00-11:05 CST 新增 `session/new` 事件又出现未红掉的敏感 env value，说明当前 live 路径仍未稳定应用日志净化，状态回退为 `P1 / New`。
 - 2026-07-02 已在 `acp-events.log` 写入前对 `session/new` payload 做结构化脱敏。
 - `params.mcpServers[].env` 现在默认不保留未知 env 明文值；仅 `HONE_CLOUD_MODE`、`HONE_CLOUD_ENABLED`、`HONE_CLOUD_STRICT_NO_LOCAL_STORAGE`、`HONE_MCP_ALLOW_CRON`、`HONE_MCP_MAX_TOOL_CALLS`、`HONE_MCP_ALLOWED_TOOLS` 保留原值，其余统一写成 `<redacted>`。
 - 新增日志回归，覆盖云数据库凭据、对象存储凭据和本地数据目录路径三类敏感值，断言不会进入持久化 JSONL。
@@ -95,7 +96,7 @@ Fixed
 ## 后续风险
 
 1. 历史 `data/runtime/logs/acp-events.log*` 里已落盘的旧凭据不会被代码修复自动清除；如这些凭据仍有效，仍需按内部流程轮换并清理旧日志。
-2. 本轮未重启 live 服务、未对当前旧日志做在线验证，因此先记代码级 `Fixed`；若新窗口仍见明文 env，应重新打开该缺陷。
+2. 2026-07-03 11:05 CST 当前 live 窗口仍能检出未红掉敏感 env value；在后续窗口连续确认不再出现前，不应关闭该缺陷。
 
 ## 最新运行态复核（2026-07-02 11:01 CST）
 
@@ -152,3 +153,14 @@ Fixed
   - 与 2026-07-02 多个窗口持续检出未红掉 env value 相比，本窗 `session/new` 不再暴露 env 明文值，说明 `f4dc305d` 的日志净化已在当前 live 路径生效。
   - 状态从 `P1 / New` 调整为 `Fixed`；历史 `acp-events.log*` 已落盘凭据仍需单独清理 / 轮换，因此暂不关闭。
   - 已有关联 GitHub Issue #51，本轮不重复创建。
+
+## 最新运行态复核（2026-07-03 11:05 CST）
+
+- `data/runtime/logs/acp-events.log`
+  - 巡检窗口：2026-07-03 07:00-11:05 CST。
+  - 本窗检出 22 条 `session/new` ACP 事件，覆盖 Web 5 条、Feishu 16 条、Discord 1 条；每条仍包含 MCP server `env` 字段。
+  - 本轮只记录结构化计数，不复制日志原文、env 值、账号、手机号、token 或绝对本机路径：22 条事件累计 463 个 env entry，`<redacted>` 计数为 0；按敏感字段名估算 286 个敏感字段名命中，其中 264 个非白名单敏感 env value 仍未红掉。
+  - 同窗 `data/sessions.sqlite3` 有 7 个 user turn 与 7 条 assistant final，均成对收口；assistant final 污染扫描未命中 env 字段、raw tool 输出、provider 原始错误、panic 或本机绝对路径。风险仍集中在 ACP audit 持久化边界，不是用户可见回复外泄。
+- 本轮判断
+  - 07:00 CST 将该缺陷调整为 `Fixed` 的结论被新窗口运行态推翻；当前 live 日志路径仍会持久化未红掉的敏感 env value，状态从 `P1 / Fixed` 回退为 `P1 / New`。
+  - 已有关联 GitHub Issue #51，本轮不重复创建；issue 内容已覆盖该 P1，后续修复应优先确认 live runtime 与实际写入路径是否加载同一净化逻辑。
