@@ -136,26 +136,22 @@ fn redact_session_new_mcp_env(payload: &mut Value) {
     let Some(servers) = payload
         .get_mut("params")
         .and_then(|value| value.get_mut("mcpServers"))
-        .and_then(|value| value.as_array_mut())
     else {
         return;
     };
 
-    for server in servers {
-        let Some(env_entries) = server.get_mut("env").and_then(|value| value.as_array_mut()) else {
-            continue;
-        };
-        for entry in env_entries {
-            let Some(object) = entry.as_object_mut() else {
-                continue;
-            };
-            let Some(name) = object.get("name").and_then(|value| value.as_str()) else {
-                continue;
-            };
-            if !safe_mcp_env_value_for_log(name) {
-                object.insert("value".to_string(), Value::String(REDACTED_VALUE.to_string()));
+    match servers {
+        Value::Array(items) => {
+            for server in items {
+                redact_mcp_server_env(server);
             }
         }
+        Value::Object(items) => {
+            for server in items.values_mut() {
+                redact_mcp_server_env(server);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -169,6 +165,53 @@ fn safe_mcp_env_value_for_log(name: &str) -> bool {
             | "HONE_MCP_MAX_TOOL_CALLS"
             | "HONE_MCP_ALLOWED_TOOLS"
     )
+}
+
+fn redact_mcp_server_env(server: &mut Value) {
+    let Some(env_entries) = server.get_mut("env") else {
+        return;
+    };
+    redact_mcp_env_entries(env_entries);
+}
+
+fn redact_mcp_env_entries(env_entries: &mut Value) {
+    match env_entries {
+        Value::Array(entries) => {
+            for entry in entries {
+                redact_mcp_env_entry(entry);
+            }
+        }
+        Value::Object(entries) => {
+            for (name, value) in entries.iter_mut() {
+                if !safe_mcp_env_value_for_log(name) {
+                    *value = Value::String(REDACTED_VALUE.to_string());
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn redact_mcp_env_entry(entry: &mut Value) {
+    let Some(object) = entry.as_object_mut() else {
+        return;
+    };
+
+    if let Some(name) = object.get("name").and_then(|value| value.as_str()) {
+        if !safe_mcp_env_value_for_log(name) {
+            object.insert(
+                "value".to_string(),
+                Value::String(REDACTED_VALUE.to_string()),
+            );
+        }
+        return;
+    }
+
+    for (name, value) in object.iter_mut() {
+        if !safe_mcp_env_value_for_log(name) {
+            *value = Value::String(REDACTED_VALUE.to_string());
+        }
+    }
 }
 
 pub(crate) async fn log_acp_payload(
@@ -697,6 +740,82 @@ mod tests {
             Some(REDACTED_VALUE)
         );
         assert_eq!(env_value("HONE_DATA_DIR"), Some(REDACTED_VALUE));
+        assert!(!content.contains("pg-secret"));
+        assert!(!content.contains("oss-secret"));
+        assert!(!content.contains("/private/tmp/hone-data"));
+
+        let _ = tokio::fs::remove_dir_all(&temp_root).await;
+    }
+
+    #[tokio::test]
+    async fn log_acp_payload_redacts_session_new_mcp_env_object_map_values() {
+        let temp_root = std::env::temp_dir().join(format!(
+            "hone_acp_session_new_log_map_{}_{}",
+            std::process::id(),
+            Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        let log_context = AcpEventLogContext {
+            runner_label: "codex",
+            log_path: acp_event_log_path(&temp_root.to_string_lossy()),
+            session_id: "session-1".to_string(),
+            identity: "Actor_web__direct__user-1".to_string(),
+            actor_channel: "web".to_string(),
+            actor_user_id: "user-1".to_string(),
+            actor_channel_scope: Some("direct".to_string()),
+        };
+        let payload = json!({
+            "jsonrpc": "2.0",
+            "id": "session-new-1",
+            "method": "session/new",
+            "params": {
+                "mcpServers": {
+                    "hone": {
+                        "command": "hone-mcp",
+                        "env": {
+                            "HONE_CLOUD_MODE": "cloud",
+                            "HONE_POSTGRES_PASSWORD": "pg-secret",
+                            "HONE_OSS_ACCESS_KEY_SECRET": "oss-secret",
+                            "HONE_DATA_DIR": "/private/tmp/hone-data"
+                        }
+                    }
+                }
+            }
+        });
+
+        log_acp_payload(Some(&log_context), "send", &payload).await;
+
+        let content = tokio::fs::read_to_string(&log_context.log_path)
+            .await
+            .expect("read log");
+        let record = serde_json::from_str::<Value>(&content).expect("jsonl record");
+        let env_entries = record["payload"]["params"]["mcpServers"]["hone"]["env"]
+            .as_object()
+            .expect("env object");
+
+        assert_eq!(
+            env_entries
+                .get("HONE_CLOUD_MODE")
+                .and_then(|value| value.as_str()),
+            Some("cloud")
+        );
+        assert_eq!(
+            env_entries
+                .get("HONE_POSTGRES_PASSWORD")
+                .and_then(|value| value.as_str()),
+            Some(REDACTED_VALUE)
+        );
+        assert_eq!(
+            env_entries
+                .get("HONE_OSS_ACCESS_KEY_SECRET")
+                .and_then(|value| value.as_str()),
+            Some(REDACTED_VALUE)
+        );
+        assert_eq!(
+            env_entries
+                .get("HONE_DATA_DIR")
+                .and_then(|value| value.as_str()),
+            Some(REDACTED_VALUE)
+        );
         assert!(!content.contains("pg-secret"));
         assert!(!content.contains("oss-secret"));
         assert!(!content.contains("/private/tmp/hone-data"));
