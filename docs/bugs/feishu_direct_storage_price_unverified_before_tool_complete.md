@@ -3,8 +3,24 @@
 - **发现时间**: 2026-06-06 23:04 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无，非 P1
+
+## 最新进展（2026-07-03 15:10 CST）
+
+- 本轮 2026-07-03 11:00-15:10 CST 真实运行态复发，状态从代码级 `Fixed` 回退为运行态 `New`：
+  - `data/sessions.sqlite3`
+    - 本窗有 3 个 Feishu direct user turn 与 3 条 assistant final，均成对收口；assistant final 未命中空回复、`reasoning_content`、`<think>`、provider 原始错误、panic、quota、资源耗尽、本机绝对路径或 raw tool 字段。
+    - 11:07 CST 用户要求“根据今天的价格，看存储产业链上的A股有哪些低估”，assistant final 正常收口，但输出香农芯创 `267.52` 元、江波龙 `625.55` 元、佰维存储 `431.63` 元、兆易创新 `692.19` 元、北京君正 `256.65` 元、普冉股份 `822.94` 元、德明利 `877.97` 元等明显异常数量级价格，并据此给出低估排序、观察池和动作建议。
+    - 14:59 CST 用户要求“今天韩股海力士，三星股价如何”，assistant final 正常收口，但输出 SK 海力士 `2,397,000` / `2,435,000` 韩元、三星电子 `312,000` 韩元、KOSPI `8,047.84`，并据此判断海力士和三星“大幅反弹”。
+  - `data/runtime/logs/acp-events.log`
+    - 同窗对应 Feishu direct ACP stream 以 `stopReason=end_turn` 收口，未见 runner error、stream disconnect、quota、panic 或用户可见内部错误。
+  - 查重结论：
+    - 本轮坏态仍是强时效金融答复把未充分校验或未做 sanity check 的精确行情数值用于用户可见投资判断，与本文档既有“最新行情必须逐一核验，不得输出未稳定校验精确价格 / 操作区间”同根。
+    - 该问题不同于 `feishu_scheduler_watchlist_stockanalysis_abnormal_prices.md` 的 heartbeat / scheduler raw preview 主体；本轮已有 Feishu direct 用户可见 final 样本，因此回退本文档，而不是新建重复缺陷。
+  - 用户影响：
+    - 会话已正常收口，没有投递失败、错对象、空回复、内部错误外泄或数据写坏证据。
+    - 但用户请求的是“今天价格”和强时效投资判断，assistant 使用异常数量级价格作为判断锚，会明显降低投资建议质量。该问题不影响功能链路，因此定级仍为质量性 `P3`，非 P1，不创建 GitHub Issue。
 
 ## 证据来源
 

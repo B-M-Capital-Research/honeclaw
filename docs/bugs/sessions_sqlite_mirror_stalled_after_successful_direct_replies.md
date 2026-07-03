@@ -6,6 +6,11 @@
 - **状态**: New
 - **GitHub Issue**: 无
 - **修复结论复核**:
+- `2026-07-03 15:10 CST` 运行态部分复发继续存在，状态维持 `New`：
+  - `data/sessions.sqlite3` 在 11:00-15:10 CST 有 3 个 Feishu direct user turn 与 3 条 assistant final，均成对收口；`sessions.max(last_message_at)=2026-07-03T14:59:09.729068+08:00`，说明 session transcript mirror 能追入当前 direct transcript。
+  - 但同一库的 `cron_job_runs.max(executed_at)` 仍停在 `2026-06-30T09:30:52.069168+08:00`，查询本窗无 cron run 记录。
+  - `data/runtime/logs/web.log.2026-07-03` 同窗继续记录 heartbeat `run_start`、`parse_kind`、`failure_kind=execution_failed`、`BudgetRecovery` 与 raw / deliver preview 信号。
+  - 本次继续说明 session transcript mirror 能追入当前会话，但调度运行台账 `cron_job_runs` 仍未随真实 heartbeat / scheduler 运行态推进。它会影响巡检、调度审计和补发判断，属于功能性可观测性缺陷，严重等级维持 `P2`；非 P1。
 - `2026-07-03 11:05 CST` 运行态部分复发继续存在，状态维持 `New`：
   - `data/sessions.sqlite3` 在 07:00-11:05 CST 有 7 个 user turn 与 7 条 assistant final，均成对收口；`sessions.max(last_message_at)=2026-07-03T10:53:51.422246+08:00`，说明 session transcript mirror 能追入当前 direct / scheduler transcript。
   - 但同一库的 `cron_job_runs.max(executed_at)` 仍停在 `2026-06-30T09:30:52.069168+08:00`，查询本窗无 cron run 记录。

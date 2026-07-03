@@ -20,6 +20,18 @@
 
 - 无，非 P1
 
+## 最新进展（2026-07-03 15:10 CST）
+
+- 本轮 2026-07-03 11:00-15:10 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-03`
+    - 11:00-15:10 CST heartbeat raw preview / 判断上下文继续出现 SNDK `$1,745`、SNDK previous close `$2,032.22` 等明显异常数量级价格，并进入 `JsonNoop`、`PlainTextSuppressed`、`JsonTriggered` 或结构化失败链路。
+    - 结构化计数中同窗可检出 SNDK 47 条、`$1,745` 22 条、`$2,032.22` 15 条异常价格信号。
+  - `data/sessions.sqlite3`
+    - 本窗 3 个 Feishu direct user turn 与 3 条 assistant final 均正常收口。
+    - 其中 11:07 CST A 股存储链 reply 与 14:59 CST 韩股 reply 已出现用户可见强时效异常价格样本，归入 `feishu_direct_storage_price_unverified_before_tool_complete.md`；本单仅记录 heartbeat / scheduler 异常价格继续进入判定上下文。
+- 本窗 heartbeat 异常价格主要停留在 raw preview、未命中或结构化失败路径；调度 / 投递主链路没有因该问题被阻断。
+- 因该问题仍主要影响行情质量和投资建议可信度，不阻断功能链路，因此继续按质量性 `P3 / New`；非 P1，不创建 GitHub Issue。
+
 ## 最新进展（2026-07-03 11:05 CST）
 
 - 本轮 2026-07-03 07:00-11:05 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
