@@ -14,7 +14,7 @@ P1
 
 ## 状态
 
-Fixed
+New
 
 ## GitHub Issue
 
@@ -81,6 +81,7 @@ Fixed
 - 2026-07-03 07:00 CST 运行态复核显示，当前 live `session/new` 事件仍包含 `mcpServers[].env` 字段，但本窗未检出 env entry 明文值。
 - 2026-07-03 11:05 CST 运行态复核显示，07:00-11:05 CST 新增 `session/new` 事件又出现未红掉的敏感 env value，说明旧修复只覆盖了单一 `env` 结构假设。
 - 2026-07-04 03:04 CST 代码层继续收紧 `acp-events.log` 净化：`session/new` 现在会同时覆盖 `mcpServers` 数组与对象映射两种形状，并对 `env` 的数组条目 / 对象映射统一做白名单外值脱敏。
+- 2026-07-04 07:03 CST 运行态复核显示，03:08 CST 加固提交之后的 live `session/new` 事件仍有 Feishu 样本携带 `mcpServers[].env`，且 `<redacted>` 计数为 0；说明当前运行进程仍未加载修复，或仍存在未覆盖的日志写入路径。
 - `params.mcpServers[].env` 现在默认不保留未知 env 明文值；仅 `HONE_CLOUD_MODE`、`HONE_CLOUD_ENABLED`、`HONE_CLOUD_STRICT_NO_LOCAL_STORAGE`、`HONE_MCP_ALLOW_CRON`、`HONE_MCP_MAX_TOOL_CALLS`、`HONE_MCP_ALLOWED_TOOLS` 保留原值，其余统一写成 `<redacted>`。
 - 新增日志回归，分别覆盖数组条目形状与对象映射形状的云数据库凭据、对象存储凭据和本地数据目录路径，断言不会进入持久化 JSONL。
 
@@ -116,7 +117,7 @@ Fixed
 ## 后续风险
 
 1. 历史 `data/runtime/logs/acp-events.log*` 里已落盘的旧凭据不会被代码修复自动清除；如这些凭据仍有效，仍需按内部流程轮换并清理旧日志。
-2. 当前运行中的 live 进程尚未因本任务重启；`data/runtime/logs/acp-events.log` 里 2026-07-03 的未红掉样本仍是旧二进制留下的运行态证据。后续巡检需要在新代码实际加载后继续确认不再出现，届时再考虑从 `Fixed` 提升到 `Closed`。
+2. 当前运行中的 live 进程尚未加载或未完全应用 2026-07-04 03:08 CST 的加固提交；03:08 之后仍有未红掉样本，状态回到 `P1 / New`。后续修复需先确认 live runtime 已重启到含 `d05fc8db` 的代码，再复核实际 `acp-events.log` 写入路径。
 
 ## 最新运行态复核（2026-07-02 11:01 CST）
 
@@ -196,3 +197,14 @@ Fixed
   - 最新 live 日志仍显示 `session/new` 会持久化 MCP env 结构，且没有红线替换命中；这批样本发生在本轮 03:04 代码修复前的旧运行进程上，说明当时 live 尚未加载更宽的 payload-shape 脱敏。
   - 本轮已把代码级状态更新为 `P1 / Fixed`；风险仍集中在 ACP audit 持久化边界，不是用户可见回复外泄。
   - 已有关联 GitHub Issue #51，本轮不重复创建；待后续巡检在新代码实际加载后确认不再出现未红掉 env value。
+
+## 最新运行态复核（2026-07-04 07:03 CST）
+
+- `data/runtime/logs/acp-events.log`
+  - 巡检窗口：2026-07-04 03:02-07:03 CST，重点复核 03:08 CST 加固提交 `d05fc8db fix: harden acp session-new log redaction` 之后的真实运行态。
+  - 03:08 CST 之后仍检出 3 条新的 Feishu `session/new` ACP 事件，均包含 `mcpServers[].env`；每条结构化计数为 1 个 MCP server、1 个 env 容器、21 个 env name，`<redacted>` 为 false。
+  - 本轮只记录结构化计数与字段类别，不复制日志原文、env 值、账号、手机号、token 或绝对本机路径；字段类别覆盖 actor / channel scope、cloud runtime、数据库连接、对象存储和本地数据目录相关 env。
+  - 同窗 `data/sessions.sqlite3` 只有 06:00-06:01 CST Feishu scheduler 1 组 user / assistant final，成对收口；assistant final 未命中 env 字段、raw tool 输出、provider 原始错误、panic、本机绝对路径或 `mcpServers`。风险仍集中在 ACP audit 持久化边界，不是用户可见回复外泄。
+- 本轮判断
+  - 03:06 CST 代码级 `Fixed` 结论被 03:08 之后的新运行态样本推翻；当前 live 日志路径仍会持久化未红掉的 MCP env value，状态从 `P1 / Fixed` 回退为 `P1 / New`。
+  - 已有关联 GitHub Issue #51，本轮不重复创建；issue 内容已覆盖该 P1，后续修复应优先确认 live runtime 是否已重启到 `d05fc8db`，以及是否还有绕过 `sanitize_acp_payload_for_log(...)` 的写入路径。
