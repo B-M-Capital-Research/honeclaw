@@ -453,3 +453,15 @@
 - 本轮判断
   - 最新证据仍属于 heartbeat 时间 / 日期口径错误，不新建重复缺陷。
   - 调度与解析链路仍可运行，问题主要影响用户对提醒新鲜度和事件时点的判断；维持质量性 `P3 / New`。
+
+## 最新运行态复核（2026-07-04 03:05 CST）
+
+- `data/runtime/logs/hone_cli_screen.log`
+  - 巡检窗口：2026-07-03 23:02-2026-07-04 03:05 CST。
+  - 本窗 heartbeat raw / deliver preview 继续出现错误当前时间或日期口径。
+  - 代表样本包括 `美股黄金坑信号心跳检测` 把 market data 写成 `April 2026`，`光模块板块关键事件心跳提醒` 在 2026-07-04 03:01 CST 执行窗口中写出 `current date of January 27, 2026`，以及多条 heartbeat 将 quote timestamp 自行推断成与调度执行时点不一致的当前口径。
+- `data/sessions.sqlite3`
+  - 同窗 00:00-00:05 Feishu scheduler final 的显式北京时间口径与触发窗口基本一致，未见同类错误进入这 3 条 assistant final。
+- 本轮判断
+  - 最新证据仍属于 heartbeat 时间 / 日期口径错误，不新建重复缺陷。
+  - 调度与解析链路仍可运行，问题主要影响用户对提醒新鲜度和事件时点的判断；维持质量性 `P3 / New`。

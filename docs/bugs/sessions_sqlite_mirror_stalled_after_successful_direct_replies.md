@@ -1015,3 +1015,15 @@
 - 本轮判断
   - 当前会话镜像本身可继续前进，但调度运行台账仍未追入真实 heartbeat runtime；缺陷范围继续按“SQLite 镜像 / 台账滞后于真实运行态”处理。
   - 普通 Web direct 三轮均以 assistant final 收口，未见未回复或错投；严重等级维持 `P2 / New`。
+
+## 最新运行态复核（2026-07-04 03:05 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-07-03 23:02-2026-07-04 03:05 CST。
+  - 会话镜像已追入 00:00-00:05 CST 的 3 个 Feishu scheduler user turn 与 3 条 assistant final，`sessions.max(updated_at)=2026-07-04T00:05:40.566983+08:00`，`session_messages.max(timestamp)=2026-07-04T00:05:40.548697+08:00`。
+  - 但 `cron_job_runs.max(executed_at)` 仍停在 `2026-06-30T09:30:52.069168+08:00`，本窗口 `cron_job_runs` 新增为 0。
+- `data/runtime/logs/hone_cli_screen.log`
+  - 同窗 runtime 继续写入大量 heartbeat run / failure / deliver preview 信号，23:30、00:00、00:30、01:00、01:30、02:00、02:30、03:00 CST 多批任务均有真实运行结果。
+- 本轮判断
+  - 当前会话镜像本身可继续前进，但调度运行台账仍未追入真实 heartbeat runtime；缺陷范围继续按“SQLite 镜像 / 台账滞后于真实运行态”处理。
+  - 普通 scheduler final 主链路可收口，未见未回复或错投；严重等级维持 `P2 / New`。

@@ -5313,3 +5313,15 @@
 - 本轮判断
   - 最新证据仍属于 heartbeat 输出结构漂移 / 解析失败的既有范围，没有新的独立根因。
   - 坏态影响 heartbeat 是否稳定得出 `triggered/noop` 并发送；普通 direct 主链路本窗无新请求，未见错对象投递或数据安全问题，因此维持 `P2 / New`。
+
+## 最新运行态复核（2026-07-04 03:05 CST）
+
+- `data/runtime/logs/hone_cli_screen.log`
+  - 巡检窗口：2026-07-03 23:02-2026-07-04 03:05 CST。
+  - 本窗新增 260 条可分类 heartbeat `parse_kind` 信号：`PlainTextSuppressed` 85 条、`JsonNoop` 85 条、`JsonTriggered` 44 条、`PlainTextNoop` 23 条、`JsonMalformed` 12 条、`JsonUnknownStatus` 10 条、`Empty` 1 条。
+  - 同窗有 95 条 `failure_kind=execution_failed`。代表样本继续覆盖 Feishu / Web heartbeat：多条任务以 `<think>`、自然语言复盘、工具预算耗尽说明、未知状态或非法 JSON 开头，随后落成结构化失败并跳过发送。
+- `data/sessions.sqlite3`
+  - 同窗只有 3 个 Feishu scheduler user turn 与 3 条 assistant final，均成对收口；assistant final 未见空回复、`reasoning_content`、`<think>`、raw tool 字段、本机路径、provider 原始错误、panic 或资源耗尽原文。
+- 本轮判断
+  - 最新证据仍属于 heartbeat 输出结构漂移 / 解析失败的既有范围，没有新的独立根因。
+  - 坏态影响 heartbeat 是否稳定得出 `triggered/noop` 并发送；普通 scheduler final 主链路可收口，未见错对象投递或数据安全问题，因此维持 `P2 / New`。
