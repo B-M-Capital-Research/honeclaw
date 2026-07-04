@@ -766,3 +766,15 @@
 - 本轮判断
   - 最新证据仍落在 heartbeat/function-calling 缺少稳定上下文预算控制与 overflow 恢复的既有范围，不新建重复缺陷。
   - 未见普通 direct 链路不可用、全渠道故障或数据安全问题；严重等级维持 `P2 / New`。
+
+## 最新运行态复核（2026-07-04 23:02 CST）
+
+- `data/runtime/logs/hone_cli_screen.log`
+  - 巡检窗口：2026-07-04 19:01-23:02 CST。
+  - 本窗仍有 3 条 `context window` 与 10 条 `overflow` / `ContextOverflow` / recovery 相关信号，说明 heartbeat 首轮 prompt 预算失控或恢复分支依赖仍在真实运行态复现。
+  - 同窗 heartbeat 还伴随 78 条 `failure_kind=execution_failed`，超窗恢复与结构化解析失败继续共同影响部分监控本轮可用性。
+- `data/sessions.sqlite3`
+  - 同窗 3 组 user / assistant 均成对收口，未见 context window 原始错误进入用户可见文本。
+- 本轮判断
+  - 最新证据仍落在 heartbeat/function-calling 缺少稳定上下文预算控制与 overflow 恢复的既有范围，不新建重复缺陷。
+  - 未见普通 direct 链路不可用、全渠道故障或数据安全问题；严重等级维持 `P2 / New`。

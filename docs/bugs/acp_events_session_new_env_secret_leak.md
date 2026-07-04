@@ -235,3 +235,13 @@ New
 - 本轮判断
   - 最新 live 日志仍会持久化未红掉的 MCP env 结构；状态维持 `P1 / New`。
   - 已有关联 GitHub Issue #51，本轮不重复创建；后续修复仍应优先确认 live runtime 版本、`session/new` 写入路径与历史日志清理 / 凭据轮换。
+
+## 最新运行态复核（2026-07-04 23:02 CST）
+
+- `data/runtime/logs/acp-events.log`
+  - 巡检窗口：2026-07-04 19:01-23:02 CST。
+  - 本窗检出 20 条 `session/new` ACP 事件，20 条均仍包含 `mcpServers` / `env` 结构，`<redacted>` 计数为 0。
+  - 本轮只记录结构化计数，不复制日志原文、env 值、账号、手机号、token 或绝对本机路径；同窗 20 个 prompt 均以 `stopReason=end_turn` 收口，未见该问题进入用户可见 assistant final。
+- 本轮判断
+  - 最新 live 日志仍会持久化未红掉的 MCP env 结构；状态维持 `P1 / New`。
+  - 已有关联 GitHub Issue #51，本轮不重复创建；后续修复仍应优先确认 live runtime 版本、`session/new` 写入路径与历史日志清理 / 凭据轮换。

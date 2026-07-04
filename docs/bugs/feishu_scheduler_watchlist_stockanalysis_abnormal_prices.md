@@ -483,3 +483,14 @@
 - 本轮判断
   - 最新证据仍落在 scheduler / heartbeat 批量行情数值 sanity check 缺失范围内，没有新的独立根因。
   - 调度和投递主链路本身仍可运行，本窗未确认新的用户可见交易建议使用异常价格，因此维持质量性 `P3 / New`，非 P1。
+
+## 最新运行态复核（2026-07-04 23:02 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-07-04 19:01-23:02 CST。
+  - 21:35 CST 与 23:00 CST Feishu scheduler final 成对收口，但继续输出用户可见异常数量级价格：`MU $975.56`、`SNDK $1,745.00`、`STX $820.16`、`WDC $539.00`、`AMD $517.82` 等，并据此判断“明显高于既定击球区”。
+- `data/runtime/logs/hone_cli_screen.log`
+  - 同窗 heartbeat raw / deliver preview 继续命中异常行情关键词，代表信号包括 `SNDK $1,745`、`SPY $744.78`、`QQQ $712.60`、`MU $975.56`。
+- 本轮判断
+  - 最新证据仍落在 scheduler / heartbeat 批量行情数值 sanity check 缺失范围内，没有新的独立根因。
+  - 本窗已确认异常价格进入 Feishu scheduler 用户可见 final；但会话正常收口、未见投递失败或错对象，问题主要削弱投研质量和价格判断可信度，因此维持质量性 `P3 / New`，非 P1。

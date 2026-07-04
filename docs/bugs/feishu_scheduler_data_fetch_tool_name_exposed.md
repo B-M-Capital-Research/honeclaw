@@ -554,6 +554,11 @@ New
   - 09:30 CST `美股收盘资金流复盘` final 外露 `已加载市场分析流程` 和 `Hone data_fetch` 来源背书。
   - 两个 session 均以 `stopReason=end_turn` 正常收口；报告主体、来源和风险结论均完成，没有投递失败、空回复、错投、会话悬挂或链路级数据破坏证据。
   - 因问题只影响用户可见文案边界和产品感，不阻断 scheduler 主功能链路，仍为质量性 `P3 / New`；非 P1，不创建 GitHub Issue。
+- 2026-07-04 23:02 CST 补充同根复发证据：
+  - 21:35 CST `科技核心股池 · 晚间击球区快报` final 写出 `quote_short 口径未单独覆盖盘前/盘后实时价`。
+  - 23:00 CST `核心观察股池晚间快报` final 写出 `本轮 data_fetch 返回的最新可用价格仍是最近一次已校验 quote_short 口径`、`价格来自本轮 data_fetch quote_short`。
+  - 本轮 `sessions.sqlite3` 中 3 组 user / assistant 均成对收口；ACP 同窗 20 个 prompt 均 `stopReason=end_turn`，没有投递失败、空回复、错投、会话悬挂或链路级数据破坏证据。
+  - 因问题只影响用户可见文案边界和产品感，不阻断 scheduler 主功能链路，仍为质量性 `P3 / New`；非 P1，不创建 GitHub Issue。
 
 ## 修复记录
 

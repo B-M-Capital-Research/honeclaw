@@ -5361,3 +5361,15 @@
 - 本轮判断
   - 最新证据仍属于 heartbeat 输出结构漂移 / 解析失败的既有范围，没有新的独立根因。
   - 坏态影响 heartbeat 是否稳定得出 `triggered/noop` 并发送；普通 direct 主链路可收口，未见错对象投递或数据安全问题，因此维持 `P2 / New`。
+
+## 最新运行态复核（2026-07-04 23:02 CST）
+
+- `data/runtime/logs/hone_cli_screen.log`
+  - 巡检窗口：2026-07-04 19:01-23:02 CST。
+  - 本窗新增 223 条可分类 heartbeat `parse_kind` 信号：`JsonNoop` 92 条、`PlainTextSuppressed` 67 条、`PlainTextNoop` 21 条、`JsonTriggered` 19 条、`JsonMalformed` 12 条、`JsonUnknownStatus` 10 条、`JsonEmptyStatus` 2 条。
+  - 同窗有 78 条 `failure_kind=execution_failed`，并有 209 条 heartbeat raw preview 以 `<think>` 开头；代表坏态仍是自然语言 / 思考稿 / 非法 JSON 进入结构化解析边界后被抑制或跳过发送。
+- `data/sessions.sqlite3`
+  - 同窗 3 组 user / assistant 均成对收口，assistant final 未见空回复、`reasoning_content`、`<think>`、raw tool 字段、本机路径、provider 原始错误、panic 或资源耗尽原文。
+- 本轮判断
+  - 最新证据仍属于 heartbeat 输出结构漂移 / 解析失败的既有范围，没有新的独立根因。
+  - 坏态影响 heartbeat 是否稳定得出 `triggered/noop` 并发送；普通 direct / scheduler final 主链路可收口，未见错对象投递或数据安全问题，因此维持 `P2 / New`。

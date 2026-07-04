@@ -113,3 +113,13 @@
 - 验证阻塞：本机 Rust toolchain 当前连 `cargo --version`、直接 toolchain `cargo --version`、`rustc --version` 都会悬挂；已终止悬挂进程并仅完成 `git diff --check`。因此本轮不得标记 `Fixed`、不得提交或推送；下一轮需先恢复 toolchain，再运行 `cargo test -p hone-channels user_visible_error_message_ --lib -- --nocapture`、`cargo test -p hone-channels suppressed_scheduler_failure_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`。
 - 2026-06-09 04:43 CST 状态更新为 `Fixed`：Rust toolchain 已恢复，`cargo test -p hone-channels user_visible_error_message_ --lib -- --nocapture`、`cargo test -p hone-channels suppressed_scheduler_failure_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过。该修复不依赖当前机器生产运行态或线上日志判定恢复。
 - 2026-06-24 11:03 CST 回退为 `New`：07:02-11:03 CST 巡检确认同根因在 Feishu direct、Web direct 与 Discord group / scheduler 多链路复发；错误已净化但请求未完成。09:52 CST 后未见新增同类 response error，需后续巡检确认 `3679c4c5` 或运行态重启是否真正止血。
+
+## 最新运行态复核（2026-07-04 23:02 CST）
+
+- `data/runtime/logs/acp-events.log`
+  - 巡检窗口：2026-07-04 19:01-23:02 CST。
+  - 同窗重构 20 条 `session/prompt`，20 条均以 `stopReason=end_turn` 收口；未见 `stream disconnected before completion`、runner error、response error、quota 或 panic。
+  - 上轮 18:47 CST Feishu direct 长运行样本在本窗内于 23:01 CST 前完成，最终 session/update 尾部返回 `stopReason=end_turn`，并已在 `sessions.sqlite3` 形成 assistant final。
+- 本轮判断
+  - 本窗没有新的 transport 断连失败证据，且上轮长运行样本最终收口；这是缓解信号，但不足以关闭此前多链路复发的 P2。
+  - 状态维持 `P2 / New`；下一步继续观察是否连续多个窗口无 `stream disconnected` / `scheduler_runner_timeout` / 长运行未收口样本。
