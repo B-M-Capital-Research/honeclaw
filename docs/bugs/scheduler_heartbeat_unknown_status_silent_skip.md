@@ -7,6 +7,17 @@
 
 ## 修复进展
 
+- `2026-07-05 03:02 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 23:02-03:02 CST heartbeat 窗口新增 98 条可分类运行记录：`JsonNoop` 49 条、`PlainTextSuppressed` 17 条、`PlainTextNoop` 13 条、`JsonTriggered` 6 条、`JsonMalformed` 2 条、`JsonUnknownStatus` 1 条、`JsonEmptyStatus` 1 条，另有 9 条 startup recovered stale pending 行。
+    - 同窗 heartbeat 终态包括 69 条 `noop + skipped_noop`、20 条 `execution_failed + skipped_error`、7 条旧 started-row recovery `execution_failed + send_failed`、2 条 `completed + sent`，并有 91 条 `<think>` raw preview。
+  - 会话质量对照：
+    - 同窗普通 direct / scheduler 会话 44 个 user turn 与 44 条 assistant 记录成对收口；assistant final 污染扫描未命中空回复、`reasoning_content`、`<think>`、provider 原始错误、panic、quota、资源耗尽或本机绝对路径。
+    - 与前几轮不同，`cron_job_runs` 已追入当前窗口，因此本轮 heartbeat 结构化退化可以直接从 SQLite 台账统计，不再只依赖 runtime log tail。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题继续导致 heartbeat 监控任务整轮失败或跳过发送，属于功能性监控漏发 / 降级；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-04 19:04 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-04` / `data/runtime/logs/hone_cli_screen.log`
     - 15:02-19:04 CST heartbeat 窗口新增 218 条可分类 `parse_kind` 信号：`JsonNoop` 106 条、`PlainTextSuppressed` 43 条、`JsonTriggered` 29 条、`PlainTextNoop` 26 条、`JsonMalformed` 10 条、`JsonUnknownStatus` 2 条、`JsonEmptyStatus` 2 条。

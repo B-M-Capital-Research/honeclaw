@@ -8,6 +8,11 @@
 
 ## 证据来源
 
+- `data/sessions.sqlite3` / `cron_job_runs`
+  - 2026-07-04 23:02-2026-07-05 03:02 CST 同类 ACP runner timeout 在普通 Feishu scheduler 链路继续出现，但用户可见错误已被净化。
+  - `run_id=44323` / `job_name=SemiAnalysis与Citrini文章晚间跟踪` 在 23:52 CST 落成 `execution_failed + skipped_error`，`detail_json.failure_kind=scheduler_runner_timeout`；assistant transcript 同步写入产品化失败提示“本轮定时任务未能完成，系统已记录失败并将在下一次触发时重试。”。
+  - 同窗 44 个 `session/prompt` 覆盖 21 个 prompt session，均有 response 收口；43 个 `stopReason=end_turn`，未见 ACP response error、stream disconnect 原文、provider 原始错误、panic、quota、资源耗尽或本机绝对路径进入 assistant final。
+  - 结论：该问题当前表现为“业务正文未完成但失败提示可见且脱敏”，仍影响 scheduler 请求完成率，维持 `P2 / New`；非 P1，不创建 GitHub Issue。
 - `data/runtime/logs/acp-events.log` / `data/runtime/logs/hone_cli_screen.log`
   - 2026-07-04 15:02-19:04 CST 同类 ACP runner 长运行风险在 Feishu direct 链路继续出现。
   - 18:47 CST Feishu direct 会话 `Actor_feishu__direct__ou_5f64ee7ca7af22d44a83a31054e6fb92a3` 启动后持续输出 `agent_message_chunk`，到 19:03 CST 仍记录 `agent.run still running`，`elapsed_s=960`、`state="agent_iterating"`。
@@ -78,6 +83,7 @@
 - 2026-06-29 07:02 CST 复核窗中，失败形态从 `stream disconnected before completion` 扩展到 `codex acp session/prompt idle timeout (180s)` / `scheduler_runner_timeout`；错误净化生效，但 Feishu / Web scheduler 的业务报告正文没有完成。
 - 2026-07-01 11:03 CST 复核窗中，普通 Feishu scheduler 仍可因 `scheduler_runner_timeout` 跳过发送；错误净化继续生效，但该轮业务报告正文仍没有完成。
 - 2026-07-03 07:00 CST 复核窗中，Feishu scheduler `每日美股盘后收盘复盘` 再次因 `scheduler_runner_timeout` 跳过发送；错误净化继续生效，但该轮业务报告正文仍没有完成。
+- 2026-07-05 03:02 CST 复核窗中，Feishu scheduler `SemiAnalysis与Citrini文章晚间跟踪` 再次因 `scheduler_runner_timeout` 跳过发送；错误净化继续生效并落库产品化失败提示，但该轮业务报告正文仍没有完成。
 
 ## 用户影响
 

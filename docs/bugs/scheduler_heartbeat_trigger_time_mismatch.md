@@ -8,6 +8,15 @@
 
 ## 最新进展（2026-07-04 19:04 CST）
 
+- 本轮 2026-07-04 23:02-2026-07-05 03:02 CST 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 heartbeat raw preview 继续出现与实际执行窗口不一致或容易误解的时间口径。
+    - 代表样本包括 `ORCL 大事件监控` raw preview 把 quote timestamp 解读为 “from January 2026”，`全天原油价格3小时播报` raw preview 把当前时间写成 `2026-04-04` 附近，`DRAM 心跳监控` raw preview 围绕 `1783022401` 自行换算数据时间。
+  - 查重结论：
+    - 本窗没有新的独立根因；上述 raw preview 仍属于 heartbeat 模型时间上下文漂移，与本文档既有“触发提醒时间口径漂移”同一链路。
+  - 用户影响：
+    - 调度、解析和预览生成链路仍可运行，但错误时间上下文可能进入触发判断、重复抑制或用户可见提醒新鲜度判断。没有错投、数据安全或全渠道不可用证据；因此维持质量性 `P3`，非 P1。
+
 - 本轮 2026-07-04 15:02-19:04 CST 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-04` / `data/runtime/logs/hone_cli_screen.log`
     - 同窗 heartbeat raw preview 继续出现与实际执行窗口不一致或容易误解的时间口径。

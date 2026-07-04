@@ -3,9 +3,13 @@
 - **发现时间**: 2026-04-28 01:05 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无
 - **修复结论复核**:
+- `2026-07-05 03:02 CST` 运行态复核确认当前镜像追平，状态从 `New` 调整为 `Fixed`：
+  - `data/sessions.sqlite3` 在 2026-07-04 23:02-2026-07-05 03:02 CST 窗口新增 44 个 user turn 与 44 条 assistant 记录；`sessions.max(updated_at)=2026-07-05T02:28:50.796618+08:00`，`sessions.max(last_message_at)=2026-07-05T02:28:50.786230+08:00`，`session_messages.max(timestamp)=2026-07-05T02:28:50.786230+08:00`，`session_messages.max(imported_at)=2026-07-05T02:28:50.816087+08:00`。
+  - 同一库 `cron_job_runs` 已恢复当前窗口写入：本窗普通 scheduler 39 条 `completed + sent`，1 条 `execution_failed + skipped_error`，1 条旧 started-row recovery；heartbeat 也持续写入到 `2026-07-05T03:01:20.568361+08:00`。
+  - 本轮说明会话 transcript mirror 与调度运行台账均已追入当前真实运行窗口；当前不再复现“`cron_job_runs.max(executed_at)` 停在 2026-06-30”的坏态。历史停滞影响不再占活跃修复队列，后续若再次出现 sessions / cron run 上界落后真实 runtime 超过一个巡检窗口，再从 `Fixed` 回退。
 - `2026-07-04 19:04 CST` 运行态部分复发继续存在，状态维持 `New`：
   - `data/sessions.sqlite3` 在 15:02-19:04 CST 按真实 `timestamp` 没有新的 user / assistant 消息；`session_messages.imported_at` 在 18:47 CST 批量推进，但内容是 2026-02 到 2026-07-03 的旧会话重导入，不作为新用户侧会话证据。
   - `sessions.max(last_message_at)=2026-07-03T20:02:19.677892+08:00`，`session_messages.max(timestamp)=2026-07-03T20:02:19.677892+08:00`，而同窗 `data/runtime/logs/acp-events.log` 有 6 个新的 direct prompt，`data/runtime/logs/web.log.2026-07-04` / `hone_cli_screen.log` 继续记录 heartbeat run / failure / preview。
