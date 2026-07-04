@@ -745,3 +745,16 @@
 - 本轮判断
   - 最新证据仍落在 heartbeat/function-calling 缺少稳定上下文预算控制与 overflow 恢复的既有范围，不新建重复缺陷。
   - 未见普通 direct 链路不可用、全渠道故障或数据安全问题；严重等级维持 `P2 / New`。
+
+## 最新运行态复核（2026-07-04 15:02 CST）
+
+- `data/runtime/logs/web.log.2026-07-04`
+  - 巡检窗口：2026-07-04 11:02-15:02 CST。
+  - 本窗继续出现 24 条 context / overflow / recovery 相关 heartbeat 信号，其中 `BudgetRecovery { reason: ContextOverflow }` 12 条，并伴随 2 条 `BudgetRecovery { reason: MaxIterationsExceeded }`。
+  - 代表样本包括 `AAOI 1.6T 光模块心跳检测` 首轮命中 `context window exceeds limit (2013)` 后进入 `reason=context_overflow` 与 BudgetRecovery 分支。
+  - 同窗 heartbeat 还伴随 80 条 `failure_kind=execution_failed`，说明 overflow 恢复和结构化解析失败仍在同一调度族里交替出现。
+- `data/sessions.sqlite3`
+  - 同窗 Feishu direct final 以 assistant 收口，未见 context window 原始错误进入用户可见文本。
+- 本轮判断
+  - 最新证据仍落在 heartbeat/function-calling 缺少稳定上下文预算控制与 overflow 恢复的既有范围，不新建重复缺陷。
+  - 未见普通 direct 链路不可用、全渠道故障或数据安全问题；严重等级维持 `P2 / New`。

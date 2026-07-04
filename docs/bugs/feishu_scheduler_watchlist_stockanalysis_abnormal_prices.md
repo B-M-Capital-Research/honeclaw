@@ -460,3 +460,15 @@
 - 本轮判断
   - 最新证据仍落在 scheduler / heartbeat 批量行情数值 sanity check 缺失范围内，没有新的独立根因。
   - 调度和投递主链路本身仍可运行，因此维持质量性 `P3 / New`，非 P1。
+
+## 最新运行态复核（2026-07-04 15:02 CST）
+
+- `data/runtime/logs/web.log.2026-07-04`
+  - 巡检窗口：2026-07-04 11:02-15:02 CST。
+  - 本窗 heartbeat raw / deliver preview 继续命中异常行情关键词；代表样本包括 `Monitor_Watchlist_11` 使用 `MU $975.56` 判断未触发阈值，`存储板块关键事件心跳提醒` 使用 `WDC $539`，以及 `美股黄金坑信号心跳检测` 使用 `SPY $744.78` / `QQQ $712.60`。
+  - 这些样本主要停留在 raw preview、未命中或结构化失败路径；未确认新的最终 direct final 基于异常价格给出交易建议。
+- `data/sessions.sqlite3`
+  - 同窗 1 条 Feishu direct assistant final 未命中上述异常行情关键词。
+- 本轮判断
+  - 最新证据仍落在 scheduler / heartbeat 批量行情数值 sanity check 缺失范围内，没有新的独立根因。
+  - 调度和投递主链路本身仍可运行，本窗未确认新的用户可见交易建议使用异常价格，因此维持质量性 `P3 / New`，非 P1。
