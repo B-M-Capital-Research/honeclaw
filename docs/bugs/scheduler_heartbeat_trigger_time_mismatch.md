@@ -6,6 +6,17 @@
 - **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
 
+## 最新进展（2026-07-05 07:04 CST）
+
+- 本轮 2026-07-05 03:02-07:02 CST 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 heartbeat raw preview 继续出现与实际执行窗口不一致或容易误解的时间口径。
+    - 代表样本包括 07:02 CST `SIVE POET/Nokia/1.6T DFB 心跳检测` raw preview 写 `Current check time context: 2026-05-29 02:02:29 UTC`，07:01 CST `heartbeat_绿田机械基本面跟踪` raw preview 写 `System context: 2025-08-07 (Thursday) 09:05 Beijing time`，07:01 CST `持仓重大事件心跳检测` raw preview 把 `timestamp 1743465601` 解读为 `April 4, 2026`，07:00 CST `Cerebras IPO与业务进展心跳监控` raw preview 继续围绕 `1783022401` 做当前数据判断。
+  - 查重结论：
+    - 本窗没有新的独立根因；上述 raw preview 仍属于 heartbeat 模型时间上下文漂移，与本文档既有“触发提醒时间口径漂移”同一链路。
+  - 用户影响：
+    - 调度、解析和预览生成链路仍可运行，但错误时间上下文可能进入触发判断、重复抑制或用户可见提醒新鲜度判断。没有错投、数据安全或全渠道不可用证据；因此维持质量性 `P3`，非 P1。
+
 ## 最新进展（2026-07-04 19:04 CST）
 
 - 本轮 2026-07-04 23:02-2026-07-05 03:02 CST 真实运行态继续复发，状态维持 `New`：
