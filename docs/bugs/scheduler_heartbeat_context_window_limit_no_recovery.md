@@ -732,3 +732,16 @@
 - 本轮判断
   - 最新证据仍落在 heartbeat/function-calling 缺少稳定上下文预算控制与 overflow 恢复的既有范围，不新建重复缺陷。
   - 未见普通 direct 链路不可用、全渠道故障或数据安全问题；严重等级维持 `P2 / New`。
+
+## 最新运行态复核（2026-07-04 11:01 CST）
+
+- `data/runtime/logs/web.log.2026-07-04` / `data/runtime/logs/hone_cli_screen.log`
+  - 巡检窗口：2026-07-04 07:01-11:01 CST。
+  - `web.log.2026-07-04` 同窗继续出现 1 条 `context window exceeds limit`、2 条 `ContextOverflow` 与 4 条 `BudgetRecovery` 相关 heartbeat 信号。
+  - `hone_cli_screen.log` 同窗继续出现 2 条 `context window exceeds limit`、5 条 `ContextOverflow` 与 7 条 `BudgetRecovery` 相关 heartbeat 信号。
+  - 同窗 heartbeat 还伴随 `PlainTextSuppressed` 与 `JsonMalformed`，说明 overflow 恢复和结构化解析失败仍在同一调度族里交替出现。
+- `data/sessions.sqlite3`
+  - 同窗 Feishu scheduler / direct final 均以 assistant final 收口，未见 context window 原始错误进入用户可见文本。
+- 本轮判断
+  - 最新证据仍落在 heartbeat/function-calling 缺少稳定上下文预算控制与 overflow 恢复的既有范围，不新建重复缺陷。
+  - 未见普通 direct 链路不可用、全渠道故障或数据安全问题；严重等级维持 `P2 / New`。

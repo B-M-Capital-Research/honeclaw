@@ -208,3 +208,14 @@ New
 - 本轮判断
   - 03:06 CST 代码级 `Fixed` 结论被 03:08 之后的新运行态样本推翻；当前 live 日志路径仍会持久化未红掉的 MCP env value，状态从 `P1 / Fixed` 回退为 `P1 / New`。
   - 已有关联 GitHub Issue #51，本轮不重复创建；issue 内容已覆盖该 P1，后续修复应优先确认 live runtime 是否已重启到 `d05fc8db`，以及是否还有绕过 `sanitize_acp_payload_for_log(...)` 的写入路径。
+
+## 最新运行态复核（2026-07-04 11:01 CST）
+
+- `data/runtime/logs/acp-events.log`
+  - 巡检窗口：2026-07-04 07:01-11:01 CST。
+  - 本窗检出 23 条 `session/new` ACP 事件，23 条均仍包含 `mcpServers[].env` 字段；结构化计数约 507 个 env name-like 字段，`<redacted>` 计数为 0。
+  - 本轮只记录结构化计数与字段类别，不复制日志原文、env 值、账号、手机号、token 或绝对本机路径；字段类别继续覆盖 actor / channel scope、cloud runtime、数据库连接、对象存储和本地数据目录相关 env。
+  - 同窗 `data/sessions.sqlite3` 有 10:00 / 10:30 Feishu scheduler 与 10:29 Feishu direct 共 3 组 user / assistant final，均成对收口；assistant final 未命中 env 字段、raw tool 输出、provider 原始错误、panic、本机绝对路径或 `mcpServers`。风险仍集中在 ACP audit 持久化边界，不是用户可见回复外泄。
+- 本轮判断
+  - 最新 live 日志仍会持久化未红掉的 MCP env 结构，说明 03:08 CST 加固提交之后真实运行态仍未加载修复，或仍存在绕过净化函数的写入路径；状态维持 `P1 / New`。
+  - 已有关联 GitHub Issue #51，本轮不重复创建；后续修复应优先确认 live runtime 版本、`session/new` 写入路径与历史日志清理 / 凭据轮换。

@@ -448,3 +448,15 @@
 - 本轮判断
   - 最新证据仍落在 scheduler / heartbeat 批量行情数值 sanity check 缺失范围内，没有新的独立根因。
   - 本窗未确认新的最终 direct final 基于异常价格给出交易建议；调度和投递主链路本身仍可运行，因此维持质量性 `P3 / New`，非 P1。
+
+## 最新运行态复核（2026-07-04 11:01 CST）
+
+- `data/runtime/logs/web.log.2026-07-04` / `data/runtime/logs/hone_cli_screen.log`
+  - 巡检窗口：2026-07-04 07:01-11:01 CST。
+  - 本窗 heartbeat raw / deliver preview 继续命中异常行情关键词；代表样本包括 `存储板块关键事件心跳提醒` 继续使用 `SNDK $1,745`、previous close `$2,032.22` 等明显异常数量级价格。
+  - 同窗小米 30 港元破位预警可见送达预览，行情数值本身不属于美股 StockAnalysis 异常价格，但仍显示 heartbeat 会把旧行情时间与当前触发判断混用，已另归入时间口径缺陷。
+- `data/sessions.sqlite3`
+  - 同窗 3 条 assistant final 未命中上述异常行情关键词；未确认新的最终 direct final 基于异常价格给出交易建议。
+- 本轮判断
+  - 最新证据仍落在 scheduler / heartbeat 批量行情数值 sanity check 缺失范围内，没有新的独立根因。
+  - 调度和投递主链路本身仍可运行，因此维持质量性 `P3 / New`，非 P1。
