@@ -14,14 +14,27 @@ P1
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
 [Issue #51](https://github.com/B-M-Capital-Research/honeclaw/issues/51)
 
+## 最新进展（2026-07-05 08:27 CST）
+
+- 本轮按 `tail -n 4000 data/runtime/logs/acp-events.log` 只读复核最新 live `session/new`：
+  - 最近 9 条 `session/new` 共 98 个 env 条目，其中 87 个已写成 `<redacted>`。
+  - 敏感条目未再检出未脱敏值；保留明文的仅是当前白名单内低敏字段。
+  - 说明当前代码与 live 日志行为一致，旧巡检里把“仍保留 `mcpServers` / `env` 结构”直接等同于“值未脱敏”的结论不再成立。
+- 本轮未重启服务；状态继续维持 `Fixed`，后续风险收敛为历史日志清理与凭据轮换，而不是当前 live 脱敏失效。
+
 ## 证据来源
 
+- `data/runtime/logs/acp-events.log`
+  - 2026-07-04 23:02-2026-07-05 03:02 CST 窗口按事件时间复核 44 条 `session/new` ACP 事件，覆盖 Feishu / Web / Discord actor；44 条仍保留 `mcpServers` / `env` 结构。
+  - 本轮只记录结构化计数，不复制日志原文、env 值、账号、手机号、token 或绝对本机路径：44 条事件共 379 个 env 条目，其中 333 个非白名单值为 `<redacted>`，剩余 46 个未红掉条目均属于已允许低敏白名单（`HONE_CLOUD_MODE`、`HONE_CLOUD_ENABLED`、`HONE_CLOUD_STRICT_NO_LOCAL_STORAGE`、`HONE_MCP_ALLOW_CRON`、`HONE_MCP_MAX_TOOL_CALLS`、`HONE_MCP_ALLOWED_TOOLS`），未检出非白名单未红掉值。
+  - 同窗 44 个 `session/prompt` 对应 43 个 `stopReason=end_turn` 与 1 个产品化 scheduler timeout 失败；未见 ACP response error，也未见该问题进入用户可见 assistant final。
+  - 结论：当前 live `session/new` 日志路径已加载脱敏逻辑，不再持久化非白名单 env 明文值；状态从 `P1 / New` 调整为 `P1 / Fixed`。历史 `acp-events.log*` 已落盘旧凭据仍需单独清理 / 轮换，已有 Issue #51，本轮不重复创建。
 - `data/runtime/logs/acp-events.log`
   - 2026-07-04 15:02-19:04 CST 窗口按事件时间继续检出 6 条 `session/new` ACP 事件，覆盖 Feishu direct 与 Web direct actor。
   - 本轮只做结构化计数与字段类别判断，不复制日志原文：6 条事件均仍携带 `mcpServers` / `env` 结构，`<redacted>` 计数为 0。
@@ -86,7 +99,8 @@ New
 - 2026-07-03 07:00 CST 运行态复核显示，当前 live `session/new` 事件仍包含 `mcpServers[].env` 字段，但本窗未检出 env entry 明文值。
 - 2026-07-03 11:05 CST 运行态复核显示，07:00-11:05 CST 新增 `session/new` 事件又出现未红掉的敏感 env value，说明旧修复只覆盖了单一 `env` 结构假设。
 - 2026-07-04 03:04 CST 代码层继续收紧 `acp-events.log` 净化：`session/new` 现在会同时覆盖 `mcpServers` 数组与对象映射两种形状，并对 `env` 的数组条目 / 对象映射统一做白名单外值脱敏。
-- 2026-07-04 07:03 CST 运行态复核显示，03:08 CST 加固提交之后的 live `session/new` 事件仍有 Feishu 样本携带 `mcpServers[].env`，且 `<redacted>` 计数为 0；说明当前运行进程仍未加载修复，或仍存在未覆盖的日志写入路径。
+- 2026-07-04 07:03 CST 运行态复核显示，03:08 CST 加固提交之后的 live `session/new` 事件仍有 Feishu 样本携带 `mcpServers[].env`，且 `<redacted>` 计数为 0；说明当时运行进程仍未加载修复，或仍存在未覆盖的日志写入路径。
+- 2026-07-05 03:02 CST 运行态复核显示，最新 live `session/new` 事件仍保留 `mcpServers/env` 结构，但非白名单 env value 已统一脱敏，未检出非白名单明文值；当前按运行态 `Fixed` 记录。
 - `params.mcpServers[].env` 现在默认不保留未知 env 明文值；仅 `HONE_CLOUD_MODE`、`HONE_CLOUD_ENABLED`、`HONE_CLOUD_STRICT_NO_LOCAL_STORAGE`、`HONE_MCP_ALLOW_CRON`、`HONE_MCP_MAX_TOOL_CALLS`、`HONE_MCP_ALLOWED_TOOLS` 保留原值，其余统一写成 `<redacted>`。
 - 新增日志回归，分别覆盖数组条目形状与对象映射形状的云数据库凭据、对象存储凭据和本地数据目录路径，断言不会进入持久化 JSONL。
 
@@ -122,7 +136,7 @@ New
 ## 后续风险
 
 1. 历史 `data/runtime/logs/acp-events.log*` 里已落盘的旧凭据不会被代码修复自动清除；如这些凭据仍有效，仍需按内部流程轮换并清理旧日志。
-2. 当前运行中的 live 进程尚未加载或未完全应用 2026-07-04 03:08 CST 的加固提交；03:08 之后仍有未红掉样本，状态回到 `P1 / New`。后续修复需先确认 live runtime 已重启到含 `d05fc8db` 的代码，再复核实际 `acp-events.log` 写入路径。
+2. 2026-07-05 03:02 CST 当前 live 路径已确认非白名单 env value 被红掉；若后续真实窗口再次出现 `<redacted>` 计数为 0 或非白名单未红掉值，应从 `Fixed` 回退为 `New` 并继续沿 Issue #51 跟进。
 
 ## 最新运行态复核（2026-07-02 11:01 CST）
 

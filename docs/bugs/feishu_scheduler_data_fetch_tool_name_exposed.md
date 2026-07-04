@@ -14,13 +14,19 @@ P3
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
 无，非 P1
 
 ## 最新进展
+
+- 2026-07-05 08:27 CST 代码级修复，状态更新为 `Fixed`：
+  - 共享 `sanitize_user_visible_output(...)` 补齐近期真实漏网句式，新增覆盖 `本轮 data_fetch 已返回 25 支标的 quote_short 行情`、`价格来自本轮 data_fetch quote_short` 等成功背书口径。
+  - 同时新增 `https://公开行情页.com/...` 占位 URL 清理，避免 `StockAnalysis` 被改写后残留出不可用假域名。
+  - 新增回归 `sanitize_user_visible_output_rewrites_market_data_quote_short_copy`、`sanitize_user_visible_output_rewrites_public_market_fake_urls`，并复跑既有 `sanitize_user_visible_output_rewrites_market_data_verified_copy`；`cargo check -p hone-channels --tests` 通过。
+  - 本轮未重启 live 服务，先按代码级 `Fixed` 记录；若后续新运行态仍出现 `data_fetch quote_short` 或 `公开行情页.com` 用户态口径，再基于新样本重新打开。
 
 - 2026-07-03 23:02 CST 运行态继续复发，状态维持 `New`：
   - 19:02-23:02 CST `data/sessions.sqlite3` 有 3 条新的 assistant final，均正常收口；assistant final 污染扫描未命中空回复、本机绝对路径、raw tool 字段、`reasoning_content`、`<think>`、provider 原始错误、panic、quota 或资源耗尽原文。

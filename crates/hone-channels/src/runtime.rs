@@ -347,7 +347,7 @@ static RE_MARKET_DATA_FALLBACK_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
 });
 static RE_MARKET_DATA_VERIFIED_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
-        r#"(?i)(?:本轮使用\s*data_fetch\s+quote\s+校验|本轮\s*\d+\s*支价格和下一次财报日期均由\s*data_fetch\s+quote\s+返回|本轮\s*data_fetch\s+已返回最新可得\s*quote)"#,
+        r#"(?i)(?:本轮使用\s*data_fetch\s+quote(?:_short)?\s+校验|本轮\s*\d+\s*支价格和下一次财报日期均由\s*data_fetch\s+quote(?:_short)?\s+返回|本轮\s*data_fetch\s+已返回最新可得\s*quote(?:_short)?|本轮\s*data_fetch\s+已返回\s*\d+\s*支标的(?:的)?(?:最新)?\s*quote(?:_short)?\s*行情|价格(?:与财报日期)?来自本轮\s*data_fetch\s+quote(?:_short)?\s+返回)"#,
     )
     .expect("valid regex")
 });
@@ -356,6 +356,10 @@ static RE_STOCKANALYSIS_LABEL: LazyLock<regex::Regex> = LazyLock::new(|| {
 });
 static RE_HONE_MARKET_TOOL_LABEL: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(r#"Hone\s*行情(?:工具|口径)"#).expect("valid regex")
+});
+static RE_PUBLIC_MARKET_FAKE_URL: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r#"https?://公开行情页\.com(?:/[^\s<>"'`，。；、）\)\]\}]*)?"#)
+        .expect("valid regex")
 });
 
 // ── skip-buffer 检测正则 ──────────────────────────────────────────────────────
@@ -618,6 +622,12 @@ fn rewrite_user_visible_internal_copy(text: &str) -> (String, bool) {
     if hone_market_label != rewritten {
         removed = true;
         rewritten = hone_market_label.into_owned();
+    }
+
+    let public_market_fake_url = RE_PUBLIC_MARKET_FAKE_URL.replace_all(&rewritten, "公开行情页");
+    if public_market_fake_url != rewritten {
+        removed = true;
+        rewritten = public_market_fake_url.into_owned();
     }
 
     (rewritten, removed)
@@ -1481,6 +1491,26 @@ mod tests {
     }
 
     #[test]
+    fn sanitize_user_visible_output_rewrites_market_data_quote_short_copy() {
+        for (raw, expected) in [
+            (
+                "本轮 data_fetch 已返回 25 支标的 quote_short 行情，先看核心观察池。",
+                "本轮价格与财报日期已完成校验，先看核心观察池。",
+            ),
+            (
+                "价格来自本轮 data_fetch quote_short 返回，财报日期沿用同窗校验结果。",
+                "本轮价格与财报日期已完成校验，财报日期沿用同窗校验结果。",
+            ),
+        ] {
+            let sanitized = sanitize_user_visible_output(raw);
+            assert!(sanitized.removed_internal, "raw={raw}");
+            assert_eq!(sanitized.content, expected);
+            assert!(!sanitized.content.contains("data_fetch"));
+            assert!(!sanitized.content.contains("quote_short"));
+        }
+    }
+
+    #[test]
     fn sanitize_user_visible_output_strips_internal_runtime_progress_copy() {
         let raw = "本机没有 python 命令，我改用 python3 继续查。已加载股票研究流程。现在用 Hone 的实时检索工具再查一遍。我会把数据补进老铺黄金画像。先说结论：老铺黄金本轮更应该以公告口径为准。";
         let sanitized = sanitize_user_visible_output(raw);
@@ -1569,6 +1599,15 @@ mod tests {
             "来源：公开行情页：000001.SS、^HSI、700.HK。补充说明：公开行情页与公开页面一致。"
         );
         assert!(!sanitized.content.contains("Hone 行情"));
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_rewrites_public_market_fake_urls() {
+        let raw = "来源：https://公开行情页.com/stocks/cohr/statistics/ 与 https://公开行情页.com/stocks/cohr/forecast/。";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(sanitized.removed_internal);
+        assert_eq!(sanitized.content, "来源：公开行情页 与 公开行情页。");
+        assert!(!sanitized.content.contains("公开行情页.com"));
     }
 
     #[test]
