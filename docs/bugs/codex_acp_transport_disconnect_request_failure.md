@@ -8,6 +8,11 @@
 
 ## 证据来源
 
+- `data/runtime/logs/acp-events.log` / `data/runtime/logs/hone_cli_screen.log`
+  - 2026-07-04 15:02-19:04 CST 同类 ACP runner 长运行风险在 Feishu direct 链路继续出现。
+  - 18:47 CST Feishu direct 会话 `Actor_feishu__direct__ou_5f64ee7ca7af22d44a83a31054e6fb92a3` 启动后持续输出 `agent_message_chunk`，到 19:03 CST 仍记录 `agent.run still running`，`elapsed_s=960`、`state="agent_iterating"`。
+  - 同一会话在 `acp-events.log` 到 19:03:55 CST 仍只有 chunk，尚未见 `stopReason=end_turn` 或失败终态；`data/sessions.sqlite3` 对应 actor 最新真实消息仍停在 2026-06-17，说明本轮无法从会话镜像确认最终用户可见收口。
+  - 当前证据是长运行 / 最终超时风险，还没有确认原始错误外泄；状态维持 `P2 / New`，非 P1，不创建 GitHub Issue。
 - `data/runtime/logs/hone_cli_screen.log`
   - 2026-07-03 03:00-07:00 CST 同类 ACP runner 请求失败在 Feishu scheduler 链路继续出现，但用户可见错误已被净化。
   - 06:00 CST Feishu scheduler `每日美股盘后收盘复盘` 启动后，06:03 CST 命中 `codex acp session/prompt idle timeout (180s)`，最终落成 `failure_kind=scheduler_runner_timeout`，Feishu 侧记录本轮不发送。

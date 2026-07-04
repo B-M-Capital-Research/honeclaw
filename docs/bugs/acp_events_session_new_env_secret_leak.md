@@ -23,6 +23,11 @@ New
 ## 证据来源
 
 - `data/runtime/logs/acp-events.log`
+  - 2026-07-04 15:02-19:04 CST 窗口按事件时间继续检出 6 条 `session/new` ACP 事件，覆盖 Feishu direct 与 Web direct actor。
+  - 本轮只做结构化计数与字段类别判断，不复制日志原文：6 条事件均仍携带 `mcpServers` / `env` 结构，`<redacted>` 计数为 0。
+  - 同窗 6 个 prompt 中 5 个已有 `stopReason=end_turn`；另 1 个 Feishu direct 会话仍在持续输出 chunk，尚未收口。风险继续集中在 ACP audit 持久化边界，不是用户可见回复外泄。
+  - 状态维持 `P1 / New`；已有 GitHub Issue #51，本轮不重复创建。
+- `data/runtime/logs/acp-events.log`
   - 2026-07-03 19:02-23:02 CST 窗口按事件时间继续检出 23 条 `session/new` ACP 事件，全部仍携带 `session/new.params.mcpServers[].env` 字段。
   - 本轮只做结构化计数与字段类别判断，不复制日志原文：23 条事件累计 483 个 env entry，`<redacted>` 计数为 0。
   - 同窗 `data/sessions.sqlite3` 有 20:00 Web scheduler 与 21:35 / 23:00 Feishu scheduler 共 3 组 user / assistant final，均成对收口；assistant final 未命中 env 字段、raw tool 输出、provider 原始错误、panic 或本机绝对路径。风险继续集中在 ACP audit 持久化边界，不是用户可见回复外泄。

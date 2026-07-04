@@ -6,6 +6,11 @@
 - **状态**: New
 - **GitHub Issue**: 无
 - **修复结论复核**:
+- `2026-07-04 19:04 CST` 运行态部分复发继续存在，状态维持 `New`：
+  - `data/sessions.sqlite3` 在 15:02-19:04 CST 按真实 `timestamp` 没有新的 user / assistant 消息；`session_messages.imported_at` 在 18:47 CST 批量推进，但内容是 2026-02 到 2026-07-03 的旧会话重导入，不作为新用户侧会话证据。
+  - `sessions.max(last_message_at)=2026-07-03T20:02:19.677892+08:00`，`session_messages.max(timestamp)=2026-07-03T20:02:19.677892+08:00`，而同窗 `data/runtime/logs/acp-events.log` 有 6 个新的 direct prompt，`data/runtime/logs/web.log.2026-07-04` / `hone_cli_screen.log` 继续记录 heartbeat run / failure / preview。
+  - 同一库的 `cron_job_runs.max(executed_at)` 仍停在 `2026-06-30T09:30:52.069168+08:00`，查询本窗无 cron run 记录。
+  - 本次继续说明会话镜像存在旧消息重导入噪声，且调度运行台账 `cron_job_runs` 仍未随真实 heartbeat / scheduler 运行态推进。它会影响巡检、调度审计和补发判断，属于功能性可观测性缺陷，严重等级维持 `P2`；非 P1。
 - `2026-07-03 23:02 CST` 运行态部分复发继续存在，状态维持 `New`：
   - `data/sessions.sqlite3` 在 19:02-23:02 CST 有 20:00 Web scheduler `盘前美股要闻与持仓研报评级日报` 1 个 user turn 与 1 条 assistant final，以及 21:35 / 23:00 Feishu scheduler 2 个 user turn 与 2 条 assistant final，均成对收口；`sessions.max(last_message_at)=2026-07-03T23:01:06.996044+08:00`，说明 session transcript mirror 能追入当前 scheduler transcript。
   - 但同一库的 `cron_job_runs.max(executed_at)` 仍停在 `2026-06-30T09:30:52.069168+08:00`，查询本窗无 cron run 记录。

@@ -7,6 +7,17 @@
 
 ## 修复进展
 
+- `2026-07-04 19:04 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-04` / `data/runtime/logs/hone_cli_screen.log`
+    - 15:02-19:04 CST heartbeat 窗口新增 218 条可分类 `parse_kind` 信号：`JsonNoop` 106 条、`PlainTextSuppressed` 43 条、`JsonTriggered` 29 条、`PlainTextNoop` 26 条、`JsonMalformed` 10 条、`JsonUnknownStatus` 2 条、`JsonEmptyStatus` 2 条。
+    - 同窗仍有 49 条 `failure_kind=execution_failed` 与 219 条 `<think>` raw preview；多条 raw preview 继续以 `<think>`、工具预算耗尽说明、自然语言分析或非契约 JSON 开头，最终落为结构化失败、静默跳过或未发送。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 本窗按真实 `timestamp` 没有新的 user / assistant 消息；18:47 CST `imported_at` 推进是旧会话重导入，不作为新用户会话。
+    - `cron_job_runs.max(executed_at)` 仍停在 `2026-06-30T09:30:52.069168+08:00`，本窗 heartbeat 运行态主要以 runtime 日志为准。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题继续导致 heartbeat 监控任务整轮失败或跳过发送，属于功能性监控漏发 / 降级；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-03 23:02 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
   - `data/runtime/logs/hone_cli_screen.log`
     - 19:02-23:02 CST heartbeat 窗口按行首 UTC 时间新增 217 条可分类 `parse_kind` 信号：`JsonNoop` 89 条、`PlainTextSuppressed` 64 条、`JsonTriggered` 34 条、`PlainTextNoop` 17 条、`JsonUnknownStatus` 6 条、`JsonMalformed` 4 条、`JsonEmptyStatus` 3 条。

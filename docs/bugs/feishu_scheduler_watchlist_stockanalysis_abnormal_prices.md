@@ -20,6 +20,17 @@
 
 - 无，非 P1
 
+## 最新进展（2026-07-04 19:04 CST）
+
+- 本轮 2026-07-04 15:02-19:04 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-04` / `data/runtime/logs/hone_cli_screen.log`
+    - 同窗 heartbeat raw preview / 判断上下文继续出现 MU `$975.56`、SPY `$744.78`、QQQ `$712.60` 等明显异常数量级价格，并进入 `JsonNoop`、`JsonEmptyStatus`、`PlainTextNoop` 或结构化失败链路。
+    - 结构化计数中同窗可检出 MU `$975.56` 5 条、SPY `$744.78` 5 条、QQQ `$712.60` 5 条异常价格信号。
+  - `data/sessions.sqlite3`
+    - 本窗按真实 `timestamp` 没有新的 assistant final；未确认新的正式用户可见投资建议直接使用上述异常价格。
+- 本窗异常价格主要停留在 heartbeat raw preview、未命中或结构化失败路径；调度 / 投递主链路没有因该问题被阻断。
+- 因该问题仍主要影响行情质量和投资建议可信度，不阻断功能链路，因此继续按质量性 `P3 / New`；非 P1，不创建 GitHub Issue。
+
 ## 最新进展（2026-07-03 23:02 CST）
 
 - 本轮 2026-07-03 19:02-23:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
