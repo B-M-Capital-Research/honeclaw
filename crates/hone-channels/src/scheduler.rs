@@ -1310,6 +1310,30 @@ fn heartbeat_revision_sensitive_terms_present(text: &str) -> bool {
         "offeringprice",
         "offering",
         "valuation",
+        "当前价格",
+        "当前价",
+        "最新价格",
+        "最新价",
+        "现价",
+        "现报",
+        "跌破",
+        "低于",
+        "突破",
+        "高于",
+        "阈值",
+        "触发价",
+        "触发线",
+        "配置线",
+        "港元",
+        "港币",
+        "hkd",
+        "currentprice",
+        "latestprice",
+        "triggerprice",
+        "triggerline",
+        "threshold",
+        "below",
+        "under",
     ]
     .iter()
     .any(|term| compact.contains(term))
@@ -4806,6 +4830,19 @@ mod tests {
         )];
 
         assert!(heartbeat_duplicate_preview_match(message, &previews).is_some());
+    }
+
+    #[test]
+    fn heartbeat_duplicate_preview_match_allows_price_threshold_revision() {
+        let message =
+            "【小米30港元破位预警】当前价格 21.70 港元，已低于 30 港元触发线，检查时间 15:30。";
+        let previews = vec![(
+            "2026-06-30T13:00:00+08:00".to_string(),
+            "【小米30港元破位预警】当前价格 21.54 港元，已低于 30 港元触发线，检查时间 13:00。"
+                .to_string(),
+        )];
+
+        assert!(heartbeat_duplicate_preview_match(message, &previews).is_none());
     }
 
     #[test]

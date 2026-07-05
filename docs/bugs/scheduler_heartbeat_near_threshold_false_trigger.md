@@ -3,7 +3,21 @@
 - **发现时间**: 2026-04-29 10:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
+
+## 最新进展（2026-07-06 03:04 CST）
+
+- 本轮 `bug-2` 代码级修复并回写：
+  - `heartbeat_duplicate_preview_match(...)` 的重复抑制仍保留同事件 / 同事实去重，但把价格阈值类提醒纳入事实修订判断。
+  - 当单标的 heartbeat 明确给出新的当前价、阈值或检查时间（例如 `小米30港元破位预警` 从 21.54 HKD 更新为 21.70 HKD）时，不再被旧送达预览误判成重复提醒压掉。
+  - 没有新行情事实的同事件旧闻仍会继续命中 duplicate suppression，避免修复变成重复刷屏。
+- 验证通过：
+  - `cargo test -p hone-channels heartbeat_duplicate_preview_match_ --lib -- --nocapture`
+  - `cargo test -p hone-channels heartbeat_explicit_lower_price_crossing_is_not_near_threshold_suppressed --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+  - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs`
+  - `git diff --check`
+- 本轮不依赖当前机器 live 服务、线上日志或真实渠道状态判定恢复；若后续同一 job 在有新当前价 / 检查时间的低于阈值样本里仍被 `duplicate_suppressed` 压掉，再从 `Fixed` 回退为 `New`。
 
 ## 最新进展（2026-06-30 15:02 CST）
 
