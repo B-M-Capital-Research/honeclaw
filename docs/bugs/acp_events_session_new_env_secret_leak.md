@@ -20,6 +20,14 @@ Fixed
 
 [Issue #51](https://github.com/B-M-Capital-Research/honeclaw/issues/51)
 
+## 最新进展（2026-07-05 15:01 CST）
+
+- 本轮按 `data/runtime/logs/acp-events.log` 事件时间复核 2026-07-05 11:01-15:01 CST live `session/new`：
+  - 同窗 7 条 `session/new` 均携带 `mcpServers` 结构，结构化扫描共检出 85 个 `<redacted>` 值。
+  - 未检出 token / secret / password 类敏感字符串回退，也未发现该问题进入用户可见 assistant final。
+  - 同窗 7 个 prompt 均有 `stopReason=end_turn`，无 ACP response error；另有普通 assistant final 污染扫描未命中 `mcpServers` 或 env 字段。
+- 状态继续维持 `Fixed`；历史日志清理 / 凭据轮换风险仍由 Issue #51 跟踪，本轮不重复创建 GitHub Issue。
+
 ## 最新进展（2026-07-05 11:01 CST）
 
 - 本轮按 `data/runtime/logs/acp-events.log` 事件时间复核 2026-07-05 07:02-11:01 CST live `session/new`：
