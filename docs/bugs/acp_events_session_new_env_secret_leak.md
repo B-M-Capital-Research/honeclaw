@@ -20,6 +20,14 @@ Fixed
 
 [Issue #51](https://github.com/B-M-Capital-Research/honeclaw/issues/51)
 
+## 最新进展（2026-07-05 11:01 CST）
+
+- 本轮按 `data/runtime/logs/acp-events.log` 事件时间复核 2026-07-05 07:02-11:01 CST live `session/new`：
+  - 同窗 18 条 `session/new` 均携带 `mcpServers` 结构，共 210 个 env 条目。
+  - 187 个 env value 已写成 `<redacted>`；未红掉条目只命中当前低敏布尔 / 开关字段，例如 `HONE_MCP_ALLOW_CRON` 与 `HONE_CLOUD_MODE`。
+  - 未检出非白名单凭据值回退，也未发现该问题进入用户可见 assistant final。
+- 状态继续维持 `Fixed`；历史日志清理 / 凭据轮换风险仍由 Issue #51 跟踪，本轮不重复创建 GitHub Issue。
+
 ## 最新进展（2026-07-05 08:27 CST）
 
 - 本轮按 `tail -n 4000 data/runtime/logs/acp-events.log` 只读复核最新 live `session/new`：

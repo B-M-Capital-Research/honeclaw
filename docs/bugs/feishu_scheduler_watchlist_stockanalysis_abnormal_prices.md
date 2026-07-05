@@ -20,6 +20,17 @@
 
 - 无，非 P1
 
+## 最新进展（2026-07-05 11:01 CST）
+
+- 本轮 2026-07-05 07:02-11:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 heartbeat raw preview / 判断上下文继续检出 7 条 MU `$975.56` 异常数量级价格，并进入 `JsonNoop`、`PlainTextNoop` 或 `JsonUnknownStatus` 链路。
+    - 代表样本包括 07:30、08:00、08:30、09:00、09:30、10:00、10:30 CST `Monitor_Watchlist_11` raw preview 继续使用 MU `$975.56` 判断未触发阈值。
+  - `data/sessions.sqlite3`
+    - 本窗普通 scheduler / direct assistant final 均正常收口；未确认新的正式用户可见 final 直接使用 MU `$975.56` 或同类异常价。
+- 本窗异常价格主要停留在 heartbeat raw preview、未命中或结构化失败路径；调度 / 投递主链路没有因该问题被阻断。
+- 因该问题仍主要影响行情质量和投资建议可信度，不阻断功能链路，因此继续按质量性 `P3 / New`；非 P1，不创建 GitHub Issue。
+
 ## 最新进展（2026-07-05 07:04 CST）
 
 - 本轮 2026-07-05 03:02-07:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
