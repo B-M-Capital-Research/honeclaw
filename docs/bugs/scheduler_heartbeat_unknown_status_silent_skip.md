@@ -3,9 +3,19 @@
 - **发现时间**: 2026-04-15 14:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 
 ## 修复进展
+
+- `2026-07-06 07:03 CST` 代码级修复，状态更新为 `Fixed`：
+  - `crates/hone-channels/src/scheduler.rs` 的 heartbeat JSON 解析新增布尔字段兼容：
+    - `{"noop":true}`、`{"push":false}`、`{"should_deliver":false}`、`{"triggered":false}` 归一为兼容 `JsonNoop`，不再作为 `JsonEmptyStatus` / `JsonUnknownStatus` 升级失败。
+    - `{"triggered":true,"message":...}`、`{"push":true,"message":...}`、`{"should_deliver":true,"message":...}` 归一为 `JsonTriggered`，并继续走既有 delivery sanitizer、near-threshold guard、stale price timestamp guard 与北京时间归一化。
+  - 解析器同时支持最终 fenced / inline code JSON，例如 ` ```json {"status":"noop"} ``` ` 和 `` `{"status":"noop"}` ``，避免模型以代码块包裹合法最终 JSON 时被记为 `PlainTextSuppressed`。
+  - 保守边界：仅结构化布尔字段和最终 JSON 包裹被兼容；长段分析、工具调用残留、契约复述与无法证明 no-op/triggered 的自由文本仍按既有 `PlainTextSuppressed` / `JsonMalformed` 处理，不因单次模型波动误发提醒。
+  - 新增回归：`heartbeat_boolean_noop_shapes_are_compatible_noop`、`heartbeat_boolean_triggered_shape_delivers_message`、`heartbeat_code_wrapped_json_noop_is_parsed`。
+  - 验证通过：`cargo test -p hone-channels heartbeat_boolean_ --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_code_wrapped_json_noop_is_parsed --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`、`rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs`、`git diff --check`。
+  - 无关联 GitHub Issue；本轮不重启服务，不依赖当前机器 live 服务或线上日志判定恢复。若后续新代码加载后仍大量出现不可解释的 `PlainTextSuppressed` / `JsonUnknownStatus` / `JsonMalformed`，再按最新 raw preview 回退并继续收紧。
 
 - `2026-07-06 03:02 CST` 本轮确认当前 runtime 继续复发，状态从代码级 `Fixed` 回退为 `New`：
   - `data/sessions.sqlite3` -> `cron_job_runs`

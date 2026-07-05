@@ -258,11 +258,21 @@ pub enum HeartbeatParseKind {
 struct HeartbeatJsonResponse {
     status: Option<String>,
     message: Option<String>,
+    triggered: Option<bool>,
+    noop: Option<bool>,
+    push: Option<bool>,
+    should_deliver: Option<bool>,
 }
 
 fn parse_heartbeat_json_payload(content: &str) -> Option<HeartbeatJsonResponse> {
     let trimmed = content.trim();
     if let Ok(parsed) = serde_json::from_str::<HeartbeatJsonResponse>(trimmed) {
+        return Some(parsed);
+    }
+    if let Some(parsed) = parse_heartbeat_json_from_code_fence(trimmed) {
+        return Some(parsed);
+    }
+    if let Some(parsed) = parse_heartbeat_inline_code_json(trimmed) {
         return Some(parsed);
     }
 
@@ -316,6 +326,34 @@ fn parse_heartbeat_json_payload(content: &str) -> Option<HeartbeatJsonResponse> 
         .into_iter()
         .rev()
         .find_map(|candidate| serde_json::from_str::<HeartbeatJsonResponse>(candidate).ok())
+}
+
+fn parse_heartbeat_json_from_code_fence(content: &str) -> Option<HeartbeatJsonResponse> {
+    let mut search_from = 0usize;
+    let mut parsed = None;
+
+    while let Some(relative_start) = content[search_from..].find("```") {
+        let start = search_from + relative_start + 3;
+        let rest = &content[start..];
+        let body_start = rest.find('\n').map(|idx| start + idx + 1).unwrap_or(start);
+        let Some(relative_end) = content[body_start..].find("```") else {
+            break;
+        };
+        let end = body_start + relative_end;
+        let body = content[body_start..end].trim();
+        if let Ok(candidate) = serde_json::from_str::<HeartbeatJsonResponse>(body) {
+            parsed = Some(candidate);
+        }
+        search_from = end + 3;
+    }
+
+    parsed
+}
+
+fn parse_heartbeat_inline_code_json(content: &str) -> Option<HeartbeatJsonResponse> {
+    let trimmed = content.trim();
+    let inner = trimmed.strip_prefix('`')?.strip_suffix('`')?.trim();
+    serde_json::from_str::<HeartbeatJsonResponse>(inner).ok()
 }
 
 fn heartbeat_status_indicates_noop(status: &str) -> bool {
@@ -391,6 +429,35 @@ fn heartbeat_status_indicates_compatible_noop(status: &str) -> bool {
         || status.contains("已更新")
         || status.contains("部分完成")
         || status.contains("部分成功")
+}
+
+fn heartbeat_json_bool_indicates_noop(parsed: &HeartbeatJsonResponse) -> bool {
+    parsed.noop == Some(true)
+        || parsed.triggered == Some(false)
+        || parsed.push == Some(false)
+        || parsed.should_deliver == Some(false)
+}
+
+fn heartbeat_json_bool_indicates_triggered(parsed: &HeartbeatJsonResponse) -> bool {
+    parsed.triggered == Some(true)
+        || parsed.push == Some(true)
+        || parsed.should_deliver == Some(true)
+}
+
+fn heartbeat_json_deliver_or_noop(
+    message: Option<String>,
+) -> (HeartbeatOutcome, HeartbeatParseKind) {
+    let raw_message = message.unwrap_or_default();
+    let message = unwrap_nested_json_message(raw_message.trim())
+        .trim()
+        .to_string();
+    if message.is_empty() || heartbeat_internal_marker_prefix(&message) {
+        return (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonTriggered);
+    }
+    (
+        HeartbeatOutcome::Deliver(message),
+        HeartbeatParseKind::JsonTriggered,
+    )
 }
 
 fn previous_visible_char(content: &str, idx: usize) -> Option<char> {
@@ -1426,7 +1493,7 @@ pub fn inspect_heartbeat_result(content: &str) -> (HeartbeatOutcome, HeartbeatPa
     }
 
     if let Some(parsed) = parse_heartbeat_json_payload(trimmed) {
-        let status = parsed.status.unwrap_or_default();
+        let status = parsed.status.clone().unwrap_or_default();
         if heartbeat_status_indicates_noop(&status) {
             return (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonNoop);
         }
@@ -1434,20 +1501,16 @@ pub fn inspect_heartbeat_result(content: &str) -> (HeartbeatOutcome, HeartbeatPa
             return (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonNoop);
         }
         if status.is_empty() {
+            if heartbeat_json_bool_indicates_noop(&parsed) {
+                return (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonNoop);
+            }
+            if heartbeat_json_bool_indicates_triggered(&parsed) {
+                return heartbeat_json_deliver_or_noop(parsed.message);
+            }
             return (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonEmptyStatus);
         }
         if heartbeat_status_indicates_triggered(&status) {
-            let raw_message = parsed.message.unwrap_or_default();
-            let message = unwrap_nested_json_message(raw_message.trim())
-                .trim()
-                .to_string();
-            if message.is_empty() || heartbeat_internal_marker_prefix(&message) {
-                return (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonTriggered);
-            }
-            return (
-                HeartbeatOutcome::Deliver(message),
-                HeartbeatParseKind::JsonTriggered,
-            );
+            return heartbeat_json_deliver_or_noop(parsed.message);
         }
         return (
             HeartbeatOutcome::Noop,
@@ -3471,6 +3534,63 @@ mod tests {
             inspect_heartbeat_result(r#"{"status":"noop"}"#).0,
             HeartbeatOutcome::Noop
         );
+    }
+
+    #[test]
+    fn heartbeat_boolean_noop_shapes_are_compatible_noop() {
+        for content in [
+            r#"{"noop":true}"#,
+            r#"{"push":false,"reason":"当前价格高于触发线，未触发"}"#,
+            r#"{"should_deliver":false,"reason":"not triggered"}"#,
+            r#"{"triggered":false,"conditions":{"price_threshold_breach":false}}"#,
+        ] {
+            assert_eq!(
+                inspect_heartbeat_result(content),
+                (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonNoop),
+                "content={content}"
+            );
+            let execution = heartbeat_execution_from_content(content, "model-x");
+            assert!(!execution.should_deliver, "content={content}");
+            assert!(execution.error.is_none(), "content={content}");
+            assert_eq!(execution.metadata["parse_kind"], "JsonNoop");
+        }
+    }
+
+    #[test]
+    fn heartbeat_boolean_triggered_shape_delivers_message() {
+        let content = r#"{"triggered":true,"message":"【RKLB 异动提醒】当前涨幅超过 8%，检查时间：北京时间 09:30。"}"#;
+        assert_eq!(
+            inspect_heartbeat_result(content),
+            (
+                HeartbeatOutcome::Deliver(
+                    "【RKLB 异动提醒】当前涨幅超过 8%，检查时间：北京时间 09:30。".to_string()
+                ),
+                HeartbeatParseKind::JsonTriggered
+            )
+        );
+        let execution = heartbeat_execution_from_content(content, "model-x");
+        assert!(execution.should_deliver);
+        assert!(execution.error.is_none());
+        assert_eq!(execution.metadata["parse_kind"], "JsonTriggered");
+    }
+
+    #[test]
+    fn heartbeat_code_wrapped_json_noop_is_parsed() {
+        for content in [
+            "```json\n{\"status\":\"noop\"}\n```",
+            "最终输出：\n```json\n{\"noop\":true}\n```",
+            "`{\"status\":\"noop\"}`",
+        ] {
+            assert_eq!(
+                inspect_heartbeat_result(content),
+                (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonNoop),
+                "content={content}"
+            );
+            let execution = heartbeat_execution_from_content(content, "model-x");
+            assert!(!execution.should_deliver, "content={content}");
+            assert!(execution.error.is_none(), "content={content}");
+            assert_eq!(execution.metadata["parse_kind"], "JsonNoop");
+        }
     }
 
     #[test]
