@@ -14,13 +14,24 @@ P3
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
 无，非 P1
 
 ## 最新进展
+
+- 2026-07-06 03:41 CST 代码级修复，状态更新为 `Fixed`：
+  - 共享 `sanitize_user_visible_output(...)` 继续补齐用户可见净化规则，覆盖 `Hone data_fetch quote`、`行情数据工具`、`我已经加载单股研究流程`、画像创建 / 更新 / 沉淀等近期漏网句式。
+  - 新增回归 `sanitize_user_visible_output_strips_additional_profile_progress_variants`、`sanitize_user_visible_output_rewrites_hone_data_fetch_quote_and_market_tool_copy`、`sanitize_user_visible_output_rewrites_additional_company_profile_status_copy`；验证 `cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`、`git diff --check` 通过。
+  - 本轮未重启当前 live 服务；按代码级 `Fixed` 记录，后续若部署 / 重启后仍出现 `data_fetch`、`quote_short`、`公开行情页.com`、`Hone data_fetch quote` 或不可用来源占位，再基于新样本重新打开。
+
+- 2026-07-06 03:02 CST 修复前运行态继续复发，状态当时维持 `New`：
+  - 23:01-03:02 CST `data/sessions.sqlite3` 新增 4 个 user turn 与 5 条 assistant final，Feishu direct / scheduler 均有 assistant 收口；普通 scheduler 3 条为 `completed + sent + delivered=1`，另有 1 条 `execution_failed + skipped_error`。
+  - assistant final 污染扫描命中 1 条 `公开行情页` 口径：23:01 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 的 `核心观察股池晚间快报` 写出“专用行情链路本轮未取得可用返回，已用公开行情页个股页补充校验”。
+  - 本窗未检出 `公开行情页.com` 占位链接、`data_fetch`、`quote_short` 或原始工具 JSON，但“公开行情页”仍是内部净化后的来源口径，继续暴露数据链路实现边界。
+  - 回复主体正常完成观察池价格 / 击球区简表并送达，没有投递失败、空回复、错投或链路级数据破坏证据；问题仍只影响用户可见来源 / 工具口径边界和产品感，不影响主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
 
 - 2026-07-05 19:02 CST 运行态再次复发，状态从代码级 `Fixed` 回退为 `New`：
   - 15:00-19:02 CST `data/sessions.sqlite3` 新增 4 组 user / assistant，Feishu direct、Feishu scheduler 与 Web scheduler 均成对收口；普通 scheduler 台账 1 条为 `completed + sent + delivered=1`。

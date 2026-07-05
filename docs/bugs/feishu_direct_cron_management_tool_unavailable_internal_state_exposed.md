@@ -3,10 +3,18 @@
 - **发现时间**: 2026-06-11 03:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无，非 P1
 
 ## 证据来源
+
+- `data/sessions.sqlite3` -> `session_messages`
+  - 2026-07-06 03:02 CST 巡检窗口：2026-07-05 23:01-2026-07-06 03:02 CST。
+  - 同窗有 4 个 user turn 与 5 条 assistant final，最近 Feishu direct / scheduler 会话均以 assistant 收口；普通 scheduler 3 条为 `completed + sent + delivered=1`，另有 1 条 `execution_failed + skipped_error`。
+  - `session_id=Actor_feishu__direct__ou_5fea712445d905e8418bde07dbcf2cbfb2` 在 `2026-07-06T00:25:49.038732+08:00` 收到用户追问：`是不是还没有发我周日晚美股资金流向周报？`
+  - assistant 于 `2026-07-06T00:26:17.344164+08:00` 回复称只能看到周日晚 20:00 已发送的是“每周全球经济事件与美股财报时间表”，没有看到“周日晚美股资金流向周报”推送成功记录；但同时明确写出“定时任务管理现在暂时不可用，我不能完整核对你的全部任务列表和实际投递状态”。
+  - 本次没有继续外露 `data/cron_jobs`、`data/sessions.sqlite3`、`session_messages` 或本地路径，用户态文案较初始样本已有收敛；但 direct 任务管理 / 投递核对主链路仍不可用。
+  - 同窗 `cron_job_runs` 可查到历史 `美股收盘资金流复盘` 任务只在 2026-06-08 至 2026-06-12 有送达记录；`data/cron_jobs/cron_jobs_feishu__direct__ou_5f62439dbed2b381c0023e70a381dbd768.json` 与历史 prompt-audit 证实存在按 `repeat=trading_day`、北京时间 09:30 的日度资金流复盘配置，但未证明用户所说“周日晚资金流向周报”已配置且漏触发。因此本轮只回退本单“任务管理 / 投递状态核对不可用”，不新建独立周报漏发缺陷。
 
 - `data/sessions.sqlite3` -> `session_messages`
   - 巡检时间窗：2026-06-10 23:02-2026-06-11 03:02 CST。
@@ -58,6 +66,7 @@
 - 回复虽然没有谎称成功，但连续暴露内部运行状态：`data/cron_jobs` 空目录、`data/sessions.sqlite3`、`session_messages`、`session_metadata`、`cron_job / scheduled_task` 工具名与“当前沙盒”。
 - 2026-06-11 20:55 CST 复发样本已经没有继续暴露本地路径 / SQLite 表名，但仍明确写出“定时任务创建接口未暴露”，并且没有真实创建用户要求的两个定时任务。
 - 2026-06-15 21:43 CST 复发样本继续写出“自动定时任务注册工具没有暴露出来”，并在用户已经补齐检查时间后仍未创建 PKE 双周提醒任务；该样本没有继续外露本地路径或 SQLite 表名，但 direct 定时任务创建主链路仍不可用。
+- 2026-07-06 00:26 CST 复发样本没有继续外露内部路径或表名，但仍无法完整核对用户任务列表和实际投递状态，只能给出“没有看到推送成功记录”的不完整结论。
 - 普通 scheduler 仍在执行，说明当前不是全局 cron loop 停摆，而是 direct 管理入口不可用或未随该会话注入。
 
 ## 用户影响
@@ -87,6 +96,15 @@
   - 本次没有继续外露本地路径或 SQLite 表名，说明用户态文案有所收敛；但 Feishu direct 定时任务创建主链路仍不可用，因此状态保持 `P2 / New`。非 P1，不创建 GitHub Issue。
 
 ## 修复记录
+
+## 复发确认（2026-07-06 03:02 CST）
+
+- 巡检窗口：2026-07-05 23:01-2026-07-06 03:02 CST。
+- `session_id=Actor_feishu__direct__ou_5fea712445d905e8418bde07dbcf2cbfb2`：
+  - 用户追问是否未收到“周日晚美股资金流向周报”。
+  - assistant 判断没有看到该周报推送成功记录，但同时说明定时任务管理暂时不可用，不能完整核对任务列表和实际投递状态。
+- 该样本晚于 2026-06-21 03:06 的代码级修复记录；虽然不再外露本地存储路径或裸工具名，但 direct 任务管理 / 投递核对主链路仍不可用。
+- 状态从 `Fixed` 调回 `New`。仍定级 `P2`：本轮证据覆盖单个 Feishu direct actor 的任务状态核对失败，普通 scheduler 与直聊同窗仍收口，未见跨用户批量失败、错投、数据破坏或敏感信息泄露。非 P1，不创建 GitHub Issue。
 
 - 2026-06-21 03:06 CST：本轮继续修复 Feishu direct 定时任务管理回复的确定性收口，而不再只依赖 prompt 文案约束。
   - `crates/hone-channels/src/response_finalizer.rs` 现在会在模型最终回复退化成过渡句或被共享净化层统一改写成“定时任务管理暂时不可用，请稍后再试”时，优先从真实 `cron_job` 工具结果恢复用户态答复。

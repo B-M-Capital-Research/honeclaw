@@ -7,6 +7,18 @@
 
 ## 修复进展（2026-04-26）
 
+- **2026-07-06 03:02 CST 继续维持 `New`**：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 23:01-03:02 CST heartbeat 新增 63 条 `noop + skipped_noop + delivered=0` 与 42 条 `execution_failed + skipped_error + delivered=0`。
+    - 23:30 / 00:00 CST 两批共 26 条 Feishu heartbeat 任务落成 `runner_error + execution_failed`，覆盖 `TEM大事件心跳监控`、`AAOI 1.6T 光模块心跳检测`、`Cerebras IPO与业务进展心跳监控`、`全天原油价格3小时播报`、`伦敦金跌破4100提醒`、`RKLB异动监控`、`持仓重大事件心跳检测`、`Monitor_Watchlist_11`、`DRAM 心跳监控` 等。
+    - 错误体均为 MiniMax/OpenAI-compatible `error sending request for url (https://api.minimaxi.com/v1/chat/completions)`，最终没有 heartbeat 用户可见提醒送达。
+  - 会话质量对照：
+    - 同窗 `session_messages` 有 4 个 user turn 与 5 条 assistant final；最近 Feishu direct / scheduler 会话均以 assistant 收口。
+    - 普通 scheduler 3 条为 `completed + sent + delivered=1`，未见普通 scheduler 或 Feishu direct 全局不可用；用户可见 final 未外露原始 provider 错误。
+  - 判断：
+    - 最新证据仍满足“provider 短重试后仍成批失败”的活跃条件。
+    - 该问题影响 heartbeat 监控覆盖但未造成错投、数据破坏或全渠道不可用；严重等级保持功能性 `P2`，非 P1，不创建 GitHub Issue。
+
 - **2026-06-27 15:02 CST 继续维持 `New`**：
   - `data/runtime/logs/web.log.2026-06-27` 与 `data/runtime/logs/hone_cli_screen.log`
     - 11:02-15:02 CST heartbeat function-calling 路径继续出现 `MiniMax-M2.7-highspeed` / OpenAI-compatible `error sending request for url (https://api.minimaxi.com/v1/chat/completions)`。

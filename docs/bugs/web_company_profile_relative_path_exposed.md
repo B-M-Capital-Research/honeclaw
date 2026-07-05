@@ -3,10 +3,15 @@
 - **发现时间**: 2026-06-02 11:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，非 P1
 
 ## 修复记录
+
+- 2026-07-06 03:41 CST 再次代码级修复：
+  - 共享 `sanitize_user_visible_output(...)` 补齐此前未覆盖的自然语言落点句式，包括 `本地没有 HPE 画像`、`已更新 NVDA 公司画像`、`本轮已将 KLAC 建立为长期公司画像`、`长期研究框架沉淀为组合画像`。
+  - 新增回归 `sanitize_user_visible_output_strips_additional_profile_progress_variants`、`sanitize_user_visible_output_rewrites_additional_company_profile_status_copy`，并复跑 `cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture` 与 `cargo check -p hone-channels --tests`。
+  - 本轮未重启 Feishu/Web live 服务，因此先记代码级 `Fixed`；若后续新运行态仍出现 `company_profiles/...` 或同类“画像落点”口径，再基于新样本重新打开。
 
 - 2026-06-30 03:07 CST 运行态回退：
   - `data/runtime/logs/acp-events.log` 在 23:00-03:07 CST 用户可见 `agent_message_chunk` 污染扫描命中 1 条新样本：`session_id=Actor_feishu__direct__ou_5fdb997ed67ac0b7f5403701682185d67a` 于 2026-06-29T15:06:50Z 输出 `company_profiles/AMAT.md。`。

@@ -292,7 +292,7 @@ static RE_INTERNAL_TOOLING_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock::new
 });
 static RE_INTERNAL_RUNTIME_PROGRESS_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
-        r#"[^\n。！？]*(?:本机没有\s*python(?:\s*命令)?(?:可用)?|本地没有\s*python(?:\s*命令)?(?:可用)?|shell\s*环境里可用的解释器|改用\s*python3|已加载股票研究流程|Hone\s*的实时检索工具|实时检索工具再查一遍|本地观察池配置|把(?:数据|结果|内容)补进[^。\n！？]*(?:画像|公司画像)|本地没有已有的[^。\n！？]*(?:画像|公司画像)|本地已有的[^。\n！？]*(?:画像|公司画像)|我没有找到本地已有的[^。\n！？]*(?:画像|公司画像)|本地画像显示|本地公司画像|本地长期画像|检查本地是否已有[^。\n！？]*(?:画像|公司画像)|已有的公司画像里[^。\n！？]*|画像里[^。\n！？]*沉淀|只更新本轮能核验到的新增事实|追加到画像|回写到[^。\n！？]*(?:长期画像|画像|公司画像)|写回[^。\n！？]*(?:长期画像|画像|公司画像)|不追加[^。\n！？]*(?:长期画像|画像|公司画像)事件|本轮没有新增事实改变[^。\n！？]*(?:长期画像|画像|公司画像)|公司画像事件|我(?:先|再)核(?:对|验|一下)?[^。\n！？]*(?:交易日|对应实体|股价口径|行情口径|财报|指引|背景|公司表述|本地长期画像)|我先按北京时间[^。\n！？]*对齐交易日|沉淀成[^。\n！？]*(?:画像|公司画像)|沉淀为[^。\n！？]*(?:画像|公司画像)|我会新增[^。\n！？]*(?:长期画像|画像|公司画像)|我会新建[^。\n！？]*(?:长期画像|画像|公司画像)|准备建立[^。\n！？]*(?:长期画像|画像|公司画像)|把长期可复用的[^。\n！？]*沉淀到[^。\n！？]*(?:画像|公司画像))[^\n。！？]*[。！？]?"#,
+        r#"[^\n。！？]*(?:本机没有\s*python(?:\s*命令)?(?:可用)?|本地没有\s*python(?:\s*命令)?(?:可用)?|shell\s*环境里可用的解释器|改用\s*python3|(?:已|已经)加载(?:股票|单股)研究流程|Hone\s*的实时检索工具|实时检索工具再查一遍|本地观察池配置|把(?:数据|结果|内容)补进[^。\n！？]*(?:画像|公司画像)|本地没有已有的[^。\n！？]*(?:画像|公司画像)|本地没有[^。\n！？]*(?:长期公司画像|长期画像|公司画像|画像)|本地已有的[^。\n！？]*(?:画像|公司画像)|我没有找到本地已有的[^。\n！？]*(?:画像|公司画像)|本地画像显示|本地公司画像|本地长期画像|检查本地是否已有[^。\n！？]*(?:画像|公司画像)|已有的公司画像里[^。\n！？]*|画像里[^。\n！？]*沉淀|只更新本轮能核验到的新增事实|追加到画像|回写到[^。\n！？]*(?:长期画像|画像|公司画像)|写回[^。\n！？]*(?:长期画像|画像|公司画像)|不追加[^。\n！？]*(?:长期画像|画像|公司画像)事件|本轮没有新增事实改变[^。\n！？]*(?:长期画像|画像|公司画像)|公司画像事件|我(?:先|再)核(?:对|验|一下)?[^。\n！？]*(?:交易日|对应实体|股价口径|行情口径|财报|指引|背景|公司表述|本地长期画像)|我先按北京时间[^。\n！？]*对齐交易日|沉淀成[^。\n！？]*(?:画像|公司画像)|沉淀为[^。\n！？]*(?:画像|公司画像|组合画像)|我会新增[^。\n！？]*(?:长期画像|画像|公司画像)|我会新建[^。\n！？]*(?:长期画像|画像|公司画像)|准备建立[^。\n！？]*(?:长期画像|画像|公司画像)|把长期可复用的[^。\n！？]*沉淀到[^。\n！？]*(?:画像|公司画像))[^\n。！？]*[。！？]?"#,
     )
     .expect("valid regex")
 });
@@ -327,6 +327,12 @@ static RE_COMPANY_PROFILE_CREATED_COPY: LazyLock<regex::Regex> = LazyLock::new(|
     )
     .expect("valid regex")
 });
+static RE_COMPANY_PROFILE_STATUS_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r#"(?:已更新\s*[^。\n！？]*?(?:长期公司画像|公司画像)|本轮已将\s*[^。\n！？]*?(?:建立为长期公司画像|建立为公司画像)|[^。\n！？]*沉淀为组合画像)"#,
+    )
+    .expect("valid regex")
+});
 static RE_COMPANY_PROFILE_WRITTEN_LIST_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
         r#"已写入[:：]?\s*(?:(?:[-*]\s*)?\d+\.\s*公司画像(?:\s|$|[\n\r，,；;。:：])*){1,}"#,
@@ -355,7 +361,10 @@ static RE_STOCKANALYSIS_LABEL: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(r#"(?i)[ \t]*\bStockAnalysis\b[ \t]*"#).expect("valid regex")
 });
 static RE_HONE_MARKET_TOOL_LABEL: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r#"Hone\s*行情(?:工具|口径)"#).expect("valid regex")
+    regex::Regex::new(
+        r#"Hone\s*行情(?:工具|口径)|Hone\s*data_fetch(?:\s*quote(?:_short)?)?|行情数据工具"#,
+    )
+    .expect("valid regex")
 });
 static RE_PUBLIC_MARKET_FAKE_URL: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(r#"https?://公开行情页\.com(?:/[^\s<>"'`，。；、）\)\]\}]*)?"#)
@@ -596,6 +605,7 @@ fn rewrite_user_visible_internal_copy(text: &str) -> (String, bool) {
         (&RE_COMPANY_PROFILE_WRITTEN_LIST_COPY, "已写入公司画像"),
         (&RE_COMPANY_PROFILE_CREATED_LIST_COPY, "已创建公司画像"),
         (&RE_COMPANY_PROFILE_COPY_GLITCH, "已沉淀为公司画像"),
+        (&RE_COMPANY_PROFILE_STATUS_COPY, "公司画像已更新"),
         (
             &RE_MARKET_DATA_FALLBACK_COPY,
             "主行情源本轮未返回可用结果，已改用公开页面补充校验",
@@ -1537,6 +1547,19 @@ mod tests {
     }
 
     #[test]
+    fn sanitize_user_visible_output_strips_additional_profile_progress_variants() {
+        let raw = "我已经加载单股研究流程。本地没有 HPE 画像。主体结论：HPE 仍更适合等企业订单确认后再评估。";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(sanitized.removed_internal);
+        assert_eq!(
+            sanitized.content,
+            "主体结论：HPE 仍更适合等企业订单确认后再评估。"
+        );
+        assert!(!sanitized.content.contains("单股研究流程"));
+        assert!(!sanitized.content.contains("HPE 画像"));
+    }
+
+    #[test]
     fn sanitize_user_visible_output_strips_runner_warning_copy() {
         let raw = "Model metadata for gpt-5.5 not found. Defaulting to fallback metadata; this can degrade performance and cause issues. MLCC 涨价周期的关键是供给扩产滞后和下游安全库存重建。\nFalling back from WebSockets to HTTPS transport. stream disconnected before completion: tls handshake eof. TEM 本轮重点看订单兑现和现金流。";
         let sanitized = sanitize_user_visible_output(raw);
@@ -1602,6 +1625,16 @@ mod tests {
     }
 
     #[test]
+    fn sanitize_user_visible_output_rewrites_hone_data_fetch_quote_and_market_tool_copy() {
+        let raw = "来源：Hone data_fetch quote。补充说明：行情数据工具已校验。";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(sanitized.removed_internal);
+        assert_eq!(sanitized.content, "来源：公开行情页。补充说明：公开行情页已校验。");
+        assert!(!sanitized.content.contains("data_fetch"));
+        assert!(!sanitized.content.contains("行情数据工具"));
+    }
+
+    #[test]
     fn sanitize_user_visible_output_rewrites_public_market_fake_urls() {
         let raw = "来源：https://公开行情页.com/stocks/cohr/statistics/ 与 https://公开行情页.com/stocks/cohr/forecast/。";
         let sanitized = sanitize_user_visible_output(raw);
@@ -1628,6 +1661,17 @@ mod tests {
         assert!(sanitized.removed_internal);
         assert_eq!(sanitized.content, "公司画像已更新。后续可继续补充。");
         assert!(!sanitized.content.contains("company_profiles"));
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_rewrites_additional_company_profile_status_copy() {
+        let raw = "长期研究框架沉淀为组合画像。已更新 NVDA 公司画像。本轮已将 KLAC 建立为长期公司画像。";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(sanitized.removed_internal);
+        assert_eq!(sanitized.content, "公司画像已更新。公司画像已更新。");
+        assert!(!sanitized.content.contains("组合画像"));
+        assert!(!sanitized.content.contains("NVDA 公司画像"));
+        assert!(!sanitized.content.contains("KLAC"));
     }
 
     #[test]

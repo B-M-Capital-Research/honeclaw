@@ -14,7 +14,7 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## GitHub Issue
 
@@ -77,6 +77,11 @@
   - 该样本晚于 2026-06-22 07:08 CST 共享净化修复记录；回复主体正常 `end_turn` 收口，不影响投研主链路、落库或投递，因此按质量性 `P3 / New` 处理，非 P1，不创建 GitHub Issue。
 
 ## 修复记录
+
+- 2026-07-06 03:41 CST 再次代码级修复：
+  - 共享 `sanitize_user_visible_output(...)` 补齐 `我已经加载单股研究流程`、`本地没有 HPE 画像` 等自然语言内部流程句式，避免 Feishu direct final 再把研究编排和画像存在性检查作为用户态正文输出。
+  - 新增回归 `sanitize_user_visible_output_strips_additional_profile_progress_variants`，并复跑 `cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture` 与 `cargo check -p hone-channels --tests`。
+  - 本轮未重启 live 服务，因此先记代码级 `Fixed`；若后续新运行态仍出现本机命令、内部流程或画像存在性口径，再基于新样本重新打开。
 
 - 2026-06-22 07:08 CST 修复：
   - 共享 `sanitize_user_visible_output(...)` 补齐 `本地长期画像`、`本轮没有新增事实改变 ... 长期画像`、`我先核验 ... 行情口径 / 本地长期画像` 等自然语言内部画像流程句式。

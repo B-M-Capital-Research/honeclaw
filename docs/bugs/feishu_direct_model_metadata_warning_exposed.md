@@ -14,13 +14,17 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## GitHub Issue
 
 - 无，非 P1
 
-## 最新进展（2026-06-30 07:03 CST）
+## 最新进展（2026-07-06 03:41 CST）
+
+- 本轮 2026-07-06 03:41 CST 代码级复核：
+  - 共享 `sanitize_user_visible_output(...)` 的 runner warning 剥离规则继续保留，且与本轮新增净化句式一起通过 `cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture` 与 `cargo check -p hone-channels --tests`。
+  - 当前没有新的代码缺口可单独追加；本轮按现有共享净化层和回归验证将状态更新回代码级 `Fixed`。未重启 live 服务，后续仍需运行态复核。
 
 - 本轮 2026-06-30 03:00-07:03 CST 真实运行态确认同根复发，状态从 `Fixed` 回退为 `New`：
   - `data/sessions.sqlite3` 只读快照仍停在 2026-06-17，最近真实会话继续以 `data/runtime/logs/acp-events.log` 重构。
@@ -71,6 +75,11 @@
 - 该问题也不同于 `feishu_direct_internal_runtime_progress_exposed.md`：本轮不是模型自然语言复述内部研究流程，而是英文运行器警告被拼接到 final。
 
 ## 修复记录
+
+- 2026-07-06 03:41 CST 代码级复核：
+  - 共享净化层现有模型 metadata warning 剥离回归继续通过，无需新增单独逻辑。
+  - 验证：`cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`。
+  - 本轮未重启 live 服务，先按代码级 `Fixed` 记录。
 
 - 2026-06-21 19:09 CST 修复：
   - 共享 `sanitize_user_visible_output(...)` 新增模型元数据 fallback warning 剥离，覆盖 `Model metadata for ... not found`、`Defaulting to fallback metadata`、`this can degrade performance...` 等句族。

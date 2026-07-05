@@ -22,6 +22,13 @@
 
 ## 最新进展
 
+- 本轮 2026-07-05 23:01-2026-07-06 03:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 heartbeat raw preview / 判断上下文继续检出 9 条异常行情或价格 / 时间戳混用信号，代表样本包括 `RKLB异动监控` 使用 `RKLB $100.46` 与 `1783022400`，`DRAM 心跳监控` 使用 `DRAM $60.63` 与 `1783022401`，`Monitor_Watchlist_11` 继续使用 `MU $975.56` 判断未触发阈值。
+    - 23:01 CST Feishu scheduler `核心观察股池晚间快报` assistant final 正常收口，但正式输出 `MU $977.00`、`SNDK $1,762.07`、`STX $826.00`、`WDC $545.00` 等明显异常数量级价格，并据此给出击球区纪律说明。
+  - 本窗已有 scheduler final 正式落库样本，不只是内部 raw preview；价格 sanity check 仍未覆盖当前 scheduler / heartbeat / direct 投研运行路径。
+- 报告主链路正常收口，未见空回复、错投、投递失败或原始工具 JSON；因此仍按质量性 `P3 / New`。该问题不影响调度 / 投递主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-05 19:02-23:06 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 同窗 heartbeat raw preview / 判断上下文继续检出 26 条异常行情或价格 / 时间戳混用信号，代表样本包括 `RKLB异动监控` 使用 `RKLB $100.46` 与 `1783022400`，`DRAM 心跳监控` 使用 `DRAM $60.63`，`Monitor_Watchlist_11` 继续使用 `MU $975.56` 判断未触发阈值，`持仓重大事件心跳检测` 使用 `RKLB $100.46` 等批量行情。

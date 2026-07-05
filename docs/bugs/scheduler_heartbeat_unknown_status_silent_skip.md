@@ -3,9 +3,20 @@
 - **发现时间**: 2026-04-15 14:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 
 ## 修复进展
+
+- `2026-07-06 03:02 CST` 本轮确认当前 runtime 继续复发，状态从代码级 `Fixed` 回退为 `New`：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 23:01-03:02 CST heartbeat 窗口新增 105 条运行记录：63 条 `noop + skipped_noop + delivered=0`、42 条 `execution_failed + skipped_error + delivered=0`。
+    - 可分类 `parse_kind` 分布为 `JsonNoop` 43、`PlainTextSuppressed` 15、`PlainTextNoop` 12、`JsonTriggered` 7、`JsonMalformed` 1、`JsonEmptyStatus` 1；另有 26 条 `runner_error` 归入 MiniMax 传输失败文档。
+    - 多条 raw preview 继续以 `<think>`、工具预算耗尽说明、自然语言分析或非契约 JSON 开头，最终落为结构化失败、静默跳过或未发送。
+  - 会话质量对照：
+    - 同窗 `session_messages` 有 4 个 user turn 与 5 条 assistant final，最近 Feishu direct / scheduler 会话均有 assistant 收口；assistant final 未出现 `<think>`、provider 原始错误、panic、quota 或资源耗尽原文。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题继续导致 heartbeat 监控任务整轮失败或跳过发送，属于功能性监控漏发 / 降级；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
 
 - `2026-07-05 23:14 CST` 代码级修复，状态更新为 `Fixed`：
   - `crates/hone-channels/src/scheduler.rs` 的 heartbeat 结果解析新增 `PlainTextTriggered` 恢复分支：当模型虽然没有返回 JSON、但正文已经是用户可见的明确触发提醒（包含触发/突破/低于等信号和当前/检查时间等送达形态）时，不再落成 `PlainTextSuppressed + execution_failed`，而是进入现有 delivery 分支。

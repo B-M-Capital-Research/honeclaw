@@ -3,10 +3,15 @@
 - **发现时间**: 2026-06-08 23:04 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，非 P1
 
 ## 修复记录
+
+- 2026-07-06 03:41 CST 再次代码级修复：
+  - 共享 `sanitize_user_visible_output(...)` 新增覆盖 Web direct 近期真实漏网句式：`Hone data_fetch quote`、`行情数据工具`、`长期研究框架沉淀为组合画像`，和既有 `skill` / 本地存储口径净化统一走同一出口。
+  - 新增回归 `sanitize_user_visible_output_rewrites_hone_data_fetch_quote_and_market_tool_copy`、`sanitize_user_visible_output_rewrites_additional_company_profile_status_copy`，并复跑 `cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture` 与 `cargo check -p hone-channels --tests`。
+  - 本轮未重启 Web live 服务，因此先记代码级 `Fixed`；若后续新运行态仍出现内部 skill / 存储动作口径，再基于新样本重新打开。
 
 - 2026-06-26 07:01 CST 继续补充同根复发证据：
   - 03:00-07:01 CST `data/sessions.sqlite3` 仍未追平最近真实会话；本轮以 `data/runtime/logs/acp-events.log` 重构 Web direct 用户可见 final。
