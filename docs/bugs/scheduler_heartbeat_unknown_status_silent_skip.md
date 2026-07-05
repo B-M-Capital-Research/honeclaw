@@ -17,6 +17,18 @@
   - 验证通过：`cargo test -p hone-channels heartbeat_boolean_ --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_code_wrapped_json_noop_is_parsed --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`、`rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs`、`git diff --check`。
   - 无关联 GitHub Issue；本轮不重启服务，不依赖当前机器 live 服务或线上日志判定恢复。若后续新代码加载后仍大量出现不可解释的 `PlainTextSuppressed` / `JsonUnknownStatus` / `JsonMalformed`，再按最新 raw preview 回退并继续收紧。
 
+- `2026-07-06 07:03 CST` 修复前运行态补证，最终状态以本轮代码级修复为准维持 `Fixed`：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 03:01-07:03 CST heartbeat 窗口新增 107 条运行记录：87 条 `noop + skipped_noop + delivered=0`、20 条 `execution_failed + skipped_error + delivered=0`。
+    - 可分类 `parse_kind` 分布为 `JsonNoop` 67、`PlainTextSuppressed` 14、`PlainTextNoop` 10、`JsonTriggered` 9、`JsonUnknownStatus` 3、`JsonMalformed` 3、`JsonEmptyStatus` 1。
+    - 多条 raw preview 继续以 `<think>`、工具预算耗尽说明、自然语言分析或非契约 JSON 开头，最终落为结构化失败、静默跳过或未发送；代表样本包括 06:00 CST `DRAM 心跳监控` `JsonMalformed`、06:30 CST `全天原油价格3小时播报` / `TEM破位预警` `PlainTextSuppressed`、07:00 CST `全天原油价格3小时播报` `PlainTextSuppressed`。
+  - 会话质量对照：
+    - 同窗 `session_messages` 有 6 个 user turn 与 6 条 assistant final，最近 Feishu direct / scheduler 会话均有 assistant 收口；普通 scheduler 6 条为 `completed + sent + delivered=1`。
+    - assistant final 未出现 `<think>`、provider 原始错误、panic、quota、资源耗尽原文、本机绝对路径、`mcpServers` 或 env 字段。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该运行态发生在本轮 07:03 代码级修复落地前或未确认 live 加载新代码前；因此仅作为修复前证据保留，不把最终状态从 `Fixed` 回退为 `New`。严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-06 03:02 CST` 本轮确认当前 runtime 继续复发，状态从代码级 `Fixed` 回退为 `New`：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - 23:01-03:02 CST heartbeat 窗口新增 105 条运行记录：63 条 `noop + skipped_noop + delivered=0`、42 条 `execution_failed + skipped_error + delivered=0`。

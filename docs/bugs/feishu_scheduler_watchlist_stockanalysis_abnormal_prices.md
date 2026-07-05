@@ -22,6 +22,16 @@
 
 ## 最新进展
 
+- 本轮 2026-07-06 03:01-07:03 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `session_messages`
+    - 04:30 CST Feishu scheduler `OWALERT_PostMarket` assistant final 正常收口，但正式输出 `QQQ 712.60`、`SPY 744.78`、`SNDK 1,745.00`、`COHR 333.36`、`CIEN 422.46`、`BE 270.89`、`MU 975.56` 等明显异常数量级价格，并据此判断 AI 硬件与动量股去拥挤。
+    - 05:01 CST Feishu scheduler `科技成长赛道大盘极值与情绪监控` assistant final 正常收口，但正式输出 `QQQ 712.60`、`ARKK 81.25`、`SMH 592.29`、`IGV 93.57` 等异常 ETF / 指数价格口径，并继续据此判断未触发极值信号。
+    - 07:02 CST Feishu scheduler `美股持仓收盘后早报` assistant final 正常收口，但正式输出 `DRAM 60.63`、`SNDK 1745.00`、`DELL 394.29`、`MU 975.56`、`AMD 517.82`、`AAOI 120.95`、`COHR 333.36`、`RKLB 100.46` 等异常数量级价格，并据此计算组合市值、单日变化和主要拖累。
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 heartbeat 另有 107 条运行记录，其中 raw preview / 判断上下文继续围绕 `1783022401`、`RKLB $100.46`、`DRAM $60.63`、`MU $975.56` 等价格 / 时间戳混用信号判断触发状态。
+- 本窗已有多条 scheduler final 正式落库样本，不只是内部 raw preview；价格 sanity check 仍未覆盖当前 scheduler / heartbeat / direct 投研运行路径。
+- 报告主链路正常收口，未见空回复、错投、投递失败或原始工具 JSON；因此仍按质量性 `P3 / New`。该问题不影响调度 / 投递主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-05 23:01-2026-07-06 03:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 同窗 heartbeat raw preview / 判断上下文继续检出 9 条异常行情或价格 / 时间戳混用信号，代表样本包括 `RKLB异动监控` 使用 `RKLB $100.46` 与 `1783022400`，`DRAM 心跳监控` 使用 `DRAM $60.63` 与 `1783022401`，`Monitor_Watchlist_11` 继续使用 `MU $975.56` 判断未触发阈值。

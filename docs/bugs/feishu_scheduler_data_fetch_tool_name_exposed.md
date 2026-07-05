@@ -14,13 +14,20 @@ P3
 
 ## 状态
 
-Fixed
+New
 
 ## GitHub Issue
 
 无，非 P1
 
 ## 最新进展
+
+- 2026-07-06 07:03 CST 运行态再次复发，状态从代码级 `Fixed` 回退为运行态 `New`：
+  - 03:01-07:03 CST `data/sessions.sqlite3` 新增 6 个 user turn 与 6 条 assistant final，Feishu scheduler / direct 均有 assistant 收口；普通 scheduler 6 条为 `completed + sent + delivered=1`。
+  - assistant final 污染扫描未命中空回复、`reasoning_content`、`<think>`、provider 原始错误、panic、quota、资源耗尽、本机绝对路径、`mcpServers`、env 字段、`company_profiles/`、`stock_research` 或本地存储口径。
+  - 05:01 CST Feishu scheduler session `Actor_feishu__direct__ou_5f895bed1573d53053e89bfc382b523a44` 的 `科技成长赛道大盘极值与情绪监控` final 正常完成科技成长赛道极值判断和来源列表，但来源段继续出现 `公开行情页` 口径。
+  - 该样本晚于 2026-07-06 03:41 CST 共享净化层新增 `Hone data_fetch quote` / `行情数据工具` 等句式覆盖的代码级修复；当前 live 未重启，但真实用户态输出仍会暴露来源 / 工具口径边界，因此按运行态 `New` 回到活跃队列。
+  - 回复主体正常完成并送达，没有投递失败、空回复、错投、原始工具 JSON 或数据安全证据；问题仍只影响用户可见来源 / 工具口径边界和产品感，不影响主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
 
 - 2026-07-06 03:41 CST 代码级修复，状态更新为 `Fixed`：
   - 共享 `sanitize_user_visible_output(...)` 继续补齐用户可见净化规则，覆盖 `Hone data_fetch quote`、`行情数据工具`、`我已经加载单股研究流程`、画像创建 / 更新 / 沉淀等近期漏网句式。
