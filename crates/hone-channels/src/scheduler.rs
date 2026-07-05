@@ -191,8 +191,10 @@ static RE_HEARTBEAT_BEIJING_TRIGGER_TIME: LazyLock<regex::Regex> = LazyLock::new
 });
 
 static RE_HEARTBEAT_RELATIVE_TODAY_DATE: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r"(?P<prefix>今(?:日|天)（)(?P<month>\d{1,2})月(?P<day>\d{1,2})日(?P<suffix>）)")
-        .expect("valid heartbeat relative today date regex")
+    regex::Regex::new(
+        r"(?P<prefix>今(?:日|天)（)(?P<month>\d{1,2})月(?P<day>\d{1,2})日(?P<suffix>）)",
+    )
+    .expect("valid heartbeat relative today date regex")
 });
 
 static RE_HEARTBEAT_FACT_TOKEN: LazyLock<regex::Regex> = LazyLock::new(|| {
@@ -247,6 +249,7 @@ pub enum HeartbeatParseKind {
     JsonTriggered,
     JsonUnknownStatus,
     JsonMalformed,
+    PlainTextTriggered,
     PlainTextSuppressed,
     PlainTextNoop,
 }
@@ -602,6 +605,89 @@ fn heartbeat_plain_text_indicates_noop(text: &str) -> bool {
     .any(|marker| compact.contains(marker))
 }
 
+fn heartbeat_plain_text_trigger_message(text: &str) -> Option<String> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() || heartbeat_plain_text_indicates_noop(trimmed) {
+        return None;
+    }
+
+    let compact = trimmed
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    if [
+        "应该输出",
+        "应输出",
+        "按照规则",
+        "根据规则",
+        "需要返回",
+        "必须返回",
+        "shouldoutput",
+        "shouldreturn",
+        "ireturn",
+        "letmeanalyze",
+        "accordingtotherules",
+        "basedontherules",
+    ]
+    .iter()
+    .any(|marker| compact.contains(marker))
+    {
+        return None;
+    }
+
+    let has_trigger_signal = [
+        "已触发",
+        "触发",
+        "命中",
+        "跌破",
+        "低于",
+        "突破",
+        "高于",
+        "超过",
+        "达到",
+        "已达",
+        "出现",
+        "发布",
+        "公告",
+        "conditionmet",
+        "alerttriggered",
+        "below",
+        "above",
+        "exceed",
+        "breach",
+    ]
+    .iter()
+    .any(|marker| compact.contains(marker));
+    let has_delivery_shape = [
+        "提醒",
+        "预警",
+        "警报",
+        "检查时间",
+        "北京时间",
+        "当前",
+        "最新",
+        "现价",
+        "alert",
+        "checktime",
+        "current",
+        "latest",
+        "now",
+    ]
+    .iter()
+    .any(|marker| compact.contains(marker));
+    if !(has_trigger_signal && has_delivery_shape) {
+        return None;
+    }
+
+    let message = sanitize_scheduler_delivery_text(trimmed);
+    if message.trim().is_empty() {
+        None
+    } else {
+        Some(message)
+    }
+}
+
 fn heartbeat_internal_marker_prefix(text: &str) -> bool {
     let trimmed = text.trim_start();
     let upper = trimmed.to_ascii_uppercase();
@@ -924,28 +1010,33 @@ fn normalize_heartbeat_beijing_trigger_time(
         })
         .into_owned();
     let normalized = RE_HEARTBEAT_BEIJING_TRIGGER_TIME
-        .replace_all(&normalized_relative_today, |captures: &regex::Captures<'_>| {
-            let hour = captures
-                .name("hour")
-                .and_then(|matched| matched.as_str().parse::<u32>().ok());
-            let minute = captures
-                .name("minute")
-                .and_then(|matched| matched.as_str().parse::<u32>().ok())
-                .unwrap_or(0);
-            let Some(hour) = hour else {
-                return captures[0].to_string();
-            };
-            if hour >= 24 || minute >= 60 || (hour == reference_hour && minute == reference_minute)
-            {
-                return captures[0].to_string();
-            }
-            normalized_from.get_or_insert_with(|| format!("{hour:02}:{minute:02}"));
-            let tail = captures
-                .name("tail")
-                .map(|m| m.as_str())
-                .unwrap_or_default();
-            format!("北京时间 {reference_hour:02}:{reference_minute:02}{tail}")
-        })
+        .replace_all(
+            &normalized_relative_today,
+            |captures: &regex::Captures<'_>| {
+                let hour = captures
+                    .name("hour")
+                    .and_then(|matched| matched.as_str().parse::<u32>().ok());
+                let minute = captures
+                    .name("minute")
+                    .and_then(|matched| matched.as_str().parse::<u32>().ok())
+                    .unwrap_or(0);
+                let Some(hour) = hour else {
+                    return captures[0].to_string();
+                };
+                if hour >= 24
+                    || minute >= 60
+                    || (hour == reference_hour && minute == reference_minute)
+                {
+                    return captures[0].to_string();
+                }
+                normalized_from.get_or_insert_with(|| format!("{hour:02}:{minute:02}"));
+                let tail = captures
+                    .name("tail")
+                    .map(|m| m.as_str())
+                    .unwrap_or_default();
+                format!("北京时间 {reference_hour:02}:{reference_minute:02}{tail}")
+            },
+        )
         .into_owned();
     (normalized, normalized_from)
 }
@@ -1361,6 +1452,13 @@ pub fn inspect_heartbeat_result(content: &str) -> (HeartbeatOutcome, HeartbeatPa
 
     if heartbeat_plain_text_indicates_noop(trimmed) {
         return (HeartbeatOutcome::Noop, HeartbeatParseKind::PlainTextNoop);
+    }
+
+    if let Some(message) = heartbeat_plain_text_trigger_message(trimmed) {
+        return (
+            HeartbeatOutcome::Deliver(message),
+            HeartbeatParseKind::PlainTextTriggered,
+        );
     }
 
     (
@@ -3883,29 +3981,44 @@ mod tests {
     }
 
     #[test]
-    fn heartbeat_plain_text_is_suppressed() {
+    fn heartbeat_plain_text_trigger_is_recovered() {
         assert_eq!(
             inspect_heartbeat_result("闪迪股价已低于 520，当前 519.7（检查时间：09:30）"),
             (
-                HeartbeatOutcome::Noop,
-                HeartbeatParseKind::PlainTextSuppressed
+                HeartbeatOutcome::Deliver(
+                    "闪迪股价已低于 520，当前 519.7（检查时间：09:30）".to_string()
+                ),
+                HeartbeatParseKind::PlainTextTriggered
             )
         );
     }
 
     #[test]
-    fn heartbeat_plain_text_marks_execution_failed() {
+    fn heartbeat_plain_text_trigger_is_delivered() {
         let execution = heartbeat_execution_from_content(
             "闪迪股价已低于 520，当前 519.7（检查时间：09:30）",
             "model-x",
         );
+        assert!(execution.should_deliver);
+        assert_eq!(
+            execution.content,
+            "闪迪股价已低于 520，当前 519.7（检查时间：09:30）"
+        );
+        assert!(execution.error.is_none());
+        assert_eq!(execution.metadata["parse_kind"], "PlainTextTriggered");
+        assert_eq!(execution.metadata["heartbeat_model"], "model-x");
+    }
+
+    #[test]
+    fn heartbeat_plain_text_analysis_stays_suppressed() {
+        let content = "当前价格 519.7 低于 520。根据规则，我应该输出 triggered JSON 并发送提醒。";
+        let execution = heartbeat_execution_from_content(content, "model-x");
         assert!(!execution.should_deliver);
         assert_eq!(
             execution.error.as_deref(),
             Some("heartbeat 输出不是结构化 JSON，任务已标记失败")
         );
         assert_eq!(execution.metadata["parse_kind"], "PlainTextSuppressed");
-        assert_eq!(execution.metadata["heartbeat_model"], "model-x");
     }
 
     #[test]

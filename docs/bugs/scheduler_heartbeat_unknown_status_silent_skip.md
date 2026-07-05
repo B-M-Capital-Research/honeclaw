@@ -3,9 +3,16 @@
 - **发现时间**: 2026-04-15 14:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 
 ## 修复进展
+
+- `2026-07-05 23:14 CST` 代码级修复，状态更新为 `Fixed`：
+  - `crates/hone-channels/src/scheduler.rs` 的 heartbeat 结果解析新增 `PlainTextTriggered` 恢复分支：当模型虽然没有返回 JSON、但正文已经是用户可见的明确触发提醒（包含触发/突破/低于等信号和当前/检查时间等送达形态）时，不再落成 `PlainTextSuppressed + execution_failed`，而是进入现有 delivery 分支。
+  - 保守边界：包含“根据规则 / 应该输出 / should return / let me analyze”等分析或契约复述口吻的自由文本仍保持 `PlainTextSuppressed`，条件未满足文本仍走 `PlainTextNoop`；恢复后的文本继续复用 scheduler delivery sanitizer、near-threshold guard、价格时间戳 guard 和北京时间归一化。
+  - 新增 / 更新回归：`heartbeat_plain_text_trigger_is_recovered`、`heartbeat_plain_text_trigger_is_delivered`、`heartbeat_plain_text_analysis_stays_suppressed`。
+  - 验证通过：`cargo test -p hone-channels heartbeat_plain_text_ --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`、`rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs`、`git diff --check`。
+  - 本轮不依赖当前机器 live 服务或线上日志判定恢复；若后续新代码加载后的真实窗口仍大量出现本应可投递的 `PlainTextSuppressed + execution_failed`，再基于新样本回退为 `New`。
 
 - `2026-07-05 23:06 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
