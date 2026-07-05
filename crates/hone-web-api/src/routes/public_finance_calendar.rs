@@ -92,7 +92,10 @@ pub(crate) async fn handle_get_finance_calendar(
         Ok(value) => value,
         Err(response) => return response,
     };
-    let month = match resolve_requested_month(query.month.as_deref(), hone_core::beijing_now().date_naive()) {
+    let month = match resolve_requested_month(
+        query.month.as_deref(),
+        hone_core::beijing_now().date_naive(),
+    ) {
         Ok(month) => month,
         Err(error) => return json_error(StatusCode::BAD_REQUEST, error),
     };
@@ -111,7 +114,12 @@ pub(crate) async fn handle_send_finance_calendar(
         Ok(value) => value,
         Err(response) => return response,
     };
-    let raw_path = match request.path.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+    let raw_path = match request
+        .path
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    {
         Some(path) => path,
         None => return json_error(StatusCode::BAD_REQUEST, "缺少图片路径"),
     };
@@ -202,7 +210,10 @@ async fn build_finance_calendar_payload(
                 earnings_status = "missing_key".to_string();
                 errors.push("未配置 FMP API Key，已仅展示内置宏观事件".to_string());
             }
-            EarningsFetchOutcome::Partial { events: items, errors: errs } => {
+            EarningsFetchOutcome::Partial {
+                events: items,
+                errors: errs,
+            } => {
                 earnings_status = "partial".to_string();
                 events.extend(items);
                 errors.extend(errs);
@@ -222,7 +233,10 @@ async fn build_finance_calendar_payload(
     });
 
     FinanceCalendarPayload {
-        today: hone_core::beijing_now().date_naive().format("%Y-%m-%d").to_string(),
+        today: hone_core::beijing_now()
+            .date_naive()
+            .format("%Y-%m-%d")
+            .to_string(),
         month: month.value(),
         months: months_for_year(month.year),
         holdings,
@@ -364,7 +378,7 @@ fn portfolio_calendar_symbols(state: &AppState, actor: &ActorIdentity) -> Vec<St
     calendar_symbols_from_holdings(&portfolio.holdings)
 }
 
-fn calendar_symbols_from_holdings(holdings: &[hone_memory::Holding]) -> Vec<String> {
+fn calendar_symbols_from_holdings(holdings: &[hone_memory::portfolio::Holding]) -> Vec<String> {
     let mut seen = BTreeSet::new();
     for holding in holdings {
         let raw = holding
@@ -518,14 +532,16 @@ fn earnings_events_from_value(
             .filter(|value| !value.is_empty())
             .unwrap_or_else(|| requested_symbol.to_string());
         let subtitle = earnings_subtitle_from_item(item);
-        dedup.entry((date_text.clone(), symbol.clone())).or_insert(FinanceCalendarEvent {
-            date: date_text,
-            title: format!("{symbol} 财报"),
-            kind: "earnings".to_string(),
-            ticker: Some(symbol),
-            subtitle,
-            source: "fmp.stable.earnings".to_string(),
-        });
+        dedup
+            .entry((date_text.clone(), symbol.clone()))
+            .or_insert(FinanceCalendarEvent {
+                date: date_text,
+                title: format!("{symbol} 财报"),
+                kind: "earnings".to_string(),
+                ticker: Some(symbol),
+                subtitle,
+                source: "fmp.stable.earnings".to_string(),
+            });
     }
     dedup.into_values().collect()
 }
@@ -535,8 +551,7 @@ fn earnings_date_from_item(item: &Value) -> Option<NaiveDate> {
         let Some(value) = item.get(key).and_then(|value| value.as_str()) else {
             continue;
         };
-        if let Ok(date) = NaiveDate::parse_from_str(value.get(0..10).unwrap_or(value), "%Y-%m-%d")
-        {
+        if let Ok(date) = NaiveDate::parse_from_str(value.get(0..10).unwrap_or(value), "%Y-%m-%d") {
             return Some(date);
         }
     }
@@ -595,13 +610,16 @@ fn sanitize_fmp_error(message: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hone_memory::Holding;
+    use hone_memory::portfolio::Holding;
 
     #[test]
     fn finance_calendar_month_parser_accepts_yyyy_mm() {
         assert_eq!(
             parse_month_spec("2026-07").expect("month"),
-            MonthSpec { year: 2026, month: 7 }
+            MonthSpec {
+                year: 2026,
+                month: 7
+            }
         );
         assert!(parse_month_spec("2026-7").is_err());
         assert!(parse_month_spec("2026-13").is_err());
@@ -612,27 +630,42 @@ mod tests {
     fn finance_calendar_default_month_moves_to_next_near_month_end() {
         assert_eq!(
             default_month_for_date(NaiveDate::from_ymd_opt(2026, 6, 23).unwrap()),
-            MonthSpec { year: 2026, month: 6 }
+            MonthSpec {
+                year: 2026,
+                month: 6
+            }
         );
         assert_eq!(
             default_month_for_date(NaiveDate::from_ymd_opt(2026, 6, 24).unwrap()),
-            MonthSpec { year: 2026, month: 7 }
+            MonthSpec {
+                year: 2026,
+                month: 7
+            }
         );
         assert_eq!(
             default_month_for_date(NaiveDate::from_ymd_opt(2026, 12, 29).unwrap()),
-            MonthSpec { year: 2027, month: 1 }
+            MonthSpec {
+                year: 2027,
+                month: 1
+            }
         );
     }
 
     #[test]
     fn finance_calendar_macro_seed_filters_july_events() {
-        let july = MonthSpec { year: 2026, month: 7 };
+        let july = MonthSpec {
+            year: 2026,
+            month: 7,
+        };
         let events = macro_events_for_month(&july);
         assert_eq!(events.len(), 4);
         assert_eq!(events[0].date, "2026-07-03");
         assert!(events.iter().any(|event| event.title.contains("美联储")));
 
-        let august = MonthSpec { year: 2026, month: 8 };
+        let august = MonthSpec {
+            year: 2026,
+            month: 8,
+        };
         assert!(macro_events_for_month(&august).is_empty());
     }
 
@@ -698,7 +731,10 @@ mod tests {
             {"symbol":"AAPL","date":"2026-08-01","time":"bmo"},
             {"symbol":"MSFT","reportedDate":"2026-07-24T00:00:00.000Z"}
         ]);
-        let july = MonthSpec { year: 2026, month: 7 };
+        let july = MonthSpec {
+            year: 2026,
+            month: 7,
+        };
         let events = earnings_events_from_value("AAPL", &raw, &july);
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].date, "2026-07-24");
@@ -710,7 +746,8 @@ mod tests {
     fn finance_calendar_assistant_message_uses_image_marker() {
         let local = finance_calendar_assistant_message("/tmp/calendar.png", "2026-07");
         assert!(local.contains("file:///tmp/calendar.png"));
-        let oss = finance_calendar_assistant_message("oss://bucket/users/a/calendar.png", "2026-07");
+        let oss =
+            finance_calendar_assistant_message("oss://bucket/users/a/calendar.png", "2026-07");
         assert!(oss.contains("oss://bucket/users/a/calendar.png"));
     }
 
