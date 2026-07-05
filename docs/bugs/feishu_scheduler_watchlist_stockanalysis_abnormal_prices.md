@@ -20,7 +20,16 @@
 
 - 无，非 P1
 
-## 最新进展（2026-07-05 15:01 CST）
+## 最新进展
+
+- 本轮 2026-07-05 19:02-23:06 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 heartbeat raw preview / 判断上下文继续检出 26 条异常行情或价格 / 时间戳混用信号，代表样本包括 `RKLB异动监控` 使用 `RKLB $100.46` 与 `1783022400`，`DRAM 心跳监控` 使用 `DRAM $60.63`，`Monitor_Watchlist_11` 继续使用 `MU $975.56` 判断未触发阈值，`持仓重大事件心跳检测` 使用 `RKLB $100.46` 等批量行情。
+    - 21:35 CST 与 23:00 CST Feishu scheduler `科技核心股池 / 核心观察股池` final 正常收口，继续写出 `专用行情链路本轮未取得可用返回，已用公开行情页补充校验`，但未检出上一轮 `公开行情页.com` 占位链接。
+  - `data/sessions.sqlite3`
+    - 本窗普通 scheduler / direct assistant final 均正常收口；未确认新的正式用户可见 final 直接使用 MU `$975.56`、SPY `$744.78`、QQQ `$712.60` 或 `$1,745`。
+- 本窗异常价格主要停留在 heartbeat raw preview、未命中或结构化失败路径；调度 / 投递主链路没有因该问题被阻断。
+- 因该问题仍主要影响行情质量和投资建议可信度，不阻断功能链路，因此继续按质量性 `P3 / New`；非 P1，不创建 GitHub Issue。
 
 - 本轮 2026-07-05 11:01-15:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`

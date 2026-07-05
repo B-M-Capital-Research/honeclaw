@@ -9,6 +9,13 @@
 ## 证据来源
 
 - `data/sessions.sqlite3` / `cron_job_runs`
+  - 2026-07-05 19:02-23:06 CST 同类 ACP runner timeout 在普通 Feishu scheduler 链路继续出现，但用户可见错误已被净化。
+  - `run_id=44917` / `job_name=每日美股大跌风险控制检查` 在 20:34 CST 落成 `execution_failed + skipped_error`，`detail_json.failure_kind=scheduler_runner_timeout`；assistant transcript 同步写入产品化失败提示“本轮定时任务未能完成，系统已记录失败并将在下一次触发时重试。”。
+  - `run_id=44947` / `job_name=每日美股大盘风控简报` 在 21:52 CST 落成同类 `execution_failed + skipped_error + scheduler_runner_timeout`，同样只写入产品化失败提示。
+  - 同窗 25 条 ACP `session/new` 记录共 252 个 env 条目，其中 223 个值为 `<redacted>`，12 个敏感键名均无未脱敏值；未见 `stream disconnected before completion`、response error、runner error、quota、panic 或资源耗尽进入 assistant final。
+  - 结论：该问题当前继续表现为“业务正文未完成但失败提示可见且脱敏”，仍影响 scheduler 请求完成率，维持 `P2 / New`；非 P1，不创建 GitHub Issue。
+
+- `data/sessions.sqlite3` / `cron_job_runs`
   - 2026-07-04 23:02-2026-07-05 03:02 CST 同类 ACP runner timeout 在普通 Feishu scheduler 链路继续出现，但用户可见错误已被净化。
   - `run_id=44323` / `job_name=SemiAnalysis与Citrini文章晚间跟踪` 在 23:52 CST 落成 `execution_failed + skipped_error`，`detail_json.failure_kind=scheduler_runner_timeout`；assistant transcript 同步写入产品化失败提示“本轮定时任务未能完成，系统已记录失败并将在下一次触发时重试。”。
   - 同窗 44 个 `session/prompt` 覆盖 21 个 prompt session，均有 response 收口；43 个 `stopReason=end_turn`，未见 ACP response error、stream disconnect 原文、provider 原始错误、panic、quota、资源耗尽或本机绝对路径进入 assistant final。
