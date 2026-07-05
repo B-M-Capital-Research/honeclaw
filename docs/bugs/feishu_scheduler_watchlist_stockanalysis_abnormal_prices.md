@@ -538,3 +538,14 @@
 - 本轮判断
   - 最新证据仍落在 scheduler / heartbeat 批量行情数值 sanity check 缺失范围内，没有新的独立根因。
   - 本窗已确认异常价格进入 Feishu scheduler 用户可见 final；但会话正常收口、未见投递失败或错对象，问题主要削弱投研质量和价格判断可信度，因此维持质量性 `P3 / New`，非 P1。
+
+## 最新运行态复核（2026-07-05 19:02 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-07-05 15:00-19:02 CST。
+  - 同窗 heartbeat raw preview 继续命中异常行情或价格 / 时间戳混用关键词，代表样本包括 `Monitor_Watchlist_11` 使用 `MU $975.56` 判断未触发阈值，`Cerebras IPO与业务进展心跳监控` 使用 `CBRS $204.86` 与 `1783022401` 口径，`RKLB异动监控` 使用 `RKLB $100.46`，以及 `DRAM 心跳监控` 使用 `DRAM $60.63` 与 `1783022401`。
+  - 17:31 CST Feishu scheduler `A股港股收盘后跨市场复盘` final 继续输出 `QQQ 712.60`、`MU 975.56`、`AMD 517.82` 等高波动行情锚，并把这些价格纳入美股预判和估值分层；该样本同样正常收口和送达。
+  - 15:05 CST Feishu direct `LRCX` 分析 final 来源段还出现 `公开行情页.com` 占位链接，该用户态来源边界问题已归入 `feishu_scheduler_data_fetch_tool_name_exposed.md`，本单只记录其中对行情口径可信度的关联影响。
+- 本轮判断
+  - 最新证据仍落在 scheduler / heartbeat 批量行情数值 sanity check 缺失范围内，没有新的独立根因。
+  - 本窗再次确认部分异常数量级行情进入用户可见 scheduler final；但会话正常收口、未见投递失败或错对象，问题主要削弱投研质量和价格判断可信度，因此维持质量性 `P3 / New`，非 P1。

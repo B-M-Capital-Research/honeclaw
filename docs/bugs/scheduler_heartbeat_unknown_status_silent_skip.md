@@ -5420,3 +5420,16 @@
 - 本轮判断
   - 最新证据仍属于 heartbeat 输出结构漂移 / 解析失败的既有范围，没有新的独立根因。
   - 坏态影响 heartbeat 是否稳定得出 `triggered/noop` 并发送；普通 direct / scheduler final 主链路可收口，未见错对象投递或数据安全问题，因此维持 `P2 / New`。
+
+## 最新运行态复核（2026-07-05 19:02 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-07-05 15:00-19:02 CST。
+  - 本窗新增 117 条 heartbeat 运行记录：97 条 `noop + skipped_noop + delivered=0`，20 条 `execution_failed + skipped_error + delivered=0`。
+  - parse_kind 分布为 `JsonNoop` 78 条、`PlainTextSuppressed` 16 条、`PlainTextNoop` 14 条、`JsonTriggered` 5 条、`JsonMalformed` 4 条；117 条 raw preview 均含 `<think>` 前缀或思考稿。
+  - 代表样本包括 `Cerebras IPO与业务进展心跳监控`、`Monitor_Watchlist_11`、`TSLA 正负触发条件心跳监控`、`AAOI 1.6T 光模块心跳检测` 等任务以自然语言、思考稿或非法 JSON 开头，随后被解析成 `PlainTextSuppressed` / `JsonMalformed` 并跳过发送。
+- `session_messages`
+  - 同窗 4 组 user / assistant 均成对收口；assistant final 未见空回复、`reasoning_content`、`<think>`、raw tool 字段、本机路径、provider 原始错误、panic 或资源耗尽原文。
+- 本轮判断
+  - 最新证据仍属于 heartbeat 输出结构漂移 / 解析失败的既有范围，没有新的独立根因。
+  - 坏态影响 heartbeat 是否稳定得出 `triggered/noop` 并发送；普通 direct / scheduler final 主链路可收口，未见错对象投递或数据安全问题，因此维持 `P2 / New`，非 P1。

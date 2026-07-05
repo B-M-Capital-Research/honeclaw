@@ -14,13 +14,20 @@ P3
 
 ## 状态
 
-Fixed
+New
 
 ## GitHub Issue
 
 无，非 P1
 
 ## 最新进展
+
+- 2026-07-05 19:02 CST 运行态再次复发，状态从代码级 `Fixed` 回退为 `New`：
+  - 15:00-19:02 CST `data/sessions.sqlite3` 新增 4 组 user / assistant，Feishu direct、Feishu scheduler 与 Web scheduler 均成对收口；普通 scheduler 台账 1 条为 `completed + sent + delivered=1`。
+  - assistant final 污染扫描未命中空回复、本机绝对路径、raw tool 字段、`reasoning_content`、`<think>`、provider 原始错误、panic、quota、资源耗尽、`mcpServers`、env 字段、`data_fetch`、`quote_short` 或 `company_profiles/`。
+  - 15:05 CST Feishu direct session `Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21` 的 `请详细分析下 lrcx` final 完成公司与估值分析，但来源段继续输出 `https://公开行情页.com/stocks/lrcx/` 与 `https://公开行情页.com/stocks/lrcx/statistics/` 这类不可用占位域名。
+  - 该样本晚于 2026-07-05 08:27 CST 共享净化层新增 `https://公开行情页.com/...` 占位 URL 清理和回归测试的代码级修复记录，说明 live 出站路径仍未加载修复或净化覆盖仍有漏口。
+  - 回复主体正常完成并收口，没有投递失败、空回复、错投、原始工具 JSON 或数据安全证据；问题仍只影响用户可见来源 / 工具口径边界和产品感，不影响主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
 
 - 2026-07-05 08:27 CST 代码级修复，状态更新为 `Fixed`：
   - 共享 `sanitize_user_visible_output(...)` 补齐近期真实漏网句式，新增覆盖 `本轮 data_fetch 已返回 25 支标的 quote_short 行情`、`价格来自本轮 data_fetch quote_short` 等成功背书口径。
