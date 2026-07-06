@@ -5,6 +5,14 @@
 - **严重等级**: P2
 - **状态**: New
 - **证据来源**:
+  - `2026-07-06 11:02 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
+    - `data/runtime/logs/backend_screen.log` / `data/runtime/logs/feishu_screen.log`
+      - 07:02-11:02 CST 仍检出 5 条明确 `context window exceeds limit (2013)` heartbeat 首轮失败信号，覆盖 `NVDA 关键事件心跳提醒`、`持仓财报与重大新闻心跳提醒`、`持仓重大事件心跳提醒`、`TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`、`heartbeat_绿田机械基本面跟踪`。
+      - 样本继续集中在 heartbeat function-calling 链路；部分任务随后进入其它结构化失败或 no-op 分支，说明恢复 / 降级仍不稳定。
+    - 会话质量对照：
+      - 同窗 SQLite 有 21 个 user turn 与 22 条 assistant final，普通 scheduler 19 条 `completed + sent + delivered=1`；故障集中在 heartbeat function-calling 超窗链路，不是直聊或出站整体不可用。
+    - 判断：当前运行态已有预算恢复分支，但首轮超窗仍在 heartbeat 任务间复发。该问题仍导致 heartbeat 本轮降级 / 不稳定，严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
   - `2026-07-04 19:04 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
     - `data/runtime/logs/web.log.2026-07-04` / `data/runtime/logs/hone_cli_screen.log`
       - 15:02-19:04 CST 仍检出 14 条 context / overflow / recovery 相关 heartbeat 信号。

@@ -3,9 +3,21 @@
 - **发现时间**: 2026-04-15 14:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 
 ## 修复进展
+
+- `2026-07-06 11:02 CST` 真实运行态在 07:03/07:05 代码级修复后继续复发，状态从 `Fixed` 回退为 `New`：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 07:02-11:02 CST heartbeat 窗口新增 104 条运行记录：80 条 `noop + skipped_noop + delivered=0`、22 条 `execution_failed + skipped_error + delivered=0`、2 条 `completed + sent + delivered=1`。
+    - 失败样本继续覆盖 `PlainTextSuppressed`、`Empty`、`JsonUnknownStatus`、`JsonMalformed` 与“heartbeat 输出不是结构化 JSON / 不是合法 JSON / 包含未知状态 / 输出为空”等终态，代表样本包括 07:30 CST `AAOI 1.6T 光模块心跳检测` `PlainTextSuppressed`、07:30 CST `TEM大事件心跳监控` `Empty`、08:30 CST `持仓重大事件心跳检测` `PlainTextSuppressed`、10:30 CST `Cerebras IPO与业务进展心跳监控` `JsonMalformed`、11:00 CST `RKLB异动监控` / `AAOI 1.6T 光模块心跳检测` 结构化失败。
+    - 同窗 2 条 delivered heartbeat 仍以自由文本触发形式送达：09:30 CST `TSLA 正负触发条件心跳监控` 与 10:00 CST `RKLB异动监控`；其中 `RKLB` 样本还把“当前行情”写成 `2026年4月6日`，说明结构恢复与时间 / 行情质量问题仍交织。
+  - 会话质量对照：
+    - 同窗 `session_messages` 有 21 个 user turn 与 22 条 assistant final；普通 scheduler 19 条为 `completed + sent + delivered=1`。
+    - assistant final 污染扫描未命中空回复、`reasoning_content`、`<think>`、本机绝对路径、provider 原始错误或 env / mcpServers 字段。
+  - 判断：
+    - 最新证据仍是同一 heartbeat 结构化状态输出退化链路，不新建重复缺陷。
+    - 该问题继续导致 heartbeat 监控任务整轮失败或跳过发送，属于功能性监控漏发 / 降级；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
 
 - `2026-07-06 07:03 CST` 代码级修复，状态更新为 `Fixed`：
   - `crates/hone-channels/src/scheduler.rs` 的 heartbeat JSON 解析新增布尔字段兼容：

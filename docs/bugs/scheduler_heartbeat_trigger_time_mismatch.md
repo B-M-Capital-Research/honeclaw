@@ -8,6 +8,15 @@
 
 ## 最新进展
 
+- 本轮 2026-07-06 07:02-11:02 CST 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 heartbeat raw preview / delivered preview 继续出现与实际执行窗口不一致或容易误解的时间口径。
+    - 代表样本包括 08:30 CST `持仓重大事件心跳检测` raw preview 围绕 `timestamp 1783022401` 做当前行情判断，10:00 CST `RKLB异动监控` delivered preview 把当前行情写成 `2026年4月6日`，10:30 CST `持仓重大事件心跳检测` raw preview 继续使用 `ASTS/RKLB ... timestamp 1783022400/1783022401` 作为当前判断依据。
+  - 查重结论：
+    - 本窗没有新的独立根因；上述 raw / delivered preview 仍属于 heartbeat 模型时间上下文漂移，与本文档既有“触发提醒时间口径漂移”同一链路。
+  - 用户影响：
+    - 调度、解析和预览生成链路仍可运行，但错误时间上下文可能进入触发判断、重复抑制或用户可见提醒新鲜度判断。没有错投、数据安全或全渠道不可用证据；因此维持质量性 `P3`，非 P1。
+
 - 本轮 2026-07-06 03:01-07:03 CST 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 同窗 heartbeat raw preview 继续出现与实际执行窗口不一致或容易误解的时间口径。

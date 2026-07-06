@@ -22,6 +22,16 @@
 
 ## 最新进展
 
+- 本轮 2026-07-06 07:02-11:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `session_messages`
+    - 08:30 CST Feishu scheduler `闪迪(SNDK)每日行情与行业简报` assistant final 正常收口，但正式输出 `SNDK 最新完整交易日为 7月2日美股，收跌 14.13% 至 1,745.00 美元`，并继续列出 `前收 2,032.22`、盘后 `1,762.07`、市值约 `2,584 亿美元` 等异常数量级价格。
+    - 09:00 CST Feishu scheduler `早9点市场复盘(XME及加密ETF)` assistant final 正常收口，但正式输出 `SPY：744.78`，继续把明显异常 ETF 数值作为市场锚。
+    - 07:02 / 08:32 / 08:45 / 09:00 多条 Feishu scheduler final 继续命中 `SNDK 1745.00`、`MU 975.56`、`DRAM 60.63`、`AMD 517.82`、`RKLB 100.46` 等异常数量级价格或其派生组合判断。
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 heartbeat 另有 104 条运行记录；raw preview / delivered preview 继续围绕 `RKLB $100.46`、`DRAM $60.63`、`MU $975.56`、`1783022400/1783022401` 等价格 / 时间戳混用信号判断触发状态。
+- 本窗仍有 scheduler final 正式落库样本，不只是内部 raw preview；价格 sanity check 仍未覆盖当前 scheduler / heartbeat / direct 投研运行路径。
+- 报告主链路正常收口，未见空回复、错投、投递失败或原始工具 JSON；因此仍按质量性 `P3 / New`。该问题不影响调度 / 投递主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-06 03:01-07:03 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `session_messages`
     - 04:30 CST Feishu scheduler `OWALERT_PostMarket` assistant final 正常收口，但正式输出 `QQQ 712.60`、`SPY 744.78`、`SNDK 1,745.00`、`COHR 333.36`、`CIEN 422.46`、`BE 270.89`、`MU 975.56` 等明显异常数量级价格，并据此判断 AI 硬件与动量股去拥挤。

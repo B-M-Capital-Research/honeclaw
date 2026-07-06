@@ -8,6 +8,13 @@
 
 ## 证据来源
 
+- `data/sessions.sqlite3` / `data/runtime/logs/feishu_screen.log`
+  - 2026-07-06 07:02-11:02 CST 同类 ACP runner timeout 在 Feishu direct 链路继续出现，但用户可见错误已被净化。
+  - 09:09 CST Feishu direct 用户请求“周末财经新闻,预测热门板块...”后，09:14 CST 同一 message_id 落库 assistant text `抱歉，处理超时了。请稍后再试。`；日志侧同轮为 `codex acp session/prompt idle timeout (180s)`，内部 stderr 包含本机 plugin manifest 路径，但未进入用户可见回复。
+  - 09:15 CST 用户重发同一请求后，09:17 CST assistant final 正常给出完整板块 / 持仓分析。
+  - 同窗普通 scheduler 19 条 `completed + sent + delivered=1`，未见同类普通 scheduler timeout；assistant final 污染扫描未命中内部路径、provider 原始错误、panic、quota、stream disconnect 或 env 字段。
+  - 结论：该问题当前表现为“直聊单轮请求未完成但错误提示脱敏，用户重试后可恢复”，仍影响请求完成率，维持 `P2 / New`；非 P1，不创建 GitHub Issue。
+
 - `data/sessions.sqlite3` / `cron_job_runs`
   - 2026-07-05 19:02-23:06 CST 同类 ACP runner timeout 在普通 Feishu scheduler 链路继续出现，但用户可见错误已被净化。
   - `run_id=44917` / `job_name=每日美股大跌风险控制检查` 在 20:34 CST 落成 `execution_failed + skipped_error`，`detail_json.failure_kind=scheduler_runner_timeout`；assistant transcript 同步写入产品化失败提示“本轮定时任务未能完成，系统已记录失败并将在下一次触发时重试。”。
