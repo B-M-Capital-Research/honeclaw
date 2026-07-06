@@ -14,13 +14,20 @@
 
 ## 状态
 
-- Fixed
+- New
 
 ## GitHub Issue
 
 - 无，非 P1
 
 ## 最新进展
+
+- 2026-07-06 15:02 CST 运行态复发，状态从代码级 `Fixed` 回退为 `New`：
+  - 11:01-15:02 CST `data/sessions.sqlite3` 新增 6 个 user turn 与 6 条 assistant final，Feishu / Web direct 与 1 条普通 scheduler 均以 assistant 收口；普通 scheduler 1 条为 `completed + sent + delivered=1`。
+  - assistant final 污染扫描未命中空回复、`reasoning_content`、`<think>`、本机绝对路径、`company_profiles/` 相对路径、raw tool 字段、provider 原始错误、`Param Incorrect` 或投递失败，但命中 1 条内部画像进度口径。
+  - 13:16 CST Feishu direct session `Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b` 的紫金矿业估值分析正常完成估值区间、利润中枢、A/H 股口径和风险条件，但 final 开头写出“画像已写入，重点保留的是估值方法、利润中枢和风险触发条件”，把内部画像写入动作作为用户态正文前缀。
+  - 该样本晚于 2026-07-06 03:41 CST 共享净化层代码级修复记录；当前 live 是否已重启不可由本轮确认，但真实运行态仍会出现同根内部画像 / 流程进度口径外露，因此从 `Fixed` 回退为 `New`。
+  - 为何不影响功能链路：回复主体仍完成用户要求的估值分析并正常收口，没有未回复、错投、投递失败或数据破坏证据；问题只影响用户可见文案边界和产品感，因此仍为质量性 `P3`，非 P1，不创建 GitHub Issue。
 
 - 2026-06-25 03:04 CST 运行态继续复发，状态维持 `New`：
   - 23:02-03:04 CST `data/sessions.sqlite3` 仍未追平最近真实会话，`session_messages.max(timestamp)=2026-06-17T10:37:37.202464+08:00`、`session_messages.max(imported_at)=2026-06-17T10:37:41.827657+08:00`；本轮继续以 `data/runtime/logs/acp-events.log` 重构用户可见 final。
