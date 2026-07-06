@@ -3,7 +3,7 @@
 - **发现时间**: 2026-06-06 11:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，非 P1
 
 ## 证据来源
@@ -138,6 +138,7 @@
 
 ## 修复记录
 
+- 2026-07-07 03:06 CST：共享 `AgentSession` 现在会把 ACP 类瞬时失败视为可重试坏态，在保留既有 context-overflow / 空成功兜底之外，新增 1 次轻量重试用于 `codex/opencode acp session/prompt idle timeout`、`stream disconnected before completion`、`stream closed before response`、`acp stream disconnected`、`transport disconnected`。这让 direct 与 scheduler 在同一 runner 边界上共享恢复逻辑，而不是首轮瞬时断连就直接整轮失败。新增回归 `retryable_transient_runner_error_text_matches_acp_disconnect_and_idle_timeout`、`transient_runner_failure_retries_once_before_returning_success`，并复跑 `empty_success_with_tool_calls_uses_fallback_after_retries`、`cargo check -p hone-channels --tests`、`rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/agent_session/helpers.rs crates/hone-channels/src/agent_session/core.rs crates/hone-channels/src/agent_session/tests.rs`、`git diff --check` 通过。本轮未重启 live 服务，先按代码级 `Fixed` 记录，后续仍需运行态复核是否完全止血。
 - 2026-06-09 00:12 CST 进入 `Fixing`：已准备代码加固，直聊错误净化会把 `codex acp ... stream disconnected before completion` 映射为安全的“当前本机执行环境暂时不可用”提示；scheduler 内部 ACP transport 断连仍不外发，但 `ScheduledTaskExecution.error` 会保留安全台账文案，`failure_kind=acp_transport_disconnect`，下游应落成 `execution_failed + skipped_error`，不再伪装成业务 `noop + skipped_noop`。
 - 验证阻塞：本机 Rust toolchain 当前连 `cargo --version`、直接 toolchain `cargo --version`、`rustc --version` 都会悬挂；已终止悬挂进程并仅完成 `git diff --check`。因此本轮不得标记 `Fixed`、不得提交或推送；下一轮需先恢复 toolchain，再运行 `cargo test -p hone-channels user_visible_error_message_ --lib -- --nocapture`、`cargo test -p hone-channels suppressed_scheduler_failure_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`。
 - 2026-06-09 04:43 CST 状态更新为 `Fixed`：Rust toolchain 已恢复，`cargo test -p hone-channels user_visible_error_message_ --lib -- --nocapture`、`cargo test -p hone-channels suppressed_scheduler_failure_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过。该修复不依赖当前机器生产运行态或线上日志判定恢复。
