@@ -22,6 +22,15 @@
 
 ## 最新进展
 
+- 本轮 2026-07-06 23:04-2026-07-07 03:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 heartbeat raw preview / 判断上下文继续出现异常或高风险行情数值，并进入 `PlainTextNoop`、`PlainTextSuppressed`、`JsonMalformed` 等链路。
+    - 代表样本包括 01:30 CST `Monitor_Watchlist_11` raw preview 使用 `MU $987.08` 判断未触发阈值，03:00 CST 同 job 使用 `MU $999.21` 判断未触发阈值；`DRAM 心跳监控` 02:30 CST 使用 `DRAM current price: $64.6999`、`Previous close: $60.63` 等链路内价格；`TSLA 正负触发条件心跳监控` 多轮 raw preview 使用 `$414-$417` 与异常高 PE / market cap 上下文做触发判断。
+  - `data/sessions.sqlite3`
+    - 本窗普通 scheduler / direct assistant final 均正常收口；未确认新的正式用户可见 final 直接使用 MU `$999.21` 或同类异常价。
+- 本窗异常价格主要停留在 heartbeat raw preview、未命中或结构化失败路径；调度 / 投递主链路没有因该问题被阻断。
+- 因该问题仍主要影响行情质量和投资建议可信度，不阻断功能链路，因此继续按质量性 `P3 / New`；非 P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-06 15:02-19:03 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 同窗 heartbeat raw preview / 判断上下文继续检出异常数量级价格或价格 / 时间戳混用信号，代表样本包括 15:30 / 16:00 CST `Monitor_Watchlist_11` 使用 `MU 975.56`、`RKLB 100.46` 等价格判断未触发阈值；15:30-19:00 CST `DRAM 心跳监控` 多次使用 `DRAM 60.63` 和 `1783022401` 判断触发状态；16:30 / 18:00 / 18:30 CST `持仓重大事件心跳检测` 使用 `ASTS 85.13`、`RKLB 100.46`、`TEM 60.27` 等批量行情；17:30-19:00 CST `AAOI 1.6T 光模块心跳检测` 围绕 `AAOI 120.95` 或历史 watchlist 价格做判断。

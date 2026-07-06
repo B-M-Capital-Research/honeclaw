@@ -22,6 +22,12 @@ New
 
 ## 最新进展
 
+- 2026-07-07 03:01 CST 运行态继续复发，状态维持 `New`：
+  - 23:04-03:01 CST `data/sessions.sqlite3` 新增 7 个 user turn 与 7 条 assistant final；Feishu direct 与 Feishu scheduler 均以 assistant 收口，无 user-only 残留；普通 scheduler 4 条为 `completed + sent + delivered=1`。
+  - assistant final 污染扫描未命中空回复、`reasoning_content`、`<think>`、本机绝对路径、`company_profiles/`、raw tool 字段、provider 原始错误、`mcpServers`、`Param Incorrect`、panic 或资源耗尽。
+  - 23:31 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f895bed1573d53053e89bfc382b523a44` 的 `科技成长股持仓买卖点日内预警` final 正常收口，但来源段继续输出 `https://公开行情页.com/stocks/be/`、`/history/`、`/stocks/rklb/` 等占位链接。
+  - 该样本业务主体完成 TEM / RKLB / BE / MSFT 风险回报和纪律线判断，没有投递失败、空回复、错投、原始工具 JSON 或数据安全证据；问题仍只影响用户可见来源 / 工具口径边界和产品感，不影响主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-07-06 23:04 CST 运行态继续复发，状态维持 `New`：
   - 19:03-23:04 CST `data/sessions.sqlite3` 新增 58 个 user turn 与 57 条 assistant final；Feishu direct、Feishu scheduler 与普通 scheduler 大多以 assistant 收口，普通 scheduler 34 条为 `completed + sent + delivered=1`。
   - assistant final 污染扫描未命中空回复、`reasoning_content`、`<think>`、本机绝对路径、`company_profiles/`、raw tool 字段、provider 原始错误、`mcpServers`、`Param Incorrect`、panic 或资源耗尽。
