@@ -8,6 +8,13 @@
 
 ## 证据来源
 
+- `data/sessions.sqlite3` / `data/runtime/logs/acp-events.log` / `data/runtime/logs/backend_screen.log`
+  - 2026-07-06 19:03-23:04 CST 同类 ACP runner timeout 在 Web direct 链路继续出现，且本轮用户请求没有形成 assistant final。
+  - 22:35 CST Web direct session `Actor_web__direct__web-user-8988066ef1ac` 收到用户关于特朗普股市表态和市场反应的提问；`sessions.sqlite3` 已持久化该 user turn，但截至 23:01 CST 该 session 最新仍为 user，未追加 assistant final。
+  - `acp-events.log` 同轮已出现 `session/prompt`、58 个 `agent_message_chunk` 和 1 个 `tool_call`（`Searching the Web`），最后一条 ACP 事件停在 22:35:41 CST 附近，没有 `stopReason=end_turn`。
+  - `backend_screen.log` 在 22:36 / 22:37 / 22:38 CST 连续记录 `agent.run still running`，随后 22:38 CST 记录 `runner.error kind=TimeoutPerLine`，错误为 `codex acp session/prompt idle timeout (180s)`，并在 Web chat 路径落成处理失败。
+  - 该错误的内部 stderr 包含本机 plugin manifest 路径，但本轮没有形成用户可见 assistant final，因此没有原始错误外泄到最终回复；问题影响 Web direct 请求完成率，仍为功能性 `P2 / New`，非 P1，不创建 GitHub Issue。
+
 - `data/sessions.sqlite3` / `data/runtime/logs/feishu_screen.log`
   - 2026-07-06 07:02-11:02 CST 同类 ACP runner timeout 在 Feishu direct 链路继续出现，但用户可见错误已被净化。
   - 09:09 CST Feishu direct 用户请求“周末财经新闻,预测热门板块...”后，09:14 CST 同一 message_id 落库 assistant text `抱歉，处理超时了。请稍后再试。`；日志侧同轮为 `codex acp session/prompt idle timeout (180s)`，内部 stderr 包含本机 plugin manifest 路径，但未进入用户可见回复。
@@ -98,6 +105,7 @@
 - 2026-07-01 11:03 CST 复核窗中，普通 Feishu scheduler 仍可因 `scheduler_runner_timeout` 跳过发送；错误净化继续生效，但该轮业务报告正文仍没有完成。
 - 2026-07-03 07:00 CST 复核窗中，Feishu scheduler `每日美股盘后收盘复盘` 再次因 `scheduler_runner_timeout` 跳过发送；错误净化继续生效，但该轮业务报告正文仍没有完成。
 - 2026-07-05 03:02 CST 复核窗中，Feishu scheduler `SemiAnalysis与Citrini文章晚间跟踪` 再次因 `scheduler_runner_timeout` 跳过发送；错误净化继续生效并落库产品化失败提示，但该轮业务报告正文仍没有完成。
+- 2026-07-06 23:04 CST 复核窗中，Web direct 主动提问在输出开头和发起 Web 搜索工具后命中 `codex acp session/prompt idle timeout (180s)`；该轮没有 assistant final，用户请求未完成。
 
 ## 用户影响
 
@@ -105,6 +113,7 @@
 - Feishu 用户主动追问没有得到答案，定时任务也有一轮因同类 runner transport 断连未产出正文。
 - 定级为 `P2`：影响请求完成率和 scheduler 结果生成，但本窗只有 1 条 Feishu direct 用户可见失败和 1 条 Discord scheduler 抑制失败；没有跨用户大面积不可用、错投、数据破坏或原始错误外泄证据，因此不是 `P1`。
 - 2026-06-24 复发窗覆盖 Feishu direct、Web direct 与 Discord group / scheduler 多条请求，影响范围比首发更广；仍未观察到原始错误外泄、错投或数据破坏，因此严重等级保持 `P2`，状态从 `Fixed` 回退为 `New`。
+- 2026-07-06 23:04 CST 复发窗再次覆盖 Web direct 主动提问；影响是单轮请求未完成且 transcript 只保留 user turn，未见跨用户错投、数据破坏或大面积全渠道不可用，因此仍保持 `P2` 而不是 `P1`。
 
 ## 根因判断
 

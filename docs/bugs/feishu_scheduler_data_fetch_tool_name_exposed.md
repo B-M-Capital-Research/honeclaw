@@ -22,6 +22,14 @@ New
 
 ## 最新进展
 
+- 2026-07-06 23:04 CST 运行态继续复发，状态维持 `New`：
+  - 19:03-23:04 CST `data/sessions.sqlite3` 新增 58 个 user turn 与 57 条 assistant final；Feishu direct、Feishu scheduler 与普通 scheduler 大多以 assistant 收口，普通 scheduler 34 条为 `completed + sent + delivered=1`。
+  - assistant final 污染扫描未命中空回复、`reasoning_content`、`<think>`、本机绝对路径、`company_profiles/`、raw tool 字段、provider 原始错误、`mcpServers`、`Param Incorrect`、panic 或资源耗尽。
+  - 21:31 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f58ff884640e647a1792f618f45209251` 的开盘道氏理论点位简报正常收口，但来源段继续输出 `公开行情页.com` 占位链接。
+  - 21:33 CST session `Actor_feishu__direct__ou_5f895bed1573d53053e89bfc382b523a44` 的美股开盘持仓监控正常收口，但继续输出 `公开行情页.com` 占位来源。
+  - 23:01 CST session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 的 `核心观察股池晚间快报` 开头继续写出 `data_fetch` / `quote_short`，把内部行情工具和字段名作为用户态来源说明。
+  - 三个样本报告主体均正常完成并送达，没有投递失败、空回复、错投、原始工具 JSON 或数据安全证据；问题仍只影响用户可见来源 / 工具口径边界和产品感，不影响主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-07-06 07:03 CST 运行态再次复发，状态从代码级 `Fixed` 回退为运行态 `New`：
   - 03:01-07:03 CST `data/sessions.sqlite3` 新增 6 个 user turn 与 6 条 assistant final，Feishu scheduler / direct 均有 assistant 收口；普通 scheduler 6 条为 `completed + sent + delivered=1`。
   - assistant final 污染扫描未命中空回复、`reasoning_content`、`<think>`、provider 原始错误、panic、quota、资源耗尽、本机绝对路径、`mcpServers`、env 字段、`company_profiles/`、`stock_research` 或本地存储口径。
