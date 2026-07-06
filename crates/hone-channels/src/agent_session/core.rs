@@ -32,7 +32,8 @@ use super::guard::QuotaReservationGuard;
 use super::helpers::{
     CONTEXT_OVERFLOW_FALLBACK_MESSAGE, CONTEXT_OVERFLOW_POST_COMPACT_RESTORE_LIMIT,
     CONTEXT_OVERFLOW_RECOVERY_LIMIT, CompactCommand, EMPTY_SUCCESS_RETRY_LIMIT,
-    is_context_overflow_error_text, merge_message_metadata, non_finance_boundary_reply,
+    TRANSIENT_RUNNER_FAILURE_RETRY_LIMIT, is_context_overflow_error_text,
+    is_retryable_transient_runner_failure, merge_message_metadata, non_finance_boundary_reply,
     persistable_turn_from_response, restore_limit_before_compaction, should_return_runner_result,
 };
 use super::progress::{progress_watchdog_tick, run_with_progress_ticks};
@@ -99,20 +100,71 @@ impl AgentSession {
                 emitter.clone(),
             )
             .await;
+        let mut transient_retry_count = 0usize;
+        let mut empty_success_retry_count = 0usize;
 
-        for retry_idx in 0..EMPTY_SUCCESS_RETRY_LIMIT {
+        loop {
+            if is_retryable_transient_runner_failure(&last_result)
+                && transient_retry_count < TRANSIENT_RUNNER_FAILURE_RETRY_LIMIT
+            {
+                transient_retry_count += 1;
+                tracing::warn!(
+                    "[AgentSession] transient runner failure, retrying runner={} session_id={} attempt={}/{} error={}",
+                    runner_name,
+                    session_id,
+                    transient_retry_count,
+                    TRANSIENT_RUNNER_FAILURE_RETRY_LIMIT,
+                    last_result.response.error.as_deref().unwrap_or_default()
+                );
+                self.core.log_message_step(
+                    &self.actor.channel,
+                    &self.actor.user_id,
+                    session_id,
+                    "agent.run.retry",
+                    &format!(
+                        "transient_runner_failure attempt={transient_retry_count}/{TRANSIENT_RUNNER_FAILURE_RETRY_LIMIT}"
+                    ),
+                    self.message_id.as_deref(),
+                    None,
+                );
+                self.emit(session_progress_event(
+                    "agent.run.retry",
+                    Some(format!(
+                        "{runner_name} transient_runner_failure attempt={transient_retry_count}/{TRANSIENT_RUNNER_FAILURE_RETRY_LIMIT}"
+                    )),
+                ))
+                .await;
+
+                last_result = self
+                    .run_runner_with_progress_watchdog(
+                        runner,
+                        runner_name,
+                        session_id,
+                        transient_retry_count,
+                        request.clone(),
+                        emitter.clone(),
+                    )
+                    .await;
+                continue;
+            }
+
             // 如果运行失败，或者已经拿到了正文/工具调用，则不重试。
             // 对“支持流式但本次没有任何输出”的 runner，继续走空回复兜底逻辑。
             if should_return_runner_result(&last_result) {
                 return last_result;
             }
 
-            let attempt = retry_idx + 1;
+            if empty_success_retry_count >= EMPTY_SUCCESS_RETRY_LIMIT {
+                break;
+            }
+
+            empty_success_retry_count += 1;
+            let attempt = transient_retry_count + empty_success_retry_count;
             tracing::warn!(
                 "[AgentSession] empty successful response, retrying runner={} session_id={} attempt={}/{}",
                 runner_name,
                 session_id,
-                attempt,
+                empty_success_retry_count,
                 EMPTY_SUCCESS_RETRY_LIMIT
             );
             self.core.log_message_step(
@@ -120,14 +172,16 @@ impl AgentSession {
                 &self.actor.user_id,
                 session_id,
                 "agent.run.retry",
-                &format!("empty_success attempt={attempt}/{EMPTY_SUCCESS_RETRY_LIMIT}"),
+                &format!(
+                    "empty_success attempt={empty_success_retry_count}/{EMPTY_SUCCESS_RETRY_LIMIT}"
+                ),
                 self.message_id.as_deref(),
                 None,
             );
             self.emit(session_progress_event(
                 "agent.run.retry",
                 Some(format!(
-                    "{runner_name} empty_success attempt={attempt}/{EMPTY_SUCCESS_RETRY_LIMIT}"
+                    "{runner_name} empty_success attempt={empty_success_retry_count}/{EMPTY_SUCCESS_RETRY_LIMIT}"
                 )),
             ))
             .await;

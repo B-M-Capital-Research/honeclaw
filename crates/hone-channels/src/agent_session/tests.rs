@@ -45,8 +45,9 @@ use super::core::AgentSession;
 use super::emitter::SessionEventEmitter;
 use super::helpers::{
     CONTEXT_OVERFLOW_FALLBACK_MESSAGE, DIRECT_SESSION_PRE_COMPACT_RESTORE_LIMIT,
-    NON_FINANCE_BOUNDARY_REPLY, non_finance_boundary_reply, persistable_turn_from_response,
-    sanitize_assistant_context_content, should_persist_tool_result, should_return_runner_result,
+    NON_FINANCE_BOUNDARY_REPLY, is_retryable_transient_runner_error_text,
+    non_finance_boundary_reply, persistable_turn_from_response, sanitize_assistant_context_content,
+    should_persist_tool_result, should_return_runner_result,
 };
 use super::restore::restore_context;
 use super::types::{
@@ -88,6 +89,30 @@ impl AgentRunner for MockEmptySuccessRunner {
             session_metadata_updates: HashMap::new(),
             context_messages: None,
         }
+    }
+}
+
+#[derive(Clone)]
+struct MockSequencedRunner {
+    results: Arc<Mutex<std::collections::VecDeque<AgentRunnerResult>>>,
+}
+
+#[async_trait]
+impl AgentRunner for MockSequencedRunner {
+    fn name(&self) -> &'static str {
+        "mock_sequenced"
+    }
+
+    async fn run(
+        &self,
+        _request: AgentRunnerRequest,
+        _emitter: Arc<dyn AgentRunnerEmitter>,
+    ) -> AgentRunnerResult {
+        self.results
+            .lock()
+            .expect("lock results")
+            .pop_front()
+            .expect("queued runner result")
     }
 }
 
@@ -334,6 +359,22 @@ fn should_return_runner_result_does_not_treat_tool_calls_only_as_success() {
 }
 
 #[test]
+fn retryable_transient_runner_error_text_matches_acp_disconnect_and_idle_timeout() {
+    assert!(is_retryable_transient_runner_error_text(
+        "codex acp error: stream disconnected before completion"
+    ));
+    assert!(is_retryable_transient_runner_error_text(
+        "opencode acp session/prompt idle timeout (180s)"
+    ));
+    assert!(!is_retryable_transient_runner_error_text(
+        "context window exceeds limit (2013)"
+    ));
+    assert!(!is_retryable_transient_runner_error_text(
+        "request timed out while waiting for upstream response"
+    ));
+}
+
+#[test]
 fn non_finance_boundary_rejects_obvious_consumer_topics_without_finance_anchor() {
     assert_eq!(
         non_finance_boundary_reply("Hi hone，你了解深圳楼市吗？我现在是否适合买房？"),
@@ -422,6 +463,79 @@ async fn empty_success_with_tool_calls_uses_fallback_after_retries() {
         Some(EMPTY_SUCCESS_FALLBACK_MESSAGE)
     );
     assert_eq!(result.response.tool_calls_made.len(), 1);
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn transient_runner_failure_retries_once_before_returning_success() {
+    let root = make_temp_dir("hone_channels_transient_runner_retry_success");
+    std::fs::create_dir_all(&root).expect("create root");
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let actor = ActorIdentity::new("discord", "transient-retry", None::<String>).expect("actor");
+    let session = AgentSession::new(core, actor, "direct");
+    let runner = MockSequencedRunner {
+        results: Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
+            AgentRunnerResult {
+                response: AgentResponse {
+                    content: String::new(),
+                    tool_calls_made: Vec::new(),
+                    iterations: 1,
+                    success: false,
+                    error: Some("codex acp session/prompt idle timeout (180s)".to_string()),
+                },
+                streamed_output: true,
+                terminal_error_emitted: false,
+                session_metadata_updates: HashMap::new(),
+                context_messages: None,
+            },
+            AgentRunnerResult {
+                response: AgentResponse {
+                    content: "重试后成功".to_string(),
+                    tool_calls_made: Vec::new(),
+                    iterations: 1,
+                    success: true,
+                    error: None,
+                },
+                streamed_output: true,
+                terminal_error_emitted: false,
+                session_metadata_updates: HashMap::new(),
+                context_messages: None,
+            },
+        ]))),
+    };
+    let request = AgentRunnerRequest {
+        session_id: "transient-retry-session".to_string(),
+        actor_label: "discord:transient-retry".to_string(),
+        actor: session.actor.clone(),
+        channel_target: "direct".to_string(),
+        allow_cron: false,
+        config_path: String::new(),
+        runtime_dir: String::new(),
+        system_prompt: "system".to_string(),
+        runtime_input: "user input".to_string(),
+        context: AgentContext::new("transient-retry-session".to_string()),
+        timeout: None,
+        gemini_stream: GeminiStreamOptions::default(),
+        session_metadata: HashMap::new(),
+        working_directory: root.display().to_string(),
+        allowed_tools: None,
+        max_tool_calls: None,
+        tool_call_limits: None,
+    };
+
+    let result = session
+        .run_runner_with_empty_success_retry(
+            &runner,
+            "mock_sequenced",
+            "transient-retry-session",
+            request,
+            Arc::new(NoopEmitter),
+        )
+        .await;
+
+    assert!(result.response.success);
+    assert_eq!(result.response.content, "重试后成功");
 
     let _ = std::fs::remove_dir_all(root);
 }
@@ -2183,7 +2297,9 @@ async fn context_window_exceeded_key_auto_compacts_and_retries_successfully() {
     let actor = ActorIdentity::new("web", "overflow-key", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
 
-    let result = session.run("取消所有定时任务", AgentRunOptions::default()).await;
+    let result = session
+        .run("取消所有定时任务", AgentRunOptions::default())
+        .await;
 
     assert!(result.response.success, "{:?}", result.response.error);
     assert_eq!(result.response.content, "压缩后恢复");

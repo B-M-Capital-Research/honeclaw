@@ -26,6 +26,7 @@ use crate::runners::AgentRunnerResult;
 use crate::runtime::sanitize_user_visible_output;
 
 pub(super) const EMPTY_SUCCESS_RETRY_LIMIT: usize = 2;
+pub(super) const TRANSIENT_RUNNER_FAILURE_RETRY_LIMIT: usize = 1;
 pub(super) const CONTEXT_OVERFLOW_RECOVERY_LIMIT: usize = 1;
 pub(super) const DIRECT_SESSION_PRE_COMPACT_RESTORE_LIMIT: usize = 20;
 pub(super) const CONTEXT_OVERFLOW_POST_COMPACT_RESTORE_LIMIT: usize = 6;
@@ -60,6 +61,31 @@ pub(super) fn should_return_runner_result(result: &AgentRunnerResult) -> bool {
     // opencode_acp 会始终把它设为 true，因此不能再把它当成“已有输出”的依据，
     // 否则空回复成功态会被直接放过，前端就可能一直停留在“思考中”。
     !result.response.success || !result.response.content.trim().is_empty()
+}
+
+pub(super) fn is_retryable_transient_runner_failure(result: &AgentRunnerResult) -> bool {
+    if result.response.success {
+        return false;
+    }
+    let Some(error) = result.response.error.as_deref() else {
+        return false;
+    };
+    is_retryable_transient_runner_error_text(error)
+}
+
+pub(super) fn is_retryable_transient_runner_error_text(text: &str) -> bool {
+    if crate::runtime::is_context_overflow_error(text) {
+        return false;
+    }
+    let lowered = text.to_ascii_lowercase();
+    if !(lowered.contains("codex") || lowered.contains("opencode") || lowered.contains("acp")) {
+        return false;
+    }
+    lowered.contains("stream disconnected before completion")
+        || lowered.contains("stream closed before response")
+        || lowered.contains("acp stream disconnected")
+        || lowered.contains("transport disconnected")
+        || lowered.contains("session/prompt idle timeout")
 }
 
 pub(super) fn is_context_overflow_error_text(text: &str) -> bool {
