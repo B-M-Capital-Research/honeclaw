@@ -22,6 +22,16 @@
 
 ## 最新进展
 
+- 本轮 2026-07-07 03:02-07:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `session_messages`
+    - 07:00 CST Feishu scheduler `美股持仓收盘后早报` assistant final 正常收口，但正式输出 `SNDK 1744.43`、`AMD 552.05`、`DELL 411.51`、`ARM 322.24`、`GOOGL 366.46` 等明显异常数量级价格。
+    - 同条 final 继续基于这些价格计算组合市值约 `83,165` 美元、浮盈约 `23,623` 美元、单日变化约 `+1,983` 美元，并给出 DRAM / AMD / DELL / RKLB 等个股贡献归因。
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗普通 scheduler 6 条均为 `completed + sent + delivered=1`，Feishu direct / scheduler 6 个 user turn 均以 assistant final 收口。
+    - heartbeat 判断上下文仍有 27 条 `execution_failed + skipped_error`，覆盖 `PlainTextSuppressed`、`JsonMalformed`、`JsonUnknownStatus` 等结构化失败样本；本单仅记录异常行情进入正式 final 与判断上下文的持续证据。
+- 本窗已有 scheduler final 正式落库样本，不只是内部 raw preview；价格 sanity check 仍未覆盖当前 scheduler / heartbeat / direct 投研运行路径。
+- 报告主链路正常收口，未见空回复、错投、投递失败或原始工具 JSON；因此仍按质量性 `P3 / New`。该问题不影响调度 / 投递主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-06 23:04-2026-07-07 03:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 同窗 heartbeat raw preview / 判断上下文继续出现异常或高风险行情数值，并进入 `PlainTextNoop`、`PlainTextSuppressed`、`JsonMalformed` 等链路。
