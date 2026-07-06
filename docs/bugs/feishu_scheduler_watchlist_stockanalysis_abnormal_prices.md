@@ -22,6 +22,14 @@
 
 ## 最新进展
 
+- 本轮 2026-07-06 15:02-19:03 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 heartbeat raw preview / 判断上下文继续检出异常数量级价格或价格 / 时间戳混用信号，代表样本包括 15:30 / 16:00 CST `Monitor_Watchlist_11` 使用 `MU 975.56`、`RKLB 100.46` 等价格判断未触发阈值；15:30-19:00 CST `DRAM 心跳监控` 多次使用 `DRAM 60.63` 和 `1783022401` 判断触发状态；16:30 / 18:00 / 18:30 CST `持仓重大事件心跳检测` 使用 `ASTS 85.13`、`RKLB 100.46`、`TEM 60.27` 等批量行情；17:30-19:00 CST `AAOI 1.6T 光模块心跳检测` 围绕 `AAOI 120.95` 或历史 watchlist 价格做判断。
+  - `data/sessions.sqlite3` / `session_messages`
+    - 同窗 3 条 assistant final 均正常收口；未确认新的正式用户可见 final 直接输出 `MU 975.56`、`SNDK 1745.00`、`SPY 744.78`、`QQQ 712.60` 等异常价格。
+- 本窗异常价格主要停留在 heartbeat raw preview、未命中或结构化失败路径；调度 / 投递主链路没有因该问题被阻断。
+- 因该问题仍主要影响行情质量和投资建议可信度，不阻断功能链路，因此继续按质量性 `P3 / New`；非 P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-06 07:02-11:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `session_messages`
     - 08:30 CST Feishu scheduler `闪迪(SNDK)每日行情与行业简报` assistant final 正常收口，但正式输出 `SNDK 最新完整交易日为 7月2日美股，收跌 14.13% 至 1,745.00 美元`，并继续列出 `前收 2,032.22`、盘后 `1,762.07`、市值约 `2,584 亿美元` 等异常数量级价格。
