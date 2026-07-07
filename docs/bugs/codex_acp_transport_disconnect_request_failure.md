@@ -130,6 +130,17 @@
 - 将 scheduler 的 transport 失败终态从业务 `noop` 中区分出来，例如保持 `execution_failed + skipped_error + failure_kind=internal_error_suppressed`，避免巡检和用户侧误读为“条件未命中”。
 - 保留现有错误净化规则，继续禁止内部 URL、transport fallback、raw error 进入最终用户文本。
 
+## 最新运行态复核（2026-07-07 11:02 CST）
+
+- `data/sessions.sqlite3` / `cron_job_runs`
+  - 巡检窗口：2026-07-07 07:01-11:02 CST。
+  - 普通 scheduler 18 条中 17 条为 `completed + sent + delivered=1`，1 条 `特斯拉与火箭实验室新闻日报` 在 09:06 CST 落成 `execution_failed + skipped_error + should_deliver=0 + delivered=0`。
+  - 该失败的 `detail_json.failure_kind=scheduler_runner_timeout`，assistant transcript 只写入产品化失败提示“本轮定时任务未能完成，系统已记录失败并将在下一次触发时重试。”，没有把 ACP timeout、路径、URL 或 provider 原始错误暴露给用户。
+  - 09:00 CST 同一任务的 user turn 已落库，业务正文没有生成，因此仍属于请求完成率问题。
+- 本轮判断
+  - 该样本发生在 03:06 CST 代码级 retry 修复之后，但上一轮修复记录明确“未重启当前 live 服务”；本轮仅把它作为旧 live 运行态待复核证据，不直接判定代码修复失败。
+  - 用户可见侧已脱敏，未见错投、数据破坏或大面积不可用；严重等级不升级，状态保持代码级 `Fixed`，后续需在已加载新代码的 live 窗口继续观察是否还出现 `scheduler_runner_timeout`。
+
 ## 验证
 
 - 本轮为缺陷台账维护任务，未修改业务代码，未运行代码测试。

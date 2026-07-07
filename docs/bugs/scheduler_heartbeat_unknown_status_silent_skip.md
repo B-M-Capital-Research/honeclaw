@@ -5533,3 +5533,16 @@
 - 本轮判断
   - 最新证据仍属于 heartbeat 输出结构漂移 / 解析失败的既有范围，没有新的独立根因。
   - 坏态影响 heartbeat 是否稳定得出 `triggered/noop` 并发送；普通 direct / scheduler final 主链路可收口，未见错对象投递或数据安全问题，因此维持 `P2 / New`，非 P1。
+
+## 最新运行态复核（2026-07-07 11:02 CST）
+
+- `data/sessions.sqlite3` / `cron_job_runs`
+  - 巡检窗口：2026-07-07 07:01-11:02 CST。
+  - 本窗 heartbeat 共 96 条运行记录：70 条 `noop + skipped_noop + delivered=0`，26 条 `execution_failed + skipped_error + delivered=0`。
+  - parse_kind 分布为 `JsonNoop` 54、`PlainTextSuppressed` 21、`PlainTextNoop` 9、`JsonTriggered` 6、`JsonUnknownStatus` 3、`JsonMalformed` 1、`JsonEmptyStatus` 1、`Empty` 1；96 条 raw preview 均含 `<think>` 前缀或思考稿。
+  - 代表失败样本包括 07:30 CST `伦敦金跌破4100提醒` `PlainTextSuppressed`，raw preview 中系统时间漂移到 `2026年4月4日 03:50 北京时间` 并以自然语言说明无法校验；10:00 CST `TEM大事件心跳监控` 落成空输出；多条 `AAOI / TSLA / ASTS / 全天原油` 任务继续落成“不是结构化 JSON / 不是合法 JSON / 包含未知状态”。
+- `session_messages`
+  - 同窗 32 个 user turn 与 33 条 assistant 记录，最近 Feishu direct / scheduler、Web direct 与 Discord group 均以 assistant 收口；assistant final 未见空回复、`reasoning_content`、`<think>`、raw provider 错误、本机路径或资源耗尽原文进入用户可见文本。
+- 本轮判断
+  - 最新证据仍属于 heartbeat 输出结构漂移 / 解析失败的既有范围，没有新的独立根因。
+  - 坏态影响 heartbeat 是否稳定得出 `triggered/noop` 并发送；普通 direct / scheduler 主链路本窗大体可收口，未见错对象投递或数据安全问题，因此维持 `P2 / New`，非 P1。

@@ -604,6 +604,11 @@ New
   - 23:00 CST `核心观察股池晚间快报` final 写出 `本轮 data_fetch 返回的最新可用价格仍是最近一次已校验 quote_short 口径`、`价格来自本轮 data_fetch quote_short`。
   - 本轮 `sessions.sqlite3` 中 3 组 user / assistant 均成对收口；ACP 同窗 20 个 prompt 均 `stopReason=end_turn`，没有投递失败、空回复、错投、会话悬挂或链路级数据破坏证据。
   - 因问题只影响用户可见文案边界和产品感，不阻断 scheduler 主功能链路，仍为质量性 `P3 / New`；非 P1，不创建 GitHub Issue。
+- 2026-07-07 11:02 CST 补充同根复发证据：
+  - 08:32 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f0a88f4c2105e8388aa2a63ae847f7f28` 的创新药持仓日报在和铂医药段落继续输出 `https://公开行情页.com/quote/hkg/2142/` 这类不可用占位来源。
+  - 09:03 CST session `Actor_feishu__direct__ou_5fe31244b1208749f16773dce0c822801a` 的美股与 A 股跟踪简报继续把 `data_fetch/news`、`quote_short` 写成用户可见数据来源，并说明盘后实时价未能稳定校验。
+  - 同窗 32 个 user turn 与 33 条 assistant 记录均有收口；普通 scheduler 18 条中 17 条正常送达，1 条为产品化失败提示；未见空回复、错投、原始 provider 错误、本机路径或 raw tool JSON。
+  - 因问题只影响用户可见来源 / 工具口径边界和产品感，不阻断主功能链路，仍为质量性 `P3 / New`；非 P1，不创建 GitHub Issue。
 
 ## 修复记录
 
