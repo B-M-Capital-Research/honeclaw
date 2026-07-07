@@ -22,6 +22,16 @@
 
 ## 最新进展
 
+- 本轮 2026-07-07 19:02-23:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `session_messages`
+    - 21:35 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 的 `科技核心股池 · 晚间击球区快报` assistant final 正常收口，但继续输出多只明显异常或高风险数量级价格：`MU 916.32`、`SNDK 1,590.42`、`STX 816.59`、`WDC 537.01`、`GEV 1,046.01`、`AMD 510.32`、`BE 277.05`、`CRDO 246.02`、`INTC 111.45`。
+    - 同条 final 基于这些价格判断 `MU、SNDK、AMD、INTC、CRDO、STX、WDC、BE 仍明显偏离纪律区间，追高风险回报不佳`，说明异常行情仍进入用户可见纪律区间判断。
+    - 23:00 CST 同 actor 的 `核心观察股池晚间快报` 已因最新行情与财报日期未完成稳定校验而全部标注 `当前价格待确认`，说明局部 sanity guard 有止血表现，但 21:35 已送达样本仍证明同根链路未关闭。
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 heartbeat raw preview / 判断上下文继续使用异常或高风险行情数值；代表样本包括 19:30 / 20:00 / 20:30 / 21:00 CST `Monitor_Watchlist_11` raw preview 持续使用 `MU 984.75` 判断未触发阈值。
+- 本窗已有 scheduler final 正式落库样本，不只是 heartbeat raw preview；价格 sanity check 仍未覆盖当前 scheduler / heartbeat / direct 投研运行路径。
+- 报告主链路正常收口，未见空回复、错投、投递失败或原始工具 JSON；因此仍按质量性 `P3 / New`。该问题不影响调度 / 投递主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-07 15:00-19:03 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 同窗 heartbeat raw preview / 判断上下文继续使用异常或高风险行情数值，并进入 `PlainTextSuppressed`、`PlainTextNoop`、`JsonMalformed` 等链路。

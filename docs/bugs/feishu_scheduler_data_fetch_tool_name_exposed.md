@@ -22,6 +22,13 @@ New
 
 ## 最新进展
 
+- 2026-07-07 23:02 CST 运行态继续复发，状态维持 `New`：
+  - 19:02-23:02 CST `data/sessions.sqlite3` 新增 43 个 user turn 与 43 条 assistant final；Feishu / Web direct 与普通 scheduler 均以 assistant 收口，普通 scheduler 31 条均为 `completed + sent + delivered=1`。
+  - assistant final 污染扫描未命中空回复、`reasoning_content`、`<think>`、本机绝对路径、`company_profiles/`、provider 原始错误、`mcpServers`、`Param Incorrect`、panic 或资源耗尽。
+  - 20:03 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f62439dbed2b381c0023e70a381dbd768` 的 `美股盘前要闻、持仓评级与机会观察` final 正常收口，但来源段继续写出 `LITE / COHR / QCOM 行情与新闻：本轮 data_fetch quote/news 口径`。
+  - 21:35 CST session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 的 `科技核心股池 · 晚间击球区快报` final 开头继续写出 `本轮 quote_short 已校验 25 支最新可得价格`，数据待确认段继续写 `价格来自 data_fetch quote_short`。
+  - 两个样本报告主体均正常完成并送达，没有投递失败、空回复、错投、原始工具 JSON 或数据安全证据；问题仍只影响用户可见来源 / 工具口径边界和产品感，不影响主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-07-07 03:01 CST 运行态继续复发，状态维持 `New`：
   - 23:04-03:01 CST `data/sessions.sqlite3` 新增 7 个 user turn 与 7 条 assistant final；Feishu direct 与 Feishu scheduler 均以 assistant 收口，无 user-only 残留；普通 scheduler 4 条为 `completed + sent + delivered=1`。
   - assistant final 污染扫描未命中空回复、`reasoning_content`、`<think>`、本机绝对路径、`company_profiles/`、raw tool 字段、provider 原始错误、`mcpServers`、`Param Incorrect`、panic 或资源耗尽。
