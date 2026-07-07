@@ -197,6 +197,36 @@ static RE_HEARTBEAT_RELATIVE_TODAY_DATE: LazyLock<regex::Regex> = LazyLock::new(
     .expect("valid heartbeat relative today date regex")
 });
 
+static RE_HEARTBEAT_CURRENT_TIME_CONTEXT: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r"(?ix)
+        (?P<prefix>
+            (?:
+                系统当前时间
+                |当前(?:检查)?时间(?:上下文)?
+                |当前北京时间
+                |current(?:\s+check)?\s+time\s+context
+                |current\s+date\s+context
+                |system\s+current\s+time
+                |system\s+context
+                |current\s+time(?:\s+is)?
+            )
+            \s*[:：]?\s*
+        )
+        (?P<datetime>
+            \d{4}年\d{1,2}月\d{1,2}日\s*\d{1,2}[:：]\d{1,2}(?::\d{1,2})?\s*(?:北京时间)?
+            |
+            \d{4}-\d{1,2}-\d{1,2}T\d{1,2}:\d{1,2}(?::\d{1,2})?(?:[+-]\d{2}:\d{2}|Z)
+            |
+            \d{4}-\d{1,2}-\d{1,2}\s+\d{1,2}:\d{1,2}(?::\d{1,2})?\s*(?:Beijing\s+time|北京时间|CST|UTC)?
+            |
+            [A-Z][a-z]+\s+\d{1,2},\s+\d{4},\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:Beijing\s+time|UTC|CST)?
+        )
+        ",
+    )
+    .expect("valid heartbeat current time context regex")
+});
+
 static RE_HEARTBEAT_FACT_TOKEN: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
         r"(?ix)
@@ -988,6 +1018,82 @@ fn heartbeat_current_check_time_text() -> String {
     heartbeat_check_time_text(heartbeat_reference_now_beijing())
 }
 
+fn heartbeat_reference_now_chinese_text(reference_now: DateTime<FixedOffset>) -> String {
+    format!(
+        "{:04}年{}月{}日 {:02}:{:02} 北京时间",
+        reference_now.year(),
+        reference_now.month(),
+        reference_now.day(),
+        reference_now.hour(),
+        reference_now.minute()
+    )
+}
+
+fn heartbeat_reference_now_english_text(reference_now: DateTime<FixedOffset>) -> String {
+    format!(
+        "{:04}-{:02}-{:02} {:02}:{:02} Beijing time",
+        reference_now.year(),
+        reference_now.month(),
+        reference_now.day(),
+        reference_now.hour(),
+        reference_now.minute()
+    )
+}
+
+fn heartbeat_reference_now_iso_text(reference_now: DateTime<FixedOffset>) -> String {
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:00+08:00",
+        reference_now.year(),
+        reference_now.month(),
+        reference_now.day(),
+        reference_now.hour(),
+        reference_now.minute()
+    )
+}
+
+fn normalize_heartbeat_current_time_context(
+    text: &str,
+    reference_now: DateTime<FixedOffset>,
+) -> (String, Option<String>) {
+    let mut normalized_from = None;
+    let normalized = RE_HEARTBEAT_CURRENT_TIME_CONTEXT
+        .replace_all(text, |captures: &regex::Captures<'_>| {
+            let original = captures
+                .name("datetime")
+                .map(|matched| matched.as_str())
+                .unwrap_or_default();
+            let prefix = captures
+                .name("prefix")
+                .map(|matched| matched.as_str())
+                .unwrap_or_default();
+            let trimmed_original = original.trim();
+            if trimmed_original.is_empty() {
+                return captures[0].to_string();
+            }
+
+            let replacement =
+                if trimmed_original.contains('年') || trimmed_original.contains("北京时间") {
+                    heartbeat_reference_now_chinese_text(reference_now)
+                } else if trimmed_original.contains('T')
+                    || trimmed_original.ends_with('Z')
+                    || trimmed_original.contains("+08:00")
+                {
+                    heartbeat_reference_now_iso_text(reference_now)
+                } else {
+                    heartbeat_reference_now_english_text(reference_now)
+                };
+
+            if trimmed_original == replacement {
+                return captures[0].to_string();
+            }
+
+            normalized_from.get_or_insert_with(|| trimmed_original.to_string());
+            format!("{prefix}{replacement}")
+        })
+        .into_owned();
+    (normalized, normalized_from)
+}
+
 fn normalize_heartbeat_beijing_trigger_time(
     text: &str,
     reference_now: DateTime<FixedOffset>,
@@ -1667,6 +1773,11 @@ fn heartbeat_execution_from_content_internal(
                     session_id: None,
                 };
             }
+            let (normalized_current_time, normalized_current_time_from) =
+                reference_now.map_or((sanitized_message.clone(), None), |reference_now| {
+                    normalize_heartbeat_current_time_context(&sanitized_message, reference_now)
+                });
+            sanitized_message = normalized_current_time;
             let normalized_beijing_trigger_time = reference_now.and_then(|reference_now| {
                 let (normalized, normalized_from) =
                     normalize_heartbeat_beijing_trigger_time(&sanitized_message, reference_now);
@@ -1725,6 +1836,8 @@ fn heartbeat_execution_from_content_internal(
                     "deliver_preview": deliver_preview,
                     "beijing_trigger_time_normalized": normalized_beijing_trigger_time.is_some(),
                     "original_beijing_trigger_time": normalized_beijing_trigger_time,
+                    "beijing_current_time_context_normalized": normalized_current_time_from.is_some(),
+                    "original_beijing_current_time_context": normalized_current_time_from,
                 }),
                 session_id: None,
             }
@@ -3973,6 +4086,66 @@ mod tests {
         assert!(execution.error.is_none());
         assert!(execution.content.contains("今日（6月29日）高开高走"));
         assert!(!execution.content.contains("今日（6月30日）高开高走"));
+    }
+
+    #[test]
+    fn heartbeat_normalizes_conflicting_current_time_context() {
+        let reference_now =
+            chrono::DateTime::parse_from_rfc3339("2026-07-07T23:00:11+08:00").expect("time");
+        let execution = heartbeat_execution_from_content_at_beijing(
+            r#"{"status":"triggered","message":"系统当前时间：2025年4月28日 17:50 北京时间。金价已跌破阈值，触发提醒。"}"#,
+            "MiniMax-M2.7-highspeed",
+            reference_now,
+        );
+
+        assert!(execution.should_deliver);
+        assert!(execution.error.is_none());
+        assert!(
+            execution
+                .content
+                .contains("系统当前时间：2026年7月7日 23:00 北京时间"),
+            "{}",
+            execution.content
+        );
+        assert!(!execution.content.contains("2025年4月28日 17:50 北京时间"));
+        assert_eq!(
+            execution.metadata["beijing_current_time_context_normalized"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(
+            execution.metadata["original_beijing_current_time_context"].as_str(),
+            Some("2025年4月28日 17:50 北京时间")
+        );
+    }
+
+    #[test]
+    fn heartbeat_normalizes_conflicting_english_current_time_context() {
+        let reference_now =
+            chrono::DateTime::parse_from_rfc3339("2026-07-07T18:30:45+08:00").expect("time");
+        let execution = heartbeat_execution_from_content_at_beijing(
+            r#"{"status":"triggered","message":"Current time context: 2026-04-06T10:00:27+08:00. RKLB has new launch-related updates, trigger this alert."}"#,
+            "MiniMax-M2.7-highspeed",
+            reference_now,
+        );
+
+        assert!(execution.should_deliver);
+        assert!(execution.error.is_none());
+        assert!(
+            execution
+                .content
+                .contains("Current time context: 2026-07-07T18:30:00+08:00"),
+            "{}",
+            execution.content
+        );
+        assert!(!execution.content.contains("2026-04-06T10:00:27+08:00"));
+        assert_eq!(
+            execution.metadata["beijing_current_time_context_normalized"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(
+            execution.metadata["original_beijing_current_time_context"].as_str(),
+            Some("2026-04-06T10:00:27+08:00")
+        );
     }
 
     #[test]

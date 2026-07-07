@@ -3,10 +3,23 @@
 - **发现时间**: 2026-05-29 15:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，当前不是 P1。
 
 ## 最新进展
+
+## 修复记录（2026-07-08 03:04 CST）
+
+- 代码级修复：`crates/hone-channels/src/scheduler.rs` 在 heartbeat 出站归一化阶段新增“当前/系统时间上下文”修正，覆盖 `系统当前时间`、`当前时间上下文`、`Current time context`、`Current date context`、`System context`、`current time is` 等中英文自述时间口径；当模型把这类当前时间写成错误日期、错误北京时间或错误 ISO 时间时，送达前统一改写到 scheduler 权威北京时间。
+- 回归验证：
+  - `cargo test -p hone-channels heartbeat_normalizes_conflicting_current_time_context --lib -- --nocapture`
+  - `cargo test -p hone-channels heartbeat_normalizes_conflicting_english_current_time_context --lib -- --nocapture`
+  - `cargo test -p hone-channels heartbeat_normalizes_conflicting_beijing_trigger_time --lib -- --nocapture`
+  - `cargo test -p hone-channels heartbeat_ --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+  - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs`
+  - `git diff --check`
+- 状态更新为 `Fixed`；本轮未重启 live runtime，后续如真实运行态在当前 HEAD 上继续出现相同“当前/系统时间上下文”漂移，再以新样本回退为 `New`。
 
 - 本轮 2026-07-07 23:02-2026-07-08 03:02 CST 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
