@@ -7,6 +7,19 @@
 
 ## 修复进展
 
+- `2026-07-08 07:00 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 03:04-07:00 CST heartbeat 窗口新增 104 条运行记录：74 条 `noop + skipped_noop + delivered=0`、29 条 `execution_failed + skipped_error + delivered=0`、1 条 `completed + sent + delivered=1`。
+    - `parse_kind` 分布为 `JsonNoop` 59、`PlainTextSuppressed` 27、`JsonTriggered` 9、`PlainTextNoop` 6、`JsonMalformed` 2、`JsonEmptyStatus` 1；失败样本继续覆盖 `RKLB 全面心跳检测`、`全天原油价格3小时播报`、`美股盘中科技股机会心跳监控`、`heartbeat_绿田机械基本面跟踪`、`SIVE POET/Nokia/1.6T DFB 心跳检测` 等任务。
+    - 代表失败样本包括 05:00 CST `SIVE POET/Nokia/1.6T DFB 心跳检测` / `TEM破位预警` / `AAOI 全面心跳检测` / `RKLB 全面心跳检测` `PlainTextSuppressed`，05:30 CST `Monitor_Watchlist_11` / `DRAM 心跳监控` / `heartbeat_绿田机械基本面跟踪` / `ASTS 全面心跳检测` `PlainTextSuppressed`，06:30 CST `heartbeat_绿田机械基本面跟踪` `JsonMalformed`，07:00 CST `RKLB 全面心跳检测` / `全天原油价格3小时播报` `PlainTextSuppressed`。
+  - 会话质量对照：
+    - 同窗 `session_messages` 有 8 个 user turn 与 7 条 assistant final；差额为 07:00 CST `美股持仓收盘后早报` 刚触发仍处于 `running + pending`，按在途处理。
+    - 已落库 assistant final 均正常收口；污染扫描未命中空回复、`reasoning_content`、`<think>`、本机绝对路径、provider 原始错误、panic、quota、`mcpServers`、env 字段、`company_profiles/`、原始工具 JSON、ACP 断连或资源耗尽。
+    - 普通 scheduler 已完成的 5 条均为 `completed + sent + delivered=1`；07:00 CST 普通 scheduler 1 条仍在途。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题继续导致 heartbeat 监控任务整轮失败或跳过发送，属于功能性监控漏发 / 降级；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-08 03:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - 23:02-03:02 CST heartbeat 窗口新增 104 条运行记录：76 条 `noop + skipped_noop + delivered=0`、26 条 `execution_failed + skipped_error + delivered=0`、2 条 `completed + sent + delivered=1`。

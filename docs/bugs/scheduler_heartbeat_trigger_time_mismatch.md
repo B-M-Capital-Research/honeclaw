@@ -3,10 +3,21 @@
 - **发现时间**: 2026-05-29 15:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
 
 ## 最新进展
+
+- 本轮 2026-07-08 03:04-07:00 CST 真实运行态继续复发，状态从代码级 `Fixed` 回退为 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 03:10 CST 非文档提交 `e4a39b98 fix: normalize heartbeat current-time context` 落地后，live heartbeat raw / noop / failed preview 仍继续出现与实际执行窗口不一致的“当前时间 / 检查时间 / quote timestamp”口径。
+    - 代表样本包括 05:00 CST `全天原油价格3小时播报` raw preview 称 system prompt 为 `2026年4月4日` 且不知道当前精确时间；06:00 CST `TEM大事件心跳监控` raw preview 写 `当前时间：2025-05-19 北京时间 22:03`；06:00 CST `伦敦金跌破4100提醒` raw preview 写 `检查时间：北京时间 2026-04-25 00:30`；06:00 CST `ASTS 全面心跳检测` raw preview 把行情数据写成 `2025-10-29 当前时间`；07:00 CST `全天原油价格3小时播报` raw preview 把 `1783464278/1783465215` 判断为 `early Feb 25, 2025 Beijing time`。
+    - 同窗唯一成功送达 heartbeat 为 04:01 CST `TSLA 正负触发条件心跳监控`，送达 preview 未确认新的错误北京时间外露；本轮回退依据是错误时间仍进入 heartbeat 判断 / noop / failure 原始结果，而非新的用户可见送达错时间。
+  - 查重结论：
+    - 本窗没有新的独立根因；上述样本仍属于 heartbeat 模型时间上下文漂移，与本文档既有“触发提醒时间口径漂移”同一链路。
+  - 用户影响：
+    - 调度和投递主链路未被该问题直接阻断，但错误时间上下文仍可能影响触发判断、重复抑制和行情新鲜度判断。本窗没有错投、数据安全、全渠道不可用或新的用户可见送达错时间证据；因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+    - 因该问题不影响直聊 / 调度 / 投递主功能链路，只影响 heartbeat 触发判断质量与用户可见时间口径可信度，所以定级保持 P3。
 
 ## 修复记录（2026-07-08 03:04 CST）
 
