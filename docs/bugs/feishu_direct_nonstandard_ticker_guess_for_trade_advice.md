@@ -3,10 +3,31 @@
 - 发现时间：2026-06-04 03:02 CST
 - Bug Type：Business Error
 - 严重等级：P3
-- 状态：Fixed
+- 状态：New
 - GitHub Issue：无，非 P1
 
 ## 证据来源
+
+### 2026-07-07 19:03 CST 运行态回退
+
+- `data/sessions.sqlite3`
+  - 时间窗：2026-07-07 15:00 到 19:03 CST。
+  - 本窗共有 6 个 user turn 与 6 条 assistant final，Feishu / Web direct 与 1 条普通 scheduler 均以 assistant 收口。
+  - assistant final 污染扫描未命中空回复、`reasoning_content`、`<think>`、本机绝对路径、`company_profiles/`、raw tool 字段、provider 原始错误、`data_fetch`、`quote_short`、`stock_research`、`mcpServers`、`Param Incorrect`、panic 或资源耗尽。
+- 真实会话：`session_id=Actor_web__direct__web-user-5bb05078acd4`
+  - `2026-07-07T18:10:10.265721+08:00` 用户输入摘要：`CBRS`。
+  - `2026-07-07T18:10:33.033094+08:00` assistant 回复摘要：明确说 `CBRS 这个代码我不能直接确认唯一标的`，要求用户补充是美股 ticker、基金、通信频谱主题或券商页面具体股票名称。
+  - `2026-07-07T18:36:11.937355+08:00` 用户追问摘要：`美股CBRS要加仓还是减仓？`。
+  - `2026-07-07T18:37:12.155036+08:00` assistant 回复摘要：改按 `美股 Cerebras Systems` 分析，虽然写明“本轮未稳定核到 7 月 7 日实时价”，仍给出“不建议现在加仓”“更适合减仓或至少不再加”的明确交易动作建议，并引用 6 月下旬 / 6 月 24 日旧价口径。
+- `cron_job_runs`
+  - 同窗普通 scheduler 1 条为 `completed + sent + delivered=1`；heartbeat 异常另归入 heartbeat 结构化缺陷。
+- 最近四小时无非文档代码提交。
+
+#### 本轮判断
+
+- 这是既有“非标准 / 高歧义 ticker + 交易动作建议未先确认”的同根复发；虽然原始样本来自 Feishu direct，本轮样本发生在 Web direct，但两者共享金融 prompt / multi-agent search-stage 交易建议边界。
+- 本轮 reply 主体正常收口，未见错投、空回复、系统失败或原始工具输出外泄；问题主要是实体确认不足和强时效价格不足时仍给加仓 / 减仓建议，因此仍为质量性 `P3`，而不是 `P1/P2`。
+- 状态从代码级 `Fixed` 回退为运行态 `New`；非 P1，不创建 GitHub Issue。
 
 - `data/sessions.sqlite3`
   - 时间窗：2026-06-03 23:02 到 2026-06-04 03:02 CST。

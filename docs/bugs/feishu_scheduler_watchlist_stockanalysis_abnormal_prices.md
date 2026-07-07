@@ -22,6 +22,15 @@
 
 ## 最新进展
 
+- 本轮 2026-07-07 15:00-19:03 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 heartbeat raw preview / 判断上下文继续使用异常或高风险行情数值，并进入 `PlainTextSuppressed`、`PlainTextNoop`、`JsonMalformed` 等链路。
+    - 代表样本包括 15:30 / 16:00 CST `Monitor_Watchlist_11` raw preview 使用 `MU 984.75` 判断未触发阈值；16:00 CST 同 job 同时列出 `BE 294.93`、`AMAT 593.19`、`CAMT 141.84`、`MP 132.88` 等明显偏离常识或高风险数量级的价格；18:30 CST `TSLA 正负触发条件心跳监控` raw preview 使用 `TSLA $419.77`、`Market Cap $1.576 trillion`、`PE 231.92` 等上下文做触发判断。
+  - `data/sessions.sqlite3` / `session_messages`
+    - 同窗 6 条 assistant final 均正常收口；未确认新的正式用户可见 final 直接使用 MU `$984.75` 或同类异常价格。
+- 本窗异常价格主要停留在 heartbeat raw preview、未命中或结构化失败路径；调度 / 投递主链路没有因该问题被阻断。
+- 因该问题仍主要影响行情质量和投资建议可信度，不阻断功能链路，因此继续按质量性 `P3 / New`；非 P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-07 11:02-15:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `session_messages`
     - 11:25 CST Web direct session `Actor_web__direct__web-user-3162d236bd51` 用户在新增 AMAT / CAMT 持仓后询问“请给出目前持仓总盈亏”，assistant final 正常收口。

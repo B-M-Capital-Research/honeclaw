@@ -7,6 +7,18 @@
 
 ## 修复进展
 
+- `2026-07-07 19:03 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 15:00-19:03 CST heartbeat 窗口新增 108 条运行记录：80 条 `noop + skipped_noop + delivered=0`、28 条 `execution_failed + skipped_error + delivered=0`。
+    - `parse_kind` 分布为 `JsonNoop` 58、`PlainTextSuppressed` 25、`PlainTextNoop` 15、`JsonTriggered` 6、`JsonMalformed` 3、`JsonEmptyStatus` 1；108 条 raw preview 均含 `<think>`。
+    - 代表失败样本包括 15:00-19:00 CST `AAOI 全面心跳检测`、`ASTS 全面心跳检测`、`Monitor_Watchlist_11`、`SIVE POET/Nokia/1.6T DFB 心跳检测`、`TEM大事件心跳监控`、`TSLA 正负触发条件心跳监控`、`heartbeat_绿田机械基本面跟踪` 与 `全天原油价格3小时播报` 继续落成 `PlainTextSuppressed` 或 `JsonMalformed`。
+  - 会话质量对照：
+    - 同窗 `session_messages` 有 6 个 user turn 与 6 条 assistant final，Feishu / Web direct 与 1 条普通 scheduler 均以 assistant 收口；普通 scheduler 1 条为 `completed + sent + delivered=1`。
+    - assistant final 污染扫描未命中空回复、`reasoning_content`、`<think>`、本机绝对路径、provider 原始错误、panic、quota、`mcpServers`、env 字段、raw tool 字段、`data_fetch`、`quote_short` 或 `stock_research`。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题继续导致 heartbeat 监控任务整轮失败或跳过发送，属于功能性监控漏发 / 降级；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-07 15:01 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - 11:02-15:01 CST heartbeat 窗口新增 96 条运行记录：69 条 `noop + skipped_noop + delivered=0`、27 条 `execution_failed + skipped_error + delivered=0`。
