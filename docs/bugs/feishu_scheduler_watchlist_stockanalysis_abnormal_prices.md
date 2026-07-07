@@ -22,6 +22,16 @@
 
 ## 最新进展
 
+- 本轮 2026-07-07 11:02-15:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `session_messages`
+    - 11:25 CST Web direct session `Actor_web__direct__web-user-3162d236bd51` 用户在新增 AMAT / CAMT 持仓后询问“请给出目前持仓总盈亏”，assistant final 正常收口。
+    - 同条 final 继续使用明显异常数量级价格作为持仓估值锚，包括 `MU 984.75`、`AMAT 592.79`、`CAMT 141.84`，并据此计算 `总成本 16,476.40`、`当前市值 18,195.72`、`总盈亏 +1,719.32`、`总收益率 +10.44%`。
+    - 新增持仓 AMAT / CAMT 本轮已被用户明确录入成本 `700` / `170`，final 虽单项列出 AMAT `-321.63`、CAMT `-844.80`，但总组合结论仍被 MU 等异常价格强行拉成正收益，说明异常行情已进入 Web direct 持仓盈亏核算链路。
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 heartbeat raw preview / 判断上下文仍继续使用异常或高风险价格，并进入 `PlainTextSuppressed`、`PlainTextNoop`、`JsonMalformed`、`JsonUnknownStatus` 等链路；本单主要记录异常价格进入正式 Web direct final 的证据。
+- 本窗已有 Web direct final 正式落库样本，不只是 heartbeat raw preview；价格 sanity check 仍未覆盖 scheduler / heartbeat / direct 投研与持仓估值运行路径。
+- 会话主链路正常收口，未见空回复、错投、投递失败或原始工具 JSON；因此仍按质量性 `P3 / New`。该问题不影响直聊 / 调度 / 投递主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-07 03:02-07:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `session_messages`
     - 07:00 CST Feishu scheduler `美股持仓收盘后早报` assistant final 正常收口，但正式输出 `SNDK 1744.43`、`AMD 552.05`、`DELL 411.51`、`ARM 322.24`、`GOOGL 366.46` 等明显异常数量级价格。

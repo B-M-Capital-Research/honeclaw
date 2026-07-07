@@ -3,10 +3,17 @@
 - **发现时间**: 2026-06-06 11:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无，非 P1
 
 ## 证据来源
+
+- `data/sessions.sqlite3` / `data/runtime/logs/acp-events.log` / `data/runtime/logs/backend_screen.log`
+  - 2026-07-07 11:02-15:01 CST 同类 scheduler runner timeout 在普通 Feishu scheduler 链路继续出现。
+  - 12:00 CST Feishu scheduler `每日公司资讯与分析总结` user turn 落库，12:11 CST assistant 仅写入产品化失败提示“本轮定时任务未能完成，系统已记录失败并将在下一次触发时重试。”，没有生成用户请求的公司资讯 / 分析师总结 / 财报日期正文。
+  - `cron_job_runs.run_id=46004` 同步落成 `execution_failed + skipped_error + should_deliver=0 + delivered=0`，`detail_json.failure_kind=scheduler_runner_timeout`。
+  - 该样本晚于 2026-07-07 03:06 CST 代码级 ACP retry 修复，且当前 SQLite / cron 台账显示业务正文仍未完成，因此从代码级 `Fixed` 回退为运行态 `New`。
+  - 用户可见侧只看到脱敏失败提示，未见 ACP timeout、路径、URL、provider 原始错误、错投或数据破坏；影响仍是请求完成率和 scheduler 结果生成，维持功能性 `P2`，非 P1，不创建 GitHub Issue。
 
 - `data/sessions.sqlite3` / `data/runtime/logs/acp-events.log` / `data/runtime/logs/backend_screen.log`
   - 2026-07-06 19:03-23:04 CST 同类 ACP runner timeout 在 Web direct 链路继续出现，且本轮用户请求没有形成 assistant final。
@@ -106,6 +113,7 @@
 - 2026-07-03 07:00 CST 复核窗中，Feishu scheduler `每日美股盘后收盘复盘` 再次因 `scheduler_runner_timeout` 跳过发送；错误净化继续生效，但该轮业务报告正文仍没有完成。
 - 2026-07-05 03:02 CST 复核窗中，Feishu scheduler `SemiAnalysis与Citrini文章晚间跟踪` 再次因 `scheduler_runner_timeout` 跳过发送；错误净化继续生效并落库产品化失败提示，但该轮业务报告正文仍没有完成。
 - 2026-07-06 23:04 CST 复核窗中，Web direct 主动提问在输出开头和发起 Web 搜索工具后命中 `codex acp session/prompt idle timeout (180s)`；该轮没有 assistant final，用户请求未完成。
+- 2026-07-07 15:01 CST 复核窗中，Feishu scheduler `每日公司资讯与分析总结` 再次因 `scheduler_runner_timeout` 跳过发送；错误净化继续生效并落库产品化失败提示，但该轮业务报告正文仍没有完成。该样本晚于 03:06 代码级 retry 修复，因此当前状态回退为运行态 `New`。
 
 ## 用户影响
 
@@ -114,6 +122,7 @@
 - 定级为 `P2`：影响请求完成率和 scheduler 结果生成，但本窗只有 1 条 Feishu direct 用户可见失败和 1 条 Discord scheduler 抑制失败；没有跨用户大面积不可用、错投、数据破坏或原始错误外泄证据，因此不是 `P1`。
 - 2026-06-24 复发窗覆盖 Feishu direct、Web direct 与 Discord group / scheduler 多条请求，影响范围比首发更广；仍未观察到原始错误外泄、错投或数据破坏，因此严重等级保持 `P2`，状态从 `Fixed` 回退为 `New`。
 - 2026-07-06 23:04 CST 复发窗再次覆盖 Web direct 主动提问；影响是单轮请求未完成且 transcript 只保留 user turn，未见跨用户错投、数据破坏或大面积全渠道不可用，因此仍保持 `P2` 而不是 `P1`。
+- 2026-07-07 15:01 CST 复发窗再次覆盖普通 Feishu scheduler；影响是本轮定时任务只产生失败提示、业务报告正文缺失，未见跨用户错投、数据破坏或大面积全渠道不可用，因此仍保持 `P2` 而不是 `P1`。
 
 ## 根因判断
 
@@ -140,6 +149,17 @@
 - 本轮判断
   - 该样本发生在 03:06 CST 代码级 retry 修复之后，但上一轮修复记录明确“未重启当前 live 服务”；本轮仅把它作为旧 live 运行态待复核证据，不直接判定代码修复失败。
   - 用户可见侧已脱敏，未见错投、数据破坏或大面积不可用；严重等级不升级，状态保持代码级 `Fixed`，后续需在已加载新代码的 live 窗口继续观察是否还出现 `scheduler_runner_timeout`。
+
+## 最新运行态复核（2026-07-07 15:01 CST）
+
+- `data/sessions.sqlite3` / `cron_job_runs`
+  - 巡检窗口：2026-07-07 11:02-15:01 CST。
+  - 普通 scheduler 1 条 `每日公司资讯与分析总结` 在 12:11 CST 落成 `execution_failed + skipped_error + should_deliver=0 + delivered=0`。
+  - 该失败的 `detail_json.failure_kind=scheduler_runner_timeout`，assistant transcript 只写入产品化失败提示“本轮定时任务未能完成，系统已记录失败并将在下一次触发时重试。”，没有把 ACP timeout、路径、URL 或 provider 原始错误暴露给用户。
+  - 12:00 CST 同一任务的 user turn 已落库，用户请求的公司资讯、分析师总结和财报日期正文没有生成，因此仍属于请求完成率问题。
+- 本轮判断
+  - 该样本晚于 03:06 CST 代码级 retry 修复，且已经是连续两个巡检窗口出现普通 scheduler timeout 运行态证据；不能继续仅按“未重启 live”保留在已修复表。
+  - 用户可见侧已脱敏，未见错投、数据破坏或大面积不可用；严重等级不升级，状态从代码级 `Fixed` 回退为运行态 `New`，非 P1，不创建 GitHub Issue。
 
 ## 验证
 
