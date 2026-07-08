@@ -22,6 +22,15 @@
 
 ## 最新进展
 
+- 本轮 2026-07-08 19:01-23:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `session_messages`
+    - 21:00 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5fe09f5f16b20c06ee5962d1b6ca7a4cda` 的 `晚9点盘前推演(XME及加密ETF)` assistant final 正常收口，但继续把多只明显异常或高风险数量级 ETF 价格作为盘前焦点锚点：`SPY 743.41`、`QQQ 703.38`、`DIA 524.25`、`IWM 292.61`、`XME 101.60`。
+    - 同条 final 基于这些价格判断 `今晚盘前定调：风险偏好继续降级`，说明异常行情仍进入用户可见市场判断链路。
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 heartbeat raw preview / 判断上下文继续出现异常行情、时间戳或错误时间口径混用信号，并进入 `JsonNoop`、`PlainTextSuppressed`、`JsonMalformed`、`JsonUnknownStatus` 等链路；本单主要记录异常价格进入正式 scheduler final 的证据。
+- 本窗已有 scheduler final 正式落库样本，不只是 heartbeat raw preview；价格 sanity check 仍未覆盖当前 scheduler / heartbeat / direct 投研运行路径。
+- 报告主链路正常收口，未见空回复、错投、投递失败或原始工具 JSON；因此仍按质量性 `P3 / New`。该问题不影响调度 / 投递主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-08 15:03-19:03 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 同窗 heartbeat raw preview / 判断上下文继续使用异常或高风险行情数值，并进入 `PlainTextSuppressed`、`PlainTextNoop` 或结构化失败链路。
