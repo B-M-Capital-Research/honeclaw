@@ -353,7 +353,13 @@ static RE_MARKET_DATA_FALLBACK_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
 });
 static RE_MARKET_DATA_VERIFIED_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
-        r#"(?i)(?:本轮使用\s*data_fetch\s+quote(?:_short)?\s+校验|本轮\s*\d+\s*支价格和下一次财报日期均由\s*data_fetch\s+quote(?:_short)?\s+返回|本轮\s*data_fetch\s+已返回最新可得\s*quote(?:_short)?|本轮\s*data_fetch\s+已返回\s*\d+\s*支标的(?:的)?(?:最新)?\s*quote(?:_short)?\s*行情|价格(?:与财报日期)?来自本轮\s*data_fetch\s+quote(?:_short)?\s+返回)"#,
+        r#"(?i)(?:本轮使用\s*data_fetch\s+quote(?:_short)?\s+校验|本轮\s*\d+\s*支价格和下一次财报日期均由\s*data_fetch\s+quote(?:_short)?\s+返回|本轮\s*data_fetch\s+已返回最新可得\s*quote(?:_short)?|本轮\s*data_fetch\s+已返回\s*\d+\s*支标的(?:的)?(?:最新)?\s*quote(?:_short)?\s*行情|本轮最新价格来自\s*data_fetch\s+quote(?:_short)?|价格(?:与财报日期)?来自本轮\s*data_fetch\s+quote(?:_short)?\s+返回)"#,
+    )
+    .expect("valid regex")
+});
+static RE_MARKET_DATA_SOURCE_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r#"(?i)(?:[^\n。；]*本轮\s*data_fetch\s+quote(?:_short|/news|/quote|/quote_short)?\s*口径[^\n。；]*|[^\n。；]*StockAnalysis\s*口径(?:显示)?[^\n。；]*)"#,
     )
     .expect("valid regex")
 });
@@ -614,6 +620,7 @@ fn rewrite_user_visible_internal_copy(text: &str) -> (String, bool) {
             &RE_MARKET_DATA_VERIFIED_COPY,
             "本轮价格与财报日期已完成校验",
         ),
+        (&RE_MARKET_DATA_SOURCE_COPY, "本轮公开页面信息已完成校验"),
     ] {
         let next = re.replace_all(&rewritten, replacement);
         if next != rewritten {
@@ -1489,6 +1496,30 @@ mod tests {
     }
 
     #[test]
+    fn sanitize_user_visible_output_rewrites_market_data_source_copy_variants() {
+        for (raw, expected) in [
+            (
+                "本轮最新价格来自 data_fetch quote_short；该口径未返回逐笔时间戳和盘前/盘后字段。",
+                "本轮价格与财报日期已完成校验；该口径未返回逐笔时间戳和盘前/盘后字段。",
+            ),
+            (
+                "LITE / COHR / QCOM 行情与新闻：本轮 data_fetch quote/news 口径。",
+                "本轮公开页面信息已完成校验。",
+            ),
+            (
+                "StockAnalysis口径显示公司当前估值仍在合理区间。",
+                "本轮公开页面信息已完成校验。",
+            ),
+        ] {
+            let sanitized = sanitize_user_visible_output(raw);
+            assert!(sanitized.removed_internal, "raw={raw}");
+            assert_eq!(sanitized.content, expected);
+            assert!(!sanitized.content.contains("data_fetch"));
+            assert!(!sanitized.content.contains("StockAnalysis"));
+        }
+    }
+
+    #[test]
     fn sanitize_user_visible_output_rewrites_market_data_verified_copy() {
         let raw = "本轮 25 支价格和下一次财报日期均由 data_fetch quote 返回，价格口径统一到最新可得行情。";
         let sanitized = sanitize_user_visible_output(raw);
@@ -1629,7 +1660,10 @@ mod tests {
         let raw = "来源：Hone data_fetch quote。补充说明：行情数据工具已校验。";
         let sanitized = sanitize_user_visible_output(raw);
         assert!(sanitized.removed_internal);
-        assert_eq!(sanitized.content, "来源：公开行情页。补充说明：公开行情页已校验。");
+        assert_eq!(
+            sanitized.content,
+            "来源：公开行情页。补充说明：公开行情页已校验。"
+        );
         assert!(!sanitized.content.contains("data_fetch"));
         assert!(!sanitized.content.contains("行情数据工具"));
     }
@@ -1665,7 +1699,8 @@ mod tests {
 
     #[test]
     fn sanitize_user_visible_output_rewrites_additional_company_profile_status_copy() {
-        let raw = "长期研究框架沉淀为组合画像。已更新 NVDA 公司画像。本轮已将 KLAC 建立为长期公司画像。";
+        let raw =
+            "长期研究框架沉淀为组合画像。已更新 NVDA 公司画像。本轮已将 KLAC 建立为长期公司画像。";
         let sanitized = sanitize_user_visible_output(raw);
         assert!(sanitized.removed_internal);
         assert_eq!(sanitized.content, "公司画像已更新。公司画像已更新。");

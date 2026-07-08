@@ -14,13 +14,19 @@ P3
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
 无，非 P1
 
 ## 最新进展
+
+- 2026-07-09 03:03 CST 代码级修复，状态更新为 `Fixed`：
+  - 共享 `sanitize_user_visible_output(...)` 补齐近期真实复发句式，新增覆盖 `本轮最新价格来自 data_fetch quote_short`、`本轮 data_fetch quote/news 口径` 与 `StockAnalysis口径显示` 等来源句式，统一改写为用户态公开来源说明，不再直接暴露内部工具名或实现口径。
+  - `sanitize_scheduler_delivery_text(...)` 复用同一净化层，因此 scheduler / direct / Web 出站链路会一起收口这些句式。
+  - 新增回归 `sanitize_user_visible_output_rewrites_market_data_source_copy_variants` 与 `scheduler_delivery_text_rewrites_market_data_source_copy`；验证 `cargo test -p hone-channels sanitize_user_visible_output_rewrites_market_data_ --lib -- --nocapture`、`cargo test -p hone-channels scheduler_delivery_text_rewrites_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`、`rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/runtime.rs crates/hone-channels/src/scheduler.rs`、`git diff --check` 通过。
+  - 本轮未重启当前 live 服务，也未做线上运行态复核；先按代码级 `Fixed` 记录，后续如部署后仍出现新的 `data_fetch` / `quote_short` / `StockAnalysis口径` 用户态样本，再基于新证据回退。
 
 - 2026-07-09 03:02 CST 运行态继续复发，状态维持 `New`：
   - 23:00-03:02 CST `data/sessions.sqlite3` 新增 7 个 user turn 与 7 条 assistant final；Feishu direct / scheduler 均以 assistant 收口，普通 scheduler 5 条均为 `completed + sent + delivered=1`。
@@ -203,6 +209,12 @@ New
   - 该样本晚于 2026-06-22 07:08 CST scheduler / 共享净化修复记录；问题仍只影响用户可见文案边界和产品感，不影响主功能链路，因此为质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
 
 ## 修复记录
+
+- 2026-07-09 03:03 CST 修复：
+  - 共享 `sanitize_user_visible_output(...)` 新增来源句式净化，覆盖 `本轮最新价格来自 data_fetch quote_short`、`本轮 data_fetch quote/news 口径` 与 `StockAnalysis口径显示` 等近期复发样本。
+  - scheduler 出站复用同一层，新增 `sanitize_user_visible_output_rewrites_market_data_source_copy_variants` 与 `scheduler_delivery_text_rewrites_market_data_source_copy` 回归。
+  - 验证通过：`cargo test -p hone-channels sanitize_user_visible_output_rewrites_market_data_ --lib -- --nocapture`、`cargo test -p hone-channels scheduler_delivery_text_rewrites_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`、`rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/runtime.rs crates/hone-channels/src/scheduler.rs`、`git diff --check`。
+  - 本轮未重启 live 服务，先按代码级 `Fixed` 记录。
 
 - 2026-06-22 07:08 CST 修复：
   - 共享 `sanitize_user_visible_output(...)` 补齐 TEM 样本里的漏网句式，新增覆盖 `本地长期画像`、`本轮没有新增事实改变 ... 长期画像`、`我先核验 ... 行情口径 / 本地长期画像`。

@@ -4453,6 +4453,18 @@ mod tests {
     }
 
     #[test]
+    fn scheduler_delivery_text_rewrites_market_data_source_copy() {
+        let raw =
+            "本轮最新价格来自 data_fetch quote_short；该口径未返回逐笔时间戳和盘前/盘后字段。";
+        let sanitized = sanitize_scheduler_delivery_text(raw);
+        assert_eq!(
+            sanitized,
+            "本轮价格与财报日期已完成校验；该口径未返回逐笔时间戳和盘前/盘后字段。"
+        );
+        assert!(!sanitized.contains("data_fetch"));
+    }
+
+    #[test]
     fn scheduler_delivery_text_trims_trailing_json_field_residue() {
         let raw = r#"【提醒】Cerebras 触发重大事件监控。已核验 Cerebras 相关业务进展。\",\"data\":{\"ticker\":\"CBRS\",\"exchange\":\"NASDAQ Global Market\"}"#;
         let sanitized = sanitize_scheduler_delivery_text(raw);
