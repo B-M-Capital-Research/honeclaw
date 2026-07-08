@@ -22,6 +22,15 @@
 
 ## 最新进展
 
+- 本轮 2026-07-08 23:00-2026-07-09 03:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `session_messages`
+    - 23:01 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 的 `核心观察股池晚间快报` assistant final 正常收口，但继续输出多只明显异常或高风险数量级价格：`MU 936.38`、`SNDK 1,657.92`、`STX 834.43`、`WDC 541.46`、`GEV 1,079.18`、`AMD 520.41`、`BE 271.18`。
+    - 同条 final 把这些数值作为 25 支观察池当前价格锚点，继续用于击球区 / 财报日期简表，说明异常行情仍进入用户可见市场判断链路。
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 heartbeat raw preview / 判断上下文继续出现时间戳、错误时间或行情口径混用信号；本单主要记录异常价格进入正式 scheduler final 的证据。
+- 本窗已有 scheduler final 正式落库样本，不只是 heartbeat raw preview；价格 sanity check 仍未覆盖当前 scheduler / heartbeat / direct 投研运行路径。
+- 报告主链路正常收口，未见空回复、错投、投递失败或原始工具 JSON；因此仍按质量性 `P3 / New`。该问题不影响调度 / 投递主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-08 19:01-23:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `session_messages`
     - 21:00 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5fe09f5f16b20c06ee5962d1b6ca7a4cda` 的 `晚9点盘前推演(XME及加密ETF)` assistant final 正常收口，但继续把多只明显异常或高风险数量级 ETF 价格作为盘前焦点锚点：`SPY 743.41`、`QQQ 703.38`、`DIA 524.25`、`IWM 292.61`、`XME 101.60`。
