@@ -8,6 +8,17 @@
 
 ## 最新进展
 
+- 本轮 2026-07-08 07:00-11:03 CST 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 heartbeat raw / noop / failed preview 继续出现与实际执行窗口不一致的“当前时间 / 检查时间 / quote timestamp”口径。
+    - 代表样本包括 07:00 CST `全天原油价格3小时播报` raw preview 把 `1783464278/1783465215` 判断为 `early Feb 25, 2025 Beijing time`；08:00 CST `RKLB 全面心跳检测` raw preview 写 `Current date context: 2025-09-23` 并把 2026-07 行情 / 新闻判为相对系统日期的未来数据；09:30 CST `伦敦金跌破4100提醒` raw preview 写 `检查时间：2025-05-02 23:27 北京时间`；11:00 CST `美股盘中科技股机会心跳监控` raw preview 写 `数据截至美东时间 2025-12-15 收盘`。
+    - 同窗没有确认新的用户可见送达错时间样本；本轮复核依据仍是错误时间进入 heartbeat 判断 / noop / failure 原始结果。
+  - 查重结论：
+    - 本窗没有新的独立根因；上述样本仍属于 heartbeat 模型时间上下文漂移，与本文档既有“触发提醒时间口径漂移”同一链路。
+  - 用户影响：
+    - 调度和投递主链路未被该问题直接阻断，但错误时间上下文仍可能影响触发判断、重复抑制和行情新鲜度判断。本窗没有错投、数据安全、全渠道不可用或新的用户可见送达错时间证据；因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+    - 因该问题不影响直聊 / 调度 / 投递主功能链路，只影响 heartbeat 触发判断质量与用户可见时间口径可信度，所以定级保持 P3。
+
 - 本轮 2026-07-08 03:04-07:00 CST 真实运行态继续复发，状态从代码级 `Fixed` 回退为 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 03:10 CST 非文档提交 `e4a39b98 fix: normalize heartbeat current-time context` 落地后，live heartbeat raw / noop / failed preview 仍继续出现与实际执行窗口不一致的“当前时间 / 检查时间 / quote timestamp”口径。

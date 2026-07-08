@@ -22,6 +22,15 @@
 
 ## 最新进展
 
+- 本轮 2026-07-08 07:00-11:03 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 heartbeat raw preview / 判断上下文继续使用异常或高风险行情数值，并进入 `JsonNoop`、`PlainTextNoop` 或结构化失败链路。
+    - 代表样本为 07:30 CST `Monitor_Watchlist_11` raw preview 使用 `MU 938.38` 对比 `MU <= 252.00` 触发阈值并判断未触发；该数值仍明显高于常识区间，属于同一 StockAnalysis / 行情源异常数量级问题。
+  - `data/sessions.sqlite3` / `session_messages`
+    - 同窗 23 条 assistant final 均正常收口；未确认新的正式用户可见 final 直接使用 `MU 938.38` 或同类异常价格。
+- 本窗异常价格主要停留在 heartbeat raw preview、未命中或结构化失败路径；调度 / 投递主链路没有因该问题被阻断。
+- 因该问题仍主要影响行情质量和投资建议可信度，不阻断功能链路，因此继续按质量性 `P3 / New`；非 P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-07 19:02-23:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `session_messages`
     - 21:35 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 的 `科技核心股池 · 晚间击球区快报` assistant final 正常收口，但继续输出多只明显异常或高风险数量级价格：`MU 916.32`、`SNDK 1,590.42`、`STX 816.59`、`WDC 537.01`、`GEV 1,046.01`、`AMD 510.32`、`BE 277.05`、`CRDO 246.02`、`INTC 111.45`。
