@@ -8,6 +8,17 @@
 
 ## 最新进展
 
+- 本轮 2026-07-08 15:03-19:03 CST 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 heartbeat raw / noop / failed preview 继续出现与实际执行窗口不一致的“当前时间 / 检查时间 / quote timestamp”口径。
+    - 代表样本包括 16:00 CST `全天原油价格3小时播报` raw preview 把 USO timestamp `1783454400` 误算为 `Jan 13, 2026`，并引用 `2026-04-04` 系统日期；16:30 CST `TSLA 正负触发条件心跳监控` 写 `Current time is 2026-07-08 04:30 Beijing time`，与实际 16:30 CST 执行窗口不一致；17:30 CST `RKLB 全面心跳检测` raw preview 明确写出 `System time: 2026年4月4日` 与 `Reminder date: 2026年7月8日` 冲突；18:00 CST `伦敦金跌破4100提醒` `JsonMalformed` raw preview 写 `triggered_at=2026-04-04 10:00 北京时间`；18:00 CST `TEM大事件心跳监控` raw preview 写 `当前时间：2025-06-04 08:40:02 北京时间`。
+    - 同窗 18:00 CST `TSLA 正负触发条件心跳监控`、18:00 CST `heartbeat_绿田机械基本面跟踪`、19:00 CST `伦敦金跌破4100提醒` 3 条 heartbeat 成功送达；未确认新的用户可见送达错时间样本，本轮复核依据仍是错误时间进入 heartbeat 判断 / noop / failure 原始结果。
+  - 查重结论：
+    - 本窗没有新的独立根因；上述样本仍属于 heartbeat 模型时间上下文漂移，与本文档既有“触发提醒时间口径漂移”同一链路。
+  - 用户影响：
+    - 调度和投递主链路未被该问题直接阻断，但错误时间上下文仍可能影响触发判断、重复抑制和行情新鲜度判断。本窗没有错投、数据安全、全渠道不可用或新的用户可见送达错时间证据；因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+    - 因该问题不影响直聊 / 调度 / 投递主功能链路，只影响 heartbeat 触发判断质量与用户可见时间口径可信度，所以定级保持 P3。
+
 - 本轮 2026-07-08 11:03-15:03 CST 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 同窗 heartbeat raw / noop / failed preview 继续出现与实际执行窗口不一致的“当前时间 / 检查时间 / quote timestamp”口径。

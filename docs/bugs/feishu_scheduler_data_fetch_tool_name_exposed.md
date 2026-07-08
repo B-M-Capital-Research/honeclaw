@@ -22,6 +22,12 @@ New
 
 ## 最新进展
 
+- 2026-07-08 19:03 CST 运行态继续复发，状态维持 `New`：
+  - 15:03-19:03 CST `data/sessions.sqlite3` 新增 10 个 user turn 与 10 条 assistant final；Feishu / Web direct 与普通 scheduler 均以 assistant 收口，普通 scheduler 1 条为 `completed + sent + delivered=1`。
+  - assistant final 污染扫描未命中空回复、`reasoning_content`、`<think>`、本机绝对路径、`company_profiles/`、provider 原始错误、`mcpServers`、`Param Incorrect`、panic、资源耗尽、ACP 断连、`data_fetch`、`quote_short`、`stock_research` 或原始工具 JSON。
+  - 15:44 CST Feishu direct session `Actor_feishu__direct__ou_5f49e2e252460a05eee0ff98f685cf9f16` 的天承科技估值 final 正常收口，但估值口径段继续写出 `StockAnalysis口径显示`，把内部/实现侧行情来源口径作为用户态来源说明。
+  - 该样本业务主体正常完成并送达，没有投递失败、空回复、错投、原始工具 JSON 或数据安全证据；问题仍只影响用户可见来源 / 工具口径边界和产品感，不影响主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-07-08 11:03 CST 运行态继续复发，状态维持 `New`：
   - 07:00-11:03 CST `data/sessions.sqlite3` 新增 23 个 user turn 与 23 条 assistant final；Feishu / Discord direct 与普通 scheduler 均以 assistant 收口，普通 scheduler 18 条均为 `completed + sent + delivered=1`。
   - assistant final 污染扫描未命中空回复、`reasoning_content`、`<think>`、本机绝对路径、`company_profiles/`、provider 原始错误、`mcpServers`、`Param Incorrect`、panic、资源耗尽或 ACP 断连。
