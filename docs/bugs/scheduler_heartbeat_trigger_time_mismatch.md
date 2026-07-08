@@ -8,6 +8,17 @@
 
 ## 最新进展
 
+- 本轮 2026-07-09 03:02-07:01 CST 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 heartbeat raw / delivered preview 继续出现与实际执行窗口不一致的“当前时间 / 检查时间 / quote timestamp”口径。
+    - 代表样本为 03:30 CST `DRAM 心跳监控` `run_id=47096`，执行时间为 `2026-07-09T03:30:41+08:00` 且 `completed + sent + delivered=1`，但用户可见正文写出 `Roundhill Memory ETF(DRAM) 现价 $61.565（美东收盘价，数据时间约 2026 年 3 月 6 日盘后）`，随后又把该价格作为已站上 `$60` 触发位的当前判断依据。
+    - 同窗另有多条 heartbeat raw / failed preview 继续围绕错误时间或 timestamp 进入判断，但本轮以已经送达的 DRAM 样本作为主证据。
+  - 查重结论：
+    - 本窗没有新的独立根因；上述 delivered preview 仍属于 heartbeat 模型时间上下文 / 数据日期漂移，与本文档既有“触发提醒时间口径漂移”同一链路。
+  - 用户影响：
+    - 调度、解析和预览生成链路仍可运行，但错误数据日期已进入成功送达的用户可见提醒，可能影响用户对行情新鲜度和触发窗口的判断。没有错投、数据安全或全渠道不可用证据；因此维持质量性 `P3`，非 P1。
+    - 因该问题不影响直聊 / 调度 / 投递主功能链路，只影响 heartbeat 触发判断质量与用户可见时间口径可信度，所以定级保持 P3。
+
 - 本轮 2026-07-08 23:00-2026-07-09 03:02 CST 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 同窗 heartbeat raw / noop / failed preview 继续出现与实际执行窗口不一致的“当前时间 / 检查时间 / quote timestamp”口径。

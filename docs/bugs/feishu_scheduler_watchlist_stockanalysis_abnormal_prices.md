@@ -22,6 +22,15 @@
 
 ## 最新进展
 
+- 本轮 2026-07-09 03:02-07:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `session_messages`
+    - 05:02 CST Web direct session `Actor_web__direct__web-user-afc1cabadbf8` 的美股盘后复盘 assistant final 正常收口，但继续输出明显异常或高风险数量级市场价格：`S&P 500 7,482.71`、`Dow 52,348.39`、`Nasdaq Composite 25,870.65`，并在 MU 段写出 `MU 小幅上涨约 0.3% 至 941.44 美元`。
+    - 同条 final 基于这些数值判断存储链、指数和宏观压力，说明异常行情仍进入用户可见市场判断链路；该样本没有命中 `data_fetch` / `quote_short` / `StockAnalysis` 文案外露，属于行情数值质量链路而不是来源名净化链路。
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 03:30 CST `DRAM 心跳监控` 成功送达并使用 `DRAM $61.565` 与错误数据日期作为触发依据；该样本主要归入时间口径缺陷，异常行情链路仍需继续共同关注。
+- 本窗已有 Web direct final 正式落库样本，不只是 heartbeat raw preview；价格 sanity check 仍未覆盖 direct 投研 / scheduler / heartbeat 运行路径。
+- 会话主链路正常收口，未见空回复、错投、投递失败或原始工具 JSON；因此仍按质量性 `P3 / New`。该问题不影响直聊 / 调度 / 投递主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-08 23:00-2026-07-09 03:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `session_messages`
     - 23:01 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 的 `核心观察股池晚间快报` assistant final 正常收口，但继续输出多只明显异常或高风险数量级价格：`MU 936.38`、`SNDK 1,657.92`、`STX 834.43`、`WDC 541.46`、`GEV 1,079.18`、`AMD 520.41`、`BE 271.18`。
