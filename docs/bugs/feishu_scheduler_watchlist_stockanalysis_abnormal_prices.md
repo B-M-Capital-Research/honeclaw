@@ -22,6 +22,15 @@
 
 ## 最新进展
 
+- 本轮 2026-07-09 23:02-2026-07-10 03:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `session_messages`
+    - 01:50 CST Web direct session `Actor_web__direct__web-user-400794904801` 的美股盘中行情分析 assistant final 正常收口，但继续输出明显异常或高风险数量级存储链价格：`MU 1023.72 美元`、`SNDK 1878.92 美元`，并基于这些数值判断存储链、DRAM ETF、KMEM 和板块轮动。
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 03:00 CST `Monitor_Watchlist_11` heartbeat raw preview 继续使用 `MU 1008.33` 对比 `MU <= 252.00` 判断未触发；该样本未进入正式用户可见 final，但证明异常价格仍进入 heartbeat 判断上下文。
+  - 判断：
+    - 最新样本仍是同一行情源 / 数值 sanity check 缺口：异常数量级价格进入用户可见投研和 heartbeat 阈值判断链路。
+    - 直聊和调度主链路正常收口，未见空回复、错投、投递失败或原始工具 JSON；因此仍按质量性 `P3 / New`。该问题不影响直聊 / 调度 / 投递主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-09 19:02-23:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `session_messages`
     - 20:00-21:35 CST 多条 Feishu / Web scheduler assistant final 正常收口，但继续输出异常或高风险数量级市场价格，并将其作为盘前风险、观察池纪律或板块判断锚点。

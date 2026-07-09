@@ -3,7 +3,28 @@
 - **发现时间**: 2026-04-18 11:06 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: Fixed
+- **状态**: New
+
+## 最新进展
+
+- `2026-07-10 03:02 CST` 真实运行态复发，状态从 `Fixed` 回退为 `New`：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=47777`
+    - `job_name=DRAM 心跳监控`
+    - `executed_at=2026-07-10T03:01:15.498268+08:00`
+    - `execution_status=completed`
+    - `message_send_status=sent`
+    - `delivered=1`
+    - `detail_json.scheduler.parse_kind=JsonTriggered`
+    - `response_preview` 前半段已经是自然语言提醒：`DRAM现价$65.25，已较昨收$62.04上涨+5.17%，突破$60触发位...`
+    - 但自然语言正文后继续拼入结构化字段残片：`","facts":[...]`、`"actions_needed":[...]`、`{"level":"catalyst"...`
+    - `detail_json.scheduler.deliver_preview` 同步保留 `","facts":[...]` 字段尾巴，说明不是单纯台账展示截断，而是准备投递的用户可见正文已经被结构化字段污染。
+  - 查重结论：
+    - 该样本与本文档既有 `JsonTriggered` 成功送达分支的“自然语言 + JSON 字段尾巴”同根；不是新的独立根因，因此不新建重复文档。
+    - 最新污染字段扩展到 `facts`、`actions_needed` 和 catalyst 对象，说明 2026-06-22 的字段尾巴裁剪没有覆盖当前 JSON 形态。
+  - 用户影响：
+    - heartbeat 触发提醒已执行、已投递，也没有错投、漏投或全链路不可用证据。
+    - 但用户会收到混有结构化协议字段的提醒正文，阅读体验和产品可信度下降，并暴露内部输出协议形态；这不影响主功能链路，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
 
 ## 修复记录（2026-06-22 03:28 CST）
 

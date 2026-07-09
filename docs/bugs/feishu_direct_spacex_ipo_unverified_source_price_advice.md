@@ -22,6 +22,13 @@ New
 
 ## 修复记录
 
+- 2026-07-10 03:02 CST 补充同根复发证据，状态维持 `New`：
+  - 23:02-03:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 16 个 user turn 与 16 条 assistant final，Feishu / Web direct 与 scheduler 会话均已 assistant 收口。
+  - 00:01 CST Feishu direct session `Actor_feishu__direct__ou_5fea712445d905e8418bde07dbcf2cbfb2` 回答“海力士在美股上市后对港股南方2倍做多海力士有什么影响”。
+  - 01:44 CST Web direct session `Actor_web__direct__web-user-400794904801` 回答“美光投资2500亿美元扩大生产规模，海力士ADR定价149美金...明天ADR上市有涨幅吗”。
+  - 两条 assistant final 均围绕 `SKHY` ADR、`149 美元` 定价、首日涨幅、韩国正股次日走势和杠杆产品影响给出强时效金融判断；当前巡检未见可审计 `assistant.tool_calls` 证据证明这些时效锚点经过本轮来源 / 行情核验。
+  - 回复正常收口且未见错投、投递失败或内部实现外露；问题在于强时效金融来源 / 行情核验不可审计，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-07-09 23:02 CST 补充同根复发证据，状态维持 `New`：
   - 19:02-23:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 38 个 user turn 与 38 条 assistant final，Feishu / Web direct 与 scheduler 会话均已 assistant 收口。
   - 22:17 CST Feishu direct session `Actor_feishu__direct__ou_5fe8ba64a3098d9fa009889f8e2ebfdce2` 回答“海力士adr上市对美光及三星以及闪迪影响怎么样”。
