@@ -14,13 +14,20 @@ P3
 
 ## 状态
 
-Fixed
+New
 
 ## GitHub Issue
 
 无，非 P1
 
 ## 修复记录
+
+- 2026-07-09 19:02 CST 状态从代码级 `Fixed` 回退为运行态 `New`：
+  - 15:01-19:02 CST `data/sessions.sqlite3` 新增 5 个 user turn 与 5 条 assistant final，Feishu direct 与普通 scheduler 均以 assistant 收口。
+  - 16:17 / 16:29 CST Feishu direct session `Actor_feishu__direct__ou_5fa7fc023b9aa2a550a3568c8ffc4d7cdc` 连续回答长鑫存储上市影响、首日涨幅 / 市值 / 成交量和可买条件问题。
+  - 两条 assistant final 的 `metadata_json` 只有渠道元数据，没有 `assistant.tool_calls`；未留下本轮网页、行情、公告或媒体来源核验工具结果。
+  - final 仍声称“已核验”或“可核验口径”，引用 FT / 市场报道口径，并输出募资约 295 亿元、估值上限约 3 万亿元、首日涨幅区间、收盘市值区间、可买条件等强时效金融锚点。
+  - 该样本晚于 2026-06-22 金融系统 prompt 代码级修复；主链路正常收口、无错投或投递失败，因此按质量性 `P3 / New` 回退，非 P1，不创建 GitHub Issue。
 
 - 2026-06-22 03:08 CST 状态更新为 `Fixed`：
   - 金融系统 prompt 已扩展非标准 / 高歧义 ticker 约束：当这类 ticker/简称被用于强时效新闻、利好 / 利空、IPO、融资、收购、并购或上市进展问题时，必须先确认证券实体与来源支持。
@@ -37,6 +44,16 @@ Fixed
   - 当前没有发现持仓 / 画像 / 定时任务等持久化副作用写坏证据，主投递链路也未中断；按规则保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
 
 ## 证据来源
+
+- `data/sessions.sqlite3` -> `session_messages`
+  - 巡检时间窗：2026-07-09 15:01-19:02 CST。
+  - 本窗有 5 个 user turn 与 5 条 assistant final，Feishu direct 与普通 scheduler 均以 assistant 收口；普通 scheduler 1 条 `A股港股收盘后跨市场复盘` 为 `completed + sent + delivered=1`。
+  - `session_id=Actor_feishu__direct__ou_5fa7fc023b9aa2a550a3568c8ffc4d7cdc`。
+  - 2026-07-09 16:15 CST 用户输入摘要：预测长鑫存储上市对全球存储行业格局、A 股短期流动性和半导体细分板块的影响。
+  - 2026-07-09 16:17 CST assistant final 声称“可核验口径”包括长鑫科技集团冲刺科创板、计划募资约 295 亿元、全球 DRAM 三巨头份额和长鑫全球份额约 4%，但该 assistant row 的 `metadata_json` 没有 `assistant.tool_calls`。
+  - 2026-07-09 16:27 CST 用户继续要求预测上市第一天涨幅、市值、成交量，以及什么情况下第一天可以买。
+  - 2026-07-09 16:29 CST assistant final 开头写“已核验到的关键约束”，引用市场报道估值上限约 3 万亿元、募资约 295 亿元、FT 关于 Apple 测试和产出影响的口径，并给出发行估值、首日涨幅、收盘市值、换手 / 成交和可买条件分层；该 assistant row 的 `metadata_json` 同样没有 `assistant.tool_calls`。
+  - 两条回复没有空回复、错投、投递失败、原始工具 JSON、token、本机路径或思维痕迹进入 final；本轮问题集中在强时效金融来源核验边界和精确操作锚点可信度。
 
 - `data/runtime/logs/acp-events.log`
   - 巡检时间窗：2026-06-20 19:01-23:01 CST。
@@ -89,6 +106,7 @@ Fixed
 - 2026-06-11 18:02 CST DELL 样本进一步显示，即使是上市公司详细分析，assistant 也会在没有网页 / 行情 / 财务工具核验证据的情况下列出来源 URL、最新价格、财务指标和建仓区间；本地写入公司画像的工具调用不等同于来源核验。
 - 这会让用户误以为系统已经完成了最新 IPO 来源核验，并可能把精确区间当作可执行交易纪律。
 - 2026-06-20 21:02 CST SPCX 样本进一步显示，用户输入真实 ticker 后，answer 阶段仍可能把 ticker 直接等同为高热度叙事实体，并输出未充分约束的强时效 IPO / 融资 / 收购利好链条；问题从“精确价格区间未核验”扩展到“实体识别与强时效来源核验未形成硬边界”。
+- 2026-07-09 16:17 / 16:29 CST 长鑫存储样本说明，即使不是拼写近似 ticker，普通未上市公司 IPO / 科创板上市推演也会在没有本轮工具核验证据时输出“已核验”口径、媒体来源名和精确可买条件；2026-06-22 prompt 修复没有完整覆盖“无工具证据但声称已核验并给出强时效 IPO 操作锚点”的路径。
 
 ## 用户影响
 
@@ -104,6 +122,7 @@ Fixed
 - `feishu_direct_storage_price_unverified_before_tool_complete.md` 覆盖的是已发起行情工具但未充分等待 / 消费结果时输出精确行情；本轮是未上市公司 IPO 估值与媒体来源链接没有本轮可审计工具证据，链路相邻但触发条件不同。
 - 2026-06-11 DELL 样本说明根因不局限于未上市 IPO：当 assistant 只执行本地公司画像读写时，answer 阶段仍可能生成看似来自网页和财务页的精确数字与来源链接，缺少“final 中每个来源链接 / 精确行情 / 交易区间必须对应本轮工具证据”的一致性校验。
 - 2026-06-20 SPCX 样本说明根因还包括非标准 / 高歧义 ticker 与热门私营公司叙事之间缺少实体确认门槛；即使用户要求“去搜一下”，final 也应先确认 `SPCX` 的证券实体与来源支持，而不是直接写成 SpaceX 股票并展开当前利好分析。
+- 2026-07-09 长鑫存储样本说明根因也包括 answer 阶段缺少“final 声称已核验 / 可核验口径时必须存在本轮工具证据”的一致性校验；该路径不依赖 ticker 歧义也会复发。
 - 该问题也不同于路径或内部工具名外露缺陷：本轮用户可见文本没有泄露内部实现，问题是强时效金融来源和可操作价格区间的核验边界不足。
 
 ## 下一步建议
@@ -120,3 +139,4 @@ Fixed
 - 本轮为缺陷台账维护任务，未修改业务代码、测试代码或配置代码，未运行代码测试。
 - 已验证范围：`data/sessions.sqlite3` 最近四小时会话收口、assistant final 污染扫描、`cron_job_runs` 状态分布、`acp-events.log` 当前 prompt 上下文、最近四小时提交检查。
 - 2026-06-11 19:02 CST 复核同样只维护缺陷台账，未修改业务代码、测试代码或配置代码，未运行代码测试；已验证范围：15:02-19:02 CST SQLite 会话收口、assistant final 污染扫描、DELL assistant `metadata_json.assistant.tool_calls`、`cron_job_runs` 状态分布、最近四小时非文档提交检查。
+- 2026-07-09 19:02 CST 复核只维护缺陷台账，未修改业务代码、测试代码或配置代码，未运行代码测试；已验证范围：15:01-19:02 CST SQLite 会话收口、assistant final 污染扫描、长鑫存储两条 assistant `metadata_json`、`cron_job_runs` 状态分布、最近四小时非文档提交检查。
