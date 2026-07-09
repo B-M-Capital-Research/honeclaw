@@ -7,6 +7,19 @@
 
 ## 修复进展
 
+- `2026-07-09 23:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 19:02-23:02 CST heartbeat 窗口新增 112 条运行记录：86 条 `noop + skipped_noop + delivered=0`、26 条 `execution_failed + skipped_error + delivered=0`。
+    - `parse_kind` 分布为 `JsonNoop` 66、`PlainTextSuppressed` 20、`PlainTextNoop` 18、`JsonMalformed` 6、`JsonTriggered` 2。
+    - 代表失败样本包括 20:00 CST `TSLA 正负触发条件心跳监控` / `AAOI 全面心跳检测` / `珠海冠宇加仓信号心跳检测` 结构化或合法 JSON 失败，20:30 CST `RKLB 全面心跳检测` / `美股盘中科技股机会心跳监控` / `TSLA 正负触发条件心跳监控` / `SIVE POET/Nokia/1.6T DFB 心跳检测` / `德业股份加仓信号心跳检测` 等结构化退化失败，21:00-23:01 CST `全天原油价格3小时播报`、`Monitor_Watchlist_11`、`TEM大事件心跳监控`、`AAOI 全面心跳检测`、`RKLB 全面心跳检测` 等继续落成结构化或合法 JSON 失败。
+  - 会话质量对照：
+    - 同窗 `session_messages` 按真实 `timestamp` 有 38 个 user turn 与 38 条 assistant final，Feishu / Web direct 与普通 scheduler 均以 assistant 收口；普通 scheduler 30 条为 `completed + sent + delivered=1`，1 条普通 scheduler runner timeout 另归入 ACP transport 文档。
+    - assistant final 污染扫描未命中空回复、`reasoning_content`、`<think>`、本机绝对路径、provider 原始错误、panic、quota、`mcpServers`、env 字段、`company_profiles/`、原始工具 JSON、ACP 原始错误或资源耗尽；异常行情与强时效核验另归入对应 P3 文档。
+    - 最近四小时无非文档代码提交可改变运行态判断。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题继续导致 heartbeat 监控任务整轮失败或跳过发送，属于功能性监控漏发 / 降级；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-09 15:01 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - 11:01-15:01 CST heartbeat 窗口新增 101 条运行记录：64 条 `noop + skipped_noop + delivered=0`、35 条 `execution_failed + skipped_error + delivered=0`、1 条 `completed + sent + delivered=1`、1 条 `running + pending`。

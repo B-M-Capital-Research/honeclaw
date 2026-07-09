@@ -8,6 +8,14 @@
 
 ## 证据来源
 
+- `data/sessions.sqlite3` / `cron_job_runs`
+  - 2026-07-09 19:02-23:02 CST 同类 scheduler runner timeout 在普通 Feishu scheduler 链路继续出现。
+  - 20:30 CST Feishu scheduler `每日仓位复盘` user turn 落库，20:33 CST assistant 仅写入产品化失败提示“本轮定时任务未能完成，系统已记录失败并将在下一次触发时重试。”，没有生成用户请求的仓位复盘、涨跌幅追踪、财报节点或仓位调整建议正文。
+  - `cron_job_runs.run_id=47580` 同步落成 `execution_failed + skipped_error + should_deliver=0 + delivered=0`，`detail_json.failure_kind=scheduler_runner_timeout`。
+  - 同窗 `session_messages` 按真实 `timestamp` 新增 38 个 user turn 与 38 条 assistant final，24 个会话均已 assistant 收口；普通 scheduler 30 条为 `completed + sent + delivered=1`，该样本是唯一普通 scheduler 执行失败。
+  - assistant final 污染扫描未命中原始 ACP timeout、绝对路径、provider 原始错误、panic、资源耗尽、`reasoning_content` 或 `<think>`；用户可见侧只看到脱敏失败提示。
+  - 该问题继续影响 scheduler 请求完成率和业务正文生成；未见错投、数据破坏、原始错误外泄或大面积全渠道不可用，因此严重等级维持功能性 `P2 / New`，非 P1，不创建 GitHub Issue。
+
 - `data/sessions.sqlite3` / `data/runtime/logs/acp-events.log` / `data/runtime/logs/backend_screen.log`
   - 2026-07-07 11:02-15:01 CST 同类 scheduler runner timeout 在普通 Feishu scheduler 链路继续出现。
   - 12:00 CST Feishu scheduler `每日公司资讯与分析总结` user turn 落库，12:11 CST assistant 仅写入产品化失败提示“本轮定时任务未能完成，系统已记录失败并将在下一次触发时重试。”，没有生成用户请求的公司资讯 / 分析师总结 / 财报日期正文。

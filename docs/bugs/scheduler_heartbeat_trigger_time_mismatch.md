@@ -8,6 +8,16 @@
 
 ## 最新进展
 
+- 本轮 2026-07-09 19:02-23:02 CST 真实运行态继续观察，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 heartbeat 新增 112 条运行记录，仍有 86 条 `noop + skipped_noop` 与 26 条 `execution_failed + skipped_error`，结构化退化链路继续存在。
+    - 本窗未确认新的 heartbeat `completed + sent + delivered=1` 用户可见提醒写错执行日期；时间口径问题主要保留在既有结构化失败 / noop 判断风险内，未形成新的正式投递正文样本。
+  - 查重结论：
+    - 本窗没有新的独立根因，也没有足以回退严重等级或关闭缺陷的止血证据；仍归入本文档既有“触发提醒时间口径漂移”链路。
+  - 用户影响：
+    - 本窗未见新的用户可见错时间投递，因此不新增独立缺陷；但 heartbeat 判断链路仍可能受错误时间上下文影响触发判断、重复抑制和行情新鲜度判断。
+    - 因该问题不影响直聊 / 调度 / 投递主功能链路，只影响 heartbeat 触发判断质量与用户可见时间口径可信度，所以定级保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-09 11:01-15:01 CST 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 同窗 heartbeat raw / delivered preview 继续出现与实际执行窗口不一致的“当前时间 / 检查时间 / 数据日期”口径。

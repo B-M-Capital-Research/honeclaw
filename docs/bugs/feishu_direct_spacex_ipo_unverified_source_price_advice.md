@@ -22,6 +22,13 @@ New
 
 ## 修复记录
 
+- 2026-07-09 23:02 CST 补充同根复发证据，状态维持 `New`：
+  - 19:02-23:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 38 个 user turn 与 38 条 assistant final，Feishu / Web direct 与 scheduler 会话均已 assistant 收口。
+  - 22:17 CST Feishu direct session `Actor_feishu__direct__ou_5fe8ba64a3098d9fa009889f8e2ebfdce2` 回答“海力士adr上市对美光及三星以及闪迪影响怎么样”。
+  - 该 assistant final 的 `metadata_json` 没有可审计 `assistant.tool_calls`；未留下本轮网页、行情、公告或媒体来源核验工具结果。
+  - final 仍输出强时效金融锚点与判断，包括 `SKHY` Nasdaq ADR、发行价约 `144.5-149 美元/ADR`、发行规模约 `265 亿至 280 亿美元`、预计美国时间 `2026-07-10` 开始交易，并进一步给出对 MU、Samsung、SanDisk 的情绪、估值和交易影响判断。
+  - 回复正常收口且未见错投、投递失败或内部实现外露；问题在于强时效金融来源 / 行情核验不可审计，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-07-09 19:02 CST 状态从代码级 `Fixed` 回退为运行态 `New`：
   - 15:01-19:02 CST `data/sessions.sqlite3` 新增 5 个 user turn 与 5 条 assistant final，Feishu direct 与普通 scheduler 均以 assistant 收口。
   - 16:17 / 16:29 CST Feishu direct session `Actor_feishu__direct__ou_5fa7fc023b9aa2a550a3568c8ffc4d7cdc` 连续回答长鑫存储上市影响、首日涨幅 / 市值 / 成交量和可买条件问题。

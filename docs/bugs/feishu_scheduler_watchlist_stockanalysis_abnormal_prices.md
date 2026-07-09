@@ -22,6 +22,16 @@
 
 ## 最新进展
 
+- 本轮 2026-07-09 19:02-23:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `session_messages`
+    - 20:00-21:35 CST 多条 Feishu / Web scheduler assistant final 正常收口，但继续输出异常或高风险数量级市场价格，并将其作为盘前风险、观察池纪律或板块判断锚点。
+    - 代表样本包括 20:00 CST 多条美股大盘类 scheduler final 输出 `S&P 500 7,482.71`、`Dow 52,348.39`、`Nasdaq Composite 25,870.65` 等指数数量级；20:02 CST `美股与A股重点标的跟踪晚报` 写 `MU盘前涨约3.5%至982.05美元`，并把 `BofA Global Research` 的 Micron 目标价写成 `1550美元`；21:00 CST `OWALERT_PreMarket` 输出 `MU 1,011.04`、`SNDK 1,823.82`、`BE` 等高风险数量级价格并给出持仓 / 观察池动作；21:30 CST `彩票组合风险监控与买卖点提醒` 输出 `MU 1,011.04`、`LITE 745.98`、`BE 274.58` 等；21:35 CST `科技核心股池 · 晚间击球区快报` 输出 `MU $1,009.79`、`SNDK $1,828.82`、`STX $917.41`、`WDC $590.13` 等。
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 heartbeat 仍有 86 条 `noop + skipped_noop` 与 26 条 `execution_failed + skipped_error`，但本轮主证据已经进入正式 assistant final，不只是 heartbeat raw preview。
+  - 判断：
+    - 最新样本仍是同一行情源 / 数值 sanity check 缺口：异常数量级价格进入用户可见投研、组合纪律和市场判断链路。
+    - 报告主链路正常收口，未见空回复、错投、投递失败或原始工具 JSON；因此仍按质量性 `P3 / New`。该问题不影响调度 / 投递主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-09 11:01-15:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 同窗 heartbeat raw preview / 判断上下文继续使用异常或高风险行情数值，并进入 `PlainTextSuppressed`、`PlainTextNoop` 或 `JsonNoop` 链路。
