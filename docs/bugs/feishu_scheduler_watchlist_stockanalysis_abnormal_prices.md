@@ -22,6 +22,17 @@
 
 ## 最新进展
 
+- 本轮 2026-07-10 03:01-07:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `session_messages`
+    - 04:32 CST Feishu final session `Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595` 正常收口，但输出 `SNDK 1,896.53`、`MU 999.56`、`CIEN 463.93`、`AVGO 404.82` 等异常或高风险数量级价格，并据此判断存储链和 AI 硬件主线。
+    - 05:02 CST Web direct session `Actor_web__direct__web-user-afc1cabadbf8` 的美股盘后复盘 final 正常收口，但继续输出 `S&P 500 7,543.64`、`Dow 52,487.41`、`Nasdaq Composite 26,206.89`、`SNDK 1,858.27`、`MU 991.64` 等异常或高风险数量级价格，并据此判断存储链和市场状态。
+    - 05:31 / 06:01 / 07:01 CST Feishu scheduler final 继续输出 `标普500 7,543.64`、`纳指 26,206.89`、`道指 52,487.41`、`SNDK 1,858.27`、`MU 991.64`、`AMD 546.72`、`DELL 450.22` 等价格，并用于组合市值、单日贡献和市场归因。
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 `Monitor_Watchlist_11` heartbeat raw preview 继续使用 `MU 990.34`、`991.64` 等异常数量级价格对比 `MU <= 252.00` 判断未触发；部分 raw preview 已自我提示“这个价格看起来不对”，但最终仍进入 watchlist 判断上下文。
+  - 判断：
+    - 最新样本仍是同一行情源 / 数值 sanity check 缺口：异常数量级价格进入用户可见投研、组合估值和 heartbeat 阈值判断链路。
+    - 直聊和调度主链路正常收口，未见空回复、错投、投递失败或原始工具 JSON；因此仍按质量性 `P3 / New`。该问题不影响直聊 / 调度 / 投递主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-09 23:02-2026-07-10 03:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `session_messages`
     - 01:50 CST Web direct session `Actor_web__direct__web-user-400794904801` 的美股盘中行情分析 assistant final 正常收口，但继续输出明显异常或高风险数量级存储链价格：`MU 1023.72 美元`、`SNDK 1878.92 美元`，并基于这些数值判断存储链、DRAM ETF、KMEM 和板块轮动。

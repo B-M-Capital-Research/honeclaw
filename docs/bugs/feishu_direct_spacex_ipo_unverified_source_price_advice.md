@@ -14,13 +14,20 @@ P3
 
 ## 状态
 
-Fixed
+New
 
 ## GitHub Issue
 
 无，非 P1
 
 ## 修复记录
+
+- 2026-07-10 07:05 CST 状态从代码级 `Fixed` 回退为当前运行态 `New`：
+  - 03:01-07:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 7 个 user turn 与 7 条 assistant final，Feishu / Web direct 与 scheduler 会话均已 assistant 收口；普通 scheduler 6 条均为 `completed + sent + delivered=1`。
+  - 04:32 CST Feishu session `Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595` final 的 `metadata_json` 为空，没有可审计 `assistant.tool_calls`，但正文声称 `QQQ 最新可核验约 722.44`、`WTI 最新可核验约 71.75`，并继续输出 `SNDK 1,896.53`、`MU 999.56`、BofA 目标价 `1,550`、AVGO / CIEN 等强时效行情和市场判断。
+  - 05:31 CST Feishu session `Actor_feishu__direct__ou_5f636d6d7c80d333e41b86ae79d07adca8` 与 06:01 CST Feishu session `Actor_feishu__direct__ou_5f11da38ad70c47cf87c0b106b6408b190` 的 assistant `metadata_json` 同样没有可审计工具证据，但继续输出美股指数、MU / AMD / AVGO / NVDA 等强时效行情、新闻归因和 A/H 次日预判。
+  - 这些样本晚于 `96182d43 fix: tighten finance evidence guardrails` 代码提交，但当前 live 服务未确认重启加载该提交；从用户当前可见运行态看，缺陷仍会影响回答可信度，因此回退为 `New`。若后续确认 live 已重启且新代码运行态不再复发，可再转回 `Fixed` 或 `Closed`。
+  - 回复正常收口且未见错投、投递失败或内部实现外露；问题在于强时效金融来源 / 行情核验不可审计，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
 
 - 2026-07-10 04:10 CST 代码级修复，状态更新为 `Fixed`：
   - 金融系统 prompt 新增“可审计核验约束”：若本轮没有可审计的网页、行情、公告、财报或新闻工具结果支撑，禁止使用“已核验”“可核验口径”“据公开报道已确认”等表述，也不得输出精确 IPO 发行价/区间、募资额、市值、成交额、首日可买条件或分档买入区间。
