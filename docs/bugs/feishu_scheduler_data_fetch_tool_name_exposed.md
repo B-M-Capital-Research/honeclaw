@@ -14,13 +14,20 @@ P3
 
 ## 状态
 
-Fixed
+New
 
 ## GitHub Issue
 
 无，非 P1
 
 ## 最新进展
+
+- 2026-07-09 11:01 CST 运行态再次复发，状态从代码级 `Fixed` 回退为 `New`：
+  - 07:00-11:01 CST `data/sessions.sqlite3` 新增 18 个 user turn 与 18 条 assistant final；Feishu / Discord direct 与普通 scheduler 均以 assistant 收口，普通 scheduler 18 条均为 `completed + sent + delivered=1`。
+  - assistant final 污染扫描未命中空回复、`reasoning_content`、`<think>`、本机绝对路径、`company_profiles/`、provider 原始错误、`mcpServers`、`Param Incorrect`、panic、资源耗尽、ACP 断连或原始工具 JSON。
+  - 09:01 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 的 `核心观察池早间简报` final 正常收口，但开头继续写出 `本轮价格已用最新可得 quote_short 校验；该口径未返回逐笔时间戳和盘前/盘后字段`。
+  - 该样本晚于 03:03 CST 代码级 sanitizer 修复和 07:01 CST 运行态未复发复核，说明当前真实出站窗口仍能暴露 `quote_short` 用户态工具口径；是否由 live 未重启或净化覆盖漏口导致，留待修复侧确认。
+  - 业务主体正常完成并送达，没有投递失败、空回复、错投、原始工具 JSON 或数据安全证据；问题仍只影响用户可见来源 / 工具口径边界和产品感，不影响主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
 
 - 2026-07-09 03:03 CST 代码级修复，状态更新为 `Fixed`：
   - 共享 `sanitize_user_visible_output(...)` 补齐近期真实复发句式，新增覆盖 `本轮最新价格来自 data_fetch quote_short`、`本轮 data_fetch quote/news 口径` 与 `StockAnalysis口径显示` 等来源句式，统一改写为用户态公开来源说明，不再直接暴露内部工具名或实现口径。

@@ -22,6 +22,16 @@
 
 ## 最新进展
 
+- 本轮 2026-07-09 07:00-11:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `session_messages`
+    - 07:02 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f85509d35510291f93cd79a3b1c9eebf3` 的 `美股持仓收盘后早报` assistant final 正常收口，但继续输出 `SNDK 1727.18`、`MU 948.80`、`DELL 432.01`、`GOOGL 361.92` 等异常或高风险数量级价格，并据此计算组合市值、浮盈和单日贡献。
+    - 08:33 CST session `Actor_feishu__direct__ou_5f1fdfeceacb0f2ece1a2c88c5a7d17e34` 的 `闪迪(SNDK)每日行情与行业简报` final 正常收口，但把 `SNDK 7月8日收盘：1,727.18 美元`、`盘后参考约 1,746.00 美元` 作为核心行情锚，并基于这些数值给出评级与交易区间判断。
+    - 09:01 CST `核心观察池早间简报` final 继续输出 `MU $948.80`、`SNDK $1,727.18`、`STX $860.02`、`WDC $550.30`、`GEV $1,070.99` 等异常或高风险数量级价格，并用于击球区 / 财报日期简表。
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 heartbeat raw / 判断上下文仍有结构化失败与错误日期样本；本单主要记录异常价格进入正式 scheduler final 的证据。
+- 本窗已有多条 scheduler final 正式落库样本，不只是 heartbeat raw preview；价格 sanity check 仍未覆盖当前 scheduler / heartbeat / direct 投研运行路径。
+- 报告主链路正常收口，未见空回复、错投、投递失败或原始工具 JSON；因此仍按质量性 `P3 / New`。该问题不影响调度 / 投递主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-09 03:02-07:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `session_messages`
     - 05:02 CST Web direct session `Actor_web__direct__web-user-afc1cabadbf8` 的美股盘后复盘 assistant final 正常收口，但继续输出明显异常或高风险数量级市场价格：`S&P 500 7,482.71`、`Dow 52,348.39`、`Nasdaq Composite 25,870.65`，并在 MU 段写出 `MU 小幅上涨约 0.3% 至 941.44 美元`。
