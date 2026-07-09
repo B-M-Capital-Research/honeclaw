@@ -8,6 +8,17 @@
 
 ## 最新进展
 
+- 本轮 2026-07-09 11:01-15:01 CST 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 heartbeat raw / delivered preview 继续出现与实际执行窗口不一致的“当前时间 / 检查时间 / 数据日期”口径。
+    - 代表样本为 13:00 CST `RKLB 全面心跳检测` `run_id=47365`，执行时间为 `2026-07-09T13:00:43+08:00` 且 `completed + sent + delivered=1`，但用户可见标题写成 `【RKLB 北京时间 2026年7月8日 重要更新 — Morgan Stanley 大幅上调牛市目标价】`，比实际执行日早 1 天。
+    - 同窗 raw preview 还有多条错误或漂移口径：15:00 CST `全天原油价格3小时播报` 写 `Current time: 2026-04-04 15:11:26 Beijing time`；15:00 CST `TSLA 正负触发条件心跳监控` 写 `Current time context: July 8, 2026`；14:30 CST `TEM破位预警` noop reason 写 `数据时间戳 2025-11-18`；14:30 CST `全天原油价格3小时播报` 把 `1783578613` 近似换算为 `2026-06-17`。
+  - 查重结论：
+    - 本窗没有新的独立根因；上述 delivered preview / raw preview 仍属于 heartbeat 模型时间上下文 / 数据日期漂移，与本文档既有“触发提醒时间口径漂移”同一链路。
+  - 用户影响：
+    - 调度、解析和预览生成链路仍可运行，但错误日期已进入成功送达的用户可见提醒，可能影响用户对增量扫描时效性的判断。没有错投、数据安全或全渠道不可用证据；因此维持质量性 `P3`，非 P1。
+    - 因该问题不影响直聊 / 调度 / 投递主功能链路，只影响 heartbeat 触发判断质量与用户可见时间口径可信度，所以定级保持 P3。
+
 - 本轮 2026-07-09 07:00-11:01 CST 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 同窗 heartbeat raw / delivered preview 继续出现与实际执行窗口不一致的“当前时间 / 检查时间 / 数据日期”口径。

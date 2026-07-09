@@ -22,6 +22,15 @@
 
 ## 最新进展
 
+- 本轮 2026-07-09 11:01-15:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 heartbeat raw preview / 判断上下文继续使用异常或高风险行情数值，并进入 `PlainTextSuppressed`、`PlainTextNoop` 或 `JsonNoop` 链路。
+    - 代表样本包括 14:00 CST `Monitor_Watchlist_11` raw preview 使用 `MU 948.8` 对比 `MU <= 252.00` 判断未触发；14:30 CST 同 job raw preview 写 `MU: $948.8, trigger <= $252.00 -> NOT triggered`；15:00 CST 同 job raw preview 继续写 `MU: Current $948.80, Trigger <= $252.00 -> NOT triggered`。这些数量级仍明显偏离常识区间，属于同一 StockAnalysis / 行情源异常价格问题。
+  - `data/sessions.sqlite3` / `session_messages`
+    - 同窗按真实 `timestamp` 有 4 条 assistant final，均正常收口；未确认新的正式用户可见 final 直接输出 `MU 948.80` 或同类异常价格。
+- 本窗异常价格主要停留在 heartbeat raw preview、未命中或结构化失败路径；调度 / 投递主链路没有因该问题被阻断。
+- 因该问题仍主要影响行情质量和投资建议可信度，不阻断功能链路，因此继续按质量性 `P3 / New`；非 P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-09 07:00-11:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `session_messages`
     - 07:02 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f85509d35510291f93cd79a3b1c9eebf3` 的 `美股持仓收盘后早报` assistant final 正常收口，但继续输出 `SNDK 1727.18`、`MU 948.80`、`DELL 432.01`、`GOOGL 361.92` 等异常或高风险数量级价格，并据此计算组合市值、浮盈和单日贡献。
