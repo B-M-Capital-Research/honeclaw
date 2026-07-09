@@ -14,13 +14,19 @@ P3
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
 无，非 P1
 
 ## 最新进展
+
+- 2026-07-10 04:10 CST 代码级修复，状态更新为 `Fixed`：
+  - 共享 `sanitize_user_visible_output(...)` 新增覆盖近期真实漏网句式：`本轮价格已用最新可得 quote_short 校验`、`本轮 quote_short 已校验 25 支最新可得价格`，并继续复用既有 `data_fetch` / `StockAnalysis` / `公开行情页` 用户态改写规则。
+  - 本轮同步收紧金融系统 prompt 与 multi-agent search/answer guidance：没有本轮可审计工具证据时，不得把 `quote_short` 校验、IPO/行情核验或公开报道包装成“已核验”的用户态强结论。
+  - 验证 `cargo test -p hone-channels sanitize_user_visible_output_rewrites_market_data_source_copy_variants --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_rewrites_market_data_quote_short_copy --lib -- --nocapture`、`cargo test -p hone-channels build_prompt_bundle_always_includes_finance_domain_policy --lib -- --nocapture`、`cargo test -p hone-channels search_input_guidance_allows_direct_replies_for_greetings --lib -- --nocapture`、`cargo check -p hone-channels --tests`、`git diff --check` 通过。
+  - 本轮未重启当前 live 服务，也未做线上运行态复核；先按代码级 `Fixed` 记录，后续如新运行态仍出现 `quote_short` / `data_fetch` / `StockAnalysis` 用户态口径，再基于新证据回退。
 
 - 2026-07-09 11:01 CST 运行态再次复发，状态从代码级 `Fixed` 回退为 `New`：
   - 07:00-11:01 CST `data/sessions.sqlite3` 新增 18 个 user turn 与 18 条 assistant final；Feishu / Discord direct 与普通 scheduler 均以 assistant 收口，普通 scheduler 18 条均为 `completed + sent + delivered=1`。
@@ -216,6 +222,12 @@ New
   - 该样本晚于 2026-06-22 07:08 CST scheduler / 共享净化修复记录；问题仍只影响用户可见文案边界和产品感，不影响主功能链路，因此为质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
 
 ## 修复记录
+
+- 2026-07-10 04:10 CST 修复：
+  - 共享 `sanitize_user_visible_output(...)` 新增 `quote_short` 校验漏网句式净化，并与既有 `data_fetch` / `StockAnalysis` 改写规则共测。
+  - 金融系统 prompt 与 multi-agent search/answer guidance 同步新增“无本轮可审计工具证据时不得声称已核验、不得输出精确强时效操作锚点”的硬约束。
+  - 验证通过：`cargo test -p hone-channels sanitize_user_visible_output_rewrites_market_data_source_copy_variants --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_rewrites_market_data_quote_short_copy --lib -- --nocapture`、`cargo test -p hone-channels build_prompt_bundle_always_includes_finance_domain_policy --lib -- --nocapture`、`cargo test -p hone-channels search_input_guidance_allows_direct_replies_for_greetings --lib -- --nocapture`、`cargo check -p hone-channels --tests`、`git diff --check`。
+  - 本轮未重启 live 服务，先按代码级 `Fixed` 记录。
 
 - 2026-07-09 03:03 CST 修复：
   - 共享 `sanitize_user_visible_output(...)` 新增来源句式净化，覆盖 `本轮最新价格来自 data_fetch quote_short`、`本轮 data_fetch quote/news 口径` 与 `StockAnalysis口径显示` 等近期复发样本。

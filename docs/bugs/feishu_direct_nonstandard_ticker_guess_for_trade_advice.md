@@ -3,7 +3,7 @@
 - 发现时间：2026-06-04 03:02 CST
 - Bug Type：Business Error
 - 严重等级：P3
-- 状态：New
+- 状态：Fixed
 - GitHub Issue：无，非 P1
 
 ## 证据来源
@@ -81,6 +81,12 @@
 - 后续巡检继续关注用户是否因同类猜测而纠正实体；若出现已确认答错且影响交易动作，可按影响范围重新评估严重等级。
 
 ## 修复记录
+
+- 2026-07-10 04:10 CST 已再次修复：
+  - `crates/hone-channels/src/prompt.rs` 的金融系统 prompt 新增“可审计核验约束”，进一步明确：没有本轮可审计工具证据时，不得声称已核验，也不得输出精确 IPO / 行情 / 分档买入区间或其它强时效操作锚点。
+  - `crates/hone-channels/src/runners/multi_agent.rs` 的 search-stage / answer-stage guidance 同步收紧：遇到非标准 ticker、近似 ticker 或强时效金融动作建议时，若未确认实体或缺少本轮证据，只能先澄清或给框架，不得直接给交易动作、价位和仓位结论。
+  - 验证：`cargo test -p hone-channels build_prompt_bundle_always_includes_finance_domain_policy --lib -- --nocapture`、`cargo test -p hone-channels search_input_guidance_allows_direct_replies_for_greetings --lib -- --nocapture`、`cargo check -p hone-channels --tests`、`git diff --check`。
+  - 本轮未重启 live 服务，先按代码级 `Fixed` 记录；若后续新运行态仍出现 `CBRS -> Cerebras Systems` 这类未确认即交易建议的样本，再回退为 `New`。
 
 - 2026-06-05 03:03 CST 已修复：
   - `crates/hone-channels/src/prompt.rs` 的金融系统 prompt 新增“非标准 ticker 约束”：当输入是疑似拼写错误、少字母/多字母或并非常见证券代码的 ticker，且问题涉及建仓、加仓、减仓、买点、卖点、止损、仓位等交易动作时，必须先确认具体标的，禁止按“最像的代码”直接给出价格区间、仓位比例或交易建议。

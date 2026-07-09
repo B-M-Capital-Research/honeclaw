@@ -14,13 +14,19 @@ P3
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
 无，非 P1
 
 ## 修复记录
+
+- 2026-07-10 04:10 CST 代码级修复，状态更新为 `Fixed`：
+  - 金融系统 prompt 新增“可审计核验约束”：若本轮没有可审计的网页、行情、公告、财报或新闻工具结果支撑，禁止使用“已核验”“可核验口径”“据公开报道已确认”等表述，也不得输出精确 IPO 发行价/区间、募资额、市值、成交额、首日可买条件或分档买入区间。
+  - multi-agent search-stage / answer-stage guidance 同步新增同样护栏：缺少本轮 verified transcript 时，只能给情景框架、风险边界和待核验项，不能把私营公司 IPO、ADR 上市或媒体报道包装成已核验结论。
+  - 验证 `cargo test -p hone-channels build_prompt_bundle_always_includes_finance_domain_policy --lib -- --nocapture`、`cargo test -p hone-channels search_input_guidance_allows_direct_replies_for_greetings --lib -- --nocapture`、`cargo check -p hone-channels --tests`、`git diff --check` 通过。
+  - 本轮未重启当前 live 服务，也未做线上运行态复核；先按代码级 `Fixed` 记录，后续如新运行态仍在无本轮工具证据时声称“已核验”并给出精确 IPO / ADR 操作锚点，再基于新证据回退。
 
 - 2026-07-10 03:02 CST 补充同根复发证据，状态维持 `New`：
   - 23:02-03:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 16 个 user turn 与 16 条 assistant final，Feishu / Web direct 与 scheduler 会话均已 assistant 收口。

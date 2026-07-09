@@ -3,7 +3,7 @@
 - **发现时间**: 2026-06-06 23:04 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，非 P1
 
 ## 最新进展（2026-07-03 15:10 CST）
@@ -109,6 +109,13 @@
 - 2026-06-07 19:03 CST 复核为缺陷台账维护任务，未修改业务代码，未运行代码测试；已验证范围：SQLite 会话收口、assistant final 污染扫描、ACP prompt / `end_turn` 对齐、相关 tool call 时序、本轮 `cron_job_runs` 无新增、最近四小时无非文档代码提交。
 
 ## 修复记录
+
+- 2026-07-10 04:10 CST 已再次修复：
+  - `crates/hone-channels/src/prompt.rs` 的金融系统 prompt 新增“可审计核验约束”，进一步明确：若没有本轮可审计网页/行情/公告/财报工具结果，禁止把精确价格、盘前盘后价、IPO 定价或分档操作区间包装成已核验结论。
+  - `crates/hone-channels/src/runners/multi_agent.rs` 的 search-stage / answer-stage guidance 同步收紧：缺少 verified transcript 时，只能给框架、风险边界和待核验项，不能把精确价格、盘前盘后价或抄底区间当成当前决策锚点。
+  - 共享 `sanitize_user_visible_output(...)` 同步补齐 `quote_short` 用户态来源句式净化，降低“已校验 / 已核验价格”类文案在未稳定校验时外露的复发面。
+  - 验证：`cargo test -p hone-channels sanitize_user_visible_output_rewrites_market_data_source_copy_variants --lib -- --nocapture`、`cargo test -p hone-channels sanitize_user_visible_output_rewrites_market_data_quote_short_copy --lib -- --nocapture`、`cargo test -p hone-channels build_prompt_bundle_always_includes_finance_domain_policy --lib -- --nocapture`、`cargo test -p hone-channels search_input_guidance_allows_direct_replies_for_greetings --lib -- --nocapture`、`cargo check -p hone-channels --tests`、`git diff --check`。
+  - 本轮未重启 live 服务，先按代码级 `Fixed` 记录；若后续新运行态仍在缺少本轮核验证据时输出异常数量级价格或精确操作区间，再回退为 `New`。
 
 - 2026-06-09 00:12 CST 进入 `Fixing`：`DEFAULT_FINANCE_DOMAIN_POLICY` 已新增“多标的最新行情约束”，要求多个股票 / ETF / 基金的最新价格、盘后价、日内区间、估值倍数或配置/抄底区间必须逐一具备本轮独立核验的来源、时间戳和交易时段口径；不得复用其它标的搜索结果、历史公司画像或未完成工具读取中的数字作为精确行情锚点；未完成稳定校验时不得输出精确价格、Forward PE 或操作区间。`build_prompt_bundle_always_includes_finance_domain_policy` 已补断言。
 - 验证阻塞：本机 Rust toolchain 当前 `cargo` / `rustc` 均悬挂，本轮仅完成 `git diff --check`，不能标记 `Fixed`。下一轮需运行 `cargo test -p hone-channels build_prompt_bundle_always_includes_finance_domain_policy --lib -- --nocapture` 与 `cargo check -p hone-channels --tests`。

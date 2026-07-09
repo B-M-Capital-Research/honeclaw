@@ -14,13 +14,19 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## GitHub Issue
 
 - 无，非 P1
 
 ## 最新进展
+
+- 2026-07-10 04:10 CST 代码级修复，状态更新为 `Fixed`：
+  - 共享 `sanitize_user_visible_output(...)` 新增覆盖 `画像已写入，重点保留的是...` 这类真实复发句式，避免内部画像写入动作和“重点保留”存储说明继续作为用户态正文前缀出现。
+  - 该规则与既有画像创建 / 更新 / 沉淀 / 本地画像检查净化共用一条共享链路，Feishu / Web direct 与 scheduler 出站都会复用。
+  - 验证 `cargo test -p hone-channels sanitize_user_visible_output_strips_profile_written_prelude_copy --lib -- --nocapture`、`cargo check -p hone-channels --tests`、`git diff --check` 通过。
+  - 本轮未重启当前 live 服务，也未做线上运行态复核；先按代码级 `Fixed` 记录，后续如新运行态仍出现同类前缀，再基于新证据回退。
 
 - 2026-07-06 15:02 CST 运行态复发，状态从代码级 `Fixed` 回退为 `New`：
   - 11:01-15:02 CST `data/sessions.sqlite3` 新增 6 个 user turn 与 6 条 assistant final，Feishu / Web direct 与 1 条普通 scheduler 均以 assistant 收口；普通 scheduler 1 条为 `completed + sent + delivered=1`。
@@ -84,6 +90,11 @@
   - 该样本晚于 2026-06-22 07:08 CST 共享净化修复记录；回复主体正常 `end_turn` 收口，不影响投研主链路、落库或投递，因此按质量性 `P3 / New` 处理，非 P1，不创建 GitHub Issue。
 
 ## 修复记录
+
+- 2026-07-10 04:10 CST 修复：
+  - 共享 `sanitize_user_visible_output(...)` 新增 `画像已写入，重点保留的是...` 句式净化，和既有公司画像流程净化规则共测。
+  - 验证通过：`cargo test -p hone-channels sanitize_user_visible_output_strips_profile_written_prelude_copy --lib -- --nocapture`、`cargo check -p hone-channels --tests`、`git diff --check`。
+  - 本轮未重启 live 服务，先按代码级 `Fixed` 记录。
 
 - 2026-07-06 03:41 CST 再次代码级修复：
   - 共享 `sanitize_user_visible_output(...)` 补齐 `我已经加载单股研究流程`、`本地没有 HPE 画像` 等自然语言内部流程句式，避免 Feishu direct final 再把研究编排和画像存在性检查作为用户态正文输出。
