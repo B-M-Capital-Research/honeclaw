@@ -7,9 +7,19 @@ export type MonthOption = {
 
 export type MonthGridCell = {
   key: string;
-  day: number | null;
-  date: string | null;
+  day: number;
+  date: string;
+  inMonth: boolean;
 };
+
+export type FinanceCalendarEventCategory =
+  | "earnings"
+  | "policy"
+  | "inflation"
+  | "labor"
+  | "growth"
+  | "housing"
+  | "other";
 
 export function parseFinanceCalendarMonth(value: string): {
   year: number;
@@ -25,13 +35,7 @@ export function parseFinanceCalendarMonth(value: string): {
 
 export function defaultFinanceCalendarMonth(now = new Date()): string {
   const year = now.getFullYear();
-  const monthIndex = now.getMonth();
-  const lastDay = new Date(year, monthIndex + 1, 0).getDate();
-  const useNext = lastDay - now.getDate() < 7;
-  const target = useNext
-    ? new Date(year, monthIndex + 1, 1)
-    : new Date(year, monthIndex, 1);
-  return `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, "0")}`;
+  return `${year}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
 export function financeCalendarMonthsForYear(year: number): MonthOption[] {
@@ -55,19 +59,21 @@ export function financeCalendarMonthGrid(monthValue: string): MonthGridCell[] {
   if (!parsed) return [];
   const { year, month } = parsed;
   const first = new Date(year, month - 1, 1);
-  const days = new Date(year, month, 0).getDate();
   // Monday-first offset: Sun(0) should sit at the end of the first week.
   const offset = (first.getDay() + 6) % 7;
   const cells: MonthGridCell[] = [];
-  for (let i = 0; i < offset; i++) {
-    cells.push({ key: `blank-${i}`, day: null, date: null });
-  }
-  for (let day = 1; day <= days; day++) {
-    const date = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    cells.push({ key: date, day, date });
-  }
-  while (cells.length % 7 !== 0) {
-    cells.push({ key: `blank-${cells.length}`, day: null, date: null });
+  for (let index = 0; index < 42; index++) {
+    const cellDate = new Date(year, month - 1, 1 - offset + index);
+    const cellYear = cellDate.getFullYear();
+    const cellMonth = cellDate.getMonth() + 1;
+    const day = cellDate.getDate();
+    const date = `${cellYear}-${String(cellMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    cells.push({
+      key: date,
+      day,
+      date,
+      inMonth: cellYear === year && cellMonth === month,
+    });
   }
   return cells;
 }
@@ -80,6 +86,20 @@ export function groupFinanceCalendarEvents(
     (acc[event.date] ??= []).push(event);
     return acc;
   }, {});
+}
+
+export function visibleFinanceCalendarEventsForDay(
+  events: readonly FinanceCalendarEvent[],
+  limit = 3,
+): FinanceCalendarEvent[] {
+  if (events.length <= limit) return [...events];
+  const visibleLimit = Math.max(1, limit - 1);
+  const macro = events.filter((event) => event.kind !== "earnings");
+  const earnings = events.filter((event) => event.kind === "earnings");
+  if (macro.length > 0 && earnings.length > 0 && visibleLimit >= 2) {
+    return [macro[0], earnings[0], ...earnings.slice(1, visibleLimit - 1)];
+  }
+  return events.slice(0, visibleLimit);
 }
 
 export function financeCalendarStatusLabel(status: string): string {
@@ -97,4 +117,66 @@ export function financeCalendarStatusLabel(status: string): string {
     default:
       return status || "数据状态未知";
   }
+}
+
+export function financeCalendarEventCategory(
+  event: FinanceCalendarEvent,
+): FinanceCalendarEventCategory {
+  if (event.kind === "earnings") return "earnings";
+  const text = `${event.title} ${event.subtitle ?? ""}`.toUpperCase();
+  if (/FOMC|联储|利率|褐皮书/.test(text)) return "policy";
+  if (/CPI|PPI|PCE|通胀|物价/.test(text)) return "inflation";
+  if (/非农|就业|失业|薪资/.test(text)) return "labor";
+  if (/房屋|住房|新屋|地产/.test(text)) return "housing";
+  if (/GDP|PMI|零售|工业|贸易|耐用品/.test(text)) return "growth";
+  return "other";
+}
+
+function financeCalendarEventImportance(event: FinanceCalendarEvent): number {
+  if (event.kind === "earnings") return 0;
+  const title = event.title.toUpperCase();
+  if (/FOMC|利率决议/.test(title)) return 100;
+  if (/非农|CPI|GDP/.test(title)) return 95;
+  if (/PCE/.test(title)) return 92;
+  if (/PPI|零售销售/.test(title)) return 88;
+  if (/PMI|就业成本/.test(title)) return 82;
+  if (/会议纪要|工业产出|耐用品/.test(title)) return 76;
+  return 60;
+}
+
+export function financeCalendarHighlights(
+  events: readonly FinanceCalendarEvent[],
+  today: string,
+  limit = 4,
+): FinanceCalendarEvent[] {
+  const macroEvents = events.filter((event) => event.kind === "macro");
+  if (macroEvents.length === 0) {
+    const earnings = events.filter((event) => event.kind === "earnings");
+    const upcomingEarnings = earnings.filter((event) => event.date >= today);
+    return [...(upcomingEarnings.length > 0 ? upcomingEarnings : earnings)]
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(0, Math.max(0, limit));
+  }
+  const currentMonth = today.slice(0, 7);
+  const eventMonth = macroEvents[0]?.date.slice(0, 7);
+  const upcoming =
+    currentMonth === eventMonth
+      ? macroEvents.filter((event) => event.date >= today)
+      : macroEvents;
+  const rank = (items: readonly FinanceCalendarEvent[]) =>
+    [...items].sort(
+      (a, b) =>
+        financeCalendarEventImportance(b) -
+          financeCalendarEventImportance(a) || a.date.localeCompare(b.date),
+    );
+  const selected = rank(upcoming).slice(0, Math.max(0, limit));
+  if (selected.length < limit) {
+    const selectedKeys = new Set(selected.map((event) => `${event.date}:${event.title}`));
+    selected.push(
+      ...rank(macroEvents)
+        .filter((event) => !selectedKeys.has(`${event.date}:${event.title}`))
+        .slice(0, limit - selected.length),
+    );
+  }
+  return selected.sort((a, b) => a.date.localeCompare(b.date));
 }

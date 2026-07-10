@@ -46,6 +46,7 @@ import {
 import { buildApiUrl } from "@/lib/backend";
 import {
   defaultFinanceCalendarMonth,
+  financeCalendarStatusLabel,
   monthOptionsForSelection,
 } from "@/lib/finance-calendar";
 import { parseMessageContent, messageId } from "@/lib/messages";
@@ -1798,6 +1799,7 @@ function FinanceCalendarQuickAction(props: { onSent: () => void }) {
     defaultFinanceCalendarMonth(),
   );
   const [busy, setBusy] = createSignal(false);
+  const [loading, setLoading] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   const [payload, setPayload] = createSignal<FinanceCalendarPayload | null>(
     null,
@@ -1805,11 +1807,62 @@ function FinanceCalendarQuickAction(props: { onSent: () => void }) {
   const monthOptions = createMemo(() =>
     monthOptionsForSelection(selectedMonth()),
   );
+  const selectedMonthIndex = createMemo(() =>
+    monthOptions().findIndex((month) => month.value === selectedMonth()),
+  );
+  const selectedMonthLabel = createMemo(
+    () => monthOptions()[selectedMonthIndex()]?.label ?? selectedMonth(),
+  );
+  const macroCount = createMemo(
+    () => payload()?.events.filter((event) => event.kind === "macro").length ?? 0,
+  );
+  const earningsCount = createMemo(
+    () => payload()?.events.filter((event) => event.kind === "earnings").length ?? 0,
+  );
   let cardEl: HTMLDivElement | undefined;
+  let requestId = 0;
+
+  const loadMonth = async (month: string) => {
+    const currentRequest = ++requestId;
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getPublicFinanceCalendar(month);
+      if (currentRequest !== requestId) return;
+      setPayload(data);
+    } catch (err) {
+      if (currentRequest !== requestId) return;
+      setPayload(null);
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      if (currentRequest === requestId) setLoading(false);
+    }
+  };
+
+  const selectMonth = (month: string) => {
+    if (month === selectedMonth() && payload()?.month === month) return;
+    setSelectedMonth(month);
+    void loadMonth(month);
+  };
+
+  const shiftMonth = (delta: number) => {
+    const option = monthOptions()[selectedMonthIndex() + delta];
+    if (option) selectMonth(option.value);
+  };
+
+  const openCalendar = () => {
+    const currentMonth = defaultFinanceCalendarMonth();
+    setOpen(true);
+    setSelectedMonth(currentMonth);
+    setPayload(null);
+    void loadMonth(currentMonth);
+  };
 
   const close = () => {
     if (busy()) return;
+    requestId += 1;
     setOpen(false);
+    setLoading(false);
     setError(null);
     setPayload(null);
   };
@@ -1828,12 +1881,12 @@ function FinanceCalendarQuickAction(props: { onSent: () => void }) {
   };
 
   const renderPngBlob = async (data: FinanceCalendarPayload) => {
-    setPayload(data);
+    if (payload()?.month !== data.month) setPayload(data);
     await waitForCard();
     const { default: html2canvas } = await import("html2canvas");
     const canvas = await html2canvas(cardEl!, {
       scale: window.devicePixelRatio >= 2 ? 1.6 : 1.3,
-      backgroundColor: "#f8fafc",
+      backgroundColor: "#eef2f3",
       useCORS: true,
       logging: false,
     });
@@ -1845,7 +1898,10 @@ function FinanceCalendarQuickAction(props: { onSent: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      const data = await getPublicFinanceCalendar(selectedMonth());
+      const data =
+        payload()?.month === selectedMonth()
+          ? payload()!
+          : await getPublicFinanceCalendar(selectedMonth());
       const blob = await renderPngBlob(data);
       const file = new File([blob], `hone-finance-calendar-${data.month}.png`, {
         type: "image/png",
@@ -1883,10 +1939,7 @@ function FinanceCalendarQuickAction(props: { onSent: () => void }) {
         aria-haspopup="dialog"
         aria-expanded={open()}
         disabled={busy()}
-        onClick={() => {
-          setError(null);
-          setOpen(true);
-        }}
+        onClick={openCalendar}
       >
         <svg
           class="public-chat-proactive-tip-icon"
@@ -1921,71 +1974,195 @@ function FinanceCalendarQuickAction(props: { onSent: () => void }) {
             aria-labelledby="public-chat-calendar-title"
             onClick={(e) => e.stopPropagation()}
           >
-            <button
-              type="button"
-              class="public-chat-proactive-close"
-              aria-label={CONTENT.chat_page.composer.finance_calendar_close_aria}
-              onClick={close}
-              disabled={busy()}
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.4"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
+            <div class="public-chat-calendar-modal-header">
+              <span class="public-chat-calendar-modal-mark" aria-hidden="true">
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.1"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M8 2v4M16 2v4M3 10h18" />
+                  <rect x="3" y="4" width="18" height="18" rx="2" />
+                  <path d="m9 16 2 2 4-5" />
+                </svg>
+              </span>
+              <div>
+                <h2 id="public-chat-calendar-title">
+                  {CONTENT.chat_page.composer.finance_calendar_title}
+                </h2>
+                <p>
+                  {selectedMonthLabel()} · {macroCount()} {CONTENT.chat_page.composer.finance_calendar_macro_label} ·{" "}
+                  {earningsCount()} {CONTENT.chat_page.composer.finance_calendar_earnings_label}
+                </p>
+              </div>
+              <button
+                type="button"
+                class="public-chat-proactive-close"
+                aria-label={CONTENT.chat_page.composer.finance_calendar_close_aria}
+                onClick={close}
+                disabled={busy()}
               >
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
-            </button>
-            <h2 id="public-chat-calendar-title">
-              {CONTENT.chat_page.composer.finance_calendar_title}
-            </h2>
-            <p class="public-chat-proactive-intro">
-              {CONTENT.chat_page.composer.finance_calendar_intro}
-            </p>
-            <div class="public-chat-calendar-month-label">
-              {CONTENT.chat_page.composer.finance_calendar_months_label}
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.4"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
             </div>
-            <div class="public-chat-calendar-month-grid">
-              <For each={monthOptions()}>
-                {(month) => (
+
+            <div class="public-chat-calendar-modal-body">
+              <div class="public-chat-calendar-preview-pane">
+                <Switch>
+                  <Match when={loading()}>
+                    <div
+                      class="public-chat-calendar-preview-loading"
+                      aria-live="polite"
+                    >
+                      <span class="public-chat-calendar-loading-ring" />
+                      <strong>{CONTENT.chat_page.composer.finance_calendar_loading}</strong>
+                    </div>
+                  </Match>
+                  <Match when={payload()}>
+                    {(data) => (
+                      <div
+                        class="public-chat-calendar-preview-frame"
+                        aria-label={
+                          CONTENT.chat_page.composer.finance_calendar_preview_aria
+                        }
+                      >
+                        <div class="public-chat-calendar-preview-artboard">
+                          <FinanceCalendarCard payload={data()} />
+                        </div>
+                      </div>
+                    )}
+                  </Match>
+                  <Match when={error()}>
+                    <div class="public-chat-calendar-preview-loading public-chat-calendar-preview-failed">
+                      <span aria-hidden="true">!</span>
+                      <strong>{CONTENT.chat_page.composer.finance_calendar_error}</strong>
+                    </div>
+                  </Match>
+                </Switch>
+              </div>
+
+              <aside class="public-chat-calendar-controls">
+                <div class="public-chat-calendar-month-label">
+                  {CONTENT.chat_page.composer.finance_calendar_months_label}
+                </div>
+                <div class="public-chat-calendar-month-nav">
                   <button
                     type="button"
-                    class="public-chat-calendar-month"
-                    data-selected={month.value === selectedMonth()}
-                    disabled={busy()}
-                    onClick={() => setSelectedMonth(month.value)}
+                    aria-label={CONTENT.chat_page.composer.finance_calendar_previous_aria}
+                    title={CONTENT.chat_page.composer.finance_calendar_previous_aria}
+                    disabled={busy() || loading() || selectedMonthIndex() <= 0}
+                    onClick={() => shiftMonth(-1)}
                   >
-                    {month.label}
+                    ‹
                   </button>
-                )}
-              </For>
-            </div>
-            <Show when={error()}>
-              {(message) => (
-                <div class="public-chat-calendar-error" role="alert">
-                  <strong>
-                    {CONTENT.chat_page.composer.finance_calendar_error}
-                  </strong>
-                  <span>{message()}</span>
+                  <select
+                    value={selectedMonth()}
+                    disabled={busy() || loading()}
+                    onChange={(event) => selectMonth(event.currentTarget.value)}
+                  >
+                    <For each={monthOptions()}>
+                      {(month) => (
+                        <option value={month.value}>{month.label}</option>
+                      )}
+                    </For>
+                  </select>
+                  <button
+                    type="button"
+                    aria-label={CONTENT.chat_page.composer.finance_calendar_next_aria}
+                    title={CONTENT.chat_page.composer.finance_calendar_next_aria}
+                    disabled={
+                      busy() ||
+                      loading() ||
+                      selectedMonthIndex() >= monthOptions().length - 1
+                    }
+                    onClick={() => shiftMonth(1)}
+                  >
+                    ›
+                  </button>
                 </div>
-              )}
-            </Show>
-            <button
-              type="button"
-              class="public-chat-proactive-primary"
-              onClick={() => void sendCalendar()}
-              disabled={busy()}
-            >
-              {busy()
-                ? CONTENT.chat_page.composer.finance_calendar_sending
-                : CONTENT.chat_page.composer.finance_calendar_send}
-            </button>
+                <button
+                  type="button"
+                  class="public-chat-calendar-current-month"
+                  disabled={
+                    busy() ||
+                    loading() ||
+                    selectedMonth() === defaultFinanceCalendarMonth()
+                  }
+                  onClick={() => selectMonth(defaultFinanceCalendarMonth())}
+                >
+                  {CONTENT.chat_page.composer.finance_calendar_current_month}
+                </button>
+
+                <div class="public-chat-calendar-stat-list">
+                  <div>
+                    <span>{CONTENT.chat_page.composer.finance_calendar_macro_label}</span>
+                    <strong>{macroCount()}</strong>
+                  </div>
+                  <div>
+                    <span>{CONTENT.chat_page.composer.finance_calendar_earnings_label}</span>
+                    <strong>{earningsCount()}</strong>
+                  </div>
+                  <div>
+                    <span>{CONTENT.chat_page.composer.finance_calendar_holdings_label}</span>
+                    <strong>{payload()?.holdings.length ?? 0}</strong>
+                  </div>
+                </div>
+
+                <Show when={payload()}>
+                  {(data) => (
+                    <div
+                      class="public-chat-calendar-data-state"
+                      data-degraded={data().earnings_status !== "ok"}
+                    >
+                      <span class="public-chat-calendar-state-dot" />
+                      <div>
+                        <strong>{financeCalendarStatusLabel(data().earnings_status)}</strong>
+                        <span>
+                          {data().errors[0] ?? CONTENT.chat_page.composer.finance_calendar_sources}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </Show>
+
+                <Show when={error()}>
+                  {(message) => (
+                    <div class="public-chat-calendar-error" role="alert">
+                      <strong>{CONTENT.chat_page.composer.finance_calendar_error}</strong>
+                      <span>{message()}</span>
+                    </div>
+                  )}
+                </Show>
+
+                <button
+                  type="button"
+                  class="public-chat-proactive-primary public-chat-calendar-send"
+                  onClick={() => void sendCalendar()}
+                  disabled={busy() || loading() || !payload()}
+                >
+                  {busy()
+                    ? CONTENT.chat_page.composer.finance_calendar_sending
+                    : CONTENT.chat_page.composer.finance_calendar_send}
+                </button>
+              </aside>
+            </div>
           </div>
         </div>
       </Show>
@@ -3947,51 +4124,244 @@ export default function PublicChatPage() {
           opacity: 0.72;
         }
         .public-chat-calendar-modal {
-          width: min(460px, calc(100vw - 32px));
+          width: min(980px, calc(100vw - 32px));
+          max-height: min(780px, calc(100dvh - 32px));
+          padding: 0;
+          overflow: hidden;
+          border-radius: 8px;
+          background: #f4f6f6;
+        }
+        .public-chat-calendar-modal-header {
+          min-height: 76px;
+          padding: 16px 64px 16px 20px;
+          border-bottom: 1px solid #dfe5e6;
+          background: #fff;
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          box-sizing: border-box;
+        }
+        .public-chat-calendar-modal-header h2 {
+          margin: 0 0 4px;
+          font-size: 19px;
+          line-height: 1.25;
+        }
+        .public-chat-calendar-modal-header > div { min-width: 0; }
+        .public-chat-calendar-modal-header p {
+          margin: 0;
+          color: #69767a;
+          font-size: 12.5px;
+          line-height: 1.4;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .public-chat-calendar-modal-mark {
+          width: 38px;
+          height: 38px;
+          flex: 0 0 38px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 6px;
+          background: #15191b;
+          color: #f06a4b;
+        }
+        .public-chat-calendar-modal .public-chat-proactive-close {
+          top: 22px;
+          right: 20px;
+          border-radius: 6px;
+        }
+        .public-chat-calendar-modal-body {
+          min-height: 624px;
+          max-height: calc(100dvh - 110px);
+          padding: 20px;
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) 292px;
+          gap: 22px;
+          overflow: auto;
+          box-sizing: border-box;
+        }
+        .public-chat-calendar-preview-pane {
+          min-width: 0;
+          display: flex;
+          align-items: flex-start;
+          justify-content: center;
+        }
+        .public-chat-calendar-preview-frame,
+        .public-chat-calendar-preview-loading {
+          width: 454px;
+          height: 567px;
+          flex: 0 0 auto;
+          overflow: hidden;
+          border: 1px solid #d7dfe1;
+          border-radius: 6px;
+          background: #eef2f3;
+          box-shadow: 0 14px 36px rgba(27,35,38,0.12);
+          box-sizing: content-box;
+        }
+        .public-chat-calendar-preview-artboard {
+          width: 1080px;
+          height: 1350px;
+          transform: scale(0.42);
+          transform-origin: top left;
+          pointer-events: none;
+        }
+        .public-chat-calendar-preview-loading {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 14px;
+          color: #59666a;
+          font-size: 13px;
+        }
+        .public-chat-calendar-preview-failed > span {
+          width: 30px;
+          height: 30px;
+          display: grid;
+          place-items: center;
+          border: 2px solid #d55a43;
+          border-radius: 50%;
+          color: #b84831;
+          font-size: 18px;
+          font-weight: 850;
+        }
+        .public-chat-calendar-loading-ring {
+          width: 28px;
+          height: 28px;
+          border: 3px solid #d8e0e2;
+          border-top-color: #f06a4b;
+          border-radius: 50%;
+          animation: hone-calendar-spin 0.8s linear infinite;
+        }
+        @keyframes hone-calendar-spin {
+          to { transform: rotate(360deg); }
+        }
+        .public-chat-calendar-controls {
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
         }
         .public-chat-calendar-month-label {
-          margin: 0 0 9px;
-          color: #475569;
-          font-size: 12px;
+          margin: 2px 0 10px;
+          color: #667377;
+          font-size: 11px;
           font-weight: 850;
           line-height: 1.3;
+          text-transform: uppercase;
         }
-        .public-chat-calendar-month-grid {
+        .public-chat-calendar-month-nav {
           display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 8px;
-          margin: 0 0 16px;
+          grid-template-columns: 38px minmax(0, 1fr) 38px;
+          gap: 6px;
+          align-items: center;
         }
-        .public-chat-calendar-month {
+        .public-chat-calendar-month-nav button,
+        .public-chat-calendar-month-nav select {
           min-height: 38px;
-          padding: 0 10px;
-          border: 1px solid rgba(15,23,42,0.08);
-          border-radius: 10px;
-          background: #f8fafc;
-          color: #334155;
+          border: 1px solid #d6dfe1;
+          border-radius: 6px;
+          background: #fff;
+          color: #273033;
           cursor: pointer;
           font-size: 13px;
           font-weight: 800;
-          line-height: 1.2;
-          letter-spacing: 0;
-          transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.06s ease;
+          box-sizing: border-box;
         }
-        .public-chat-calendar-month:hover {
-          background: rgba(245,158,11,0.10);
-          border-color: rgba(245,158,11,0.25);
-          color: #92400e;
+        .public-chat-calendar-month-nav button {
+          padding: 0;
+          font-size: 24px;
+          font-family: Arial, sans-serif;
+          line-height: 1;
         }
-        .public-chat-calendar-month:active {
-          transform: scale(0.98);
+        .public-chat-calendar-month-nav select {
+          width: 100%;
+          padding: 0 10px;
+          text-align: center;
         }
-        .public-chat-calendar-month[data-selected="true"] {
-          background: #0f172a;
-          border-color: #0f172a;
-          color: #fff;
+        .public-chat-calendar-month-nav button:hover:not(:disabled),
+        .public-chat-calendar-month-nav select:hover:not(:disabled) {
+          border-color: #f06a4b;
+          color: #b6432d;
         }
-        .public-chat-calendar-month:disabled {
+        .public-chat-calendar-month-nav button:disabled,
+        .public-chat-calendar-month-nav select:disabled {
           cursor: default;
-          opacity: 0.72;
+          opacity: 0.45;
+        }
+        .public-chat-calendar-current-month {
+          align-self: flex-start;
+          margin: 9px 0 20px;
+          padding: 0;
+          border: 0;
+          background: transparent;
+          color: #b84831;
+          cursor: pointer;
+          font-size: 12px;
+          font-weight: 800;
+        }
+        .public-chat-calendar-current-month:disabled {
+          color: #9aa5a8;
+          cursor: default;
+        }
+        .public-chat-calendar-stat-list {
+          border-top: 1px solid #dce3e5;
+          border-bottom: 1px solid #dce3e5;
+        }
+        .public-chat-calendar-stat-list > div {
+          min-height: 48px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          border-bottom: 1px solid #e5eaeb;
+          color: #667377;
+          font-size: 12.5px;
+        }
+        .public-chat-calendar-stat-list > div:last-child { border-bottom: 0; }
+        .public-chat-calendar-stat-list strong {
+          color: #202729;
+          font-size: 20px;
+          font-variant-numeric: tabular-nums;
+        }
+        .public-chat-calendar-data-state {
+          margin: 18px 0;
+          display: grid;
+          grid-template-columns: 8px minmax(0, 1fr);
+          gap: 9px;
+          align-items: start;
+        }
+        .public-chat-calendar-state-dot {
+          width: 7px;
+          height: 7px;
+          margin-top: 5px;
+          border-radius: 50%;
+          background: #2f9b87;
+        }
+        .public-chat-calendar-data-state[data-degraded="true"] .public-chat-calendar-state-dot {
+          background: #d6a92d;
+        }
+        .public-chat-calendar-data-state strong,
+        .public-chat-calendar-data-state span {
+          display: block;
+        }
+        .public-chat-calendar-data-state strong {
+          color: #30393c;
+          font-size: 12px;
+          line-height: 1.4;
+        }
+        .public-chat-calendar-data-state div > span {
+          margin-top: 4px;
+          color: #788589;
+          font-size: 10.5px;
+          line-height: 1.5;
+        }
+        .public-chat-calendar-send {
+          margin-top: auto;
+          min-height: 44px;
+          border-radius: 6px;
+          background: #15191b;
         }
         .public-chat-calendar-error {
           display: grid;
@@ -3999,7 +4369,7 @@ export default function PublicChatPage() {
           margin: 0 0 14px;
           padding: 10px 12px;
           border: 1px solid rgba(220,38,38,0.16);
-          border-radius: 10px;
+          border-radius: 6px;
           background: #fef2f2;
           color: #991b1b;
           font-size: 12.5px;
@@ -4502,24 +4872,36 @@ export default function PublicChatPage() {
           background: #f8fafc !important;
           color: #0a0e16 !important;
         }
-        [data-theme="dark"] .public-chat-calendar-month-label {
-          color: #cbd5e1 !important;
+        [data-theme="dark"] .public-chat-calendar-modal { background: #0f1623 !important; }
+        [data-theme="dark"] .public-chat-calendar-modal-header {
+          background: #131b2c !important;
+          border-bottom-color: rgba(255,255,255,0.08) !important;
         }
-        [data-theme="dark"] .public-chat-calendar-month {
+        [data-theme="dark"] .public-chat-calendar-modal-header p,
+        [data-theme="dark"] .public-chat-calendar-month-label { color: #94a3b8 !important; }
+        [data-theme="dark"] .public-chat-calendar-month-nav button,
+        [data-theme="dark"] .public-chat-calendar-month-nav select {
           background: rgba(255,255,255,0.06) !important;
-          border-color: rgba(255,255,255,0.08) !important;
-          color: #dbeafe !important;
+          border-color: rgba(255,255,255,0.1) !important;
+          color: #e5e7eb !important;
         }
-        [data-theme="dark"] .public-chat-calendar-month:hover {
-          background: rgba(245,158,11,0.16) !important;
-          border-color: rgba(245,158,11,0.32) !important;
-          color: #fbbf24 !important;
+        [data-theme="dark"] .public-chat-calendar-month-nav button:hover:not(:disabled),
+        [data-theme="dark"] .public-chat-calendar-month-nav select:hover:not(:disabled) {
+          border-color: #f06a4b !important;
+          color: #ff9b83 !important;
         }
-        [data-theme="dark"] .public-chat-calendar-month[data-selected="true"] {
-          background: #f8fafc !important;
-          border-color: #f8fafc !important;
-          color: #0a0e16 !important;
+        [data-theme="dark"] .public-chat-calendar-current-month { color: #ff9278 !important; }
+        [data-theme="dark"] .public-chat-calendar-current-month:disabled { color: #64748b !important; }
+        [data-theme="dark"] .public-chat-calendar-stat-list {
+          border-color: rgba(255,255,255,0.1) !important;
         }
+        [data-theme="dark"] .public-chat-calendar-stat-list > div {
+          border-bottom-color: rgba(255,255,255,0.07) !important;
+          color: #94a3b8 !important;
+        }
+        [data-theme="dark"] .public-chat-calendar-stat-list strong,
+        [data-theme="dark"] .public-chat-calendar-data-state strong { color: #f8fafc !important; }
+        [data-theme="dark"] .public-chat-calendar-data-state div > span { color: #94a3b8 !important; }
         [data-theme="dark"] .public-chat-calendar-error {
           background: rgba(127,29,29,0.28) !important;
           border-color: rgba(248,113,113,0.22) !important;
@@ -4694,12 +5076,51 @@ export default function PublicChatPage() {
           .public-chat-proactive-modal h2 {
             font-size: 20px !important;
           }
-          .public-chat-calendar-month-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          .public-chat-calendar-modal {
+            padding: 0 !important;
+            border-radius: 8px !important;
           }
-          .public-chat-calendar-month {
-            min-height: 36px !important;
-            font-size: 12.5px !important;
+          .public-chat-calendar-modal-header {
+            min-height: 68px !important;
+            padding: 13px 52px 13px 14px !important;
+            gap: 10px !important;
+          }
+          .public-chat-calendar-modal-header h2 {
+            margin-bottom: 2px !important;
+            font-size: 17px !important;
+          }
+          .public-chat-calendar-modal-header p {
+            font-size: 10.5px !important;
+          }
+          .public-chat-calendar-modal-mark {
+            width: 34px !important;
+            height: 34px !important;
+            flex-basis: 34px !important;
+          }
+          .public-chat-calendar-modal .public-chat-proactive-close {
+            top: 18px !important;
+            right: 12px !important;
+          }
+          .public-chat-calendar-modal-body {
+            min-height: 0 !important;
+            max-height: calc(100dvh - 92px) !important;
+            padding: 12px !important;
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 16px !important;
+          }
+          .public-chat-calendar-preview-frame,
+          .public-chat-calendar-preview-loading {
+            width: 270px !important;
+            height: 338px !important;
+          }
+          .public-chat-calendar-preview-artboard {
+            transform: scale(0.25) !important;
+          }
+          .public-chat-calendar-controls {
+            min-height: 420px !important;
+          }
+          .public-chat-calendar-current-month {
+            margin-bottom: 12px !important;
           }
           .public-chat-composer-box {
             width: 100% !important;

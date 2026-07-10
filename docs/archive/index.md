@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-06-29
+Last updated: 2026-07-10
+
+## 2026-07-10
+
+### Public Finance Calendar Polish
+
+- Status: done
+- Date: 2026-07-10
+- Plan: `docs/archive/plans/public-finance-calendar-polish.md`
+- Handoff: `docs/handoffs/2026-06-29-public-finance-calendar.md`
+- Decision / ADR: N/A; module boundaries and upload/send architecture are unchanged
+- Related PRs / commits: N/A
+- Related runbooks / regressions: finance-calendar helper smoke and changed TS/TSX syntax parse passed; `bash tests/regression/run_ci.sh` passed available checks before stopping at missing `cargo`; Rust/Bun suites remain pending in a provisioned environment
+- Current conclusion: the public finance calendar now opens on the current month with an immediate image preview, compact month navigation, explicit loading/error/source states, a redesigned 1080 x 1350 share image, and 17 verified July 2026 macro events in Beijing time.
+- Next entry point: `packages/app/src/pages/chat.tsx`, `packages/app/src/components/finance-calendar-card.tsx`, and `crates/hone-web-api/src/routes/public_finance_calendar.rs`
 
 ## 2026-06-29
 

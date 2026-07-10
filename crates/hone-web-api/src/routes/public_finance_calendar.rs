@@ -299,36 +299,10 @@ fn parse_month_spec(value: &str) -> Result<MonthSpec, String> {
 }
 
 fn default_month_for_date(today: NaiveDate) -> MonthSpec {
-    let last_day = days_in_month(today.year(), today.month());
-    let use_next = last_day.saturating_sub(today.day()) < 7;
-    if !use_next {
-        return MonthSpec {
-            year: today.year(),
-            month: today.month(),
-        };
+    MonthSpec {
+        year: today.year(),
+        month: today.month(),
     }
-    if today.month() == 12 {
-        MonthSpec {
-            year: today.year() + 1,
-            month: 1,
-        }
-    } else {
-        MonthSpec {
-            year: today.year(),
-            month: today.month() + 1,
-        }
-    }
-}
-
-fn days_in_month(year: i32, month: u32) -> u32 {
-    let (next_year, next_month) = if month == 12 {
-        (year + 1, 1)
-    } else {
-        (year, month + 1)
-    };
-    let first_next = NaiveDate::from_ymd_opt(next_year, next_month, 1)
-        .expect("valid next month for days_in_month");
-    (first_next - chrono::Duration::days(1)).day()
 }
 
 fn months_for_year(year: i32) -> Vec<FinanceCalendarMonth> {
@@ -352,19 +326,117 @@ fn macro_events_for_month(month: &MonthSpec) -> Vec<FinanceCalendarEvent> {
 
 fn macro_seed_events() -> Vec<FinanceCalendarEvent> {
     [
-        ("2026-07-03", "非农就业报告"),
-        ("2026-07-10", "CPO发布"),
-        ("2026-07-24", "第二季度GDP初值"),
-        ("2026-07-30", "美联储利率决议+主席讲话"),
+        (
+            "2026-07-01",
+            "ISM 制造业 PMI",
+            "北京时间 22:00 · 6月",
+            "ismworld.org",
+        ),
+        (
+            "2026-07-02",
+            "美国非农就业报告",
+            "北京时间 20:30 · 6月",
+            "bls.gov",
+        ),
+        (
+            "2026-07-06",
+            "ISM 服务业 PMI",
+            "北京时间 22:00 · 6月",
+            "ismworld.org",
+        ),
+        (
+            "2026-07-07",
+            "美国贸易帐",
+            "北京时间 20:30 · 5月",
+            "bea.gov",
+        ),
+        (
+            "2026-07-09",
+            "FOMC 会议纪要",
+            "北京时间 02:00 · 6月会议",
+            "federalreserve.gov",
+        ),
+        (
+            "2026-07-14",
+            "美国 CPI",
+            "北京时间 20:30 · 6月",
+            "bls.gov",
+        ),
+        (
+            "2026-07-15",
+            "美国 PPI",
+            "北京时间 20:30 · 6月",
+            "bls.gov",
+        ),
+        (
+            "2026-07-16",
+            "美联储褐皮书",
+            "北京时间 02:00",
+            "federalreserve.gov",
+        ),
+        (
+            "2026-07-16",
+            "美国零售销售",
+            "北京时间 20:30 · 6月",
+            "census.gov",
+        ),
+        (
+            "2026-07-17",
+            "美国新屋开工",
+            "北京时间 20:30 · 6月",
+            "census.gov",
+        ),
+        (
+            "2026-07-17",
+            "美国工业产出",
+            "北京时间 21:15 · 6月",
+            "federalreserve.gov",
+        ),
+        (
+            "2026-07-24",
+            "美国新屋销售",
+            "北京时间 22:00 · 6月",
+            "census.gov",
+        ),
+        (
+            "2026-07-27",
+            "美国耐用品订单",
+            "北京时间 20:30 · 6月",
+            "census.gov",
+        ),
+        (
+            "2026-07-30",
+            "FOMC 利率决议与记者会",
+            "北京时间 02:00 / 02:30",
+            "federalreserve.gov",
+        ),
+        (
+            "2026-07-30",
+            "美国二季度 GDP 初值",
+            "北京时间 20:30",
+            "bea.gov",
+        ),
+        (
+            "2026-07-30",
+            "美国 PCE 物价指数",
+            "北京时间 20:30 · 6月",
+            "bea.gov",
+        ),
+        (
+            "2026-07-31",
+            "美国就业成本指数",
+            "北京时间 20:30 · 二季度",
+            "bls.gov",
+        ),
     ]
     .into_iter()
-    .map(|(date, title)| FinanceCalendarEvent {
+    .map(|(date, title, subtitle, source)| FinanceCalendarEvent {
         date: date.to_string(),
         title: title.to_string(),
         kind: "macro".to_string(),
         ticker: None,
-        subtitle: None,
-        source: "hone.seed.macro_calendar".to_string(),
+        subtitle: Some(subtitle.to_string()),
+        source: source.to_string(),
     })
     .collect()
 }
@@ -627,7 +699,7 @@ mod tests {
     }
 
     #[test]
-    fn finance_calendar_default_month_moves_to_next_near_month_end() {
+    fn finance_calendar_default_month_is_always_current_month() {
         assert_eq!(
             default_month_for_date(NaiveDate::from_ymd_opt(2026, 6, 23).unwrap()),
             MonthSpec {
@@ -636,17 +708,17 @@ mod tests {
             }
         );
         assert_eq!(
-            default_month_for_date(NaiveDate::from_ymd_opt(2026, 6, 24).unwrap()),
+            default_month_for_date(NaiveDate::from_ymd_opt(2026, 6, 30).unwrap()),
             MonthSpec {
                 year: 2026,
-                month: 7
+                month: 6
             }
         );
         assert_eq!(
-            default_month_for_date(NaiveDate::from_ymd_opt(2026, 12, 29).unwrap()),
+            default_month_for_date(NaiveDate::from_ymd_opt(2026, 12, 31).unwrap()),
             MonthSpec {
-                year: 2027,
-                month: 1
+                year: 2026,
+                month: 12
             }
         );
     }
@@ -658,9 +730,14 @@ mod tests {
             month: 7,
         };
         let events = macro_events_for_month(&july);
-        assert_eq!(events.len(), 4);
-        assert_eq!(events[0].date, "2026-07-03");
-        assert!(events.iter().any(|event| event.title.contains("美联储")));
+        assert_eq!(events.len(), 17);
+        assert_eq!(events[0].date, "2026-07-01");
+        assert!(events.iter().any(|event| event.title.contains("非农")));
+        assert!(events.iter().any(|event| event.title.contains("CPI")));
+        assert!(events
+            .iter()
+            .any(|event| event.title.contains("利率决议")));
+        assert!(events.iter().all(|event| event.subtitle.is_some()));
 
         let august = MonthSpec {
             year: 2026,
