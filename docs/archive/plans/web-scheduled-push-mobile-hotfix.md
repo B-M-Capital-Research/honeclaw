@@ -34,4 +34,4 @@
 ## Risks
 
 - The existing unrelated memory test `sqlite_runtime_backend_backfills_existing_json_even_when_shadow_write_disabled` remains red with `QueryReturnedNoRows` and should be handled in its own task.
-- Cloudflare Pages deployment must be verified by asset hash and mobile layout after pushing `main`.
+- Cloudflare Pages deployment was verified at `index-BeqwKSm5.js` with `chat-Bfgs4-ZW.js` and `public-site-D1fb8ftX.css`; the production Worker returned 79 pushes for the affected actor through an isolated temporary session.
