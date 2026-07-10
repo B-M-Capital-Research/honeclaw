@@ -22,6 +22,15 @@ New
 
 ## 修复记录
 
+- 2026-07-10 11:02 CST 补充同根复发证据，状态维持 `New`：
+  - 07:01-11:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 18 个 user turn 与 19 条 assistant final，Feishu / Discord direct 与 scheduler 会话均已 assistant 收口；普通 scheduler 18 条均为 `completed + sent + delivered=1`。
+  - 08:31 CST Feishu session `Actor_feishu__direct__ou_5f44eaaa05cec98860b5336c3bddcc22d1` 的 assistant `metadata_json` 为空，没有可审计 `assistant.tool_calls`，但 final 输出 Brent、XAU/USD、VIX、10Y / 30Y 美债、Fed Rate Monitor 概率、CAPE、巴菲特指标等强时效市场数字和动作建议。
+  - 08:32 CST Feishu session `Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595` 的 assistant `metadata_json` 为空，但 final 写出 QQQ、WTI、10Y 美债、NVDA、MU、SNDK、CIEN、AVGO、COHR、TEM、VST、GEV、BE、RKLB、GOOGL 等最新价格、来源链接和操作参考。
+  - 09:01 CST Feishu session `Actor_feishu__direct__ou_5f95ab3697246ded86446fcc260e27e1e2` 的 assistant `metadata_json` 为空，但 final 声称“最新可核验行情口径”，输出 TSLA / RKLB 收盘、盘后、目标价、Iridium 交易、Robotaxi / SpaceX 合并叙事和 80 / 90 / 100 美元操作观察位。
+  - 09:02 CST Feishu scheduler session `Actor_feishu__direct__ou_5fe31244b1208749f16773dce0c822801a` 的 assistant `metadata_json` 为空，但 final 列出 Barron’s、MarketWatch、IBD、AP、Business Insider 等来源链接，输出 MU / SNDK / LITE / RKLB / BE / A 股标的强时效结论、目标价和操作建议；同条还出现 `<absolute-path>/` 占位符和标题拼接破损，本轮作为格式观察记录，不拆新缺陷。
+  - 09:31 CST Discord scheduler session `Session_discord__group__g_3a1469549745654468692_3ac_3a1469549746518622371` 的 assistant `metadata_json` 为空，但 final 继续输出 FOMC、FedWatch、CPI、非农、指数点位和来源链接等强时效宏观市场判断。
+  - 回复均正常收口且未见错投、投递失败或内部实现外露；问题在于强时效金融来源 / 行情核验不可审计，且多条 final 使用“已核验 / 最新可核验”表述或来源链接。因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-07-10 07:05 CST 状态从代码级 `Fixed` 回退为当前运行态 `New`：
   - 03:01-07:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 7 个 user turn 与 7 条 assistant final，Feishu / Web direct 与 scheduler 会话均已 assistant 收口；普通 scheduler 6 条均为 `completed + sent + delivered=1`。
   - 04:32 CST Feishu session `Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595` final 的 `metadata_json` 为空，没有可审计 `assistant.tool_calls`，但正文声称 `QQQ 最新可核验约 722.44`、`WTI 最新可核验约 71.75`，并继续输出 `SNDK 1,896.53`、`MU 999.56`、BofA 目标价 `1,550`、AVGO / CIEN 等强时效行情和市场判断。

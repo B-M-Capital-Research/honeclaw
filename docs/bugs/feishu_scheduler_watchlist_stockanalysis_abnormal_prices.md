@@ -22,6 +22,18 @@
 
 ## 最新进展
 
+- 本轮 2026-07-10 07:01-11:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `session_messages`
+    - 08:32 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f1fdfeceacb0f2ece1a2c88c5a7d17e34` 的 `闪迪(SNDK)每日行情与行业简报` assistant final 正常收口，但继续输出 `SNDK 7月9日收盘：1,858.27 美元`、前收 `1,727.18 美元`、盘中区间 `1,801.00 到 1,952.59 美元`、盘后 `1,887.99 美元`、市值 `2,751.9 亿美元`，并据此给出 1,900 / 1,700 美元交易观察位。
+    - 08:32 CST Feishu session `Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595` 正常收口，但在宏观 / AI 硬件早报中继续输出 `SNDK 1,858.27`、`MU 991.64`、`CIEN 462.34`、`AVGO 401.11`、`GEV 1,075.26` 等异常或高风险数量级价格，并据此判断存储链、光通信链和 AI 电力链强弱。
+    - 09:02 CST Feishu scheduler session `Actor_feishu__direct__ou_5fe31244b1208749f16773dce0c822801a` 的 `美股与A股重点标的跟踪晨报` assistant final 正常收口，但继续写出 `MU 991.64 美元`、`SNDK 1858.27 美元`、BofA 目标价 `1550美元`、Wedbush 目标价 `2000美元`、Bernstein 目标价 `3000美元` 等异常或高风险数量级价格，并把这些数值作为重点结论和操作建议依据；同条 final 还出现 `<absolute-path>/` 占位符和标题拼接破损，本轮先作为单次格式观察，不新建独立缺陷。
+    - 09:31 CST Discord scheduler final 也输出 `S&P 500 7,543.64`、`Nasdaq 26,206.89`、`Dow 52,487.41` 等异常指数数量级，并据此解释降息预期与科技股反弹。
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 07:30-11:00 CST `Monitor_Watchlist_11` heartbeat raw preview 多次继续使用 `MU 991.64` 对比 `MU <= 252.00` 判断未触发；部分 raw preview 已自我提示 `MU at $991.64 seems very...`，但异常价格仍进入 watchlist 判断上下文。
+  - 判断：
+    - 最新样本仍是同一行情源 / 数值 sanity check 缺口：异常数量级价格进入用户可见投研、组合估值、宏观判断和 heartbeat 阈值判断链路。
+    - 直聊和调度主链路正常收口，未见空回复、错投、投递失败或原始工具 JSON；因此仍按质量性 `P3 / New`。该问题不影响直聊 / 调度 / 投递主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-10 03:01-07:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `session_messages`
     - 04:32 CST Feishu final session `Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595` 正常收口，但输出 `SNDK 1,896.53`、`MU 999.56`、`CIEN 463.93`、`AVGO 404.82` 等异常或高风险数量级价格，并据此判断存储链和 AI 硬件主线。

@@ -8,6 +8,17 @@
 
 ## 最新进展
 
+- 本轮 2026-07-10 07:01-11:02 CST 真实运行态继续观察，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 同窗 heartbeat 新增 114 条运行记录，仍有 82 条 `noop + skipped_noop` 与 32 条 `execution_failed + skipped_error`，结构化退化链路继续存在。
+    - 本窗未确认新的 heartbeat `completed + sent + delivered=1` 用户可见提醒写错执行日期；时间口径问题主要保留在既有 raw preview / noop / failed 判断风险内，未形成新的正式投递正文样本。
+    - 代表样本包括 07:30 CST `全天原油价格3小时播报` raw preview 写 `当前北京时间是 2026-04-04 02:17:07`，与实际 2026-07-10 07:30 CST 执行窗口不一致；08:00 CST `美股盘中科技股机会心跳监控` raw preview 把 2026-07-09 新闻视作相对 `2026年4月4日` 的“未来”数据；11:00 CST `DRAM 心跳监控` raw preview 把 timestamp `1783627201` 解释为 `July 9, 2026` 并继续用于当前价 / 均线判断。
+  - 查重结论：
+    - 本窗没有新的独立根因，也没有足以回退严重等级或关闭缺陷的止血证据；仍归入本文档既有“触发提醒时间口径漂移”链路。
+  - 用户影响：
+    - 本窗未见新的用户可见错时间投递，因此不新增独立缺陷；但 heartbeat 判断链路仍可能受错误时间上下文影响触发判断、重复抑制和行情新鲜度判断。
+    - 因该问题不影响直聊 / 调度 / 投递主功能链路，只影响 heartbeat 触发判断质量与用户可见时间口径可信度，所以定级保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-09 23:02-2026-07-10 03:02 CST 真实运行态继续观察，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 同窗 heartbeat 新增 112 条运行记录，仍有 65 条 `noop + skipped_noop`、45 条 `execution_failed + skipped_error`、1 条 `completed + sent` 与 1 条边界在途。
