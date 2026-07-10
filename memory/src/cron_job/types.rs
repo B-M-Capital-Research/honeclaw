@@ -147,3 +147,26 @@ pub struct CronJobExecutionInput {
     pub error_message: Option<String>,
     pub detail: Value,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WebPushMessage {
+    pub push_id: String,
+    pub actor_storage_key: String,
+    pub job_id: String,
+    pub job_name: String,
+    pub summary: String,
+    pub content: String,
+    pub created_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_at: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct WebPushMessageInput {
+    pub push_id: String,
+    pub job_id: String,
+    pub job_name: String,
+    pub summary: String,
+    pub content: String,
+    pub created_at: String,
+}

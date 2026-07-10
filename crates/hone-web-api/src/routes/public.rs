@@ -28,7 +28,7 @@ use hone_memory::WebSessionAuthResult;
 
 use crate::public_auth::PublicAuthLimitStatus;
 use crate::routes::chat::build_chat_sse;
-use crate::routes::history::history_from_messages;
+use crate::routes::history::public_history_from_messages;
 use crate::state::{AppState, PushEvent};
 use crate::types::{
     PublicAuthUserInfo, PublicChatAttachmentInput, PublicChatRequest, PublicSmsLoginRequest,
@@ -432,7 +432,7 @@ pub(crate) async fn handle_history(
         .unwrap_or_default();
 
     Json(json!({
-        "messages": history_from_messages(&messages),
+        "messages": public_history_from_messages(&messages),
     }))
     .into_response()
 }

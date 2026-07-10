@@ -20,6 +20,14 @@ import { PublicNav } from "@/components/public-nav";
 import { ChatShareModal } from "@/components/chat-share-modal";
 import { canvasToPngBlob } from "@/components/chat-share-export";
 import { FinanceCalendarCard } from "@/components/finance-calendar-card";
+import {
+  PublicPushCenter,
+  PublicPushDetailDialog,
+  PushNavIcon,
+  PushUnreadDot,
+  ScheduledPushCard,
+  type ScheduledPushCardData,
+} from "@/components/public-push-center";
 import { displayGithubStars, fetchGithubStars } from "@/lib/github-stars";
 import { CONTENT } from "@/lib/public-content";
 import { setLocale, useLocale } from "@/lib/i18n";
@@ -36,9 +44,11 @@ import {
   getPublicAuthMe,
   getPublicFinanceCalendar,
   getPublicHistory,
+  getPublicPushes,
   connectPublicEvents,
   isUnauthorizedApiError,
   publicLogout,
+  openPublicPush,
   sendPublicChat,
   sendPublicFinanceCalendar,
   uploadPublicAttachments,
@@ -61,6 +71,7 @@ import {
   publicAttachmentFileLabel,
   publicRestoreRetryDelay,
   rekeyTrailingOptimisticIds,
+  mergePublicPushItems,
   selectVisibleRecentMessages,
   shouldRetryPublicRestore,
   shouldRecoverPinnedBottom,
@@ -68,9 +79,15 @@ import {
   splitPublicChatAttachments,
   stripAttachmentMarkers,
   toPublicChatMessages,
+  unreadCountAfterScheduledPush,
 } from "@/lib/public-chat";
 import { parseSseChunks } from "@/lib/stream";
-import type { FinanceCalendarPayload, PublicAuthUserInfo } from "@/lib/types";
+import type {
+  FinanceCalendarPayload,
+  PublicAuthUserInfo,
+  PublicPushDetail,
+  PublicPushListItem,
+} from "@/lib/types";
 import type {
   PublicChatAttachment,
   PublicChatAuthState as AuthState,
@@ -330,6 +347,8 @@ function ChatSidebar(props: {
   recentMessages: ChatMessage[];
   onToggle: () => void;
   onSelectMessage: (id: string) => void;
+  unreadPushCount: number;
+  onOpenPushes: () => void;
   onLogout: () => void;
 }) {
   const navigate = useNavigate();
@@ -396,6 +415,16 @@ function ChatSidebar(props: {
         <button type="button" class="is-active" title={CONTENT.nav.chat}>
           <ICONS.Chat />
           <span>{CONTENT.nav.chat}</span>
+        </button>
+        <button
+          type="button"
+          class="public-push-nav-button"
+          onClick={props.onOpenPushes}
+          title={CONTENT.chat_page.pushes.nav}
+        >
+          <PushNavIcon />
+          <span>{CONTENT.chat_page.pushes.nav}</span>
+          <PushUnreadDot count={props.unreadPushCount} />
         </button>
         <button
           type="button"
@@ -2466,6 +2495,17 @@ export default function PublicChatPage() {
   const [loadingOlderMessages, setLoadingOlderMessages] = createSignal(false);
   const [justFinished, setJustFinished] = createSignal(false);
   const [sidebarCollapsed, setSidebarCollapsed] = createSignal(false);
+  const [pushCenterOpen, setPushCenterOpen] = createSignal(false);
+  const [pushItems, setPushItems] = createSignal<PublicPushListItem[]>([]);
+  const [pushUnreadCount, setPushUnreadCount] = createSignal(0);
+  const [pushNextBefore, setPushNextBefore] = createSignal<string>();
+  const [pushLoading, setPushLoading] = createSignal(false);
+  const [pushLoadingMore, setPushLoadingMore] = createSignal(false);
+  const [pushError, setPushError] = createSignal<string>();
+  const [pushDetailOpen, setPushDetailOpen] = createSignal(false);
+  const [pushDetailLoading, setPushDetailLoading] = createSignal(false);
+  const [pushDetailError, setPushDetailError] = createSignal<string>();
+  const [pushDetail, setPushDetail] = createSignal<PublicPushDetail>();
   // True when the user has scrolled up far enough to lose track of the latest
   // reply — drives the floating scroll-to-bottom affordance above the composer.
   const [awayFromBottom, setAwayFromBottom] = createSignal(false);
@@ -2491,6 +2531,7 @@ export default function PublicChatPage() {
   let shareReturnScrollTop: number | null = null;
   let shareReturnAtBottom = true;
   let justFinishedTimer: number | undefined;
+  let pushUserId: string | undefined;
 
   const scrollToBottom = () => {
     requestAnimationFrame(() => {
@@ -2556,6 +2597,89 @@ export default function PublicChatPage() {
       background: backgroundPending(),
     });
   });
+
+  const loadPushes = async (mode: "reset" | "more" = "reset") => {
+    if (mode === "more") {
+      if (!pushNextBefore() || pushLoadingMore()) return;
+      setPushLoadingMore(true);
+    } else {
+      if (pushLoading()) return;
+      setPushLoading(true);
+      setPushError(undefined);
+    }
+    try {
+      const payload = await getPublicPushes(
+        mode === "more" ? pushNextBefore() : undefined,
+      );
+      setPushItems((current) =>
+        mode === "more"
+          ? mergePublicPushItems(current, payload.items)
+          : payload.items,
+      );
+      setPushUnreadCount(payload.unread_count);
+      setPushNextBefore(payload.next_before ?? undefined);
+    } catch (error) {
+      setPushError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPushLoading(false);
+      setPushLoadingMore(false);
+    }
+  };
+
+  const openPushCenter = () => {
+    setPushCenterOpen(true);
+    if (pushItems().length === 0) void loadPushes("reset");
+  };
+
+  const openScheduledPush = async (push: ScheduledPushCardData) => {
+    setPushDetailOpen(true);
+    setPushDetailError(undefined);
+    if (!push.pushId) {
+      setPushDetailLoading(false);
+      setPushDetail({
+        push_id: "legacy",
+        job_id: "legacy",
+        title: push.title,
+        summary: push.summary,
+        content: push.fallbackContent ?? push.summary,
+        created_at: push.createdAt ?? "",
+      });
+      return;
+    }
+
+    setPushDetailLoading(true);
+    setPushDetail(undefined);
+    try {
+      const payload = await openPublicPush(push.pushId);
+      setPushDetail(payload.push);
+      setPushUnreadCount(payload.unread_count);
+    } catch (error) {
+      if (push.fallbackContent) {
+        setPushDetail({
+          push_id: push.pushId,
+          job_id: "fallback",
+          title: push.title,
+          summary: push.summary,
+          content: push.fallbackContent,
+          created_at: push.createdAt ?? "",
+        });
+      } else {
+        setPushDetailError(
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    } finally {
+      setPushDetailLoading(false);
+    }
+  };
+
+  const openPushListItem = (item: PublicPushListItem) =>
+    openScheduledPush({
+      pushId: item.push_id,
+      title: item.title,
+      summary: item.summary,
+      createdAt: item.created_at,
+    });
 
   const loadOlderMessages = () => {
     if (!scrollRef || !hasOlderMessages() || loadingOlderMessages()) return;
@@ -2684,6 +2808,11 @@ export default function PublicChatPage() {
 
   const logoutPublicChat = () => {
     void publicLogout();
+    pushUserId = undefined;
+    setPushCenterOpen(false);
+    setPushDetailOpen(false);
+    setPushItems([]);
+    setPushUnreadCount(0);
     setCurrentUser(null);
     setSessionInfo(null);
     setAuthState("logged_out");
@@ -2827,6 +2956,17 @@ export default function PublicChatPage() {
     hadBackgroundPending = hasBackgroundPending;
   });
 
+  createEffect(() => {
+    const userId = currentUser()?.user_id;
+    if (authState() !== "ready" || !userId) return;
+    if (pushUserId === userId) return;
+    pushUserId = userId;
+    setPushItems([]);
+    setPushUnreadCount(0);
+    setPushNextBefore(undefined);
+    void loadPushes("reset");
+  });
+
   onMount(() => {
     initPublicPrefs();
     const viewportMeta = document.querySelector<HTMLMetaElement>(
@@ -2868,7 +3008,6 @@ export default function PublicChatPage() {
     const appendServerPush = (event: MessageEvent) => {
       const payload = JSON.parse(event.data || "{}") as {
         text?: string;
-        job_name?: string;
       };
       const text = (payload.text ?? "").trim();
       if (!text) return;
@@ -2877,10 +3016,62 @@ export default function PublicChatPage() {
       setMessages(messages.length, {
         id: messageId(),
         role: "assistant",
-        content: payload.job_name ? `【${payload.job_name}】\n\n${text}` : text,
+        content: text,
         phase: "done",
       });
       setVisibleMessageCount((c) => Math.max(c + 1, HISTORY_PAGE_SIZE));
+      if (shouldStayAtBottom) pinToBottom(1200);
+    };
+
+    const appendScheduledPush = (event: MessageEvent) => {
+      const payload = JSON.parse(event.data || "{}") as {
+        push_id?: string;
+        job_id?: string;
+        job_name?: string;
+        summary?: string;
+        created_at?: string;
+        unread_count?: number;
+        content?: string;
+        text?: string;
+      };
+      const title = (payload.job_name ?? CONTENT.chat_page.pushes.fallback_title).trim();
+      const summary = (
+        payload.summary ??
+        payload.text ??
+        CONTENT.chat_page.pushes.fallback_summary
+      ).trim();
+      if (!summary) return;
+      const shouldStayAtBottom =
+        stickToBottom || isBottomPinned() || distanceFromBottom() < 160;
+      setMessages(messages.length, {
+        id: messageId(),
+        role: "assistant",
+        content: "",
+        phase: "done",
+        scheduledPush: {
+          pushId: payload.push_id,
+          title,
+          summary,
+          fallbackContent: payload.content ?? payload.text,
+          createdAt: payload.created_at,
+        },
+      });
+      setPushUnreadCount((current) =>
+        unreadCountAfterScheduledPush(current, payload.unread_count),
+      );
+      if (payload.push_id) {
+        const item: PublicPushListItem = {
+          push_id: payload.push_id,
+          job_id: payload.job_id ?? "",
+          title,
+          summary,
+          created_at: payload.created_at ?? new Date().toISOString(),
+        };
+        setPushItems((current) => mergePublicPushItems([item], current));
+      }
+      setVisibleMessageCount((count) =>
+        Math.max(count + 1, HISTORY_PAGE_SIZE),
+      );
       if (shouldStayAtBottom) pinToBottom(1200);
     };
 
@@ -2892,7 +3083,7 @@ export default function PublicChatPage() {
         }
         source = eventSource;
         eventSource.addEventListener("push_message", appendServerPush);
-        eventSource.addEventListener("scheduled_message", appendServerPush);
+        eventSource.addEventListener("scheduled_message", appendScheduledPush);
       })
       .catch(() => {
         // History restore remains the fallback when the live event stream is down.
@@ -3014,8 +3205,34 @@ export default function PublicChatPage() {
     >
       <AnimatedBackground />
       <PublicNav
+        mobileAction={
+          <Show when={authState() === "ready"}>
+            <button
+              type="button"
+              class="public-chat-account-trigger public-push-nav-button"
+              aria-label={CONTENT.chat_page.pushes.open_aria}
+              title={CONTENT.chat_page.pushes.nav}
+              onClick={openPushCenter}
+            >
+              <PushNavIcon />
+              <PushUnreadDot count={pushUnreadCount()} />
+            </button>
+          </Show>
+        }
         extraActions={
           <>
+            <Show when={authState() === "ready"}>
+              <button
+                type="button"
+                class="public-chat-account-trigger public-push-nav-button"
+                aria-label={CONTENT.chat_page.pushes.open_aria}
+                title={CONTENT.chat_page.pushes.nav}
+                onClick={openPushCenter}
+              >
+                <PushNavIcon />
+                <PushUnreadDot count={pushUnreadCount()} />
+              </button>
+            </Show>
             <PrefsButton />
             <AccountButton user={currentUser()} onLogout={logoutPublicChat} />
           </>
@@ -3064,6 +3281,8 @@ export default function PublicChatPage() {
                   recentMessages={sidebarHistoryMessages()}
                   onToggle={() => setSidebarCollapsed((value) => !value)}
                   onSelectMessage={scrollToMessage}
+                  unreadPushCount={pushUnreadCount()}
+                  onOpenPushes={openPushCenter}
                   onLogout={logoutPublicChat}
                 />
                 <div
@@ -3172,7 +3391,19 @@ export default function PublicChatPage() {
                             </Match>
                             <Match
                               when={
-                                msg.role === "assistant" && msg.phase === "done"
+                                msg.role === "assistant" && msg.scheduledPush
+                              }
+                            >
+                              <ScheduledPushCard
+                                push={msg.scheduledPush!}
+                                onOpen={openScheduledPush}
+                              />
+                            </Match>
+                            <Match
+                              when={
+                                msg.role === "assistant" &&
+                                msg.phase === "done" &&
+                                !msg.scheduledPush
                               }
                             >
                               <AssistantBubble
@@ -3271,6 +3502,26 @@ export default function PublicChatPage() {
           </Show>
         </Match>
       </Switch>
+
+      <PublicPushCenter
+        open={pushCenterOpen()}
+        items={pushItems()}
+        loading={pushLoading()}
+        loadingMore={pushLoadingMore()}
+        error={pushError()}
+        nextBefore={pushNextBefore()}
+        onClose={() => setPushCenterOpen(false)}
+        onOpenPush={openPushListItem}
+        onLoadMore={() => void loadPushes("more")}
+      />
+
+      <PublicPushDetailDialog
+        open={pushDetailOpen()}
+        detail={pushDetail()}
+        loading={pushDetailLoading()}
+        error={pushDetailError()}
+        onClose={() => setPushDetailOpen(false)}
+      />
 
       <Show when={lightbox()}>
         <div class="lightbox-overlay" onClick={() => setLightbox(null)}>

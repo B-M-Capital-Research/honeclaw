@@ -7,6 +7,8 @@ import type {
   CompanyProfileSpaceSummary,
   CompanyProfileSummary,
   HistoryMsg,
+  PublicPushListResponse,
+  PublicPushOpenResponse,
   PublicAuthUserInfo,
   MetaInfo,
   SkillDetailInfo,
@@ -314,6 +316,26 @@ export async function getPublicHistory(signal?: AbortSignal) {
   const response = await apiFetch("/api/public/history", { signal });
   const payload = await parseJson<{ messages?: HistoryMsg[] }>(response);
   return payload.messages ?? [];
+}
+
+export async function getPublicPushes(
+  before?: string,
+  limit = 30,
+): Promise<PublicPushListResponse> {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (before) query.set("before", before);
+  const response = await apiFetch(`/api/public/pushes?${query.toString()}`);
+  return parseJson<PublicPushListResponse>(response);
+}
+
+export async function openPublicPush(
+  pushId: string,
+): Promise<PublicPushOpenResponse> {
+  const response = await apiFetch(
+    `/api/public/pushes/${encodeURIComponent(pushId)}/open`,
+    { method: "POST" },
+  );
+  return parseJson<PublicPushOpenResponse>(response);
 }
 
 // ── Public investment context (mainline/profile reads + refresh) ──────────

@@ -18,6 +18,9 @@ use hone_memory::session_message_text;
 use hone_scheduler::{SchedulerEvent, execution_detail_with_delivery_key};
 
 use crate::routes::normalized_query_actor;
+use crate::routes::public_pushes::{
+    StoredWebPush, build_web_push_summary, store_web_scheduler_push,
+};
 use crate::state::{AppState, PushEvent};
 use crate::types::UserIdQuery;
 
@@ -81,12 +84,11 @@ fn web_scheduler_delivery_detail(
     })
 }
 
-fn build_web_scheduler_push_event(event: &SchedulerEvent, response: &str) -> Option<PushEvent> {
+fn build_web_scheduler_push_event(
+    event: &SchedulerEvent,
+    stored: &StoredWebPush,
+) -> Option<PushEvent> {
     if event.channel != "web" {
-        return None;
-    }
-    let text = response.trim();
-    if text.is_empty() {
         return None;
     }
 
@@ -96,9 +98,12 @@ fn build_web_scheduler_push_event(event: &SchedulerEvent, response: &str) -> Opt
         channel_scope: event.actor.channel_scope.clone(),
         event: "scheduled_message".into(),
         data: json!({
-            "text": text,
+            "push_id": stored.message.push_id,
             "job_name": event.job_name.clone(),
             "job_id": event.job_id.clone(),
+            "summary": stored.message.summary,
+            "created_at": stored.message.created_at,
+            "unread_count": stored.unread_count,
         }),
     })
 }
@@ -106,10 +111,46 @@ fn build_web_scheduler_push_event(event: &SchedulerEvent, response: &str) -> Opt
 fn emit_web_scheduler_push(
     push_tx: &tokio::sync::broadcast::Sender<PushEvent>,
     event: &SchedulerEvent,
+    stored: &StoredWebPush,
+) -> bool {
+    build_web_scheduler_push_event(event, stored)
+        .is_some_and(|push_event| push_tx.send(push_event).is_ok())
+}
+
+fn persist_and_emit_web_scheduler_push(
+    state: &AppState,
+    event: &SchedulerEvent,
     response: &str,
 ) -> bool {
-    build_web_scheduler_push_event(event, response)
-        .is_some_and(|push_event| push_tx.send(push_event).is_ok())
+    if event.channel != "web" || response.trim().is_empty() {
+        return false;
+    }
+    match store_web_scheduler_push(state, event, response) {
+        Ok(stored) => emit_web_scheduler_push(&state.push_tx, event, &stored),
+        Err(error) => {
+            warn!(
+                "⏰ [Web] 定时任务推送卡片落库失败: user={} job={} err={}",
+                event.actor.user_id, event.job_name, error
+            );
+            state
+                .push_tx
+                .send(PushEvent {
+                    channel: event.actor.channel.clone(),
+                    user_id: event.actor.user_id.clone(),
+                    channel_scope: event.actor.channel_scope.clone(),
+                    event: "scheduled_message".into(),
+                    data: json!({
+                        "push_id": event.delivery_key.clone(),
+                        "job_name": event.job_name.clone(),
+                        "job_id": event.job_id.clone(),
+                        "summary": build_web_push_summary(&event.job_name, response),
+                        "created_at": hone_core::beijing_now_rfc3339(),
+                        "content": response.trim(),
+                    }),
+                })
+                .is_ok()
+        }
+    }
 }
 
 fn scheduler_execution_timeout_for(overall_timeout: Duration) -> Duration {
@@ -201,7 +242,9 @@ pub(crate) async fn handle_scheduler_events(
                 }
                 let console_event_sent = response
                     .as_deref()
-                    .map(|response| emit_web_scheduler_push(&state_clone.push_tx, &event, response))
+                    .map(|response| {
+                        persist_and_emit_web_scheduler_push(&state_clone, &event, response)
+                    })
                     .unwrap_or(false);
                 let _ = storage.record_execution_event(
                     &event.actor,
@@ -254,7 +297,7 @@ pub(crate) async fn handle_scheduler_events(
 
             // 1. 推送到 Web 控制台 SSE（供控制台页面实时展示）
             let console_event_sent =
-                emit_web_scheduler_push(&state_clone.push_tx, &event, &response);
+                persist_and_emit_web_scheduler_push(&state_clone, &event, &response);
 
             // 2. 若是 iMessage 渠道，把结果通过 hone-imessage 内置 HTTP 服务投递给用户
             let (mut message_send_status, mut delivered) =
@@ -460,6 +503,7 @@ fn persist_web_scheduler_failure(
     metadata.insert("scheduler_failure".to_string(), json!(true));
     metadata.insert("job_id".to_string(), json!(event.job_id.clone()));
     metadata.insert("job_name".to_string(), json!(event.job_name.clone()));
+    metadata.insert("web_push_id".to_string(), json!(event.delivery_key.clone()));
     metadata.insert(
         "delivery_key".to_string(),
         json!(event.delivery_key.clone()),
@@ -610,38 +654,55 @@ mod tests {
     #[test]
     fn build_web_scheduler_push_event_uses_scheduled_message_payload() {
         let event = sample_scheduler_event("web");
-        let push_event =
-            build_web_scheduler_push_event(&event, "定时任务「收盘复盘」执行出错，请稍后重试。")
-                .expect("push event");
+        let stored = StoredWebPush {
+            message: hone_memory::cron_job::WebPushMessage {
+                push_id: "delivery-1".to_string(),
+                actor_storage_key: event.actor.storage_key(),
+                job_id: event.job_id.clone(),
+                job_name: event.job_name.clone(),
+                summary: "执行出错，请稍后重试。".to_string(),
+                content: "定时任务执行出错，请稍后重试。".to_string(),
+                created_at: "2026-07-10T20:00:00+08:00".to_string(),
+                read_at: None,
+            },
+            unread_count: 3,
+        };
+        let push_event = build_web_scheduler_push_event(&event, &stored).expect("push event");
 
         assert_eq!(push_event.channel, "web");
         assert_eq!(push_event.user_id, "web-user-1");
         assert_eq!(push_event.event, "scheduled_message");
+        assert_eq!(push_event.data["push_id"], "delivery-1");
         assert_eq!(push_event.data["job_id"], "job-1");
         assert_eq!(push_event.data["job_name"], "收盘复盘");
-        assert_eq!(
-            push_event.data["text"],
-            "定时任务「收盘复盘」执行出错，请稍后重试。"
-        );
+        assert_eq!(push_event.data["summary"], "执行出错，请稍后重试。");
+        assert_eq!(push_event.data["unread_count"], 3);
+        assert!(push_event.data.get("text").is_none());
     }
 
     #[tokio::test]
     async fn emit_web_scheduler_push_broadcasts_failure_prompt() {
         let event = sample_scheduler_event("web");
         let (tx, mut rx) = tokio::sync::broadcast::channel(1);
+        let stored = StoredWebPush {
+            message: hone_memory::cron_job::WebPushMessage {
+                push_id: "delivery-1".to_string(),
+                actor_storage_key: event.actor.storage_key(),
+                job_id: event.job_id.clone(),
+                job_name: event.job_name.clone(),
+                summary: "执行出错，请稍后重试。".to_string(),
+                content: "定时任务执行出错，请稍后重试。".to_string(),
+                created_at: "2026-07-10T20:00:00+08:00".to_string(),
+                read_at: None,
+            },
+            unread_count: 1,
+        };
 
-        assert!(emit_web_scheduler_push(
-            &tx,
-            &event,
-            "定时任务「收盘复盘」执行出错，请稍后重试。"
-        ));
+        assert!(emit_web_scheduler_push(&tx, &event, &stored));
 
         let push_event = rx.recv().await.expect("recv push event");
         assert_eq!(push_event.event, "scheduled_message");
         assert_eq!(push_event.data["job_id"], "job-1");
-        assert_eq!(
-            push_event.data["text"],
-            "定时任务「收盘复盘」执行出错，请稍后重试。"
-        );
+        assert_eq!(push_event.data["summary"], "执行出错，请稍后重试。");
     }
 }

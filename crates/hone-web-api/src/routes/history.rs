@@ -11,9 +11,10 @@ use hone_memory::{
     select_messages_after_compact_boundary, session_message_text,
 };
 
+use crate::routes::public_pushes::build_web_push_summary;
 use crate::routes::require_actor;
 use crate::state::AppState;
-use crate::types::{HistoryAttachment, HistoryMsg, UserIdQuery};
+use crate::types::{HistoryAttachment, HistoryMsg, HistoryScheduledPush, UserIdQuery};
 
 /// GET /api/history?user_id=...
 pub(crate) async fn handle_history(
@@ -56,30 +57,113 @@ pub(crate) fn history_from_messages(
                 || message_is_compact_summary(m.metadata.as_ref())
                 || message_is_compact_skill_snapshot(m.metadata.as_ref())
         })
-        .map(|m| HistoryMsg {
-            attachments: extract_history_attachments(&session_message_text(m)),
-            role: if message_is_compact_boundary(m.metadata.as_ref()) {
-                "system".to_string()
-            } else {
-                m.role.clone()
-            },
-            content: session_message_text(m),
-            subtype: if message_is_compact_boundary(m.metadata.as_ref()) {
-                Some("compact_boundary".to_string())
-            } else if message_is_compact_summary(m.metadata.as_ref()) {
-                Some("compact_summary".to_string())
-            } else if message_is_compact_skill_snapshot(m.metadata.as_ref()) {
-                Some("compact_skill_snapshot".to_string())
-            } else {
-                None
-            },
-            synthetic: message_is_compact_boundary(m.metadata.as_ref())
-                || message_is_compact_summary(m.metadata.as_ref())
-                || message_is_compact_skill_snapshot(m.metadata.as_ref()),
-            transcript_only: message_is_compact_summary(m.metadata.as_ref())
-                || message_is_compact_skill_snapshot(m.metadata.as_ref()),
-        })
+        .map(plain_history_message)
         .collect()
+}
+
+pub(crate) fn public_history_from_messages(
+    messages: &[hone_memory::session::SessionMessage],
+) -> Vec<HistoryMsg> {
+    let mut history = Vec::new();
+    let mut legacy_job_name: Option<String> = None;
+    for message in select_messages_after_compact_boundary(messages, Some(50)) {
+        let content = session_message_text(message);
+        let scheduler_source = message
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("source"))
+            .and_then(serde_json::Value::as_str)
+            == Some("scheduler");
+        if message.role == "user" {
+            if scheduler_source {
+                legacy_job_name = message
+                    .metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.get("job_name"))
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_string);
+                continue;
+            }
+            if let Some(job_name) = legacy_scheduler_job_name(&content) {
+                legacy_job_name = Some(job_name);
+                continue;
+            }
+            legacy_job_name = None;
+        }
+
+        if message.role == "assistant" && (scheduler_source || legacy_job_name.is_some()) {
+            let job_name = message
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("job_name"))
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+                .or_else(|| legacy_job_name.take())
+                .unwrap_or_else(|| "定时推送".to_string());
+            let push_id = message
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("web_push_id"))
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string);
+            let summary = build_web_push_summary(&job_name, &content);
+            history.push(HistoryMsg {
+                role: "assistant".to_string(),
+                content: String::new(),
+                subtype: Some("scheduled_push".to_string()),
+                synthetic: false,
+                transcript_only: false,
+                attachments: Vec::new(),
+                scheduled_push: Some(HistoryScheduledPush {
+                    fallback_content: push_id.is_none().then_some(content),
+                    push_id,
+                    title: job_name,
+                    summary,
+                }),
+            });
+            continue;
+        }
+
+        legacy_job_name = None;
+        history.push(plain_history_message(message));
+    }
+    history
+}
+
+fn plain_history_message(message: &hone_memory::session::SessionMessage) -> HistoryMsg {
+    let compact_boundary = message_is_compact_boundary(message.metadata.as_ref());
+    let compact_summary = message_is_compact_summary(message.metadata.as_ref());
+    let compact_skill_snapshot = message_is_compact_skill_snapshot(message.metadata.as_ref());
+    HistoryMsg {
+        attachments: extract_history_attachments(&session_message_text(message)),
+        role: if compact_boundary {
+            "system".to_string()
+        } else {
+            message.role.clone()
+        },
+        content: session_message_text(message),
+        subtype: if compact_boundary {
+            Some("compact_boundary".to_string())
+        } else if compact_summary {
+            Some("compact_summary".to_string())
+        } else if compact_skill_snapshot {
+            Some("compact_skill_snapshot".to_string())
+        } else {
+            None
+        },
+        synthetic: compact_boundary || compact_summary || compact_skill_snapshot,
+        transcript_only: compact_summary || compact_skill_snapshot,
+        scheduled_push: None,
+    }
+}
+
+pub(crate) fn legacy_scheduler_job_name(content: &str) -> Option<String> {
+    let first_line = content.lines().next()?.trim();
+    let value = first_line
+        .strip_prefix("[定时任务触发] 任务名称：")
+        .or_else(|| first_line.strip_prefix("[定时任务触发] 任务名称:"))?;
+    let job_name = value.trim().trim_end_matches('。').trim();
+    (!job_name.is_empty()).then(|| job_name.to_string())
 }
 
 fn extract_history_attachments(content: &str) -> Vec<HistoryAttachment> {
@@ -137,7 +221,9 @@ fn build_history_attachment(path: &str) -> HistoryAttachment {
 
 #[cfg(test)]
 mod tests {
-    use super::extract_history_attachments;
+    use std::collections::HashMap;
+
+    use super::{extract_history_attachments, public_history_from_messages};
 
     #[test]
     fn history_attachments_include_inline_local_images() {
@@ -166,5 +252,68 @@ mod tests {
         assert_eq!(attachments.len(), 1);
         assert_eq!(attachments[0].path, "/tmp/chart.png");
         assert_eq!(attachments[0].kind, "image");
+    }
+
+    #[test]
+    fn public_history_projects_scheduler_turn_to_card_and_hides_trigger() {
+        let metadata = HashMap::from([
+            ("source".to_string(), serde_json::json!("scheduler")),
+            ("job_name".to_string(), serde_json::json!("收盘复盘")),
+            (
+                "web_push_id".to_string(),
+                serde_json::json!("job-1:2026-07-10:20:00"),
+            ),
+        ]);
+        let messages = vec![
+            hone_memory::session_message_from_text(
+                "user",
+                "[定时任务触发] 任务名称：收盘复盘",
+                "2026-07-10T20:00:00+08:00",
+                Some(metadata.clone()),
+            ),
+            hone_memory::session_message_from_text(
+                "assistant",
+                "# 收盘复盘\n核心结论\n市场风险偏好回升。",
+                "2026-07-10T20:01:00+08:00",
+                Some(metadata),
+            ),
+        ];
+
+        let history = public_history_from_messages(&messages);
+        assert_eq!(history.len(), 1);
+        let push = history[0].scheduled_push.as_ref().expect("push card");
+        assert_eq!(push.title, "收盘复盘");
+        assert_eq!(push.summary, "核心结论 · 市场风险偏好回升。");
+        assert_eq!(push.push_id.as_deref(), Some("job-1:2026-07-10:20:00"));
+        assert!(push.fallback_content.is_none());
+        assert!(history[0].content.is_empty());
+    }
+
+    #[test]
+    fn public_history_projects_legacy_scheduler_pair_with_local_fallback() {
+        let messages = vec![
+            hone_memory::session_message_from_text(
+                "user",
+                "[定时任务触发] 任务名称：盘前快报\n权威触发配置：daily",
+                "2026-07-10T08:00:00+08:00",
+                None,
+            ),
+            hone_memory::session_message_from_text(
+                "assistant",
+                "盘前重点：留意 CPI。",
+                "2026-07-10T08:01:00+08:00",
+                None,
+            ),
+        ];
+
+        let history = public_history_from_messages(&messages);
+        assert_eq!(history.len(), 1);
+        let push = history[0].scheduled_push.as_ref().expect("push card");
+        assert_eq!(push.title, "盘前快报");
+        assert!(push.push_id.is_none());
+        assert_eq!(
+            push.fallback_content.as_deref(),
+            Some("盘前重点：留意 CPI。")
+        );
     }
 }

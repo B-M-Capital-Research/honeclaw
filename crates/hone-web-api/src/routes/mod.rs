@@ -17,6 +17,7 @@ pub(crate) mod portfolio;
 pub(crate) mod public;
 pub(crate) mod public_digest;
 pub(crate) mod public_finance_calendar;
+pub(crate) mod public_pushes;
 pub(crate) mod research;
 pub(crate) mod schedule;
 pub(crate) mod skills;
@@ -265,6 +266,11 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
         .route("/image", get(public::handle_public_image))
         .route("/file", get(public::handle_public_file))
         .route("/events", get(public::handle_events))
+        .route("/pushes", get(public_pushes::handle_list_pushes))
+        .route(
+            "/pushes/{push_id}/open",
+            post(public_pushes::handle_open_push),
+        )
         .route(
             "/digest-context",
             get(public_digest::handle_get_digest_context),

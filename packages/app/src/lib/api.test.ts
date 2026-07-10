@@ -3,9 +3,11 @@ import {
   ApiError,
   getPublicAuthMe,
   getPublicFinanceCalendar,
+  getPublicPushes,
   isUnauthorizedApiError,
   sendPublicChat,
   sendPublicFinanceCalendar,
+  openPublicPush,
 } from "./api";
 import {
   FRIENDLY_BACKEND_UNAVAILABLE_MESSAGE,
@@ -146,5 +148,63 @@ describe("public finance calendar API", () => {
       month: "2026-07",
     });
     expect(result.ok).toBe(true);
+  });
+});
+
+describe("public push API", () => {
+  test("loads a cursor page of scheduled pushes", async () => {
+    let requestedUrl = "";
+    globalThis.fetch = ((url: RequestInfo | URL) => {
+      requestedUrl = String(url);
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ items: [], unread_count: 2, next_before: null }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    }) as unknown as typeof fetch;
+
+    const payload = await getPublicPushes("job-1:2026-07-10:20:00", 20);
+
+    expect(requestedUrl).toContain("/api/public/pushes?");
+    expect(requestedUrl).toContain("limit=20");
+    expect(requestedUrl).toContain(
+      "before=job-1%3A2026-07-10%3A20%3A00",
+    );
+    expect(payload.unread_count).toBe(2);
+  });
+
+  test("opens a push through a POST action", async () => {
+    let requestedUrl = "";
+    let requestedMethod = "";
+    globalThis.fetch = ((url: RequestInfo | URL, init?: RequestInit) => {
+      requestedUrl = String(url);
+      requestedMethod = init?.method ?? "GET";
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            push: {
+              push_id: "job-1:2026-07-10:20:00",
+              job_id: "job-1",
+              title: "收盘复盘",
+              summary: "摘要",
+              content: "完整内容",
+              created_at: "2026-07-10T20:00:00+08:00",
+            },
+            unread_count: 0,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    }) as unknown as typeof fetch;
+
+    const payload = await openPublicPush("job-1:2026-07-10:20:00");
+
+    expect(requestedMethod).toBe("POST");
+    expect(requestedUrl).toContain(
+      "/api/public/pushes/job-1%3A2026-07-10%3A20%3A00/open",
+    );
+    expect(payload.unread_count).toBe(0);
+    expect(payload.push.content).toBe("完整内容");
   });
 });

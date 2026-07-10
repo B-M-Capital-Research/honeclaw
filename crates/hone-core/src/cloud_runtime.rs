@@ -374,6 +374,18 @@ pub struct CloudCronExecutionRecord {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct CloudWebPushMessage {
+    pub push_id: String,
+    pub actor_storage_key: String,
+    pub job_id: String,
+    pub job_name: String,
+    pub summary: String,
+    pub content: String,
+    pub created_at: String,
+    pub read_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct CloudConversationQuotaSnapshot {
     pub quota_date: String,
     pub success_count: u32,
@@ -607,6 +619,19 @@ CREATE INDEX IF NOT EXISTS idx_cloud_cron_job_runs_job_time
   ON cloud_cron_job_runs(job_id, executed_at DESC, run_id DESC);
 CREATE INDEX IF NOT EXISTS idx_cloud_cron_job_runs_actor_time
   ON cloud_cron_job_runs(actor_channel, actor_user_id, executed_at DESC);
+CREATE TABLE IF NOT EXISTS cloud_web_push_messages (
+  actor_storage_key TEXT NOT NULL,
+  push_id TEXT NOT NULL,
+  job_id TEXT NOT NULL,
+  job_name TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  content TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  read_at TEXT,
+  PRIMARY KEY (actor_storage_key, push_id)
+);
+CREATE INDEX IF NOT EXISTS idx_cloud_web_push_actor_time
+  ON cloud_web_push_messages(actor_storage_key, created_at DESC, push_id DESC);
 CREATE TABLE IF NOT EXISTS cloud_sessions (
   session_id TEXT PRIMARY KEY,
   actor_storage_key TEXT NOT NULL,
@@ -1758,6 +1783,226 @@ LIMIT $9
             .collect())
     }
 
+    pub async fn upsert_web_push_message(
+        &self,
+        actor: &ActorIdentity,
+        push_id: &str,
+        job_id: &str,
+        job_name: &str,
+        summary: &str,
+        content: &str,
+        created_at: &str,
+    ) -> HoneResult<CloudWebPushMessage> {
+        let client = self.connect_client().await?;
+        let actor_storage_key = actor.storage_key();
+        let row = client
+            .query_one(
+                r#"
+INSERT INTO cloud_web_push_messages (
+  actor_storage_key, push_id, job_id, job_name,
+  summary, content, created_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (actor_storage_key, push_id) DO UPDATE SET
+  job_id = EXCLUDED.job_id,
+  job_name = EXCLUDED.job_name,
+  summary = EXCLUDED.summary,
+  content = EXCLUDED.content,
+  created_at = EXCLUDED.created_at
+RETURNING push_id, actor_storage_key, job_id, job_name,
+          summary, content, created_at, read_at
+"#,
+                &[
+                    &actor_storage_key,
+                    &push_id,
+                    &job_id,
+                    &job_name,
+                    &summary,
+                    &content,
+                    &created_at,
+                ],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres Web 推送写入失败: {err}")))?;
+        Ok(cloud_web_push_message_from_row(&row))
+    }
+
+    pub async fn upsert_web_push_messages(
+        &self,
+        actor: &ActorIdentity,
+        messages: Vec<CloudWebPushMessage>,
+    ) -> HoneResult<usize> {
+        if messages.is_empty() {
+            return Ok(0);
+        }
+        let client = self.connect_client().await?;
+        let actor_storage_key = actor.storage_key();
+        let push_ids = messages
+            .iter()
+            .map(|message| message.push_id.clone())
+            .collect::<Vec<_>>();
+        let job_ids = messages
+            .iter()
+            .map(|message| message.job_id.clone())
+            .collect::<Vec<_>>();
+        let job_names = messages
+            .iter()
+            .map(|message| message.job_name.clone())
+            .collect::<Vec<_>>();
+        let summaries = messages
+            .iter()
+            .map(|message| message.summary.clone())
+            .collect::<Vec<_>>();
+        let contents = messages
+            .iter()
+            .map(|message| message.content.clone())
+            .collect::<Vec<_>>();
+        let created_ats = messages
+            .iter()
+            .map(|message| message.created_at.clone())
+            .collect::<Vec<_>>();
+        let changed = client
+            .execute(
+                r#"
+INSERT INTO cloud_web_push_messages (
+  actor_storage_key, push_id, job_id, job_name,
+  summary, content, created_at
+) SELECT $1, push_id, job_id, job_name, summary, content, created_at
+FROM UNNEST(
+  $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[]
+) AS batch(push_id, job_id, job_name, summary, content, created_at)
+ON CONFLICT (actor_storage_key, push_id) DO UPDATE SET
+  job_id = EXCLUDED.job_id,
+  job_name = EXCLUDED.job_name,
+  summary = EXCLUDED.summary,
+  content = EXCLUDED.content,
+  created_at = EXCLUDED.created_at
+"#,
+                &[
+                    &actor_storage_key,
+                    &push_ids,
+                    &job_ids,
+                    &job_names,
+                    &summaries,
+                    &contents,
+                    &created_ats,
+                ],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres Web 推送批量写入失败: {err}")))?;
+        Ok(changed as usize)
+    }
+
+    pub async fn has_legacy_web_push_messages(&self, actor: &ActorIdentity) -> HoneResult<bool> {
+        let client = self.connect_client().await?;
+        let actor_storage_key = actor.storage_key();
+        let row = client
+            .query_one(
+                "SELECT EXISTS(SELECT 1 FROM cloud_web_push_messages WHERE actor_storage_key = $1 AND push_id LIKE 'legacy:%')",
+                &[&actor_storage_key],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres 历史 Web 推送检查失败: {err}")))?;
+        Ok(row.get(0))
+    }
+
+    pub async fn list_web_push_messages(
+        &self,
+        actor: &ActorIdentity,
+        before_push_id: Option<String>,
+        limit: usize,
+    ) -> HoneResult<Vec<CloudWebPushMessage>> {
+        let client = self.connect_client().await?;
+        let actor_storage_key = actor.storage_key();
+        let limit = i64::try_from(limit.max(1)).unwrap_or(100);
+        let rows = client
+            .query(
+                r#"
+SELECT push_id, actor_storage_key, job_id, job_name,
+       summary, content, created_at, read_at
+FROM cloud_web_push_messages
+WHERE actor_storage_key = $1
+  AND (
+    $2::text IS NULL
+    OR (created_at, push_id) < (
+      SELECT created_at, push_id
+      FROM cloud_web_push_messages
+      WHERE actor_storage_key = $1 AND push_id = $2
+    )
+  )
+ORDER BY created_at DESC, push_id DESC
+LIMIT $3
+"#,
+                &[&actor_storage_key, &before_push_id, &limit],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres Web 推送列表读取失败: {err}")))?;
+        Ok(rows.iter().map(cloud_web_push_message_from_row).collect())
+    }
+
+    pub async fn get_web_push_message(
+        &self,
+        actor: &ActorIdentity,
+        push_id: &str,
+    ) -> HoneResult<Option<CloudWebPushMessage>> {
+        let client = self.connect_client().await?;
+        let actor_storage_key = actor.storage_key();
+        let row = client
+            .query_opt(
+                r#"
+SELECT push_id, actor_storage_key, job_id, job_name,
+       summary, content, created_at, read_at
+FROM cloud_web_push_messages
+WHERE actor_storage_key = $1 AND push_id = $2
+"#,
+                &[&actor_storage_key, &push_id],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres Web 推送详情读取失败: {err}")))?;
+        Ok(row.as_ref().map(cloud_web_push_message_from_row))
+    }
+
+    pub async fn count_unread_web_push_messages(&self, actor: &ActorIdentity) -> HoneResult<usize> {
+        let client = self.connect_client().await?;
+        let actor_storage_key = actor.storage_key();
+        let row = client
+            .query_one(
+                "SELECT COUNT(*) FROM cloud_web_push_messages WHERE actor_storage_key = $1 AND read_at IS NULL",
+                &[&actor_storage_key],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres Web 推送未读统计失败: {err}")))?;
+        let count: i64 = row.get(0);
+        Ok(usize::try_from(count).unwrap_or(usize::MAX))
+    }
+
+    pub async fn mark_web_push_messages_read_through(
+        &self,
+        actor: &ActorIdentity,
+        push_id: &str,
+        read_at: &str,
+    ) -> HoneResult<usize> {
+        let client = self.connect_client().await?;
+        let actor_storage_key = actor.storage_key();
+        let updated = client
+            .execute(
+                r#"
+UPDATE cloud_web_push_messages
+SET read_at = $3
+WHERE actor_storage_key = $1
+  AND read_at IS NULL
+  AND created_at <= (
+    SELECT created_at
+    FROM cloud_web_push_messages
+    WHERE actor_storage_key = $1 AND push_id = $2
+  )
+"#,
+                &[&actor_storage_key, &push_id, &read_at],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres Web 推送已读更新失败: {err}")))?;
+        Ok(updated as usize)
+    }
+
     pub async fn get_skill_registry(&self) -> HoneResult<Option<serde_json::Value>> {
         let client = self.connect_client().await?;
         let row = client
@@ -2541,6 +2786,19 @@ DO UPDATE SET
                 })?;
         }
         Ok(())
+    }
+}
+
+fn cloud_web_push_message_from_row(row: &tokio_postgres::Row) -> CloudWebPushMessage {
+    CloudWebPushMessage {
+        push_id: row.get(0),
+        actor_storage_key: row.get(1),
+        job_id: row.get(2),
+        job_name: row.get(3),
+        summary: row.get(4),
+        content: row.get(5),
+        created_at: row.get(6),
+        read_at: row.get(7),
     }
 }
 

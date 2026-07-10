@@ -895,6 +895,12 @@ const CONTENT_ZH = {
       history_attachment: "带附件的问题",
       history_empty_item: "空消息",
     },
+    pushes: {
+      nav: "推送",
+      open_aria: "打开推送中心",
+      fallback_title: "定时推送",
+      fallback_summary: "任务已完成",
+    },
     prefs: {
       aria_label: "字号与主题",
       font_size: "字号",
@@ -2504,6 +2510,12 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       history_empty: "Recent questions will appear here after you start chatting.",
       history_attachment: "Question with attachments",
       history_empty_item: "Empty message",
+    },
+    pushes: {
+      nav: "Dispatches",
+      open_aria: "Open push center",
+      fallback_title: "Scheduled push",
+      fallback_summary: "Task completed",
     },
     prefs: {
       aria_label: "Font size and theme",

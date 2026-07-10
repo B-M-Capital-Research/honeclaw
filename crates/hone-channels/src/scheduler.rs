@@ -10,7 +10,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::agent_session::{
-    AgentRunOptions, AgentRunQuotaMode, AgentSessionResult, GeminiStreamOptions,
+    AgentRunOptions, AgentRunQuotaMode, AgentSessionResult, GeminiStreamOptions, MessageMetadata,
 };
 use crate::execution::{
     ExecutionMode, ExecutionRequest, ExecutionRunnerSelection, ExecutionService,
@@ -3136,8 +3136,21 @@ pub async fn run_scheduled_task(
 ) -> AgentSessionResult {
     let full_prompt = build_scheduled_prompt_with_recovered_local_context(&core, event);
     run_options.quota_mode = AgentRunQuotaMode::ScheduledTask;
-    let session = AgentSession::new(core, event.actor.clone(), event.channel_target.clone())
+    let mut session = AgentSession::new(core, event.actor.clone(), event.channel_target.clone())
         .with_prompt_options(prompt_options);
+    if event.channel == "web" {
+        let metadata = HashMap::from([
+            ("channel".to_string(), json!("web")),
+            ("source".to_string(), json!("scheduler")),
+            ("web_push_id".to_string(), json!(event.delivery_key.clone())),
+            ("job_id".to_string(), json!(event.job_id.clone())),
+            ("job_name".to_string(), json!(event.job_name.clone())),
+        ]);
+        session = session.with_message_metadata(MessageMetadata {
+            user: Some(metadata.clone()),
+            assistant: Some(metadata),
+        });
+    }
     session.run(&full_prompt, run_options).await
 }
 

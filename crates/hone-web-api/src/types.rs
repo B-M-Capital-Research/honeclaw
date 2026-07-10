@@ -71,6 +71,18 @@ pub struct HistoryMsg {
     #[serde(default)]
     pub transcript_only: bool,
     pub attachments: Vec<HistoryAttachment>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scheduled_push: Option<HistoryScheduledPush>,
+}
+
+#[derive(Serialize)]
+pub struct HistoryScheduledPush {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub push_id: Option<String>,
+    pub title: String,
+    pub summary: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fallback_content: Option<String>,
 }
 
 #[derive(Serialize)]

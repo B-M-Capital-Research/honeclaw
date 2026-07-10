@@ -16,7 +16,9 @@ import { setLocale, useLocale } from "@/lib/i18n"
 import { PublicContactCards, PublicContactMenu } from "@/components/public-contact-menu"
 import "../pages/public-site.css"
 
-export function PublicNav(props: { extraActions?: JSX.Element } = {}) {
+export function PublicNav(
+  props: { extraActions?: JSX.Element; mobileAction?: JSX.Element } = {},
+) {
   const [scrolled, setScrolled] = createSignal(false)
   const [menuOpen, setMenuOpen] = createSignal(false)
   const [stars] = createResource(fetchGithubStars)
@@ -175,52 +177,55 @@ export function PublicNav(props: { extraActions?: JSX.Element } = {}) {
           </div>
         </div>
 
-        {/* Mobile hamburger */}
-        <button
-          class="pub-nav-hamburger"
-          onClick={() => setMenuOpen((v) => !v)}
-          style={{
-            display: "none",
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            padding: "6px",
-            "flex-direction": "column",
-            gap: "5px",
-          }}
-          aria-label={C.menu_aria}
-        >
-          <span
+        <div class="pub-nav-mobile-controls">
+          <Show when={props.mobileAction}>{props.mobileAction}</Show>
+          {/* Mobile hamburger */}
+          <button
+            class="pub-nav-hamburger"
+            onClick={() => setMenuOpen((v) => !v)}
             style={{
-              display: "block",
-              width: "22px",
-              height: "2px",
-              background: transparent() ? "rgba(255,255,255,0.75)" : "#475569",
-              transition: "all 0.2s",
-              transform: menuOpen() ? "translateY(7px) rotate(45deg)" : "none",
+              display: "none",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: "6px",
+              "flex-direction": "column",
+              gap: "5px",
             }}
-          />
-          <span
-            style={{
-              display: "block",
-              width: "22px",
-              height: "2px",
-              background: transparent() ? "rgba(255,255,255,0.75)" : "#475569",
-              transition: "all 0.2s",
-              opacity: menuOpen() ? "0" : "1",
-            }}
-          />
-          <span
-            style={{
-              display: "block",
-              width: "22px",
-              height: "2px",
-              background: transparent() ? "rgba(255,255,255,0.75)" : "#475569",
-              transition: "all 0.2s",
-              transform: menuOpen() ? "translateY(-7px) rotate(-45deg)" : "none",
-            }}
-          />
-        </button>
+            aria-label={C.menu_aria}
+          >
+            <span
+              style={{
+                display: "block",
+                width: "22px",
+                height: "2px",
+                background: transparent() ? "rgba(255,255,255,0.75)" : "#475569",
+                transition: "all 0.2s",
+                transform: menuOpen() ? "translateY(7px) rotate(45deg)" : "none",
+              }}
+            />
+            <span
+              style={{
+                display: "block",
+                width: "22px",
+                height: "2px",
+                background: transparent() ? "rgba(255,255,255,0.75)" : "#475569",
+                transition: "all 0.2s",
+                opacity: menuOpen() ? "0" : "1",
+              }}
+            />
+            <span
+              style={{
+                display: "block",
+                width: "22px",
+                height: "2px",
+                background: transparent() ? "rgba(255,255,255,0.75)" : "#475569",
+                transition: "all 0.2s",
+                transform: menuOpen() ? "translateY(-7px) rotate(-45deg)" : "none",
+              }}
+            />
+          </button>
+        </div>
       </nav>
 
       {/* Mobile dropdown menu */}

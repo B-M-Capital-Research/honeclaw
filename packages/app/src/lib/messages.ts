@@ -61,6 +61,7 @@ export function historyToTimeline(messages: HistoryMsg[]): TimelineMessage[] {
         synthetic: message.synthetic,
         transcriptOnly: message.transcript_only,
         attachments: Array.isArray(message.attachments) ? message.attachments : [],
+        scheduledPush: message.scheduled_push,
       }
     })
 }

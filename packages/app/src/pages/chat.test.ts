@@ -6,6 +6,7 @@ import {
   nextVisibleMessageCount,
   formatPublicAttachmentBytes,
   isPublicChatQuotaExhausted,
+  mergePublicPushItems,
   normalizePhoneNumber,
   PUBLIC_RESTORE_MAX_ATTEMPTS,
   publicRestoreRetryDelay,
@@ -20,6 +21,7 @@ import {
   splitPublicChatAttachments,
   stripAttachmentMarkers,
   toPublicChatMessages,
+  unreadCountAfterScheduledPush,
 } from "@/lib/public-chat";
 import type { HistoryMsg } from "@/lib/types";
 
@@ -138,6 +140,51 @@ describe("toPublicChatMessages", () => {
       { path: "/uploads/chart.png", name: "chart.png", kind: "image" },
       { path: "/uploads/report.pdf", name: "report.pdf", kind: "pdf" },
     ]);
+  });
+
+  it("maps scheduled history into a card model without restoring full text", () => {
+    const messages = toPublicChatMessages([
+      {
+        role: "assistant",
+        content: "",
+        subtype: "scheduled_push",
+        attachments: [],
+        scheduled_push: {
+          push_id: "job-1:2026-07-10:20:00",
+          title: "收盘复盘",
+          summary: "风险偏好回升，半导体领涨。",
+        },
+      },
+    ]);
+
+    expect(messages[0]!.content).toBe("");
+    expect(messages[0]!.scheduledPush).toEqual({
+      pushId: "job-1:2026-07-10:20:00",
+      title: "收盘复盘",
+      summary: "风险偏好回升，半导体领涨。",
+      fallbackContent: undefined,
+    });
+  });
+});
+
+describe("public push inbox model", () => {
+  it("merges paginated and live pushes without duplicates", () => {
+    const p1 = {
+      push_id: "p1",
+      job_id: "j1",
+      title: "One",
+      summary: "one",
+      created_at: "2026-07-10T10:00:00+08:00",
+    };
+    const p2 = { ...p1, push_id: "p2", title: "Two" };
+
+    expect(mergePublicPushItems([p2], [p2, p1])).toEqual([p2, p1]);
+  });
+
+  it("prefers authoritative unread counts and falls back to incrementing", () => {
+    expect(unreadCountAfterScheduledPush(2, 7)).toBe(7);
+    expect(unreadCountAfterScheduledPush(2)).toBe(3);
+    expect(unreadCountAfterScheduledPush(2, -4)).toBe(0);
   });
 });
 

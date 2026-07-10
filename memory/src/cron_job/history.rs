@@ -15,7 +15,9 @@ use serde_json::Value;
 
 use super::CronJobStorage;
 use super::run_cloud_cron;
-use super::types::{CronJobExecutionInput, CronJobExecutionRecord};
+use super::types::{
+    CronJobExecutionInput, CronJobExecutionRecord, WebPushMessage, WebPushMessageInput,
+};
 
 /// 跨任务列举执行记录的过滤条件。所有时间字段使用东八区 RFC3339 字符串
 /// (与 `cron_job_runs.executed_at` 的写入格式一致),按字符串比较即可。
@@ -574,6 +576,296 @@ impl CronJobStorage {
         Ok(out)
     }
 
+    pub fn upsert_web_push_message(
+        &self,
+        actor: &ActorIdentity,
+        input: WebPushMessageInput,
+    ) -> HoneResult<WebPushMessage> {
+        if let Some(postgres) = self.cloud_postgres() {
+            let actor = actor.clone();
+            return run_cloud_cron(async move {
+                postgres
+                    .upsert_web_push_message(
+                        &actor,
+                        &input.push_id,
+                        &input.job_id,
+                        &input.job_name,
+                        &input.summary,
+                        &input.content,
+                        &input.created_at,
+                    )
+                    .await
+            })
+            .map(web_push_from_cloud);
+        }
+
+        let actor_storage_key = actor.storage_key();
+        let Some(conn) = self.open_execution_conn()? else {
+            return Err(HoneError::Storage(
+                "Web 推送存储未配置 SQLite 或 Postgres".to_string(),
+            ));
+        };
+        conn.execute(
+            "
+            INSERT INTO web_push_messages (
+                actor_storage_key, push_id, job_id, job_name,
+                summary, content, created_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            ON CONFLICT(actor_storage_key, push_id) DO UPDATE SET
+                job_id = excluded.job_id,
+                job_name = excluded.job_name,
+                summary = excluded.summary,
+                content = excluded.content,
+                created_at = excluded.created_at
+            ",
+            params![
+                actor_storage_key,
+                input.push_id,
+                input.job_id,
+                input.job_name,
+                input.summary,
+                input.content,
+                input.created_at,
+            ],
+        )
+        .map_err(sqlite_err)?;
+        self.get_web_push_message(actor, &input.push_id)?
+            .ok_or_else(|| HoneError::Storage("Web 推送写入后无法读取".to_string()))
+    }
+
+    pub fn upsert_web_push_messages(
+        &self,
+        actor: &ActorIdentity,
+        inputs: Vec<WebPushMessageInput>,
+    ) -> HoneResult<usize> {
+        if inputs.is_empty() {
+            return Ok(0);
+        }
+        if let Some(postgres) = self.cloud_postgres() {
+            let actor = actor.clone();
+            let actor_storage_key = actor.storage_key();
+            let messages = inputs
+                .into_iter()
+                .map(|input| hone_core::cloud_runtime::CloudWebPushMessage {
+                    push_id: input.push_id,
+                    actor_storage_key: actor_storage_key.clone(),
+                    job_id: input.job_id,
+                    job_name: input.job_name,
+                    summary: input.summary,
+                    content: input.content,
+                    created_at: input.created_at,
+                    read_at: None,
+                })
+                .collect();
+            return run_cloud_cron(async move {
+                postgres.upsert_web_push_messages(&actor, messages).await
+            });
+        }
+
+        let actor_storage_key = actor.storage_key();
+        let Some(mut conn) = self.open_execution_conn()? else {
+            return Err(HoneError::Storage(
+                "Web 推送存储未配置 SQLite 或 Postgres".to_string(),
+            ));
+        };
+        let transaction = conn.transaction().map_err(sqlite_err)?;
+        for input in &inputs {
+            transaction
+                .execute(
+                    "
+                    INSERT INTO web_push_messages (
+                        actor_storage_key, push_id, job_id, job_name,
+                        summary, content, created_at
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                    ON CONFLICT(actor_storage_key, push_id) DO UPDATE SET
+                        job_id = excluded.job_id,
+                        job_name = excluded.job_name,
+                        summary = excluded.summary,
+                        content = excluded.content,
+                        created_at = excluded.created_at
+                    ",
+                    params![
+                        actor_storage_key,
+                        input.push_id,
+                        input.job_id,
+                        input.job_name,
+                        input.summary,
+                        input.content,
+                        input.created_at,
+                    ],
+                )
+                .map_err(sqlite_err)?;
+        }
+        transaction.commit().map_err(sqlite_err)?;
+        Ok(inputs.len())
+    }
+
+    pub fn has_legacy_web_push_messages(&self, actor: &ActorIdentity) -> HoneResult<bool> {
+        if let Some(postgres) = self.cloud_postgres() {
+            let actor = actor.clone();
+            return run_cloud_cron(
+                async move { postgres.has_legacy_web_push_messages(&actor).await },
+            );
+        }
+
+        let Some(conn) = self.open_execution_conn()? else {
+            return Ok(false);
+        };
+        conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM web_push_messages WHERE actor_storage_key = ?1 AND push_id LIKE 'legacy:%')",
+            params![actor.storage_key()],
+            |row| row.get(0),
+        )
+        .map_err(sqlite_err)
+    }
+
+    pub fn list_web_push_messages(
+        &self,
+        actor: &ActorIdentity,
+        before_push_id: Option<&str>,
+        limit: usize,
+    ) -> HoneResult<Vec<WebPushMessage>> {
+        if let Some(postgres) = self.cloud_postgres() {
+            let actor = actor.clone();
+            let before_push_id = before_push_id.map(str::to_string);
+            return run_cloud_cron(async move {
+                postgres
+                    .list_web_push_messages(&actor, before_push_id, limit)
+                    .await
+            })
+            .map(|records| records.into_iter().map(web_push_from_cloud).collect());
+        }
+
+        let Some(conn) = self.open_execution_conn()? else {
+            return Ok(Vec::new());
+        };
+        let actor_storage_key = actor.storage_key();
+        let mut stmt = conn
+            .prepare(
+                "
+                SELECT push_id, actor_storage_key, job_id, job_name,
+                       summary, content, created_at, read_at
+                FROM web_push_messages
+                WHERE actor_storage_key = ?1
+                  AND (
+                    ?2 IS NULL
+                    OR created_at < (
+                        SELECT created_at FROM web_push_messages
+                        WHERE actor_storage_key = ?1 AND push_id = ?2
+                    )
+                    OR (
+                        created_at = (
+                            SELECT created_at FROM web_push_messages
+                            WHERE actor_storage_key = ?1 AND push_id = ?2
+                        )
+                        AND push_id < ?2
+                    )
+                  )
+                ORDER BY created_at DESC, push_id DESC
+                LIMIT ?3
+                ",
+            )
+            .map_err(sqlite_err)?;
+        let rows = stmt
+            .query_map(
+                params![actor_storage_key, before_push_id, limit.max(1) as i64],
+                web_push_from_sqlite_row,
+            )
+            .map_err(sqlite_err)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(sqlite_err)
+    }
+
+    pub fn get_web_push_message(
+        &self,
+        actor: &ActorIdentity,
+        push_id: &str,
+    ) -> HoneResult<Option<WebPushMessage>> {
+        if let Some(postgres) = self.cloud_postgres() {
+            let actor = actor.clone();
+            let push_id = push_id.to_string();
+            return run_cloud_cron(
+                async move { postgres.get_web_push_message(&actor, &push_id).await },
+            )
+            .map(|record| record.map(web_push_from_cloud));
+        }
+
+        let Some(conn) = self.open_execution_conn()? else {
+            return Ok(None);
+        };
+        let actor_storage_key = actor.storage_key();
+        conn.query_row(
+            "
+            SELECT push_id, actor_storage_key, job_id, job_name,
+                   summary, content, created_at, read_at
+            FROM web_push_messages
+            WHERE actor_storage_key = ?1 AND push_id = ?2
+            ",
+            params![actor_storage_key, push_id],
+            web_push_from_sqlite_row,
+        )
+        .map(Some)
+        .or_else(|error| match error {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(sqlite_err(other)),
+        })
+    }
+
+    pub fn count_unread_web_push_messages(&self, actor: &ActorIdentity) -> HoneResult<usize> {
+        if let Some(postgres) = self.cloud_postgres() {
+            let actor = actor.clone();
+            return run_cloud_cron(
+                async move { postgres.count_unread_web_push_messages(&actor).await },
+            );
+        }
+
+        let Some(conn) = self.open_execution_conn()? else {
+            return Ok(0);
+        };
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM web_push_messages WHERE actor_storage_key = ?1 AND read_at IS NULL",
+                params![actor.storage_key()],
+                |row| row.get(0),
+            )
+            .map_err(sqlite_err)?;
+        Ok(usize::try_from(count).unwrap_or(usize::MAX))
+    }
+
+    pub fn mark_web_push_messages_read_through(
+        &self,
+        actor: &ActorIdentity,
+        push_id: &str,
+    ) -> HoneResult<usize> {
+        let read_at = hone_core::beijing_now_rfc3339();
+        if let Some(postgres) = self.cloud_postgres() {
+            let actor = actor.clone();
+            let push_id = push_id.to_string();
+            return run_cloud_cron(async move {
+                postgres
+                    .mark_web_push_messages_read_through(&actor, &push_id, &read_at)
+                    .await
+            });
+        }
+
+        let Some(conn) = self.open_execution_conn()? else {
+            return Ok(0);
+        };
+        conn.execute(
+            "
+            UPDATE web_push_messages
+            SET read_at = ?3
+            WHERE actor_storage_key = ?1
+              AND read_at IS NULL
+              AND created_at <= (
+                  SELECT created_at FROM web_push_messages
+                  WHERE actor_storage_key = ?1 AND push_id = ?2
+              )
+            ",
+            params![actor.storage_key(), push_id, read_at],
+        )
+        .map_err(sqlite_err)
+    }
+
     pub(super) fn open_execution_conn(&self) -> HoneResult<Option<Connection>> {
         let Some(path) = &self.sqlite_path else {
             return Ok(None);
@@ -627,6 +919,21 @@ impl CronJobStorage {
                 ON cron_job_runs(job_id, executed_at DESC, run_id DESC);
             CREATE INDEX IF NOT EXISTS idx_cron_job_runs_actor_time
                 ON cron_job_runs(actor_channel, actor_user_id, executed_at DESC);
+
+            CREATE TABLE IF NOT EXISTS web_push_messages (
+                actor_storage_key TEXT NOT NULL,
+                push_id TEXT NOT NULL,
+                job_id TEXT NOT NULL,
+                job_name TEXT NOT NULL,
+                summary TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                read_at TEXT,
+                PRIMARY KEY (actor_storage_key, push_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_web_push_actor_time
+                ON web_push_messages(actor_storage_key, created_at DESC, push_id DESC);
             ",
         )
         .map_err(sqlite_err)?;
@@ -717,6 +1024,145 @@ fn cron_execution_from_cloud(
     }
 }
 
+fn web_push_from_cloud(record: hone_core::cloud_runtime::CloudWebPushMessage) -> WebPushMessage {
+    WebPushMessage {
+        push_id: record.push_id,
+        actor_storage_key: record.actor_storage_key,
+        job_id: record.job_id,
+        job_name: record.job_name,
+        summary: record.summary,
+        content: record.content,
+        created_at: record.created_at,
+        read_at: record.read_at,
+    }
+}
+
+fn web_push_from_sqlite_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<WebPushMessage> {
+    Ok(WebPushMessage {
+        push_id: row.get(0)?,
+        actor_storage_key: row.get(1)?,
+        job_id: row.get(2)?,
+        job_name: row.get(3)?,
+        summary: row.get(4)?,
+        content: row.get(5)?,
+        created_at: row.get(6)?,
+        read_at: row.get(7)?,
+    })
+}
+
 fn sqlite_err(err: rusqlite::Error) -> HoneError {
     HoneError::Config(format!("Cron 执行记录 SQLite 操作失败: {err}"))
+}
+
+#[cfg(test)]
+mod web_push_tests {
+    use super::*;
+
+    fn test_storage() -> (CronJobStorage, std::path::PathBuf) {
+        let root = std::env::temp_dir().join(format!(
+            "hone_web_push_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).expect("mkdir");
+        let storage = CronJobStorage::with_sqlite(root.join("cron"), root.join("cron.sqlite3"));
+        (storage, root)
+    }
+
+    fn input(push_id: &str, created_at: &str) -> WebPushMessageInput {
+        WebPushMessageInput {
+            push_id: push_id.to_string(),
+            job_id: "job-1".to_string(),
+            job_name: format!("Push {push_id}"),
+            summary: format!("Summary {push_id}"),
+            content: format!("Full content {push_id}"),
+            created_at: created_at.to_string(),
+        }
+    }
+
+    #[test]
+    fn web_push_read_through_keeps_newer_pushes_unread() {
+        let (storage, root) = test_storage();
+        let actor = ActorIdentity::new("web", "web-user-1", None::<String>).expect("actor");
+        let other = ActorIdentity::new("web", "web-user-2", None::<String>).expect("actor");
+        storage
+            .upsert_web_push_message(&actor, input("p1", "2026-07-10T09:00:00+08:00"))
+            .expect("p1");
+        storage
+            .upsert_web_push_message(&actor, input("p2", "2026-07-10T10:00:00+08:00"))
+            .expect("p2");
+        storage
+            .upsert_web_push_message(&actor, input("p3", "2026-07-10T11:00:00+08:00"))
+            .expect("p3");
+        storage
+            .upsert_web_push_message(&other, input("p4", "2026-07-10T08:00:00+08:00"))
+            .expect("p4");
+
+        assert_eq!(storage.count_unread_web_push_messages(&actor).unwrap(), 3);
+        assert_eq!(
+            storage
+                .mark_web_push_messages_read_through(&actor, "p2")
+                .unwrap(),
+            2
+        );
+        assert_eq!(storage.count_unread_web_push_messages(&actor).unwrap(), 1);
+        assert_eq!(storage.count_unread_web_push_messages(&other).unwrap(), 1);
+
+        let listed = storage.list_web_push_messages(&actor, None, 10).unwrap();
+        assert_eq!(
+            listed
+                .iter()
+                .map(|item| item.push_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["p3", "p2", "p1"]
+        );
+        assert!(listed[0].read_at.is_none());
+        assert!(listed[1].read_at.is_some());
+
+        let page = storage
+            .list_web_push_messages(&actor, Some("p2"), 10)
+            .unwrap();
+        assert_eq!(
+            page.iter()
+                .map(|item| item.push_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["p1"]
+        );
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn legacy_web_push_batch_is_idempotent_and_preserves_read_state() {
+        let (storage, root) = test_storage();
+        let actor = ActorIdentity::new("web", "legacy-user", None::<String>).expect("actor");
+        let inputs = vec![
+            input("legacy:first", "2026-07-10T09:00:00+08:00"),
+            input("legacy:second", "2026-07-10T10:00:00+08:00"),
+        ];
+
+        assert_eq!(
+            storage
+                .upsert_web_push_messages(&actor, inputs.clone())
+                .expect("first import"),
+            2
+        );
+        assert!(storage.has_legacy_web_push_messages(&actor).unwrap());
+        storage
+            .mark_web_push_messages_read_through(&actor, "legacy:first")
+            .expect("mark read");
+        assert_eq!(
+            storage
+                .upsert_web_push_messages(&actor, inputs)
+                .expect("second import"),
+            2
+        );
+
+        let listed = storage.list_web_push_messages(&actor, None, 10).unwrap();
+        assert_eq!(listed.len(), 2);
+        assert!(listed[1].read_at.is_some());
+        std::fs::remove_dir_all(root).ok();
+    }
 }

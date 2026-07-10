@@ -4,6 +4,30 @@ Last updated: 2026-07-10
 
 ## 2026-07-10
 
+### Web Scheduled Push Mobile Hotfix
+
+- Status: done
+- Date: 2026-07-10
+- Plan: `docs/archive/plans/web-scheduled-push-mobile-hotfix.md`
+- Handoff: `docs/handoffs/2026-07-10-web-scheduled-push-inbox.md`
+- Decision / ADR: `docs/decisions.md#d-2026-07-10-01-project-web-scheduled-results-into-a-durable-push-inbox`
+- Related PRs / commits: this change set
+- Related runbooks / regressions: `cargo test -p hone-web-api --lib`, targeted memory legacy-push tests, `bun run test:web`, `bun run typecheck:web`, `bun run build:web:public`, `cargo check --workspace --all-targets --exclude hone-desktop`, `bash tests/regression/run_ci.sh`, actor-scoped HTTP backfill smoke
+- Current conclusion: Production mobile blank message shells were caused by deploying the scheduled-push backend without the matching public bundle. The mobile push bell now sits outside the hidden desktop nav, and pre-upgrade scheduled messages are lazily imported into the durable inbox; the affected actor imported 79 messages in 93ms without clearing existing sessions or read state.
+- Next entry point: `crates/hone-web-api/src/routes/public_pushes.rs`, `packages/app/src/components/public-nav.tsx`, and `packages/app/src/components/public-push-center.tsx`
+
+### Web Scheduled Push Inbox
+
+- Status: done
+- Date: 2026-07-10
+- Plan: `docs/archive/plans/web-scheduled-push-inbox.md`
+- Handoff: `docs/handoffs/2026-07-10-web-scheduled-push-inbox.md`
+- Decision / ADR: `docs/decisions.md#d-2026-07-10-01-project-web-scheduled-results-into-a-durable-push-inbox`
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-web-api --lib`, `cargo check -p hone-channels -p hone-web-api`, `bun run test:web`, `bun run typecheck:web`, `bun run build:web:public`, local PostgreSQL + HTTP mark-through smoke
+- Current conclusion: Web scheduled results now render as compact summary cards, open full content on demand, persist actor-scoped read state, and collect in a rail/mobile push center with an aggregate unread dot; reading the latest push clears the dot while Feishu and other channels remain unchanged.
+- Next entry point: `crates/hone-web-api/src/routes/public_pushes.rs`, `memory/src/cron_job/history.rs`, and `packages/app/src/components/public-push-center.tsx`
+
 ### Public Finance Calendar Polish
 
 - Status: done

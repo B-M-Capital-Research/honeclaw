@@ -1,6 +1,6 @@
 # Decisions
 
-Last updated: 2026-05-11
+Last updated: 2026-07-10
 
 ## D-2026-03-07-01 Maintain LLM Collaboration Context In-Repo
 
@@ -149,3 +149,11 @@ Last updated: 2026-05-11
   - CLI/Desktop settings should write inline config keys and mask API-key fields in display/logs
   - Missing credentials should fail with a migration hint pointing to `config.yaml`
 - Note: Child-process bridges such as passing a config-owned OpenRouter key into `opencode` are allowed when the underlying CLI has no config API, but Hone must not read parent process env vars as user LLM config.
+
+## D-2026-07-10-01 Project Web Scheduled Results Into A Durable Push Inbox
+
+- Status: Accepted
+- Decision: Keep the canonical scheduled-task transcript unchanged for agent context and channel delivery, but project deliverable `web` scheduler results into a separate actor-scoped push store with stable push ids, deterministic summaries, full content, delivery timestamps, and server-owned `read_at` state. Public chat history and SSE render this projection as summary cards; Feishu and other channel adapters keep their existing output.
+- Read semantics: Opening push `N` marks every push owned by the same Web actor with an order at or before `N` as read. Opening an older push therefore preserves newer unread state, while opening the latest push clears the aggregate unread indicator.
+- API impact: Public list responses carry summaries and unread counts only; full content is fetched from an authenticated actor-scoped detail endpoint. Read state is used to drive the aggregate red dot but is not rendered as per-message read/unread copy.
+- Compatibility: Historical scheduled turns without push ids are lazily backfilled on the actor's first push-list request with deterministic `legacy:*` ids and durable read state. The import is actor-scoped and idempotent, preserves any existing `read_at`, and makes pre-upgrade messages available in the same inbox as new scheduler pushes.

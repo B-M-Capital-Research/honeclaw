@@ -1,5 +1,9 @@
 import { historyToTimeline } from "./messages";
-import type { HistoryAttachment, HistoryMsg } from "./types";
+import type {
+  HistoryAttachment,
+  HistoryMsg,
+  PublicPushListItem,
+} from "./types";
 
 export type PublicChatAuthState =
   | "loading"
@@ -35,6 +39,13 @@ export type PublicChatMessage = {
   startedAt?: number;
   steps?: string[];
   attachments?: PublicChatAttachment[];
+  scheduledPush?: {
+    pushId?: string;
+    title: string;
+    summary: string;
+    fallbackContent?: string;
+    createdAt?: string;
+  };
 };
 
 type PublicChatComposerState = {
@@ -94,7 +105,36 @@ export function toPublicChatMessages(
       phase: "done" as const,
       steps: [],
       attachments: toPublicAttachments(message.attachments ?? []),
+      scheduledPush: message.scheduledPush
+        ? {
+            pushId: message.scheduledPush.push_id,
+            title: message.scheduledPush.title,
+            summary: message.scheduledPush.summary,
+            fallbackContent: message.scheduledPush.fallback_content,
+          }
+        : undefined,
     }));
+}
+
+export function mergePublicPushItems(
+  existing: readonly PublicPushListItem[],
+  incoming: readonly PublicPushListItem[],
+): PublicPushListItem[] {
+  const seen = new Set<string>();
+  return [...existing, ...incoming].filter((item) => {
+    if (seen.has(item.push_id)) return false;
+    seen.add(item.push_id);
+    return true;
+  });
+}
+
+export function unreadCountAfterScheduledPush(
+  current: number,
+  serverCount?: number,
+): number {
+  return typeof serverCount === "number" && Number.isFinite(serverCount)
+    ? Math.max(0, Math.floor(serverCount))
+    : current + 1;
 }
 
 export function selectVisibleRecentMessages<T>(

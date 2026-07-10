@@ -46,6 +46,37 @@ export type HistoryMsg = {
   synthetic?: boolean;
   transcript_only?: boolean;
   attachments: HistoryAttachment[];
+  scheduled_push?: HistoryScheduledPush;
+};
+
+export type HistoryScheduledPush = {
+  push_id?: string;
+  title: string;
+  summary: string;
+  fallback_content?: string;
+};
+
+export type PublicPushListItem = {
+  push_id: string;
+  job_id: string;
+  title: string;
+  summary: string;
+  created_at: string;
+};
+
+export type PublicPushDetail = PublicPushListItem & {
+  content: string;
+};
+
+export type PublicPushListResponse = {
+  items: PublicPushListItem[];
+  unread_count: number;
+  next_before?: string | null;
+};
+
+export type PublicPushOpenResponse = {
+  push: PublicPushDetail;
+  unread_count: number;
 };
 
 export type HistoryAttachment = {
@@ -374,6 +405,7 @@ export type TimelineMessage =
       synthetic?: boolean;
       transcriptOnly?: boolean;
       attachments?: HistoryAttachment[];
+      scheduledPush?: HistoryScheduledPush;
     }
   | {
       id: string;
@@ -383,6 +415,7 @@ export type TimelineMessage =
       synthetic?: boolean;
       transcriptOnly?: boolean;
       attachments?: HistoryAttachment[];
+      scheduledPush?: HistoryScheduledPush;
     }
   | {
       id: string;
