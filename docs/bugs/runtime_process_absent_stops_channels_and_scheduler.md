@@ -14,7 +14,7 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## GitHub Issue
 
@@ -79,8 +79,22 @@
 - 为渠道 sidecar 和 scheduler 增加进程级健康检查：发现日志和 `cron_job_runs` 超过一个 heartbeat 周期不推进时，应告警或自动重启。
 - 若确认是当前机器手工停止或外部维护导致，应在运行态台账中记录维护窗口，避免自动化把计划停机误判为产品缺陷。
 
+## 运行态恢复复核（2026-07-10 23:03 CST）
+
+- **结论**：本缺陷从 `New` 更新为 `Fixed`。19:24 CST 记录的“运行承载进程缺席、会话与调度台账完全不推进”在 23:03 CST 已不再成立。
+- **证据来源**：
+  - 进程表在 22:10 CST 后可见 `target/debug/hone-cli start --build`、`target/debug/hone-console-page`、`target/debug/hone-feishu`、`target/debug/hone-discord` 与 Web UI dev server 进程。
+  - `data/sessions.sqlite3` 的 shadow 会话镜像已恢复推进：`sessions.max(updated_at)=2026-07-10T23:01:31.638783+08:00`，`session_messages.max(timestamp)=2026-07-10T23:01:31.624477+08:00`，最近四小时窗口新增 8 个 user turn 与 7 条 assistant final；Feishu direct、Feishu scheduler 与 Web scheduler 均有 assistant 收口。
+  - 当前 runtime 日志显示 `cloud runtime config detected cloud_postgres=true`，SQLite `cron_job_runs` 是旧 shadow/本地表，不再作为本轮 cloud scheduler 主台账判断依据。
+  - cloud PostgreSQL `cloud_cron_job_runs.max(executed_at)=2026-07-10T23:01:33.443243+08:00`，19:02-23:03 CST 新增普通 scheduler `completed + sent + delivered=1` 71 条、普通 scheduler `execution_failed + send_failed + delivered=0` 9 条、heartbeat `noop + skipped_noop` 143 条、heartbeat `completed + sent + delivered=1` 31 条、heartbeat 失败 19 条。
+  - `cloud_web_push_messages.max(created_at)=2026-07-10T23:00:54.663752+08:00`，说明 Web push inbox 也在推进。
+- **剩余观察**：
+  - 本轮只证明运行态恢复，不证明已补齐进程级 supervisor / 健康检查根因修复。
+  - 若后续再次出现 `cloud_cron_job_runs`、`session_messages`、runtime 日志与进程表同时停滞，应重新打开本单，而不是新建重复缺陷。
+
 ## 验证
 
 - 本轮为缺陷台账维护任务，未修改业务代码、测试代码或配置代码。
 - 已验证范围：`data/sessions.sqlite3` 最近四小时与上次巡检后的会话 / cron 台账、`data/runtime/logs/*.log` 最新修改时间、进程表、最近非文档代码提交。
 - 未验证范围：未重启服务，未运行代码测试，未进入 supervisor / launchctl 状态修复。
+- 2026-07-10 23:03 CST 复核新增验证：cloud PostgreSQL scheduler / Web push 表、SQLite shadow 会话镜像、当前 runtime 进程表与本轮 runtime 日志。

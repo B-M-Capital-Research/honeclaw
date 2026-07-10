@@ -7,6 +7,18 @@
 
 ## 修复进展
 
+- `2026-07-10 23:03 CST` 真实运行态继续复发，状态维持 `New`：
+  - cloud PostgreSQL `cloud_cron_job_runs`
+    - 19:02-23:03 CST heartbeat 窗口新增 233 条运行记录：143 条 `noop + skipped_noop + delivered=0`、31 条 `completed + sent + delivered=1`、11 条 `execution_failed + send_failed + delivered=0`、8 条 `execution_failed + skipped_error + delivered=0`。
+    - 代表样本包括 22:30 / 23:00 CST 多条 Feishu / Web heartbeat 在 raw preview 为自然语言、`PlainTextTriggered`、`PlainTextNoop` 或结构化退化后，被落成 `noop`、`completed` 或失败状态；同一窗口仍可见“本轮检查结果：没有标的触发推送条件，返回 noop”却以 `completed + sent + delivered=1` 送达的样本。
+    - 23:00 CST `持仓重大事件心跳检测`、`NVDA 关键事件心跳提醒`、`光迅科技关键事件心跳提醒` 等 heartbeat 有 `completed + sent`；同窗仍有 19 条 heartbeat 失败，说明结构化状态退化没有完全收敛。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` shadow 会话在 19:02-23:03 CST 新增 8 个 user turn 与 7 条 assistant final，Feishu direct、Feishu scheduler 与 Web scheduler 均有 assistant 收口；assistant final 污染扫描未命中空回复、`reasoning_content`、`<think>`、本机绝对路径、provider 原始错误、panic、quota、`mcpServers`、env 字段、`company_profiles/`、原始工具 JSON、ACP 原始错误或资源耗尽。
+    - 最近四小时有非文档代码提交 `383058fe feat: add web scheduled push inbox` 与 `d59cabcb fix: stabilize mobile push and calendar overlays`，但本轮 cloud heartbeat 状态退化仍在当前运行态可见。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题继续影响 heartbeat 监控判断、送达语义和失败/跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-10 11:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - 07:01-11:02 CST heartbeat 窗口新增 114 条运行记录：82 条 `noop + skipped_noop + delivered=0`、32 条 `execution_failed + skipped_error + delivered=0`。

@@ -22,6 +22,18 @@
 
 ## 最新进展
 
+- 本轮 2026-07-10 19:02-23:03 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `session_messages`
+    - 19:42 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 的 `核心观察池早间简报` assistant final 正常收口，但继续输出 `SNDK $1,844.97`、`MU $1,009.79`、`STX $917.41`、`WDC $590.13`、`GEV $1,079.18` 等异常或高风险数量级价格，并作为 25 支观察池击球区判断锚点。
+    - 21:37 CST 同 actor 的 `科技核心股池 · 晚间击球区快报` assistant final 正常收口，但继续输出 `MU $1,009.79`、`SNDK $1,828.82`、`STX $917.41`、`WDC $590.13` 等异常数量级价格。
+    - 23:01 CST 同 actor 的 `核心观察股池晚间快报` 已降级为“最新行情未完成稳定校验，不输出精确现价”，说明局部 guard 有止血表现，但 19:42 / 21:37 已送达样本仍证明同根链路未关闭。
+  - cloud PostgreSQL `cloud_cron_job_runs`
+    - 22:30 CST Web heartbeat `持仓重大事件心跳提醒` `run_id=35494` 落成 `completed + sent + delivered=1`，response preview 写 `MU 最新可得价格约 $978.94（昨收 $991.64）`，继续把异常数量级 MU 价格作为持仓触发判断依据。
+    - 23:01 CST Web heartbeat `闪迪关键事件心跳提醒` `run_id=35528` raw / response preview 继续围绕 `SNDK 当前价格约 $1,845（昨收 $1,858）`、市值约 `$2,733 亿` 等异常数量级信息进行判断，虽然最终 duplicate suppressed 为 `noop`，仍说明异常行情进入 heartbeat 判断上下文。
+  - 判断：
+    - 最新样本仍是同一行情源 / 数值 sanity check 缺口：异常数量级价格进入 Feishu scheduler final 与 heartbeat 判断链路。
+    - 直聊、调度和 Web push 主链路正常收口，未见空回复、错投、投递失败或原始工具 JSON；因此仍按质量性 `P3 / New`。该问题不影响直聊 / 调度 / 投递主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-10 07:01-11:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `session_messages`
     - 08:32 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f1fdfeceacb0f2ece1a2c88c5a7d17e34` 的 `闪迪(SNDK)每日行情与行业简报` assistant final 正常收口，但继续输出 `SNDK 7月9日收盘：1,858.27 美元`、前收 `1,727.18 美元`、盘中区间 `1,801.00 到 1,952.59 美元`、盘后 `1,887.99 美元`、市值 `2,751.9 亿美元`，并据此给出 1,900 / 1,700 美元交易观察位。

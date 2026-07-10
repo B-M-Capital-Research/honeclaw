@@ -8,6 +8,18 @@
 
 ## 最新进展
 
+- 本轮 2026-07-10 19:02-23:03 CST 真实运行态继续复发，状态维持 `New`：
+  - cloud PostgreSQL `cloud_cron_job_runs`
+    - 当前 runtime 已切到 cloud scheduler 台账；19:02-23:03 CST `cloud_cron_job_runs` 继续推进，证明本轮不是 runtime 全局停摆。
+    - 22:30 CST Web heartbeat `光模块板块关键事件心跳提醒` 落成 `completed + sent + delivered=1`，但用户可见 `response_preview` 开头写 `检查时间：2026-07-11 22:30 北京时间（美东 07:30，盘前）`，比实际执行窗口 2026-07-10 22:30 CST 晚 1 天。
+    - 23:00 CST Web heartbeat `持仓重大事件心跳提醒` 落成 `completed + sent + delivered=1`，但 preview 写 `核验摘要（2026-07-10 北京时间 22:00）`，与本轮 23:00 执行窗口不一致。
+    - runtime 日志同窗还显示 `持仓财报与重大新闻心跳提醒` raw / deliver preview 把检查时间写成 `2026-07-11 10:36 北京时间`，随后因 duplicate suppression 未进入用户可见发送；该样本只作为判断链路时间上下文漂移证据。
+  - 查重结论：
+    - 本窗没有新的独立根因；上述 delivered preview / raw preview 仍属于 heartbeat 模型时间上下文 / 执行窗口口径漂移，与本文档既有链路一致。
+  - 用户影响：
+    - 本窗已再次确认用户可见 heartbeat 送达正文出现错误检查日期；调度和投递主链路仍可运行，但错误日期会影响用户对增量扫描、重复抑制和行情新鲜度的判断。
+    - 因该问题不影响直聊 / 调度 / 投递主功能链路，只影响 heartbeat 触发判断质量与用户可见时间口径可信度，所以定级保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-10 07:01-11:02 CST 真实运行态继续观察，状态维持 `New`：
   - `data/sessions.sqlite3` / `cron_job_runs`
     - 同窗 heartbeat 新增 114 条运行记录，仍有 82 条 `noop + skipped_noop` 与 32 条 `execution_failed + skipped_error`，结构化退化链路继续存在。
