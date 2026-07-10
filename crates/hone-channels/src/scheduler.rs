@@ -227,6 +227,21 @@ static RE_HEARTBEAT_CURRENT_TIME_CONTEXT: LazyLock<regex::Regex> = LazyLock::new
     .expect("valid heartbeat current time context regex")
 });
 
+static RE_HEARTBEAT_CHECK_TIME_VALUE: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r"(?ix)^
+        (?P<datetime>
+            \d{4}年\d{1,2}月\d{1,2}日\s*\d{1,2}[:：]\d{1,2}(?::\d{1,2})?\s*(?:北京时间)?
+            |
+            \d{4}-\d{1,2}-\d{1,2}\s*(?:北京时间\s*)?\d{1,2}:\d{1,2}(?::\d{1,2})?\s*(?:Beijing\s+time|北京时间|CST|UTC)?
+            |
+            \d{4}-\d{1,2}-\d{1,2}\s+\d{1,2}:\d{1,2}(?::\d{1,2})?\s*(?:Beijing\s+time|北京时间|CST|UTC)?
+        )
+        ",
+    )
+    .expect("valid heartbeat check time value regex")
+});
+
 static RE_HEARTBEAT_FACT_TOKEN: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
         r"(?ix)
@@ -534,6 +549,19 @@ fn heartbeat_message_trailing_field(field: &str) -> bool {
         field,
         "source"
             | "sources"
+            | "facts"
+            | "fact"
+            | "actions_needed"
+            | "action_needed"
+            | "action_items"
+            | "action_item"
+            | "catalyst"
+            | "catalysts"
+            | "event"
+            | "events"
+            | "summary"
+            | "thesis"
+            | "evidence"
             | "confidence"
             | "reason"
             | "timestamp"
@@ -1092,6 +1120,48 @@ fn normalize_heartbeat_current_time_context(
         })
         .into_owned();
     (normalized, normalized_from)
+}
+
+fn normalize_heartbeat_check_time_context(
+    text: &str,
+    reference_now: DateTime<FixedOffset>,
+) -> (String, Option<String>) {
+    let replacement = heartbeat_check_time_text(reference_now);
+    for label in [
+        "检查时间：",
+        "检查时间:",
+        "核验摘要（",
+        "核验摘要(",
+        "核验摘要：",
+        "核验摘要:",
+    ] {
+        let Some(label_idx) = text.find(label) else {
+            continue;
+        };
+        let value_start = label_idx + label.len();
+        let tail = &text[value_start..];
+        let trimmed_tail = tail.trim_start();
+        let leading_ws = tail.len() - trimmed_tail.len();
+        let Some(captures) = RE_HEARTBEAT_CHECK_TIME_VALUE.captures(trimmed_tail) else {
+            continue;
+        };
+        let Some(datetime) = captures.name("datetime") else {
+            continue;
+        };
+        let original = datetime.as_str().trim();
+        if original.is_empty() || original == replacement {
+            continue;
+        }
+
+        let datetime_start = value_start + leading_ws + datetime.start();
+        let datetime_end = value_start + leading_ws + datetime.end();
+        let mut normalized = String::with_capacity(text.len());
+        normalized.push_str(&text[..datetime_start]);
+        normalized.push_str(&replacement);
+        normalized.push_str(&text[datetime_end..]);
+        return (normalized, Some(original.to_string()));
+    }
+    (text.to_string(), None)
 }
 
 fn normalize_heartbeat_beijing_trigger_time(
@@ -1778,6 +1848,12 @@ fn heartbeat_execution_from_content_internal(
                     normalize_heartbeat_current_time_context(&sanitized_message, reference_now)
                 });
             sanitized_message = normalized_current_time;
+            let normalized_check_time = reference_now.and_then(|reference_now| {
+                let (normalized, normalized_from) =
+                    normalize_heartbeat_check_time_context(&sanitized_message, reference_now);
+                sanitized_message = normalized;
+                normalized_from
+            });
             let normalized_beijing_trigger_time = reference_now.and_then(|reference_now| {
                 let (normalized, normalized_from) =
                     normalize_heartbeat_beijing_trigger_time(&sanitized_message, reference_now);
@@ -1838,6 +1914,8 @@ fn heartbeat_execution_from_content_internal(
                     "original_beijing_trigger_time": normalized_beijing_trigger_time,
                     "beijing_current_time_context_normalized": normalized_current_time_from.is_some(),
                     "original_beijing_current_time_context": normalized_current_time_from,
+                    "beijing_check_time_context_normalized": normalized_check_time.is_some(),
+                    "original_beijing_check_time_context": normalized_check_time,
                 }),
                 session_id: None,
             }
@@ -2641,6 +2719,16 @@ fn trim_repeated_scheduler_report_restart(text: &str) -> String {
 
 fn trim_scheduler_trailing_json_field_residue(text: &str) -> String {
     let suspicious_keys = [
+        "facts",
+        "actions_needed",
+        "action_items",
+        "catalyst",
+        "catalysts",
+        "event",
+        "events",
+        "summary",
+        "thesis",
+        "evidence",
         "data",
         "direction",
         "exchange",
@@ -2658,6 +2746,8 @@ fn trim_scheduler_trailing_json_field_residue(text: &str) -> String {
             format!(r#"\",\"{key}\":"#),
             format!(r#"","{key}":{{"#),
             format!(r#"\",\"{key}\":{{"#),
+            format!(r#"","{key}":["#),
+            format!(r#"\",\"{key}\":["#),
         ] {
             if let Some(idx) = text.find(&marker) {
                 cut_at = Some(cut_at.map_or(idx, |current: usize| current.min(idx)));
@@ -4162,6 +4252,66 @@ mod tests {
     }
 
     #[test]
+    fn heartbeat_normalizes_conflicting_check_time_context() {
+        let reference_now =
+            chrono::DateTime::parse_from_rfc3339("2026-07-10T22:30:18+08:00").expect("time");
+        let execution = heartbeat_execution_from_content_at_beijing(
+            r#"{"status":"triggered","message":"【光模块板块关键事件心跳提醒】检查时间：2026-07-11 22:30 北京时间（美东 07:30，盘前）。A股与美股光模块链出现关键增量。"}"#,
+            "MiniMax-M2.7-highspeed",
+            reference_now,
+        );
+
+        assert!(execution.should_deliver);
+        assert!(execution.error.is_none());
+        assert!(
+            execution
+                .content
+                .contains("检查时间：2026-07-10 22:30（美东 07:30，盘前）"),
+            "{}",
+            execution.content
+        );
+        assert!(!execution.content.contains("2026-07-11 22:30"));
+        assert_eq!(
+            execution.metadata["beijing_check_time_context_normalized"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(
+            execution.metadata["original_beijing_check_time_context"].as_str(),
+            Some("2026-07-11 22:30 北京时间")
+        );
+    }
+
+    #[test]
+    fn heartbeat_normalizes_conflicting_verification_summary_time() {
+        let reference_now =
+            chrono::DateTime::parse_from_rfc3339("2026-07-10T23:00:09+08:00").expect("time");
+        let execution = heartbeat_execution_from_content_at_beijing(
+            r#"{"status":"triggered","message":"核验摘要（2026-07-10 北京时间 22:00）：持仓重大事件心跳提醒已命中，需关注后续走势。"}"#,
+            "MiniMax-M2.7-highspeed",
+            reference_now,
+        );
+
+        assert!(execution.should_deliver);
+        assert!(execution.error.is_none());
+        assert!(
+            execution
+                .content
+                .contains("核验摘要（2026-07-10 23:00）：持仓重大事件心跳提醒已命中"),
+            "{}",
+            execution.content
+        );
+        assert!(!execution.content.contains("北京时间 22:00"));
+        assert_eq!(
+            execution.metadata["beijing_check_time_context_normalized"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(
+            execution.metadata["original_beijing_check_time_context"].as_str(),
+            Some("2026-07-10 北京时间 22:00")
+        );
+    }
+
+    #[test]
     fn heartbeat_prompt_rejects_direct_trade_instructions() {
         let event = SchedulerEvent {
             actor: ActorIdentity::new("feishu", "ou_cai", None::<String>).expect("actor"),
@@ -4484,6 +4634,16 @@ mod tests {
         assert_eq!(
             sanitized,
             "【提醒】Cerebras 触发重大事件监控。已核验 Cerebras 相关业务进展。"
+        );
+    }
+
+    #[test]
+    fn scheduler_delivery_text_trims_trailing_json_fact_residue() {
+        let raw = r#"DRAM现价$65.25，已较昨收$62.04上涨+5.17%，突破$60触发位。\",\"facts\":[{\"ticker\":\"DRAM\"}],\"actions_needed\":[\"关注盘后消息\"],\"catalyst\":{\"level\":\"high\"}}"#;
+        let sanitized = sanitize_scheduler_delivery_text(raw);
+        assert_eq!(
+            sanitized,
+            "DRAM现价$65.25，已较昨收$62.04上涨+5.17%，突破$60触发位。"
         );
     }
 

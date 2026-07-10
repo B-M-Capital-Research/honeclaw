@@ -3,10 +3,20 @@
 - **发现时间**: 2026-05-29 15:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，当前不是 P1。
 
 ## 最新进展
+
+- `2026-07-11 03:09 CST` 代码级修复并回归通过，状态更新为 `Fixed`：
+  - `crates/hone-channels/src/scheduler.rs`
+    - heartbeat 出站归一化新增 `normalize_heartbeat_check_time_context(...)`，在现有“当前时间上下文 / 北京时间触发时间”修正之外，额外把 `检查时间：...`、`核验摘要（...）` 这两类用户可见检查口径统一重写到 scheduler 权威北京时间。
+    - 新 metadata 增加 `beijing_check_time_context_normalized` 与 `original_beijing_check_time_context`，方便后续巡检区分“模型判断仍漂移”与“用户可见正文已被收口修正”。
+  - 新增 / 复跑回归：
+    - `cargo test -p hone-channels heartbeat_normalizes_conflicting_check_time_context --lib -- --nocapture`
+    - `cargo test -p hone-channels heartbeat_normalizes_conflicting_verification_summary_time --lib -- --nocapture`
+    - `cargo check -p hone-channels --tests`
+  - 当前按代码与回归验证更新为 `Fixed`；本轮未重启 live runtime，待后续运行态复核是否仍有其他未覆盖的“日期在前 / 北京时间在中 / 标题前缀”漂移形态。
 
 - 本轮 2026-07-10 19:02-23:03 CST 真实运行态继续复发，状态维持 `New`：
   - cloud PostgreSQL `cloud_cron_job_runs`

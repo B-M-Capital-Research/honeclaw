@@ -3,9 +3,19 @@
 - **发现时间**: 2026-04-18 11:06 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 
 ## 最新进展
+
+- `2026-07-11 03:09 CST` 代码级修复并回归通过，状态更新为 `Fixed`：
+  - `crates/hone-channels/src/scheduler.rs`
+    - `trim_scheduler_trailing_json_field_residue(...)` 扩展了 heartbeat 尾随结构化字段裁剪范围，新增覆盖 `facts`、`actions_needed`、`action_items`、`catalyst/catalysts`、`event/events`、`summary`、`thesis`、`evidence`，并补 `:[` 数组残片形态，避免自然语言提醒后继续拼入数组或对象协议字段。
+    - `heartbeat_message_trailing_field(...)` 同步扩展同一组字段，保证畸形 `JsonTriggered` 恢复路径也能把这些字段视作 `message` 之后的结构化尾巴，而不是正文内容。
+  - 新增 / 复跑回归：
+    - `cargo test -p hone-channels scheduler_delivery_text_trims_trailing_json_fact_residue --lib -- --nocapture`
+    - `cargo test -p hone-channels heartbeat_malformed_triggered_message_strips_trailing_data_object --lib -- --nocapture`
+    - `cargo check -p hone-channels --tests`
+  - 当前按代码与回归验证更新为 `Fixed`；本轮未重启 live runtime，待后续运行态复核是否已消除 `facts/actions_needed/catalyst` 尾巴污染。
 
 - `2026-07-10 03:02 CST` 真实运行态复发，状态从 `Fixed` 回退为 `New`：
   - `data/sessions.sqlite3` -> `cron_job_runs`
