@@ -3,10 +3,24 @@
 - **发现时间**: 2026-05-29 15:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
 
 ## 最新进展
+
+- 本轮 `2026-07-11 03:00-07:01 CST` 真实运行态在 03:11 代码提交后继续复发，状态从代码级 `Fixed` 回退为运行态 `New`：
+  - `data/runtime/logs/web.log.2026-07-10`
+    - 最近四小时仅有 2 个 user turn / 2 条 assistant final，均正常收口；assistant final 污染扫描未命中 `reasoning_content`、`<think>`、本机路径、raw tool JSON、`data_fetch` / `quote_short` 等用户可见内部字段。
+    - 06:00 CST `持仓财报与重大新闻心跳提醒` `deliver_preview` 写出 `检查时间：2026-07-12 北京时间约 15:30`，与实际 2026-07-11 06:00 CST 执行窗口不一致；随后被 duplicate suppression，未确认正式发送。
+    - 06:00 CST `光模块板块关键事件心跳提醒` `deliver_preview` 写出 `本轮检查：2026-07-12 北京时间约 03:00`，同样晚于实际执行窗口；随后进入送达/抑制路径。
+    - 06:00 CST `存储板块关键事件心跳提醒` `deliver_preview` 写出 `检查时间：2026-07-12 约 15:30 北京时间`，并围绕错误检查日判断新闻增量。
+    - 07:00 CST `光模块板块关键事件心跳提醒` `deliver_preview` 继续写 `检查时间：2026-07-12 北京时间约 15:15`，证明 03:09 的 `检查时间 / 核验摘要` 归一化仍未覆盖该标题前缀 / 多段时间口径形态。
+  - 查重结论：
+    - 最新证据仍属于本文档同一 heartbeat 时间口径漂移链路，不新建重复缺陷。
+    - 本轮不是全局 runtime 停摆：`data/runtime/logs/acp-events.log` 推进到 06:01 CST 且 Feishu/Web scheduler final 均有收口样本。
+  - 用户影响：
+    - 错误检查日期继续影响 heartbeat 触发判断、重复抑制和用户对增量扫描时效性的理解；但未见直聊 / 调度 / 投递主链路不可用、错对象投递或数据安全问题。
+    - 因主要影响返回质量和时间口径可信度，不影响主功能链路，维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
 
 - `2026-07-11 03:09 CST` 代码级修复并回归通过，状态更新为 `Fixed`：
   - `crates/hone-channels/src/scheduler.rs`

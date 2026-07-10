@@ -22,6 +22,19 @@
 
 ## 最新进展
 
+- 本轮 2026-07-11 03:00-07:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `session_messages`
+    - 05:02 CST Web scheduler final `盘后美股复盘与SNDK/MU存储产业链日报` 正常收口，但围绕 SK Hynix ADR 首秀、SNDK/MU 和存储产业链继续输出强时效行情与估值判断；同窗未见空回复、内部字段或投递失败。
+    - 06:01 CST Feishu scheduler final `每日美股盘后收盘复盘` 正常收口，但继续输出异常数量级指数：`纳斯达克综合指数 26,281.61`、`标普 500 7,575.39`、`道指 52,637.01`，并据此解释风险偏好、利率和科技股状态。
+  - `data/runtime/logs/web.log.2026-07-10`
+    - 06:00 CST `持仓重大事件心跳提醒` raw preview 使用 `MU $979.30`、`ARM $323.39` 等异常或高风险数量级价格作为判断上下文。
+    - 06:00-07:00 CST `闪迪关键事件心跳提醒` deliver / duplicate preview 多次使用 `SNDK $1,915.92`、昨收 `$1,858.27`、日内区间 `$1,773.51-$1,946.84`、市值约 `$2,837 亿` 等异常数量级行情。
+    - 07:00 CST `Monitor_Watchlist_11` raw preview 明确写 `MU $979.30` 并对比 `MU <= $252.00` 判断未触发；模型虽提示价格看起来过高，但异常价格仍进入 watchlist 判断上下文。
+    - 07:00 CST `美股黄金坑信号心跳检测` raw preview 使用 `SPY 754.95`、`QQQ` 等异常数量级指数 ETF 价格，并进入 `JsonNoop` 判断。
+  - 判断：
+    - 最新样本仍是同一行情源 / 数值 sanity check 缺口：异常数量级价格进入用户可见 scheduler final、heartbeat deliver preview 与阈值判断上下文。
+    - 直聊、调度和 heartbeat runner 均有正常收口或受控 duplicate suppression；未见空回复、错投、投递失败或原始工具 JSON。该问题主要削弱投研质量和价格判断可信度，不影响主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-10 19:02-23:03 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `session_messages`
     - 19:42 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 的 `核心观察池早间简报` assistant final 正常收口，但继续输出 `SNDK $1,844.97`、`MU $1,009.79`、`STX $917.41`、`WDC $590.13`、`GEV $1,079.18` 等异常或高风险数量级价格，并作为 25 支观察池击球区判断锚点。

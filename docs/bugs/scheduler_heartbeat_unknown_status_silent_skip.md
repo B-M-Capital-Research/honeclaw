@@ -5775,3 +5775,16 @@
 - 本轮判断
   - 最新证据仍属于 heartbeat 输出结构漂移 / 解析失败的既有范围，没有新的独立根因。
   - 坏态影响 heartbeat 是否稳定得出 `triggered/noop` 并发送；普通 direct / scheduler 主链路本窗大体可收口，未见错对象投递或数据安全问题，因此维持 `P2 / New`，非 P1。
+
+## 最新运行态复核（2026-07-11 07:01 CST）
+
+- `data/runtime/logs/web.log.2026-07-10`
+  - 巡检窗口：2026-07-11 03:00-07:01 CST。
+  - 本窗本地 `session_messages` 只有 2 个 user turn / 2 条 assistant final，均正常收口；本地 `cron_job_runs` 未推进，运行态证据主要来自当前 web runtime 日志。
+  - Heartbeat 仍大量输出 `<think>` / 自然语言 / 非纯 JSON 结果，然后被解析为 `PlainTextTriggered`、`PlainTextNoop`、`PlainTextSuppressed`、`JsonNoop` 或 `JsonUnknownStatus`。
+  - 代表样本包括 06:00 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 以 `<think>` 和工具预算耗尽说明开头后落成 `JsonUnknownStatus` 并触发 parse failure escalated；06:30 CST `AI与科技持仓观察关键事件心跳提醒` 先因 `context window exceeds limit (2013)` 失败，再经 `BudgetRecovery { reason: ContextOverflow }` 产出 `JsonNoop`；07:00 CST `小米30港元破位预警`、`NBIS关键事件心跳提醒`、`TSLA 正负触发条件心跳监控` 等仍以 `PlainTextTriggered` 进入 deliver / duplicate suppression 路径。
+- `data/sessions.sqlite3`
+  - 最近四小时 2 条 assistant final 未见空回复、`reasoning_content`、`<think>`、raw provider 错误、本机路径、raw tool JSON 或资源耗尽原文进入用户可见文本。
+- 本轮判断
+  - 最新证据仍属于 heartbeat 输出结构漂移 / 解析边界不稳定的既有范围，没有新的独立根因。
+  - 坏态影响 heartbeat 是否稳定得出 `triggered/noop`、是否误送达或被 duplicate suppression；普通 scheduler final 主链路本窗可收口，未见错对象投递或数据安全问题，因此维持功能性 `P2 / New`，非 P1。
