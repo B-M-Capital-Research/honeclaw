@@ -14,12 +14,17 @@ import {
   Switch,
 } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
+import { Portal } from "solid-js/web";
 import { useNavigate } from "@solidjs/router";
 import { PublicLoginForm } from "@/components/public-login-form";
 import { PublicNav } from "@/components/public-nav";
 import { ChatShareModal } from "@/components/chat-share-modal";
 import { canvasToPngBlob } from "@/components/chat-share-export";
-import { FinanceCalendarCard } from "@/components/finance-calendar-card";
+import {
+  FinanceCalendarCard,
+  FINANCE_CALENDAR_CARD_HEIGHT,
+  FINANCE_CALENDAR_CARD_WIDTH,
+} from "@/components/finance-calendar-card";
 import {
   PublicPushCenter,
   PublicPushDetailDialog,
@@ -65,6 +70,7 @@ import {
   findPendingPublicAssistantMessage,
   formatPublicAttachmentBytes,
   isPublicChatQuotaExhausted,
+  latestUnreadPushId,
   nextVisibleMessageCount,
   PUBLIC_RESTORE_TIMEOUT_MS,
   publicComposerPendingMessage,
@@ -1833,6 +1839,9 @@ function FinanceCalendarQuickAction(props: { onSent: () => void }) {
   const [payload, setPayload] = createSignal<FinanceCalendarPayload | null>(
     null,
   );
+  const [largePreviewOpen, setLargePreviewOpen] = createSignal(false);
+  const [largePreviewScale, setLargePreviewScale] = createSignal(1);
+  const [largePreviewFit, setLargePreviewFit] = createSignal(true);
   const monthOptions = createMemo(() =>
     monthOptionsForSelection(selectedMonth()),
   );
@@ -1850,6 +1859,31 @@ function FinanceCalendarQuickAction(props: { onSent: () => void }) {
   );
   let cardEl: HTMLDivElement | undefined;
   let requestId = 0;
+
+  const fitLargePreview = () => {
+    const width = Math.max(240, window.innerWidth - 24);
+    const height = Math.max(320, window.innerHeight - 82);
+    setLargePreviewScale(
+      Math.min(
+        1,
+        width / FINANCE_CALENDAR_CARD_WIDTH,
+        height / FINANCE_CALENDAR_CARD_HEIGHT,
+      ),
+    );
+    setLargePreviewFit(true);
+  };
+
+  const openLargePreview = () => {
+    fitLargePreview();
+    setLargePreviewOpen(true);
+  };
+
+  const zoomLargePreview = (delta: number) => {
+    setLargePreviewFit(false);
+    setLargePreviewScale((current) =>
+      Math.min(1.5, Math.max(0.2, Math.round((current + delta) * 100) / 100)),
+    );
+  };
 
   const loadMonth = async (month: string) => {
     const currentRequest = ++requestId;
@@ -1894,6 +1928,7 @@ function FinanceCalendarQuickAction(props: { onSent: () => void }) {
     setLoading(false);
     setError(null);
     setPayload(null);
+    setLargePreviewOpen(false);
   };
 
   const waitForCard = async () => {
@@ -1954,10 +1989,22 @@ function FinanceCalendarQuickAction(props: { onSent: () => void }) {
   createEffect(() => {
     if (!open()) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
+      if (e.key !== "Escape") return;
+      if (largePreviewOpen()) {
+        setLargePreviewOpen(false);
+      } else {
+        close();
+      }
     };
     document.addEventListener("keydown", onKey);
     onCleanup(() => document.removeEventListener("keydown", onKey));
+  });
+
+  createEffect(() => {
+    if (!largePreviewOpen() || !largePreviewFit()) return;
+    const onResize = () => fitLargePreview();
+    window.addEventListener("resize", onResize);
+    onCleanup(() => window.removeEventListener("resize", onResize));
   });
 
   return (
@@ -2066,16 +2113,35 @@ function FinanceCalendarQuickAction(props: { onSent: () => void }) {
                   </Match>
                   <Match when={payload()}>
                     {(data) => (
-                      <div
+                      <button
+                        type="button"
                         class="public-chat-calendar-preview-frame"
                         aria-label={
-                          CONTENT.chat_page.composer.finance_calendar_preview_aria
+                          CONTENT.chat_page.composer.finance_calendar_preview_open
                         }
+                        onClick={openLargePreview}
                       >
                         <div class="public-chat-calendar-preview-artboard">
                           <FinanceCalendarCard payload={data()} />
                         </div>
-                      </div>
+                        <span class="public-chat-calendar-preview-hint">
+                          <svg
+                            width="15"
+                            height="15"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2.2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                          >
+                            <circle cx="11" cy="11" r="7" />
+                            <path d="m20 20-3.8-3.8M11 8v6M8 11h6" />
+                          </svg>
+                          {CONTENT.chat_page.composer.finance_calendar_preview_hint}
+                        </span>
+                      </button>
                     )}
                   </Match>
                   <Match when={error()}>
@@ -2195,6 +2261,71 @@ function FinanceCalendarQuickAction(props: { onSent: () => void }) {
           </div>
         </div>
       </Show>
+      <Portal>
+        <Show when={largePreviewOpen() && payload()}>
+          <div
+            class="public-chat-calendar-large-preview"
+            role="dialog"
+            aria-modal="true"
+            aria-label={CONTENT.chat_page.composer.finance_calendar_preview_aria}
+          >
+            <header>
+              <strong>{selectedMonthLabel()}</strong>
+              <div class="public-chat-calendar-zoom-controls">
+                <button
+                  type="button"
+                  aria-label={CONTENT.chat_page.composer.finance_calendar_zoom_out}
+                  disabled={largePreviewScale() <= 0.2}
+                  onClick={() => zoomLargePreview(-0.15)}
+                >
+                  −
+                </button>
+                <span>{Math.round(largePreviewScale() * 100)}%</span>
+                <button
+                  type="button"
+                  aria-label={CONTENT.chat_page.composer.finance_calendar_zoom_in}
+                  disabled={largePreviewScale() >= 1.5}
+                  onClick={() => zoomLargePreview(0.15)}
+                >
+                  +
+                </button>
+                <button
+                  type="button"
+                  class="is-fit"
+                  aria-label={CONTENT.chat_page.composer.finance_calendar_zoom_fit}
+                  onClick={fitLargePreview}
+                >
+                  {CONTENT.chat_page.composer.finance_calendar_zoom_fit}
+                </button>
+              </div>
+              <button
+                type="button"
+                class="public-chat-calendar-large-close"
+                aria-label={CONTENT.chat_page.composer.finance_calendar_preview_close}
+                onClick={() => setLargePreviewOpen(false)}
+              >
+                ×
+              </button>
+            </header>
+            <div class="public-chat-calendar-large-viewport">
+              <div
+                class="public-chat-calendar-large-canvas-shell"
+                style={{
+                  width: `${FINANCE_CALENDAR_CARD_WIDTH * largePreviewScale()}px`,
+                  height: `${FINANCE_CALENDAR_CARD_HEIGHT * largePreviewScale()}px`,
+                }}
+              >
+                <div
+                  class="public-chat-calendar-large-canvas"
+                  style={{ transform: `scale(${largePreviewScale()})` }}
+                >
+                  <FinanceCalendarCard payload={payload()!} />
+                </div>
+              </div>
+            </div>
+          </div>
+        </Show>
+      </Portal>
       <Show when={payload()}>
         {(data) => (
           <FinanceCalendarCard
@@ -2616,7 +2747,7 @@ export default function PublicChatPage() {
           ? mergePublicPushItems(current, payload.items)
           : payload.items,
       );
-      setPushUnreadCount(payload.unread_count);
+      setPushUnreadCount(pushCenterOpen() ? 0 : payload.unread_count);
       setPushNextBefore(payload.next_before ?? undefined);
     } catch (error) {
       setPushError(error instanceof Error ? error.message : String(error));
@@ -2626,9 +2757,32 @@ export default function PublicChatPage() {
     }
   };
 
+  const acknowledgePushCenter = async (unreadBeforeOpen: number) => {
+    let items = pushItems();
+    let unread = unreadBeforeOpen;
+    try {
+      if (items.length === 0) {
+        const payload = await getPublicPushes();
+        items = payload.items;
+        unread = payload.unread_count;
+        setPushItems(payload.items);
+        setPushNextBefore(payload.next_before ?? undefined);
+      }
+      const latestPushId = latestUnreadPushId(items, unread);
+      if (!latestPushId) return;
+      const payload = await openPublicPush(latestPushId);
+      setPushUnreadCount(payload.unread_count);
+    } catch (error) {
+      setPushUnreadCount(unreadBeforeOpen || unread);
+      setPushError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
   const openPushCenter = () => {
+    const unreadBeforeOpen = pushUnreadCount();
     setPushCenterOpen(true);
-    if (pushItems().length === 0) void loadPushes("reset");
+    setPushUnreadCount(0);
+    void acknowledgePushCenter(unreadBeforeOpen);
   };
 
   const openScheduledPush = async (push: ScheduledPushCardData) => {
@@ -4451,12 +4605,127 @@ export default function PublicChatPage() {
           box-shadow: 0 14px 36px rgba(27,35,38,0.12);
           box-sizing: content-box;
         }
+        .public-chat-calendar-preview-frame {
+          position: relative;
+          padding: 0;
+          color: inherit;
+          text-align: left;
+          cursor: zoom-in;
+          appearance: none;
+          -webkit-appearance: none;
+        }
+        .public-chat-calendar-preview-frame:focus-visible {
+          outline: 3px solid rgba(240,106,75,0.4);
+          outline-offset: 3px;
+        }
         .public-chat-calendar-preview-artboard {
           width: 1080px;
           height: 1350px;
           transform: scale(0.42);
           transform-origin: top left;
           pointer-events: none;
+        }
+        .public-chat-calendar-preview-hint {
+          position: absolute;
+          right: 10px;
+          bottom: 10px;
+          z-index: 2;
+          min-height: 30px;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 0 10px;
+          border-radius: 999px;
+          background: rgba(15,23,42,0.9);
+          color: #fff;
+          box-shadow: 0 6px 18px rgba(15,23,42,0.22);
+          font-size: 11px;
+          font-weight: 800;
+          pointer-events: none;
+        }
+        .public-chat-calendar-large-preview {
+          position: fixed;
+          inset: 0;
+          z-index: 1400;
+          display: grid;
+          grid-template-rows: auto minmax(0, 1fr);
+          background: #111719;
+          color: #fff;
+        }
+        .public-chat-calendar-large-preview > header {
+          min-height: 58px;
+          padding: max(8px, env(safe-area-inset-top)) 10px 8px 14px;
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto 36px;
+          align-items: center;
+          gap: 10px;
+          border-bottom: 1px solid rgba(255,255,255,0.1);
+          background: rgba(17,23,25,0.98);
+        }
+        .public-chat-calendar-large-preview > header > strong {
+          overflow: hidden;
+          font-size: 14px;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .public-chat-calendar-zoom-controls {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+        }
+        .public-chat-calendar-zoom-controls button,
+        .public-chat-calendar-large-close {
+          height: 34px;
+          min-width: 34px;
+          padding: 0 9px;
+          border: 1px solid rgba(255,255,255,0.14);
+          border-radius: 9px;
+          background: rgba(255,255,255,0.07);
+          color: #fff;
+          cursor: pointer;
+          font-size: 18px;
+          font-weight: 800;
+        }
+        .public-chat-calendar-zoom-controls button:disabled {
+          cursor: default;
+          opacity: 0.35;
+        }
+        .public-chat-calendar-zoom-controls button.is-fit {
+          font-size: 11px;
+        }
+        .public-chat-calendar-zoom-controls > span {
+          min-width: 42px;
+          color: #b9c3c6;
+          text-align: center;
+          font-size: 11px;
+          font-variant-numeric: tabular-nums;
+        }
+        .public-chat-calendar-large-close {
+          padding: 0;
+          font-size: 23px;
+          line-height: 1;
+        }
+        .public-chat-calendar-large-viewport {
+          min-width: 0;
+          min-height: 0;
+          overflow: auto;
+          padding: 12px;
+          background: #20282b;
+          overscroll-behavior: contain;
+          -webkit-overflow-scrolling: touch;
+          touch-action: pan-x pan-y pinch-zoom;
+        }
+        .public-chat-calendar-large-canvas-shell {
+          position: relative;
+          margin: 0 auto;
+          overflow: hidden;
+          background: #eef2f3;
+          box-shadow: 0 18px 54px rgba(0,0,0,0.28);
+        }
+        .public-chat-calendar-large-canvas {
+          width: 1080px;
+          height: 1350px;
+          transform-origin: top left;
         }
         .public-chat-calendar-preview-loading {
           display: flex;
@@ -5361,17 +5630,56 @@ export default function PublicChatPage() {
           }
           .public-chat-calendar-preview-frame,
           .public-chat-calendar-preview-loading {
-            width: 270px !important;
-            height: 338px !important;
+            width: min(300px, calc(100vw - 48px)) !important;
+            height: min(375px, calc((100vw - 48px) * 1.25)) !important;
           }
           .public-chat-calendar-preview-artboard {
-            transform: scale(0.25) !important;
+            transform: scale(0.2778) !important;
+          }
+          .public-chat-calendar-preview-hint {
+            right: 8px !important;
+            bottom: 8px !important;
+            min-height: 28px !important;
+            max-width: calc(100% - 16px) !important;
+            overflow: hidden !important;
+            font-size: 10px !important;
+            text-overflow: ellipsis !important;
+            white-space: nowrap !important;
           }
           .public-chat-calendar-controls {
-            min-height: 420px !important;
+            min-height: 0 !important;
+          }
+          .public-chat-calendar-stat-list {
+            display: none !important;
+          }
+          .public-chat-calendar-data-state {
+            margin: 10px 0 !important;
           }
           .public-chat-calendar-current-month {
-            margin-bottom: 12px !important;
+            margin-bottom: 8px !important;
+          }
+          .public-chat-calendar-send {
+            margin-top: 8px !important;
+          }
+          .public-chat-calendar-large-preview > header {
+            grid-template-columns: minmax(0, 1fr) auto 34px !important;
+            gap: 6px !important;
+            padding-inline: 10px 8px !important;
+          }
+          .public-chat-calendar-large-preview > header > strong {
+            display: none !important;
+          }
+          .public-chat-calendar-zoom-controls {
+            grid-column: 1 / 3;
+            justify-self: start;
+          }
+          .public-chat-calendar-zoom-controls button,
+          .public-chat-calendar-large-close {
+            height: 32px !important;
+            min-width: 32px !important;
+          }
+          .public-chat-calendar-large-viewport {
+            padding: 8px !important;
           }
           .public-chat-composer-box {
             width: 100% !important;

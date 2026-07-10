@@ -49,3 +49,11 @@ Start with `crates/hone-web-api/src/routes/public_pushes.rs` for API/read behavi
 - A temporary secondary session for the affected actor triggered the migration without invalidating existing sessions. It imported 79 historical pushes in 93ms; the temporary session was deleted and no push was opened during verification, so user read state was not changed.
 - Verification passed: Web API 94/94 non-live tests, Web 203 tests, typecheck, public build, workspace check, and CI-safe regression. The unrelated existing memory test `sqlite_runtime_backend_backfills_existing_json_even_when_shadow_write_disabled` still fails with `QueryReturnedNoRows`; the new legacy batch/id tests pass.
 - Commit `383058fe` was pushed to `main`. Cloudflare Pages switched from the stale `index-CTmcEZn7.js` bundle to `index-BeqwKSm5.js`; production chat assets expose the push center and dedicated mobile action, and authenticated Worker verification returned five recent legacy cards with 79 unread total.
+
+## Mobile Overlay And Calendar Follow-up
+
+- The push center now uses a compact full-viewport mobile layout above the fixed nav; push details use a bounded bottom sheet, scheduled cards are denser, and the unread dot no longer covers the bell glyph.
+- Opening the push center immediately hides the dot and acknowledges the latest push present at open time through the existing mark-through endpoint. A push arriving afterward remains unread.
+- Finance-calendar preview is now explicitly tappable and opens a full-screen viewer with fit, zoom in/out, and scroll behavior. The viewer uses a document-body Portal so nav stacking contexts cannot intercept controls.
+- Added `packages/app/e2e/public-mobile-overlays.spec.ts`, covering a `390x844` viewport, unread clearing, full-width center, compact cards, bottom-sheet detail, calendar large preview, and a real zoom interaction.
+- Verification passed: Web typecheck, complete Web unit suite, public production build, and the focused mobile Playwright E2E. The isolated QA account and two test pushes were deleted; the affected actor remained at 79 total / 79 unread pushes.

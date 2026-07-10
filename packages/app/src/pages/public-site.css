@@ -1759,13 +1759,20 @@ html {
 
 .public-push-unread-dot {
   position: absolute;
-  top: 7px;
-  right: 7px;
-  width: 8px;
-  height: 8px;
+  top: -3px;
+  right: -3px;
+  width: 7px;
+  height: 7px;
   border-radius: 999px;
   background: #ef4444;
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.92);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.98);
+  pointer-events: none;
+}
+
+.public-chat-sidebar .public-push-unread-dot {
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
 }
 
 .public-scheduled-card-row {
@@ -1872,7 +1879,7 @@ html {
 .public-push-detail-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 80;
+  z-index: 600;
   display: flex;
   justify-content: flex-end;
   background: rgba(15, 23, 42, 0.35);
@@ -2094,7 +2101,7 @@ html {
 }
 
 .public-push-detail-backdrop {
-  z-index: 90;
+  z-index: 620;
   align-items: center;
   justify-content: center;
   padding: 24px;
@@ -2185,19 +2192,39 @@ html {
 }
 
 @media (max-width: 768px) {
-  .public-scheduled-card { width: 94%; padding: 17px 17px 16px 21px; }
+  .public-scheduled-card-row { margin-bottom: 12px; }
+  .public-scheduled-card { width: 100%; gap: 7px; padding: 13px 14px 12px 17px; border-radius: 4px 16px 16px 16px; }
   .public-scheduled-card-topline { letter-spacing: 0.08em; }
-  .public-push-center { width: 100vw; }
-  .public-push-center > header { padding: 32px 24px 24px; }
-  .public-push-center > header::after { inset-inline: 24px; }
-  .public-push-center-list { padding: 18px 14px 30px; }
-  .public-push-list-item { grid-template-columns: 34px minmax(0, 1fr) 18px; padding: 14px; gap: 10px; }
-  .public-push-list-index { width: 34px; height: 34px; }
+  .public-scheduled-card-icon { width: 26px; height: 26px; border-radius: 8px; }
+  .public-scheduled-card-icon svg { width: 16px; height: 16px; }
+  .public-scheduled-card strong { font-size: 16px; }
+  .public-scheduled-card-summary { font-size: 12.5px; line-height: 1.5; -webkit-line-clamp: 2; }
+  .public-scheduled-card-action { font-size: 12px; }
+  .public-push-center-backdrop { background: #f8fafc; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .public-push-center { position: fixed; inset: 0; width: auto; max-width: none; height: 100dvh; margin: 0; border-left: 0; box-shadow: none; }
+  .public-push-center > header { min-height: 92px; padding: max(16px, env(safe-area-inset-top)) 54px 14px 18px; box-sizing: border-box; }
+  .public-push-center > header h2 { margin: 2px 0 3px; font-size: 25px; }
+  .public-push-center > header p { overflow: hidden; font-size: 12px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+  .public-push-center-kicker { display: none; }
+  .public-push-center > header::after { inset-inline: 18px; height: 2px; }
+  .public-push-center > header > button { top: max(14px, env(safe-area-inset-top)); right: 14px; width: 34px; height: 34px; border-radius: 10px; font-size: 22px; }
+  .public-push-center-list { gap: 8px; padding: 10px 10px calc(20px + env(safe-area-inset-bottom)); }
+  .public-push-list-item { grid-template-columns: 29px minmax(0, 1fr) 15px; padding: 11px 10px; gap: 9px; border-radius: 14px; box-shadow: 0 3px 12px rgba(15, 23, 42, 0.04); }
+  .public-push-list-index { width: 29px; height: 29px; border-radius: 9px; font-size: 10px; }
+  .public-push-list-copy { gap: 4px; }
+  .public-push-list-meta { font-size: 10px; }
+  .public-push-list-copy strong { font-size: 14.5px; line-height: 1.25; }
+  .public-push-list-copy > span:last-child { font-size: 12px; line-height: 1.4; -webkit-line-clamp: 2; }
+  .public-push-list-arrow { padding-top: 2px; font-size: 16px; }
   .public-push-detail-backdrop { align-items: flex-end; padding: 0; }
-  .public-push-detail { width: 100vw; max-height: 94dvh; border-radius: 22px 22px 0 0; }
-  .public-push-detail > header { grid-template-columns: 44px minmax(0, 1fr); padding: 22px 58px 20px 20px; }
-  .public-push-detail-mark { width: 44px; height: 44px; border-radius: 13px; }
-  .public-push-detail-body { padding: 24px 20px 36px; }
+  .public-push-detail { position: fixed; right: 0; bottom: 0; left: 0; width: auto; max-width: none; max-height: 88dvh; margin: 0; border-radius: 20px 20px 0 0; }
+  .public-push-detail > header { grid-template-columns: 36px minmax(0, 1fr); gap: 11px; padding: 16px 52px 14px 16px; }
+  .public-push-detail > header h2 { margin: 2px 0 3px; font-size: 19px; }
+  .public-push-detail > header > button { top: 13px; right: 13px; width: 32px; height: 32px; }
+  .public-push-detail-mark { width: 36px; height: 36px; border-radius: 11px; }
+  .public-push-detail-mark svg { width: 17px; height: 17px; }
+  .public-push-detail-body { min-height: 0; padding: 18px 16px calc(28px + env(safe-area-inset-bottom)); }
+  .public-push-detail-markdown { font-size: 14px; line-height: 1.7; }
 }
 
 [data-theme="dark"] .public-scheduled-card {

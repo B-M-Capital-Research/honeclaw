@@ -137,6 +137,14 @@ export function unreadCountAfterScheduledPush(
     : current + 1;
 }
 
+export function latestUnreadPushId(
+  items: readonly PublicPushListItem[],
+  unreadCount: number,
+): string | undefined {
+  if (!Number.isFinite(unreadCount) || unreadCount <= 0) return undefined;
+  return items[0]?.push_id;
+}
+
 export function selectVisibleRecentMessages<T>(
   messages: readonly T[],
   visibleCount: number,

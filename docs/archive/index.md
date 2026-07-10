@@ -1303,3 +1303,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: `cargo test -p hone-tools --lib`, `cargo test -p hone-agent --lib`, `cargo test -p hone-event-engine pollers::price --lib`, `cargo test -p hone-channels heartbeat_tool --lib`, `cargo check --workspace --all-targets --exclude hone-desktop`, `bash scripts/diagnose_fmp_tavily.sh --tavily-query 'health check'`
 - Current conclusion: Tavily search now uses low-bandwidth Bearer requests, usage logging, and key cooldowns; FMP data_fetch now has TTL caching; heartbeat tool calls are capped; FMP price polling now runs only during US regular-session windows by default.
 - Next entry point: `docs/handoffs/2026-06-21-fmp-tavily-usage-throttle.md`
+
+### Public Mobile Overlay And Calendar Hotfix
+
+- Status: done
+- Date: 2026-07-10
+- Plan: `docs/archive/plans/public-mobile-overlay-calendar-hotfix.md`
+- Handoff: `docs/handoffs/2026-07-10-web-scheduled-push-inbox.md`
+- Decision / ADR: `docs/decisions.md#d-2026-07-10-01-project-web-scheduled-results-into-a-durable-push-inbox`
+- Related PRs / commits: this change set
+- Related runbooks / regressions: `packages/app/e2e/public-mobile-overlays.spec.ts`, `bun run typecheck:web`, `bun run test:web`, `bun run build:web:public`
+- Current conclusion: mobile push center and detail layers no longer collide with the fixed nav, inbox-open acknowledgement reliably clears the red dot without consuming future arrivals, and the finance calendar has a full-screen zoomable viewer above all page stacking contexts.
+- Next entry point: `packages/app/src/pages/chat.tsx`

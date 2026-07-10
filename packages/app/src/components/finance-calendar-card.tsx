@@ -18,8 +18,8 @@ type FinanceCalendarCardProps = {
 };
 
 const WEEKDAYS = ["一", "二", "三", "四", "五", "六", "日"];
-const CARD_WIDTH = 1080;
-const CARD_HEIGHT = 1350;
+export const FINANCE_CALENDAR_CARD_WIDTH = 1080;
+export const FINANCE_CALENDAR_CARD_HEIGHT = 1350;
 
 const EVENT_STYLE: Record<
   FinanceCalendarEventCategory,
@@ -79,8 +79,8 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
     <div
       ref={(el) => props.registerRef?.(el)}
       style={{
-        width: `${CARD_WIDTH}px`,
-        height: `${CARD_HEIGHT}px`,
+        width: `${FINANCE_CALENDAR_CARD_WIDTH}px`,
+        height: `${FINANCE_CALENDAR_CARD_HEIGHT}px`,
         overflow: "hidden",
         background: "#eef2f3",
         color: "#15191b",

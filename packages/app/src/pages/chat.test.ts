@@ -6,6 +6,7 @@ import {
   nextVisibleMessageCount,
   formatPublicAttachmentBytes,
   isPublicChatQuotaExhausted,
+  latestUnreadPushId,
   mergePublicPushItems,
   normalizePhoneNumber,
   PUBLIC_RESTORE_MAX_ATTEMPTS,
@@ -185,6 +186,29 @@ describe("public push inbox model", () => {
     expect(unreadCountAfterScheduledPush(2, 7)).toBe(7);
     expect(unreadCountAfterScheduledPush(2)).toBe(3);
     expect(unreadCountAfterScheduledPush(2, -4)).toBe(0);
+  });
+
+  it("acknowledges only the latest item visible when the inbox opens", () => {
+    const items = [
+      {
+        push_id: "latest",
+        job_id: "j1",
+        title: "Latest",
+        summary: "latest",
+        created_at: "2026-07-10T20:00:00+08:00",
+      },
+      {
+        push_id: "older",
+        job_id: "j1",
+        title: "Older",
+        summary: "older",
+        created_at: "2026-07-09T20:00:00+08:00",
+      },
+    ];
+
+    expect(latestUnreadPushId(items, 2)).toBe("latest");
+    expect(latestUnreadPushId(items, 0)).toBeUndefined();
+    expect(latestUnreadPushId([], 3)).toBeUndefined();
   });
 });
 
