@@ -86,14 +86,17 @@ struct HONEWebView: UIViewRepresentable {
             return nil
         }
 
+        @MainActor
         func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation?) {
             model.didStartLoading()
         }
 
+        @MainActor
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation?) {
             model.didFinishLoading()
         }
 
+        @MainActor
         func webView(
             _ webView: WKWebView,
             didFailProvisionalNavigation navigation: WKNavigation?,
@@ -102,6 +105,7 @@ struct HONEWebView: UIViewRepresentable {
             model.didFailLoading(error)
         }
 
+        @MainActor
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation?, withError error: Error) {
             model.didFailLoading(error)
         }
