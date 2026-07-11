@@ -11,9 +11,9 @@ Last updated: 2026-07-11
 - Plan: `docs/archive/plans/mobile-finance-calendar-dual-layout.md`
 - Handoff: `docs/handoffs/2026-07-11-mobile-finance-calendar-nav-polish.md`
 - Decision / ADR: N/A; the existing browser-render/upload route remains authoritative and the request extension is backward compatible
-- Related PRs / commits: `2a6e7572`, `a4af378d`, `1a72b918`
-- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`, 209 frontend tests, 7 focused Rust tests, typecheck, public build, rendered 390 x 844 portrait/fit/300 percent/legacy-upgrade reviews, 15-event editorial design review, production asset/route/origin checks
-- Current conclusion: new finance-calendar messages carry independently validated desktop and mobile PNGs, while visible legacy desktop-only messages are rebuilt into portrait blobs on mobile. The viewer uses exact contain sizing and animation-frame GPU transforms; the artifact now uses an intentional HONE monthly-brief cover, warm month scan, continuous category-aware timeline, complete event text, and balanced full-canvas composition. Production uses `index-CZTxbnVu.js` / `chat-ThsBAbIe.js`; runtime PID `9767` is healthy.
+- Related PRs / commits: `2a6e7572`, `a4af378d`, `1a72b918`, `6ab39ee3`
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`, 209 frontend tests, 7 focused Rust tests, 14 focused migration tests, typecheck, public build, rendered 390 x 844 portrait/fit/300 percent/legacy-upgrade reviews, 15-event editorial design review, production asset/route/origin checks
+- Current conclusion: new finance-calendar messages carry independently validated desktop and `mobile-v2` PNGs, while visible messages with no mobile source or a first-generation mobile PNG lazily rebuild the current portrait blob. The viewer uses exact contain sizing and animation-frame GPU transforms; the artifact uses an intentional HONE monthly-brief cover, warm month scan, continuous category-aware timeline, complete event text, and balanced full-canvas composition. Production uses `index-BORXXQqy.js` / `chat-DwTyIjoF.js`; runtime PID `9767` is healthy.
 - Next entry point: `docs/handoffs/2026-07-11-mobile-finance-calendar-nav-polish.md`
 
 ### Mobile Finance Calendar And Navigation Polish

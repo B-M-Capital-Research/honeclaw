@@ -1,7 +1,7 @@
 # Mobile Finance Calendar Dual Layout And Gestures
 
 - title: Mobile Finance Calendar Dual Layout And Gestures
-- status: in_progress
+- status: archived
 - created_at: 2026-07-11
 - updated_at: 2026-07-11
 - owner: Codex
@@ -43,6 +43,8 @@ Completed with 207 passing frontend tests, 7 focused web API tests, successful t
 The screenshot-driven follow-up shipped in `a4af378d`: 209 frontend tests, typecheck, and the public build passed. Real-component QA proved exact 342 x 610 contain sizing inside a 390 x 844 viewer, stable 100/125/150/200/250/300 percent transform-only zoom, full agenda text, and automatic conversion of a synthetic 1080 x 1350 legacy image into a 0.562-ratio mobile blob. Production switched to `index-C-0scCea.js` / `chat-qOMG9Bni.js`; core routes, auth proxy, runtime, tunnel, and UI sessions are healthy.
 
 The visual-system redesign shipped in `1a72b918`. A 15-event dense fixture was rendered at 390 px and confirmed the exact 750 x 1334 canvas has no row, text, or root overflow. The new editorial composition uses a HONE monthly-brief cover, next-window callout, warm month scan, category-aware continuous key-date timeline, and dark source/disclaimer footer. Typecheck, all 209 frontend tests, and the public build passed. Production switched to `index-CZTxbnVu.js` / `chat-ThsBAbIe.js`; the chunk and core route/runtime checks passed.
+
+The visual-version migration shipped in `6ab39ee3`. Newly generated portrait files carry a `mobile-v2` marker, while visible messages with no mobile path or a first-generation `-mobile.png` path lazily rebuild the current portrait artifact. Fourteen focused helper tests, typecheck, and the public build passed. Production switched to `index-BORXXQqy.js` / `chat-DwTyIjoF.js`; the chat chunk contains the v2 marker and editorial contracts. Core routes return 200, auth returns the expected 401 JSON, runtime PID `9767` and both local backends are healthy, and a 390 x 844 production check has no horizontal overflow or browser errors.
 
 ## Documentation Sync
 

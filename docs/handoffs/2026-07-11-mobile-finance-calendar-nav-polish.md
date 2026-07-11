@@ -7,7 +7,7 @@
 - owner: Codex
 - related_files: `packages/app/src/components/finance-calendar-message.tsx`, `packages/app/src/components/finance-calendar-mobile-card.tsx`, `packages/app/src/pages/chat.tsx`, `packages/app/src/pages/public-site.css`, `packages/app/src/lib/finance-calendar.ts`, `crates/hone-web-api/src/routes/public_finance_calendar.rs`
 - related_docs: `docs/archive/plans/mobile-finance-calendar-nav-polish.md`, `docs/archive/plans/mobile-finance-calendar-dual-layout.md`, `docs/handoffs/2026-06-29-public-finance-calendar.md`, `docs/runbooks/backend-deployment.md`
-- related_prs: main commits `31081106`, `e95b1049`, `2a6e7572`, `a4af378d`, `1a72b918`
+- related_prs: main commits `31081106`, `e95b1049`, `2a6e7572`, `a4af378d`, `1a72b918`, `6ab39ee3`
 
 ## Summary
 
@@ -54,6 +54,12 @@ Visible legacy desktop-only messages now lazily fetch their month payload and re
 User review correctly identified that the first portrait artifact still looked like a compressed desktop dashboard: an oversized month/header, weak calendar event marks, repeated white agenda cards, and unused lower-canvas space. Commit `1a72b918` replaces that visual system rather than adjusting isolated spacing. The new 750 x 1334 artifact is an editorial HONE monthly investment brief with a dark brand cover, next-window callout, event-day/macro/earnings counts, a warm scanning calendar, and one continuous category-aware timeline carrying date, category, complete title, and Beijing time. A dark source/disclaimer footer closes the composition.
 
 Visual QA used 15 dense July events at a 390 px viewport. The root remained exactly 750 x 1334, all six timeline rows and long titles stayed within bounds, and the full composition used the portrait canvas without dead space. Typecheck, 209 frontend tests, and the public build passed. Production uses `index-CZTxbnVu.js` / `chat-ThsBAbIe.js`; the chunk contains the monthly brief, next window, month scan, key-date timeline, palette, and disclaimer contracts. Core routes return 200, auth returns the expected 401 JSON, and runtime/tunnel/UI sessions remain healthy.
+
+## Visual Version Migration Follow-up 2026-07-11 20:28 CST
+
+The redesign initially upgraded desktop-only legacy messages but left already-persisted first-generation mobile PNGs selected forever. Commit `6ab39ee3` adds an explicit `mobile-v2` filename contract and treats both a missing mobile source and any pre-v2 mobile source as eligible for the existing in-view lazy rebuild. The rebuilt blob takes precedence immediately, so users see the editorial artifact without regenerating or mutating conversation history.
+
+Fourteen focused finance-calendar tests, typecheck, and the public build passed. Cloudflare Pages switched to `index-BORXXQqy.js` / `chat-DwTyIjoF.js`; the production chunk contains two `mobile-v2` contracts plus the monthly-brief design markers. `/`, `/chat`, and `/roadmap` return 200, auth returns the expected 401 JSON, runtime PID `9767` and both local API surfaces return healthy responses, and a 390 x 844 production browser check reports a 390 px document with no horizontal overflow or console errors.
 
 ## Next Entry Point
 
