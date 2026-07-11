@@ -4,6 +4,18 @@ Last updated: 2026-07-11
 
 ## 2026-07-11
 
+### Mobile Finance Calendar Dual Layout And Gestures
+
+- Status: done
+- Date: 2026-07-11
+- Plan: `docs/archive/plans/mobile-finance-calendar-dual-layout.md`
+- Handoff: `docs/handoffs/2026-07-11-mobile-finance-calendar-nav-polish.md`
+- Decision / ADR: N/A; the existing browser-render/upload route remains authoritative and the request extension is backward compatible
+- Related PRs / commits: `2a6e7572`
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`, 207 frontend tests, 7 focused Rust tests, typecheck, public build, rendered 390 x 844 portrait review, production asset/route/origin checks
+- Current conclusion: new finance-calendar messages carry independently validated desktop and mobile PNGs. Mobile receives a readable 750 x 1334 month/agenda artifact, the fixed viewer supports bounded custom pinch plus single-finger panning, native image long-press is no longer suppressed, and old single-image messages remain compatible. Production uses `index-BcPNNntX.js` / `chat-DFgZWxOf.js`; runtime PID `9767` is healthy.
+- Next entry point: `docs/handoffs/2026-07-11-mobile-finance-calendar-nav-polish.md`
+
 ### Mobile Finance Calendar And Navigation Polish
 
 - Status: done

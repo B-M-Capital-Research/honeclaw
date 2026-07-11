@@ -1,7 +1,7 @@
 # Mobile Finance Calendar Dual Layout And Gestures
 
 - title: Mobile Finance Calendar Dual Layout And Gestures
-- status: in_progress
+- status: archived
 - created_at: 2026-07-11
 - updated_at: 2026-07-11
 - owner: Codex
@@ -32,6 +32,8 @@ Make generated finance calendars genuinely usable on iPhone: preserve the existi
 - Run focused Rust tests, `bun run typecheck:web`, `bun run test:web`, and `bun run build:web:public`.
 - Perform 390 x 844 browser QA and production route/asset checks.
 
+Completed with 207 passing frontend tests, 7 focused web API tests, successful typecheck/public build, a rendered 390 x 844 portrait-card review, and production verification of `index-BcPNNntX.js` / `chat-DFgZWxOf.js`. The restarted runtime exposes the new backend contract and both public/origin health probes return the expected unauthenticated 401 JSON.
+
 ## Documentation Sync
 
 - Append the completed follow-up to the existing same-day handoff, move this plan to `docs/archive/plans/`, update `docs/archive/index.md`, and remove the active index entry after production verification.
@@ -42,3 +44,4 @@ Make generated finance calendars genuinely usable on iPhone: preserve the existi
 - Safari must not receive native page pinch zoom inside the fixed application shell; pinch is interpreted at the image canvas level instead.
 - Existing messages contain only the desktop path and must remain readable.
 - Upload validation must be applied independently to both image paths before persistence.
+- Native long-press behavior still depends on iOS Safari itself; the application no longer suppresses touch callout or single-touch image handling.
