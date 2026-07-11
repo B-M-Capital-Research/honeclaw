@@ -76,7 +76,10 @@ impl ExecutionService {
         Self { core }
     }
 
-    pub(crate) fn prepare(&self, request: ExecutionRequest) -> Result<PreparedExecution, String> {
+    pub(crate) fn prepare(
+        &self,
+        mut request: ExecutionRequest,
+    ) -> Result<PreparedExecution, String> {
         if let Some(metadata) = request.prompt_audit.as_ref() {
             if let Err(err) = write_prompt_audit(
                 &self.core.config,
@@ -100,11 +103,13 @@ impl ExecutionService {
             &request.channel_target,
             request.allow_cron,
         );
-        let runner: Box<dyn AgentRunner> = match request.runner_selection {
+        let use_strict_fallback = matches!(
+            request.runner_selection,
             ExecutionRunnerSelection::Configured
-                if !self.core.is_admin_actor(&request.actor)
-                    && self.core.configured_runner_requires_trusted_host_access() =>
-            {
+        ) && !self.core.is_admin_actor(&request.actor)
+            && self.core.configured_runner_requires_trusted_host_access();
+        let runner: Box<dyn AgentRunner> = match request.runner_selection {
+            ExecutionRunnerSelection::Configured if use_strict_fallback => {
                 tracing::warn!(
                     channel = %request.actor.channel,
                     user_id = %request.actor.user_id,
@@ -140,6 +145,17 @@ impl ExecutionService {
                 ))
             }
         };
+        if use_strict_fallback {
+            let removed = sanitize_function_calling_context(&mut request.context);
+            if removed > 0 {
+                tracing::info!(
+                    channel = %request.actor.channel,
+                    user_id = %request.actor.user_id,
+                    removed_messages = removed,
+                    "removed incompatible historical tool protocol before strict fallback"
+                );
+            }
+        }
         let runner_name = runner.name();
         let working_directory = ensure_actor_sandbox(&request.actor)
             .map_err(|err| format!("actor sandbox 初始化失败: {err}"))?
@@ -178,14 +194,89 @@ impl ExecutionService {
     }
 }
 
+fn sanitize_function_calling_context(context: &mut AgentContext) -> usize {
+    let original_len = context.messages.len();
+    let mut sanitized = Vec::with_capacity(original_len);
+    let mut index = 0usize;
+
+    while index < context.messages.len() {
+        let mut message = context.messages[index].clone();
+        if message.role == "tool" {
+            index += 1;
+            continue;
+        }
+
+        let Some(tool_calls) = message
+            .tool_calls
+            .as_ref()
+            .filter(|tool_calls| !tool_calls.is_empty())
+        else {
+            sanitized.push(message);
+            index += 1;
+            continue;
+        };
+
+        let expected_ids = tool_calls
+            .iter()
+            .filter_map(|call| call.get("id").and_then(Value::as_str))
+            .map(str::to_string)
+            .collect::<std::collections::HashSet<_>>();
+        let mut following_tools = Vec::new();
+        let mut seen_ids = std::collections::HashSet::new();
+        let mut cursor = index + 1;
+        let mut valid = expected_ids.len() == tool_calls.len();
+
+        while cursor < context.messages.len() && context.messages[cursor].role == "tool" {
+            let tool_message = context.messages[cursor].clone();
+            let Some(tool_call_id) = tool_message
+                .tool_call_id
+                .as_deref()
+                .filter(|id| expected_ids.contains(*id))
+            else {
+                valid = false;
+                cursor += 1;
+                continue;
+            };
+            if !seen_ids.insert(tool_call_id.to_string()) {
+                valid = false;
+            }
+            following_tools.push(tool_message);
+            cursor += 1;
+        }
+
+        valid &= seen_ids == expected_ids;
+        if valid {
+            sanitized.push(message);
+            sanitized.extend(following_tools);
+        } else {
+            message.tool_calls = None;
+            if message
+                .content
+                .as_deref()
+                .is_some_and(|content| !content.trim().is_empty())
+            {
+                sanitized.push(message);
+            }
+        }
+        index = cursor;
+    }
+
+    let removed = original_len.saturating_sub(sanitized.len());
+    context.messages = sanitized;
+    removed
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{ExecutionMode, ExecutionRequest, ExecutionRunnerSelection, ExecutionService};
+    use super::{
+        ExecutionMode, ExecutionRequest, ExecutionRunnerSelection, ExecutionService,
+        sanitize_function_calling_context,
+    };
     use crate::HoneBotCore;
     use crate::agent_session::GeminiStreamOptions;
     use async_trait::async_trait;
     use futures::stream::{self, BoxStream};
-    use hone_core::agent::AgentContext;
+    use hone_core::agent::{AgentContext, AgentMessage};
     use hone_core::{ActorIdentity, HoneConfig, HoneError};
     use hone_llm::provider::{ChatResponse, ChatResult};
     use hone_llm::{LlmProvider, Message};
@@ -430,6 +521,82 @@ mod tests {
 
         assert!(err.contains("安全执行器不可用"));
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn strict_fallback_drops_orphaned_acp_tool_protocol() {
+        let mut context = AgentContext::new("session".to_string());
+        context.messages = vec![
+            agent_message("user", Some("查看持仓"), None, None),
+            agent_message(
+                "assistant",
+                Some("我来查询。"),
+                Some(vec![serde_json::json!({
+                    "id": "call_portfolio",
+                    "type": "function",
+                    "function": {"name": "portfolio", "arguments": "{}"}
+                })]),
+                None,
+            ),
+            agent_message("assistant", Some("历史回复"), None, None),
+            agent_message(
+                "tool",
+                Some("{\"holdings\":[]}"),
+                None,
+                Some("call_portfolio"),
+            ),
+        ];
+
+        let removed = sanitize_function_calling_context(&mut context);
+
+        assert_eq!(removed, 1);
+        assert_eq!(context.messages.len(), 3);
+        assert_eq!(context.messages[0].role, "user");
+        assert_eq!(context.messages[1].content.as_deref(), Some("我来查询。"));
+        assert!(context.messages[1].tool_calls.is_none());
+        assert_eq!(context.messages[2].content.as_deref(), Some("历史回复"));
+    }
+
+    #[test]
+    fn strict_fallback_preserves_complete_parallel_tool_block() {
+        let mut context = AgentContext::new("session".to_string());
+        context.messages = vec![
+            agent_message(
+                "assistant",
+                None,
+                Some(vec![
+                    serde_json::json!({"id":"call_a","function":{"name":"portfolio","arguments":"{}"}}),
+                    serde_json::json!({"id":"call_b","function":{"name":"notification_prefs","arguments":"{}"}}),
+                ]),
+                None,
+            ),
+            agent_message("tool", Some("{}"), None, Some("call_a")),
+            agent_message("tool", Some("{}"), None, Some("call_b")),
+            agent_message("assistant", Some("完成"), None, None),
+        ];
+
+        let removed = sanitize_function_calling_context(&mut context);
+
+        assert_eq!(removed, 0);
+        assert_eq!(context.messages.len(), 4);
+        assert_eq!(context.messages[1].tool_call_id.as_deref(), Some("call_a"));
+        assert_eq!(context.messages[2].tool_call_id.as_deref(), Some("call_b"));
+    }
+
+    fn agent_message(
+        role: &str,
+        content: Option<&str>,
+        tool_calls: Option<Vec<Value>>,
+        tool_call_id: Option<&str>,
+    ) -> AgentMessage {
+        AgentMessage {
+            role: role.to_string(),
+            content: content.map(str::to_string),
+            tool_calls,
+            tool_call_id: tool_call_id.map(str::to_string),
+            name: None,
+            metadata: None,
+        }
     }
 
     #[test]

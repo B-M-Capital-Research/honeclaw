@@ -56,6 +56,13 @@ Non-admin actors now use the in-process function-calling runner with actor-bound
 - Remaining Dependabot alerts are Tauri-only upstream chains: Linux GTK `glib 0.18` (medium) and a Tauri HTML build dependency on `rand 0.7` (low). They are absent from the current backend runtime; resolve through a future Tauri/Wry dependency upgrade.
 - Some event-engine enrichment profiles still report missing OpenRouter configuration and operate in documented degraded mode; the main `llm.profiles.main` provider used by safe user execution is configured.
 
+## Post-deployment Compatibility Fix
+
+After deployment, restored ACP conversations could contain orphaned or incomplete tool-call history that OpenAI-compatible function-calling providers reject with HTTP 400. The strict non-admin fallback now removes orphaned tool results, strips incomplete calls while retaining useful assistant text, and preserves complete parallel tool-call/result blocks. This restores queries such as `我的持仓有哪些` without reopening native ACP host access.
+
+- `cargo test -p hone-channels execution::tests`: 11 passed.
+- `cargo test -p hone-channels --lib`: 496 passed; one sandbox temp-directory race failed only in the parallel run and passed when rerun alone.
+
 ## Next Entry Point
 
 Start with `crates/hone-channels/src/execution.rs` for runner policy, `crates/hone-core/src/security.rs` for local permissions, and this handoff's follow-up list for credential rotation and eventual PostgreSQL RLS.
