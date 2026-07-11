@@ -3,6 +3,7 @@ import {
   defaultFinanceCalendarMonth,
   financeCalendarEventCategory,
   financeCalendarHighlights,
+  financeCalendarMobileAgenda,
   financeCalendarMessageMonth,
   financeCalendarMonthGrid,
   financeCalendarMonthsForYear,
@@ -19,8 +20,23 @@ import {
   parseFinanceCalendarMonth,
   visibleFinanceCalendarEventsForDay,
 } from "./finance-calendar";
+import { wrapFinanceCalendarCanvasText } from "./finance-calendar-mobile-renderer";
 
 describe("finance calendar helpers", () => {
+  it("wraps canvas labels without dropping the final visible glyph", () => {
+    const context = {
+      measureText: (text: string) => ({ width: [...text].length * 10 }),
+    } as Pick<CanvasRenderingContext2D, "measureText">;
+    expect(
+      wrapFinanceCalendarCanvasText(
+        context,
+        "FOMC 利率决议与记者会",
+        70,
+        2,
+      ),
+    ).toEqual(["FOMC 利率", "决议与记者会"]);
+  });
+
   it("parses YYYY-MM months", () => {
     expect(parseFinanceCalendarMonth("2026-07")).toEqual({
       year: 2026,
@@ -92,6 +108,11 @@ describe("finance calendar helpers", () => {
     expect(
       shouldUpgradeFinanceCalendarMobileSource(
         "/api/public/image?path=calendar-mobile-v3.png",
+      ),
+    ).toBe(true);
+    expect(
+      shouldUpgradeFinanceCalendarMobileSource(
+        "/api/public/image?path=calendar-mobile-v4.png",
       ),
     ).toBe(false);
   });
@@ -245,6 +266,21 @@ describe("finance calendar helpers", () => {
       4,
     );
     expect(highlights.map((event) => event.title)).toEqual(["NVDA 财报"]);
+  });
+
+  it("builds one stable mobile agenda shared by DOM and canvas renderers", () => {
+    const events = [
+      { date: "2026-07-14", title: "美国 CPI", kind: "macro", source: "bls" },
+      { date: "2026-07-15", title: "美国 PPI", kind: "macro", source: "bls" },
+      { date: "2026-07-30", title: "FOMC 利率决议", kind: "macro", source: "fed" },
+      { date: "2026-07-30", title: "AAPL 财报", kind: "earnings", ticker: "AAPL", source: "fmp" },
+    ];
+    expect(financeCalendarMobileAgenda(events, "2026-07-11", 3)).toEqual([
+      events[0],
+      events[1],
+      events[3],
+    ]);
+    expect(financeCalendarMobileAgenda(events, "2026-07-11", 6)).toContain(events[3]);
   });
 
   it("categorizes macro and earnings events for the image legend", () => {

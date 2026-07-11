@@ -2,7 +2,7 @@ import { For, Show, createMemo } from "solid-js";
 
 import {
   financeCalendarEventCategory,
-  financeCalendarHighlights,
+  financeCalendarMobileAgenda,
   financeCalendarMonthGrid,
   groupFinanceCalendarEvents,
   parseFinanceCalendarMonth,
@@ -55,30 +55,13 @@ export function FinanceCalendarMobileCard(props: {
   const parsedMonth = createMemo(() => parseFinanceCalendarMonth(props.payload.month));
   const cells = createMemo(() => financeCalendarMonthGrid(props.payload.month));
   const grouped = createMemo(() => groupFinanceCalendarEvents(props.payload.events));
-  const agenda = createMemo(() => {
-    const highlights = financeCalendarHighlights(
+  const agenda = createMemo(() =>
+    financeCalendarMobileAgenda(
       props.payload.events,
       props.payload.today,
       6,
-    );
-    const earnings = props.payload.events
-      .filter((event) => event.kind === "earnings")
-      .sort((left, right) => left.date.localeCompare(right.date))
-      .slice(0, 2);
-    return [...highlights, ...earnings]
-      .filter(
-        (event, index, all) =>
-          all.findIndex(
-            (candidate) =>
-              candidate.date === event.date && candidate.title === event.title,
-          ) === index,
-      )
-      .sort(
-        (left, right) =>
-          left.date.localeCompare(right.date) || left.title.localeCompare(right.title),
-      )
-      .slice(0, 6);
-  });
+    ),
+  );
   const macroCount = createMemo(
     () => props.payload.events.filter((event) => event.kind === "macro").length,
   );

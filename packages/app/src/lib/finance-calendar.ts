@@ -99,7 +99,7 @@ export function selectFinanceCalendarImageSource(
 export function shouldUpgradeFinanceCalendarMobileSource(
   mobileSource?: string,
 ): boolean {
-  return !mobileSource || !mobileSource.includes("-mobile-v3");
+  return !mobileSource || !mobileSource.includes("-mobile-v4");
 }
 
 export function financeCalendarMessageMonth(content: string): string | null {
@@ -287,4 +287,29 @@ export function financeCalendarHighlights(
     );
   }
   return selected.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export function financeCalendarMobileAgenda(
+  events: readonly FinanceCalendarEvent[],
+  today: string,
+  limit = 6,
+): FinanceCalendarEvent[] {
+  const highlights = financeCalendarHighlights(events, today, limit);
+  const earnings = events
+    .filter((event) => event.kind === "earnings")
+    .sort((left, right) => left.date.localeCompare(right.date))
+    .slice(0, 2);
+  return [...highlights, ...earnings]
+    .filter(
+      (event, index, all) =>
+        all.findIndex(
+          (candidate) =>
+            candidate.date === event.date && candidate.title === event.title,
+        ) === index,
+    )
+    .sort(
+      (left, right) =>
+        left.date.localeCompare(right.date) || left.title.localeCompare(right.title),
+    )
+    .slice(0, Math.max(0, limit));
 }

@@ -1,9 +1,8 @@
 import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 
-import { canvasToPngBlob } from "@/components/chat-share-export";
-import { FinanceCalendarMobileCard } from "@/components/finance-calendar-mobile-card";
 import { getPublicFinanceCalendar } from "@/lib/api";
+import { renderFinanceCalendarMobilePng } from "@/lib/finance-calendar-mobile-renderer";
 import { CONTENT } from "@/lib/public-content";
 import {
   clampFinanceCalendarPan,
@@ -13,7 +12,6 @@ import {
   shouldUpgradeFinanceCalendarMobileSource,
   stepFinanceCalendarZoom,
 } from "@/lib/finance-calendar";
-import type { FinanceCalendarPayload } from "@/lib/types";
 
 type ShareNavigator = Navigator & {
   canShare?: (data: ShareData) => boolean;
@@ -36,7 +34,6 @@ export function FinanceCalendarMessageImage(props: {
   const [preferMobile, setPreferMobile] = createSignal(
     typeof window !== "undefined" && window.matchMedia("(max-width: 768px)").matches,
   );
-  const [legacyPayload, setLegacyPayload] = createSignal<FinanceCalendarPayload>();
   const [legacyMobileSrc, setLegacyMobileSrc] = createSignal<string>();
   const [working, setWorking] = createSignal<"save" | "share" | null>(null);
   const [actionError, setActionError] = createSignal(false);
@@ -64,7 +61,6 @@ export function FinanceCalendarMessageImage(props: {
   let messageEl: HTMLElement | undefined;
   let viewportEl: HTMLDivElement | undefined;
   let imageEl: HTMLImageElement | undefined;
-  let legacyCardEl: HTMLDivElement | undefined;
   let legacyBuildStarted = false;
   let legacyObjectUrl: string | undefined;
   let removeViewportGestures: (() => void) | undefined;
@@ -83,30 +79,16 @@ export function FinanceCalendarMessageImage(props: {
     legacyBuildStarted = true;
     try {
       const payload = await getPublicFinanceCalendar(props.month);
-      setLegacyPayload(payload);
-      await new Promise<void>((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-      );
       await (
         document as Document & { fonts?: { ready: Promise<unknown> } }
       ).fonts?.ready.catch(() => undefined);
-      if (!legacyCardEl) throw new Error("legacy mobile calendar not mounted");
-      const { default: html2canvas } = await import("html2canvas");
-      const canvas = await html2canvas(legacyCardEl, {
-        scale: 2,
-        backgroundColor: "#edf1f2",
-        useCORS: true,
-        logging: false,
-      });
-      const blob = await canvasToPngBlob(canvas);
+      const blob = await renderFinanceCalendarMobilePng(payload);
       legacyObjectUrl = URL.createObjectURL(blob);
       setLoaded(false);
       setFailed(false);
       setLegacyMobileSrc(legacyObjectUrl);
-      setLegacyPayload(undefined);
     } catch {
       legacyBuildStarted = false;
-      setLegacyPayload(undefined);
     }
   };
 
@@ -471,18 +453,6 @@ export function FinanceCalendarMessageImage(props: {
           </p>
         </Show>
       </section>
-
-      <Show when={legacyPayload()}>
-        {(payload) => (
-          <FinanceCalendarMobileCard
-            payload={payload()}
-            hidden
-            registerRef={(element) => {
-              legacyCardEl = element;
-            }}
-          />
-        )}
-      </Show>
 
       <Portal>
         <Show when={open()}>

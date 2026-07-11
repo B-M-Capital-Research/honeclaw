@@ -27,7 +27,6 @@ import {
   FINANCE_CALENDAR_CARD_WIDTH,
 } from "@/components/finance-calendar-card";
 import { FinanceCalendarMessageImage } from "@/components/finance-calendar-message";
-import { FinanceCalendarMobileCard } from "@/components/finance-calendar-mobile-card";
 import {
   PublicPushCenter,
   PublicPushDetailDialog,
@@ -37,6 +36,7 @@ import {
   type ScheduledPushCardData,
 } from "@/components/public-push-center";
 import { displayGithubStars, fetchGithubStars } from "@/lib/github-stars";
+import { renderFinanceCalendarMobilePng } from "@/lib/finance-calendar-mobile-renderer";
 import { CONTENT } from "@/lib/public-content";
 import { setLocale, useLocale } from "@/lib/i18n";
 import {
@@ -1896,7 +1896,6 @@ function FinanceCalendarQuickAction(props: { onSent: () => void }) {
     () => payload()?.events.filter((event) => event.kind === "earnings").length ?? 0,
   );
   let cardEl: HTMLDivElement | undefined;
-  let mobileCardEl: HTMLDivElement | undefined;
   let requestId = 0;
 
   const fitLargePreview = () => {
@@ -1978,7 +1977,7 @@ function FinanceCalendarQuickAction(props: { onSent: () => void }) {
       document as Document & { fonts?: { ready: Promise<unknown> } }
     ).fonts;
     await fonts?.ready.catch(() => undefined);
-    if (!cardEl || !mobileCardEl) {
+    if (!cardEl) {
       throw new Error(CONTENT.chat_page.composer.finance_calendar_render_error);
     }
   };
@@ -1993,15 +1992,9 @@ function FinanceCalendarQuickAction(props: { onSent: () => void }) {
       useCORS: true,
       logging: false,
     });
-    const mobileCanvas = await html2canvas(mobileCardEl!, {
-      scale: 2,
-      backgroundColor: "#edf1f2",
-      useCORS: true,
-      logging: false,
-    });
     return Promise.all([
       canvasToPngBlob(desktopCanvas),
-      canvasToPngBlob(mobileCanvas),
+      renderFinanceCalendarMobilePng(data),
     ]);
   };
 
@@ -2019,7 +2012,7 @@ function FinanceCalendarQuickAction(props: { onSent: () => void }) {
         new File([desktopBlob], `hone-finance-calendar-${data.month}.png`, {
           type: "image/png",
         }),
-        new File([mobileBlob], `hone-finance-calendar-${data.month}-mobile-v3.png`, {
+        new File([mobileBlob], `hone-finance-calendar-${data.month}-mobile-v4.png`, {
           type: "image/png",
         }),
       ]);
@@ -2391,13 +2384,6 @@ function FinanceCalendarQuickAction(props: { onSent: () => void }) {
               hidden
               registerRef={(el) => {
                 cardEl = el;
-              }}
-            />
-            <FinanceCalendarMobileCard
-              payload={data()}
-              hidden
-              registerRef={(element) => {
-                mobileCardEl = element;
               }}
             />
           </>
