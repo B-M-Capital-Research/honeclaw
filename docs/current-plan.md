@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-07-11
-状态：有 7 个活跃任务
+状态：有 6 个活跃任务
 
 ## 说明
 
@@ -15,11 +15,6 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
-
-- **HONE 用户端品牌统一与 iOS Release**
-  - 状态：`in_progress`
-  - 计划：`docs/current-plans/hone-client-brand-ios-release.md`
-  - 摘要：统一 Web/macOS 用户端的 HONE 品牌、Logo 与导航交互，新增独立原生 iOS 客户端，并通过 v0.13.0 Release 交付 Universal macOS DMG 与 iOS Simulator/Xcode 资产
 
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`

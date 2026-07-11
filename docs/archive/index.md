@@ -4,6 +4,18 @@ Last updated: 2026-07-11
 
 ## 2026-07-11
 
+### HONE Client Brand And iOS Release
+
+- Status: done
+- Date: 2026-07-11
+- Plan: `docs/archive/plans/hone-client-brand-ios-release.md`
+- Handoff: `docs/handoffs/2026-07-11-hone-client-brand-ios-release.md`
+- Decision / ADR: `docs/decisions.md#d-2026-07-11-02-use-one-hone-brand-and-remote-boundary-for-public-apple-clients`
+- Related PRs / commits: `e33a467a`, `dc889ffa`, `aa32c818`, `6a14e3e7`; tag `v0.13.0`
+- Related runbooks / regressions: `docs/runbooks/public-user-macos-app.md`, `docs/runbooks/public-user-ios-app.md`, `bash tests/regression/ci/test_hone_ios_contract.sh`, Apple Clients run `29139331210`, Release run `29139409377`
+- Current conclusion: Public Web, focused macOS, and standalone iOS clients now use one uppercase HONE brand and polished navigation language. v0.13.0 ships a Universal macOS DMG, Xcode-built iOS Simulator app, complete iOS Xcode project, and Apple checksum manifest; device IPA/TestFlight and notarized macOS distribution still require Apple signing credentials.
+- Next entry point: `docs/handoffs/2026-07-11-hone-client-brand-ios-release.md`
+
 ### Standalone Public User macOS App
 
 - Status: done
