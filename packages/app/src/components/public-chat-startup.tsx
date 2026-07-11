@@ -1,7 +1,6 @@
 import { Show } from "solid-js";
 
 type PublicChatStartupProps = {
-  embedded?: boolean;
   failed?: boolean;
   title?: string;
   description?: string;
@@ -44,9 +43,7 @@ export function PublicChatStartup(props: PublicChatStartupProps) {
     </div>
   );
 
-  return props.embedded ? (
-    <div class="public-chat-startup-embedded">{content}</div>
-  ) : (
+  return (
     <div class="public-chat-startup-page">
       <header class="public-chat-startup-header">
         <div class="public-chat-startup-brand"><i />HONE</div>
@@ -56,4 +53,3 @@ export function PublicChatStartup(props: PublicChatStartupProps) {
     </div>
   );
 }
-

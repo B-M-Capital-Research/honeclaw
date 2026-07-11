@@ -56,6 +56,7 @@ import "./public-chat.css";
 import {
   getPublicChatBootstrap,
   getPublicFinanceCalendar,
+  getPublicHistory,
   getPublicPushes,
   connectPublicEvents,
   isUnauthorizedApiError,
@@ -79,14 +80,13 @@ import {
   formatPublicAttachmentBytes,
   isPublicChatQuotaExhausted,
   latestUnreadPushId,
-  nextVisibleMessageCount,
   PUBLIC_RESTORE_TIMEOUT_MS,
   publicComposerPendingMessage,
   publicAttachmentFileLabel,
   publicRestoreRetryDelay,
   rekeyTrailingOptimisticIds,
+  mergePublicHistoryWindow,
   mergePublicPushItems,
-  selectVisibleRecentMessages,
   shouldRetryPublicRestore,
   shouldRecoverPinnedBottom,
   shouldLoadOlderPublicMessages,
@@ -143,7 +143,6 @@ const ICONS = {
 
 const PUBLIC_IMAGE_ENDPOINT = "/api/public/image";
 const PUBLIC_FILE_ENDPOINT = "/api/public/file";
-const HISTORY_PAGE_SIZE = 24;
 const SIDEBAR_HISTORY_LIMIT = 6;
 
 function AnimatedBackground() {
@@ -606,7 +605,6 @@ function LoadingCard(props: {
 
   return (
     <PublicChatStartup
-      embedded
       failed={props.status?.mode === "failed"}
       title={title()}
       description={reason()}
@@ -2612,8 +2610,8 @@ export default function PublicChatPage() {
     remainingToday: number;
     dailyLimit: number;
   } | null>(null);
-  const [visibleMessageCount, setVisibleMessageCount] =
-    createSignal(HISTORY_PAGE_SIZE);
+  const [historyStart, setHistoryStart] = createSignal(0);
+  const [historyNextBefore, setHistoryNextBefore] = createSignal<number>();
   const [loadingOlderMessages, setLoadingOlderMessages] = createSignal(false);
   const [justFinished, setJustFinished] = createSignal(false);
   const [sidebarCollapsed, setSidebarCollapsed] = createSignal(false);
@@ -2654,6 +2652,7 @@ export default function PublicChatPage() {
   let shareReturnAtBottom = true;
   let justFinishedTimer: number | undefined;
   let pushUserId: string | undefined;
+  let initialBottomPending = true;
 
   const scrollToBottom = () => {
     requestAnimationFrame(() => {
@@ -2667,12 +2666,7 @@ export default function PublicChatPage() {
     });
   };
   const scrollToMessage = (id: string) => {
-    const index = messages.findIndex((message) => message.id === id);
-    if (index < 0) return;
-    const neededVisibleCount = messages.length - index;
-    setVisibleMessageCount((current) =>
-      Math.max(current, neededVisibleCount, HISTORY_PAGE_SIZE),
-    );
+    if (!messages.some((message) => message.id === id)) return;
     requestAnimationFrame(() => {
       document
         .getElementById(`public-chat-message-${id}`)
@@ -2698,16 +2692,14 @@ export default function PublicChatPage() {
     scrollRef
       ? scrollRef.scrollHeight - scrollRef.scrollTop - scrollRef.clientHeight
       : 0;
-  const visibleMessages = createMemo(() =>
-    selectVisibleRecentMessages(messages, visibleMessageCount()),
-  );
+  const visibleMessages = createMemo(() => messages);
   const sidebarHistoryMessages = createMemo(() =>
     messages
       .filter((message) => message.role === "user")
       .slice(-SIDEBAR_HISTORY_LIMIT)
       .reverse(),
   );
-  const hasOlderMessages = () => visibleMessageCount() < messages.length;
+  const hasOlderMessages = () => historyNextBefore() !== undefined;
   const isSendingOrStreaming = () =>
     isSending() || !!pendingAssistantMessage() || !!backgroundPending();
   const pendingAssistantMessage = createMemo(() => {
@@ -2717,6 +2709,19 @@ export default function PublicChatPage() {
     return publicComposerPendingMessage({
       local: pendingAssistantMessage(),
       background: backgroundPending(),
+    });
+  });
+
+  createEffect(() => {
+    const ready = authState() === "ready";
+    const messageCount = messages.length;
+    if (!ready || messageCount === 0 || !initialBottomPending) return;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (!scrollRef) return;
+        initialBottomPending = false;
+        pinToBottom(1800);
+      });
     });
   });
 
@@ -2826,23 +2831,34 @@ export default function PublicChatPage() {
       createdAt: item.created_at,
     });
 
-  const loadOlderMessages = () => {
+  const loadOlderMessages = async () => {
     if (!scrollRef || !hasOlderMessages() || loadingOlderMessages()) return;
+    const before = historyNextBefore();
+    if (before === undefined) return;
     const previousScrollHeight = scrollRef.scrollHeight;
     const previousScrollTop = scrollRef.scrollTop;
     setLoadingOlderMessages(true);
-    setVisibleMessageCount((current) =>
-      nextVisibleMessageCount(messages.length, current, HISTORY_PAGE_SIZE),
-    );
-    requestAnimationFrame(() => {
-      if (scrollRef) {
-        suppressScrollUntil = Date.now() + 180;
-        scrollRef.scrollTop =
-          previousScrollTop + (scrollRef.scrollHeight - previousScrollHeight);
-        lastScrollTop = scrollRef.scrollTop;
-      }
+    try {
+      const page = await getPublicHistory(before);
+      const older = toPublicChatMessages(page.messages ?? [], page.history_start);
+      batch(() => {
+        setMessages(reconcile([...older, ...messages], { key: "id" }));
+        setHistoryStart(page.history_start);
+        setHistoryNextBefore(page.next_before ?? undefined);
+      });
+      requestAnimationFrame(() => {
+        if (scrollRef) {
+          suppressScrollUntil = Date.now() + 180;
+          scrollRef.scrollTop =
+            previousScrollTop + (scrollRef.scrollHeight - previousScrollHeight);
+          lastScrollTop = scrollRef.scrollTop;
+        }
+      });
+    } catch {
+      // Keep the current window intact; the next upward gesture can retry.
+    } finally {
       setLoadingOlderMessages(false);
-    });
+    }
   };
 
   const handleMessagesScroll = () => {
@@ -2897,7 +2913,7 @@ export default function PublicChatPage() {
         sendingOrStreaming,
       })
     ) {
-      loadOlderMessages();
+      void loadOlderMessages();
     }
   };
 
@@ -3001,15 +3017,16 @@ export default function PublicChatPage() {
       if (generation !== sessionSyncGeneration) return;
       const user = bootstrap.user;
       const history = bootstrap.messages ?? [];
-      const next = toPublicChatMessages(history);
-      if (options.resetWindow) {
-        setVisibleMessageCount(HISTORY_PAGE_SIZE);
-      } else {
-        // Preserve user's current viewing window; never shrink it on a sync.
-        setVisibleMessageCount((c) =>
-          Math.max(c, Math.min(next.length, HISTORY_PAGE_SIZE)),
-        );
-      }
+      const latest = toPublicChatMessages(history, bootstrap.history_start);
+      if (options.resetWindow) initialBottomPending = true;
+      const merged = options.resetWindow
+        ? { messages: latest, start: bootstrap.history_start }
+        : mergePublicHistoryWindow(
+            messages,
+            historyStart(),
+            latest,
+            bootstrap.history_start,
+          );
       const previousScrollTop = scrollRef?.scrollTop;
       const shouldKeepBottom =
         options.resetWindow ||
@@ -3022,10 +3039,14 @@ export default function PublicChatPage() {
       // history-derived stable ids — the swap collapses scrollHeight long
       // enough for the browser to clamp scrollTop "to the top of the
       // conversation" before settleAtBottom can pull it back.
-      rekeyTrailingOptimisticIds(messages, next);
+      rekeyTrailingOptimisticIds(messages, merged.messages);
       batch(() => {
         applyPublicUser(user);
-        setMessages(reconcile(next, { key: "id" }));
+        setMessages(reconcile(merged.messages, { key: "id" }));
+        setHistoryStart(merged.start);
+        setHistoryNextBefore(
+          merged.start > 0 ? merged.start : undefined,
+        );
         setAuthState("ready");
         setRestoreStatus(null);
       });
@@ -3043,7 +3064,8 @@ export default function PublicChatPage() {
       // it (e.g. page was just refreshed mid-answer), surface a "思考中"
       // status until the reply lands.
       const lastIsUser =
-        next.length > 0 && next[next.length - 1]!.role === "user";
+        merged.messages.length > 0 &&
+        merged.messages[merged.messages.length - 1]!.role === "user";
       if (user.in_flight > 0 && lastIsUser && !isSending()) {
         setBackgroundPending((prev) => prev ?? { since: Date.now() });
       } else {
@@ -3166,7 +3188,6 @@ export default function PublicChatPage() {
         content: text,
         phase: "done",
       });
-      setVisibleMessageCount((c) => Math.max(c + 1, HISTORY_PAGE_SIZE));
       if (shouldStayAtBottom) pinToBottom(1200);
     };
 
@@ -3216,9 +3237,6 @@ export default function PublicChatPage() {
         };
         setPushItems((current) => mergePublicPushItems([item], current));
       }
-      setVisibleMessageCount((count) =>
-        Math.max(count + 1, HISTORY_PAGE_SIZE),
-      );
       if (shouldStayAtBottom) pinToBottom(1200);
     };
 
@@ -3282,8 +3300,6 @@ export default function PublicChatPage() {
       startedAt: Date.now(),
       steps: [],
     });
-    // Keep all existing + new messages in view; never shrink the visible window.
-    setVisibleMessageCount((c) => Math.max(c + 2, HISTORY_PAGE_SIZE));
     setPendingAttachments(reconcile([], { key: "path" }));
     scrollToBottom();
 
@@ -3351,7 +3367,8 @@ export default function PublicChatPage() {
       style={{ height: "100dvh", display: "flex", "flex-direction": "column" }}
     >
       <AnimatedBackground />
-      <PublicNav
+      <Show when={authState() !== "loading"}>
+        <PublicNav
         mobileAction={
           <Show when={authState() === "ready"}>
             <button
@@ -3384,7 +3401,8 @@ export default function PublicChatPage() {
             <AccountButton user={currentUser()} onLogout={logoutPublicChat} />
           </>
         }
-      />
+        />
+      </Show>
 
       <Switch>
         <Match when={authState() === "loading"}>

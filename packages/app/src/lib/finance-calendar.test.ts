@@ -13,6 +13,7 @@ import {
   clampFinanceCalendarZoom,
   clampFinanceCalendarPan,
   financeCalendarAnchoredTransform,
+  financeCalendarActionState,
   financeCalendarPinchZoom,
   selectFinanceCalendarImageSource,
   shouldUpgradeFinanceCalendarMobileSource,
@@ -23,6 +24,18 @@ import {
 import { wrapFinanceCalendarCanvasText } from "./finance-calendar-mobile-renderer";
 
 describe("finance calendar helpers", () => {
+  it("reserves calendar actions while media is still loading", () => {
+    expect(financeCalendarActionState(false, false)).toEqual({
+      pending: true,
+      disabled: true,
+    });
+    expect(financeCalendarActionState(true, false)).toEqual({
+      pending: false,
+      disabled: false,
+    });
+    expect(financeCalendarActionState(true, true).disabled).toBe(true);
+  });
+
   it("wraps canvas labels without dropping the final visible glyph", () => {
     const context = {
       measureText: (text: string) => ({ width: [...text].length * 10 }),

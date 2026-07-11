@@ -45,7 +45,10 @@ function normalizeHistoryContent(content: unknown): string {
   }
 }
 
-export function historyToTimeline(messages: HistoryMsg[]): TimelineMessage[] {
+export function historyToTimeline(
+  messages: HistoryMsg[],
+  historyStart = 0,
+): TimelineMessage[] {
   return messages
     .filter(
       (message) =>
@@ -54,7 +57,7 @@ export function historyToTimeline(messages: HistoryMsg[]): TimelineMessage[] {
     .map((message, index) => {
       const content = normalizeHistoryContent(message.content)
       return {
-        id: stableHistoryId(index, message.role, content),
+        id: stableHistoryId(historyStart + index, message.role, content),
         kind: message.role === "user" || message.role === "assistant" ? message.role : "system",
         content,
         subtype: message.subtype,

@@ -8,29 +8,30 @@
 - related_files:
   - `packages/app/src/app.tsx`
   - `packages/app/src/pages/chat.tsx`
-  - `packages/app/src/pages/public-chat.css`
+  - `packages/app/src/components/finance-calendar-message.tsx`
   - `packages/app/src/lib/api.ts`
   - `crates/hone-web-api/src/routes/public.rs`
+  - `crates/hone-web-api/src/routes/history.rs`
   - `docs/repo-map.md`
 - verification:
-  - 212 frontend tests and typecheck passed
-  - 95 Web API tests passed, 2 ignored
+  - 214 frontend tests and typecheck passed
+  - 96 Web API tests passed, 2 ignored
   - Public production build passed
-  - Desktop and mobile browser startup inspection passed
+  - Mobile recovery-shell browser inspection passed
 - risks:
-  - Authenticated visual QA requires a real HttpOnly browser session.
+  - Authenticated production visual QA still requires a real user's HttpOnly session.
 
 ## Goal
 
-Make `/chat` enter through one stable HONE shell, fetch bootstrap state once, commit authenticated history atomically, and reserve image layout while media decodes progressively.
+Use one recovery screen, load the newest 20 projected messages first, fetch older pages only on upward scroll, open at the newest message, and reserve the finance-calendar card's complete final height.
 
 ## Completed
 
-- [x] Measured and mapped route, authentication, history, push, and image startup phases.
-- [x] Added a route-level public chat shell and unified restore visuals.
-- [x] Combined authentication and history in one bootstrap endpoint and published ready state atomically.
-- [x] Added stable progressive image placeholders for restored message media.
-- [x] Added regression coverage for the bootstrap API contract.
-- [x] Ran unit tests, typecheck, production build, and desktop/mobile browser verification.
-- [x] Updated repository context, handoff, plan archive, and archive index.
+- [x] Made route loading and session recovery render the same full-page shell.
+- [x] Added stable server pagination over projected public history.
+- [x] Replaced client-only slicing with upward cursor loading and viewport anchoring.
+- [x] Guaranteed initial bottom positioning after the message viewport mounts.
+- [x] Reserved calendar preview and action-row height before the image loads.
+- [x] Added regression tests and ran frontend/backend verification.
+- [x] Updated the handoff, repository map, archive plan, and archive index.
 

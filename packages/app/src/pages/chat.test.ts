@@ -3,11 +3,11 @@ import { displayGithubStars, formatGithubStars, GITHUB_STARS_FALLBACK } from "@/
 import {
   canSendPublicChatMessage,
   findPendingPublicAssistantMessage,
-  nextVisibleMessageCount,
   formatPublicAttachmentBytes,
   isPublicChatQuotaExhausted,
   latestUnreadPushId,
   mergePublicPushItems,
+  mergePublicHistoryWindow,
   normalizePhoneNumber,
   PUBLIC_RESTORE_MAX_ATTEMPTS,
   publicRestoreRetryDelay,
@@ -15,7 +15,6 @@ import {
   publicAttachmentFileLabel,
   rekeyTrailingOptimisticIds,
   resolvePublicChatView,
-  selectVisibleRecentMessages,
   shouldRetryPublicRestore,
   shouldRecoverPinnedBottom,
   shouldLoadOlderPublicMessages,
@@ -374,17 +373,34 @@ describe("public chat pending assistant state", () => {
 });
 
 describe("public chat history window", () => {
-  it("starts from the most recent messages", () => {
-    expect(selectVisibleRecentMessages([1, 2, 3, 4, 5], 3)).toEqual([
-      3, 4, 5,
-    ]);
-    expect(selectVisibleRecentMessages([1, 2], 10)).toEqual([1, 2]);
+  it("uses absolute history offsets for stable IDs across pages", () => {
+    const history = [
+      { role: "user", content: "older", attachments: [] },
+      { role: "assistant", content: "newer", attachments: [] },
+    ] as HistoryMsg[];
+    const page = toPublicChatMessages(history, 40);
+    expect(page[0]!.id.startsWith("h40_")).toBe(true);
+    expect(page[1]!.id.startsWith("h41_")).toBe(true);
   });
 
-  it("expands the visible window without exceeding total history", () => {
-    expect(nextVisibleMessageCount(100, 24, 24)).toBe(48);
-    expect(nextVisibleMessageCount(40, 24, 24)).toBe(40);
-    expect(nextVisibleMessageCount(10, -1, 24)).toBe(10);
+  it("keeps already loaded older rows when refreshing the latest page", () => {
+    const current = Array.from({ length: 20 }, (_, index) => ({
+      id: `h${20 + index}_old`,
+      role: (index % 2 === 0 ? "user" : "assistant") as "user" | "assistant",
+      content: `old-${index}`,
+    }));
+    const latest = Array.from({ length: 20 }, (_, index) => ({
+      id: `h${22 + index}_new`,
+      role: (index % 2 === 0 ? "user" : "assistant") as "user" | "assistant",
+      content: `new-${index}`,
+    }));
+
+    const merged = mergePublicHistoryWindow(current, 20, latest, 22);
+
+    expect(merged.start).toBe(20);
+    expect(merged.messages).toHaveLength(22);
+    expect(merged.messages.slice(0, 2)).toEqual(current.slice(0, 2));
+    expect(merged.messages.slice(2)).toEqual(latest);
   });
 
   it("rewrites trailing history ids to preserve optimistic UUIDs", () => {

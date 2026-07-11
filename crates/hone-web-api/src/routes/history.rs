@@ -61,12 +61,43 @@ pub(crate) fn history_from_messages(
         .collect()
 }
 
+#[cfg(test)]
 pub(crate) fn public_history_from_messages(
     messages: &[hone_memory::session::SessionMessage],
 ) -> Vec<HistoryMsg> {
+    project_public_history(messages)
+}
+
+pub(crate) struct PublicHistoryPage {
+    pub messages: Vec<HistoryMsg>,
+    pub start: usize,
+    pub next_before: Option<usize>,
+}
+
+pub(crate) fn public_history_page_from_messages(
+    messages: &[hone_memory::session::SessionMessage],
+    before: Option<usize>,
+    limit: usize,
+) -> PublicHistoryPage {
+    let projected = project_public_history(messages);
+    let end = before.unwrap_or(projected.len()).min(projected.len());
+    let start = end.saturating_sub(limit.clamp(1, 50));
+    let messages = projected
+        .into_iter()
+        .skip(start)
+        .take(end - start)
+        .collect();
+    PublicHistoryPage {
+        messages,
+        start,
+        next_before: (start > 0).then_some(start),
+    }
+}
+
+fn project_public_history(messages: &[hone_memory::session::SessionMessage]) -> Vec<HistoryMsg> {
     let mut history = Vec::new();
     let mut legacy_job_name: Option<String> = None;
-    for message in select_messages_after_compact_boundary(messages, Some(50)) {
+    for message in select_messages_after_compact_boundary(messages, None) {
         let content = session_message_text(message);
         let scheduler_source = message
             .metadata
@@ -223,7 +254,10 @@ fn build_history_attachment(path: &str) -> HistoryAttachment {
 mod tests {
     use std::collections::HashMap;
 
-    use super::{extract_history_attachments, public_history_from_messages};
+    use super::{
+        extract_history_attachments, public_history_from_messages,
+        public_history_page_from_messages,
+    };
 
     #[test]
     fn history_attachments_include_inline_local_images() {
@@ -315,5 +349,37 @@ mod tests {
             push.fallback_content.as_deref(),
             Some("盘前重点：留意 CPI。")
         );
+    }
+
+    #[test]
+    fn public_history_pages_from_the_newest_projected_messages() {
+        let messages = (0..45)
+            .map(|index| {
+                hone_memory::session_message_from_text(
+                    if index % 2 == 0 { "user" } else { "assistant" },
+                    &format!("message-{index}"),
+                    "2026-07-12T10:00:00+08:00",
+                    None,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let latest = public_history_page_from_messages(&messages, None, 20);
+        assert_eq!(latest.start, 25);
+        assert_eq!(latest.next_before, Some(25));
+        assert_eq!(latest.messages.len(), 20);
+        assert_eq!(latest.messages[0].content, "message-25");
+        assert_eq!(latest.messages[19].content, "message-44");
+
+        let older = public_history_page_from_messages(&messages, latest.next_before, 20);
+        assert_eq!(older.start, 5);
+        assert_eq!(older.next_before, Some(5));
+        assert_eq!(older.messages[0].content, "message-5");
+        assert_eq!(older.messages[19].content, "message-24");
+
+        let oldest = public_history_page_from_messages(&messages, older.next_before, 20);
+        assert_eq!(oldest.start, 0);
+        assert_eq!(oldest.next_before, None);
+        assert_eq!(oldest.messages.len(), 5);
     }
 }

@@ -6,6 +6,7 @@ import { renderFinanceCalendarMobilePng } from "@/lib/finance-calendar-mobile-re
 import { CONTENT } from "@/lib/public-content";
 import {
   clampFinanceCalendarPan,
+  financeCalendarActionState,
   financeCalendarAnchoredTransform,
   financeCalendarPinchZoom,
   selectFinanceCalendarImageSource,
@@ -37,6 +38,9 @@ export function FinanceCalendarMessageImage(props: {
   const [legacyMobileSrc, setLegacyMobileSrc] = createSignal<string>();
   const [working, setWorking] = createSignal<"save" | "share" | null>(null);
   const [actionError, setActionError] = createSignal(false);
+  const actionState = createMemo(() =>
+    financeCalendarActionState(loaded(), working() !== null),
+  );
   const mobileSource = createMemo(() => legacyMobileSrc() ?? props.mobileSrc);
   const needsMobileDesignUpgrade = () =>
     shouldUpgradeFinanceCalendarMobileSource(props.mobileSrc);
@@ -431,22 +435,24 @@ export function FinanceCalendarMessageImage(props: {
             {CONTENT.chat_page.composer.finance_calendar_image_retry}
           </button>
         </Show>
-        <Show when={loaded()}>
-          <div class="public-finance-calendar-actions">
-            <button type="button" onClick={openPreview}>
-              <CalendarActionIcon name="expand" />
-              <span>{CONTENT.chat_page.composer.finance_calendar_preview_open}</span>
-            </button>
-            <button type="button" onClick={() => void saveImage()} disabled={working() !== null}>
-              <CalendarActionIcon name="save" />
-              <span>{working() === "save" ? CONTENT.chat_page.composer.finance_calendar_image_saving : CONTENT.chat_page.composer.finance_calendar_image_save}</span>
-            </button>
-            <button type="button" onClick={() => void shareImage()} disabled={working() !== null}>
-              <CalendarActionIcon name="share" />
-              <span>{CONTENT.chat_page.composer.finance_calendar_image_share}</span>
-            </button>
-          </div>
-        </Show>
+        <div
+          class="public-finance-calendar-actions"
+          classList={{ "is-pending": actionState().pending }}
+          aria-hidden={actionState().pending}
+        >
+          <button type="button" onClick={openPreview} disabled={actionState().disabled}>
+            <CalendarActionIcon name="expand" />
+            <span>{CONTENT.chat_page.composer.finance_calendar_preview_open}</span>
+          </button>
+          <button type="button" onClick={() => void saveImage()} disabled={actionState().disabled}>
+            <CalendarActionIcon name="save" />
+            <span>{working() === "save" ? CONTENT.chat_page.composer.finance_calendar_image_saving : CONTENT.chat_page.composer.finance_calendar_image_save}</span>
+          </button>
+          <button type="button" onClick={() => void shareImage()} disabled={actionState().disabled}>
+            <CalendarActionIcon name="share" />
+            <span>{CONTENT.chat_page.composer.finance_calendar_image_share}</span>
+          </button>
+        </div>
         <Show when={actionError()}>
           <p class="public-finance-calendar-action-error">
             {CONTENT.chat_page.composer.finance_calendar_image_action_failed}

@@ -4,6 +4,7 @@ import {
   getPublicChatBootstrap,
   getPublicAuthMe,
   getPublicFinanceCalendar,
+  getPublicHistory,
   getPublicPushes,
   isUnauthorizedApiError,
   sendPublicChat,
@@ -110,6 +111,8 @@ describe("public chat bootstrap API", () => {
           JSON.stringify({
             user: { user_id: "web-user-1", remaining_today: 9, daily_limit: 10 },
             messages: [{ role: "user", content: "hello" }],
+            history_start: 42,
+            next_before: 42,
           }),
           { headers: { "content-type": "application/json" } },
         ),
@@ -121,6 +124,26 @@ describe("public chat bootstrap API", () => {
     expect(requestedUrl).toContain("/api/public/bootstrap");
     expect(payload.user.user_id).toBe("web-user-1");
     expect(payload.messages?.[0]?.content).toBe("hello");
+    expect(payload.history_start).toBe(42);
+    expect(payload.next_before).toBe(42);
+  });
+
+  test("requests the previous history page with a stable cursor", async () => {
+    let requestedUrl = "";
+    globalThis.fetch = ((url: RequestInfo | URL) => {
+      requestedUrl = String(url);
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ messages: [], history_start: 20, next_before: 20 }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      );
+    }) as typeof fetch;
+
+    const payload = await getPublicHistory(40);
+
+    expect(requestedUrl).toContain("/api/public/history?limit=20&before=40");
+    expect(payload.history_start).toBe(20);
   });
 });
 

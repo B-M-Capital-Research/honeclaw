@@ -26,6 +26,16 @@ const FINANCE_CALENDAR_MESSAGE_PATTERN =
 
 export const FINANCE_CALENDAR_ZOOM_LEVELS = [1, 1.25, 1.5, 2, 2.5, 3] as const;
 
+export function financeCalendarActionState(
+  loaded: boolean,
+  working: boolean,
+) {
+  return {
+    pending: !loaded,
+    disabled: !loaded || working,
+  };
+}
+
 export function clampFinanceCalendarZoom(value: number): number {
   if (!Number.isFinite(value)) return 1;
   return Math.min(3, Math.max(1, value));

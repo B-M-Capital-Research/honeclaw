@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use axum::Json;
-use axum::extract::{Multipart, State};
+use axum::extract::{Multipart, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response, sse::Event, sse::KeepAlive, sse::Sse};
 use serde::Deserialize;
@@ -28,7 +28,7 @@ use hone_memory::WebSessionAuthResult;
 
 use crate::public_auth::PublicAuthLimitStatus;
 use crate::routes::chat::build_chat_sse;
-use crate::routes::history::public_history_from_messages;
+use crate::routes::history::public_history_page_from_messages;
 use crate::state::{AppState, PushEvent};
 use crate::types::{
     PublicAuthUserInfo, PublicChatAttachmentInput, PublicChatRequest, PublicSmsLoginRequest,
@@ -39,6 +39,13 @@ use crate::types::{
 /// Kept conservative so a misbehaving client can't fill disk with a single request.
 const PUBLIC_UPLOAD_MAX_FILES: usize = 4;
 const PUBLIC_UPLOAD_MAX_BYTES: usize = 10 * 1024 * 1024;
+const PUBLIC_HISTORY_PAGE_SIZE: usize = 20;
+
+#[derive(Default, Deserialize)]
+pub(crate) struct PublicHistoryQuery {
+    before: Option<usize>,
+    limit: Option<usize>,
+}
 
 const WEB_SESSION_COOKIE: &str = "hone_web_session";
 const WEB_SESSION_MAX_AGE_LONG_SECS: i64 = 30 * 24 * 60 * 60;
@@ -432,9 +439,12 @@ pub(crate) async fn handle_bootstrap(
         .get_messages(&actor.session_id(), None)
         .unwrap_or_default();
 
+    let history = public_history_page_from_messages(&messages, None, PUBLIC_HISTORY_PAGE_SIZE);
     Json(json!({
         "user": to_public_auth_user(&state, &user_id, user),
-        "messages": public_history_from_messages(&messages),
+        "messages": history.messages,
+        "history_start": history.start,
+        "next_before": history.next_before,
     }))
     .into_response()
 }
@@ -442,6 +452,7 @@ pub(crate) async fn handle_bootstrap(
 pub(crate) async fn handle_history(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
+    Query(query): Query<PublicHistoryQuery>,
 ) -> Response {
     let user = match require_public_user(&state, &headers) {
         Ok(user) => user,
@@ -457,8 +468,15 @@ pub(crate) async fn handle_history(
         .get_messages(&actor.session_id(), None)
         .unwrap_or_default();
 
+    let history = public_history_page_from_messages(
+        &messages,
+        query.before,
+        query.limit.unwrap_or(PUBLIC_HISTORY_PAGE_SIZE),
+    );
     Json(json!({
-        "messages": public_history_from_messages(&messages),
+        "messages": history.messages,
+        "history_start": history.start,
+        "next_before": history.next_before,
     }))
     .into_response()
 }

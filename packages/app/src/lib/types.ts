@@ -49,6 +49,12 @@ export type HistoryMsg = {
   scheduled_push?: HistoryScheduledPush;
 };
 
+export type PublicHistoryPageResponse = {
+  messages: HistoryMsg[];
+  history_start: number;
+  next_before?: number | null;
+};
+
 export type HistoryScheduledPush = {
   push_id?: string;
   title: string;

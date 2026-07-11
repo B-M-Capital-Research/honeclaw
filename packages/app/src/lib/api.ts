@@ -7,6 +7,7 @@ import type {
   CompanyProfileSpaceSummary,
   CompanyProfileSummary,
   HistoryMsg,
+  PublicHistoryPageResponse,
   PublicPushListResponse,
   PublicPushOpenResponse,
   PublicAuthUserInfo,
@@ -314,13 +315,14 @@ export async function getPublicAuthMe(signal?: AbortSignal) {
 
 export async function getPublicChatBootstrap(signal?: AbortSignal) {
   const response = await apiFetch("/api/public/bootstrap", { signal });
-  return parseJson<{ user: PublicAuthUserInfo; messages?: HistoryMsg[] }>(response);
+  return parseJson<PublicHistoryPageResponse & { user: PublicAuthUserInfo }>(response);
 }
 
-export async function getPublicHistory(signal?: AbortSignal) {
-  const response = await apiFetch("/api/public/history", { signal });
-  const payload = await parseJson<{ messages?: HistoryMsg[] }>(response);
-  return payload.messages ?? [];
+export async function getPublicHistory(before?: number, signal?: AbortSignal) {
+  const query = new URLSearchParams({ limit: "20" });
+  if (before !== undefined) query.set("before", String(before));
+  const response = await apiFetch(`/api/public/history?${query.toString()}`, { signal });
+  return parseJson<PublicHistoryPageResponse>(response);
 }
 
 export async function getPublicPushes(

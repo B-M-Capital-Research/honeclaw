@@ -2068,6 +2068,7 @@ html {
 .public-finance-calendar-progress i { width: 42%; height: 100%; display: block; border-radius: inherit; background: linear-gradient(90deg, #ffae19, #ed610b); animation: finance-calendar-loading 1.25s ease-in-out infinite; }
 .public-finance-calendar-loading.is-error { background: #fff8f4; color: #9f321b; }
 .public-finance-calendar-actions { display: grid; grid-template-columns: 1.35fr 1fr 1fr; gap: 8px; }
+.public-finance-calendar-actions.is-pending { visibility: hidden; pointer-events: none; }
 .public-finance-calendar-actions button, .public-finance-calendar-lightbox footer button, .public-finance-calendar-retry { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 12px; border: 1px solid rgba(32,40,44,0.10); border-radius: 13px; background: rgba(255,255,255,0.88); color: #293135; cursor: pointer; font-family: "Avenir Next", "PingFang SC", "Noto Sans SC", sans-serif; font-size: 12px; font-weight: 760; }
 .public-finance-calendar-actions button:first-child { border-color: #20282c; background: #20282c; color: #fff; }
 .public-finance-calendar-actions svg, .public-finance-calendar-lightbox footer svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
