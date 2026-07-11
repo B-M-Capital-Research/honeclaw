@@ -2761,7 +2761,7 @@ async fn session_event_emitter_relativizes_user_visible_paths() {
             detail: Some(detail),
             ..
         }) if detail
-            == "Edit company_profiles/sandisk/profile.md and <absolute-path>/private.txt"
+            == "Edit公司画像 and <absolute-path>/private.txt"
     ));
     assert!(matches!(
         &events[1],
@@ -2771,7 +2771,7 @@ async fn session_event_emitter_relativizes_user_visible_paths() {
             reasoning: Some(reasoning),
             ..
         }) if tool == "hone/skill_tool"
-            && message == "Edit company_profiles/micron-technology/profile.md"
+            && message == "Edit公司画像"
             && reasoning == "Edit data/research/notes.md and <absolute-path>/passwd"
     ));
 }

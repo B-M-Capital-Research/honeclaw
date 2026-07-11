@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-07-11
-状态：有 6 个活跃任务
+状态：有 7 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **Agent、ACP 与数据越权安全加固**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/agent-data-security-hardening.md`
+  - 摘要：收紧非管理员 runner、actor sandbox、配置/数据库文件权限与公开 API Origin，阻断 Agent 跨用户及宿主机数据访问
 
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`

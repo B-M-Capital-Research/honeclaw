@@ -101,6 +101,14 @@ impl SkillTool {
             Command::new(&script_path)
         };
 
+        // Skill scripts are trusted repository code, but they must not inherit database,
+        // object-store, channel, or LLM credentials from the long-running server.
+        command.env_clear();
+        for name in ["PATH", "HOME", "LANG", "LC_ALL", "TMPDIR"] {
+            if let Some(value) = std::env::var_os(name) {
+                command.env(name, value);
+            }
+        }
         command
             .args(&script_arguments)
             .current_dir(&skill.skill_dir)
@@ -504,6 +512,63 @@ mod tests {
             ])
         );
         clear_test_env();
+    }
+
+    #[tokio::test]
+    async fn execute_does_not_inherit_server_secrets() {
+        let _guard = env_lock();
+        clear_test_env();
+        let root = make_temp_dir("hone_skill_tool_clean_env");
+        let system = root.join("system");
+        let custom = root.join("custom");
+        let skill_dir = system.join("clean-env");
+        let scripts_dir = skill_dir.join("scripts");
+        fs::create_dir_all(&scripts_dir).expect("scripts dir");
+        fs::create_dir_all(&custom).expect("custom dir");
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            concat!(
+                "---\n",
+                "name: Clean Env\n",
+                "description: verifies child environment\n",
+                "script: scripts/run.sh\n",
+                "shell: bash\n",
+                "---\n\n",
+                "body"
+            ),
+        )
+        .expect("skill");
+        fs::write(
+            scripts_dir.join("run.sh"),
+            concat!(
+                "printf '{\"success\":true,\"summary\":\"%s\",\"artifacts\":[{\"kind\":\"image\",\"path\":\"%s/test.png\",\"mime\":\"image/png\"}],\"warnings\":[]}' ",
+                "\"${DATABASE_URL:-absent}\" \"$HONE_SKILL_DIR\"\n"
+            ),
+        )
+        .expect("script");
+        fs::write(skill_dir.join("test.png"), b"png").expect("artifact");
+
+        let tool = SkillTool::new(
+            system,
+            custom,
+            root.join("runtime").join("skill_registry.json"),
+        );
+        unsafe {
+            std::env::set_var("DATABASE_URL", "postgres://must-not-leak");
+        }
+        let result = tool
+            .execute(serde_json::json!({
+                "skill_name": "clean-env",
+                "execute_script": true
+            }))
+            .await
+            .expect("execute");
+
+        assert_eq!(result["script_execution"]["summary"], "absent");
+        unsafe {
+            std::env::remove_var("DATABASE_URL");
+        }
+        std::fs::remove_dir_all(root).ok();
     }
 
     #[tokio::test]

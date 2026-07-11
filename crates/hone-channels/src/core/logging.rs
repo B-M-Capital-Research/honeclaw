@@ -22,11 +22,13 @@ use crate::session_compactor::{
 
 impl HoneBotCore {
     pub fn runner_supports_strict_actor_sandbox(&self) -> bool {
-        true
+        !self.configured_runner_requires_trusted_host_access() || self.llm.is_some()
     }
 
     pub fn strict_actor_sandbox_guard_message(&self) -> Option<&'static str> {
-        None
+        (!self.runner_supports_strict_actor_sandbox()).then_some(
+            "安全执行器不可用：普通用户不能使用具备宿主机访问能力的 CLI/ACP，请先配置 function_calling LLM。",
+        )
     }
 
     /// 打印启动期路由信息（配置来源、主对话执行器、压缩/审计/存储后端等）

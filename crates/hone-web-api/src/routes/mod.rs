@@ -34,7 +34,7 @@ use axum::middleware;
 use axum::response::IntoResponse;
 use axum::routing::{get, patch, post, put};
 use axum::{
-    http::{Method, StatusCode},
+    http::{HeaderValue, Method, StatusCode},
     response::Response,
 };
 use tower_http::cors::{AllowHeaders, AllowMethods, AllowOrigin, Any, CorsLayer};
@@ -49,6 +49,32 @@ async fn handle_not_found() -> Response {
 
 async fn handle_api_not_found() -> Response {
     common::json_error(StatusCode::NOT_FOUND, "api route not found")
+}
+
+fn public_origin_allowed(origin: &HeaderValue, configured_origins: &str) -> bool {
+    let Ok(origin) = origin.to_str() else {
+        return false;
+    };
+    if matches!(
+        origin,
+        "https://hone-claw.com" | "https://www.hone-claw.com"
+    ) {
+        return true;
+    }
+    if origin == "http://localhost"
+        || origin.starts_with("http://localhost:")
+        || origin == "http://127.0.0.1"
+        || origin.starts_with("http://127.0.0.1:")
+        || origin == "http://[::1]"
+        || origin.starts_with("http://[::1]:")
+    {
+        return true;
+    }
+    configured_origins
+        .split(',')
+        .map(str::trim)
+        .filter(|allowed| !allowed.is_empty())
+        .any(|allowed| allowed == origin)
 }
 
 pub fn build_admin_app(state: Arc<AppState>) -> Router {
@@ -236,8 +262,11 @@ pub fn build_admin_app(state: Arc<AppState>) -> Router {
 pub fn build_public_app(state: Arc<AppState>) -> Router {
     let web_dist = public_web_dist_dir();
     let index_path = web_dist.join("index.html");
+    let configured_origins = std::env::var("HONE_PUBLIC_ALLOWED_ORIGINS").unwrap_or_default();
     let cors = CorsLayer::new()
-        .allow_origin(AllowOrigin::mirror_request())
+        .allow_origin(AllowOrigin::predicate(move |origin, _| {
+            public_origin_allowed(origin, &configured_origins)
+        }))
         .allow_methods(AllowMethods::list([Method::GET, Method::POST]))
         .allow_headers(AllowHeaders::mirror_request())
         .allow_credentials(true);
@@ -300,3 +329,33 @@ pub(crate) use common::{
     json_error, normalize_optional_string, normalized_actor, normalized_query_actor, require_actor,
     require_phone_number, require_string,
 };
+
+#[cfg(test)]
+mod tests {
+    use super::public_origin_allowed;
+    use axum::http::HeaderValue;
+
+    #[test]
+    fn credentialed_public_cors_rejects_untrusted_origins() {
+        assert!(public_origin_allowed(
+            &HeaderValue::from_static("https://hone-claw.com"),
+            ""
+        ));
+        assert!(public_origin_allowed(
+            &HeaderValue::from_static("http://localhost:5173"),
+            ""
+        ));
+        assert!(public_origin_allowed(
+            &HeaderValue::from_static("https://app.example.test"),
+            "https://app.example.test"
+        ));
+        assert!(!public_origin_allowed(
+            &HeaderValue::from_static("https://evil.example"),
+            ""
+        ));
+        assert!(!public_origin_allowed(
+            &HeaderValue::from_static("https://hone-claw.com.evil.example"),
+            ""
+        ));
+    }
+}

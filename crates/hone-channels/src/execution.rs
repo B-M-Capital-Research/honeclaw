@@ -101,6 +101,19 @@ impl ExecutionService {
             request.allow_cron,
         );
         let runner: Box<dyn AgentRunner> = match request.runner_selection {
+            ExecutionRunnerSelection::Configured
+                if !self.core.is_admin_actor(&request.actor)
+                    && self.core.configured_runner_requires_trusted_host_access() =>
+            {
+                tracing::warn!(
+                    channel = %request.actor.channel,
+                    user_id = %request.actor.user_id,
+                    configured_runner = %self.core.config.agent.runner,
+                    "untrusted actor routed to strict function-calling runner"
+                );
+                self.core
+                    .create_strict_actor_runner(&request.system_prompt, tool_registry)?
+            }
             ExecutionRunnerSelection::Configured => self.core.create_runner_with_model_override(
                 &request.system_prompt,
                 tool_registry,
@@ -241,6 +254,7 @@ mod tests {
         config.storage.gen_images_dir = root.join("gen_images").to_string_lossy().to_string();
 
         let mut core = HoneBotCore::new(config);
+        core.llm = Some(Arc::new(MockLlmProvider));
         if with_auxiliary_llm {
             core.auxiliary_llm = Some(Arc::new(MockLlmProvider));
         }
@@ -353,6 +367,68 @@ mod tests {
             .expect("prepare should succeed");
 
         assert_eq!(prepared.runner_name, "function_calling");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn prepare_routes_non_admin_native_runner_to_strict_function_calling() {
+        let root = temp_root("execution_non_admin_strict_runner");
+        let core = make_test_core(&root, "codex_acp", false);
+        let actor = ActorIdentity::new("web", "alice", None::<String>).expect("actor");
+
+        let prepared = ExecutionService::new(core)
+            .prepare(make_request(
+                actor,
+                ExecutionMode::PersistentConversation,
+                ExecutionRunnerSelection::Configured,
+            ))
+            .expect("safe fallback should be available");
+
+        assert_eq!(prepared.runner_name, "function_calling");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn prepare_keeps_native_runner_for_explicit_admin() {
+        let root = temp_root("execution_admin_native_runner");
+        let mut core = Arc::try_unwrap(make_test_core(&root, "codex_acp", false))
+            .unwrap_or_else(|_| panic!("test core should be uniquely owned"));
+        core.config
+            .admins
+            .discord_user_ids
+            .push("alice".to_string());
+        let actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");
+
+        let prepared = ExecutionService::new(Arc::new(core))
+            .prepare(make_request(
+                actor,
+                ExecutionMode::PersistentConversation,
+                ExecutionRunnerSelection::Configured,
+            ))
+            .expect("trusted admin should keep configured runner");
+
+        assert_eq!(prepared.runner_name, "codex_acp");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn prepare_fails_closed_when_strict_runner_is_unavailable() {
+        let root = temp_root("execution_strict_runner_missing_llm");
+        let mut core = Arc::try_unwrap(make_test_core(&root, "codex_acp", false))
+            .unwrap_or_else(|_| panic!("test core should be uniquely owned"));
+        core.llm = None;
+        let actor = ActorIdentity::new("web", "alice", None::<String>).expect("actor");
+
+        let err = match ExecutionService::new(Arc::new(core)).prepare(make_request(
+            actor,
+            ExecutionMode::PersistentConversation,
+            ExecutionRunnerSelection::Configured,
+        )) {
+            Ok(_) => panic!("untrusted actor must not fall back to native runner"),
+            Err(err) => err,
+        };
+
+        assert!(err.contains("安全执行器不可用"));
         let _ = std::fs::remove_dir_all(root);
     }
 

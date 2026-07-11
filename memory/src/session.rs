@@ -1360,7 +1360,9 @@ impl SessionStorage {
     }
 
     fn backfill_shadow_from_json_dir(&self) {
-        if !self.shadow_sqlite_enabled {
+        if !self.shadow_sqlite_enabled
+            && !matches!(self.runtime_backend, SessionRuntimeBackend::Sqlite)
+        {
             return;
         }
         let Some(shadow_sqlite) = &self.sqlite_storage else {

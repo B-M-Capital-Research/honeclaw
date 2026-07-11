@@ -702,6 +702,39 @@ impl HoneBotCore {
         }
     }
 
+    /// Native CLI/ACP runners execute outside Hone's actor-bound tool registry and may
+    /// inspect the host process or filesystem. They are therefore reserved for trusted
+    /// administrators; regular users are routed through function calling instead.
+    pub(crate) fn configured_runner_requires_trusted_host_access(&self) -> bool {
+        matches!(
+            self.config.agent.runner_kind(),
+            AgentRunnerKind::GeminiCli
+                | AgentRunnerKind::GeminiAcp
+                | AgentRunnerKind::CodexCli
+                | AgentRunnerKind::CodexAcp
+                | AgentRunnerKind::OpencodeAcp
+                | AgentRunnerKind::MultiAgent
+        )
+    }
+
+    pub(crate) fn create_strict_actor_runner(
+        &self,
+        system_prompt: &str,
+        tool_registry: ToolRegistry,
+    ) -> Result<Box<dyn AgentRunner>, String> {
+        let llm = self.llm.clone().ok_or_else(|| {
+            "安全执行器不可用：普通用户不能使用具备宿主机访问能力的 CLI/ACP，且 function_calling LLM 未配置。"
+                .to_string()
+        })?;
+        Ok(Box::new(FunctionCallingReasoningRunner::new(
+            llm,
+            Arc::new(tool_registry),
+            system_prompt.to_string(),
+            self.config.agent.max_iterations,
+            self.llm_audit.clone(),
+        )))
+    }
+
     pub fn create_actor(
         channel: &str,
         user_id: &str,

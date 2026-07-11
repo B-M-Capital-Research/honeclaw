@@ -301,6 +301,23 @@ impl StorageConfig {
         if let Some(parent) = PathBuf::from(&self.session_sqlite_db_path).parent() {
             let _ = std::fs::create_dir_all(parent);
         }
+
+        let directories = [
+            &self.sessions_dir,
+            &self.portfolio_dir,
+            &self.cron_jobs_dir,
+            &self.gen_images_dir,
+            &self.notif_prefs_dir,
+            &self.conversation_quota_dir,
+        ];
+        for directory in directories {
+            let _ = crate::harden_private_dir(directory);
+        }
+        if let Some(data_root) = PathBuf::from(&self.sessions_dir).parent() {
+            let _ = crate::harden_private_dir(data_root);
+        }
+        let _ = crate::harden_private_file(&self.llm_audit_db_path);
+        let _ = crate::harden_private_file(&self.session_sqlite_db_path);
     }
 }
 

@@ -14,6 +14,7 @@ pub mod heartbeat;
 pub mod logging;
 pub mod process_lock;
 pub mod quiet;
+pub mod security;
 pub mod task_observer;
 pub mod text;
 pub mod time;
@@ -40,6 +41,7 @@ pub use process_lock::{
     format_lock_failure_message, preflight_process_locks, preflight_process_locks_with_cleanup,
     process_lock_path, runtime_lock_dir, try_cleanup_conflicting_process,
 };
+pub use security::{harden_private_dir, harden_private_file};
 pub use task_observer::{
     TASK_RUNS_RETENTION_DAYS, TaskOutcome, TaskRunRecord, purge_old_task_runs,
     read_recent_task_runs, record_failed, record_ok, record_skipped, record_task_run,

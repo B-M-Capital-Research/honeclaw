@@ -1110,6 +1110,19 @@ mod web_push_tests {
         );
         assert_eq!(storage.count_unread_web_push_messages(&actor).unwrap(), 1);
         assert_eq!(storage.count_unread_web_push_messages(&other).unwrap(), 1);
+        assert!(
+            storage
+                .get_web_push_message(&actor, "p4")
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            storage
+                .mark_web_push_messages_read_through(&actor, "p4")
+                .unwrap(),
+            0
+        );
+        assert_eq!(storage.count_unread_web_push_messages(&other).unwrap(), 1);
 
         let listed = storage.list_web_push_messages(&actor, None, 10).unwrap();
         assert_eq!(

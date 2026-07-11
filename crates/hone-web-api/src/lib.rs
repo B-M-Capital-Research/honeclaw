@@ -679,6 +679,7 @@ pub async fn start_server(
     deployment_mode: &str,
 ) -> Result<StartedServer, String> {
     hone_core::cloud_runtime::load_dotenv_if_present();
+    hone_core::harden_private_file(config_path).map_err(|e| format!("配置权限保护失败: {e}"))?;
     let mut task_handles = Vec::new();
     let mut config =
         HoneConfig::from_file(config_path).map_err(|e| format!("配置加载失败: {e}"))?;

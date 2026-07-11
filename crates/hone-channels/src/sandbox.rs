@@ -22,11 +22,14 @@ pub(crate) fn actor_sandbox_root(actor: &ActorIdentity) -> PathBuf {
 
 pub(crate) fn ensure_actor_sandbox(actor: &ActorIdentity) -> io::Result<PathBuf> {
     let root = actor_sandbox_root(actor);
-    fs::create_dir_all(root.join("uploads"))?;
-    fs::create_dir_all(root.join("runtime"))?;
+    hone_core::harden_private_dir(sandbox_base_dir())?;
+    hone_core::harden_private_dir(root.parent().unwrap_or_else(|| Path::new(".")))?;
+    hone_core::harden_private_dir(&root)?;
+    hone_core::harden_private_dir(root.join("uploads"))?;
+    hone_core::harden_private_dir(root.join("runtime"))?;
     // Pre-create company_profiles so tools return an empty listing rather than
     // "directory not found", which causes repeated search retries in the model.
-    fs::create_dir_all(root.join("company_profiles"))?;
+    hone_core::harden_private_dir(root.join("company_profiles"))?;
     remove_sensitive_legacy_files(&root)?;
     Ok(root)
 }

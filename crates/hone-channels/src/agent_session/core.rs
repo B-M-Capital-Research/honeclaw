@@ -1139,7 +1139,9 @@ impl AgentSession {
             None,
         );
 
-        if !self.core.runner_supports_strict_actor_sandbox() {
+        if !self.core.is_admin_actor(&self.actor)
+            && !self.core.runner_supports_strict_actor_sandbox()
+        {
             let message = self
                 .core
                 .strict_actor_sandbox_guard_message()

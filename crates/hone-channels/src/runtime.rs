@@ -651,6 +651,10 @@ fn rewrite_user_visible_internal_copy(text: &str) -> (String, bool) {
 }
 
 pub fn user_visible_error_message(raw: Option<&str>) -> String {
+    let raw_lowered = raw.unwrap_or_default().to_ascii_lowercase();
+    if looks_runner_transport_disconnect_error_lowered(&raw_lowered) {
+        return RUNNER_RESOURCE_UNAVAILABLE_USER_ERROR_MESSAGE.to_string();
+    }
     let Some(sanitized) = sanitized_non_empty_user_visible(raw) else {
         return GENERIC_USER_ERROR_MESSAGE.to_string();
     };

@@ -152,6 +152,8 @@ impl HoneConfig {
     /// 从 YAML 文件加载配置
     pub fn from_file(path: impl AsRef<Path>) -> crate::HoneResult<Self> {
         let path = path.as_ref();
+        crate::harden_private_file(path)
+            .map_err(|err| crate::HoneError::Config(format!("配置文件权限保护失败: {err}")))?;
         let value = read_merged_yaml_value(path)?;
         let mut config = Self::from_merged_value(value)?;
         if let Err(err) = materialize::apply_system_prompt_path(&mut config, path) {

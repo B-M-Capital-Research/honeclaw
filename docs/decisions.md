@@ -181,3 +181,11 @@ Last updated: 2026-07-11
 - Rendering: Generated mobile finance calendars use one Canvas 2D renderer for both new sends and visible-history lazy upgrades. Text is painted with explicit baselines and coordinates rather than rasterizing DOM line boxes. Every material artifact redesign increments the mobile filename marker; visible older versions are lazily rebuilt in the browser without mutating conversation history.
 - Impact: New public visual work must extend the narrowest owning layer rather than adding a `<style>` block to a page component. Shared token changes require public-page and authenticated-chat checks; calendar composition changes require direct Canvas source-size and 390px visual verification on an iOS-compatible path.
 - Compatibility: API, persistence, desktop-calendar output, Feishu, and other channel behavior remain unchanged. The version marker affects only which Web mobile image is selected or lazily regenerated.
+
+## D-2026-07-12-01 Reserve Native Agent Runners For Trusted Administrators
+
+- Status: Accepted
+- Decision: Treat local CLI/ACP runners as trusted-host execution rather than actor sandboxes. When a non-admin actor reaches shared execution preparation and the configured runner can access the host, route the turn through the in-process function-calling runner with an actor-bound tool registry; if no such LLM is available, fail closed. Explicit administrators retain the configured native runner.
+- Data boundary: Runtime configuration/data/actor-sandbox roots use owner-only Unix permissions. Skill scripts clear inherited server environment before execution. Public credentialed CORS accepts only HONE production origins, local development origins, and exact operator-configured origins.
+- Impact: Public Web users and non-admin channel users can use registered tools but cannot ask an ACP/CLI agent to inspect repository, config, database, home-directory, or process data. Native ACP remains an administrator trust boundary and must not be presented as a strict filesystem sandbox.
+- Verification: Runner-selection tests cover non-admin fallback, admin retention, and fail-closed behavior; permissions, skill environment, CORS, file traversal, and cross-actor push-read tests cover the supporting boundaries.

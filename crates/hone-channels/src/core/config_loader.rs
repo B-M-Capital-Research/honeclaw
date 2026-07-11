@@ -22,6 +22,9 @@ pub fn runtime_config_path() -> String {
 
 pub fn load_runtime_config() -> hone_core::HoneResult<(HoneConfig, String)> {
     let config_path = runtime_config_path();
+    hone_core::harden_private_file(&config_path).map_err(|err| {
+        hone_core::HoneError::Config(format!("failed to protect runtime config: {err}"))
+    })?;
     let mut config = HoneConfig::from_file(&config_path)?;
     let data_dir = std::env::var_os("HONE_DATA_DIR").map(PathBuf::from);
     let skills_dir = std::env::var_os("HONE_SKILLS_DIR").map(PathBuf::from);

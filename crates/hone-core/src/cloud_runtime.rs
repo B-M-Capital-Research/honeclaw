@@ -3390,6 +3390,7 @@ pub fn local_durable_dependencies(config: &HoneConfig) -> Vec<String> {
 
 pub fn load_dotenv_if_present() {
     let path = PathBuf::from(".env");
+    let _ = crate::harden_private_file(&path);
     let Ok(text) = std::fs::read_to_string(path) else {
         return;
     };
