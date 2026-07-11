@@ -57,10 +57,6 @@ type PublicChatComposerState = {
   dailyLimit: number | undefined;
 };
 
-type PublicChatBackgroundPending = {
-  since: number;
-} | null;
-
 export function normalizePhoneNumber(value: string) {
   const trimmed = value.trim();
   const hasLeadingPlus = trimmed.startsWith("+");
@@ -284,26 +280,6 @@ export function findPendingPublicAssistantMessage(
     }
   }
   return undefined;
-}
-
-function publicBackgroundPendingMessage(
-  pending: PublicChatBackgroundPending,
-): PublicChatMessage | undefined {
-  if (!pending) return undefined;
-  return {
-    id: "_background",
-    role: "assistant",
-    content: "",
-    phase: "thinking",
-    startedAt: pending.since,
-  };
-}
-
-export function publicComposerPendingMessage(input: {
-  local: PublicChatMessage | undefined;
-  background: PublicChatBackgroundPending;
-}): PublicChatMessage | undefined {
-  return input.local ?? publicBackgroundPendingMessage(input.background);
 }
 
 function toPublicAttachments(

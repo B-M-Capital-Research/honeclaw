@@ -57,3 +57,15 @@ Production feedback found that route loading and in-page recovery still differed
 ## Next Entry Point
 
 Start with `PublicChatStartup`, `restoreSession()` in `chat.tsx`, and `handle_bootstrap()` in the public Web API. Cloudflare Pages deployment follows `docs/runbooks/backend-deployment.md`.
+
+## Thinking Card Follow-up
+
+Production feedback found that the composer-side `HONE 思考中` strip reads like a system status instead of an assistant reply. This follow-up moves the pending lifecycle into the timeline and preserves one assistant card/message identity until the final answer replaces it in place.
+
+## Thinking Card Completed
+
+- Sending now inserts an empty in-thread assistant card immediately. Its `data-phase` advances through thinking, streaming, and done/error without switching components or replacing the DOM node.
+- The detached composer status and transient completion strip were removed. Elapsed time and stop stay inside the active assistant card, while completed turns expose the normal copy/share actions.
+- Refreshing during a server-side run appends a `_background` timeline placeholder. The final persisted assistant row adopts that temporary ID before Solid reconciliation, so the same card is edited in place.
+- Abort errors now use localized user-facing copy instead of exposing browser exception text.
+- Verification: 214 frontend tests, frontend typecheck, targeted lifecycle tests, public production build, diff check, and 390 x 844 public-entry browser QA with no console warnings. Authenticated production sending still requires the user's HttpOnly session for final hands-on acceptance.

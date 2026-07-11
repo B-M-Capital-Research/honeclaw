@@ -81,7 +81,6 @@ import {
   isPublicChatQuotaExhausted,
   latestUnreadPushId,
   PUBLIC_RESTORE_TIMEOUT_MS,
-  publicComposerPendingMessage,
   publicAttachmentFileLabel,
   publicRestoreRetryDelay,
   rekeyTrailingOptimisticIds,
@@ -961,20 +960,59 @@ function UserBubble(props: {
 }
 
 function AssistantBubble(props: {
-  content: string;
-  attachments?: PublicChatAttachment[];
+  message: ChatMessage;
   isContinuation?: boolean;
   onShare?: () => void;
+  onStop?: () => void;
+  onDismiss?: () => void;
 }) {
   const nonImageAttachments = createMemo(() =>
-    (props.attachments ?? []).filter((a) => a.kind !== "image"),
+    (props.message.attachments ?? []).filter((a) => a.kind !== "image"),
   );
   const isCalendarMessage = createMemo(
-    () => financeCalendarMessageMonth(stripAttachmentMarkers(props.content)) !== null,
+    () =>
+      financeCalendarMessageMonth(
+        stripAttachmentMarkers(props.message.content),
+      ) !== null,
   );
+  const pending = () =>
+    props.message.phase !== "done" && props.message.phase !== "error";
+  const terminal = () => props.message.phase === "error";
+  const hasContent = () => !!props.message.content.trim();
+  const [elapsed, setElapsed] = createSignal(0);
   const [copied, setCopied] = createSignal(false);
+
+  createEffect(() => {
+    if (!props.message.startedAt || !pending()) {
+      if (!props.message.startedAt) setElapsed(0);
+      return;
+    }
+    const tick = () =>
+      setElapsed(
+        Math.max(
+          0,
+          Math.floor((Date.now() - (props.message.startedAt ?? 0)) / 1000),
+        ),
+      );
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    onCleanup(() => window.clearInterval(timer));
+  });
+
+  const statusLabel = () => {
+    if (terminal()) return CONTENT.chat_page.status.error;
+    if (hasContent()) return "HONE";
+    switch (props.message.phase) {
+      case "running":
+        return CONTENT.chat_page.status.running;
+      case "streaming":
+        return CONTENT.chat_page.status.streaming;
+      default:
+        return CONTENT.chat_page.status.thinking;
+    }
+  };
   const handleCopy = () => {
-    const text = stripAttachmentMarkers(props.content);
+    const text = stripAttachmentMarkers(props.message.content);
     void navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1400);
@@ -983,6 +1021,8 @@ function AssistantBubble(props: {
   return (
     <div
       class="pub-msg-in pub-msg-row"
+      data-testid="assistant-turn"
+      data-phase={props.message.phase ?? "done"}
       style={{
         display: "flex",
         "justify-content": "flex-start",
@@ -1003,39 +1043,66 @@ function AssistantBubble(props: {
           position: "relative",
         }}
       >
-        <Show when={!props.isContinuation}>
-        <div
-          class="pub-msg-bubble__brand"
-          style={{
-            display: "flex",
-            "align-items": "center",
-            gap: "8px",
-            "margin-bottom": "12px",
-          }}
-        >
-          <span
-            style={{
-              width: "8px",
-              height: "8px",
-              "border-radius": "50%",
-              background: "#f59e0b",
-              display: "inline-block",
-            }}
-          />
-          <span
-            style={{
-              "font-size": "13px",
-              "font-weight": "800",
-              "letter-spacing": "0.1em",
-              "text-transform": "uppercase",
-              color: "#64748b",
+        <Show when={!props.isContinuation || pending() || terminal()}>
+          <div
+            class="pub-msg-bubble__brand pub-assistant-turn-status"
+            classList={{
+              "is-thinking": pending() && !hasContent(),
+              "is-error": terminal(),
             }}
           >
-            HONE
-          </span>
-        </div>
+            <span class="pub-assistant-turn-dot" />
+            <span class="pub-assistant-turn-label">{statusLabel()}</span>
+            <Show when={pending() && !hasContent()}>
+              <span class="pub-assistant-turn-time">{elapsed()}s</span>
+            </Show>
+            <span class="pub-assistant-turn-spacer" />
+            <Show when={pending() && props.onStop}>
+              <button
+                type="button"
+                class="pub-assistant-turn-stop"
+                onClick={() => props.onStop?.()}
+              >
+                {CONTENT.chat_page.status.stop}
+              </button>
+            </Show>
+            <Show when={terminal() && props.onDismiss}>
+              <button
+                type="button"
+                class="pub-assistant-turn-dismiss"
+                aria-label={CONTENT.chat_page.actions.dismiss_aria}
+                onClick={() => props.onDismiss?.()}
+              >
+                ×
+              </button>
+            </Show>
+          </div>
         </Show>
-        <AssistantBody content={props.content} />
+        <Show when={pending() && !hasContent()}>
+          <div class="pub-assistant-thinking-body" aria-hidden="true">
+            <i /><i /><i />
+          </div>
+        </Show>
+        <Show when={(props.message.steps?.length ?? 0) > 0 && !hasContent()}>
+          <ul class="pub-assistant-turn-steps">
+            <For each={props.message.steps}>
+              {(step) => <li>{step}</li>}
+            </For>
+          </ul>
+        </Show>
+        <Show when={hasContent()}>
+          <div class="pub-assistant-turn-content">
+            <AssistantBody content={props.message.content} />
+            <Show when={pending()}>
+              <span class="pub-cursor" />
+            </Show>
+          </div>
+        </Show>
+        <Show when={terminal()}>
+          <p class="pub-assistant-turn-error">
+            {props.message.statusText || CONTENT.chat_page.status.fallback_error}
+          </p>
+        </Show>
         <Show when={nonImageAttachments().length > 0}>
           <div
             style={{
@@ -1050,23 +1117,39 @@ function AssistantBubble(props: {
             </For>
           </div>
         </Show>
-        <Show when={!isCalendarMessage()}>
-        <div class="pub-msg-actions">
-          <button
-            type="button"
-            class="pub-msg-action"
-            aria-label={CONTENT.chat_page.actions.copy_aria}
-            title={
-              copied()
-                ? CONTENT.chat_page.actions.copied
-                : CONTENT.chat_page.actions.copy_aria
-            }
-            onClick={handleCopy}
-            data-copied={copied() ? "true" : undefined}
-          >
-            <Show
-              when={copied()}
-              fallback={
+        <Show when={props.message.phase === "done" && !isCalendarMessage()}>
+          <div class="pub-msg-actions">
+            <button
+              type="button"
+              class="pub-msg-action"
+              aria-label={CONTENT.chat_page.actions.copy_aria}
+              title={
+                copied()
+                  ? CONTENT.chat_page.actions.copied
+                  : CONTENT.chat_page.actions.copy_aria
+              }
+              onClick={handleCopy}
+              data-copied={copied() ? "true" : undefined}
+            >
+              <Show
+                when={copied()}
+                fallback={
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                  </svg>
+                }
+              >
                 <svg
                   width="14"
                   height="14"
@@ -1078,228 +1161,37 @@ function AssistantBubble(props: {
                   stroke-linejoin="round"
                   aria-hidden="true"
                 >
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                  <path d="M20 6L9 17l-5-5" />
                 </svg>
-              }
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.4"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M20 6L9 17l-5-5" />
-              </svg>
-            </Show>
-          </button>
-          <Show when={props.onShare}>
-            <button
-              type="button"
-              class="pub-msg-action"
-              aria-label={CONTENT.chat_page.actions.share_aria}
-              title={CONTENT.chat_page.actions.share_aria}
-              onClick={() => props.onShare?.()}
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <circle cx="18" cy="5" r="3" />
-                <circle cx="6" cy="12" r="3" />
-                <circle cx="18" cy="19" r="3" />
-                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-              </svg>
+              </Show>
             </button>
-          </Show>
-        </div>
-        </Show>
-      </div>
-    </div>
-  );
-}
-
-function PendingBubble(props: {
-  message: ChatMessage;
-  onStop: () => void;
-  onDismiss: () => void;
-}) {
-  const [elapsed, setElapsed] = createSignal(0);
-
-  createEffect(() => {
-    if (!props.message.startedAt) {
-      setElapsed(0);
-      return;
-    }
-    const tick = () => {
-      const seconds = Math.max(
-        0,
-        Math.floor((Date.now() - (props.message.startedAt ?? 0)) / 1000),
-      );
-      setElapsed(seconds);
-    };
-    tick();
-    if (props.message.phase === "done" || props.message.phase === "error")
-      return;
-    const timer = setInterval(tick, 1000);
-    onCleanup(() => clearInterval(timer));
-  });
-
-  const terminal = () => props.message.phase === "error";
-  const labelText = () => {
-    switch (props.message.phase) {
-      case "error":
-        return CONTENT.chat_page.status.error;
-      case "streaming":
-        return CONTENT.chat_page.status.streaming;
-      case "running":
-        return CONTENT.chat_page.status.running;
-      default:
-        return CONTENT.chat_page.status.thinking;
-    }
-  };
-  return (
-    <div
-      class="pub-msg-in pub-msg-row"
-      style={{
-        display: "flex",
-        "justify-content": "flex-start",
-        "margin-bottom": "20px",
-      }}
-    >
-      <div
-        class="pub-msg-bubble pub-msg-bubble--assistant"
-        style={{
-          "max-width": "85%",
-          background: "#fff",
-          border: terminal()
-            ? "2px solid rgba(239,68,68,0.2)"
-            : "1.5px solid #e2e8f0",
-          "border-radius": "4px 24px 24px 24px",
-          padding: "16px 20px",
-          "box-shadow": "0 10px 30px rgba(0,0,0,0.03)",
-        }}
-      >
-        {/* The header status row only shows in error state — for the
-            normal thinking/streaming flow the composer-side status strip
-            is the single source of truth (avoids duplicate "HONE 思考中"). */}
-        <Show when={terminal()}>
-          <div
-            style={{
-              display: "flex",
-              "align-items": "center",
-              "justify-content": "space-between",
-              gap: "10px",
-              "margin-bottom": props.message.content ? "12px" : "0",
-            }}
-          >
-            <div
-              style={{ display: "flex", "align-items": "center", gap: "8px" }}
-            >
-              <span
-                style={{
-                  width: "8px",
-                  height: "8px",
-                  "border-radius": "50%",
-                  background: "#ef4444",
-                }}
-              />
-              <span
-                style={{
-                  "font-size": "13px",
-                  "font-weight": "800",
-                  "letter-spacing": "0.1em",
-                  "text-transform": "uppercase",
-                  color: "#64748b",
-                }}
+            <Show when={props.onShare}>
+              <button
+                type="button"
+                class="pub-msg-action"
+                aria-label={CONTENT.chat_page.actions.share_aria}
+                title={CONTENT.chat_page.actions.share_aria}
+                onClick={() => props.onShare?.()}
               >
-                {labelText()}
-              </span>
-              <span
-                style={{
-                  "font-family": "var(--font-mono)",
-                  "font-size": "12px",
-                  color: "rgba(0,0,0,0.35)",
-                }}
-              >
-                {elapsed()}s
-              </span>
-            </div>
-            <button
-              onClick={props.onDismiss}
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                color: "#64748b",
-                "font-size": "14px",
-              }}
-            >
-              ✕
-            </button>
-          </div>
-        </Show>
-
-        <Show when={(props.message.steps?.length ?? 0) > 0}>
-          <ul
-            style={{
-              margin: props.message.content ? "0 0 12px" : "8px 0 0",
-              padding: "0",
-              "list-style": "none",
-              "font-size": "13px",
-              "line-height": "1.8",
-              color: "#64748b",
-            }}
-          >
-            <For each={props.message.steps}>
-              {(step) => (
-                <li
-                  style={{
-                    display: "flex",
-                    "align-items": "flex-start",
-                    gap: "8px",
-                  }}
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
                 >
-                  <span style={{ color: "#f59e0b" }}>•</span>
-                  <span>{step}</span>
-                </li>
-              )}
-            </For>
-          </ul>
-        </Show>
-
-        <Show when={props.message.content}>
-          <div style={{ "white-space": "pre-wrap" }}>
-            <AssistantBody content={props.message.content} />
-            <Show when={props.message.phase === "streaming"}>
-              <span class="pub-cursor" />
+                  <circle cx="18" cy="5" r="3" />
+                  <circle cx="6" cy="12" r="3" />
+                  <circle cx="18" cy="19" r="3" />
+                  <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                  <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                </svg>
+              </button>
             </Show>
-          </div>
-        </Show>
-
-        <Show when={terminal()}>
-          <div
-            style={{
-              "font-size": "14px",
-              color: "#ef4444",
-              "margin-top": "6px",
-              "font-weight": "600",
-            }}
-          >
-            {props.message.statusText || CONTENT.chat_page.status.fallback_error}
           </div>
         </Show>
       </div>
@@ -1526,81 +1418,6 @@ function AttachMenu(props: {
             </span>
           </span>
         </button>
-      </div>
-    </Show>
-  );
-}
-
-function ComposerStatus(props: {
-  message: ChatMessage | undefined;
-  onStop: () => void;
-  justFinished: boolean;
-}) {
-  const [elapsed, setElapsed] = createSignal(0);
-
-  createEffect(() => {
-    const m = props.message;
-    if (!m || !m.startedAt) {
-      setElapsed(0);
-      return;
-    }
-    const tick = () =>
-      setElapsed(
-        Math.max(0, Math.floor((Date.now() - (m.startedAt ?? 0)) / 1000)),
-      );
-    tick();
-    const timer = setInterval(tick, 1000);
-    onCleanup(() => clearInterval(timer));
-  });
-
-  const labelText = (m: ChatMessage) => {
-    switch (m.phase) {
-      case "streaming":
-        return CONTENT.chat_page.status.streaming;
-      case "running":
-        return CONTENT.chat_page.status.running;
-      default:
-        return CONTENT.chat_page.status.thinking;
-    }
-  };
-
-  return (
-    <Show when={props.message || props.justFinished}>
-      <div
-        class={
-          "public-chat-composer-status" + (props.justFinished ? " is-done" : "")
-        }
-        role="status"
-        aria-live="polite"
-      >
-        <Show
-          when={props.message}
-          fallback={
-            <>
-              <span class="public-chat-composer-status-dot done" />
-              <span class="public-chat-composer-status-label">
-                {CONTENT.chat_page.status.done}
-              </span>
-            </>
-          }
-        >
-          {(m) => (
-            <>
-              <span class="public-chat-composer-status-dot pulsing" />
-              <span class="public-chat-composer-status-label">
-                {labelText(m())}
-              </span>
-              <span class="public-chat-composer-status-time">{elapsed()}s</span>
-              <button
-                type="button"
-                class="public-chat-composer-status-stop"
-                onClick={props.onStop}
-              >
-                {CONTENT.chat_page.status.stop}
-              </button>
-            </>
-          )}
-        </Show>
       </div>
     </Show>
   );
@@ -2339,12 +2156,9 @@ function Composer(props: {
   uploading: boolean;
   onSend: () => void;
   onCalendarSent: () => void;
-  onStop: () => void;
   isSending: boolean;
   remaining: number | undefined;
   dailyLimit: number | undefined;
-  pendingMessage: ChatMessage | undefined;
-  justFinished: boolean;
 }) {
   const [focused, setFocused] = createSignal(false);
   const [menuOpen, setMenuOpen] = createSignal(false);
@@ -2412,11 +2226,6 @@ function Composer(props: {
         "z-index": "20",
       }}
     >
-      <ComposerStatus
-        message={props.pendingMessage}
-        onStop={props.onStop}
-        justFinished={props.justFinished}
-      />
       <div class="public-chat-proactive-tip-wrap">
         <ProactiveModeTips />
         <FinanceCalendarQuickAction onSent={props.onCalendarSent} />
@@ -2613,7 +2422,6 @@ export default function PublicChatPage() {
   const [historyStart, setHistoryStart] = createSignal(0);
   const [historyNextBefore, setHistoryNextBefore] = createSignal<number>();
   const [loadingOlderMessages, setLoadingOlderMessages] = createSignal(false);
-  const [justFinished, setJustFinished] = createSignal(false);
   const [sidebarCollapsed, setSidebarCollapsed] = createSignal(false);
   const [pushCenterOpen, setPushCenterOpen] = createSignal(false);
   const [pushItems, setPushItems] = createSignal<PublicPushListItem[]>([]);
@@ -2650,7 +2458,6 @@ export default function PublicChatPage() {
   let pinBottomUntil = 0;
   let shareReturnScrollTop: number | null = null;
   let shareReturnAtBottom = true;
-  let justFinishedTimer: number | undefined;
   let pushUserId: string | undefined;
   let initialBottomPending = true;
 
@@ -2704,12 +2511,6 @@ export default function PublicChatPage() {
     isSending() || !!pendingAssistantMessage() || !!backgroundPending();
   const pendingAssistantMessage = createMemo(() => {
     return findPendingPublicAssistantMessage(messages);
-  });
-  const composerPendingMessage = createMemo<ChatMessage | undefined>(() => {
-    return publicComposerPendingMessage({
-      local: pendingAssistantMessage(),
-      background: backgroundPending(),
-    });
   });
 
   createEffect(() => {
@@ -2917,12 +2718,6 @@ export default function PublicChatPage() {
     }
   };
 
-  const flashJustFinished = () => {
-    setJustFinished(true);
-    if (justFinishedTimer !== undefined) window.clearTimeout(justFinishedTimer);
-    justFinishedTimer = window.setTimeout(() => setJustFinished(false), 2400);
-  };
-
   const openShareModal = (seedIndex: number) => {
     shareReturnScrollTop = scrollRef?.scrollTop ?? null;
     shareReturnAtBottom = stickToBottom || distanceFromBottom() < 160;
@@ -3027,6 +2822,23 @@ export default function PublicChatPage() {
             latest,
             bootstrap.history_start,
           );
+      const lastServerMessage = merged.messages[merged.messages.length - 1];
+      const recoveredPending =
+        user.in_flight > 0 &&
+        lastServerMessage?.role === "user" &&
+        !isSending();
+      const pendingSince = backgroundPending()?.since ?? Date.now();
+      if (recoveredPending) {
+        merged.messages.push({
+          id: "_background",
+          role: "assistant",
+          content: "",
+          phase: "thinking",
+          statusText: CONTENT.chat_page.status.thinking,
+          startedAt: pendingSince,
+          steps: [],
+        });
+      }
       const previousScrollTop = scrollRef?.scrollTop;
       const shouldKeepBottom =
         options.resetWindow ||
@@ -3060,17 +2872,10 @@ export default function PublicChatPage() {
           }
         });
       }
-      // If the server has a run in flight and we're not the one streaming
-      // it (e.g. page was just refreshed mid-answer), surface a "思考中"
-      // status until the reply lands.
-      const lastIsUser =
-        merged.messages.length > 0 &&
-        merged.messages[merged.messages.length - 1]!.role === "user";
-      if (user.in_flight > 0 && lastIsUser && !isSending()) {
-        setBackgroundPending((prev) => prev ?? { since: Date.now() });
-      } else {
-        setBackgroundPending(null);
-      }
+      // Keep polling when this tab did not start the run. The placeholder is
+      // part of the timeline, so the eventual server reply can re-use its id
+      // and update the same assistant card in place.
+      setBackgroundPending(recoveredPending ? { since: pendingSince } : null);
     } catch (error) {
       if (generation !== sessionSyncGeneration) return;
       if (isUnauthorizedApiError(error)) {
@@ -3113,16 +2918,6 @@ export default function PublicChatPage() {
       void restoreSession();
     }, 3000);
     onCleanup(() => clearInterval(id));
-  });
-
-  // Flash "本轮已完成" when a background-pending run resolves.
-  let hadBackgroundPending = false;
-  createEffect(() => {
-    const hasBackgroundPending = !!backgroundPending();
-    if (hadBackgroundPending && !hasBackgroundPending && !isSending()) {
-      flashJustFinished();
-    }
-    hadBackgroundPending = hasBackgroundPending;
   });
 
   createEffect(() => {
@@ -3264,7 +3059,6 @@ export default function PublicChatPage() {
     activeController?.abort();
     restoreController?.abort();
     clearRestoreRetry();
-    if (justFinishedTimer !== undefined) window.clearTimeout(justFinishedTimer);
     document.documentElement.classList.remove("public-chat-scroll-lock");
     document.body.classList.remove("public-chat-scroll-lock");
   });
@@ -3335,20 +3129,25 @@ export default function PublicChatPage() {
             const index = messages.findIndex((m) => m.id === assistantId);
             if (index >= 0) setMessages(index, "phase", "done");
             pinToBottom(1400);
-            flashJustFinished();
           }
         }
       }
     } catch (e) {
       const index = messages.findIndex((m) => m.id === assistantId);
-      if (index >= 0)
-        setMessages(index, { phase: "error", statusText: String(e) });
+      const aborted = e instanceof DOMException && e.name === "AbortError";
+      if (index >= 0) {
+        setMessages(index, {
+          phase: "error",
+          statusText: aborted
+            ? CONTENT.chat_page.status.stopped
+            : CONTENT.chat_page.status.fallback_error,
+        });
+      }
     } finally {
       const shouldStayAtBottom =
         stickToBottom || isBottomPinned() || distanceFromBottom() < 160;
       if (shouldStayAtBottom) pinToBottom(1600);
       setIsSending(false);
-      flashJustFinished();
       void restoreSession({ keepAtBottom: shouldStayAtBottom });
     }
   };
@@ -3357,7 +3156,6 @@ export default function PublicChatPage() {
     const shouldStayAtBottom =
       stickToBottom || isBottomPinned() || distanceFromBottom() < 160;
     if (shouldStayAtBottom) pinToBottom(1400);
-    flashJustFinished();
     void restoreSession({ keepAtBottom: shouldStayAtBottom });
   };
 
@@ -3566,33 +3364,30 @@ export default function PublicChatPage() {
                             </Match>
                             <Match
                               when={
-                                msg.role === "assistant" &&
-                                msg.phase === "done" &&
-                                !msg.scheduledPush
+                                msg.role === "assistant" && !msg.scheduledPush
                               }
                             >
                               <AssistantBubble
-                                content={msg.content}
-                                attachments={msg.attachments}
+                                message={msg}
                                 isContinuation={
                                   i() > 0 &&
                                   visibleMessages()[i() - 1]?.role ===
                                     "assistant"
                                 }
                                 onShare={() => openShareModal(i())}
-                              />
-                            </Match>
-                            <Match
-                              when={
-                                msg.role === "assistant" &&
-                                msg.phase !== "done" &&
-                                (msg.content || msg.phase === "error")
-                              }
-                            >
-                              <PendingBubble
-                                message={msg}
-                                onStop={() => activeController?.abort()}
-                                onDismiss={() => {}}
+                                onStop={
+                                  msg.id === "_background"
+                                    ? undefined
+                                    : () => activeController?.abort()
+                                }
+                                onDismiss={() =>
+                                  setMessages(
+                                    reconcile(
+                                      messages.filter((item) => item.id !== msg.id),
+                                      { key: "id" },
+                                    ),
+                                  )
+                                }
                               />
                             </Match>
                           </Switch>
@@ -3653,12 +3448,9 @@ export default function PublicChatPage() {
                     uploading={uploading()}
                     onSend={handleSend}
                     onCalendarSent={handleCalendarSent}
-                    onStop={() => activeController?.abort()}
                     isSending={isSending()}
                     remaining={sessionInfo()?.remainingToday}
                     dailyLimit={sessionInfo()?.dailyLimit}
-                    pendingMessage={composerPendingMessage()}
-                    justFinished={justFinished()}
                   />
                 </div>
               </div>

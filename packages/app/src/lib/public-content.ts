@@ -917,6 +917,7 @@ const CONTENT_ZH = {
       done: "本轮已完成",
       fallback_error: "请求出错，请重试。",
       stop: "停止",
+      stopped: "已停止本轮回答",
     },
     attachments: {
       image_title: "图片",
@@ -1015,6 +1016,7 @@ const CONTENT_ZH = {
       copied: "已复制",
       scroll_to_bottom_aria: "回到最新消息",
       share_aria: "分享",
+      dismiss_aria: "关闭",
     },
     share: {
       brand_name: "HONE",
@@ -2551,6 +2553,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       done: "Done",
       fallback_error: "Request failed. Please try again.",
       stop: "Stop",
+      stopped: "This response was stopped",
     },
     attachments: {
       image_title: "Image",
@@ -2649,6 +2652,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       copied: "Copied",
       scroll_to_bottom_aria: "Jump to latest",
       share_aria: "Share",
+      dismiss_aria: "Dismiss",
     },
     share: {
       brand_name: "HONE",

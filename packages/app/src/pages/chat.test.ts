@@ -11,7 +11,6 @@ import {
   normalizePhoneNumber,
   PUBLIC_RESTORE_MAX_ATTEMPTS,
   publicRestoreRetryDelay,
-  publicComposerPendingMessage,
   publicAttachmentFileLabel,
   rekeyTrailingOptimisticIds,
   resolvePublicChatView,
@@ -344,32 +343,6 @@ describe("public chat pending assistant state", () => {
     expect(findPendingPublicAssistantMessage(messages)).toBe(running);
   });
 
-  it("falls back to background pending state for the composer strip", () => {
-    expect(
-      publicComposerPendingMessage({
-        local: undefined,
-        background: { since: 1778749318381 },
-      }),
-    ).toMatchObject({
-      id: "_background",
-      role: "assistant",
-      phase: "thinking",
-      startedAt: 1778749318381,
-    });
-
-    const local = {
-      id: "local",
-      role: "assistant" as const,
-      content: "streaming",
-      phase: "streaming" as const,
-    };
-    expect(
-      publicComposerPendingMessage({
-        local,
-        background: { since: 1 },
-      }),
-    ).toBe(local);
-  });
 });
 
 describe("public chat history window", () => {
@@ -438,6 +411,21 @@ describe("public chat history window", () => {
     rekeyTrailingOptimisticIds(existing, next);
     expect(next[1]!.id).toBe("abc-uuid-1");
     expect(next[0]!.id).toBe("h0_abc");
+  });
+
+  it("reuses a recovered thinking card id when the reply arrives", () => {
+    const existing = [
+      { id: "h0_abc", role: "user" as const },
+      { id: "_background", role: "assistant" as const },
+    ];
+    const next = [
+      { id: "h0_abc", role: "user" as const },
+      { id: "h1_reply", role: "assistant" as const },
+    ];
+
+    rekeyTrailingOptimisticIds(existing, next);
+
+    expect(next[1]!.id).toBe("_background");
   });
 
   it("stops walking when roles diverge", () => {

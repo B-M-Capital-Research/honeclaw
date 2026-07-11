@@ -11,9 +11,9 @@ Last updated: 2026-07-12
 - Plan: `docs/archive/plans/public-chat-startup-experience.md`
 - Handoff: `docs/handoffs/2026-07-12-public-chat-startup-experience.md`
 - Decision / ADR: N/A; public auth and actor-scoped history ownership remain unchanged
-- Related PRs / commits: `22af864b`, this follow-up change set
-- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`, 214 frontend tests, frontend typecheck, 96 Web API tests, public production build, 390 x 844 browser QA
-- Current conclusion: `/chat` uses one recovery shell, opens at the newest of 20 projected messages, cursor-loads older pages upward with stable IDs and viewport anchoring, and reserves finance-calendar controls before image load so the message height remains stable.
+- Related PRs / commits: `22af864b`, `2f0c0e9e`, this follow-up change set
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`, 214 frontend tests, frontend typecheck, 96 Web API tests from the pagination phase, public production build, 390 x 844 browser QA
+- Current conclusion: `/chat` now uses one recovery shell, starts from the newest 20 projected messages, cursor-loads older history upward, reserves media layout, and represents every assistant run as one in-thread card that is edited in place from thinking through final output, including refreshed background runs.
 - Next entry point: `docs/handoffs/2026-07-12-public-chat-startup-experience.md`
 
 ### Agent And Data Security Hardening
