@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Hone</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="launch-shell" data-state="connecting">
+      <div class="ambient ambient-one"></div>
+      <div class="ambient ambient-two"></div>
+      <section class="launch-card" aria-live="polite">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 160 160" role="img">
+            <path class="stone-top" d="M43 79 82 31l31 16-40 48Z" />
+            <path class="stone-left" d="M43 79v20l30 15V95Z" />
+            <path class="stone-right" d="M73 95v19l40-48V47Z" />
+            <path class="knife-top" d="m40 53 82 36-7 7-82-35Z" />
+            <path class="knife-blade" d="m33 61 82 35v17L33 84Z" />
+          </svg>
+        </div>
+        <div class="brand-copy">
+          <p class="eyebrow">HONE FOR MAC</p>
+          <h1>让重要的信息，<br />在需要时抵达。</h1>
+          <p class="subtitle">你的 AI 投资助手正在准备对话空间。</p>
+        </div>
+        <div class="connection-state">
+          <div class="progress-track" aria-hidden="true"><span></span></div>
+          <div class="status-row">
+            <span class="status-dot"></span>
+            <span id="status">正在安全连接 hone-claw.com…</span>
+          </div>
+          <button id="retry" type="button" hidden>重新连接</button>
+        </div>
+      </section>
+      <p class="privacy-note">登录状态仅保存在这台 Mac 的系统 WebKit 数据中</p>
+    </main>
+    <script src="./app.js"></script>
+  </body>
+</html>

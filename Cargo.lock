@@ -3139,6 +3139,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hone-user-app"
+version = "0.12.4"
+dependencies = [
+ "open",
+ "tauri",
+ "tauri-build",
+]
+
+[[package]]
 name = "hone-web-api"
 version = "0.12.4"
 dependencies = [

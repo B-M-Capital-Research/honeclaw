@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="background" x1="140" y1="120" x2="860" y2="910" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff9ec"/>
+      <stop offset="1" stop-color="#e9e2d3"/>
+    </linearGradient>
+    <linearGradient id="stone" x1="350" y1="270" x2="670" y2="610" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffad36"/>
+      <stop offset="1" stop-color="#ff6508"/>
+    </linearGradient>
+    <linearGradient id="blade" x1="295" y1="420" x2="745" y2="690" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#56616a"/>
+      <stop offset="1" stop-color="#181d21"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="180%">
+      <feDropShadow dx="0" dy="34" stdDeviation="28" flood-color="#33291f" flood-opacity=".22"/>
+    </filter>
+  </defs>
+  <rect x="62" y="62" width="900" height="900" rx="218" fill="url(#background)"/>
+  <path d="M92 735c186 101 598 142 840-74v83c-225 202-618 187-840 60Z" fill="#dd6b1f" opacity=".09"/>
+  <g filter="url(#shadow)" transform="translate(0 -16)">
+    <path d="m350 501 220-276 151 78-224 274Z" fill="url(#stone)"/>
+    <path d="M350 501v100l147 75v-99Z" fill="#d85605"/>
+    <path d="M497 577v99l224-273V303Z" fill="#252b30"/>
+    <path d="m331 364 431 188-36 34-431-182Z" fill="#ffae16"/>
+    <path d="m295 404 431 182v91L295 532Z" fill="url(#blade)"/>
+  </g>
+</svg>

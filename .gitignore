@@ -259,5 +259,6 @@ playwright-report/
 test-results/
 bins/hone-desktop/binaries/
 bins/hone-desktop/tauri.generated.conf.json
+bins/hone-user-app/gen/
 local/
 packages/app/dist-public/

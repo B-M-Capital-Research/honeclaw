@@ -1,0 +1,11 @@
+[package]
+name = "hone-user-app"
+version.workspace = true
+edition.workspace = true
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+open = "5"
+tauri = { version = "2", features = [] }

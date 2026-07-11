@@ -189,12 +189,12 @@
 
 - PR / push 默认门禁仅包含：
   - Rust 格式检查（仅改动文件，`bash scripts/ci/check_fmt_changed.sh`）
-  - Rust 编译检查（`cargo check --workspace --all-targets --exclude hone-desktop`）
-  - Rust 测试（`cargo test --workspace --all-targets --exclude hone-desktop`）
+  - Rust 编译检查（`cargo check --workspace --all-targets --exclude hone-desktop --exclude hone-user-app`）
+  - Rust 测试（`cargo test --workspace --all-targets --exclude hone-desktop --exclude hone-user-app`）
   - 前端单元测试（`bun run test:web`）
   - CI-safe 回归脚本（`bash tests/regression/run_ci.sh`）
 - 任何需要外部账号凭证的检查都必须放到 `tests/regression/manual/`，不阻塞主干合并
-- `hone-desktop` 依赖桌面 sidecar 资源与打包环境，不属于默认 PR / push 逻辑门禁；相关检查保留在桌面构建或 release 流程中处理
+- `hone-desktop` 依赖桌面 sidecar 资源与打包环境，`hone-user-app` 是 macOS 专用远程用户端；两者都不属于默认 Linux PR / push 逻辑门禁，相关检查保留在各自的桌面构建或 release 流程中处理
 
 ## 本地 Git Hook
 

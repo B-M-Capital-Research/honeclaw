@@ -1,0 +1,35 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Hone",
+  "version": "0.12.4",
+  "identifier": "com.hone.chat",
+  "build": {
+    "frontendDist": "ui"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'none'; img-src 'self' data: https://hone-claw.com; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "app",
+      "dmg"
+    ],
+    "category": "Business",
+    "copyright": "Copyright © 2026 Hone Financial",
+    "shortDescription": "Hone AI 投资助手",
+    "longDescription": "Hone 的专注型 macOS 用户端，直接进入登录和投资对话。",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "12.0"
+    }
+  }
+}

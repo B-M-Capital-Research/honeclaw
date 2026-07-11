@@ -1,6 +1,6 @@
 # Repo Map
 
-Last updated: 2026-06-29
+Last updated: 2026-07-11
 
 ## Purpose
 
@@ -54,7 +54,8 @@ Last updated: 2026-06-29
   - `hone-cli`: local REPL
   - `hone-mcp`: local stdio MCP server that exposes Hone built-in tools to ACP runners
   - `hone-imessage`, `hone-telegram`, `hone-discord`, `hone-feishu`: channel entrypoints, with shared startup in `hone-channels::bootstrap` and per-channel sibling modules for scheduler / outbound / handlers where the protocol layer needs local ownership
-- `hone-desktop`: Tauri desktop host with a thin `main.rs` façade, command handlers in `commands.rs`, backend / sidecar lifecycle in `sidecar.rs`, sidecar concern modules in `sidecar/{processes,runtime_env,settings}.rs`, tray extension points in `tray.rs`, and the desktop window packaging flow
+  - `hone-desktop`: full Tauri desktop host with a thin `main.rs` façade, command handlers in `commands.rs`, backend / sidecar lifecycle in `sidecar.rs`, sidecar concern modules in `sidecar/{processes,runtime_env,settings}.rs`, tray extension points in `tray.rs`, and the local-runtime desktop packaging flow
+  - `hone-user-app`: focused macOS Tauri shell for the production public user experience. It embeds only a startup/offline surface, opens directly to `https://hone-claw.com/chat`, persists WebKit login state, and intentionally has no Hone runtime, sidecar, ACP, MCP, channel, skill, config, or local-data dependency.
 - `config.yaml` / `data/runtime/`
   - `config.yaml` is the canonical user-writable config; dev uses the repo root copy, and packaged installs seed one under the user config dir
   - LLM provider credentials are config-owned: prefer `llm.providers.<symbol>.api_key/api_keys`, with legacy `llm.openrouter.*` readable only as config fallback; runtime LLM paths do not read parent process API-key env vars
@@ -88,6 +89,7 @@ Last updated: 2026-06-29
   - 用户可见的长期研究记忆入口现只保留 `/memory` 下的公司画像视图；KB 页面与知识记忆 tab 已移除
 - CLI: `bins/hone-cli/src/main.rs`
   - `hone-cli` now has explicit subcommands for `chat`, `config`, `configure`, `models`, `channels`, `status`, `doctor`, `start`, and `web`; `web admin-ui` / `web user-ui` start or locate the admin and user Web surfaces; `channels targets [--json]` inspects the typed cron-backed channel-target directory; no-subcommand mode still drops into the local chat REPL
+- Standalone public macOS user app: `bins/hone-user-app/src/main.rs`; build with `scripts/build_user_app.sh` and operate it via `docs/runbooks/public-user-macos-app.md`
 - Channel runtime export: `crates/hone-channels/src/lib.rs`
 - Shared channel bootstrap: `crates/hone-channels/src/bootstrap.rs`
 - `AgentSession` abstraction: `crates/hone-channels/src/agent_session/mod.rs`
@@ -157,6 +159,8 @@ Last updated: 2026-06-29
 
 ## Desktop Structure
 
+- `bins/hone-user-app/` is the remote-only public macOS lane. Its local UI is limited to branded startup/offline recovery, its first-party navigation allowlist is `hone-claw.com`, and unrelated links open in the system browser. It must not acquire local runtime or sidecar dependencies.
+- `scripts/build_user_app.sh` produces a Universal macOS `.app` and `.dmg` from the dedicated crate without preparing the full desktop sidecars. It uses a separate Cargo target directory so user-app builds cannot collide with `hone-desktop` artifacts.
 - The Tauri host lives in `bins/hone-desktop/`
 - `bins/hone-desktop/src/{main.rs,commands.rs,sidecar.rs,tray.rs}` now separates the builder façade, Tauri command handlers, backend lifecycle, and tray extension point
 - `bins/hone-desktop/src/sidecar/{processes,runtime_env,settings}.rs` keeps process supervision, runtime environment/path wiring, and persisted desktop settings / overlay writes out of the main Tauri command surface
@@ -255,7 +259,8 @@ Last updated: 2026-06-29
 - Scripts in `tests/regression/manual/` depend on local environment state or external accounts and must not be promoted to default CI gates; wrappers that call real services, send messages, or consume provider quota should skip by default unless their `RUN_*_LIVE_SMOKES=1` gate is set
 - iMessage capabilities depend on local macOS permissions and cannot be assumed to work in CI or on non-macOS environments
 - Desktop packaging depends on a local Rust + Tauri toolchain; if `cargo` or `bun` is missing, only static changes are possible, not a full compile verification
-- Default repo-wide Rust verification should keep using `cargo check --workspace --all-targets --exclude hone-desktop`; desktop packaging is a separate validation lane.
+- Default repo-wide Rust verification should keep using `cargo check --workspace --all-targets --exclude hone-desktop --exclude hone-user-app`; each macOS app has a separate packaging validation lane.
+- Validate the public user app itself with `cargo test -p hone-user-app`, `cargo check -p hone-user-app`, and `bash scripts/build_user_app.sh`; inspect the resulting bundle before distribution to ensure it remains sidecar-free.
 - For local IDE / syntax checks on the desktop crate itself, use `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo check -p hone-desktop` so Tauri skips bundled sidecar existence validation while still type-checking Rust code.
 - Real desktop packaging validation must still use the generated Tauri config / prepared sidecars path (`bun run tauri:prep:*` + `bunx tauri dev/build`); the skip flag is not a substitute for release-time resource checks.
 - `opencode_acp` now treats the user's local OpenCode config as the default source of provider/auth/model truth. The Hone runner may still inject a small custom `OPENCODE_CONFIG` for ACP permissions and explicit `agent.opencode.*` overrides, but it should not hide `~/.config/opencode/opencode.json` / `opencode.jsonc` by replacing the entire OpenCode config home.

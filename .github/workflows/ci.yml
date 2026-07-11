@@ -63,10 +63,10 @@ jobs:
         run: bash scripts/ci/check_fmt_changed.sh
 
       - name: Rust compile check
-        run: cargo check --workspace --all-targets --exclude hone-desktop
+        run: cargo check --workspace --all-targets --exclude hone-desktop --exclude hone-user-app
 
       - name: Rust tests
-        run: cargo test --workspace --all-targets --exclude hone-desktop
+        run: cargo test --workspace --all-targets --exclude hone-desktop --exclude hone-user-app
 
       - name: CI-safe regression scripts
         run: bash tests/regression/run_ci.sh

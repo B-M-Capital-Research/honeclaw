@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-07-10
+Last updated: 2026-07-11
+
+## 2026-07-11
+
+### Standalone Public User macOS App
+
+- Status: done
+- Date: 2026-07-11
+- Plan: `docs/archive/plans/standalone-public-user-macos-app.md`
+- Handoff: `docs/handoffs/2026-07-11-standalone-public-user-macos-app.md`
+- Decision / ADR: `docs/decisions.md#d-2026-07-11-01-separate-the-public-macos-app-from-the-local-runtime-desktop`
+- Related PRs / commits: this change set
+- Related runbooks / regressions: `docs/runbooks/public-user-macos-app.md`, `cargo test -p hone-user-app`, `cargo check -p hone-user-app`, `bash scripts/build_user_app.sh`, Universal architecture/bundle/signature inspection, packaged `/chat` launch smoke
+- Current conclusion: Hone now ships a focused Universal macOS user client that enters production `/chat` through a polished local startup shell and intentionally excludes local runtime, ACP, MCP, channels, config, skills, and data directories. The 16 MB app / 5.7 MB DMG are ad-hoc signed on this machine and require Developer ID signing plus notarization before public distribution.
+- Next entry point: `docs/runbooks/public-user-macos-app.md`
 
 ## 2026-07-10
 

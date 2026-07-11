@@ -35,10 +35,11 @@ git diff --stat
 - `Cargo.toml`
 - `Cargo.lock`
 - `bins/hone-desktop/tauri.conf.json`
+- `bins/hone-user-app/tauri.conf.json`
 
 常见做法：
 
-1. 先改 `Cargo.toml` 与 `bins/hone-desktop/tauri.conf.json`
+1. 先改 `Cargo.toml`、`bins/hone-desktop/tauri.conf.json` 与 `bins/hone-user-app/tauri.conf.json`
 2. 再跑一次会刷新 lock 的命令，例如：
 
 ```bash

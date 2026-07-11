@@ -20,6 +20,7 @@ members = [
     "bins/hone-telegram",
     "bins/hone-cli",
     "bins/hone-desktop",
+    "bins/hone-user-app",
     "bins/hone-mcp",
 ]
 

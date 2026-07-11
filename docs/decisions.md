@@ -1,6 +1,6 @@
 # Decisions
 
-Last updated: 2026-07-10
+Last updated: 2026-07-11
 
 ## D-2026-03-07-01 Maintain LLM Collaboration Context In-Repo
 
@@ -157,3 +157,11 @@ Last updated: 2026-07-10
 - Read semantics: Opening push `N` marks every push owned by the same Web actor with an order at or before `N` as read. Opening an older push therefore preserves newer unread state, while opening the latest push clears the aggregate unread indicator. Opening the push center itself acknowledges the latest item known at that instant; pushes arriving afterward remain unread and restore the aggregate red dot.
 - API impact: Public list responses carry summaries and unread counts only; full content is fetched from an authenticated actor-scoped detail endpoint. Read state is used to drive the aggregate red dot but is not rendered as per-message read/unread copy.
 - Compatibility: Historical scheduled turns without push ids are lazily backfilled on the actor's first push-list request with deterministic `legacy:*` ids and durable read state. The import is actor-scoped and idempotent, preserves any existing `read_at`, and makes pre-upgrade messages available in the same inbox as new scheduler pushes.
+
+## D-2026-07-11-01 Separate The Public macOS App From The Local Runtime Desktop
+
+- Status: Accepted
+- Decision: Package the production public user experience as a dedicated remote-only Tauri app in `bins/hone-user-app` instead of extending the full `hone-desktop` bundle. The app opens `https://hone-claw.com/chat`, keeps only first-party Hone navigation in its WebView, and owns no backend, sidecar, ACP, MCP, channel, skill, config, or local-data lifecycle.
+- Impact: Public macOS releases use `scripts/build_user_app.sh`; full local-runtime desktop packaging remains a separate lane. The user app is tested and built on macOS rather than included in the default Linux workspace gate.
+- Security: The local shell ships a restrictive CSP, permits in-app HTTPS navigation only to Hone-owned hosts, and sends unrelated HTTP(S)/mail links to the system browser. The release bundle must be inspected for unexpected resources and external binaries before distribution.
+- Distribution: Unsigned development machines may produce an ad-hoc signed Universal `.app` / `.dmg` for internal use. Public distribution still requires an Apple Developer ID identity and notarization.
