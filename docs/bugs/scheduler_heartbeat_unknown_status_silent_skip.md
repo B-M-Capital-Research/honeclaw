@@ -7,6 +7,19 @@
 
 ## 修复进展
 
+- `2026-07-12 03:02-07:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-11`
+    - 05:30-07:01 CST 多条 heartbeat 仍以 `<think>` 或自然语言开头，再被解析为 `PlainTextTriggered`、`JsonNoop`、`PlainTextNoop`、`PlainTextSuppressed` 等混合状态。
+    - 代表样本包括 05:30 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`：raw preview 以 `<think>` 开头，随后 `deliver_preview` 退化为 fenced JSON，但最终仍按未命中跳过发送。
+    - 06:00-07:01 CST `闪迪关键事件心跳提醒`、`AI与科技持仓观察关键事件心跳提醒`、`TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`、`持仓重大事件心跳检测`、`AAOI 1.6T 光模块心跳检测` 等继续经由 `PlainTextTriggered` / `JsonNoop` / `PlainTextNoop` 进入 deliver、duplicate suppression 或 skipped/noop 路径。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 在 03:02-07:02 CST 新增 3 个 user turn / 3 条 assistant final，均为 scheduler 触发后正常收口；本地 `cron_job_runs` 仍未推进，本轮仍以 runtime web log 判断 cloud/runtime heartbeat 运行态。
+    - assistant final 污染扫描未命中空回复、`<think>`、`reasoning_content`、本机路径、provider 原始错误、panic、quota、`data_fetch`、`quote_short`、`company_profiles/` 或原始工具 JSON。
+    - 最近四小时仅有 1 个非文档提交 `90085a15 fix: suppress heartbeat monitor creation drift`，未改变本轮结构化状态退化判断。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题继续影响 heartbeat 监控判断、送达语义和失败/跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-11 23:02-2026-07-12 03:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-11`
     - 03:00 CST 附近多条 heartbeat 仍以 `<think>` 或自然语言开头，再被解析为 `PlainTextTriggered`、`JsonMalformed`、`PlainTextNoop`、`JsonNoop` 等混合状态。

@@ -3,9 +3,24 @@
 - **发现时间**: 2026-04-18 11:06 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: Fixed
+- **状态**: New
 
 ## 最新进展
+
+- `2026-07-12 03:02-07:02 CST` 真实运行态复发，状态从代码级 `Fixed` 回退为 `New`：
+  - `data/runtime/logs/web.log.2026-07-11`
+    - 05:30 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`
+    - `job_id=j_218175e9`
+    - `target=web-user-879a3b18fce2`
+    - `parse_kind=PlainTextTriggered`
+    - `deliver_preview` 以 fenced JSON 开头：包含 `"status": "triggered"`、`"scan_time": "2026-07-12T03:00+08:00"`、`"tickers_checked": ["TEM", "AAOI", "KRMN", "RKLB", "MRVL"]`、`"events": [` 等结构化协议字段。
+    - 同条随后记录 `心跳任务未命中，跳过发送`，未确认正式投递；但 live 出站预览已经退化为用户不可读的结构化载荷，说明 2026-07-11 03:09 的代码级清理未覆盖当前 `PlainTextTriggered` + fenced JSON 形态。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 在 03:02-07:02 CST 新增 3 个 user turn / 3 条 assistant final，均为 scheduler 触发后正常收口。
+    - assistant final 污染扫描未命中空回复、`<think>`、`reasoning_content`、本机路径、provider 原始错误、panic、quota、`data_fetch`、`quote_short`、`company_profiles/` 或原始工具 JSON。
+  - 判断：
+    - 该样本仍是 heartbeat 用户可见提醒格式化退化的同一链路；不是新的独立根因。
+    - 当前没有错投、漏投、全渠道不可用或数据安全证据，且该条最终未发送；主要伤害是出站预览和潜在用户可见提醒的结构/格式质量，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
 
 - `2026-07-11 03:09 CST` 代码级修复并回归通过，状态更新为 `Fixed`：
   - `crates/hone-channels/src/scheduler.rs`
