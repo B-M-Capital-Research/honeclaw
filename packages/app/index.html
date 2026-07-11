@@ -35,10 +35,13 @@
         --font-sans: "Plus Jakarta Sans", "Avenir Next", "IBM Plex Sans", sans-serif;
         --font-mono: "JetBrains Mono", "IBM Plex Mono", monospace;
       }
+      .hone-entry-loader { min-height:100dvh; display:grid; place-items:center; gap:10px; align-content:center; background:#f7f4ed; color:#111a20; font-family:var(--font-sans); }
+      .hone-entry-loader strong { font-size:18px; letter-spacing:.32em; margin-left:.32em; }
+      .hone-entry-loader span { color:#7c858c; font-size:12px; letter-spacing:.08em; }
     </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div class="hone-entry-loader"><strong>HONE</strong><span>正在打开工作台</span></div></div>
     <script type="module" src="/src/entry.tsx"></script>
   </body>
   </html>

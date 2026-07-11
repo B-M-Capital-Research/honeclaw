@@ -6,6 +6,7 @@ import {
   createSignal,
   createEffect,
   createResource,
+  batch,
   For,
   Match,
   onCleanup,
@@ -20,6 +21,7 @@ import { PublicLoginForm } from "@/components/public-login-form";
 import { PublicNav } from "@/components/public-nav";
 import { HoneBrand } from "@/components/hone-brand";
 import { ChatShareModal } from "@/components/chat-share-modal";
+import { PublicChatStartup } from "@/components/public-chat-startup";
 import { canvasToPngBlob } from "@/components/chat-share-export";
 import {
   FinanceCalendarCard,
@@ -52,9 +54,8 @@ import "./public-site.css";
 import "./public-polish.css";
 import "./public-chat.css";
 import {
-  getPublicAuthMe,
+  getPublicChatBootstrap,
   getPublicFinanceCalendar,
-  getPublicHistory,
   getPublicPushes,
   connectPublicEvents,
   isUnauthorizedApiError,
@@ -595,122 +596,23 @@ function LoadingCard(props: {
     return CONTENT.chat_page.restoring.failed_desc;
   };
 
+  const reason = () =>
+    props.status?.mode === "failed" && props.status.message
+      ? `${desc()} ${CONTENT.chat_page.restoring.reason_prefix.replace(
+          "{message}",
+          props.status.message,
+        )}`
+      : desc();
+
   return (
-    <div
-      style={{
-        "min-height": "100vh",
-        display: "flex",
-        "align-items": "center",
-        "justify-content": "center",
-      }}
-    >
-      <div
-        style={{
-          "max-width": "480px",
-          width: "100%",
-          padding: "0 24px",
-          "text-align": "center",
-          position: "relative",
-          "z-index": "10",
-        }}
-      >
-        <div
-          style={{
-            padding: "48px 32px",
-            "border-radius": "24px",
-            border: "1.5px solid #f1f5f9",
-            background: "rgba(255, 255, 255, 0.9)",
-            "backdrop-filter": "blur(10px)",
-            "box-shadow": "0 20px 50px rgba(0,0,0,0.05)",
-          }}
-        >
-          <div
-            style={{
-              width: "56px",
-              height: "56px",
-              "border-radius": "50%",
-              background: "#000",
-              display: "flex",
-              "align-items": "center",
-              "justify-content": "center",
-              margin: "0 auto 24px",
-            }}
-          >
-            <Show
-              when={props.status?.mode === "failed"}
-              fallback={
-                <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/20 border-t-white" />
-              }
-            >
-              <span
-                style={{
-                  color: "#fff",
-                  "font-size": "24px",
-                  "font-weight": "900",
-                }}
-              >
-                !
-              </span>
-            </Show>
-          </div>
-          <h1
-            style={{
-              "font-size": "22px",
-              "font-weight": "800",
-              color: "#0f172a",
-              margin: "0 0 12px",
-            }}
-          >
-            {title()}
-          </h1>
-          <p
-            style={{
-              "font-size": "15px",
-              color: "#64748b",
-              margin: "0",
-              "line-height": "1.6",
-            }}
-          >
-            {desc()}
-          </p>
-          <Show when={props.status?.mode === "failed" && props.status.message}>
-            <p
-              style={{
-                "font-size": "13px",
-                color: "#94a3b8",
-                margin: "12px 0 0",
-                "line-height": "1.6",
-                "word-break": "break-word",
-              }}
-            >
-              {CONTENT.chat_page.restoring.reason_prefix.replace(
-                "{message}",
-                props.status?.message ?? "",
-              )}
-            </p>
-          </Show>
-          <Show when={props.status?.mode === "failed"}>
-            <button
-              type="button"
-              onClick={props.onRetry}
-              style={{
-                margin: "22px auto 0",
-                height: "44px",
-                padding: "0 22px",
-                "border-radius": "999px",
-                border: "0",
-                background: "#0f172a",
-                color: "#fff",
-                "font-weight": "800",
-                cursor: "pointer",
-              }}
-            >
-              {CONTENT.chat_page.restoring.retry_button}
-            </button>
-          </Show>
-        </div>
-      </div>
-    </div>
+    <PublicChatStartup
+      embedded
+      failed={props.status?.mode === "failed"}
+      title={title()}
+      description={reason()}
+      onRetry={props.onRetry}
+      retryLabel={CONTENT.chat_page.restoring.retry_button}
+    />
   );
 }
 
@@ -719,6 +621,46 @@ function assistantMarkdownClass(white = false) {
     "public-chat-markdown",
     white ? "public-chat-markdown--white" : "",
   ].join(" ");
+}
+
+function ProgressiveMessageImage(props: {
+  src: string;
+  alt: string;
+  testId?: string;
+  aspectRatio?: string;
+  objectFit?: "contain" | "cover";
+  flush?: boolean;
+}) {
+  const [loaded, setLoaded] = createSignal(false);
+  const [failed, setFailed] = createSignal(false);
+  return (
+    <span
+      class="public-chat-media-frame"
+      classList={{
+        "is-loaded": loaded(),
+        "is-failed": failed(),
+        "is-flush": props.flush,
+      }}
+      style={{ "aspect-ratio": props.aspectRatio ?? "16 / 10" }}
+    >
+      <img
+        data-testid={props.testId}
+        src={props.src}
+        alt={props.alt}
+        loading="lazy"
+        decoding="async"
+        style={{ "object-fit": props.objectFit ?? "contain" }}
+        onLoad={() => {
+          setLoaded(true);
+          setFailed(false);
+        }}
+        onError={() => setFailed(true)}
+      />
+      <Show when={failed()}>
+        <small>{CONTENT.chat_page.composer.finance_calendar_image_failed}</small>
+      </Show>
+    </span>
+  );
 }
 
 function AssistantBody(props: { content: string; white?: boolean }) {
@@ -754,11 +696,10 @@ function AssistantBody(props: { content: string; white?: boolean }) {
             {(part) => (
               <Switch>
                 <Match when={part.type === "image"}>
-                  <img
-                    data-testid="assistant-inline-image"
+                  <ProgressiveMessageImage
+                    testId="assistant-inline-image"
                     src={part.value}
                     alt=""
-                    class="hone-assistant-image mt-3 max-w-full cursor-zoom-in rounded-xl shadow-sm"
                   />
                 </Match>
                 <Match when={part.type === "text"}>
@@ -818,16 +759,13 @@ function ImageMosaic(props: {
                     : {}),
                 }}
               >
-                <img
-                  data-testid="user-attachment-image"
+                <ProgressiveMessageImage
+                  testId="user-attachment-image"
                   src={publicAttachmentUrl(img)}
                   alt={img.name}
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    "object-fit": "cover",
-                    display: "block",
-                  }}
+                  aspectRatio="1 / 1"
+                  objectFit="cover"
+                  flush
                 />
               </div>
             )}
@@ -846,11 +784,12 @@ function ImageMosaic(props: {
           position: "relative",
         }}
       >
-        <img
-          data-testid="user-attachment-image"
+        <ProgressiveMessageImage
+          testId="user-attachment-image"
           src={publicAttachmentUrl(props.images[0]!)}
           alt={props.images[0]!.name}
-          style={{ width: "100%", height: "auto", display: "block" }}
+          aspectRatio="4 / 3"
+          flush
         />
       </div>
     </Show>
@@ -3009,7 +2948,6 @@ export default function PublicChatPage() {
       dailyLimit: user.daily_limit,
     });
     setCurrentUser(user);
-    setAuthState("ready");
   };
 
   const logoutPublicChat = () => {
@@ -3059,11 +2997,10 @@ export default function PublicChatPage() {
       });
     }
     try {
-      const user = await getPublicAuthMe(controller.signal);
+      const bootstrap = await getPublicChatBootstrap(controller.signal);
       if (generation !== sessionSyncGeneration) return;
-      applyPublicUser(user);
-      const history = await getPublicHistory(controller.signal);
-      if (generation !== sessionSyncGeneration) return;
+      const user = bootstrap.user;
+      const history = bootstrap.messages ?? [];
       const next = toPublicChatMessages(history);
       if (options.resetWindow) {
         setVisibleMessageCount(HISTORY_PAGE_SIZE);
@@ -3086,7 +3023,12 @@ export default function PublicChatPage() {
       // enough for the browser to clamp scrollTop "to the top of the
       // conversation" before settleAtBottom can pull it back.
       rekeyTrailingOptimisticIds(messages, next);
-      setMessages(reconcile(next, { key: "id" }));
+      batch(() => {
+        applyPublicUser(user);
+        setMessages(reconcile(next, { key: "id" }));
+        setAuthState("ready");
+        setRestoreStatus(null);
+      });
       if (shouldKeepBottom) {
         pinToBottom(1200);
       } else if (previousScrollTop !== undefined) {
@@ -3107,7 +3049,6 @@ export default function PublicChatPage() {
       } else {
         setBackgroundPending(null);
       }
-      setRestoreStatus(null);
     } catch (error) {
       if (generation !== sessionSyncGeneration) return;
       if (isUnauthorizedApiError(error)) {

@@ -35,6 +35,35 @@ body.public-chat-scroll-lock #root {
 .public-chat-page input {
   font-family: inherit;
 }
+.public-chat-media-frame {
+  position: relative;
+  display: block;
+  width: min(100%, 560px);
+  min-height: 120px;
+  margin-top: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(20, 32, 38, 0.08);
+  border-radius: 16px;
+  background:
+    linear-gradient(110deg, rgba(20,32,38,.045) 25%, rgba(255,255,255,.72) 42%, rgba(20,32,38,.045) 60%),
+    #f0eee8;
+  background-size: 220% 100%;
+  animation: hone-media-loading 1.7s ease-in-out infinite;
+}
+.public-chat-media-frame img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  opacity: 0;
+  transition: opacity .24s ease;
+}
+.public-chat-media-frame.is-loaded { animation: none; background: #f0eee8; }
+.public-chat-media-frame.is-flush { width: 100%; margin: 0; border: 0; border-radius: 0; }
+.public-chat-media-frame.is-loaded img { opacity: 1; }
+.public-chat-media-frame.is-failed { animation: none; }
+.public-chat-media-frame small { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; color: #7a858a; font-size: 12px; text-align: center; }
+@keyframes hone-media-loading { from { background-position: 120% 0; } to { background-position: -80% 0; } }
+@media (prefers-reduced-motion: reduce) { .public-chat-media-frame { animation: none; } }
 .public-chat-page--logged_out,
 .public-chat-page--loading {
   height: auto !important;

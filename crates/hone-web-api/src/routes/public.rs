@@ -413,6 +413,32 @@ pub(crate) async fn handle_me(State(state): State<Arc<AppState>>, headers: Heade
     }
 }
 
+pub(crate) async fn handle_bootstrap(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Response {
+    let user = match require_public_user(&state, &headers) {
+        Ok(user) => user,
+        Err(response) => return response,
+    };
+    let user_id = user.user_id.clone();
+    let actor = match ActorIdentity::new("web", &user_id, Option::<String>::None) {
+        Ok(actor) => actor,
+        Err(error) => return crate::routes::json_error(StatusCode::BAD_REQUEST, error.to_string()),
+    };
+    let messages = state
+        .core
+        .session_storage
+        .get_messages(&actor.session_id(), None)
+        .unwrap_or_default();
+
+    Json(json!({
+        "user": to_public_auth_user(&state, &user_id, user),
+        "messages": public_history_from_messages(&messages),
+    }))
+    .into_response()
+}
+
 pub(crate) async fn handle_history(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,

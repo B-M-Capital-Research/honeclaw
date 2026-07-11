@@ -13,6 +13,7 @@ import { PortfolioProvider } from "@/context/portfolio"
 import { ResearchProvider } from "@/context/research"
 import { CompanyProfilesProvider } from "@/context/company-profiles"
 import { isRecoverableAssetLoadError, recoverFromAssetLoadError } from "@/lib/asset-recovery"
+import { PublicChatStartup } from "@/components/public-chat-startup"
 import ConsoleLayout from "@/pages/layout"
 
 const HomePage = lazy(() => import("@/pages/home"))
@@ -41,6 +42,9 @@ const SettingsPage = lazy(() => import("@/pages/settings"))
 const APP_SURFACE = import.meta.env.VITE_HONE_APP_SURFACE === "public" ? "public" : "admin"
 
 function Loading() {
+  if (APP_SURFACE === "public" && window.location.pathname === "/chat") {
+    return <PublicChatStartup />
+  }
   return <div class="flex min-h-screen items-center justify-center text-sm text-[color:var(--text-secondary)]">Loading…</div>
 }
 

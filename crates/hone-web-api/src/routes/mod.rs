@@ -277,6 +277,7 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
         .route("/auth/sms/login", post(public::handle_sms_login))
         .route("/auth/logout", post(public::handle_logout))
         .route("/auth/me", get(public::handle_me))
+        .route("/bootstrap", get(public::handle_bootstrap))
         .route("/history", get(public::handle_history))
         .route("/chat", post(public::handle_chat))
         .route(

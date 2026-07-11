@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
   ApiError,
+  getPublicChatBootstrap,
   getPublicAuthMe,
   getPublicFinanceCalendar,
   getPublicPushes,
@@ -96,6 +97,30 @@ describe("public API errors", () => {
 
     expect(error.status).toBe(503);
     expect(error.message).toBe(FRIENDLY_BACKEND_UNAVAILABLE_MESSAGE);
+  });
+});
+
+describe("public chat bootstrap API", () => {
+  test("loads auth and history through one startup request", async () => {
+    let requestedUrl = "";
+    globalThis.fetch = ((url: RequestInfo | URL) => {
+      requestedUrl = String(url);
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            user: { user_id: "web-user-1", remaining_today: 9, daily_limit: 10 },
+            messages: [{ role: "user", content: "hello" }],
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      );
+    }) as typeof fetch;
+
+    const payload = await getPublicChatBootstrap();
+
+    expect(requestedUrl).toContain("/api/public/bootstrap");
+    expect(payload.user.user_id).toBe("web-user-1");
+    expect(payload.messages?.[0]?.content).toBe("hello");
   });
 });
 

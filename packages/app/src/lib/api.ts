@@ -312,6 +312,11 @@ export async function getPublicAuthMe(signal?: AbortSignal) {
   return payload.user;
 }
 
+export async function getPublicChatBootstrap(signal?: AbortSignal) {
+  const response = await apiFetch("/api/public/bootstrap", { signal });
+  return parseJson<{ user: PublicAuthUserInfo; messages?: HistoryMsg[] }>(response);
+}
+
 export async function getPublicHistory(signal?: AbortSignal) {
   const response = await apiFetch("/api/public/history", { signal });
   const payload = await parseJson<{ messages?: HistoryMsg[] }>(response);

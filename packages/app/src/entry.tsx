@@ -10,4 +10,5 @@ if (!root) {
   throw new Error("root element missing")
 }
 
+root.replaceChildren()
 render(() => <App />, root)

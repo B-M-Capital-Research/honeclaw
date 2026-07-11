@@ -4,6 +4,18 @@ Last updated: 2026-07-12
 
 ## 2026-07-12
 
+### Public Chat Startup Experience
+
+- Status: done
+- Date: 2026-07-12
+- Plan: `docs/archive/plans/public-chat-startup-experience.md`
+- Handoff: `docs/handoffs/2026-07-12-public-chat-startup-experience.md`
+- Decision / ADR: N/A; the existing public auth and actor-scoped history ownership remains unchanged
+- Related PRs / commits: this change set
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`, 212 frontend tests, frontend typecheck, 95 Web API tests, public production build, 390 x 844 and 1280 x 800 browser QA
+- Current conclusion: `/chat` now uses one branded startup shell from route load through session restore, one authenticated bootstrap response for user/quota/history, atomic ready-state publication, and stable progressive media frames; the empty-chat and image-driven layout jumps are removed.
+- Next entry point: `docs/handoffs/2026-07-12-public-chat-startup-experience.md`
+
 ### Agent And Data Security Hardening
 
 - Status: done
