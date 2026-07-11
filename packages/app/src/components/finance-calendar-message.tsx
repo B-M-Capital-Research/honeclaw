@@ -1,12 +1,18 @@
 import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 
+import { canvasToPngBlob } from "@/components/chat-share-export";
+import { FinanceCalendarMobileCard } from "@/components/finance-calendar-mobile-card";
+import { getPublicFinanceCalendar } from "@/lib/api";
 import { CONTENT } from "@/lib/public-content";
 import {
+  clampFinanceCalendarPan,
+  financeCalendarAnchoredTransform,
   financeCalendarPinchZoom,
   selectFinanceCalendarImageSource,
   stepFinanceCalendarZoom,
 } from "@/lib/finance-calendar";
+import type { FinanceCalendarPayload } from "@/lib/types";
 
 type ShareNavigator = Navigator & {
   canShare?: (data: ShareData) => boolean;
@@ -23,131 +29,272 @@ export function FinanceCalendarMessageImage(props: {
   const [retry, setRetry] = createSignal(0);
   const [open, setOpen] = createSignal(false);
   const [zoom, setZoom] = createSignal(1);
+  const [pan, setPan] = createSignal({ x: 0, y: 0 });
+  const [fitSize, setFitSize] = createSignal({ width: 0, height: 0 });
+  const [interacting, setInteracting] = createSignal(false);
   const [preferMobile, setPreferMobile] = createSignal(
     typeof window !== "undefined" && window.matchMedia("(max-width: 768px)").matches,
   );
+  const [legacyPayload, setLegacyPayload] = createSignal<FinanceCalendarPayload>();
+  const [legacyMobileSrc, setLegacyMobileSrc] = createSignal<string>();
   const [working, setWorking] = createSignal<"save" | "share" | null>(null);
   const [actionError, setActionError] = createSignal(false);
+  const mobileSource = createMemo(() => props.mobileSrc ?? legacyMobileSrc());
   const selectedSource = createMemo(() =>
     selectFinanceCalendarImageSource(
       props.src,
-      props.mobileSrc,
+      mobileSource(),
       preferMobile(),
     ),
   );
   const source = createMemo(() => {
     const selected = selectedSource();
+    if (/^(?:blob:|data:)/.test(selected)) return selected;
     const join = selected.includes("?") ? "&" : "?";
     return `${selected}${join}calendar_retry=${retry()}`;
   });
   const fileName = () =>
-    `HONE-finance-calendar-${props.month}${preferMobile() && props.mobileSrc ? "-mobile" : ""}.png`;
-  const zoomLabel = () =>
-    zoom() === 1
-      ? CONTENT.chat_page.composer.finance_calendar_zoom_fit
-      : `${Math.round(zoom() * 100)}%`;
-  const zoomWidth = () => {
-    const baseWidth = preferMobile() && props.mobileSrc ? 750 : 900;
-    return `min(${zoom() * 100}%, ${Math.round(baseWidth * zoom())}px)`;
-  };
+    `HONE-finance-calendar-${props.month}${preferMobile() && mobileSource() ? "-mobile" : ""}.png`;
+  const zoomLabel = () => `${Math.round(zoom() * 100)}%`;
   let cachedBlob: Blob | undefined;
   let cachedSource = "";
+  let messageEl: HTMLElement | undefined;
   let viewportEl: HTMLDivElement | undefined;
+  let imageEl: HTMLImageElement | undefined;
+  let legacyCardEl: HTMLDivElement | undefined;
+  let legacyBuildStarted = false;
+  let legacyObjectUrl: string | undefined;
   let removeViewportGestures: (() => void) | undefined;
+  let viewportResizeObserver: ResizeObserver | undefined;
+  let viewFrame = 0;
+  let pendingView: { zoom: number; x: number; y: number } | undefined;
+
+  const buildLegacyMobileImage = async () => {
+    if (
+      legacyBuildStarted ||
+      props.mobileSrc ||
+      !preferMobile()
+    ) {
+      return;
+    }
+    legacyBuildStarted = true;
+    try {
+      const payload = await getPublicFinanceCalendar(props.month);
+      setLegacyPayload(payload);
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      );
+      await (
+        document as Document & { fonts?: { ready: Promise<unknown> } }
+      ).fonts?.ready.catch(() => undefined);
+      if (!legacyCardEl) throw new Error("legacy mobile calendar not mounted");
+      const { default: html2canvas } = await import("html2canvas");
+      const canvas = await html2canvas(legacyCardEl, {
+        scale: window.devicePixelRatio >= 2 ? 1.5 : 1.25,
+        backgroundColor: "#edf1f2",
+        useCORS: true,
+        logging: false,
+      });
+      const blob = await canvasToPngBlob(canvas);
+      legacyObjectUrl = URL.createObjectURL(blob);
+      setLoaded(false);
+      setFailed(false);
+      setLegacyMobileSrc(legacyObjectUrl);
+      setLegacyPayload(undefined);
+    } catch {
+      legacyBuildStarted = false;
+      setLegacyPayload(undefined);
+    }
+  };
 
   onMount(() => {
     const media = window.matchMedia("(max-width: 768px)");
-    const sync = () => setPreferMobile(media.matches);
+    const sync = () => {
+      setPreferMobile(media.matches);
+      if (media.matches && messageEl) {
+        const rect = messageEl.getBoundingClientRect();
+        if (rect.bottom >= -160 && rect.top <= window.innerHeight + 160) {
+          void buildLegacyMobileImage();
+        }
+      }
+    };
     sync();
     media.addEventListener?.("change", sync);
-    onCleanup(() => media.removeEventListener?.("change", sync));
+    const observer =
+      !props.mobileSrc && "IntersectionObserver" in window && messageEl
+        ? new IntersectionObserver(
+            (entries) => {
+              if (
+                media.matches &&
+                entries.some((entry) => entry.isIntersecting)
+              ) {
+                void buildLegacyMobileImage();
+                observer?.disconnect();
+              }
+            },
+            { rootMargin: "160px" },
+          )
+        : undefined;
+    if (observer && messageEl) observer.observe(messageEl);
+    if (!observer && media.matches) void buildLegacyMobileImage();
+    onCleanup(() => {
+      media.removeEventListener?.("change", sync);
+      observer?.disconnect();
+      if (legacyObjectUrl) URL.revokeObjectURL(legacyObjectUrl);
+    });
   });
 
-  const settleViewport = (fit = false) => {
-    requestAnimationFrame(() => {
-      if (!viewportEl) return;
-      viewportEl.scrollLeft = fit
-        ? 0
-        : Math.max(0, (viewportEl.scrollWidth - viewportEl.clientWidth) / 2);
-      if (fit) viewportEl.scrollTop = 0;
+  const boundedView = (nextZoom: number, x: number, y: number) => {
+    const bounds = clampFinanceCalendarPan({
+      imageWidth: imageEl?.offsetWidth ?? 0,
+      imageHeight: imageEl?.offsetHeight ?? 0,
+      viewportWidth: viewportEl?.clientWidth ?? 0,
+      viewportHeight: viewportEl?.clientHeight ?? 0,
+      zoom: nextZoom,
+      x,
+      y,
+    });
+    return { zoom: nextZoom, ...bounds };
+  };
+  const fitImageToViewport = () => {
+    if (!viewportEl || !imageEl || !imageEl.naturalWidth || !imageEl.naturalHeight) {
+      return;
+    }
+    const availableWidth = viewportEl.clientWidth;
+    const availableHeight = viewportEl.clientHeight;
+    const scale = Math.min(
+      availableWidth / imageEl.naturalWidth,
+      availableHeight / imageEl.naturalHeight,
+    );
+    setFitSize({
+      width: Math.max(1, Math.floor(imageEl.naturalWidth * scale)),
+      height: Math.max(1, Math.floor(imageEl.naturalHeight * scale)),
+    });
+    commitView(1, 0, 0);
+  };
+  const commitView = (nextZoom: number, x: number, y: number) => {
+    pendingView = boundedView(nextZoom, x, y);
+    if (viewFrame) return;
+    viewFrame = requestAnimationFrame(() => {
+      viewFrame = 0;
+      const next = pendingView;
+      pendingView = undefined;
+      if (!next) return;
+      setZoom(next.zoom);
+      setPan({ x: next.x, y: next.y });
     });
   };
   const changeZoom = (direction: -1 | 1) => {
-    setZoom((value) => stepFinanceCalendarZoom(value, direction));
-    settleViewport();
+    setInteracting(false);
+    commitView(stepFinanceCalendarZoom(zoom(), direction), pan().x, pan().y);
   };
   const fitPreview = () => {
-    setZoom(1);
-    settleViewport(true);
+    setInteracting(false);
+    commitView(1, 0, 0);
   };
 
   const bindViewport = (element: HTMLDivElement) => {
     removeViewportGestures?.();
+    viewportResizeObserver?.disconnect();
     viewportEl = element;
+    viewportResizeObserver = new ResizeObserver(() => fitImageToViewport());
+    viewportResizeObserver.observe(element);
     let pinch:
       | {
           distance: number;
           zoom: number;
-          contentX: number;
-          contentY: number;
+          x: number;
+          y: number;
+          centerX: number;
+          centerY: number;
         }
+      | undefined;
+    let drag:
+      | { startX: number; startY: number; x: number; y: number }
       | undefined;
     const touchMetrics = (event: TouchEvent) => {
       const first = event.touches.item(0);
       const second = event.touches.item(1);
       if (!first || !second) return null;
       const rect = element.getBoundingClientRect();
-      const localX = (first.clientX + second.clientX) / 2 - rect.left;
-      const localY = (first.clientY + second.clientY) / 2 - rect.top;
       return {
         distance: Math.hypot(
           second.clientX - first.clientX,
           second.clientY - first.clientY,
         ),
-        localX,
-        localY,
+        centerX: (first.clientX + second.clientX) / 2 - rect.left,
+        centerY: (first.clientY + second.clientY) / 2 - rect.top,
+      };
+    };
+    const beginDrag = (touch: Touch) => {
+      drag = {
+        startX: touch.clientX,
+        startY: touch.clientY,
+        x: pan().x,
+        y: pan().y,
       };
     };
     const onTouchStart = (event: TouchEvent) => {
       const metrics = touchMetrics(event);
-      if (!metrics) return;
-      pinch = {
-        distance: metrics.distance,
-        zoom: zoom(),
-        contentX: (element.scrollLeft + metrics.localX) / zoom(),
-        contentY: (element.scrollTop + metrics.localY) / zoom(),
-      };
+      if (metrics) {
+        pinch = { ...metrics, zoom: zoom(), x: pan().x, y: pan().y };
+        drag = undefined;
+        setInteracting(true);
+        return;
+      }
+      const touch = event.touches.item(0);
+      if (touch) beginDrag(touch);
     };
     const onTouchMove = (event: TouchEvent) => {
       const metrics = touchMetrics(event);
-      if (!pinch || !metrics || pinch.distance <= 0) return;
+      if (pinch && metrics && pinch.distance > 0) {
+        event.preventDefault();
+        const nextZoom = financeCalendarPinchZoom(
+          pinch.zoom,
+          metrics.distance,
+          pinch.distance,
+        );
+        const next = financeCalendarAnchoredTransform({
+          startZoom: pinch.zoom,
+          nextZoom,
+          startX: pinch.x,
+          startY: pinch.y,
+          startCenterX: pinch.centerX,
+          startCenterY: pinch.centerY,
+          nextCenterX: metrics.centerX,
+          nextCenterY: metrics.centerY,
+          viewportWidth: element.clientWidth,
+          viewportHeight: element.clientHeight,
+        });
+        commitView(nextZoom, next.x, next.y);
+        return;
+      }
+      const touch = event.touches.item(0);
+      if (!drag || !touch || zoom() <= 1) return;
+      const deltaX = touch.clientX - drag.startX;
+      const deltaY = touch.clientY - drag.startY;
+      if (Math.hypot(deltaX, deltaY) < 4) return;
       event.preventDefault();
-      const nextZoom = financeCalendarPinchZoom(
-        pinch.zoom,
-        metrics.distance,
-        pinch.distance,
-      );
-      const pinchState = pinch;
-      setZoom(nextZoom);
-      requestAnimationFrame(() => {
-        element.scrollLeft = Math.max(
-          0,
-          pinchState.contentX * nextZoom - metrics.localX,
-        );
-        element.scrollTop = Math.max(
-          0,
-          pinchState.contentY * nextZoom - metrics.localY,
-        );
-      });
+      setInteracting(true);
+      commitView(zoom(), drag.x + deltaX, drag.y + deltaY);
     };
     const onTouchEnd = (event: TouchEvent) => {
-      if (event.touches.length < 2) pinch = undefined;
+      if (event.touches.length >= 2) return;
+      pinch = undefined;
+      const remaining = event.touches.item(0);
+      if (remaining) {
+        beginDrag(remaining);
+      } else {
+        drag = undefined;
+        setInteracting(false);
+      }
     };
     element.addEventListener("touchstart", onTouchStart, { passive: true });
     element.addEventListener("touchmove", onTouchMove, { passive: false });
     element.addEventListener("touchend", onTouchEnd, { passive: true });
     element.addEventListener("touchcancel", onTouchEnd, { passive: true });
     removeViewportGestures = () => {
+      viewportResizeObserver?.disconnect();
       element.removeEventListener("touchstart", onTouchStart);
       element.removeEventListener("touchmove", onTouchMove);
       element.removeEventListener("touchend", onTouchEnd);
@@ -158,6 +305,8 @@ export function FinanceCalendarMessageImage(props: {
   const close = () => {
     setOpen(false);
     setZoom(1);
+    setPan({ x: 0, y: 0 });
+    setInteracting(false);
   };
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key !== "Escape") return;
@@ -166,6 +315,7 @@ export function FinanceCalendarMessageImage(props: {
   };
   const openPreview = () => {
     if (!loaded()) return;
+    void buildLegacyMobileImage();
     setOpen(true);
     document.addEventListener("keydown", onKeyDown);
   };
@@ -176,6 +326,8 @@ export function FinanceCalendarMessageImage(props: {
   onCleanup(() => {
     document.removeEventListener("keydown", onKeyDown);
     removeViewportGestures?.();
+    viewportResizeObserver?.disconnect();
+    if (viewFrame) cancelAnimationFrame(viewFrame);
   });
 
   const retryImage = () => {
@@ -242,7 +394,12 @@ export function FinanceCalendarMessageImage(props: {
 
   return (
     <>
-      <section class="public-finance-calendar-message">
+      <section
+        class="public-finance-calendar-message"
+        ref={(element) => {
+          messageEl = element;
+        }}
+      >
         <button
           type="button"
           class="public-finance-calendar-preview"
@@ -312,6 +469,18 @@ export function FinanceCalendarMessageImage(props: {
         </Show>
       </section>
 
+      <Show when={legacyPayload()}>
+        {(payload) => (
+          <FinanceCalendarMobileCard
+            payload={payload()}
+            hidden
+            registerRef={(element) => {
+              legacyCardEl = element;
+            }}
+          />
+        )}
+      </Show>
+
       <Portal>
         <Show when={open()}>
           <div class="public-finance-calendar-lightbox" role="dialog" aria-modal="true" aria-label={CONTENT.chat_page.composer.finance_calendar_preview_aria}>
@@ -330,9 +499,21 @@ export function FinanceCalendarMessageImage(props: {
             >
               <div
                 class="public-finance-calendar-lightbox-canvas"
-                style={{ width: zoomWidth() }}
               >
-                <img src={source()} alt={CONTENT.chat_page.composer.finance_calendar_preview_aria} />
+                <img
+                  ref={(element) => {
+                    imageEl = element;
+                  }}
+                  classList={{ "is-interacting": interacting() }}
+                  style={{
+                    width: fitSize().width ? `${fitSize().width}px` : undefined,
+                    height: fitSize().height ? `${fitSize().height}px` : undefined,
+                    transform: `translate3d(${pan().x}px, ${pan().y}px, 0) scale(${zoom()})`,
+                  }}
+                  src={source()}
+                  alt={CONTENT.chat_page.composer.finance_calendar_preview_aria}
+                  onLoad={fitImageToViewport}
+                />
               </div>
             </div>
             <footer>

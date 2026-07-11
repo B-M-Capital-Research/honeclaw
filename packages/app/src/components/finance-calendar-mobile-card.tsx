@@ -41,7 +41,7 @@ export function FinanceCalendarMobileCard(props: {
     const highlights = financeCalendarHighlights(
       props.payload.events,
       props.payload.today,
-      6,
+      5,
     );
     const earnings = props.payload.events
       .filter((event) => event.kind === "earnings")
@@ -54,9 +54,12 @@ export function FinanceCalendarMobileCard(props: {
             candidate.date === event.date && candidate.title === event.title,
         ) === index,
     );
-    return Object.entries(groupFinanceCalendarEvents(selected))
-      .sort(([left], [right]) => left.localeCompare(right))
-      .slice(0, 8);
+    return selected
+      .sort(
+        (left, right) =>
+          left.date.localeCompare(right.date) || left.title.localeCompare(right.title),
+      )
+      .slice(0, 7);
   });
   const macroCount = createMemo(
     () => props.payload.events.filter((event) => event.kind === "macro").length,
@@ -135,13 +138,12 @@ export function FinanceCalendarMobileCard(props: {
         </div>
         <div style={{ display: "grid", gap: "9px" }}>
           <For each={agenda()}>
-            {([date, events]) => (
-              <div style={{ "min-height": "62px", display: "grid", "grid-template-columns": "82px minmax(0,1fr)", gap: "15px", padding: "12px 15px", border: "1px solid #dce3e5", "border-radius": "13px", background: "#fff", "box-sizing": "border-box" }}>
-                <div style={{ display: "flex", "align-items": "center", "justify-content": "center", color: "#e15f42", "font-size": "22px", "font-weight": "900", "font-variant-numeric": "tabular-nums" }}>{date.slice(5).replace("-", ".")}</div>
-                <div style={{ display: "flex", "flex-direction": "column", "justify-content": "center", gap: "5px", "min-width": "0" }}>
-                  <For each={events.slice(0, 2)}>
-                    {(event) => <div style={{ display: "flex", "align-items": "center", gap: "8px", "min-width": "0" }}><i style={{ width: "8px", height: "8px", "border-radius": "50%", background: CATEGORY_COLOR[financeCalendarEventCategory(event)], flex: "0 0 8px" }} /><strong style={{ overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap", "font-size": "17px", "font-weight": "780" }}>{mobileEventLabel(event)}</strong></div>}
-                  </For>
+            {(event) => (
+              <div style={{ height: "75px", display: "grid", "grid-template-columns": "82px minmax(0,1fr)", gap: "15px", padding: "10px 15px", border: "1px solid #dce3e5", "border-radius": "13px", background: "#fff", "box-sizing": "border-box" }}>
+                <div style={{ display: "flex", "align-items": "center", "justify-content": "center", color: "#e15f42", "font-size": "22px", "font-weight": "900", "font-variant-numeric": "tabular-nums" }}>{event.date.slice(5).replace("-", ".")}</div>
+                <div style={{ display: "flex", "align-items": "center", gap: "10px", "min-width": "0" }}>
+                  <i style={{ width: "9px", height: "9px", "border-radius": "50%", background: CATEGORY_COLOR[financeCalendarEventCategory(event)], flex: "0 0 9px" }} />
+                  <strong style={{ "overflow-wrap": "anywhere", "font-size": "18px", "font-weight": "780", "line-height": "1.3" }}>{mobileEventLabel(event)}</strong>
                 </div>
               </div>
             )}

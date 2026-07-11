@@ -10,6 +10,8 @@ import {
   groupFinanceCalendarEvents,
   isFinanceCalendarMessage,
   clampFinanceCalendarZoom,
+  clampFinanceCalendarPan,
+  financeCalendarAnchoredTransform,
   financeCalendarPinchZoom,
   selectFinanceCalendarImageSource,
   stepFinanceCalendarZoom,
@@ -75,6 +77,45 @@ describe("finance calendar helpers", () => {
     expect(selectFinanceCalendarImageSource("desktop.png", "mobile.png", false)).toBe(
       "desktop.png",
     );
+  });
+
+  it("keeps transformed calendar panning bounded and pinch anchored", () => {
+    expect(
+      clampFinanceCalendarPan({
+        imageWidth: 300,
+        imageHeight: 500,
+        viewportWidth: 390,
+        viewportHeight: 600,
+        zoom: 2,
+        x: 300,
+        y: -300,
+      }),
+    ).toEqual({ x: 105, y: -200 });
+    expect(
+      clampFinanceCalendarPan({
+        imageWidth: 300,
+        imageHeight: 500,
+        viewportWidth: 390,
+        viewportHeight: 600,
+        zoom: 1,
+        x: 40,
+        y: 80,
+      }),
+    ).toEqual({ x: 0, y: 0 });
+    expect(
+      financeCalendarAnchoredTransform({
+        startZoom: 1,
+        nextZoom: 2,
+        startX: 0,
+        startY: 0,
+        startCenterX: 300,
+        startCenterY: 300,
+        nextCenterX: 320,
+        nextCenterY: 300,
+        viewportWidth: 400,
+        viewportHeight: 600,
+      }),
+    ).toEqual({ x: -80, y: 0 });
   });
 
   it("builds a twelve-month picker for one year", () => {

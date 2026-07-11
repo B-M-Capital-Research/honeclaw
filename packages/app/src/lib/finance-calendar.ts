@@ -40,6 +40,54 @@ export function financeCalendarPinchZoom(
   return clampFinanceCalendarZoom(startZoom * (currentDistance / startDistance));
 }
 
+export function clampFinanceCalendarPan(input: {
+  imageWidth: number;
+  imageHeight: number;
+  viewportWidth: number;
+  viewportHeight: number;
+  zoom: number;
+  x: number;
+  y: number;
+}): { x: number; y: number } {
+  if (input.zoom <= 1) return { x: 0, y: 0 };
+  const maxX = Math.max(
+    0,
+    (input.imageWidth * input.zoom - input.viewportWidth) / 2,
+  );
+  const maxY = Math.max(
+    0,
+    (input.imageHeight * input.zoom - input.viewportHeight) / 2,
+  );
+  return {
+    x: Math.min(maxX, Math.max(-maxX, input.x)),
+    y: Math.min(maxY, Math.max(-maxY, input.y)),
+  };
+}
+
+export function financeCalendarAnchoredTransform(input: {
+  startZoom: number;
+  nextZoom: number;
+  startX: number;
+  startY: number;
+  startCenterX: number;
+  startCenterY: number;
+  nextCenterX: number;
+  nextCenterY: number;
+  viewportWidth: number;
+  viewportHeight: number;
+}): { x: number; y: number } {
+  const viewportCenterX = input.viewportWidth / 2;
+  const viewportCenterY = input.viewportHeight / 2;
+  const contentX =
+    (input.startCenterX - viewportCenterX - input.startX) / input.startZoom;
+  const contentY =
+    (input.startCenterY - viewportCenterY - input.startY) / input.startZoom;
+  return {
+    x: input.nextCenterX - viewportCenterX - contentX * input.nextZoom,
+    y: input.nextCenterY - viewportCenterY - contentY * input.nextZoom,
+  };
+}
+
 export function selectFinanceCalendarImageSource(
   desktopSource: string,
   mobileSource: string | undefined,
