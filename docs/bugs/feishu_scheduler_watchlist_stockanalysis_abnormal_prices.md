@@ -22,6 +22,18 @@
 
 ## 最新进展
 
+- 本轮 2026-07-11 19:01-23:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `session_messages`
+    - 19:01-23:02 CST 新增 3 个 user turn / 3 条 assistant 记录；本窗未确认新的普通 direct / scheduler final 正式输出异常行情。
+  - `data/runtime/logs/web.log.2026-07-11`
+    - 19:30 / 20:00 / 20:30 / 21:00 / 21:30 / 22:00 / 23:00 CST `光模块板块关键事件心跳提醒`、`存储板块关键事件心跳提醒`、`持仓财报与重大新闻心跳提醒` 多条 deliver preview 继续使用 `SNDK $1,915.92` 和 `AAOI $119.92` 作为行情锚。
+    - 20:30 / 22:00 / 22:30 / 23:00 CST `光迅科技关键事件心跳提醒` 多条 deliver preview 使用 `¥233.45`、`¥238.49`、`¥210-¥258.66` 等高风险 A 股数量级数据进入判断。
+    - 19:00 / 20:00 / 20:30 / 21:30 / 22:00 / 22:30 / 23:00 CST `中际旭创关键事件心跳提醒` deliver preview 使用 `¥1,093.98`、昨收 `¥1,194.9`、日跌幅 `-8.45%` 等明显高风险数量级数据进入判断。
+    - 多条样本随后进入 duplicate suppression 或 skipped/noop 路径，但异常价格已经参与 heartbeat 判断和用户可见 preview 生成。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check 缺口：异常或高风险数量级价格进入 heartbeat 判断上下文和部分 deliver preview。
+    - 本窗没有新的正式普通 final 异常价格样本，也未阻断直聊 / 调度 / 投递主链路；因此仍按质量性 `P3 / New`。该问题不影响主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-11 15:01-19:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `session_messages`
     - 15:01 CST 后没有新增本地 assistant final；本窗未确认新的普通 direct / scheduler final 正式输出异常行情。

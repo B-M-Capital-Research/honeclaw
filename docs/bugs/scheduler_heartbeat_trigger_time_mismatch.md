@@ -8,6 +8,19 @@
 
 ## 最新进展
 
+- 本轮 `2026-07-11 19:01-23:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3`
+    - 同窗只有 3 个 user turn / 3 条 assistant 记录；普通 scheduler 用户可见文本没有命中 `<think>`、provider 原始错误、本机路径、`data_fetch`、`quote_short` 或原始工具 JSON 外泄。
+  - `data/runtime/logs/web.log.2026-07-11`
+    - 19:30 / 20:00 / 20:30 / 21:00 / 21:30 / 22:00 / 22:30 / 23:00 CST `光模块板块关键事件心跳提醒`、`存储板块关键事件心跳提醒`、`持仓财报与重大新闻心跳提醒`、`FOTO 光子学ETF心跳检测` 等多条 `deliver_preview` 继续把实际 2026-07-11 夜间窗口写成 `2026-07-12`。
+    - 19:00 / 19:30 / 20:30 / 22:00 / 23:00 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 多条 `deliver_preview` 写出 `北京时间 2026-07-10 20:30` 或 `2026-07-10 21:00`，早于实际执行窗口。
+    - 21:30 / 22:30 / 23:00 CST 多条样本继续把 quote 时间戳或检查时间写成 `2026-07-11 04:00`、`12:31`、`21:30` 等与当前执行时间不一致的口径。
+  - 查重结论：
+    - 最新证据仍属于同一 heartbeat 时间上下文 / 用户可见检查口径漂移链路，不新建重复缺陷。
+  - 用户影响：
+    - 本窗主要是 deliver / duplicate suppression 路径中的错误时间口径，未见错投、直聊失败或全渠道不可用；影响触发判断可信度和用户对增量扫描时效性的理解。
+    - 因不影响直聊 / 调度 / 投递主功能链路，维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 本轮 `2026-07-11 15:01-19:01 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3`
     - 15:01 CST 后没有新增本地 `session_messages` 或 `cron_job_runs`；本轮以 `data/runtime/logs/web.log.2026-07-11` 的 heartbeat runtime 证据为主。
