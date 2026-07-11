@@ -7,7 +7,7 @@
 - owner: Codex
 - related_files: `packages/app/src/components/finance-calendar-message.tsx`, `packages/app/src/components/finance-calendar-mobile-card.tsx`, `packages/app/src/pages/chat.tsx`, `packages/app/src/pages/public-site.css`, `packages/app/src/lib/finance-calendar.ts`, `crates/hone-web-api/src/routes/public_finance_calendar.rs`
 - related_docs: `docs/archive/plans/mobile-finance-calendar-nav-polish.md`, `docs/archive/plans/mobile-finance-calendar-dual-layout.md`, `docs/handoffs/2026-06-29-public-finance-calendar.md`, `docs/runbooks/backend-deployment.md`
-- related_prs: main commits `31081106`, `e95b1049`, `2a6e7572`, `a4af378d`
+- related_prs: main commits `31081106`, `e95b1049`, `2a6e7572`, `a4af378d`, `1a72b918`
 
 ## Summary
 
@@ -48,6 +48,12 @@ The fixed viewer now interprets two-finger distance as bounded 1x-3x canvas zoom
 The first custom pinch implementation still changed canvas width and recomputed scroll offsets on every touch frame. Real iPhone feedback showed visible chasing/jitter at 300 percent, while legacy one-image messages continued to expose the clipped desktop cell labels. Commit `a4af378d` replaces this with a fixed, exact contain base and GPU `translate3d + scale`; pinch keeps the touched content anchored, one-finger pan is clamped to visible image bounds, and touch updates are coalesced to one animation frame. The viewer now measures the source image and available viewport through `ResizeObserver`, so 100 percent always contains the entire artifact before zoom starts.
 
 Visible legacy desktop-only messages now lazily fetch their month payload and render a portrait blob locally, avoiding an eager rebuild of all history. Mobile agenda rows contain one important event each and wrap the complete title instead of using ellipsis. Real-component QA covered 100 through 300 percent, exact 342 x 610 fit in a 390 x 844 viewer, full long-title rendering, and legacy 0.8-to-0.562 aspect conversion. All 209 frontend tests, typecheck, and the public build passed. Production uses `index-C-0scCea.js` / `chat-qOMG9Bni.js`; the chunk contains the transform, resize, touch, lazy-upgrade, and wrapping contracts, and route/runtime health is normal.
+
+## Editorial Visual System Follow-up 2026-07-11 20:22 CST
+
+User review correctly identified that the first portrait artifact still looked like a compressed desktop dashboard: an oversized month/header, weak calendar event marks, repeated white agenda cards, and unused lower-canvas space. Commit `1a72b918` replaces that visual system rather than adjusting isolated spacing. The new 750 x 1334 artifact is an editorial HONE monthly investment brief with a dark brand cover, next-window callout, event-day/macro/earnings counts, a warm scanning calendar, and one continuous category-aware timeline carrying date, category, complete title, and Beijing time. A dark source/disclaimer footer closes the composition.
+
+Visual QA used 15 dense July events at a 390 px viewport. The root remained exactly 750 x 1334, all six timeline rows and long titles stayed within bounds, and the full composition used the portrait canvas without dead space. Typecheck, 209 frontend tests, and the public build passed. Production uses `index-CZTxbnVu.js` / `chat-ThsBAbIe.js`; the chunk contains the monthly brief, next window, month scan, key-date timeline, palette, and disclaimer contracts. Core routes return 200, auth returns the expected 401 JSON, and runtime/tunnel/UI sessions remain healthy.
 
 ## Next Entry Point
 

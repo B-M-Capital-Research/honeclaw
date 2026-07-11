@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-07-11
-状态：有 7 个活跃任务
+状态：有 6 个活跃任务
 
 ## 说明
 
@@ -15,11 +15,6 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
-
-- **移动端财经日历视觉系统重构**
-  - 状态：`in_progress`
-  - 计划：`docs/current-plans/mobile-finance-calendar-dual-layout.md`
-  - 摘要：基于实机成图重新设计 HONE 移动财经日历的品牌封面、月度扫描层级与关键事件时间线，消除模板化白卡和无效留白
 
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`
