@@ -7,6 +7,19 @@
 
 ## 修复进展
 
+- `2026-07-11 15:01-19:01 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-11`
+    - 同窗 234 条 heartbeat `run_finish` 中，可分类输出仍大量不是纯 JSON：`PlainTextTriggered` 216 条、`JsonNoop` 89 条、`PlainTextSuppressed` 18 条、`PlainTextNoop` 12 条、`JsonMalformed` 12 条。
+    - raw preview 以 `<think>` 开头 233 次，`deliver_preview` 108 次，duplicate suppression 56 次，tool call 被全局或单工具预算拒绝 174 次。
+    - 31 条执行失败 / parse failure escalation 类信号继续出现；代表样本包括 16:30 CST `美股黄金坑信号心跳检测` `JsonMalformed + execution_failed`、19:00 CST `存储板块关键事件心跳提醒` `JsonMalformed + execution_failed`。
+    - 多条 `PlainTextTriggered` 继续进入 deliver / duplicate suppression 路径，说明线上仍依赖解析器从自由文本中猜测 heartbeat 状态，结构化收口没有稳定恢复。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 在 15:01 后没有新增本地 `session_messages` 或 `cron_job_runs`；本轮仍按上一轮约定以 runtime web log 判断 cloud/runtime heartbeat 运行态。
+    - 最近四小时有 4 个非文档提交，集中在移动端 finance calendar UI / API：`31081106`、`e95b1049`、`2a6e7572`、`a4af378d`，未改变 heartbeat 运行态判断。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题继续影响 heartbeat 监控判断、送达语义和失败/跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-11 15:01 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-11`
     - 11:01-15:01 CST 可分类 heartbeat 诊断信号继续大量出现非纯 JSON / 自然语言输出：`PlainTextTriggered` 202 条、`JsonNoop` 87 条、`PlainTextSuppressed` 13 条、`PlainTextNoop` 5 条、`JsonMalformed` 2 条、`JsonTriggered` 2 条。
