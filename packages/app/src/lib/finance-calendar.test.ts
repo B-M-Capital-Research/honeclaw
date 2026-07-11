@@ -3,10 +3,12 @@ import {
   defaultFinanceCalendarMonth,
   financeCalendarEventCategory,
   financeCalendarHighlights,
+  financeCalendarMessageMonth,
   financeCalendarMonthGrid,
   financeCalendarMonthsForYear,
   financeCalendarStatusLabel,
   groupFinanceCalendarEvents,
+  isFinanceCalendarMessage,
   parseFinanceCalendarMonth,
   visibleFinanceCalendarEventsForDay,
 } from "./finance-calendar";
@@ -26,6 +28,20 @@ describe("finance calendar helpers", () => {
     expect(defaultFinanceCalendarMonth(new Date(2026, 5, 23))).toBe("2026-06");
     expect(defaultFinanceCalendarMonth(new Date(2026, 5, 30))).toBe("2026-06");
     expect(defaultFinanceCalendarMonth(new Date(2026, 11, 31))).toBe("2026-12");
+  });
+
+  it("recognizes generated finance-calendar messages and extracts the month", () => {
+    expect(
+      isFinanceCalendarMessage(
+        "这是你的 2026-07 财经日历：\n\noss://uploads/hone-finance-calendar.png",
+      ),
+    ).toBe(true);
+    expect(
+      financeCalendarMessageMonth(
+        "Here is your 2026-08 finance calendar:\n\noss://uploads/calendar.png",
+      ),
+    ).toBe("2026-08");
+    expect(isFinanceCalendarMessage("这是你的财经日历")).toBe(false);
   });
 
   it("builds a twelve-month picker for one year", () => {

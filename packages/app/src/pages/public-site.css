@@ -1176,15 +1176,16 @@ html {
     display: none;
   }
   .pub-nav-hamburger {
-    width: 38px;
-    height: 38px;
+    width: 42px;
+    height: 42px;
     display: grid !important;
     place-content: center;
     gap: 6px;
     padding: 0;
     border: 1px solid rgba(44, 40, 33, 0.10);
-    border-radius: 12px;
-    background: rgba(255, 255, 255, 0.56);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.78);
+    box-shadow: 0 3px 12px rgba(35, 31, 26, 0.07);
     cursor: pointer;
   }
   .pub-nav-hamburger span {
@@ -1203,15 +1204,17 @@ html {
   }
   .pub-nav-mobile-controls {
     display: inline-flex;
+    align-items: center;
+    gap: 8px;
     flex: 0 0 auto;
   }
   .pub-nav {
     top: max(8px, env(safe-area-inset-top)) !important;
     right: max(10px, env(safe-area-inset-right)) !important;
     left: max(10px, env(safe-area-inset-left)) !important;
-    height: 54px !important;
-    padding: 0 7px 0 10px !important;
-    border-radius: 17px;
+    height: 60px !important;
+    padding: 0 8px 0 12px !important;
+    border-radius: 20px;
   }
   .pub-nav-brand {
     min-width: 0 !important;
@@ -1219,12 +1222,13 @@ html {
     text-align: left;
   }
   .pub-nav .hone-brand-mark {
-    width: 31px;
-    height: 31px;
-    border-radius: 10px;
+    width: 34px;
+    height: 34px;
+    border-radius: 11px;
   }
   .pub-nav .hone-brand-word {
-    font-size: 15px;
+    font-size: 16px;
+    letter-spacing: 0.22em;
   }
   .pub-mobile-menu-scrim {
     position: fixed;
@@ -1238,7 +1242,7 @@ html {
   }
   .pub-mobile-menu {
     position: fixed;
-    top: calc(max(8px, env(safe-area-inset-top)) + 62px);
+    top: calc(max(8px, env(safe-area-inset-top)) + 68px);
     right: max(10px, env(safe-area-inset-right));
     left: max(10px, env(safe-area-inset-left));
     z-index: 199;
@@ -1265,7 +1269,7 @@ html {
     gap: 4px;
   }
   .pub-mobile-menu-links button {
-    min-height: 50px;
+    min-height: 54px;
     display: grid;
     grid-template-columns: 30px 1fr auto;
     align-items: center;
@@ -1275,9 +1279,10 @@ html {
     color: #2a3236;
     background: transparent;
     cursor: pointer;
-    font: inherit;
-    font-size: 15px;
-    font-weight: 700;
+    font-family: "Avenir Next", "PingFang SC", "Noto Sans SC", sans-serif;
+    font-size: 16px;
+    font-weight: 760;
+    letter-spacing: -0.025em;
     text-align: left;
   }
   .pub-mobile-menu-links button.is-active {
@@ -1286,9 +1291,10 @@ html {
   }
   .pub-mobile-menu-index {
     color: #a5aaab;
-    font-size: 9px;
-    font-weight: 800;
-    letter-spacing: 0.08em;
+    font-family: var(--font-mono, "JetBrains Mono", monospace);
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
   }
   .pub-mobile-menu-chat {
     width: 100%;
@@ -1303,9 +1309,10 @@ html {
     color: #fff;
     background: #20282c;
     cursor: pointer;
-    font: inherit;
-    font-size: 14px;
+    font-family: "Avenir Next", "PingFang SC", "Noto Sans SC", sans-serif;
+    font-size: 15px;
     font-weight: 800;
+    letter-spacing: -0.015em;
   }
   .pub-mobile-menu-meta {
     display: flex;
@@ -2045,6 +2052,54 @@ html {
     font-size: 17px;
   }
 }
+
+/* Generated finance-calendar message */
+.public-finance-calendar-message { width: min(720px, 100%); display: grid; gap: 10px; margin-top: 14px; }
+.public-finance-calendar-preview { width: 100%; padding: 0; border: 1px solid rgba(32,40,44,0.12); border-radius: 20px; background: #eef2f3; overflow: hidden; cursor: zoom-in; box-shadow: 0 14px 34px rgba(32,40,44,0.10); }
+.public-finance-calendar-preview:disabled { cursor: wait; }
+.public-finance-calendar-image-frame { position: relative; width: 100%; aspect-ratio: 4 / 5; overflow: hidden; background: linear-gradient(110deg, transparent 22%, rgba(255,255,255,0.78) 42%, transparent 62%) 0 0 / 220% 100%, #e8edef; }
+.public-finance-calendar-image-frame > img { width: 100%; height: 100%; display: block; object-fit: cover; opacity: 0; transition: opacity 220ms ease; }
+.public-finance-calendar-image-frame.is-loaded > img { opacity: 1; }
+.public-finance-calendar-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; padding: 28px; background: radial-gradient(circle at 88% 10%, rgba(238,97,10,0.15), transparent 34%), linear-gradient(155deg, #f9f5ed, #edf2f4); color: #20282c; text-align: center; }
+.public-finance-calendar-loading-mark { width: 62px; height: 62px; display: grid; place-items: center; margin-bottom: 18px; border-radius: 18px; background: #20282c; color: #ff7a13; font-family: var(--font-mono, "JetBrains Mono", monospace); font-size: 23px; font-weight: 800; letter-spacing: -0.06em; box-shadow: 0 12px 30px rgba(32,40,44,0.18); }
+.public-finance-calendar-loading strong { font-family: "Avenir Next", "PingFang SC", "Noto Sans SC", sans-serif; font-size: 18px; font-weight: 800; letter-spacing: -0.025em; }
+.public-finance-calendar-loading small { max-width: 290px; margin-top: 8px; color: #697277; font-size: 12px; line-height: 1.55; }
+.public-finance-calendar-progress { width: min(240px, 70%); height: 4px; margin-top: 22px; overflow: hidden; border-radius: 999px; background: rgba(32,40,44,0.10); }
+.public-finance-calendar-progress i { width: 42%; height: 100%; display: block; border-radius: inherit; background: linear-gradient(90deg, #ffae19, #ed610b); animation: finance-calendar-loading 1.25s ease-in-out infinite; }
+.public-finance-calendar-loading.is-error { background: #fff8f4; color: #9f321b; }
+.public-finance-calendar-actions { display: grid; grid-template-columns: 1.35fr 1fr 1fr; gap: 8px; }
+.public-finance-calendar-actions button, .public-finance-calendar-lightbox footer button, .public-finance-calendar-retry { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 12px; border: 1px solid rgba(32,40,44,0.10); border-radius: 13px; background: rgba(255,255,255,0.88); color: #293135; cursor: pointer; font-family: "Avenir Next", "PingFang SC", "Noto Sans SC", sans-serif; font-size: 12px; font-weight: 760; }
+.public-finance-calendar-actions button:first-child { border-color: #20282c; background: #20282c; color: #fff; }
+.public-finance-calendar-actions svg, .public-finance-calendar-lightbox footer svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.public-finance-calendar-actions button:disabled, .public-finance-calendar-lightbox footer button:disabled { cursor: wait; opacity: 0.55; }
+.public-finance-calendar-retry { width: 100%; border-color: rgba(194,65,12,0.22); color: #b43d14; background: #fff7ed; }
+.public-finance-calendar-action-error { margin: 0; padding: 8px 10px; border-radius: 10px; background: #fff7ed; color: #b43d14; font-size: 11px; line-height: 1.45; text-align: center; }
+.public-finance-calendar-lightbox { position: fixed; inset: 0; z-index: 900; min-height: 100dvh; display: grid; grid-template-rows: auto minmax(0,1fr) auto; background: #11181c; color: #fff; animation: public-push-fade-in 180ms ease both; }
+.public-finance-calendar-lightbox > header { min-height: 68px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: max(12px, env(safe-area-inset-top)) 16px 10px; border-bottom: 1px solid rgba(255,255,255,0.10); background: rgba(17,24,28,0.96); }
+.public-finance-calendar-lightbox > header div { display: grid; gap: 2px; }
+.public-finance-calendar-lightbox > header small { color: #f88a32; font-family: var(--font-mono, "JetBrains Mono", monospace); font-size: 9px; letter-spacing: 0.14em; }
+.public-finance-calendar-lightbox > header strong { font-size: 16px; letter-spacing: -0.02em; }
+.public-finance-calendar-lightbox > header button { width: 42px; height: 42px; flex: 0 0 42px; border: 1px solid rgba(255,255,255,0.13); border-radius: 14px; background: rgba(255,255,255,0.08); color: #fff; cursor: pointer; font-size: 27px; line-height: 1; }
+.public-finance-calendar-lightbox-viewport { min-height: 0; overflow: auto; display: grid; place-items: start center; padding: 14px; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.public-finance-calendar-lightbox-viewport > button { width: min(100%,900px); padding: 0; border: 0; background: transparent; cursor: zoom-in; touch-action: pan-x pan-y pinch-zoom; }
+.public-finance-calendar-lightbox-viewport > button.is-zoomed { width: min(1080px,210vw); max-width: none; cursor: zoom-out; }
+.public-finance-calendar-lightbox-viewport img { width: 100%; height: auto; display: block; border-radius: 14px; box-shadow: 0 24px 70px rgba(0,0,0,0.42); -webkit-user-select: none; user-select: none; }
+.public-finance-calendar-lightbox > footer { padding: 10px 14px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid rgba(255,255,255,0.10); background: rgba(17,24,28,0.98); }
+.public-finance-calendar-lightbox > footer p { margin: 0 0 8px; color: #aeb8bd; font-size: 10px; text-align: center; }
+.public-finance-calendar-lightbox > footer .public-finance-calendar-action-error { margin-top: 8px; color: #fed7aa; background: rgba(194,65,12,0.18); }
+.public-finance-calendar-lightbox > footer > div { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; }
+.public-finance-calendar-lightbox footer button { min-width: 0; border-color: rgba(255,255,255,0.12); background: rgba(255,255,255,0.08); color: #fff; }
+@keyframes finance-calendar-loading { from { transform: translateX(-105%); } 50% { transform: translateX(140%); } to { transform: translateX(255%); } }
+@media (max-width: 768px) {
+  .public-finance-calendar-message { margin-top: 10px; gap: 8px; }
+  .public-finance-calendar-preview { border-radius: 16px; }
+  .public-finance-calendar-actions { gap: 6px; }
+  .public-finance-calendar-actions button { min-height: 42px; padding: 0 8px; font-size: 11px; }
+  .public-finance-calendar-actions svg { width: 15px; height: 15px; }
+  .public-finance-calendar-lightbox-viewport { padding: 10px; }
+  .public-finance-calendar-lightbox-viewport img { border-radius: 10px; }
+}
+@media (prefers-reduced-motion: reduce) { .public-finance-calendar-progress i { animation: none; width: 100%; } }
 
 /* Web-only scheduled push cards and inbox */
 .public-push-nav-button {

@@ -26,6 +26,7 @@ import {
   FINANCE_CALENDAR_CARD_HEIGHT,
   FINANCE_CALENDAR_CARD_WIDTH,
 } from "@/components/finance-calendar-card";
+import { FinanceCalendarMessageImage } from "@/components/finance-calendar-message";
 import {
   PublicPushCenter,
   PublicPushDetailDialog,
@@ -62,6 +63,7 @@ import {
 import { buildApiUrl } from "@/lib/backend";
 import {
   defaultFinanceCalendarMonth,
+  financeCalendarMessageMonth,
   financeCalendarStatusLabel,
   monthOptionsForSelection,
 } from "@/lib/finance-calendar";
@@ -721,6 +723,7 @@ function AssistantBody(props: { content: string; white?: boolean }) {
     parseMessageContent(cleaned(), { imageEndpoint: PUBLIC_IMAGE_ENDPOINT }),
   );
   const hasImage = () => parts().some((part) => part.type === "image");
+  const calendarMonth = createMemo(() => financeCalendarMessageMonth(cleaned()));
   const markdownClass = () => assistantMarkdownClass(props.white);
 
   return (
@@ -732,12 +735,21 @@ function AssistantBody(props: { content: string; white?: boolean }) {
         {(part) => (
           <Switch>
             <Match when={part.type === "image"}>
-              <img
-                data-testid="assistant-inline-image"
-                src={part.value}
-                alt=""
-                class="hone-assistant-image mt-3 max-w-full cursor-zoom-in rounded-xl shadow-sm"
-              />
+              <Show
+                when={calendarMonth()}
+                fallback={
+                  <img
+                    data-testid="assistant-inline-image"
+                    src={part.value}
+                    alt=""
+                    class="hone-assistant-image mt-3 max-w-full cursor-zoom-in rounded-xl shadow-sm"
+                  />
+                }
+              >
+                {(month) => (
+                  <FinanceCalendarMessageImage src={part.value} month={month()} />
+                )}
+              </Show>
             </Match>
             <Match when={part.type === "text"}>
               <Markdown text={part.value} class={markdownClass()} />
@@ -999,6 +1011,9 @@ function AssistantBubble(props: {
   const nonImageAttachments = createMemo(() =>
     (props.attachments ?? []).filter((a) => a.kind !== "image"),
   );
+  const isCalendarMessage = createMemo(
+    () => financeCalendarMessageMonth(stripAttachmentMarkers(props.content)) !== null,
+  );
   const [copied, setCopied] = createSignal(false);
   const handleCopy = () => {
     const text = stripAttachmentMarkers(props.content);
@@ -1077,6 +1092,7 @@ function AssistantBubble(props: {
             </For>
           </div>
         </Show>
+        <Show when={!isCalendarMessage()}>
         <div class="pub-msg-actions">
           <button
             type="button"
@@ -1152,6 +1168,7 @@ function AssistantBubble(props: {
             </button>
           </Show>
         </div>
+        </Show>
       </div>
     </div>
   );
@@ -3131,7 +3148,16 @@ export default function PublicChatPage() {
       "content",
       "width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content",
     );
-    const preventGesture = (event: Event) => event.preventDefault();
+    const preventGesture = (event: Event) => {
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest(".public-finance-calendar-lightbox")
+      ) {
+        return;
+      }
+      event.preventDefault();
+    };
     document.addEventListener("gesturestart", preventGesture);
     document.addEventListener("gesturechange", preventGesture);
     document.addEventListener("gestureend", preventGesture);
@@ -4224,6 +4250,10 @@ export default function PublicChatPage() {
           }
         }
         @media (max-width: 768px) {
+          .public-chat-page .pub-mobile-menu-links button,
+          .public-chat-page .pub-mobile-menu-chat {
+            font-family: "Avenir Next", "PingFang SC", "Noto Sans SC", sans-serif;
+          }
           .public-chat-sidebar {
             display: none !important;
           }
@@ -5540,12 +5570,15 @@ export default function PublicChatPage() {
             flex: 0 0 auto !important;
           }
           .public-chat-account-trigger {
-            width: 30px !important;
-            height: 30px !important;
+            width: 42px !important;
+            height: 42px !important;
+            border-radius: 14px !important;
+            background: rgba(255,255,255,0.78) !important;
+            box-shadow: 0 3px 12px rgba(35,31,26,0.07) !important;
           }
           .public-chat-account-trigger svg {
-            width: 16px !important;
-            height: 16px !important;
+            width: 19px !important;
+            height: 19px !important;
           }
           .public-chat-page .lang-switch { padding: 1px !important; }
           .public-chat-page .lang-switch button { min-height: 22px !important; min-width: 26px !important; padding: 0 6px !important; font-size: 11px !important; }
