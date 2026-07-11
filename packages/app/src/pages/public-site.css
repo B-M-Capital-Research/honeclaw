@@ -2080,14 +2080,16 @@ html {
 .public-finance-calendar-lightbox > header small { color: #f88a32; font-family: var(--font-mono, "JetBrains Mono", monospace); font-size: 9px; letter-spacing: 0.14em; }
 .public-finance-calendar-lightbox > header strong { font-size: 16px; letter-spacing: -0.02em; }
 .public-finance-calendar-lightbox > header button { width: 42px; height: 42px; flex: 0 0 42px; border: 1px solid rgba(255,255,255,0.13); border-radius: 14px; background: rgba(255,255,255,0.08); color: #fff; cursor: pointer; font-size: 27px; line-height: 1; }
-.public-finance-calendar-lightbox-viewport { min-height: 0; overflow: auto; display: grid; place-items: start center; padding: 14px; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
-.public-finance-calendar-lightbox-viewport > button { width: min(100%,900px); padding: 0; border: 0; background: transparent; cursor: zoom-in; touch-action: pan-x pan-y pinch-zoom; }
-.public-finance-calendar-lightbox-viewport > button.is-zoomed { width: min(1080px,210vw); max-width: none; cursor: zoom-out; }
+.public-finance-calendar-lightbox-viewport { min-height: 0; overflow: auto; display: block; padding: 14px; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y; }
+.public-finance-calendar-lightbox-canvas { width: min(100%,900px); margin: 0 auto; transition: width 180ms ease; }
 .public-finance-calendar-lightbox-viewport img { width: 100%; height: auto; display: block; border-radius: 14px; box-shadow: 0 24px 70px rgba(0,0,0,0.42); -webkit-user-select: none; user-select: none; }
 .public-finance-calendar-lightbox > footer { padding: 10px 14px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid rgba(255,255,255,0.10); background: rgba(17,24,28,0.98); }
 .public-finance-calendar-lightbox > footer p { margin: 0 0 8px; color: #aeb8bd; font-size: 10px; text-align: center; }
 .public-finance-calendar-lightbox > footer .public-finance-calendar-action-error { margin-top: 8px; color: #fed7aa; background: rgba(194,65,12,0.18); }
-.public-finance-calendar-lightbox > footer > div { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; }
+.public-finance-calendar-zoom-bar { width: min(220px,100%); display: grid; grid-template-columns: 42px minmax(92px,1fr) 42px; align-items: center; gap: 6px; margin: 0 auto 10px; }
+.public-finance-calendar-zoom-bar button { min-height: 36px; padding: 0; border-radius: 11px; font-size: 21px; }
+.public-finance-calendar-zoom-bar output { color: #fff; font-family: var(--font-mono, "JetBrains Mono", monospace); font-size: 11px; font-weight: 700; text-align: center; }
+.public-finance-calendar-lightbox-actions { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; }
 .public-finance-calendar-lightbox footer button { min-width: 0; border-color: rgba(255,255,255,0.12); background: rgba(255,255,255,0.08); color: #fff; }
 @keyframes finance-calendar-loading { from { transform: translateX(-105%); } 50% { transform: translateX(140%); } to { transform: translateX(255%); } }
 @media (max-width: 768px) {

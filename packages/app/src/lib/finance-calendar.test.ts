@@ -9,6 +9,7 @@ import {
   financeCalendarStatusLabel,
   groupFinanceCalendarEvents,
   isFinanceCalendarMessage,
+  stepFinanceCalendarZoom,
   parseFinanceCalendarMonth,
   visibleFinanceCalendarEventsForDay,
 } from "./finance-calendar";
@@ -42,6 +43,15 @@ describe("finance calendar helpers", () => {
       ),
     ).toBe("2026-08");
     expect(isFinanceCalendarMessage("这是你的财经日历")).toBe(false);
+  });
+
+  it("steps calendar zoom through bounded explicit levels", () => {
+    expect(stepFinanceCalendarZoom(1, -1)).toBe(1);
+    expect(stepFinanceCalendarZoom(1, 1)).toBe(1.25);
+    expect(stepFinanceCalendarZoom(1.25, 1)).toBe(1.5);
+    expect(stepFinanceCalendarZoom(1.5, 1)).toBe(2);
+    expect(stepFinanceCalendarZoom(2, 1)).toBe(2);
+    expect(stepFinanceCalendarZoom(1.92, -1)).toBe(1.5);
   });
 
   it("builds a twelve-month picker for one year", () => {

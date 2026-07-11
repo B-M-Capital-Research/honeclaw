@@ -24,12 +24,33 @@ export type FinanceCalendarEventCategory =
 const FINANCE_CALENDAR_MESSAGE_PATTERN =
   /(?:这是你的|your)\s*(\d{4}-\d{2})\s*(?:财经日历|finance calendar)/i;
 
+export const FINANCE_CALENDAR_ZOOM_LEVELS = [1, 1.25, 1.5, 2] as const;
+
 export function financeCalendarMessageMonth(content: string): string | null {
   return FINANCE_CALENDAR_MESSAGE_PATTERN.exec(content)?.[1] ?? null;
 }
 
 export function isFinanceCalendarMessage(content: string): boolean {
   return financeCalendarMessageMonth(content) !== null;
+}
+
+export function stepFinanceCalendarZoom(
+  current: number,
+  direction: -1 | 1,
+): number {
+  const nearestIndex = FINANCE_CALENDAR_ZOOM_LEVELS.reduce(
+    (best, level, index) =>
+      Math.abs(level - current) <
+      Math.abs(FINANCE_CALENDAR_ZOOM_LEVELS[best]! - current)
+        ? index
+        : best,
+    0,
+  );
+  const nextIndex = Math.min(
+    FINANCE_CALENDAR_ZOOM_LEVELS.length - 1,
+    Math.max(0, nearestIndex + direction),
+  );
+  return FINANCE_CALENDAR_ZOOM_LEVELS[nextIndex]!;
 }
 
 export function parseFinanceCalendarMonth(value: string): {

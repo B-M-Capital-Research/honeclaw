@@ -2,6 +2,7 @@ import { createMemo, createSignal, onCleanup, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 
 import { CONTENT } from "@/lib/public-content";
+import { stepFinanceCalendarZoom } from "@/lib/finance-calendar";
 
 type ShareNavigator = Navigator & {
   canShare?: (data: ShareData) => boolean;
@@ -16,7 +17,7 @@ export function FinanceCalendarMessageImage(props: {
   const [failed, setFailed] = createSignal(false);
   const [retry, setRetry] = createSignal(0);
   const [open, setOpen] = createSignal(false);
-  const [zoomed, setZoomed] = createSignal(false);
+  const [zoom, setZoom] = createSignal(1);
   const [working, setWorking] = createSignal<"save" | "share" | null>(null);
   const [actionError, setActionError] = createSignal(false);
   const source = createMemo(() => {
@@ -24,11 +25,35 @@ export function FinanceCalendarMessageImage(props: {
     return `${props.src}${join}calendar_retry=${retry()}`;
   });
   const fileName = () => `HONE-finance-calendar-${props.month}.png`;
+  const zoomLabel = () =>
+    zoom() === 1
+      ? CONTENT.chat_page.composer.finance_calendar_zoom_fit
+      : `${Math.round(zoom() * 100)}%`;
+  const zoomWidth = () => `min(${zoom() * 100}%, ${Math.round(900 * zoom())}px)`;
   let cachedBlob: Blob | undefined;
+  let viewportEl: HTMLDivElement | undefined;
+
+  const settleViewport = (fit = false) => {
+    requestAnimationFrame(() => {
+      if (!viewportEl) return;
+      viewportEl.scrollLeft = fit
+        ? 0
+        : Math.max(0, (viewportEl.scrollWidth - viewportEl.clientWidth) / 2);
+      if (fit) viewportEl.scrollTop = 0;
+    });
+  };
+  const changeZoom = (direction: -1 | 1) => {
+    setZoom((value) => stepFinanceCalendarZoom(value, direction));
+    settleViewport();
+  };
+  const fitPreview = () => {
+    setZoom(1);
+    settleViewport(true);
+  };
 
   const close = () => {
     setOpen(false);
-    setZoomed(false);
+    setZoom(1);
   };
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key !== "Escape") return;
@@ -189,17 +214,44 @@ export function FinanceCalendarMessageImage(props: {
               </div>
               <button type="button" aria-label={CONTENT.chat_page.composer.finance_calendar_preview_close} onClick={closePreview}>×</button>
             </header>
-            <div class="public-finance-calendar-lightbox-viewport">
-              <button type="button" classList={{ "is-zoomed": zoomed() }} onClick={() => setZoomed((value) => !value)} aria-label={CONTENT.chat_page.composer.finance_calendar_image_zoom}>
+            <div
+              class="public-finance-calendar-lightbox-viewport"
+              ref={(element) => {
+                viewportEl = element;
+              }}
+            >
+              <div
+                class="public-finance-calendar-lightbox-canvas"
+                style={{ width: zoomWidth() }}
+              >
                 <img src={source()} alt={CONTENT.chat_page.composer.finance_calendar_preview_aria} />
-              </button>
+              </div>
             </div>
             <footer>
               <p>{CONTENT.chat_page.composer.finance_calendar_image_save_hint}</p>
-              <div>
-                <button type="button" onClick={() => setZoomed((value) => !value)}>
+              <div class="public-finance-calendar-zoom-bar" aria-label={CONTENT.chat_page.composer.finance_calendar_image_zoom}>
+                <button
+                  type="button"
+                  aria-label={CONTENT.chat_page.composer.finance_calendar_zoom_out}
+                  disabled={zoom() <= 1}
+                  onClick={() => changeZoom(-1)}
+                >
+                  −
+                </button>
+                <output>{zoomLabel()}</output>
+                <button
+                  type="button"
+                  aria-label={CONTENT.chat_page.composer.finance_calendar_zoom_in}
+                  disabled={zoom() >= 2}
+                  onClick={() => changeZoom(1)}
+                >
+                  +
+                </button>
+              </div>
+              <div class="public-finance-calendar-lightbox-actions">
+                <button type="button" onClick={fitPreview} disabled={zoom() === 1}>
                   <CalendarActionIcon name="expand" />
-                  {zoomed() ? CONTENT.chat_page.composer.finance_calendar_zoom_fit : CONTENT.chat_page.composer.finance_calendar_image_zoom}
+                  {CONTENT.chat_page.composer.finance_calendar_zoom_fit}
                 </button>
                 <button type="button" onClick={() => void saveImage()} disabled={working() !== null}>
                   <CalendarActionIcon name="save" />

@@ -4,18 +4,6 @@ Last updated: 2026-07-11
 
 ## 2026-07-11
 
-### Mobile Finance Calendar And Navigation Polish
-
-- Status: done
-- Date: 2026-07-11
-- Plan: `docs/archive/plans/mobile-finance-calendar-nav-polish.md`
-- Handoff: `docs/handoffs/2026-07-11-mobile-finance-calendar-nav-polish.md`
-- Decision / ADR: N/A; APIs, persistence, and module boundaries are unchanged
-- Related PRs / commits: `31081106`
-- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`, `bun run typecheck:web`, `bun run test:web` (206 passed), `bun run build:web:public`, local and production 390 x 844 browser QA
-- Current conclusion: hone-claw.com now serves the dedicated mobile finance-calendar loading/full-screen/save/share experience and the aligned HONE mobile navigation. Production uses `index-CAwvfWGR.js` / `chat-CP613W7-.js`; core routes and the public API proxy passed smoke checks.
-- Next entry point: `docs/handoffs/2026-07-11-mobile-finance-calendar-nav-polish.md`
-
 ### HONE Client Brand And iOS Release
 
 - Status: done

@@ -3148,16 +3148,7 @@ export default function PublicChatPage() {
       "content",
       "width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content",
     );
-    const preventGesture = (event: Event) => {
-      const target = event.target;
-      if (
-        target instanceof Element &&
-        target.closest(".public-finance-calendar-lightbox")
-      ) {
-        return;
-      }
-      event.preventDefault();
-    };
+    const preventGesture = (event: Event) => event.preventDefault();
     document.addEventListener("gesturestart", preventGesture);
     document.addEventListener("gesturechange", preventGesture);
     document.addEventListener("gestureend", preventGesture);

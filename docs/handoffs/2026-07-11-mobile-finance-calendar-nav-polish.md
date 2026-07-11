@@ -1,7 +1,7 @@
 # Mobile Finance Calendar And Navigation Polish
 
 - title: Mobile Finance Calendar And Navigation Polish
-- status: done
+- status: in_progress
 - created_at: 2026-07-11
 - updated_at: 2026-07-11
 - owner: Codex
@@ -30,6 +30,10 @@ The mobile finance-calendar and navigation fixes are live on hone-claw.com. Cale
 
 - Run one authenticated real-iPhone smoke after the user next generates a calendar: throttle the network, open/zoom the image, save it, and invoke system share.
 - Older iOS versions may ignore the anchor `download` attribute; Web Share and long-press saving remain available.
+
+## Production Follow-up 2026-07-11 17:22 CST
+
+The first live full-screen viewer allowed both Safari page pinch zoom and a component-level `210vw` tap zoom. On iPhone this could enlarge the calendar to a cropped three-column region and push the application header/footer controls outside the visual viewport. The task is reactivated to replace that mixed zoom model with controlled in-canvas levels and permanently fixed chrome.
 
 ## Next Entry Point
 
