@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-07-11
+Last updated: 2026-07-12
+
+## 2026-07-12
+
+### Agent And Data Security Hardening
+
+- Status: done
+- Date: 2026-07-12
+- Plan: `docs/archive/plans/agent-data-security-hardening.md`
+- Handoff: `docs/handoffs/2026-07-12-agent-data-security-hardening.md`
+- Decision / ADR: `D-2026-07-12-01` in `docs/decisions.md`
+- Related PRs / commits: `dbabbe77`, `a99bf096`
+- Related runbooks / regressions: 495 channel tests, 115 core tests, 121 memory tests, 123 tool tests, 95 Web API tests, 12 Discord tests, 211 frontend tests, workspace check, CI-safe regression suite, cloud doctor, production/origin/CORS/runtime probes
+- Current conclusion: non-admin actors can no longer use host-capable ACP/CLI runners and instead use actor-bound function calling; runtime/config/sandbox permissions and skill child environments are owner-only/secret-free; public CORS and actor-key data isolation are verified; production dependency alerts fell from 10 to two Tauri-only residual alerts. Admin ACP remains a trusted boundary and all credentials should be rotated.
+- Next entry point: `docs/handoffs/2026-07-12-agent-data-security-hardening.md`
 
 ## 2026-07-11
 
