@@ -806,7 +806,7 @@ fn heartbeat_plain_text_trigger_message(text: &str) -> Option<String> {
     }
 
     let message = sanitize_scheduler_delivery_text(trimmed);
-    if message.trim().is_empty() {
+    if message.trim().is_empty() || heartbeat_management_drift_message(&message) {
         None
     } else {
         Some(message)
@@ -822,6 +822,41 @@ fn heartbeat_internal_marker_prefix(text: &str) -> bool {
 fn heartbeat_internal_marker_present(text: &str) -> bool {
     let upper = text.to_ascii_uppercase();
     upper.contains(HEARTBEAT_NOOP_SENTINEL) || upper.contains(HEARTBEAT_INTERNAL_PREFIX)
+}
+
+fn heartbeat_management_drift_message(text: &str) -> bool {
+    let compact = text
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    let mentions_task_management = [
+        "定时任务",
+        "heartbeat任务",
+        "心跳监控",
+        "监控任务",
+        "自动化监控",
+        "cron_job",
+        "set_immediate_kinds",
+    ]
+    .iter()
+    .any(|marker| compact.contains(marker));
+    let mentions_creation_flow = [
+        "无法创建",
+        "不能创建",
+        "无法设置",
+        "不能设置",
+        "创建请求",
+        "提出建立",
+        "第3次提出",
+        "第三次提出",
+        "已配置",
+        "将创建",
+    ]
+    .iter()
+    .any(|marker| compact.contains(marker));
+
+    mentions_task_management && mentions_creation_flow
 }
 
 fn unwrap_nested_json_message(text: &str) -> String {
@@ -1616,6 +1651,9 @@ fn heartbeat_duplicate_preview_match(
         return None;
     }
     for (_, preview) in delivered_previews {
+        if heartbeat_management_drift_message(preview) {
+            continue;
+        }
         let message_tickers = heartbeat_ticker_anchor_tokens(message);
         let preview_tickers = heartbeat_ticker_anchor_tokens(preview);
         let same_explicit_ticker = !message_tickers.is_empty()
@@ -1839,6 +1877,23 @@ fn heartbeat_execution_from_content_internal(
                         "raw_preview": raw_preview,
                         "deliver_preview": truncate_for_log(message.trim(), 200),
                         "sanitized_empty": true,
+                    }),
+                    session_id: None,
+                };
+            }
+            if heartbeat_management_drift_message(&sanitized_message) {
+                return ScheduledTaskExecution {
+                    should_deliver: false,
+                    content: String::new(),
+                    error: None,
+                    metadata: json!({
+                        "heartbeat_model": heartbeat_model,
+                        "parse_kind": format!("{:?}", parse_kind),
+                        "raw_chars": raw_chars,
+                        "starts_with_json": starts_with_json,
+                        "raw_preview": raw_preview,
+                        "deliver_preview": truncate_for_log(sanitized_message.trim(), 200),
+                        "management_drift_suppressed": true,
                     }),
                     session_id: None,
                 };
@@ -3132,7 +3187,7 @@ pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
                 entries
             )
         };
-        return format!(
+return format!(
             "[心跳检测任务] 任务名称：{}。\n\
 你正在执行一个每 30 分钟运行一次的后台条件检查。\n\
 本轮权威检查时间（北京时间）：{}。\n\
@@ -3148,6 +3203,7 @@ pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
 6a. 输出契约：整条回复必须是单段 JSON，第一个可见字符必须是 `{{`。严禁使用 `<think>...</think>`、```json ... ```、`## 分析`、分步解释或任何前置/收尾的自由文本。推理过程不要对外展示；需要推理时在内部完成后，直接给出最终 JSON。\n\
 6b. 如果你发现用户条件、交易动作边界、来源归因或输出契约之间存在冲突，不要解释冲突、不要复述规则、不要输出空文本；必须返回 `{{\"status\":\"noop\"}}`，除非你能用合规的 `triggered` JSON 只报告触发事实和条件化风险提示。\n\
 6c. 严禁输出工具配置、任务配置、画像建档说明、`set_immediate_kinds`、`cron_job` 或任何“已配置/将创建监控”的说明；如果本轮误入配置/建档/任务治理路径，必须返回 `{{\"status\":\"noop\"}}`。\n\
+6d. 下方“用户条件”可能保留了用户最初的“帮我创建/设置/每30分钟监控”措辞；你必须把它解释为“当前已有 heartbeat 任务的执行说明”，只检查条件，不得把它当成新的创建请求，也不得输出“无法创建/不能设置/这是第几次提出创建”的话术。\n\
 7. 时间一致性约束：对于发射、财报、业绩会等有明确时间窗口的事件，必须先判断当前时间是否已越过事件预定时间，才能输出完成态结论。若当前时间早于事件计划时间，必须返回 noop，不允许把未来计划误报成已完成。\n\
 7a. 时间口径命名约束：`message` 中写“北京时间 HH:MM 触发/监控触发/检查触发”时，只能使用上方权威检查时间；市场时段、数据时间或美东盘前/盘后只能标注为“数据时间”“美东时间”“交易时段”，不能写成另一个“北京时间触发”。\n\
 8. 价格时间口径约束：引用股价、金价、汇率或商品价格时，必须核实价格的时间戳。价格阈值 / 跌破 / 突破类 heartbeat 只有在最新可得价格属于当前检查窗口或最近可解释交易窗口时才能 triggered；若工具只返回明显旧日期、缺少价格时间戳，或无法证明该价格仍是最新可得价格，必须返回 noop，不允许把旧价格包装成当前触发依据。\n\
@@ -4373,6 +4429,34 @@ mod tests {
     }
 
     #[test]
+    fn heartbeat_prompt_treats_creation_wording_as_existing_monitor() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_monitor", None::<String>).expect("actor"),
+            job_id: "job-monitor".to_string(),
+            job_name: "美股黄金坑信号心跳检测".to_string(),
+            task_prompt: "帮我创建一个每30分钟检查美股黄金坑信号的监控。".to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_monitor".to_string(),
+            delivery_key: "delivery-monitor".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: true,
+            schedule_hour: 0,
+            schedule_minute: 0,
+            schedule_repeat: "heartbeat".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        let prompt = build_scheduled_prompt(&event);
+        assert!(prompt.contains("保留了用户最初的“帮我创建/设置/每30分钟监控”措辞"));
+        assert!(prompt.contains("当前已有 heartbeat 任务的执行说明"));
+        assert!(prompt.contains("不得把它当成新的创建请求"));
+    }
+
+    #[test]
     fn heartbeat_direct_trade_instruction_gets_risk_guard() {
         let event = SchedulerEvent {
             actor: ActorIdentity::new("feishu", "ou_cai", None::<String>).expect("actor"),
@@ -4487,6 +4571,19 @@ mod tests {
         assert!(execution.error.is_none());
         assert_eq!(execution.metadata["parse_kind"], "PlainTextTriggered");
         assert_eq!(execution.metadata["heartbeat_model"], "model-x");
+    }
+
+    #[test]
+    fn heartbeat_management_drift_message_is_suppressed() {
+        let content = r#"{"status":"triggered","message":"这是你第三次提出建立每30分钟自动化心跳监控的请求，当前无法创建此类定时任务。"}"#;
+        let execution = heartbeat_execution_from_content(content, "model-x");
+        assert!(!execution.should_deliver);
+        assert!(execution.error.is_none());
+        assert_eq!(execution.metadata["parse_kind"], "JsonTriggered");
+        assert_eq!(
+            execution.metadata["management_drift_suppressed"].as_bool(),
+            Some(true)
+        );
     }
 
     #[test]
@@ -5284,6 +5381,19 @@ mod tests {
         )];
 
         assert!(heartbeat_duplicate_preview_match(message, &previews).is_some());
+    }
+
+    #[test]
+    fn heartbeat_duplicate_preview_match_ignores_management_drift_baseline() {
+        let message =
+            "【美股黄金坑信号心跳检测】纳指回撤接近关键阈值，当前跌幅 4.8%，检查时间 19:00。";
+        let previews = vec![(
+            "2026-07-11T18:00:00+08:00".to_string(),
+            "这是你第三次提出建立每30分钟自动化心跳监控的请求，当前无法创建此类定时任务。"
+                .to_string(),
+        )];
+
+        assert!(heartbeat_duplicate_preview_match(message, &previews).is_none());
     }
 
     #[test]

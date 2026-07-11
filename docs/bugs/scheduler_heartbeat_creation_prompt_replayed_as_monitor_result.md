@@ -14,7 +14,24 @@
 
 ## 状态
 
-- New
+- Fixed
+
+## 修复进展
+
+- `2026-07-12 03:04 CST` 代码级修复完成，状态更新为 `Fixed`：
+  - `crates/hone-channels/src/scheduler.rs`
+    - heartbeat prompt 新增执行期约束：即使 `task_prompt` 保留“帮我创建/设置/每30分钟监控”措辞，也必须解释为“已有 heartbeat 任务的执行说明”，不得把本轮运行当成新的创建请求。
+    - heartbeat 出站新增 `heartbeat_management_drift_message(...)` 检测；若模型返回“无法创建定时任务 / 不能设置监控 / 第三次提出创建”这类任务治理残留话术，即使表面是 `triggered` 消息，也会在投递前压回 `noop`，不再污染用户可见提醒。
+    - duplicate suppression 会跳过这类“创建失败/任务治理”旧基线，避免真实市场判断再次被“无法创建”历史文本误压成未发送。
+  - 新增 / 复跑回归：
+    - `cargo test -p hone-channels heartbeat_management_drift_message_is_suppressed --lib -- --nocapture`
+    - `cargo test -p hone-channels heartbeat_duplicate_preview_match_ignores_management_drift_baseline --lib -- --nocapture`
+    - `cargo test -p hone-channels heartbeat_prompt_treats_creation_wording_as_existing_monitor --lib -- --nocapture`
+    - `cargo test -p hone-channels heartbeat_prompt_ --lib -- --nocapture`
+    - `cargo test -p hone-channels heartbeat_duplicate_preview_match_ --lib -- --nocapture`
+    - `cargo check -p hone-channels --tests`
+    - `git diff --check`
+  - 本轮没有重启 live runtime；当前先按代码级 `Fixed` 回写，待后续 `bug` 巡检结合真实 heartbeat 窗口继续复核是否仍有旧 prompt 残留或其它独立根因。
 
 ## GitHub Issue
 
@@ -64,7 +81,5 @@
 
 ## 下一步建议
 
-- 在 cron / heartbeat job 创建时，将用户“请创建/设置/每 30 分钟检查”的请求改写为稳定的执行型监控 prompt。
-- 对已有 job 增加迁移或修复工具：识别 prompt 中的“无法创建 / 不能设置 / 你第三次提出建立”一类创建期残留，改写为实际监控条件。
-- duplicate suppression 应避免把“无法创建定时任务”“请你手动发起检查”等非监控结果作为 heartbeat 去重基线。
-- 修复后用 `美股黄金坑信号心跳检测` 构造回归，验证触发时不会再输出创建失败话术，未触发时返回结构化 noop。
+- 后续 `bug` 巡检优先复核 `美股黄金坑信号心跳检测` 是否仍有旧 prompt 残留；若 runtime 仍把任务当创建请求，再把问题下沉到 heartbeat job 创建/持久化时的 prompt 规范化或迁移工具。
+- 若其它 heartbeat job 也复发“无法创建 / 不能设置 / 已配置监控”类话术，应复用本次 `management_drift` 路径继续扩展样本，而不是新建重复缺陷。
