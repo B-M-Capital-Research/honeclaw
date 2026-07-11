@@ -2016,7 +2016,7 @@ function FinanceCalendarQuickAction(props: { onSent: () => void }) {
         new File([desktopBlob], `hone-finance-calendar-${data.month}.png`, {
           type: "image/png",
         }),
-        new File([mobileBlob], `hone-finance-calendar-${data.month}-mobile.png`, {
+        new File([mobileBlob], `hone-finance-calendar-${data.month}-mobile-v2.png`, {
           type: "image/png",
         }),
       ]);

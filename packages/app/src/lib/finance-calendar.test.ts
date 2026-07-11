@@ -14,6 +14,7 @@ import {
   financeCalendarAnchoredTransform,
   financeCalendarPinchZoom,
   selectFinanceCalendarImageSource,
+  shouldUpgradeFinanceCalendarMobileSource,
   stepFinanceCalendarZoom,
   parseFinanceCalendarMonth,
   visibleFinanceCalendarEventsForDay,
@@ -77,6 +78,17 @@ describe("finance calendar helpers", () => {
     expect(selectFinanceCalendarImageSource("desktop.png", "mobile.png", false)).toBe(
       "desktop.png",
     );
+    expect(shouldUpgradeFinanceCalendarMobileSource()).toBe(true);
+    expect(
+      shouldUpgradeFinanceCalendarMobileSource(
+        "/api/public/image?path=calendar-mobile.png",
+      ),
+    ).toBe(true);
+    expect(
+      shouldUpgradeFinanceCalendarMobileSource(
+        "/api/public/image?path=calendar-mobile-v2.png",
+      ),
+    ).toBe(false);
   });
 
   it("keeps transformed calendar panning bounded and pinch anchored", () => {

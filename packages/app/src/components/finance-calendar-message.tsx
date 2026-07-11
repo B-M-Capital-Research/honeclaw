@@ -10,6 +10,7 @@ import {
   financeCalendarAnchoredTransform,
   financeCalendarPinchZoom,
   selectFinanceCalendarImageSource,
+  shouldUpgradeFinanceCalendarMobileSource,
   stepFinanceCalendarZoom,
 } from "@/lib/finance-calendar";
 import type { FinanceCalendarPayload } from "@/lib/types";
@@ -39,7 +40,9 @@ export function FinanceCalendarMessageImage(props: {
   const [legacyMobileSrc, setLegacyMobileSrc] = createSignal<string>();
   const [working, setWorking] = createSignal<"save" | "share" | null>(null);
   const [actionError, setActionError] = createSignal(false);
-  const mobileSource = createMemo(() => props.mobileSrc ?? legacyMobileSrc());
+  const mobileSource = createMemo(() => legacyMobileSrc() ?? props.mobileSrc);
+  const needsMobileDesignUpgrade = () =>
+    shouldUpgradeFinanceCalendarMobileSource(props.mobileSrc);
   const selectedSource = createMemo(() =>
     selectFinanceCalendarImageSource(
       props.src,
@@ -72,7 +75,7 @@ export function FinanceCalendarMessageImage(props: {
   const buildLegacyMobileImage = async () => {
     if (
       legacyBuildStarted ||
-      props.mobileSrc ||
+      !needsMobileDesignUpgrade() ||
       !preferMobile()
     ) {
       return;
@@ -121,7 +124,7 @@ export function FinanceCalendarMessageImage(props: {
     sync();
     media.addEventListener?.("change", sync);
     const observer =
-      !props.mobileSrc && "IntersectionObserver" in window && messageEl
+      needsMobileDesignUpgrade() && "IntersectionObserver" in window && messageEl
         ? new IntersectionObserver(
             (entries) => {
               if (

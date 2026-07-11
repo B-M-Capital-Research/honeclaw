@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-07-11
-状态：有 6 个活跃任务
+状态：有 7 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **移动端财经日历视觉版本迁移**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/mobile-finance-calendar-dual-layout.md`
+  - 摘要：为新版移动日历增加 v2 文件标识，并让已存的旧双图消息在手机端可见时自动重绘为新版，避免用户必须重新生成日历
 
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`

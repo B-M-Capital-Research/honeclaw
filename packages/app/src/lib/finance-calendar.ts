@@ -96,6 +96,12 @@ export function selectFinanceCalendarImageSource(
   return preferMobile && mobileSource ? mobileSource : desktopSource;
 }
 
+export function shouldUpgradeFinanceCalendarMobileSource(
+  mobileSource?: string,
+): boolean {
+  return !mobileSource || !mobileSource.includes("-mobile-v2");
+}
+
 export function financeCalendarMessageMonth(content: string): string | null {
   return FINANCE_CALENDAR_MESSAGE_PATTERN.exec(content)?.[1] ?? null;
 }
