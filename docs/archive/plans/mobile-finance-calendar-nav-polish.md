@@ -1,7 +1,7 @@
 # Mobile Finance Calendar And Navigation Polish
 
 - title: Mobile Finance Calendar And Navigation Polish
-- status: in_progress
+- status: archived
 - created_at: 2026-07-11
 - updated_at: 2026-07-11
 - owner: Codex
@@ -30,6 +30,8 @@ Correct the production iOS full-screen calendar regression where native page zoo
 - Run `bun run typecheck:web`, `bun run test:web`, and `bun run build:web:public`.
 - Verify fit and zoom DOM/CSS contracts at 390 x 844, then verify production asset switch and route health.
 
+Completed with 207 passing frontend tests, successful typecheck/public build, 390 x 844 local and production overflow checks, and production asset verification for `index-D4wSdzNX.js` / `chat-ByxolQgf.js`.
+
 ## Documentation Sync
 
 - Append the production follow-up to the existing same-day handoff, archive this plan again after deployment, and update the existing archive index entry.
@@ -39,3 +41,4 @@ Correct the production iOS full-screen calendar regression where native page zoo
 
 - Do not rely on native Safari page zoom inside a fixed application shell.
 - Keep long-press saving available on the fitted image while preventing the viewer itself from scaling the browser viewport.
+- An authenticated physical-iPhone save/share smoke remains useful, but the reported mixed browser/component zoom path is removed from production.

@@ -1,13 +1,13 @@
 # Mobile Finance Calendar And Navigation Polish
 
 - title: Mobile Finance Calendar And Navigation Polish
-- status: in_progress
+- status: done
 - created_at: 2026-07-11
 - updated_at: 2026-07-11
 - owner: Codex
 - related_files: `packages/app/src/components/finance-calendar-message.tsx`, `packages/app/src/pages/chat.tsx`, `packages/app/src/pages/public-site.css`, `packages/app/src/lib/finance-calendar.ts`
 - related_docs: `docs/archive/plans/mobile-finance-calendar-nav-polish.md`, `docs/handoffs/2026-06-29-public-finance-calendar.md`, `docs/runbooks/backend-deployment.md`
-- related_prs: main commit `31081106`
+- related_prs: main commits `31081106`, `e95b1049`
 
 ## Summary
 
@@ -35,6 +35,8 @@ The mobile finance-calendar and navigation fixes are live on hone-claw.com. Cale
 
 The first live full-screen viewer allowed both Safari page pinch zoom and a component-level `210vw` tap zoom. On iPhone this could enlarge the calendar to a cropped three-column region and push the application header/footer controls outside the visual viewport. The task is reactivated to replace that mixed zoom model with controlled in-canvas levels and permanently fixed chrome.
 
+The follow-up shipped in `e95b1049`. The viewer now uses explicit fit/125/150/200 percent levels, pans only its image viewport, keeps the close/zoom/save/share controls fixed, and restores the application-wide Safari gesture guard. Typecheck, the public build, and all 207 frontend tests passed. Cloudflare Pages switched to `index-D4wSdzNX.js` / `chat-ByxolQgf.js`; the production chunk contains the new zoom bar and no longer contains `210vw`. Core routes return 200, the unauthenticated auth probe returns the expected 401 JSON, and a 390 x 844 production check has no horizontal overflow.
+
 ## Next Entry Point
 
-Start with `packages/app/src/components/finance-calendar-message.tsx` for image actions and `packages/app/src/pages/public-site.css` for calendar/mobile-nav styling.
+For future calendar image work, start with `packages/app/src/components/finance-calendar-message.tsx` for actions, `packages/app/src/lib/finance-calendar.ts` for zoom behavior, and `packages/app/src/pages/public-site.css` for viewer styling.

@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-07-11
-状态：有 7 个活跃任务
+状态：有 6 个活跃任务
 
 ## 说明
 
@@ -15,11 +15,6 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
-
-- **移动端财经日历与顶部导航体验修复**
-  - 状态：`in_progress`
-  - 计划：`docs/current-plans/mobile-finance-calendar-nav-polish.md`
-  - 摘要：修复 iOS 全屏日历原生页面缩放与组件放大叠加导致头尾操作栏消失、图片过度放大的线上回归，并重新部署验收
 
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`
