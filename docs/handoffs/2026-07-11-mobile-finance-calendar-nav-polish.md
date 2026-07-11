@@ -7,7 +7,7 @@
 - owner: Codex
 - related_files: `packages/app/src/components/finance-calendar-message.tsx`, `packages/app/src/components/finance-calendar-mobile-card.tsx`, `packages/app/src/pages/chat.tsx`, `packages/app/src/pages/public-site.css`, `packages/app/src/lib/finance-calendar.ts`, `crates/hone-web-api/src/routes/public_finance_calendar.rs`
 - related_docs: `docs/archive/plans/mobile-finance-calendar-nav-polish.md`, `docs/archive/plans/mobile-finance-calendar-dual-layout.md`, `docs/handoffs/2026-06-29-public-finance-calendar.md`, `docs/runbooks/backend-deployment.md`
-- related_prs: main commits `31081106`, `e95b1049`, `2a6e7572`, `a4af378d`, `1a72b918`, `6ab39ee3`
+- related_prs: main commits `31081106`, `e95b1049`, `2a6e7572`, `a4af378d`, `1a72b918`, `6ab39ee3`, `5b7b1d67`
 
 ## Summary
 
@@ -60,6 +60,12 @@ Visual QA used 15 dense July events at a 390 px viewport. The root remained exac
 The redesign initially upgraded desktop-only legacy messages but left already-persisted first-generation mobile PNGs selected forever. Commit `6ab39ee3` adds an explicit `mobile-v2` filename contract and treats both a missing mobile source and any pre-v2 mobile source as eligible for the existing in-view lazy rebuild. The rebuilt blob takes precedence immediately, so users see the editorial artifact without regenerating or mutating conversation history.
 
 Fourteen focused finance-calendar tests, typecheck, and the public build passed. Cloudflare Pages switched to `index-BORXXQqy.js` / `chat-DwTyIjoF.js`; the production chunk contains two `mobile-v2` contracts plus the monthly-brief design markers. `/`, `/chat`, and `/roadmap` return 200, auth returns the expected 401 JSON, runtime PID `9767` and both local API surfaces return healthy responses, and a 390 x 844 production browser check reports a 390 px document with no horizontal overflow or console errors.
+
+## Public Visual Architecture And Calendar V3 Follow-up 2026-07-11 20:48 CST
+
+The screenshot exposed a structural failure rather than a spacing defect: `chat.tsx` owned a 2,069-line embedded stylesheet while `public-site.css` independently overrode the same shell, and the calendar used unsupported intermediate font weights, normal line boxes, colored text pills, and fractional capture scales. Commit `5b7b1d67` establishes `public-foundation.css`, `public-polish.css`, and `public-chat.css` as explicit ownership layers; `chat.tsx` drops from 5,838 to 3,770 lines and no longer contains a page-level style string. HONE is also now the browser-title brand.
+
+The mobile artifact is rebuilt as a HONE signal calendar with explicit line heights, standard 600/700 weights, plain category labels paired with aligned color rails, larger mobile-readable typography, and deterministic 2x capture. The v3 marker lazily rebuilds existing v1/v2 mobile artifacts without changing history. A 15-event fixture produced an exact 1500 x 2668 PNG, rendered at 390 px without overflow or label drift. All 209 tests, typecheck, and the public build passed. Production uses `index-DbfrdfV3.js` / `chat-CJ_LPzbz.js`; core routes, the two local backends, runtime PID `9767`, Feishu, Discord, and the console process are healthy.
 
 ## Next Entry Point
 

@@ -4,6 +4,18 @@ Last updated: 2026-07-11
 
 ## 2026-07-11
 
+### Public Web Visual Architecture And Finance Calendar V3
+
+- Status: done
+- Date: 2026-07-11
+- Plan: `docs/archive/plans/public-web-visual-architecture-refactor.md`
+- Handoff: `docs/handoffs/2026-07-11-mobile-finance-calendar-nav-polish.md`
+- Decision / ADR: `D-2026-07-11-03` in `docs/decisions.md`
+- Related PRs / commits: `5b7b1d67`
+- Related runbooks / regressions: 209 frontend tests, typecheck, public build, deterministic 2x dense-fixture raster review, 390 x 844 production browser QA, production asset/route/runtime checks
+- Current conclusion: public visual ownership is split into foundation, shared component polish, chat shell, and component-local artifact layers. Finance-calendar mobile v3 removes pill/text alignment risk, uses explicit line boxes and integer capture, and lazily upgrades all older mobile artifacts. Production uses `index-DbfrdfV3.js` / `chat-CJ_LPzbz.js` with dedicated chat/public-nav CSS resources.
+- Next entry point: `docs/handoffs/2026-07-11-mobile-finance-calendar-nav-polish.md`
+
 ### Mobile Finance Calendar Dual Layout And Gestures
 
 - Status: done
