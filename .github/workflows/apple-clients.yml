@@ -10,6 +10,7 @@ on:
       - "packages/app/src/components/public-nav.tsx"
       - "packages/app/src/pages/public-site.css"
       - "scripts/build_user_app.sh"
+      - "tests/regression/ci/test_hone_ios_contract.sh"
       - ".github/workflows/apple-clients.yml"
   push:
     branches:
@@ -21,6 +22,7 @@ on:
       - "packages/app/src/components/public-nav.tsx"
       - "packages/app/src/pages/public-site.css"
       - "scripts/build_user_app.sh"
+      - "tests/regression/ci/test_hone_ios_contract.sh"
       - ".github/workflows/apple-clients.yml"
 
 permissions:
