@@ -17,7 +17,9 @@ import {
 import { displayGithubStars, fetchGithubStars } from "@/lib/github-stars";
 import { setLocale, useLocale } from "@/lib/i18n";
 import { CONTENT } from "@/lib/public-content";
+import "../pages/public-foundation.css";
 import "../pages/public-site.css";
+import "../pages/public-polish.css";
 
 const NAV_LINKS = [
   { labelKey: "home", path: "/" },

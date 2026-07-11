@@ -93,7 +93,7 @@ export function FinanceCalendarMessageImage(props: {
       if (!legacyCardEl) throw new Error("legacy mobile calendar not mounted");
       const { default: html2canvas } = await import("html2canvas");
       const canvas = await html2canvas(legacyCardEl, {
-        scale: window.devicePixelRatio >= 2 ? 1.5 : 1.25,
+        scale: 2,
         backgroundColor: "#edf1f2",
         useCORS: true,
         logging: false,

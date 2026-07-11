@@ -88,6 +88,11 @@ describe("finance calendar helpers", () => {
       shouldUpgradeFinanceCalendarMobileSource(
         "/api/public/image?path=calendar-mobile-v2.png",
       ),
+    ).toBe(true);
+    expect(
+      shouldUpgradeFinanceCalendarMobileSource(
+        "/api/public/image?path=calendar-mobile-v3.png",
+      ),
     ).toBe(false);
   });
 

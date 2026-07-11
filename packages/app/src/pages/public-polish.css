@@ -1,0 +1,124 @@
+/* Public component layer. This file is intentionally loaded after the legacy
+   public-site sheet while surfaces migrate to the shared HONE foundations. */
+.pub-nav {
+  height: 62px;
+  padding: 0 10px 0 14px;
+  border-color: var(--hone-line);
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--hone-paper-50) 93%, transparent);
+  box-shadow: var(--hone-shadow-md);
+}
+
+.pub-nav-link,
+.pub-nav-cta,
+.pub-github-star-link,
+.pub-nav-lang,
+.pub-nav-hamburger,
+.public-chat-account-trigger {
+  border-radius: var(--hone-radius-sm);
+}
+
+.pub-nav-link {
+  color: var(--hone-ink-600);
+  font-weight: 700;
+}
+
+.pub-nav-link.is-active {
+  color: var(--hone-ink-950);
+  background: var(--hone-paper-50);
+  box-shadow: var(--hone-shadow-sm);
+}
+
+.pub-nav-cta {
+  border-color: var(--hone-ink-950);
+  background: var(--hone-ink-950);
+  box-shadow: none;
+}
+
+.pub-mobile-menu {
+  border-left: 1px solid var(--hone-line);
+  background: var(--hone-paper-50);
+  box-shadow: -24px 0 70px rgba(23, 32, 31, 0.14);
+}
+
+.pub-mobile-menu-links button {
+  color: var(--hone-ink-950);
+  border-bottom-color: var(--hone-line);
+}
+
+.public-push-center,
+.public-push-detail {
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-radius-lg);
+  background: var(--hone-paper-50);
+  box-shadow: 0 30px 90px rgba(23, 32, 31, 0.22);
+}
+
+.public-push-list-item,
+.public-scheduled-card {
+  border-color: var(--hone-line);
+  border-radius: var(--hone-radius-md);
+  background: #fff;
+  box-shadow: var(--hone-shadow-sm);
+}
+
+@media (max-width: 768px) {
+  .pub-nav {
+    top: max(8px, env(safe-area-inset-top));
+    right: 12px;
+    left: 12px;
+    height: 58px;
+    padding: 0 7px 0 12px;
+    border-radius: 18px;
+  }
+
+  .pub-nav-brand {
+    min-width: 0;
+  }
+
+  .pub-nav .hone-brand-mark {
+    width: 36px;
+    height: 36px;
+    border-radius: 11px;
+  }
+
+  .pub-nav .hone-brand-word {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+  }
+
+  .pub-nav-mobile-controls {
+    gap: 7px;
+  }
+
+  .pub-nav-hamburger,
+  .pub-nav-mobile-controls .public-chat-account-trigger {
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+    border-color: var(--hone-line);
+    background: #fff;
+    box-shadow: var(--hone-shadow-sm);
+  }
+
+  .pub-mobile-menu {
+    top: 0;
+    width: min(340px, calc(100vw - 28px));
+    padding: calc(28px + env(safe-area-inset-top)) 22px calc(22px + env(safe-area-inset-bottom));
+  }
+
+  .pub-mobile-menu-links button {
+    min-height: 62px;
+    font-family: var(--hone-font-display);
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  .public-push-center,
+  .public-push-detail {
+    width: calc(100vw - 20px);
+    max-height: calc(100dvh - 20px);
+    border-radius: 20px;
+  }
+}

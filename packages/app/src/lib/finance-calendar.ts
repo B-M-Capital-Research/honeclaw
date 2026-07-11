@@ -99,7 +99,7 @@ export function selectFinanceCalendarImageSource(
 export function shouldUpgradeFinanceCalendarMobileSource(
   mobileSource?: string,
 ): boolean {
-  return !mobileSource || !mobileSource.includes("-mobile-v2");
+  return !mobileSource || !mobileSource.includes("-mobile-v3");
 }
 
 export function financeCalendarMessageMonth(content: string): string | null {

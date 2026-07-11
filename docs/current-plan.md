@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-07-11
-状态：有 6 个活跃任务
+状态：有 7 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **用户端视觉架构与财经日历高强度重构**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/public-web-visual-architecture-refactor.md`
+  - 摘要：拆分聊天页内嵌样式，建立 HONE 用户端视觉令牌与组件契约，重做移动财经日历并通过 v3 懒迁移覆盖历史图片
 
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`

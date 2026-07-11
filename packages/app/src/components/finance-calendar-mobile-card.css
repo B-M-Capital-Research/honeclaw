@@ -1,0 +1,373 @@
+.fcm-card,
+.fcm-card * {
+  box-sizing: border-box;
+}
+
+.fcm-card {
+  width: 750px;
+  height: 1334px;
+  overflow: hidden;
+  background: #f5f1e9;
+  color: #17201f;
+  font-family: "Avenir Next", "PingFang SC", "Hiragino Sans GB", sans-serif;
+  font-kerning: normal;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+.fcm-card--hidden {
+  position: fixed;
+  top: 0;
+  left: -12000px;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.fcm-cover {
+  height: 236px;
+  padding: 28px 34px 26px;
+  background: #17201f;
+  color: #fffaf1;
+}
+
+.fcm-cover__eyebrow,
+.fcm-section-heading,
+.fcm-cover__body,
+.fcm-cover__signal,
+.fcm-agenda-row,
+.fcm-footer {
+  display: flex;
+  align-items: center;
+}
+
+.fcm-cover__eyebrow {
+  height: 22px;
+  justify-content: space-between;
+  color: #a7b1ad;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 22px;
+  letter-spacing: 0.13em;
+}
+
+.fcm-cover__eyebrow strong {
+  color: #ff7a5d;
+  font-weight: 700;
+}
+
+.fcm-cover__body {
+  height: 116px;
+  margin-top: 10px;
+  gap: 18px;
+}
+
+.fcm-cover__month {
+  width: 140px;
+  flex: 0 0 140px;
+  color: #ff7052;
+  font-size: 88px;
+  font-weight: 700;
+  line-height: 100px;
+  letter-spacing: -0.03em;
+}
+
+.fcm-cover__title {
+  min-width: 0;
+  flex: 1;
+}
+
+.fcm-cover__title h1 {
+  margin: 0;
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 50px;
+  letter-spacing: -0.035em;
+}
+
+.fcm-cover__title p {
+  margin: 8px 0 0;
+  color: #abb5b1;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+.fcm-cover__issue {
+  width: 118px;
+  flex: 0 0 118px;
+  padding-left: 18px;
+  border-left: 1px solid #3a4542;
+}
+
+.fcm-cover__issue span,
+.fcm-cover__issue strong {
+  display: block;
+}
+
+.fcm-cover__issue span {
+  color: #87938f;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 16px;
+  letter-spacing: 0.12em;
+}
+
+.fcm-cover__issue strong {
+  margin-top: 5px;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 22px;
+}
+
+.fcm-cover__signal {
+  height: 42px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #33403d;
+  gap: 20px;
+  color: #a7b1ad;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.fcm-cover__signal strong {
+  margin-right: 4px;
+  color: #fffaf1;
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.fcm-cover__next {
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  color: #dfe5e1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fcm-cover__next b {
+  margin-right: 8px;
+  color: #ff7a5d;
+  font-weight: 700;
+}
+
+.fcm-scan {
+  height: 398px;
+  padding: 24px 30px 26px;
+  background: #fffdf8;
+  border-top: 7px solid #f06449;
+}
+
+.fcm-section-heading {
+  height: 34px;
+  justify-content: space-between;
+}
+
+.fcm-section-heading h2 {
+  margin: 0;
+  font-size: 27px;
+  font-weight: 700;
+  line-height: 30px;
+  letter-spacing: -0.02em;
+}
+
+.fcm-section-heading span {
+  color: #7f8985;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  letter-spacing: 0.12em;
+}
+
+.fcm-weekdays {
+  height: 24px;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  margin-top: 8px;
+}
+
+.fcm-weekdays span {
+  color: #78837f;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 24px;
+  text-align: center;
+}
+
+.fcm-weekdays span:nth-child(n + 6) {
+  color: #b45b4b;
+}
+
+.fcm-month-grid {
+  height: 276px;
+  display: grid;
+  grid-template: repeat(6, 1fr) / repeat(7, 1fr);
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.fcm-day {
+  position: relative;
+  overflow: hidden;
+  padding: 7px 8px;
+  border: 1px solid #e4e6e0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.fcm-day--weekend {
+  background: #fcf5f2;
+}
+
+.fcm-day--outside {
+  background: #eff1ed;
+  color: #aeb5b1;
+}
+
+.fcm-day--today {
+  border-color: #f06449;
+  background: #f06449;
+  color: #fff;
+}
+
+.fcm-day__number {
+  display: block;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 22px;
+}
+
+.fcm-day__marks {
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  left: 7px;
+  height: 5px;
+  display: flex;
+  gap: 3px;
+}
+
+.fcm-day__marks i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--event-color);
+}
+
+.fcm-day--today .fcm-day__marks i {
+  background: #fff;
+}
+
+.fcm-agenda {
+  height: 636px;
+  padding: 24px 30px 22px;
+  background: #e8eee8;
+}
+
+.fcm-agenda .fcm-section-heading {
+  height: 42px;
+}
+
+.fcm-agenda-list {
+  height: 538px;
+  margin-top: 10px;
+  overflow: hidden;
+  border: 1px solid #cbd4cd;
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.fcm-agenda-row {
+  height: calc(538px / var(--agenda-count));
+  min-height: 0;
+  padding: 0 20px;
+  gap: 16px;
+  border-top: 1px solid #d4dbd5;
+}
+
+.fcm-agenda-row:first-child {
+  border-top: 0;
+}
+
+.fcm-agenda-row__date {
+  width: 74px;
+  flex: 0 0 74px;
+}
+
+.fcm-agenda-row__date strong,
+.fcm-agenda-row__date span {
+  display: block;
+}
+
+.fcm-agenda-row__date strong {
+  font-size: 27px;
+  font-weight: 700;
+  line-height: 30px;
+}
+
+.fcm-agenda-row__date span {
+  margin-top: 3px;
+  color: #84908b;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 13px;
+  letter-spacing: 0.1em;
+}
+
+.fcm-agenda-row__rail {
+  width: 4px;
+  height: 48px;
+  flex: 0 0 4px;
+  border-radius: 999px;
+  background: var(--event-color);
+}
+
+.fcm-agenda-row__content {
+  min-width: 0;
+  flex: 1;
+}
+
+.fcm-agenda-row__category {
+  display: block;
+  color: var(--event-color);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  letter-spacing: 0.12em;
+}
+
+.fcm-agenda-row__title {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  color: #18211f;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 28px;
+  overflow-wrap: anywhere;
+}
+
+.fcm-agenda-row__time {
+  width: 76px;
+  flex: 0 0 76px;
+  color: #68736f;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: right;
+  white-space: pre-line;
+}
+
+.fcm-footer {
+  height: 64px;
+  justify-content: space-between;
+  padding: 0 32px;
+  background: #17201f;
+  color: #9da8a4;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  letter-spacing: 0.04em;
+}

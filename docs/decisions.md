@@ -173,3 +173,11 @@ Last updated: 2026-07-11
 - iOS boundary: `apps/hone-ios/` is an independent SwiftUI/WKWebView project. It persists the normal WebKit login store, allows in-app navigation only to HONE-owned HTTPS hosts, hands external links to iOS, and contains no local runtime or sidecar lifecycle.
 - Release impact: Tag releases upload the Universal macOS DMG, iOS Simulator app, iOS Xcode source, and Apple checksums in addition to existing CLI assets. A device IPA is only valid when Apple signing/provisioning credentials are configured and must not be inferred from an unsigned Simulator artifact.
 - Compatibility: `packages/app` remains the public feature source of truth; backend API, session, push-read, channel, and storage contracts are unchanged by the native shells or brand refresh.
+
+## D-2026-07-11-03 Layer Public Visual Ownership And Version Generated Images
+
+- Status: Accepted
+- Decision: The public user client uses a layered CSS ownership model instead of page-local style strings and late ad hoc overrides. `public-foundation.css` owns HONE tokens and interaction foundations, `public-polish.css` owns shared public navigation/push components, `public-chat.css` owns the chat shell, and generated visual artifacts keep component-local styles beside their render component.
+- Rendering: Generated mobile finance calendars use explicit line boxes, standard font weights, and deterministic integer-scale capture. Every material artifact redesign increments the mobile filename marker; visible older versions are lazily rebuilt in the browser without mutating conversation history.
+- Impact: New public visual work must extend the narrowest owning layer rather than adding a `<style>` block to a page component. Shared token changes require public-page and authenticated-chat checks; calendar composition changes require source-size, rasterized, and 390px visual verification.
+- Compatibility: API, persistence, desktop-calendar output, Feishu, and other channel behavior remain unchanged. The version marker affects only which Web mobile image is selected or lazily regenerated.

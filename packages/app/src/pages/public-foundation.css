@@ -1,0 +1,61 @@
+/* HONE public-surface foundations. Page styles consume these tokens instead of
+   inventing local colors, radii, type stacks, and elevation values. */
+:root {
+  --hone-font-display: "Avenir Next", "PingFang SC", "Hiragino Sans GB", sans-serif;
+  --hone-font-body: "Avenir Next", "PingFang SC", "Hiragino Sans GB", sans-serif;
+  --hone-font-label: "SFMono-Regular", "JetBrains Mono", monospace;
+  --hone-ink-950: #17201f;
+  --hone-ink-800: #2d3735;
+  --hone-ink-600: #606c68;
+  --hone-ink-400: #929c98;
+  --hone-paper-50: #fffdf8;
+  --hone-paper-100: #f8f4ec;
+  --hone-paper-200: #eee8dc;
+  --hone-sage-100: #e8eee8;
+  --hone-coral-500: #f06449;
+  --hone-coral-600: #d94e35;
+  --hone-line: rgba(23, 32, 31, 0.11);
+  --hone-line-strong: rgba(23, 32, 31, 0.18);
+  --hone-radius-sm: 10px;
+  --hone-radius-md: 16px;
+  --hone-radius-lg: 24px;
+  --hone-shadow-sm: 0 2px 10px rgba(30, 35, 32, 0.06);
+  --hone-shadow-md: 0 18px 48px rgba(30, 35, 32, 0.12);
+  --hone-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.pub-page,
+.public-chat-page,
+.public-push-center,
+.public-push-detail-dialog {
+  color: var(--hone-ink-950);
+  font-family: var(--hone-font-body);
+  font-kerning: normal;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.pub-page button,
+.pub-page input,
+.pub-page textarea,
+.public-chat-page button,
+.public-chat-page input,
+.public-chat-page textarea {
+  font: inherit;
+}
+
+.public-chat-page :focus-visible,
+.pub-page :focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--hone-coral-500) 72%, white);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .public-chat-page *,
+  .pub-page * {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
