@@ -7,6 +7,19 @@
 
 ## 修复进展
 
+- `2026-07-11 23:02-2026-07-12 03:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-11`
+    - 03:00 CST 附近多条 heartbeat 仍以 `<think>` 或自然语言开头，再被解析为 `PlainTextTriggered`、`JsonMalformed`、`PlainTextNoop`、`JsonNoop` 等混合状态。
+    - 代表样本包括 `AI与科技持仓观察关键事件心跳提醒`：raw preview 以 `<think>` 开头并在数据抓取配额耗尽后组织自然语言报告，最终 `parse_kind=JsonMalformed`，随后 `parse failure escalated` 并落成 `execution_failed`。
+    - `FOTO 光子学ETF心跳检测`、`存储板块关键事件心跳提醒`、`AAOI 1.6T 光模块心跳检测`、`NVDA 关键事件心跳提醒`、`ORCL 大事件监控` 等多条样本继续经由 `PlainTextTriggered` 进入 deliver / duplicate suppression 路径，说明线上仍依赖解析器从自由文本中猜测 heartbeat 状态。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 在 23:02-03:02 CST 新增 3 个 user turn / 2 条 assistant final；本轮另新增 Web direct 连续 user turn 漏答 P2，非 heartbeat 根因。
+    - assistant final 污染扫描未命中空回复、`<think>`、`reasoning_content`、本机路径、provider 原始错误、panic、quota、`data_fetch`、`quote_short`、`company_profiles/` 或原始工具 JSON。
+    - 最近四小时非文档提交集中在 public chat startup/history 与 ACP history fallback，未改变 heartbeat 运行态判断。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题继续影响 heartbeat 监控判断、送达语义和失败/跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-11 19:01-23:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-11`
     - 同窗可分类 heartbeat 诊断信号继续大量不是纯 JSON：`PlainTextTriggered` 236 条、`JsonNoop` 91 条、`PlainTextSuppressed` 19 条、`PlainTextNoop` 3 条、`JsonTriggered` 3 条、`JsonMalformed` 2 条。
