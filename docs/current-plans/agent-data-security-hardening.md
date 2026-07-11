@@ -26,12 +26,14 @@ Prevent untrusted users and prompt-injected agents from reading host/repository 
 - Keep Codex ACP available only to explicitly configured administrators/local trusted actors.
 - Enforce owner-only permissions on configuration, runtime data, and actor sandbox roots.
 - Restrict credentialed public CORS to an explicit HONE/localhost origin allowlist.
+- Patch production dependency advisories and remove Discord's unpatched legacy rustls chain.
 - Audit actor binding in public routes, sessions, uploads, push rows, portfolios, cron, profiles, and cloud records.
 - Record residual risks and required secret rotation.
 
 ## Validation
 
 - Add unit tests for runner trust classification, secure fallback, sandbox modes, permissions, CORS origins, path traversal, and actor isolation.
+- Verify the lockfile no longer contains the high-severity `rustls-webpki 0.102` branch.
 - Run focused Rust tests, workspace check/test where feasible, frontend tests, and CI-safe regressions.
 - Restart the runtime and verify public/admin health plus effective runner routing logs.
 
