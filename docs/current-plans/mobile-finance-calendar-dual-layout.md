@@ -1,7 +1,7 @@
 # Mobile Finance Calendar Dual Layout And Gestures
 
 - title: Mobile Finance Calendar Dual Layout And Gestures
-- status: archived
+- status: in_progress
 - created_at: 2026-07-11
 - updated_at: 2026-07-11
 - owner: Codex
@@ -19,6 +19,8 @@
 Make generated finance calendars genuinely usable on iPhone: preserve the existing desktop image, add a dedicated portrait mobile image, enable bounded two-finger canvas zoom and one-finger panning without scaling the application shell, and restore the native image long-press menu.
 
 Production follow-up: replace layout-driven width/scroll zoom with GPU transform gestures, remove clipped/ellipsized agenda text, and lazily rebuild a portrait artifact for legacy messages that only contain the desktop image.
+
+Design follow-up: replace the compressed desktop-dashboard aesthetic with an editorial mobile market brief, using a stronger HONE cover, intentional month scan, category-aware key-date timeline, complete text, and balanced use of the full portrait canvas.
 
 ## Scope
 
