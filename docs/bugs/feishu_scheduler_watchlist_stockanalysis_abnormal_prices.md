@@ -22,6 +22,18 @@
 
 ## 最新进展
 
+- 本轮 2026-07-11 11:01-15:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `session_messages`
+    - 同窗只有 1 条 assistant final，为 12:00 CST Feishu 普通 scheduler `每日公司资讯与分析总结`，正常收口，未命中空回复、内部字段、原始工具 JSON 或投递失败；本窗未确认新的普通 direct / scheduler final 正式输出异常行情。
+  - `data/runtime/logs/web.log.2026-07-11`
+    - 12:30 CST `Monitor_Watchlist_11` raw preview 写出 `MU: $979.3` 并对比 `MU <= $252.00` 判断未触发；同条最终 `JsonMalformed + parse failure escalated`，说明异常价格仍进入阈值判断上下文。
+    - 13:00 CST `存储板块关键事件心跳提醒` raw preview 写出 `SNDK: last verified ~$1,915.92`，并围绕 `2026-07-12` 错误时间口径进入 `JsonNoop` 判断。
+    - 14:00 CST `持仓财报与重大新闻心跳提醒` deliver preview 继续使用 `SNDK $1,915.92`、50 日均线上方约 `+14.7%`、Forward PE 约 `59.2x`；随后被 duplicate suppression。
+    - 15:00 CST `持仓财报与重大新闻心跳提醒` deliver preview 继续使用 `SNDK $1,915.92`、日内 `+3.10%`、50 日均线上方约 `+14.7%`、Forward PE `~59.2x`；同条未确认正式发送但已进入 deliver / duplicate suppression 判断链路。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check 缺口：异常数量级价格进入 heartbeat 判断上下文和部分 deliver preview。
+    - 本窗没有新的正式普通 final 异常价格样本，也未阻断直聊 / 调度 / 投递主链路；因此仍按质量性 `P3 / New`。该问题不影响主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-11 07:01-11:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `session_messages`
     - 同窗 3 条 assistant final 均正常收口，未命中空回复、内部字段、原始工具 JSON 或投递失败；本窗未确认新的普通 direct / scheduler final 正式输出异常行情。

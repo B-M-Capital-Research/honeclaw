@@ -8,6 +8,21 @@
 
 ## 最新进展
 
+- 本轮 `2026-07-11 11:01-15:01 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3`
+    - 同窗只有 1 个 user turn / 1 条 assistant final，为 12:00 CST Feishu 普通 scheduler `每日公司资讯与分析总结`，12:02 CST 正常收口；assistant final 污染扫描未命中空回复、`reasoning_content`、`<think>`、本机绝对路径、provider 原始错误、panic、quota、`mcpServers`、`data_fetch`、`quote_short`、`company_profiles/` 或原始工具 JSON。
+  - `data/runtime/logs/web.log.2026-07-11`
+    - 12:00 CST `存储板块关键事件心跳提醒` `deliver_preview` 写出 `检查时间：2026-07-12 北京时间约 10:00`，与实际 2026-07-11 12:00 CST 执行窗口不一致；随后被 duplicate suppression。
+    - 12:00 CST `光模块板块关键事件心跳提醒` `deliver_preview` 写出 `检查时间：2026-07-12 北京时间约 18:00`，且 raw preview 自称当前时间为 2026-07-12；随后进入 duplicate suppression / 跳过路径。
+    - 13:00-14:30 CST `持仓财报与重大新闻心跳提醒`、`光模块板块关键事件心跳提醒`、`存储板块关键事件心跳提醒` 多条 `deliver_preview` 继续写出 `2026-07-12` 检查时间。
+    - 11:31 / 14:30 / 15:00 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 多条 `deliver_preview` 写出 `北京时间 2026-07-10 20:30`，早于实际 2026-07-11 执行窗口；均随后被 duplicate suppression 或未确认正式发送。
+    - 15:00 CST `RKLB异动监控` `deliver_preview` 写出 `北京时间 2026-07-12 09:00 口径`，与实际 2026-07-11 15:00 CST 执行窗口不一致。
+  - 查重结论：
+    - 最新证据仍属于同一 heartbeat 时间上下文 / 用户可见检查口径漂移链路，不新建重复缺陷。
+  - 用户影响：
+    - 本窗主要是 deliver / duplicate suppression 路径中的错误时间口径，未见错投、直聊失败或全渠道不可用；影响触发判断可信度和用户对增量扫描时效性的理解。
+    - 因不影响直聊 / 调度 / 投递主功能链路，维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 本轮 `2026-07-11 07:01-11:01 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3`
     - 同窗 3 个 user turn / 3 条 assistant final 均正常收口；assistant final 污染扫描未命中空回复、`reasoning_content`、`<think>`、本机绝对路径、provider 原始错误、panic、quota、`mcpServers`、`data_fetch`、`quote_short`、`company_profiles/` 或原始工具 JSON。

@@ -7,6 +7,20 @@
 
 ## 修复进展
 
+- `2026-07-11 15:01 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-11`
+    - 11:01-15:01 CST 可分类 heartbeat 诊断信号继续大量出现非纯 JSON / 自然语言输出：`PlainTextTriggered` 202 条、`JsonNoop` 87 条、`PlainTextSuppressed` 13 条、`PlainTextNoop` 5 条、`JsonMalformed` 2 条、`JsonTriggered` 2 条。
+    - 同窗 raw preview 以 `<think>` 开头 208 次，`deliver_preview` 102 次，duplicate suppression 48 次，14 条 heartbeat 落成执行失败，164 次 tool call 被全局或单工具预算拒绝。
+    - 代表失败样本包括 12:30 CST `Monitor_Watchlist_11` `JsonMalformed + parse failure escalated`，15:00 CST `持仓重大事件心跳检测` 与 `全天原油价格3小时播报` `PlainTextSuppressed + execution_failed`。
+    - 多条 `PlainTextTriggered` 继续进入 deliver / duplicate suppression 路径，说明当前线上仍依赖解析器从自由文本中猜测 heartbeat 状态，结构化收口没有稳定恢复。
+  - 会话质量对照：
+    - 同窗 `data/sessions.sqlite3` 只有 1 个 user turn 与 1 条 assistant final，为 12:00 CST Feishu 普通 scheduler `每日公司资讯与分析总结`，12:02 CST 正常收口。
+    - assistant final 污染扫描未命中空回复、`reasoning_content`、`<think>`、本机绝对路径、provider 原始错误、panic、quota、`mcpServers`、`data_fetch`、`quote_short`、`company_profiles/` 或原始工具 JSON。
+    - 最近四小时有 5 个非文档提交，集中在 macOS/iOS 用户端与 release/CI：`3a0fdbd8`、`e33a467a`、`dc889ffa`、`aa32c818`、`6a14e3e7`，未改变 heartbeat 运行态判断。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题继续影响 heartbeat 监控判断、送达语义和失败/跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-11 11:01 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-11`
     - 07:01-11:01 CST 可分类 heartbeat 诊断信号继续大量出现非纯 JSON / 自然语言输出：`JsonNoop` 72 条、`PlainTextTriggered` 160 条、`PlainTextSuppressed` 15 条、`PlainTextNoop` 10 条、`JsonUnknownStatus` 6 条、`JsonMalformed` 2 条。
