@@ -19,6 +19,7 @@ import {
   type PublicCaptchaConfig,
 } from "@/lib/aliyun-captcha";
 import { CONTENT } from "@/lib/public-content";
+import { HoneBrand } from "@/components/hone-brand";
 import { normalizePhoneNumber } from "@/lib/public-chat";
 import { TOS_VERSION } from "@/lib/tos";
 import type { PublicAuthUserInfo } from "@/lib/types";
@@ -179,11 +180,7 @@ export function PublicLoginForm(props: Props) {
       >
         {/* Header */}
         <div style={{ "margin-bottom": "22px", "text-align": "center" }}>
-          <img
-            src="/logo.svg"
-            style={{ height: "36px", "margin-bottom": "16px" }}
-            alt="Hone"
-          />
+          <HoneBrand class="public-login-brand" />
           <h1
             style={{
               "font-size": "22px",

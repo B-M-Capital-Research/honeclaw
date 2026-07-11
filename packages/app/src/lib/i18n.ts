@@ -1,4 +1,4 @@
-// i18n.ts — Locale state and bilingual content helpers (Hone)
+// i18n.ts — Locale state and bilingual content helpers (HONE)
 //
 // The public site (hone-claw.com) and admin console both run as the same
 // Solid SPA. Locale state lives here as a single signal: read via `useLocale()`

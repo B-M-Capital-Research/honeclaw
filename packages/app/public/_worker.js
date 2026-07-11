@@ -3,7 +3,7 @@ const STATIC_RESOURCE_PATH =
 
 const BLOG_META = {
   "/blog/why-hone-uses-rust": {
-    title: "Hone 为什么采用 Rust，以及推荐大家都开始使用 Rust",
+    title: "HONE 为什么采用 Rust，以及推荐大家都开始使用 Rust",
     description:
       "从 Python + Node.js 到 Rust 的完整重构复盘：为什么 Rust 更适合 AI Coding 时代的上下文治理、稳定性和多端工程。",
     image: "https://hone-claw.com/blog/why-hone-uses-rust-zh.png",
@@ -43,7 +43,7 @@ function escapeHtml(value) {
 }
 
 function articleMetaTags(meta) {
-  const title = escapeHtml(`${meta.title} | Hone Blog`);
+  const title = escapeHtml(`${meta.title} | HONE Blog`);
   const description = escapeHtml(meta.description);
   const url = escapeHtml(meta.url);
   const image = escapeHtml(meta.image);
@@ -52,7 +52,7 @@ function articleMetaTags(meta) {
     `<title>${title}</title>`,
     `<meta name="description" content="${description}" />`,
     `<meta property="og:type" content="article" />`,
-    `<meta property="og:site_name" content="Hone" />`,
+    `<meta property="og:site_name" content="HONE" />`,
     `<meta property="og:title" content="${title}" />`,
     `<meta property="og:description" content="${description}" />`,
     `<meta property="og:url" content="${url}" />`,

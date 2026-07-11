@@ -1,4 +1,4 @@
-// public-content.ts — Hone Public Site Content (bilingual)
+// public-content.ts — HONE Public Site Content (bilingual)
 //
 // Copy for the public surface (hone-claw.com) lives here in two parallel
 // trees: CONTENT_ZH and CONTENT_EN. The exported `CONTENT` is a deep Proxy
@@ -21,7 +21,7 @@ export type LegalSection = { title: string; body: LegalBlock[] };
 
 const CONTENT_ZH = {
   nav: {
-    logo_tagline: "OPEN FINANCIAL CONSOLE",
+    logo_tagline: "HONE",
     home: "首页",
     roadmap: "路线图与文档",
     blog: "Blog",
@@ -45,11 +45,11 @@ const CONTENT_ZH = {
   },
 
   hero: {
-    eyebrow: "OPEN FINANCIAL CONSOLE · B&M CAPITAL RESEARCH",
+    eyebrow: "HONE · AI 投资纪律助手",
     headline_1: "不是迎合你的聊天玩具",
     headline_2: "是你的投研纪律守卫者",
     description:
-      "冷静、克制、长期记忆、研究导向。Hone 是专为严肃投资者打造的开源 AI Agent，帮你建立并坚守投研纪律，而不是告诉你想听的答案。",
+      "冷静、克制、长期记忆、研究导向。HONE 是专为严肃投资者打造的开源 AI Agent，帮你建立并坚守投研纪律，而不是告诉你想听的答案。",
     cta_primary: "进入对话",
     cta_secondary: "查看路线图",
     scroll_hint: "滚动探索",
@@ -67,7 +67,7 @@ const CONTENT_ZH = {
     view_full_roadmap: "完整路线图",
     zoom_hint: "查看详情",
     blog_eyebrow: "工程 Blog",
-    blog_title: "为什么 Hone 选择 Rust",
+    blog_title: "为什么 HONE 选择 Rust",
     blog_desc:
       "从 Python + Node.js 到 Rust 的重构复盘：AI Coding 时代的上下文、稳定性和多端工程选择。",
     blog_cta: "阅读文章",
@@ -79,7 +79,7 @@ const CONTENT_ZH = {
       {
         symbol: "◈",
         title: "纪律先于观点",
-        body: "Hone 不会迎合你的仓位偏见。每一次对话都以研究纪律为约束，主动识别并克制情绪驱动的决策冲动。",
+        body: "HONE 不会迎合你的仓位偏见。每一次对话都以研究纪律为约束，主动识别并克制情绪驱动的决策冲动。",
       },
       {
         symbol: "∞",
@@ -96,25 +96,25 @@ const CONTENT_ZH = {
 
   cases: {
     section_label: "真实工作流",
-    section_sub: "Hone 如何融入你的投研日常",
+    section_sub: "HONE 如何融入你的投研日常",
     placeholder_suffix: "场景演示截图",
     items: [
       {
         tag: "个股分析",
         title: "系统性深度研究一家公司",
-        body: "从财务数据到行业竞争格局，Hone 帮你构建完整研究框架，记录每一个关键假设和风险因子。",
+        body: "从财务数据到行业竞争格局，HONE 帮你构建完整研究框架，记录每一个关键假设和风险因子。",
         image: "/hone_introduction_zh.jpg" as string | null,
       },
       {
         tag: "持仓追踪",
         title: "追踪持仓，主动提醒关键节点",
-        body: "设置止盈止损逻辑，Hone 定时检查持仓状态，在你设定的条件触发时主动推送提醒。",
+        body: "设置止盈止损逻辑，HONE 定时检查持仓状态，在你设定的条件触发时主动推送提醒。",
         image: "/hone_work_zh.jpg" as string | null,
       },
       {
         tag: "定时任务",
         title: "每周五自动触发投资复盘",
-        body: "把固定工作流交给 Hone：每周复盘、月度总结、关键节点检查——按你设定的时间自动跑，不用手动催。",
+        body: "把固定工作流交给 HONE：每周复盘、月度总结、关键节点检查——按你设定的时间自动跑，不用手动催。",
         image: "/hone_page.jpg" as string | null,
       },
       {
@@ -125,8 +125,8 @@ const CONTENT_ZH = {
       },
       {
         tag: "跨平台通知",
-        title: "在 iMessage / Lark 收到 Hone",
-        body: "不只是网页。Hone 通过 iMessage、Lark、Discord 等渠道主动联系你，在你最顺手的地方工作。",
+        title: "在 iMessage / Lark 收到 HONE",
+        body: "不只是网页。HONE 通过 iMessage、Lark、Discord 等渠道主动联系你，在你最顺手的地方工作。",
         image: "/hone_channels_zh.jpg" as string | null,
       },
     ],
@@ -134,9 +134,9 @@ const CONTENT_ZH = {
 
   video: {
     section_label: "看 HONE 如何工作",
-    title: "老王讲 Hone：投研 AI Agent 的实际用法",
+    title: "老王讲 HONE：投研 AI Agent 的实际用法",
     description:
-      "从开户到深度研究，10 分钟了解 Hone 如何改变你的投研工作流。完整演示个股分析、持仓追踪、定时任务等核心场景。",
+      "从开户到深度研究，10 分钟了解 HONE 如何改变你的投研工作流。完整演示个股分析、持仓追踪、定时任务等核心场景。",
     video_url: "https://www.bilibili.com/video/BV1ByXNBGET5/",
     thumbnail: "/hone_introduction_zh.jpg",
     duration: "约 10 分钟",
@@ -165,7 +165,7 @@ const CONTENT_ZH = {
       {
         symbol: "✦",
         title: "多端接入",
-        body: "Web、iMessage、Lark / Feishu、Discord、Telegram、CLI——在你最顺手的地方使用 Hone。",
+        body: "Web、iMessage、Lark / Feishu、Discord、Telegram、CLI——在你最顺手的地方使用 HONE。",
       },
       {
         symbol: "⌘",
@@ -290,7 +290,7 @@ const CONTENT_ZH = {
   roadmap: {
     hero_title: "路线图与文档",
     hero_sub:
-      "透明、务实、长期主义。下面是 Hone 目前能做什么、接下来做什么、以及如何接入你的投研工作流。",
+      "透明、务实、长期主义。下面是 HONE 目前能做什么、接下来做什么、以及如何接入你的投研工作流。",
     hero_meta: "ROADMAP · DOCS · API",
     sidebar_title: "ON THIS PAGE",
     version: "v0.12.4",
@@ -313,7 +313,7 @@ const CONTENT_ZH = {
         eyebrow: "§ 01 · QUICK START",
         title: "快速开始",
         intro:
-          "三种方式接入 Hone：一键安装脚本、Homebrew、或源码开发。安装后可用 `hone-cli start` 跑完整运行时，也可用 `hone-cli web admin-ui` / `hone-cli web user-ui` 单独打开管理端或公开用户端界面。",
+          "三种方式接入 HONE：一键安装脚本、Homebrew、或源码开发。安装后可用 `hone-cli start` 跑完整运行时，也可用 `hone-cli web admin-ui` / `hone-cli web user-ui` 单独打开管理端或公开用户端界面。",
       },
       capabilities: {
         eyebrow: "§ 02 · CAPABILITY MATRIX",
@@ -324,7 +324,7 @@ const CONTENT_ZH = {
         eyebrow: "§ 03 · CHANNELS",
         title: "渠道接入",
         intro:
-          "Hone 是多端接入的投研助手。每个渠道都是独立进程，可独立启停、独立配置。",
+          "HONE 是多端接入的投研助手。每个渠道都是独立进程，可独立启停、独立配置。",
       },
       architecture: {
         eyebrow: "§ 04 · ARCHITECTURE",
@@ -337,7 +337,7 @@ const CONTENT_ZH = {
       skills: {
         eyebrow: "§ 05 · BUILT-IN SKILLS",
         title: "内置 Skill",
-        intro_prefix: "Hone 的 Skill 由模型根据上下文自动调用。下面是仓库",
+        intro_prefix: "HONE 的 Skill 由模型根据上下文自动调用。下面是仓库",
         intro_suffix: "目录下的 16 个公开 Skill。",
       },
       roadmap: {
@@ -362,7 +362,7 @@ const CONTENT_ZH = {
       contributing: {
         eyebrow: "§ 09 · CONTRIBUTING",
         title: "参与贡献",
-        intro: "Hone 是开源项目，欢迎所有形式的参与——不只是代码。",
+        intro: "HONE 是开源项目，欢迎所有形式的参与——不只是代码。",
       },
       faq: {
         eyebrow: "§ 10 · FAQ",
@@ -433,7 +433,7 @@ const CONTENT_ZH = {
       },
       {
         title: "Agent 引擎层",
-        desc: "推荐 Agent 引擎是 Hone Cloud、Codex ACP 和 OpenCode ACP；同时保留 OpenAI 兼容函数调用、Gemini CLI、Codex CLI 与 multi-agent。LLM 凭证以 `config.yaml` 为唯一真相源，OpenRouter 与通用 OpenAI-compatible provider 都支持 `llm.providers.*.api_key/api_keys` key pool，遇到上游 429 / 配额错误时可尝试下一个 key；`gemini_acp` 仅保留为迁移配置，不作为运行时入口。",
+        desc: "推荐 Agent 引擎是 HONE Cloud、Codex ACP 和 OpenCode ACP；同时保留 OpenAI 兼容函数调用、Gemini CLI、Codex CLI 与 multi-agent。LLM 凭证以 `config.yaml` 为唯一真相源，OpenRouter 与通用 OpenAI-compatible provider 都支持 `llm.providers.*.api_key/api_keys` key pool，遇到上游 429 / 配额错误时可尝试下一个 key；`gemini_acp` 仅保留为迁移配置，不作为运行时入口。",
       },
       {
         title: "事件与任务",
@@ -648,12 +648,12 @@ const CONTENT_ZH = {
         name: "pdf_understanding",
         desc: "解析 PDF（财报、研报）输出要点与风险",
       },
-      { name: "skill_manager", desc: "查看 / 新建 / 修改 Hone Skill" },
+      { name: "skill_manager", desc: "查看 / 新建 / 修改 HONE Skill" },
       {
         name: "notification_preferences",
         desc: "用自然语言调整自己的推送偏好（严重度、持仓过滤、事件类型允许/屏蔽范围）",
       },
-      { name: "hone_admin", desc: "查看修改 Hone 源码与配置（管理员）" },
+      { name: "hone_admin", desc: "查看修改 HONE 源码与配置（管理员）" },
     ],
 
     now: {
@@ -686,7 +686,7 @@ const CONTENT_ZH = {
         "渠道回复收口层可在 runner 只产出过渡性规划句时，从成功的定时任务或持仓工具结果恢复用户可见确认；共享输出净化层会隐藏内部绝对路径、hone-mcp 依赖启动错误、skill/tool 降级前言、`enabled=true/false` 实现字段、内部 skill / 本地存储口径与公司画像相对路径措辞",
         "MCP / ACP 子进程运行时边界已收口：`hone-cli start` 会显式传递 `HONE_MCP_BIN`，runner 请求使用绝对配置路径，MCP server 会继承、绝对化或反推出同一份 `HONE_DATA_DIR`，并把 cloud runtime 所需 env 传给 `hone-mcp`。该改动用于收敛 sandbox cwd 下误读空数据树的问题；Feishu direct Cron 与 portfolio 作用域读空已按当前代码和回归记为 Fixed，继续以后续 live 复核和 bug ledger 复发记录为准",
         "前端部署资产恢复：service worker 与全局错误处理可识别 stale chunk，并在安全间隔内自动刷新到新版本",
-        "公开 API key 对话入口：管理端可为 Web 用户生成 API key，客户端可按 OpenAI-compatible `/api/public/v1/chat/completions` 形状调用 Hone",
+        "公开 API key 对话入口：管理端可为 Web 用户生成 API key，客户端可按 OpenAI-compatible `/api/public/v1/chat/completions` 形状调用 HONE",
         "ACP 自管上下文与 compact 防泄漏，支持 codex_acp / opencode_acp 长会话恢复",
         "多 Agent 引擎：OpenAI-compatible / Gemini CLI / Codex CLI/ACP / OpenCode ACP / multi-agent",
         "`scripts/diagnose_llm.sh` 已按当前 LLM provider 配置路径读取 OpenRouter key，保留 legacy 路径兼容",
@@ -752,7 +752,7 @@ const CONTENT_ZH = {
         desc: "最新 release 的用户影响、升级方式与已知注意事项",
       },
       {
-        title: "Hone Blog",
+        title: "HONE Blog",
         url: "https://hone-claw.com/blog",
         desc: "公开双语长文，记录架构选择、迁移复盘与产品说明",
       },
@@ -817,8 +817,8 @@ const CONTENT_ZH = {
 
     faqs: [
       {
-        q: "Hone 和普通 AI 聊天工具有什么区别？",
-        a: "Hone 不会迎合你的观点。它以投研纪律为约束，主动识别并反驳情绪化决策。每次对话都以长期研究记忆（公司画像）为基础，而不是每次重新开始。",
+        q: "HONE 和普通 AI 聊天工具有什么区别？",
+        a: "HONE 不会迎合你的观点。它以投研纪律为约束，主动识别并反驳情绪化决策。每次对话都以长期研究记忆（公司画像）为基础，而不是每次重新开始。",
       },
       {
         q: "需要自己部署吗？",
@@ -826,7 +826,7 @@ const CONTENT_ZH = {
       },
       {
         q: "支持哪些 LLM？",
-        a: "通过 Agent 引擎抽象层支持：Hone Cloud、OpenAI 兼容协议（含 OpenRouter）、Gemini CLI、Codex CLI / ACP、OpenCode ACP，以及 multi-agent 搜索+回答链路。凭证统一写入 `config.yaml` 的 `llm.providers.*.api_key/api_keys`，通用 OpenAI-compatible provider 与 OpenRouter 都能在 key pool 内尝试下一个可用 key。",
+        a: "通过 Agent 引擎抽象层支持：HONE Cloud、OpenAI 兼容协议（含 OpenRouter）、Gemini CLI、Codex CLI / ACP、OpenCode ACP，以及 multi-agent 搜索+回答链路。凭证统一写入 `config.yaml` 的 `llm.providers.*.api_key/api_keys`，通用 OpenAI-compatible provider 与 OpenRouter 都能在 key pool 内尝试下一个可用 key。",
       },
       {
         q: "开源协议？能商用吗？",
@@ -834,11 +834,11 @@ const CONTENT_ZH = {
       },
       {
         q: "数据存在哪里？",
-        a: "默认仍在本地或自部署服务器存储（macOS 桌面端用户目录 ~/.honeclaw）。v0.12.4 已加入 Cloud PG / OSS 运行时配置；当前 main 的 cloud 模式可把 sessions、Web invite/auth sessions、conversation quota、cron jobs/runs、due-job claims、skill registry、notification prefs、portfolio、LLM audit 与 company profile files 放到 PG，把公开上传、生成图片 / 文件与迁移文档放到 OSS。`cloud.strict_no_local_storage=true` 会按配置检查是否仍有 durable 本地依赖；Hone 官方不默认托管你的数据。",
+        a: "默认仍在本地或自部署服务器存储（macOS 桌面端用户目录 ~/.honeclaw）。v0.12.4 已加入 Cloud PG / OSS 运行时配置；当前 main 的 cloud 模式可把 sessions、Web invite/auth sessions、conversation quota、cron jobs/runs、due-job claims、skill registry、notification prefs、portfolio、LLM audit 与 company profile files 放到 PG，把公开上传、生成图片 / 文件与迁移文档放到 OSS。`cloud.strict_no_local_storage=true` 会按配置检查是否仍有 durable 本地依赖；HONE 官方不默认托管你的数据。",
       },
       {
         q: "和 Codex / RooCode 等 coding agent 的关系？",
-        a: "Hone 借鉴了这些产品的 Agent 引擎、Skill 与会话架构，但专注投研而非写代码。Codex CLI / ACP、Gemini CLI、OpenCode ACP 和 multi-agent 在 Hone 中作为可插拔引擎存在。",
+        a: "HONE 借鉴了这些产品的 Agent 引擎、Skill 与会话架构，但专注投研而非写代码。Codex CLI / ACP、Gemini CLI、OpenCode ACP 和 multi-agent 在 HONE 中作为可插拔引擎存在。",
       },
     ],
   },
@@ -910,10 +910,10 @@ const CONTENT_ZH = {
       theme_dark: "深",
     },
     status: {
-      error: "Hone 出错了",
-      streaming: "Hone 输出中",
-      running: "Hone 执行中",
-      thinking: "Hone 思考中",
+      error: "HONE 出错了",
+      streaming: "HONE 输出中",
+      running: "HONE 执行中",
+      thinking: "HONE 思考中",
       done: "本轮已完成",
       fallback_error: "请求出错，请重试。",
       stop: "停止",
@@ -926,12 +926,12 @@ const CONTENT_ZH = {
     },
     composer: {
       quota_exhausted: "今日对话次数已用完",
-      placeholder: "向 Hone 提问…",
+      placeholder: "向 HONE 提问…",
       send_aria: "发送",
       proactive_tip: "录入持仓，开启推送模式",
-      proactive_title: "Hone 可以主动盯住你的持仓",
+      proactive_title: "HONE 可以主动盯住你的持仓",
       proactive_intro:
-        "把持仓或关注标的告诉 Hone 后，它会按你的偏好筛选重要变化，并在合适的时候提醒你。",
+        "把持仓或关注标的告诉 HONE 后，它会按你的偏好筛选重要变化，并在合适的时候提醒你。",
       proactive_items: [
         {
           title: "持仓相关提醒",
@@ -958,7 +958,7 @@ const CONTENT_ZH = {
       finance_calendar_tip: "我的财经日历",
       finance_calendar_title: "我的财经日历",
       finance_calendar_intro:
-        "选择月份后，Hone 会整理当月宏观事项和你持仓/关注公司的财报日期，并作为图片发到聊天里。",
+        "选择月份后，HONE 会整理当月宏观事项和你持仓/关注公司的财报日期，并作为图片发到聊天里。",
       finance_calendar_months_label: "日历月份",
       finance_calendar_current_month: "回到本月",
       finance_calendar_previous_aria: "上一个月",
@@ -1005,9 +1005,9 @@ const CONTENT_ZH = {
       share_aria: "分享",
     },
     share: {
-      brand_name: "Hone",
+      brand_name: "HONE",
       brand_tagline: "你的 AI 投资助手",
-      qr_caption: "扫码体验 Hone — 给投资人的 AI 助手",
+      qr_caption: "扫码体验 HONE — 给投资人的 AI 助手",
       strings: {
         title: "分享对话",
         subtitle: "从最近 4 条消息里选择要分享的内容",
@@ -1033,7 +1033,7 @@ const CONTENT_ZH = {
         error_share: "分享已取消",
         error_system_share: "系统分享失败，请改用保存图片或复制",
         role_user: "我",
-        role_assistant: "Hone",
+        role_assistant: "HONE",
         nothing_selected: "请选择至少一条消息",
         rendering: "生成中…",
       },
@@ -1042,7 +1042,7 @@ const CONTENT_ZH = {
 
   auth: {
     login: {
-      title: "登录 Hone",
+      title: "登录 HONE",
       subtitle: "使用手机号和短信验证码登录。",
       hint_sms: "目前是邀请制，请联系 bm@hone-claw.com 加入邀请名单。",
       phone_label: "手机号",
@@ -1072,7 +1072,7 @@ const CONTENT_ZH = {
     version_banner_template: "v{version} · {date} 生效",
     terms: {
       page_title: "用户协议",
-      intro: "请仔细阅读以下条款。继续使用 Hone 即表示您接受本协议。",
+      intro: "请仔细阅读以下条款。继续使用 HONE 即表示您接受本协议。",
       sections: [
         {
           title: "1. 协议接受与生效",
@@ -1080,7 +1080,7 @@ const CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "欢迎使用 Hone（以下简称“本服务”）。本服务由 ",
+                "欢迎使用 HONE（以下简称“本服务”）。本服务由 ",
                 { strong: "Snowdrift Capital LLC" },
                 "（一家依据美国怀俄明州法律设立的有限责任公司，以下简称“我们”）运营。本《用户协议》（以下简称“本协议”）是您与我们之间就您使用本服务所订立的有效合同。",
               ],
@@ -1099,7 +1099,7 @@ const CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "Hone 是一款面向个人投资者的研究与决策辅助工具，提供资料检索、对话式研究、投资笔记、定时提醒等能力。",
+                "HONE 是一款面向个人投资者的研究与决策辅助工具，提供资料检索、对话式研究、投资笔记、定时提醒等能力。",
               ],
             },
             {
@@ -1316,7 +1316,7 @@ const CONTENT_ZH = {
     },
     privacy: {
       page_title: "隐私政策",
-      intro: "我们在乎您的数据。本政策说明 Hone 如何处理您的个人信息。",
+      intro: "我们在乎您的数据。本政策说明 HONE 如何处理您的个人信息。",
       sections: [
         {
           title: "1. 引言与适用范围",
@@ -1324,9 +1324,9 @@ const CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "本《隐私政策》说明 Hone（运营方为 ",
+                "本《隐私政策》说明 HONE（运营方为 ",
                 { strong: "Snowdrift Capital LLC" },
-                "，一家依据美国怀俄明州法律设立的有限责任公司，以下简称“我们”）在提供服务过程中如何收集、使用、存储、共享和保护您的个人信息。本政策适用于您通过 Hone 网站及客户端使用本服务的全部场景。",
+                "，一家依据美国怀俄明州法律设立的有限责任公司，以下简称“我们”）在提供服务过程中如何收集、使用、存储、共享和保护您的个人信息。本政策适用于您通过 HONE 网站及客户端使用本服务的全部场景。",
               ],
             },
             {
@@ -1556,7 +1556,7 @@ const CONTENT_ZH = {
 
   footer: {
     tagline: "磨砺认知，剔除噪音",
-    mantra: "磨砺认知 · 剔除噪音 · OPEN FINANCIAL CONSOLE",
+    mantra: "HONE · 磨砺认知 · 剔除噪音",
     copyright:
       "© 2026 Snowdrift Capital LLC · Sheridan, WY, USA · 开源代码遵循 MIT License。",
     columns: {
@@ -1613,7 +1613,7 @@ const CONTENT_ZH = {
 
 const CONTENT_EN: typeof CONTENT_ZH = {
   nav: {
-    logo_tagline: "OPEN FINANCIAL CONSOLE",
+    logo_tagline: "HONE",
     home: "Home",
     roadmap: "Roadmap & Docs",
     blog: "Blog",
@@ -1637,11 +1637,11 @@ const CONTENT_EN: typeof CONTENT_ZH = {
   },
 
   hero: {
-    eyebrow: "OPEN FINANCIAL CONSOLE · B&M CAPITAL RESEARCH",
+    eyebrow: "HONE · AI INVESTMENT DISCIPLINE",
     headline_1: "Not a chatbot that flatters you.",
     headline_2: "A research-discipline guardian.",
     description:
-      "Calm, restrained, long-memory, research-first. Hone is an open-source AI agent built for serious investors — it helps you set and keep your research discipline, not tell you what you want to hear.",
+      "Calm, restrained, long-memory, research-first. HONE is an open-source AI agent built for serious investors — it helps you set and keep your research discipline, not tell you what you want to hear.",
     cta_primary: "Enter Chat",
     cta_secondary: "View Roadmap",
     scroll_hint: "Scroll",
@@ -1660,7 +1660,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     view_full_roadmap: "View Full Roadmap",
     zoom_hint: "Zoom In",
     blog_eyebrow: "Engineering Blog",
-    blog_title: "Why Hone chose Rust",
+    blog_title: "Why HONE chose Rust",
     blog_desc:
       "A field report on moving from Python + Node.js to Rust, and what it means for context, stability, and multi-endpoint engineering in the AI Coding era.",
     blog_cta: "Read article",
@@ -1672,7 +1672,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       {
         symbol: "◈",
         title: "Discipline over opinion",
-        body: "Hone will not flatter your position. Every conversation is constrained by research discipline — it actively surfaces and pushes back on emotion-driven decisions.",
+        body: "HONE will not flatter your position. Every conversation is constrained by research discipline — it actively surfaces and pushes back on emotion-driven decisions.",
       },
       {
         symbol: "∞",
@@ -1689,37 +1689,37 @@ const CONTENT_EN: typeof CONTENT_ZH = {
 
   cases: {
     section_label: "REAL WORKFLOWS",
-    section_sub: "How Hone fits into your research routine",
+    section_sub: "How HONE fits into your research routine",
     placeholder_suffix: "scenario screenshot (placeholder)",
     items: [
       {
         tag: "Stock analysis",
         title: "Systematically research a company in depth",
-        body: "From financials to competitive landscape, Hone helps you assemble a complete research framework, logging every key assumption and risk factor.",
+        body: "From financials to competitive landscape, HONE helps you assemble a complete research framework, logging every key assumption and risk factor.",
         image: "/company_profile.png",
       },
       {
         tag: "Portfolio tracking",
         title: "Track holdings, nudge on key moments",
-        body: "Set stop-loss / take-profit logic; Hone checks your portfolio on a schedule and pushes an alert the moment your conditions trigger.",
+        body: "Set stop-loss / take-profit logic; HONE checks your portfolio on a schedule and pushes an alert the moment your conditions trigger.",
         image: null as string | null,
       },
       {
         tag: "Scheduled tasks",
         title: "Trigger a weekly review every Friday",
-        body: "Hand fixed workflows to Hone. Weekly reviews, monthly summaries, key-moment checks — all run themselves at the time you set.",
+        body: "Hand fixed workflows to HONE. Weekly reviews, monthly summaries, key-moment checks — all run themselves at the time you set.",
         image: null as string | null,
       },
       {
         tag: "Long-term profile",
         title: "Build a company's personal dossier",
-        body: "Each research result is archived into the company profile. Next time you ask, Hone calls back the full history — smarter with every use.",
+        body: "Each research result is archived into the company profile. Next time you ask, HONE calls back the full history — smarter with every use.",
         image: "/hone_solution.jpg",
       },
       {
         tag: "Cross-platform notifications",
-        title: "Get Hone in iMessage / Lark",
-        body: "Not just the web. Hone reaches you through iMessage, Lark, Discord and more — in whatever channel you're already using.",
+        title: "Get HONE in iMessage / Lark",
+        body: "Not just the web. HONE reaches you through iMessage, Lark, Discord and more — in whatever channel you're already using.",
         image: "/hone_channels.jpg",
       },
     ],
@@ -1727,9 +1727,9 @@ const CONTENT_EN: typeof CONTENT_ZH = {
 
   video: {
     section_label: "SEE HONE IN ACTION",
-    title: "Lao Wang on Hone: the research AI agent in practice",
+    title: "Lao Wang on HONE: the research AI agent in practice",
     description:
-      "From onboarding to deep research, learn in ten minutes how Hone changes the way you work. Full walkthrough of stock analysis, portfolio tracking, scheduled tasks, and more.",
+      "From onboarding to deep research, learn in ten minutes how HONE changes the way you work. Full walkthrough of stock analysis, portfolio tracking, scheduled tasks, and more.",
     video_url: "https://www.youtube.com/watch?v=hJr-81OdYcQ",
     thumbnail: "/hone_introduction.jpg",
     duration: "~10 min",
@@ -1759,7 +1759,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       {
         symbol: "✦",
         title: "Multi-channel access",
-        body: "Web, iMessage, Lark / Feishu, Discord, Telegram, CLI — Hone on whichever channel you already live in.",
+        body: "Web, iMessage, Lark / Feishu, Discord, Telegram, CLI — HONE on whichever channel you already live in.",
       },
       {
         symbol: "⌘",
@@ -1884,7 +1884,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
   roadmap: {
     hero_title: "Roadmap & Docs",
     hero_sub:
-      "Transparent, pragmatic, long-term. Here's what Hone does today, what's next, and how to bring it into your research workflow.",
+      "Transparent, pragmatic, long-term. Here's what HONE does today, what's next, and how to bring it into your research workflow.",
     hero_meta: "ROADMAP · DOCS · API",
     sidebar_title: "ON THIS PAGE",
     version: "v0.12.4",
@@ -1907,7 +1907,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         eyebrow: "§ 01 · QUICK START",
         title: "Quick Start",
         intro:
-          "Three paths to run Hone: the one-line installer, Homebrew, or source. After install, use `hone-cli start` for the full runtime or `hone-cli web admin-ui` / `hone-cli web user-ui` to open the admin console or public user app.",
+          "Three paths to run HONE: the one-line installer, Homebrew, or source. After install, use `hone-cli start` for the full runtime or `hone-cli web admin-ui` / `hone-cli web user-ui` to open the admin console or public user app.",
       },
       capabilities: {
         eyebrow: "§ 02 · CAPABILITY MATRIX",
@@ -1918,7 +1918,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         eyebrow: "§ 03 · CHANNELS",
         title: "Channels",
         intro:
-          "Hone is a multi-channel research agent. Each channel is an independent process — start, stop, and configure them on their own.",
+          "HONE is a multi-channel research agent. Each channel is an independent process — start, stop, and configure them on their own.",
       },
       architecture: {
         eyebrow: "§ 04 · ARCHITECTURE",
@@ -1932,7 +1932,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         eyebrow: "§ 05 · BUILT-IN SKILLS",
         title: "Built-in Skills",
         intro_prefix:
-          "Hone's skills are invoked by the model from context. Below are the 16 public skills in the",
+          "HONE's skills are invoked by the model from context. Below are the 16 public skills in the",
         intro_suffix: "directory.",
       },
       roadmap: {
@@ -1958,7 +1958,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         eyebrow: "§ 09 · CONTRIBUTING",
         title: "Contributing",
         intro:
-          "Hone is open source. Every kind of contribution is welcome — not just code.",
+          "HONE is open source. Every kind of contribution is welcome — not just code.",
       },
       faq: {
         eyebrow: "§ 10 · FAQ",
@@ -2017,7 +2017,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         title: "Agent engine layer",
-        desc: "Recommended agent engines are Hone Cloud, Codex ACP, and OpenCode ACP; OpenAI-compatible function calling, Gemini CLI, Codex CLI, and multi-agent remain supported. LLM credentials use `config.yaml` as the only source of truth, and both OpenRouter and generic OpenAI-compatible providers support `llm.providers.*.api_key/api_keys` key pools so the runtime can try the next key after upstream 429 / quota failures; `gemini_acp` is kept only as migration config, not a runtime entry point.",
+        desc: "Recommended agent engines are HONE Cloud, Codex ACP, and OpenCode ACP; OpenAI-compatible function calling, Gemini CLI, Codex CLI, and multi-agent remain supported. LLM credentials use `config.yaml` as the only source of truth, and both OpenRouter and generic OpenAI-compatible providers support `llm.providers.*.api_key/api_keys` key pools so the runtime can try the next key after upstream 429 / quota failures; `gemini_acp` is kept only as migration config, not a runtime entry point.",
       },
       {
         title: "Events and tasks",
@@ -2267,14 +2267,14 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         name: "pdf_understanding",
         desc: "Parse PDFs (filings, reports) into key points and risks",
       },
-      { name: "skill_manager", desc: "View / create / edit Hone skills" },
+      { name: "skill_manager", desc: "View / create / edit HONE skills" },
       {
         name: "notification_preferences",
         desc: "Tune your own push prefs in natural language (severity, portfolio-only, kind allow/block)",
       },
       {
         name: "hone_admin",
-        desc: "Inspect and modify Hone source & config (admin)",
+        desc: "Inspect and modify HONE source & config (admin)",
       },
     ],
 
@@ -2308,7 +2308,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         "The channel response finalizer can recover user-visible confirmations from successful scheduled-task or portfolio tool results when a runner only emits a transitional planning sentence; the shared output sanitizer hides internal absolute paths, hone-mcp dependency startup errors, skill/tool degradation preludes, `enabled=true/false` implementation fields, internal skill / local-store wording, and relative company-profile path phrasing",
         "MCP / ACP child-process runtime boundaries are now explicit: `hone-cli start` passes `HONE_MCP_BIN`, runner requests use an absolute config path, the MCP server inherits, absolutizes, or derives the same `HONE_DATA_DIR`, and cloud-runtime env is forwarded to `hone-mcp`. This closes the code path that read empty data trees under sandbox cwd; Feishu direct Cron and portfolio scope reads are Fixed by current code and regressions, with later live verification or bug-ledger recurrence still treated as the source of truth",
         "Frontend deploy asset recovery: the service worker and global error handlers detect stale chunks and safely reload onto the new version",
-        "Public API-key chat entry point: admins can issue API keys for Web users, and clients can call Hone through the OpenAI-compatible `/api/public/v1/chat/completions` shape",
+        "Public API-key chat entry point: admins can issue API keys for Web users, and clients can call HONE through the OpenAI-compatible `/api/public/v1/chat/completions` shape",
         "ACP self-managed context with compact-leak suppression for long codex_acp / opencode_acp sessions",
         "Multi-engine setup: OpenAI-compatible / Gemini CLI / Codex CLI/ACP / OpenCode ACP / multi-agent",
         "`scripts/diagnose_llm.sh` reads OpenRouter keys from the current LLM provider config paths while keeping legacy path compatibility",
@@ -2374,7 +2374,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         desc: "Latest release user impact, upgrade path, and known notes",
       },
       {
-        title: "Hone Blog",
+        title: "HONE Blog",
         url: "https://hone-claw.com/blog",
         desc: "Public bilingual long-form posts on architecture choices, migrations, and product notes",
       },
@@ -2439,8 +2439,8 @@ const CONTENT_EN: typeof CONTENT_ZH = {
 
     faqs: [
       {
-        q: "How is Hone different from a general AI chat tool?",
-        a: "Hone won't flatter you. It treats research discipline as a hard constraint and actively pushes back on emotional decisions. Every conversation builds on long-term memory (company profiles), not a blank slate.",
+        q: "How is HONE different from a general AI chat tool?",
+        a: "HONE won't flatter you. It treats research discipline as a hard constraint and actively pushes back on emotional decisions. Every conversation builds on long-term memory (company profiles), not a blank slate.",
       },
       {
         q: "Do I have to self-host?",
@@ -2448,7 +2448,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         q: "Which LLMs are supported?",
-        a: "Hone supports Hone Cloud, OpenAI-compatible protocols (including OpenRouter), Gemini CLI, Codex CLI / ACP, OpenCode ACP, and the multi-agent search-plus-answer flow through the agent-engine abstraction. Credentials live in `config.yaml` under `llm.providers.*.api_key/api_keys`, and generic OpenAI-compatible providers plus OpenRouter can try the next key in the pool.",
+        a: "HONE supports HONE Cloud, OpenAI-compatible protocols (including OpenRouter), Gemini CLI, Codex CLI / ACP, OpenCode ACP, and the multi-agent search-plus-answer flow through the agent-engine abstraction. Credentials live in `config.yaml` under `llm.providers.*.api_key/api_keys`, and generic OpenAI-compatible providers plus OpenRouter can try the next key in the pool.",
       },
       {
         q: "What license? Commercial use?",
@@ -2456,11 +2456,11 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         q: "Where is data stored?",
-        a: "Data still defaults to local storage or your self-hosted server (macOS desktop's `~/.honeclaw`). v0.12.4 adds Cloud PG / OSS runtime config; current main can place sessions, Web invites/auth sessions, conversation quota, cron jobs/runs, due-job claims, the skill registry, notification prefs, portfolio, LLM audit, and company profile files in PG, plus public uploads, generated images / files, and migrated documents in OSS. `cloud.strict_no_local_storage=true` checks the current config for remaining durable local dependencies. Hone does not host your data by default.",
+        a: "Data still defaults to local storage or your self-hosted server (macOS desktop's `~/.honeclaw`). v0.12.4 adds Cloud PG / OSS runtime config; current main can place sessions, Web invites/auth sessions, conversation quota, cron jobs/runs, due-job claims, the skill registry, notification prefs, portfolio, LLM audit, and company profile files in PG, plus public uploads, generated images / files, and migrated documents in OSS. `cloud.strict_no_local_storage=true` checks the current config for remaining durable local dependencies. HONE does not host your data by default.",
       },
       {
-        q: "How does Hone relate to Codex / RooCode and other coding agents?",
-        a: "Hone borrows their agent-engine, skill, and session architecture but targets investment research, not coding. Codex CLI / ACP, Gemini CLI, OpenCode ACP, and multi-agent show up inside Hone as pluggable engines.",
+        q: "How does HONE relate to Codex / RooCode and other coding agents?",
+        a: "HONE borrows their agent-engine, skill, and session architecture but targets investment research, not coding. Codex CLI / ACP, Gemini CLI, OpenCode ACP, and multi-agent show up inside HONE as pluggable engines.",
       },
     ],
   },
@@ -2532,10 +2532,10 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       theme_dark: "Dark",
     },
     status: {
-      error: "Hone hit an error",
-      streaming: "Hone is responding",
-      running: "Hone is working",
-      thinking: "Hone is thinking",
+      error: "HONE hit an error",
+      streaming: "HONE is responding",
+      running: "HONE is working",
+      thinking: "HONE is thinking",
       done: "Done",
       fallback_error: "Request failed. Please try again.",
       stop: "Stop",
@@ -2548,12 +2548,12 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     },
     composer: {
       quota_exhausted: "You've used today's chat quota",
-      placeholder: "Ask Hone…",
+      placeholder: "Ask HONE…",
       send_aria: "Send",
       proactive_tip: "Add holdings to enable push mode",
-      proactive_title: "Hone can watch your holdings for you",
+      proactive_title: "HONE can watch your holdings for you",
       proactive_intro:
-        "Tell Hone what you hold or follow, and it will filter important changes by your preferences and reach out at the right time.",
+        "Tell HONE what you hold or follow, and it will filter important changes by your preferences and reach out at the right time.",
       proactive_items: [
         {
           title: "Holding-aware alerts",
@@ -2580,7 +2580,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       finance_calendar_tip: "My finance calendar",
       finance_calendar_title: "My finance calendar",
       finance_calendar_intro:
-        "Pick a month and Hone will combine macro events with earnings dates for your holdings and watchlist, then send it as an image in chat.",
+        "Pick a month and HONE will combine macro events with earnings dates for your holdings and watchlist, then send it as an image in chat.",
       finance_calendar_months_label: "Calendar month",
       finance_calendar_current_month: "Back to this month",
       finance_calendar_previous_aria: "Previous month",
@@ -2627,9 +2627,9 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       share_aria: "Share",
     },
     share: {
-      brand_name: "Hone",
+      brand_name: "HONE",
       brand_tagline: "Your AI investment co-pilot",
-      qr_caption: "Scan to try Hone — an AI co-pilot for investors",
+      qr_caption: "Scan to try HONE — an AI co-pilot for investors",
       strings: {
         title: "Share conversation",
         subtitle: "Pick from the latest 4 messages",
@@ -2655,7 +2655,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         error_share: "Share canceled",
         error_system_share: "System share failed. Try Save image or Copy instead.",
         role_user: "You",
-        role_assistant: "Hone",
+        role_assistant: "HONE",
         nothing_selected: "Select at least one message",
         rendering: "Rendering…",
       },
@@ -2664,10 +2664,10 @@ const CONTENT_EN: typeof CONTENT_ZH = {
 
   auth: {
     login: {
-      title: "Sign in to Hone",
+      title: "Sign in to HONE",
       subtitle: "Sign in with your phone number and SMS code.",
       hint_sms:
-        "Hone is currently invite-only. Contact bm@hone-claw.com to join the invite list.",
+        "HONE is currently invite-only. Contact bm@hone-claw.com to join the invite list.",
       phone_label: "Phone",
       phone_placeholder: "e.g. +1 555 0134",
       phone_aria: "Phone",
@@ -2696,7 +2696,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     terms: {
       page_title: "Terms of Service",
       intro:
-        "Please read the following carefully. Continuing to use Hone means you accept these terms.",
+        "Please read the following carefully. Continuing to use HONE means you accept these terms.",
       sections: [
         {
           title: "1. Acceptance & effective date",
@@ -2704,7 +2704,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                'Welcome to Hone ("the service"). The service is operated by ',
+                'Welcome to HONE ("the service"). The service is operated by ',
                 { strong: "Snowdrift Capital LLC" },
                 ', a limited liability company organized under the laws of the State of Wyoming, United States ("we," "us," or "our"). These Terms of Service ("Terms") form a binding agreement between you and us regarding your use of the service.',
               ],
@@ -2723,7 +2723,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "Hone is a research and decision-assistant tool for individual investors, offering information retrieval, conversational research, investment notes, and scheduled reminders.",
+                "HONE is a research and decision-assistant tool for individual investors, offering information retrieval, conversational research, investment notes, and scheduled reminders.",
               ],
             },
             {
@@ -2744,7 +2744,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "You sign in with a phone number we have registered and verify your identity with an SMS code. Hone is currently invite-only, and phone numbers outside the invite list cannot sign in.",
+                "You sign in with a phone number we have registered and verify your identity with an SMS code. HONE is currently invite-only, and phone numbers outside the invite list cannot sign in.",
               ],
             },
             {
@@ -2954,7 +2954,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     privacy: {
       page_title: "Privacy Policy",
       intro:
-        "We care about your data. This policy explains how Hone handles your personal information.",
+        "We care about your data. This policy explains how HONE handles your personal information.",
       sections: [
         {
           title: "1. Introduction & scope",
@@ -2962,9 +2962,9 @@ const CONTENT_EN: typeof CONTENT_ZH = {
             {
               kind: "p",
               parts: [
-                "This Privacy Policy describes how Hone (operated by ",
+                "This Privacy Policy describes how HONE (operated by ",
                 { strong: "Snowdrift Capital LLC" },
-                ', a Wyoming limited liability company, "we," "us," or "our") collects, uses, stores, shares, and protects your personal information while providing the service. It applies to every scenario in which you use the service through the Hone website or client.',
+                ', a Wyoming limited liability company, "we," "us," or "our") collects, uses, stores, shares, and protects your personal information while providing the service. It applies to every scenario in which you use the service through the HONE website or client.',
               ],
             },
             {
@@ -3228,7 +3228,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
 
   footer: {
     tagline: "Sharpen cognition, strip the noise.",
-    mantra: "SHARPEN COGNITION · STRIP THE NOISE · OPEN FINANCIAL CONSOLE",
+    mantra: "HONE · SHARPEN COGNITION · STRIP THE NOISE",
     copyright:
       "© 2026 Snowdrift Capital LLC · Sheridan, WY, USA · Open source under MIT License.",
     columns: {

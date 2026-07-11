@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Build the focused Hone macOS client that opens the production `/chat` login and conversation experience without packaging the local Hone runtime. This is separate from `hone-desktop` and must not contain Codex/OpenCode ACP, `hone-mcp`, channel listeners, skills, config, or user data directories.
+Build the focused HONE macOS client that opens the production `/chat` login and conversation experience without packaging the local HONE runtime. This is separate from `hone-desktop` and must not contain Codex/OpenCode ACP, `hone-mcp`, channel listeners, skills, config, or user data directories.
 
 ## Prerequisites
 
@@ -26,8 +26,8 @@ The default build is Universal (`arm64` + `x86_64`) and writes isolated build ou
 Expected deliverables:
 
 ```text
-macos/Hone.app
-dmg/Hone_<version>_universal.dmg
+macos/HONE.app
+dmg/HONE_<version>_universal.dmg
 ```
 
 Override the target or output root only when needed:
@@ -43,9 +43,9 @@ HONE_USER_APP_TARGET=aarch64-apple-darwin CARGO_TARGET_DIR=/tmp/hone-user-app-ta
 cargo test -p hone-user-app
 cargo check -p hone-user-app
 bash -n scripts/build_user_app.sh
-file ~/Library/Caches/honeclaw/user-app-target/universal-apple-darwin/release/bundle/macos/Hone.app/Contents/MacOS/hone-user-app
-codesign -dvv ~/Library/Caches/honeclaw/user-app-target/universal-apple-darwin/release/bundle/macos/Hone.app
-find ~/Library/Caches/honeclaw/user-app-target/universal-apple-darwin/release/bundle/macos/Hone.app/Contents -maxdepth 3 -type f -print
+file ~/Library/Caches/honeclaw/user-app-target/universal-apple-darwin/release/bundle/macos/HONE.app/Contents/MacOS/hone-user-app
+codesign -dvv ~/Library/Caches/honeclaw/user-app-target/universal-apple-darwin/release/bundle/macos/HONE.app
+find ~/Library/Caches/honeclaw/user-app-target/universal-apple-darwin/release/bundle/macos/HONE.app/Contents -maxdepth 3 -type f -print
 ```
 
 Launch the packaged app and confirm its logs reach `https://hone-claw.com/chat`. The bundle file list should contain only the app metadata, icon, and `hone-user-app` executable; the startup UI is embedded in the executable.

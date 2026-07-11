@@ -1,4 +1,4 @@
-// public-me.tsx — Hone Public Site Account / Me page
+// public-me.tsx — HONE Public Site Account / Me page
 
 import { createSignal, onMount, Show, type ParentProps } from "solid-js";
 import { useNavigate } from "@solidjs/router";

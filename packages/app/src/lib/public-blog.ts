@@ -18,8 +18,8 @@ const POSTS: Record<Locale, PublicBlogPost[]> = {
   zh: [
     {
       slug: "why-hone-uses-rust",
-      title: "Hone 为什么采用 Rust，以及推荐大家都开始使用 Rust",
-      alternateTitle: "Why Hone uses Rust, and why more teams should start using Rust",
+      title: "HONE 为什么采用 Rust，以及推荐大家都开始使用 Rust",
+      alternateTitle: "Why HONE uses Rust, and why more teams should start using Rust",
       excerpt:
         "从 Python + Node.js 到 Rust 的完整重构复盘：为什么 Rust 更适合 AI Coding 时代的上下文治理、稳定性和多端工程。",
       date: "2026-03-10",
@@ -32,10 +32,10 @@ const POSTS: Record<Locale, PublicBlogPost[]> = {
   en: [
     {
       slug: "why-hone-uses-rust",
-      title: "Why Hone uses Rust, and why more teams should start using Rust",
-      alternateTitle: "Hone 为什么采用 Rust，以及推荐大家都开始使用 Rust",
+      title: "Why HONE uses Rust, and why more teams should start using Rust",
+      alternateTitle: "HONE 为什么采用 Rust，以及推荐大家都开始使用 Rust",
       excerpt:
-        "A field report from Hone's rewrite from Python + Node.js to Rust, and why Rust fits context management, stability, and multi-endpoint engineering in the AI Coding era.",
+        "A field report from HONE's rewrite from Python + Node.js to Rust, and why Rust fits context management, stability, and multi-endpoint engineering in the AI Coding era.",
       date: "2026-03-10",
       category: "Engineering",
       readTime: "12 min read",

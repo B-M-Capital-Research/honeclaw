@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Hone",
-  "version": "0.12.4",
+  "productName": "HONE",
+  "version": "0.13.0",
   "identifier": "com.hone.chat",
   "build": {
     "frontendDist": "ui"
@@ -19,9 +19,9 @@
       "dmg"
     ],
     "category": "Business",
-    "copyright": "Copyright © 2026 Hone Financial",
-    "shortDescription": "Hone AI 投资助手",
-    "longDescription": "Hone 的专注型 macOS 用户端，直接进入登录和投资对话。",
+    "copyright": "Copyright © 2026 HONE",
+    "shortDescription": "HONE AI 投资助手",
+    "longDescription": "HONE 的专注型 macOS 用户端，直接进入登录和投资对话。",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

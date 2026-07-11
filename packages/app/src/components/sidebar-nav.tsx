@@ -141,7 +141,7 @@ export function SidebarNav() {
       </div>
 
       <div class="pt-1 text-[10px] text-[color:var(--text-muted)]">
-        {meta()?.name ?? "Hone"} {meta()?.version ?? ""}
+        {meta()?.name ?? "HONE"} {meta()?.version ?? ""}
       </div>
     </aside>
   )

@@ -1,4 +1,4 @@
-// chat.tsx — Hone Public Site Chat (v4 - Styled to match Landing Page)
+// chat.tsx — HONE Public Site Chat (v4 - Styled to match Landing Page)
 
 import { Markdown } from "@hone-financial/ui/markdown";
 import {
@@ -18,6 +18,7 @@ import { Portal } from "solid-js/web";
 import { useNavigate } from "@solidjs/router";
 import { PublicLoginForm } from "@/components/public-login-form";
 import { PublicNav } from "@/components/public-nav";
+import { HoneBrand } from "@/components/hone-brand";
 import { ChatShareModal } from "@/components/chat-share-modal";
 import { canvasToPngBlob } from "@/components/chat-share-export";
 import {
@@ -380,10 +381,9 @@ function ChatSidebar(props: {
           type="button"
           class="public-chat-sidebar-logo"
           onClick={() => navigate("/")}
-          aria-label="Hone"
+          aria-label="HONE"
         >
-          <img src="/logo.svg" alt="Hone" />
-          <span>Hone</span>
+          <HoneBrand />
         </button>
         <button
           type="button"
@@ -1220,7 +1220,7 @@ function PendingBubble(props: {
       >
         {/* The header status row only shows in error state — for the
             normal thinking/streaming flow the composer-side status strip
-            is the single source of truth (avoids duplicate "Hone 思考中"). */}
+            is the single source of truth (avoids duplicate "HONE 思考中"). */}
         <Show when={terminal()}>
           <div
             style={{
@@ -3951,11 +3951,21 @@ export default function PublicChatPage() {
           .public-chat-sidebar-logo:active {
             transform: scale(0.99);
           }
-          .public-chat-sidebar-logo img {
+          .public-chat-sidebar-logo .hone-brand {
+            min-width: 0;
+          }
+          .public-chat-sidebar-logo .hone-brand-mark {
             width: 44px;
             height: 44px;
             border-radius: 10px;
             flex: 0 0 44px;
+          }
+          .public-chat-sidebar-logo .hone-brand-mark img {
+            width: 100%;
+            height: 100%;
+          }
+          .public-chat-sidebar-logo .hone-brand-word {
+            font-size: 18px;
           }
           .public-chat-sidebar-toggle,
           .public-chat-sidebar-lang {
@@ -4174,7 +4184,7 @@ export default function PublicChatPage() {
             background: #ffe4e6;
             border-color: rgba(225,29,72,0.22);
           }
-          .public-chat-sidebar.is-collapsed .public-chat-sidebar-logo span,
+          .public-chat-sidebar.is-collapsed .public-chat-sidebar-logo .hone-brand-word,
           .public-chat-sidebar.is-collapsed .public-chat-sidebar-nav span:not(.public-chat-sidebar-icon),
           .public-chat-sidebar.is-collapsed .public-chat-sidebar-star span,
           .public-chat-sidebar.is-collapsed .public-chat-sidebar-history,
@@ -4200,7 +4210,7 @@ export default function PublicChatPage() {
             padding: 0;
             border-radius: 12px;
           }
-          .public-chat-sidebar.is-collapsed .public-chat-sidebar-logo img {
+          .public-chat-sidebar.is-collapsed .public-chat-sidebar-logo .hone-brand-mark {
             width: 32px;
             height: 32px;
             flex-basis: 32px;

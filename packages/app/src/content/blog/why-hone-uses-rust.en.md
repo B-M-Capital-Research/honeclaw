@@ -1,4 +1,4 @@
-> Preface: We started building Hone in February and went through a full rewrite from Python + Node.js to Rust. That transition gave us a lot of practical experience, and it made us believe Rust is one of the best choices for the AI Coding era. This post summarizes why we made that choice and why more teams should consider moving this decision as far left as possible.
+> Preface: We started building HONE in February and went through a full rewrite from Python + Node.js to Rust. That transition gave us a lot of practical experience, and it made us believe Rust is one of the best choices for the AI Coding era. This post summarizes why we made that choice and why more teams should consider moving this decision as far left as possible.
 
 # TLDR
 
@@ -96,4 +96,4 @@ AI Coding changes the economics. When AI can generate much of the basic code, sc
 
 For new open-source projects and enterprise architectures, choosing Rust early is not a language-preference argument. It is a forward-looking engineering decision. It can produce smaller and cleaner code, safer runtime behavior, code structures that fit AI long-context reasoning, a more unified cloud / edge / desktop stack, and much lower resource usage.
 
-> Keep following Hone's iteration. We will publish more practical engineering notes from the project.
+> Keep following HONE's iteration. We will publish more practical engineering notes from the project.

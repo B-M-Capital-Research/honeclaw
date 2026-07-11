@@ -41,7 +41,7 @@ async function connect() {
     status.textContent = "连接成功，正在进入对话…";
     window.setTimeout(() => window.location.replace(APP_URL), remaining);
   } catch {
-    setOffline("暂时无法连接 Hone，请检查网络后重试");
+    setOffline("暂时无法连接 HONE，请检查网络后重试");
   }
 }
 

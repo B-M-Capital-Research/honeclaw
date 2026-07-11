@@ -43,7 +43,7 @@ import type { WebInviteInfo } from "@/lib/types"
 
 function metaWithLanguage(language?: "zh" | "en"): MetaInfo {
   return {
-    name: "Hone",
+    name: "HONE",
     version: "0.0.0-test",
     channel: "imessage",
     supportsImessage: false,
@@ -114,7 +114,7 @@ describe("settings-model", () => {
     expect(requireValue(merged.auxiliary, "auxiliary defaults").baseUrl).toBe(
       "https://api.minimaxi.com/v1",
     )
-    expect(requireValue(merged.honeCloud, "Hone Cloud defaults").baseUrl).toBe(
+    expect(requireValue(merged.honeCloud, "HONE Cloud defaults").baseUrl).toBe(
       "https://hone-claw.com",
     )
     expect(
@@ -123,10 +123,10 @@ describe("settings-model", () => {
     ).toBe(8)
   })
 
-  it("defaults to Hone Cloud runner settings", () => {
+  it("defaults to HONE Cloud runner settings", () => {
     expect(defaultAgentSettings().runner).toBe("hone_cloud")
     expect(
-      requireValue(defaultAgentSettings().honeCloud, "default Hone Cloud").model,
+      requireValue(defaultAgentSettings().honeCloud, "default HONE Cloud").model,
     ).toBe("hone-cloud")
   })
 
@@ -426,7 +426,7 @@ describe("settings-model", () => {
     expect(withEntry.profiles[1]).toBe(current.profiles[1])
   })
 
-  it("resolves Hone Cloud URLs as OpenAI-compatible bases", () => {
+  it("resolves HONE Cloud URLs as OpenAI-compatible bases", () => {
     expect(resolveHoneCloudOpenAiBaseUrl("https://hone-claw.com")).toBe(
       "https://hone-claw.com/api/public/v1",
     )

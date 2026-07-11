@@ -165,3 +165,11 @@ Last updated: 2026-07-11
 - Impact: Public macOS releases use `scripts/build_user_app.sh`; full local-runtime desktop packaging remains a separate lane. The user app is tested and built on macOS rather than included in the default Linux workspace gate.
 - Security: The local shell ships a restrictive CSP, permits in-app HTTPS navigation only to Hone-owned hosts, and sends unrelated HTTP(S)/mail links to the system browser. The release bundle must be inspected for unexpected resources and external binaries before distribution.
 - Distribution: Unsigned development machines may produce an ad-hoc signed Universal `.app` / `.dmg` for internal use. Public distribution still requires an Apple Developer ID identity and notarization.
+
+## D-2026-07-11-02 Use One HONE Brand And Remote Boundary For Public Apple Clients
+
+- Status: Accepted
+- Decision: Public Web, macOS, and iOS clients use `HONE` as the sole user-facing product brand and share one mark/wordmark language. The native Apple shells open the production public Web experience rather than duplicating chat, push, calendar, or account business logic.
+- iOS boundary: `apps/hone-ios/` is an independent SwiftUI/WKWebView project. It persists the normal WebKit login store, allows in-app navigation only to HONE-owned HTTPS hosts, hands external links to iOS, and contains no local runtime or sidecar lifecycle.
+- Release impact: Tag releases upload the Universal macOS DMG, iOS Simulator app, iOS Xcode source, and Apple checksums in addition to existing CLI assets. A device IPA is only valid when Apple signing/provisioning credentials are configured and must not be inferred from an unsigned Simulator artifact.
+- Compatibility: `packages/app` remains the public feature source of truth; backend API, session, push-read, channel, and storage contracts are unchanged by the native shells or brand refresh.

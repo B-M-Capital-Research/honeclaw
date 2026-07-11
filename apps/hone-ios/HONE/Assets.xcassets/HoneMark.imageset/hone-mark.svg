@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">
+  <defs>
+    <linearGradient id="bg" x1="12" y1="8" x2="84" y2="90" gradientUnits="userSpaceOnUse"><stop stop-color="#fffaf0"/><stop offset="1" stop-color="#ebe2d2"/></linearGradient>
+    <linearGradient id="stone" x1="34" y1="24" x2="68" y2="62" gradientUnits="userSpaceOnUse"><stop stop-color="#ffad36"/><stop offset="1" stop-color="#f15b08"/></linearGradient>
+    <linearGradient id="blade" x1="27" y1="40" x2="72" y2="69" gradientUnits="userSpaceOnUse"><stop stop-color="#56616a"/><stop offset="1" stop-color="#181d21"/></linearGradient>
+  </defs>
+  <rect x="2" y="2" width="92" height="92" rx="27" fill="url(#bg)"/>
+  <path d="m34 49 22-28 15 8-22 27Z" fill="url(#stone)"/><path d="M34 49v10l15 8V56Z" fill="#d85605"/><path d="M49 56v11l22-28V29Z" fill="#252b30"/><path d="m32 36 43 19-4 3-43-18Z" fill="#ffae16"/><path d="m28 40 43 18v10L28 53Z" fill="url(#blade)"/>
+</svg>

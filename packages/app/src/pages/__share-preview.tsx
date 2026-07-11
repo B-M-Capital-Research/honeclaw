@@ -74,10 +74,10 @@ export default function SharePreviewPage() {
       </button>
       <ChatShareCard
         messages={SAMPLE_MESSAGES}
-        brandName="Hone"
+        brandName="HONE"
         brandTagline="Sharpen your edge."
         qrUrl="https://hone-claw.com/chat"
-        qrCaption="Scan to try Hone Chat"
+        qrCaption="Scan to try HONE Chat"
         registerRef={(el) => setRegistered(el)}
       />
       {pngUrl() && (

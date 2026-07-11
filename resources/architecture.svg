@@ -69,13 +69,13 @@
 
     <text x="100" y="48" class="wordmark serif">HONE<tspan class="wordmark-accent">CLAW</tspan></text>
     <text x="102" y="78" class="tagline serif">A ruthless defender of your investment discipline.</text>
-    <text x="102" y="100" class="subtitle">Open-source personal investment research co-pilot · Rust core · 7 surfaces · 1 brain</text>
+    <text x="102" y="100" class="subtitle">Open-source investment research co-pilot · Rust core · Web + Apple clients · 1 brain</text>
 
     <g transform="translate(1380, 0)">
       <rect x="0" y="6" width="280" height="98" fill="#fdfaf2" stroke="#d8cdb8"/>
       <text x="14" y="26" class="section-meta">CURRENT RELEASE</text>
-      <text x="14" y="56" class="serif" font-size="34" font-weight="700" fill="#1a1a2e">v0.12.4</text>
-      <text x="14" y="76" font-size="11" fill="#6a6478">2026·05·27 — cloud runtime + guard fixes</text>
+      <text x="14" y="56" class="serif" font-size="34" font-weight="700" fill="#1a1a2e">v0.13.0</text>
+      <text x="14" y="76" font-size="11" fill="#6a6478">2026·07·11 — HONE Apple clients + push inbox</text>
       <text x="14" y="92" font-size="10" fill="#8a8497" letter-spacing="0.05em">github · B-M-Capital-Research/honeclaw · MIT</text>
       <rect x="270" y="6" width="6" height="98" fill="#e85d04"/>
     </g>
@@ -132,9 +132,9 @@
       <g transform="translate(232, 0)">
         <rect x="0" y="0" width="220" height="62" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
         <rect x="0" y="0" width="3" height="62" fill="#3a5b9c"/>
-        <text x="14" y="22" class="card-title">Desktop App</text>
-        <text x="14" y="40" class="card-sub">Tauri 2.0 · sidecar runtime</text>
-        <text x="14" y="54" class="card-mono">hone-desktop · packages/app</text>
+        <text x="14" y="22" class="card-title">Apple Apps</text>
+        <text x="14" y="40" class="card-sub">full desktop + remote macOS / iOS</text>
+        <text x="14" y="54" class="card-mono">desktop · mac shell · iOS shell</text>
       </g>
       <g transform="translate(464, 0)">
         <rect x="0" y="0" width="200" height="62" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
@@ -185,7 +185,7 @@
   <!-- ════════════════════════════════════════════════════════════ -->
   <g transform="translate(72, 360)">
     <text x="0" y="0" class="section-meta" letter-spacing="0.18em">ARCHITECTURE · DATA FLOW</text>
-    <text x="0" y="22" font-size="20" font-weight="700" fill="#1a1a2e" class="serif">From world signal to your inbox · 11 pollers, 1 brain, 7 surfaces</text>
+    <text x="0" y="22" font-size="20" font-weight="700" fill="#1a1a2e" class="serif">From world signal to your inbox · 11 pollers, 1 brain, 9 surfaces</text>
 
     <!-- Flow legend -->
     <g transform="translate(1108, 0)">
@@ -549,7 +549,7 @@
         </g>
         <g transform="translate(172, 64)">
           <rect x="0" y="0" width="148" height="48" rx="3" fill="#fff0d6" stroke="#e85d04"/>
-          <text x="10" y="18" font-size="12" font-weight="700" fill="#1a1a2e">Hone Cloud</text>
+          <text x="10" y="18" font-size="12" font-weight="700" fill="#1a1a2e">HONE Cloud</text>
           <text x="10" y="32" font-size="9.5" fill="#5a5a6e">hone_cloud.rs · REST</text>
           <text x="10" y="44" font-size="9.5" fill="#b8542a">API key auth · v0.8 NEW</text>
         </g>
@@ -870,7 +870,7 @@
     <g transform="translate(1112, 0)">
       <rect x="0" y="0" width="544" height="180" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
       <rect x="0" y="0" width="3" height="180" fill="#3a5b9c"/>
-      <text x="16" y="22" class="card-title">Frontend · packages/{app, ui}</text>
+      <text x="16" y="22" class="card-title">Frontend + Apple shells · packages/app · apps/hone-ios</text>
       <text x="16" y="37" class="card-mono">SolidJS 1.9 · Vite 6 · Tailwind v4 · @solidjs/router</text>
 
       <g transform="translate(16, 50)">
@@ -895,7 +895,7 @@
       </g>
 
       <g transform="translate(16, 130)">
-        <text x="0" y="12" font-size="10.5" font-weight="700" fill="#1a1a2e">Public site · hone-claw.com (white theme)</text>
+        <text x="0" y="12" font-size="10.5" font-weight="700" fill="#1a1a2e">Public HONE · Web + remote macOS/iOS shells</text>
         <g transform="translate(0, 18)">
           <g transform="translate(0, 0)"><rect x="0" y="0" width="62" height="18" rx="2" fill="#1a1a2e"/><text x="6" y="13" font-size="9" fill="#f0ece4">home</text></g>
           <g transform="translate(68, 0)"><rect x="0" y="0" width="58" height="18" rx="2" fill="#1a1a2e"/><text x="6" y="13" font-size="9" fill="#f0ece4">/me</text></g>
@@ -915,40 +915,40 @@
   <g transform="translate(72, 1948)">
     <text x="0" y="0" class="section-meta" letter-spacing="0.18em">RECENT MILESTONES</text>
     <line x1="200" y1="-4" x2="1656" y2="-4" class="footer-line"/>
-    <text x="1660" y="0" class="section-meta" text-anchor="end">v0.12.4 · 2026·05·27</text>
+    <text x="1660" y="0" class="section-meta" text-anchor="end">v0.13.0 · 2026·07·11</text>
 
     <g transform="translate(0, 14)">
       <g transform="translate(0, 0)">
         <rect x="0" y="0" width="404" height="76" rx="4" fill="#fff0d6" stroke="#e85d04"/>
         <rect x="0" y="0" width="3" height="76" fill="#e85d04"/>
-        <text x="14" y="20" font-size="10" font-weight="800" fill="#b8542a" letter-spacing="0.08em">v0.12.4 · CLOUD RUNTIME</text>
-        <text x="14" y="38" class="card-title">PG / OSS env contract lands</text>
-        <text x="14" y="54" class="card-detail">public uploads prefer OSS when configured</text>
-        <text x="14" y="68" class="card-detail">scheduler commodity guard false positive fixed</text>
+        <text x="14" y="20" font-size="10" font-weight="800" fill="#b8542a" letter-spacing="0.08em">v0.13.0 · HONE CLIENTS</text>
+        <text x="14" y="38" class="card-title">Unified brand · macOS + iOS apps</text>
+        <text x="14" y="54" class="card-detail">durable Web push inbox + finance calendar</text>
+        <text x="14" y="68" class="card-detail">Release uploads Apple client artifacts</text>
       </g>
       <g transform="translate(416, 0)">
         <rect x="0" y="0" width="404" height="76" rx="4" fill="#fff0d6" stroke="#e85d04"/>
         <rect x="0" y="0" width="3" height="76" fill="#e85d04"/>
-        <text x="14" y="20" font-size="10" font-weight="800" fill="#b8542a" letter-spacing="0.08em">v0.12.3 · PUBLIC WEB</text>
+        <text x="14" y="20" font-size="10" font-weight="800" fill="#b8542a" letter-spacing="0.08em">v0.12.4 · CLOUD RUNTIME</text>
+        <text x="14" y="38" class="card-title">PG / OSS runtime contract lands</text>
+        <text x="14" y="54" class="card-detail">public uploads prefer OSS when configured</text>
+        <text x="14" y="68" class="card-detail">scheduler guards and diagnostics tightened</text>
+      </g>
+      <g transform="translate(832, 0)">
+        <rect x="0" y="0" width="404" height="76" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
+        <rect x="0" y="0" width="3" height="76" fill="#7a6a52"/>
+        <text x="14" y="20" font-size="10" font-weight="800" fill="#5a5a6e" letter-spacing="0.08em">v0.12.3 · PUBLIC WEB</text>
         <text x="14" y="38" class="card-title">Blog / public chat / share previews</text>
         <text x="14" y="54" class="card-detail">desktop remote backend diagnostics tightened</text>
         <text x="14" y="68" class="card-detail">Feishu and event-engine reliability pass</text>
       </g>
-      <g transform="translate(832, 0)">
-        <rect x="0" y="0" width="404" height="76" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
+      <g transform="translate(1248, 0)">
+        <rect x="0" y="0" width="408" height="76" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
         <rect x="0" y="0" width="3" height="76" fill="#7a6a52"/>
         <text x="14" y="20" font-size="10" font-weight="800" fill="#5a5a6e" letter-spacing="0.08em">v0.12.2 · HEARTBEAT DEDUPE</text>
         <text x="14" y="38" class="card-title">scheduler revision dedupe fixed</text>
         <text x="14" y="54" class="card-detail">share-card CJK code font alignment</text>
         <text x="14" y="68" class="card-detail">LLM diagnostics follow new config layout</text>
-      </g>
-      <g transform="translate(1248, 0)">
-        <rect x="0" y="0" width="408" height="76" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
-        <rect x="0" y="0" width="3" height="76" fill="#7a6a52"/>
-        <text x="14" y="20" font-size="10" font-weight="800" fill="#5a5a6e" letter-spacing="0.08em">v0.12.0 · SHARE EXPERIENCE</text>
-        <text x="14" y="38" class="card-title">public chat sharing and packaged app flow</text>
-        <text x="14" y="54" class="card-detail">config/runtime apply path hardened</text>
-        <text x="14" y="68" class="card-detail">release docs and install paths aligned</text>
       </g>
     </g>
   </g>

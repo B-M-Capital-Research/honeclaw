@@ -17,7 +17,7 @@ type ChannelDef = {
 }
 
 const CHANNELS: ChannelDef[] = [
-  { runner: "hone_cloud", name: "Hone Cloud", desc: () => DASH.channels.hone_cloud_desc, icon: "☁" },
+  { runner: "hone_cloud", name: "HONE Cloud", desc: () => DASH.channels.hone_cloud_desc, icon: "☁" },
   { runner: "codex_acp", name: "Codex ACP", desc: () => DASH.channels.codex_acp_desc, icon: "⌘" },
   { runner: "opencode_acp", name: "", desc: () => DASH.channels.opencode_acp_desc, icon: "⚡" },
   { runner: "gemini_cli", name: "Gemini CLI", desc: () => DASH.channels.gemini_cli_desc, icon: "✦" },

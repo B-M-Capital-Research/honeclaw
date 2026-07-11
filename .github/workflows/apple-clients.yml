@@ -1,0 +1,66 @@
+name: Apple Clients
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "apps/hone-ios/**"
+      - "bins/hone-user-app/**"
+      - "packages/app/src/components/hone-brand.tsx"
+      - "packages/app/src/components/public-nav.tsx"
+      - "packages/app/src/pages/public-site.css"
+      - "scripts/build_user_app.sh"
+      - ".github/workflows/apple-clients.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/hone-ios/**"
+      - "bins/hone-user-app/**"
+      - "packages/app/src/components/hone-brand.tsx"
+      - "packages/app/src/components/public-nav.tsx"
+      - "packages/app/src/pages/public-site.css"
+      - "scripts/build_user_app.sh"
+      - ".github/workflows/apple-clients.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Validate macOS user shell
+        run: |
+          cargo test -p hone-user-app
+          cargo check -p hone-user-app
+          bash -n scripts/build_user_app.sh
+
+      - name: Validate iOS navigation contract
+        run: bash tests/regression/ci/test_hone_ios_contract.sh
+
+      - name: Build iOS Simulator app
+        run: |
+          xcodebuild \
+            -project apps/hone-ios/HONE.xcodeproj \
+            -scheme HONE \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -derivedDataPath "${RUNNER_TEMP}/hone-ios-derived" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+          test -d "${RUNNER_TEMP}/hone-ios-derived/Build/Products/Release-iphonesimulator/HONE.app"

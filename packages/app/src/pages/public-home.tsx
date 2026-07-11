@@ -1,4 +1,4 @@
-// public-home.tsx — Hone Public Site Homepage (v4.2 - Refined Proportions & Balanced Layout)
+// public-home.tsx — HONE Public Site Homepage (v4.2 - Refined Proportions & Balanced Layout)
 
 import {
   createSignal,
@@ -16,6 +16,7 @@ import {
   PUBLIC_YOUTUBE_URL,
 } from "@/components/public-contact-menu"
 import { PublicNav } from "@/components/public-nav"
+import { HoneBrand } from "@/components/hone-brand"
 import "./public-site.css"
 
 // ── Icons ────────────────────────────────────────────────────────────────────
@@ -108,7 +109,7 @@ export default function PublicHomePage() {
         {/* HERO SECTION */}
         <section class="hero-section">
           <div class="hero-logo-tag">
-            <img src="/logo.svg" class="hero-logo" />
+            <HoneBrand class="hero-logo" />
             <h1 class="hero-tagline">
               {CONTENT.home_page.hero_slogan}
             </h1>
@@ -249,7 +250,9 @@ export default function PublicHomePage() {
         /* Hero */
         .hero-section { padding: 80px 0 40px; display: flex; flex-direction: column; align-items: center; gap: 32px; width: 100%; }
         .hero-logo-tag { display: flex; flex-direction: column; align-items: center; gap: 16px; }
-        .hero-logo { height: 130px; filter: drop-shadow(0 10px 30px rgba(0,0,0,0.06)); } /* REFINED LOGO SIZE */
+        .hero-logo { flex-direction: column; gap: 14px; filter: drop-shadow(0 10px 30px rgba(0,0,0,0.06)); }
+        .hero-logo .hone-brand-mark { width: 112px; height: 112px; border-radius: 32px; }
+        .hero-logo .hone-brand-word { font-size: 28px; letter-spacing: 0.28em; padding-left: 0.28em; }
         .hero-tagline { font-size: 38px; font-weight: 800; color: #1e293b; text-align: center; max-width: 800px; line-height: 1.2; letter-spacing: -0.02em; }
         .hero-btns { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
         
@@ -370,7 +373,8 @@ export default function PublicHomePage() {
           .home-blog-copy { padding: 18px; }
         }
         @media (max-width: 640px) {
-          .hero-logo { height: 90px; }
+          .hero-logo .hone-brand-mark { width: 84px; height: 84px; border-radius: 25px; }
+          .hero-logo .hone-brand-word { font-size: 22px; }
           .hero-tagline { font-size: 26px; }
           .hero-btns { display: grid; grid-template-columns: 1fr 1fr; width: 100%; gap: 10px; }
           .btn-primary.refined, .btn-secondary.refined { width: 100%; padding: 14px 24px; font-size: 16px; }

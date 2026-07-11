@@ -36,14 +36,15 @@ git diff --stat
 - `Cargo.lock`
 - `bins/hone-desktop/tauri.conf.json`
 - `bins/hone-user-app/tauri.conf.json`
+- `apps/hone-ios/HONE.xcodeproj/project.pbxproj` (`MARKETING_VERSION`)
 
 常见做法：
 
-1. 先改 `Cargo.toml`、`bins/hone-desktop/tauri.conf.json` 与 `bins/hone-user-app/tauri.conf.json`
+1. 先改 `Cargo.toml`、两个 Tauri config 与 iOS project 的 `MARKETING_VERSION`
 2. 再跑一次会刷新 lock 的命令，例如：
 
 ```bash
-cargo check --workspace --all-targets --exclude hone-desktop
+cargo check --workspace --all-targets --exclude hone-desktop --exclude hone-user-app
 ```
 
 3. 确认 `Cargo.lock` 里的 workspace package version 已跟上
@@ -79,7 +80,7 @@ bash scripts/prepare_release_notes.sh vX.Y.Z /tmp/release-notes-vX.Y.Z.md
 至少跑：
 
 ```bash
-cargo check --workspace --all-targets --exclude hone-desktop
+cargo check --workspace --all-targets --exclude hone-desktop --exclude hone-user-app
 bash scripts/prepare_release_notes.sh vX.Y.Z /tmp/release-notes-vX.Y.Z.md
 ```
 

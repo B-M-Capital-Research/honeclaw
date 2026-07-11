@@ -13,7 +13,7 @@ if ! command -v bun >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "[INFO] building standalone Hone user app"
+echo "[INFO] building standalone HONE user app"
 echo "[INFO] target dir: $CARGO_TARGET_DIR"
 echo "[INFO] target: $TARGET"
 
@@ -27,8 +27,8 @@ bunx tauri build \
   --bundles app,dmg
 
 BUNDLE_DIR="$CARGO_TARGET_DIR/$TARGET/release/bundle"
-APP_PATH="$BUNDLE_DIR/macos/Hone.app"
-DMG_PATH="$(find "$BUNDLE_DIR/dmg" -maxdepth 1 -type f -name 'Hone_*.dmg' -print -quit)"
+APP_PATH="$BUNDLE_DIR/macos/HONE.app"
+DMG_PATH="$(find "$BUNDLE_DIR/dmg" -maxdepth 1 -type f -name 'HONE_*.dmg' -print -quit)"
 
 test -d "$APP_PATH"
 test -n "$DMG_PATH"

@@ -85,7 +85,7 @@ function MainlineCard(props: {
               when={props.hasProfile}
               fallback={
                 <>
-                  <strong style={{ color: "#d97706" }}>暂无公司画像</strong> —— 跟 Hone 说
+                  <strong style={{ color: "#d97706" }}>暂无公司画像</strong> —— 跟 HONE 说
                   “建立 {props.ticker} 的公司画像”，立即更新或下一次自动检查后就会带上它。
                 </>
               }
@@ -231,7 +231,7 @@ function ProfileModal(props: { open: boolean; ticker: string | null; onClose: ()
               color: "#64748b",
             }}
           >
-            画像由 Hone 维护。如需修改，请回到对话页跟 Hone 说一声。
+            画像由 HONE 维护。如需修改，请回到对话页跟 HONE 说一声。
           </div>
         </div>
       </div>
@@ -301,7 +301,7 @@ function PortfolioContextView() {
             投资上下文
           </h1>
           <p style={{ "font-size": "13px", color: "#64748b", "margin-top": "8px", "line-height": "1.7" }}>
-            Hone 会从你的公司画像里整理投资主线；新增画像或持仓后通常会在下一次自动检查里尝试更新，覆盖完整后约每周刷新一次。要修改画像，直接跟 Hone 对话即可。
+            HONE 会从你的公司画像里整理投资主线；新增画像或持仓后通常会在下一次自动检查里尝试更新，覆盖完整后约每周刷新一次。要修改画像，直接跟 HONE 对话即可。
           </p>
         </div>
 
@@ -459,7 +459,7 @@ function PortfolioContextView() {
                       gap: "14px",
                     }}
                   >
-                    <span>暂无持仓。跟 Hone 说一声你持有什么就行。</span>
+                    <span>暂无持仓。跟 HONE 说一声你持有什么就行。</span>
                     <button
                       type="button"
                       onClick={() => navigate("/chat")}
@@ -535,7 +535,7 @@ function PortfolioContextView() {
                       gap: "14px",
                     }}
                   >
-                    <span>还没有公司画像。跟 Hone 说「建立 X 的公司画像」就能开始。</span>
+                    <span>还没有公司画像。跟 HONE 说「建立 X 的公司画像」就能开始。</span>
                     <button
                       type="button"
                       onClick={() => navigate("/chat")}

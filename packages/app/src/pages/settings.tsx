@@ -904,7 +904,7 @@ export default function SettingsPage() {
           }
           class="mt-6 space-y-4 disabled:opacity-60"
         >
-          {/* ── 卡片 0：Hone Cloud ── */}
+          {/* ── 卡片 0：HONE Cloud ── */}
           <div
             class={[
               "rounded-xl border p-5 transition cursor-pointer",

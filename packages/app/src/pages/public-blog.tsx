@@ -18,7 +18,7 @@ export default function PublicBlogPage() {
 
   return (
     <div class="public-blog-page">
-      <Title>Hone Blog</Title>
+      <Title>HONE Blog</Title>
       <PublicNav />
 
       <main class="public-blog-main">
@@ -27,8 +27,8 @@ export default function PublicBlogPage() {
           <h1>{useLocale() === "zh" ? "工程、产品与投研实践" : "Engineering, product, and research practice"}</h1>
           <p>
             {useLocale() === "zh"
-              ? "记录 Hone 在开源 AI Agent、投研工作流和 Rust 工程实践中的真实选择。"
-              : "Notes from building Hone across open-source AI agents, investment research workflows, and Rust engineering."}
+              ? "记录 HONE 在开源 AI Agent、投研工作流和 Rust 工程实践中的真实选择。"
+              : "Notes from building HONE across open-source AI agents, investment research workflows, and Rust engineering."}
           </p>
         </section>
 

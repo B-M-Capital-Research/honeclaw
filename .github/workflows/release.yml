@@ -183,6 +183,75 @@ jobs:
             --repo "${GITHUB_REPOSITORY}" \
             --clobber
 
+  apple-user-clients:
+    name: apple-user-clients
+    needs: ensure-release
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build Universal macOS user app
+        shell: bash
+        run: bash scripts/build_user_app.sh
+
+      - name: Build iOS Simulator app
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project apps/hone-ios/HONE.xcodeproj \
+            -scheme HONE \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -derivedDataPath "${RUNNER_TEMP}/hone-ios-derived" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Package Apple user clients
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+
+          MAC_DMG="$HOME/Library/Caches/honeclaw/user-app-target/universal-apple-darwin/release/bundle/dmg/HONE_${GITHUB_REF_NAME#v}_universal.dmg"
+          IOS_APP="${RUNNER_TEMP}/hone-ios-derived/Build/Products/Release-iphonesimulator/HONE.app"
+
+          test -f "${MAC_DMG}"
+          test -d "${IOS_APP}"
+          cp "${MAC_DMG}" "dist/HONE-macOS-${GITHUB_REF_NAME}-universal.dmg"
+          ditto -c -k --sequesterRsrc --keepParent \
+            "${IOS_APP}" \
+            "dist/HONE-iOS-Simulator-${GITHUB_REF_NAME}.zip"
+          git archive \
+            --format=zip \
+            --prefix="HONE-iOS-Xcode-${GITHUB_REF_NAME}/" \
+            --output="dist/HONE-iOS-Xcode-${GITHUB_REF_NAME}.zip" \
+            HEAD \
+            apps/hone-ios
+
+          shasum -a 256 dist/HONE-* > dist/HONE-Apple-SHASUMS256.txt
+
+      - name: Upload Apple user clients
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release upload "${GITHUB_REF_NAME}" dist/HONE-* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --clobber
+
   publish-homebrew-formula:
     name: publish-homebrew-formula
     needs: build-and-release

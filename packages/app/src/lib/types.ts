@@ -283,7 +283,7 @@ export type AgentSettings = {
   openaiApiKey: string;
   /** OpenAI-compatible auxiliary 配置，用于心跳/压缩等后台任务 */
   auxiliary?: AuxiliarySettings;
-  /** Hone Cloud 用户端服务配置 */
+  /** HONE Cloud 用户端服务配置 */
   honeCloud?: HoneCloudSettings;
   /** multi-agent 双阶段设置 */
   multiAgent?: MultiAgentSettings;

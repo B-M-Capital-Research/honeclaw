@@ -39,7 +39,7 @@ describe("public blog content", () => {
     const zh = findPublicBlogPost("why-hone-uses-rust", "zh")!
     const en = alternatePublicBlogPost(zh, "zh")
 
-    expect(en.title).toContain("Why Hone uses Rust")
-    expect(alternatePublicBlogPost(en, "en").title).toContain("Hone 为什么")
+    expect(en.title).toContain("Why HONE uses Rust")
+    expect(alternatePublicBlogPost(en, "en").title).toContain("HONE 为什么")
   })
 })

@@ -333,13 +333,13 @@ const ResearchPreview: Component<ResearchPreviewProps> = (props) => {
               <div class="rp-page" data-page={i + 1}>
                 {/* 水印 */}
                 <div class="rp-watermark">
-                  <span class="rp-watermark-text">Hone Financial Research</span>
+                  <span class="rp-watermark-text">HONE RESEARCH</span>
                 </div>
                 {/* 页眉 */}
                 <div class="rp-header">
                   <span class="rp-header-left">{props.companyName}{RESEARCH.preview.header_suffix}</span>
                   <span class="rp-header-right">
-                    <span class="rp-header-brand">Hone Financial</span>
+                    <span class="rp-header-brand">HONE</span>
                     <span class="rp-header-date">{today()}</span>
                   </span>
                 </div>

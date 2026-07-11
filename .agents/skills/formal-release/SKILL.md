@@ -28,6 +28,7 @@ aliases:
    - `Cargo.lock`
    - `bins/hone-desktop/tauri.conf.json`
    - `bins/hone-user-app/tauri.conf.json`
+   - `apps/hone-ios/HONE.xcodeproj/project.pbxproj` (`MARKETING_VERSION`)
 4. 创建 `docs/releases/vX.Y.Z.md`：
    - 从 `docs/templates/release-notes.md` 出发
    - 内容必须覆盖自上次 release 以来的真实用户影响

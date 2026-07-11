@@ -63,7 +63,7 @@ function AppErrorFallback(props: { error: unknown }) {
 function AdminProviders(props: ParentProps) {
   return (
     <MetaProvider>
-      <Title>Hone Console</Title>
+      <Title>HONE Console</Title>
       <MarkedProvider>
         <ToastProvider>
           <BackendProvider>
@@ -90,7 +90,7 @@ function AdminProviders(props: ParentProps) {
 function PublicProviders(props: ParentProps) {
   return (
     <MetaProvider>
-      <Title>Hone Chat</Title>
+      <Title>HONE Chat</Title>
       <MarkedProvider>
         <ToastProvider>{props.children}</ToastProvider>
       </MarkedProvider>

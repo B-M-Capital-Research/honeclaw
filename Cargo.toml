@@ -25,9 +25,9 @@ members = [
 ]
 
 [workspace.package]
-version = "0.12.4"
+version = "0.13.0"
 edition = "2024"
-authors = ["Hone Financial"]
+authors = ["HONE"]
 license = "MIT"
 
 [workspace.dependencies]

@@ -63,4 +63,15 @@ describe("public content key parity", () => {
     expect(zhText).toContain("llm.providers.*.api_key/api_keys");
     expect(enText).toContain("llm.providers.*.api_key/api_keys");
   });
+
+  it("uses HONE as the only public product brand", () => {
+    for (const locale of ["zh", "en"] as const) {
+      setLocale(locale);
+      const text = collectStrings(CONTENT).join("\n");
+
+      expect(text).not.toContain("OPEN FINANCIAL CONSOLE");
+      expect(text).not.toContain("HONE Financial");
+      expect(text).toContain("HONE");
+    }
+  });
 });

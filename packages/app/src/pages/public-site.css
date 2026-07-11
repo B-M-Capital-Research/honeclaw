@@ -1,4 +1,4 @@
-/* public-site.css — Responsive overrides for Hone Public Site */
+/* public-site.css — Responsive overrides for the HONE public site */
 
 /*
  * The admin console UI styles lock scroll on html/body/#root for its
@@ -55,32 +55,47 @@ html {
   color: #0f172a;
 }
 
-/* Nav */
-.pub-nav-links {
-  display: flex;
-}
-.pub-nav-hamburger {
-  display: none;
-}
-.pub-nav-mobile-controls {
-  display: none;
+/* HONE brand */
+.hone-brand {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  color: #172026;
+  line-height: 1;
 }
-.pub-github-star-link {
-  min-height: 32px;
+.hone-brand-mark {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid rgba(48, 43, 35, 0.08);
+  border-radius: 12px;
+  background: #f7f1e6;
+  box-shadow: 0 5px 16px rgba(61, 49, 35, 0.10);
+  overflow: hidden;
 }
-.pub-github-star-count {
-  min-width: 2.2em;
-  padding: 2px 6px;
-  border-radius: 999px;
-  background: rgba(245, 158, 11, 0.12);
-  color: #b45309;
-  font-size: 11px;
-  font-weight: 800;
-  line-height: 1.2;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
+.hone-brand-mark img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.hone-brand-word {
+  font-family: "Avenir Next", "Helvetica Neue", sans-serif;
+  font-size: 17px;
+  font-weight: 850;
+  letter-spacing: 0.20em;
+}
+.hone-brand--dark {
+  color: #fffaf0;
+}
+.hone-brand--mark-only .hone-brand-mark {
+  width: 100%;
+  height: 100%;
+}
+.public-login-brand {
+  justify-content: center;
+  margin-bottom: 16px;
 }
 
 /* Shared public product header used by the home, roadmap, and chat pages. */
@@ -171,10 +186,55 @@ html {
 .public-chat-sidebar {
   font-family: var(--font-sans, "Plus Jakarta Sans", sans-serif);
 }
+.pub-nav {
+  position: fixed;
+  top: 10px;
+  right: 18px;
+  left: 18px;
+  z-index: 200;
+  height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 9px 0 12px;
+  border: 1px solid rgba(41, 36, 28, 0.10);
+  border-radius: 19px;
+  background: rgba(255, 253, 248, 0.88);
+  box-shadow: 0 10px 40px rgba(46, 39, 31, 0.08);
+  backdrop-filter: blur(22px) saturate(1.15);
+  -webkit-backdrop-filter: blur(22px) saturate(1.15);
+  transition: top 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;
+}
+.pub-nav.is-scrolled {
+  top: 6px;
+  background: rgba(255, 253, 248, 0.96);
+  box-shadow: 0 14px 38px rgba(35, 31, 26, 0.13);
+}
+.pub-nav-brand {
+  min-width: 136px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
 .pub-nav-links {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+.pub-nav-primary,
+.pub-nav-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.pub-nav-primary {
+  padding: 4px;
+  border: 1px solid rgba(45, 41, 34, 0.07);
+  border-radius: 14px;
+  background: rgba(234, 226, 212, 0.34);
 }
 .pub-nav-link,
 .pub-nav-cta,
@@ -187,7 +247,7 @@ html {
 .btn-roadmap-nav {
   box-sizing: border-box;
   min-height: 36px;
-  border-radius: 999px;
+  border-radius: 11px;
   font-family: var(--font-sans, "Plus Jakarta Sans", sans-serif);
   font-size: 13px;
   font-weight: 750;
@@ -197,40 +257,48 @@ html {
 .pub-nav-link {
   border: 0;
   cursor: pointer;
-  padding: 0 13px;
-  color: #475569;
+  padding: 0 12px;
+  color: #626b70;
   background: transparent;
-  transition: color 0.18s ease, background 0.18s ease;
+  transition: color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
 }
 .pub-nav-link:hover {
-  background: rgba(15, 23, 42, 0.06);
-  color: #0f172a !important;
+  background: rgba(255, 255, 255, 0.60);
+  color: #182126;
 }
 .pub-nav-link.is-active {
   font-weight: 800;
+  color: #9f3f08;
+  background: #fffdf8;
+  box-shadow: 0 2px 8px rgba(55, 45, 34, 0.10);
 }
 .pub-nav-cta {
-  min-width: 72px;
-  padding: 0 18px;
-  border: 1px solid #0f172a;
-  background: #0f172a;
+  min-width: 82px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 1px solid #20282c;
+  background: #20282c;
   color: #fff;
   cursor: pointer;
-  box-shadow: none;
-  transition: background 0.18s ease, border-color 0.18s ease, transform 0.06s ease;
+  box-shadow: 0 6px 18px rgba(31, 39, 43, 0.16);
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.12s ease;
 }
 .pub-nav-cta:hover {
-  background: #1e293b;
-  border-color: #1e293b;
+  background: #0f1518;
+  border-color: #0f1518;
+  transform: translateY(-1px);
 }
 .pub-nav-cta.is-active {
-  border-color: #f59e0b;
-  background: #f59e0b;
-  color: #111827;
+  border-color: #e9640b;
+  background: linear-gradient(135deg, #ffac18, #ee610a);
+  color: #24170f;
 }
 .pub-nav-cta.is-active:hover {
-  background: #d97706;
-  border-color: #d97706;
+  border-color: #dd5504;
+  background: linear-gradient(135deg, #ffa30e, #dd5504);
 }
 .pub-nav-extra-actions {
   display: inline-flex;
@@ -249,24 +317,38 @@ html {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 0 12px;
-  border: 1px solid rgba(15, 23, 42, 0.10);
-  color: #475569;
+  padding: 0 10px;
+  border: 1px solid rgba(44, 40, 33, 0.10);
+  color: #5d666b;
+  background: rgba(255, 255, 255, 0.42);
   text-decoration: none;
   transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
 }
 .pub-github-star-link:hover {
-  background: #f8fafc;
-  border-color: #cbd5e1;
-  color: #0f172a;
+  background: #fffdf8;
+  border-color: rgba(229, 100, 11, 0.24);
+  color: #20282c;
+}
+.pub-github-star-count {
+  min-width: 2.2em;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(238, 97, 10, 0.11);
+  color: #ad4307;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 .pub-nav-lang {
   display: inline-flex;
   align-items: center;
   gap: 2px;
   padding: 2px;
-  border: 1px solid rgba(15, 23, 42, 0.10);
-  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(44, 40, 33, 0.10);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.46);
 }
 .pub-nav-lang button {
   min-width: 34px;
@@ -282,26 +364,16 @@ html {
   font-weight: 750;
 }
 .pub-nav-lang button.is-active {
-  background: #0f172a;
+  background: #20282c;
   color: #fff;
 }
-.pub-nav[data-transparent="true"] .pub-nav-link:hover,
-.pub-nav[data-transparent="true"] .pub-nav-link.is-active {
-  background: rgba(255, 255, 255, 0.12) !important;
-  color: #fff !important;
+.pub-nav-hamburger,
+.pub-nav-mobile-controls {
+  display: none;
 }
-.pub-nav[data-transparent="true"] .pub-github-star-link,
-.pub-nav[data-transparent="true"] .pub-nav-lang {
-  border-color: rgba(255,255,255,0.18);
-  background: rgba(255,255,255,0.06);
-  color: rgba(255,255,255,0.72);
-}
-.pub-nav[data-transparent="true"] .pub-nav-lang button {
-  color: rgba(255,255,255,0.72);
-}
-.pub-nav[data-transparent="true"] .pub-nav-lang button.is-active {
-  background: rgba(255,255,255,0.16);
-  color: #fff;
+.pub-mobile-menu,
+.pub-mobile-menu-scrim {
+  display: none;
 }
 .header-socials {
   display: flex;
@@ -816,11 +888,77 @@ html {
 }
 
 /* Footer */
+.pub-footer {
+  padding: 72px 32px 34px;
+  color: #9ca4a8;
+  background:
+    radial-gradient(circle at 12% -20%, rgba(232, 93, 4, 0.14), transparent 38%),
+    #171d20;
+  font-family: var(--font-sans, "Plus Jakarta Sans", sans-serif);
+}
+.pub-footer-inner {
+  max-width: 1120px;
+  margin: 0 auto;
+}
 .pub-footer-grid {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr 1fr;
   gap: 40px;
   margin-bottom: 56px;
+}
+.pub-footer-brand p {
+  max-width: 260px;
+  margin: 18px 0 0;
+  color: #737d82;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.pub-footer-column h4 {
+  margin: 0 0 18px;
+  color: #5f696e;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.pub-footer-column ul {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.pub-footer-column a,
+.pub-footer-column button {
+  padding: 0;
+  border: 0;
+  color: #8c969a;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  text-decoration: none;
+}
+.pub-footer-column a:hover,
+.pub-footer-column button:hover {
+  color: #f0a05f;
+}
+.pub-footer-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  color: #505a5f;
+  font-size: 11px;
+}
+.pub-footer-bottom strong {
+  color: #6f787c;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
 }
 
 /* Roadmap */
@@ -920,8 +1058,22 @@ html {
   margin-bottom: 24px;
 }
 
-/* ── Mobile ── */
-@media (max-width: 768px) {
+@media (min-width: 901px) and (max-width: 1100px) {
+  .pub-nav .pub-contact-menu,
+  .pub-nav .pub-github-star-link {
+    display: none;
+  }
+  .pub-nav-brand {
+    min-width: 118px;
+  }
+  .pub-nav-link {
+    padding-right: 9px;
+    padding-left: 9px;
+  }
+}
+
+/* ── Mobile / tablet navigation ── */
+@media (max-width: 900px) {
   html {
     scroll-padding-top: 56px;
   }
@@ -1024,28 +1176,165 @@ html {
     display: none;
   }
   .pub-nav-hamburger {
-    display: flex !important;
+    width: 38px;
+    height: 38px;
+    display: grid !important;
+    place-content: center;
+    gap: 6px;
+    padding: 0;
+    border: 1px solid rgba(44, 40, 33, 0.10);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.56);
+    cursor: pointer;
+  }
+  .pub-nav-hamburger span {
+    width: 17px;
+    height: 1.5px;
+    display: block;
+    border-radius: 999px;
+    background: #252d31;
+    transition: transform 0.2s ease;
+  }
+  .pub-nav-hamburger.is-open span:first-child {
+    transform: translateY(3.75px) rotate(45deg);
+  }
+  .pub-nav-hamburger.is-open span:last-child {
+    transform: translateY(-3.75px) rotate(-45deg);
   }
   .pub-nav-mobile-controls {
     display: inline-flex;
     flex: 0 0 auto;
   }
   .pub-nav {
-    height: 56px !important;
-    padding-right: max(14px, env(safe-area-inset-right)) !important;
-    padding-left: max(14px, env(safe-area-inset-left)) !important;
+    top: max(8px, env(safe-area-inset-top)) !important;
+    right: max(10px, env(safe-area-inset-right)) !important;
+    left: max(10px, env(safe-area-inset-left)) !important;
+    height: 54px !important;
+    padding: 0 7px 0 10px !important;
+    border-radius: 17px;
   }
-  .pub-nav > div:first-child {
+  .pub-nav-brand {
     min-width: 0 !important;
     flex: 1 1 auto !important;
+    text-align: left;
   }
-  /* The OPEN FINANCIAL CONSOLE tagline is decorative — the logo alone identifies
-     the page on mobile, so hide it to free space for the hamburger. */
-  .pub-nav > div:first-child span {
-    display: none !important;
+  .pub-nav .hone-brand-mark {
+    width: 31px;
+    height: 31px;
+    border-radius: 10px;
+  }
+  .pub-nav .hone-brand-word {
+    font-size: 15px;
+  }
+  .pub-mobile-menu-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 198;
+    display: block;
+    border: 0;
+    background: rgba(25, 29, 30, 0.20);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
   }
   .pub-mobile-menu {
+    position: fixed;
+    top: calc(max(8px, env(safe-area-inset-top)) + 62px);
+    right: max(10px, env(safe-area-inset-right));
+    left: max(10px, env(safe-area-inset-left));
+    z-index: 199;
+    max-height: calc(100dvh - 86px - env(safe-area-inset-bottom));
+    display: block;
+    overflow: auto;
+    padding: 18px;
+    border: 1px solid rgba(44, 40, 33, 0.10);
+    border-radius: 22px;
+    background: rgba(255, 253, 248, 0.98);
+    box-shadow: 0 24px 70px rgba(35, 31, 26, 0.20);
     overscroll-behavior: contain;
+    animation: pub-menu-arrive 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  .pub-mobile-menu-kicker {
+    margin-bottom: 10px;
+    color: #c04f0b;
+    font-size: 10px;
+    font-weight: 850;
+    letter-spacing: 0.22em;
+  }
+  .pub-mobile-menu-links {
+    display: grid;
+    gap: 4px;
+  }
+  .pub-mobile-menu-links button {
+    min-height: 50px;
+    display: grid;
+    grid-template-columns: 30px 1fr auto;
+    align-items: center;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 13px;
+    color: #2a3236;
+    background: transparent;
+    cursor: pointer;
+    font: inherit;
+    font-size: 15px;
+    font-weight: 700;
+    text-align: left;
+  }
+  .pub-mobile-menu-links button.is-active {
+    color: #9e3d08;
+    background: #f7eadb;
+  }
+  .pub-mobile-menu-index {
+    color: #a5aaab;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+  }
+  .pub-mobile-menu-chat {
+    width: 100%;
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 12px;
+    padding: 0 17px;
+    border: 0;
+    border-radius: 14px;
+    color: #fff;
+    background: #20282c;
+    cursor: pointer;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 800;
+  }
+  .pub-mobile-menu-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 14px;
+  }
+  .pub-mobile-menu-meta > a {
+    color: #687176;
+    font-size: 11px;
+    font-weight: 700;
+    text-decoration: none;
+  }
+  .pub-mobile-contact {
+    margin-top: 14px;
+    padding: 12px;
+    border-radius: 15px;
+    background: #f2eee6;
+  }
+  .pub-mobile-contact-title {
+    margin-bottom: 9px;
+    color: #6b7377;
+    font-size: 11px;
+    font-weight: 800;
+  }
+  @keyframes pub-menu-arrive {
+    from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
   }
   .pub-github-star-link {
     min-width: 0;
@@ -1093,6 +1382,10 @@ html {
   .pub-footer-grid {
     grid-template-columns: 1fr 1fr;
     gap: 32px;
+  }
+  .pub-footer-bottom {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .pub-roadmap-phases {
@@ -1369,7 +1662,8 @@ html {
     grid-template-columns: minmax(0, 1fr) !important;
   }
 
-  .hone-landing-v4 .hero-logo {
+  .hone-landing-v4 .hero-logo .hone-brand-mark {
+    width: 82px !important;
     height: 82px !important;
   }
 

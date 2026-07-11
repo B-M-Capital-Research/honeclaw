@@ -35,10 +35,10 @@ function ArticleBody(props: { post: PublicBlogPost }) {
 
   return (
     <>
-      <Title>{props.post.title} | Hone Blog</Title>
+      <Title>{props.post.title} | HONE Blog</Title>
       <Meta name="description" content={props.post.excerpt} />
       <Meta property="og:type" content="article" />
-      <Meta property="og:site_name" content="Hone" />
+      <Meta property="og:site_name" content="HONE" />
       <Meta property="og:title" content={props.post.title} />
       <Meta property="og:description" content={props.post.excerpt} />
       <Meta property="og:url" content={canonicalUrl()} />

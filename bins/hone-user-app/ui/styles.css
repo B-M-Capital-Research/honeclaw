@@ -74,12 +74,25 @@ button {
   animation: card-arrive 700ms cubic-bezier(0.2, 0.82, 0.2, 1) both;
 }
 
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 28px;
+}
+
+.brand-lockup > strong {
+  color: #20282c;
+  font-size: 22px;
+  font-weight: 850;
+  letter-spacing: 0.22em;
+}
+
 .brand-mark {
   width: 88px;
   height: 88px;
   display: grid;
   place-items: center;
-  margin-bottom: 26px;
   border-radius: 25px;
   background: linear-gradient(145deg, #fff8e9, #eee7d8);
   box-shadow: 0 15px 32px rgba(56, 49, 39, 0.15), inset 0 1px #fff;
@@ -236,6 +249,7 @@ h1 {
     background: linear-gradient(145deg, #332d24, #202529);
     box-shadow: 0 15px 32px rgba(0, 0, 0, 0.28), inset 0 1px rgba(255, 255, 255, 0.08);
   }
+  .brand-lockup > strong { color: #f5f2eb; }
   h1 { color: #f5f2eb; }
   .subtitle, .status-row { color: #9ba4a9; }
   .progress-track { background: rgba(255, 255, 255, 0.09); }
@@ -250,5 +264,6 @@ h1 {
   }
   .brand-mark { width: 74px; height: 74px; border-radius: 21px; }
   .brand-mark svg { width: 64px; height: 64px; }
+  .brand-lockup > strong { font-size: 19px; }
   h1 { font-size: 31px; }
 }

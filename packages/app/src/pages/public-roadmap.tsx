@@ -1,11 +1,8 @@
-// public-roadmap.tsx — Hone Public Site Roadmap (content-driven)
+// public-roadmap.tsx — HONE Public Site Roadmap (content-driven)
 
-import { createResource } from "solid-js"
 import { useNavigate } from "@solidjs/router"
-import { displayGithubStars, fetchGithubStars } from "@/lib/github-stars"
 import { CONTENT } from "@/lib/public-content"
-import { setLocale, useLocale } from "@/lib/i18n"
-import { PublicContactMenu } from "@/components/public-contact-menu"
+import { PublicNav } from "@/components/public-nav"
 import "./public-site.css"
 
 function AnimatedBackground() {
@@ -15,42 +12,6 @@ function AnimatedBackground() {
       <div class="circle circle-2"></div>
       <div class="circle circle-3"></div>
     </div>
-  )
-}
-
-function Header() {
-  const navigate = useNavigate()
-  const [stars] = createResource(fetchGithubStars)
-  const C = CONTENT.nav
-
-  return (
-    <header class="page-header">
-      <div onClick={() => navigate("/")} class="header-logo">
-        <img src="/logo.svg" alt="Hone" />
-        <span>Hone</span>
-      </div>
-
-      <div class="header-actions">
-        <PublicContactMenu />
-
-        <a href={C.github_url} target="_blank" rel="noopener noreferrer" class="star-badge header-github-stars">
-          <span>GitHub</span>
-          <span>{displayGithubStars(stars())}</span>
-        </a>
-
-        <div class="lang-switch">
-          <button onClick={() => setLocale("zh")} class={useLocale() === "zh" ? "active" : ""}>中</button>
-          <button onClick={() => setLocale("en")} class={useLocale() === "en" ? "active" : ""}>EN</button>
-        </div>
-
-        <div style={{ display: "flex", gap: "8px" }}>
-          <button onClick={() => navigate("/")} class="btn-roadmap-nav mobile-hide">
-            {C.back_home}
-          </button>
-          <button onClick={() => navigate("/chat")} class="btn-chat-nav">{C.chat}</button>
-        </div>
-      </div>
-    </header>
   )
 }
 
@@ -92,7 +53,7 @@ export default function PublicRoadmapPage() {
   return (
     <div class="hone-roadmap-v4">
       <AnimatedBackground />
-      <Header />
+      <PublicNav />
 
       <main class="main-content">
         <section class="roadmap-hero">

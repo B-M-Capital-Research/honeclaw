@@ -195,6 +195,7 @@
   - CI-safe 回归脚本（`bash tests/regression/run_ci.sh`）
 - 任何需要外部账号凭证的检查都必须放到 `tests/regression/manual/`，不阻塞主干合并
 - `hone-desktop` 依赖桌面 sidecar 资源与打包环境，`hone-user-app` 是 macOS 专用远程用户端；两者都不属于默认 Linux PR / push 逻辑门禁，相关检查保留在各自的桌面构建或 release 流程中处理
+- `apps/hone-ios` 与 `hone-user-app` 的 Apple 客户端改动由 `.github/workflows/apple-clients.yml` 在 macOS runner 上按路径触发，iOS Simulator 编译结果是打 Apple 客户端 release tag 前的必查项
 
 ## 本地 Git Hook
 
