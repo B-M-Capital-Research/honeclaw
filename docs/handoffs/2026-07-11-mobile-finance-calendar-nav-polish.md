@@ -7,7 +7,7 @@
 - owner: Codex
 - related_files: `packages/app/src/components/finance-calendar-message.tsx`, `packages/app/src/components/finance-calendar-mobile-card.tsx`, `packages/app/src/pages/chat.tsx`, `packages/app/src/pages/public-site.css`, `packages/app/src/lib/finance-calendar.ts`, `crates/hone-web-api/src/routes/public_finance_calendar.rs`
 - related_docs: `docs/archive/plans/mobile-finance-calendar-nav-polish.md`, `docs/archive/plans/mobile-finance-calendar-dual-layout.md`, `docs/handoffs/2026-06-29-public-finance-calendar.md`, `docs/runbooks/backend-deployment.md`
-- related_prs: main commits `31081106`, `e95b1049`, `2a6e7572`
+- related_prs: main commits `31081106`, `e95b1049`, `2a6e7572`, `a4af378d`
 
 ## Summary
 
@@ -42,6 +42,12 @@ The follow-up shipped in `e95b1049`. The viewer now uses explicit fit/125/150/20
 The bounded button-only viewer did not satisfy iPhone pinch or native long-press behavior, and one desktop-oriented image remained too dense on a narrow screen. Commit `2a6e7572` now renders and uploads both the existing 1080 x 1350 desktop card and a dedicated 750 x 1334 mobile card. The portrait card keeps a readable monthly dot overview and moves important macro/earnings events into chronological agenda rows. The backend independently validates both upload paths and persists them in one backward-compatible message; old one-image messages still fall back to their existing image.
 
 The fixed viewer now interprets two-finger distance as bounded 1x-3x canvas zoom, keeps single-touch native scrolling for panning, and no longer suppresses iOS image touch callout/user selection. Local verification passed 207 frontend tests, 7 focused Rust tests, typecheck, public build, and a rendered 390 x 844 portrait review. Runtime PID `9767` started with the new backend, and production switched to `index-BcPNNntX.js` / `chat-DFgZWxOf.js`. The production chunk contains the mobile path, portrait dimensions, agenda content, and touch listeners; `/`, `/chat`, and `/roadmap` return 200, while public and origin auth probes return the expected 401 JSON.
+
+## Smooth Gesture And Legacy Upgrade Follow-up 2026-07-11 18:47 CST
+
+The first custom pinch implementation still changed canvas width and recomputed scroll offsets on every touch frame. Real iPhone feedback showed visible chasing/jitter at 300 percent, while legacy one-image messages continued to expose the clipped desktop cell labels. Commit `a4af378d` replaces this with a fixed, exact contain base and GPU `translate3d + scale`; pinch keeps the touched content anchored, one-finger pan is clamped to visible image bounds, and touch updates are coalesced to one animation frame. The viewer now measures the source image and available viewport through `ResizeObserver`, so 100 percent always contains the entire artifact before zoom starts.
+
+Visible legacy desktop-only messages now lazily fetch their month payload and render a portrait blob locally, avoiding an eager rebuild of all history. Mobile agenda rows contain one important event each and wrap the complete title instead of using ellipsis. Real-component QA covered 100 through 300 percent, exact 342 x 610 fit in a 390 x 844 viewer, full long-title rendering, and legacy 0.8-to-0.562 aspect conversion. All 209 frontend tests, typecheck, and the public build passed. Production uses `index-C-0scCea.js` / `chat-qOMG9Bni.js`; the chunk contains the transform, resize, touch, lazy-upgrade, and wrapping contracts, and route/runtime health is normal.
 
 ## Next Entry Point
 

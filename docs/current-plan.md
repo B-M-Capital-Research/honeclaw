@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-07-11
-状态：有 7 个活跃任务
+状态：有 6 个活跃任务
 
 ## 说明
 
@@ -15,11 +15,6 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
-
-- **移动端财经日历丝滑缩放与旧消息升级**
-  - 状态：`in_progress`
-  - 计划：`docs/current-plans/mobile-finance-calendar-dual-layout.md`
-  - 摘要：修复实机 300% 缩放时布局重排造成的抖动和桌面日历文字裁切，改为 GPU 变换手势，并让旧单图消息在手机端自动重建纵向可读版
 
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`

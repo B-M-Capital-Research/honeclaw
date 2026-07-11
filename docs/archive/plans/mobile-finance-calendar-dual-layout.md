@@ -1,7 +1,7 @@
 # Mobile Finance Calendar Dual Layout And Gestures
 
 - title: Mobile Finance Calendar Dual Layout And Gestures
-- status: in_progress
+- status: archived
 - created_at: 2026-07-11
 - updated_at: 2026-07-11
 - owner: Codex
@@ -36,6 +36,8 @@ Production follow-up: replace layout-driven width/scroll zoom with GPU transform
 
 Completed with 207 passing frontend tests, 7 focused web API tests, successful typecheck/public build, a rendered 390 x 844 portrait-card review, and production verification of `index-BcPNNntX.js` / `chat-DFgZWxOf.js`. The restarted runtime exposes the new backend contract and both public/origin health probes return the expected unauthenticated 401 JSON.
 
+The screenshot-driven follow-up shipped in `a4af378d`: 209 frontend tests, typecheck, and the public build passed. Real-component QA proved exact 342 x 610 contain sizing inside a 390 x 844 viewer, stable 100/125/150/200/250/300 percent transform-only zoom, full agenda text, and automatic conversion of a synthetic 1080 x 1350 legacy image into a 0.562-ratio mobile blob. Production switched to `index-C-0scCea.js` / `chat-qOMG9Bni.js`; core routes, auth proxy, runtime, tunnel, and UI sessions are healthy.
+
 ## Documentation Sync
 
 - Append the completed follow-up to the existing same-day handoff, move this plan to `docs/archive/plans/`, update `docs/archive/index.md`, and remove the active index entry after production verification.
@@ -47,3 +49,4 @@ Completed with 207 passing frontend tests, 7 focused web API tests, successful t
 - Existing messages contain only the desktop path and must remain readable.
 - Upload validation must be applied independently to both image paths before persistence.
 - Native long-press behavior still depends on iOS Safari itself; the application no longer suppresses touch callout or single-touch image handling.
+- Legacy mobile reconstruction uses the current actor/month calendar payload, so it intentionally upgrades readability rather than preserving a pixel-identical historical desktop artifact.
