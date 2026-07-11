@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-07-11
-状态：有 7 个活跃任务
+状态：有 6 个活跃任务
 
 ## 说明
 
@@ -15,11 +15,6 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
-
-- **移动财经日历 iOS 原生画布修复**
-  - 状态：`in_progress`
-  - 计划：`docs/current-plans/public-web-visual-architecture-refactor.md`
-  - 摘要：移除移动日历的 html2canvas 字体栅格化依赖，统一新生成与历史懒升级为 Canvas 2D v4 输出，消除 iOS 中文基线裁切
 
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`

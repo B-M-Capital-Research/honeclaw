@@ -1,7 +1,7 @@
 # Public Web Visual Architecture Refactor
 
 - title: Public Web Visual Architecture Refactor
-- status: in_progress
+- status: archived
 - created_at: 2026-07-11
 - updated_at: 2026-07-11
 - owner: Codex
@@ -43,6 +43,8 @@ Production switched to `index-DbfrdfV3.js`, `chat-CJ_LPzbz.js`, `chat-u_ejMPXz.c
 iOS follow-up: a real Safari-generated v3 artifact still clips the lower halves of Chinese agenda titles and the top signal line even though desktop Chromium and DOM geometry pass. The mobile artifact must stop using html2canvas entirely. New sends and lazy legacy upgrades will share one Canvas 2D renderer and use a `mobile-v4` marker so existing v3 artifacts are replaced in view.
 
 The v4 implementation now paints the complete 1500 x 2668 PNG through Canvas 2D at a 750 x 1334 logical coordinate system. New sends and in-view upgrades both call `renderFinanceCalendarMobilePng`; only the desktop card still uses html2canvas. A dense 13-event fixture rendered at 390 x 693.67 with all six agenda titles, including the long FOMC row, fully visible and no horizontal overflow. The shared agenda and canvas wrapping contracts have regression coverage; all frontend tests, typecheck, and the public build pass.
+
+Shipped in `a3e0dbaa`. All 211 frontend tests, typecheck, and the public build passed. Production switched to `index-C6T9yKIo.js` / `chat-VvOemH_a.js`; the chunk contains two v4 migration contracts, 24 direct `fillText` calls, and the Canvas error guard. Core routes return 200, auth returns the expected 401 JSON, the 390 x 844 page has no overflow or browser errors, and runtime PID `9767`, both local backends, Feishu, Discord, and the console process remain healthy.
 
 ## Documentation Sync
 

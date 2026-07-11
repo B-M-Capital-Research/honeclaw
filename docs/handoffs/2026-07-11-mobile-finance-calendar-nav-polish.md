@@ -7,7 +7,7 @@
 - owner: Codex
 - related_files: `packages/app/src/components/finance-calendar-message.tsx`, `packages/app/src/components/finance-calendar-mobile-card.tsx`, `packages/app/src/pages/chat.tsx`, `packages/app/src/pages/public-site.css`, `packages/app/src/lib/finance-calendar.ts`, `crates/hone-web-api/src/routes/public_finance_calendar.rs`
 - related_docs: `docs/archive/plans/mobile-finance-calendar-nav-polish.md`, `docs/archive/plans/mobile-finance-calendar-dual-layout.md`, `docs/handoffs/2026-06-29-public-finance-calendar.md`, `docs/runbooks/backend-deployment.md`
-- related_prs: main commits `31081106`, `e95b1049`, `2a6e7572`, `a4af378d`, `1a72b918`, `6ab39ee3`, `5b7b1d67`
+- related_prs: main commits `31081106`, `e95b1049`, `2a6e7572`, `a4af378d`, `1a72b918`, `6ab39ee3`, `5b7b1d67`, `a3e0dbaa`
 
 ## Summary
 
@@ -66,6 +66,12 @@ Fourteen focused finance-calendar tests, typecheck, and the public build passed.
 The screenshot exposed a structural failure rather than a spacing defect: `chat.tsx` owned a 2,069-line embedded stylesheet while `public-site.css` independently overrode the same shell, and the calendar used unsupported intermediate font weights, normal line boxes, colored text pills, and fractional capture scales. Commit `5b7b1d67` establishes `public-foundation.css`, `public-polish.css`, and `public-chat.css` as explicit ownership layers; `chat.tsx` drops from 5,838 to 3,770 lines and no longer contains a page-level style string. HONE is also now the browser-title brand.
 
 The mobile artifact is rebuilt as a HONE signal calendar with explicit line heights, standard 600/700 weights, plain category labels paired with aligned color rails, larger mobile-readable typography, and deterministic 2x capture. The v3 marker lazily rebuilds existing v1/v2 mobile artifacts without changing history. A 15-event fixture produced an exact 1500 x 2668 PNG, rendered at 390 px without overflow or label drift. All 209 tests, typecheck, and the public build passed. Production uses `index-DbfrdfV3.js` / `chat-CJ_LPzbz.js`; core routes, the two local backends, runtime PID `9767`, Feishu, Discord, and the console process are healthy.
+
+## iOS Native Canvas V4 Follow-up 2026-07-11 21:56 CST
+
+A real iPhone artifact proved Chromium visual QA was insufficient: html2canvas clipped the lower halves of Chinese agenda glyphs and the header signal line despite correct DOM boxes and explicit line heights. Commit `a3e0dbaa` removes html2canvas from both mobile paths. New calendar sends and visible-history upgrades now call one Canvas 2D renderer that paints text at explicit baselines and coordinates; only the separate desktop artifact retains html2canvas. The `mobile-v4` marker forces every v1-v3 artifact to rebuild in view.
+
+A dense 13-event fixture produced a 1500 x 2668 canvas and rendered at 390 x 693.67 with all six agenda titles fully visible, including the FOMC long title, and no horizontal overflow. All 211 tests, typecheck, and the public build passed. Production uses `index-C6T9yKIo.js` / `chat-VvOemH_a.js`; its chunk exposes the v4 contract, 24 direct `fillText` calls, and Canvas failure handling. Core routes, auth behavior, runtime PID `9767`, both local APIs, Feishu, Discord, and the console process are healthy.
 
 ## Next Entry Point
 
