@@ -22,6 +22,18 @@
 
 ## 最新进展
 
+- 本轮 2026-07-11 07:01-11:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `session_messages`
+    - 同窗 3 条 assistant final 均正常收口，未命中空回复、内部字段、原始工具 JSON 或投递失败；本窗未确认新的普通 direct / scheduler final 正式输出异常行情。
+  - `data/runtime/logs/web.log.2026-07-11`
+    - 11:00 CST `Monitor_Watchlist_11` raw preview 写出 `MU: $979.30` 并对比 `MU <= $252.00` 判断未触发；同条还显示工具预算耗尽后直接用已有异常价格继续判断。
+    - 11:00 CST `闪迪关键事件心跳提醒` deliver / duplicate preview 多次使用 `SNDK $1,915.92`、日内 `+3.10%` 等异常数量级行情作为新闻与行情锚点。
+    - 11:00 CST `AI与科技持仓观察关键事件心跳提醒` deliver preview 使用 `STX $910.34`、`BE $244.61` 等高风险数量级行情，并声称其余多只标的均已扫描。
+    - 11:00 CST `AAOI 1.6T 光模块心跳检测` 与 `持仓财报与重大新闻心跳提醒` deliver preview 使用 `AAOI $119.92`、`SNDK $1,915.92` 等异常或高风险价格进入 heartbeat 判断 / duplicate suppression 路径。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check 缺口：异常数量级价格进入 heartbeat 判断上下文和部分 deliver preview。
+    - 本窗没有新的正式普通 final 异常价格样本，也未阻断直聊 / 调度 / 投递主链路；因此仍按质量性 `P3 / New`。该问题不影响主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-11 03:00-07:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `session_messages`
     - 05:02 CST Web scheduler final `盘后美股复盘与SNDK/MU存储产业链日报` 正常收口，但围绕 SK Hynix ADR 首秀、SNDK/MU 和存储产业链继续输出强时效行情与估值判断；同窗未见空回复、内部字段或投递失败。
