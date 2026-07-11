@@ -15,10 +15,10 @@ else
   echo "[INFO] swiftc unavailable; running static iOS contract only"
 fi
 
-rg -q 'https://hone-claw.com/chat' "$IOS_DIR/HONE/NavigationPolicy.swift"
-rg -q 'com.hone.chat.ios' "$IOS_DIR/HONE.xcodeproj/project.pbxproj"
-rg -q 'MARKETING_VERSION = 0.13.0' "$IOS_DIR/HONE.xcodeproj/project.pbxproj"
-if rg -n -i 'hone financial|open financial console|hone-mcp|opencode|codex|feishu' "$IOS_DIR/HONE"; then
+grep -Fq 'https://hone-claw.com/chat' "$IOS_DIR/HONE/NavigationPolicy.swift"
+grep -Fq 'com.hone.chat.ios' "$IOS_DIR/HONE.xcodeproj/project.pbxproj"
+grep -Fq 'MARKETING_VERSION = 0.13.0' "$IOS_DIR/HONE.xcodeproj/project.pbxproj"
+if grep -REni 'hone financial|open financial console|hone-mcp|opencode|codex|feishu' "$IOS_DIR/HONE"; then
   echo "forbidden public brand or local runtime dependency found in iOS client" >&2
   exit 1
 fi
