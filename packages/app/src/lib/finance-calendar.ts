@@ -24,7 +24,29 @@ export type FinanceCalendarEventCategory =
 const FINANCE_CALENDAR_MESSAGE_PATTERN =
   /(?:这是你的|your)\s*(\d{4}-\d{2})\s*(?:财经日历|finance calendar)/i;
 
-export const FINANCE_CALENDAR_ZOOM_LEVELS = [1, 1.25, 1.5, 2] as const;
+export const FINANCE_CALENDAR_ZOOM_LEVELS = [1, 1.25, 1.5, 2, 2.5, 3] as const;
+
+export function clampFinanceCalendarZoom(value: number): number {
+  if (!Number.isFinite(value)) return 1;
+  return Math.min(3, Math.max(1, value));
+}
+
+export function financeCalendarPinchZoom(
+  startZoom: number,
+  currentDistance: number,
+  startDistance: number,
+): number {
+  if (startDistance <= 0) return clampFinanceCalendarZoom(startZoom);
+  return clampFinanceCalendarZoom(startZoom * (currentDistance / startDistance));
+}
+
+export function selectFinanceCalendarImageSource(
+  desktopSource: string,
+  mobileSource: string | undefined,
+  preferMobile: boolean,
+): string {
+  return preferMobile && mobileSource ? mobileSource : desktopSource;
+}
 
 export function financeCalendarMessageMonth(content: string): string | null {
   return FINANCE_CALENDAR_MESSAGE_PATTERN.exec(content)?.[1] ?? null;

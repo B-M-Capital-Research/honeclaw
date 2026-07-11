@@ -9,6 +9,9 @@ import {
   financeCalendarStatusLabel,
   groupFinanceCalendarEvents,
   isFinanceCalendarMessage,
+  clampFinanceCalendarZoom,
+  financeCalendarPinchZoom,
+  selectFinanceCalendarImageSource,
   stepFinanceCalendarZoom,
   parseFinanceCalendarMonth,
   visibleFinanceCalendarEventsForDay,
@@ -50,8 +53,28 @@ describe("finance calendar helpers", () => {
     expect(stepFinanceCalendarZoom(1, 1)).toBe(1.25);
     expect(stepFinanceCalendarZoom(1.25, 1)).toBe(1.5);
     expect(stepFinanceCalendarZoom(1.5, 1)).toBe(2);
-    expect(stepFinanceCalendarZoom(2, 1)).toBe(2);
+    expect(stepFinanceCalendarZoom(2, 1)).toBe(2.5);
+    expect(stepFinanceCalendarZoom(3, 1)).toBe(3);
     expect(stepFinanceCalendarZoom(1.92, -1)).toBe(1.5);
+    expect(clampFinanceCalendarZoom(0.2)).toBe(1);
+    expect(clampFinanceCalendarZoom(2.42)).toBe(2.42);
+    expect(clampFinanceCalendarZoom(9)).toBe(3);
+    expect(clampFinanceCalendarZoom(Number.NaN)).toBe(1);
+    expect(financeCalendarPinchZoom(1, 180, 120)).toBe(1.5);
+    expect(financeCalendarPinchZoom(2, 240, 120)).toBe(3);
+    expect(financeCalendarPinchZoom(2, 20, 0)).toBe(2);
+  });
+
+  it("selects the mobile calendar asset with a desktop fallback", () => {
+    expect(selectFinanceCalendarImageSource("desktop.png", "mobile.png", true)).toBe(
+      "mobile.png",
+    );
+    expect(selectFinanceCalendarImageSource("desktop.png", undefined, true)).toBe(
+      "desktop.png",
+    );
+    expect(selectFinanceCalendarImageSource("desktop.png", "mobile.png", false)).toBe(
+      "desktop.png",
+    );
   });
 
   it("builds a twelve-month picker for one year", () => {

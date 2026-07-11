@@ -140,11 +140,13 @@ describe("public finance calendar API", () => {
 
     const result = await sendPublicFinanceCalendar({
       path: "/tmp/public/web-user/calendar.png",
+      mobile_path: "/tmp/public/web-user/calendar-mobile.png",
       month: "2026-07",
     });
 
     expect(requestBody).toEqual({
       path: "/tmp/public/web-user/calendar.png",
+      mobile_path: "/tmp/public/web-user/calendar-mobile.png",
       month: "2026-07",
     });
     expect(result.ok).toBe(true);

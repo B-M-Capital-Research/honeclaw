@@ -34,6 +34,7 @@ pub(crate) struct FinanceCalendarQuery {
 #[derive(Debug, Deserialize)]
 pub(crate) struct FinanceCalendarSendRequest {
     pub path: Option<String>,
+    pub mobile_path: Option<String>,
     pub month: Option<String>,
 }
 
@@ -138,6 +139,27 @@ pub(crate) async fn handle_send_finance_calendar(
         Ok(path) => path,
         Err(response) => return response,
     };
+    let validated_mobile_path = if let Some(raw_mobile_path) = request
+        .mobile_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if !raw_mobile_path.to_ascii_lowercase().ends_with(".png") {
+            return json_error(StatusCode::BAD_REQUEST, "移动端财经日历只接受 PNG 图片");
+        }
+        match crate::routes::public::validate_public_upload_path(
+            &upload_root,
+            oss.as_ref(),
+            &user_id,
+            raw_mobile_path,
+        ) {
+            Ok(path) => Some(path),
+            Err(response) => return response,
+        }
+    } else {
+        None
+    };
 
     let month = request
         .month
@@ -145,7 +167,11 @@ pub(crate) async fn handle_send_finance_calendar(
         .and_then(|value| parse_month_spec(value).ok())
         .map(|month| month.value())
         .unwrap_or_else(|| hone_core::beijing_now().format("%Y-%m").to_string());
-    let content = finance_calendar_assistant_message(&validated_path, &month);
+    let content = finance_calendar_assistant_message(
+        &validated_path,
+        validated_mobile_path.as_deref(),
+        &month,
+    );
     let session_id = actor.session_id();
     if state
         .core
@@ -356,18 +382,8 @@ fn macro_seed_events() -> Vec<FinanceCalendarEvent> {
             "北京时间 02:00 · 6月会议",
             "federalreserve.gov",
         ),
-        (
-            "2026-07-14",
-            "美国 CPI",
-            "北京时间 20:30 · 6月",
-            "bls.gov",
-        ),
-        (
-            "2026-07-15",
-            "美国 PPI",
-            "北京时间 20:30 · 6月",
-            "bls.gov",
-        ),
+        ("2026-07-14", "美国 CPI", "北京时间 20:30 · 6月", "bls.gov"),
+        ("2026-07-15", "美国 PPI", "北京时间 20:30 · 6月", "bls.gov"),
         (
             "2026-07-16",
             "美联储褐皮书",
@@ -650,13 +666,27 @@ fn earnings_subtitle_from_item(item: &Value) -> Option<String> {
     }
 }
 
-fn finance_calendar_assistant_message(path: &str, month: &str) -> String {
-    let marker = if path.trim().starts_with("oss://") {
+fn finance_calendar_image_marker(path: &str) -> String {
+    if path.trim().starts_with("oss://") {
         path.trim().to_string()
     } else {
         format!("file://{}", path.trim().trim_start_matches("file://"))
-    };
-    format!("这是你的 {month} 财经日历：\n\n{marker}")
+    }
+}
+
+fn finance_calendar_assistant_message(
+    desktop_path: &str,
+    mobile_path: Option<&str>,
+    month: &str,
+) -> String {
+    let desktop_marker = finance_calendar_image_marker(desktop_path);
+    match mobile_path {
+        Some(path) => format!(
+            "这是你的 {month} 财经日历：\n\n{desktop_marker}\n\n{}",
+            finance_calendar_image_marker(path)
+        ),
+        None => format!("这是你的 {month} 财经日历：\n\n{desktop_marker}"),
+    }
 }
 
 fn sanitize_fmp_error(message: &str) -> String {
@@ -734,9 +764,7 @@ mod tests {
         assert_eq!(events[0].date, "2026-07-01");
         assert!(events.iter().any(|event| event.title.contains("非农")));
         assert!(events.iter().any(|event| event.title.contains("CPI")));
-        assert!(events
-            .iter()
-            .any(|event| event.title.contains("利率决议")));
+        assert!(events.iter().any(|event| event.title.contains("利率决议")));
         assert!(events.iter().all(|event| event.subtitle.is_some()));
 
         let august = MonthSpec {
@@ -821,10 +849,18 @@ mod tests {
 
     #[test]
     fn finance_calendar_assistant_message_uses_image_marker() {
-        let local = finance_calendar_assistant_message("/tmp/calendar.png", "2026-07");
+        let local = finance_calendar_assistant_message(
+            "/tmp/calendar.png",
+            Some("/tmp/calendar-mobile.png"),
+            "2026-07",
+        );
         assert!(local.contains("file:///tmp/calendar.png"));
-        let oss =
-            finance_calendar_assistant_message("oss://bucket/users/a/calendar.png", "2026-07");
+        assert!(local.contains("file:///tmp/calendar-mobile.png"));
+        let oss = finance_calendar_assistant_message(
+            "oss://bucket/users/a/calendar.png",
+            None,
+            "2026-07",
+        );
         assert!(oss.contains("oss://bucket/users/a/calendar.png"));
     }
 

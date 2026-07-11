@@ -443,6 +443,7 @@ export async function getPublicFinanceCalendar(
 
 export async function sendPublicFinanceCalendar(input: {
   path: string;
+  mobile_path?: string;
   month: string;
 }): Promise<{ ok: boolean; message: string }> {
   const response = await apiFetch("/api/public/finance-calendar/send", {

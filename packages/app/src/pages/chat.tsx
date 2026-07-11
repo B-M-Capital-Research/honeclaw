@@ -27,6 +27,7 @@ import {
   FINANCE_CALENDAR_CARD_WIDTH,
 } from "@/components/finance-calendar-card";
 import { FinanceCalendarMessageImage } from "@/components/finance-calendar-message";
+import { FinanceCalendarMobileCard } from "@/components/finance-calendar-mobile-card";
 import {
   PublicPushCenter,
   PublicPushDetailDialog,
@@ -724,39 +725,56 @@ function AssistantBody(props: { content: string; white?: boolean }) {
   );
   const hasImage = () => parts().some((part) => part.type === "image");
   const calendarMonth = createMemo(() => financeCalendarMessageMonth(cleaned()));
+  const calendarImages = createMemo(() =>
+    parts().filter(
+      (part): part is { type: "image"; value: string } => part.type === "image",
+    ),
+  );
+  const calendarText = createMemo(() =>
+    parts()
+      .filter((part) => part.type === "text")
+      .map((part) => part.value)
+      .join("")
+      .trim(),
+  );
   const markdownClass = () => assistantMarkdownClass(props.white);
 
   return (
     <Show
-      when={hasImage()}
-      fallback={<Markdown text={cleaned()} class={markdownClass()} />}
-    >
-      <For each={parts()}>
-        {(part) => (
-          <Switch>
-            <Match when={part.type === "image"}>
-              <Show
-                when={calendarMonth()}
-                fallback={
+      when={calendarMonth() && calendarImages().length > 0}
+      fallback={
+        <Show
+          when={hasImage()}
+          fallback={<Markdown text={cleaned()} class={markdownClass()} />}
+        >
+          <For each={parts()}>
+            {(part) => (
+              <Switch>
+                <Match when={part.type === "image"}>
                   <img
                     data-testid="assistant-inline-image"
                     src={part.value}
                     alt=""
                     class="hone-assistant-image mt-3 max-w-full cursor-zoom-in rounded-xl shadow-sm"
                   />
-                }
-              >
-                {(month) => (
-                  <FinanceCalendarMessageImage src={part.value} month={month()} />
-                )}
-              </Show>
-            </Match>
-            <Match when={part.type === "text"}>
-              <Markdown text={part.value} class={markdownClass()} />
-            </Match>
-          </Switch>
-        )}
-      </For>
+                </Match>
+                <Match when={part.type === "text"}>
+                  <Markdown text={part.value} class={markdownClass()} />
+                </Match>
+              </Switch>
+            )}
+          </For>
+        </Show>
+      }
+    >
+      <Show when={calendarText()}>
+        {(text) => <Markdown text={text()} class={markdownClass()} />}
+      </Show>
+      <FinanceCalendarMessageImage
+        src={calendarImages()[0]!.value}
+        mobileSrc={calendarImages()[1]?.value}
+        month={calendarMonth()!}
+      />
     </Show>
   );
 }
@@ -1875,6 +1893,7 @@ function FinanceCalendarQuickAction(props: { onSent: () => void }) {
     () => payload()?.events.filter((event) => event.kind === "earnings").length ?? 0,
   );
   let cardEl: HTMLDivElement | undefined;
+  let mobileCardEl: HTMLDivElement | undefined;
   let requestId = 0;
 
   const fitLargePreview = () => {
@@ -1956,22 +1975,31 @@ function FinanceCalendarQuickAction(props: { onSent: () => void }) {
       document as Document & { fonts?: { ready: Promise<unknown> } }
     ).fonts;
     await fonts?.ready.catch(() => undefined);
-    if (!cardEl) {
+    if (!cardEl || !mobileCardEl) {
       throw new Error(CONTENT.chat_page.composer.finance_calendar_render_error);
     }
   };
 
-  const renderPngBlob = async (data: FinanceCalendarPayload) => {
+  const renderPngBlobs = async (data: FinanceCalendarPayload) => {
     if (payload()?.month !== data.month) setPayload(data);
     await waitForCard();
     const { default: html2canvas } = await import("html2canvas");
-    const canvas = await html2canvas(cardEl!, {
+    const desktopCanvas = await html2canvas(cardEl!, {
       scale: window.devicePixelRatio >= 2 ? 1.6 : 1.3,
       backgroundColor: "#eef2f3",
       useCORS: true,
       logging: false,
     });
-    return canvasToPngBlob(canvas);
+    const mobileCanvas = await html2canvas(mobileCardEl!, {
+      scale: window.devicePixelRatio >= 2 ? 1.5 : 1.25,
+      backgroundColor: "#edf1f2",
+      useCORS: true,
+      logging: false,
+    });
+    return Promise.all([
+      canvasToPngBlob(desktopCanvas),
+      canvasToPngBlob(mobileCanvas),
+    ]);
   };
 
   const sendCalendar = async () => {
@@ -1983,16 +2011,25 @@ function FinanceCalendarQuickAction(props: { onSent: () => void }) {
         payload()?.month === selectedMonth()
           ? payload()!
           : await getPublicFinanceCalendar(selectedMonth());
-      const blob = await renderPngBlob(data);
-      const file = new File([blob], `hone-finance-calendar-${data.month}.png`, {
-        type: "image/png",
-      });
-      const uploaded = await uploadPublicAttachments([file]);
-      const image = uploaded[0];
-      if (!image?.path) {
+      const [desktopBlob, mobileBlob] = await renderPngBlobs(data);
+      const uploaded = await uploadPublicAttachments([
+        new File([desktopBlob], `hone-finance-calendar-${data.month}.png`, {
+          type: "image/png",
+        }),
+        new File([mobileBlob], `hone-finance-calendar-${data.month}-mobile.png`, {
+          type: "image/png",
+        }),
+      ]);
+      const desktopImage = uploaded[0];
+      const mobileImage = uploaded[1];
+      if (!desktopImage?.path || !mobileImage?.path) {
         throw new Error(CONTENT.chat_page.composer.finance_calendar_upload_error);
       }
-      await sendPublicFinanceCalendar({ path: image.path, month: data.month });
+      await sendPublicFinanceCalendar({
+        path: desktopImage.path,
+        mobile_path: mobileImage.path,
+        month: data.month,
+      });
       props.onSent();
       setOpen(false);
       setPayload(null);
@@ -2345,13 +2382,22 @@ function FinanceCalendarQuickAction(props: { onSent: () => void }) {
       </Portal>
       <Show when={payload()}>
         {(data) => (
-          <FinanceCalendarCard
-            payload={data()}
-            hidden
-            registerRef={(el) => {
-              cardEl = el;
-            }}
-          />
+          <>
+            <FinanceCalendarCard
+              payload={data()}
+              hidden
+              registerRef={(el) => {
+                cardEl = el;
+              }}
+            />
+            <FinanceCalendarMobileCard
+              payload={data()}
+              hidden
+              registerRef={(element) => {
+                mobileCardEl = element;
+              }}
+            />
+          </>
         )}
       </Show>
     </>

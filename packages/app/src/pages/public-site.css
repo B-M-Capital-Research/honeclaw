@@ -2082,7 +2082,7 @@ html {
 .public-finance-calendar-lightbox > header button { width: 42px; height: 42px; flex: 0 0 42px; border: 1px solid rgba(255,255,255,0.13); border-radius: 14px; background: rgba(255,255,255,0.08); color: #fff; cursor: pointer; font-size: 27px; line-height: 1; }
 .public-finance-calendar-lightbox-viewport { min-height: 0; overflow: auto; display: block; padding: 14px; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y; }
 .public-finance-calendar-lightbox-canvas { width: min(100%,900px); margin: 0 auto; transition: width 180ms ease; }
-.public-finance-calendar-lightbox-viewport img { width: 100%; height: auto; display: block; border-radius: 14px; box-shadow: 0 24px 70px rgba(0,0,0,0.42); -webkit-user-select: none; user-select: none; }
+.public-finance-calendar-lightbox-viewport img { width: 100%; height: auto; display: block; border-radius: 14px; box-shadow: 0 24px 70px rgba(0,0,0,0.42); -webkit-touch-callout: default; -webkit-user-select: auto; user-select: auto; }
 .public-finance-calendar-lightbox > footer { padding: 10px 14px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid rgba(255,255,255,0.10); background: rgba(17,24,28,0.98); }
 .public-finance-calendar-lightbox > footer p { margin: 0 0 8px; color: #aeb8bd; font-size: 10px; text-align: center; }
 .public-finance-calendar-lightbox > footer .public-finance-calendar-action-error { margin-top: 8px; color: #fed7aa; background: rgba(194,65,12,0.18); }
@@ -2095,6 +2095,7 @@ html {
 @media (max-width: 768px) {
   .public-finance-calendar-message { margin-top: 10px; gap: 8px; }
   .public-finance-calendar-preview { border-radius: 16px; }
+  .public-finance-calendar-image-frame { aspect-ratio: 750 / 1334; }
   .public-finance-calendar-actions { gap: 6px; }
   .public-finance-calendar-actions button { min-height: 42px; padding: 0 8px; font-size: 11px; }
   .public-finance-calendar-actions svg { width: 15px; height: 15px; }

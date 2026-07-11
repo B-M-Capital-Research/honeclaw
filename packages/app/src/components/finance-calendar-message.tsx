@@ -1,8 +1,12 @@
-import { createMemo, createSignal, onCleanup, Show } from "solid-js";
+import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 
 import { CONTENT } from "@/lib/public-content";
-import { stepFinanceCalendarZoom } from "@/lib/finance-calendar";
+import {
+  financeCalendarPinchZoom,
+  selectFinanceCalendarImageSource,
+  stepFinanceCalendarZoom,
+} from "@/lib/finance-calendar";
 
 type ShareNavigator = Navigator & {
   canShare?: (data: ShareData) => boolean;
@@ -11,6 +15,7 @@ type ShareNavigator = Navigator & {
 
 export function FinanceCalendarMessageImage(props: {
   src: string;
+  mobileSrc?: string;
   month: string;
 }) {
   const [loaded, setLoaded] = createSignal(false);
@@ -18,20 +23,45 @@ export function FinanceCalendarMessageImage(props: {
   const [retry, setRetry] = createSignal(0);
   const [open, setOpen] = createSignal(false);
   const [zoom, setZoom] = createSignal(1);
+  const [preferMobile, setPreferMobile] = createSignal(
+    typeof window !== "undefined" && window.matchMedia("(max-width: 768px)").matches,
+  );
   const [working, setWorking] = createSignal<"save" | "share" | null>(null);
   const [actionError, setActionError] = createSignal(false);
+  const selectedSource = createMemo(() =>
+    selectFinanceCalendarImageSource(
+      props.src,
+      props.mobileSrc,
+      preferMobile(),
+    ),
+  );
   const source = createMemo(() => {
-    const join = props.src.includes("?") ? "&" : "?";
-    return `${props.src}${join}calendar_retry=${retry()}`;
+    const selected = selectedSource();
+    const join = selected.includes("?") ? "&" : "?";
+    return `${selected}${join}calendar_retry=${retry()}`;
   });
-  const fileName = () => `HONE-finance-calendar-${props.month}.png`;
+  const fileName = () =>
+    `HONE-finance-calendar-${props.month}${preferMobile() && props.mobileSrc ? "-mobile" : ""}.png`;
   const zoomLabel = () =>
     zoom() === 1
       ? CONTENT.chat_page.composer.finance_calendar_zoom_fit
       : `${Math.round(zoom() * 100)}%`;
-  const zoomWidth = () => `min(${zoom() * 100}%, ${Math.round(900 * zoom())}px)`;
+  const zoomWidth = () => {
+    const baseWidth = preferMobile() && props.mobileSrc ? 750 : 900;
+    return `min(${zoom() * 100}%, ${Math.round(baseWidth * zoom())}px)`;
+  };
   let cachedBlob: Blob | undefined;
+  let cachedSource = "";
   let viewportEl: HTMLDivElement | undefined;
+  let removeViewportGestures: (() => void) | undefined;
+
+  onMount(() => {
+    const media = window.matchMedia("(max-width: 768px)");
+    const sync = () => setPreferMobile(media.matches);
+    sync();
+    media.addEventListener?.("change", sync);
+    onCleanup(() => media.removeEventListener?.("change", sync));
+  });
 
   const settleViewport = (fit = false) => {
     requestAnimationFrame(() => {
@@ -49,6 +79,80 @@ export function FinanceCalendarMessageImage(props: {
   const fitPreview = () => {
     setZoom(1);
     settleViewport(true);
+  };
+
+  const bindViewport = (element: HTMLDivElement) => {
+    removeViewportGestures?.();
+    viewportEl = element;
+    let pinch:
+      | {
+          distance: number;
+          zoom: number;
+          contentX: number;
+          contentY: number;
+        }
+      | undefined;
+    const touchMetrics = (event: TouchEvent) => {
+      const first = event.touches.item(0);
+      const second = event.touches.item(1);
+      if (!first || !second) return null;
+      const rect = element.getBoundingClientRect();
+      const localX = (first.clientX + second.clientX) / 2 - rect.left;
+      const localY = (first.clientY + second.clientY) / 2 - rect.top;
+      return {
+        distance: Math.hypot(
+          second.clientX - first.clientX,
+          second.clientY - first.clientY,
+        ),
+        localX,
+        localY,
+      };
+    };
+    const onTouchStart = (event: TouchEvent) => {
+      const metrics = touchMetrics(event);
+      if (!metrics) return;
+      pinch = {
+        distance: metrics.distance,
+        zoom: zoom(),
+        contentX: (element.scrollLeft + metrics.localX) / zoom(),
+        contentY: (element.scrollTop + metrics.localY) / zoom(),
+      };
+    };
+    const onTouchMove = (event: TouchEvent) => {
+      const metrics = touchMetrics(event);
+      if (!pinch || !metrics || pinch.distance <= 0) return;
+      event.preventDefault();
+      const nextZoom = financeCalendarPinchZoom(
+        pinch.zoom,
+        metrics.distance,
+        pinch.distance,
+      );
+      const pinchState = pinch;
+      setZoom(nextZoom);
+      requestAnimationFrame(() => {
+        element.scrollLeft = Math.max(
+          0,
+          pinchState.contentX * nextZoom - metrics.localX,
+        );
+        element.scrollTop = Math.max(
+          0,
+          pinchState.contentY * nextZoom - metrics.localY,
+        );
+      });
+    };
+    const onTouchEnd = (event: TouchEvent) => {
+      if (event.touches.length < 2) pinch = undefined;
+    };
+    element.addEventListener("touchstart", onTouchStart, { passive: true });
+    element.addEventListener("touchmove", onTouchMove, { passive: false });
+    element.addEventListener("touchend", onTouchEnd, { passive: true });
+    element.addEventListener("touchcancel", onTouchEnd, { passive: true });
+    removeViewportGestures = () => {
+      element.removeEventListener("touchstart", onTouchStart);
+      element.removeEventListener("touchmove", onTouchMove);
+      element.removeEventListener("touchend", onTouchEnd);
+      element.removeEventListener("touchcancel", onTouchEnd);
+    };
   };
 
   const close = () => {
@@ -69,7 +173,10 @@ export function FinanceCalendarMessageImage(props: {
     document.removeEventListener("keydown", onKeyDown);
     close();
   };
-  onCleanup(() => document.removeEventListener("keydown", onKeyDown));
+  onCleanup(() => {
+    document.removeEventListener("keydown", onKeyDown);
+    removeViewportGestures?.();
+  });
 
   const retryImage = () => {
     cachedBlob = undefined;
@@ -78,10 +185,11 @@ export function FinanceCalendarMessageImage(props: {
     setRetry((value) => value + 1);
   };
   const loadBlob = async () => {
-    if (cachedBlob) return cachedBlob;
+    if (cachedBlob && cachedSource === source()) return cachedBlob;
     const response = await fetch(source(), { credentials: "include" });
     if (!response.ok) throw new Error(`calendar image ${response.status}`);
     cachedBlob = await response.blob();
+    cachedSource = source();
     return cachedBlob;
   };
   const downloadBlob = (blob: Blob) => {
@@ -217,7 +325,7 @@ export function FinanceCalendarMessageImage(props: {
             <div
               class="public-finance-calendar-lightbox-viewport"
               ref={(element) => {
-                viewportEl = element;
+                bindViewport(element);
               }}
             >
               <div
@@ -242,7 +350,7 @@ export function FinanceCalendarMessageImage(props: {
                 <button
                   type="button"
                   aria-label={CONTENT.chat_page.composer.finance_calendar_zoom_in}
-                  disabled={zoom() >= 2}
+                  disabled={zoom() >= 3}
                   onClick={() => changeZoom(1)}
                 >
                   +
