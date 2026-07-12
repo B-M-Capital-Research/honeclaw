@@ -112,6 +112,9 @@ impl AgentSessionListener for ProbeListener {
                     println!("[delta] {content}");
                 }
             }
+            AgentSessionEvent::Run(RunEvent::StreamReset) => {
+                println!("[reset]");
+            }
             AgentSessionEvent::Run(RunEvent::StreamThought { thought }) => {
                 if !thought.trim().is_empty() {
                     println!("[thought] {thought}");

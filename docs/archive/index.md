@@ -4,6 +4,18 @@ Last updated: 2026-07-12
 
 ## 2026-07-12
 
+### Public Chat Native Runner Streaming
+
+- Status: done
+- Date: 2026-07-12
+- Plan: `docs/archive/plans/public-chat-native-runner-streaming.md`
+- Handoff: `docs/handoffs/2026-07-12-public-chat-startup-experience.md`
+- Decision / ADR: `D-2026-07-12-03` in `docs/decisions.md`
+- Related PRs / commits: `6d5075a4`, this CI follow-up change set
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`, 13 LLM tests, 7 function-calling tests, 500 channel tests, 101 Web API tests with two credentialed tests ignored, 218 frontend tests, frontend typecheck/public build, workspace all-target check excluding Apple clients, production asset/API/runtime checks
+- Current conclusion: Codex/OpenCode ACP retains native ACP message chunks for trusted administrators, while ordinary public users remain actor-isolated and now receive real upstream OpenAI-compatible/OpenRouter tool-capable SSE through the strict function-calling runner. Fragmented parallel tool calls are assembled by index, internal reasoning stays hidden, transient tool preambles reset in place, final persistence remains one assistant turn, and the public client frame-batches deltas in the existing thinking card.
+- Next entry point: `crates/hone-llm/src/provider.rs`, `agents/function_calling/src/lib.rs`, `crates/hone-channels/src/runners/tool_reasoning.rs`, and `packages/app/src/pages/chat.tsx`
+
 ### Server-owned Finance Calendar Images
 
 - Status: done
