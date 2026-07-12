@@ -1427,3 +1427,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: `packages/app/e2e/public-mobile-overlays.spec.ts`, `bun run typecheck:web`, `bun run test:web`, `bun run build:web:public`
 - Current conclusion: mobile push center and detail layers no longer collide with the fixed nav, inbox-open acknowledgement reliably clears the red dot without consuming future arrivals, and the finance calendar has a full-screen zoomable viewer above all page stacking contexts.
 - Next entry point: `packages/app/src/pages/chat.tsx`
+
+### v0.14.0 Apple User Client Release
+
+- Status: done
+- Date: 2026-07-12
+- Plan: `docs/archive/plans/v0.14.0-apple-user-client-release.md`
+- Handoff: `docs/handoffs/2026-07-12-v0.14.0-apple-user-client-release.md`
+- Decision / ADR: `docs/decisions.md#d-2026-07-11-01-separate-the-public-macos-app-from-the-local-runtime-desktop`
+- Related PRs / commits: `60ef12c8`, tag `v0.14.0`, GitHub Actions run `29181306840`
+- Related runbooks / regressions: `docs/runbooks/public-user-macos-app.md`, `cargo test -p hone-user-app`, `bash tests/regression/ci/test_hone_ios_contract.sh`, `bun run test:web`
+- Current conclusion: v0.14.0 published verified macOS Universal DMG, iOS Simulator App, and Xcode assets; macOS now has a verifiable bundle-level ad-hoc signature, and Apple checksum files use portable basenames with generation-time self-validation.
+- Next entry point: `docs/handoffs/2026-07-12-v0.14.0-apple-user-client-release.md`

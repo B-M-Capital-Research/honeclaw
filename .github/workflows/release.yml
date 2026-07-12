@@ -240,7 +240,11 @@ jobs:
             HEAD \
             apps/hone-ios
 
-          shasum -a 256 dist/HONE-* > dist/HONE-Apple-SHASUMS256.txt
+          (
+            cd dist
+            shasum -a 256 HONE-iOS-* HONE-macOS-* > HONE-Apple-SHASUMS256.txt
+            shasum -a 256 -c HONE-Apple-SHASUMS256.txt
+          )
 
       - name: Upload Apple user clients
         shell: bash
