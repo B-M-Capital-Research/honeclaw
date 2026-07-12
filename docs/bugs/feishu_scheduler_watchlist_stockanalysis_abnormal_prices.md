@@ -22,6 +22,19 @@
 
 ## 最新进展
 
+- 本轮 2026-07-12 15:02-19:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `session_messages`
+    - 15:02-19:02 CST 新增 3 组 user / assistant，17:30 CST Feishu scheduler、17:49 CST Web direct、18:00 CST Web scheduler 均正常收口；本窗没有确认新的普通 direct / scheduler final 正式输出异常行情。
+    - assistant final 未见空回复、内部字段、原始工具 JSON 或投递失败。
+  - `data/runtime/logs/web.log.2026-07-12`
+    - 本窗 32 条 heartbeat preview 继续使用异常或高风险行情锚点进入判断。
+    - 15:30-19:00 CST `NVDA 关键事件心跳提醒` 多条 raw / deliver preview 使用 `NVDA $210.96`、PE `36.12x`、Market Cap `$5.11T` 等高风险行情锚，并在 `JsonMalformed` 或 duplicate suppression 路径中继续参与判断。
+    - 16:00-19:00 CST `中际旭创关键事件心跳提醒` 多条 raw / deliver preview 使用 `¥1,093.98`、昨收 `¥1,194.9`、日跌幅 `-8.45%`、Forward PE `81.4x` 等高风险 A 股数量级数据。
+    - 19:00 CST `Monitor_Watchlist_11` raw preview 继续使用 `MU $979.30` 对比 `MU <= $252.00` 判断未触发；`持仓重大事件心跳提醒` deliver preview 也继续使用 `MU $979.30` 作为行情锚。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check 缺口：异常或高风险数量级价格进入 heartbeat 判断上下文和部分 deliver preview。
+    - 本窗没有新的正式普通 final 异常价格样本，也未阻断直聊 / 调度 / 投递主链路；因此仍按质量性 `P3 / New`。该问题不影响主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-12 07:01-11:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `session_messages`
     - 07:01-11:01 CST 新增 2 个 user turn / 2 条 assistant final，均为 Feishu scheduler 文章跟踪任务正常收口；本窗没有确认新的普通 direct / scheduler final 正式输出异常行情。

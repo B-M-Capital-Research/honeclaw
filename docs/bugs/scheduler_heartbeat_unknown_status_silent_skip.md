@@ -7,6 +7,19 @@
 
 ## 修复进展
 
+- `2026-07-12 15:02-19:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-12`
+    - 本窗 heartbeat 可分类 `parse_kind` 信号为 `PlainTextTriggered=216`、`JsonNoop=82`、`PlainTextNoop=10`、`PlainTextSuppressed=7`、`JsonMalformed=2`。
+    - raw preview 以 `<think>` 开头 208 次，`deliver_preview` 108 次；失败 / 解析异常 / 预算拒绝相关日志共 179 条。
+    - 代表样本包括 15:30 CST `ASTS 重大异动心跳监控`、`heartbeat_绿田机械基本面跟踪` 的“heartbeat 输出不是结构化 JSON，任务已标记失败”；17:30 CST `NVDA 关键事件心跳提醒` 以 `<think>` 开头并落成 `JsonMalformed + parse failure escalated`；18:00 CST Web / Feishu heartbeat 继续出现“输出不是结构化 JSON”失败。
+    - 多条 `PlainTextTriggered` 仍进入 deliver / duplicate suppression 路径，例如 19:00 CST `持仓重大事件心跳检测`、`NBIS关键事件心跳提醒`、`Cerebras IPO与业务进展心跳监控`，说明线上仍依赖解析器从自由文本中猜测 heartbeat 状态。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 在 15:02-19:02 CST 有 3 组 user / assistant：17:30 CST Feishu scheduler、17:49 CST Web direct、18:00 CST Web scheduler 均有 assistant 终态。
+    - 同窗未发现连续 user turn 漏答、空回复、`<think>`、本机路径、provider 原始错误或原始工具 JSON 进入 assistant final；本地 `cron_job_runs` 仍停在 2026-07-10 14:01 CST，本轮仍以 runtime web log 判断 heartbeat 运行态。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题继续影响 heartbeat 监控判断、送达语义和失败 / 跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-12 07:01-11:01 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-12`
     - 本窗 heartbeat `parse_kind` 分布为 `PlainTextTriggered=168`、`JsonNoop=67`、`PlainTextSuppressed=19`、`PlainTextNoop=6`、`JsonTriggered=3`、`JsonEmptyStatus=1`、`Empty=1`。
