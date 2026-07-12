@@ -7,6 +7,18 @@
 
 ## 修复进展
 
+- `2026-07-12 07:01-11:01 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-12`
+    - 本窗 heartbeat `parse_kind` 分布为 `PlainTextTriggered=168`、`JsonNoop=67`、`PlainTextSuppressed=19`、`PlainTextNoop=6`、`JsonTriggered=3`、`JsonEmptyStatus=1`、`Empty=1`。
+    - raw preview 以 `<think>` 开头 180 次，`deliver_preview` 85 次，duplicate suppression 53 次；另有 19 条“heartbeat 输出不是结构化 JSON，任务已标记失败”和 1 条“heartbeat 输出为空，任务已标记失败”。
+    - 代表样本包括 08:00 CST `RKLB异动监控`、`全天原油价格3小时播报`、`TEM大事件心跳监控` 的 `PlainTextSuppressed + execution_failed`；09:00 / 09:30 CST 多条 Feishu / Web heartbeat 命中 `provider_http_error` 或“不是结构化 JSON”；11:00 CST `ASTS 重大异动心跳监控` 落成 `Empty + execution_failed`。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 在 07:01-11:01 CST 只有 2 个 user turn / 2 条 assistant final，均为普通 Feishu scheduler 文章跟踪任务正常收口；assistant final 未见空回复、`<think>`、本机路径、provider 原始错误或原始工具 JSON。
+    - 本地 `cron_job_runs` 仍停在 2026-07-10 14:01 CST，本轮仍以 runtime web log 判断 cloud/runtime heartbeat 运行态。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题继续影响 heartbeat 监控判断、送达语义和失败/跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-12 03:02-07:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-11`
     - 05:30-07:01 CST 多条 heartbeat 仍以 `<think>` 或自然语言开头，再被解析为 `PlainTextTriggered`、`JsonNoop`、`PlainTextNoop`、`PlainTextSuppressed` 等混合状态。

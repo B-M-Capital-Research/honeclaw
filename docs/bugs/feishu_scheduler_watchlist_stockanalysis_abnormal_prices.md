@@ -22,6 +22,18 @@
 
 ## 最新进展
 
+- 本轮 2026-07-12 07:01-11:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `session_messages`
+    - 07:01-11:01 CST 新增 2 个 user turn / 2 条 assistant final，均为 Feishu scheduler 文章跟踪任务正常收口；本窗没有确认新的普通 direct / scheduler final 正式输出异常行情。
+    - assistant final 未见空回复、内部字段、原始工具 JSON 或投递失败。
+  - `data/runtime/logs/web.log.2026-07-12`
+    - 08:00 / 11:00 CST `闪迪关键事件心跳提醒`、`持仓财报与重大新闻心跳提醒` 多条 raw / deliver preview 继续使用 `SNDK $1,915.92`，并围绕 50 日均线、Forward PE、市值或财报日期进入判断。
+    - 11:00 CST `AAOI 1.6T 光模块心跳检测` raw preview 继续使用 `AAOI $119.92`、日高低和 timestamp 作为行情锚。
+    - 08:00 / 11:00 CST `光迅科技关键事件心跳提醒` deliver preview 继续使用 `¥233.45`、`¥238.49`、`¥210-¥258.66` 等高风险 A 股数量级数据进入判断。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check 缺口：异常或高风险数量级价格进入 heartbeat 判断上下文和部分 deliver preview。
+    - 本窗没有新的正式普通 final 异常价格样本，也未阻断直聊 / 调度 / 投递主链路；因此仍按质量性 `P3 / New`。该问题不影响主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-12 03:02-07:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `session_messages`
     - 03:02-07:02 CST 新增 3 个 user turn / 3 条 assistant final，均为 scheduler 触发后正常收口；本窗没有确认新的普通 direct / scheduler final 正式输出异常行情。

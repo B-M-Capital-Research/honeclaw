@@ -14,9 +14,20 @@
 
 ## 状态
 
-- Fixed
+- New
 
 ## 修复进展
+
+- `2026-07-12 11:01 CST` 运行态复核确认代码级修复后仍复发，状态从 `Fixed` 回退为 `New`：
+  - `data/runtime/logs/web.log.2026-07-12`
+    - 08:00 CST `美股黄金坑信号心跳检测` 已作为 heartbeat job 被 scheduler 触发，但 raw preview 仍把任务理解为“用户想让我每 30 分钟创建市场监控”，deliver preview 写出“当前无法创建30分钟自动化心跳监控任务”；随后 duplicate suppression 匹配旧“无法创建30分钟自动化心跳监控任务”基线，最终未发送。
+    - 11:00 CST `中际旭创关键事件心跳提醒` 同样已经作为 heartbeat job 周期触发，但 deliver preview 写出“当前系统无法建立‘每30分钟自动循环’的自动监控”；matched preview 又命中“当前系统工具链中不存在 `cron_job` 类型的任务创建工具，无法以‘每 30 分钟检查一次’为周期建立自动循环监控”。
+  - 会话质量对照：
+    - 07:01-11:01 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 2 个 user turn / 2 条 assistant final，均为 Feishu scheduler 文章跟踪任务正常收口；本地 `cron_job_runs` 仍停在 2026-07-10 14:01 CST，因此当前 heartbeat 运行态仍以 runtime web log 为主。
+    - 最近四小时非文档提交 `6339c511`、`7cdbb12b` 集中在移动端手势 / 分享卡片与持久化日历图片服务，未改变本缺陷判断。
+  - 判断：
+    - 该复发仍是同一根因链路：已创建 heartbeat job 的执行意图被“创建/设置自动监控”请求语义污染，且旧“无法创建”坏基线继续参与 duplicate suppression。
+    - 这是功能性监控链路缺陷，定级仍为 P2；当前证据覆盖 heartbeat 子链路，未见全渠道停摆、错对象投递、数据安全泄露或 P1 级全局任务丢失，因此不升级为 P1，不创建 GitHub Issue。
 
 - `2026-07-12 03:04 CST` 代码级修复完成，状态更新为 `Fixed`：
   - `crates/hone-channels/src/scheduler.rs`
