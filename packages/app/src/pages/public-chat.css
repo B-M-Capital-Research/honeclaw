@@ -30,6 +30,20 @@ body.public-chat-scroll-lock #root {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
+
+/* Keep all desktop chat controls on the same HONE UI typography contract. */
+.public-chat-page .pub-nav-link,
+.public-chat-page .pub-nav-cta,
+.public-chat-page .pub-github-star-link,
+.public-chat-page .pub-nav-lang button,
+.public-chat-page .public-chat-sidebar-nav button,
+.public-chat-page .public-chat-sidebar-star,
+.public-chat-page .public-chat-sidebar-logout,
+.public-chat-page .public-chat-proactive-tip {
+  font-family: var(--hone-font-body) !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.01em !important;
+}
 .public-chat-page button,
 .public-chat-page textarea,
 .public-chat-page input {

@@ -92,6 +92,7 @@ import {
   shouldRetryPublicRestore,
   shouldRecoverPinnedBottom,
   shouldPreventPublicChatPinch,
+  shouldSubmitPublicChatEnter,
   shouldLoadOlderPublicMessages,
   splitPublicChatAttachments,
   stripAttachmentMarkers,
@@ -2189,6 +2190,8 @@ function Composer(props: {
   let taRef: HTMLTextAreaElement | undefined;
   let imgInputRef: HTMLInputElement | undefined;
   let fileInputRef: HTMLInputElement | undefined;
+  let compositionActive = false;
+  let suppressEnterUntil = 0;
 
   const quotaExhausted = () =>
     isPublicChatQuotaExhausted({
@@ -2355,10 +2358,37 @@ function Composer(props: {
               props.onDraftChange(e.currentTarget.value);
               requestAnimationFrame(syncTextareaHeight);
             }}
+            onCompositionStart={() => {
+              compositionActive = true;
+            }}
+            onCompositionEnd={() => {
+              compositionActive = false;
+              // Safari can report isComposing=false on the Enter keydown that
+              // commits a Chinese candidate. Ignore that same keystroke.
+              suppressEnterUntil = Date.now() + 120;
+            }}
             onKeyDown={(e) => {
-              if (!e.isComposing && e.key === "Enter" && !e.shiftKey) {
+              const shouldSubmit = shouldSubmitPublicChatEnter({
+                key: e.key,
+                shiftKey: e.shiftKey,
+                eventIsComposing: e.isComposing,
+                compositionActive,
+                keyCode: e.keyCode,
+                now: Date.now(),
+                suppressEnterUntil,
+              });
+              if (shouldSubmit) {
                 e.preventDefault();
                 if (canSend()) props.onSend();
+              } else if (
+                e.key === "Enter" &&
+                !e.shiftKey &&
+                !e.isComposing &&
+                !compositionActive &&
+                e.keyCode !== 229 &&
+                Date.now() < suppressEnterUntil
+              ) {
+                e.preventDefault();
               }
             }}
             onPaste={handlePaste}

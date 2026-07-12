@@ -38,4 +38,11 @@ describe("public chat visual contract", () => {
     expect(finalLayer).toContain("public-chat-composer-box");
     expect(finalLayer).toContain("box-shadow: none !important");
   });
+
+  it("uses one HONE font contract across desktop chat controls", () => {
+    expect(css).toContain("public-chat-sidebar-logout");
+    expect(css).toContain("public-chat-proactive-tip");
+    expect(css).toContain("font-family: var(--hone-font-body) !important");
+    expect(css).toContain("font-weight: 700 !important");
+  });
 });

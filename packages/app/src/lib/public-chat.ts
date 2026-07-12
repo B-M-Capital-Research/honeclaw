@@ -71,6 +71,25 @@ type PublicChatComposerState = {
   dailyLimit: number | undefined;
 };
 
+export function shouldSubmitPublicChatEnter(input: {
+  key: string;
+  shiftKey: boolean;
+  eventIsComposing: boolean;
+  compositionActive: boolean;
+  keyCode: number;
+  now: number;
+  suppressEnterUntil: number;
+}) {
+  return (
+    input.key === "Enter" &&
+    !input.shiftKey &&
+    !input.eventIsComposing &&
+    !input.compositionActive &&
+    input.keyCode !== 229 &&
+    input.now >= input.suppressEnterUntil
+  );
+}
+
 export function normalizePhoneNumber(value: string) {
   const trimmed = value.trim();
   const hasLeadingPlus = trimmed.startsWith("+");

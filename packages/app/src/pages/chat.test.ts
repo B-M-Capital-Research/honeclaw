@@ -1,5 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { displayGithubStars, formatGithubStars, GITHUB_STARS_FALLBACK } from "@/lib/github-stars";
+import {
+  displayGithubStars,
+  formatGithubStars,
+  GITHUB_STARS_FALLBACK,
+  parseGithubStarsCache,
+} from "@/lib/github-stars";
 import {
   applyPublicAssistantStreamEvent,
   canSendPublicChatMessage,
@@ -19,6 +24,7 @@ import {
   shouldRetryPublicRestore,
   shouldRecoverPinnedBottom,
   shouldPreventPublicChatPinch,
+  shouldSubmitPublicChatEnter,
   shouldLoadOlderPublicMessages,
   splitPublicChatAttachments,
   stripAttachmentMarkers,
@@ -63,6 +69,50 @@ describe("displayGithubStars", () => {
     expect(displayGithubStars(undefined)).toBe(GITHUB_STARS_FALLBACK);
     expect(displayGithubStars("...")).toBe(GITHUB_STARS_FALLBACK);
     expect(displayGithubStars("1.2k")).toBe("1.2k");
+  });
+
+  it("ignores legacy and expired star caches", () => {
+    const now = 10 * 60 * 60 * 1000;
+    expect(parseGithubStarsCache("742", now)).toBeUndefined();
+    expect(
+      parseGithubStarsCache(
+        JSON.stringify({ value: "741", cachedAt: now - 7 * 60 * 60 * 1000 }),
+        now,
+      ),
+    ).toBeUndefined();
+    expect(
+      parseGithubStarsCache(
+        JSON.stringify({ value: "742", cachedAt: now - 60 * 1000 }),
+        now,
+      ),
+    ).toBe("742");
+  });
+});
+
+describe("public chat IME enter policy", () => {
+  const base = {
+    key: "Enter",
+    shiftKey: false,
+    eventIsComposing: false,
+    compositionActive: false,
+    keyCode: 13,
+    now: 1_000,
+    suppressEnterUntil: 0,
+  };
+
+  it("submits a normal Enter but not Chinese candidate confirmation", () => {
+    expect(shouldSubmitPublicChatEnter(base)).toBe(true);
+    expect(
+      shouldSubmitPublicChatEnter({ ...base, eventIsComposing: true }),
+    ).toBe(false);
+    expect(shouldSubmitPublicChatEnter({ ...base, keyCode: 229 })).toBe(false);
+    expect(
+      shouldSubmitPublicChatEnter({ ...base, suppressEnterUntil: 1_120 }),
+    ).toBe(false);
+  });
+
+  it("keeps Shift+Enter available for line breaks", () => {
+    expect(shouldSubmitPublicChatEnter({ ...base, shiftKey: true })).toBe(false);
   });
 });
 
