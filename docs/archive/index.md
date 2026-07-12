@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-07-12
+Last updated: 2026-07-13
+
+## 2026-07-13
+
+### Public Community Original Assets And Navigation Repair
+
+- Status: done
+- Date: 2026-07-13
+- Plan: `docs/archive/plans/public-community-assets-navigation-fix.md`
+- Handoff: `docs/handoffs/2026-07-12-public-community-readonly.md`
+- Decision / ADR: N/A; source access controls remain the hard download boundary and immutable full-SHA objects remain the rollback boundary
+- Related PRs / commits: `879e9722`, `af3cb605`, `7ab36682`
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`, 118 core tests, 106 Web API tests with two credentialed tests ignored, 67 CLI tests, 242 Web tests, TypeScript check, public production build, 11 CI-safe regression scripts, desktop/390px browser QA, and the 651-file magic/size/SHA/OOXML audit
+- Current conclusion: this follow-up supersedes the file/image counts in the 2026-07-12 community entry. The complete archive now has 649 content rows and 818 resources: 53 original-resolution images plus 765 file resources. Of those files, 651 verified originals (2,614,811,800 bytes) are stored in immutable R2 objects and linked from PG, 113 remain explicitly source-protected, and only resource 834 remains unresolved after independent visible-UI search. Desktop/mobile navigation includes a compact first-class Community tab, the backend runs the current `0.14.1` code, and production Pages serves `assets/index-BB8Wrwbl.js`.
+- Next entry point: `docs/handoffs/2026-07-12-public-community-readonly.md`, `bins/hone-cli/src/cloud.rs`, `crates/hone-web-api/src/routes/public_community.rs`, and `packages/app/src/pages/public-community.tsx`
 
 ## 2026-07-12
 

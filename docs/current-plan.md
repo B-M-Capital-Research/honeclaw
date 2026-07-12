@@ -1,7 +1,7 @@
 # Current Plan Index
 
-最后更新：2026-07-12
-状态：有 7 个活跃任务
+最后更新：2026-07-13
+状态：有 6 个活跃任务
 
 ## 说明
 
@@ -15,11 +15,6 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
-
-- **公共社区原始资源与导航修复**
-  - 状态：`in_progress`
-  - 计划：`docs/current-plans/public-community-assets-navigation-fix.md`
-  - 摘要：核对知识星球源文件/原图与 R2 存储链路，回填合法可取的高清资源，并将社区加入精简后的公共 Tab 导航。
 
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`
