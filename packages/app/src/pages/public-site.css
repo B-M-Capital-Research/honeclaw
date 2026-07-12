@@ -1236,9 +1236,9 @@ html {
     z-index: 198;
     display: block;
     border: 0;
-    background: rgba(25, 29, 30, 0.20);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
+    background: rgba(25, 29, 30, 0.12);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
   }
   .pub-mobile-menu {
     position: fixed;
@@ -1246,80 +1246,52 @@ html {
     right: max(10px, env(safe-area-inset-right));
     left: max(10px, env(safe-area-inset-left));
     z-index: 199;
-    max-height: calc(100dvh - 86px - env(safe-area-inset-bottom));
+    max-height: calc(100dvh - 88px - env(safe-area-inset-bottom));
     display: block;
     overflow: auto;
-    padding: 18px;
+    padding: 8px;
     border: 1px solid rgba(44, 40, 33, 0.10);
-    border-radius: 22px;
-    background: rgba(255, 253, 248, 0.98);
-    box-shadow: 0 24px 70px rgba(35, 31, 26, 0.20);
+    border-radius: 17px;
+    background: rgba(255, 254, 251, 0.98);
+    box-shadow: 0 14px 38px rgba(35, 31, 26, 0.15);
     overscroll-behavior: contain;
-    animation: pub-menu-arrive 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  }
-  .pub-mobile-menu-kicker {
-    margin-bottom: 10px;
-    color: #c04f0b;
-    font-size: 10px;
-    font-weight: 850;
-    letter-spacing: 0.22em;
+    animation: pub-menu-arrive 0.18s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   }
   .pub-mobile-menu-links {
     display: grid;
-    gap: 4px;
+    gap: 2px;
   }
   .pub-mobile-menu-links button {
-    min-height: 54px;
-    display: grid;
-    grid-template-columns: 30px 1fr auto;
+    min-height: 46px;
+    display: flex;
     align-items: center;
-    padding: 0 12px;
+    padding: 0 13px;
     border: 0;
-    border-radius: 13px;
+    border-radius: 11px;
     color: #2a3236;
     background: transparent;
     cursor: pointer;
     font-family: "Avenir Next", "PingFang SC", "Noto Sans SC", sans-serif;
-    font-size: 16px;
-    font-weight: 760;
-    letter-spacing: -0.025em;
+    font-size: 15px;
+    font-weight: 680;
+    letter-spacing: -0.015em;
     text-align: left;
   }
   .pub-mobile-menu-links button.is-active {
-    color: #9e3d08;
-    background: #f7eadb;
-  }
-  .pub-mobile-menu-index {
-    color: #a5aaab;
-    font-family: var(--font-mono, "JetBrains Mono", monospace);
-    font-size: 9.5px;
-    font-weight: 700;
-    letter-spacing: 0.12em;
+    color: #20282c;
+    background: #f2eee6;
   }
   .pub-mobile-menu-chat {
-    width: 100%;
-    min-height: 48px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-top: 12px;
-    padding: 0 17px;
-    border: 0;
-    border-radius: 14px;
-    color: #fff;
-    background: #20282c;
-    cursor: pointer;
-    font-family: "Avenir Next", "PingFang SC", "Noto Sans SC", sans-serif;
-    font-size: 15px;
-    font-weight: 800;
-    letter-spacing: -0.015em;
+    color: #b54d12 !important;
   }
   .pub-mobile-menu-meta {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 10px;
-    margin-top: 14px;
+    margin-top: 6px;
+    padding: 9px 8px 2px;
+    border-top: 1px solid rgba(44, 40, 33, 0.08);
   }
   .pub-mobile-menu-meta > a {
     color: #687176;
@@ -1327,20 +1299,8 @@ html {
     font-weight: 700;
     text-decoration: none;
   }
-  .pub-mobile-contact {
-    margin-top: 14px;
-    padding: 12px;
-    border-radius: 15px;
-    background: #f2eee6;
-  }
-  .pub-mobile-contact-title {
-    margin-bottom: 9px;
-    color: #6b7377;
-    font-size: 11px;
-    font-weight: 800;
-  }
   @keyframes pub-menu-arrive {
-    from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+    from { opacity: 0; transform: translateY(-5px) scale(0.99); }
     to { opacity: 1; transform: translateY(0) scale(1); }
   }
   .pub-github-star-link {

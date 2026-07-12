@@ -10,10 +10,7 @@ import {
 } from "solid-js";
 
 import { HoneBrand } from "@/components/hone-brand";
-import {
-  PublicContactCards,
-  PublicContactMenu,
-} from "@/components/public-contact-menu";
+import { PublicContactMenu } from "@/components/public-contact-menu";
 import { displayGithubStars, fetchGithubStars } from "@/lib/github-stars";
 import { setLocale, useLocale } from "@/lib/i18n";
 import { CONTENT } from "@/lib/public-content";
@@ -160,32 +157,27 @@ export function PublicNav(
           aria-label={C.menu_aria}
         />
         <section class="pub-mobile-menu" aria-label={C.menu_aria}>
-          <div class="pub-mobile-menu-kicker">HONE</div>
           <div class="pub-mobile-menu-links">
             <For each={NAV_LINKS}>
-              {(link, index) => (
+              {(link) => (
                 <button
                   type="button"
                   onClick={() => go(link.path)}
                   classList={{ "is-active": isActive(link.path) }}
                 >
-                  <span class="pub-mobile-menu-index">
-                    {String(index() + 1).padStart(2, "0")}
-                  </span>
                   <span>{C[link.labelKey]}</span>
-                  <span aria-hidden="true">→</span>
                 </button>
               )}
             </For>
+            <button
+              type="button"
+              onClick={() => go("/chat")}
+              class="pub-mobile-menu-chat"
+              classList={{ "is-active": isActive("/chat") }}
+            >
+              <span>{C.chat}</span>
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => go("/chat")}
-            class="pub-mobile-menu-chat"
-          >
-            <span>{C.chat}</span>
-            <span aria-hidden="true">↗</span>
-          </button>
           <div class="pub-mobile-menu-meta">
             <a
               href={C.github_url}
@@ -210,10 +202,6 @@ export function PublicNav(
                 EN
               </button>
             </div>
-          </div>
-          <div class="pub-mobile-contact">
-            <div class="pub-mobile-contact-title">{C.contact_title}</div>
-            <PublicContactCards />
           </div>
         </section>
       </Show>
