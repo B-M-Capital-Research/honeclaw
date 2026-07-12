@@ -155,6 +155,7 @@ impl AgentRunnerEmitter for SessionEventEmitter {
                 };
                 AgentRunnerEvent::StreamDelta { content }
             }
+            AgentRunnerEvent::StreamReset => AgentRunnerEvent::StreamReset,
             AgentRunnerEvent::Error { mut error } => {
                 error.message =
                     relativize_user_visible_paths(&error.message, &self.working_directory);
@@ -216,7 +217,9 @@ impl AgentRunnerEmitter for SessionEventEmitter {
                     truncate_event_detail(&error.message, 280)
                 );
             }
-            AgentRunnerEvent::StreamDelta { .. } | AgentRunnerEvent::StreamThought { .. } => {}
+            AgentRunnerEvent::StreamDelta { .. }
+            | AgentRunnerEvent::StreamReset
+            | AgentRunnerEvent::StreamThought { .. } => {}
         }
 
         let mapped = AgentSessionEvent::Run(event);

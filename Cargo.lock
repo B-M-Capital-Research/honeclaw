@@ -3018,6 +3018,7 @@ version = "0.13.0"
 dependencies = [
  "async-openai",
  "async-trait",
+ "eventsource-stream",
  "futures",
  "hone-core",
  "reqwest 0.12.28",

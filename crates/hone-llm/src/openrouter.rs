@@ -18,12 +18,14 @@ use async_openai::{
     },
 };
 use async_trait::async_trait;
+use eventsource_stream::Eventsource;
 use futures::StreamExt;
 use futures::stream::BoxStream;
 use serde_json::{Map, Value};
 
 use crate::provider::{
-    ChatResponse, ChatResult, FunctionCall, LlmProvider, LlmRequestOptions, Message, ToolCall,
+    ChatResponse, ChatResult, ChatStreamEvent, FunctionCall, LlmProvider, LlmRequestOptions,
+    Message, ToolCall, chat_stream_events_from_value,
 };
 
 const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
@@ -690,6 +692,106 @@ impl LlmProvider for OpenRouterProvider {
             "所有 OpenRouter API Key 均失败（共 {} 个）。最后错误：{last_err}",
             self.clients.len()
         )))
+    }
+
+    fn chat_with_tools_stream<'a>(
+        &'a self,
+        messages: &'a [Message],
+        tools: &'a [Value],
+        model: Option<&'a str>,
+    ) -> BoxStream<'a, hone_core::HoneResult<ChatStreamEvent>> {
+        let fut = async move {
+            if self.clients.is_empty() {
+                return Err(hone_core::HoneError::Config(
+                    "未配置 OpenRouter API Key".to_string(),
+                ));
+            }
+            let mut body = Map::new();
+            body.insert(
+                "model".to_string(),
+                Value::String(model.unwrap_or(&self.model).to_string()),
+            );
+            body.insert(
+                "messages".to_string(),
+                serde_json::to_value(messages)
+                    .map_err(|error| hone_core::HoneError::Llm(error.to_string()))?,
+            );
+            if !tools.is_empty() {
+                body.insert("tools".to_string(), Value::Array(tools.to_vec()));
+            }
+            self.request_options
+                .apply_to_body(&mut body, self.max_tokens);
+            body.insert("stream".to_string(), Value::Bool(true));
+
+            let mut last_error = String::new();
+            let mut successful_response = None;
+            for client in &self.clients {
+                let response = match client
+                    .http_client
+                    .post(format!("{}/chat/completions", client.base_url))
+                    .bearer_auth(&client.api_key)
+                    .json(&Value::Object(body.clone()))
+                    .send()
+                    .await
+                {
+                    Ok(response) => response,
+                    Err(error) => {
+                        last_error = error.to_string();
+                        continue;
+                    }
+                };
+                let status = response.status();
+                if status.is_success() {
+                    successful_response = Some(response);
+                    break;
+                }
+                let error_body = response.text().await.unwrap_or_default();
+                last_error = format!(
+                    "upstream HTTP {}: {}",
+                    status.as_u16(),
+                    extract_error_message(&error_body)
+                );
+            }
+            let response = successful_response.ok_or_else(|| {
+                hone_core::HoneError::Llm(format!(
+                    "所有 OpenRouter API Key 的流式请求均失败：{last_error}"
+                ))
+            })?;
+            let stream = response
+                .bytes_stream()
+                .eventsource()
+                .filter_map(|result| async move {
+                    match result {
+                        Ok(event) if event.data.trim() == "[DONE]" => None,
+                        Ok(event) if event.data.trim().is_empty() => None,
+                        Ok(event) => Some(
+                            serde_json::from_str::<Value>(&event.data)
+                                .map(|value| chat_stream_events_from_value(&value))
+                                .map_err(|error| {
+                                    hone_core::HoneError::Llm(format!(
+                                        "invalid streaming response: {error}"
+                                    ))
+                                }),
+                        ),
+                        Err(error) => Some(Err(hone_core::HoneError::Llm(format!(
+                            "stream transport error: {error}"
+                        )))),
+                    }
+                })
+                .flat_map(|result| match result {
+                    Ok(events) => futures::stream::iter(events.into_iter().map(Ok)).boxed(),
+                    Err(error) => futures::stream::once(async move { Err(error) }).boxed(),
+                })
+                .boxed();
+            Ok::<_, hone_core::HoneError>(stream)
+        };
+
+        futures::stream::once(fut)
+            .flat_map(|result| match result {
+                Ok(stream) => stream,
+                Err(error) => futures::stream::once(async move { Err(error) }).boxed(),
+            })
+            .boxed()
     }
 
     fn chat_stream<'a>(

@@ -75,3 +75,11 @@ Production feedback found that the composer-side `HONE 思考中` strip reads li
 - Exported user queries now use one tested layout contract with horizontal, vertical, and text centering inside the dark bubble, matching the modal preview and rasterization source.
 - `/chat` applies a runtime viewport lock plus a non-passive multi-touch guard so accidental Safari page pinch cannot leave the conversation enlarged. The finance-calendar lightbox is explicitly allowlisted and continues to use its bounded custom pinch/pan implementation.
 - Verification: 216 frontend tests, frontend typecheck, public production build, 390 x 844 share-card visual QA, runtime viewport `scale=1` with `maximum-scale=1` and `user-scalable=no`, and no browser console warnings.
+
+## Native Runner Streaming Follow-up
+
+- Production logs confirmed ordinary Web users were correctly routed away from configured `codex_acp` to the strict actor-bound function-calling runner, but that runner always returned `streamed_output=false`; a representative turn waited about 47 seconds across three model rounds and four tools before sending 1240 characters at once.
+- `hone-llm` now exposes structured tool-capable stream events. Generic OpenAI-compatible/Minimax and OpenRouter providers parse actual upstream SSE, assemble fragmented parallel tool calls by index, and only rotate API keys before a stream starts.
+- Function calling now streams sanitized final-answer content through the canonical runner/session event path. Cross-chunk `<think>` and tool protocol blocks stay hidden; a preamble followed by a tool call emits `StreamReset`, so the public client clears that temporary text and continues editing the same card. Final session persistence remains one normalized assistant message.
+- Public chat handles `assistant_reset`, batches deltas once per animation frame, and keeps failed runs in the card's error phase instead of marking them done.
+- Verification: 13 LLM tests, 7 function-calling tests, 500 channel tests, 101 Web API tests with two credentialed tests ignored, full frontend tests, frontend typecheck, public production build, and changed-file format/diff checks.

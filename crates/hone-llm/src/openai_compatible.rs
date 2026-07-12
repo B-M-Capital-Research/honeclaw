@@ -14,12 +14,14 @@ use async_openai::{
     },
 };
 use async_trait::async_trait;
+use eventsource_stream::Eventsource;
 use futures::StreamExt;
 use futures::stream::BoxStream;
 use serde_json::{Map, Value};
 
 use crate::provider::{
-    ChatResponse, ChatResult, FunctionCall, LlmProvider, LlmRequestOptions, Message, ToolCall,
+    ChatResponse, ChatResult, ChatStreamEvent, FunctionCall, LlmProvider, LlmRequestOptions,
+    Message, ToolCall, chat_stream_events_from_value,
 };
 
 #[derive(Clone)]
@@ -567,6 +569,98 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn chat_with_tools_stream_preserves_fragmented_tool_calls() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test server");
+        let addr = listener.local_addr().expect("read local addr");
+        tokio::spawn(async move {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                return;
+            };
+            let mut buf = vec![0_u8; 65536];
+            let n = socket.read(&mut buf).await.expect("read request");
+            let request = String::from_utf8_lossy(&buf[..n]);
+            let payload: Value =
+                serde_json::from_str(request.split("\r\n\r\n").nth(1).expect("request body"))
+                    .expect("stream request json");
+            assert_eq!(payload["stream"], true);
+            assert_eq!(payload["tools"][0]["function"]["name"], "demo_tool");
+
+            let body = concat!(
+                "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"demo_tool\",\"arguments\":\"{\\\"symbol\\\":\"}}]}}]}\n\n",
+                "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\"NVDA\\\"}\"}}]}}]}\n\n",
+                "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":8,\"completion_tokens\":3,\"total_tokens\":11}}\n\n",
+                "data: [DONE]\n\n"
+            );
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            let _ = socket.write_all(response.as_bytes()).await;
+            let _ = socket.shutdown().await;
+        });
+
+        let provider = OpenAiCompatibleProvider::new(
+            "test-key",
+            &format!("http://{addr}"),
+            "test-model",
+            30,
+            64,
+        )
+        .expect("provider");
+        let events = provider
+            .chat_with_tools_stream(
+                &[Message {
+                    role: "user".to_string(),
+                    content: Some("lookup".to_string()),
+                    reasoning_content: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                }],
+                &[serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": "demo_tool",
+                        "description": "demo",
+                        "parameters": { "type": "object", "properties": {} }
+                    }
+                })],
+                None,
+            )
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .collect::<hone_core::HoneResult<Vec<_>>>()
+            .expect("stream events");
+
+        assert_eq!(
+            events[0],
+            ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("call_1".to_string()),
+                name: Some("demo_tool".to_string()),
+                arguments: "{\"symbol\":".to_string(),
+            }
+        );
+        assert_eq!(
+            events[1],
+            ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: None,
+                name: None,
+                arguments: "\"NVDA\"}".to_string(),
+            }
+        );
+        assert!(matches!(
+            &events[2],
+            ChatStreamEvent::Usage(usage) if usage.total_tokens == Some(11)
+        ));
+    }
+
+    #[tokio::test]
     async fn chat_with_tools_falls_back_to_next_key_after_http_429() {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
@@ -839,6 +933,100 @@ impl LlmProvider for OpenAiCompatibleProvider {
             "所有 OpenAI-compatible API Key 均失败（共 {} 个）。最后错误：{last_err}",
             self.clients.len()
         )))
+    }
+
+    fn chat_with_tools_stream<'a>(
+        &'a self,
+        messages: &'a [Message],
+        tools: &'a [Value],
+        model: Option<&'a str>,
+    ) -> BoxStream<'a, hone_core::HoneResult<ChatStreamEvent>> {
+        let fut = async move {
+            if self.clients.is_empty() {
+                return Err(hone_core::HoneError::Config(
+                    "LLM API key 未配置：请在 config.yaml 中填写".to_string(),
+                ));
+            }
+            let mut request = self.build_request_body(
+                messages,
+                (!tools.is_empty()).then_some(tools),
+                model.unwrap_or(&self.model),
+            )?;
+            let body = request.as_object_mut().ok_or_else(|| {
+                hone_core::HoneError::Llm("stream request body must be an object".to_string())
+            })?;
+            body.insert("stream".to_string(), Value::Bool(true));
+
+            let mut last_error = String::new();
+            let mut successful_response = None;
+            for client in &self.clients {
+                let response = match client
+                    .http_client
+                    .post(format!("{}/chat/completions", client.base_url))
+                    .bearer_auth(&client.api_key)
+                    .json(&request)
+                    .send()
+                    .await
+                {
+                    Ok(response) => response,
+                    Err(error) => {
+                        last_error = error.to_string();
+                        continue;
+                    }
+                };
+                let status = response.status();
+                if status.is_success() {
+                    successful_response = Some(response);
+                    break;
+                }
+                let body = response.text().await.unwrap_or_default();
+                last_error = format!(
+                    "upstream HTTP {}: {}",
+                    status.as_u16(),
+                    extract_error_message(&body)
+                );
+            }
+            let response = successful_response.ok_or_else(|| {
+                hone_core::HoneError::Llm(format!(
+                    "所有 OpenAI-compatible API Key 的流式请求均失败：{last_error}"
+                ))
+            })?;
+
+            let stream = response
+                .bytes_stream()
+                .eventsource()
+                .filter_map(|result| async move {
+                    match result {
+                        Ok(event) if event.data.trim() == "[DONE]" => None,
+                        Ok(event) if event.data.trim().is_empty() => None,
+                        Ok(event) => Some(
+                            serde_json::from_str::<Value>(&event.data)
+                                .map(|value| chat_stream_events_from_value(&value))
+                                .map_err(|error| {
+                                    hone_core::HoneError::Llm(format!(
+                                        "invalid streaming response: {error}"
+                                    ))
+                                }),
+                        ),
+                        Err(error) => Some(Err(hone_core::HoneError::Llm(format!(
+                            "stream transport error: {error}"
+                        )))),
+                    }
+                })
+                .flat_map(|result| match result {
+                    Ok(events) => futures::stream::iter(events.into_iter().map(Ok)).boxed(),
+                    Err(error) => futures::stream::once(async move { Err(error) }).boxed(),
+                })
+                .boxed();
+            Ok::<_, hone_core::HoneError>(stream)
+        };
+
+        futures::stream::once(fut)
+            .flat_map(|result| match result {
+                Ok(stream) => stream,
+                Err(error) => futures::stream::once(async move { Err(error) }).boxed(),
+            })
+            .boxed()
     }
 
     fn chat_stream<'a>(

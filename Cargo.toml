@@ -34,6 +34,7 @@ license = "MIT"
 # Async runtime
 tokio = { version = "1", features = ["full"] }
 futures = "0.3"
+eventsource-stream = "0.2"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }

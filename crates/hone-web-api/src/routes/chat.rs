@@ -46,6 +46,11 @@ impl AgentSessionListener for SseSessionListener {
                 let mut guard = self.sent_segments.lock().await;
                 *guard += 1;
             }
+            AgentSessionEvent::Run(RunEvent::StreamReset) => {
+                let _ = self.tx.send(("assistant_reset".into(), json!({}))).await;
+                let mut guard = self.sent_segments.lock().await;
+                *guard = 0;
+            }
             AgentSessionEvent::Run(RunEvent::ToolStatus {
                 status,
                 tool,
@@ -239,4 +244,33 @@ pub(crate) async fn handle_chat(
     }
 
     build_chat_sse(state, actor_result, message, attachments_count)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use hone_channels::agent_session::{AgentSessionEvent, AgentSessionListener};
+    use hone_channels::run_event::RunEvent;
+
+    use super::SseSessionListener;
+
+    #[tokio::test]
+    async fn stream_reset_clears_sent_count_and_emits_assistant_reset() {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(4);
+        let sent_segments = Arc::new(tokio::sync::Mutex::new(1));
+        let listener = SseSessionListener {
+            tx,
+            user_id: "u1".to_string(),
+            sent_segments: sent_segments.clone(),
+        };
+
+        listener
+            .on_event(AgentSessionEvent::Run(RunEvent::StreamReset))
+            .await;
+
+        let (event, _) = rx.recv().await.expect("reset event");
+        assert_eq!(event, "assistant_reset");
+        assert_eq!(*sent_segments.lock().await, 0);
+    }
 }

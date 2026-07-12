@@ -1,7 +1,8 @@
 //! LLM Provider trait 定义
 
 use async_trait::async_trait;
-use futures::stream::BoxStream;
+use futures::StreamExt;
+use futures::stream::{self, BoxStream};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -38,7 +39,7 @@ pub struct FunctionCall {
 }
 
 /// Token 使用统计
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct TokenUsage {
     pub prompt_tokens: Option<u32>,
     pub completion_tokens: Option<u32>,
@@ -59,6 +60,89 @@ pub struct ChatResponse {
     pub reasoning_content: Option<String>,
     pub tool_calls: Option<Vec<ToolCall>>,
     pub usage: Option<TokenUsage>,
+}
+
+/// Structured events produced by a tool-capable chat completion stream.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ChatStreamEvent {
+    ContentDelta(String),
+    ReasoningDelta(String),
+    ToolCallDelta {
+        index: u32,
+        id: Option<String>,
+        name: Option<String>,
+        arguments: String,
+    },
+    Usage(TokenUsage),
+}
+
+pub fn chat_stream_events_from_value(value: &Value) -> Vec<ChatStreamEvent> {
+    let mut events = Vec::new();
+    if let Some(usage) = value.get("usage") {
+        events.push(ChatStreamEvent::Usage(TokenUsage {
+            prompt_tokens: usage
+                .get("prompt_tokens")
+                .and_then(Value::as_u64)
+                .and_then(|value| u32::try_from(value).ok()),
+            completion_tokens: usage
+                .get("completion_tokens")
+                .and_then(Value::as_u64)
+                .and_then(|value| u32::try_from(value).ok()),
+            total_tokens: usage
+                .get("total_tokens")
+                .and_then(Value::as_u64)
+                .and_then(|value| u32::try_from(value).ok()),
+        }));
+    }
+    let Some(delta) = value
+        .get("choices")
+        .and_then(Value::as_array)
+        .and_then(|choices| choices.first())
+        .and_then(|choice| choice.get("delta"))
+    else {
+        return events;
+    };
+    if let Some(reasoning) = delta
+        .get("reasoning_content")
+        .or_else(|| delta.get("reasoning"))
+        .and_then(Value::as_str)
+        .filter(|text| !text.is_empty())
+    {
+        events.push(ChatStreamEvent::ReasoningDelta(reasoning.to_string()));
+    }
+    if let Some(content) = delta
+        .get("content")
+        .and_then(Value::as_str)
+        .filter(|text| !text.is_empty())
+    {
+        events.push(ChatStreamEvent::ContentDelta(content.to_string()));
+    }
+    if let Some(tool_calls) = delta.get("tool_calls").and_then(Value::as_array) {
+        for tool_call in tool_calls {
+            let function = tool_call.get("function");
+            events.push(ChatStreamEvent::ToolCallDelta {
+                index: tool_call
+                    .get("index")
+                    .and_then(Value::as_u64)
+                    .and_then(|value| u32::try_from(value).ok())
+                    .unwrap_or(0),
+                id: tool_call
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string),
+                name: function
+                    .and_then(|value| value.get("name"))
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string),
+                arguments: function
+                    .and_then(|value| value.get("arguments"))
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+            });
+        }
+    }
+    events
 }
 
 /// Per-request generation options resolved from an LLM profile.
@@ -155,10 +239,100 @@ pub trait LlmProvider: Send + Sync {
         model: Option<&str>,
     ) -> hone_core::HoneResult<ChatResponse>;
 
+    /// Tool-capable streaming. Providers without native support retain the
+    /// existing behavior through a single-event fallback.
+    fn chat_with_tools_stream<'a>(
+        &'a self,
+        messages: &'a [Message],
+        tools: &'a [Value],
+        model: Option<&'a str>,
+    ) -> BoxStream<'a, hone_core::HoneResult<ChatStreamEvent>> {
+        stream::once(async move { self.chat_with_tools(messages, tools, model).await })
+            .flat_map(|result| match result {
+                Ok(response) => {
+                    let mut events = Vec::new();
+                    if let Some(reasoning) = response.reasoning_content {
+                        events.push(Ok(ChatStreamEvent::ReasoningDelta(reasoning)));
+                    }
+                    if !response.content.is_empty() {
+                        events.push(Ok(ChatStreamEvent::ContentDelta(response.content)));
+                    }
+                    for (index, tool_call) in response
+                        .tool_calls
+                        .unwrap_or_default()
+                        .into_iter()
+                        .enumerate()
+                    {
+                        events.push(Ok(ChatStreamEvent::ToolCallDelta {
+                            index: index as u32,
+                            id: Some(tool_call.id),
+                            name: Some(tool_call.function.name),
+                            arguments: tool_call.function.arguments,
+                        }));
+                    }
+                    if let Some(usage) = response.usage {
+                        events.push(Ok(ChatStreamEvent::Usage(usage)));
+                    }
+                    stream::iter(events).boxed()
+                }
+                Err(error) => stream::once(async move { Err(error) }).boxed(),
+            })
+            .boxed()
+    }
+
     /// 流式对话
     fn chat_stream<'a>(
         &'a self,
         messages: &'a [Message],
         model: Option<&'a str>,
     ) -> BoxStream<'a, hone_core::HoneResult<String>>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ChatStreamEvent, chat_stream_events_from_value};
+
+    #[test]
+    fn parses_content_reasoning_parallel_tool_deltas_and_usage() {
+        let events = chat_stream_events_from_value(&serde_json::json!({
+            "choices": [{
+                "delta": {
+                    "reasoning_content": "internal",
+                    "content": "visible",
+                    "tool_calls": [{
+                        "index": 1,
+                        "id": "call_2",
+                        "function": { "name": "data_fetch", "arguments": "{\"sym" }
+                    }]
+                }
+            }],
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 4,
+                "total_tokens": 14
+            }
+        }));
+
+        assert!(matches!(
+            &events[0],
+            ChatStreamEvent::Usage(usage) if usage.total_tokens == Some(14)
+        ));
+        assert_eq!(
+            events[1],
+            ChatStreamEvent::ReasoningDelta("internal".to_string())
+        );
+        assert_eq!(
+            events[2],
+            ChatStreamEvent::ContentDelta("visible".to_string())
+        );
+        assert_eq!(
+            events[3],
+            ChatStreamEvent::ToolCallDelta {
+                index: 1,
+                id: Some("call_2".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: "{\"sym".to_string(),
+            }
+        );
+    }
 }

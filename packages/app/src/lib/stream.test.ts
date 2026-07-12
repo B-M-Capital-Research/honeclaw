@@ -2,6 +2,16 @@ import { describe, expect, it } from "bun:test"
 import { parseSseChunks } from "./stream"
 
 describe("parseSseChunks", () => {
+  it("parses an assistant reset between streamed answer phases", () => {
+    const parsed = parseSseChunks(
+      'event: assistant_delta\ndata: {"content":"checking"}\n\nevent: assistant_reset\ndata: {}\n\n',
+    );
+    expect(parsed.events).toEqual([
+      { event: "assistant_delta", data: { content: "checking" } },
+      { event: "assistant_reset", data: {} },
+    ]);
+  });
+
   it("parses complete sse events and keeps pending", () => {
     const sseChunk =
       'event: run_started\ndata: {"text":"ok"}\n\nevent: run_finished\ndata: {"success":true}\n\nevent: run_started'

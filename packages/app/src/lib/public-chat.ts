@@ -54,6 +54,14 @@ export type PublicChatMessage = {
   };
 };
 
+export function applyPublicAssistantStreamEvent(
+  current: string,
+  event: "assistant_delta" | "assistant_reset",
+  delta = "",
+): string {
+  return event === "assistant_reset" ? "" : current + delta;
+}
+
 type PublicChatComposerState = {
   draft: string;
   attachmentCount: number;

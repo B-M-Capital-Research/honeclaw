@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { displayGithubStars, formatGithubStars, GITHUB_STARS_FALLBACK } from "@/lib/github-stars";
 import {
+  applyPublicAssistantStreamEvent,
   canSendPublicChatMessage,
   findPendingPublicAssistantMessage,
   formatPublicAttachmentBytes,
@@ -33,6 +34,19 @@ function messageIds(messages: Array<{ id: string }>): string[] {
 describe("normalizePhoneNumber", () => {
   it("keeps a leading plus and strips non-digits", () => {
     expect(normalizePhoneNumber(" +86 138-0013-8000 ")).toBe("+8613800138000");
+  });
+});
+
+describe("public assistant stream events", () => {
+  it("appends native deltas and clears a tool preamble on reset", () => {
+    let content = applyPublicAssistantStreamEvent("", "assistant_delta", "先查");
+    content = applyPublicAssistantStreamEvent(content, "assistant_delta", "一下");
+    expect(content).toBe("先查一下");
+    content = applyPublicAssistantStreamEvent(content, "assistant_reset");
+    expect(content).toBe("");
+    expect(
+      applyPublicAssistantStreamEvent(content, "assistant_delta", "最终答案"),
+    ).toBe("最终答案");
   });
 });
 

@@ -375,6 +375,7 @@ export type ChannelProcessInfo = {
 export type ChatStreamEvent =
   | { event: "run_started"; data: { runner?: string; text?: string } }
   | { event: "assistant_delta"; data: { content?: string } }
+  | { event: "assistant_reset"; data: Record<string, never> }
   | {
       event: "tool_call";
       data: {

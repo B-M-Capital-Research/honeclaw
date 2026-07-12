@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use hone_agent::FunctionCallingAgent;
+use hone_agent::{FunctionCallingAgent, FunctionCallingStreamObserver};
 use hone_agent_codex_cli::CodexCliAgent;
 use hone_core::agent::{Agent, AgentContext, AgentMessage};
 use hone_core::{LlmAuditSink, ToolExecutionObserver};
@@ -8,6 +8,7 @@ use hone_tools::ToolRegistry;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
@@ -15,6 +16,31 @@ use super::types::{
 
 pub(crate) struct RunnerToolObserver {
     pub(crate) emitter: Arc<dyn AgentRunnerEmitter>,
+}
+
+struct RunnerStreamObserver {
+    emitter: Arc<dyn AgentRunnerEmitter>,
+    streamed_output: Arc<AtomicBool>,
+}
+
+#[async_trait]
+impl FunctionCallingStreamObserver for RunnerStreamObserver {
+    async fn on_content_delta(&self, content: &str) {
+        if content.is_empty() {
+            return;
+        }
+        self.streamed_output.store(true, Ordering::Relaxed);
+        self.emitter
+            .emit(AgentRunnerEvent::StreamDelta {
+                content: content.to_string(),
+            })
+            .await;
+    }
+
+    async fn on_content_reset(&self) {
+        self.streamed_output.store(false, Ordering::Relaxed);
+        self.emitter.emit(AgentRunnerEvent::StreamReset).await;
+    }
 }
 
 #[async_trait]
@@ -332,7 +358,14 @@ impl AgentRunner for FunctionCallingReasoningRunner {
         request: AgentRunnerRequest,
         emitter: Arc<dyn AgentRunnerEmitter>,
     ) -> AgentRunnerResult {
-        let observer = Arc::new(RunnerToolObserver { emitter });
+        let streamed_output = Arc::new(AtomicBool::new(false));
+        let observer = Arc::new(RunnerToolObserver {
+            emitter: emitter.clone(),
+        });
+        let stream_observer = Arc::new(RunnerStreamObserver {
+            emitter,
+            streamed_output: streamed_output.clone(),
+        });
         let original_len = request.context.messages.len();
         let agent = FunctionCallingAgent::new(
             self.llm.clone(),
@@ -342,6 +375,7 @@ impl AgentRunner for FunctionCallingReasoningRunner {
             self.llm_audit.clone(),
         )
         .with_tool_observer(Some(observer))
+        .with_stream_observer(Some(stream_observer))
         .with_tool_call_budget(
             request.max_tool_calls,
             request.tool_call_limits.clone().unwrap_or_default(),
@@ -353,7 +387,7 @@ impl AgentRunner for FunctionCallingReasoningRunner {
 
         AgentRunnerResult {
             response,
-            streamed_output: false,
+            streamed_output: streamed_output.load(Ordering::Relaxed),
             terminal_error_emitted: false,
             session_metadata_updates: HashMap::new(),
             context_messages,

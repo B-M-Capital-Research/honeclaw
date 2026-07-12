@@ -10,6 +10,7 @@ pub enum RunEvent {
     StreamDelta {
         content: String,
     },
+    StreamReset,
     StreamThought {
         thought: String,
     },

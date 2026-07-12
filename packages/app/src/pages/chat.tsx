@@ -75,6 +75,7 @@ import {
 } from "@/lib/finance-calendar";
 import { parseMessageContent, messageId } from "@/lib/messages";
 import {
+  applyPublicAssistantStreamEvent,
   canSendPublicChatMessage,
   findPendingPublicAssistantMessage,
   formatPublicAttachmentBytes,
@@ -3148,6 +3149,46 @@ export default function PublicChatPage() {
       const reader = stream.getReader();
       const decoder = new TextDecoder();
       let pendingSse = "";
+      let pendingAssistantDelta = "";
+      let deltaFrame: number | undefined;
+      const flushAssistantDelta = () => {
+        deltaFrame = undefined;
+        if (!pendingAssistantDelta) return;
+        const delta = pendingAssistantDelta;
+        pendingAssistantDelta = "";
+        const index = messages.findIndex((message) => message.id === assistantId);
+        if (index >= 0) {
+          setMessages(index, {
+            content: applyPublicAssistantStreamEvent(
+              messages[index].content,
+              "assistant_delta",
+              delta,
+            ),
+            phase: "streaming",
+          });
+        }
+        if (stickToBottom) scrollToBottom();
+      };
+      const queueAssistantDelta = (delta: string) => {
+        if (!delta) return;
+        pendingAssistantDelta += delta;
+        deltaFrame ??= requestAnimationFrame(flushAssistantDelta);
+      };
+      const resetAssistantDelta = () => {
+        if (deltaFrame !== undefined) cancelAnimationFrame(deltaFrame);
+        deltaFrame = undefined;
+        pendingAssistantDelta = "";
+        const index = messages.findIndex((message) => message.id === assistantId);
+        if (index >= 0) {
+          setMessages(index, {
+            content: applyPublicAssistantStreamEvent(
+              messages[index].content,
+              "assistant_reset",
+            ),
+            phase: "thinking",
+          });
+        }
+      };
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -3156,22 +3197,43 @@ export default function PublicChatPage() {
         pendingSse = parsed.pending;
         for (const ev of parsed.events) {
           if (ev.event === "assistant_delta") {
+            queueAssistantDelta(ev.data.content ?? "");
+          }
+          if (ev.event === "assistant_reset") {
+            resetAssistantDelta();
+          }
+          if (ev.event === "run_error") {
+            if (deltaFrame !== undefined) cancelAnimationFrame(deltaFrame);
+            flushAssistantDelta();
             const index = messages.findIndex((m) => m.id === assistantId);
             if (index >= 0) {
               setMessages(index, {
-                content: messages[index].content + (ev.data.content ?? ""),
-                phase: "streaming",
+                phase: "error",
+                statusText:
+                  ev.data.message ?? CONTENT.chat_page.status.fallback_error,
               });
             }
-            if (stickToBottom) scrollToBottom();
           }
           if (ev.event === "run_finished") {
+            if (deltaFrame !== undefined) cancelAnimationFrame(deltaFrame);
+            flushAssistantDelta();
             const index = messages.findIndex((m) => m.id === assistantId);
-            if (index >= 0) setMessages(index, "phase", "done");
+            if (index >= 0) {
+              setMessages(index, {
+                phase: ev.data.success === false ? "error" : "done",
+                statusText:
+                  ev.data.success === false
+                    ? messages[index].statusText ||
+                      CONTENT.chat_page.status.fallback_error
+                    : undefined,
+              });
+            }
             pinToBottom(1400);
           }
         }
       }
+      if (deltaFrame !== undefined) cancelAnimationFrame(deltaFrame);
+      flushAssistantDelta();
     } catch (e) {
       const index = messages.findIndex((m) => m.id === assistantId);
       const aborted = e instanceof DOMException && e.name === "AbortError";

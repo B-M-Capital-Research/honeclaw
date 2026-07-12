@@ -5,15 +5,29 @@
 //! 渠道级流式输出由 `hone-channels` 的 runner 层处理。
 
 use async_trait::async_trait;
+use futures::StreamExt;
 use hone_core::agent::{Agent, AgentContext, AgentResponse, ToolCallMade};
 use hone_core::{LlmAuditRecord, LlmAuditSink, ToolExecutionObserver};
-use hone_llm::{ChatResponse, LlmProvider, Message};
+use hone_llm::{ChatResponse, ChatStreamEvent, FunctionCall, LlmProvider, Message, ToolCall};
 use hone_tools::ToolRegistry;
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 const REASONING_CONTENT_METADATA_KEY: &str = "reasoning_content";
+
+#[async_trait]
+pub trait FunctionCallingStreamObserver: Send + Sync {
+    async fn on_content_delta(&self, content: &str);
+    async fn on_content_reset(&self);
+}
+
+#[derive(Default)]
+struct PendingToolCall {
+    id: String,
+    name: String,
+    arguments: String,
+}
 
 /// Function Calling Agent
 pub struct FunctionCallingAgent {
@@ -24,6 +38,7 @@ pub struct FunctionCallingAgent {
     pub debug_log: bool,
     pub llm_audit: Option<Arc<dyn LlmAuditSink>>,
     pub tool_observer: Option<Arc<dyn ToolExecutionObserver>>,
+    pub stream_observer: Option<Arc<dyn FunctionCallingStreamObserver>>,
     pub max_tool_calls: Option<u32>,
     pub tool_call_limits: HashMap<String, u32>,
 }
@@ -48,6 +63,7 @@ impl FunctionCallingAgent {
             debug_log,
             llm_audit,
             tool_observer: None,
+            stream_observer: None,
             max_tool_calls: None,
             tool_call_limits: HashMap::new(),
         }
@@ -55,6 +71,14 @@ impl FunctionCallingAgent {
 
     pub fn with_tool_observer(mut self, observer: Option<Arc<dyn ToolExecutionObserver>>) -> Self {
         self.tool_observer = observer;
+        self
+    }
+
+    pub fn with_stream_observer(
+        mut self,
+        observer: Option<Arc<dyn FunctionCallingStreamObserver>>,
+    ) -> Self {
+        self.stream_observer = observer;
         self
     }
 
@@ -152,6 +176,159 @@ impl FunctionCallingAgent {
             );
         }
     }
+
+    async fn chat_with_tools_streaming(
+        &self,
+        messages: &[Message],
+        tools: &[Value],
+    ) -> hone_core::HoneResult<ChatResponse> {
+        let mut stream = self.llm.chat_with_tools_stream(messages, tools, None);
+        let mut content = String::new();
+        let mut reasoning_content = String::new();
+        let mut tool_calls = BTreeMap::<u32, PendingToolCall>::new();
+        let mut usage = None;
+        let mut formatter = hone_channels_compat::HiddenStreamFormatter::default();
+        let mut emitted_visible_content = false;
+
+        while let Some(event) = stream.next().await {
+            match event? {
+                ChatStreamEvent::ContentDelta(delta) => {
+                    content.push_str(&delta);
+                    let visible = formatter.push(&delta);
+                    if !visible.is_empty() && tool_calls.is_empty() {
+                        if let Some(observer) = &self.stream_observer {
+                            observer.on_content_delta(&visible).await;
+                            emitted_visible_content = true;
+                        }
+                    }
+                }
+                ChatStreamEvent::ReasoningDelta(delta) => reasoning_content.push_str(&delta),
+                ChatStreamEvent::ToolCallDelta {
+                    index,
+                    id,
+                    name,
+                    arguments,
+                } => {
+                    if tool_calls.is_empty() && emitted_visible_content {
+                        if let Some(observer) = &self.stream_observer {
+                            observer.on_content_reset().await;
+                        }
+                        emitted_visible_content = false;
+                    }
+                    let pending = tool_calls.entry(index).or_default();
+                    if let Some(id) = id {
+                        pending.id.push_str(&id);
+                    }
+                    if let Some(name) = name {
+                        pending.name.push_str(&name);
+                    }
+                    pending.arguments.push_str(&arguments);
+                }
+                ChatStreamEvent::Usage(value) => usage = Some(value),
+            }
+        }
+
+        if tool_calls.is_empty() {
+            let visible = formatter.finish();
+            if !visible.is_empty()
+                && let Some(observer) = &self.stream_observer
+            {
+                observer.on_content_delta(&visible).await;
+            }
+        }
+
+        let tool_calls = (!tool_calls.is_empty()).then(|| {
+            tool_calls
+                .into_values()
+                .map(|pending| ToolCall {
+                    id: pending.id,
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: pending.name,
+                        arguments: pending.arguments,
+                    },
+                })
+                .collect()
+        });
+
+        Ok(ChatResponse {
+            content,
+            reasoning_content: (!reasoning_content.is_empty()).then_some(reasoning_content),
+            tool_calls,
+            usage,
+        })
+    }
+}
+
+// Keep the agent crate independent from channel presentation code while using
+// the same hidden-tag semantics for incremental model output.
+mod hone_channels_compat {
+    #[derive(Default)]
+    pub(super) struct HiddenStreamFormatter {
+        pending: String,
+        hidden: Option<&'static str>,
+    }
+
+    impl HiddenStreamFormatter {
+        pub(super) fn push(&mut self, chunk: &str) -> String {
+            self.pending.push_str(chunk);
+            let mut visible = String::new();
+            loop {
+                if let Some(close) = self.hidden {
+                    let Some(end) = self.pending.find(close) else {
+                        break;
+                    };
+                    self.pending.drain(..end + close.len());
+                    self.hidden = None;
+                    continue;
+                }
+                let markers = [
+                    ("<think>", "</think>"),
+                    ("<tool_code>", "</tool_code>"),
+                    ("<tool_call>", "</tool_call>"),
+                    ("<tool_result>", "</tool_result>"),
+                    ("<tool_use>", "</tool_use>"),
+                ];
+                if let Some((start, open, close)) = markers
+                    .iter()
+                    .filter_map(|(open, close)| {
+                        self.pending.find(open).map(|start| (start, *open, *close))
+                    })
+                    .min_by_key(|(start, _, _)| *start)
+                {
+                    visible.push_str(&self.pending[..start]);
+                    self.pending.drain(..start + open.len());
+                    self.hidden = Some(close);
+                    continue;
+                }
+                let keep = markers
+                    .iter()
+                    .map(|(open, _)| trailing_prefix_len(&self.pending, open))
+                    .max()
+                    .unwrap_or(0);
+                let emit_len = self.pending.len().saturating_sub(keep);
+                visible.push_str(&self.pending[..emit_len]);
+                self.pending.drain(..emit_len);
+                break;
+            }
+            visible
+        }
+
+        pub(super) fn finish(&mut self) -> String {
+            if self.hidden.is_some() {
+                self.pending.clear();
+                return String::new();
+            }
+            std::mem::take(&mut self.pending)
+        }
+    }
+
+    fn trailing_prefix_len(text: &str, marker: &str) -> usize {
+        (1..marker.len())
+            .rev()
+            .find(|length| text.ends_with(&marker[..*length]))
+            .unwrap_or(0)
+    }
 }
 
 fn tool_budget_error(
@@ -238,7 +415,7 @@ impl Agent for FunctionCallingAgent {
 
             // 如果有工具，使用 chat_with_tools；否则使用 chat
             let result: ChatResponse = if has_tools {
-                match self.llm.chat_with_tools(&messages, &tools, None).await {
+                match self.chat_with_tools_streaming(&messages, &tools).await {
                     Ok(r) => r,
                     Err(e) => {
                         self.record_audit(
@@ -450,6 +627,76 @@ mod tests {
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
     };
+
+    #[derive(Clone)]
+    struct StreamingMockLlmProvider {
+        rounds: Arc<Mutex<VecDeque<Vec<ChatStreamEvent>>>>,
+    }
+
+    #[async_trait]
+    impl LlmProvider for StreamingMockLlmProvider {
+        async fn chat(
+            &self,
+            _messages: &[Message],
+            _model: Option<&str>,
+        ) -> hone_core::HoneResult<hone_llm::provider::ChatResult> {
+            unreachable!("streaming test uses tools")
+        }
+
+        async fn chat_with_tools(
+            &self,
+            _messages: &[Message],
+            _tools: &[Value],
+            _model: Option<&str>,
+        ) -> hone_core::HoneResult<ChatResponse> {
+            unreachable!("native streaming override should be used")
+        }
+
+        fn chat_with_tools_stream<'a>(
+            &'a self,
+            _messages: &'a [Message],
+            _tools: &'a [Value],
+            _model: Option<&'a str>,
+        ) -> BoxStream<'a, hone_core::HoneResult<ChatStreamEvent>> {
+            let events = self
+                .rounds
+                .lock()
+                .expect("stream rounds lock")
+                .pop_front()
+                .expect("stream round");
+            Box::pin(stream::iter(events.into_iter().map(Ok)))
+        }
+
+        fn chat_stream<'a>(
+            &'a self,
+            _messages: &'a [Message],
+            _model: Option<&'a str>,
+        ) -> BoxStream<'a, hone_core::HoneResult<String>> {
+            Box::pin(stream::empty())
+        }
+    }
+
+    #[derive(Default)]
+    struct RecordingStreamObserver {
+        events: Mutex<Vec<String>>,
+    }
+
+    #[async_trait]
+    impl FunctionCallingStreamObserver for RecordingStreamObserver {
+        async fn on_content_delta(&self, content: &str) {
+            self.events
+                .lock()
+                .expect("stream events lock")
+                .push(format!("delta:{content}"));
+        }
+
+        async fn on_content_reset(&self) {
+            self.events
+                .lock()
+                .expect("stream events lock")
+                .push("reset".to_string());
+        }
+    }
 
     #[derive(Clone)]
     struct MockLlmProvider {
@@ -683,6 +930,56 @@ mod tests {
         let state = llm.state.lock().expect("mock state lock");
         assert_eq!(state.chat_calls, 0);
         assert_eq!(state.chat_with_tools_calls, 2);
+    }
+
+    #[tokio::test]
+    async fn native_stream_resets_tool_preamble_and_hides_reasoning_from_final_deltas() {
+        let llm = StreamingMockLlmProvider {
+            rounds: Arc::new(Mutex::new(VecDeque::from([
+                vec![
+                    ChatStreamEvent::ContentDelta("I will check".to_string()),
+                    ChatStreamEvent::ToolCallDelta {
+                        index: 0,
+                        id: Some("tc_stream".to_string()),
+                        name: Some("echo_tool".to_string()),
+                        arguments: "{\"text\":".to_string(),
+                    },
+                    ChatStreamEvent::ToolCallDelta {
+                        index: 0,
+                        id: None,
+                        name: None,
+                        arguments: "\"abc\"}".to_string(),
+                    },
+                ],
+                vec![
+                    ChatStreamEvent::ContentDelta("<thi".to_string()),
+                    ChatStreamEvent::ContentDelta("nk>secret</think>最终".to_string()),
+                    ChatStreamEvent::ContentDelta("答案".to_string()),
+                ],
+            ]))),
+        };
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(EchoTool));
+        let observer = Arc::new(RecordingStreamObserver::default());
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 3, None)
+                .with_stream_observer(Some(observer.clone()));
+        let mut context = AgentContext::new("native-stream".to_string());
+
+        let response = agent.run("stream", &mut context).await;
+
+        assert!(response.success);
+        assert_eq!(response.tool_calls_made.len(), 1);
+        assert_eq!(response.tool_calls_made[0].result["echo"], "abc");
+        assert_eq!(response.content, "<think>secret</think>最终答案");
+        assert_eq!(
+            observer
+                .events
+                .lock()
+                .expect("stream events lock")
+                .as_slice(),
+            ["delta:I will check", "reset", "delta:最终", "delta:答案"]
+        );
     }
 
     #[tokio::test]
