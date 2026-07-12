@@ -37,12 +37,13 @@ The public user experience now exposes the user-authorized community archive as 
 - Web tests: 236 passed; TypeScript check and public production Vite build pass.
 - Browser QA passed at desktop and `390x844` mobile viewports for timeline cards, 5-image grid, full-screen viewer, zoom state, protected-file cards, unread-dot accessibility, and chat-to-community navigation.
 - The source runtime was rebuilt and upgraded from `0.13.0` to `0.14.1`. Cloud doctor reports PostgreSQL and R2 healthy; local, origin, and Worker anonymous community probes now return the expected JSON `401` rather than `404`.
+- Cloudflare Pages published the production bundle from `main`: the root asset changed from `index-DnNGxqeh.js` to `index-D-q3AOum.js`, which references `public-community-BCjQZQha.js` and `public-community-_Vdl-l38.css`. Production `/community` renders the dedicated route and its login boundary.
 
 ## Risks / Follow-ups
 
 - The source platform protected 764 file attachments. They are intentionally visible as metadata-only cards; preview becomes available only after a legitimate archival source writes their bytes to R2.
-- The production Web bundle is published by Cloudflare Pages from `main`; the deployment/asset smoke is tracked in `docs/current-plans/public-community-deployment-qa.md` until the production-branch push is visible.
+- Large-object streaming/Range support remains a future improvement before enabling large PDF archives. Current stored media is 34 JPEG files totaling about 1.9 MiB, and the proxy rejects objects above 25 MiB.
 
 ## Next Entry Point
 
-`crates/hone-web-api/src/routes/public_community.rs`, `packages/app/src/pages/public-community.tsx`, and `packages/app/src/pages/chat.tsx`.
+`crates/hone-web-api/src/routes/public_community.rs`, `packages/app/src/pages/public-community.tsx`, `packages/app/src/pages/chat.tsx`, and `docs/archive/plans/public-community-deployment-qa.md`.

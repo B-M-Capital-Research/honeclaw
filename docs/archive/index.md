@@ -8,12 +8,12 @@ Last updated: 2026-07-12
 
 - Status: done
 - Date: 2026-07-12
-- Plan: `docs/archive/plans/public-community-readonly.md`
+- Plan: `docs/archive/plans/public-community-readonly.md`, `docs/archive/plans/public-community-deployment-qa.md`
 - Handoff: `docs/handoffs/2026-07-12-public-community-readonly.md`
 - Decision / ADR: N/A; source-protected resources remain a hard no-download boundary
 - Related PRs / commits: this change set
-- Related runbooks / regressions: cloud doctor schema apply, 216 Rust tests (2 credentialed ignored), 231 Web tests, TypeScript check, public production build
-- Current conclusion: the 616-row user-authorized archive is a shared authenticated `/community` timeline across Web/macOS/iOS. Content is newest-first and read-only; every source post remains one row with ordered media. R2-backed images/files use the private preview route, while protected source files deliberately remain metadata-only.
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`, cloud doctor schema apply, 218 Rust tests (2 credentialed ignored), workspace check, 236 Web tests, TypeScript check, public production build, CI-safe regression suite, desktop/390px browser QA
+- Current conclusion: the 616-row user-authorized archive is deployed as the shared authenticated `/community` timeline across Web/macOS/iOS. Content is newest-first and read-only; every source post remains one row with ordered media. The runtime is `0.14.1`, Cloudflare Pages serves `index-D-q3AOum.js`, R2-backed passive images/PDF use the hardened private preview route, and 764 protected source files deliberately remain metadata-only.
 - Next entry point: `crates/hone-web-api/src/routes/public_community.rs` and `packages/app/src/pages/public-community.tsx`
 
 ### Public Chat Native Runner Streaming
