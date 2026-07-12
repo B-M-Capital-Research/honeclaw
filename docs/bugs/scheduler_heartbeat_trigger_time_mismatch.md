@@ -8,6 +8,19 @@
 
 ## 最新进展
 
+- 本轮 `2026-07-13 03:00-07:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-12`
+    - 03:00-07:02 CST 多条 heartbeat raw / deliver preview 继续出现与实际窗口不一致的时间 / 交易日口径。
+    - 06:30 CST `TSLA 正负触发条件心跳监控` deliver preview 写出 `北京时间 2026-07-12 22:30 | 美东 07-12 09:30（周六，美股正常交易时段）`，同段又写 `markets closed`。
+    - 07:00 CST `Cerebras IPO与业务进展心跳监控` deliver preview 写出 `北京时间 2026-07-13 23:30（美东 11:30），美股常规交易时段进行中`，与实际 07:00 CST 不一致。
+    - 07:00 CST `闪迪关键事件心跳提醒` / `NVDA 关键事件心跳提醒` 等继续写出 `独立日假期休市`、`周日为美股休市日`、`2026-07-09 周四收盘` 等互相漂移口径。
+  - 查重结论：
+    - 本窗 heartbeat 证据仍属于模型时间上下文 / 执行窗口口径漂移，与本文档既有链路一致。
+    - 同窗另新增普通 scheduler final 的交易日口径 P3，登记在 `scheduler_financial_recaps_weekend_trading_day_misclassified.md`，因为受影响链路不是 heartbeat preview。
+  - 用户影响：
+    - 错误日期继续影响用户对增量扫描、重复抑制、行情新鲜度和是否处于交易时段的判断。
+    - 调度和投递主链路仍可运行；因此保持质量性 `P3 / New`。该问题不影响直聊 / 调度 / 投递主功能链路，非 P1，不创建 GitHub Issue。
+
 - 本轮 `2026-07-12 15:02-19:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-12`
     - 本窗 80 条 raw / deliver preview 继续出现与实际 2026-07-12 下午到傍晚窗口不一致的时间口径。

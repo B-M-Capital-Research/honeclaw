@@ -7,6 +7,18 @@
 
 ## 修复进展
 
+- `2026-07-13 03:00-07:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-12`
+    - 本窗 heartbeat 可分类 `parse_kind` 信号为 `PlainTextTriggered=214`、`JsonNoop=95`、`JsonTriggered=10`、`PlainTextSuppressed=14`、`PlainTextNoop=9`、`JsonMalformed=6`、`Empty=1`。
+    - raw preview 以 `<think>` 开头 234 次，`deliver_preview` 112 次；另有 96 次 per-tool budget 拒绝、14 条“heartbeat 输出不是结构化 JSON”和 3 条“heartbeat 输出不是合法 JSON”。
+    - 代表样本包括 06:00 CST `存储板块关键事件心跳提醒` `JsonMalformed + parse failure escalated`、07:00 CST `NBIS关键事件心跳提醒` `PlainTextSuppressed + execution_failed`，以及多条 `PlainTextTriggered` 进入 deliver / duplicate suppression 路径。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 在 03:00-07:02 CST 有 9 个 user turn / 9 条 assistant final，均成对收口；未发现连续 user turn 漏答、空回复、`<think>`、本机路径、provider 原始错误或原始工具 JSON 进入 assistant final。
+    - 本地 `cron_job_runs.max(executed_at)` 仍停在 2026-07-10 14:01 CST，本轮继续以 runtime web log 判断 heartbeat 运行态。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题继续影响 heartbeat 监控判断、送达语义和失败 / 跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-12 15:02-19:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-12`
     - 本窗 heartbeat 可分类 `parse_kind` 信号为 `PlainTextTriggered=216`、`JsonNoop=82`、`PlainTextNoop=10`、`PlainTextSuppressed=7`、`JsonMalformed=2`。

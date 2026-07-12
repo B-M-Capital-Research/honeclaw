@@ -22,6 +22,19 @@
 
 ## 最新进展
 
+- 本轮 2026-07-13 03:00-07:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `session_messages`
+    - 03:00-07:02 CST 新增 9 个 user turn / 9 条 assistant final，均正常成对收口；本窗新登记的普通 scheduler 日期口径问题独立于行情 sanity check。
+    - assistant final 污染扫描未确认空回复、内部字段、原始工具 JSON 或投递失败。
+  - `data/runtime/logs/web.log.2026-07-12`
+    - 本窗 heartbeat preview 继续使用异常或高风险行情锚点进入判断。
+    - 07:00 CST `闪迪关键事件心跳提醒` deliver preview 继续使用 `SNDK $1,915.92`、Forward PE 和市值等高风险行情锚。
+    - 07:00 CST `NVDA 关键事件心跳提醒` deliver preview 继续使用 `NVDA $210.96`、PE `36.12x`、Market Cap `$5.11T`，并围绕错误休市 / 交易日口径进入判断。
+    - 03:00-07:02 CST 统计命中 `MU $979.30`、`NBIS $219.65` 等高风险锚点；多条随后进入 duplicate suppression 或 skipped/noop 路径。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check 缺口：异常或高风险数量级价格进入 heartbeat 判断上下文和部分 deliver preview。
+    - 本窗没有新的正式普通 final 异常价格样本，也未阻断直聊 / 调度 / 投递主链路；因此仍按质量性 `P3 / New`。该问题不影响主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-12 15:02-19:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `session_messages`
     - 15:02-19:02 CST 新增 3 组 user / assistant，17:30 CST Feishu scheduler、17:49 CST Web direct、18:00 CST Web scheduler 均正常收口；本窗没有确认新的普通 direct / scheduler final 正式输出异常行情。
