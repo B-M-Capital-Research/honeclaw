@@ -4,6 +4,20 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 IOS_DIR="$ROOT_DIR/apps/hone-ios"
 TEST_BIN="${TMPDIR:-/tmp}/hone-ios-navigation-policy-test"
+WORKSPACE_VERSION="$(awk '
+  /^\[workspace\.package\]$/ { in_workspace_package = 1; next }
+  /^\[/ { in_workspace_package = 0 }
+  in_workspace_package && /^version = / {
+    gsub(/^[^"]*"|".*$/, "", $0)
+    print
+    exit
+  }
+' "$ROOT_DIR/Cargo.toml")"
+
+if [[ -z "$WORKSPACE_VERSION" ]]; then
+  echo "failed to read workspace version from Cargo.toml" >&2
+  exit 1
+fi
 
 if command -v swiftc >/dev/null 2>&1; then
   swiftc \
@@ -17,7 +31,7 @@ fi
 
 grep -Fq 'https://hone-claw.com/chat' "$IOS_DIR/HONE/NavigationPolicy.swift"
 grep -Fq 'com.hone.chat.ios' "$IOS_DIR/HONE.xcodeproj/project.pbxproj"
-grep -Fq 'MARKETING_VERSION = 0.13.0' "$IOS_DIR/HONE.xcodeproj/project.pbxproj"
+grep -Fq "MARKETING_VERSION = ${WORKSPACE_VERSION};" "$IOS_DIR/HONE.xcodeproj/project.pbxproj"
 if grep -REni 'hone financial|open financial console|hone-mcp|opencode|codex|feishu' "$IOS_DIR/HONE"; then
   echo "forbidden public brand or local runtime dependency found in iOS client" >&2
   exit 1

@@ -1867,11 +1867,12 @@ function FinanceCalendarQuickAction(props: { onSent: () => void }) {
         <span>{CONTENT.chat_page.composer.finance_calendar_tip}</span>
       </button>
       <Show when={open()}>
-        <div
-          class="public-chat-proactive-modal-backdrop"
-          role="presentation"
-          onClick={close}
-        >
+        <Portal>
+          <div
+            class="public-chat-proactive-modal-backdrop"
+            role="presentation"
+            onClick={close}
+          >
           <div
             class="public-chat-proactive-modal public-chat-calendar-modal"
             role="dialog"
@@ -2088,7 +2089,8 @@ function FinanceCalendarQuickAction(props: { onSent: () => void }) {
               </aside>
             </div>
           </div>
-        </div>
+          </div>
+        </Portal>
       </Show>
       <Portal>
         <Show when={largePreviewOpen() && payload()}>

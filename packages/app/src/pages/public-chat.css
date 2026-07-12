@@ -1085,7 +1085,10 @@ body.public-chat-scroll-lock #root {
 }
 .public-chat-calendar-modal {
   width: min(980px, calc(100vw - 32px));
-  max-height: min(780px, calc(100dvh - 32px));
+  height: min(780px, calc(100dvh - 32px));
+  max-height: calc(100dvh - 32px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   padding: 0;
   overflow: hidden;
   border-radius: 8px;
@@ -1133,8 +1136,7 @@ body.public-chat-scroll-lock #root {
   border-radius: 6px;
 }
 .public-chat-calendar-modal-body {
-  min-height: 624px;
-  max-height: calc(100dvh - 110px);
+  min-height: 0;
   padding: 20px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 292px;

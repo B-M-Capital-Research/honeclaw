@@ -50,6 +50,8 @@ find ~/Library/Caches/honeclaw/user-app-target/universal-apple-darwin/release/bu
 
 Launch the packaged app and confirm its logs reach `https://hone-claw.com/chat`. The bundle file list should contain only the app metadata, icon, and `hone-user-app` executable; the startup UI is embedded in the executable.
 
+The app uses a fixed named `WKWebsiteDataStore` on macOS 14+ so the HONE session cookie and Web storage survive normal restarts and version upgrades. macOS 12/13 use WebKit's default persistent store because named stores are unavailable there. Do not change `HONE_WEBKIT_DATA_STORE_ID`, enable incognito mode, or change the bundle identifier during a routine release: any of those changes can move users to a different login store.
+
 ## Versioning
 
 Keep `bins/hone-user-app/tauri.conf.json` aligned with the workspace version in `Cargo.toml`. The formal release checklist includes this file, but building this app does not itself create a Git tag or publish a formal repository release.

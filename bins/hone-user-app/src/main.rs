@@ -7,6 +7,11 @@ use tauri::{
 };
 
 const HONE_HOST: &str = "hone-claw.com";
+// Stable UUID bytes for the persistent HONE WebKit data store on macOS 14+.
+// macOS 12/13 safely fall back to WebKit's default persistent store.
+const HONE_WEBKIT_DATA_STORE_ID: [u8; 16] = [
+    0x48, 0x4f, 0x4e, 0x45, 0x5c, 0x14, 0x4a, 0x71, 0x9b, 0x83, 0x63, 0x6f, 0x6d, 0x68, 0x6f, 0x6e,
+];
 
 fn is_first_party_navigation(url: &Url) -> bool {
     match url.scheme() {
@@ -64,7 +69,10 @@ fn main() {
                     });
 
             #[cfg(target_os = "macos")]
-            let window = window.hidden_title(true).allow_link_preview(false);
+            let window = window
+                .hidden_title(true)
+                .allow_link_preview(false)
+                .data_store_identifier(HONE_WEBKIT_DATA_STORE_ID);
 
             window.build()?;
             Ok(())
@@ -75,7 +83,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{can_open_externally, is_first_party_navigation};
+    use super::{HONE_WEBKIT_DATA_STORE_ID, can_open_externally, is_first_party_navigation};
     use tauri::Url;
 
     const APP_SCRIPT: &str = include_str!("../ui/app.js");
@@ -145,5 +153,18 @@ mod tests {
         ] {
             assert!(!TAURI_CONFIG.contains(forbidden), "found {forbidden}");
         }
+    }
+
+    #[test]
+    fn webkit_login_data_store_identifier_stays_stable() {
+        assert_eq!(HONE_WEBKIT_DATA_STORE_ID.len(), 16);
+        assert_eq!(
+            HONE_WEBKIT_DATA_STORE_ID,
+            [
+                0x48, 0x4f, 0x4e, 0x45, 0x5c, 0x14, 0x4a, 0x71, 0x9b, 0x83, 0x63, 0x6f, 0x6d, 0x68,
+                0x6f, 0x6e,
+            ]
+        );
+        assert!(!TAURI_CONFIG.contains("\"incognito\": true"));
     }
 }

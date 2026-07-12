@@ -6,6 +6,7 @@ const nav = readFileSync(
   new URL("../components/public-nav.tsx", import.meta.url),
   "utf8",
 );
+const chat = readFileSync(new URL("./chat.tsx", import.meta.url), "utf8");
 
 describe("public chat visual contract", () => {
   it("uses the flat mobile chat header instead of the floating site pill", () => {
@@ -44,5 +45,13 @@ describe("public chat visual contract", () => {
     expect(css).toContain("public-chat-proactive-tip");
     expect(css).toContain("font-family: var(--hone-font-body) !important");
     expect(css).toContain("font-weight: 700 !important");
+  });
+
+  it("keeps the desktop calendar dialog above the chat shell and inside the viewport", () => {
+    const calendar = chat.slice(chat.indexOf("function FinanceCalendarQuickAction"));
+    expect(calendar).toContain("<Portal>");
+    expect(css).toContain("height: min(780px, calc(100dvh - 32px))");
+    expect(css).toContain("grid-template-rows: auto minmax(0, 1fr)");
+    expect(css).toContain(".public-chat-calendar-modal-body {\n  min-height: 0;");
   });
 });
