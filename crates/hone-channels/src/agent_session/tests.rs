@@ -2108,6 +2108,96 @@ async fn run_rejects_over_daily_limit_with_user_turn_and_friendly_error() {
 }
 
 #[tokio::test]
+async fn run_persists_failed_assistant_turn_for_early_guard_failure() {
+    let root = make_temp_dir("hone_channels_guard_fail_persist");
+    std::fs::create_dir_all(&root).expect("create root");
+    let mut config = HoneConfig::default();
+    config.agent.runner = "codex_acp".to_string();
+    config.storage.sessions_dir = root.join("sessions").to_string_lossy().to_string();
+    config.storage.conversation_quota_dir = root
+        .join("conversation_quota")
+        .to_string_lossy()
+        .to_string();
+    config.storage.llm_audit_enabled = false;
+    config.storage.llm_audit_db_path = root.join("llm_audit.sqlite3").to_string_lossy().to_string();
+    config.storage.portfolio_dir = root.join("portfolio").to_string_lossy().to_string();
+    config.storage.cron_jobs_dir = root.join("cron_jobs").to_string_lossy().to_string();
+    config.storage.gen_images_dir = root.join("gen_images").to_string_lossy().to_string();
+    let core = Arc::new(HoneBotCore::new(config));
+    let actor = ActorIdentity::new("web", "alice", None::<String>).expect("actor");
+
+    let session = AgentSession::new(core.clone(), actor.clone(), actor.user_id.clone());
+    let result = session.run("帮我看持仓", AgentRunOptions::default()).await;
+
+    assert!(!result.response.success);
+    let messages = core
+        .session_storage
+        .get_messages(&actor.session_id(), None)
+        .expect("messages");
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].role, "user");
+    assert_eq!(messages[1].role, "assistant");
+    assert_eq!(
+        messages[1].content[0].text.as_deref(),
+        Some(
+            "安全执行器不可用：普通用户不能使用具备宿主机访问能力的 CLI/ACP，请先配置 function_calling LLM。"
+        )
+    );
+    assert_eq!(
+        messages[1]
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("run_failed"))
+            .and_then(|value| value.as_bool()),
+        Some(true)
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn run_persists_failed_assistant_turn_for_runner_failure() {
+    let root = make_temp_dir("hone_channels_runner_fail_persist");
+    std::fs::create_dir_all(&root).expect("create root");
+    let llm = MockLlmProvider::with_chat_and_tool_responses(
+        vec![],
+        vec![Err(hone_core::HoneError::Llm(
+            "provider transport error".to_string(),
+        ))],
+    );
+    let core = make_test_core(&root, llm);
+    let actor = ActorIdentity::new("web", "alice", None::<String>).expect("actor");
+
+    let session = AgentSession::new(core.clone(), actor.clone(), actor.user_id.clone());
+    let result = session
+        .run("帮我看看 KLAC", AgentRunOptions::default())
+        .await;
+
+    assert!(!result.response.success);
+    let messages = core
+        .session_storage
+        .get_messages(&actor.session_id(), None)
+        .expect("messages");
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].role, "user");
+    assert_eq!(messages[1].role, "assistant");
+    let assistant_text = messages[1].content[0].text.as_deref().unwrap_or_default();
+    assert!(!assistant_text.is_empty());
+    assert!(
+        !assistant_text.contains("provider transport error"),
+        "persisted assistant turn should stay user-facing, got: {assistant_text}"
+    );
+    assert_eq!(
+        messages[1]
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("run_failed"))
+            .and_then(|value| value.as_bool()),
+        Some(true)
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
 async fn run_zero_daily_conversation_limit_bypasses_quota() {
     let root = make_temp_dir("hone_channels_quota_unlimited");
     std::fs::create_dir_all(&root).expect("create root");

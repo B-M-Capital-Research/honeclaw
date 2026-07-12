@@ -420,6 +420,38 @@ impl AgentSession {
         );
     }
 
+    fn persist_failed_assistant_turn_if_needed(
+        &self,
+        session_id: &str,
+        kind: AgentSessionErrorKind,
+        message: &str,
+    ) {
+        let should_persist = self
+            .core
+            .session_storage
+            .get_messages(session_id, None)
+            .ok()
+            .and_then(|messages| messages.last().cloned())
+            .is_some_and(|message| message.role == "user");
+        if !should_persist {
+            return;
+        }
+
+        let mut metadata = HashMap::new();
+        metadata.insert("run_failed".to_string(), Value::Bool(true));
+        metadata.insert("error_kind".to_string(), Value::String(format!("{kind:?}")));
+        self.persist_assistant_text_turn(session_id, message, metadata);
+        self.core.log_message_step(
+            &self.actor.channel,
+            &self.actor.user_id,
+            session_id,
+            "session.persist_assistant",
+            "failed",
+            self.message_id.as_deref(),
+            None,
+        );
+    }
+
     async fn force_compact_for_context_overflow(&self, session_id: &str) -> Result<bool, String> {
         let outcome = SessionCompactor::new(&self.core)
             .compact_session(
@@ -870,6 +902,8 @@ impl AgentSession {
         kind: AgentSessionErrorKind,
         message: String,
     ) -> AgentSessionResult {
+        let persisted_message = user_visible_error_message(Some(message.as_str()));
+        self.persist_failed_assistant_turn_if_needed(&session_id, kind, &persisted_message);
         let error = AgentSessionError {
             kind,
             message: message.clone(),
@@ -1438,6 +1472,8 @@ impl AgentSession {
                 }))
                 .await;
             }
+            let persisted_message = user_visible_error_message(response.error.as_deref());
+            self.persist_failed_assistant_turn_if_needed(&session_id, kind, &persisted_message);
             self.emit(AgentSessionEvent::Done {
                 response: response.clone(),
             })

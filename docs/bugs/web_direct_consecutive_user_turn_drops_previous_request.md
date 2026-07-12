@@ -3,7 +3,7 @@
 - 发现时间：2026-07-12 03:02 CST
 - Bug Type：Business Error
 - 严重等级：P2
-- 状态：New
+- 状态：Fixed
 - GitHub Issue：无，非 P1
 
 ## 证据来源
@@ -51,13 +51,26 @@
 
 ## 根因判断
 
-- 初步判断是 Web direct 对同一 session 的并发 / 连续 user turn 缺少稳定串行化、取消语义或失败补偿。
-- 也可能是上一轮持仓查询执行中被下一轮输入覆盖，最终只保留了最新请求的 answer 阶段。
+- `AgentSession::run()` 虽然已经用 per-session lock 串行化执行，但失败出口存在“只发瞬时事件、不落库 assistant 终态”的缺口。
+- 当本轮 user turn 已经 Fast Persist，而运行在 early guard / prepare / runner failure 分支提前失败时，Web 前端能短暂看到 SSE 错误态，但历史恢复仍只会读到上一条 user turn。
+- 用户随后继续发送下一条消息时，`session_messages` 会表现成连续两个 user turn，中间没有 assistant terminal turn，看起来像“上一轮被跳过”。
 - 该问题不同于 `web_scheduler_acp_stream_disconnect_no_final.md`：本轮是 Web direct，不是 scheduler 到点任务。
 - 该问题也不同于 Feishu 直聊 idle timeout 历史缺陷：本轮没有 Feishu placeholder、timeout 失败文案或 runner state DB 证据；用户可见症状是 Web direct 某个 user turn 被后续 user turn 静默跳过。
 
+## 修复情况
+
+- 2026-07-13 03:05 CST 代码级修复：`crates/hone-channels/src/agent_session/core.rs` 新增 `persist_failed_assistant_turn_if_needed(...)`，在 `fail_run(...)` 和 runner 失败收口分支统一补落一条用户可见 assistant 失败终态；仅当当前 session 最新一条仍是 user 时才写入，避免与已有 quota / fallback assistant 重复。
+- 新增回归：
+  - `run_persists_failed_assistant_turn_for_early_guard_failure`
+  - `run_persists_failed_assistant_turn_for_runner_failure`
+- 验证通过：
+  - `cargo test -p hone-channels run_persists_failed_assistant_turn_for_early_guard_failure --lib -- --nocapture`
+  - `cargo test -p hone-channels run_persists_failed_assistant_turn_for_runner_failure --lib -- --nocapture`
+  - `cargo test -p hone-channels run_rejects_over_daily_limit_with_user_turn_and_friendly_error --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+- 本轮未重启 Web 服务，也没有重新制造 live Web direct 运行态样本，因此先按代码级 `Fixed` 记录，待后续巡检复核是否彻底收敛。
+
 ## 下一步建议
 
-- 在 Web direct ingress / runner 调度层为同一 session 增加“上一轮仍未终态时的新 user turn”处理策略：串行排队、显式取消并落库 assistant 提示，或合并上下文后同时回答。
-- 为 `session_messages` 增加回归检查：同一 direct session 中任意两个相邻 user turn 之间必须存在 assistant terminal turn 或结构化取消标记。
-- 复核 Web 前端是否允许用户在上一轮 pending 时继续发送；若允许，应有清晰的 pending / superseded UI 与服务端状态一致。
+- 后续巡检继续关注 Web direct 是否还会出现“相邻 user turn 中间没有 assistant terminal turn”的样本；若仍有复发，再排查是否存在多标签页并发发送、手动 stop、或 SSE 断流后前端恢复策略不一致的次级根因。
+- 如需进一步提升体验，可在 Web direct 明确补一层“上一轮仍执行中时禁止再次发送 / 显式 superseded 提示”的前后端一致性策略，但这不影响本轮针对“历史里静默悬空 user turn”的修复闭环。
