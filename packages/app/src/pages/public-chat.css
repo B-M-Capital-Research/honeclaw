@@ -598,18 +598,34 @@ body.public-chat-scroll-lock #root {
     bottom: 0;
     left: 54px;
     display: flex;
+    align-items: center;
     justify-content: center;
+    gap: 8px;
     padding: 0 !important;
     text-align: center;
   }
 
   .public-chat-page .pub-nav.is-chat-mode .pub-nav-brand > .hone-brand {
+    display: inline-flex !important;
+    flex: 0 0 30px;
+  }
+
+  .public-chat-page .pub-nav.is-chat-mode .pub-nav-brand .hone-brand-mark {
+    width: 30px !important;
+    height: 30px !important;
+    border-radius: 9px !important;
+    box-shadow: 0 3px 10px rgba(61, 49, 35, 0.08) !important;
+  }
+
+  .public-chat-page .pub-nav.is-chat-mode .pub-nav-brand .hone-brand-word {
     display: none !important;
   }
 
   .public-chat-page .pub-nav.is-chat-mode .pub-nav-chat-copy {
-    display: grid;
-    gap: 1px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
     pointer-events: none;
   }
 
@@ -655,6 +671,20 @@ body.public-chat-scroll-lock #root {
 
   .public-chat-page .pub-mobile-menu {
     top: 62px !important;
+    border-color: rgba(32, 40, 44, 0.08) !important;
+    background: rgba(255, 255, 255, 0.99) !important;
+    box-shadow: 0 10px 28px rgba(32, 40, 44, 0.10) !important;
+  }
+
+  .public-chat-page .pub-mobile-menu-scrim {
+    background: rgba(249, 250, 248, 0.82) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  .public-chat-page .pub-mobile-menu-links button.is-active {
+    color: #20282c !important;
+    background: #f4f5f3 !important;
   }
 
 }
@@ -2446,6 +2476,7 @@ body.public-chat-scroll-lock #root {
 
   .public-chat-page .public-chat-proactive-tip-wrap {
     justify-content: flex-start !important;
+    flex-wrap: nowrap !important;
     margin: 0 4px 7px !important;
     gap: 6px !important;
   }
@@ -2460,6 +2491,9 @@ body.public-chat-scroll-lock #root {
     box-shadow: none !important;
     font-size: 11.5px !important;
     font-weight: 620 !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+    word-break: keep-all !important;
   }
 
   .public-chat-page .public-chat-proactive-tip-icon {

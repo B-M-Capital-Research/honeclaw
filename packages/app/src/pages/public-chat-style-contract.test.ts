@@ -13,6 +13,15 @@ describe("public chat visual contract", () => {
     expect(nav).toContain("pub-nav-chat-copy");
     expect(css).toContain("border-radius: 0 !important");
     expect(css).toContain("padding-top: 58px !important");
+    expect(css).toContain("align-items: center");
+    expect(css).toContain("flex: 0 0 30px");
+  });
+
+  it("keeps quick actions on one line and the chat menu light", () => {
+    expect(css).toContain("flex-wrap: nowrap !important");
+    expect(css).toContain("white-space: nowrap !important");
+    expect(css).toContain("background: rgba(255, 255, 255, 0.99) !important");
+    expect(css).toContain("backdrop-filter: none !important");
   });
 
   it("keeps assistant responses flat and user prompts softly filled", () => {
