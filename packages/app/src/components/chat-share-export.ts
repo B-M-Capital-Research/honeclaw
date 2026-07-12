@@ -57,6 +57,26 @@ export function defaultShareMessageId<T extends { id: string }>(
   return messages[messages.length - 1]?.id ?? null;
 }
 
+export function shareUserBubbleStyle(fontSize: number) {
+  return {
+    "max-width": "86%",
+    background: "#0f172a",
+    color: "#f8fafc",
+    display: "flex",
+    "align-items": "center",
+    "justify-content": "center",
+    "min-height": `${Math.round(fontSize * 1.45 + 20)}px`,
+    padding: "10px 15px",
+    "border-radius": "12px 12px 4px 12px",
+    "font-size": `${fontSize}px`,
+    "line-height": "1.45",
+    "white-space": "pre-wrap",
+    "text-align": "center",
+    "word-break": "break-word",
+    "box-sizing": "border-box",
+  } as const;
+}
+
 export async function canvasToPngBlob(canvas: HTMLCanvasElement) {
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((blob) => {

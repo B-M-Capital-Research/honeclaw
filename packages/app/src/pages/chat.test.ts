@@ -10,12 +10,14 @@ import {
   mergePublicHistoryWindow,
   normalizePhoneNumber,
   PUBLIC_RESTORE_MAX_ATTEMPTS,
+  PUBLIC_CHAT_VIEWPORT_CONTENT,
   publicRestoreRetryDelay,
   publicAttachmentFileLabel,
   rekeyTrailingOptimisticIds,
   resolvePublicChatView,
   shouldRetryPublicRestore,
   shouldRecoverPinnedBottom,
+  shouldPreventPublicChatPinch,
   shouldLoadOlderPublicMessages,
   splitPublicChatAttachments,
   stripAttachmentMarkers,
@@ -67,6 +69,31 @@ describe("public chat restore retry policy", () => {
       publicRestoreRetryDelay(2),
     );
     expect(publicRestoreRetryDelay(99)).toBe(publicRestoreRetryDelay(3));
+  });
+});
+
+describe("public chat mobile pinch policy", () => {
+  it("locks native page zoom while preserving controlled calendar pinch", () => {
+    expect(PUBLIC_CHAT_VIEWPORT_CONTENT).toContain("maximum-scale=1");
+    expect(PUBLIC_CHAT_VIEWPORT_CONTENT).toContain("user-scalable=no");
+    expect(
+      shouldPreventPublicChatPinch({
+        touchCount: 2,
+        insideControlledSurface: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldPreventPublicChatPinch({
+        touchCount: 2,
+        insideControlledSurface: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldPreventPublicChatPinch({
+        touchCount: 1,
+        insideControlledSurface: false,
+      }),
+    ).toBe(false);
   });
 });
 

@@ -69,3 +69,9 @@ Production feedback found that the composer-side `HONE 思考中` strip reads li
 - Refreshing during a server-side run appends a `_background` timeline placeholder. The final persisted assistant row adopts that temporary ID before Solid reconciliation, so the same card is edited in place.
 - Abort errors now use localized user-facing copy instead of exposing browser exception text.
 - Verification: 214 frontend tests, frontend typecheck, targeted lifecycle tests, public production build, diff check, and 390 x 844 public-entry browser QA with no console warnings. Authenticated production sending still requires the user's HttpOnly session for final hands-on acceptance.
+
+## Mobile Gesture And Share Follow-up
+
+- Exported user queries now use one tested layout contract with horizontal, vertical, and text centering inside the dark bubble, matching the modal preview and rasterization source.
+- `/chat` applies a runtime viewport lock plus a non-passive multi-touch guard so accidental Safari page pinch cannot leave the conversation enlarged. The finance-calendar lightbox is explicitly allowlisted and continues to use its bounded custom pinch/pan implementation.
+- Verification: 216 frontend tests, frontend typecheck, public production build, 390 x 844 share-card visual QA, runtime viewport `scale=1` with `maximum-scale=1` and `user-scalable=no`, and no browser console warnings.

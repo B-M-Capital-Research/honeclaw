@@ -9,6 +9,7 @@ import {
   isShareAbortError,
   isShareRenderError,
   recentShareMessages,
+  shareUserBubbleStyle,
 } from "./chat-share-export";
 
 async function expectCanvasEncodingError(
@@ -23,6 +24,15 @@ async function expectCanvasEncodingError(
 }
 
 describe("chat share export errors", () => {
+  test("centers exported user queries inside their dark bubble", () => {
+    const style = shareUserBubbleStyle(16.5);
+
+    expect(style.display).toBe("flex");
+    expect(style["align-items"]).toBe("center");
+    expect(style["justify-content"]).toBe("center");
+    expect(style["text-align"]).toBe("center");
+  });
+
   test("reports canvas encoding failures as render errors", async () => {
     const canvas = {
       toBlob(callback: BlobCallback) {

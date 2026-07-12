@@ -16,6 +16,10 @@ type PublicChatView = "loading" | "login" | "chat";
 export const PUBLIC_RESTORE_TIMEOUT_MS = 8000;
 export const PUBLIC_RESTORE_MAX_ATTEMPTS = 4;
 export const PUBLIC_RESTORE_RETRY_DELAYS_MS = [700, 1600, 3200] as const;
+export const PUBLIC_CHAT_CONTROLLED_PINCH_SELECTOR =
+  ".public-finance-calendar-lightbox-viewport";
+export const PUBLIC_CHAT_VIEWPORT_CONTENT =
+  "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content";
 
 export type PublicChatAttachment = {
   /** Absolute server-side path returned by `/api/public/upload` or carried in history. */
@@ -85,6 +89,13 @@ export function shouldRetryPublicRestore(
   maxAttempts = PUBLIC_RESTORE_MAX_ATTEMPTS,
 ) {
   return attempt < maxAttempts;
+}
+
+export function shouldPreventPublicChatPinch(input: {
+  touchCount: number;
+  insideControlledSurface: boolean;
+}) {
+  return input.touchCount > 1 && !input.insideControlledSurface;
 }
 
 export function toPublicChatMessages(

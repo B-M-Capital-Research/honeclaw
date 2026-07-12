@@ -7,6 +7,7 @@ import { For, Show, createEffect, createSignal } from "solid-js";
 import QRCode from "qrcode";
 import type { PublicChatMessage } from "@/lib/public-chat";
 import { stripAttachmentMarkers } from "@/lib/public-chat";
+import { shareUserBubbleStyle } from "./chat-share-export";
 
 type ChatShareCardProps = {
   messages: PublicChatMessage[];
@@ -366,25 +367,7 @@ function UserRow(props: { content: string; fontSize: number }) {
   const cleaned = () => stripAttachmentMarkers(props.content);
   return (
     <div style={{ display: "flex", "justify-content": "flex-end" }}>
-      <div
-        style={{
-          "max-width": "86%",
-          background: "#0f172a",
-          color: "#f8fafc",
-          display: "flex",
-          "align-items": "center",
-          "justify-content": "flex-start",
-          "min-height": `${Math.round(props.fontSize * 1.45 + 20)}px`,
-          padding: "10px 15px",
-          "border-radius": "12px 12px 4px 12px",
-          "font-size": `${props.fontSize}px`,
-          "line-height": "1.45",
-          "white-space": "pre-wrap",
-          "text-align": "left",
-          "word-break": "break-word",
-          "box-sizing": "border-box",
-        }}
-      >
+      <div style={shareUserBubbleStyle(props.fontSize)}>
         <span style={{ display: "block", width: "100%" }}>{cleaned()}</span>
       </div>
     </div>

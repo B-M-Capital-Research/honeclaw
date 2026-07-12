@@ -80,6 +80,8 @@ import {
   formatPublicAttachmentBytes,
   isPublicChatQuotaExhausted,
   latestUnreadPushId,
+  PUBLIC_CHAT_CONTROLLED_PINCH_SELECTOR,
+  PUBLIC_CHAT_VIEWPORT_CONTENT,
   PUBLIC_RESTORE_TIMEOUT_MS,
   publicAttachmentFileLabel,
   publicRestoreRetryDelay,
@@ -88,6 +90,7 @@ import {
   mergePublicPushItems,
   shouldRetryPublicRestore,
   shouldRecoverPinnedBottom,
+  shouldPreventPublicChatPinch,
   shouldLoadOlderPublicMessages,
   splitPublicChatAttachments,
   stripAttachmentMarkers,
@@ -2937,14 +2940,30 @@ export default function PublicChatPage() {
       'meta[name="viewport"]',
     );
     const previousViewport = viewportMeta?.getAttribute("content") ?? null;
-    viewportMeta?.setAttribute(
-      "content",
-      "width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content",
-    );
-    const preventGesture = (event: Event) => event.preventDefault();
+    viewportMeta?.setAttribute("content", PUBLIC_CHAT_VIEWPORT_CONTENT);
+    const insideControlledPinchSurface = (target: EventTarget | null) =>
+      target instanceof Element &&
+      target.closest(PUBLIC_CHAT_CONTROLLED_PINCH_SELECTOR) !== null;
+    const preventGesture = (event: Event) => {
+      if (!insideControlledPinchSurface(event.target)) event.preventDefault();
+    };
+    const preventPagePinch = (event: TouchEvent) => {
+      if (
+        shouldPreventPublicChatPinch({
+          touchCount: event.touches.length,
+          insideControlledSurface: insideControlledPinchSurface(event.target),
+        })
+      ) {
+        event.preventDefault();
+      }
+    };
     document.addEventListener("gesturestart", preventGesture);
     document.addEventListener("gesturechange", preventGesture);
     document.addEventListener("gestureend", preventGesture);
+    document.addEventListener("touchmove", preventPagePinch, {
+      passive: false,
+      capture: true,
+    });
     void restoreSession({ resetWindow: true });
     onCleanup(() => {
       if (viewportMeta) {
@@ -2957,6 +2976,7 @@ export default function PublicChatPage() {
       document.removeEventListener("gesturestart", preventGesture);
       document.removeEventListener("gesturechange", preventGesture);
       document.removeEventListener("gestureend", preventGesture);
+      document.removeEventListener("touchmove", preventPagePinch, true);
     });
   });
   createEffect(() => {
