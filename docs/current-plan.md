@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-07-12
-状态：有 6 个活跃任务
+状态：有 7 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **v0.14.0 Apple User Client Release**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/v0.14.0-apple-user-client-release.md`
+  - 摘要：把 v0.13.0 之后的安全隔离、真实流式聊天、IM 恢复/分页和财经日历稳定图片链路发布为新的 macOS/iOS 用户端正式版本，并验证 GitHub Release Apple 资产
 
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`

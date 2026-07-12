@@ -373,7 +373,7 @@
     <h1>HONE Research Agent - Full Architecture Map</h1>
     <div class="sub">What happens after a single message arrives, and which modules are involved</div>
   </div>
-  <div class="tag">2026-07-11 · v0.13.0</div>
+  <div class="tag">2026-07-12 · v0.14.0</div>
 </div>
 
 <hr class="divider" style="margin-bottom:18px" />
@@ -536,7 +536,7 @@
         <strong>1. Session load</strong> - restore history from disk<br/>
         <strong>2. Session compression</strong> - when messages exceed 20 / 80KB, use LLM summarization and keep the latest 6 messages<br/>
         <strong>3. Prompt assembly</strong> - system_prompt + current time + channel formatting guidance + privacy guard + KB summary<br/>
-        <strong>4. Progress events</strong> - Progress / StreamDelta / ToolStatus / Done / Error<br/>
+        <strong>4. Progress events</strong> - Progress / StreamDelta / StreamReset / ToolStatus / Done / Error<br/>
         <strong>5. Session write-back</strong> - persist messages + metadata to JSON
       </div>
     </div>
@@ -720,7 +720,7 @@
     </div>
     <div class="card theme-dark">
       <div class="card-title">🔔 SSE Push</div>
-      <div class="card-sub">Real-time Web console push<br/>Progress / StreamDelta<br/>ToolStatus / Done</div>
+      <div class="card-sub">Real-time Web console push<br/>Progress / StreamDelta + Reset<br/>ToolStatus / Done</div>
     </div>
     <div class="card theme-dark">
       <div class="card-title">⏰ Scheduler Events</div>

@@ -74,8 +74,8 @@
     <g transform="translate(1380, 0)">
       <rect x="0" y="6" width="280" height="98" fill="#fdfaf2" stroke="#d8cdb8"/>
       <text x="14" y="26" class="section-meta">CURRENT RELEASE</text>
-      <text x="14" y="56" class="serif" font-size="34" font-weight="700" fill="#1a1a2e">v0.13.0</text>
-      <text x="14" y="76" font-size="11" fill="#6a6478">2026·07·11 — HONE Apple clients + push inbox</text>
+      <text x="14" y="56" class="serif" font-size="34" font-weight="700" fill="#1a1a2e">v0.14.0</text>
+      <text x="14" y="76" font-size="11" fill="#6a6478">2026·07·12 — safe native streaming + stable IM restore</text>
       <text x="14" y="92" font-size="10" fill="#8a8497" letter-spacing="0.05em">github · B-M-Capital-Research/honeclaw · MIT</text>
       <rect x="270" y="6" width="6" height="98" fill="#e85d04"/>
     </g>
@@ -915,10 +915,18 @@
   <g transform="translate(72, 1948)">
     <text x="0" y="0" class="section-meta" letter-spacing="0.18em">RECENT MILESTONES</text>
     <line x1="200" y1="-4" x2="1656" y2="-4" class="footer-line"/>
-    <text x="1660" y="0" class="section-meta" text-anchor="end">v0.13.0 · 2026·07·11</text>
+    <text x="1660" y="0" class="section-meta" text-anchor="end">v0.14.0 · 2026·07·12</text>
 
     <g transform="translate(0, 14)">
       <g transform="translate(0, 0)">
+        <rect x="0" y="0" width="404" height="76" rx="4" fill="#fff0d6" stroke="#e85d04"/>
+        <rect x="0" y="0" width="3" height="76" fill="#e85d04"/>
+        <text x="14" y="20" font-size="10" font-weight="800" fill="#b8542a" letter-spacing="0.08em">v0.14.0 · NATIVE STREAMING</text>
+        <text x="14" y="38" class="card-title">Safe runner SSE · one in-thread card</text>
+        <text x="14" y="54" class="card-detail">20-message IM restore + upward pagination</text>
+        <text x="14" y="68" class="card-detail">server-selected stable calendar images</text>
+      </g>
+      <g transform="translate(416, 0)">
         <rect x="0" y="0" width="404" height="76" rx="4" fill="#fff0d6" stroke="#e85d04"/>
         <rect x="0" y="0" width="3" height="76" fill="#e85d04"/>
         <text x="14" y="20" font-size="10" font-weight="800" fill="#b8542a" letter-spacing="0.08em">v0.13.0 · HONE CLIENTS</text>
@@ -926,29 +934,21 @@
         <text x="14" y="54" class="card-detail">durable Web push inbox + finance calendar</text>
         <text x="14" y="68" class="card-detail">Release uploads Apple client artifacts</text>
       </g>
-      <g transform="translate(416, 0)">
-        <rect x="0" y="0" width="404" height="76" rx="4" fill="#fff0d6" stroke="#e85d04"/>
-        <rect x="0" y="0" width="3" height="76" fill="#e85d04"/>
-        <text x="14" y="20" font-size="10" font-weight="800" fill="#b8542a" letter-spacing="0.08em">v0.12.4 · CLOUD RUNTIME</text>
+      <g transform="translate(832, 0)">
+        <rect x="0" y="0" width="404" height="76" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
+        <rect x="0" y="0" width="3" height="76" fill="#7a6a52"/>
+        <text x="14" y="20" font-size="10" font-weight="800" fill="#5a5a6e" letter-spacing="0.08em">v0.12.4 · CLOUD RUNTIME</text>
         <text x="14" y="38" class="card-title">PG / OSS runtime contract lands</text>
         <text x="14" y="54" class="card-detail">public uploads prefer OSS when configured</text>
         <text x="14" y="68" class="card-detail">scheduler guards and diagnostics tightened</text>
       </g>
-      <g transform="translate(832, 0)">
-        <rect x="0" y="0" width="404" height="76" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
+      <g transform="translate(1248, 0)">
+        <rect x="0" y="0" width="408" height="76" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
         <rect x="0" y="0" width="3" height="76" fill="#7a6a52"/>
         <text x="14" y="20" font-size="10" font-weight="800" fill="#5a5a6e" letter-spacing="0.08em">v0.12.3 · PUBLIC WEB</text>
         <text x="14" y="38" class="card-title">Blog / public chat / share previews</text>
         <text x="14" y="54" class="card-detail">desktop remote backend diagnostics tightened</text>
         <text x="14" y="68" class="card-detail">Feishu and event-engine reliability pass</text>
-      </g>
-      <g transform="translate(1248, 0)">
-        <rect x="0" y="0" width="408" height="76" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
-        <rect x="0" y="0" width="3" height="76" fill="#7a6a52"/>
-        <text x="14" y="20" font-size="10" font-weight="800" fill="#5a5a6e" letter-spacing="0.08em">v0.12.2 · HEARTBEAT DEDUPE</text>
-        <text x="14" y="38" class="card-title">scheduler revision dedupe fixed</text>
-        <text x="14" y="54" class="card-detail">share-card CJK code font alignment</text>
-        <text x="14" y="68" class="card-detail">LLM diagnostics follow new config layout</text>
       </g>
     </g>
   </g>

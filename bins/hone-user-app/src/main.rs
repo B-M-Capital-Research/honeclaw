@@ -130,6 +130,7 @@ mod tests {
     #[test]
     fn bundle_contract_stays_remote_only() {
         assert!(APP_SCRIPT.contains("https://hone-claw.com/chat"));
+        assert!(TAURI_CONFIG.contains("\"signingIdentity\": \"-\""));
 
         for forbidden in [
             "externalBin",
