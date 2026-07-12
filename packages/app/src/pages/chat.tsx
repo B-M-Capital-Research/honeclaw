@@ -3269,22 +3269,9 @@ export default function PublicChatPage() {
       <AnimatedBackground />
       <Show when={authState() !== "loading"}>
         <PublicNav
-        mobileAction={
-          <Show when={authState() === "ready"}>
-            <button
-              type="button"
-              class="public-chat-account-trigger public-push-nav-button"
-              aria-label={CONTENT.chat_page.pushes.open_aria}
-              title={CONTENT.chat_page.pushes.nav}
-              onClick={openPushCenter}
-            >
-              <PushNavIcon />
-              <PushUnreadDot count={pushUnreadCount()} />
-            </button>
-          </Show>
-        }
-        extraActions={
-          <>
+          chatMode
+          mobileLabel={CONTENT.chat_page.header.subtitle}
+          mobileAction={
             <Show when={authState() === "ready"}>
               <button
                 type="button"
@@ -3297,10 +3284,25 @@ export default function PublicChatPage() {
                 <PushUnreadDot count={pushUnreadCount()} />
               </button>
             </Show>
-            <PrefsButton />
-            <AccountButton user={currentUser()} onLogout={logoutPublicChat} />
-          </>
-        }
+          }
+          extraActions={
+            <>
+              <Show when={authState() === "ready"}>
+                <button
+                  type="button"
+                  class="public-chat-account-trigger public-push-nav-button"
+                  aria-label={CONTENT.chat_page.pushes.open_aria}
+                  title={CONTENT.chat_page.pushes.nav}
+                  onClick={openPushCenter}
+                >
+                  <PushNavIcon />
+                  <PushUnreadDot count={pushUnreadCount()} />
+                </button>
+              </Show>
+              <PrefsButton />
+              <AccountButton user={currentUser()} onLogout={logoutPublicChat} />
+            </>
+          }
         />
       </Show>
 

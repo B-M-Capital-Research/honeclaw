@@ -26,7 +26,12 @@ const NAV_LINKS = [
 ] as const;
 
 export function PublicNav(
-  props: { extraActions?: JSX.Element; mobileAction?: JSX.Element } = {},
+  props: {
+    extraActions?: JSX.Element;
+    mobileAction?: JSX.Element;
+    chatMode?: boolean;
+    mobileLabel?: string;
+  } = {},
 ) {
   const [scrolled, setScrolled] = createSignal(false);
   const [menuOpen, setMenuOpen] = createSignal(false);
@@ -59,7 +64,11 @@ export function PublicNav(
     <>
       <nav
         class="pub-nav"
-        classList={{ "is-scrolled": scrolled(), "is-open": menuOpen() }}
+        classList={{
+          "is-scrolled": scrolled(),
+          "is-open": menuOpen(),
+          "is-chat-mode": props.chatMode,
+        }}
         aria-label="HONE"
       >
         <button
@@ -69,6 +78,12 @@ export function PublicNav(
           aria-label="HONE"
         >
           <HoneBrand />
+          <Show when={props.mobileLabel}>
+            <span class="pub-nav-chat-copy">
+              <strong>HONE</strong>
+              <small>{props.mobileLabel}</small>
+            </span>
+          </Show>
         </button>
 
         <div class="pub-nav-links">

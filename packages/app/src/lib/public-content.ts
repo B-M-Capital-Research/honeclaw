@@ -884,6 +884,9 @@ const CONTENT_ZH = {
   },
 
   chat_page: {
+    header: {
+      subtitle: "投资助手",
+    },
     sidebar: {
       label: "聊天导航",
       collapse: "收起侧边栏",
@@ -929,7 +932,7 @@ const CONTENT_ZH = {
       quota_exhausted: "今日对话次数已用完",
       placeholder: "向 HONE 提问…",
       send_aria: "发送",
-      proactive_tip: "录入持仓，开启推送模式",
+      proactive_tip: "持仓分析",
       proactive_title: "HONE 可以主动盯住你的持仓",
       proactive_intro:
         "把持仓或关注标的告诉 HONE 后，它会按你的偏好筛选重要变化，并在合适的时候提醒你。",
@@ -956,7 +959,7 @@ const CONTENT_ZH = {
       ],
       proactive_close_aria: "关闭推送模式说明",
       proactive_got_it: "知道了",
-      finance_calendar_tip: "我的财经日历",
+      finance_calendar_tip: "财经日历",
       finance_calendar_title: "我的财经日历",
       finance_calendar_intro:
         "选择月份后，HONE 会整理当月宏观事项和你持仓/关注公司的财报日期，并作为图片发到聊天里。",
@@ -2520,6 +2523,9 @@ const CONTENT_EN: typeof CONTENT_ZH = {
   },
 
   chat_page: {
+    header: {
+      subtitle: "Investment assistant",
+    },
     sidebar: {
       label: "Chat navigation",
       collapse: "Collapse sidebar",
@@ -2565,7 +2571,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       quota_exhausted: "You've used today's chat quota",
       placeholder: "Ask HONE…",
       send_aria: "Send",
-      proactive_tip: "Add holdings to enable push mode",
+      proactive_tip: "Portfolio analysis",
       proactive_title: "HONE can watch your holdings for you",
       proactive_intro:
         "Tell HONE what you hold or follow, and it will filter important changes by your preferences and reach out at the right time.",
@@ -2592,7 +2598,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       ],
       proactive_close_aria: "Close push mode tips",
       proactive_got_it: "Got it",
-      finance_calendar_tip: "My finance calendar",
+      finance_calendar_tip: "Finance calendar",
       finance_calendar_title: "My finance calendar",
       finance_calendar_intro:
         "Pick a month and HONE will combine macro events with earnings dates for your holdings and watchlist, then send it as an image in chat.",
