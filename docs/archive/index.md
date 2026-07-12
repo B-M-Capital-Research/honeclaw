@@ -1439,3 +1439,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: `docs/runbooks/public-user-macos-app.md`, `cargo test -p hone-user-app`, `bash tests/regression/ci/test_hone_ios_contract.sh`, `bun run test:web`
 - Current conclusion: v0.14.0 published verified macOS Universal DMG, iOS Simulator App, and Xcode assets; macOS now has a verifiable bundle-level ad-hoc signature, and Apple checksum files use portable basenames with generation-time self-validation.
 - Next entry point: `docs/handoffs/2026-07-12-v0.14.0-apple-user-client-release.md`
+
+### v0.14.1 macOS Session And Calendar Release
+
+- Status: done
+- Date: 2026-07-12
+- Plan: `docs/archive/plans/v0.14.1-macos-session-calendar-release.md`
+- Handoff: `docs/handoffs/2026-07-12-v0.14.1-macos-session-calendar-release.md`
+- Decision / ADR: `docs/decisions.md#d-2026-07-11-01-separate-the-public-macos-app-from-the-local-runtime-desktop`
+- Related PRs / commits: `44b39aad`, tag `v0.14.1`, GitHub Actions run `29189572109`
+- Related runbooks / regressions: `docs/runbooks/public-user-macos-app.md`, `cargo test -p hone-user-app`, `bash tests/regression/ci/test_hone_ios_contract.sh`, `bun run test:web`
+- Current conclusion: v0.14.1 published a verified Universal macOS DMG whose stable named WebKit data store preserves login cookies across restarts/upgrades, while the PC finance-calendar modal now remains inside short viewports with internal scrolling.
+- Next entry point: `docs/handoffs/2026-07-12-v0.14.1-macos-session-calendar-release.md`

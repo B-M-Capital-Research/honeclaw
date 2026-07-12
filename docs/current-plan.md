@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-07-12
-状态：有 7 个活跃任务
+状态：有 6 个活跃任务
 
 ## 说明
 
@@ -15,11 +15,6 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
-
-- **v0.14.1 macOS 登录态与财经日历弹窗修复发布**
-  - 状态：`in_progress`
-  - 计划：`docs/current-plans/v0.14.1-macos-session-calendar-release.md`
-  - 摘要：修复 PC 用户端财经日历弹窗被视口/聊天壳裁切，以及 macOS 远程用户端未显式固定 WebKit 持久数据仓导致的登录态不稳定；完成 Universal DMG 验证后发布 v0.14.1
 
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`
