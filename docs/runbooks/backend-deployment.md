@@ -1,6 +1,6 @@
 # Runbook: Backend Deployment
 
-Last updated: 2026-05-29
+Last updated: 2026-07-12
 
 ## When to Use
 
@@ -66,6 +66,7 @@ The backend origin runs the public API surface used by the Pages frontend:
 - `/api/public/events`
 - `/api/public/digest-context`
 - `/api/public/company-profile`
+- `/api/public/community*`
 
 Before updating the backend origin:
 
@@ -224,6 +225,24 @@ hone-cli cloud migrate --from-data-dir ./data --company-profiles-only --apply --
 hone-cli cloud migrate --from-data-dir ./data --upload-oss --apply --concurrency 12 --json
 hone-cli cloud migrate --from-data-dir ./data --upload-oss --apply --reuse-existing --concurrency 4 --json
 ```
+
+### Community archive reconciliation and asset backfill
+
+Community repair is intentionally split into two explicit, dry-run-first operations:
+
+```bash
+hone-cli cloud community-contents --manifest /path/to/complete-topic-manifest.json
+hone-cli cloud community-contents --manifest /path/to/complete-topic-manifest.json --apply
+
+hone-cli cloud community-assets --manifest /path/to/verified-assets.json
+hone-cli cloud community-assets --manifest /path/to/verified-assets.json --apply
+```
+
+`community-contents` requires the complete source timeline: `source_topic_index` and source file positions must each be contiguous from zero. It first reconciles existing file-backed rows by source file position, then uses `candidate_fingerprint + occurrence` as the stable identity for missing or non-file posts. Apply mode locks the community space and inserts every missing post and its ordered resources in one PostgreSQL transaction. A second dry-run must report `would_insert=0` before the migration is considered complete.
+
+`community-assets` accepts only ordinary non-symlink files with an allowlisted MIME/magic signature, exact manifest byte size, and exact SHA-256. It verifies or creates a full-SHA immutable object key, reads the object back from R2, and only then promotes the PostgreSQL resource row through an optimistic lock. Never put source cookies, signed download URLs, or authorization headers in either manifest. Source-protected resources stay metadata-only unless the authorized source UI legitimately exposes their bytes.
+
+Every promoted resource keeps the previous SHA, size, object URI, and access state under `raw_metadata.community_asset_backfill`. Immutable R2 objects are retained for rollback. If a backfill must be reverted, restore the previous row values from that audit metadata or a PG snapshot; do not delete the old or new object until the restored application path has been verified.
 
 The migrator uploads recognized durable files and indexes them in PG `cloud_documents`. It also imports legacy `sessions/*.json` into PG `cloud_sessions`, web invite users / auth sessions from the configured SQLite DB into PG, `conversation_quota/*.json` into PG, `runtime/skill_registry.json` into PG, `notif_prefs/*.json` into PG, `portfolio/*.json` into PG, `llm_audit.sqlite3` rows into PG, and actor-scoped `company_profiles/**/*.md` into PG `cloud_company_profile_files`; use `--session-only --apply`, `--web-auth-only --apply`, `--quota-only --apply`, `--skill-registry-only --apply`, `--notification-prefs-only --apply`, `--portfolio-only --apply`, `--llm-audit-only --apply`, or `--company-profiles-only --apply` for fast idempotent passes before the larger object migration. Use the lower-concurrency `--reuse-existing` retry when proxy or OSS connections drop during a large upload. Historical SQLite files outside sessions / web auth / LLM audit are still counted by the broad migrator but are not current runtime hot-path dependencies. Sessions, web auth, quota, cron, skill registry, notification prefs, portfolio, LLM audit, and company profiles are PG-backed in `cloud.mode=cloud`; generated images, uploads, and attachment/document surfaces are OSS-backed where the runtime has actor/file context.
 

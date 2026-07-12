@@ -43,4 +43,14 @@ Restore every legitimately accessible original community asset, replace thumbnai
 
 - Source-protected resources must remain unavailable unless the authenticated source UI/API legitimately exposes their bytes.
 - Existing worktree changes belong to the user; stage only this task's scoped files.
-- Original media may materially increase R2 bandwidth; preserve lazy thumbnail loading while using original bytes only in the full viewer when possible.
+- Original media may materially increase R2 bandwidth; keep browser lazy loading now and evaluate derived timeline thumbnails separately without degrading the full viewer.
+
+## Progress
+
+- Reconciled the complete visible source timeline: 649 topics and 617 contiguous file positions. The existing archive matched 616 positions; one missing duplicate-name file post plus 32 non-file/image/Q&A posts were inserted in one transaction. The post-reconcile dry-run reports no missing content.
+- Replaced all 34 archived source thumbnails and added the 19 omitted source images with verified original-resolution bytes and immutable full-SHA R2 keys. All 53 images pass local magic/size/SHA validation and R2 read-back verification.
+- Backfilled the two screenshot reproductions (`英伟达路演-译文.pdf` and the original high-resolution `image-5`) plus the independently downloadable Starbucks duplicate. The remaining historical file library is being processed in four resumable source-UI partitions; source-protected rows remain metadata-only.
+- Added content-hash resource versions, strong ETags, R2 SHA verification, and immutable/private cache behavior so a previously cached thumbnail cannot survive a source-quality replacement. The authenticated proxy ceiling now matches the 128 MiB backfill ceiling, covering the restored 31–41 MiB PDFs.
+- Shipped the compact desktop navigation and mobile Home / Chat / Community / Me tab bar, including Community unread-dot projection in chat and safe-area spacing.
+- Rebuilt and restarted the backend origin, pushed commit `879e9722` to `main`, and observed Cloudflare Pages publish `assets/index-B7KkT0YR.js`. Local/origin/Worker anonymous auth and community probes return JSON `401` as expected.
+- Validation passed: 241 Web tests, TypeScript check, public production build, 118 core tests, 106 Web API tests with two credentialed tests ignored, 66 CLI tests, all 11 CI-safe regression scripts, and desktop/mobile browser QA with no horizontal overflow.

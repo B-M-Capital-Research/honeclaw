@@ -24,7 +24,10 @@ use crate::state::AppState;
 const COMMUNITY_SOURCE: &str = "zsxq";
 const COMMUNITY_EXTERNAL_ID: &str = "51115212285814";
 const COMMUNITY_PUBLIC_AUTHOR: &str = "HONE 官方";
-const COMMUNITY_PREVIEW_MAX_BYTES: usize = 25 * 1024 * 1024;
+// Matches the explicit community-assets backfill ceiling so every accepted
+// original remains retrievable. The current proxy buffers the object; Range
+// streaming should replace this bound before raising the CLI ceiling.
+const COMMUNITY_RESOURCE_MAX_BYTES: usize = 128 * 1024 * 1024;
 const COMMUNITY_RESOURCE_VERSION_LEN: usize = 12;
 const COMMUNITY_RESOURCE_IMMUTABLE_CACHE_CONTROL: &str = "private, max-age=31536000, immutable";
 const COMMUNITY_RESOURCE_REVALIDATE_CACHE_CONTROL: &str = "private, no-cache";
@@ -325,12 +328,12 @@ pub(crate) async fn handle_community_resource_preview(
     };
     if resource
         .byte_size
-        .is_some_and(|size| size > COMMUNITY_PREVIEW_MAX_BYTES as i64)
+        .is_some_and(|size| size > COMMUNITY_RESOURCE_MAX_BYTES as i64)
     {
         return json_error(StatusCode::PAYLOAD_TOO_LARGE, "该资源超出在线预览大小上限");
     }
     let object = match store
-        .get_object_limited(key, COMMUNITY_PREVIEW_MAX_BYTES)
+        .get_object_limited(key, COMMUNITY_RESOURCE_MAX_BYTES)
         .await
     {
         Ok(value) => value,
@@ -478,6 +481,11 @@ mod tests {
         assert_eq!(community_resource_version(Some("too-short")), None);
         assert_eq!(community_resource_version(Some(&"z".repeat(64))), None);
         assert_eq!(community_resource_version(None), None);
+    }
+
+    #[test]
+    fn resource_proxy_accepts_every_asset_allowed_by_the_backfill_default() {
+        assert_eq!(COMMUNITY_RESOURCE_MAX_BYTES, 134_217_728);
     }
 
     #[test]
