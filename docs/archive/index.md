@@ -4,6 +4,18 @@ Last updated: 2026-07-12
 
 ## 2026-07-12
 
+### Public Read-only Community
+
+- Status: done
+- Date: 2026-07-12
+- Plan: `docs/archive/plans/public-community-readonly.md`
+- Handoff: `docs/handoffs/2026-07-12-public-community-readonly.md`
+- Decision / ADR: N/A; source-protected resources remain a hard no-download boundary
+- Related PRs / commits: this change set
+- Related runbooks / regressions: cloud doctor schema apply, 216 Rust tests (2 credentialed ignored), 231 Web tests, TypeScript check, public production build
+- Current conclusion: the 616-row user-authorized archive is a shared authenticated `/community` timeline across Web/macOS/iOS. Content is newest-first and read-only; every source post remains one row with ordered media. R2-backed images/files use the private preview route, while protected source files deliberately remain metadata-only.
+- Next entry point: `crates/hone-web-api/src/routes/public_community.rs` and `packages/app/src/pages/public-community.tsx`
+
 ### Public Chat Native Runner Streaming
 
 - Status: done

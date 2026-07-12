@@ -92,6 +92,36 @@ export type PublicPushOpenResponse = {
   unread_count: number;
 };
 
+export type PublicCommunityResource = {
+  resource_id: number;
+  ordinal: number;
+  resource_kind: "image" | "file" | string;
+  display_name?: string | null;
+  content_type?: string | null;
+  byte_size?: number | null;
+  access_state: "stored" | "protected_in_app" | "metadata_only" | string;
+};
+
+export type PublicCommunityContent = {
+  content_id: number;
+  author_name: string;
+  published_at?: string | null;
+  published_at_raw?: string | null;
+  content_type: string;
+  body_text: string;
+  body_blocks: unknown[];
+  crawl_status: "complete" | "partial" | string;
+  resources: PublicCommunityResource[];
+};
+
+export type PublicCommunityPage = {
+  community: { id: string; name: string };
+  items: PublicCommunityContent[];
+  next_before?: number | null;
+  unread: boolean;
+  latest_content_id?: number | null;
+};
+
 export type HistoryAttachment = {
   path: string;
   name: string;

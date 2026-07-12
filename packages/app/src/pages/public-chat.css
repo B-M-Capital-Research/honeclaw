@@ -2493,8 +2493,18 @@ body.public-chat-scroll-lock #root {
   .public-chat-page .public-chat-proactive-tip-wrap {
     justify-content: flex-start !important;
     flex-wrap: nowrap !important;
-    margin: 0 4px 7px !important;
+    margin: 0 4px 3px !important;
+    padding: 4px 1px 4px !important;
     gap: 6px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    overscroll-behavior-x: contain !important;
+    scrollbar-width: none !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .public-chat-page .public-chat-proactive-tip-wrap::-webkit-scrollbar {
+    display: none !important;
   }
 
   .public-chat-page .public-chat-proactive-tip {
@@ -2623,4 +2633,18 @@ body.public-chat-scroll-lock #root {
   [data-theme="dark"] .public-chat-page .public-chat-composer-input {
     color: #f0f0f0 !important;
   }
+}
+.public-chat-community-action {
+  position: relative;
+}
+.public-chat-community-unread {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: #ef4444;
+  box-shadow: 0 1px 4px rgba(127, 29, 29, 0.35);
 }

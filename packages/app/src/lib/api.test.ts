@@ -4,7 +4,10 @@ import {
   getPublicChatBootstrap,
   getPublicAuthMe,
   getPublicFinanceCalendar,
+  getPublicCommunity,
+  getPublicCommunityResourceBlob,
   getPublicHistory,
+  markPublicCommunitySeen,
   getPublicPushes,
   isUnauthorizedApiError,
   sendPublicChat,
@@ -144,6 +147,68 @@ describe("public chat bootstrap API", () => {
 
     expect(requestedUrl).toContain("/api/public/history?limit=20&before=40");
     expect(payload.history_start).toBe(20);
+  });
+});
+
+describe("public community API", () => {
+  test("uses an opaque content cursor and returns read-only timeline data", async () => {
+    let requestedUrl = "";
+    globalThis.fetch = ((url: RequestInfo | URL) => {
+      requestedUrl = String(url);
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            community: { id: "51115212285814", name: "HONE 官方社区" },
+            items: [{ content_id: 42, body_text: "hello", resources: [] }],
+            next_before: 42,
+            unread: true,
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      );
+    }) as typeof fetch;
+
+    const payload = await getPublicCommunity({ before: 88, limit: 20 });
+
+    expect(requestedUrl).toContain("/api/public/community?before=88&limit=20");
+    expect(payload.items[0]?.content_id).toBe(42);
+    expect(payload.unread).toBe(true);
+  });
+
+  test("marks the latest community content as seen without sending a social action", async () => {
+    let body = "";
+    globalThis.fetch = ((_: RequestInfo | URL, init?: RequestInit) => {
+      body = String(init?.body);
+      return Promise.resolve(
+        new Response(JSON.stringify({ ok: true }), {
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }) as typeof fetch;
+
+    await markPublicCommunitySeen(42);
+
+    expect(body).toBe('{"content_id":42}');
+  });
+
+  test("downloads a protected community resource through the authenticated API", async () => {
+    let requestedUrl = "";
+    let credentials: RequestCredentials | undefined;
+    globalThis.fetch = ((url: RequestInfo | URL, init?: RequestInit) => {
+      requestedUrl = String(url);
+      credentials = init?.credentials;
+      return Promise.resolve(
+        new Response(new Uint8Array([1, 2, 3]), {
+          headers: { "content-type": "image/jpeg" },
+        }),
+      );
+    }) as typeof fetch;
+
+    const blob = await getPublicCommunityResourceBlob(99);
+
+    expect(requestedUrl).toContain("/api/public/community/resources/99");
+    expect(credentials).toBe("include");
+    expect(blob.size).toBe(3);
   });
 });
 

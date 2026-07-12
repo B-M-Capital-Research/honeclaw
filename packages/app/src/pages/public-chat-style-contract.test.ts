@@ -18,8 +18,10 @@ describe("public chat visual contract", () => {
     expect(css).toContain("flex: 0 0 30px");
   });
 
-  it("keeps quick actions on one line and the chat menu light", () => {
+  it("keeps quick actions on a horizontally scrollable mobile line", () => {
     expect(css).toContain("flex-wrap: nowrap !important");
+    expect(css).toContain("overflow-x: auto !important");
+    expect(css).toContain("scrollbar-width: none !important");
     expect(css).toContain("white-space: nowrap !important");
     expect(css).toContain("background: rgba(255, 255, 255, 0.99) !important");
     expect(css).toContain("backdrop-filter: none !important");

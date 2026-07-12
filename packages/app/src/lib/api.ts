@@ -28,10 +28,12 @@ import type {
   WebInviteActionResult,
   WebInviteInfo,
   FinanceCalendarPayload,
+  PublicCommunityPage,
 } from "./types";
 import type { ActorRef } from "./actors";
 import {
   apiFetch,
+  buildApiUrl,
   createEventSource,
   friendlyBackendErrorMessage,
 } from "./backend";
@@ -518,6 +520,42 @@ export async function uploadPublicAttachments(files: File[]) {
 
 export async function connectPublicEvents() {
   return createEventSource("/api/public/events");
+}
+
+export async function getPublicCommunity(input: {
+  before?: number;
+  limit?: number;
+  signal?: AbortSignal;
+} = {}) {
+  const query = new URLSearchParams();
+  if (input.before) query.set("before", String(input.before));
+  if (input.limit) query.set("limit", String(input.limit));
+  const suffix = query.size ? `?${query}` : "";
+  const response = await apiFetch(`/api/public/community${suffix}`, {
+    signal: input.signal,
+  });
+  return parseJson<PublicCommunityPage>(response);
+}
+
+export async function markPublicCommunitySeen(contentId: number) {
+  const response = await apiFetch("/api/public/community/seen", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content_id: contentId }),
+  });
+  return parseJson<{ ok: boolean }>(response);
+}
+
+export function publicCommunityResourceUrl(resourceId: number) {
+  return buildApiUrl(`/api/public/community/resources/${resourceId}`);
+}
+
+export async function getPublicCommunityResourceBlob(resourceId: number) {
+  const response = await apiFetch(
+    `/api/public/community/resources/${resourceId}`,
+  );
+  if (!response.ok) throw await apiErrorFromResponse(response);
+  return response.blob();
 }
 
 export async function getCronJobs(actor?: ActorRef) {

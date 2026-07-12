@@ -11,7 +11,7 @@ use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use reqwest::header::{
     AUTHORIZATION, CONTENT_TYPE, DATE, HOST, HeaderMap, HeaderName, HeaderValue,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha1::Sha1;
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -106,6 +106,40 @@ pub struct CloudDocumentIndex {
     pub sha256: String,
     pub size_bytes: i64,
     pub metadata: serde_json::Value,
+}
+
+/// A complete, read-only community post. Text and its ordered mixed-media
+/// resources deliberately remain one logical content unit.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloudCommunityContentRecord {
+    pub content_id: i64,
+    pub author_name: Option<String>,
+    pub published_at: Option<String>,
+    pub published_at_raw: Option<String>,
+    pub content_type: String,
+    pub body_text: String,
+    pub body_blocks: serde_json::Value,
+    pub crawl_status: String,
+    pub resources: Vec<CloudCommunityResourceRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloudCommunityResourceRecord {
+    pub resource_id: i64,
+    pub ordinal: i32,
+    pub resource_kind: String,
+    pub display_name: Option<String>,
+    pub content_type: Option<String>,
+    pub byte_size: Option<i64>,
+    pub oss_uri: Option<String>,
+    pub access_state: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CloudCommunityUnreadState {
+    pub latest_content_id: Option<i64>,
+    pub last_seen_content_id: Option<i64>,
+    pub unread: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -690,13 +724,271 @@ CREATE TABLE IF NOT EXISTS cloud_company_profile_files (
 );
 CREATE INDEX IF NOT EXISTS idx_cloud_company_profile_files_actor
   ON cloud_company_profile_files(actor_storage_key, updated_at DESC);
+CREATE TABLE IF NOT EXISTS community_spaces (
+  community_id BIGSERIAL PRIMARY KEY,
+  source TEXT NOT NULL,
+  external_id TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  source_url TEXT,
+  raw_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(source, external_id)
+);
+CREATE TABLE IF NOT EXISTS community_contents (
+  content_id BIGSERIAL PRIMARY KEY,
+  community_id BIGINT NOT NULL REFERENCES community_spaces(community_id) ON DELETE CASCADE,
+  source_item_key TEXT NOT NULL,
+  source_item_id TEXT,
+  source_url TEXT,
+  author_name TEXT,
+  author_external_id TEXT,
+  published_at TIMESTAMPTZ,
+  published_at_raw TEXT,
+  content_type TEXT NOT NULL DEFAULT 'post',
+  body_text TEXT NOT NULL DEFAULT '',
+  body_blocks JSONB NOT NULL DEFAULT '[]'::jsonb,
+  raw_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  source_hash TEXT,
+  crawl_status TEXT NOT NULL DEFAULT 'complete',
+  first_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(community_id, source_item_key)
+);
+CREATE INDEX IF NOT EXISTS idx_community_contents_timeline
+  ON community_contents(community_id, published_at DESC, content_id DESC);
+CREATE TABLE IF NOT EXISTS community_content_resources (
+  resource_id BIGSERIAL PRIMARY KEY,
+  content_id BIGINT NOT NULL REFERENCES community_contents(content_id) ON DELETE CASCADE,
+  ordinal INTEGER NOT NULL,
+  resource_kind TEXT NOT NULL,
+  source_resource_id TEXT,
+  display_name TEXT,
+  original_url TEXT,
+  content_type TEXT,
+  byte_size BIGINT,
+  sha256 TEXT,
+  oss_uri TEXT,
+  access_state TEXT NOT NULL DEFAULT 'metadata_only',
+  raw_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  fetched_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(content_id, ordinal)
+);
+CREATE INDEX IF NOT EXISTS idx_community_resources_content
+  ON community_content_resources(content_id, ordinal);
+CREATE TABLE IF NOT EXISTS community_read_states (
+  actor_storage_key TEXT NOT NULL,
+  community_id BIGINT NOT NULL REFERENCES community_spaces(community_id) ON DELETE CASCADE,
+  last_seen_content_id BIGINT REFERENCES community_contents(content_id) ON DELETE SET NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY(actor_storage_key, community_id)
+);
 INSERT INTO cloud_schema_migrations(version)
 VALUES ('20260529_pg_oss_runtime_foundation')
+ON CONFLICT (version) DO NOTHING;
+INSERT INTO cloud_schema_migrations(version)
+VALUES ('20260712_community_content_archive')
 ON CONFLICT (version) DO NOTHING;
 "#,
             )
             .await
             .map_err(|err| HoneError::Config(format!("Postgres schema 初始化失败: {err}")))?;
+        Ok(())
+    }
+
+    /// Return a cursor page from a community timeline. `before_content_id` is
+    /// intentionally opaque to callers: ordering stays timestamp-first even
+    /// when imports are replayed out of source order.
+    pub async fn list_community_contents(
+        &self,
+        source: &str,
+        external_id: &str,
+        before_content_id: Option<i64>,
+        limit: usize,
+    ) -> HoneResult<Vec<CloudCommunityContentRecord>> {
+        let client = self.connect_cached_client().await?;
+        let limit = i64::try_from(limit.clamp(1, 50))
+            .map_err(|_| HoneError::Config("community page limit invalid".to_string()))?;
+        let rows = client
+            .query(
+                r#"
+WITH target_space AS (
+  SELECT community_id FROM community_spaces
+  WHERE source = $1 AND external_id = $2
+), page AS (
+  SELECT c.*
+  FROM community_contents c
+  JOIN target_space s ON s.community_id = c.community_id
+  WHERE $3::bigint IS NULL
+     OR (c.published_at, c.content_id) < (
+       SELECT published_at, content_id FROM community_contents WHERE content_id = $3
+     )
+  ORDER BY c.published_at DESC NULLS LAST, c.content_id DESC
+  LIMIT $4
+)
+SELECT
+  p.content_id,
+  p.author_name,
+  p.published_at::text,
+  p.published_at_raw,
+  p.content_type,
+  p.body_text,
+  p.body_blocks,
+  p.crawl_status,
+  COALESCE(
+    jsonb_agg(jsonb_build_object(
+      'resource_id', r.resource_id,
+      'ordinal', r.ordinal,
+      'resource_kind', r.resource_kind,
+      'display_name', r.display_name,
+      'content_type', r.content_type,
+      'byte_size', r.byte_size,
+      'oss_uri', r.oss_uri,
+      'access_state', r.access_state
+    ) ORDER BY r.ordinal) FILTER (WHERE r.resource_id IS NOT NULL),
+    '[]'::jsonb
+  ) AS resources
+FROM page p
+LEFT JOIN community_content_resources r ON r.content_id = p.content_id
+GROUP BY
+  p.content_id,
+  p.author_name,
+  p.published_at,
+  p.published_at_raw,
+  p.content_type,
+  p.body_text,
+  p.body_blocks,
+  p.crawl_status
+ORDER BY p.published_at DESC NULLS LAST, p.content_id DESC
+"#,
+                &[&source, &external_id, &before_content_id, &limit],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres community timeline 读取失败: {err}"))
+            })?;
+
+        rows.into_iter()
+            .map(|row| {
+                let resources: serde_json::Value = row.get(8);
+                Ok(CloudCommunityContentRecord {
+                    content_id: row.get(0),
+                    author_name: row.get(1),
+                    published_at: row.get(2),
+                    published_at_raw: row.get(3),
+                    content_type: row.get(4),
+                    body_text: row.get(5),
+                    body_blocks: row.get(6),
+                    crawl_status: row.get(7),
+                    resources: serde_json::from_value(resources)
+                        .map_err(|err| HoneError::Serialization(err.to_string()))?,
+                })
+            })
+            .collect()
+    }
+
+    pub async fn get_community_resource(
+        &self,
+        source: &str,
+        external_id: &str,
+        resource_id: i64,
+    ) -> HoneResult<Option<CloudCommunityResourceRecord>> {
+        let client = self.connect_cached_client().await?;
+        let row = client
+            .query_opt(
+                r#"
+SELECT r.resource_id, r.ordinal, r.resource_kind, r.display_name,
+       r.content_type, r.byte_size, r.oss_uri, r.access_state
+FROM community_content_resources r
+JOIN community_contents c ON c.content_id = r.content_id
+JOIN community_spaces s ON s.community_id = c.community_id
+WHERE s.source = $1 AND s.external_id = $2 AND r.resource_id = $3
+"#,
+                &[&source, &external_id, &resource_id],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres community resource 读取失败: {err}"))
+            })?;
+        Ok(row.map(|row| CloudCommunityResourceRecord {
+            resource_id: row.get(0),
+            ordinal: row.get(1),
+            resource_kind: row.get(2),
+            display_name: row.get(3),
+            content_type: row.get(4),
+            byte_size: row.get(5),
+            oss_uri: row.get(6),
+            access_state: row.get(7),
+        }))
+    }
+
+    pub async fn community_unread_state(
+        &self,
+        source: &str,
+        external_id: &str,
+        actor_storage_key: &str,
+    ) -> HoneResult<CloudCommunityUnreadState> {
+        let client = self.connect_cached_client().await?;
+        let row = client
+            .query_one(
+                r#"
+WITH target_space AS (
+  SELECT community_id FROM community_spaces WHERE source = $1 AND external_id = $2
+), latest AS (
+  SELECT content_id FROM community_contents
+  WHERE community_id = (SELECT community_id FROM target_space)
+  ORDER BY published_at DESC NULLS LAST, content_id DESC LIMIT 1
+)
+SELECT
+  (SELECT content_id FROM latest),
+  (SELECT last_seen_content_id FROM community_read_states
+   WHERE actor_storage_key = $3 AND community_id = (SELECT community_id FROM target_space))
+"#,
+                &[&source, &external_id, &actor_storage_key],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres community unread 读取失败: {err}"))
+            })?;
+        let latest_content_id: Option<i64> = row.get(0);
+        let last_seen_content_id: Option<i64> = row.get(1);
+        Ok(CloudCommunityUnreadState {
+            latest_content_id,
+            last_seen_content_id,
+            unread: latest_content_id.is_some() && latest_content_id != last_seen_content_id,
+        })
+    }
+
+    pub async fn mark_community_seen(
+        &self,
+        source: &str,
+        external_id: &str,
+        actor_storage_key: &str,
+        content_id: i64,
+    ) -> HoneResult<()> {
+        let client = self.connect_cached_client().await?;
+        client
+            .execute(
+                r#"
+INSERT INTO community_read_states(actor_storage_key, community_id, last_seen_content_id)
+SELECT $3, s.community_id, c.content_id
+FROM community_spaces s
+JOIN community_contents c ON c.community_id = s.community_id AND c.content_id = $4
+WHERE s.source = $1 AND s.external_id = $2
+ON CONFLICT(actor_storage_key, community_id) DO UPDATE SET
+  last_seen_content_id = EXCLUDED.last_seen_content_id,
+  updated_at = now()
+"#,
+                &[&source, &external_id, &actor_storage_key, &content_id],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres community read state 写入失败: {err}"))
+            })?;
         Ok(())
     }
 
@@ -3064,6 +3356,22 @@ impl OssObjectStore {
     }
 
     pub async fn get_object(&self, key: &str) -> Result<OssObject, String> {
+        self.get_object_with_limit(key, None).await
+    }
+
+    pub async fn get_object_limited(
+        &self,
+        key: &str,
+        max_bytes: usize,
+    ) -> Result<OssObject, String> {
+        self.get_object_with_limit(key, Some(max_bytes)).await
+    }
+
+    async fn get_object_with_limit(
+        &self,
+        key: &str,
+        max_bytes: Option<usize>,
+    ) -> Result<OssObject, String> {
         let date = oss_date();
         let mut headers = HeaderMap::new();
         self.insert_auth_headers(&mut headers, "GET", "", &date, key, None, &[])?;
@@ -3080,6 +3388,13 @@ impl OssObjectStore {
             let body = response.text().await.unwrap_or_default();
             return Err(format!("OSS 读取失败: {status} {body}"));
         }
+        if let (Some(max_bytes), Some(content_length)) = (max_bytes, response.content_length())
+            && content_length > max_bytes as u64
+        {
+            return Err(format!(
+                "OSS 对象大小超过允许上限: {content_length} > {max_bytes}"
+            ));
+        }
         let content_type = response
             .headers()
             .get(CONTENT_TYPE)
@@ -3090,10 +3405,17 @@ impl OssObjectStore {
         let bytes = response
             .bytes()
             .await
-            .map_err(|error| format!("OSS 响应读取失败: {error}"))?
-            .to_vec();
+            .map_err(|error| format!("OSS 响应读取失败: {error}"))?;
+        if let Some(max_bytes) = max_bytes
+            && bytes.len() > max_bytes
+        {
+            return Err(format!(
+                "OSS 对象大小超过允许上限: {} > {max_bytes}",
+                bytes.len()
+            ));
+        }
         Ok(OssObject {
-            bytes,
+            bytes: bytes.to_vec(),
             content_type,
         })
     }

@@ -55,6 +55,7 @@ import "./public-polish.css";
 import "./public-chat.css";
 import {
   getPublicChatBootstrap,
+  getPublicCommunity,
   getPublicFinanceCalendar,
   getPublicHistory,
   getPublicPushes,
@@ -2174,6 +2175,37 @@ function FinanceCalendarQuickAction(props: { onSent: () => void }) {
   );
 }
 
+function CommunityQuickAction(props: { unread: boolean; onOpen: () => void }) {
+  return (
+    <button
+      type="button"
+      class="public-chat-proactive-tip public-chat-community-action"
+      onClick={props.onOpen}
+      aria-label={props.unread ? "查看社区动态，有新动态" : "查看社区动态"}
+    >
+      <svg
+        class="public-chat-proactive-tip-icon"
+        width="15"
+        height="15"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-9-8.4 8.4 8.4 0 0 1 9-8.4 8.4 8.4 0 0 1 9 8.4Z" />
+        <path d="M8 11h8M8 15h5" />
+      </svg>
+      <span>查看社区动态</span>
+      <Show when={props.unread}>
+        <i class="public-chat-community-unread" aria-hidden="true" />
+      </Show>
+    </button>
+  );
+}
+
 function Composer(props: {
   draft: string;
   onDraftChange: (v: string) => void;
@@ -2183,6 +2215,8 @@ function Composer(props: {
   uploading: boolean;
   onSend: () => void;
   onCalendarSent: () => void;
+  communityUnread: boolean;
+  onOpenCommunity: () => void;
   isSending: boolean;
   remaining: number | undefined;
   dailyLimit: number | undefined;
@@ -2258,6 +2292,10 @@ function Composer(props: {
       <div class="public-chat-proactive-tip-wrap">
         <ProactiveModeTips />
         <FinanceCalendarQuickAction onSent={props.onCalendarSent} />
+        <CommunityQuickAction
+          unread={props.communityUnread}
+          onOpen={props.onOpenCommunity}
+        />
       </div>
       <input
         data-testid="composer-image-input"
@@ -2490,6 +2528,7 @@ export default function PublicChatPage() {
   const [pushDetailLoading, setPushDetailLoading] = createSignal(false);
   const [pushDetailError, setPushDetailError] = createSignal<string>();
   const [pushDetail, setPushDetail] = createSignal<PublicPushDetail>();
+  const [communityUnread, setCommunityUnread] = createSignal(false);
   // True when the user has scrolled up far enough to lose track of the latest
   // reply — drives the floating scroll-to-bottom affordance above the composer.
   const [awayFromBottom, setAwayFromBottom] = createSignal(false);
@@ -2516,6 +2555,16 @@ export default function PublicChatPage() {
   let shareReturnAtBottom = true;
   let pushUserId: string | undefined;
   let initialBottomPending = true;
+
+  const refreshCommunityUnread = async () => {
+    if (authState() !== "ready" || !currentUser()) return;
+    try {
+      const community = await getPublicCommunity({ limit: 1 });
+      setCommunityUnread(community.unread);
+    } catch {
+      // Community availability must not interrupt the primary chat flow.
+    }
+  };
 
   const scrollToBottom = () => {
     requestAnimationFrame(() => {
@@ -2824,6 +2873,7 @@ export default function PublicChatPage() {
     setPushDetailOpen(false);
     setPushItems([]);
     setPushUnreadCount(0);
+    setCommunityUnread(false);
     setCurrentUser(null);
     setSessionInfo(null);
     setAuthState("logged_out");
@@ -2918,6 +2968,7 @@ export default function PublicChatPage() {
         setAuthState("ready");
         setRestoreStatus(null);
       });
+      void refreshCommunityUnread();
       if (shouldKeepBottom) {
         pinToBottom(1200);
       } else if (previousScrollTop !== undefined) {
@@ -2974,6 +3025,21 @@ export default function PublicChatPage() {
       void restoreSession();
     }, 3000);
     onCleanup(() => clearInterval(id));
+  });
+
+  createEffect(() => {
+    if (authState() !== "ready" || !currentUser()) return;
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refreshCommunityUnread();
+    };
+    const intervalId = window.setInterval(refreshWhenVisible, 60_000);
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    onCleanup(() => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    });
   });
 
   createEffect(() => {
@@ -3584,6 +3650,8 @@ export default function PublicChatPage() {
                     uploading={uploading()}
                     onSend={handleSend}
                     onCalendarSent={handleCalendarSent}
+                    communityUnread={communityUnread()}
+                    onOpenCommunity={() => navigate("/community")}
                     isSending={isSending()}
                     remaining={sessionInfo()?.remainingToday}
                     dailyLimit={sessionInfo()?.dailyLimit}

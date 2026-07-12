@@ -15,6 +15,7 @@ pub(crate) mod notification_prefs;
 pub(crate) mod notifications;
 pub(crate) mod portfolio;
 pub(crate) mod public;
+pub(crate) mod public_community;
 pub(crate) mod public_digest;
 pub(crate) mod public_finance_calendar;
 pub(crate) mod public_pushes;
@@ -279,6 +280,15 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
         .route("/auth/me", get(public::handle_me))
         .route("/bootstrap", get(public::handle_bootstrap))
         .route("/history", get(public::handle_history))
+        .route("/community", get(public_community::handle_list_community))
+        .route(
+            "/community/seen",
+            post(public_community::handle_mark_community_seen),
+        )
+        .route(
+            "/community/resources/{resource_id}",
+            get(public_community::handle_community_resource_preview),
+        )
         .route("/chat", post(public::handle_chat))
         .route(
             "/v1/chat/completions",
