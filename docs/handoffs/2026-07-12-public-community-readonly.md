@@ -61,6 +61,8 @@ In progress while the resumable historical attachment capture finishes. Code, co
 - Seven source Q&A topics that the first body selector represented as empty were re-read from their visible question/answer containers before reconciliation, so the archive contains complete readable cards rather than blank placeholders.
 - All 53 source images now use original captured bytes: 34 replacements plus 19 newly restored images. They were validated locally by magic, byte size, SHA-256, and dimensions; uploaded under immutable full-SHA keys; read back from R2; then atomically linked in PG. The screenshot reproduction `resource_id=7` changed from a 380×204 thumbnail to the 3142×1684 original.
 - The screenshot PDF plus five additional early reproductions and the missing Starbucks duplicate were legitimately downloaded through the visible source UI, validated, uploaded, and promoted. Remaining source-protected resources are not bypassed and stay metadata-only.
+- The first historical attachment batch promoted 193 resources: 186 immutable R2 uploads, 7 idempotent reuses, 186 PG updates, and no conflicts. A later 104-object batch correctly held PG at zero updates after one transient upload failure; its idempotent retry read back all 104 objects, atomically updated all 104 PG rows, and completed with no conflicts.
+- Resource 295 is source-named `.xls`, but two independent visible-UI downloads produced the same 19,566-byte SHA and a valid OOXML package (`PK`, `[Content_Types].xml`, and `xl/`). The safety validator accepts only this narrow source `.xls` → verified XLSX alias; the Web client changes the downloaded filename to `.xlsx` while preserving source metadata.
 
 ### Runtime and interaction result
 

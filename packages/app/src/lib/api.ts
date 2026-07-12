@@ -29,6 +29,7 @@ import type {
   WebInviteInfo,
   FinanceCalendarPayload,
   PublicCommunityPage,
+  PublicCommunityResource,
 } from "./types";
 import type { ActorRef } from "./actors";
 import {
@@ -556,6 +557,25 @@ function publicCommunityResourcePath(resourceId: number, version?: string | null
 
 export function publicCommunityResourceUrl(resourceId: number, version?: string | null) {
   return buildApiUrl(publicCommunityResourcePath(resourceId, version));
+}
+
+export function publicCommunityResourceDownloadName(
+  resource: Pick<PublicCommunityResource, "resource_id" | "display_name" | "content_type">,
+) {
+  const fallback = `community-resource-${resource.resource_id}`;
+  const displayName = resource.display_name?.trim() || fallback;
+  const contentType = (resource.content_type ?? "")
+    .split(";", 1)[0]!
+    .trim()
+    .toLowerCase();
+  if (
+    contentType ===
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" &&
+    /\.xls$/i.test(displayName)
+  ) {
+    return displayName.replace(/\.xls$/i, ".xlsx");
+  }
+  return displayName;
 }
 
 export async function getPublicCommunityResourceBlob(

@@ -8,6 +8,7 @@ import {
   getPublicCommunityResourceBlob,
   getPublicHistory,
   markPublicCommunitySeen,
+  publicCommunityResourceDownloadName,
   publicCommunityResourceUrl,
   getPublicPushes,
   isUnauthorizedApiError,
@@ -222,6 +223,24 @@ describe("public community API", () => {
     expect(publicCommunityResourceUrl(99, "0123456789ab")).toContain(
       "/api/public/community/resources/99?v=0123456789ab",
     );
+  });
+
+  test("corrects a source-mislabeled OOXML workbook download extension", () => {
+    expect(
+      publicCommunityResourceDownloadName({
+        resource_id: 295,
+        display_name: "投资组合.xls",
+        content_type:
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+    ).toBe("投资组合.xlsx");
+    expect(
+      publicCommunityResourceDownloadName({
+        resource_id: 1,
+        display_name: "报告.pdf",
+        content_type: "application/pdf",
+      }),
+    ).toBe("报告.pdf");
   });
 });
 

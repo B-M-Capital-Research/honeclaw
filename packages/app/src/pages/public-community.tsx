@@ -17,6 +17,7 @@ import {
   getPublicCommunityResourceBlob,
   isUnauthorizedApiError,
   markPublicCommunitySeen,
+  publicCommunityResourceDownloadName,
   publicCommunityResourceUrl,
 } from "@/lib/api";
 import {
@@ -77,7 +78,7 @@ async function downloadCommunityResource(resource: PublicCommunityResource) {
   const objectUrl = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = objectUrl;
-  anchor.download = resource.display_name?.trim() || `community-resource-${resource.resource_id}`;
+  anchor.download = publicCommunityResourceDownloadName(resource);
   anchor.rel = "noopener";
   document.body.appendChild(anchor);
   anchor.click();

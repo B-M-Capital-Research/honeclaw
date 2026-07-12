@@ -927,7 +927,10 @@ fn validate_asset_against_target(
         let expected_content_type = content_type_for_extension(&extension).ok_or_else(|| {
             format!("display_name 扩展名 .{extension} 不在 community asset 安全 allowlist")
         })?;
-        if expected_content_type != asset.content_type {
+        let source_extension_alias = extension == "xls"
+            && asset.content_type
+                == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+        if expected_content_type != asset.content_type && !source_extension_alias {
             return Err(format!(
                 "display_name 扩展名 .{extension} 与 content_type {} 不一致",
                 asset.content_type
@@ -2379,6 +2382,38 @@ mod tests {
         };
         let error = validate_asset_against_target(&asset, &target).expect_err("mismatch");
         assert!(error.contains("扩展名"));
+    }
+
+    #[test]
+    fn community_asset_target_accepts_source_xls_name_for_verified_ooxml_workbook() {
+        let asset = ValidatedCommunityAsset {
+            resource_id: 295,
+            path: PathBuf::from("/tmp/not-read-by-this-test.xls"),
+            content_type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                .to_string(),
+            byte_size: 32,
+            sha256: "d".repeat(64),
+            extension: "xlsx",
+            source_base_key: None,
+            source_resource_id: None,
+            width: None,
+            height: None,
+            captured_at: None,
+        };
+        let target = CloudCommunityResourceBackfillTarget {
+            resource_id: 295,
+            display_name: Some("workbook.xls".to_string()),
+            source_resource_id: None,
+            content_type: None,
+            byte_size: None,
+            sha256: None,
+            oss_uri: None,
+            access_state: "metadata_only".to_string(),
+            updated_at: "2026-07-12 00:00:00+00".to_string(),
+        };
+
+        validate_asset_against_target(&asset, &target)
+            .expect("the source mislabeled this verified OOXML workbook as .xls");
     }
 
     #[test]
