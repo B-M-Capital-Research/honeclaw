@@ -878,3 +878,16 @@
 - 本轮判断
   - 最新证据仍落在 scheduler / direct 批量行情数值 sanity check 缺失范围内，没有新的独立根因。
   - 本窗异常价格已进入用户可见 final 并影响组合市值、估值和买点判断；但会话正常收口、未见投递失败、错对象或数据破坏，问题主要削弱投研质量和价格判断可信度，因此维持质量性 `P3 / New`，非 P1。
+
+## 最新运行态复核（2026-07-12 15:01 CST）
+
+- `data/runtime/logs/web.log.2026-07-12`
+  - 巡检窗口：2026-07-12 11:00-15:01 CST。
+  - 本窗 32 条 heartbeat raw / deliver preview 命中异常或高风险数量级行情锚。
+  - 代表样本包括 `闪迪关键事件心跳提醒` 继续使用 `SNDK $1,915.92`、`AAOI 1.6T 光模块心跳检测` 使用 `AAOI $119.92`、`Monitor_Watchlist_11` 使用 `MU $979.30` 判断远高于触发价、`美股黄金坑信号心跳检测` 使用 `SPY $754.95` / `QQQ $725.51`，以及 `中际旭创关键事件心跳提醒` 使用 `中际旭创 ¥1,093.98`。
+  - 多数样本处于 heartbeat preview、duplicate suppression、noop 或失败路径；本窗没有新的普通 scheduler final 异常价格样本。
+- `data/sessions.sqlite3`
+  - 11:00-15:01 CST 按真实 `timestamp` 没有新增 assistant final；12:33 CST `imported_at` 推进的是旧会话重导入，不作为本窗新的用户可见行情样本。
+- 本轮判断
+  - 最新证据仍落在 scheduler / heartbeat 批量行情数值 sanity check 缺失范围内，没有新的独立根因。
+  - 本窗未确认新的普通 final 基于异常价格给出交易建议；调度和投递主链路本身仍可运行，因此维持质量性 `P3 / New`，非 P1。

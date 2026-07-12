@@ -18,6 +18,17 @@
 
 ## 修复进展
 
+- `2026-07-12 15:01 CST` 运行态复核确认同一链路继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-12`
+    - 12:00 CST `美股黄金坑信号心跳检测` 已作为 heartbeat job 被 scheduler 周期触发，但 raw preview 仍把任务理解为“用户要求每 30 分钟监控，我不能创建自动化任务”，而不是执行已存在的监控判断。
+    - 同一轮 duplicate suppression 再次匹配旧坏基线：`我已经多次说明：无法创建30分钟自动化心跳监控任务`，最终压成未发送。
+  - 会话质量对照：
+    - 11:00-15:01 CST `data/sessions.sqlite3` 按真实 `timestamp` 没有新增 user / assistant 消息；`session_messages.imported_at` 在 12:33 CST 推进的是 2026-03/05 旧会话重导入。本地 `cron_job_runs` 仍停在 2026-07-10 14:01 CST，因此当前 heartbeat 运行态仍以 runtime web log 为主。
+    - 最近四小时非文档提交 `6e688921`、`afda13ba`、`60ef12c8`、`cea93f67`、`6d5075a4` 集中在 public mobile navigation、Apple release checksum、v0.14.0 release、CLI probe stream reset 与 public tool-assisted replies，未改变本缺陷判断。
+  - 判断：
+    - 该复发仍是同一根因链路：已创建 heartbeat job 的执行意图被“创建/设置自动监控”请求语义污染，且旧“无法创建”坏基线继续参与 duplicate suppression。
+    - 这是功能性监控链路缺陷，定级仍为 P2；当前证据覆盖 heartbeat 子链路，未见全渠道停摆、错对象投递、数据安全泄露或 P1 级全局任务丢失，因此不升级为 P1，不创建 GitHub Issue。
+
 - `2026-07-12 11:01 CST` 运行态复核确认代码级修复后仍复发，状态从 `Fixed` 回退为 `New`：
   - `data/runtime/logs/web.log.2026-07-12`
     - 08:00 CST `美股黄金坑信号心跳检测` 已作为 heartbeat job 被 scheduler 触发，但 raw preview 仍把任务理解为“用户想让我每 30 分钟创建市场监控”，deliver preview 写出“当前无法创建30分钟自动化心跳监控任务”；随后 duplicate suppression 匹配旧“无法创建30分钟自动化心跳监控任务”基线，最终未发送。

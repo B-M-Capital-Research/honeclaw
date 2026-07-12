@@ -918,3 +918,16 @@
 - 本轮判断
   - 最新证据仍属于 heartbeat 时间 / 日期口径错误，不新建重复缺陷。
   - 调度与解析链路仍可运行，问题主要影响用户对提醒新鲜度和事件时点的判断；维持质量性 `P3 / New`。
+
+## 最新运行态复核（2026-07-12 15:01 CST）
+
+- `data/runtime/logs/web.log.2026-07-12`
+  - 巡检窗口：2026-07-12 11:00-15:01 CST。
+  - 本窗 82 条 heartbeat raw / deliver preview 命中明显错误或互相矛盾的当前时间 / 数据时间口径。
+  - 代表样本包括 11:00 CST `Cerebras IPO与业务进展心跳监控` raw / deliver preview 把当前检查写成 `2026-07-13`；12:00 CST `FOTO 光子学ETF心跳检测` 和 `ORCL 大事件监控` 把实际周日中午窗口写成 `2026-07-13 周一`；15:00 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` deliver preview 写成 `北京时间 2026-07-14`。
+  - 同窗多条 preview 还把 2026-07-12 周日窗口写成周一盘前 / 常规交易时段，或混用 `2026-07-10` 收盘快照与未来检查时间。
+- `data/sessions.sqlite3`
+  - 11:00-15:01 CST 按真实 `timestamp` 没有新增 assistant final；本轮未确认同类时间口径错误进入新的普通 direct / scheduler final。
+- 本轮判断
+  - 最新证据仍属于 heartbeat 时间 / 日期口径错误，不新建重复缺陷。
+  - 调度与解析链路仍可运行，问题主要影响用户对提醒新鲜度和事件时点的判断；维持质量性 `P3 / New`，非 P1。

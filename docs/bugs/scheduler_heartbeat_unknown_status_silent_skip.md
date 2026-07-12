@@ -5878,3 +5878,17 @@
 - 本轮判断
   - 最新证据仍属于 heartbeat 输出结构漂移 / 解析边界不稳定的既有范围，没有新的独立根因。
   - 坏态影响 heartbeat 是否稳定得出 `triggered/noop`、是否误送达或被 duplicate suppression；普通 scheduler final 主链路本窗可收口，未见错对象投递或数据安全问题，因此维持功能性 `P2 / New`，非 P1。
+
+## 最新运行态复核（2026-07-12 15:01 CST）
+
+- `data/runtime/logs/web.log.2026-07-12`
+  - 巡检窗口：2026-07-12 11:00-15:01 CST。
+  - 本窗 heartbeat 共有 234 条 `run_finish`，可分类 `parse_kind` 信号分布为 `PlainTextTriggered=210`、`JsonNoop=100`、`PlainTextSuppressed=13`、`PlainTextNoop=10`、`JsonTriggered=3`、`Empty=3`、`JsonMalformed=2`。
+  - 234 条 raw preview 以 `<think>` 开头，205 条日志命中执行失败或工具预算拒绝相关信号。代表样本包括 11:00 CST `全天原油价格3小时播报` `PlainTextSuppressed` 后落成 `heartbeat 输出不是结构化 JSON`，11:30 CST `heartbeat_绿田机械基本面跟踪` 输出伪工具调用块后落成 `JsonMalformed`，15:00 CST `光迅科技关键事件心跳提醒` `PlainTextSuppressed` 后跳过发送。
+  - 同窗仍有大量 `PlainTextTriggered` 进入 deliver / duplicate suppression 路径，例如 `Cerebras IPO与业务进展心跳监控`、`AAOI 1.6T 光模块心跳检测`、`TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 等。
+- `data/sessions.sqlite3`
+  - 按真实 `timestamp`，11:00-15:01 CST 没有新增 user / assistant 消息；`session_messages.max(timestamp)=2026-07-12T05:01:16.003905+08:00`，`session_messages.max(imported_at)=2026-07-12T12:33:28.108433+08:00` 主要是 2026-03/05 旧会话重导入。
+  - 本地 `cron_job_runs.max(executed_at)` 仍停在 2026-07-10 14:01 CST，因此本轮 heartbeat 运行态继续以 runtime web log 为准。
+- 本轮判断
+  - 最新证据仍属于 heartbeat 输出结构漂移 / 解析边界不稳定的既有范围，没有新的独立根因。
+  - 坏态影响 heartbeat 是否稳定得出 `triggered/noop`、是否误送达或被 duplicate suppression；本窗未见错对象投递、数据安全问题或全渠道停摆，因此维持功能性 `P2 / New`，非 P1。
