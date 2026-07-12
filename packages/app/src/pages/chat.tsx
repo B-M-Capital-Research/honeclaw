@@ -365,6 +365,8 @@ function ChatSidebar(props: {
   recentMessages: ChatMessage[];
   onToggle: () => void;
   onSelectMessage: (id: string) => void;
+  communityUnread: boolean;
+  onOpenCommunity: () => void;
   unreadPushCount: number;
   onOpenPushes: () => void;
   onLogout: () => void;
@@ -429,9 +431,26 @@ function ChatSidebar(props: {
       </div>
 
       <nav class="public-chat-sidebar-nav">
-        <button type="button" class="is-active" title={CONTENT.nav.chat}>
+        <button
+          type="button"
+          class="is-active"
+          title={CONTENT.nav.chat}
+          aria-current="page"
+        >
           <ICONS.Chat />
           <span>{CONTENT.nav.chat}</span>
+        </button>
+        <button
+          type="button"
+          class="public-chat-sidebar-community"
+          onClick={props.onOpenCommunity}
+          title={CONTENT.nav.community}
+        >
+          <span class="public-chat-sidebar-icon">C</span>
+          <span>{CONTENT.nav.community}</span>
+          <Show when={props.communityUnread}>
+            <i class="public-chat-community-unread" aria-hidden="true" />
+          </Show>
         </button>
         <button
           type="button"
@@ -442,14 +461,6 @@ function ChatSidebar(props: {
           <PushNavIcon />
           <span>{CONTENT.chat_page.pushes.nav}</span>
           <PushUnreadDot count={props.unreadPushCount} />
-        </button>
-        <button
-          type="button"
-          onClick={() => navigate("/roadmap")}
-          title={CONTENT.nav.roadmap}
-        >
-          <span class="public-chat-sidebar-icon">R</span>
-          <span>{CONTENT.nav.roadmap}</span>
         </button>
       </nav>
 
@@ -3369,6 +3380,7 @@ export default function PublicChatPage() {
         <PublicNav
           chatMode
           mobileLabel={CONTENT.chat_page.header.subtitle}
+          communityUnread={communityUnread()}
           mobileAction={
             <Show when={authState() === "ready"}>
               <button
@@ -3446,6 +3458,8 @@ export default function PublicChatPage() {
                   recentMessages={sidebarHistoryMessages()}
                   onToggle={() => setSidebarCollapsed((value) => !value)}
                   onSelectMessage={scrollToMessage}
+                  communityUnread={communityUnread()}
+                  onOpenCommunity={() => navigate("/community")}
                   unreadPushCount={pushUnreadCount()}
                   onOpenPushes={openPushCenter}
                   onLogout={logoutPublicChat}

@@ -2648,3 +2648,62 @@ body.public-chat-scroll-lock #root {
   background: #ef4444;
   box-shadow: 0 1px 4px rgba(127, 29, 29, 0.35);
 }
+
+/* The authenticated desktop chat owns its navigation through the conversation
+   sidebar. Hiding the global pill prevents two competing navigation rows. */
+@media (min-width: 769px) {
+  .public-chat-page--ready > .pub-nav {
+    display: none !important;
+  }
+
+  .public-chat-page--ready .public-chat-shell {
+    padding-top: 0 !important;
+  }
+
+  .public-chat-sidebar {
+    width: 252px;
+    flex-basis: 252px;
+    gap: 12px;
+    padding: 12px 10px;
+  }
+
+  .public-chat-sidebar-community {
+    position: relative;
+  }
+
+  .public-chat-sidebar-community .public-chat-community-unread {
+    top: 7px;
+    right: 8px;
+  }
+
+  .public-chat-sidebar.is-collapsed .public-chat-sidebar-community .public-chat-community-unread {
+    top: 5px;
+    right: 4px;
+  }
+}
+
+@media (max-width: 768px) {
+  .public-chat-page--logged_out,
+  .public-chat-page--loading {
+    padding-bottom: calc(76px + env(safe-area-inset-bottom)) !important;
+  }
+
+  .public-chat-page .public-chat-composer {
+    padding-bottom: calc(76px + env(safe-area-inset-bottom)) !important;
+  }
+
+  [data-theme="dark"] .public-chat-page .pub-mobile-tabs {
+    border-color: rgba(255, 255, 255, 0.1);
+    background: rgba(43, 43, 43, 0.96);
+    box-shadow: 0 12px 34px rgba(0, 0, 0, 0.34);
+  }
+
+  [data-theme="dark"] .public-chat-page .pub-mobile-tab {
+    color: #a7a7a7;
+  }
+
+  [data-theme="dark"] .public-chat-page .pub-mobile-tab.is-active {
+    color: #f2f2f2;
+    background: #383838;
+  }
+}

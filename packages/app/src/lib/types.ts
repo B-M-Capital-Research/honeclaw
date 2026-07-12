@@ -99,6 +99,7 @@ export type PublicCommunityResource = {
   display_name?: string | null;
   content_type?: string | null;
   byte_size?: number | null;
+  version?: string | null;
   access_state: "stored" | "protected_in_app" | "metadata_only" | string;
 };
 

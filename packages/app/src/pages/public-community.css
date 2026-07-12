@@ -424,6 +424,7 @@
   .public-community-shell {
     width: min(calc(100% - 22px), 860px);
     padding-top: 86px;
+    padding-bottom: calc(94px + env(safe-area-inset-bottom));
   }
 
   .public-community-hero {

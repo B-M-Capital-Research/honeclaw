@@ -1,12 +1,16 @@
 /* Public component layer. This file is intentionally loaded after the legacy
    public-site sheet while surfaces migrate to the shared HONE foundations. */
 .pub-nav {
+  right: auto;
+  left: 50%;
+  width: min(1120px, calc(100vw - 36px));
   height: 62px;
   padding: 0 10px 0 14px;
   border-color: var(--hone-line);
   border-radius: 20px;
   background: color-mix(in srgb, var(--hone-paper-50) 93%, transparent);
   box-shadow: var(--hone-shadow-md);
+  transform: translateX(-50%);
 }
 
 .pub-nav-link,
@@ -19,8 +23,16 @@
 }
 
 .pub-nav-link {
+  position: relative;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 13px;
+  border-radius: var(--hone-radius-sm);
   color: var(--hone-ink-600);
   font-weight: 700;
+  text-decoration: none;
 }
 
 .pub-nav-link.is-active {
@@ -33,6 +45,169 @@
   border-color: var(--hone-ink-950);
   background: var(--hone-ink-950);
   box-shadow: none;
+  text-decoration: none;
+}
+
+.pub-nav-brand {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.pub-nav-primary {
+  gap: 2px;
+  padding: 3px;
+  border: 0;
+  background: color-mix(in srgb, var(--hone-paper-200) 72%, transparent);
+}
+
+.pub-nav-actions {
+  gap: 6px;
+}
+
+.pub-nav-more {
+  position: relative;
+  display: inline-flex;
+}
+
+.pub-nav-more-trigger {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 11px;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-radius-sm);
+  background: rgba(255, 255, 255, 0.58);
+  color: var(--hone-ink-600);
+  cursor: pointer;
+  font: 700 12px/1 var(--hone-font-body);
+  transition: color 160ms ease, background 160ms ease, border-color 160ms ease;
+}
+
+.pub-nav-more-trigger:hover,
+.pub-nav-more-trigger[aria-expanded="true"],
+.pub-nav-more-trigger.is-active {
+  border-color: color-mix(in srgb, var(--hone-coral-500) 28%, var(--hone-line));
+  background: #fff;
+  color: var(--hone-ink-950);
+}
+
+.pub-nav-more-trigger i {
+  font-style: normal;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+.pub-nav-more-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 340px;
+  padding: 9px;
+  border: 1px solid var(--hone-line);
+  border-radius: 17px;
+  background: rgba(255, 254, 251, 0.98);
+  box-shadow: 0 20px 58px rgba(23, 32, 31, 0.16);
+  animation: pub-menu-arrive 160ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.pub-nav-more-links,
+.pub-nav-utility-links {
+  display: grid;
+  gap: 3px;
+}
+
+.pub-nav-more-links {
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--hone-line);
+}
+
+.pub-nav-more-links a,
+.pub-nav-utility-links a,
+.pub-nav-utility-item {
+  min-width: 0;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 11px;
+  border-radius: 10px;
+  color: var(--hone-ink-950);
+  text-decoration: none;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.pub-nav-utility-links {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 7px 0;
+}
+
+.pub-nav-utility-links a,
+.pub-nav-utility-item {
+  min-height: 52px;
+  align-items: flex-start;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  border: 1px solid color-mix(in srgb, var(--hone-line) 75%, transparent);
+}
+
+.pub-nav-utility-item {
+  grid-column: 1 / -1;
+  min-height: 44px;
+  background: color-mix(in srgb, var(--hone-paper-200) 46%, transparent);
+}
+
+.pub-nav-more-links a:hover,
+.pub-nav-utility-links a:hover {
+  background: var(--hone-paper-200);
+}
+
+.pub-nav-more-links span,
+.pub-nav-utility-links span,
+.pub-nav-utility-item span {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pub-nav-more-links small,
+.pub-nav-utility-links small,
+.pub-nav-utility-item small {
+  overflow: hidden;
+  color: var(--hone-ink-400);
+  font-size: 10px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pub-nav-more-panel > footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 7px;
+  border-top: 1px solid var(--hone-line);
+}
+
+.pub-mobile-tabs {
+  display: none;
+}
+
+.pub-community-unread-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid #fff;
+  border-radius: 999px;
+  background: #e5484d;
+  box-shadow: 0 1px 4px rgba(127, 29, 29, 0.3);
 }
 
 .public-chat-page .pub-nav-hamburger:focus-visible,
@@ -73,9 +248,11 @@
     top: max(8px, env(safe-area-inset-top));
     right: 12px;
     left: 12px;
+    width: auto;
     height: 58px;
     padding: 0 7px 0 12px;
     border-radius: 18px;
+    transform: none;
   }
 
   .pub-nav-brand {
@@ -117,11 +294,134 @@
     border-radius: 17px;
   }
 
-  .pub-mobile-menu-links button {
+  .pub-mobile-menu-links a {
     min-height: 46px;
-    font-family: var(--hone-font-sans);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 13px;
+    border-radius: 11px;
+    color: var(--hone-ink-950);
+    font-family: var(--hone-font-body);
     font-size: 15px;
     font-weight: 680;
+    text-decoration: none;
+  }
+
+  .pub-mobile-menu-links a small {
+    color: var(--hone-ink-400);
+  }
+
+  .pub-mobile-menu-links a.is-active {
+    background: var(--hone-paper-200);
+  }
+
+  .pub-mobile-menu .pub-nav-utility-links {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-top: 6px;
+    padding: 7px 0;
+    border-top: 1px solid var(--hone-line);
+  }
+
+  .pub-mobile-menu .pub-nav-utility-links a,
+  .pub-mobile-menu .pub-nav-utility-item {
+    min-height: 48px;
+    background: rgba(255, 255, 255, 0.64);
+  }
+
+  .pub-mobile-menu-meta > span {
+    color: var(--hone-ink-400);
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .pub-mobile-tabs {
+    position: fixed;
+    right: max(8px, env(safe-area-inset-right));
+    bottom: max(7px, env(safe-area-inset-bottom));
+    left: max(8px, env(safe-area-inset-left));
+    z-index: 190;
+    min-height: 60px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    padding: 5px 7px;
+    border: 1px solid color-mix(in srgb, var(--hone-line) 88%, transparent);
+    border-radius: 20px;
+    background: rgba(255, 254, 251, 0.95);
+    box-shadow: 0 12px 34px rgba(23, 32, 31, 0.14);
+    backdrop-filter: blur(20px) saturate(1.16);
+    -webkit-backdrop-filter: blur(20px) saturate(1.16);
+  }
+
+  .pub-mobile-tab {
+    min-width: 0;
+    min-height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 2px;
+    border-radius: 14px;
+    color: var(--hone-ink-400);
+    text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .pub-mobile-tab-icon {
+    position: relative;
+    width: 25px;
+    height: 25px;
+    display: grid;
+    place-items: center;
+  }
+
+  .pub-mobile-tab-icon svg {
+    width: 21px;
+    height: 21px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .pub-mobile-tab small {
+    overflow: hidden;
+    max-width: 100%;
+    font-size: 9px;
+    font-weight: 680;
+    line-height: 1.1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .pub-mobile-tab.is-active {
+    color: var(--hone-ink-950);
+    background: var(--hone-paper-200);
+  }
+
+  .pub-mobile-tab.is-active .pub-mobile-tab-icon {
+    color: var(--hone-coral-500);
+  }
+
+  .pub-mobile-tab .pub-community-unread-dot {
+    top: 0;
+    right: 0;
+    width: 8px;
+    height: 8px;
+  }
+
+  :where(
+    .hone-landing-v4:not(.public-chat-page),
+    .hone-roadmap-v4,
+    .pub-page,
+    .public-blog-page,
+    .public-blog-post-page,
+    .public-portfolio-page
+  ) {
+    padding-bottom: calc(76px + env(safe-area-inset-bottom));
   }
 
   .public-push-center,
@@ -129,5 +429,38 @@
     width: calc(100vw - 20px);
     max-height: calc(100dvh - 20px);
     border-radius: 20px;
+  }
+}
+
+/* The 769–900px range keeps the compact desktop bar instead of falling into
+   a hamburger-only dead zone. */
+@media (min-width: 769px) and (max-width: 900px) {
+  .pub-nav {
+    right: auto !important;
+    left: 50% !important;
+    width: calc(100vw - 24px) !important;
+    transform: translateX(-50%);
+  }
+
+  .pub-nav-links {
+    display: flex;
+  }
+
+  .pub-nav-mobile-controls,
+  .pub-nav-hamburger {
+    display: none !important;
+  }
+
+  .pub-nav-brand {
+    min-width: 48px !important;
+  }
+
+  .pub-nav-brand .hone-brand-word {
+    display: none;
+  }
+
+  .pub-nav-link {
+    padding-right: 9px;
+    padding-left: 9px;
   }
 }

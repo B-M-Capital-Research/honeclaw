@@ -35,4 +35,10 @@ describe("public community interaction contract", () => {
     expect(page).toContain('class="public-community-image-grid"');
     expect(css).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
   });
+
+  it("keeps the final timeline card clear of the mobile tab bar", () => {
+    expect(css).toContain(
+      "padding-bottom: calc(94px + env(safe-area-inset-bottom))",
+    );
+  });
 });

@@ -236,7 +236,7 @@ function LoggedInView(props: {
           <ActionBtn variant="default" onClick={() => navigate("/roadmap")}>
             {C.actions.roadmap}
           </ActionBtn>
-          <ActionBtn variant="ghost" href="#">
+          <ActionBtn variant="ghost" onClick={() => navigate("/community")}>
             {C.actions.community}
           </ActionBtn>
         </div>

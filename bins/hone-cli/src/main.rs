@@ -834,6 +834,53 @@ mod tests {
     }
 
     #[test]
+    fn cli_parses_cloud_community_assets_as_dry_run_by_default() {
+        let cli = Cli::try_parse_from([
+            "hone-cli",
+            "cloud",
+            "community-assets",
+            "--manifest",
+            "/tmp/community-assets.json",
+        ])
+        .unwrap();
+        match cli.command {
+            Some(Commands::Cloud {
+                command: CloudCommands::CommunityAssets(args),
+            }) => {
+                assert_eq!(args.manifest, PathBuf::from("/tmp/community-assets.json"));
+                assert_eq!(args.source, "zsxq");
+                assert_eq!(args.external_id, "51115212285814");
+                assert_eq!(args.max_bytes, 134_217_728);
+                assert!(!args.apply);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_cloud_community_contents_as_dry_run_by_default() {
+        let cli = Cli::try_parse_from([
+            "hone-cli",
+            "cloud",
+            "community-contents",
+            "--manifest",
+            "/tmp/community-contents.json",
+        ])
+        .unwrap();
+        match cli.command {
+            Some(Commands::Cloud {
+                command: CloudCommands::CommunityContents(args),
+            }) => {
+                assert_eq!(args.manifest, PathBuf::from("/tmp/community-contents.json"));
+                assert_eq!(args.source, "zsxq");
+                assert_eq!(args.external_id, "51115212285814");
+                assert!(!args.apply);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
     fn cli_parses_probe_command() {
         let cli = Cli::try_parse_from([
             "hone-cli",

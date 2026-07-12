@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -5,6 +6,8 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use clap::{Args, Subcommand};
 use futures::{StreamExt, stream};
 use hone_core::cloud_runtime::{
+    CloudCommunityReconcileCandidate, CloudCommunityResourceBackfillOutcome,
+    CloudCommunityResourceBackfillTarget, CloudCommunityResourceBackfillUpdate,
     CloudCompanyProfileFileRecord, CloudConversationQuotaImport, CloudCronJobRecord,
     CloudDocumentIndex, CloudLlmAuditRecord, CloudNotificationPrefsRecord, CloudPgRuntime,
     CloudPortfolioRecord, CloudSessionRecord, OssObjectStore, RuntimeRole,
@@ -12,7 +15,7 @@ use hone_core::cloud_runtime::{
 };
 use hone_core::config::OssConfig;
 use hone_core::{ActorIdentity, HoneError, HoneResult};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use walkdir::WalkDir;
 
@@ -27,6 +30,10 @@ pub(crate) enum CloudCommands {
     Migrate(CloudMigrateArgs),
     /// 对比当前 Aliyun OSS 和 Cloudflare R2 的小对象读写延迟。
     ObjectBench(ObjectBenchArgs),
+    /// 校验本地 manifest，并将社区资源幂等回填到 OSS/Postgres（默认 dry-run）。
+    CommunityAssets(CommunityAssetsArgs),
+    /// 对账完整社区时间线，并在单事务中补齐缺失的内容/资源元数据（默认 dry-run）。
+    CommunityContents(CommunityContentsArgs),
 }
 
 #[derive(Args, Debug)]
@@ -92,6 +99,37 @@ pub(crate) struct ObjectBenchArgs {
     pub(crate) cleanup: bool,
     #[arg(long)]
     pub(crate) json: bool,
+}
+
+#[derive(Args, Debug)]
+pub(crate) struct CommunityAssetsArgs {
+    /// JSON array containing verified local community asset records.
+    #[arg(long, value_name = "FILE")]
+    pub(crate) manifest: PathBuf,
+    #[arg(long, default_value = "zsxq")]
+    pub(crate) source: String,
+    #[arg(long = "external-id", default_value = "51115212285814")]
+    pub(crate) external_id: String,
+    /// Maximum accepted bytes for each local file.
+    #[arg(long = "max-bytes", default_value_t = 134_217_728)]
+    pub(crate) max_bytes: u64,
+    /// Upload verified objects and update PostgreSQL. Omit for read-only dry-run.
+    #[arg(long)]
+    pub(crate) apply: bool,
+}
+
+#[derive(Args, Debug)]
+pub(crate) struct CommunityContentsArgs {
+    /// Complete source timeline manifest, including file and non-file topics.
+    #[arg(long, value_name = "FILE")]
+    pub(crate) manifest: PathBuf,
+    #[arg(long, default_value = "zsxq")]
+    pub(crate) source: String,
+    #[arg(long = "external-id", default_value = "51115212285814")]
+    pub(crate) external_id: String,
+    /// Insert all missing contents/resources in one PostgreSQL transaction.
+    #[arg(long)]
+    pub(crate) apply: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -203,6 +241,73 @@ struct ObjectBenchIteration {
     bytes: usize,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+struct CommunityAssetManifestEntry {
+    resource_id: i64,
+    path: PathBuf,
+    content_type: String,
+    byte_size: u64,
+    sha256: String,
+    #[serde(default)]
+    source_base_key: Option<String>,
+    #[serde(default)]
+    source_resource_id: Option<String>,
+    #[serde(default)]
+    width: Option<u32>,
+    #[serde(default)]
+    height: Option<u32>,
+    #[serde(default)]
+    captured_at: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct CommunityAssetsReport {
+    ok: bool,
+    mode: &'static str,
+    manifest: String,
+    source: String,
+    external_id: String,
+    total: usize,
+    validated: usize,
+    uploaded: usize,
+    reused: usize,
+    updated: usize,
+    skipped: usize,
+    would_upload: usize,
+    would_update: usize,
+    conflicts: Vec<CommunityAssetConflict>,
+    items: Vec<CommunityAssetReportItem>,
+}
+
+#[derive(Debug, Serialize)]
+struct CommunityAssetConflict {
+    resource_id: Option<i64>,
+    reason: String,
+}
+
+#[derive(Debug, Serialize)]
+struct CommunityAssetReportItem {
+    resource_id: i64,
+    action: &'static str,
+    byte_size: u64,
+    sha256: String,
+    oss_key: Option<String>,
+}
+
+struct ValidatedCommunityAsset {
+    resource_id: i64,
+    path: PathBuf,
+    content_type: String,
+    byte_size: u64,
+    sha256: String,
+    extension: &'static str,
+    source_base_key: Option<String>,
+    source_resource_id: Option<String>,
+    width: Option<u32>,
+    height: Option<u32>,
+    captured_at: Option<String>,
+}
+
 pub(crate) async fn run_cloud_command(
     config_path: Option<&Path>,
     command: CloudCommands,
@@ -211,7 +316,746 @@ pub(crate) async fn run_cloud_command(
         CloudCommands::Doctor(args) => run_doctor(config_path, args).await,
         CloudCommands::Migrate(args) => run_migrate(config_path, args).await,
         CloudCommands::ObjectBench(args) => run_object_bench(config_path, args).await,
+        CloudCommands::CommunityAssets(args) => run_community_assets(config_path, args).await,
+        CloudCommands::CommunityContents(args) => run_community_contents(config_path, args).await,
     }
+}
+
+async fn run_community_contents(
+    config_path: Option<&Path>,
+    args: CommunityContentsArgs,
+) -> Result<(), String> {
+    let source = args.source.trim();
+    let external_id = args.external_id.trim();
+    if source.is_empty() || external_id.is_empty() {
+        return Err("--source 和 --external-id 不能为空".to_string());
+    }
+    if sanitize_key_component(source) != source
+        || sanitize_key_component(external_id) != external_id
+    {
+        return Err(
+            "--source 和 --external-id 只能包含 ASCII 字母、数字、点、横线和下划线".to_string(),
+        );
+    }
+    let metadata = std::fs::symlink_metadata(&args.manifest)
+        .map_err(|err| format!("读取 community content manifest 元数据失败: {err}"))?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err("community content manifest 必须是普通文件，不能是符号链接".to_string());
+    }
+    if metadata.len() == 0 || metadata.len() > 64 * 1024 * 1024 {
+        return Err("community content manifest 必须在 1B..=64MiB 范围内".to_string());
+    }
+    let manifest_bytes = std::fs::read(&args.manifest)
+        .map_err(|err| format!("读取 community content manifest 失败: {err}"))?;
+    let candidates: Vec<CloudCommunityReconcileCandidate> = serde_json::from_slice(&manifest_bytes)
+        .map_err(|err| format!("解析 community content manifest 失败: {err}"))?;
+
+    let (config, _) = load_cli_config(config_path, false).map_err(|err| err.to_string())?;
+    let pg = CloudPgRuntime::from_cloud_config(&config.cloud)
+        .ok_or_else(|| "Postgres 未配置，不能对账 community contents".to_string())?;
+    let report = pg
+        .reconcile_community_contents(source, external_id, &candidates, args.apply)
+        .await
+        .map_err(|err| err.to_string())?;
+    print_json(&report)
+}
+
+async fn run_community_assets(
+    config_path: Option<&Path>,
+    args: CommunityAssetsArgs,
+) -> Result<(), String> {
+    let source = args.source.trim();
+    let external_id = args.external_id.trim();
+    if source.is_empty() || external_id.is_empty() {
+        return Err("--source 和 --external-id 不能为空".to_string());
+    }
+    if sanitize_key_component(source) != source
+        || sanitize_key_component(external_id) != external_id
+    {
+        return Err(
+            "--source 和 --external-id 只能包含 ASCII 字母、数字、点、横线和下划线".to_string(),
+        );
+    }
+    if args.max_bytes == 0 || args.max_bytes > i64::MAX as u64 {
+        return Err("--max-bytes 必须在 1..=i64::MAX 范围内".to_string());
+    }
+
+    let manifest_bytes = std::fs::read(&args.manifest)
+        .map_err(|err| format!("读取 community asset manifest 失败: {err}"))?;
+    let entries: Vec<CommunityAssetManifestEntry> = serde_json::from_slice(&manifest_bytes)
+        .map_err(|err| format!("解析 community asset manifest 失败: {err}"))?;
+    if entries.is_empty() {
+        return Err("community asset manifest 不能为空".to_string());
+    }
+    if entries.len() > 10_000 {
+        return Err("community asset manifest 条目超过 10000 上限".to_string());
+    }
+
+    let (config, _) = load_cli_config(config_path, false).map_err(|err| err.to_string())?;
+    let pg = CloudPgRuntime::from_cloud_config(&config.cloud)
+        .ok_or_else(|| "Postgres 未配置，不能校验 community assets".to_string())?;
+    let oss = OssObjectStore::from_config(&config.cloud.oss)
+        .ok_or_else(|| "OSS/R2 未配置，不能校验 community assets".to_string())?;
+
+    let manifest_parent = args
+        .manifest
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let mut report = CommunityAssetsReport {
+        ok: false,
+        mode: if args.apply { "apply" } else { "dry-run" },
+        manifest: args.manifest.to_string_lossy().to_string(),
+        source: source.to_string(),
+        external_id: external_id.to_string(),
+        total: entries.len(),
+        validated: 0,
+        uploaded: 0,
+        reused: 0,
+        updated: 0,
+        skipped: 0,
+        would_upload: 0,
+        would_update: 0,
+        conflicts: Vec::new(),
+        items: Vec::new(),
+    };
+    let mut seen_resource_ids = BTreeSet::new();
+    for entry in &entries {
+        if !seen_resource_ids.insert(entry.resource_id) {
+            push_community_asset_conflict(
+                &mut report,
+                Some(entry.resource_id),
+                "manifest 中 resource_id 重复；为避免部分写入，整批拒绝",
+            );
+        }
+    }
+    if !report.conflicts.is_empty() {
+        print_json(&report)?;
+        return Err("community asset manifest 存在重复 resource_id".to_string());
+    }
+
+    let mut validated_entries = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let validated = match validate_community_asset_entry(entry, manifest_parent, args.max_bytes)
+        {
+            Ok(validated) => validated,
+            Err((resource_id, reason)) => {
+                push_community_asset_conflict(&mut report, Some(resource_id), reason);
+                continue;
+            }
+        };
+        validated_entries.push(validated);
+    }
+    if args.apply && !report.conflicts.is_empty() {
+        print_json(&report)?;
+        return Err("community asset manifest 本地预检失败，未执行任何写入".to_string());
+    }
+
+    let mut targeted_entries = Vec::with_capacity(validated_entries.len());
+    for validated in validated_entries {
+        let target = match pg
+            .get_community_resource_backfill_target(source, external_id, validated.resource_id)
+            .await
+        {
+            Ok(Some(target)) => target,
+            Ok(None) => {
+                push_community_asset_conflict(
+                    &mut report,
+                    Some(validated.resource_id),
+                    "目标社区或 resource_id 不存在",
+                );
+                continue;
+            }
+            Err(error) => {
+                push_community_asset_conflict(
+                    &mut report,
+                    Some(validated.resource_id),
+                    format!("读取目标资源失败: {error}"),
+                );
+                continue;
+            }
+        };
+        if let Err(reason) = validate_asset_against_target(&validated, &target) {
+            push_community_asset_conflict(&mut report, Some(validated.resource_id), reason);
+            continue;
+        }
+        report.validated += 1;
+        targeted_entries.push((validated, target));
+    }
+    if args.apply && !report.conflicts.is_empty() {
+        print_json(&report)?;
+        return Err("community asset manifest 数据库预检失败，未执行任何写入".to_string());
+    }
+
+    let mut object_entries = Vec::with_capacity(targeted_entries.len());
+    for (validated, target) in targeted_entries {
+        let key = immutable_community_asset_key(
+            source,
+            external_id,
+            validated.resource_id,
+            &validated.sha256,
+            validated.extension,
+        );
+        let object_uri = oss.object_uri(&key);
+        let object_exists = match oss.object_exists(&key).await {
+            Ok(exists) => exists,
+            Err(error) => {
+                push_community_asset_conflict(
+                    &mut report,
+                    Some(validated.resource_id),
+                    format!("检查 immutable OSS 对象失败: {error}"),
+                );
+                continue;
+            }
+        };
+        if object_exists {
+            if let Err(reason) = verify_community_asset_object(&oss, &key, &validated).await {
+                push_community_asset_conflict(&mut report, Some(validated.resource_id), reason);
+                continue;
+            }
+            report.reused += 1;
+        } else if !args.apply {
+            report.would_upload += 1;
+        }
+        object_entries.push((validated, target, key, object_uri, object_exists));
+    }
+    if args.apply && !report.conflicts.is_empty() {
+        print_json(&report)?;
+        return Err("community asset manifest OSS 预检失败，未执行任何写入".to_string());
+    }
+
+    let mut verified_entries = Vec::with_capacity(object_entries.len());
+    for (validated, target, key, object_uri, object_exists) in object_entries {
+        if args.apply && !object_exists {
+            let bytes = match read_verified_community_asset_bytes(&validated) {
+                Ok(bytes) => bytes,
+                Err(reason) => {
+                    push_community_asset_conflict(
+                        &mut report,
+                        Some(validated.resource_id),
+                        format!("上传前本地文件复检失败: {reason}"),
+                    );
+                    continue;
+                }
+            };
+            if let Err(error) = oss.put_object(&key, bytes, &validated.content_type).await {
+                push_community_asset_conflict(
+                    &mut report,
+                    Some(validated.resource_id),
+                    format!("上传 immutable OSS 对象失败: {error}"),
+                );
+                continue;
+            }
+            if let Err(reason) = verify_community_asset_object(&oss, &key, &validated).await {
+                push_community_asset_conflict(
+                    &mut report,
+                    Some(validated.resource_id),
+                    format!("上传后校验失败: {reason}"),
+                );
+                continue;
+            }
+            report.uploaded += 1;
+        }
+        verified_entries.push((validated, target, key, object_uri, object_exists));
+    }
+    if args.apply && !report.conflicts.is_empty() {
+        print_json(&report)?;
+        return Err(
+            "community asset 上传或回读校验失败；数据库保持不变，可修复后幂等重试".to_string(),
+        );
+    }
+
+    for (validated, target, key, object_uri, object_exists) in verified_entries {
+        if !args.apply {
+            if target_matches_asset(&target, &validated, &object_uri) {
+                report.skipped += 1;
+                report.items.push(CommunityAssetReportItem {
+                    resource_id: validated.resource_id,
+                    action: "already_current",
+                    byte_size: validated.byte_size,
+                    sha256: validated.sha256,
+                    oss_key: Some(key),
+                });
+            } else {
+                report.would_update += 1;
+                report.items.push(CommunityAssetReportItem {
+                    resource_id: validated.resource_id,
+                    action: if object_exists {
+                        "would_reuse_and_update"
+                    } else {
+                        "would_upload_and_update"
+                    },
+                    byte_size: validated.byte_size,
+                    sha256: validated.sha256,
+                    oss_key: Some(key),
+                });
+            }
+            continue;
+        }
+
+        let audit_metadata =
+            community_asset_audit_metadata(source, external_id, &validated, &target);
+        let update = CloudCommunityResourceBackfillUpdate {
+            resource_id: validated.resource_id,
+            expected_updated_at: target.updated_at.clone(),
+            source_resource_id: validated
+                .source_resource_id
+                .clone()
+                .or_else(|| validated.source_base_key.clone()),
+            content_type: validated.content_type.clone(),
+            byte_size: validated.byte_size as i64,
+            sha256: validated.sha256.clone(),
+            oss_uri: object_uri,
+            audit_metadata,
+        };
+        match pg
+            .backfill_community_resource(source, external_id, &update)
+            .await
+        {
+            Ok(CloudCommunityResourceBackfillOutcome::Updated) => {
+                report.updated += 1;
+                report.items.push(CommunityAssetReportItem {
+                    resource_id: validated.resource_id,
+                    action: if object_exists {
+                        "reused_and_updated"
+                    } else {
+                        "uploaded_and_updated"
+                    },
+                    byte_size: validated.byte_size,
+                    sha256: validated.sha256,
+                    oss_key: Some(key),
+                });
+            }
+            Ok(CloudCommunityResourceBackfillOutcome::Unchanged) => {
+                report.skipped += 1;
+                report.items.push(CommunityAssetReportItem {
+                    resource_id: validated.resource_id,
+                    action: "already_current",
+                    byte_size: validated.byte_size,
+                    sha256: validated.sha256,
+                    oss_key: Some(key),
+                });
+            }
+            Ok(CloudCommunityResourceBackfillOutcome::Conflict) => {
+                push_community_asset_conflict(
+                    &mut report,
+                    Some(validated.resource_id),
+                    "数据库记录在校验后发生变化，未覆盖并发更新",
+                );
+            }
+            Ok(CloudCommunityResourceBackfillOutcome::NotFound) => {
+                push_community_asset_conflict(
+                    &mut report,
+                    Some(validated.resource_id),
+                    "数据库记录在校验后被删除",
+                );
+            }
+            Err(error) => {
+                push_community_asset_conflict(
+                    &mut report,
+                    Some(validated.resource_id),
+                    format!("更新数据库失败: {error}"),
+                );
+            }
+        }
+    }
+
+    report.ok = report.conflicts.is_empty();
+    print_json(&report)?;
+    if report.ok {
+        Ok(())
+    } else {
+        Err(format!(
+            "community asset backfill 有 {} 个冲突",
+            report.conflicts.len()
+        ))
+    }
+}
+
+fn push_community_asset_conflict(
+    report: &mut CommunityAssetsReport,
+    resource_id: Option<i64>,
+    reason: impl Into<String>,
+) {
+    report.conflicts.push(CommunityAssetConflict {
+        resource_id,
+        reason: reason.into(),
+    });
+}
+
+fn validate_community_asset_entry(
+    entry: CommunityAssetManifestEntry,
+    manifest_parent: &Path,
+    max_bytes: u64,
+) -> Result<ValidatedCommunityAsset, (i64, String)> {
+    let resource_id = entry.resource_id;
+    if resource_id <= 0 {
+        return Err((resource_id, "resource_id 必须大于 0".to_string()));
+    }
+    if entry.byte_size == 0 || entry.byte_size > max_bytes {
+        return Err((
+            resource_id,
+            format!("byte_size 必须在 1..={max_bytes} 范围内"),
+        ));
+    }
+    let sha256 = normalized_manifest_sha256(&entry.sha256)
+        .ok_or_else(|| (resource_id, "sha256 必须是 64 位十六进制".to_string()))?;
+    validate_safe_source_identifier(entry.source_base_key.as_deref())
+        .map_err(|reason| (resource_id, format!("source_base_key 不安全: {reason}")))?;
+    validate_safe_source_identifier(entry.source_resource_id.as_deref())
+        .map_err(|reason| (resource_id, format!("source_resource_id 不安全: {reason}")))?;
+    match (entry.width, entry.height) {
+        (Some(width), Some(height)) if width > 0 && height > 0 => {}
+        (None, None) => {}
+        _ => {
+            return Err((resource_id, "width/height 必须同时存在且大于 0".to_string()));
+        }
+    }
+    if let Some(captured_at) = entry.captured_at.as_deref() {
+        chrono::DateTime::parse_from_rfc3339(captured_at)
+            .map_err(|_| (resource_id, "captured_at 必须是 RFC3339 时间".to_string()))?;
+    }
+
+    let path = if entry.path.is_absolute() {
+        entry.path.clone()
+    } else {
+        manifest_parent.join(&entry.path)
+    };
+    let metadata = std::fs::symlink_metadata(&path)
+        .map_err(|err| (resource_id, format!("读取本地文件元数据失败: {err}")))?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err((
+            resource_id,
+            "本地 path 必须是普通文件，不能是符号链接".to_string(),
+        ));
+    }
+    if metadata.len() != entry.byte_size {
+        return Err((
+            resource_id,
+            format!(
+                "manifest/file byte_size 不一致: {} != {}",
+                entry.byte_size,
+                metadata.len()
+            ),
+        ));
+    }
+    let bytes =
+        std::fs::read(&path).map_err(|err| (resource_id, format!("读取本地文件失败: {err}")))?;
+    if bytes.len() as u64 != entry.byte_size {
+        return Err((
+            resource_id,
+            format!(
+                "读取期间文件大小发生变化: expected={} actual={}",
+                entry.byte_size,
+                bytes.len()
+            ),
+        ));
+    }
+    let actual_sha256 = sha256_hex(&bytes);
+    if actual_sha256 != sha256 {
+        return Err((
+            resource_id,
+            format!("manifest/file sha256 不一致: expected={sha256} actual={actual_sha256}"),
+        ));
+    }
+    let (content_type, extension) = validate_content_type_and_magic(&entry.content_type, &bytes)
+        .map_err(|reason| (resource_id, reason))?;
+
+    Ok(ValidatedCommunityAsset {
+        resource_id,
+        path,
+        content_type: content_type.to_string(),
+        byte_size: entry.byte_size,
+        sha256,
+        extension,
+        source_base_key: entry.source_base_key,
+        source_resource_id: entry.source_resource_id,
+        width: entry.width,
+        height: entry.height,
+        captured_at: entry.captured_at,
+    })
+}
+
+fn read_verified_community_asset_bytes(asset: &ValidatedCommunityAsset) -> Result<Vec<u8>, String> {
+    let metadata = std::fs::symlink_metadata(&asset.path)
+        .map_err(|error| format!("读取本地文件元数据失败: {error}"))?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err("本地 path 不再是普通文件".to_string());
+    }
+    if metadata.len() != asset.byte_size {
+        return Err(format!(
+            "本地文件大小已变化: expected={} actual={}",
+            asset.byte_size,
+            metadata.len()
+        ));
+    }
+    let bytes = std::fs::read(&asset.path).map_err(|error| format!("读取本地文件失败: {error}"))?;
+    if bytes.len() as u64 != asset.byte_size {
+        return Err(format!(
+            "读取期间文件大小发生变化: expected={} actual={}",
+            asset.byte_size,
+            bytes.len()
+        ));
+    }
+    let actual_sha256 = sha256_hex(&bytes);
+    if actual_sha256 != asset.sha256 {
+        return Err(format!(
+            "本地文件 sha256 已变化: expected={} actual={actual_sha256}",
+            asset.sha256
+        ));
+    }
+    let (content_type, extension) = validate_content_type_and_magic(&asset.content_type, &bytes)?;
+    if content_type != asset.content_type || extension != asset.extension {
+        return Err("本地文件 MIME/magic 在预检后发生变化".to_string());
+    }
+    Ok(bytes)
+}
+
+fn normalized_manifest_sha256(raw: &str) -> Option<String> {
+    let value = raw.trim();
+    (value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .then(|| value.to_ascii_lowercase())
+}
+
+fn validate_safe_source_identifier(raw: Option<&str>) -> Result<(), &'static str> {
+    let Some(value) = raw else {
+        return Ok(());
+    };
+    let value = value.trim();
+    if value.is_empty() || value.len() > 512 {
+        return Err("不能为空且不能超过 512 字节");
+    }
+    if value.contains("://") || value.chars().any(char::is_control) {
+        return Err("不能包含 URL 或控制字符");
+    }
+    Ok(())
+}
+
+fn validate_content_type_and_magic(
+    raw_content_type: &str,
+    bytes: &[u8],
+) -> Result<(&'static str, &'static str), String> {
+    let content_type = raw_content_type
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    let zip_has = |needle: &[u8]| bytes.windows(needle.len()).any(|window| window == needle);
+    let ole = bytes.starts_with(&[0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
+    let valid = match content_type.as_str() {
+        "image/png" => bytes.starts_with(b"\x89PNG\r\n\x1a\n"),
+        "image/jpeg" | "image/jpg" => bytes.starts_with(&[0xff, 0xd8, 0xff]),
+        "image/gif" => bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a"),
+        "image/webp" => bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP",
+        "image/avif" => {
+            bytes.len() >= 12
+                && &bytes[4..8] == b"ftyp"
+                && (&bytes[8..12] == b"avif" || &bytes[8..12] == b"avis")
+        }
+        "application/pdf" => bytes[..bytes.len().min(1024)]
+            .windows(5)
+            .any(|window| window == b"%PDF-"),
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => {
+            bytes.starts_with(b"PK") && zip_has(b"word/") && zip_has(b"[Content_Types].xml")
+        }
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => {
+            bytes.starts_with(b"PK") && zip_has(b"xl/") && zip_has(b"[Content_Types].xml")
+        }
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation" => {
+            bytes.starts_with(b"PK") && zip_has(b"ppt/") && zip_has(b"[Content_Types].xml")
+        }
+        "application/msword" | "application/vnd.ms-excel" | "application/vnd.ms-powerpoint" => ole,
+        _ => {
+            return Err(format!(
+                "content_type 不在 community asset 安全 allowlist: {content_type}"
+            ));
+        }
+    };
+    if !valid {
+        return Err(format!("文件 magic 与 content_type 不一致: {content_type}"));
+    }
+    Ok(match content_type.as_str() {
+        "image/png" => ("image/png", "png"),
+        "image/jpeg" | "image/jpg" => ("image/jpeg", "jpg"),
+        "image/gif" => ("image/gif", "gif"),
+        "image/webp" => ("image/webp", "webp"),
+        "image/avif" => ("image/avif", "avif"),
+        "application/pdf" => ("application/pdf", "pdf"),
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "docx",
+        ),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => (
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "xlsx",
+        ),
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation" => (
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "pptx",
+        ),
+        "application/msword" => ("application/msword", "doc"),
+        "application/vnd.ms-excel" => ("application/vnd.ms-excel", "xls"),
+        "application/vnd.ms-powerpoint" => ("application/vnd.ms-powerpoint", "ppt"),
+        _ => unreachable!("content type was allowlisted above"),
+    })
+}
+
+fn validate_asset_against_target(
+    asset: &ValidatedCommunityAsset,
+    target: &CloudCommunityResourceBackfillTarget,
+) -> Result<(), String> {
+    if target.resource_id != asset.resource_id {
+        return Err("数据库返回的 resource_id 与 manifest 不一致".to_string());
+    }
+    if let (Some(current), Some(desired)) = (
+        target.source_resource_id.as_deref(),
+        asset
+            .source_resource_id
+            .as_deref()
+            .or(asset.source_base_key.as_deref()),
+    ) && current != desired
+    {
+        return Err("source_resource_id 与数据库已有值冲突".to_string());
+    }
+    if let Some(display_name) = target.display_name.as_deref()
+        && let Some(extension) = Path::new(display_name)
+            .extension()
+            .and_then(|value| value.to_str())
+            .map(str::to_ascii_lowercase)
+    {
+        let expected_content_type = content_type_for_extension(&extension).ok_or_else(|| {
+            format!("display_name 扩展名 .{extension} 不在 community asset 安全 allowlist")
+        })?;
+        if expected_content_type != asset.content_type {
+            return Err(format!(
+                "display_name 扩展名 .{extension} 与 content_type {} 不一致",
+                asset.content_type
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn content_type_for_extension(extension: &str) -> Option<&'static str> {
+    match extension {
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        "avif" => Some("image/avif"),
+        "pdf" => Some("application/pdf"),
+        "docx" => Some("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+        "xlsx" => Some("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+        "pptx" => Some("application/vnd.openxmlformats-officedocument.presentationml.presentation"),
+        "doc" => Some("application/msword"),
+        "xls" => Some("application/vnd.ms-excel"),
+        "ppt" => Some("application/vnd.ms-powerpoint"),
+        _ => None,
+    }
+}
+
+fn immutable_community_asset_key(
+    source: &str,
+    external_id: &str,
+    resource_id: i64,
+    sha256: &str,
+    extension: &str,
+) -> String {
+    format!(
+        "community/{}/{}/resources/{}-{}.{}",
+        sanitize_key_component(source),
+        sanitize_key_component(external_id),
+        resource_id,
+        sha256,
+        extension
+    )
+}
+
+async fn verify_community_asset_object(
+    oss: &OssObjectStore,
+    key: &str,
+    asset: &ValidatedCommunityAsset,
+) -> Result<(), String> {
+    let max_bytes = usize::try_from(asset.byte_size)
+        .ok()
+        .and_then(|value| value.checked_add(1))
+        .ok_or_else(|| "asset byte_size 无法转换为本机 usize".to_string())?;
+    let object = oss
+        .get_object_limited(key, max_bytes)
+        .await
+        .map_err(|error| format!("读取 immutable OSS 对象失败: {error}"))?;
+    if object.bytes.len() as u64 != asset.byte_size {
+        return Err(format!(
+            "immutable OSS 对象大小冲突: expected={} actual={}",
+            asset.byte_size,
+            object.bytes.len()
+        ));
+    }
+    let actual_sha256 = sha256_hex(&object.bytes);
+    if actual_sha256 != asset.sha256 {
+        return Err(format!(
+            "immutable OSS 对象 sha256 冲突: expected={} actual={actual_sha256}",
+            asset.sha256
+        ));
+    }
+    let object_content_type = object
+        .content_type
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    if object_content_type != asset.content_type {
+        return Err(format!(
+            "immutable OSS 对象 content_type 冲突: expected={} actual={object_content_type}",
+            asset.content_type
+        ));
+    }
+    Ok(())
+}
+
+fn target_matches_asset(
+    target: &CloudCommunityResourceBackfillTarget,
+    asset: &ValidatedCommunityAsset,
+    object_uri: &str,
+) -> bool {
+    let desired_source_resource_id = asset
+        .source_resource_id
+        .as_deref()
+        .or(asset.source_base_key.as_deref());
+    target.content_type.as_deref() == Some(asset.content_type.as_str())
+        && target.byte_size == Some(asset.byte_size as i64)
+        && target.sha256.as_deref() == Some(asset.sha256.as_str())
+        && target.oss_uri.as_deref() == Some(object_uri)
+        && target.access_state == "stored"
+        && desired_source_resource_id
+            .map(|desired| target.source_resource_id.as_deref() == Some(desired))
+            .unwrap_or(true)
+}
+
+fn community_asset_audit_metadata(
+    source: &str,
+    external_id: &str,
+    asset: &ValidatedCommunityAsset,
+    target: &CloudCommunityResourceBackfillTarget,
+) -> serde_json::Value {
+    json!({
+        "tool": "hone-cli cloud community-assets",
+        "tool_version": env!("CARGO_PKG_VERSION"),
+        "source": source,
+        "external_id": external_id,
+        "source_base_key": asset.source_base_key,
+        "source_resource_id": asset.source_resource_id,
+        "width": asset.width,
+        "height": asset.height,
+        "captured_at": asset.captured_at,
+        "verified_at": chrono::Utc::now().to_rfc3339(),
+        "previous_sha256": target.sha256,
+        "previous_byte_size": target.byte_size,
+        "previous_oss_uri": target.oss_uri,
+        "previous_access_state": target.access_state,
+    })
 }
 
 async fn run_object_bench(config_path: Option<&Path>, args: ObjectBenchArgs) -> Result<(), String> {
@@ -1426,4 +2270,181 @@ fn classify_path(rel: &str) -> Option<Classification> {
         document_id: doc_id,
         content_type,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn png_bytes() -> Vec<u8> {
+        b"\x89PNG\r\n\x1a\nproduction-safe-test-payload".to_vec()
+    }
+
+    #[test]
+    fn community_asset_validation_checks_size_sha_and_magic() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let bytes = png_bytes();
+        let path = temp.path().join("asset.png");
+        std::fs::write(&path, &bytes).expect("write fixture");
+        let entry = CommunityAssetManifestEntry {
+            resource_id: 7,
+            path: PathBuf::from("asset.png"),
+            content_type: "image/png".to_string(),
+            byte_size: bytes.len() as u64,
+            sha256: sha256_hex(&bytes),
+            source_base_key: Some("safe_source_key".to_string()),
+            source_resource_id: None,
+            width: Some(3142),
+            height: Some(1684),
+            captured_at: Some("2026-07-12T13:50:43.385Z".to_string()),
+        };
+
+        let validated =
+            validate_community_asset_entry(entry, temp.path(), 1024).expect("valid asset");
+        assert_eq!(validated.content_type, "image/png");
+        assert_eq!(validated.extension, "png");
+        assert_eq!(validated.resource_id, 7);
+        assert_eq!(
+            read_verified_community_asset_bytes(&validated).expect("verified reread"),
+            bytes
+        );
+
+        std::fs::write(&path, b"changed").expect("replace fixture");
+        assert!(
+            read_verified_community_asset_bytes(&validated)
+                .expect_err("changed file rejected")
+                .contains("变化")
+        );
+    }
+
+    #[test]
+    fn community_asset_validation_rejects_magic_mismatch() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let bytes = png_bytes();
+        let path = temp.path().join("asset.jpg");
+        std::fs::write(&path, &bytes).expect("write fixture");
+        let entry = CommunityAssetManifestEntry {
+            resource_id: 8,
+            path,
+            content_type: "image/jpeg".to_string(),
+            byte_size: bytes.len() as u64,
+            sha256: sha256_hex(&bytes),
+            source_base_key: None,
+            source_resource_id: None,
+            width: None,
+            height: None,
+            captured_at: None,
+        };
+
+        let error = validate_community_asset_entry(entry, temp.path(), 1024)
+            .err()
+            .expect("magic mismatch");
+        assert!(error.1.contains("magic"));
+    }
+
+    #[test]
+    fn community_asset_key_is_immutable_and_scoped() {
+        let sha = "a".repeat(64);
+        assert_eq!(
+            immutable_community_asset_key("zsxq", "group 1", 42, &sha, "pdf"),
+            format!("community/zsxq/group-1/resources/42-{sha}.pdf")
+        );
+    }
+
+    #[test]
+    fn community_asset_target_rejects_display_extension_mismatch() {
+        let asset = ValidatedCommunityAsset {
+            resource_id: 9,
+            path: PathBuf::from("/tmp/not-read-by-this-test.png"),
+            content_type: "image/png".to_string(),
+            byte_size: 32,
+            sha256: "b".repeat(64),
+            extension: "png",
+            source_base_key: None,
+            source_resource_id: None,
+            width: None,
+            height: None,
+            captured_at: None,
+        };
+        let target = CloudCommunityResourceBackfillTarget {
+            resource_id: 9,
+            display_name: Some("report.pdf".to_string()),
+            source_resource_id: None,
+            content_type: None,
+            byte_size: None,
+            sha256: None,
+            oss_uri: None,
+            access_state: "metadata_only".to_string(),
+            updated_at: "2026-07-12 00:00:00+00".to_string(),
+        };
+        let error = validate_asset_against_target(&asset, &target).expect_err("mismatch");
+        assert!(error.contains("扩展名"));
+    }
+
+    #[test]
+    fn community_asset_source_identifier_rejects_urls() {
+        assert!(validate_safe_source_identifier(Some("source-key")).is_ok());
+        assert!(
+            validate_safe_source_identifier(Some("https://files.example/token"))
+                .expect_err("url rejected")
+                .contains("URL")
+        );
+    }
+
+    #[test]
+    fn community_asset_target_match_is_idempotent_and_source_aware() {
+        let asset = ValidatedCommunityAsset {
+            resource_id: 10,
+            path: PathBuf::from("/tmp/not-read-by-this-test.png"),
+            content_type: "image/png".to_string(),
+            byte_size: 32,
+            sha256: "c".repeat(64),
+            extension: "png",
+            source_base_key: Some("source-object-10".to_string()),
+            source_resource_id: None,
+            width: Some(10),
+            height: Some(10),
+            captured_at: None,
+        };
+        let mut target = CloudCommunityResourceBackfillTarget {
+            resource_id: 10,
+            display_name: Some("image-10".to_string()),
+            source_resource_id: Some("source-object-10".to_string()),
+            content_type: Some("image/png".to_string()),
+            byte_size: Some(32),
+            sha256: Some("c".repeat(64)),
+            oss_uri: Some("oss://bucket/key".to_string()),
+            access_state: "stored".to_string(),
+            updated_at: "2026-07-12 00:00:00+00".to_string(),
+        };
+        assert!(target_matches_asset(&target, &asset, "oss://bucket/key"));
+
+        target.source_resource_id = None;
+        assert!(!target_matches_asset(&target, &asset, "oss://bucket/key"));
+    }
+
+    #[test]
+    fn community_asset_report_keeps_required_operation_counters() {
+        let report = CommunityAssetsReport {
+            ok: true,
+            mode: "dry-run",
+            manifest: "manifest.json".to_string(),
+            source: "zsxq".to_string(),
+            external_id: "group".to_string(),
+            total: 1,
+            validated: 1,
+            uploaded: 0,
+            reused: 1,
+            updated: 0,
+            skipped: 1,
+            would_upload: 0,
+            would_update: 0,
+            conflicts: Vec::new(),
+            items: Vec::new(),
+        };
+        let value = serde_json::to_value(report).expect("serialize report");
+        for key in ["uploaded", "reused", "updated", "skipped", "conflicts"] {
+            assert!(value.get(key).is_some(), "missing report field {key}");
+        }
+    }
 }

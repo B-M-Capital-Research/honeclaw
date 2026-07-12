@@ -23,10 +23,12 @@ const CONTENT_ZH = {
   nav: {
     logo_tagline: "HONE",
     home: "首页",
+    community: "社区",
     roadmap: "路线图与文档",
     blog: "Blog",
     me: "个人",
     chat: "对话",
+    more: "更多",
     back_home: "返回首页",
     menu_aria: "菜单",
     locale_zh: "中文",
@@ -866,7 +868,7 @@ const CONTENT_ZH = {
     actions: {
       chat: "进入对话 →",
       roadmap: "查看路线图",
-      community: "加入社群",
+      community: "查看社区",
       logout: "退出登录",
     },
     membership: {
@@ -1632,10 +1634,12 @@ const CONTENT_EN: typeof CONTENT_ZH = {
   nav: {
     logo_tagline: "HONE",
     home: "Home",
+    community: "Community",
     roadmap: "Roadmap & Docs",
     blog: "Blog",
     me: "Account",
     chat: "Chat",
+    more: "More",
     back_home: "Home",
     menu_aria: "Menu",
     locale_zh: "中文",
@@ -2505,7 +2509,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     actions: {
       chat: "Enter chat →",
       roadmap: "View roadmap",
-      community: "Join community",
+      community: "Community",
       logout: "Sign out",
     },
     membership: {

@@ -8,6 +8,7 @@ import {
   getPublicCommunityResourceBlob,
   getPublicHistory,
   markPublicCommunitySeen,
+  publicCommunityResourceUrl,
   getPublicPushes,
   isUnauthorizedApiError,
   sendPublicChat,
@@ -204,11 +205,23 @@ describe("public community API", () => {
       );
     }) as typeof fetch;
 
-    const blob = await getPublicCommunityResourceBlob(99);
+    const blob = await getPublicCommunityResourceBlob(99, "0123456789ab");
 
-    expect(requestedUrl).toContain("/api/public/community/resources/99");
+    expect(requestedUrl).toContain(
+      "/api/public/community/resources/99?v=0123456789ab",
+    );
     expect(credentials).toBe("include");
     expect(blob.size).toBe(3);
+  });
+
+  test("keeps legacy resources revalidating while versioning hashed resources", () => {
+    expect(publicCommunityResourceUrl(99)).toContain(
+      "/api/public/community/resources/99",
+    );
+    expect(publicCommunityResourceUrl(99)).not.toContain("?v=");
+    expect(publicCommunityResourceUrl(99, "0123456789ab")).toContain(
+      "/api/public/community/resources/99?v=0123456789ab",
+    );
   });
 });
 

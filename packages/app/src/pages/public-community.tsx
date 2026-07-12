@@ -73,7 +73,7 @@ function resourceCanInlinePreview(resource: PublicCommunityResource) {
 }
 
 async function downloadCommunityResource(resource: PublicCommunityResource) {
-  const blob = await getPublicCommunityResourceBlob(resource.resource_id);
+  const blob = await getPublicCommunityResourceBlob(resource.resource_id, resource.version);
   const objectUrl = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = objectUrl;
@@ -94,7 +94,8 @@ function CommunityMediaPreview(props: {
   const [fitSize, setFitSize] = createSignal({ width: 0, height: 0 });
   const [interacting, setInteracting] = createSignal(false);
   const [downloadState, setDownloadState] = createSignal<"idle" | "working" | "error">("idle");
-  const source = () => publicCommunityResourceUrl(props.resource.resource_id);
+  const source = () =>
+    publicCommunityResourceUrl(props.resource.resource_id, props.resource.version);
   const isImage = () => resourceIsImage(props.resource);
   const titleId = `community-preview-title-${props.resource.resource_id}`;
   let dialogEl: HTMLDivElement | undefined;
@@ -571,7 +572,10 @@ export default function PublicCommunityPage() {
                                       fallback={<span>图片受来源保护</span>}
                                     >
                                       <img
-                                        src={publicCommunityResourceUrl(resource.resource_id)}
+                                        src={publicCommunityResourceUrl(
+                                          resource.resource_id,
+                                          resource.version,
+                                        )}
                                         alt={resource.display_name || "社区图片"}
                                         loading="lazy"
                                       />

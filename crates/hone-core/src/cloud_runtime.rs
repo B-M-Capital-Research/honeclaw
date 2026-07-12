@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
@@ -131,8 +131,311 @@ pub struct CloudCommunityResourceRecord {
     pub display_name: Option<String>,
     pub content_type: Option<String>,
     pub byte_size: Option<i64>,
+    pub sha256: Option<String>,
     pub oss_uri: Option<String>,
     pub access_state: String,
+}
+
+/// Internal snapshot used by the explicit community asset backfill workflow.
+/// It is deliberately separate from the public timeline record so optimistic
+/// concurrency and source identifiers never leak into the public API.
+#[derive(Debug, Clone)]
+pub struct CloudCommunityResourceBackfillTarget {
+    pub resource_id: i64,
+    pub display_name: Option<String>,
+    pub source_resource_id: Option<String>,
+    pub content_type: Option<String>,
+    pub byte_size: Option<i64>,
+    pub sha256: Option<String>,
+    pub oss_uri: Option<String>,
+    pub access_state: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct CloudCommunityResourceBackfillUpdate {
+    pub resource_id: i64,
+    pub expected_updated_at: String,
+    pub source_resource_id: Option<String>,
+    pub content_type: String,
+    pub byte_size: i64,
+    pub sha256: String,
+    pub oss_uri: String,
+    /// Safe, non-secret provenance fields stored below the dedicated
+    /// `community_asset_backfill` metadata key.
+    pub audit_metadata: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CloudCommunityResourceBackfillOutcome {
+    Updated,
+    Unchanged,
+    Conflict,
+    NotFound,
+}
+
+/// One topic captured from the complete, chronologically ordered source
+/// timeline. The fingerprint intentionally excludes unstable DOM positions;
+/// duplicate fingerprints are disambiguated by their occurrence in the full
+/// manifest.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloudCommunityReconcileCandidate {
+    pub source_topic_index: i32,
+    pub source_file_position: Option<i32>,
+    pub author_name: String,
+    pub published_at_raw: String,
+    pub body_text: String,
+    pub files: Vec<CloudCommunityReconcileFile>,
+    pub images: Vec<CloudCommunityReconcileImage>,
+    pub candidate_fingerprint: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloudCommunityReconcileFile {
+    pub ordinal: i32,
+    pub display_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloudCommunityReconcileImage {
+    pub ordinal: i32,
+    pub source_base_key: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CloudCommunityReconcileResource {
+    pub source_topic_index: i32,
+    pub source_ordinal: i32,
+    pub resource_id: i64,
+    pub resource_kind: String,
+    pub display_name: Option<String>,
+    pub source_resource_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CloudCommunityReconcileItem {
+    pub source_topic_index: i32,
+    pub source_file_position: Option<i32>,
+    pub source_item_key: String,
+    pub action: String,
+    pub content_id: Option<i64>,
+    pub resources: Vec<CloudCommunityReconcileResource>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CloudCommunityReconcileReport {
+    pub mode: &'static str,
+    pub source_topic_count: usize,
+    pub source_file_count: usize,
+    pub existing_by_file_position: usize,
+    pub existing_by_source_key: usize,
+    pub would_insert: usize,
+    pub inserted: usize,
+    pub items: Vec<CloudCommunityReconcileItem>,
+}
+
+#[derive(Debug, Clone)]
+struct PlannedCommunityReconcileCandidate {
+    candidate: CloudCommunityReconcileCandidate,
+    source_item_key: String,
+    fingerprint_occurrence: usize,
+}
+
+fn plan_community_reconcile_candidates(
+    source: &str,
+    candidates: &[CloudCommunityReconcileCandidate],
+) -> HoneResult<Vec<PlannedCommunityReconcileCandidate>> {
+    if source.is_empty() || sanitize_key_component(source) != source {
+        return Err(HoneError::Config(
+            "community reconcile source 不安全".to_string(),
+        ));
+    }
+    if candidates.is_empty() || candidates.len() > 10_000 {
+        return Err(HoneError::Config(
+            "community reconcile manifest 条目数必须在 1..=10000".to_string(),
+        ));
+    }
+
+    let mut ordered = candidates.to_vec();
+    ordered.sort_by_key(|candidate| candidate.source_topic_index);
+    let mut file_positions = BTreeSet::new();
+    for (expected_index, candidate) in ordered.iter().enumerate() {
+        if candidate.source_topic_index != expected_index as i32 {
+            return Err(HoneError::Config(format!(
+                "community reconcile source_topic_index 必须从 0 连续递增，期望 {expected_index}，实际 {}",
+                candidate.source_topic_index
+            )));
+        }
+        if candidate.author_name.trim().is_empty() || candidate.author_name.len() > 1_000 {
+            return Err(HoneError::Config(format!(
+                "community reconcile topic {expected_index} author_name 无效"
+            )));
+        }
+        chrono::NaiveDateTime::parse_from_str(&candidate.published_at_raw, "%Y-%m-%d %H:%M")
+            .map_err(|_| {
+                HoneError::Config(format!(
+                    "community reconcile topic {expected_index} published_at_raw 无效"
+                ))
+            })?;
+        if candidate.candidate_fingerprint.len() != 64
+            || !candidate
+                .candidate_fingerprint
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err(HoneError::Config(format!(
+                "community reconcile topic {expected_index} fingerprint 必须是小写 SHA-256"
+            )));
+        }
+        if candidate.files.is_empty()
+            && candidate.images.is_empty()
+            && candidate.body_text.is_empty()
+        {
+            return Err(HoneError::Config(format!(
+                "community reconcile topic {expected_index} 不能是空内容"
+            )));
+        }
+        if candidate.files.len() > 100 || candidate.images.len() > 100 {
+            return Err(HoneError::Config(format!(
+                "community reconcile topic {expected_index} 资源数超过上限"
+            )));
+        }
+        for (ordinal, file) in candidate.files.iter().enumerate() {
+            if file.ordinal != ordinal as i32
+                || file.display_name.trim().is_empty()
+                || file.display_name.len() > 4_096
+                || file.display_name.contains('\0')
+            {
+                return Err(HoneError::Config(format!(
+                    "community reconcile topic {expected_index} file ordinal/name 无效"
+                )));
+            }
+        }
+        for (ordinal, image) in candidate.images.iter().enumerate() {
+            if image.ordinal != ordinal as i32
+                || image.source_base_key.is_empty()
+                || image.source_base_key.len() > 256
+                || !image
+                    .source_base_key
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+            {
+                return Err(HoneError::Config(format!(
+                    "community reconcile topic {expected_index} image ordinal/source key 无效"
+                )));
+            }
+        }
+        match candidate.source_file_position {
+            Some(position) if position >= 0 && !candidate.files.is_empty() => {
+                if !file_positions.insert(position) {
+                    return Err(HoneError::Config(format!(
+                        "community reconcile source_file_position={position} 重复"
+                    )));
+                }
+            }
+            Some(_) => {
+                return Err(HoneError::Config(format!(
+                    "community reconcile topic {expected_index} file position 与 files 不一致"
+                )));
+            }
+            None if !candidate.files.is_empty() => {
+                return Err(HoneError::Config(format!(
+                    "community reconcile topic {expected_index} 有文件但缺少 file position"
+                )));
+            }
+            None => {}
+        }
+    }
+    for (expected, actual) in file_positions.iter().copied().enumerate() {
+        if actual != expected as i32 {
+            return Err(HoneError::Config(format!(
+                "community reconcile source_file_position 必须从 0 连续递增，期望 {expected}，实际 {actual}"
+            )));
+        }
+    }
+
+    let mut fingerprint_occurrences = BTreeMap::<String, usize>::new();
+    Ok(ordered
+        .into_iter()
+        .map(|candidate| {
+            let occurrence = fingerprint_occurrences
+                .entry(candidate.candidate_fingerprint.clone())
+                .and_modify(|value| *value += 1)
+                .or_insert(1);
+            PlannedCommunityReconcileCandidate {
+                source_item_key: format!(
+                    "{source}-dom-v2:{}:occurrence:{}",
+                    candidate.candidate_fingerprint, *occurrence
+                ),
+                fingerprint_occurrence: *occurrence,
+                candidate,
+            }
+        })
+        .collect())
+}
+
+fn community_file_content_type(display_name: &str) -> Option<String> {
+    let extension = PathBuf::from(display_name)
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(str::to_ascii_lowercase);
+    match extension.as_deref() {
+        Some("pdf") => Some("application/pdf".to_string()),
+        Some("docx") => Some(
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document".to_string(),
+        ),
+        Some("pptx") => Some(
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation".to_string(),
+        ),
+        Some("xlsx") => {
+            Some("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".to_string())
+        }
+        Some("xls") => Some("application/vnd.ms-excel".to_string()),
+        _ => None,
+    }
+}
+
+async fn load_reconciled_community_resources(
+    transaction: &tokio_postgres::Transaction<'_>,
+    content_id: i64,
+    source_topic_index: i32,
+) -> HoneResult<Vec<CloudCommunityReconcileResource>> {
+    let rows = transaction
+        .query(
+            r#"
+SELECT resource_id, ordinal, resource_kind, display_name, source_resource_id, raw_metadata
+FROM community_content_resources
+WHERE content_id = $1
+ORDER BY ordinal
+"#,
+            &[&content_id],
+        )
+        .await
+        .map_err(|err| {
+            HoneError::Config(format!(
+                "Postgres community reconcile resources 读取失败: {err}"
+            ))
+        })?;
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let ordinal: i32 = row.get(1);
+            let metadata: serde_json::Value = row.get(5);
+            let source_ordinal = metadata
+                .get("source_ordinal")
+                .and_then(serde_json::Value::as_i64)
+                .and_then(|value| i32::try_from(value).ok())
+                .unwrap_or(ordinal);
+            CloudCommunityReconcileResource {
+                source_topic_index,
+                source_ordinal,
+                resource_id: row.get(0),
+                resource_kind: row.get(2),
+                display_name: row.get(3),
+                source_resource_id: row.get(4),
+            }
+        })
+        .collect())
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -847,6 +1150,7 @@ SELECT
       'display_name', r.display_name,
       'content_type', r.content_type,
       'byte_size', r.byte_size,
+      'sha256', r.sha256,
       'oss_uri', r.oss_uri,
       'access_state', r.access_state
     ) ORDER BY r.ordinal) FILTER (WHERE r.resource_id IS NOT NULL),
@@ -902,7 +1206,7 @@ ORDER BY p.published_at DESC NULLS LAST, p.content_id DESC
             .query_opt(
                 r#"
 SELECT r.resource_id, r.ordinal, r.resource_kind, r.display_name,
-       r.content_type, r.byte_size, r.oss_uri, r.access_state
+       r.content_type, r.byte_size, r.sha256, r.oss_uri, r.access_state
 FROM community_content_resources r
 JOIN community_contents c ON c.content_id = r.content_id
 JOIN community_spaces s ON s.community_id = c.community_id
@@ -921,9 +1225,506 @@ WHERE s.source = $1 AND s.external_id = $2 AND r.resource_id = $3
             display_name: row.get(3),
             content_type: row.get(4),
             byte_size: row.get(5),
+            sha256: row.get(6),
+            oss_uri: row.get(7),
+            access_state: row.get(8),
+        }))
+    }
+
+    pub async fn get_community_resource_backfill_target(
+        &self,
+        source: &str,
+        external_id: &str,
+        resource_id: i64,
+    ) -> HoneResult<Option<CloudCommunityResourceBackfillTarget>> {
+        let client = self.connect_cached_client().await?;
+        let row = client
+            .query_opt(
+                r#"
+SELECT r.resource_id, r.display_name, r.source_resource_id, r.content_type,
+       r.byte_size, r.sha256, r.oss_uri, r.access_state, r.updated_at::text
+FROM community_content_resources r
+JOIN community_contents c ON c.content_id = r.content_id
+JOIN community_spaces s ON s.community_id = c.community_id
+WHERE s.source = $1 AND s.external_id = $2 AND r.resource_id = $3
+"#,
+                &[&source, &external_id, &resource_id],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!(
+                    "Postgres community backfill target 读取失败: {err}"
+                ))
+            })?;
+        Ok(row.map(|row| CloudCommunityResourceBackfillTarget {
+            resource_id: row.get(0),
+            display_name: row.get(1),
+            source_resource_id: row.get(2),
+            content_type: row.get(3),
+            byte_size: row.get(4),
+            sha256: row.get(5),
             oss_uri: row.get(6),
             access_state: row.get(7),
+            updated_at: row.get(8),
         }))
+    }
+
+    /// Atomically promotes a verified community resource to stored bytes.
+    /// The caller must verify the immutable object before invoking this
+    /// method. A row lock plus `updated_at` snapshot prevents a concurrent
+    /// backfill from being silently overwritten.
+    pub async fn backfill_community_resource(
+        &self,
+        source: &str,
+        external_id: &str,
+        update: &CloudCommunityResourceBackfillUpdate,
+    ) -> HoneResult<CloudCommunityResourceBackfillOutcome> {
+        if !update.audit_metadata.is_object() {
+            return Err(HoneError::Config(
+                "community asset backfill audit metadata 必须是 JSON object".to_string(),
+            ));
+        }
+
+        let mut client = self.connect_new_client().await?;
+        let transaction = client.transaction().await.map_err(|err| {
+            HoneError::Config(format!(
+                "Postgres community backfill transaction 创建失败: {err}"
+            ))
+        })?;
+        let row = transaction
+            .query_opt(
+                r#"
+SELECT r.source_resource_id, r.content_type, r.byte_size, r.sha256,
+       r.oss_uri, r.access_state, r.updated_at::text
+FROM community_content_resources r
+JOIN community_contents c ON c.content_id = r.content_id
+JOIN community_spaces s ON s.community_id = c.community_id
+WHERE s.source = $1 AND s.external_id = $2 AND r.resource_id = $3
+FOR UPDATE OF r
+"#,
+                &[&source, &external_id, &update.resource_id],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres community backfill row lock 失败: {err}"))
+            })?;
+        let Some(row) = row else {
+            transaction.commit().await.map_err(|err| {
+                HoneError::Config(format!(
+                    "Postgres community backfill transaction 提交失败: {err}"
+                ))
+            })?;
+            return Ok(CloudCommunityResourceBackfillOutcome::NotFound);
+        };
+
+        let current_source_resource_id: Option<String> = row.get(0);
+        let current_content_type: Option<String> = row.get(1);
+        let current_byte_size: Option<i64> = row.get(2);
+        let current_sha256: Option<String> = row.get(3);
+        let current_oss_uri: Option<String> = row.get(4);
+        let current_access_state: String = row.get(5);
+        let current_updated_at: String = row.get(6);
+        let desired_source_resource_id = update
+            .source_resource_id
+            .as_ref()
+            .or(current_source_resource_id.as_ref());
+
+        let already_current = current_content_type.as_deref() == Some(update.content_type.as_str())
+            && current_byte_size == Some(update.byte_size)
+            && current_sha256.as_deref() == Some(update.sha256.as_str())
+            && current_oss_uri.as_deref() == Some(update.oss_uri.as_str())
+            && current_access_state == "stored"
+            && current_source_resource_id.as_ref() == desired_source_resource_id;
+        if already_current {
+            transaction.commit().await.map_err(|err| {
+                HoneError::Config(format!(
+                    "Postgres community backfill transaction 提交失败: {err}"
+                ))
+            })?;
+            return Ok(CloudCommunityResourceBackfillOutcome::Unchanged);
+        }
+
+        let source_id_conflicts = match (
+            current_source_resource_id.as_deref(),
+            update.source_resource_id.as_deref(),
+        ) {
+            (Some(current), Some(desired)) => current != desired,
+            _ => false,
+        };
+        if current_updated_at != update.expected_updated_at || source_id_conflicts {
+            transaction.commit().await.map_err(|err| {
+                HoneError::Config(format!(
+                    "Postgres community backfill transaction 提交失败: {err}"
+                ))
+            })?;
+            return Ok(CloudCommunityResourceBackfillOutcome::Conflict);
+        }
+
+        transaction
+            .execute(
+                r#"
+UPDATE community_content_resources
+SET source_resource_id = COALESCE($2, source_resource_id),
+    content_type = $3,
+    byte_size = $4,
+    sha256 = $5,
+    oss_uri = $6,
+    access_state = 'stored',
+    raw_metadata = jsonb_set(
+      COALESCE(raw_metadata, '{}'::jsonb),
+      '{community_asset_backfill}',
+      $7::jsonb,
+      true
+    ),
+    fetched_at = now(),
+    updated_at = now()
+WHERE resource_id = $1
+"#,
+                &[
+                    &update.resource_id,
+                    &update.source_resource_id,
+                    &update.content_type,
+                    &update.byte_size,
+                    &update.sha256,
+                    &update.oss_uri,
+                    &update.audit_metadata,
+                ],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres community backfill update 失败: {err}"))
+            })?;
+        transaction.commit().await.map_err(|err| {
+            HoneError::Config(format!(
+                "Postgres community backfill transaction 提交失败: {err}"
+            ))
+        })?;
+        Ok(CloudCommunityResourceBackfillOutcome::Updated)
+    }
+
+    /// Reconcile a complete source timeline against the archived community.
+    ///
+    /// Existing file-backed rows are matched only by their captured source
+    /// file position. Missing/non-file topics use a deterministic fingerprint
+    /// plus occurrence key, so two visually identical adjacent topics remain
+    /// distinct without depending on a transient DOM index. Apply mode holds a
+    /// row lock on the community space and inserts every missing content and
+    /// resource in one transaction.
+    pub async fn reconcile_community_contents(
+        &self,
+        source: &str,
+        external_id: &str,
+        candidates: &[CloudCommunityReconcileCandidate],
+        apply: bool,
+    ) -> HoneResult<CloudCommunityReconcileReport> {
+        let planned = plan_community_reconcile_candidates(source, candidates)?;
+        let source_file_positions = planned
+            .iter()
+            .filter_map(|candidate| candidate.candidate.source_file_position)
+            .collect::<BTreeSet<_>>();
+
+        let mut client = self.connect_new_client().await?;
+        let transaction = client.transaction().await.map_err(|err| {
+            HoneError::Config(format!(
+                "Postgres community reconcile transaction 创建失败: {err}"
+            ))
+        })?;
+        let space = transaction
+            .query_opt(
+                r#"
+SELECT community_id, source_url
+FROM community_spaces
+WHERE source = $1 AND external_id = $2
+FOR UPDATE
+"#,
+                &[&source, &external_id],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!(
+                    "Postgres community reconcile space 读取失败: {err}"
+                ))
+            })?;
+        let Some(space) = space else {
+            transaction.rollback().await.map_err(|err| {
+                HoneError::Config(format!(
+                    "Postgres community reconcile transaction 回滚失败: {err}"
+                ))
+            })?;
+            return Err(HoneError::Config(format!(
+                "community space 不存在: {source}/{external_id}"
+            )));
+        };
+        let community_id: i64 = space.get(0);
+        let source_url: Option<String> = space.get(1);
+
+        let rows = transaction
+            .query(
+                r#"
+SELECT content_id, source_item_key, raw_metadata
+FROM community_contents
+WHERE community_id = $1
+ORDER BY content_id
+"#,
+                &[&community_id],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!(
+                    "Postgres community reconcile contents 读取失败: {err}"
+                ))
+            })?;
+        let mut existing_by_file_position = BTreeMap::<i32, i64>::new();
+        let mut existing_by_source_key = BTreeMap::<String, i64>::new();
+        for row in rows {
+            let content_id: i64 = row.get(0);
+            let source_item_key: String = row.get(1);
+            let raw_metadata: serde_json::Value = row.get(2);
+            existing_by_source_key.insert(source_item_key, content_id);
+            let position = raw_metadata
+                .get("feed_position")
+                .or_else(|| raw_metadata.get("source_file_position"))
+                .and_then(serde_json::Value::as_i64)
+                .and_then(|value| i32::try_from(value).ok());
+            if let Some(position) = position {
+                if !source_file_positions.contains(&position) {
+                    transaction.rollback().await.map_err(|err| {
+                        HoneError::Config(format!(
+                            "Postgres community reconcile transaction 回滚失败: {err}"
+                        ))
+                    })?;
+                    return Err(HoneError::Config(format!(
+                        "数据库 feed_position={position} 不在完整源清单中"
+                    )));
+                }
+                if let Some(previous) = existing_by_file_position.insert(position, content_id) {
+                    transaction.rollback().await.map_err(|err| {
+                        HoneError::Config(format!(
+                            "Postgres community reconcile transaction 回滚失败: {err}"
+                        ))
+                    })?;
+                    return Err(HoneError::Config(format!(
+                        "数据库 feed_position={position} 重复关联 content_id={previous}/{content_id}"
+                    )));
+                }
+            }
+        }
+
+        let mut report = CloudCommunityReconcileReport {
+            mode: if apply { "apply" } else { "dry-run" },
+            source_topic_count: planned.len(),
+            source_file_count: source_file_positions.len(),
+            existing_by_file_position: 0,
+            existing_by_source_key: 0,
+            would_insert: 0,
+            inserted: 0,
+            items: Vec::new(),
+        };
+
+        for planned_candidate in planned {
+            let candidate = &planned_candidate.candidate;
+            if candidate
+                .source_file_position
+                .is_some_and(|position| existing_by_file_position.contains_key(&position))
+            {
+                report.existing_by_file_position += 1;
+                continue;
+            }
+
+            if let Some(content_id) = existing_by_source_key
+                .get(&planned_candidate.source_item_key)
+                .copied()
+            {
+                let resources = load_reconciled_community_resources(
+                    &transaction,
+                    content_id,
+                    candidate.source_topic_index,
+                )
+                .await?;
+                report.existing_by_source_key += 1;
+                report.items.push(CloudCommunityReconcileItem {
+                    source_topic_index: candidate.source_topic_index,
+                    source_file_position: candidate.source_file_position,
+                    source_item_key: planned_candidate.source_item_key,
+                    action: "already_present".to_string(),
+                    content_id: Some(content_id),
+                    resources,
+                });
+                continue;
+            }
+
+            if !apply {
+                report.would_insert += 1;
+                report.items.push(CloudCommunityReconcileItem {
+                    source_topic_index: candidate.source_topic_index,
+                    source_file_position: candidate.source_file_position,
+                    source_item_key: planned_candidate.source_item_key,
+                    action: "would_insert".to_string(),
+                    content_id: None,
+                    resources: Vec::new(),
+                });
+                continue;
+            }
+
+            let body_blocks = if candidate.body_text.is_empty() {
+                serde_json::json!([])
+            } else {
+                serde_json::json!([{"type": "text", "text": candidate.body_text}])
+            };
+            let raw_metadata = serde_json::json!({
+                "captured_from": "full_timeline_reconciliation",
+                "source_topic_index": candidate.source_topic_index,
+                "source_file_position": candidate.source_file_position,
+                "feed_position": candidate.source_file_position,
+                "candidate_fingerprint": candidate.candidate_fingerprint,
+                "fingerprint_occurrence": planned_candidate.fingerprint_occurrence,
+            });
+            let content_row = transaction
+                .query_one(
+                    r#"
+INSERT INTO community_contents(
+  community_id, source_item_key, source_item_id, source_url, author_name,
+  published_at, published_at_raw, content_type, body_text, body_blocks,
+  raw_metadata, source_hash, crawl_status
+)
+VALUES (
+  $1, $2, $3, $4, $5,
+  $6::text::timestamp AT TIME ZONE 'Asia/Shanghai', $6, 'post', $7, $8,
+  $9, $3, 'complete'
+)
+RETURNING content_id
+"#,
+                    &[
+                        &community_id,
+                        &planned_candidate.source_item_key,
+                        &candidate.candidate_fingerprint,
+                        &source_url,
+                        &candidate.author_name,
+                        &candidate.published_at_raw,
+                        &candidate.body_text,
+                        &body_blocks,
+                        &raw_metadata,
+                    ],
+                )
+                .await
+                .map_err(|err| {
+                    HoneError::Config(format!(
+                        "Postgres community reconcile content 写入失败: {err}"
+                    ))
+                })?;
+            let content_id: i64 = content_row.get(0);
+            let mut resources = Vec::new();
+            let mut combined_ordinal = 0_i32;
+            for file in &candidate.files {
+                let content_type = community_file_content_type(&file.display_name);
+                let resource_metadata = serde_json::json!({
+                    "captured_from": "full_timeline_reconciliation",
+                    "source_topic_index": candidate.source_topic_index,
+                    "source_ordinal": file.ordinal,
+                });
+                let resource_row = transaction
+                    .query_one(
+                        r#"
+INSERT INTO community_content_resources(
+  content_id, ordinal, resource_kind, display_name, content_type,
+  access_state, raw_metadata
+)
+VALUES ($1, $2, 'file', $3, $4, 'metadata_only', $5)
+RETURNING resource_id
+"#,
+                        &[
+                            &content_id,
+                            &combined_ordinal,
+                            &file.display_name,
+                            &content_type,
+                            &resource_metadata,
+                        ],
+                    )
+                    .await
+                    .map_err(|err| {
+                        HoneError::Config(format!(
+                            "Postgres community reconcile file resource 写入失败: {err}"
+                        ))
+                    })?;
+                resources.push(CloudCommunityReconcileResource {
+                    source_topic_index: candidate.source_topic_index,
+                    source_ordinal: file.ordinal,
+                    resource_id: resource_row.get(0),
+                    resource_kind: "file".to_string(),
+                    display_name: Some(file.display_name.clone()),
+                    source_resource_id: None,
+                });
+                combined_ordinal += 1;
+            }
+            for image in &candidate.images {
+                let display_name = format!("image-{}", image.ordinal + 1);
+                let resource_metadata = serde_json::json!({
+                    "captured_from": "full_timeline_reconciliation",
+                    "source_topic_index": candidate.source_topic_index,
+                    "source_ordinal": image.ordinal,
+                    "source_base_key": image.source_base_key,
+                });
+                let resource_row = transaction
+                    .query_one(
+                        r#"
+INSERT INTO community_content_resources(
+  content_id, ordinal, resource_kind, source_resource_id, display_name,
+  access_state, raw_metadata
+)
+VALUES ($1, $2, 'image', $3, $4, 'metadata_only', $5)
+RETURNING resource_id
+"#,
+                        &[
+                            &content_id,
+                            &combined_ordinal,
+                            &image.source_base_key,
+                            &display_name,
+                            &resource_metadata,
+                        ],
+                    )
+                    .await
+                    .map_err(|err| {
+                        HoneError::Config(format!(
+                            "Postgres community reconcile image resource 写入失败: {err}"
+                        ))
+                    })?;
+                resources.push(CloudCommunityReconcileResource {
+                    source_topic_index: candidate.source_topic_index,
+                    source_ordinal: image.ordinal,
+                    resource_id: resource_row.get(0),
+                    resource_kind: "image".to_string(),
+                    display_name: Some(display_name),
+                    source_resource_id: Some(image.source_base_key.clone()),
+                });
+                combined_ordinal += 1;
+            }
+
+            report.inserted += 1;
+            report.items.push(CloudCommunityReconcileItem {
+                source_topic_index: candidate.source_topic_index,
+                source_file_position: candidate.source_file_position,
+                source_item_key: planned_candidate.source_item_key.clone(),
+                action: "inserted".to_string(),
+                content_id: Some(content_id),
+                resources,
+            });
+            existing_by_source_key.insert(planned_candidate.source_item_key, content_id);
+        }
+
+        if apply {
+            transaction.commit().await.map_err(|err| {
+                HoneError::Config(format!(
+                    "Postgres community reconcile transaction 提交失败: {err}"
+                ))
+            })?;
+        } else {
+            transaction.rollback().await.map_err(|err| {
+                HoneError::Config(format!(
+                    "Postgres community reconcile transaction 回滚失败: {err}"
+                ))
+            })?;
+        }
+        Ok(report)
     }
 
     pub async fn community_unread_state(
@@ -3887,6 +4688,82 @@ mod tests {
             std::env::remove_var("HONE_RUNTIME_ROLE");
         }
         assert_eq!(RuntimeRole::from_env(), RuntimeRole::All);
+    }
+
+    #[tokio::test]
+    async fn community_backfill_rejects_non_object_audit_before_connecting() {
+        let runtime = CloudPgRuntime {
+            config: PostgresConfig::default(),
+        };
+        let update = CloudCommunityResourceBackfillUpdate {
+            resource_id: 1,
+            expected_updated_at: "2026-07-12 00:00:00+00".to_string(),
+            source_resource_id: None,
+            content_type: "image/png".to_string(),
+            byte_size: 8,
+            sha256: "a".repeat(64),
+            oss_uri: "oss://bucket/key".to_string(),
+            audit_metadata: serde_json::json!([]),
+        };
+        let error = runtime
+            .backfill_community_resource("zsxq", "group", &update)
+            .await
+            .expect_err("non-object audit must fail before DB connection");
+        assert!(error.to_string().contains("JSON object"));
+    }
+
+    fn reconcile_candidate(
+        source_topic_index: i32,
+        source_file_position: Option<i32>,
+        fingerprint: &str,
+    ) -> CloudCommunityReconcileCandidate {
+        CloudCommunityReconcileCandidate {
+            source_topic_index,
+            source_file_position,
+            author_name: "author".to_string(),
+            published_at_raw: "2026-07-12 08:30".to_string(),
+            body_text: "post".to_string(),
+            files: source_file_position
+                .map(|_| {
+                    vec![CloudCommunityReconcileFile {
+                        ordinal: 0,
+                        display_name: "report.pdf".to_string(),
+                    }]
+                })
+                .unwrap_or_default(),
+            images: Vec::new(),
+            candidate_fingerprint: fingerprint.to_string(),
+        }
+    }
+
+    #[test]
+    fn community_reconcile_keys_distinguish_duplicate_topics_by_occurrence() {
+        let fingerprint = "a".repeat(64);
+        let planned = plan_community_reconcile_candidates(
+            "zsxq",
+            &[
+                reconcile_candidate(0, Some(0), &fingerprint),
+                reconcile_candidate(1, Some(1), &fingerprint),
+            ],
+        )
+        .expect("valid complete manifest");
+        assert_eq!(planned[0].fingerprint_occurrence, 1);
+        assert_eq!(planned[1].fingerprint_occurrence, 2);
+        assert_ne!(planned[0].source_item_key, planned[1].source_item_key);
+        assert!(planned[1].source_item_key.ends_with(":occurrence:2"));
+    }
+
+    #[test]
+    fn community_reconcile_rejects_incomplete_file_positions() {
+        let error = plan_community_reconcile_candidates(
+            "zsxq",
+            &[
+                reconcile_candidate(0, Some(0), &"a".repeat(64)),
+                reconcile_candidate(1, Some(2), &"b".repeat(64)),
+            ],
+        )
+        .expect_err("gap must be rejected");
+        assert!(error.to_string().contains("source_file_position"));
     }
 
     #[test]

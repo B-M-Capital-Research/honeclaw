@@ -546,14 +546,23 @@ export async function markPublicCommunitySeen(contentId: number) {
   return parseJson<{ ok: boolean }>(response);
 }
 
-export function publicCommunityResourceUrl(resourceId: number) {
-  return buildApiUrl(`/api/public/community/resources/${resourceId}`);
+function publicCommunityResourcePath(resourceId: number, version?: string | null) {
+  const normalizedVersion = version?.trim();
+  const suffix = normalizedVersion
+    ? `?${new URLSearchParams({ v: normalizedVersion }).toString()}`
+    : "";
+  return `/api/public/community/resources/${resourceId}${suffix}`;
 }
 
-export async function getPublicCommunityResourceBlob(resourceId: number) {
-  const response = await apiFetch(
-    `/api/public/community/resources/${resourceId}`,
-  );
+export function publicCommunityResourceUrl(resourceId: number, version?: string | null) {
+  return buildApiUrl(publicCommunityResourcePath(resourceId, version));
+}
+
+export async function getPublicCommunityResourceBlob(
+  resourceId: number,
+  version?: string | null,
+) {
+  const response = await apiFetch(publicCommunityResourcePath(resourceId, version));
   if (!response.ok) throw await apiErrorFromResponse(response);
   return response.blob();
 }

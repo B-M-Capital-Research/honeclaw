@@ -18,6 +18,22 @@ describe("public chat visual contract", () => {
     expect(css).toContain("flex: 0 0 30px");
   });
 
+  it("uses one desktop navigation surface and exposes Community in the sidebar", () => {
+    expect(css).toContain(".public-chat-page--ready > .pub-nav");
+    expect(css).toContain("display: none !important");
+    expect(css).toContain("padding-top: 0 !important");
+    expect(chat).toContain('class="public-chat-sidebar-community"');
+    expect(chat).toContain("communityUnread={communityUnread()}");
+    expect(chat).toContain('onOpenCommunity={() => navigate("/community")}');
+  });
+
+  it("keeps the mobile composer clear of the fixed primary tabs", () => {
+    expect(css).toContain(
+      "padding-bottom: calc(76px + env(safe-area-inset-bottom)) !important",
+    );
+    expect(css).toContain('[data-theme="dark"] .public-chat-page .pub-mobile-tabs');
+  });
+
   it("keeps quick actions on a horizontally scrollable mobile line", () => {
     expect(css).toContain("flex-wrap: nowrap !important");
     expect(css).toContain("overflow-x: auto !important");
