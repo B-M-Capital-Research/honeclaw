@@ -73,6 +73,15 @@ pub struct HistoryMsg {
     pub attachments: Vec<HistoryAttachment>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scheduled_push: Option<HistoryScheduledPush>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finance_calendar: Option<HistoryFinanceCalendar>,
+}
+
+#[derive(Serialize)]
+pub struct HistoryFinanceCalendar {
+    pub month: String,
+    pub image_path: String,
+    pub variant: String,
 }
 
 #[derive(Serialize)]

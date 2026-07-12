@@ -663,13 +663,20 @@ function ProgressiveMessageImage(props: {
   );
 }
 
-function AssistantBody(props: { content: string; white?: boolean }) {
+function AssistantBody(props: {
+  content: string;
+  financeCalendar?: ChatMessage["financeCalendar"];
+  white?: boolean;
+}) {
   const cleaned = createMemo(() => stripAttachmentMarkers(props.content));
   const parts = createMemo(() =>
     parseMessageContent(cleaned(), { imageEndpoint: PUBLIC_IMAGE_ENDPOINT }),
   );
   const hasImage = () => parts().some((part) => part.type === "image");
-  const calendarMonth = createMemo(() => financeCalendarMessageMonth(cleaned()));
+  const calendarMonth = createMemo(
+    () =>
+      props.financeCalendar?.month ?? financeCalendarMessageMonth(cleaned()),
+  );
   const calendarImages = createMemo(() =>
     parts().filter(
       (part): part is { type: "image"; value: string } => part.type === "image",
@@ -682,11 +689,21 @@ function AssistantBody(props: { content: string; white?: boolean }) {
       .join("")
       .trim(),
   );
+  const calendarSource = createMemo(() => {
+    const persistedPath = props.financeCalendar?.image_path;
+    if (!persistedPath) return calendarImages()[0]?.value;
+    const cleanPath = persistedPath.startsWith("file://")
+      ? persistedPath.slice("file://".length)
+      : persistedPath;
+    return buildApiUrl(
+      `${PUBLIC_IMAGE_ENDPOINT}?path=${encodeURIComponent(cleanPath)}`,
+    );
+  });
   const markdownClass = () => assistantMarkdownClass(props.white);
 
   return (
     <Show
-      when={calendarMonth() && calendarImages().length > 0}
+      when={calendarMonth() && calendarSource()}
       fallback={
         <Show
           when={hasImage()}
@@ -715,9 +732,9 @@ function AssistantBody(props: { content: string; white?: boolean }) {
         {(text) => <Markdown text={text()} class={markdownClass()} />}
       </Show>
       <FinanceCalendarMessageImage
-        src={calendarImages()[0]!.value}
-        mobileSrc={calendarImages()[1]?.value}
+        src={calendarSource()!}
         month={calendarMonth()!}
+        variant={props.financeCalendar?.variant}
       />
     </Show>
   );
@@ -974,9 +991,9 @@ function AssistantBubble(props: {
   );
   const isCalendarMessage = createMemo(
     () =>
-      financeCalendarMessageMonth(
-        stripAttachmentMarkers(props.message.content),
-      ) !== null,
+      !!props.message.financeCalendar ||
+      financeCalendarMessageMonth(stripAttachmentMarkers(props.message.content)) !==
+        null,
   );
   const pending = () =>
     props.message.phase !== "done" && props.message.phase !== "error";
@@ -1095,7 +1112,10 @@ function AssistantBubble(props: {
         </Show>
         <Show when={hasContent()}>
           <div class="pub-assistant-turn-content">
-            <AssistantBody content={props.message.content} />
+            <AssistantBody
+              content={props.message.content}
+              financeCalendar={props.message.financeCalendar}
+            />
             <Show when={pending()}>
               <span class="pub-cursor" />
             </Show>

@@ -1,6 +1,7 @@
 import { historyToTimeline } from "./messages";
 import type {
   HistoryAttachment,
+  HistoryFinanceCalendar,
   HistoryMsg,
   PublicPushListItem,
 } from "./types";
@@ -43,6 +44,7 @@ export type PublicChatMessage = {
   startedAt?: number;
   steps?: string[];
   attachments?: PublicChatAttachment[];
+  financeCalendar?: HistoryFinanceCalendar;
   scheduledPush?: {
     pushId?: string;
     title: string;
@@ -113,6 +115,7 @@ export function toPublicChatMessages(
       phase: "done" as const,
       steps: [],
       attachments: toPublicAttachments(message.attachments ?? []),
+      financeCalendar: message.financeCalendar,
       scheduledPush: message.scheduledPush
         ? {
             pushId: message.scheduledPush.push_id,

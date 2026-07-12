@@ -28,7 +28,6 @@ use hone_memory::WebSessionAuthResult;
 
 use crate::public_auth::PublicAuthLimitStatus;
 use crate::routes::chat::build_chat_sse;
-use crate::routes::history::public_history_page_from_messages;
 use crate::state::{AppState, PushEvent};
 use crate::types::{
     PublicAuthUserInfo, PublicChatAttachmentInput, PublicChatRequest, PublicSmsLoginRequest,
@@ -439,7 +438,12 @@ pub(crate) async fn handle_bootstrap(
         .get_messages(&actor.session_id(), None)
         .unwrap_or_default();
 
-    let history = public_history_page_from_messages(&messages, None, PUBLIC_HISTORY_PAGE_SIZE);
+    let history = crate::routes::history::public_history_page_for_client(
+        &messages,
+        None,
+        PUBLIC_HISTORY_PAGE_SIZE,
+        crate::routes::history::public_client_prefers_mobile(&headers),
+    );
     Json(json!({
         "user": to_public_auth_user(&state, &user_id, user),
         "messages": history.messages,
@@ -468,10 +472,11 @@ pub(crate) async fn handle_history(
         .get_messages(&actor.session_id(), None)
         .unwrap_or_default();
 
-    let history = public_history_page_from_messages(
+    let history = crate::routes::history::public_history_page_for_client(
         &messages,
         query.before,
         query.limit.unwrap_or(PUBLIC_HISTORY_PAGE_SIZE),
+        crate::routes::history::public_client_prefers_mobile(&headers),
     );
     Json(json!({
         "messages": history.messages,

@@ -177,6 +177,7 @@ Last updated: 2026-07-11
 ## D-2026-07-11-03 Layer Public Visual Ownership And Version Generated Images
 
 - Status: Accepted
+- Superseded in part by: `D-2026-07-12-02`; the CSS ownership decision remains active, while visible-history lazy calendar regeneration and client-side variant selection are retired.
 - Decision: The public user client uses a layered CSS ownership model instead of page-local style strings and late ad hoc overrides. `public-foundation.css` owns HONE tokens and interaction foundations, `public-polish.css` owns shared public navigation/push components, `public-chat.css` owns the chat shell, and generated visual artifacts keep component-local styles beside their render component.
 - Rendering: Generated mobile finance calendars use one Canvas 2D renderer for both new sends and visible-history lazy upgrades. Text is painted with explicit baselines and coordinates rather than rasterizing DOM line boxes. Every material artifact redesign increments the mobile filename marker; visible older versions are lazily rebuilt in the browser without mutating conversation history.
 - Impact: New public visual work must extend the narrowest owning layer rather than adding a `<style>` block to a page component. Shared token changes require public-page and authenticated-chat checks; calendar composition changes require direct Canvas source-size and 390px visual verification on an iOS-compatible path.
@@ -190,3 +191,12 @@ Last updated: 2026-07-11
 - Supply-chain boundary: Keep lockfile security patches current; Discord uses Serenity's native TLS backend so its fixed `tokio-tungstenite 0.21` dependency does not retain the unpatched `rustls-webpki 0.102` branch.
 - Impact: Public Web users and non-admin channel users can use registered tools but cannot ask an ACP/CLI agent to inspect repository, config, database, home-directory, or process data. Native ACP remains an administrator trust boundary and must not be presented as a strict filesystem sandbox.
 - Verification: Runner-selection tests cover non-admin fallback, admin retention, and fail-closed behavior; permissions, skill environment, CORS, file traversal, and cross-actor push-read tests cover the supporting boundaries.
+
+## D-2026-07-12-02 Persist Finance Calendar Variants And Select Them Server-side
+
+- Status: Accepted
+- Supersedes: The finance-calendar rendering and compatibility portion of `D-2026-07-11-03`; generated-artifact CSS ownership remains unchanged.
+- Decision: Every new public finance-calendar message must persist validated desktop and mobile PNG paths plus its month in structured session metadata. Public bootstrap/history inspect the authenticated request User-Agent and project exactly one actor-owned `finance_calendar.image_path` and variant. The user client renders that stable path and must not fetch calendar data, repaint Canvas, create a blob URL, or replace the source while restoring visible history.
+- Compatibility: Historical calendar messages without metadata are projected server-side by parsing their existing image markers. Mobile requests select the second marker when available; truly desktop-only legacy messages retain the desktop image. Compatibility projection does not mutate the transcript or expose paths outside the authenticated image proxy.
+- Cache: Stored image paths are immutable upload artifacts. Authenticated image responses use private immutable browser caching so repeated restores do not refetch or regenerate the artifact.
+- Impact: Calendar creation still renders the two artifacts once before upload, but display and history restoration are backend-owned. A send without both validated variants fails instead of creating another incomplete message.

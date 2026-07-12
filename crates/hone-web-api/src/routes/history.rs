@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use axum::Json;
 use axum::extract::{Query, State};
+use axum::http::{HeaderMap, header};
 use axum::response::IntoResponse;
+use chrono::NaiveDate;
 use serde_json::json;
 
 use hone_channels::outbound::collect_local_image_markers;
@@ -14,7 +16,11 @@ use hone_memory::{
 use crate::routes::public_pushes::build_web_push_summary;
 use crate::routes::require_actor;
 use crate::state::AppState;
-use crate::types::{HistoryAttachment, HistoryMsg, HistoryScheduledPush, UserIdQuery};
+use crate::types::{
+    HistoryAttachment, HistoryFinanceCalendar, HistoryMsg, HistoryScheduledPush, UserIdQuery,
+};
+
+const FINANCE_CALENDAR_METADATA_KEY: &str = "finance_calendar";
 
 /// GET /api/history?user_id=...
 pub(crate) async fn handle_history(
@@ -57,7 +63,7 @@ pub(crate) fn history_from_messages(
                 || message_is_compact_summary(m.metadata.as_ref())
                 || message_is_compact_skill_snapshot(m.metadata.as_ref())
         })
-        .map(plain_history_message)
+        .map(|message| plain_history_message(message, false))
         .collect()
 }
 
@@ -65,7 +71,7 @@ pub(crate) fn history_from_messages(
 pub(crate) fn public_history_from_messages(
     messages: &[hone_memory::session::SessionMessage],
 ) -> Vec<HistoryMsg> {
-    project_public_history(messages)
+    project_public_history(messages, false)
 }
 
 pub(crate) struct PublicHistoryPage {
@@ -74,12 +80,22 @@ pub(crate) struct PublicHistoryPage {
     pub next_before: Option<usize>,
 }
 
+#[cfg(test)]
 pub(crate) fn public_history_page_from_messages(
     messages: &[hone_memory::session::SessionMessage],
     before: Option<usize>,
     limit: usize,
 ) -> PublicHistoryPage {
-    let projected = project_public_history(messages);
+    public_history_page_for_client(messages, before, limit, false)
+}
+
+pub(crate) fn public_history_page_for_client(
+    messages: &[hone_memory::session::SessionMessage],
+    before: Option<usize>,
+    limit: usize,
+    prefer_mobile: bool,
+) -> PublicHistoryPage {
+    let projected = project_public_history(messages, prefer_mobile);
     let end = before.unwrap_or(projected.len()).min(projected.len());
     let start = end.saturating_sub(limit.clamp(1, 50));
     let messages = projected
@@ -94,7 +110,10 @@ pub(crate) fn public_history_page_from_messages(
     }
 }
 
-fn project_public_history(messages: &[hone_memory::session::SessionMessage]) -> Vec<HistoryMsg> {
+fn project_public_history(
+    messages: &[hone_memory::session::SessionMessage],
+    prefer_mobile: bool,
+) -> Vec<HistoryMsg> {
     let mut history = Vec::new();
     let mut legacy_job_name: Option<String> = None;
     for message in select_messages_after_compact_boundary(messages, None) {
@@ -151,17 +170,21 @@ fn project_public_history(messages: &[hone_memory::session::SessionMessage]) -> 
                     title: job_name,
                     summary,
                 }),
+                finance_calendar: None,
             });
             continue;
         }
 
         legacy_job_name = None;
-        history.push(plain_history_message(message));
+        history.push(plain_history_message(message, prefer_mobile));
     }
     history
 }
 
-fn plain_history_message(message: &hone_memory::session::SessionMessage) -> HistoryMsg {
+fn plain_history_message(
+    message: &hone_memory::session::SessionMessage,
+    prefer_mobile: bool,
+) -> HistoryMsg {
     let compact_boundary = message_is_compact_boundary(message.metadata.as_ref());
     let compact_summary = message_is_compact_summary(message.metadata.as_ref());
     let compact_skill_snapshot = message_is_compact_skill_snapshot(message.metadata.as_ref());
@@ -185,7 +208,81 @@ fn plain_history_message(message: &hone_memory::session::SessionMessage) -> Hist
         synthetic: compact_boundary || compact_summary || compact_skill_snapshot,
         transcript_only: compact_summary || compact_skill_snapshot,
         scheduled_push: None,
+        finance_calendar: history_finance_calendar(message, prefer_mobile),
     }
+}
+
+pub(crate) fn public_client_prefers_mobile(headers: &HeaderMap) -> bool {
+    let user_agent = headers
+        .get(header::USER_AGENT)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    ["iphone", "ipad", "ipod", "android", "mobile"]
+        .iter()
+        .any(|needle| user_agent.contains(needle))
+}
+
+fn history_finance_calendar(
+    message: &hone_memory::session::SessionMessage,
+    prefer_mobile: bool,
+) -> Option<HistoryFinanceCalendar> {
+    if let Some(value) = message
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.get(FINANCE_CALENDAR_METADATA_KEY))
+    {
+        let desktop_path = value.get("desktop_path")?.as_str()?.trim();
+        let mobile_path = value
+            .get("mobile_path")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|path| !path.is_empty());
+        let month = value.get("month")?.as_str()?.trim();
+        if desktop_path.is_empty() || month.is_empty() {
+            return None;
+        }
+        let (image_path, variant) = if prefer_mobile && mobile_path.is_some() {
+            (mobile_path.unwrap_or(desktop_path), "mobile")
+        } else {
+            (desktop_path, "desktop")
+        };
+        return Some(HistoryFinanceCalendar {
+            month: month.to_string(),
+            image_path: image_path.to_string(),
+            variant: variant.to_string(),
+        });
+    }
+
+    let content = session_message_text(message);
+    let month = legacy_finance_calendar_month(&content)?;
+    let markers = collect_local_image_markers(&content);
+    let desktop_path = markers.first()?.path.as_str();
+    let mobile_path = markers.get(1).map(|marker| marker.path.as_str());
+    let (image_path, variant) = if prefer_mobile && mobile_path.is_some() {
+        (mobile_path.unwrap_or(desktop_path), "mobile")
+    } else {
+        (desktop_path, "desktop")
+    };
+    Some(HistoryFinanceCalendar {
+        month,
+        image_path: image_path.to_string(),
+        variant: variant.to_string(),
+    })
+}
+
+fn legacy_finance_calendar_month(content: &str) -> Option<String> {
+    let lower = content.to_ascii_lowercase();
+    if !content.contains("财经日历") && !lower.contains("finance calendar") {
+        return None;
+    }
+    content
+        .split(|character: char| !(character.is_ascii_digit() || character == '-'))
+        .find(|candidate| {
+            candidate.len() == 7
+                && NaiveDate::parse_from_str(&format!("{candidate}-01"), "%Y-%m-%d").is_ok()
+        })
+        .map(str::to_string)
 }
 
 pub(crate) fn legacy_scheduler_job_name(content: &str) -> Option<String> {
@@ -254,9 +351,11 @@ fn build_history_attachment(path: &str) -> HistoryAttachment {
 mod tests {
     use std::collections::HashMap;
 
+    use axum::http::{HeaderMap, HeaderValue, header};
+
     use super::{
-        extract_history_attachments, public_history_from_messages,
-        public_history_page_from_messages,
+        extract_history_attachments, public_client_prefers_mobile, public_history_from_messages,
+        public_history_page_for_client, public_history_page_from_messages,
     };
 
     #[test]
@@ -286,6 +385,77 @@ mod tests {
         assert_eq!(attachments.len(), 1);
         assert_eq!(attachments[0].path, "/tmp/chart.png");
         assert_eq!(attachments[0].kind, "image");
+    }
+
+    #[test]
+    fn public_history_selects_persisted_calendar_variant_for_device() {
+        let metadata = HashMap::from([(
+            "finance_calendar".to_string(),
+            serde_json::json!({
+                "month": "2026-07",
+                "desktop_path": "/tmp/calendar.png",
+                "mobile_path": "/tmp/calendar-mobile-v4.png",
+            }),
+        )]);
+        let messages = vec![hone_memory::session_message_from_text(
+            "assistant",
+            "这是你的 2026-07 财经日历：\n\nfile:///tmp/calendar.png\n\nfile:///tmp/calendar-mobile-v4.png",
+            "2026-07-12T10:00:00+08:00",
+            Some(metadata),
+        )];
+
+        let desktop = public_history_page_for_client(&messages, None, 20, false);
+        let mobile = public_history_page_for_client(&messages, None, 20, true);
+        let desktop_calendar = desktop.messages[0]
+            .finance_calendar
+            .as_ref()
+            .expect("desktop calendar");
+        let mobile_calendar = mobile.messages[0]
+            .finance_calendar
+            .as_ref()
+            .expect("mobile calendar");
+
+        assert_eq!(desktop_calendar.image_path, "/tmp/calendar.png");
+        assert_eq!(desktop_calendar.variant, "desktop");
+        assert_eq!(mobile_calendar.image_path, "/tmp/calendar-mobile-v4.png");
+        assert_eq!(mobile_calendar.variant, "mobile");
+    }
+
+    #[test]
+    fn public_history_selects_legacy_calendar_markers_without_client_rendering() {
+        let messages = vec![hone_memory::session_message_from_text(
+            "assistant",
+            "这是你的 2026-07 财经日历：\n\nfile:///tmp/calendar.png\n\nfile:///tmp/calendar-mobile-v3.png",
+            "2026-07-12T10:00:00+08:00",
+            None,
+        )];
+
+        let mobile = public_history_page_for_client(&messages, None, 20, true);
+        let calendar = mobile.messages[0]
+            .finance_calendar
+            .as_ref()
+            .expect("legacy calendar");
+
+        assert_eq!(calendar.month, "2026-07");
+        assert_eq!(calendar.image_path, "/tmp/calendar-mobile-v3.png");
+        assert_eq!(calendar.variant, "mobile");
+    }
+
+    #[test]
+    fn public_client_device_detection_uses_user_agent() {
+        let mut mobile = HeaderMap::new();
+        mobile.insert(
+            header::USER_AGENT,
+            HeaderValue::from_static("Mozilla/5.0 (iPhone; CPU iPhone OS 18_5) Mobile"),
+        );
+        let mut desktop = HeaderMap::new();
+        desktop.insert(
+            header::USER_AGENT,
+            HeaderValue::from_static("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"),
+        );
+
+        assert!(public_client_prefers_mobile(&mobile));
+        assert!(!public_client_prefers_mobile(&desktop));
     }
 
     #[test]

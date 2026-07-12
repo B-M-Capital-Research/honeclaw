@@ -98,20 +98,6 @@ export function financeCalendarAnchoredTransform(input: {
   };
 }
 
-export function selectFinanceCalendarImageSource(
-  desktopSource: string,
-  mobileSource: string | undefined,
-  preferMobile: boolean,
-): string {
-  return preferMobile && mobileSource ? mobileSource : desktopSource;
-}
-
-export function shouldUpgradeFinanceCalendarMobileSource(
-  mobileSource?: string,
-): boolean {
-  return !mobileSource || !mobileSource.includes("-mobile-v4");
-}
-
 export function financeCalendarMessageMonth(content: string): string | null {
   return FINANCE_CALENDAR_MESSAGE_PATTERN.exec(content)?.[1] ?? null;
 }

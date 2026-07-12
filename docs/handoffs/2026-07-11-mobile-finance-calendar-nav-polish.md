@@ -75,4 +75,10 @@ A dense 13-event fixture produced a 1500 x 2668 canvas and rendered at 390 x 693
 
 ## Next Entry Point
 
-For future calendar image work, start with `packages/app/src/components/finance-calendar-message.tsx` for actions, `packages/app/src/components/finance-calendar-mobile-card.tsx` for the portrait artifact, `packages/app/src/lib/finance-calendar.ts` for zoom/source selection, and `crates/hone-web-api/src/routes/public_finance_calendar.rs` for the dual-path persistence contract.
+For future calendar image work, start with `packages/app/src/components/finance-calendar-message.tsx` for stable-source display/actions, `packages/app/src/lib/finance-calendar-mobile-renderer.ts` for the portrait artifact, `crates/hone-web-api/src/routes/public_finance_calendar.rs` for dual-path persistence, and `crates/hone-web-api/src/routes/history.rs` for server-side device selection and legacy compatibility.
+
+## Server-owned History Images Follow-up 2026-07-12
+
+The visible-history lazy upgrade introduced above is retired. New sends require both validated PNG variants and persist `{month, desktop_path, mobile_path}` in session metadata. Public bootstrap/history select one path server-side from User-Agent; legacy dual-marker messages are interpreted by the same projection, while desktop-only history falls back without regeneration. `FinanceCalendarMessageImage` now receives one stable source and no longer imports the calendar API or mobile Canvas renderer, observes visibility, builds blobs, or swaps the image after mount. Authenticated image responses use private immutable browser caching.
+
+Verification passed 216 frontend tests, frontend typecheck/build, and 100 Web API tests with 2 credentialed tests ignored. Added coverage proves persisted metadata, mobile/desktop User-Agent selection, legacy marker selection, and frontend propagation of the selected contract. See `D-2026-07-12-02` and `docs/archive/plans/server-owned-finance-calendar-images.md`.

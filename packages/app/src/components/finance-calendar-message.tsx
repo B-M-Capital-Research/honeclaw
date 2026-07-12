@@ -1,16 +1,12 @@
-import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
+import { createMemo, createSignal, onCleanup, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 
-import { getPublicFinanceCalendar } from "@/lib/api";
-import { renderFinanceCalendarMobilePng } from "@/lib/finance-calendar-mobile-renderer";
 import { CONTENT } from "@/lib/public-content";
 import {
   clampFinanceCalendarPan,
   financeCalendarActionState,
   financeCalendarAnchoredTransform,
   financeCalendarPinchZoom,
-  selectFinanceCalendarImageSource,
-  shouldUpgradeFinanceCalendarMobileSource,
   stepFinanceCalendarZoom,
 } from "@/lib/finance-calendar";
 
@@ -21,8 +17,8 @@ type ShareNavigator = Navigator & {
 
 export function FinanceCalendarMessageImage(props: {
   src: string;
-  mobileSrc?: string;
   month: string;
+  variant?: string;
 }) {
   const [loaded, setLoaded] = createSignal(false);
   const [failed, setFailed] = createSignal(false);
@@ -32,106 +28,28 @@ export function FinanceCalendarMessageImage(props: {
   const [pan, setPan] = createSignal({ x: 0, y: 0 });
   const [fitSize, setFitSize] = createSignal({ width: 0, height: 0 });
   const [interacting, setInteracting] = createSignal(false);
-  const [preferMobile, setPreferMobile] = createSignal(
-    typeof window !== "undefined" && window.matchMedia("(max-width: 768px)").matches,
-  );
-  const [legacyMobileSrc, setLegacyMobileSrc] = createSignal<string>();
   const [working, setWorking] = createSignal<"save" | "share" | null>(null);
   const [actionError, setActionError] = createSignal(false);
   const actionState = createMemo(() =>
     financeCalendarActionState(loaded(), working() !== null),
   );
-  const mobileSource = createMemo(() => legacyMobileSrc() ?? props.mobileSrc);
-  const needsMobileDesignUpgrade = () =>
-    shouldUpgradeFinanceCalendarMobileSource(props.mobileSrc);
-  const selectedSource = createMemo(() =>
-    selectFinanceCalendarImageSource(
-      props.src,
-      mobileSource(),
-      preferMobile(),
-    ),
-  );
   const source = createMemo(() => {
-    const selected = selectedSource();
+    const selected = props.src;
     if (/^(?:blob:|data:)/.test(selected)) return selected;
     const join = selected.includes("?") ? "&" : "?";
     return `${selected}${join}calendar_retry=${retry()}`;
   });
   const fileName = () =>
-    `HONE-finance-calendar-${props.month}${preferMobile() && mobileSource() ? "-mobile" : ""}.png`;
+    `HONE-finance-calendar-${props.month}${props.variant === "mobile" ? "-mobile" : ""}.png`;
   const zoomLabel = () => `${Math.round(zoom() * 100)}%`;
   let cachedBlob: Blob | undefined;
   let cachedSource = "";
-  let messageEl: HTMLElement | undefined;
   let viewportEl: HTMLDivElement | undefined;
   let imageEl: HTMLImageElement | undefined;
-  let legacyBuildStarted = false;
-  let legacyObjectUrl: string | undefined;
   let removeViewportGestures: (() => void) | undefined;
   let viewportResizeObserver: ResizeObserver | undefined;
   let viewFrame = 0;
   let pendingView: { zoom: number; x: number; y: number } | undefined;
-
-  const buildLegacyMobileImage = async () => {
-    if (
-      legacyBuildStarted ||
-      !needsMobileDesignUpgrade() ||
-      !preferMobile()
-    ) {
-      return;
-    }
-    legacyBuildStarted = true;
-    try {
-      const payload = await getPublicFinanceCalendar(props.month);
-      await (
-        document as Document & { fonts?: { ready: Promise<unknown> } }
-      ).fonts?.ready.catch(() => undefined);
-      const blob = await renderFinanceCalendarMobilePng(payload);
-      legacyObjectUrl = URL.createObjectURL(blob);
-      setLoaded(false);
-      setFailed(false);
-      setLegacyMobileSrc(legacyObjectUrl);
-    } catch {
-      legacyBuildStarted = false;
-    }
-  };
-
-  onMount(() => {
-    const media = window.matchMedia("(max-width: 768px)");
-    const sync = () => {
-      setPreferMobile(media.matches);
-      if (media.matches && messageEl) {
-        const rect = messageEl.getBoundingClientRect();
-        if (rect.bottom >= -160 && rect.top <= window.innerHeight + 160) {
-          void buildLegacyMobileImage();
-        }
-      }
-    };
-    sync();
-    media.addEventListener?.("change", sync);
-    const observer =
-      needsMobileDesignUpgrade() && "IntersectionObserver" in window && messageEl
-        ? new IntersectionObserver(
-            (entries) => {
-              if (
-                media.matches &&
-                entries.some((entry) => entry.isIntersecting)
-              ) {
-                void buildLegacyMobileImage();
-                observer?.disconnect();
-              }
-            },
-            { rootMargin: "160px" },
-          )
-        : undefined;
-    if (observer && messageEl) observer.observe(messageEl);
-    if (!observer && media.matches) void buildLegacyMobileImage();
-    onCleanup(() => {
-      media.removeEventListener?.("change", sync);
-      observer?.disconnect();
-      if (legacyObjectUrl) URL.revokeObjectURL(legacyObjectUrl);
-    });
-  });
 
   const boundedView = (nextZoom: number, x: number, y: number) => {
     const bounds = clampFinanceCalendarPan({
@@ -304,7 +222,6 @@ export function FinanceCalendarMessageImage(props: {
   };
   const openPreview = () => {
     if (!loaded()) return;
-    void buildLegacyMobileImage();
     setOpen(true);
     document.addEventListener("keydown", onKeyDown);
   };
@@ -385,9 +302,6 @@ export function FinanceCalendarMessageImage(props: {
     <>
       <section
         class="public-finance-calendar-message"
-        ref={(element) => {
-          messageEl = element;
-        }}
       >
         <button
           type="button"

@@ -15,8 +15,6 @@ import {
   financeCalendarAnchoredTransform,
   financeCalendarActionState,
   financeCalendarPinchZoom,
-  selectFinanceCalendarImageSource,
-  shouldUpgradeFinanceCalendarMobileSource,
   stepFinanceCalendarZoom,
   parseFinanceCalendarMonth,
   visibleFinanceCalendarEventsForDay,
@@ -95,39 +93,6 @@ describe("finance calendar helpers", () => {
     expect(financeCalendarPinchZoom(1, 180, 120)).toBe(1.5);
     expect(financeCalendarPinchZoom(2, 240, 120)).toBe(3);
     expect(financeCalendarPinchZoom(2, 20, 0)).toBe(2);
-  });
-
-  it("selects the mobile calendar asset with a desktop fallback", () => {
-    expect(selectFinanceCalendarImageSource("desktop.png", "mobile.png", true)).toBe(
-      "mobile.png",
-    );
-    expect(selectFinanceCalendarImageSource("desktop.png", undefined, true)).toBe(
-      "desktop.png",
-    );
-    expect(selectFinanceCalendarImageSource("desktop.png", "mobile.png", false)).toBe(
-      "desktop.png",
-    );
-    expect(shouldUpgradeFinanceCalendarMobileSource()).toBe(true);
-    expect(
-      shouldUpgradeFinanceCalendarMobileSource(
-        "/api/public/image?path=calendar-mobile.png",
-      ),
-    ).toBe(true);
-    expect(
-      shouldUpgradeFinanceCalendarMobileSource(
-        "/api/public/image?path=calendar-mobile-v2.png",
-      ),
-    ).toBe(true);
-    expect(
-      shouldUpgradeFinanceCalendarMobileSource(
-        "/api/public/image?path=calendar-mobile-v3.png",
-      ),
-    ).toBe(true);
-    expect(
-      shouldUpgradeFinanceCalendarMobileSource(
-        "/api/public/image?path=calendar-mobile-v4.png",
-      ),
-    ).toBe(false);
   });
 
   it("keeps transformed calendar panning bounded and pinch anchored", () => {

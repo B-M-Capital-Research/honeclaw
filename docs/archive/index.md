@@ -4,6 +4,18 @@ Last updated: 2026-07-12
 
 ## 2026-07-12
 
+### Server-owned Finance Calendar Images
+
+- Status: done
+- Date: 2026-07-12
+- Plan: `docs/archive/plans/server-owned-finance-calendar-images.md`
+- Handoff: `docs/handoffs/2026-07-11-mobile-finance-calendar-nav-polish.md`
+- Decision / ADR: `D-2026-07-12-02` in `docs/decisions.md`
+- Related PRs / commits: this change set
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`, 216 frontend tests, frontend typecheck, public production build, 100 Web API tests with two credentialed tests ignored
+- Current conclusion: each new finance-calendar message now persists validated desktop and mobile PNG paths as structured session metadata. Public bootstrap/history selects one path from the request User-Agent, legacy two-marker messages are selected server-side, and the client renders one stable authenticated image URL without calendar refetching, Canvas rebuilding, blob replacement, or source swapping. Image responses use private immutable browser caching.
+- Next entry point: `crates/hone-web-api/src/routes/public_finance_calendar.rs`, `crates/hone-web-api/src/routes/history.rs`, and `packages/app/src/components/finance-calendar-message.tsx`
+
 ### Public Chat Startup Experience
 
 - Status: done
@@ -39,7 +51,7 @@ Last updated: 2026-07-12
 - Decision / ADR: `D-2026-07-11-03` in `docs/decisions.md`
 - Related PRs / commits: `5b7b1d67`, `a3e0dbaa`
 - Related runbooks / regressions: 211 frontend tests, typecheck, public build, direct Canvas dense-fixture review at 1500 x 2668 and 390px, 390 x 844 production browser QA, production asset/route/runtime checks
-- Current conclusion: public visual ownership is split into foundation, shared component polish, chat shell, and component-local artifact layers. Mobile finance-calendar PNGs now use one Canvas 2D renderer for new sends and lazy upgrades, eliminating iOS html2canvas glyph clipping; v1-v3 artifacts automatically rebuild as v4. Production uses `index-C6T9yKIo.js` / `chat-VvOemH_a.js` with dedicated chat/public-nav CSS resources.
+- Current conclusion: public visual ownership is split into foundation, shared component polish, chat shell, and component-local artifact layers. Mobile finance-calendar PNGs use one Canvas 2D renderer when a calendar is created, eliminating iOS html2canvas glyph clipping. The 2026-07-12 server-owned image follow-up supersedes client-side lazy upgrades: history now receives one backend-selected persisted image and never rebuilds v1-v3 artifacts in the viewer.
 - Next entry point: `docs/handoffs/2026-07-11-mobile-finance-calendar-nav-polish.md`
 
 ### Mobile Finance Calendar Dual Layout And Gestures
@@ -48,10 +60,10 @@ Last updated: 2026-07-12
 - Date: 2026-07-11
 - Plan: `docs/archive/plans/mobile-finance-calendar-dual-layout.md`
 - Handoff: `docs/handoffs/2026-07-11-mobile-finance-calendar-nav-polish.md`
-- Decision / ADR: N/A; the existing browser-render/upload route remains authoritative and the request extension is backward compatible
+- Decision / ADR: superseded in part by `D-2026-07-12-02` in `docs/decisions.md`; creation still renders/uploads both variants, while persistence and history selection are backend-owned
 - Related PRs / commits: `2a6e7572`, `a4af378d`, `1a72b918`, `6ab39ee3`
 - Related runbooks / regressions: `docs/runbooks/backend-deployment.md`, 209 frontend tests, 7 focused Rust tests, 14 focused migration tests, typecheck, public build, rendered 390 x 844 portrait/fit/300 percent/legacy-upgrade reviews, 15-event editorial design review, production asset/route/origin checks
-- Current conclusion: new finance-calendar messages carry independently validated desktop and `mobile-v2` PNGs, while visible messages with no mobile source or a first-generation mobile PNG lazily rebuild the current portrait blob. The viewer uses exact contain sizing and animation-frame GPU transforms; the artifact uses an intentional HONE monthly-brief cover, warm month scan, continuous category-aware timeline, complete event text, and balanced full-canvas composition. Production uses `index-BORXXQqy.js` / `chat-DwTyIjoF.js`; runtime PID `9767` is healthy.
+- Current conclusion: new finance-calendar messages carry independently validated desktop and mobile PNGs. Since the 2026-07-12 follow-up, backend metadata owns both paths and history selects one by device; the viewer no longer lazily rebuilds or replaces portrait blobs. The controlled viewer gestures and the HONE monthly-brief artifact composition remain in place.
 - Next entry point: `docs/handoffs/2026-07-11-mobile-finance-calendar-nav-polish.md`
 
 ### Mobile Finance Calendar And Navigation Polish

@@ -191,6 +191,28 @@ describe("toPublicChatMessages", () => {
       fallbackContent: undefined,
     });
   });
+
+  it("keeps the backend-selected finance calendar image contract", () => {
+    const messages = toPublicChatMessages([
+      {
+        role: "assistant",
+        content:
+          "这是你的 2026-07 财经日历：\n\nfile:///tmp/calendar.png\n\nfile:///tmp/calendar-mobile-v4.png",
+        attachments: [],
+        finance_calendar: {
+          month: "2026-07",
+          image_path: "/tmp/calendar-mobile-v4.png",
+          variant: "mobile",
+        },
+      },
+    ]);
+
+    expect(messages[0]!.financeCalendar).toEqual({
+      month: "2026-07",
+      image_path: "/tmp/calendar-mobile-v4.png",
+      variant: "mobile",
+    });
+  });
 });
 
 describe("public push inbox model", () => {

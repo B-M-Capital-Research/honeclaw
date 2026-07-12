@@ -47,6 +47,13 @@ export type HistoryMsg = {
   transcript_only?: boolean;
   attachments: HistoryAttachment[];
   scheduled_push?: HistoryScheduledPush;
+  finance_calendar?: HistoryFinanceCalendar;
+};
+
+export type HistoryFinanceCalendar = {
+  month: string;
+  image_path: string;
+  variant: "desktop" | "mobile" | string;
 };
 
 export type PublicHistoryPageResponse = {
@@ -412,6 +419,7 @@ export type TimelineMessage =
       transcriptOnly?: boolean;
       attachments?: HistoryAttachment[];
       scheduledPush?: HistoryScheduledPush;
+      financeCalendar?: HistoryFinanceCalendar;
     }
   | {
       id: string;
@@ -422,6 +430,7 @@ export type TimelineMessage =
       transcriptOnly?: boolean;
       attachments?: HistoryAttachment[];
       scheduledPush?: HistoryScheduledPush;
+      financeCalendar?: HistoryFinanceCalendar;
     }
   | {
       id: string;

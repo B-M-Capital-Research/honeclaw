@@ -1,11 +1,11 @@
 //! Public finance calendar APIs.
 //!
 //! The public user owns the actor scope. Calendar images are rendered by the
-//! browser, uploaded through the existing public upload endpoint, then this
-//! module persists a short assistant message containing the uploaded image
-//! marker into the user's web chat session.
+//! browser and uploaded through the existing public upload endpoint. This
+//! module validates both desktop and mobile variants, then persists their
+//! paths as structured session metadata beside compatibility image markers.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -139,26 +139,26 @@ pub(crate) async fn handle_send_finance_calendar(
         Ok(path) => path,
         Err(response) => return response,
     };
-    let validated_mobile_path = if let Some(raw_mobile_path) = request
+    let raw_mobile_path = match request
         .mobile_path
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
-        if !raw_mobile_path.to_ascii_lowercase().ends_with(".png") {
-            return json_error(StatusCode::BAD_REQUEST, "移动端财经日历只接受 PNG 图片");
-        }
-        match crate::routes::public::validate_public_upload_path(
-            &upload_root,
-            oss.as_ref(),
-            &user_id,
-            raw_mobile_path,
-        ) {
-            Ok(path) => Some(path),
-            Err(response) => return response,
-        }
-    } else {
-        None
+        Some(path) => path,
+        None => return json_error(StatusCode::BAD_REQUEST, "缺少移动端财经日历图片路径"),
+    };
+    if !raw_mobile_path.to_ascii_lowercase().ends_with(".png") {
+        return json_error(StatusCode::BAD_REQUEST, "移动端财经日历只接受 PNG 图片");
+    }
+    let validated_mobile_path = match crate::routes::public::validate_public_upload_path(
+        &upload_root,
+        oss.as_ref(),
+        &user_id,
+        raw_mobile_path,
+    ) {
+        Ok(path) => path,
+        Err(response) => return response,
     };
 
     let month = request
@@ -167,11 +167,10 @@ pub(crate) async fn handle_send_finance_calendar(
         .and_then(|value| parse_month_spec(value).ok())
         .map(|month| month.value())
         .unwrap_or_else(|| hone_core::beijing_now().format("%Y-%m").to_string());
-    let content = finance_calendar_assistant_message(
-        &validated_path,
-        validated_mobile_path.as_deref(),
-        &month,
-    );
+    let content =
+        finance_calendar_assistant_message(&validated_path, Some(&validated_mobile_path), &month);
+    let metadata =
+        finance_calendar_message_metadata(&validated_path, &validated_mobile_path, &month);
     let session_id = actor.session_id();
     if state
         .core
@@ -190,7 +189,7 @@ pub(crate) async fn handle_send_finance_calendar(
     match state
         .core
         .session_storage
-        .add_message(&session_id, "assistant", &content, None)
+        .add_message(&session_id, "assistant", &content, Some(metadata))
     {
         Ok(true) => {}
         Ok(false) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, "会话不可用"),
@@ -674,6 +673,27 @@ fn finance_calendar_image_marker(path: &str) -> String {
     }
 }
 
+fn finance_calendar_message_metadata(
+    desktop_path: &str,
+    mobile_path: &str,
+    month: &str,
+) -> HashMap<String, Value> {
+    HashMap::from([
+        (
+            "source".to_string(),
+            Value::String(FINANCE_CALENDAR_SOURCE.to_string()),
+        ),
+        (
+            "finance_calendar".to_string(),
+            json!({
+                "month": month,
+                "desktop_path": desktop_path,
+                "mobile_path": mobile_path,
+            }),
+        ),
+    ])
+}
+
 fn finance_calendar_assistant_message(
     desktop_path: &str,
     mobile_path: Option<&str>,
@@ -862,6 +882,21 @@ mod tests {
             "2026-07",
         );
         assert!(oss.contains("oss://bucket/users/a/calendar.png"));
+    }
+
+    #[test]
+    fn finance_calendar_metadata_persists_both_image_variants() {
+        let metadata = finance_calendar_message_metadata(
+            "/tmp/calendar.png",
+            "/tmp/calendar-mobile-v4.png",
+            "2026-07",
+        );
+        let calendar = metadata.get("finance_calendar").expect("calendar metadata");
+
+        assert_eq!(calendar["month"], "2026-07");
+        assert_eq!(calendar["desktop_path"], "/tmp/calendar.png");
+        assert_eq!(calendar["mobile_path"], "/tmp/calendar-mobile-v4.png");
+        assert_eq!(metadata["source"], FINANCE_CALENDAR_SOURCE);
     }
 
     #[test]

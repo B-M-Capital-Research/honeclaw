@@ -65,6 +65,7 @@ export function historyToTimeline(
         transcriptOnly: message.transcript_only,
         attachments: Array.isArray(message.attachments) ? message.attachments : [],
         scheduledPush: message.scheduled_push,
+        financeCalendar: message.finance_calendar,
       }
     })
 }

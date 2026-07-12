@@ -49,7 +49,17 @@ pub(crate) async fn handle_image(
         "application/octet-stream"
     };
 
-    ([(header::CONTENT_TYPE, content_type)], bytes).into_response()
+    (
+        [
+            (header::CONTENT_TYPE, content_type),
+            (
+                header::CACHE_CONTROL,
+                "private, max-age=31536000, immutable",
+            ),
+        ],
+        bytes,
+    )
+        .into_response()
 }
 
 /// GET /api/file?path=... — 代理读取本地附件（防路径穿越）
@@ -88,9 +98,19 @@ async fn handle_oss_proxy(state: &AppState, raw_path: &str) -> Option<Response> 
         return Some(json_error(StatusCode::FORBIDDEN, "OSS 路径不允许访问"));
     };
     match client.get_object(key).await {
-        Ok(object) => {
-            Some(([(header::CONTENT_TYPE, object.content_type)], object.bytes).into_response())
-        }
+        Ok(object) => Some(
+            (
+                [
+                    (header::CONTENT_TYPE, object.content_type.as_str()),
+                    (
+                        header::CACHE_CONTROL,
+                        "private, max-age=31536000, immutable",
+                    ),
+                ],
+                object.bytes,
+            )
+                .into_response(),
+        ),
         Err(error) => Some(json_error(StatusCode::BAD_GATEWAY, error)),
     }
 }
