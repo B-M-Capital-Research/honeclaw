@@ -14,13 +14,20 @@ P3
 
 ## 状态
 
-Fixed
+New
 
 ## GitHub Issue
 
 无，非 P1
 
 ## 最新进展
+
+- 2026-07-12 23:02 CST 运行态再次复发，状态从代码级 `Fixed` 回退为 `New`：
+  - 19:02-23:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 4 个 user turn 与 4 条 assistant final；Web scheduler、Feishu scheduler 与 Feishu direct 均以 assistant 收口，未见 user-only 残留。
+  - assistant final 污染扫描未命中空回复、`<think>`、`reasoning_content`、本机路径、provider 原始错误、panic、quota、原始工具 JSON 或 `company_profiles/` 外露；仅命中 1 条 `data_fetch` 用户态工具名。
+  - 23:00 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 的 `核心观察股池晚间快报` final 正常收口，但开头继续写出 `本轮已调用 data_fetch 校验完毕`，把内部工具名作为用户可见来源 / 执行口径。
+  - 该样本晚于 2026-07-10 04:10 CST 代码级修复记录；当前无法确认是 live 未重启还是 sanitizer 覆盖仍漏口，需修复侧进一步核对。
+  - 业务主体已完成观察池价格 / 击球区 / 财报日期输出并送达，没有投递失败、空回复、错投、原始工具 JSON 或数据安全证据；问题仍只影响用户可见来源 / 工具口径边界和产品感，不影响主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
 
 - 2026-07-10 04:10 CST 代码级修复，状态更新为 `Fixed`：
   - 共享 `sanitize_user_visible_output(...)` 新增覆盖近期真实漏网句式：`本轮价格已用最新可得 quote_short 校验`、`本轮 quote_short 已校验 25 支最新可得价格`，并继续复用既有 `data_fetch` / `StockAnalysis` / `公开行情页` 用户态改写规则。
