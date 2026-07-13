@@ -30,10 +30,9 @@
 
 ## Risks
 
-- The Tracking tabs for Today, Tasks, and History are currently visual navigation affordances; Calendar is the active implemented view. Future task/history APIs should bind to these tabs without changing the shared shell.
+- Tracking tabs are interactive: Today and History filter calendar events by date, Calendar owns the month/agenda views, and Tasks provides the Agent entry for creating a persistent tracking task. A future dedicated task-list API can replace that entry surface without changing the shared shell.
 - Community media preview remains in its existing portal and intentionally keeps its specialized full-screen controls above the shared workspace chrome.
 
 ## Next Entry Point
 
 Use `public-workspace-shell.tsx` for shared navigation changes, `public-workspace.css` for cross-page layout, and keep domain-specific behavior in the owning Community, Portfolio, or Account page.
-

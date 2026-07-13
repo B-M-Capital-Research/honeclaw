@@ -27,7 +27,10 @@ describe("public workspace page contract", () => {
   it("uses a continuous insight stream and separate desktop/mobile tracking views", () => {
     expect(css).toContain("one continuous editorial stream");
     expect(css).toContain(".public-community-card:last-of-type");
-    expect(portfolio).toContain("<TrackingCalendar />");
+    expect(portfolio).toContain("<TrackingCalendar view={trackingView()} />");
+    expect(portfolio).toContain('setTrackingView("today")');
+    expect(portfolio).toContain('setTrackingView("tasks")');
+    expect(portfolio).toContain('setTrackingView("history")');
     expect(css).toContain(".public-tracking-weekdays,.public-tracking-grid { display: none; }");
     expect(css).toContain(".public-tracking-agenda { display: grid; }");
   });

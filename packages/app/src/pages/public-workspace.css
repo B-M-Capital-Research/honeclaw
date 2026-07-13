@@ -102,6 +102,17 @@
 .public-tracking-event { display: block; margin-top: 6px; padding: 5px 6px; overflow: hidden; border: 1px solid #e1e2df; border-radius: 6px; color: #4d514d; font-size: 9px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 .public-tracking-event.is-earnings { border-color: #cfd9c5; background: #f4f8f0; }
 .public-tracking-agenda { display: none; }
+.public-tracking-agenda.is-desktop-list { display: grid; }
+.public-tracking-agenda.is-desktop-list article { display: grid; grid-template-columns: 70px minmax(0,1fr); gap: 16px; padding: 17px 22px; border-bottom: 1px solid #ecece9; }
+.public-tracking-agenda.is-desktop-list article:last-child { border-bottom: 0; }
+.public-tracking-agenda.is-desktop-list time { color: #686c67; font-size: 11px; font-weight: 750; }
+.public-tracking-agenda.is-desktop-list strong,.public-tracking-agenda.is-desktop-list small { display: block; }
+.public-tracking-agenda.is-desktop-list strong { font-size: 13px; }
+.public-tracking-agenda.is-desktop-list small { margin-top: 5px; color: #8b8e89; font-size: 11px; }
+.public-tracking-task-empty { padding: 42px 24px; text-align: center; }
+.public-tracking-task-empty strong { font-size: 15px; }
+.public-tracking-task-empty p { max-width: 480px; margin: 9px auto 16px; color: #8b8e89; font-size: 12px; line-height: 1.6; }
+.public-tracking-task-empty button { padding: 9px 14px; border: 0; border-radius: 9px; background: #111; color: #fff; cursor: pointer; font-size: 11px; }
 .public-tracking-context { margin-top: 28px; padding-top: 24px; border-top: 1px solid #e6e7e3; }
 .public-tracking-context > h2 { margin: 0 0 16px; font-size: 17px; }
 .public-tracking-context button { border-color: #dedfdb !important; background: #fff !important; color: #333 !important; box-shadow: none !important; }
