@@ -22,6 +22,20 @@
 
 ## 最新进展
 
+- 本轮 2026-07-13 07:00-11:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `session_messages`
+    - 07:00-10:30 CST 新增 27 个 user turn / 27 条 assistant final，均正常成对收口；本窗新回退的 `cron_job_runs` 台账滞后问题独立于行情 sanity check。
+    - assistant final 污染扫描未确认空回复、内部字段、原始工具 JSON 或投递失败。
+  - `data/runtime/logs/web.log.2026-07-13`
+    - 本窗 heartbeat preview 继续使用异常或高风险行情锚点进入判断。
+    - 08:31 CST Feishu scheduler `闪迪(SNDK)每日行情与行业简报` final 继续写出 `SNDK 最新可核常规盘为7月9日收于 1,915.92 美元`，虽属于普通 scheduler final，但同根为异常行情 sanity check 缺口。
+    - 10:30 CST `美股黄金坑信号心跳检测` deliver preview 继续使用 `SPY $754.95`、`QQQ $725.51`、`NVDA +8.18%` 等高风险行情锚点进入判断。
+    - 10:30 / 11:00 CST `NVDA 关键事件心跳提醒` raw / deliver preview 使用 `NVDA $210.96`、PE `36.12x`、Market Cap `$5.11T`，并围绕错误周末 / 交易日口径进入判断。
+    - 10:30 / 11:00 CST `光迅科技关键事件心跳提醒` deliver preview 使用 `¥232`、`¥226.69`、日内高低和异常数量级成交量 / PE 作为行情锚。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check 缺口：异常或高风险数量级价格进入 scheduler final、heartbeat 判断上下文和部分 deliver preview。
+    - 直聊、普通 scheduler 与 heartbeat runner 均有正常收口或受控 duplicate suppression；未见空回复、错投、投递失败或原始工具 JSON。该问题主要削弱投研质量和价格判断可信度，不影响主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-13 03:00-07:02 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `session_messages`
     - 03:00-07:02 CST 新增 9 个 user turn / 9 条 assistant final，均正常成对收口；本窗新登记的普通 scheduler 日期口径问题独立于行情 sanity check。

@@ -22,6 +22,12 @@ New
 
 ## 最新进展
 
+- 2026-07-13 11:04 CST 运行态继续复发，状态维持 `New`：
+  - 07:00-10:30 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 27 个 user turn 与 27 条 assistant final；Feishu / Web / Discord scheduler 与 1 条 Web direct 均有 assistant 终态。
+  - assistant final 污染扫描未命中空回复、`<think>`、`reasoning_content`、本机路径、provider 原始错误、panic、quota、原始工具 JSON、结构化 JSON 或 `company_profiles/` 外露；仅命中 1 条 `data_fetch` 用户态工具名。
+  - 09:01 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 的 `核心观察池早间简报` final 正常收口，但开头写出 `本轮 25 支标的已调用 data_fetch 全部校验完毕`，继续把内部工具名作为用户可见来源 / 执行口径。
+  - 该样本业务主体已完成 25 支观察池分组、价格 / 击球区 / 财报日期输出并送达，没有投递失败、空回复、错投、原始工具 JSON 或数据安全证据；问题仍只影响用户可见来源 / 工具口径边界和产品感，不影响主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-07-12 23:02 CST 运行态再次复发，状态从代码级 `Fixed` 回退为 `New`：
   - 19:02-23:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 4 个 user turn 与 4 条 assistant final；Web scheduler、Feishu scheduler 与 Feishu direct 均以 assistant 收口，未见 user-only 残留。
   - assistant final 污染扫描未命中空回复、`<think>`、`reasoning_content`、本机路径、provider 原始错误、panic、quota、原始工具 JSON 或 `company_profiles/` 外露；仅命中 1 条 `data_fetch` 用户态工具名。

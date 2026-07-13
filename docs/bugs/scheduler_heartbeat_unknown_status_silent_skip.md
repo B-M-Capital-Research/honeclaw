@@ -7,6 +7,18 @@
 
 ## 修复进展
 
+- `2026-07-13 07:00-11:01 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-13`
+    - 本窗 heartbeat 可分类 `parse_kind` 信号为 `PlainTextTriggered=184`、`JsonNoop=70`、`PlainTextNoop=9`、`PlainTextSuppressed=8`、`JsonMalformed=2`。
+    - raw preview 以 `<think>` 开头 180 次，`deliver_preview` 92 次；另有 167 次 tool call budget 拒绝、8 条“heartbeat 输出不是结构化 JSON”、1 条“heartbeat 输出不是合法 JSON”和 5 条 `context window exceeds limit`。
+    - 代表样本包括 10:30 CST `AI与科技持仓观察关键事件心跳提醒` 首轮 `context window exceeds limit` 后进入 BudgetRecovery，10:30 / 11:00 CST `FOTO 光子学ETF心跳检测` 出现 `PlainTextSuppressed + execution_failed`，以及多条 `PlainTextTriggered` 继续进入 deliver / duplicate suppression 路径。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 在 07:00-10:30 CST 有 27 个 user turn / 27 条 assistant final，均成对收口；未发现连续 user turn 漏答、空回复、`<think>`、本机路径、provider 原始错误或原始工具 JSON 进入 assistant final。
+    - 本地 `cron_job_runs.max(executed_at)` 仍停在 `2026-07-10T14:01:27.621121+08:00`，本轮继续以 runtime web log 判断 heartbeat 运行态。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题继续影响 heartbeat 监控判断、送达语义和失败 / 跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-13 03:00-07:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-12`
     - 本窗 heartbeat 可分类 `parse_kind` 信号为 `PlainTextTriggered=214`、`JsonNoop=95`、`JsonTriggered=10`、`PlainTextSuppressed=14`、`PlainTextNoop=9`、`JsonMalformed=6`、`Empty=1`。

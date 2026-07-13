@@ -7,6 +7,21 @@
 
 ## 最新进展
 
+- `2026-07-13 07:00-11:01 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-13`
+    - 10:30 CST `小米30港元破位预警`
+      - `job_id=j_654aef9b`
+      - `target=+8613871396421`
+      - `parse_kind=PlainTextTriggered`
+      - `deliver_preview` 以 fenced JSON 开头，包含 `"status": "triggered"`、`"triggered"`、`"symbol": "1810.HK"`、`"condition": "现价 ≤ 30 港元"`、`"current_price": 26.48` 等结构化协议字段。
+    - 11:00 CST 同一 `小米30港元破位预警` 再次生成 fenced JSON `deliver_preview`，本轮 `current_price` 变为 `26.06`，说明该格式退化不是单次偶发。
+    - 11:00 CST `全天原油价格3小时播报` `deliver_preview` 也以 fenced JSON 开头，包含 `"status": "triggered"`、`"北京当前时间": "2026-07-13 15:18"`、`"triggered"`、`"symbol": "WTI"` 等结构化字段。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 在 07:00-10:30 CST 有 27 个 user turn / 27 条 assistant final，均成对收口；assistant final 污染扫描未命中空回复、`<think>`、本机路径、provider 原始错误或结构化 JSON 外泄。
+  - 判断：
+    - 该样本仍是 heartbeat 用户可见提醒格式化退化的同一链路；不是新的独立根因。
+    - 当前没有错投、全渠道不可用或数据安全证据；主要伤害是出站预览和潜在用户可见提醒的结构 / 格式质量，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-12 03:02-07:02 CST` 真实运行态复发，状态从代码级 `Fixed` 回退为 `New`：
   - `data/runtime/logs/web.log.2026-07-11`
     - 05:30 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`

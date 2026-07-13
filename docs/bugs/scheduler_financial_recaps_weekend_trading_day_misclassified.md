@@ -9,6 +9,18 @@
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `session_messages`
+  - `2026-07-13T09:01:08.984163+08:00`
+    - `session_id=Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773`
+    - Feishu scheduler `核心观察池早间简报` assistant final 写出 `北京时间 2026-07-13 09:00，美股周一正常交易`，但该北京时间对应美东周日夜间，尚未进入美股周一常规交易。
+  - `2026-07-13T08:46:00.477845+08:00`
+    - `session_id=Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7`
+    - Feishu scheduler `A股盘前高景气产业链推演` assistant final 写出 `美股最新完整交易日为2026年7月11日`，继续把周末日期当成最新完整交易日。
+  - `2026-07-13T08:31:04.794138+08:00`
+    - `session_id=Actor_feishu__direct__ou_5f1fdfeceacb0f2ece1a2c88c5a7d17e34`
+    - Feishu scheduler `闪迪(SNDK)每日行情与行业简报` assistant final 写出 `SNDK 最新可核常规盘为7月9日收于 1,915.92 美元`，同时本窗多条 scheduler 又将 `2026-07-11` 写作最新完整美股交易日，说明交易日口径仍漂移。
+  - `2026-07-13T07:03:10.200694+08:00`
+    - `session_id=Actor_feishu__direct__ou_5f85509d35510291f93cd79a3b1c9eebf3`
+    - Feishu scheduler `美股持仓收盘后早报` assistant final 写出 `美股 7月11日（周五）常规收盘复盘`，并按该口径生成持仓涨跌贡献与操作框架。
   - `2026-07-13T05:01:24.301383+08:00`
     - `session_id=Actor_web__direct__web-user-afc1cabadbf8`
     - `ordinal=101`
@@ -21,11 +33,9 @@
     - `session_id=Actor_web__direct__web-user-14f4cadb069f`
     - `ordinal=94`
     - Web scheduler `1亿美元AI科技组合每日跟踪` assistant final 写出 `本次复盘口径为 2026-07-11 美股常规收盘`，并按 `2026-07-11 常规收盘口径` 计算组合变化。
-  - `2026-07-13T07:03:10.200694+08:00`
-    - `session_id=Actor_feishu__direct__ou_5f85509d35510291f93cd79a3b1c9eebf3`
-    - `ordinal=171`
-    - Feishu scheduler `美股持仓收盘后早报` assistant final 写出 `美股 7月11日（周五）常规收盘复盘`，并按该口径生成持仓涨跌贡献与操作框架。
 - 同窗对照：
+  - `2026-07-13 07:00-10:30 CST` 共 27 个 user turn / 27 条 assistant final，均成对收口。
+  - assistant final 污染扫描未确认空回复、`<think>`、本机路径、provider 原始错误、原始工具 JSON 或结构化 JSON 外泄。
   - `2026-07-13 03:00-07:02 CST` 共 9 个 user turn / 9 条 assistant final，均成对收口。
   - assistant final 污染扫描未确认空回复、`<think>`、本机路径、provider 原始错误、原始工具 JSON 或 `company_profiles/` 外露。
   - `cron_job_runs.max(executed_at)` 仍停在 `2026-07-10T14:01:27.621121+08:00`，本轮用户可见证据以 `session_messages` 为准。
