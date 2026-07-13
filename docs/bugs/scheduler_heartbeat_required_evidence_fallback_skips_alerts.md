@@ -23,6 +23,19 @@ New
 ## 证据来源
 
 - `data/runtime/logs/web.log.2026-07-13`
+  - 巡检时间窗：2026-07-13 19:00-23:02 CST。
+  - 同窗日志命中 433 行 `当前信息暂时未完成实时核验，请稍后再试。` 相关文本，并有 156 次 `tavily request failed ... Query is too long`，多次触发 `function_calling required evidence fallback failed` 与 `answer rejected because required tool evidence is missing`。
+  - 影响范围继续覆盖 Feishu / Web heartbeat，也扩展到普通 scheduler 用户可见正文完成率：
+    - 20:00 CST Web scheduler `20:00 持仓股重要新闻晚报` 先写 assistant final `当前信息暂时未完成实时核验，请稍后再试。`，随后写 `定时任务「20:00 持仓股重要新闻晚报」执行出错，请稍后重试。`
+    - 20:30 CST Feishu scheduler `美股纳斯达克盘前简报`、`老王说事与巴芒投资美股财报季个股判断`、`美股盘前宏观与财报日历梳理`、`每日仓位复盘` 均只写产品化失败提示 `本轮定时任务未能完成，系统已记录失败并将在下一次触发时重试。`
+    - 21:00 CST Web scheduler `盘前美股要闻与SNDK/MU存储产业链日报` 同时写内部失败 final、通用 scheduler 失败提示和 Web 出错提示。
+    - 21:35 / 23:00 CST Feishu scheduler `科技核心股池 · 晚间击球区快报`、`核心观察股池晚间快报` 只落成 `当前信息暂时未完成实时核验，请稍后再试。`
+  - 同窗 heartbeat 可分类信号仍有 `PlainTextTriggered=62`、`JsonNoop=11`、`PlainTextNoop=9`、`JsonMalformed=4`、`JsonTriggered=3`、`PlainTextSuppressed=2`、`JsonUnknownStatus=2`，但这批失败的直接表现是 evidence 门禁 fail-closed，而不是单纯结构化 JSON 解析退化。
+  - 判断：该缺陷仍为功能性 P2。它影响监控 / 普通 scheduler 任务正文完成率，但直聊与部分 scheduler 仍正常收口，未见错投、数据破坏、敏感信息泄露或全渠道不可用，因此不升级为 P1。
+- `data/sessions.sqlite3`
+  - 19:00-23:02 CST 按真实 `timestamp` 新增 49 个 user turn / 60 条 assistant 记录；Feishu direct、Feishu scheduler、Web direct 与 Web scheduler 均有 assistant 终态。
+  - assistant final 污染扫描未命中 `<think>`、本机路径、provider 原始错误、panic、quota、原始工具 JSON 或结构化 JSON 外泄；用户可见侧主要是产品化失败文案。
+- `data/runtime/logs/web.log.2026-07-13`
   - 巡检时间窗：2026-07-13 15:01-19:01 CST。
   - 18:00-19:00 CST heartbeat / scheduler 日志出现 123 条 `error="当前信息暂时未完成实时核验，请稍后再试。"`。
   - 受影响任务覆盖 Feishu 与 Web heartbeat：`AAOI 1.6T 光模块心跳检测`、`闪迪关键事件心跳提醒`、`全天原油价格3小时播报`、`持仓财报与重大新闻心跳提醒`、`AI与科技持仓观察关键事件心跳提醒`、`SIVE POET/Nokia/1.6T DFB 心跳检测`、`NVDA 关键事件心跳提醒`、`NBIS关键事件心跳提醒` 等。

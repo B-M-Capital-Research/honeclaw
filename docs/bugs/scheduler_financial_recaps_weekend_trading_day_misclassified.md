@@ -9,6 +9,14 @@
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `session_messages`
+  - `2026-07-13T20:30:22.205527+08:00`
+    - `session_id=Actor_feishu__direct__ou_5f79ee8185333e5db4a55e5eca0d8d2f7e`
+    - Feishu scheduler assistant final 写出 `当前北京时间：2026年7月13日20:30。今天是周一，美股常规盘已收盘；本次以2026年7月11日美股收盘数据为准（7月12日、13日为周末休市）`。
+    - 该北京时间对应美东周一 08:30 左右的盘前窗口，不是常规盘收盘后；同时 2026-07-13 是周一，不应写成周末休市。
+  - 同窗对照：
+    - 19:00-23:02 CST 共 49 个 user turn / 60 条 assistant 记录，均以 assistant 终态收口；该样本没有阻断生成 / 落库 / 投递主链路。
+    - assistant final 污染扫描未命中 `<think>`、本机路径、provider 原始错误、panic、quota、原始工具 JSON 或结构化 JSON 外泄。
+    - 因为问题仍主要影响金融复盘的日期、星期和交易时段可信度，不影响直聊 / 调度 / 投递主功能链路，严重等级继续维持质量性 `P3`。
   - `2026-07-13T09:01:08.984163+08:00`
     - `session_id=Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773`
     - Feishu scheduler `核心观察池早间简报` assistant final 写出 `北京时间 2026-07-13 09:00，美股周一正常交易`，但该北京时间对应美东周日夜间，尚未进入美股周一常规交易。

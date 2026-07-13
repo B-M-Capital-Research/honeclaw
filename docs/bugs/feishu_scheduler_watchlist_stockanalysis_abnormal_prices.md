@@ -22,6 +22,18 @@
 
 ## 最新进展
 
+- 本轮 2026-07-13 19:00-23:02 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `session_messages`
+    - 19:00-23:02 CST 新增 49 个 user turn / 60 条 assistant 记录，Feishu direct、Feishu scheduler、Web direct 与 Web scheduler 均有 assistant 终态；assistant final 污染扫描未确认空回复、内部字段、原始工具 JSON、投递失败或敏感信息外泄。
+    - 20:01 / 20:46 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7` 在 A 股高景气产业链推演中继续把 `NVDA 210美元` 作为关键美股锚点进入判断。
+    - 21:29 CST Feishu session `Actor_feishu__direct__ou_5f175714e91a60d34339460cdd1268f8fb` 写出 `INTC 最新价：109.84美元`，并说明此前 `28.71美元` 是旧数据；该数量级偏离常识，说明行情 sanity check 仍不稳定。
+  - `data/runtime/logs/web.log.2026-07-13`
+    - 23:00 CST `闪迪关键事件心跳提醒` raw / deliver preview 使用 `SNDK at $1,772.97`、previous close `$1,915.92` 等异常数量级价格并生成 `triggered` 提醒正文。
+    - 同窗 heartbeat `deliver_preview` 共 32 条；异常或高风险价格仍进入 heartbeat 判断上下文、用户可见 preview 或 duplicate suppression 路径。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check 缺口：异常或高风险数量级价格进入 scheduler final、heartbeat 判断上下文和部分 deliver preview。
+    - 本窗没有错投、投递失败、空回复、数据破坏或全渠道不可用；因此仍按质量性 `P3 / New`。该问题不影响主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-13 11:04-15:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `session_messages`
     - 11:04-15:01 CST 新增 3 个 user turn / 3 条 assistant final，均正常成对收口；本窗未确认新的普通 direct / scheduler final 正式输出异常行情。
