@@ -5,15 +5,25 @@ import { createEffect, createMemo, createSignal, For, onMount, Show } from "soli
 import { useNavigate } from "@solidjs/router"
 import { marked } from "marked"
 import DOMPurify from "dompurify"
-import { PublicNav, PublicFooter } from "@/components/public-nav"
+import { PublicChatStartup } from "@/components/public-chat-startup"
 import { PublicLoginForm } from "@/components/public-login-form"
+import { PublicWorkspaceShell } from "@/components/public-workspace-shell"
 import {
   getDigestContext,
   getCompanyProfileMarkdown,
   refreshDigestContext,
   getPublicAuthMe,
+  getPublicFinanceCalendar,
   type DigestContext,
 } from "@/lib/api"
+import {
+  defaultFinanceCalendarMonth,
+  financeCalendarMonthGrid,
+  groupFinanceCalendarEvents,
+  parseFinanceCalendarMonth,
+} from "@/lib/finance-calendar"
+import { workspaceUserName } from "@/lib/public-agent-workspace"
+import type { FinanceCalendarPayload, PublicAuthUserInfo } from "@/lib/types"
 import {
   mainlineHoldingCardState,
   profileInventoryRowState,
@@ -25,6 +35,74 @@ import {
   publicRefreshMessage,
 } from "./public-portfolio-model"
 import "./public-site.css"
+
+const TRACKING_WEEKDAYS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+
+function TrackingCalendar() {
+  const [month, setMonth] = createSignal(defaultFinanceCalendarMonth())
+  const [calendar, setCalendar] = createSignal<FinanceCalendarPayload | null>(null)
+  const [loading, setLoading] = createSignal(true)
+  const [error, setError] = createSignal("")
+  const cells = createMemo(() => financeCalendarMonthGrid(month()))
+  const eventsByDate = createMemo(() => groupFinanceCalendarEvents(calendar()?.events ?? []))
+  const agenda = createMemo(() =>
+    [...(calendar()?.events ?? [])].sort((left, right) => left.date.localeCompare(right.date)),
+  )
+  const monthTitle = createMemo(() => {
+    const parsed = parseFinanceCalendarMonth(month())
+    return parsed ? `${parsed.year} 年 ${parsed.month} 月` : month()
+  })
+  const load = async (value: string) => {
+    setLoading(true)
+    setError("")
+    try {
+      setCalendar(await getPublicFinanceCalendar(value))
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "财经日历暂时无法加载")
+    } finally {
+      setLoading(false)
+    }
+  }
+  const shiftMonth = (delta: number) => {
+    const parsed = parseFinanceCalendarMonth(month())
+    if (!parsed) return
+    const next = new Date(parsed.year, parsed.month - 1 + delta, 1)
+    const value = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`
+    setMonth(value)
+    void load(value)
+  }
+  onMount(() => void load(month()))
+  return (
+    <section class="public-workspace-panel public-tracking-calendar" aria-label="跟踪日历">
+      <header class="public-tracking-calendar-head">
+        <div><h2>{monthTitle()}</h2><p>宏观事件、持仓财报与持续跟踪任务</p></div>
+        <div class="public-tracking-month-controls">
+          <button type="button" aria-label="上一个月" onClick={() => shiftMonth(-1)}>‹</button>
+          <button type="button" aria-label="下一个月" onClick={() => shiftMonth(1)}>›</button>
+        </div>
+      </header>
+      <Show when={!loading()} fallback={<div class="public-workspace-state">正在整理跟踪日历…</div>}>
+        <Show when={!error()} fallback={<div class="public-workspace-state is-error">{error()}</div>}>
+          <div class="public-tracking-weekdays"><For each={TRACKING_WEEKDAYS}>{(day) => <span>{day}</span>}</For></div>
+          <div class="public-tracking-grid">
+            <For each={cells()}>{(cell) => {
+              const events = () => eventsByDate()[cell.date] ?? []
+              return <div class="public-tracking-day" classList={{ "is-muted": !cell.inMonth, "is-today": calendar()?.today === cell.date }}>
+                <strong>{cell.day}</strong>
+                <For each={events().slice(0, 2)}>{(event) => <span class="public-tracking-event" classList={{ "is-earnings": event.kind === "earnings" }}>{event.title}</span>}</For>
+              </div>
+            }}</For>
+          </div>
+          <div class="public-tracking-agenda">
+            <Show when={agenda().length > 0} fallback={<div class="public-workspace-state">本月暂无重要事件</div>}>
+              <For each={agenda()}>{(event) => <article><time>{event.date.slice(5).replace("-", "/")}</time><div><strong>{event.title}</strong><small>{event.subtitle || (event.kind === "earnings" ? "持仓相关财报" : event.source)}</small></div></article>}</For>
+            </Show>
+          </div>
+        </Show>
+      </Show>
+    </section>
+  )
+}
 
 function MainlineCard(props: {
   ticker: string
@@ -286,9 +364,10 @@ function PortfolioContextView() {
   const profileTickers = createMemo(() => profileTickerSet(digestContext()))
 
   return (
-    <div style={{ "padding-top": "56px", "min-height": "100vh", background: "#f8fafc" }}>
-      <div style={{ "max-width": "920px", margin: "0 auto", padding: "48px 32px" }}>
-        <div style={{ "margin-bottom": "32px" }}>
+    <div class="public-workspace-inner">
+        <header class="public-workspace-page-heading">
+          <div>
+            <time>{new Date().toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "short" })}</time>
           <h1
             style={{
               "font-size": "28px",
@@ -298,12 +377,18 @@ function PortfolioContextView() {
               "letter-spacing": "-0.01em",
             }}
           >
-            投资上下文
+            跟踪
           </h1>
           <p style={{ "font-size": "13px", color: "#64748b", "margin-top": "8px", "line-height": "1.7" }}>
-            HONE 会从你的公司画像里整理投资主线；新增画像或持仓后通常会在下一次自动检查里尝试更新，覆盖完整后约每周刷新一次。要修改画像，直接跟 HONE 对话即可。
+            把即将发生的事件、持续验证的主线和 Agent 任务放在一起。
           </p>
-        </div>
+          </div>
+          <button type="button" class="public-workspace-primary-action" onClick={() => navigate("/chat")}>＋ 新建跟踪</button>
+        </header>
+        <nav class="public-workspace-tabs" aria-label="跟踪视图"><button type="button">今日</button><button type="button" class="is-active">日历</button><button type="button">任务</button><button type="button">历史</button></nav>
+        <TrackingCalendar />
+        <section class="public-tracking-context">
+          <h2>投资主线与公司画像</h2>
 
         <Show when={loading()}>
           <div style={{ color: "#94a3b8", "padding": "40px 0", "text-align": "center" }}>加载中…</div>
@@ -635,7 +720,7 @@ function PortfolioContextView() {
             </>
           )}
         </Show>
-      </div>
+        </section>
     </div>
   )
 }
@@ -643,10 +728,12 @@ function PortfolioContextView() {
 export default function PublicPortfolioPage() {
   const navigate = useNavigate()
   const [loggedIn, setLoggedIn] = createSignal<boolean | null>(null)
+  const [user, setUser] = createSignal<PublicAuthUserInfo | null>(null)
 
   onMount(async () => {
     try {
-      await getPublicAuthMe()
+      const currentUser = await getPublicAuthMe()
+      setUser(currentUser)
       setLoggedIn(true)
     } catch {
       setLoggedIn(false)
@@ -654,36 +741,17 @@ export default function PublicPortfolioPage() {
   })
 
   return (
-    <div
-      class="pub-page"
-      style={{
-        "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
-        "-webkit-font-smoothing": "antialiased",
-      }}
-    >
-      <PublicNav />
+    <div class="pub-page">
       <Show
         when={loggedIn() !== null}
         fallback={
-          <div
-            style={{
-              "padding-top": "56px",
-              "min-height": "100vh",
-              background: "#f8fafc",
-              display: "flex",
-              "align-items": "center",
-              "justify-content": "center",
-            }}
-          >
-            <div style={{ "font-size": "13px", color: "#94a3b8" }}>检查登录…</div>
-          </div>
+          <PublicChatStartup title="正在加载跟踪" description="正在同步财经日历、持仓主线与持续任务。" />
         }
       >
         <Show when={loggedIn()} fallback={<PublicLoginForm onLogin={() => navigate("/portfolio")} />}>
-          <PortfolioContextView />
+          <PublicWorkspaceShell active="tracking" userName={workspaceUserName(user()?.user_id ?? "")} searchPlaceholder="搜索公司、事件或跟踪"><PortfolioContextView /></PublicWorkspaceShell>
         </Show>
       </Show>
-      <PublicFooter />
     </div>
   )
 }

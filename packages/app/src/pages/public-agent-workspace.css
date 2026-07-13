@@ -61,6 +61,7 @@
 }
 .agent-workspace-nav button:hover,
 .agent-workspace-new:hover { background: var(--agent-soft); color: var(--agent-ink); }
+.agent-workspace-nav button.is-active { background: #f1f2ef; color: #111; font-weight: 750; }
 .agent-workspace-nav button:active,
 .agent-workspace-new:active { transform: scale(.985); }
 .agent-workspace-nav-with-dot { position: relative; }
@@ -91,6 +92,7 @@
 .agent-workspace-user-main { min-width: 0; flex: 1; display: flex; align-items: center; gap: 9px; padding: 0; border: 0; background: transparent; cursor: pointer; text-align: left; }
 .agent-workspace-avatar { width: 34px; height: 34px; flex: 0 0 34px; display: grid; place-items: center; border: 1px solid #dedfdb; border-radius: 50%; background: #f5f5f3; font-size: 13px; font-weight: 700; }
 .agent-workspace-user-main > span:last-child { min-width: 0; }
+.agent-workspace-user-main.is-active .agent-workspace-avatar { background: #111; color: #fff; border-color: #111; }
 .agent-workspace-user strong,.agent-workspace-user small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agent-workspace-user strong { font-size: 12px; }
 .agent-workspace-user small { margin-top: 2px; color: #9a9d98; font-size: 10px; }
@@ -192,6 +194,7 @@
   .agent-workspace-mobile-nav { height: calc(72px + env(safe-area-inset-bottom, 0px)); display: grid; grid-template-columns: repeat(5,1fr); align-items: start; padding: 7px 6px env(safe-area-inset-bottom, 0px); position: fixed; z-index: 50; right: 0; bottom: 0; left: 0; border-top: 1px solid var(--agent-line); background: rgba(255,255,255,.96); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
   .agent-workspace-mobile-nav button { min-width: 0; height: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; position: relative; padding: 0; border: 0; background: transparent; color: #747873; cursor: pointer; font-size: 10px; }
   .agent-workspace-mobile-nav button.is-agent { color: #111; font-weight: 700; }
+  .agent-workspace-mobile-nav button.is-active:not(.is-agent) { color: #111; font-weight: 750; }
   .agent-workspace-mobile-nav button.is-agent b { width: 52px; height: 52px; display: grid; place-items: center; margin-top: -31px; border: 5px solid #fff; border-radius: 50%; background: #111; color: #fff; box-shadow: 0 5px 14px rgba(18,20,18,.18); }
   .agent-workspace-mobile-nav button.is-agent span { margin-top: -1px; }
   .agent-workspace-mobile-has-dot i { width: 5px; height: 5px; position: absolute; top: 5px; left: calc(50% + 8px); border-radius: 50%; background: #f04f3d; }

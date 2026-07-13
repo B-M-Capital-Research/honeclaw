@@ -1,364 +1,95 @@
-// public-me.tsx — HONE Public Site Account / Me page
-
-import { createSignal, onMount, Show, type ParentProps } from "solid-js";
+import { createSignal, onMount, Show } from "solid-js";
 import { useNavigate } from "@solidjs/router";
-import { PublicNav, PublicFooter } from "@/components/public-nav";
+import { PublicChatStartup } from "@/components/public-chat-startup";
 import { PublicLoginForm } from "@/components/public-login-form";
-import { CONTENT } from "@/lib/public-content";
+import { PublicWorkspaceShell } from "@/components/public-workspace-shell";
 import { getPublicAuthMe, publicLogout } from "@/lib/api";
+import { workspaceUserName } from "@/lib/public-agent-workspace";
 import type { PublicAuthUserInfo } from "@/lib/types";
-import "./public-site.css";
 
-function formatDate(iso: string | undefined): string {
-  if (!iso) return CONTENT.me.date_placeholder;
-  try {
-    return new Date(iso).toLocaleDateString(CONTENT.me.date_locale, {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  } catch {
-    return iso;
-  }
+function formatDate(value?: string) {
+  if (!value) return "—";
+  return new Date(value).toLocaleDateString("zh-CN", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
 }
 
-function InfoRow(props: { label: string; value: string }) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        "align-items": "center",
-        "justify-content": "space-between",
-        padding: "14px 0",
-        "border-bottom": "1px solid rgba(0,0,0,0.06)",
-      }}
-    >
-      <span
-        style={{ "font-size": "13px", color: "#94a3b8", "font-weight": "500" }}
-      >
-        {props.label}
-      </span>
-      <span
-        style={{
-          "font-family": "var(--font-mono, 'JetBrains Mono', monospace)",
-          "font-size": "13px",
-          color: "#0f172a",
-          "font-weight": "500",
-        }}
-      >
-        {props.value}
-      </span>
-    </div>
-  );
+function AccountRow(props: { label: string; value: string }) {
+  return <div class="public-account-row"><span>{props.label}</span><strong>{props.value}</strong></div>;
 }
 
-type ActionBtnVariant = "default" | "primary" | "ghost" | "danger";
-
-function ActionBtn(
-  props: ParentProps<{
-    onClick?: () => void;
-    href?: string;
-    variant?: ActionBtnVariant;
-  }>,
-) {
-  const variant = () => props.variant ?? "default";
-
-  const getStyle = () => {
-    const buttonBaseStyle = {
-      padding: "10px 20px",
-      "border-radius": "8px",
-      cursor: "pointer",
-      "font-family": "inherit",
-      "font-size": "14px",
-      "font-weight": "600",
-      "letter-spacing": "0.01em",
-      transition: "all 0.2s",
-      display: "inline-flex",
-      "align-items": "center",
-      gap: "6px",
-      "text-decoration": "none",
-    };
-    if (variant() === "primary") {
-      return {
-        ...buttonBaseStyle,
-        background: "#f59e0b",
-        border: "1px solid #f59e0b",
-        color: "#fff",
-        "box-shadow": "0 2px 8px rgba(245,158,11,0.25)",
-      };
-    }
-    if (variant() === "ghost") {
-      return {
-        ...buttonBaseStyle,
-        background: "transparent",
-        border: "1px solid rgba(0,0,0,0.08)",
-        color: "#94a3b8",
-      };
-    }
-    if (variant() === "danger") {
-      return {
-        ...buttonBaseStyle,
-        background: "transparent",
-        border: "1px solid rgba(239,68,68,0.20)",
-        color: "#ef4444",
-      };
-    }
-    return {
-      ...buttonBaseStyle,
-      background: "#fff",
-      border: "1px solid rgba(0,0,0,0.10)",
-      color: "#475569",
-    };
-  };
-
-  return (
-    <Show
-      when={!props.href}
-      fallback={
-        <a href={props.href} style={getStyle()}>
-          {props.children}
-        </a>
-      }
-    >
-      <button onClick={props.onClick} style={getStyle()}>
-        {props.children}
-      </button>
-    </Show>
-  );
-}
-
-// ── Logged in ─────────────────────────────────────────────────────────────────
-function LoggedInView(props: {
+function AccountView(props: {
   user: PublicAuthUserInfo;
   onLogout: () => void;
 }) {
   const navigate = useNavigate();
-  const C = CONTENT.me;
-
   return (
-    <div
-      style={{
-        "padding-top": "56px",
-        "min-height": "100vh",
-        background: "#f8fafc",
-      }}
-    >
-      <div
-        style={{ "max-width": "800px", margin: "0 auto", padding: "56px 32px" }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            "align-items": "center",
-            "justify-content": "space-between",
-            "margin-bottom": "48px",
-          }}
-        >
+    <PublicWorkspaceShell active="me" userName={workspaceUserName(props.user.user_id)}>
+      <div class="public-workspace-inner">
+        <header class="public-workspace-page-heading">
           <div>
-            <Show when={C.logged_in_eyebrow}>
-              <div
-                style={{
-                  "font-size": "11px",
-                  "font-weight": "700",
-                  "letter-spacing": "0.30em",
-                  "text-transform": "uppercase",
-                  color: "#f59e0b",
-                  "margin-bottom": "8px",
-                }}
-              >
-                {C.logged_in_eyebrow}
-              </div>
-            </Show>
-            <h1
-              style={{
-                "font-size": "28px",
-                "font-weight": "700",
-                color: "#0f172a",
-                margin: "0",
-                "letter-spacing": "-0.01em",
-              }}
-            >
-              {C.logged_in_title}
-            </h1>
+            <span class="public-workspace-eyebrow">个人研究空间</span>
+            <h1>我的</h1>
+            <p>管理你的 HONE 账户与研究入口。持仓、洞察和会话数据仍由各自的安全存储维护。</p>
           </div>
-        </div>
-
-        {/* Account info */}
-        <div
-          style={{
-            padding: "24px 28px",
-            "border-radius": "12px",
-            border: "1px solid rgba(0,0,0,0.08)",
-            background: "#fff",
-            "margin-bottom": "24px",
-          }}
-        >
-          <h3
-            style={{
-              "font-size": "13px",
-              "font-weight": "700",
-              "letter-spacing": "0.10em",
-              "text-transform": "uppercase",
-              color: "#94a3b8",
-              margin: "0 0 4px",
-            }}
-          >
-            {C.account_info_title}
-          </h3>
-          <div>
-            <InfoRow label={C.fields.user_id} value={props.user.user_id} />
-            <InfoRow
-              label={C.fields.created_at}
-              value={formatDate(props.user.created_at)}
-            />
-            <Show when={props.user.last_login_at}>
-              <InfoRow
-                label={C.fields.last_login}
-                value={formatDate(props.user.last_login_at)}
-              />
-            </Show>
-          </div>
-        </div>
-
-        {/* Actions — primary + secondary */}
-        <div
-          style={{
-            display: "flex",
-            "flex-wrap": "wrap",
-            gap: "10px",
-            "margin-bottom": "16px",
-          }}
-        >
-          <ActionBtn variant="primary" onClick={() => navigate("/chat")}>
-            {C.actions.chat}
-          </ActionBtn>
-          <ActionBtn variant="default" onClick={() => navigate("/roadmap")}>
-            {C.actions.roadmap}
-          </ActionBtn>
-          <ActionBtn variant="ghost" onClick={() => navigate("/community")}>
-            {C.actions.community}
-          </ActionBtn>
-        </div>
-
-        {/* Destructive action sits on its own row so users don't tap it by accident. */}
-        <div
-          style={{
-            display: "flex",
-            "margin-bottom": "40px",
-            "padding-top": "16px",
-            "border-top": "1px solid rgba(0,0,0,0.06)",
-          }}
-        >
-          <ActionBtn variant="danger" onClick={props.onLogout}>
-            {C.actions.logout}
-          </ActionBtn>
-        </div>
-
-        {/* Membership placeholder */}
-        <div
-          style={{
-            padding: "24px 28px",
-            "border-radius": "12px",
-            border: "1px dashed rgba(245,158,11,0.20)",
-            background: "rgba(245,158,11,0.03)",
-          }}
-        >
-          <div
-            style={{ display: "flex", "align-items": "center", gap: "12px" }}
-          >
-            <span
-              style={{
-                "font-family": "var(--font-mono, 'JetBrains Mono', monospace)",
-                "font-size": "16px",
-                color: "#f59e0b",
-                opacity: "0.5",
-              }}
-            >
-              ∞
-            </span>
-            <div>
-              <div
-                style={{
-                  "font-size": "13px",
-                  "font-weight": "700",
-                  color: "#0f172a",
-                  "margin-bottom": "4px",
-                }}
-              >
-                {C.membership.title}
-              </div>
-              <div style={{ "font-size": "12px", color: "#94a3b8" }}>
-                {C.membership.desc}
-              </div>
+        </header>
+        <div class="public-account-grid">
+          <section class="public-workspace-panel public-account-card">
+            <h2>账户信息</h2>
+            <AccountRow label="账户" value={props.user.user_id} />
+            <AccountRow label="注册时间" value={formatDate(props.user.created_at)} />
+            <AccountRow label="最近登录" value={formatDate(props.user.last_login_at)} />
+            <AccountRow label="访问权限" value={props.user.daily_limit > 0 ? `每日 ${props.user.daily_limit} 次` : "已启用"} />
+          </section>
+          <section>
+            <div class="public-account-actions">
+              <button type="button" class="is-primary" onClick={() => navigate("/chat")}>进入 Agent</button>
+              <button type="button" onClick={() => navigate("/portfolio")}>查看跟踪与财经日历</button>
+              <button type="button" onClick={() => navigate("/community")}>查看洞察</button>
+              <button type="button" class="is-danger" onClick={props.onLogout}>退出登录</button>
             </div>
-          </div>
+            <p class="public-account-note">账户页不展示内部已读状态、运行配置或系统权限。需要修改持仓、提醒和研究偏好时，直接在 Agent 对话中说明即可。</p>
+          </section>
         </div>
       </div>
-    </div>
+    </PublicWorkspaceShell>
   );
 }
 
-// ── PublicMePage ──────────────────────────────────────────────────────────────
 export default function PublicMePage() {
   const navigate = useNavigate();
   const [user, setUser] = createSignal<PublicAuthUserInfo | null>(null);
   const [loading, setLoading] = createSignal(true);
 
-  onMount(async () => {
+  const load = async () => {
+    setLoading(true);
     try {
-      const me = await getPublicAuthMe();
-      setUser(me);
+      setUser(await getPublicAuthMe());
     } catch {
       setUser(null);
     } finally {
       setLoading(false);
     }
-  });
+  };
 
-  const handleLogout = async () => {
+  onMount(() => void load());
+
+  const logout = async () => {
     try {
       await publicLogout();
-    } catch {
-      // ignore
+    } finally {
+      setUser(null);
+      navigate("/chat");
     }
-    setUser(null);
-    navigate("/chat");
   };
 
   return (
-    <div
-      class="pub-page"
-      style={{
-        "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
-        "-webkit-font-smoothing": "antialiased",
-      }}
-    >
-      <PublicNav />
-      <Show
-        when={!loading()}
-        fallback={
-          <div
-            style={{
-              "padding-top": "56px",
-              "min-height": "100vh",
-              background: "#f8fafc",
-              display: "flex",
-              "align-items": "center",
-              "justify-content": "center",
-            }}
-          >
-            <div style={{ "font-size": "13px", color: "#94a3b8" }}>
-              {CONTENT.me.loading}
-            </div>
-          </div>
-        }
-      >
-        <Show when={user()} fallback={<PublicLoginForm onLogin={setUser} />}>
-          {(u) => <LoggedInView user={u()} onLogout={handleLogout} />}
-        </Show>
+    <Show when={!loading()} fallback={<PublicChatStartup title="正在加载个人空间" description="正在确认账户与研究权限。" />}>
+      <Show when={user()} fallback={<PublicLoginForm onLogin={() => void load()} />}>
+        {(currentUser) => <AccountView user={currentUser()} onLogout={logout} />}
       </Show>
-      <PublicFooter />
-    </div>
+    </Show>
   );
 }

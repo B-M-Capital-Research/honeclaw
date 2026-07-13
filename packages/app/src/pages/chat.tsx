@@ -3382,6 +3382,7 @@ export default function PublicChatPage() {
                   userName={workspaceDisplayName()}
                   research={workspaceResearch()}
                   activeMode={workspaceMode()}
+                  activeSection="agent"
                   communityUnread={communityUnread()}
                   onNewResearch={() => {
                     setWorkspaceMode("overview");
@@ -3523,6 +3524,7 @@ export default function PublicChatPage() {
                 </div>
                 <AgentWorkspaceMobileNav
                   activeMode={workspaceMode()}
+                  activeSection="agent"
                   communityUnread={communityUnread()}
                   onInvest={() => navigate("/portfolio")}
                   onInsights={() => navigate("/community")}

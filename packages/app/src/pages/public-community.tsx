@@ -4,6 +4,7 @@ import {
   Match,
   Show,
   Switch,
+  createMemo,
   createSignal,
   onCleanup,
   onMount,
@@ -11,7 +12,7 @@ import {
 import { Portal } from "solid-js/web";
 
 import { PublicLoginForm } from "@/components/public-login-form";
-import { PublicNav } from "@/components/public-nav";
+import { PublicWorkspaceShell } from "@/components/public-workspace-shell";
 import {
   getPublicCommunity,
   getPublicCommunityResourceBlob,
@@ -455,6 +456,14 @@ export default function PublicCommunityPage() {
   const [preview, setPreview] = createSignal<PublicCommunityResource | null>(null);
   const [downloadingResourceId, setDownloadingResourceId] = createSignal<number | null>(null);
   const [downloadError, setDownloadError] = createSignal("");
+  const [query, setQuery] = createSignal("");
+  const filteredItems = createMemo(() => {
+    const normalized = query().trim().toLowerCase();
+    if (!normalized) return items();
+    return items().filter((item) =>
+      `${item.author_name} ${item.body_text}`.toLowerCase().includes(normalized),
+    );
+  });
 
   const load = async (more = false) => {
     if (more) {
@@ -506,7 +515,6 @@ export default function PublicCommunityPage() {
   return (
     <div class="hone-landing-v4 public-community-page">
       <Title>HONE 官方社区</Title>
-      <PublicNav />
       <Show
         when={state() !== "login"}
         fallback={
@@ -517,27 +525,41 @@ export default function PublicCommunityPage() {
           />
         }
       >
-        <main class="public-community-shell">
-          <section class="public-community-hero">
-            <p>HONE COMMUNITY · READ ONLY</p>
-            <h1>HONE 官方社区</h1>
-            <span>投资研究、市场观察与关键资料，按发生时间沉淀。</span>
-          </section>
+        <PublicWorkspaceShell
+          active="insights"
+          communityUnread={false}
+          searchPlaceholder="搜索洞察、公司或主题"
+          onSearch={setQuery}
+        >
+          <div class="public-workspace-inner">
+            <header class="public-workspace-page-heading">
+              <div>
+                <span class="public-workspace-eyebrow">社区研究 · 只读</span>
+                <h1>洞察</h1>
+                <p>来自 HONE 社区的研究判断、市场观察与关键资料，按发生时间连续沉淀。</p>
+              </div>
+              <div class="public-insights-filter" aria-label="洞察筛选">
+                <button type="button" class="is-active">最新</button>
+                <button type="button">持仓相关</button>
+                <button type="button">已保存</button>
+              </div>
+            </header>
+            <main class="public-community-shell">
 
           <Switch>
             <Match when={state() === "loading"}>
-              <div class="public-community-state" role="status">正在加载社区动态…</div>
+              <div class="public-workspace-state" role="status">正在加载洞察…</div>
             </Match>
             <Match when={state() === "error"}>
-              <div class="public-community-state is-error" role="alert">
+              <div class="public-workspace-state is-error" role="alert">
                 <p>{error()}</p>
                 <button type="button" onClick={() => void load()}>重新加载</button>
               </div>
             </Match>
             <Match when={state() === "ready"}>
               <section class="public-community-timeline" aria-label="HONE 官方社区动态">
-                <Show when={items().length > 0} fallback={<div class="public-community-state">社区内容正在整理中。</div>}>
-                  <For each={items()}>
+                <Show when={filteredItems().length > 0} fallback={<div class="public-workspace-state">没有匹配的洞察。</div>}>
+                  <For each={filteredItems()}>
                     {(item) => {
                       const images = item.resources.filter(resourceIsImage);
                       const files = item.resources.filter((resource) => !resourceIsImage(resource));
@@ -647,7 +669,9 @@ export default function PublicCommunityPage() {
               </section>
             </Match>
           </Switch>
-        </main>
+            </main>
+          </div>
+        </PublicWorkspaceShell>
       </Show>
       <Show when={preview()}>
         <CommunityMediaPreview resource={preview()!} onClose={() => setPreview(null)} />
