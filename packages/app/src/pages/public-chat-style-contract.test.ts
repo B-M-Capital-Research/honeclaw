@@ -64,6 +64,12 @@ describe("public chat visual contract", () => {
       "height: calc(52px + env(safe-area-inset-bottom, 0px))",
     );
     expect(workspaceCss).toContain("width: 42px; height: 42px");
+    expect(workspaceCss).toContain(
+      ".public-chat-page.public-chat-page--ready .public-chat-composer",
+    );
+    expect(css).not.toContain(
+      ".public-chat-page .public-chat-composer {\n    padding-bottom: calc(76px",
+    );
   });
 
   it("restores inside the chat shell and exposes mobile conversation history", () => {

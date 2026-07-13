@@ -245,7 +245,7 @@
   .agent-workspace-mobile-events strong { font-size: 14px; }
   .agent-workspace-mobile-events small { margin-top: 5px; color: #8b8e89; font-size: 11px; }
   .public-chat-page--ready .public-chat-composer-dock { position: fixed !important; z-index: 42; right: 0; bottom: calc(52px + env(safe-area-inset-bottom, 0px)); left: 0; background: linear-gradient(180deg, transparent, #fff 18%); }
-  .public-chat-page--ready .public-chat-composer { padding: 4px 20px 0 !important; }
+  .public-chat-page.public-chat-page--ready .public-chat-composer { padding: 4px 20px 0 !important; }
   .public-chat-page--ready .agent-workspace-overview-scroll,
   .public-chat-page--ready .public-chat-messages { padding-bottom: 104px !important; }
   .public-chat-page--ready .public-chat-proactive-tip-wrap { justify-content: flex-start !important; overflow-x: auto; padding: 0 1px 2px; scrollbar-width: none; }
@@ -262,7 +262,7 @@
   .agent-workspace-overview { padding-right: 16px; padding-left: 16px; }
   .agent-workspace-quick-grid { margin-right: -16px; padding-right: 16px; }
   .agent-workspace-quick-grid > button { min-width: 86%; }
-  .public-chat-page--ready .public-chat-composer { padding-right: 14px !important; padding-left: 14px !important; }
+  .public-chat-page.public-chat-page--ready .public-chat-composer { padding-right: 14px !important; padding-left: 14px !important; }
 }
 
 @media (prefers-reduced-motion: reduce) {

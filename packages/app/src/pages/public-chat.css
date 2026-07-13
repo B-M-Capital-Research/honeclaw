@@ -2688,10 +2688,6 @@ body.public-chat-scroll-lock #root {
     padding-bottom: calc(76px + env(safe-area-inset-bottom)) !important;
   }
 
-  .public-chat-page .public-chat-composer {
-    padding-bottom: calc(76px + env(safe-area-inset-bottom)) !important;
-  }
-
   [data-theme="dark"] .public-chat-page .pub-mobile-tabs {
     border-color: rgba(255, 255, 255, 0.1);
     background: rgba(43, 43, 43, 0.96);
