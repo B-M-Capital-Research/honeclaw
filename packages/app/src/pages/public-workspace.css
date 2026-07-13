@@ -135,8 +135,8 @@
 .public-account-note { margin-top: 16px; padding: 16px; border-radius: 12px; background: #f7f7f5; color: #777b76; font-size: 11px; line-height: 1.6; }
 
 @media (max-width: 820px) {
-  .public-workspace-page { padding: 0 !important; }
-  .public-workspace-stage { padding-bottom: calc(44px + env(safe-area-inset-bottom, 0px)); }
+  .public-workspace-page { --agent-mobile-safe-bottom: env(safe-area-inset-bottom, 0px); padding: 0 !important; }
+  .public-workspace-stage { padding-bottom: calc(44px + var(--agent-mobile-safe-bottom)); }
   .public-workspace-content { padding-top: calc(66px + env(safe-area-inset-top, 0px)); }
   .public-workspace-inner { width: 100%; padding: 24px 16px 46px; }
   .public-workspace-page-heading { align-items: flex-start; margin-bottom: 22px; }
@@ -161,4 +161,8 @@
   .public-tracking-agenda strong { font-size: 13px; }
   .public-tracking-agenda small { margin-top: 5px; color: #8b8e89; font-size: 11px; line-height: 1.45; }
   .public-account-grid { grid-template-columns: 1fr; }
+}
+
+@media (display-mode: browser) and (max-width: 820px) {
+  .public-workspace-page { --agent-mobile-safe-bottom: 0px; }
 }
