@@ -163,7 +163,9 @@
 .agent-workspace-rail-empty { justify-content: flex-start !important; color: #6d716c !important; }
 .agent-workspace-saved-list p { margin: 0; padding: 13px; color: #a1a39f; font-size: 10px; line-height: 1.5; }
 
-.agent-workspace-mobile-header,.agent-workspace-mobile-nav { display: none; }
+.agent-workspace-mobile-header,.agent-workspace-mobile-nav,.agent-workspace-history-drawer,.agent-workspace-history-backdrop { display: none; }
+.agent-workspace-restore-notice { display: flex; align-items: center; justify-content: center; gap: 12px; position: fixed; z-index: 48; top: 56px; left: 50%; padding: 9px 12px; border: 1px solid #ead8ca; border-radius: 10px; background: rgba(255,250,246,.96); color: #68594f; box-shadow: 0 8px 24px rgba(30,25,20,.08); transform: translateX(-50%); font-size: 11px; }
+.agent-workspace-restore-notice button { padding: 4px 8px; border: 0; border-radius: 7px; background: #191b19; color: #fff; cursor: pointer; font: inherit; font-weight: 700; }
 .public-chat-page--ready .public-chat-composer { padding: 10px 24px 18px !important; background: #fff !important; }
 .public-chat-page--ready .public-chat-composer-box { border: 1px solid var(--agent-line) !important; border-radius: 15px !important; box-shadow: 0 5px 18px rgba(20,22,20,.05) !important; }
 .public-chat-page--ready .public-chat-proactive-tip-wrap { width: min(900px, 100%); margin: 0 auto 7px; }
@@ -190,7 +192,25 @@
   .agent-workspace-mobile-header > div { display: flex; align-items: center; gap: 13px; }
   .agent-workspace-mobile-header button { width: 36px; height: 36px; display: grid; place-items: center; position: relative; padding: 0; border: 0; background: transparent; color: #252825; cursor: pointer; }
   .agent-workspace-mobile-header button i { width: 7px; height: 7px; position: absolute; top: 5px; right: 4px; border: 1px solid #fff; border-radius: 50%; background: #f04f3d; }
+  .agent-workspace-mobile-header .agent-workspace-mobile-history-trigger > span { min-width: 15px; height: 15px; display: grid; place-items: center; position: absolute; top: 1px; right: -2px; padding: 0 4px; border: 2px solid #fff; border-radius: 999px; background: #171917; color: #fff; font-size: 8px; font-weight: 750; line-height: 1; }
   .agent-workspace-mobile-header .agent-workspace-mobile-avatar { border: 1px solid #dfe0dc; border-radius: 50%; background: #f5f5f3; font-size: 13px; font-weight: 700; }
+  .agent-workspace-history-backdrop { display: block; position: fixed; z-index: 58; inset: 0; background: rgba(18,20,18,.2); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); animation: agent-history-fade .18s ease-out; }
+  .agent-workspace-history-drawer { width: min(88vw, 360px); max-height: min(72dvh, 620px); display: flex; flex-direction: column; position: fixed; z-index: 59; top: calc(58px + env(safe-area-inset-top, 0px)); right: 10px; overflow: hidden; border: 1px solid #e0e1dd; border-radius: 20px; background: #fff; box-shadow: 0 24px 70px rgba(23,25,23,.18); animation: agent-history-enter .2s cubic-bezier(.2,.75,.25,1); }
+  .agent-workspace-history-drawer > header { display: flex; align-items: center; justify-content: space-between; padding: 18px 18px 14px; border-bottom: 1px solid var(--agent-line); }
+  .agent-workspace-history-drawer > header strong,.agent-workspace-history-drawer > header span { display: block; }
+  .agent-workspace-history-drawer > header strong { color: #171917; font-size: 17px; letter-spacing: -.03em; }
+  .agent-workspace-history-drawer > header span { margin-top: 3px; color: #979a95; font-size: 10px; }
+  .agent-workspace-history-drawer > header button { width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: #f4f4f2; color: #555955; cursor: pointer; font-size: 22px; line-height: 1; }
+  .agent-workspace-history-drawer-list { min-height: 0; max-height: calc(72dvh - 150px); overflow-y: auto; padding: 7px; }
+  .agent-workspace-history-drawer-list > p { margin: 0; padding: 34px 18px; color: #979a95; font-size: 12px; line-height: 1.6; text-align: center; }
+  .agent-workspace-history-drawer-list > button { width: 100%; min-height: 58px; display: grid; grid-template-columns: 26px minmax(0,1fr) auto; align-items: center; gap: 9px; padding: 9px 10px; border: 0; border-radius: 12px; background: transparent; color: #242724; cursor: pointer; text-align: left; }
+  .agent-workspace-history-drawer-list > button:active { background: #f3f3f0; }
+  .agent-workspace-history-drawer-list > button > span { color: #aaada8; font-size: 9px; font-variant-numeric: tabular-nums; }
+  .agent-workspace-history-drawer-list > button > strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 620; }
+  .agent-workspace-history-drawer-list > button > svg { color: #a0a39e; }
+  .agent-workspace-history-more { margin: 7px; padding: 11px; border: 1px solid var(--agent-line); border-radius: 11px; background: #fafaf8; color: #626661; cursor: pointer; font-size: 11px; font-weight: 650; }
+  .agent-workspace-history-more:disabled { cursor: wait; opacity: .65; }
+  .agent-workspace-restore-notice { width: calc(100% - 28px); top: calc(70px + env(safe-area-inset-top, 0px)); justify-content: space-between; }
   .agent-workspace-mobile-nav { height: calc(60px + env(safe-area-inset-bottom, 0px)); display: grid; grid-template-columns: repeat(5,1fr); align-items: start; padding: 4px 6px env(safe-area-inset-bottom, 0px); position: fixed; z-index: 50; right: 0; bottom: 0; left: 0; border-top: 1px solid var(--agent-line); background: rgba(255,255,255,.96); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
   .agent-workspace-mobile-nav button { min-width: 0; height: 48px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; position: relative; padding: 0; border: 0; background: transparent; color: #747873; cursor: pointer; font-size: 9.5px; }
   .agent-workspace-mobile-nav button.is-agent { color: #111; font-weight: 700; }
@@ -234,6 +254,9 @@
   .public-chat-page--ready .public-chat-composer-box { border-radius: 20px !important; }
   .public-chat-page--ready .public-chat-messages { padding-top: 14px !important; }
 }
+
+@keyframes agent-history-fade { from { opacity: 0; } }
+@keyframes agent-history-enter { from { opacity: 0; transform: translateY(-8px) scale(.98); } }
 
 @media (max-width: 430px) {
   .agent-workspace-overview { padding-right: 16px; padding-left: 16px; }

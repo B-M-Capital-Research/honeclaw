@@ -19,8 +19,8 @@ import { useNavigate } from "@solidjs/router";
 import { PublicLoginForm } from "@/components/public-login-form";
 import { PublicNav } from "@/components/public-nav";
 import { ChatShareModal } from "@/components/chat-share-modal";
-import { PublicChatStartup } from "@/components/public-chat-startup";
 import {
+  AgentWorkspaceHistoryDrawer,
   AgentWorkspaceMobileHeader,
   AgentWorkspaceMobileNav,
   AgentWorkspaceOverview,
@@ -409,47 +409,6 @@ function restoreErrorMessage(error: unknown) {
   }
   if (error instanceof Error && error.message.trim()) return error.message;
   return CONTENT.chat_page.restoring.generic_reason;
-}
-
-function LoadingCard(props: {
-  status?: RestoreSessionStatus | null;
-  onRetry?: () => void;
-}) {
-  const title = () =>
-    props.status?.mode === "failed"
-      ? CONTENT.chat_page.restoring.failed_title
-      : CONTENT.chat_page.restoring.title;
-  const desc = () => {
-    const status = props.status;
-    if (!status || status.mode === "loading") {
-      return CONTENT.chat_page.restoring.desc;
-    }
-    if (status.mode === "retrying") {
-      return CONTENT.chat_page.restoring.retrying.replace(
-        "{attempt}",
-        String(status.attempt),
-      );
-    }
-    return CONTENT.chat_page.restoring.failed_desc;
-  };
-
-  const reason = () =>
-    props.status?.mode === "failed" && props.status.message
-      ? `${desc()} ${CONTENT.chat_page.restoring.reason_prefix.replace(
-          "{message}",
-          props.status.message,
-        )}`
-      : desc();
-
-  return (
-    <PublicChatStartup
-      failed={props.status?.mode === "failed"}
-      title={title()}
-      description={reason()}
-      onRetry={props.onRetry}
-      retryLabel={CONTENT.chat_page.restoring.retry_button}
-    />
-  );
 }
 
 function assistantMarkdownClass(white = false) {
@@ -2387,7 +2346,8 @@ export default function PublicChatPage() {
   const [communityUnread, setCommunityUnread] = createSignal(false);
   const [workspaceMode, setWorkspaceMode] = createSignal<
     "overview" | "conversation"
-  >("overview");
+  >("conversation");
+  const [historyDrawerOpen, setHistoryDrawerOpen] = createSignal(false);
   const [workspaceSearch, setWorkspaceSearch] = createSignal("");
   const [workspaceCommunity, setWorkspaceCommunity] = createSignal<
     PublicCommunityContent[]
@@ -2647,11 +2607,11 @@ export default function PublicChatPage() {
     });
 
   const loadOlderMessages = async () => {
-    if (!scrollRef || !hasOlderMessages() || loadingOlderMessages()) return;
+    if (!hasOlderMessages() || loadingOlderMessages()) return;
     const before = historyNextBefore();
     if (before === undefined) return;
-    const previousScrollHeight = scrollRef.scrollHeight;
-    const previousScrollTop = scrollRef.scrollTop;
+    const previousScrollHeight = scrollRef?.scrollHeight;
+    const previousScrollTop = scrollRef?.scrollTop;
     setLoadingOlderMessages(true);
     try {
       const page = await getPublicHistory(before);
@@ -2662,7 +2622,7 @@ export default function PublicChatPage() {
         setHistoryNextBefore(page.next_before ?? undefined);
       });
       requestAnimationFrame(() => {
-        if (scrollRef) {
+        if (scrollRef && previousScrollHeight !== undefined && previousScrollTop !== undefined) {
           suppressScrollUntil = Date.now() + 180;
           scrollRef.scrollTop =
             previousScrollTop + (scrollRef.scrollHeight - previousScrollHeight);
@@ -2803,6 +2763,7 @@ export default function PublicChatPage() {
   };
 
   const openWorkspaceResearch = (id: string) => {
+    setHistoryDrawerOpen(false);
     setWorkspaceMode("conversation");
     requestAnimationFrame(() => scrollToMessage(id));
   };
@@ -2903,6 +2864,9 @@ export default function PublicChatPage() {
         );
         setAuthState("ready");
         setRestoreStatus(null);
+        if (options.resetWindow) {
+          setWorkspaceMode(merged.messages.length > 0 ? "conversation" : "overview");
+        }
       });
       void refreshCommunityUnread();
       if (shouldKeepBottom) {
@@ -3298,7 +3262,7 @@ export default function PublicChatPage() {
 
   return (
     <div
-      class={`hone-landing-v4 public-chat-page public-chat-page--${authState()}`}
+      class={`hone-landing-v4 public-chat-page public-chat-page--${authState()} ${authState() !== "logged_out" ? "public-chat-page--ready" : ""}`}
       style={{ height: "100dvh", display: "flex", "flex-direction": "column" }}
     >
       <AnimatedBackground />
@@ -3343,40 +3307,12 @@ export default function PublicChatPage() {
       </Show>
 
       <Switch>
-        <Match when={authState() === "loading"}>
-          <LoadingCard
-            status={restoreStatus()}
-            onRetry={() =>
-              restoreSession({
-                resetWindow: true,
-                retryOnFailure: true,
-                attempt: 1,
-              })
-            }
-          />
-        </Match>
         <Match when={authState() === "logged_out"}>
           <PublicLoginForm
             onLogin={() => restoreSession({ resetWindow: true })}
           />
         </Match>
-        <Match when={authState() === "ready"}>
-          <Show
-            when={currentUser()}
-            fallback={
-              <LoadingCard
-                status={restoreStatus()}
-                onRetry={() =>
-                  restoreSession({
-                    resetWindow: true,
-                    retryOnFailure: true,
-                    attempt: 1,
-                  })
-                }
-              />
-            }
-          >
-            {(_user) => (
+        <Match when={authState() !== "logged_out"}>
               <>
                 <AgentWorkspaceSidebar
                   userName={workspaceDisplayName()}
@@ -3405,9 +3341,17 @@ export default function PublicChatPage() {
                   <AgentWorkspaceMobileHeader
                     userName={workspaceDisplayName()}
                     unreadPushCount={pushUnreadCount()}
+                    historyCount={workspaceResearch().length}
+                    onHistory={() => setHistoryDrawerOpen(true)}
                     onPushes={openPushCenter}
                     onAccount={() => navigate("/me")}
                   />
+                  <Show when={restoreStatus()?.mode === "failed"}>
+                    <div class="agent-workspace-restore-notice" role="status">
+                      <span>会话暂时未同步，你仍可查看当前页面。</span>
+                      <button type="button" onClick={() => restoreSession({ resetWindow: true, retryOnFailure: true, attempt: 1 })}>重新连接</button>
+                    </div>
+                  </Show>
                   <div class="agent-workspace-body">
                     <div
                       class={`public-chat-shell ${workspaceMode() === "overview" ? "is-overview" : "is-conversation"}`}
@@ -3532,9 +3476,16 @@ export default function PublicChatPage() {
                   onTracking={openWorkspaceTracking}
                   onAccount={() => navigate("/me")}
                 />
+                <AgentWorkspaceHistoryDrawer
+                  open={historyDrawerOpen()}
+                  research={workspaceResearch()}
+                  hasOlder={hasOlderMessages()}
+                  loadingOlder={loadingOlderMessages()}
+                  onClose={() => setHistoryDrawerOpen(false)}
+                  onSelectResearch={openWorkspaceResearch}
+                  onLoadOlder={() => void loadOlderMessages()}
+                />
               </>
-            )}
-          </Show>
         </Match>
       </Switch>
 

@@ -66,6 +66,16 @@ describe("public chat visual contract", () => {
     expect(workspaceCss).toContain("width: 46px; height: 46px");
   });
 
+  it("restores inside the chat shell and exposes mobile conversation history", () => {
+    expect(chat).not.toContain('<Match when={authState() === "loading"}>');
+    expect(chat).toContain('>("conversation")');
+    expect(chat).toContain("merged.messages.length > 0 ? \"conversation\" : \"overview\"");
+    expect(chat).toContain("<AgentWorkspaceHistoryDrawer");
+    expect(workspace).toContain('aria-label="会话历史"');
+    expect(workspaceCss).toContain("agent-workspace-history-drawer");
+    expect(workspaceCss).toContain("agent-workspace-restore-notice");
+  });
+
   it("keeps quick actions on a horizontally scrollable mobile line", () => {
     expect(css).toContain("flex-wrap: nowrap !important");
     expect(css).toContain("overflow-x: auto !important");

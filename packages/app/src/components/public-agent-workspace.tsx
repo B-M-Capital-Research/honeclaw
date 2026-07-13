@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Match, Show, Switch } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js";
 import { HoneBrand } from "@/components/hone-brand";
 import type {
   AgentWorkspaceEvent,
@@ -276,14 +276,63 @@ export function AgentWorkspaceRightRail(props: {
 export function AgentWorkspaceMobileHeader(props: {
   userName: string;
   unreadPushCount: number;
+  historyCount?: number;
   onPushes: () => void;
+  onHistory?: () => void;
   onAccount: () => void;
 }) {
   const avatar = () =>
     props.userName === "HONE 用户" || props.userName.startsWith("用户 ")
       ? "H"
       : props.userName.slice(-1);
-  return <header class="agent-workspace-mobile-header"><HoneBrand /><div><button type="button" onClick={props.onPushes} aria-label="通知"><AgentWorkspaceIcon name="bell" /><Show when={props.unreadPushCount > 0}><i /></Show></button><button type="button" onClick={props.onAccount} class="agent-workspace-mobile-avatar">{avatar()}</button></div></header>;
+  return <header class="agent-workspace-mobile-header"><HoneBrand /><div><Show when={props.onHistory}>{(onHistory) => <button type="button" onClick={onHistory()} aria-label="会话历史" class="agent-workspace-mobile-history-trigger"><AgentWorkspaceIcon name="history" /><Show when={(props.historyCount ?? 0) > 0}><span>{Math.min(props.historyCount ?? 0, 99)}</span></Show></button>}</Show><button type="button" onClick={props.onPushes} aria-label="通知"><AgentWorkspaceIcon name="bell" /><Show when={props.unreadPushCount > 0}><i /></Show></button><button type="button" onClick={props.onAccount} class="agent-workspace-mobile-avatar">{avatar()}</button></div></header>;
+}
+
+export function AgentWorkspaceHistoryDrawer(props: {
+  open: boolean;
+  research: ResearchItem[];
+  hasOlder: boolean;
+  loadingOlder: boolean;
+  onClose: () => void;
+  onSelectResearch: (id: string) => void;
+  onLoadOlder: () => void;
+}) {
+  createEffect(() => {
+    if (!props.open) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") props.onClose();
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    onCleanup(() => document.removeEventListener("keydown", closeOnEscape));
+  });
+
+  return (
+    <Show when={props.open}>
+      <div class="agent-workspace-history-backdrop" onClick={props.onClose} />
+      <aside class="agent-workspace-history-drawer" aria-label="会话历史" aria-modal="true" role="dialog">
+        <header>
+          <div><strong>会话历史</strong><span>最近的研究与提问</span></div>
+          <button type="button" onClick={props.onClose} aria-label="关闭会话历史">×</button>
+        </header>
+        <div class="agent-workspace-history-drawer-list">
+          <Show when={props.research.length > 0} fallback={<p>开始对话后，历史记录会出现在这里。</p>}>
+            <For each={props.research}>{(item, index) => (
+              <button type="button" onClick={() => props.onSelectResearch(item.id)}>
+                <span>{String(index() + 1).padStart(2, "0")}</span>
+                <strong>{item.title}</strong>
+                <AgentWorkspaceIcon name="arrow" size={16} />
+              </button>
+            )}</For>
+          </Show>
+        </div>
+        <Show when={props.hasOlder}>
+          <button type="button" class="agent-workspace-history-more" disabled={props.loadingOlder} onClick={props.onLoadOlder}>
+            {props.loadingOlder ? "正在加载…" : "加载更早记录"}
+          </button>
+        </Show>
+      </aside>
+    </Show>
+  );
 }
 
 export function AgentWorkspaceMobileNav(props: {
