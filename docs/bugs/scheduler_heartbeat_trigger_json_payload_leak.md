@@ -7,6 +7,16 @@
 
 ## 最新进展
 
+- `2026-07-13 11:04-15:01 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-13`
+    - 12:00 / 12:30 / 13:30 / 14:00 / 14:30 / 15:00 CST `小米30港元破位预警` 多次生成以 fenced JSON 开头的 `deliver_preview`，包含 `"status": "triggered"`、`"triggered"`、`"symbol": "1810.HK"`、`"condition": "现价 ≤ 30 港元"`、`"current_price"` 等结构化协议字段。
+    - 15:00 CST `全天原油价格3小时播报` `parse_kind=JsonTriggered`，自然语言价格播报后继续拼入 `",\n      "attribution_...` 结构化字段残片。
+  - 会话质量对照：
+    - 同窗 `data/sessions.sqlite3` 有 3 个 user turn / 3 条 assistant final，未见 JSON 或 fenced block 污染进入 direct / scheduler assistant final。
+  - 判断：
+    - 最新样本仍是 heartbeat 出站格式化退化；不是新的独立根因。
+    - 当前没有错投、全渠道不可用或数据安全证据；主要伤害是出站预览和潜在用户可见提醒的结构 / 格式质量，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-13 07:00-11:01 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-13`
     - 10:30 CST `小米30港元破位预警`

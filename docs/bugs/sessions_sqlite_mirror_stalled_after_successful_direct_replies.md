@@ -6,6 +6,12 @@
 - **状态**: New
 - **GitHub Issue**: 无
 - **修复结论复核**:
+- `2026-07-13 15:01 CST` 运行态部分复发继续存在，状态维持 `New`：
+  - `data/sessions.sqlite3` 在 11:04-15:01 CST 按真实 `timestamp` 新增 3 个 user turn 与 3 条 assistant final；Feishu direct、Feishu scheduler 与 Web direct 均有 assistant 终态。
+  - 同窗 assistant final 污染扫描未命中空回复、`<think>`、本机路径、provider 原始错误、panic、quota、原始工具 JSON 或结构化 JSON 外泄。
+  - 但同一库 `cron_job_runs` 查询 `executed_at >= 2026-07-13T11:04:00` 仍为 0，`max(executed_at)` 仍停在 `2026-07-10T14:01:27.621121+08:00`。
+  - `data/runtime/logs/web.log.2026-07-13` 在 11:04-15:01 CST 持续记录 heartbeat `run_start` / `run_finish` / `parse_kind` / `deliver_preview` / duplicate suppression 等真实运行态信号，说明当前不是 runtime 完全停摆。
+  - 结论：会话 transcript mirror 继续追入真实窗口，但本地调度运行台账 `cron_job_runs` 仍未随真实 scheduler / heartbeat 运行态推进。它影响缺陷巡检、调度审计、补发判断和运行态复核，属于功能性可观测性缺陷，严重等级维持 `P2`；当前用户态消息仍在生成，不等同于 scheduler 全局漏跑 P1，非 P1，不创建 GitHub Issue。
 - `2026-07-13 11:04 CST` 运行态部分复发，状态从 `Fixed` 回退为 `New`：
   - `data/sessions.sqlite3` 在 07:00-10:30 CST 按真实 `timestamp` 新增 27 个 user turn 与 27 条 assistant final；Feishu / Web / Discord scheduler 与 1 条 Web direct 均有 assistant 终态。
   - 同窗 assistant final 污染扫描未命中空回复、`<think>`、本机路径、provider 原始错误、panic、原始工具 JSON 或结构化 JSON 外泄；仅 09:01 CST `核心观察池早间简报` 命中 `data_fetch` 用户态工具名，另归入 `feishu_scheduler_data_fetch_tool_name_exposed.md`。

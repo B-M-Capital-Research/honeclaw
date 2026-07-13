@@ -8,6 +8,17 @@
 
 ## 最新进展
 
+- 本轮 `2026-07-13 11:04-15:01 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-13`
+    - 11:30 CST `Monitor_Watchlist_11` deliver preview 把当前检查时间写成 `2026 年 4 月 4 日 23:10`，同时输出 MU `$979.30` 等行情锚。
+    - 12:00 / 13:00 / 14:00 / 15:00 CST 多条 Feishu heartbeat 仍把实际中午到下午窗口写成 `2026-07-13 北京时间 23:47`、`23:30` 或 `23:50`。
+    - 多条 Web heartbeat 把实际周一北京时间 13:00-15:00 窗口写成 `美东 2026-07-12 周日/周六深夜` 或 `美国独立日假期休市`。
+  - 会话质量对照：
+    - 同窗 `data/sessions.sqlite3` 有 3 个 user turn / 3 条 assistant final，均正常收口；未见时间口径错误进入普通 assistant final。
+  - 判断：
+    - 最新样本仍是 heartbeat 运行态时间上下文漂移，未形成新的普通 scheduler / direct 独立链路。
+    - 该问题影响 heartbeat 提醒可信度和行情新鲜度判断，状态维持 `New/P3`；非 P1，不创建 GitHub Issue。
+
 - 本轮 `2026-07-13 07:00-11:01 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-13`
     - 07:00-11:01 CST 多条 heartbeat raw / deliver preview 继续出现与实际上午执行窗口不一致的时间 / 交易日口径。

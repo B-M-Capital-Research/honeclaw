@@ -18,6 +18,16 @@
 
 ## 修复进展
 
+- `2026-07-13 11:04-15:01 CST` 运行态复核确认同一链路继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-13`
+    - 12:30 CST `中际旭创关键事件心跳提醒` 已作为 heartbeat job 周期触发，但 deliver preview 写出“我无法建立每30分钟自动循环执行的监控任务”，并把替代方案写成“你现在发一句查一下中际旭创”。
+    - 14:30 CST `SIVE POET/Nokia/1.6T DFB 心跳检测` 同样已经周期触发，但 deliver preview 写出“我无法创建定时心跳任务、循环监控或自动推送流水线”。
+  - 会话质量对照：
+    - 同窗 `data/sessions.sqlite3` 只有 3 组 user / assistant direct 或 scheduler final，均正常收口；本地 `cron_job_runs` 仍停滞，因此继续以 runtime web log 判断 heartbeat 运行态。
+  - 判断：
+    - 该复发仍是同一根因链路：已创建 heartbeat job 的执行意图被“创建/设置自动监控”请求语义污染。
+    - 这是功能性监控链路缺陷，定级仍为 P2；当前证据覆盖 heartbeat 子链路，未见全渠道停摆、错对象投递、数据安全泄露或 P1 级全局任务丢失，因此不升级为 P1，不创建 GitHub Issue。
+
 - `2026-07-12 15:01 CST` 运行态复核确认同一链路继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-12`
     - 12:00 CST `美股黄金坑信号心跳检测` 已作为 heartbeat job 被 scheduler 周期触发，但 raw preview 仍把任务理解为“用户要求每 30 分钟监控，我不能创建自动化任务”，而不是执行已存在的监控判断。

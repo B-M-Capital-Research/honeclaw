@@ -22,6 +22,13 @@ New
 
 ## 修复记录
 
+- 2026-07-13 15:01 CST 补充同根复发证据，状态维持 `New`：
+  - 11:04-15:01 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 3 个 user turn 与 3 条 assistant final，Feishu direct、Feishu scheduler 与 Web direct 均以 assistant 收口。
+  - 12:17 CST Web direct session `Actor_web__direct__web-user-e05f5e5f74a3` 中，用户询问“今天海力士怎么了，怎么07709跌了这么多，Sk Hynix本身什么情况，会带动这个存储一起走下坡路么”。
+  - 该 assistant row 的 `metadata_json` 为空，没有可审计 `assistant.tool_calls`；未留下本轮网页、行情、公告或媒体来源核验工具结果。
+  - final 先说 `07709` 需要确认具体标的，但随后直接按 SK Hynix 展开，输出 `7 月 10 日在韩国 IPO`、发行价、上市首日高点、HBM 竞争、PE `8-10` 倍和“分批买比一次性梭哈更合理”等强时效金融判断。
+  - 回复正常收口且未见错投、投递失败或内部实现外露；问题在于强时效金融来源 / 行情核验不可审计，并且在标的仍未确认时继续给出交易动作建议。因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-07-10 11:02 CST 补充同根复发证据，状态维持 `New`：
   - 07:01-11:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 18 个 user turn 与 19 条 assistant final，Feishu / Discord direct 与 scheduler 会话均已 assistant 收口；普通 scheduler 18 条均为 `completed + sent + delivered=1`。
   - 08:31 CST Feishu session `Actor_feishu__direct__ou_5f44eaaa05cec98860b5336c3bddcc22d1` 的 assistant `metadata_json` 为空，没有可审计 `assistant.tool_calls`，但 final 输出 Brent、XAU/USD、VIX、10Y / 30Y 美债、Fed Rate Monitor 概率、CAPE、巴菲特指标等强时效市场数字和动作建议。

@@ -22,6 +22,18 @@
 
 ## 最新进展
 
+- 本轮 2026-07-13 11:04-15:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `session_messages`
+    - 11:04-15:01 CST 新增 3 个 user turn / 3 条 assistant final，均正常成对收口；本窗未确认新的普通 direct / scheduler final 正式输出异常行情。
+    - assistant final 污染扫描未确认空回复、内部字段、原始工具 JSON 或投递失败。
+  - `data/runtime/logs/web.log.2026-07-13`
+    - 11:30 / 13:00 CST `Monitor_Watchlist_11` deliver preview 继续使用 `MU $979.30` 等异常数量级价格作为阈值判断锚点。
+    - 12:00 / 13:30 / 15:00 CST `闪迪关键事件心跳提醒` deliver preview 继续使用 `SNDK $1,915.92`、市值约 `$2,837亿` 等高风险行情锚。
+    - 11:00-15:00 CST 多条 heartbeat preview 继续使用 `SPY $754.95`、`AAOI $119.92`、`MRVL $235.81`、`NBIS $219.65`、`STX $910.34` 等高风险行情锚进入判断。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check 缺口：异常或高风险数量级价格进入 heartbeat 判断上下文和部分 deliver preview。
+    - 本窗没有新的正式普通 final 异常价格样本，也未阻断直聊 / 调度 / 投递主链路；因此仍按质量性 `P3 / New`。该问题不影响主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-13 07:00-11:01 CST 真实运行态继续出现同根异常价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `session_messages`
     - 07:00-10:30 CST 新增 27 个 user turn / 27 条 assistant final，均正常成对收口；本窗新回退的 `cron_job_runs` 台账滞后问题独立于行情 sanity check。
