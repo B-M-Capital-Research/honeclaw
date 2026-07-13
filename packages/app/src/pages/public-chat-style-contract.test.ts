@@ -55,6 +55,17 @@ describe("public chat visual contract", () => {
     expect(css).toContain('[data-theme="dark"] .public-chat-page .pub-mobile-tabs');
   });
 
+  it("docks the mobile composer directly above the compact workspace tabs", () => {
+    expect(chat).toContain('class="public-chat-composer-dock"');
+    expect(workspaceCss).toContain(
+      "bottom: calc(60px + env(safe-area-inset-bottom, 0px))",
+    );
+    expect(workspaceCss).toContain(
+      "height: calc(60px + env(safe-area-inset-bottom, 0px))",
+    );
+    expect(workspaceCss).toContain("width: 46px; height: 46px");
+  });
+
   it("keeps quick actions on a horizontally scrollable mobile line", () => {
     expect(css).toContain("flex-wrap: nowrap !important");
     expect(css).toContain("overflow-x: auto !important");

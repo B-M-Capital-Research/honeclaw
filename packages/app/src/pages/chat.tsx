@@ -3481,7 +3481,7 @@ export default function PublicChatPage() {
                           />
                         </div>
                       </Show>
-                      <div style={{ position: "relative" }}>
+                      <div class="public-chat-composer-dock" style={{ position: "relative" }}>
                         <Show when={workspaceMode() === "conversation" && awayFromBottom()}>
                           <button type="button" class="public-chat-scroll-down" aria-label={CONTENT.chat_page.actions.scroll_to_bottom_aria} title={CONTENT.chat_page.actions.scroll_to_bottom_aria} onClick={settleAtBottom}>
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M19 12l-7 7-7-7" /></svg>
