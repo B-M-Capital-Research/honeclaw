@@ -120,4 +120,17 @@ describe("public chat visual contract", () => {
     expect(css).toContain("grid-template-rows: auto minmax(0, 1fr)");
     expect(css).toContain(".public-chat-calendar-modal-body {\n  min-height: 0;");
   });
+
+  it("keeps the desktop composer inside the workspace viewport", () => {
+    expect(css).not.toContain(
+      ".public-chat-page--ready .public-chat-shell {\n    height: 100dvh !important",
+    );
+    expect(workspaceCss).toContain(
+      ".public-chat-page.public-chat-page--ready .agent-workspace-body > .public-chat-shell",
+    );
+    expect(workspaceCss).toContain("height: 100% !important; max-height: 100%");
+    expect(workspaceCss).toContain(
+      ".agent-workspace-body { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(520px, 1fr) 270px; overflow: hidden; }",
+    );
+  });
 });

@@ -99,15 +99,15 @@
 .agent-workspace-logout { padding: 5px; border: 0; background: transparent; color: #a1a39f; cursor: pointer; font-size: 10px; }
 .agent-workspace-logout:hover { color: #111; }
 
-.agent-workspace-stage { min-width: 0; height: 100dvh; flex: 1; display: flex; flex-direction: column; background: #fff; }
+.agent-workspace-stage { min-width: 0; height: 100dvh; flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #fff; }
 .agent-workspace-topbar { height: 56px; flex: 0 0 56px; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; border-bottom: 1px solid var(--agent-line); color: #92958f; font-size: 11px; }
 .agent-workspace-topbar-actions { display: flex; align-items: center; gap: 8px; }
 .agent-workspace-topbar label { width: min(280px, 23vw); height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 11px; border: 1px solid var(--agent-line); border-radius: 10px; background: #fff; }
 .agent-workspace-topbar input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 11px; color: var(--agent-ink); }
 .agent-workspace-topbar-actions > button { width: 34px; height: 34px; display: grid; place-items: center; position: relative; border: 1px solid var(--agent-line); border-radius: 10px; background: #fff; color: #4d514d; cursor: pointer; }
 .agent-workspace-topbar-actions > button i { width: 6px; height: 6px; position: absolute; top: 6px; right: 6px; border: 1px solid #fff; border-radius: 50%; background: #f04f3d; }
-.agent-workspace-body { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(520px, 1fr) 270px; }
-.public-chat-page--ready .public-chat-shell { height: auto !important; min-width: 0; min-height: 0; padding: 0 !important; background: #fff !important; }
+.agent-workspace-body { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(520px, 1fr) 270px; overflow: hidden; }
+.public-chat-page.public-chat-page--ready .agent-workspace-body > .public-chat-shell { width: 100%; height: 100% !important; max-height: 100%; min-width: 0; min-height: 0; overflow: hidden; padding: 0 !important; background: #fff !important; }
 .public-chat-page--ready .public-chat-shell.is-overview { display: flex; flex-direction: column; }
 .agent-workspace-overview-scroll { min-height: 0; flex: 1; overflow: auto; }
 .agent-workspace-overview { width: min(760px, calc(100% - 52px)); margin: 0 auto; padding: 27px 0 24px; }

@@ -225,8 +225,6 @@ body.public-chat-scroll-lock #root {
     display: none !important;
   }
   .public-chat-page--ready .public-chat-shell {
-    height: 100dvh !important;
-    padding-top: 56px !important;
     background: rgba(248,250,252,0.72);
   }
   .public-chat-page--ready .public-chat-session-strip {
