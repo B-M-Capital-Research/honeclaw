@@ -3,10 +3,20 @@
 - **发现时间**: 2026-06-06 19:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无；本单不是 P1，暂不创建。
 
 ## 证据来源
+
+- `data/sessions.sqlite3` -> `session_messages`
+  - 2026-07-14 04:03-04:12 CST，`session_id=Actor_web__direct__web-user-400794904801`。
+  - 用户连续 3 次上传同一张图片附件并询问 CALL 盈利概率；附件行显示 `分类=图片`、`类型=image/jpeg`、`下载状态=成功`，且 prompt 中包含本地可读路径。
+  - 04:04 / 04:06 CST assistant final 连续两次只返回 `当前信息暂时未完成实时核验，请稍后再试。`，`metadata_json` 标记 `error_kind=AgentFailed` / `run_failed=true`。
+  - 04:12 CST assistant final 改为产品化说明 `图片我这边暂时无法稳定读取到内容，OCR 没有成功提取到完整数据`，并要求用户手动提供标的、行权价、到期日、权利金和张数。
+  - 本轮回复没有再次外露 OSS、数据库、目录扫描或内部 skill 状态，说明文案净化较历史样本有改善；但图片附件已下载成功后仍无法进入可读/OCR 输入，核心功能链路复发。
+- 本轮状态判断：
+  - 该样本晚于 2026-06-08 16:11 CST 代码级修复记录，且发生在真实 Web direct 会话中，因此从 `Fixed` 回退为 `New/P2`。
+  - 问题阻断 Web direct 图片附件理解链路并迫使用户改用文字绕路，但没有错投、敏感信息泄露、全渠道不可用或批量投递失败证据，因此不升级为 P1，不创建 GitHub Issue。
 
 - `data/runtime/logs/acp-events.log`
   - 时间窗：2026-06-06 16:41-16:44 CST
@@ -43,6 +53,9 @@
 
 ## 当前实现效果
 
+- 2026-07-14 07:01 CST 运行态回退：
+  - Web direct 图片附件仍可能在附件已下载成功、prompt 含本地路径的情况下无法被 runner/OCR 稳定读取。
+  - 用户最终收到的是“请粘贴关键字段”的绕路提示；历史内部排障口径本轮未复发，但附件理解主链路仍不可用。
 - 2026-06-08 16:11 CST 已修复：
   - Public Web chat 入口不再把附件简化成裸 `[附件: path]` 文本，而是对用户上传路径做作用域校验后复用共享附件 ingest 管线。
   - 本地上传文件会复制到 actor sandbox 的本轮 `uploads/<session_id>/`，云模式 `oss://...` public upload 会先通过 OSS client 读回 bytes，再交给同一 ingest 管线生成可读本地附件。

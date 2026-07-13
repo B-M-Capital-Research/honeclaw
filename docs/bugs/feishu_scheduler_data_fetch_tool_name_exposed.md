@@ -22,6 +22,12 @@ New
 
 ## 最新进展
 
+- 2026-07-14 07:01 CST 运行态继续复发，状态维持 `New`：
+  - 03:01-07:01 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 12 个 user turn 与 13 条 assistant 记录；Web direct、Feishu direct/scheduler 与 Web scheduler 均有 assistant 记录。
+  - assistant final 污染扫描未命中新本机路径、provider 原始错误、panic、原始工具 JSON、结构化 JSON 或敏感信息；本轮命中的是用户可见工具名口径。
+  - 05:12 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5fea712445d905e8418bde07dbcf2cbfb2` 的 `美股收盘资金流向简报` 正常收口，但板块 ETF 段写出 `数据来源：S&P 500 板块 ETF 2026-07-11 累计涨跌（data_fetch 工具返回）`，继续把内部行情工具名作为用户态来源说明。
+  - 该样本业务主体已完成主要指数、板块 ETF、资金方向和市场状态判断，没有投递失败、空回复、错投、原始工具 JSON 或数据安全证据；问题仍只影响用户可见来源 / 工具口径边界和产品感，不影响主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-07-13 23:02 CST 运行态继续复发，状态维持 `New`：
   - 19:00-23:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 49 个 user turn 与 60 条 assistant 记录；Feishu direct、Feishu scheduler、Web direct 与 Web scheduler 均有 assistant 终态。
   - assistant final 污染扫描未命中空回复、`<think>`、`reasoning_content`、本机路径、provider 原始错误、panic、quota、原始工具 JSON、结构化 JSON 或 `company_profiles/` 外露；仅命中用户可见工具 / 来源口径。

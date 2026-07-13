@@ -22,6 +22,16 @@
 
 ## 最新进展
 
+- 本轮 2026-07-14 03:01-07:01 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `session_messages`
+    - 03:01-07:01 CST 新增 12 个 user turn / 13 条 assistant 记录；Web direct、Feishu direct/scheduler 与 Web scheduler 均有 assistant 记录。除两条 scheduler 产品化失败外，其余样本均正常收口；未见错投、敏感信息泄露或原始工具 JSON。
+    - 05:04 CST Web scheduler `盘后美股复盘与SNDK/MU存储产业链日报` final 使用 `SNDK 当前价约 1,668.21 美元`、日高 `1,836.51`、日低 `1,658.08`、`MU 收盘约 979.30 美元` 等高风险数量级价格，并据此判断 SK Hynix / 存储链冲击。
+    - 05:34 CST Feishu scheduler `美股收盘后跨市场复盘` final 使用 `MU 前收979.30美元，跌4.32%至937美元`、`SPY 前收754.95美元`、`QQQ 前收725.51美元`、`LITE 前收802.01美元` 等高风险数量级行情锚。
+    - 06:31 CST Web scheduler `1亿美元AI科技组合每日跟踪` final 使用 `DELL 435.97`、`AMD 546.72`、`MRVL 243.27`、`MU 991.64`、`ARM 327.87` 等作为上一交易日基准，并据此计算组合市值和单日贡献。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check 缺口：异常或高风险数量级价格进入正式 scheduler final 和组合 / 投研判断。
+    - 主体报告可读并完成，问题没有阻断调度 / 投递主功能链路；因此仍按质量性 `P3 / New`。该问题不影响主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-13 23:02-2026-07-14 03:01 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `session_messages`
     - 23:02-03:01 CST 新增 10 个 user turn / 10 条 assistant final，均正常收口；assistant final 污染扫描未确认空回复、内部字段、原始工具 JSON、投递失败或敏感信息外泄。

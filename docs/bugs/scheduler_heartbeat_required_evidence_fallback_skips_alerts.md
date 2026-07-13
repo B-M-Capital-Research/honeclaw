@@ -22,6 +22,13 @@ New
 
 ## 证据来源
 
+- `data/sessions.sqlite3`
+  - 巡检时间窗：2026-07-14 03:01-07:01 CST。
+  - 04:30 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595` 的 `OWALERT_PostMarket` 先写 assistant final `抱歉，这次处理失败了。请稍后再试。`，随后写 scheduler 文本 `本轮定时任务未能完成，系统已记录失败并将在下一次触发时重试。`，`metadata_json` 标记 `AgentFailed` / `scheduler_failure=true`。
+  - 06:00 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f11da38ad70c47cf87c0b106b6408b190` 的 `每日美股盘后收盘复盘` 出现同样的 `AgentFailed` final 与产品化 scheduler 失败文本。
+  - 04:03 / 04:06 CST Web direct 图片附件问答也两次只返回 `当前信息暂时未完成实时核验，请稍后再试。`，说明该 fail-closed 文案仍会影响非 heartbeat 的用户可见完成率；图片主链路另归入 Web 图片附件缺陷。
+  - 本轮本地 `cron_job_runs.max(executed_at)` 仍停在 `2026-07-10T14:01:27.621121+08:00`，运行态缺少可审计任务粒度失败台账；用户可见侧主要是产品化失败文案，没有 provider 原始错误、token、本机路径或 panic 外泄。
+  - 判断：该缺陷仍为功能性 `P2 / New`。它影响普通 scheduler / direct 任务正文完成率，但同窗仍有多个 scheduler 和 direct final 正常收口，未见错投、数据破坏、敏感信息泄露或全渠道不可用，因此不升级为 P1，不创建 GitHub Issue。
 - `data/runtime/logs/web.log.2026-07-13`
   - 巡检时间窗：2026-07-13 23:02-2026-07-14 03:01 CST。
   - 同窗日志命中 477 行 `当前信息暂时未完成实时核验，请稍后再试。` 相关文本、157 次 `tavily request failed ... Query is too long`、93 次 `function_calling tool call rejected by global budget`，并有 318 条 heartbeat / scheduler `runner_error` 指向同一实时核验失败文案。
