@@ -3,7 +3,16 @@
 - **发现时间**: 2026-04-18 00:20 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Later
+- **状态**: New
+
+## 2026-07-13 状态回退结论
+
+- 状态从 `Later` 调回 `New`，严重等级维持 `P2`。
+- 15:01-19:01 CST `data/runtime/logs/web.log.2026-07-13` 显示同一 Feishu direct 旧会话 `Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b` 在 16:29 与 16:32 CST 两次触发 `context overflow detected, compacting and retrying`，并完成 `context overflow recovery compacted`。
+- 两轮 compact 后仍分别落成失败，用户可见错误仍是 `当前会话上下文过长。我已经自动尝试压缩历史，但这次仍无法继续。请直接继续提问重点、发送 /compact，或开启一个新会话后再试。`
+- 17:54 CST Feishu direct 生产探针 `Actor_feishu__direct__earnings_5fgate_5fprod_5fprobe_5f20260713_5fv2` 也在只执行 `data_fetch financials MU` 与 `data_fetch earnings_calendar MU` 后触发 context overflow；compact 后再次执行同类大结果工具，最终因 `request entity too large (2013)` 落为失败，并只持久化通用失败文案。
+- 同窗 17:57 CST 新鲜 session `v3` 能通过 `data_fetch + web_search` 正常回答，说明问题集中在 compact / 大工具结果 / 旧上下文恢复路径，而不是 Feishu direct 全链路停摆。
+- 这是功能性缺陷：用户在旧会话或 compact retry 路径中无法完成当前请求；但当前证据仍集中在单个旧会话和一个生产探针，存在新会话绕行路径，未见跨用户错投、数据破坏或敏感信息泄露，因此维持 `P2`，不是 `P1`，不创建 GitHub Issue。
 
 ## 修复进展（2026-04-26）
 

@@ -22,6 +22,13 @@ New
 
 ## 修复记录
 
+- 2026-07-13 19:01 CST 补充同根复发证据，状态维持 `New`：
+  - 15:01-19:01 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 6 个 user turn、8 条 assistant 记录和 2 条 compact system 记录；Feishu direct、Web direct 与 Web scheduler 均有终态记录。
+  - 17:51 CST Feishu direct 生产探针 session `Actor_feishu__direct__earnings_5fgate_5fprod_5fprobe_5f20260713` 询问 `美光目前财报如何？请说明最新已披露财季和披露日期。`
+  - runtime 日志显示本轮只执行 `data_fetch financials MU` 与 `data_fetch news MU`，没有 `web_search`；assistant final 把 `FY2025 年报 / 2025-10-03` 写成“最新已披露财报”，没有识别 2026 年 6 月已披露的 FY2026 Q3。
+  - 同一探针 `v3` 在 17:57 CST 执行 `data_fetch financials/news/earnings_calendar` 后追加 `web_search query="Micron MU earnings Q2 fiscal 2026 results date 2026"`，才返回 `FQ3 FY2026` 与 `2026年6月24日`；说明历史 `data_fetch` 结果不能单独满足“当前财报”问题的新鲜度。
+  - 该问题不影响消息投递、会话收口或副作用执行，主要影响强时效金融答案事实新鲜度和可审计核验边界，因此继续按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-07-13 15:01 CST 补充同根复发证据，状态维持 `New`：
   - 11:04-15:01 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 3 个 user turn 与 3 条 assistant final，Feishu direct、Feishu scheduler 与 Web direct 均以 assistant 收口。
   - 12:17 CST Web direct session `Actor_web__direct__web-user-e05f5e5f74a3` 中，用户询问“今天海力士怎么了，怎么07709跌了这么多，Sk Hynix本身什么情况，会带动这个存储一起走下坡路么”。
