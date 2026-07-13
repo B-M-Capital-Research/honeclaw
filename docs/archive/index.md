@@ -1489,3 +1489,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: `bun run typecheck:web`, `bun run test:web`, `bun run build:web:public`, responsive browser QA at 1440 x 900 and 390 x 844
 - Current conclusion: `/chat` now enters a responsive HONE Agent research workspace backed by existing community, calendar, push, account, and conversation data; desktop uses three columns, mobile uses five primary tabs, and history selection or prompt send returns to the unchanged single conversation runtime without navigation.
 - Next entry point: `docs/handoffs/2026-07-13-public-agent-workspace-redesign.md`
+
+### Public Workspace Page Unification
+
+- Status: done
+- Date: 2026-07-13
+- Plan: `docs/archive/plans/public-workspace-page-unification.md`
+- Handoff: `docs/handoffs/2026-07-13-public-workspace-page-unification.md`
+- Decision / ADR: N/A
+- Related PRs / commits: `affa8836`
+- Related runbooks / regressions: `bun run typecheck:web`, `bun run test:web`, `bun run build:web:public`, responsive browser QA at 1440 x 900 and 390 x 844
+- Current conclusion: restore, Insights, Tracking/calendar, and Account now share the Agent workspace chrome; Insights is a continuous research stream, Tracking uses a desktop month grid plus a separate mobile agenda, and Account uses a lightweight action surface.
+- Next entry point: `docs/handoffs/2026-07-13-public-workspace-page-unification.md`
