@@ -63,10 +63,12 @@ describe("public chat visual contract", () => {
     expect(workspaceCss).toContain(
       "height: calc(var(--agent-mobile-nav-height) + var(--agent-mobile-safe-bottom))",
     );
-    expect(workspaceCss).toContain("--agent-mobile-nav-height: 42px");
+    expect(workspaceCss).toContain("--agent-mobile-nav-height: 56px");
     expect(workspaceCss).toContain("--agent-mobile-composer-gap: 4px");
-    expect(workspaceCss).toContain("width: 20px; height: 20px");
-    expect(workspaceCss).toContain("margin-top: 0; border: 0");
+    expect(workspaceCss).toContain("grid-template-rows: 30px 14px");
+    expect(workspaceCss).toContain("grid-row: 2");
+    expect(workspaceCss).toContain("width: 42px; height: 42px");
+    expect(workspaceCss).toContain("position: absolute; top: -7px");
     expect(workspaceCss).toContain(
       ".public-chat-page--ready { --agent-mobile-safe-bottom: 0px; }",
     );
