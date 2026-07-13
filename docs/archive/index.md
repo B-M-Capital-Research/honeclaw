@@ -1477,3 +1477,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: `docs/runbooks/public-user-macos-app.md`, `cargo test -p hone-user-app`, `bash tests/regression/ci/test_hone_ios_contract.sh`, `bun run test:web`
 - Current conclusion: v0.14.1 published a verified Universal macOS DMG whose stable named WebKit data store preserves login cookies across restarts/upgrades, while the PC finance-calendar modal now remains inside short viewports with internal scrolling.
 - Next entry point: `docs/handoffs/2026-07-12-v0.14.1-macos-session-calendar-release.md`
+
+### Public Agent Workspace Redesign
+
+- Status: done
+- Date: 2026-07-13
+- Plan: `docs/archive/plans/public-agent-workspace-redesign.md`
+- Handoff: `docs/handoffs/2026-07-13-public-agent-workspace-redesign.md`
+- Decision / ADR: N/A
+- Related PRs / commits: `63e91795`
+- Related runbooks / regressions: `bun run typecheck:web`, `bun run test:web`, `bun run build:web:public`, responsive browser QA at 1440 x 900 and 390 x 844
+- Current conclusion: `/chat` now enters a responsive HONE Agent research workspace backed by existing community, calendar, push, account, and conversation data; desktop uses three columns, mobile uses five primary tabs, and history selection or prompt send returns to the unchanged single conversation runtime without navigation.
+- Next entry point: `docs/handoffs/2026-07-13-public-agent-workspace-redesign.md`
