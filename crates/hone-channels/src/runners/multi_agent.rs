@@ -282,6 +282,53 @@ Verified search tool transcript (JSON):\n{}",
         (context, removed)
     }
 
+    fn is_tool_call_protocol_mismatch_error(error: Option<&str>) -> bool {
+        let Some(error) = error else {
+            return false;
+        };
+        let lowered = error.to_ascii_lowercase();
+        lowered.contains("invalid params")
+            && lowered.contains("tool call result does not follow tool call")
+    }
+
+    fn build_protocol_retry_search_context(
+        &self,
+        context: &AgentContext,
+    ) -> (AgentContext, usize) {
+        const RETRY_CONTEXT_WINDOW: usize = 4;
+        let mut retry_context = AgentContext::new(context.session_id.clone());
+        retry_context.metadata = context.metadata.clone();
+
+        let mut retained = Vec::new();
+        for message in context.messages.iter().rev() {
+            if message.role == "tool" {
+                continue;
+            }
+
+            let mut retained_message = message.clone();
+            if retained_message.role == "assistant" {
+                retained_message.tool_calls = None;
+                let content = retained_message.content.as_deref().map(str::trim).unwrap_or("");
+                if content.is_empty() {
+                    continue;
+                }
+            }
+
+            retained.push(retained_message);
+            if retained.len() >= RETRY_CONTEXT_WINDOW {
+                break;
+            }
+        }
+
+        retained.reverse();
+        retry_context.messages = retained;
+        let dropped = context
+            .messages
+            .len()
+            .saturating_sub(retry_context.messages.len());
+        (retry_context, dropped)
+    }
+
     fn has_live_search_tool_call(&self, tool_calls: &[ToolCallMade]) -> bool {
         tool_calls
             .iter()
@@ -549,10 +596,94 @@ impl AgentRunner for MultiAgentRunner {
                 .await;
         }
         let search_runtime_input = self.build_search_input(&request.runtime_input);
-        let search_response = search_agent
+        let mut search_response = search_agent
             .run(&search_runtime_input, &mut search_context)
             .await;
-        let search_context_messages = runner_context_messages(&search_context, search_original_len);
+        let mut search_context_messages =
+            runner_context_messages(&search_context, search_original_len);
+        self.record_stage_audit(
+            &request,
+            "agent.multi_agent.search",
+            "openai-compatible",
+            Some(self.search_config.model.clone()),
+            search_started,
+            search_response.success,
+            json!({
+                "model": self.search_config.model.as_str(),
+                "base_url": self.search_config.base_url.as_str(),
+                "runtime_input": search_runtime_input.as_str(),
+            }),
+            Some(json!({
+                "content": search_response.content.as_str(),
+                "tool_calls_made": search_response.tool_calls_made,
+                "iterations": search_response.iterations,
+            })),
+            search_response.error.clone(),
+            json!({
+                "kind": "multi_agent_search",
+                "removed_tool_messages": removed_tool_messages,
+                "tool_calls": search_response.tool_calls_made.len(),
+                "used_live_search_tool": self.has_live_search_tool_call(&search_response.tool_calls_made),
+            }),
+        );
+
+        if !search_response.success
+            && Self::is_tool_call_protocol_mismatch_error(search_response.error.as_deref())
+        {
+            let retry_started = Instant::now();
+            let (mut retry_context, dropped_messages) =
+                self.build_protocol_retry_search_context(&request.context);
+            let retry_original_len = retry_context.messages.len();
+            tracing::warn!(
+                "[MultiAgent] session={} stage=search.protocol_retry reason=tool_call_protocol_mismatch dropped_messages={} retained_messages={}",
+                request.session_id,
+                dropped_messages,
+                retry_original_len,
+            );
+            emitter
+                .emit(AgentRunnerEvent::Progress {
+                    stage: "multi_agent.search.protocol_retry",
+                    detail: Some(format!(
+                        "reason=tool_call_protocol_mismatch dropped_messages={} retained_messages={}",
+                        dropped_messages, retry_original_len
+                    )),
+                })
+                .await;
+            let retry_response = search_agent
+                .run(&search_runtime_input, &mut retry_context)
+                .await;
+            search_context_messages =
+                runner_context_messages(&retry_context, retry_original_len);
+            self.record_stage_audit(
+                &request,
+                "agent.multi_agent.search.protocol_retry",
+                "openai-compatible",
+                Some(self.search_config.model.clone()),
+                retry_started,
+                retry_response.success,
+                json!({
+                    "model": self.search_config.model.as_str(),
+                    "base_url": self.search_config.base_url.as_str(),
+                    "runtime_input": search_runtime_input.as_str(),
+                }),
+                Some(json!({
+                    "content": retry_response.content.as_str(),
+                    "tool_calls_made": retry_response.tool_calls_made,
+                    "iterations": retry_response.iterations,
+                })),
+                retry_response.error.clone(),
+                json!({
+                    "kind": "multi_agent_search_protocol_retry",
+                    "reason": "tool_call_protocol_mismatch",
+                    "dropped_messages": dropped_messages,
+                    "retained_messages": retry_original_len,
+                    "tool_calls": retry_response.tool_calls_made.len(),
+                    "used_live_search_tool": self.has_live_search_tool_call(&retry_response.tool_calls_made),
+                }),
+            );
+            search_response = retry_response;
+        }
+
         let search_elapsed_ms = search_started.elapsed().as_millis();
         let search_tool_calls = search_response.tool_calls_made.len();
         let used_live_search_tool =
@@ -579,31 +710,6 @@ impl AgentRunner for MultiAgentRunner {
                 )),
             })
             .await;
-        self.record_stage_audit(
-            &request,
-            "agent.multi_agent.search",
-            "openai-compatible",
-            Some(self.search_config.model.clone()),
-            search_started,
-            search_response.success,
-            json!({
-                "model": self.search_config.model.as_str(),
-                "base_url": self.search_config.base_url.as_str(),
-                "runtime_input": search_runtime_input.as_str(),
-            }),
-            Some(json!({
-                "content": search_response.content.as_str(),
-                "tool_calls_made": search_response.tool_calls_made,
-                "iterations": search_response.iterations,
-            })),
-            search_response.error.clone(),
-            json!({
-                "kind": "multi_agent_search",
-                "removed_tool_messages": removed_tool_messages,
-                "tool_calls": search_tool_calls,
-                "used_live_search_tool": used_live_search_tool,
-            }),
-        );
 
         if !search_response.success {
             return AgentRunnerResult {
@@ -1053,6 +1159,104 @@ mod tests {
         let (sanitized, removed) = runner.sanitize_search_context(context);
         assert_eq!(removed, 1);
         assert!(sanitized.messages.is_empty());
+    }
+
+    #[test]
+    fn tool_call_protocol_mismatch_detection_matches_provider_copy() {
+        assert!(MultiAgentRunner::is_tool_call_protocol_mismatch_error(Some(
+            "LLM 错误: bad_request_error: invalid params, tool call result does not follow tool call (2013)"
+        )));
+        assert!(!MultiAgentRunner::is_tool_call_protocol_mismatch_error(Some(
+            "LLM 错误: bad_request_error: invalid params, context window exceeds limit (2013)"
+        )));
+        assert!(!MultiAgentRunner::is_tool_call_protocol_mismatch_error(None));
+    }
+
+    #[test]
+    fn protocol_retry_search_context_keeps_recent_plaintext_messages_only() {
+        let runner = make_runner();
+        let mut context = AgentContext::new("session".to_string());
+        context.metadata.insert("k".to_string(), json!("v"));
+        context.messages.push(AgentMessage {
+            role: "user".to_string(),
+            content: Some("first user".to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+            metadata: None,
+        });
+        context.messages.push(AgentMessage {
+            role: "assistant".to_string(),
+            content: Some("first answer".to_string()),
+            tool_calls: Some(vec![json!({
+                "id": "call_old",
+                "type": "function",
+                "function": { "name": "web_search", "arguments": "{}" }
+            })]),
+            tool_call_id: None,
+            name: None,
+            metadata: None,
+        });
+        context.messages.push(AgentMessage {
+            role: "tool".to_string(),
+            content: Some("{\"ok\":true}".to_string()),
+            tool_calls: None,
+            tool_call_id: Some("call_old".to_string()),
+            name: Some("web_search".to_string()),
+            metadata: None,
+        });
+        context.messages.push(AgentMessage {
+            role: "assistant".to_string(),
+            content: None,
+            tool_calls: Some(vec![json!({
+                "id": "call_empty",
+                "type": "function",
+                "function": { "name": "data_fetch", "arguments": "{}" }
+            })]),
+            tool_call_id: None,
+            name: None,
+            metadata: None,
+        });
+        context.messages.push(AgentMessage {
+            role: "user".to_string(),
+            content: Some("second user".to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+            metadata: None,
+        });
+        context.messages.push(AgentMessage {
+            role: "assistant".to_string(),
+            content: Some("second answer".to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+            metadata: None,
+        });
+        context.messages.push(AgentMessage {
+            role: "user".to_string(),
+            content: Some("latest user".to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+            metadata: None,
+        });
+
+        let (retry_context, dropped) = runner.build_protocol_retry_search_context(&context);
+        assert_eq!(retry_context.metadata.get("k"), Some(&json!("v")));
+        assert_eq!(dropped, 3);
+        assert_eq!(retry_context.messages.len(), 4);
+        assert_eq!(retry_context.messages[0].content.as_deref(), Some("first answer"));
+        assert!(retry_context.messages[0].tool_calls.is_none());
+        assert_eq!(retry_context.messages[1].content.as_deref(), Some("second user"));
+        assert_eq!(
+            retry_context.messages[2].content.as_deref(),
+            Some("second answer")
+        );
+        assert_eq!(
+            retry_context.messages[3].content.as_deref(),
+            Some("latest user")
+        );
     }
 
     #[test]

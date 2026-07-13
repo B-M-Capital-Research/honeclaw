@@ -14,11 +14,28 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## GitHub Issue
 
 - 无，当前复发证据不是 P1。
+
+## 修复记录
+
+### 2026-07-14 03:04 CST 代码级修复
+
+- `crates/hone-channels/src/runners/multi_agent.rs` 现在会识别 OpenAI-compatible `invalid params, tool call result does not follow tool call (2013)`。
+- 首轮命中该协议错位后，multi-agent 搜索阶段会执行一次受控 search retry：剥离历史 `tool` 消息、剥离 assistant 上残留的历史 `tool_calls`、丢弃只剩 tool-call 空壳的 assistant 消息，并仅保留最近 4 条纯文本 user/assistant 消息作为 retry 上下文，避免把坏的 tool-call transcript 再次送回 provider。
+- retry 路径新增独立 progress / audit 标记，后续可以区分“首轮协议错位”与“重建后仍失败”。
+- 新增回归：
+  - `tool_call_protocol_mismatch_detection_matches_provider_copy`
+  - `protocol_retry_search_context_keeps_recent_plaintext_messages_only`
+- 验证通过：
+  - `cargo test -p hone-channels sanitize_search_context -- --nocapture`
+  - `cargo test -p hone-channels tool_call_protocol_mismatch_detection_matches_provider_copy -- --nocapture`
+  - `cargo test -p hone-channels protocol_retry_search_context_keeps_recent_plaintext_messages_only -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+- 当前未重启 live runtime，因此先按代码级 `Fixed` 记录；后续若运行态仍出现同类 `tool call result does not follow tool call (2013)`，再基于新样本决定是否回退。
 
 ## 证据来源
 
