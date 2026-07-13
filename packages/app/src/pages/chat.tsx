@@ -5,7 +5,6 @@ import {
   createMemo,
   createSignal,
   createEffect,
-  createResource,
   batch,
   For,
   Match,
@@ -19,9 +18,16 @@ import { Portal } from "solid-js/web";
 import { useNavigate } from "@solidjs/router";
 import { PublicLoginForm } from "@/components/public-login-form";
 import { PublicNav } from "@/components/public-nav";
-import { HoneBrand } from "@/components/hone-brand";
 import { ChatShareModal } from "@/components/chat-share-modal";
 import { PublicChatStartup } from "@/components/public-chat-startup";
+import {
+  AgentWorkspaceMobileHeader,
+  AgentWorkspaceMobileNav,
+  AgentWorkspaceOverview,
+  AgentWorkspaceRightRail,
+  AgentWorkspaceSidebar,
+  AgentWorkspaceTopbar,
+} from "@/components/public-agent-workspace";
 import { canvasToPngBlob } from "@/components/chat-share-export";
 import {
   FinanceCalendarCard,
@@ -37,10 +43,8 @@ import {
   ScheduledPushCard,
   type ScheduledPushCardData,
 } from "@/components/public-push-center";
-import { displayGithubStars, fetchGithubStars } from "@/lib/github-stars";
 import { renderFinanceCalendarMobilePng } from "@/lib/finance-calendar-mobile-renderer";
 import { CONTENT } from "@/lib/public-content";
-import { setLocale, useLocale } from "@/lib/i18n";
 import {
   initPublicPrefs,
   publicFontScale,
@@ -53,6 +57,7 @@ import "./public-foundation.css";
 import "./public-site.css";
 import "./public-polish.css";
 import "./public-chat.css";
+import "./public-agent-workspace.css";
 import {
   getPublicChatBootstrap,
   getPublicCommunity,
@@ -101,8 +106,15 @@ import {
   unreadCountAfterScheduledPush,
 } from "@/lib/public-chat";
 import { parseSseChunks } from "@/lib/stream";
+import {
+  calendarToWorkspaceEvents,
+  communityToWorkspaceInsights,
+  workspaceGreeting,
+  workspaceUserName,
+} from "@/lib/public-agent-workspace";
 import type {
   FinanceCalendarPayload,
+  PublicCommunityContent,
   PublicAuthUserInfo,
   PublicPushDetail,
   PublicPushListItem,
@@ -356,196 +368,6 @@ function AccountButton(props: {
         </div>
       )}
     </Show>
-  );
-}
-
-function ChatSidebar(props: {
-  user: PublicAuthUserInfo;
-  collapsed: boolean;
-  recentMessages: ChatMessage[];
-  onToggle: () => void;
-  onSelectMessage: (id: string) => void;
-  communityUnread: boolean;
-  onOpenCommunity: () => void;
-  unreadPushCount: number;
-  onOpenPushes: () => void;
-  onLogout: () => void;
-}) {
-  const navigate = useNavigate();
-  const [stars] = createResource(fetchGithubStars);
-  const messagePreview = (message: ChatMessage) => {
-    const text = stripAttachmentMarkers(message.content)
-      .replace(/\s+/g, " ")
-      .trim();
-    if (text) return text.length > 44 ? `${text.slice(0, 44)}...` : text;
-    if ((message.attachments?.length ?? 0) > 0) {
-      return CONTENT.chat_page.sidebar.history_attachment;
-    }
-    return CONTENT.chat_page.sidebar.history_empty_item;
-  };
-
-  return (
-    <aside
-      class={"public-chat-sidebar" + (props.collapsed ? " is-collapsed" : "")}
-      aria-label={CONTENT.chat_page.sidebar.label}
-    >
-      <div class="public-chat-sidebar-brand">
-        <button
-          type="button"
-          class="public-chat-sidebar-logo"
-          onClick={() => navigate("/")}
-          aria-label="HONE"
-        >
-          <HoneBrand />
-        </button>
-        <button
-          type="button"
-          class="public-chat-sidebar-toggle"
-          onClick={props.onToggle}
-          aria-label={
-            props.collapsed
-              ? CONTENT.chat_page.sidebar.expand
-              : CONTENT.chat_page.sidebar.collapse
-          }
-          title={
-            props.collapsed
-              ? CONTENT.chat_page.sidebar.expand
-              : CONTENT.chat_page.sidebar.collapse
-          }
-        >
-          <svg
-            width="17"
-            height="17"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path
-              d={props.collapsed ? "M9 18l6-6-6-6" : "M15 18l-6-6 6-6"}
-            />
-          </svg>
-        </button>
-      </div>
-
-      <nav class="public-chat-sidebar-nav">
-        <button
-          type="button"
-          class="is-active"
-          title={CONTENT.nav.chat}
-          aria-current="page"
-        >
-          <ICONS.Chat />
-          <span>{CONTENT.nav.chat}</span>
-        </button>
-        <button
-          type="button"
-          class="public-chat-sidebar-community"
-          onClick={props.onOpenCommunity}
-          title={CONTENT.nav.community}
-        >
-          <span class="public-chat-sidebar-icon">C</span>
-          <span>{CONTENT.nav.community}</span>
-          <Show when={props.communityUnread}>
-            <i class="public-chat-community-unread" aria-hidden="true" />
-          </Show>
-        </button>
-        <button
-          type="button"
-          class="public-push-nav-button"
-          onClick={props.onOpenPushes}
-          title={CONTENT.chat_page.pushes.nav}
-        >
-          <PushNavIcon />
-          <span>{CONTENT.chat_page.pushes.nav}</span>
-          <PushUnreadDot count={props.unreadPushCount} />
-        </button>
-      </nav>
-
-      <div class="public-chat-sidebar-socials">
-        <a
-          href={CONTENT.nav.github_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          class="public-chat-sidebar-star"
-          title="GitHub"
-        >
-          <ICONS.Github />
-          <span>{displayGithubStars(stars())}</span>
-        </a>
-      </div>
-
-      <section class="public-chat-sidebar-history">
-        <div class="public-chat-sidebar-section-title">
-          {CONTENT.chat_page.sidebar.history_title}
-        </div>
-        <Show
-          when={props.recentMessages.length > 0}
-          fallback={
-            <div class="public-chat-sidebar-history-empty">
-              {CONTENT.chat_page.sidebar.history_empty}
-            </div>
-          }
-        >
-          <div class="public-chat-sidebar-history-list">
-            <For each={props.recentMessages}>
-              {(message, index) => (
-                <button
-                  type="button"
-                  class="public-chat-sidebar-history-item"
-                  onClick={() => props.onSelectMessage(message.id)}
-                  title={messagePreview(message)}
-                >
-                  <span class="public-chat-sidebar-history-index">
-                    {index() + 1}
-                  </span>
-                  <span class="public-chat-sidebar-history-text">
-                    {messagePreview(message)}
-                  </span>
-                </button>
-              )}
-            </For>
-          </div>
-        </Show>
-      </section>
-
-      <div class="public-chat-sidebar-footer">
-        <button
-          type="button"
-          class="public-chat-sidebar-user"
-          title={props.user.user_id}
-          onClick={() => navigate("/me")}
-        >
-          <span class="public-chat-sidebar-avatar">H</span>
-          <span>
-            <strong>{CONTENT.chat_page.sidebar.signed_in}</strong>
-            <small>{CONTENT.chat_page.sidebar.account_center}</small>
-          </span>
-        </button>
-        <div class="public-chat-sidebar-footer-actions">
-          <button
-            type="button"
-            class="public-chat-sidebar-lang"
-            onClick={() => setLocale(useLocale() === "zh" ? "en" : "zh")}
-            title={
-              useLocale() === "zh" ? CONTENT.nav.locale_en : CONTENT.nav.locale_zh
-            }
-          >
-            {useLocale() === "zh" ? "中" : "EN"}
-          </button>
-          <button
-            type="button"
-            class="public-chat-sidebar-logout"
-            onClick={props.onLogout}
-            title={CONTENT.chat_page.actions.logout}
-          >
-            <span>{CONTENT.chat_page.actions.logout}</span>
-          </button>
-        </div>
-      </div>
-    </aside>
   );
 }
 
@@ -1460,10 +1282,18 @@ function AttachMenu(props: {
   );
 }
 
-function ProactiveModeTips() {
+function ProactiveModeTips(props: { openRequest?: number }) {
   const [open, setOpen] = createSignal(false);
   const [copiedExample, setCopiedExample] = createSignal<number | null>(null);
   let copiedTimer: number | undefined;
+  let handledOpenRequest = props.openRequest ?? 0;
+
+  createEffect(() => {
+    const request = props.openRequest ?? 0;
+    if (request <= handledOpenRequest) return;
+    handledOpenRequest = request;
+    setOpen(true);
+  });
 
   const copyText = async (text: string) => {
     if (navigator.clipboard?.writeText) {
@@ -1657,7 +1487,10 @@ function ProactiveModeTips() {
   );
 }
 
-function FinanceCalendarQuickAction(props: { onSent: () => void }) {
+function FinanceCalendarQuickAction(props: {
+  onSent: () => void;
+  openRequest?: number;
+}) {
   const [open, setOpen] = createSignal(false);
   const [selectedMonth, setSelectedMonth] = createSignal(
     defaultFinanceCalendarMonth(),
@@ -1688,6 +1521,7 @@ function FinanceCalendarQuickAction(props: { onSent: () => void }) {
   );
   let cardEl: HTMLDivElement | undefined;
   let requestId = 0;
+  let handledOpenRequest = props.openRequest ?? 0;
 
   const fitLargePreview = () => {
     const width = Math.max(240, window.innerWidth - 24);
@@ -1749,6 +1583,13 @@ function FinanceCalendarQuickAction(props: { onSent: () => void }) {
     setPayload(null);
     void loadMonth(currentMonth);
   };
+
+  createEffect(() => {
+    const request = props.openRequest ?? 0;
+    if (request <= handledOpenRequest) return;
+    handledOpenRequest = request;
+    openCalendar();
+  });
 
   const close = () => {
     if (busy()) return;
@@ -2231,6 +2072,8 @@ function Composer(props: {
   isSending: boolean;
   remaining: number | undefined;
   dailyLimit: number | undefined;
+  trackingOpenRequest: number;
+  calendarOpenRequest: number;
 }) {
   const [focused, setFocused] = createSignal(false);
   const [menuOpen, setMenuOpen] = createSignal(false);
@@ -2301,8 +2144,11 @@ function Composer(props: {
       }}
     >
       <div class="public-chat-proactive-tip-wrap">
-        <ProactiveModeTips />
-        <FinanceCalendarQuickAction onSent={props.onCalendarSent} />
+        <ProactiveModeTips openRequest={props.trackingOpenRequest} />
+        <FinanceCalendarQuickAction
+          onSent={props.onCalendarSent}
+          openRequest={props.calendarOpenRequest}
+        />
         <CommunityQuickAction
           unread={props.communityUnread}
           onOpen={props.onOpenCommunity}
@@ -2527,7 +2373,6 @@ export default function PublicChatPage() {
   const [historyStart, setHistoryStart] = createSignal(0);
   const [historyNextBefore, setHistoryNextBefore] = createSignal<number>();
   const [loadingOlderMessages, setLoadingOlderMessages] = createSignal(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = createSignal(false);
   const [pushCenterOpen, setPushCenterOpen] = createSignal(false);
   const [pushItems, setPushItems] = createSignal<PublicPushListItem[]>([]);
   const [pushUnreadCount, setPushUnreadCount] = createSignal(0);
@@ -2540,6 +2385,17 @@ export default function PublicChatPage() {
   const [pushDetailError, setPushDetailError] = createSignal<string>();
   const [pushDetail, setPushDetail] = createSignal<PublicPushDetail>();
   const [communityUnread, setCommunityUnread] = createSignal(false);
+  const [workspaceMode, setWorkspaceMode] = createSignal<
+    "overview" | "conversation"
+  >("overview");
+  const [workspaceSearch, setWorkspaceSearch] = createSignal("");
+  const [workspaceCommunity, setWorkspaceCommunity] = createSignal<
+    PublicCommunityContent[]
+  >([]);
+  const [workspaceCalendar, setWorkspaceCalendar] =
+    createSignal<FinanceCalendarPayload>();
+  const [trackingOpenRequest, setTrackingOpenRequest] = createSignal(0);
+  const [calendarOpenRequest, setCalendarOpenRequest] = createSignal(0);
   // True when the user has scrolled up far enough to lose track of the latest
   // reply — drives the floating scroll-to-bottom affordance above the composer.
   const [awayFromBottom, setAwayFromBottom] = createSignal(false);
@@ -2565,6 +2421,7 @@ export default function PublicChatPage() {
   let shareReturnScrollTop: number | null = null;
   let shareReturnAtBottom = true;
   let pushUserId: string | undefined;
+  let workspaceLoadedFor: string | undefined;
   let initialBottomPending = true;
 
   const refreshCommunityUnread = async () => {
@@ -2576,6 +2433,23 @@ export default function PublicChatPage() {
       // Community availability must not interrupt the primary chat flow.
     }
   };
+
+  createEffect(() => {
+    const user = currentUser();
+    if (authState() !== "ready" || !user || workspaceLoadedFor === user.user_id) {
+      return;
+    }
+    workspaceLoadedFor = user.user_id;
+    void Promise.allSettled([
+      getPublicCommunity({ limit: 3 }).then((community) => {
+        setWorkspaceCommunity(community.items);
+        setCommunityUnread(community.unread);
+      }),
+      getPublicFinanceCalendar(defaultFinanceCalendarMonth()).then(
+        setWorkspaceCalendar,
+      ),
+    ]);
+  });
 
   const scrollToBottom = () => {
     requestAnimationFrame(() => {
@@ -2622,6 +2496,29 @@ export default function PublicChatPage() {
       .slice(-SIDEBAR_HISTORY_LIMIT)
       .reverse(),
   );
+  const workspaceResearch = createMemo(() =>
+    sidebarHistoryMessages().map((message) => ({
+      id: message.id,
+      title:
+        stripAttachmentMarkers(message.content).replace(/\s+/g, " ").trim() ||
+        CONTENT.chat_page.sidebar.history_attachment,
+    })),
+  );
+  const workspaceInsights = createMemo(() =>
+    communityToWorkspaceInsights(workspaceCommunity()),
+  );
+  const workspaceEvents = createMemo(() => {
+    const calendar = workspaceCalendar();
+    return calendar
+      ? calendarToWorkspaceEvents(calendar.events, calendar.today)
+      : [];
+  });
+  const workspaceDisplayName = createMemo(() =>
+    workspaceUserName(currentUser()?.user_id ?? ""),
+  );
+  const workspaceGreetingText = createMemo(() =>
+    workspaceGreeting(new Date().getHours(), workspaceDisplayName()),
+  );
   const hasOlderMessages = () => historyNextBefore() !== undefined;
   const isSendingOrStreaming = () =>
     isSending() || !!pendingAssistantMessage() || !!backgroundPending();
@@ -2630,6 +2527,7 @@ export default function PublicChatPage() {
   });
 
   createEffect(() => {
+    workspaceMode();
     const ready = authState() === "ready";
     const messageCount = messages.length;
     if (!ready || messageCount === 0 || !initialBottomPending) return;
@@ -2860,6 +2758,7 @@ export default function PublicChatPage() {
   // When the inner messages content grows (streaming, new message), keep the
   // viewport glued to the bottom unless the user has explicitly scrolled away.
   createEffect(() => {
+    workspaceMode();
     if (!messagesInnerRef || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(() => {
       if (stickToBottom) scrollToBottom();
@@ -2888,6 +2787,32 @@ export default function PublicChatPage() {
     setCurrentUser(null);
     setSessionInfo(null);
     setAuthState("logged_out");
+  };
+
+  const focusWorkspaceComposer = () => {
+    requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLTextAreaElement>(".public-chat-composer-input")
+        ?.focus();
+    });
+  };
+
+  const beginWorkspacePrompt = (prompt: string) => {
+    setDraft(prompt);
+    focusWorkspaceComposer();
+  };
+
+  const openWorkspaceResearch = (id: string) => {
+    setWorkspaceMode("conversation");
+    requestAnimationFrame(() => scrollToMessage(id));
+  };
+
+  const openWorkspaceTracking = () => {
+    setTrackingOpenRequest((request) => request + 1);
+  };
+
+  const openWorkspaceCalendar = () => {
+    setCalendarOpenRequest((request) => request + 1);
   };
 
   const clearRestoreRetry = () => {
@@ -3224,6 +3149,7 @@ export default function PublicChatPage() {
     )
       return;
 
+    setWorkspaceMode("conversation");
     const assistantId = messageId();
     setDraft("");
     setIsSending(true);
@@ -3376,7 +3302,7 @@ export default function PublicChatPage() {
       style={{ height: "100dvh", display: "flex", "flex-direction": "column" }}
     >
       <AnimatedBackground />
-      <Show when={authState() !== "loading"}>
+      <Show when={authState() === "logged_out"}>
         <PublicNav
           chatMode
           mobileLabel={CONTENT.chat_page.header.subtitle}
@@ -3450,228 +3376,160 @@ export default function PublicChatPage() {
               />
             }
           >
-            {(user) => (
+            {(_user) => (
               <>
-                <ChatSidebar
-                  user={user()}
-                  collapsed={sidebarCollapsed()}
-                  recentMessages={sidebarHistoryMessages()}
-                  onToggle={() => setSidebarCollapsed((value) => !value)}
-                  onSelectMessage={scrollToMessage}
+                <AgentWorkspaceSidebar
+                  userName={workspaceDisplayName()}
+                  research={workspaceResearch()}
+                  activeMode={workspaceMode()}
                   communityUnread={communityUnread()}
-                  onOpenCommunity={() => navigate("/community")}
-                  unreadPushCount={pushUnreadCount()}
-                  onOpenPushes={openPushCenter}
+                  onNewResearch={() => {
+                    setWorkspaceMode("overview");
+                    setDraft("");
+                  }}
+                  onSelectResearch={openWorkspaceResearch}
+                  onInvest={() => navigate("/portfolio")}
+                  onInsights={() => navigate("/community")}
+                  onTracking={openWorkspaceTracking}
+                  onAccount={() => navigate("/me")}
                   onLogout={logoutPublicChat}
                 />
-                <div
-                  class="public-chat-shell"
-                  style={{
-                    flex: "1",
-                    display: "flex",
-                    "flex-direction": "column",
-                    "padding-top": "80px",
-                    position: "relative",
-                    "z-index": "10",
-                    overflow: "hidden",
-                  }}
-                >
-                {/* Session actions */}
-                <div
-                  class="public-chat-session-strip"
-                  style={{
-                    display: "flex",
-                    "justify-content": "center",
-                    padding: "12px",
-                  }}
-                >
-                  <div
-                    style={{
-                      background: "rgba(255,255,255,0.7)",
-                      "backdrop-filter": "blur(10px)",
-                      padding: "6px 20px",
-                      "border-radius": "100px",
-                      border: "1.5px solid #f1f5f9",
-                      display: "flex",
-                      gap: "14px",
-                      "align-items": "center",
-                      "font-size": "13px",
-                      "font-weight": "700",
-                    }}
-                  >
-                    <button
-                      onClick={() => navigate("/me")}
-                      style={{
-                        border: "none",
-                        background: "none",
-                        cursor: "pointer",
-                        color: "#000",
-                        "font-weight": "800",
-                      }}
-                    >
-                      {sessionInfo()?.userId}
-                    </button>
-                    <button
-                      onClick={logoutPublicChat}
-                      style={{
-                        border: "none",
-                        background: "none",
-                        cursor: "pointer",
-                        color: "#ef4444",
-                      }}
-                    >
-                      {CONTENT.chat_page.actions.logout}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Message List */}
-                <div
-                  ref={scrollRef}
-                  class="public-chat-messages"
-                  onScroll={handleMessagesScroll}
-                  style={{ flex: "1", "overflow-y": "auto", padding: "20px 0" }}
-                >
-                  <div
-                    ref={messagesInnerRef}
-                    style={{
-                      "max-width": "900px",
-                      margin: "0 auto",
-                      padding: "0 24px",
-                    }}
-                  >
-                    <Show when={hasOlderMessages()}>
-                      <div
-                        style={{
-                          "text-align": "center",
-                          color: "#94a3b8",
-                          "font-size": "12px",
-                          "font-weight": "700",
-                          padding: "4px 0 18px",
-                        }}
-                      >
-                        {loadingOlderMessages()
-                          ? CONTENT.chat_page.history.loading_older
-                          : CONTENT.chat_page.history.load_older}
-                      </div>
-                    </Show>
-                    <For each={visibleMessages()}>
-                      {(msg, i) => (
-                        <div id={`public-chat-message-${msg.id}`}>
-                          <Switch>
-                            <Match when={msg.role === "user"}>
-                              <UserBubble
-                                content={msg.content}
-                                attachments={msg.attachments}
-                                onOpenImage={(imgs, i) =>
-                                  setLightbox({ images: imgs, index: i })
-                                }
-                              />
-                            </Match>
-                            <Match
-                              when={
-                                msg.role === "assistant" && msg.scheduledPush
-                              }
-                            >
-                              <ScheduledPushCard
-                                push={msg.scheduledPush!}
-                                onOpen={openScheduledPush}
-                              />
-                            </Match>
-                            <Match
-                              when={
-                                msg.role === "assistant" && !msg.scheduledPush
-                              }
-                            >
-                              <AssistantBubble
-                                message={msg}
-                                isContinuation={
-                                  i() > 0 &&
-                                  visibleMessages()[i() - 1]?.role ===
-                                    "assistant"
-                                }
-                                onShare={() => openShareModal(i())}
-                                onStop={
-                                  msg.id === "_background"
-                                    ? undefined
-                                    : () => activeController?.abort()
-                                }
-                                onDismiss={() =>
-                                  setMessages(
-                                    reconcile(
-                                      messages.filter((item) => item.id !== msg.id),
-                                      { key: "id" },
-                                    ),
-                                  )
-                                }
-                              />
-                            </Match>
-                          </Switch>
-                        </div>
-                      )}
-                    </For>
-                  </div>
-                </div>
-
-                <div style={{ position: "relative" }}>
-                  <Show when={awayFromBottom()}>
-                    <button
-                      type="button"
-                      class="public-chat-scroll-down"
-                      aria-label={CONTENT.chat_page.actions.scroll_to_bottom_aria}
-                      title={CONTENT.chat_page.actions.scroll_to_bottom_aria}
-                      onClick={settleAtBottom}
-                    >
-                      <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2.4"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        aria-hidden="true"
-                      >
-                        <path d="M12 5v14M19 12l-7 7-7-7" />
-                      </svg>
-                    </button>
-                  </Show>
-                  <Composer
-                    draft={draft()}
-                    onDraftChange={setDraft}
-                    attachments={pendingAttachments}
-                    onRemoveAttachment={(i) =>
-                      setPendingAttachments(
-                        pendingAttachments.filter((_, j) => j !== i),
-                      )
-                    }
-                    onPickFiles={async (files) => {
-                      setUploading(true);
-                      try {
-                        const uploaded = await uploadPublicAttachments(files);
-                        setPendingAttachments([
-                          ...pendingAttachments,
-                          ...uploaded.map((u) => ({
-                            ...u,
-                            kind: u.kind as any,
-                          })),
-                        ]);
-                      } finally {
-                        setUploading(false);
-                      }
-                    }}
-                    uploading={uploading()}
-                    onSend={handleSend}
-                    onCalendarSent={handleCalendarSent}
-                    communityUnread={communityUnread()}
-                    onOpenCommunity={() => navigate("/community")}
-                    isSending={isSending()}
-                    remaining={sessionInfo()?.remainingToday}
-                    dailyLimit={sessionInfo()?.dailyLimit}
+                <div class="agent-workspace-stage">
+                  <AgentWorkspaceTopbar
+                    query={workspaceSearch()}
+                    unreadPushCount={pushUnreadCount()}
+                    onQueryChange={setWorkspaceSearch}
+                    onPushes={openPushCenter}
                   />
+                  <AgentWorkspaceMobileHeader
+                    userName={workspaceDisplayName()}
+                    unreadPushCount={pushUnreadCount()}
+                    onPushes={openPushCenter}
+                    onAccount={() => navigate("/me")}
+                  />
+                  <div class="agent-workspace-body">
+                    <div
+                      class={`public-chat-shell ${workspaceMode() === "overview" ? "is-overview" : "is-conversation"}`}
+                      style={{
+                        flex: "1",
+                        display: "flex",
+                        "flex-direction": "column",
+                        position: "relative",
+                        "z-index": "10",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <Show
+                        when={workspaceMode() === "overview"}
+                        fallback={
+                          <div
+                            ref={scrollRef}
+                            class="public-chat-messages"
+                            onScroll={handleMessagesScroll}
+                            style={{ flex: "1", "overflow-y": "auto", padding: "20px 0" }}
+                          >
+                            <div
+                              ref={messagesInnerRef}
+                              style={{ "max-width": "900px", margin: "0 auto", padding: "0 24px" }}
+                            >
+                              <Show when={hasOlderMessages()}>
+                                <div class="public-chat-history-status">
+                                  {loadingOlderMessages()
+                                    ? CONTENT.chat_page.history.loading_older
+                                    : CONTENT.chat_page.history.load_older}
+                                </div>
+                              </Show>
+                              <For each={visibleMessages()}>
+                                {(msg, i) => (
+                                  <div id={`public-chat-message-${msg.id}`}>
+                                    <Switch>
+                                      <Match when={msg.role === "user"}>
+                                        <UserBubble content={msg.content} attachments={msg.attachments} onOpenImage={(imgs, index) => setLightbox({ images: imgs, index })} />
+                                      </Match>
+                                      <Match when={msg.role === "assistant" && msg.scheduledPush}>
+                                        <ScheduledPushCard push={msg.scheduledPush!} onOpen={openScheduledPush} />
+                                      </Match>
+                                      <Match when={msg.role === "assistant" && !msg.scheduledPush}>
+                                        <AssistantBubble
+                                          message={msg}
+                                          isContinuation={i() > 0 && visibleMessages()[i() - 1]?.role === "assistant"}
+                                          onShare={() => openShareModal(i())}
+                                          onStop={msg.id === "_background" ? undefined : () => activeController?.abort()}
+                                          onDismiss={() => setMessages(reconcile(messages.filter((item) => item.id !== msg.id), { key: "id" }))}
+                                        />
+                                      </Match>
+                                    </Switch>
+                                  </div>
+                                )}
+                              </For>
+                            </div>
+                          </div>
+                        }
+                      >
+                        <div class="agent-workspace-overview-scroll">
+                          <AgentWorkspaceOverview
+                            greeting={workspaceGreetingText()}
+                            insights={workspaceInsights()}
+                            events={workspaceEvents()}
+                            insightCount={workspaceInsights().length}
+                            searchQuery={workspaceSearch()}
+                            onPrompt={beginWorkspacePrompt}
+                            onTracking={openWorkspaceTracking}
+                            onInsights={() => navigate("/community")}
+                            onCalendar={openWorkspaceCalendar}
+                          />
+                        </div>
+                      </Show>
+                      <div style={{ position: "relative" }}>
+                        <Show when={workspaceMode() === "conversation" && awayFromBottom()}>
+                          <button type="button" class="public-chat-scroll-down" aria-label={CONTENT.chat_page.actions.scroll_to_bottom_aria} title={CONTENT.chat_page.actions.scroll_to_bottom_aria} onClick={settleAtBottom}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M19 12l-7 7-7-7" /></svg>
+                          </button>
+                        </Show>
+                        <Composer
+                          draft={draft()}
+                          onDraftChange={setDraft}
+                          attachments={pendingAttachments}
+                          onRemoveAttachment={(i) => setPendingAttachments(pendingAttachments.filter((_, j) => j !== i))}
+                          onPickFiles={async (files) => {
+                            setUploading(true);
+                            try {
+                              const uploaded = await uploadPublicAttachments(files);
+                              setPendingAttachments([...pendingAttachments, ...uploaded.map((item) => ({ ...item, kind: item.kind as any }))]);
+                            } finally {
+                              setUploading(false);
+                            }
+                          }}
+                          uploading={uploading()}
+                          onSend={handleSend}
+                          onCalendarSent={handleCalendarSent}
+                          communityUnread={communityUnread()}
+                          onOpenCommunity={() => navigate("/community")}
+                          isSending={isSending()}
+                          remaining={sessionInfo()?.remainingToday}
+                          dailyLimit={sessionInfo()?.dailyLimit}
+                          trackingOpenRequest={trackingOpenRequest()}
+                          calendarOpenRequest={calendarOpenRequest()}
+                        />
+                      </div>
+                    </div>
+                    <AgentWorkspaceRightRail
+                      events={workspaceEvents()}
+                      research={workspaceResearch()}
+                      onCalendar={openWorkspaceCalendar}
+                      onSelectResearch={openWorkspaceResearch}
+                    />
+                  </div>
                 </div>
-              </div>
+                <AgentWorkspaceMobileNav
+                  activeMode={workspaceMode()}
+                  communityUnread={communityUnread()}
+                  onInvest={() => navigate("/portfolio")}
+                  onInsights={() => navigate("/community")}
+                  onAgent={() => setWorkspaceMode("overview")}
+                  onTracking={openWorkspaceTracking}
+                  onAccount={() => navigate("/me")}
+                />
               </>
             )}
           </Show>

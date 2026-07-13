@@ -7,8 +7,31 @@ const nav = readFileSync(
   "utf8",
 );
 const chat = readFileSync(new URL("./chat.tsx", import.meta.url), "utf8");
+const workspace = readFileSync(
+  new URL("../components/public-agent-workspace.tsx", import.meta.url),
+  "utf8",
+);
+const workspaceCss = readFileSync(
+  new URL("./public-agent-workspace.css", import.meta.url),
+  "utf8",
+);
 
 describe("public chat visual contract", () => {
+  it("uses one responsive Agent workspace with real product destinations", () => {
+    expect(chat).toContain("<AgentWorkspaceSidebar");
+    expect(chat).toContain("<AgentWorkspaceRightRail");
+    expect(chat).toContain("<AgentWorkspaceMobileNav");
+    expect(chat).toContain('onInvest={() => navigate("/portfolio")}');
+    expect(chat).toContain('onInsights={() => navigate("/community")}');
+    expect(workspace).toContain("今日研究线索");
+    expect(workspace).toContain("重要事件");
+    expect(workspaceCss).toContain(
+      "grid-template-columns: minmax(520px, 1fr) 270px",
+    );
+    expect(workspaceCss).toContain("grid-template-columns: repeat(5,1fr)");
+    expect(workspaceCss).toContain("env(safe-area-inset-bottom, 0px)");
+  });
+
   it("uses the flat mobile chat header instead of the floating site pill", () => {
     expect(nav).toContain('"is-chat-mode": props.chatMode');
     expect(nav).toContain("pub-nav-chat-copy");
@@ -18,13 +41,11 @@ describe("public chat visual contract", () => {
     expect(css).toContain("flex: 0 0 30px");
   });
 
-  it("uses one desktop navigation surface and exposes Community in the sidebar", () => {
-    expect(css).toContain(".public-chat-page--ready > .pub-nav");
-    expect(css).toContain("display: none !important");
-    expect(css).toContain("padding-top: 0 !important");
-    expect(chat).toContain('class="public-chat-sidebar-community"');
+  it("keeps the marketing navigation out of the authenticated workspace", () => {
+    expect(chat).toContain('<Show when={authState() === "logged_out"}>');
+    expect(workspace).toContain('class="agent-workspace-nav-with-dot"');
     expect(chat).toContain("communityUnread={communityUnread()}");
-    expect(chat).toContain('onOpenCommunity={() => navigate("/community")}');
+    expect(chat).toContain('onInsights={() => navigate("/community")}');
   });
 
   it("keeps the mobile composer clear of the fixed primary tabs", () => {
