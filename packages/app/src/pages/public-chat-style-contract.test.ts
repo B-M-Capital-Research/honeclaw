@@ -58,12 +58,12 @@ describe("public chat visual contract", () => {
   it("docks the mobile composer directly above the compact workspace tabs", () => {
     expect(chat).toContain('class="public-chat-composer-dock"');
     expect(workspaceCss).toContain(
-      "bottom: calc(52px + env(safe-area-inset-bottom, 0px))",
+      "bottom: calc(44px + env(safe-area-inset-bottom, 0px))",
     );
     expect(workspaceCss).toContain(
-      "height: calc(52px + env(safe-area-inset-bottom, 0px))",
+      "height: calc(44px + env(safe-area-inset-bottom, 0px))",
     );
-    expect(workspaceCss).toContain("width: 42px; height: 42px");
+    expect(workspaceCss).toContain("width: 36px; height: 36px");
     expect(workspaceCss).toContain(
       ".public-chat-page.public-chat-page--ready .public-chat-composer",
     );
