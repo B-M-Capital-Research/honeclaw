@@ -22,6 +22,19 @@
 
 ## 最新进展
 
+- 本轮 2026-07-13 23:02-2026-07-14 03:01 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `session_messages`
+    - 23:02-03:01 CST 新增 10 个 user turn / 10 条 assistant final，均正常收口；assistant final 污染扫描未确认空回复、内部字段、原始工具 JSON、投递失败或敏感信息外泄。
+    - 00:02 / 00:08 CST Feishu direct 对 DRAM / SKHY / MU 的强时效金融问答继续输出 `SKHY $152.75`、`MU $932.78` 等高风险数量级价格；因同时缺少可审计工具证据，主要补入强时效金融核验缺陷，本文档记录其行情 sanity check 侧信号。
+  - `data/runtime/logs/web.log.2026-07-13`
+    - 23:30 CST `闪迪关键事件心跳提醒` raw preview 使用 `SNDK 现价 $1,772.97`、previous close `$1,915.92`、日内区间 `$1,701.01-$1,800` 进入 `JsonTriggered` 判断。
+    - 00:30 / 01:00 / 03:01 CST 多条 `闪迪关键事件心跳提醒`、`持仓财报与重大新闻心跳提醒` raw preview 继续使用 `SNDK $1,915.92`、`$1,706.62`、`$1,659.86` 等异常数量级价格。
+    - 23:31 / 01:01 / 03:00 CST `持仓重大事件心跳提醒` 与 `Monitor_Watchlist_11` raw / deliver preview 使用 `MU $938.52`、`$929.16`、`$979-991`、`$923.31` 等高风险数量级价格进入判断。
+    - 00:30 / 01:01 / 02:00 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` deliver preview 使用 `AAOI $110-$119`、50 日均线 `$165.90`、52 周高点 `$233` 等行情锚。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check 缺口：异常或高风险数量级价格进入 direct 金融答案、heartbeat 判断上下文和部分 deliver preview。
+    - 本窗没有错投、投递失败、空回复、数据破坏或全渠道不可用；因此仍按质量性 `P3 / New`。该问题不影响主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-13 19:00-23:02 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `session_messages`
     - 19:00-23:02 CST 新增 49 个 user turn / 60 条 assistant 记录，Feishu direct、Feishu scheduler、Web direct 与 Web scheduler 均有 assistant 终态；assistant final 污染扫描未确认空回复、内部字段、原始工具 JSON、投递失败或敏感信息外泄。

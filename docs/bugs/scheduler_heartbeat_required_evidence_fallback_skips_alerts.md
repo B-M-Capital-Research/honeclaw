@@ -23,6 +23,12 @@ New
 ## 证据来源
 
 - `data/runtime/logs/web.log.2026-07-13`
+  - 巡检时间窗：2026-07-13 23:02-2026-07-14 03:01 CST。
+  - 同窗日志命中 477 行 `当前信息暂时未完成实时核验，请稍后再试。` 相关文本、157 次 `tavily request failed ... Query is too long`、93 次 `function_calling tool call rejected by global budget`，并有 318 条 heartbeat / scheduler `runner_error` 指向同一实时核验失败文案。
+  - 受影响任务继续覆盖 Feishu 与 Web heartbeat：23:30 CST `AAOI 1.6T 光模块心跳检测`、`Monitor_Watchlist_11`、`小米30港元破位预警`、`光模块板块关键事件心跳提醒`、`持仓财报与重大新闻心跳提醒` 等批量跳过发送；00:00 CST `美股黄金坑信号心跳检测`、`全天原油价格3小时播报`、`ASTS 重大异动心跳监控`、`FOTO 光子学ETF心跳检测`、`AI与科技持仓观察关键事件心跳提醒` 等继续失败；03:00 CST `Cerebras IPO与业务进展心跳监控`、`持仓重大事件心跳检测`、`FOTO 光子学ETF心跳检测`、`RKLB异动监控`、`NBIS关键事件心跳提醒`、`ASTS 重大异动心跳监控`、`存储板块关键事件心跳提醒` 仍跳过发送。
+  - 同窗 heartbeat 可分类信号仍有 `PlainTextTriggered=46`、`JsonNoop=13`、`JsonTriggered=7`、`PlainTextNoop=4`、`JsonMalformed=2`、`PlainTextSuppressed=1`，说明结构化漂移仍在，但本轮主要功能损失仍是 evidence 门禁 fail-closed 后批量 `runner_error`。
+  - 判断：该缺陷仍为功能性 `P2 / New`。它影响 heartbeat 覆盖和普通监控任务完成率，但同窗 direct 会话仍有 assistant final 收口，未见错投、数据破坏、敏感信息泄露或全渠道不可用，因此不升级为 P1，不创建 GitHub Issue。
+- `data/runtime/logs/web.log.2026-07-13`
   - 巡检时间窗：2026-07-13 19:00-23:02 CST。
   - 同窗日志命中 433 行 `当前信息暂时未完成实时核验，请稍后再试。` 相关文本，并有 156 次 `tavily request failed ... Query is too long`，多次触发 `function_calling required evidence fallback failed` 与 `answer rejected because required tool evidence is missing`。
   - 影响范围继续覆盖 Feishu / Web heartbeat，也扩展到普通 scheduler 用户可见正文完成率：

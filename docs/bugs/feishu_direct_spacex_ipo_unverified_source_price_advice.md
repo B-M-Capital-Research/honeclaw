@@ -22,6 +22,14 @@ New
 
 ## 修复记录
 
+- 2026-07-14 03:01 CST 补充同根复发证据，状态维持 `New`：
+  - 23:02-03:01 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 10 个 user turn 与 10 条 assistant final，Feishu direct / scheduler 与 Web direct 均以 assistant 收口。
+  - 10 条 assistant final 的 `metadata_json` 均没有可审计 `assistant.tool_calls`；未留下本轮网页、行情、公告、财报或新闻工具结果。
+  - 00:02 CST Feishu direct session `Actor_feishu__direct__ou_5fb47bd113e7776b05e7a5c2c56e310652` 回答“南方海力士二倍今天暴跌”时，直接按 DRAM / SKHY / MU 展开，输出 SK Hynix 美国上市、融资额、暴跌百分比和板块传导判断。
+  - 00:08 CST 同 session 在用户确认标的后，继续输出 `DRAM $57.41`、`SKHY $152.75`、`MU $932.78`、跌幅、成交量和“现在可以买，但有前提条件”的操作判断。
+  - 01:21 CST Web direct session `Actor_web__direct__web-user-266454c88ed6` 回答 W&T Offshore 基本面时，输出 NYSE 代码、业务、油价弹性和投资定位判断，但同样没有可审计来源 / 行情工具调用元数据。
+  - 这些回复正常收口且未见错投、投递失败、内部实现外露或格式损坏；问题在于强时效金融来源 / 行情核验不可审计，并继续给出精确价格、成交量和买入判断。因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-07-13 19:01 CST 补充同根复发证据，状态维持 `New`：
   - 15:01-19:01 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 6 个 user turn、8 条 assistant 记录和 2 条 compact system 记录；Feishu direct、Web direct 与 Web scheduler 均有终态记录。
   - 17:51 CST Feishu direct 生产探针 session `Actor_feishu__direct__earnings_5fgate_5fprod_5fprobe_5f20260713` 询问 `美光目前财报如何？请说明最新已披露财季和披露日期。`

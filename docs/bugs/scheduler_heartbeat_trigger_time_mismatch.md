@@ -8,6 +8,18 @@
 
 ## 最新进展
 
+- 本轮 `2026-07-13 23:02-2026-07-14 03:01 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-13`
+    - 23:30 CST `中际旭创关键事件心跳提醒` deliver preview 把当前核查写成 `2026年7月13日（周一）北京约21:00`，与实际 23:30 CST 不一致。
+    - 23:31 CST `持仓重大事件心跳提醒` deliver preview 写 `2026-07-13 北京时间 14:00`，并把美东时间描述为周日休市口径。
+    - 00:30 CST `持仓重大事件心跳提醒` deliver preview 写 `2026-07-13 北京时间 10:30`，早于实际 2026-07-14 00:30 CST。
+    - 02:00 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` deliver preview 写 `2026-07-13 北京时间约 02:00`，日期早一天；03:01 CST `持仓重大事件心跳提醒` 又写 `2026-07-13 北京时间 约10:00`。
+  - 会话质量对照：
+    - 同窗 `data/sessions.sqlite3` 有 10 个 user turn / 10 条 assistant final，均正常收口；未见时间口径错误进入普通 direct final。
+  - 判断：
+    - 最新样本仍是 heartbeat 运行态时间上下文漂移，未形成新的普通 scheduler / direct 独立链路。
+    - 该问题影响 heartbeat 提醒可信度和行情新鲜度判断，状态维持 `New/P3`；不影响直聊 / 调度 / 投递主功能链路，非 P1，不创建 GitHub Issue。
+
 - 本轮 `2026-07-13 11:04-15:01 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-13`
     - 11:30 CST `Monitor_Watchlist_11` deliver preview 把当前检查时间写成 `2026 年 4 月 4 日 23:10`，同时输出 MU `$979.30` 等行情锚。
