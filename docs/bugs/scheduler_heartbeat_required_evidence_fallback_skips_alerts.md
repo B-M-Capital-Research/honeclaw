@@ -22,6 +22,12 @@ New
 
 ## 证据来源
 
+- `data/runtime/logs/web.log.2026-07-14` / `data/sessions.sqlite3`
+  - 巡检时间窗：2026-07-14 07:01-11:01 CST。
+  - runtime 日志命中 340 次 `当前信息暂时未完成实时核验，请稍后再试。`、126 次 `tavily request failed ... Query is too long`、126 次 `function_calling required evidence fallback failed`、204 次工具预算拒绝。
+  - 受影响任务覆盖 Feishu / Web heartbeat：08:30-11:01 CST 多条 `持仓重大事件心跳提醒`、`存储板块关键事件心跳提醒`、`光迅科技关键事件心跳提醒`、`全天原油价格3小时播报`、`Monitor_Watchlist_11`、`AAOI 1.6T 光模块心跳检测`、`SIVE POET/Nokia/1.6T DFB 心跳检测` 等以 `runner_error` 跳过发送。
+  - `data/sessions.sqlite3` 同窗有 32 个 user turn / 44 条 assistant 记录，普通 direct / scheduler 仍有成功样本；失败主要表现为产品化失败提示或实时核验失败文案，没有 provider 原始错误、token、本机路径或 panic 进入 assistant final。
+  - 判断：同根实时核验门禁 fail-closed 仍活跃，影响 heartbeat 覆盖和部分 scheduler 正文完成率；因同窗仍有多渠道正常收口，维持功能性 `P2 / New`，不升级为 P1。
 - `data/sessions.sqlite3`
   - 巡检时间窗：2026-07-14 03:01-07:01 CST。
   - 04:30 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595` 的 `OWALERT_PostMarket` 先写 assistant final `抱歉，这次处理失败了。请稍后再试。`，随后写 scheduler 文本 `本轮定时任务未能完成，系统已记录失败并将在下一次触发时重试。`，`metadata_json` 标记 `AgentFailed` / `scheduler_failure=true`。

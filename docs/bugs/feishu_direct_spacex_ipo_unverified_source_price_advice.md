@@ -22,6 +22,13 @@ New
 
 ## 修复记录
 
+- 2026-07-14 11:01 CST 补充同根复发证据，状态维持 `New`：
+  - 07:01-11:01 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 32 个 user turn / 44 条 assistant 记录，Feishu / Web / Discord 均有 assistant 终态。
+  - 09:48 CST Feishu direct session `Actor_feishu__direct__ou_5f49e2e252460a05eee0ff98f685cf9f16` 回答“SK海力士杠杆基金有哪些，跌幅最大是哪个”。
+  - 该 assistant row 的 `metadata_json` 只有渠道元数据，没有 `assistant.tool_calls`；未留下本轮网页、行情、基金资料或交易所页面核验工具结果。
+  - final 直接输出“A股不直接提供韩股 SK 海力士的杠杆 ETF，海外有 KOSPI200 2x/3x 杠杆 ETF 和半导体指数杠杆基金，其中与海力士最相关的半导体 3x 产品跌幅最大”，并继续展开 SK 海力士、HBM、AI 服务器内存和杠杆产品影响判断。
+  - 回复正常收口且未见错投、投递失败或内部实现外露；问题在于强时效金融 / ETF 产品答案缺少可审计来源核验，仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-07-14 03:01 CST 补充同根复发证据，状态维持 `New`：
   - 23:02-03:01 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 10 个 user turn 与 10 条 assistant final，Feishu direct / scheduler 与 Web direct 均以 assistant 收口。
   - 10 条 assistant final 的 `metadata_json` 均没有可审计 `assistant.tool_calls`；未留下本轮网页、行情、公告、财报或新闻工具结果。

@@ -22,6 +22,17 @@
 
 ## 最新进展
 
+- 本轮 2026-07-14 07:01-11:01 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `session_messages`
+    - 07:01-11:01 CST 新增 32 个 user turn / 44 条 assistant 记录；Feishu / Web / Discord 均有 assistant 终态，未见错投、敏感信息泄露或原始工具 JSON。
+    - 07:03 CST Feishu 持仓早报继续使用 `AMD 557.89`、`MU 979.30` 等高风险数量级价格作为组合贡献锚点。
+    - 08:30 CST Feishu scheduler `闪迪(SNDK)每日行情与行业简报` 正式 final 写出 `SNDK 收盘价 1,673.97 美元`、前收 `1,915.92`、52 周高点 `2,354.39`、YTD `+756%`，并据此生成跌破 50 日均线、估值和行业催化判断。
+    - 08:46 CST Feishu scheduler `A股盘前高景气产业链推演` 继续使用 `NVDA 203.53`、`SNDK 1673.97`、`MRVL 217.53`、`MU 跌破 960` 等高风险行情锚，推导 A 股 PCB / CPO / 存储链压力。
+    - 08:31 / 08:36 / 08:38 CST NOK 直聊先输出 `NOK 7月11日收盘价 4.50 美元`，随后又核验为 `11.675 美元` 并推测“最大可能是股票拆分”，但未确认拆股事件即继续生成 PE / EPS / 估值判断。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check 缺口：异常或互相矛盾的价格进入正式 scheduler final 和 direct 投研判断。
+    - 主体报告可读并完成，问题没有阻断调度 / 投递主功能链路；因此仍按质量性 `P3 / New`。该问题不影响主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-14 03:01-07:01 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `session_messages`
     - 03:01-07:01 CST 新增 12 个 user turn / 13 条 assistant 记录；Web direct、Feishu direct/scheduler 与 Web scheduler 均有 assistant 记录。除两条 scheduler 产品化失败外，其余样本均正常收口；未见错投、敏感信息泄露或原始工具 JSON。

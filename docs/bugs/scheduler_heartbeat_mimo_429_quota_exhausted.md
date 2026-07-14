@@ -3,11 +3,18 @@
 - **发现时间**: 2026-05-20 19:04 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: [#44](https://github.com/B-M-Capital-Research/honeclaw/issues/44)
 
 ## 证据来源
 
+- `data/runtime/logs/web.log.2026-07-14` / `data/sessions.sqlite3`
+  - `2026-07-14 07:01-11:01 CST` 真实运行态确认同根 provider quota / rate-limit 链路复发，状态从代码级 `Fixed` 回退为 `New`。
+  - runtime 日志命中 28 条 `provider_quota_exhausted`；代表样本包括 08:30 CST `ASTS 重大异动心跳监控`、`持仓财报与重大新闻心跳提醒`、`光迅科技关键事件心跳提醒`、`AI与科技持仓观察关键事件心跳提醒`、`NBIS关键事件心跳提醒`、`NVDA 关键事件心跳提醒`、`存储板块关键事件心跳提醒`、`光模块板块关键事件心跳提醒`，以及 09:00 CST 多条 Web / Feishu heartbeat。
+  - 这些样本的底层错误统一为 MiniMax / OpenAI-compatible 上游 `HTTP 429 Token Plan` 限速：所有 API Key 流式请求失败，随后调度层落成 `runner_error` 并跳过发送。
+  - `data/sessions.sqlite3` 同窗新增 32 个 user turn / 44 条 assistant 记录，Feishu / Web / Discord 均有 assistant 终态；09:30 CST Web direct session `Actor_web__direct__web-user-d53f847825ce` 在用户追问 `meta的释放过剩算力对nbis有影响吗` 后，日志显示同一上游 429，assistant final 只返回 `抱歉，这次处理失败了。请稍后再试。`
+  - 用户可见回复未直接外泄 provider 原始 429、token、本机路径或 stack trace，但 heartbeat / direct 主功能链路均出现失败；影响范围已超出单次 heartbeat 波动，因此恢复为功能性 `P1 / New`。
+  - 已有 GitHub Issue [#44](https://github.com/B-M-Capital-Research/honeclaw/issues/44)，本轮不重复创建。
 - GitHub Issue [#44](https://github.com/B-M-Capital-Research/honeclaw/issues/44) 与 bug 台账记录：最近四小时 heartbeat 任务批量命中 `mimo-v2.5-pro` 上游 `HTTP 429` / `quota exhausted`，多条监控检查落成 `execution_failed + skipped_error + delivered=0`。
 - 受影响范围覆盖价格破位、持仓财报、重大新闻、板块关键事件、观察池等多个 heartbeat job；同窗直聊会话仍能正常收口，故障集中在 heartbeat provider quota / rate-limit 路径。
 - 本轮修复不依赖当前机器生产日志、线上健康检查或真实投递状态；判断与验证基于 issue 摘要、现有 heartbeat 代码、配置解析和本地回归。
