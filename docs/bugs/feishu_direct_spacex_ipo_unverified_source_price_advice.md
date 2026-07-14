@@ -153,10 +153,24 @@ New
 - `data/runtime/logs/acp-events.log`
   - 14:05 CST 同 session 的 `session/prompt` 可见本轮用户输入是 SpaceX IPO 估值 / 买入价问题。
   - 该 prompt 上下文包含历史会话和旧工具轨迹，但没有看到本轮针对 SpaceX IPO 来源链接、IPO 价格、估值或买入区间的可审计工具结果进入当前 assistant final。
+- `data/sessions.sqlite3` -> `session_messages`
+  - 巡检时间窗：2026-07-14 23:02-2026-07-15 03:02 CST。
+  - 本窗新增 7 个 user turn / 7 条 assistant 记录，3 个近期 session 均以 assistant 收口，`last_message_role=user` 为 0。
+  - `session_id=Actor_feishu__direct__ou_5f01b20218487e01a6d48c881ce6893123`
+  - 2026-07-15 00:00 CST 用户输入摘要：`arm`。
+  - 2026-07-15 00:00 CST assistant final 输出 ARM 当前 AI 硬件链定位、商业模式、AI 溢价、估值消化速度、许可 / 版税收入结构和投资结论；该 assistant row 的 `metadata_json` 只有渠道元数据，没有 `assistant.tool_calls`。
+  - `session_id=Actor_feishu__direct__ou_5fce891d255ae588dde3bd7b1494a28d1e`
+  - 2026-07-15 01:06 CST 用户输入摘要：`今年我们国家大力提倡长时储能，这块行业有哪些投资机会，对应是哪家上市公司？`
+  - 2026-07-15 01:06 CST assistant final 输出“今年国内大力提倡”政策口径、长时储能技术路线、A 股代表公司和投资分层；该 assistant row 的 `metadata_json` 同样只有渠道元数据，没有 `assistant.tool_calls`。
+  - 2026-07-15 01:10 CST 用户继续要求结合 K 线筛选“一周内有涨停板且回调到 5 日线附近”的公司；assistant 能明确承认当前工具链不能实时读取 A 股 K 线，并要求用户用东财 / 同花顺筛选，因此该条不作为同类缺陷登记。
 - 本轮巡检汇总：
   - assistant final 污染扫描未命中空回复、本机绝对路径、`data/agent-sandboxes`、`company_profiles/...`、`data_fetch`、raw tool 字段、`reasoning_content`、`<think>`、provider 原始错误、`Param Incorrect`、panic 或 `index out of bounds`。
   - `cron_job_runs` 同窗 heartbeat 仍有 37 条 `execution_failed + skipped_error + delivered=0` 与 68 条 `noop + skipped_noop + delivered=0`，失败形态主要为既有结构化收口问题，未进入用户可见 final。
   - 最近四小时只有文档提交 `8cd36b4f Update bug patrol ledger`，没有非文档代码提交可证明该链路已修复。
+- 2026-07-15 03:02 CST 本轮巡检汇总：
+  - assistant final 污染扫描未命中 `<think>`、本机绝对路径、raw tool 字段、`data_fetch`、`company_profiles/`、panic、provider 原始 429 或实时核验失败文案。
+  - 00:27 CST Atlas 950 交换机问题的 assistant row 有 `assistant.tool_calls`，本轮不作为“无工具核验”证据；01:10 CST K 线筛选条承认工具能力不足，也不登记为本缺陷。
+  - 最近四小时无非文档代码提交；本轮只维护缺陷台账，未修改业务代码、测试代码或配置代码。
 
 ## 端到端链路
 
@@ -196,6 +210,7 @@ New
 - 2026-06-11 DELL 样本说明根因不局限于未上市 IPO：当 assistant 只执行本地公司画像读写时，answer 阶段仍可能生成看似来自网页和财务页的精确数字与来源链接，缺少“final 中每个来源链接 / 精确行情 / 交易区间必须对应本轮工具证据”的一致性校验。
 - 2026-06-20 SPCX 样本说明根因还包括非标准 / 高歧义 ticker 与热门私营公司叙事之间缺少实体确认门槛；即使用户要求“去搜一下”，final 也应先确认 `SPCX` 的证券实体与来源支持，而不是直接写成 SpaceX 股票并展开当前利好分析。
 - 2026-07-09 长鑫存储样本说明根因也包括 answer 阶段缺少“final 声称已核验 / 可核验口径时必须存在本轮工具证据”的一致性校验；该路径不依赖 ticker 歧义也会复发。
+- 2026-07-15 ARM / 长时储能样本说明根因不局限于 IPO 或上市公司精确行情：普通单词式股票提问和政策驱动行业机会问答，也会在没有本轮可审计工具结果时输出当前估值 / 政策 / 标的筛选判断。
 - 该问题也不同于路径或内部工具名外露缺陷：本轮用户可见文本没有泄露内部实现，问题是强时效金融来源和可操作价格区间的核验边界不足。
 
 ## 下一步建议
@@ -213,3 +228,4 @@ New
 - 已验证范围：`data/sessions.sqlite3` 最近四小时会话收口、assistant final 污染扫描、`cron_job_runs` 状态分布、`acp-events.log` 当前 prompt 上下文、最近四小时提交检查。
 - 2026-06-11 19:02 CST 复核同样只维护缺陷台账，未修改业务代码、测试代码或配置代码，未运行代码测试；已验证范围：15:02-19:02 CST SQLite 会话收口、assistant final 污染扫描、DELL assistant `metadata_json.assistant.tool_calls`、`cron_job_runs` 状态分布、最近四小时非文档提交检查。
 - 2026-07-09 19:02 CST 复核只维护缺陷台账，未修改业务代码、测试代码或配置代码，未运行代码测试；已验证范围：15:01-19:02 CST SQLite 会话收口、assistant final 污染扫描、长鑫存储两条 assistant `metadata_json`、`cron_job_runs` 状态分布、最近四小时非文档提交检查。
+- 2026-07-15 03:02 CST 复核只维护缺陷台账，未修改业务代码、测试代码或配置代码，未运行代码测试；已验证范围：23:02-03:02 CST SQLite 会话收口、assistant final 污染扫描、ARM / 长时储能 / K 线筛选三条 assistant `metadata_json`、`cron_job_runs` 状态分布、最近四小时非文档提交检查。

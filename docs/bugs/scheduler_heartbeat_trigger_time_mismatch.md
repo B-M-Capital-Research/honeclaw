@@ -8,6 +8,19 @@
 
 ## 最新进展
 
+- 本轮 `2026-07-14 23:02-2026-07-15 03:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-14`
+    - 23:30 CST Web heartbeat `持仓重大事件心跳提醒` deliver preview 写 `2026-07-15 北京时间 08:46 检查完毕`，比实际执行窗口漂移到次日上午。
+    - 00:01 CST `AI与科技持仓观察关键事件心跳提醒` deliver preview 写 `北京时间 2026-07-15 23:33`，比真实日志时间晚约 23.5 小时。
+    - 01:30 CST `光迅科技关键事件心跳提醒` deliver preview 写 `2026年7月15日（周三）北京时间约 15:35`，比实际执行窗口晚约 14 小时。
+    - 02:30 / 03:00 CST `持仓重大事件心跳提醒` deliver preview 多次写 `2026-07-15 北京时间 18:30 检查完毕`，与真实执行窗口不一致。
+    - 03:00 CST `美股黄金坑信号心跳检测` deliver preview 把数据快照解释成 `北京时间 2026年5月16日盘中`，并基于该错误时间轴输出 SPY / QQQ 行情判断。
+  - 会话质量对照：
+    - 同窗 `data/sessions.sqlite3` 新增 7 个 user turn / 7 条 assistant 记录，3 个近期 session 均以 assistant 收口；未见同类时间口径错误进入普通 direct assistant final。
+  - 判断：
+    - 最新样本仍是 heartbeat 运行态时间上下文漂移，未形成新的普通 scheduler / direct 独立链路。
+    - 该问题影响 heartbeat 提醒可信度和行情新鲜度判断，状态维持 `New/P3`；不影响直聊 / 调度 / 投递主功能链路，非 P1，不创建 GitHub Issue。
+
 - 本轮 `2026-07-14 19:02-23:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-14`
     - 22:30 CST `SIVE POET/Nokia/1.6T DFB 心跳检测` deliver preview 把当前时间写成 `2026-07-14 北京时间 23:47（美东 15:47，盘后）`，晚于实际执行窗口。

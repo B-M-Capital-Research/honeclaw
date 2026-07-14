@@ -7,6 +7,19 @@
 
 ## 修复进展
 
+- `2026-07-14 23:02-2026-07-15 03:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-14`
+    - 本窗 heartbeat 可分类 `parse_kind` 信号为 `PlainTextTriggered=208`、`JsonNoop=99`、`PlainTextNoop=19`、`PlainTextSuppressed=6`、`JsonTriggered=5`、`JsonUnknownStatus=4`。
+    - raw preview 以 `<think>` 开头 234 次，`deliver_preview` 105 次；另有 247 条工具预算拒绝、结构化 JSON 失败、空输出或 context window 相关信号。
+    - 代表样本包括 03:00 CST `全天原油价格3小时播报` `PlainTextSuppressed` 后落成“heartbeat 输出不是结构化 JSON，任务已标记失败”；03:00 CST `美股黄金坑信号心跳检测`、`TSLA 正负触发条件心跳监控`、`NBIS关键事件心跳提醒` 等继续以 `PlainTextTriggered` 进入 deliver 路径；多条 `JsonNoop` raw preview 仍以 `<think>` 开头。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 在 23:02-03:02 CST 有 7 个 user turn / 7 条 assistant 记录，3 个近期 session 均以 assistant 收口。
+    - assistant final 污染扫描未命中 `<think>`、本机路径、provider 原始错误、panic、quota、原始工具字段、`data_fetch` 或 `company_profiles/` 外泄。
+    - 本地 `cron_job_runs.max(executed_at)` 仍停在 `2026-07-10T14:01:27.621121+08:00`，当前 heartbeat 运行态继续以 runtime web log 判断。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题继续影响 heartbeat 监控判断、送达语义和失败 / 跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-14 15:01-19:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-14`
     - 本窗 heartbeat 可分类 `parse_kind` 信号为 `PlainTextTriggered=36`、`JsonNoop=15`、`PlainTextNoop=6`、`JsonTriggered=5`、`JsonMalformed=1`、`JsonEmptyStatus=1`、`PlainTextSuppressed=1`。
