@@ -7,6 +7,19 @@
 
 ## 修复进展
 
+- `2026-07-14 15:01-19:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-14`
+    - 本窗 heartbeat 可分类 `parse_kind` 信号为 `PlainTextTriggered=36`、`JsonNoop=15`、`PlainTextNoop=6`、`JsonTriggered=5`、`JsonMalformed=1`、`JsonEmptyStatus=1`、`PlainTextSuppressed=1`。
+    - raw preview 以 `<think>` 开头 65 次，`deliver_preview` 37 次；另有 78 次 global budget 拒绝、141 次 per-tool budget 拒绝和 169 条 `runner_error`。
+    - 代表样本包括 15:30-19:01 CST 多条 `PlainTextTriggered` 继续进入 deliver / duplicate suppression 路径，16:30 CST `TSLA 正负触发条件心跳监控`、17:30-19:00 CST `SIVE POET/Nokia/1.6T DFB 心跳检测`、19:01 CST `AI与科技持仓观察关键事件心跳提醒` 等仍依赖自由文本解析 heartbeat 状态。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 在 15:01-19:02 CST 有 5 个 user turn / 5 条 assistant 记录，均成对收口。
+    - assistant final 污染扫描未命中 `<think>`、本机路径、provider 原始错误、panic、quota、原始工具 JSON、`data_fetch` 或 `company_profiles/` 外泄。
+    - 本地 `cron_job_runs` 仍没有 2026-07-14 15:01 CST 后的新 run，当前 heartbeat 运行态继续以 runtime web log 判断。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题继续影响 heartbeat 监控判断、送达语义和失败 / 跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-13 11:04-15:01 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-13`
     - 本窗 heartbeat 可分类 `parse_kind` 信号为 `PlainTextTriggered=188`、`JsonNoop=96`、`PlainTextNoop=10`、`PlainTextSuppressed=4`、`JsonTriggered=4`、`JsonEmptyStatus=1`、`Empty=1`。
@@ -5670,6 +5683,12 @@
 - 现有落库字段只保留 `parse_kind` 与字符数，没有把原始响应片段保留下来，进一步放大了排障盲区。
 - `11:30 -> 12:00` 的最新窗口再次坐实这种抖动：`Monitor_Watchlist_11` 在 `11:30` 先回落到 `JsonUnknownStatus + execution_failed`，但 `12:00` 又自行恢复为 `JsonNoop + skipped_noop`；同一批次里的 `全天原油价格3小时播报` 则成功回到 `JsonTriggered + sent`，说明协议脆弱点仍未退出活跃态，只是继续在相邻轮次间摆动。
 - `12:30 -> 13:00` 的新一轮窗口进一步说明抖动仍在活跃：`Monitor_Watchlist_11` 在 `12:30` 还是 `JsonNoop + skipped_noop`，到 `13:00` 又回落为 `JsonUnknownStatus + execution_failed`；与此同时 `全天原油价格3小时播报` 与 `小米30港元破位预警` 同轮都保持 `JsonNoop`，说明问题仍主要集中在复杂 watchlist 模板，但公共协议脆弱性并未消失。
+
+## 下一步建议
+
+- 将 heartbeat runner 的最终输出契约改为强制结构化通道，避免依赖自由文本尾部 JSON 提取 `triggered/noop/error`。
+- 对 `PlainTextTriggered`、`PlainTextSuppressed`、`JsonMalformed`、`JsonEmptyStatus` 等 parse_kind 增加任务粒度指标和回归样本，先覆盖多标的 watchlist、单标的阈值和重大事件监控三类高频模板。
+- 出站前区分“模型已完成业务判断但状态封装失败”和“确实未触发 noop”，避免用户和运维继续把解析失败误读为无事发生。
 - `13:30 -> 14:00` 的最新窗口再次重复同一模式：`Monitor_Watchlist_11` 刚在 `13:30` 恢复为 `JsonNoop + skipped_noop`，到 `14:00` 又回落为 `JsonUnknownStatus + execution_failed`；而同批 `原油播报` 与 `小米预警` 继续保持 `JsonNoop`，说明当前线上仍是“复杂 watchlist 模板高频抖动、简单 heartbeat 暂时稳定”的活跃故障态。
 - `14:30 -> 15:00` 的最新窗口把这种抖动再往前推了一轮：`Monitor_Watchlist_11` 在 `14:30` 与 `15:00` 连续两轮保持 `JsonUnknownStatus + execution_failed`，而 `小米30港元破位预警` 与 `RKLB异动监控` 又在同一个半小时窗口内从失败恢复为 `JsonNoop`，说明当前线上仍是“复杂 watchlist 模板最脆弱、其它 heartbeat 持续来回摆动”的活跃故障态。
 - `15:00 -> 15:30 -> 16:00` 的最新三轮把这一抖动继续坐实：同一 `Monitor_Watchlist_11` 在 15:00 失败、15:30 自恢复、16:00 再次失败，中间没有任何任务配置改动，说明当前根因仍是“自由文本 + 状态 JSON 最终收口不稳定”的公共协议脆弱性，而不是某次一次性脏数据。

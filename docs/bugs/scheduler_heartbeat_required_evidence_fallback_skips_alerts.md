@@ -23,6 +23,13 @@ New
 ## 证据来源
 
 - `data/runtime/logs/web.log.2026-07-14` / `data/sessions.sqlite3`
+  - 巡检时间窗：2026-07-14 15:01-19:02 CST。
+  - runtime 日志继续命中 507 次 `当前信息暂时未完成实时核验，请稍后再试。`、169 次 `required tool evidence missing after enforcement retry`、166 次 `tavily request failed ... Query is too long`、166 次 `function_calling required evidence fallback failed`、219 次工具预算拒绝。
+  - 同窗 heartbeat `run_finish` 为 `success=false` 169 条、`success=true` 65 条；失败覆盖 Feishu / Web heartbeat，例如 `RKLB异动监控`、`TEM大事件心跳监控`、`持仓财报与重大新闻心跳提醒`、`美股黄金坑信号心跳检测`、`ASTS 重大异动心跳监控`、`FOTO 光子学ETF心跳检测`、`ORCL 大事件监控` 等以 `runner_error` 跳过发送。
+  - `data/sessions.sqlite3` 同窗有 5 个 user turn / 5 条 assistant 记录，Web / Feishu direct 与 scheduler 均有 assistant 收口；assistant final 污染扫描未命中 `<think>`、本机绝对路径、原始工具 JSON、`data_fetch`、`company_profiles/`、panic、provider 原始 429 或实时核验失败文案。
+  - 本地 `cron_job_runs` 仍无 2026-07-14 15:01 CST 后新增行，`max(executed_at)` 停在 `2026-07-10T14:01:27.621121+08:00`，本轮继续以 runtime web log 作为 heartbeat 真实运行态来源。
+  - 判断：同根实时核验门禁 fail-closed 仍活跃，继续影响 heartbeat 覆盖；同窗仍有 direct / scheduler 成功样本、未见错投、数据破坏、敏感信息泄露或全渠道不可用，因此维持功能性 `P2 / New`，不升级为 P1，不创建 GitHub Issue。
+- `data/runtime/logs/web.log.2026-07-14` / `data/sessions.sqlite3`
   - 巡检时间窗：2026-07-14 07:01-11:01 CST。
   - runtime 日志命中 340 次 `当前信息暂时未完成实时核验，请稍后再试。`、126 次 `tavily request failed ... Query is too long`、126 次 `function_calling required evidence fallback failed`、204 次工具预算拒绝。
   - 受影响任务覆盖 Feishu / Web heartbeat：08:30-11:01 CST 多条 `持仓重大事件心跳提醒`、`存储板块关键事件心跳提醒`、`光迅科技关键事件心跳提醒`、`全天原油价格3小时播报`、`Monitor_Watchlist_11`、`AAOI 1.6T 光模块心跳检测`、`SIVE POET/Nokia/1.6T DFB 心跳检测` 等以 `runner_error` 跳过发送。

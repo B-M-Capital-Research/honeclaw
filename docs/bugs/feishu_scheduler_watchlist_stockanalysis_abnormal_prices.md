@@ -22,6 +22,18 @@
 
 ## 最新进展
 
+- 本轮 2026-07-14 15:01-19:02 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-14`
+    - 15:30 CST `存储板块关键事件心跳提醒` deliver preview 继续使用 `SNDK $1,673.97`、盘后进一步下探 2.4%、52 周高点等异常数量级价格，并据此落成 `triggered`。
+    - 15:31 CST `光模块板块关键事件心跳提醒` deliver preview 写 `SNDK 单日暴跌 12.6%，收于 $1,673.97；盘后继续跌 2.4%`，继续把同一异常行情锚带入板块级触发判断。
+    - 16:00-18:30 CST `持仓重大事件心跳提醒` 多条 deliver preview 继续使用 `MU $937`、`SPCX $139.14` 等高风险行情锚，并围绕同一时间戳判断无新增。
+    - 19:00 CST `SIVE POET/Nokia/1.6T DFB 心跳检测` deliver preview 写 `POET $8.00`、50 日均线 `$11.66`、200 日均线 `$7.86`；该类价格可能合理但仍和同窗异常行情源混杂，需要后续按数据源 sanity check 统一处理。
+  - `data/sessions.sqlite3` / `session_messages`
+    - 15:01-19:02 CST 新增 5 个 user turn / 5 条 assistant 记录，Web / Feishu direct 与 scheduler 均有 assistant 收口；assistant final 未见内部字段、原始工具 JSON、投递失败或敏感信息外泄。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check 缺口：异常或高风险数量级价格继续进入 heartbeat 判断上下文和部分 deliver preview。
+    - 本窗没有错投、投递失败、空回复、数据破坏或全渠道不可用；因此仍按质量性 `P3 / New`。该问题不影响主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-14 07:01-11:01 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `session_messages`
     - 07:01-11:01 CST 新增 32 个 user turn / 44 条 assistant 记录；Feishu / Web / Discord 均有 assistant 终态，未见错投、敏感信息泄露或原始工具 JSON。
