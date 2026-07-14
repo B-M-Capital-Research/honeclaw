@@ -23,6 +23,13 @@ New
 ## 证据来源
 
 - `data/runtime/logs/web.log.2026-07-14` / `data/sessions.sqlite3`
+  - 巡检时间窗：2026-07-14 19:02-23:02 CST。
+  - runtime 日志同窗仍有 60 次 `当前信息暂时未完成实时核验`、39 次 required evidence / fallback failed、57 次 Tavily 查询过长、88 次工具预算拒绝、266 条 heartbeat `parse_kind` 诊断、77 条 `deliver_preview`，并有 195 条 `<think>` 出现在 heartbeat raw / preview 相关行。
+  - `data/sessions.sqlite3` 同窗新增 58 个 user turn、62 条 assistant 记录和 2 条 system compact 记录；最近会话均以 assistant 收口，`last_message_role=user` 的活跃会话数为 0。
+  - 20:00 CST Web scheduler `20:00 持仓股重要新闻晚报` 同时写入通用失败 final、scheduler 失败文本和 Web 出错提示；20:00 CST Feishu `每日20点期权墙简报` 与 `每日美股大盘温度检查` 也写入 `本轮定时任务未能完成，系统已记录失败并将在下一次触发时重试。`
+  - 本地 `cron_job_runs` 同窗仍无新增行；真实运行态仍需依赖 runtime web log 复核。
+  - 判断：同根实时核验门禁 / 工具预算退化仍影响 scheduler 与 heartbeat 覆盖；但 direct 会话和多数 scheduler 仍有 assistant 收口，未见错投、数据破坏、敏感信息泄露或全渠道不可用，维持功能性 `P2 / New`，不升级为 P1。
+- `data/runtime/logs/web.log.2026-07-14` / `data/sessions.sqlite3`
   - 巡检时间窗：2026-07-14 15:01-19:02 CST。
   - runtime 日志继续命中 507 次 `当前信息暂时未完成实时核验，请稍后再试。`、169 次 `required tool evidence missing after enforcement retry`、166 次 `tavily request failed ... Query is too long`、166 次 `function_calling required evidence fallback failed`、219 次工具预算拒绝。
   - 同窗 heartbeat `run_finish` 为 `success=false` 169 条、`success=true` 65 条；失败覆盖 Feishu / Web heartbeat，例如 `RKLB异动监控`、`TEM大事件心跳监控`、`持仓财报与重大新闻心跳提醒`、`美股黄金坑信号心跳检测`、`ASTS 重大异动心跳监控`、`FOTO 光子学ETF心跳检测`、`ORCL 大事件监控` 等以 `runner_error` 跳过发送。

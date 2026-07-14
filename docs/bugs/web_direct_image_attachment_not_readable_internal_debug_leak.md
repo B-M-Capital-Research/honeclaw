@@ -9,6 +9,12 @@
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `session_messages`
+  - 巡检时间窗：2026-07-14 19:02-23:02 CST。
+  - 21:38 CST Web direct session `Actor_web__direct__web-user-c394f2531362`，用户上传两张持仓截图，附件行显示 `分类=图片`、`类型=image/jpeg`、`下载状态=成功`，且有本地路径。
+  - 21:38 CST assistant final 回复 `图片附件已收到，但我这边读取到的持仓数据为空`，要求用户手动提供总资产、现金和各持仓数量 / 价格；没有外露 OSS、数据库或本机路径，但图片理解主链路仍未完成。
+  - 21:50 CST 同会话上传 CSV，附件行显示 `分类=表格`、`下载状态=成功`，assistant 首轮仍回复 `无法直接读取这个 CSV 文件内容`；21:52 用户要求“重新读取我的csv文件”后，21:54 CST assistant 才拿到完整 CSV 并完成分析。
+  - 判断：图片附件读取/OCR 链路仍会迫使用户绕路；CSV 首轮失败后同会话可恢复，暂作为附件读取不稳定的旁证，不另建生成文件下载缺陷。无错投、敏感信息泄露、全渠道不可用或批量失败证据，维持 `P2 / New`，非 P1。
+- `data/sessions.sqlite3` -> `session_messages`
   - 2026-07-14 04:03-04:12 CST，`session_id=Actor_web__direct__web-user-400794904801`。
   - 用户连续 3 次上传同一张图片附件并询问 CALL 盈利概率；附件行显示 `分类=图片`、`类型=image/jpeg`、`下载状态=成功`，且 prompt 中包含本地可读路径。
   - 04:04 / 04:06 CST assistant final 连续两次只返回 `当前信息暂时未完成实时核验，请稍后再试。`，`metadata_json` 标记 `error_kind=AgentFailed` / `run_failed=true`。

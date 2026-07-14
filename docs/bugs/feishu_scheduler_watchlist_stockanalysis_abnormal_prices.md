@@ -22,6 +22,14 @@
 
 ## 最新进展
 
+- 本轮 2026-07-14 19:02-23:02 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `session_messages`
+    - 21:35 CST Feishu scheduler `科技核心股池 · 晚间击球区快报` 正常收口，但用户可见 final 继续输出 `MU $980.82`、`SNDK $1,771.55`、`STX $895.00` 等高风险数量级行情锚，并据此计算击球区偏离。
+    - 23:00 CST Feishu scheduler `核心观察股池晚间快报` 正常收口，继续输出 `MU $975.50`、`SNDK $1,771.55`、`STX $895.00` 等同类价格。
+  - `data/runtime/logs/web.log.2026-07-14`
+    - 22:30-23:01 CST heartbeat deliver / raw preview 继续出现 `MU: Current 964.21`、`SNDK $1,748`、`SNDK $1,734.875` 等异常数量级价格，并进入 noop / triggered 判断。
+  - 主链路未阻断，问题主要影响行情可信度和后续投资判断质量，维持质量性 `P3 / New`，非 P1。
+
 - 本轮 2026-07-14 15:01-19:02 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-14`
     - 15:30 CST `存储板块关键事件心跳提醒` deliver preview 继续使用 `SNDK $1,673.97`、盘后进一步下探 2.4%、52 周高点等异常数量级价格，并据此落成 `triggered`。

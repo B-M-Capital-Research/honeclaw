@@ -22,6 +22,12 @@ New
 
 ## 最新进展
 
+- 2026-07-14 23:02 CST 运行态继续复发，状态维持 `New`：
+  - 19:02-23:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 58 个 user turn、62 条 assistant 记录和 2 条 system compact 记录；最近会话均以 assistant 收口。
+  - 21:35 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 的 `科技核心股池 · 晚间击球区快报` 正常收口，但开头写出 `美股周一收盘价（2026-07-13）已通过 data_fetch 全部校验完毕`。
+  - 23:00 CST 同 actor 的 `核心观察股池晚间快报` 正常收口，但开头写出 `本轮已调用 data_fetch 逐支校验全 25 支标的最新报价`。
+  - 两条消息业务主体均已生成并送达；问题是内部工具名继续作为用户态来源 / 执行过程外露，维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-07-14 07:01 CST 运行态继续复发，状态维持 `New`：
   - 03:01-07:01 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 12 个 user turn 与 13 条 assistant 记录；Web direct、Feishu direct/scheduler 与 Web scheduler 均有 assistant 记录。
   - assistant final 污染扫描未命中新本机路径、provider 原始错误、panic、原始工具 JSON、结构化 JSON 或敏感信息；本轮命中的是用户可见工具名口径。
