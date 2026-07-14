@@ -73,7 +73,7 @@ pub trait AgentRunner: Send + Sync {
     /// 返回 true 时 honeclaw 不会对其触发 SessionCompactor，也不会在每轮 prompt
     /// 里再拼接 `latest_compact_summary`，由 runner 内置的 ACP session 机制累积
     /// 与压缩。仅 ACP 系列 runner（codex_acp / opencode_acp）应当 override 为
-    /// true；其它 runner（multi-agent / function_calling 等）保持默认 false。
+    /// true；其它 runner 保持默认 false。
     fn manages_own_context(&self) -> bool {
         false
     }

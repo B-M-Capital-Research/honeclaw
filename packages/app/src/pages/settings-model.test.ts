@@ -95,36 +95,25 @@ function webInvite(
 }
 
 describe("settings-model", () => {
-  it("defaults multi-agent answer tool limit to three", () => {
-    expect(
-      requireValue(defaultAgentSettings().multiAgent, "default multi-agent")
-        .answer.maxToolCalls,
-    ).toBe(3)
-  })
-
   it("merges partial agent settings onto defaults", () => {
     const merged = mergeAgentSettings({
       ...defaultAgentSettings(),
-      runner: "multi-agent",
+      runner: "codex_acp",
       auxiliary: undefined,
-      multiAgent: undefined,
     })
 
-    expect(merged.runner).toBe("multi-agent")
+    expect(merged.runner).toBe("codex_acp")
     expect(requireValue(merged.auxiliary, "auxiliary defaults").baseUrl).toBe(
       "https://api.minimaxi.com/v1",
     )
     expect(requireValue(merged.honeCloud, "HONE Cloud defaults").baseUrl).toBe(
       "https://hone-claw.com",
     )
-    expect(
-      requireValue(merged.multiAgent, "multi-agent defaults").search
-        .maxIterations,
-    ).toBe(8)
   })
 
-  it("defaults to HONE Cloud runner settings", () => {
-    expect(defaultAgentSettings().runner).toBe("hone_cloud")
+  it("defaults to Codex ACP with the GPT-5.6 Sol legacy CLI model", () => {
+    expect(defaultAgentSettings().runner).toBe("codex_acp")
+    expect(defaultAgentSettings().codexModel).toBe("gpt-5.6-sol")
     expect(
       requireValue(defaultAgentSettings().honeCloud, "default HONE Cloud").model,
     ).toBe("hone-cloud")
@@ -341,12 +330,12 @@ describe("settings-model", () => {
   })
 
   it("skips runner auto-save when clicking the current runner", () => {
-    expect(canSelectRunner("multi-agent", "multi-agent", false)).toBe(false)
+    expect(canSelectRunner("codex_acp", "codex_acp", false)).toBe(false)
   })
 
   it("skips runner auto-save while a runner switch is already saving", () => {
-    expect(canSelectRunner("opencode_acp", "multi-agent", true)).toBe(false)
-    expect(canSelectRunner("opencode_acp", "multi-agent", false)).toBe(true)
+    expect(canSelectRunner("opencode_acp", "codex_acp", true)).toBe(false)
+    expect(canSelectRunner("opencode_acp", "codex_acp", false)).toBe(true)
   })
 
   it("keeps settings navigation state rules in the model layer", () => {

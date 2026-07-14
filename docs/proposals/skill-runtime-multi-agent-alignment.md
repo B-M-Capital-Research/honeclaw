@@ -1,7 +1,10 @@
 # Proposal: Skill Runtime Alignment with Claude Code and Multi-Agent Optimization
 
 日期：2026-04-13
-状态：草案
+状态：已废弃（superseded）
+superseded_by：`docs/decisions.md#d-2026-07-13-01-retire-in-process-function-calling-and-multi-agent`
+
+> 2026-07-13：`multi-agent` runner 已退役，本提案只作为历史设计记录保留，不再作为实现入口。仍有效的 skill runtime 收敛方向是：静态 prompt 不注入完整技能目录，仅在当前 turn 放置相关技能摘要，未命中时调用 `discover_skills`，实际调用时再加载完整 `SKILL.md`。
 
 ## 背景
 

@@ -84,12 +84,9 @@ mod tests {
         hint_line("Saved into config.yaml.language. Devices can still override locally.");
 
         step_header(2, 7, "Runner");
-        subsection("Multi-Agent");
-        bullet(
-            "前置：multi-agent search API key、本机可运行的 opencode，以及 answer key 或 `llm.providers.openrouter.api_key/api_keys`。",
-        );
-        bullet("原理：第一段 search 用小模型拉证据，第二段 answer 用主模型总结。");
-        ok_line("opencode 已检测到可用。");
+        subsection("Codex ACP");
+        bullet("默认模型 gpt-5.6-sol，reasoning effort=xhigh。");
+        ok_line("codex 与 codex-acp 已检测到可用。");
 
         step_header(3, 7, "Channels");
         subsection("Feishu prerequisites");
@@ -102,7 +99,7 @@ mod tests {
 
         step_header(5, 7, "Providers");
         subsection("OpenRouter API key");
-        bullet("LLM 主路由。function_calling / multi-agent answer / nano_banana 默认走这里。");
+        bullet("OpenCode ACP 覆盖与 nano_banana 默认使用此 LLM 路由。");
         ok_line("已保存 OpenRouter API key。");
         fail_line("Token 必须是三段结构（长度=12）。");
 

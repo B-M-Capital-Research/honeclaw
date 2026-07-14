@@ -1,7 +1,7 @@
 //! AgentRunner 工厂 trait。
 //!
-//! 根据 `config.agent.runner` 选择具体实现(function_calling / codex_cli /
-//! codex_acp / opencode_acp / multi-agent / hone_cloud / gemini_cli),
+//! 根据 `config.agent.runner` 选择具体实现(codex_cli / codex_acp /
+//! opencode_acp / hone_cloud / gemini_cli),
 //! 并注入 tool_registry、LLM provider、超时等运行时依赖。`gemini_acp`
 //! 仍可被配置解析识别，但工厂层会拒绝创建该 legacy runner。
 //!
@@ -31,7 +31,7 @@ pub trait RunnerFactory: Send + Sync {
         tool_registry: ToolRegistry,
     ) -> Result<Box<dyn AgentRunner>, String>;
 
-    /// 用指定 model override 构造 runner。适用于 multi-agent / opencode_acp
+    /// 用指定 model override 构造 runner。适用于 codex_acp / opencode_acp
     /// 等支持在 skill 级别切模型的场景。
     fn create_runner_with_model_override(
         &self,

@@ -64,8 +64,8 @@ export function defaultChannelDraft(): DesktopChannelSettingsInput {
 
 export function defaultAgentSettings(): AgentSettings {
   return {
-    runner: "hone_cloud",
-    codexModel: "",
+    runner: "codex_acp",
+    codexModel: "gpt-5.6-sol",
     honeCloud: {
       baseUrl: "https://hone-claw.com",
       apiKey: "",
@@ -78,21 +78,6 @@ export function defaultAgentSettings(): AgentSettings {
       baseUrl: "https://api.minimaxi.com/v1",
       apiKey: "",
       model: "MiniMax-M2.7-highspeed",
-    },
-    multiAgent: {
-      search: {
-        baseUrl: "https://api.minimaxi.com/v1",
-        apiKey: "",
-        model: "MiniMax-M2.7-highspeed",
-        maxIterations: 8,
-      },
-      answer: {
-        baseUrl: "https://openrouter.ai/api/v1",
-        apiKey: "",
-        model: "google/gemini-2.5-pro-preview",
-        variant: "high",
-        maxToolCalls: 3,
-      },
     },
     llmProfiles: defaultLlmProfileSettings(),
   }
@@ -210,7 +195,6 @@ export function mergeAgentSettings(settings?: AgentSettings): AgentSettings {
     ...settings,
     auxiliary: settings.auxiliary ?? defaults.auxiliary,
     honeCloud: settings.honeCloud ?? defaults.honeCloud,
-    multiAgent: settings.multiAgent ?? defaults.multiAgent,
     llmProfiles: mergeLlmProfileSettings(settings.llmProfiles),
   }
 }

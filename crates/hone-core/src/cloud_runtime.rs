@@ -4992,7 +4992,7 @@ mod tests {
         let mut record = LlmAuditRecord::new(
             "session-1",
             Some(actor),
-            "function_calling",
+            "codex_acp",
             "chat",
             "openrouter",
             Some("gpt-test".to_string()),
@@ -5024,7 +5024,7 @@ mod tests {
         let record = LlmAuditRecord::new(
             "session-1",
             Some(actor),
-            "function_calling",
+            "codex_acp",
             "chat",
             "openrouter",
             Some("gpt-test".to_string()),
@@ -5050,7 +5050,7 @@ mod tests {
         let mut record = LlmAuditRecord::new(
             "session-1",
             Some(actor),
-            "agent.function_calling",
+            "agent.codex_acp",
             "chat",
             "openrouter",
             Some("gpt-test".to_string()),

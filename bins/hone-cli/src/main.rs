@@ -408,10 +408,6 @@ async fn run_cli() -> Result<(), String> {
                         report.auxiliary_base_url,
                         report.auxiliary_api_key_configured
                     );
-                    println!(
-                        "multi-agent search={} answer={} variant={}",
-                        report.search_model, report.answer_model, report.answer_variant
-                    );
                     Ok(())
                 }
             }
@@ -650,9 +646,9 @@ mod tests {
             "--runner",
             "opencode_acp",
             "--model",
-            "openrouter/openai/gpt-5.4",
+            "openrouter/openai/gpt-5.6-sol",
             "--variant",
-            "medium",
+            "xhigh",
         ])
         .unwrap();
         match cli.command {
@@ -660,8 +656,8 @@ mod tests {
                 command: ModelsCommands::Set(args),
             }) => {
                 assert_eq!(args.runner.as_deref(), Some("opencode_acp"));
-                assert_eq!(args.model.as_deref(), Some("openrouter/openai/gpt-5.4"));
-                assert_eq!(args.variant.as_deref(), Some("medium"));
+                assert_eq!(args.model.as_deref(), Some("openrouter/openai/gpt-5.6-sol"));
+                assert_eq!(args.variant.as_deref(), Some("xhigh"));
             }
             other => panic!("unexpected command: {other:?}"),
         }

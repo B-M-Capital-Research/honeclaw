@@ -2,7 +2,7 @@
 //!
 //! 整体结构:
 //! 1. 选择控制台与 CLI 默认语言,暂存为最终写盘 mutation
-//! 2. 展示当前 runner 选项(hone_cloud / multi-agent / codex_cli / codex_acp / opencode_acp)+
+//! 2. 展示当前 runner 选项(hone_cloud / codex_cli / codex_acp / opencode_acp)+
 //!    可快速探测的 binary 状态,让用户选一种默认 runner
 //!    ([`prompt_onboard_runner`] + [`build_runner_onboard_mutations`])
 //! 3. 对每个渠道 (iMessage / Feishu / Telegram / Discord) 询问是否启用,
@@ -63,8 +63,6 @@ pub(crate) struct OnboardArgs {}
 pub(crate) enum OnboardRunnerKind {
     /// 默认推荐:托管 Hone Cloud 服务,不需要本机 CLI runner。
     HoneCloud,
-    /// 进阶:HTTP search + OpenCode ACP answer 两段式。
-    MultiAgent,
     CodexCli,
     CodexAcp,
     OpencodeAcp,
@@ -74,7 +72,6 @@ impl OnboardRunnerKind {
     pub(crate) fn config_value(&self) -> &'static str {
         match self {
             Self::HoneCloud => "hone_cloud",
-            Self::MultiAgent => "multi-agent",
             Self::CodexCli => "codex_cli",
             Self::CodexAcp => "codex_acp",
             Self::OpencodeAcp => "opencode_acp",
@@ -84,7 +81,6 @@ impl OnboardRunnerKind {
     fn title(&self) -> &'static str {
         match self {
             Self::HoneCloud => "Hone Cloud",
-            Self::MultiAgent => "Multi-Agent",
             Self::CodexCli => "Codex CLI",
             Self::CodexAcp => "Codex ACP",
             Self::OpencodeAcp => "OpenCode ACP",
@@ -93,12 +89,12 @@ impl OnboardRunnerKind {
 
     /// 对应 CLI 的 probe 指令（`codex --version` 等),用于在选择时判断本机是否已装。
     /// 返回 `None` 表示 onboard 阶段不做 binary 阻塞检查;其中 hone_cloud 不依赖
-    /// 本机 binary,multi-agent 的 opencode 依赖由 setup 提示和后续运行时检查覆盖。
+    /// 本机 binary。
     fn binary_probe(&self) -> Option<(&'static str, &'static str)> {
         match self {
-            Self::HoneCloud | Self::MultiAgent => None,
+            Self::HoneCloud => None,
             Self::CodexCli => Some(("codex", "--version")),
-            Self::CodexAcp => Some(("codex-acp", "--help")),
+            Self::CodexAcp => Some(("codex-acp", "--version")),
             Self::OpencodeAcp => Some(("opencode", "--version")),
         }
     }
@@ -156,16 +152,6 @@ fn runner_onboard_specs() -> &'static [RunnerOnboardSpec] {
                 "runner.hone_cloud.note_1",
                 "runner.hone_cloud.note_2",
                 "runner.hone_cloud.note_3",
-            ],
-        },
-        RunnerOnboardSpec {
-            kind: OnboardRunnerKind::MultiAgent,
-            description_key: "runner.multi_agent.description",
-            note_keys: &[
-                "runner.multi_agent.note_1",
-                "runner.multi_agent.note_2",
-                "runner.multi_agent.note_3",
-                "runner.multi_agent.note_4",
             ],
         },
         RunnerOnboardSpec {
@@ -262,8 +248,8 @@ fn channel_onboard_specs() -> &'static [ChannelOnboardSpec] {
 
 fn provider_onboard_specs() -> &'static [ProviderOnboardSpec] {
     &[
-        // OpenRouter 放最前。它仍是 function_calling、multi-agent answer、
-        // nano_banana、以及 Hone-side OpenCode/OpenRouter 覆盖的默认依赖；
+        // OpenRouter 放最前。它仍是 nano_banana、以及 Hone-side
+        // OpenCode/OpenRouter 覆盖的默认依赖；
         // hone_cloud、codex_* 和已在 opencode 里配好 provider 的 opencode_acp 可以跳过。
         // 早期版本的 onboard 完全没问这个 key,新用户跑完向导发消息立刻报
         // 「openrouter.api_key 为空」,体验很差。
@@ -619,8 +605,7 @@ pub(crate) fn prompt_onboard_runner(
             .collect::<Vec<_>>();
         print_onboard_block(selected.kind.title(), &notes);
 
-        // 没有 onboard-time probe 的 runner 直接通过。multi-agent 目前也会走到这里,
-        // 但它和运行时 opencode probe 的不一致已记录到 code-quality patrol。
+        // 没有 onboard-time probe 的 runner 直接通过。
         let Some((binary, help_arg)) = selected.kind.binary_probe() else {
             return Ok(selected.kind);
         };
@@ -669,20 +654,6 @@ pub(crate) fn build_runner_onboard_mutations(
                     value: Value::String(api_key),
                 });
             }
-        }
-        OnboardRunnerKind::MultiAgent => {
-            // Multi-agent 的 search / answer 配置不在这里填;Providers 环节
-            // 只处理可复用的 OpenRouter answer key。
-            let _ = theme;
-            let _ = config;
-            print_onboard_block(
-                t(lang, "runner.multi_agent.setup_title"),
-                &[
-                    t(lang, "runner.multi_agent.setup_note_1"),
-                    t(lang, "runner.multi_agent.setup_note_2"),
-                    t(lang, "runner.multi_agent.setup_note_3"),
-                ],
-            );
         }
         OnboardRunnerKind::CodexCli => {
             let codex_model = prompt_text(
@@ -1279,8 +1250,6 @@ mod tests {
     fn onboard_runner_kind_config_values_and_probe_requirements() {
         assert_eq!(OnboardRunnerKind::HoneCloud.config_value(), "hone_cloud");
         assert!(OnboardRunnerKind::HoneCloud.binary_probe().is_none());
-        assert_eq!(OnboardRunnerKind::MultiAgent.config_value(), "multi-agent");
-        assert!(OnboardRunnerKind::MultiAgent.binary_probe().is_none());
         assert!(OnboardRunnerKind::CodexCli.binary_probe().is_some());
     }
 
@@ -1289,7 +1258,7 @@ mod tests {
         assert!(
             runner_onboard_specs()
                 .iter()
-                .any(|spec| spec.kind.config_value() == "hone_cloud")
+                .any(|spec| spec.kind.config_value() == "codex_acp")
         );
     }
 }

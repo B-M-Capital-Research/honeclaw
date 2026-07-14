@@ -22,10 +22,10 @@ Hone-Financial is a local-first AI research assistant. The current codebase has 
 Current capabilities:
 
 - Multiple entrypoints: Web console, public Web API, CLI, iMessage, Discord, Feishu, Telegram, and Desktop
-- Multiple agent execution modes: `hone_cloud`, `function_calling`, `gemini_cli`, `codex_cli`, `codex_acp`, `opencode_acp`, and `multi-agent`; `gemini_acp` remains deserializable legacy config but is rejected at runtime
+- Agent execution modes: `codex_acp` (default), `hone_cloud`, `opencode_acp`, `gemini_cli`, and `codex_cli`; `gemini_acp` remains deserializable legacy config but is rejected at runtime
 - Local JSON file storage plus SQLite-backed session indexes/runtime reads, cron run history, Web auth sessions, and LLM audit records
 - Multi-channel actor isolation by `channel + user_id + channel_scope`
-- A Claude Code-style skill system that discloses compact skill listings first, then injects the full `SKILL.md` only when a skill is invoked
+- A Claude Code-style skill system that injects only query-relevant summaries, uses `discover_skills` for misses, and loads full `SKILL.md` content only when invoked
 - Skills can optionally declare a default `script` entrypoint that `skill_tool` may execute explicitly inside the skill directory
 - A Web console for session browsing, skill management, task management, holdings management, and research tasks
 - Scheduled tasks that poll every minute and run on Beijing time
@@ -57,7 +57,8 @@ Frontend:
 Integrations and external capabilities:
 
 - OpenRouter / Kimi / OpenAI-compatible model calls
-- Local Gemini CLI, Codex CLI, Codex ACP, OpenCode ACP, Hone Cloud, and multi-agent adapters
+- OpenRouter credentials use the config-owned `llm.providers.openrouter.api_key/api_keys` pool with legacy single-key config readable only for migration
+- Local Gemini CLI, Codex CLI, Codex ACP, OpenCode ACP, and Hone Cloud adapters
 - Tavily search
 - Nano Banana image generation
 - Feishu Go facade, connected from the Rust business process through local RPC
@@ -78,7 +79,6 @@ Hone-Financial/
 │   ├── hone-event-engine
 │   └── hone-web-api
 ├── agents/
-│   ├── function_calling
 │   ├── gemini_cli
 │   └── codex_cli
 ├── memory/
@@ -131,7 +131,7 @@ Hone-Financial/
 
 #### `agents/*`
 
-- Legacy reasoning-agent crates for `function_calling`, `gemini_cli`, and `codex_cli`; current channel runtime creates runners through `crates/hone-channels/src/runners.rs`
+- Legacy reasoning-agent crates for `gemini_cli` and `codex_cli`; current channel runtime creates runners through `crates/hone-channels/src/runners.rs`
 
 #### `memory/`
 
@@ -161,7 +161,7 @@ Channel entrypoint / Web API
   -> HoneBotCore
   -> ActorIdentity / SessionStorage
   -> ToolRegistry
-  -> AgentRunner(hone_cloud | function_calling | gemini_cli | codex_cli | codex_acp | opencode_acp | multi-agent)
+  -> AgentRunner(codex_acp | hone_cloud | opencode_acp | gemini_cli | codex_cli)
   -> memory / integrations / scheduler
   -> Channel reply or Web response
 ```
@@ -207,14 +207,6 @@ This rule is already applied to:
 
 ### 5.4 Agent Layer
 
-#### `function_calling`
-
-- Built-in OpenAI-compatible tool-calling runner
-- Runs multiple LLM turns
-- Passes the tool schema to the LLM
-- Executes tools in order when the model returns `tool_calls`
-- Stops after `max_iterations`
-
 #### `gemini_cli`
 
 - Uses the local `gemini --prompt ... -o json`
@@ -230,7 +222,8 @@ This rule is already applied to:
 #### `codex_acp`
 
 - Uses `codex-acp` over stdio / JSON-RPC
-- Requires the validated `codex` / `codex-acp` version floor before starting a turn
+- Defaults to `gpt-5.6-sol` with `xhigh` reasoning effort
+- Requires `@openai/codex >= 0.144.1` and `@agentclientprotocol/codex-acp >= 1.1.2` before starting a turn
 - Creates a fresh ACP session per Hone turn and seeds it from Hone's restored context
 
 #### `opencode_acp`
@@ -243,11 +236,6 @@ This rule is already applied to:
 
 - Calls the configured Hone Cloud OpenAI-compatible chat endpoint
 - Uses `agent.hone_cloud.base_url`, `api_key`, and `model`
-
-#### `multi-agent`
-
-- Runs a direct search stage from `agent.multi_agent.search`
-- Runs the answer stage through OpenCode ACP using `agent.multi_agent.answer` plus the `llm.providers.openrouter.api_key/api_keys` pool fallback when Hone manages that route and no answer key is set
 
 ### 5.5 Tool Layer
 

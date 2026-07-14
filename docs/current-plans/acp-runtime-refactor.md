@@ -3,7 +3,7 @@
 - title: ACP 对齐的 Agent Runtime 全栈重构
 - status: in_progress
 - created_at: 2026-03-17
-- updated_at: 2026-06-24
+- updated_at: 2026-07-13
 - owner: shared
 - related_files:
   - `docs/current-plan.md`
@@ -24,6 +24,8 @@
   - `docs/decisions.md`
   - `docs/bugs/opencode_acp_prompt_timeout.md`
   - `docs/handoffs/2026-04-13-acp-prompt-dual-timeout.md`
+  - `docs/archive/plans/gpt-5-6-codex-acp-simplification.md`
+  - `docs/handoffs/2026-07-13-gpt-5-6-codex-acp-simplification.md`
 
 ## Goal
 
@@ -41,13 +43,15 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
 - Session storage itself now writes the normalized model directly as `version=4` with `content[] + status` instead of the old flat string `content`; legacy JSON still deserializes for compatibility, but new writes use the breaking on-disk layout.
 - `codex_acp` now patches execute-completion `tool_call_update.rawOutput` into persisted `tool_result` parts, so codex execute turns are recorded as `progress -> tool_call -> tool_result -> final` in the same assistant turn instead of falling back to a partial tool-call-only record.
 - `codex_cli` reasoning runs are now explicitly covered by the same normalized persistence contract: runner tail messages are normalized into `progress/tool_call/tool_result/final` assistant content parts before storage.
-- `multi-agent` no longer drops intermediate stage transcript at the top-level runner boundary: search-stage and answer-stage `context_messages` are now merged and persisted back into the shared session model instead of storing only the final answer fallback.
+- Historical note: the former `multi-agent` transcript merge work was superseded when that runner was removed on 2026-07-13; it is no longer an active runtime branch.
 - ACP runners now treat their own session/compact logic as the source of truth: Hone skips its auto SessionCompactor for `codex_acp` / `opencode_acp`, and prompt construction suppresses Hone-side compact summaries for self-managed runners.
 - `acp_common` now detects codex literal `Context compacted` chunks and opencode usage-drop / markdown-summary compact signatures, drops those leak paths from user-visible output, and sets session metadata so the next turn can reseed the system prompt when needed.
 - `gemini_acp` is no longer offered as an active runtime path: factory creation now errors with a migration hint because Gemini ACP does not emit reliable `usage_update` signals and is unsafe for Hone's long-session compact detection model.
 - `codex_acp` now treats `agent.codex_acp.variant` as Codex CLI `model_reasoning_effort` instead of appending it to the model id; legacy `model/variant` strings are stripped back to the base model before starting the ACP session.
 - Remaining work is still needed around runner contract coverage and end-to-end runtime behavior alignment.
 - 2026-06-24: Fixed ACP child-process lifecycle leaks where `codex_acp` / `opencode_acp` error or timeout paths could leave their stdio `hone-mcp` grandchildren running after the turn exits. ACP CLI children now run in their own process group and are cleaned up through a shared guard that terminates the group before returning from the runner.
+- 2026-07-13 follow-up: the simplification task removed the in-process `function_calling` agent and sequential `multi-agent` runner, moved current defaults to Codex ACP with GPT-5.6 Sol / xhigh, and reduced duplicated prompt layers. This plan remains the parent ACP architecture record.
+- 2026-07-13 completion: the simplification follow-up is done and archived at `docs/archive/plans/gpt-5-6-codex-acp-simplification.md`; verification and migration details are in `docs/handoffs/2026-07-13-gpt-5-6-codex-acp-simplification.md`.
 
 ## Validation
 

@@ -1,14 +1,11 @@
 use async_trait::async_trait;
-use hone_agent::{FunctionCallingAgent, FunctionCallingStreamObserver};
 use hone_agent_codex_cli::CodexCliAgent;
 use hone_core::agent::{Agent, AgentContext, AgentMessage};
 use hone_core::{LlmAuditSink, ToolExecutionObserver};
-use hone_llm::LlmProvider;
 use hone_tools::ToolRegistry;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
@@ -16,31 +13,6 @@ use super::types::{
 
 pub(crate) struct RunnerToolObserver {
     pub(crate) emitter: Arc<dyn AgentRunnerEmitter>,
-}
-
-struct RunnerStreamObserver {
-    emitter: Arc<dyn AgentRunnerEmitter>,
-    streamed_output: Arc<AtomicBool>,
-}
-
-#[async_trait]
-impl FunctionCallingStreamObserver for RunnerStreamObserver {
-    async fn on_content_delta(&self, content: &str) {
-        if content.is_empty() {
-            return;
-        }
-        self.streamed_output.store(true, Ordering::Relaxed);
-        self.emitter
-            .emit(AgentRunnerEvent::StreamDelta {
-                content: content.to_string(),
-            })
-            .await;
-    }
-
-    async fn on_content_reset(&self) {
-        self.streamed_output.store(false, Ordering::Relaxed);
-        self.emitter.emit(AgentRunnerEvent::StreamReset).await;
-    }
 }
 
 #[async_trait]
@@ -314,80 +286,6 @@ impl AgentRunner for CodexCliReasoningRunner {
         AgentRunnerResult {
             response,
             streamed_output: false,
-            terminal_error_emitted: false,
-            session_metadata_updates: HashMap::new(),
-            context_messages,
-        }
-    }
-}
-
-pub(crate) struct FunctionCallingReasoningRunner {
-    llm: Arc<dyn LlmProvider>,
-    tools: Arc<ToolRegistry>,
-    system_prompt: String,
-    max_iterations: u32,
-    llm_audit: Option<Arc<dyn LlmAuditSink>>,
-}
-
-impl FunctionCallingReasoningRunner {
-    pub(crate) fn new(
-        llm: Arc<dyn LlmProvider>,
-        tools: Arc<ToolRegistry>,
-        system_prompt: String,
-        max_iterations: u32,
-        llm_audit: Option<Arc<dyn LlmAuditSink>>,
-    ) -> Self {
-        Self {
-            llm,
-            tools,
-            system_prompt,
-            max_iterations,
-            llm_audit,
-        }
-    }
-}
-
-#[async_trait]
-impl AgentRunner for FunctionCallingReasoningRunner {
-    fn name(&self) -> &'static str {
-        "function_calling"
-    }
-
-    async fn run(
-        &self,
-        request: AgentRunnerRequest,
-        emitter: Arc<dyn AgentRunnerEmitter>,
-    ) -> AgentRunnerResult {
-        let streamed_output = Arc::new(AtomicBool::new(false));
-        let observer = Arc::new(RunnerToolObserver {
-            emitter: emitter.clone(),
-        });
-        let stream_observer = Arc::new(RunnerStreamObserver {
-            emitter,
-            streamed_output: streamed_output.clone(),
-        });
-        let original_len = request.context.messages.len();
-        let agent = FunctionCallingAgent::new(
-            self.llm.clone(),
-            self.tools.clone(),
-            self.system_prompt.clone(),
-            self.max_iterations,
-            self.llm_audit.clone(),
-        )
-        .with_tool_observer(Some(observer))
-        .with_stream_observer(Some(stream_observer))
-        .with_tool_call_budget(
-            request.max_tool_calls,
-            request.tool_call_limits.clone().unwrap_or_default(),
-        );
-
-        let mut context = request.context;
-        let response = agent.run(&request.runtime_input, &mut context).await;
-        let context_messages = runner_context_messages(&context, original_len);
-
-        AgentRunnerResult {
-            response,
-            streamed_output: streamed_output.load(Ordering::Relaxed),
             terminal_error_emitted: false,
             session_metadata_updates: HashMap::new(),
             context_messages,

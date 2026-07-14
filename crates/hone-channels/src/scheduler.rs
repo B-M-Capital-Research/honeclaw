@@ -26,8 +26,6 @@ use crate::{AgentSession, HoneBotCore};
 
 const HEARTBEAT_NOOP_SENTINEL: &str = "[[HEARTBEAT_NOOP]]";
 const HEARTBEAT_INTERNAL_PREFIX: &str = "[[HEART";
-const HEARTBEAT_MAX_ITERATIONS: u32 = 18;
-const HEARTBEAT_MAX_TOKENS: u16 = 4096;
 const HEARTBEAT_ALLOWED_TOOLS: &[&str] = &[
     "data_fetch",
     "web_search",
@@ -64,10 +62,7 @@ fn heartbeat_tool_call_limits() -> HashMap<String, u32> {
 }
 
 fn heartbeat_runner_selection() -> ExecutionRunnerSelection {
-    ExecutionRunnerSelection::AuxiliaryFunctionCalling {
-        max_iterations: HEARTBEAT_MAX_ITERATIONS,
-        max_tokens_override: Some(HEARTBEAT_MAX_TOKENS),
-    }
+    ExecutionRunnerSelection::Configured
 }
 
 fn heartbeat_max_tool_calls(profile: HeartbeatExecutionProfile) -> u32 {
@@ -3187,7 +3182,7 @@ pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
                 entries
             )
         };
-return format!(
+        return format!(
             "[心跳检测任务] 任务名称：{}。\n\
 你正在执行一个每 30 分钟运行一次的后台条件检查。\n\
 本轮权威检查时间（北京时间）：{}。\n\
@@ -3679,13 +3674,13 @@ async fn run_heartbeat_task(
             prompt_audit: None,
         })?;
         tracing::info!(
-            "[HeartbeatDiag] run_start job_id={} job={} target={} runner={} model_override={} max_tokens={} timeout_secs={} profile={:?}",
+            "[HeartbeatDiag] run_start job_id={} job={} target={} runner={} model_override={} max_tool_calls={} timeout_secs={} profile={:?}",
             event.job_id,
             event.job_name,
             event.channel_target,
             execution.runner_name,
             run_options.model_override.as_deref().unwrap_or(""),
-            HEARTBEAT_MAX_TOKENS,
+            heartbeat_max_tool_calls(profile),
             timeout.map(|duration| duration.as_secs()).unwrap_or(0),
             profile,
         );
@@ -5187,19 +5182,11 @@ mod tests {
     }
 
     #[test]
-    fn heartbeat_runner_uses_capped_completion_budget() {
-        match heartbeat_runner_selection() {
-            ExecutionRunnerSelection::AuxiliaryFunctionCalling {
-                max_iterations,
-                max_tokens_override,
-            } => {
-                assert_eq!(max_iterations, 18);
-                assert_eq!(max_tokens_override, Some(4096));
-            }
-            ExecutionRunnerSelection::Configured => {
-                panic!("heartbeat must use auxiliary function-calling runner")
-            }
-        }
+    fn heartbeat_runner_reuses_configured_execution_path() {
+        assert_eq!(
+            heartbeat_runner_selection(),
+            ExecutionRunnerSelection::Configured
+        );
     }
 
     #[test]

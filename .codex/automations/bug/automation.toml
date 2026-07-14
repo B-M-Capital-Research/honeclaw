@@ -104,8 +104,8 @@ Git 规则：
 """
 status = "ACTIVE"
 rrule = "RRULE:FREQ=HOURLY;INTERVAL=1;BYMINUTE=0;BYDAY=SU,MO,TU,WE,TH,FR,SA"
-model = "gpt-5.4"
-reasoning_effort = "medium"
+model = "gpt-5.6-sol"
+reasoning_effort = "xhigh"
 execution_environment = "local"
 cwds = ["/Users/ecohnoch/Desktop/honeclaw"]
 created_at = 1776158807855

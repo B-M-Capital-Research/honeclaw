@@ -71,6 +71,48 @@ struct MockEmptySuccessRunner {
     response: AgentResponse,
 }
 
+#[derive(Clone)]
+struct MockLlmRunner {
+    llm: Arc<dyn LlmProvider>,
+}
+
+#[async_trait]
+impl AgentRunner for MockLlmRunner {
+    fn name(&self) -> &'static str {
+        "mock_llm"
+    }
+
+    async fn run(
+        &self,
+        _request: AgentRunnerRequest,
+        _emitter: Arc<dyn AgentRunnerEmitter>,
+    ) -> AgentRunnerResult {
+        let response = match self.llm.chat_with_tools(&[], &[], None).await {
+            Ok(reply) => AgentResponse {
+                content: reply.content,
+                tool_calls_made: Vec::new(),
+                iterations: 1,
+                success: true,
+                error: None,
+            },
+            Err(error) => AgentResponse {
+                content: String::new(),
+                tool_calls_made: Vec::new(),
+                iterations: 1,
+                success: false,
+                error: Some(error.to_string()),
+            },
+        };
+        AgentRunnerResult {
+            response,
+            streamed_output: false,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        }
+    }
+}
+
 #[async_trait]
 impl AgentRunner for MockEmptySuccessRunner {
     fn name(&self) -> &'static str {
@@ -242,8 +284,7 @@ fn make_test_core_with_config(
     configure: impl FnOnce(&mut HoneConfig),
 ) -> Arc<HoneBotCore> {
     let mut config = HoneConfig::default();
-    config.agent.runner = "function_calling".to_string();
-    config.agent.max_iterations = 3;
+    config.agent.runner = "hone_cloud".to_string();
     config.storage.sessions_dir = root.join("sessions").to_string_lossy().to_string();
     config.storage.conversation_quota_dir = root
         .join("conversation_quota")
@@ -259,7 +300,13 @@ fn make_test_core_with_config(
     let mut core = HoneBotCore::new(config);
     let shared_llm = Arc::new(llm);
     core.llm = Some(shared_llm.clone());
-    core.auxiliary_llm = Some(shared_llm);
+    core.auxiliary_llm = Some(shared_llm.clone());
+    let runner_llm: Arc<dyn LlmProvider> = shared_llm;
+    core.test_runner_factory = Some(Arc::new(move || {
+        Box::new(MockLlmRunner {
+            llm: runner_llm.clone(),
+        })
+    }));
     Arc::new(core)
 }
 
@@ -820,6 +867,9 @@ fn resolve_prompt_input_keeps_system_prompt_stable_when_related_skills_change() 
         session.resolve_prompt_input("session-demo", "plain greeting");
 
     assert_eq!(system_with_match, system_without_match);
+    assert!(system_with_match.contains("【SkillTool】"));
+    assert!(!system_with_match.contains("turn-0 可用技能索引"));
+    assert!(!system_with_match.contains("alpha_skill"));
     assert!(!system_with_match.contains("【Skills relevant to your task】"));
     assert!(runtime_with_match.contains("【本轮相关技能提示】"));
     assert!(runtime_with_match.contains("alpha_skill"));
@@ -2108,7 +2158,7 @@ async fn run_rejects_over_daily_limit_with_user_turn_and_friendly_error() {
 }
 
 #[tokio::test]
-async fn run_persists_failed_assistant_turn_for_early_guard_failure() {
+async fn run_persists_failed_assistant_turn_for_native_runner_guard() {
     let root = make_temp_dir("hone_channels_guard_fail_persist");
     std::fs::create_dir_all(&root).expect("create root");
     let mut config = HoneConfig::default();
@@ -2140,7 +2190,7 @@ async fn run_persists_failed_assistant_turn_for_early_guard_failure() {
     assert_eq!(
         messages[1].content[0].text.as_deref(),
         Some(
-            "安全执行器不可用：普通用户不能使用具备宿主机访问能力的 CLI/ACP，请先配置 function_calling LLM。"
+            "安全执行器不可用：普通用户不能使用具备宿主机访问能力的 CLI/ACP；请切换到 hone_cloud，或由管理员运行。"
         )
     );
     assert_eq!(

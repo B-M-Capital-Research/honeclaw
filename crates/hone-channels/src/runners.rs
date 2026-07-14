@@ -6,7 +6,6 @@ mod codex_acp;
 mod gemini_acp;
 mod gemini_cli;
 mod hone_cloud;
-mod multi_agent;
 mod opencode_acp;
 mod tool_reasoning;
 mod types;
@@ -16,9 +15,8 @@ pub(crate) use gemini_cli::GeminiCliRunner;
 #[cfg(test)]
 pub(crate) use gemini_cli::stream_gemini_prompt;
 pub(crate) use hone_cloud::HoneCloudRunner;
-pub(crate) use multi_agent::MultiAgentRunner;
 pub(crate) use opencode_acp::OpencodeAcpRunner;
-pub(crate) use tool_reasoning::{CodexCliReasoningRunner, FunctionCallingReasoningRunner};
+pub(crate) use tool_reasoning::CodexCliReasoningRunner;
 pub(crate) use types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
     RunnerTimeouts,

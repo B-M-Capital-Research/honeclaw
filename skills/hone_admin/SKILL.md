@@ -30,7 +30,6 @@ tools:
 │   └── hone-memory/          <- session persistence
 ├── agents/
 │   ├── gemini_cli/           <- Gemini CLI agent
-│   ├── function_calling/     <- function-calling agent
 │   └── codex_cli/            <- Codex CLI agent
 ├── skills/                   <- built-in system skills (`.md` files)
 │   └── hone_admin/SKILL.md   <- this file

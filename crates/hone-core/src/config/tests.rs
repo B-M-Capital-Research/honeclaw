@@ -131,41 +131,30 @@ fn assert_config_example_event_sections(root: &serde_yaml::Mapping) {
 
 fn assert_config_example_agent_section(root: &serde_yaml::Mapping) {
     let agent = yaml_key(root, "agent").unwrap().as_mapping().unwrap();
+    assert_eq!(
+        yaml_key(agent, "runner").and_then(Value::as_str),
+        Some("codex_acp")
+    );
     assert!(
         !yaml_has_key(agent, "debug_log"),
         "agent.debug_log is controlled by HONE_AGENT_DEBUG, not YAML"
     );
     let codex_acp = yaml_key(agent, "codex_acp").unwrap().as_mapping().unwrap();
+    assert_eq!(
+        yaml_key(codex_acp, "model").and_then(Value::as_str),
+        Some("gpt-5.6-sol")
+    );
+    assert_eq!(
+        yaml_key(codex_acp, "variant").and_then(Value::as_str),
+        Some("xhigh")
+    );
     assert!(yaml_has_key(codex_acp, "sandbox_mode"));
     assert!(yaml_has_key(codex_acp, "approval_policy"));
     assert!(yaml_has_key(codex_acp, "sandbox_permissions"));
     assert!(yaml_has_key(agent, "gemini_acp"));
     assert!(yaml_has_key(agent, "opencode"));
     assert!(yaml_has_key(agent, "hone_cloud"));
-    assert!(yaml_has_key(agent, "multi_agent"));
-}
-
-fn assert_config_example_multi_agent_fallback_docs(example: &str) {
-    assert!(
-        example.contains("agent.multi_agent.search.api_key"),
-        "config.example.yaml should document the multi-agent search key source"
-    );
-    assert!(
-        example.contains("legacy llm.auxiliary.api_key"),
-        "config.example.yaml should document the legacy multi-agent search fallback"
-    );
-    assert!(
-        example.contains("answer.api_key"),
-        "config.example.yaml should document the multi-agent answer key override"
-    );
-    assert!(
-        example.contains("llm.providers.openrouter.api_key"),
-        "config.example.yaml should document the multi-agent answer provider-key fallback"
-    );
-    assert!(
-        example.contains("api_key/api_keys"),
-        "config.example.yaml should document that the multi-agent answer fallback accepts OpenRouter key pools"
-    );
+    assert!(!yaml_has_key(agent, "multi_agent"));
 }
 
 fn assert_openrouter_provider_key_pool_docs(label: &str, doc: &str) {
@@ -254,7 +243,9 @@ fn assert_config_example_profile_providers_exist(config: &HoneConfig) {
 }
 
 fn assert_config_example_agent_defaults(config: &HoneConfig) {
-    assert_eq!(config.agent.runner, "hone_cloud");
+    assert_eq!(config.agent.runner, "codex_acp");
+    assert_eq!(config.agent.codex_acp.model, "gpt-5.6-sol");
+    assert_eq!(config.agent.codex_acp.variant, "xhigh");
     assert_eq!(config.agent.hone_cloud.base_url, "https://hone-claw.com");
     assert_eq!(config.agent.hone_cloud.model, "hone-cloud");
     assert!(config.agent.hone_cloud.api_key.is_empty());
@@ -616,12 +607,7 @@ fn assert_technical_spec_storage_keys_match_schema(technical_spec: &str) {
 fn legacy_agent_migration_canonical_yaml() -> &'static str {
     r#"
 agent:
-  runner: codex_cli
-  multi_agent:
-    search:
-      api_key: ""
-    answer:
-      api_key: ""
+  runner: codex_acp
   opencode:
     api_key: ""
 llm:
@@ -653,19 +639,7 @@ discord:
 fn legacy_agent_migration_runtime_yaml() -> &'static str {
     r#"
 agent:
-  runner: multi-agent
-  multi_agent:
-    search:
-      base_url: "https://api.minimaxi.com/v1"
-      api_key: "legacy-search"
-      model: "MiniMax-M2.7-highspeed"
-      max_iterations: 8
-    answer:
-      api_base_url: "https://openrouter.ai/api/v1"
-      api_key: "legacy-answer"
-      model: "google/gemini-3.1-pro-preview"
-      variant: "high"
-      max_tool_calls: 1
+  runner: opencode_acp
   opencode:
     api_base_url: "https://openrouter.ai/api/v1"
     api_key: "legacy-answer"
@@ -711,7 +685,6 @@ discord:
 
 fn assert_legacy_agent_migration_changed_paths(changed: &[String]) {
     for path in [
-        "agent.multi_agent",
         "agent.opencode",
         "llm.auxiliary",
         "llm.providers.openrouter.api_keys",
@@ -728,9 +701,7 @@ fn assert_legacy_agent_migration_changed_paths(changed: &[String]) {
 }
 
 fn assert_legacy_agent_migration_config(config: &HoneConfig) {
-    assert_eq!(config.agent.runner, "multi-agent");
-    assert_eq!(config.agent.multi_agent.search.api_key, "legacy-search");
-    assert_eq!(config.agent.multi_agent.answer.api_key, "legacy-answer");
+    assert_eq!(config.agent.runner, "opencode_acp");
     assert_eq!(config.agent.opencode.api_key, "legacy-answer");
     assert_eq!(config.llm.auxiliary.api_key, "legacy-search");
     assert_eq!(config.llm.openrouter.api_key, "");
@@ -1126,7 +1097,7 @@ feishu:
         &overlay_path,
         r#"
 agent:
-  runner: multi-agent
+  runner: codex_acp
 feishu:
   enabled: true
 "#,
@@ -1134,7 +1105,7 @@ feishu:
     .unwrap();
 
     let config = HoneConfig::from_file(&config_path).unwrap();
-    assert_eq!(config.agent.runner, "multi-agent");
+    assert_eq!(config.agent.runner, "codex_acp");
     assert!(config.feishu.enabled);
 }
 
@@ -1208,11 +1179,11 @@ fn agent_codex_cli_deserializes_runner_and_model() {
     let yaml = r#"
 agent:
   runner: codex_cli
-  codex_model: "gpt-5.3-codex"
+  codex_model: "gpt-5.6-sol"
 "#;
     let config: HoneConfig = serde_yaml::from_str(yaml).unwrap();
     assert_eq!(config.agent.runner, "codex_cli");
-    assert_eq!(config.agent.codex_model, "gpt-5.3-codex");
+    assert_eq!(config.agent.codex_model, "gpt-5.6-sol");
 }
 
 #[test]
@@ -1237,10 +1208,9 @@ fn default_agent_opencode_keeps_local_config_inheritance() {
     assert!(config.agent.opencode.variant.is_empty());
     assert!(config.agent.opencode.api_base_url.is_empty());
     assert!(config.agent.opencode.api_key.is_empty());
-    assert_eq!(
-        config.agent.multi_agent.answer.api_base_url,
-        "https://openrouter.ai/api/v1"
-    );
+    assert_eq!(config.agent.runner, "codex_acp");
+    assert_eq!(config.agent.codex_acp.model, "gpt-5.6-sol");
+    assert_eq!(config.agent.codex_acp.variant, "xhigh");
 }
 
 #[test]
@@ -1286,49 +1256,6 @@ agent:
         config.agent.codex_acp.extra_config_overrides,
         vec!["shell_environment_policy.inherit=all"]
     );
-}
-
-#[test]
-fn agent_multi_agent_deserializes_search_and_answer_settings() {
-    let yaml = r#"
-agent:
-  runner: multi-agent
-  multi_agent:
-    search:
-      base_url: "https://api.minimaxi.com/v1"
-      api_key: "sk-cp-test"
-      model: "MiniMax-M2.7-highspeed"
-      max_iterations: 8
-    answer:
-      api_base_url: "https://openrouter.ai/api/v1"
-      api_key: "sk-or-test"
-      model: "google/gemini-3.1-pro-preview"
-      variant: "high"
-      max_tool_calls: 1
-"#;
-    let config: HoneConfig = serde_yaml::from_str(yaml).unwrap();
-    assert_eq!(config.agent.runner, "multi-agent");
-    assert_eq!(
-        config.agent.multi_agent.search.base_url,
-        "https://api.minimaxi.com/v1"
-    );
-    assert_eq!(config.agent.multi_agent.search.api_key, "sk-cp-test");
-    assert_eq!(
-        config.agent.multi_agent.search.model,
-        "MiniMax-M2.7-highspeed"
-    );
-    assert_eq!(config.agent.multi_agent.search.max_iterations, 8);
-    assert_eq!(
-        config.agent.multi_agent.answer.api_base_url,
-        "https://openrouter.ai/api/v1"
-    );
-    assert_eq!(config.agent.multi_agent.answer.api_key, "sk-or-test");
-    assert_eq!(
-        config.agent.multi_agent.answer.model,
-        "google/gemini-3.1-pro-preview"
-    );
-    assert_eq!(config.agent.multi_agent.answer.variant, "high");
-    assert_eq!(config.agent.multi_agent.answer.max_tool_calls, 1);
 }
 
 #[test]
@@ -1769,7 +1696,7 @@ fn seed_canonical_config_reports_path_for_directory_errors() {
 }
 
 #[test]
-fn promote_legacy_runtime_agent_settings_migrates_blank_multi_agent_and_runner() {
+fn promote_legacy_runtime_agent_settings_migrates_blank_opencode_and_runner() {
     let dir = temp_test_dir("legacy-agent-migrate");
     let canonical = dir.join("config.yaml");
     let legacy = dir.join("data/runtime/config_runtime.yaml");
@@ -1845,12 +1772,12 @@ fn promote_legacy_runtime_agent_settings_keeps_configured_canonical_values() {
         &canonical,
         r#"
 agent:
-  runner: multi-agent
-  multi_agent:
-    search:
-      api_key: "canonical-search"
-    answer:
-      api_key: "canonical-answer"
+  runner: codex_acp
+  opencode:
+    api_base_url: "https://canonical.example/v1"
+    api_key: "canonical-answer"
+    model: "canonical-model"
+    variant: "high"
 llm:
   auxiliary:
     api_key: "canonical-aux"
@@ -1877,12 +1804,12 @@ discord:
         &legacy,
         r#"
 agent:
-  runner: codex_cli
-  multi_agent:
-    search:
-      api_key: "legacy-search"
-    answer:
-      api_key: "legacy-answer"
+  runner: opencode_acp
+  opencode:
+    api_base_url: "https://legacy.example/v1"
+    api_key: "legacy-answer"
+    model: "legacy-model"
+    variant: "medium"
 llm:
   auxiliary:
     api_key: "legacy-aux"
@@ -1910,9 +1837,9 @@ discord:
     assert!(changed.is_empty());
 
     let config = HoneConfig::from_file(&canonical).unwrap();
-    assert_eq!(config.agent.runner, "multi-agent");
-    assert_eq!(config.agent.multi_agent.search.api_key, "canonical-search");
-    assert_eq!(config.agent.multi_agent.answer.api_key, "canonical-answer");
+    assert_eq!(config.agent.runner, "codex_acp");
+    assert_eq!(config.agent.opencode.api_key, "canonical-answer");
+    assert_eq!(config.agent.opencode.model, "canonical-model");
     assert_eq!(config.llm.auxiliary.api_key, "canonical-aux");
     assert_eq!(config.llm.openrouter.api_key, "canonical-openrouter");
     assert_eq!(config.search.api_keys, vec!["canonical-tavily".to_string()]);
@@ -2077,7 +2004,6 @@ fn config_example_avoids_stale_config_knobs() {
     assert_config_example_channel_sections(root);
     assert_config_example_event_sections(root);
     assert_config_example_agent_section(root);
-    assert_config_example_multi_agent_fallback_docs(&example);
     assert_openrouter_provider_key_pool_docs("config.example.yaml", &example);
     assert_config_example_storage_and_logging(root);
     assert_config_example_public_auth_env_docs(&example);
@@ -2124,5 +2050,14 @@ fn config_example_avoids_stale_config_knobs() {
     assert_openrouter_provider_key_pool_docs(
         "docs/runbooks/hone-cli-install-and-start.md",
         &install_runbook,
+    );
+}
+
+#[test]
+fn soul_prompt_stays_within_the_lean_runtime_budget() {
+    let soul = std::fs::read_to_string(repo_file("soul.md")).unwrap();
+    assert!(
+        soul.chars().count() <= 5_000,
+        "soul.md should remain a compact persona layer; hard policies belong in prompt.rs"
     );
 }

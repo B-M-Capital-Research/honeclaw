@@ -123,9 +123,12 @@ pub fn seed_canonical_config_from_source(
 }
 
 /// 判断 canonical 配置里的 runner 字段是不是 seed 默认值,需要被 legacy 覆盖。
-/// 只有空字符串以及两个历史默认值会被视为「用户未显式设置」。
+/// 只有空字符串以及历史/当前 seed 默认值会被视为「用户未显式设置」。
 fn canonical_runner_looks_seeded(runner: &str) -> bool {
-    matches!(runner.trim(), "" | "function_calling" | "codex_cli")
+    matches!(
+        runner.trim(),
+        "" | "function_calling" | "multi-agent" | "codex_cli" | "codex_acp"
+    )
 }
 
 /// chat_scope 在 canonical 中是不是 seed 默认值（空或 DM_ONLY）,需要被 legacy 覆盖。
@@ -149,23 +152,6 @@ fn canonical_opencode_block_is_blank(current: &Value) -> crate::HoneResult<bool>
         }
     }
     Ok(true)
-}
-
-fn promote_legacy_multi_agent(
-    canonical: &mut Value,
-    legacy: &Value,
-    changed_paths: &mut Vec<String>,
-) -> crate::HoneResult<bool> {
-    if string_path_is_blank(canonical, "agent.multi_agent.search.api_key")?
-        && string_path_is_blank(canonical, "agent.multi_agent.answer.api_key")?
-        && let Some(legacy_multi_agent) = get_value_at_path(legacy, "agent.multi_agent")?
-    {
-        set_value_at_path(canonical, "agent.multi_agent", legacy_multi_agent.clone())?;
-        changed_paths.push("agent.multi_agent".to_string());
-        return Ok(true);
-    }
-
-    Ok(false)
 }
 
 fn promote_legacy_opencode(
@@ -416,7 +402,6 @@ fn promote_legacy_string_path(
 fn promote_legacy_runner(
     canonical: &mut Value,
     legacy: &Value,
-    migrated_multi_agent: bool,
     migrated_opencode: bool,
     changed_paths: &mut Vec<String>,
 ) -> crate::HoneResult<()> {
@@ -425,9 +410,7 @@ fn promote_legacy_runner(
     let should_promote_runner = !legacy_runner.is_empty()
         && canonical_runner != legacy_runner
         && canonical_runner_looks_seeded(&canonical_runner)
-        && ((legacy_runner == "multi-agent" && migrated_multi_agent)
-            || (legacy_runner == "opencode_acp" && migrated_opencode)
-            || canonical_runner.is_empty());
+        && ((legacy_runner == "opencode_acp" && migrated_opencode) || canonical_runner.is_empty());
 
     if should_promote_runner {
         set_value_at_path(
@@ -461,8 +444,6 @@ pub fn promote_legacy_runtime_agent_settings(
     }
 
     let mut changed_paths = Vec::new();
-    let migrated_multi_agent =
-        promote_legacy_multi_agent(&mut canonical, &legacy, &mut changed_paths)?;
     let migrated_opencode = promote_legacy_opencode(&mut canonical, &legacy, &mut changed_paths)?;
     promote_legacy_llm_settings(&mut canonical, &legacy, &mut changed_paths)?;
     promote_legacy_channel_settings(&mut canonical, &legacy, &mut changed_paths)?;
@@ -471,7 +452,6 @@ pub fn promote_legacy_runtime_agent_settings(
     promote_legacy_runner(
         &mut canonical,
         &legacy,
-        migrated_multi_agent,
         migrated_opencode,
         &mut changed_paths,
     )?;

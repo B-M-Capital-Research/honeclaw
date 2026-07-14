@@ -250,31 +250,6 @@ const STRINGS: &[(&str, &str, &str)] = &[
         "Hone Cloud API key",
     ),
     (
-        "runner.multi_agent.description",
-        "进阶：HTTP search + OpenCode ACP answer 两段式。",
-        "Advanced: two-stage HTTP search + OpenCode ACP answer.",
-    ),
-    (
-        "runner.multi_agent.note_1",
-        "前置：multi-agent search API key、本机可运行的 opencode，以及 answer key 或 `llm.providers.openrouter.api_key/api_keys`。",
-        "Requires: a multi-agent search API key, local opencode, and an answer key or `llm.providers.openrouter.api_key/api_keys`.",
-    ),
-    (
-        "runner.multi_agent.note_2",
-        "原理：第一段 search 用小模型拉证据，第二段 answer 用主模型总结。",
-        "How it works: stage 1 (search) pulls evidence with a small model; stage 2 (answer) summarizes with the primary model.",
-    ),
-    (
-        "runner.multi_agent.note_3",
-        "适合：想把证据搜索和最终回答拆成两段、并愿意维护两段配置的用户。",
-        "Best for: users who want separate evidence search and final answer stages, and can maintain both configs.",
-    ),
-    (
-        "runner.multi_agent.note_4",
-        "需要在本机切换模型时，之后用 `hone-cli models set ...` 即可，不必重跑 onboard。",
-        "To switch models later, run `hone-cli models set ...` — no need to rerun onboard.",
-    ),
-    (
         "runner.codex_cli.description",
         "优先复用本机 codex CLI 登录态；适合已经能直接运行 codex 的用户。",
         "Reuses your local codex CLI login. Best for users who can already run `codex`.",
@@ -306,8 +281,8 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "runner.codex_acp.note_1",
-        "前置：本机可执行 `codex --version` 与 `codex-acp --help`。",
-        "Requires: `codex --version` and `codex-acp --help` both execute locally.",
+        "前置：本机可执行 `codex --version` 与 `codex-acp --version`。",
+        "Requires: `codex --version` and `codex-acp --version` both execute locally.",
     ),
     (
         "runner.codex_acp.note_2",
@@ -316,18 +291,18 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "runner.codex_acp.note_3",
-        "安装：先装 `codex`，再装 `codex-acp`；gpt-5.5 路线最低要求 `codex >= 0.125.0` 且 `codex-acp >= 0.12.0`。",
-        "Install `codex` first, then `codex-acp`. The gpt-5.5 route requires `codex >= 0.125.0` and `codex-acp >= 0.12.0`.",
+        "安装：`npm install -g @openai/codex@latest @agentclientprotocol/codex-acp@latest`；最低验证版本为 0.144.1 / 1.1.2。",
+        "Install: `npm install -g @openai/codex@latest @agentclientprotocol/codex-acp@latest`; validated floors are 0.144.1 / 1.1.2.",
     ),
     (
         "runner.codex_acp.note_4",
-        "更新：`npm install -g @zed-industries/codex-acp@latest`。",
-        "Update: `npm install -g @zed-industries/codex-acp@latest`.",
+        "默认模型：`gpt-5.6-sol`，reasoning effort：`xhigh`。",
+        "Default model: `gpt-5.6-sol`; reasoning effort: `xhigh`.",
     ),
     (
         "runner.codex_acp.note_5",
-        "官方说明：https://github.com/zed-industries/codex-acp",
-        "Official docs: https://github.com/zed-industries/codex-acp",
+        "适配器说明：https://github.com/agentclientprotocol/codex-acp",
+        "Adapter docs: https://github.com/agentclientprotocol/codex-acp",
     ),
     (
         "runner.opencode_acp.description",
@@ -363,26 +338,6 @@ const STRINGS: &[(&str, &str, &str)] = &[
         "runner.opencode_acp.note_6",
         "如果需要 Hone 显式覆盖 opencode 默认模型，再用 `hone-cli models set ...`。",
         "Use `hone-cli models set ...` later if you want Hone to override opencode's default model.",
-    ),
-    (
-        "runner.multi_agent.setup_title",
-        "Multi-Agent 设置",
-        "Multi-Agent setup",
-    ),
-    (
-        "runner.multi_agent.setup_note_1",
-        "本 runner 只会写入 `agent.runner = \"multi-agent\"`。",
-        "This runner only writes `agent.runner = \"multi-agent\"`.",
-    ),
-    (
-        "runner.multi_agent.setup_note_2",
-        "实际跑起来还需要 `agent.multi_agent.search.api_key` 或 legacy `llm.auxiliary.api_key`、answer key 或 `llm.providers.openrouter.api_key/api_keys`，以及本机 opencode。",
-        "It also needs `agent.multi_agent.search.api_key` or legacy `llm.auxiliary.api_key`, an answer key or `llm.providers.openrouter.api_key/api_keys`, plus local opencode.",
-    ),
-    (
-        "runner.multi_agent.setup_note_3",
-        "进阶：`multi-agent.search` / `answer` 两段模型可用 `hone-cli models set ...` 微调。",
-        "Advanced: tune the `multi-agent.search` / `answer` stage models via `hone-cli models set ...`.",
     ),
     (
         "runner.codex_cli.model_prompt",
@@ -716,8 +671,8 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "provider.openrouter.note_1",
-        "LLM 主路由。function_calling / multi-agent answer / nano_banana 默认走这里。",
-        "Primary LLM route. function_calling / multi-agent answer / nano_banana default to this provider.",
+        "OpenCode ACP 覆盖与 nano_banana 默认使用此 LLM 路由。",
+        "OpenCode ACP overrides and nano_banana use this LLM route by default.",
     ),
     (
         "provider.openrouter.note_2",

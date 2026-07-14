@@ -35,8 +35,8 @@ use hone_tools::{
 use tokio::sync::mpsc;
 
 use crate::runners::{
-    AgentRunner, CodexAcpRunner, CodexCliReasoningRunner, FunctionCallingReasoningRunner,
-    GeminiCliRunner, HoneCloudRunner, MultiAgentRunner, OpencodeAcpRunner, RunnerTimeouts,
+    AgentRunner, CodexAcpRunner, CodexCliReasoningRunner, GeminiCliRunner, HoneCloudRunner,
+    OpencodeAcpRunner, RunnerTimeouts,
 };
 use crate::sandbox::sandbox_base_dir;
 use crate::session_compactor::SessionCompactor;
@@ -64,6 +64,8 @@ pub struct HoneBotCore {
     pub(super) workflow_runner_http: reqwest::Client,
     pub company_profile_storage: CompanyProfileStorage,
     pub(super) runtime_admin_overrides: RwLock<HashSet<ActorIdentity>>,
+    #[cfg(test)]
+    pub(crate) test_runner_factory: Option<Arc<dyn Fn() -> Box<dyn AgentRunner> + Send + Sync>>,
 }
 
 impl HoneBotCore {
@@ -127,6 +129,8 @@ impl HoneBotCore {
             workflow_runner_http,
             company_profile_storage,
             runtime_admin_overrides: RwLock::new(HashSet::new()),
+            #[cfg(test)]
+            test_runner_factory: None,
         }
     }
 
@@ -175,16 +179,6 @@ impl HoneBotCore {
         }
     }
 
-    pub(crate) fn create_auxiliary_llm_provider_with_max_tokens(
-        &self,
-        max_tokens: u16,
-    ) -> Result<Arc<dyn LlmProvider>, String> {
-        LlmResolver::new(&self.config)
-            .auxiliary_provider(Some(&self.config.llm.auxiliary_profile), Some(max_tokens))
-            .map(|created| created.provider)
-            .map_err(|err| format!("execution prepare failed: auxiliary llm unavailable: {err}"))
-    }
-
     pub fn auxiliary_model_name(&self) -> String {
         let auxiliary_profile = self.config.llm.auxiliary_profile.trim();
         if !auxiliary_profile.is_empty() {
@@ -217,23 +211,6 @@ impl HoneBotCore {
                 self.auxiliary_model_name(),
             )
         }
-    }
-
-    pub(super) fn effective_multi_agent_search_config(
-        &self,
-    ) -> hone_core::config::MultiAgentSearchConfig {
-        let mut search_config = self.config.agent.multi_agent.search.clone();
-        if search_config.api_key.trim().is_empty() {
-            let fallback_key = self.config.llm.auxiliary.api_key.trim().to_string();
-            if !fallback_key.trim().is_empty() {
-                search_config.api_key = fallback_key;
-            }
-        }
-        search_config
-    }
-
-    pub(super) fn effective_multi_agent_answer_max_tool_calls(&self) -> u32 {
-        self.config.agent.multi_agent.answer.max_tool_calls
     }
 
     fn create_llm_audit_sink(config: &HoneConfig) -> Option<Arc<dyn LlmAuditSink>> {
@@ -555,7 +532,7 @@ impl HoneBotCore {
     ///
     /// `AgentSession` 应通过 runner，而不是直接感知底层 provider/CLI 分支。
     ///
-    /// 返回 `Err(message)` 表示配置不满足要求（例如 function_calling 引擎要求 LLM Provider 已配置）。
+    /// 返回 `Err(message)` 表示配置不满足要求或 runner 已被移除。
     pub fn create_runner(
         &self,
         system_prompt: &str,
@@ -570,6 +547,11 @@ impl HoneBotCore {
         tool_registry: ToolRegistry,
         model_override: Option<&str>,
     ) -> Result<Box<dyn AgentRunner>, String> {
+        #[cfg(test)]
+        if let Some(factory) = &self.test_runner_factory {
+            return Ok(factory());
+        }
+
         let runner = self.config.agent.runner.trim();
         let runner_timeouts = RunnerTimeouts {
             step: self.config.agent.step_timeout(),
@@ -584,7 +566,7 @@ impl HoneBotCore {
             AgentRunnerKind::GeminiAcp => Err(
                 "dialog.engine=gemini_acp 已被 honeclaw 全局禁用（gemini 不推 usage_update，\
                  无法可靠检测内置 compact 信号；Gemini ToS 也不建议这种长 session 复用模式）。\
-                 请在 config.yaml 的 agent.runner 切换到 codex_acp / opencode_acp / multi-agent / function_calling。"
+                 请在 config.yaml 的 agent.runner 切换到 codex_acp / opencode_acp / hone_cloud。"
                     .to_string(),
             ),
             AgentRunnerKind::CodexCli => Ok(Box::new(CodexCliReasoningRunner::new(
@@ -593,23 +575,14 @@ impl HoneBotCore {
                 Arc::new(tool_registry),
                 self.llm_audit.clone(),
             ))),
-            AgentRunnerKind::CodexAcp => Ok(Box::new(CodexAcpRunner::new(
-                self.config.agent.codex_acp.clone(),
-                runner_timeouts,
-            ))),
-            AgentRunnerKind::FunctionCalling => {
-                let llm = self.llm.clone().ok_or_else(|| {
-                    "AI 服务未配置（openrouter.api_key 为空），无法使用 function_calling 引擎。\
-请在 config.yaml 中填写有效的 API Key 后重启服务。"
-                        .to_string()
-                })?;
-                Ok(Box::new(FunctionCallingReasoningRunner::new(
-                    llm,
-                    Arc::new(tool_registry),
-                    system_prompt.to_string(),
-                    self.config.agent.max_iterations,
-                    self.llm_audit.clone(),
-                )))
+            AgentRunnerKind::CodexAcp => {
+                let mut codex_config = self.config.agent.codex_acp.clone();
+                if let Some(model_override) =
+                    model_override.filter(|value| !value.trim().is_empty())
+                {
+                    codex_config.model = model_override.trim().to_string();
+                }
+                Ok(Box::new(CodexAcpRunner::new(codex_config, runner_timeouts)))
             }
             AgentRunnerKind::OpencodeAcp => {
                 let mut opencode_config = self.config.agent.opencode.clone();
@@ -638,101 +611,31 @@ impl HoneBotCore {
                 self.config.agent.hone_cloud.clone(),
                 runner_timeouts,
             ))),
-            AgentRunnerKind::MultiAgent => {
-                let pool = self.config.llm.openrouter_key_pool();
-                let mut answer_config = self.config.agent.opencode.clone();
-                let multi_answer = &self.config.agent.multi_agent.answer;
-                if !multi_answer.api_base_url.trim().is_empty() {
-                    answer_config.api_base_url = multi_answer.api_base_url.trim().to_string();
-                }
-                if !multi_answer.api_key.trim().is_empty() {
-                    answer_config.api_key = multi_answer.api_key.trim().to_string();
-                }
-                if !multi_answer.model.trim().is_empty() {
-                    answer_config.model = multi_answer.model.trim().to_string();
-                }
-                if !multi_answer.variant.trim().is_empty() {
-                    answer_config.variant = multi_answer.variant.trim().to_string();
-                }
-                if let Some(model_override) =
-                    model_override.filter(|value| !value.trim().is_empty())
-                {
-                    answer_config.model = model_override.trim().to_string();
-                    answer_config.variant = String::new();
-                }
-                let hone_manages_answer_route = !answer_config.model.trim().is_empty()
-                    || !answer_config.variant.trim().is_empty()
-                    || !answer_config.api_base_url.trim().is_empty()
-                    || !answer_config.api_key.trim().is_empty();
-                answer_config.openrouter_api_key =
-                    if hone_manages_answer_route && answer_config.api_key.trim().is_empty() {
-                        pool.first().map(|value| value.to_string())
-                    } else {
-                        None
-                    };
-
-                Ok(Box::new(MultiAgentRunner::new(
-                    system_prompt.to_string(),
-                    self.effective_multi_agent_search_config(),
-                    answer_config,
-                    runner_timeouts,
-                    self.effective_multi_agent_answer_max_tool_calls(),
-                    Arc::new(tool_registry),
-                    self.llm_audit.clone(),
-                )))
-            }
             AgentRunnerKind::Unknown => {
-                tracing::warn!(
-                    "[HoneBotCore] unknown runner={}, fallback to function_calling",
-                    printable_or_default(runner, "<empty>")
-                );
-                let llm = self.llm.clone().ok_or_else(|| {
-                    "AI 服务未配置（openrouter.api_key 为空），无法使用 function_calling 引擎。\
-请在 config.yaml 中填写有效的 API Key 后重启服务。"
-                        .to_string()
-                })?;
-                Ok(Box::new(FunctionCallingReasoningRunner::new(
-                    llm,
-                    Arc::new(tool_registry),
-                    system_prompt.to_string(),
-                    self.config.agent.max_iterations,
-                    self.llm_audit.clone(),
-                )))
+                let configured = printable_or_default(runner, "<empty>");
+                if matches!(runner, "function_calling" | "multi-agent") {
+                    Err(format!(
+                        "agent runner `{configured}` has been removed; set agent.runner to codex_acp (recommended), opencode_acp, hone_cloud, codex_cli, or gemini_cli"
+                    ))
+                } else {
+                    Err(format!(
+                        "unknown agent runner `{configured}`; supported runners: codex_acp, opencode_acp, hone_cloud, codex_cli, gemini_cli"
+                    ))
+                }
             }
         }
     }
 
     /// Native CLI/ACP runners execute outside Hone's actor-bound tool registry and may
-    /// inspect the host process or filesystem. They are therefore reserved for trusted
-    /// administrators; regular users are routed through function calling instead.
+    /// inspect host files or process state. They remain an explicit administrator boundary.
     pub(crate) fn configured_runner_requires_trusted_host_access(&self) -> bool {
         matches!(
             self.config.agent.runner_kind(),
             AgentRunnerKind::GeminiCli
-                | AgentRunnerKind::GeminiAcp
                 | AgentRunnerKind::CodexCli
                 | AgentRunnerKind::CodexAcp
                 | AgentRunnerKind::OpencodeAcp
-                | AgentRunnerKind::MultiAgent
         )
-    }
-
-    pub(crate) fn create_strict_actor_runner(
-        &self,
-        system_prompt: &str,
-        tool_registry: ToolRegistry,
-    ) -> Result<Box<dyn AgentRunner>, String> {
-        let llm = self.llm.clone().ok_or_else(|| {
-            "安全执行器不可用：普通用户不能使用具备宿主机访问能力的 CLI/ACP，且 function_calling LLM 未配置。"
-                .to_string()
-        })?;
-        Ok(Box::new(FunctionCallingReasoningRunner::new(
-            llm,
-            Arc::new(tool_registry),
-            system_prompt.to_string(),
-            self.config.agent.max_iterations,
-            self.llm_audit.clone(),
-        )))
     }
 
     pub fn create_actor(

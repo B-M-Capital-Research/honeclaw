@@ -53,91 +53,22 @@ fn channel_settings_from_config(config_path: &Path, config: HoneConfig) -> Deskt
     }
 }
 
-pub(super) fn seed_multi_agent_settings(config: &HoneConfig) -> MultiAgentSettings {
-    let search = MultiAgentSearchSettings {
-        base_url: if config.agent.multi_agent.search.base_url.trim().is_empty() {
-            "https://api.minimaxi.com/v1".to_string()
-        } else {
-            config.agent.multi_agent.search.base_url.clone()
-        },
-        api_key: if config.agent.multi_agent.search.api_key.trim().is_empty() {
-            config.llm.auxiliary.api_key.clone()
-        } else {
-            config.agent.multi_agent.search.api_key.clone()
-        },
-        model: if config.agent.multi_agent.search.model.trim().is_empty() {
-            "MiniMax-M2.7-highspeed".to_string()
-        } else {
-            config.agent.multi_agent.search.model.clone()
-        },
-        max_iterations: if config.agent.multi_agent.search.max_iterations == 0 {
-            8
-        } else {
-            config.agent.multi_agent.search.max_iterations
-        },
-    };
-
-    let answer = MultiAgentAnswerSettings {
-        base_url: if config
-            .agent
-            .multi_agent
-            .answer
-            .api_base_url
-            .trim()
-            .is_empty()
-        {
-            config.agent.opencode.api_base_url.clone()
-        } else {
-            config.agent.multi_agent.answer.api_base_url.clone()
-        },
-        api_key: if config.agent.multi_agent.answer.api_key.trim().is_empty() {
-            config.agent.opencode.api_key.clone()
-        } else {
-            config.agent.multi_agent.answer.api_key.clone()
-        },
-        model: if config.agent.multi_agent.answer.model.trim().is_empty() {
-            config.agent.opencode.model.clone()
-        } else {
-            config.agent.multi_agent.answer.model.clone()
-        },
-        variant: if config.agent.multi_agent.answer.variant.trim().is_empty() {
-            config.agent.opencode.variant.clone()
-        } else {
-            config.agent.multi_agent.answer.variant.clone()
-        },
-        max_tool_calls: if config.agent.multi_agent.answer.max_tool_calls == 0 {
-            1
-        } else {
-            config.agent.multi_agent.answer.max_tool_calls
-        },
-    };
-
-    MultiAgentSettings { search, answer }
-}
-
 pub(super) fn seed_auxiliary_settings(config: &HoneConfig) -> AuxiliarySettings {
-    let multi_search = seed_multi_agent_settings(config).search;
     let configured = &config.llm.auxiliary;
 
     AuxiliarySettings {
         base_url: if !configured.base_url.trim().is_empty() {
             configured.base_url.clone()
-        } else if !multi_search.base_url.trim().is_empty() {
-            multi_search.base_url
         } else {
             "https://api.minimaxi.com/v1".to_string()
         },
         api_key: if !configured.api_key.trim().is_empty() {
             configured.api_key.clone()
-        } else if !multi_search.api_key.trim().is_empty() {
-            multi_search.api_key
         } else {
             String::new()
         },
         model: if !configured.model.trim().is_empty() {
             configured.model.clone()
-        } else if !multi_search.model.trim().is_empty() {
-            multi_search.model
         } else {
             config.llm.openrouter.auxiliary_model().to_string()
         },

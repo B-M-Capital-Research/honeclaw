@@ -47,20 +47,6 @@ const ZH = {
       save: "保存",
       saving: "保存中…",
     },
-    multi_agent: {
-      name: "Multi-Agent",
-      description:
-        "Search Agent 使用 MiniMax 工具调用，Answer Agent 通过本机 OpenCode ACP 收束回复。",
-      search_title: "Search Agent (MiniMax / OpenAI-compatible)",
-      answer_title: "Answer Agent (OpenCode ACP)",
-      test_search: "测试 Search Agent",
-      test_answer: "测试 Answer Agent",
-      check_opencode: "检查 opencode",
-      testing: "测试中…",
-      checking: "检测中…",
-      hide: "隐藏",
-      show: "显示",
-    },
     openai: {
       name: "OpenCode ACP",
       description:
@@ -109,8 +95,7 @@ const ZH = {
       name: "Codex ACP",
       description_prefix: "使用 ",
       description_code: "codex-acp",
-      description_suffix:
-        " 驱动当前 Agent，会话实际走 ACP 链路而不是 multi-agent。",
+      description_suffix: " 驱动当前 Agent，会话通过 ACP 链路运行。",
       runtime_note:
         "设置会写入 config.yaml 并刷新当前运行设置；如果监听进程仍显示旧 Agent 引擎，请确认内置后端已按新配置重启。",
       checking_status: "检测中，请稍候…",
@@ -311,20 +296,6 @@ const EN: typeof ZH = {
       save: "Save",
       saving: "Saving…",
     },
-    multi_agent: {
-      name: "Multi-Agent",
-      description:
-        "Search Agent uses MiniMax function calling; Answer Agent finalizes the reply through local OpenCode ACP.",
-      search_title: "Search Agent (MiniMax / OpenAI-compatible)",
-      answer_title: "Answer Agent (OpenCode ACP)",
-      test_search: "Test Search Agent",
-      test_answer: "Test Answer Agent",
-      check_opencode: "Check opencode",
-      testing: "Testing…",
-      checking: "Checking…",
-      hide: "Hide",
-      show: "Show",
-    },
     openai: {
       name: "OpenCode ACP",
       description:
@@ -373,8 +344,7 @@ const EN: typeof ZH = {
       name: "Codex ACP",
       description_prefix: "Drives the current agent via ",
       description_code: "codex-acp",
-      description_suffix:
-        ". Sessions run over the ACP link instead of multi-agent.",
+      description_suffix: ". Sessions run over the ACP link.",
       runtime_note:
         "Settings write to config.yaml and refresh the running settings. If the listener still shows the old agent engine, confirm that the embedded backend restarted with the new config.",
       checking_status: "Checking, please wait…",

@@ -57,7 +57,7 @@ prompt = """
 - 核心服务进程已成功启动，且没有遗留重复 hone 相关进程
 - 正在运行的桌面进程路径应指向打包后的 `.app/Contents/MacOS/hone-desktop`
 - 不存在 `tauri dev`、`bun --watch`、`cargo watch` 这类会受代码改动影响的 watch 进程
-- 运行配置正确，尤其是采用 `multi-agent` runner
+- 运行配置正确，尤其是采用 `codex_acp` runner 与 GPT-5.6 Sol / xhigh 默认组合
 - 相关 API key 配置处于正确状态，不为空且未被错误覆盖
 - 启用的渠道进程已正常启动并处于可用状态，例如 `discord`、`feishu` 等启用渠道
 - 如果仓库提供接口或状态页，优先通过正式状态接口验证，例如渠道状态聚合接口；不要只凭日志里一行“started”就判定成功
@@ -85,8 +85,8 @@ Git 规则：
 """
 status = "ACTIVE"
 rrule = "FREQ=WEEKLY;BYDAY=SU,MO,TU,WE,TH,FR,SA;BYHOUR=3;BYMINUTE=0"
-model = "gpt-5.4"
-reasoning_effort = "high"
+model = "gpt-5.6-sol"
+reasoning_effort = "xhigh"
 execution_environment = "local"
 cwds = ["/Users/ecohnoch/Desktop/honeclaw"]
 created_at = 1776175184637

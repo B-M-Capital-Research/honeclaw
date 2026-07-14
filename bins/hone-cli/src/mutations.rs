@@ -3,9 +3,7 @@
 //!
 //! 设计要点：
 //! - 所有 builder 都是纯函数,只接受 `&*Args` 并产出 `Vec<ConfigMutation>`;不做 IO。
-//! - `models set` 有意 **镜像写** `agent.opencode.*` 和 `agent.multi_agent.answer.*`。
-//!   这么做是因为用户心智模型里只有「主模型路由」一个概念,底层 runner 配置因
-//!   不同 runner 而分散在不同字段,镜像能让「切一次 model 全套生效」。
+//! - `models set` 将主模型路由写入 `agent.opencode.*`。
 //! - 敏感字段一律走 `normalize_credential_value` 去首尾空白,避免复制粘贴把
 //!   意外空格带进 yaml。
 
@@ -52,24 +50,6 @@ pub(crate) struct ModelsSetArgs {
     pub aux_api_key: Option<String>,
     #[arg(long)]
     pub aux_model: Option<String>,
-    #[arg(long)]
-    pub search_base_url: Option<String>,
-    #[arg(long)]
-    pub search_api_key: Option<String>,
-    #[arg(long)]
-    pub search_model: Option<String>,
-    #[arg(long)]
-    pub search_max_iterations: Option<u32>,
-    #[arg(long)]
-    pub answer_base_url: Option<String>,
-    #[arg(long)]
-    pub answer_api_key: Option<String>,
-    #[arg(long)]
-    pub answer_model: Option<String>,
-    #[arg(long)]
-    pub answer_variant: Option<String>,
-    #[arg(long)]
-    pub answer_max_tool_calls: Option<u32>,
 }
 
 /// `hone-cli channels set <channel>` 的命令行参数。字段的语义依赖 `channel`
@@ -119,7 +99,6 @@ pub(crate) fn build_model_mutations(args: &ModelsSetArgs) -> Result<Vec<ConfigMu
     push_model_runner_mutations(&mut mutations, args);
     push_primary_model_route_mutations(&mut mutations, args);
     push_auxiliary_model_mutations(&mut mutations, args);
-    push_multi_agent_model_mutations(&mut mutations, args);
 
     if mutations.is_empty() {
         return Err("至少提供一个 models set 参数".to_string());
@@ -143,31 +122,14 @@ fn push_model_runner_mutations(mutations: &mut Vec<ConfigMutation>, args: &Model
 }
 
 fn push_primary_model_route_mutations(mutations: &mut Vec<ConfigMutation>, args: &ModelsSetArgs) {
-    // 主模型路由：同时写 opencode / multi_agent.answer 两条分支,让用户只感知
-    // 「主模型」一个概念(两个字段实际由不同 runner 使用)。
-    push_optional_string_mutations(
+    push_optional_string_mutation(
         mutations,
-        &[
-            "agent.opencode.api_base_url",
-            "agent.multi_agent.answer.api_base_url",
-        ],
+        "agent.opencode.api_base_url",
         args.base_url.as_deref(),
     );
-    push_optional_secret_mutations(
-        mutations,
-        &["agent.opencode.api_key", "agent.multi_agent.answer.api_key"],
-        args.api_key.as_deref(),
-    );
-    push_optional_string_mutations(
-        mutations,
-        &["agent.opencode.model", "agent.multi_agent.answer.model"],
-        args.model.as_deref(),
-    );
-    push_optional_string_mutations(
-        mutations,
-        &["agent.opencode.variant", "agent.multi_agent.answer.variant"],
-        args.variant.as_deref(),
-    );
+    push_optional_secret_mutation(mutations, "agent.opencode.api_key", args.api_key.as_deref());
+    push_optional_string_mutation(mutations, "agent.opencode.model", args.model.as_deref());
+    push_optional_string_mutation(mutations, "agent.opencode.variant", args.variant.as_deref());
 }
 
 fn push_auxiliary_model_mutations(mutations: &mut Vec<ConfigMutation>, args: &ModelsSetArgs) {
@@ -187,56 +149,6 @@ fn push_auxiliary_model_mutations(mutations: &mut Vec<ConfigMutation>, args: &Mo
         mutations,
         &["llm.auxiliary.model", "llm.openrouter.sub_model"],
         args.aux_model.as_deref(),
-    );
-}
-
-fn push_multi_agent_model_mutations(mutations: &mut Vec<ConfigMutation>, args: &ModelsSetArgs) {
-    // Multi-agent 专属(search / answer 两阶段)的独立字段。
-    push_optional_string_mutation(
-        mutations,
-        "agent.multi_agent.search.base_url",
-        args.search_base_url.as_deref(),
-    );
-    push_optional_secret_mutation(
-        mutations,
-        "agent.multi_agent.search.api_key",
-        args.search_api_key.as_deref(),
-    );
-    push_optional_string_mutation(
-        mutations,
-        "agent.multi_agent.search.model",
-        args.search_model.as_deref(),
-    );
-    push_optional_number_mutation(
-        mutations,
-        "agent.multi_agent.search.max_iterations",
-        args.search_max_iterations,
-    );
-
-    push_optional_string_mutation(
-        mutations,
-        "agent.multi_agent.answer.api_base_url",
-        args.answer_base_url.as_deref(),
-    );
-    push_optional_secret_mutation(
-        mutations,
-        "agent.multi_agent.answer.api_key",
-        args.answer_api_key.as_deref(),
-    );
-    push_optional_string_mutation(
-        mutations,
-        "agent.multi_agent.answer.model",
-        args.answer_model.as_deref(),
-    );
-    push_optional_string_mutation(
-        mutations,
-        "agent.multi_agent.answer.variant",
-        args.answer_variant.as_deref(),
-    );
-    push_optional_number_mutation(
-        mutations,
-        "agent.multi_agent.answer.max_tool_calls",
-        args.answer_max_tool_calls,
     );
 }
 
@@ -364,23 +276,6 @@ fn push_optional_secret_mutation(
     }
 }
 
-fn push_secret_mutations(mutations: &mut Vec<ConfigMutation>, paths: &[&str], value: &str) {
-    let normalized = normalize_credential_value(value);
-    for path in paths {
-        push_string_mutation(mutations, path, &normalized);
-    }
-}
-
-fn push_optional_secret_mutations(
-    mutations: &mut Vec<ConfigMutation>,
-    paths: &[&str],
-    value: Option<&str>,
-) {
-    if let Some(value) = value {
-        push_secret_mutations(mutations, paths, value);
-    }
-}
-
 fn push_bool_mutation(mutations: &mut Vec<ConfigMutation>, path: &str, value: bool) {
     push_set_mutation(mutations, path, Value::Bool(value));
 }
@@ -489,10 +384,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn build_model_mutations_mirrors_primary_to_multi_agent_answer() {
+    fn build_model_mutations_updates_opencode_primary_route() {
         let args = ModelsSetArgs {
             runner: Some("opencode_acp".to_string()),
-            model: Some("openrouter/openai/gpt-5.4".to_string()),
+            model: Some("openrouter/openai/gpt-5.6-sol".to_string()),
             variant: Some("medium".to_string()),
             base_url: Some("https://openrouter.ai/api/v1".to_string()),
             api_key: Some("sk-test".to_string()),
@@ -501,7 +396,7 @@ mod tests {
 
         let mutations = build_model_mutations(&args).unwrap();
         assert!(mutations.iter().any(|mutation| matches!(mutation, ConfigMutation::Set { path, .. } if path == "agent.opencode.model")));
-        assert!(mutations.iter().any(|mutation| matches!(mutation, ConfigMutation::Set { path, .. } if path == "agent.multi_agent.answer.model")));
+        assert_eq!(mutations.len(), 5);
     }
 
     #[test]
@@ -513,8 +408,6 @@ mod tests {
             base_url: None,
             api_key: Some("  sk-primary  ".to_string()),
             aux_api_key: Some("  sk-aux  ".to_string()),
-            search_api_key: Some("  sk-search  ".to_string()),
-            answer_api_key: Some("  sk-answer  ".to_string()),
             ..empty_model_set_args()
         };
 
@@ -528,16 +421,6 @@ mod tests {
             mutation,
             ConfigMutation::Set { path, value: Value::String(value) }
                 if path == "llm.auxiliary.api_key" && value == "sk-aux"
-        )));
-        assert!(mutations.iter().any(|mutation| matches!(
-            mutation,
-            ConfigMutation::Set { path, value: Value::String(value) }
-                if path == "agent.multi_agent.search.api_key" && value == "sk-search"
-        )));
-        assert!(mutations.iter().any(|mutation| matches!(
-            mutation,
-            ConfigMutation::Set { path, value: Value::String(value) }
-                if path == "agent.multi_agent.answer.api_key" && value == "sk-answer"
         )));
     }
 
@@ -637,15 +520,6 @@ mod tests {
             aux_base_url: None,
             aux_api_key: None,
             aux_model: None,
-            search_base_url: None,
-            search_api_key: None,
-            search_model: None,
-            search_max_iterations: None,
-            answer_base_url: None,
-            answer_api_key: None,
-            answer_model: None,
-            answer_variant: None,
-            answer_max_tool_calls: None,
         }
     }
 

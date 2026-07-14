@@ -106,7 +106,7 @@ import json
 import re
 import sys
 
-minimum = (0, 12, 0)
+minimum = (1, 1, 2)
 for line in open(sys.argv[1], encoding="utf-8"):
     try:
         payload = json.loads(line)
@@ -123,7 +123,7 @@ for line in open(sys.argv[1], encoding="utf-8"):
 sys.exit(1)
 PY
 then
-  echo "[FAIL] codex acp initialize did not report adapter version >= 0.12.0" >&2
+  echo "[FAIL] codex acp initialize did not report adapter version >= 1.1.2" >&2
   echo "--- stdout ---" >&2
   cat "$STDOUT_LOG" >&2 || true
   exit 1

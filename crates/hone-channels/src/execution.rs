@@ -10,7 +10,7 @@ use crate::HoneBotCore;
 use crate::agent_session::GeminiStreamOptions;
 use crate::core::runtime_config_path;
 use crate::prompt_audit::{PromptAuditMetadata, write_prompt_audit};
-use crate::runners::{AgentRunner, AgentRunnerRequest, FunctionCallingReasoningRunner};
+use crate::runners::{AgentRunner, AgentRunnerRequest};
 use crate::sandbox::ensure_actor_sandbox;
 
 fn absolute_runtime_path(path: &str) -> String {
@@ -34,10 +34,6 @@ pub(crate) enum ExecutionMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ExecutionRunnerSelection {
     Configured,
-    AuxiliaryFunctionCalling {
-        max_iterations: u32,
-        max_tokens_override: Option<u16>,
-    },
 }
 
 #[derive(Clone)]
@@ -76,10 +72,7 @@ impl ExecutionService {
         Self { core }
     }
 
-    pub(crate) fn prepare(
-        &self,
-        mut request: ExecutionRequest,
-    ) -> Result<PreparedExecution, String> {
+    pub(crate) fn prepare(&self, request: ExecutionRequest) -> Result<PreparedExecution, String> {
         if let Some(metadata) = request.prompt_audit.as_ref() {
             if let Err(err) = write_prompt_audit(
                 &self.core.config,
@@ -98,64 +91,31 @@ impl ExecutionService {
             }
         }
 
+        if matches!(
+            request.runner_selection,
+            ExecutionRunnerSelection::Configured
+        ) && !self.core.is_admin_actor(&request.actor)
+            && !self.core.runner_supports_strict_actor_sandbox()
+        {
+            return Err(self
+                .core
+                .strict_actor_sandbox_guard_message()
+                .unwrap_or("当前 runner 不支持严格 actor sandbox。")
+                .to_string());
+        }
+
         let tool_registry = self.core.create_tool_registry(
             Some(&request.actor),
             &request.channel_target,
             request.allow_cron,
         );
-        let use_strict_fallback = matches!(
-            request.runner_selection,
-            ExecutionRunnerSelection::Configured
-        ) && !self.core.is_admin_actor(&request.actor)
-            && self.core.configured_runner_requires_trusted_host_access();
         let runner: Box<dyn AgentRunner> = match request.runner_selection {
-            ExecutionRunnerSelection::Configured if use_strict_fallback => {
-                tracing::warn!(
-                    channel = %request.actor.channel,
-                    user_id = %request.actor.user_id,
-                    configured_runner = %self.core.config.agent.runner,
-                    "untrusted actor routed to strict function-calling runner"
-                );
-                self.core
-                    .create_strict_actor_runner(&request.system_prompt, tool_registry)?
-            }
             ExecutionRunnerSelection::Configured => self.core.create_runner_with_model_override(
                 &request.system_prompt,
                 tool_registry,
                 request.model_override.as_deref(),
             )?,
-            ExecutionRunnerSelection::AuxiliaryFunctionCalling {
-                max_iterations,
-                max_tokens_override,
-            } => {
-                let llm = if let Some(max_tokens) = max_tokens_override {
-                    self.core
-                        .create_auxiliary_llm_provider_with_max_tokens(max_tokens)?
-                } else {
-                    self.core.auxiliary_llm.clone().ok_or_else(|| {
-                        "execution prepare failed: auxiliary llm unavailable".to_string()
-                    })?
-                };
-                Box::new(FunctionCallingReasoningRunner::new(
-                    llm,
-                    Arc::new(tool_registry),
-                    request.system_prompt.clone(),
-                    max_iterations,
-                    self.core.llm_audit.clone(),
-                ))
-            }
         };
-        if use_strict_fallback {
-            let removed = sanitize_function_calling_context(&mut request.context);
-            if removed > 0 {
-                tracing::info!(
-                    channel = %request.actor.channel,
-                    user_id = %request.actor.user_id,
-                    removed_messages = removed,
-                    "removed incompatible historical tool protocol before strict fallback"
-                );
-            }
-        }
         let runner_name = runner.name();
         let working_directory = ensure_actor_sandbox(&request.actor)
             .map_err(|err| format!("actor sandbox 初始化失败: {err}"))?
@@ -194,127 +154,16 @@ impl ExecutionService {
     }
 }
 
-fn sanitize_function_calling_context(context: &mut AgentContext) -> usize {
-    let original_len = context.messages.len();
-    let mut sanitized = Vec::with_capacity(original_len);
-    let mut index = 0usize;
-
-    while index < context.messages.len() {
-        let mut message = context.messages[index].clone();
-        if message.role == "tool" {
-            index += 1;
-            continue;
-        }
-
-        let Some(tool_calls) = message
-            .tool_calls
-            .as_ref()
-            .filter(|tool_calls| !tool_calls.is_empty())
-        else {
-            sanitized.push(message);
-            index += 1;
-            continue;
-        };
-
-        let expected_ids = tool_calls
-            .iter()
-            .filter_map(|call| call.get("id").and_then(Value::as_str))
-            .map(str::to_string)
-            .collect::<std::collections::HashSet<_>>();
-        let mut following_tools = Vec::new();
-        let mut seen_ids = std::collections::HashSet::new();
-        let mut cursor = index + 1;
-        let mut valid = expected_ids.len() == tool_calls.len();
-
-        while cursor < context.messages.len() && context.messages[cursor].role == "tool" {
-            let tool_message = context.messages[cursor].clone();
-            let Some(tool_call_id) = tool_message
-                .tool_call_id
-                .as_deref()
-                .filter(|id| expected_ids.contains(*id))
-            else {
-                valid = false;
-                cursor += 1;
-                continue;
-            };
-            if !seen_ids.insert(tool_call_id.to_string()) {
-                valid = false;
-            }
-            following_tools.push(tool_message);
-            cursor += 1;
-        }
-
-        valid &= seen_ids == expected_ids;
-        if valid {
-            sanitized.push(message);
-            sanitized.extend(following_tools);
-        } else {
-            message.tool_calls = None;
-            if message
-                .content
-                .as_deref()
-                .is_some_and(|content| !content.trim().is_empty())
-            {
-                sanitized.push(message);
-            }
-        }
-        index = cursor;
-    }
-
-    let removed = original_len.saturating_sub(sanitized.len());
-    context.messages = sanitized;
-    removed
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{
-        ExecutionMode, ExecutionRequest, ExecutionRunnerSelection, ExecutionService,
-        sanitize_function_calling_context,
-    };
+    use super::{ExecutionMode, ExecutionRequest, ExecutionRunnerSelection, ExecutionService};
     use crate::HoneBotCore;
     use crate::agent_session::GeminiStreamOptions;
-    use async_trait::async_trait;
-    use futures::stream::{self, BoxStream};
-    use hone_core::agent::{AgentContext, AgentMessage};
-    use hone_core::{ActorIdentity, HoneConfig, HoneError};
-    use hone_llm::provider::{ChatResponse, ChatResult};
-    use hone_llm::{LlmProvider, Message};
-    use serde_json::Value;
+    use hone_core::agent::AgentContext;
+    use hone_core::{ActorIdentity, HoneConfig};
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
-
-    #[derive(Clone, Default)]
-    struct MockLlmProvider;
-
-    #[async_trait]
-    impl LlmProvider for MockLlmProvider {
-        async fn chat(
-            &self,
-            _messages: &[Message],
-            _model: Option<&str>,
-        ) -> hone_core::HoneResult<ChatResult> {
-            Err(HoneError::Llm("unused chat call".to_string()))
-        }
-
-        async fn chat_with_tools(
-            &self,
-            _messages: &[Message],
-            _tools: &[Value],
-            _model: Option<&str>,
-        ) -> hone_core::HoneResult<ChatResponse> {
-            Err(HoneError::Llm("unused tool chat call".to_string()))
-        }
-
-        fn chat_stream<'a>(
-            &'a self,
-            _messages: &'a [Message],
-            _model: Option<&'a str>,
-        ) -> BoxStream<'a, hone_core::HoneResult<String>> {
-            Box::pin(stream::empty())
-        }
-    }
 
     fn temp_root(name: &str) -> PathBuf {
         let unique = format!(
@@ -328,7 +177,7 @@ mod tests {
         std::env::temp_dir().join(unique)
     }
 
-    fn make_test_core(root: &Path, runner: &str, with_auxiliary_llm: bool) -> Arc<HoneBotCore> {
+    fn make_test_core(root: &Path, runner: &str) -> Arc<HoneBotCore> {
         std::fs::create_dir_all(root).expect("create temp root");
         let mut config = HoneConfig::default();
         config.agent.runner = runner.to_string();
@@ -344,12 +193,7 @@ mod tests {
         config.storage.cron_jobs_dir = root.join("cron_jobs").to_string_lossy().to_string();
         config.storage.gen_images_dir = root.join("gen_images").to_string_lossy().to_string();
 
-        let mut core = HoneBotCore::new(config);
-        core.llm = Some(Arc::new(MockLlmProvider));
-        if with_auxiliary_llm {
-            core.auxiliary_llm = Some(Arc::new(MockLlmProvider));
-        }
-        Arc::new(core)
+        Arc::new(HoneBotCore::new(config))
     }
 
     fn make_request(
@@ -381,8 +225,8 @@ mod tests {
     #[test]
     fn prepare_uses_user_id_for_persistent_actor_label() {
         let root = temp_root("execution_persistent_actor_label");
-        let core = make_test_core(&root, "codex_cli", false);
-        let actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");
+        let core = make_test_core(&root, "codex_cli");
+        let actor = ActorIdentity::new("cli", "alice", None::<String>).expect("actor");
         let prepared = ExecutionService::new(core)
             .prepare(make_request(
                 actor.clone(),
@@ -398,9 +242,8 @@ mod tests {
     #[test]
     fn prepare_uses_session_id_for_transient_actor_label() {
         let root = temp_root("execution_transient_actor_label");
-        let core = make_test_core(&root, "codex_cli", false);
-        let actor =
-            ActorIdentity::new("discord", "alice", Some("room-1".to_string())).expect("actor");
+        let core = make_test_core(&root, "codex_cli");
+        let actor = ActorIdentity::new("cli", "alice", Some("room-1".to_string())).expect("actor");
         let prepared = ExecutionService::new(core)
             .prepare(make_request(
                 actor.clone(),
@@ -416,8 +259,8 @@ mod tests {
     #[test]
     fn prepare_absolutizes_relative_runtime_paths() {
         let root = temp_root("execution_absolute_runtime_config");
-        let core = make_test_core(&root, "codex_cli", false);
-        let actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");
+        let core = make_test_core(&root, "codex_cli");
+        let actor = ActorIdentity::new("cli", "alice", None::<String>).expect("actor");
         let previous = std::env::var_os("HONE_CONFIG_PATH");
         unsafe {
             std::env::set_var("HONE_CONFIG_PATH", "config.yaml");
@@ -442,181 +285,22 @@ mod tests {
     }
 
     #[test]
-    fn prepare_can_force_auxiliary_function_calling_runner() {
-        let root = temp_root("execution_aux_runner");
-        let core = make_test_core(&root, "codex_cli", true);
-        let actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");
-        let prepared = ExecutionService::new(core)
-            .prepare(make_request(
-                actor,
-                ExecutionMode::TransientTask,
-                ExecutionRunnerSelection::AuxiliaryFunctionCalling {
-                    max_iterations: 6,
-                    max_tokens_override: None,
-                },
-            ))
-            .expect("prepare should succeed");
-
-        assert_eq!(prepared.runner_name, "function_calling");
-        let _ = std::fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn prepare_routes_non_admin_native_runner_to_strict_function_calling() {
-        let root = temp_root("execution_non_admin_strict_runner");
-        let core = make_test_core(&root, "codex_acp", false);
+    fn prepare_fails_closed_for_non_admin_native_runner() {
+        let root = temp_root("execution_non_admin_native_runner");
+        let core = make_test_core(&root, "codex_acp");
         let actor = ActorIdentity::new("web", "alice", None::<String>).expect("actor");
 
-        let prepared = ExecutionService::new(core)
-            .prepare(make_request(
-                actor,
-                ExecutionMode::PersistentConversation,
-                ExecutionRunnerSelection::Configured,
-            ))
-            .expect("safe fallback should be available");
-
-        assert_eq!(prepared.runner_name, "function_calling");
-        let _ = std::fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn prepare_keeps_native_runner_for_explicit_admin() {
-        let root = temp_root("execution_admin_native_runner");
-        let mut core = Arc::try_unwrap(make_test_core(&root, "codex_acp", false))
-            .unwrap_or_else(|_| panic!("test core should be uniquely owned"));
-        core.config
-            .admins
-            .discord_user_ids
-            .push("alice".to_string());
-        let actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");
-
-        let prepared = ExecutionService::new(Arc::new(core))
-            .prepare(make_request(
-                actor,
-                ExecutionMode::PersistentConversation,
-                ExecutionRunnerSelection::Configured,
-            ))
-            .expect("trusted admin should keep configured runner");
-
-        assert_eq!(prepared.runner_name, "codex_acp");
-        let _ = std::fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn prepare_fails_closed_when_strict_runner_is_unavailable() {
-        let root = temp_root("execution_strict_runner_missing_llm");
-        let mut core = Arc::try_unwrap(make_test_core(&root, "codex_acp", false))
-            .unwrap_or_else(|_| panic!("test core should be uniquely owned"));
-        core.llm = None;
-        let actor = ActorIdentity::new("web", "alice", None::<String>).expect("actor");
-
-        let err = match ExecutionService::new(Arc::new(core)).prepare(make_request(
+        let err = match ExecutionService::new(core).prepare(make_request(
             actor,
             ExecutionMode::PersistentConversation,
             ExecutionRunnerSelection::Configured,
         )) {
-            Ok(_) => panic!("untrusted actor must not fall back to native runner"),
+            Ok(_) => panic!("non-admin native runner must fail closed"),
             Err(err) => err,
         };
 
-        assert!(err.contains("安全执行器不可用"));
-        let _ = std::fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn strict_fallback_drops_orphaned_acp_tool_protocol() {
-        let mut context = AgentContext::new("session".to_string());
-        context.messages = vec![
-            agent_message("user", Some("查看持仓"), None, None),
-            agent_message(
-                "assistant",
-                Some("我来查询。"),
-                Some(vec![serde_json::json!({
-                    "id": "call_portfolio",
-                    "type": "function",
-                    "function": {"name": "portfolio", "arguments": "{}"}
-                })]),
-                None,
-            ),
-            agent_message("assistant", Some("历史回复"), None, None),
-            agent_message(
-                "tool",
-                Some("{\"holdings\":[]}"),
-                None,
-                Some("call_portfolio"),
-            ),
-        ];
-
-        let removed = sanitize_function_calling_context(&mut context);
-
-        assert_eq!(removed, 1);
-        assert_eq!(context.messages.len(), 3);
-        assert_eq!(context.messages[0].role, "user");
-        assert_eq!(context.messages[1].content.as_deref(), Some("我来查询。"));
-        assert!(context.messages[1].tool_calls.is_none());
-        assert_eq!(context.messages[2].content.as_deref(), Some("历史回复"));
-    }
-
-    #[test]
-    fn strict_fallback_preserves_complete_parallel_tool_block() {
-        let mut context = AgentContext::new("session".to_string());
-        context.messages = vec![
-            agent_message(
-                "assistant",
-                None,
-                Some(vec![
-                    serde_json::json!({"id":"call_a","function":{"name":"portfolio","arguments":"{}"}}),
-                    serde_json::json!({"id":"call_b","function":{"name":"notification_prefs","arguments":"{}"}}),
-                ]),
-                None,
-            ),
-            agent_message("tool", Some("{}"), None, Some("call_a")),
-            agent_message("tool", Some("{}"), None, Some("call_b")),
-            agent_message("assistant", Some("完成"), None, None),
-        ];
-
-        let removed = sanitize_function_calling_context(&mut context);
-
-        assert_eq!(removed, 0);
-        assert_eq!(context.messages.len(), 4);
-        assert_eq!(context.messages[1].tool_call_id.as_deref(), Some("call_a"));
-        assert_eq!(context.messages[2].tool_call_id.as_deref(), Some("call_b"));
-    }
-
-    fn agent_message(
-        role: &str,
-        content: Option<&str>,
-        tool_calls: Option<Vec<Value>>,
-        tool_call_id: Option<&str>,
-    ) -> AgentMessage {
-        AgentMessage {
-            role: role.to_string(),
-            content: content.map(str::to_string),
-            tool_calls,
-            tool_call_id: tool_call_id.map(str::to_string),
-            name: None,
-            metadata: None,
-        }
-    }
-
-    #[test]
-    fn prepare_requires_auxiliary_llm_for_auxiliary_function_calling_runner() {
-        let root = temp_root("execution_aux_runner_missing_llm");
-        let core = make_test_core(&root, "codex_cli", false);
-        let actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");
-        let err = match ExecutionService::new(core).prepare(make_request(
-            actor,
-            ExecutionMode::TransientTask,
-            ExecutionRunnerSelection::AuxiliaryFunctionCalling {
-                max_iterations: 6,
-                max_tokens_override: None,
-            },
-        )) {
-            Ok(_) => panic!("prepare should fail without auxiliary llm"),
-            Err(err) => err,
-        };
-
-        assert!(err.contains("auxiliary llm unavailable"));
+        assert!(err.contains("普通用户不能使用"));
+        assert!(err.contains("hone_cloud"));
         let _ = std::fs::remove_dir_all(root);
     }
 
@@ -631,7 +315,7 @@ mod tests {
         unsafe {
             std::env::set_var("HONE_AGENT_SANDBOX_DIR", &repo_internal);
         }
-        let core = make_test_core(&root, "codex_cli", false);
+        let core = make_test_core(&root, "hone_cloud");
         let actor = ActorIdentity::new("web", "alice", None::<String>).expect("actor");
         let prepared = ExecutionService::new(core)
             .prepare(make_request(

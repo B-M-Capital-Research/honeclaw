@@ -552,7 +552,7 @@ mod tests {
     fn codex_exec_args_use_full_auto_for_noninteractive_runs() {
         let agent = CodexCliAgent::new(
             "system".to_string(),
-            Some("gpt-5.3-codex".to_string()),
+            Some("gpt-5.6-sol".to_string()),
             Some("/tmp/workspace".to_string()),
             Arc::new(ToolRegistry::new()),
             None,
@@ -567,7 +567,7 @@ mod tests {
         assert!(args.contains(&"--full-auto".to_string()));
         assert!(!args.contains(&"--ask-for-approval".to_string()));
         assert!(!args.contains(&"never".to_string()));
-        assert!(args.windows(2).any(|pair| pair == ["-m", "gpt-5.3-codex"]));
+        assert!(args.windows(2).any(|pair| pair == ["-m", "gpt-5.6-sol"]));
         assert!(
             args.windows(2)
                 .any(|pair| pair == ["--cd", "/tmp/workspace"])

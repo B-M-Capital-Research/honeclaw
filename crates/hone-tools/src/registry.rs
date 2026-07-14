@@ -50,8 +50,7 @@ impl ToolRegistry {
 
     /// 执行指定工具
     ///
-    /// 执行前后均输出 INFO 级别日志，格式与 `FunctionCallingAgent` 保持一致，
-    /// 方便跨 agent 模式统一追踪工具调用链路。
+    /// 执行前后均输出 INFO 级别日志，方便跨 runner 统一追踪工具调用链路。
     pub async fn execute_tool(&self, name: &str, args: Value) -> hone_core::HoneResult<Value> {
         let tool = self.tools.get(name).ok_or_else(|| {
             tracing::warn!("[ToolRegistry] tool_not_found name={}", name);

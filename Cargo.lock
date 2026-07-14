@@ -2767,20 +2767,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hone-agent"
-version = "0.14.1"
-dependencies = [
- "async-trait",
- "futures",
- "hone-core",
- "hone-llm",
- "hone-tools",
- "serde_json",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "hone-agent-codex-cli"
 version = "0.14.1"
 dependencies = [
@@ -2815,7 +2801,6 @@ dependencies = [
  "chrono",
  "flate2",
  "futures",
- "hone-agent",
  "hone-agent-codex-cli",
  "hone-agent-gemini-cli",
  "hone-core",

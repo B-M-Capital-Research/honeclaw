@@ -186,6 +186,7 @@ Last updated: 2026-07-11
 ## D-2026-07-12-01 Reserve Native Agent Runners For Trusted Administrators
 
 - Status: Accepted
+- Superseded in part by: `D-2026-07-13-01`; the in-process function-calling fallback is retired, while the native-runner administrator trust boundary and fail-closed requirement remain active.
 - Decision: Treat local CLI/ACP runners as trusted-host execution rather than actor sandboxes. When a non-admin actor reaches shared execution preparation and the configured runner can access the host, route the turn through the in-process function-calling runner with an actor-bound tool registry; if no such LLM is available, fail closed. Explicit administrators retain the configured native runner.
 - Data boundary: Runtime configuration/data/actor-sandbox roots use owner-only Unix permissions. Skill scripts clear inherited server environment before execution. Public credentialed CORS accepts only HONE production origins, local development origins, and exact operator-configured origins.
 - Supply-chain boundary: Keep lockfile security patches current; Discord uses Serenity's native TLS backend so its fixed `tokio-tungstenite 0.21` dependency does not retain the unpatched `rustls-webpki 0.102` branch.
@@ -204,8 +205,19 @@ Last updated: 2026-07-11
 ## D-2026-07-12-03 Stream Public Replies From The Active Safe Runner
 
 - Status: Accepted
+- Superseded in part by: `D-2026-07-13-01`; function-calling streaming and tool-loop behavior are retired, while native runner streaming, client event handling, and no-replay-after-stream-start remain active.
 - Decision: Public chat streaming follows the runner selected by the shared execution boundary. Trusted administrators using Codex/OpenCode ACP keep native `agent_message_chunk` streaming; non-admin actors remain on the strict actor-bound function-calling runner and receive native OpenAI-compatible/OpenRouter SSE content and tool-call deltas. Streaming must never be implemented by slicing an already-complete response.
 - Tool-loop contract: Provider streams expose structured content, reasoning, indexed tool-call fragments, and optional usage. Function calling assembles parallel tool ids/names/arguments by index, executes only the actor-bound registry, hides internal reasoning blocks across chunk boundaries, and emits visible `StreamDelta` events. A model preamble emitted before a later tool call is withdrawn with transient `StreamReset`; only the final normalized assistant response is persisted.
 - Retry contract: API-key fallback is allowed only before an upstream stream starts. Once any successful streaming response has begun, transport errors surface through the existing run error state and must not replay the request, preventing duplicated output or duplicated tool execution. Providers without native tool streaming retain a single-response compatibility fallback.
 - Client impact: The public user client edits the existing in-thread thinking card, batches token deltas once per animation frame, handles reset in place, and preserves an explicit error phase on failed streams. The public SSE protocol therefore includes `assistant_reset` in addition to the existing `run_started / assistant_delta / tool_call / run_error / run_finished` events.
 - Security: This decision does not reopen native ACP/CLI access for ordinary users and does not change final transcript ownership, quota, actor isolation, or persistence boundaries established by `D-2026-07-12-01`.
+
+## D-2026-07-13-01 Retire In-Process Function Calling and Multi-Agent
+
+- Status: Accepted
+- Supersedes: The in-process fallback portion of `D-2026-07-12-01` and the function-calling stream/tool-loop portions of `D-2026-07-12-03`.
+- Decision: Remove the in-process `function_calling` agent and the sequential `multi-agent` runner. Use the unified configured runner for both conversation and transient heartbeat execution, with `codex_acp` as the default local path.
+- Default: `gpt-5.6-sol` with `xhigh` reasoning effort through `@openai/codex >= 0.144.1` and `@agentclientprotocol/codex-acp >= 1.1.2`.
+- Compatibility: Old `function_calling` and `multi-agent` config values fail explicitly; they do not silently select another runner. Historical records may retain the old names.
+- Security: Native CLI/ACP runners remain administrator-only trusted-host capabilities. With the actor-bound fallback removed, non-admin native-runner requests fail closed and should use `hone_cloud`; this change does not present an ACP/CLI subprocess as a strict filesystem sandbox.
+- Prompt impact: Keep `soul.md` as a compact persona layer, keep hard runtime policies in Rust, attach only query-relevant skill summaries to the current turn, and use `discover_skills` instead of injecting the full catalog into every system prompt.

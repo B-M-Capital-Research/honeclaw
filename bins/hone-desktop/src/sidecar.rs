@@ -158,43 +158,6 @@ pub(crate) struct ChannelProcessCleanupResult {
     message: String,
 }
 
-/// Multi-agent search-stage settings saved under `agent.multi_agent.search`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct MultiAgentSearchSettings {
-    #[serde(default)]
-    base_url: String,
-    #[serde(default)]
-    api_key: String,
-    #[serde(default)]
-    model: String,
-    #[serde(default)]
-    max_iterations: u32,
-}
-
-/// Multi-agent answer-stage settings saved under `agent.multi_agent.answer`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct MultiAgentAnswerSettings {
-    #[serde(default)]
-    base_url: String,
-    #[serde(default)]
-    api_key: String,
-    #[serde(default)]
-    model: String,
-    #[serde(default)]
-    variant: String,
-    #[serde(default)]
-    max_tool_calls: u32,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct MultiAgentSettings {
-    search: MultiAgentSearchSettings,
-    answer: MultiAgentAnswerSettings,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AuxiliarySettings {
@@ -281,7 +244,7 @@ pub(crate) struct LlmProfileSettings {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AgentSettings {
-    /// function_calling | gemini_cli | codex_cli | codex_acp | opencode_acp | multi-agent | hone_cloud
+    /// gemini_cli | codex_cli | codex_acp | opencode_acp | hone_cloud
     /// gemini_acp remains parseable for legacy config migration but is disabled at runtime.
     runner: String,
     /// codex_cli 专用，其他 provider 忽略
@@ -299,8 +262,6 @@ pub(crate) struct AgentSettings {
     auxiliary: Option<AuxiliarySettings>,
     #[serde(default)]
     hone_cloud: Option<HoneCloudSettings>,
-    #[serde(default)]
-    multi_agent: Option<MultiAgentSettings>,
     #[serde(default)]
     llm_profiles: Option<LlmProfileSettings>,
 }
@@ -996,7 +957,6 @@ pub(crate) fn get_agent_settings_impl(app: AppHandle) -> Result<AgentSettings, S
             api_key: config.agent.hone_cloud.api_key.clone(),
             model: config.agent.hone_cloud.model.clone(),
         }),
-        multi_agent: Some(seed_multi_agent_settings(&config)),
         llm_profiles: Some(seed_llm_profile_settings(&config)),
     })
 }
@@ -1061,50 +1021,6 @@ fn build_agent_setting_updates(settings: &AgentSettings) -> Vec<(String, serde_y
             setting(
                 "llm.openrouter.sub_model",
                 serde_yaml::Value::String(auxiliary.model.clone()),
-            ),
-        ]);
-    }
-    if let Some(multi_agent) = &settings.multi_agent {
-        updates.extend([
-            setting(
-                "agent.multi_agent.search.base_url",
-                serde_yaml::Value::String(multi_agent.search.base_url.clone()),
-            ),
-            setting(
-                "agent.multi_agent.search.api_key",
-                serde_yaml::Value::String(multi_agent.search.api_key.clone()),
-            ),
-            setting(
-                "agent.multi_agent.search.model",
-                serde_yaml::Value::String(multi_agent.search.model.clone()),
-            ),
-            setting(
-                "agent.multi_agent.search.max_iterations",
-                serde_yaml::Value::Number(serde_yaml::Number::from(
-                    multi_agent.search.max_iterations,
-                )),
-            ),
-            setting(
-                "agent.multi_agent.answer.api_base_url",
-                serde_yaml::Value::String(multi_agent.answer.base_url.clone()),
-            ),
-            setting(
-                "agent.multi_agent.answer.api_key",
-                serde_yaml::Value::String(multi_agent.answer.api_key.clone()),
-            ),
-            setting(
-                "agent.multi_agent.answer.model",
-                serde_yaml::Value::String(multi_agent.answer.model.clone()),
-            ),
-            setting(
-                "agent.multi_agent.answer.variant",
-                serde_yaml::Value::String(multi_agent.answer.variant.clone()),
-            ),
-            setting(
-                "agent.multi_agent.answer.max_tool_calls",
-                serde_yaml::Value::Number(serde_yaml::Number::from(
-                    multi_agent.answer.max_tool_calls,
-                )),
             ),
         ]);
     }
@@ -1555,7 +1471,7 @@ fmp:
                     vec![
                         (
                             "agent.runner",
-                            serde_yaml::Value::String("multi-agent".to_string()),
+                            serde_yaml::Value::String("codex_acp".to_string()),
                         ),
                         (
                             "agent.codex_model",
@@ -1605,52 +1521,9 @@ fmp:
             .expect("fmp save should succeed");
 
         let config = HoneConfig::from_file(&config_path).expect("final config should load");
-        assert_eq!(config.agent.runner, "multi-agent");
+        assert_eq!(config.agent.runner, "codex_acp");
         assert_eq!(config.agent.codex_model, "ignored-model");
         assert_eq!(config.fmp.api_keys, vec!["fmp-key-1".to_string()]);
-    }
-
-    #[test]
-    fn seed_multi_agent_settings_prefers_existing_multi_agent_values() {
-        let mut config = HoneConfig::default();
-        config.agent.opencode.api_base_url = "https://openrouter.ai/api/v1".to_string();
-        config.agent.opencode.api_key = "sk-or-old".to_string();
-        config.agent.opencode.model = "google/gemini-3.1-pro-preview".to_string();
-        config.agent.opencode.variant = "high".to_string();
-        config.agent.multi_agent.search.base_url = "https://api.minimaxi.com/v1".to_string();
-        config.agent.multi_agent.search.api_key = "sk-cp-new".to_string();
-        config.agent.multi_agent.search.model = "MiniMax-M2.7-highspeed".to_string();
-        config.agent.multi_agent.search.max_iterations = 9;
-        config.agent.multi_agent.answer.api_base_url = "https://custom.example/v1".to_string();
-        config.agent.multi_agent.answer.api_key = "sk-answer".to_string();
-        config.agent.multi_agent.answer.model = "google/gemini-3.1-pro-preview".to_string();
-        config.agent.multi_agent.answer.variant = "xhigh".to_string();
-        config.agent.multi_agent.answer.max_tool_calls = 2;
-
-        let seeded = seed_multi_agent_settings(&config);
-        assert_eq!(seeded.search.api_key, "sk-cp-new");
-        assert_eq!(seeded.search.max_iterations, 9);
-        assert_eq!(seeded.answer.base_url, "https://custom.example/v1");
-        assert_eq!(seeded.answer.api_key, "sk-answer");
-        assert_eq!(seeded.answer.variant, "xhigh");
-        assert_eq!(seeded.answer.max_tool_calls, 2);
-    }
-
-    #[test]
-    fn seed_multi_agent_settings_falls_back_to_opencode_answer() {
-        let mut config = HoneConfig::default();
-        config.agent.opencode.api_base_url = "https://openrouter.ai/api/v1".to_string();
-        config.agent.opencode.api_key = "sk-or-fallback".to_string();
-        config.agent.opencode.model = "google/gemini-3.1-pro-preview".to_string();
-        config.agent.opencode.variant = "high".to_string();
-        config.agent.multi_agent.answer = hone_core::config::MultiAgentAnswerConfig::default();
-
-        let seeded = seed_multi_agent_settings(&config);
-        assert_eq!(seeded.answer.base_url, "https://openrouter.ai/api/v1");
-        assert_eq!(seeded.answer.api_key, "sk-or-fallback");
-        assert_eq!(seeded.answer.model, "google/gemini-3.1-pro-preview");
-        assert_eq!(seeded.answer.variant, "high");
-        assert_eq!(seeded.answer.max_tool_calls, 3);
     }
 
     #[test]
@@ -1659,104 +1532,11 @@ fmp:
         config.llm.auxiliary.base_url = "https://api.minimaxi.com/v1".to_string();
         config.llm.auxiliary.api_key = "sk-cp-aux".to_string();
         config.llm.auxiliary.model = "MiniMax-M2.7-highspeed".to_string();
-        config.agent.multi_agent.search.api_key = "sk-cp-search".to_string();
 
         let seeded = seed_auxiliary_settings(&config);
         assert_eq!(seeded.base_url, "https://api.minimaxi.com/v1");
         assert_eq!(seeded.api_key, "sk-cp-aux");
         assert_eq!(seeded.model, "MiniMax-M2.7-highspeed");
-    }
-
-    #[test]
-    fn seed_auxiliary_settings_falls_back_to_multi_agent_search() {
-        let mut config = HoneConfig::default();
-        config.agent.multi_agent.search.base_url = "https://api.minimaxi.com/v1".to_string();
-        config.agent.multi_agent.search.api_key = "sk-cp-search".to_string();
-        config.agent.multi_agent.search.model = "MiniMax-M2.7".to_string();
-
-        let seeded = seed_auxiliary_settings(&config);
-        assert_eq!(seeded.base_url, "https://api.minimaxi.com/v1");
-        assert_eq!(seeded.api_key, "sk-cp-search");
-        assert_eq!(seeded.model, "MiniMax-M2.7");
-    }
-
-    #[test]
-    fn build_agent_setting_updates_keeps_opencode_and_multi_agent_answer_isolated() {
-        let settings = AgentSettings {
-            runner: "multi-agent".to_string(),
-            codex_model: String::new(),
-            openai_url: "https://opencode.example/v1".to_string(),
-            openai_model: "openai/gpt-5.4".to_string(),
-            openai_api_key: "sk-opencode".to_string(),
-            auxiliary: None,
-            hone_cloud: None,
-            multi_agent: Some(MultiAgentSettings {
-                search: MultiAgentSearchSettings {
-                    base_url: "https://search.example/v1".to_string(),
-                    api_key: "sk-search".to_string(),
-                    model: "search-model".to_string(),
-                    max_iterations: 6,
-                },
-                answer: MultiAgentAnswerSettings {
-                    base_url: "https://answer.example/v1".to_string(),
-                    api_key: "sk-answer".to_string(),
-                    model: "answer-model".to_string(),
-                    variant: "high".to_string(),
-                    max_tool_calls: 2,
-                },
-            }),
-            llm_profiles: None,
-        };
-
-        let updates = build_agent_setting_updates(&settings);
-        let update_map = updates
-            .into_iter()
-            .map(|(path, value)| (path, value))
-            .collect::<std::collections::HashMap<_, _>>();
-
-        assert_eq!(
-            update_map
-                .get("agent.opencode.api_base_url")
-                .and_then(serde_yaml::Value::as_str),
-            Some("https://opencode.example/v1")
-        );
-        assert_eq!(
-            update_map
-                .get("agent.opencode.model")
-                .and_then(serde_yaml::Value::as_str),
-            Some("openai/gpt-5.4")
-        );
-        assert_eq!(
-            update_map
-                .get("agent.opencode.api_key")
-                .and_then(serde_yaml::Value::as_str),
-            Some("sk-opencode")
-        );
-        assert!(!update_map.contains_key("agent.opencode.variant"));
-        assert_eq!(
-            update_map
-                .get("agent.multi_agent.answer.api_base_url")
-                .and_then(serde_yaml::Value::as_str),
-            Some("https://answer.example/v1")
-        );
-        assert_eq!(
-            update_map
-                .get("agent.multi_agent.answer.api_key")
-                .and_then(serde_yaml::Value::as_str),
-            Some("sk-answer")
-        );
-        assert_eq!(
-            update_map
-                .get("agent.multi_agent.answer.model")
-                .and_then(serde_yaml::Value::as_str),
-            Some("answer-model")
-        );
-        assert_eq!(
-            update_map
-                .get("agent.multi_agent.answer.variant")
-                .and_then(serde_yaml::Value::as_str),
-            Some("high")
-        );
     }
 
     #[test]
@@ -1769,7 +1549,6 @@ fmp:
             openai_api_key: String::new(),
             auxiliary: None,
             hone_cloud: None,
-            multi_agent: None,
             llm_profiles: Some(LlmProfileSettings {
                 default_profile: "main".to_string(),
                 auxiliary_profile: "aux".to_string(),
@@ -1841,7 +1620,6 @@ fmp:
                 model: "MiniMax-M2.7-highspeed".to_string(),
             }),
             hone_cloud: None,
-            multi_agent: None,
             llm_profiles: None,
         };
 
@@ -1874,21 +1652,6 @@ fmp:
                 api_key: "hck_test".to_string(),
                 model: "hone-cloud".to_string(),
             }),
-            multi_agent: Some(MultiAgentSettings {
-                search: MultiAgentSearchSettings {
-                    base_url: "https://api.minimaxi.com/v1".to_string(),
-                    api_key: "sk-cp-search".to_string(),
-                    model: "MiniMax-M2.7-highspeed".to_string(),
-                    max_iterations: 8,
-                },
-                answer: MultiAgentAnswerSettings {
-                    base_url: "https://openrouter.ai/api/v1".to_string(),
-                    api_key: "sk-or-answer".to_string(),
-                    model: "google/gemini-2.5-pro-preview".to_string(),
-                    variant: "high".to_string(),
-                    max_tool_calls: 1,
-                },
-            }),
             llm_profiles: None,
         };
 
@@ -1898,7 +1661,7 @@ fmp:
         );
 
         let changed = AgentSettings {
-            runner: "multi-agent".to_string(),
+            runner: "hone_cloud".to_string(),
             ..settings.clone()
         };
         assert!(
@@ -1910,14 +1673,13 @@ fmp:
     #[test]
     fn bundled_agent_settings_update_result_surfaces_runtime_not_applied() {
         let settings = AgentSettings {
-            runner: "multi-agent".to_string(),
+            runner: "codex_acp".to_string(),
             codex_model: String::new(),
             openai_url: "https://openrouter.ai/api/v1".to_string(),
             openai_model: "google/gemini-2.5-pro-preview".to_string(),
             openai_api_key: String::new(),
             auxiliary: None,
             hone_cloud: None,
-            multi_agent: None,
             llm_profiles: None,
         };
         let status = BackendStatusInfo {
@@ -1942,7 +1704,7 @@ fmp:
         let result = build_agent_settings_update_result(settings.clone(), Some(status));
 
         assert!(result.restarted_bundled_backend);
-        assert_eq!(result.settings.runner, "multi-agent");
+        assert_eq!(result.settings.runner, "codex_acp");
         assert!(
             result.message.contains("当前运行时尚未生效"),
             "should explicitly surface that runtime did not apply the new runner"

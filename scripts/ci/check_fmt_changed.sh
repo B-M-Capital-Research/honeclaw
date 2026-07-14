@@ -33,7 +33,7 @@ rs_files=()
 while IFS= read -r rs_file; do
   [ -n "$rs_file" ] && rs_files+=("$rs_file")
 done <<EOF
-$(git diff --name-only "${DIFF_RANGE}" -- '*.rs')
+$(git diff --name-only --diff-filter=ACMRT "${DIFF_RANGE}" -- '*.rs')
 EOF
 
 if [[ ${#rs_files[@]} -eq 0 ]]; then

@@ -1513,3 +1513,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: `bun run typecheck:web`, `bun run test:web`, `bun run build:web:public`, responsive browser QA at 390 x 844 and 1365 x 850
 - Current conclusion: authenticated chat now renders its full shell immediately, silently restores the latest 20 messages at the bottom, and exposes mobile conversation history with stable message navigation and cursor-based older-page loading; empty histories still land on the Agent overview.
 - Next entry point: `packages/app/src/pages/chat.tsx`
+
+### GPT-5.6 Codex ACP Runtime Simplification
+
+- Status: done
+- Date: 2026-07-13
+- Plan: `docs/archive/plans/gpt-5-6-codex-acp-simplification.md`
+- Handoff: `docs/handoffs/2026-07-13-gpt-5-6-codex-acp-simplification.md`
+- Decision / ADR: `docs/decisions.md#d-2026-07-13-01-retire-in-process-function-calling-and-multi-agent`
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `docs/runbooks/hone-cli-install-and-start.md`, `tests/regression/manual/test_codex_acp_initialize.sh`, `tests/regression/run_ci.sh`
+- Current conclusion: the in-process function-calling crate and sequential multi-agent runner are removed; Codex ACP now defaults to GPT-5.6 Sol/xhigh on Codex 0.144.1 and Agent Client Protocol adapter 1.1.2; static prompts no longer carry the full skill catalog.
+- Next entry point: `docs/handoffs/2026-07-13-gpt-5-6-codex-acp-simplification.md`

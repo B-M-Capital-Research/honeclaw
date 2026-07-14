@@ -5,7 +5,7 @@
 //! - 一个 `tool_call_id` 只 finish 一次(`completed_tool_call_ids` 去重)
 //! - assistant 消息里的 `tool_calls` 用 OpenAI 兼容形状(`id`/`type`/`function`)
 //!   通过 `build_openai_tool_call_value` 构造,这样 restore_context 下次能直接塞给
-//!   function_calling runner
+//!   historical OpenAI-compatible context readers
 
 use hone_core::agent::{AgentMessage, ToolCallMade};
 use serde_json::{Value, json};

@@ -278,7 +278,7 @@ hone-cli configure --section agent --section channels --section providers
 hone-cli config get agent.runner
 hone-cli config set agent.hone_cloud.api_key "<api-key>"
 hone-cli config set agent.runner opencode_acp
-hone-cli models set --runner opencode_acp --model openrouter/openai/gpt-5.4 --variant medium
+hone-cli models set --runner opencode_acp --model openrouter/openai/gpt-5.6-sol --variant xhigh
 ```
 
 Important config areas:
@@ -317,8 +317,6 @@ Common runner choices:
 | `opencode_acp` | You want Hone to inherit local OpenCode provider/model config. |
 | `codex_acp` | You use Codex ACP and want ACP session integration. |
 | `codex_cli` | You use Codex CLI directly. |
-| `function_calling` | You want the built-in OpenAI-compatible function-calling path. |
-| `multi-agent` | You want separate search and OpenCode ACP answer stages; search keys come from `agent.multi_agent.search.api_key` or legacy `llm.auxiliary.api_key`, while answer can inherit the `llm.providers.openrouter.api_key/api_keys` pool when `agent.multi_agent.answer.api_key` is empty. |
 
 Typical OpenCode setup:
 
@@ -332,7 +330,7 @@ hone-cli start
 Typical model override:
 
 ```bash
-hone-cli models set --runner opencode_acp --model openrouter/openai/gpt-5.4 --variant medium
+hone-cli models set --runner opencode_acp --model openrouter/openai/gpt-5.6-sol --variant xhigh
 ```
 
 If using Hone Cloud, keep `agent.runner=hone_cloud` and set `agent.hone_cloud.api_key`. If using other cloud APIs, configure keys through `hone-cli onboard`, `hone-cli configure`, or direct config edits.

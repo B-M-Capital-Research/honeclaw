@@ -560,16 +560,16 @@
       <div class="box-title">Agent runner engines (selected by <code style="font-size:10px">config.yaml agent.runner</code>)</div>
       <div class="agent-variants">
         <div class="variant v-primary">
-          <div class="v-name">function_calling</div>
-          <div class="v-desc">Default - built-in LLM<br/>multi-turn iteration + tool_call<br/>configurable max rounds</div>
+          <div class="v-name">codex_acp</div>
+          <div class="v-desc">Default · GPT-5.6 Sol<br/>xhigh reasoning<br/>ACP + MCP tools</div>
         </div>
         <div class="variant v-secondary">
           <div class="v-name">gemini_cli</div>
           <div class="v-desc">Local Gemini CLI<br/>subprocess spawn<br/>streaming output parsing</div>
         </div>
         <div class="variant v-secondary">
-          <div class="v-name">codex_cli</div>
-          <div class="v-desc">Local Codex CLI<br/>code / docs tasks<br/>configurable model</div>
+          <div class="v-name">opencode_acp</div>
+          <div class="v-desc">Local OpenCode ACP<br/>inherits local config<br/>optional model override</div>
         </div>
       </div>
     </div>
@@ -776,7 +776,7 @@
         built-in skill library under skills/<br/>
         user extensions under custom_skills/<br/>
         admin code edits + restart<br/>
-        multi-agent engine switching
+        pluggable agent engine switching
       </div>
     </div>
   </div>
@@ -785,7 +785,7 @@
 
 <!-- ══ Legend / Footer ══ -->
 <div class="footer-note">
-  Hone-Financial · Rust workspace · local-first · multi-channel · multi-agent engines · message flow: channel entrypoint -> hone-channels -> Agent -> Tools -> Memory -> response output
+  Hone-Financial · Rust workspace · local-first · multi-channel · pluggable agent engines · message flow: channel entrypoint -> hone-channels -> Agent -> Tools -> Memory -> response output
   <br/>
   <span style="color:#c8962a; font-weight:600">config.yaml</span> is the runtime source of truth &nbsp;|&nbsp;
   <span style="color:#5aab96; font-weight:600">ActorIdentity</span> is the foundation of data isolation &nbsp;|&nbsp;

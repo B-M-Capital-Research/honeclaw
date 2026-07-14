@@ -247,34 +247,12 @@ export type DesktopChannelSettings = {
 
 /** agent.runner values accepted by config/admin surfaces; gemini_acp is legacy/parseable but disabled at runtime. */
 export type AgentProvider =
-  | "function_calling"
   | "gemini_cli"
   | "gemini_acp"
   | "codex_cli"
   | "codex_acp"
   | "opencode_acp"
-  | "hone_cloud"
-  | "multi-agent";
-
-export type MultiAgentSearchSettings = {
-  baseUrl: string;
-  apiKey: string;
-  model: string;
-  maxIterations: number;
-};
-
-export type MultiAgentAnswerSettings = {
-  baseUrl: string;
-  apiKey: string;
-  model: string;
-  variant: string;
-  maxToolCalls: number;
-};
-
-export type MultiAgentSettings = {
-  search: MultiAgentSearchSettings;
-  answer: MultiAgentAnswerSettings;
-};
+  | "hone_cloud";
 
 export type AuxiliarySettings = {
   baseUrl: string;
@@ -329,8 +307,6 @@ export type AgentSettings = {
   auxiliary?: AuxiliarySettings;
   /** HONE Cloud 用户端服务配置 */
   honeCloud?: HoneCloudSettings;
-  /** multi-agent 双阶段设置 */
-  multiAgent?: MultiAgentSettings;
   /** Named LLM profiles used by runtime subsystems */
   llmProfiles?: LlmProfileSettings;
 };

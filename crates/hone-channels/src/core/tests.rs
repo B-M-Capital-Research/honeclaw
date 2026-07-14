@@ -4,7 +4,7 @@
 //! - 管理员运行时注册 (`/register-admin`) 的白名单 / 口令 / 作用域判定;
 //! - `is_admin*` 对各渠道 actor 的识别;
 //! - `create_tool_registry` 的 actor-scoped 工具注入;
-//! - `/report` intercept 的解析、默认 payload、multi-agent key 回退。
+//! - `/report` intercept 的解析与默认 payload。
 
 use hone_core::{ActorIdentity, HoneConfig};
 use serde_json::json;
@@ -161,47 +161,4 @@ fn report_run_input_includes_required_defaults() {
             "research_topic": REPORT_DEFAULT_RESEARCH_TOPIC,
         })
     );
-}
-
-#[test]
-fn effective_multi_agent_search_config_falls_back_to_auxiliary_api_key() {
-    let mut config = HoneConfig::default();
-    config.agent.runner = "multi-agent".to_string();
-    config.agent.multi_agent.search.base_url = "https://api.minimaxi.com/v1".to_string();
-    config.agent.multi_agent.search.model = "MiniMax-M2.7-highspeed".to_string();
-    config.agent.multi_agent.search.api_key = String::new();
-    config.llm.auxiliary.base_url = "https://api.minimaxi.com/v1".to_string();
-    config.llm.auxiliary.model = "MiniMax-M2.7-highspeed".to_string();
-    config.llm.auxiliary.api_key = "sk-cp-aux".to_string();
-
-    let core = HoneBotCore::new(config);
-    let effective = core.effective_multi_agent_search_config();
-
-    assert_eq!(effective.api_key, "sk-cp-aux");
-    assert_eq!(effective.base_url, "https://api.minimaxi.com/v1");
-    assert_eq!(effective.model, "MiniMax-M2.7-highspeed");
-}
-
-#[test]
-fn effective_multi_agent_search_config_preserves_explicit_search_api_key() {
-    let mut config = HoneConfig::default();
-    config.agent.runner = "multi-agent".to_string();
-    config.agent.multi_agent.search.api_key = "sk-cp-search".to_string();
-    config.llm.auxiliary.api_key = "sk-cp-aux".to_string();
-
-    let core = HoneBotCore::new(config);
-    let effective = core.effective_multi_agent_search_config();
-
-    assert_eq!(effective.api_key, "sk-cp-search");
-}
-
-#[test]
-fn multi_agent_answer_zero_tool_limit_is_preserved() {
-    let mut config = HoneConfig::default();
-    config.agent.runner = "multi-agent".to_string();
-    config.agent.multi_agent.answer.max_tool_calls = 0;
-
-    let core = HoneBotCore::new(config);
-
-    assert_eq!(core.effective_multi_agent_answer_max_tool_calls(), 0);
 }

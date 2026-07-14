@@ -726,7 +726,7 @@ mod tests {
         let mut fresh = LlmAuditRecord::new(
             "Actor_feishu__direct__alice",
             Some(ActorIdentity::new("feishu", "alice", None::<String>).expect("actor")),
-            "agent.function_calling",
+            "agent.codex_acp",
             "chat_with_tools",
             "openrouter",
             Some("moonshotai/kimi-k2.5".to_string()),
@@ -741,7 +741,7 @@ mod tests {
             created_at: (hone_core::beijing_now() - chrono::Duration::days(31)).to_rfc3339(),
             session_id: "old".to_string(),
             actor: None,
-            source: "agent.function_calling".to_string(),
+            source: "agent.codex_acp".to_string(),
             operation: "chat".to_string(),
             provider: "openrouter".to_string(),
             model: Some("test".to_string()),

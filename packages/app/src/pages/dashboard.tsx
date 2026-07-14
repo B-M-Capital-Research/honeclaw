@@ -55,7 +55,7 @@ export default function DashboardPage() {
     },
   )
 
-  const activeRunner = () => agentSettings()?.runner ?? "opencode_acp"
+  const activeRunner = () => agentSettings()?.runner ?? "codex_acp"
 
   const handleSend = () => {
     const text = input().trim()

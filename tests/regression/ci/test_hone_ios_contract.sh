@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 IOS_DIR="$ROOT_DIR/apps/hone-ios"
 TEST_BIN="${TMPDIR:-/tmp}/hone-ios-navigation-policy-test"
+SWIFTC_LOG="${TEST_BIN}.swiftc.log"
+trap 'rm -f "$TEST_BIN" "$SWIFTC_LOG"' EXIT
 WORKSPACE_VERSION="$(awk '
   /^\[workspace\.package\]$/ { in_workspace_package = 1; next }
   /^\[/ { in_workspace_package = 0 }
@@ -20,11 +22,18 @@ if [[ -z "$WORKSPACE_VERSION" ]]; then
 fi
 
 if command -v swiftc >/dev/null 2>&1; then
-  swiftc \
+  if swiftc \
     "$IOS_DIR/HONE/NavigationPolicy.swift" \
     "$IOS_DIR/Tests/NavigationPolicyTests.swift" \
-    -o "$TEST_BIN"
-  "$TEST_BIN"
+    -o "$TEST_BIN" 2>"$SWIFTC_LOG"; then
+    "$TEST_BIN"
+  elif grep -Fq "redefinition of module 'SwiftBridging'" "$SWIFTC_LOG" \
+    && grep -Fq '/Library/Developer/CommandLineTools/usr/include/swift/module.modulemap' "$SWIFTC_LOG"; then
+    echo "[WARN] local CommandLineTools Swift module maps are duplicated; running static iOS contract only"
+  else
+    cat "$SWIFTC_LOG" >&2
+    exit 1
+  fi
 else
   echo "[INFO] swiftc unavailable; running static iOS contract only"
 fi

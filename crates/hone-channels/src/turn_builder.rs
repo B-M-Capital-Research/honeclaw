@@ -60,19 +60,13 @@ impl<'a> PromptTurnBuilder<'a> {
         let stage_constraints =
             hone_tools::skill_runtime::SkillStageConstraints::new(self.allow_cron, None);
         let skill_runtime = self.build_skill_runtime();
-        let skill_listing = skill_runtime.build_skill_listing_for_stage(4_000, &stage_constraints);
-        if !skill_listing.trim().is_empty() {
-            prompt_options.extra_sections.push(format!(
-                "【SkillTool】\n\
-                - 当用户任务明显匹配某个 skill 时，必须先调用 skill_tool，再继续回答。\n\
-                - 若当前 runner 通过 MCP 暴露 namespaced 工具名，则 `skill_tool` 对应 `hone/skill_tool`，`discover_skills` 对应 `hone/discover_skills`；必须调用真实暴露出的那个工具名，不要因为带前缀就误判”工具不存在”。\n\
-                - 用户可以直接输入 `/<skill-id>` 触发 user-invocable 技能；模型不要假装已经加载 skill，必须真的调用工具。\n\
-                - 如果当前任务发生中途转向，或现有技能不够覆盖，再调用 discover_skills / hone/discover_skills 检索相关技能。\n\
-                - 禁止在纯文本请求（消息中没有图片或文件附件）时调用 `image_understanding`、`pdf_understanding` 等附件处理类 skill；这类 skill 仅在当前消息中真实存在对应附件时才可触发。\n\
-                - turn-0 可用技能索引：\n{}",
-                skill_listing
-            ));
-        }
+        prompt_options.extra_sections.push(
+            "【SkillTool】\n\
+             - 本轮相关技能提示匹配任务时，先调用 skill_tool（MCP 名称可能是 hone/skill_tool）再继续。\n\
+             - 没有匹配项、任务中途转向或现有技能不足时，调用 discover_skills（可能是 hone/discover_skills）。\n\
+             - 不要声称已经加载技能；必须真实调用工具。附件类技能仅在当前消息确有对应附件时使用。"
+                .to_string(),
+        );
         let related_skills = skill_runtime.search_for_stage(
             user_input,
             &extract_possible_file_paths(user_input),

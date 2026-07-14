@@ -28,13 +28,13 @@ use super::types::{
 const CODEX_ACP_SESSION_KEY: &str = "codex_acp_session_id";
 const MIN_CODEX_VERSION: CliVersion = CliVersion {
     major: 0,
-    minor: 125,
-    patch: 0,
+    minor: 144,
+    patch: 1,
 };
 const MIN_CODEX_ACP_VERSION: CliVersion = CliVersion {
-    major: 0,
-    minor: 12,
-    patch: 0,
+    major: 1,
+    minor: 1,
+    patch: 2,
 };
 const CODEX_ACP_TRANSIENT_SPAWN_RETRY_DELAYS_MS: &[u64] = &[200, 500];
 static CODEX_ACP_VERSION_VALIDATION_CACHE: LazyLock<tokio::sync::Mutex<HashSet<String>>> =
@@ -199,7 +199,7 @@ pub(crate) fn validate_codex_version_matrix(
     }
     if adapter_version < MIN_CODEX_ACP_VERSION {
         return Err(format!(
-            "codex_acp requires codex-acp >= {MIN_CODEX_ACP_VERSION}; found {adapter_version}. Update with `npm install -g @zed-industries/codex-acp@latest` or install the minimum validated version with `npm install -g @zed-industries/codex-acp@{MIN_CODEX_ACP_VERSION}`."
+            "codex_acp requires codex-acp >= {MIN_CODEX_ACP_VERSION}; found {adapter_version}. Update with `npm install -g @agentclientprotocol/codex-acp@latest` or install the minimum validated version with `npm install -g @agentclientprotocol/codex-acp@{MIN_CODEX_ACP_VERSION}`."
         ));
     }
 
@@ -425,6 +425,7 @@ fn spawn_codex_acp_child(
     let mut command = tokio::process::Command::new(&config.command);
     command
         .args(codex_acp_effective_args(config, true))
+        .env("CODEX_PATH", &config.codex_command)
         .current_dir(working_directory)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())

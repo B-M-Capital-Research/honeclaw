@@ -128,19 +128,18 @@ hone-cli onboard
 
 The onboarding flow will:
 
-- Preserve the seeded `agent.runner: hone_cloud` route unless you switch to a local runner; set `agent.hone_cloud.api_key` before relying on Hone Cloud
+- Preserve the seeded `agent.runner: codex_acp` route unless you switch runners
 - Detect local runner binaries such as `codex`, `codex-acp`, and `opencode`
 - Let you choose the default runner
 - If you choose `opencode_acp`, tell you to finish provider / model setup in local `opencode` first
   - Hone defaults to inheriting `~/.config/opencode/opencode.json` or `~/.config/opencode/opencode.jsonc`
-- If you choose `multi-agent`, tell you that search needs a dedicated search API key, answer can inherit the `llm.providers.openrouter.api_key/api_keys` pool when no answer key is set, and the answer stage needs local `opencode`
 - Ask whether to enable each channel
 - If a channel is enabled, require its local mandatory fields and print the key permission / prerequisite notes
 - If you accidentally enable a channel and then hit a required field with no value to keep, the wizard offers:
   - retry the current field
   - go back and disable that channel
 - Require an explicit choice for `OpenRouter`, `FMP`, and `Tavily` API keys: configure now or skip for this run
-  - OpenRouter writes `llm.providers.openrouter.api_keys` and clears legacy single-key fields
+  - OpenRouter uses the config-owned `llm.providers.openrouter.api_key/api_keys` schema; onboarding writes the key pool to `api_keys` and clears legacy single-key fields
   - FMP and Tavily write `fmp.api_keys` and `search.api_keys`
   - `FMP` onboarding also clears the legacy single-key field `fmp.api_key`
 
@@ -155,18 +154,16 @@ Runner install references shown by onboarding:
   - Update: `codex --upgrade`
   - Official guide: [OpenAI Codex CLI – Getting Started](https://help.openai.com/en/articles/11096431)
 - `Codex ACP`
-  - Install `codex` first, then install `codex-acp`
-  - Minimum validated combination for `gpt-5.5`: `codex >= 0.125.0` and `codex-acp >= 0.12.0`
-  - Recommended update command: `npm install -g @openai/codex@latest @zed-industries/codex-acp@latest`
-  - 2026-04-30 validation note: `codex` stayed on `0.125.0`, while `codex-acp` upgraded from `0.11.1` to `0.12.0`; `gpt-5.5` failed with HTTP 400 before the adapter upgrade and passed after it.
+  - Install/update both packages: `npm install -g @openai/codex@latest @agentclientprotocol/codex-acp@latest`
+  - Minimum validated combination: `codex >= 0.144.1` and `codex-acp >= 1.1.2`
   - Recommended Hone config:
 
     ```yaml
     agent:
       runner: codex_acp
       codex_acp:
-        model: gpt-5.5
-        variant: high
+        model: gpt-5.6-sol
+        variant: xhigh
         sandbox_mode: workspace-write
         approval_policy: never
         sandbox_permissions: ["network-full-access"]
@@ -174,14 +171,10 @@ Runner install references shown by onboarding:
 
   - Keep `sandbox_permissions: ["network-full-access"]` when `sandbox_mode: workspace-write` is used; Codex CLI otherwise keeps network access closed inside the actor sandbox, which can make `curl`, `git`, and DNS look broken during tool execution.
   - Restart the Hone runtime after changing this config; existing processes keep their previous effective config snapshot.
-  - Official adapter repo: [zed-industries/codex-acp](https://github.com/zed-industries/codex-acp)
+  - Adapter repo: [agentclientprotocol/codex-acp](https://github.com/agentclientprotocol/codex-acp)
 - `OpenCode ACP`
   - Install: `curl -fsSL https://opencode.ai/install | bash`
   - Official docs: [OpenCode Docs](https://opencode.ai/docs/)
-- `multi-agent`
-  - Requires local `opencode` for the answer stage because runtime uses the OpenCode ACP runner there
-  - Search reads `agent.multi_agent.search.api_key`; if it is empty, only the legacy `llm.auxiliary.api_key` path is used as a fallback
-  - Answer reads `agent.multi_agent.answer.*`; if `answer.api_key` is empty while Hone manages the answer route, it can inherit the OpenRouter provider key pool (`llm.providers.openrouter.api_key/api_keys`, with legacy single-key fallback)
 
 If you prefer the older section-by-section setup, use:
 
@@ -200,7 +193,7 @@ hone-cli channels set telegram --enabled true --bot-token "<token>"
 If you want Hone to explicitly override the model used by `opencode_acp`, set it afterwards:
 
 ```bash
-hone-cli models set --runner opencode_acp --model openrouter/openai/gpt-5.4 --variant medium
+hone-cli models set --runner opencode_acp --model openrouter/openai/gpt-5.6-sol --variant xhigh
 ```
 
 ## Start The Local Runtime

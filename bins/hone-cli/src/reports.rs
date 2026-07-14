@@ -36,15 +36,6 @@ pub(crate) struct ModelStatusReport {
     pub auxiliary_base_url: String,
     pub auxiliary_model: String,
     pub auxiliary_api_key_configured: bool,
-    pub search_base_url: String,
-    pub search_model: String,
-    pub search_api_key_configured: bool,
-    pub search_max_iterations: u32,
-    pub answer_base_url: String,
-    pub answer_model: String,
-    pub answer_variant: String,
-    pub answer_api_key_configured: bool,
-    pub answer_max_tool_calls: u32,
 }
 
 #[derive(Debug, Serialize)]
@@ -81,8 +72,6 @@ pub(crate) struct ApiKeySummary {
     pub openrouter: bool,
     pub primary_route: bool,
     pub auxiliary: bool,
-    pub multi_agent_search: bool,
-    pub multi_agent_answer: bool,
     pub fmp: bool,
     pub tavily: bool,
 }
@@ -192,15 +181,6 @@ pub(crate) fn build_model_status(config: &hone_core::HoneConfig) -> ModelStatusR
         auxiliary_base_url: config.llm.auxiliary.base_url.clone(),
         auxiliary_model: config.llm.auxiliary.model.clone(),
         auxiliary_api_key_configured: non_empty(&config.llm.auxiliary.api_key),
-        search_base_url: config.agent.multi_agent.search.base_url.clone(),
-        search_model: config.agent.multi_agent.search.model.clone(),
-        search_api_key_configured: non_empty(&config.agent.multi_agent.search.api_key),
-        search_max_iterations: config.agent.multi_agent.search.max_iterations,
-        answer_base_url: config.agent.multi_agent.answer.api_base_url.clone(),
-        answer_model: config.agent.multi_agent.answer.model.clone(),
-        answer_variant: config.agent.multi_agent.answer.variant.clone(),
-        answer_api_key_configured: non_empty(&config.agent.multi_agent.answer.api_key),
-        answer_max_tool_calls: config.agent.multi_agent.answer.max_tool_calls,
     }
 }
 
@@ -279,8 +259,6 @@ pub(crate) fn build_api_key_summary(config: &hone_core::HoneConfig) -> ApiKeySum
         openrouter: !config.llm.openrouter_key_pool().is_empty(),
         primary_route: non_empty(&config.agent.opencode.api_key),
         auxiliary: non_empty(&config.llm.auxiliary.api_key),
-        multi_agent_search: non_empty(&config.agent.multi_agent.search.api_key),
-        multi_agent_answer: non_empty(&config.agent.multi_agent.answer.api_key),
         fmp: !config.fmp.effective_key_pool().is_empty(),
         tavily: !config
             .search
@@ -337,8 +315,7 @@ mod tests {
 }
 
 /// 根据 `agent.runner` 的配置值,查对应 CLI 二进制的 probe 指令。
-/// `function_calling` 与 `hone_cloud` 不挂本机 CLI,返回 `None`;
-/// `multi-agent` 的 answer 阶段复用 opencode ACP,因此返回 opencode 探针。
+/// `hone_cloud` 不挂本机 CLI,返回 `None`。
 pub(crate) fn runner_binary_name(runner: &str) -> Option<(&'static str, &'static str)> {
     hone_core::config::AgentRunnerKind::from_config_value(runner)
         .cli_probe()

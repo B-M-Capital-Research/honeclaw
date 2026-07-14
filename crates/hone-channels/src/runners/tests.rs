@@ -370,6 +370,8 @@ fn codex_acp_effective_args_include_dangerous_bypass_overrides() {
             "-c",
             "sandbox_permissions=[\"disk-full-read-access\"]",
             "-c",
+            "model_reasoning_effort=\"xhigh\"",
+            "-c",
             "shell_environment_policy.inherit=all",
         ]
     );
@@ -389,6 +391,8 @@ fn codex_acp_effective_args_lock_down_workspace_and_ignore_dangerous_bypass() {
             "sandbox_mode=\"workspace-write\"",
             "-c",
             "approval_policy=\"never\"",
+            "-c",
+            "model_reasoning_effort=\"xhigh\"",
         ]
     );
 }
@@ -570,13 +574,13 @@ fn codex_version_matrix_accepts_minimum_validated_pair() {
     let result = validate_codex_version_matrix(
         CliVersion {
             major: 0,
-            minor: 125,
-            patch: 0,
+            minor: 144,
+            patch: 1,
         },
         CliVersion {
-            major: 0,
-            minor: 12,
-            patch: 0,
+            major: 1,
+            minor: 1,
+            patch: 2,
         },
     );
     result.expect("minimum Codex/Codex ACP versions should be accepted");
@@ -587,13 +591,13 @@ fn codex_version_matrix_accepts_newer_adapter() {
     let result = validate_codex_version_matrix(
         CliVersion {
             major: 0,
-            minor: 125,
-            patch: 0,
+            minor: 144,
+            patch: 1,
         },
         CliVersion {
-            major: 0,
-            minor: 12,
-            patch: 1,
+            major: 1,
+            minor: 2,
+            patch: 0,
         },
     );
     result.expect("newer Codex ACP adapter should be accepted");
@@ -604,13 +608,13 @@ fn codex_version_matrix_rejects_old_codex() {
     let result = validate_codex_version_matrix(
         CliVersion {
             major: 0,
-            minor: 124,
+            minor: 144,
             patch: 0,
         },
         CliVersion {
-            major: 0,
-            minor: 12,
-            patch: 0,
+            major: 1,
+            minor: 1,
+            patch: 2,
         },
     );
     assert_error_contains(result, "npm install -g @openai/codex@latest");
@@ -621,16 +625,16 @@ fn codex_version_matrix_rejects_old_adapter() {
     let result = validate_codex_version_matrix(
         CliVersion {
             major: 0,
-            minor: 125,
-            patch: 0,
+            minor: 144,
+            patch: 1,
         },
         CliVersion {
-            major: 0,
-            minor: 11,
+            major: 1,
+            minor: 1,
             patch: 1,
         },
     );
-    assert_error_contains(result, "@zed-industries/codex-acp@latest");
+    assert_error_contains(result, "@agentclientprotocol/codex-acp@latest");
 }
 
 #[test]

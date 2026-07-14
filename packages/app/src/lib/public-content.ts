@@ -435,7 +435,7 @@ const CONTENT_ZH = {
       },
       {
         title: "Agent 引擎层",
-        desc: "推荐 Agent 引擎是 HONE Cloud、Codex ACP 和 OpenCode ACP；同时保留 OpenAI 兼容函数调用、Gemini CLI、Codex CLI 与 multi-agent。LLM 凭证以 `config.yaml` 为唯一真相源，OpenRouter 与通用 OpenAI-compatible provider 都支持 `llm.providers.*.api_key/api_keys` key pool，遇到上游 429 / 配额错误时可尝试下一个 key；`gemini_acp` 仅保留为迁移配置，不作为运行时入口。",
+        desc: "推荐 Agent 引擎是 Codex ACP、HONE Cloud 和 OpenCode ACP；同时保留 Gemini CLI 与 Codex CLI。Codex ACP 默认使用 GPT-5.6 Sol 和 xhigh reasoning effort。LLM 凭证以 `config.yaml` 为唯一真相源，OpenRouter 与通用 OpenAI-compatible provider 都支持 `llm.providers.*.api_key/api_keys` key pool，遇到上游 429 / 配额错误时可尝试下一个 key；`gemini_acp` 仅保留为迁移配置，不作为运行时入口。",
       },
       {
         title: "事件与任务",
@@ -507,7 +507,7 @@ const CONTENT_ZH = {
           {
             name: "多 Agent 引擎抽象",
             status: "stable",
-            note: "OpenAI-compatible · Gemini CLI · Codex CLI/ACP · OpenCode ACP · multi-agent",
+            note: "Gemini CLI · Codex CLI/ACP · OpenCode ACP · Hone Cloud",
           },
           {
             name: "LLM provider key pool 与上游错误保真",
@@ -690,7 +690,7 @@ const CONTENT_ZH = {
         "前端部署资产恢复：service worker 与全局错误处理可识别 stale chunk，并在安全间隔内自动刷新到新版本",
         "公开 API key 对话入口：管理端可为 Web 用户生成 API key，客户端可按 OpenAI-compatible `/api/public/v1/chat/completions` 形状调用 HONE",
         "ACP 自管上下文与 compact 防泄漏，支持 codex_acp / opencode_acp 长会话恢复",
-        "多 Agent 引擎：OpenAI-compatible / Gemini CLI / Codex CLI/ACP / OpenCode ACP / multi-agent",
+        "多 Agent 引擎：Gemini CLI / Codex CLI/ACP / OpenCode ACP / Hone Cloud",
         "`scripts/diagnose_llm.sh` 已按当前 LLM provider 配置路径读取 OpenRouter key，保留 legacy 路径兼容",
       ],
     },
@@ -828,7 +828,7 @@ const CONTENT_ZH = {
       },
       {
         q: "支持哪些 LLM？",
-        a: "通过 Agent 引擎抽象层支持：HONE Cloud、OpenAI 兼容协议（含 OpenRouter）、Gemini CLI、Codex CLI / ACP、OpenCode ACP，以及 multi-agent 搜索+回答链路。凭证统一写入 `config.yaml` 的 `llm.providers.*.api_key/api_keys`，通用 OpenAI-compatible provider 与 OpenRouter 都能在 key pool 内尝试下一个可用 key。",
+        a: "通过 Agent 引擎抽象层支持 HONE Cloud、Gemini CLI、Codex CLI / ACP 与 OpenCode ACP。默认本地路径为 Codex ACP，使用 GPT-5.6 Sol 和 xhigh reasoning effort。凭证统一写入 `config.yaml` 的 `llm.providers.*.api_key/api_keys`，通用 OpenAI-compatible provider 与 OpenRouter 都能在 key pool 内尝试下一个可用 key。",
       },
       {
         q: "开源协议？能商用吗？",
@@ -840,7 +840,7 @@ const CONTENT_ZH = {
       },
       {
         q: "和 Codex / RooCode 等 coding agent 的关系？",
-        a: "HONE 借鉴了这些产品的 Agent 引擎、Skill 与会话架构，但专注投研而非写代码。Codex CLI / ACP、Gemini CLI、OpenCode ACP 和 multi-agent 在 HONE 中作为可插拔引擎存在。",
+        a: "HONE 借鉴了这些产品的 Agent 引擎、Skill 与会话架构，但专注投研而非写代码。Codex CLI / ACP、Gemini CLI 和 OpenCode ACP 在 HONE 中作为可插拔引擎存在。",
       },
     ],
   },
@@ -2038,7 +2038,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         title: "Agent engine layer",
-        desc: "Recommended agent engines are HONE Cloud, Codex ACP, and OpenCode ACP; OpenAI-compatible function calling, Gemini CLI, Codex CLI, and multi-agent remain supported. LLM credentials use `config.yaml` as the only source of truth, and both OpenRouter and generic OpenAI-compatible providers support `llm.providers.*.api_key/api_keys` key pools so the runtime can try the next key after upstream 429 / quota failures; `gemini_acp` is kept only as migration config, not a runtime entry point.",
+        desc: "Recommended agent engines are Codex ACP, HONE Cloud, and OpenCode ACP; Gemini CLI and Codex CLI remain supported. Codex ACP defaults to GPT-5.6 Sol with xhigh reasoning effort. LLM credentials use `config.yaml` as the only source of truth, and both OpenRouter and generic OpenAI-compatible providers support `llm.providers.*.api_key/api_keys` key pools so the runtime can try the next key after upstream 429 / quota failures; `gemini_acp` is kept only as migration config, not a runtime entry point.",
       },
       {
         title: "Events and tasks",
@@ -2114,7 +2114,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           {
             name: "Multi-engine abstraction",
             status: "stable",
-            note: "OpenAI-compatible · Gemini CLI · Codex CLI/ACP · OpenCode ACP · multi-agent",
+            note: "Gemini CLI · Codex CLI/ACP · OpenCode ACP · Hone Cloud",
           },
           {
             name: "LLM provider key pools and upstream error fidelity",
@@ -2331,7 +2331,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         "Frontend deploy asset recovery: the service worker and global error handlers detect stale chunks and safely reload onto the new version",
         "Public API-key chat entry point: admins can issue API keys for Web users, and clients can call HONE through the OpenAI-compatible `/api/public/v1/chat/completions` shape",
         "ACP self-managed context with compact-leak suppression for long codex_acp / opencode_acp sessions",
-        "Multi-engine setup: OpenAI-compatible / Gemini CLI / Codex CLI/ACP / OpenCode ACP / multi-agent",
+        "Multi-engine setup: Gemini CLI / Codex CLI/ACP / OpenCode ACP / Hone Cloud",
         "`scripts/diagnose_llm.sh` reads OpenRouter keys from the current LLM provider config paths while keeping legacy path compatibility",
       ],
     },
@@ -2469,7 +2469,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         q: "Which LLMs are supported?",
-        a: "HONE supports HONE Cloud, OpenAI-compatible protocols (including OpenRouter), Gemini CLI, Codex CLI / ACP, OpenCode ACP, and the multi-agent search-plus-answer flow through the agent-engine abstraction. Credentials live in `config.yaml` under `llm.providers.*.api_key/api_keys`, and generic OpenAI-compatible providers plus OpenRouter can try the next key in the pool.",
+        a: "HONE supports HONE Cloud, Gemini CLI, Codex CLI / ACP, and OpenCode ACP through the agent-engine abstraction. The default local route is Codex ACP with GPT-5.6 Sol and xhigh reasoning effort. Credentials live in `config.yaml` under `llm.providers.*.api_key/api_keys`, and generic OpenAI-compatible providers plus OpenRouter can try the next key in the pool.",
       },
       {
         q: "What license? Commercial use?",
@@ -2481,7 +2481,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         q: "How does HONE relate to Codex / RooCode and other coding agents?",
-        a: "HONE borrows their agent-engine, skill, and session architecture but targets investment research, not coding. Codex CLI / ACP, Gemini CLI, OpenCode ACP, and multi-agent show up inside HONE as pluggable engines.",
+        a: "HONE borrows their agent-engine, skill, and session architecture but targets investment research, not coding. Codex CLI / ACP, Gemini CLI, and OpenCode ACP show up inside HONE as pluggable engines.",
       },
     ],
   },

@@ -22,12 +22,12 @@ use crate::session_compactor::{
 
 impl HoneBotCore {
     pub fn runner_supports_strict_actor_sandbox(&self) -> bool {
-        !self.configured_runner_requires_trusted_host_access() || self.llm.is_some()
+        !self.configured_runner_requires_trusted_host_access()
     }
 
     pub fn strict_actor_sandbox_guard_message(&self) -> Option<&'static str> {
         (!self.runner_supports_strict_actor_sandbox()).then_some(
-            "安全执行器不可用：普通用户不能使用具备宿主机访问能力的 CLI/ACP，请先配置 function_calling LLM。",
+            "安全执行器不可用：普通用户不能使用具备宿主机访问能力的 CLI/ACP；请切换到 hone_cloud，或由管理员运行。",
         )
     }
 
@@ -81,7 +81,7 @@ impl HoneBotCore {
             AgentRunnerKind::GeminiAcp => tracing::warn!(
                 "[Startup/{channel}] dialog.engine=gemini_acp 已禁用：gemini ACP 未推 usage_update，\
                  honeclaw 无法识别其内置 compact 信号；并且 Gemini ToS 不建议在第三方 ACP 客户端中长期复用 session。\
-                 请在 config 中切换到 codex_acp / opencode_acp / multi-agent。"
+                 请在 config 中切换到 codex_acp / opencode_acp / hone_cloud。"
             ),
             AgentRunnerKind::CodexCli => tracing::info!(
                 "[Startup/{channel}] dialog.engine=codex_cli command=codex exec model={}",
@@ -105,19 +105,6 @@ impl HoneBotCore {
                     "config"
                 }
             ),
-            AgentRunnerKind::MultiAgent => tracing::info!(
-                "[Startup/{channel}] dialog.engine=multi-agent search.base_url={} search.model={} answer.base_url={} answer.model={} answer.variant={} max_iterations={} max_tool_calls={}",
-                printable_or_default(&self.config.agent.multi_agent.search.base_url, "<empty>"),
-                printable_or_default(&self.config.agent.multi_agent.search.model, "<empty>"),
-                printable_or_default(
-                    &self.config.agent.multi_agent.answer.api_base_url,
-                    "<empty>"
-                ),
-                printable_or_default(&self.config.agent.multi_agent.answer.model, "<empty>"),
-                printable_or_default(&self.config.agent.multi_agent.answer.variant, "<empty>"),
-                self.config.agent.multi_agent.search.max_iterations,
-                self.config.agent.multi_agent.answer.max_tool_calls,
-            ),
             AgentRunnerKind::CodexAcp => tracing::info!(
                 "[Startup/{channel}] dialog.engine=codex_acp transport=stdio-jsonrpc command={} args={:?} codex_command={} sandbox_mode={} approval_policy={} dangerous_bypass={} sandbox_permissions={:?} extra_config_overrides={:?}",
                 printable_or_default(&self.config.agent.codex_acp.command, "codex-acp"),
@@ -132,14 +119,8 @@ impl HoneBotCore {
                 self.config.agent.codex_acp.sandbox_permissions,
                 self.config.agent.codex_acp.extra_config_overrides,
             ),
-            AgentRunnerKind::FunctionCalling => tracing::info!(
-                "[Startup/{channel}] dialog.engine=function_calling llm.provider={} llm.model={} max_iterations={}",
-                printable_or_default(llm_provider, "<empty>"),
-                llm_model,
-                self.config.agent.max_iterations
-            ),
             AgentRunnerKind::Unknown => tracing::warn!(
-                "[Startup/{channel}] dialog.engine=unknown(agent.runner={}) fallback=function_calling llm.provider={} llm.model={}",
+                "[Startup/{channel}] dialog.engine=unknown(agent.runner={}) no_fallback=true llm.provider={} llm.model={}",
                 printable_or_default(self.config.agent.runner.trim(), "<empty>"),
                 printable_or_default(llm_provider, "<empty>"),
                 llm_model

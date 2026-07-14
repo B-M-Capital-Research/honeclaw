@@ -568,9 +568,9 @@
         </g>
         <g transform="translate(172, 120)">
           <rect x="0" y="0" width="304" height="48" rx="3" fill="#fdfaf2" stroke="#9b85c2"/>
-          <text x="10" y="18" font-size="12" font-weight="700" fill="#1a1a2e">Multi-Agent · multi_agent.rs</text>
-          <text x="10" y="32" font-size="9.5" fill="#5a5a6e">stage 1: function-calling search (auxiliary LLM)</text>
-          <text x="10" y="44" font-size="9.5" fill="#5a5a6e">stage 2: opencode answer · cascaded context</text>
+          <text x="10" y="18" font-size="12" font-weight="700" fill="#1a1a2e">Codex ACP · codex_acp.rs</text>
+          <text x="10" y="32" font-size="9.5" fill="#5a5a6e">default: GPT-5.6 Sol · xhigh reasoning</text>
+          <text x="10" y="44" font-size="9.5" fill="#5a5a6e">ACP session · MCP tools · actor sandbox</text>
         </g>
       </g>
 

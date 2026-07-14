@@ -3,7 +3,6 @@ import { makeContentProxy } from "../i18n"
 const ZH = {
   channels: {
     hone_cloud_desc: "使用 hone-claw.com 用户端服务",
-    multi_agent_desc: "MiniMax 搜索 + OpenCode ACP 回答",
     codex_acp_desc: "通过 codex-acp 驱动当前会话",
     opencode_acp_name: "OpenCode ACP",
     opencode_acp_desc: "本机 opencode 引擎 / 留空继承本机配置",
@@ -47,7 +46,6 @@ const ZH = {
 const EN: typeof ZH = {
   channels: {
     hone_cloud_desc: "Use the hone-claw.com user service",
-    multi_agent_desc: "MiniMax search + OpenCode ACP answer",
     codex_acp_desc: "Drive sessions via codex-acp",
     opencode_acp_name: "OpenCode ACP",
     opencode_acp_desc: "Local opencode engine / inherits local config when blank",

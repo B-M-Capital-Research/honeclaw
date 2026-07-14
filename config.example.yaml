@@ -618,13 +618,12 @@ security:
 
 agent:
   # Recommended: hone_cloud | codex_acp | opencode_acp.
-  # Other supported runners: multi-agent | function_calling | gemini_cli | codex_cli.
-  # This example seeds hone_cloud for first-time installs; switch to codex_acp/opencode_acp when you want local runners.
+  # Other supported runners: gemini_cli | codex_cli.
+  # This example uses Codex ACP as the default local runner.
   # gemini_acp is disabled at runtime and kept below only for migration/reference.
-  runner: "hone_cloud"
+  runner: "codex_acp"
   # Only used when runner=codex_cli; empty means use the codex-cli default model
-  codex_model: "gpt-5.3-codex"
-  max_iterations: 100
+  codex_model: "gpt-5.6-sol"
   # Daily successful-reply quota for user conversations. Set to 0 to disable the limit.
   daily_conversation_limit: 12
   # Single-step timeout used by internal runner phases such as initialize/load and stream idle gaps
@@ -645,12 +644,12 @@ agent:
   codex_acp:
     command: "codex-acp"
     args: []
-    # Startup checks: codex >= 0.125.0 and codex-acp >= 0.12.0; update both CLIs before using gpt-5.5
+    # Startup checks: @openai/codex >= 0.144.1 and @agentclientprotocol/codex-acp >= 1.1.2.
     codex_command: "codex"
-    # Explicit ACP session model; empty uses the codex-acp default model
-    model: "gpt-5.5"
-    # Reasoning effort passed to Codex as model_reasoning_effort; for example low|medium|high|xhigh
-    variant: "high"
+    # GPT-5.6 Sol is the default high-capability Codex ACP model.
+    model: "gpt-5.6-sol"
+    # Reasoning effort passed to Codex as model_reasoning_effort.
+    variant: "xhigh"
     # Recommended: keep workspace-write + never, and let Hone run inside the actor sandbox
     sandbox_mode: "workspace-write"
     approval_policy: "never"
@@ -682,25 +681,6 @@ agent:
     api_key: ""
     # OpenAI-compatible model id placeholder used by the client request.
     model: "hone-cloud"
-  multi_agent:
-    # Two-stage runner: direct OpenAI-compatible search, then opencode ACP answer.
-    # Search uses agent.multi_agent.search.api_key, with legacy llm.auxiliary.api_key
-    # as the only fallback when the search API key is empty.
-    # The answer stage uses agent.multi_agent.answer.api_key when set; otherwise it
-    # can inherit llm.providers.openrouter.api_key/api_keys, with the legacy
-    # single-key OpenRouter fields still readable as migration fallbacks.
-    search:
-      base_url: "https://api.minimaxi.com/v1"
-      api_key: ""
-      model: "MiniMax-M2.7-highspeed"
-      max_iterations: 8
-    answer:
-      api_base_url: "https://openrouter.ai/api/v1"
-      api_key: ""
-      model: "google/gemini-2.5-pro-preview"
-      variant: "high"
-      max_tool_calls: 3
-
 search:
   # Tavily is the only runtime search provider today. search.provider /
   # search.search_depth / search.topic stay in the config schema for compatibility

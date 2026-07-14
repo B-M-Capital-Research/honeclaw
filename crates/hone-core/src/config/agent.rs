@@ -286,10 +286,8 @@ pub struct AgentConfig {
     pub system_prompt_path: String,
     #[serde(default = "default_agent_runner", alias = "provider")]
     pub runner: String,
-    #[serde(default)]
+    #[serde(default = "default_codex_model")]
     pub codex_model: String,
-    #[serde(default = "default_max_iterations")]
-    pub max_iterations: u32,
     #[serde(default = "default_daily_conversation_limit")]
     pub daily_conversation_limit: u32,
     #[serde(default = "default_agent_step_timeout_seconds")]
@@ -304,8 +302,6 @@ pub struct AgentConfig {
     pub opencode: OpencodeAcpConfig,
     #[serde(default)]
     pub hone_cloud: HoneCloudConfig,
-    #[serde(default)]
-    pub multi_agent: MultiAgentConfig,
 }
 
 impl AgentConfig {
@@ -327,14 +323,12 @@ impl AgentConfig {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentRunnerKind {
-    FunctionCalling,
     GeminiCli,
     GeminiAcp,
     CodexCli,
     CodexAcp,
     OpencodeAcp,
     HoneCloud,
-    MultiAgent,
     Unknown,
 }
 
@@ -349,28 +343,24 @@ pub struct AgentRunnerProbe {
 impl AgentRunnerKind {
     pub fn from_config_value(value: &str) -> Self {
         match value.trim() {
-            "function_calling" => Self::FunctionCalling,
             "gemini_cli" => Self::GeminiCli,
             "gemini_acp" => Self::GeminiAcp,
             "codex_cli" => Self::CodexCli,
             "codex_acp" => Self::CodexAcp,
             "opencode_acp" => Self::OpencodeAcp,
             "hone_cloud" => Self::HoneCloud,
-            "multi-agent" => Self::MultiAgent,
             _ => Self::Unknown,
         }
     }
 
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::FunctionCalling => "function_calling",
             Self::GeminiCli => "gemini_cli",
             Self::GeminiAcp => "gemini_acp",
             Self::CodexCli => "codex_cli",
             Self::CodexAcp => "codex_acp",
             Self::OpencodeAcp => "opencode_acp",
             Self::HoneCloud => "hone_cloud",
-            Self::MultiAgent => "multi-agent",
             Self::Unknown => "unknown",
         }
     }
@@ -381,9 +371,8 @@ impl AgentRunnerKind {
 
     /// 返回 runner 需要的本机 CLI 快速探针。
     ///
-    /// `multi-agent` 的 answer 阶段由 opencode ACP 驱动，因此复用 opencode
-    /// 探针；`hone_cloud` 与 `function_calling` 不依赖本机 CLI，返回 `None`。
-    /// `gemini_acp` 运行时已禁用，但旧配置检查仍复用 gemini 探针。
+    /// `hone_cloud` 不依赖本机 CLI，返回 `None`；`gemini_acp` 运行时已禁用，
+    /// 但旧配置检查仍复用 gemini 探针。
     pub fn cli_probe(self) -> Option<AgentRunnerProbe> {
         match self {
             Self::GeminiCli | Self::GeminiAcp => Some(AgentRunnerProbe {
@@ -396,14 +385,13 @@ impl AgentRunnerKind {
             }),
             Self::CodexAcp => Some(AgentRunnerProbe {
                 binary: "codex-acp",
-                arg: "--help",
+                arg: "--version",
             }),
-            Self::OpencodeAcp | Self::MultiAgent => Some(AgentRunnerProbe {
+            Self::OpencodeAcp => Some(AgentRunnerProbe {
                 binary: "opencode",
                 arg: "--version",
             }),
-            Self::HoneCloud => None,
-            Self::FunctionCalling | Self::Unknown => None,
+            Self::HoneCloud | Self::Unknown => None,
         }
     }
 }
@@ -433,8 +421,7 @@ impl Default for AgentConfig {
             system_prompt: String::new(),
             system_prompt_path: String::new(),
             runner: default_agent_runner(),
-            codex_model: String::new(),
-            max_iterations: default_max_iterations(),
+            codex_model: default_codex_model(),
             daily_conversation_limit: default_daily_conversation_limit(),
             step_timeout_seconds: default_agent_step_timeout_seconds(),
             overall_timeout_seconds: default_agent_overall_timeout_seconds(),
@@ -442,7 +429,6 @@ impl Default for AgentConfig {
             codex_acp: CodexAcpConfig::default(),
             opencode: OpencodeAcpConfig::default(),
             hone_cloud: HoneCloudConfig::default(),
-            multi_agent: MultiAgentConfig::default(),
         }
     }
 }
@@ -463,63 +449,6 @@ impl Default for HoneCloudConfig {
             base_url: default_hone_cloud_base_url(),
             api_key: String::new(),
             model: default_hone_cloud_model(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct MultiAgentConfig {
-    #[serde(default)]
-    pub search: MultiAgentSearchConfig,
-    #[serde(default)]
-    pub answer: MultiAgentAnswerConfig,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MultiAgentSearchConfig {
-    #[serde(default = "default_multi_agent_search_base_url")]
-    pub base_url: String,
-    #[serde(default = "default_multi_agent_search_api_key")]
-    pub api_key: String,
-    #[serde(default = "default_multi_agent_search_model")]
-    pub model: String,
-    #[serde(default = "default_multi_agent_search_max_iterations")]
-    pub max_iterations: u32,
-}
-
-impl Default for MultiAgentSearchConfig {
-    fn default() -> Self {
-        Self {
-            base_url: default_multi_agent_search_base_url(),
-            api_key: default_multi_agent_search_api_key(),
-            model: default_multi_agent_search_model(),
-            max_iterations: default_multi_agent_search_max_iterations(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MultiAgentAnswerConfig {
-    #[serde(default = "default_multi_agent_answer_api_base_url")]
-    pub api_base_url: String,
-    #[serde(default)]
-    pub api_key: String,
-    #[serde(default)]
-    pub model: String,
-    #[serde(default)]
-    pub variant: String,
-    #[serde(default = "default_multi_agent_answer_max_tool_calls")]
-    pub max_tool_calls: u32,
-}
-
-impl Default for MultiAgentAnswerConfig {
-    fn default() -> Self {
-        Self {
-            api_base_url: default_multi_agent_answer_api_base_url(),
-            api_key: String::new(),
-            model: String::new(),
-            variant: String::new(),
-            max_tool_calls: default_multi_agent_answer_max_tool_calls(),
         }
     }
 }
@@ -555,9 +484,9 @@ pub struct CodexAcpConfig {
     pub args: Vec<String>,
     #[serde(default = "default_codex_command")]
     pub codex_command: String,
-    #[serde(default)]
+    #[serde(default = "default_codex_acp_model")]
     pub model: String,
-    #[serde(default)]
+    #[serde(default = "default_codex_acp_variant")]
     pub variant: String,
     #[serde(default)]
     pub sandbox_mode: String,
@@ -577,8 +506,8 @@ impl Default for CodexAcpConfig {
             command: default_codex_acp_command(),
             args: Vec::new(),
             codex_command: default_codex_command(),
-            model: String::new(),
-            variant: String::new(),
+            model: default_codex_acp_model(),
+            variant: default_codex_acp_variant(),
             sandbox_mode: String::new(),
             approval_policy: String::new(),
             dangerously_bypass_approvals_and_sandbox: false,
@@ -675,10 +604,6 @@ fn default_runtime_admin_registration_passphrase_env() -> String {
     "HONE_ADMIN_REGISTER_PASSPHRASE".to_string()
 }
 
-fn default_max_iterations() -> u32 {
-    10
-}
-
 fn default_daily_conversation_limit() -> u32 {
     12
 }
@@ -692,7 +617,19 @@ fn default_agent_overall_timeout_seconds() -> u64 {
 }
 
 fn default_agent_runner() -> String {
-    "function_calling".to_string()
+    "codex_acp".to_string()
+}
+
+fn default_codex_model() -> String {
+    "gpt-5.6-sol".to_string()
+}
+
+fn default_codex_acp_model() -> String {
+    "gpt-5.6-sol".to_string()
+}
+
+fn default_codex_acp_variant() -> String {
+    "xhigh".to_string()
 }
 
 fn default_hone_cloud_base_url() -> String {
@@ -701,30 +638,6 @@ fn default_hone_cloud_base_url() -> String {
 
 fn default_hone_cloud_model() -> String {
     "hone-cloud".to_string()
-}
-
-fn default_multi_agent_search_base_url() -> String {
-    "https://api.minimaxi.com/v1".to_string()
-}
-
-fn default_multi_agent_search_api_key() -> String {
-    String::new()
-}
-
-fn default_multi_agent_search_model() -> String {
-    "MiniMax-M2.7-highspeed".to_string()
-}
-
-fn default_multi_agent_search_max_iterations() -> u32 {
-    8
-}
-
-fn default_multi_agent_answer_max_tool_calls() -> u32 {
-    3
-}
-
-fn default_multi_agent_answer_api_base_url() -> String {
-    "https://openrouter.ai/api/v1".to_string()
 }
 
 fn default_opencode_command() -> String {
@@ -761,12 +674,7 @@ fn default_opencode_args() -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{AgentRunnerKind, MultiAgentAnswerConfig};
-
-    #[test]
-    fn multi_agent_answer_default_tool_limit_is_three() {
-        assert_eq!(MultiAgentAnswerConfig::default().max_tool_calls, 3);
-    }
+    use super::AgentRunnerKind;
 
     #[test]
     fn agent_default_daily_conversation_limit_is_twelve() {
@@ -780,15 +688,17 @@ mod tests {
         assert!(kind.manages_own_context());
         let probe = kind.cli_probe().expect("codex acp probe");
         assert_eq!(probe.binary, "codex-acp");
-        assert_eq!(probe.arg, "--help");
+        assert_eq!(probe.arg, "--version");
         let cloud = AgentRunnerKind::from_config_value("hone_cloud");
         assert_eq!(cloud.as_str(), "hone_cloud");
         assert!(cloud.cli_probe().is_none());
         assert_eq!(
-            serde_yaml::to_string(&AgentRunnerKind::MultiAgent)
-                .expect("serialize")
-                .trim(),
-            "multi-agent"
+            AgentRunnerKind::from_config_value("function_calling"),
+            AgentRunnerKind::Unknown
+        );
+        assert_eq!(
+            AgentRunnerKind::from_config_value("multi-agent"),
+            AgentRunnerKind::Unknown
         );
     }
 }

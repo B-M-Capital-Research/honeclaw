@@ -1,6 +1,6 @@
 //! 从 `<cli> --version` 的文本里解析出三段语义化版本号。
 //!
-//! 启用中的 ACP runner 各有 CLI 版本下限(例:codex-acp 要 ≥0.12.0)。
+//! 启用中的 ACP runner 各有 CLI 版本下限(例:codex-acp 要 ≥1.1.2)。
 //! 版本解析失败时提前给人类可读的错误,而不是让 JSON-RPC 再挂。
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
