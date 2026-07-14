@@ -22,6 +22,14 @@ New
 
 ## 修复记录
 
+- 2026-07-14 15:01 CST 补充同根复发证据，状态维持 `New`：
+  - 11:01-15:00 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 5 个 user turn 与 5 条 assistant 记录，Feishu direct / scheduler 均以 assistant 收口。
+  - assistant final 污染扫描未命中空回复、`<think>`、本机绝对路径、原始工具 JSON、`data_fetch`、`company_profiles/`、panic、provider 原始 429 或实时核验失败文案；`data/runtime/logs/web.log.2026-07-14` 同窗也未命中 provider quota、send_failed、context window 或 runner_error。
+  - 12:08 CST Feishu direct session `Actor_feishu__direct__ou_5fa7fc023b9aa2a550a3568c8ffc4d7cdc` 回答“韩国股市去杠杠，目前已经去到什么程度了？”时，`metadata_json` 没有 `assistant.tool_calls`，但 final 写出“先确认我能核验到的最新数字”，并给出 BIS / 韩国央行口径、家庭债务 / GDP、银行家庭贷款余额和监管指标等强时效宏观金融判断。
+  - 12:11 CST 同 session 回答“对SK海力士和美光的估值做一个分析对比”时，`metadata_json` 仍没有 `assistant.tool_calls`；final 虽承认当前行情未完成稳定核验，但仍写出“先核验两只股票的关键数据”，并继续给出 HBM 供应商地位、估值逻辑、风险溢价和投资对比框架。
+  - 14:36 CST Feishu direct session `Actor_feishu__direct__ou_5fe09f5f16b20c06ee5962d1b6ca7a4cda` 回答“韓國，海力士，去槓桿結束了嗎”时，`metadata_json` 没有 `assistant.tool_calls`；final 写出“先去查SK Hynix的公開財報數據和近期資本市場事件”，随后输出 SK Hynix 纳斯达克 ADR 挂牌、债务管理、净负债 / EBITDA 与 HBM 占比推演，缺少本轮可审计来源。
+  - 这些回复均正常收口，未见错投、投递失败、内部实现外露或格式损坏；问题仍是强时效金融 / 宏观金融答案在无本轮可审计工具证据时使用核验口径和具体事实锚。因此继续按质量性 `P3 / New`，不影响主功能链路，非 P1，不创建 GitHub Issue。
+
 - 2026-07-14 11:01 CST 补充同根复发证据，状态维持 `New`：
   - 07:01-11:01 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 32 个 user turn / 44 条 assistant 记录，Feishu / Web / Discord 均有 assistant 终态。
   - 09:48 CST Feishu direct session `Actor_feishu__direct__ou_5f49e2e252460a05eee0ff98f685cf9f16` 回答“SK海力士杠杆基金有哪些，跌幅最大是哪个”。
