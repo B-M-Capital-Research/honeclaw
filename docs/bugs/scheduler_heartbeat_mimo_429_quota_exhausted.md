@@ -3,10 +3,15 @@
 - **发现时间**: 2026-05-20 19:04 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#44](https://github.com/B-M-Capital-Research/honeclaw/issues/44)
 
 ## 证据来源
+
+- `2026-07-15 03:04 CST` 代码与回归复核：
+  - 当前仓库仍包含非 OpenAI-compatible key pool fallback 与 heartbeat `HTTP 429` 分类修复：`crates/hone-llm/src/openai_compatible.rs`、`crates/hone-llm/src/resolver.rs`、`crates/hone-channels/src/scheduler.rs` 实现未回退。
+  - 定向回归 `cargo test -p hone-llm chat_with_tools_falls_back_to_next_key_after_http_429 -- --nocapture` 与 `cargo test -p hone-channels heartbeat_provider_429_quota_error_is_classified --lib -- --nocapture` 通过。
+  - 2026-07-14 11:01-15:00 CST 同窗已无新增 `provider_quota_exhausted` / `HTTP 429` 证据；结合当前 HEAD 代码与回归，现按“代码已修复，旧运行态或未确认部署样本未形成新的仓库级缺口”纠正回 `Fixed`。
 
 - `data/runtime/logs/web.log.2026-07-14` / `data/sessions.sqlite3`
   - `2026-07-14 07:01-11:01 CST` 真实运行态确认同根 provider quota / rate-limit 链路复发，状态从代码级 `Fixed` 回退为 `New`。

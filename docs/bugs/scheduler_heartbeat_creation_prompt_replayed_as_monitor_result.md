@@ -14,9 +14,18 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## 修复进展
+
+- `2026-07-15 03:04 CST` 代码级修复补强，状态更新为 `Fixed`：
+  - `crates/hone-channels/src/scheduler.rs`
+    - `heartbeat_management_drift_message(...)` 扩展识别“无法建立”“自动循环”“自动推送”“推送流水线”“循环监控”等残留任务治理话术，覆盖 2026-07-12 / 07-13 复发样本里的“无法建立每30分钟自动循环执行的监控任务”与“自动推送流水线”文案。
+    - duplicate suppression 同步跳过这类“无法建立自动监控”旧坏基线，避免真实监控结论再次被管理漂移文本误压成重复。
+  - 新增 / 复跑回归：
+    - `cargo test -p hone-channels heartbeat_management_drift_message_with_unable_to_establish_copy_is_suppressed --lib -- --nocapture`
+    - `cargo test -p hone-channels heartbeat_duplicate_preview_match_ignores_unable_to_establish_management_baseline --lib -- --nocapture`
+  - 本轮未重启 live runtime；先按代码级 `Fixed` 回写，待后续巡检继续复核是否还有其它未覆盖的话术变体。
 
 - `2026-07-13 11:04-15:01 CST` 运行态复核确认同一链路继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-13`

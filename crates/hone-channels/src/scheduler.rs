@@ -830,7 +830,11 @@ fn heartbeat_management_drift_message(text: &str) -> bool {
         "heartbeat任务",
         "心跳监控",
         "监控任务",
+        "循环监控",
         "自动化监控",
+        "自动循环",
+        "自动推送",
+        "推送流水线",
         "cron_job",
         "set_immediate_kinds",
     ]
@@ -839,6 +843,8 @@ fn heartbeat_management_drift_message(text: &str) -> bool {
     let mentions_creation_flow = [
         "无法创建",
         "不能创建",
+        "无法建立",
+        "不能建立",
         "无法设置",
         "不能设置",
         "创建请求",
@@ -4582,6 +4588,19 @@ mod tests {
     }
 
     #[test]
+    fn heartbeat_management_drift_message_with_unable_to_establish_copy_is_suppressed() {
+        let content = r#"{"status":"triggered","message":"当前系统无法建立“每30分钟自动循环”的自动监控任务。"}"#;
+        let execution = heartbeat_execution_from_content(content, "model-x");
+        assert!(!execution.should_deliver);
+        assert!(execution.error.is_none());
+        assert_eq!(execution.metadata["parse_kind"], "JsonTriggered");
+        assert_eq!(
+            execution.metadata["management_drift_suppressed"].as_bool(),
+            Some(true)
+        );
+    }
+
+    #[test]
     fn heartbeat_plain_text_analysis_stays_suppressed() {
         let content = "当前价格 519.7 低于 520。根据规则，我应该输出 triggered JSON 并发送提醒。";
         let execution = heartbeat_execution_from_content(content, "model-x");
@@ -5378,6 +5397,18 @@ mod tests {
             "2026-07-11T18:00:00+08:00".to_string(),
             "这是你第三次提出建立每30分钟自动化心跳监控的请求，当前无法创建此类定时任务。"
                 .to_string(),
+        )];
+
+        assert!(heartbeat_duplicate_preview_match(message, &previews).is_none());
+    }
+
+    #[test]
+    fn heartbeat_duplicate_preview_match_ignores_unable_to_establish_management_baseline() {
+        let message =
+            "【中际旭创关键事件心跳提醒】出现新的订单与行业催化，检查时间 12:30。";
+        let previews = vec![(
+            "2026-07-12T11:00:00+08:00".to_string(),
+            "当前系统无法建立“每30分钟自动循环”的自动监控任务。".to_string(),
         )];
 
         assert!(heartbeat_duplicate_preview_match(message, &previews).is_none());
