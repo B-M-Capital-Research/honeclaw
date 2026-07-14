@@ -7,6 +7,13 @@
 
 ## 最新进展（2026-07-14 07:01 CST）
 
+- 2026-07-15 07:04 CST 巡检补充同根复发证据，状态维持 `New`：
+  - `data/sessions.sqlite3` -> `session_messages`
+    - `2026-07-15T04:00:00.957124+08:00` 用户触发 `Oil_Price_Monitor_Closing`，权威触发配置为 `repeat=trading_day，北京时间 04:00`，任务要求查询最新原油价格并判断对 COHR / RKLB 等科技股尾盘防守的影响。
+    - `2026-07-15T04:00:24.110989+08:00` assistant final 成功收口，写出 WTI 约 `$74.68`、Brent 约 `$79.01`、USO 约 `$120.82`，并把美伊停火破裂、地缘风险溢价、Brent 支撑 / 阻力等作为油价解释，再进一步判断“不是今天科技股尾盘压力源”。
+    - 同条 assistant row 的 `metadata_json` 为空，没有可审计 `assistant.tool_calls`；本地 `cron_job_runs` 在 03:02-07:03 CST 无新增，`max(executed_at)` 仍停在 `2026-07-10T14:01:27.621121+08:00`，因此本轮看不到普通 scheduler guard 元数据、同窗来源闭环或 `commodity_causality_guarded` 改写痕迹。
+  - 结论：这是同一“原油普通 scheduler 外发未核验价格 / 地缘归因 / 科技股防守判断”的运行态复发，不新建重复文档。该问题会影响用户对油价、地缘风险和尾盘防守动作的判断，维持功能性质量缺陷 `P2 / New`；当前没有错投、敏感信息泄露、全渠道不可用或活跃 P1 证据，不创建 GitHub Issue。
+
 - 本轮巡检把本单从 `Fixed` 调回 `New`：最近四小时真实 `session_messages` 中，普通原油 scheduler 再次成功输出未能从台账证明的价格、地缘归因和科技股影响判断。
 - `data/sessions.sqlite3` -> `session_messages`
   - `2026-07-14T04:00:01.465666+08:00`

@@ -22,6 +22,20 @@
 
 ## 最新进展
 
+- 本轮 2026-07-15 03:02-07:03 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-14`
+    - 03:30-07:01 CST heartbeat 日志中 `$1,` 数量级美元价格命中 17 次，`SNDK $1,` 命中 1 次，`SPY $75x` 命中 2 次；这些价格继续进入 raw / deliver preview、触发判断或 duplicate suppression。
+    - 03:30 CST `Monitor_Watchlist_11` raw preview 使用 `MU: Current $977.04` 对比 `MU <= $252.00` 判断未触发。
+    - 07:00 CST `Monitor_Watchlist_11` raw preview 使用 `MU $983.12`、`RKLB $78.81`、`BE $250+` 等高风险行情锚进入阈值判断。
+    - 07:00 CST `存储板块关键事件心跳提醒` raw / deliver preview 继续引用 `SNDK $1,767.48` 等异常数量级价格，并围绕是否有新增触发事实判断。
+    - 07:00 CST `美股黄金坑信号心跳检测` raw preview 使用 `SPY 751.83`、`QQQ 719.69`，同条还把基准数据写成 `2026-05-16 盘中`。
+  - `data/sessions.sqlite3` / `session_messages`
+    - 同窗新增 9 个 user turn / 9 条 assistant 记录，8 个近期 session 均以 assistant 收口；assistant final 未见错投、投递失败、原始工具 JSON、敏感信息外泄或空回复。
+    - 05:01 CST Web scheduler `盘后美股复盘与SNDK/MU存储产业链日报` final 继续输出 `SNDK 从昨日约 1,668 美元低位强势反弹至约 1,853 美元`，且该 assistant row 没有 `assistant.tool_calls`。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check 缺口：异常或高风险数量级价格继续进入 heartbeat 判断上下文和正式 scheduler final。
+    - 本窗没有错投、投递失败、空回复、数据破坏或全渠道不可用；因此仍按质量性 `P3 / New`。该问题不影响主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-14 23:02-2026-07-15 03:02 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-14`
     - 23:30-03:00 CST `持仓重大事件心跳提醒` 多条 deliver preview 继续使用 `MU $965-$987`、`SPCX $138-$140` 等高风险行情锚，并据此判断是否触发。

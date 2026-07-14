@@ -22,6 +22,15 @@ New
 
 ## 修复记录
 
+- 2026-07-15 07:04 CST 补充同根复发证据，状态维持 `New`：
+  - 03:02-07:03 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 9 个 user turn 与 9 条 assistant 记录，8 个近期 session 均以 assistant 收口，`last_message_role=user` 为 0。
+  - assistant final 污染扫描未命中 `<think>`、本机绝对路径、原始工具字段、`company_profiles/`、panic、provider 原始 429 或实时核验失败文案；本轮没有错投、投递失败、空回复或结构损坏证据。
+  - 05:00 CST Web scheduler session `Actor_web__direct__web-user-afc1cabadbf8` 回答盘后美股与 SNDK / MU 存储日报时，assistant row 只有 scheduler 元数据，没有 `assistant.tool_calls`；final 仍输出 CPI、黄金、美债收益率、SNDK / MU 涨跌与行业判断，并使用 `SNDK` 异常数量级价格作为锚点。
+  - 05:00 CST Feishu scheduler session `Actor_feishu__direct__ou_5f895bed1573d53053e89bfc382b523a44` 回答科技成长赛道极值监控时，assistant row 没有 `assistant.tool_calls`；final 输出纳指 / QQQ / VIX、系统性错杀买点和仓位建议。
+  - 05:11 CST Feishu scheduler session `Actor_feishu__direct__ou_5fea712445d905e8418bde07dbcf2cbfb2` 回答收盘资金流向简报时，assistant row 没有 `assistant.tool_calls`；final 写出“已接收触发指令，开始执行数据校验”，随后输出 SPY / QQQ / S&P 500 点位和板块资金流向判断。
+  - 05:31 CST Feishu scheduler session `Actor_feishu__direct__ou_5f636d6d7c80d333e41b86ae79d07adca8` 回答跨市场复盘时，assistant row 没有 `assistant.tool_calls`；final 输出 CPI / Powell、三大指数、NVDA / SOXX / A 股开盘预判和代码池方向。
+  - 这些回复均正常收口，未见错投、投递失败、内部实现外露或格式损坏；问题仍是强时效金融 / 宏观金融答案在无本轮可审计工具证据时使用核验口径、具体事实锚和操作判断。因此继续按质量性 `P3 / New`，不影响主功能链路，非 P1，不创建 GitHub Issue。
+
 - 2026-07-14 15:01 CST 补充同根复发证据，状态维持 `New`：
   - 11:01-15:00 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 5 个 user turn 与 5 条 assistant 记录，Feishu direct / scheduler 均以 assistant 收口。
   - assistant final 污染扫描未命中空回复、`<think>`、本机绝对路径、原始工具 JSON、`data_fetch`、`company_profiles/`、panic、provider 原始 429 或实时核验失败文案；`data/runtime/logs/web.log.2026-07-14` 同窗也未命中 provider quota、send_failed、context window 或 runner_error。

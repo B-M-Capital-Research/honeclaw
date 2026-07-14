@@ -7,6 +7,20 @@
 
 ## 修复进展
 
+- `2026-07-15 03:02-07:03 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-14`
+    - 本窗 heartbeat 可分类 `parse_kind` 信号为 `PlainTextTriggered=204`、`JsonNoop=76`、`JsonTriggered=13`、`PlainTextNoop=8`、`PlainTextSuppressed=8`、`Empty=2`、`JsonEmptyStatus=1`。
+    - raw preview 以 `<think>` 开头 208 次，`deliver_preview` 104 次；另有 143 次工具预算拒绝和 10 条结构化 / runner 异常信号。
+    - 代表样本包括 03:30 CST `ASTS 重大异动心跳监控` `JsonNoop` raw preview 以 `<think>` 和 fenced JSON 开头；03:30 CST `小米30港元破位预警` `PlainTextTriggered` raw preview 明确触发条件已满足；04:30 CST `ORCL 大事件监控` 落成 `parse_kind=Empty`；06:30 CST `NVDA 关键事件心跳提醒` 落成 `JsonEmptyStatus` 并把工具调用 JSON 片段放进 raw preview。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 在 03:02-07:03 CST 有 9 个 user turn / 9 条 assistant 记录，8 个近期 session 均以 assistant 收口。
+    - assistant final 污染扫描未命中 `<think>`、本机路径、provider 原始错误、panic、quota、原始工具字段或 `company_profiles/` 外泄。
+    - 本地 `cron_job_runs.max(executed_at)` 仍停在 `2026-07-10T14:01:27.621121+08:00`，当前 heartbeat 运行态继续以 runtime web log 判断。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 最近四小时有非文档代码提交 `77da2afa fix: tighten heartbeat management drift suppression`，但 07:00 CST 后仍见 `PlainTextTriggered`、`JsonNoop`、`<think>` raw preview 与工具预算拒绝信号，未改变本轮运行态判断。
+    - 该问题继续影响 heartbeat 监控判断、送达语义和失败 / 跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-14 23:02-2026-07-15 03:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-14`
     - 本窗 heartbeat 可分类 `parse_kind` 信号为 `PlainTextTriggered=208`、`JsonNoop=99`、`PlainTextNoop=19`、`PlainTextSuppressed=6`、`JsonTriggered=5`、`JsonUnknownStatus=4`。
