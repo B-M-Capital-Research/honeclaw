@@ -16,7 +16,7 @@
   - docs/archive/plans/response-contract-enforcement.md
   - docs/decisions.md
   - docs/invariants.md
-- related_prs: none; local working tree change set
+- related_prs: none; implementation commit `c29de55c`
 
 ## Summary
 
