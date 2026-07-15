@@ -22,6 +22,14 @@ New
 
 ## 修复记录
 
+- 2026-07-16 03:04 CST 补充同根复发证据，状态维持 `New`：
+  - 2026-07-15 23:02-2026-07-16 03:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 6 条 user / 6 条 assistant，覆盖 3 个 session，均以 assistant 收口，`last_message_role=user` 为 0。
+  - 同窗 6 条 assistant 中 5 条没有 `assistant.tool_calls`，未留下本轮网页、行情、公告、财报或新闻工具结果。
+  - 23:30 CST Feishu scheduler/direct actor session `Actor_feishu__direct__ou_5f895bed1573d53053e89bfc382b523a44` 回答科技成长股持仓买卖点日内预警，assistant row 无 `assistant.tool_calls`，但 final 输出 `BE 当前 $231.06`、52 周高点、FY2025 营收、Brookfield 合作和“观察”等操作判断。
+  - 00:00 CST Feishu scheduler/direct actor session `Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b` 回答 `TEM 每日动态监控`，assistant row 无 `assistant.tool_calls`，但 final 输出最新报价、Q2 财报日、市值、FY2025 / FY2026 指引、估值区间和“等待财报确认后再决定是否加仓或建仓”。
+  - 00:09 CST 同 session 回答 `AAOI 每日动态监控`，assistant row 无 `assistant.tool_calls`，但 final 输出行情数据时间、FY2025 / FY2026 收入指引、Forward PS、Q2 财报时间和操作建议。
+  - 这些回复均正常收口，未见错投、投递失败、内部实现外露或格式损坏；问题仍是强时效金融 / 监控型答案在无本轮可审计工具证据时使用核验口径、具体事实锚和操作判断。因此继续按质量性 `P3 / New`，不影响主功能链路，非 P1，不创建 GitHub Issue。
+
 - 2026-07-15 11:02 CST 补充同根复发证据，状态维持 `New`：
   - 07:04-11:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 29 个 user turn 与 29 条 assistant 记录，19 个近期 session 均以 assistant 收口，`last_message_role=user` 为 0。
   - 08:30 CST Web scheduler session `Actor_web__direct__web-user-266454c88ed6` 输出财报提醒窗口、ASML / TSM / UNH / NFLX 财报结论和半导体设备 / 先进制程代工判断；该 assistant row 没有 `assistant.tool_calls`。

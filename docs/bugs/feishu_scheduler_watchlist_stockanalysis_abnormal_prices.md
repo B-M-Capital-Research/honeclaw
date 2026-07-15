@@ -22,6 +22,19 @@
 
 ## 最新进展
 
+- 本轮 2026-07-16 03:04 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-15`
+    - 23:00 CST `闪迪关键事件心跳提醒` raw preview 写 `SNDK ... $1,757.82`。
+    - 03:00 CST `NBIS关键事件心跳提醒` deliver preview 写 `最新价 $1,584.87`、昨收 `$1,757.82`。
+    - 03:00 CST `闪迪关键事件心跳提醒` deliver preview 写 `WDC $510.42`。
+    - 03:00 CST `持仓重大事件心跳提醒` raw preview 写 `MU $901.76`、前收 `$983.12`。
+    - 03:01 CST `美股黄金坑信号心跳检测` raw preview 写 `SPY 753.11`。
+  - `data/sessions.sqlite3`
+    - 同窗也有无工具证据的强时效金融回复继续输出精确行情和估值锚点，另归入 `feishu_direct_spacex_ipo_unverified_source_price_advice.md`。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check 缺口：异常或高风险数量级价格进入 heartbeat 判断上下文和用户可见 preview。
+    - 本窗没有错投、投递失败、空回复、数据破坏或全渠道不可用；因此仍按质量性 `P3 / New`。该问题不影响主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-15 19:01-23:01 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `session_messages`
     - 21:50 CST Feishu direct session `Actor_feishu__direct__ou_5f9f2cd3505aab8fed0a6ffd582df285b1` 回答用户确认 `SNDK现在价格1651` 时，assistant 输出 `当前价：$1,655.72`、`日内区间：$1,651.31 - $1,729.50`、`50日均线：$1,713.67`，继续使用异常数量级价格。

@@ -6036,3 +6036,13 @@
 - 本轮判断
   - 最新证据仍属于 heartbeat 输出结构漂移 / 解析边界不稳定的既有范围，没有新的独立根因。
   - 坏态影响 heartbeat 是否稳定得出 `triggered/noop`、是否误送达或被 duplicate suppression；本窗未见错对象投递、数据安全问题或全渠道停摆，因此维持功能性 `P2 / New`，非 P1。
+
+## 最新运行态复核（2026-07-16 03:04 CST）
+
+- `data/runtime/logs/web.log.2026-07-15` / `data/sessions.sqlite3`
+  - 巡检窗口：2026-07-15 23:02-2026-07-16 03:02 CST。
+  - `data/sessions.sqlite3` 同窗新增 6 条 user / 6 条 assistant，覆盖 3 个 session，均以 assistant 收口；没有 user-only 悬挂、错投或全渠道不可用证据。
+  - runtime 日志同窗仍有 760 条 `HeartbeatDiag` 相关行、212 条 `<think>` raw / preview、4 条“heartbeat 输出不是结构化 JSON”、1 条 `context window exceeds limit` 后 `BudgetRecovery` 和 129 次工具预算拒绝。
+  - 可分类 `parse_kind` 继续漂移：`PlainTextTriggered=176`、`JsonNoop=86`、`PlainTextNoop=15`、`JsonTriggered=14`、`PlainTextSuppressed=4`、`JsonMalformed=4`。
+  - 示例：23:00 CST `RKLB异动监控` 与 23:30 CST `全天原油价格3小时播报` 因自由文本 / `<think>` 包裹的 `noop` 被判为“heartbeat 输出不是结构化 JSON”；03:00 CST `ORCL 大事件监控` 同样以 `PlainTextSuppressed` 落成执行失败。
+  - 坏态影响 heartbeat 是否稳定得出 `triggered/noop` 并发送；普通 direct / scheduler final 主链路仍可收口，未见错对象投递或数据安全问题，因此维持功能性 `P2 / New`，非 P1。

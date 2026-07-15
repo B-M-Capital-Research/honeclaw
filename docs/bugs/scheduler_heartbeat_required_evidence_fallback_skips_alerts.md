@@ -23,6 +23,12 @@ New
 ## 证据来源
 
 - `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-15`
+  - 巡检时间窗：2026-07-15 23:02-2026-07-16 03:02 CST。
+  - `data/sessions.sqlite3` 同窗新增 6 条 user / 6 条 assistant，覆盖 3 个 session，均以 assistant 收口；没有 user-only 悬挂、错投或全渠道不可用证据。
+  - 00:05 CST Feishu scheduler/direct actor session `Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b` 的 `RKLB 每日动态监控` 只写入 `这次回答未通过投研完整性检查，已停止发送不完整或未经充分核验的结论。请稍后重试。`，`metadata_json` 标记 `run_failed=true` / `AgentFailed`。
+  - 同窗 runtime heartbeat 仍出现 1 条 `context window exceeds limit` 后 `BudgetRecovery`，并有 129 次 `function_calling tool call rejected`；但本窗未见 `当前信息暂时未完成实时核验` 文案批量复发。
+  - 判断：该样本仍属于同根投研完整性 / evidence 门禁 fail-closed 后用户只看到通用失败提示；由于同窗 direct / scheduler 仍有成功收口，未见错投、数据破坏、敏感信息泄露或全渠道不可用，维持功能性 `P2 / New`，不升级为 P1，不创建 GitHub Issue。
+- `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-15`
   - 巡检时间窗：2026-07-15 19:01-23:01 CST。
   - `data/sessions.sqlite3` 同窗新增 48 条 user / 55 条 assistant，近期 28 个 session 均以 assistant 收口；没有 user-only 悬挂、错投或全渠道不可用证据。
   - 20:00 CST Web scheduler `英伟达每日消息` 只写入 `这次回答未通过投研完整性检查，已停止发送不完整或未经充分核验的结论。请稍后重试。`，并追加用户可见 `定时任务「英伟达每日消息」执行出错，请稍后重试。`
