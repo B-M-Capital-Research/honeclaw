@@ -22,6 +22,13 @@ New
 
 ## 证据来源
 
+- `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-15`
+  - 巡检时间窗：2026-07-15 19:01-23:01 CST。
+  - `data/sessions.sqlite3` 同窗新增 48 条 user / 55 条 assistant，近期 28 个 session 均以 assistant 收口；没有 user-only 悬挂、错投或全渠道不可用证据。
+  - 20:00 CST Web scheduler `英伟达每日消息` 只写入 `这次回答未通过投研完整性检查，已停止发送不完整或未经充分核验的结论。请稍后重试。`，并追加用户可见 `定时任务「英伟达每日消息」执行出错，请稍后重试。`
+  - 20:02-20:03 CST Feishu direct / scheduler 多条会话写入同一投研完整性检查失败文案；20:31 CST Web scheduler `持仓复盘-周三` 也以同一文案失败并写入 `定时任务「持仓复盘-周三」执行出错，请稍后重试。`
+  - 21:02 CST Web scheduler `盘前美股要闻与SNDK/MU存储产业链日报` 落成 `定时任务执行环境暂时不可用，系统已记录失败并将在下一次触发时重试。`
+  - 这些样本和既有“实时核验 / required evidence / 完整性 guard fail-closed 后跳过提醒”是同一类用户可见降级：任务未生成业务正文，只给产品化失败提示。由于同窗仍有多条 direct / scheduler 成功收口，维持功能性 `P2 / New`，不升级为 P1。
 - `data/sessions.sqlite3`
   - 巡检时间窗：2026-07-15 07:04-11:02 CST。
   - 09:00 CST Feishu direct session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 只写入 assistant final `当前信息暂时未完成实时核验，请稍后再试。`

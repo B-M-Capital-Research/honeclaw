@@ -7,6 +7,17 @@
 
 ## 修复进展
 
+- `2026-07-15 19:01-23:01 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-15`
+    - 同窗有 719 条 `[HeartbeatDiag]` 诊断；`parse_kind` 分布为 `PlainTextTriggered=138`、`JsonNoop=111`、`PlainTextSuppressed=14`、`PlainTextNoop=9`、`Empty=3`、`JsonTriggered=2`。
+    - 同窗 heartbeat raw / preview 相关行中 `<think>` 命中 208 次；错误日志中 14 条 `heartbeat 输出不是结构化 JSON`、3 条 `heartbeat 输出为空`。
+    - 受影响任务包括 `持仓重大事件心跳检测`、`Cerebras IPO与业务进展心跳监控`、`TEM大事件心跳监控`、`小米30港元破位预警`、`全天原油价格3小时播报`、`RKLB异动监控`、`heartbeat_绿田机械基本面跟踪` 等；Feishu / Web 均有 `execution_failed + skipped_error + delivered=0` 形态。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 同窗新增 48 条 user / 55 条 assistant，近期 28 个 session 均以 assistant 收口，未见全渠道不可用或错投。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题继续影响 heartbeat 监控判断、送达语义和失败 / 跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-15 15:02-19:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-15`
     - 18:30-19:00 CST heartbeat 日志继续出现大量 `starts_with_json=false` 的自由文本 / `<think>` raw preview，并在 `PlainTextTriggered`、`PlainTextNoop`、`PlainTextSuppressed`、`JsonNoop` 之间漂移。

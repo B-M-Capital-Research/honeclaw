@@ -22,6 +22,18 @@
 
 ## 最新进展
 
+- 本轮 2026-07-15 19:01-23:01 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `session_messages`
+    - 21:50 CST Feishu direct session `Actor_feishu__direct__ou_5f9f2cd3505aab8fed0a6ffd582df285b1` 回答用户确认 `SNDK现在价格1651` 时，assistant 输出 `当前价：$1,655.72`、`日内区间：$1,651.31 - $1,729.50`、`50日均线：$1,713.67`，继续使用异常数量级价格。
+    - 21:46 CST 同 session 在用户列出 `RKLB、NBIL、MU、SNDK需要关注` 后输出 `MU $956.56`，仍属高风险数量级行情锚。
+  - `data/runtime/logs/web.log.2026-07-15`
+    - 23:00 CST `Monitor_Watchlist_11` raw preview 继续使用 `MU $917.89` 对比 `MU <= $252.00` 判断未触发，并在同条里自我怀疑 `MU should be around $100-120, not $917`。
+    - 23:00 CST `中际旭创关键事件心跳提醒` deliver preview 继续使用 `昨收锚定价 ¥1,169.31`，同时承认 FMP snapshot 与 news 接口未返回有效数据。
+    - 23:00 CST `持仓重大事件心跳提醒` raw preview 写 `MU: -6.63% drop today, from $983.12 to $917.89`，说明异常数量级价格继续进入判断上下文。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check 缺口：异常或高风险数量级价格进入 direct 金融答复、heartbeat 判断上下文和用户可见 preview。
+    - 本窗没有错投、投递失败、空回复、数据破坏或全渠道不可用；因此仍按质量性 `P3 / New`。该问题不影响主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-15 15:02-19:02 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-15`
     - 18:30 / 19:00 CST `Monitor_Watchlist_11` raw preview 继续使用 `MU $983.12` 对比 `MU <= $252.00` 判断未触发。

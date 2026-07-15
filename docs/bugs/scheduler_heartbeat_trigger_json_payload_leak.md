@@ -7,6 +7,14 @@
 
 ## 最新进展
 
+- `2026-07-15 19:01-23:01 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-15`
+    - 同窗 heartbeat `deliver_preview` 以 fenced JSON 开头命中 5 次。
+    - 19:00 CST `小米30港元破位预警` `deliver_preview` 继续以 fenced JSON 开头，包含 `"status": "triggered"`、`"symbol": "1810.HK"`、`"condition": "现价 ≤ 30 港元"`、`"current_price"` 等结构化字段。
+    - 23:00 CST `全天原油价格3小时播报` `deliver_preview` 以 fenced JSON 开头，包含 `"status": "triggered"`、`"triggered"`、`"alert_type": "crude_oil_price_broadcast"`、`"timestamp_beijing"`、`"wti"` 等协议字段。
+  - 会话质量对照：同窗 `data/sessions.sqlite3` 新增 48 条 user / 55 条 assistant，近期 28 个 session 均以 assistant 收口；未确认 JSON 载荷进入 direct / 普通 scheduler assistant final。
+  - 判断：最新样本仍是 heartbeat 出站格式化退化；当前没有错投、全渠道不可用或数据安全证据，主要影响提醒格式质量，因此维持质量性 `P3 / New`，非 P1。
+
 - `2026-07-15 15:02-19:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-15`
     - 18:30 CST `Monitor_Watchlist_11`

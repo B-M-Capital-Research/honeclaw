@@ -8,6 +8,12 @@
 
 ## 证据来源
 
+- `data/sessions.sqlite3`，本轮真实消息窗口 `2026-07-15 19:01-23:01 CST`。
+- `session_messages` 按真实 `timestamp` 新增 48 条 user / 55 条 assistant，近期 28 个 session 均以 assistant 收口，`last_message_role=user` 为 0；未见全渠道未回复、错投或敏感信息泄露。
+- `2026-07-15T20:30:00.576659+08:00`，`session_id=Actor_feishu__direct__ou_5fbceebf26fcbb242fd6585745222c8063`，Feishu scheduler 触发 `老王说事与巴芒投资美股财报季个股判断`。任务正文是每天 20:30 的财报季个股判断，权威触发配置含 `repeat=trading_day`；assistant 在 `20:30:04.772759+08:00` 返回“当前无法稳定核验证券实体 `REPEAT`，已停止生成可能指向错误公司的分析。”
+- `2026-07-15T21:00:01` 附近，Feishu scheduler `session_id=Actor_feishu__direct__ou_5f62439dbed2b381c0023e70a381dbd768` 与 `Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595` 也分别返回同一 `REPEAT` 实体核验失败文案。
+- 同窗仍有 20:30 / 21:35 / 23:00 成功 scheduler 样本，因此维持功能性 `P2 / New`，不升级为 P1。
+
 - `data/sessions.sqlite3`，本轮真实消息窗口 `2026-07-15 15:02-19:02 CST`。
 - 近期非文档代码提交：`c29de55c fix(agent): enforce verified stock response contracts`，提交时间 `2026-07-15 16:44:30 +0800`，早于本轮两条误杀样本。
 - 同窗 `cron_job_runs.max(executed_at)` 仍停在 `2026-07-10T14:01:27.621121+08:00`，因此本轮以 `session_messages` 中的真实 scheduler/direct transcript 为准，不依赖本地 `cron_job_runs` 判断送达状态。
