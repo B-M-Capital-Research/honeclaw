@@ -6,6 +6,11 @@
 - **状态**: New
 - **GitHub Issue**: 无
 - **修复结论复核**:
+- `2026-07-16 07:02 CST` 运行态部分复发继续存在，状态维持 `New`：
+  - `data/sessions.sqlite3` 在 2026-07-16 03:02-07:02 CST 按真实 `timestamp` 新增 10 条 user / 11 条 assistant，覆盖 9 个近期 session；07:00 CST 边界 Feishu scheduler user turn 已在 07:02:55 写入 assistant final，未形成长期 user-only 悬挂。
+  - 但同一库 `cron_job_runs.max(executed_at)` 仍停在 `2026-07-10T14:01:27.621121+08:00`，查询 2026-07-16 03:02 CST 后没有新增 run。
+  - `data/runtime/logs/web.log.2026-07-15` 在 2026-07-16 03:02-07:02 CST 继续记录真实 heartbeat 运行态：734 条 `HeartbeatDiag` 相关行、29 条 `duplicate_suppressed`、73 条 `deliver_preview`、10 条“heartbeat 输出不是结构化 JSON”和 149 次 `function_calling tool call rejected`。
+  - 结论：会话 transcript mirror 能追入当前 direct / scheduler transcript，但本地调度运行台账 `cron_job_runs` 仍未随真实 scheduler / heartbeat 运行态推进。该问题影响巡检、调度审计、补发判断和运行态复核，严重等级维持功能性 `P2`；当前用户态消息仍在生成，不等同于 scheduler 全局漏跑 P1，非 P1，不创建 GitHub Issue。
 - `2026-07-16 03:04 CST` 运行态部分复发继续存在，状态维持 `New`：
   - `data/sessions.sqlite3` 在 2026-07-15 23:02-2026-07-16 03:02 CST 按真实 `timestamp` 新增 6 条 user / 6 条 assistant，覆盖 3 个 session；最近 session 均以 assistant 收口，`last_message_role=user` 为 0。
   - 但同一库 `cron_job_runs` 查询 2026-07-15 23:02 CST 后仍无新增，`max(executed_at)` 继续停在 `2026-07-10T14:01:27.621121+08:00`。

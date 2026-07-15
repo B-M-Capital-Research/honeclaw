@@ -8,6 +8,17 @@
 
 ## 最新进展
 
+- 本轮 `2026-07-16 03:02-07:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-15`
+    - 03:30 CST `heartbeat_绿田机械基本面跟踪` raw preview 读取到 `Current time: 2026-04-27 based on system context`。
+    - 03:30 CST `ASTS 重大异动心跳监控` raw preview 把实际 03:30 CST 写成 `美东 07/15 17:00`，deliver preview 又写 `2026年7月16日 03:00 北京时间`。
+    - 04:00 CST `heartbeat_绿田机械基本面跟踪` deliver preview 写 `当前时间：2026年7月17日 08:40（北京）`。
+    - 04:00 CST `FOTO 光子学ETF心跳检测` raw preview 使用 `SPY` timestamp 后推演美股行情，时间口径与任务主体错配。
+    - 04:30 CST `AAOI 1.6T 光模块心跳检测` deliver preview 写 `当前时间 2026年7月16日 02:00 北京时间`，早于真实日志时间约 2.5 小时。
+    - 07:00 CST `存储板块关键事件心跳提醒` deliver preview 写 `检查时间：2026-04-04 北京时间约 09:40`；同窗 `闪迪关键事件心跳提醒` 写 `北京时间约 08:30`，`持仓财报与重大新闻心跳提醒` 写 `北京时间约 09:40`。
+  - 会话质量对照：同窗 `data/sessions.sqlite3` 新增 10 条 user / 11 条 assistant，07:00 CST 边界任务已收口；未见 user-only 悬挂、错投或全渠道不可用。
+  - 判断：这些样本仍是 heartbeat 运行态时间上下文漂移，主要影响触发判断质量与用户可见时间口径可信度；没有错投、全渠道不可用或敏感信息泄露，维持质量性 `P3 / New`，非 P1。
+
 - 本轮 `2026-07-15 23:02-2026-07-16 03:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-15`
     - 23:30 CST `TEM大事件心跳监控` 写成 `2026年7月15日 21:30`。

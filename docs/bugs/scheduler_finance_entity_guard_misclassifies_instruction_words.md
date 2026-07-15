@@ -3,10 +3,20 @@
 - **发现时间**: 2026-07-15 19:02 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
 
-## 最新进展（2026-07-16 03:03 CST）
+## 最新进展（2026-07-16 07:02 CST）
+
+- 运行态在代码级修复后继续复发，状态从 `Fixed` 回退为 `New`：
+  - 最近非文档代码提交 `c776b808 fix(agent): ignore scheduler config tokens in investment guard` 已在 2026-07-16 03:04 CST 落地，包含 `key=value` 配置上下文过滤、财务指标词排除和 3 条 guard 回归。
+  - 但 `data/sessions.sqlite3` 在 `2026-07-16 03:02-07:02 CST` 的真实运行窗口继续出现同根用户可见失败。
+  - `2026-07-16T04:30:01.134+08:00`，`session_id=Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595`，Feishu scheduler 触发 `OWALERT_PostMarket`，权威触发配置含 `repeat=trading_day`；assistant 在 `04:30:04.171082+08:00` 返回：`当前无法稳定核验证券实体 `REPEAT`，已停止生成可能指向错误公司的分析。`
+  - `2026-07-16T05:30:01.180780+08:00`，`session_id=Actor_feishu__direct__ou_5f636d6d7c80d333e41b86ae79d07adca8`，Feishu scheduler 触发 `美股收盘后跨市场复盘`，任务正文包含普通估值指标；assistant 在 `05:30:04.494984+08:00` 返回：`当前无法稳定核验证券实体 `EBITDA`，已停止生成可能指向错误公司的分析。`
+  - 同窗 `data/sessions.sqlite3` 按真实 `timestamp` 有 10 条 user / 11 条 assistant，07:00 边界任务也在 07:02:55 收口，未见长期 user-only 悬挂、错投、敏感信息泄露或全渠道不可用，因此维持功能性 `P2`，非 P1，不创建 GitHub Issue。
+- 判断：当前证据证明 live 运行态仍会影响用户；可能是修复尚未进入运行进程，也可能是 guard 仍有未覆盖路径。无论哪种情况，缺陷对当前用户仍为活跃状态。
+
+## 代码级修复记录（2026-07-16 03:03 CST）
 
 - 本轮已在 `crates/hone-channels/src/investment_response_guard.rs` 收紧证券实体 hint 抽取：
   - `key=value` 形态里的配置键不再参与证券实体识别，`repeat=daily` 这类 scheduler 权威配置不会再把 `REPEAT` 当作标的。
@@ -19,7 +29,7 @@
 - 验证通过：
   - `cargo test -p hone-channels investment_response_guard::tests --lib -- --nocapture`
   - `cargo check -p hone-channels --tests`
-- 当前按代码级 `Fixed` 记录；本轮未重启 live 服务，后续巡检若再出现 `REPEAT` / `EBITDA` 误判，应按运行态证据回退为 `New`。
+- 该修复已通过代码级验证，但 2026-07-16 07:02 CST 巡检确认 live 运行态仍复发，因此当前状态不再保持 `Fixed`。
 
 ## 证据来源
 
@@ -70,8 +80,11 @@
 - 与 `c29de55c fix(agent): enforce verified stock response contracts` 时间相邻，且失败文案来自新增的投研完整性 / 证券实体核验 guard，疑似实体抽取范围过宽。
 - 抽取逻辑没有区分任务配置、金融指标、正文格式指令和真正的证券 ticker。
 - Scheduler 任务会把权威触发配置、任务说明和用户原始正文一起送入模型 / guard，增大了误抽取 `REPEAT` 这类配置词的概率。
+- 2026-07-16 03:04 CST 代码级修复后仍有 live 复发；若确认运行进程已加载 `c776b808`，则说明修复只覆盖了部分 guard 路径，仍有另一条实体抽取 / 完整性检查路径会扫描完整 scheduler prompt。
 
 ## 下一步建议
 
+- 先确认当前 Feishu / Web scheduler runtime 是否已重启到包含 `c776b808` 的二进制或解释层配置；如果未生效，重启后用 `repeat=trading_day` 与 `EV/EBITDA` scheduler 样本做 live 复核。
+- 如果 runtime 已是最新代码，继续沿调用栈定位 `当前无法稳定核验证券实体` 的实体来源，确认是否还有第二套 guard / answer contract 在扫描完整 prompt。
 - 若后续再出现误伤，优先继续沿“上下文过滤”而不是堆全局 denylist，避免把真实 ticker 一并排除。
 - 更稳妥的长期方向仍是让 guard 只校验模型准备输出交易结论的实体，或只校验工具已解析出的候选 ticker，而不是扫描完整 prompt 文本。

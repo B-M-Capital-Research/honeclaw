@@ -22,6 +22,13 @@ New
 
 ## 修复记录
 
+- 2026-07-16 07:02 CST 补充同根复发证据，状态维持 `New`：
+  - 2026-07-16 03:02-07:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 10 条 user / 11 条 assistant，覆盖 9 个近期 session；07:00 CST 边界任务已在 07:02:55 收口，未见长期 user-only 悬挂、错投、投递失败或内部实现外露。
+  - 06:54 CST Feishu direct session `Actor_feishu__direct__ou_5f0e001c305cfc075babe830a9b2c6079c` 回答“存储板块为什么大跌”。
+  - 该 assistant row 的 `metadata_json` 没有可审计 `assistant.tool_calls`；未留下本轮网页、行情、公告、新闻或财报工具结果。
+  - final 直接输出“北京时间2026年7月16日06:54”、三星电子 / SK 海力士跌幅、HBM 需求、存储涨价周期、美股 AI 硬件降温，以及“不要直接照做”等交易判断口径。
+  - 回复正常收口且未见错投、投递失败、内部实现外露或格式损坏；问题仍是强时效金融 / 行业异动答案缺少可审计来源核验，并继续给出具体事实锚和操作判断。因此继续按质量性 `P3 / New`，不影响主功能链路，非 P1，不创建 GitHub Issue。
+
 - 2026-07-16 03:04 CST 补充同根复发证据，状态维持 `New`：
   - 2026-07-15 23:02-2026-07-16 03:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 6 条 user / 6 条 assistant，覆盖 3 个 session，均以 assistant 收口，`last_message_role=user` 为 0。
   - 同窗 6 条 assistant 中 5 条没有 `assistant.tool_calls`，未留下本轮网页、行情、公告、财报或新闻工具结果。

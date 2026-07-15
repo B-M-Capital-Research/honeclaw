@@ -22,6 +22,20 @@
 
 ## 最新进展
 
+- 本轮 2026-07-16 07:02 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-15`
+    - 03:30 CST `Monitor_Watchlist_11` raw preview 使用 `MU $902.60` 对比 `MU <= $252.00` 判断未触发。
+    - 04:00 CST `闪迪关键事件心跳提醒` raw preview 写 `WDC $510.42`、昨收 `$563.32`，并把 `SNDK` 迁移为 `WDC` 处理。
+    - 04:00 CST `美股黄金坑信号心跳检测` raw preview 使用 `SPY 754.43`、`QQQ` 等高风险数量级指数 / ETF 锚点。
+    - 04:30 / 07:00 CST `Monitor_Watchlist_11` deliver preview 使用 `ASTS $66.31`、高点 `$133.86` 与 200 日均线 `$8...` 残片进入触发判断。
+    - 07:00 CST `闪迪关键事件心跳提醒` deliver preview 写 `最新价 **$1,615**`、昨收 `$1,757.82`；`持仓重大事件心跳提醒` raw / deliver preview 继续使用 `MU $904.28` / `$983.12` 作为判断锚。
+    - 03:30 CST `中际旭创关键事件心跳提醒` deliver preview 继续使用 `¥1,169.31` 作为锚定价，同时承认数据源未返回今日有效数据。
+  - `data/sessions.sqlite3`
+    - 同窗有 10 条 user / 11 条 assistant，未见错投、投递失败、空回复、敏感信息外泄或全渠道不可用。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check 缺口：异常或高风险数量级价格进入 heartbeat 判断上下文和用户可见 preview。
+    - 本窗没有错投、投递失败、空回复、数据破坏或全渠道不可用；因此仍按质量性 `P3 / New`。该问题不影响主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-16 03:04 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-15`
     - 23:00 CST `闪迪关键事件心跳提醒` raw preview 写 `SNDK ... $1,757.82`。

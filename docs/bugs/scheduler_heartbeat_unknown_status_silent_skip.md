@@ -7,6 +7,18 @@
 
 ## 修复进展
 
+- `2026-07-16 03:02-07:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-15`
+    - 同窗有 734 条 `[HeartbeatDiag]` 诊断、73 条 `deliver_preview`、29 条 `duplicate_suppressed`。
+    - 同窗继续出现 10 条 `heartbeat 输出不是结构化 JSON`，并有 149 次 `function_calling tool call rejected` 工具预算拒绝。
+    - 代表样本包括 03:30 CST `全天原油价格3小时播报` 落成 `execution_failed`，04:00 CST `Monitor_Watchlist_11` 以 `PlainTextTriggered` 进入 JSON deliver，04:30 CST `ASTS 重大异动心跳监控` 写出自由文本 noop 后仍进入 `JsonNoop` / `PlainTextTriggered` 混合路径，07:00 CST 多条 heartbeat raw preview 继续以 `<think>` 或 fenced JSON 开头。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 同窗新增 10 条 user / 11 条 assistant，07:00 CST 边界任务已在 07:02:55 收口，未见全渠道不可用或错投。
+    - 本地 `cron_job_runs.max(executed_at)` 仍停在 `2026-07-10T14:01:27.621121+08:00`，当前 heartbeat 运行态继续以 runtime web log 判断。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题继续影响 heartbeat 监控判断、送达语义和失败 / 跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-15 19:01-23:01 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-15`
     - 同窗有 719 条 `[HeartbeatDiag]` 诊断；`parse_kind` 分布为 `PlainTextTriggered=138`、`JsonNoop=111`、`PlainTextSuppressed=14`、`PlainTextNoop=9`、`Empty=3`、`JsonTriggered=2`。

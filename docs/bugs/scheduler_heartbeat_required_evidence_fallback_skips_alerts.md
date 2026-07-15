@@ -23,6 +23,14 @@ New
 ## 证据来源
 
 - `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-15`
+  - 巡检时间窗：2026-07-16 03:02-07:02 CST。
+  - `data/sessions.sqlite3` 同窗新增 10 条 user / 11 条 assistant，覆盖 9 个近期 session；07:00 CST 边界任务已在 07:02:55 收口，没有长期 user-only 悬挂、错投或全渠道不可用证据。
+  - 04:00 CST Feishu scheduler/direct actor session `Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595` 的 `Oil_Price_Monitor_Closing` 只写入 `当前无法稳定核验 USO 的本轮财务数据，已停止生成完整估值结论。`
+  - 05:00 CST Web scheduler `盘后美股复盘与SNDK/MU存储产业链日报` 先写入 `这次回答未通过投研完整性检查，已停止发送不完整或未经充分核验的结论。请稍后重试。`，随后追加用户可见 `定时任务「盘后美股复盘与SNDK/MU存储产业链日报」执行出错，请稍后重试。`
+  - 05:10-05:14 CST Feishu scheduler `美股收盘资金流向简报` 只写入 `抱歉，这次处理失败了。请稍后再试。` 与 `本轮定时任务未能完成，系统已记录失败并将在下一次触发时重试。`
+  - 05:00 / 06:00 CST 另有 ARKK / VIXM 财务数据无法稳定核验的产品化失败提示。
+  - 判断：该样本仍属于同根投研完整性 / evidence 门禁 fail-closed 后用户只看到通用失败提示；由于同窗 direct / scheduler 仍有成功收口，未见错投、数据破坏、敏感信息泄露或全渠道不可用，维持功能性 `P2 / New`，不升级为 P1，不创建 GitHub Issue。
+- `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-15`
   - 巡检时间窗：2026-07-15 23:02-2026-07-16 03:02 CST。
   - `data/sessions.sqlite3` 同窗新增 6 条 user / 6 条 assistant，覆盖 3 个 session，均以 assistant 收口；没有 user-only 悬挂、错投或全渠道不可用证据。
   - 00:05 CST Feishu scheduler/direct actor session `Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b` 的 `RKLB 每日动态监控` 只写入 `这次回答未通过投研完整性检查，已停止发送不完整或未经充分核验的结论。请稍后重试。`，`metadata_json` 标记 `run_failed=true` / `AgentFailed`。
