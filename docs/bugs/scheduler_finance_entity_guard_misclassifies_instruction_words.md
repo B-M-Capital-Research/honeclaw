@@ -3,8 +3,23 @@
 - **发现时间**: 2026-07-15 19:02 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，当前不是 P1。
+
+## 最新进展（2026-07-16 03:03 CST）
+
+- 本轮已在 `crates/hone-channels/src/investment_response_guard.rs` 收紧证券实体 hint 抽取：
+  - `key=value` 形态里的配置键不再参与证券实体识别，`repeat=daily` 这类 scheduler 权威配置不会再把 `REPEAT` 当作标的。
+  - 常见财务指标词新增排除，并对 `repeat=trading_day`、`repeat=daily` 这类调度频率值做上下文过滤，避免 `DAILY` / `TRADING` 一类调度词继续误入 guard。
+  - `EV/EBITDA` 一类估值指标片段不再触发证券实体核验。
+- 新增回归：
+  - `repeat_assignment_is_not_treated_as_security_hint`
+  - `metric_tokens_are_not_treated_as_security_hint`
+  - `real_ticker_still_wins_over_repeat_assignment_noise`
+- 验证通过：
+  - `cargo test -p hone-channels investment_response_guard::tests --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+- 当前按代码级 `Fixed` 记录；本轮未重启 live 服务，后续巡检若再出现 `REPEAT` / `EBITDA` 误判，应按运行态证据回退为 `New`。
 
 ## 证据来源
 
@@ -58,9 +73,5 @@
 
 ## 下一步建议
 
-- 在金融实体 guard 中增加 denylist 或 token role 过滤，至少覆盖 `EBITDA`、`EV`、`REPEAT`、`DAILY`、`WEEKLY`、`MONTHLY`、`X` 等指标 / 配置 / 格式词。
-- 更稳妥的做法是让 guard 只校验模型准备输出交易结论的实体，或只校验工具已解析出的候选 ticker，而不是扫描完整 prompt 文本。
-- 增加回归样本：
-  - A/H 复盘任务正文包含 `EV/EBITDA` 时不应被拦截。
-  - Web scheduler 权威配置包含 `repeat=daily` 时不应把 `REPEAT` 当成证券实体。
-  - 真正的模糊 ticker / 非标准 ticker 仍应被 guard 拦截或要求澄清。
+- 若后续再出现误伤，优先继续沿“上下文过滤”而不是堆全局 denylist，避免把真实 ticker 一并排除。
+- 更稳妥的长期方向仍是让 guard 只校验模型准备输出交易结论的实体，或只校验工具已解析出的候选 ticker，而不是扫描完整 prompt 文本。

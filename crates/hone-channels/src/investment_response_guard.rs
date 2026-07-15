@@ -288,14 +288,25 @@ fn require_any(
 fn extract_security_hint(input: &str) -> Option<String> {
     let regex = Regex::new(r"(?i)(?:\$)?[a-z][a-z0-9.-]{1,9}").expect("ticker regex");
     let denied = [
-        "Q1", "Q2", "Q3", "Q4", "AI", "ARR", "PE", "PS", "EV", "FCF", "DCF", "ETF", "CASE", "BULL",
-        "BEAR", "THE", "AND", "CAN", "BUY", "SELL", "STOCK",
+        "Q1", "Q2", "Q3", "Q4", "AI", "ARR", "PE", "PS", "EV", "EBIT", "EBITDA", "EPS", "FCF",
+        "DCF", "ETF", "ROE", "ROIC", "YOY", "QOQ", "CAGR", "CASE", "BULL", "BEAR", "THE", "AND",
+        "CAN", "BUY", "SELL", "STOCK",
     ];
     let candidates = regex
         .find_iter(input)
         .filter_map(|matched| {
             let raw = matched.as_str();
             let candidate = raw.trim_start_matches('$').to_ascii_uppercase();
+            if assignment_key_should_be_ignored(input, matched.start(), matched.end())
+                || assignment_value_should_be_ignored(
+                    input,
+                    matched.start(),
+                    matched.end(),
+                    &candidate,
+                )
+            {
+                return None;
+            }
             (!denied.contains(&candidate.as_str())).then_some((raw, candidate))
         })
         .collect::<Vec<_>>();
@@ -322,6 +333,77 @@ fn extract_security_hint(input: &str) -> Option<String> {
         .iter()
         .find(|(_, candidate)| (2..=6).contains(&candidate.len()))
         .map(|(_, candidate)| candidate.clone())
+}
+
+fn assignment_key_should_be_ignored(input: &str, start: usize, end: usize) -> bool {
+    assignment_context(input, start, end).is_some_and(|context| context.is_key)
+}
+
+fn assignment_value_should_be_ignored(
+    input: &str,
+    start: usize,
+    end: usize,
+    candidate: &str,
+) -> bool {
+    let Some(context) = assignment_context(input, start, end) else {
+        return false;
+    };
+    if !context.is_value {
+        return false;
+    }
+    let value = context.value.to_ascii_uppercase();
+    let schedule_value_tokens = [
+        "DAILY",
+        "WEEKLY",
+        "MONTHLY",
+        "TRADING_DAY",
+        "TRADING-WEEK",
+        "TRADING-MONTH",
+        "WEEKDAY",
+        "WEEKDAYS",
+        "HOURLY",
+    ];
+    schedule_value_tokens.contains(&value.as_str())
+        || (context.key.eq_ignore_ascii_case("repeat")
+            && value
+                .split(|ch: char| !ch.is_ascii_alphanumeric())
+                .any(|token| !token.is_empty() && token.eq_ignore_ascii_case(candidate)))
+}
+
+struct AssignmentContext<'a> {
+    key: &'a str,
+    value: &'a str,
+    is_key: bool,
+    is_value: bool,
+}
+
+fn assignment_context(input: &str, start: usize, end: usize) -> Option<AssignmentContext<'_>> {
+    let segment_start = input[..start]
+        .char_indices()
+        .rev()
+        .find(|(_, ch)| ch.is_whitespace())
+        .map_or(0, |(idx, ch)| idx + ch.len_utf8());
+    let segment_end = input[end..]
+        .char_indices()
+        .find(|(_, ch)| ch.is_whitespace())
+        .map_or(input.len(), |(idx, _)| end + idx);
+    let segment = &input[segment_start..segment_end];
+    let equals_offset = segment.find('=')?;
+    let key = segment[..equals_offset]
+        .trim_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_' && ch != '-');
+    let value = segment[equals_offset + 1..]
+        .trim_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_' && ch != '-');
+    if key.is_empty() || value.is_empty() {
+        return None;
+    }
+    let relative_start = start.saturating_sub(segment_start);
+    let relative_end = end.saturating_sub(segment_start);
+    Some(AssignmentContext {
+        key,
+        value,
+        is_key: relative_end <= equals_offset,
+        is_value: relative_start > equals_offset,
+    })
 }
 
 fn resolve_verified_symbol(hint: &str, search: &Value) -> Option<String> {
@@ -456,8 +538,9 @@ fn truncate_chars(value: &str, max_chars: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_investment_response_contract, missing_deep_single_stock_sections,
-        quote_has_positive_matching_price, resolve_verified_symbol,
+        classify_investment_response_contract, extract_security_hint,
+        missing_deep_single_stock_sections, quote_has_positive_matching_price,
+        resolve_verified_symbol,
     };
     use serde_json::json;
 
@@ -484,6 +567,31 @@ mod tests {
     fn english_question_prefers_explicit_uppercase_ticker() {
         let contract =
             classify_investment_response_contract("Can NBIS take off in Q3?").expect("contract");
+        assert_eq!(contract.symbol_hint, "NBIS");
+        assert!(contract.deep_single_stock);
+    }
+
+    #[test]
+    fn repeat_assignment_is_not_treated_as_security_hint() {
+        assert_eq!(
+            extract_security_hint("18:00 美股盘前 X 英文帖 repeat=daily"),
+            None
+        );
+    }
+
+    #[test]
+    fn metric_tokens_are_not_treated_as_security_hint() {
+        assert_eq!(
+            extract_security_hint("A股港股收盘后跨市场复盘，估值使用 EV/EBITDA"),
+            None
+        );
+    }
+
+    #[test]
+    fn real_ticker_still_wins_over_repeat_assignment_noise() {
+        let contract =
+            classify_investment_response_contract("repeat=daily，帮我分析 NBIS 下一季财报和估值")
+                .expect("contract");
         assert_eq!(contract.symbol_hint, "NBIS");
         assert!(contract.deep_single_stock);
     }
