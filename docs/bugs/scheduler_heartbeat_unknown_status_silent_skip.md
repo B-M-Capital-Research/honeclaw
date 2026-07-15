@@ -7,6 +7,18 @@
 
 ## 修复进展
 
+- `2026-07-15 07:04-11:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-15`
+    - 本窗 heartbeat 诊断共 657 行，可分类 `parse_kind` 信号为 `PlainTextTriggered=184`、`JsonNoop=69`、`PlainTextNoop=11`、`PlainTextSuppressed=4`、`JsonTriggered=4`、`JsonMalformed=4`。
+    - raw preview 以 `<think>` 开头 182 次，`deliver_preview` 92 次；另有 122 次 `function_calling tool call rejected` 工具预算拒绝。
+    - 代表样本包括 08:00 CST `heartbeat_绿田机械基本面跟踪` `JsonNoop` raw preview 以 `<think>` 和 fenced JSON 开头；08:00 / 08:30 / 10:00 / 10:30 / 11:00 CST `小米30港元破位预警` 多次以 `PlainTextTriggered` 进入 deliver 路径；11:00 CST `RKLB异动监控`、`FOTO 光子学ETF心跳检测`、`持仓财报与重大新闻心跳提醒` 继续经由自由文本解析进入用户可见 preview。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 在 07:04-11:02 CST 有 29 个 user turn / 29 条 assistant 记录，19 个近期 session 均以 assistant 收口，`last_message_role=user` 为 0。
+    - 本地 `cron_job_runs` 同窗无新增，`max(executed_at)` 仍停在 `2026-07-10T14:01:27.621121+08:00`，当前 heartbeat 运行态继续以 runtime web log 判断。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题继续影响 heartbeat 监控判断、送达语义和失败 / 跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-15 03:02-07:03 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-14`
     - 本窗 heartbeat 可分类 `parse_kind` 信号为 `PlainTextTriggered=204`、`JsonNoop=76`、`JsonTriggered=13`、`PlainTextNoop=8`、`PlainTextSuppressed=8`、`Empty=2`、`JsonEmptyStatus=1`。

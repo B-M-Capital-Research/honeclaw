@@ -22,6 +22,12 @@ New
 
 ## 证据来源
 
+- `data/sessions.sqlite3`
+  - 巡检时间窗：2026-07-15 07:04-11:02 CST。
+  - 09:00 CST Feishu direct session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 只写入 assistant final `当前信息暂时未完成实时核验，请稍后再试。`
+  - 同窗 `data/sessions.sqlite3` 有 29 个 user turn / 29 条 assistant 记录，19 个近期 session 均以 assistant 收口，说明这不是全渠道不可用或未回复 P1。
+  - 本地 `cron_job_runs` 同窗无新增，`max(executed_at)` 仍停在 `2026-07-10T14:01:27.621121+08:00`；真实 heartbeat 运行态继续依赖 `data/runtime/logs/web.log.2026-07-15` 复核。
+  - 判断：同根实时核验门禁 fail-closed 仍会进入用户可见 final；但同窗 direct / scheduler 多数正常收口，未见错投、数据破坏、敏感信息泄露或全渠道不可用，因此维持功能性 `P2 / New`，不升级为 P1，不创建 GitHub Issue。
 - `data/runtime/logs/web.log.2026-07-14` / `data/sessions.sqlite3`
   - 巡检时间窗：2026-07-14 19:02-23:02 CST。
   - runtime 日志同窗仍有 60 次 `当前信息暂时未完成实时核验`、39 次 required evidence / fallback failed、57 次 Tavily 查询过长、88 次工具预算拒绝、266 条 heartbeat `parse_kind` 诊断、77 条 `deliver_preview`，并有 195 条 `<think>` 出现在 heartbeat raw / preview 相关行。

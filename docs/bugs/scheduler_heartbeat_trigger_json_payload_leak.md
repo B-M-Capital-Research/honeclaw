@@ -7,6 +7,20 @@
 
 ## 最新进展
 
+- `2026-07-15 07:04-11:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-15`
+    - 08:00 / 08:30 / 10:00 / 10:30 / 11:00 CST `小米30港元破位预警`
+      - `job_id=j_654aef9b`
+      - `target=+8613871396421`
+      - `parse_kind=PlainTextTriggered`
+      - `deliver_preview` 多次以 fenced JSON 开头，包含 `"status": "triggered"`、`"triggered"`、`"symbol": "1810.HK"`、`"condition": "现价 ≤ 30 港元"`、`"current_price"`、`"currency"`、`"previous_close"` 等结构化协议字段。
+    - 这些样本横跨 08:00、08:30、10:00、10:30、11:00 五个窗口，说明该格式退化不是单次偶发。
+  - 会话质量对照：
+    - 同窗 `data/sessions.sqlite3` 有 29 个 user turn / 29 条 assistant 记录，19 个近期 session 均以 assistant 收口；未见 JSON 或 fenced block 污染进入 direct / 普通 scheduler assistant final。
+  - 判断：
+    - 最新样本仍是 heartbeat 出站格式化退化；不是新的独立根因。
+    - 当前没有错投、全渠道不可用或数据安全证据；主要伤害是出站预览和潜在用户可见提醒的结构 / 格式质量，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-13 11:04-15:01 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-13`
     - 12:00 / 12:30 / 13:30 / 14:00 / 14:30 / 15:00 CST `小米30港元破位预警` 多次生成以 fenced JSON 开头的 `deliver_preview`，包含 `"status": "triggered"`、`"triggered"`、`"symbol": "1810.HK"`、`"condition": "现价 ≤ 30 港元"`、`"current_price"` 等结构化协议字段。

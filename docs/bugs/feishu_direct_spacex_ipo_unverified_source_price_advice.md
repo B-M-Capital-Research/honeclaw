@@ -22,6 +22,14 @@ New
 
 ## 修复记录
 
+- 2026-07-15 11:02 CST 补充同根复发证据，状态维持 `New`：
+  - 07:04-11:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 29 个 user turn 与 29 条 assistant 记录，19 个近期 session 均以 assistant 收口，`last_message_role=user` 为 0。
+  - 08:30 CST Web scheduler session `Actor_web__direct__web-user-266454c88ed6` 输出财报提醒窗口、ASML / TSM / UNH / NFLX 财报结论和半导体设备 / 先进制程代工判断；该 assistant row 没有 `assistant.tool_calls`。
+  - 08:30 CST Feishu scheduler session `Actor_feishu__direct__ou_5f1fdfeceacb0f2ece1a2c88c5a7d17e34` 输出 `SNDK` 收盘、涨跌幅、50 日均线和趋势判断；该 assistant row 没有 `assistant.tool_calls`。
+  - 08:30 CST Feishu scheduler session `Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595` 输出每日早报、`RKLB`、`MU`、`SNDK`、`BE`、`GOOGL`、`GEV` 等行情 / 财报 / 操作观察；该 assistant row 没有 `assistant.tool_calls`。
+  - 08:45 CST Feishu direct session `Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7` 输出 NVDA / MU / SNDK 成交量、TSM 财报和 A 股开盘情绪判断；该 assistant row 没有 `assistant.tool_calls`。
+  - 这些回复均正常收口，未见错投、投递失败、内部实现外露或格式损坏；问题仍是强时效金融 / 宏观金融答案在无本轮可审计工具证据时使用核验口径、具体事实锚和操作判断。因此继续按质量性 `P3 / New`，不影响主功能链路，非 P1，不创建 GitHub Issue。
+
 - 2026-07-15 07:04 CST 补充同根复发证据，状态维持 `New`：
   - 03:02-07:03 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 9 个 user turn 与 9 条 assistant 记录，8 个近期 session 均以 assistant 收口，`last_message_role=user` 为 0。
   - assistant final 污染扫描未命中 `<think>`、本机绝对路径、原始工具字段、`company_profiles/`、panic、provider 原始 429 或实时核验失败文案；本轮没有错投、投递失败、空回复或结构损坏证据。

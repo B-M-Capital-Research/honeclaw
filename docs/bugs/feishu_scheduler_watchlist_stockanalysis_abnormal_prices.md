@@ -22,6 +22,18 @@
 
 ## 最新进展
 
+- 本轮 2026-07-15 07:04-11:02 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
+  - `data/sessions.sqlite3` / `session_messages`
+    - 08:30 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f1fdfeceacb0f2ece1a2c88c5a7d17e34` 正常收口，但用户可见 final 输出 `SNDK 昨夜（7月14日）收于 1,755.11 美元`、50 日均线 `1,688 美元`、日内区间 `1,689.50` 等异常数量级行情锚。
+    - 08:30 CST Feishu scheduler `Hone AI 每日早报` 继续输出 `MU +4.92%`、`SNDK +5.01%`、`BE +4.24%` 与 `BE $250` 等高风险行情锚并用于持仓判断。
+  - `data/runtime/logs/web.log.2026-07-15`
+    - 08:00 / 11:00 CST `Monitor_Watchlist_11` raw preview 继续使用 `MU $983.12` 对比 `MU <= $252.00` 判断未触发。
+    - 08:00 / 11:00 CST `存储板块关键事件心跳提醒` / `持仓财报与重大新闻心跳提醒` raw 或 deliver preview 继续使用 `SNDK $1,757.82`、`SNDK $1,755`、`AAOI $125.45` 等高风险行情锚进入 noop / triggered 判断。
+    - 11:00 CST `RKLB异动监控` deliver preview 写 `Market Cap ~$4562 亿`，数量级明显高风险，并进入用户可见 heartbeat preview。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check 缺口：异常或高风险数量级价格继续进入正式 scheduler final、heartbeat 判断上下文和用户可见 preview。
+    - 本窗没有错投、投递失败、空回复、数据破坏或全渠道不可用；因此仍按质量性 `P3 / New`。该问题不影响主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-15 03:02-07:03 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-14`
     - 03:30-07:01 CST heartbeat 日志中 `$1,` 数量级美元价格命中 17 次，`SNDK $1,` 命中 1 次，`SPY $75x` 命中 2 次；这些价格继续进入 raw / deliver preview、触发判断或 duplicate suppression。

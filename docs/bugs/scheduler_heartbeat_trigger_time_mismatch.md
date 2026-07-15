@@ -8,6 +8,19 @@
 
 ## 最新进展
 
+- 本轮 `2026-07-15 07:04-11:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-15`
+    - 08:00 CST `存储板块关键事件心跳提醒` deliver preview 把检查时间写成 `2026-07-15 北京时间约 09:38`，晚于真实执行窗口。
+    - 08:00 CST `持仓重大事件心跳提醒` deliver preview 写 `2026-07-15 北京时间约20:00检查完毕`，比真实日志时间晚约 12 小时。
+    - 09:30 CST `全天原油价格3小时播报` raw preview 读取到 `2026-07-15T08:00:01.460+08:00` 并据此判定不是 9 点触发窗口，实际日志时间已是 09:30 CST。
+    - 11:00 CST `heartbeat_绿田机械基本面跟踪` deliver preview 写 `当前时间 2026年7月14日 10:30 北京时间，周日非交易日`，与实际 2026-07-15 11:00 CST 和星期口径均不一致。
+    - 11:00 CST `持仓重大事件心跳检测` deliver preview 写 `当前时间 2026年7月15日 05:31 北京时间`，早于真实日志时间约 5.5 小时。
+  - 会话质量对照：
+    - 同窗 `data/sessions.sqlite3` 新增 29 个 user turn / 29 条 assistant 记录，19 个近期 session 均以 assistant 收口；未见同类时间口径错误进入普通 direct assistant final。
+  - 判断：
+    - 最新样本仍是 heartbeat 运行态时间上下文漂移，未形成新的普通 scheduler / direct 独立链路。
+    - 该问题影响 heartbeat 提醒可信度和行情新鲜度判断，状态维持 `New/P3`；不影响直聊 / 调度 / 投递主功能链路，非 P1，不创建 GitHub Issue。
+
 - 本轮 `2026-07-15 03:02-07:03 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-14`
     - 07:00 CST `持仓财报与重大新闻心跳提醒` / `存储板块关键事件心跳提醒` duplicate suppression matched preview 继续把检查时间写成 `2026-07-15 北京时间约 09:37`，晚于实际执行窗口。
