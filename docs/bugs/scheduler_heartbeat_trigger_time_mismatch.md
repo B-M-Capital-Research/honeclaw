@@ -8,6 +8,19 @@
 
 ## 最新进展
 
+- 本轮 `2026-07-15 11:01-15:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-15`
+    - 11:00 CST `存储板块关键事件心跳提醒` deliver preview 写 `检查时间：2026-07-15 北京时间约 09:37`，早于真实日志时间约 1.5 小时。
+    - 11:00 / 12:00 CST `heartbeat_绿田机械基本面跟踪` deliver preview 写 `当前时间 2026年7月14日 10:30 北京时间，周日非交易日`，与真实 2026-07-15 周三窗口不一致。
+    - 12:30 CST `SIVE POET/Nokia/1.6T DFB 心跳检测` deliver preview 写 `2026年7月15日 17:30 北京时间`，晚于真实日志时间约 5 小时。
+    - 12:30 CST `AI与科技持仓观察关键事件心跳提醒` deliver preview 写 `北京时间 2026-07-15 09:30`，早于真实日志时间约 3 小时。
+    - 14:30 CST `NBIS关键事件心跳提醒` deliver preview 写 `北京时间约20:30`，晚于真实日志时间约 6 小时；`美股黄金坑信号心跳检测` raw preview 仍出现 `2026年5月16日盘中`。
+  - 会话质量对照：
+    - 同窗 `data/sessions.sqlite3` 没有新的真实 `timestamp` assistant final；本轮时间口径漂移证据来自 heartbeat runtime log。
+  - 判断：
+    - 最新样本仍是 heartbeat 运行态时间上下文漂移，未形成新的普通 scheduler / direct 独立链路。
+    - 该问题影响 heartbeat 提醒可信度和行情新鲜度判断，状态维持 `New/P3`；不影响直聊 / 调度 / 投递主功能链路，非 P1，不创建 GitHub Issue。
+
 - 本轮 `2026-07-15 07:04-11:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-15`
     - 08:00 CST `存储板块关键事件心跳提醒` deliver preview 把检查时间写成 `2026-07-15 北京时间约 09:38`，晚于真实执行窗口。

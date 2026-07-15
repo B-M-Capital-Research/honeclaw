@@ -7,6 +7,18 @@
 
 ## 修复进展
 
+- `2026-07-15 11:01-15:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-15`
+    - 本窗 heartbeat 诊断共 562 行，可分类 `parse_kind` 信号为 `PlainTextTriggered=144`、`JsonNoop=47`、`PlainTextNoop=6`、`PlainTextSuppressed=2`、`JsonTriggered=2`、`Empty=1`。
+    - 同窗命中 230 条结构化 / runner / 预算相关异常信号；13:00、13:30、14:00 CST 的 `安全执行器不可用` 批量失败另行登记为 `web_and_scheduler_strict_actor_sandbox_guard_blocks_ordinary_users.md`。
+    - 代表样本包括 11:00 CST `TEM大事件心跳监控` 以 `PlainTextTriggered` 进入 deliver 但正文写 `触发状态：noop`；12:30 CST `Monitor_Watchlist_11` 落成 `JsonTriggered`；14:30 CST 多条 raw preview 仍以 `<think>` 开头并由自由文本 / JSON 混合格式解析。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 在 11:01-15:02 CST 没有新的真实 `timestamp` 会话，`session_messages.max(timestamp)` 停在 `2026-07-15T10:55:26.462700+08:00`；当前 heartbeat 运行态继续以 runtime web log 判断。
+    - 本地 `cron_job_runs` 同窗无新增，`max(executed_at)` 仍停在 `2026-07-10T14:01:27.621121+08:00`。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题继续影响 heartbeat 监控判断、送达语义和失败 / 跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-15 07:04-11:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-15`
     - 本窗 heartbeat 诊断共 657 行，可分类 `parse_kind` 信号为 `PlainTextTriggered=184`、`JsonNoop=69`、`PlainTextNoop=11`、`PlainTextSuppressed=4`、`JsonTriggered=4`、`JsonMalformed=4`。

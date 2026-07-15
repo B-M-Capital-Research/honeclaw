@@ -22,6 +22,18 @@
 
 ## 最新进展
 
+- 本轮 2026-07-15 11:01-15:02 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-15`
+    - 11:00 / 12:30 / 14:30 CST `Monitor_Watchlist_11` raw preview 继续使用 `MU $983.12` 对比 `MU <= $252.00` 判断未触发。
+    - 11:00 / 12:30 CST `闪迪关键事件心跳提醒` raw / deliver preview 继续使用 `SNDK $1,757.82`、昨收 `$1,673.97`、日高 `$1,812.47` 等异常数量级价格。
+    - 11:00 CST `RKLB异动监控` deliver preview 写 `Market Cap ~$4562 亿`；12:30 CST 同 job 写 `Market Cap ~$456 亿`，同一链路市值数量级不稳定。
+    - 12:30 CST `中际旭创关键事件心跳提醒` deliver preview 继续锚定 `¥1,181`、昨收 `¥1,184.05`；14:30 CST `光迅科技关键事件心跳提醒` deliver preview 使用 `¥218.99`、昨收 `¥232.95`，均在主行情源未稳定推进时进入用户可见 preview。
+  - `data/sessions.sqlite3` / `session_messages`
+    - 同窗没有新的真实 `timestamp` assistant final，正式会话侧未新增可审计用户可见样本；本轮证据来自 heartbeat runtime preview。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check 缺口：异常或高风险数量级价格继续进入 heartbeat 判断上下文和用户可见 preview。
+    - 本窗没有错投、投递失败、空回复、数据破坏或全渠道不可用；因此仍按质量性 `P3 / New`。该问题不影响主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-15 07:04-11:02 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
   - `data/sessions.sqlite3` / `session_messages`
     - 08:30 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f1fdfeceacb0f2ece1a2c88c5a7d17e34` 正常收口，但用户可见 final 输出 `SNDK 昨夜（7月14日）收于 1,755.11 美元`、50 日均线 `1,688 美元`、日内区间 `1,689.50` 等异常数量级行情锚。
