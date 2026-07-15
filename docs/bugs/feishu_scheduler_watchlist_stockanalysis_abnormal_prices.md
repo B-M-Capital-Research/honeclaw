@@ -22,6 +22,18 @@
 
 ## 最新进展
 
+- 本轮 2026-07-15 15:02-19:02 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-15`
+    - 18:30 / 19:00 CST `Monitor_Watchlist_11` raw preview 继续使用 `MU $983.12` 对比 `MU <= $252.00` 判断未触发。
+    - 18:30 CST `Cerebras IPO与业务进展心跳监控` deliver preview 使用 `CBRS $203.81`、`Market Cap ~$4617 亿` 作为行情锚。
+    - 18:30 CST `持仓重大事件心跳提醒` deliver preview 使用 `MU $983.12` 与 `SPCX $136.08`，并把 `MU` 昨收写成 `$93...` 量级混杂。
+    - 19:00 CST `中际旭创关键事件心跳提醒` deliver preview 使用 `¥1,169.31`、日内 `¥1,160-¥1,210` 作为锚点，同时承认 FMP snapshot / news 接口未返回今日有效数据。
+  - `data/sessions.sqlite3` / `session_messages`
+    - 同窗按真实 `timestamp` 有 8 条 user / 9 条 assistant，近期真实会话均以 assistant 收口；assistant final 未见错投、投递失败、原始工具 JSON、敏感信息外泄或空回复。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check 缺口：异常或高风险数量级价格继续进入 heartbeat 判断上下文和用户可见 preview。
+    - 本窗没有错投、投递失败、空回复、数据破坏或全渠道不可用；因此仍按质量性 `P3 / New`。该问题不影响主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-15 11:01-15:02 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-15`
     - 11:00 / 12:30 / 14:30 CST `Monitor_Watchlist_11` raw preview 继续使用 `MU $983.12` 对比 `MU <= $252.00` 判断未触发。

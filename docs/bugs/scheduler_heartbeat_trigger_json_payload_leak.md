@@ -7,6 +7,24 @@
 
 ## 最新进展
 
+- `2026-07-15 15:02-19:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-15`
+    - 18:30 CST `Monitor_Watchlist_11`
+      - `job_id=j_ab7e8fb1`
+      - `target=+8618668080998`
+      - `parse_kind=PlainTextTriggered`
+      - `deliver_preview` 以 fenced JSON 开头，包含 `"triggered"`、`"ticker":"ASTS"`、`"current_price":68.82`、`"trigger_price":69.83`、`"logic"` 等结构化协议字段。
+    - 19:00 CST `小米30港元破位预警`
+      - `job_id=j_654aef9b`
+      - `target=+8613871396421`
+      - `parse_kind=PlainTextTriggered`
+      - `deliver_preview` 继续以 fenced JSON 开头，包含 `"status": "triggered"`、`"symbol": "1810.HK"`、`"condition": "现价 ≤ 30 港元"`、`"current_price": 25.86` 等结构化字段。
+  - 会话质量对照：
+    - 同窗 `data/sessions.sqlite3` 按真实 `timestamp` 有 8 条 user / 9 条 assistant；assistant final 污染扫描未命中 `<think>`、本机路径、原始工具字段、`company_profiles/` 或 panic。
+  - 判断：
+    - 最新样本仍是 heartbeat 出站格式化退化；不是新的独立根因。
+    - 当前没有错投、全渠道不可用或数据安全证据；主要伤害是出站预览和潜在用户可见提醒的结构 / 格式质量，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-15 11:01-15:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-15`
     - 11:00 / 14:30 CST `小米30港元破位预警`
