@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 hone-core = { workspace = true }
+hone-agent = { workspace = true }
 hone-agent-gemini-cli = { workspace = true }
 hone-agent-codex-cli = { workspace = true }
 hone-memory = { workspace = true }

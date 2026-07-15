@@ -9,6 +9,7 @@ pub mod core;
 pub mod core_traits;
 pub(crate) mod execution;
 pub mod ingress;
+mod investment_response_guard;
 pub mod mcp_bridge;
 pub mod outbound;
 pub mod prompt;

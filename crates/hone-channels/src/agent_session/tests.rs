@@ -29,6 +29,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use crate::HoneBotCore;
+use crate::investment_response_guard::classify_investment_response_contract;
 use crate::response_finalizer::{
     EMPTY_SUCCESS_FALLBACK_MESSAGE, finalize_agent_response, normalize_local_image_references,
     response_leaks_system_prompt,
@@ -584,6 +585,83 @@ async fn transient_runner_failure_retries_once_before_returning_success() {
     assert!(result.response.success);
     assert_eq!(result.response.content, "重试后成功");
 
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn investment_contract_retries_incomplete_nbis_draft() {
+    let root = make_temp_dir("hone_channels_investment_contract_retry");
+    std::fs::create_dir_all(&root).expect("create root");
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let actor = ActorIdentity::new("web", "investment-contract", None::<String>).expect("actor");
+    let session = AgentSession::new(core, actor, "direct");
+    let complete = "数据时间：北京时间 2026-07-15。事实与推断分开。\n1. 结论\n2. 公司是什么、靠什么赚钱\n3. 护城河与竞争壁垒\n4. 行业位置与关键对手\n5. 财务质量与自由现金流\n6. 估值：P/S + 情景法\n7. Bull / Bear / Base Case\n8. 催化剂、风险点、证伪条件\n9. 动作建议";
+    let results = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: "Q3 可能起飞。你成本多少？".to_string(),
+                tool_calls_made: Vec::new(),
+                iterations: 1,
+                success: true,
+                error: None,
+            },
+            streamed_output: true,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        },
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: complete.to_string(),
+                tool_calls_made: Vec::new(),
+                iterations: 1,
+                success: true,
+                error: None,
+            },
+            streamed_output: true,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        },
+    ])));
+    let runner = MockSequencedRunner {
+        results: results.clone(),
+    };
+    let request = AgentRunnerRequest {
+        session_id: "investment-contract-session".to_string(),
+        actor_label: "web:investment-contract".to_string(),
+        actor: session.actor.clone(),
+        channel_target: "direct".to_string(),
+        allow_cron: false,
+        config_path: String::new(),
+        runtime_dir: String::new(),
+        system_prompt: "system".to_string(),
+        runtime_input: "我想了解Q3的时候nbis能不能起飞".to_string(),
+        context: AgentContext::new("investment-contract-session".to_string()),
+        timeout: None,
+        gemini_stream: GeminiStreamOptions::default(),
+        session_metadata: HashMap::new(),
+        working_directory: root.display().to_string(),
+        allowed_tools: None,
+        max_tool_calls: None,
+        tool_call_limits: None,
+    };
+    let contract = classify_investment_response_contract(&request.runtime_input).expect("contract");
+
+    let result = session
+        .run_runner_with_investment_contract_retry(
+            &runner,
+            "mock_sequenced",
+            "investment-contract-session",
+            request,
+            Arc::new(NoopEmitter),
+            Some(&contract),
+        )
+        .await;
+
+    assert!(result.response.success);
+    assert_eq!(result.response.content, complete);
+    assert!(results.lock().expect("results lock").is_empty());
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -2158,7 +2236,7 @@ async fn run_rejects_over_daily_limit_with_user_turn_and_friendly_error() {
 }
 
 #[tokio::test]
-async fn run_persists_failed_assistant_turn_for_native_runner_guard() {
+async fn run_persists_failed_assistant_turn_when_strict_fallback_llm_is_missing() {
     let root = make_temp_dir("hone_channels_guard_fail_persist");
     std::fs::create_dir_all(&root).expect("create root");
     let mut config = HoneConfig::default();
@@ -2190,7 +2268,7 @@ async fn run_persists_failed_assistant_turn_for_native_runner_guard() {
     assert_eq!(
         messages[1].content[0].text.as_deref(),
         Some(
-            "安全执行器不可用：普通用户不能使用具备宿主机访问能力的 CLI/ACP；请切换到 hone_cloud，或由管理员运行。"
+            "安全执行器不可用：普通用户不能使用具备宿主机访问能力的 CLI/ACP，且严格 function-calling LLM 未配置。"
         )
     );
     assert_eq!(

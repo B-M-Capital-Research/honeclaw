@@ -1630,6 +1630,14 @@ agent:
         std::fs::read_to_string(runtime_dir.join("soul.md")).unwrap(),
         "prompt"
     );
+
+    std::fs::write(dir.join("soul.md"), "updated prompt").unwrap();
+    std::fs::write(runtime_dir.join("soul.md"), "stale runtime prompt").unwrap();
+    generate_effective_config(&canonical, &effective).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(runtime_dir.join("soul.md")).unwrap(),
+        "updated prompt"
+    );
 }
 
 #[test]
@@ -2054,10 +2062,26 @@ fn config_example_avoids_stale_config_knobs() {
 }
 
 #[test]
-fn soul_prompt_stays_within_the_lean_runtime_budget() {
+fn soul_prompt_keeps_the_full_investment_contract() {
     let soul = std::fs::read_to_string(repo_file("soul.md")).unwrap();
     assert!(
-        soul.chars().count() <= 5_000,
-        "soul.md should remain a compact persona layer; hard policies belong in prompt.rs"
+        soul.chars().count() >= 6_000,
+        "soul.md must retain the full investment workflow and response-format contract"
     );
+    assert!(
+        soul.chars().count() <= 12_000,
+        "soul.md grew beyond the reviewed full-prompt budget"
+    );
+    for required in [
+        "B. 单股深度分析",
+        "C. 板块 / 技术 / 产业链分析",
+        "F. 财务对比 / 数据罗列",
+        "单次回答默认结构",
+        "Bull 投资主线",
+        "Bear 投资主线",
+        "Base Case",
+        "十一、系统边界",
+    ] {
+        assert!(soul.contains(required), "soul.md missing: {required}");
+    }
 }

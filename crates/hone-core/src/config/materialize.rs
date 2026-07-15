@@ -84,10 +84,10 @@ fn copy_relative_system_prompt_asset(
         fs::create_dir_all(parent)
             .map_err(|e| config_io_error("创建 system_prompt_path 目录失败", parent, e))?;
     }
-    if !dest.exists() {
+    if source != dest {
         fs::copy(&source, &dest).map_err(|e| {
             crate::HoneError::Config(format!(
-                "复制 system_prompt_path 失败 ({} -> {}): {e}",
+                "同步 system_prompt_path 失败 ({} -> {}): {e}",
                 source.display(),
                 dest.display()
             ))

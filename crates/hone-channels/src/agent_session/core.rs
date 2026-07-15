@@ -18,10 +18,15 @@ use crate::HoneBotCore;
 use crate::execution::{
     ExecutionMode, ExecutionRequest, ExecutionRunnerSelection, ExecutionService, PreparedExecution,
 };
+use crate::investment_response_guard::{
+    InvestmentResponseContract, append_verified_investment_evidence,
+    classify_investment_response_contract, contract_failure_message,
+    missing_deep_single_stock_sections,
+};
 use crate::prompt::PromptOptions;
 use crate::prompt_audit::PromptAuditMetadata;
 use crate::response_finalizer::{EMPTY_SUCCESS_FALLBACK_MESSAGE, finalize_agent_response};
-use crate::runners::{AgentRunnerEmitter, AgentRunnerRequest, AgentRunnerResult};
+use crate::runners::{AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult};
 use crate::runtime::user_visible_error_message;
 use crate::session_compactor::SessionCompactor;
 use crate::turn_builder::{PromptTurnBuilder, SlashSkillExpansion};
@@ -221,6 +226,86 @@ impl AgentSession {
         last_result
     }
 
+    pub(super) async fn run_runner_with_investment_contract_retry(
+        &self,
+        runner: &dyn crate::runners::AgentRunner,
+        runner_name: &str,
+        session_id: &str,
+        request: AgentRunnerRequest,
+        emitter: Arc<dyn AgentRunnerEmitter>,
+        contract: Option<&InvestmentResponseContract>,
+    ) -> AgentRunnerResult {
+        let mut result = self
+            .run_runner_with_empty_success_retry(
+                runner,
+                runner_name,
+                session_id,
+                request.clone(),
+                emitter.clone(),
+            )
+            .await;
+        let Some(contract) = contract else {
+            return result;
+        };
+        if !result.response.success {
+            return result;
+        }
+        let missing = missing_deep_single_stock_sections(&result.response.content);
+        if missing.is_empty() {
+            return result;
+        }
+
+        tracing::warn!(
+            session_id,
+            runner = runner_name,
+            missing = %missing.join(" | "),
+            "[AgentSession] investment response contract rejected draft; retrying"
+        );
+        self.core.log_message_step(
+            &self.actor.channel,
+            &self.actor.user_id,
+            session_id,
+            "agent.run.retry",
+            &format!("investment_contract missing={}", missing.join("|")),
+            self.message_id.as_deref(),
+            None,
+        );
+        emitter.emit(AgentRunnerEvent::StreamReset).await;
+        let mut retry_request = request;
+        retry_request
+            .runtime_input
+            .push_str(&contract.retry_block(&missing));
+        result = self
+            .run_runner_with_empty_success_retry(
+                runner,
+                runner_name,
+                session_id,
+                retry_request,
+                emitter.clone(),
+            )
+            .await;
+        if !result.response.success {
+            return result;
+        }
+        let retry_missing = missing_deep_single_stock_sections(&result.response.content);
+        if retry_missing.is_empty() {
+            return result;
+        }
+
+        tracing::error!(
+            session_id,
+            runner = runner_name,
+            missing = %retry_missing.join(" | "),
+            "[AgentSession] investment response contract retry still incomplete"
+        );
+        emitter.emit(AgentRunnerEvent::StreamReset).await;
+        result.response.success = false;
+        result.response.content = contract_failure_message().to_string();
+        result.response.error = Some(contract_failure_message().to_string());
+        result.streamed_output = false;
+        result
+    }
+
     /// Run the underlying runner while emitting a periodic "still running" heartbeat.
     ///
     /// 背景：`runner.run(...)` 内部会一直驻留到 ACP 会话结束；一旦进入长工具链或上游静默，
@@ -311,7 +396,7 @@ impl AgentSession {
         context
     }
 
-    fn prepare_execution_for_turn(
+    async fn prepare_execution_for_turn(
         &self,
         session_id: &str,
         persisted_user_input: &str,
@@ -321,8 +406,34 @@ impl AgentSession {
     ) -> Result<PreparedExecution, (AgentSessionErrorKind, String)> {
         let context =
             self.restore_runtime_context(session_id, persisted_user_input, restore_max_override);
-        let (system_prompt, runtime_input) =
+        let (system_prompt, mut runtime_input) =
             self.resolve_prompt_input(session_id, runtime_user_input);
+        let contract = append_verified_investment_evidence(
+            &self.core,
+            &self.actor,
+            &self.channel_target,
+            self.allow_cron,
+            runtime_user_input,
+            &mut runtime_input,
+        )
+        .await
+        .map_err(|err| (AgentSessionErrorKind::AgentFailed, err))?;
+        if let Some(contract) = contract {
+            self.core.log_message_step(
+                &self.actor.channel,
+                &self.actor.user_id,
+                session_id,
+                "market_data.preflight",
+                &format!(
+                    "symbol={} deep_single_stock={} outlook={}",
+                    contract.symbol_hint,
+                    contract.deep_single_stock,
+                    contract.needs_outlook_evidence
+                ),
+                self.message_id.as_deref(),
+                None,
+            );
+        }
         ExecutionService::new(self.core.clone())
             .prepare(ExecutionRequest {
                 mode: ExecutionMode::PersistentConversation,
@@ -1173,38 +1284,16 @@ impl AgentSession {
             None,
         );
 
-        if !self.core.is_admin_actor(&self.actor)
-            && !self.core.runner_supports_strict_actor_sandbox()
+        let mut execution = match self
+            .prepare_execution_for_turn(
+                &session_id,
+                persisted_user_input,
+                runtime_user_input,
+                &options,
+                None,
+            )
+            .await
         {
-            let message = self
-                .core
-                .strict_actor_sandbox_guard_message()
-                .unwrap_or("当前 runner 不支持严格 actor sandbox。");
-            tracing::error!(
-                session_id = %session_id,
-                channel = %self.actor.channel,
-                user_id = %self.actor.user_id,
-                channel_target = %self.channel_target,
-                "[AgentSession] strict actor sandbox guard: {}",
-                message
-            );
-            drop(quota_guard);
-            return self
-                .fail_run(
-                    session_id,
-                    AgentSessionErrorKind::AgentFailed,
-                    message.to_string(),
-                )
-                .await;
-        }
-
-        let mut execution = match self.prepare_execution_for_turn(
-            &session_id,
-            persisted_user_input,
-            runtime_user_input,
-            &options,
-            None,
-        ) {
             Ok(execution) => execution,
             Err((kind, err)) => {
                 drop(quota_guard);
@@ -1238,16 +1327,19 @@ impl AgentSession {
             success: false,
             error: None,
         };
+        let investment_contract = classify_investment_response_contract(runtime_user_input)
+            .filter(|contract| contract.deep_single_stock);
         for recovery_idx in 0..=CONTEXT_OVERFLOW_RECOVERY_LIMIT {
             let runner_emitter =
                 self.runner_emitter(execution.runner_request.working_directory.clone());
             let runner_result = self
-                .run_runner_with_empty_success_retry(
+                .run_runner_with_investment_contract_retry(
                     execution.runner.as_ref(),
                     execution.runner_name,
                     &session_id,
                     execution.runner_request.clone(),
-                    runner_emitter,
+                    runner_emitter.clone(),
+                    investment_contract.as_ref(),
                 )
                 .await;
             streamed_output = runner_result.streamed_output;
@@ -1330,13 +1422,16 @@ impl AgentSession {
                 }
             }
 
-            execution = match self.prepare_execution_for_turn(
-                &session_id,
-                persisted_user_input,
-                runtime_user_input,
-                &options,
-                Some(CONTEXT_OVERFLOW_POST_COMPACT_RESTORE_LIMIT),
-            ) {
+            execution = match self
+                .prepare_execution_for_turn(
+                    &session_id,
+                    persisted_user_input,
+                    runtime_user_input,
+                    &options,
+                    Some(CONTEXT_OVERFLOW_POST_COMPACT_RESTORE_LIMIT),
+                )
+                .await
+            {
                 Ok(execution) => execution,
                 Err((_kind, err)) => {
                     tracing::error!(

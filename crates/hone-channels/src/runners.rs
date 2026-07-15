@@ -16,7 +16,7 @@ pub(crate) use gemini_cli::GeminiCliRunner;
 pub(crate) use gemini_cli::stream_gemini_prompt;
 pub(crate) use hone_cloud::HoneCloudRunner;
 pub(crate) use opencode_acp::OpencodeAcpRunner;
-pub(crate) use tool_reasoning::CodexCliReasoningRunner;
+pub(crate) use tool_reasoning::{CodexCliReasoningRunner, FunctionCallingReasoningRunner};
 pub(crate) use types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
     RunnerTimeouts,

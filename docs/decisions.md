@@ -215,9 +215,33 @@ Last updated: 2026-07-11
 ## D-2026-07-13-01 Retire In-Process Function Calling and Multi-Agent
 
 - Status: Accepted
+- Superseded in part by: `D-2026-07-15-01` restores the strict actor-bound function-calling safety fallback; `D-2026-07-15-02` restores the full investment workflow and response-format prompt; `D-2026-07-15-03` adds code-level enforcement for deep single-stock replies. `multi-agent` and user-selectable `function_calling` remain retired.
 - Supersedes: The in-process fallback portion of `D-2026-07-12-01` and the function-calling stream/tool-loop portions of `D-2026-07-12-03`.
 - Decision: Remove the in-process `function_calling` agent and the sequential `multi-agent` runner. Use the unified configured runner for both conversation and transient heartbeat execution, with `codex_acp` as the default local path.
 - Default: `gpt-5.6-sol` with `xhigh` reasoning effort through `@openai/codex >= 0.144.1` and `@agentclientprotocol/codex-acp >= 1.1.2`.
 - Compatibility: Old `function_calling` and `multi-agent` config values fail explicitly; they do not silently select another runner. Historical records may retain the old names.
 - Security: Native CLI/ACP runners remain administrator-only trusted-host capabilities. With the actor-bound fallback removed, non-admin native-runner requests fail closed and should use `hone_cloud`; this change does not present an ACP/CLI subprocess as a strict filesystem sandbox.
 - Prompt impact: Keep `soul.md` as a compact persona layer, keep hard runtime policies in Rust, attach only query-relevant skill summaries to the current turn, and use `discover_skills` instead of injecting the full catalog into every system prompt.
+
+## D-2026-07-15-01 Restore The Strict Actor-Bound Safety Runner
+
+- Status: Accepted
+- Supersedes: The non-admin fail-without-routing portion of `D-2026-07-13-01`; preserves its retirement of `multi-agent` and of `function_calling` as a user-selectable primary runner.
+- Decision: Keep `codex_acp` as the default primary runner for explicit administrators, but route every non-admin persistent conversation or transient scheduler task to the in-process function-calling runner whenever the configured primary runner is a trusted-host CLI/ACP. The fallback receives only the actor-bound Hone tool registry and never launches the native subprocess.
+- Security: If the actor-bound LLM is unavailable, fail closed. Do not weaken the administrator boundary or present ACP working directories as filesystem sandboxes.
+
+## D-2026-07-15-02 Restore The Full Investment And Response-Format Prompt
+
+- Status: Accepted
+- Supersedes: The compact-`soul.md` portion of `D-2026-07-13-01`; runner retirement, Codex ACP defaults, and query-relevant skill disclosure remain unchanged.
+- Decision: Treat `soul.md` as the complete behavioral contract for investment reasoning and answer composition, using the pre-`71a4498e` large prompt as the baseline. It must retain task routing, single-stock and sector analysis order, fact/inference/conclusion/action separation, valuation discipline, Bull/Bear/Base framing, financial-comparison fields, answer ordering, anti-repetition rules, and user-facing capability behavior.
+- Layering: Rust prompt policy remains the hard enforcement layer for live-data truth sources, privacy, storage, channels, cron, and security. Channel-specific Markdown/HTML guidance takes precedence over old generic formatting examples.
+- Runtime truth: Canonical `soul.md` is authoritative. Effective-config generation refreshes the runtime prompt copy even when a stale destination exists; direct edits to `data/runtime/soul.md` are not durable configuration.
+
+## D-2026-07-15-03 Enforce Deep Single-Stock Evidence And Reply Structure In Code
+
+- Status: Accepted
+- Decision: A recognized security plus deep-analysis/outlook intent (including quarter outlook, “起飞”, valuation, fundamentals, earnings, or buyability) is a code-enforced route, not only a system-prompt suggestion. Before the runner starts, Hone resolves the entity and verifies a same-symbol positive quote; deep routes additionally fetch current profile, financial statements, company news, and—when the question is forward-looking—the next 120 days of earnings-calendar evidence.
+- Answer contract: The turn suffix requires nine numbered sections in the established order: conclusion; company/business model; moat; industry/competitors; financial quality; at least two suitable valuation methods; Bull/Bear/Base; catalysts/risks/falsification; and an actionable buy/wait/reduce/sell/observe recommendation. It also requires a data timestamp and explicit fact/inference separation.
+- Enforcement: The final answer is validated before persistence. A non-conforming draft is withdrawn with `StreamReset` and retried once with the missing contract items. If the retry still fails, Hone withdraws it and fails closed instead of sending a superficial or unverified investment conclusion.
+- Scope: Simple quote-only questions still receive concise answers, but they must pass the same entity and same-symbol quote preflight. Missing or mismatched quote/financial evidence stops numeric conclusions; history, profiles, model memory, and unrelated symbol fields cannot fill the gap.

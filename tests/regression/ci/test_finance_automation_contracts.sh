@@ -44,8 +44,11 @@ STOCK_RESEARCH="skills/stock_research/SKILL.md"
 POSITION_ADVICE="skills/position_advice/SKILL.md"
 SCHEDULED_TASK="skills/scheduled_task/SKILL.md"
 GOLD_ANALYSIS="skills/gold-analysis/SKILL.md"
+INVESTMENT_GUARD="crates/hone-channels/src/investment_response_guard.rs"
+EXECUTION="crates/hone-channels/src/execution.rs"
+SOUL="soul.md"
 
-echo "[finance-automation-contracts] fixed sample count: 8"
+echo "[finance-automation-contracts] fixed sample count: 12"
 
 if contains '"snapshot".into()' "$DATA_FETCH" && contains 'data_fetch(data_type="snapshot"' "$STOCK_RESEARCH"; then
   record success "1.stock_research->snapshot" "tool enum and skill contract are aligned"
@@ -99,6 +102,24 @@ if contains 'DEFAULT_FINANCE_DOMAIN_POLICY' "$PROMPT_FILE" && contains 'static_s
   record success "9.runtime-finance-prompt" "global finance prompt is injected at runtime"
 else
   record fail "9.runtime-finance-prompt" "global finance prompt injection is missing"
+fi
+
+if contains '我想了解Q3的时候nbis能不能起飞' "$INVESTMENT_GUARD" && contains 'missing_deep_single_stock_sections' "$INVESTMENT_GUARD"; then
+  record success "10.deep-stock-response-contract" "NBIS-style outlook questions are classified and validated in code"
+else
+  record fail "10.deep-stock-response-contract" "deep single-stock format enforcement is missing"
+fi
+
+if contains 'quote_has_positive_matching_price' "$INVESTMENT_GUARD" && contains 'financials' "$INVESTMENT_GUARD" && contains 'earnings_calendar' "$INVESTMENT_GUARD"; then
+  record success "11.deep-stock-data-preflight" "entity, same-symbol quote, financials, and outlook evidence are code-gated"
+else
+  record fail "11.deep-stock-data-preflight" "deep single-stock data preflight is incomplete"
+fi
+
+if contains 'B. 单股深度分析' "$SOUL" && contains 'create_strict_actor_runner' "$EXECUTION"; then
+  record success "12.full-prompt-and-safe-runner" "full response contract and actor-bound fallback remain in the repository"
+else
+  record fail "12.full-prompt-and-safe-runner" "full prompt or strict actor runner regressed"
 fi
 
 echo

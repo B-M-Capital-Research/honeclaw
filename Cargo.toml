@@ -4,6 +4,7 @@ members = [
     "crates/hone-core",
     "crates/hone-llm",
     "crates/hone-tools",
+    "agents/function_calling",
     "agents/gemini_cli",
     "agents/codex_cli",
     "memory",
@@ -96,6 +97,7 @@ url = "2"
 hone-core = { path = "crates/hone-core" }
 hone-llm = { path = "crates/hone-llm" }
 hone-tools = { path = "crates/hone-tools" }
+hone-agent = { path = "agents/function_calling" }
 hone-agent-gemini-cli = { path = "agents/gemini_cli" }
 hone-agent-codex-cli = { path = "agents/codex_cli" }
 hone-memory = { path = "memory" }

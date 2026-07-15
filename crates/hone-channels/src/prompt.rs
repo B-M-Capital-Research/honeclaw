@@ -726,4 +726,28 @@ mod tests {
 
         let _ = fs::remove_dir_all(&data_dir);
     }
+
+    #[test]
+    fn repository_soul_keeps_full_investment_output_contract() {
+        let soul = fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../soul.md"),
+        )
+        .expect("repository soul.md should be readable");
+
+        assert!(soul.lines().count() >= 250);
+        for required in [
+            "B. 单股深度分析",
+            "C. 板块 / 技术 / 产业链分析",
+            "F. 财务对比 / 数据罗列",
+            "强制输出顺序",
+            "Bull 投资主线",
+            "Bear 投资主线",
+            "Base Case",
+            "单次回答默认结构",
+            "十一、系统边界",
+        ] {
+            assert!(soul.contains(required), "soul.md missing: {required}");
+        }
+        assert!(!soul.contains("4. 定时任务（scheduled_task"));
+    }
 }

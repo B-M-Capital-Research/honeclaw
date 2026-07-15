@@ -35,13 +35,15 @@ use hone_tools::{
 use tokio::sync::mpsc;
 
 use crate::runners::{
-    AgentRunner, CodexAcpRunner, CodexCliReasoningRunner, GeminiCliRunner, HoneCloudRunner,
-    OpencodeAcpRunner, RunnerTimeouts,
+    AgentRunner, CodexAcpRunner, CodexCliReasoningRunner, FunctionCallingReasoningRunner,
+    GeminiCliRunner, HoneCloudRunner, OpencodeAcpRunner, RunnerTimeouts,
 };
 use crate::sandbox::sandbox_base_dir;
 use crate::session_compactor::SessionCompactor;
 
 use super::logging::printable_or_default;
+
+const STRICT_ACTOR_MAX_ITERATIONS: u32 = 10;
 
 #[derive(Debug, Clone)]
 pub struct CompactSessionOutcome {
@@ -636,6 +638,24 @@ impl HoneBotCore {
                 | AgentRunnerKind::CodexAcp
                 | AgentRunnerKind::OpencodeAcp
         )
+    }
+
+    pub(crate) fn create_strict_actor_runner(
+        &self,
+        system_prompt: &str,
+        tool_registry: ToolRegistry,
+    ) -> Result<Box<dyn AgentRunner>, String> {
+        let llm = self.llm.clone().ok_or_else(|| {
+            "安全执行器不可用：普通用户不能使用具备宿主机访问能力的 CLI/ACP，且严格 function-calling LLM 未配置。"
+                .to_string()
+        })?;
+        Ok(Box::new(FunctionCallingReasoningRunner::new(
+            llm,
+            Arc::new(tool_registry),
+            system_prompt.to_string(),
+            STRICT_ACTOR_MAX_ITERATIONS,
+            self.llm_audit.clone(),
+        )))
     }
 
     pub fn create_actor(

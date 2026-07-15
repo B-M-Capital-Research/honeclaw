@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-07-13
+Last updated: 2026-07-15
+
+## 2026-07-15
+
+### Deep Single-Stock Evidence And Response Contract
+
+- Status: done
+- Date: 2026-07-15
+- Plan: `docs/archive/plans/response-contract-enforcement.md`
+- Handoff: `docs/handoffs/2026-07-15-response-contract-enforcement.md`
+- Decision / ADR: `D-2026-07-15-01`, `D-2026-07-15-02`, and `D-2026-07-15-03` in `docs/decisions.md`
+- Related PRs / commits: local working tree change set
+- Related runbooks / regressions: 117 core tests, 7 function-calling agent tests, full channel library tests, 12 CI-safe finance automation contracts, `hone-cli` build, and isolated live NBIS Web regression
+- Current conclusion: the real NBIS incident was caused by the model ignoring a full prompt that had already been injected, not by prompt omission. Canonical `soul.md` and its runtime sync are restored, non-admin native-runner configuration routes through the actor-bound safety runner, and deep single-stock turns now prefetch same-symbol quote/profile/financial/news/calendar evidence before enforcing a nine-section final answer. Incomplete drafts are reset and retried once, then fail closed. The exact live question completed successfully with all sections after restart.
+- Next entry point: `crates/hone-channels/src/investment_response_guard.rs`, `crates/hone-channels/src/agent_session/core.rs`, and `docs/handoffs/2026-07-15-response-contract-enforcement.md`
 
 ## 2026-07-13
 
