@@ -3,8 +3,20 @@
 - **发现时间**: 2026-07-15 19:02 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
+
+## 复发记录（2026-07-16 15:03 CST）
+
+- 运行态在 11:02 CST live probe 止血结论后再次复发，状态从 `Fixed` 回退为 `New`：
+  - 本轮巡检窗口为 `2026-07-16 11:00-15:01 CST`。
+  - `data/sessions.sqlite3` 在 11:00 CST 后没有新增 user / assistant 消息，`sessions.last_message_role=user` 新增为 0；未见直聊 user-only 悬挂、错投、空回复、内部路径 / raw tool / `<think>` 外泄或全渠道不可用。
+  - `cron_job_runs.max(executed_at)` 仍停在 `2026-07-10T14:01:27.621121+08:00`，因此本轮以 `data/runtime/logs/web.log.2026-07-16` 的 live runtime 证据为准。
+  - `data/runtime/logs/web.log.2026-07-16` 在 11:30-15:01 CST 连续记录 400 条 `证券实体识别结果不完整。请补充公司全名或明确 ticker。` 相关 WARN / ERROR 行，覆盖 11:30、12:00、12:30、13:00、13:30、14:00、14:30、15:00 多个 heartbeat 批次；每个失败通常同时写一条 `HeartbeatDiag runner_error` 和一条渠道跳过发送日志。
+  - 代表样本包括 `全天原油价格3小时播报`、`小米30港元破位预警`、`AAOI 1.6T 光模块心跳检测`、`TSLA 正负触发条件心跳监控`、`TEM大事件心跳监控`、`NBIS关键事件心跳提醒`、`RKLB异动监控`、`ORCL 大事件监控`、`Monitor_Watchlist_11` 等 Feishu / Web heartbeat 任务，均在 runner / guard 阶段落成 `failure_kind=runner_error` 并跳过发送。
+  - 最近非文档代码提交 `7a18f552 fix(agent): enforce entity-first investment analysis` 发生在 13:30 CST；15:00 CST 之后 runtime 日志仍继续出现同类 guard 失败。当前尚不能证明 live 进程已加载该提交，但从用户影响角度看，运行态仍是活跃坏态。
+- 判断：这次不再只是把 `REPEAT` / `EBITDA` 单个配置词或指标词误抽为证券实体，而是实体优先 / 投研完整性 guard 在多条 heartbeat 任务上批量无法完成实体解析，导致提醒整轮不发送。根因仍属于同一条 scheduler finance entity guard 过宽 / 上下文输入不干净链路，因此更新原文档，不新建重复缺陷。
+- 严重等级维持 `P2`：问题影响 heartbeat 提醒是否能生成和发送，但本窗没有直聊未回复、跨用户错投、数据破坏、敏感信息泄露或全渠道停摆证据，因此不是 `P1`，不创建 GitHub Issue。
 
 ## 最新进展（2026-07-16 11:02 CST）
 
