@@ -3,10 +3,21 @@
 - **发现时间**: 2026-07-15 19:02 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，当前不是 P1。
 
-## 最新进展（2026-07-16 07:02 CST）
+## 最新进展（2026-07-16 11:02 CST）
+
+- 运行态已通过 live probe 复核，状态从 `New` 更新为 `Fixed`：
+  - 最近非文档代码提交 `9a1cceb7 fix(agent): keep scheduler metadata out of stock routing` 已在 2026-07-16 09:44 CST 落地，明确把 scheduler metadata 从 stock routing / finance entity guard 路径剥离。
+  - `data/sessions.sqlite3` 在 `2026-07-16 07:02-11:02 CST` 新增两条专门的 live repeat guard probe：
+    - `2026-07-16T09:38:35.841480+08:00`，`session_id=Actor_web__direct__live-repeat-guard-probe-20260716`，用户触发文本含 `权威触发配置：repeat=daily，北京时间 09:40`，assistant 在 `09:38:41.010007+08:00` 返回 `调度路由健康检查通过。`
+    - `2026-07-16T09:43:21.445555+08:00`，`session_id=Actor_web__direct__live-repeat-guard-probe-20260716-final`，用户触发文本含 `权威触发配置：repeat=daily，北京时间 09:44`，assistant 在 `09:43:27.310289+08:00` 返回 `调度路由健康检查通过。`
+  - 两条 probe 均未再把 `REPEAT` 当作不可核验证券实体，也没有出现 `EBITDA` / 指标词误杀、通用失败、错投或未收口。
+  - 同窗 `data/sessions.sqlite3` 按真实 `timestamp` 新增 5 条 user / 5 条 assistant，最近 4 个 session 全部以 assistant 收口；未见长期 user-only 悬挂、空回复、内部实现外露或全渠道不可用。
+- 判断：本轮证据已经覆盖导致 07:02 回退的 `repeat=daily` 运行态路径，且新的 commit 专门处理 scheduler metadata 路由，因此当前按运行态止血更新为 `Fixed`。若后续真实 scheduler 再出现 `REPEAT` / `EBITDA` 或同类配置 / 指标词误杀，应基于新样本重新回退。
+
+## 复发记录（2026-07-16 07:02 CST）
 
 - 运行态在代码级修复后继续复发，状态从 `Fixed` 回退为 `New`：
   - 最近非文档代码提交 `c776b808 fix(agent): ignore scheduler config tokens in investment guard` 已在 2026-07-16 03:04 CST 落地，包含 `key=value` 配置上下文过滤、财务指标词排除和 3 条 guard 回归。

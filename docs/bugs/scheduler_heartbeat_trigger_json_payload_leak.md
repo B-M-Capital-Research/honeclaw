@@ -7,6 +7,15 @@
 
 ## 最新进展
 
+- `2026-07-16 07:02-11:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-16`
+    - 同窗至少 9 条 heartbeat `deliver_preview` 以 fenced JSON 开头，说明用户可见提醒仍可能收到原始 JSON 载荷或 JSON 残片，而不是产品化自然语言提醒。
+    - 08:00 / 09:00 / 09:30 / 10:00 / 10:30 / 11:00 CST `小米30港元破位预警` 的 deliver preview 多次以 fenced JSON 开头，包含 `"status": "triggered"`、`"symbol": "1810.HK"`、`"condition": "现价 ≤ 30 港元"`、`"current_price"` 等字段。
+    - 08:30 / 10:30 CST `Monitor_Watchlist_11` 的 deliver preview 以 fenced JSON 开头，包含 `"triggered"`、`"ticker":"ASTS"`、`"current_price"`、`"trigger_price"`、`"logic"` 等结构化字段。
+    - 10:31 CST `AI与科技持仓观察关键事件心跳提醒` 的 deliver preview 以 fenced JSON 开头，包含 `"status": "triggered"`、`"event"`、`"data_time"` 等协议字段。
+  - 会话质量对照：同窗 `data/sessions.sqlite3` 新增 5 条 user / 5 条 assistant，未确认 JSON 载荷进入 direct / 普通 scheduler assistant final。
+  - 判断：这些样本说明缺陷仍是 heartbeat 出站格式化退化；当前没有错投、全渠道不可用或数据安全证据，主要影响提醒格式质量，因此维持质量性 `P3 / New`，非 P1。
+
 - `2026-07-16 03:02-07:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-15`
     - 同窗至少 5 条 heartbeat `deliver_preview` 以 fenced JSON 或协议 JSON 开头，说明用户可见提醒仍可能收到原始 JSON 载荷或 JSON 残片，而不是产品化自然语言提醒。

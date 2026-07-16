@@ -8,6 +8,16 @@
 
 ## 最新进展
 
+- 本轮 `2026-07-16 07:02-11:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-16`
+    - 08:00 CST `SIVE POET/Nokia/1.6T DFB 心跳检测` deliver preview 写 `当前时间 2026年7月16日 07:30 北京时间`，早于真实日志时间约 30 分钟。
+    - 08:00 CST `存储板块关键事件心跳提醒` raw preview 把检查时间写成 `2026-07-16 北京时间约 09:40`，晚于真实日志时间约 1.5 小时；同条 deliver preview 继续使用 `09:40` 作为检查时间。
+    - 09:00 CST `持仓重大事件心跳提醒` raw preview 写 `2026-07-16 北京时间 07:00 检查完毕`，早于真实日志时间约 2 小时。
+    - 09:30 CST `中际旭创关键事件心跳提醒` 的 raw / deliver preview 错写成 `NBIS 定时核查`，且标题时间为 `北京时间约 08:30`；同一 job 内容主体与任务标的不一致。
+    - 10:30 / 11:00 CST 多条 heartbeat 继续把实际窗口写成 `北京时间约 09:40` 或 `10:30 北京时间`，并在 duplicate suppression 中匹配旧 `08:30` / `09:40` preview。
+  - 会话质量对照：同窗 `data/sessions.sqlite3` 新增 5 条 user / 5 条 assistant，最近 4 个 session 均以 assistant 收口；未见 user-only 悬挂、错投或全渠道不可用。
+  - 判断：这些样本仍是 heartbeat 运行态时间上下文 / 任务上下文漂移，主要影响触发判断质量与用户可见时间口径可信度；没有错投、全渠道不可用或敏感信息泄露，维持质量性 `P3 / New`，非 P1。
+
 - 本轮 `2026-07-16 03:02-07:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-15`
     - 03:30 CST `heartbeat_绿田机械基本面跟踪` raw preview 读取到 `Current time: 2026-04-27 based on system context`。
