@@ -784,6 +784,14 @@ body.public-chat-scroll-lock #root {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
+.pub-assistant-turn-started-at {
+  margin: -3px 0 8px 16px;
+  color: var(--hone-ink-500);
+  font-family: var(--hone-font-label);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.45;
+}
 .pub-assistant-turn-spacer { flex: 1; }
 .pub-assistant-turn-stop,
 .pub-assistant-turn-dismiss {
@@ -1883,6 +1891,7 @@ body.public-chat-scroll-lock #root {
 
 [data-theme="dark"] .pub-assistant-turn-label { color: #cbd5e1; }
 [data-theme="dark"] .pub-assistant-turn-time { color: #64748b; }
+[data-theme="dark"] .pub-assistant-turn-started-at { color: #94a3b8; }
 [data-theme="dark"] .pub-assistant-turn-stop {
   background: #f1f5f9;
   color: #0a0e16;

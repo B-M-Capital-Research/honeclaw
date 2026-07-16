@@ -1,4 +1,5 @@
 import { historyToTimeline } from "./messages";
+import { formatShanghaiDateTime } from "./time";
 import type {
   HistoryAttachment,
   HistoryFinanceCalendar,
@@ -71,6 +72,17 @@ type PublicChatRunEventData = Partial<PublicChatActiveRun> & {
 
 function validEpochMs(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+/** Human-readable server-owned run start, stable across refresh recovery. */
+export function publicChatRunStartedAtLabel(
+  startedAt: number | undefined,
+): string | undefined {
+  if (!validEpochMs(startedAt)) return undefined;
+  return `查询开始：北京时间 ${formatShanghaiDateTime(
+    new Date(startedAt).toISOString(),
+    { second: undefined },
+  )}`;
 }
 
 function nonEmptyText(...values: Array<string | undefined>): string | undefined {

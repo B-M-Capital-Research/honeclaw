@@ -92,6 +92,7 @@ import {
   PUBLIC_RESTORE_TIMEOUT_MS,
   publicAttachmentFileLabel,
   publicChatRunEventPatch,
+  publicChatRunStartedAtLabel,
   publicChatToolStatusText,
   publicRestoreRetryDelay,
   rekeyTrailingOptimisticIds,
@@ -788,6 +789,11 @@ function AssistantBubble(props: {
   onStop?: () => void;
   onDismiss?: () => void;
 }) {
+  const runStartedAtLabel = createMemo(() =>
+    publicChatRunStartedAtLabel(
+      props.message.runId ? props.message.startedAt : undefined,
+    ),
+  );
   const nonImageAttachments = createMemo(() =>
     (props.message.attachments ?? []).filter((a) => a.kind !== "image"),
   );
@@ -900,6 +906,11 @@ function AssistantBubble(props: {
                 ×
               </button>
             </Show>
+          </div>
+        </Show>
+        <Show when={pending() && !hasContent() && runStartedAtLabel()}>
+          <div class="pub-assistant-turn-started-at">
+            {runStartedAtLabel()}
           </div>
         </Show>
         <Show when={pending() && !hasContent()}>

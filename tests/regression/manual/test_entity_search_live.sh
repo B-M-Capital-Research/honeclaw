@@ -84,6 +84,24 @@ read -r BTC_QUOTE_LINE <&4
 printf '%s\n' '{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"data_fetch","arguments":{"data_type":"profile","ticker":"BTCUSD"}}}' >&3
 read -r BTC_PROFILE_LINE <&4
 
+printf '%s\n' '{"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"data_fetch","arguments":{"data_type":"search","query":"RMBS"}}}' >&3
+read -r RMBS_SEARCH_LINE <&4
+
+printf '%s\n' '{"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"data_fetch","arguments":{"data_type":"quote","ticker":"RMBS"}}}' >&3
+read -r RMBS_QUOTE_LINE <&4
+
+printf '%s\n' '{"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"data_fetch","arguments":{"data_type":"profile","ticker":"RMBS"}}}' >&3
+read -r RMBS_PROFILE_LINE <&4
+
+printf '%s\n' '{"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"data_fetch","arguments":{"data_type":"financials","ticker":"RMBS"}}}' >&3
+read -r RMBS_FINANCIALS_LINE <&4
+
+printf '%s\n' '{"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"data_fetch","arguments":{"data_type":"news","ticker":"RMBS"}}}' >&3
+read -r RMBS_NEWS_LINE <&4
+
+printf '%s\n' '{"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"data_fetch","arguments":{"data_type":"quote","ticker":"000001.SS,ASHR,KBA,^GSPC,^IXIC,^DJI"}}}' >&3
+read -r MIXED_MARKET_QUOTE_LINE <&4
+
 python3 - \
   "$SEARCH_LINE" \
   "$QUOTE_LINE" \
@@ -95,9 +113,16 @@ python3 - \
   "$INTL_FINANCIALS_LINE" \
   "$BTC_SEARCH_LINE" \
   "$BTC_QUOTE_LINE" \
-  "$BTC_PROFILE_LINE" <<'PY'
+  "$BTC_PROFILE_LINE" \
+  "$RMBS_SEARCH_LINE" \
+  "$RMBS_QUOTE_LINE" \
+  "$RMBS_PROFILE_LINE" \
+  "$RMBS_FINANCIALS_LINE" \
+  "$RMBS_NEWS_LINE" \
+  "$MIXED_MARKET_QUOTE_LINE" <<'PY'
 import json
 import sys
+import time
 
 
 def structured(line):
@@ -122,16 +147,35 @@ intl_financials = structured(sys.argv[8])
 btc_search = structured(sys.argv[9])
 btc_quote = structured(sys.argv[10])
 btc_profile = structured(sys.argv[11])
+rmbs_search = structured(sys.argv[12])
+rmbs_quote = structured(sys.argv[13])
+rmbs_profile = structured(sys.argv[14])
+rmbs_financials = structured(sys.argv[15])
+rmbs_news = structured(sys.argv[16])
+mixed_market_quote = structured(sys.argv[17])
+
+
+def matching_fresh_quote(payload, symbol):
+    quotes = payload.get("data") or []
+    matching = [item for item in quotes if str(item.get("symbol", "")).upper() == symbol]
+    if len(matching) != 1:
+        raise SystemExit(f"[FAIL] {symbol} quote did not return one same-symbol record")
+    quote = matching[0]
+    if not isinstance(quote.get("price"), (int, float)) or quote["price"] <= 0:
+        raise SystemExit(f"[FAIL] {symbol} quote did not return a positive price")
+    if not isinstance(quote.get("changesPercentage"), (int, float)):
+        raise SystemExit(f"[FAIL] {symbol} quote did not return numeric changesPercentage")
+    timestamp = quote.get("timestamp")
+    if not isinstance(timestamp, (int, float)) or not (time.time() - 5 * 86400 <= timestamp <= time.time() + 300):
+        raise SystemExit(f"[FAIL] {symbol} quote timestamp is absent or stale")
+    return quote
 
 candidates = search.get("data") or []
 exact = [item for item in candidates if str(item.get("symbol", "")).upper() == "NBIS"]
 if len(exact) != 1 or not (exact[0].get("name") or exact[0].get("companyName")):
     raise SystemExit("[FAIL] NBIS search did not return one exact named candidate")
 
-quotes = quote.get("data") or []
-matching = [item for item in quotes if str(item.get("symbol", "")).upper() == "NBIS"]
-if len(matching) != 1 or not isinstance(matching[0].get("price"), (int, float)) or matching[0]["price"] <= 0:
-    raise SystemExit("[FAIL] NBIS quote did not return one positive same-symbol price")
+matching_quote = matching_fresh_quote(quote, "NBIS")
 
 financial_data = financials.get("data")
 if not isinstance(financial_data, (list, dict)) or not financial_data:
@@ -142,14 +186,7 @@ intl_exact = [item for item in intl_candidates if str(item.get("symbol", "")).up
 if len(intl_exact) != 1 or not (intl_exact[0].get("name") or intl_exact[0].get("companyName")):
     raise SystemExit("[FAIL] INTL search did not return one exact named candidate")
 
-intl_quotes = intl_quote.get("data") or []
-intl_matching = [item for item in intl_quotes if str(item.get("symbol", "")).upper() == "INTL"]
-if (
-    len(intl_matching) != 1
-    or not isinstance(intl_matching[0].get("price"), (int, float))
-    or intl_matching[0]["price"] <= 0
-):
-    raise SystemExit("[FAIL] INTL quote did not return one positive same-symbol price")
+intl_matching_quote = matching_fresh_quote(intl_quote, "INTL")
 
 profiles = intl_profile.get("data") or []
 matching_profiles = [item for item in profiles if str(item.get("symbol", "")).upper() == "INTL"]
@@ -176,28 +213,48 @@ btc_exchange = str(btc_exact[0].get("stockExchange", "")).upper()
 if btc_market != "CRYPTO" and btc_exchange != "CCC":
     raise SystemExit("[FAIL] BTCUSD exact search did not expose structured CRYPTO/CCC market evidence")
 
-btc_quotes = btc_quote.get("data") or []
-btc_matching = [item for item in btc_quotes if str(item.get("symbol", "")).upper() == "BTCUSD"]
-if (
-    len(btc_matching) != 1
-    or not isinstance(btc_matching[0].get("price"), (int, float))
-    or btc_matching[0]["price"] <= 0
-):
-    raise SystemExit("[FAIL] BTCUSD quote did not return one positive same-symbol price")
+btc_matching_quote = matching_fresh_quote(btc_quote, "BTCUSD")
 
 btc_profile_data = btc_profile.get("data")
 if not isinstance(btc_profile_data, list) or btc_profile_data:
     raise SystemExit("[FAIL] BTCUSD stock profile was not a successful empty list")
 
-print("[PASS] live NBIS company, INTL ETF, and BTCUSD crypto entity/data probes succeeded")
+rmbs_candidates = rmbs_search.get("data") or []
+rmbs_exact = [item for item in rmbs_candidates if str(item.get("symbol", "")).upper() == "RMBS"]
+if len(rmbs_exact) != 1 or "RAMBUS" not in str(rmbs_exact[0].get("name", "")).upper():
+    raise SystemExit("[FAIL] RMBS search did not exact-resolve Rambus Inc.")
+rmbs_matching_quote = matching_fresh_quote(rmbs_quote, "RMBS")
+rmbs_profiles = rmbs_profile.get("data") or []
+rmbs_matching_profiles = [
+    item for item in rmbs_profiles if str(item.get("symbol", "")).upper() == "RMBS"
+]
+if len(rmbs_matching_profiles) != 1 or rmbs_matching_profiles[0].get("isEtf") is not False:
+    raise SystemExit("[FAIL] RMBS profile did not confirm an exact-symbol non-ETF equity")
+rmbs_financial_data = rmbs_financials.get("data")
+if not isinstance(rmbs_financial_data, list) or not rmbs_financial_data:
+    raise SystemExit("[FAIL] RMBS financials did not return non-empty annual data")
+if any(str(item.get("symbol", "")).upper() != "RMBS" for item in rmbs_financial_data):
+    raise SystemExit("[FAIL] RMBS financials contained a different symbol")
+rmbs_news_data = rmbs_news.get("data")
+if not isinstance(rmbs_news_data, list) or not rmbs_news_data:
+    raise SystemExit("[FAIL] RMBS news did not return a provider result for filter regression")
+
+mixed_market_symbols = ["000001.SS", "ASHR", "KBA", "^GSPC", "^IXIC", "^DJI"]
+for symbol in mixed_market_symbols:
+    matching_fresh_quote(mixed_market_quote, symbol)
+
+print("[PASS] live RMBS/NBIS equities, INTL ETF, and BTCUSD crypto entity/data probes succeeded")
 print(f"NBIS company={exact[0].get('name') or exact[0].get('companyName')}")
-print(f"NBIS quote_price={matching[0]['price']}")
+print(f"NBIS quote_price={matching_quote['price']} change={matching_quote['changesPercentage']} timestamp={int(matching_quote['timestamp'])}")
 print(f"NBIS financials_shape={type(financial_data).__name__} items={len(financial_data)}")
 print(f"INTL fund={intl_exact[0].get('name') or intl_exact[0].get('companyName')}")
-print(f"INTL quote_price={intl_matching[0]['price']}")
+print(f"INTL quote_price={intl_matching_quote['price']} change={intl_matching_quote['changesPercentage']} timestamp={int(intl_matching_quote['timestamp'])}")
 print(f"INTL isEtf={profile['isEtf']} isFund={profile['isFund']}")
 print(f"INTL holdings_shape={type(holdings_data).__name__} items={len(holdings_data)}")
 print("INTL financials_shape=list items=0")
-print(f"BTCUSD market={btc_market or btc_exchange} quote_price={btc_matching[0]['price']}")
+print(f"BTCUSD market={btc_market or btc_exchange} quote_price={btc_matching_quote['price']}")
 print("BTCUSD stock_profile_shape=list items=0")
+print(f"RMBS company={rmbs_exact[0].get('name')} quote_price={rmbs_matching_quote['price']} change={rmbs_matching_quote['changesPercentage']} timestamp={int(rmbs_matching_quote['timestamp'])}")
+print(f"RMBS financials_shape=list items={len(rmbs_financial_data)} news_items={len(rmbs_news_data)}")
+print(f"mixed_market_live_quotes={','.join(mixed_market_symbols)}")
 PY

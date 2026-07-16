@@ -31,7 +31,7 @@ use std::time::Duration;
 use crate::HoneBotCore;
 use crate::investment_response_guard::{
     DeepAnalysisKind, InvestmentResponseContract, ResolvedSecurityEntity, contract_failure_message,
-    missing_investment_response_sections,
+    missing_investment_response_sections, prepare_verified_investment_turn,
 };
 use crate::response_finalizer::{
     EMPTY_SUCCESS_FALLBACK_MESSAGE, finalize_agent_response, normalize_local_image_references,
@@ -843,13 +843,186 @@ async fn execute_once_intent_suppresses_empty_success_retry_even_without_trace()
 }
 
 #[tokio::test]
+async fn post_quote_runner_failure_preserves_server_verified_investment_facts() {
+    let root = make_temp_dir("hone_channels_post_quote_runner_failure");
+    std::fs::create_dir_all(&root).expect("create root");
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let actor = ActorIdentity::new("web", "post-quote-failure", None::<String>).expect("actor");
+    let session = AgentSession::new(core, actor, "direct");
+    let results = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: String::new(),
+                tool_calls_made: Vec::new(),
+                iterations: 1,
+                success: false,
+                error: Some("upstream model rejected the synthesis request".to_string()),
+            },
+            streamed_output: true,
+            terminal_error_emitted: true,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        },
+    ])));
+    let runner = MockSequencedRunner {
+        results: results.clone(),
+    };
+    let request = AgentRunnerRequest {
+        session_id: "post-quote-failure-session".to_string(),
+        actor_label: "web:post-quote-failure".to_string(),
+        actor: session.actor.clone(),
+        channel_target: "direct".to_string(),
+        allow_cron: false,
+        config_path: String::new(),
+        runtime_dir: String::new(),
+        system_prompt: "system".to_string(),
+        runtime_input: "现在 NBIS 怎么看".to_string(),
+        context: AgentContext::new("post-quote-failure-session".to_string()),
+        timeout: None,
+        gemini_stream: GeminiStreamOptions::default(),
+        session_metadata: HashMap::new(),
+        working_directory: root.display().to_string(),
+        allowed_tools: None,
+        max_tool_calls: None,
+        tool_call_limits: None,
+    };
+    let contract = InvestmentResponseContract {
+        entities: vec![ResolvedSecurityEntity {
+            mention: "nbis".into(),
+            symbol: "NBIS".into(),
+            name: "Nebius Group N.V.".into(),
+            exchange: Some("NASDAQ".into()),
+            currency: Some("USD".into()),
+            asset_type: Some("stock".into()),
+            profile_verified: true,
+            verified_price: Some("199.51".into()),
+            verified_change_percentage: Some("1.25".into()),
+            quote_timestamp: None,
+            annual_financials_verified: None,
+            verified_annual_financial_facts: Vec::new(),
+            fund_holdings_verified: None,
+            verified_fund_holding_facts: Vec::new(),
+        }],
+        verified_web_sources: Vec::new(),
+        verified_dated_web_sources: Vec::new(),
+        deep_analysis: DeepAnalysisKind::Equity,
+        deep_comparison: false,
+        requires_verified_price: true,
+        needs_outlook_evidence: false,
+        requires_recent_web_evidence: false,
+        comparison: false,
+        origin: AgentTurnOrigin::Interactive,
+    };
+
+    let result = session
+        .run_runner_with_investment_contract_retry(
+            &runner,
+            "mock_sequenced",
+            "post-quote-failure-session",
+            request.clone(),
+            Arc::new(NoopEmitter),
+            Some(&contract),
+            PreparedTurnReexecutionPolicy::Allowed,
+        )
+        .await;
+
+    assert!(!result.response.success);
+    assert!(result.response.content.starts_with("数据时间：北京时间 "));
+    assert!(
+        result
+            .response
+            .content
+            .contains("Nebius Group N.V.（NBIS）本轮同代码现价 199.51 USD")
+    );
+    assert!(
+        result
+            .response
+            .content
+            .contains("upstream model rejected the synthesis request")
+    );
+    assert_eq!(
+        result.response.error.as_deref(),
+        Some(result.response.content.as_str())
+    );
+    assert!(!result.streamed_output);
+    assert!(!result.terminal_error_emitted);
+    assert!(results.lock().expect("results lock").is_empty());
+
+    let retry_results = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: "Q3 也许会上涨。".to_string(),
+                tool_calls_made: Vec::new(),
+                iterations: 1,
+                success: true,
+                error: None,
+            },
+            streamed_output: true,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        },
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: String::new(),
+                tool_calls_made: Vec::new(),
+                iterations: 1,
+                success: false,
+                error: Some("upstream model failed while repairing the draft".to_string()),
+            },
+            streamed_output: true,
+            terminal_error_emitted: true,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        },
+    ])));
+    let retry_runner = MockSequencedRunner {
+        results: retry_results.clone(),
+    };
+    let retry_failure = session
+        .run_runner_with_investment_contract_retry(
+            &retry_runner,
+            "mock_sequenced",
+            "post-quote-retry-failure-session",
+            request,
+            Arc::new(NoopEmitter),
+            Some(&contract),
+            PreparedTurnReexecutionPolicy::Allowed,
+        )
+        .await;
+    assert!(!retry_failure.response.success);
+    assert!(
+        retry_failure
+            .response
+            .content
+            .starts_with("数据时间：北京时间 ")
+    );
+    assert!(
+        retry_failure
+            .response
+            .content
+            .contains("Nebius Group N.V.（NBIS）本轮同代码现价 199.51 USD")
+    );
+    assert!(
+        retry_failure
+            .response
+            .content
+            .contains("upstream model failed while repairing the draft")
+    );
+    assert!(!retry_failure.streamed_output);
+    assert!(!retry_failure.terminal_error_emitted);
+    assert!(retry_results.lock().expect("retry results lock").is_empty());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
 async fn investment_contract_retries_incomplete_nbis_draft() {
     let root = make_temp_dir("hone_channels_investment_contract_retry");
     std::fs::create_dir_all(&root).expect("create root");
     let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
     let actor = ActorIdentity::new("web", "investment-contract", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
-    let complete = "数据时间：北京时间 2026-07-15。已核验事实与情景推断分开。\n1. 结论：本轮已核验同代码现价 199.51 美元，先观察。\n2. 公司是什么、靠什么赚钱：商业模式为云服务收入。\n3. 护城河与竞争壁垒：壁垒来自资源与客户粘性。\n4. 行业位置与关键对手：竞争对手与行业位置持续变化。\n5. 财务质量与自由现金流：自由现金流是核心验证项。\n6. 估值：使用 P/S 与情景法两种方法评估。\n7. Bull / Bear / Base Case：Bull 看增长，Bear 看竞争，Base 看执行。\n8. 催化剂、风险点、证伪条件：催化是订单，风险是降速，证伪是失速。\n9. 动作建议：观察；若增长与现金流改善则触发重评。";
+    let complete = "数据时间：北京时间 2026-07-15。已核验事实与情景推断分开。\n1. 结论：本轮已核验同代码现价 199.51 美元，先观察。\n2. 公司是什么、靠什么赚钱：公司通过向企业客户提供云计算与 AI 基础设施服务，依靠订阅和用量收入赚钱。\n3. 护城河与竞争壁垒：护城河来自稀缺算力资源、客户切换成本和长期合同形成的粘性。\n4. 行业位置与关键对手：公司位于 AI 云基础设施产业链，并面对大型云厂商的持续竞争。\n5. 财务质量与自由现金流：年度利润表可用于判断收入和利润质量，自由现金流本轮未核验。\n6. 估值：使用 P/S 与情景法两种方法，并把收入增速和估值倍数作为假设。\n7. Bull / Bear / Base Case：Bull 看需求和订单增长，Bear 看竞争与估值压缩，Base 看业务正常执行。\n8. 催化剂、风险点、证伪条件：新订单是催化，执行降速是风险；若增长持续失速则构成证伪。\n9. 动作建议：保持观察；若增长与现金流同时改善则触发重新评估。";
     let incomplete_raw = "<think>内部推理不得带入修订请求</think>\nQ3 可能起飞。你成本多少？";
     let runs = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
         MockStreamingRun {
@@ -950,12 +1123,17 @@ async fn investment_contract_retries_incomplete_nbis_draft() {
             verified_change_percentage: None,
             quote_timestamp: None,
             annual_financials_verified: None,
+            verified_annual_financial_facts: Vec::new(),
+            fund_holdings_verified: None,
+            verified_fund_holding_facts: Vec::new(),
         }],
         verified_web_sources: Vec::new(),
+        verified_dated_web_sources: Vec::new(),
         deep_analysis: DeepAnalysisKind::Equity,
         deep_comparison: false,
         requires_verified_price: true,
         needs_outlook_evidence: true,
+        requires_recent_web_evidence: false,
         comparison: false,
         origin: AgentTurnOrigin::Interactive,
     };
@@ -983,7 +1161,23 @@ async fn investment_contract_retries_incomplete_nbis_draft() {
         "contract retry failed: {:?}",
         result.response.error
     );
-    assert_eq!(result.response.content, complete);
+    assert!(result.response.content.starts_with("数据时间：北京时间 "));
+    assert!(
+        result
+            .response
+            .content
+            .contains("标的核验：Nebius Group N.V.（NBIS")
+    );
+    assert!(
+        result.response.content.contains(
+            complete
+                .lines()
+                .skip(1)
+                .collect::<Vec<_>>()
+                .join("\n")
+                .as_str()
+        )
+    );
     assert!(!result.streamed_output);
     assert!(!result.terminal_error_emitted);
     assert!(runs.lock().expect("runs lock").is_empty());
@@ -1017,7 +1211,7 @@ async fn fund_contract_cannot_wash_forbidden_financial_call_with_clean_retry() {
     let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
     let actor = ActorIdentity::new("web", "fund-contract", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
-    let complete = "数据时间：北京时间 2026-07-16。已核验事实与情景假设分开。\n1. 结论：本轮同代码现价 30.495 美元，先观察。\n2. 基金目标、基金策略与跟踪对象：跟踪国际市场暴露是核心目标。\n3. 持仓、集中度与主要暴露：持仓与集中度按本轮数据核验。\n4. 地域、行业与货币风险：地域与汇率风险需同时管理。\n5. 流动性、基金规模与交易特征：流动性与成交特征决定交易成本。\n6. 费用、跟踪误差与底层资产估值：费率与底层估值是关键变量。\n7. Bull / Bear / Base Case：Bull 看风险偏好，Bear 看汇率，Base 看基准收益。\n8. 催化剂、风险点、证伪条件：催化是宽松，风险是波动，证伪是暴露失效。\n9. 动作建议：观察；若费率、流动性与暴露均符合条件则再评估。";
+    let complete = "数据时间：北京时间 2026-07-16。已核验事实与情景假设分开。\n1. 结论：本轮同代码现价 30.495 美元，先观察。\n2. 基金目标、基金策略与跟踪对象：跟踪国际市场暴露是核心目标。\n3. 持仓、集中度与主要暴露：持仓与集中度按本轮数据核验。\n4. 地域、行业与货币风险：地域与汇率风险需同时管理。\n5. 流动性、基金规模与交易特征：基金规模本轮未核验；流动性与成交特征决定交易成本。\n6. 费用、跟踪误差与底层资产估值：费率与跟踪误差本轮未核验；底层估值是关键变量。\n7. Bull / Bear / Base Case：Bull 看风险偏好，Bear 看汇率，Base 看基准收益。\n8. 催化剂、风险点、证伪条件：催化是宽松，风险是波动，证伪是暴露失效。\n9. 动作建议：观察；若费率、流动性与暴露均符合条件则再评估。";
     let forbidden_call = ToolCallMade {
         name: "data_fetch".into(),
         arguments: serde_json::json!({"data_type":"financials","ticker":"INTL"}),
@@ -1087,12 +1281,17 @@ async fn fund_contract_cannot_wash_forbidden_financial_call_with_clean_retry() {
             verified_change_percentage: None,
             quote_timestamp: None,
             annual_financials_verified: None,
+            verified_annual_financial_facts: Vec::new(),
+            fund_holdings_verified: None,
+            verified_fund_holding_facts: Vec::new(),
         }],
         verified_web_sources: Vec::new(),
+        verified_dated_web_sources: Vec::new(),
         deep_analysis: DeepAnalysisKind::Fund,
         deep_comparison: false,
         requires_verified_price: true,
         needs_outlook_evidence: false,
+        requires_recent_web_evidence: false,
         comparison: false,
         origin: AgentTurnOrigin::Interactive,
     };
@@ -1110,19 +1309,25 @@ async fn fund_contract_cannot_wash_forbidden_financial_call_with_clean_retry() {
         .await;
 
     assert!(!result.response.success);
-    assert_eq!(result.response.content, contract_failure_message());
+    assert!(result.response.content.starts_with("数据时间：北京时间 "));
+    assert!(
+        result
+            .response
+            .content
+            .ends_with(contract_failure_message())
+    );
     assert!(results.lock().expect("results lock").is_empty());
     let _ = std::fs::remove_dir_all(root);
 }
 
 #[tokio::test]
-async fn investment_contract_validates_the_same_visible_text_emitted_to_users() {
+async fn investment_contract_sanitizes_and_server_normalizes_the_visible_text() {
     let root = make_temp_dir("hone_channels_investment_contract_visible_text");
     std::fs::create_dir_all(&root).expect("create root");
     let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
     let actor = ActorIdentity::new("web", "visible-contract", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
-    let visible = "数据时间：北京时间 2026-07-16。已核验事实与情景假设分开。\n1. 结论：本轮同代码现价 30.495 美元，先观察。\n2. 基金目标、基金策略与跟踪对象：跟踪国际市场暴露是核心目标。\n3. 持仓、集中度与主要暴露：持仓与集中度按本轮数据核验。\n4. 地域、行业与货币风险：地域与汇率风险需同时管理。\n5. 流动性、基金规模与交易特征：流动性与成交特征决定交易成本。\n6. 费用、跟踪误差与底层资产估值：费率与底层估值是关键变量。\n7. Bull / Bear / Base Case：Bull 看风险偏好，Bear 看汇率，Base 看基准收益。\n8. 催化剂、风险点、证伪条件：催化是宽松，风险是波动，证伪是暴露失效。\n9. 动作建议：观察；若费率、流动性与暴露均符合条件则再评估。";
+    let visible = "数据时间：北京时间 2026-07-16。已核验事实与情景假设分开。\nINTL 当前价 30.495 美元。\n1. 结论：本轮判断以观察为主。\n2. 基金目标、基金策略与跟踪对象：跟踪国际市场暴露是核心目标。\n3. 持仓、集中度与主要暴露：持仓与集中度按本轮数据核验。\n4. 地域、行业与货币风险：地域与汇率风险需同时管理。\n5. 流动性、基金规模与交易特征：基金规模本轮未核验；流动性与成交特征决定交易成本。\n6. 费用、跟踪误差与底层资产估值：费率与跟踪误差本轮未核验；底层估值是关键变量。\n7. Bull / Bear / Base Case：Bull 看风险偏好，Bear 看汇率，Base 看基准收益。\n8. 催化剂、风险点、证伪条件：催化是宽松，风险是波动，证伪是暴露失效。\n9. 动作建议：观察；若费率、流动性与暴露均符合条件则再评估。";
     let raw =
         format!("<think>\n1. 先规划输出\n2. 这里是内部推理，不是基金目标章节\n</think>\n{visible}");
     let results = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
@@ -1175,12 +1380,17 @@ async fn investment_contract_validates_the_same_visible_text_emitted_to_users() 
             verified_change_percentage: None,
             quote_timestamp: None,
             annual_financials_verified: None,
+            verified_annual_financial_facts: Vec::new(),
+            fund_holdings_verified: None,
+            verified_fund_holding_facts: Vec::new(),
         }],
         verified_web_sources: Vec::new(),
+        verified_dated_web_sources: Vec::new(),
         deep_analysis: DeepAnalysisKind::Fund,
         deep_comparison: false,
         requires_verified_price: true,
         needs_outlook_evidence: false,
+        requires_recent_web_evidence: false,
         comparison: false,
         origin: AgentTurnOrigin::Interactive,
     };
@@ -1198,7 +1408,28 @@ async fn investment_contract_validates_the_same_visible_text_emitted_to_users() 
         .await;
 
     assert!(result.response.success);
-    assert_eq!(result.response.content, raw);
+    assert!(result.response.content.starts_with("数据时间：北京时间 "));
+    assert!(
+        result
+            .response
+            .content
+            .contains("标的核验：Main International ETF（INTL")
+    );
+    assert!(result.response.content.contains("INTL 当前价 30.495 美元"));
+    assert!(
+        result
+            .response
+            .content
+            .contains("1. 结论：本轮判断以观察为主")
+    );
+    assert!(result.response.content.contains("9. 动作建议：观察"));
+    assert!(!result.response.content.contains("<think>"));
+    assert!(
+        result
+            .response
+            .content
+            .contains("已核验事实：Main International ETF（INTL）本轮同代码现价 30.495 USD")
+    );
     assert!(results.lock().expect("results lock").is_empty());
     let _ = std::fs::remove_dir_all(root);
 }
@@ -2792,7 +3023,9 @@ async fn run_persists_failed_assistant_turn_when_strict_fallback_llm_is_missing(
     let core = Arc::new(HoneBotCore::new(config));
     let actor = ActorIdentity::new("web", "alice", None::<String>).expect("actor");
 
-    let session = AgentSession::new(core.clone(), actor.clone(), actor.user_id.clone());
+    let listener = Arc::new(RecordingListener::default());
+    let mut session = AgentSession::new(core.clone(), actor.clone(), actor.user_id.clone());
+    session.add_listener(listener.clone());
     let result = session.run("帮我看持仓", AgentRunOptions::default()).await;
 
     assert!(!result.response.success);
@@ -2817,6 +3050,21 @@ async fn run_persists_failed_assistant_turn_when_strict_fallback_llm_is_missing(
             .and_then(|value| value.as_bool()),
         Some(true)
     );
+    let events = listener.events.lock().await;
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AgentSessionEvent::Run(RunEvent::Progress {
+            stage: "entity_resolution.preflight",
+            detail: None,
+        })
+    )));
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AgentSessionEvent::Run(RunEvent::Progress {
+            stage: "entity_resolution.preflight.done",
+            detail: None,
+        })
+    )));
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -2833,7 +3081,9 @@ async fn run_persists_failed_assistant_turn_for_runner_failure() {
     let core = make_test_core(&root, llm);
     let actor = ActorIdentity::new("web", "alice", None::<String>).expect("actor");
 
-    let session = AgentSession::new(core.clone(), actor.clone(), actor.user_id.clone());
+    let listener = Arc::new(RecordingListener::default());
+    let mut session = AgentSession::new(core.clone(), actor.clone(), actor.user_id.clone());
+    session.add_listener(listener.clone());
     let result = session
         .run("帮我看看 KLAC", AgentRunOptions::default())
         .await;
@@ -2846,6 +3096,14 @@ async fn run_persists_failed_assistant_turn_for_runner_failure() {
     assert_eq!(messages.len(), 2);
     assert_eq!(messages[0].role, "user");
     assert_eq!(messages[1].role, "assistant");
+    let events = listener.events.lock().await;
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AgentSessionEvent::Run(RunEvent::Progress {
+            stage: "entity_resolution.preflight",
+            detail: None,
+        })
+    )));
     let assistant_text = messages[1].content[0].text.as_deref().unwrap_or_default();
     assert!(!assistant_text.is_empty());
     assert!(
@@ -2860,6 +3118,157 @@ async fn run_persists_failed_assistant_turn_for_runner_failure() {
             .and_then(|value| value.as_bool()),
         Some(true)
     );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn malformed_auxiliary_entity_output_fails_closed_without_dropping_named_entities() {
+    let root = make_temp_dir("hone_channels_malformed_entity_output");
+    std::fs::create_dir_all(&root).expect("create root");
+    let llm = MockLlmProvider::with_chat_and_tool_responses(
+        vec![Ok(ChatResult {
+            content: "not valid entity json".to_string(),
+            usage: None,
+        })],
+        vec![],
+    );
+    let core = make_test_core(&root, llm.clone());
+    let actor = ActorIdentity::new("web", "entity-malformed", None::<String>).expect("actor");
+    let listener = Arc::new(RecordingListener::default());
+    let mut session = AgentSession::new(core, actor, "direct");
+    session.add_listener(listener.clone());
+
+    let result = session
+        .run("比较 NBIS 和英伟达", AgentRunOptions::default())
+        .await;
+
+    assert!(!result.response.success);
+    let error = result.response.error.as_deref().unwrap_or_default();
+    assert!(error.starts_with("数据时间：北京时间"), "{error}");
+    assert!(error.contains("证券实体解析暂时未能确认"), "{error}");
+    assert_eq!(llm.chat_calls(), 1);
+    assert_eq!(
+        llm.chat_with_tools_calls(),
+        0,
+        "runner must not analyze only NBIS"
+    );
+    let events = listener.events.lock().await;
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AgentSessionEvent::Run(RunEvent::Progress {
+            stage: "entity_resolution.preflight.failed",
+            detail: None,
+        })
+    )));
+    assert!(!events.iter().any(|event| matches!(
+        event,
+        AgentSessionEvent::Run(RunEvent::Progress {
+            stage: "entity_resolution.preflight.done" | "market_data.preflight.done",
+            ..
+        })
+    )));
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn unresolved_named_entity_payload_is_a_clarification_not_provider_unavailability() {
+    let root = make_temp_dir("hone_channels_empty_entity_payload");
+    std::fs::create_dir_all(&root).expect("create root");
+    let llm = MockLlmProvider::with_chat_and_tool_responses(
+        vec![Ok(ChatResult {
+            content: r#"{"entities":[],"unresolved_mentions":["英伟达"]}"#.to_string(),
+            usage: None,
+        })],
+        vec![],
+    );
+    let core = make_test_core(&root, llm.clone());
+    let actor = ActorIdentity::new("web", "entity-empty", None::<String>).expect("actor");
+    let session = AgentSession::new(core, actor, "direct");
+
+    let result = session.run("英伟达", AgentRunOptions::default()).await;
+
+    assert!(!result.response.success);
+    let error = result.response.error.as_deref().unwrap_or_default();
+    assert!(
+        error.contains("无法从当前问题中确认具体公司或证券"),
+        "{error}"
+    );
+    assert!(!error.contains("解析暂时未能确认"), "{error}");
+    assert_eq!(llm.chat_calls(), 1);
+    assert_eq!(llm.chat_with_tools_calls(), 0);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn valid_empty_entity_payload_allows_an_ordinary_finance_question() {
+    let root = make_temp_dir("hone_channels_ordinary_finance_empty_entity");
+    std::fs::create_dir_all(&root).expect("create root");
+    let llm = MockLlmProvider::with_chat_and_tool_responses(
+        vec![Ok(ChatResult {
+            content: r#"{"entities":[],"unresolved_mentions":[]}"#.to_string(),
+            usage: None,
+        })],
+        vec![Ok(ChatResponse {
+            content: "安全边际是价格相对保守价值估计留下的缓冲。".to_string(),
+            reasoning_content: None,
+            tool_calls: None,
+            usage: None,
+        })],
+    );
+    let core = make_test_core(&root, llm.clone());
+    let actor = ActorIdentity::new("web", "ordinary-finance", None::<String>).expect("actor");
+    let session = AgentSession::new(core, actor, "direct");
+
+    let result = session
+        .run("什么是安全边际", AgentRunOptions::default())
+        .await;
+
+    assert!(result.response.success, "{:?}", result.response.error);
+    assert!(result.response.content.contains("安全边际"));
+    assert!(!result.response.content.contains("补充公司全名或 ticker"));
+    assert_eq!(llm.chat_calls(), 1);
+    assert_eq!(llm.chat_with_tools_calls(), 1);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn portfolio_scope_reads_the_server_truth_source_before_the_runner() {
+    let root = make_temp_dir("hone_channels_portfolio_scope_preflight");
+    std::fs::create_dir_all(&root).expect("create root");
+    let llm = MockLlmProvider::with_chat_and_tool_responses(vec![], vec![]);
+    let core = make_test_core(&root, llm.clone());
+    let actor = ActorIdentity::new("web", "portfolio-preflight", None::<String>).expect("actor");
+    let mut runtime_input = "帮我看持仓".to_string();
+
+    let contract = prepare_verified_investment_turn(
+        &core,
+        &actor,
+        "direct",
+        false,
+        "帮我看持仓",
+        AgentTurnOrigin::Interactive,
+        &mut runtime_input,
+    )
+    .await
+    .expect("portfolio preflight");
+
+    assert!(contract.is_none());
+    assert!(runtime_input.contains("服务端已经执行只读 portfolio view"));
+    assert!(
+        runtime_input.contains("\"holdings_total\":0"),
+        "{runtime_input}"
+    );
+    assert!(
+        runtime_input.contains("\"watchlist_total\":0"),
+        "{runtime_input}"
+    );
+    assert!(
+        runtime_input.contains("\"truncated\":false"),
+        "{runtime_input}"
+    );
+    assert!(runtime_input.contains("本轮唯一持仓真相源"));
+    assert_eq!(llm.chat_calls(), 0);
+    assert_eq!(llm.chat_with_tools_calls(), 0);
     let _ = std::fs::remove_dir_all(root);
 }
 

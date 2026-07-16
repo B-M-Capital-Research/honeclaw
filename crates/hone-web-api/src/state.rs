@@ -139,17 +139,22 @@ impl ActiveChatRunRegistry {
         self.entries.lock().unwrap().len()
     }
 
-    fn update(&self, session_id: &str, run_id: &str, phase: &str, status_text: &str) {
+    fn update(
+        &self,
+        session_id: &str,
+        run_id: &str,
+        phase: &str,
+        status_text: &str,
+    ) -> Option<ActiveChatRun> {
         let mut entries = self.entries.lock().unwrap();
-        let Some(run) = entries.get_mut(session_id) else {
-            return;
-        };
+        let run = entries.get_mut(session_id)?;
         if run.run_id != run_id {
-            return;
+            return None;
         }
         run.phase = phase.to_string();
         run.status_text = status_text.to_string();
         run.updated_at_ms = Utc::now().timestamp_millis();
+        Some(run.clone())
     }
 
     fn heartbeat(
@@ -167,8 +172,15 @@ impl ActiveChatRunRegistry {
         if run.run_id != run_id || now_ms.saturating_sub(run.updated_at_ms) < min_silence_ms {
             return None;
         }
-        run.phase = phase.to_string();
-        run.status_text = status_text.to_string();
+        // A heartbeat proves liveness; it must not rewind a more specific
+        // entity/quote/model stage back to a generic "still running" label.
+        // The supplied values are fallbacks for legacy/empty snapshots only.
+        if run.phase.trim().is_empty() {
+            run.phase = phase.to_string();
+        }
+        if run.status_text.trim().is_empty() {
+            run.status_text = status_text.to_string();
+        }
         run.updated_at_ms = now_ms;
         Some(run.clone())
     }
@@ -192,9 +204,9 @@ pub struct ActiveChatRunHandle {
 }
 
 impl ActiveChatRunHandle {
-    pub fn update(&self, phase: &str, status_text: &str) {
+    pub fn update(&self, phase: &str, status_text: &str) -> Option<ActiveChatRun> {
         self.registry
-            .update(&self.session_id, &self.run_id, phase, status_text);
+            .update(&self.session_id, &self.run_id, phase, status_text)
     }
 
     /// Emit a liveness update only after the run has been otherwise silent.
@@ -277,8 +289,10 @@ mod tests {
             .expect("first run should start");
         let initial = guard.run().expect("active run");
 
-        guard.handle().update("running", "正在核验数据");
-        let updated = registry.get("session-1").expect("updated active run");
+        let updated = guard
+            .handle()
+            .update("running", "正在核验数据")
+            .expect("updated active run");
         assert_eq!(updated.run_id, initial.run_id);
         assert_eq!(updated.started_at_ms, initial.started_at_ms);
         assert_eq!(updated.phase, "running");
@@ -297,12 +311,17 @@ mod tests {
             .try_begin("session-1".to_string())
             .expect("first run should start");
         let handle = guard.handle();
+        let stage = handle
+            .update("running", "正在核验数据")
+            .expect("stage should update the live run");
 
         let heartbeat = handle
             .heartbeat("running", "仍在处理中", std::time::Duration::ZERO)
             .expect("heartbeat should update the live run");
-        assert_eq!(heartbeat.started_at_ms, guard.run().unwrap().started_at_ms);
-        assert_eq!(heartbeat.status_text, "仍在处理中");
+        assert_eq!(heartbeat.started_at_ms, stage.started_at_ms);
+        assert_eq!(heartbeat.phase, "running");
+        assert_eq!(heartbeat.status_text, "正在核验数据");
+        assert!(heartbeat.updated_at_ms >= stage.updated_at_ms);
 
         handle.finish();
         assert_eq!(registry.count(), 0);

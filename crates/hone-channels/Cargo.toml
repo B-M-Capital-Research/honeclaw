@@ -19,6 +19,8 @@ serde_json = { workspace = true }
 async-trait = { workspace = true }
 regex = "1"
 chrono.workspace = true
+chrono-tz = { workspace = true }
+futures = { workspace = true }
 reqwest = { workspace = true }
 subtle = { workspace = true }
 flate2 = "1"
@@ -30,6 +32,5 @@ uuid = { workspace = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }
-futures = { workspace = true }
 serde_yaml = { workspace = true }
 tempfile = "3"

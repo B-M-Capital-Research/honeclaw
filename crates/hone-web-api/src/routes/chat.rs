@@ -46,7 +46,7 @@ impl AgentSessionListener for SseSessionListener {
         match event {
             AgentSessionEvent::Segment { text } => {
                 if let Some(active_run) = &self.active_run {
-                    active_run.update("running", "正在输出最终回答");
+                    let _ = active_run.update("running", "正在输出最终回答");
                 }
                 let _ = self
                     .tx
@@ -57,7 +57,7 @@ impl AgentSessionListener for SseSessionListener {
             }
             AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => {
                 if let Some(active_run) = &self.active_run {
-                    active_run.update("running", "正在输出最终回答");
+                    let _ = active_run.update("running", "正在输出最终回答");
                 }
                 let _ = self
                     .tx
@@ -68,7 +68,7 @@ impl AgentSessionListener for SseSessionListener {
             }
             AgentSessionEvent::Run(RunEvent::StreamReset) => {
                 if let Some(active_run) = &self.active_run {
-                    active_run.update("running", "正在复核结果，确保信息准确");
+                    let _ = active_run.update("running", "正在复核结果，确保信息准确");
                 }
                 let _ = self.tx.send(("assistant_reset".into(), json!({}))).await;
                 let mut guard = self.sent_segments.lock().await;
@@ -82,7 +82,7 @@ impl AgentSessionListener for SseSessionListener {
             }) => {
                 let status_text = public_tool_status_text(&status);
                 if let Some(active_run) = &self.active_run {
-                    active_run.update("running", status_text);
+                    let _ = active_run.update("running", status_text);
                 }
                 let payload = json!({
                     "tool": tool,
@@ -96,19 +96,25 @@ impl AgentSessionListener for SseSessionListener {
             }
             AgentSessionEvent::Run(RunEvent::Progress { stage, detail: _ }) => {
                 let (phase, status_text) = public_progress_status(stage);
-                if let Some(active_run) = &self.active_run {
-                    active_run.update(phase, status_text);
-                }
-                let _ = self
-                    .tx
-                    .send((
-                        "run_progress".into(),
-                        json!({
-                            "phase": phase,
-                            "status_text": status_text,
-                        }),
-                    ))
-                    .await;
+                let run = self
+                    .active_run
+                    .as_ref()
+                    .and_then(|active_run| active_run.update(phase, status_text));
+                let payload = if let Some(run) = run {
+                    json!({
+                        "run_id": run.run_id,
+                        "started_at_ms": run.started_at_ms,
+                        "updated_at_ms": run.updated_at_ms,
+                        "phase": run.phase,
+                        "status_text": run.status_text,
+                    })
+                } else {
+                    json!({
+                        "phase": phase,
+                        "status_text": status_text,
+                    })
+                };
+                let _ = self.tx.send(("run_progress".into(), payload)).await;
             }
             AgentSessionEvent::Run(RunEvent::Error { error }) => {
                 let mut i = error.message.len().min(120);
@@ -198,6 +204,12 @@ fn emit_web_progress_heartbeat(
 fn public_progress_status(stage: &str) -> (&'static str, &'static str) {
     match stage {
         "session.compress" => ("thinking", "正在整理会话上下文"),
+        "entity_resolution.preflight" => ("running", "正在识别当前问题中的公司或证券实体"),
+        "entity_resolution.preflight.done" => ("running", "实体范围已确认，正在整理回答"),
+        "entity_resolution.preflight.failed" => {
+            ("running", "实体或数据核验未完成，正在安全结束本轮")
+        }
+        "market_data.preflight.done" => ("running", "实体与行情已核验，正在生成完整分析"),
         "agent.run.retry" => ("running", "正在复核结果，确保信息准确"),
         "agent.run.progress" => ("running", "仍在处理中，正在完成核验与分析"),
         "agent.run" => ("running", "正在检索、核验并生成回答"),
@@ -416,7 +428,7 @@ mod tests {
 
     use crate::state::ActiveChatRunRegistry;
 
-    use super::{SseSessionListener, WEB_CHAT_PROGRESS_STATUS, emit_web_progress_heartbeat};
+    use super::{SseSessionListener, emit_web_progress_heartbeat};
 
     #[tokio::test]
     async fn stream_reset_clears_sent_count_and_emits_assistant_reset() {
@@ -587,6 +599,10 @@ mod tests {
             .try_begin("session-1".to_string())
             .expect("active run");
         let initial = guard.run().expect("initial run");
+        let specific = guard
+            .handle()
+            .update("running", "正在识别当前问题中的公司或证券实体")
+            .expect("specific progress stage");
         let terminal_sent = AtomicBool::new(false);
         let (tx, mut rx) = tokio::sync::mpsc::channel(2);
 
@@ -595,11 +611,75 @@ mod tests {
         assert_eq!(event, "run_progress");
         assert_eq!(payload["run_id"], initial.run_id);
         assert_eq!(payload["started_at_ms"], initial.started_at_ms);
-        assert_eq!(payload["status_text"], WEB_CHAT_PROGRESS_STATUS);
+        assert_eq!(payload["status_text"], "正在识别当前问题中的公司或证券实体");
+        assert!(payload["updated_at_ms"].as_i64().unwrap() >= specific.updated_at_ms);
 
         terminal_sent.store(true, Ordering::Release);
         emit_web_progress_heartbeat(&tx, &guard.handle(), &terminal_sent, Duration::ZERO);
         assert!(rx.try_recv().is_err(), "terminal run must not heartbeat");
+    }
+
+    #[tokio::test]
+    async fn preflight_progress_uses_safe_labels_and_full_active_run_snapshot() {
+        let registry = Arc::new(ActiveChatRunRegistry::default());
+        let guard = registry
+            .try_begin("session-preflight".to_string())
+            .expect("active run");
+        let initial = guard.run().expect("initial run");
+        let (tx, mut rx) = tokio::sync::mpsc::channel(4);
+        let listener = SseSessionListener {
+            tx,
+            user_id: "u1".to_string(),
+            sent_segments: Arc::new(tokio::sync::Mutex::new(0)),
+            active_run: Some(guard.handle()),
+            terminal_sent: Arc::new(AtomicBool::new(false)),
+        };
+
+        listener
+            .on_event(AgentSessionEvent::Run(RunEvent::Progress {
+                stage: "entity_resolution.preflight",
+                detail: Some("raw provider payload must never be exposed".to_string()),
+            }))
+            .await;
+        let (event, payload) = rx.recv().await.expect("preflight progress");
+        assert_eq!(event, "run_progress");
+        assert_eq!(payload["run_id"], initial.run_id);
+        assert_eq!(payload["started_at_ms"], initial.started_at_ms);
+        assert_eq!(payload["phase"], "running");
+        assert_eq!(payload["status_text"], "正在识别当前问题中的公司或证券实体");
+        assert!(payload["updated_at_ms"].as_i64().is_some());
+        assert!(!payload.to_string().contains("raw provider payload"));
+
+        listener
+            .on_event(AgentSessionEvent::Run(RunEvent::Progress {
+                stage: "entity_resolution.preflight.done",
+                detail: None,
+            }))
+            .await;
+        let (_, payload) = rx.recv().await.expect("entity resolution completion");
+        assert_eq!(payload["status_text"], "实体范围已确认，正在整理回答");
+
+        listener
+            .on_event(AgentSessionEvent::Run(RunEvent::Progress {
+                stage: "market_data.preflight.done",
+                detail: None,
+            }))
+            .await;
+        let (_, payload) = rx.recv().await.expect("preflight completion");
+        assert_eq!(payload["status_text"], "实体与行情已核验，正在生成完整分析");
+
+        listener
+            .on_event(AgentSessionEvent::Run(RunEvent::Progress {
+                stage: "entity_resolution.preflight.failed",
+                detail: Some("internal provider details".to_string()),
+            }))
+            .await;
+        let (_, payload) = rx.recv().await.expect("preflight failure");
+        assert_eq!(
+            payload["status_text"],
+            "实体或数据核验未完成，正在安全结束本轮"
+        );
+        assert!(!payload.to_string().contains("internal provider details"));
     }
 
     #[tokio::test]

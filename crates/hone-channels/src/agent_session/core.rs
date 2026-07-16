@@ -19,8 +19,10 @@ use crate::execution::{
     ExecutionMode, ExecutionRequest, ExecutionRunnerSelection, ExecutionService, PreparedExecution,
 };
 use crate::investment_response_guard::{
-    InvestmentResponseContract, contract_failure_message, forbidden_investment_tool_calls,
-    missing_investment_response_sections, prepare_verified_investment_turn,
+    InvestmentResponseContract, contract_failure_message, enforce_server_data_time_prefix,
+    forbidden_investment_tool_calls, investment_contract_failure_message,
+    investment_preflight_failure_message, missing_investment_response_sections,
+    prepare_verified_investment_turn, should_emit_investment_preflight,
 };
 use crate::prompt::PromptOptions;
 use crate::prompt_audit::PromptAuditMetadata;
@@ -193,6 +195,29 @@ fn normalize_persistent_trace_failure(result: &mut AgentRunnerResult) {
     }
     result.response.content = PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE.to_string();
     result.response.error = Some(PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE.to_string());
+    result.streamed_output = false;
+    result.terminal_error_emitted = false;
+}
+
+fn preserve_verified_investment_failure(
+    contract: &InvestmentResponseContract,
+    result: &mut AgentRunnerResult,
+) {
+    if result.response.success {
+        return;
+    }
+    let message = result
+        .response
+        .error
+        .as_deref()
+        .filter(|message| !message.trim().is_empty())
+        .or_else(|| {
+            (!result.response.content.trim().is_empty()).then_some(result.response.content.as_str())
+        })
+        .unwrap_or(contract_failure_message());
+    let failure = investment_contract_failure_message(contract, message);
+    result.response.content = failure.clone();
+    result.response.error = Some(failure);
     result.streamed_output = false;
     result.terminal_error_emitted = false;
 }
@@ -442,18 +467,23 @@ impl AgentSession {
         normalize_execute_once_failure(&mut result, reexecution_policy);
         normalize_persistent_trace_failure(&mut result);
         if !result.response.success {
+            preserve_verified_investment_failure(contract, &mut result);
             return result;
         }
         let initial_forbidden_calls =
             forbidden_investment_tool_calls(contract, &result.response.tool_calls_made);
         let visible_content = sanitize_user_visible_output(&result.response.content).content;
-        let mut missing = missing_investment_response_sections(contract, &visible_content);
+        let normalized_visible_content =
+            enforce_server_data_time_prefix(contract, &visible_content);
+        let mut missing =
+            missing_investment_response_sections(contract, &normalized_visible_content);
         for violation in initial_forbidden_calls.iter().copied() {
             if !missing.contains(&violation) {
                 missing.push(violation);
             }
         }
         if missing.is_empty() {
+            result.response.content = normalized_visible_content;
             return result;
         }
 
@@ -471,6 +501,7 @@ impl AgentSession {
             result.response.success = false;
             result.response.content = message.to_string();
             result.response.error = Some(message.to_string());
+            preserve_verified_investment_failure(contract, &mut result);
             return result;
         }
 
@@ -516,11 +547,14 @@ impl AgentSession {
         mark_investment_attempt_output_deferred(&mut result);
         normalize_persistent_trace_failure(&mut result);
         if !result.response.success {
+            preserve_verified_investment_failure(contract, &mut result);
             return result;
         }
         let retry_visible_content = sanitize_user_visible_output(&result.response.content).content;
+        let normalized_retry_visible_content =
+            enforce_server_data_time_prefix(contract, &retry_visible_content);
         let mut retry_missing =
-            missing_investment_response_sections(contract, &retry_visible_content);
+            missing_investment_response_sections(contract, &normalized_retry_visible_content);
         for violation in
             initial_forbidden_calls
                 .iter()
@@ -535,6 +569,7 @@ impl AgentSession {
             }
         }
         if retry_missing.is_empty() {
+            result.response.content = normalized_retry_visible_content;
             return result;
         }
 
@@ -548,6 +583,7 @@ impl AgentSession {
             result.response.success = false;
             result.response.content = message.to_string();
             result.response.error = Some(message.to_string());
+            preserve_verified_investment_failure(contract, &mut result);
             return result;
         }
 
@@ -557,9 +593,10 @@ impl AgentSession {
             missing = %retry_missing.join(" | "),
             "[AgentSession] investment response contract retry still incomplete"
         );
+        let failure = investment_contract_failure_message(contract, contract_failure_message());
         result.response.success = false;
-        result.response.content = contract_failure_message().to_string();
-        result.response.error = Some(contract_failure_message().to_string());
+        result.response.content = failure.clone();
+        result.response.error = Some(failure);
         result
     }
 
@@ -676,7 +713,18 @@ impl AgentSession {
                 .entity_resolution_input
                 .as_deref()
                 .unwrap_or(runtime_user_input);
-            let contract = prepare_verified_investment_turn(
+            let emit_market_data_progress =
+                should_emit_investment_preflight(entity_resolution_input, options.turn_origin);
+            // Investment entity resolution and market-data preflight execute
+            // before a runner exists, so their direct tool calls cannot emit
+            // runner ToolStatus events. Publish an ephemeral, user-safe stage
+            // here instead of leaking draft assistant text while validation is
+            // still pending.
+            if emit_market_data_progress {
+                self.emit(session_progress_event("entity_resolution.preflight", None))
+                    .await;
+            }
+            let contract_result = prepare_verified_investment_turn(
                 &self.core,
                 &self.actor,
                 &self.channel_target,
@@ -685,8 +733,22 @@ impl AgentSession {
                 options.turn_origin,
                 &mut runtime_input,
             )
-            .await
-            .map_err(|err| (AgentSessionErrorKind::AgentFailed, err))?;
+            .await;
+            if emit_market_data_progress {
+                let completed_stage = match &contract_result {
+                    Ok(Some(_)) => "market_data.preflight.done",
+                    Ok(None) => "entity_resolution.preflight.done",
+                    Err(_) => "entity_resolution.preflight.failed",
+                };
+                self.emit(session_progress_event(completed_stage, None))
+                    .await;
+            }
+            let contract = contract_result.map_err(|err| {
+                (
+                    AgentSessionErrorKind::AgentFailed,
+                    investment_preflight_failure_message(&err),
+                )
+            })?;
             PreparedInvestmentContext {
                 contract,
                 runtime_suffix: runtime_input[suffix_start..].to_string(),
