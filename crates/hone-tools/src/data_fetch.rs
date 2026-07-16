@@ -6,7 +6,7 @@
 //! - 所有 Key 均失败时返回最后一次的错误信息
 
 use async_trait::async_trait;
-use chrono::{Duration, NaiveDate};
+use chrono::{DateTime, Duration, NaiveDate, NaiveDateTime, NaiveTime};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -15,6 +15,7 @@ use std::time::{Duration as StdDuration, Instant};
 use crate::base::{Tool, ToolParameter};
 
 const MAX_FMP_TRANSPORT_ERROR_CHARS: usize = 300;
+const FMP_TTL_EXTENDED_HOURS: StdDuration = StdDuration::from_secs(30);
 const FMP_TTL_FAST: StdDuration = StdDuration::from_secs(5 * 60);
 const FMP_TTL_NEWS: StdDuration = StdDuration::from_secs(15 * 60);
 const FMP_TTL_PROFILE: StdDuration = StdDuration::from_secs(24 * 60 * 60);
@@ -141,6 +142,10 @@ impl DataFetchTool {
                 "{}/stable/batch-quote-short?symbols={}",
                 self.stable_base_url(),
                 ticker
+            )),
+            "extended_hours" => Ok(format!(
+                "{}/v3/historical-chart/1min/{}?extended=true",
+                self.base_url, ticker
             )),
             "profile" => Ok(format!("{}/v3/profile/{}", self.base_url, ticker)),
             "search" => {
@@ -390,6 +395,7 @@ fn sanitize_fmp_error_detail(text: &str) -> String {
 
 fn ttl_for_data_type(data_type: &str) -> Option<StdDuration> {
     match data_type {
+        "extended_hours" => Some(FMP_TTL_EXTENDED_HOURS),
         "quote" | "quote_short" | "crypto_quote" | "gainers_losers" | "sector_performance" => {
             Some(FMP_TTL_FAST)
         }
@@ -410,12 +416,80 @@ fn should_cache_fmp_value(data_type: &str, value: &Value) -> bool {
             | "etf_holdings"
             | "quote"
             | "quote_short"
+            | "extended_hours"
             | "crypto_quote"
     ) {
         return true;
     }
 
     has_meaningful_fmp_value(value)
+}
+
+fn normalize_extended_hours_bar(ticker: &str, response: &Value) -> Result<Value, String> {
+    let bars = response
+        .as_array()
+        .ok_or_else(|| "FMP 盘前盘后行情响应格式无效：预期为分钟 K 线数组".to_string())?;
+
+    let latest = bars
+        .iter()
+        .filter_map(|bar| {
+            let date = bar.get("date")?.as_str()?.trim();
+            let (sort_key, local_time) = parse_extended_hours_timestamp(date)?;
+            let price = bar.get("close")?;
+            price.as_f64().filter(|value| *value > 0.0)?;
+            let high = bar.get("high")?;
+            high.as_f64().filter(|value| *value > 0.0)?;
+            let low = bar.get("low")?;
+            low.as_f64().filter(|value| *value > 0.0)?;
+            let volume = bar.get("volume")?;
+            volume.as_f64().filter(|value| *value >= 0.0)?;
+
+            Some((sort_key, local_time, date, price, high, low, volume))
+        })
+        .max_by_key(|(sort_key, ..)| *sort_key)
+        .ok_or_else(|| "FMP 盘前盘后行情没有可用的最新分钟 bar".to_string())?;
+
+    Ok(serde_json::json!({
+        "symbol": ticker.trim().to_ascii_uppercase(),
+        "price": latest.3,
+        "date": latest.2,
+        "session": extended_hours_session(latest.1),
+        "high": latest.4,
+        "low": latest.5,
+        "volume": latest.6,
+    }))
+}
+
+fn parse_extended_hours_timestamp(value: &str) -> Option<(i64, NaiveTime)> {
+    if let Ok(timestamp) = DateTime::parse_from_rfc3339(value) {
+        return Some((timestamp.timestamp(), timestamp.time()));
+    }
+
+    for format in [
+        "%Y-%m-%d %H:%M:%S%.f",
+        "%Y-%m-%dT%H:%M:%S%.f",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S",
+    ] {
+        if let Ok(timestamp) = NaiveDateTime::parse_from_str(value, format) {
+            return Some((timestamp.and_utc().timestamp(), timestamp.time()));
+        }
+    }
+
+    None
+}
+
+fn extended_hours_session(time: NaiveTime) -> &'static str {
+    let regular_open = NaiveTime::from_hms_opt(9, 30, 0).expect("valid market open time");
+    let regular_close = NaiveTime::from_hms_opt(16, 0, 0).expect("valid market close time");
+
+    if time < regular_open {
+        "pre"
+    } else if time < regular_close {
+        "regular"
+    } else {
+        "post"
+    }
 }
 
 fn has_meaningful_fmp_value(value: &Value) -> bool {
@@ -613,7 +687,7 @@ impl Tool for DataFetchTool {
     }
 
     fn description(&self) -> &str {
-        "获取金融数据（股票/ETF/加密货币的实体、行情、基本面和新闻等）。公司或证券分析必须先用 search 按公司名、别名或代码解析标准实体，再用返回的 symbol 查询其它数据。支持的数据类型：search（实体搜索，返回 symbol/name/exchange/currency 候选）、quote（实时行情）、quote_short（低带宽简版批量行情）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、financials（财务数据）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历）。"
+        "获取金融数据（股票/ETF/加密货币的实体、行情、基本面和新闻等）。公司或证券分析必须先用 search 按公司名、别名或代码解析标准实体，再用返回的 symbol 查询其它数据。支持的数据类型：search（实体搜索，返回 symbol/name/exchange/currency 候选）、quote（实时行情）、quote_short（低带宽简版批量行情）、extended_hours（最新一条盘前/正常时段/盘后分钟行情，返回有界规范化 bar）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、financials（财务数据）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历）。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -626,6 +700,7 @@ impl Tool for DataFetchTool {
                 r#enum: Some(vec![
                     "quote".into(),
                     "quote_short".into(),
+                    "extended_hours".into(),
                     "profile".into(),
                     "snapshot".into(),
                     "financials".into(),
@@ -746,11 +821,21 @@ impl Tool for DataFetchTool {
         };
 
         match self.fetch_data_type(data_type, ticker).await {
-            Ok(data) => Ok(serde_json::json!({
-                "data_type": data_type,
-                "ticker": ticker,
-                "data": data
-            })),
+            Ok(data) => {
+                let data = if data_type == "extended_hours" {
+                    match normalize_extended_hours_bar(ticker, &data) {
+                        Ok(bar) => bar,
+                        Err(err) => return Ok(serde_json::json!({ "error": err })),
+                    }
+                } else {
+                    data
+                };
+                Ok(serde_json::json!({
+                    "data_type": data_type,
+                    "ticker": ticker,
+                    "data": data
+                }))
+            }
             Err(err) => Ok(serde_json::json!({ "error": err })),
         }
     }
@@ -759,8 +844,8 @@ impl Tool for DataFetchTool {
 #[cfg(test)]
 mod tests {
     use super::{
-        DataFetchTool, nonempty_fmp_error_message, sanitize_fmp_error_detail,
-        should_cache_fmp_value,
+        DataFetchTool, nonempty_fmp_error_message, normalize_extended_hours_bar,
+        sanitize_fmp_error_detail, should_cache_fmp_value, ttl_for_data_type,
     };
     use crate::base::Tool;
     use crate::test_support::{assert_text_contains_all, assert_text_contains_none};
@@ -869,6 +954,20 @@ mod tests {
             full_url3,
             "https://example.com/stable/batch-quote-short?symbols=AAPL,MSFT&apikey=test_key"
         );
+
+        let extended_url = tool
+            .build_url("extended_hours", "ISRG")
+            .expect("extended-hours url");
+        assert_eq!(
+            extended_url,
+            "https://example.com/api/v3/historical-chart/1min/ISRG?extended=true"
+        );
+        assert_eq!(
+            ttl_for_data_type("extended_hours")
+                .expect("extended-hours ttl")
+                .as_secs(),
+            30
+        );
     }
 
     #[test]
@@ -944,6 +1043,7 @@ mod tests {
         let enum_values = data_type.r#enum.as_ref().expect("enum values");
         assert!(enum_values.iter().any(|value| value == "snapshot"));
         assert!(enum_values.iter().any(|value| value == "quote_short"));
+        assert!(enum_values.iter().any(|value| value == "extended_hours"));
         assert!(enum_values.iter().any(|value| value == "search"));
         assert!(
             tool.parameters()
@@ -969,6 +1069,51 @@ mod tests {
         assert_eq!(payload["data"]["profile"][0]["companyName"], "Apple Inc.");
         assert_eq!(payload["data"]["news"][0]["title"], "Example headline");
         assert!(payload.get("error").is_none());
+    }
+
+    #[test]
+    fn extended_hours_normalization_returns_only_the_latest_bounded_bar() {
+        let payload = normalize_extended_hours_bar(
+            "isrg",
+            &json!([
+                {"date":"2026-07-16 16:01:00","close":395.0,"high":396.0,"low":394.5,"volume":1000},
+                {"date":"2026-07-16 18:49:00","close":363.25,"high":364.0,"low":362.5,"volume":2500},
+                {"date":"2026-07-16 18:48:00","close":364.5,"high":365.0,"low":364.0,"volume":2200},
+                {"date":"invalid","close":999.0,"high":999.0,"low":999.0,"volume":1}
+            ]),
+        )
+        .expect("normalized extended-hours bar");
+
+        assert_eq!(payload["symbol"], "ISRG");
+        assert_eq!(payload["price"], 363.25);
+        assert_eq!(payload["date"], "2026-07-16 18:49:00");
+        assert_eq!(payload["session"], "post");
+        assert_eq!(payload.as_object().expect("bar object").len(), 7);
+    }
+
+    #[tokio::test]
+    async fn extended_hours_execute_returns_normalized_bar_instead_of_all_minutes() {
+        let (addr, request_count) = spawn_scripted_http_server(vec![(
+            "200 OK",
+            r#"[{"date":"2026-07-16 08:15:00","close":401.5,"high":402.0,"low":401.0,"volume":300},{"date":"2026-07-16 08:16:00","close":402.25,"high":402.5,"low":401.75,"volume":400}]"#,
+        )])
+        .await;
+        let tool = DataFetchTool::new(
+            vec!["test_key".to_string()],
+            &format!("http://{addr}/api"),
+            30,
+        );
+
+        let payload = tool
+            .execute(json!({"data_type":"extended_hours","ticker":"ISRG"}))
+            .await
+            .expect("extended-hours payload");
+        assert_eq!(payload["data_type"], "extended_hours");
+        assert_eq!(payload["data"]["symbol"], "ISRG");
+        assert_eq!(payload["data"]["price"], 402.25);
+        assert_eq!(payload["data"]["session"], "pre");
+        assert!(payload["data"].is_object());
+        assert_eq!(request_count.load(Ordering::SeqCst), 1);
     }
 
     #[test]
@@ -1043,6 +1188,7 @@ mod tests {
             "etf_holdings",
             "quote",
             "quote_short",
+            "extended_hours",
             "crypto_quote",
         ] {
             assert!(!should_cache_fmp_value(data_type, &json!(null)));
