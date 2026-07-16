@@ -38,6 +38,7 @@ struct EntityMention {
     mention: String,
     search_query: String,
     explicit_symbol: Option<String>,
+    tentative_symbol: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,7 +59,6 @@ enum EntityMatch {
 
 #[derive(Debug, Deserialize)]
 struct EntityExtractionPayload {
-    #[serde(default)]
     entities: Vec<EntityExtractionItem>,
 }
 
@@ -132,6 +132,7 @@ fn response_intent(input: &str) -> (bool, bool) {
         "分析",
         "研究",
         "怎么看",
+        "怎么样",
         "值不值得",
         "能不能买",
         "能否买",
@@ -181,6 +182,7 @@ pub(crate) async fn prepare_verified_investment_turn(
     let registry = core.create_tool_registry(Some(actor), channel_target, allow_cron);
     let mut entities = Vec::new();
     let mut seen_symbols = HashSet::new();
+    let mut unresolved_ticker_candidates = Vec::new();
     for mention in mentions {
         let search = registry
             .execute_tool(
@@ -211,6 +213,10 @@ pub(crate) async fn prepare_verified_investment_turn(
                 ));
             }
             EntityMatch::Unresolved => {
+                if mention.tentative_symbol {
+                    unresolved_ticker_candidates.push(mention.mention);
+                    continue;
+                }
                 return Err(format!(
                     "我暂时无法确认你提到的“{}”对应哪家上市公司或证券。请补充公司全名或 ticker。",
                     mention.mention
@@ -218,7 +224,18 @@ pub(crate) async fn prepare_verified_investment_turn(
             }
         }
     }
+    if origin == AgentTurnOrigin::Interactive && !unresolved_ticker_candidates.is_empty() {
+        return Err(format!(
+            "我没有在当前证券数据中精确核验到代码 {}。请检查 ticker 是否正确，或补充公司全名。",
+            unresolved_ticker_candidates.join("、")
+        ));
+    }
     if entities.is_empty() {
+        if !unresolved_ticker_candidates.is_empty() {
+            runtime_input.push_str(
+                "\n\n【本轮实体核验结果】\n当前请求中的证券代码候选均未通过同代码精确核验；不得生成任何候选对应的公司特定价格、财务数字或事件结论。\n",
+            );
+        }
         return Ok(None);
     }
     let (deep_intent, needs_outlook_evidence) = response_intent(user_input);
@@ -472,15 +489,20 @@ async fn extract_entity_mentions(
     input: &str,
     origin: AgentTurnOrigin,
 ) -> Result<Vec<EntityMention>, String> {
-    let explicit = explicit_dollar_mentions(input);
-    if !explicit.is_empty() {
-        return Ok(explicit);
-    }
     if !should_run_entity_stage(input, origin) {
         return Ok(Vec::new());
     }
+    let explicit = explicit_dollar_mentions(input);
+    let deterministic =
+        merge_entity_mentions(explicit.clone(), plain_ticker_mentions(input, origin));
+    let trusted_scheduled_subject = origin != AgentTurnOrigin::Interactive
+        && scheduled_request_has_security_context(input)
+        && deterministic.iter().any(|mention| mention.tentative_symbol);
+    if ticker_mentions_cover_request(input, &deterministic) || trusted_scheduled_subject {
+        return Ok(deterministic);
+    }
     let Some(llm) = core.auxiliary_llm.as_ref() else {
-        return complete_entity_extraction(input, Vec::new());
+        return complete_entity_extraction(input, explicit);
     };
     let prompt = format!(
         "你是证券实体识别器，只做实体提取，不回答投资问题。\n\
@@ -502,12 +524,13 @@ async fn extract_entity_mentions(
     }];
     let model = core.auxiliary_model_name();
     match llm.chat(&messages, Some(&model)).await {
-        Ok(response) => {
-            let entities = parse_entity_extraction(&response.content)
-                .map_err(|_| "证券实体识别结果不完整。请补充公司全名或明确 ticker。".to_string())?;
-            complete_entity_extraction(input, entities)
-        }
-        Err(_) => complete_entity_extraction(input, Vec::new()),
+        Ok(response) => parse_entity_extraction(&response.content)
+            .map(|extracted| merge_entity_mentions(explicit, extracted))
+            .map_err(|_| {
+                "证券实体解析服务暂时未返回可用结果。请稍后重试，或补充明确 ticker。".to_string()
+            })
+            .and_then(|entities| complete_entity_extraction(input, entities)),
+        Err(_) => complete_entity_extraction(input, explicit),
     }
 }
 
@@ -527,8 +550,329 @@ fn explicit_dollar_mentions(input: &str) -> Vec<EntityMention> {
             mention: ["$", symbol.as_str()].concat(),
             search_query: symbol.clone(),
             explicit_symbol: Some(symbol),
+            tentative_symbol: false,
         })
         .collect()
+}
+
+fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMention> {
+    let normalized = input.to_ascii_lowercase();
+    let has_cjk = input
+        .chars()
+        .any(|c| ('\u{4e00}'..='\u{9fff}').contains(&c));
+    let ticker_context = [
+        "今天",
+        "最近",
+        "近期",
+        "现在",
+        "目前",
+        "怎么样",
+        "怎么看",
+        "如何",
+        "股票",
+        "股价",
+        "价格",
+        "现价",
+        "分析",
+        "研究",
+        "比较",
+        "对比",
+        "能买吗",
+        "能不能买",
+        "能不能",
+        "能否买",
+        "起飞",
+        "前景",
+        "未来",
+        "财报",
+        "业绩",
+        "估值",
+        "目标价",
+        "ticker",
+        "stock",
+        "share",
+        "price",
+        "earnings",
+        "valuation",
+        "buy",
+        "sell",
+        "compare",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    let lowercase_ticker_context = [
+        "股票",
+        "股价",
+        "价格",
+        "现价",
+        "分析",
+        "研究",
+        "比较",
+        "对比",
+        "能买吗",
+        "能不能",
+        "能否买",
+        "起飞",
+        "前景",
+        "财报",
+        "业绩",
+        "估值",
+        "目标价",
+        "ticker",
+        "stock",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker))
+        || (["今天", "最近", "近期", "现在", "目前"]
+            .iter()
+            .any(|marker| normalized.contains(marker))
+            && ["怎么样", "怎么看", "表现", "多少钱"]
+                .iter()
+                .any(|marker| normalized.contains(marker)));
+    let broad_scope = is_broad_scope_request(input);
+    let scheduled_subject_end = if origin == AgentTurnOrigin::Interactive {
+        input.len()
+    } else {
+        input
+            .char_indices()
+            .find_map(|(index, c)| matches!(c, '。' | '；' | '\n').then_some(index))
+            .unwrap_or(input.len())
+            .min(
+                input
+                    .char_indices()
+                    .nth(96)
+                    .map(|(index, _)| index)
+                    .unwrap_or(input.len()),
+            )
+    };
+
+    let bytes = input.as_bytes();
+    let mut index = 0;
+    let mut candidates = Vec::new();
+    let mut seen = HashSet::new();
+    let mut accepted_scheduled_subject = false;
+    while index < bytes.len() {
+        if !bytes[index].is_ascii_alphabetic() {
+            index += 1;
+            continue;
+        }
+        let start = index;
+        index += 1;
+        while index < bytes.len()
+            && (bytes[index].is_ascii_alphanumeric() || matches!(bytes[index], b'.' | b'-'))
+        {
+            index += 1;
+        }
+        let mut end = index;
+        while end > start && matches!(bytes[end - 1], b'.' | b'-') {
+            end -= 1;
+        }
+        let token = &input[start..end];
+        if token.is_empty() || token.len() > 10 {
+            continue;
+        }
+        if is_report_period_token(token) {
+            continue;
+        }
+        let previous = input[..start].chars().rev().find(|c| !c.is_whitespace());
+        let next = input[end..].chars().find(|c| !c.is_whitespace());
+        if matches!(previous, Some('$' | '=')) || next == Some('=') {
+            continue;
+        }
+        let letters = token.chars().filter(|c| c.is_ascii_alphabetic());
+        let uppercase = letters.clone().all(|c| c.is_ascii_uppercase());
+        let lowercase = letters.clone().all(|c| c.is_ascii_lowercase());
+        let exact_input = input.trim().eq_ignore_ascii_case(token);
+        if !uppercase && !(lowercase && has_cjk && lowercase_ticker_context) {
+            continue;
+        }
+        if token.len() == 1 && !(ticker_context || exact_input) {
+            continue;
+        }
+        if broad_scope && token.len() <= 3 && !exact_input {
+            continue;
+        }
+        if origin != AgentTurnOrigin::Interactive {
+            if start >= scheduled_subject_end {
+                continue;
+            }
+            if !accepted_scheduled_subject
+                && input[..start].chars().any(|c| c.is_ascii_alphabetic())
+            {
+                continue;
+            }
+            accepted_scheduled_subject = true;
+        } else if !(ticker_context || exact_input || uppercase) {
+            continue;
+        }
+
+        let symbol = token.to_ascii_uppercase();
+        if seen.insert(symbol.clone()) {
+            candidates.push(EntityMention {
+                mention: token.to_string(),
+                search_query: symbol.clone(),
+                explicit_symbol: Some(symbol),
+                tentative_symbol: true,
+            });
+        }
+    }
+    candidates
+}
+
+fn merge_entity_mentions(
+    mut mentions: Vec<EntityMention>,
+    additional: Vec<EntityMention>,
+) -> Vec<EntityMention> {
+    for mention in additional {
+        let duplicate = mentions.iter_mut().find(|existing| {
+            match (
+                existing.explicit_symbol.as_deref(),
+                mention.explicit_symbol.as_deref(),
+            ) {
+                (Some(left), Some(right)) => left.eq_ignore_ascii_case(right),
+                _ => {
+                    existing.mention.eq_ignore_ascii_case(&mention.mention)
+                        && existing
+                            .search_query
+                            .eq_ignore_ascii_case(&mention.search_query)
+                }
+            }
+        });
+        if let Some(existing) = duplicate {
+            if existing.tentative_symbol && !mention.tentative_symbol {
+                *existing = mention;
+            }
+        } else {
+            mentions.push(mention);
+        }
+    }
+    mentions
+}
+
+fn ticker_mentions_cover_request(input: &str, mentions: &[EntityMention]) -> bool {
+    if mentions.is_empty() {
+        return false;
+    }
+    let mut residual = input.to_ascii_lowercase();
+    for mention in mentions {
+        residual = residual.replace(&mention.mention.to_ascii_lowercase(), "");
+    }
+    for grammar in [
+        "能不能买",
+        "能不能",
+        "最近怎么样",
+        "我想了解",
+        "今天",
+        "最近",
+        "近期",
+        "现在",
+        "目前",
+        "怎么样",
+        "怎么看",
+        "怎样",
+        "如何",
+        "请",
+        "帮我",
+        "深入",
+        "详细",
+        "分析",
+        "研究",
+        "一下",
+        "股票",
+        "股价",
+        "证券",
+        "代码",
+        "价格",
+        "现价",
+        "多少钱",
+        "能买吗",
+        "能否买",
+        "前景",
+        "未来",
+        "财报",
+        "业绩",
+        "估值",
+        "目标价",
+        "基本面",
+        "业务",
+        "竞争力",
+        "竞争优势",
+        "公司",
+        "比较",
+        "对比",
+        "起飞",
+        "表现",
+        "值得",
+        "时候",
+        "过去",
+        "和",
+        "与",
+        "的",
+        "吗",
+        "呢",
+        "today",
+        "recently",
+        "lately",
+        "please",
+        "stock",
+        "share",
+        "price",
+        "analyze",
+        "analysis",
+        "compare",
+        "outlook",
+        "doing",
+        "worth",
+        "how",
+        "what",
+        "about",
+        "now",
+        "buy",
+        "sell",
+        "and",
+        "the",
+        "is",
+        "vs",
+        "can",
+        "take",
+        "off",
+        "in",
+        "q1",
+        "q2",
+        "q3",
+        "q4",
+    ] {
+        residual = residual.replace(grammar, "");
+    }
+    !residual.chars().any(char::is_alphanumeric)
+}
+
+fn is_report_period_token(token: &str) -> bool {
+    let normalized = token.to_ascii_uppercase();
+    matches!(normalized.as_str(), "Q1" | "Q2" | "Q3" | "Q4")
+}
+
+fn scheduled_request_has_security_context(input: &str) -> bool {
+    let normalized = input.to_ascii_lowercase();
+    [
+        "关键事件",
+        "重大事件",
+        "公司事件",
+        "股票",
+        "股价",
+        "行情",
+        "证券",
+        "财报",
+        "业绩",
+        "估值",
+        "持仓",
+        "ticker",
+        "stock",
+        "earnings",
+        "valuation",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker))
 }
 
 fn should_run_entity_stage(input: &str, origin: AgentTurnOrigin) -> bool {
@@ -555,6 +899,7 @@ fn should_run_entity_stage(input: &str, origin: AgentTurnOrigin) -> bool {
         return false;
     }
     has_security_shaped_token
+        || !plain_ticker_mentions(input, origin).is_empty()
         || analysis_has_named_subject(input)
         || [
             "股票",
@@ -633,8 +978,15 @@ fn complete_entity_extraction(
     if !entities.is_empty() {
         return Ok(entities);
     }
+    if is_broad_scope_request(input) {
+        return Ok(Vec::new());
+    }
+    Err("我暂时无法从当前问题中确认具体公司或证券。请补充公司全名或 ticker。".to_string())
+}
+
+fn is_broad_scope_request(input: &str) -> bool {
     let normalized = input.to_ascii_lowercase();
-    let broad_scope = [
+    [
         "行业",
         "板块",
         "产业链",
@@ -646,26 +998,49 @@ fn complete_entity_extraction(
         "有什么影响",
         "如何影响",
         "的变化",
+        "主题",
+        "持仓观察",
+        "市场观察",
         "sector",
         "industry",
         "macro",
         "index",
     ]
     .iter()
-    .any(|marker| normalized.contains(marker));
-    if broad_scope {
-        return Ok(Vec::new());
-    }
-    Err("我暂时无法从当前问题中确认具体公司或证券。请补充公司全名或 ticker。".to_string())
+    .any(|marker| normalized.contains(marker))
 }
 
 fn parse_entity_extraction(content: &str) -> Result<Vec<EntityMention>, serde_json::Error> {
     let trimmed = content.trim();
-    let json_text = match (trimmed.find('{'), trimmed.rfind('}')) {
-        (Some(start), Some(end)) if start <= end => &trimmed[start..=end],
-        _ => trimmed,
+    let object_starts = trimmed
+        .char_indices()
+        .filter_map(|(index, character)| (character == '{').then_some(index))
+        .collect::<Vec<_>>();
+    let object_ends = trimmed
+        .char_indices()
+        .filter_map(|(index, character)| (character == '}').then_some(index + 1))
+        .collect::<Vec<_>>();
+    let mut parsed = None;
+    for start in object_starts.into_iter().rev() {
+        for end in object_ends.iter().copied().rev() {
+            if end <= start || !trimmed[start..end].contains("\"entities\"") {
+                continue;
+            }
+            if let Ok(payload) =
+                serde_json::from_str::<EntityExtractionPayload>(&trimmed[start..end])
+            {
+                parsed = Some(payload);
+                break;
+            }
+        }
+        if parsed.is_some() {
+            break;
+        }
+    }
+    let payload = match parsed {
+        Some(payload) => payload,
+        None => serde_json::from_str::<EntityExtractionPayload>(trimmed)?,
     };
-    let payload: EntityExtractionPayload = serde_json::from_str(json_text)?;
     let mut seen = HashSet::new();
     Ok(payload
         .entities
@@ -686,6 +1061,7 @@ fn parse_entity_extraction(content: &str) -> Result<Vec<EntityMention>, serde_js
                 mention,
                 search_query,
                 explicit_symbol,
+                tentative_symbol: false,
             })
         })
         .collect())
@@ -914,9 +1290,9 @@ mod tests {
     use super::{
         EntityMatch, EntityMention, InvestmentResponseContract, ResolvedSecurityEntity,
         complete_entity_extraction, explicit_dollar_mentions, missing_deep_single_stock_sections,
-        missing_investment_response_sections, parse_entity_extraction,
+        missing_investment_response_sections, parse_entity_extraction, plain_ticker_mentions,
         quote_has_positive_matching_price, resolve_entity_match, response_intent,
-        should_run_entity_stage,
+        should_run_entity_stage, ticker_mentions_cover_request,
     };
     use crate::agent_session::AgentTurnOrigin;
     use serde_json::json;
@@ -933,6 +1309,19 @@ mod tests {
         assert_eq!(entities.len(), 2);
         assert_eq!(entities[0].search_query, "NVIDIA");
         assert_eq!(entities[1].explicit_symbol.as_deref(), Some("AMD"));
+    }
+
+    #[test]
+    fn extraction_parser_uses_the_last_complete_entities_object() {
+        let entities = parse_entity_extraction(
+            r#"<think>{"diagnostic":"not the answer"}</think>
+```json
+{"entities":[{"mention":"NBIS","search_query":"NBIS","explicit_symbol":"NBIS"}]}
+```"#,
+        )
+        .expect("extraction after reasoning object");
+        assert_eq!(entities.len(), 1);
+        assert_eq!(entities[0].explicit_symbol.as_deref(), Some("NBIS"));
     }
 
     #[test]
@@ -961,10 +1350,74 @@ mod tests {
     }
 
     #[test]
-    fn uppercase_metadata_is_not_used_as_a_ticker_fallback() {
+    fn ordinary_ticker_questions_are_deterministic_candidates() {
+        for input in ["今天nbis怎么样", "NBIS最近怎么样"] {
+            let entities = plain_ticker_mentions(input, AgentTurnOrigin::Interactive);
+            assert_eq!(entities.len(), 1, "{input}");
+            assert_eq!(entities[0].explicit_symbol.as_deref(), Some("NBIS"));
+            assert!(entities[0].tentative_symbol);
+            assert!(ticker_mentions_cover_request(input, &entities), "{input}");
+            assert!(should_run_entity_stage(input, AgentTurnOrigin::Interactive));
+        }
+        assert!(
+            plain_ticker_mentions("hello", AgentTurnOrigin::Interactive).is_empty(),
+            "an isolated lowercase word is not enough to claim ticker intent"
+        );
+    }
+
+    #[test]
+    fn reporting_period_is_not_a_symbol_in_a_ticker_question() {
+        let input = "我想了解Q3的时候nbis能不能起飞";
+        let entities = plain_ticker_mentions(input, AgentTurnOrigin::Interactive);
+        assert_eq!(entities.len(), 1);
+        assert_eq!(entities[0].explicit_symbol.as_deref(), Some("NBIS"));
+        assert!(ticker_mentions_cover_request(input, &entities));
+    }
+
+    #[test]
+    fn ordinary_multi_ticker_comparison_keeps_every_symbol() {
+        let entities = plain_ticker_mentions("比较 NBIS 和 NVDA", AgentTurnOrigin::Interactive);
+        let symbols = entities
+            .iter()
+            .filter_map(|entity| entity.explicit_symbol.as_deref())
+            .collect::<Vec<_>>();
+        assert_eq!(symbols, vec!["NBIS", "NVDA"]);
+        assert!(ticker_mentions_cover_request(
+            "比较 NBIS 和 NVDA",
+            &entities
+        ));
+    }
+
+    #[test]
+    fn industry_and_scheduler_acronyms_are_not_plain_ticker_candidates() {
+        for input in ["AI 行业未来怎么看", "GPU 和 HBM 行业未来怎么看"] {
+            assert!(
+                plain_ticker_mentions(input, AgentTurnOrigin::Interactive).is_empty(),
+                "{input}"
+            );
+        }
+        assert!(
+            plain_ticker_mentions(
+                "REPEAT=30m，检查 API 状态后生成 AI 主题摘要",
+                AgentTurnOrigin::Scheduled,
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn scheduled_ticker_subject_is_available_without_parsing_the_envelope() {
+        let input = "每 30 分钟检查一次 NBIS / Nebius Group 关键事件，只在出现高权重变化时提醒用户。监控财报、ARR、GPU 与 EBITDA。";
+        let entities = plain_ticker_mentions(input, AgentTurnOrigin::Scheduled);
+        assert_eq!(entities.len(), 1);
+        assert_eq!(entities[0].explicit_symbol.as_deref(), Some("NBIS"));
+    }
+
+    #[test]
+    fn uppercase_metadata_is_treated_as_a_non_security_scope() {
         let result =
             complete_entity_extraction("REPEAT=30m，检查 API 状态后生成 AI 主题摘要", Vec::new());
-        assert!(result.is_err());
+        assert!(result.expect("non-security scope").is_empty());
     }
 
     #[test]
@@ -997,6 +1450,7 @@ mod tests {
             mention: "NBIS".into(),
             search_query: "NBIS".into(),
             explicit_symbol: Some("NBIS".into()),
+            tentative_symbol: false,
         };
         assert!(matches!(
             resolve_entity_match(&mention, &json!({"data":[{"symbol":"NBIS","name":"Nebius Group N.V."}]})),
@@ -1017,6 +1471,7 @@ mod tests {
             mention: "英伟达".into(),
             search_query: "NVIDIA".into(),
             explicit_symbol: None,
+            tentative_symbol: false,
         };
         assert!(matches!(
             resolve_entity_match(&mention, &json!({"data":[
@@ -1033,6 +1488,7 @@ mod tests {
             mention: "Alphabet".into(),
             search_query: "Alphabet".into(),
             explicit_symbol: None,
+            tentative_symbol: false,
         };
         let result = resolve_entity_match(
             &mention,
@@ -1047,6 +1503,7 @@ mod tests {
     #[test]
     fn response_intent_distinguishes_quote_from_deep_outlook() {
         assert_eq!(response_intent("NBIS现在多少钱"), (false, false));
+        assert_eq!(response_intent("今天nbis怎么样"), (true, false));
         assert_eq!(
             response_intent("我想了解Q3的时候NBIS能不能起飞"),
             (true, true)

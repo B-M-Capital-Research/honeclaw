@@ -26,7 +26,7 @@
 ## What Changed
 
 - 移除 `REPEAT`/`AI` 一类缩写黑名单、`Nebius → NBIS` 硬编码、搜索首条候选和最终阶段重猜 ticker。
-- 显式 ticker 只接受 `$TICKER` 确定性输入；其他实体识别失败时澄清并失败关闭，不以大写正则降级猜测。
+- 显式 ticker 最初只接受 `$TICKER` 确定性输入；此限制已被下方同日 bare-ticker 回归阶段替代，`$TICKER` 仍是最高置信度输入，但不再是普通代码的唯一入口。
 - 中文名/别名经过结构化提取后使用 DataFetch search；候选按名称、symbol、交易所评分，相同分数的 share class 保持歧义。
 - 引入 typed `AgentTurnOrigin`，scheduler/heartbeat 使用原始任务正文做实体输入，delivery envelope 不再参与。
 - 实体、证据和回答契约每轮只准备一次，context overflow 与 heartbeat budget recovery 复用同一份 runtime suffix。
@@ -51,3 +51,31 @@
 ## Next Entry Point
 
 先读 `D-2026-07-16-01` 和 `crates/hone-channels/src/investment_response_guard.rs`；真实 provider 回归从 `tests/regression/manual/test_entity_search_live.sh` 进入。
+
+## 2026-07-16 普通 ticker 回归修复阶段
+
+### Root Cause
+
+`7a18f552` 将 `$TICKER` 设为唯一确定性代码输入，普通 `NBIS/nbis` 全部依赖辅助模型返回严格 JSON。辅助输出包含 reasoning 或格式偏差时，请求会在 DataFetch 前直接返回“证券实体识别结果不完整”；同一缺陷也让多条 ticker heartbeat 周期性失败。
+
+### Follow-up Changes
+
+- 普通大写 ticker 与证券语境中的小写 ticker 先形成词法候选；`今天nbis怎么样`、`NBIS最近怎么样` 和多 ticker 比较不再等待辅助 JSON。
+- 候选不是实体真相：每个代码仍必须由本轮 DataFetch search 返回 exact symbol，之后才允许查同 symbol quote、financials 或生成结论；不接受搜索首条猜测，也没有公司别名硬编码。
+- assignment key/value、`Q1`–`Q4`、行业/指标缩写和无关小写词不进入快路径。复杂公司名仍走结构化提取；结构化模型明确返回空数组时，不会重新塞回未经确认的大写 token。
+- 辅助模型响应可包含 reasoning 或多个 JSON 对象，解析器选择最后一个完整 `entities` 对象；普通 ticker 已确定时，辅助解析失败不再阻断。
+- “怎么样”纳入单股深度意图，因此最新 NBIS 问法继续执行九章节回答契约，而不是退化为草率行情短答。
+
+### Follow-up Verification
+
+- `cargo test -p hone-channels investment_response_guard --lib --no-fail-fast`：19/19 passed。
+- `cargo test -p hone-channels --no-fail-fast`：494/494 passed。
+- 投研 CI 契约：16/16 success。
+- 真实 MCP：NBIS search 精确返回 `Nebius Group N.V.`，同代码 quote 为正，financials 返回 4 组非空数据。
+- 全量 source runtime binaries（CLI、MCP、Web、iMessage、Discord、Feishu、Telegram）构建通过。
+- 部署后临时 Web actor 端到端输入“今天nbis怎么样”：成功完成，正文 5036 字符，`1`–`9` 九个编号章节齐全，无实体错误或 stream error。
+- 服务重启到 supervisor `62767`、backend `62779`；8077/8088、管理端/用户端均为 HTTP 200，Discord/Feishu/Web 各单进程在线，Postgres/OSS healthy，重启后 fatal/error 扫描为 0。
+
+### Follow-up Risk
+
+普通词和短 ticker 天然可能重名，因此词法层只决定“是否值得 exact lookup”，不决定证券身份。后续若扩展语境规则，应继续增加正反回归，不得恢复静态公司映射、首结果命中或把辅助模型当唯一 ticker 入口。

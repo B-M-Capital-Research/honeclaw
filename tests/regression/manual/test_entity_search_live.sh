@@ -57,7 +57,10 @@ read -r SEARCH_LINE <&4
 printf '%s\n' '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"data_fetch","arguments":{"data_type":"quote","ticker":"NBIS"}}}' >&3
 read -r QUOTE_LINE <&4
 
-python3 - "$SEARCH_LINE" "$QUOTE_LINE" <<'PY'
+printf '%s\n' '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"data_fetch","arguments":{"data_type":"financials","ticker":"NBIS"}}}' >&3
+read -r FINANCIALS_LINE <&4
+
+python3 - "$SEARCH_LINE" "$QUOTE_LINE" "$FINANCIALS_LINE" <<'PY'
 import json
 import sys
 
@@ -75,6 +78,7 @@ def structured(line):
 
 search = structured(sys.argv[1])
 quote = structured(sys.argv[2])
+financials = structured(sys.argv[3])
 
 candidates = search.get("data") or []
 exact = [item for item in candidates if str(item.get("symbol", "")).upper() == "NBIS"]
@@ -86,7 +90,12 @@ matching = [item for item in quotes if str(item.get("symbol", "")).upper() == "N
 if len(matching) != 1 or not isinstance(matching[0].get("price"), (int, float)) or matching[0]["price"] <= 0:
     raise SystemExit("[FAIL] NBIS quote did not return one positive same-symbol price")
 
-print("[PASS] live entity search and same-symbol quote succeeded")
+financial_data = financials.get("data")
+if not isinstance(financial_data, (list, dict)) or not financial_data:
+    raise SystemExit("[FAIL] NBIS financials did not return non-empty data")
+
+print("[PASS] live entity search, same-symbol quote, and deep-analysis financials succeeded")
 print(f"symbol=NBIS company={exact[0].get('name') or exact[0].get('companyName')}")
 print(f"quote_price={matching[0]['price']}")
+print(f"financials_shape={type(financial_data).__name__} items={len(financial_data)}")
 PY

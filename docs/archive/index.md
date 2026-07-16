@@ -1565,3 +1565,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: `tests/regression/ci/test_finance_automation_contracts.sh`, `tests/regression/manual/test_entity_search_live.sh`, `scripts/diagnose_fmp_tavily.sh`
 - Current conclusion: all named-security investment turns now resolve structured entities through current-turn DataFetch search and same-symbol quotes before generation; multi-security and typed scheduled/heartbeat turns share the gate, retries reuse the prepared contract, and unresolved/ambiguous entities fail closed without acronym denylists, hard-coded aliases, or first-result guessing.
 - Next entry point: `docs/handoffs/2026-07-16-entity-first-investment-pipeline.md`
+
+### Bare Ticker Entity Resolution Regression
+
+- Status: done
+- Date: 2026-07-16
+- Plan: `docs/archive/plans/plain-ticker-entity-resolution.md`
+- Handoff: `docs/handoffs/2026-07-16-entity-first-investment-pipeline.md#2026-07-16-普通-ticker-回归修复阶段`
+- Decision / ADR: `docs/decisions.md#d-2026-07-16-01-make-security-entity-resolution-the-first-investment-stage`
+- Related PRs / commits: this change set
+- Related runbooks / regressions: `tests/regression/manual/test_entity_search_live.sh`, `tests/regression/ci/test_finance_automation_contracts.sh`
+- Current conclusion: contextual bare `NBIS/nbis` and multi-ticker questions now enter DataFetch exact-symbol verification without depending on auxiliary JSON; scheduler ticker subjects share that path, while report periods, assignment metadata, industry acronyms, and unrelated lowercase words remain outside it. The deployed NBIS probe completed all nine response sections successfully.
+- Next entry point: `docs/handoffs/2026-07-16-entity-first-investment-pipeline.md#2026-07-16-普通-ticker-回归修复阶段`
