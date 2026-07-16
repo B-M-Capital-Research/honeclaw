@@ -314,7 +314,7 @@ Expected idle response:
 {"count":0}
 ```
 
-`hone-cli start` polls this endpoint after a normal Ctrl-C and waits for active turns to finish before terminating child processes. The wait is bounded by the configured agent overall timeout plus a short grace period, capped at six minutes; repeated endpoint failures or the cap allow shutdown to continue with an explicit warning. Prefer sending Ctrl-C to the supervisor so this drain path runs. Do not use `kill -9`, replace the backend process directly, or treat quota `in_flight` as a drain signal.
+`hone-cli start` polls this endpoint after a normal Ctrl-C and waits for active turns to finish before terminating child processes. Runtime children use separate Unix process groups so the terminal interrupt reaches the CLI supervisor first instead of stopping the Web child before it can be queried. The wait is bounded by the configured agent overall timeout plus a short grace period, capped at six minutes; repeated endpoint failures or the cap allow shutdown to continue with an explicit warning. Prefer sending SIGINT to the supervisor process so this drain path runs. Do not broadcast a signal directly to child PIDs, use `kill -9`, replace the backend process directly, or treat quota `in_flight` as a drain signal.
 
 After restart, verify both the new process and the drain endpoint:
 

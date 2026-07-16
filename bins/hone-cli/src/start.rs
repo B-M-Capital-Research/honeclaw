@@ -391,6 +391,7 @@ pub(crate) async fn spawn_binary(
         .ok_or_else(|| missing_binary_message(binary, source_root))?;
 
     let mut command = Command::new(&path);
+    isolate_runtime_child_from_terminal_interrupt(&mut command);
     command
         .current_dir(&paths.root_dir)
         .stdin(Stdio::null())
@@ -407,6 +408,15 @@ pub(crate) async fn spawn_binary(
     command
         .spawn()
         .map_err(|e| format!("启动 {binary} 失败：{e}"))
+}
+
+fn isolate_runtime_child_from_terminal_interrupt(command: &mut Command) {
+    // Interactive Ctrl-C targets the terminal's foreground process group. Keep
+    // runtime children in their own groups so only the CLI supervisor receives
+    // SIGINT, queries the Web drain endpoint, and then terminates children in a
+    // controlled order after active chats reach zero.
+    #[cfg(unix)]
+    command.process_group(0);
 }
 
 async fn spawn_channel(
@@ -709,6 +719,26 @@ mod tests {
             ),
             ActiveChatDrainPollDecision::ProceedUnavailable
         );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn runtime_child_isolated_from_supervisor_process_group() {
+        let mut command = Command::new("sh");
+        isolate_runtime_child_from_terminal_interrupt(&mut command);
+        let status = command
+            .arg("-c")
+            .arg(
+                "child_pgid=$(ps -o pgid= -p $$ | tr -d ' '); \
+                 parent_pgid=$(ps -o pgid= -p $PPID | tr -d ' '); \
+                 test -n \"$child_pgid\" -a -n \"$parent_pgid\" \
+                   -a \"$child_pgid\" != \"$parent_pgid\"",
+            )
+            .status()
+            .await
+            .expect("spawn isolated child");
+
+        assert!(status.success());
     }
 
     #[test]
