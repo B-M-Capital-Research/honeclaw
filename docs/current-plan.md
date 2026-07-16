@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-07-16
-状态：有 6 个活跃任务
+状态：有 7 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **Investment Response Template Regression Repair**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/investment-response-template-regression.md`
+  - 摘要：恢复服务端时间优先、实体优先、同代码实时行情与旧大 Prompt 模板，并修复 RMBS/NBIS/INTL 误拒、整篇重试丢稿、流式重复终止与刷新恢复问题
 
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`
