@@ -7,6 +7,14 @@
 
 ## 最新进展
 
+- `2026-07-16 23:01-2026-07-17 03:03 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-16`
+    - 同窗仍有 20 条 heartbeat `deliver_preview` 以 fenced JSON 开头。
+    - 代表样本包括 00:30 CST `小米30港元破位预警`、00:30 / 01:00 / 01:30 CST `AAOI 1.6T 光模块心跳检测`、00:30 CST `RKLB异动监控`、01:00 CST `持仓重大事件心跳检测`、01:01 / 02:00 CST `存储板块关键事件心跳提醒`、02:00 CST `FOTO 光子学ETF心跳检测` 等，用户可见 preview 继续包含 `status`、`triggered`、`symbol`、`condition`、`price`、`prev_close`、`change_pct` 等协议字段。
+    - 23:30-03:00 CST 多条 heartbeat raw preview 仍以 `<think>` 加 fenced JSON 或裸 JSON 收口，说明模型输出协议未稳定收敛到用户态正文。
+  - 会话质量对照：同窗 `data/sessions.sqlite3` 新增 5 条 user / 5 条 assistant，未确认 JSON 载荷进入 direct / 普通 scheduler assistant final；未见错投、全渠道不可用或数据安全证据。
+  - 判断：这些样本说明缺陷仍是 heartbeat 出站格式化退化；当前没有主功能链路阻断，主要影响提醒格式质量，因此维持质量性 `P3 / New`，非 P1。
+
 - `2026-07-16 19:02-23:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-16`
     - 20:00 / 21:00 CST `小米30港元破位预警` 的 `deliver_preview` 继续以 fenced JSON 开头，包含 `"status": "triggered"`、`"triggered"`、`"symbol": "1810.HK"`、`"condition"`、`"current_price"`、`"previous_close"`、`"change_pct"` 等结构化协议字段。

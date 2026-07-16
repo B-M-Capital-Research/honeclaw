@@ -23,6 +23,14 @@ New
 ## 证据来源
 
 - `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-16`
+  - 巡检时间窗：2026-07-16 23:01-2026-07-17 03:03 CST。
+  - `data/sessions.sqlite3` 同窗新增 5 条 user / 5 条 assistant，覆盖 5 个 Web regression direct session，全部以 assistant 收口；没有 user-only 悬挂、错投、敏感信息泄露或全渠道不可用证据。
+  - 00:59 CST Web direct session `Actor_web__direct__regression-market-final-20260717` 对 `整个都在跌，今天为什么大跌` 只返回 `这次回答未通过投研完整性检查，已停止发送不完整或未经充分核验的结论。请稍后重试。`，`metadata_json` 标记 `run_failed=true` / `AgentFailed`。
+  - 02:46 CST Web direct session `Actor_web__direct__regression-rmbs-20260717-0245` 对 `现在rmbs怎么看` 只返回同一投研完整性失败文案，`metadata_json` 标记 `run_failed=true` / `AgentFailed`。
+  - 同窗 00:43 / 00:46 / 00:57 CST AAPL 报价样本成功输出行情正文，说明该缺陷不是 Web direct 全链路不可用。
+  - `data/runtime/logs/web.log.2026-07-16` 同窗另有 150 条 heartbeat `runner_error`，多批任务因实体 / 核验门禁失败跳过发送。
+  - 判断：该样本仍属于同根投研完整性 / evidence 门禁 fail-closed 后用户只看到通用失败提示；由于同窗 direct 可成功收口，未见错投、数据破坏、敏感信息泄露或全渠道不可用，维持功能性 `P2 / New`，不升级为 P1，不创建 GitHub Issue。
+- `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-16`
   - 巡检时间窗：2026-07-16 19:02-23:02 CST。
   - `data/sessions.sqlite3` 同窗新增 29 条 user / 29 条 assistant，覆盖 12 个近期 session，全部以 assistant 收口；没有 user-only 悬挂、错投、敏感信息泄露或全渠道不可用证据。
   - 21:00 CST Web scheduler session `Actor_web__direct__web-user-afc1cabadbf8` 的 `盘前美股要闻与SNDK/MU存储产业链日报` 先写入“我暂时无法确认你提到的 原文 对应哪家上市公司或证券”，随后写入 `定时任务「盘前美股要闻与SNDK/MU存储产业链日报」执行出错，请稍后重试。`

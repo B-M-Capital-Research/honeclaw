@@ -6,6 +6,17 @@
 - **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
 
+## 复发记录（2026-07-17 03:02 CST）
+
+- 运行态在最近投研链路修复后继续复发，状态维持 `New`：
+  - 本轮巡检窗口为 `2026-07-16 23:01-2026-07-17 03:03 CST`。
+  - `data/sessions.sqlite3` 同窗新增 5 条 user / 5 条 assistant，全部以 assistant 收口；未见长期 user-only 悬挂、错投、空回复、内部路径 / raw tool / `<think>` 外泄或全渠道不可用。
+  - `data/runtime/logs/web.log.2026-07-16` 同窗仍有 150 条 heartbeat `runner_error`、112 条“无法确认你提到的”和 142 条“请补充公司全名”。
+  - 代表样本包括 `原文`、原油、AAOI、SNDK、Samsung、光迅科技、VIX、Meta、SIVE、ASTS、TSLA 等明确标的或上下文词被实体识别 / 投研完整性 guard 拦截，任务落成 `failure_kind=runner_error` 并跳过发送。
+  - 同窗 Web regression direct 00:59 / 02:46 CST 只返回投研完整性失败文案并标记 `AgentFailed`，但 00:43-00:57 CST AAPL 报价样本可成功收口，说明故障不是全链路不可用。
+- 判断：最新样本仍是实体优先 / 投研完整性 guard 过宽或上下文输入不干净链路，更新原文档，不新建重复缺陷。
+- 严重等级维持 `P2`：问题直接阻断投研 direct / scheduler 正文生成，但同窗仍有 direct 金融问题成功收口，未见错投、数据破坏、敏感信息泄露或全渠道停摆，因此不是 `P1`，不创建 GitHub Issue。
+
 ## 复发记录（2026-07-16 23:02 CST）
 
 - 运行态在最近两次投研链路修复后继续复发，状态维持 `New`：

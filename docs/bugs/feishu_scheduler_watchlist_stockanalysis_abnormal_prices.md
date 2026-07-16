@@ -22,6 +22,20 @@
 
 ## 最新进展
 
+- 本轮 2026-07-17 03:02 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-16`
+    - 23:01 CST `Cerebras IPO与业务进展心跳监控` raw preview 使用 `CBRS Market Cap ~$3993 亿` 作为行情锚。
+    - 00:01 CST `持仓财报与重大新闻心跳提醒` deliver preview 使用 `SNDK 昨收 $1,446.87` 和 `AAOI 昨收 $101.04`。
+    - 00:30-03:00 CST 存储 / 持仓 heartbeat raw preview 继续使用 `SNDK $1412.95-$1615.00`、`AAOI $98.89-$109.09` 等高风险数量级行情锚。
+    - 03:00 CST `Monitor_Watchlist_11` raw preview 使用 `MU $846.98` 对比 `MU <= $252.00` 判断未触发。
+    - 03:02 CST `美股黄金坑信号心跳检测` raw preview 使用 `SPY $750.30`、`QQQ $705.87` 作为市场判断锚。
+  - `data/sessions.sqlite3`
+    - 00:43 / 00:46 CST Web regression direct AAPL 报价成功收口，但 final 重复输出“数据时间 / 行情口径”头部；该格式退化为单窗观察，不新建独立缺陷。
+    - 00:57 CST AAPL 报价头部恢复单次输出，说明直聊价格格式抖动暂不足以单独建档。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check 缺口：异常或高风险数量级价格进入 heartbeat 判断上下文。
+    - 本窗没有错投、投递失败、空回复、数据破坏或全渠道不可用；因此仍按质量性 `P3 / New`。该问题不影响主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-16 23:02 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-16`
     - 19:30 CST `持仓财报与重大新闻心跳提醒` raw preview 使用 `SNDK $1615`、`AAOI $109.09` 作为行情锚。
