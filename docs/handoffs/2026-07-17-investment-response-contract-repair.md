@@ -13,7 +13,7 @@
 
 The investment response path has been rebuilt around a deterministic service-owned contract rather than relying on the model to remember the old format. The visible answer begins with Beijing data time, then exact normalized entity and same-symbol DataFetch quote facts. The model body receives asset-appropriate evidence and must follow the restored full response template. Guarded drafts stay hidden until validation and publish as one final assistant message with one terminal stream event.
 
-Live FMP/DataFetch and Tavily diagnostics succeeded. The production NBIS/RMBS/INTL failures were not a general provider outage: they came from internal entity/asset routing, false company-financial requirements for funds, and format validation/repair that could discard a valid quote context or spend a long time retrying.
+Live FMP/DataFetch and Tavily diagnostics succeeded. The production NBIS/RMBS/INTL failures were not a general provider outage: they came from internal entity/asset routing, false company-financial requirements for funds, and format validation/repair that could discard a valid quote context or spend a long time retrying. RMBS and ISRG production traces already contained exact same-symbol quotes before two roughly 60-second synthesis attempts, producing the observed 120–125 second failure.
 
 ## What Changed
 
@@ -27,18 +27,19 @@ Live FMP/DataFetch and Tavily diagnostics succeeded. The production NBIS/RMBS/IN
 - Kept ordinary exact tickers such as `NBIS`, `RMBS`, and `INTL` on a deterministic DataFetch fast path. Named companies/aliases may use auxiliary extraction, but that call is capped at 15 seconds; timeout, provider failure, malformed JSON, or incomplete multi-entity output fails closed rather than analyzing a partial set.
 - Classified exact instruments before deep evidence. Equities use exact profile, meaningful financial statements, and entity-matched news; ETFs/funds use structured fund profile, holdings, and news without company-financial or earnings requirements; crypto uses exact market identity, quote, and news without stock-profile requirements.
 - Made the server own the first Beijing data-time line, normalized entity, same-symbol current quote, change, quote-source timestamp, and verified-fact labels. A successful DataFetch quote prevents the model from claiming that current/realtime data was unavailable; wording remains “latest available”, not tick-by-tick.
+- Added exact-symbol US extended-hours handling for explicit premarket/postmarket questions. DataFetch returns only the latest bounded one-minute bar; the guard accepts it only when its symbol, requested session, New York trading-session boundary, and 45-minute freshness all match. Otherwise it retains the regular quote and visibly discloses that the requested extended-hours price was not verified.
 - Reduced provider evidence before prompt injection. Conflicting profile snapshot prices and unsupported financial interpretations are removed. Every claimed event fact must use a verified real absolute date and matching full source domain in the same clause; otherwise it is explicitly inference, hypothesis, or scenario.
 - Deferred investment candidate deltas/resets/thoughts/errors behind validation, then emitted exactly one canonical assistant answer. Session `Done` is the sole `run_finished` authority, so late frames cannot create a second flash/run.
 - Kept Web run state server-authoritative. Refresh resumes the same `run_id` and original `started_at_ms`; it does not repost the prompt or reset elapsed time. A missing runner with an unanswered persisted user turn becomes an explicit interruption.
-- Contract repair reuses the sanitized draft once and never replays the original operation. Requests that can persist, send, schedule, update, or delete are execute-once when traces are absent or uncertain.
+- For supported quote/equity/fund/crypto/market scopes, an incomplete successful draft no longer starts a second model run. The server builds a complete answer only from the prepared contract, sanitizes it, and runs it through the same final validator; rejected draft tool/transcript metadata is cleared. Runner failures and persistent/uncertain writes remain failures. Comparisons and sector analysis retain their specialized model repair path. English and Chinese mutation-plus-analysis requests are both execute-once.
+- Historical/open/close/high/low prices now fail closed unless a future dedicated verified historical-quote field is added. A date, source domain, inference heading, or a number that happens to equal the current quote cannot launder an unsupported historical price. Inference/condition subheadings apply only to their following Markdown list items and reset before ordinary prose or unknown headings.
 
 ## Verification
 
 Completed before this handoff:
 
-- Investment guard focused tests: `56/56`.
-- AgentSession focused tests: `79/79`.
-- Full `hone-channels` tests: `549/549`.
+- DataFetch focused tests: `27/27`.
+- Full `hone-channels` tests: `558/558`.
 - `hone-web-api`: `117 passed`, `2 ignored`.
 - Prompt tests: `12/12`.
 - Finance static contract checks: `24/24`.
@@ -56,7 +57,7 @@ TODO before marking the plan done:
 ## Risks / Follow-ups
 
 - The auxiliary company-name extractor intentionally fails closed after 15 seconds. The deterministic exact ticker path is independent, but ambiguous company names may require the user to retry or provide a ticker when the auxiliary route is unavailable.
-- Strict nine-section validation can still add model latency. Keep monitoring final-answer latency and missing-section repair rates without weakening exact quote/entity correctness.
+- Comparisons and sector analysis still use specialized model repair when their first draft is incomplete. Monitor those scopes separately; ordinary quote/equity/fund/crypto/market failures must not regress to a second full model synthesis.
 - Portfolio preflight is read-only. An explicit add/update/delete request must still execute its mutation once; never report the preflight read as mutation success.
 - This change has no database, schema, or durable-storage migration. Rollback is code/asset-only: restore the previous server/frontend revision, rebuild, drain active runs, and perform the controlled restart. Do not delete or transform actor sessions, portfolios, or other durable data.
 

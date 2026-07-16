@@ -27,10 +27,13 @@ Restore the long investment prompt as an enforced runtime contract: server-owned
 
 ## Current Progress
 
-- Restored the full pre-`71a4498e` investment prompt and made the first Beijing data-time line plus normalized entity/quote facts server-owned.
+- Identified the prompt regression at `71a4498e686fe1a2f8634958a87c31bbd6a06f11`: it replaced the 291-line / 15,532-byte investment contract with a 36-line compact prompt and explicitly discouraged fixed templates. Restored the full pre-regression prompt and made the first Beijing data-time line plus normalized entity/quote facts server-owned.
 - Implemented the five-scope entity state machine, exact ticker fast path, DataFetch quote gate, equity/fund/crypto evidence routing, portfolio read preflight, 15-second auxiliary extraction timeout, and dated-source validation.
 - Guarded investment drafts are deferred until validation and then emitted once; refresh recovers the original server run start time, and persistent operations are execute-once across hidden repair attempts.
-- Live FMP/DataFetch and Tavily diagnostics succeeded. The observed NBIS/RMBS/INTL failures came from internal entity/asset routing and strict format-repair behavior, not from a provider outage.
+- Live FMP/DataFetch and Tavily diagnostics succeeded. The observed NBIS/RMBS/INTL failures came from internal entity/asset routing and strict format-repair behavior, not from a provider outage. Production RMBS and ISRG traces each had a valid exact quote before two roughly 60-second synthesis attempts, explaining the 120–125 second empty/failure experience.
+- Added a bounded `extended_hours` DataFetch route and exact-symbol guard integration for explicit US premarket/postmarket requests. A fresh matching one-minute bar wins; otherwise the answer explicitly labels the regular-session quote and says extended-hours price was not verified. Crypto/night-session requests do not inherit the US-equity fallback label.
+- Replaced the second model repair for supported quote/equity/fund/crypto/market scopes with a server-generated response built only from the prepared contract. The fallback is sanitized and revalidated by the same gate, clears the rejected draft's tool/transcript metadata, and retains the full established template. Runner failures and uncertain/persistent side effects still fail closed; comparisons and sectors retain their specialized repair path.
+- Hardened current-price aliases, historical-price rejection, event-subheading boundaries, Markdown-safe provider labels, and English/Chinese execute-once classification. A date, domain, inference label, or coincidentally equal current value cannot authenticate an unsupported historical price.
 - Final workspace CI, post-merge live E2E, controlled restart, and deployment health checks remain pending in the parent task.
 
 ## Validation
@@ -42,7 +45,7 @@ Restore the long investment prompt as an enforced runtime contract: server-owned
 - `bash tests/regression/run_ci.sh`
 - Live DataFetch and isolated Web E2E cases for RMBS, NBIS, INTL, crypto, market, and sector prompts.
 - Full runtime restart plus `/api/meta` and active-run health checks.
-- Completed evidence so far: investment-guard focused tests `56/56`, AgentSession focused tests `79/79`, full `hone-channels` tests `549/549`, `hone-web-api` tests `117 passed / 2 ignored`, prompt tests `12/12`, finance static contracts `24/24`, and frontend tests `265/265`.
+- Completed evidence so far: DataFetch focused tests `27/27`, full `hone-channels` tests `558/558`, earlier `hone-web-api` tests `117 passed / 2 ignored`, prompt tests `12/12`, finance static contracts `24/24`, and frontend tests `265/265`.
 - Completed live provider probes: exact entity/quote paths for NBIS, RMBS, INTL, and BTCUSD; equity financial/news and fund holdings routes; direct FMP and Tavily health diagnostics.
 - TODO before closure: record final post-rebase workspace check/test/regression counts, deployed RMBS/NBIS/INTL response samples, SSE terminal counts, and restart health evidence.
 
