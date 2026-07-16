@@ -19,6 +19,7 @@
 //! sibling runner 都不必关心内部文件拆分。
 
 mod extract;
+mod failure;
 mod ingest;
 mod log;
 mod process;
@@ -34,6 +35,7 @@ mod tests;
 // 这张 re-export 表就是「acp_common 模块的公共接口」,改 sibling runner 的
 // 地方要跟着更新这里,否则老的 `use super::acp_common::X` 会直接 broken。
 
+pub(crate) use failure::acp_failure_to_runner_result;
 pub(crate) use ingest::{acp_prompt_succeeded, ingest_acp_message_chunk, ingest_acp_usage_update};
 pub(crate) use log::{
     AcpEventLogContext, acp_diagnostic_excerpt_for_log, acp_error_detail_for_message,
@@ -47,9 +49,10 @@ pub(crate) use protocol::{
 };
 pub(crate) use state::{
     ACP_NEEDS_SP_RESEED_KEY, ACP_PREV_PROMPT_PEAK_KEY, AcpPermissionDecision, AcpPromptState,
-    AcpRenderedToolStatus, AcpResponseTimeouts, AcpToolCallRecord, AcpToolRenderPhase,
+    AcpRenderedToolStatus, AcpResponseTimeouts, AcpRunFailure, AcpToolCallRecord,
+    AcpToolRenderPhase,
 };
-pub(crate) use tool_state::finalize_context_messages;
+pub(crate) use tool_state::{finalize_context_messages, finalize_pending_tool_calls};
 pub(crate) use version::{CliVersion, parse_cli_version};
 
 // ── 仅测试消费的 re-export ──

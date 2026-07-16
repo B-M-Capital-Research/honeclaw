@@ -22,6 +22,7 @@ pub(crate) mod sandbox;
 pub mod scheduler;
 pub(crate) mod session_compactor;
 pub mod think;
+pub(crate) mod tool_trace;
 pub(crate) mod turn_builder;
 
 pub use self::core::HoneBotCore;

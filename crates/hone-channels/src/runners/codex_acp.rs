@@ -11,18 +11,21 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
 use crate::agent_session::{AgentSessionError, AgentSessionErrorKind};
 use crate::mcp_bridge::hone_mcp_servers;
+use crate::tool_trace::{
+    PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE, persistent_side_effect_state_is_uncertain,
+};
 
 use super::acp_common::{
     ACP_NEEDS_SP_RESEED_KEY, ACP_PREV_PROMPT_PEAK_KEY, AcpChildGuard, AcpEventLogContext,
     AcpPermissionDecision, AcpPromptState, AcpRenderedToolStatus, AcpResponseTimeouts,
-    AcpToolRenderPhase, CliVersion, acp_prompt_succeeded, configure_acp_command_process_group,
-    create_acp_session, finalize_context_messages, log_acp_prompt_stop_diagnostics,
+    AcpRunFailure, AcpToolRenderPhase, CliVersion, acp_failure_to_runner_result,
+    acp_prompt_succeeded, configure_acp_command_process_group, create_acp_session,
+    finalize_context_messages, finalize_pending_tool_calls, log_acp_prompt_stop_diagnostics,
     parse_cli_version, set_acp_session_model, wait_for_response,
     wait_for_response_with_timeouts_and_renderer, write_jsonrpc_request,
 };
 use super::types::{
-    AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
-    RunnerTimeouts,
+    AgentRunner, AgentRunnerEmitter, AgentRunnerRequest, AgentRunnerResult, RunnerTimeouts,
 };
 
 const CODEX_ACP_SESSION_KEY: &str = "codex_acp_session_id";
@@ -142,23 +145,7 @@ impl AgentRunner for CodexAcpRunner {
                 session_metadata_updates: updates,
                 context_messages,
             },
-            Err(error) => {
-                let message = error.message.clone();
-                emitter.emit(AgentRunnerEvent::Error { error }).await;
-                AgentRunnerResult {
-                    response: AgentResponse {
-                        content: String::new(),
-                        tool_calls_made: Vec::new(),
-                        iterations: 1,
-                        success: false,
-                        error: Some(message),
-                    },
-                    streamed_output: true,
-                    terminal_error_emitted: true,
-                    session_metadata_updates: HashMap::new(),
-                    context_messages: None,
-                }
-            }
+            Err(failure) => acp_failure_to_runner_result(failure, emitter).await,
         }
     }
 }
@@ -449,7 +436,7 @@ async fn run_codex_acp(
         HashMap<String, Value>,
         Option<Vec<AgentMessage>>,
     ),
-    AgentSessionError,
+    AcpRunFailure,
 > {
     let acp_log = AcpEventLogContext::from_request("codex", &request);
     validate_codex_acp_versions(config, timeouts.step).await?;
@@ -500,7 +487,14 @@ async fn run_codex_acp(
     child_guard.set_stderr_task(stderr_task);
 
     let mut reader = tokio::io::BufReader::new(stdout).lines();
-    let run_result: Result<(Value, AcpPromptState), AgentSessionError> = async {
+    let mut codex_state = AcpPromptState {
+        prev_prompt_peak_used: request
+            .session_metadata
+            .get(ACP_PREV_PROMPT_PEAK_KEY)
+            .and_then(|value| value.as_u64()),
+        ..AcpPromptState::default()
+    };
+    let run_result: Result<Value, AgentSessionError> = async {
         let mut next_id = 1u64;
 
         write_jsonrpc_request(
@@ -579,13 +573,6 @@ async fn run_codex_acp(
             next_id += 1;
         }
 
-        let mut codex_state = AcpPromptState {
-            prev_prompt_peak_used: request
-                .session_metadata
-                .get(ACP_PREV_PROMPT_PEAK_KEY)
-                .and_then(|value| value.as_u64()),
-            ..AcpPromptState::default()
-        };
         let prompt_text = build_codex_acp_prompt_text(
             &request.system_prompt,
             &request.runtime_input,
@@ -625,13 +612,29 @@ async fn run_codex_acp(
             Some(&acp_log),
         )
         .await?;
-        Ok((prompt_result, codex_state))
+        Ok(prompt_result)
     }
     .await;
 
     let _ = stdin.shutdown().await;
     child_guard.terminate().await;
-    let (prompt_result, mut codex_state) = run_result?;
+    let prompt_result = match run_result {
+        Ok(prompt_result) => prompt_result,
+        Err(error) => {
+            metadata_updates.insert(
+                ACP_PREV_PROMPT_PEAK_KEY.to_string(),
+                Value::from(codex_state.current_prompt_peak_used),
+            );
+            if codex_state.compact_detected {
+                metadata_updates.insert(ACP_NEEDS_SP_RESEED_KEY.to_string(), Value::Bool(true));
+            }
+            return Err(AcpRunFailure {
+                error,
+                state: codex_state,
+                metadata_updates,
+            });
+        }
+    };
 
     let stop_reason_value = prompt_result
         .get("stopReason")
@@ -669,6 +672,7 @@ async fn run_codex_acp(
         metadata_updates.insert(ACP_NEEDS_SP_RESEED_KEY.to_string(), Value::Bool(true));
     }
 
+    finalize_pending_tool_calls(&mut codex_state, "unknown_after_missing_acp_result");
     let context_messages = finalize_context_messages(&mut codex_state);
     let content = final_assistant_message_content(
         &context_messages,
@@ -676,13 +680,21 @@ async fn run_codex_acp(
     );
     let tool_calls_made = codex_state.finished_tool_calls.clone();
 
+    let state_uncertain = persistent_side_effect_state_is_uncertain(&tool_calls_made);
+    let success = success && !state_uncertain;
     Ok((
         AgentResponse {
-            content,
+            content: if state_uncertain {
+                String::new()
+            } else {
+                content
+            },
             tool_calls_made,
             iterations: 1,
             success,
-            error: if success {
+            error: if state_uncertain {
+                Some(PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE.to_string())
+            } else if success {
                 None
             } else {
                 Some(format!(

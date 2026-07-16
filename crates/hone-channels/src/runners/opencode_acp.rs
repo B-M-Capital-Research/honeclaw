@@ -14,14 +14,18 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
 use crate::agent_session::{AgentSessionError, AgentSessionErrorKind};
 use crate::mcp_bridge::hone_mcp_servers;
+use crate::tool_trace::{
+    PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE, persistent_side_effect_state_is_uncertain,
+};
 
 use super::acp_common::{
     ACP_NEEDS_SP_RESEED_KEY, ACP_PREV_PROMPT_PEAK_KEY, AcpChildGuard, AcpEventLogContext,
-    AcpPromptState, AcpResponseTimeouts, AcpToolCallRecord, acp_diagnostic_excerpt_for_log,
-    acp_error_detail_for_message, acp_prompt_succeeded, configure_acp_command_process_group,
-    create_acp_session, log_acp_payload, log_acp_prompt_stop_diagnostics, log_acp_raw_parse_error,
-    message_with_bounded_stderr, set_acp_session_model, timeout_message_with_stderr,
-    wait_for_response, write_jsonrpc_request,
+    AcpPromptState, AcpResponseTimeouts, AcpRunFailure, AcpToolCallRecord,
+    acp_diagnostic_excerpt_for_log, acp_error_detail_for_message, acp_failure_to_runner_result,
+    acp_prompt_succeeded, configure_acp_command_process_group, create_acp_session,
+    finalize_pending_tool_calls, log_acp_payload, log_acp_prompt_stop_diagnostics,
+    log_acp_raw_parse_error, message_with_bounded_stderr, set_acp_session_model,
+    timeout_message_with_stderr, wait_for_response, write_jsonrpc_request,
 };
 use super::types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
@@ -69,23 +73,7 @@ impl AgentRunner for OpencodeAcpRunner {
                     context_messages,
                 }
             }
-            Err(error) => {
-                let message = error.message.clone();
-                emitter.emit(AgentRunnerEvent::Error { error }).await;
-                AgentRunnerResult {
-                    response: AgentResponse {
-                        content: String::new(),
-                        tool_calls_made: Vec::new(),
-                        iterations: 1,
-                        success: false,
-                        error: Some(message),
-                    },
-                    streamed_output: true,
-                    terminal_error_emitted: true,
-                    session_metadata_updates: HashMap::new(),
-                    context_messages: None,
-                }
-            }
+            Err(failure) => acp_failure_to_runner_result(failure, emitter).await,
         }
     }
 }
@@ -385,7 +373,7 @@ async fn run_opencode_acp(
         HashMap<String, Value>,
         Option<Vec<AgentMessage>>,
     ),
-    AgentSessionError,
+    AcpRunFailure,
 > {
     let acp_log = AcpEventLogContext::from_request("opencode", &request);
     let startup_timeout = timeouts.step;
@@ -481,7 +469,14 @@ async fn run_opencode_acp(
     child_guard.set_stderr_task(stderr_task);
 
     let mut reader = tokio::io::BufReader::new(stdout).lines();
-    let run_result: Result<(Value, AcpPromptState), AgentSessionError> = async {
+    let mut opencode_state = AcpPromptState {
+        prev_prompt_peak_used: request
+            .session_metadata
+            .get(ACP_PREV_PROMPT_PEAK_KEY)
+            .and_then(|value| value.as_u64()),
+        ..AcpPromptState::default()
+    };
+    let run_result: Result<Value, AgentSessionError> = async {
         let mut next_id = 1u64;
 
         write_jsonrpc_request(
@@ -573,13 +568,6 @@ async fn run_opencode_acp(
             prompt_idle_timeout.as_secs(),
             prompt_overall_timeout.as_secs(),
         );
-        let mut opencode_state = AcpPromptState {
-            prev_prompt_peak_used: request
-                .session_metadata
-                .get(ACP_PREV_PROMPT_PEAK_KEY)
-                .and_then(|value| value.as_u64()),
-            ..AcpPromptState::default()
-        };
         let prompt_text = build_opencode_acp_prompt_text(
             &request.system_prompt,
             &request.runtime_input,
@@ -615,13 +603,29 @@ async fn run_opencode_acp(
             &acp_log,
         )
         .await?;
-        Ok((prompt_result, opencode_state))
+        Ok(prompt_result)
     }
     .await;
 
     let _ = stdin.shutdown().await;
     child_guard.terminate().await;
-    let (prompt_result, mut opencode_state) = run_result?;
+    let prompt_result = match run_result {
+        Ok(prompt_result) => prompt_result,
+        Err(error) => {
+            metadata_updates.insert(
+                ACP_PREV_PROMPT_PEAK_KEY.to_string(),
+                Value::from(opencode_state.current_prompt_peak_used),
+            );
+            if opencode_state.compact_detected {
+                metadata_updates.insert(ACP_NEEDS_SP_RESEED_KEY.to_string(), Value::Bool(true));
+            }
+            return Err(AcpRunFailure {
+                error,
+                state: opencode_state,
+                metadata_updates,
+            });
+        }
+    };
 
     let stop_reason_value = prompt_result
         .get("stopReason")
@@ -654,6 +658,7 @@ async fn run_opencode_acp(
         metadata_updates.insert(ACP_NEEDS_SP_RESEED_KEY.to_string(), Value::Bool(true));
     }
 
+    finalize_pending_tool_calls(&mut opencode_state, "unknown_after_missing_acp_result");
     let context_messages = finalize_opencode_context_messages(&mut opencode_state);
     let content = final_assistant_message_content(
         &context_messages,
@@ -681,13 +686,21 @@ async fn run_opencode_acp(
         tracing::warn!("{warning}");
     }
 
+    let state_uncertain = persistent_side_effect_state_is_uncertain(&tool_calls_made);
+    let success = success && !state_uncertain;
     Ok((
         AgentResponse {
-            content,
+            content: if state_uncertain {
+                String::new()
+            } else {
+                content
+            },
             tool_calls_made,
             iterations: 1,
             success,
-            error: if success {
+            error: if state_uncertain {
+                Some(PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE.to_string())
+            } else if success {
                 None
             } else {
                 Some(format!("opencode prompt stopped with reason={stop_reason}"))
@@ -913,6 +926,7 @@ fn build_openai_tool_call_value(tool_call_id: &str, tool_name: &str, arguments: 
 fn opencode_extract_tool_arguments(update: &Value) -> Value {
     update
         .get("rawInput")
+        .and_then(|value| value.get("arguments").or(Some(value)))
         .cloned()
         .filter(is_meaningful_tool_value)
         .unwrap_or(Value::Null)
@@ -937,6 +951,14 @@ fn opencode_extract_text_from_content(update: &Value) -> Option<String> {
 }
 
 fn opencode_extract_tool_result(update: &Value) -> Option<Value> {
+    if let Some(structured) = update
+        .get("rawOutput")
+        .and_then(|value| value.get("structuredContent"))
+        .cloned()
+        .filter(is_meaningful_tool_value)
+    {
+        return Some(structured);
+    }
     if let Some(output) = update
         .get("rawOutput")
         .and_then(|value| value.get("output"))
@@ -956,17 +978,20 @@ fn opencode_extract_tool_result(update: &Value) -> Option<Value> {
 }
 
 fn opencode_extract_tool_failure(update: &Value) -> Option<Value> {
-    if let Some(error) = update
+    let message = update
         .get("rawOutput")
         .and_then(|value| value.get("error"))
         .and_then(|value| value.as_str())
-    {
-        let trimmed = error.trim();
-        if !trimmed.is_empty() {
-            return Some(json!({ "error": trimmed }));
-        }
-    }
-    opencode_extract_text_from_content(update).map(|text| json!({ "error": text }))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .or_else(|| opencode_extract_text_from_content(update))
+        .unwrap_or_else(|| "tool failed without a result".to_string());
+    Some(json!({
+        "status": "failed",
+        "isError": true,
+        "error": message
+    }))
 }
 
 fn upsert_pending_tool_arguments(state: &mut AcpPromptState, update: &Value, tool_name: &str) {
@@ -1067,38 +1092,39 @@ async fn handle_opencode_tool_call_update(
             return;
         }
 
-        let pending = state.pending_tool_calls.remove(&call_id);
+        let pending = state.pending_tool_calls.get(&call_id);
         let arguments = pending
-            .as_ref()
             .map(|record| record.arguments.clone())
             .filter(is_meaningful_tool_value)
             .unwrap_or_else(|| opencode_extract_tool_arguments(update));
 
         let result = if status == "completed" {
-            opencode_extract_tool_result(update).unwrap_or(Value::Null)
+            opencode_extract_tool_result(update)
         } else {
             opencode_extract_tool_failure(update)
-                .unwrap_or_else(|| json!({ "error": "tool failed" }))
         };
 
-        state.completed_tool_call_ids.insert(call_id.clone());
-        state
-            .finished_tool_calls
-            .push(hone_core::agent::ToolCallMade {
-                name: tool_name.clone(),
-                arguments,
-                result: result.clone(),
-                tool_call_id: Some(call_id.clone()),
+        if let Some(result) = result {
+            state.pending_tool_calls.remove(&call_id);
+            state.completed_tool_call_ids.insert(call_id.clone());
+            state
+                .finished_tool_calls
+                .push(hone_core::agent::ToolCallMade {
+                    name: tool_name.clone(),
+                    arguments,
+                    result: result.clone(),
+                    tool_call_id: Some(call_id.clone()),
+                });
+            flush_pending_assistant_message(state);
+            state.context_messages.push(AgentMessage {
+                role: "tool".to_string(),
+                content: Some(stringify_tool_result(&result)),
+                tool_calls: None,
+                tool_call_id: Some(call_id),
+                name: Some(tool_name.clone()),
+                metadata: None,
             });
-        flush_pending_assistant_message(state);
-        state.context_messages.push(AgentMessage {
-            role: "tool".to_string(),
-            content: Some(stringify_tool_result(&result)),
-            tool_calls: None,
-            tool_call_id: Some(call_id),
-            name: Some(tool_name.clone()),
-            metadata: None,
-        });
+        }
     }
 
     if status == "completed" {

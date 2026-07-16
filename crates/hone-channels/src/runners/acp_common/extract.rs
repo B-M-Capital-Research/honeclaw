@@ -64,6 +64,14 @@ pub(super) fn extract_tool_name(update: &Value) -> Option<String> {
 }
 
 pub(super) fn extract_tool_arguments(update: &Value) -> Value {
+    if let Some(raw_input) = update.get("rawInput") {
+        if let Some(arguments) = raw_input.get("arguments") {
+            return parse_embedded_json(arguments);
+        }
+        if !raw_input.is_null() {
+            return parse_embedded_json(raw_input);
+        }
+    }
     if let Some(raw) = extract_value_field(update, &["arguments", "args", "input", "parameters"]) {
         return parse_embedded_json(raw);
     }
@@ -78,6 +86,20 @@ pub(super) fn extract_tool_arguments(update: &Value) -> Value {
 }
 
 pub(super) fn extract_tool_result(update: &Value) -> Option<Value> {
+    if let Some(raw_output) = update.get("rawOutput") {
+        if let Some(structured) = extract_value_field(raw_output, &["structuredContent"]) {
+            return Some(parse_embedded_json(structured));
+        }
+        if let Some(output) = extract_value_field(raw_output, &["output", "result", "response"]) {
+            return Some(parse_embedded_json(output));
+        }
+        if let Some(text) = extract_text_from_content(raw_output.get("content")) {
+            return Some(Value::String(text));
+        }
+        if !raw_output.is_null() {
+            return Some(parse_embedded_json(raw_output));
+        }
+    }
     if let Some(raw) = extract_value_field(update, &["result", "output", "response"]) {
         return Some(parse_embedded_json(raw));
     }
@@ -96,8 +118,44 @@ pub(super) fn extract_tool_result(update: &Value) -> Option<Value> {
 }
 
 pub(super) fn extract_tool_failure(update: &Value) -> Option<Value> {
-    extract_string_field(update, &["message", "detail", "description", "subtitle"])
-        .map(|message| json!({ "error": message }))
+    let message = update
+        .get("rawOutput")
+        .and_then(|value| extract_string_field(value, &["error", "message", "detail"]))
+        .or_else(|| extract_string_field(update, &["message", "detail", "description", "subtitle"]))
+        .or_else(|| extract_text_from_content(update.get("content")))
+        .unwrap_or_else(|| "tool failed without a result".to_string());
+    Some(json!({
+        "status": "failed",
+        "isError": true,
+        "error": message
+    }))
+}
+
+fn extract_text_from_content(content: Option<&Value>) -> Option<String> {
+    let content = content?;
+    if let Some(text) = content
+        .as_str()
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+    {
+        return Some(text.to_string());
+    }
+    for item in content.as_array()? {
+        let text = item
+            .get("text")
+            .and_then(|value| value.as_str())
+            .or_else(|| {
+                item.get("content")
+                    .and_then(|value| value.get("text"))
+                    .and_then(|value| value.as_str())
+            })
+            .map(str::trim)
+            .filter(|text| !text.is_empty());
+        if let Some(text) = text {
+            return Some(text.to_string());
+        }
+    }
+    None
 }
 
 pub(super) fn extract_acp_reasoning(update: &Value) -> Option<String> {

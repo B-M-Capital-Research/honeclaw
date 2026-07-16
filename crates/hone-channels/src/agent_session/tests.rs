@@ -31,6 +31,7 @@ use std::time::Duration;
 use crate::HoneBotCore;
 use crate::investment_response_guard::{
     DeepAnalysisKind, InvestmentResponseContract, ResolvedSecurityEntity, contract_failure_message,
+    missing_investment_response_sections,
 };
 use crate::response_finalizer::{
     EMPTY_SUCCESS_FALLBACK_MESSAGE, finalize_agent_response, normalize_local_image_references,
@@ -44,7 +45,7 @@ use crate::runners::{
 use crate::runtime::sanitize_user_visible_output;
 use crate::sandbox::sandbox_base_dir;
 
-use super::core::AgentSession;
+use super::core::{AgentSession, PreparedTurnReexecutionPolicy, prepared_turn_reexecution_policy};
 use super::emitter::SessionEventEmitter;
 use super::helpers::{
     CONTEXT_OVERFLOW_FALLBACK_MESSAGE, DIRECT_SESSION_PRE_COMPACT_RESTORE_LIMIT,
@@ -162,6 +163,7 @@ struct MockStreamingRun {
 #[derive(Clone)]
 struct MockStreamingSequencedRunner {
     runs: Arc<Mutex<std::collections::VecDeque<MockStreamingRun>>>,
+    runtime_inputs: Arc<Mutex<Vec<String>>>,
 }
 
 #[async_trait]
@@ -172,9 +174,13 @@ impl AgentRunner for MockStreamingSequencedRunner {
 
     async fn run(
         &self,
-        _request: AgentRunnerRequest,
+        request: AgentRunnerRequest,
         emitter: Arc<dyn AgentRunnerEmitter>,
     ) -> AgentRunnerResult {
+        self.runtime_inputs
+            .lock()
+            .expect("lock runtime inputs")
+            .push(request.runtime_input);
         let run = self
             .runs
             .lock()
@@ -549,6 +555,7 @@ async fn empty_success_with_tool_calls_uses_fallback_after_retries() {
             "empty-success-session",
             request,
             Arc::new(NoopEmitter),
+            PreparedTurnReexecutionPolicy::Allowed,
         )
         .await;
 
@@ -627,12 +634,211 @@ async fn transient_runner_failure_retries_once_before_returning_success() {
             "transient-retry-session",
             request,
             Arc::new(NoopEmitter),
+            PreparedTurnReexecutionPolicy::Allowed,
         )
         .await;
 
     assert!(result.response.success);
     assert_eq!(result.response.content, "重试后成功");
 
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn explicit_persistent_operations_are_execute_once_but_research_context_is_not() {
+    for input in [
+        "帮我关注 NVDA",
+        "把 NBIS 放进自选",
+        "我买了 NBIS 100股",
+        "我不持有苹果了",
+        "每天9点给我看 RMBS",
+        "今晚22点给我 NBIS 播报",
+        "NBIS 到 100 提醒我",
+        "取消所有定时任务",
+        "把 NVDA 从持仓删除",
+        "重启 Hone 服务",
+    ] {
+        assert_eq!(
+            prepared_turn_reexecution_policy(input),
+            PreparedTurnReexecutionPolicy::ExecuteOnce,
+            "{input}"
+        );
+    }
+    for input in [
+        "我关注 NVDA 的原因是什么",
+        "我关注 NVDA，怎么看",
+        "我不持有 NVDA，怎么看",
+        "如何删除定时任务",
+        "现在 RMBS 怎么看",
+    ] {
+        assert_eq!(
+            prepared_turn_reexecution_policy(input),
+            PreparedTurnReexecutionPolicy::Allowed,
+            "{input}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn observed_persistent_tool_trace_suppresses_transient_retry() {
+    let root = make_temp_dir("hone_channels_persistent_trace_no_retry");
+    std::fs::create_dir_all(&root).expect("create root");
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let actor =
+        ActorIdentity::new("discord", "persistent-no-retry", None::<String>).expect("actor");
+    let session = AgentSession::new(core, actor, "direct");
+    let results = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: String::new(),
+                tool_calls_made: vec![ToolCallMade {
+                    name: "mcp__hone__portfolio".to_string(),
+                    arguments: serde_json::json!({"action":"watch", "ticker":"NBIS"}),
+                    result: serde_json::json!({
+                        "status":"unknown_after_acp_failure",
+                        "isError":true
+                    }),
+                    tool_call_id: Some("call_watch".to_string()),
+                }],
+                iterations: 1,
+                success: false,
+                error: Some("codex acp stream disconnected before completion".to_string()),
+            },
+            streamed_output: false,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        },
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: "不应执行到这里".to_string(),
+                tool_calls_made: Vec::new(),
+                iterations: 1,
+                success: true,
+                error: None,
+            },
+            streamed_output: true,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        },
+    ])));
+    let runner = MockSequencedRunner {
+        results: results.clone(),
+    };
+    let request = AgentRunnerRequest {
+        session_id: "persistent-no-retry-session".to_string(),
+        actor_label: "discord:persistent-no-retry".to_string(),
+        actor: session.actor.clone(),
+        channel_target: "direct".to_string(),
+        allow_cron: true,
+        config_path: String::new(),
+        runtime_dir: String::new(),
+        system_prompt: "system".to_string(),
+        runtime_input: "帮我关注 NBIS".to_string(),
+        context: AgentContext::new("persistent-no-retry-session".to_string()),
+        timeout: None,
+        gemini_stream: GeminiStreamOptions::default(),
+        session_metadata: HashMap::new(),
+        working_directory: root.display().to_string(),
+        allowed_tools: None,
+        max_tool_calls: None,
+        tool_call_limits: None,
+    };
+
+    let result = session
+        .run_runner_with_empty_success_retry(
+            &runner,
+            "mock_sequenced",
+            "persistent-no-retry-session",
+            request,
+            Arc::new(NoopEmitter),
+            PreparedTurnReexecutionPolicy::Allowed,
+        )
+        .await;
+
+    assert!(!result.response.success);
+    assert_eq!(result.response.tool_calls_made.len(), 1);
+    assert_eq!(results.lock().expect("results lock").len(), 1);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn execute_once_intent_suppresses_empty_success_retry_even_without_trace() {
+    let root = make_temp_dir("hone_channels_execute_once_empty_no_retry");
+    std::fs::create_dir_all(&root).expect("create root");
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let actor = ActorIdentity::new("discord", "execute-once-empty", None::<String>).expect("actor");
+    let session = AgentSession::new(core, actor, "direct");
+    let results = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: String::new(),
+                tool_calls_made: Vec::new(),
+                iterations: 1,
+                success: true,
+                error: None,
+            },
+            streamed_output: true,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        },
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: "不应执行到这里".to_string(),
+                tool_calls_made: Vec::new(),
+                iterations: 1,
+                success: true,
+                error: None,
+            },
+            streamed_output: true,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        },
+    ])));
+    let runner = MockSequencedRunner {
+        results: results.clone(),
+    };
+    let request = AgentRunnerRequest {
+        session_id: "execute-once-empty-session".to_string(),
+        actor_label: "discord:execute-once-empty".to_string(),
+        actor: session.actor.clone(),
+        channel_target: "direct".to_string(),
+        allow_cron: true,
+        config_path: String::new(),
+        runtime_dir: String::new(),
+        system_prompt: "system".to_string(),
+        runtime_input: "每天9点给我看 RMBS".to_string(),
+        context: AgentContext::new("execute-once-empty-session".to_string()),
+        timeout: None,
+        gemini_stream: GeminiStreamOptions::default(),
+        session_metadata: HashMap::new(),
+        working_directory: root.display().to_string(),
+        allowed_tools: None,
+        max_tool_calls: None,
+        tool_call_limits: None,
+    };
+
+    let result = session
+        .run_runner_with_investment_contract_retry(
+            &runner,
+            "mock_sequenced",
+            "execute-once-empty-session",
+            request,
+            Arc::new(NoopEmitter),
+            None,
+            PreparedTurnReexecutionPolicy::ExecuteOnce,
+        )
+        .await;
+
+    assert!(!result.response.success);
+    assert_eq!(
+        result.response.error.as_deref(),
+        Some(crate::tool_trace::PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE)
+    );
+    assert_eq!(results.lock().expect("results lock").len(), 1);
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -644,6 +850,7 @@ async fn investment_contract_retries_incomplete_nbis_draft() {
     let actor = ActorIdentity::new("web", "investment-contract", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
     let complete = "数据时间：北京时间 2026-07-15。已核验事实与情景推断分开。\n1. 结论：本轮已核验同代码现价 199.51 美元，先观察。\n2. 公司是什么、靠什么赚钱：商业模式为云服务收入。\n3. 护城河与竞争壁垒：壁垒来自资源与客户粘性。\n4. 行业位置与关键对手：竞争对手与行业位置持续变化。\n5. 财务质量与自由现金流：自由现金流是核心验证项。\n6. 估值：使用 P/S 与情景法两种方法评估。\n7. Bull / Bear / Base Case：Bull 看增长，Bear 看竞争，Base 看执行。\n8. 催化剂、风险点、证伪条件：催化是订单，风险是降速，证伪是失速。\n9. 动作建议：观察；若增长与现金流改善则触发重评。";
+    let incomplete_raw = "<think>内部推理不得带入修订请求</think>\nQ3 可能起飞。你成本多少？";
     let runs = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
         MockStreamingRun {
             events: vec![
@@ -652,7 +859,7 @@ async fn investment_contract_retries_incomplete_nbis_draft() {
                     detail: Some("first attempt".to_string()),
                 },
                 AgentRunnerEvent::StreamDelta {
-                    content: "Q3 可能起飞。你成本多少？".to_string(),
+                    content: incomplete_raw.to_string(),
                 },
                 AgentRunnerEvent::StreamReset,
                 AgentRunnerEvent::StreamThought {
@@ -706,7 +913,11 @@ async fn investment_contract_retries_incomplete_nbis_draft() {
             },
         },
     ])));
-    let runner = MockStreamingSequencedRunner { runs: runs.clone() };
+    let runtime_inputs = Arc::new(Mutex::new(Vec::new()));
+    let runner = MockStreamingSequencedRunner {
+        runs: runs.clone(),
+        runtime_inputs: runtime_inputs.clone(),
+    };
     let request = AgentRunnerRequest {
         session_id: "investment-contract-session".to_string(),
         actor_label: "web:investment-contract".to_string(),
@@ -736,7 +947,11 @@ async fn investment_contract_retries_incomplete_nbis_draft() {
             asset_type: Some("stock".into()),
             profile_verified: true,
             verified_price: Some("199.51".into()),
+            verified_change_percentage: None,
+            quote_timestamp: None,
+            annual_financials_verified: None,
         }],
+        verified_web_sources: Vec::new(),
         deep_analysis: DeepAnalysisKind::Equity,
         deep_comparison: false,
         requires_verified_price: true,
@@ -744,6 +959,11 @@ async fn investment_contract_retries_incomplete_nbis_draft() {
         comparison: false,
         origin: AgentTurnOrigin::Interactive,
     };
+    assert!(
+        missing_investment_response_sections(&contract, complete).is_empty(),
+        "complete fixture is invalid: {:?}",
+        missing_investment_response_sections(&contract, complete)
+    );
 
     let downstream = Arc::new(RecordingRunnerEmitter::default());
     let result = session
@@ -754,14 +974,25 @@ async fn investment_contract_retries_incomplete_nbis_draft() {
             request,
             downstream.clone(),
             Some(&contract),
+            PreparedTurnReexecutionPolicy::Allowed,
         )
         .await;
 
-    assert!(result.response.success);
+    assert!(
+        result.response.success,
+        "contract retry failed: {:?}",
+        result.response.error
+    );
     assert_eq!(result.response.content, complete);
     assert!(!result.streamed_output);
     assert!(!result.terminal_error_emitted);
     assert!(runs.lock().expect("runs lock").is_empty());
+    let runtime_inputs = runtime_inputs.lock().expect("runtime inputs lock");
+    assert_eq!(runtime_inputs.len(), 2);
+    assert!(runtime_inputs[1].contains("<investment_draft>"));
+    assert!(runtime_inputs[1].contains("Q3 可能起飞。你成本多少？"));
+    assert!(runtime_inputs[1].contains("禁止抛弃草稿后从零另写"));
+    assert!(!runtime_inputs[1].contains("内部推理不得带入修订请求"));
     let events = downstream.events.lock().await;
     assert_eq!(events.len(), 2);
     assert!(matches!(
@@ -853,7 +1084,11 @@ async fn fund_contract_cannot_wash_forbidden_financial_call_with_clean_retry() {
             asset_type: Some("etf_or_fund".into()),
             profile_verified: true,
             verified_price: Some("30.495".into()),
+            verified_change_percentage: None,
+            quote_timestamp: None,
+            annual_financials_verified: None,
         }],
+        verified_web_sources: Vec::new(),
         deep_analysis: DeepAnalysisKind::Fund,
         deep_comparison: false,
         requires_verified_price: true,
@@ -870,6 +1105,7 @@ async fn fund_contract_cannot_wash_forbidden_financial_call_with_clean_retry() {
             request,
             Arc::new(NoopEmitter),
             Some(&contract),
+            PreparedTurnReexecutionPolicy::Allowed,
         )
         .await;
 
@@ -936,7 +1172,11 @@ async fn investment_contract_validates_the_same_visible_text_emitted_to_users() 
             asset_type: Some("etf_or_fund".into()),
             profile_verified: true,
             verified_price: Some("30.495".into()),
+            verified_change_percentage: None,
+            quote_timestamp: None,
+            annual_financials_verified: None,
         }],
+        verified_web_sources: Vec::new(),
         deep_analysis: DeepAnalysisKind::Fund,
         deep_comparison: false,
         requires_verified_price: true,
@@ -953,6 +1193,7 @@ async fn investment_contract_validates_the_same_visible_text_emitted_to_users() 
             request,
             Arc::new(NoopEmitter),
             Some(&contract),
+            PreparedTurnReexecutionPolicy::Allowed,
         )
         .await;
 
@@ -2813,13 +3054,53 @@ async fn context_window_exceeded_key_auto_compacts_and_retries_successfully() {
     let session = AgentSession::new(core, actor, "direct");
 
     let result = session
-        .run("取消所有定时任务", AgentRunOptions::default())
+        .run("请继续分析这个话题", AgentRunOptions::default())
         .await;
 
     assert!(result.response.success, "{:?}", result.response.error);
     assert_eq!(result.response.content, "压缩后恢复");
     assert_eq!(llm.chat_calls(), 1);
     assert_eq!(llm.chat_with_tools_calls(), 2);
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn execute_once_context_overflow_is_not_compacted_or_retried() {
+    let root = make_temp_dir("hone_channels_execute_once_context_overflow_no_retry");
+    std::fs::create_dir_all(&root).expect("create root");
+    let llm = MockLlmProvider::with_chat_and_tool_responses(
+        vec![Ok(ChatResult {
+            content: "不应压缩".to_string(),
+            usage: None,
+        })],
+        vec![
+            Err(hone_core::HoneError::Llm(
+                "codex_error_info=context_window_exceeded".to_string(),
+            )),
+            Ok(ChatResponse {
+                content: "不应重试".to_string(),
+                reasoning_content: None,
+                tool_calls: None,
+                usage: None,
+            }),
+        ],
+    );
+    let core = make_test_core(&root, llm.clone());
+    let actor = ActorIdentity::new("web", "execute-once-overflow", None::<String>).expect("actor");
+    let session = AgentSession::new(core, actor, "direct");
+
+    let result = session
+        .run("取消所有定时任务", AgentRunOptions::default())
+        .await;
+
+    assert!(!result.response.success);
+    assert_eq!(
+        result.response.error.as_deref(),
+        Some(crate::tool_trace::PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE)
+    );
+    assert_eq!(llm.chat_with_tools_calls(), 1);
+    assert_eq!(llm.chat_calls(), 0);
 
     let _ = std::fs::remove_dir_all(root);
 }

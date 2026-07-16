@@ -120,6 +120,33 @@ pub(crate) fn finalize_context_messages(state: &mut AcpPromptState) -> Vec<Agent
     state.context_messages.clone()
 }
 
+/// Turn tool starts that never received a terminal result into explicit trace
+/// records.  This is intentionally done both when the ACP transport fails and
+/// when a nominal prompt response arrives with a dangling call.
+pub(crate) fn finalize_pending_tool_calls(state: &mut AcpPromptState, status: &str) {
+    let mut pending_ids = state.pending_tool_calls.keys().cloned().collect::<Vec<_>>();
+    pending_ids.sort();
+    for tool_call_id in pending_ids {
+        let Some(record) = state.pending_tool_calls.get(&tool_call_id) else {
+            continue;
+        };
+        let update = json!({
+            "toolCallId": tool_call_id,
+            "title": record.name,
+        });
+        capture_tool_finish(
+            state,
+            &update,
+            "tool",
+            json!({
+                "status": status,
+                "isError": true,
+                "error": "ACP did not provide a terminal tool result"
+            }),
+        );
+    }
+}
+
 fn build_openai_tool_call_value(tool_call_id: &str, tool_name: &str, arguments: &Value) -> Value {
     json!({
         "id": tool_call_id,

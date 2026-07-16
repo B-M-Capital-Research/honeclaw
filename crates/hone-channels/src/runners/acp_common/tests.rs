@@ -12,12 +12,16 @@ use std::process::Stdio;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+use crate::agent_session::{AgentSessionError, AgentSessionErrorKind};
 use crate::runners::types::{AgentRunnerEmitter, AgentRunnerEvent};
+use crate::tool_trace::PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE;
 
+use super::failure::acp_failure_to_runner_result;
 use super::ingest::{acp_prompt_succeeded, handle_acp_session_update, ingest_acp_message_chunk};
 use super::log::{AcpEventLogContext, acp_event_log_path, log_acp_payload};
 use super::protocol::process_acp_payload;
-use super::state::{AcpPermissionDecision, AcpPromptState};
+use super::state::{AcpPermissionDecision, AcpPromptState, AcpRunFailure};
+use super::tool_state::{finalize_context_messages, finalize_pending_tool_calls};
 
 struct CollectingEmitter {
     deltas: Arc<Mutex<Vec<String>>>,
@@ -61,6 +65,171 @@ fn progress_emitter() -> (Arc<dyn AgentRunnerEmitter>, Arc<Mutex<Vec<String>>>) 
         details: details.clone(),
     });
     (emitter, details)
+}
+
+#[tokio::test]
+async fn failed_persistent_tool_update_is_always_captured_with_real_arguments() {
+    let mut state = AcpPromptState::default();
+    let (emitter, _) = collecting_emitter();
+    handle_acp_session_update(
+        &json!({
+            "update": {
+                "sessionUpdate": "tool_call",
+                "toolCallId": "call_watch",
+                "title": "Tool: hone/portfolio",
+                "rawInput": {
+                    "arguments": {"action":"watch", "ticker":"NBIS"}
+                }
+            }
+        }),
+        &emitter,
+        Some(&mut state),
+    )
+    .await;
+    handle_acp_session_update(
+        &json!({
+            "update": {
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": "call_watch",
+                "title": "Tool: hone/portfolio",
+                "status": "failed"
+            }
+        }),
+        &emitter,
+        Some(&mut state),
+    )
+    .await;
+
+    assert_eq!(state.finished_tool_calls.len(), 1);
+    let call = &state.finished_tool_calls[0];
+    assert_eq!(call.arguments, json!({"action":"watch", "ticker":"NBIS"}));
+    assert_eq!(call.result["status"], "failed");
+    assert_eq!(call.result["isError"], true);
+}
+
+#[tokio::test]
+async fn completed_update_unwraps_structured_content_result() {
+    let mut state = AcpPromptState::default();
+    let (emitter, _) = collecting_emitter();
+    handle_acp_session_update(
+        &json!({
+            "update": {
+                "sessionUpdate": "tool_call",
+                "toolCallId": "call_cron",
+                "title": "mcp__hone__cron_job",
+                "rawInput": {"arguments": {"action":"add", "name":"RMBS"}}
+            }
+        }),
+        &emitter,
+        Some(&mut state),
+    )
+    .await;
+    handle_acp_session_update(
+        &json!({
+            "update": {
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": "call_cron",
+                "status": "completed",
+                "rawOutput": {"structuredContent": {"job_id":"job-1"}}
+            }
+        }),
+        &emitter,
+        Some(&mut state),
+    )
+    .await;
+
+    assert_eq!(state.finished_tool_calls.len(), 1);
+    assert_eq!(
+        state.finished_tool_calls[0].result,
+        json!({"job_id":"job-1"})
+    );
+}
+
+#[tokio::test]
+async fn acp_disconnect_retains_pending_persistent_trace_and_returns_uncertain_status() {
+    let mut state = AcpPromptState::default();
+    let (emitter, _) = collecting_emitter();
+    handle_acp_session_update(
+        &json!({
+            "update": {
+                "sessionUpdate": "tool_call",
+                "toolCallId": "call_restart",
+                "title": "hone/restart_hone",
+                "arguments": {"confirm":"yes"}
+            }
+        }),
+        &emitter,
+        Some(&mut state),
+    )
+    .await;
+
+    let result = acp_failure_to_runner_result(
+        AcpRunFailure {
+            error: AgentSessionError {
+                kind: AgentSessionErrorKind::Io,
+                message: "ACP stream disconnected".to_string(),
+            },
+            state,
+            metadata_updates: Default::default(),
+        },
+        emitter,
+    )
+    .await;
+
+    assert!(!result.response.success);
+    assert_eq!(
+        result.response.error.as_deref(),
+        Some(PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE)
+    );
+    assert!(!result.streamed_output);
+    assert!(!result.terminal_error_emitted);
+    assert_eq!(result.response.tool_calls_made.len(), 1);
+    assert_eq!(
+        result.response.tool_calls_made[0].result["status"],
+        "unknown_after_acp_failure"
+    );
+}
+
+#[tokio::test]
+async fn nominal_prompt_completion_marks_missing_tool_result_unknown() {
+    let mut state = AcpPromptState::default();
+    let (emitter, _) = collecting_emitter();
+    handle_acp_session_update(
+        &json!({
+            "update": {
+                "sessionUpdate": "tool_call",
+                "toolCallId": "call_reminder",
+                "title": "hone/cron_job",
+                "arguments": {"action":"add", "name":"NBIS reminder"}
+            }
+        }),
+        &emitter,
+        Some(&mut state),
+    )
+    .await;
+    handle_acp_session_update(
+        &json!({
+            "update": {
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": "call_reminder",
+                "status": "completed"
+            }
+        }),
+        &emitter,
+        Some(&mut state),
+    )
+    .await;
+
+    assert!(state.finished_tool_calls.is_empty());
+    finalize_pending_tool_calls(&mut state, "unknown_after_missing_acp_result");
+    let messages = finalize_context_messages(&mut state);
+    assert_eq!(state.finished_tool_calls.len(), 1);
+    assert_eq!(
+        state.finished_tool_calls[0].result["status"],
+        "unknown_after_missing_acp_result"
+    );
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[1].role, "tool");
 }
 
 /// codex-acp 内置 compact 触发后单独发一条 `agent_message_chunk text="Context compacted\n"`。

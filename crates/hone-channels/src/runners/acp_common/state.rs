@@ -11,6 +11,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 use std::time::Duration;
 
+use crate::agent_session::AgentSessionError;
+
 /// session_metadata 上记录的"上一轮 prompt 完成时 ACP runner 报告的 usage.used 峰值"。
 /// 用作下一轮 compact 检测的基线（opencode 不推 compact 字面量，只能靠 used 骤降识别）。
 pub(crate) const ACP_PREV_PROMPT_PEAK_KEY: &str = "acp_prev_prompt_peak_used";
@@ -102,6 +104,25 @@ pub(crate) struct AcpResponseTimeouts {
 pub(crate) struct AcpToolCallRecord {
     pub(crate) name: String,
     pub(crate) arguments: Value,
+}
+
+/// ACP transport errors must carry the in-flight prompt state out of the
+/// protocol loop.  Dropping this state can make a write look as if it never
+/// started and lets the session layer repeat it.
+pub(crate) struct AcpRunFailure {
+    pub(crate) error: AgentSessionError,
+    pub(crate) state: AcpPromptState,
+    pub(crate) metadata_updates: HashMap<String, Value>,
+}
+
+impl From<AgentSessionError> for AcpRunFailure {
+    fn from(error: AgentSessionError) -> Self {
+        Self {
+            error,
+            state: AcpPromptState::default(),
+            metadata_updates: HashMap::new(),
+        }
+    }
 }
 
 #[derive(Default)]

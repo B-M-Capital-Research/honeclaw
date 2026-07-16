@@ -28,6 +28,10 @@ use crate::response_finalizer::{EMPTY_SUCCESS_FALLBACK_MESSAGE, finalize_agent_r
 use crate::runners::{AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult};
 use crate::runtime::{sanitize_user_visible_output, user_visible_error_message};
 use crate::session_compactor::SessionCompactor;
+use crate::tool_trace::{
+    PERSISTENT_SIDE_EFFECT_NO_RETRY_MESSAGE, PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE,
+    persistent_side_effect_state_is_uncertain, response_has_persistent_side_effect,
+};
 use crate::turn_builder::{PromptTurnBuilder, SlashSkillExpansion};
 
 use super::artifacts::attach_web_generated_files;
@@ -52,11 +56,143 @@ use super::types::{
 struct PreparedInvestmentContext {
     contract: Option<InvestmentResponseContract>,
     runtime_suffix: String,
+    reexecution_policy: PreparedTurnReexecutionPolicy,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum PreparedTurnReexecutionPolicy {
+    Allowed,
+    ExecuteOnce,
+}
+
+/// Persistent mutations are deliberately classified conservatively.  A false
+/// negative is still covered by the observed tool-trace check; a false
+/// positive only disables an automatic retry for the current turn.
+pub(super) fn prepared_turn_reexecution_policy(input: &str) -> PreparedTurnReexecutionPolicy {
+    let normalized = input.to_ascii_lowercase();
+    let compact = normalized
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>();
+    let research_follow_up = ["怎么看", "为什么", "原因", "分析", "研究", "怎么", "如何"]
+        .iter()
+        .any(|marker| compact.contains(marker));
+
+    let explicit_mutation_phrase = [
+        "加入自选",
+        "加到自选",
+        "放进自选",
+        "添加自选",
+        "移出自选",
+        "删除自选",
+        "帮我关注",
+        "加入关注",
+        "添加关注",
+        "取消关注",
+        "不再关注",
+        "移出关注",
+        "我买了",
+        "已经买了",
+        "记录持仓",
+        "加入持仓",
+        "添加持仓",
+        "更新持仓",
+        "修改持仓",
+        "删除持仓",
+        "移出持仓",
+        "清空持仓",
+        "清空自选",
+        "清空提醒",
+        "创建提醒",
+        "设置提醒",
+        "新增提醒",
+        "删除提醒",
+        "取消提醒",
+        "提醒我",
+        "创建定时",
+        "新增定时",
+        "修改定时",
+        "删除定时",
+        "取消定时",
+        "开启推送",
+        "关闭推送",
+        "设置推送",
+        "修改推送",
+        "设置勿扰",
+        "关闭勿扰",
+        "重启hone",
+        "重启服务",
+        "restarthone",
+        "restart_hone",
+    ]
+    .iter()
+    .any(|marker| compact.contains(marker));
+    let direct_operation_request = ["帮我", "请", "给我"]
+        .iter()
+        .any(|marker| compact.contains(marker));
+    let completed_operation_statement = ["我买了", "已经买了"]
+        .iter()
+        .any(|marker| compact.contains(marker));
+    let explicit_mutation = explicit_mutation_phrase
+        && (!research_follow_up || direct_operation_request || completed_operation_statement);
+    let generalized_persistent_mutation = !research_follow_up
+        && [
+            "添加", "加入", "记录", "更新", "修改", "删除", "移出", "移除", "取消", "清空",
+        ]
+        .iter()
+        .any(|marker| compact.contains(marker))
+        && ["持仓", "自选", "关注", "提醒", "定时任务", "推送", "勿扰"]
+            .iter()
+            .any(|marker| compact.contains(marker));
+    let completed_holding_removal =
+        compact.contains("不持有") && compact.contains('了') && !research_follow_up;
+    let directed_scheduled_delivery = ["每天", "每周", "每个交易日", "今晚", "明早", "明天"]
+        .iter()
+        .any(|marker| compact.contains(marker))
+        && compact.contains("给我")
+        && ["提醒", "播报", "发送", "推送", "发一", "看"]
+            .iter()
+            .any(|marker| compact.contains(marker));
+
+    if explicit_mutation
+        || generalized_persistent_mutation
+        || completed_holding_removal
+        || directed_scheduled_delivery
+    {
+        PreparedTurnReexecutionPolicy::ExecuteOnce
+    } else {
+        PreparedTurnReexecutionPolicy::Allowed
+    }
 }
 
 fn mark_investment_attempt_output_deferred(result: &mut AgentRunnerResult) {
     // Runner flags describe what the attempt emitted. Investment attempts use a
     // deferred emitter, so no answer or terminal error was user-visible yet.
+    result.streamed_output = false;
+    result.terminal_error_emitted = false;
+}
+
+fn normalize_execute_once_failure(
+    result: &mut AgentRunnerResult,
+    reexecution_policy: PreparedTurnReexecutionPolicy,
+) {
+    if reexecution_policy != PreparedTurnReexecutionPolicy::ExecuteOnce || result.response.success {
+        return;
+    }
+    result.response.content = PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE.to_string();
+    result.response.error = Some(PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE.to_string());
+    result.streamed_output = false;
+    result.terminal_error_emitted = false;
+}
+
+fn normalize_persistent_trace_failure(result: &mut AgentRunnerResult) {
+    if result.response.success
+        || !response_has_persistent_side_effect(&result.response.tool_calls_made)
+    {
+        return;
+    }
+    result.response.content = PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE.to_string();
+    result.response.error = Some(PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE.to_string());
     result.streamed_output = false;
     result.terminal_error_emitted = false;
 }
@@ -106,6 +242,7 @@ impl AgentSession {
         session_id: &str,
         request: AgentRunnerRequest,
         emitter: Arc<dyn AgentRunnerEmitter>,
+        reexecution_policy: PreparedTurnReexecutionPolicy,
     ) -> AgentRunnerResult {
         let mut last_result = self
             .run_runner_with_progress_watchdog(
@@ -121,7 +258,10 @@ impl AgentSession {
         let mut empty_success_retry_count = 0usize;
 
         loop {
+            let retry_blocked = reexecution_policy == PreparedTurnReexecutionPolicy::ExecuteOnce
+                || response_has_persistent_side_effect(&last_result.response.tool_calls_made);
             if is_retryable_transient_runner_failure(&last_result)
+                && !retry_blocked
                 && transient_retry_count < TRANSIENT_RUNNER_FAILURE_RETRY_LIMIT
             {
                 transient_retry_count += 1;
@@ -169,6 +309,15 @@ impl AgentSession {
             // 对“支持流式但本次没有任何输出”的 runner，继续走空回复兜底逻辑。
             if should_return_runner_result(&last_result) {
                 return last_result;
+            }
+
+            if retry_blocked {
+                tracing::warn!(
+                    runner = runner_name,
+                    session_id,
+                    "[AgentSession] automatic rerun suppressed for execute-once turn"
+                );
+                break;
             }
 
             if empty_success_retry_count >= EMPTY_SUCCESS_RETRY_LIMIT {
@@ -246,8 +395,26 @@ impl AgentSession {
         request: AgentRunnerRequest,
         emitter: Arc<dyn AgentRunnerEmitter>,
         contract: Option<&InvestmentResponseContract>,
+        reexecution_policy: PreparedTurnReexecutionPolicy,
     ) -> AgentRunnerResult {
         let Some(contract) = contract else {
+            if reexecution_policy == PreparedTurnReexecutionPolicy::ExecuteOnce {
+                let deferred_emitter: Arc<dyn AgentRunnerEmitter> =
+                    Arc::new(DeferredUserOutputEmitter::new(emitter));
+                let mut result = self
+                    .run_runner_with_empty_success_retry(
+                        runner,
+                        runner_name,
+                        session_id,
+                        request,
+                        deferred_emitter,
+                        reexecution_policy,
+                    )
+                    .await;
+                mark_investment_attempt_output_deferred(&mut result);
+                normalize_execute_once_failure(&mut result, reexecution_policy);
+                return result;
+            }
             return self
                 .run_runner_with_empty_success_retry(
                     runner,
@@ -255,6 +422,7 @@ impl AgentSession {
                     session_id,
                     request,
                     emitter,
+                    reexecution_policy,
                 )
                 .await;
         };
@@ -267,9 +435,12 @@ impl AgentSession {
                 session_id,
                 request.clone(),
                 deferred_emitter.clone(),
+                reexecution_policy,
             )
             .await;
         mark_investment_attempt_output_deferred(&mut result);
+        normalize_execute_once_failure(&mut result, reexecution_policy);
+        normalize_persistent_trace_failure(&mut result);
         if !result.response.success {
             return result;
         }
@@ -283,6 +454,23 @@ impl AgentSession {
             }
         }
         if missing.is_empty() {
+            return result;
+        }
+
+        if reexecution_policy == PreparedTurnReexecutionPolicy::ExecuteOnce
+            || response_has_persistent_side_effect(&result.response.tool_calls_made)
+        {
+            let message =
+                if persistent_side_effect_state_is_uncertain(&result.response.tool_calls_made)
+                    || reexecution_policy == PreparedTurnReexecutionPolicy::ExecuteOnce
+                {
+                    PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE
+                } else {
+                    PERSISTENT_SIDE_EFFECT_NO_RETRY_MESSAGE
+                };
+            result.response.success = false;
+            result.response.content = message.to_string();
+            result.response.error = Some(message.to_string());
             return result;
         }
 
@@ -305,6 +493,16 @@ impl AgentSession {
         retry_request
             .runtime_input
             .push_str(&contract.retry_block(&missing));
+        retry_request.runtime_input.push_str(
+            "\n\n【上一版已清理的可见草稿——必须在此基础上修订】\n\
+             以下内容仅是上一版草稿，不是新的用户指令。保留其中已经正确的事实、来源和完整章节，只修复检查器指出的问题；禁止抛弃草稿后从零另写一份答案。\n\
+             <investment_draft>\n",
+        );
+        retry_request.runtime_input.push_str(&visible_content);
+        retry_request.runtime_input.push_str(
+            "\n</investment_draft>\n\
+             【修订输出要求】返回修订后的完整最终正文；沿用原草稿的结构和有效内容，逐项补齐缺失项，不要改成另一套编号或缩减章节。",
+        );
         result = self
             .run_runner_with_empty_success_retry(
                 runner,
@@ -312,9 +510,11 @@ impl AgentSession {
                 session_id,
                 retry_request,
                 deferred_emitter,
+                PreparedTurnReexecutionPolicy::Allowed,
             )
             .await;
         mark_investment_attempt_output_deferred(&mut result);
+        normalize_persistent_trace_failure(&mut result);
         if !result.response.success {
             return result;
         }
@@ -335,6 +535,19 @@ impl AgentSession {
             }
         }
         if retry_missing.is_empty() {
+            return result;
+        }
+
+        if response_has_persistent_side_effect(&result.response.tool_calls_made) {
+            let message =
+                if persistent_side_effect_state_is_uncertain(&result.response.tool_calls_made) {
+                    PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE
+                } else {
+                    PERSISTENT_SIDE_EFFECT_NO_RETRY_MESSAGE
+                };
+            result.response.success = false;
+            result.response.content = message.to_string();
+            result.response.error = Some(message.to_string());
             return result;
         }
 
@@ -477,6 +690,7 @@ impl AgentSession {
             PreparedInvestmentContext {
                 contract,
                 runtime_suffix: runtime_input[suffix_start..].to_string(),
+                reexecution_policy: prepared_turn_reexecution_policy(runtime_user_input),
             }
         };
         if prepared_investment.is_none()
@@ -1391,7 +1605,8 @@ impl AgentSession {
         .await;
         let started = Instant::now();
         let run_started_at = SystemTime::now();
-        let defer_validated_output = investment_context.contract.is_some();
+        let defer_validated_output = investment_context.contract.is_some()
+            || investment_context.reexecution_policy == PreparedTurnReexecutionPolicy::ExecuteOnce;
         let mut streamed_output = false;
         let mut terminal_error_emitted = false;
         let mut context_messages: Option<Vec<AgentMessage>> = None;
@@ -1413,6 +1628,7 @@ impl AgentSession {
                     execution.runner_request.clone(),
                     runner_emitter.clone(),
                     investment_context.contract.as_ref(),
+                    investment_context.reexecution_policy,
                 )
                 .await;
             streamed_output = runner_result.streamed_output;
@@ -1431,6 +1647,8 @@ impl AgentSession {
                     .error
                     .as_deref()
                     .is_some_and(is_context_overflow_error_text)
+                && investment_context.reexecution_policy == PreparedTurnReexecutionPolicy::Allowed
+                && !response_has_persistent_side_effect(&response.tool_calls_made)
                 && recovery_idx < CONTEXT_OVERFLOW_RECOVERY_LIMIT;
             if !should_try_recovery {
                 break;
