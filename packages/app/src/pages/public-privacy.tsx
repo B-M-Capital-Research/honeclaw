@@ -19,9 +19,9 @@ function VersionBanner() {
         gap: "10px",
         padding: "6px 12px",
         "border-radius": "999px",
-        background: "rgba(245,158,11,0.08)",
-        border: "1px solid rgba(245,158,11,0.25)",
-        color: "#d97706",
+        background: "color-mix(in srgb, var(--hone-coral-500) 8%, transparent)",
+        border: "1px solid color-mix(in srgb, var(--hone-coral-500) 25%, transparent)",
+        color: "var(--hone-coral-600)",
         "font-size": "12px",
         "font-weight": "600",
         "letter-spacing": "0.02em",
@@ -68,7 +68,7 @@ function Section(props: ParentProps<{ title: string; index: number }>) {
         style={{
           "font-size": "18px",
           "font-weight": "700",
-          color: "#0f172a",
+          color: "var(--hone-ink-950)",
           margin: "0 0 12px",
           "letter-spacing": "-0.01em",
         }}
@@ -79,7 +79,7 @@ function Section(props: ParentProps<{ title: string; index: number }>) {
         style={{
           "font-size": "14.5px",
           "line-height": "1.75",
-          color: "#334155",
+          color: "var(--hone-ink-800)",
         }}
         class="pub-prose"
       >
@@ -96,7 +96,7 @@ export default function PublicPrivacyPage() {
       style={{
         "min-height": "100vh",
         background: "#fff",
-        "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
+        "font-family": "var(--hone-font-body)",
       }}
     >
       <PublicNav />
@@ -113,7 +113,7 @@ export default function PublicPrivacyPage() {
           style={{
             "font-size": "36px",
             "font-weight": "800",
-            color: "#0f172a",
+            color: "var(--hone-ink-950)",
             margin: "20px 0 12px",
             "letter-spacing": "-0.02em",
           }}
@@ -123,7 +123,7 @@ export default function PublicPrivacyPage() {
         <p
           style={{
             "font-size": "14px",
-            color: "#94a3b8",
+            color: "var(--hone-ink-400)",
             "margin-bottom": "40px",
             "line-height": "1.6",
           }}

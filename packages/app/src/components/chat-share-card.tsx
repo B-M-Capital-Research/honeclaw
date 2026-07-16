@@ -8,6 +8,9 @@ import QRCode from "qrcode";
 import type { PublicChatMessage } from "@/lib/public-chat";
 import { stripAttachmentMarkers } from "@/lib/public-chat";
 import { shareUserBubbleStyle } from "./chat-share-export";
+// Export card renders offscreen/standalone; import the foundation sheet so the
+// --hone-* tokens below always resolve regardless of which page mounted us.
+import "@/pages/public-foundation.css";
 
 type ChatShareCardProps = {
   messages: PublicChatMessage[];
@@ -79,7 +82,7 @@ const SHARE_CARD_CSS = `
   .hf-share-card-md p { margin: 0.5em 0; }
   .hf-share-card-md p:first-child { margin-top: 0; }
   .hf-share-card-md p:last-child { margin-bottom: 0; }
-  .hf-share-card-md strong { color: #0f172a; font-weight: 700; }
+  .hf-share-card-md strong { color: var(--hone-ink-950); font-weight: 700; }
   .hf-share-card-md ul,
   .hf-share-card-md ol {
     margin: 0.62em 0;
@@ -102,7 +105,7 @@ const SHARE_CARD_CSS = `
     left: 0;
     top: 0;
     width: 1.05em;
-    color: #94a3b8;
+    color: var(--hone-ink-400);
     font-size: 1em;
     font-weight: 700;
     line-height: inherit;
@@ -134,7 +137,7 @@ const SHARE_CARD_CSS = `
   .hf-share-card-md h2,
   .hf-share-card-md h3,
   .hf-share-card-md h4 {
-    color: #0f172a;
+    color: var(--hone-ink-950);
     margin: 0.9em 0 0.3em;
     font-weight: 800;
     line-height: 1.35;
@@ -146,8 +149,8 @@ const SHARE_CARD_CSS = `
   .hf-share-card-md blockquote {
     margin: 0.7em 0;
     padding: 0.1em 0 0.1em 0.9em;
-    border-left: 3px solid #e2e8f0;
-    color: #475569;
+    border-left: 3px solid var(--hone-line);
+    color: var(--hone-ink-800);
     font-style: italic;
   }
   .hf-share-card-md table {
@@ -158,25 +161,25 @@ const SHARE_CARD_CSS = `
   }
   .hf-share-card-md th,
   .hf-share-card-md td {
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--hone-line);
     padding: 6px 9px;
     text-align: left;
   }
-  .hf-share-card-md th { background: #f8fafc; color: #0f172a; font-weight: 700; }
+  .hf-share-card-md th { background: var(--hone-paper-100); color: var(--hone-ink-950); font-weight: 700; }
   .hf-share-card-md .hf-markdown-code { margin: 10px 0; }
   .hf-share-card-md .hf-markdown-code pre,
   .hf-share-card-md .hf-markdown-code pre.shiki {
     margin: 0;
     padding: 10px 12px;
-    background: #f3f4f6 !important;
+    background: var(--hone-paper-200) !important;
     border: 0;
-    border-radius: 8px;
+    border-radius: var(--hone-radius-sm);
     font-size: 13px;
     line-height: 1.65;
     white-space: pre-wrap;
     word-break: break-word;
     overflow-wrap: anywhere;
-    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+    font-family: var(--hone-font-body);
   }
   .hf-share-card-md .hf-markdown-code code {
     background: transparent !important;
@@ -188,11 +191,11 @@ const SHARE_CARD_CSS = `
     line-height: inherit;
   }
   .hf-share-card-md :not(pre) > code {
-    background: rgba(15, 23, 42, 0.06);
+    background: rgba(23, 32, 31, 0.06);
     border-radius: 4px;
     padding: 1px 6px;
     font-size: 0.92em;
-    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+    font-family: var(--hone-font-body);
   }
 `;
 
@@ -241,9 +244,8 @@ export function ChatShareCard(props: ChatShareCardProps) {
           width: `${CARD_WIDTH}px`,
           background:
             "linear-gradient(180deg, #fffaf3 0%, #ffffff 12%, #ffffff 100%)",
-          "font-family":
-            "-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif",
-          color: "#0f172a",
+          "font-family": "var(--hone-font-body)",
+          color: "var(--hone-ink-950)",
           "box-sizing": "border-box",
         }}
       >
@@ -254,7 +256,7 @@ export function ChatShareCard(props: ChatShareCardProps) {
             "align-items": "center",
             gap: "10px",
             padding: "22px 20px 16px 20px",
-            "border-bottom": "1px solid #f1f5f9",
+            "border-bottom": "1px solid var(--hone-line)",
           }}
         >
           <HoneLogo size={30} />
@@ -264,12 +266,12 @@ export function ChatShareCard(props: ChatShareCardProps) {
                 "font-size": "16px",
                 "font-weight": "800",
                 "letter-spacing": "0.02em",
-                color: "#0f172a",
+                color: "var(--hone-ink-950)",
               }}
             >
               {props.brandName}
             </span>
-            <span style={{ "font-size": "11.5px", color: "#64748b", "margin-top": "1px" }}>
+            <span style={{ "font-size": "11.5px", color: "var(--hone-ink-600)", "margin-top": "1px" }}>
               {props.brandTagline}
             </span>
           </div>
@@ -309,8 +311,8 @@ export function ChatShareCard(props: ChatShareCardProps) {
             "align-items": "center",
             gap: "18px",
             padding: "16px 20px 22px 20px",
-            "border-top": "1px solid #f1f5f9",
-            background: "#fafbfc",
+            "border-top": "1px solid var(--hone-line)",
+            background: "var(--hone-paper-100)",
           }}
         >
           <div style={{ display: "flex", "flex-direction": "column", gap: "7px", "min-width": "0" }}>
@@ -320,14 +322,14 @@ export function ChatShareCard(props: ChatShareCardProps) {
                 style={{
                   "font-size": "14.5px",
                   "font-weight": "800",
-                  color: "#0f172a",
+                  color: "var(--hone-ink-950)",
                   "letter-spacing": "0.02em",
                 }}
               >
                 {props.brandName}
               </span>
             </div>
-            <span style={{ "font-size": "11.5px", color: "#64748b", "line-height": "1.4" }}>
+            <span style={{ "font-size": "11.5px", color: "var(--hone-ink-600)", "line-height": "1.4" }}>
               {props.qrCaption}
             </span>
           </div>
@@ -339,9 +341,9 @@ export function ChatShareCard(props: ChatShareCardProps) {
                 display: "flex",
                 "align-items": "center",
                 "justify-content": "center",
-                "border-radius": "12px",
+                "border-radius": "var(--hone-radius-md)",
                 background: "#fff",
-                border: "1px solid #e2e8f0",
+                border: "1px solid var(--hone-line)",
                 "flex-shrink": "0",
                 "box-sizing": "border-box",
               }}
@@ -381,10 +383,10 @@ function AssistantRow(props: { content: string; fontSize: number }) {
         style={{
           "max-width": "94%",
           background: "#ffffff",
-          color: "#1e293b",
+          color: "var(--hone-ink-800)",
           padding: "12px 14px",
-          "border-radius": "4px 12px 12px 12px",
-          border: "1px solid #e2e8f0",
+          "border-radius": "4px var(--hone-radius-md) var(--hone-radius-md) var(--hone-radius-md)",
+          border: "1px solid var(--hone-line)",
           "font-size": `${props.fontSize}px`,
           "line-height": "1.6",
         }}

@@ -158,8 +158,8 @@ export function PublicLoginForm(props: Props) {
       style={{
         "padding-top": "56px",
         "min-height": "100dvh",
-        background: "#f8fafc",
-        "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
+        background: "var(--hone-paper-100)",
+        "font-family": "var(--hone-font-body)",
         display: "flex",
         "align-items": "center",
         "justify-content": "center",
@@ -185,7 +185,7 @@ export function PublicLoginForm(props: Props) {
             style={{
               "font-size": "22px",
               "font-weight": "700",
-              color: "#0f172a",
+              color: "var(--hone-ink-950)",
               margin: "0 0 8px",
               "letter-spacing": "0",
             }}
@@ -195,7 +195,7 @@ export function PublicLoginForm(props: Props) {
           <p
             style={{
               "font-size": "13px",
-              color: "#64748b",
+              color: "var(--hone-ink-600)",
               margin: "0",
               "line-height": "1.6",
             }}
@@ -209,17 +209,17 @@ export function PublicLoginForm(props: Props) {
           class="public-login-card"
           style={{
             padding: "22px",
-            "border-radius": "14px",
-            border: "1px solid rgba(15,23,42,0.06)",
+            "border-radius": "var(--hone-radius-md)",
+            border: "1px solid var(--hone-line)",
             background: "#fff",
-            "box-shadow": "0 4px 24px rgba(15,23,42,0.05)",
+            "box-shadow": "0 4px 24px rgba(23,32,31,0.05)",
           }}
         >
           <p
             style={{
               margin: "0 0 16px",
               "font-size": "12px",
-              color: "#94a3b8",
+              color: "var(--hone-ink-400)",
               "line-height": "1.55",
               "text-align": "center",
             }}
@@ -271,10 +271,15 @@ export function PublicLoginForm(props: Props) {
                 "align-self": "end",
                 width: "116px",
                 height: "40px",
-                "border-radius": "8px",
-                border: "1px solid rgba(245,158,11,0.38)",
-                background: sendReady() ? "#fff7ed" : "#f8fafc",
-                color: sendReady() ? "#b45309" : "#94a3b8",
+                "border-radius": "var(--hone-radius-sm)",
+                border:
+                  "1px solid color-mix(in srgb, var(--hone-coral-500) 38%, transparent)",
+                background: sendReady()
+                  ? "color-mix(in srgb, var(--hone-coral-500) 8%, #fff)"
+                  : "var(--hone-paper-100)",
+                color: sendReady()
+                  ? "var(--hone-coral-600)"
+                  : "var(--hone-ink-400)",
                 cursor: sendReady() ? "pointer" : "not-allowed",
                 "font-family": "inherit",
                 "font-size": "13px",
@@ -387,22 +392,23 @@ function TextInput(props: {
       style={{
         width: "100%",
         padding: "10px 12px",
-        "border-radius": "8px",
-        border: "1px solid rgba(15,23,42,0.14)",
+        "border-radius": "var(--hone-radius-sm)",
+        border: "1px solid var(--hone-line-strong)",
         "font-size": "14px",
         "font-family": "inherit",
-        color: "#0f172a",
+        color: "var(--hone-ink-950)",
         background: "#fff",
         outline: "none",
         "box-sizing": "border-box",
         transition: "border-color 0.15s ease, box-shadow 0.15s ease",
       }}
       onFocus={(e) => {
-        e.currentTarget.style.borderColor = "#f59e0b";
-        e.currentTarget.style.boxShadow = "0 0 0 3px rgba(245,158,11,0.15)";
+        e.currentTarget.style.borderColor = "var(--hone-coral-500)";
+        e.currentTarget.style.boxShadow =
+          "0 0 0 3px color-mix(in srgb, var(--hone-coral-500) 15%, transparent)";
       }}
       onBlur={(e) => {
-        e.currentTarget.style.borderColor = "rgba(15,23,42,0.14)";
+        e.currentTarget.style.borderColor = "var(--hone-line-strong)";
         e.currentTarget.style.boxShadow = "none";
       }}
     />
@@ -415,7 +421,7 @@ function FieldLabel(props: ParentProps) {
       style={{
         "font-size": "12px",
         "font-weight": "600",
-        color: "#475569",
+        color: "var(--hone-ink-800)",
         "letter-spacing": "0.02em",
         "margin-bottom": "6px",
       }}
@@ -430,10 +436,10 @@ function ErrorBox(props: { message: string }) {
     <div
       style={{
         padding: "10px 12px",
-        "border-radius": "8px",
-        background: "rgba(220,38,38,0.06)",
-        border: "1px solid rgba(220,38,38,0.2)",
-        color: "#b91c1c",
+        "border-radius": "var(--hone-radius-sm)",
+        background: "color-mix(in srgb, #b0443b 8%, transparent)",
+        border: "1px solid color-mix(in srgb, #b0443b 20%, transparent)",
+        color: "#b0443b",
         "font-size": "12.5px",
       }}
     >
@@ -447,7 +453,7 @@ function NoticeBox(props: { message: string }) {
     <div
       style={{
         padding: "10px 12px",
-        "border-radius": "8px",
+        "border-radius": "var(--hone-radius-sm)",
         background: "rgba(22,163,74,0.06)",
         border: "1px solid rgba(22,163,74,0.2)",
         color: "#15803d",
@@ -467,7 +473,7 @@ function TosLink() {
         href="/terms"
         target="_blank"
         rel="noopener noreferrer"
-        style={{ color: "#d97706", "text-decoration": "underline" }}
+        style={{ color: "var(--hone-coral-600)", "text-decoration": "underline" }}
       >
         {CONTENT.auth.tos.terms}
       </a>
@@ -476,7 +482,7 @@ function TosLink() {
         href="/privacy"
         target="_blank"
         rel="noopener noreferrer"
-        style={{ color: "#d97706", "text-decoration": "underline" }}
+        style={{ color: "var(--hone-coral-600)", "text-decoration": "underline" }}
       >
         {CONTENT.auth.tos.privacy}
       </a>
@@ -500,8 +506,10 @@ function SubmitButton(props: {
         display: "block",
         width: "100%",
         padding: "12px 18px",
-        "border-radius": "8px",
-        background: props.disabled ? "rgba(245,158,11,0.5)" : "#f59e0b",
+        "border-radius": "var(--hone-radius-sm)",
+        background: props.disabled
+          ? "color-mix(in srgb, var(--hone-coral-500) 50%, transparent)"
+          : "var(--hone-coral-500)",
         border: "none",
         cursor: props.disabled ? "not-allowed" : "pointer",
         "font-family": "inherit",
@@ -510,7 +518,7 @@ function SubmitButton(props: {
         color: "#fff",
         "box-shadow": props.disabled
           ? "none"
-          : "0 4px 14px rgba(245,158,11,0.28)",
+          : "0 4px 14px color-mix(in srgb, var(--hone-coral-500) 28%, transparent)",
         transition: "background 0.15s ease",
       }}
     >

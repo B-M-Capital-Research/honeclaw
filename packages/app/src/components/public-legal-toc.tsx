@@ -14,16 +14,16 @@ export function LegalToc(props: { sections: { title: string }[] }) {
       style={{
         "margin-bottom": "32px",
         padding: "14px 18px",
-        "border-radius": "12px",
-        background: "#f8fafc",
-        border: "1px solid rgba(15,23,42,0.06)",
+        "border-radius": "var(--hone-radius-md)",
+        background: "var(--hone-paper-100)",
+        border: "1px solid var(--hone-line)",
       }}
     >
       <summary
         style={{
           "font-size": "13px",
           "font-weight": "700",
-          color: "#475569",
+          color: "var(--hone-ink-800)",
           cursor: "pointer",
           "list-style-position": "outside",
         }}
@@ -47,7 +47,7 @@ export function LegalToc(props: { sections: { title: string }[] }) {
               <a
                 href={`#${sectionAnchor(i())}`}
                 style={{
-                  color: "#334155",
+                  color: "var(--hone-ink-800)",
                   "text-decoration": "none",
                 }}
               >
@@ -86,11 +86,11 @@ export function BackToTop() {
           width: "44px",
           height: "44px",
           "border-radius": "999px",
-          background: "#0f172a",
+          background: "var(--hone-ink-950)",
           color: "#fff",
           border: "none",
           cursor: "pointer",
-          "box-shadow": "0 6px 20px rgba(15,23,42,0.25)",
+          "box-shadow": "0 6px 20px rgba(23,32,31,0.25)",
           display: "inline-flex",
           "align-items": "center",
           "justify-content": "center",

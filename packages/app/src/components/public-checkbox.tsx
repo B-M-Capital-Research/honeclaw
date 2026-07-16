@@ -33,7 +33,7 @@ export function PublicCheckbox(props: Props): JSX.Element {
         "user-select": "none",
         "line-height": "1.5",
         "font-size": "13px",
-        color: "#0f172a",
+        color: "var(--hone-ink-950)",
         opacity: props.disabled ? "0.6" : "1",
       }}
     >
@@ -52,8 +52,10 @@ export function PublicCheckbox(props: Props): JSX.Element {
           width: "18px",
           height: "18px",
           "border-radius": "5px",
-          border: props.checked ? "1.5px solid #f59e0b" : "1.5px solid rgba(15,23,42,0.18)",
-          background: props.checked ? "#f59e0b" : "#fff",
+          border: props.checked
+            ? "1.5px solid var(--hone-coral-500)"
+            : "1.5px solid var(--hone-line-strong)",
+          background: props.checked ? "var(--hone-coral-500)" : "#fff",
           display: "inline-flex",
           "align-items": "center",
           "justify-content": "center",

@@ -10,6 +10,9 @@ import {
   visibleFinanceCalendarEventsForDay,
   type FinanceCalendarEventCategory,
 } from "@/lib/finance-calendar";
+// Export card renders offscreen for html2canvas; import the foundation sheet so
+// the --hone-* tokens below always resolve regardless of which page mounted us.
+import "@/pages/public-foundation.css";
 
 type FinanceCalendarCardProps = {
   payload: FinanceCalendarPayload;
@@ -82,11 +85,10 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
         width: `${FINANCE_CALENDAR_CARD_WIDTH}px`,
         height: `${FINANCE_CALENDAR_CARD_HEIGHT}px`,
         overflow: "hidden",
-        background: "#eef2f3",
-        color: "#15191b",
+        background: "var(--hone-paper-100)",
+        color: "var(--hone-ink-950)",
         "box-sizing": "border-box",
-        "font-family":
-          "-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif",
+        "font-family": "var(--hone-font-body)",
         ...(props.hidden
           ? {
               position: "fixed",
@@ -102,8 +104,8 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
         style={{
           height: "238px",
           padding: "36px 46px 34px",
-          background: "#15191b",
-          color: "#f8faf9",
+          background: "var(--hone-ink-950)",
+          color: "var(--hone-paper-100)",
           display: "flex",
           "align-items": "stretch",
           "justify-content": "space-between",
@@ -124,7 +126,7 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
               display: "flex",
               "align-items": "center",
               gap: "11px",
-              color: "#b9c3c6",
+              color: "#a7b1ad",
               "font-size": "13px",
               "font-weight": "800",
               "letter-spacing": "0.12em",
@@ -134,7 +136,7 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
               style={{
                 width: "10px",
                 height: "10px",
-                background: "#f06a4b",
+                background: "#ff7a5d",
                 display: "inline-block",
               }}
             />
@@ -143,7 +145,7 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
           <div style={{ display: "flex", "align-items": "flex-end", gap: "24px" }}>
             <strong
               style={{
-                color: "#f06a4b",
+                color: "#ff7052",
                 "font-size": "116px",
                 "font-weight": "760",
                 "line-height": "0.82",
@@ -155,7 +157,7 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
             <div
               style={{
                 padding: "0 0 3px 24px",
-                "border-left": "1px solid #4a5255",
+                "border-left": "1px solid #3a4542",
               }}
             >
               <div
@@ -170,7 +172,7 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
               <div
                 style={{
                   "margin-top": "7px",
-                  color: "#9da9ad",
+                  color: "#a7b1ad",
                   "font-size": "17px",
                   "font-weight": "650",
                 }}
@@ -201,7 +203,7 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
               <div
                 style={{
                   padding: "9px 12px 8px",
-                  "border-left": index() === 0 ? "none" : "1px solid #3d4548",
+                  "border-left": index() === 0 ? "none" : "1px solid #3a4542",
                   "text-align": "center",
                 }}
               >
@@ -219,7 +221,7 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
                   style={{
                     display: "block",
                     "margin-top": "9px",
-                    color: "#9da9ad",
+                    color: "#a7b1ad",
                     "font-size": "11px",
                     "font-weight": "750",
                   }}
@@ -232,7 +234,7 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
         </div>
       </header>
 
-      <div style={{ height: "8px", background: "#f06a4b" }} />
+      <div style={{ height: "8px", background: "var(--hone-coral-500)" }} />
 
       <section
         style={{
@@ -250,7 +252,7 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
             <div
               style={{
                 padding: "4px 22px",
-                "border-left": index() === 0 ? "none" : "1px solid #dfe5e6",
+                "border-left": index() === 0 ? "none" : "1px solid var(--hone-line)",
                 display: "flex",
                 "flex-direction": "column",
                 "justify-content": "center",
@@ -262,14 +264,14 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
                 fallback={
                   <Show when={index() === highlights().length}>
                     <span
-                      style={{ color: "#9ba7aa", "font-size": "12px", "font-weight": "750" }}
+                      style={{ color: "var(--hone-ink-400)", "font-size": "12px", "font-weight": "750" }}
                     >
                       本月重点
                     </span>
                     <strong
                       style={{
                         "margin-top": "9px",
-                        color: "#6f7b7e",
+                        color: "var(--hone-ink-600)",
                         "font-size": "15px",
                         "font-weight": "700",
                       }}
@@ -283,7 +285,7 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
                   <>
                     <span
                       style={{
-                        color: "#f06a4b",
+                        color: "var(--hone-coral-500)",
                         "font-size": "13px",
                         "font-weight": "850",
                         "font-variant-numeric": "tabular-nums",
@@ -294,7 +296,7 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
                     <strong
                       style={{
                         "margin-top": "9px",
-                        color: "#202628",
+                        color: "var(--hone-ink-950)",
                         "font-size": "16px",
                         "font-weight": "800",
                         "line-height": "1.35",
@@ -314,7 +316,7 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
         style={{
           height: "842px",
           padding: "20px 36px 18px",
-          background: "#eef2f3",
+          background: "var(--hone-paper-100)",
           "box-sizing": "border-box",
         }}
       >
@@ -332,7 +334,7 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
               <div
                 style={{
                   "text-align": "center",
-                  color: index() >= 5 ? "#b05440" : "#667377",
+                  color: index() >= 5 ? "#b05440" : "var(--hone-ink-600)",
                   "font-size": "12px",
                   "font-weight": "850",
                   "line-height": "30px",
@@ -367,14 +369,16 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
                 <div
                   style={{
                     padding: "8px",
-                    border: isToday() ? "2px solid #f06a4b" : "1px solid #dbe2e4",
-                    "border-radius": "6px",
+                    border: isToday()
+                      ? "2px solid var(--hone-coral-500)"
+                      : "1px solid var(--hone-line)",
+                    "border-radius": "var(--hone-radius-sm)",
                     background: !cell.inMonth
-                      ? "#e7ecee"
+                      ? "var(--hone-paper-200)"
                       : isToday()
                         ? "#fff8f5"
                         : weekend()
-                          ? "#f7f9f9"
+                          ? "#fcf5f2"
                           : "#fff",
                     display: "flex",
                     "flex-direction": "column",
@@ -395,12 +399,12 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
                       <span
                         style={{
                           color: !cell.inMonth
-                            ? "#99a5a8"
+                            ? "var(--hone-ink-400)"
                             : isToday()
-                              ? "#c54831"
+                              ? "var(--hone-coral-600)"
                               : weekend()
                                 ? "#a15747"
-                                : "#283033",
+                                : "var(--hone-ink-800)",
                           "font-size": "16px",
                           "font-weight": "850",
                           "font-variant-numeric": "tabular-nums",
@@ -412,7 +416,7 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
                         <span
                           style={{
                             padding: "2px 5px",
-                            background: "#f06a4b",
+                            background: "var(--hone-coral-500)",
                             color: "#fff",
                             "font-size": "9px",
                             "font-weight": "850",
@@ -470,7 +474,7 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
                       <div
                         style={{
                           padding: "1px 2px 0",
-                          color: "#687579",
+                          color: "var(--hone-ink-600)",
                           "font-size": "10px",
                           "font-weight": "750",
                         }}
@@ -490,7 +494,7 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
         style={{
           height: "118px",
           padding: "20px 38px",
-          "border-top": "1px solid #d9e0e2",
+          "border-top": "1px solid var(--hone-line)",
           background: "#fff",
           display: "flex",
           "align-items": "center",
@@ -505,7 +509,7 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
               display: "flex",
               "align-items": "center",
               gap: "14px",
-              color: "#485457",
+              color: "var(--hone-ink-800)",
               "font-size": "11px",
               "font-weight": "750",
             }}
@@ -538,7 +542,7 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
           <div
             style={{
               "margin-top": "11px",
-              color: "#6d797c",
+              color: "var(--hone-ink-600)",
               "font-size": "12px",
               "white-space": "nowrap",
               overflow: "hidden",
@@ -552,7 +556,7 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
           <strong
             style={{
               display: "block",
-              color: "#283033",
+              color: "var(--hone-ink-800)",
               "font-size": "12px",
               "font-weight": "850",
             }}
@@ -563,7 +567,7 @@ export function FinanceCalendarCard(props: FinanceCalendarCardProps) {
             style={{
               display: "block",
               "margin-top": "9px",
-              color: "#839094",
+              color: "var(--hone-ink-400)",
               "font-size": "10.5px",
               "line-height": "1.45",
             }}

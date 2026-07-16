@@ -551,7 +551,7 @@ function ImageMosaic(props: {
             display: "grid",
             "grid-template-columns": `repeat(2, 1fr)`,
             gap: "4px",
-            "border-radius": "16px",
+            "border-radius": "var(--hone-radius-md)",
             overflow: "hidden",
             "max-width": "420px",
             "aspect-ratio": count() === 2 ? "2 / 1" : "1 / 1",
@@ -565,7 +565,7 @@ function ImageMosaic(props: {
                   position: "relative",
                   cursor: "zoom-in",
                   overflow: "hidden",
-                  background: "#f1f5f9",
+                  background: "var(--hone-paper-200)",
                   ...(count() === 3 && index() === 0
                     ? { "grid-row": "span 2" }
                     : {}),
@@ -588,7 +588,7 @@ function ImageMosaic(props: {
       <div
         onClick={() => props.onOpen(0)}
         style={{
-          "border-radius": "16px",
+          "border-radius": "var(--hone-radius-md)",
           overflow: "hidden",
           cursor: "zoom-in",
           "max-width": "420px",
@@ -614,12 +614,12 @@ function FileCard(props: {
 }) {
   const ext = () => publicAttachmentFileLabel(props.file.name);
   const iconBg = () =>
-    props.inUserBubble ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.05)";
-  const iconColor = () => (props.inUserBubble ? "#fff" : "#1e293b");
+    props.inUserBubble ? "rgba(255,255,255,0.2)" : "rgba(23, 32, 31, 0.05)";
+  const iconColor = () => (props.inUserBubble ? "#fff" : "var(--hone-ink-800)");
   const textColor = () =>
-    props.inUserBubble ? "rgba(255,255,255,0.95)" : "#0f172a";
+    props.inUserBubble ? "rgba(255,255,255,0.95)" : "var(--hone-ink-950)";
   const subColor = () =>
-    props.inUserBubble ? "rgba(255,255,255,0.7)" : "#64748b";
+    props.inUserBubble ? "rgba(255,255,255,0.7)" : "var(--hone-ink-600)";
   const card = (
     <div
       style={{
@@ -630,8 +630,8 @@ function FileCard(props: {
         background: props.inUserBubble ? "rgba(255,255,255,0.12)" : "#fff",
         border: props.inUserBubble
           ? "1.5px solid rgba(255,255,255,0.2)"
-          : "1.5px solid #f1f5f9",
-        "border-radius": "16px",
+          : "1.5px solid var(--hone-paper-200)",
+        "border-radius": "var(--hone-radius-md)",
         "min-width": "260px",
       }}
     >
@@ -639,12 +639,12 @@ function FileCard(props: {
         style={{
           width: "44px",
           height: "44px",
-          "border-radius": "10px",
+          "border-radius": "var(--hone-radius-sm)",
           background: iconBg(),
           display: "flex",
           "align-items": "center",
           "justify-content": "center",
-          "font-family": "var(--font-mono, 'JetBrains Mono', monospace)",
+          "font-family": "var(--hone-font-label)",
           "font-size": "11px",
           "font-weight": "800",
           color: iconColor(),
@@ -670,7 +670,7 @@ function FileCard(props: {
         <Show when={props.file.size}>
           <div
             style={{
-              "font-family": "var(--font-mono, 'JetBrains Mono', monospace)",
+              "font-family": "var(--hone-font-label)",
               "font-size": "12px",
               color: subColor(),
               "margin-top": "3px",
@@ -729,13 +729,13 @@ function UserBubble(props: {
         class="pub-msg-bubble pub-msg-bubble--user"
         style={{
           "max-width": "80%",
-          background: "#000",
+          background: "var(--hone-ink-950)",
           color: "#fff",
           "border-radius": "24px 24px 4px 24px",
           padding: imageOnly() ? "6px" : "14px 20px",
           "font-size": "16px",
           "line-height": "1.7",
-          "box-shadow": "0 10px 30px rgba(0,0,0,0.1)",
+          "box-shadow": "0 10px 30px rgba(23, 32, 31, 0.1)",
           "white-space": "pre-wrap",
           "word-break": "break-word",
         }}
@@ -850,11 +850,11 @@ function AssistantBubble(props: {
           "max-width": "85%",
           background: "rgba(255, 255, 255, 0.9)",
           "backdrop-filter": "blur(10px)",
-          border: "1.5px solid #e2e8f0",
+          border: "1.5px solid var(--hone-line)",
           "border-radius": "4px 24px 24px 24px",
           padding: "16px 20px",
-          color: "#1e293b",
-          "box-shadow": "0 4px 20px rgba(15,23,42,0.04)",
+          color: "var(--hone-ink-800)",
+          "box-shadow": "0 4px 20px rgba(23, 32, 31, 0.04)",
           position: "relative",
         }}
       >
@@ -1030,7 +1030,7 @@ function AttachPreview(props: {
           gap: "10px",
           padding: "12px 16px",
           "flex-wrap": "wrap",
-          "border-bottom": "1.5px solid #f8fafc",
+          "border-bottom": "1.5px solid var(--hone-paper-100)",
         }}
       >
         <For each={props.items}>
@@ -1047,24 +1047,25 @@ function AttachPreview(props: {
                       display: "flex",
                       "align-items": "center",
                       gap: "12px",
-                      "border-radius": "12px",
-                      border: "1.5px solid #f1f5f9",
-                      background: "#fcfdfe",
+                      "border-radius": "var(--hone-radius-md)",
+                      border: "1.5px solid var(--hone-paper-200)",
+                      background: "var(--hone-paper-100)",
                     }}
                   >
                     <div
                       style={{
                         width: "40px",
                         height: "40px",
-                        "border-radius": "8px",
-                        background: "rgba(245,158,11,0.1)",
+                        "border-radius": "var(--hone-radius-sm)",
+                        background:
+                          "color-mix(in srgb, var(--hone-coral-500) 10%, transparent)",
                         display: "flex",
                         "align-items": "center",
                         "justify-content": "center",
-                        "font-family": "var(--font-mono)",
+                        "font-family": "var(--hone-font-label)",
                         "font-size": "11px",
                         "font-weight": "800",
-                        color: "#d97706",
+                        color: "var(--hone-coral-600)",
                       }}
                     >
                       {publicAttachmentFileLabel(item.name)}
@@ -1074,7 +1075,7 @@ function AttachPreview(props: {
                         style={{
                           "font-size": "13px",
                           "font-weight": "700",
-                          color: "#0f172a",
+                          color: "var(--hone-ink-950)",
                           overflow: "hidden",
                           "text-overflow": "ellipsis",
                           "white-space": "nowrap",
@@ -1084,9 +1085,9 @@ function AttachPreview(props: {
                       </div>
                       <div
                         style={{
-                          "font-family": "var(--font-mono)",
+                          "font-family": "var(--hone-font-label)",
                           "font-size": "11px",
-                          color: "#94a3b8",
+                          color: "var(--hone-ink-400)",
                         }}
                       >
                         {formatPublicAttachmentBytes(item.size)}
@@ -1099,9 +1100,9 @@ function AttachPreview(props: {
                   style={{
                     width: "72px",
                     height: "72px",
-                    "border-radius": "12px",
+                    "border-radius": "var(--hone-radius-md)",
                     overflow: "hidden",
-                    border: "1.5px solid #f1f5f9",
+                    border: "1.5px solid var(--hone-paper-200)",
                   }}
                 >
                   <img
@@ -1124,7 +1125,7 @@ function AttachPreview(props: {
                   width: "24px",
                   height: "24px",
                   "border-radius": "12px",
-                  background: "#000",
+                  background: "var(--hone-ink-950)",
                   color: "#fff",
                   border: "2.5px solid #fff",
                   cursor: "pointer",
@@ -1132,7 +1133,7 @@ function AttachPreview(props: {
                   display: "flex",
                   "align-items": "center",
                   "justify-content": "center",
-                  "box-shadow": "0 4px 10px rgba(0,0,0,0.2)",
+                  "box-shadow": "0 4px 10px rgba(23, 32, 31, 0.2)",
                 }}
               >
                 ✕
@@ -1157,11 +1158,11 @@ function AttachMenu(props: {
       <div
         class="pub-attach-menu"
         style={{
-          "border-radius": "20px",
+          "border-radius": "var(--hone-radius-lg)",
           padding: "8px",
           "min-width": "240px",
           bottom: "80px",
-          "box-shadow": "0 20px 50px rgba(0,0,0,0.15)",
+          "box-shadow": "0 20px 50px rgba(23, 32, 31, 0.15)",
         }}
       >
         <button
@@ -1172,7 +1173,7 @@ function AttachMenu(props: {
             props.onClose();
           }}
         >
-          <span class="pub-attach-icon" style={{ background: "#f1f5f9" }}>
+          <span class="pub-attach-icon" style={{ background: "var(--hone-paper-200)" }}>
             <svg
               width="20"
               height="20"
@@ -1208,7 +1209,7 @@ function AttachMenu(props: {
             props.onClose();
           }}
         >
-          <span class="pub-attach-icon" style={{ background: "#f1f5f9" }}>
+          <span class="pub-attach-icon" style={{ background: "var(--hone-paper-200)" }}>
             <svg
               width="20"
               height="20"
@@ -2155,12 +2156,12 @@ function Composer(props: {
           position: "relative",
           "max-width": "900px",
           margin: "0 auto",
-          "border-radius": "22px",
-          border: focused() ? "2px solid #000" : "2px solid #f1f5f9",
+          "border-radius": "var(--hone-radius-lg)",
+          border: focused() ? "2px solid var(--hone-ink-950)" : "2px solid var(--hone-paper-200)",
           background: "#fff",
           "box-shadow": focused()
-            ? "0 20px 60px rgba(0,0,0,0.08)"
-            : "0 10px 30px rgba(0,0,0,0.03)",
+            ? "0 20px 60px rgba(23, 32, 31, 0.08)"
+            : "0 10px 30px rgba(23, 32, 31, 0.03)",
           transition: "all 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
           overflow: "hidden",
         }}
@@ -2260,7 +2261,7 @@ function Composer(props: {
               "font-size": "16px",
               "font-weight": "500",
               "line-height": "1.5",
-              color: "#0f172a",
+              color: "var(--hone-ink-950)",
               "max-height": "180px",
               "min-height": "32px",
               overflow: "hidden auto",
@@ -2277,8 +2278,8 @@ function Composer(props: {
             style={{
               width: "36px",
               height: "36px",
-              "border-radius": "12px",
-              background: canSend() ? "#000" : "#f1f5f9",
+              "border-radius": "var(--hone-radius-md)",
+              background: canSend() ? "var(--hone-ink-950)" : "var(--hone-paper-200)",
               border: "none",
               cursor: canSend() ? "pointer" : "default",
               display: "flex",

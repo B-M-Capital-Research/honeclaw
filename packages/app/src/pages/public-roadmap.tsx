@@ -248,9 +248,9 @@ export default function PublicRoadmapPage() {
 
       <style>{`
         .hone-roadmap-v4 {
-          background: #fff;
-          color: #1e293b;
-          font-family: var(--font-sans, 'Plus Jakarta Sans', sans-serif);
+          background: var(--hone-paper-50);
+          color: var(--hone-ink-800);
+          font-family: var(--hone-font-body);
           min-height: 100vh;
           position: relative;
           display: flex;
@@ -259,7 +259,7 @@ export default function PublicRoadmapPage() {
 
         .animated-bg { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
         .circle { position: absolute; border-radius: 50%; filter: blur(100px); opacity: 0.08; animation: float 25s infinite alternate ease-in-out; }
-        .circle-1 { width: 800px; height: 800px; background: #f59e0b; top: -200px; left: -150px; }
+        .circle-1 { width: 800px; height: 800px; background: var(--hone-coral-500); top: -200px; left: -150px; }
         .circle-2 { width: 900px; height: 900px; background: #3b82f6; bottom: -250px; right: -150px; animation-delay: -5s; }
         .circle-3 { width: 400px; height: 400px; background: #ec4899; top: 40%; left: 50%; animation-delay: -10s; }
         @keyframes float { 0% { transform: translate(0, 0) scale(1); } 100% { transform: translate(60px, 120px) scale(1.15); } }
@@ -272,44 +272,44 @@ export default function PublicRoadmapPage() {
         }
         .header-logo { display: flex; align-items: center; gap: 12px; cursor: pointer; }
         .header-logo img { height: 32px; }
-        .header-logo span { font-weight: 800; font-size: 22px; color: #000; }
+        .header-logo span { font-weight: 800; font-size: 22px; color: var(--hone-ink-950); }
         .header-actions { display: flex; align-items: center; gap: 24px; }
-        .lang-switch { display: inline-flex; align-items: center; background: rgba(255,255,255,0.72); border: 1px solid #e2e8f0; padding: 3px; border-radius: 999px; gap: 2px; }
-        .lang-switch button { min-width: 34px; min-height: 28px; padding: 0 12px; border: none; border-radius: 999px; background: transparent; cursor: pointer; font-size: 12px; font-weight: 700; color: #64748b; }
-        .lang-switch button.active { background: #000; color: #fff; border-radius: 999px; }
-        .btn-chat-nav { background: #000; color: #fff; border: none; padding: 10px 24px; border-radius: 100px; font-size: 14px; font-weight: 700; cursor: pointer; }
-        .btn-roadmap-nav { background: transparent; color: #64748b; border: 1.5px solid #e2e8f0; padding: 8px 20px; border-radius: 100px; font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+        .lang-switch { display: inline-flex; align-items: center; background: rgba(255,255,255,0.72); border: 1px solid var(--hone-line); padding: 3px; border-radius: 999px; gap: 2px; }
+        .lang-switch button { min-width: 34px; min-height: 28px; padding: 0 12px; border: none; border-radius: 999px; background: transparent; cursor: pointer; font-size: 12px; font-weight: 700; color: var(--hone-ink-600); }
+        .lang-switch button.active { background: var(--hone-ink-950); color: #fff; border-radius: 999px; }
+        .btn-chat-nav { background: var(--hone-ink-950); color: #fff; border: none; padding: 10px 24px; border-radius: 100px; font-size: 14px; font-weight: 700; cursor: pointer; }
+        .btn-roadmap-nav { background: transparent; color: var(--hone-ink-600); border: 1.5px solid var(--hone-line); padding: 8px 20px; border-radius: 100px; font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
 
         .main-content { position: relative; z-index: 1; padding: 120px 40px 80px; max-width: 1200px; margin: 0 auto; width: 100%; display: grid; gap: 40px; }
         .roadmap-hero { text-align: center; margin-bottom: 32px; }
-        .roadmap-hero .meta { font-size: 14px; font-weight: 800; color: #f59e0b; letter-spacing: 0.2em; margin-bottom: 16px; }
-        .roadmap-hero .title { font-size: 56px; font-weight: 800; color: #0f172a; margin-bottom: 24px; }
-        .roadmap-hero .subtitle { font-size: 20px; color: #475569; max-width: 820px; margin: 0 auto; line-height: 1.6; }
-        .version-pill { display: inline-flex; margin-top: 24px; padding: 7px 13px; border: 1px solid #e2e8f0; border-radius: 999px; background: #fff; font-size: 13px; font-weight: 800; color: #0f172a; }
+        .roadmap-hero .meta { font-size: 14px; font-weight: 800; color: var(--hone-coral-500); letter-spacing: 0.2em; margin-bottom: 16px; }
+        .roadmap-hero .title { font-size: 56px; font-weight: 800; color: var(--hone-ink-950); margin-bottom: 24px; }
+        .roadmap-hero .subtitle { font-size: 20px; color: var(--hone-ink-800); max-width: 820px; margin: 0 auto; line-height: 1.6; }
+        .version-pill { display: inline-flex; margin-top: 24px; padding: 7px 13px; border: 1px solid var(--hone-line); border-radius: 999px; background: #fff; font-size: 13px; font-weight: 800; color: var(--hone-ink-950); }
 
-        .roadmap-card { background: #fff; border: 1.5px solid #f1f5f9; border-radius: 24px; padding: 40px; box-shadow: 0 20px 50px rgba(0,0,0,0.02); }
-        .roadmap-card.dark { background: #0f172a; color: #fff; border: none; }
+        .roadmap-card { background: #fff; border: 1.5px solid var(--hone-line); border-radius: var(--hone-radius-lg); padding: 40px; box-shadow: 0 20px 50px rgba(23,32,31,0.02); }
+        .roadmap-card.dark { background: var(--hone-ink-950); color: #fff; border: none; }
         .section-head { margin-bottom: 28px; }
-        .section-eyebrow { font-size: 12px; font-weight: 800; color: #f59e0b; letter-spacing: 0.16em; margin-bottom: 10px; }
-        .card-title { font-size: 30px; font-weight: 800; margin: 0; color: #0f172a; }
+        .section-eyebrow { font-size: 12px; font-weight: 800; color: var(--hone-coral-500); letter-spacing: 0.16em; margin-bottom: 10px; }
+        .card-title { font-size: 30px; font-weight: 800; margin: 0; color: var(--hone-ink-950); }
         .roadmap-card.dark .card-title { color: #fff; }
-        .card-intro { margin: 12px 0 0; color: #64748b; line-height: 1.7; max-width: 920px; }
-        .roadmap-card.dark .card-intro { color: #cbd5e1; }
+        .card-intro { margin: 12px 0 0; color: var(--hone-ink-600); line-height: 1.7; max-width: 920px; }
+        .roadmap-card.dark .card-intro { color: var(--hone-ink-400); }
 
         .install-grid, .phases-container, .architecture-grid, .boundary-grid, .contrib-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
-        .install-label { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-weight: 800; color: #e2e8f0; }
-        .install-label em { font-style: normal; font-size: 11px; color: #fbbf24; }
-        .code-block { background: rgba(0,0,0,0.3); padding: 18px; border-radius: 14px; font-family: var(--font-mono, monospace); font-size: 13px; color: #cbd5e1; overflow-x: auto; }
+        .install-label { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-weight: 800; color: var(--hone-paper-200); }
+        .install-label em { font-style: normal; font-size: 11px; color: var(--hone-coral-500); }
+        .code-block { background: rgba(0,0,0,0.32); padding: 18px; border-radius: var(--hone-radius-md); font-family: var(--hone-font-label); font-size: 13px; color: var(--hone-paper-200); overflow-x: auto; }
         .code-block pre { margin: 0; }
         .code-block code { white-space: pre; }
 
-        .phase-tag { display: inline-block; padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 800; margin-bottom: 16px; }
-        .phase-tag.now { background: #fff7ed; color: #d97706; }
+        .phase-tag { display: inline-block; padding: 4px 12px; border-radius: var(--hone-radius-sm); font-size: 12px; font-weight: 800; margin-bottom: 16px; }
+        .phase-tag.now { background: color-mix(in srgb, var(--hone-coral-500) 10%, transparent); color: var(--hone-coral-600); }
         .phase-tag.next { background: #eff6ff; color: #1d4ed8; }
         .phase-tag.later { background: #fdf2f8; color: #be185d; }
         .phase-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 11px; }
         .phase-list li {
-          font-size: 15px; color: #475569; line-height: 1.5;
+          font-size: 15px; color: var(--hone-ink-800); line-height: 1.5;
           display: flex; gap: 10px; align-items: baseline;
         }
         .phase-list li::before {
@@ -317,65 +317,65 @@ export default function PublicRoadmapPage() {
           flex: 0 0 auto;
           width: 14px; height: 14px;
           margin-top: 5px;
-          background-color: #cbd5e1;
+          background-color: var(--hone-ink-400);
           -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><path d='M5 12h14M13 5l7 7-7 7'/></svg>") center / contain no-repeat;
           mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><path d='M5 12h14M13 5l7 7-7 7'/></svg>") center / contain no-repeat;
         }
 
         .matrix-container { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; }
         .matrix-group { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-        .group-name { font-size: 13px; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; text-transform: uppercase; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px; }
-        .matrix-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; padding: 10px 0; border-bottom: 1px solid #f8fafc; }
-        .row-name { display: block; font-size: 15px; font-weight: 700; color: #1e293b; line-height: 1.35; }
-        .row-note { display: block; margin-top: 4px; font-size: 12px; color: #64748b; line-height: 1.4; }
-        .status-badge { flex: 0 0 auto; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 6px; }
+        .group-name { font-size: 13px; font-weight: 800; color: var(--hone-ink-400); letter-spacing: 0.1em; text-transform: uppercase; border-bottom: 1px solid var(--hone-line); padding-bottom: 8px; }
+        .matrix-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; padding: 10px 0; border-bottom: 1px solid var(--hone-line); }
+        .row-name { display: block; font-size: 15px; font-weight: 700; color: var(--hone-ink-800); line-height: 1.35; }
+        .row-note { display: block; margin-top: 4px; font-size: 12px; color: var(--hone-ink-600); line-height: 1.4; }
+        .status-badge { flex: 0 0 auto; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: var(--hone-radius-sm); }
         .status-badge.stable { background: #ecfdf5; color: #059669; }
-        .status-badge.beta { background: #fffbeb; color: #d97706; }
-        .status-badge.planned { background: #f1f5f9; color: #64748b; }
+        .status-badge.beta { background: color-mix(in srgb, var(--hone-coral-500) 8%, transparent); color: var(--hone-coral-600); }
+        .status-badge.planned { background: var(--hone-paper-200); color: var(--hone-ink-600); }
 
         .channel-grid, .skills-grid, .docs-grid, .faq-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-        .channel-row, .skill-row, .architecture-point, .doc-card, .contrib-card, details { border: 1px solid #e2e8f0; border-radius: 14px; padding: 18px; background: #fff; min-width: 0; }
+        .channel-row, .skill-row, .architecture-point, .doc-card, .contrib-card, details { border: 1px solid var(--hone-line); border-radius: var(--hone-radius-md); padding: 18px; background: #fff; min-width: 0; }
         .channel-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px; }
         .channel-icon {
           display: inline-flex; align-items: center; justify-content: center;
-          width: 36px; height: 36px; border-radius: 10px;
-          background: rgba(245,158,11,0.10);
-          color: #b45309;
+          width: 36px; height: 36px; border-radius: var(--hone-radius-sm);
+          background: color-mix(in srgb, var(--hone-coral-500) 10%, transparent);
+          color: var(--hone-coral-600);
           font-size: 14px; font-weight: 800;
           letter-spacing: 0;
         }
-        .channel-title { display: flex; justify-content: space-between; gap: 10px; align-items: center; font-weight: 800; color: #0f172a; }
-        .channel-row p, .skill-row p, .architecture-point p, .contrib-card p, details p { margin: 8px 0 0; color: #64748b; line-height: 1.55; }
+        .channel-title { display: flex; justify-content: space-between; gap: 10px; align-items: center; font-weight: 800; color: var(--hone-ink-950); }
+        .channel-row p, .skill-row p, .architecture-point p, .contrib-card p, details p { margin: 8px 0 0; color: var(--hone-ink-600); line-height: 1.55; }
         .architecture-grid, .boundary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        .architecture-point h3, .boundary-grid h3 { margin: 0 0 10px; font-size: 16px; color: #0f172a; }
-        .text-link { display: inline-block; margin-top: 22px; color: #d97706; font-weight: 800; text-decoration: none; }
+        .architecture-point h3, .boundary-grid h3 { margin: 0 0 10px; font-size: 16px; color: var(--hone-ink-950); }
+        .text-link { display: inline-block; margin-top: 22px; color: var(--hone-coral-600); font-weight: 800; text-decoration: none; }
         .skill-row { display: flex; flex-direction: column; gap: 10px; }
-        .skill-row-name { font-size: 15px; font-weight: 700; color: #0f172a; line-height: 1.45; }
+        .skill-row-name { font-size: 15px; font-weight: 700; color: var(--hone-ink-950); line-height: 1.45; }
         .skill-row-id {
           align-self: flex-start;
           padding: 2px 8px;
-          border-radius: 6px;
-          background: #f1f5f9;
-          font-family: var(--font-mono, "JetBrains Mono", monospace);
+          border-radius: var(--hone-radius-sm);
+          background: var(--hone-paper-200);
+          font-family: var(--hone-font-label);
           font-size: 11px;
           font-weight: 600;
-          color: #94a3b8;
+          color: var(--hone-ink-400);
           letter-spacing: 0;
           overflow-wrap: anywhere;
         }
         .docs-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
         .doc-card, .contrib-card { color: inherit; text-decoration: none; transition: border-color 0.2s, transform 0.2s; }
-        .doc-card:hover, .contrib-card:hover { border-color: #f59e0b; transform: translateY(-1px); }
-        .doc-card strong, .contrib-card strong { display: block; color: #0f172a; }
-        .doc-card span { display: block; margin-top: 8px; color: #64748b; line-height: 1.45; }
-        .contrib-card span { color: #f59e0b; font-size: 20px; }
+        .doc-card:hover, .contrib-card:hover { border-color: var(--hone-coral-500); transform: translateY(-1px); }
+        .doc-card strong, .contrib-card strong { display: block; color: var(--hone-ink-950); }
+        .doc-card span { display: block; margin-top: 8px; color: var(--hone-ink-600); line-height: 1.45; }
+        .contrib-card span { color: var(--hone-coral-500); font-size: 20px; }
         details { cursor: pointer; }
-        summary { font-weight: 800; color: #0f172a; }
+        summary { font-weight: 800; color: var(--hone-ink-950); }
 
-        .bottom-cta { text-align: center; margin-top: 32px; padding: 64px 32px; background: #f8fafc; border-radius: 30px; }
-        .bottom-cta h2 { font-size: 32px; font-weight: 800; margin: 0 0 12px; color: #0f172a; }
-        .bottom-cta p { margin: 0 0 28px; color: #64748b; }
-        .btn-primary.large { background: #000; color: #fff; border: none; padding: 16px 40px; border-radius: 100px; font-size: 17px; font-weight: 700; cursor: pointer; transition: transform 0.2s; }
+        .bottom-cta { text-align: center; margin-top: 32px; padding: 64px 32px; background: var(--hone-paper-100); border-radius: 30px; }
+        .bottom-cta h2 { font-size: 32px; font-weight: 800; margin: 0 0 12px; color: var(--hone-ink-950); }
+        .bottom-cta p { margin: 0 0 28px; color: var(--hone-ink-600); }
+        .btn-primary.large { background: var(--hone-ink-950); color: #fff; border: none; padding: 16px 40px; border-radius: 100px; font-size: 17px; font-weight: 700; cursor: pointer; transition: transform 0.2s; }
         .btn-primary.large:hover { transform: scale(1.03); }
 
         @media (max-width: 960px) {
@@ -384,7 +384,7 @@ export default function PublicRoadmapPage() {
 
         @media (max-width: 768px) {
           .roadmap-hero .title { font-size: 36px; }
-          .roadmap-card { padding: 24px; border-radius: 22px; }
+          .roadmap-card { padding: 24px; border-radius: var(--hone-radius-lg); }
           .main-content { padding: 100px 20px 40px; }
           .channel-title { align-items: flex-start; flex-direction: column; }
         }

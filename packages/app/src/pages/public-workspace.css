@@ -115,10 +115,50 @@
 .public-tracking-task-empty button { padding: 9px 14px; border: 0; border-radius: 9px; background: #111; color: #fff; cursor: pointer; font-size: 11px; }
 .public-tracking-context { margin-top: 28px; padding-top: 24px; border-top: 1px solid #e6e7e3; }
 .public-tracking-context > h2 { margin: 0 0 16px; font-size: 17px; }
-.public-tracking-context button { border-color: #dedfdb !important; background: #fff !important; color: #333 !important; box-shadow: none !important; }
-.public-tracking-context button:hover { border-color: #aeb1ab !important; }
-.public-tracking-context h2,.public-tracking-context h3 { color: #222 !important; }
-.public-tracking-context [style*="background: #fff"] { box-shadow: none !important; }
+
+/* Mainline & company-profile context. */
+.public-mainline-meta { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; }
+.public-mainline-meta-info { color: #777b76; font-size: 13px; }
+.public-mainline-meta-info strong { color: #222; }
+.public-mainline-skipped { margin-left: 16px; }
+.public-mainline-skipped span { color: #333; font-family: ui-monospace, "JetBrains Mono", monospace; font-weight: 750; }
+.public-mainline-refresh { min-height: 36px; padding: 0 16px; border: 1px solid #111; border-radius: 9px; background: #111311; color: #fff; cursor: pointer; font-size: 12px; font-weight: 700; }
+.public-mainline-refresh:disabled { border-color: #e1e2df; background: #f2f3f0; color: #8b8e89; cursor: not-allowed; }
+.public-mainline-notice { margin-bottom: 16px; padding: 12px 16px; border: 1px solid #e6e7e3; border-radius: 12px; font-size: 13px; }
+.public-mainline-notice.is-error { border-color: #dcc1be; background: #f9f1f0; color: #a43b32; }
+.public-mainline-notice.is-success { border-color: #cfd9c5; background: #f4f8f0; color: #3c6b47; }
+.public-mainline-style-card { margin-bottom: 24px; padding: 20px 24px; border: 1px solid #e6e7e3; border-radius: 17px; background: #fff; }
+.public-mainline-style-label { margin-bottom: 8px; color: #8b8e89; font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.public-mainline-style-body { color: #111311; font-size: 14px; line-height: 1.7; }
+.public-mainline-empty-text { color: #8b8e89; }
+.public-mainline-heading { margin: 28px 0 12px; color: #222; font-size: 15px; letter-spacing: -.01em; }
+.public-mainline-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; margin-bottom: 32px; }
+.public-mainline-card { display: flex; flex-direction: column; gap: 10px; padding: 20px 22px; border: 1px solid #e6e7e3; border-radius: 12px; background: #fff; }
+.public-mainline-card.is-pending { border-style: dashed; border-color: #d5d6d2; background: #fafaf8; }
+.public-mainline-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.public-mainline-ticker { color: #111311; font-family: ui-monospace, "JetBrains Mono", monospace; font-size: 16px; font-weight: 700; }
+.public-mainline-text { color: #111311; font-size: 14px; line-height: 1.7; }
+.public-mainline-fallback { color: #8b8e89; font-size: 13px; line-height: 1.6; }
+.public-mainline-fallback strong { color: #333; }
+.public-mainline-empty { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 32px; border: 1px solid #e6e7e3; border-radius: 17px; background: #fff; color: #8b8e89; font-size: 13px; text-align: center; }
+.public-mainline-empty button { padding: 9px 14px; border: 0; border-radius: 9px; background: #111; color: #fff; cursor: pointer; font-size: 11px; }
+.public-profile-view-btn { padding: 5px 11px; border: 1px solid #e1e2df; border-radius: 9px; background: #fff; color: #333; cursor: pointer; font-size: 12px; white-space: nowrap; }
+.public-profile-view-btn:hover { border-color: #aeb1ab; }
+.public-profile-list { display: flex; flex-direction: column; gap: 10px; }
+.public-profile-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border: 1px solid #e6e7e3; border-radius: 12px; background: #fff; }
+.public-profile-row-main { flex: 1; min-width: 0; }
+.public-profile-title { color: #111311; font-size: 14px; font-weight: 600; }
+.public-profile-ticker { margin-left: 8px; color: #8b8e89; font-family: ui-monospace, "JetBrains Mono", monospace; font-size: 12px; }
+.public-profile-sub { margin-top: 4px; color: #8b8e89; font-size: 12px; }
+.public-profile-modal-overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 32px; background: rgba(17,19,17,0.45); z-index: 1000; }
+.public-profile-modal { display: flex; flex-direction: column; width: 100%; max-width: 780px; max-height: 90vh; overflow: hidden; border: 1px solid #e6e7e3; border-radius: 17px; background: #fff; }
+.public-profile-modal-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid #e6e7e3; }
+.public-profile-modal-title { color: #111311; font-weight: 700; }
+.public-profile-modal-close { border: 0; background: transparent; color: #8b8e89; cursor: pointer; font-size: 20px; }
+.public-profile-modal-body { padding: 20px 28px; overflow: auto; color: #111311; font-size: 14px; line-height: 1.7; }
+.public-profile-modal-muted { color: #8b8e89; }
+.public-profile-modal-error { color: #a43b32; }
+.public-profile-modal-foot { padding: 12px 20px; border-top: 1px solid #ecece9; background: #f7f7f5; color: #777b76; font-size: 12px; }
 
 /* Account. */
 .public-account-grid { display: grid; grid-template-columns: minmax(0,1.2fr) minmax(260px,.8fr); gap: 18px; }
@@ -161,6 +201,15 @@
   .public-tracking-agenda strong { font-size: 13px; }
   .public-tracking-agenda small { margin-top: 5px; color: #8b8e89; font-size: 11px; line-height: 1.45; }
   .public-account-grid { grid-template-columns: 1fr; }
+  .public-tracking-context { margin-top: 22px; padding-top: 20px; }
+  .public-mainline-meta { margin-bottom: 18px; }
+  .public-mainline-grid { grid-template-columns: 1fr; margin-bottom: 26px; }
+  .public-mainline-style-card { padding: 17px; border-radius: 15px; }
+  .public-mainline-card { padding: 17px; }
+  .public-mainline-empty { padding: 26px 17px; border-radius: 15px; }
+  .public-profile-modal-overlay { padding: 16px; }
+  .public-profile-modal { max-height: 86vh; border-radius: 15px; }
+  .public-profile-modal-body { padding: 17px; }
 }
 
 @media (display-mode: browser) and (max-width: 820px) {
