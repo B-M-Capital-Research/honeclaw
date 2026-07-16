@@ -22,6 +22,14 @@ New
 
 ## 证据来源
 
+- `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-16`
+  - 巡检时间窗：2026-07-16 15:03-19:02 CST。
+  - `data/sessions.sqlite3` 同窗新增 6 条 user / 6 条 assistant，覆盖 5 个 session，全部以 assistant 收口；没有 user-only 悬挂、错投、敏感信息泄露或全渠道不可用证据。
+  - 18:24 CST Web direct session `Actor_web__direct__intl_5fasset_5fregression_5f1784197328` 回答“现在intl怎么看”时，只写入 `这次回答未通过投研完整性检查，已停止发送不完整或未经充分核验的结论。请稍后重试。`，`metadata_json` 标记 `run_failed=true` / `AgentFailed`。
+  - 18:31 CST Web direct session `Actor_web__direct__intl_5ffinal_5fregression_5f1784197814` 再次以同一投研完整性失败文案收口。
+  - 18:38 CST Web direct session `Actor_web__direct__intl_5fvisible_5ffinal_5f1784198248` 同题最终成功输出 INTL 分析正文，说明该缺陷不是 Web direct 全链路不可用。
+  - 同窗 `data/runtime/logs/web.log.2026-07-16` 仍有多批 heartbeat `runner_error` 与投研完整性 / 实体识别 guard 失败；相关实体 / 投研完整性 WARN / ERROR 共 216 条。
+  - 判断：该样本仍属于同根投研完整性 / evidence 门禁 fail-closed 后用户只看到通用失败提示；由于同窗 direct 可成功收口，未见错投、数据破坏、敏感信息泄露或全渠道不可用，维持功能性 `P2 / New`，不升级为 P1，不创建 GitHub Issue。
 - `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-15`
   - 巡检时间窗：2026-07-16 03:02-07:02 CST。
   - `data/sessions.sqlite3` 同窗新增 10 条 user / 11 条 assistant，覆盖 9 个近期 session；07:00 CST 边界任务已在 07:02:55 收口，没有长期 user-only 悬挂、错投或全渠道不可用证据。

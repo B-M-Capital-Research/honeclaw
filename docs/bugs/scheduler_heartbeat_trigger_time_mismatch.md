@@ -8,6 +8,16 @@
 
 ## 最新进展
 
+- 本轮 `2026-07-16 15:03-19:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-16`
+    - 16:30 / 18:00 / 18:31 CST `存储板块关键事件心跳提醒` 多次把检查时间写成 `2026-07-16 北京时间约 09:40`，早于真实日志时间 6.5 到 8.5 小时。
+    - 17:30 CST `持仓重大事件心跳检测` raw preview 写 `2026-07-16 17:00 Beijing`，但 deliver preview 标题变成 `FOTO 心跳检查`，与任务主体 ASTS / RKLB / TEM / ORCL 错配。
+    - 17:30 CST `ORCL 大事件监控` raw / deliver preview 均输出 `FOTO 心跳检查`，把 ORCL 任务错写成 FOTO；18:31 CST `中际旭创关键事件心跳提醒` raw / deliver preview 又输出 BNO 原油基金内容。
+    - 18:31 CST `FOTO 光子学ETF心跳检测` raw preview 写 `当前时间 2026-07-16 17:30 北京时间（美东 07/16 05:30，盘后）`，与真实 18:31 CST 和美东 06:31 口径均不一致。
+    - 19:01 CST `Monitor_Watchlist_11` raw preview 写 `current time 2026-07-15 23:00 Beijing`，比真实日志时间早约 20 小时。
+  - 会话质量对照：同窗 `data/sessions.sqlite3` 新增 6 条 user / 6 条 assistant，全部以 assistant 收口；未见同类时间口径错误进入普通 direct assistant final。
+  - 判断：这些样本仍是 heartbeat 运行态时间上下文 / 任务上下文漂移，主要影响触发判断质量与用户可见时间口径可信度；没有错投、全渠道不可用或敏感信息泄露，维持质量性 `P3 / New`，非 P1。
+
 - 本轮 `2026-07-16 07:02-11:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-16`
     - 08:00 CST `SIVE POET/Nokia/1.6T DFB 心跳检测` deliver preview 写 `当前时间 2026年7月16日 07:30 北京时间`，早于真实日志时间约 30 分钟。

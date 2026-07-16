@@ -6,6 +6,12 @@
 - **状态**: New
 - **GitHub Issue**: 无
 - **修复结论复核**:
+- `2026-07-16 19:02 CST` 运行态部分复发继续存在，状态维持 `New`：
+  - `data/sessions.sqlite3` 在 2026-07-16 15:03-19:02 CST 按真实 `timestamp` 新增 6 条 user / 6 条 assistant，覆盖 5 个 session；全部以 assistant 收口，`sessions.last_message_role=user` 新增为 0。
+  - 同窗 assistant final 污染扫描未命中 `<think>`、本机路径、raw tool 字段、`data_fetch`、`data/sessions.sqlite3`、`company_profiles/`、panic 或 provider 原始错误。
+  - 但同一库 `cron_job_runs.max(executed_at)` 仍停在 `2026-07-10T14:01:27.621121+08:00`，查询 2026-07-16 15:03 CST 后没有新增 run。
+  - `data/runtime/logs/web.log.2026-07-16` 在同窗继续记录真实 heartbeat 运行态：实体 / 投研完整性 guard 相关 WARN / ERROR 216 条、`HeartbeatDiag runner_error` 112 条、结构化 / preview / context 信号 119 条。
+  - 结论：会话 transcript mirror 能追入当前 Web direct transcript，但本地调度运行台账 `cron_job_runs` 仍未随真实 scheduler / heartbeat 运行态推进。该问题影响巡检、调度审计、补发判断和运行态复核，严重等级维持功能性 `P2`；当前用户态消息仍在生成，不等同于 scheduler 全局漏跑 P1，非 P1，不创建 GitHub Issue。
 - `2026-07-16 11:02 CST` 运行态部分复发继续存在，状态维持 `New`：
   - `data/sessions.sqlite3` 在 2026-07-16 07:02-11:02 CST 按真实 `timestamp` 新增 5 条 user / 5 条 assistant，覆盖 4 个 session；最近 session 全部以 assistant 收口，未形成长期 user-only 悬挂。
   - 但同一库 `cron_job_runs.max(executed_at)` 仍停在 `2026-07-10T14:01:27.621121+08:00`，查询 2026-07-16 07:02 CST 后没有新增 run。

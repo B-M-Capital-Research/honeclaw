@@ -6,7 +6,16 @@
 - **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
 
-## 复发记录（2026-07-16 15:03 CST）
+## 复发记录（2026-07-16 15:03 / 19:02 CST）
+
+- 运行态在最近非文档修复后继续复发，状态维持 `New`：
+  - 本轮巡检窗口为 `2026-07-16 15:03-19:02 CST`。
+  - `data/sessions.sqlite3` 同窗新增 6 条 user / 6 条 assistant，全部以 assistant 收口，未见长期 user-only 悬挂、错投、空回复、内部路径 / raw tool / `<think>` 外泄或全渠道不可用。
+  - 最近非文档提交 `fa65dfef fix(agent): resolve ordinary ticker entities first` 发生在 16:23 CST，修改 `investment_response_guard` 与 live entity-search 手工回归脚本。
+  - 但 `data/runtime/logs/web.log.2026-07-16` 在 18:30 / 19:00 CST 后仍记录同类实体识别 / 投研完整性 guard 失败；同窗实体 / 投研完整性相关 WARN / ERROR 共 216 条，`HeartbeatDiag runner_error` 共 112 条。
+  - 代表样本包括 `全天原油价格3小时播报` 无法确认具体公司或证券、`存储板块关键事件心跳提醒` 无法确认 `SNDK`、`TEM大事件心跳监控` 无法确认 `TEM`、`ASTS 重大异动心跳监控` 被上下文中的 `AT&T` 多候选阻断、`光迅科技关键事件心跳提醒` 无法确认 `光迅科技 002281.SZ`、`Cerebras IPO与业务进展心跳监控` 无法确认 `Meta`、`SIVE POET/Nokia/1.6T DFB 心跳检测` 无法确认 `Sivers Semiconductors（SIVE）`。
+  - 判断：这次说明 live heartbeat 路径在“普通 ticker 先解析”修复后仍会被实体优先 / 投研完整性 guard 批量拦截；当前仍属同一 scheduler finance entity guard 过宽 / 上下文输入不干净链路，因此补充原文档，不新建重复缺陷。
+  - 严重等级维持 `P2`：问题影响 heartbeat 提醒生成和发送，但本窗 direct 会话仍能收口，且 18:38 CST 同题 `INTL` direct 已成功输出业务正文；未见错投、数据破坏、敏感信息泄露或全渠道停摆，因此不是 `P1`，不创建 GitHub Issue。
 
 - 运行态在 11:02 CST live probe 止血结论后再次复发，状态从 `Fixed` 回退为 `New`：
   - 本轮巡检窗口为 `2026-07-16 11:00-15:01 CST`。
