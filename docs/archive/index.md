@@ -1573,7 +1573,43 @@ Use this file as the historical entry point for completed or paused work that sh
 - Plan: `docs/archive/plans/plain-ticker-entity-resolution.md`
 - Handoff: `docs/handoffs/2026-07-16-entity-first-investment-pipeline.md#2026-07-16-普通-ticker-回归修复阶段`
 - Decision / ADR: `docs/decisions.md#d-2026-07-16-01-make-security-entity-resolution-the-first-investment-stage`
-- Related PRs / commits: this change set
+- Related PRs / commits: `fa65dfef`, `335c4b73`, `4aa21b29`
 - Related runbooks / regressions: `tests/regression/manual/test_entity_search_live.sh`, `tests/regression/ci/test_finance_automation_contracts.sh`
-- Current conclusion: contextual bare `NBIS/nbis` and multi-ticker questions now enter DataFetch exact-symbol verification without depending on auxiliary JSON; scheduler ticker subjects share that path, while report periods, assignment metadata, industry acronyms, and unrelated lowercase words remain outside it. The deployed NBIS probe completed all nine response sections successfully.
+- Current conclusion: contextual bare `NBIS/nbis` and multi-ticker questions now enter DataFetch exact-symbol verification without depending on auxiliary JSON; scheduler ticker subjects share that path, while report periods, assignment metadata, industry acronyms, and unrelated lowercase words remain outside it. Complex prose may still use auxiliary extraction for aliases, but its partial result can only add to—not replace—the deterministic ticker set. The deployed NBIS probe completed all nine sections, and the MRVL live search/quote plus 10-symbol partial-auxiliary regression passed.
 - Next entry point: `docs/handoffs/2026-07-16-entity-first-investment-pipeline.md#2026-07-16-普通-ticker-回归修复阶段`
+
+### Asset-Aware Investment Preflight And Visible-Content Guard
+
+- Status: done
+- Date: 2026-07-16
+- Plan: `docs/archive/plans/asset-aware-investment-preflight.md`
+- Handoff: `docs/handoffs/2026-07-16-entity-first-investment-pipeline.md#2026-07-16-资产类型与可见正文门禁阶段`
+- Decision / ADR: `docs/decisions.md#d-2026-07-16-01-make-security-entity-resolution-the-first-investment-stage`
+- Related PRs / commits: this change set
+- Related runbooks / regressions: `tests/regression/ci/test_finance_automation_contracts.sh`, `tests/regression/manual/test_entity_search_live.sh`
+- Current conclusion: exact securities now route independently as equity, ETF/fund, or crypto before evidence fetching; semantic-empty provider results are not confused with outages, inapplicable tools are audited across retries, and investment validation runs against the same sanitized visible content sent to users. The deployed INTL ETF probe completed all nine sections with the verified quote and holdings instead of failing on empty company financials or hidden reasoning numbering.
+- Next entry point: `docs/archive/plans/asset-aware-investment-preflight.md`
+
+### Validated Investment Streaming
+
+- Status: done
+- Date: 2026-07-16
+- Plan: `docs/archive/plans/investment-validated-streaming.md`
+- Handoff: `docs/handoffs/2026-07-16-entity-first-investment-pipeline.md#2026-07-16-投研回答校验后一次提交阶段`
+- Decision / ADR: `docs/decisions.md#d-2026-07-16-02-commit-investment-replies-only-after-validation`
+- Related PRs / commits: this change set
+- Related runbooks / regressions: 510 channel tests, 24 DataFetch tests, 3 Web SSE tests, `tests/regression/ci/test_finance_automation_contracts.sh`, and deployed RMBS/INTL Web SSE probes
+- Current conclusion: guarded investment attempts are now invisible until entity/evidence and final-answer validation succeed. Internal retries no longer send drafts or resets; Web emits one terminal event; RMBS valuation targets no longer conflict with its verified current quote. Deployed RMBS and INTL probes each produced one answer, zero resets, zero run errors, one successful terminal event, and complete asset-appropriate nine-section output.
+- Next entry point: `docs/archive/plans/investment-validated-streaming.md`
+
+### Server-Authoritative Web Chat Run Recovery
+
+- Status: done
+- Date: 2026-07-16
+- Plan: `docs/archive/plans/chat-active-run-ux.md`; production follow-up: `docs/archive/plans/chat-active-run-production-followup.md`
+- Handoff: `docs/handoffs/2026-07-16-chat-active-run-recovery.md`
+- Decision / ADR: `docs/decisions.md#d-2026-07-16-03-make-active-chat-runs-server-authoritative`
+- Related PRs / commits: `335c4b73`, `92d776a8`, `4aa21b29`
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md#drain-active-chats-before-a-controlled-restart`, 113 Web API tests, 14 CLI start tests, 263 Web tests, live disconnect/duplicate/NBIS/RMBS probes
+- Current conclusion: Public chat now recovers one real server-owned run id, start time and safe phase across refresh; quota reservations no longer fabricate activity, interrupted turns render terminally, guarded investment drafts remain hidden, same-session duplicates are rejected, and controlled CLI shutdown drains live Web turns before terminating the backend. The missed public deployment was corrected: local, 8088 and Cloudflare Pages use `index-DmyhjLnz.js`; production chat chunks expose the full active-run protocol and no longer contain the old local pending reconstruction.
+- Next entry point: `docs/handoffs/2026-07-16-chat-active-run-recovery.md`

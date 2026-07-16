@@ -81,6 +81,14 @@
 
 普通词和短 ticker 天然可能重名，因此词法层只决定“是否值得 exact lookup”，不决定证券身份。后续若扩展语境规则，应继续增加正反回归，不得恢复静态公司映射、首结果命中或把辅助模型当唯一 ticker 入口。
 
+## 2026-07-16 复杂多 ticker 确定性保留阶段
+
+生产观察到一条同时包含 `MSFT/GOOG/MRVL/ARM/COHR/BE/LITE/AMD/TSM/AVGO` 的复杂问题连续把合法 `MRVL` 误报为未识别。真实 DataFetch 随后证明 `MRVL` search 精确返回 `Marvell Technology, Inc.`，quote 同代码且为正，FMP 并未故障。
+
+根因是复杂 prose 无法通过 `ticker_mentions_cover_request` 时会进入辅助实体抽取；旧成功分支只把 `$TICKER` 与辅助结果合并，丢弃了普通大写 ticker 的确定性集合。辅助模型只返回部分实体时，后续 search 根本看不到其余代码。
+
+`4aa21b29` 改为：辅助抽取只能补充公司名/别名，永远在本轮 deterministic ticker 集合之上合并；辅助失败或缺失同样保留全部 deterministic ticker。新增真实复杂问题回归，确保上述 10 个 symbol 即使辅助结果只含 MSFT/GOOG 也一个不丢。`hone-channels` 511/511、财经契约 17/17 通过，MRVL 真实 search/quote 探针通过，匹配二进制已重建并受控重启。
+
 ## 2026-07-16 资产类型与可见正文门禁阶段
 
 ### Root Cause
