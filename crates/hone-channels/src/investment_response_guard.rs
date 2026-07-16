@@ -1625,7 +1625,7 @@ async fn extract_entity_mentions(
         return Ok(deterministic);
     }
     let Some(llm) = core.auxiliary_llm.as_ref() else {
-        return complete_entity_extraction(input, explicit);
+        return complete_entity_extraction(input, deterministic);
     };
     let prompt = format!(
         "你是证券实体识别器，只做实体提取，不回答投资问题。\n\
@@ -1648,12 +1648,13 @@ async fn extract_entity_mentions(
     let model = core.auxiliary_model_name();
     match llm.chat(&messages, Some(&model)).await {
         Ok(response) => parse_entity_extraction(&response.content)
-            .map(|extracted| merge_entity_mentions(explicit, extracted))
             .map_err(|_| {
                 "证券实体解析服务暂时未返回可用结果。请稍后重试，或补充明确 ticker。".to_string()
             })
-            .and_then(|entities| complete_entity_extraction(input, entities)),
-        Err(_) => complete_entity_extraction(input, explicit),
+            .and_then(|extracted| {
+                complete_entity_extraction_with_auxiliary(input, deterministic.clone(), extracted)
+            }),
+        Err(_) => complete_entity_extraction(input, deterministic),
     }
 }
 
@@ -2141,6 +2142,17 @@ fn complete_entity_extraction(
     Err("我暂时无法从当前问题中确认具体公司或证券。请补充公司全名或 ticker。".to_string())
 }
 
+fn complete_entity_extraction_with_auxiliary(
+    input: &str,
+    deterministic: Vec<EntityMention>,
+    auxiliary: Vec<EntityMention>,
+) -> Result<Vec<EntityMention>, String> {
+    // Auxiliary extraction may add company names and aliases, but it is never
+    // allowed to replace or drop explicit ticker-shaped mentions taken from
+    // the user's current text.
+    complete_entity_extraction(input, merge_entity_mentions(deterministic, auxiliary))
+}
+
 fn is_broad_scope_request(input: &str) -> bool {
     let normalized = input.to_ascii_lowercase();
     [
@@ -2541,14 +2553,15 @@ mod tests {
     use super::{
         AssetEvidenceRoute, DeepAnalysisKind, EntityMatch, EntityMention,
         InvestmentResponseContract, ResolvedSecurityEntity, asset_evidence_route,
-        complete_entity_extraction, entity_is_crypto, entity_is_fund, explicit_dollar_mentions,
-        forbidden_investment_tool_calls, has_data_time_context, has_matching_financial_data,
-        has_matching_symbol_data, matching_symbol_objects_or_error, missing_deep_crypto_sections,
-        missing_deep_fund_sections, missing_deep_single_stock_sections,
-        missing_investment_response_sections, parse_entity_extraction, plain_ticker_mentions,
-        quote_has_positive_matching_price, resolve_entity_match, response_intent,
-        response_requires_verified_price, set_verified_asset_type, should_fetch_earnings_calendar,
-        should_run_entity_stage, ticker_mentions_cover_request,
+        complete_entity_extraction, complete_entity_extraction_with_auxiliary, entity_is_crypto,
+        entity_is_fund, explicit_dollar_mentions, forbidden_investment_tool_calls,
+        has_data_time_context, has_matching_financial_data, has_matching_symbol_data,
+        matching_symbol_objects_or_error, missing_deep_crypto_sections, missing_deep_fund_sections,
+        missing_deep_single_stock_sections, missing_investment_response_sections,
+        parse_entity_extraction, plain_ticker_mentions, quote_has_positive_matching_price,
+        resolve_entity_match, response_intent, response_requires_verified_price,
+        set_verified_asset_type, should_fetch_earnings_calendar, should_run_entity_stage,
+        ticker_mentions_cover_request,
     };
     use crate::agent_session::AgentTurnOrigin;
     use hone_core::agent::ToolCallMade;
@@ -2651,6 +2664,40 @@ mod tests {
             "比较 NBIS 和 NVDA",
             &entities
         ));
+    }
+
+    #[test]
+    fn auxiliary_extraction_cannot_drop_tickers_from_a_complex_request() {
+        let input = "MSFT GOOG 现在价格合适吗？之前 GOOG 340～350 合适。核心几个点：MRVL ARM COHR 是否值得持有；BE LITE 加仓；AMD 一直很稳，什么时候加仓？TSM 财报意见发布了；AVGO 怎么看？";
+        let deterministic = plain_ticker_mentions(input, AgentTurnOrigin::Interactive);
+        assert!(!ticker_mentions_cover_request(input, &deterministic));
+        let auxiliary = vec![
+            EntityMention {
+                mention: "MSFT".to_string(),
+                search_query: "Microsoft Corporation".to_string(),
+                explicit_symbol: Some("MSFT".to_string()),
+                tentative_symbol: false,
+            },
+            EntityMention {
+                mention: "GOOG".to_string(),
+                search_query: "Alphabet Inc.".to_string(),
+                explicit_symbol: Some("GOOG".to_string()),
+                tentative_symbol: false,
+            },
+        ];
+
+        let merged = complete_entity_extraction_with_auxiliary(input, deterministic, auxiliary)
+            .expect("merged entities");
+        let symbols = merged
+            .iter()
+            .filter_map(|entity| entity.explicit_symbol.as_deref())
+            .collect::<std::collections::HashSet<_>>();
+
+        for symbol in [
+            "MSFT", "GOOG", "MRVL", "ARM", "COHR", "BE", "LITE", "AMD", "TSM", "AVGO",
+        ] {
+            assert!(symbols.contains(symbol), "missing {symbol}");
+        }
     }
 
     #[test]
