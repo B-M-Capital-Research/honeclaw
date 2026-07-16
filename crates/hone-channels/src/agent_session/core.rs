@@ -19,19 +19,19 @@ use crate::execution::{
     ExecutionMode, ExecutionRequest, ExecutionRunnerSelection, ExecutionService, PreparedExecution,
 };
 use crate::investment_response_guard::{
-    InvestmentResponseContract, contract_failure_message, missing_investment_response_sections,
-    prepare_verified_investment_turn,
+    InvestmentResponseContract, contract_failure_message, forbidden_investment_tool_calls,
+    missing_investment_response_sections, prepare_verified_investment_turn,
 };
 use crate::prompt::PromptOptions;
 use crate::prompt_audit::PromptAuditMetadata;
 use crate::response_finalizer::{EMPTY_SUCCESS_FALLBACK_MESSAGE, finalize_agent_response};
 use crate::runners::{AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult};
-use crate::runtime::user_visible_error_message;
+use crate::runtime::{sanitize_user_visible_output, user_visible_error_message};
 use crate::session_compactor::SessionCompactor;
 use crate::turn_builder::{PromptTurnBuilder, SlashSkillExpansion};
 
 use super::artifacts::attach_web_generated_files;
-use super::emitter::SessionEventEmitter;
+use super::emitter::{DeferredUserOutputEmitter, SessionEventEmitter};
 use super::guard::QuotaReservationGuard;
 use super::helpers::{
     CONTEXT_OVERFLOW_FALLBACK_MESSAGE, CONTEXT_OVERFLOW_POST_COMPACT_RESTORE_LIMIT,
@@ -52,6 +52,13 @@ use super::types::{
 struct PreparedInvestmentContext {
     contract: Option<InvestmentResponseContract>,
     runtime_suffix: String,
+}
+
+fn mark_investment_attempt_output_deferred(result: &mut AgentRunnerResult) {
+    // Runner flags describe what the attempt emitted. Investment attempts use a
+    // deferred emitter, so no answer or terminal error was user-visible yet.
+    result.streamed_output = false;
+    result.terminal_error_emitted = false;
 }
 
 pub struct AgentSession {
@@ -240,22 +247,41 @@ impl AgentSession {
         emitter: Arc<dyn AgentRunnerEmitter>,
         contract: Option<&InvestmentResponseContract>,
     ) -> AgentRunnerResult {
+        let Some(contract) = contract else {
+            return self
+                .run_runner_with_empty_success_retry(
+                    runner,
+                    runner_name,
+                    session_id,
+                    request,
+                    emitter,
+                )
+                .await;
+        };
+        let deferred_emitter: Arc<dyn AgentRunnerEmitter> =
+            Arc::new(DeferredUserOutputEmitter::new(emitter));
         let mut result = self
             .run_runner_with_empty_success_retry(
                 runner,
                 runner_name,
                 session_id,
                 request.clone(),
-                emitter.clone(),
+                deferred_emitter.clone(),
             )
             .await;
-        let Some(contract) = contract else {
-            return result;
-        };
+        mark_investment_attempt_output_deferred(&mut result);
         if !result.response.success {
             return result;
         }
-        let missing = missing_investment_response_sections(contract, &result.response.content);
+        let initial_forbidden_calls =
+            forbidden_investment_tool_calls(contract, &result.response.tool_calls_made);
+        let visible_content = sanitize_user_visible_output(&result.response.content).content;
+        let mut missing = missing_investment_response_sections(contract, &visible_content);
+        for violation in initial_forbidden_calls.iter().copied() {
+            if !missing.contains(&violation) {
+                missing.push(violation);
+            }
+        }
         if missing.is_empty() {
             return result;
         }
@@ -275,7 +301,6 @@ impl AgentSession {
             self.message_id.as_deref(),
             None,
         );
-        emitter.emit(AgentRunnerEvent::StreamReset).await;
         let mut retry_request = request;
         retry_request
             .runtime_input
@@ -286,14 +311,29 @@ impl AgentSession {
                 runner_name,
                 session_id,
                 retry_request,
-                emitter.clone(),
+                deferred_emitter,
             )
             .await;
+        mark_investment_attempt_output_deferred(&mut result);
         if !result.response.success {
             return result;
         }
-        let retry_missing =
-            missing_investment_response_sections(contract, &result.response.content);
+        let retry_visible_content = sanitize_user_visible_output(&result.response.content).content;
+        let mut retry_missing =
+            missing_investment_response_sections(contract, &retry_visible_content);
+        for violation in
+            initial_forbidden_calls
+                .iter()
+                .copied()
+                .chain(forbidden_investment_tool_calls(
+                    contract,
+                    &result.response.tool_calls_made,
+                ))
+        {
+            if !retry_missing.contains(&violation) {
+                retry_missing.push(violation);
+            }
+        }
         if retry_missing.is_empty() {
             return result;
         }
@@ -304,11 +344,9 @@ impl AgentSession {
             missing = %retry_missing.join(" | "),
             "[AgentSession] investment response contract retry still incomplete"
         );
-        emitter.emit(AgentRunnerEvent::StreamReset).await;
         result.response.success = false;
         result.response.content = contract_failure_message().to_string();
         result.response.error = Some(contract_failure_message().to_string());
-        result.streamed_output = false;
         result
     }
 
@@ -450,14 +488,16 @@ impl AgentSession {
                 session_id,
                 "market_data.preflight",
                 &format!(
-                    "entities={} deep_single_stock={} comparison={} outlook={} origin={:?}",
+                    "entities={} deep_analysis={:?} deep_comparison={} requires_verified_price={} comparison={} outlook={} origin={:?}",
                     contract
                         .entities
                         .iter()
                         .map(|entity| entity.symbol.as_str())
                         .collect::<Vec<_>>()
                         .join(","),
-                    contract.deep_single_stock,
+                    contract.deep_analysis,
+                    contract.deep_comparison,
+                    contract.requires_verified_price,
                     contract.comparison,
                     contract.needs_outlook_evidence,
                     contract.origin,
@@ -1351,6 +1391,7 @@ impl AgentSession {
         .await;
         let started = Instant::now();
         let run_started_at = SystemTime::now();
+        let defer_validated_output = investment_context.contract.is_some();
         let mut streamed_output = false;
         let mut terminal_error_emitted = false;
         let mut context_messages: Option<Vec<AgentMessage>> = None;
@@ -1371,10 +1412,7 @@ impl AgentSession {
                     &session_id,
                     execution.runner_request.clone(),
                     runner_emitter.clone(),
-                    investment_context
-                        .contract
-                        .as_ref()
-                        .filter(|contract| contract.deep_single_stock || contract.comparison),
+                    investment_context.contract.as_ref(),
                 )
                 .await;
             streamed_output = runner_result.streamed_output;
@@ -1541,6 +1579,16 @@ impl AgentSession {
             // 成功路径：主动 commit 把预留转成当日计数,并消耗 guard 阻止
             // 后续 drop 再执行 release。
             quota_guard.commit();
+            if defer_validated_output {
+                // Investment drafts were intentionally hidden until the finalizer
+                // and contract checks succeeded. Publish one terminal answer now.
+                self.runner_emitter(execution.runner_request.working_directory.clone())
+                    .emit(AgentRunnerEvent::StreamDelta {
+                        content: response.content.clone(),
+                    })
+                    .await;
+                streamed_output = true;
+            }
             if !streamed_output {
                 if let Some(segmenter) = options.segmenter.as_ref() {
                     let segments = segmenter(&response.content);

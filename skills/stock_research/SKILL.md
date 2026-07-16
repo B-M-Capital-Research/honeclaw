@@ -1,7 +1,7 @@
 ---
 name: Stock Research
-description: Canonical Hone equity-research skill covering single-stock analysis, valuation framing, and criteria-based screening
-when_to_use: Use when the user wants company research, valuation framing, or a small stock shortlist based on explicit criteria
+description: Canonical Hone security-research skill covering company and ETF/fund analysis, valuation framing, and criteria-based screening
+when_to_use: Use when the user wants company or ETF/fund research, valuation framing, or a small security shortlist based on explicit criteria
 user-invocable: true
 context: inline
 aliases:
@@ -19,11 +19,11 @@ allowed-tools:
 
 ## Stock Research Skill
 
-This is the canonical equity-research entrypoint for Hone.
+This is the canonical security-research entrypoint for Hone.
 
 Use it for three closely related user intents:
 
-1. Single-company research
+1. Single-company or ETF/fund research
 2. Valuation framing for a named company
 3. Criteria-based stock screening that returns a short comparison list
 
@@ -38,6 +38,7 @@ Prefer keeping these modes inside one skill so the model does not have to choose
 | `data_fetch(data_type="quote", symbol="ticker")` | Fetch detailed real-time quote data such as price, change, and volume |
 | `data_fetch(data_type="profile", symbol="ticker")` | Fetch company details such as business description, industry, and CEO |
 | `data_fetch(data_type="financials", symbol="ticker")` | Fetch financial statements or valuation-relevant fundamentals |
+| `data_fetch(data_type="etf_holdings", symbol="ticker")` | Fetch ETF/fund holdings after profile confirms `isEtf` or `isFund` |
 | `data_fetch(data_type="gainers_losers")` | Broader market scan when a screening request needs candidates |
 | `data_fetch(data_type="sector_performance")` | Sector strength context for screening or relative positioning |
 | `web_search(query="...")` | Search for news, analyst views, and recent events |
@@ -46,14 +47,14 @@ Prefer keeping these modes inside one skill so the model does not have to choose
 
 Choose the mode from the user's request before fetching data:
 
-- **Research mode**: the user asks about one company, ticker, fundamentals, technicals, or recent developments
+- **Research mode**: the user asks about one company, ETF/fund, ticker, fundamentals, technicals, or recent developments
 - **Valuation mode**: the user asks whether a company looks rich, cheap, stretched, fairly priced, or wants a valuation bridge / peer view
 - **Screening mode**: the user asks for a shortlist that matches factors such as AI, dividend yield, value, growth, or momentum
 
 ### Research Mode
 
 1. Resolve every named security with a current-turn `search` call. A ticker is a hint; names, aliases, Chinese names, multiple securities, and share classes must all produce explicit resolution results. Never take the first approximate result silently.
-2. Verify the current-turn same-symbol `quote`; for deep research also fetch `profile`, `financials`, and `news`. Forward quarter/outlook questions additionally require a current earnings-calendar check.
+2. Verify the current-turn same-symbol `quote`, then select the route from structured exact-symbol evidence. A company uses `profile`, `financials`, and `news`; an ETF/fund confirmed by profile `isEtf/isFund` uses `etf_holdings` and `news`; a crypto asset confirmed by exact search market evidence such as `exchangeShortName=CRYPTO` uses the same-symbol quote and relevant news. Never request corporate financials or an earnings calendar for a confirmed ETF/fund, and never request corporate financials, an earnings calendar, or ETF holdings for crypto. Treat provider errors separately from a successful empty response. Do not infer an asset type from an empty response.
 3. A quote-only question may stay concise. A deep single-company, quarter-outlook, “can it take off”, fundamentals, valuation, or buyability question must use these nine numbered sections in order:
    1. Conclusion
    2. What the company is and how it makes money
@@ -68,13 +69,33 @@ Choose the mode from the user's request before fetching data:
 5. If required live evidence is missing or mismatched, stop numeric conclusions instead of filling gaps from memory, history, profiles, or another symbol.
 6. If the user explicitly asks for a chart, trend line, comparison visual, or the answer would be materially clearer as a chart, hand off to `chart_visualization` with the concrete numbers you already fetched.
 
+### ETF / Fund Research Route
+
+When the exact-symbol profile confirms `isEtf=true` or `isFund=true`, use these nine numbered sections instead of the company template:
+
+1. Conclusion
+2. Fund objective, strategy, and tracked exposure
+3. Holdings, concentration, and primary exposures
+4. Geographic, sector, and currency risk
+5. Liquidity, fund size, and trading characteristics
+6. Fees, tracking error, and underlying-asset valuation framing
+7. Bull / Bear / Base Case
+8. Catalysts, risks, and falsification conditions
+9. Action: buy / wait / reduce / sell / observe, with triggers
+
+State the data timestamp and separate verified facts from inference and action. If holdings, fees, size, or tracking-error evidence is absent, label that item as not verified in the current turn; do not fill it from memory. A successful empty company financial response for a confirmed ETF/fund is not a provider outage and must not block this route.
+
+### Crypto Research Route
+
+Only classify crypto from exact-symbol structured market evidence such as `exchangeShortName=CRYPTO`; do not infer it from a `USD` suffix. A confirmed crypto asset uses quote and relevant news, not stock profile, company financials, an earnings calendar, or ETF holdings. Use nine substantive numbered sections: conclusion with verified current price; asset/network/use case; supply/tokenomics/concentration; adoption/liquidity/market structure; on-chain/network/ecosystem evidence; valuation framework and assumptions; Bull/Bear/Base; catalysts/regulation/risks/falsification; and an action with trigger conditions. Label absent on-chain, supply, or ecosystem evidence as not verified in the current turn.
+
 ### Valuation Mode
 
-1. Resolve the ticker first; do not attempt valuation without confirming the company
-2. Fetch `financials`; add `quote` or `snapshot` if you also need current market context
-3. Use `web_search` for the latest operating updates, guidance changes, or peer-comparison context
-4. Use at least two suitable methods (for example P/S plus scenario analysis for a high-growth cloud company), show assumptions, and state which conditions would expand or compress the valuation
-5. Do not collapse the result into a simplistic categorical verdict with no assumptions attached
+1. Resolve the ticker first and read the exact-symbol `profile`; do not attempt valuation before confirming whether the entity is a company or an ETF/fund.
+2. For a company, fetch `financials`; add `quote` or `snapshot` if you also need current market context. Use at least two suitable methods (for example P/S plus scenario analysis for a high-growth cloud company), show assumptions, and state which conditions would expand or compress the valuation.
+3. For an ETF/fund confirmed by `isEtf/isFund`, fetch `etf_holdings` plus `quote` and frame valuation through underlying holdings/exposures, fees, tracking error, concentration, and applicable portfolio-level multiples. Do not fetch corporate financials or an earnings calendar, and do not apply a single-company DCF to the fund itself.
+4. Use `web_search` for the latest operating updates, strategy changes, holdings disclosures, guidance changes, or peer-comparison context appropriate to the confirmed asset type.
+5. Do not collapse the result into a simplistic categorical verdict with no assumptions attached.
 
 ### Screening Mode
 

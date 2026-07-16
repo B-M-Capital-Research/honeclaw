@@ -24,6 +24,36 @@ pub(super) struct SessionEventEmitter {
     pub(super) working_directory: String,
 }
 
+/// Buffers answer-bearing runner events while an investment response is still
+/// being validated. Progress and tool status remain visible, but draft text,
+/// resets, thoughts, and attempt-local errors must never reach the user: the
+/// session publishes exactly one validated answer after all retries finish.
+pub(super) struct DeferredUserOutputEmitter {
+    inner: Arc<dyn AgentRunnerEmitter>,
+}
+
+impl DeferredUserOutputEmitter {
+    pub(super) fn new(inner: Arc<dyn AgentRunnerEmitter>) -> Self {
+        Self { inner }
+    }
+}
+
+#[async_trait]
+impl AgentRunnerEmitter for DeferredUserOutputEmitter {
+    async fn emit(&self, event: AgentRunnerEvent) {
+        match event {
+            forward @ AgentRunnerEvent::Progress { .. }
+            | forward @ AgentRunnerEvent::ToolStatus { .. } => {
+                self.inner.emit(forward).await;
+            }
+            AgentRunnerEvent::StreamDelta { .. }
+            | AgentRunnerEvent::StreamReset
+            | AgentRunnerEvent::StreamThought { .. }
+            | AgentRunnerEvent::Error { .. } => {}
+        }
+    }
+}
+
 fn truncate_event_detail(detail: &str, max_chars: usize) -> String {
     if detail.chars().count() <= max_chars {
         return detail.to_string();

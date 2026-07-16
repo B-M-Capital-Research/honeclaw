@@ -1,6 +1,6 @@
 # Runbook: Backend Deployment
 
-Last updated: 2026-07-12
+Last updated: 2026-07-16
 
 ## When to Use
 
@@ -35,15 +35,27 @@ packages/app/dist-public
 
 Normal update flow:
 
-1. Merge or push the frontend change to the production branch.
-2. Wait for Cloudflare Pages to finish the deployment.
-3. Verify:
+1. Run the public build locally. A generic `bun run build:web` only updates `packages/app/dist` and does not validate the public deployment artifact.
+2. Confirm `packages/app/dist-public/index.html` has a new modification time and references the expected hashed entry asset.
+3. Merge or push the frontend change to the production branch.
+4. Wait for Cloudflare Pages to finish the deployment.
+5. Verify:
 
 ```bash
 curl -fsS https://hone-claw.com/ >/dev/null
 curl -fsS https://hone-claw.com/chat >/dev/null
 curl -fsS https://hone-claw.com/roadmap >/dev/null
 ```
+
+The deployment is not complete merely because the source tree changed, the backend restarted, or a Vite development server shows the new behavior. Before reporting a public Web fix as live, compare all three served layers:
+
+```bash
+rg -o '/assets/[^" ]+\.js' packages/app/dist-public/index.html
+curl -fsS http://127.0.0.1:8088/chat | rg -o '/assets/[^" ]+\.js'
+curl -fsS 'https://hone-claw.com/chat?asset-check=1' | rg -o '/assets/[^" ]+\.js'
+```
+
+The local public build and port `8088` must reference the newly built entry. The Cloudflare Pages entry must change from the pre-deploy hash. For a protocol-sensitive frontend/backend change, also inspect the deployed lazy chunk for the new protocol markers; a `200` status alone is insufficient. For example, active-chat recovery requires `active_run`, `started_at_ms`, `run_progress`, and `interrupted_run`, and must not retain the old `in_flight + Date.now()` recovery branch. Record the final production entry/chunk hashes in the task handoff.
 
 For SPA routes, keep `packages/app/public/_redirects` in the public build:
 
@@ -287,6 +299,31 @@ curl -i https://hone-claw.com/api/public/events
 ```
 
 `/api/public/events` requires an authenticated cookie in real use. For unauthenticated requests, `401` is expected.
+
+## Drain Active Chats Before A Controlled Restart
+
+The admin backend exposes the current process's real chat-run count separately from conversation quota:
+
+```bash
+curl -fsS http://127.0.0.1:8077/api/runtime/active-chat-runs
+```
+
+Expected idle response:
+
+```json
+{"count":0}
+```
+
+`hone-cli start` polls this endpoint after a normal Ctrl-C and waits for active turns to finish before terminating child processes. The wait is bounded by the configured agent overall timeout plus a short grace period, capped at six minutes; repeated endpoint failures or the cap allow shutdown to continue with an explicit warning. Prefer sending Ctrl-C to the supervisor so this drain path runs. Do not use `kill -9`, replace the backend process directly, or treat quota `in_flight` as a drain signal.
+
+After restart, verify both the new process and the drain endpoint:
+
+```bash
+curl -fsS http://127.0.0.1:8077/api/meta
+curl -fsS http://127.0.0.1:8077/api/runtime/active-chat-runs
+```
+
+An unexpected process death cannot finish the old turn. Public bootstrap must report that persisted unanswered turn as interrupted; it must not recreate a local “thinking” timer.
 
 ## Security Notes
 

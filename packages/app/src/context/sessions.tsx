@@ -12,6 +12,7 @@ import { connectEvents, getHistory, getUsers, sendChat } from "@/lib/api";
 import { actorFromUser, type ActorRef } from "@/lib/actors";
 import { filterUsers } from "@/lib/filters";
 import { historyToTimeline, messageId } from "@/lib/messages";
+import { publicChatToolStatusText } from "@/lib/public-chat";
 import { parseSseChunks } from "@/lib/stream";
 import type {
   PendingPhase,
@@ -203,11 +204,9 @@ function createSessionsState() {
           }
 
           if (event.event === "tool_call") {
-            const toolName = event.data.tool;
-            const toolStatusText = event.data.text?.trim() || event.data.reasoning?.trim();
             updatePending(key, {
               phase: "running",
-              statusText: toolStatusText || (toolName ? `调用工具：${toolName}` : "处理中…"),
+              statusText: publicChatToolStatusText(event.data, "处理中…"),
             });
           }
 

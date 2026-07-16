@@ -91,6 +91,10 @@ pub fn build_admin_app(state: Arc<AppState>) -> Router {
         .route("/language", put(meta::handle_put_language))
         .route("/auth/sse-ticket", post(auth::handle_sse_ticket))
         .route("/runtime/heartbeat", post(meta::handle_runtime_heartbeat))
+        .route(
+            "/runtime/active-chat-runs",
+            get(chat::handle_active_chat_runs),
+        )
         .route("/channels", get(meta::handle_channels))
         .route(
             "/channel-settings",

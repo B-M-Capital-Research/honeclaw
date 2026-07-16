@@ -10,6 +10,7 @@ import {
   canSendPublicChatMessage,
   findPendingPublicAssistantMessage,
   formatPublicAttachmentBytes,
+  isPublicChatBusy,
   isPublicChatQuotaExhausted,
   latestUnreadPushId,
   mergePublicPushItems,
@@ -19,9 +20,14 @@ import {
   PUBLIC_CHAT_VIEWPORT_CONTENT,
   publicRestoreRetryDelay,
   publicAttachmentFileLabel,
+  publicChatRunEventPatch,
+  publicChatToolStatusText,
   rekeyTrailingOptimisticIds,
+  resolvePublicChatRecovery,
   resolvePublicChatView,
   shouldRetryPublicRestore,
+  shouldPollPublicChatRecovery,
+  shouldRecoverPublicChatAfterEof,
   shouldRecoverPinnedBottom,
   shouldPreventPublicChatPinch,
   shouldSubmitPublicChatEnter,
@@ -53,6 +59,161 @@ describe("public assistant stream events", () => {
     expect(
       applyPublicAssistantStreamEvent(content, "assistant_delta", "最终答案"),
     ).toBe("最终答案");
+  });
+});
+
+describe("public chat active-run recovery", () => {
+  const activeRun = {
+    run_id: "run-42",
+    started_at_ms: 1_753_000_000_000,
+    phase: "running" as const,
+    status_text: "正在核验实时行情",
+    updated_at_ms: 1_753_000_012_000,
+  };
+
+  it("restores elapsed-time origin from the server instead of page load time", () => {
+    const first = resolvePublicChatRecovery({
+      activeRun,
+      thinkingText: "HONE 思考中",
+      interruptedText: "上次请求已中断，请重新发送",
+    });
+    const afterRefresh = resolvePublicChatRecovery({
+      activeRun,
+      thinkingText: "HONE 思考中",
+      interruptedText: "上次请求已中断，请重新发送",
+    });
+
+    expect(first.activeRunId).toBe("run-42");
+    expect(first.message?.startedAt).toBe(activeRun.started_at_ms);
+    expect(afterRefresh.message?.startedAt).toBe(activeRun.started_at_ms);
+    expect(afterRefresh.message?.phase).toBe("running");
+    expect(afterRefresh.message?.statusText).toBe("正在核验实时行情");
+  });
+
+  it("does not infer a running turn from a trailing user message alone", () => {
+    const recovery = resolvePublicChatRecovery({
+      activeRun: null,
+      interruptedRun: false,
+      thinkingText: "HONE 思考中",
+      interruptedText: "上次请求已中断，请重新发送",
+    });
+
+    expect(recovery).toEqual({});
+  });
+
+  it("trusts interrupted_run even when another visible card trails the user", () => {
+    const recovery = resolvePublicChatRecovery({
+      activeRun: null,
+      interruptedRun: true,
+      thinkingText: "HONE 思考中",
+      interruptedText: "上次请求已中断，请重新发送",
+    });
+
+    expect(recovery.activeRunId).toBeUndefined();
+    expect(recovery.message).toMatchObject({
+      id: "_interrupted",
+      role: "assistant",
+      phase: "error",
+      statusText: "上次请求已中断，请重新发送",
+    });
+    expect(recovery.message?.startedAt).toBeUndefined();
+  });
+});
+
+describe("public chat run progress", () => {
+  const current = {
+    id: "assistant-1",
+    role: "assistant" as const,
+    content: "",
+    phase: "thinking" as const,
+    statusText: "HONE 思考中",
+    startedAt: 100,
+  };
+
+  it("applies server run identity, start time, phase, and status", () => {
+    expect(
+      publicChatRunEventPatch(
+        current,
+        {
+          run_id: "run-1",
+          started_at_ms: 1_000,
+          phase: "running",
+          status_text: "正在查询公司与行情",
+          updated_at_ms: 1_200,
+        },
+        "HONE 执行中",
+      ),
+    ).toEqual({
+      phase: "running",
+      statusText: "正在查询公司与行情",
+      startedAt: 1_000,
+      runId: "run-1",
+      statusUpdatedAt: 1_200,
+    });
+  });
+
+  it("ignores stale progress and events for a different run", () => {
+    const recovered = {
+      ...current,
+      runId: "run-1",
+      statusUpdatedAt: 2_000,
+    };
+    expect(
+      publicChatRunEventPatch(
+        recovered,
+        {
+          run_id: "run-1",
+          updated_at_ms: 1_999,
+          status_text: "旧状态",
+        },
+        "HONE 执行中",
+      ),
+    ).toBeUndefined();
+    expect(
+      publicChatRunEventPatch(
+        recovered,
+        {
+          run_id: "run-2",
+          updated_at_ms: 2_001,
+          status_text: "另一轮",
+        },
+        "HONE 执行中",
+      ),
+    ).toBeUndefined();
+  });
+
+  it("uses the running fallback when progress omits display text", () => {
+    expect(
+      publicChatRunEventPatch(
+        current,
+        { run_id: "run-1", phase: "running", updated_at_ms: 2_000 },
+        "HONE 执行中",
+      )?.statusText,
+    ).toBe("HONE 执行中");
+  });
+
+  it("only displays public tool status text and ignores every raw field", () => {
+    expect(
+      publicChatToolStatusText(
+        {
+          public_status_text: "正在核验实时价格",
+          tool: "raw-secret-tool",
+          text: "raw-secret-text",
+          reasoning: "raw-secret-reasoning",
+        },
+        "HONE 执行中",
+      ),
+    ).toBe("正在核验实时价格");
+    expect(
+      publicChatToolStatusText(
+        {
+          tool: "raw-secret-tool",
+          text: "raw-secret-text",
+          reasoning: "raw-secret-reasoning",
+        },
+        "HONE 执行中",
+      ),
+    ).toBe("HONE 执行中");
   });
 });
 
@@ -133,6 +294,44 @@ describe("public chat restore retry policy", () => {
       publicRestoreRetryDelay(2),
     );
     expect(publicRestoreRetryDelay(99)).toBe(publicRestoreRetryDelay(3));
+  });
+
+  it("keeps background polling single-flight", () => {
+    expect(
+      shouldPollPublicChatRecovery({
+        hasBackgroundPending: true,
+        isSending: false,
+        restoreInFlight: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldPollPublicChatRecovery({
+        hasBackgroundPending: true,
+        isSending: false,
+        restoreInFlight: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("recovers only a clean EOF that arrived without a terminal event", () => {
+    expect(
+      shouldRecoverPublicChatAfterEof({
+        reachedEof: true,
+        sawTerminalEvent: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldRecoverPublicChatAfterEof({
+        reachedEof: true,
+        sawTerminalEvent: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldRecoverPublicChatAfterEof({
+        reachedEof: false,
+        sawTerminalEvent: false,
+      }),
+    ).toBe(false);
   });
 });
 
@@ -338,6 +537,30 @@ describe("stripAttachmentMarkers", () => {
 });
 
 describe("public chat composer state", () => {
+  it("treats a recovered or locally pending run as the same busy state", () => {
+    expect(
+      isPublicChatBusy({
+        isSending: false,
+        hasPendingAssistant: false,
+        hasBackgroundPending: true,
+      }),
+    ).toBe(true);
+    expect(
+      isPublicChatBusy({
+        isSending: false,
+        hasPendingAssistant: true,
+        hasBackgroundPending: false,
+      }),
+    ).toBe(true);
+    expect(
+      isPublicChatBusy({
+        isSending: false,
+        hasPendingAssistant: false,
+        hasBackgroundPending: false,
+      }),
+    ).toBe(false);
+  });
+
   it("derives send eligibility from draft, attachments, busy state, and quota", () => {
     const emptyComposerState = {
       draft: "",

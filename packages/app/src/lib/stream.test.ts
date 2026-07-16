@@ -23,6 +23,48 @@ describe("parseSseChunks", () => {
     expect(parsed.pending).toBe("event: run_started")
   })
 
+  it("preserves server-authoritative run timing and progress fields", () => {
+    const parsed = parseSseChunks(
+      'event: run_started\ndata: {"run_id":"r1","started_at_ms":1000,"phase":"thinking","status_text":"正在识别证券实体","updated_at_ms":1000}\n\nevent: run_progress\ndata: {"run_id":"r1","started_at_ms":1000,"phase":"running","status_text":"正在核验行情","updated_at_ms":2000}\n\n',
+    )
+
+    expect(parsed.events).toEqual([
+      {
+        event: "run_started",
+        data: {
+          run_id: "r1",
+          started_at_ms: 1000,
+          phase: "thinking",
+          status_text: "正在识别证券实体",
+          updated_at_ms: 1000,
+        },
+      },
+      {
+        event: "run_progress",
+        data: {
+          run_id: "r1",
+          started_at_ms: 1000,
+          phase: "running",
+          status_text: "正在核验行情",
+          updated_at_ms: 2000,
+        },
+      },
+    ])
+  })
+
+  it("parses the dedicated public tool status field", () => {
+    const parsed = parseSseChunks(
+      'event: tool_call\ndata: {"public_status_text":"正在核验实时行情"}\n\n',
+    )
+
+    expect(parsed.events).toEqual([
+      {
+        event: "tool_call",
+        data: { public_status_text: "正在核验实时行情" },
+      },
+    ])
+  })
+
   it("parses run_error and run_finished in one buffer (same read chunk)", () => {
     const sseChunk =
       'event: run_error\ndata: {"message":"bad"}\n\nevent: run_finished\ndata: {"success":false}\n\n'

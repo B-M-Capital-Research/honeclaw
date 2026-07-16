@@ -39,6 +39,7 @@ use crate::types::{
 const PUBLIC_UPLOAD_MAX_FILES: usize = 4;
 const PUBLIC_UPLOAD_MAX_BYTES: usize = 10 * 1024 * 1024;
 const PUBLIC_HISTORY_PAGE_SIZE: usize = 20;
+const PUBLIC_ACTIVE_STATE_CACHE_CONTROL: &str = "private, no-store, max-age=0";
 
 #[derive(Default, Deserialize)]
 pub(crate) struct PublicHistoryQuery {
@@ -419,6 +420,15 @@ pub(crate) async fn handle_me(State(state): State<Arc<AppState>>, headers: Heade
     }
 }
 
+fn public_active_state_response(value: serde_json::Value) -> Response {
+    let mut response = Json(value).into_response();
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static(PUBLIC_ACTIVE_STATE_CACHE_CONTROL),
+    );
+    response
+}
+
 pub(crate) async fn handle_bootstrap(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -444,13 +454,17 @@ pub(crate) async fn handle_bootstrap(
         PUBLIC_HISTORY_PAGE_SIZE,
         crate::routes::history::public_client_prefers_mobile(&headers),
     );
-    Json(json!({
+    let active_run = state.active_chat_runs.get(&actor.session_id());
+    let interrupted_run =
+        active_run.is_none() && has_unanswered_interactive_turn(&history.messages);
+    public_active_state_response(json!({
         "user": to_public_auth_user(&state, &user_id, user),
         "messages": history.messages,
         "history_start": history.start,
         "next_before": history.next_before,
+        "active_run": active_run,
+        "interrupted_run": interrupted_run,
     }))
-    .into_response()
 }
 
 pub(crate) async fn handle_history(
@@ -478,12 +492,16 @@ pub(crate) async fn handle_history(
         query.limit.unwrap_or(PUBLIC_HISTORY_PAGE_SIZE),
         crate::routes::history::public_client_prefers_mobile(&headers),
     );
-    Json(json!({
+    let active_run = state.active_chat_runs.get(&actor.session_id());
+    let interrupted_run =
+        active_run.is_none() && has_unanswered_interactive_turn(&history.messages);
+    public_active_state_response(json!({
         "messages": history.messages,
         "history_start": history.start,
         "next_before": history.next_before,
+        "active_run": active_run,
+        "interrupted_run": interrupted_run,
     }))
-    .into_response()
 }
 
 pub(crate) async fn handle_chat(
@@ -1446,6 +1464,19 @@ fn json_rate_limited(retry_after_secs: u64) -> Response {
     response
 }
 
+fn has_unanswered_interactive_turn(messages: &[crate::types::HistoryMsg]) -> bool {
+    messages
+        .iter()
+        .rev()
+        .find(|message| {
+            message.role == "user"
+                || (message.role == "assistant"
+                    && message.scheduled_push.is_none()
+                    && !message.transcript_only)
+        })
+        .is_some_and(|message| message.role == "user")
+}
+
 fn to_public_auth_user(
     state: &AppState,
     user_id: &str,
@@ -1490,15 +1521,63 @@ fn to_public_auth_user(
 #[cfg(test)]
 mod tests {
     use super::{
-        WEB_SESSION_MAX_AGE_LONG_SECS, WEB_SESSION_MAX_AGE_SHORT_SECS, aliyun_sms_phone_number,
-        build_public_chat_user_input, build_session_cookie, clear_session_cookie,
-        public_attachment_filename, public_client_key, public_sms_phone_candidates,
-        validate_public_upload_path,
+        PUBLIC_ACTIVE_STATE_CACHE_CONTROL, WEB_SESSION_MAX_AGE_LONG_SECS,
+        WEB_SESSION_MAX_AGE_SHORT_SECS, aliyun_sms_phone_number, build_public_chat_user_input,
+        build_session_cookie, clear_session_cookie, has_unanswered_interactive_turn,
+        public_active_state_response, public_attachment_filename, public_client_key,
+        public_sms_phone_candidates, validate_public_upload_path,
     };
     use axum::http::{HeaderMap, HeaderValue, header};
     use hone_channels::attachments::{AttachmentKind, ReceivedAttachment};
     use std::fs;
+
+    use crate::types::{HistoryMsg, HistoryScheduledPush};
     const SECURE_COOKIE_ENV: &str = "HONE_PUBLIC_SECURE_COOKIE";
+
+    fn test_history_message(role: &str, scheduled: bool) -> HistoryMsg {
+        HistoryMsg {
+            role: role.to_string(),
+            content: String::new(),
+            subtype: scheduled.then(|| "scheduled_push".to_string()),
+            synthetic: false,
+            transcript_only: false,
+            attachments: Vec::new(),
+            scheduled_push: scheduled.then(|| HistoryScheduledPush {
+                push_id: Some("push-1".to_string()),
+                title: "定时推送".to_string(),
+                summary: "摘要".to_string(),
+                fallback_content: None,
+            }),
+            finance_calendar: None,
+        }
+    }
+
+    #[test]
+    fn scheduled_push_does_not_hide_an_interrupted_interactive_turn() {
+        let messages = vec![
+            test_history_message("assistant", false),
+            test_history_message("user", false),
+            test_history_message("assistant", true),
+        ];
+        assert!(has_unanswered_interactive_turn(&messages));
+
+        let completed = vec![
+            test_history_message("user", false),
+            test_history_message("assistant", false),
+            test_history_message("assistant", true),
+        ];
+        assert!(!has_unanswered_interactive_turn(&completed));
+    }
+
+    #[test]
+    fn active_chat_state_responses_are_never_cached() {
+        let response = public_active_state_response(serde_json::json!({ "ok": true }));
+
+        assert_eq!(
+            response.headers().get(header::CACHE_CONTROL).unwrap(),
+            PUBLIC_ACTIVE_STATE_CACHE_CONTROL
+        );
+    }
 
     struct EnvVarGuard {
         name: &'static str,

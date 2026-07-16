@@ -62,6 +62,21 @@ export type PublicHistoryPageResponse = {
   next_before?: number | null;
 };
 
+/** Server-authoritative state for one public-chat run that is still active. */
+export type PublicChatActiveRun = {
+  run_id: string;
+  started_at_ms: number;
+  phase: "thinking" | "running";
+  status_text: string;
+  updated_at_ms: number;
+};
+
+export type PublicChatBootstrapResponse = PublicHistoryPageResponse & {
+  user: PublicAuthUserInfo;
+  active_run?: PublicChatActiveRun | null;
+  interrupted_run?: boolean;
+};
+
 export type HistoryScheduledPush = {
   push_id?: string;
   title: string;
@@ -380,12 +395,20 @@ export type ChannelProcessInfo = {
 };
 
 export type ChatStreamEvent =
-  | { event: "run_started"; data: { runner?: string; text?: string } }
+  | {
+      event: "run_started";
+      data: Partial<PublicChatActiveRun> & { runner?: string; text?: string };
+    }
+  | {
+      event: "run_progress";
+      data: Partial<PublicChatActiveRun> & { text?: string };
+    }
   | { event: "assistant_delta"; data: { content?: string } }
   | { event: "assistant_reset"; data: Record<string, never> }
   | {
       event: "tool_call";
       data: {
+        public_status_text?: string;
         tool?: string;
         status?: string;
         text?: string;

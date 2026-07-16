@@ -99,7 +99,7 @@ fn request_has_valid_auth(state: &AppState, request: &Request<Body>) -> bool {
 mod tests {
     use super::request_has_valid_auth;
     use crate::logging::LogBuffer;
-    use crate::state::{AppState, AuthState, HeartbeatRegistry};
+    use crate::state::{ActiveChatRunRegistry, AppState, AuthState, HeartbeatRegistry};
     use axum::body::Body;
     use axum::http::{Request, header};
     use std::collections::HashMap;
@@ -129,6 +129,7 @@ mod tests {
                 sse_tickets: Mutex::new(HashMap::new()),
             },
             heartbeat_registry: HeartbeatRegistry::default(),
+            active_chat_runs: Arc::new(ActiveChatRunRegistry::default()),
             public_auth_limiter: Default::default(),
         }
     }

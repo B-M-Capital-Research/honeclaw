@@ -51,7 +51,7 @@ AGENT_CORE="crates/hone-channels/src/agent_session/core.rs"
 SCHEDULER="crates/hone-channels/src/scheduler.rs"
 SOUL="soul.md"
 
-echo "[finance-automation-contracts] fixed sample count: 16"
+echo "[finance-automation-contracts] fixed sample count: 17"
 
 if contains '"snapshot".into()' "$DATA_FETCH" && contains 'data_fetch(data_type="snapshot"' "$STOCK_RESEARCH"; then
   record success "1.stock_research->snapshot" "tool enum and skill contract are aligned"
@@ -137,6 +137,12 @@ else
   record fail "16.typed-scheduler-origin" "scheduler provenance still depends on prompt text"
 fi
 
+if contains 'DeepAnalysisKind::Fund' "$INVESTMENT_GUARD" && contains 'DeepAnalysisKind::Crypto' "$INVESTMENT_GUARD" && contains 'isEtf' "$INVESTMENT_GUARD" && contains '"etf_holdings"' "$INVESTMENT_GUARD" && contains 'missing_deep_fund_sections' "$INVESTMENT_GUARD" && contains 'missing_deep_crypto_sections' "$INVESTMENT_GUARD" && contains 'numbered_section_has_substance' "$INVESTMENT_GUARD" && contains 'forbidden_investment_tool_calls' "$INVESTMENT_GUARD" && contains 'entity_verified_price_appears' "$INVESTMENT_GUARD" && contains 'has_matching_financial_data' "$INVESTMENT_GUARD" && contains 'should_cache_fmp_value' "$DATA_FETCH"; then
+  record success "17.asset-aware-fund-preflight" "company, fund, and crypto routing plus substantive output, tool-call, price, evidence, and cache guards are code-gated"
+else
+  record fail "17.asset-aware-fund-preflight" "ETF/fund requests can regress into the corporate financials route"
+fi
+
 if contains 'quote_has_positive_matching_price' "$INVESTMENT_GUARD" && contains 'financials' "$INVESTMENT_GUARD" && contains 'earnings_calendar' "$INVESTMENT_GUARD"; then
   record success "11.deep-stock-data-preflight" "entity, same-symbol quote, financials, and outlook evidence are code-gated"
 else
@@ -152,8 +158,8 @@ fi
 echo
 echo "summary: success=$success review=$review fail=$fail total=$((success + review + fail))"
 
-if [ "$success" -lt 15 ]; then
-  echo "[ERROR] acceptance failed: expected at least 15 successes"
+if [ "$success" -lt 16 ]; then
+  echo "[ERROR] acceptance failed: expected at least 16 successes"
   exit 1
 fi
 

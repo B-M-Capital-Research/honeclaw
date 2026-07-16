@@ -3,6 +3,7 @@ import type {
   HistoryAttachment,
   HistoryFinanceCalendar,
   HistoryMsg,
+  PublicChatActiveRun,
   PublicPushListItem,
 } from "./types";
 
@@ -42,6 +43,8 @@ export type PublicChatMessage = {
   phase?: "thinking" | "running" | "streaming" | "done" | "error";
   statusText?: string;
   startedAt?: number;
+  runId?: string;
+  statusUpdatedAt?: number;
   steps?: string[];
   attachments?: PublicChatAttachment[];
   financeCalendar?: HistoryFinanceCalendar;
@@ -60,6 +63,131 @@ export function applyPublicAssistantStreamEvent(
   delta = "",
 ): string {
   return event === "assistant_reset" ? "" : current + delta;
+}
+
+type PublicChatRunEventData = Partial<PublicChatActiveRun> & {
+  text?: string;
+};
+
+function validEpochMs(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function nonEmptyText(...values: Array<string | undefined>): string | undefined {
+  for (const value of values) {
+    const trimmed = value?.trim();
+    if (trimmed) return trimmed;
+  }
+  return undefined;
+}
+
+/**
+ * Converts a server run_started/run_progress payload into a safe local patch.
+ * Run identity and updated_at ordering prevent a late event from rewinding a
+ * newer recovered state.
+ */
+export function publicChatRunEventPatch(
+  current: PublicChatMessage,
+  event: PublicChatRunEventData,
+  fallbackStatus: string,
+): Partial<PublicChatMessage> | undefined {
+  const incomingRunId = nonEmptyText(event.run_id);
+  if (current.runId && incomingRunId && current.runId !== incomingRunId) {
+    return undefined;
+  }
+
+  const incomingUpdatedAt = validEpochMs(event.updated_at_ms)
+    ? event.updated_at_ms
+    : undefined;
+  if (
+    incomingUpdatedAt !== undefined &&
+    current.statusUpdatedAt !== undefined &&
+    incomingUpdatedAt < current.statusUpdatedAt
+  ) {
+    return undefined;
+  }
+
+  const phase =
+    event.phase === "running" || event.phase === "thinking"
+      ? event.phase
+      : current.phase === "running"
+        ? "running"
+        : "thinking";
+  const statusText =
+    nonEmptyText(
+      event.status_text,
+      event.text,
+      fallbackStatus,
+      current.statusText,
+    ) ?? fallbackStatus;
+
+  return {
+    phase,
+    statusText,
+    startedAt: validEpochMs(event.started_at_ms)
+      ? event.started_at_ms
+      : current.startedAt,
+    runId: incomingRunId ?? current.runId,
+    statusUpdatedAt: incomingUpdatedAt ?? current.statusUpdatedAt,
+  };
+}
+
+export function publicChatToolStatusText(
+  event: {
+    public_status_text?: string;
+    tool?: unknown;
+    text?: unknown;
+    reasoning?: unknown;
+  },
+  fallbackStatus: string,
+): string {
+  return nonEmptyText(event.public_status_text, fallbackStatus) ?? fallbackStatus;
+}
+
+export function resolvePublicChatRecovery(input: {
+  activeRun?: PublicChatActiveRun | null;
+  interruptedRun?: boolean;
+  thinkingText: string;
+  interruptedText: string;
+}): { message?: PublicChatMessage; activeRunId?: string } {
+  const activeRun = input.activeRun;
+  const runId = nonEmptyText(activeRun?.run_id);
+  if (activeRun && runId && validEpochMs(activeRun.started_at_ms)) {
+    const updatedAt = validEpochMs(activeRun.updated_at_ms)
+      ? activeRun.updated_at_ms
+      : activeRun.started_at_ms;
+    return {
+      activeRunId: runId,
+      message: {
+        id: "_background",
+        role: "assistant",
+        content: "",
+        phase: activeRun.phase === "running" ? "running" : "thinking",
+        statusText:
+          nonEmptyText(activeRun.status_text, input.thinkingText) ??
+          input.thinkingText,
+        startedAt: activeRun.started_at_ms,
+        runId,
+        statusUpdatedAt: updatedAt,
+        steps: [],
+      },
+    };
+  }
+
+  if (input.interruptedRun) {
+    return {
+      message: {
+        id: "_interrupted",
+        role: "assistant",
+        content: "",
+        phase: "error",
+        statusText: input.interruptedText,
+        steps: [],
+      },
+    };
+  }
+
+  return {};
 }
 
 type PublicChatComposerState = {
@@ -118,6 +246,35 @@ export function shouldRetryPublicRestore(
   maxAttempts = PUBLIC_RESTORE_MAX_ATTEMPTS,
 ) {
   return attempt < maxAttempts;
+}
+
+export function isPublicChatBusy(input: {
+  isSending: boolean;
+  hasPendingAssistant: boolean;
+  hasBackgroundPending: boolean;
+}) {
+  return (
+    input.isSending ||
+    input.hasPendingAssistant ||
+    input.hasBackgroundPending
+  );
+}
+
+export function shouldPollPublicChatRecovery(input: {
+  hasBackgroundPending: boolean;
+  isSending: boolean;
+  restoreInFlight: boolean;
+}) {
+  return (
+    input.hasBackgroundPending && !input.isSending && !input.restoreInFlight
+  );
+}
+
+export function shouldRecoverPublicChatAfterEof(input: {
+  reachedEof: boolean;
+  sawTerminalEvent: boolean;
+}) {
+  return input.reachedEof && !input.sawTerminalEvent;
 }
 
 export function shouldPreventPublicChatPinch(input: {

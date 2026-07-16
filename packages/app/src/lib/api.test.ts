@@ -109,8 +109,10 @@ describe("public API errors", () => {
 describe("public chat bootstrap API", () => {
   test("loads auth and history through one startup request", async () => {
     let requestedUrl = "";
-    globalThis.fetch = ((url: RequestInfo | URL) => {
+    let requestedInit: RequestInit | undefined;
+    globalThis.fetch = ((url: RequestInfo | URL, init?: RequestInit) => {
       requestedUrl = String(url);
+      requestedInit = init;
       return Promise.resolve(
         new Response(
           JSON.stringify({
@@ -131,12 +133,15 @@ describe("public chat bootstrap API", () => {
     expect(payload.messages?.[0]?.content).toBe("hello");
     expect(payload.history_start).toBe(42);
     expect(payload.next_before).toBe(42);
+    expect(requestedInit?.cache).toBe("no-store");
   });
 
   test("requests the previous history page with a stable cursor", async () => {
     let requestedUrl = "";
-    globalThis.fetch = ((url: RequestInfo | URL) => {
+    let requestedInit: RequestInit | undefined;
+    globalThis.fetch = ((url: RequestInfo | URL, init?: RequestInit) => {
       requestedUrl = String(url);
+      requestedInit = init;
       return Promise.resolve(
         new Response(
           JSON.stringify({ messages: [], history_start: 20, next_before: 20 }),
@@ -149,6 +154,7 @@ describe("public chat bootstrap API", () => {
 
     expect(requestedUrl).toContain("/api/public/history?limit=20&before=40");
     expect(payload.history_start).toBe(20);
+    expect(requestedInit?.cache).toBe("no-store");
   });
 });
 

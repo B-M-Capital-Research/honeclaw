@@ -91,10 +91,16 @@ import {
   PUBLIC_CHAT_VIEWPORT_CONTENT,
   PUBLIC_RESTORE_TIMEOUT_MS,
   publicAttachmentFileLabel,
+  publicChatRunEventPatch,
+  publicChatToolStatusText,
   publicRestoreRetryDelay,
   rekeyTrailingOptimisticIds,
+  resolvePublicChatRecovery,
+  isPublicChatBusy,
   mergePublicHistoryWindow,
   mergePublicPushItems,
+  shouldPollPublicChatRecovery,
+  shouldRecoverPublicChatAfterEof,
   shouldRetryPublicRestore,
   shouldRecoverPinnedBottom,
   shouldPreventPublicChatPinch,
@@ -817,6 +823,8 @@ function AssistantBubble(props: {
   const statusLabel = () => {
     if (terminal()) return CONTENT.chat_page.status.error;
     if (hasContent()) return "HONE";
+    const currentStatus = props.message.statusText?.trim();
+    if (currentStatus) return currentStatus;
     switch (props.message.phase) {
       case "running":
         return CONTENT.chat_page.status.running;
@@ -2360,12 +2368,11 @@ export default function PublicChatPage() {
   // True when the user has scrolled up far enough to lose track of the latest
   // reply — drives the floating scroll-to-bottom affordance above the composer.
   const [awayFromBottom, setAwayFromBottom] = createSignal(false);
-  // When set, the server has an in-flight assistant run for which we have
-  // no local streaming context — typically because the page was refreshed
-  // mid-response. Until the answer arrives, show the same "思考中" status
-  // and poll history so the reply lands without manual refresh.
+  // When set, the server has authoritatively reported an active assistant run
+  // for which this tab has no streaming context, usually after a refresh.
+  // Poll bootstrap until that run reaches a persisted terminal answer.
   const [backgroundPending, setBackgroundPending] = createSignal<{
-    since: number;
+    runId: string;
   } | null>(null);
   const [restoreStatus, setRestoreStatus] =
     createSignal<RestoreSessionStatus | null>({ attempt: 1, mode: "loading" });
@@ -2481,11 +2488,15 @@ export default function PublicChatPage() {
     workspaceGreeting(new Date().getHours(), workspaceDisplayName()),
   );
   const hasOlderMessages = () => historyNextBefore() !== undefined;
-  const isSendingOrStreaming = () =>
-    isSending() || !!pendingAssistantMessage() || !!backgroundPending();
   const pendingAssistantMessage = createMemo(() => {
     return findPendingPublicAssistantMessage(messages);
   });
+  const isSendingOrStreaming = () =>
+    isPublicChatBusy({
+      isSending: isSending(),
+      hasPendingAssistant: !!pendingAssistantMessage(),
+      hasBackgroundPending: !!backgroundPending(),
+    });
 
   createEffect(() => {
     workspaceMode();
@@ -2790,6 +2801,7 @@ export default function PublicChatPage() {
       keepAtBottom?: boolean;
       retryOnFailure?: boolean;
       attempt?: number;
+      onExhausted?: (message: string) => void;
     } = {},
   ) => {
     clearRestoreRetry();
@@ -2826,22 +2838,16 @@ export default function PublicChatPage() {
             latest,
             bootstrap.history_start,
           );
-      const lastServerMessage = merged.messages[merged.messages.length - 1];
-      const recoveredPending =
-        user.in_flight > 0 &&
-        lastServerMessage?.role === "user" &&
-        !isSending();
-      const pendingSince = backgroundPending()?.since ?? Date.now();
-      if (recoveredPending) {
-        merged.messages.push({
-          id: "_background",
-          role: "assistant",
-          content: "",
-          phase: "thinking",
-          statusText: CONTENT.chat_page.status.thinking,
-          startedAt: pendingSince,
-          steps: [],
-        });
+      const recovery = !isSending()
+        ? resolvePublicChatRecovery({
+            activeRun: bootstrap.active_run,
+            interruptedRun: bootstrap.interrupted_run,
+            thinkingText: CONTENT.chat_page.status.thinking,
+            interruptedText: "上次请求已中断，请重新发送",
+          })
+        : {};
+      if (recovery.message) {
+        merged.messages.push(recovery.message);
       }
       const previousScrollTop = scrollRef?.scrollTop;
       const shouldKeepBottom =
@@ -2883,7 +2889,12 @@ export default function PublicChatPage() {
       // Keep polling when this tab did not start the run. The placeholder is
       // part of the timeline, so the eventual server reply can re-use its id
       // and update the same assistant card in place.
-      setBackgroundPending(recoveredPending ? { since: pendingSince } : null);
+      setBackgroundPending((current) => {
+        const next = recovery.activeRunId
+          ? { runId: recovery.activeRunId }
+          : null;
+        return current?.runId === next?.runId ? current : next;
+      });
     } catch (error) {
       if (generation !== sessionSyncGeneration) return;
       if (isUnauthorizedApiError(error)) {
@@ -2912,6 +2923,8 @@ export default function PublicChatPage() {
       }
       if (authState() === "loading" || !currentUser()) {
         setRestoreStatus({ attempt, mode: "failed", message });
+      } else {
+        options.onExhausted?.(message);
       }
     } finally {
       window.clearTimeout(timeoutId);
@@ -2920,12 +2933,51 @@ export default function PublicChatPage() {
   };
 
   // Poll while the server still owes us an answer we can't stream locally.
+  // Schedule the next poll only after the previous one settles. A fixed
+  // interval used to abort every bootstrap request slower than three seconds,
+  // leaving the recovered card in a permanent thinking state.
   createEffect(() => {
-    if (!backgroundPending() || isSending()) return;
-    const id = window.setInterval(() => {
-      void restoreSession();
-    }, 3000);
-    onCleanup(() => clearInterval(id));
+    const pendingRunId = backgroundPending()?.runId;
+    if (!pendingRunId || isSending()) return;
+
+    let cancelled = false;
+    let timerId: number | undefined;
+    const scheduleNext = () => {
+      if (cancelled) return;
+      timerId = window.setTimeout(() => {
+        timerId = undefined;
+        void poll();
+      }, 3000);
+    };
+    const poll = async () => {
+      if (cancelled) return;
+      const sameRun = backgroundPending()?.runId === pendingRunId;
+      if (
+        !shouldPollPublicChatRecovery({
+          hasBackgroundPending: sameRun,
+          isSending: isSending(),
+          restoreInFlight:
+            restoreController !== null || restoreRetryTimer !== undefined,
+        })
+      ) {
+        if (sameRun && !isSending()) scheduleNext();
+        return;
+      }
+      await restoreSession();
+      if (
+        !cancelled &&
+        backgroundPending()?.runId === pendingRunId &&
+        !isSending()
+      ) {
+        scheduleNext();
+      }
+    };
+
+    scheduleNext();
+    onCleanup(() => {
+      cancelled = true;
+      if (timerId !== undefined) window.clearTimeout(timerId);
+    });
   });
 
   createEffect(() => {
@@ -3109,7 +3161,7 @@ export default function PublicChatPage() {
     if (
       (!text && atts.length === 0) ||
       authState() !== "ready" ||
-      isSending() ||
+      isSendingOrStreaming() ||
       uploading()
     )
       return;
@@ -3140,6 +3192,9 @@ export default function PublicChatPage() {
 
     const controller = new AbortController();
     activeController = controller;
+    let reachedStreamEof = false;
+    let sawTerminalEvent = false;
+    let recoverAfterEof = false;
     try {
       const stream = await sendPublicChat(
         text,
@@ -3191,11 +3246,43 @@ export default function PublicChatPage() {
       };
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          reachedStreamEof = true;
+          break;
+        }
         pendingSse += decoder.decode(value, { stream: true });
         const parsed = parseSseChunks(pendingSse);
         pendingSse = parsed.pending;
         for (const ev of parsed.events) {
+          if (ev.event === "run_started" || ev.event === "run_progress") {
+            const index = messages.findIndex(
+              (message) => message.id === assistantId,
+            );
+            if (index >= 0) {
+              const patch = publicChatRunEventPatch(
+                messages[index],
+                ev.data,
+                ev.event === "run_progress"
+                  ? CONTENT.chat_page.status.running
+                  : CONTENT.chat_page.status.thinking,
+              );
+              if (patch) setMessages(index, patch);
+            }
+          }
+          if (ev.event === "tool_call") {
+            const index = messages.findIndex(
+              (message) => message.id === assistantId,
+            );
+            if (index >= 0) {
+              setMessages(index, {
+                phase: "running",
+                statusText: publicChatToolStatusText(
+                  ev.data,
+                  CONTENT.chat_page.status.running,
+                ),
+              });
+            }
+          }
           if (ev.event === "assistant_delta") {
             queueAssistantDelta(ev.data.content ?? "");
           }
@@ -3203,6 +3290,7 @@ export default function PublicChatPage() {
             resetAssistantDelta();
           }
           if (ev.event === "run_error") {
+            sawTerminalEvent = true;
             if (deltaFrame !== undefined) cancelAnimationFrame(deltaFrame);
             flushAssistantDelta();
             const index = messages.findIndex((m) => m.id === assistantId);
@@ -3215,6 +3303,7 @@ export default function PublicChatPage() {
             }
           }
           if (ev.event === "run_finished") {
+            sawTerminalEvent = true;
             if (deltaFrame !== undefined) cancelAnimationFrame(deltaFrame);
             flushAssistantDelta();
             const index = messages.findIndex((m) => m.id === assistantId);
@@ -3230,10 +3319,41 @@ export default function PublicChatPage() {
             }
             pinToBottom(1400);
           }
+          if (ev.event === "error") {
+            sawTerminalEvent = true;
+            const index = messages.findIndex((m) => m.id === assistantId);
+            if (index >= 0) {
+              setMessages(index, {
+                phase: "error",
+                statusText:
+                  ev.data.text ?? CONTENT.chat_page.status.fallback_error,
+              });
+            }
+          }
+          if (ev.event === "done") {
+            sawTerminalEvent = true;
+            const index = messages.findIndex((m) => m.id === assistantId);
+            if (index >= 0 && messages[index].phase !== "error") {
+              setMessages(index, { phase: "done", statusText: undefined });
+            }
+          }
         }
       }
       if (deltaFrame !== undefined) cancelAnimationFrame(deltaFrame);
       flushAssistantDelta();
+      recoverAfterEof = shouldRecoverPublicChatAfterEof({
+        reachedEof: reachedStreamEof,
+        sawTerminalEvent,
+      });
+      if (recoverAfterEof) {
+        const index = messages.findIndex((m) => m.id === assistantId);
+        if (index >= 0) {
+          setMessages(index, {
+            phase: "thinking",
+            statusText: "连接中断，正在恢复任务状态",
+          });
+        }
+      }
     } catch (e) {
       const index = messages.findIndex((m) => m.id === assistantId);
       const aborted = e instanceof DOMException && e.name === "AbortError";
@@ -3250,7 +3370,26 @@ export default function PublicChatPage() {
         stickToBottom || isBottomPinned() || distanceFromBottom() < 160;
       if (shouldStayAtBottom) pinToBottom(1600);
       setIsSending(false);
-      void restoreSession({ keepAtBottom: shouldStayAtBottom });
+      void restoreSession({
+        keepAtBottom: shouldStayAtBottom,
+        retryOnFailure: recoverAfterEof,
+        onExhausted: recoverAfterEof
+          ? () => {
+              const index = messages.findIndex((m) => m.id === assistantId);
+              if (
+                index >= 0 &&
+                messages[index].phase !== "done" &&
+                messages[index].phase !== "error"
+              ) {
+                setMessages(index, {
+                  phase: "error",
+                  statusText:
+                    "连接已中断，未能恢复任务状态，请刷新页面后重试",
+                });
+              }
+            }
+          : undefined,
+      });
     }
   };
 
@@ -3451,7 +3590,7 @@ export default function PublicChatPage() {
                           onCalendarSent={handleCalendarSent}
                           communityUnread={communityUnread()}
                           onOpenCommunity={() => navigate("/community")}
-                          isSending={isSending()}
+                          isSending={isSendingOrStreaming()}
                           remaining={sessionInfo()?.remainingToday}
                           dailyLimit={sessionInfo()?.dailyLimit}
                           trackingOpenRequest={trackingOpenRequest()}

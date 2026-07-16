@@ -788,6 +788,7 @@ pub async fn start_server(
             sse_tickets: Mutex::new(HashMap::new()),
         },
         heartbeat_registry: Default::default(),
+        active_chat_runs: Default::default(),
     });
     let runtime_role = RuntimeRole::from_env();
 

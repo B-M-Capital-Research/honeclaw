@@ -2,7 +2,7 @@
 //!
 //! 通过 Financial Modeling Prep (FMP) API 获取金融数据，支持多 Key 自动 fallback：
 //! - 依次尝试 `fmp.api_keys` 和 `fmp.api_key` 合并后的 Key 列表
-//! - 若 Key 无效（HTTP 401/403 或响应含认证错误）则切换到下一个
+//! - 若 Key 认证或配额不可用（HTTP 401/403/429 或响应含相关错误）则切换到下一个
 //! - 所有 Key 均失败时返回最后一次的错误信息
 
 use async_trait::async_trait;
@@ -25,6 +25,13 @@ const FMP_TTL_EARNINGS: StdDuration = StdDuration::from_secs(60 * 60);
 struct CachedFmpValue {
     expires_at: Instant,
     value: Value,
+}
+
+enum FmpFetchError {
+    /// 当前 key 的认证或配额不可用，可以安全地尝试下一个 key。
+    KeyRejected(String),
+    /// 与 key 无关的 provider、传输或解析失败，继续轮询只会放大延迟。
+    NonRetryable(String),
 }
 
 /// DataFetchTool — 金融数据获取（FMP，多 Key fallback）
@@ -61,7 +68,7 @@ impl DataFetchTool {
     }
 
     /// 用指定 key 执行一次 FMP 请求
-    async fn fetch_with_key(&self, key: &str, url: &str) -> Result<Value, String> {
+    async fn fetch_with_key(&self, key: &str, url: &str) -> Result<Value, FmpFetchError> {
         let connector = if url.contains('?') { "&" } else { "?" };
         let full_url = format!("{}{connector}apikey={}", url, key);
 
@@ -71,42 +78,57 @@ impl DataFetchTool {
             .timeout(std::time::Duration::from_secs(self.timeout))
             .send()
             .await
-            .map_err(|e| format_fmp_transport_error("请求", &e))?;
+            .map_err(|e| FmpFetchError::NonRetryable(format_fmp_transport_error("请求", &e)))?;
 
         let status = response.status();
         let body = response
             .text()
             .await
-            .map_err(|e| format_fmp_transport_error("响应读取", &e))?;
+            .map_err(|e| FmpFetchError::NonRetryable(format_fmp_transport_error("响应读取", &e)))?;
+
+        // 认证或配额失败需要保留多 key fallback 语义；其它非 2xx 则必须作为
+        // provider error 返回，不能继续把错误响应体解析成一份成功的金融数据。
+        if status == 401 || status == 403 {
+            return Err(FmpFetchError::KeyRejected(format!(
+                "FMP API Key 无效（HTTP {}）",
+                status.as_u16()
+            )));
+        }
+        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            return Err(FmpFetchError::KeyRejected(
+                "FMP API Key 配额受限（HTTP 429）".to_string(),
+            ));
+        }
+        if !status.is_success() {
+            return Err(FmpFetchError::NonRetryable(format_fmp_provider_error(
+                status, &body,
+            )));
+        }
+
         let response_json: Value = serde_json::from_str(&body).map_err(|e| {
             let prefix = sanitize_fmp_error_detail(&body)
                 .chars()
                 .take(200)
                 .collect::<String>();
-            format!("FMP JSON 解析失败: {e}; body_prefix={prefix}")
+            FmpFetchError::NonRetryable(format!("FMP JSON 解析失败: {e}; body_prefix={prefix}"))
         })?;
 
-        // HTTP 401/403 → key 无效，触发 fallback
-        if status == 401 || status == 403 {
-            return Err(format!("FMP API Key 无效（HTTP {status}）"));
-        }
-
-        // FMP 在 HTTP 200 时也可能返回认证错误（"Error Message" 字段）
+        // FMP 在 HTTP 2xx 时也可能通过 "Error Message" 返回失败。认证或配额
+        // 问题继续触发 key fallback；其它非空错误也不能被当作成功数据。
         if let Some(err_msg) = response_json
             .get("Error Message")
-            .and_then(|value| value.as_str())
+            .and_then(nonempty_fmp_error_message)
         {
-            let lower = err_msg.to_lowercase();
-            if lower.contains("invalid api key")
-                || lower.contains("api key")
-                || lower.contains("limit reach")
-                || lower.contains("upgrade")
-            {
-                return Err(format!(
+            if fmp_error_message_triggers_key_fallback(&err_msg) {
+                return Err(FmpFetchError::KeyRejected(format!(
                     "FMP API Key 被拒绝: {}",
-                    sanitize_fmp_error_detail(err_msg)
-                ));
+                    sanitize_fmp_error_detail(&err_msg)
+                )));
             }
+            return Err(FmpFetchError::NonRetryable(format_fmp_provider_error(
+                status,
+                &format!("Error Message: {err_msg}"),
+            )));
         }
 
         Ok(response_json)
@@ -229,12 +251,15 @@ impl DataFetchTool {
         for key in &self.keys {
             match self.fetch_with_key(key, &url).await {
                 Ok(data) => {
-                    if let Some(ttl) = ttl {
+                    if let Some(ttl) = ttl
+                        && should_cache_fmp_value(data_type, &data)
+                    {
                         self.store_cache_value(cache_key.clone(), ttl, data.clone());
                     }
                     return Ok(data);
                 }
-                Err(e) => last_err = e,
+                Err(FmpFetchError::KeyRejected(error)) => last_err = error,
+                Err(FmpFetchError::NonRetryable(error)) => return Err(error),
             }
         }
 
@@ -336,6 +361,21 @@ fn format_fmp_transport_error(operation: &str, error: &reqwest::Error) -> String
     }
 }
 
+fn format_fmp_provider_error(status: reqwest::StatusCode, body: &str) -> String {
+    let body_prefix = sanitize_fmp_error_detail(body)
+        .chars()
+        .take(200)
+        .collect::<String>();
+    if body_prefix.trim().is_empty() {
+        format!("FMP provider error（HTTP {}）", status.as_u16())
+    } else {
+        format!(
+            "FMP provider error（HTTP {}）: body_prefix={body_prefix}",
+            status.as_u16()
+        )
+    }
+}
+
 fn sanitize_fmp_error_detail(text: &str) -> String {
     let redacted = redact_fmp_query_secrets(&redact_url_userinfo(text));
     if redacted.chars().count() <= MAX_FMP_TRANSPORT_ERROR_CHARS {
@@ -359,6 +399,55 @@ fn ttl_for_data_type(data_type: &str) -> Option<StdDuration> {
         "earnings_calendar" => Some(FMP_TTL_EARNINGS),
         _ => None,
     }
+}
+
+fn should_cache_fmp_value(data_type: &str, value: &Value) -> bool {
+    if !matches!(
+        data_type,
+        "financials"
+            | "profile"
+            | "search"
+            | "etf_holdings"
+            | "quote"
+            | "quote_short"
+            | "crypto_quote"
+    ) {
+        return true;
+    }
+
+    has_meaningful_fmp_value(value)
+}
+
+fn has_meaningful_fmp_value(value: &Value) -> bool {
+    match value {
+        Value::Null => false,
+        Value::String(text) => !text.trim().is_empty(),
+        Value::Array(items) => items.iter().any(has_meaningful_fmp_value),
+        Value::Object(fields) => fields.values().any(has_meaningful_fmp_value),
+        Value::Bool(_) | Value::Number(_) => true,
+    }
+}
+
+fn nonempty_fmp_error_message(value: &Value) -> Option<String> {
+    match value {
+        Value::Null => None,
+        Value::String(message) if message.trim().is_empty() => None,
+        Value::Array(items) if items.is_empty() => None,
+        Value::Object(fields) if fields.is_empty() => None,
+        Value::String(message) => Some(message.clone()),
+        other => Some(other.to_string()),
+    }
+}
+
+fn fmp_error_message_triggers_key_fallback(message: &str) -> bool {
+    let lower = message.to_ascii_lowercase();
+    lower.contains("invalid api key")
+        || lower.contains("api key")
+        || lower.contains("apikey")
+        || lower.contains("limit reach")
+        || lower.contains("rate limit")
+        || lower.contains("quota")
+        || lower.contains("upgrade")
 }
 
 fn fmp_cache_key_for_url(url: &str) -> String {
@@ -669,14 +758,79 @@ impl Tool for DataFetchTool {
 
 #[cfg(test)]
 mod tests {
-    use super::{DataFetchTool, sanitize_fmp_error_detail};
+    use super::{
+        DataFetchTool, nonempty_fmp_error_message, sanitize_fmp_error_detail,
+        should_cache_fmp_value,
+    };
     use crate::base::Tool;
     use crate::test_support::{assert_text_contains_all, assert_text_contains_none};
     use chrono::{Duration, NaiveDate};
     use serde_json::json;
+    use std::net::SocketAddr;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
 
     fn tool_with_test_key() -> DataFetchTool {
         DataFetchTool::new(vec!["test_key".to_string()], "https://example.com/api", 30)
+    }
+
+    async fn spawn_scripted_http_server(
+        responses: Vec<(&'static str, &'static str)>,
+    ) -> (SocketAddr, Arc<AtomicUsize>) {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind scripted test server");
+        let addr = listener.local_addr().expect("scripted server local addr");
+        let request_count = Arc::new(AtomicUsize::new(0));
+        let request_count_for_server = request_count.clone();
+
+        tokio::spawn(async move {
+            for (status, body) in responses {
+                let Ok((mut socket, _)) = listener.accept().await else {
+                    break;
+                };
+                request_count_for_server.fetch_add(1, Ordering::SeqCst);
+                let mut buf = [0_u8; 4096];
+                let _ = socket.read(&mut buf).await;
+                let response = format!(
+                    "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = socket.write_all(response.as_bytes()).await;
+                let _ = socket.shutdown().await;
+            }
+        });
+
+        (addr, request_count)
+    }
+
+    async fn spawn_truncated_body_server() -> (SocketAddr, Arc<AtomicUsize>) {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind truncated-body test server");
+        let addr = listener.local_addr().expect("truncated-body local addr");
+        let request_count = Arc::new(AtomicUsize::new(0));
+        let request_count_for_server = request_count.clone();
+
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut socket, _)) = listener.accept().await else {
+                    break;
+                };
+                request_count_for_server.fetch_add(1, Ordering::SeqCst);
+                let mut buf = [0_u8; 4096];
+                let _ = socket.read(&mut buf).await;
+                let response = "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 100\r\nconnection: close\r\n\r\n{";
+                let _ = socket.write_all(response.as_bytes()).await;
+                let _ = socket.shutdown().await;
+            }
+        });
+
+        (addr, request_count)
     }
 
     #[test]
@@ -880,15 +1034,319 @@ mod tests {
         assert_eq!(key, "https://example.com/api/v3/quote/AAPL?limit=10");
     }
 
+    #[test]
+    fn critical_entity_and_market_data_empty_values_are_not_cacheable() {
+        for data_type in [
+            "financials",
+            "profile",
+            "search",
+            "etf_holdings",
+            "quote",
+            "quote_short",
+            "crypto_quote",
+        ] {
+            assert!(!should_cache_fmp_value(data_type, &json!(null)));
+            assert!(!should_cache_fmp_value(data_type, &json!([])));
+            assert!(!should_cache_fmp_value(data_type, &json!({})));
+            assert!(!should_cache_fmp_value(data_type, &json!([{}])));
+            assert!(!should_cache_fmp_value(data_type, &json!({ "data": [] })));
+        }
+
+        assert!(should_cache_fmp_value(
+            "financials",
+            &json!([{ "symbol": "AAPL" }])
+        ));
+        assert!(should_cache_fmp_value(
+            "financials",
+            &json!({ "symbol": "AAPL" })
+        ));
+
+        assert!(should_cache_fmp_value(
+            "profile",
+            &json!([{ "symbol": "AAPL" }])
+        ));
+
+        // 新闻等非实体/行情关键路径保持原有缓存行为，包括合法空响应。
+        assert!(should_cache_fmp_value("news", &json!(null)));
+    }
+
+    #[test]
+    fn error_message_field_is_nonempty_for_string_and_structured_errors() {
+        assert_eq!(nonempty_fmp_error_message(&json!(null)), None);
+        assert_eq!(nonempty_fmp_error_message(&json!("  ")), None);
+        assert_eq!(nonempty_fmp_error_message(&json!([])), None);
+        assert_eq!(nonempty_fmp_error_message(&json!({})), None);
+        assert_eq!(
+            nonempty_fmp_error_message(&json!("temporarily unavailable")),
+            Some("temporarily unavailable".to_string())
+        );
+        assert_eq!(
+            nonempty_fmp_error_message(&json!({ "code": "upstream_failure" })),
+            Some(r#"{"code":"upstream_failure"}"#.to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn non_success_status_is_reported_as_provider_error_before_json_parsing() {
+        let (addr, request_count) = spawn_scripted_http_server(vec![
+            (
+                "500 Internal Server Error",
+                "upstream unavailable apikey=must-not-leak",
+            ),
+            ("500 Internal Server Error", "must not request second key"),
+            ("500 Internal Server Error", "must not request third key"),
+        ])
+        .await;
+        let tool = DataFetchTool::new(
+            vec![
+                "key_1".to_string(),
+                "key_2".to_string(),
+                "key_3".to_string(),
+            ],
+            &format!("http://{addr}/api"),
+            30,
+        );
+
+        let payload = tool
+            .execute(json!({"data_type": "quote", "ticker": "AAPL"}))
+            .await
+            .expect("provider error payload");
+        let error = payload["error"].as_str().expect("error string");
+
+        assert!(error.contains("FMP provider error（HTTP 500）"));
+        assert!(error.contains("apikey=<redacted>"));
+        assert!(!error.contains("must-not-leak"));
+        assert!(!error.contains("JSON 解析失败"));
+        assert!(!error.contains("所有 FMP API Key 均失败"));
+        assert_eq!(request_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn transport_failure_does_not_fan_out_across_keys() {
+        let (addr, request_count) = spawn_truncated_body_server().await;
+        let tool = DataFetchTool::new(
+            vec![
+                "key_1".to_string(),
+                "key_2".to_string(),
+                "key_3".to_string(),
+            ],
+            &format!("http://{addr}/api"),
+            30,
+        );
+
+        let payload = tool
+            .execute(json!({"data_type": "quote", "ticker": "AAPL"}))
+            .await
+            .expect("transport error payload");
+        let error = payload["error"].as_str().expect("error string");
+
+        assert!(error.contains("FMP 响应读取失败"));
+        assert!(!error.contains("所有 FMP API Key 均失败"));
+        assert_eq!(request_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn json_parse_failure_does_not_fan_out_across_keys() {
+        let (addr, request_count) = spawn_scripted_http_server(vec![
+            ("200 OK", "not-json-1"),
+            ("200 OK", "not-json-2"),
+            ("200 OK", "not-json-3"),
+        ])
+        .await;
+        let tool = DataFetchTool::new(
+            vec![
+                "key_1".to_string(),
+                "key_2".to_string(),
+                "key_3".to_string(),
+            ],
+            &format!("http://{addr}/api"),
+            30,
+        );
+
+        let payload = tool
+            .execute(json!({"data_type": "quote", "ticker": "AAPL"}))
+            .await
+            .expect("parse error payload");
+        let error = payload["error"].as_str().expect("error string");
+
+        assert!(error.contains("FMP JSON 解析失败"));
+        assert!(!error.contains("所有 FMP API Key 均失败"));
+        assert_eq!(request_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn authentication_statuses_still_fall_back_to_later_keys() {
+        let (addr, request_count) = spawn_scripted_http_server(vec![
+            ("401 Unauthorized", "not-json"),
+            ("403 Forbidden", "still-not-json"),
+            ("429 Too Many Requests", "quota exhausted"),
+            ("200 OK", r#"[{"symbol":"AAPL","price":100.0}]"#),
+        ])
+        .await;
+        let tool = DataFetchTool::new(
+            vec![
+                "bad_key_1".to_string(),
+                "bad_key_2".to_string(),
+                "quota_key".to_string(),
+                "working_key".to_string(),
+            ],
+            &format!("http://{addr}/api"),
+            30,
+        );
+
+        let payload = tool
+            .execute(json!({"data_type": "quote", "ticker": "AAPL"}))
+            .await
+            .expect("fallback quote payload");
+
+        assert_eq!(payload["data"][0]["symbol"], "AAPL");
+        assert_eq!(payload["data"][0]["price"], 100.0);
+        assert_eq!(request_count.load(Ordering::SeqCst), 4);
+    }
+
+    #[tokio::test]
+    async fn non_auth_error_message_in_success_response_is_provider_error() {
+        let (addr, request_count) = spawn_scripted_http_server(vec![
+            (
+                "200 OK",
+                r#"{"Error Message":"temporary upstream calculation failure"}"#,
+            ),
+            (
+                "200 OK",
+                r#"{"Error Message":"must not request second key"}"#,
+            ),
+            (
+                "200 OK",
+                r#"{"Error Message":"must not request third key"}"#,
+            ),
+        ])
+        .await;
+        let tool = DataFetchTool::new(
+            vec![
+                "key_1".to_string(),
+                "key_2".to_string(),
+                "key_3".to_string(),
+            ],
+            &format!("http://{addr}/api"),
+            30,
+        );
+
+        let payload = tool
+            .execute(json!({"data_type": "quote", "ticker": "AAPL"}))
+            .await
+            .expect("provider error payload");
+        let error = payload["error"].as_str().expect("error string");
+
+        assert!(error.contains("FMP provider error（HTTP 200）"));
+        assert!(error.contains("temporary upstream calculation failure"));
+        assert!(!error.contains("所有 FMP API Key 均失败"));
+        assert!(payload.get("data").is_none());
+        assert_eq!(request_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn auth_and_quota_error_messages_still_fall_back_to_later_keys() {
+        let (addr, request_count) = spawn_scripted_http_server(vec![
+            ("200 OK", r#"{"Error Message":"Invalid API KEY."}"#),
+            (
+                "200 OK",
+                r#"{"Error Message":"Limit Reach. Please upgrade your plan."}"#,
+            ),
+            ("200 OK", r#"[{"symbol":"AAPL","price":101.0}]"#),
+        ])
+        .await;
+        let tool = DataFetchTool::new(
+            vec![
+                "bad_key".to_string(),
+                "quota_key".to_string(),
+                "working_key".to_string(),
+            ],
+            &format!("http://{addr}/api"),
+            30,
+        );
+
+        let payload = tool
+            .execute(json!({"data_type": "quote", "ticker": "AAPL"}))
+            .await
+            .expect("fallback quote payload");
+
+        assert_eq!(payload["data"][0]["symbol"], "AAPL");
+        assert_eq!(payload["data"][0]["price"], 101.0);
+        assert_eq!(request_count.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn empty_financials_are_refetched_then_nonempty_result_is_cached() {
+        let (addr, request_count) = spawn_scripted_http_server(vec![
+            ("200 OK", "[]"),
+            (
+                "200 OK",
+                r#"[{"symbol":"AAPL","date":"2025-09-30","revenue":1000}]"#,
+            ),
+        ])
+        .await;
+        let tool = DataFetchTool::new(
+            vec!["test_key".to_string()],
+            &format!("http://{addr}/api"),
+            30,
+        );
+
+        let first = tool
+            .execute(json!({"data_type": "financials", "ticker": "AAPL"}))
+            .await
+            .expect("first financials payload");
+        let second = tool
+            .execute(json!({"data_type": "financials", "ticker": "AAPL"}))
+            .await
+            .expect("second financials payload");
+        let third = tool
+            .execute(json!({"data_type": "financials", "ticker": "AAPL"}))
+            .await
+            .expect("cached financials payload");
+
+        assert_eq!(first["data"], json!([]));
+        assert_eq!(second["data"][0]["symbol"], "AAPL");
+        assert_eq!(third, second);
+        assert_eq!(request_count.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn empty_profile_is_refetched_then_nonempty_result_is_cached() {
+        let (addr, request_count) = spawn_scripted_http_server(vec![
+            ("200 OK", "[]"),
+            (
+                "200 OK",
+                r#"[{"symbol":"INTL","companyName":"Main International ETF","isEtf":true}]"#,
+            ),
+        ])
+        .await;
+        let tool = DataFetchTool::new(
+            vec!["test_key".to_string()],
+            &format!("http://{addr}/api"),
+            30,
+        );
+
+        let first = tool
+            .execute(json!({"data_type": "profile", "ticker": "INTL"}))
+            .await
+            .expect("first profile payload");
+        let second = tool
+            .execute(json!({"data_type": "profile", "ticker": "INTL"}))
+            .await
+            .expect("second profile payload");
+        let third = tool
+            .execute(json!({"data_type": "profile", "ticker": "INTL"}))
+            .await
+            .expect("cached profile payload");
+
+        assert_eq!(first["data"], json!([]));
+        assert_eq!(second["data"][0]["isEtf"], true);
+        assert_eq!(third, second);
+        assert_eq!(request_count.load(Ordering::SeqCst), 2);
+    }
+
     #[tokio::test]
     async fn repeated_snapshot_reuses_child_fetch_cache() {
-        use std::sync::{
-            Arc,
-            atomic::{AtomicUsize, Ordering},
-        };
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-        use tokio::net::TcpListener;
-
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind test server");

@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-07-16
-状态：有 6 个活跃任务
+状态：有 7 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **Web 活动任务修复生产前端漏部署跟进**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/chat-active-run-production-followup.md`
+  - 摘要：源码和后端 active-run 修复已生效，但真实用户仍命中 13:31 构建的旧 `dist-public`；本轮补齐 public build、生产资产发布与 hash/刷新恢复门禁
 
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`

@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use clap::Args;
 use reqwest::StatusCode;
+use serde::Deserialize;
 use tokio::process::{Child, Command};
 
 use crate::common::{ResolvedRuntimePaths, load_cli_config, resolve_runtime_paths};
@@ -22,6 +23,24 @@ const SOURCE_RUNTIME_PACKAGES: &[&str] = &[
     "hone-telegram",
 ];
 const DEFAULT_PUBLIC_WEB_PORT: u16 = 8088;
+const ACTIVE_CHAT_DRAIN_MAX_WAIT: Duration = Duration::from_secs(6 * 60);
+const ACTIVE_CHAT_DRAIN_GRACE: Duration = Duration::from_secs(15);
+const ACTIVE_CHAT_DRAIN_POLL_INTERVAL: Duration = Duration::from_secs(1);
+const ACTIVE_CHAT_DRAIN_REQUEST_TIMEOUT: Duration = Duration::from_secs(2);
+const ACTIVE_CHAT_DRAIN_MAX_CONSECUTIVE_FAILURES: usize = 3;
+
+#[derive(Debug, Deserialize)]
+struct ActiveChatRunsResponse {
+    count: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ActiveChatDrainPollDecision {
+    Drained,
+    Waiting { active_count: usize },
+    RetryUnavailable { consecutive_failures: usize },
+    ProceedUnavailable,
+}
 
 #[derive(Args, Debug, Clone, Default)]
 pub(crate) struct StartArgs {
@@ -182,6 +201,153 @@ pub(crate) async fn wait_for_http_ready(url: &str) -> Result<(), String> {
         }
     }
     Err(http_ready_failure_message(url, last_observation.as_deref()))
+}
+
+fn active_chat_drain_timeout(agent_overall_timeout: Duration) -> Duration {
+    agent_overall_timeout
+        .saturating_add(ACTIVE_CHAT_DRAIN_GRACE)
+        .min(ACTIVE_CHAT_DRAIN_MAX_WAIT)
+}
+
+fn classify_active_chat_drain_poll(
+    active_count: Result<usize, ()>,
+    previous_consecutive_failures: usize,
+) -> ActiveChatDrainPollDecision {
+    match active_count {
+        Ok(0) => ActiveChatDrainPollDecision::Drained,
+        Ok(active_count) => ActiveChatDrainPollDecision::Waiting { active_count },
+        Err(()) => {
+            let consecutive_failures = previous_consecutive_failures.saturating_add(1);
+            if consecutive_failures >= ACTIVE_CHAT_DRAIN_MAX_CONSECUTIVE_FAILURES {
+                ActiveChatDrainPollDecision::ProceedUnavailable
+            } else {
+                ActiveChatDrainPollDecision::RetryUnavailable {
+                    consecutive_failures,
+                }
+            }
+        }
+    }
+}
+
+fn parse_active_chat_runs_response(body: &str) -> Result<usize, String> {
+    serde_json::from_str::<ActiveChatRunsResponse>(body)
+        .map(|response| response.count)
+        .map_err(|error| format!("活动聊天任务响应格式无效：{error}"))
+}
+
+async fn fetch_active_chat_run_count(
+    client: &reqwest::Client,
+    url: &str,
+    auth_token: Option<&str>,
+) -> Result<usize, String> {
+    let mut request = client.get(url);
+    if let Some(auth_token) = auth_token.filter(|token| !token.trim().is_empty()) {
+        request = request.bearer_auth(auth_token.trim());
+    }
+
+    let response = request
+        .send()
+        .await
+        .map_err(|error| format!("请求失败：{error}"))?;
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .map_err(|error| format!("读取响应失败：{error}"))?;
+    if !status.is_success() {
+        return Err(format!("HTTP {status}"));
+    }
+    parse_active_chat_runs_response(&body)
+}
+
+async fn wait_for_active_chat_drain(url: &str, auth_token: Option<&str>, timeout: Duration) {
+    let client = match reqwest::Client::builder()
+        .timeout(ACTIVE_CHAT_DRAIN_REQUEST_TIMEOUT)
+        .build()
+    {
+        Ok(client) => client,
+        Err(error) => {
+            println!("[WARN] 无法创建活动聊天任务检查客户端，将继续关闭服务：{error}");
+            return;
+        }
+    };
+    let started_at = tokio::time::Instant::now();
+    let deadline = started_at + timeout;
+    let mut consecutive_failures = 0usize;
+    let mut last_active_count = None;
+
+    loop {
+        let now = tokio::time::Instant::now();
+        if now >= deadline {
+            let active_detail = last_active_count
+                .map(|count| format!("，最后一次检测到 {count} 个活动任务"))
+                .unwrap_or_default();
+            println!(
+                "[WARN] 等待活动聊天任务结束已达到 {} 秒上限{active_detail}，将继续关闭服务",
+                timeout.as_secs()
+            );
+            return;
+        }
+
+        let remaining = deadline.saturating_duration_since(now);
+        let observation = match tokio::time::timeout(
+            remaining.min(ACTIVE_CHAT_DRAIN_REQUEST_TIMEOUT),
+            fetch_active_chat_run_count(&client, url, auth_token),
+        )
+        .await
+        {
+            Ok(result) => result,
+            Err(_) => Err("请求超时".to_string()),
+        };
+        let observation_error = observation.as_ref().err().cloned();
+        let decision = classify_active_chat_drain_poll(
+            observation.as_ref().map(|count| *count).map_err(|_| ()),
+            consecutive_failures,
+        );
+
+        match decision {
+            ActiveChatDrainPollDecision::Drained => {
+                if last_active_count.is_some() {
+                    println!("[INFO] 活动聊天任务已全部结束，继续关闭服务");
+                } else {
+                    println!("[INFO] 当前没有活动聊天任务，继续关闭服务");
+                }
+                return;
+            }
+            ActiveChatDrainPollDecision::Waiting { active_count } => {
+                consecutive_failures = 0;
+                if last_active_count != Some(active_count) {
+                    println!(
+                        "[INFO] 正在等待 {active_count} 个活动聊天任务结束（最多等待 {} 秒）...",
+                        timeout.as_secs()
+                    );
+                    last_active_count = Some(active_count);
+                }
+            }
+            ActiveChatDrainPollDecision::RetryUnavailable {
+                consecutive_failures: failures,
+            } => {
+                consecutive_failures = failures;
+                println!(
+                    "[WARN] 暂时无法查询活动聊天任务（{failures}/{ACTIVE_CHAT_DRAIN_MAX_CONSECUTIVE_FAILURES}）：{}",
+                    observation_error.as_deref().unwrap_or("未知错误")
+                );
+            }
+            ActiveChatDrainPollDecision::ProceedUnavailable => {
+                println!(
+                    "[WARN] 连续 {ACTIVE_CHAT_DRAIN_MAX_CONSECUTIVE_FAILURES} 次无法查询活动聊天任务，将继续关闭服务：{}",
+                    observation_error.as_deref().unwrap_or("未知错误")
+                );
+                return;
+            }
+        }
+
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
+            continue;
+        }
+        tokio::time::sleep(remaining.min(ACTIVE_CHAT_DRAIN_POLL_INTERVAL)).await;
+    }
 }
 
 fn http_ready_failure_message(url: &str, last_observation: Option<&str>) -> String {
@@ -471,6 +637,16 @@ pub(crate) async fn run_start(
         }
     }
 
+    let active_chat_runs_url = format!(
+        "http://127.0.0.1:{}/api/runtime/active-chat-runs",
+        paths.web_port
+    );
+    wait_for_active_chat_drain(
+        &active_chat_runs_url,
+        Some(config.web.auth_token.as_str()),
+        active_chat_drain_timeout(config.agent.overall_timeout()),
+    )
+    .await;
     shutdown_children(&mut children).await;
     clear_current_pid(&paths);
     Ok(())
@@ -479,6 +655,61 @@ pub(crate) async fn run_start(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn active_chat_drain_timeout_uses_agent_timeout_with_grace() {
+        assert_eq!(
+            active_chat_drain_timeout(Duration::from_secs(120)),
+            Duration::from_secs(135)
+        );
+    }
+
+    #[test]
+    fn active_chat_drain_timeout_is_capped_at_six_minutes() {
+        assert_eq!(
+            active_chat_drain_timeout(Duration::from_secs(20 * 60)),
+            ACTIVE_CHAT_DRAIN_MAX_WAIT
+        );
+    }
+
+    #[test]
+    fn active_chat_run_response_requires_numeric_count() {
+        assert_eq!(
+            parse_active_chat_runs_response(r#"{"count":2}"#).expect("valid response"),
+            2
+        );
+        assert!(parse_active_chat_runs_response(r#"{"count":"2"}"#).is_err());
+        assert!(parse_active_chat_runs_response(r#"{}"#).is_err());
+    }
+
+    #[test]
+    fn active_chat_drain_poll_waits_until_count_reaches_zero() {
+        assert_eq!(
+            classify_active_chat_drain_poll(Ok(2), 1),
+            ActiveChatDrainPollDecision::Waiting { active_count: 2 }
+        );
+        assert_eq!(
+            classify_active_chat_drain_poll(Ok(0), 0),
+            ActiveChatDrainPollDecision::Drained
+        );
+    }
+
+    #[test]
+    fn active_chat_drain_poll_gives_up_after_bounded_query_failures() {
+        assert_eq!(
+            classify_active_chat_drain_poll(Err(()), 0),
+            ActiveChatDrainPollDecision::RetryUnavailable {
+                consecutive_failures: 1
+            }
+        );
+        assert_eq!(
+            classify_active_chat_drain_poll(
+                Err(()),
+                ACTIVE_CHAT_DRAIN_MAX_CONSECUTIVE_FAILURES - 1
+            ),
+            ActiveChatDrainPollDecision::ProceedUnavailable
+        );
+    }
 
     #[test]
     fn unexpected_exit_hint_includes_discord_token_guidance() {

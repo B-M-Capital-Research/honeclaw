@@ -29,7 +29,9 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use crate::HoneBotCore;
-use crate::investment_response_guard::{InvestmentResponseContract, ResolvedSecurityEntity};
+use crate::investment_response_guard::{
+    DeepAnalysisKind, InvestmentResponseContract, ResolvedSecurityEntity, contract_failure_message,
+};
 use crate::response_finalizer::{
     EMPTY_SUCCESS_FALLBACK_MESSAGE, finalize_agent_response, normalize_local_image_references,
     response_leaks_system_prompt,
@@ -65,6 +67,18 @@ struct NoopEmitter;
 #[async_trait]
 impl AgentRunnerEmitter for NoopEmitter {
     async fn emit(&self, _event: AgentRunnerEvent) {}
+}
+
+#[derive(Default)]
+struct RecordingRunnerEmitter {
+    events: tokio::sync::Mutex<Vec<AgentRunnerEvent>>,
+}
+
+#[async_trait]
+impl AgentRunnerEmitter for RecordingRunnerEmitter {
+    async fn emit(&self, event: AgentRunnerEvent) {
+        self.events.lock().await.push(event);
+    }
 }
 
 #[derive(Clone)]
@@ -138,6 +152,40 @@ impl AgentRunner for MockEmptySuccessRunner {
 #[derive(Clone)]
 struct MockSequencedRunner {
     results: Arc<Mutex<std::collections::VecDeque<AgentRunnerResult>>>,
+}
+
+struct MockStreamingRun {
+    events: Vec<AgentRunnerEvent>,
+    result: AgentRunnerResult,
+}
+
+#[derive(Clone)]
+struct MockStreamingSequencedRunner {
+    runs: Arc<Mutex<std::collections::VecDeque<MockStreamingRun>>>,
+}
+
+#[async_trait]
+impl AgentRunner for MockStreamingSequencedRunner {
+    fn name(&self) -> &'static str {
+        "mock_streaming_sequenced"
+    }
+
+    async fn run(
+        &self,
+        _request: AgentRunnerRequest,
+        emitter: Arc<dyn AgentRunnerEmitter>,
+    ) -> AgentRunnerResult {
+        let run = self
+            .runs
+            .lock()
+            .expect("lock streaming runs")
+            .pop_front()
+            .expect("queued streaming run");
+        for event in run.events {
+            emitter.emit(event).await;
+        }
+        run.result
+    }
 }
 
 #[async_trait]
@@ -595,38 +643,70 @@ async fn investment_contract_retries_incomplete_nbis_draft() {
     let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
     let actor = ActorIdentity::new("web", "investment-contract", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
-    let complete = "数据时间：北京时间 2026-07-15。事实与推断分开。\n1. 结论\n2. 公司是什么、靠什么赚钱\n3. 护城河与竞争壁垒\n4. 行业位置与关键对手\n5. 财务质量与自由现金流\n6. 估值：P/S + 情景法\n7. Bull / Bear / Base Case\n8. 催化剂、风险点、证伪条件\n9. 动作建议";
-    let results = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
-        AgentRunnerResult {
-            response: AgentResponse {
-                content: "Q3 可能起飞。你成本多少？".to_string(),
-                tool_calls_made: Vec::new(),
-                iterations: 1,
-                success: true,
-                error: None,
+    let complete = "数据时间：北京时间 2026-07-15。已核验事实与情景推断分开。\n1. 结论：本轮已核验同代码现价 199.51 美元，先观察。\n2. 公司是什么、靠什么赚钱：商业模式为云服务收入。\n3. 护城河与竞争壁垒：壁垒来自资源与客户粘性。\n4. 行业位置与关键对手：竞争对手与行业位置持续变化。\n5. 财务质量与自由现金流：自由现金流是核心验证项。\n6. 估值：使用 P/S 与情景法两种方法评估。\n7. Bull / Bear / Base Case：Bull 看增长，Bear 看竞争，Base 看执行。\n8. 催化剂、风险点、证伪条件：催化是订单，风险是降速，证伪是失速。\n9. 动作建议：观察；若增长与现金流改善则触发重评。";
+    let runs = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
+        MockStreamingRun {
+            events: vec![
+                AgentRunnerEvent::Progress {
+                    stage: "agent.run",
+                    detail: Some("first attempt".to_string()),
+                },
+                AgentRunnerEvent::StreamDelta {
+                    content: "Q3 可能起飞。你成本多少？".to_string(),
+                },
+                AgentRunnerEvent::StreamReset,
+                AgentRunnerEvent::StreamThought {
+                    thought: "retry this draft".to_string(),
+                },
+                AgentRunnerEvent::Error {
+                    error: super::types::AgentSessionError {
+                        kind: AgentSessionErrorKind::AgentFailed,
+                        message: "attempt-local error".to_string(),
+                    },
+                },
+            ],
+            result: AgentRunnerResult {
+                response: AgentResponse {
+                    content: "Q3 可能起飞。你成本多少？".to_string(),
+                    tool_calls_made: Vec::new(),
+                    iterations: 1,
+                    success: true,
+                    error: None,
+                },
+                streamed_output: true,
+                terminal_error_emitted: true,
+                session_metadata_updates: HashMap::new(),
+                context_messages: None,
             },
-            streamed_output: true,
-            terminal_error_emitted: false,
-            session_metadata_updates: HashMap::new(),
-            context_messages: None,
         },
-        AgentRunnerResult {
-            response: AgentResponse {
-                content: complete.to_string(),
-                tool_calls_made: Vec::new(),
-                iterations: 1,
-                success: true,
-                error: None,
+        MockStreamingRun {
+            events: vec![
+                AgentRunnerEvent::ToolStatus {
+                    tool: "data_fetch".to_string(),
+                    status: "done".to_string(),
+                    message: Some("verified".to_string()),
+                    reasoning: None,
+                },
+                AgentRunnerEvent::StreamDelta {
+                    content: complete.to_string(),
+                },
+            ],
+            result: AgentRunnerResult {
+                response: AgentResponse {
+                    content: complete.to_string(),
+                    tool_calls_made: Vec::new(),
+                    iterations: 1,
+                    success: true,
+                    error: None,
+                },
+                streamed_output: true,
+                terminal_error_emitted: false,
+                session_metadata_updates: HashMap::new(),
+                context_messages: None,
             },
-            streamed_output: true,
-            terminal_error_emitted: false,
-            session_metadata_updates: HashMap::new(),
-            context_messages: None,
         },
     ])));
-    let runner = MockSequencedRunner {
-        results: results.clone(),
-    };
+    let runner = MockStreamingSequencedRunner { runs: runs.clone() };
     let request = AgentRunnerRequest {
         session_id: "investment-contract-session".to_string(),
         actor_label: "web:investment-contract".to_string(),
@@ -654,9 +734,130 @@ async fn investment_contract_retries_incomplete_nbis_draft() {
             exchange: Some("NASDAQ".into()),
             currency: Some("USD".into()),
             asset_type: Some("stock".into()),
+            profile_verified: true,
+            verified_price: Some("199.51".into()),
         }],
-        deep_single_stock: true,
+        deep_analysis: DeepAnalysisKind::Equity,
+        deep_comparison: false,
+        requires_verified_price: true,
         needs_outlook_evidence: true,
+        comparison: false,
+        origin: AgentTurnOrigin::Interactive,
+    };
+
+    let downstream = Arc::new(RecordingRunnerEmitter::default());
+    let result = session
+        .run_runner_with_investment_contract_retry(
+            &runner,
+            "mock_streaming_sequenced",
+            "investment-contract-session",
+            request,
+            downstream.clone(),
+            Some(&contract),
+        )
+        .await;
+
+    assert!(result.response.success);
+    assert_eq!(result.response.content, complete);
+    assert!(!result.streamed_output);
+    assert!(!result.terminal_error_emitted);
+    assert!(runs.lock().expect("runs lock").is_empty());
+    let events = downstream.events.lock().await;
+    assert_eq!(events.len(), 2);
+    assert!(matches!(
+        &events[0],
+        AgentRunnerEvent::Progress {
+            stage: "agent.run",
+            ..
+        }
+    ));
+    assert!(matches!(
+        &events[1],
+        AgentRunnerEvent::ToolStatus { tool, status, .. }
+            if tool == "data_fetch" && status == "done"
+    ));
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn fund_contract_cannot_wash_forbidden_financial_call_with_clean_retry() {
+    let root = make_temp_dir("hone_channels_fund_forbidden_call_retry");
+    std::fs::create_dir_all(&root).expect("create root");
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let actor = ActorIdentity::new("web", "fund-contract", None::<String>).expect("actor");
+    let session = AgentSession::new(core, actor, "direct");
+    let complete = "数据时间：北京时间 2026-07-16。已核验事实与情景假设分开。\n1. 结论：本轮同代码现价 30.495 美元，先观察。\n2. 基金目标、基金策略与跟踪对象：跟踪国际市场暴露是核心目标。\n3. 持仓、集中度与主要暴露：持仓与集中度按本轮数据核验。\n4. 地域、行业与货币风险：地域与汇率风险需同时管理。\n5. 流动性、基金规模与交易特征：流动性与成交特征决定交易成本。\n6. 费用、跟踪误差与底层资产估值：费率与底层估值是关键变量。\n7. Bull / Bear / Base Case：Bull 看风险偏好，Bear 看汇率，Base 看基准收益。\n8. 催化剂、风险点、证伪条件：催化是宽松，风险是波动，证伪是暴露失效。\n9. 动作建议：观察；若费率、流动性与暴露均符合条件则再评估。";
+    let forbidden_call = ToolCallMade {
+        name: "data_fetch".into(),
+        arguments: serde_json::json!({"data_type":"financials","ticker":"INTL"}),
+        result: serde_json::json!({"data":[]}),
+        tool_call_id: None,
+    };
+    let results = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: complete.to_string(),
+                tool_calls_made: vec![forbidden_call],
+                iterations: 1,
+                success: true,
+                error: None,
+            },
+            streamed_output: true,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        },
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: complete.to_string(),
+                tool_calls_made: Vec::new(),
+                iterations: 1,
+                success: true,
+                error: None,
+            },
+            streamed_output: true,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        },
+    ])));
+    let runner = MockSequencedRunner {
+        results: results.clone(),
+    };
+    let request = AgentRunnerRequest {
+        session_id: "fund-contract-session".to_string(),
+        actor_label: "web:fund-contract".to_string(),
+        actor: session.actor.clone(),
+        channel_target: "direct".to_string(),
+        allow_cron: false,
+        config_path: String::new(),
+        runtime_dir: String::new(),
+        system_prompt: "system".to_string(),
+        runtime_input: "现在 INTL 怎么看".to_string(),
+        context: AgentContext::new("fund-contract-session".to_string()),
+        timeout: None,
+        gemini_stream: GeminiStreamOptions::default(),
+        session_metadata: HashMap::new(),
+        working_directory: root.display().to_string(),
+        allowed_tools: None,
+        max_tool_calls: None,
+        tool_call_limits: None,
+    };
+    let contract = InvestmentResponseContract {
+        entities: vec![ResolvedSecurityEntity {
+            mention: "intl".into(),
+            symbol: "INTL".into(),
+            name: "Main International ETF".into(),
+            exchange: Some("CBOE".into()),
+            currency: Some("USD".into()),
+            asset_type: Some("etf_or_fund".into()),
+            profile_verified: true,
+            verified_price: Some("30.495".into()),
+        }],
+        deep_analysis: DeepAnalysisKind::Fund,
+        deep_comparison: false,
+        requires_verified_price: true,
+        needs_outlook_evidence: false,
         comparison: false,
         origin: AgentTurnOrigin::Interactive,
     };
@@ -665,7 +866,90 @@ async fn investment_contract_retries_incomplete_nbis_draft() {
         .run_runner_with_investment_contract_retry(
             &runner,
             "mock_sequenced",
-            "investment-contract-session",
+            "fund-contract-session",
+            request,
+            Arc::new(NoopEmitter),
+            Some(&contract),
+        )
+        .await;
+
+    assert!(!result.response.success);
+    assert_eq!(result.response.content, contract_failure_message());
+    assert!(results.lock().expect("results lock").is_empty());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn investment_contract_validates_the_same_visible_text_emitted_to_users() {
+    let root = make_temp_dir("hone_channels_investment_contract_visible_text");
+    std::fs::create_dir_all(&root).expect("create root");
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let actor = ActorIdentity::new("web", "visible-contract", None::<String>).expect("actor");
+    let session = AgentSession::new(core, actor, "direct");
+    let visible = "数据时间：北京时间 2026-07-16。已核验事实与情景假设分开。\n1. 结论：本轮同代码现价 30.495 美元，先观察。\n2. 基金目标、基金策略与跟踪对象：跟踪国际市场暴露是核心目标。\n3. 持仓、集中度与主要暴露：持仓与集中度按本轮数据核验。\n4. 地域、行业与货币风险：地域与汇率风险需同时管理。\n5. 流动性、基金规模与交易特征：流动性与成交特征决定交易成本。\n6. 费用、跟踪误差与底层资产估值：费率与底层估值是关键变量。\n7. Bull / Bear / Base Case：Bull 看风险偏好，Bear 看汇率，Base 看基准收益。\n8. 催化剂、风险点、证伪条件：催化是宽松，风险是波动，证伪是暴露失效。\n9. 动作建议：观察；若费率、流动性与暴露均符合条件则再评估。";
+    let raw =
+        format!("<think>\n1. 先规划输出\n2. 这里是内部推理，不是基金目标章节\n</think>\n{visible}");
+    let results = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: raw.clone(),
+                tool_calls_made: Vec::new(),
+                iterations: 1,
+                success: true,
+                error: None,
+            },
+            streamed_output: true,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        },
+    ])));
+    let runner = MockSequencedRunner {
+        results: results.clone(),
+    };
+    let request = AgentRunnerRequest {
+        session_id: "visible-contract-session".to_string(),
+        actor_label: "web:visible-contract".to_string(),
+        actor: session.actor.clone(),
+        channel_target: "direct".to_string(),
+        allow_cron: false,
+        config_path: String::new(),
+        runtime_dir: String::new(),
+        system_prompt: "system".to_string(),
+        runtime_input: "现在 INTL 怎么看".to_string(),
+        context: AgentContext::new("visible-contract-session".to_string()),
+        timeout: None,
+        gemini_stream: GeminiStreamOptions::default(),
+        session_metadata: HashMap::new(),
+        working_directory: root.display().to_string(),
+        allowed_tools: None,
+        max_tool_calls: None,
+        tool_call_limits: None,
+    };
+    let contract = InvestmentResponseContract {
+        entities: vec![ResolvedSecurityEntity {
+            mention: "intl".into(),
+            symbol: "INTL".into(),
+            name: "Main International ETF".into(),
+            exchange: Some("CBOE".into()),
+            currency: Some("USD".into()),
+            asset_type: Some("etf_or_fund".into()),
+            profile_verified: true,
+            verified_price: Some("30.495".into()),
+        }],
+        deep_analysis: DeepAnalysisKind::Fund,
+        deep_comparison: false,
+        requires_verified_price: true,
+        needs_outlook_evidence: false,
+        comparison: false,
+        origin: AgentTurnOrigin::Interactive,
+    };
+
+    let result = session
+        .run_runner_with_investment_contract_retry(
+            &runner,
+            "mock_sequenced",
+            "visible-contract-session",
             request,
             Arc::new(NoopEmitter),
             Some(&contract),
@@ -673,7 +957,7 @@ async fn investment_contract_retries_incomplete_nbis_draft() {
         .await;
 
     assert!(result.response.success);
-    assert_eq!(result.response.content, complete);
+    assert_eq!(result.response.content, raw);
     assert!(results.lock().expect("results lock").is_empty());
     let _ = std::fs::remove_dir_all(root);
 }
