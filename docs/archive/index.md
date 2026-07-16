@@ -1553,3 +1553,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: `docs/runbooks/hone-cli-install-and-start.md`, `tests/regression/manual/test_codex_acp_initialize.sh`, `tests/regression/run_ci.sh`
 - Current conclusion: the in-process function-calling crate and sequential multi-agent runner are removed; Codex ACP now defaults to GPT-5.6 Sol/xhigh on Codex 0.144.1 and Agent Client Protocol adapter 1.1.2; static prompts no longer carry the full skill catalog.
 - Next entry point: `docs/handoffs/2026-07-13-gpt-5-6-codex-acp-simplification.md`
+
+### Entity-First Investment Pipeline
+
+- Status: done
+- Date: 2026-07-16
+- Plan: `docs/archive/plans/entity-first-investment-pipeline.md`
+- Handoff: `docs/handoffs/2026-07-16-entity-first-investment-pipeline.md`
+- Decision / ADR: `docs/decisions.md#d-2026-07-16-01-make-security-entity-resolution-the-first-investment-stage`
+- Related PRs / commits: this change set
+- Related runbooks / regressions: `tests/regression/ci/test_finance_automation_contracts.sh`, `tests/regression/manual/test_entity_search_live.sh`, `scripts/diagnose_fmp_tavily.sh`
+- Current conclusion: all named-security investment turns now resolve structured entities through current-turn DataFetch search and same-symbol quotes before generation; multi-security and typed scheduled/heartbeat turns share the gate, retries reuse the prepared contract, and unresolved/ambiguous entities fail closed without acronym denylists, hard-coded aliases, or first-result guessing.
+- Next entry point: `docs/handoffs/2026-07-16-entity-first-investment-pipeline.md`

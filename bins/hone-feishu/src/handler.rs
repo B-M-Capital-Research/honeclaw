@@ -1020,6 +1020,7 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
         segmenter: None,
         quota_mode: hone_channels::agent_session::AgentRunQuotaMode::UserConversation,
         model_override: None,
+        ..AgentRunOptions::default()
     };
     state.core.log_message_step(
         "feishu",

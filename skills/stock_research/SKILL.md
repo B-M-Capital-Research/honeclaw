@@ -33,6 +33,7 @@ Prefer keeping these modes inside one skill so the model does not have to choose
 
 | Tool call | Purpose |
 |---------|------|
+| `data_fetch(data_type="search", query="company name, alias, or ticker")` | Mandatory entity-resolution step before company/security analysis |
 | `data_fetch(data_type="snapshot", symbol="ticker")` | Recommended. Fetch a snapshot with price action plus company overview |
 | `data_fetch(data_type="quote", symbol="ticker")` | Fetch detailed real-time quote data such as price, change, and volume |
 | `data_fetch(data_type="profile", symbol="ticker")` | Fetch company details such as business description, industry, and CEO |
@@ -51,7 +52,7 @@ Choose the mode from the user's request before fetching data:
 
 ### Research Mode
 
-1. Resolve the ticker with a current-turn `search` call. A ticker written by the user is a hint, not permission to reuse historical numbers.
+1. Resolve every named security with a current-turn `search` call. A ticker is a hint; names, aliases, Chinese names, multiple securities, and share classes must all produce explicit resolution results. Never take the first approximate result silently.
 2. Verify the current-turn same-symbol `quote`; for deep research also fetch `profile`, `financials`, and `news`. Forward quarter/outlook questions additionally require a current earnings-calendar check.
 3. A quote-only question may stay concise. A deep single-company, quarter-outlook, “can it take off”, fundamentals, valuation, or buyability question must use these nine numbered sections in order:
    1. Conclusion

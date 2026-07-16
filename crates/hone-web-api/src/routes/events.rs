@@ -420,6 +420,7 @@ async fn run_scheduled_task(
         segmenter: None,
         quota_mode: hone_channels::agent_session::AgentRunQuotaMode::ScheduledTask,
         model_override: None,
+        ..AgentRunOptions::default()
     };
     let timeout = scheduler_execution_timeout_for(state.core.config.agent.overall_timeout());
     let result = match tokio::time::timeout(

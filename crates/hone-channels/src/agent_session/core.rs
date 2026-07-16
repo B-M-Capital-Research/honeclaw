@@ -19,9 +19,8 @@ use crate::execution::{
     ExecutionMode, ExecutionRequest, ExecutionRunnerSelection, ExecutionService, PreparedExecution,
 };
 use crate::investment_response_guard::{
-    InvestmentResponseContract, append_verified_investment_evidence,
-    classify_investment_response_contract, contract_failure_message,
-    missing_deep_single_stock_sections,
+    InvestmentResponseContract, contract_failure_message, missing_investment_response_sections,
+    prepare_verified_investment_turn,
 };
 use crate::prompt::PromptOptions;
 use crate::prompt_audit::PromptAuditMetadata;
@@ -48,6 +47,12 @@ use super::types::{
     AgentSessionEvent, AgentSessionListener, AgentSessionResult, GeminiStreamOptions,
     MessageMetadata, session_error_event, session_progress_event,
 };
+
+#[derive(Clone)]
+struct PreparedInvestmentContext {
+    contract: Option<InvestmentResponseContract>,
+    runtime_suffix: String,
+}
 
 pub struct AgentSession {
     pub(super) core: Arc<HoneBotCore>,
@@ -250,7 +255,7 @@ impl AgentSession {
         if !result.response.success {
             return result;
         }
-        let missing = missing_deep_single_stock_sections(&result.response.content);
+        let missing = missing_investment_response_sections(contract, &result.response.content);
         if missing.is_empty() {
             return result;
         }
@@ -287,7 +292,8 @@ impl AgentSession {
         if !result.response.success {
             return result;
         }
-        let retry_missing = missing_deep_single_stock_sections(&result.response.content);
+        let retry_missing =
+            missing_investment_response_sections(contract, &result.response.content);
         if retry_missing.is_empty() {
             return result;
         }
@@ -403,38 +409,64 @@ impl AgentSession {
         runtime_user_input: &str,
         options: &AgentRunOptions,
         restore_max_override: Option<usize>,
-    ) -> Result<PreparedExecution, (AgentSessionErrorKind, String)> {
+        prepared_investment: Option<&PreparedInvestmentContext>,
+    ) -> Result<(PreparedExecution, PreparedInvestmentContext), (AgentSessionErrorKind, String)>
+    {
         let context =
             self.restore_runtime_context(session_id, persisted_user_input, restore_max_override);
         let (system_prompt, mut runtime_input) =
             self.resolve_prompt_input(session_id, runtime_user_input);
-        let contract = append_verified_investment_evidence(
-            &self.core,
-            &self.actor,
-            &self.channel_target,
-            self.allow_cron,
-            runtime_user_input,
-            &mut runtime_input,
-        )
-        .await
-        .map_err(|err| (AgentSessionErrorKind::AgentFailed, err))?;
-        if let Some(contract) = contract {
+        let investment_context = if let Some(prepared) = prepared_investment {
+            runtime_input.push_str(&prepared.runtime_suffix);
+            prepared.clone()
+        } else {
+            let suffix_start = runtime_input.len();
+            let entity_resolution_input = options
+                .entity_resolution_input
+                .as_deref()
+                .unwrap_or(runtime_user_input);
+            let contract = prepare_verified_investment_turn(
+                &self.core,
+                &self.actor,
+                &self.channel_target,
+                self.allow_cron,
+                entity_resolution_input,
+                options.turn_origin,
+                &mut runtime_input,
+            )
+            .await
+            .map_err(|err| (AgentSessionErrorKind::AgentFailed, err))?;
+            PreparedInvestmentContext {
+                contract,
+                runtime_suffix: runtime_input[suffix_start..].to_string(),
+            }
+        };
+        if prepared_investment.is_none()
+            && let Some(contract) = investment_context.contract.as_ref()
+        {
             self.core.log_message_step(
                 &self.actor.channel,
                 &self.actor.user_id,
                 session_id,
                 "market_data.preflight",
                 &format!(
-                    "symbol={} deep_single_stock={} outlook={}",
-                    contract.symbol_hint,
+                    "entities={} deep_single_stock={} comparison={} outlook={} origin={:?}",
+                    contract
+                        .entities
+                        .iter()
+                        .map(|entity| entity.symbol.as_str())
+                        .collect::<Vec<_>>()
+                        .join(","),
                     contract.deep_single_stock,
-                    contract.needs_outlook_evidence
+                    contract.comparison,
+                    contract.needs_outlook_evidence,
+                    contract.origin,
                 ),
                 self.message_id.as_deref(),
                 None,
             );
         }
-        ExecutionService::new(self.core.clone())
+        let execution = ExecutionService::new(self.core.clone())
             .prepare(ExecutionRequest {
                 mode: ExecutionMode::PersistentConversation,
                 session_id: session_id.to_string(),
@@ -472,7 +504,8 @@ impl AgentSession {
                     AgentSessionErrorKind::AgentFailed
                 };
                 (kind, err)
-            })
+            })?;
+        Ok((execution, investment_context))
     }
 
     pub(super) fn persist_successful_assistant_turn(
@@ -1284,17 +1317,18 @@ impl AgentSession {
             None,
         );
 
-        let mut execution = match self
+        let (mut execution, investment_context) = match self
             .prepare_execution_for_turn(
                 &session_id,
                 persisted_user_input,
                 runtime_user_input,
                 &options,
                 None,
+                None,
             )
             .await
         {
-            Ok(execution) => execution,
+            Ok(prepared) => prepared,
             Err((kind, err)) => {
                 drop(quota_guard);
                 return self.fail_run(session_id, kind, err).await;
@@ -1327,8 +1361,6 @@ impl AgentSession {
             success: false,
             error: None,
         };
-        let investment_contract = classify_investment_response_contract(runtime_user_input)
-            .filter(|contract| contract.deep_single_stock);
         for recovery_idx in 0..=CONTEXT_OVERFLOW_RECOVERY_LIMIT {
             let runner_emitter =
                 self.runner_emitter(execution.runner_request.working_directory.clone());
@@ -1339,7 +1371,10 @@ impl AgentSession {
                     &session_id,
                     execution.runner_request.clone(),
                     runner_emitter.clone(),
-                    investment_contract.as_ref(),
+                    investment_context
+                        .contract
+                        .as_ref()
+                        .filter(|contract| contract.deep_single_stock || contract.comparison),
                 )
                 .await;
             streamed_output = runner_result.streamed_output;
@@ -1422,17 +1457,18 @@ impl AgentSession {
                 }
             }
 
-            execution = match self
+            let recovered = match self
                 .prepare_execution_for_turn(
                     &session_id,
                     persisted_user_input,
                     runtime_user_input,
                     &options,
                     Some(CONTEXT_OVERFLOW_POST_COMPACT_RESTORE_LIMIT),
+                    Some(&investment_context),
                 )
                 .await
             {
-                Ok(execution) => execution,
+                Ok(prepared) => prepared,
                 Err((_kind, err)) => {
                     tracing::error!(
                         session_id = %session_id,
@@ -1447,6 +1483,7 @@ impl AgentSession {
                     break;
                 }
             };
+            execution = recovered.0;
         }
 
         if !response.success

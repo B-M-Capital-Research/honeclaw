@@ -29,7 +29,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use crate::HoneBotCore;
-use crate::investment_response_guard::classify_investment_response_contract;
+use crate::investment_response_guard::{InvestmentResponseContract, ResolvedSecurityEntity};
 use crate::response_finalizer::{
     EMPTY_SUCCESS_FALLBACK_MESSAGE, finalize_agent_response, normalize_local_image_references,
     response_leaks_system_prompt,
@@ -53,7 +53,7 @@ use super::helpers::{
 use super::restore::restore_context;
 use super::types::{
     AgentRunOptions, AgentRunQuotaMode, AgentSessionErrorKind, AgentSessionEvent,
-    AgentSessionListener, GeminiStreamOptions,
+    AgentSessionListener, AgentTurnOrigin, GeminiStreamOptions,
 };
 
 fn make_temp_dir(prefix: &str) -> std::path::PathBuf {
@@ -646,7 +646,20 @@ async fn investment_contract_retries_incomplete_nbis_draft() {
         max_tool_calls: None,
         tool_call_limits: None,
     };
-    let contract = classify_investment_response_contract(&request.runtime_input).expect("contract");
+    let contract = InvestmentResponseContract {
+        entities: vec![ResolvedSecurityEntity {
+            mention: "nbis".into(),
+            symbol: "NBIS".into(),
+            name: "Nebius Group N.V.".into(),
+            exchange: Some("NASDAQ".into()),
+            currency: Some("USD".into()),
+            asset_type: Some("stock".into()),
+        }],
+        deep_single_stock: true,
+        needs_outlook_evidence: true,
+        comparison: false,
+        origin: AgentTurnOrigin::Interactive,
+    };
 
     let result = session
         .run_runner_with_investment_contract_retry(

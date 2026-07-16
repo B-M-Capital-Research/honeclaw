@@ -10,11 +10,13 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::agent_session::{
-    AgentRunOptions, AgentRunQuotaMode, AgentSessionResult, GeminiStreamOptions, MessageMetadata,
+    AgentRunOptions, AgentRunQuotaMode, AgentSessionResult, AgentTurnOrigin, GeminiStreamOptions,
+    MessageMetadata,
 };
 use crate::execution::{
     ExecutionMode, ExecutionRequest, ExecutionRunnerSelection, ExecutionService,
 };
+use crate::investment_response_guard::prepare_verified_investment_turn;
 use crate::prompt::{PromptOptions, build_prompt_bundle};
 use crate::response_finalizer::EMPTY_SUCCESS_FALLBACK_MESSAGE;
 use crate::runners::{AgentRunnerEmitter, AgentRunnerEvent};
@@ -3283,6 +3285,12 @@ pub async fn run_scheduled_task(
 ) -> AgentSessionResult {
     let full_prompt = build_scheduled_prompt_with_recovered_local_context(&core, event);
     run_options.quota_mode = AgentRunQuotaMode::ScheduledTask;
+    run_options.turn_origin = if event.heartbeat {
+        AgentTurnOrigin::Heartbeat
+    } else {
+        AgentTurnOrigin::Scheduled
+    };
+    run_options.entity_resolution_input = Some(event.task_prompt.clone());
     let mut session = AgentSession::new(core, event.actor.clone(), event.channel_target.clone())
         .with_prompt_options(prompt_options);
     if event.channel == "web" {
@@ -3639,6 +3647,17 @@ async fn run_heartbeat_task(
         bundle.conversation_context = None;
     }
     let timeout = run_options.timeout;
+    let mut investment_runtime_suffix = String::new();
+    prepare_verified_investment_turn(
+        &core,
+        &event.actor,
+        &event.channel_target,
+        false,
+        &event.task_prompt,
+        AgentTurnOrigin::Heartbeat,
+        &mut investment_runtime_suffix,
+    )
+    .await?;
     let mut profile = HeartbeatExecutionProfile::Primary;
     loop {
         let prompt = match profile {
@@ -3649,6 +3668,8 @@ async fn run_heartbeat_task(
                 build_heartbeat_recovery_prompt(event, reason)
             }
         };
+        let mut runtime_input = bundle.compose_user_input(&prompt);
+        runtime_input.push_str(&investment_runtime_suffix);
         let execution = ExecutionService::new(core.clone()).prepare(ExecutionRequest {
             mode: ExecutionMode::TransientTask,
             session_id: transient_session_id.clone(),
@@ -3656,7 +3677,7 @@ async fn run_heartbeat_task(
             channel_target: event.channel_target.clone(),
             allow_cron: false,
             system_prompt: bundle.system_prompt(),
-            runtime_input: bundle.compose_user_input(&prompt),
+            runtime_input,
             context: hone_core::agent::AgentContext::new(transient_session_id.clone()),
             timeout,
             gemini_stream: timeout
@@ -5404,8 +5425,7 @@ mod tests {
 
     #[test]
     fn heartbeat_duplicate_preview_match_ignores_unable_to_establish_management_baseline() {
-        let message =
-            "【中际旭创关键事件心跳提醒】出现新的订单与行业催化，检查时间 12:30。";
+        let message = "【中际旭创关键事件心跳提醒】出现新的订单与行业催化，检查时间 12:30。";
         let previews = vec![(
             "2026-07-12T11:00:00+08:00".to_string(),
             "当前系统无法建立“每30分钟自动循环”的自动监控任务。".to_string(),

@@ -36,6 +36,7 @@ pub(crate) async fn handle_scheduler_events(
                 segmenter: None,
                 quota_mode: hone_channels::agent_session::AgentRunQuotaMode::ScheduledTask,
                 model_override: None,
+                ..AgentRunOptions::default()
             };
             let result = channel_scheduler::execute_scheduler_event(
                 core_clone.clone(),

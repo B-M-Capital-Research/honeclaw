@@ -46,9 +46,12 @@ SCHEDULED_TASK="skills/scheduled_task/SKILL.md"
 GOLD_ANALYSIS="skills/gold-analysis/SKILL.md"
 INVESTMENT_GUARD="crates/hone-channels/src/investment_response_guard.rs"
 EXECUTION="crates/hone-channels/src/execution.rs"
+AGENT_TYPES="crates/hone-channels/src/agent_session/types.rs"
+AGENT_CORE="crates/hone-channels/src/agent_session/core.rs"
+SCHEDULER="crates/hone-channels/src/scheduler.rs"
 SOUL="soul.md"
 
-echo "[finance-automation-contracts] fixed sample count: 12"
+echo "[finance-automation-contracts] fixed sample count: 16"
 
 if contains '"snapshot".into()' "$DATA_FETCH" && contains 'data_fetch(data_type="snapshot"' "$STOCK_RESEARCH"; then
   record success "1.stock_research->snapshot" "tool enum and skill contract are aligned"
@@ -104,10 +107,34 @@ else
   record fail "9.runtime-finance-prompt" "global finance prompt injection is missing"
 fi
 
-if contains '我想了解Q3的时候nbis能不能起飞' "$INVESTMENT_GUARD" && contains 'missing_deep_single_stock_sections' "$INVESTMENT_GUARD"; then
-  record success "10.deep-stock-response-contract" "NBIS-style outlook questions are classified and validated in code"
+if contains '我想了解Q3的时候NBIS能不能起飞' "$INVESTMENT_GUARD" && contains 'missing_deep_single_stock_sections' "$INVESTMENT_GUARD"; then
+  record success "10.deep-stock-response-contract" "NBIS-style outlook questions are intent-classified after entity resolution and validated in code"
 else
   record fail "10.deep-stock-response-contract" "deep single-stock format enforcement is missing"
+fi
+
+if contains 'name: "query".to_string()' "$DATA_FETCH" && contains '必须先用 search' "$DATA_FETCH" && contains '实体优先固定流程' "$PROMPT_FILE"; then
+  record success "13.entity-search-contract" "DataFetch and runtime prompt expose entity search as the first stage"
+else
+  record fail "13.entity-search-contract" "entity search is not a first-class DataFetch/runtime contract"
+fi
+
+if contains 'extract_security_hint' "$INVESTMENT_GUARD" || contains 'fallback_symbol_mentions' "$INVESTMENT_GUARD" || contains '"REPEAT",' "$INVESTMENT_GUARD" || contains 'return Some("NBIS".to_string())' "$INVESTMENT_GUARD"; then
+  record fail "14.no-ticker-guess-denylist" "legacy ticker guessing, metadata denylist, or hard-coded alias remains"
+else
+  record success "14.no-ticker-guess-denylist" "legacy ticker guessing, denylist, and hard-coded alias are removed"
+fi
+
+if contains 'comparison: bool' "$INVESTMENT_GUARD" && contains '多证券比较门禁' "$INVESTMENT_GUARD" && contains 'missing_investment_response_sections' "$AGENT_CORE"; then
+  record success "15.multi-entity-contract" "multi-security turns retain entity and final response contracts"
+else
+  record fail "15.multi-entity-contract" "multi-security enforcement is incomplete"
+fi
+
+if contains 'pub enum AgentTurnOrigin' "$AGENT_TYPES" && contains 'entity_resolution_input = Some(event.task_prompt.clone())' "$SCHEDULER" && contains 'AgentTurnOrigin::Heartbeat' "$SCHEDULER"; then
+  record success "16.typed-scheduler-origin" "scheduler metadata is separated from entity-resolution input"
+else
+  record fail "16.typed-scheduler-origin" "scheduler provenance still depends on prompt text"
 fi
 
 if contains 'quote_has_positive_matching_price' "$INVESTMENT_GUARD" && contains 'financials' "$INVESTMENT_GUARD" && contains 'earnings_calendar' "$INVESTMENT_GUARD"; then
@@ -125,12 +152,12 @@ fi
 echo
 echo "summary: success=$success review=$review fail=$fail total=$((success + review + fail))"
 
-if [ "$success" -lt 3 ]; then
-  echo "[ERROR] Round 1 acceptance failed: expected at least 3 successes"
+if [ "$success" -lt 15 ]; then
+  echo "[ERROR] acceptance failed: expected at least 15 successes"
   exit 1
 fi
 
-if [ "$fail" -gt 5 ]; then
-  echo "[ERROR] Round 1 acceptance failed: expected at most 5 failures"
+if [ "$fail" -gt 0 ]; then
+  echo "[ERROR] acceptance failed: expected no failures"
   exit 1
 fi

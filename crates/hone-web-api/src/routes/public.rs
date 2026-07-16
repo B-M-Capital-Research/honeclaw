@@ -1201,6 +1201,7 @@ async fn run_public_api_chat_once(
         segmenter: None,
         quota_mode: AgentRunQuotaMode::UserConversation,
         model_override: None,
+        ..AgentRunOptions::default()
     };
     let result = session.run(&message, run_options).await;
     if result.response.success {
@@ -1272,6 +1273,7 @@ fn build_openai_chat_sse(
             segmenter: None,
             quota_mode: AgentRunQuotaMode::UserConversation,
             model_override: None,
+            ..AgentRunOptions::default()
         };
         let result = session.run(&message, run_options).await;
         let finish = if result.response.success {

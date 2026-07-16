@@ -26,14 +26,14 @@ tools:
 
 用户常给缩写/中文名/口误,验证是硬性要求:
 
-1. 不确定时先调 `data_fetch(data_type="search", symbol="...")`
+1. 每次写入前先调 `data_fetch(data_type="search", query="...")`；即使用户给了 ticker，也把它当作当前轮实体线索而不是免检凭据
 2. 从搜索结果拿 `symbol` 和 `name`
 3. 用确认后的 ticker 执行 `add` / `watch` / `remove` / `unwatch`
 
 示例:
 - 用户说"tem" → 搜 `TEM` → 得到 Tempus AI → 再写入
 - 用户说"英伟达" → 搜 `nvidia` → 得到 NVDA
-- 用户说"特斯拉" → TSLA 众所周知,可直接用
+- 用户说"特斯拉" → 搜 `Tesla` → 确认 Tesla, Inc. / TSLA 后再写入
 
 ### Tool 调用速查
 

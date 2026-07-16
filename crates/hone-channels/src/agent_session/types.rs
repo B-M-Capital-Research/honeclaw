@@ -71,6 +71,8 @@ pub struct AgentRunOptions {
     pub segmenter: Option<Arc<dyn Fn(&str) -> Vec<String> + Send + Sync>>,
     pub quota_mode: AgentRunQuotaMode,
     pub model_override: Option<String>,
+    pub turn_origin: AgentTurnOrigin,
+    pub entity_resolution_input: Option<String>,
 }
 
 impl Default for AgentRunOptions {
@@ -80,8 +82,18 @@ impl Default for AgentRunOptions {
             segmenter: None,
             quota_mode: AgentRunQuotaMode::UserConversation,
             model_override: None,
+            turn_origin: AgentTurnOrigin::Interactive,
+            entity_resolution_input: None,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum AgentTurnOrigin {
+    #[default]
+    Interactive,
+    Scheduled,
+    Heartbeat,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

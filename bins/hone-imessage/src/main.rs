@@ -712,6 +712,7 @@ async fn process_message_session(
         segmenter: None,
         quota_mode: hone_channels::agent_session::AgentRunQuotaMode::UserConversation,
         model_override: None,
+        ..AgentRunOptions::default()
     };
     let result = session.run(&envelope.text, run_options).await;
     let response = result.response;

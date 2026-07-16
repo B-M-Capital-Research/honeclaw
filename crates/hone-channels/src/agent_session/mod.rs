@@ -34,6 +34,6 @@ pub use self::progress::{progress_watchdog_tick, run_with_progress_ticks};
 pub use self::restore::restore_context;
 pub use self::types::{
     AgentRunOptions, AgentRunQuotaMode, AgentSessionError, AgentSessionErrorKind,
-    AgentSessionEvent, AgentSessionListener, AgentSessionResult, GeminiStreamOptions,
-    MessageMetadata,
+    AgentSessionEvent, AgentSessionListener, AgentSessionResult, AgentTurnOrigin,
+    GeminiStreamOptions, MessageMetadata,
 };

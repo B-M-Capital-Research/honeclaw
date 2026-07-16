@@ -3103,6 +3103,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
+ "url",
  "walkdir",
 ]
 

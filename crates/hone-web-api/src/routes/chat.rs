@@ -197,6 +197,7 @@ pub(crate) fn build_chat_sse(
             segmenter: None,
             quota_mode: AgentRunQuotaMode::UserConversation,
             model_override: None,
+            ..AgentRunOptions::default()
         };
         let result = session.run(&msg, run_options).await;
         if !result.response.success {

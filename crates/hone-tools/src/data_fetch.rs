@@ -121,10 +121,14 @@ impl DataFetchTool {
                 ticker
             )),
             "profile" => Ok(format!("{}/v3/profile/{}", self.base_url, ticker)),
-            "search" => Ok(format!(
-                "{}/v3/search?query={}&limit=10",
-                self.base_url, ticker
-            )),
+            "search" => {
+                let query =
+                    url::form_urlencoded::byte_serialize(ticker.as_bytes()).collect::<String>();
+                Ok(format!(
+                    "{}/v3/search?query={}&limit=10",
+                    self.base_url, query
+                ))
+            }
             "financials" => Ok(format!(
                 "{}/v3/income-statement/{}?limit=4",
                 self.base_url, ticker
@@ -520,7 +524,7 @@ impl Tool for DataFetchTool {
     }
 
     fn description(&self) -> &str {
-        "获取金融数据（股票/ETF/加密货币的行情、基本面、新闻等）。支持的数据类型：quote（实时行情）、quote_short（低带宽简版批量行情）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、financials（财务数据）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历，默认查询当前北京时间起未来 14 天，也支持 from/to 覆盖窗口）。"
+        "获取金融数据（股票/ETF/加密货币的实体、行情、基本面和新闻等）。公司或证券分析必须先用 search 按公司名、别名或代码解析标准实体，再用返回的 symbol 查询其它数据。支持的数据类型：search（实体搜索，返回 symbol/name/exchange/currency 候选）、quote（实时行情）、quote_short（低带宽简版批量行情）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、financials（财务数据）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历）。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -547,9 +551,19 @@ impl Tool for DataFetchTool {
                 items: None,
             },
             ToolParameter {
+                name: "query".to_string(),
+                param_type: "string".to_string(),
+                description:
+                    "仅 search 使用的公司名、别名或证券代码查询词（如 NVIDIA、英伟达、NVDA）"
+                        .to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
                 name: "ticker".to_string(),
                 param_type: "string".to_string(),
-                description: "股票/ETF/加密货币代码（如 AAPL, BTCUSD）".to_string(),
+                description: "已确认的股票/ETF/加密货币代码；search 优先使用 query".to_string(),
                 required: false,
                 r#enum: None,
                 items: None,
@@ -591,7 +605,12 @@ impl Tool for DataFetchTool {
             .and_then(|v| v.as_str())
             .unwrap_or("quote");
         let ticker = args
-            .get("ticker")
+            .get(if data_type == "search" {
+                "query"
+            } else {
+                "ticker"
+            })
+            .or_else(|| args.get("ticker"))
             .or_else(|| args.get("symbol"))
             .and_then(|v| v.as_str())
             .unwrap_or("");
@@ -680,6 +699,14 @@ mod tests {
             "https://example.com/api/v3/income-statement/AAPL?limit=4&apikey=test_key"
         );
 
+        let search_url = tool
+            .build_url("search", "Nebius Group / 英伟达")
+            .expect("search url");
+        assert_eq!(
+            search_url,
+            "https://example.com/api/v3/search?query=Nebius+Group+%2F+%E8%8B%B1%E4%BC%9F%E8%BE%BE&limit=10"
+        );
+
         let url3 = tool
             .build_url("quote_short", "AAPL,MSFT")
             .expect("quote_short url");
@@ -763,6 +790,13 @@ mod tests {
         let enum_values = data_type.r#enum.as_ref().expect("enum values");
         assert!(enum_values.iter().any(|value| value == "snapshot"));
         assert!(enum_values.iter().any(|value| value == "quote_short"));
+        assert!(enum_values.iter().any(|value| value == "search"));
+        assert!(
+            tool.parameters()
+                .iter()
+                .any(|parameter| parameter.name == "query")
+        );
+        assert!(tool.description().contains("必须先用 search"));
     }
 
     #[test]

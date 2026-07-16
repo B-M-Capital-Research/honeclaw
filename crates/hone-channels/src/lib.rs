@@ -33,8 +33,8 @@ pub use self::core_traits::{
 pub use self::sandbox::{channel_download_dir, sandbox_base_dir};
 pub use agent_session::{
     AgentRunOptions, AgentSession, AgentSessionError, AgentSessionErrorKind, AgentSessionEvent,
-    AgentSessionListener, AgentSessionResult, GeminiStreamOptions, MessageMetadata,
-    restore_context,
+    AgentSessionListener, AgentSessionResult, AgentTurnOrigin, GeminiStreamOptions,
+    MessageMetadata, restore_context,
 };
 pub use bootstrap::{ChannelRuntimeBootstrap, bootstrap_channel_runtime};
 pub use ingress::{
