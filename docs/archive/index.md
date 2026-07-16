@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-07-15
+Last updated: 2026-07-16
+
+## 2026-07-16
+
+### Investment Guard Scheduler Routing Fix
+
+- Status: done
+- Date: 2026-07-16
+- Plan: `docs/archive/plans/investment-guard-scheduler-routing-fix.md`
+- Handoff: `docs/handoffs/2026-07-16-investment-guard-scheduler-routing-fix.md`
+- Decision / ADR: follow-up scope clarification to `D-2026-07-15-03` in `docs/decisions.md`
+- Related PRs / commits: this change set; follows incomplete mitigation `c776b808`
+- Related runbooks / regressions: investment guard unit tests, full channel library tests, 12 CI-safe finance contracts, `hone-cli` build, isolated live scheduled-envelope probe, and runtime/API/storage/channel health checks
+- Current conclusion: `repeat=daily/trading_day` was incorrectly parsed as ticker `REPEAT` because the direct single-stock guard scanned scheduler envelopes. Scheduler and heartbeat envelopes now bypass that interactive guard, generic report acronyms and multi-security inputs cannot masquerade as a single ticker, and search requires an exact symbol match. A live envelope containing `repeat=daily` plus “财报分析” completed successfully without any market-data preflight.
+- Next entry point: `crates/hone-channels/src/investment_response_guard.rs` and `docs/handoffs/2026-07-16-investment-guard-scheduler-routing-fix.md`
 
 ## 2026-07-15
 

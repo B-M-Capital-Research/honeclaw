@@ -117,7 +117,7 @@ Last updated: 2026-07-11
 - Prompt layering: `crates/hone-channels/src/prompt.rs`
   - `soul.md` is the complete investment reasoning and response-format contract; hard live-data, company-profile, channel, cron, privacy, and security rules are added by Rust
   - `crates/hone-core/src/config/materialize.rs` refreshes generated runtime prompt assets from canonical `soul.md`
-  - `investment_response_guard.rs` detects deep single-stock/outlook turns, performs code-level data preflight, injects the nine-section turn contract, validates the final response, and drives one reset/retry before failing closed
+  - `investment_response_guard.rs` detects direct, uniquely identified deep single-stock/outlook turns, excludes scheduler/heartbeat envelopes and multi-security/report acronym inputs, requires an exact entity match, performs code-level data preflight, injects the nine-section turn contract, validates the final response, and drives one reset/retry before failing closed
   - `turn_builder.rs` places only up to five query-relevant skill summaries in the current user turn and relies on `discover_skills` for misses; it no longer injects the full skill catalog into every static system prompt
 - Session compaction service: `crates/hone-channels/src/session_compactor.rs`
 - Prompt audit writer: `crates/hone-channels/src/prompt_audit.rs`

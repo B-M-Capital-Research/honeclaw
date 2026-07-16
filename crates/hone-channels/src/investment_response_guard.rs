@@ -44,6 +44,13 @@ pub(crate) fn contract_failure_message() -> &'static str {
 pub(crate) fn classify_investment_response_contract(
     input: &str,
 ) -> Option<InvestmentResponseContract> {
+    // Scheduler and heartbeat envelopes are system-generated multi-topic work
+    // orders, not direct single-security questions. Their metadata (for example
+    // `repeat=daily`) and report acronyms must never become ticker candidates.
+    // Scheduled execution already has its own tool and output contracts.
+    if is_scheduled_task_envelope(input) {
+        return None;
+    }
     let symbol_hint = extract_security_hint(input)?;
     let normalized = input.to_ascii_lowercase();
     let deep_single_stock = [
@@ -81,6 +88,14 @@ pub(crate) fn classify_investment_response_contract(
         deep_single_stock,
         needs_outlook_evidence,
     })
+}
+
+fn is_scheduled_task_envelope(input: &str) -> bool {
+    let trimmed = input.trim_start();
+    trimmed.starts_with("[定时任务触发]")
+        || trimmed.starts_with("【定时任务触发】")
+        || trimmed.starts_with("[心跳任务触发]")
+        || trimmed.starts_with("【心跳任务触发】")
 }
 
 pub(crate) async fn append_verified_investment_evidence(
@@ -288,9 +303,60 @@ fn require_any(
 fn extract_security_hint(input: &str) -> Option<String> {
     let regex = Regex::new(r"(?i)(?:\$)?[a-z][a-z0-9.-]{1,9}").expect("ticker regex");
     let denied = [
-        "Q1", "Q2", "Q3", "Q4", "AI", "ARR", "PE", "PS", "EV", "EBIT", "EBITDA", "EPS", "FCF",
-        "DCF", "ETF", "ROE", "ROIC", "YOY", "QOQ", "CAGR", "CASE", "BULL", "BEAR", "THE", "AND",
-        "CAN", "BUY", "SELL", "STOCK",
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4",
+        "AI",
+        "ARR",
+        "PE",
+        "PS",
+        "EV",
+        "EBIT",
+        "EBITDA",
+        "EPS",
+        "FCF",
+        "DCF",
+        "ETF",
+        "ROE",
+        "ROIC",
+        "YOY",
+        "QOQ",
+        "CAGR",
+        "GDP",
+        "CPI",
+        "PPI",
+        "PMI",
+        "FOMC",
+        "GPU",
+        "CPU",
+        "HBM",
+        "LPO",
+        "CPO",
+        "CNN",
+        "HK",
+        "US",
+        "USD",
+        "RMB",
+        "IPO",
+        "SAAS",
+        "API",
+        "REPEAT",
+        "DAILY",
+        "WEEKLY",
+        "WORKDAY",
+        "TRADING",
+        "DAY",
+        "HEARTBEAT",
+        "CASE",
+        "BULL",
+        "BEAR",
+        "THE",
+        "AND",
+        "CAN",
+        "BUY",
+        "SELL",
+        "STOCK",
     ];
     let candidates = regex
         .find_iter(input)
@@ -307,17 +373,19 @@ fn extract_security_hint(input: &str) -> Option<String> {
             {
                 return None;
             }
-            (!denied.contains(&candidate.as_str())).then_some((raw, candidate))
+            (raw.starts_with('$') || !denied.contains(&candidate.as_str()))
+                .then_some((raw, candidate))
         })
         .collect::<Vec<_>>();
-    if let Some((_, candidate)) = candidates.iter().find(|(raw, _)| raw.starts_with('$')) {
-        return Some(candidate.clone());
+    let dollar_candidates = candidates
+        .iter()
+        .filter(|(raw, _)| raw.starts_with('$'))
+        .collect::<Vec<_>>();
+    if dollar_candidates.len() == 1 {
+        return Some(dollar_candidates[0].1.clone());
     }
-    if let Some((_, candidate)) = candidates.iter().find(|(raw, candidate)| {
-        let bare = raw.trim_start_matches('$');
-        bare == bare.to_ascii_uppercase() && (2..=6).contains(&candidate.len())
-    }) {
-        return Some(candidate.clone());
+    if dollar_candidates.len() > 1 {
+        return None;
     }
     if candidates
         .iter()
@@ -325,14 +393,28 @@ fn extract_security_hint(input: &str) -> Option<String> {
     {
         return Some("NBIS".to_string());
     }
+    let uppercase_candidates = candidates
+        .iter()
+        .filter(|(raw, candidate)| {
+            let bare = raw.trim_start_matches('$');
+            bare == bare.to_ascii_uppercase() && (2..=6).contains(&candidate.len())
+        })
+        .collect::<Vec<_>>();
+    if uppercase_candidates.len() == 1 {
+        return Some(uppercase_candidates[0].1.clone());
+    }
+    if uppercase_candidates.len() > 1 {
+        return None;
+    }
     let contains_cjk = input
         .chars()
         .any(|character| ('\u{4e00}'..='\u{9fff}').contains(&character));
     contains_cjk.then_some(())?;
-    candidates
+    let lowercase_cjk_candidates = candidates
         .iter()
-        .find(|(_, candidate)| (2..=6).contains(&candidate.len()))
-        .map(|(_, candidate)| candidate.clone())
+        .filter(|(_, candidate)| (2..=6).contains(&candidate.len()))
+        .collect::<Vec<_>>();
+    (lowercase_cjk_candidates.len() == 1).then(|| lowercase_cjk_candidates[0].1.clone())
 }
 
 fn assignment_key_should_be_ignored(input: &str, start: usize, end: usize) -> bool {
@@ -419,7 +501,6 @@ fn resolve_verified_symbol(hint: &str, search: &Value) -> Option<String> {
     symbols
         .iter()
         .find(|symbol| symbol.eq_ignore_ascii_case(hint))
-        .or_else(|| symbols.first())
         .map(|symbol| symbol.to_ascii_uppercase())
 }
 
@@ -572,6 +653,52 @@ mod tests {
     }
 
     #[test]
+    fn scheduled_task_metadata_is_not_classified_as_a_security() {
+        let input = "[定时任务触发] 任务名称：美股收盘资金流复盘。\n权威触发配置：repeat=trading_day，北京时间 09:30。\n请执行以下指令：\n分析 ETF flow、Option Sweeps、13D / Form 4，并推荐个股。";
+        assert!(classify_investment_response_contract(input).is_none());
+    }
+
+    #[test]
+    fn scheduled_heartbeat_metadata_is_not_classified_as_a_security() {
+        let input = "【心跳任务触发】repeat=heartbeat。分析最新财报和 GPU 新闻。";
+        assert!(classify_investment_response_contract(input).is_none());
+    }
+
+    #[test]
+    fn finance_acronyms_are_not_treated_as_tickers() {
+        for input in [
+            "分析 EBITDA 和 FCF 的变化",
+            "CNN Fear and Greed Index 怎么看",
+            "PPI 对美股估值有什么影响",
+            "GPU 和 HBM 行业未来怎么看",
+        ] {
+            assert_eq!(
+                classify_investment_response_contract(input),
+                None,
+                "{input}"
+            );
+        }
+    }
+
+    #[test]
+    fn dollar_prefix_keeps_an_explicit_symbol_even_when_it_matches_an_acronym() {
+        let contract = classify_investment_response_contract("$CNN 股票怎么看").expect("contract");
+        assert_eq!(contract.symbol_hint, "CNN");
+    }
+
+    #[test]
+    fn multi_security_comparison_does_not_use_single_stock_guard() {
+        assert!(classify_investment_response_contract("比较 AMD 和 NVDA 的估值").is_none());
+        assert!(classify_investment_response_contract("比较 $AMD 和 $NVDA 的估值").is_none());
+    }
+
+    #[test]
+    fn nebius_company_alias_resolves_to_nbis() {
+        let contract = classify_investment_response_contract("NEBIUS未来怎么看").expect("contract");
+        assert_eq!(contract.symbol_hint, "NBIS");
+    }
+
+    #[test]
     fn repeat_assignment_is_not_treated_as_security_hint() {
         assert_eq!(
             extract_security_hint("18:00 美股盘前 X 英文帖 repeat=daily"),
@@ -624,6 +751,13 @@ mod tests {
         assert_eq!(
             resolve_verified_symbol("NBIS", &search).as_deref(),
             Some("NBIS")
+        );
+        assert!(
+            resolve_verified_symbol(
+                "REPEAT",
+                &json!({"data": [{"symbol": "REPX", "name": "Repex Corp"}]})
+            )
+            .is_none()
         );
         assert!(
             resolve_verified_symbol(
