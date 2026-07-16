@@ -22,6 +22,20 @@
 
 ## 最新进展
 
+- 本轮 2026-07-16 23:02 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-16`
+    - 19:30 CST `持仓财报与重大新闻心跳提醒` raw preview 使用 `SNDK $1615`、`AAOI $109.09` 作为行情锚。
+    - 21:30 / 22:30 CST 存储 / 持仓 heartbeat raw preview 继续使用 `SNDK $1,527.49` 或 `SNDK $1615`，并把当前时间写成 `09:40`。
+    - 23:00 CST `Monitor_Watchlist_11` raw preview 使用 `MU $866.11` 对比 `MU <= $252.00` 判断未触发。
+    - 23:00 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` raw preview 使用 `AAOI $102.62`、`RKLB $68.83`、`MRVL $192.73` 等行情锚进入触发判断。
+  - `data/sessions.sqlite3`
+    - 22:57 CST Web direct `KORU 走势判断，要不要割肉去调仓换成LITE` 输出 `LITE 现价：713.64 美元`。
+    - 22:59 CST Web direct `COHR割肉换成MU呢？` 输出 `MU 现价：862.19 美元`。
+    - 两条 direct 都正常收口，但使用高风险数量级行情锚给出调仓建议，扩大了该质量缺陷从 heartbeat preview 到 direct 投研建议的影响面。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check 缺口：异常或高风险数量级价格进入 heartbeat 判断上下文和 direct 金融答复。
+    - 本窗没有错投、投递失败、空回复、数据破坏或全渠道不可用；因此仍按质量性 `P3 / New`。该问题不影响主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-16 19:02 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-16`
     - 16:30 / 18:00 / 18:31 CST `存储板块关键事件心跳提醒` raw / deliver preview 继续使用 `SNDK` 新闻流和历史行情锚，但时间口径停在 `09:40`，并与同窗异常行情源混杂。

@@ -23,6 +23,14 @@ New
 ## 证据来源
 
 - `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-16`
+  - 巡检时间窗：2026-07-16 19:02-23:02 CST。
+  - `data/sessions.sqlite3` 同窗新增 29 条 user / 29 条 assistant，覆盖 12 个近期 session，全部以 assistant 收口；没有 user-only 悬挂、错投、敏感信息泄露或全渠道不可用证据。
+  - 21:00 CST Web scheduler session `Actor_web__direct__web-user-afc1cabadbf8` 的 `盘前美股要闻与SNDK/MU存储产业链日报` 先写入“我暂时无法确认你提到的 原文 对应哪家上市公司或证券”，随后写入 `定时任务「盘前美股要闻与SNDK/MU存储产业链日报」执行出错，请稍后重试。`
+  - 21:44 CST Web direct session `Actor_web__direct__web-user-31e5cde131ea` 对 `ARM 到底怎么看，股价持续回落，可以加吗` 只返回 `这次回答未通过投研完整性检查，已停止发送不完整或未经充分核验的结论。请稍后重试。`
+  - 23:00-23:01 CST runtime 继续出现多条 heartbeat `runner_error`，包括原油、Samsung/SNDK、SIVE、光迅科技与美股黄金坑等任务因实体 / 核验门禁失败跳过发送。
+  - 同窗 22:57 / 22:59 CST Web direct 仍能输出 KORU / LITE、COHR / MU 调仓分析，21:45 CST Feishu scheduler 也能输出 QQQ / SPY 风控简报，说明该缺陷不是直聊或 scheduler 全链路不可用。
+  - 判断：该样本仍属于同根投研完整性 / evidence 门禁 fail-closed 后用户只看到通用失败提示或 scheduler 失败提示；由于同窗 direct / scheduler 可成功收口，未见错投、数据破坏、敏感信息泄露或全渠道不可用，维持功能性 `P2 / New`，不升级为 P1，不创建 GitHub Issue。
+- `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-16`
   - 巡检时间窗：2026-07-16 15:03-19:02 CST。
   - `data/sessions.sqlite3` 同窗新增 6 条 user / 6 条 assistant，覆盖 5 个 session，全部以 assistant 收口；没有 user-only 悬挂、错投、敏感信息泄露或全渠道不可用证据。
   - 18:24 CST Web direct session `Actor_web__direct__intl_5fasset_5fregression_5f1784197328` 回答“现在intl怎么看”时，只写入 `这次回答未通过投研完整性检查，已停止发送不完整或未经充分核验的结论。请稍后重试。`，`metadata_json` 标记 `run_failed=true` / `AgentFailed`。

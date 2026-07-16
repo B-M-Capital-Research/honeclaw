@@ -8,6 +8,15 @@
 
 ## 最新进展
 
+- 本轮 `2026-07-16 19:02-23:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-16`
+    - 19:32 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` deliver preview 把真实 19:32 CST 写成 `北京时间约 06:00`。
+    - 20:00 CST `FOTO 光子学ETF心跳检测` / `AAOI 1.6T 光模块心跳检测` deliver preview 把真实 20:00 CST 写成 `2026年7月16日 11:30 北京时间`。
+    - 20:00 CST `NBIS关键事件心跳提醒` deliver preview 写 `北京时间约 12:30`；22:30 / 23:01 CST 同 job 又把真实 22:30-23:01 CST 写成 `2026年7月17日` / `00:30`。
+    - 19:30-22:30 CST 多条存储 / 持仓 heartbeat raw preview 继续把当前时间写成 `09:40`；23:00 CST `中际旭创关键事件心跳提醒` 实际输出 SNDK / 闪迪内容，`heartbeat_绿田机械基本面跟踪` 实际输出 SH ETF 分析，说明任务主体和时间上下文同时漂移。
+  - 会话质量对照：同窗 `data/sessions.sqlite3` 新增 29 条 user / 29 条 assistant，全部以 assistant 收口；未见同类时间口径错误进入普通 direct assistant final。
+  - 判断：这些样本仍是 heartbeat 运行态时间上下文 / 任务上下文漂移，主要影响触发判断质量与用户可见时间口径可信度；没有错投、全渠道不可用或敏感信息泄露，维持质量性 `P3 / New`，非 P1。
+
 - 本轮 `2026-07-16 15:03-19:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-16`
     - 16:30 / 18:00 / 18:31 CST `存储板块关键事件心跳提醒` 多次把检查时间写成 `2026-07-16 北京时间约 09:40`，早于真实日志时间 6.5 到 8.5 小时。

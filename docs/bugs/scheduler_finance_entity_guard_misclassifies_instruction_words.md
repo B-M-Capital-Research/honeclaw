@@ -1,10 +1,24 @@
-# Bug: Scheduler finance entity guard misclassifies instruction words as securities
+# Bug: Scheduler finance entity guard misclassifies instruction words or explicit tickers as securities
 
 - **发现时间**: 2026-07-15 19:02 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
 - **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
+
+## 复发记录（2026-07-16 23:02 CST）
+
+- 运行态在最近两次投研链路修复后继续复发，状态维持 `New`：
+  - 本轮巡检窗口为 `2026-07-16 19:02-23:02 CST`。
+  - `data/sessions.sqlite3` 同窗新增 29 条 user / 29 条 assistant，全部以 assistant 收口；未见长期 user-only 悬挂、错投、空回复、内部路径 / raw tool / `<think>` 外泄或全渠道不可用。
+  - 最近非文档提交 `335c4b73 fix: harden investment chat execution and recovery` 发生在 21:23 CST，`4aa21b29 fix(agent): preserve explicit tickers across extraction` 发生在 21:33 CST。
+  - 但提交后仍有 direct / scheduler 样本被同类实体识别 / 投研完整性 guard 拦截：
+    - 21:41 / 21:44 CST，`session_id=Actor_web__direct__web-user-31e5cde131ea`，用户分别询问 `MRVL（迈威尔科技）` 与 `ARM`，assistant 仍返回“我暂时无法确认你提到的 MRVL（迈威尔科技）对应哪家上市公司或证券”或“这次回答未通过投研完整性检查”。
+    - 23:00 CST，`session_id=Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773`，Feishu scheduler `核心观察股池晚间快报` 的任务正文显式列出核心股 `MSFT、NVDA、GOOGL、AAPL、AVGO、AMZN、META`，assistant 却返回“我暂时无法确认你提到的 AMZN 对应哪家上市公司或证券”。
+    - 21:00 CST，`session_id=Actor_web__direct__web-user-afc1cabadbf8`，Web scheduler `盘前美股要闻与SNDK/MU存储产业链日报` 先返回“我暂时无法确认你提到的 原文 对应哪家上市公司或证券”，随后写入 `定时任务执行出错`。
+  - `data/runtime/logs/web.log.2026-07-16` 同窗还有 125 条实体 / 投研完整性失败信号，23:00-23:01 CST 代表 heartbeat runner_error 包括 `全天原油价格3小时播报` 无法确认具体证券、`闪迪关键事件心跳提醒` 被 Samsung 多候选阻断、`SIVE POET/Nokia/1.6T DFB 心跳检测` 无法确认 SIVE、`光迅科技关键事件心跳提醒` / `美股黄金坑信号心跳检测` 无法确认“原文”。
+- 判断：这次不只是 `REPEAT` / `EBITDA` 配置词误抽，显式 ticker 和常见上市公司名称也会被 guard / resolver 拦截，仍属于同一条实体优先 / 投研完整性 guard 过宽或上下文输入不干净链路，因此更新原文档，不新建重复缺陷。
+- 严重等级维持 `P2`：问题直接阻断投研 direct / scheduler 正文生成，但同窗仍有多个 direct 金融问题成功收口，未见错投、数据破坏、敏感信息泄露或全渠道停摆，因此不是 `P1`，不创建 GitHub Issue。
 
 ## 复发记录（2026-07-16 15:03 / 19:02 CST）
 

@@ -22,6 +22,12 @@ New
 
 ## 最新进展
 
+- 2026-07-16 23:02 CST 运行态继续复发，状态维持 `New`：
+  - 19:02-23:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 29 条 user / 29 条 assistant，最近会话均以 assistant 收口。
+  - assistant final 污染扫描未命中空回复、`<think>`、`reasoning_content`、本机路径、provider 原始错误、panic、quota、原始工具 JSON、结构化 JSON 或 `company_profiles/` 外露；仅命中 1 条 `data_fetch` 用户态工具名。
+  - 21:35 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 的 `科技核心股池 · 晚间击球区快报` 正常收口，但开头写出 `以上所有数字均来自本轮 data_fetch 已核验数据`，继续把内部行情工具名作为用户可见来源 / 执行口径。
+  - 该样本业务主体已完成 25 支观察池价格 / 击球区 / 财报日期输出并送达，没有投递失败、空回复、错投、原始工具 JSON 或数据安全证据；问题仍只影响用户可见来源 / 工具口径边界和产品感，不影响主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-07-14 23:02 CST 运行态继续复发，状态维持 `New`：
   - 19:02-23:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 58 个 user turn、62 条 assistant 记录和 2 条 system compact 记录；最近会话均以 assistant 收口。
   - 21:35 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 的 `科技核心股池 · 晚间击球区快报` 正常收口，但开头写出 `美股周一收盘价（2026-07-13）已通过 data_fetch 全部校验完毕`。
