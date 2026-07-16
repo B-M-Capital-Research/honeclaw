@@ -41,6 +41,7 @@ contains() {
 DATA_FETCH="crates/hone-tools/src/data_fetch.rs"
 PROMPT_FILE="crates/hone-channels/src/prompt.rs"
 STOCK_RESEARCH="skills/stock_research/SKILL.md"
+MARKET_ANALYSIS="skills/market_analysis/SKILL.md"
 POSITION_ADVICE="skills/position_advice/SKILL.md"
 SCHEDULED_TASK="skills/scheduled_task/SKILL.md"
 GOLD_ANALYSIS="skills/gold-analysis/SKILL.md"
@@ -51,7 +52,7 @@ AGENT_CORE="crates/hone-channels/src/agent_session/core.rs"
 SCHEDULER="crates/hone-channels/src/scheduler.rs"
 SOUL="soul.md"
 
-echo "[finance-automation-contracts] fixed sample count: 17"
+echo "[finance-automation-contracts] fixed sample count: 24"
 
 if contains '"snapshot".into()' "$DATA_FETCH" && contains 'data_fetch(data_type="snapshot"' "$STOCK_RESEARCH"; then
   record success "1.stock_research->snapshot" "tool enum and skill contract are aligned"
@@ -155,11 +156,53 @@ else
   record fail "12.full-prompt-and-safe-runner" "full prompt or strict actor runner regressed"
 fi
 
+if contains '所有证券、市场和板块回答的第一条可见内容必须是服务端提供的' "$SOUL" && contains 'first visible line is the server-provided' "$STOCK_RESEARCH" && contains 'first visible line is always the server-owned' "$MARKET_ANALYSIS"; then
+  record success "18.server-owned-time-first" "canonical prompt and finance skills keep the server data-time line first"
+else
+  record fail "18.server-owned-time-first" "time-first response ownership is missing from a canonical prompt layer"
+fi
+
+if contains '证券实体识别是不可跳过的固定第一阶段' "$SOUL" && contains '用户直接输入 `NBIS`、`INTL`、`RMBS` 这类股票代码是正常用法' "$SOUL" && contains 'A plain ticker such as `NBIS`, `INTL`, or `RMBS` is normal user input' "$STOCK_RESEARCH" && contains 'require an exact-symbol result' "$STOCK_RESEARCH"; then
+  record success "19.plain-ticker-entity-first" "plain tickers enter current-turn exact entity resolution without needless clarification"
+else
+  record fail "19.plain-ticker-entity-first" "the prompt can regress into rejecting or guessing ordinary tickers"
+fi
+
+if contains '每个公司或证券问题先调用 DataFetch `search`' "$SOUL" && contains 'DataFetch 本轮同代码 quote' "$SOUL" && contains '禁止声称“没有实时行情”' "$SOUL" && contains 'never claim that real-time/current market data was not requested' "$STOCK_RESEARCH"; then
+  record success "20.current-data-capability" "DataFetch/search/quote usage and false capability denial are explicitly constrained"
+else
+  record fail "20.current-data-capability" "the prompt no longer guarantees current-turn market-data usage"
+fi
+
+if contains 'B. 单股深度分析' "$SOUL" && contains '7. Bull / Bear / Base Case' "$SOUL" && contains '9. 动作建议：买、等、减、卖、观察，并给触发条件' "$SOUL" && contains '三、估值纪律' "$SOUL" && contains '四、辩证框架' "$SOUL" && contains '六、输出纪律' "$SOUL"; then
+  record success "21.large-prompt-single-stock-template" "the pre-71a4498e single-stock, valuation, scenario, and output contracts remain complete"
+else
+  record fail "21.large-prompt-single-stock-template" "the large prompt was compacted or lost its single-stock contract again"
+fi
+
+if contains 'C.1 大盘 / 区域市场 / 跨市场分析' "$SOUL" && contains '2. 已核验行情事实：每个代表标的独立写出同代码现价、涨跌幅与报价时间口径' "$SOUL" && contains '5. 动作建议、触发条件与证伪条件' "$SOUL" && contains '### Broad / Regional Market Output Contract' "$MARKET_ANALYSIS"; then
+  record success "22.full-market-template" "broad and mixed-market answers keep their five-section current-evidence template"
+else
+  record fail "22.full-market-template" "the broad-market response template is incomplete"
+fi
+
+if contains 'C. 板块 / 技术 / 产业链分析' "$SOUL" && contains '精确核验至少三个相关代表证券' "$SOUL" && contains '6. 主要上市公司对比：每个代表证券独立写出本轮同代码现价与数据时间口径' "$SOUL" && contains '### Sector / Industry Output Contract' "$MARKET_ANALYSIS"; then
+  record success "23.full-sector-template" "sector research keeps representative discovery, exact quotes, and the nine-section template"
+else
+  record fail "23.full-sector-template" "the sector template or representative-security evidence contract is incomplete"
+fi
+
+if contains '本轮公司财务数据未核验' "$SOUL" && contains '本轮公司财务数据未核验' "$STOCK_RESEARCH" && contains '不得从记忆编造收入、利润率、现金流或估值倍数' "$SOUL" && contains 'data_fetch(data_type="quote", ticker="comma-separated exact symbols")' "$MARKET_ANALYSIS" && ! contains 'data_fetch(data_type="market")' "$MARKET_ANALYSIS"; then
+  record success "24.layered-missing-data-disclosure" "financial gaps are disclosed without fabrication or a nonexistent market endpoint"
+else
+  record fail "24.layered-missing-data-disclosure" "missing financials can still be fabricated or widened into a false market-data outage"
+fi
+
 echo
 echo "summary: success=$success review=$review fail=$fail total=$((success + review + fail))"
 
-if [ "$success" -lt 16 ]; then
-  echo "[ERROR] acceptance failed: expected at least 16 successes"
+if [ "$success" -lt 23 ]; then
+  echo "[ERROR] acceptance failed: expected at least 23 successes"
   exit 1
 fi
 

@@ -1,6 +1,6 @@
 # Invariants
 
-Last updated: 2026-05-27
+Last updated: 2026-07-17
 
 ## Source of Truth and Document Priority
 
@@ -37,6 +37,16 @@ Last updated: 2026-05-27
 - Coverage numbers are secondary to behavioral proof; do not introduce a repo-wide `90%+` hard gate or optimize for static UI line coverage
 - Default CI proof must cover Rust tests, frontend unit tests, and CI-safe regression scripts
 - High-risk logic changes must keep success-path, failure-path, and boundary-condition verification in automated tests whenever the behavior is CI-safe
+
+## Investment Response Prompt Contract
+
+- `soul.md` remains the complete investment-reasoning and answer-composition baseline restored from the pre-`71a4498e` large prompt. Refactors may move hard enforcement into runtime code, but must not silently delete its time, entity, evidence, valuation, scenario, response-template, and anti-fabrication requirements.
+- Every security, broad-market, and sector answer begins with the server-owned Beijing data-time and quote-basis line. The model must not emit a plan/preamble or a second time line before the body.
+- Every named-security turn resolves current-turn entities through DataFetch search before price or company analysis. Plain tickers are normal inputs and require exact-symbol matching; history, model memory, approximate first results, scheduler metadata, and another security cannot establish identity or current facts.
+- Broad-market turns resolve each requested scope and representative benchmark. Sector turns discover representatives from current theme evidence and exact-resolve/quote at least three related securities. Mixed scopes retain independent dates and evidence rather than overwriting one another.
+- Current prices and changes come from same-symbol DataFetch quotes with provider timestamps; dated web search supplies news, causes, policy, and current-event context. A successful quote forbids user-facing claims that current/realtime market data was not requested or is unavailable; describe it as latest available and non-tick-by-tick.
+- Deep equity, fund, crypto, broad-market, and sector answers retain their established numbered templates. Company financial-data absence is disclosed specifically as unverified for the current turn and may not be widened into a false quote outage or filled from memory.
+- `tests/regression/ci/test_finance_automation_contracts.sh` must statically prove the canonical prompt/skill markers above so a future prompt simplification cannot repeat the `71a4498e` regression unnoticed.
 - Company portraits are document-first assets: `profile.md` plus `events/*.md` is the source of truth, while any parsed metadata or API projections are derived views and must not silently diverge from the Markdown files
 - Company portrait docs must live inside the current actor sandbox under `company_profiles/`; do not reintroduce a shared/public portrait directory outside actor-scoped user space
 - Company portrait reads/imports must treat frontmatter as optional. If `profile.md` or `events/*.md` omit YAML frontmatter, readers and transfer preview/apply flows must still infer minimal metadata from the title, filename, file mtime, or bundle manifest instead of failing hard on `缺少 frontmatter`
