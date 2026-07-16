@@ -54,6 +54,7 @@ enum HeartbeatExecutionProfile {
 enum HeartbeatRecoveryReason {
     ContextOverflow,
     MaxIterationsExceeded,
+    TransportError,
 }
 
 fn heartbeat_tool_call_limits() -> HashMap<String, u32> {
@@ -97,16 +98,28 @@ fn heartbeat_recovery_reason(error: &str) -> Option<HeartbeatRecoveryReason> {
         return Some(HeartbeatRecoveryReason::ContextOverflow);
     }
     let lower = error.to_ascii_lowercase();
+    if heartbeat_retryable_transport_error(&lower) {
+        return Some(HeartbeatRecoveryReason::TransportError);
+    }
     if lower.contains("max_iterations_exceeded") {
         return Some(HeartbeatRecoveryReason::MaxIterationsExceeded);
     }
     None
 }
 
+fn heartbeat_retryable_transport_error(lower_error: &str) -> bool {
+    lower_error.contains("error sending request")
+        || lower_error.contains("connection reset")
+        || lower_error.contains("connection closed before message completed")
+        || lower_error.contains("operation timed out")
+        || lower_error.contains("tcp connect error")
+}
+
 fn heartbeat_recovery_reason_label(reason: HeartbeatRecoveryReason) -> &'static str {
     match reason {
         HeartbeatRecoveryReason::ContextOverflow => "context_overflow",
         HeartbeatRecoveryReason::MaxIterationsExceeded => "max_iterations_exceeded",
+        HeartbeatRecoveryReason::TransportError => "transport_error",
     }
 }
 const SCHEDULER_INTERNAL_FAILURE_TRANSCRIPT_MESSAGE: &str =
@@ -2593,6 +2606,9 @@ fn heartbeat_runner_failure_kind(error: &str) -> &'static str {
         return "context_window_overflow";
     }
     let lower = error.to_ascii_lowercase();
+    if heartbeat_retryable_transport_error(&lower) {
+        return "provider_transport_error";
+    }
     if lower.contains("upstream http 402")
         || lower.contains("upstream http 429")
         || lower.contains("http 402")
@@ -3254,6 +3270,9 @@ fn build_heartbeat_recovery_prompt(
         }
         HeartbeatRecoveryReason::MaxIterationsExceeded => {
             "上一轮因为工具迭代预算耗尽失败，本轮必须减少工具调用并快速收口。"
+        }
+        HeartbeatRecoveryReason::TransportError => {
+            "上一轮因为上游传输抖动失败，本轮只允许走最短核验路径并快速补做一次。"
         }
     };
     format!(
@@ -5200,6 +5219,25 @@ mod tests {
     }
 
     #[test]
+    fn heartbeat_provider_transport_error_is_classified_without_noop() {
+        let execution = heartbeat_execution_from_runner_error(
+            "LLM 错误: 所有 OpenAI-compatible API Key 均失败（共 1 个）。最后错误：LLM 错误: http error: error sending request for url (https://api.minimaxi.com/v1/chat/completions)"
+                .to_string(),
+            "MiniMax-M2.7-highspeed",
+        );
+        assert!(!execution.should_deliver);
+        assert!(execution.error.is_some());
+        assert_eq!(
+            execution.metadata["failure_kind"],
+            "provider_transport_error"
+        );
+        assert_eq!(
+            execution.metadata["heartbeat_model"],
+            "MiniMax-M2.7-highspeed"
+        );
+    }
+
+    #[test]
     fn heartbeat_context_overflow_error_is_not_classified_as_noop() {
         let execution = heartbeat_execution_from_runner_error(
             "LLM 错误: bad_request_error: invalid params, context window exceeds limit (2013)"
@@ -5255,7 +5293,7 @@ mod tests {
     }
 
     #[test]
-    fn heartbeat_recovery_reason_covers_context_and_iteration_failures() {
+    fn heartbeat_recovery_reason_covers_context_iteration_and_transport_failures() {
         assert_eq!(
             heartbeat_recovery_reason("context window exceeds limit (2013)"),
             Some(HeartbeatRecoveryReason::ContextOverflow)
@@ -5263,6 +5301,12 @@ mod tests {
         assert_eq!(
             heartbeat_recovery_reason("max_iterations_exceeded:18"),
             Some(HeartbeatRecoveryReason::MaxIterationsExceeded)
+        );
+        assert_eq!(
+            heartbeat_recovery_reason(
+                "LLM 错误: http error: error sending request for url (https://api.minimaxi.com/v1/chat/completions)"
+            ),
+            Some(HeartbeatRecoveryReason::TransportError)
         );
         assert_eq!(heartbeat_recovery_reason("timeout"), None);
         assert_eq!(
@@ -5272,6 +5316,10 @@ mod tests {
         assert_eq!(
             heartbeat_recovery_reason_label(HeartbeatRecoveryReason::MaxIterationsExceeded),
             "max_iterations_exceeded"
+        );
+        assert_eq!(
+            heartbeat_recovery_reason_label(HeartbeatRecoveryReason::TransportError),
+            "transport_error"
         );
     }
 
@@ -5326,6 +5374,34 @@ mod tests {
         assert!(prompt.contains("最多允许 2 次工具调用"));
         assert!(prompt.contains("若仍不能确认，直接返回 noop"));
         assert!(!prompt.contains("最近几轮已送达的提醒"));
+    }
+
+    #[test]
+    fn heartbeat_transport_recovery_prompt_mentions_short_retry_path() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("discord", "alice", Some("dm")).expect("actor"),
+            job_id: "job-transport".to_string(),
+            job_name: "heartbeat".to_string(),
+            task_prompt: "检查 NVDA 是否出现新的重大事件或价格阈值触发".to_string(),
+            channel: "discord".to_string(),
+            channel_scope: Some("dm".to_string()),
+            channel_target: "alice".to_string(),
+            delivery_key: "delivery-transport".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: true,
+            schedule_repeat: "heartbeat".to_string(),
+            schedule_date: None,
+            schedule_hour: 0,
+            schedule_minute: 0,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+        let prompt =
+            build_heartbeat_recovery_prompt(&event, HeartbeatRecoveryReason::TransportError);
+        assert!(prompt.contains("上游传输抖动失败"));
+        assert!(prompt.contains("最短核验路径"));
+        assert!(prompt.contains("只允许 `{\"status\":\"noop\"}`"));
     }
 
     #[test]

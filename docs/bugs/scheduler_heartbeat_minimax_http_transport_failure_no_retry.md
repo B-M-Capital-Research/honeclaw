@@ -3,9 +3,26 @@
 - **发现时间**: 2026-04-17 16:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 
 ## 修复进展（2026-04-26）
+
+- **2026-07-16 代码级修复，状态更新为 `Fixed`**：
+  - `crates/hone-channels/src/scheduler.rs`
+    - heartbeat recovery 现把 `error sending request`、`connection reset`、`connection closed before message completed`、`operation timed out`、`tcp connect error` 这类上游传输抖动识别为 `TransportError`。
+    - 在 provider 内部一次短重试之外，heartbeat 自身会再进入一次受限 `BudgetRecovery` 重试，使用更短 prompt、更紧工具预算和相同 JSON 契约，避免 MiniMax / OpenAI-compatible 短时传输抖动直接把整轮 heartbeat 落成 `execution_failed + skipped_error`。
+    - runner failure 分类新增 `failure_kind=provider_transport_error`，与既有 `provider_http_error` / `provider_quota_exhausted` 区分，便于后续巡检确认是否仍有传输层复发。
+  - 新增回归：
+    - `heartbeat_provider_transport_error_is_classified_without_noop`
+    - `heartbeat_recovery_reason_covers_context_iteration_and_transport_failures`
+    - `heartbeat_transport_recovery_prompt_mentions_short_retry_path`
+  - 验证目标：
+    - `cargo test -p hone-channels heartbeat_provider_transport_error_is_classified_without_noop --lib -- --nocapture`
+    - `cargo test -p hone-channels heartbeat_recovery_reason_covers_context_iteration_and_transport_failures --lib -- --nocapture`
+    - `cargo test -p hone-channels heartbeat_transport_recovery_prompt_mentions_short_retry_path --lib -- --nocapture`
+    - `cargo check -p hone-channels --tests`
+  - 说明：
+    - 本轮不重启 live 服务，仍按代码级 `Fixed` 记录；若部署当前代码后 heartbeat 继续成批落成 `provider_transport_error` 或同类 `error sending request`，再按新样本重新打开。
 
 - **2026-07-06 03:02 CST 继续维持 `New`**：
   - `data/sessions.sqlite3` -> `cron_job_runs`
