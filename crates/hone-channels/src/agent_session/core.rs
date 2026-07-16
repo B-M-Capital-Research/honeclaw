@@ -9,6 +9,7 @@ use hone_core::{ActorIdentity, SessionIdentity};
 use hone_memory::{
     ConversationQuotaReservation, ConversationQuotaReserveResult, session_message_from_normalized,
 };
+use regex::Regex;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -19,7 +20,8 @@ use crate::execution::{
     ExecutionMode, ExecutionRequest, ExecutionRunnerSelection, ExecutionService, PreparedExecution,
 };
 use crate::investment_response_guard::{
-    InvestmentResponseContract, contract_failure_message, enforce_server_data_time_prefix,
+    InvestmentResponseContract, contract_failure_message,
+    deterministic_investment_fallback_response, enforce_server_data_time_prefix,
     forbidden_investment_tool_calls, investment_contract_failure_message,
     investment_preflight_failure_message, missing_investment_response_sections,
     prepare_verified_investment_turn, should_emit_investment_preflight,
@@ -76,9 +78,24 @@ pub(super) fn prepared_turn_reexecution_policy(input: &str) -> PreparedTurnReexe
         .chars()
         .filter(|ch| !ch.is_whitespace())
         .collect::<String>();
-    let research_follow_up = ["怎么看", "为什么", "原因", "分析", "研究", "怎么", "如何"]
-        .iter()
-        .any(|marker| compact.contains(marker));
+    let research_follow_up = [
+        "怎么看",
+        "为什么",
+        "原因",
+        "分析",
+        "研究",
+        "怎么",
+        "如何",
+        "analyze",
+        "analysis",
+        "research",
+        "why",
+        "how",
+        "what",
+        "review",
+    ]
+    .iter()
+    .any(|marker| compact.contains(marker));
 
     let explicit_mutation_phrase = [
         "加入自选",
@@ -129,14 +146,51 @@ pub(super) fn prepared_turn_reexecution_policy(input: &str) -> PreparedTurnReexe
     ]
     .iter()
     .any(|marker| compact.contains(marker));
-    let direct_operation_request = ["帮我", "请", "给我"]
+    let english_mutation = [
+        "add", "remove", "delete", "update", "watch", "unwatch", "create", "set", "cancel", "clear",
+    ]
+    .iter()
+    .any(|marker| {
+        Regex::new(&format!(r"(?i)\b{}\b", regex::escape(marker)))
+            .expect("english persistent mutation regex")
+            .is_match(&normalized)
+    }) && [
+        "watchlist",
+        "portfolio",
+        "holding",
+        "holdings",
+        "alert",
+        "schedule",
+        "notification",
+        "do not disturb",
+    ]
+    .iter()
+    .any(|object| normalized.contains(object));
+    let mutation_then_research = [
+        "并分析",
+        "然后分析",
+        "再分析",
+        "并研究",
+        "然后研究",
+        "再研究",
+        "and analyze",
+        "then analyze",
+        "and review",
+        "then review",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    let direct_operation_request = ["帮我", "请", "给我", "please", "could you", "can you"]
         .iter()
-        .any(|marker| compact.contains(marker));
+        .any(|marker| normalized.contains(marker));
     let completed_operation_statement = ["我买了", "已经买了"]
         .iter()
         .any(|marker| compact.contains(marker));
-    let explicit_mutation = explicit_mutation_phrase
-        && (!research_follow_up || direct_operation_request || completed_operation_statement);
+    let explicit_mutation = (explicit_mutation_phrase || english_mutation)
+        && (!research_follow_up
+            || direct_operation_request
+            || completed_operation_statement
+            || mutation_then_research);
     let generalized_persistent_mutation = !research_follow_up
         && [
             "添加", "加入", "记录", "更新", "修改", "删除", "移出", "移除", "取消", "清空",
@@ -220,6 +274,38 @@ fn preserve_verified_investment_failure(
     result.response.error = Some(failure);
     result.streamed_output = false;
     result.terminal_error_emitted = false;
+}
+
+fn apply_deterministic_investment_fallback(
+    contract: &InvestmentResponseContract,
+    result: &mut AgentRunnerResult,
+) -> bool {
+    if response_has_persistent_side_effect(&result.response.tool_calls_made) {
+        return false;
+    }
+    let Some(fallback) = deterministic_investment_fallback_response(contract) else {
+        return false;
+    };
+    let sanitized = sanitize_user_visible_output(&fallback);
+    if sanitized.content.trim().is_empty()
+        || sanitized.only_internal
+        || sanitized.removed_internal
+        || !missing_investment_response_sections(contract, &sanitized.content).is_empty()
+    {
+        return false;
+    }
+
+    result.response.content = sanitized.content;
+    result.response.success = true;
+    result.response.error = None;
+    // The rejected model draft is not part of the accepted turn. Its read-only
+    // tool trace and normalized transcript must not be persisted as if they
+    // supported the deterministic answer.
+    result.response.tool_calls_made.clear();
+    result.context_messages = None;
+    result.streamed_output = false;
+    result.terminal_error_emitted = false;
+    true
 }
 
 pub struct AgentSession {
@@ -502,6 +588,30 @@ impl AgentSession {
             result.response.content = message.to_string();
             result.response.error = Some(message.to_string());
             preserve_verified_investment_failure(contract, &mut result);
+            return result;
+        }
+
+        let discarded_draft_tool_count = result.response.tool_calls_made.len();
+        if apply_deterministic_investment_fallback(contract, &mut result) {
+            tracing::warn!(
+                session_id,
+                runner = runner_name,
+                missing = %missing.join(" | "),
+                discarded_draft_tool_count,
+                "[AgentSession] investment draft rejected; using server-owned deterministic fallback"
+            );
+            self.core.log_message_step(
+                &self.actor.channel,
+                &self.actor.user_id,
+                session_id,
+                "agent.run.fallback",
+                &format!(
+                    "investment_contract deterministic missing={} discarded_draft_tool_count={discarded_draft_tool_count}",
+                    missing.join("|")
+                ),
+                self.message_id.as_deref(),
+                None,
+            );
             return result;
         }
 

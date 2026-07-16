@@ -30,8 +30,8 @@ use std::time::Duration;
 
 use crate::HoneBotCore;
 use crate::investment_response_guard::{
-    DeepAnalysisKind, InvestmentResponseContract, ResolvedSecurityEntity, contract_failure_message,
-    missing_investment_response_sections, prepare_verified_investment_turn,
+    DeepAnalysisKind, InvestmentResponseContract, ResolvedSecurityEntity,
+    prepare_verified_investment_turn,
 };
 use crate::response_finalizer::{
     EMPTY_SUCCESS_FALLBACK_MESSAGE, finalize_agent_response, normalize_local_image_references,
@@ -657,6 +657,10 @@ fn explicit_persistent_operations_are_execute_once_but_research_context_is_not()
         "取消所有定时任务",
         "把 NVDA 从持仓删除",
         "重启 Hone 服务",
+        "please add NBIS to my watchlist",
+        "remove NVDA from my portfolio",
+        "add RMBS to my watchlist and analyze it",
+        "把 NBIS 加入自选然后分析",
     ] {
         assert_eq!(
             prepared_turn_reexecution_policy(input),
@@ -670,6 +674,8 @@ fn explicit_persistent_operations_are_execute_once_but_research_context_is_not()
         "我不持有 NVDA，怎么看",
         "如何删除定时任务",
         "现在 RMBS 怎么看",
+        "analyze my watchlist",
+        "how do I add a stock to a watchlist",
     ] {
         assert_eq!(
             prepared_turn_reexecution_policy(input),
@@ -843,7 +849,7 @@ async fn execute_once_intent_suppresses_empty_success_retry_even_without_trace()
 }
 
 #[tokio::test]
-async fn post_quote_runner_failure_preserves_server_verified_investment_facts() {
+async fn post_quote_runner_failure_stays_failed_but_incomplete_success_uses_fallback() {
     let root = make_temp_dir("hone_channels_post_quote_runner_failure");
     std::fs::create_dir_all(&root).expect("create root");
     let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
@@ -898,6 +904,7 @@ async fn post_quote_runner_failure_preserves_server_verified_investment_facts() 
             verified_price: Some("199.51".into()),
             verified_change_percentage: Some("1.25".into()),
             quote_timestamp: None,
+            quote_session: None,
             annual_financials_verified: None,
             verified_annual_financial_facts: Vec::new(),
             fund_holdings_verified: None,
@@ -962,24 +969,11 @@ async fn post_quote_runner_failure_preserves_server_verified_investment_facts() 
             session_metadata_updates: HashMap::new(),
             context_messages: None,
         },
-        AgentRunnerResult {
-            response: AgentResponse {
-                content: String::new(),
-                tool_calls_made: Vec::new(),
-                iterations: 1,
-                success: false,
-                error: Some("upstream model failed while repairing the draft".to_string()),
-            },
-            streamed_output: true,
-            terminal_error_emitted: true,
-            session_metadata_updates: HashMap::new(),
-            context_messages: None,
-        },
     ])));
     let retry_runner = MockSequencedRunner {
         results: retry_results.clone(),
     };
-    let retry_failure = session
+    let fallback = session
         .run_runner_with_investment_contract_retry(
             &retry_runner,
             "mock_sequenced",
@@ -990,39 +984,37 @@ async fn post_quote_runner_failure_preserves_server_verified_investment_facts() 
             PreparedTurnReexecutionPolicy::Allowed,
         )
         .await;
-    assert!(!retry_failure.response.success);
+    assert!(fallback.response.success);
+    assert!(fallback.response.error.is_none());
+    assert!(fallback.response.content.starts_with("数据时间：北京时间 "));
     assert!(
-        retry_failure
-            .response
-            .content
-            .starts_with("数据时间：北京时间 ")
-    );
-    assert!(
-        retry_failure
+        fallback
             .response
             .content
             .contains("Nebius Group N.V.（NBIS）本轮同代码现价 199.51 USD")
     );
-    assert!(
-        retry_failure
-            .response
-            .content
-            .contains("upstream model failed while repairing the draft")
-    );
-    assert!(!retry_failure.streamed_output);
-    assert!(!retry_failure.terminal_error_emitted);
+    for section in 1..=9 {
+        assert!(
+            fallback
+                .response
+                .content
+                .contains(&format!("## {section}."))
+        );
+    }
+    assert!(!fallback.response.content.contains("Q3 也许会上涨"));
+    assert!(!fallback.streamed_output);
+    assert!(!fallback.terminal_error_emitted);
     assert!(retry_results.lock().expect("retry results lock").is_empty());
     let _ = std::fs::remove_dir_all(root);
 }
 
 #[tokio::test]
-async fn investment_contract_retries_incomplete_nbis_draft() {
+async fn investment_contract_uses_verified_fallback_for_incomplete_nbis_draft() {
     let root = make_temp_dir("hone_channels_investment_contract_retry");
     std::fs::create_dir_all(&root).expect("create root");
     let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
     let actor = ActorIdentity::new("web", "investment-contract", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
-    let complete = "数据时间：北京时间 2026-07-15。已核验事实与情景推断分开。\n1. 结论：本轮已核验同代码现价 199.51 美元，先观察。\n2. 公司是什么、靠什么赚钱：公司通过向企业客户提供云计算与 AI 基础设施服务，依靠订阅和用量收入赚钱。\n3. 护城河与竞争壁垒：护城河来自稀缺算力资源、客户切换成本和长期合同形成的粘性。\n4. 行业位置与关键对手：公司位于 AI 云基础设施产业链，并面对大型云厂商的持续竞争。\n5. 财务质量与自由现金流：年度利润表可用于判断收入和利润质量，自由现金流本轮未核验。\n6. 估值：使用 P/S 与情景法两种方法，并把收入增速和估值倍数作为假设。\n7. Bull / Bear / Base Case：Bull 看需求和订单增长，Bear 看竞争与估值压缩，Base 看业务正常执行。\n8. 催化剂、风险点、证伪条件：新订单是催化，执行降速是风险；若增长持续失速则构成证伪。\n9. 动作建议：保持观察；若增长与现金流同时改善则触发重新评估。";
     let incomplete_raw = "<think>内部推理不得带入修订请求</think>\nQ3 可能起飞。你成本多少？";
     let runs = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
         MockStreamingRun {
@@ -1055,32 +1047,6 @@ async fn investment_contract_retries_incomplete_nbis_draft() {
                 },
                 streamed_output: true,
                 terminal_error_emitted: true,
-                session_metadata_updates: HashMap::new(),
-                context_messages: None,
-            },
-        },
-        MockStreamingRun {
-            events: vec![
-                AgentRunnerEvent::ToolStatus {
-                    tool: "data_fetch".to_string(),
-                    status: "done".to_string(),
-                    message: Some("verified".to_string()),
-                    reasoning: None,
-                },
-                AgentRunnerEvent::StreamDelta {
-                    content: complete.to_string(),
-                },
-            ],
-            result: AgentRunnerResult {
-                response: AgentResponse {
-                    content: complete.to_string(),
-                    tool_calls_made: Vec::new(),
-                    iterations: 1,
-                    success: true,
-                    error: None,
-                },
-                streamed_output: true,
-                terminal_error_emitted: false,
                 session_metadata_updates: HashMap::new(),
                 context_messages: None,
             },
@@ -1122,6 +1088,7 @@ async fn investment_contract_retries_incomplete_nbis_draft() {
             verified_price: Some("199.51".into()),
             verified_change_percentage: None,
             quote_timestamp: None,
+            quote_session: None,
             annual_financials_verified: None,
             verified_annual_financial_facts: Vec::new(),
             fund_holdings_verified: None,
@@ -1137,12 +1104,6 @@ async fn investment_contract_retries_incomplete_nbis_draft() {
         comparison: false,
         origin: AgentTurnOrigin::Interactive,
     };
-    assert!(
-        missing_investment_response_sections(&contract, complete).is_empty(),
-        "complete fixture is invalid: {:?}",
-        missing_investment_response_sections(&contract, complete)
-    );
-
     let downstream = Arc::new(RecordingRunnerEmitter::default());
     let result = session
         .run_runner_with_investment_contract_retry(
@@ -1158,7 +1119,7 @@ async fn investment_contract_retries_incomplete_nbis_draft() {
 
     assert!(
         result.response.success,
-        "contract retry failed: {:?}",
+        "deterministic fallback failed: {:?}",
         result.response.error
     );
     assert!(result.response.content.starts_with("数据时间：北京时间 "));
@@ -1168,27 +1129,19 @@ async fn investment_contract_retries_incomplete_nbis_draft() {
             .content
             .contains("标的核验：Nebius Group N.V.（NBIS")
     );
-    assert!(
-        result.response.content.contains(
-            complete
-                .lines()
-                .skip(1)
-                .collect::<Vec<_>>()
-                .join("\n")
-                .as_str()
-        )
-    );
+    for section in 1..=9 {
+        assert!(result.response.content.contains(&format!("## {section}.")));
+    }
+    assert!(!result.response.content.contains("Q3 可能起飞"));
+    assert!(!result.response.content.contains("你成本多少"));
     assert!(!result.streamed_output);
     assert!(!result.terminal_error_emitted);
     assert!(runs.lock().expect("runs lock").is_empty());
     let runtime_inputs = runtime_inputs.lock().expect("runtime inputs lock");
-    assert_eq!(runtime_inputs.len(), 2);
-    assert!(runtime_inputs[1].contains("<investment_draft>"));
-    assert!(runtime_inputs[1].contains("Q3 可能起飞。你成本多少？"));
-    assert!(runtime_inputs[1].contains("禁止抛弃草稿后从零另写"));
-    assert!(!runtime_inputs[1].contains("内部推理不得带入修订请求"));
+    assert_eq!(runtime_inputs.len(), 1);
+    assert!(!runtime_inputs[0].contains("<investment_draft>"));
     let events = downstream.events.lock().await;
-    assert_eq!(events.len(), 2);
+    assert_eq!(events.len(), 1);
     assert!(matches!(
         &events[0],
         AgentRunnerEvent::Progress {
@@ -1196,16 +1149,11 @@ async fn investment_contract_retries_incomplete_nbis_draft() {
             ..
         }
     ));
-    assert!(matches!(
-        &events[1],
-        AgentRunnerEvent::ToolStatus { tool, status, .. }
-            if tool == "data_fetch" && status == "done"
-    ));
     let _ = std::fs::remove_dir_all(root);
 }
 
 #[tokio::test]
-async fn fund_contract_cannot_wash_forbidden_financial_call_with_clean_retry() {
+async fn fund_contract_discards_forbidden_financial_call_and_uses_safe_fallback() {
     let root = make_temp_dir("hone_channels_fund_forbidden_call_retry");
     std::fs::create_dir_all(&root).expect("create root");
     let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
@@ -1230,20 +1178,14 @@ async fn fund_contract_cannot_wash_forbidden_financial_call_with_clean_retry() {
             streamed_output: true,
             terminal_error_emitted: false,
             session_metadata_updates: HashMap::new(),
-            context_messages: None,
-        },
-        AgentRunnerResult {
-            response: AgentResponse {
-                content: complete.to_string(),
-                tool_calls_made: Vec::new(),
-                iterations: 1,
-                success: true,
-                error: None,
-            },
-            streamed_output: true,
-            terminal_error_emitted: false,
-            session_metadata_updates: HashMap::new(),
-            context_messages: None,
+            context_messages: Some(vec![AgentMessage {
+                role: "assistant".into(),
+                content: Some("rejected fund draft".into()),
+                tool_calls: None,
+                tool_call_id: None,
+                name: None,
+                metadata: None,
+            }]),
         },
     ])));
     let runner = MockSequencedRunner {
@@ -1280,6 +1222,7 @@ async fn fund_contract_cannot_wash_forbidden_financial_call_with_clean_retry() {
             verified_price: Some("30.495".into()),
             verified_change_percentage: None,
             quote_timestamp: None,
+            quote_session: None,
             annual_financials_verified: None,
             verified_annual_financial_facts: Vec::new(),
             fund_holdings_verified: None,
@@ -1308,14 +1251,16 @@ async fn fund_contract_cannot_wash_forbidden_financial_call_with_clean_retry() {
         )
         .await;
 
-    assert!(!result.response.success);
+    assert!(result.response.success);
+    assert!(result.response.error.is_none());
     assert!(result.response.content.starts_with("数据时间：北京时间 "));
-    assert!(
-        result
-            .response
-            .content
-            .ends_with(contract_failure_message())
-    );
+    for section in 1..=9 {
+        assert!(result.response.content.contains(&format!("## {section}.")));
+    }
+    assert!(result.response.content.contains("基金目标、策略与跟踪对象"));
+    assert!(!result.response.content.contains("公司是什么、靠什么赚钱"));
+    assert!(result.response.tool_calls_made.is_empty());
+    assert!(result.context_messages.is_none());
     assert!(results.lock().expect("results lock").is_empty());
     let _ = std::fs::remove_dir_all(root);
 }
@@ -1379,6 +1324,7 @@ async fn investment_contract_sanitizes_and_server_normalizes_the_visible_text() 
             verified_price: Some("30.495".into()),
             verified_change_percentage: None,
             quote_timestamp: None,
+            quote_session: None,
             annual_financials_verified: None,
             verified_annual_financial_facts: Vec::new(),
             fund_holdings_verified: None,

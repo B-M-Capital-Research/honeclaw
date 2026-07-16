@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use chrono::TimeZone;
 use futures::future::join_all;
 use hone_core::ActorIdentity;
 use hone_core::agent::ToolCallMade;
@@ -25,6 +26,12 @@ const CURRENT_PRICE_INTENT_MARKERS: &[&str] = &[
     "股价",
     "价格",
     "现价",
+    "目前价",
+    "目前价格",
+    "现在价",
+    "现在价格",
+    "市价",
+    "市场价",
     "当前价",
     "最新价",
     "实时价",
@@ -37,6 +44,22 @@ const CURRENT_PRICE_INTENT_MARKERS: &[&str] = &[
     "quote",
     "last price",
     "current price",
+    "market price",
+];
+const EXTENDED_HOURS_INTENT_MARKERS: &[&str] = &[
+    "盘前",
+    "盘后",
+    "夜盘",
+    "延长交易",
+    "延长时段",
+    "pre-market",
+    "premarket",
+    "pre market",
+    "after-hours",
+    "after hours",
+    "post-market",
+    "post market",
+    "extended hours",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,6 +104,10 @@ pub(crate) struct ResolvedSecurityEntity {
     pub verified_price: Option<String>,
     pub verified_change_percentage: Option<String>,
     pub quote_timestamp: Option<i64>,
+    /// `pre` / `post` when an exact extended-hours minute bar won, or
+    /// `regular_fallback` when the user requested extended hours but only the
+    /// regular-session quote could be verified.
+    pub quote_session: Option<String>,
     pub annual_financials_verified: Option<bool>,
     pub verified_annual_financial_facts: Vec<VerifiedFinancialFact>,
     pub fund_holdings_verified: Option<bool>,
@@ -110,6 +137,13 @@ struct MatchingQuoteFact {
     price: f64,
     change_percentage: Option<f64>,
     timestamp: Option<i64>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct MatchingExtendedQuoteFact {
+    price: f64,
+    timestamp: i64,
+    session: &'static str,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -230,13 +264,25 @@ impl InvestmentResponseContract {
 
     fn canonical_quote_fact_line(&self, entity: &ResolvedSecurityEntity) -> Option<String> {
         let price = entity.verified_price.as_deref()?;
-        let currency = entity.currency.as_deref().unwrap_or("币种未标注");
+        let name = safe_markdown_inline(&entity.name, 160);
+        let symbol = safe_markdown_inline(&entity.symbol, 32);
+        let currency = safe_markdown_inline(entity.currency.as_deref().unwrap_or("币种未标注"), 16);
+        let (price_label, change_label, fallback_note) = match entity.quote_session.as_deref() {
+            Some("pre") => ("本轮同代码盘前现价", "相对本轮常规行情基准价", ""),
+            Some("post") => ("本轮同代码盘后现价", "相对本轮常规行情基准价", ""),
+            Some("regular_fallback") => (
+                "本轮同代码常规交易时段现价",
+                "常规交易时段涨跌幅",
+                "；盘前/盘后最新价本轮未完成核验",
+            ),
+            _ => ("本轮同代码现价", "当日涨跌幅", ""),
+        };
         let change = entity
             .verified_change_percentage
             .as_deref()
             .and_then(|value| value.parse::<f64>().ok())
             .filter(|value| value.is_finite())
-            .map(|value| format!("，当日涨跌幅 {value:+}%"))
+            .map(|value| format!("，{change_label} {value:+}%"))
             .unwrap_or_default();
         let quote_time = entity
             .quote_timestamp
@@ -250,8 +296,7 @@ impl InvestmentResponseContract {
             })
             .unwrap_or_else(|| "数据源未提供可解析时间戳".to_string());
         Some(format!(
-            "已核验事实：{}（{}）本轮同代码现价 {} {}{}（报价源时间：{}，最新可得、非逐笔）。",
-            entity.name, entity.symbol, price, currency, change, quote_time
+            "已核验事实：{name}（{symbol}）{price_label} {price} {currency}{change}（报价源时间：{quote_time}，最新可得、非逐笔{fallback_note}）。"
         ))
     }
 
@@ -260,20 +305,18 @@ impl InvestmentResponseContract {
             .entities
             .iter()
             .map(|entity| {
+                let name = safe_markdown_inline(&entity.name, 160);
+                let symbol = safe_markdown_inline(&entity.symbol, 32);
                 let metadata = [entity.exchange.as_deref(), entity.asset_type.as_deref()]
                     .into_iter()
                     .flatten()
                     .filter(|value| !value.is_empty())
+                    .map(|value| safe_markdown_inline(value, 64))
                     .collect::<Vec<_>>();
                 if metadata.is_empty() {
-                    format!("{}（{}）", entity.name, entity.symbol)
+                    format!("{name}（{symbol}）")
                 } else {
-                    format!(
-                        "{}（{}；{}）",
-                        entity.name,
-                        entity.symbol,
-                        metadata.join("；")
-                    )
+                    format!("{name}（{symbol}；{}）", metadata.join("；"))
                 }
             })
             .collect::<Vec<_>>()
@@ -466,6 +509,31 @@ pub(crate) fn contract_failure_message() -> &'static str {
     CONTRACT_FAILURE_MESSAGE
 }
 
+/// Provider-controlled labels are evidence, never Markdown structure. Keep
+/// them on one bounded line and escape syntax that could forge headings,
+/// tables, links, emphasis, or code spans in the deterministic response.
+fn safe_markdown_inline(value: &str, max_chars: usize) -> String {
+    let collapsed = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    let bounded = truncate_chars(collapsed.trim(), max_chars);
+    let escaped = bounded
+        .chars()
+        .fold(String::new(), |mut output, character| {
+            if matches!(
+                character,
+                '\\' | '`' | '*' | '_' | '{' | '}' | '[' | ']' | '<' | '>' | '#' | '|'
+            ) {
+                output.push('\\');
+            }
+            output.push(character);
+            output
+        });
+    if escaped.is_empty() {
+        "未标注".to_string()
+    } else {
+        escaped
+    }
+}
+
 pub(crate) fn current_investment_data_time_line() -> String {
     format!(
         "数据时间：北京时间 {}；数据口径：本轮查询时间（仅下方明确标注的字段已完成核验）",
@@ -556,6 +624,388 @@ pub(crate) fn enforce_server_data_time_prefix(
     } else {
         format!("{prefix}\n\n{snapshot}\n\n{}", body.trim())
     }
+}
+
+/// Build a complete answer only from facts already held by the server-owned
+/// contract. Rejected model prose is never reused here.
+pub(crate) fn deterministic_investment_fallback_response(
+    contract: &InvestmentResponseContract,
+) -> Option<String> {
+    if contract.comparison || contract.entities.is_empty() {
+        return None;
+    }
+    let body = match contract.deep_analysis {
+        DeepAnalysisKind::Equity | DeepAnalysisKind::Fund | DeepAnalysisKind::Crypto => {
+            if contract.entities.len() != 1 {
+                return None;
+            }
+            let entity = &contract.entities[0];
+            entity
+                .verified_price
+                .as_deref()
+                .and_then(|value| value.parse::<f64>().ok())
+                .filter(|value| value.is_finite() && *value > 0.0)?;
+            match contract.deep_analysis {
+                DeepAnalysisKind::Equity => deterministic_equity_fallback(contract, entity),
+                DeepAnalysisKind::Fund => deterministic_fund_fallback(contract, entity),
+                DeepAnalysisKind::Crypto => deterministic_crypto_fallback(contract, entity),
+                _ => unreachable!(),
+            }
+        }
+        DeepAnalysisKind::Market => deterministic_market_fallback(contract)?,
+        DeepAnalysisKind::None => {
+            if contract.entities.len() != 1 {
+                return None;
+            }
+            deterministic_quote_fallback(contract, &contract.entities[0])?
+        }
+        DeepAnalysisKind::Sector => return None,
+    };
+    Some(enforce_server_data_time_prefix(contract, &body))
+}
+
+fn deterministic_quote_fallback(
+    contract: &InvestmentResponseContract,
+    entity: &ResolvedSecurityEntity,
+) -> Option<String> {
+    let quote = contract.canonical_quote_fact_line(entity)?;
+    Some(format!(
+        "{quote}\n说明：以上为本轮 exact symbol 查询得到的最新可用行情与数据源时间；不把模型记忆、历史对话或其它代码的价格当作当前报价。"
+    ))
+}
+
+fn deterministic_equity_fallback(
+    contract: &InvestmentResponseContract,
+    entity: &ResolvedSecurityEntity,
+) -> String {
+    let quote = contract
+        .canonical_quote_fact_line(entity)
+        .expect("verified fallback quote");
+    let financials = deterministic_financial_fact_lines(entity);
+    let events = deterministic_event_section(contract);
+    let name = safe_markdown_inline(&entity.name, 160);
+    let symbol = safe_markdown_inline(&entity.symbol, 32);
+    format!(
+        "## 1. 结论\n{quote}\n动作建议：观察。当前只把本轮已核验的实体、行情和结构化财务字段当作事实；其余内容均按待核验或推断处理。\n\n\
+         ## 2. 公司是什么、靠什么赚钱\n本轮已核验实体为 {name}（{symbol}），资产类型为公司股票。具体产品、客户、地区收入和商业模式细节本轮未核验，不从模型记忆补写；后续应以公司披露核对收入来源与客户结构。\n\n\
+         ## 3. 护城河与竞争壁垒\n护城河、专利技术、客户切换成本和认证壁垒本轮未核验。推断框架是观察客户留存、产品迭代、研发兑现与竞争者替代速度，不能把框架本身写成公司事实。\n\n\
+         ## 4. 行业位置与关键对手\n行业位置、市场份额和关键竞争对手本轮未核验。推断时应比较产业链位置、需求强弱与竞争格局，并等待同口径行业数据后再下结论。\n\n\
+         ## 5. 财务质量\n{financials}\n经营现金流、自由现金流、资本开支、现金、债务、净现金与完整资产负债表本轮未核验，因此不据此判断财务稳健程度。\n\n\
+         ## 6. 估值\n- P/S 倍数法：市值、股本、同业倍数和历史倍数本轮未核验，因此本轮不输出未经核验的 P/S 数值或目标价。\n- 情景法：增长率、利润率和估值倍数均须作为假设；Forward 数据与一致预期本轮未核验，因此只保留方法，不虚构精确结果。\n\n\
+         ## 7. Bull / Bear / Base Case\n- Bull 情景假设：若需求、收入质量与盈利兑现同步改善，则风险回报可能改善。\n- Bear 情景假设：若竞争加剧、增长失速或盈利质量恶化，则估值与价格可能承压。\n- Base 情景假设：若经营指标没有形成一致方向，则继续观察并等待新证据。\n\n\
+         ## 8. 催化剂、风险点、证伪条件\n{events}\n\n\
+         ## 9. 动作建议\n动作建议：观察。触发条件是商业模式、财务趋势、现金流和估值输入完成同口径核验后再评估买、减或卖；若关键经营证据持续恶化，则维持观察或降低风险暴露。"
+    )
+}
+
+fn deterministic_fund_fallback(
+    contract: &InvestmentResponseContract,
+    entity: &ResolvedSecurityEntity,
+) -> String {
+    let quote = contract
+        .canonical_quote_fact_line(entity)
+        .expect("verified fallback quote");
+    let holdings = deterministic_fund_holding_lines(entity);
+    let events = deterministic_event_section(contract);
+    let name = safe_markdown_inline(&entity.name, 160);
+    let symbol = safe_markdown_inline(&entity.symbol, 32);
+    format!(
+        "## 1. 结论\n{quote}\n动作建议：观察。当前只把本轮已核验的基金实体、行情和逐项持仓字段当作事实，其余内容均按待核验或推断处理。\n\n\
+         ## 2. 基金目标、策略与跟踪对象\n本轮已核验 {name}（{symbol}）为 ETF 或基金。具体基金目标、基金策略与跟踪对象本轮未核验，应以基金正式文件核对后再判断是否符合用户需要的市场暴露。\n\n\
+         ## 3. 持仓、集中度与主要暴露\n{holdings}\n除以上逐项字段外，持仓合计集中度与完整主要暴露本轮未核验，不对缺失持仓做推算。\n\n\
+         ## 4. 地域、行业与货币风险\n地域暴露本轮未核验。行业暴露本轮未核验。货币风险与汇率风险本轮未核验；这些变量只作为后续验证框架。\n\n\
+         ## 5. 流动性、规模与交易特征\n流动性本轮未核验。成交与交易特征本轮未核验。基金规模与 AUM 本轮未核验，因此不输出未经核验的规模数字。\n\n\
+         ## 6. 费用、跟踪误差与底层资产估值口径\n费率与管理费本轮未核验。跟踪误差本轮未核验。底层资产估值口径本轮未核验，因此不输出未经核验的费用或估值数字。\n\n\
+         ## 7. Bull / Bear / Base Case\n- Bull 情景假设：若底层资产、流动性和货币环境共同改善，则基金表现可能改善。\n- Bear 情景假设：若底层资产走弱、流动性下降或汇率不利，则风险可能放大。\n- Base 情景假设：若主要暴露相互抵消，则继续观察跟踪质量与成交条件。\n\n\
+         ## 8. 催化剂、风险点、证伪条件\n{events}\n\n\
+         ## 9. 动作建议\n动作建议：观察。触发条件是基金目标、完整持仓、费率、跟踪误差、流动性和货币暴露完成核验后再评估买、减或卖；若实际暴露偏离用户目标，则视为证伪并降低风险。"
+    )
+}
+
+fn deterministic_crypto_fallback(
+    contract: &InvestmentResponseContract,
+    entity: &ResolvedSecurityEntity,
+) -> String {
+    let quote = contract
+        .canonical_quote_fact_line(entity)
+        .expect("verified fallback quote");
+    let events = deterministic_event_section(contract);
+    let name = safe_markdown_inline(&entity.name, 160);
+    let symbol = safe_markdown_inline(&entity.symbol, 32);
+    format!(
+        "## 1. 结论\n{quote}\n动作建议：观察。当前只把本轮已核验的资产实体与行情当作事实，其余内容均按待核验或推断处理。\n\n\
+         ## 2. 资产、网络与核心用途\n本轮已核验资产为 {name}（{symbol}）。网络结构、核心用途和实际使用情况本轮未核验，不套用公司利润表或基金口径。\n\n\
+         ## 3. 供给机制、代币经济与集中度\n供给机制本轮未核验。代币经济本轮未核验。持有与验证者集中度本轮未核验；这些项目需要链上同口径数据确认。\n\n\
+         ## 4. 采用、流动性与市场结构\n采用数据本轮未核验。跨市场流动性与市场结构本轮未核验；后续应核对成交深度、交易场所分布与实际采用。\n\n\
+         ## 5. 链上、网络与生态数据\n链上活跃度本轮未核验。网络使用量与生态数据本轮未核验，因此不从历史记忆补数字。\n\n\
+         ## 6. 估值框架与关键假设\n估值应结合网络使用、供给、流动性与风险溢价，但这些输入本轮未核验。情景法中的采用率和估值参数均是假设，本轮不输出未经核验目标价。\n\n\
+         ## 7. Bull / Bear / Base Case\n- Bull 情景假设：若网络采用、流动性和监管可见度同步改善，则风险回报可能改善。\n- Bear 情景假设：若采用下降、流动性收缩或监管风险上升，则价格可能承压。\n- Base 情景假设：若关键网络数据没有形成一致方向，则继续观察。\n\n\
+         ## 8. 催化剂、监管与风险、证伪条件\n{events}\n\n\
+         ## 9. 动作建议\n动作建议：观察。触发条件是供给、采用、链上活动、流动性和监管状态完成同口径核验后再评估买、减或卖；若采用和流动性持续恶化，则视为证伪并降低风险。"
+    )
+}
+
+fn deterministic_financial_fact_lines(entity: &ResolvedSecurityEntity) -> String {
+    let latest_year = entity
+        .verified_annual_financial_facts
+        .iter()
+        .filter_map(|fact| fact.fiscal_year.as_deref())
+        .filter_map(|year| year.parse::<i32>().ok())
+        .max();
+    let mut lines = entity
+        .verified_annual_financial_facts
+        .iter()
+        .filter(|fact| {
+            latest_year.is_none_or(|latest| {
+                fact.fiscal_year
+                    .as_deref()
+                    .and_then(|year| year.parse::<i32>().ok())
+                    == Some(latest)
+            })
+        })
+        .filter_map(deterministic_financial_fact_line)
+        .take(10)
+        .collect::<Vec<_>>();
+    if lines.is_empty() {
+        lines.push("年度利润表字段本轮未核验，不输出营收、利润、毛利率或 EPS 数字。".to_string());
+    }
+    lines.join("\n")
+}
+
+fn deterministic_financial_fact_line(fact: &VerifiedFinancialFact) -> Option<String> {
+    let value = fact.value.parse::<f64>().ok()?;
+    if !value.is_finite() {
+        return None;
+    }
+    let (label, rendered) = match fact.metric.as_str() {
+        "revenue" => (
+            "营收",
+            deterministic_amount(value, fact.currency.as_deref()),
+        ),
+        "gross_profit" => (
+            "毛利润",
+            deterministic_amount(value, fact.currency.as_deref()),
+        ),
+        "gross_margin_ratio" => ("毛利率", format!("{}%", concise_decimal(value * 100.0, 4))),
+        "operating_income" => (
+            "营业利润",
+            deterministic_amount(value, fact.currency.as_deref()),
+        ),
+        "operating_margin_ratio" => (
+            "营业利润率",
+            format!("{}%", concise_decimal(value * 100.0, 4)),
+        ),
+        "net_income" => (
+            "净利润",
+            deterministic_amount(value, fact.currency.as_deref()),
+        ),
+        "net_margin_ratio" => (
+            "净利润率",
+            format!("{}%", concise_decimal(value * 100.0, 4)),
+        ),
+        "ebitda" => (
+            "EBITDA",
+            deterministic_amount(value, fact.currency.as_deref()),
+        ),
+        "diluted_eps" => (
+            "稀释 EPS",
+            format!(
+                "{} {}",
+                concise_decimal(value, 6),
+                safe_markdown_inline(fact.currency.as_deref().unwrap_or("币种未标注"), 16)
+            ),
+        ),
+        "research_and_development_expense" => (
+            "研发费用",
+            deterministic_amount(value, fact.currency.as_deref()),
+        ),
+        _ => return None,
+    };
+    let period = fact
+        .fiscal_year
+        .as_deref()
+        .map(|year| format!("{} 年", safe_markdown_inline(year, 16)))
+        .unwrap_or_default();
+    Some(format!(
+        "- 已核验年度利润表：{period}{label}为 {rendered}。"
+    ))
+}
+
+fn deterministic_amount(value: f64, currency: Option<&str>) -> String {
+    let currency = safe_markdown_inline(currency.unwrap_or("币种未标注"), 16);
+    let absolute = value.abs();
+    if absolute >= 1_000_000_000.0 {
+        format!(
+            "{} billion {currency}",
+            concise_decimal(value / 1_000_000_000.0, 6)
+        )
+    } else if absolute >= 1_000_000.0 {
+        format!(
+            "{} million {currency}",
+            concise_decimal(value / 1_000_000.0, 6)
+        )
+    } else if absolute >= 1_000.0 {
+        format!(
+            "{} thousand {currency}",
+            concise_decimal(value / 1_000.0, 6)
+        )
+    } else {
+        format!("{} {currency}", concise_decimal(value, 6))
+    }
+}
+
+fn concise_decimal(value: f64, precision: usize) -> String {
+    let rendered = format!("{value:.precision$}");
+    rendered
+        .trim_end_matches('0')
+        .trim_end_matches('.')
+        .to_string()
+}
+
+fn deterministic_fund_holding_lines(entity: &ResolvedSecurityEntity) -> String {
+    let mut lines = entity
+        .verified_fund_holding_facts
+        .iter()
+        .filter_map(|fact| {
+            let asset = safe_markdown_inline(&fact.asset, 64);
+            let name = fact
+                .name
+                .as_deref()
+                .filter(|name| !name.trim().is_empty())
+                .map(|name| format!(" {}", safe_markdown_inline(name, 160)))
+                .unwrap_or_default();
+            if let Some(weight) = fact.weight_percentage.as_deref() {
+                return Some(format!(
+                    "- 已核验持仓 {}{} 权重为 {}%。",
+                    asset,
+                    name,
+                    safe_markdown_inline(weight, 32)
+                ));
+            }
+            if let Some(shares) = fact.shares_number.as_deref() {
+                return Some(format!(
+                    "- 已核验持仓 {}{} 持有股数为 {}。",
+                    asset,
+                    name,
+                    safe_markdown_inline(shares, 32)
+                ));
+            }
+            if let Some(value) = fact.market_value.as_deref() {
+                return Some(format!(
+                    "- 已核验持仓 {}{} 持仓市值为 {}。",
+                    asset,
+                    name,
+                    safe_markdown_inline(value, 48)
+                ));
+            }
+            Some(format!(
+                "- 已核验持仓标识 {}{}；该持仓的权重、股数与市值本轮未核验。",
+                asset, name
+            ))
+        })
+        .take(10)
+        .collect::<Vec<_>>();
+    if lines.is_empty() {
+        lines.push("基金持仓、集中度与主要暴露本轮未核验，不输出持仓数字。".to_string());
+    }
+    lines.join("\n")
+}
+
+fn deterministic_event_section(contract: &InvestmentResponseContract) -> String {
+    let mut lines = if contract.verified_dated_web_sources.is_empty() {
+        vec![
+            "本轮未找到可核验的带真实记录日期网页事件证据。具体新闻、公告与已发生事件本轮未核验。"
+                .to_string(),
+        ]
+    } else {
+        contract
+            .verified_dated_web_sources
+            .iter()
+            .map(|source| {
+                format!(
+                    "- 已核验来源索引：{}（{}）。具体事件含义本轮未核验。",
+                    safe_markdown_inline(&source.evidence_date, 32),
+                    safe_markdown_inline(&source.domain, 253)
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    lines.extend([
+        "- 推断：潜在催化来自后续已核验需求或增长指标改善。".to_string(),
+        "- 推断：主要风险来自竞争加剧与市场风险偏好下降。".to_string(),
+        "- 推断：若关键指标持续恶化则构成当前判断的证伪条件。".to_string(),
+    ]);
+    lines.join("\n")
+}
+
+fn deterministic_market_fallback(contract: &InvestmentResponseContract) -> Option<String> {
+    let mut quote_lines = Vec::new();
+    for entity in &contract.entities {
+        let price = entity
+            .verified_price
+            .as_deref()
+            .and_then(|value| value.parse::<f64>().ok())
+            .filter(|value| value.is_finite() && *value > 0.0)?;
+        let symbol = safe_markdown_inline(&entity.symbol, 32);
+        let currency = safe_markdown_inline(entity.currency.as_deref().unwrap_or("币种未标注"), 16);
+        let change = entity
+            .verified_change_percentage
+            .as_deref()
+            .and_then(|value| value.parse::<f64>().ok())
+            .filter(|value| value.is_finite())
+            .map(|value| format!("{value:+}%"))
+            .unwrap_or_else(|| "本轮未核验".to_string());
+        let quote_time = entity
+            .quote_timestamp
+            .and_then(|timestamp| chrono::DateTime::<chrono::Utc>::from_timestamp(timestamp, 0))
+            .map(|time| {
+                format!(
+                    "北京时间 {}",
+                    time.with_timezone(&hone_core::beijing_offset())
+                        .format("%Y-%m-%d %H:%M")
+                )
+            })
+            .unwrap_or_else(|| "数据源未提供可解析时间戳".to_string());
+        quote_lines.push(format!(
+            "- {symbol} 现价 {} {currency}；涨跌幅 {change}；报价源时间：{quote_time}（最新可得、非逐笔）。",
+            concise_decimal(price, 8)
+        ));
+    }
+    let proxy_note = contract
+        .entities
+        .iter()
+        .any(|entity| matches!(entity.symbol.as_str(), "ASHR" | "KBA" | "EWJ"))
+        .then_some("\n- 口径说明：ASHR、KBA 或 EWJ 属于美股交易的 ETF 代理（proxy）；代理与当地指数处于跨时区、不同交易时段，不能当作同一交易时点横比。")
+        .unwrap_or("");
+    let today = hone_core::beijing_now().format("%Y-%m-%d").to_string();
+    let source_lines = if contract.verified_web_sources.is_empty() {
+        format!(
+            "截至 {today}，本轮网页新闻与事件来源未完成核验；具体新闻事实本轮未核验。\n- 推断：指数同步变化可能同时受利率预期、风险偏好与仓位调整影响，但本轮不把该框架当成已核验归因。"
+        )
+    } else {
+        let mut lines = contract
+            .verified_web_sources
+            .iter()
+            .map(|domain| {
+                format!(
+                    "- 本轮网页查询索引：{today}（{}）；具体事件、发生日期与因果关系本轮未核验。",
+                    safe_markdown_inline(domain, 253)
+                )
+            })
+            .collect::<Vec<_>>();
+        lines.push("- 推断：行情可能同时受利率预期、风险偏好与仓位调整影响；在逐条事件证据完成核验前，不把该框架写成事实。".to_string());
+        lines.join("\n")
+    };
+    Some(format!(
+        "## 1. 结论\n已核验行情见第 2 节。动作建议：观察，不在事件归因尚未逐条核验时追涨杀跌。\n\
+         ## 2. 已核验行情事实\n{}{}\n\
+         ## 3. 市场变动原因\n{}\n\
+         ## 4. Bull / Bear / Base Case\n- Bull 情景假设：若风险偏好与流动性改善，市场可能修复。\n- Bear 情景假设：若下跌扩散且流动性恶化，波动可能继续。\n- Base 情景假设：若缺少新的已核验驱动，市场可能维持震荡。\n\
+         ## 5. 动作建议、触发条件与证伪条件\n动作建议：观察。触发条件是代表行情企稳且事件证据完成核验后再评估风险暴露；若跌势继续扩散并破坏原有风险边界，则证伪当前观望框架并降低风险。",
+        quote_lines.join("\n"),
+        proxy_note,
+        source_lines
+    ))
 }
 
 fn enforce_server_single_asset_conclusion_fact(
@@ -712,6 +1162,47 @@ fn response_intent(input: &str) -> (bool, bool) {
 fn response_requires_verified_price(input: &str, deep: bool, comparison: bool) -> bool {
     let normalized = input.to_ascii_lowercase();
     deep || comparison || has_current_price_intent(&normalized)
+}
+
+fn response_requests_extended_hours_quote(input: &str) -> bool {
+    let normalized = input.to_ascii_lowercase();
+    EXTENDED_HOURS_INTENT_MARKERS
+        .iter()
+        .any(|marker| normalized.contains(marker))
+}
+
+fn requested_extended_session(input: &str) -> Option<&'static str> {
+    let normalized = input.to_ascii_lowercase();
+    if [
+        "盘后",
+        "夜盘",
+        "after-hours",
+        "after hours",
+        "post-market",
+        "post market",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker))
+    {
+        Some("post")
+    } else if ["盘前", "pre-market", "premarket", "pre market"]
+        .iter()
+        .any(|marker| normalized.contains(marker))
+    {
+        Some("pre")
+    } else {
+        None
+    }
+}
+
+fn entity_supports_us_extended_hours(entity: &ResolvedSecurityEntity) -> bool {
+    !entity_is_crypto(entity)
+        && entity.exchange.as_deref().is_some_and(|exchange| {
+            let exchange = exchange.to_ascii_uppercase();
+            ["NASDAQ", "NYSE", "AMEX", "OTC"]
+                .iter()
+                .any(|market| exchange.contains(market))
+        })
 }
 
 fn is_strict_quote_only_request(input: &str) -> bool {
@@ -1796,6 +2287,8 @@ pub(crate) async fn prepare_verified_investment_turn(
         )
         .await
         .map_err(|_| "最新证券行情查询暂时不可用，请稍后重试。".to_string())?;
+    let extended_hours_requested = response_requests_extended_hours_quote(user_input);
+    let requested_extended_session = requested_extended_session(user_input);
     for index in 0..contract.entities.len() {
         let symbol = &contract.entities[index].symbol;
         let Some(fact) = matching_quote_fact(&quote, symbol) else {
@@ -1815,6 +2308,47 @@ pub(crate) async fn prepare_verified_investment_turn(
         contract.entities[index].verified_change_percentage =
             fact.change_percentage.map(|value| value.to_string());
         contract.entities[index].quote_timestamp = Some(timestamp);
+        if extended_hours_requested && entity_supports_us_extended_hours(&contract.entities[index])
+        {
+            contract.entities[index].quote_session = Some("regular_fallback".to_string());
+        }
+    }
+
+    let mut extended_hours_evidence = Vec::new();
+    if extended_hours_requested {
+        for index in 0..contract.entities.len() {
+            if !entity_supports_us_extended_hours(&contract.entities[index]) {
+                continue;
+            }
+            let symbol = contract.entities[index].symbol.clone();
+            let extended = result_or_error_value(
+                registry
+                    .execute_tool(
+                        "data_fetch",
+                        json!({"data_type": "extended_hours", "ticker": &symbol}),
+                    )
+                    .await,
+            );
+            if let Some(fact) = matching_requested_extended_quote_fact(
+                &extended,
+                &symbol,
+                requested_extended_session,
+            ) {
+                let regular_price = contract.entities[index]
+                    .verified_price
+                    .as_deref()
+                    .and_then(|value| value.parse::<f64>().ok())
+                    .filter(|value| value.is_finite() && *value > 0.0);
+                contract.entities[index].verified_price = Some(fact.price.to_string());
+                contract.entities[index].verified_change_percentage = regular_price
+                    .map(|regular| ((fact.price / regular) - 1.0) * 100.0)
+                    .filter(|value| value.is_finite())
+                    .map(|value| value.to_string());
+                contract.entities[index].quote_timestamp = Some(fact.timestamp);
+                contract.entities[index].quote_session = Some(fact.session.to_string());
+            }
+            extended_hours_evidence.push(extended);
+        }
     }
 
     let mut evidence = vec![
@@ -1824,6 +2358,12 @@ pub(crate) async fn prepare_verified_investment_turn(
         ),
         ("最新行情（含数据源 timestamp）", quote),
     ];
+    if !extended_hours_evidence.is_empty() {
+        evidence.push((
+            "用户明确要求的盘前/盘后最新一分钟行情（仅 exact symbol 且足够新时覆盖常规行情）",
+            Value::Array(extended_hours_evidence),
+        ));
+    }
 
     // 资产类型是所有后续数据路由的先决条件，不只是深度分析的可选步骤。
     // 这里对每个 exact-symbol 实体先做 profile 核验，后面才允许选择公司财务
@@ -3255,6 +3795,149 @@ fn financial_number_is_date_component(claim: &str, number_start: usize) -> bool 
     .any(|date| date.start() <= number_start && number_start < date.end())
 }
 
+fn financial_number_is_source_domain_component(claim: &str, number_start: usize) -> bool {
+    let suffix = &claim[number_start.min(claim.len())..];
+    Regex::new(r"(?i)^[-+]?\d+(?:[a-z][a-z0-9-]*\.)[a-z]{2,}")
+        .expect("numeric source domain regex")
+        .is_match(suffix)
+}
+
+fn financial_number_is_verified_entity_identity_component(
+    entity: &ResolvedSecurityEntity,
+    claim: &str,
+    number_start: usize,
+) -> bool {
+    let canonical_identity = format!(
+        "已核验事实：{}（{}）",
+        safe_markdown_inline(&entity.name, 160),
+        safe_markdown_inline(&entity.symbol, 32)
+    )
+    .to_ascii_lowercase();
+    claim.starts_with(&canonical_identity) && number_start < canonical_identity.len()
+}
+
+fn claim_has_past_absolute_date(claim: &str) -> bool {
+    let pattern = Regex::new(
+        r"(?i)(20\d{2})\s*(?:[-/.]\s*(\d{1,2})\s*[-/.]\s*(\d{1,2})|年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日)",
+    )
+    .expect("historical price date regex");
+    let today = hone_core::beijing_now().date_naive();
+    pattern.captures_iter(claim).any(|captures| {
+        let year = captures
+            .get(1)
+            .and_then(|value| value.as_str().parse().ok());
+        let month = captures
+            .get(2)
+            .or_else(|| captures.get(4))
+            .and_then(|value| value.as_str().parse().ok());
+        let day = captures
+            .get(3)
+            .or_else(|| captures.get(5))
+            .and_then(|value| value.as_str().parse().ok());
+        year.zip(month)
+            .zip(day)
+            .and_then(|((year, month), day)| chrono::NaiveDate::from_ymd_opt(year, month, day))
+            .is_some_and(|date| date < today)
+    })
+}
+
+fn is_unverified_historical_price_claim(claim: &str, numbers: &[FinancialNumberClaim]) -> bool {
+    let lower = claim.to_ascii_lowercase();
+    let price_number_exists = numbers.iter().any(|number| {
+        !number.bare_calendar_year
+            && !financial_number_is_contextual_count(&lower, number.start)
+            && !financial_number_is_date_component(&lower, number.start)
+            && !financial_number_is_source_domain_component(&lower, number.start)
+    });
+    if !price_number_exists {
+        return false;
+    }
+    let has_price_marker = [
+        "股价",
+        "价格",
+        "现价",
+        "目前价",
+        "现在价",
+        "市价",
+        "市场价",
+        "盘前",
+        "盘后",
+        "夜盘",
+        "目前价",
+        "现在价",
+        "市价",
+        "市场价",
+        "盘前",
+        "盘后",
+        "夜盘",
+        "报价",
+        "开盘价",
+        "收盘价",
+        "最高价",
+        "最低价",
+        "share price",
+        "stock price",
+        "market price",
+        "open price",
+        "closing price",
+        "high price",
+        "low price",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker));
+    if !has_price_marker {
+        return false;
+    }
+    let explicit_current = [
+        "本轮同代码",
+        "现价",
+        "当前价",
+        "目前价",
+        "现在价",
+        "最新价",
+        "实时价",
+        "current price",
+        "last price",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker));
+    let historical = [
+        "历史股价",
+        "历史价格",
+        "过去股价",
+        "过去价格",
+        "当时股价",
+        "当时价格",
+        "曾报",
+        "曾达到",
+        "一度达到",
+        "开盘价",
+        "收盘价",
+        "最高价",
+        "最低价",
+        "historical price",
+        "past price",
+        "open price",
+        "closing price",
+        "high price",
+        "low price",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker))
+        || (!explicit_current && claim_has_past_absolute_date(&lower));
+    let explicit_scenario = [
+        "目标价",
+        "对应股价",
+        "隐含股价",
+        "折算股价",
+        "target price",
+        "implied price",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker));
+    historical && !explicit_scenario
+}
+
 fn financial_claim_metrics(claim: &str, number: &FinancialNumberClaim) -> Vec<&'static str> {
     let lower = claim.to_ascii_lowercase();
     let growth = [
@@ -3305,7 +3988,12 @@ fn financial_claim_metrics(claim: &str, number: &FinancialNumberClaim) -> Vec<&'
         ("eps", "diluted_eps"),
         ("ebitda", "ebitda"),
         ("current price", "__verified_quote_price"),
+        ("market price", "__verified_quote_price"),
         ("当前价", "__verified_quote_price"),
+        ("目前价", "__verified_quote_price"),
+        ("现在价", "__verified_quote_price"),
+        ("市价", "__verified_quote_price"),
+        ("市场价", "__verified_quote_price"),
         ("现价", "__verified_quote_price"),
         ("股价", "__verified_quote_price"),
     ];
@@ -3464,12 +4152,24 @@ fn unsupported_financial_fact_claims(
             .into_iter()
             .filter(|number| !number.bare_calendar_year)
             .collect::<Vec<_>>();
+        if is_unverified_historical_price_claim(&normalized, &numbers) {
+            push_missing(
+                &mut violations,
+                "历史、开收盘或高低价格必须来自本轮专用历史行情证据",
+            );
+        }
         let factual_numbers = numbers
             .iter()
             .filter(|number| {
                 !financial_number_is_hypothetical(&normalized, number.start)
                     && !financial_number_is_contextual_count(&normalized, number.start)
                     && !financial_number_is_date_component(&normalized, number.start)
+                    && !financial_number_is_source_domain_component(&normalized, number.start)
+                    && !financial_number_is_verified_entity_identity_component(
+                        entity,
+                        &normalized,
+                        number.start,
+                    )
             })
             .collect::<Vec<_>>();
         let semantic_body = normalized
@@ -3665,8 +4365,13 @@ fn unsupported_financial_fact_claims(
             "同行",
             "现价",
             "当前价",
+            "目前价",
+            "现在价",
+            "市价",
+            "市场价",
             "股价",
             "current price",
+            "market price",
         ]
         .iter()
         .any(|marker| normalized.contains(marker));
@@ -3934,6 +4639,72 @@ fn starts_with_conditional_marker(text: &str) -> bool {
         })
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EventEvidenceBlockMode {
+    Neutral,
+    Inference,
+    Conditional,
+}
+
+fn event_evidence_subheading_mode(line: &str) -> Option<EventEvidenceBlockMode> {
+    let list_item =
+        Regex::new(r"^(?:[-*+]\s+|\d{1,3}\s*[.、)]\s+)").expect("event evidence list item regex");
+    if list_item.is_match(line.trim()) {
+        return None;
+    }
+    let normalized = line
+        .trim()
+        .trim_start_matches('#')
+        .trim()
+        .trim_matches(['*', '_', '`', ':', '：', ' '])
+        .to_ascii_lowercase();
+    if normalized.is_empty() || normalized.chars().count() > 48 {
+        return None;
+    }
+    if [
+        "推断",
+        "推断 / 假设",
+        "推断/假设",
+        "假设",
+        "情景假设",
+        "可能催化（推断）",
+        "可能风险（推断）",
+        "inference",
+        "hypotheses",
+        "hypothesis",
+    ]
+    .iter()
+    .any(|heading| normalized == *heading)
+    {
+        return Some(EventEvidenceBlockMode::Inference);
+    }
+    if [
+        "证伪条件",
+        "触发条件",
+        "观察条件",
+        "conditions",
+        "falsification conditions",
+    ]
+    .iter()
+    .any(|heading| normalized == *heading)
+    {
+        return Some(EventEvidenceBlockMode::Conditional);
+    }
+    if [
+        "已核验事实",
+        "已核验事件",
+        "已核验来源",
+        "verified facts",
+        "verified events",
+    ]
+    .iter()
+    .any(|heading| normalized == *heading)
+    {
+        return Some(EventEvidenceBlockMode::Neutral);
+    }
+    None
+}
+
 fn unsupported_event_fact_with(
     section: &str,
     mut has_verified_dated_source: impl FnMut(&str) -> bool,
@@ -3946,100 +4717,123 @@ fn unsupported_event_fact_with(
         r"(?i)20\s*\d{2}\s*(?:[-/.]\s*\d{1,2}\s*[-/.]\s*\d{1,2}|年\s*\d{1,2}\s*月\s*\d{1,2}\s*日)",
     )
     .expect("absolute market evidence date regex");
-    for sentence in section.split(['。', '；', ';', '\n']) {
-        let sentence = heading.replace(sentence.trim(), "");
-        let sentence = sentence.trim().to_ascii_lowercase();
-        let sentence_inference = [
-            "推断",
-            "归因推断",
-            "假设",
-            "可能",
-            "inference",
-            "hypothesis",
-            "possibly",
-        ]
-        .iter()
-        .any(|marker| {
-            sentence.starts_with(marker)
-                || sentence
-                    .trim_start_matches(['*', '_', '`', ' '])
-                    .starts_with(marker)
-        }) || starts_with_conditional_marker(&sentence);
-        let sentence_attributed_source = has_verified_dated_source(&sentence)
-            && [
-                "报道",
-                "显示",
-                "披露",
-                "公告",
-                "表示",
-                "称",
-                "reported",
-                "reports",
-                "shows",
-                "disclosed",
-                "announced",
-            ]
-            .iter()
-            .any(|marker| sentence.contains(marker));
-        let fragments = if sentence_inference || sentence_attributed_source {
-            vec![sentence.as_str()]
+    let list_item =
+        Regex::new(r"^(?:[-*+]\s+|\d{1,3}\s*[.、)]\s+)").expect("event evidence list item regex");
+    let mut inherited_mode = EventEvidenceBlockMode::Neutral;
+    for line in section.lines() {
+        let line = heading.replace(line.trim(), "");
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if let Some(mode) = event_evidence_subheading_mode(line) {
+            inherited_mode = mode;
+            continue;
+        }
+        let is_list_item = list_item.is_match(line);
+        let line_mode = if is_list_item {
+            inherited_mode
         } else {
-            sentence.split(['，', ',']).collect::<Vec<_>>()
+            inherited_mode = EventEvidenceBlockMode::Neutral;
+            EventEvidenceBlockMode::Neutral
         };
-        for clause in fragments {
-            let clause = clause.trim();
-            if clause
-                .chars()
-                .filter(|character| character.is_alphanumeric())
-                .count()
-                < 4
-            {
-                continue;
-            }
-            let without_date = absolute_date.replace_all(clause, "");
-            let date_preamble_remainder = without_date
-                .trim()
-                .trim_start_matches("截至")
-                .trim_start_matches("as of")
-                .trim_matches(|character: char| {
-                    character.is_whitespace() || ",，:：()（）".contains(character)
-                });
-            if section_has_absolute_date(clause)
-                && date_preamble_remainder
+        for sentence in line.split(['。', '；', ';']) {
+            let sentence = sentence.trim().to_ascii_lowercase();
+            let sentence_inference = line_mode != EventEvidenceBlockMode::Neutral
+                || [
+                    "推断",
+                    "归因推断",
+                    "假设",
+                    "可能",
+                    "inference",
+                    "hypothesis",
+                    "possibly",
+                ]
+                .iter()
+                .any(|marker| {
+                    sentence.starts_with(marker)
+                        || sentence
+                            .trim_start_matches(['*', '_', '`', ' ', '-', '+'])
+                            .starts_with(marker)
+                })
+                || starts_with_conditional_marker(&sentence);
+            let sentence_attributed_source = has_verified_dated_source(&sentence)
+                && [
+                    "报道",
+                    "显示",
+                    "披露",
+                    "公告",
+                    "表示",
+                    "称",
+                    "reported",
+                    "reports",
+                    "shows",
+                    "disclosed",
+                    "announced",
+                ]
+                .iter()
+                .any(|marker| sentence.contains(marker));
+            let fragments = if sentence_inference || sentence_attributed_source {
+                vec![sentence.as_str()]
+            } else {
+                sentence.split(['，', ',']).collect::<Vec<_>>()
+            };
+            for clause in fragments {
+                let clause = clause.trim();
+                if clause
                     .chars()
                     .filter(|character| character.is_alphanumeric())
                     .count()
-                    < 2
-            {
-                continue;
-            }
-            let explicitly_unverified = [
-                "未核验",
-                "未完成核验",
-                "没有可核验",
-                "未找到可核验",
-                "无法核验",
-                "不作为事实",
-                "仅为推断",
-                "只是推断",
-            ]
-            .iter()
-            .any(|marker| clause.contains(marker));
-            let explicitly_inferred = [
-                "推断",
-                "可能",
-                "假设",
-                "待验证",
-                "inference",
-                "possibly",
-                "hypothesis",
-            ]
-            .iter()
-            .any(|marker| clause.contains(marker))
-                || starts_with_conditional_marker(clause);
-            let has_dated_source = has_verified_dated_source(clause);
-            if !(explicitly_unverified || explicitly_inferred || has_dated_source) {
-                return true;
+                    < 4
+                {
+                    continue;
+                }
+                let without_date = absolute_date.replace_all(clause, "");
+                let date_preamble_remainder = without_date
+                    .trim()
+                    .trim_start_matches("截至")
+                    .trim_start_matches("as of")
+                    .trim_matches(|character: char| {
+                        character.is_whitespace() || ",，:：()（）".contains(character)
+                    });
+                if section_has_absolute_date(clause)
+                    && date_preamble_remainder
+                        .chars()
+                        .filter(|character| character.is_alphanumeric())
+                        .count()
+                        < 2
+                {
+                    continue;
+                }
+                let explicitly_unverified = [
+                    "未核验",
+                    "未完成核验",
+                    "没有可核验",
+                    "未找到可核验",
+                    "无法核验",
+                    "不作为事实",
+                    "仅为推断",
+                    "只是推断",
+                ]
+                .iter()
+                .any(|marker| clause.contains(marker));
+                let explicitly_inferred = sentence_inference
+                    || [
+                        "推断",
+                        "可能",
+                        "假设",
+                        "待验证",
+                        "inference",
+                        "possibly",
+                        "hypothesis",
+                    ]
+                    .iter()
+                    .any(|marker| clause.contains(marker))
+                    || starts_with_conditional_marker(clause);
+                let has_dated_source = has_verified_dated_source(clause);
+                if !(explicitly_unverified || explicitly_inferred || has_dated_source) {
+                    return true;
+                }
             }
         }
     }
@@ -4144,6 +4938,10 @@ fn markdown_current_price_header_index(cells: &[&str]) -> Option<usize> {
             && [
                 "现价",
                 "当前价",
+                "目前价",
+                "现在价",
+                "市价",
+                "市场价",
                 "最新价",
                 "最新成交价",
                 "成交价",
@@ -4338,7 +5136,7 @@ fn missing_market_sections(
         let section = numbered_section(content, number)
             .unwrap_or("")
             .lines()
-            .next()
+            .find(|line| !line.trim().is_empty())
             .unwrap_or("")
             .to_ascii_lowercase();
         if !keywords.iter().any(|keyword| section.contains(keyword)) {
@@ -4517,7 +5315,7 @@ fn has_data_time_context(content: &str) -> bool {
     // close to a current-price marker so an unrelated listing or historical date
     // elsewhere in the analysis cannot satisfy the freshness contract.
     Regex::new(&format!(
-        r"(?i)(?:现价|当前价(?:格)?|最新价(?:格)?|实时价(?:格)?|(?:当前|最新|实时)?股价|当前报价|最新报价|实时报价|current\s+price|last\s+price|quote)[^。；;\r\n]{{0,96}}{date}"
+        r"(?i)(?:现价|当前价(?:格)?|目前价(?:格)?|现在价(?:格)?|市价|市场价|最新价(?:格)?|实时价(?:格)?|(?:当前|目前|现在|最新|实时)?股价|当前报价|最新报价|实时报价|current\s+price|market\s+price|last\s+price|quote)[^。；;\r\n]{{0,96}}{date}"
     ))
     .expect("current quote data date regex")
     .is_match(scope)
@@ -4686,7 +5484,7 @@ fn entity_verified_price_appears(entity: &ResolvedSecurityEntity, content: &str)
     // is allowed. A percentage tolerance would admit materially wrong high prices.
     let tolerance = current_price_display_tolerance(price);
     let claims = Regex::new(
-        r"(?i)(?:本轮(?:已核验)?同代码\s*)?(?P<label>现价|当前价(?:格)?|最新价(?:格)?|实时价(?:格)?|(?:当前|最新|实时)?股价|报价|报于|报|交投于|交易于|交易在|current\s+price|last\s+price|quote|trades?\s+at|trading\s+at)\s*(?:\*\*|__|`|\|)?\s*(?:(?:（截至[^）\r\n]{0,60}）)|(?:\(\s*as\s+of[^)\r\n]{0,60}\)))?\s*(?:\*\*|__|`|\|)?\s*(?:约为?|为|是|报)?\s*[:：=]?\s*(?:\*\*|__|`|\|)?\s*(?P<prefix>us\$|hk\$|c\$|a\$|s\$|\$|€|£|¥|￥|₩|₽|₹|[a-z]{3})?\s*(?P<number>\d[\d,]*(?:\.\d+)?)\s*(?P<suffix>美元|美金|欧元|港元|港币|人民币|加元|日元|英镑|澳元|新加坡元|瑞郎|韩元|卢布|新台币|纽元|泰铢|印度卢比|瑞典克朗|挪威克朗|丹麦克朗|南非兰特|巴西雷亚尔|墨西哥比索|[a-z]{3})?",
+        r"(?i)(?:本轮(?:已核验)?同代码\s*)?(?P<label>现价|当前价(?:格)?|目前价(?:格)?|现在价(?:格)?|市价|市场价|最新价(?:格)?|实时价(?:格)?|(?:当前|目前|现在|最新|实时)?股价|报价|报于|报|交投于|交易于|交易在|current\s+price|market\s+price|last\s+price|quote|trades?\s+at|trading\s+at)\s*(?:\*\*|__|`|\|)?\s*(?:(?:（截至[^）\r\n]{0,60}）)|(?:\(\s*as\s+of[^)\r\n]{0,60}\)))?\s*(?:\*\*|__|`|\|)?\s*(?:约为?|为|是|报|is|at)?\s*[:：=]?\s*(?:\*\*|__|`|\|)?\s*(?P<prefix>us\$|hk\$|c\$|a\$|s\$|\$|€|£|¥|￥|₩|₽|₹|[a-z]{3})?\s*(?P<number>\d[\d,]*(?:\.\d+)?)\s*(?P<suffix>美元|美金|欧元|港元|港币|人民币|加元|日元|英镑|澳元|新加坡元|瑞郎|韩元|卢布|新台币|纽元|泰铢|印度卢比|瑞典克朗|挪威克朗|丹麦克朗|南非兰特|巴西雷亚尔|墨西哥比索|[a-z]{3})?",
     )
     .expect("current price claim regex")
     .captures_iter(content)
@@ -4919,6 +5717,13 @@ fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMent
         "股价",
         "价格",
         "现价",
+        "目前价",
+        "现在价",
+        "市价",
+        "市场价",
+        "盘前",
+        "盘后",
+        "夜盘",
         "分析",
         "研究",
         "比较",
@@ -4960,6 +5765,12 @@ fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMent
         "buy",
         "sell",
         "compare",
+        "premarket",
+        "pre-market",
+        "after-hours",
+        "after hours",
+        "post-market",
+        "extended hours",
     ]
     .iter()
     .any(|marker| normalized.contains(marker))
@@ -4969,6 +5780,13 @@ fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMent
         "股价",
         "价格",
         "现价",
+        "目前价",
+        "现在价",
+        "市价",
+        "市场价",
+        "盘前",
+        "盘后",
+        "夜盘",
         "分析",
         "研究",
         "比较",
@@ -5009,6 +5827,12 @@ fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMent
         "worth",
         "now",
         "current",
+        "premarket",
+        "pre-market",
+        "after-hours",
+        "after hours",
+        "post-market",
+        "extended hours",
     ]
     .iter()
     .any(|marker| normalized.contains(marker))
@@ -5209,6 +6033,16 @@ fn ticker_mentions_cover_request(input: &str, mentions: &[EntityMention]) -> boo
         "价格",
         "现价",
         "当前价",
+        "目前价",
+        "现在价",
+        "市价",
+        "市场价",
+        "盘前",
+        "盘后",
+        "夜盘",
+        "跌了多少",
+        "跌多少",
+        "涨了多少",
         "最新价",
         "实时价",
         "当前报价",
@@ -5256,6 +6090,16 @@ fn ticker_mentions_cover_request(input: &str, mentions: &[EntityMention]) -> boo
         "stock",
         "share",
         "price",
+        "market price",
+        "premarket",
+        "pre-market",
+        "pre market",
+        "after-hours",
+        "after hours",
+        "post-market",
+        "post market",
+        "extended hours",
+        "move",
         "analyze",
         "analysis",
         "compare",
@@ -5324,6 +6168,12 @@ fn is_plain_lowercase_non_ticker_token(token: &str) -> bool {
             | "about"
             | "now"
             | "current"
+            | "after"
+            | "hours"
+            | "move"
+            | "extended"
+            | "premarket"
+            | "postmarket"
             | "is"
             | "doing"
             | "worth"
@@ -5808,9 +6658,20 @@ fn request_may_need_auxiliary_entity_extraction(input: &str) -> bool {
         "咋看",
         "如何",
         "多少钱",
+        "现价",
         "当前价",
+        "目前价",
+        "现在价",
+        "市价",
+        "市场价",
         "最新价",
         "实时价",
+        "盘前",
+        "盘后",
+        "夜盘",
+        "跌了多少",
+        "跌多少",
+        "涨了多少",
         "股价",
         "股票",
         "证券",
@@ -5863,6 +6724,16 @@ fn request_may_need_auxiliary_entity_extraction(input: &str) -> bool {
         "stock",
         "share",
         "price",
+        "market price",
+        "premarket",
+        "pre-market",
+        "pre market",
+        "after-hours",
+        "after hours",
+        "post-market",
+        "post market",
+        "extended hours",
+        "move",
         "earnings",
         "valuation",
         "today",
@@ -6206,6 +7077,7 @@ fn resolved_entity(mention: &EntityMention, candidate: EntityCandidate) -> Resol
         verified_price: None,
         verified_change_percentage: None,
         quote_timestamp: None,
+        quote_session: None,
         annual_financials_verified: None,
         verified_annual_financial_facts: Vec::new(),
         fund_holdings_verified: None,
@@ -6226,7 +7098,6 @@ fn matching_quote_fact(value: &Value, symbol: &str) -> Option<MatchingQuoteFact>
         Value::Object(map) => {
             let symbol_ok = map
                 .get("symbol")
-                .or_else(|| map.get("ticker"))
                 .and_then(Value::as_str)
                 .is_some_and(|candidate| candidate.eq_ignore_ascii_case(symbol));
             let price_ok = map
@@ -6255,6 +7126,134 @@ fn matching_quote_fact(value: &Value, symbol: &str) -> Option<MatchingQuoteFact>
             .iter()
             .find_map(|child| matching_quote_fact(child, symbol)),
         _ => None,
+    }
+}
+
+fn matching_requested_extended_quote_fact(
+    value: &Value,
+    symbol: &str,
+    requested_session: Option<&str>,
+) -> Option<MatchingExtendedQuoteFact> {
+    matching_requested_extended_quote_fact_at(
+        value,
+        symbol,
+        requested_session,
+        chrono::Utc::now().timestamp(),
+    )
+}
+
+fn matching_requested_extended_quote_fact_at(
+    value: &Value,
+    symbol: &str,
+    requested_session: Option<&str>,
+    now: i64,
+) -> Option<MatchingExtendedQuoteFact> {
+    matching_extended_quote_fact_at(value, symbol, now)
+        .filter(|fact| requested_session.is_none_or(|required| required == fact.session))
+}
+
+fn matching_extended_quote_fact_at(
+    value: &Value,
+    symbol: &str,
+    now: i64,
+) -> Option<MatchingExtendedQuoteFact> {
+    if value_has_error(value) {
+        return None;
+    }
+    match value {
+        Value::Object(map) => {
+            let symbol_ok = map
+                .get("symbol")
+                .and_then(Value::as_str)
+                .is_some_and(|candidate| candidate.eq_ignore_ascii_case(symbol));
+            let price = map
+                .get("price")
+                .and_then(Value::as_f64)
+                .filter(|price| price.is_finite() && *price > 0.0);
+            let session = map
+                .get("session")
+                .and_then(Value::as_str)
+                .and_then(|value| {
+                    if value.eq_ignore_ascii_case("pre") {
+                        Some("pre")
+                    } else if value.eq_ignore_ascii_case("post") {
+                        Some("post")
+                    } else {
+                        None
+                    }
+                });
+            let timestamp = map
+                .get("date")
+                .and_then(Value::as_str)
+                .and_then(parse_fmp_extended_timestamp);
+            if symbol_ok
+                && let (Some(price), Some(session), Some(timestamp)) = (price, session, timestamp)
+                && extended_quote_timestamp_is_usable_at(timestamp, now)
+                && extended_timestamp_matches_session(timestamp, session)
+            {
+                return Some(MatchingExtendedQuoteFact {
+                    price,
+                    timestamp,
+                    session,
+                });
+            }
+            map.values()
+                .find_map(|child| matching_extended_quote_fact_at(child, symbol, now))
+        }
+        Value::Array(items) => items
+            .iter()
+            .find_map(|child| matching_extended_quote_fact_at(child, symbol, now)),
+        _ => None,
+    }
+}
+
+fn parse_fmp_extended_timestamp(value: &str) -> Option<i64> {
+    if let Ok(timestamp) = chrono::DateTime::parse_from_rfc3339(value) {
+        return Some(timestamp.timestamp());
+    }
+    for format in [
+        "%Y-%m-%d %H:%M:%S%.f",
+        "%Y-%m-%dT%H:%M:%S%.f",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S",
+    ] {
+        let Ok(local) = chrono::NaiveDateTime::parse_from_str(value, format) else {
+            continue;
+        };
+        let converted = chrono_tz::America::New_York
+            .from_local_datetime(&local)
+            .single()
+            .or_else(|| {
+                chrono_tz::America::New_York
+                    .from_local_datetime(&local)
+                    .earliest()
+            });
+        if let Some(timestamp) = converted {
+            return Some(timestamp.timestamp());
+        }
+    }
+    None
+}
+
+fn extended_quote_timestamp_is_usable_at(timestamp: i64, now: i64) -> bool {
+    timestamp <= now + 5 * 60 && timestamp >= now - 45 * 60
+}
+
+fn extended_timestamp_matches_session(timestamp: i64, session: &str) -> bool {
+    let Some(timestamp) = chrono::DateTime::<chrono::Utc>::from_timestamp(timestamp, 0) else {
+        return false;
+    };
+    let time = timestamp
+        .with_timezone(&chrono_tz::America::New_York)
+        .time();
+    let pre_open = chrono::NaiveTime::from_hms_opt(4, 0, 0).expect("valid premarket open");
+    let regular_open = chrono::NaiveTime::from_hms_opt(9, 30, 0).expect("valid market open");
+    let regular_close = chrono::NaiveTime::from_hms_opt(16, 0, 0).expect("valid market close");
+    let post_close = chrono::NaiveTime::from_hms_opt(20, 0, 0).expect("valid postmarket close");
+    match session {
+        "pre" => time >= pre_open && time < regular_open,
+        "post" => time > regular_close && time <= post_close,
+        _ => false,
     }
 }
 
@@ -6865,7 +7864,7 @@ mod tests {
         web_source_markers,
     };
     use crate::agent_session::AgentTurnOrigin;
-    use chrono::Utc;
+    use chrono::{TimeZone, Utc};
     use hone_core::agent::ToolCallMade;
     use serde_json::json;
 
@@ -7357,6 +8356,7 @@ mod tests {
                 verified_price: Some("100.0".into()),
                 verified_change_percentage: None,
                 quote_timestamp: None,
+                quote_session: None,
                 annual_financials_verified: None,
                 verified_annual_financial_facts: Vec::new(),
                 fund_holdings_verified: None,
@@ -7767,6 +8767,7 @@ mod tests {
             verified_price: None,
             verified_change_percentage: None,
             quote_timestamp: None,
+            quote_session: None,
             annual_financials_verified: None,
             verified_annual_financial_facts: Vec::new(),
             fund_holdings_verified: None,
@@ -7783,6 +8784,7 @@ mod tests {
             verified_price: None,
             verified_change_percentage: None,
             quote_timestamp: None,
+            quote_session: None,
             annual_financials_verified: None,
             verified_annual_financial_facts: Vec::new(),
             fund_holdings_verified: None,
@@ -8985,6 +9987,341 @@ mod tests {
                 .contains(&"3. 无来源时禁止具体事件事实"),
             "a later comma fragment marked possible must not launder an earlier event fact"
         );
+    }
+
+    #[test]
+    fn ticker_price_aliases_and_extended_hours_intent_stay_deterministic() {
+        for (input, symbol) in [
+            ("nbis市价", "NBIS"),
+            ("nbis目前价格", "NBIS"),
+            ("isrg盘后跌了多少", "ISRG"),
+            ("isrg after-hours move", "ISRG"),
+        ] {
+            let mentions = plain_ticker_mentions(input, AgentTurnOrigin::Interactive);
+            assert_eq!(mentions.len(), 1, "{input}");
+            assert_eq!(mentions[0].explicit_symbol.as_deref(), Some(symbol));
+            assert!(ticker_mentions_cover_request(input, &mentions), "{input}");
+        }
+        assert_eq!(
+            super::requested_extended_session("ISRG 盘后跌多少"),
+            Some("post")
+        );
+        assert_eq!(
+            super::requested_extended_session("ISRG premarket"),
+            Some("pre")
+        );
+        assert!(super::response_requests_extended_hours_quote(
+            "ISRG after-hours move"
+        ));
+    }
+
+    #[test]
+    fn extended_quote_requires_exact_symbol_session_and_fresh_market_time() {
+        let ny = chrono_tz::America::New_York;
+        let post = ny
+            .with_ymd_and_hms(2026, 7, 16, 18, 49, 0)
+            .single()
+            .expect("postmarket time");
+        let post_now = post.timestamp() + 10 * 60;
+        let post_payload = json!({
+            "data": {
+                "symbol": "ISRG",
+                "price": 363.25,
+                "date": "2026-07-16 18:49:00",
+                "session": "post"
+            }
+        });
+        let fact = super::matching_requested_extended_quote_fact_at(
+            &post_payload,
+            "ISRG",
+            Some("post"),
+            post_now,
+        )
+        .expect("exact postmarket quote");
+        assert_eq!(fact.price, 363.25);
+        assert_eq!(fact.session, "post");
+        assert!(
+            super::matching_requested_extended_quote_fact_at(
+                &post_payload,
+                "ISRG",
+                Some("pre"),
+                post_now,
+            )
+            .is_none()
+        );
+        assert!(
+            super::matching_requested_extended_quote_fact_at(
+                &json!({"ticker":"ISRG","data":{"price":363.25,"date":"2026-07-16 18:49:00","session":"post"}}),
+                "ISRG",
+                Some("post"),
+                post_now,
+            )
+            .is_none(),
+            "an outer ticker must not bless a leaf without its own exact symbol"
+        );
+        assert!(
+            super::matching_requested_extended_quote_fact_at(
+                &post_payload,
+                "ISRG",
+                Some("post"),
+                post.timestamp() + 46 * 60,
+            )
+            .is_none(),
+            "stale extended-hours bars must not override the regular quote"
+        );
+        let mislabeled_regular = json!({"data": {
+            "symbol":"ISRG", "price":402.0, "date":"2026-07-16 16:00:00", "session":"post"
+        }});
+        assert!(
+            super::matching_requested_extended_quote_fact_at(
+                &mislabeled_regular,
+                "ISRG",
+                Some("post"),
+                ny.with_ymd_and_hms(2026, 7, 16, 16, 5, 0)
+                    .single()
+                    .expect("market time")
+                    .timestamp(),
+            )
+            .is_none(),
+            "the 16:00 regular close must not be relabeled as postmarket"
+        );
+    }
+
+    #[test]
+    fn canonical_quote_labels_extended_session_and_regular_fallback_honestly() {
+        let mut entity = entities(&["ISRG"]).remove(0);
+        entity.verified_price = Some("363.25".into());
+        entity.quote_session = Some("post".into());
+        let mut contract = InvestmentResponseContract {
+            entities: vec![entity],
+            verified_web_sources: Vec::new(),
+            verified_dated_web_sources: Vec::new(),
+            deep_analysis: DeepAnalysisKind::Equity,
+            deep_comparison: false,
+            requires_verified_price: true,
+            needs_outlook_evidence: false,
+            requires_recent_web_evidence: false,
+            comparison: false,
+            origin: AgentTurnOrigin::Interactive,
+        };
+        let post = contract
+            .canonical_quote_fact_line(&contract.entities[0])
+            .expect("postmarket quote");
+        assert!(post.contains("本轮同代码盘后现价 363.25 USD"));
+        assert!(!post.contains("盘前/盘后最新价本轮未完成核验"));
+
+        contract.entities[0].verified_price = Some("402.33".into());
+        contract.entities[0].quote_session = Some("regular_fallback".into());
+        let fallback = contract
+            .canonical_quote_fact_line(&contract.entities[0])
+            .expect("regular fallback quote");
+        assert!(fallback.contains("本轮同代码常规交易时段现价 402.33 USD"));
+        assert!(fallback.contains("盘前/盘后最新价本轮未完成核验"));
+    }
+
+    #[test]
+    fn current_price_aliases_cannot_hide_a_conflicting_quote() {
+        let entity = entities(&["NBIS"]).remove(0);
+        for correct in [
+            "NBIS 目前价格 100 USD",
+            "NBIS 现在价格 100 USD",
+            "NBIS 市价 100 USD",
+            "NBIS 市场价 100 USD",
+            "NBIS market price is USD 100",
+            "NBIS market price at USD 100",
+        ] {
+            assert!(
+                super::entity_verified_price_appears(&entity, correct),
+                "{correct}"
+            );
+        }
+        for wrong in [
+            "NBIS 当前价 100 USD；目前价格 15 USD",
+            "NBIS 当前价 100 USD；现在价格 15 USD",
+            "NBIS 当前价 100 USD；市价 15 USD",
+            "NBIS 当前价 100 USD；市场价 15 USD",
+            "NBIS current price USD 100; market price is USD 15",
+        ] {
+            assert!(
+                !super::entity_verified_price_appears(&entity, wrong),
+                "{wrong}"
+            );
+        }
+    }
+
+    #[test]
+    fn unverified_historical_stock_price_cannot_bypass_current_quote() {
+        let mut rmbs = entities(&["RMBS"]).remove(0);
+        rmbs.verified_price = Some("101.42".into());
+        for historical in [
+            "2025-01-01 RMBS 股价 141.17 USD",
+            "2025-01-01 RMBS 股价 101.42 USD",
+            "推断：RMBS 历史股价可能为 15 USD",
+            "evil.com 在 2025-01-01 记录 RMBS 股价 15 USD",
+            "247wallst.com 在 2025-01-01 记录 RMBS 股价 15 USD",
+            "RMBS 2025 年收盘价 15 USD",
+        ] {
+            let content = format!("RMBS 当前价 101.42 USD；{historical}");
+            assert!(
+                !unsupported_financial_fact_claims(&rmbs, &content).is_empty(),
+                "unverified historical prices must fail closed: {content}"
+            );
+        }
+        assert!(
+            unsupported_financial_fact_claims(
+                &rmbs,
+                "RMBS 当前价 101.42 USD；情景假设下目标价 141.17 USD"
+            )
+            .is_empty(),
+            "an explicit scenario target is not a historical-price assertion"
+        );
+    }
+
+    #[test]
+    fn event_subheadings_apply_only_to_following_list_items() {
+        let safe = "8. 催化剂、风险点、证伪条件\n**推断 / 假设**\n- 订单改善可能构成催化\n- 竞争加剧可能构成风险\n**证伪条件**\n- 若需求持续恶化则证伪";
+        assert!(!super::unsupported_recent_event_fact(safe, &[]));
+
+        for unsafe_section in [
+            "8. 催化剂、风险点、证伪条件\n**推断**\n- 订单改善可能构成催化\n公司已经签署大型合同",
+            "8. 催化剂、风险点、证伪条件\n**推断**\n- 订单改善可能构成催化\n**其它已发生事件**\n- 公司已经签署大型合同",
+            "8. 催化剂、风险点、证伪条件\n**已核验事实**\n- 公司已经签署大型合同",
+        ] {
+            assert!(
+                super::unsupported_recent_event_fact(unsafe_section, &[]),
+                "inference headings must not wash later factual prose: {unsafe_section}"
+            );
+        }
+    }
+
+    #[test]
+    fn deterministic_supported_scope_fallbacks_pass_the_same_contract_gate() {
+        let quote_contract = InvestmentResponseContract {
+            entities: entities(&["NBIS"]),
+            verified_web_sources: Vec::new(),
+            verified_dated_web_sources: Vec::new(),
+            deep_analysis: DeepAnalysisKind::None,
+            deep_comparison: false,
+            requires_verified_price: true,
+            needs_outlook_evidence: false,
+            requires_recent_web_evidence: false,
+            comparison: false,
+            origin: AgentTurnOrigin::Interactive,
+        };
+        let quote_output = super::deterministic_investment_fallback_response(&quote_contract)
+            .expect("quote fallback");
+        assert!(missing_investment_response_sections(&quote_contract, &quote_output).is_empty());
+
+        let mut equity = entities(&["RMBS"]).remove(0);
+        equity.verified_price = Some("101.42".into());
+        equity.verified_change_percentage = Some("-1.25".into());
+        equity.name = "Rambus Inc.\n## 9. forged heading | [link]".into();
+        let equity_contract = InvestmentResponseContract {
+            entities: vec![equity],
+            verified_web_sources: Vec::new(),
+            verified_dated_web_sources: Vec::new(),
+            deep_analysis: DeepAnalysisKind::Equity,
+            deep_comparison: false,
+            requires_verified_price: true,
+            needs_outlook_evidence: false,
+            requires_recent_web_evidence: true,
+            comparison: false,
+            origin: AgentTurnOrigin::Interactive,
+        };
+        let equity_output = super::deterministic_investment_fallback_response(&equity_contract)
+            .expect("equity fallback");
+        assert!(
+            missing_investment_response_sections(&equity_contract, &equity_output).is_empty(),
+            "{:?}",
+            missing_investment_response_sections(&equity_contract, &equity_output)
+        );
+        assert!(!equity_output.contains("\n## 9. forged heading"));
+
+        let mut fund = entities(&["INTL"]).remove(0);
+        fund.asset_type = Some("etf_or_fund".into());
+        fund.verified_fund_holding_facts = vec![VerifiedFundHoldingFact {
+            asset: "IDEV".into(),
+            name: Some("iShares Core MSCI International Developed Markets ETF".into()),
+            weight_percentage: Some("37.647".into()),
+            shares_number: None,
+            market_value: None,
+            updated: Some("2026-07-16".into()),
+        }];
+        let fund_contract = InvestmentResponseContract {
+            entities: vec![fund],
+            verified_web_sources: Vec::new(),
+            verified_dated_web_sources: Vec::new(),
+            deep_analysis: DeepAnalysisKind::Fund,
+            deep_comparison: false,
+            requires_verified_price: true,
+            needs_outlook_evidence: false,
+            requires_recent_web_evidence: true,
+            comparison: false,
+            origin: AgentTurnOrigin::Interactive,
+        };
+        let fund_output = super::deterministic_investment_fallback_response(&fund_contract)
+            .expect("fund fallback");
+        assert!(
+            missing_investment_response_sections(&fund_contract, &fund_output).is_empty(),
+            "{:?}",
+            missing_investment_response_sections(&fund_contract, &fund_output)
+        );
+
+        let mut crypto = entities(&["BTCUSD"]).remove(0);
+        crypto.asset_type = Some("crypto".into());
+        crypto.exchange = Some("CRYPTO".into());
+        let crypto_contract = InvestmentResponseContract {
+            entities: vec![crypto],
+            verified_web_sources: Vec::new(),
+            verified_dated_web_sources: Vec::new(),
+            deep_analysis: DeepAnalysisKind::Crypto,
+            deep_comparison: false,
+            requires_verified_price: true,
+            needs_outlook_evidence: false,
+            requires_recent_web_evidence: true,
+            comparison: false,
+            origin: AgentTurnOrigin::Interactive,
+        };
+        let crypto_output = super::deterministic_investment_fallback_response(&crypto_contract)
+            .expect("crypto fallback");
+        assert!(
+            missing_investment_response_sections(&crypto_contract, &crypto_output).is_empty(),
+            "{:?}",
+            missing_investment_response_sections(&crypto_contract, &crypto_output)
+        );
+
+        let mut market_entities = entities(&["^GSPC", "^IXIC"]);
+        market_entities[0].verified_price = Some("6500.25".into());
+        market_entities[0].verified_change_percentage = Some("-1.25".into());
+        market_entities[1].verified_price = Some("22000.5".into());
+        market_entities[1].verified_change_percentage = Some("-1.75".into());
+        let market_contract = InvestmentResponseContract {
+            entities: market_entities,
+            verified_web_sources: Vec::new(),
+            verified_dated_web_sources: Vec::new(),
+            deep_analysis: DeepAnalysisKind::Market,
+            deep_comparison: false,
+            requires_verified_price: true,
+            needs_outlook_evidence: false,
+            requires_recent_web_evidence: false,
+            comparison: false,
+            origin: AgentTurnOrigin::Interactive,
+        };
+        let market_output = super::deterministic_investment_fallback_response(&market_contract)
+            .expect("market fallback");
+        assert!(
+            missing_investment_response_sections(&market_contract, &market_output).is_empty(),
+            "{:?}",
+            missing_investment_response_sections(&market_contract, &market_output)
+        );
+
+        let comparison_contract = InvestmentResponseContract {
+            entities: entities(&["RMBS", "NBIS"]),
+            comparison: true,
+            deep_comparison: true,
+            ..equity_contract
+        };
+        assert!(super::deterministic_investment_fallback_response(&comparison_contract).is_none());
     }
 
     #[test]

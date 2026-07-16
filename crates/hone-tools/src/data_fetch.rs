@@ -480,15 +480,19 @@ fn parse_extended_hours_timestamp(value: &str) -> Option<(i64, NaiveTime)> {
 }
 
 fn extended_hours_session(time: NaiveTime) -> &'static str {
+    let pre_open = NaiveTime::from_hms_opt(4, 0, 0).expect("valid premarket open time");
     let regular_open = NaiveTime::from_hms_opt(9, 30, 0).expect("valid market open time");
     let regular_close = NaiveTime::from_hms_opt(16, 0, 0).expect("valid market close time");
+    let post_close = NaiveTime::from_hms_opt(20, 0, 0).expect("valid postmarket close time");
 
-    if time < regular_open {
+    if time >= pre_open && time < regular_open {
         "pre"
-    } else if time < regular_close {
+    } else if time >= regular_open && time <= regular_close {
         "regular"
-    } else {
+    } else if time > regular_close && time <= post_close {
         "post"
+    } else {
+        "closed"
     }
 }
 
@@ -844,8 +848,9 @@ impl Tool for DataFetchTool {
 #[cfg(test)]
 mod tests {
     use super::{
-        DataFetchTool, nonempty_fmp_error_message, normalize_extended_hours_bar,
-        sanitize_fmp_error_detail, should_cache_fmp_value, ttl_for_data_type,
+        DataFetchTool, extended_hours_session, nonempty_fmp_error_message,
+        normalize_extended_hours_bar, sanitize_fmp_error_detail, should_cache_fmp_value,
+        ttl_for_data_type,
     };
     use crate::base::Tool;
     use crate::test_support::{assert_text_contains_all, assert_text_contains_none};
@@ -1089,6 +1094,19 @@ mod tests {
         assert_eq!(payload["date"], "2026-07-16 18:49:00");
         assert_eq!(payload["session"], "post");
         assert_eq!(payload.as_object().expect("bar object").len(), 7);
+    }
+
+    #[test]
+    fn extended_hours_session_respects_actual_us_trading_boundaries() {
+        let time = |hour, minute| chrono::NaiveTime::from_hms_opt(hour, minute, 0).unwrap();
+        assert_eq!(extended_hours_session(time(3, 59)), "closed");
+        assert_eq!(extended_hours_session(time(4, 0)), "pre");
+        assert_eq!(extended_hours_session(time(9, 29)), "pre");
+        assert_eq!(extended_hours_session(time(9, 30)), "regular");
+        assert_eq!(extended_hours_session(time(16, 0)), "regular");
+        assert_eq!(extended_hours_session(time(16, 1)), "post");
+        assert_eq!(extended_hours_session(time(20, 0)), "post");
+        assert_eq!(extended_hours_session(time(20, 1)), "closed");
     }
 
     #[tokio::test]
