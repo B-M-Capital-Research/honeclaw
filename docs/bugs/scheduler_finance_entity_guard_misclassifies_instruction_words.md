@@ -6,6 +6,17 @@
 - **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
 
+## 复发记录（2026-07-17 07:01 CST）
+
+- 运行态在最近投研链路修复后继续复发，状态维持 `New`：
+  - 本轮巡检窗口为 `2026-07-17 03:01-07:01 CST`。
+  - `data/sessions.sqlite3` 同窗新增 5 条 user / 6 条 assistant，全部以 assistant 收口；未见长期 user-only 悬挂、错投、空回复、内部路径 / raw tool / `<think>` 外泄或全渠道不可用。
+  - `data/runtime/logs/web.log.2026-07-16` 同窗有 104 条 runner / 执行失败，代表实体 guard 样本包括 TSLA、AST SpaceMobile、SPY、Samsung、SIVE、TEM、AT&T、VIX、Cerebras Systems、BRK.B、AWS、Nokia、Meta、Nvidia 等被判为无法确认或多候选。
+  - 05:00 CST Web scheduler `盘后美股复盘与SNDK/MU存储产业链日报` 先因证券实体与当前数据预检超过 45 秒终止，再写入用户可见执行出错；06:11 CST RMBS 和 06:53 CST ISRG direct 也在已核验行情前缀后落成投研完整性失败。
+  - 同窗 06:31 CST Web scheduler 组合跟踪和 07:01 CST Feishu 持仓早报可成功输出长正文，说明故障不是 scheduler/direct 全链路不可用。
+- 判断：最新样本仍是实体优先 / 投研完整性 guard 过宽或上下文输入不干净链路，更新原文档，不新建重复缺陷。
+- 严重等级维持 `P2`：问题直接阻断部分投研 direct / scheduler 正文生成，但同窗仍有金融 scheduler 成功收口，未见错投、数据破坏、敏感信息泄露或全渠道停摆，因此不是 `P1`，不创建 GitHub Issue。
+
 ## 复发记录（2026-07-17 03:02 CST）
 
 - 运行态在最近投研链路修复后继续复发，状态维持 `New`：

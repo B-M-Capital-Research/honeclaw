@@ -22,6 +22,19 @@
 
 ## 最新进展
 
+- 本轮 2026-07-17 07:01 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-16`
+    - 06:00 CST `存储板块关键事件心跳提醒` raw preview 使用 `SNDK price: $1411.08`、previous close `$1614.99999` 作为触发判断锚。
+    - 06:00 CST `Monitor_Watchlist_11` raw preview 使用 `MU: $853.20` 对比 `MU <= $252.00` 判断未触发。
+    - 07:00 CST `美股黄金坑信号心跳检测` raw preview 使用 `SPY: $750.72`、`QQQ` 等高风险数量级市场锚点。
+    - 07:00 CST `持仓财报与重大新闻心跳提醒` deliver preview 写 `SNDK -19%（$1,415→$1,411）`，继续把异常数量级 SNDK 价格进入用户可见提醒。
+    - 07:00 CST `Cerebras IPO与业务进展心跳监控` deliver preview 使用 `CBRS price: 180.46`、`prev_close: 184.01` 等疑似上市后行情锚；需和 IPO 语境分开核验。
+  - `data/sessions.sqlite3`
+    - 同窗有 5 条 user / 6 条 assistant，全部以 assistant 收口；未见错投、投递失败、空回复、敏感信息外泄或全渠道不可用。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check 缺口：异常或高风险数量级价格进入 heartbeat 判断上下文和用户可见 preview。
+    - 本窗没有错投、投递失败、空回复、数据破坏或全渠道不可用；因此仍按质量性 `P3 / New`。该问题不影响主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-17 03:02 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-16`
     - 23:01 CST `Cerebras IPO与业务进展心跳监控` raw preview 使用 `CBRS Market Cap ~$3993 亿` 作为行情锚。

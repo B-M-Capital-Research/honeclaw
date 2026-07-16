@@ -8,6 +8,15 @@
 
 ## 最新进展
 
+- 本轮 `2026-07-17 03:01-07:01 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-16`
+    - 06:00 CST `全天原油价格3小时播报` raw preview 把当前时间写成 `2026-07-17T09:30:00+08:00`，晚于真实日志时间约 3.5 小时。
+    - 07:00 CST 同一原油 job raw preview 又把当前时间写成 `09:18`，并据此判断满足时间条件。
+    - 07:00 CST `SIVE POET/Nokia/1.6T DFB 心跳检测` duplicate suppression 匹配旧 preview `当前时间 2026年7月16日 03:30 北京时间`，与真实 07:00 CST 窗口不一致。
+    - 07:01 CST `光模块板块关键事件心跳提醒` duplicate suppression 匹配旧 `2026-07-16 北京时间约 09:40` preview，继续显示运行态使用过期时间口径参与去重。
+  - 会话质量对照：同窗 `data/sessions.sqlite3` 新增 5 条 user / 6 条 assistant，全部以 assistant 收口；未见同类时间口径错误进入普通 direct assistant final。
+  - 判断：这些样本仍是 heartbeat 运行态时间上下文 / 任务上下文漂移，主要影响触发判断质量与用户可见时间口径可信度；没有错投、全渠道不可用或敏感信息泄露，维持质量性 `P3 / New`，非 P1。
+
 - 本轮 `2026-07-16 23:01-2026-07-17 03:03 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-16`
     - 23:30 CST `AAOI 1.6T 光模块心跳检测` raw preview 把真实 23:30 CST 写成 `2026-07-16 22:30 Beijing time`。
