@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -152,6 +152,27 @@ impl ActiveChatRunRegistry {
         run.updated_at_ms = Utc::now().timestamp_millis();
     }
 
+    fn heartbeat(
+        &self,
+        session_id: &str,
+        run_id: &str,
+        phase: &str,
+        status_text: &str,
+        min_silence: Duration,
+    ) -> Option<ActiveChatRun> {
+        let now_ms = Utc::now().timestamp_millis();
+        let min_silence_ms = i64::try_from(min_silence.as_millis()).unwrap_or(i64::MAX);
+        let mut entries = self.entries.lock().unwrap();
+        let run = entries.get_mut(session_id)?;
+        if run.run_id != run_id || now_ms.saturating_sub(run.updated_at_ms) < min_silence_ms {
+            return None;
+        }
+        run.phase = phase.to_string();
+        run.status_text = status_text.to_string();
+        run.updated_at_ms = now_ms;
+        Some(run.clone())
+    }
+
     fn finish(&self, session_id: &str, run_id: &str) {
         let mut entries = self.entries.lock().unwrap();
         if entries
@@ -174,6 +195,31 @@ impl ActiveChatRunHandle {
     pub fn update(&self, phase: &str, status_text: &str) {
         self.registry
             .update(&self.session_id, &self.run_id, phase, status_text);
+    }
+
+    /// Emit a liveness update only after the run has been otherwise silent.
+    /// Returning the updated snapshot lets SSE consumers keep the original
+    /// server start time across refreshes.
+    pub fn heartbeat(
+        &self,
+        phase: &str,
+        status_text: &str,
+        min_silence: Duration,
+    ) -> Option<ActiveChatRun> {
+        self.registry.heartbeat(
+            &self.session_id,
+            &self.run_id,
+            phase,
+            status_text,
+            min_silence,
+        )
+    }
+
+    /// Remove the run before publishing its terminal SSE frame. The guard may
+    /// still be alive for a few instructions, but refresh recovery must not
+    /// append a fresh thinking card after the persisted final answer.
+    pub fn finish(&self) {
+        self.registry.finish(&self.session_id, &self.run_id);
     }
 }
 
@@ -241,6 +287,36 @@ mod tests {
 
         drop(guard);
         assert!(registry.get("session-1").is_none());
+        assert_eq!(registry.count(), 0);
+    }
+
+    #[test]
+    fn active_chat_run_can_finish_before_its_guard_drops() {
+        let registry = Arc::new(ActiveChatRunRegistry::default());
+        let guard = registry
+            .try_begin("session-1".to_string())
+            .expect("first run should start");
+        let handle = guard.handle();
+
+        let heartbeat = handle
+            .heartbeat("running", "仍在处理中", std::time::Duration::ZERO)
+            .expect("heartbeat should update the live run");
+        assert_eq!(heartbeat.started_at_ms, guard.run().unwrap().started_at_ms);
+        assert_eq!(heartbeat.status_text, "仍在处理中");
+
+        handle.finish();
+        assert_eq!(registry.count(), 0);
+        assert!(guard.run().is_none());
+
+        // If another request starts in the small interval before the old task
+        // unwinds, the old guard's run-id fence must not remove the new run.
+        let replacement = registry
+            .try_begin("session-1".to_string())
+            .expect("replacement run should start after terminal state");
+        let replacement_id = replacement.run().unwrap().run_id;
+        drop(guard);
+        assert_eq!(registry.get("session-1").unwrap().run_id, replacement_id);
+        drop(replacement);
         assert_eq!(registry.count(), 0);
     }
 }

@@ -277,6 +277,15 @@ export function shouldRecoverPublicChatAfterEof(input: {
   return input.reachedEof && !input.sawTerminalEvent;
 }
 
+/**
+ * Only these frames end the HTTP chat stream. `run_error` is deliberately not
+ * terminal: a runner attempt can fail and still be recovered by the server
+ * before the final `run_finished` frame arrives.
+ */
+export function isPublicChatTerminalStreamEvent(event: string) {
+  return event === "run_finished" || event === "error" || event === "done";
+}
+
 export function shouldPreventPublicChatPinch(input: {
   touchCount: number;
   insideControlledSurface: boolean;

@@ -97,6 +97,7 @@ import {
   rekeyTrailingOptimisticIds,
   resolvePublicChatRecovery,
   isPublicChatBusy,
+  isPublicChatTerminalStreamEvent,
   mergePublicHistoryWindow,
   mergePublicPushItems,
   shouldPollPublicChatRecovery,
@@ -3195,6 +3196,7 @@ export default function PublicChatPage() {
     let reachedStreamEof = false;
     let sawTerminalEvent = false;
     let recoverAfterEof = false;
+    let lastRunErrorMessage: string | undefined;
     try {
       const stream = await sendPublicChat(
         text,
@@ -3244,7 +3246,7 @@ export default function PublicChatPage() {
           });
         }
       };
-      while (true) {
+      streamLoop: while (true) {
         const { done, value } = await reader.read();
         if (done) {
           reachedStreamEof = true;
@@ -3290,20 +3292,22 @@ export default function PublicChatPage() {
             resetAssistantDelta();
           }
           if (ev.event === "run_error") {
-            sawTerminalEvent = true;
+            lastRunErrorMessage =
+              ev.data.message ?? CONTENT.chat_page.status.fallback_error;
             if (deltaFrame !== undefined) cancelAnimationFrame(deltaFrame);
             flushAssistantDelta();
             const index = messages.findIndex((m) => m.id === assistantId);
             if (index >= 0) {
               setMessages(index, {
-                phase: "error",
-                statusText:
-                  ev.data.message ?? CONTENT.chat_page.status.fallback_error,
+                // A run error can be attempt-local (for example a context
+                // recovery). Keep the turn pending until run_finished says
+                // whether the whole server-owned run actually failed.
+                phase: "running",
+                statusText: CONTENT.chat_page.status.running,
               });
             }
           }
           if (ev.event === "run_finished") {
-            sawTerminalEvent = true;
             if (deltaFrame !== undefined) cancelAnimationFrame(deltaFrame);
             flushAssistantDelta();
             const index = messages.findIndex((m) => m.id === assistantId);
@@ -3312,7 +3316,7 @@ export default function PublicChatPage() {
                 phase: ev.data.success === false ? "error" : "done",
                 statusText:
                   ev.data.success === false
-                    ? messages[index].statusText ||
+                    ? lastRunErrorMessage ??
                       CONTENT.chat_page.status.fallback_error
                     : undefined,
               });
@@ -3320,7 +3324,6 @@ export default function PublicChatPage() {
             pinToBottom(1400);
           }
           if (ev.event === "error") {
-            sawTerminalEvent = true;
             const index = messages.findIndex((m) => m.id === assistantId);
             if (index >= 0) {
               setMessages(index, {
@@ -3331,11 +3334,17 @@ export default function PublicChatPage() {
             }
           }
           if (ev.event === "done") {
-            sawTerminalEvent = true;
             const index = messages.findIndex((m) => m.id === assistantId);
             if (index >= 0 && messages[index].phase !== "error") {
               setMessages(index, { phase: "done", statusText: undefined });
             }
+          }
+          if (isPublicChatTerminalStreamEvent(ev.event)) {
+            // A terminal frame is authoritative. Stop consuming immediately
+            // so a queued reset/progress/delta can never make a completed card
+            // flash back into a second apparent response round.
+            sawTerminalEvent = true;
+            break streamLoop;
           }
         }
       }

@@ -11,6 +11,7 @@ import {
   findPendingPublicAssistantMessage,
   formatPublicAttachmentBytes,
   isPublicChatBusy,
+  isPublicChatTerminalStreamEvent,
   isPublicChatQuotaExhausted,
   latestUnreadPushId,
   mergePublicPushItems,
@@ -332,6 +333,15 @@ describe("public chat restore retry policy", () => {
         sawTerminalEvent: false,
       }),
     ).toBe(false);
+  });
+
+  it("treats only authoritative completion frames as terminal", () => {
+    expect(isPublicChatTerminalStreamEvent("run_finished")).toBe(true);
+    expect(isPublicChatTerminalStreamEvent("error")).toBe(true);
+    expect(isPublicChatTerminalStreamEvent("done")).toBe(true);
+    expect(isPublicChatTerminalStreamEvent("run_error")).toBe(false);
+    expect(isPublicChatTerminalStreamEvent("assistant_delta")).toBe(false);
+    expect(isPublicChatTerminalStreamEvent("assistant_reset")).toBe(false);
   });
 });
 

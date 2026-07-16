@@ -1,5 +1,7 @@
 use std::convert::Infallible;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use axum::Json;
@@ -11,6 +13,7 @@ use tracing::{error, info};
 
 use hone_channels::agent_session::{
     AgentRunOptions, AgentRunQuotaMode, AgentSession, AgentSessionEvent, AgentSessionListener,
+    run_with_progress_ticks,
 };
 use hone_channels::prompt::PromptOptions;
 use hone_channels::run_event::RunEvent;
@@ -20,16 +23,26 @@ use hone_core::ActorIdentity;
 use crate::state::{ActiveChatRunHandle, AppState};
 use crate::types::ChatRequest;
 
+const WEB_CHAT_PROGRESS_TICK: Duration = Duration::from_secs(10);
+const WEB_CHAT_PROGRESS_MIN_SILENCE: Duration = Duration::from_secs(15);
+const WEB_CHAT_PROGRESS_STATUS: &str = "仍在处理中，正在完成核验与分析";
+
 pub(crate) struct SseSessionListener {
     tx: tokio::sync::mpsc::Sender<(String, Value)>,
     user_id: String,
     sent_segments: Arc<tokio::sync::Mutex<usize>>,
     active_run: Option<ActiveChatRunHandle>,
+    terminal_sent: Arc<AtomicBool>,
 }
 
 #[async_trait]
 impl AgentSessionListener for SseSessionListener {
     async fn on_event(&self, event: AgentSessionEvent) {
+        if !matches!(&event, AgentSessionEvent::Done { .. })
+            && self.terminal_sent.load(Ordering::Acquire)
+        {
+            return;
+        }
         match event {
             AgentSessionEvent::Segment { text } => {
                 if let Some(active_run) = &self.active_run {
@@ -112,8 +125,15 @@ impl AgentSessionListener for SseSessionListener {
                     .await;
             }
             AgentSessionEvent::Done { response } => {
+                if self.terminal_sent.swap(true, Ordering::AcqRel) {
+                    return;
+                }
                 if let Some(active_run) = &self.active_run {
-                    active_run.update("running", "正在完成最后检查");
+                    // The assistant turn is persisted before Done is emitted.
+                    // Clear recovery state before any terminal bytes reach the
+                    // browser so a concurrent refresh cannot append a second
+                    // thinking card behind the completed answer.
+                    active_run.finish();
                 }
                 let sent = *self.sent_segments.lock().await;
                 // ── 安全刷新：仅当流式阶段完全没有发送过内容时，才补发全量，
@@ -148,6 +168,31 @@ impl AgentSessionListener for SseSessionListener {
             _ => {}
         }
     }
+}
+
+fn emit_web_progress_heartbeat(
+    tx: &tokio::sync::mpsc::Sender<(String, Value)>,
+    active_run: &ActiveChatRunHandle,
+    terminal_sent: &AtomicBool,
+    min_silence: Duration,
+) {
+    if terminal_sent.load(Ordering::Acquire) {
+        return;
+    }
+    let Some(run) = active_run.heartbeat("running", WEB_CHAT_PROGRESS_STATUS, min_silence) else {
+        return;
+    };
+    // A slow or disconnected browser must never stall the detached Agent run.
+    let _ = tx.try_send((
+        "run_progress".into(),
+        json!({
+            "run_id": run.run_id,
+            "started_at_ms": run.started_at_ms,
+            "updated_at_ms": run.updated_at_ms,
+            "phase": run.phase,
+            "status_text": run.status_text,
+        }),
+    ));
 }
 
 fn public_progress_status(stage: &str) -> (&'static str, &'static str) {
@@ -243,6 +288,9 @@ pub(crate) fn build_chat_sse(
             let _ = tx
                 .send(("assistant_delta".into(), json!({ "content": reply })))
                 .await;
+            // Do not expose a still-active run after the terminal frame. This
+            // is the same ordering guarantee used by the session listener.
+            drop(active_run_guard);
             let _ = tx
                 .send(("run_finished".into(), json!({ "success": true })))
                 .await;
@@ -266,11 +314,14 @@ pub(crate) fn build_chat_sse(
         .with_recv_extra(Some(recv_extra));
 
         let sent_segments = Arc::new(tokio::sync::Mutex::new(0usize));
+        let terminal_sent = Arc::new(AtomicBool::new(false));
+        let active_run_handle = active_run_guard.handle();
         session.add_listener(Arc::new(SseSessionListener {
             tx: tx.clone(),
             user_id: actor_clone.user_id.clone(),
             sent_segments: sent_segments.clone(),
-            active_run: Some(active_run_guard.handle()),
+            active_run: Some(active_run_handle.clone()),
+            terminal_sent: terminal_sent.clone(),
         }));
 
         info!(
@@ -288,7 +339,22 @@ pub(crate) fn build_chat_sse(
             model_override: None,
             ..AgentRunOptions::default()
         };
-        let _ = session.run(&msg, run_options).await;
+        let heartbeat_tx = tx.clone();
+        let heartbeat_terminal = terminal_sent.clone();
+        let _ = run_with_progress_ticks(
+            session.run(&msg, run_options),
+            WEB_CHAT_PROGRESS_TICK,
+            move |_, _| {
+                emit_web_progress_heartbeat(
+                    &heartbeat_tx,
+                    &active_run_handle,
+                    &heartbeat_terminal,
+                    WEB_CHAT_PROGRESS_MIN_SILENCE,
+                );
+                std::future::ready(())
+            },
+        )
+        .await;
         drop(active_run_guard);
     });
 
@@ -340,13 +406,17 @@ pub(crate) async fn handle_active_chat_runs(State(state): State<Arc<AppState>>) 
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::time::Duration;
 
     use hone_channels::agent_session::{AgentSessionEvent, AgentSessionListener};
     use hone_channels::run_event::RunEvent;
     use hone_core::agent::AgentResponse;
     use serde_json::json;
 
-    use super::SseSessionListener;
+    use crate::state::ActiveChatRunRegistry;
+
+    use super::{SseSessionListener, WEB_CHAT_PROGRESS_STATUS, emit_web_progress_heartbeat};
 
     #[tokio::test]
     async fn stream_reset_clears_sent_count_and_emits_assistant_reset() {
@@ -357,6 +427,7 @@ mod tests {
             user_id: "u1".to_string(),
             sent_segments: sent_segments.clone(),
             active_run: None,
+            terminal_sent: Arc::new(AtomicBool::new(false)),
         };
 
         listener
@@ -377,6 +448,7 @@ mod tests {
             user_id: "u1".to_string(),
             sent_segments: sent_segments.clone(),
             active_run: None,
+            terminal_sent: Arc::new(AtomicBool::new(false)),
         };
 
         listener
@@ -422,6 +494,7 @@ mod tests {
             user_id: "u1".to_string(),
             sent_segments: Arc::new(tokio::sync::Mutex::new(0)),
             active_run: None,
+            terminal_sent: Arc::new(AtomicBool::new(false)),
         };
 
         listener
@@ -447,6 +520,89 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn terminal_event_finishes_recovery_state_and_blocks_late_frames() {
+        let registry = Arc::new(ActiveChatRunRegistry::default());
+        let guard = registry
+            .try_begin("session-1".to_string())
+            .expect("active run");
+        let terminal_sent = Arc::new(AtomicBool::new(false));
+        let (tx, mut rx) = tokio::sync::mpsc::channel(4);
+        let listener = SseSessionListener {
+            tx,
+            user_id: "u1".to_string(),
+            // Pretend the answer was already streamed so Done only emits the
+            // authoritative terminal frame.
+            sent_segments: Arc::new(tokio::sync::Mutex::new(1)),
+            active_run: Some(guard.handle()),
+            terminal_sent: terminal_sent.clone(),
+        };
+
+        listener
+            .on_event(AgentSessionEvent::Done {
+                response: AgentResponse {
+                    content: "最终答案".to_string(),
+                    tool_calls_made: Vec::new(),
+                    iterations: 1,
+                    success: true,
+                    error: None,
+                },
+            })
+            .await;
+
+        assert_eq!(registry.count(), 0, "refresh must not see a stale run");
+        assert!(terminal_sent.load(Ordering::Acquire));
+        assert_eq!(
+            rx.recv().await,
+            Some(("run_finished".to_string(), json!({ "success": true })))
+        );
+
+        listener
+            .on_event(AgentSessionEvent::Run(RunEvent::Progress {
+                stage: "agent.run.progress",
+                detail: None,
+            }))
+            .await;
+        listener
+            .on_event(AgentSessionEvent::Done {
+                response: AgentResponse {
+                    content: "重复答案".to_string(),
+                    tool_calls_made: Vec::new(),
+                    iterations: 1,
+                    success: true,
+                    error: None,
+                },
+            })
+            .await;
+        assert!(rx.try_recv().is_err(), "late frames must be suppressed");
+
+        // The still-live guard can now drop without resurrecting/removing a
+        // different run.
+        drop(guard);
+    }
+
+    #[tokio::test]
+    async fn web_heartbeat_preserves_server_start_and_stops_after_terminal() {
+        let registry = Arc::new(ActiveChatRunRegistry::default());
+        let guard = registry
+            .try_begin("session-1".to_string())
+            .expect("active run");
+        let initial = guard.run().expect("initial run");
+        let terminal_sent = AtomicBool::new(false);
+        let (tx, mut rx) = tokio::sync::mpsc::channel(2);
+
+        emit_web_progress_heartbeat(&tx, &guard.handle(), &terminal_sent, Duration::ZERO);
+        let (event, payload) = rx.recv().await.expect("heartbeat event");
+        assert_eq!(event, "run_progress");
+        assert_eq!(payload["run_id"], initial.run_id);
+        assert_eq!(payload["started_at_ms"], initial.started_at_ms);
+        assert_eq!(payload["status_text"], WEB_CHAT_PROGRESS_STATUS);
+
+        terminal_sent.store(true, Ordering::Release);
+        emit_web_progress_heartbeat(&tx, &guard.handle(), &terminal_sent, Duration::ZERO);
+        assert!(rx.try_recv().is_err(), "terminal run must not heartbeat");
+    }
+
+    #[tokio::test]
     async fn progress_and_tool_events_emit_only_user_safe_status_fields() {
         let (tx, mut rx) = tokio::sync::mpsc::channel(4);
         let listener = SseSessionListener {
@@ -454,6 +610,7 @@ mod tests {
             user_id: "u1".to_string(),
             sent_segments: Arc::new(tokio::sync::Mutex::new(0)),
             active_run: None,
+            terminal_sent: Arc::new(AtomicBool::new(false)),
         };
 
         listener
