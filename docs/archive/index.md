@@ -4,6 +4,18 @@ Last updated: 2026-07-17
 
 ## 2026-07-17
 
+### RKLB Entity, Market Data, And Deep Valuation Repair
+
+- Status: done
+- Date: 2026-07-17
+- Plan: `docs/archive/plans/rklb-data-resolution-regression.md`
+- Handoff: `docs/handoffs/2026-07-17-rklb-entity-resolution-repair.md`
+- Decision / ADR: `D-2026-07-16-01`, `D-2026-07-17-01`, `D-2026-07-17-02`, and `D-2026-07-17-03` in `docs/decisions.md`
+- Related PRs / commits: `ff3852c3`, `7d14c87f`
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`; `hone-channels` 569/569; `hone-tools` 136/136 with one expected ignored test; finance contracts 24/24; live RMBS/RKLB/NBIS/INTL/BTCUSD and mixed-market provider probes; GitHub CI `29570821727`; three final production Web/SSE RKLB cases; controlled restart and runtime/storage/auth health checks
+- Current conclusion: FMP/DataFetch was healthy. The failure came from an explicit RKLB ticker still depending on auxiliary prose parsing, provider-sensitive alias rewriting, missing ticker-binding syntax, and then safe-range wording falling through to the quote-only contract. Exact tickers now keep their provider query and bypass auxiliary extraction when complete; semantic-empty search has a strict same-symbol profile fallback; safe-range and entry-decision questions require the deep nine-section contract. Final production returned Rocket Lab USA, Inc. / RKLB at `67.35 USD` with all nine sections, one answer/terminal, zero reset/error, and zero active chats.
+- Next entry point: `crates/hone-channels/src/investment_response_guard.rs` and `docs/handoffs/2026-07-17-rklb-entity-resolution-repair.md`
+
 ### Investment Response Template And Deterministic Repair
 
 - Status: done

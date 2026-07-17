@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-07-17
-状态：有 7 个活跃任务
+状态：有 6 个活跃任务
 
 ## 说明
 
@@ -15,11 +15,6 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
-
-- **RKLB 实体与行情解析回归修复**
-  - 状态：`in_progress`
-  - 计划：`docs/current-plans/rklb-data-resolution-regression.md`
-  - 摘要：核对生产 RKLB 失败会话与 DataFetch/FMP 真实结果，修复实体识别、行情准备或最终守卫中的根因，并完成针对性回归、受控部署和真实生产验证
 
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`
