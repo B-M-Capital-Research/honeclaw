@@ -23,6 +23,13 @@ New
 ## 证据来源
 
 - `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-17`
+  - 巡检时间窗：2026-07-18 03:00-07:01 CST。
+  - `data/sessions.sqlite3` 同窗新增 3 条 user / 5 条 assistant，近期 direct / scheduler session 均以 assistant 收口；没有 user-only 悬挂、错投、敏感信息泄露或全渠道不可用证据。
+  - 05:00 CST Web scheduler session `Actor_web__direct__web-user-afc1cabadbf8` 的 `盘后美股复盘与SNDK/MU存储产业链日报` 先写入证券 / 数据覆盖预检失败，随后追加用户可见 `定时任务「盘后美股复盘与SNDK/MU存储产业链日报」执行出错，请稍后重试。`
+  - 05:30 CST Feishu scheduler session `Actor_feishu__direct__ou_5f636d6d7c80d333e41b86ae79d07adca8` 的 `美股收盘后跨市场复盘` 只返回实体解析失败；06:00 CST Feishu scheduler session `Actor_feishu__direct__ou_5f11da38ad70c47cf87c0b106b6408b190` 的 `每日美股盘后收盘复盘` 只返回 Nasdaq 多候选澄清，均未生成用户请求的复盘主体。
+  - `data/runtime/logs/web.log.2026-07-17` 同窗继续出现 341 条 `runner_error`、175 条定时任务执行失败和 340 条实体 / 多候选 / 无覆盖相关信号，覆盖 Feishu / Web heartbeat 与普通 scheduler。
+  - 判断：该样本仍属于同根投研完整性 / evidence 门禁 fail-closed，用户只看到实体解析失败、候选澄清或 scheduler 失败提示；由于同窗没有错投、数据破坏、敏感信息泄露或全渠道不可用，维持功能性 `P2 / New`，不升级为 P1，不创建 GitHub Issue。
+- `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-17`
   - 巡检时间窗：2026-07-17 15:01-19:02 CST。
   - `data/sessions.sqlite3` 同窗新增 8 条 user / 9 条 assistant，覆盖 8 个近期 Web direct / scheduler session，全部以 assistant 收口；没有 user-only 悬挂、错投、敏感信息泄露或全渠道不可用证据。
   - 18:00 CST Web scheduler session `Actor_web__direct__web-user-ba50cb9401c0` 的 `18:00 美股盘前 X 英文帖` 先写入 `X 的报价没有可用且足够新的数据源时间戳。本轮不会把查询时间冒充行情时间。`，随后写入 `定时任务「18:00 美股盘前 X 英文帖」执行出错，请稍后重试。`

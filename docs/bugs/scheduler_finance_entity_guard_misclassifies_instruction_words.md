@@ -3,8 +3,21 @@
 - **发现时间**: 2026-07-15 19:02 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
+
+## 运行态复核（2026-07-18 07:01 CST）
+
+- 运行态在 2026-07-17 23:59 CST 代码级修复后继续复发，状态从 `Fixed` 回退为 `New`：
+  - 本轮巡检窗口为 `2026-07-18 03:00-07:01 CST`。
+  - `data/sessions.sqlite3` 同窗新增 3 条 user / 5 条 assistant，近期 direct / scheduler session 均以 assistant 收口，`last_message_role=user` 为 0；assistant final 污染扫描未命中 `<think>`、本机路径、SQLite、panic、provider 原始错误、raw tool、`data_fetch`、`cron_job` 或 fenced JSON。
+  - 最近非文档提交 `3bf74589 fix(investment): recognize heartbeat ticker task subjects` 发生在 2026-07-18 03:08 CST，晚于上一轮代码级修复；但 05:00-07:00 CST 真实运行态仍出现同根失败：
+    - 05:00 CST Web scheduler session `Actor_web__direct__web-user-afc1cabadbf8` 的 `盘后美股复盘与SNDK/MU存储产业链日报` 先把任务正文中的 `PCE` 识别成证券代码且数据供应商无覆盖，随后写入 `scheduler_failure=true` 的用户可见执行出错。
+    - 05:30 CST Feishu scheduler session `Actor_feishu__direct__ou_5f636d6d7c80d333e41b86ae79d07adca8` 的 `美股收盘后跨市场复盘` 只返回“证券实体解析暂时未能确认当前点名的公司”，任务主体未生成。
+    - 06:00 CST Feishu scheduler session `Actor_feishu__direct__ou_5f11da38ad70c47cf87c0b106b6408b190` 的 `每日美股盘后收盘复盘` 把任务中“纳指或 Nasdaq-100”落成 `NASDAQ 100 / Nasdaq, Inc. / NASDAQ Composite / NASDAQ Biotechnology` 多候选澄清，业务正文未生成。
+  - `data/runtime/logs/web.log.2026-07-17` 在 03:00-07:01 CST 继续记录 340 条实体 / 候选 / 无覆盖相关信号、341 条 `runner_error` 与 175 条定时任务执行失败；07:00 CST 代表任务包括 ASTS、AAOI、ORCL、TSLA、NVDA、NBIS、闪迪、光迅科技、Cerebras 与持仓重大事件等 heartbeat 继续在实体解析或多候选阶段 fail-closed。
+  - 判断：代码级修复对任务名证券语境有补强，但 live scheduler / heartbeat 仍会把普通宏观指标、指数名、任务上下文词或显式 ticker 误导入证券实体核验并阻断业务正文，仍是同一实体 guard / resolver 链路，不新建重复缺陷。
+  - 严重等级维持 `P2`：问题直接阻断部分投研 scheduler / heartbeat 正文生成，但同窗 direct / scheduler 均有 assistant 收口，未见错投、数据破坏、敏感信息泄露或全渠道停摆，因此不是 `P1`，不创建 GitHub Issue。
 
 ## 代码级修复（2026-07-17 23:59 CST）
 
