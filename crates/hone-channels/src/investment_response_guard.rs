@@ -3260,6 +3260,18 @@ pub(crate) fn missing_investment_response_sections(
     {
         push_missing(&mut common_missing, "价格表逐标的已核验同代码现价");
     }
+    if !extended_quote_claims_are_consistent(contract, content) {
+        push_missing(
+            &mut common_missing,
+            "盘前盘后价格必须匹配本轮已核验时段、同代码现价与币种",
+        );
+    }
+    if markdown_has_unverified_historical_price_rows(content) {
+        push_missing(
+            &mut common_missing,
+            "历史、开收盘或高低价表格必须来自本轮专用历史行情证据",
+        );
+    }
     match contract.deep_analysis {
         DeepAnalysisKind::Equity => {
             let mut missing = missing_deep_single_stock_sections(content);
@@ -4893,6 +4905,400 @@ fn markdown_cells(line: &str) -> Vec<&str> {
         .split('|')
         .map(str::trim)
         .collect()
+}
+
+fn extended_price_fragment_is_nonfactual(fragment: &str) -> bool {
+    [
+        "本轮未核验",
+        "未完成核验",
+        "尚未核验",
+        "待核验",
+        "无法核验",
+        "没有核验",
+        "假设",
+        "情景",
+        "如果",
+        "若",
+        "可能",
+        "推断",
+        "预计",
+        "预测",
+        "目标价",
+        "隐含价",
+        "折算价",
+        "not verified",
+        "unverified",
+        "scenario",
+        "assume",
+        "assuming",
+        "target price",
+        "implied price",
+        "could",
+        "would",
+    ]
+    .iter()
+    .any(|marker| fragment.contains(marker))
+}
+
+fn extended_claim_local_prefix(fragment: &str, marker_start: usize) -> &str {
+    let prefix = &fragment[..marker_start.min(fragment.len())];
+    let punctuation_start = prefix
+        .char_indices()
+        .rev()
+        .find(|(_, character)| matches!(character, ',' | '，' | '、'))
+        .map_or(0, |(index, character)| index + character.len_utf8());
+    let conjunction_start = ["但是", "但", " but ", " however "]
+        .iter()
+        .filter_map(|delimiter| prefix.rfind(delimiter).map(|index| index + delimiter.len()))
+        .max()
+        .unwrap_or(0);
+    let semantic_start = punctuation_start.max(conjunction_start);
+    let local = &prefix[semantic_start..];
+    let bounded_start = local
+        .char_indices()
+        .rev()
+        .nth(48)
+        .map_or(0, |(index, _)| index);
+    &local[bounded_start..]
+}
+
+fn extended_claim_entity<'a>(
+    contract: &'a InvestmentResponseContract,
+    fragment: &str,
+) -> Option<&'a ResolvedSecurityEntity> {
+    let mentioned = contract
+        .entities
+        .iter()
+        .filter(|entity| symbol_appears_in_text(fragment, &entity.symbol))
+        .collect::<Vec<_>>();
+    match mentioned.as_slice() {
+        [entity] => Some(*entity),
+        [] if contract.entities.len() == 1 => contract.entities.first(),
+        _ => None,
+    }
+}
+
+fn extended_claim_currency_matches(
+    entity: &ResolvedSecurityEntity,
+    prefix: Option<&str>,
+    suffix: Option<&str>,
+) -> bool {
+    let Some(currencies) = [prefix, suffix]
+        .into_iter()
+        .flatten()
+        .map(normalize_price_currency)
+        .collect::<Option<Vec<_>>>()
+    else {
+        return false;
+    };
+    if currencies.is_empty() {
+        return true;
+    }
+    if !currencies.windows(2).all(|pair| pair[0] == pair[1]) {
+        return false;
+    }
+    entity
+        .currency
+        .as_deref()
+        .map(str::to_ascii_uppercase)
+        .is_some_and(|expected| currencies.iter().all(|currency| currency == &expected))
+}
+
+fn extended_price_claim_matches_contract(
+    contract: &InvestmentResponseContract,
+    fragment: &str,
+    marker_text: &str,
+    captures: &regex::Captures<'_>,
+    claim_scope: &str,
+) -> bool {
+    if extended_price_fragment_is_nonfactual(claim_scope) {
+        return true;
+    }
+    let Some(price) = captures
+        .name("number")
+        .map(|value| value.as_str().replace(',', ""))
+        .and_then(|value| value.parse::<f64>().ok())
+        .filter(|value| value.is_finite() && *value > 0.0)
+    else {
+        return false;
+    };
+    let Some(entity) = extended_claim_entity(contract, fragment) else {
+        return false;
+    };
+    let claimed_session = if marker_text.contains("盘前") || marker_text.starts_with("pre") {
+        "pre"
+    } else if marker_text.contains("盘后")
+        || marker_text.contains("夜盘")
+        || marker_text.starts_with("after")
+        || marker_text.starts_with("post")
+    {
+        "post"
+    } else if matches!(entity.quote_session.as_deref(), Some("pre" | "post")) {
+        entity
+            .quote_session
+            .as_deref()
+            .expect("matched quote session")
+    } else {
+        return false;
+    };
+    if entity.quote_session.as_deref() != Some(claimed_session) {
+        return false;
+    }
+    let Some(verified_price) = entity
+        .verified_price
+        .as_deref()
+        .and_then(|value| value.parse::<f64>().ok())
+        .filter(|value| value.is_finite() && *value > 0.0)
+    else {
+        return false;
+    };
+    (price - verified_price).abs() <= current_price_display_tolerance(verified_price)
+        && extended_claim_currency_matches(
+            entity,
+            captures.name("prefix").map(|value| value.as_str()),
+            captures.name("suffix").map(|value| value.as_str()),
+        )
+}
+
+/// Extended-hours prose is a stronger claim than a generic current quote.  It
+/// is accepted only when the server contract itself holds an exact-symbol bar
+/// for that same session.  A regular quote (including `regular_fallback`) must
+/// never be relabeled as a pre/post-market price by model prose.
+fn extended_quote_claims_are_consistent(
+    contract: &InvestmentResponseContract,
+    content: &str,
+) -> bool {
+    let session_marker = Regex::new(
+        r"(?i)盘前|盘后|夜盘|延长(?:交易)?时段|pre(?:-|\s)?market|after(?:-|\s)?hours?|post(?:-|\s)?market|extended(?:-|\s)?hours?",
+    )
+    .expect("extended-hours session claim regex");
+    let price_after_session = Regex::new(
+        r"(?ix)
+        ^\s*(?:[*_`|:：=,，、()（）\[\]\-—–]\s*){0,8}
+        (?:
+            (?:(?:现价|最新价|报价|价格|股价|价)\s*)?
+                [^\d。；;\r\n]{0,20}?
+                (?:下跌至|上涨至|跌至|跌到|降至|降到|涨至|涨到|升至|升到|报于|报至|报到|收于|交投于|交易于|交易在)
+          | (?:从|由)[^。；;\r\n]{1,40}?(?:下跌至|上涨至|跌至|跌到|降至|降到|涨至|涨到|升至|升到)
+          | (?:现价|最新价|报价|价格|股价|价)\s*(?:约?为|是|报于|报|at|is)?
+          | (?:(?:current|latest)\s+)?price\s*(?:is|at)?
+          | [^\d。；;\r\n]{0,32}?(?:fell|dropped|declined|rose|gained|climbed)[^\r\n]{0,48}?\b(?:to|at)
+          | trade(?:s|d)?\s+at
+          | trading\s+at
+          | 收于
+          | 为
+          | 报
+          | at
+          | is
+          | was
+        )?
+        \s*(?:[*_`|:：=]\s*)*
+        (?P<prefix>us\$|hk\$|c\$|a\$|s\$|\$|€|£|¥|￥|₩|₽|₹|[a-z]{3})?\s*
+        (?P<number>\d[\d,]*(?:\.\d+)?)\s*
+        (?P<suffix>美元|美金|欧元|港元|港币|人民币|加元|日元|英镑|澳元|新加坡元|瑞郎|韩元|卢布|新台币|纽元|泰铢|印度卢比|瑞典克朗|挪威克朗|丹麦克朗|南非兰特|巴西雷亚尔|墨西哥比索|[a-z]{3})?",
+    )
+    .expect("extended-hours price claim regex");
+    let price_before_session = Regex::new(
+        r"(?ix)
+        (?:
+            (?:下跌至|上涨至|跌至|跌到|降至|降到|涨至|涨到|升至|升到|报于|报至|报到|收于|交投于|交易于|交易在)
+          | (?:fell|dropped|declined|rose|gained|climbed)[^。；;\r\n]{0,48}?\b(?:to|at)
+        )
+        \s*(?:[*_`|:：=]\s*)*
+        (?P<prefix>us\$|hk\$|c\$|a\$|s\$|\$|€|£|¥|￥|₩|₽|₹|[a-z]{3})?\s*
+        (?P<number>\d[\d,]*(?:\.\d+)?)\s*
+        (?P<suffix>美元|美金|欧元|港元|港币|人民币|加元|日元|英镑|澳元|新加坡元|瑞郎|韩元|卢布|新台币|纽元|泰铢|印度卢比|瑞典克朗|挪威克朗|丹麦克朗|南非兰特|巴西雷亚尔|墨西哥比索|[a-z]{3})?
+        \s*(?:(?:during|in)\s+)?(?:[*_`|:：=,，、()（）\[\]\-—–]\s*){0,8}$",
+    )
+    .expect("extended-hours trailing session price claim regex");
+
+    for raw_fragment in content.split(['。', '；', ';', '\n', '!', '！', '?', '？']) {
+        let fragment = raw_fragment.trim().to_ascii_lowercase();
+        if fragment.is_empty() {
+            continue;
+        }
+        for marker in session_marker.find_iter(&fragment) {
+            let tail = &fragment[marker.end()..];
+            let marker_text = marker.as_str();
+            if let Some(captures) = price_after_session.captures(tail) {
+                let Some(matched) = captures.get(0) else {
+                    return false;
+                };
+                if !tail[matched.end()..].trim_start().starts_with('%') {
+                    let claim_scope = format!(
+                        "{}{}",
+                        extended_claim_local_prefix(&fragment, marker.start()),
+                        &tail[..matched.end()]
+                    );
+                    if !extended_price_claim_matches_contract(
+                        contract,
+                        &fragment,
+                        marker_text,
+                        &captures,
+                        &claim_scope,
+                    ) {
+                        return false;
+                    }
+                }
+            }
+
+            let head = &fragment[..marker.start()];
+            if let Some(captures) = price_before_session.captures(head) {
+                let Some(matched) = captures.get(0) else {
+                    return false;
+                };
+                let claim_scope = format!(
+                    "{}{}",
+                    extended_claim_local_prefix(&fragment, matched.start()),
+                    &fragment[matched.start()..marker.end()]
+                );
+                if !extended_price_claim_matches_contract(
+                    contract,
+                    &fragment,
+                    marker_text,
+                    &captures,
+                    &claim_scope,
+                ) {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
+fn markdown_separator_cells(cells: &[&str]) -> bool {
+    !cells.is_empty()
+        && cells.iter().all(|cell| {
+            let compact = cell.trim().trim_matches(':');
+            compact.len() >= 3 && compact.chars().all(|character| character == '-')
+        })
+}
+
+fn markdown_price_column_is_scenario_or_target(cell: &str) -> bool {
+    let lower = cell.to_ascii_lowercase();
+    [
+        "目标",
+        "情景",
+        "假设",
+        "隐含",
+        "折算",
+        "对应股价",
+        "敏感性",
+        "target",
+        "scenario",
+        "case",
+        "implied",
+        "assumption",
+        "sensitivity",
+        "bull",
+        "bear",
+        "base",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker))
+}
+
+fn markdown_historical_price_columns(header_cells: &[&str]) -> Vec<usize> {
+    let has_date_column = header_cells.iter().any(|cell| {
+        let lower = cell.to_ascii_lowercase();
+        ["日期", "交易日", "时间", "date", "day", "timestamp"]
+            .iter()
+            .any(|marker| lower.contains(marker))
+    });
+    header_cells
+        .iter()
+        .enumerate()
+        .filter_map(|(index, cell)| {
+            let lower = cell.to_ascii_lowercase();
+            let normalized = lower
+                .trim_matches(['*', '_', '`', ' '])
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            let explicit_historical = [
+                "历史股价",
+                "历史价格",
+                "历史价",
+                "过去股价",
+                "过去价格",
+                "开盘价",
+                "收盘价",
+                "最高价",
+                "最低价",
+                "historical price",
+                "past price",
+                "open price",
+                "opening price",
+                "close price",
+                "closing price",
+                "high price",
+                "low price",
+            ]
+            .iter()
+            .any(|marker| normalized.contains(marker))
+                || matches!(
+                    normalized.as_str(),
+                    "开盘" | "收盘" | "最高" | "最低" | "open" | "close" | "high" | "low"
+                );
+            if !explicit_historical && markdown_price_column_is_scenario_or_target(cell) {
+                return None;
+            }
+            let generic_dated_price = has_date_column
+                && ["股价", "价格", "price"]
+                    .iter()
+                    .any(|marker| normalized.contains(marker))
+                && ![
+                    "涨跌", "变动", "收益", "回报", "change", "return", "multiple", "p/e", "p/s",
+                ]
+                .iter()
+                .any(|marker| normalized.contains(marker));
+            (explicit_historical || generic_dated_price).then_some(index)
+        })
+        .collect()
+}
+
+fn markdown_price_cell_has_number(cell: &str) -> bool {
+    Regex::new(r"[-+]?\d[\d,]*(?:\.\d+)?")
+        .expect("markdown historical price number regex")
+        .is_match(cell)
+}
+
+/// Historical/OHLC meaning often lives in the Markdown header while the
+/// unsupported number lives on the following row.  Clause-by-clause checking
+/// cannot connect those lines, so carry the header semantics into every row.
+fn markdown_has_unverified_historical_price_rows(content: &str) -> bool {
+    let lines = content.lines().collect::<Vec<_>>();
+    for (header_index, line) in lines.iter().enumerate() {
+        if !line.contains('|') {
+            continue;
+        }
+        let header_cells = markdown_cells(line);
+        if header_cells.len() < 2 {
+            continue;
+        }
+        let price_columns = markdown_historical_price_columns(&header_cells);
+        if price_columns.is_empty() {
+            continue;
+        }
+        for row in lines.iter().skip(header_index + 1) {
+            if !row.contains('|') {
+                break;
+            }
+            let row_cells = markdown_cells(row);
+            if row_cells.len() != header_cells.len() || markdown_separator_cells(&row_cells) {
+                continue;
+            }
+            if price_columns.iter().any(|index| {
+                row_cells
+                    .get(*index)
+                    .is_some_and(|cell| markdown_price_cell_has_number(cell))
+            }) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 fn markdown_header_index(cells: &[&str], markers: &[&str]) -> Option<usize> {
@@ -10117,6 +10523,190 @@ mod tests {
             .expect("regular fallback quote");
         assert!(fallback.contains("本轮同代码常规交易时段现价 402.33 USD"));
         assert!(fallback.contains("盘前/盘后最新价本轮未完成核验"));
+    }
+
+    #[test]
+    fn extended_price_claims_require_the_same_verified_session_price_and_currency() {
+        let mut entity = entities(&["ISRG"]).remove(0);
+        entity.verified_price = Some("363.25".into());
+        entity.quote_session = Some("post".into());
+        let mut contract = InvestmentResponseContract {
+            entities: vec![entity],
+            verified_web_sources: Vec::new(),
+            verified_dated_web_sources: Vec::new(),
+            deep_analysis: DeepAnalysisKind::Equity,
+            deep_comparison: false,
+            requires_verified_price: true,
+            needs_outlook_evidence: false,
+            requires_recent_web_evidence: false,
+            comparison: false,
+            origin: AgentTurnOrigin::Interactive,
+        };
+
+        let canonical = contract
+            .canonical_quote_fact_line(&contract.entities[0])
+            .expect("canonical postmarket quote");
+        assert!(super::extended_quote_claims_are_consistent(
+            &contract, &canonical
+        ));
+        for valid in [
+            "ISRG 盘后价为 363.25 USD",
+            "ISRG 夜盘跌至 363.25 美元",
+            "ISRG 盘后涨至 363.25 USD",
+            "ISRG 盘后报于 363.25 USD",
+            "ISRG 盘后交投于 363.25 USD",
+            "ISRG 盘后 363.25美元",
+            "ISRG 盘后为 363.25 USD",
+            "ISRG 盘后报 363.25 USD",
+            "ISRG 盘后收于 363.25 USD",
+            "ISRG 盘后，股价 363.25 USD",
+            "ISRG 盘后从 402.33 USD 跌至 363.25 USD",
+            "ISRG after-hours at USD 363.25",
+            "ISRG after-hours: USD363.25",
+            "ISRG after-hours was USD363.25",
+            "ISRG after-hours trades at $363.25",
+            "ISRG after-hours fell from USD 402.33 to USD 363.25",
+            "ISRG post-market trading at 363.25 USD",
+            "ISRG extended hours: USD363.25",
+            "ISRG 延长时段报于 363.25美元",
+        ] {
+            assert!(
+                super::extended_quote_claims_are_consistent(&contract, valid),
+                "same-session exact quote should pass: {valid}"
+            );
+        }
+        for invalid in [
+            "ISRG 盘前价为 363.25 USD",
+            "ISRG 盘后跌至 15 USD",
+            "ISRG 夜盘报于 363.25 CNY",
+            "ISRG premarket at USD 363.25",
+            "ISRG after-hours trades at $15",
+            "ISRG 盘后从 402.33 USD 跌至 15 USD",
+            "ISRG after-hours fell from USD 402.33 to USD 15",
+            "ISRG 盘后价 15 USD 可能继续下跌",
+            "ISRG 盘后，股价 15 USD",
+            "ISRG after-hours was USD15",
+            "ISRG extended hours: USD15",
+            "ISRG 延长时段 15美元",
+            "需求可能改善，但 ISRG 盘后价 15 USD",
+            "ISRG 盘后一度跌至 15 USD",
+            "ISRG 盘后大幅跌至 15 USD",
+            "ISRG 盘后交易中跌到 15 USD",
+            "ISRG fell to USD 15 after hours",
+            "ISRG 跌至 15 USD（盘后）",
+            "ISRG after-hours shares sharply fell to USD 15",
+        ] {
+            assert!(
+                !super::extended_quote_claims_are_consistent(&contract, invalid),
+                "wrong session, price, or currency must fail: {invalid}"
+            );
+        }
+
+        contract.entities[0].verified_price = Some("401.5".into());
+        contract.entities[0].quote_session = Some("pre".into());
+        for valid in [
+            "ISRG 盘前价 401.5 USD",
+            "ISRG 盘前，股价 401.5 USD",
+            "ISRG premarket at USD 401.5",
+            "ISRG pre-market trades at $401.5",
+            "ISRG extended hours was USD401.5",
+            "ISRG 延长时段 401.5美元",
+        ] {
+            assert!(
+                super::extended_quote_claims_are_consistent(&contract, valid),
+                "verified premarket quote should pass: {valid}"
+            );
+        }
+        assert!(!super::extended_quote_claims_are_consistent(
+            &contract,
+            "ISRG after-hours at USD 401.5"
+        ));
+
+        contract.entities[0].verified_price = Some("402.33".into());
+        contract.entities[0].quote_session = Some("regular_fallback".into());
+        let fallback = contract
+            .canonical_quote_fact_line(&contract.entities[0])
+            .expect("canonical regular fallback quote");
+        assert!(super::extended_quote_claims_are_consistent(
+            &contract, &fallback
+        ));
+        assert!(!super::extended_quote_claims_are_consistent(
+            &contract,
+            "ISRG 盘后报于 402.33 USD"
+        ));
+        assert!(!super::extended_quote_claims_are_consistent(
+            &contract,
+            "ISRG extended hours: USD402.33"
+        ));
+        assert!(!super::extended_quote_claims_are_consistent(
+            &contract,
+            "ISRG 延长时段 402.33美元"
+        ));
+        contract.entities[0].quote_session = None;
+        assert!(!super::extended_quote_claims_are_consistent(
+            &contract,
+            "ISRG 盘前涨至 402.33 USD"
+        ));
+        assert!(super::extended_quote_claims_are_consistent(
+            &contract,
+            "ISRG 盘后最新价本轮未完成核验"
+        ));
+        assert!(super::extended_quote_claims_are_consistent(
+            &contract,
+            "情景假设：ISRG 盘后跌至 15 USD"
+        ));
+    }
+
+    #[test]
+    fn historical_price_tables_carry_header_semantics_into_numeric_rows() {
+        for unsafe_table in [
+            "| 日期 | 历史股价 |\n|---|---:|\n| 2025-01-01 | 101.42 USD |",
+            "| Date | Open | Close | High | Low |\n|---|---:|---:|---:|---:|\n| 2025-01-01 | 98 | 101.42 | 103 | 97 |",
+            "| 日期 | 收盘价 |\n| 2025-01-01 | 101.42 USD |",
+            "| 日期 | 历史股价 | 目标价 |\n|---|---:|---:|\n| 2025-01-01 | 101.42 USD | 141.17 USD |",
+            "| 日期 | 历史股价/目标价 |\n|---|---:|\n| 2025-01-01 | 101.42 USD |",
+            "| 日期 | 历史价 |\n|---|---:|\n| 2025-01-01 | 101.42 USD |",
+            "| 日期 | 开盘 | 收盘 | 最高 | 最低 |\n|---|---:|---:|---:|---:|\n| 2025-01-01 | 98 | 101.42 | 103 | 97 |",
+        ] {
+            assert!(
+                super::markdown_has_unverified_historical_price_rows(unsafe_table),
+                "historical/OHLC row must fail even without a symbol: {unsafe_table}"
+            );
+        }
+
+        for safe_table in [
+            "| 情景 | 目标价 |\n|---|---:|\n| Bull | 141.17 USD |\n| Base | 101.42 USD |",
+            "| Scenario | Implied Price |\n|---|---:|\n| Bear | 80 USD |",
+            "| 标的 | 现价 |\n|---|---:|\n| RMBS | 101.42 USD |",
+        ] {
+            assert!(
+                !super::markdown_has_unverified_historical_price_rows(safe_table),
+                "target/scenario/current quote tables must not be mistaken for history: {safe_table}"
+            );
+        }
+
+        let mut rmbs = entities(&["RMBS"]).remove(0);
+        rmbs.verified_price = Some("101.42".into());
+        let contract = InvestmentResponseContract {
+            entities: vec![rmbs],
+            verified_web_sources: Vec::new(),
+            verified_dated_web_sources: Vec::new(),
+            deep_analysis: DeepAnalysisKind::Equity,
+            deep_comparison: false,
+            requires_verified_price: true,
+            needs_outlook_evidence: false,
+            requires_recent_web_evidence: false,
+            comparison: false,
+            origin: AgentTurnOrigin::Interactive,
+        };
+        let mut output = super::deterministic_investment_fallback_response(&contract)
+            .expect("complete verified fallback");
+        output.push_str("\n\n| 日期 | 历史股价 |\n|---|---:|\n| 2025-01-01 | 101.42 USD |");
+        assert!(
+            missing_investment_response_sections(&contract, &output)
+                .contains(&"历史、开收盘或高低价表格必须来自本轮专用历史行情证据"),
+            "the same current value must not bless an unverified historical row"
+        );
     }
 
     #[test]

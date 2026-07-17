@@ -661,6 +661,20 @@ fn explicit_persistent_operations_are_execute_once_but_research_context_is_not()
         "remove NVDA from my portfolio",
         "add RMBS to my watchlist and analyze it",
         "把 NBIS 加入自选然后分析",
+        "把 NBIS 放进持仓然后分析",
+        "我刚买入 NBIS 100 股并分析",
+        "卖出 NBIS 后分析",
+        "加仓 NBIS 后分析",
+        "减仓 NBIS 后分析",
+        "put NBIS in my portfolio and analyze it",
+        "buy NBIS then analyze it",
+        "sell NBIS then review it",
+        "reduce my NBIS holding and analyze it",
+        "启动 NBIS 深度研究",
+        "请对 NBIS 做深度研究",
+        "deep research NBIS",
+        "start deep research on NBIS",
+        "please run deep research on NBIS",
     ] {
         assert_eq!(
             prepared_turn_reexecution_policy(input),
@@ -676,6 +690,16 @@ fn explicit_persistent_operations_are_execute_once_but_research_context_is_not()
         "现在 RMBS 怎么看",
         "analyze my watchlist",
         "how do I add a stock to a watchlist",
+        "NBIS 现在适合买入吗？",
+        "我是否应该卖出 NBIS？",
+        "NBIS 该不该加仓？",
+        "Should I buy NBIS?",
+        "Is NBIS a buy?",
+        "Whether to sell NBIS is my question",
+        "深度研究是什么？",
+        "如何做深度研究？",
+        "what is deep research?",
+        "how to do deep research?",
     ] {
         assert_eq!(
             prepared_turn_reexecution_policy(input),
@@ -770,6 +794,86 @@ async fn observed_persistent_tool_trace_suppresses_transient_retry() {
 }
 
 #[tokio::test]
+async fn unknown_tool_trace_suppresses_transient_retry() {
+    let root = make_temp_dir("hone_channels_unknown_tool_trace_no_retry");
+    std::fs::create_dir_all(&root).expect("create root");
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let actor = ActorIdentity::new("web", "unknown-tool-no-retry", None::<String>).expect("actor");
+    let session = AgentSession::new(core, actor, "direct");
+    let results = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: String::new(),
+                tool_calls_made: vec![ToolCallMade {
+                    name: "mcp__filesystem__write_file".to_string(),
+                    arguments: serde_json::json!({"path":"external-state"}),
+                    result: serde_json::json!({"status":"unknown_after_acp_failure"}),
+                    tool_call_id: Some("unknown_write".to_string()),
+                }],
+                iterations: 1,
+                success: false,
+                error: Some("codex acp stream disconnected before completion".to_string()),
+            },
+            streamed_output: false,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        },
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: "不应重放未知外部工具".to_string(),
+                tool_calls_made: Vec::new(),
+                iterations: 1,
+                success: true,
+                error: None,
+            },
+            streamed_output: true,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        },
+    ])));
+    let runner = MockSequencedRunner {
+        results: results.clone(),
+    };
+    let request = AgentRunnerRequest {
+        session_id: "unknown-tool-no-retry-session".to_string(),
+        actor_label: "web:unknown-tool-no-retry".to_string(),
+        actor: session.actor.clone(),
+        channel_target: "direct".to_string(),
+        allow_cron: false,
+        config_path: String::new(),
+        runtime_dir: String::new(),
+        system_prompt: "system".to_string(),
+        runtime_input: "现在 NBIS 怎么看".to_string(),
+        context: AgentContext::new("unknown-tool-no-retry-session".to_string()),
+        timeout: None,
+        gemini_stream: GeminiStreamOptions::default(),
+        session_metadata: HashMap::new(),
+        working_directory: root.display().to_string(),
+        allowed_tools: None,
+        max_tool_calls: None,
+        tool_call_limits: None,
+    };
+
+    let result = session
+        .run_runner_with_empty_success_retry(
+            &runner,
+            "mock_sequenced",
+            "unknown-tool-no-retry-session",
+            request,
+            Arc::new(NoopEmitter),
+            PreparedTurnReexecutionPolicy::Allowed,
+        )
+        .await;
+
+    assert!(!result.response.success);
+    assert_eq!(result.response.tool_calls_made.len(), 1);
+    assert_eq!(results.lock().expect("results lock").len(), 1);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
 async fn execute_once_intent_suppresses_empty_success_retry_even_without_trace() {
     let root = make_temp_dir("hone_channels_execute_once_empty_no_retry");
     std::fs::create_dir_all(&root).expect("create root");
@@ -843,6 +947,175 @@ async fn execute_once_intent_suppresses_empty_success_retry_even_without_trace()
     assert_eq!(
         result.response.error.as_deref(),
         Some(crate::tool_trace::PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE)
+    );
+    assert_eq!(results.lock().expect("results lock").len(), 1);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn portfolio_mutation_then_analysis_disconnect_does_not_retry_without_trace() {
+    let root = make_temp_dir("hone_channels_portfolio_mutation_disconnect_no_retry");
+    std::fs::create_dir_all(&root).expect("create root");
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let actor =
+        ActorIdentity::new("web", "portfolio-mutation-disconnect", None::<String>).expect("actor");
+    let session = AgentSession::new(core, actor, "direct");
+    let results = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: String::new(),
+                tool_calls_made: Vec::new(),
+                iterations: 1,
+                success: false,
+                error: Some("codex acp stream disconnected before completion".to_string()),
+            },
+            streamed_output: false,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        },
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: "不应重复执行持仓写入".to_string(),
+                tool_calls_made: Vec::new(),
+                iterations: 1,
+                success: true,
+                error: None,
+            },
+            streamed_output: true,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        },
+    ])));
+    let runner = MockSequencedRunner {
+        results: results.clone(),
+    };
+    let input = "把 NBIS 放进持仓然后分析";
+    let policy = prepared_turn_reexecution_policy(input);
+    assert_eq!(policy, PreparedTurnReexecutionPolicy::ExecuteOnce);
+    let request = AgentRunnerRequest {
+        session_id: "portfolio-mutation-disconnect-session".to_string(),
+        actor_label: "web:portfolio-mutation-disconnect".to_string(),
+        actor: session.actor.clone(),
+        channel_target: "direct".to_string(),
+        allow_cron: false,
+        config_path: String::new(),
+        runtime_dir: String::new(),
+        system_prompt: "system".to_string(),
+        runtime_input: input.to_string(),
+        context: AgentContext::new("portfolio-mutation-disconnect-session".to_string()),
+        timeout: None,
+        gemini_stream: GeminiStreamOptions::default(),
+        session_metadata: HashMap::new(),
+        working_directory: root.display().to_string(),
+        allowed_tools: None,
+        max_tool_calls: None,
+        tool_call_limits: None,
+    };
+
+    let result = session
+        .run_runner_with_investment_contract_retry(
+            &runner,
+            "mock_sequenced",
+            "portfolio-mutation-disconnect-session",
+            request,
+            Arc::new(NoopEmitter),
+            None,
+            policy,
+        )
+        .await;
+
+    assert!(!result.response.success);
+    assert_eq!(
+        result.response.error.as_deref(),
+        Some(crate::tool_trace::PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE)
+    );
+    assert_eq!(results.lock().expect("results lock").len(), 1);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn deep_research_start_disconnect_does_not_launch_a_second_task_without_trace() {
+    let root = make_temp_dir("hone_channels_deep_research_disconnect_no_retry");
+    std::fs::create_dir_all(&root).expect("create root");
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let actor =
+        ActorIdentity::new("web", "deep-research-disconnect", None::<String>).expect("actor");
+    let session = AgentSession::new(core, actor, "direct");
+    let results = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: String::new(),
+                tool_calls_made: Vec::new(),
+                iterations: 1,
+                success: false,
+                error: Some("codex acp stream disconnected before completion".to_string()),
+            },
+            streamed_output: false,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        },
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: "不应重复启动深度研究任务".to_string(),
+                tool_calls_made: Vec::new(),
+                iterations: 1,
+                success: true,
+                error: None,
+            },
+            streamed_output: true,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        },
+    ])));
+    let runner = MockSequencedRunner {
+        results: results.clone(),
+    };
+    let input = "请对 NBIS 做深度研究";
+    let policy = prepared_turn_reexecution_policy(input);
+    assert_eq!(policy, PreparedTurnReexecutionPolicy::ExecuteOnce);
+    let request = AgentRunnerRequest {
+        session_id: "deep-research-disconnect-session".to_string(),
+        actor_label: "web:deep-research-disconnect".to_string(),
+        actor: session.actor.clone(),
+        channel_target: "direct".to_string(),
+        allow_cron: false,
+        config_path: String::new(),
+        runtime_dir: String::new(),
+        system_prompt: "system".to_string(),
+        runtime_input: input.to_string(),
+        context: AgentContext::new("deep-research-disconnect-session".to_string()),
+        timeout: None,
+        gemini_stream: GeminiStreamOptions::default(),
+        session_metadata: HashMap::new(),
+        working_directory: root.display().to_string(),
+        allowed_tools: None,
+        max_tool_calls: None,
+        tool_call_limits: None,
+    };
+
+    let result = session
+        .run_runner_with_investment_contract_retry(
+            &runner,
+            "mock_sequenced",
+            "deep-research-disconnect-session",
+            request,
+            Arc::new(NoopEmitter),
+            None,
+            policy,
+        )
+        .await;
+
+    assert!(!result.response.success);
+    assert!(
+        result
+            .response
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("重复启动研究任务"))
     );
     assert_eq!(results.lock().expect("results lock").len(), 1);
     let _ = std::fs::remove_dir_all(root);
@@ -1149,6 +1422,118 @@ async fn investment_contract_uses_verified_fallback_for_incomplete_nbis_draft() 
             ..
         }
     ));
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn investment_fallback_fails_closed_for_unknown_tool_trace() {
+    let root = make_temp_dir("hone_channels_investment_unknown_tool_no_fallback");
+    std::fs::create_dir_all(&root).expect("create root");
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let actor =
+        ActorIdentity::new("web", "investment-unknown-tool", None::<String>).expect("actor");
+    let session = AgentSession::new(core, actor, "direct");
+    let results = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: "NBIS 看多。".to_string(),
+                tool_calls_made: vec![ToolCallMade {
+                    name: "mcp__filesystem__write_file".to_string(),
+                    arguments: serde_json::json!({"path":"external-state", "content":"changed"}),
+                    result: serde_json::json!({"status":"success"}),
+                    tool_call_id: Some("unknown_write".to_string()),
+                }],
+                iterations: 1,
+                success: true,
+                error: None,
+            },
+            streamed_output: true,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: Some(vec![AgentMessage {
+                role: "assistant".to_string(),
+                content: Some("NBIS 看多。".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+                name: None,
+                metadata: None,
+            }]),
+        },
+    ])));
+    let runner = MockSequencedRunner {
+        results: results.clone(),
+    };
+    let request = AgentRunnerRequest {
+        session_id: "investment-unknown-tool-session".to_string(),
+        actor_label: "web:investment-unknown-tool".to_string(),
+        actor: session.actor.clone(),
+        channel_target: "direct".to_string(),
+        allow_cron: false,
+        config_path: String::new(),
+        runtime_dir: String::new(),
+        system_prompt: "system".to_string(),
+        runtime_input: "现在 NBIS 怎么看".to_string(),
+        context: AgentContext::new("investment-unknown-tool-session".to_string()),
+        timeout: None,
+        gemini_stream: GeminiStreamOptions::default(),
+        session_metadata: HashMap::new(),
+        working_directory: root.display().to_string(),
+        allowed_tools: None,
+        max_tool_calls: None,
+        tool_call_limits: None,
+    };
+    let contract = InvestmentResponseContract {
+        entities: vec![ResolvedSecurityEntity {
+            mention: "nbis".into(),
+            symbol: "NBIS".into(),
+            name: "Nebius Group N.V.".into(),
+            exchange: Some("NASDAQ".into()),
+            currency: Some("USD".into()),
+            asset_type: Some("stock".into()),
+            profile_verified: true,
+            verified_price: Some("199.51".into()),
+            verified_change_percentage: None,
+            quote_timestamp: None,
+            quote_session: None,
+            annual_financials_verified: Some(false),
+            verified_annual_financial_facts: Vec::new(),
+            fund_holdings_verified: None,
+            verified_fund_holding_facts: Vec::new(),
+        }],
+        verified_web_sources: Vec::new(),
+        verified_dated_web_sources: Vec::new(),
+        deep_analysis: DeepAnalysisKind::Equity,
+        deep_comparison: false,
+        requires_verified_price: true,
+        needs_outlook_evidence: true,
+        requires_recent_web_evidence: false,
+        comparison: false,
+        origin: AgentTurnOrigin::Interactive,
+    };
+
+    let result = session
+        .run_runner_with_investment_contract_retry(
+            &runner,
+            "mock_sequenced",
+            "investment-unknown-tool-session",
+            request,
+            Arc::new(NoopEmitter),
+            Some(&contract),
+            PreparedTurnReexecutionPolicy::Allowed,
+        )
+        .await;
+
+    assert!(!result.response.success);
+    assert!(
+        result
+            .response
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("无法确认只读属性的工具"))
+    );
+    assert_eq!(result.response.tool_calls_made.len(), 1);
+    assert!(result.context_messages.is_some());
+    assert!(results.lock().expect("results lock").is_empty());
     let _ = std::fs::remove_dir_all(root);
 }
 

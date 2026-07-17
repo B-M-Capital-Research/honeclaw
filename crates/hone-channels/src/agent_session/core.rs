@@ -34,7 +34,8 @@ use crate::runtime::{sanitize_user_visible_output, user_visible_error_message};
 use crate::session_compactor::SessionCompactor;
 use crate::tool_trace::{
     PERSISTENT_SIDE_EFFECT_NO_RETRY_MESSAGE, PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE,
-    persistent_side_effect_state_is_uncertain, response_has_persistent_side_effect,
+    UNKNOWN_TOOL_EFFECT_NO_RETRY_MESSAGE, persistent_side_effect_state_is_uncertain,
+    response_has_only_known_read_only_calls, response_has_persistent_side_effect,
 };
 use crate::turn_builder::{PromptTurnBuilder, SlashSkillExpansion};
 
@@ -69,9 +70,10 @@ pub(super) enum PreparedTurnReexecutionPolicy {
     ExecuteOnce,
 }
 
-/// Persistent mutations are deliberately classified conservatively.  A false
-/// negative is still covered by the observed tool-trace check; a false
-/// positive only disables an automatic retry for the current turn.
+/// Persistent mutations are deliberately classified conservatively before the
+/// runner starts. Observed tool traces are a second defense, but an ACP
+/// disconnect can lose the trace after a write; a false positive here only
+/// disables an automatic retry for the current turn.
 pub(super) fn prepared_turn_reexecution_policy(input: &str) -> PreparedTurnReexecutionPolicy {
     let normalized = input.to_ascii_lowercase();
     let compact = normalized
@@ -86,6 +88,13 @@ pub(super) fn prepared_turn_reexecution_policy(input: &str) -> PreparedTurnReexe
         "研究",
         "怎么",
         "如何",
+        "是否",
+        "适合",
+        "应该",
+        "该不该",
+        "能不能",
+        "能买吗",
+        "值不值得",
         "analyze",
         "analysis",
         "research",
@@ -93,6 +102,8 @@ pub(super) fn prepared_turn_reexecution_policy(input: &str) -> PreparedTurnReexe
         "how",
         "what",
         "review",
+        "should",
+        "whether",
     ]
     .iter()
     .any(|marker| compact.contains(marker));
@@ -110,8 +121,8 @@ pub(super) fn prepared_turn_reexecution_policy(input: &str) -> PreparedTurnReexe
         "取消关注",
         "不再关注",
         "移出关注",
-        "我买了",
-        "已经买了",
+        "放进持仓",
+        "加到持仓",
         "记录持仓",
         "加入持仓",
         "添加持仓",
@@ -146,8 +157,9 @@ pub(super) fn prepared_turn_reexecution_policy(input: &str) -> PreparedTurnReexe
     ]
     .iter()
     .any(|marker| compact.contains(marker));
-    let english_mutation = [
-        "add", "remove", "delete", "update", "watch", "unwatch", "create", "set", "cancel", "clear",
+    let english_object_mutation = [
+        "add", "remove", "delete", "update", "watch", "unwatch", "create", "set", "cancel",
+        "clear", "put", "move", "increase", "reduce",
     ]
     .iter()
     .any(|marker| {
@@ -159,6 +171,8 @@ pub(super) fn prepared_turn_reexecution_policy(input: &str) -> PreparedTurnReexe
         "portfolio",
         "holding",
         "holdings",
+        "position",
+        "positions",
         "alert",
         "schedule",
         "notification",
@@ -173,6 +187,9 @@ pub(super) fn prepared_turn_reexecution_policy(input: &str) -> PreparedTurnReexe
         "并研究",
         "然后研究",
         "再研究",
+        "后分析",
+        "后再分析",
+        "后研究",
         "and analyze",
         "then analyze",
         "and review",
@@ -183,17 +200,108 @@ pub(super) fn prepared_turn_reexecution_policy(input: &str) -> PreparedTurnReexe
     let direct_operation_request = ["帮我", "请", "给我", "please", "could you", "can you"]
         .iter()
         .any(|marker| normalized.contains(marker));
-    let completed_operation_statement = ["我买了", "已经买了"]
+    let completed_chinese_operation_statement = [
+        "我买了",
+        "已经买了",
+        "我刚买入",
+        "我买入",
+        "已经买入",
+        "我卖出",
+        "已经卖出",
+        "我加仓",
+        "已经加仓",
+        "我减仓",
+        "已经减仓",
+        "我清仓",
+        "已经清仓",
+    ]
+    .iter()
+    .any(|marker| compact.contains(marker));
+    let completed_english_operation_statement = [
+        "i bought",
+        "i just bought",
+        "i sold",
+        "i just sold",
+        "i increased my position",
+        "i reduced my position",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    let completed_operation_statement =
+        completed_chinese_operation_statement || completed_english_operation_statement;
+    let has_trade_or_position_verb = ["买入", "卖出", "加仓", "减仓", "清仓"]
         .iter()
-        .any(|marker| compact.contains(marker));
-    let explicit_mutation = (explicit_mutation_phrase || english_mutation)
+        .any(|marker| compact.contains(marker))
+        || Regex::new(r"(?i)\b(?:buy|sell|increase|reduce)\b")
+            .expect("trade or position verb regex")
+            .is_match(&normalized);
+    let explicit_trade_recommendation_question = has_trade_or_position_verb
+        && ([
+            "是否",
+            "适合买",
+            "适合卖",
+            "应该",
+            "该不该",
+            "能不能",
+            "能买吗",
+            "卖吗",
+            "买吗",
+            "值不值得",
+            "should",
+            "whether",
+            "would you",
+            "do you think",
+        ]
+        .iter()
+        .any(|marker| normalized.contains(marker))
+            || Regex::new(r"(?i)^\s*is\b[^?\r\n]{0,80}\ba\s+(?:buy|sell)\b")
+                .expect("buy or sell recommendation question regex")
+                .is_match(&normalized)
+            || (normalized.trim_end().ends_with('?')
+                && !Regex::new(r"(?i)^\s*(?:(?:please|can\s+you|could\s+you)\s+)?(?:buy|sell)\b")
+                    .expect("direct English trade request regex")
+                    .is_match(&normalized)));
+    let direct_chinese_trade_request = [
+        "帮我买入",
+        "帮我卖出",
+        "帮我加仓",
+        "帮我减仓",
+        "帮我清仓",
+        "请买入",
+        "请卖出",
+        "请加仓",
+        "请减仓",
+        "请清仓",
+        "给我买入",
+        "给我卖出",
+        "给我加仓",
+        "给我减仓",
+        "给我清仓",
+    ]
+    .iter()
+    .any(|marker| compact.contains(marker));
+    let imperative_chinese_trade = has_trade_or_position_verb
+        && !explicit_trade_recommendation_question
+        && (direct_chinese_trade_request
+            || ["买入", "卖出", "加仓", "减仓", "清仓"]
+                .iter()
+                .any(|marker| compact.starts_with(marker))
+            || compact.starts_with('把'));
+    let imperative_english_trade = !explicit_trade_recommendation_question
+        && Regex::new(r"(?i)^\s*(?:(?:please|can\s+you|could\s+you)\s+)?(?:buy|sell)\b")
+            .expect("imperative English trade regex")
+            .is_match(&normalized);
+    let explicit_mutation = (explicit_mutation_phrase || english_object_mutation)
+        && !explicit_trade_recommendation_question
         && (!research_follow_up
             || direct_operation_request
             || completed_operation_statement
             || mutation_then_research);
     let generalized_persistent_mutation = !research_follow_up
+        && !explicit_trade_recommendation_question
         && [
-            "添加", "加入", "记录", "更新", "修改", "删除", "移出", "移除", "取消", "清空",
+            "添加", "加入", "放进", "加到", "记录", "更新", "修改", "删除", "移出", "移除", "取消",
+            "清空", "买入", "卖出", "加仓", "减仓", "清仓",
         ]
         .iter()
         .any(|marker| compact.contains(marker))
@@ -209,11 +317,41 @@ pub(super) fn prepared_turn_reexecution_policy(input: &str) -> PreparedTurnReexe
         && ["提醒", "播报", "发送", "推送", "发一", "看"]
             .iter()
             .any(|marker| compact.contains(marker));
+    let has_deep_research_request =
+        compact.contains("深度研究") || normalized.contains("deep research");
+    let deep_research_question = has_deep_research_request
+        && [
+            "是什么",
+            "什么是",
+            "如何",
+            "怎么",
+            "为什么",
+            "what",
+            "how",
+            "why",
+        ]
+        .iter()
+        .any(|marker| normalized.contains(marker));
+    let explicit_deep_research_start = !deep_research_question
+        && (has_deep_research_request
+            && (["启动", "创建", "发起", "开始", "帮我", "请", "做深度研究"]
+                .iter()
+                .any(|marker| compact.contains(marker))
+                || compact.starts_with("深度研究"))
+            || Regex::new(
+                r"(?i)^\s*(?:(?:please|can\s+you|could\s+you)\s+)?(?:(?:start|create|run|launch|do)\s+(?:a\s+)?)?deep\s+research\b",
+            )
+            .expect("explicit deep research start regex")
+            .is_match(&normalized));
 
     if explicit_mutation
+        || completed_operation_statement
+        || imperative_chinese_trade
+        || imperative_english_trade
         || generalized_persistent_mutation
         || completed_holding_removal
         || directed_scheduled_delivery
+        || explicit_deep_research_start
     {
         PreparedTurnReexecutionPolicy::ExecuteOnce
     } else {
@@ -280,7 +418,7 @@ fn apply_deterministic_investment_fallback(
     contract: &InvestmentResponseContract,
     result: &mut AgentRunnerResult,
 ) -> bool {
-    if response_has_persistent_side_effect(&result.response.tool_calls_made) {
+    if !response_has_only_known_read_only_calls(&result.response.tool_calls_made) {
         return false;
     }
     let Some(fallback) = deterministic_investment_fallback_response(contract) else {
@@ -370,6 +508,7 @@ impl AgentSession {
 
         loop {
             let retry_blocked = reexecution_policy == PreparedTurnReexecutionPolicy::ExecuteOnce
+                || !response_has_only_known_read_only_calls(&last_result.response.tool_calls_made)
                 || response_has_persistent_side_effect(&last_result.response.tool_calls_made);
             if is_retryable_transient_runner_failure(&last_result)
                 && !retry_blocked
@@ -573,17 +712,23 @@ impl AgentSession {
             return result;
         }
 
+        let repair_trace_is_known_read_only =
+            response_has_only_known_read_only_calls(&result.response.tool_calls_made);
         if reexecution_policy == PreparedTurnReexecutionPolicy::ExecuteOnce
+            || !repair_trace_is_known_read_only
             || response_has_persistent_side_effect(&result.response.tool_calls_made)
         {
-            let message =
-                if persistent_side_effect_state_is_uncertain(&result.response.tool_calls_made)
-                    || reexecution_policy == PreparedTurnReexecutionPolicy::ExecuteOnce
-                {
-                    PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE
-                } else {
-                    PERSISTENT_SIDE_EFFECT_NO_RETRY_MESSAGE
-                };
+            let message = if !repair_trace_is_known_read_only
+                && !response_has_persistent_side_effect(&result.response.tool_calls_made)
+            {
+                UNKNOWN_TOOL_EFFECT_NO_RETRY_MESSAGE
+            } else if persistent_side_effect_state_is_uncertain(&result.response.tool_calls_made)
+                || reexecution_policy == PreparedTurnReexecutionPolicy::ExecuteOnce
+            {
+                PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE
+            } else {
+                PERSISTENT_SIDE_EFFECT_NO_RETRY_MESSAGE
+            };
             result.response.success = false;
             result.response.content = message.to_string();
             result.response.error = Some(message.to_string());
@@ -1820,6 +1965,7 @@ impl AgentSession {
                     .as_deref()
                     .is_some_and(is_context_overflow_error_text)
                 && investment_context.reexecution_policy == PreparedTurnReexecutionPolicy::Allowed
+                && response_has_only_known_read_only_calls(&response.tool_calls_made)
                 && !response_has_persistent_side_effect(&response.tool_calls_made)
                 && recovery_idx < CONTEXT_OVERFLOW_RECOVERY_LIMIT;
             if !should_try_recovery {
