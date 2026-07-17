@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-07-16
+Last updated: 2026-07-17
+
+## 2026-07-17
+
+### Investment Response Template And Deterministic Repair
+
+- Status: done
+- Date: 2026-07-17
+- Plan: `docs/archive/plans/investment-response-template-regression.md`
+- Handoff: `docs/handoffs/2026-07-17-investment-response-contract-repair.md`
+- Decision / ADR: `D-2026-07-15-02`, `D-2026-07-17-01`, and `D-2026-07-17-02` in `docs/decisions.md`
+- Related PRs / commits: `922007fa`, `d5f1dca0`, `3880d623`, `ce25d0ea`, `010dbae9`, `b0f50a77`, `d75451c3`, `ae8ebc11`, `340b9ee1`, `24c4c48d`, `dea3303d`, `4869ac5c`, `b4874a2c`, `020c678a`
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`; DataFetch `27/27`; `hone-channels` `565/565` in a fresh target; full workspace check/test excluding Apple clients; Web typecheck and `265/265`; finance contracts `24/24`; CI-safe suite; GitHub CI run `29547741054`; live provider regression; four initial production Web/SSE E2E turns plus a final post-restart RMBS turn; controlled restart and health probes; Cloudflare Pages deployment `53103ef2-eb25-4caa-aafc-f2f8c7a42afd`
+- Current conclusion: `71a4498e` reduced the 291-line investment contract to 36 lines and explicitly discouraged the fixed response templates. FMP/DataFetch and Tavily were healthy; RMBS/NBIS/INTL failures came from entity/asset routing and a second whole-answer repair path. The service now owns the first Beijing data time, exact entity, same-symbol current/extended quote and full asset template; unknown/persistent tool traces block automatic replay paths, and covered explicit portfolio/trade/deep-research intents remain execute-once even without a trace; extended-hours and historical/OHLC prose cannot launder an unverified price. The final runtime is supervisor/backend `23199`/`23210`, started at Beijing `09:39`, with healthy Postgres/S3, zero local durable dependencies and zero active chats. The final RMBS turn returned `101.42 USD`, all nine required sections, one terminal stream and no reset/error or false live-data denial.
+- Next entry point: `crates/hone-channels/src/investment_response_guard.rs`, `crates/hone-channels/src/agent_session/core.rs`, `crates/hone-channels/src/tool_trace.rs`, and `docs/handoffs/2026-07-17-investment-response-contract-repair.md`
 
 ## 2026-07-16
 

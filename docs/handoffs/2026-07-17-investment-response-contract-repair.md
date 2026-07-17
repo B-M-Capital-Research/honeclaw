@@ -1,13 +1,13 @@
 # Investment Response Contract Repair
 
 - title: Investment response entity, live-data, template, and stream repair
-- status: in_progress
+- status: done
 - created_at: 2026-07-17
 - updated_at: 2026-07-17
 - owner: Codex
-- related_files: `soul.md`, `crates/hone-channels/src/investment_response_guard.rs`, `crates/hone-channels/src/agent_session/{core,emitter,tests}.rs`, `crates/hone-channels/src/prompt.rs`, `crates/hone-tools/src/{data_fetch,web_search}.rs`, `crates/hone-web-api/src/{state.rs,routes/chat.rs}`, `packages/app/src/{lib/public-chat.ts,pages/chat.tsx}`
-- related_docs: `docs/current-plans/investment-response-template-regression.md`, `docs/invariants.md`, `docs/decisions.md`, `docs/repo-map.md`
-- related_prs: none yet
+- related_files: `soul.md`, `crates/hone-channels/src/investment_response_guard.rs`, `crates/hone-channels/src/agent_session/{core,emitter,tests}.rs`, `crates/hone-channels/src/{prompt,tool_trace,mcp_bridge}.rs`, `crates/hone-channels/src/runners/acp_common/process.rs`, `crates/hone-tools/src/{data_fetch,web_search}.rs`, `crates/hone-web-api/src/{state.rs,routes/chat.rs}`, `packages/app/src/{lib/public-chat.ts,pages/chat.tsx}`
+- related_docs: `docs/archive/plans/investment-response-template-regression.md`, `docs/invariants.md`, `docs/decisions.md`, `docs/repo-map.md`, `docs/runbooks/backend-deployment.md`, `docs/archive/index.md`
+- related_prs: none; direct `main` commits `922007fa`, `d5f1dca0`, `3880d623`, `ce25d0ea`, `010dbae9`, `b0f50a77`, `d75451c3`, `ae8ebc11`, `340b9ee1`, `24c4c48d`, `dea3303d`, `4869ac5c`, `b4874a2c`, and `020c678a`
 
 ## Summary
 
@@ -32,35 +32,42 @@ Live FMP/DataFetch and Tavily diagnostics succeeded. The production NBIS/RMBS/IN
 - Deferred investment candidate deltas/resets/thoughts/errors behind validation, then emitted exactly one canonical assistant answer. Session `Done` is the sole `run_finished` authority, so late frames cannot create a second flash/run.
 - Kept Web run state server-authoritative. Refresh resumes the same `run_id` and original `started_at_ms`; it does not repost the prompt or reset elapsed time. A missing runner with an unanswered persisted user turn becomes an explicit interruption.
 - For supported quote/equity/fund/crypto/market scopes, an incomplete successful draft no longer starts a second model run. The server builds a complete answer only from the prepared contract, sanitizes it, and runs it through the same final validator; rejected draft tool/transcript metadata is cleared. Runner failures and persistent/uncertain writes remain failures. Comparisons and sector analysis retain their specialized model repair path. English and Chinese mutation-plus-analysis requests are both execute-once.
+- Automatic retry, context-overflow recovery, deterministic fallback, and contract repair now require every observed tool call to match an explicit read-only allowlist. Unknown tools fail closed; `deep_research` is always persistent. A pre-run intent classifier prevents no-trace portfolio writes, completed trades, and research starts from executing twice while keeping ordinary investment-advice questions on the normal path.
 - Historical/open/close/high/low prices now fail closed unless a future dedicated verified historical-quote field is added. A date, source domain, inference heading, or a number that happens to equal the current quote cannot launder an unsupported historical price. Inference/condition subheadings apply only to their following Markdown list items and reset before ordinary prose or unknown headings.
+- Extended-hours prose is reverse-validated against the exact entity, session, price, and any stated currency, including bare prices, session markers after the number, and English/Chinese modifiers. Markdown historical/OHLC headers carry into their numeric rows; target/scenario tables and same-symbol current-price tables without date, historical, or OHLC semantics remain allowed.
+- The extended-price guard regression matrix covers local clause scope, positive and negative ASCII/Unicode signs, prefix/suffix/ISO currencies, date/time/quarter/year/percentage/basis-point tokens, scaled price versus non-price metrics, ranges and regular-close baselines, compound `while`/`whereas`/`而` movements, and historical/OHLC table semantics. Every factual extended/pre/post claim must independently match the prepared contract.
 
 ## Verification
 
-Completed before this handoff:
+Completed before closing this handoff:
 
 - DataFetch focused tests: `27/27`.
-- Full `hone-channels` tests: `558/558`.
+- Full `hone-channels` tests: `565/565`, including a fresh `CARGO_TARGET_DIR` run without a prebuilt ordinary `hone-mcp` binary.
 - `hone-web-api`: `117 passed`, `2 ignored`.
 - Prompt tests: `12/12`.
 - Finance static contract checks: `24/24`.
 - Frontend tests: `265/265`.
+- `bun run typecheck:web`, `cargo check --workspace --all-targets --exclude hone-desktop --exclude hone-user-app`, and `cargo test --workspace --all-targets --exclude hone-desktop --exclude hone-user-app` passed locally.
+- `bash tests/regression/run_ci.sh` passed, including finance automation contracts `24/24`.
 - Live provider probes passed exact entity/quote paths for NBIS, RMBS, INTL, and BTCUSD, including equity financial/news and fund holdings routes.
 - `scripts/diagnose_fmp_tavily.sh` reported both FMP and Tavily healthy during the incident investigation.
-
-TODO before marking the plan done:
-
-- Record final post-rebase `cargo check`, full workspace tests, frontend typecheck/tests, and `tests/regression/run_ci.sh` results.
-- After deployment, capture isolated RMBS, NBIS, and INTL user-response samples proving first-line time, exact quote, asset-specific template, and no false live-data denial.
-- Verify SSE counts for a guarded turn: one `run_started`, one final `assistant_delta`, zero `assistant_reset`, zero `run_error`, and one successful `run_finished`.
-- Record controlled restart evidence: new PID, `/api/meta`, active-run drain/count, public-port auth behavior, and singleton backend/channel processes.
+- The manual live DataFetch regression returned exact current entities and quotes for NBIS (`171.77 USD`), INTL (`30.145 USD`, ETF/fund route), RMBS (`101.42 USD`), and BTCUSD (`63800.99 USD`).
+- Production Web E2E completed for RMBS, NBIS, INTL, and explicit ISRG postmarket. The first line was Beijing data time, the normalized entity and quote matched the prepared contract, and every answer used the full asset-specific template without false availability denial. ISRG used the exact fresh postmarket bar `358.93 USD` at Beijing `07:59`; RMBS/NBIS/INTL used `101.42`/`171.77`/`30.145 USD` with their provider quote times.
+- Each of the four initial production SSE runs had `run_started=1`, final `assistant_delta=1`, `assistant_reset=0`, `run_error=0`, `run_finished=1`, and `success=true`.
+- After the final guard patch, code commit `020c678a45dbc5c202c3d5c7225c8cd1ea7b507d` passed GitHub CI run `29547741054`: frontend checks, Rust format/compile/tests, and CI-safe regressions were all successful. Gitleaks and the relevant completed CodeQL checks were also green.
+- Cloudflare Pages successfully deployed that exact code commit as deployment `53103ef2-eb25-4caa-aafc-f2f8c7a42afd`. The public `/chat` route returned `200`, while local public, origin, and Cloudflare public unauthenticated auth probes each returned the expected `401`.
+- The old supervisor was drained with SIGINT at zero active chats. The final replacement started at Beijing `2026-07-17 09:39`; supervisor/backend PIDs are `23199`/`23210`, ports 8077/8088 each have one listener, Postgres and S3 are healthy, local durable dependency count and active chat count are zero, and Discord/Feishu each have one child. An earlier background launch failed before writing `current.pid` because its minimal `PATH` omitted Cargo while using `--build`; the corrected final launch used already-built binaries without `--build`, and the deployment runbook records both safe choices.
+- A fresh post-restart `现在rmbs怎么看` production turn completed in one synthesis in about 81 seconds. The persisted answer was 1,878 characters and exactly two history messages existed (`user`, `assistant`). Its first line was `数据时间：北京时间 2026-07-17 09:42；行情口径：报价源时间：北京时间 2026-07-17 04:00（最新可得，非逐笔）`; it identified Rambus Inc. (`RMBS`, NASDAQ Global Select, equity), used `101.42 USD` and `-1.42871%`, included all nine required sections, and contained no false current-data denial. SSE counts were `run_started=1`, `assistant_delta=1`, `assistant_reset=0`, `run_error=0`, and `run_finished=1`; active chats returned to zero.
+- Clean Ubuntu CI exposed and drove two hermetic test fixes: env/data-dir tests now inject a dummy `HONE_MCP_BIN`, and Unix process-group signaling places `--` before a negative PGID to avoid the procps 4.0.4 parsing defect.
 
 ## Risks / Follow-ups
 
 - The auxiliary company-name extractor intentionally fails closed after 15 seconds. The deterministic exact ticker path is independent, but ambiguous company names may require the user to retry or provide a ticker when the auxiliary route is unavailable.
 - Comparisons and sector analysis still use specialized model repair when their first draft is incomplete. Monitor those scopes separately; ordinary quote/equity/fund/crypto/market failures must not regress to a second full model synthesis.
+- Deep production turns still spend roughly 40–85 seconds in the one allowed initial synthesis. The duplicate 60-second repair is gone, but first-token/total latency should continue to be monitored independently.
 - Portfolio preflight is read-only. An explicit add/update/delete request must still execute its mutation once; never report the preflight read as mutation success.
 - This change has no database, schema, or durable-storage migration. Rollback is code/asset-only: restore the previous server/frontend revision, rebuild, drain active runs, and perform the controlled restart. Do not delete or transform actor sessions, portfolios, or other durable data.
 
 ## Next Entry Point
 
-Continue from `docs/current-plans/investment-response-template-regression.md`: complete the final workspace gates, merge/rebase, rebuild and deploy, perform the controlled restart and health checks, then run the real RMBS/NBIS/INTL response and SSE regressions. Once all evidence is recorded, mark this handoff done, archive the plan, remove its active index entry, and add the archive index link.
+Use `docs/archive/plans/investment-response-template-regression.md` for the full evidence trail. Future investment-response work should begin at `crates/hone-channels/src/investment_response_guard.rs`, `crates/hone-channels/src/agent_session/core.rs`, and `crates/hone-channels/src/tool_trace.rs`; deployment/rollback remains governed by `docs/runbooks/backend-deployment.md`.
