@@ -99,7 +99,19 @@ read -r RMBS_FINANCIALS_LINE <&4
 printf '%s\n' '{"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"data_fetch","arguments":{"data_type":"news","ticker":"RMBS"}}}' >&3
 read -r RMBS_NEWS_LINE <&4
 
-printf '%s\n' '{"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"data_fetch","arguments":{"data_type":"quote","ticker":"000001.SS,ASHR,KBA,^GSPC,^IXIC,^DJI"}}}' >&3
+printf '%s\n' '{"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"data_fetch","arguments":{"data_type":"search","query":"RKLB"}}}' >&3
+read -r RKLB_SEARCH_LINE <&4
+
+printf '%s\n' '{"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"data_fetch","arguments":{"data_type":"quote","ticker":"RKLB"}}}' >&3
+read -r RKLB_QUOTE_LINE <&4
+
+printf '%s\n' '{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"data_fetch","arguments":{"data_type":"profile","ticker":"RKLB"}}}' >&3
+read -r RKLB_PROFILE_LINE <&4
+
+printf '%s\n' '{"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"data_fetch","arguments":{"data_type":"financials","ticker":"RKLB"}}}' >&3
+read -r RKLB_FINANCIALS_LINE <&4
+
+printf '%s\n' '{"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"data_fetch","arguments":{"data_type":"quote","ticker":"000001.SS,ASHR,KBA,^GSPC,^IXIC,^DJI"}}}' >&3
 read -r MIXED_MARKET_QUOTE_LINE <&4
 
 python3 - \
@@ -119,6 +131,10 @@ python3 - \
   "$RMBS_PROFILE_LINE" \
   "$RMBS_FINANCIALS_LINE" \
   "$RMBS_NEWS_LINE" \
+  "$RKLB_SEARCH_LINE" \
+  "$RKLB_QUOTE_LINE" \
+  "$RKLB_PROFILE_LINE" \
+  "$RKLB_FINANCIALS_LINE" \
   "$MIXED_MARKET_QUOTE_LINE" <<'PY'
 import json
 import sys
@@ -152,7 +168,11 @@ rmbs_quote = structured(sys.argv[13])
 rmbs_profile = structured(sys.argv[14])
 rmbs_financials = structured(sys.argv[15])
 rmbs_news = structured(sys.argv[16])
-mixed_market_quote = structured(sys.argv[17])
+rklb_search = structured(sys.argv[17])
+rklb_quote = structured(sys.argv[18])
+rklb_profile = structured(sys.argv[19])
+rklb_financials = structured(sys.argv[20])
+mixed_market_quote = structured(sys.argv[21])
 
 
 def matching_fresh_quote(payload, symbol):
@@ -239,11 +259,28 @@ rmbs_news_data = rmbs_news.get("data")
 if not isinstance(rmbs_news_data, list) or not rmbs_news_data:
     raise SystemExit("[FAIL] RMBS news did not return a provider result for filter regression")
 
+rklb_candidates = rklb_search.get("data") or []
+rklb_exact = [item for item in rklb_candidates if str(item.get("symbol", "")).upper() == "RKLB"]
+if len(rklb_exact) != 1 or "ROCKET LAB" not in str(rklb_exact[0].get("name", "")).upper():
+    raise SystemExit("[FAIL] RKLB search did not exact-resolve Rocket Lab USA, Inc.")
+rklb_matching_quote = matching_fresh_quote(rklb_quote, "RKLB")
+rklb_profiles = rklb_profile.get("data") or []
+rklb_matching_profiles = [
+    item for item in rklb_profiles if str(item.get("symbol", "")).upper() == "RKLB"
+]
+if len(rklb_matching_profiles) != 1 or rklb_matching_profiles[0].get("isEtf") is not False:
+    raise SystemExit("[FAIL] RKLB profile did not confirm an exact-symbol non-ETF equity")
+rklb_financial_data = rklb_financials.get("data")
+if not isinstance(rklb_financial_data, list) or not rklb_financial_data:
+    raise SystemExit("[FAIL] RKLB financials did not return non-empty annual data")
+if any(str(item.get("symbol", "")).upper() != "RKLB" for item in rklb_financial_data):
+    raise SystemExit("[FAIL] RKLB financials contained a different symbol")
+
 mixed_market_symbols = ["000001.SS", "ASHR", "KBA", "^GSPC", "^IXIC", "^DJI"]
 for symbol in mixed_market_symbols:
     matching_fresh_quote(mixed_market_quote, symbol)
 
-print("[PASS] live RMBS/NBIS equities, INTL ETF, and BTCUSD crypto entity/data probes succeeded")
+print("[PASS] live RMBS/RKLB/NBIS equities, INTL ETF, and BTCUSD crypto entity/data probes succeeded")
 print(f"NBIS company={exact[0].get('name') or exact[0].get('companyName')}")
 print(f"NBIS quote_price={matching_quote['price']} change={matching_quote['changesPercentage']} timestamp={int(matching_quote['timestamp'])}")
 print(f"NBIS financials_shape={type(financial_data).__name__} items={len(financial_data)}")
@@ -256,5 +293,7 @@ print(f"BTCUSD market={btc_market or btc_exchange} quote_price={btc_matching_quo
 print("BTCUSD stock_profile_shape=list items=0")
 print(f"RMBS company={rmbs_exact[0].get('name')} quote_price={rmbs_matching_quote['price']} change={rmbs_matching_quote['changesPercentage']} timestamp={int(rmbs_matching_quote['timestamp'])}")
 print(f"RMBS financials_shape=list items={len(rmbs_financial_data)} news_items={len(rmbs_news_data)}")
+print(f"RKLB company={rklb_exact[0].get('name')} quote_price={rklb_matching_quote['price']} change={rklb_matching_quote['changesPercentage']} timestamp={int(rklb_matching_quote['timestamp'])}")
+print(f"RKLB financials_shape=list items={len(rklb_financial_data)}")
 print(f"mixed_market_live_quotes={','.join(mixed_market_symbols)}")
 PY

@@ -2198,17 +2198,43 @@ pub(crate) async fn prepare_verified_investment_turn(
     let mut seen_symbols = HashSet::new();
     let mut unresolved_ticker_candidates = Vec::new();
     for mention in mentions {
+        // When the current text contains an explicit ticker, the provider
+        // lookup must use that exact symbol. An auxiliary company-name alias
+        // is useful only for a genuinely named entity and may not replace the
+        // deterministic ticker query.
+        let lookup_query = mention
+            .explicit_symbol
+            .as_deref()
+            .unwrap_or(&mention.search_query);
         let search = registry
             .execute_tool(
                 "data_fetch",
-                json!({"data_type": "search", "query": mention.search_query}),
+                json!({"data_type": "search", "query": lookup_query}),
             )
             .await
             .map_err(|_| "证券实体查询暂时不可用，请稍后重试。".to_string())?;
         if value_has_error(&search) {
             return Err("证券实体查询暂时不可用，请稍后重试。".to_string());
         }
-        match resolve_entity_match(&mention, &search) {
+        let mut entity_match = resolve_entity_match(&mention, &search);
+        if matches!(entity_match, EntityMatch::Unresolved)
+            && let Some(symbol) = mention.explicit_symbol.as_deref()
+        {
+            // A semantic-empty exact search can be endpoint-specific. Use one
+            // bounded profile lookup and accept it only through the same exact
+            // symbol matcher; quote verification still happens below.
+            if let Ok(profile) = registry
+                .execute_tool(
+                    "data_fetch",
+                    json!({"data_type": "profile", "ticker": symbol}),
+                )
+                .await
+                && !value_has_error(&profile)
+            {
+                entity_match = resolve_entity_match(&mention, &profile);
+            }
+        }
+        match entity_match {
             EntityMatch::Resolved(entity) => {
                 if seen_symbols.insert(entity.symbol.clone()) {
                     entities.push(entity);
@@ -6466,7 +6492,11 @@ async fn extract_entity_scope(
     if is_portfolio_scope_request(input) {
         return Ok(EntityResolutionScope::Portfolio(deterministic));
     }
-    if ticker_mentions_cover_request(input, &deterministic) || trusted_scheduled_subject {
+    if ticker_mentions_cover_request(input, &deterministic)
+        || trusted_scheduled_subject
+        || (origin == AgentTurnOrigin::Interactive
+            && deterministic_ticker_scope_is_complete(input, &deterministic))
+    {
         return Ok(EntityResolutionScope::Securities(deterministic));
     }
     if deterministic.is_empty()
@@ -6747,6 +6777,7 @@ fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMent
         let lowercase = letters.clone().all(|c| c.is_ascii_lowercase());
         let exact_input = input.trim().eq_ignore_ascii_case(token);
         let explicit_ticker_label = has_explicit_ticker_label(input, token);
+        let explicit_ticker_binding = has_explicit_ticker_binding(input, token);
         if is_non_security_acronym(token) && !exact_input && !explicit_ticker_label {
             continue;
         }
@@ -6755,7 +6786,11 @@ fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMent
             && token
                 .chars()
                 .all(|character| character.is_ascii_alphabetic());
-        if !uppercase && !(lowercase && (lowercase_ticker_context || plain_lowercase_exact_ticker))
+        if !uppercase
+            && !(lowercase
+                && (lowercase_ticker_context
+                    || plain_lowercase_exact_ticker
+                    || explicit_ticker_binding))
         {
             continue;
         }
@@ -6794,7 +6829,11 @@ fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMent
                 continue;
             }
             accepted_scheduled_subject = true;
-        } else if !(ticker_context || exact_input || explicit_ticker_label) {
+        } else if !(ticker_context
+            || exact_input
+            || explicit_ticker_label
+            || explicit_ticker_binding)
+        {
             continue;
         }
 
@@ -6824,14 +6863,21 @@ fn merge_entity_mentions(
                 (Some(left), Some(right)) => left.eq_ignore_ascii_case(right),
                 _ => {
                     existing.mention.eq_ignore_ascii_case(&mention.mention)
-                        && existing
+                        || existing
                             .search_query
                             .eq_ignore_ascii_case(&mention.search_query)
                 }
             }
         });
         if let Some(existing) = duplicate {
-            if existing.tentative_symbol && !mention.tentative_symbol {
+            // A ticker lexically present in the current user text remains the
+            // authoritative lookup key. Auxiliary extraction may add another
+            // named entity, but it must never rewrite an exact `RKLB` query to
+            // a provider-sensitive alias such as `Rocket Lab USA Inc`.
+            if existing.explicit_symbol.is_none()
+                && existing.tentative_symbol
+                && !mention.tentative_symbol
+            {
                 *existing = mention;
             }
         } else {
@@ -6979,6 +7025,39 @@ fn ticker_mentions_cover_request(input: &str, mentions: &[EntityMention]) -> boo
     !residual.chars().any(char::is_alphanumeric)
 }
 
+/// A current-turn exact ticker is a first-class entity identifier. For a
+/// single-security request it does not need an auxiliary LLM to understand
+/// every surrounding business noun before DataFetch can exact-resolve it.
+/// Keep auxiliary completion for explicit one-known-plus-one-named comparison
+/// shapes so a second company is not silently dropped.
+fn deterministic_ticker_scope_is_complete(input: &str, mentions: &[EntityMention]) -> bool {
+    if mentions.is_empty()
+        || mentions
+            .iter()
+            .any(|mention| mention.explicit_symbol.is_none())
+    {
+        return false;
+    }
+    let normalized = input.to_ascii_lowercase();
+    ![
+        "比较",
+        "对比",
+        "哪个好",
+        "哪一个好",
+        "哪个更好",
+        "谁更好",
+        "二选一",
+        "选哪个",
+        "分别分析",
+        "都怎么看",
+        "compare",
+        "versus",
+        " vs ",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker))
+}
+
 fn is_report_period_token(token: &str) -> bool {
     let normalized = token.to_ascii_uppercase();
     matches!(normalized.as_str(), "Q1" | "Q2" | "Q3" | "Q4")
@@ -7102,6 +7181,15 @@ fn has_explicit_ticker_label(input: &str, token: &str) -> bool {
         regex::escape(token)
     ))
     .expect("explicit ticker label regex")
+    .is_match(input)
+}
+
+fn has_explicit_ticker_binding(input: &str, token: &str) -> bool {
+    Regex::new(&format!(
+        r"(?i)(?:^|[^a-z0-9.-]){}\s*(?:是|就是|即|指|指的是|对应|也就是|=)",
+        regex::escape(token)
+    ))
+    .expect("ticker identity binding regex")
     .is_match(input)
 }
 
@@ -8693,8 +8781,9 @@ mod tests {
         UNTRUSTED_WEB_EVIDENCE_INSTRUCTION, VerifiedDatedSource, VerifiedFundHoldingFact,
         asset_evidence_route, bounded_evidence_json, broad_analysis_kind,
         complete_entity_extraction_with_auxiliary, contract_failure_message,
-        dated_market_searches_at, deterministic_sector_symbols, enforce_server_data_time_prefix,
-        entity_is_crypto, entity_is_fund, explicit_dollar_mentions, filter_entity_news_evidence,
+        dated_market_searches_at, deterministic_sector_symbols,
+        deterministic_ticker_scope_is_complete, enforce_server_data_time_prefix, entity_is_crypto,
+        entity_is_fund, explicit_dollar_mentions, filter_entity_news_evidence,
         forbidden_investment_tool_calls, has_data_time_context, has_matching_financial_data,
         has_matching_symbol_data, investment_contract_failure_message,
         investment_preflight_failure_message, is_portfolio_scope_request, market_benchmark_symbols,
@@ -8781,12 +8870,23 @@ mod tests {
             ("intl最新报价", "INTL"),
             ("intl持仓如何", "INTL"),
             ("intl费率", "INTL"),
+            ("现在rklb推荐的安全区间价格是多少，暂不考虑中子", "RKLB"),
+            (
+                "现在RKLB推荐的安全区间价格是多少，暂不考虑中子发射时间，是否成功",
+                "RKLB",
+            ),
+            ("RKLB 是前面提到的 火箭实验室", "RKLB"),
+            ("rklb 是前面提到的 火箭实验室", "RKLB"),
         ] {
             let entities = plain_ticker_mentions(input, AgentTurnOrigin::Interactive);
             assert_eq!(entities.len(), 1, "{input}");
             assert_eq!(entities[0].explicit_symbol.as_deref(), Some(symbol));
             assert!(entities[0].tentative_symbol);
-            assert!(ticker_mentions_cover_request(input, &entities), "{input}");
+            assert!(
+                ticker_mentions_cover_request(input, &entities)
+                    || deterministic_ticker_scope_is_complete(input, &entities),
+                "{input}"
+            );
             assert!(should_run_entity_stage(input, AgentTurnOrigin::Interactive));
         }
         for ordinary in ["hello", "hello-0", "new-user"] {
@@ -8818,6 +8918,41 @@ mod tests {
             "比较 NBIS 和 NVDA",
             &entities
         ));
+    }
+
+    #[test]
+    fn one_known_ticker_does_not_hide_a_named_comparison_entity() {
+        let input = "比较 RKLB 和英伟达的安全区间";
+        let entities = plain_ticker_mentions(input, AgentTurnOrigin::Interactive);
+        assert_eq!(entities.len(), 1);
+        assert_eq!(entities[0].explicit_symbol.as_deref(), Some("RKLB"));
+        assert!(!ticker_mentions_cover_request(input, &entities));
+        assert!(!deterministic_ticker_scope_is_complete(input, &entities));
+    }
+
+    #[test]
+    fn auxiliary_alias_cannot_rewrite_exact_ticker_lookup() {
+        let deterministic = vec![EntityMention {
+            mention: "RKLB".into(),
+            search_query: "RKLB".into(),
+            explicit_symbol: Some("RKLB".into()),
+            tentative_symbol: true,
+        }];
+        let auxiliary = vec![EntityMention {
+            mention: "RKLB".into(),
+            search_query: "Rocket Lab USA Inc".into(),
+            explicit_symbol: Some("RKLB".into()),
+            tentative_symbol: false,
+        }];
+        let merged = complete_entity_extraction_with_auxiliary(
+            "RKLB 推荐的安全区间",
+            deterministic,
+            auxiliary,
+        )
+        .expect("merge exact ticker with auxiliary alias");
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].explicit_symbol.as_deref(), Some("RKLB"));
+        assert_eq!(merged[0].search_query, "RKLB");
     }
 
     #[test]
@@ -9123,6 +9258,41 @@ mod tests {
             resolve_entity_match(
                 &mention,
                 &json!({"data":[{"symbol":"MBIS","name":"Mediobanca"}]})
+            ),
+            EntityMatch::Unresolved
+        );
+    }
+
+    #[test]
+    fn exact_profile_can_resolve_a_semantic_empty_or_derivative_only_search() {
+        let mention = EntityMention {
+            mention: "RKLB".into(),
+            search_query: "RKLB".into(),
+            explicit_symbol: Some("RKLB".into()),
+            tentative_symbol: true,
+        };
+        let derivative_only = json!({"data":[
+            {"symbol":"RKLX","name":"Daily Target 2X Long RKLB ETF"},
+            {"symbol":"RKLZ","name":"Daily Target 2X Short RKLB ETF"}
+        ]});
+        assert_eq!(
+            resolve_entity_match(&mention, &derivative_only),
+            EntityMatch::Unresolved
+        );
+        assert!(matches!(
+            resolve_entity_match(&mention, &json!({"data":[{
+                "symbol":"RKLB",
+                "companyName":"Rocket Lab USA, Inc.",
+                "exchangeShortName":"NASDAQ",
+                "currency":"USD"
+            }]})),
+            EntityMatch::Resolved(entity)
+                if entity.symbol == "RKLB" && entity.name == "Rocket Lab USA, Inc."
+        ));
+        assert_eq!(
+            resolve_entity_match(
+                &mention,
+                &json!({"data":[{"symbol":"RKLX","companyName":"Wrong derivative"}]})
             ),
             EntityMatch::Unresolved
         );

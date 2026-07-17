@@ -162,10 +162,10 @@ else
   record fail "18.server-owned-time-first" "time-first response ownership is missing from a canonical prompt layer"
 fi
 
-if contains '证券实体识别是不可跳过的固定第一阶段' "$SOUL" && contains '用户直接输入 `NBIS`、`INTL`、`RMBS` 这类股票代码是正常用法' "$SOUL" && contains 'A plain ticker such as `NBIS`, `INTL`, or `RMBS` is normal user input' "$STOCK_RESEARCH" && contains 'require an exact-symbol result' "$STOCK_RESEARCH"; then
-  record success "19.plain-ticker-entity-first" "plain tickers enter current-turn exact entity resolution without needless clarification"
+if contains '证券实体识别是不可跳过的固定第一阶段' "$SOUL" && contains '用户直接输入 `NBIS`、`INTL`、`RMBS` 这类股票代码是正常用法' "$SOUL" && contains 'A plain ticker such as `NBIS`, `INTL`, or `RMBS` is normal user input' "$STOCK_RESEARCH" && contains 'require an exact-symbol result' "$STOCK_RESEARCH" && contains 'deterministic_ticker_scope_is_complete' "$INVESTMENT_GUARD" && contains 'RKLB 是前面提到的 火箭实验室' "$INVESTMENT_GUARD" && contains 'unwrap_or(&mention.search_query)' "$INVESTMENT_GUARD"; then
+  record success "19.plain-ticker-entity-first" "plain tickers bypass auxiliary prose parsing, preserve exact-symbol lookup, and enter current-turn entity resolution without needless clarification"
 else
-  record fail "19.plain-ticker-entity-first" "the prompt can regress into rejecting or guessing ordinary tickers"
+  record fail "19.plain-ticker-entity-first" "the prompt or runtime can regress into rejecting, rewriting, or guessing ordinary tickers"
 fi
 
 if contains '每个公司或证券问题先调用 DataFetch `search`' "$SOUL" && contains 'DataFetch 本轮同代码 quote' "$SOUL" && contains '禁止声称“没有实时行情”' "$SOUL" && contains 'never claim that real-time/current market data was not requested' "$STOCK_RESEARCH"; then

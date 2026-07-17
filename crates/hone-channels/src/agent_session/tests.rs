@@ -3502,6 +3502,51 @@ async fn malformed_auxiliary_entity_output_fails_closed_without_dropping_named_e
 }
 
 #[tokio::test]
+async fn explicit_rklb_phrasing_reaches_datafetch_without_auxiliary_entity_chat() {
+    let root = make_temp_dir("hone_channels_rklb_exact_entity_fast_path");
+    std::fs::create_dir_all(&root).expect("create root");
+    let llm = MockLlmProvider::with_chat_and_tool_responses(vec![], vec![]);
+    let core = make_test_core(&root, llm.clone());
+    let actor = ActorIdentity::new("web", "rklb-exact", None::<String>).expect("actor");
+
+    for input in [
+        "现在rklb推荐的安全区间价格是多少，暂不考虑中子",
+        "现在RKLB推荐的安全区间价格是多少，暂不考虑中子发射时间，是否成功",
+        "RKLB 是前面提到的 火箭实验室",
+        "rklb 是前面提到的 火箭实验室",
+    ] {
+        let mut runtime_input = input.to_string();
+        let result = prepare_verified_investment_turn(
+            &core,
+            &actor,
+            "direct",
+            false,
+            input,
+            AgentTurnOrigin::Interactive,
+            &mut runtime_input,
+        )
+        .await;
+        let error = result.expect_err("test config has no FMP key, so DataFetch must fail");
+        assert!(
+            error.contains("证券实体查询暂时不可用"),
+            "explicit ticker must reach DataFetch: {input}: {error}"
+        );
+        assert!(
+            !error.contains("证券实体解析暂时未能确认"),
+            "explicit ticker must not fail at auxiliary extraction: {input}: {error}"
+        );
+    }
+
+    assert_eq!(
+        llm.chat_calls(),
+        0,
+        "all explicit RKLB forms must bypass auxiliary entity extraction"
+    );
+    assert_eq!(llm.chat_with_tools_calls(), 0);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
 async fn unresolved_named_entity_payload_is_a_clarification_not_provider_unavailability() {
     let root = make_temp_dir("hone_channels_empty_entity_payload");
     std::fs::create_dir_all(&root).expect("create root");
