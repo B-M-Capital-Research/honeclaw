@@ -6,6 +6,16 @@
 - **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
 
+## 复发记录（2026-07-17 19:02 CST）
+
+- 运行态在投研相关修复后部分止血但仍复发，状态维持 `New`：
+  - 本轮巡检窗口为 `2026-07-17 15:01-19:02 CST`。
+  - `data/sessions.sqlite3` 同窗新增 8 条 user / 9 条 assistant，全部以 assistant 收口；未见长期 user-only 悬挂、错投、空回复、内部路径 / raw tool / `<think>` 外泄或全渠道不可用。
+  - 最近非文档提交 `ff3852c3 fix(investment): preserve exact ticker resolution`、`7d14c87f fix(investment): enforce deep valuation intent` 后，17:35 / 17:47 CST 同题 RKLB Web direct 已能核验 `Rocket Lab USA, Inc.（RKLB；NASDAQ Capital Market）` 并输出价格区间；17:11 CST 修复前同题仍返回“证券实体解析暂时未能确认当前点名的公司”。
+  - 但 `data/runtime/logs/web.log.2026-07-17` 17:30-19:00 CST 仍有 ORCL、TSLA、ASTS、Monitor_Watchlist_11 等 heartbeat 被拦成“证券实体解析暂时未能确认”或“无法确认你提到的 Oracle（ORCL）对应哪家上市公司或证券”，并落成 `failure_kind=runner_error` / 定时任务执行失败。
+  - 判断：direct 显式 ticker 解析有部分止血，但 heartbeat / scheduler 路径仍被实体优先 / 投研完整性 guard 拦截，仍属于同一链路，不新建重复缺陷。
+  - 严重等级维持 `P2`：问题直接阻断部分投研 scheduler / heartbeat 正文生成，但同窗 RKLB direct 和多条 heartbeat 仍有成功收口，未见错投、数据破坏、敏感信息泄露或全渠道停摆，因此不是 `P1`，不创建 GitHub Issue。
+
 ## 复发记录（2026-07-17 15:01 CST）
 
 - 运行态继续复发，状态维持 `New`：

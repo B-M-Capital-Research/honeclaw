@@ -22,6 +22,13 @@ New
 
 ## 证据来源
 
+- `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-17`
+  - 巡检时间窗：2026-07-17 15:01-19:02 CST。
+  - `data/sessions.sqlite3` 同窗新增 8 条 user / 9 条 assistant，覆盖 8 个近期 Web direct / scheduler session，全部以 assistant 收口；没有 user-only 悬挂、错投、敏感信息泄露或全渠道不可用证据。
+  - 18:00 CST Web scheduler session `Actor_web__direct__web-user-ba50cb9401c0` 的 `18:00 美股盘前 X 英文帖` 先写入 `X 的报价没有可用且足够新的数据源时间戳。本轮不会把查询时间冒充行情时间。`，随后写入 `定时任务「18:00 美股盘前 X 英文帖」执行出错，请稍后重试。`
+  - 同窗 runtime 继续出现 45 条定时任务执行失败、56 条 `runner_error`、15 条“heartbeat 输出不是结构化 JSON”和 58 条“证券实体解析暂时未能确认”相关信号，覆盖 Feishu / Web heartbeat。
+  - 17:35 / 17:47 CST 同题 RKLB Web direct 已成功核验并输出价格区间，说明不是 Web direct 或 scheduler 全链路不可用。
+  - 判断：该样本仍属于同根投研完整性 / evidence 门禁 fail-closed 后用户只看到通用失败或 scheduler 失败提示；由于同窗 direct / heartbeat 可成功收口，未见错投、数据破坏、敏感信息泄露或全渠道不可用，维持功能性 `P2 / New`，不升级为 P1，不创建 GitHub Issue。
 - `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-16` / `data/runtime/logs/web.log.2026-07-17`
   - 巡检时间窗：2026-07-17 07:01-11:02 CST。
   - `data/sessions.sqlite3` 同窗新增 10 条 user / 10 条 assistant，覆盖 8 个近期 session，全部以 assistant 收口；没有 user-only 悬挂、错投、敏感信息泄露或全渠道不可用证据。

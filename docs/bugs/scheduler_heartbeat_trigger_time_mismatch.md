@@ -8,6 +8,15 @@
 
 ## 最新进展
 
+- 本轮 `2026-07-17 15:01-19:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-17`
+    - 17:30 CST `SIVE POET/Nokia/1.6T DFB 心跳检测` deliver preview 把真实 17:30 CST 写成 `北京时间 2026-07-17 19:00`，并把美东口径写成 `07/17 09:30（盘前）`，与日志窗口不一致。
+    - 19:00 CST `存储板块关键事件心跳提醒` deliver preview 把真实 19:00 CST 写成 `北京时间 2026-07-17 20:00`。
+    - 19:00 CST `AAOI 1.6T 光模块心跳检测` deliver preview 写 `北京时间 2026-07-17 19:00（美东 07/17 06:00，盘前）`，但同条报价时间戳又标为北京时间 07-17 04:00，时间口径混杂。
+    - 15:30-19:00 CST 多条 raw preview 继续把旧行情时间、服务端核验时间和执行时间混用，参与 noop / triggered 判断。
+  - 会话质量对照：同窗 `data/sessions.sqlite3` 新增 8 条 user / 9 条 assistant，全部以 assistant 收口；未见同类时间口径错误进入 ordinary direct assistant final。
+  - 判断：这些样本仍是 heartbeat 运行态时间上下文 / 任务上下文漂移，主要影响触发判断质量与用户可见时间口径可信度；没有错投、全渠道不可用或敏感信息泄露，维持质量性 `P3 / New`，非 P1。
+
 - 本轮 `2026-07-17 11:01-15:01 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-17`
     - 15:00 CST `SIVE POET/Nokia/1.6T DFB 心跳检测` deliver preview 把真实 15:00 CST 写成 `北京时间 2026-07-17 22:30`，晚于真实日志时间约 7.5 小时。
