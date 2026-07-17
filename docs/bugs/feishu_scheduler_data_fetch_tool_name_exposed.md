@@ -738,3 +738,14 @@ New
 - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/runtime.rs crates/hone-channels/src/scheduler.rs`
 - `cargo check -p hone-channels --tests`
 - `git diff --check`
+## 最新运行态复核（2026-07-17 23:02 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-07-17 19:01-23:01 CST。
+  - 21:35 CST Feishu scheduler `科技核心股池 · 晚间击球区快报` final 写出 `数据均来自本轮 data_fetch 实时校验`，并在 GOOGL / TSM 财报日说明和文末继续写 `data_fetch 确认为...`、`全 25 支标的均通过 data_fetch quote 核验`。
+  - 23:00 CST Feishu scheduler `核心观察股池晚间快报` final 继续写出 `数据来自本轮 data_fetch 实时校验`。
+  - 两条会话均正常以 assistant 收口，主体观察池列表、击球区和财报日期输出完整；没有投递失败、空回复、错投、会话悬挂或链路级数据破坏证据。
+- 本轮判断
+  - 这是既有 Feishu scheduler 内部工具名 / 数据源实现词外露复发。
+  - 问题只影响用户可见文案边界和产品感，不阻断 scheduler 主功能链路；为何不影响功能链路，因此定级为 P3：调度触发、生成和最终回复均完成，用户仍收到观察池内容，只是看到了不应暴露的内部工具名。
+  - 状态维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。

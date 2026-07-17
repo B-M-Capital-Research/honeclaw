@@ -188,3 +188,14 @@
 - 如果 runtime 已是最新代码，继续沿调用栈定位 `当前无法稳定核验证券实体` 的实体来源，确认是否还有第二套 guard / answer contract 在扫描完整 prompt。
 - 若后续再出现误伤，优先继续沿“上下文过滤”而不是堆全局 denylist，避免把真实 ticker 一并排除。
 - 更稳妥的长期方向仍是让 guard 只校验模型准备输出交易结论的实体，或只校验工具已解析出的候选 ticker，而不是扫描完整 prompt 文本。
+## 最新运行态复核（2026-07-17 23:02 CST）
+
+- `data/runtime/logs/web.log.2026-07-17`
+  - 巡检窗口：2026-07-17 19:01-23:01 CST。
+  - 23:00 CST heartbeat 继续出现同根实体核验阻断：`ORCL 大事件监控`、`ASTS 重大异动心跳监控`、`Monitor_Watchlist_11`、`TSLA 正负触发条件心跳监控` 均落成 `failure_kind=runner_error`，错误为“证券实体解析暂时未能确认当前点名的公司。请稍后重试，或补充明确 ticker。”
+  - 同窗统计命中 64 行实体 guard 相关日志、62 条 `runner_error`、57 条定时任务执行失败。
+- `data/sessions.sqlite3`
+  - 同窗 2 个近期 scheduler session 均以 assistant 收口，未见长期 user-only 悬挂、错投或全渠道不可用。
+- 本轮判断
+  - 这不是新的根因，而是既有投研实体 guard 在 heartbeat / scheduler 链路中继续误拦显式监控对象或任务上下文。
+  - 影响是部分定时监控跳过发送；同窗仍有 Feishu / Web scheduler 正常收口，因此维持功能性 `P2 / New`，非 P1。

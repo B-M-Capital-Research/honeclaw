@@ -322,3 +322,13 @@
   - 中英文字段内容
   - 同时含 `<think>` 污染原文但已成功解析出触发态的情况
 - 在台账里继续观察是否还有其它 heartbeat 任务把 `response_preview` / `deliver_preview` 记成原始 JSON；若扩散到多条任务，可考虑提升优先级。
+## 最新运行态复核（2026-07-17 23:02 CST）
+
+- `data/runtime/logs/web.log.2026-07-17`
+  - 巡检窗口：2026-07-17 19:01-23:01 CST。
+  - 22:30 CST `小米30港元破位预警` `parse_kind=PlainTextTriggered` 的 `deliver_preview` 仍以 fenced JSON 开头，包含 `"status": "triggered"`、`"symbol": "1810.HK"`、`"condition": "现价 ≤ 30 港元"` 等协议字段。
+  - 22:30 CST `AI与科技持仓观察关键事件心跳提醒` 的 `deliver_preview` 同样以 fenced JSON 开头，包含 `"status": "triggered"` 和长 `event` 字段。
+  - 同窗仍有 47 条 `deliver_preview` 与 3 条 `JsonTriggered`，说明 heartbeat 出站内容仍可能把协议载荷当作用户消息。
+- 本轮判断
+  - 这仍是既有 heartbeat JSON / 协议字段外露质量缺陷复发，不是新的链路根因。
+  - 触发与投递链路本身仍可运行，问题主要是用户可见格式和产品感退化，因此维持质量性 `P3 / New`，非 P1。

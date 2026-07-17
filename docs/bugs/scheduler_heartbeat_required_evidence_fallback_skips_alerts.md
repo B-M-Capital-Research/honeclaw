@@ -194,3 +194,14 @@ New
 
 - 本轮为缺陷台账维护任务，未修改业务代码、测试代码或配置代码，未运行代码测试。
 - 已验证范围：`data/runtime/logs/web.log.2026-07-13` 15:01-19:01 CST heartbeat 日志、`data/sessions.sqlite3` 同窗 session 记录与 `cron_job_runs` 停滞状态。
+## 最新运行态复核（2026-07-17 23:02 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-07-17 19:01-23:01 CST。
+  - 21:00 CST Web scheduler `盘前美股要闻与SNDK/MU存储产业链日报` 先生成一条 assistant final，正文含已核验 SNDK / MU 行情前缀，随后以“抱歉，这次处理失败了。请稍后再试。”结束。
+  - 同 session 下一条 assistant 写入用户可见 scheduler 失败文本：`定时任务「盘前美股要闻与SNDK/MU存储产业链日报」执行出错，请稍后重试。`，metadata 标记 `scheduler_failure=true`，并把失败前生成的业务正文塞入 `error` 字段。
+- `data/runtime/logs/web.log.2026-07-17`
+  - 同窗继续出现 62 条 `runner_error`、57 条定时任务执行失败，以及多条实体核验 / 结构化失败导致的 heartbeat 跳过发送。
+- 本轮判断
+  - 该样本仍落在“实时核验 / 完整性门禁 fail-closed 后只给产品化失败提示”的既有缺陷范围。
+  - 任务没有产出用户原本请求的盘前简报，但同窗其他 scheduler 正常收口，未见错投、敏感信息泄露或全渠道不可用，因此维持功能性 `P2 / New`，非 P1。

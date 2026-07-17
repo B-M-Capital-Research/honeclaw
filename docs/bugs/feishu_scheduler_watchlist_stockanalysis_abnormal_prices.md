@@ -1213,3 +1213,15 @@
 - 本轮判断
   - 最新证据仍落在 scheduler / heartbeat 批量行情数值 sanity check 缺失范围内，没有新的独立根因。
   - 本窗未确认新的普通 final 基于异常价格给出交易建议；调度和投递主链路本身仍可运行，因此维持质量性 `P3 / New`，非 P1。
+## 最新运行态复核（2026-07-17 23:02 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-07-17 19:01-23:01 CST。
+  - 21:00 CST Web scheduler `盘前美股要闻与SNDK/MU存储产业链日报` 用户可见 final 使用 `SNDK 1391.19 USD`、`MU 833 USD`，随后落成 `scheduler_failure=true`。
+  - 21:35 CST Feishu scheduler `科技核心股池 · 晚间击球区快报` 正常收口，但 final 继续输出 `MU $816.37`、`SNDK $1345.32`、`STX $718.19`、`WDC $444.69`、`AMD $470.27` 等高风险数量级行情锚，并据此计算击球区距离。
+  - 23:00 CST Feishu scheduler `核心观察股池晚间快报` 再次输出 `SNDK $1,345.32`、`MU $816.37`、`STX $718.19`、`AMD $470.27`、`LITE $674.00` 等同类价格，并给出“ORCL 估值最具吸引力”等观察结论。
+- `data/runtime/logs/web.log.2026-07-17`
+  - 同窗 heartbeat raw preview 继续出现 `SPY $745.12`、`QQQ $694.69`、`MU $855.19`、`SNDK $1,345` 一类高风险行情锚。
+- 本轮判断
+  - 最新证据仍落在 scheduler / heartbeat 批量行情数值 sanity check 缺失范围内，没有新的独立根因。
+  - 本窗异常数量级行情已进入用户可见 scheduler final 并影响击球区判断；但会话正常收口、未见投递失败、错对象或数据破坏，问题主要削弱投研质量和价格判断可信度，因此维持质量性 `P3 / New`，非 P1。

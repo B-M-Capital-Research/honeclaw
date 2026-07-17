@@ -1147,3 +1147,14 @@
 - 本轮判断
   - 当前会话镜像本身可继续前进，但调度运行台账仍未追入真实 heartbeat runtime；缺陷范围继续按“SQLite 镜像 / 台账滞后于真实运行态”处理。
   - Direct / scheduler 可见 final 成对收口，未见未回复或错投；严重等级维持 `P2 / New`。
+## 最新运行态复核（2026-07-17 23:02 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-07-17 19:01-23:01 CST。
+  - 会话镜像继续追入 21:00 Web scheduler 与 21:35 / 23:00 Feishu scheduler，共 3 条 user / 4 条 assistant，`session_messages.max(timestamp)=2026-07-17T23:00:27.544535+08:00`，近期 session 均以 assistant 收口。
+  - 但 `cron_job_runs.max(executed_at)` 仍停在 `2026-07-10T14:01:27.621121+08:00`，没有记录本窗真实 heartbeat / scheduler 运行结果。
+- `data/runtime/logs/web.log.2026-07-17`
+  - 同窗继续记录 612 条 `HeartbeatDiag`、47 条 `deliver_preview`、57 条定时任务执行失败和多批 22:30 / 23:00 heartbeat run。
+- 本轮判断
+  - 当前坏态仍是“会话消息镜像可前进，但调度运行台账滞后于真实 runtime”；它会误导巡检和调度排障，但普通 scheduler / direct 消息仍可收口。
+  - 严重等级维持功能性 `P2 / New`，非 P1。

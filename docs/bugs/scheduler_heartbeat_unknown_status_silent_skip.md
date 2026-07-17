@@ -6160,3 +6160,13 @@
   - 可分类 `parse_kind` 继续漂移：`PlainTextTriggered=176`、`JsonNoop=86`、`PlainTextNoop=15`、`JsonTriggered=14`、`PlainTextSuppressed=4`、`JsonMalformed=4`。
   - 示例：23:00 CST `RKLB异动监控` 与 23:30 CST `全天原油价格3小时播报` 因自由文本 / `<think>` 包裹的 `noop` 被判为“heartbeat 输出不是结构化 JSON”；03:00 CST `ORCL 大事件监控` 同样以 `PlainTextSuppressed` 落成执行失败。
   - 坏态影响 heartbeat 是否稳定得出 `triggered/noop` 并发送；普通 direct / scheduler final 主链路仍可收口，未见错对象投递或数据安全问题，因此维持功能性 `P2 / New`，非 P1。
+## 最新运行态复核（2026-07-17 23:02 CST）
+
+- `data/runtime/logs/web.log.2026-07-17`
+  - 巡检窗口：2026-07-17 19:01-23:01 CST。
+  - 同窗记录 612 条 `HeartbeatDiag`、173 条 raw `<think>`、17 条“heartbeat 输出不是结构化 JSON”相关失败信号。
+  - `parse_kind` 分布继续漂移：`PlainTextTriggered=94`、`JsonNoop=93`、`PlainTextSuppressed=17`、`PlainTextNoop=5`、`JsonMalformed=4`、`JsonTriggered=3`、`JsonEmptyStatus=2`。
+  - 23:01 CST `闪迪关键事件心跳提醒` 以 `PlainTextSuppressed` 结束后写入 `heartbeat 输出不是结构化 JSON，任务已标记失败`。
+- 本轮判断
+  - 最新证据仍是 heartbeat 模型输出未稳定遵守结构化协议，解析层在 `PlainText*`、`Json*` 与 execution_failed 之间漂移。
+  - 多数失败停留在 heartbeat 内部或跳过发送路径；未见进入普通 assistant final 的原始 provider 错误或敏感信息，因此维持 `P2 / New`。
