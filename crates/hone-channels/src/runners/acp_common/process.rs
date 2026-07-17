@@ -119,6 +119,9 @@ fn send_process_group_signal(process_group_id: u32, signal: &str) {
     let target = format!("-{process_group_id}");
     let _ = std::process::Command::new("kill")
         .arg(format!("-{signal}"))
+        // Linux's external `kill` may otherwise parse a negative PGID as
+        // another option instead of the process-group target.
+        .arg("--")
         .arg(target)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
