@@ -4945,7 +4945,24 @@ fn extended_claim_local_prefix(fragment: &str, marker_start: usize) -> &str {
     let punctuation_start = prefix
         .char_indices()
         .rev()
-        .find(|(_, character)| matches!(character, ',' | '，' | '、'))
+        .find(|(index, character)| {
+            if matches!(character, '，' | '、') {
+                return true;
+            }
+            if *character != ',' {
+                return false;
+            }
+            let previous_is_digit = prefix[..*index]
+                .chars()
+                .next_back()
+                .is_some_and(|value| value.is_ascii_digit());
+            let next_index = index.saturating_add(character.len_utf8());
+            let next_is_digit = prefix[next_index..]
+                .chars()
+                .next()
+                .is_some_and(|value| value.is_ascii_digit());
+            !(previous_is_digit && next_is_digit)
+        })
         .map_or(0, |(index, character)| index + character.len_utf8());
     let conjunction_start = ["但是", "但", " but ", " however "]
         .iter()
@@ -5014,6 +5031,23 @@ fn extended_price_claim_matches_contract(
     if extended_price_fragment_is_nonfactual(claim_scope) {
         return true;
     }
+    if captures.name("prefix_sign").is_some() || captures.name("number_sign").is_some() {
+        return false;
+    }
+    let attached_negative = captures.get(0).is_some_and(|matched| {
+        let token_start = captures
+            .name("prefix")
+            .or_else(|| captures.name("number"))
+            .map(|token| token.start().saturating_sub(matched.start()))
+            .unwrap_or(0);
+        matched.as_str()[..token_start]
+            .chars()
+            .next_back()
+            .is_some_and(|character| matches!(character, '-' | '−'))
+    });
+    if attached_negative {
+        return false;
+    }
     let Some(price) = captures
         .name("number")
         .map(|value| value.as_str().replace(',', ""))
@@ -5060,6 +5094,294 @@ fn extended_price_claim_matches_contract(
         )
 }
 
+fn extended_number_tail_is_non_price_context(number: &str, tail: &str) -> bool {
+    let normalized = tail.trim_start().to_ascii_lowercase();
+    let parsed_integer = number.replace(',', "").parse::<u16>().ok();
+    let iso_date = parsed_integer.is_some_and(|year| (1900..=2100).contains(&year))
+        && Regex::new(r"^(?:-|/|\.)\s*\d{1,2}\s*(?:-|/|\.)\s*\d{1,2}(?:\D|$)")
+            .expect("extended-hours ISO date tail regex")
+            .is_match(&normalized);
+    let month_or_day_first_date = parsed_integer.is_some_and(|part| part <= 31)
+        && Regex::new(r"^(?:-|/|\.)\s*\d{1,2}\s*(?:-|/|\.)\s*(?:19|20)\d{2}(?:\D|$)")
+            .expect("extended-hours month/day-first date tail regex")
+            .is_match(&normalized);
+    let clock_time = parsed_integer.is_some_and(|hour| hour <= 23)
+        && Regex::new(r"^:[0-5]\d(?::[0-5]\d)?(?:\D|$)")
+            .expect("extended-hours clock tail regex")
+            .is_match(&normalized);
+    let english_unit = Regex::new(
+        r"(?ix)^(?:
+            bps?|basis\s+points?|pct|percent(?:age)?|
+            mins?|minutes?|secs?|seconds?|hours?|days?|weeks?|months?|years?|
+            eps|shares?|points?|quarters?|q[1-4]|x
+        )\b",
+    )
+    .expect("extended-hours non-price English unit regex")
+    .is_match(&normalized);
+    let chinese_unit = [
+        "%",
+        "个基点",
+        "基点",
+        "个百分点",
+        "分钟",
+        "分",
+        "秒",
+        "小时",
+        "时",
+        "天",
+        "日",
+        "周",
+        "个月",
+        "月",
+        "年",
+        "季度",
+        "季",
+        "点",
+        "倍",
+        "次",
+        "项",
+        "股",
+        "份",
+    ]
+    .iter()
+    .any(|unit| normalized.starts_with(unit));
+    iso_date || month_or_day_first_date || clock_time || english_unit || chinese_unit
+}
+
+fn extended_number_tail_is_scaled_quantity(tail: &str) -> bool {
+    let normalized = tail.trim_start().to_ascii_lowercase();
+    Regex::new(r"(?ix)^(?:thousand|million|billion|trillion|k|m|mm|bn|b)\b")
+        .expect("extended-hours scaled quantity English regex")
+        .is_match(&normalized)
+        || [
+            "万股",
+            "亿股",
+            "万美元",
+            "亿美元",
+            "万人民币",
+            "亿人民币",
+            "万元",
+            "亿元",
+            "万",
+            "亿",
+        ]
+        .iter()
+        .any(|unit| normalized.starts_with(unit))
+}
+
+fn extended_claim_has_explicit_price_subject(scope: &str) -> bool {
+    Regex::new(
+        r"(?ix)(?:现价|最新价|报价|价格|股价|市价|市场价|收盘价|current\s+price|latest\s+price|last\s+price|market\s+price|stock\s+price|share\s+price|\bprice\b|\bquote\b)",
+    )
+    .expect("extended-hours explicit price subject regex")
+    .is_match(scope)
+}
+
+fn extended_claim_has_non_price_metric_subject(scope: &str) -> bool {
+    Regex::new(
+        r"(?ix)(?:
+            \beps\b|\brevenue\b|\bsales\b|\bvolume\b|\bturnover\b|\bebitda\b|\bebit\b|\bfcf\b|
+            cash\s+flow|net\s+income|operating\s+income|gross\s+margin|operating\s+margin|profit\s+margin|
+            market\s+cap|share\s+count|营收|收入|销售额|成交量|成交额|每股收益|利润|现金流|市值|毛利率|净利率|股数
+        )",
+    )
+    .expect("extended-hours non-price metric subject regex")
+    .is_match(scope)
+}
+
+fn extended_number_tail_has_unverified_range(number: &str, tail: &str) -> bool {
+    let normalized = tail.trim_start();
+    let numeric_continuation =
+        Regex::new(r"(?ix)^(?:(?:-|/|:|\.|–|—|~|～|至|到)\s*\d|\bto\s+[-−]?\s*\d)")
+            .expect("extended-hours numeric continuation regex")
+            .is_match(normalized);
+    numeric_continuation && !extended_number_tail_is_non_price_context(number, tail)
+}
+
+fn extended_trailing_currency_phrase_matches(
+    contract: &InvestmentResponseContract,
+    fragment: &str,
+    tail: &str,
+) -> Option<bool> {
+    let raw = tail.trim_start().to_ascii_lowercase();
+    let normalized = ["denominated in ", "quoted in ", "reported in ", "in "]
+        .iter()
+        .find_map(|prefix| raw.strip_prefix(prefix))
+        .unwrap_or(&raw)
+        .trim_start();
+    let normalized_words = normalized
+        .split_whitespace()
+        .take(3)
+        .map(|word| {
+            word.trim_matches(|character: char| {
+                matches!(
+                    character,
+                    ',' | '.' | ';' | ':' | ')' | ']' | '}' | '，' | '。'
+                )
+            })
+        })
+        .collect::<Vec<_>>();
+    for length in (1..=normalized_words.len()).rev() {
+        let phrase = normalized_words[..length].join(" ");
+        if let Some(currency) = normalize_price_currency(&phrase) {
+            let entity = extended_claim_entity(contract, fragment)?;
+            return Some(
+                entity
+                    .currency
+                    .as_deref()
+                    .is_some_and(|expected| expected.eq_ignore_ascii_case(&currency)),
+            );
+        }
+    }
+    let currencies = [
+        ("american dollars", "USD"),
+        ("american dollar", "USD"),
+        ("canadian dollars", "CAD"),
+        ("canadian dollar", "CAD"),
+        ("australian dollars", "AUD"),
+        ("australian dollar", "AUD"),
+        ("hong kong dollars", "HKD"),
+        ("hong kong dollar", "HKD"),
+        ("singaporean dollars", "SGD"),
+        ("singaporean dollar", "SGD"),
+        ("singapore dollars", "SGD"),
+        ("singapore dollar", "SGD"),
+        ("new zealand dollars", "NZD"),
+        ("new zealand dollar", "NZD"),
+        ("chinese renminbi", "CNY"),
+        ("chinese yuan", "CNY"),
+        ("japanese yen", "JPY"),
+        ("british pounds", "GBP"),
+        ("british pound", "GBP"),
+        ("pounds sterling", "GBP"),
+        ("pound sterling", "GBP"),
+    ];
+    if let Some((_, currency)) = currencies
+        .iter()
+        .find(|(phrase, _)| normalized.starts_with(phrase))
+    {
+        let entity = extended_claim_entity(contract, fragment)?;
+        return Some(
+            entity
+                .currency
+                .as_deref()
+                .is_some_and(|expected| expected.eq_ignore_ascii_case(currency)),
+        );
+    }
+    let qualified_iso = Regex::new(
+        r"(?ix)^(?:[a-z]+\s+){1,3}(?P<code>usd|eur|hkd|cny|rmb|cad|jpy|gbp|aud|sgd|chf|krw|rub|twd|nzd|thb|inr|sek|nok|dkk|zar|brl|mxn)\b",
+    )
+    .expect("extended-hours qualified ISO currency regex");
+    if let Some(code) = qualified_iso
+        .captures(normalized)
+        .and_then(|captures| captures.name("code"))
+        .and_then(|code| normalize_price_currency(code.as_str()))
+    {
+        let entity = extended_claim_entity(contract, fragment)?;
+        return Some(
+            entity
+                .currency
+                .as_deref()
+                .is_some_and(|expected| expected.eq_ignore_ascii_case(&code)),
+        );
+    }
+    let unknown_qualified_currency =
+        Regex::new(r"(?ix)^[a-z]+(?:\s+[a-z]+){0,2}\s+(?:dollars?|yuan|yen|pounds?|sterling)\b")
+            .expect("extended-hours qualified currency phrase regex")
+            .is_match(&normalized);
+    unknown_qualified_currency.then_some(false)
+}
+
+fn extended_after_session_capture_verdict(
+    contract: &InvestmentResponseContract,
+    fragment: &str,
+    marker_start: usize,
+    marker_text: &str,
+    full_tail: &str,
+    capture_offset: usize,
+    captures: &regex::Captures<'_>,
+) -> Option<bool> {
+    let matched = captures.get(0)?;
+    let price_token_start = capture_offset.saturating_add(
+        captures
+            .name("prefix")
+            .or_else(|| captures.name("number"))?
+            .start(),
+    );
+    let attached_negative = full_tail[..price_token_start.min(full_tail.len())]
+        .chars()
+        .next_back()
+        .is_some_and(|character| matches!(character, '-' | '−'));
+    let claim_end = capture_offset.saturating_add(matched.end());
+    let number = captures.name("number")?.as_str();
+    let remainder = full_tail.get(claim_end..).unwrap_or_default();
+    let claim_scope = format!(
+        "{}{}",
+        extended_claim_local_prefix(fragment, marker_start),
+        extended_claim_local_prefix(full_tail, claim_end)
+    );
+    if extended_number_tail_has_unverified_range(number, remainder) {
+        return Some(false);
+    }
+    if extended_number_tail_is_non_price_context(number, remainder) {
+        return None;
+    }
+    if extended_number_tail_is_scaled_quantity(remainder) {
+        if extended_price_fragment_is_nonfactual(&claim_scope) {
+            return None;
+        }
+        if extended_claim_has_explicit_price_subject(&claim_scope) {
+            return Some(false);
+        }
+        return None;
+    }
+    if extended_claim_has_non_price_metric_subject(&claim_scope)
+        && !extended_claim_has_explicit_price_subject(&claim_scope)
+    {
+        return None;
+    }
+    if extended_trailing_currency_phrase_matches(contract, fragment, remainder) == Some(false) {
+        return Some(false);
+    }
+    if attached_negative
+        || captures.name("prefix_sign").is_some()
+        || captures.name("number_sign").is_some()
+    {
+        return Some(false);
+    }
+    Some(extended_price_claim_matches_contract(
+        contract,
+        fragment,
+        marker_text,
+        captures,
+        &claim_scope,
+    ))
+}
+
+fn extended_candidate_is_movement_source(tail: &str, offset: usize) -> bool {
+    let before = tail.get(..offset).unwrap_or_default().trim_end();
+    let source_prefix = Regex::new(
+        r"(?ix)(?:\bfrom|从|由)\s*
+        (?:(?:
+            (?:the\s+)?regular(?:\s+session)?\s+(?:close|closing\s+price)(?:\s+of)?|
+            (?:the\s+)?(?:closing\s+price|close)(?:\s+of)?|
+            (?:(?:常规|正常)(?:交易)?(?:时段|盘)?\s*)?(?:收盘价|收盘|收市价)
+        )\s*)?
+        (?:
+            us\$|hk\$|c\$|a\$|s\$|\$|€|£|¥|￥|₩|₽|₹|美元|美金|美刀|刀|欧元|人民币|元人民币|日元|英镑|
+            \b(?:usd|eur|hkd|cny|rmb|cad|jpy|gbp|aud|sgd|chf|krw|rub|twd|nzd|thb|inr|sek|nok|dkk|zar|brl|mxn|(?:us\s+)?dollars?|euros?|yuan|yen|pounds?|bucks?)\b
+        )?\s*$",
+    )
+    .expect("extended-hours movement source regex")
+    .is_match(before);
+    source_prefix
+        && Regex::new(
+            r"(?ix)(?:\bto\b|下跌至|上涨至|跌至|跌到|降至|降到|涨至|涨到|升至|升到|报于|报至|报到)",
+        )
+        .expect("extended-hours movement target regex")
+        .is_match(tail.get(offset..).unwrap_or_default())
+}
+
 /// Extended-hours prose is a stronger claim than a generic current quote.  It
 /// is accepted only when the server contract itself holds an exact-symbol bar
 /// for that same session.  A regular quote (including `regular_fallback`) must
@@ -5074,14 +5396,14 @@ fn extended_quote_claims_are_consistent(
     .expect("extended-hours session claim regex");
     let price_after_session = Regex::new(
         r"(?ix)
-        ^\s*(?:[*_`|:：=,，、()（）\[\]\-—–]\s*){0,8}
+        ^\s*(?:[*_`|:：=,，、()（）\[\]\-−—–]\s*){0,8}
         (?:
             (?:(?:现价|最新价|报价|价格|股价|价)\s*)?
                 [^\d。；;\r\n]{0,20}?
                 (?:下跌至|上涨至|跌至|跌到|降至|降到|涨至|涨到|升至|升到|报于|报至|报到|收于|交投于|交易于|交易在)
           | (?:从|由)[^。；;\r\n]{1,40}?(?:下跌至|上涨至|跌至|跌到|降至|降到|涨至|涨到|升至|升到)
           | (?:现价|最新价|报价|价格|股价|价)\s*(?:约?为|是|报于|报|at|is)?
-          | (?:(?:current|latest)\s+)?price\s*(?:is|at)?
+          | (?:(?:current|latest|last|market|stock|share)\s+)?(?:price|quote)\s*(?:is|was|at)?
           | [^\d。；;\r\n]{0,32}?(?:fell|dropped|declined|rose|gained|climbed)[^\r\n]{0,48}?\b(?:to|at)
           | trade(?:s|d)?\s+at
           | trading\s+at
@@ -5091,26 +5413,67 @@ fn extended_quote_claims_are_consistent(
           | at
           | is
           | was
+          | (?:to|至|到)
+          | (?:随后|之后|此后|其后|然后|后)\s*(?:变为|变成|来到|现报|为|报)
+          | (?:现报|现为|变为|变成|来到)
+          | (?:then\s+|it\s+)(?:was|is|at)
         )?
         \s*(?:[*_`|:：=]\s*)*
-        (?P<prefix>us\$|hk\$|c\$|a\$|s\$|\$|€|£|¥|￥|₩|₽|₹|[a-z]{3})?\s*
+        (?P<prefix_positive>[+＋])?\s*
+        (?P<prefix_sign>[-−]|负|minus|negative)?\s*
+        (?P<prefix>us\$|hk\$|c\$|a\$|s\$|\$|€|£|¥|￥|₩|₽|₹|美元|美金|美刀|刀|欧元|人民币|元人民币|元|日元|英镑|\b(?:(?:usd|eur|hkd|cny|rmb|cad|jpy|gbp|aud|sgd|chf|krw|rub|twd|nzd|thb|inr|sek|nok|dkk|zar|brl|mxn)|(?:(?:us\s+)?dollars?|euros?|yuan|yen|pounds?|bucks?)\b))?\s*
+        (?P<number_positive>[+＋])?\s*
+        (?P<number_sign>[-−]|负|minus|negative)?\s*
         (?P<number>\d[\d,]*(?:\.\d+)?)\s*
-        (?P<suffix>美元|美金|欧元|港元|港币|人民币|加元|日元|英镑|澳元|新加坡元|瑞郎|韩元|卢布|新台币|纽元|泰铢|印度卢比|瑞典克朗|挪威克朗|丹麦克朗|南非兰特|巴西雷亚尔|墨西哥比索|[a-z]{3})?",
+        (?P<suffix>us\$|hk\$|c\$|a\$|s\$|\$|€|£|¥|￥|₩|₽|₹|美元|美金|美刀|刀|欧元|港元|港币|人民币|元人民币|元|加元|日元|英镑|澳元|新加坡元|瑞郎|韩元|卢布|新台币|纽元|泰铢|印度卢比|瑞典克朗|挪威克朗|丹麦克朗|南非兰特|巴西雷亚尔|墨西哥比索|(?:usd|eur|hkd|cny|rmb|cad|jpy|gbp|aud|sgd|chf|krw|rub|twd|nzd|thb|inr|sek|nok|dkk|zar|brl|mxn)\b|(?:(?:us\s+)?dollars?|euros?|yuan|yen|pounds?|bucks?)\b)?",
     )
     .expect("extended-hours price claim regex");
     let price_before_session = Regex::new(
         r"(?ix)
-        (?:
+        (?P<price_verb>
             (?:下跌至|上涨至|跌至|跌到|降至|降到|涨至|涨到|升至|升到|报于|报至|报到|收于|交投于|交易于|交易在)
           | (?:fell|dropped|declined|rose|gained|climbed)[^。；;\r\n]{0,48}?\b(?:to|at)
-        )
+        )?
         \s*(?:[*_`|:：=]\s*)*
-        (?P<prefix>us\$|hk\$|c\$|a\$|s\$|\$|€|£|¥|￥|₩|₽|₹|[a-z]{3})?\s*
+        (?P<prefix_positive>[+＋])?\s*
+        (?P<prefix_sign>[-−]|负|minus|negative)?\s*
+        (?P<prefix>us\$|hk\$|c\$|a\$|s\$|\$|€|£|¥|￥|₩|₽|₹|美元|美金|美刀|刀|欧元|人民币|元人民币|元|日元|英镑|\b(?:(?:usd|eur|hkd|cny|rmb|cad|jpy|gbp|aud|sgd|chf|krw|rub|twd|nzd|thb|inr|sek|nok|dkk|zar|brl|mxn)|(?:(?:us\s+)?dollars?|euros?|yuan|yen|pounds?|bucks?)\b))?\s*
+        (?P<number_positive>[+＋])?\s*
+        (?P<number_sign>[-−]|负|minus|negative)?\s*
         (?P<number>\d[\d,]*(?:\.\d+)?)\s*
-        (?P<suffix>美元|美金|欧元|港元|港币|人民币|加元|日元|英镑|澳元|新加坡元|瑞郎|韩元|卢布|新台币|纽元|泰铢|印度卢比|瑞典克朗|挪威克朗|丹麦克朗|南非兰特|巴西雷亚尔|墨西哥比索|[a-z]{3})?
-        \s*(?:(?:during|in)\s+)?(?:[*_`|:：=,，、()（）\[\]\-—–]\s*){0,8}$",
+        (?P<suffix>us\$|hk\$|c\$|a\$|s\$|\$|€|£|¥|￥|₩|₽|₹|美元|美金|美刀|刀|欧元|港元|港币|人民币|元人民币|元|加元|日元|英镑|澳元|新加坡元|瑞郎|韩元|卢布|新台币|纽元|泰铢|印度卢比|瑞典克朗|挪威克朗|丹麦克朗|南非兰特|巴西雷亚尔|墨西哥比索|(?:usd|eur|hkd|cny|rmb|cad|jpy|gbp|aud|sgd|chf|krw|rub|twd|nzd|thb|inr|sek|nok|dkk|zar|brl|mxn)\b|(?:(?:us\s+)?dollars?|euros?|yuan|yen|pounds?|bucks?)\b)?
+        \s*(?:的\s*)?(?:(?:during|in)\s+)?(?:[*_`|:：=,，、()（）\[\]\-−—–]\s*){0,8}$",
     )
     .expect("extended-hours trailing session price claim regex");
+    let later_price_signal = Regex::new(
+        r"(?ix)
+        (?:
+            下跌至|上涨至|跌至|跌到|降至|降到|涨至|涨到|升至|升到|报于|报至|报到|收于|交投于|交易于|交易在|
+            (?:现价|最新价|报价|价格|股价|市价|市场价)\s*(?:约?为|是|报于|报|at|is)?|
+            (?:(?:current|latest|last|market|stock|share)\s+)?(?:price|quote)\s*(?:is|was|at)?|
+            (?:fell|dropped|declined|rose|gained|climbed)[^。；;\r\n]{0,48}?\b(?:to|at)|
+            trades?\s+at|trading\s+at|
+            [,，、]\s*(?:为|报|at|is|was)\s*(?:us\$|hk\$|c\$|a\$|s\$|\$|€|£|¥|￥|₩|₽|₹|美元|美金|美刀|刀|欧元|人民币|元人民币|元|日元|英镑|\b(?:usd|eur|hkd|cny|rmb|cad|jpy|gbp|aud|sgd|chf|krw|rub|twd|nzd|thb|inr|sek|nok|dkk|zar|brl|mxn)\b)?\s*[+＋−-]?\s*\d|
+            (?:随后|之后|此后|其后|然后|后)\s*(?:变为|变成|来到|现报|为|报)\s*(?:us\$|hk\$|c\$|a\$|s\$|\$|€|£|¥|￥|₩|₽|₹|美元|美金|美刀|刀|欧元|人民币|元人民币|元|日元|英镑|\b(?:usd|eur|hkd|cny|rmb|cad|jpy|gbp|aud|sgd|chf|krw|rub|twd|nzd|thb|inr|sek|nok|dkk|zar|brl|mxn)\b)?\s*(?:[+＋−-]|负|minus|negative)?\s*\d|
+            (?:现报|现为|变为|变成|来到)\s*(?:us\$|hk\$|c\$|a\$|s\$|\$|€|£|¥|￥|₩|₽|₹|美元|美金|美刀|刀|欧元|人民币|元人民币|元|日元|英镑|\b(?:usd|eur|hkd|cny|rmb|cad|jpy|gbp|aud|sgd|chf|krw|rub|twd|nzd|thb|inr|sek|nok|dkk|zar|brl|mxn)\b)?\s*(?:[+＋−-]|负|minus|negative)?\s*\d|
+            (?:then\s+|it\s+)(?:was|is|at)\s*(?:us\$|hk\$|c\$|a\$|s\$|\$|€|£|¥|￥|₩|₽|₹|\b(?:usd|eur|hkd|cny|rmb|cad|jpy|gbp|aud|sgd|chf|krw|rub|twd|nzd|thb|inr|sek|nok|dkk|zar|brl|mxn)\b)?\s*[+＋−-]?\s*\d|
+            (?:\bto\b|至|到)\s*(?:us\$|hk\$|c\$|a\$|s\$|\$|€|£|¥|￥|₩|₽|₹|美元|美金|美刀|刀|欧元|人民币|元人民币|元|日元|英镑|\b(?:usd|eur|hkd|cny|rmb|cad|jpy|gbp|aud|sgd|chf|krw|rub|twd|nzd|thb|inr|sek|nok|dkk|zar|brl|mxn)\b)?\s*[+＋−-]?\s*\d|
+            [,，、]\s*[+＋−-]\s*\d|
+            (?:负|minus|negative)\s*(?:us\$|hk\$|c\$|a\$|s\$|\$|€|£|¥|￥|₩|₽|₹|美元|美金|美刀|刀|欧元|人民币|元人民币|元|日元|英镑|\b(?:usd|eur|hkd|cny|rmb|cad|jpy|gbp|aud|sgd|chf|krw|rub|twd|nzd|thb|inr|sek|nok|dkk|zar|brl|mxn)\b)?\s*\d|
+            us\$|hk\$|c\$|a\$|s\$|\$|€|£|¥|￥|₩|₽|₹|美元|美金|美刀|刀|欧元|人民币|元人民币|日元|英镑|
+            \b(?:usd|eur|hkd|cny|rmb|cad|jpy|gbp|aud|sgd|chf|krw|rub|twd|nzd|thb|inr|sek|nok|dkk|zar|brl|mxn|(?:us\s+)?dollars?|euros?|yuan|yen|pounds?|bucks?)\b
+        )",
+    )
+    .expect("extended-hours later price signal regex");
+    let later_number_with_currency = Regex::new(
+        r"(?ix)
+        \d[\d,]*(?:\.\d+)?\s*
+        (?:
+            us\$|hk\$|c\$|a\$|s\$|\$|€|£|¥|￥|₩|₽|₹|美元|美金|美刀|刀|欧元|港元|港币|人民币|元人民币|元|加元|日元|英镑|澳元|新加坡元|瑞郎|韩元|卢布|新台币|纽元|泰铢|印度卢比|瑞典克朗|挪威克朗|丹麦克朗|南非兰特|巴西雷亚尔|墨西哥比索|
+            (?:usd|eur|hkd|cny|rmb|cad|jpy|gbp|aud|sgd|chf|krw|rub|twd|nzd|thb|inr|sek|nok|dkk|zar|brl|mxn)\b|(?:(?:us\s+)?dollars?|euros?|yuan|yen|pounds?|bucks?)\b
+        )",
+    )
+    .expect("extended-hours later number-with-currency regex");
 
     for raw_fragment in content.split(['。', '；', ';', '\n', '!', '！', '?', '？']) {
         let fragment = raw_fragment.trim().to_ascii_lowercase();
@@ -5121,29 +5484,98 @@ fn extended_quote_claims_are_consistent(
             let tail = &fragment[marker.end()..];
             let marker_text = marker.as_str();
             if let Some(captures) = price_after_session.captures(tail) {
-                let Some(matched) = captures.get(0) else {
+                if extended_after_session_capture_verdict(
+                    contract,
+                    &fragment,
+                    marker.start(),
+                    marker_text,
+                    tail,
+                    0,
+                    &captures,
+                ) == Some(false)
+                {
                     return false;
+                }
+            }
+
+            let mut later_offsets = HashSet::new();
+            later_offsets.extend(
+                later_price_signal
+                    .find_iter(tail)
+                    .map(|matched| matched.start()),
+            );
+            later_offsets.extend(
+                later_number_with_currency
+                    .find_iter(tail)
+                    .map(|matched| matched.start()),
+            );
+            for offset in later_offsets {
+                if extended_candidate_is_movement_source(tail, offset) {
+                    continue;
+                }
+                let Some(candidate_tail) = tail.get(offset..) else {
+                    continue;
                 };
-                if !tail[matched.end()..].trim_start().starts_with('%') {
-                    let claim_scope = format!(
-                        "{}{}",
-                        extended_claim_local_prefix(&fragment, marker.start()),
-                        &tail[..matched.end()]
-                    );
-                    if !extended_price_claim_matches_contract(
-                        contract,
-                        &fragment,
-                        marker_text,
-                        &captures,
-                        &claim_scope,
-                    ) {
-                        return false;
-                    }
+                let Some(captures) = price_after_session.captures(candidate_tail) else {
+                    continue;
+                };
+                if extended_after_session_capture_verdict(
+                    contract,
+                    &fragment,
+                    marker.start(),
+                    marker_text,
+                    tail,
+                    offset,
+                    &captures,
+                ) == Some(false)
+                {
+                    return false;
                 }
             }
 
             let head = &fragment[..marker.start()];
             if let Some(captures) = price_before_session.captures(head) {
+                // A trailing number is an extended-hours price claim even
+                // without a movement verb (`15 盘后`, `USD 15 after-hours`).
+                // ISO-style date/time components are excluded by their
+                // immediate separator, and percentages cannot satisfy the
+                // anchored trailing syntax.
+                let bare_number_is_price_context = captures.name("number").is_some_and(|number| {
+                    let before_number = &head[..number.start()];
+                    let immediate_previous = before_number.chars().next_back();
+                    let previous_non_whitespace = before_number
+                        .chars()
+                        .rev()
+                        .find(|character| !character.is_whitespace());
+                    let raw_number = number.as_str().replace(',', "");
+                    let bare_calendar_year = raw_number.len() == 4
+                        && !raw_number.contains('.')
+                        && raw_number
+                            .parse::<u16>()
+                            .is_ok_and(|year| (1900..=2100).contains(&year));
+                    !immediate_previous.is_some_and(|character| character.is_ascii_alphabetic())
+                        && !matches!(previous_non_whitespace, Some('-' | '/' | ':' | '.'))
+                        && !bare_calendar_year
+                });
+                let has_price_context = captures.name("price_verb").is_some()
+                    || captures.name("prefix").is_some()
+                    || captures.name("suffix").is_some()
+                    || bare_number_is_price_context;
+                if !has_price_context {
+                    continue;
+                }
+                let price_token_start = captures
+                    .name("prefix")
+                    .or_else(|| captures.name("number"))
+                    .map(|token| token.start())
+                    .unwrap_or(0);
+                if head[..price_token_start.min(head.len())]
+                    .chars()
+                    .next_back()
+                    .is_some_and(|character| matches!(character, '-' | '−'))
+                {
+                    return false;
+                }
                 let Some(matched) = captures.get(0) else {
                     return false;
                 };
@@ -5960,13 +6392,16 @@ fn entity_verified_price_appears(entity: &ResolvedSecurityEntity, content: &str)
 fn normalize_price_currency(value: &str) -> Option<String> {
     let normalized = value.trim().to_ascii_lowercase();
     match normalized.as_str() {
-        "$" | "us$" | "usd" | "美元" | "美金" => Some("USD".to_string()),
-        "€" | "eur" | "欧元" => Some("EUR".to_string()),
+        "$" | "us$" | "usd" | "美元" | "美金" | "美刀" | "刀" | "dollar" | "dollars"
+        | "us dollar" | "us dollars" | "buck" | "bucks" => Some("USD".to_string()),
+        "€" | "eur" | "欧元" | "euro" | "euros" => Some("EUR".to_string()),
         "hk$" | "hkd" | "港元" | "港币" => Some("HKD".to_string()),
-        "¥" | "￥" | "cny" | "rmb" | "人民币" | "元人民币" => Some("CNY".to_string()),
+        "¥" | "￥" | "cny" | "rmb" | "人民币" | "元人民币" | "元" | "yuan" => {
+            Some("CNY".to_string())
+        }
         "c$" | "cad" | "加元" => Some("CAD".to_string()),
-        "jpy" | "日元" => Some("JPY".to_string()),
-        "£" | "gbp" | "英镑" => Some("GBP".to_string()),
+        "jpy" | "日元" | "yen" => Some("JPY".to_string()),
+        "£" | "gbp" | "英镑" | "pound" | "pounds" => Some("GBP".to_string()),
         "a$" | "aud" | "澳元" => Some("AUD".to_string()),
         "s$" | "sgd" | "新加坡元" => Some("SGD".to_string()),
         "chf" | "瑞郎" => Some("CHF".to_string()),
@@ -10566,13 +11001,61 @@ mod tests {
             "ISRG after-hours was USD363.25",
             "ISRG after-hours trades at $363.25",
             "ISRG after-hours fell from USD 402.33 to USD 363.25",
+            "ISRG after-hours fell from the regular close of USD 402.33 to USD 363.25",
             "ISRG post-market trading at 363.25 USD",
             "ISRG extended hours: USD363.25",
             "ISRG 延长时段报于 363.25美元",
+            "ISRG 363.25美元的盘后价",
+            "ISRG 363.25 dollars after-hours",
+            "ISRG after-hours - 363.25 USD",
+            "ISRG 盘后从常规收盘价 402.33 USD 跌至 363.25 USD",
+            "ISRG after-hours target price was 1,234 USD",
+            "ISRG after-hours at 363.25 in American dollars",
+            "ISRG after-hours price was +363.25 USD",
+            "ISRG 盘后现价为＋363.25美元",
         ] {
             assert!(
                 super::extended_quote_claims_are_consistent(&contract, valid),
                 "same-session exact quote should pass: {valid}"
+            );
+        }
+        for non_price in [
+            "ISRG 盘后 2026-07-16 继续观察",
+            "ISRG 盘后 16:30 仍在交易",
+            "ISRG after-hours 15 min later remained volatile",
+            "ISRG after-hours moved 15 bps",
+            "ISRG after-hours return was 15 pct",
+            "ISRG 盘后波动 15 个基点",
+            "ISRG 盘后 15 分钟后继续观察",
+            "ISRG after-hours EPS was 15",
+            "ISRG after-hours at 16:30 EPS was 15",
+            "ISRG after-hours -15%",
+            "ISRG after-hours -15 bps",
+            "ISRG after-hours 07/16/2026 remained volatile",
+            "ISRG after-hours volume increased to 15 million shares",
+            "ISRG after-hours revenue increased to 15 million USD",
+            "ISRG after-hours revenue was USD 15 million",
+            "ISRG after-hours USD 15m revenue",
+            "ISRG after-hours EPS rose to 15",
+            "ISRG after-hours EPS climbed to 15 USD",
+            "ISRG after-hours 15 bps",
+            "ISRG 15 bps after-hours",
+            "ISRG after-hours 15 min",
+            "ISRG 15 min after-hours",
+            "ISRG 盘后 15点波动",
+            "ISRG 盘后 2季度数据",
+            "ISRG 盘后 2026Q2 数据",
+            "ISRG 盘后 15万股成交",
+            "ISRG after-hours 2M shares traded",
+            "ISRG after-hours 15 points lower",
+            "ISRG 15 points after-hours",
+            "ISRG Q2 盘后业绩待披露",
+            "ISRG FY2026 after-hours results remain pending",
+            "ISRG 2026 盘后业绩待披露",
+        ] {
+            assert!(
+                super::extended_quote_claims_are_consistent(&contract, non_price),
+                "dates, times, percentages, and units are not price claims: {non_price}"
             );
         }
         for invalid in [
@@ -10595,12 +11078,78 @@ mod tests {
             "ISRG fell to USD 15 after hours",
             "ISRG 跌至 15 USD（盘后）",
             "ISRG after-hours shares sharply fell to USD 15",
+            "ISRG 15 USD 盘后",
+            "ISRG USD 15 after-hours",
+            "ISRG $15（盘后）",
+            "ISRG 15 盘后",
+            "ISRG 15美元的盘后价",
+            "ISRG 15 dollars after-hours",
+            "ISRG after-hours price was 15 dollars",
+            "ISRG 盘后 2026-07-16 报于 15 USD",
+            "ISRG 盘后 16:30 跌至 15 USD",
+            "ISRG 盘后 15-16 USD",
+            "ISRG after-hours 350/360 USD",
+            "ISRG after-hours 363.25 euros",
+            "ISRG after-hours 363.25 yuan",
+            "ISRG 盘后 363.25 元",
+            "ISRG 盘后 363.25 CNY",
+            "ISRG after-hours -363.25 USD",
+            "ISRG -363.25 USD after-hours",
+            "ISRG 盘后可能波动，但股价为 15 USD",
+            "ISRG 盘后可能波动，但是随后报于 15 USD",
+            "ISRG 盘后报于 363.25 USD，股价为 15",
+            "ISRG 盘后 16:30，报 15",
+            "ISRG after-hours 16:30, was 15",
+            "ISRG after-hours at 363.25 €",
+            "ISRG 盘后报于 363.25 HK$",
+            "ISRG after-hours price was -363.25",
+            "ISRG after-hours at USD -363.25",
+            "ISRG after-hours −363.25",
+            "ISRG 盘后 16:30 后报 15",
+            "ISRG after-hours at 16:30 it was 15",
+            "ISRG after-hours from USD 402.33 to 15",
+            "ISRG after-hours at 363.25 Canadian dollars",
+            "ISRG after-hours at 363.25 USD, but quote was 15",
+            "ISRG 盘后价格为负363.25美元",
+            "ISRG after-hours price was minus 363.25 USD",
+            "ISRG after-hours price was negative 363.25 USD",
+            "ISRG 盘后报于 363.25 USD，随后变为 15",
+            "ISRG 盘后报于 363.25 USD，随后来到 15",
+            "ISRG 盘后报于 363.25 USD，现报 15",
+            "ISRG after-hours at 363.25 Chinese RMB",
+            "ISRG after-hours at 363.25 Hong Kong HKD",
+            "ISRG after-hours price was 15 million USD",
+            "ISRG after-hours quote rose to 15 million USD",
+            "ISRG after-hours at 363.25 in CNY",
+            "ISRG after-hours at 363.25 denominated in euros",
+            "ISRG after-hours price was +15",
+            "ISRG 盘后现价为＋15",
         ] {
             assert!(
                 !super::extended_quote_claims_are_consistent(&contract, invalid),
                 "wrong session, price, or currency must fail: {invalid}"
             );
         }
+
+        contract.entities[0].verified_price = Some("15".into());
+        for range in [
+            "ISRG 盘后 15-16 USD",
+            "ISRG after-hours 15/16 USD",
+            "ISRG after-hours 15 to 16",
+        ] {
+            assert!(
+                !super::extended_quote_claims_are_consistent(&contract, range),
+                "an extended-hours range cannot satisfy one verified quote: {range}"
+            );
+        }
+
+        contract.entities[0].verified_price = Some("363.25".into());
+        contract.entities[0].currency = Some("CAD".into());
+        assert!(super::extended_quote_claims_are_consistent(
+            &contract,
+            "ISRG after-hours at 363.25 Canadian dollars"
+        ));
+        contract.entities[0].currency = Some("USD".into());
 
         contract.entities[0].verified_price = Some("401.5".into());
         contract.entities[0].quote_session = Some("pre".into());
@@ -10620,6 +11169,32 @@ mod tests {
         assert!(!super::extended_quote_claims_are_consistent(
             &contract,
             "ISRG after-hours at USD 401.5"
+        ));
+
+        contract.entities[0].verified_price = Some("363.25".into());
+        contract.entities[0].quote_session = Some("post".into());
+        for valid in [
+            "ISRG 363.25 USD 盘后",
+            "ISRG USD 363.25 after-hours",
+            "ISRG $363.25（盘后）",
+            "ISRG 363.25 盘后",
+        ] {
+            assert!(
+                super::extended_quote_claims_are_consistent(&contract, valid),
+                "bare trailing-session price must match the verified quote: {valid}"
+            );
+        }
+        assert!(super::extended_quote_claims_are_consistent(
+            &contract,
+            "ISRG 2026-07-16 盘后继续观察"
+        ));
+        assert!(super::extended_quote_claims_are_consistent(
+            &contract,
+            "ISRG 16:30 after-hours remained volatile"
+        ));
+        assert!(super::extended_quote_claims_are_consistent(
+            &contract,
+            "ISRG 回报率 15% after-hours remained volatile"
         ));
 
         contract.entities[0].verified_price = Some("402.33".into());
