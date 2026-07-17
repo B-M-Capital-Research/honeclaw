@@ -7,6 +7,14 @@
 
 ## 最新进展
 
+- `2026-07-17 11:01-15:01 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-17`
+    - 同窗有 67 条 heartbeat `deliver_preview`，`parse_kind` 分布包含 `PlainTextTriggered=134`、`JsonTriggered=5`、`JsonNoop=105`。
+    - 15:00 CST `光模块板块关键事件心跳提醒`、`SIVE POET/Nokia/1.6T DFB 心跳检测`、`Cerebras IPO与业务进展心跳监控`、`RKLB异动监控`、`持仓重大事件心跳检测`、`中际旭创关键事件心跳提醒` 等多条 heartbeat 以 `PlainTextTriggered` deliver，自然语言正文里仍混有 `noop` 状态、结构化字段或协议化标题，而 raw preview 普遍以 `<think>` 开头。
+    - 同窗 `JsonTriggered` / `JsonNoop` raw preview 继续出现 fenced JSON 或裸协议状态，说明模型输出协议仍未稳定收敛到用户态正文。
+  - 会话质量对照：同窗 `data/sessions.sqlite3` 新增 16 条 user / 16 条 assistant，未确认 JSON 载荷进入普通 direct assistant final；未见错投、全渠道不可用或数据安全证据。
+  - 判断：这些样本说明缺陷仍是 heartbeat 出站格式化退化；当前没有主功能链路阻断，主要影响提醒格式质量，因此维持质量性 `P3 / New`，非 P1。
+
 - `2026-07-17 07:01-11:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-16` / `web.log.2026-07-17`
     - 09:01 CST `AI与科技持仓观察关键事件心跳提醒` `deliver_preview` 继续以 fenced JSON 开头，包含 `status`、`event`、`data_time` 等协议字段。

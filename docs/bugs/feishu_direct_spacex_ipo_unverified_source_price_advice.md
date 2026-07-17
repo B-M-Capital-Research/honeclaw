@@ -22,6 +22,13 @@ New
 
 ## 修复记录
 
+- 2026-07-17 15:01 CST 补充同根复发证据，状态维持 `New`：
+  - 2026-07-17 11:01-15:01 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 16 条 user / 16 条 assistant，覆盖 6 个近期 session，全部以 assistant 收口；未见错投、投递失败、空回复、内部路径 / raw tool / `<think>` 外泄或全渠道不可用。
+  - 14:28 CST Web direct session `Actor_web__direct__web-user-5bb05078acd4` 回答用户转述的“特朗普 7 月 17 日晚间全国紧急电视讲话，内容核心与 CN 相关”。
+  - assistant final 声称“多个来源已确认”，并把 Reuters、Bloomberg、WSJ、Politico 作为来源，输出 `Iron Magnolia` 行动计划、对华关税、半导体出口管制、外资审查、印太军事部署、中国反制和交易动作建议。
+  - 本轮用外部搜索交叉核验 `Iron Magnolia Trump July 17 2026 China speech`、`Reuters Bloomberg WSJ Politico July 17 2026 Trump Iron Magnolia`，未找到相符公开来源；当前 SQLite 记录也未留下可审计 `assistant.tool_calls` 证明这些事实锚经过本轮网页 / 新闻核验。
+  - 回复正常收口且未见错投、投递失败、内部实现外露或格式损坏；问题仍是强时效金融 / 宏观金融答案在无本轮可审计工具证据时使用“已确认”口径、具体事实锚和操作判断。因此继续按质量性 `P3 / New`，不影响主功能链路，非 P1，不创建 GitHub Issue。
+
 - 2026-07-16 11:02 CST 补充同根复发证据，状态维持 `New`：
   - 2026-07-16 07:02-11:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 5 条 user / 5 条 assistant，覆盖 4 个 session，均以 assistant 收口，未见长期 user-only 悬挂、错投、投递失败、内部实现外露或格式损坏。
   - 09:53 CST Web direct session `Actor_web__direct__web-user-d53f847825ce` 回答“阿里巴巴最近上涨的原因”。
