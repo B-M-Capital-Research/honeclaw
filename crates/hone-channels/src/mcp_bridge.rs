@@ -814,6 +814,15 @@ mod tests {
             .expect("env lock")
     }
 
+    fn set_test_mcp_binary_override() {
+        unsafe {
+            env::set_var(
+                "HONE_MCP_BIN",
+                std::env::temp_dir().join("hone-mcp-test-stub"),
+            );
+        }
+    }
+
     fn temp_root(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
             "{}_{}_{}",
@@ -940,6 +949,7 @@ mod tests {
     fn hone_mcp_servers_derives_data_dir_from_runtime_dir_when_env_missing() {
         let _guard = env_lock();
         clear_test_env();
+        set_test_mcp_binary_override();
 
         let payload = hone_mcp_servers(&make_request()).expect("payload");
         let server = payload
@@ -961,6 +971,7 @@ mod tests {
     fn hone_mcp_servers_absolutizes_relative_hone_data_dir_env() {
         let _guard = env_lock();
         clear_test_env();
+        set_test_mcp_binary_override();
         let previous_dir = env::current_dir().expect("cwd");
         let temp = tempfile::tempdir().expect("tempdir");
         env::set_current_dir(temp.path()).expect("chdir");
@@ -997,6 +1008,7 @@ mod tests {
     fn hone_mcp_servers_ignores_empty_hone_data_dir_env_and_uses_runtime_dir() {
         let _guard = env_lock();
         clear_test_env();
+        set_test_mcp_binary_override();
         unsafe {
             env::set_var("HONE_DATA_DIR", "");
         }
@@ -1021,6 +1033,7 @@ mod tests {
     fn hone_mcp_servers_absolutizes_relative_runtime_dir_before_deriving_data_dir() {
         let _guard = env_lock();
         clear_test_env();
+        set_test_mcp_binary_override();
         let previous_dir = env::current_dir().expect("cwd");
         let temp = tempfile::tempdir().expect("tempdir");
         env::set_current_dir(temp.path()).expect("chdir");

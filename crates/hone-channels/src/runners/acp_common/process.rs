@@ -190,6 +190,18 @@ mod tests {
 
     #[cfg(unix)]
     fn process_is_alive(pid: u32) -> bool {
+        #[cfg(target_os = "linux")]
+        if let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat"))
+            && stat
+                .rsplit_once(") ")
+                .and_then(|(_, fields)| fields.chars().next())
+                == Some('Z')
+        {
+            // `kill -0` reports a zombie as present even though it cannot run.
+            // Minimal CI containers may leave orphaned grandchildren in this
+            // state until PID 1 eventually reaps them.
+            return false;
+        }
         std::process::Command::new("kill")
             .arg("-0")
             .arg(pid.to_string())
