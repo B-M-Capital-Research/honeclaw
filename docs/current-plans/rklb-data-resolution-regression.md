@@ -17,6 +17,7 @@ Make an ordinary `RKLB` request deterministically resolve Rocket Lab USA, Inc., 
 - Compare the newest production RKLB request, persisted response, tool trace, and timing against direct DataFetch/FMP probes.
 - Identify whether the failure is ticker extraction, search/profile/quote normalization, provider/cache behavior, evidence routing, or final response validation/fallback.
 - Implement the smallest durable fix for RKLB and structurally equivalent symbols without weakening entity or price verification.
+- Treat safe-range, margin-of-safety, fair-value, recommended-entry, and equivalent decision questions as deep valuation requests so they cannot fall through the quote-only validator or bypass the established nine-section answer contract.
 - Add automated regression coverage for the observed failure and nearby false-positive/false-negative boundaries.
 - Push the fix, wait for required CI, drain/restart the runtime safely, then run an isolated production RKLB Web/SSE turn and health checks.
 
@@ -26,6 +27,7 @@ Make an ordinary `RKLB` request deterministically resolve Rocket Lab USA, Inc., 
 - Relevant `hone-tools` and `hone-channels` test subsets, then the proportional workspace/CI-safe gates.
 - Direct live DataFetch RKLB search, quote, profile, and applicable financial/news probes.
 - Production RKLB E2E proving first-line Beijing time, exact entity/current quote, required template, one terminal stream, no false data denial, and zero active chats afterward.
+- Repeat the original production phrases after the valuation-intent follow-up and reject any answer that contains an unverified price range, omits the nine-section template, or exposes more than one terminal stream.
 
 ## Documentation Sync
 

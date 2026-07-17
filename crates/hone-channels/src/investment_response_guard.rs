@@ -46,6 +46,41 @@ const CURRENT_PRICE_INTENT_MARKERS: &[&str] = &[
     "current price",
     "market price",
 ];
+const DEEP_VALUATION_DECISION_INTENT_MARKERS: &[&str] = &[
+    "安全区间",
+    "安全边际",
+    "合理区间",
+    "合理价",
+    "买入区间",
+    "建仓区间",
+    "加仓区间",
+    "入场区间",
+    "买点",
+    "推荐价",
+    "推荐价格",
+    "是否推荐",
+    "推荐吗",
+    "推荐买",
+    "推荐入场",
+    "该不该买",
+    "要不要买",
+    "可以买",
+    "适合买",
+    "margin of safety",
+    "safe range",
+    "safety range",
+    "fair value",
+    "fair price",
+    "buy range",
+    "entry range",
+    "entry price",
+    "buy zone",
+    "entry zone",
+    "should i buy",
+    "worth buying",
+    "do you recommend",
+    "recommend buying",
+];
 const EXTENDED_HOURS_INTENT_MARKERS: &[&str] = &[
     "盘前",
     "盘后",
@@ -1096,57 +1131,60 @@ fn tool_call_targets_entity(arguments: &Value, symbol: &str) -> bool {
 
 fn response_intent(input: &str) -> (bool, bool) {
     let normalized = input.to_ascii_lowercase();
-    let deep = [
-        "分析",
-        "研究",
-        "怎么看",
-        "怎么样",
-        "咋看",
-        "咋样",
-        "看看",
-        "如何",
-        "走势",
-        "近况",
-        "值不值得",
-        "能不能买",
-        "能否买",
-        "起飞",
-        "前景",
-        "估值",
-        "目标价",
-        "未来",
-        "财报",
-        "业绩",
-        "基本面",
-        "财务",
-        "营收",
-        "利润",
-        "现金流",
-        "持仓",
-        "成分股",
-        "集中度",
-        "费率",
-        "跟踪误差",
-        "holdings",
-        "expense ratio",
-        "cash flow",
-        "比较",
-        "对比",
-        "compare",
-        "versus",
-        " vs ",
-        "哪个好",
-        "哪一个好",
-        "哪个更好",
-        "谁更好",
-        "二选一",
-        "选哪个",
-        "bull",
-        "bear",
-        "case",
-    ]
-    .iter()
-    .any(|keyword| normalized.contains(keyword))
+    let deep = DEEP_VALUATION_DECISION_INTENT_MARKERS
+        .iter()
+        .any(|keyword| normalized.contains(keyword))
+        || [
+            "分析",
+            "研究",
+            "怎么看",
+            "怎么样",
+            "咋看",
+            "咋样",
+            "看看",
+            "如何",
+            "走势",
+            "近况",
+            "值不值得",
+            "能不能买",
+            "能否买",
+            "起飞",
+            "前景",
+            "估值",
+            "目标价",
+            "未来",
+            "财报",
+            "业绩",
+            "基本面",
+            "财务",
+            "营收",
+            "利润",
+            "现金流",
+            "持仓",
+            "成分股",
+            "集中度",
+            "费率",
+            "跟踪误差",
+            "holdings",
+            "expense ratio",
+            "cash flow",
+            "比较",
+            "对比",
+            "compare",
+            "versus",
+            " vs ",
+            "哪个好",
+            "哪一个好",
+            "哪个更好",
+            "谁更好",
+            "二选一",
+            "选哪个",
+            "bull",
+            "bear",
+            "case",
+        ]
+        .iter()
+        .any(|keyword| normalized.contains(keyword))
         || Regex::new(r"(?i)\bq[1-4]\b")
             .expect("quarter regex")
             .is_match(input);
@@ -1208,6 +1246,12 @@ fn entity_supports_us_extended_hours(entity: &ResolvedSecurityEntity) -> bool {
 fn is_strict_quote_only_request(input: &str) -> bool {
     let normalized = input.to_ascii_lowercase();
     if !has_current_price_intent(&normalized) {
+        return false;
+    }
+    if DEEP_VALUATION_DECISION_INTENT_MARKERS
+        .iter()
+        .any(|marker| normalized.contains(marker))
+    {
         return false;
     }
     ![
@@ -8786,18 +8830,19 @@ mod tests {
         entity_is_fund, explicit_dollar_mentions, filter_entity_news_evidence,
         forbidden_investment_tool_calls, has_data_time_context, has_matching_financial_data,
         has_matching_symbol_data, investment_contract_failure_message,
-        investment_preflight_failure_message, is_portfolio_scope_request, market_benchmark_symbols,
-        market_search_date_at, matching_quote_fact, matching_symbol_objects_or_error,
-        missing_deep_crypto_sections, missing_deep_fund_sections,
-        missing_deep_single_stock_sections, missing_investment_response_sections,
-        normalized_company_financial_evidence, normalized_dated_event_evidence,
-        normalized_fund_holdings_evidence, normalized_portfolio_snapshot, parse_entity_extraction,
-        parse_entity_extraction_result, parse_representative_symbols, plain_ticker_mentions,
-        portfolio_request_needs_market_data, profile_without_conflicting_quote_fields,
-        quote_has_positive_matching_price, quote_timestamp_is_usable,
-        request_may_need_auxiliary_entity_extraction, resolve_entity_match, response_intent,
-        response_requires_verified_price, set_verified_asset_type, should_fetch_earnings_calendar,
-        should_run_entity_stage, text_contains_source_domain, ticker_mentions_cover_request,
+        investment_preflight_failure_message, is_portfolio_scope_request,
+        is_strict_quote_only_request, market_benchmark_symbols, market_search_date_at,
+        matching_quote_fact, matching_symbol_objects_or_error, missing_deep_crypto_sections,
+        missing_deep_fund_sections, missing_deep_single_stock_sections,
+        missing_investment_response_sections, normalized_company_financial_evidence,
+        normalized_dated_event_evidence, normalized_fund_holdings_evidence,
+        normalized_portfolio_snapshot, parse_entity_extraction, parse_entity_extraction_result,
+        parse_representative_symbols, plain_ticker_mentions, portfolio_request_needs_market_data,
+        profile_without_conflicting_quote_fields, quote_has_positive_matching_price,
+        quote_timestamp_is_usable, request_may_need_auxiliary_entity_extraction,
+        resolve_entity_match, response_intent, response_requires_verified_price,
+        set_verified_asset_type, should_fetch_earnings_calendar, should_run_entity_stage,
+        text_contains_source_domain, ticker_mentions_cover_request,
         unsupported_financial_fact_claims, verified_dated_sources, verified_financial_facts,
         web_source_markers,
     };
@@ -9336,7 +9381,22 @@ mod tests {
     #[test]
     fn response_intent_distinguishes_quote_from_deep_outlook() {
         assert_eq!(response_intent("NBIS现在多少钱"), (false, false));
+        for input in [
+            "现在rklb推荐的安全区间价格是多少，暂不考虑中子",
+            "现在RKLB推荐的安全区间价格是多少，暂不考虑中子发射时间，是否成功",
+            "RKLB 的安全边际和买入区间是多少",
+            "RKLB fair value and entry price",
+            "RKLB 是否推荐",
+        ] {
+            assert_eq!(response_intent(input), (true, false), "{input}");
+            assert!(
+                !is_strict_quote_only_request(input),
+                "valuation decision must not use the quote-only contract: {input}"
+            );
+        }
         assert_eq!(response_intent("今天nbis怎么样"), (true, false));
+        assert_eq!(response_intent("RKLB只报现价，不要推荐"), (false, false));
+        assert!(is_strict_quote_only_request("RKLB只报现价，不要推荐"));
         assert_eq!(response_intent("intl持仓如何"), (true, false));
         assert_eq!(response_intent("intl费率"), (true, false));
         assert_eq!(response_intent("比较 INTL 和 NBIS"), (true, false));
