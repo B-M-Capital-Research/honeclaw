@@ -114,6 +114,24 @@ read -r RKLB_FINANCIALS_LINE <&4
 printf '%s\n' '{"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"data_fetch","arguments":{"data_type":"quote","ticker":"000001.SS,ASHR,KBA,^GSPC,^IXIC,^DJI"}}}' >&3
 read -r MIXED_MARKET_QUOTE_LINE <&4
 
+printf '%s\n' '{"jsonrpc":"2.0","id":23,"method":"tools/call","params":{"name":"data_fetch","arguments":{"data_type":"search","query":"BRK-B"}}}' >&3
+read -r BRK_SEARCH_LINE <&4
+
+printf '%s\n' '{"jsonrpc":"2.0","id":24,"method":"tools/call","params":{"name":"data_fetch","arguments":{"data_type":"search","query":"600519.SS"}}}' >&3
+read -r A_SHARE_SEARCH_LINE <&4
+
+printf '%s\n' '{"jsonrpc":"2.0","id":25,"method":"tools/call","params":{"name":"data_fetch","arguments":{"data_type":"search","query":"0700.HK"}}}' >&3
+read -r HK_SEARCH_LINE <&4
+
+printf '%s\n' '{"jsonrpc":"2.0","id":26,"method":"tools/call","params":{"name":"data_fetch","arguments":{"data_type":"search","query":"^GSPC"}}}' >&3
+read -r INDEX_SEARCH_LINE <&4
+
+printf '%s\n' '{"jsonrpc":"2.0","id":27,"method":"tools/call","params":{"name":"data_fetch","arguments":{"data_type":"search","query":"AI"}}}' >&3
+read -r SHORT_TICKER_SEARCH_LINE <&4
+
+printf '%s\n' '{"jsonrpc":"2.0","id":28,"method":"tools/call","params":{"name":"data_fetch","arguments":{"data_type":"quote","ticker":"BRK-B,600519.SS,0700.HK,7203.T,005930.KS,^GSPC"}}}' >&3
+read -r CANONICAL_QUOTE_LINE <&4
+
 python3 - \
   "$SEARCH_LINE" \
   "$QUOTE_LINE" \
@@ -135,7 +153,13 @@ python3 - \
   "$RKLB_QUOTE_LINE" \
   "$RKLB_PROFILE_LINE" \
   "$RKLB_FINANCIALS_LINE" \
-  "$MIXED_MARKET_QUOTE_LINE" <<'PY'
+  "$MIXED_MARKET_QUOTE_LINE" \
+  "$BRK_SEARCH_LINE" \
+  "$A_SHARE_SEARCH_LINE" \
+  "$HK_SEARCH_LINE" \
+  "$INDEX_SEARCH_LINE" \
+  "$SHORT_TICKER_SEARCH_LINE" \
+  "$CANONICAL_QUOTE_LINE" <<'PY'
 import json
 import sys
 import time
@@ -173,6 +197,12 @@ rklb_quote = structured(sys.argv[18])
 rklb_profile = structured(sys.argv[19])
 rklb_financials = structured(sys.argv[20])
 mixed_market_quote = structured(sys.argv[21])
+brk_search = structured(sys.argv[22])
+a_share_search = structured(sys.argv[23])
+hk_search = structured(sys.argv[24])
+index_search = structured(sys.argv[25])
+short_ticker_search = structured(sys.argv[26])
+canonical_quote = structured(sys.argv[27])
 
 
 def matching_fresh_quote(payload, symbol):
@@ -280,7 +310,29 @@ mixed_market_symbols = ["000001.SS", "ASHR", "KBA", "^GSPC", "^IXIC", "^DJI"]
 for symbol in mixed_market_symbols:
     matching_fresh_quote(mixed_market_quote, symbol)
 
-print("[PASS] live RMBS/RKLB/NBIS equities, INTL ETF, and BTCUSD crypto entity/data probes succeeded")
+
+def require_exact_search(payload, symbol):
+    candidates = payload.get("data") or []
+    exact = [item for item in candidates if str(item.get("symbol", "")).upper() == symbol]
+    if len(exact) != 1:
+        raise SystemExit(f"[FAIL] {symbol} search did not return one exact candidate")
+    return exact[0]
+
+
+for payload, symbol in [
+    (brk_search, "BRK-B"),
+    (a_share_search, "600519.SS"),
+    (hk_search, "0700.HK"),
+    (index_search, "^GSPC"),
+    (short_ticker_search, "AI"),
+]:
+    require_exact_search(payload, symbol)
+
+canonical_symbols = ["BRK-B", "600519.SS", "0700.HK", "7203.T", "005930.KS", "^GSPC"]
+for symbol in canonical_symbols:
+    matching_fresh_quote(canonical_quote, symbol)
+
+print("[PASS] live US/short/share-class/A-share/HK/JP/KR/index/crypto entity and quote probes succeeded")
 print(f"NBIS company={exact[0].get('name') or exact[0].get('companyName')}")
 print(f"NBIS quote_price={matching_quote['price']} change={matching_quote['changesPercentage']} timestamp={int(matching_quote['timestamp'])}")
 print(f"NBIS financials_shape={type(financial_data).__name__} items={len(financial_data)}")
@@ -296,4 +348,5 @@ print(f"RMBS financials_shape=list items={len(rmbs_financial_data)} news_items={
 print(f"RKLB company={rklb_exact[0].get('name')} quote_price={rklb_matching_quote['price']} change={rklb_matching_quote['changesPercentage']} timestamp={int(rklb_matching_quote['timestamp'])}")
 print(f"RKLB financials_shape=list items={len(rklb_financial_data)}")
 print(f"mixed_market_live_quotes={','.join(mixed_market_symbols)}")
+print(f"canonical_cross_market_quotes={','.join(canonical_symbols)}")
 PY

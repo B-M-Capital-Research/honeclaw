@@ -20,6 +20,7 @@ pub(crate) mod runners;
 pub mod runtime;
 pub(crate) mod sandbox;
 pub mod scheduler;
+mod security_identifier;
 pub(crate) mod session_compactor;
 pub mod think;
 pub(crate) mod tool_trace;

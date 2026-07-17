@@ -3528,7 +3528,7 @@ async fn explicit_rklb_phrasing_reaches_datafetch_without_auxiliary_entity_chat(
         .await;
         let error = result.expect_err("test config has no FMP key, so DataFetch must fail");
         assert!(
-            error.contains("证券实体查询暂时不可用"),
+            error.contains("证券数据源本轮查询失败"),
             "explicit ticker must reach DataFetch: {input}: {error}"
         );
         assert!(
@@ -3542,6 +3542,45 @@ async fn explicit_rklb_phrasing_reaches_datafetch_without_auxiliary_entity_chat(
         0,
         "all explicit RKLB forms must bypass auxiliary entity extraction"
     );
+    assert_eq!(llm.chat_with_tools_calls(), 0);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn scheduled_cross_market_tickers_bypass_auxiliary_entity_chat() {
+    let root = make_temp_dir("hone_channels_scheduled_cross_market_entity_fast_path");
+    std::fs::create_dir_all(&root).expect("create root");
+    let llm = MockLlmProvider::with_chat_and_tool_responses(vec![], vec![]);
+    let core = make_test_core(&root, llm.clone());
+    let actor =
+        ActorIdentity::new("web", "scheduled-symbol-fast-path", None::<String>).expect("actor");
+
+    for (input, origin) in [
+        ("每30分钟检查 ASTS 股价", AgentTurnOrigin::Scheduled),
+        ("检查 605259.SH 股价", AgentTurnOrigin::Heartbeat),
+        ("检查 BRK.B 股价", AgentTurnOrigin::Scheduled),
+        ("检查 0700.HK 股价", AgentTurnOrigin::Heartbeat),
+    ] {
+        let mut runtime_input = input.to_string();
+        let error = prepare_verified_investment_turn(
+            &core,
+            &actor,
+            "direct",
+            false,
+            input,
+            origin,
+            &mut runtime_input,
+        )
+        .await
+        .expect_err("test config has no FMP key, so deterministic DataFetch must fail");
+        assert!(error.contains("证券数据源本轮查询失败"), "{input}: {error}");
+        assert!(
+            !error.contains("证券实体解析暂时未能确认"),
+            "{input}: {error}"
+        );
+    }
+
+    assert_eq!(llm.chat_calls(), 0);
     assert_eq!(llm.chat_with_tools_calls(), 0);
     let _ = std::fs::remove_dir_all(root);
 }

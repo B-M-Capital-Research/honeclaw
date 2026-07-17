@@ -21,6 +21,38 @@ const FMP_TTL_NEWS: StdDuration = StdDuration::from_secs(15 * 60);
 const FMP_TTL_PROFILE: StdDuration = StdDuration::from_secs(24 * 60 * 60);
 const FMP_TTL_FINANCIALS: StdDuration = StdDuration::from_secs(6 * 60 * 60);
 const FMP_TTL_EARNINGS: StdDuration = StdDuration::from_secs(60 * 60);
+const MAX_FMP_SYMBOL_INPUT_BYTES: usize = 512;
+
+/// Encode every provider symbol as URL data before it is interpolated into an
+/// endpoint path or query parameter. Commas remain separators for the FMP
+/// batch endpoints, while characters such as `/`, `?`, `#`, `%`, and `^` are
+/// encoded inside each symbol rather than being allowed to change URL
+/// structure.
+fn encode_fmp_symbols(value: &str, allow_empty: bool) -> Result<String, String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return if allow_empty {
+            Ok(String::new())
+        } else {
+            Err("证券代码不能为空".to_string())
+        };
+    }
+    if value.len() > MAX_FMP_SYMBOL_INPUT_BYTES || value.chars().any(char::is_control) {
+        return Err("证券代码格式无效".to_string());
+    }
+
+    value
+        .split(',')
+        .map(str::trim)
+        .map(|symbol| {
+            if symbol.is_empty() {
+                return Err("证券代码格式无效".to_string());
+            }
+            Ok(url::form_urlencoded::byte_serialize(symbol.as_bytes()).collect::<String>())
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map(|symbols| symbols.join(","))
+}
 
 #[derive(Clone)]
 struct CachedFmpValue {
@@ -137,17 +169,26 @@ impl DataFetchTool {
 
     fn build_url(&self, data_type: &str, ticker: &str) -> Result<String, String> {
         match data_type {
-            "quote" => Ok(format!("{}/v3/quote/{}", self.base_url, ticker)),
+            "quote" => Ok(format!(
+                "{}/v3/quote/{}",
+                self.base_url,
+                encode_fmp_symbols(ticker, false)?
+            )),
             "quote_short" => Ok(format!(
                 "{}/stable/batch-quote-short?symbols={}",
                 self.stable_base_url(),
-                ticker
+                encode_fmp_symbols(ticker, false)?
             )),
             "extended_hours" => Ok(format!(
                 "{}/v3/historical-chart/1min/{}?extended=true",
-                self.base_url, ticker
+                self.base_url,
+                encode_fmp_symbols(ticker, false)?
             )),
-            "profile" => Ok(format!("{}/v3/profile/{}", self.base_url, ticker)),
+            "profile" => Ok(format!(
+                "{}/v3/profile/{}",
+                self.base_url,
+                encode_fmp_symbols(ticker, false)?
+            )),
             "search" => {
                 let query =
                     url::form_urlencoded::byte_serialize(ticker.as_bytes()).collect::<String>();
@@ -158,7 +199,8 @@ impl DataFetchTool {
             }
             "financials" => Ok(format!(
                 "{}/v3/income-statement/{}?limit=4",
-                self.base_url, ticker
+                self.base_url,
+                encode_fmp_symbols(ticker, false)?
             )),
             "news" => {
                 if ticker.is_empty() {
@@ -166,14 +208,23 @@ impl DataFetchTool {
                 } else {
                     Ok(format!(
                         "{}/v3/stock_news?tickers={}&limit=10",
-                        self.base_url, ticker
+                        self.base_url,
+                        encode_fmp_symbols(ticker, false)?
                     ))
                 }
             }
             "gainers_losers" => Ok(format!("{}/v3/stock_market/actives", self.base_url)),
             "sector_performance" => Ok(format!("{}/v3/sector-performance", self.base_url)),
-            "crypto_quote" => Ok(format!("{}/v3/quote/{}", self.base_url, ticker)),
-            "etf_holdings" => Ok(format!("{}/v3/etf-holder/{}", self.base_url, ticker)),
+            "crypto_quote" => Ok(format!(
+                "{}/v3/quote/{}",
+                self.base_url,
+                encode_fmp_symbols(ticker, false)?
+            )),
+            "etf_holdings" => Ok(format!(
+                "{}/v3/etf-holder/{}",
+                self.base_url,
+                encode_fmp_symbols(ticker, false)?
+            )),
             "earnings_calendar" => Err(
                 "earnings_calendar 需要显式窗口，通过 build_earnings_calendar_url 构造".to_string(),
             ),
@@ -968,11 +1019,33 @@ mod tests {
             "https://example.com/api/v3/historical-chart/1min/ISRG?extended=true"
         );
         assert_eq!(
+            tool.build_url("quote", "^GSPC").expect("index quote url"),
+            "https://example.com/api/v3/quote/%5EGSPC"
+        );
+        assert_eq!(
+            tool.build_url("quote", "AAPL,BRK-B")
+                .expect("batch quote url"),
+            "https://example.com/api/v3/quote/AAPL,BRK-B"
+        );
+        assert_eq!(
             ttl_for_data_type("extended_hours")
                 .expect("extended-hours ttl")
                 .as_secs(),
             30
         );
+    }
+
+    #[test]
+    fn symbol_path_input_is_encoded_and_structural_injection_is_rejected() {
+        let tool = tool_with_test_key();
+        assert_eq!(
+            tool.build_url("quote", "BTC/USD?x=1#fragment")
+                .expect("encoded quote url"),
+            "https://example.com/api/v3/quote/BTC%2FUSD%3Fx%3D1%23fragment"
+        );
+        assert!(tool.build_url("quote", "../,").is_err());
+        assert!(tool.build_url("profile", "\nAAPL").is_ok());
+        assert!(tool.build_url("profile", "AAPL\nMSFT").is_err());
     }
 
     #[test]

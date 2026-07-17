@@ -46,13 +46,14 @@ POSITION_ADVICE="skills/position_advice/SKILL.md"
 SCHEDULED_TASK="skills/scheduled_task/SKILL.md"
 GOLD_ANALYSIS="skills/gold-analysis/SKILL.md"
 INVESTMENT_GUARD="crates/hone-channels/src/investment_response_guard.rs"
+SECURITY_IDENTIFIER="crates/hone-channels/src/security_identifier.rs"
 EXECUTION="crates/hone-channels/src/execution.rs"
 AGENT_TYPES="crates/hone-channels/src/agent_session/types.rs"
 AGENT_CORE="crates/hone-channels/src/agent_session/core.rs"
 SCHEDULER="crates/hone-channels/src/scheduler.rs"
 SOUL="soul.md"
 
-echo "[finance-automation-contracts] fixed sample count: 24"
+echo "[finance-automation-contracts] fixed sample count: 25"
 
 if contains '"snapshot".into()' "$DATA_FETCH" && contains 'data_fetch(data_type="snapshot"' "$STOCK_RESEARCH"; then
   record success "1.stock_research->snapshot" "tool enum and skill contract are aligned"
@@ -162,7 +163,7 @@ else
   record fail "18.server-owned-time-first" "time-first response ownership is missing from a canonical prompt layer"
 fi
 
-if contains '证券实体识别是不可跳过的固定第一阶段' "$SOUL" && contains '用户直接输入 `NBIS`、`INTL`、`RMBS` 这类股票代码是正常用法' "$SOUL" && contains 'A plain ticker such as `NBIS`, `INTL`, or `RMBS` is normal user input' "$STOCK_RESEARCH" && contains 'require an exact-symbol result' "$STOCK_RESEARCH" && contains 'deterministic_ticker_scope_is_complete' "$INVESTMENT_GUARD" && contains 'RKLB 是前面提到的 火箭实验室' "$INVESTMENT_GUARD" && contains 'unwrap_or(&mention.search_query)' "$INVESTMENT_GUARD" && contains 'DEEP_VALUATION_DECISION_INTENT_MARKERS' "$INVESTMENT_GUARD" && contains 'valuation decision must not use the quote-only contract' "$INVESTMENT_GUARD"; then
+if contains '证券实体识别是不可跳过的固定第一阶段' "$SOUL" && contains '用户直接输入 `NBIS`、`INTL`、`RMBS` 这类股票代码是正常用法' "$SOUL" && contains 'A plain ticker such as `NBIS`, `INTL`, or `RMBS` is normal user input' "$STOCK_RESEARCH" && contains 'require an exact-symbol result' "$STOCK_RESEARCH" && contains 'deterministic_ticker_scope_is_complete' "$INVESTMENT_GUARD" && contains 'RKLB 是前面提到的 火箭实验室' "$INVESTMENT_GUARD" && contains 'provider_lookup_variants' "$INVESTMENT_GUARD" && contains 'DEEP_VALUATION_DECISION_INTENT_MARKERS' "$INVESTMENT_GUARD" && contains 'valuation decision must not use the quote-only contract' "$INVESTMENT_GUARD"; then
   record success "19.plain-ticker-entity-first" "plain tickers bypass auxiliary prose parsing, preserve exact-symbol lookup, and route valuation-decision phrases through the deep response contract"
 else
   record fail "19.plain-ticker-entity-first" "the prompt or runtime can regress into rejecting, rewriting, guessing, or under-validating ordinary ticker requests"
@@ -198,11 +199,17 @@ else
   record fail "24.layered-missing-data-disclosure" "missing financials can still be fabricated or widened into a false market-data outage"
 fi
 
+if contains 'SecurityIdentifierKind' "$SECURITY_IDENTIFIER" && contains 'provider_lookup_variants' "$SECURITY_IDENTIFIER" && contains 'provider_symbols_equivalent' "$SECURITY_IDENTIFIER" && contains 'digit_leading_composite_is_consumed_without_suffix_rescan' "$SECURITY_IDENTIFIER" && contains 'encode_fmp_symbols' "$DATA_FETCH" && contains 'digit_leading_symbol_never_degrades_to_its_exchange_suffix' "$INVESTMENT_GUARD"; then
+  record success "25.cross-market-symbol-canonicalization" "one parser, bounded provider aliases, suffix-rescan prevention, and encoded provider URLs are regression-gated"
+else
+  record fail "25.cross-market-symbol-canonicalization" "cross-market identifiers can regress into suffix truncation, fuzzy aliases, or unsafe provider URLs"
+fi
+
 echo
 echo "summary: success=$success review=$review fail=$fail total=$((success + review + fail))"
 
-if [ "$success" -lt 23 ]; then
-  echo "[ERROR] acceptance failed: expected at least 23 successes"
+if [ "$success" -lt 24 ]; then
+  echo "[ERROR] acceptance failed: expected at least 24 successes"
   exit 1
 fi
 

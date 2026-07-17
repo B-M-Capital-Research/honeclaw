@@ -12,6 +12,10 @@ use serde_json::{Value, json};
 
 use crate::HoneBotCore;
 use crate::agent_session::AgentTurnOrigin;
+use crate::security_identifier::{
+    SecurityIdentifierKind, normalize_security_identifier, provider_canonical_key,
+    provider_lookup_variants, provider_symbols_equivalent, scan_security_identifiers,
+};
 
 const EVIDENCE_ITEM_CHAR_LIMIT: usize = 6_000;
 const CONTRACT_FAILURE_MESSAGE: &str =
@@ -187,6 +191,32 @@ struct EntityMention {
     search_query: String,
     explicit_symbol: Option<String>,
     tentative_symbol: bool,
+    context: EntityMentionContext,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct EntityMentionContext {
+    source_span: Option<(usize, usize)>,
+    identifier_kind: Option<SecurityIdentifierKind>,
+    numeric_market_hint: Option<NumericMarketHint>,
+    numeric_asset_hint: Option<NumericAssetHint>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EntityMentionProvenance {
+    ExplicitCode,
+    TentativeCodeOrName,
+    NamedEntity,
+}
+
+impl EntityMention {
+    fn provenance(&self) -> EntityMentionProvenance {
+        match (self.explicit_symbol.is_some(), self.tentative_symbol) {
+            (false, _) => EntityMentionProvenance::NamedEntity,
+            (true, true) => EntityMentionProvenance::TentativeCodeOrName,
+            (true, false) => EntityMentionProvenance::ExplicitCode,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -219,6 +249,24 @@ enum AssetEvidenceRoute {
     Equity,
     Fund,
     Crypto,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum NumericMarketHint {
+    HongKong,
+    ChinaA,
+    Shanghai,
+    Shenzhen,
+    Beijing,
+    Japan,
+    Korea,
+    Taiwan,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum NumericAssetHint {
+    Stock,
+    Index,
 }
 
 #[derive(Debug, Deserialize)]
@@ -453,7 +501,7 @@ impl InvestmentResponseContract {
                 );
             }
             return format!(
-                "\n\n【本轮代码级多证券比较门禁】\n已确认实体：{entity_map}。最终答案的首行时间由服务端统一写入，模型正文不得自行生成或重复数据时间。必须逐一覆盖 {}，每个标的的数值都只能来自本轮同 symbol 证据；不得用一个标的的数据代替另一个标的。公司使用公司概况与财务证据，ETF/基金使用基金概况与持仓证据，加密资产使用同代码行情与网络/代币口径，不得混用。先给比较结论，并严格使用独立 Markdown 标题 `### SYMBOL` 为每个标的建立小节；每个标的小节必须写出本轮已核验同代码现价、适配资产类型的事实与估值/风险差异，最后给动作条件与证伪条件。",
+                "\n\n【本轮代码级多证券比较门禁】\n已确认实体：{entity_map}。最终答案的首行时间由服务端统一写入，模型正文不得自行生成或重复数据时间。必须逐一覆盖 {}，每个标的的数值都只能来自本轮同 symbol 证据；不得用一个标的的数据代替另一个标的。公司使用公司概况与财务证据，ETF/基金使用基金概况与持仓证据，加密资产使用同代码行情与网络/代币口径，指数只使用同代码行情与指数口径且不得要求公司财务，以上口径不得混用。先给比较结论，并严格使用独立 Markdown 标题 `### SYMBOL` 为每个标的建立小节；每个标的小节必须写出本轮已核验同代码现价、适配资产类型的事实与估值/风险差异，最后给动作条件与证伪条件。",
                 self.symbols().join("、")
             );
         }
@@ -1404,6 +1452,29 @@ fn entity_is_crypto(entity: &ResolvedSecurityEntity) -> bool {
         == Some(AssetEvidenceRoute::Crypto)
 }
 
+fn entity_is_index(entity: &ResolvedSecurityEntity) -> bool {
+    entity
+        .asset_type
+        .as_deref()
+        .is_some_and(|label| label.to_ascii_lowercase().contains("index"))
+        || entity
+            .exchange
+            .as_deref()
+            .is_some_and(|exchange| exchange.eq_ignore_ascii_case("INDEX"))
+}
+
+fn apply_verified_index_route(contract: &mut InvestmentResponseContract, index: usize) {
+    contract.entities[index].profile_verified = true;
+    contract.entities[index].asset_type = Some("index".to_string());
+    if !contract.comparison {
+        // A requested index is a verified market benchmark, not an equity
+        // with a missing company profile. Preserve the full market response
+        // template while skipping company profile/financial requirements.
+        contract.deep_analysis = DeepAnalysisKind::Market;
+        contract.requires_recent_web_evidence = false;
+    }
+}
+
 fn should_fetch_earnings_calendar(entity: &ResolvedSecurityEntity) -> bool {
     entity.profile_verified && entity_is_equity(entity)
 }
@@ -1537,14 +1608,7 @@ fn parse_representative_symbols(content: &str) -> Vec<String> {
             payload
                 .symbols
                 .into_iter()
-                .map(|symbol| symbol.trim().to_ascii_uppercase())
-                .filter(|symbol| {
-                    !symbol.is_empty()
-                        && symbol.len() <= 12
-                        && symbol.chars().all(|character| {
-                            character.is_ascii_alphanumeric() || ".^-".contains(character)
-                        })
-                })
+                .filter_map(|symbol| normalize_security_identifier(&symbol))
                 .collect()
         })
         .unwrap_or_default()
@@ -2062,6 +2126,7 @@ async fn prepare_verified_broad_investment_turn(
             search_query: symbol.clone(),
             explicit_symbol: Some(symbol.clone()),
             tentative_symbol: false,
+            context: EntityMentionContext::default(),
         };
         if let EntityMatch::Resolved(entity) = resolve_entity_match(&mention, &search) {
             entities.push(entity);
@@ -2238,48 +2303,194 @@ pub(crate) async fn prepare_verified_investment_turn(
         }
     };
     let registry = core.create_tool_registry(Some(actor), channel_target, allow_cron);
-    let mut entities = Vec::new();
-    let mut seen_symbols = HashSet::new();
-    let mut unresolved_ticker_candidates = Vec::new();
-    for mention in mentions {
-        // When the current text contains an explicit ticker, the provider
-        // lookup must use that exact symbol. An auxiliary company-name alias
-        // is useful only for a genuinely named entity and may not replace the
-        // deterministic ticker query.
-        let lookup_query = mention
-            .explicit_symbol
-            .as_deref()
-            .unwrap_or(&mention.search_query);
-        let search = registry
-            .execute_tool(
-                "data_fetch",
-                json!({"data_type": "search", "query": lookup_query}),
-            )
-            .await
-            .map_err(|_| "证券实体查询暂时不可用，请稍后重试。".to_string())?;
-        if value_has_error(&search) {
-            return Err("证券实体查询暂时不可用，请稍后重试。".to_string());
-        }
-        let mut entity_match = resolve_entity_match(&mention, &search);
-        if matches!(entity_match, EntityMatch::Unresolved)
-            && let Some(symbol) = mention.explicit_symbol.as_deref()
-        {
-            // A semantic-empty exact search can be endpoint-specific. Use one
-            // bounded profile lookup and accept it only through the same exact
-            // symbol matcher; quote verification still happens below.
-            if let Ok(profile) = registry
-                .execute_tool(
-                    "data_fetch",
-                    json!({"data_type": "profile", "ticker": symbol}),
-                )
-                .await
-                && !value_has_error(&profile)
-            {
-                entity_match = resolve_entity_match(&mention, &profile);
+    // Explicit identifiers do not need fuzzy search to prove their identity.
+    // Build one closed set of provider-dialect and numeric-market candidates,
+    // then exact-quote them in bounded batches. This removes the historical
+    // search -> profile -> quote waterfall that could leave a common ticker
+    // waiting for several serial provider round trips before the first token.
+    let mut exact_probe_symbols = Vec::new();
+    for mention in &mentions {
+        let Some(symbol) = mention.explicit_symbol.as_deref() else {
+            continue;
+        };
+        let candidates = if symbol.chars().all(|character| character.is_ascii_digit()) {
+            numeric_probe_symbols(symbol, mention.context.numeric_market_hint)
+        } else {
+            provider_lookup_variants(symbol)
+        };
+        for candidate in candidates {
+            if !exact_probe_symbols.contains(&candidate) {
+                exact_probe_symbols.push(candidate);
             }
         }
+    }
+    let exact_quote_probe = if exact_probe_symbols.is_empty() {
+        None
+    } else {
+        tracing::info!(
+            lookup_symbols = ?exact_probe_symbols,
+            "batch probing explicit security identifiers"
+        );
+        let batch_queries = bounded_symbol_batches(&exact_probe_symbols, 400);
+        let batches = batch_queries.iter().map(|symbols| {
+            registry.execute_tool(
+                "data_fetch",
+                json!({"data_type": "quote", "ticker": symbols}),
+            )
+        });
+        let mut records = Vec::new();
+        for result in join_all(batches).await {
+            let value = result.map_err(|_| {
+                "证券数据源本轮查询失败，暂时无法完成代码核验；这不代表该证券不存在，请稍后重试。"
+                    .to_string()
+            })?;
+            if value_has_error(&value) {
+                return Err(
+                    "证券数据源本轮查询失败，暂时无法完成代码核验；这不代表该证券不存在，请稍后重试。"
+                        .to_string(),
+                );
+            }
+            if let Some(items) = value.get("data").and_then(Value::as_array) {
+                records.extend(items.iter().cloned());
+            }
+        }
+        Some(json!({"data": records}))
+    };
+    let mut semantic_queries = Vec::new();
+    for mention in &mentions {
+        if (mention.explicit_symbol.is_none()
+            || mention.provenance() == EntityMentionProvenance::TentativeCodeOrName)
+            && !semantic_queries.contains(&mention.search_query)
+        {
+            semantic_queries.push(mention.search_query.clone());
+        }
+    }
+    let semantic_results = join_all(semantic_queries.iter().map(|query| {
+        registry.execute_tool("data_fetch", json!({"data_type": "search", "query": query}))
+    }))
+    .await;
+    let mut semantic_searches = Vec::new();
+    for (query, result) in semantic_queries.into_iter().zip(semantic_results) {
+        let value = result.map_err(|_| "证券实体查询暂时不可用，请稍后重试。".to_string())?;
+        if value_has_error(&value) {
+            return Err("证券实体查询暂时不可用，请稍后重试。".to_string());
+        }
+        semantic_searches.push((query, value));
+    }
+    let mut entities = Vec::new();
+    let mut seen_symbols = HashSet::new();
+    for mention in mentions {
+        if let Some(requested) = mention
+            .explicit_symbol
+            .as_deref()
+            .filter(|symbol| symbol.chars().all(|character| character.is_ascii_digit()))
+        {
+            let probe_symbols =
+                numeric_probe_symbols(requested, mention.context.numeric_market_hint);
+            if probe_symbols.is_empty() {
+                return Err(format!(
+                    "已识别数字证券代码“{}”，但它不在当前已审计的交易市场候选规则内。请补充交易所后缀；本轮不会映射到其它证券。",
+                    mention.mention
+                ));
+            }
+            tracing::info!(
+                requested_symbol = requested,
+                lookup_symbols = ?probe_symbols,
+                "resolving numeric security from shared exact quote probe"
+            );
+            let probe = exact_quote_probe
+                .as_ref()
+                .expect("numeric candidates populate the exact quote probe");
+            match resolve_numeric_probe_result(&mention, probe) {
+                EntityMatch::Resolved(entity) => {
+                    tracing::info!(
+                        requested_symbol = requested,
+                        resolved_symbol = entity.symbol,
+                        "numeric security resolved from complete exact candidate probe"
+                    );
+                    if seen_symbols.insert(entity.symbol.clone()) {
+                        entities.push(entity);
+                    }
+                }
+                EntityMatch::Ambiguous(candidates) => {
+                    let choices = candidates
+                        .iter()
+                        .take(8)
+                        .map(|candidate| format!("{}（{}）", candidate.name, candidate.symbol))
+                        .collect::<Vec<_>>()
+                        .join("、");
+                    return Err(format!(
+                        "已识别代码“{}”，但本轮精确行情同时确认了多个市场实体：{}。请补充交易所后缀，或说明市场/指数/个股。",
+                        mention.mention, choices
+                    ));
+                }
+                EntityMatch::Unresolved => {
+                    return Err(format!(
+                        "已识别代码“{}”，但当前数据源在本轮已审计交易市场中没有返回精确同代码行情。请补充交易所后缀；本轮不会映射到其它证券。",
+                        mention.mention
+                    ));
+                }
+            }
+            continue;
+        }
+        if let Some(requested) = mention.explicit_symbol.as_deref() {
+            let probe = exact_quote_probe
+                .as_ref()
+                .expect("explicit identifiers populate the exact quote probe");
+            let mut entity_match = resolve_entity_match(&mention, probe);
+            if mention.provenance() == EntityMentionProvenance::TentativeCodeOrName {
+                let search = semantic_searches
+                    .iter()
+                    .find(|(query, _)| query == &mention.search_query)
+                    .map(|(_, value)| value)
+                    .expect("tentative identifier search is prefetched");
+                entity_match = reconcile_tentative_entity_match(&mention, entity_match, search)?;
+            }
+            match entity_match {
+                EntityMatch::Resolved(entity) => {
+                    tracing::info!(
+                        requested_symbol = requested,
+                        resolved_symbol = entity.symbol,
+                        "explicit security resolved from shared exact quote probe"
+                    );
+                    if seen_symbols.insert(entity.symbol.clone()) {
+                        entities.push(entity);
+                    }
+                }
+                EntityMatch::Ambiguous(candidates) => {
+                    let choices = candidates
+                        .iter()
+                        .take(4)
+                        .map(|candidate| format!("{}（{}）", candidate.name, candidate.symbol))
+                        .collect::<Vec<_>>()
+                        .join("、");
+                    return Err(format!(
+                        "已识别代码“{}”，但本轮精确核验仍对应多个实体：{}。请补充交易所后缀或公司全名。",
+                        mention.mention, choices
+                    ));
+                }
+                EntityMatch::Unresolved => {
+                    return Err(format!(
+                        "已识别证券代码“{}”，但当前数据供应商没有返回同代码行情覆盖。本轮不会将它映射到其它证券；请检查交易所后缀，或稍后重试。",
+                        mention.mention
+                    ));
+                }
+            }
+            continue;
+        }
+        let search = semantic_searches
+            .iter()
+            .find(|(query, _)| query == &mention.search_query)
+            .map(|(_, value)| value)
+            .expect("named entity search is prefetched");
+        let entity_match = resolve_entity_match(&mention, search);
         match entity_match {
             EntityMatch::Resolved(entity) => {
+                tracing::info!(
+                    named_query = mention.search_query,
+                    resolved_symbol = entity.symbol,
+                    "named security resolved from semantic provider search"
+                );
                 if seen_symbols.insert(entity.symbol.clone()) {
                     entities.push(entity);
                 }
@@ -2297,10 +2508,6 @@ pub(crate) async fn prepare_verified_investment_turn(
                 ));
             }
             EntityMatch::Unresolved => {
-                if mention.tentative_symbol {
-                    unresolved_ticker_candidates.push(mention.mention);
-                    continue;
-                }
                 return Err(format!(
                     "我暂时无法确认你提到的“{}”对应哪家上市公司或证券。请补充公司全名或 ticker。",
                     mention.mention
@@ -2308,18 +2515,7 @@ pub(crate) async fn prepare_verified_investment_turn(
             }
         }
     }
-    if origin == AgentTurnOrigin::Interactive && !unresolved_ticker_candidates.is_empty() {
-        return Err(format!(
-            "我没有在当前证券数据中精确核验到代码 {}。请检查 ticker 是否正确，或补充公司全名。",
-            unresolved_ticker_candidates.join("、")
-        ));
-    }
     if entities.is_empty() {
-        if !unresolved_ticker_candidates.is_empty() {
-            runtime_input.push_str(
-                "\n\n【本轮实体核验结果】\n当前请求中的证券代码候选均未通过同代码精确核验；不得生成任何候选对应的公司特定价格、财务数字或事件结论。\n",
-            );
-        }
         return Ok(None);
     }
     let (keyword_deep_intent, needs_outlook_evidence) = response_intent(user_input);
@@ -2350,13 +2546,28 @@ pub(crate) async fn prepare_verified_investment_turn(
         .iter()
         .map(|entity| entity.symbol.clone())
         .collect::<Vec<_>>();
-    let quote = registry
-        .execute_tool(
-            "data_fetch",
-            json!({"data_type": "quote", "ticker": symbols.join(",")}),
-        )
-        .await
-        .map_err(|_| "最新证券行情查询暂时不可用，请稍后重试。".to_string())?;
+    let exact_probe_covers_all = exact_quote_probe.as_ref().is_some_and(|probe| {
+        contract
+            .entities
+            .iter()
+            .all(|entity| matching_quote_fact(probe, &entity.symbol).is_some())
+    });
+    let quote = if exact_probe_covers_all {
+        exact_quote_probe
+            .clone()
+            .expect("coverage check requires an exact quote probe")
+    } else {
+        registry
+            .execute_tool(
+                "data_fetch",
+                json!({"data_type": "quote", "ticker": symbols.join(",")}),
+            )
+            .await
+            .map_err(|_| "最新证券行情查询暂时不可用，请稍后重试。".to_string())?
+    };
+    if value_has_error(&quote) {
+        return Err("证券数据源本轮行情查询失败；这不代表标的不存在，请稍后重试。".to_string());
+    }
     let extended_hours_requested = response_requests_extended_hours_quote(user_input);
     let requested_extended_session = requested_extended_session(user_input);
     for index in 0..contract.entities.len() {
@@ -2439,8 +2650,22 @@ pub(crate) async fn prepare_verified_investment_turn(
     // 这里对每个 exact-symbol 实体先做 profile 核验，后面才允许选择公司财务
     // 或 ETF/基金持仓路线，避免模型在浅层问题中重新把基金当公司。
     if contract_requires_profile_routing(&contract) {
+        let mut profile_indices = Vec::new();
         for index in 0..contract.entities.len() {
             let symbol = contract.entities[index].symbol.clone();
+            if entity_is_index(&contract.entities[index]) {
+                apply_verified_index_route(&mut contract, index);
+                evidence.push((
+                    "逐标的已核验指数类型（指数不要求公司 profile）",
+                    json!({
+                        "symbol": symbol,
+                        "name": contract.entities[index].name.clone(),
+                        "exchange": contract.entities[index].exchange.clone(),
+                        "asset_type": "index"
+                    }),
+                ));
+                continue;
+            }
             if entity_is_crypto(&contract.entities[index]) {
                 set_verified_asset_type(&mut contract.entities[index], AssetEvidenceRoute::Crypto);
                 evidence.push((
@@ -2454,23 +2679,31 @@ pub(crate) async fn prepare_verified_investment_turn(
                 ));
                 continue;
             }
-            let profile = result_or_error_value(
-                registry
-                    .execute_tool(
-                        "data_fetch",
-                        json!({"data_type": "profile", "ticker": symbol}),
-                    )
-                    .await,
-            );
+            profile_indices.push(index);
+        }
+        let profile_results = join_all(profile_indices.iter().map(|index| {
+            registry.execute_tool(
+                "data_fetch",
+                json!({
+                    "data_type": "profile",
+                    "ticker": &contract.entities[*index].symbol,
+                }),
+            )
+        }))
+        .await;
+        for (index, profile) in profile_indices.into_iter().zip(profile_results) {
+            let symbol = contract.entities[index].symbol.clone();
+            let profile = result_or_error_value(profile);
             let profile_route = asset_evidence_route(&profile, &symbol);
             let route = asset_evidence_route_with_entity_fallback(
-            &profile,
-            &contract.entities[index],
-        ).ok_or_else(|| {
-            format!(
-                "{symbol} 的 profile 与精确搜索结果均未返回可确认的资产类型字段，已停止生成可能套用错误数据口径的分析。"
+                &profile,
+                &contract.entities[index],
             )
-        })?;
+            .ok_or_else(|| {
+                format!(
+                    "{symbol} 的 profile 与精确行情结果均未返回可确认的资产类型字段，已停止生成可能套用错误数据口径的分析。"
+                )
+            })?;
             if profile_route.is_some() {
                 set_verified_asset_type(&mut contract.entities[index], route);
                 evidence.push((
@@ -2487,9 +2720,9 @@ pub(crate) async fn prepare_verified_investment_turn(
                     .to_string(),
                 );
                 evidence.push((
-                "逐标的资产类型（精确搜索结果回退；profile 本轮未核验）",
-                json!({"symbol": symbol, "status": "profile_unverified", "asset_type": contract.entities[index].asset_type}),
-            ));
+                    "逐标的资产类型（精确行情结果回退；profile 本轮未核验）",
+                    json!({"symbol": symbol, "status": "profile_unverified", "asset_type": contract.entities[index].asset_type}),
+                ));
             }
         }
     } else {
@@ -2616,6 +2849,13 @@ pub(crate) async fn prepare_verified_investment_turn(
     if contract.deep_comparison {
         for index in 0..contract.entities.len() {
             let symbol = contract.entities[index].symbol.clone();
+            if entity_is_index(&contract.entities[index]) {
+                evidence.push((
+                    "指数比较仅使用本轮同代码行情（无公司财务口径）",
+                    json!({"symbol": symbol, "asset_type": "index"}),
+                ));
+                continue;
+            }
             let route = if entity_is_crypto(&contract.entities[index]) {
                 AssetEvidenceRoute::Crypto
             } else if entity_is_fund(&contract.entities[index]) {
@@ -3532,6 +3772,13 @@ pub(crate) fn missing_investment_response_sections(
             .any(|keyword| section_lower.contains(keyword))
         {
             push_missing(&mut missing, "加密资产小节证据口径");
+        }
+        if entity_is_index(entity)
+            && !["指数", "基准", "成分", "index", "benchmark"]
+                .iter()
+                .any(|keyword| section_lower.contains(keyword))
+        {
+            push_missing(&mut missing, "指数小节证据口径");
         }
     }
     if !(lower.contains("风险") || lower.contains("risk"))
@@ -6530,16 +6777,11 @@ async fn extract_entity_scope(
     let explicit = explicit_dollar_mentions(input);
     let deterministic =
         merge_entity_mentions(explicit.clone(), plain_ticker_mentions(input, origin));
-    let trusted_scheduled_subject = origin != AgentTurnOrigin::Interactive
-        && scheduled_request_has_security_context(input)
-        && deterministic.iter().any(|mention| mention.tentative_symbol);
     if is_portfolio_scope_request(input) {
         return Ok(EntityResolutionScope::Portfolio(deterministic));
     }
     if ticker_mentions_cover_request(input, &deterministic)
-        || trusted_scheduled_subject
-        || (origin == AgentTurnOrigin::Interactive
-            && deterministic_ticker_scope_is_complete(input, &deterministic))
+        || deterministic_ticker_scope_is_complete(input, &deterministic)
     {
         return Ok(EntityResolutionScope::Securities(deterministic));
     }
@@ -6605,293 +6847,1075 @@ async fn extract_entity_scope(
 }
 
 fn explicit_dollar_mentions(input: &str) -> Vec<EntityMention> {
-    let regex = Regex::new(r"(?i)\$[a-z][a-z0-9.-]{0,9}").expect("dollar ticker regex");
-    regex
-        .find_iter(input)
-        .map(|matched| {
-            matched
-                .as_str()
-                .trim_start_matches('$')
-                .to_ascii_uppercase()
-        })
-        .collect::<HashSet<_>>()
+    let mut seen = HashSet::new();
+    scan_security_identifiers(input)
         .into_iter()
-        .map(|symbol| EntityMention {
-            mention: ["$", symbol.as_str()].concat(),
-            search_query: symbol.clone(),
-            explicit_symbol: Some(symbol),
-            tentative_symbol: false,
+        .filter(|identifier| identifier.kind == SecurityIdentifierKind::Cashtag)
+        .filter(|identifier| {
+            !identifier
+                .normalized
+                .chars()
+                .all(|character| character.is_ascii_digit())
+                || has_explicit_ticker_label(input, &identifier.raw)
+                || has_explicit_ticker_binding(input, &identifier.raw)
+        })
+        .filter_map(|identifier| {
+            seen.insert(identifier.normalized.clone())
+                .then_some(EntityMention {
+                    mention: identifier.raw,
+                    search_query: identifier.normalized.clone(),
+                    explicit_symbol: Some(identifier.normalized),
+                    tentative_symbol: false,
+                    context: EntityMentionContext {
+                        source_span: Some((identifier.start, identifier.end)),
+                        identifier_kind: Some(identifier.kind),
+                        ..EntityMentionContext::default()
+                    },
+                })
         })
         .collect()
 }
 
 fn plain_ticker_mentions(input: &str, origin: AgentTurnOrigin) -> Vec<EntityMention> {
-    let normalized = input.to_ascii_lowercase();
-    let ticker_context = [
-        "今天",
+    let scanned_identifiers = scan_security_identifiers(input);
+    let mut candidates = Vec::new();
+    let mut seen = HashSet::new();
+    let mut scheduled_subject_seen = false;
+    let mut scheduled_condition_start = None;
+    for identifier in scanned_identifiers.iter().cloned() {
+        if identifier.kind == SecurityIdentifierKind::Cashtag {
+            continue;
+        }
+        let token = identifier.raw.as_str();
+        let symbol = identifier.normalized.clone();
+        if is_report_period_token(&symbol) {
+            continue;
+        }
+        if identifier_is_multiword_proper_name_tail(input, identifier.start, token)
+            || identifier_is_compact_ampersand_name_part(input, identifier.start, identifier.end)
+        {
+            continue;
+        }
+        let exact_input = identifier_is_only_query_subject(input, identifier.start, identifier.end);
+        let explicit_ticker_label = has_explicit_ticker_label(input, token);
+        let explicit_ticker_binding = has_explicit_ticker_binding(input, token);
+        let local_context = identifier_local_context(input, identifier.start, identifier.end);
+        let direct_market_binding =
+            identifier_has_direct_market_binding(input, identifier.start, identifier.end);
+        let (chinese_analysis_binding, english_analysis_binding) =
+            identifier_analysis_bindings(input, identifier.start, identifier.end);
+        let comparison_binding =
+            identifier_has_comparison_binding(input, identifier.start, identifier.end);
+        let symbol_cluster_binding = identifier_has_symbol_cluster_binding(
+            input,
+            identifier.start,
+            identifier.end,
+            &scanned_identifiers,
+        );
+        let clause_subject_binding = identifier_has_clause_subject_binding(
+            input,
+            identifier.start,
+            identifier.end,
+            &scanned_identifiers,
+        );
+        let token_letters_are_uppercase = identifier
+            .raw
+            .chars()
+            .filter(|character| character.is_ascii_alphabetic())
+            .all(|character| character.is_ascii_uppercase());
+        let token_letters_are_lowercase = identifier
+            .raw
+            .chars()
+            .filter(|character| character.is_ascii_alphabetic())
+            .all(|character| character.is_ascii_lowercase());
+        let all_numeric = identifier
+            .raw
+            .chars()
+            .all(|character| character.is_ascii_digit());
+        let numeric_market = all_numeric
+            .then(|| bound_numeric_market_hint(input, identifier.start, identifier.end))
+            .flatten();
+        let numeric_asset = all_numeric
+            .then(|| bound_numeric_asset_hint(input, identifier.start, identifier.end))
+            .flatten();
+        let strong_exact_shape = exact_input
+            && match identifier.kind {
+                SecurityIdentifierKind::Bare => {
+                    token_letters_are_uppercase
+                        || (token_letters_are_lowercase && symbol.len() <= 5)
+                        || identifier
+                            .raw
+                            .chars()
+                            .all(|character| character.is_ascii_digit())
+                }
+                SecurityIdentifierKind::Cashtag => false,
+                SecurityIdentifierKind::ExchangeQualified
+                | SecurityIdentifierKind::Index
+                | SecurityIdentifierKind::CryptoPair => true,
+                SecurityIdentifierKind::ShareClass => {
+                    token_letters_are_uppercase
+                        || identifier
+                            .raw
+                            .split(['.', '-'])
+                            .next()
+                            .is_some_and(|base| base.len() <= 3)
+                }
+            };
+        if is_identifier_grammar_word(&symbol)
+            && !(explicit_ticker_label
+                || explicit_ticker_binding
+                || (token_letters_are_uppercase
+                    && (exact_input
+                        || direct_market_binding
+                        || chinese_analysis_binding
+                        || english_analysis_binding)
+                    && is_recoverable_grammar_ticker(&symbol)))
+        {
+            continue;
+        }
+        if all_numeric
+            && !numeric_identifier_has_security_binding(
+                input,
+                identifier.start,
+                identifier.end,
+                &scanned_identifiers,
+                exact_input,
+                explicit_ticker_label,
+                explicit_ticker_binding,
+                direct_market_binding,
+                chinese_analysis_binding,
+                english_analysis_binding,
+                comparison_binding,
+                clause_subject_binding,
+                numeric_market,
+                numeric_asset,
+            )
+        {
+            continue;
+        }
+        let scope_context = explicit_ticker_label
+            || explicit_ticker_binding
+            || strong_exact_shape
+            || direct_market_binding
+            || chinese_analysis_binding
+            || english_analysis_binding
+            || comparison_binding
+            || symbol_cluster_binding
+            || clause_subject_binding
+            || numeric_market.is_some()
+            || numeric_asset.is_some();
+        if !scope_context {
+            continue;
+        }
+        let metadata_assignment =
+            identifier_is_metadata_assignment(input, identifier.start, identifier.end);
+        if metadata_assignment && !explicit_ticker_label && !explicit_ticker_binding {
+            continue;
+        }
+        if identifier_is_conceptual_use(&symbol, &local_context)
+            && !exact_input
+            && !explicit_ticker_label
+            && !explicit_ticker_binding
+        {
+            continue;
+        }
+
+        if identifier.kind == SecurityIdentifierKind::Bare {
+            let letters = token
+                .chars()
+                .filter(|character| character.is_ascii_alphabetic());
+            let has_letters = letters.clone().next().is_some();
+            let uppercase = has_letters
+                && letters
+                    .clone()
+                    .all(|character| character.is_ascii_uppercase());
+            let lowercase = has_letters
+                && letters
+                    .clone()
+                    .all(|character| character.is_ascii_lowercase());
+            let mixed_case = !uppercase && !lowercase;
+            let explicit_context = exact_input
+                || explicit_ticker_label
+                || explicit_ticker_binding
+                || direct_market_binding
+                || chinese_analysis_binding
+                || english_analysis_binding
+                || symbol_cluster_binding
+                || clause_subject_binding
+                || numeric_market.is_some()
+                || numeric_asset.is_some();
+
+            if all_numeric && !explicit_context {
+                continue;
+            }
+            if symbol.len() == 1 && !explicit_context {
+                continue;
+            }
+            // Financial metrics and technical abbreviations are much more
+            // likely to be concepts than securities in generic prose. They
+            // remain fully supported as exact inputs, cashtags, or when the
+            // user binds them directly to a ticker/price/stock expression.
+            if identifier_requires_explicit_security_binding(&symbol)
+                && !(exact_input
+                    || explicit_ticker_label
+                    || explicit_ticker_binding
+                    || direct_market_binding)
+            {
+                continue;
+            }
+            if is_non_security_acronym(&symbol)
+                && !(exact_input
+                    || explicit_ticker_label
+                    || explicit_ticker_binding
+                    || direct_market_binding
+                    || chinese_analysis_binding
+                    || english_analysis_binding
+                    || symbol_cluster_binding
+                    || clause_subject_binding)
+            {
+                continue;
+            }
+            if uppercase
+                && symbol.len() > 5
+                && !exact_input
+                && !explicit_ticker_label
+                && !is_compact_crypto_symbol(&symbol)
+            {
+                continue;
+            }
+            if lowercase
+                && is_plain_lowercase_non_ticker_token(token)
+                && !(exact_input
+                    || explicit_ticker_label
+                    || explicit_ticker_binding
+                    || direct_market_binding)
+            {
+                continue;
+            }
+            if (lowercase || mixed_case) && !explicit_context {
+                continue;
+            }
+
+            if origin != AgentTurnOrigin::Interactive && scheduled_subject_seen {
+                let past_subject_boundary =
+                    scheduled_condition_start.is_some_and(|boundary| identifier.start >= boundary);
+                let explicitly_rebound = explicit_ticker_label || explicit_ticker_binding;
+                if (!uppercase
+                    || (past_subject_boundary && !explicitly_rebound)
+                    || (!past_subject_boundary && !comparison_binding && !symbol_cluster_binding))
+                    && !explicitly_rebound
+                {
+                    continue;
+                }
+            }
+        }
+
+        let dedupe_key = if all_numeric {
+            format!("{symbol}|{numeric_market:?}|{numeric_asset:?}")
+        } else {
+            symbol.clone()
+        };
+        if seen.insert(dedupe_key) {
+            let tentative_symbol = identifier.kind == SecurityIdentifierKind::Bare
+                && !explicit_ticker_label
+                && !explicit_ticker_binding
+                && !identifier
+                    .raw
+                    .chars()
+                    .filter(|character| character.is_ascii_alphabetic())
+                    .all(|character| character.is_ascii_uppercase());
+            candidates.push(EntityMention {
+                mention: identifier.raw,
+                search_query: symbol.clone(),
+                explicit_symbol: Some(symbol),
+                tentative_symbol,
+                context: EntityMentionContext {
+                    source_span: Some((identifier.start, identifier.end)),
+                    identifier_kind: Some(identifier.kind),
+                    numeric_market_hint: numeric_market,
+                    numeric_asset_hint: numeric_asset,
+                },
+            });
+            if origin != AgentTurnOrigin::Interactive && !scheduled_subject_seen {
+                scheduled_subject_seen = true;
+                scheduled_condition_start = scheduled_condition_clause_start(input, identifier.end);
+            }
+        }
+    }
+    candidates
+}
+
+fn scheduled_condition_clause_start(input: &str, subject_end: usize) -> Option<usize> {
+    let tail = &input[subject_end..];
+    [
+        "的",
+        "关键事件",
+        "重大事件",
+        "条件",
+        "出现",
+        "仅在",
+        "只在",
+        "只有",
+        " when ",
+        " if ",
+        " events",
+        " event",
+        " conditions",
+    ]
+    .iter()
+    .filter_map(|marker| {
+        tail.to_ascii_lowercase()
+            .find(marker)
+            .map(|offset| subject_end + offset)
+    })
+    .min()
+}
+
+fn identifier_local_context(input: &str, start: usize, end: usize) -> String {
+    let before = input[..start]
+        .chars()
+        .rev()
+        .take(24)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<String>();
+    let after = input[end..].chars().take(24).collect::<String>();
+    format!("{before}{}{after}", &input[start..end]).to_ascii_lowercase()
+}
+
+/// Return the comparison fragment that owns one numeric identifier. Market
+/// and asset words are bound inside this fragment rather than across the
+/// entire user request, so `港股700和日股7203` produces two independent
+/// resolution plans.
+fn numeric_resolution_segment_bounds(input: &str, start: usize, end: usize) -> (usize, usize) {
+    let (clause_start, clause_end) = identifier_clause_bounds(input, start, end);
+    let before = &input[clause_start..start];
+    let after = &input[end..clause_end];
+    let left = [
+        "和", "与", "跟", "、", ",", "，", "/", " and ", " versus ", " vs ",
+    ]
+    .iter()
+    .filter_map(|marker| {
+        before
+            .to_ascii_lowercase()
+            .rfind(marker)
+            .map(|offset| clause_start + offset + marker.len())
+    })
+    .max()
+    .unwrap_or(clause_start);
+    let right = [
+        "和", "与", "跟", "、", ",", "，", "/", " and ", " versus ", " vs ",
+    ]
+    .iter()
+    .filter_map(|marker| {
+        after
+            .to_ascii_lowercase()
+            .find(marker)
+            .map(|offset| end + offset)
+    })
+    .min()
+    .unwrap_or(clause_end);
+    (left, right)
+}
+
+fn numeric_binding_sides(input: &str, start: usize, end: usize) -> (String, String) {
+    let (segment_start, segment_end) = numeric_resolution_segment_bounds(input, start, end);
+    (
+        input[segment_start..start].trim_end().to_ascii_lowercase(),
+        input[end..segment_end].trim_start().to_ascii_lowercase(),
+    )
+}
+
+fn bound_numeric_market_hint(input: &str, start: usize, end: usize) -> Option<NumericMarketHint> {
+    let (before, after) = numeric_binding_sides(input, start, end);
+    let before = [
+        "股票代码",
+        "证券代码",
+        "代码",
+        "ticker",
+        "symbol",
+        "股票",
+        "证券",
+    ]
+    .iter()
+    .find_map(|suffix| before.strip_suffix(suffix))
+    .unwrap_or(&before)
+    .trim_end();
+    let bound = |markers: &[&str]| {
+        markers
+            .iter()
+            .any(|marker| before.ends_with(marker) || after.starts_with(marker))
+    };
+    if bound(&["港股", "香港", "hkex", "hong kong"]) {
+        Some(NumericMarketHint::HongKong)
+    } else if bound(&["上证指数", "上交所", "上海", "沪股", "沪市"]) {
+        Some(NumericMarketHint::Shanghai)
+    } else if bound(&["深证成指", "深交所", "深圳", "深股", "深市"]) {
+        Some(NumericMarketHint::Shenzhen)
+    } else if bound(&["北交所", "北京证券交易所", "京股"]) {
+        Some(NumericMarketHint::Beijing)
+    } else if bound(&["a股", "中国a股", "china a"]) {
+        Some(NumericMarketHint::ChinaA)
+    } else if bound(&["日股", "日本", "tokyo", "tse"]) {
+        Some(NumericMarketHint::Japan)
+    } else if bound(&["韩股", "韩国", "korea", "krx"]) {
+        Some(NumericMarketHint::Korea)
+    } else if bound(&["台股", "台湾", "taiwan"]) {
+        Some(NumericMarketHint::Taiwan)
+    } else {
+        None
+    }
+}
+
+fn bound_numeric_asset_hint(input: &str, start: usize, end: usize) -> Option<NumericAssetHint> {
+    let (before, after) = numeric_binding_sides(input, start, end);
+    let bound = |markers: &[&str]| {
+        markers
+            .iter()
+            .any(|marker| before.ends_with(marker) || after.starts_with(marker))
+    };
+    if bound(&["上证指数", "深证成指", "指数", "index"]) {
+        Some(NumericAssetHint::Index)
+    } else if bound(&["股票", "个股", "公司", "stock", "share"]) {
+        Some(NumericAssetHint::Stock)
+    } else {
+        None
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn numeric_identifier_has_security_binding(
+    input: &str,
+    start: usize,
+    end: usize,
+    identifiers: &[crate::security_identifier::SecurityIdentifier],
+    exact_input: bool,
+    explicit_ticker_label: bool,
+    explicit_ticker_binding: bool,
+    direct_market_binding: bool,
+    chinese_analysis_binding: bool,
+    english_analysis_binding: bool,
+    comparison_binding: bool,
+    clause_subject_binding: bool,
+    market_hint: Option<NumericMarketHint>,
+    asset_hint: Option<NumericAssetHint>,
+) -> bool {
+    if exact_input || explicit_ticker_label || explicit_ticker_binding {
+        return true;
+    }
+    let raw = &input[start..end];
+    let before = input[..start].trim_end().to_ascii_lowercase();
+    let after = input[end..].trim_start().to_ascii_lowercase();
+
+    // Amounts, targets, percentages, years and scheduler cadence are values,
+    // even though their lexical shape overlaps numeric exchange codes.
+    if before.ends_with('$')
+        || before.ends_with('¥')
+        || before.ends_with('￥')
+        || [
+            "目标价",
+            "现价",
+            "当前价",
+            "价格",
+            "报价",
+            "市值",
+            "营收",
+            "利润",
+            "收入",
+            "成本",
+            "每股",
+            "repeat=",
+            "repeat =",
+        ]
+        .iter()
+        .any(|marker| before.ends_with(marker))
+        || [
+            "%",
+            "％",
+            "美元",
+            "美金",
+            "元",
+            "港元",
+            "人民币",
+            "分钟",
+            "小时",
+            "天",
+            "周",
+            "个月",
+            "倍",
+            " shares",
+            " usd",
+            " hkd",
+            " cny",
+        ]
+        .iter()
+        .any(|unit| after.starts_with(unit))
+    {
+        return false;
+    }
+    if raw
+        .parse::<u16>()
+        .is_ok_and(|value| (1900..=2100).contains(&value))
+        && ["年", "财报", "季度", "q1", "q2", "q3", "q4"]
+            .iter()
+            .any(|marker| after.starts_with(marker))
+    {
+        return false;
+    }
+
+    let (clause_start, _) = identifier_clause_bounds(input, start, end);
+    let earlier_identifier = identifiers.iter().any(|candidate| {
+        candidate.start >= clause_start
+            && candidate.end <= start
+            && candidate.end < start
+            && !candidate
+                .raw
+                .chars()
+                .all(|character| character.is_ascii_digit())
+    });
+    if earlier_identifier && market_hint.is_none() && asset_hint.is_none() && !comparison_binding {
+        return false;
+    }
+
+    market_hint.is_some()
+        || asset_hint.is_some()
+        || direct_market_binding
+        || chinese_analysis_binding
+        || english_analysis_binding
+        || comparison_binding
+        || clause_subject_binding
+}
+
+fn identifier_is_only_query_subject(input: &str, start: usize, end: usize) -> bool {
+    input[..start]
+        .chars()
+        .chain(input[end..].chars())
+        .all(|character| {
+            character.is_whitespace()
+                || matches!(
+                    character,
+                    '?' | '？'
+                        | '!'
+                        | '！'
+                        | '.'
+                        | '。'
+                        | ','
+                        | '，'
+                        | ';'
+                        | '；'
+                        | ':'
+                        | '：'
+                        | '('
+                        | ')'
+                        | '（'
+                        | '）'
+                        | '['
+                        | ']'
+                        | '【'
+                        | '】'
+                        | '"'
+                        | '\''
+                        | '`'
+                )
+        })
+}
+
+fn identifier_is_multiword_proper_name_tail(input: &str, start: usize, token: &str) -> bool {
+    if !is_ascii_title_case_word(token) || start == 0 {
+        return false;
+    }
+    let before = input[..start].trim_end();
+    let previous = before
+        .rsplit(|character: char| !character.is_ascii_alphabetic())
+        .next()
+        .unwrap_or_default();
+    is_ascii_title_case_word(previous)
+}
+
+fn identifier_is_compact_ampersand_name_part(input: &str, start: usize, end: usize) -> bool {
+    let token = &input[start..end];
+    let before = input[..start].trim_end();
+    let after = input[end..].trim_start();
+    let previous = before
+        .strip_suffix('&')
+        .map(str::trim_end)
+        .and_then(|value| {
+            value
+                .rsplit(|character: char| !character.is_ascii_alphabetic())
+                .next()
+        });
+    let next = after
+        .strip_prefix('&')
+        .map(str::trim_start)
+        .and_then(|value| {
+            value
+                .split(|character: char| !character.is_ascii_alphabetic())
+                .next()
+        });
+    let title_case_name = is_ascii_title_case_word(token)
+        && (previous.is_some_and(is_ascii_title_case_word)
+            || next.is_some_and(is_ascii_title_case_word));
+    let compact_short_brand = (before.ends_with('&') || after.starts_with('&'))
+        && token.len() <= 2
+        && token
+            .chars()
+            .all(|character| character.is_ascii_uppercase());
+    title_case_name || compact_short_brand
+}
+
+fn is_ascii_title_case_word(word: &str) -> bool {
+    let mut characters = word.chars();
+    characters
+        .next()
+        .is_some_and(|character| character.is_ascii_uppercase())
+        && characters.any(|character| character.is_ascii_lowercase())
+        && word
+            .chars()
+            .all(|character| character.is_ascii_alphabetic())
+}
+
+fn has_security_discussion_context(normalized: &str) -> bool {
+    [
+        "股票",
+        "证券",
+        "股价",
+        "现价",
+        "价格",
+        "行情",
+        "报价",
+        "盘前",
+        "盘后",
+        "财报",
+        "业绩",
+        "估值",
+        "目标价",
+        "持仓",
+        "持有",
+        "成分股",
+        "费率",
+        "跟踪误差",
+        "加仓",
+        "减仓",
+        "买入",
+        "卖出",
+        "能买吗",
+        "推荐",
+        "安全区间",
+        "能不能",
+        "起飞",
+        "怎么看",
+        "怎么样",
+        "走势",
+        "前景",
+        "查不到",
+        "关键事件",
+        "重大事件",
+        "ticker",
+        "symbol",
+        "stock price",
+        "share price",
+        "market price",
+        "quote",
+        "earnings",
+        "valuation",
+        "premarket",
+        "pre-market",
+        "after-hours",
+        "after hours",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker))
+        || has_current_price_intent(normalized)
+        || (normalized.contains("how is") && normalized.contains("doing"))
+}
+
+fn identifier_has_direct_market_binding(input: &str, start: usize, end: usize) -> bool {
+    let before = input[..start].trim_end().to_ascii_lowercase();
+    let after = input[end..].trim_start().to_ascii_lowercase();
+    ["股票代码", "证券代码", "代码", "ticker", "symbol"]
+        .iter()
+        .any(|marker| before.ends_with(marker))
+        || identifier_has_lookup_verb_before(&before)
+        || (["监控", "检查", "monitor", "check"]
+            .iter()
+            .any(|marker| before.ends_with(marker))
+            && [
+                "股票",
+                "股价",
+                "行情",
+                "报价",
+                "财报",
+                "业绩",
+                "关键事件",
+                "重大事件",
+                "事件",
+                "earnings",
+                "news",
+                "quote",
+                "stock",
+            ]
+            .iter()
+            .any(|marker| after.contains(marker)))
+        || CURRENT_PRICE_INTENT_MARKERS
+            .iter()
+            .chain(EXTENDED_HOURS_INTENT_MARKERS.iter())
+            .chain(
+                [
+                    "股票",
+                    "新闻",
+                    "消息",
+                    "财报",
+                    "业绩",
+                    "估值",
+                    "前景",
+                    "展望",
+                    "走势",
+                    "推荐",
+                    "值得买吗",
+                    "值得买",
+                    "安全区间",
+                    "跌了多少",
+                    "跌多少",
+                    "涨了多少",
+                    "值得持有",
+                    "持有",
+                    "持仓",
+                    "费率",
+                    "跟踪误差",
+                    "加仓",
+                    "减仓",
+                    "买入",
+                    "卖出",
+                    "能买吗",
+                    "stock price",
+                    "share price",
+                    "holding",
+                    "holdings",
+                    "expense ratio",
+                    "news",
+                    "earnings",
+                    "valuation",
+                    "outlook",
+                ]
+                .iter(),
+            )
+            .any(|marker| after.starts_with(marker))
+}
+
+fn identifier_has_lookup_verb_before(before: &str) -> bool {
+    [
+        "查询", "看下", "看看", "分析", "研究", "买入", "卖出", "比较", "对比", "analyze",
+        "compare", "buy", "sell", "quote",
+    ]
+    .iter()
+    .any(|marker| before.ends_with(marker))
+        || (before.ends_with('查') && !before.ends_with("检查"))
+        || (before.ends_with('看') && !before.ends_with("查看"))
+        || (before.ends_with('买') && !before.ends_with("购买"))
+        || before.ends_with('卖')
+}
+
+fn identifier_analysis_bindings(input: &str, start: usize, end: usize) -> (bool, bool) {
+    let before = input[..start].trim_end().to_ascii_lowercase();
+    let after = input[end..].trim_start().to_ascii_lowercase();
+    let chinese_suffix = [
         "最近",
         "近期",
         "现在",
         "目前",
         "怎么样",
         "怎么看",
-        "如何",
-        "股票",
-        "股价",
-        "价格",
-        "现价",
-        "目前价",
-        "现在价",
-        "市价",
-        "市场价",
-        "盘前",
-        "盘后",
-        "夜盘",
-        "分析",
-        "研究",
-        "比较",
-        "对比",
-        "能买吗",
-        "能不能买",
-        "能不能",
-        "能否买",
-        "起飞",
-        "前景",
-        "未来",
-        "财报",
-        "业绩",
-        "财务",
-        "营收",
-        "利润",
-        "现金流",
-        "持仓",
-        "成分股",
-        "费率",
-        "跟踪误差",
-        "估值",
-        "目标价",
-        "ticker",
-        "stock",
-        "today",
-        "recently",
-        "lately",
-        "how",
-        "doing",
-        "outlook",
-        "worth",
-        "now",
-        "current",
-        "share",
-        "price",
-        "earnings",
-        "valuation",
-        "buy",
-        "sell",
-        "compare",
-        "premarket",
-        "pre-market",
-        "after-hours",
-        "after hours",
-        "post-market",
-        "extended hours",
-    ]
-    .iter()
-    .any(|marker| normalized.contains(marker))
-        || has_current_price_intent(&normalized);
-    let lowercase_ticker_context = [
-        "股票",
-        "股价",
-        "价格",
-        "现价",
-        "目前价",
-        "现在价",
-        "市价",
-        "市场价",
-        "盘前",
-        "盘后",
-        "夜盘",
-        "分析",
-        "研究",
-        "比较",
-        "对比",
-        "能买吗",
-        "能不能",
-        "能否买",
-        "起飞",
-        "前景",
-        "财报",
-        "业绩",
-        "财务",
-        "营收",
-        "利润",
-        "现金流",
-        "持仓",
-        "成分股",
-        "费率",
-        "跟踪误差",
-        "估值",
-        "目标价",
-        "怎么看",
-        "怎么样",
         "咋看",
         "咋样",
-        "看看",
         "如何",
         "走势",
         "近况",
-        "ticker",
-        "stock",
-        "today",
-        "recently",
-        "lately",
-        "how",
-        "doing",
-        "outlook",
-        "worth",
-        "now",
-        "current",
-        "premarket",
-        "pre-market",
-        "after-hours",
-        "after hours",
-        "post-market",
-        "extended hours",
+        "能不能",
+        "能买吗",
     ]
     .iter()
-    .any(|marker| normalized.contains(marker))
-        || has_current_price_intent(&normalized)
-        || (["今天", "最近", "近期", "现在", "目前"]
+    .any(|marker| after.starts_with(marker));
+    let chinese_prefix = ["今天", "最近", "近期", "现在", "目前"]
+        .iter()
+        .any(|marker| before.ends_with(marker))
+        && has_security_discussion_context(&after);
+    let chinese = chinese_suffix
+        || chinese_prefix
+        || after.starts_with("是前面提到的")
+        || after.starts_with("是上面提到的");
+    let english = (["how is", "what about"]
+        .iter()
+        .any(|marker| before.ends_with(marker))
+        && ["doing", "looking", "now", "?", "？"]
             .iter()
-            .any(|marker| normalized.contains(marker))
-            && ["怎么样", "怎么看", "表现", "多少钱"]
-                .iter()
-                .any(|marker| normalized.contains(marker)));
-    let broad_scope = is_broad_scope_request(input);
-    let scheduled_subject_end = if origin == AgentTurnOrigin::Interactive {
-        input.len()
-    } else {
-        input
-            .char_indices()
-            .find_map(|(index, c)| matches!(c, '。' | '；' | '\n').then_some(index))
-            .unwrap_or(input.len())
-            .min(
-                input
-                    .char_indices()
-                    .nth(96)
-                    .map(|(index, _)| index)
-                    .unwrap_or(input.len()),
-            )
-    };
+            .any(|marker| after.starts_with(marker)))
+        || after.starts_with("stock?");
+    (chinese, english)
+}
 
-    let bytes = input.as_bytes();
-    let mut index = 0;
-    let mut candidates = Vec::new();
-    let mut seen = HashSet::new();
-    let mut accepted_scheduled_subject = false;
-    while index < bytes.len() {
-        if !bytes[index].is_ascii_alphabetic() {
-            index += 1;
-            continue;
-        }
-        let start = index;
-        index += 1;
-        while index < bytes.len()
-            && (bytes[index].is_ascii_alphanumeric() || matches!(bytes[index], b'.' | b'-'))
-        {
-            index += 1;
-        }
-        let mut end = index;
-        while end > start && matches!(bytes[end - 1], b'.' | b'-') {
-            end -= 1;
-        }
-        let token = &input[start..end];
-        if token.is_empty() || token.len() > 10 {
-            continue;
-        }
-        if is_report_period_token(token) {
-            continue;
-        }
-        let previous = input[..start].chars().rev().find(|c| !c.is_whitespace());
-        let next = input[end..].chars().find(|c| !c.is_whitespace());
-        if matches!(previous, Some('$' | '=')) || next == Some('=') {
-            continue;
-        }
-        let letters = token.chars().filter(|c| c.is_ascii_alphabetic());
-        let uppercase = letters.clone().all(|c| c.is_ascii_uppercase());
-        let lowercase = letters.clone().all(|c| c.is_ascii_lowercase());
-        let exact_input = input.trim().eq_ignore_ascii_case(token);
-        let explicit_ticker_label = has_explicit_ticker_label(input, token);
-        let explicit_ticker_binding = has_explicit_ticker_binding(input, token);
-        if is_non_security_acronym(token) && !exact_input && !explicit_ticker_label {
-            continue;
-        }
-        let plain_lowercase_exact_ticker = exact_input
-            && token.len() <= 5
-            && token
-                .chars()
-                .all(|character| character.is_ascii_alphabetic());
-        if !uppercase
-            && !(lowercase
-                && (lowercase_ticker_context
-                    || plain_lowercase_exact_ticker
-                    || explicit_ticker_binding))
-        {
-            continue;
-        }
-        if lowercase && is_plain_lowercase_non_ticker_token(token) {
-            continue;
-        }
-        if broad_scope
-            && matches!(
-                token.to_ascii_uppercase().as_str(),
-                "A" | "US" | "USA" | "CN" | "HK" | "JP" | "EU"
-            )
-        {
-            continue;
-        }
-        if broad_scope
-            && normalized.contains("s&p")
-            && matches!(token.to_ascii_uppercase().as_str(), "S" | "P")
-        {
-            continue;
-        }
-        if token.len() == 1 && !(ticker_context || exact_input) {
-            continue;
-        }
-        if broad_scope && token.len() <= 3 && !exact_input {
-            if is_common_theme_acronym(token) || pure_short_broad_subject(input, token) {
-                continue;
-            }
-        }
-        if origin != AgentTurnOrigin::Interactive {
-            if start >= scheduled_subject_end {
-                continue;
-            }
-            if !accepted_scheduled_subject
-                && input[..start].chars().any(|c| c.is_ascii_alphabetic())
-            {
-                continue;
-            }
-            accepted_scheduled_subject = true;
-        } else if !(ticker_context
-            || exact_input
-            || explicit_ticker_label
-            || explicit_ticker_binding)
-        {
-            continue;
-        }
+fn identifier_has_comparison_binding(input: &str, start: usize, end: usize) -> bool {
+    let before = input[..start].trim_end().to_ascii_lowercase();
+    let after = input[end..].trim_start().to_ascii_lowercase();
+    let slash_binding =
+        (before.ends_with('/') && !before.ends_with("://")) || after.starts_with('/');
+    slash_binding
+        || [
+            "比较", "对比", "和", "跟", "与", "以及", "或者", "还有", "、", "&",
+        ]
+        .iter()
+        .any(|marker| before.ends_with(marker) || after.starts_with(marker))
+        || ["vs", "versus", "and", "or", "plus"]
+            .iter()
+            .any(|connector| {
+                ascii_text_ends_with_word(before.trim_end_matches('.'), connector)
+                    || ascii_text_starts_with_word(&after, connector)
+            })
+}
 
-        let symbol = token.to_ascii_uppercase();
-        if seen.insert(symbol.clone()) {
-            candidates.push(EntityMention {
-                mention: token.to_string(),
-                search_query: symbol.clone(),
-                explicit_symbol: Some(symbol),
-                tentative_symbol: true,
-            });
-        }
+fn ascii_text_ends_with_word(text: &str, word: &str) -> bool {
+    text.strip_suffix(word).is_some_and(|prefix| {
+        prefix
+            .chars()
+            .next_back()
+            .is_none_or(|character| !character.is_ascii_alphanumeric())
+    })
+}
+
+fn ascii_text_starts_with_word(text: &str, word: &str) -> bool {
+    text.strip_prefix(word).is_some_and(|suffix| {
+        suffix
+            .chars()
+            .next()
+            .is_none_or(|character| !character.is_ascii_alphanumeric())
+    })
+}
+
+/// Treat a compact run of ticker-shaped identifiers as one explicit market
+/// subject when the same clause contains a concrete trading/holding binding.
+/// This covers natural inputs such as `MRVL ARM COHR 是否值得持有` without
+/// turning arbitrary uppercase prose into securities.
+fn identifier_has_symbol_cluster_binding(
+    input: &str,
+    start: usize,
+    end: usize,
+    identifiers: &[crate::security_identifier::SecurityIdentifier],
+) -> bool {
+    let (clause_start, clause_end) = identifier_clause_bounds(input, start, end);
+    let clause = input[clause_start..clause_end].to_ascii_lowercase();
+    let has_concrete_market_binding = [
+        "股票",
+        "股价",
+        "现价",
+        "行情",
+        "报价",
+        "持有",
+        "持仓",
+        "加仓",
+        "减仓",
+        "买入",
+        "卖出",
+        "能买吗",
+        "关键事件",
+        "重大事件",
+        "财报",
+        "业绩",
+        "stock",
+        "share price",
+        "quote",
+        "hold",
+        "buy",
+        "sell",
+        "earnings",
+        "news",
+    ]
+    .iter()
+    .any(|marker| clause.contains(marker));
+    if !has_concrete_market_binding {
+        return false;
     }
-    candidates
+    identifiers
+        .iter()
+        .filter(|candidate| {
+            candidate.start >= clause_start
+                && candidate.end <= clause_end
+                && candidate.kind == SecurityIdentifierKind::Bare
+                && candidate
+                    .raw
+                    .chars()
+                    .any(|character| character.is_ascii_alphabetic())
+                && candidate
+                    .raw
+                    .chars()
+                    .filter(|character| character.is_ascii_alphabetic())
+                    .all(|character| character.is_ascii_uppercase())
+        })
+        .take(2)
+        .count()
+        >= 2
+}
+
+fn identifier_has_clause_subject_binding(
+    input: &str,
+    start: usize,
+    end: usize,
+    identifiers: &[crate::security_identifier::SecurityIdentifier],
+) -> bool {
+    let current = identifiers
+        .iter()
+        .find(|candidate| candidate.start == start && candidate.end == end);
+    let current_is_code_shaped = current.is_some_and(|candidate| {
+        candidate.kind != SecurityIdentifierKind::Bare
+            || candidate
+                .raw
+                .chars()
+                .filter(|character| character.is_ascii_alphabetic())
+                .all(|character| character.is_ascii_uppercase())
+            || candidate
+                .raw
+                .chars()
+                .all(|character| character.is_ascii_digit())
+            || (candidate
+                .raw
+                .chars()
+                .all(|character| character.is_ascii_lowercase())
+                && candidate.raw.len() <= 5)
+    });
+    if !current_is_code_shaped {
+        return false;
+    }
+    let (clause_start, clause_end) = identifier_clause_bounds(input, start, end);
+    let clause = input[clause_start..clause_end].to_ascii_lowercase();
+    if !has_security_discussion_context(&clause) {
+        return false;
+    }
+    !identifiers.iter().any(|candidate| {
+        candidate.start >= clause_start
+            && candidate.end <= start
+            && candidate.start < start
+            && (candidate.kind != SecurityIdentifierKind::Bare
+                || candidate
+                    .raw
+                    .chars()
+                    .filter(|character| character.is_ascii_alphabetic())
+                    .all(|character| character.is_ascii_uppercase())
+                || candidate
+                    .raw
+                    .chars()
+                    .all(|character| character.is_ascii_digit()))
+    })
+}
+
+fn identifier_clause_bounds(input: &str, start: usize, end: usize) -> (usize, usize) {
+    let is_clause_boundary = |character: char| {
+        matches!(
+            character,
+            '\n' | '\r' | '。' | ';' | '；' | '!' | '！' | '?' | '？' | ':' | '：'
+        )
+    };
+    let clause_start = input[..start]
+        .char_indices()
+        .rev()
+        .find(|(_, character)| is_clause_boundary(*character))
+        .map_or(0, |(index, character)| index + character.len_utf8());
+    let clause_end = input[end..]
+        .char_indices()
+        .find(|(_, character)| is_clause_boundary(*character))
+        .map_or(input.len(), |(index, _)| end + index);
+    (clause_start, clause_end)
+}
+
+fn is_compact_crypto_symbol(symbol: &str) -> bool {
+    ["USD", "USDT", "USDC", "EUR", "GBP", "JPY", "BTC", "ETH"]
+        .iter()
+        .any(|quote| symbol.len() > quote.len() + 1 && symbol.ends_with(quote))
+}
+
+fn identifier_is_metadata_assignment(input: &str, start: usize, end: usize) -> bool {
+    let previous = input[..start]
+        .chars()
+        .rev()
+        .find(|character| !character.is_whitespace());
+    let next = input[end..]
+        .chars()
+        .find(|character| !character.is_whitespace());
+    previous == Some('=') || next == Some('=')
+}
+
+fn is_identifier_grammar_word(symbol: &str) -> bool {
+    matches!(
+        symbol,
+        "TICKER"
+            | "SYMBOL"
+            | "STOCK"
+            | "SHARE"
+            | "PRICE"
+            | "QUOTE"
+            | "MARKET"
+            | "SECTOR"
+            | "INDUSTRY"
+            | "MONITOR"
+            | "WATCHLIST"
+            | "REPEAT"
+            | "DAILY"
+            | "HOURLY"
+            | "HELLO"
+            | "HI"
+            | "THANKS"
+            | "UPDATE"
+            | "OUTPUT"
+            | "NEWS"
+            | "HELP"
+            | "WEATHER"
+            | "STATUS"
+            | "OPENAI"
+            | "CODEX"
+            | "HOW"
+            | "WHAT"
+            | "ABOUT"
+            | "PLEASE"
+            | "ANALYZE"
+            | "COMPARE"
+            | "TODAY"
+            | "RECENTLY"
+            | "LATELY"
+    )
+}
+
+fn is_recoverable_grammar_ticker(symbol: &str) -> bool {
+    matches!(symbol, "HI" | "NEWS" | "UPDATE")
+}
+
+fn identifier_is_conceptual_use(symbol: &str, normalized_context: &str) -> bool {
+    if symbol == "A" && normalized_context.contains("a股") {
+        return true;
+    }
+    if matches!(symbol, "S" | "P" | "500") && normalized_context.contains("s&p") {
+        return true;
+    }
+    let concept_marker = [
+        "行业",
+        "板块",
+        "技术",
+        "架构",
+        "接口",
+        "状态",
+        "公式",
+        "怎么算",
+        "指标",
+        "主题",
+        "摘要",
+        "architecture",
+        "api status",
+        "interface",
+        "metric",
+        "formula",
+        "sector",
+        "industry",
+    ]
+    .iter()
+    .any(|marker| normalized_context.contains(marker));
+    concept_marker && is_common_theme_acronym(symbol)
 }
 
 fn merge_entity_mentions(
@@ -6899,12 +7923,29 @@ fn merge_entity_mentions(
     additional: Vec<EntityMention>,
 ) -> Vec<EntityMention> {
     for mention in additional {
+        if mention.provenance() == EntityMentionProvenance::NamedEntity {
+            mentions.retain(|existing| {
+                if existing.provenance() != EntityMentionProvenance::TentativeCodeOrName {
+                    return true;
+                }
+                let token = existing.mention.trim();
+                if token.is_empty() {
+                    return true;
+                }
+                !Regex::new(&format!(
+                    r"(?i)(?:^|[^a-z0-9]){}(?:$|[^a-z0-9])",
+                    regex::escape(token)
+                ))
+                .expect("tentative token within named span regex")
+                .is_match(&mention.mention)
+            });
+        }
         let duplicate = mentions.iter_mut().find(|existing| {
             match (
                 existing.explicit_symbol.as_deref(),
                 mention.explicit_symbol.as_deref(),
             ) {
-                (Some(left), Some(right)) => left.eq_ignore_ascii_case(right),
+                (Some(left), Some(right)) => provider_symbols_equivalent(left, right),
                 _ => {
                     existing.mention.eq_ignore_ascii_case(&mention.mention)
                         || existing
@@ -6914,13 +7955,11 @@ fn merge_entity_mentions(
             }
         });
         if let Some(existing) = duplicate {
-            // A ticker lexically present in the current user text remains the
-            // authoritative lookup key. Auxiliary extraction may add another
-            // named entity, but it must never rewrite an exact `RKLB` query to
-            // a provider-sensitive alias such as `Rocket Lab USA Inc`.
-            if existing.explicit_symbol.is_none()
-                && existing.tentative_symbol
-                && !mention.tentative_symbol
+            // Explicit codes remain authoritative. A tentative lowercase or
+            // TitleCase token, however, must yield to a grounded full company
+            // name from the named-entity stage.
+            if existing.provenance() == EntityMentionProvenance::TentativeCodeOrName
+                && mention.provenance() == EntityMentionProvenance::NamedEntity
             {
                 *existing = mention;
             }
@@ -7082,8 +8121,14 @@ fn deterministic_ticker_scope_is_complete(input: &str, mentions: &[EntityMention
     {
         return false;
     }
+    if ticker_mentions_cover_request(input, mentions) {
+        return true;
+    }
+    if request_has_uncovered_named_peer(input, mentions) {
+        return false;
+    }
     let normalized = input.to_ascii_lowercase();
-    ![
+    if [
         "比较",
         "对比",
         "哪个好",
@@ -7100,6 +8145,81 @@ fn deterministic_ticker_scope_is_complete(input: &str, mentions: &[EntityMention
     ]
     .iter()
     .any(|marker| normalized.contains(marker))
+    {
+        return false;
+    }
+    !mentions.iter().any(|mention| {
+        input.match_indices(&mention.mention).any(|(start, _)| {
+            identifier_has_comparison_binding(input, start, start + mention.mention.len())
+        })
+    })
+}
+
+fn request_has_uncovered_named_peer(input: &str, mentions: &[EntityMention]) -> bool {
+    let is_covered = |peer: &str| {
+        mentions.iter().any(|mention| {
+            mention.mention.eq_ignore_ascii_case(peer)
+                || mention.search_query.eq_ignore_ascii_case(peer)
+                || mention
+                    .explicit_symbol
+                    .as_deref()
+                    .is_some_and(|symbol| symbol.eq_ignore_ascii_case(peer))
+        })
+    };
+    let english_peer = Regex::new(
+        r"\b(?i:and|versus|vs\.?)\s+([A-Z][A-Za-z.&]{1,39}(?:\s+[A-Z][A-Za-z.&]{1,39})*)",
+    )
+    .expect("English named comparison peer regex");
+    if english_peer
+        .captures_iter(input)
+        .filter_map(|capture| capture.get(1).map(|value| value.as_str().trim()))
+        .any(|peer| !is_covered(peer))
+    {
+        return true;
+    }
+
+    let characters = input.char_indices().collect::<Vec<_>>();
+    for (position, (index, character)) in characters.iter().enumerate() {
+        if !matches!(character, '和' | '与' | '跟') {
+            continue;
+        }
+        if position > 0 && characters[position - 1].1 == '结' {
+            continue;
+        }
+        let start = index + character.len_utf8();
+        let peer = input[start..]
+            .trim_start()
+            .chars()
+            .take_while(|candidate| ('\u{4e00}'..='\u{9fff}').contains(candidate))
+            .take(12)
+            .collect::<String>();
+        if peer.chars().count() < 2 || is_covered(&peer) {
+            continue;
+        }
+        if ![
+            "指引",
+            "财报",
+            "业绩",
+            "风险",
+            "估值",
+            "市场",
+            "行业",
+            "板块",
+            "消息",
+            "新闻",
+            "观点",
+            "前景",
+            "走势",
+            "预期",
+            "基本面",
+        ]
+        .iter()
+        .any(|generic| peer.starts_with(generic))
+        {
+            return true;
+        }
+    }
+    false
 }
 
 fn is_report_period_token(token: &str) -> bool {
@@ -7154,6 +8274,9 @@ fn is_plain_lowercase_non_ticker_token(token: &str) -> bool {
             | "and"
             | "in"
             | "hello"
+            | "it"
+            | "this"
+            | "that"
     )
 }
 
@@ -7215,13 +8338,103 @@ fn is_non_security_acronym(token: &str) -> bool {
             | "USD"
             | "RMB"
             | "CNY"
+            | "US"
+            | "USA"
+            | "CN"
+            | "HK"
+            | "JP"
+            | "EU"
+            | "IT"
+            | "ON"
+            | "BE"
+            | "NOW"
+            | "ARM"
+            | "IS"
+            | "AS"
+            | "AT"
+            | "IN"
+            | "OF"
+            | "TO"
+            | "FOR"
+            | "WITH"
+            | "FROM"
+            | "THE"
+            | "AND"
+            | "OR"
+            | "WHAT"
+            | "HOW"
+            | "GOOD"
+            | "AAA"
+            | "AA"
+            | "BBB"
+            | "BB"
+            | "CNN"
+            | "URL"
+            | "PPI"
+            | "FDA"
+            | "MONITOR"
+            | "WATCHLIST"
+            | "DAILY"
+            | "HOURLY"
             | "REPEAT"
+    )
+}
+
+fn identifier_requires_explicit_security_binding(token: &str) -> bool {
+    matches!(
+        token.to_ascii_uppercase().as_str(),
+        "ML" | "LLM"
+            | "GPU"
+            | "CPU"
+            | "TPU"
+            | "NPU"
+            | "HBM"
+            | "CPO"
+            | "LPO"
+            | "API"
+            | "HTTP"
+            | "JSON"
+            | "SQL"
+            | "SSE"
+            | "CLI"
+            | "UI"
+            | "PE"
+            | "PB"
+            | "PS"
+            | "PEG"
+            | "EPS"
+            | "DPS"
+            | "ROE"
+            | "ROA"
+            | "ROI"
+            | "ROIC"
+            | "WACC"
+            | "DCF"
+            | "FCF"
+            | "IRR"
+            | "NPV"
+            | "CAGR"
+            | "ARR"
+            | "MRR"
+            | "EBITDA"
+            | "EBIT"
+            | "EBITA"
+            | "NOPAT"
+            | "CAPEX"
+            | "OPEX"
+            | "AUM"
+            | "NAV"
+            | "BUY"
+            | "HOLD"
+            | "BULL"
+            | "BEAR"
+            | "CASE"
     )
 }
 
 fn has_explicit_ticker_label(input: &str, token: &str) -> bool {
     Regex::new(&format!(
-        r"(?i)(?:ticker|symbol|股票代码|证券代码|代码)\s*[:：]?\s*{}(?:$|[^a-z0-9.-])",
+        r"(?i)(?:ticker|symbol|股票代码|证券代码|代码)\s*[:：=]?\s*{}(?:$|[^a-z0-9./^-])",
         regex::escape(token)
     ))
     .expect("explicit ticker label regex")
@@ -7230,7 +8443,7 @@ fn has_explicit_ticker_label(input: &str, token: &str) -> bool {
 
 fn has_explicit_ticker_binding(input: &str, token: &str) -> bool {
     Regex::new(&format!(
-        r"(?i)(?:^|[^a-z0-9.-]){}\s*(?:是|就是|即|指|指的是|对应|也就是|=)",
+        r"(?i)(?:^|[^a-z0-9./^-]){}\s*(?:就是|即|指的是|对应|也就是|=|是\s*(?:前面|上面|此前|之前|我说的|代码|ticker|symbol))",
         regex::escape(token)
     ))
     .expect("ticker identity binding regex")
@@ -7240,53 +8453,6 @@ fn has_explicit_ticker_binding(input: &str, token: &str) -> bool {
 fn is_common_theme_acronym(token: &str) -> bool {
     is_non_security_acronym(token)
         || matches!(token.to_ascii_uppercase().as_str(), "EV" | "AR" | "VR")
-}
-
-fn pure_short_broad_subject(input: &str, token: &str) -> bool {
-    let mut residual = input.to_ascii_lowercase();
-    residual = residual.replacen(&token.to_ascii_lowercase(), "", 1);
-    for marker in [
-        "行业",
-        "板块",
-        "产业链",
-        "技术路线",
-        "赛道",
-        "主题",
-        "怎么看",
-        "怎么样",
-        "如何",
-        "分析",
-        "研究",
-        "一下",
-        "sector",
-        "industry",
-    ] {
-        residual = residual.replace(marker, "");
-    }
-    !residual.chars().any(char::is_alphanumeric)
-}
-
-fn scheduled_request_has_security_context(input: &str) -> bool {
-    let normalized = input.to_ascii_lowercase();
-    [
-        "关键事件",
-        "重大事件",
-        "公司事件",
-        "股票",
-        "股价",
-        "行情",
-        "证券",
-        "财报",
-        "业绩",
-        "估值",
-        "持仓",
-        "ticker",
-        "stock",
-        "earnings",
-        "valuation",
-    ]
-    .iter()
-    .any(|marker| normalized.contains(marker))
 }
 
 fn should_run_entity_stage(input: &str, _origin: AgentTurnOrigin) -> bool {
@@ -7384,17 +8550,7 @@ fn portfolio_record_market_symbol(record: &Value) -> Option<String> {
     } else {
         record.get("symbol").and_then(Value::as_str)
     }?;
-    let symbol = raw.trim().trim_start_matches('$').to_ascii_uppercase();
-    if symbol.is_empty()
-        || symbol.len() > 15
-        || !symbol
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '.' | '-'))
-    {
-        None
-    } else {
-        Some(symbol)
-    }
+    normalize_security_identifier(raw)
 }
 
 fn normalized_portfolio_record(record: &Value) -> Value {
@@ -7435,7 +8591,7 @@ fn normalized_portfolio_snapshot(
         .iter()
         .filter_map(|mention| mention.explicit_symbol.as_deref())
         .map(str::to_ascii_uppercase)
-        .collect::<HashSet<_>>();
+        .collect::<Vec<_>>();
     let mut holdings = body
         .get("holdings")
         .and_then(Value::as_array)
@@ -7453,12 +8609,18 @@ fn normalized_portfolio_snapshot(
         .map(|record| normalized_portfolio_record(&record))
         .collect::<Vec<_>>();
     holdings.sort_by_key(|record| {
-        !portfolio_record_market_symbol(record)
-            .is_some_and(|symbol| requested_symbols.contains(&symbol))
+        !portfolio_record_market_symbol(record).is_some_and(|symbol| {
+            requested_symbols
+                .iter()
+                .any(|requested| provider_symbols_equivalent(requested, &symbol))
+        })
     });
     watchlist.sort_by_key(|record| {
-        !portfolio_record_market_symbol(record)
-            .is_some_and(|symbol| requested_symbols.contains(&symbol))
+        !portfolio_record_market_symbol(record).is_some_and(|symbol| {
+            requested_symbols
+                .iter()
+                .any(|requested| provider_symbols_equivalent(requested, &symbol))
+        })
     });
 
     let holdings_total = holdings.len();
@@ -7469,7 +8631,8 @@ fn normalized_portfolio_snapshot(
         let Some(symbol) = portfolio_record_market_symbol(record) else {
             continue;
         };
-        if seen_portfolio_symbols.insert(symbol.clone()) {
+        let key = provider_canonical_key(&symbol).unwrap_or_else(|| symbol.clone());
+        if seen_portfolio_symbols.insert(key) {
             portfolio_symbols.push(symbol);
         }
     }
@@ -7478,7 +8641,10 @@ fn normalized_portfolio_snapshot(
         .iter()
         .filter_map(|mention| mention.explicit_symbol.as_deref())
         .map(str::to_ascii_uppercase)
-        .filter(|symbol| seen_explicit_symbols.insert(symbol.clone()))
+        .filter(|symbol| {
+            seen_explicit_symbols
+                .insert(provider_canonical_key(symbol).unwrap_or_else(|| symbol.clone()))
+        })
         .collect::<Vec<_>>();
     let market_symbols_total = if explicit_symbols.is_empty() {
         portfolio_symbols.len()
@@ -7497,7 +8663,7 @@ fn normalized_portfolio_snapshot(
     let market_symbols_included = market_symbols.len();
     let market_symbols_omitted_count = market_symbols_total.saturating_sub(market_symbols_included);
     let market_symbols_truncated = market_symbols_omitted_count > 0;
-    let selected_symbols = market_symbols.iter().cloned().collect::<HashSet<_>>();
+    let selected_symbols = market_symbols.clone();
     let security_mentions = if explicit_symbols.is_empty() {
         market_symbols
             .iter()
@@ -7506,6 +8672,7 @@ fn normalized_portfolio_snapshot(
                 search_query: symbol.clone(),
                 explicit_symbol: Some(symbol.clone()),
                 tentative_symbol: true,
+                context: EntityMentionContext::default(),
             })
             .collect::<Vec<_>>()
     } else {
@@ -7515,7 +8682,12 @@ fn normalized_portfolio_snapshot(
             .filter(|mention| {
                 mention.explicit_symbol.as_deref().is_some_and(|symbol| {
                     let symbol = symbol.to_ascii_uppercase();
-                    selected_symbols.contains(&symbol) && seen.insert(symbol)
+                    selected_symbols
+                        .iter()
+                        .any(|selected| provider_symbols_equivalent(selected, &symbol))
+                        && seen.insert(
+                            provider_canonical_key(&symbol).unwrap_or_else(|| symbol.clone()),
+                        )
                 })
             })
             .cloned()
@@ -7527,10 +8699,14 @@ fn normalized_portfolio_snapshot(
             json!({
                 "symbol": symbol,
                 "in_holdings": holdings.iter().any(|record| {
-                    portfolio_record_market_symbol(record).as_deref() == Some(symbol.as_str())
+                    portfolio_record_market_symbol(record).is_some_and(|candidate| {
+                        provider_symbols_equivalent(symbol, &candidate)
+                    })
                 }),
                 "in_watchlist": watchlist.iter().any(|record| {
-                    portfolio_record_market_symbol(record).as_deref() == Some(symbol.as_str())
+                    portfolio_record_market_symbol(record).is_some_and(|candidate| {
+                        provider_symbols_equivalent(symbol, &candidate)
+                    })
                 }),
             })
         })
@@ -7591,6 +8767,12 @@ fn request_may_need_auxiliary_entity_extraction(input: &str) -> bool {
         return false;
     }
     let normalized = trimmed.to_ascii_lowercase();
+    if operational_request_has_no_named_security(&normalized) {
+        return false;
+    }
+    if technical_operational_request_has_no_security(&normalized) {
+        return false;
+    }
     if [
         "你好",
         "您好",
@@ -7744,9 +8926,127 @@ fn request_may_need_auxiliary_entity_extraction(input: &str) -> bool {
         return true;
     }
 
+    let embedded_proper_name = Regex::new(
+        r"(?:^|[^A-Za-z])[A-Z][A-Za-z.&]{1,39}(?:\s+[A-Z][A-Za-z.&]{1,39})+(?:$|[^A-Za-z])",
+    )
+    .expect("embedded proper company name regex");
+    if embedded_proper_name.is_match(trimmed) {
+        return true;
+    }
+    if Regex::new(r"(?i)(?:^|[^a-z])[a-z]{1,20}\s*&\s*[a-z]{1,20}(?:$|[^a-z])")
+        .expect("ampersand company name regex")
+        .is_match(trimmed)
+    {
+        return true;
+    }
+
     let capitalized_name = Regex::new(r"^[A-Z][A-Za-z.&]{1,39}(?:\s+[A-Z][A-Za-z.&]{1,39}){0,2}$")
         .expect("capitalized company name regex");
     capitalized_name.is_match(trimmed)
+}
+
+fn operational_request_has_no_named_security(normalized: &str) -> bool {
+    if ![
+        "定时",
+        "提醒",
+        "任务",
+        "scheduler",
+        "schedule",
+        "reminder",
+        "cron",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker))
+    {
+        return false;
+    }
+    let mut residual = normalized.to_string();
+    for grammar in [
+        "重新设置",
+        "重新配置",
+        "恢复",
+        "重设",
+        "设置",
+        "配置",
+        "创建",
+        "新增",
+        "开启",
+        "关闭",
+        "取消",
+        "删除",
+        "调整",
+        "修改",
+        "暂停",
+        "继续",
+        "全部",
+        "所有",
+        "我的",
+        "一下",
+        "帮我",
+        "请",
+        "定时任务",
+        "定时提醒",
+        "提醒任务",
+        "定时",
+        "提醒",
+        "任务",
+        "scheduler",
+        "schedule",
+        "reminders",
+        "reminder",
+        "cron",
+        "restore",
+        "please",
+        "all",
+        "the",
+        "my",
+    ] {
+        residual = residual.replace(grammar, "");
+    }
+    !residual.chars().any(|character| {
+        character.is_alphanumeric() || ('\u{4e00}'..='\u{9fff}').contains(&character)
+    })
+}
+
+fn technical_operational_request_has_no_security(normalized: &str) -> bool {
+    let operation = ["检查", "监控", "查看", "check", "monitor", "inspect"]
+        .iter()
+        .any(|marker| normalized.contains(marker));
+    let state = [
+        "状态",
+        "温度",
+        "健康",
+        "延迟",
+        "负载",
+        "可用性",
+        "status",
+        "temperature",
+        "health",
+        "latency",
+        "load",
+        "availability",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    let technical_object = [
+        "jvm",
+        "dns",
+        "cpu",
+        "gpu",
+        "ram",
+        "api",
+        "服务器",
+        "服务",
+        "接口",
+        "网络",
+        "系统",
+        "数据库",
+        "缓存",
+        "队列",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    operation && state && technical_object && !has_security_discussion_context(normalized)
 }
 
 fn complete_entity_extraction_with_auxiliary(
@@ -7885,14 +9185,18 @@ fn parse_entity_extraction_result(
             }
             let explicit_symbol = item
                 .explicit_symbol
-                .map(|s| s.trim().trim_start_matches('$').to_ascii_uppercase())
-                .filter(|s| !s.is_empty());
+                .and_then(|symbol| normalize_security_identifier(&symbol));
             let key = format!("{}|{}", mention.to_lowercase(), search_query.to_lowercase());
+            let source_span = grounded_mention_span(input, &mention);
             seen.insert(key).then_some(EntityMention {
                 mention,
                 search_query,
                 explicit_symbol,
                 tentative_symbol: false,
+                context: EntityMentionContext {
+                    source_span,
+                    ..EntityMentionContext::default()
+                },
             })
         })
         .collect();
@@ -7915,9 +9219,133 @@ fn parse_entity_extraction_result(
     })
 }
 
+fn grounded_mention_span(input: &str, mention: &str) -> Option<(usize, usize)> {
+    if mention.is_empty() {
+        return None;
+    }
+    let normalized_input = input.to_ascii_lowercase();
+    let normalized_mention = mention.to_ascii_lowercase();
+    normalized_input
+        .find(&normalized_mention)
+        .map(|start| (start, start + mention.len()))
+}
+
 #[cfg(test)]
 fn parse_entity_extraction(content: &str) -> Result<Vec<EntityMention>, serde_json::Error> {
     parse_entity_extraction_result(content, content).map(|parsed| parsed.entities)
+}
+
+fn numeric_probe_symbols(requested: &str, market_hint: Option<NumericMarketHint>) -> Vec<String> {
+    if !(3..=6).contains(&requested.len())
+        || !requested
+            .chars()
+            .all(|character| character.is_ascii_digit())
+    {
+        return Vec::new();
+    }
+    let mut suffixes: Vec<&str> = match market_hint {
+        Some(NumericMarketHint::HongKong) => vec!["HK"],
+        Some(NumericMarketHint::ChinaA) => vec!["SS", "SZ", "BJ"],
+        Some(NumericMarketHint::Shanghai) => vec!["SS"],
+        Some(NumericMarketHint::Shenzhen) => vec!["SZ"],
+        Some(NumericMarketHint::Beijing) => vec!["BJ"],
+        Some(NumericMarketHint::Japan) => vec!["T"],
+        Some(NumericMarketHint::Korea) => vec!["KS", "KQ"],
+        Some(NumericMarketHint::Taiwan) => vec!["TW", "TWO"],
+        None if requested.len() == 6 => vec!["SS", "SZ", "BJ", "KS", "KQ"],
+        None => vec!["HK", "T", "TW", "TWO", "KL", "SR", "JK", "BK"],
+    };
+    if requested.len() < 6 {
+        suffixes.retain(|suffix| !matches!(*suffix, "SS" | "SZ" | "BJ" | "KS" | "KQ"));
+    }
+    let mut candidates = Vec::new();
+    for suffix in suffixes {
+        let raw = format!("{requested}.{suffix}");
+        if let Some(canonical) = provider_canonical_key(&raw)
+            && !candidates.contains(&canonical)
+        {
+            candidates.push(canonical);
+        }
+    }
+    candidates
+}
+
+fn bounded_symbol_batches(symbols: &[String], max_bytes: usize) -> Vec<String> {
+    let max_bytes = max_bytes.max(1);
+    let mut batches = Vec::new();
+    let mut current = String::new();
+    for symbol in symbols {
+        let additional = symbol.len() + usize::from(!current.is_empty());
+        if !current.is_empty() && current.len() + additional > max_bytes {
+            batches.push(std::mem::take(&mut current));
+        }
+        if !current.is_empty() {
+            current.push(',');
+        }
+        current.push_str(symbol);
+    }
+    if !current.is_empty() {
+        batches.push(current);
+    }
+    batches
+}
+
+fn resolve_numeric_probe_result(mention: &EntityMention, probe: &Value) -> EntityMatch {
+    let Some(requested) = mention.explicit_symbol.as_deref() else {
+        return EntityMatch::Unresolved;
+    };
+    let allowed = numeric_probe_symbols(requested, mention.context.numeric_market_hint);
+    let asset_hint = mention.context.numeric_asset_hint;
+    let mut candidates = probe
+        .get("data")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(entity_candidate_from_value)
+        .filter(|candidate| {
+            allowed
+                .iter()
+                .any(|symbol| provider_symbols_equivalent(symbol, &candidate.symbol))
+        })
+        .filter(|candidate| {
+            let classified_index = candidate
+                .asset_type
+                .as_deref()
+                .is_some_and(|label| label.to_ascii_lowercase().contains("index"))
+                || candidate
+                    .exchange
+                    .as_deref()
+                    .is_some_and(|exchange| exchange.eq_ignore_ascii_case("INDEX"))
+                || candidate.name.to_ascii_lowercase().contains("index")
+                || candidate.name.contains("指数");
+            let classified_non_index = candidate.asset_type.as_deref().is_some_and(|label| {
+                ["stock", "fund", "etf", "crypto"]
+                    .iter()
+                    .any(|kind| label.to_ascii_lowercase().contains(kind))
+            }) || candidate.exchange.as_deref().is_some_and(
+                |exchange| !exchange.trim().is_empty() && !exchange.eq_ignore_ascii_case("INDEX"),
+            );
+            let index_state = if classified_index {
+                Some(true)
+            } else if classified_non_index {
+                Some(false)
+            } else {
+                None
+            };
+            match asset_hint {
+                Some(NumericAssetHint::Index) => index_state != Some(false),
+                Some(NumericAssetHint::Stock) => index_state != Some(true),
+                None => true,
+            }
+        })
+        .collect::<Vec<_>>();
+    candidates.sort_by(|left, right| left.symbol.cmp(&right.symbol));
+    candidates.dedup_by(|left, right| left.symbol.eq_ignore_ascii_case(&right.symbol));
+    match candidates.as_slice() {
+        [] => EntityMatch::Unresolved,
+        [candidate] => EntityMatch::Resolved(resolved_entity(mention, candidate.clone())),
+        _ => EntityMatch::Ambiguous(candidates),
+    }
 }
 
 fn resolve_entity_match(mention: &EntityMention, search: &Value) -> EntityMatch {
@@ -7932,11 +9360,17 @@ fn resolve_entity_match(mention: &EntityMention, search: &Value) -> EntityMatch 
         return EntityMatch::Unresolved;
     }
     if let Some(explicit_symbol) = mention.explicit_symbol.as_deref() {
-        return candidates
+        let mut exact = candidates
             .into_iter()
-            .find(|candidate| candidate.symbol.eq_ignore_ascii_case(explicit_symbol))
-            .map(|candidate| EntityMatch::Resolved(resolved_entity(mention, candidate)))
-            .unwrap_or(EntityMatch::Unresolved);
+            .filter(|candidate| provider_symbols_equivalent(explicit_symbol, &candidate.symbol))
+            .collect::<Vec<_>>();
+        exact.sort_by(|left, right| left.symbol.cmp(&right.symbol));
+        exact.dedup_by(|left, right| left.symbol.eq_ignore_ascii_case(&right.symbol));
+        return match exact.as_slice() {
+            [] => EntityMatch::Unresolved,
+            [candidate] => EntityMatch::Resolved(resolved_entity(mention, candidate.clone())),
+            _ => EntityMatch::Ambiguous(exact),
+        };
     }
     let mut scored = candidates
         .into_iter()
@@ -7956,6 +9390,40 @@ fn resolve_entity_match(mention: &EntityMention, search: &Value) -> EntityMatch 
         return EntityMatch::Ambiguous(tied);
     }
     EntityMatch::Resolved(resolved_entity(mention, tied[0].clone()))
+}
+
+fn reconcile_tentative_entity_match(
+    mention: &EntityMention,
+    exact_match: EntityMatch,
+    search: &Value,
+) -> Result<EntityMatch, String> {
+    let named_mention = EntityMention {
+        mention: mention.mention.clone(),
+        search_query: mention.mention.clone(),
+        explicit_symbol: None,
+        tentative_symbol: false,
+        context: EntityMentionContext {
+            identifier_kind: None,
+            ..mention.context.clone()
+        },
+    };
+    let named_match = resolve_entity_match(&named_mention, search);
+    match (&exact_match, named_match) {
+        (EntityMatch::Resolved(exact), EntityMatch::Resolved(named))
+            if !provider_symbols_equivalent(&exact.symbol, &named.symbol) =>
+        {
+            Err(format!(
+                "“{}”既可能是证券代码 {}，也可能是公司名 {}（{}）。请明确写 ticker，或补充公司全名。",
+                mention.mention, exact.symbol, named.name, named.symbol
+            ))
+        }
+        (EntityMatch::Resolved(_), EntityMatch::Resolved(named)) => {
+            Ok(EntityMatch::Resolved(named))
+        }
+        (EntityMatch::Unresolved, named @ EntityMatch::Resolved(_))
+        | (EntityMatch::Unresolved, named @ EntityMatch::Ambiguous(_)) => Ok(named),
+        _ => Ok(exact_match),
+    }
 }
 
 fn entity_candidate_from_value(value: &Value) -> Option<EntityCandidate> {
@@ -7991,14 +9459,18 @@ fn entity_candidate_from_value(value: &Value) -> Option<EntityCandidate> {
         .and_then(Value::as_str)
         .map(str::to_string)
         .or_else(|| {
-            value
+            let market = value
                 .get("exchangeShortName")
                 .or_else(|| value.get("stockExchange"))
                 .and_then(Value::as_str)
-                .filter(|market| {
-                    market.eq_ignore_ascii_case("CRYPTO") || market.eq_ignore_ascii_case("CCC")
-                })
-                .map(|_| "crypto".to_string())
+                .unwrap_or_default();
+            if market.eq_ignore_ascii_case("CRYPTO") || market.eq_ignore_ascii_case("CCC") {
+                Some("crypto".to_string())
+            } else if market.eq_ignore_ascii_case("INDEX") {
+                Some("index".to_string())
+            } else {
+                None
+            }
         });
     Some(EntityCandidate {
         symbol,
@@ -8012,16 +9484,16 @@ fn entity_candidate_from_value(value: &Value) -> Option<EntityCandidate> {
 fn entity_candidate_score(mention: &EntityMention, candidate: &EntityCandidate) -> u16 {
     let query = normalize_entity_text(&mention.search_query);
     let original = normalize_entity_text(&mention.mention);
-    let symbol = normalize_entity_text(&candidate.symbol);
     let name = normalize_entity_text(&candidate.name);
-    let base = if query == symbol || original == symbol {
+    // This branch resolves names/aliases only. Symbol equality is deliberately
+    // excluded: a company name such as "Ford" must not outrank Ford Motor
+    // merely because an unrelated security happens to use FORD as its ticker.
+    let base = if query == name || original == name {
         950
-    } else if query == name || original == name {
-        900
     } else if query.len() >= 3 && (name.contains(&query) || query.contains(&name)) {
-        800
+        850
     } else if original.len() >= 3 && (name.contains(&original) || original.contains(&name)) {
-        750
+        800
     } else {
         0
     };
@@ -8820,10 +10292,11 @@ fn bounded_evidence_json(value: &Value, max_chars: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        AssetEvidenceRoute, DeepAnalysisKind, EntityMatch, EntityMention,
-        InvestmentResponseContract, PORTFOLIO_MARKET_SYMBOL_LIMIT, ResolvedSecurityEntity,
-        UNTRUSTED_WEB_EVIDENCE_INSTRUCTION, VerifiedDatedSource, VerifiedFundHoldingFact,
-        asset_evidence_route, bounded_evidence_json, broad_analysis_kind,
+        AssetEvidenceRoute, DeepAnalysisKind, EntityMatch, EntityMention, EntityMentionContext,
+        InvestmentResponseContract, NumericAssetHint, NumericMarketHint,
+        PORTFOLIO_MARKET_SYMBOL_LIMIT, ResolvedSecurityEntity, UNTRUSTED_WEB_EVIDENCE_INSTRUCTION,
+        VerifiedDatedSource, VerifiedFundHoldingFact, apply_verified_index_route,
+        asset_evidence_route, bounded_evidence_json, bounded_symbol_batches, broad_analysis_kind,
         complete_entity_extraction_with_auxiliary, contract_failure_message,
         dated_market_searches_at, deterministic_sector_symbols,
         deterministic_ticker_scope_is_complete, enforce_server_data_time_prefix, entity_is_crypto,
@@ -8836,11 +10309,12 @@ mod tests {
         missing_deep_fund_sections, missing_deep_single_stock_sections,
         missing_investment_response_sections, normalized_company_financial_evidence,
         normalized_dated_event_evidence, normalized_fund_holdings_evidence,
-        normalized_portfolio_snapshot, parse_entity_extraction, parse_entity_extraction_result,
-        parse_representative_symbols, plain_ticker_mentions, portfolio_request_needs_market_data,
-        profile_without_conflicting_quote_fields, quote_has_positive_matching_price,
-        quote_timestamp_is_usable, request_may_need_auxiliary_entity_extraction,
-        resolve_entity_match, response_intent, response_requires_verified_price,
+        normalized_portfolio_snapshot, numeric_probe_symbols, parse_entity_extraction,
+        parse_entity_extraction_result, parse_representative_symbols, plain_ticker_mentions,
+        portfolio_request_needs_market_data, profile_without_conflicting_quote_fields,
+        quote_has_positive_matching_price, quote_timestamp_is_usable,
+        request_may_need_auxiliary_entity_extraction, resolve_entity_match,
+        resolve_numeric_probe_result, response_intent, response_requires_verified_price,
         set_verified_asset_type, should_fetch_earnings_calendar, should_run_entity_stage,
         text_contains_source_domain, ticker_mentions_cover_request,
         unsupported_financial_fact_claims, verified_dated_sources, verified_financial_facts,
@@ -8926,7 +10400,6 @@ mod tests {
             let entities = plain_ticker_mentions(input, AgentTurnOrigin::Interactive);
             assert_eq!(entities.len(), 1, "{input}");
             assert_eq!(entities[0].explicit_symbol.as_deref(), Some(symbol));
-            assert!(entities[0].tentative_symbol);
             assert!(
                 ticker_mentions_cover_request(input, &entities)
                     || deterministic_ticker_scope_is_complete(input, &entities),
@@ -8939,6 +10412,518 @@ mod tests {
                 plain_ticker_mentions(ordinary, AgentTurnOrigin::Interactive).is_empty(),
                 "an ordinary lowercase token is not enough to claim ticker intent: {ordinary}"
             );
+        }
+    }
+
+    #[test]
+    fn cross_market_identifier_families_are_deterministic_candidates() {
+        for (input, expected) in [
+            ("BRK.B现在价格", "BRK.B"),
+            ("BRK-B现在价格", "BRK-B"),
+            ("600519.SH现在价格", "600519.SH"),
+            ("600519.SS现在价格", "600519.SS"),
+            ("000001.SZ现在价格", "000001.SZ"),
+            ("0700.HK现在价格", "0700.HK"),
+            ("9988.HK现在价格", "9988.HK"),
+            ("7203.T现在价格", "7203.T"),
+            ("005930.KS现在价格", "005930.KS"),
+            ("SAN.MC现在价格", "SAN.MC"),
+            ("AAPL.US现在价格", "AAPL.US"),
+            ("^GSPC现在价格", "^GSPC"),
+            ("BTC-USD现在价格", "BTC-USD"),
+            ("BTC/USD现在价格", "BTC/USD"),
+        ] {
+            let mentions = plain_ticker_mentions(input, AgentTurnOrigin::Interactive);
+            assert_eq!(mentions.len(), 1, "{input}: {mentions:?}");
+            assert_eq!(mentions[0].explicit_symbol.as_deref(), Some(expected));
+            assert!(deterministic_ticker_scope_is_complete(input, &mentions));
+        }
+
+        let mentions = explicit_dollar_mentions("$AAPL. 然后 $0700.HK 与 $^GSPC");
+        assert_eq!(
+            mentions
+                .iter()
+                .filter_map(|mention| mention.explicit_symbol.as_deref())
+                .collect::<Vec<_>>(),
+            ["AAPL", "0700.HK", "^GSPC"]
+        );
+    }
+
+    #[test]
+    fn digit_leading_symbol_never_degrades_to_its_exchange_suffix() {
+        let mentions = plain_ticker_mentions("605259.SH现在价格", AgentTurnOrigin::Interactive);
+        assert_eq!(mentions.len(), 1, "{mentions:?}");
+        assert_eq!(mentions[0].explicit_symbol.as_deref(), Some("605259.SH"));
+        assert!(
+            !mentions
+                .iter()
+                .any(|mention| { mention.explicit_symbol.as_deref() == Some("SH") })
+        );
+
+        let unknown_suffix =
+            plain_ticker_mentions("605259.XY现在价格", AgentTurnOrigin::Interactive);
+        assert_eq!(unknown_suffix.len(), 1, "{unknown_suffix:?}");
+        assert_eq!(
+            unknown_suffix[0].explicit_symbol.as_deref(),
+            Some("605259.XY")
+        );
+        assert!(
+            !unknown_suffix
+                .iter()
+                .any(|mention| { mention.explicit_symbol.as_deref() == Some("XY") })
+        );
+    }
+
+    #[test]
+    fn provider_canonical_symbols_resolve_without_accepting_nearby_results() {
+        for (requested, provider_symbol) in [
+            ("BRK.B", "BRK-B"),
+            ("600519.SH", "600519.SS"),
+            ("700.HK", "0700.HK"),
+            ("09988.HK", "9988.HK"),
+            ("GSPC", "^GSPC"),
+            ("BTC-USD", "BTCUSD"),
+            ("BTC/USD", "BTCUSD"),
+        ] {
+            let mention = EntityMention {
+                mention: requested.into(),
+                search_query: requested.into(),
+                explicit_symbol: Some(requested.into()),
+                tentative_symbol: false,
+                context: EntityMentionContext::default(),
+            };
+            assert!(matches!(
+                resolve_entity_match(
+                    &mention,
+                    &json!({"data":[{"symbol":provider_symbol,"name":"Exact canonical"}]})
+                ),
+                EntityMatch::Resolved(entity) if entity.symbol == provider_symbol
+            ));
+        }
+
+        let a_share = EntityMention {
+            mention: "605259.SH".into(),
+            search_query: "605259.SH".into(),
+            explicit_symbol: Some("605259.SH".into()),
+            tentative_symbol: false,
+            context: EntityMentionContext::default(),
+        };
+        assert_eq!(
+            resolve_entity_match(
+                &a_share,
+                &json!({"data":[{"symbol":"SH","name":"ProShares Short S&P500"}]})
+            ),
+            EntityMatch::Unresolved
+        );
+    }
+
+    #[test]
+    fn bare_numeric_provider_matches_must_be_unique() {
+        let mention = EntityMention {
+            mention: "000001".into(),
+            search_query: "000001".into(),
+            explicit_symbol: Some("000001".into()),
+            tentative_symbol: false,
+            context: EntityMentionContext::default(),
+        };
+        let ranked_search = json!({"data":[
+            {"symbol":"000001.SS","name":"SSE Composite"}
+        ]});
+        assert_eq!(
+            resolve_entity_match(&mention, &ranked_search),
+            EntityMatch::Unresolved,
+            "a truncated ranked search can never prove a bare numeric identity"
+        );
+
+        let ambiguous_probe = json!({"data":[
+            {"symbol":"000001.SS","name":"SSE Composite Index","exchangeShortName":"INDEX"},
+            {"symbol":"000001.SZ","name":"Ping An Bank","exchangeShortName":"SHZ"}
+        ]});
+        assert!(matches!(
+            resolve_numeric_probe_result(&mention, &ambiguous_probe),
+            EntityMatch::Ambiguous(candidates) if candidates.len() == 2
+        ));
+        let mut stock_mention = mention.clone();
+        stock_mention.context.numeric_asset_hint = Some(NumericAssetHint::Stock);
+        assert!(matches!(
+            resolve_numeric_probe_result(&stock_mention, &ambiguous_probe),
+            EntityMatch::Resolved(entity) if entity.symbol == "000001.SZ"
+        ));
+        let mut index_mention = mention.clone();
+        index_mention.context.numeric_asset_hint = Some(NumericAssetHint::Index);
+        assert!(matches!(
+            resolve_numeric_probe_result(&index_mention, &ambiguous_probe),
+            EntityMatch::Resolved(entity) if entity.symbol == "000001.SS"
+        ));
+
+        assert_eq!(
+            numeric_probe_symbols("700", Some(NumericMarketHint::HongKong)),
+            ["0700.HK"]
+        );
+        assert!(numeric_probe_symbols("0700", None).contains(&"0700.HK".into()));
+        assert!(
+            !numeric_probe_symbols("0700", None)
+                .iter()
+                .any(|symbol| symbol == "000700.KS" || symbol == "000700.SZ")
+        );
+        assert_eq!(
+            numeric_probe_symbols("7203", Some(NumericMarketHint::Japan)),
+            ["7203.T"]
+        );
+        let many_symbols = (0..80)
+            .map(|index| format!("LONGSYMBOL{index:04}.EX"))
+            .collect::<Vec<_>>();
+        let batches = bounded_symbol_batches(&many_symbols, 400);
+        assert!(batches.len() > 1);
+        assert!(batches.iter().all(|batch| batch.len() <= 400));
+        assert_eq!(
+            batches
+                .iter()
+                .flat_map(|batch| batch.split(','))
+                .collect::<Vec<_>>(),
+            many_symbols.iter().map(String::as_str).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn numeric_literals_are_not_promoted_to_security_entities() {
+        for (input, origin, expected) in [
+            (
+                "AAPL目标价250怎么看",
+                AgentTurnOrigin::Interactive,
+                vec!["AAPL"],
+            ),
+            (
+                "RKLB 2026年财报",
+                AgentTurnOrigin::Interactive,
+                vec!["RKLB"],
+            ),
+            (
+                "每120分钟检查ASTS股价",
+                AgentTurnOrigin::Scheduled,
+                vec!["ASTS"],
+            ),
+            (
+                "AAPL涨到250美元怎么看",
+                AgentTurnOrigin::Interactive,
+                vec!["AAPL"],
+            ),
+        ] {
+            let symbols = plain_ticker_mentions(input, origin)
+                .into_iter()
+                .filter_map(|mention| mention.explicit_symbol)
+                .collect::<Vec<_>>();
+            assert_eq!(symbols, expected, "{input}");
+        }
+        assert!(explicit_dollar_mentions("预算是 $500").is_empty());
+        assert_eq!(
+            explicit_dollar_mentions("ticker: $500")
+                .into_iter()
+                .filter_map(|mention| mention.explicit_symbol)
+                .collect::<Vec<_>>(),
+            ["500"]
+        );
+        assert!(plain_ticker_mentions("2026年市场展望", AgentTurnOrigin::Interactive).is_empty());
+    }
+
+    #[test]
+    fn numeric_market_and_asset_hints_bind_per_mention_span() {
+        let mentions =
+            plain_ticker_mentions("比较港股700和日股7203怎么看", AgentTurnOrigin::Interactive);
+        assert_eq!(mentions.len(), 2, "{mentions:?}");
+        assert_eq!(
+            mentions
+                .iter()
+                .map(|mention| (
+                    mention.explicit_symbol.as_deref(),
+                    mention.context.numeric_market_hint,
+                ))
+                .collect::<Vec<_>>(),
+            [
+                (Some("700"), Some(NumericMarketHint::HongKong)),
+                (Some("7203"), Some(NumericMarketHint::Japan)),
+            ]
+        );
+
+        let business_context =
+            plain_ticker_mentions("600519的日本业务怎么看", AgentTurnOrigin::Interactive);
+        assert_eq!(business_context.len(), 1, "{business_context:?}");
+        assert_eq!(
+            business_context[0].explicit_symbol.as_deref(),
+            Some("600519")
+        );
+        assert_eq!(business_context[0].context.numeric_market_hint, None);
+        assert!(numeric_probe_symbols("600519", None).contains(&"600519.SS".into()));
+        assert!(!numeric_probe_symbols("600519", None).contains(&"600519.T".into()));
+
+        let same_code = plain_ticker_mentions(
+            "比较上证指数000001和股票000001",
+            AgentTurnOrigin::Interactive,
+        );
+        assert_eq!(same_code.len(), 2, "{same_code:?}");
+        assert_eq!(
+            same_code
+                .iter()
+                .map(|mention| mention.context.numeric_asset_hint)
+                .collect::<Vec<_>>(),
+            [Some(NumericAssetHint::Index), Some(NumericAssetHint::Stock)]
+        );
+    }
+
+    #[test]
+    fn company_names_and_ticker_connectors_keep_entity_boundaries() {
+        for named in [
+            "Rocket Lab stock price",
+            "General Motors stock price",
+            "Berkshire Hathaway stock price",
+            "AT&T stock price",
+            "Johnson & Johnson stock price",
+        ] {
+            assert!(
+                plain_ticker_mentions(named, AgentTurnOrigin::Interactive).is_empty(),
+                "{named}"
+            );
+            assert!(
+                request_may_need_auxiliary_entity_extraction(named),
+                "{named}"
+            );
+        }
+        assert_eq!(
+            plain_ticker_mentions("RKLB&NVDA现在价格", AgentTurnOrigin::Interactive)
+                .into_iter()
+                .filter_map(|mention| mention.explicit_symbol)
+                .collect::<Vec<_>>(),
+            ["RKLB", "NVDA"]
+        );
+
+        for input in ["compare AAPL and MSFT", "AAPL versus MSFT", "AAPL vs. MSFT"] {
+            assert_eq!(
+                plain_ticker_mentions(input, AgentTurnOrigin::Interactive)
+                    .into_iter()
+                    .filter_map(|mention| mention.explicit_symbol)
+                    .collect::<Vec<_>>(),
+                ["AAPL", "MSFT"],
+                "{input}"
+            );
+        }
+        for input in ["brand ABC", "sector GDP", "ABC orange"] {
+            assert!(
+                plain_ticker_mentions(input, AgentTurnOrigin::Interactive).is_empty(),
+                "{input}"
+            );
+        }
+        let outlook = plain_ticker_mentions("AAPL price and outlook", AgentTurnOrigin::Interactive);
+        assert!(deterministic_ticker_scope_is_complete(
+            "AAPL price and outlook",
+            &outlook
+        ));
+
+        let ford = plain_ticker_mentions("Ford stock price", AgentTurnOrigin::Interactive);
+        assert_eq!(ford.len(), 1, "{ford:?}");
+        assert_eq!(
+            ford[0].provenance(),
+            super::EntityMentionProvenance::TentativeCodeOrName
+        );
+        let exact = resolve_entity_match(
+            &ford[0],
+            &json!({"data":[{"symbol":"FORD","name":"Forward Industries"}]}),
+        );
+        let conflict = super::reconcile_tentative_entity_match(
+            &ford[0],
+            exact,
+            &json!({"data":[
+                {"symbol":"F","name":"Ford Motor Company","exchangeShortName":"NYSE"},
+                {"symbol":"FORD","name":"Forward Industries","exchangeShortName":"NASDAQ"}
+            ]}),
+        );
+        assert!(conflict.is_err(), "Ford must not silently resolve to FORD");
+    }
+
+    #[test]
+    fn operational_checks_and_scheduler_conditions_do_not_become_tickers() {
+        for input in ["检查 JVM 状态", "check DNS status", "监控 CPU 温度"] {
+            assert!(
+                plain_ticker_mentions(input, AgentTurnOrigin::Interactive).is_empty(),
+                "{input}"
+            );
+            assert!(
+                !request_may_need_auxiliary_entity_extraction(input),
+                "{input}"
+            );
+        }
+        for input in [
+            "监控 ASTS 的 FCC/NASA/PDUFA 事件",
+            "AAPL股价 BUY/HOLD/BULL CASE",
+        ] {
+            assert_eq!(
+                plain_ticker_mentions(input, AgentTurnOrigin::Scheduled)
+                    .into_iter()
+                    .filter_map(|mention| mention.explicit_symbol)
+                    .collect::<Vec<_>>(),
+                [if input.starts_with("监控") {
+                    "ASTS"
+                } else {
+                    "AAPL"
+                }],
+                "{input}"
+            );
+        }
+    }
+
+    #[test]
+    fn ordinary_ticker_punctuation_and_greeting_collisions_are_stable() {
+        for (input, symbol) in [
+            ("RKLB?", "RKLB"),
+            ("nbis？", "NBIS"),
+            ("RKLB.", "RKLB"),
+            ("brk.b", "BRK.B"),
+            ("btc-usd", "BTC-USD"),
+            ("san.mc", "SAN.MC"),
+            ("aapl.us", "AAPL.US"),
+            ("HI", "HI"),
+            ("ticker HI", "HI"),
+            ("HI股价", "HI"),
+        ] {
+            let mentions = plain_ticker_mentions(input, AgentTurnOrigin::Interactive);
+            assert_eq!(mentions.len(), 1, "{input}: {mentions:?}");
+            assert_eq!(
+                mentions[0].explicit_symbol.as_deref(),
+                Some(symbol),
+                "{input}"
+            );
+        }
+        assert!(plain_ticker_mentions("hi", AgentTurnOrigin::Interactive).is_empty());
+        assert!(plain_ticker_mentions("plan-B", AgentTurnOrigin::Interactive).is_empty());
+    }
+
+    #[test]
+    fn collision_policy_accepts_real_short_tickers_only_with_strong_binding() {
+        for (input, expected) in [
+            ("AI股价", "AI"),
+            ("API股票代码最新价", "API"),
+            ("ticker: PEG", "PEG"),
+            ("股票代码 ARR", "ARR"),
+            ("NOW stock price", "NOW"),
+            ("IT股价", "IT"),
+            ("ARM股票怎么看", "ARM"),
+            ("BE能买吗", "BE"),
+            ("LITE现价", "LITE"),
+            ("ARM最近怎么样", "ARM"),
+            ("NOW最近怎么样", "NOW"),
+            ("AI最近怎么样", "AI"),
+            ("How is ARM doing?", "ARM"),
+            ("F最近怎么样", "F"),
+            ("How is T doing?", "T"),
+        ] {
+            let mentions = plain_ticker_mentions(input, AgentTurnOrigin::Interactive);
+            assert_eq!(mentions.len(), 1, "{input}: {mentions:?}");
+            assert_eq!(mentions[0].explicit_symbol.as_deref(), Some(expected));
+        }
+        for exact in ["AI", "API", "NOW", "IT", "ARM", "BE"] {
+            let mentions = plain_ticker_mentions(exact, AgentTurnOrigin::Interactive);
+            assert_eq!(mentions.len(), 1, "{exact}: {mentions:?}");
+        }
+
+        for input in [
+            "AI行业未来怎么看",
+            "看 API 状态",
+            "PEG 怎么算",
+            "ARM architecture",
+            "how is it doing?",
+            "is now a good buy?",
+            "what should I buy today?",
+            "同业存单AAA",
+            "REPEAT=daily",
+            "THANKS FOR THE UPDATE",
+            "请打开 https://example.com",
+            "请阅读 README.md",
+            "email x@example.com",
+            "vitamin-C is useful",
+            "plan-B",
+            "grade-A",
+        ] {
+            let mentions = plain_ticker_mentions(input, AgentTurnOrigin::Interactive);
+            assert!(mentions.is_empty(), "{input}: {mentions:?}");
+        }
+
+        for (input, expected) in [
+            ("What is AAPL stock price?", "AAPL"),
+            ("AAPL股价和PE", "AAPL"),
+            ("RKLB股价和EPS", "RKLB"),
+        ] {
+            let mentions = plain_ticker_mentions(input, AgentTurnOrigin::Interactive);
+            assert_eq!(
+                mentions
+                    .iter()
+                    .filter_map(|mention| mention.explicit_symbol.as_deref())
+                    .collect::<Vec<_>>(),
+                [expected],
+                "{input}: {mentions:?}"
+            );
+        }
+        let scheduled = plain_ticker_mentions(
+            "检查 ASTS 股价，只在 FDA NEWS 出现时提醒",
+            AgentTurnOrigin::Scheduled,
+        );
+        assert_eq!(
+            scheduled
+                .iter()
+                .filter_map(|mention| mention.explicit_symbol.as_deref())
+                .collect::<Vec<_>>(),
+            ["ASTS"]
+        );
+    }
+
+    #[test]
+    fn named_comparison_peers_prevent_the_exact_ticker_fast_path() {
+        for input in [
+            "RKLB 和英伟达",
+            "RKLB 跟 Nvidia",
+            "RKLB or Nvidia",
+            "RKLB / Nvidia",
+            "RKLB还有微软",
+            "RKLB、Nvidia",
+            "RKLB & Nvidia",
+            "RKLB plus Nvidia",
+        ] {
+            let mentions = plain_ticker_mentions(input, AgentTurnOrigin::Interactive);
+            assert_eq!(mentions.len(), 1, "{input}: {mentions:?}");
+            assert!(
+                !deterministic_ticker_scope_is_complete(input, &mentions),
+                "{input}"
+            );
+        }
+        let all_tickers = plain_ticker_mentions("RKLB/NVDA现在价格", AgentTurnOrigin::Interactive);
+        assert_eq!(
+            all_tickers
+                .iter()
+                .filter_map(|mention| mention.explicit_symbol.as_deref())
+                .collect::<Vec<_>>(),
+            ["RKLB", "NVDA"]
+        );
+        assert!(deterministic_ticker_scope_is_complete(
+            "RKLB/NVDA现在价格",
+            &all_tickers
+        ));
+        let single =
+            plain_ticker_mentions("RKLB结合财报和指引怎么看", AgentTurnOrigin::Interactive);
+        assert_eq!(single.len(), 1, "{single:?}");
+        assert!(deterministic_ticker_scope_is_complete(
+            "RKLB结合财报和指引怎么看",
+            &single
+        ));
+
+        for input in [
+            "600519.SH/NVDA现在价格",
+            "BRK-B/NVDA现在价格",
+            "BTC-USD/ETH-USD现在价格",
+            "$BRK.B/NVDA现在价格",
+        ] {
+            let merged = super::merge_entity_mentions(
+                explicit_dollar_mentions(input),
+                plain_ticker_mentions(input, AgentTurnOrigin::Interactive),
+            );
+            assert_eq!(merged.len(), 2, "{input}: {merged:?}");
         }
     }
 
@@ -8982,12 +10967,14 @@ mod tests {
             search_query: "RKLB".into(),
             explicit_symbol: Some("RKLB".into()),
             tentative_symbol: true,
+            context: EntityMentionContext::default(),
         }];
         let auxiliary = vec![EntityMention {
             mention: "RKLB".into(),
             search_query: "Rocket Lab USA Inc".into(),
             explicit_symbol: Some("RKLB".into()),
             tentative_symbol: false,
+            context: EntityMentionContext::default(),
         }];
         let merged = complete_entity_extraction_with_auxiliary(
             "RKLB 推荐的安全区间",
@@ -9011,12 +10998,14 @@ mod tests {
                 search_query: "Microsoft Corporation".to_string(),
                 explicit_symbol: Some("MSFT".to_string()),
                 tentative_symbol: false,
+                context: EntityMentionContext::default(),
             },
             EntityMention {
                 mention: "GOOG".to_string(),
                 search_query: "Alphabet Inc.".to_string(),
                 explicit_symbol: Some("GOOG".to_string()),
                 tentative_symbol: false,
+                context: EntityMentionContext::default(),
             },
         ];
 
@@ -9044,10 +11033,8 @@ mod tests {
             "US market today",
             "S&P 500指数怎么看",
         ] {
-            assert!(
-                plain_ticker_mentions(input, AgentTurnOrigin::Interactive).is_empty(),
-                "{input}"
-            );
+            let mentions = plain_ticker_mentions(input, AgentTurnOrigin::Interactive);
+            assert!(mentions.is_empty(), "{input}: {mentions:?}");
         }
         assert_eq!(
             broad_analysis_kind("A股怎么看"),
@@ -9065,13 +11052,11 @@ mod tests {
             broad_analysis_kind("S&P 500指数怎么看"),
             Some(DeepAnalysisKind::Market)
         );
-        assert!(
-            plain_ticker_mentions(
-                "REPEAT=30m，检查 API 状态后生成 AI 主题摘要",
-                AgentTurnOrigin::Scheduled,
-            )
-            .is_empty()
+        let scheduled = plain_ticker_mentions(
+            "REPEAT=30m，检查 API 状态后生成 AI 主题摘要",
+            AgentTurnOrigin::Scheduled,
         );
+        assert!(scheduled.is_empty(), "{scheduled:?}");
     }
 
     #[test]
@@ -9147,6 +11132,20 @@ mod tests {
                 "{generic}"
             );
         }
+        for operational in [
+            "重新设置定时提醒",
+            "恢复所有提醒任务",
+            "取消我的定时任务",
+            "please restore my reminders",
+        ] {
+            assert!(
+                !request_may_need_auxiliary_entity_extraction(operational),
+                "{operational}"
+            );
+        }
+        assert!(request_may_need_auxiliary_entity_extraction(
+            "重新设置英伟达定时提醒"
+        ));
         let confirmed_empty =
             complete_entity_extraction_with_auxiliary("英伟达", Vec::new(), Vec::new())
                 .expect("valid empty extraction is distinct from provider unavailability");
@@ -9192,6 +11191,7 @@ mod tests {
             search_query: "NBIS".into(),
             explicit_symbol: Some("NBIS".into()),
             tentative_symbol: true,
+            context: EntityMentionContext::default(),
         }];
         let snapshot = normalized_portfolio_snapshot(
             &json!({"portfolio":{"holdings":holdings.clone(),"watchlist":[]}}),
@@ -9238,6 +11238,44 @@ mod tests {
             PORTFOLIO_MARKET_SYMBOL_LIMIT
         );
         assert!(broad_snapshot.value.to_string().chars().count() <= 1_200);
+    }
+
+    #[test]
+    fn portfolio_membership_uses_provider_canonical_symbol_identity() {
+        let explicit = ["BRK.B", "600519.SH", "700.HK"]
+            .into_iter()
+            .map(|symbol| EntityMention {
+                mention: symbol.into(),
+                search_query: symbol.into(),
+                explicit_symbol: Some(symbol.into()),
+                tentative_symbol: false,
+                context: EntityMentionContext::default(),
+            })
+            .collect::<Vec<_>>();
+        let snapshot = normalized_portfolio_snapshot(
+            &json!({"portfolio": {
+                "holdings": [
+                    {"symbol":"BRK-B","asset_type":"stock"},
+                    {"symbol":"BRK.B","asset_type":"stock"},
+                    {"symbol":"600519.SS","asset_type":"stock"}
+                ],
+                "watchlist": [{"symbol":"0700.HK","asset_type":"stock"}]
+            }}),
+            &explicit,
+            6_000,
+        );
+        assert_eq!(snapshot.value["portfolio_security_symbols_total"], 3);
+        assert_eq!(snapshot.value["market_symbols_total"], 3);
+        for membership in snapshot.value["requested_symbol_membership"]
+            .as_array()
+            .expect("membership array")
+        {
+            assert!(
+                membership["in_holdings"].as_bool() == Some(true)
+                    || membership["in_watchlist"].as_bool() == Some(true),
+                "{membership}"
+            );
+        }
     }
 
     #[test]
@@ -9294,6 +11332,7 @@ mod tests {
             search_query: "NBIS".into(),
             explicit_symbol: Some("NBIS".into()),
             tentative_symbol: false,
+            context: EntityMentionContext::default(),
         };
         assert!(matches!(
             resolve_entity_match(&mention, &json!({"data":[{"symbol":"NBIS","name":"Nebius Group N.V."}]})),
@@ -9315,6 +11354,7 @@ mod tests {
             search_query: "RKLB".into(),
             explicit_symbol: Some("RKLB".into()),
             tentative_symbol: true,
+            context: EntityMentionContext::default(),
         };
         let derivative_only = json!({"data":[
             {"symbol":"RKLX","name":"Daily Target 2X Long RKLB ETF"},
@@ -9350,6 +11390,7 @@ mod tests {
             search_query: "NVIDIA".into(),
             explicit_symbol: None,
             tentative_symbol: false,
+            context: EntityMentionContext::default(),
         };
         assert!(matches!(
             resolve_entity_match(&mention, &json!({"data":[
@@ -9367,6 +11408,7 @@ mod tests {
             search_query: "Alphabet".into(),
             explicit_symbol: None,
             tentative_symbol: false,
+            context: EntityMentionContext::default(),
         };
         let result = resolve_entity_match(
             &mention,
@@ -9900,6 +11942,7 @@ mod tests {
             search_query: "BTCUSD".into(),
             explicit_symbol: Some("BTCUSD".into()),
             tentative_symbol: true,
+            context: EntityMentionContext::default(),
         };
         let resolved = resolve_entity_match(
             &mention,
@@ -10734,6 +12777,52 @@ mod tests {
             "reasoning... {\"symbols\":[\"rmbs\",\"NVDA\",\"bad ticker!\",\"TOO-LONG-SYMBOL\"]}",
         );
         assert_eq!(symbols, vec!["RMBS", "NVDA"]);
+    }
+
+    #[test]
+    fn explicit_index_keeps_market_template_and_mixed_comparison_index_rules() {
+        let mut index = entities(&["^GSPC"]).remove(0);
+        index.exchange = Some("INDEX".into());
+        index.asset_type = Some("index".into());
+        let mut single = InvestmentResponseContract {
+            entities: vec![index.clone()],
+            verified_web_sources: Vec::new(),
+            verified_dated_web_sources: Vec::new(),
+            deep_analysis: DeepAnalysisKind::Equity,
+            deep_comparison: false,
+            requires_verified_price: true,
+            needs_outlook_evidence: false,
+            requires_recent_web_evidence: true,
+            comparison: false,
+            origin: AgentTurnOrigin::Interactive,
+        };
+        apply_verified_index_route(&mut single, 0);
+        assert_eq!(single.deep_analysis, DeepAnalysisKind::Market);
+        assert!(!single.requires_recent_web_evidence);
+        assert!(single.entities[0].profile_verified);
+        assert!(single.enforcement_block().contains("五个编号章节"));
+
+        let mut comparison_entities = vec![index, entities(&["NVDA"]).remove(0)];
+        comparison_entities[1].profile_verified = true;
+        let mixed = InvestmentResponseContract {
+            entities: comparison_entities,
+            verified_web_sources: Vec::new(),
+            verified_dated_web_sources: Vec::new(),
+            deep_analysis: DeepAnalysisKind::None,
+            deep_comparison: true,
+            requires_verified_price: true,
+            needs_outlook_evidence: false,
+            requires_recent_web_evidence: false,
+            comparison: true,
+            origin: AgentTurnOrigin::Interactive,
+        };
+        let enforcement = mixed.enforcement_block();
+        assert!(enforcement.contains("指数只使用同代码行情与指数口径"));
+        let wrong_index_scope = "数据时间：北京时间 2026-07-17。比较结论：已核验事实与推断分开。\n### ^GSPC\n当前价 100 USD；财务与估值如下。\n### NVDA\n当前价 100 USD；公司财务与商业模式、估值如下。\n风险与证伪条件。动作建议与触发条件。";
+        assert!(
+            missing_investment_response_sections(&mixed, wrong_index_scope)
+                .contains(&"指数小节证据口径")
+        );
     }
 
     #[test]

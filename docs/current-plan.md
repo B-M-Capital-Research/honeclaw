@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-07-17
-状态：有 6 个活跃任务
+状态：有 7 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **跨市场 ticker 解析架构修复**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/ticker-resolution-architecture.md`
+  - 摘要：系统审计并统一修复普通美股、缩写冲突、share class、数字开头国际代码、交易所后缀和指数/加密代码的提取、规范化、DataFetch 精确解析与失败语义，避免逐 ticker 打补丁
 
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`
