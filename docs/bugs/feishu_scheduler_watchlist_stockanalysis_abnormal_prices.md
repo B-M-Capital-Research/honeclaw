@@ -22,6 +22,17 @@
 
 ## 最新进展
 
+- 本轮 2026-07-18 03:00 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-17`
+    - 15:30-19:00 CST 对应本轮 23:30-03:00 CST 巡检窗口，heartbeat raw / deliver preview 继续使用 `SNDK $1,411.08`、`STX ~$732`、`LITE ~$695`、`AAOI ~$98.43`、`TSLA ~$388.65` 等高风险行情锚进入持仓 / 存储 / AI 科技监控判断。
+    - `美股黄金坑信号心跳检测` raw preview 继续使用 `SPY $750.72`、`QQQ $705.94` 作为回撤、均线和触发判断基准。
+    - `Cerebras IPO与业务进展心跳监控` raw / deliver preview 继续出现高风险行情锚和市场口径混用，需与 IPO 语境和真实行情源分开核验。
+  - `data/sessions.sqlite3`
+    - 同窗有 13 条 user / 12 条 assistant，近期 direct / scheduler session 均以 assistant 收口；未见错投、投递失败、空回复、敏感信息外泄或全渠道不可用。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check 缺口：异常或高风险数量级价格进入 heartbeat 判断上下文和用户可见 preview。
+    - 本窗没有错投、投递失败、空回复、数据破坏或全渠道不可用；因此仍按质量性 `P3 / New`。该问题不影响主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-17 19:02 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-17`
     - 15:30 CST `持仓财报与重大新闻心跳提醒` raw / deliver preview 继续使用 `SNDK 常规时段收盘 $1,411.08`、盘后 `$1,366` 作为行情锚。

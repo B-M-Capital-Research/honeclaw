@@ -8,6 +8,16 @@
 
 ## 复发记录（2026-07-17 19:02 CST）
 
+- 运行态在新一轮跨市场 ticker 解析修复后继续复发，状态维持 `New`：
+  - 本轮巡检窗口为 `2026-07-17 23:00-2026-07-18 03:00 CST`。
+  - `data/sessions.sqlite3` 同窗新增 13 条 user / 12 条 assistant，近期 session 均以 assistant 收口，`last_message_role=user` 为 0；assistant final 污染扫描未命中空回复、`<think>`、本机路径、SQLite、panic、provider 原始错误、raw tool、`data_fetch`、`cron_job` 或 fenced JSON。
+  - 最近非文档提交 `4d419770 fix(investment): unify cross-market ticker resolution` 发生在 2026-07-17 23:50 CST；该提交后仍有真实用户可见失败样本：
+    - 2026-07-18 00:00 CST，Feishu scheduler actor session `Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b` 的 `AAOI 每日动态监控` 和 `TEM 每日动态监控` 仍返回“证券实体解析暂时未能确认当前点名的公司”，同一串内 `RKLB` 可正常核验，说明不是全链路停摆。
+    - 2026-07-18 02:53-02:56 CST，Web direct session `Actor_web__direct__web-user-266454c88ed6` 用户连续输入 `clbk 的基本面扫描`、`CLBK是家什么公司`、`COLUMBIA FINANCIAL`，assistant 三次只返回证券实体解析失败，没有给出候选、澄清或业务解释。
+  - `data/runtime/logs/web.log.2026-07-17` 同窗仍有 62 条 heartbeat `runner_error`、49 条定时任务执行失败与 60 条“证券实体解析暂时未能确认”信号，代表 ORCL、ASTS、TSLA、Monitor_Watchlist_11 等 heartbeat 继续被同类 guard / resolver 阻断。
+  - 判断：新提交对部分跨市场 / regression ticker 有止血，但 scheduler heartbeat 与普通用户 direct 对显式 ticker / 公司名仍会 fail-closed，仍是同一实体 guard / resolver 链路，不新建重复缺陷。
+  - 严重等级维持 `P2`：问题直接阻断部分投研 direct / scheduler 正文生成，但同窗仍有 RKLB 与多条 heartbeat 成功收口，未见错投、数据破坏、敏感信息泄露或全渠道停摆，因此不是 `P1`，不创建 GitHub Issue。
+
 - 运行态在投研相关修复后部分止血但仍复发，状态维持 `New`：
   - 本轮巡检窗口为 `2026-07-17 15:01-19:02 CST`。
   - `data/sessions.sqlite3` 同窗新增 8 条 user / 9 条 assistant，全部以 assistant 收口；未见长期 user-only 悬挂、错投、空回复、内部路径 / raw tool / `<think>` 外泄或全渠道不可用。

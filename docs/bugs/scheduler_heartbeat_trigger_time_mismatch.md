@@ -8,6 +8,14 @@
 
 ## 最新进展
 
+- 本轮 `2026-07-17 23:00-2026-07-18 03:00 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-17`
+    - 19:00 CST 日志窗口内 `heartbeat_绿田机械基本面跟踪` deliver preview 写成 `ProShares - Short S&P500（SH；AMEX）`，而任务主体仍是绿田机械 `605259.SH`，说明任务主体 / 标的解析继续漂移。
+    - 16:00-19:00 CST 多条存储 / 持仓 heartbeat 继续混用旧行情时间、服务端核验时间和执行时间，例如 `存储板块关键事件心跳提醒` raw preview 写 `北京时间 2026-07-17 20:00`，晚于真实日志窗口；部分 deliver 又把 17:30 / 18:30 窗口写成 17:00、22:30 或盘前口径。
+    - 同窗 raw preview 仍可见模型基于旧 reminder、quote timestamp 或错误当前时间进行 noop / triggered 判断，而不是统一使用 scheduler 权威触发时间。
+  - 会话质量对照：同窗 `data/sessions.sqlite3` 新增 13 条 user / 12 条 assistant，全部以 assistant 收口；未见同类时间口径错误进入 ordinary direct assistant final。
+  - 判断：这些样本仍是 heartbeat 运行态时间上下文 / 任务上下文漂移，主要影响触发判断质量与用户可见时间口径可信度；没有错投、全渠道不可用或敏感信息泄露，维持质量性 `P3 / New`，非 P1。
+
 - 本轮 `2026-07-17 15:01-19:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-17`
     - 17:30 CST `SIVE POET/Nokia/1.6T DFB 心跳检测` deliver preview 把真实 17:30 CST 写成 `北京时间 2026-07-17 19:00`，并把美东口径写成 `07/17 09:30（盘前）`，与日志窗口不一致。

@@ -7,6 +7,14 @@
 
 ## 最新进展
 
+- `2026-07-17 23:00-2026-07-18 03:00 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-17`
+    - 同窗有 55 条 heartbeat `deliver_preview`、196 条 raw `<think>` 与 25 条 fenced JSON 信号。
+    - 2026-07-18 00:00 CST 前后，`AI与科技持仓观察关键事件心跳提醒` 的用户可见 preview 仍以 fenced JSON 开头，包含 `status`、`event`、`BE`、`STX`、`LITE`、`AAOI`、`TSLA` 等结构化字段和行情项，而不是产品化自然语言提醒。
+    - 多条 heartbeat raw preview 仍以 `<think>` 后接 fenced JSON 或裸协议状态收口，例如 `JsonNoop` / `PlainTextTriggered` 路径继续依赖解析器从自由文本尾部提取状态。
+  - 会话质量对照：同窗 `data/sessions.sqlite3` 新增 13 条 user / 12 条 assistant，未确认 JSON 载荷进入 ordinary direct assistant final；未见错投、全渠道不可用或数据安全证据。
+  - 判断：这些样本说明缺陷仍是 heartbeat 出站格式化退化；当前没有主功能链路阻断，主要影响提醒格式质量，因此维持质量性 `P3 / New`，非 P1。
+
 - `2026-07-17 15:01-19:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-17`
     - 同窗有 49 条 heartbeat `deliver_preview`，其中 15:30 CST `小米30港元破位预警`、16:00 CST `AI与科技持仓观察关键事件心跳提醒`、17:00 CST `小米30港元破位预警`、18:00 CST `ORCL 大事件监控`、18:30 CST `RKLB异动监控`、19:00 CST `小米30港元破位预警` 的用户可见 preview 仍以 fenced JSON 开头。
