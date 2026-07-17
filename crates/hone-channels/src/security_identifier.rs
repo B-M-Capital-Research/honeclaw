@@ -586,6 +586,18 @@ mod tests {
     }
 
     #[test]
+    fn scanner_keeps_bare_ticker_before_chinese_heartbeat_suffix() {
+        let found = scan_security_identifiers("ORCL 大事件监控");
+        assert_eq!(
+            found
+                .iter()
+                .map(|identifier| identifier.normalized.as_str())
+                .collect::<Vec<_>>(),
+            ["ORCL"]
+        );
+    }
+
+    #[test]
     fn syntactically_valid_exchange_suffixes_are_preserved_for_exact_lookup() {
         for symbol in ["SAN.MC", "TEF.MC", "EDP.LS", "DELTA.BK", "NICE.TA"] {
             assert_eq!(

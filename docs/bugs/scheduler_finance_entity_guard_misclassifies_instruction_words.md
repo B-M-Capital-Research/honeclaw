@@ -3,8 +3,23 @@
 - **发现时间**: 2026-07-15 19:02 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无，当前不是 P1。
+
+## 代码级修复（2026-07-17 23:59 CST）
+
+- 本轮在 `crates/hone-channels/src/investment_response_guard.rs` 收紧了 heartbeat / scheduler 任务名的证券语境识别：
+  - `大事件`、`异动`、`触发条件`、`心跳监控`、`心跳检测`、`破位预警`、`价格播报` 现在会被视为有效的证券讨论上下文，`ORCL 大事件监控`、`TSLA 正负触发条件心跳监控`、`ASTS 重大异动心跳监控`、`光迅科技 002281.SZ 关键事件心跳提醒` 这类任务名不再因为缺少 `股价/股票/报价` 等字样而把显式 ticker 丢掉。
+  - 同一批 heartbeat 任务词也加入 `request_may_need_auxiliary_entity_extraction(...)` 的 generic 清洗词表，避免这类已含显式 ticker 的非交互任务再被误判成“必须走辅助实体抽取”。
+- 新增回归：
+  - `security_identifier::tests::scanner_keeps_bare_ticker_before_chinese_heartbeat_suffix`
+  - `investment_response_guard::tests::heartbeat_subject_markers_count_as_security_context`
+- 验证通过：
+  - `cargo test -p hone-channels scanner_keeps_bare_ticker_before_chinese_heartbeat_suffix --lib -- --nocapture`
+  - `cargo test -p hone-channels scheduled_ticker_subject_is_available_without_parsing_the_envelope --lib -- --nocapture`
+  - `cargo test -p hone-channels heartbeat_subject_markers_count_as_security_context --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+- 当前先按代码级 `Fixed` 记录。本轮没有重启 live 服务，`2026-07-17` 之后的真实运行态是否完全止血，仍需后续巡检窗口复核；若 heartbeat 继续把显式 ticker 任务落成“证券实体解析暂时未能确认”，应基于新样本重新回退。
 
 ## 复发记录（2026-07-17 19:02 CST）
 

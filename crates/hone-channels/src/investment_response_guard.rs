@@ -7511,6 +7511,13 @@ fn has_security_discussion_context(normalized: &str) -> bool {
         "查不到",
         "关键事件",
         "重大事件",
+        "大事件",
+        "异动",
+        "触发条件",
+        "心跳监控",
+        "心跳检测",
+        "破位预警",
+        "价格播报",
         "ticker",
         "symbol",
         "stock price",
@@ -7549,6 +7556,13 @@ fn identifier_has_direct_market_binding(input: &str, start: usize, end: usize) -
                 "业绩",
                 "关键事件",
                 "重大事件",
+                "大事件",
+                "异动",
+                "触发条件",
+                "心跳监控",
+                "心跳检测",
+                "破位预警",
+                "价格播报",
                 "事件",
                 "earnings",
                 "news",
@@ -7575,6 +7589,15 @@ fn identifier_has_direct_market_binding(input: &str, start: usize, end: usize) -
                     "值得买吗",
                     "值得买",
                     "安全区间",
+                    "关键事件",
+                    "重大事件",
+                    "大事件",
+                    "异动",
+                    "触发条件",
+                    "心跳监控",
+                    "心跳检测",
+                    "破位预警",
+                    "价格播报",
                     "跌了多少",
                     "跌多少",
                     "涨了多少",
@@ -8812,6 +8835,15 @@ fn request_may_need_auxiliary_entity_extraction(input: &str) -> bool {
         "状态",
         "生成",
         "摘要",
+        "关键事件",
+        "重大事件",
+        "大事件",
+        "异动",
+        "触发条件",
+        "心跳监控",
+        "心跳检测",
+        "破位预警",
+        "价格播报",
         "主题",
         "行业",
         "板块",
@@ -11284,6 +11316,30 @@ mod tests {
         let entities = plain_ticker_mentions(input, AgentTurnOrigin::Scheduled);
         assert_eq!(entities.len(), 1);
         assert_eq!(entities[0].explicit_symbol.as_deref(), Some("NBIS"));
+    }
+
+    #[test]
+    fn heartbeat_subject_markers_count_as_security_context() {
+        for (input, expected) in [
+            ("ORCL 大事件监控", vec!["ORCL"]),
+            ("TSLA 正负触发条件心跳监控", vec!["TSLA"]),
+            ("ASTS 重大异动心跳监控", vec!["ASTS"]),
+            ("光迅科技 002281.SZ 关键事件心跳提醒", vec!["002281.SZ"]),
+        ] {
+            let mentions = plain_ticker_mentions(input, AgentTurnOrigin::Heartbeat);
+            assert_eq!(
+                mentions
+                    .iter()
+                    .filter_map(|mention| mention.explicit_symbol.as_deref())
+                    .collect::<Vec<_>>(),
+                expected,
+                "{input}: {mentions:?}"
+            );
+            assert!(
+                deterministic_ticker_scope_is_complete(input, &mentions),
+                "{input}: {mentions:?}"
+            );
+        }
     }
 
     #[test]
