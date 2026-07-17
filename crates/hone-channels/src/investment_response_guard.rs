@@ -4964,11 +4964,19 @@ fn extended_claim_local_prefix(fragment: &str, marker_start: usize) -> &str {
             !(previous_is_digit && next_is_digit)
         })
         .map_or(0, |(index, character)| index + character.len_utf8());
-    let conjunction_start = ["但是", "但", " but ", " however "]
-        .iter()
-        .filter_map(|delimiter| prefix.rfind(delimiter).map(|index| index + delimiter.len()))
-        .max()
-        .unwrap_or(0);
+    let conjunction_start = [
+        "但是",
+        "但",
+        "而",
+        " but ",
+        " however ",
+        " while ",
+        " whereas ",
+    ]
+    .iter()
+    .filter_map(|delimiter| prefix.rfind(delimiter).map(|index| index + delimiter.len()))
+    .max()
+    .unwrap_or(0);
     let semantic_start = punctuation_start.max(conjunction_start);
     let local = &prefix[semantic_start..];
     let bounded_start = local
@@ -5451,7 +5459,7 @@ fn extended_quote_claims_are_consistent(
             下跌至|上涨至|跌至|跌到|降至|降到|涨至|涨到|升至|升到|报于|报至|报到|收于|交投于|交易于|交易在|
             (?:现价|最新价|报价|价格|股价|市价|市场价)\s*(?:约?为|是|报于|报|at|is)?|
             (?:(?:current|latest|last|market|stock|share)\s+)?(?:price|quote)\s*(?:is|was|at)?|
-            (?:fell|dropped|declined|rose|gained|climbed)[^。；;\r\n]{0,48}?\b(?:to|at)|
+            fell|dropped|declined|rose|gained|climbed|
             trades?\s+at|trading\s+at|
             [,，、]\s*(?:为|报|at|is|was)\s*(?:us\$|hk\$|c\$|a\$|s\$|\$|€|£|¥|￥|₩|₽|₹|美元|美金|美刀|刀|欧元|人民币|元人民币|元|日元|英镑|\b(?:usd|eur|hkd|cny|rmb|cad|jpy|gbp|aud|sgd|chf|krw|rub|twd|nzd|thb|inr|sek|nok|dkk|zar|brl|mxn)\b)?\s*[+＋−-]?\s*\d|
             (?:随后|之后|此后|其后|然后|后)\s*(?:变为|变成|来到|现报|为|报)\s*(?:us\$|hk\$|c\$|a\$|s\$|\$|€|£|¥|￥|₩|₽|₹|美元|美金|美刀|刀|欧元|人民币|元人民币|元|日元|英镑|\b(?:usd|eur|hkd|cny|rmb|cad|jpy|gbp|aud|sgd|chf|krw|rub|twd|nzd|thb|inr|sek|nok|dkk|zar|brl|mxn)\b)?\s*(?:[+＋−-]|负|minus|negative)?\s*\d|
@@ -11124,6 +11132,7 @@ mod tests {
             "ISRG after-hours at 363.25 denominated in euros",
             "ISRG after-hours price was +15",
             "ISRG 盘后现价为＋15",
+            "ISRG after-hours EPS rose while the stock fell to 15",
         ] {
             assert!(
                 !super::extended_quote_claims_are_consistent(&contract, invalid),
