@@ -22,6 +22,15 @@ New
 
 ## 证据来源
 
+- `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-16` / `data/runtime/logs/web.log.2026-07-17`
+  - 巡检时间窗：2026-07-17 07:01-11:02 CST。
+  - `data/sessions.sqlite3` 同窗新增 10 条 user / 10 条 assistant，覆盖 8 个近期 session，全部以 assistant 收口；没有 user-only 悬挂、错投、敏感信息泄露或全渠道不可用证据。
+  - 07:15 CST Web direct session `Actor_web__direct__web-user-be13e1f84d14` 对 ISRG 财报 / 盘后下跌请求已有 ISRG 同代码现价与报价源时间前缀，但最终落成投研完整性失败，runtime 记录 `step=session.persist_assistant detail=failed`。
+  - 07:24 CST 同一 Web direct session 对 UNH 追问已有 UNH 同代码现价与报价源时间前缀，但最终再次落成投研完整性失败。
+  - 08:30 CST Web direct session `Actor_web__direct__web-user-266454c88ed6` 多标的分析在执行 `data_fetch earnings_calendar` 与 `web_search` 后仍落成失败并未写入本地 SQLite 最新消息。
+  - 10:05 CST Feishu direct `nibs` 与 10:53 CST `中船特气` 均只返回产品化实体解析失败；10:06 CST 同用户 `nbis` 重试成功，说明不是 Feishu direct 全链路不可用。
+  - 同窗 RMBS / NBIS regression direct、Citrini / SemiAnalysis 文章跟踪 scheduler 均成功收口，说明该缺陷仍是投研完整性 / evidence 门禁 fail-closed 后用户只看到通用失败或实体解析失败。
+  - 判断：由于同窗 direct / scheduler 可成功收口，未见错投、数据破坏、敏感信息泄露或全渠道不可用，维持功能性 `P2 / New`，不升级为 P1，不创建 GitHub Issue。
 - `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-16`
   - 巡检时间窗：2026-07-17 03:01-07:01 CST。
   - `data/sessions.sqlite3` 同窗新增 5 条 user / 6 条 assistant，覆盖 5 个 session，全部以 assistant 收口；没有 user-only 悬挂、错投、敏感信息泄露或全渠道不可用证据。

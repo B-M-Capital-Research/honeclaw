@@ -8,6 +8,16 @@
 
 ## 复发记录（2026-07-17 07:01 CST）
 
+- 运行态在 07:34 / 08:09 / 09:30 等投研链路修复提交后继续复发，状态维持 `New`：
+  - 本轮巡检窗口为 `2026-07-17 07:01-11:02 CST`。
+  - `data/sessions.sqlite3` 同窗新增 10 条 user / 10 条 assistant，全部以 assistant 收口；未见长期 user-only 悬挂、错投、空回复、内部路径 / raw tool / `<think>` 外泄或全渠道不可用。
+  - `data/runtime/logs/web.log.2026-07-16` / `web.log.2026-07-17` 同窗有 86 条 runner / 执行失败；07:30-11:00 CST heartbeat 仍把 `TSLA`、`HIMS`、`ORCL`、`ASTS`、`Monitor_Watchlist_11`、原油等明确标的或任务上下文拦成“证券实体解析暂时未能确认”或“无法确认你提到的”。
+  - 10:05 CST Feishu direct 用户将 `NBIS` 误拼成 `nibs` 时返回证券实体解析失败；10:06 CST 同用户用 `nbis` 重试成功，说明当前链路对近似拼写仍 fail-closed，但不是全链路不可用。
+  - 10:53 CST Feishu direct 用户只发 `中船特气`，assistant 返回“证券实体解析暂时未能确认当前点名的公司”，没有给出 A 股常见中文实体候选或澄清选项。
+  - 同窗 RMBS / NBIS regression direct、Citrini / SemiAnalysis 文章跟踪 scheduler 可成功收口，说明故障不是 scheduler/direct 全链路不可用。
+- 判断：最新样本仍是实体优先 / 投研完整性 guard 过宽、实体解析候选召回不足或上下文输入不干净链路，更新原文档，不新建重复缺陷。
+- 严重等级维持 `P2`：问题直接阻断部分投研 direct / scheduler 正文生成，但同窗仍有金融 direct / scheduler 成功收口，未见错投、数据破坏、敏感信息泄露或全渠道停摆，因此不是 `P1`，不创建 GitHub Issue。
+
 - 运行态在最近投研链路修复后继续复发，状态维持 `New`：
   - 本轮巡检窗口为 `2026-07-17 03:01-07:01 CST`。
   - `data/sessions.sqlite3` 同窗新增 5 条 user / 6 条 assistant，全部以 assistant 收口；未见长期 user-only 悬挂、错投、空回复、内部路径 / raw tool / `<think>` 外泄或全渠道不可用。

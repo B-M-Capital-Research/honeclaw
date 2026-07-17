@@ -22,6 +22,19 @@
 
 ## 最新进展
 
+- 本轮 2026-07-17 11:02 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-16` / `web.log.2026-07-17`
+    - 07:30 CST `美股黄金坑信号心跳检测` raw preview 使用 `SPY: $750.72`、`QQQ: $705.94` 等高风险数量级市场锚点。
+    - 07:30 CST `存储板块关键事件心跳提醒` deliver preview 使用 `SNDK $1,411`、当日跌幅 `-12.6%` 等异常数量级价格进入用户可见表格。
+    - 07:30 CST `Cerebras IPO与业务进展心跳监控` raw preview 使用 `CBRS: $180.46`、`Market Cap: ~$408.1亿` 作为行情锚。
+    - 09:00 / 10:00 CST `美股黄金坑信号心跳检测` raw / deliver preview 继续使用 `SPY $750.72`、`QQQ $705.94` 作为市场判断锚。
+    - 11:00 CST `AAOI 1.6T 光模块心跳检测` deliver preview 使用 `AAOI $100.24`、昨收 `$109.09`、日内区间 `$97.90-$107.11`，在任务上下文仍有时间漂移的情况下进入用户可见 preview。
+  - `data/sessions.sqlite3`
+    - 同窗有 10 条 user / 10 条 assistant，全部以 assistant 收口；未见错投、投递失败、空回复、敏感信息外泄或全渠道不可用。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check 缺口：异常或高风险数量级价格进入 heartbeat 判断上下文和用户可见 preview。
+    - 本窗没有错投、投递失败、空回复、数据破坏或全渠道不可用；因此仍按质量性 `P3 / New`。该问题不影响主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-17 07:01 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-16`
     - 06:00 CST `存储板块关键事件心跳提醒` raw preview 使用 `SNDK price: $1411.08`、previous close `$1614.99999` 作为触发判断锚。

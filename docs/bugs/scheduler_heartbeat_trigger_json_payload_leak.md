@@ -7,6 +7,15 @@
 
 ## 最新进展
 
+- `2026-07-17 07:01-11:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-16` / `web.log.2026-07-17`
+    - 09:01 CST `AI与科技持仓观察关键事件心跳提醒` `deliver_preview` 继续以 fenced JSON 开头，包含 `status`、`event`、`data_time` 等协议字段。
+    - 09:30 CST `RKLB异动监控` `deliver_preview` 以 fenced JSON 开头，包含 `triggered`、`symbol`、`condition`、`price`、`prev_close`、`change_pct`、`volume` 等协议字段。
+    - 11:00 CST `FOTO 光子学ETF心跳检测` `deliver_preview` 在自然语言标题后继续拼入 fenced JSON，包含 `status`、`triggered`、`symbol`、`condition`、`price` 等协议字段。
+    - 同窗多条 heartbeat raw preview 仍以 `<think>` 加 fenced JSON 或裸协议状态收口，说明模型输出协议未稳定收敛到用户态正文。
+  - 会话质量对照：同窗 `data/sessions.sqlite3` 新增 10 条 user / 10 条 assistant，未确认 JSON 载荷进入普通 direct assistant final；未见错投、全渠道不可用或数据安全证据。
+  - 判断：这些样本说明缺陷仍是 heartbeat 出站格式化退化；当前没有主功能链路阻断，主要影响提醒格式质量，因此维持质量性 `P3 / New`，非 P1。
+
 - `2026-07-17 03:01-07:01 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-16`
     - 同窗仍有 42 条 heartbeat `deliver_preview`，其中 06:00-07:00 CST RKLB、FOTO、CBRS 等触发提醒继续以 fenced JSON 开头。
