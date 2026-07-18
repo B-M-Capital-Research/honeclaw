@@ -442,6 +442,102 @@ fn should_retry_with_raw_http(error: &async_openai::error::OpenAIError) -> bool 
     )
 }
 
+/// Tracks whether the raw byte stream is currently between complete SSE
+/// events. `eventsource-stream` intentionally drops an unterminated final
+/// line/event at EOF, so parsed events alone cannot distinguish a clean close
+/// from `Finish` followed by a truncated trailing frame.
+#[derive(Debug)]
+struct SseFramingTracker {
+    line_has_content: bool,
+    previous_was_cr: bool,
+    at_event_boundary: bool,
+}
+
+impl Default for SseFramingTracker {
+    fn default() -> Self {
+        Self {
+            line_has_content: false,
+            previous_was_cr: false,
+            at_event_boundary: true,
+        }
+    }
+}
+
+impl SseFramingTracker {
+    fn observe(&mut self, bytes: &[u8]) {
+        for &byte in bytes {
+            if self.previous_was_cr {
+                self.previous_was_cr = false;
+                if byte == b'\n' {
+                    // CRLF is one line ending, not an extra blank line.
+                    continue;
+                }
+            }
+
+            match byte {
+                b'\r' => {
+                    self.finish_line();
+                    self.previous_was_cr = true;
+                }
+                b'\n' => self.finish_line(),
+                _ => {
+                    self.line_has_content = true;
+                    self.at_event_boundary = false;
+                }
+            }
+        }
+    }
+
+    fn finish_line(&mut self) {
+        if self.line_has_content {
+            self.line_has_content = false;
+            self.at_event_boundary = false;
+        } else {
+            // An empty line dispatches/terminates the current SSE event.
+            self.at_event_boundary = true;
+        }
+    }
+
+    fn is_at_event_boundary(&self) -> bool {
+        self.at_event_boundary
+    }
+}
+
+/// Preserve raw byte chunks while turning a clean HTTP EOF with an unfinished
+/// SSE line/event into an explicit stream error before the third-party parser
+/// can silently discard that residual buffer.
+fn reject_incomplete_sse_framing<'a, B>(
+    source: BoxStream<'a, hone_core::HoneResult<B>>,
+) -> BoxStream<'a, hone_core::HoneResult<B>>
+where
+    B: AsRef<[u8]> + Send + 'a,
+{
+    futures::stream::unfold(
+        (source, SseFramingTracker::default(), false),
+        |(mut source, mut tracker, terminal)| async move {
+            if terminal {
+                return None;
+            }
+
+            match source.next().await {
+                Some(Ok(bytes)) => {
+                    tracker.observe(bytes.as_ref());
+                    Some((Ok(bytes), (source, tracker, false)))
+                }
+                Some(Err(error)) => Some((Err(error), (source, tracker, true))),
+                None if !tracker.is_at_event_boundary() => Some((
+                    Err(hone_core::HoneError::Llm(
+                        "stream transport ended with an incomplete SSE frame".to_string(),
+                    )),
+                    (source, tracker, true),
+                )),
+                None => None,
+            }
+        },
+    )
+    .boxed()
+}
+
 /// Normalize the clean terminal boundary used by some OpenAI-compatible
 /// providers (including MiniMax): they emit a typed `finish_reason` and then
 /// close the HTTP/SSE body cleanly without a literal `data: [DONE]` sentinel.
@@ -462,6 +558,23 @@ fn normalize_clean_eof_after_finish<'a>(
 
             match provider_stream.next().await {
                 Some(Ok(event)) => {
+                    if finish_count > 0
+                        && matches!(
+                            &event,
+                            ChatStreamEvent::ToolChoiceMetadata { .. }
+                                | ChatStreamEvent::ContentDelta(_)
+                                | ChatStreamEvent::ReasoningDelta(_)
+                                | ChatStreamEvent::ToolCallDelta { .. }
+                                | ChatStreamEvent::Finish(_)
+                        )
+                    {
+                        return Some((
+                            Err(hone_core::HoneError::Llm(
+                                "stream emitted payload after finish reason".to_string(),
+                            )),
+                            (provider_stream, finish_count, true),
+                        ));
+                    }
                     let next_finish_count = finish_count
                         .saturating_add(u8::from(matches!(&event, ChatStreamEvent::Finish(_))));
                     let next_terminal = matches!(&event, ChatStreamEvent::Done);
@@ -529,6 +642,56 @@ mod tests {
             return serde_json::from_slice(&request[body_start..body_start + content_length])
                 .expect("json request body");
         }
+    }
+
+    async fn stream_events_for_test_body(
+        body: &'static str,
+    ) -> Vec<hone_core::HoneResult<ChatStreamEvent>> {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test server");
+        let addr = listener.local_addr().expect("read local addr");
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.expect("accept request");
+            let payload = read_json_request(&mut socket).await;
+            assert_eq!(payload["stream"], true);
+
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            socket
+                .write_all(response.as_bytes())
+                .await
+                .expect("write test stream");
+            socket.shutdown().await.expect("close test stream");
+        });
+
+        let provider = OpenAiCompatibleProvider::new(
+            "test-key",
+            &format!("http://{addr}"),
+            "test-model",
+            30,
+            64,
+        )
+        .expect("provider");
+        provider
+            .chat_with_tools_stream(
+                &[Message {
+                    role: "user".to_string(),
+                    content: Some("answer".to_string()),
+                    reasoning_content: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                }],
+                &[],
+                None,
+                ToolChoiceMode::Auto,
+            )
+            .collect::<Vec<_>>()
+            .await
     }
 
     #[test]
@@ -986,13 +1149,79 @@ mod tests {
             .boxed(),
         )
         .collect::<Vec<_>>()
-        .await
-        .into_iter()
-        .collect::<hone_core::HoneResult<Vec<_>>>()
-        .expect("duplicate finish stream events");
+        .await;
 
         assert_eq!(events.len(), 2);
-        assert!(!events.contains(&ChatStreamEvent::Done));
+        assert!(matches!(
+            events.first(),
+            Some(Ok(ChatStreamEvent::Finish(
+                ChatStreamFinishReason::ToolCalls
+            )))
+        ));
+        assert!(events.get(1).is_some_and(Result::is_err));
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, Ok(ChatStreamEvent::Done)))
+        );
+    }
+
+    #[tokio::test]
+    async fn truncated_sse_frame_after_finish_is_an_error_without_done() {
+        let events = stream_events_for_test_body(concat!(
+            "data: {\"choices\":[{\"finish_reason\":\"stop\"}]}\n\n",
+            "data: {\"choices\":["
+        ))
+        .await;
+
+        assert!(events.iter().any(|event| matches!(
+            event,
+            Ok(ChatStreamEvent::Finish(ChatStreamFinishReason::Stop))
+        )));
+        assert!(events.iter().any(Result::is_err));
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, Ok(ChatStreamEvent::Done)))
+        );
+    }
+
+    #[tokio::test]
+    async fn payload_after_finish_is_an_error_without_done() {
+        let events = stream_events_for_test_body(concat!(
+            "data: {\"choices\":[{\"finish_reason\":\"stop\"}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"late\"}}]}\n\n"
+        ))
+        .await;
+
+        assert!(events.iter().any(|event| matches!(
+            event,
+            Ok(ChatStreamEvent::Finish(ChatStreamFinishReason::Stop))
+        )));
+        assert!(events.iter().any(Result::is_err));
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            Ok(ChatStreamEvent::ContentDelta(content)) if content == "late"
+        )));
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, Ok(ChatStreamEvent::Done)))
+        );
+    }
+
+    #[test]
+    fn sse_framing_tracker_handles_crlf_split_across_chunks() {
+        let mut tracker = SseFramingTracker::default();
+        tracker.observe(b"data: complete\r");
+        assert!(!tracker.is_at_event_boundary());
+        tracker.observe(b"\n\r");
+        assert!(tracker.is_at_event_boundary());
+        tracker.observe(b"\n");
+        assert!(tracker.is_at_event_boundary());
+
+        tracker.observe(b"data: truncated");
+        assert!(!tracker.is_at_event_boundary());
     }
 
     #[tokio::test]
@@ -1631,8 +1860,15 @@ impl LlmProvider for OpenAiCompatibleProvider {
                     ))
                 })?;
 
-            let provider_stream = response
+            let byte_stream = response
                 .bytes_stream()
+                .map(|result| {
+                    result.map_err(|error| {
+                        hone_core::HoneError::Llm(format!("stream transport error: {error}"))
+                    })
+                })
+                .boxed();
+            let provider_stream = reject_incomplete_sse_framing(byte_stream)
                 .eventsource()
                 .filter_map(|result| async move {
                     match result {
