@@ -6,6 +6,17 @@
 - **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
 
+## 运行态复核（2026-07-18 11:01 CST）
+
+- 运行态在 2026-07-18 07:01 CST 回退后继续复发，状态维持 `New`：
+  - 本轮巡检窗口为 `2026-07-18 07:00-11:01 CST`。
+  - `data/sessions.sqlite3` 同窗新增 16 条 user / 17 条 assistant，近期 Web / Feishu / Discord direct 或 scheduler session 均以 assistant 收口，`last_message_role=user` 为 0；assistant final 污染扫描未命中 `<think>`、本机路径、SQLite、panic、provider 原始错误、raw tool、`data_fetch`、`cron_job` 或 fenced JSON。
+  - 最近四小时无非文档代码提交；问题不是新修复后的代码状态变化，而是当前 live 继续复发。
+  - `data/runtime/logs/web.log.2026-07-18` 在 08:00-11:00 CST 继续记录 262 条 `runner_error`、135 条定时任务执行失败和 207 条“证券实体解析暂时未能确认”信号。
+  - 代表样本包括：AAOI 1.6T 光模块心跳检测把任务上下文里的 `SEC` 当证券代码且无行情覆盖；ASTS 重大异动心跳监控把 `ASTS` 截成 `AST`；ORCL 大事件监控仍落成 Oracle 多候选；光模块 / 存储板块关键事件提醒把 `800G` / `NAND` 当证券代码；TSLA、NVDA、NBIS、中际旭创、光迅科技、闪迪、全天原油、绿田机械、Monitor_Watchlist_11、Cerebras、SIVE 等任务继续 fail-closed。
+  - 判断：最新样本仍是实体 guard / resolver 把任务词、行业词、缩写或显式 ticker 错送进证券核验，随后以实体解析、多候选或无覆盖错误阻断业务正文；与既有缺陷同根，不新建重复缺陷。
+  - 严重等级维持 `P2`：问题直接阻断部分 scheduler / heartbeat 正文生成，但同窗 direct / scheduler 均有 assistant 收口，未见错投、数据破坏、敏感信息泄露或全渠道停摆，因此不是 `P1`，不创建 GitHub Issue。
+
 ## 运行态复核（2026-07-18 07:01 CST）
 
 - 运行态在 2026-07-17 23:59 CST 代码级修复后继续复发，状态从 `Fixed` 回退为 `New`：
