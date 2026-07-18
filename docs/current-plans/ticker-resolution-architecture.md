@@ -3,7 +3,7 @@
 - title: Cross-market ticker resolution architecture repair
 - status: in_progress
 - created_at: 2026-07-17
-- updated_at: 2026-07-17
+- updated_at: 2026-07-18
 - owner: Codex
 - related_files: `crates/hone-channels/src/security_identifier.rs`, `crates/hone-channels/src/investment_response_guard.rs`, `crates/hone-tools/src/data_fetch.rs`, `crates/hone-channels/src/agent_session/tests.rs`, `tests/regression/`
 - related_docs: `docs/invariants.md`, `docs/decisions.md`, `docs/repo-map.md`, `docs/handoffs/`
@@ -20,6 +20,7 @@ Replace one-off ticker exceptions with a single deterministic architecture that 
 - Preserve false-positive safety: weak finance/technology acronyms must not silently become companies; ambiguous code shapes require stronger ticker context or clarification.
 - Add unit, AgentSession, CI-safe contract, live provider, and production Web/SSE regression matrices.
 - Replace serial explicit-code search/profile/quote waterfalls with bounded exact-quote batches, concurrent semantic searches, reusable probe evidence, and concurrent profile enrichment.
+- Keep exact ticker identity above weak semantic substring matches: single-stock ETF/ETN/leveraged/yield product names that embed CRWV/RKLB/AAPL-like underlying codes cannot create a false company-name conflict, while Ford/FORD and Apple name fallback remain supported only through word-bounded strong name relations (so Apple does not match Appleseed).
 - Push the fix, wait for required CI, rebuild runtime binaries, drain/restart through the supervisor, and verify storage/channel/API health.
 
 ## Validation
@@ -27,6 +28,7 @@ Replace one-off ticker exceptions with a single deterministic architecture that 
 - Focused extraction/normalization/exact-match tests for every supported symbol class and ambiguity boundary.
 - Full `hone-channels` and relevant `hone-tools` tests plus finance CI contracts and proportional repository gates.
 - Credentialed live DataFetch search/profile/quote probes for representative US, international, index, and crypto symbols without exposing credentials.
+- Live CRWV provider proof plus CRWV/CWY, RKLB/RKLX, AAPL/AAPU, Ford/FORD, Apple/Appleseed, derivative-only, and natural-name fallback regressions.
 - Isolated production turns proving time-first output, exact entity and same-symbol quote, correct deep/quote-only contract, one answer/terminal, no reset/error, and zero active chats afterward.
 
 ## Documentation Sync

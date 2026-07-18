@@ -53,7 +53,7 @@ AGENT_CORE="crates/hone-channels/src/agent_session/core.rs"
 SCHEDULER="crates/hone-channels/src/scheduler.rs"
 SOUL="soul.md"
 
-echo "[finance-automation-contracts] fixed sample count: 25"
+echo "[finance-automation-contracts] fixed sample count: 26"
 
 if contains '"snapshot".into()' "$DATA_FETCH" && contains 'data_fetch(data_type="snapshot"' "$STOCK_RESEARCH"; then
   record success "1.stock_research->snapshot" "tool enum and skill contract are aligned"
@@ -205,11 +205,17 @@ else
   record fail "25.cross-market-symbol-canonicalization" "cross-market identifiers can regress into suffix truncation, fuzzy aliases, or unsafe provider URLs"
 fi
 
+if contains 'resolve_tentative_named_match' "$INVESTMENT_GUARD" && contains 'candidate_is_embedded_ticker_reference' "$INVESTMENT_GUARD" && contains 'entity_words_start_with' "$INVESTMENT_GUARD" && contains 'GraniteShares YieldBOOST CRWV ETF' "$INVESTMENT_GUARD" && contains 'Appleseed Fund' "$INVESTMENT_GUARD" && contains 'a derivative-only semantic result must not replace a missing exact ticker' "$INVESTMENT_GUARD"; then
+  record success "26.exact-ticker-beats-embedded-product-reference" "exact ticker identity cannot be displaced by an embedded-code product, and natural-name fallback uses word boundaries"
+else
+  record fail "26.exact-ticker-beats-embedded-product-reference" "weak product-name or partial-word matches can again override provider-verified identity"
+fi
+
 echo
 echo "summary: success=$success review=$review fail=$fail total=$((success + review + fail))"
 
-if [ "$success" -lt 24 ]; then
-  echo "[ERROR] acceptance failed: expected at least 24 successes"
+if [ "$success" -lt 26 ]; then
+  echo "[ERROR] acceptance failed: expected all 26 successes"
   exit 1
 fi
 

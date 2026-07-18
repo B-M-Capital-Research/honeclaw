@@ -132,6 +132,15 @@ read -r SHORT_TICKER_SEARCH_LINE <&4
 printf '%s\n' '{"jsonrpc":"2.0","id":28,"method":"tools/call","params":{"name":"data_fetch","arguments":{"data_type":"quote","ticker":"BRK-B,600519.SS,0700.HK,7203.T,005930.KS,^GSPC"}}}' >&3
 read -r CANONICAL_QUOTE_LINE <&4
 
+printf '%s\n' '{"jsonrpc":"2.0","id":29,"method":"tools/call","params":{"name":"data_fetch","arguments":{"data_type":"search","query":"CRWV"}}}' >&3
+read -r CRWV_SEARCH_LINE <&4
+
+printf '%s\n' '{"jsonrpc":"2.0","id":30,"method":"tools/call","params":{"name":"data_fetch","arguments":{"data_type":"quote","ticker":"CRWV"}}}' >&3
+read -r CRWV_QUOTE_LINE <&4
+
+printf '%s\n' '{"jsonrpc":"2.0","id":31,"method":"tools/call","params":{"name":"data_fetch","arguments":{"data_type":"profile","ticker":"CRWV"}}}' >&3
+read -r CRWV_PROFILE_LINE <&4
+
 python3 - \
   "$SEARCH_LINE" \
   "$QUOTE_LINE" \
@@ -159,7 +168,10 @@ python3 - \
   "$HK_SEARCH_LINE" \
   "$INDEX_SEARCH_LINE" \
   "$SHORT_TICKER_SEARCH_LINE" \
-  "$CANONICAL_QUOTE_LINE" <<'PY'
+  "$CANONICAL_QUOTE_LINE" \
+  "$CRWV_SEARCH_LINE" \
+  "$CRWV_QUOTE_LINE" \
+  "$CRWV_PROFILE_LINE" <<'PY'
 import json
 import sys
 import time
@@ -203,6 +215,9 @@ hk_search = structured(sys.argv[24])
 index_search = structured(sys.argv[25])
 short_ticker_search = structured(sys.argv[26])
 canonical_quote = structured(sys.argv[27])
+crwv_search = structured(sys.argv[28])
+crwv_quote = structured(sys.argv[29])
+crwv_profile = structured(sys.argv[30])
 
 
 def matching_fresh_quote(payload, symbol):
@@ -332,6 +347,22 @@ canonical_symbols = ["BRK-B", "600519.SS", "0700.HK", "7203.T", "005930.KS", "^G
 for symbol in canonical_symbols:
     matching_fresh_quote(canonical_quote, symbol)
 
+crwv_exact = require_exact_search(crwv_search, "CRWV")
+if "COREWEAVE" not in str(crwv_exact.get("name") or crwv_exact.get("companyName", "")).upper():
+    raise SystemExit("[FAIL] CRWV search did not exact-resolve CoreWeave")
+crwv_matching_quote = matching_fresh_quote(crwv_quote, "CRWV")
+crwv_profiles = crwv_profile.get("data") or []
+crwv_matching_profiles = [
+    item for item in crwv_profiles if str(item.get("symbol", "")).upper() == "CRWV"
+]
+if len(crwv_matching_profiles) != 1 or crwv_matching_profiles[0].get("isEtf") is not False:
+    raise SystemExit("[FAIL] CRWV profile did not confirm an exact-symbol non-ETF equity")
+crwv_reference_products = [
+    item for item in (crwv_search.get("data") or [])
+    if str(item.get("symbol", "")).upper() != "CRWV"
+    and "CRWV" in str(item.get("name") or item.get("companyName", "")).upper().split()
+]
+
 print("[PASS] live US/short/share-class/A-share/HK/JP/KR/index/crypto entity and quote probes succeeded")
 print(f"NBIS company={exact[0].get('name') or exact[0].get('companyName')}")
 print(f"NBIS quote_price={matching_quote['price']} change={matching_quote['changesPercentage']} timestamp={int(matching_quote['timestamp'])}")
@@ -347,6 +378,7 @@ print(f"RMBS company={rmbs_exact[0].get('name')} quote_price={rmbs_matching_quot
 print(f"RMBS financials_shape=list items={len(rmbs_financial_data)} news_items={len(rmbs_news_data)}")
 print(f"RKLB company={rklb_exact[0].get('name')} quote_price={rklb_matching_quote['price']} change={rklb_matching_quote['changesPercentage']} timestamp={int(rklb_matching_quote['timestamp'])}")
 print(f"RKLB financials_shape=list items={len(rklb_financial_data)}")
+print(f"CRWV company={crwv_exact.get('name')} quote_price={crwv_matching_quote['price']} reference_products={len(crwv_reference_products)}")
 print(f"mixed_market_live_quotes={','.join(mixed_market_symbols)}")
 print(f"canonical_cross_market_quotes={','.join(canonical_symbols)}")
 PY

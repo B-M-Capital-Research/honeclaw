@@ -9411,7 +9411,7 @@ fn resolve_entity_match(mention: &EntityMention, search: &Value) -> EntityMatch 
     scored.sort_by(|left, right| right.0.cmp(&left.0));
     let best_score = scored[0].0;
     if best_score < 700 {
-        return EntityMatch::Ambiguous(scored.into_iter().map(|(_, c)| c).collect());
+        return EntityMatch::Unresolved;
     }
     let tied = scored
         .iter()
@@ -9424,30 +9424,64 @@ fn resolve_entity_match(mention: &EntityMention, search: &Value) -> EntityMatch 
     EntityMatch::Resolved(resolved_entity(mention, tied[0].clone()))
 }
 
+fn resolve_tentative_named_match(mention: &EntityMention, search: &Value) -> EntityMatch {
+    let mut scored = search
+        .get("data")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(entity_candidate_from_value)
+        .filter_map(|candidate| {
+            let score = tentative_name_candidate_score(mention, &candidate);
+            (score >= 700).then_some((score, candidate))
+        })
+        .collect::<Vec<_>>();
+    if scored.is_empty() {
+        return EntityMatch::Unresolved;
+    }
+    scored.sort_by(|left, right| right.0.cmp(&left.0));
+    let best_score = scored[0].0;
+    let tied = scored
+        .into_iter()
+        .take_while(|(score, _)| *score == best_score)
+        .map(|(_, candidate)| candidate)
+        .collect::<Vec<_>>();
+    match tied.as_slice() {
+        [candidate] => EntityMatch::Resolved(resolved_entity(mention, candidate.clone())),
+        _ => EntityMatch::Ambiguous(tied),
+    }
+}
+
 fn reconcile_tentative_entity_match(
     mention: &EntityMention,
     exact_match: EntityMatch,
     search: &Value,
 ) -> Result<EntityMatch, String> {
-    let named_mention = EntityMention {
-        mention: mention.mention.clone(),
-        search_query: mention.mention.clone(),
-        explicit_symbol: None,
-        tentative_symbol: false,
-        context: EntityMentionContext {
-            identifier_kind: None,
-            ..mention.context.clone()
-        },
-    };
-    let named_match = resolve_entity_match(&named_mention, search);
+    let named_match = resolve_tentative_named_match(mention, search);
     match (&exact_match, named_match) {
         (EntityMatch::Resolved(exact), EntityMatch::Resolved(named))
-            if !provider_symbols_equivalent(&exact.symbol, &named.symbol) =>
+            if !provider_symbols_equivalent(&exact.symbol, &named.symbol)
+                && !candidate_is_embedded_ticker_reference(
+                    mention,
+                    &named.symbol,
+                    &named.name,
+                    named.asset_type.as_deref(),
+                ) =>
         {
             Err(format!(
                 "“{}”既可能是证券代码 {}，也可能是公司名 {}（{}）。请明确写 ticker，或补充公司全名。",
                 mention.mention, exact.symbol, named.name, named.symbol
             ))
+        }
+        (EntityMatch::Resolved(exact), EntityMatch::Resolved(named))
+            if !provider_symbols_equivalent(&exact.symbol, &named.symbol) =>
+        {
+            // Search endpoints commonly rank single-stock ETFs whose names
+            // contain the requested ticker ahead of the underlying company.
+            // That is evidence that the product references the ticker, not
+            // evidence that the user's token is a competing company name.
+            // Preserve the provider-verified exact ticker in this case.
+            Ok(EntityMatch::Resolved(exact.clone()))
         }
         (EntityMatch::Resolved(_), EntityMatch::Resolved(named)) => {
             Ok(EntityMatch::Resolved(named))
@@ -9456,6 +9490,121 @@ fn reconcile_tentative_entity_match(
         | (EntityMatch::Unresolved, named @ EntityMatch::Ambiguous(_)) => Ok(named),
         _ => Ok(exact_match),
     }
+}
+
+fn candidate_is_embedded_ticker_reference(
+    mention: &EntityMention,
+    candidate_symbol: &str,
+    candidate_name: &str,
+    candidate_asset_type: Option<&str>,
+) -> bool {
+    let Some(requested) = mention.explicit_symbol.as_deref() else {
+        return false;
+    };
+    if provider_symbols_equivalent(requested, candidate_symbol) {
+        return false;
+    }
+    let requested = requested.trim_start_matches(['$', '^']);
+    if requested.is_empty()
+        || !candidate_name
+            .split(|character: char| !character.is_ascii_alphanumeric())
+            .any(|word| word.eq_ignore_ascii_case(requested))
+    {
+        return false;
+    }
+
+    let asset_type = candidate_asset_type
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if ["etf", "fund", "etn", "trust", "option", "warrant"]
+        .iter()
+        .any(|marker| asset_type.contains(marker))
+    {
+        return true;
+    }
+
+    let name = candidate_name.to_ascii_lowercase();
+    [
+        " etf",
+        " etn",
+        " fund",
+        " yieldboost",
+        " yieldmax",
+        " daily ",
+        " bull ",
+        " bear ",
+        " long ",
+        " short ",
+        " leveraged",
+        " inverse",
+        " covered call",
+        " single stock",
+        " 2x",
+        " 3x",
+    ]
+    .iter()
+    .any(|marker| name.contains(marker))
+}
+
+fn tentative_name_candidate_score(mention: &EntityMention, candidate: &EntityCandidate) -> u16 {
+    if candidate_is_embedded_ticker_reference(
+        mention,
+        &candidate.symbol,
+        &candidate.name,
+        candidate.asset_type.as_deref(),
+    ) {
+        return 0;
+    }
+    let query = normalize_entity_text(&mention.search_query);
+    let original = normalize_entity_text(&mention.mention);
+    let name = normalize_entity_text(&candidate.name);
+    if query.is_empty() || name.is_empty() {
+        return 0;
+    }
+    let name_words = normalized_entity_words(&candidate.name);
+    let query_words = normalized_entity_words(&mention.search_query);
+    let original_words = normalized_entity_words(&mention.mention);
+    let direct_name_relation = if query == name || original == name {
+        950
+    } else if entity_words_start_with(&name_words, &query_words)
+        || entity_words_start_with(&name_words, &original_words)
+        || (name_words.first().is_some_and(|word| word == "the")
+            && (entity_words_start_with(&name_words[1..], &query_words)
+                || entity_words_start_with(&name_words[1..], &original_words)))
+    {
+        900
+    } else {
+        0
+    };
+    let exchange_bonus = candidate
+        .exchange
+        .as_deref()
+        .is_some_and(|exchange| {
+            ["NASDAQ", "NYSE", "AMEX", "NASDAQ GLOBAL SELECT"]
+                .iter()
+                .any(|market| exchange.eq_ignore_ascii_case(market))
+        })
+        .then_some(20)
+        .unwrap_or(0);
+    direct_name_relation + exchange_bonus
+}
+
+fn normalized_entity_words(value: &str) -> Vec<String> {
+    value
+        .split(|character: char| !character.is_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .map(normalize_entity_text)
+        .filter(|word| !word.is_empty())
+        .collect()
+}
+
+fn entity_words_start_with(name_words: &[String], query_words: &[String]) -> bool {
+    !query_words.is_empty()
+        && name_words.len() >= query_words.len()
+        && name_words
+            .iter()
+            .zip(query_words)
+            .all(|(name, query)| name == query)
 }
 
 fn entity_candidate_from_value(value: &Value) -> Option<EntityCandidate> {
@@ -10769,6 +10918,143 @@ mod tests {
             ]}),
         );
         assert!(conflict.is_err(), "Ford must not silently resolve to FORD");
+    }
+
+    #[test]
+    fn tentative_ticker_reconciliation_ignores_products_that_reference_the_code() {
+        for (input, exact_symbol, exact_name, product_symbol, product_name) in [
+            (
+                "crwv当前价",
+                "CRWV",
+                "CoreWeave, Inc.",
+                "CWY",
+                "GraniteShares YieldBOOST CRWV ETF",
+            ),
+            (
+                "rklb当前价",
+                "RKLB",
+                "Rocket Lab USA, Inc.",
+                "RKLX",
+                "Daily Target 2X Long RKLB ETF",
+            ),
+            (
+                "aapl当前价",
+                "AAPL",
+                "Apple Inc.",
+                "AAPU",
+                "Direxion Daily AAPL Bull 2X Shares",
+            ),
+        ] {
+            let mentions = plain_ticker_mentions(input, AgentTurnOrigin::Interactive);
+            assert_eq!(mentions.len(), 1, "{input}: {mentions:?}");
+            let mention = &mentions[0];
+            assert_eq!(
+                mention.provenance(),
+                super::EntityMentionProvenance::TentativeCodeOrName
+            );
+            let exact = resolve_entity_match(
+                mention,
+                &json!({"data":[{
+                    "symbol": exact_symbol,
+                    "name": exact_name,
+                    "exchangeShortName": "NASDAQ"
+                }]}),
+            );
+            let reconciled = super::reconcile_tentative_entity_match(
+                mention,
+                exact,
+                &json!({"data":[
+                    {
+                        "symbol": product_symbol,
+                        "name": product_name,
+                        "exchangeShortName": "NASDAQ",
+                        "type": "etf"
+                    },
+                    {
+                        "symbol": exact_symbol,
+                        "name": exact_name,
+                        "exchangeShortName": "NASDAQ",
+                        "type": "stock"
+                    }
+                ]}),
+            )
+            .expect("a reference product must not challenge an exact ticker");
+            assert!(
+                matches!(reconciled, EntityMatch::Resolved(ref entity) if entity.symbol == exact_symbol),
+                "{input}: {reconciled:?}"
+            );
+        }
+
+        let crwv = plain_ticker_mentions("crwv当前价", AgentTurnOrigin::Interactive)
+            .into_iter()
+            .next()
+            .expect("CRWV mention");
+        assert_eq!(
+            super::reconcile_tentative_entity_match(
+                &crwv,
+                EntityMatch::Unresolved,
+                &json!({"data":[{
+                    "symbol":"CWY",
+                    "name":"GraniteShares YieldBOOST CRWV ETF",
+                    "type":"etf"
+                }]})
+            )
+            .expect("a derivative-only search is not an identity conflict"),
+            EntityMatch::Unresolved,
+            "a derivative-only semantic result must not replace a missing exact ticker"
+        );
+
+        let apple = plain_ticker_mentions("apple stock price", AgentTurnOrigin::Interactive)
+            .into_iter()
+            .next()
+            .expect("Apple mention");
+        assert!(matches!(
+            super::reconcile_tentative_entity_match(
+                &apple,
+                EntityMatch::Unresolved,
+                &json!({"data":[
+                    {
+                        "symbol":"AAPL",
+                        "name":"Apple Inc.",
+                        "exchangeShortName":"NASDAQ",
+                        "type":"stock"
+                    },
+                    {
+                        "symbol":"APPLX",
+                        "name":"Appleseed Fund",
+                        "exchangeShortName":"NASDAQ",
+                        "type":"fund"
+                    },
+                    {
+                        "symbol":"AAPL.MX",
+                        "name":"Apple Inc.",
+                        "exchangeShortName":"MEX",
+                        "type":"stock"
+                    }
+                ]})
+            )
+            .expect("a word-bounded natural-name prefix remains a valid fallback"),
+            EntityMatch::Resolved(entity) if entity.symbol == "AAPL"
+        ));
+
+        let full_fund_name = EntityMention {
+            mention: "GraniteShares YieldBOOST CRWV ETF".into(),
+            search_query: "GraniteShares YieldBOOST CRWV ETF".into(),
+            explicit_symbol: None,
+            tentative_symbol: false,
+            context: EntityMentionContext::default(),
+        };
+        assert!(matches!(
+            resolve_entity_match(
+                &full_fund_name,
+                &json!({"data":[{
+                    "symbol":"CWY",
+                    "name":"GraniteShares YieldBOOST CRWV ETF",
+                    "type":"etf"
+                }]})
+            ),
+            EntityMatch::Resolved(entity) if entity.symbol == "CWY"
+        ));
     }
 
     #[test]
