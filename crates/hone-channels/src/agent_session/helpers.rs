@@ -115,6 +115,37 @@ pub(super) fn prune_interactive_runtime_history(
     original_len.saturating_sub(messages.len())
 }
 
+/// Context-overflow recovery already has a fresh compact summary. Replaying
+/// historical tool protocol again mainly reintroduces bulky payloads instead of
+/// useful user-visible context, so trim those records before the retry prompt.
+pub(super) fn prune_historical_tool_protocol(messages: &mut Vec<AgentMessage>) -> usize {
+    let original_len = messages.len();
+    let mut pruned = Vec::with_capacity(original_len);
+
+    for mut message in std::mem::take(messages) {
+        if message.role == "tool" {
+            continue;
+        }
+        if message.role == "assistant" {
+            message.tool_calls = None;
+            if message
+                .content
+                .as_deref()
+                .unwrap_or_default()
+                .trim()
+                .is_empty()
+            {
+                continue;
+            }
+        }
+        pruned.push(message);
+    }
+
+    let removed = original_len.saturating_sub(pruned.len());
+    *messages = pruned;
+    removed
+}
+
 pub(super) fn should_return_runner_result(result: &AgentRunnerResult) -> bool {
     // 失败直接返回；成功时必须拿到正文，不能因为只有工具调用就把空答复当成成功。
     //

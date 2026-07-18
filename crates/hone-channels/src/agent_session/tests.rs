@@ -23,7 +23,7 @@ use hone_memory::{
     session_message_from_normalized, session_message_text,
 };
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::env;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
@@ -92,6 +92,13 @@ struct MockLlmRunner {
     llm: Arc<dyn LlmProvider>,
 }
 
+#[derive(Clone)]
+struct RecordingContextRunner {
+    recorded_contexts: Arc<Mutex<Vec<Vec<AgentMessage>>>>,
+    recorded_runtime_inputs: Arc<Mutex<Vec<String>>>,
+    queued_results: Arc<Mutex<VecDeque<AgentRunnerResult>>>,
+}
+
 #[async_trait]
 impl AgentRunner for MockLlmRunner {
     fn name(&self) -> &'static str {
@@ -135,6 +142,33 @@ impl AgentRunner for MockLlmRunner {
             session_metadata_updates: HashMap::new(),
             context_messages: None,
         }
+    }
+}
+
+#[async_trait]
+impl AgentRunner for RecordingContextRunner {
+    fn name(&self) -> &'static str {
+        "recording_context_runner"
+    }
+
+    async fn run(
+        &self,
+        request: AgentRunnerRequest,
+        _emitter: Arc<dyn AgentRunnerEmitter>,
+    ) -> AgentRunnerResult {
+        self.recorded_contexts
+            .lock()
+            .expect("recorded contexts lock")
+            .push(request.context.messages.clone());
+        self.recorded_runtime_inputs
+            .lock()
+            .expect("recorded runtime inputs lock")
+            .push(request.runtime_input.clone());
+        self.queued_results
+            .lock()
+            .expect("queued results lock")
+            .pop_front()
+            .expect("queued runner result")
     }
 }
 
@@ -6126,6 +6160,152 @@ async fn context_window_exceeded_key_auto_compacts_and_retries_successfully() {
     assert_eq!(result.response.content, "压缩后恢复");
     assert_eq!(llm.chat_calls(), 1);
     assert_eq!(llm.chat_with_tools_calls(), 2);
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn context_overflow_retry_prunes_historical_tool_protocol_from_recovered_context() {
+    let root = make_temp_dir("hone_channels_overflow_retry_prunes_tool_protocol");
+    std::fs::create_dir_all(&root).expect("create root");
+    let llm = MockLlmProvider::with_chat_responses(vec![ChatResult {
+        content: "压缩后的摘要".to_string(),
+        usage: None,
+    }]);
+    let mut core = make_test_core(&root, llm.clone());
+    let recorded_contexts = Arc::new(Mutex::new(Vec::<Vec<AgentMessage>>::new()));
+    let recorded_runtime_inputs = Arc::new(Mutex::new(Vec::<String>::new()));
+    let queued_results = Arc::new(Mutex::new(VecDeque::from([
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: String::new(),
+                tool_calls_made: Vec::new(),
+                iterations: 1,
+                success: false,
+                error: Some("codex_error_info=context_window_exceeded".to_string()),
+            },
+            streamed_output: false,
+            committed_visible_prefix: None,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        },
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: "恢复后的正常回复".to_string(),
+                tool_calls_made: Vec::new(),
+                iterations: 1,
+                success: true,
+                error: None,
+            },
+            streamed_output: false,
+            committed_visible_prefix: None,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        },
+    ])));
+    {
+        let core_mut = Arc::get_mut(&mut core).expect("unique core");
+        let recorded_contexts = recorded_contexts.clone();
+        let recorded_runtime_inputs = recorded_runtime_inputs.clone();
+        let queued_results = queued_results.clone();
+        core_mut.test_runner_factory = Some(Arc::new(move || {
+            Box::new(RecordingContextRunner {
+                recorded_contexts: recorded_contexts.clone(),
+                recorded_runtime_inputs: recorded_runtime_inputs.clone(),
+                queued_results: queued_results.clone(),
+            })
+        }));
+    }
+
+    let actor = ActorIdentity::new("web", "overflow-prune", None::<String>).expect("actor");
+    let session_id = actor.session_id();
+    core.session_storage
+        .create_session_for_actor(&actor)
+        .expect("create session");
+    core.session_storage
+        .add_message(&session_id, "user", "旧问题", None)
+        .expect("seed user");
+    core.session_storage
+        .add_message(&session_id, "assistant", "旧回答", None)
+        .expect("seed assistant");
+    core.session_storage
+        .add_message(&session_id, "user", "继续查 NVDA", None)
+        .expect("seed followup user");
+    core.session_storage
+        .add_message(
+            &session_id,
+            "assistant",
+            "我去查本地资料",
+            Some(build_assistant_message_metadata(&[serde_json::json!({
+                "id": "tool_1",
+                "type": "function",
+                "function": {
+                    "name": "local_search_files",
+                    "arguments": "{\"query\":\"NVDA\"}"
+                }
+            })])),
+        )
+        .expect("seed assistant tool call");
+    core.session_storage
+        .add_message(
+            &session_id,
+            "tool",
+            &"巨大的本地搜索结果".repeat(40),
+            Some(build_tool_message_metadata_parts(
+                "local_search_files",
+                Some("tool_1"),
+                Some(serde_json::json!({"query": "NVDA"})),
+            )),
+        )
+        .expect("seed tool result");
+    core.session_storage
+        .add_message(&session_id, "assistant", "旧一轮长回答", None)
+        .expect("seed trailing assistant");
+
+    let session = AgentSession::new(core.clone(), actor, "direct");
+    let result = session
+        .run("请直接回答我新的问题", AgentRunOptions::default())
+        .await;
+
+    assert!(result.response.success, "{:?}", result.response.error);
+    assert_eq!(result.response.content, "恢复后的正常回复");
+    assert_eq!(llm.chat_calls(), 1);
+
+    let recorded = recorded_contexts.lock().expect("recorded contexts lock");
+    assert_eq!(recorded.len(), 2);
+    let recovered_context = &recorded[1];
+    let recorded_runtime_inputs = recorded_runtime_inputs
+        .lock()
+        .expect("recorded runtime inputs lock");
+    assert_eq!(recorded_runtime_inputs.len(), 2);
+    let recovered_transcript = recovered_context
+        .iter()
+        .map(|message| {
+            format!(
+                "{}:{}",
+                message.role,
+                message.content.clone().unwrap_or_default()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(recorded_runtime_inputs[1].contains("【Compact Summary】\n压缩后的摘要"));
+    assert!(recovered_transcript.contains("assistant:我去查本地资料"));
+    assert!(recovered_transcript.contains("assistant:旧一轮长回答"));
+    assert!(
+        !recovered_context
+            .iter()
+            .any(|message| message.role == "tool")
+    );
+    assert!(!recovered_transcript.contains("巨大的本地搜索结果"));
+    assert!(
+        recovered_context
+            .iter()
+            .filter(|message| message.role == "assistant")
+            .all(|message| message.tool_calls.is_none())
+    );
 
     let _ = std::fs::remove_dir_all(root);
 }

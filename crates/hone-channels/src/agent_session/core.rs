@@ -54,8 +54,9 @@ use super::helpers::{
     CONTEXT_OVERFLOW_RECOVERY_LIMIT, CompactCommand, EMPTY_SUCCESS_RETRY_LIMIT,
     TRANSIENT_RUNNER_FAILURE_RETRY_LIMIT, is_context_overflow_error_text,
     is_retryable_transient_runner_failure, merge_message_metadata, non_finance_boundary_reply,
-    persistable_turn_from_response, prune_interactive_runtime_history,
-    restore_limit_before_compaction, should_return_runner_result,
+    persistable_turn_from_response, prune_historical_tool_protocol,
+    prune_interactive_runtime_history, restore_limit_before_compaction,
+    should_return_runner_result,
 };
 use super::progress::{progress_watchdog_tick, run_with_progress_ticks};
 use super::restore::restore_context;
@@ -1063,12 +1064,26 @@ impl AgentSession {
         prepared_investment: Option<&PreparedInvestmentContext>,
     ) -> Result<(PreparedExecution, PreparedInvestmentContext), (AgentSessionErrorKind, String)>
     {
-        let context = self.restore_runtime_context(
+        let mut context = self.restore_runtime_context(
             session_id,
             persisted_user_input,
             restore_max_override,
             options.turn_origin,
         );
+        if options.turn_origin == AgentTurnOrigin::Interactive
+            && restore_max_override == Some(CONTEXT_OVERFLOW_POST_COMPACT_RESTORE_LIMIT)
+        {
+            let removed = prune_historical_tool_protocol(&mut context.messages);
+            if removed > 0 {
+                tracing::info!(
+                    session_id,
+                    channel = %self.actor.channel,
+                    user_id = %self.actor.user_id,
+                    removed_messages = removed,
+                    "pruned historical tool protocol from context-overflow recovery prompt"
+                );
+            }
+        }
         let (system_prompt, mut runtime_input) =
             self.resolve_prompt_input(session_id, runtime_user_input);
         let investment_context = if let Some(prepared) = prepared_investment {

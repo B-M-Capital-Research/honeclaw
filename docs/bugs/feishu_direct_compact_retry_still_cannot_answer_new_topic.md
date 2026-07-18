@@ -3,7 +3,24 @@
 - **发现时间**: 2026-04-18 00:20 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
+
+## 2026-07-18 代码级修复
+
+- `AgentSession` 的 context-overflow recovery 现在会在 compact 后的第二次 restore 中剥离历史 `tool` 与 `assistant.tool_calls` transcript，只保留 compact summary 与用户可见语义历史，避免旧会话里大体积本地检索 / 工具协议再次把 retry prompt 撑回 `context_window_exceeded` / `request entity too large (2013)`。
+- 这次修复不改变正常 restore 路径，也不改变非 overflow 场景下的历史恢复语义；裁剪只发生在 `CONTEXT_OVERFLOW_POST_COMPACT_RESTORE_LIMIT` 的 recovery prompt。
+- 新增回归 `context_overflow_retry_prunes_historical_tool_protocol_from_recovered_context`，验证 compact 后重试仍保留 summary 与历史 assistant 正文，但不再把旧 `tool` role 和搜索结果 payload 带回第二次请求。
+
+## 2026-07-18 验证
+
+- `cargo test -p hone-channels context_overflow_retry_prunes_historical_tool_protocol_from_recovered_context --lib -- --nocapture`
+- `cargo test -p hone-channels context_overflow_ --lib -- --nocapture`
+- `cargo check -p hone-channels --tests`
+
+## 2026-07-18 状态更新
+
+- 当前按代码级 `Fixed` 记录。
+- 本轮未重启 live 服务，也没有用旧会话真实运行态再打一次 Feishu direct 样本，因此暂不更新为 `Closed`；后续若 2026-07-18 之后的真实旧会话 compact retry 继续复发，再按新样本回退为 `New`。
 
 ## 2026-07-13 状态回退结论
 
