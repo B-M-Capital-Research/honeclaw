@@ -56,6 +56,7 @@ WEB_PUBLIC="crates/hone-web-api/src/routes/public.rs"
 SCHEDULER="crates/hone-channels/src/scheduler.rs"
 SOUL="soul.md"
 AGENT_DISCOVERY_IMPL="$(sed -n '/pub(crate) fn build_agent_discovered_investment(/,/^fn tool_call_targets_entity(/p' "$INVESTMENT_GUARD")"
+AGENT_DISCOVERY_CONTEXT_IMPL="$(sed -n '/fn append_agent_entity_discovery_context(/,/^fn explicit_dollar_mentions(/p' "$INVESTMENT_GUARD")"
 INTERACTIVE_OBSERVATION_IMPL="$(sed -n '/Interactive entity discovery is owned/,/let Some(contract) = contract else/p' "$AGENT_CORE")"
 
 echo "[finance-automation-contracts] fixed sample count: 27"
@@ -162,7 +163,7 @@ else
   record fail "12.full-prompt-and-safe-runner" "full prompt or strict actor runner regressed"
 fi
 
-if contains '服务端不会在成功后追加任何用户可见内容、改写答案、重跑主 Agent 或否决这个成功答案' "$SOUL" && contains '必须由主 Agent 自己把“数据时间：北京时间' "$PROMPT_FILE" && contains 'After success, the service will not append any user-visible content, rewrite the answer, rerun the main Agent, or reject that successful answer' "$STOCK_RESEARCH" && contains 'Time anchor first and Interactive answer ownership' "$MARKET_ANALYSIS" && contains 'first visible line' "$MARKET_ANALYSIS" && ! contains 'server-provided' "$STOCK_RESEARCH" && ! contains 'server-owned' "$STOCK_RESEARCH" && ! contains 'server-provided' "$MARKET_ANALYSIS" && ! contains 'server-owned' "$MARKET_ANALYSIS"; then
+if contains '服务端不会在成功后追加任何用户可见内容、改写答案、重跑主 Agent 或否决这个成功答案' "$SOUL" && contains '必须由主 Agent 自己把“数据时间：北京时间' "$PROMPT_FILE" && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" == *'hone_core::beijing_now()'* ]] && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" == *'【本轮最终回答契约：由主 Agent 一次完成】'* ]] && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" == *'第一可见字符必须是“数”'* ]] && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" == *'禁止在该行之前输出 `---`、Markdown 标题'* ]] && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" == *'否则忽略本节格式，正常回答用户原问题'* ]] && contains 'After success, the service will not append any user-visible content, rewrite the answer, rerun the main Agent, or reject that successful answer' "$STOCK_RESEARCH" && contains 'Time anchor first and Interactive answer ownership' "$MARKET_ANALYSIS" && contains 'first visible line' "$MARKET_ANALYSIS" && ! contains 'server-provided' "$STOCK_RESEARCH" && ! contains 'server-owned' "$STOCK_RESEARCH" && ! contains 'server-provided' "$MARKET_ANALYSIS" && ! contains 'server-owned' "$MARKET_ANALYSIS"; then
   record success "18.agent-owned-time-first" "the main Agent authors the time-first Interactive answer and no finance skill delegates that line to a post-processor"
 else
   record fail "18.agent-owned-time-first" "time-first ownership can regress to a server-authored prefix or disappear from a canonical prompt layer"

@@ -4594,6 +4594,7 @@ async fn interactive_tickers_enter_the_main_agent_loop_without_preflight_blockin
 
     for input in [
         "分析下crwv和nbis的估值",
+        "crwv和英伟达什么关系，估值怎么看",
         "想看看 CRWV 与 NBIS 到底谁更贵",
         "现在rklb推荐的安全区间价格是多少，暂不考虑中子",
         "现在RKLB推荐的安全区间价格是多少，暂不考虑中子发射时间，是否成功",
@@ -4619,7 +4620,12 @@ async fn interactive_tickers_enter_the_main_agent_loop_without_preflight_blockin
         assert!(
             runtime_input.contains("主 Agent 工具循环")
                 && runtime_input.contains("第一轮工具调用")
-                && runtime_input.contains("data_fetch"),
+                && runtime_input.contains("data_fetch")
+                && runtime_input.contains("第一可见字符必须是“数”")
+                && runtime_input.contains("数据时间：北京时间 ")
+                && runtime_input.contains("；行情口径：")
+                && runtime_input.contains("禁止在该行之前输出 `---`、Markdown 标题")
+                && runtime_input.ends_with("不得以流程性拒答代替用户要的分析。"),
             "{input}: {runtime_input}"
         );
     }

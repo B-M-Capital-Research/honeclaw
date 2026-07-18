@@ -7458,6 +7458,9 @@ fn append_agent_entity_discovery_context(
     runtime_input: &mut String,
     seed_mentions: &[EntityMention],
 ) {
+    let answer_time = hone_core::beijing_now()
+        .format("%Y-%m-%d %H:%M")
+        .to_string();
     let seed_snapshot = seed_mentions
         .iter()
         .map(|mention| {
@@ -7475,6 +7478,13 @@ fn append_agent_entity_discovery_context(
          若存在一个或多个可能标的，第一轮工具调用必须对当前文本中的全部候选并行执行 data_fetch(search)，显式 ticker 也要用原代码作为 query；这组 search query 是你基于完整原话做出的候选实体声明，但返回结果仍不是最终事实。不得只取第一个标的。\n\
          search 返回后，在同一个 Agent loop 的下一轮对选中的全部标准 symbol 批量或并行执行 exact-symbol quote 与 profile，再结合用户问题继续调用财务、持仓、新闻或网页搜索工具。只有同代码 quote（正价格且带 provider timestamp）与资产类型核验完成后才可写证券分析。搜索第一条、近似 ticker、历史标的和模型记忆都不能替代本轮核验。只有当前工具结果确实仍有多个候选，或权威工具均无覆盖时，才向用户说明具体歧义或缺失；不得因为前置扫描不完整而直接停止。",
         Value::Array(seed_snapshot)
+    ));
+    runtime_input.push_str(&format!(
+        "\n\n【本轮最终回答契约：由主 Agent 一次完成】\n\
+         先由主 Agent 根据完整当前原话判断这是否确属公司、证券、基金、指数、加密资产、市场或板块投研请求。只有确属时才执行下述时间首行和投研模板；否则忽略本节格式，正常回答用户原问题。\n\
+         对于确属的投研请求，当前用户可见回答必须由你在本 Agent loop 内根据已获得的工具证据一次完成；服务端不会因为投研格式或本轮动态实体观察结果而在成功后追加用户可见内容、改写答案、重跑主 Agent 或否决这个成功答案。\n\
+         本轮回答的时间锚点固定为北京时间 {answer_time}。完成当前请求所需的工具调用后，在生成最终回答前自行检查表达：第一可见字符必须是“数”，第一条非空行必须严格以 `数据时间：北京时间 {answer_time}；行情口径：` 开头。禁止在该行之前输出 `---`、Markdown 标题、代码围栏、问候、计划、免责声明或“结论”。\n\
+         `行情口径：` 后的内容必须由你基于本轮 quote 工具证据写出：有 provider timestamp 时明确报价源时间、交易时段与“最新可得、非逐笔”口径；工具未提供的字段不得编造。首行之后，再按系统大 Prompt 中与用户当前意图匹配的完整模板组织事实、推断、估值、风险与触发条件，不得以流程性拒答代替用户要的分析。"
     ));
 }
 
@@ -10854,10 +10864,10 @@ mod tests {
         AssetEvidenceRoute, DeepAnalysisKind, EntityMatch, EntityMention, EntityMentionContext,
         EntityResolutionScope, InvestmentResponseContract, NumericAssetHint, NumericMarketHint,
         PORTFOLIO_MARKET_SYMBOL_LIMIT, ResolvedSecurityEntity, UNTRUSTED_WEB_EVIDENCE_INSTRUCTION,
-        VerifiedDatedSource, VerifiedFundHoldingFact, apply_verified_index_route,
-        asset_evidence_route, bounded_evidence_json, bounded_symbol_batches, broad_analysis_kind,
-        complete_entity_extraction_with_auxiliary, contract_failure_message,
-        dated_market_searches_at, deterministic_sector_symbols,
+        VerifiedDatedSource, VerifiedFundHoldingFact, append_agent_entity_discovery_context,
+        apply_verified_index_route, asset_evidence_route, bounded_evidence_json,
+        bounded_symbol_batches, broad_analysis_kind, complete_entity_extraction_with_auxiliary,
+        contract_failure_message, dated_market_searches_at, deterministic_sector_symbols,
         deterministic_ticker_scope_is_complete, enforce_server_data_time_prefix, entity_is_crypto,
         entity_is_fund, explicit_dollar_mentions, extract_entity_scope,
         filter_entity_news_evidence, forbidden_investment_tool_calls, has_data_time_context,
@@ -12668,6 +12678,33 @@ mod tests {
             extract_entity_scope("", AgentTurnOrigin::Interactive),
             EntityResolutionScope::PassThrough
         ));
+    }
+
+    #[test]
+    fn interactive_agent_runtime_suffix_ends_with_time_first_answer_contract() {
+        let mut runtime_input = "crwv和英伟达什么关系，估值怎么看".to_string();
+        let seed_mentions = plain_ticker_mentions(&runtime_input, AgentTurnOrigin::Interactive);
+
+        append_agent_entity_discovery_context(&mut runtime_input, &seed_mentions);
+
+        let discovery_position = runtime_input
+            .find("【本轮证券实体发现：主 Agent 工具循环】")
+            .expect("entity discovery context");
+        let answer_contract_position = runtime_input
+            .find("【本轮最终回答契约：由主 Agent 一次完成】")
+            .expect("terminal answer contract");
+        assert!(answer_contract_position > discovery_position);
+        let answer_contract = &runtime_input[answer_contract_position..];
+        assert!(answer_contract.contains("第一可见字符必须是“数”"));
+        assert!(answer_contract.contains("数据时间：北京时间 "));
+        assert!(answer_contract.contains("；行情口径："));
+        assert!(answer_contract.contains("禁止在该行之前输出 `---`、Markdown 标题"));
+        assert!(answer_contract.contains("只有确属时才执行下述时间首行和投研模板"));
+        assert!(answer_contract.contains("否则忽略本节格式，正常回答用户原问题"));
+        assert!(answer_contract.contains(
+            "服务端不会因为投研格式或本轮动态实体观察结果而在成功后追加用户可见内容、改写答案、重跑主 Agent 或否决这个成功答案"
+        ));
+        assert!(answer_contract.ends_with("不得以流程性拒答代替用户要的分析。"));
     }
 
     #[test]
