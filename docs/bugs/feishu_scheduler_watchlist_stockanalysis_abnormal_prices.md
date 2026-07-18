@@ -22,6 +22,19 @@
 
 ## 最新进展
 
+- 本轮 2026-07-18 23:03 CST 真实运行态继续出现同根异常 / 高风险价格和时间口径信号，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-18`
+    - 19:02-23:03 CST 同窗 heartbeat parse 分布为 `PlainTextTriggered=160`、`JsonNoop=72`、`PlainTextNoop=13`、`PlainTextSuppressed=8`、`JsonTriggered=5`、`JsonMalformed=4`、`JsonEmptyStatus=1`，多条 raw / deliver preview 继续把异常或高风险行情锚用于触发判断。
+    - 23:00 CST `存储板块关键事件心跳提醒` deliver preview 继续使用 `SNDK $1,354.82` 和 `-3.99%` 作为行情锚，同时把状态写成 noop 但仍输出“重要结构性新闻需关注”，说明数量级 sanity check 和 triggered/noop 语义仍不可靠。
+    - 23:00 CST `美股黄金坑信号心跳检测` raw preview 继续使用 `SPY $743.29`、`QQQ $695.33` 等市场行情锚进入回撤、均线和触发判断，随后以 `<think>` + `JsonMalformed` 标记失败。
+    - 23:00 CST `光迅科技关键事件心跳提醒` deliver preview 把数据时间写成 `2026-07-19 09:00`；`TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 把行情口径写成“美东 2026-07-18 日内交易时段”，与周六休市窗口和最新可得美股收盘口径不一致。
+    - 23:00 CST `Monitor_Watchlist_11` deliver preview 写出“未完成校验（本轮 data_fetch 达到并发上限，仅完成 HIMS / MU 搜索确认）”但仍以 triggered 形态进入发送 / 去重链路，说明数据不足时的出站降级仍不稳定。
+  - `data/sessions.sqlite3`
+    - 同窗有 18 条 user / 11 条 assistant / 4 条 system compact，近期会话均以 assistant 收口；未见错投、投递失败、空回复、敏感信息外泄或全渠道不可用。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check / 时间口径缺口：异常或高风险数量级价格、未完成校验和错误时间口径继续进入 heartbeat 判断上下文和用户可见 preview。
+    - 本窗没有错投、投递失败、空回复、数据破坏或全渠道不可用；因此仍按质量性 `P3 / New`。该问题不影响主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-18 19:02 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-18`
     - 15:02-19:02 CST 同窗继续记录 29 条 `deliver_preview` 与多条 heartbeat raw / deliver preview，异常或高风险行情锚继续进入触发判断。

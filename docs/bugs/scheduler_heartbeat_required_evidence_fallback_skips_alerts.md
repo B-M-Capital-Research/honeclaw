@@ -23,6 +23,15 @@ New
 ## 证据来源
 
 - `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-18`
+  - 巡检时间窗：2026-07-18 19:02-23:03 CST。
+  - `data/sessions.sqlite3` 同窗新增 18 条 user / 11 条 assistant / 4 条 system compact，覆盖 Web regression direct、Web scheduler、Feishu direct 与 Feishu scheduler；近期会话均以 assistant 收口，没有 user-only 悬挂、错投、敏感信息泄露或全渠道不可用证据。
+  - 20:40-22:49 CST 五个非文档修复提交后，20:47 / 20:49 CRWV/NBIS regression direct 与 21:51 / 22:10 / 22:52 CRWV/NVDA regression direct 均成功保留 agent answer，说明 interactive direct 的前窗 fail-closed 已明显止血。
+  - 但 21:00 CST Web scheduler session `Actor_web__direct__web-user-afc1cabadbf8` 的 `盘前美股要闻与SNDK/MU存储产业链日报` 仍先返回证券 / 数据覆盖预检失败，随后追加用户可见 `定时任务「盘前美股要闻与SNDK/MU存储产业链日报」执行出错，请稍后重试。`
+  - `data/runtime/logs/web.log.2026-07-18` 同窗 heartbeat parse 分布为 `PlainTextTriggered=160`、`JsonNoop=72`、`PlainTextNoop=13`、`PlainTextSuppressed=8`、`JsonTriggered=5`、`JsonMalformed=4`、`JsonEmptyStatus=1`；22:30 CST `美股黄金坑信号心跳检测` 输出 `<think>` + `JsonMalformed` 后标记“heartbeat 输出不是合法 JSON，任务已标记失败”并跳过发送。
+  - 22:00 / 22:30 / 23:00 CST AAOI、ORCL 等 heartbeat 继续以实体 / 数据覆盖 runner_error 跳过发送；23:00 多条 heartbeat deliver preview 虽被判为 `PlainTextTriggered`，但内容自称 noop 或数据未核验，仍显示 evidence / 输出契约分流不足。
+  - 判断：interactive direct 有止血证据，但 scheduler / heartbeat 仍会因 evidence / entity / 输出契约 fail-closed 让用户只看到执行出错或无发送；由于同窗 direct 和部分 scheduler 可成功收口，未见错投、数据破坏、敏感信息泄露或全渠道不可用，维持功能性 `P2 / New`，不升级为 P1，不创建 GitHub Issue。
+
+- `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-18`
   - 巡检时间窗：2026-07-18 15:02-19:02 CST。
   - `data/sessions.sqlite3` 同窗新增 2 条 user / 2 条 assistant，覆盖 2 个 Web regression direct session，全部以 assistant 收口；没有 user-only 悬挂、错投、敏感信息泄露或全渠道不可用证据。
   - 18:19 CST Web regression direct session `Actor_web__direct__codex-regression-2d6b4be8-crwv-nbis` 对 `分析下crwv和nbis的估值` 已精确核验 CoreWeave / Nebius 与两者行情，但最终只返回“这次回答未通过投研完整性检查”；18:40 CST 同题 session `Actor_web__direct__codex-regression-8d4fcdd6-crwv-nbis-v2` 在后续提交后成功输出完整估值对比，说明 interactive direct 已部分止血，但 fail-closed 仍在本窗出现过。

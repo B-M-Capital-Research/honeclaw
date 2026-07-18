@@ -6,6 +6,22 @@
 - **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
 
+## 运行态复核（2026-07-18 23:03 CST）
+
+- 20:40-22:49 CST 五个非文档提交已进一步止血 interactive direct 投研输出保留路径：
+  - `fcca5a35 fix: preserve interactive answers across search refinement`
+  - `54b14068 fix: avoid partial contracts for translated aliases`
+  - `25090e88 fix: preserve interactive agent answers`
+  - `8df08239 fix: enforce agent-owned time-first research output`
+  - `ccb24767 fix: stream agent terminal header safely`
+- 本轮 2026-07-18 19:02-23:03 CST 真实运行态显示 direct regression 明显好转但 scheduler / heartbeat 仍复发，状态维持 `New/P2`：
+  - `data/sessions.sqlite3` 同窗新增 18 条 user / 11 条 assistant / 4 条 system compact，近期 Web regression direct、Web scheduler、Feishu direct 与 Feishu scheduler 均以 assistant 收口，`last_message_role=user` 为 0。
+  - 20:47 / 20:49 CST CRWV/NBIS regression direct 已能精确核验 CoreWeave / Nebius 并给出估值分析；21:51 / 22:10 / 22:52 CST CRWV/NVDA regression direct 均保留 agent answer，不再落成前窗“投研完整性检查失败”。
+  - 但 21:00 CST Web scheduler session `Actor_web__direct__web-user-afc1cabadbf8` 的 `盘前美股要闻与SNDK/MU存储产业链日报` 仍把任务中的 `PCE` 识别成证券代码并返回“当前数据供应商没有返回同代码行情覆盖”，随后写入 `scheduler_failure=true` 的用户可见执行出错。
+  - `data/runtime/logs/web.log.2026-07-18` 同窗继续记录 AAOI heartbeat 把 `SEC` 当证券代码且无行情覆盖，ORCL heartbeat 落成 Oracle 多上市地候选；22:00、22:30、23:00 批次均复发。
+  - 判断：interactive direct 的 CRWV/NBIS、CRWV/NVDA 路径已有明确止血，但 scheduler / heartbeat 任务正文和上下文词仍会被实体 guard / resolver 误抽或多候选拦截，仍是同一链路，不新建重复缺陷。
+  - 严重等级维持 `P2`：问题直接阻断部分 scheduler / heartbeat 正文生成，但同窗 direct regression 和 Feishu direct 均可成功收口，未见错投、数据破坏、敏感信息泄露或全渠道停摆，因此不是 `P1`，不创建 GitHub Issue。
+
 ## 运行态复核（2026-07-18 19:02 CST）
 
 - `2d6b4be8` / `8d4fcdd6` 已部分止血 interactive direct entity / finance answer 路径：18:19 CST CRWV/NBIS regression direct 已能精确核验两只标的但仍被投研完整性检查拦截；18:40 CST 同题在后续提交后成功输出完整估值对比。

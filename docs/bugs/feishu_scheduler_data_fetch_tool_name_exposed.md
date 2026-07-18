@@ -22,6 +22,13 @@ New
 
 ## 最新进展
 
+- 2026-07-18 23:03 CST 运行态继续复发，状态维持 `New`：
+  - 19:02-23:03 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 18 条 user / 11 条 assistant / 4 条 system compact；近期 Web regression direct、Web scheduler、Feishu direct 和 Feishu scheduler 会话均以 assistant 收口。
+  - assistant final 污染扫描未命中空回复、`<think>`、本机路径、SQLite、panic、provider 原始错误、raw tool、`cron_job` 或 fenced JSON；本轮命中 2 条 `data_fetch` 用户态工具名。
+  - 21:35 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 的 `科技核心股池 · 晚间击球区快报` 正常收口，但开头写出 `数据均来自本轮 data_fetch 实时核验`，继续把内部行情工具名作为用户可见来源 / 执行口径。
+  - 23:00-23:02 CST 同 actor 的 `核心观察股池晚间快报` 正常收口，但 final 写出 `全部价格与财报日期均已本轮 data_fetch quote 核验`；runtime 同条 session 还记录 `missing_explicit_seeds=...DATA,FETCH`，说明工具名进入实体 / 输出上下文后仍未被用户态净化。
+  - 两条消息业务主体已完成观察池列表、击球区、价格和财报日期输出并送达，没有投递失败、空回复、错投、原始工具 JSON 或数据安全证据；问题仍只影响用户可见来源 / 工具口径边界和产品感，不影响主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-07-16 23:02 CST 运行态继续复发，状态维持 `New`：
   - 19:02-23:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 29 条 user / 29 条 assistant，最近会话均以 assistant 收口。
   - assistant final 污染扫描未命中空回复、`<think>`、`reasoning_content`、本机路径、provider 原始错误、panic、quota、原始工具 JSON、结构化 JSON 或 `company_profiles/` 外露；仅命中 1 条 `data_fetch` 用户态工具名。
