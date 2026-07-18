@@ -1522,6 +1522,27 @@ fn agent_discovery_query_is_named_in_user_input(user_input: &str, query: &str) -
     })
 }
 
+fn candidate_is_auxiliary_reference_product(
+    candidate: &EntityCandidate,
+    required_seeds: &[String],
+) -> bool {
+    required_seeds.iter().any(|required| {
+        let mention = EntityMention {
+            mention: required.clone(),
+            search_query: required.clone(),
+            explicit_symbol: Some(required.clone()),
+            tentative_symbol: true,
+            context: EntityMentionContext::default(),
+        };
+        candidate_is_embedded_ticker_reference(
+            &mention,
+            &candidate.symbol,
+            &candidate.name,
+            candidate.asset_type.as_deref(),
+        )
+    })
+}
+
 pub(crate) fn build_agent_discovered_investment(
     user_input: &str,
     origin: AgentTurnOrigin,
@@ -1574,11 +1595,6 @@ pub(crate) fn build_agent_discovered_investment(
                     .iter()
                     .any(|required| provider_symbols_equivalent(required, &candidate.symbol))
             });
-        } else if !agent_discovery_query_is_named_in_user_input(user_input, query) {
-            // A later comparable/ETF/benchmark search may inform the Agent's
-            // reasoning without becoming part of the user-requested strong
-            // truth contract.
-            continue;
         }
         let mut verified = candidates
             .into_iter()
@@ -1586,6 +1602,24 @@ pub(crate) fn build_agent_discovered_investment(
                 matching_quote_from_calls(calls, &candidate.symbol).map(|quote| (candidate, quote))
             })
             .collect::<Vec<_>>();
+        if !targets_required_seed
+            && !agent_discovery_query_is_named_in_user_input(user_input, query)
+        {
+            if verified.is_empty()
+                || verified.iter().all(|(candidate, _)| {
+                    candidate_is_auxiliary_reference_product(candidate, &required_seed_symbols)
+                })
+            {
+                // A clearly embedded reference product (for example CWY for
+                // CRWV) can inform the Agent without expanding strong scope.
+                continue;
+            }
+            // A verified search that cannot be tied to a literal user mention
+            // might be a translated alias or a research comparable. Without a
+            // structured scope signal, building a subset contract would be
+            // worse than leaving the successful Agent answer untouched.
+            return None;
+        }
         if !targets_required_seed && verified.len() != 1 {
             // For a name/alias search without explicit ticker seeds, an
             // equally verified multi-candidate result remains ambiguous. A
@@ -11449,6 +11483,56 @@ mod tests {
                 .map(|entity| entity.verified_price.as_deref())
                 .collect::<Vec<_>>(),
             [Some("73.21"), Some("177.71")]
+        );
+    }
+
+    #[test]
+    fn agent_discovery_does_not_build_a_ticker_only_subset_for_unlinked_alias_search() {
+        let timestamp = Utc::now().timestamp() - 60;
+        let calls = vec![
+            recorded_tool_call(
+                "data_fetch",
+                "search-crwv",
+                json!({"data_type":"search","query":"CRWV"}),
+                json!({"data":[{"symbol":"CRWV","name":"CoreWeave, Inc.","exchangeShortName":"NASDAQ"}]}),
+            ),
+            recorded_tool_call(
+                "data_fetch",
+                "search-nvidia-translated-alias",
+                json!({"data_type":"search","query":"NVIDIA"}),
+                json!({"data":[{"symbol":"NVDA","name":"NVIDIA Corporation","exchangeShortName":"NASDAQ"}]}),
+            ),
+            recorded_tool_call(
+                "data_fetch",
+                "quote-both",
+                json!({"data_type":"quote","ticker":"CRWV,NVDA"}),
+                json!({"data":[
+                    {"symbol":"CRWV","price":73.21,"timestamp":timestamp},
+                    {"symbol":"NVDA","price":180.25,"timestamp":timestamp}
+                ]}),
+            ),
+            recorded_tool_call(
+                "data_fetch",
+                "profile-crwv",
+                json!({"data_type":"profile","ticker":"CRWV"}),
+                equity_profile("CRWV", "CoreWeave, Inc."),
+            ),
+            recorded_tool_call(
+                "data_fetch",
+                "profile-nvda",
+                json!({"data_type":"profile","ticker":"NVDA"}),
+                equity_profile("NVDA", "NVIDIA Corporation"),
+            ),
+        ];
+
+        assert!(
+            super::build_agent_discovered_investment(
+                "比较 CRWV 和英伟达",
+                AgentTurnOrigin::Interactive,
+                &calls,
+            )
+            .is_none(),
+            "an unlinked translated alias must not silently collapse a two-entity request into a CRWV-only verified contract"
         );
     }
 
