@@ -8,6 +8,15 @@
 
 ## 最新进展
 
+- 本轮 `2026-07-18 15:02-19:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-18`
+    - 19:00 CST `Monitor_Watchlist_11` deliver preview 把真实 19:00 CST 写成 `当前时间：2025-06-23 09:05 北京时间 / 美股常规交易时段`，与当前日期和日志窗口均不一致。
+    - 19:00 CST `光迅科技关键事件心跳提醒` raw preview 读取 `current time context: 2026-07-18 16:00:00 Beijing time`，早于真实运行窗口约 3 小时。
+    - 19:00 CST `全天原油价格3小时播报` raw preview 声称无法取得当前北京时间，随后落成 `JsonNoop`，说明 scheduler 权威触发时间没有稳定注入 heartbeat 判断。
+    - 同窗 `持仓财报与重大新闻心跳提醒` duplicate suppression 匹配旧 preview `2026-07-19 21:30`，晚于当前真实日期，继续显示运行态使用错误或过期时间口径参与去重。
+  - 会话质量对照：同窗 `data/sessions.sqlite3` 新增 2 条 user / 2 条 assistant，全部以 assistant 收口；未见同类时间口径错误进入 ordinary direct assistant final。
+  - 判断：这些样本仍是 heartbeat 运行态时间上下文 / 任务上下文漂移，主要影响触发判断质量与用户可见时间口径可信度；没有错投、全渠道不可用或敏感信息泄露，维持质量性 `P3 / New`，非 P1。
+
 - 本轮 `2026-07-17 23:00-2026-07-18 03:00 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-17`
     - 19:00 CST 日志窗口内 `heartbeat_绿田机械基本面跟踪` deliver preview 写成 `ProShares - Short S&P500（SH；AMEX）`，而任务主体仍是绿田机械 `605259.SH`，说明任务主体 / 标的解析继续漂移。

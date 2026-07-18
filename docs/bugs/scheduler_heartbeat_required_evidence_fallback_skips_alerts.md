@@ -23,6 +23,13 @@ New
 ## 证据来源
 
 - `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-18`
+  - 巡检时间窗：2026-07-18 15:02-19:02 CST。
+  - `data/sessions.sqlite3` 同窗新增 2 条 user / 2 条 assistant，覆盖 2 个 Web regression direct session，全部以 assistant 收口；没有 user-only 悬挂、错投、敏感信息泄露或全渠道不可用证据。
+  - 18:19 CST Web regression direct session `Actor_web__direct__codex-regression-2d6b4be8-crwv-nbis` 对 `分析下crwv和nbis的估值` 已精确核验 CoreWeave / Nebius 与两者行情，但最终只返回“这次回答未通过投研完整性检查”；18:40 CST 同题 session `Actor_web__direct__codex-regression-8d4fcdd6-crwv-nbis-v2` 在后续提交后成功输出完整估值对比，说明 interactive direct 已部分止血，但 fail-closed 仍在本窗出现过。
+  - `data/runtime/logs/web.log.2026-07-18` 同窗继续出现 333 条 `runner_error`、120 条定时任务执行失败、34 条“当前数据供应商没有返回”、34 条“已识别证券代码”和 16 条多候选信号，覆盖 Feishu / Web heartbeat 与普通 scheduler。
+  - 19:00 CST 代表任务包括 AAOI、ORCL、闪迪、存储板块、TSLA、绿田机械等，分别落成无行情覆盖、多候选、非证券实体、结构化失败或普通问候型 raw preview，用户侧只能看到任务失败或不发送。
+  - 判断：该样本仍属于同根投研完整性 / evidence 门禁 fail-closed，用户只看到实体解析失败、候选澄清、scheduler 失败提示或无发送；由于同窗没有错投、数据破坏、敏感信息泄露或全渠道不可用，维持功能性 `P2 / New`，不升级为 P1，不创建 GitHub Issue。
+- `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-18`
   - 巡检时间窗：2026-07-18 11:00-15:02 CST。
   - `data/sessions.sqlite3` 同窗新增 11 条 user / 11 条 assistant，近期 Web direct / regression session 均以 assistant 收口；没有 user-only 悬挂、错投、敏感信息泄露或全渠道不可用证据。
   - 12:49-12:52 CST Web direct session `Actor_web__direct__web-user-4d761588537b` 连续对 `Cohr` / `Coherent Corp` 只返回实体无法确认或实体解析暂时未能确认；12:52 后同一 session 对 `Acls` 可成功核验并输出行情与技术分析，说明 evidence / entity guard 仍会让部分真实投研请求 fail-closed。

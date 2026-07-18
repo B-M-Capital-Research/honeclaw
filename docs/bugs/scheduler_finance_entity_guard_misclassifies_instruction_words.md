@@ -6,6 +6,16 @@
 - **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
 
+## 运行态复核（2026-07-18 19:02 CST）
+
+- `2d6b4be8` / `8d4fcdd6` 已部分止血 interactive direct entity / finance answer 路径：18:19 CST CRWV/NBIS regression direct 已能精确核验两只标的但仍被投研完整性检查拦截；18:40 CST 同题在后续提交后成功输出完整估值对比。
+- 但本轮 2026-07-18 15:02-19:02 CST 真实运行态仍复发，状态维持 `New/P2`：
+  - `data/sessions.sqlite3` 同窗新增 2 条 user / 2 条 assistant，近期 Web regression direct session 均以 assistant 收口，`last_message_role=user` 为 0；assistant final 污染扫描未命中内部路径、raw tool、`data_fetch`、`cron_job`、SQLite、panic、provider 原始错误或 `<think>`。
+  - `data/runtime/logs/web.log.2026-07-18` 同窗继续有 333 条 `runner_error`、120 条定时任务执行失败、34 条“当前数据供应商没有返回”、34 条“已识别证券代码”和 16 条多候选信号。
+  - 19:00 CST 代表 heartbeat 仍包括 AAOI 被误识别为 `SEC` 且无行情覆盖、ORCL 落成 Oracle 多上市地候选、闪迪 raw 把 `SK` 判断为非证券实体、TSLA raw 试图调用不存在的 heartbeat / cron 工具后落成结构化失败，存储板块继续把产品词和任务上下文混入证券判断。
+  - 判断：interactive CRWV/NBIS 修复有止血，但 scheduler / heartbeat 与部分任务上下文仍会被实体 guard / resolver 拦截或误抽任务词，仍是同一链路，不新建重复缺陷。
+  - 严重等级维持 `P2`：问题直接阻断部分投研 direct / scheduler / heartbeat 正文生成，但同窗 CRWV/NBIS direct 可成功收口，未见错投、数据破坏、敏感信息泄露或全渠道停摆，因此不是 `P1`，不创建 GitHub Issue。
+
 ## 运行态复核（2026-07-18 15:02 CST）
 
 - `b87c4cb7` / `9d030286` 已修复并记录 direct `CRWV` 被 CWY 引用型产品制造假歧义的问题；14:00-14:02 CST 两条 Web regression direct 均能精确核验 CoreWeave/CRWV 并成功收口。
