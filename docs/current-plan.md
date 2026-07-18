@@ -19,7 +19,7 @@
 - **跨市场 ticker 解析架构修复**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/ticker-resolution-architecture.md`
-  - 摘要：系统审计并统一修复普通美股、缩写冲突、share class、数字开头国际代码、交易所后缀和指数/加密代码的提取、规范化、DataFetch 精确解析与失败语义；Interactive 发布否决已移除。当前阶段按 ADR 0004 把研究与结束权统一回同一个 Agent business+finish loop：`data_fetch(search)` 只算实体识别，至少一次 post-identity 证据尝试后才开放 finish；floor 后完整 `Stop + Done` 可作为同一 Agent DirectFinal 原样完成且不进入 terminal/二次生成，只有合法 sole `finish_research({})` 才进入无工具 terminal，floor 前直答只允许一次有界重试后失败。Interactive 服务端仅做协议/路径安全清洗与媒体稳定化，不做市场文案改写、完整性拒答或工具结果重构，并保证可见正文与持久化一致；公司关系问题必须加载各标的 quote/profile 加 Web/news/filing 证据。Provider 完整生命周期与 committed-prefix 局部恢复继续保留；完整回归、部署/生产验收后再收口 scheduler 800G/NAND/AST/SEC P2
+  - 摘要：系统审计并统一修复普通美股、缩写冲突、share class、数字开头国际代码、交易所后缀和指数/加密代码的提取、规范化、DataFetch 精确解析与失败语义；Interactive 发布否决已移除。当前阶段按 ADR 0004 / D-2026-07-19-02 把研究与结束权统一在同一个 Agent business+finish loop：system prompt 要求完整读取原问题、先 search 全部标的，再按资产路由加载 quote/profile/crypto/Web/财务证据；结构账本只做流程提示与遥测，绝不能否决、重试或丢弃完整自然终稿。首个真实 follow-up 后工具选择切为 Auto，Agent 可继续工具、直接终稿或 sole `finish_research({})` 进入无工具 terminal；两条完成路径共享同一证据契约与跨 overflow 稳定的 Session 时间前缀，quote provider time 只能进入行情口径。弱摘要不得扩写权利义务、排名、最大客户、保证或优先供货；Interactive 服务端仅做协议/路径安全清洗与媒体稳定化，不做市场文案改写、完整性拒答或工具结果重构，并保证可见正文与持久化一致。FunctionCalling runner 现同时执行顶层 step deadline 与全循环不重置的 absolute overall deadline，覆盖 model/tool/observer/terminal/recovery；工具失败或超时时先保留带失败/不确定标记的 `ToolCallMade`，共享工具副作用分类会在写操作状态不确定时立即终止同一内部循环，且失败进度不再闪成“执行完成”。Provider 完整生命周期与 committed-prefix 局部恢复继续保留；完整回归、部署/生产验收后再收口 scheduler 800G/NAND/AST/SEC P2
 
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`

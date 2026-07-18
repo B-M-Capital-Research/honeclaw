@@ -1,7 +1,9 @@
 use hone_core::{ActorIdentity, HoneResult};
 
 use crate::HoneBotCore;
-use crate::prompt::{PromptOptions, build_prompt_bundle};
+use chrono::{DateTime, FixedOffset};
+
+use crate::prompt::{PromptOptions, build_prompt_bundle_at};
 
 #[derive(Debug, Clone)]
 pub(crate) struct SlashSkillExpansion {
@@ -15,6 +17,7 @@ pub(crate) struct SlashSkillExpansion {
 pub(crate) struct PromptTurnInput {
     pub(crate) system_prompt: String,
     pub(crate) runtime_input: String,
+    pub(crate) answer_time_beijing: String,
 }
 
 pub(crate) struct PromptTurnBuilder<'a> {
@@ -45,7 +48,11 @@ impl<'a> PromptTurnBuilder<'a> {
         }
     }
 
-    pub(crate) fn resolve_prompt_input(&self, user_input: &str) -> PromptTurnInput {
+    pub(crate) fn resolve_prompt_input_at(
+        &self,
+        user_input: &str,
+        prompt_time_beijing: DateTime<FixedOffset>,
+    ) -> PromptTurnInput {
         let mut prompt_options = self.prompt_options.clone();
         if self.allow_cron {
             prompt_options
@@ -73,13 +80,14 @@ impl<'a> PromptTurnBuilder<'a> {
             5,
             &stage_constraints,
         );
-        let mut bundle = build_prompt_bundle(
+        let mut bundle = build_prompt_bundle_at(
             &self.core.config,
             &self.core.session_storage,
             &self.actor.channel,
             self.session_id,
             &Default::default(),
             &prompt_options,
+            prompt_time_beijing,
         );
         if self.core.effective_runner_manages_own_context(self.actor) {
             bundle.conversation_context = None;
@@ -112,6 +120,7 @@ impl<'a> PromptTurnBuilder<'a> {
         PromptTurnInput {
             system_prompt: bundle.system_prompt(),
             runtime_input: compose_runtime_input(&bundle, &runtime_user_input, self.recv_extra),
+            answer_time_beijing: bundle.answer_time_beijing,
         }
     }
 
@@ -261,6 +270,7 @@ mod tests {
                 "【历史会话总结】\n旧 LITE stock_research 上下文".to_string(),
             ),
             session_context: "【Session 上下文】\n当前时间：2026-05-01 12:00:00".to_string(),
+            answer_time_beijing: "2026-05-01 12:00".to_string(),
         };
 
         let input = compose_runtime_input(

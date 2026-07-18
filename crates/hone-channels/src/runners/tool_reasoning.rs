@@ -14,7 +14,7 @@ use crate::runtime::sanitize_user_visible_output;
 
 use super::types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
-    TerminalStreamPolicy,
+    RunnerTimeouts, TerminalStreamPolicy,
 };
 
 pub(crate) struct RunnerToolObserver {
@@ -227,13 +227,18 @@ impl ToolExecutionObserver for RunnerToolObserver {
             .await;
     }
 
-    async fn on_tool_finish(&self, tool_name: &str, arguments: &Value, _success: bool) {
+    async fn on_tool_finish(&self, tool_name: &str, arguments: &Value, success: bool) {
         let label = render_runner_tool_label(tool_name, arguments);
+        let (status, message) = if success {
+            ("done", format!("执行完成：{label}"))
+        } else {
+            ("failed", format!("执行失败：{label}"))
+        };
         self.emitter
             .emit(AgentRunnerEvent::ToolStatus {
                 tool: label.clone(),
-                status: "done".to_string(),
-                message: Some(format!("执行完成：{label}")),
+                status: status.to_string(),
+                message: Some(message),
                 reasoning: None,
             })
             .await;
@@ -492,6 +497,7 @@ pub(crate) struct FunctionCallingReasoningRunner {
     system_prompt: String,
     max_iterations: u32,
     llm_audit: Option<Arc<dyn LlmAuditSink>>,
+    timeouts: RunnerTimeouts,
 }
 
 impl FunctionCallingReasoningRunner {
@@ -501,6 +507,7 @@ impl FunctionCallingReasoningRunner {
         system_prompt: String,
         max_iterations: u32,
         llm_audit: Option<Arc<dyn LlmAuditSink>>,
+        timeouts: RunnerTimeouts,
     ) -> Self {
         Self {
             llm,
@@ -508,6 +515,7 @@ impl FunctionCallingReasoningRunner {
             system_prompt,
             max_iterations,
             llm_audit,
+            timeouts,
         }
     }
 }
@@ -523,6 +531,7 @@ impl AgentRunner for FunctionCallingReasoningRunner {
         request: AgentRunnerRequest,
         emitter: Arc<dyn AgentRunnerEmitter>,
     ) -> AgentRunnerResult {
+        let overall_timeout = request.timeout.unwrap_or(self.timeouts.overall);
         let streamed_output = Arc::new(AtomicBool::new(false));
         let committed_visible_prefix = Arc::new(Mutex::new(None));
         let observer = Arc::new(RunnerToolObserver {
@@ -551,7 +560,9 @@ impl AgentRunner for FunctionCallingReasoningRunner {
         .with_tool_call_budget(
             request.max_tool_calls,
             request.tool_call_limits.clone().unwrap_or_default(),
-        );
+        )
+        .with_step_timeout(Some(self.timeouts.step))
+        .with_overall_timeout(Some(overall_timeout));
 
         let mut context = request.context;
         let response = agent.run(&request.runtime_input, &mut context).await;

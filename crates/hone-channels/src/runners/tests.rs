@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use hone_core::ToolExecutionObserver;
 use hone_core::agent::{
     AgentContext, AgentMessage, ToolCallMade, final_assistant_message_content,
     normalize_agent_messages,
@@ -32,7 +33,9 @@ use super::opencode_acp::{
     handle_opencode_session_update, isolated_opencode_config, opencode_api_key_log_status,
     resolve_command_path_with_env,
 };
-use super::tool_reasoning::{render_runner_tool_label, runner_context_messages};
+use super::tool_reasoning::{
+    RunnerToolObserver, render_runner_tool_label, runner_context_messages,
+};
 use super::types::{AgentRunnerEmitter, AgentRunnerEvent};
 use uuid::Uuid;
 
@@ -511,6 +514,51 @@ fn runner_tool_label_summarizes_arguments() {
             })
         ),
         "web_search query=\"AAOI COHR after hours move\""
+    );
+}
+
+#[tokio::test]
+async fn runner_tool_finish_distinguishes_success_from_failure() {
+    let emitter = Arc::new(CaptureEmitter::default());
+    let observer = RunnerToolObserver {
+        emitter: emitter.clone(),
+    };
+    let arguments = serde_json::json!({
+        "data_type": "quote",
+        "symbol": "CRWV"
+    });
+
+    observer
+        .on_tool_finish("data_fetch", &arguments, true)
+        .await;
+    observer
+        .on_tool_finish("data_fetch", &arguments, false)
+        .await;
+
+    let events = emitter.tool_events();
+    assert_eq!(
+        events,
+        vec![
+            CapturedToolEvent {
+                tool: "data_fetch quote CRWV".to_string(),
+                status: "done".to_string(),
+                message: Some("执行完成：data_fetch quote CRWV".to_string()),
+                reasoning: None,
+            },
+            CapturedToolEvent {
+                tool: "data_fetch quote CRWV".to_string(),
+                status: "failed".to_string(),
+                message: Some("执行失败：data_fetch quote CRWV".to_string()),
+                reasoning: None,
+            },
+        ]
+    );
+    assert!(
+        !events[1]
+            .message
+            .as_deref()
+            .expect("failure message")
+            .contains("执行完成")
     );
 }
 

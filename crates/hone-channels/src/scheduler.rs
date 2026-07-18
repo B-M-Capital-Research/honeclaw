@@ -3674,6 +3674,7 @@ async fn run_heartbeat_task(
         false,
         &event.task_prompt,
         AgentTurnOrigin::Heartbeat,
+        &bundle.answer_time_beijing,
         &mut investment_runtime_suffix,
     )
     .await?;

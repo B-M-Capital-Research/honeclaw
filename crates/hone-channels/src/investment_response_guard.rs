@@ -2856,13 +2856,18 @@ pub(crate) async fn prepare_verified_investment_turn(
     allow_cron: bool,
     user_input: &str,
     origin: AgentTurnOrigin,
+    answer_time_beijing: &str,
     runtime_input: &mut String,
 ) -> Result<Option<InvestmentResponseContract>, String> {
     let scope = extract_entity_scope(user_input, origin);
     let mentions = match scope {
         EntityResolutionScope::Securities(mentions) => mentions,
         EntityResolutionScope::AgentToolDiscovery(seed_mentions) => {
-            append_agent_entity_discovery_context(runtime_input, &seed_mentions);
+            append_agent_entity_discovery_context(
+                runtime_input,
+                &seed_mentions,
+                answer_time_beijing,
+            );
             return Ok(None);
         }
         EntityResolutionScope::Portfolio(explicit_mentions) => {
@@ -7458,10 +7463,8 @@ fn extract_entity_scope(input: &str, origin: AgentTurnOrigin) -> EntityResolutio
 fn append_agent_entity_discovery_context(
     runtime_input: &mut String,
     seed_mentions: &[EntityMention],
+    answer_time: &str,
 ) {
-    let answer_time = hone_core::beijing_now()
-        .format("%Y-%m-%d %H:%M")
-        .to_string();
     let seed_snapshot = seed_mentions
         .iter()
         .map(|mention| {
@@ -7484,7 +7487,7 @@ fn append_agent_entity_discovery_context(
         "\n\n【本轮最终回答契约：由主 Agent 一次完成】\n\
          先由主 Agent 根据完整当前原话判断这是否确属公司、证券、基金、指数、加密资产、市场或板块投研请求。只有确属时才执行下述时间首行和投研模板；否则忽略本节格式，正常回答用户原问题。\n\
          对于确属的投研请求，当前用户可见回答必须由你在本 Agent loop 内根据已获得的工具证据一次完成；服务端不会因为投研格式或本轮动态实体观察结果而在成功后追加用户可见内容、改写答案、重跑主 Agent 或否决这个成功答案。\n\
-         本轮回答的时间锚点固定为北京时间 {answer_time}。完成当前请求所需的工具调用后，在生成最终回答前自行检查表达：第一可见字符必须是“数”，第一条非空行必须严格以 `数据时间：北京时间 {answer_time}；行情口径：` 开头。禁止在该行之前输出 `---`、Markdown 标题、代码围栏、问候、计划、免责声明或“结论”。\n\
+         本轮回答的时间锚点固定为北京时间 {answer_time}，它与上方 Session 上下文来自同一次时钟读取。完成当前请求所需的工具调用后，在生成最终回答前自行检查表达：第一可见字符必须是“数”，第一条非空行必须严格以 `数据时间：北京时间 {answer_time}；行情口径：` 开头。禁止在该行之前输出 `---`、Markdown 标题、代码围栏、问候、计划、免责声明或“结论”。\n\
          `行情口径：` 后的内容必须由你基于本轮 quote 工具证据写出：有 provider timestamp 时明确报价源时间、交易时段与“最新可得、非逐笔”口径；工具未提供的字段不得编造。实体 search/profile 只证明身份，不证明客户、供应商、投资、持股、合同或合作关系；关系结论和‘不存在某关系’这类否定结论都必须有本轮网页、新闻或公告来源，未找到只能表述为‘本轮未找到支持该关系的证据’。首行之后，再按系统大 Prompt 中与用户当前意图匹配的完整模板组织事实、推断、估值、风险与触发条件，不得以流程性拒答代替用户要的分析。"
     ));
 }
@@ -12686,7 +12689,11 @@ mod tests {
         let mut runtime_input = "crwv和英伟达什么关系，估值怎么看".to_string();
         let seed_mentions = plain_ticker_mentions(&runtime_input, AgentTurnOrigin::Interactive);
 
-        append_agent_entity_discovery_context(&mut runtime_input, &seed_mentions);
+        append_agent_entity_discovery_context(
+            &mut runtime_input,
+            &seed_mentions,
+            "2026-07-19 09:31",
+        );
 
         let discovery_position = runtime_input
             .find("【本轮证券实体发现：主 Agent 工具循环】")
@@ -12698,6 +12705,8 @@ mod tests {
         let answer_contract = &runtime_input[answer_contract_position..];
         assert!(answer_contract.contains("第一可见字符必须是“数”"));
         assert!(answer_contract.contains("数据时间：北京时间 "));
+        assert!(answer_contract.contains("数据时间：北京时间 2026-07-19 09:31；行情口径："));
+        assert!(answer_contract.contains("与上方 Session 上下文来自同一次时钟读取"));
         assert!(answer_contract.contains("；行情口径："));
         assert!(answer_contract.contains("禁止在该行之前输出 `---`、Markdown 标题"));
         assert!(answer_contract.contains("只有确属时才执行下述时间首行和投研模板"));

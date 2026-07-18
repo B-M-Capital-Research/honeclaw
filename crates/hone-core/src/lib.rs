@@ -18,6 +18,7 @@ pub mod security;
 pub mod task_observer;
 pub mod text;
 pub mod time;
+pub mod tool_effect;
 pub mod tool_event;
 
 pub const CHANNEL_DISABLED_EXIT_CODE: i32 = 20;

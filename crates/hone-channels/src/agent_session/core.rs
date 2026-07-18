@@ -4,6 +4,7 @@
 //! restore / progress 这些零件组合成「一次完整对话」的 pipeline。
 //! 详细的 pipeline 步骤见 [`AgentSession::run`] 顶部的分节注释。
 
+use chrono::{DateTime, FixedOffset};
 use hone_core::agent::{
     AgentContext, AgentMessage, AgentResponse, NormalizedConversationMessage,
     NormalizedConversationPart, ToolCallMade,
@@ -73,8 +74,16 @@ use super::types::{
 struct PreparedInvestmentContext {
     contract: Option<InvestmentResponseContract>,
     runtime_suffix: String,
+    prompt_time_beijing: DateTime<FixedOffset>,
     reexecution_policy: PreparedTurnReexecutionPolicy,
     main_agent_entity_discovery_input: Option<String>,
+}
+
+pub(super) fn prompt_time_for_attempt(
+    prepared_prompt_time: Option<DateTime<FixedOffset>>,
+    current_prompt_time: DateTime<FixedOffset>,
+) -> DateTime<FixedOffset> {
+    prepared_prompt_time.unwrap_or(current_prompt_time)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1099,8 +1108,12 @@ impl AgentSession {
                 );
             }
         }
-        let (system_prompt, mut runtime_input) =
-            self.resolve_prompt_input(session_id, runtime_user_input);
+        let prompt_time_beijing = prompt_time_for_attempt(
+            prepared_investment.map(|prepared| prepared.prompt_time_beijing),
+            hone_core::beijing_now(),
+        );
+        let (system_prompt, mut runtime_input, answer_time_beijing) =
+            self.resolve_prompt_input_at(session_id, runtime_user_input, prompt_time_beijing);
         let investment_context = if let Some(prepared) = prepared_investment {
             runtime_input.push_str(&prepared.runtime_suffix);
             prepared.clone()
@@ -1129,6 +1142,7 @@ impl AgentSession {
                 self.allow_cron,
                 entity_resolution_input,
                 options.turn_origin,
+                &answer_time_beijing,
                 &mut runtime_input,
             )
             .await;
@@ -1150,6 +1164,7 @@ impl AgentSession {
             PreparedInvestmentContext {
                 contract,
                 runtime_suffix: runtime_input[suffix_start..].to_string(),
+                prompt_time_beijing,
                 reexecution_policy: prepared_turn_reexecution_policy(runtime_user_input),
                 main_agent_entity_discovery_input: main_agent_entity_discovery
                     .then(|| entity_resolution_input.to_string()),
@@ -1466,11 +1481,21 @@ impl AgentSession {
             .update_metadata(&self.session_id, metadata);
     }
 
+    #[cfg(test)]
     pub(super) fn resolve_prompt_input(
         &self,
         session_id: &str,
         user_input: &str,
-    ) -> (String, String) {
+    ) -> (String, String, String) {
+        self.resolve_prompt_input_at(session_id, user_input, hone_core::beijing_now())
+    }
+
+    fn resolve_prompt_input_at(
+        &self,
+        session_id: &str,
+        user_input: &str,
+        prompt_time_beijing: DateTime<FixedOffset>,
+    ) -> (String, String, String) {
         let turn = PromptTurnBuilder::new(
             &self.core,
             &self.actor,
@@ -1479,8 +1504,12 @@ impl AgentSession {
             self.allow_cron,
             self.recv_extra.as_deref(),
         )
-        .resolve_prompt_input(user_input);
-        (turn.system_prompt, turn.runtime_input)
+        .resolve_prompt_input_at(user_input, prompt_time_beijing);
+        (
+            turn.system_prompt,
+            turn.runtime_input,
+            turn.answer_time_beijing,
+        )
     }
 
     fn expand_slash_skill_input(

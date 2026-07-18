@@ -9,6 +9,7 @@
 //! - Gemini CLI runner 的 stream 解析(冒烟)。
 
 use async_trait::async_trait;
+use chrono::TimeZone;
 use futures::stream::{self, BoxStream};
 use hone_core::ActorIdentity;
 use hone_core::SessionIdentity;
@@ -45,7 +46,10 @@ use crate::runners::{
 use crate::runtime::sanitize_user_visible_output;
 use crate::sandbox::sandbox_base_dir;
 
-use super::core::{AgentSession, PreparedTurnReexecutionPolicy, prepared_turn_reexecution_policy};
+use super::core::{
+    AgentSession, PreparedTurnReexecutionPolicy, prepared_turn_reexecution_policy,
+    prompt_time_for_attempt,
+};
 use super::emitter::SessionEventEmitter;
 use super::helpers::{
     CONTEXT_OVERFLOW_FALLBACK_MESSAGE, DIRECT_SESSION_PRE_COMPACT_RESTORE_LIMIT,
@@ -61,6 +65,25 @@ use super::types::{
 
 fn make_temp_dir(prefix: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!("{prefix}_{}", uuid::Uuid::new_v4()))
+}
+
+#[test]
+fn context_overflow_recovery_keeps_one_session_answer_time_anchor() {
+    let offset = chrono::FixedOffset::east_opt(8 * 60 * 60).expect("Beijing offset");
+    let original = offset
+        .with_ymd_and_hms(2026, 7, 19, 9, 31, 42)
+        .single()
+        .expect("original prompt time");
+    let later_retry = offset
+        .with_ymd_and_hms(2026, 7, 19, 9, 32, 7)
+        .single()
+        .expect("retry prompt time");
+
+    assert_eq!(prompt_time_for_attempt(None, original), original);
+    assert_eq!(
+        prompt_time_for_attempt(Some(original), later_retry),
+        original
+    );
 }
 
 struct NoopEmitter;
@@ -2888,9 +2911,9 @@ fn resolve_prompt_input_keeps_system_prompt_stable_when_related_skills_change() 
     let actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "target");
 
-    let (system_with_match, runtime_with_match) =
+    let (system_with_match, runtime_with_match, _) =
         session.resolve_prompt_input("session-demo", "alpha skill");
-    let (system_without_match, runtime_without_match) =
+    let (system_without_match, runtime_without_match, _) =
         session.resolve_prompt_input("session-demo", "plain greeting");
 
     assert_eq!(system_with_match, system_without_match);
@@ -2950,7 +2973,8 @@ fn resolve_prompt_input_hides_cron_only_skills_when_cron_is_not_allowed() {
     let actor = ActorIdentity::new("telegram", "alice", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "target").with_cron_allowed(false);
 
-    let (_, runtime_input) = session.resolve_prompt_input("session-demo", "set a scheduled task");
+    let (_, runtime_input, _) =
+        session.resolve_prompt_input("session-demo", "set a scheduled task");
 
     assert!(!runtime_input.contains("scheduled_task"));
     assert!(!runtime_input.contains("Scheduled Task"));
@@ -2968,7 +2992,7 @@ fn resolve_prompt_input_warns_web_cron_cannot_send_mobile_system_push() {
     let actor = ActorIdentity::new("web", "web-user", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "web-user").with_cron_allowed(true);
 
-    let (system_prompt, _) = session.resolve_prompt_input("session-demo", "3 分钟后提醒我");
+    let (system_prompt, _, _) = session.resolve_prompt_input("session-demo", "3 分钟后提醒我");
 
     assert!(system_prompt.contains("【Web 定时任务送达边界】"));
     assert!(system_prompt.contains("只保证写入当前 Hone 会话"));
@@ -2987,7 +3011,7 @@ fn resolve_prompt_input_maps_cron_enabled_flags_to_user_language() {
     let actor = ActorIdentity::new("feishu", "ou_cron", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "ou_cron").with_cron_allowed(true);
 
-    let (system_prompt, _) = session.resolve_prompt_input("session-demo", "我有哪些定时任务");
+    let (system_prompt, _, _) = session.resolve_prompt_input("session-demo", "我有哪些定时任务");
 
     assert!(system_prompt.contains("【定时任务 / 心跳任务策略】"));
     assert!(system_prompt.contains("必须调用真实 `cron_job` 工具完成"));
@@ -3042,7 +3066,7 @@ fn resolve_prompt_input_places_recv_extra_before_compact_summary() {
             "【群聊同发言者最近往返候选】\nrecent exchange".to_string(),
         ));
 
-    let (_, runtime_input) = session.resolve_prompt_input("session-demo", "请继续");
+    let (_, runtime_input, _) = session.resolve_prompt_input("session-demo", "请继续");
     let extra_pos = runtime_input
         .find("【群聊同发言者最近往返候选】")
         .expect("recv extra present");
@@ -4716,6 +4740,7 @@ async fn agent_owned_no_coverage_clarification_is_not_replaced_and_is_emitted_on
     std::fs::create_dir_all(&root).expect("create root");
     let (fmp_base_url, fmp_stub) = spawn_fmp_route_stub(vec![
         ("query=ZZZQ".to_string(), serde_json::json!([])),
+        ("/v3/quote/ZZZQ".to_string(), serde_json::json!([])),
         ("/v3/profile/ZZZQ".to_string(), serde_json::json!([])),
     ]);
     let clarification = "我已用 DataFetch 搜索 ZZZQ，但本轮权威数据源没有返回可核验的证券候选，因此现在不能确认它对应哪家公司。请补充交易所或公司全名，我再继续核验。";
@@ -4738,14 +4763,24 @@ async fn agent_owned_no_coverage_clarification_is_not_replaced_and_is_emitted_on
             reasoning_content: Some(
                 "搜索无候选，继续尝试显式代码的权威 profile 后再决定是否澄清".to_string(),
             ),
-            tool_calls: Some(vec![ToolCall {
-                id: "call_zzzq_profile".to_string(),
-                call_type: "function".to_string(),
-                function: FunctionCall {
-                    name: "data_fetch".to_string(),
-                    arguments: r#"{"data_type":"profile","ticker":"ZZZQ"}"#.to_string(),
+            tool_calls: Some(vec![
+                ToolCall {
+                    id: "call_zzzq_quote".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"quote","ticker":"ZZZQ"}"#.to_string(),
+                    },
                 },
-            }]),
+                ToolCall {
+                    id: "call_zzzq_profile".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"profile","ticker":"ZZZQ"}"#.to_string(),
+                    },
+                },
+            ]),
             usage: None,
         },
         mock_control_response(false),
@@ -4779,7 +4814,7 @@ async fn agent_owned_no_coverage_clarification_is_not_replaced_and_is_emitted_on
             .contains("本轮主 Agent 已进入证券核验流程"),
         "the service must preserve the Agent's concrete no-coverage explanation"
     );
-    assert_eq!(result.response.tool_calls_made.len(), 2);
+    assert_eq!(result.response.tool_calls_made.len(), 3);
     assert_eq!(
         result.response.tool_calls_made[0].result["data"]
             .as_array()
@@ -4787,10 +4822,10 @@ async fn agent_owned_no_coverage_clarification_is_not_replaced_and_is_emitted_on
         Some(0)
     );
     assert_eq!(
-        result.response.tool_calls_made[1].result["data"]
-            .as_array()
-            .map(Vec::len),
-        Some(0)
+        result.response.tool_calls_made[1..]
+            .iter()
+            .all(|call| call.result["data"].as_array().is_some_and(Vec::is_empty)),
+        true
     );
     assert_eq!(llm.chat_with_tools_calls(), 4);
     let events = listener.events.lock().await;
@@ -4835,6 +4870,7 @@ async fn agent_owned_equal_candidate_clarification_is_not_replaced_and_is_emitte
                 "isEtf":false,"isFund":false
             }]),
         ),
+        ("/v3/quote/ALPH".to_string(), serde_json::json!([])),
     ]);
     let clarification = "DataFetch 对 Alpha 返回了两个同等可行候选：ALPH（伦敦）和 ALPHA（雅典）。你指的是哪一个？确认后我再拉取对应代码的行情。";
     let llm = MockLlmProvider::with_tool_responses(vec![
@@ -4856,14 +4892,24 @@ async fn agent_owned_equal_candidate_clarification_is_not_replaced_and_is_emitte
             reasoning_content: Some(
                 "两个候选同名，核验各自 exact-symbol profile 后再向用户澄清".to_string(),
             ),
-            tool_calls: Some(vec![ToolCall {
-                id: "call_alph_profile".to_string(),
-                call_type: "function".to_string(),
-                function: FunctionCall {
-                    name: "data_fetch".to_string(),
-                    arguments: r#"{"data_type":"profile","ticker":"ALPH"}"#.to_string(),
+            tool_calls: Some(vec![
+                ToolCall {
+                    id: "call_alph_quote".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"quote","ticker":"ALPH"}"#.to_string(),
+                    },
                 },
-            }]),
+                ToolCall {
+                    id: "call_alph_profile".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"profile","ticker":"ALPH"}"#.to_string(),
+                    },
+                },
+            ]),
             usage: None,
         },
         mock_control_response(false),
@@ -4897,7 +4943,7 @@ async fn agent_owned_equal_candidate_clarification_is_not_replaced_and_is_emitte
             .contains("本轮主 Agent 已进入证券核验流程"),
         "the service must preserve the Agent's candidate-specific clarification"
     );
-    assert_eq!(result.response.tool_calls_made.len(), 2);
+    assert_eq!(result.response.tool_calls_made.len(), 3);
     assert_eq!(
         result.response.tool_calls_made[0].result["data"]
             .as_array()
@@ -4912,7 +4958,7 @@ async fn agent_owned_equal_candidate_clarification_is_not_replaced_and_is_emitte
             .skip(1)
             .map(|call| call.arguments["ticker"].as_str())
             .collect::<Vec<_>>(),
-        [Some("ALPH")]
+        [Some("ALPH"), Some("ALPH")]
     );
     assert_eq!(llm.chat_with_tools_calls(), 4);
     let events = listener.events.lock().await;
@@ -4949,6 +4995,14 @@ async fn agent_owned_direct_final_preserves_completed_interactive_answer() {
                 "price":73.21
             }]),
         ),
+        (
+            "/v3/profile/CRWV".to_string(),
+            serde_json::json!([{
+                "symbol":"CRWV","companyName":"CoreWeave, Inc.",
+                "exchangeShortName":"NASDAQ","currency":"USD",
+                "isEtf":false,"isFund":false
+            }]),
+        ),
     ]);
     let answer = "数据时间：北京时间 2026-07-18 21:05；行情口径：本轮报价缺少报价源时间\n\n本轮使用 data_fetch quote 校验了 CRWV；DataFetch 已确认 CRWV 对应 CoreWeave，但本轮报价缺少可用的报价源时间，所以我不把 73.21 称为实时价。估值仍可从收入增速、毛利率、资本开支、融资成本和 Forward P/S 情景入手，并把数据缺口明确列为限制。";
     let llm = MockLlmProvider::with_tool_responses(vec![
@@ -4968,14 +5022,24 @@ async fn agent_owned_direct_final_preserves_completed_interactive_answer() {
         ChatResponse {
             content: String::new(),
             reasoning_content: Some("候选已确认，读取同代码报价".to_string()),
-            tool_calls: Some(vec![ToolCall {
-                id: "call_crwv_quote_without_timestamp".to_string(),
-                call_type: "function".to_string(),
-                function: FunctionCall {
-                    name: "data_fetch".to_string(),
-                    arguments: r#"{"data_type":"quote","ticker":"CRWV"}"#.to_string(),
+            tool_calls: Some(vec![
+                ToolCall {
+                    id: "call_crwv_quote_without_timestamp".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"quote","ticker":"CRWV"}"#.to_string(),
+                    },
                 },
-            }]),
+                ToolCall {
+                    id: "call_crwv_profile".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"profile","ticker":"CRWV"}"#.to_string(),
+                    },
+                },
+            ]),
             usage: None,
         },
         ChatResponse {
@@ -5003,7 +5067,7 @@ async fn agent_owned_direct_final_preserves_completed_interactive_answer() {
     assert!(result.response.success, "{:?}", result.response.error);
     assert_eq!(result.response.content, answer);
     assert_eq!(result.response.error, None);
-    assert_eq!(result.response.tool_calls_made.len(), 2);
+    assert_eq!(result.response.tool_calls_made.len(), 3);
     assert_eq!(llm.chat_with_tools_calls(), 3);
     let messages = core
         .session_storage
@@ -5086,6 +5150,7 @@ async fn committed_terminal_header_recovers_in_place_and_session_emits_only_the_
                 "isEtf":false,"isFund":false
             }]),
         ),
+        ("/v3/quote/CRWV".to_string(), serde_json::json!([])),
     ]);
     let committed_header = concat!(
         "数据时间：北京时间 2026-07-18 21:05；行情口径：",
@@ -5114,14 +5179,24 @@ async fn committed_terminal_header_recovers_in_place_and_session_emits_only_the_
             reasoning_content: Some(
                 "search 后读取 exact-symbol profile 完成实体事实核验".to_string(),
             ),
-            tool_calls: Some(vec![ToolCall {
-                id: "call_crwv_profile_before_terminal_recovery".to_string(),
-                call_type: "function".to_string(),
-                function: FunctionCall {
-                    name: "data_fetch".to_string(),
-                    arguments: r#"{"data_type":"profile","ticker":"CRWV"}"#.to_string(),
+            tool_calls: Some(vec![
+                ToolCall {
+                    id: "call_crwv_quote_before_terminal_recovery".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"quote","ticker":"CRWV"}"#.to_string(),
+                    },
                 },
-            }]),
+                ToolCall {
+                    id: "call_crwv_profile_before_terminal_recovery".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"profile","ticker":"CRWV"}"#.to_string(),
+                    },
+                },
+            ]),
             usage: None,
         },
         mock_control_response(false),
@@ -5156,7 +5231,7 @@ async fn committed_terminal_header_recovers_in_place_and_session_emits_only_the_
 
     assert!(result.response.success, "{:?}", result.response.error);
     assert_eq!(result.response.content, recovered_answer);
-    assert_eq!(result.response.tool_calls_made.len(), 2);
+    assert_eq!(result.response.tool_calls_made.len(), 3);
     assert_eq!(llm.chat_calls(), 0);
     assert_eq!(
         llm.chat_with_tools_calls(),
@@ -5228,6 +5303,7 @@ async fn committed_terminal_header_double_failure_emits_honest_partial_and_persi
                 "isEtf":false,"isFund":false
             }]),
         ),
+        ("/v3/quote/CRWV".to_string(), serde_json::json!([])),
     ]);
     let committed_header = concat!(
         "数据时间：北京时间 2026-07-18 21:05；行情口径：",
@@ -5257,14 +5333,24 @@ async fn committed_terminal_header_double_failure_emits_honest_partial_and_persi
             reasoning_content: Some(
                 "search 后读取 exact-symbol profile 完成实体事实核验".to_string(),
             ),
-            tool_calls: Some(vec![ToolCall {
-                id: "call_crwv_profile_before_terminal_double_failure".to_string(),
-                call_type: "function".to_string(),
-                function: FunctionCall {
-                    name: "data_fetch".to_string(),
-                    arguments: r#"{"data_type":"profile","ticker":"CRWV"}"#.to_string(),
+            tool_calls: Some(vec![
+                ToolCall {
+                    id: "call_crwv_quote_before_terminal_double_failure".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"quote","ticker":"CRWV"}"#.to_string(),
+                    },
                 },
-            }]),
+                ToolCall {
+                    id: "call_crwv_profile_before_terminal_double_failure".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"profile","ticker":"CRWV"}"#.to_string(),
+                    },
+                },
+            ]),
             usage: None,
         },
         mock_control_response(false),
@@ -5305,7 +5391,7 @@ async fn committed_terminal_header_double_failure_emits_honest_partial_and_persi
             .as_deref()
             .is_some_and(|error| error.contains("terminal synthesis recovery failed"))
     );
-    assert_eq!(result.response.tool_calls_made.len(), 2);
+    assert_eq!(result.response.tool_calls_made.len(), 3);
     assert_eq!(llm.chat_with_tools_calls(), 5);
 
     let events = listener.events.lock().await;
@@ -5558,6 +5644,7 @@ async fn interactive_tickers_enter_the_main_agent_loop_without_preflight_blockin
             false,
             input,
             AgentTurnOrigin::Interactive,
+            "2026-07-19 09:31",
             &mut runtime_input,
         )
         .await
@@ -5817,6 +5904,7 @@ async fn omitted_explicit_seed_is_observational_and_does_not_rerun() {
                 "isEtf":false,"isFund":false
             }]),
         ),
+        ("/v3/quote/CRWV".to_string(), serde_json::json!([])),
     ]);
     let original_answer = "数据时间：北京时间 2026-07-18 21:05；行情口径：本轮尚未完成报价核验\n\n我只检查了 CRWV，尚未覆盖用户点名的 NBIS；这是本轮 Agent 的原始回答。";
     let llm = MockLlmProvider::with_tool_responses(vec![
@@ -5838,14 +5926,24 @@ async fn omitted_explicit_seed_is_observational_and_does_not_rerun() {
             reasoning_content: Some(
                 "在同一 Agent 循环里继续核验已发现 CRWV 的 exact-symbol profile".to_string(),
             ),
-            tool_calls: Some(vec![ToolCall {
-                id: "post_identity_crwv_profile".to_string(),
-                call_type: "function".to_string(),
-                function: FunctionCall {
-                    name: "data_fetch".to_string(),
-                    arguments: r#"{"data_type":"profile","ticker":"CRWV"}"#.to_string(),
+            tool_calls: Some(vec![
+                ToolCall {
+                    id: "post_identity_crwv_quote".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"quote","ticker":"CRWV"}"#.to_string(),
+                    },
                 },
-            }]),
+                ToolCall {
+                    id: "post_identity_crwv_profile".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"profile","ticker":"CRWV"}"#.to_string(),
+                    },
+                },
+            ]),
             usage: None,
         },
         mock_control_response(false),
@@ -5890,6 +5988,7 @@ async fn omitted_explicit_seed_is_observational_and_does_not_rerun() {
             .collect::<Vec<_>>(),
         vec![
             Some("initial_crwv_search"),
+            Some("post_identity_crwv_quote"),
             Some("post_identity_crwv_profile")
         ],
         "the same Agent must complete the required post-identity round without authorizing a second runner invocation"
@@ -6158,6 +6257,7 @@ async fn scheduled_cross_market_tickers_bypass_auxiliary_entity_chat() {
             false,
             input,
             origin,
+            "2026-07-19 09:31",
             &mut runtime_input,
         )
         .await
@@ -6350,6 +6450,7 @@ async fn interactive_portfolio_wording_stays_inside_the_main_agent_tool_loop() {
         false,
         "帮我看持仓",
         AgentTurnOrigin::Interactive,
+        "2026-07-19 09:31",
         &mut runtime_input,
     )
     .await

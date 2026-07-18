@@ -667,6 +667,10 @@ impl HoneBotCore {
             system_prompt.to_string(),
             STRICT_ACTOR_MAX_ITERATIONS,
             self.llm_audit.clone(),
+            RunnerTimeouts {
+                step: self.config.agent.step_timeout(),
+                overall: self.config.agent.overall_timeout(),
+            },
         )))
     }
 

@@ -7,6 +7,7 @@
 use async_trait::async_trait;
 use futures::StreamExt;
 use hone_core::agent::{Agent, AgentContext, AgentResponse, ToolCallMade};
+use hone_core::tool_effect::tool_call_has_persistent_side_effect;
 use hone_core::{LlmAuditRecord, LlmAuditSink, ToolExecutionObserver};
 use hone_llm::provider::ChatStreamFinishReason;
 use hone_llm::{
@@ -14,7 +15,8 @@ use hone_llm::{
 };
 use hone_tools::ToolRegistry;
 use serde_json::Value;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -25,14 +27,16 @@ const ACTIVE_BUSINESS_TIMEOUT: Duration = Duration::from_secs(20);
 const ACTIVE_BUSINESS_TIMEOUT: Duration = Duration::from_millis(25);
 const FINISH_RESEARCH_TOOL_NAME: &str = "finish_research";
 const ACTIVE_BUSINESS_FAILURE_RETRY_LIMIT: u32 = 1;
-const POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION: &str = "【内部研究取证轮】当前已通过 DataFetch 进入金融数据工具链，但本轮只有实体发现证据，`finish_research` 尚不可用。请继续使用真实业务工具完成至少一次实体发现之后的证据尝试：按用户原始问题核验 exact-symbol quote/profile，并继续取得所需财务、新闻、网页、公告、持仓或其它业务证据。不得把 data_fetch(search) 或 profile 当成公司关系、事件或因果证据，也不要在本轮输出最终答案。";
-const ACTIVE_RESEARCH_SYSTEM_INSTRUCTION: &str = "【内部研究工具轮】当前已进入金融数据工具链。本轮同时提供真实业务工具和 `finish_research`。请由同一 Agent 继续阅读用户原始问题与本轮真实工具结果：证据不足时调用当前最需要的一个或多个业务工具；只有合理的研究尝试已经完成，或必要来源已明确不可得并可如实披露时，才单独调用 `finish_research`。不要把完成信号与业务工具混用。若当前模型无法调用完成信号而以完整正文自然结束，只能在所需证据已经完成后输出一次符合最终回答契约的终稿；服务端会原样采用，不会另行审查或重写。实体 search/profile 只证明身份，不证明公司关系；关系、事件和因果结论必须先取得本轮 web/news/公告证据。";
+const AGENT_OVERALL_TIMEOUT_ERROR: &str =
+    "agent_timeout: function-calling overall deadline exceeded";
+const AGENT_STEP_TIMEOUT_ERROR: &str = "agent_timeout: function-calling step deadline exceeded";
+const POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION: &str = "【内部研究取证轮】当前已通过 DataFetch 进入金融数据工具链，但证券实体、行情或资产路由证据仍未完整。继续使用真实业务工具：先用 search 解析全部点名标的，再对选中的每个标准 symbol 执行 exact-symbol quote/profile；crypto 使用 search 返回的结构化 CRYPTO 路由与 crypto_quote，不要求 stock profile。若别名仍未解析，可先精确 refinement search；随后按用户原始问题继续取得财务、新闻、网页、公告、持仓或其它业务证据。尽量在同一轮批量或并行调用互不依赖的工具。不得把 data_fetch(search) 或 profile 当成公司关系、事件或因果证据。内部完成信号只是 Agent 自己结束研究的方式，不是服务端事实审查；只有合理取证已完成或来源明确不可得并需披露时才使用。";
+const ACTIVE_RESEARCH_SYSTEM_INSTRUCTION: &str = "【内部研究工具轮】当前已进入金融数据工具链。本轮同时提供真实业务工具和 `finish_research`。请由同一 Agent 继续阅读用户原始问题与本轮真实工具结果：证据不足时调用当前最需要的一个或多个业务工具；合理的研究尝试已经完成，或必要来源已明确不可得并可如实披露时，优先单独调用 `finish_research`，以便直接进入可流式输出的同 Agent 终稿。不要把完成信号与业务工具混用。若 provider 本轮仍以完整自然语言正文结束，该正文就是同一 Agent 的最终回答，服务端会原样采用，不会另行审查、重写或补写，因此必须先完成下方最后一跳自检。实体 search/profile 只证明身份，不证明公司关系；关系、事件和因果结论必须先取得本轮 web/news/公告证据。";
 const FINISH_RESEARCH_SYSTEM_INSTRUCTION: &str = "【显式完成后的终稿阶段】Agent 已在同一业务工具循环中显式确认本轮合理的研究与工具尝试完成，现由同一 Agent 和同一上下文进入无工具终稿阶段。这是证据整理而不是新的研究规划：直接组织终稿，不要重新展开工具决策或冗长隐藏推演。只能使用用户请求与此前已成功返回的业务工具结果；`reasoning_content`、隐藏思考、未采用草稿和内部状态文本都不是事实证据。缺失证据应如实披露但不构成拒答。";
-const TERMINAL_SYNTHESIS_PROMPT: &str = concat!(
-    "当前阶段不再提供任何工具；请只基于同一轮对话中已有的用户请求和此前已成功返回的业务工具结果，直接生成一次完整、可见的最终回答。",
+const FINAL_ANSWER_EVIDENCE_CONTRACT: &str = concat!(
     "`reasoning_content`、隐藏思考、未采用草稿、内部状态文本以及模型记忆都不是事实证据，不得从中提取或补齐关系、日期、行情、财务或估值事实。",
-    "第一个可见行必须严格使用“数据时间：北京时间 YYYY-MM-DD HH:MM；行情口径：…”，且时间与口径只能来自已有工具上下文；没有行情证据时仍使用“行情口径”字段名并说明数据范围，不得伪造报价时间或盘前/盘后时段。",
-    "逐项复核所有公司关系、新闻因果、日期、行情、财务与估值数字：实体 search/profile 只证明标的身份，不证明公司关系；关系、事件与因果结论必须有当前 web/news/公告或工具原文明确支持，搜索摘要只能按其明确表述的有限范围使用，其他事实必须标为未核验。未找到证据不等于事实不存在；‘无股权关系’、‘不是客户/供应商’、‘没有合同/合作’等否定结论同样必须有明确来源，否则只能说本轮未找到支持该关系的证据。",
+    "数据时间只能采用本轮 Session 北京时间；quote 的 provider timestamp 只能写在‘行情口径’里，绝不能冒充数据时间。没有行情证据时仍保留‘行情口径’字段并说明范围，不得伪造报价时间或盘前/盘后时段。",
+    "逐项复核所有公司关系、新闻因果、日期、行情、财务与估值数字：实体 search/profile 只证明标的身份，不证明公司关系；关系、事件与因果结论必须有当前 web/news/公告或工具原文明确支持，并在相关结论旁说明来源名称及其直接支持的有限事实。搜索摘要只能按其字面范围使用；只有二级摘要时应继续找公司公告、监管文件或其它一手来源，若仍不可得则明确披露证据层级。不得把关系标签扩写成来源未明示的权利义务，也不得由交易事实推导排名、最大/唯一、重要性、排他性、保证、优先权、客户集中度或未明示的角色关系。例如，‘采购未使用容量’不能推出‘最大客户’，‘most-favored-nation relationship’不能推出‘保证供货’或‘优先供货’。未找到证据不等于事实不存在；‘无股权关系’、‘不是客户/供应商’、‘没有合同/合作’等否定结论同样必须有明确来源，否则只能说本轮未找到支持该关系的证据。",
     "年度数据不得写成 TTM；单季数据必须标明季度与报告期，年化时必须显示是“单季×4”还是“最近四季求和”及算术、分子分母口径，并披露季节性限制。",
     "未取得净债务或企业价值时不得使用 EV 或 EV/EBITDA 标签，也不得把市值/EBITDA 写成 EV/EBITDA。quote 返回的 PE 未明确标注 forward 时不得称为 Forward PE；已核验期间 EBITDA 为正时不得声称公司需到未来才转正。",
     "没有直接证据与完整输入时，不得给出目标价、概率、仓位比例、止损位或精确支撑位；第三方分析师目标价必须标注为第三方聚合口径与对应时间，不得直接作为交易锚点。",
@@ -72,22 +76,110 @@ struct PendingToolCall {
 #[derive(Debug, Default)]
 struct ResearchEvidenceLedger {
     identity_only_attempts: u32,
+    broad_data_attempts: u32,
+    symbol_scoped_attempts: u32,
+    post_activation_attempts: u32,
     post_identity_attempts: u32,
+    post_identity_quote_attempts: u32,
+    post_identity_asset_route_attempts: u32,
+    post_identity_quote_symbols: BTreeSet<String>,
+    post_identity_asset_route_symbols: BTreeSet<String>,
 }
 
 impl ResearchEvidenceLedger {
-    fn observe_business_call(&mut self, tool_call: &ToolCall, post_identity_round: bool) {
+    fn observe_business_call(&mut self, tool_call: &ToolCall, active_business_round: bool) {
         // A malformed function payload never counts as an evidence attempt.
         // The normal execution path will return its parse error to the Agent,
         // which can then issue a corrected business call.
         if serde_json::from_str::<Value>(&tool_call.function.arguments).is_err() {
             return;
         }
+        if active_business_round {
+            self.post_activation_attempts = self.post_activation_attempts.saturating_add(1);
+        }
         if is_identity_only_search_call(tool_call) {
             self.identity_only_attempts = self.identity_only_attempts.saturating_add(1);
-        } else if post_identity_round {
-            self.post_identity_attempts = self.post_identity_attempts.saturating_add(1);
+            return;
         }
+
+        let data_type = data_fetch_data_type(tool_call);
+        let symbols = data_fetch_target_symbols(tool_call);
+        if !symbols.is_empty() {
+            self.symbol_scoped_attempts = self.symbol_scoped_attempts.saturating_add(1);
+        } else if data_type.as_deref().is_some_and(is_broad_data_type) {
+            self.broad_data_attempts = self.broad_data_attempts.saturating_add(1);
+        }
+
+        // Evidence gathered before the first identity-search attempt cannot
+        // satisfy the post-identity floor. This keeps an out-of-order quote or
+        // profile from silently replacing the entity-resolution step, while
+        // still allowing the same assistant turn to batch search first and
+        // then exact-symbol evidence calls.
+        if self.identity_only_attempts > 0 {
+            self.post_identity_attempts = self.post_identity_attempts.saturating_add(1);
+            match data_type.as_deref() {
+                Some("quote" | "quote_short") => {
+                    self.post_identity_quote_attempts =
+                        self.post_identity_quote_attempts.saturating_add(1);
+                    self.post_identity_quote_symbols.extend(symbols);
+                }
+                Some("crypto_quote") => {
+                    // A structured crypto search followed by crypto_quote is
+                    // the complete price + asset-route path. Requiring a stock
+                    // profile here would deadlock a valid crypto request.
+                    self.post_identity_quote_attempts =
+                        self.post_identity_quote_attempts.saturating_add(1);
+                    self.post_identity_asset_route_attempts =
+                        self.post_identity_asset_route_attempts.saturating_add(1);
+                    self.post_identity_quote_symbols
+                        .extend(symbols.iter().cloned());
+                    self.post_identity_asset_route_symbols.extend(symbols);
+                }
+                Some("profile") => {
+                    self.post_identity_asset_route_attempts =
+                        self.post_identity_asset_route_attempts.saturating_add(1);
+                    self.post_identity_asset_route_symbols.extend(symbols);
+                }
+                Some("snapshot") => {
+                    // DataFetch snapshot is the canonical combined
+                    // quote/profile route. One real attempt therefore proves
+                    // both structural steps even when the provider reports a
+                    // field-level error that the Agent must disclose.
+                    self.post_identity_quote_attempts =
+                        self.post_identity_quote_attempts.saturating_add(1);
+                    self.post_identity_asset_route_attempts =
+                        self.post_identity_asset_route_attempts.saturating_add(1);
+                    self.post_identity_quote_symbols
+                        .extend(symbols.iter().cloned());
+                    self.post_identity_asset_route_symbols.extend(symbols);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn completion_signal_available(&self, active_business_round: bool) -> bool {
+        active_business_round && self.post_activation_attempts > 0
+    }
+
+    fn evidence_floor_satisfied(&self, active_business_round: bool) -> bool {
+        if !active_business_round {
+            return false;
+        }
+
+        let security_path = self.identity_only_attempts > 0 || self.symbol_scoped_attempts > 0;
+        if !security_path {
+            return self.broad_data_attempts > 0;
+        }
+
+        self.identity_only_attempts > 0
+            && self.post_identity_attempts > 0
+            && self.post_identity_quote_attempts > 0
+            && self.post_identity_asset_route_attempts > 0
+            && !self.post_identity_quote_symbols.is_empty()
+            && self
+                .post_identity_quote_symbols
+                .is_subset(&self.post_identity_asset_route_symbols)
     }
 }
 
@@ -210,6 +302,8 @@ pub struct FunctionCallingAgent {
     pub max_tool_calls: Option<u32>,
     pub tool_call_limits: HashMap<String, u32>,
     pub finish_research_terminal_synthesis: bool,
+    pub step_timeout: Option<Duration>,
+    pub overall_timeout: Option<Duration>,
 }
 
 impl FunctionCallingAgent {
@@ -236,6 +330,8 @@ impl FunctionCallingAgent {
             max_tool_calls: None,
             tool_call_limits: HashMap::new(),
             finish_research_terminal_synthesis: false,
+            step_timeout: None,
+            overall_timeout: None,
         }
     }
 
@@ -274,6 +370,22 @@ impl FunctionCallingAgent {
     /// Direct answers before finance research remain exact one-shot answers.
     pub fn with_finish_research_terminal_synthesis(mut self, enabled: bool) -> Self {
         self.finish_research_terminal_synthesis = enabled;
+        self
+    }
+
+    /// Apply one absolute deadline to the complete Agent loop. The deadline is
+    /// created once at `run` entry and is never reset between model, tool,
+    /// terminal, or recovery phases.
+    pub fn with_overall_timeout(mut self, timeout: Option<Duration>) -> Self {
+        self.overall_timeout = timeout.filter(|timeout| !timeout.is_zero());
+        self
+    }
+
+    /// Apply a fresh per-step deadline to each model, tool, and observer
+    /// await. This bounds a single stalled phase while `overall_timeout`
+    /// remains one absolute, non-resetting deadline for the whole Agent run.
+    pub fn with_step_timeout(mut self, timeout: Option<Duration>) -> Self {
+        self.step_timeout = timeout.filter(|timeout| !timeout.is_zero());
         self
     }
 
@@ -353,6 +465,51 @@ impl FunctionCallingAgent {
             });
         }
 
+        messages
+    }
+
+    fn build_current_research_messages(
+        &self,
+        context: &AgentContext,
+        additional_system_instruction: Option<&str>,
+        message_start: usize,
+    ) -> Vec<Message> {
+        let mut messages =
+            self.build_messages_from_index(context, additional_system_instruction, message_start);
+        let message_start = message_start.min(context.messages.len());
+        let mut prior_user_requests = context.messages[..message_start]
+            .iter()
+            .rev()
+            .filter(|message| message.role == "user")
+            .filter_map(|message| message.content.as_deref())
+            .filter(|content| !content.trim().is_empty())
+            .take(3)
+            .map(|content| content.chars().take(2_000).collect::<String>())
+            .collect::<Vec<_>>();
+        prior_user_requests.reverse();
+        if !prior_user_requests.is_empty() {
+            let reference = Message {
+                role: "user".to_string(),
+                content: Some(format!(
+                    "【历史用户请求，仅用于理解本轮指代与用户指定的分析口径，不是当前事实证据】\n{}",
+                    prior_user_requests
+                        .iter()
+                        .map(|request| format!("- {request}"))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                )),
+                reasoning_content: None,
+                tool_calls: None,
+                tool_call_id: None,
+                name: None,
+            };
+            let insert_at = usize::from(
+                messages
+                    .first()
+                    .is_some_and(|message| message.role == "system"),
+            );
+            messages.insert(insert_at, reference);
+        }
         messages
     }
 
@@ -544,11 +701,12 @@ impl FunctionCallingAgent {
         &self,
         messages: &[Message],
         tools: &[Value],
+        tool_choice_mode: ToolChoiceMode,
         telemetry: &mut StreamToolChoiceTelemetry,
     ) -> hone_core::HoneResult<ActiveBusinessStreamOutcome> {
-        let mut stream =
-            self.llm
-                .chat_with_tools_stream(messages, tools, None, ToolChoiceMode::Required);
+        let mut stream = self
+            .llm
+            .chat_with_tools_stream(messages, tools, None, tool_choice_mode);
         let mut reasoning_content = String::new();
         let mut tool_calls = BTreeMap::<u32, PendingToolCall>::new();
         let mut usage = None;
@@ -785,36 +943,28 @@ impl FunctionCallingAgent {
         tool_calls_made: Vec<ToolCallMade>,
         completed_iterations: u32,
         turn_message_start: usize,
+        required_prefix: Option<&str>,
+        overall_deadline: Option<tokio::time::Instant>,
     ) -> AgentResponse {
         let iterations = completed_iterations.saturating_add(1);
         // Initial and business rounds retain bounded conversation history
         // so the Agent can understand follow-ups. Final factual synthesis must
         // not let an older ticker, quote, or assistant draft masquerade as
-        // current-turn evidence, so its transcript begins at this run's user
-        // message and contains only this turn's tool calls/results.
-        let mut terminal_messages = self.build_messages_from_index(
+        // current-turn evidence. Keep only a bounded, explicitly non-evidence
+        // digest of prior user requests for follow-up pronouns/analysis
+        // constraints, followed by this turn's user message and tool results.
+        let mut terminal_messages = self.build_current_research_messages(
             context,
             Some(FINISH_RESEARCH_SYSTEM_INSTRUCTION),
             turn_message_start,
         );
-        // Provider reasoning and assistant prose emitted alongside tool calls
-        // are useful at most as an intermediate draft; neither is fact
-        // evidence. Scrub both at the terminal boundary so synthesis can rely
-        // only on the user's request and actual tool results. This also covers
-        // an early Web/search round that precedes the DataFetch activation
-        // boundary for a finance turn.
-        for message in &mut terminal_messages {
-            message.reasoning_content = None;
-            if message.role == "assistant"
-                && message
-                    .tool_calls
-                    .as_ref()
-                    .is_some_and(|tool_calls| !tool_calls.is_empty())
-            {
-                message.content = Some(String::new());
-            }
-        }
-        let terminal_prompt = terminal_synthesis_prompt();
+        // Provider-issued reasoning signatures may be required to replay a
+        // tool-result follow-up on MiniMax/Mimo-compatible APIs. Preserve them
+        // on the wire but keep assistant prose beside tool calls blank; the
+        // terminal contract explicitly declares reasoning non-evidence, and
+        // the final persisted turn never stores it.
+        scrub_research_evidence_messages(&mut terminal_messages, false);
+        let terminal_prompt = terminal_synthesis_prompt(required_prefix);
         terminal_messages.push(Message {
             role: "user".to_string(),
             content: Some(terminal_prompt),
@@ -829,9 +979,14 @@ impl FunctionCallingAgent {
         });
         let terminal_started = std::time::Instant::now();
         let mut terminal_tool_choice = StreamToolChoiceTelemetry::new(ToolChoiceMode::Auto);
-        let terminal_result = match self
-            .chat_terminal_streaming(&terminal_messages, &mut terminal_tool_choice, true)
-            .await
+        let (terminal_deadline, terminal_timeout_error) =
+            step_deadline(overall_deadline, self.step_timeout);
+        let terminal_result = match await_before_deadline(
+            terminal_deadline,
+            terminal_timeout_error,
+            self.chat_terminal_streaming(&terminal_messages, &mut terminal_tool_choice, true),
+        )
+        .await
         {
             Ok(response) => {
                 self.record_audit(
@@ -892,6 +1047,16 @@ impl FunctionCallingAgent {
                     };
                 };
 
+                if canonical_agent_timeout(&error).is_some() {
+                    return AgentResponse {
+                        content: String::new(),
+                        tool_calls_made,
+                        iterations,
+                        success: false,
+                        error: Some(error.to_string()),
+                    };
+                }
+
                 // The canonical header has already reached the user, so an
                 // outer Agent/runner retry would either duplicate it or rerun
                 // business tools. Retry this terminal transport exactly once,
@@ -904,13 +1069,22 @@ impl FunctionCallingAgent {
                 });
                 let recovery_started = std::time::Instant::now();
                 let mut recovery_tool_choice = StreamToolChoiceTelemetry::new(ToolChoiceMode::Auto);
-                let recovery_result = self
-                    .chat_terminal_streaming(&recovery_messages, &mut recovery_tool_choice, false)
-                    .await
-                    .and_then(|response| {
-                        validate_terminal_recovery_content(&response.content, &committed_prefix)?;
-                        Ok(response)
-                    });
+                let (recovery_deadline, recovery_timeout_error) =
+                    step_deadline(overall_deadline, self.step_timeout);
+                let recovery_result = await_before_deadline(
+                    recovery_deadline,
+                    recovery_timeout_error,
+                    self.chat_terminal_streaming(
+                        &recovery_messages,
+                        &mut recovery_tool_choice,
+                        false,
+                    ),
+                )
+                .await
+                .and_then(|response| {
+                    validate_terminal_recovery_content(&response.content, &committed_prefix)?;
+                    Ok(response)
+                });
 
                 match recovery_result {
                     Ok(response) => {
@@ -1043,7 +1217,7 @@ fn finish_research_tool_schema() -> Value {
         "type": "function",
         "function": {
             "name": FINISH_RESEARCH_TOOL_NAME,
-            "description": "Agent-owned terminal signal available in the same business-tool loop. Call it by itself only after all reasonable research attempts for the user's original question are complete, including when a required source is explicitly unavailable and that gap must be disclosed. Identity search/profile is never enough for company-relationship, event, or causal claims: those require current web/news/filing evidence. Valuation labels require the actual denominator period and inputs. Hone will then ask the same Agent for the final answer with tools disabled. Never call it together with another function.",
+            "description": "Agent-owned terminal signal available in the same business-tool loop. After all reasonable research attempts for the user's original question are complete, prefer calling this signal by itself over writing a long final body in a tool-capable round; Hone will immediately ask the same Agent for the streamable final answer with tools disabled. A required source may be explicitly unavailable when that gap will be disclosed. Identity search/profile is never enough for company-relationship, event, or causal claims: those require current web/news/filing evidence. Valuation labels require the actual denominator period and inputs. Never call it together with another function.",
             "parameters": {
                 "type": "object",
                 "properties": {},
@@ -1069,8 +1243,13 @@ fn is_valid_finish_research_call(tool_call: &ToolCall) -> bool {
 }
 
 fn is_identity_only_search_call(tool_call: &ToolCall) -> bool {
+    data_fetch_data_type(tool_call)
+        .is_some_and(|data_type| data_type.eq_ignore_ascii_case("search"))
+}
+
+fn data_fetch_data_type(tool_call: &ToolCall) -> Option<String> {
     if !tool_call.function.name.eq_ignore_ascii_case("data_fetch") {
-        return false;
+        return None;
     }
     serde_json::from_str::<Value>(&tool_call.function.arguments)
         .ok()
@@ -1078,21 +1257,111 @@ fn is_identity_only_search_call(tool_call: &ToolCall) -> bool {
             arguments
                 .get("data_type")
                 .and_then(Value::as_str)
-                .map(str::to_owned)
+                .map(|data_type| data_type.trim().to_ascii_lowercase())
         })
-        .is_some_and(|data_type| data_type.trim().eq_ignore_ascii_case("search"))
+}
+
+fn data_fetch_target_symbols(tool_call: &ToolCall) -> BTreeSet<String> {
+    if !tool_call.function.name.eq_ignore_ascii_case("data_fetch") {
+        return BTreeSet::new();
+    }
+    let Some(arguments) = serde_json::from_str::<Value>(&tool_call.function.arguments).ok() else {
+        return BTreeSet::new();
+    };
+    ["ticker", "symbol"]
+        .into_iter()
+        .filter_map(|key| arguments.get(key))
+        .flat_map(|value| match value {
+            Value::String(value) => value
+                .split([',', '，', '、', ';', '；'])
+                .map(str::to_string)
+                .collect::<Vec<_>>(),
+            Value::Array(values) => values
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect::<Vec<_>>(),
+            _ => Vec::new(),
+        })
+        .map(|symbol| symbol.trim().to_ascii_uppercase())
+        .filter(|symbol| !symbol.is_empty())
+        .collect()
+}
+
+fn is_broad_data_type(data_type: &str) -> bool {
+    matches!(
+        data_type,
+        "gainers_losers" | "sector_performance" | "earnings_calendar"
+    )
 }
 
 fn starts_investment_research_protocol(tool_call: &ToolCall) -> bool {
     tool_call.function.name.eq_ignore_ascii_case("data_fetch")
 }
 
-fn terminal_synthesis_prompt() -> String {
+fn exact_final_answer_prefix(user_input: &str) -> Option<String> {
+    const REQUIREMENT: &str = "第一条非空行必须严格以 `";
+    let start = user_input.rfind(REQUIREMENT)? + REQUIREMENT.len();
+    let remainder = &user_input[start..];
+    let end = remainder.find('`')?;
+    let prefix = remainder[..end].trim();
+    (prefix.starts_with("数据时间：北京时间 ") && prefix.ends_with("；行情口径："))
+        .then(|| prefix.to_string())
+}
+
+fn exact_prefix_instruction(required_prefix: Option<&str>) -> String {
+    match required_prefix {
+        Some(prefix) => format!(
+            "第一条非空行必须逐字以 `{prefix}` 开头，第一可见字符必须是‘数’。这是服务端为本轮生成的精确 Session 时间锚点，不得改用 quote 的报价源时间。"
+        ),
+        None => "第一条非空行必须严格使用 `数据时间：北京时间 YYYY-MM-DD HH:MM；行情口径：`，其中 YYYY-MM-DD HH:MM 只能取当前 runtime user message 的本轮 Session 北京时间，第一可见字符必须是‘数’。".to_string(),
+    }
+}
+
+fn terminal_synthesis_prompt(required_prefix: Option<&str>) -> String {
     format!(
-        "【终局回答阶段】\n{}\n{}",
+        "【终局回答阶段】\n{}\n{}\n{}\n{}",
         "Agent 已通过显式完成信号确认：本轮合理的研究与工具尝试已经完成。",
-        TERMINAL_SYNTHESIS_PROMPT
+        "当前阶段不再提供任何工具；请只基于同一轮对话中已有的用户请求和此前已成功返回的业务工具结果，直接生成一次完整、可见的最终回答。",
+        exact_prefix_instruction(required_prefix),
+        FINAL_ANSWER_EVIDENCE_CONTRACT
     )
+}
+
+fn active_business_turn_prompt(
+    evidence_floor_satisfied: bool,
+    required_prefix: Option<&str>,
+) -> String {
+    if evidence_floor_satisfied {
+        format!(
+            "【本轮 Agent 最后一跳提醒】工具仍然可用：若当前证据还不足，继续调用真实业务工具；若研究已完成，优先单独调用 `finish_research` 进入可流式输出的同 Agent 终稿。若 provider 仍自然输出完整正文，该正文也会原样作为唯一终稿。无论采用哪种完成方式，最终正文都必须遵守同一份契约：\n{}\n{}",
+            exact_prefix_instruction(required_prefix),
+            FINAL_ANSWER_EVIDENCE_CONTRACT
+        )
+    } else {
+        format!(
+            "【本轮 Agent 取证提醒】{}\n服务端不会审查、拒绝、改写或补写一段完整自然语言正文；若 provider 未按工具选择继续取证而在本轮自然结束，该正文会原样成为最终回答，因此仍必须遵守以下最终契约：\n{}\n{}",
+            POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION,
+            exact_prefix_instruction(required_prefix),
+            FINAL_ANSWER_EVIDENCE_CONTRACT
+        )
+    }
+}
+
+fn scrub_research_evidence_messages(messages: &mut [Message], strip_reasoning: bool) {
+    for message in messages {
+        if strip_reasoning {
+            message.reasoning_content = None;
+        }
+        if message.role == "assistant"
+            && message
+                .tool_calls
+                .as_ref()
+                .is_some_and(|tool_calls| !tool_calls.is_empty())
+        {
+            message.content = Some(String::new());
+        }
+    }
 }
 
 enum ActiveBusinessStreamOutcome {
@@ -1120,6 +1389,82 @@ fn failed_agent_response(
         iterations,
         success: false,
         error: Some(error.into()),
+    }
+}
+
+async fn await_before_deadline<T, F>(
+    deadline: Option<tokio::time::Instant>,
+    timeout_error: &'static str,
+    future: F,
+) -> hone_core::HoneResult<T>
+where
+    F: Future<Output = hone_core::HoneResult<T>>,
+{
+    match deadline {
+        Some(deadline) => tokio::time::timeout_at(deadline, future)
+            .await
+            .map_err(|_| hone_core::HoneError::Llm(timeout_error.to_string()))?,
+        None => future.await,
+    }
+}
+
+async fn await_unit_before_deadline<F>(
+    deadline: Option<tokio::time::Instant>,
+    timeout_error: &'static str,
+    future: F,
+) -> hone_core::HoneResult<()>
+where
+    F: Future<Output = ()>,
+{
+    match deadline {
+        Some(deadline) => tokio::time::timeout_at(deadline, future)
+            .await
+            .map_err(|_| hone_core::HoneError::Llm(timeout_error.to_string())),
+        None => {
+            future.await;
+            Ok(())
+        }
+    }
+}
+
+fn step_deadline(
+    overall_deadline: Option<tokio::time::Instant>,
+    step_timeout: Option<Duration>,
+) -> (Option<tokio::time::Instant>, &'static str) {
+    let step_deadline = step_timeout.map(|timeout| tokio::time::Instant::now() + timeout);
+    match (overall_deadline, step_deadline) {
+        (Some(overall), Some(step)) if overall <= step => {
+            (Some(overall), AGENT_OVERALL_TIMEOUT_ERROR)
+        }
+        (Some(_), Some(step)) => (Some(step), AGENT_STEP_TIMEOUT_ERROR),
+        (Some(overall), None) => (Some(overall), AGENT_OVERALL_TIMEOUT_ERROR),
+        (None, Some(step)) => (Some(step), AGENT_STEP_TIMEOUT_ERROR),
+        (None, None) => (None, AGENT_STEP_TIMEOUT_ERROR),
+    }
+}
+
+fn active_business_deadline(
+    overall_deadline: Option<tokio::time::Instant>,
+    step_timeout: Option<Duration>,
+) -> (tokio::time::Instant, &'static str) {
+    let phase_deadline = tokio::time::Instant::now() + ACTIVE_BUSINESS_TIMEOUT;
+    let (configured_deadline, configured_error) = step_deadline(overall_deadline, step_timeout);
+    match configured_deadline {
+        Some(configured_deadline) if configured_deadline <= phase_deadline => {
+            (configured_deadline, configured_error)
+        }
+        _ => (phase_deadline, "active business stream timed out"),
+    }
+}
+
+fn canonical_agent_timeout(error: &impl std::fmt::Display) -> Option<&'static str> {
+    let error = error.to_string();
+    if error.contains(AGENT_OVERALL_TIMEOUT_ERROR) {
+        Some(AGENT_OVERALL_TIMEOUT_ERROR)
+    } else if error.contains(AGENT_STEP_TIMEOUT_ERROR) {
+        Some(AGENT_STEP_TIMEOUT_ERROR)
+    } else {
+        None
     }
 }
 
@@ -1244,6 +1589,10 @@ impl Agent for FunctionCallingAgent {
     async fn run(&self, user_input: &str, context: &mut AgentContext) -> AgentResponse {
         let turn_message_start = context.messages.len();
         context.add_user_message(user_input);
+        let required_final_answer_prefix = exact_final_answer_prefix(user_input);
+        let overall_deadline = self
+            .overall_timeout
+            .map(|timeout| tokio::time::Instant::now() + timeout);
 
         let business_tools: Vec<Value> = self.tools.get_tools_schema();
         let mut tool_calls_made: Vec<ToolCallMade> = Vec::new();
@@ -1260,6 +1609,13 @@ impl Agent for FunctionCallingAgent {
         ));
 
         loop {
+            if overall_deadline.is_some_and(|deadline| deadline <= tokio::time::Instant::now()) {
+                return failed_agent_response(
+                    tool_calls_made,
+                    iterations,
+                    AGENT_OVERALL_TIMEOUT_ERROR,
+                );
+            }
             let finance_protocol_active =
                 self.finish_research_terminal_synthesis && investment_research_started;
 
@@ -1281,25 +1637,54 @@ impl Agent for FunctionCallingAgent {
 
             let active_business_round = finance_protocol_active;
             let finish_research_available =
-                active_business_round && research_evidence.post_identity_attempts > 0;
+                research_evidence.completion_signal_available(active_business_round);
+            let evidence_floor_satisfied =
+                research_evidence.evidence_floor_satisfied(active_business_round);
             let mut round_tools = business_tools.clone();
             if finish_research_available {
                 round_tools.push(finish_research_tool_schema());
             }
             let has_tools = !round_tools.is_empty();
-            let tool_choice_mode = if active_business_round {
+            let tool_choice_mode = if active_business_round && !finish_research_available {
                 ToolChoiceMode::Required
             } else {
                 ToolChoiceMode::Auto
             };
-            let messages = self.build_messages(
-                context,
-                active_business_round.then_some(if finish_research_available {
-                    ACTIVE_RESEARCH_SYSTEM_INSTRUCTION
-                } else {
-                    POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION
-                }),
-            );
+            let round_instruction = active_business_round.then_some(if finish_research_available {
+                ACTIVE_RESEARCH_SYSTEM_INSTRUCTION
+            } else {
+                POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION
+            });
+            let mut messages = if active_business_round {
+                // Once current-turn DataFetch has identified a finance path,
+                // later research and DirectFinal generation must use the same
+                // evidence boundary as explicit terminal synthesis. Historical
+                // assistant claims and hidden tool-round reasoning are useful
+                // for neither current facts nor final prose.
+                self.build_current_research_messages(context, round_instruction, turn_message_start)
+            } else {
+                self.build_messages(context, round_instruction)
+            };
+            if active_business_round {
+                // Keep provider-issued reasoning signatures during live tool
+                // follow-up rounds (MiniMax/Mimo compatibility), while
+                // removing assistant prose drafts beside tool calls. The
+                // shared final contract explicitly excludes hidden reasoning
+                // as evidence; explicit terminal synthesis additionally
+                // strips it from the transcript altogether.
+                scrub_research_evidence_messages(&mut messages, false);
+                messages.push(Message {
+                    role: "user".to_string(),
+                    content: Some(active_business_turn_prompt(
+                        evidence_floor_satisfied,
+                        required_final_answer_prefix.as_deref(),
+                    )),
+                    reasoning_content: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                });
+            }
             let request_payload = serde_json::json!({
                 "messages": messages.clone(),
                 "tools": if has_tools { Some(round_tools.clone()) } else { None },
@@ -1312,11 +1697,14 @@ impl Agent for FunctionCallingAgent {
             // 如果有工具，使用 chat_with_tools；否则使用 chat
             let result: ChatResponse = if has_tools {
                 if active_business_round {
-                    match tokio::time::timeout(
-                        ACTIVE_BUSINESS_TIMEOUT,
+                    let (active_deadline, active_timeout_error) =
+                        active_business_deadline(overall_deadline, self.step_timeout);
+                    match tokio::time::timeout_at(
+                        active_deadline,
                         self.chat_active_business_tools(
                             &messages,
                             &round_tools,
+                            tool_choice_mode,
                             &mut stream_tool_choice,
                         ),
                     )
@@ -1327,45 +1715,16 @@ impl Agent for FunctionCallingAgent {
                             response
                         }
                         Ok(Ok(ActiveBusinessStreamOutcome::DirectFinal(response))) => {
-                            if finish_research_available {
-                                // A complete Stop + Done response after the
-                                // structural evidence floor is the same Agent's
-                                // natural final answer. In particular, a
-                                // provider's Required -> Auto compatibility
-                                // fallback must not turn that answer into a
-                                // service-authored refusal or a second model run.
-                                active_business_failures = 0;
-                                active_business_outcome = Some("direct_final");
-                                response
-                            } else {
-                                let error = "active business stream returned final content before post-identity evidence";
-                                let retrying =
-                                    consume_active_business_retry(&mut active_business_failures);
-                                self.record_audit(
-                                    context,
-                                    "chat_with_tools",
-                                    request_payload,
-                                    None,
-                                    Some(error.to_string()),
-                                    call_started.elapsed().as_millis(),
-                                    serde_json::json!({
-                                        "iteration": iterations,
-                                        "has_tools": true,
-                                        "active_business_outcome": "premature_direct_final",
-                                        "terminal_authorized": false,
-                                        "retrying": retrying,
-                                        "tool_choice_mode": "required",
-                                        "requested_tool_choice": tool_choice_mode_name(stream_tool_choice.requested),
-                                        "effective_tool_choice": stream_tool_choice.effective.map(tool_choice_mode_name),
-                                        "tool_choice_fallback": stream_tool_choice.fallback,
-                                    }),
-                                    None,
-                                );
-                                if retrying {
-                                    continue;
-                                }
-                                return failed_agent_response(tool_calls_made, iterations, error);
-                            }
+                            // A complete Stop + Done body is always the same
+                            // Agent's natural final answer. The evidence ledger
+                            // controls only when the internal finish signal is
+                            // offered; it is never a service-side publication
+                            // veto. This prevents a provider's Required -> Auto
+                            // compatibility fallback from flashing a generic
+                            // error or replacing an otherwise complete answer.
+                            active_business_failures = 0;
+                            active_business_outcome = Some("direct_final");
+                            response
                         }
                         Ok(Ok(ActiveBusinessStreamOutcome::Empty)) => {
                             let error = "active business stream returned no tool call";
@@ -1384,7 +1743,7 @@ impl Agent for FunctionCallingAgent {
                                     "active_business_outcome": "empty",
                                     "terminal_authorized": false,
                                     "retrying": retrying,
-                                    "tool_choice_mode": "required",
+                                    "tool_choice_mode": tool_choice_mode_name(tool_choice_mode),
                                     "requested_tool_choice": tool_choice_mode_name(stream_tool_choice.requested),
                                     "effective_tool_choice": stream_tool_choice.effective.map(tool_choice_mode_name),
                                     "tool_choice_fallback": stream_tool_choice.fallback,
@@ -1411,7 +1770,7 @@ impl Agent for FunctionCallingAgent {
                                     "active_business_outcome": "error",
                                     "terminal_authorized": false,
                                     "retrying": false,
-                                    "tool_choice_mode": "required",
+                                    "tool_choice_mode": tool_choice_mode_name(tool_choice_mode),
                                     "requested_tool_choice": tool_choice_mode_name(stream_tool_choice.requested),
                                     "effective_tool_choice": stream_tool_choice.effective.map(tool_choice_mode_name),
                                     "tool_choice_fallback": stream_tool_choice.fallback,
@@ -1424,7 +1783,7 @@ impl Agent for FunctionCallingAgent {
                             return failed_agent_response(tool_calls_made, iterations, error);
                         }
                         Err(_) => {
-                            let error = "active business stream timed out";
+                            let error = active_timeout_error;
                             self.record_audit(
                                 context,
                                 "chat_with_tools",
@@ -1436,10 +1795,11 @@ impl Agent for FunctionCallingAgent {
                                     "iteration": iterations,
                                     "has_tools": true,
                                     "active_business_timeout": true,
+                                    "overall_timeout": error == AGENT_OVERALL_TIMEOUT_ERROR,
                                     "active_business_outcome": "timeout",
                                     "terminal_authorized": false,
                                     "retrying": false,
-                                    "tool_choice_mode": "required",
+                                    "tool_choice_mode": tool_choice_mode_name(tool_choice_mode),
                                     "requested_tool_choice": tool_choice_mode_name(stream_tool_choice.requested),
                                     "effective_tool_choice": stream_tool_choice.effective.map(tool_choice_mode_name),
                                     "tool_choice_fallback": stream_tool_choice.fallback,
@@ -1450,15 +1810,20 @@ impl Agent for FunctionCallingAgent {
                         }
                     }
                 } else {
-                    match self
-                        .chat_with_tools_streaming(
+                    let (initial_deadline, initial_timeout_error) =
+                        step_deadline(overall_deadline, self.step_timeout);
+                    match await_before_deadline(
+                        initial_deadline,
+                        initial_timeout_error,
+                        self.chat_with_tools_streaming(
                             &messages,
                             &round_tools,
                             tool_choice_mode,
                             true,
                             &mut stream_tool_choice,
-                        )
-                        .await
+                        ),
+                    )
+                    .await
                     {
                         Ok(response) => response,
                         Err(error) => {
@@ -1489,7 +1854,15 @@ impl Agent for FunctionCallingAgent {
                     }
                 }
             } else {
-                match self.llm.chat(&messages, None).await {
+                let (chat_deadline, chat_timeout_error) =
+                    step_deadline(overall_deadline, self.step_timeout);
+                match await_before_deadline(
+                    chat_deadline,
+                    chat_timeout_error,
+                    self.llm.chat(&messages, None),
+                )
+                .await
+                {
                     Ok(r) => ChatResponse {
                         content: r.content,
                         reasoning_content: None,
@@ -1533,8 +1906,14 @@ impl Agent for FunctionCallingAgent {
                     "has_tools": has_tools,
                     "active_business_outcome": active_business_outcome,
                     "finish_research_available": finish_research_available,
+                    "evidence_floor_satisfied": evidence_floor_satisfied,
                     "identity_only_attempts": research_evidence.identity_only_attempts,
+                    "broad_data_attempts": research_evidence.broad_data_attempts,
+                    "symbol_scoped_attempts": research_evidence.symbol_scoped_attempts,
+                    "post_activation_attempts": research_evidence.post_activation_attempts,
                     "post_identity_attempts": research_evidence.post_identity_attempts,
+                    "post_identity_quote_attempts": research_evidence.post_identity_quote_attempts,
+                    "post_identity_asset_route_attempts": research_evidence.post_identity_asset_route_attempts,
                     "requested_tool_choice": has_tools.then_some(tool_choice_mode_name(stream_tool_choice.requested)),
                     "effective_tool_choice": stream_tool_choice.effective.map(tool_choice_mode_name),
                     "tool_choice_fallback": stream_tool_choice.fallback,
@@ -1558,6 +1937,8 @@ impl Agent for FunctionCallingAgent {
                                 tool_calls_made,
                                 iterations,
                                 turn_message_start,
+                                required_final_answer_prefix.as_deref(),
+                                overall_deadline,
                             )
                             .await;
                     }
@@ -1578,21 +1959,6 @@ impl Agent for FunctionCallingAgent {
                     // protocol only at the structural DataFetch boundary that
                     // the investment prompt requires for every security turn;
                     // do not infer it from a closed question vocabulary.
-                    investment_research_started |= actionable_tool_calls
-                        .iter()
-                        .any(|tool_call| starts_investment_research_protocol(tool_call));
-                    if investment_research_started {
-                        for tool_call in &actionable_tool_calls {
-                            // Calls selected in the discovery completion have
-                            // not seen the identity results yet. They remain in
-                            // context as usable evidence, but only a subsequent
-                            // Agent business round can satisfy the structural
-                            // post-identity attempt gate.
-                            research_evidence
-                                .observe_business_call(tool_call, active_business_round);
-                        }
-                    }
-
                     if actionable_tool_calls.is_empty() {
                         self.dbg("[Agent] ignored malformed or unavailable finish signal");
                         if active_business_round {
@@ -1610,8 +1976,14 @@ impl Agent for FunctionCallingAgent {
                                 Value::String(reasoning.clone()),
                             )])
                         });
+                        let round_starts_investment_research =
+                            actionable_tool_calls.iter().any(|tool_call| {
+                                starts_investment_research_protocol(tool_call)
+                                    && serde_json::from_str::<Value>(&tool_call.function.arguments)
+                                        .is_ok()
+                            });
                         let assistant_tool_content = if self.finish_research_terminal_synthesis
-                            && investment_research_started
+                            && (investment_research_started || round_starts_investment_research)
                         {
                             ""
                         } else {
@@ -1650,14 +2022,53 @@ impl Agent for FunctionCallingAgent {
                                     }
                                     total_tool_calls += 1;
                                     *tool_call_counts.entry(tool_name.clone()).or_insert(0) += 1;
+                                    if starts_investment_research_protocol(tc) {
+                                        // Activate only at the same boundary as
+                                        // a syntactically valid, budget-accepted
+                                        // registry attempt. A malformed or
+                                        // rejected DataFetch must not trap an
+                                        // ordinary turn in the finance loop.
+                                        investment_research_started = true;
+                                    }
+                                    if investment_research_started {
+                                        // Count only a real registry attempt:
+                                        // malformed arguments and calls
+                                        // rejected by the request-local tool
+                                        // budget cannot satisfy the evidence
+                                        // floor. Provider no-coverage/errors
+                                        // still count because execution below
+                                        // is genuinely attempted and the
+                                        // Agent can disclose that gap.
+                                        research_evidence
+                                            .observe_business_call(tc, active_business_round);
+                                    }
                                     if let Some(observer) = &self.tool_observer {
-                                        observer.on_tool_start(tool_name, &tool_args, None).await;
+                                        let (observer_deadline, observer_timeout_error) =
+                                            step_deadline(overall_deadline, self.step_timeout);
+                                        if let Err(error) = await_unit_before_deadline(
+                                            observer_deadline,
+                                            observer_timeout_error,
+                                            observer.on_tool_start(tool_name, &tool_args, None),
+                                        )
+                                        .await
+                                        {
+                                            return failed_agent_response(
+                                                tool_calls_made,
+                                                iterations,
+                                                canonical_agent_timeout(&error)
+                                                    .unwrap_or(observer_timeout_error),
+                                            );
+                                        }
                                     }
 
-                                    match self
-                                        .tools
-                                        .execute_tool(tool_name, tool_args.clone())
-                                        .await
+                                    let (tool_deadline, tool_timeout_error) =
+                                        step_deadline(overall_deadline, self.step_timeout);
+                                    match await_before_deadline(
+                                        tool_deadline,
+                                        tool_timeout_error,
+                                        self.tools.execute_tool(tool_name, tool_args.clone()),
+                                    )
+                                    .await
                                     {
                                         Ok(tool_result) => {
                                             self.dbg(&format!(
@@ -1680,9 +2091,27 @@ impl Agent for FunctionCallingAgent {
                                                 &result_str,
                                             );
                                             if let Some(observer) = &self.tool_observer {
-                                                observer
-                                                    .on_tool_finish(tool_name, &tool_args, true)
-                                                    .await;
+                                                let (observer_deadline, observer_timeout_error) =
+                                                    step_deadline(
+                                                        overall_deadline,
+                                                        self.step_timeout,
+                                                    );
+                                                if let Err(error) = await_unit_before_deadline(
+                                                    observer_deadline,
+                                                    observer_timeout_error,
+                                                    observer.on_tool_finish(
+                                                        tool_name, &tool_args, true,
+                                                    ),
+                                                )
+                                                .await
+                                                {
+                                                    return failed_agent_response(
+                                                        tool_calls_made,
+                                                        iterations,
+                                                        canonical_agent_timeout(&error)
+                                                            .unwrap_or(observer_timeout_error),
+                                                    );
+                                                }
                                             }
                                         }
                                         Err(e) => {
@@ -1690,8 +2119,19 @@ impl Agent for FunctionCallingAgent {
                                                 "[Agent] tool_error name={tool_name} error={e}"
                                             ));
                                             let err_str = e.to_string();
-                                            let error_result: Value =
-                                                serde_json::json!({"error": err_str});
+                                            let timeout_error = canonical_agent_timeout(&e);
+                                            let error_result: Value = serde_json::json!({
+                                                "error": err_str,
+                                                "status": "failed",
+                                                "isError": true,
+                                                "timeout": timeout_error.is_some(),
+                                            });
+                                            tool_calls_made.push(ToolCallMade {
+                                                name: tool_name.clone(),
+                                                arguments: tool_args.clone(),
+                                                result: error_result.clone(),
+                                                tool_call_id: Some(tool_call_id.clone()),
+                                            });
                                             let result_str = serde_json::to_string(&error_result)
                                                 .unwrap_or_default();
                                             context.add_tool_result(
@@ -1700,9 +2140,50 @@ impl Agent for FunctionCallingAgent {
                                                 &result_str,
                                             );
                                             if let Some(observer) = &self.tool_observer {
-                                                observer
-                                                    .on_tool_finish(tool_name, &tool_args, false)
-                                                    .await;
+                                                let (observer_deadline, observer_timeout_error) =
+                                                    step_deadline(
+                                                        overall_deadline,
+                                                        self.step_timeout,
+                                                    );
+                                                if let Err(error) = await_unit_before_deadline(
+                                                    observer_deadline,
+                                                    observer_timeout_error,
+                                                    observer.on_tool_finish(
+                                                        tool_name, &tool_args, false,
+                                                    ),
+                                                )
+                                                .await
+                                                {
+                                                    return failed_agent_response(
+                                                        tool_calls_made,
+                                                        iterations,
+                                                        canonical_agent_timeout(&error)
+                                                            .unwrap_or(observer_timeout_error),
+                                                    );
+                                                }
+                                            }
+                                            if let Some(timeout_error) = timeout_error {
+                                                return failed_agent_response(
+                                                    tool_calls_made,
+                                                    iterations,
+                                                    timeout_error,
+                                                );
+                                            }
+                                            if tool_call_has_persistent_side_effect(
+                                                tool_name, &tool_args,
+                                            ) {
+                                                // A write-capable tool may have
+                                                // committed before its error was
+                                                // observed. Do not let the same
+                                                // internal Agent loop replay it;
+                                                // the failed trace gives the
+                                                // outer Session the same
+                                                // no-reexecution evidence.
+                                                return failed_agent_response(
+                                                    tool_calls_made,
+                                                    iterations,
+                                                    "persistent_tool_failure: execution state is uncertain; automatic replay suppressed",
+                                                );
                                             }
                                         }
                                     }
@@ -2227,7 +2708,67 @@ mod tests {
         }
 
         async fn execute(&self, _args: Value) -> hone_core::HoneResult<Value> {
-            Ok(json!({ "evidence": "relationship" }))
+            Ok(json!({
+                "results": [
+                    {
+                        "title": "Capacity purchase announcement",
+                        "url": "https://example.test/capacity",
+                        "content": "The buyer agreed to purchase $6.3B of unused capacity."
+                    },
+                    {
+                        "title": "Most-favored-nation relationship",
+                        "url": "https://example.test/mfn",
+                        "content": "The filing describes a most-favored-nation relationship."
+                    }
+                ]
+            }))
+        }
+    }
+
+    struct HangingPortfolioTool;
+
+    #[async_trait]
+    impl Tool for HangingPortfolioTool {
+        fn name(&self) -> &str {
+            "portfolio"
+        }
+
+        fn description(&self) -> &str {
+            "persistent tool that never returns"
+        }
+
+        fn parameters(&self) -> Vec<ToolParameter> {
+            vec![]
+        }
+
+        async fn execute(&self, _args: Value) -> hone_core::HoneResult<Value> {
+            std::future::pending().await
+        }
+    }
+
+    struct FailingPortfolioTool {
+        calls: Arc<AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl Tool for FailingPortfolioTool {
+        fn name(&self) -> &str {
+            "portfolio"
+        }
+
+        fn description(&self) -> &str {
+            "persistent tool that reports an uncertain failure"
+        }
+
+        fn parameters(&self) -> Vec<ToolParameter> {
+            vec![]
+        }
+
+        async fn execute(&self, _args: Value) -> hone_core::HoneResult<Value> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Err(hone_core::HoneError::Tool(
+                "portfolio write acknowledgement lost".to_string(),
+            ))
         }
     }
 
@@ -2282,6 +2823,22 @@ mod tests {
         }
     }
 
+    struct HangingStartObserver;
+
+    #[async_trait]
+    impl ToolExecutionObserver for HangingStartObserver {
+        async fn on_tool_start(
+            &self,
+            _tool_name: &str,
+            _arguments: &Value,
+            _reasoning: Option<String>,
+        ) {
+            std::future::pending().await
+        }
+
+        async fn on_tool_finish(&self, _tool_name: &str, _arguments: &Value, _success: bool) {}
+    }
+
     #[derive(Default)]
     struct RecordingAuditSink {
         operations: Mutex<Vec<String>>,
@@ -2319,12 +2876,17 @@ mod tests {
             .expect("terminal user prompt");
 
         assert!(
-            terminal_messages
-                .iter()
-                .all(|message| message.reasoning_content.is_none()),
-            "hidden reasoning must be stripped at the terminal evidence boundary"
+            terminal_messages.iter().all(|message| {
+                message.reasoning_content.is_none()
+                    || (message.role == "assistant"
+                        && message
+                            .tool_calls
+                            .as_ref()
+                            .is_some_and(|calls| !calls.is_empty()))
+            }),
+            "provider reasoning may only survive as a tool-followup wire signature"
         );
-        assert_eq!(prompt, terminal_synthesis_prompt());
+        assert_eq!(prompt, terminal_synthesis_prompt(None));
         assert!(prompt.contains("Agent 已通过显式完成信号确认"));
         assert!(prompt.contains("`reasoning_content`、隐藏思考、未采用草稿"));
         assert!(system.contains(FINISH_RESEARCH_SYSTEM_INSTRUCTION));
@@ -2333,10 +2895,198 @@ mod tests {
 
     #[test]
     fn terminal_prompt_is_authorized_only_by_explicit_finish() {
-        let explicit = terminal_synthesis_prompt();
+        let explicit = terminal_synthesis_prompt(None);
         assert!(explicit.contains("Agent 已通过显式完成信号确认"));
         assert!(!explicit.contains("上一内部步骤未产出可用的新事实证据"));
         assert!(explicit.contains("此前已成功返回的业务工具结果"));
+    }
+
+    #[test]
+    fn direct_final_and_explicit_finish_share_exact_final_contract() {
+        let runtime_input = concat!(
+            "【Session 上下文】\n当前时间：2026-07-19 09:31:42 (北京时间)\n\n",
+            "【本轮用户输入】\ncrwv和英伟达有什么关系\n\n",
+            "【本轮最终回答契约：由主 Agent 一次完成】\n",
+            "第一条非空行必须严格以 `数据时间：北京时间 2026-07-19 09:31；行情口径：` 开头。"
+        );
+        let prefix = exact_final_answer_prefix(runtime_input).expect("exact runtime prefix");
+        assert_eq!(prefix, "数据时间：北京时间 2026-07-19 09:31；行情口径：");
+
+        let direct = active_business_turn_prompt(true, Some(&prefix));
+        let explicit = terminal_synthesis_prompt(Some(&prefix));
+        for required in [
+            prefix.as_str(),
+            "quote 的 provider timestamp 只能写在‘行情口径’里",
+            "不得把关系标签扩写成来源未明示的权利义务",
+            "不得由交易事实推导排名",
+            "‘采购未使用容量’不能推出‘最大客户’",
+            "‘most-favored-nation relationship’不能推出‘保证供货’或‘优先供货’",
+            "披露缺项并继续完成能够被当前证据支持的分析",
+        ] {
+            assert!(direct.contains(required), "direct missing {required}");
+            assert!(explicit.contains(required), "terminal missing {required}");
+        }
+        assert!(!direct.contains("数据时间：北京时间 2026-07-18 04:00；"));
+        assert!(!explicit.contains("数据时间：北京时间 2026-07-18 04:00；"));
+    }
+
+    #[test]
+    fn quote_only_does_not_unlock_finish_for_discovered_security() {
+        let search = ToolCall {
+            id: "search".to_string(),
+            call_type: "function".to_string(),
+            function: FunctionCall {
+                name: "data_fetch".to_string(),
+                arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
+            },
+        };
+        let quote = ToolCall {
+            id: "quote".to_string(),
+            call_type: "function".to_string(),
+            function: FunctionCall {
+                name: "data_fetch".to_string(),
+                arguments: r#"{"data_type":"quote","ticker":"CRWV,NVDA"}"#.to_string(),
+            },
+        };
+        let profile = ToolCall {
+            id: "profile".to_string(),
+            call_type: "function".to_string(),
+            function: FunctionCall {
+                name: "data_fetch".to_string(),
+                arguments: r#"{"data_type":"profile","ticker":"CRWV"}"#.to_string(),
+            },
+        };
+        let second_profile = ToolCall {
+            id: "profile-nvda".to_string(),
+            call_type: "function".to_string(),
+            function: FunctionCall {
+                name: "data_fetch".to_string(),
+                arguments: r#"{"data_type":"profile","ticker":"NVDA"}"#.to_string(),
+            },
+        };
+        let mut ledger = ResearchEvidenceLedger::default();
+        ledger.observe_business_call(&search, false);
+        ledger.observe_business_call(&quote, true);
+        assert!(!ledger.evidence_floor_satisfied(true));
+        ledger.observe_business_call(&profile, true);
+        assert!(
+            !ledger.evidence_floor_satisfied(true),
+            "one profile must not cover a two-symbol quote"
+        );
+        ledger.observe_business_call(&second_profile, true);
+        assert!(ledger.evidence_floor_satisfied(true));
+    }
+
+    fn evidence_call(id: &str, arguments: &str) -> ToolCall {
+        ToolCall {
+            id: id.to_string(),
+            call_type: "function".to_string(),
+            function: FunctionCall {
+                name: "data_fetch".to_string(),
+                arguments: arguments.to_string(),
+            },
+        }
+    }
+
+    #[test]
+    fn unsearched_symbol_scoped_data_fetch_does_not_unlock_finish() {
+        let mut ledger = ResearchEvidenceLedger::default();
+        ledger.observe_business_call(
+            &evidence_call("quote", r#"{"data_type":"quote","ticker":"CRWV"}"#),
+            true,
+        );
+        ledger.observe_business_call(
+            &evidence_call("profile", r#"{"data_type":"profile","ticker":"CRWV"}"#),
+            true,
+        );
+        assert!(!ledger.evidence_floor_satisfied(true));
+    }
+
+    #[test]
+    fn pre_search_quote_does_not_satisfy_post_search_floor() {
+        let mut ledger = ResearchEvidenceLedger::default();
+        ledger.observe_business_call(
+            &evidence_call("early-quote", r#"{"data_type":"quote","ticker":"CRWV"}"#),
+            true,
+        );
+        ledger.observe_business_call(
+            &evidence_call("search", r#"{"data_type":"search","query":"CRWV"}"#),
+            true,
+        );
+        ledger.observe_business_call(
+            &evidence_call("profile", r#"{"data_type":"profile","ticker":"CRWV"}"#),
+            true,
+        );
+        assert!(!ledger.evidence_floor_satisfied(true));
+        ledger.observe_business_call(
+            &evidence_call(
+                "post-search-quote",
+                r#"{"data_type":"quote","ticker":"CRWV"}"#,
+            ),
+            true,
+        );
+        assert!(ledger.evidence_floor_satisfied(true));
+    }
+
+    #[test]
+    fn broad_market_data_fetch_can_finish_without_security_search() {
+        let mut ledger = ResearchEvidenceLedger::default();
+        ledger.observe_business_call(
+            &evidence_call("sector", r#"{"data_type":"sector_performance"}"#),
+            true,
+        );
+        assert!(ledger.evidence_floor_satisfied(true));
+    }
+
+    #[test]
+    fn crypto_search_plus_crypto_quote_unlocks_without_stock_profile() {
+        let mut ledger = ResearchEvidenceLedger::default();
+        ledger.observe_business_call(
+            &evidence_call("search", r#"{"data_type":"search","query":"BTCUSD"}"#),
+            false,
+        );
+        ledger.observe_business_call(
+            &evidence_call(
+                "crypto-quote",
+                r#"{"data_type":"crypto_quote","ticker":"BTCUSD"}"#,
+            ),
+            true,
+        );
+        assert!(ledger.evidence_floor_satisfied(true));
+    }
+
+    #[test]
+    fn crypto_quote_without_identity_search_does_not_unlock_finish() {
+        let mut ledger = ResearchEvidenceLedger::default();
+        ledger.observe_business_call(
+            &evidence_call(
+                "crypto-quote",
+                r#"{"data_type":"crypto_quote","ticker":"BTCUSD"}"#,
+            ),
+            true,
+        );
+        assert!(!ledger.evidence_floor_satisfied(true));
+    }
+
+    #[test]
+    fn web_only_after_identity_search_does_not_unlock_finish() {
+        let mut ledger = ResearchEvidenceLedger::default();
+        ledger.observe_business_call(
+            &evidence_call("search", r#"{"data_type":"search","query":"CRWV"}"#),
+            false,
+        );
+        ledger.observe_business_call(
+            &ToolCall {
+                id: "web".to_string(),
+                call_type: "function".to_string(),
+                function: FunctionCall {
+                    name: "web_search".to_string(),
+                    arguments: r#"{"query":"company relationship"}"#.to_string(),
+                },
+            },
+            true,
+        );
+        assert!(!ledger.evidence_floor_satisfied(true));
     }
 
     #[tokio::test]
@@ -2593,10 +3343,10 @@ mod tests {
             [
                 ToolChoiceMode::Auto,
                 ToolChoiceMode::Required,
-                ToolChoiceMode::Required,
+                ToolChoiceMode::Auto,
                 ToolChoiceMode::Auto,
             ],
-            "the first turn is open, post-identity research and Agent-owned finish are required-tool rounds, and terminal synthesis has no tools"
+            "the first turn is open, evidence acquisition is required, completion is Agent-owned Auto, and terminal synthesis has no tools"
         );
         assert_eq!(
             stream_observer
@@ -2655,12 +3405,13 @@ mod tests {
         assert!(
             terminal_messages.iter().all(|message| {
                 message.content.as_deref().is_none_or(|content| {
-                    !content.contains("NBIS")
-                        && !content.contains("15 USD")
+                    !content.contains("15 USD")
                         && !content.contains("\"price\":15")
+                        && (!content.contains("NBIS")
+                            || content.starts_with("【历史用户请求，仅用于理解本轮指代"))
                 })
             }),
-            "stale prior-turn ticker/price evidence reached terminal synthesis"
+            "stale prior-turn assistant/price evidence reached terminal synthesis"
         );
     }
 
@@ -2683,9 +3434,9 @@ mod tests {
             ],
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
-                id: Some("tc_relationship_evidence".to_string()),
-                name: Some("echo_tool".to_string()),
-                arguments: r#"{"text":"relationship evidence"}"#.to_string(),
+                id: Some("tc_entity_snapshot".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"snapshot","ticker":"CRWV"}"#.to_string(),
             }],
             vec![
                 ChatStreamEvent::ContentDelta("不应发布的业务轮草稿".to_string()),
@@ -2738,7 +3489,7 @@ mod tests {
         assert_eq!(response.iterations, 5);
         assert_eq!(response.tool_calls_made.len(), 2);
         assert_eq!(response.tool_calls_made[0].name, "data_fetch");
-        assert_eq!(response.tool_calls_made[1].name, "echo_tool");
+        assert_eq!(response.tool_calls_made[1].name, "data_fetch");
         assert_eq!(
             seen_tool_choice_modes
                 .lock()
@@ -2747,8 +3498,8 @@ mod tests {
             [
                 ToolChoiceMode::Auto,
                 ToolChoiceMode::Required,
-                ToolChoiceMode::Required,
-                ToolChoiceMode::Required,
+                ToolChoiceMode::Auto,
+                ToolChoiceMode::Auto,
                 ToolChoiceMode::Auto,
             ]
         );
@@ -2795,8 +3546,8 @@ mod tests {
             [
                 "start:data_fetch",
                 "done:data_fetch:true",
-                "start:echo_tool",
-                "done:echo_tool:true",
+                "start:data_fetch",
+                "done:data_fetch:true",
             ],
             "finish signals and budget-rejected mixed calls must not enter the business tool trace"
         );
@@ -2830,7 +3581,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn premature_direct_final_retries_once_then_fails_without_terminal_or_visible_draft() {
+    async fn natural_direct_final_before_finish_signal_is_preserved_without_service_veto() {
         let llm = StreamingMockLlmProvider::with_rounds(vec![
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
@@ -2840,9 +3591,6 @@ mod tests {
             }],
             vec![ChatStreamEvent::ContentDelta(
                 "provider bypass draft".to_string(),
-            )],
-            vec![ChatStreamEvent::ContentDelta(
-                "second provider bypass draft".to_string(),
             )],
         ]);
         let delivered_events = llm.delivered_events.clone();
@@ -2865,25 +3613,23 @@ mod tests {
 
         let response = agent.run("research", &mut context).await;
 
-        assert!(!response.success);
-        assert!(response.content.is_empty());
-        assert_eq!(response.iterations, 3);
+        assert!(response.success);
+        assert_eq!(response.content, "provider bypass draft");
+        assert_eq!(response.iterations, 2);
         assert_eq!(response.tool_calls_made.len(), 1);
-        assert!(response.error.as_deref().is_some_and(|error| {
-            error.contains("final content before post-identity evidence")
-        }));
+        assert!(response.error.is_none());
         assert_eq!(
             delivered_events.load(Ordering::SeqCst),
-            12,
-            "both complete active content streams must be consumed through Finish + Done"
+            8,
+            "the complete active content stream must be consumed through Finish + Done"
         );
         assert_eq!(
             seen_tool_counts
                 .lock()
                 .expect("stream tool counts lock")
                 .as_slice(),
-            [1, 1, 1],
-            "a failed active stream must never trigger an empty-tools terminal call"
+            [1, 1],
+            "a natural direct final must never trigger an empty-tools terminal call"
         );
         assert!(
             observer
@@ -2892,35 +3638,23 @@ mod tests {
                 .expect("stream events lock")
                 .is_empty()
         );
-        assert!(context.messages.iter().all(|message| {
-            !matches!(
-                message.content.as_deref(),
-                Some("provider bypass draft" | "second provider bypass draft")
-            )
-        }));
-        assert_eq!(seen_messages.lock().expect("stream messages lock").len(), 3);
+        assert!(
+            context
+                .messages
+                .iter()
+                .any(|message| message.content.as_deref() == Some("provider bypass draft"))
+        );
+        assert_eq!(seen_messages.lock().expect("stream messages lock").len(), 2);
         let records = audit.records.lock().expect("audit records lock");
-        let premature_finals = records
+        let direct_finals = records
             .iter()
             .filter(|record| {
-                record.metadata["active_business_outcome"].as_str()
-                    == Some("premature_direct_final")
+                record.metadata["active_business_outcome"].as_str() == Some("direct_final")
             })
             .collect::<Vec<_>>();
-        assert_eq!(premature_finals.len(), 2);
-        assert_eq!(
-            premature_finals[0].metadata["retrying"].as_bool(),
-            Some(true)
-        );
-        assert_eq!(
-            premature_finals[1].metadata["retrying"].as_bool(),
-            Some(false)
-        );
-        assert!(
-            premature_finals
-                .iter()
-                .all(|record| { record.metadata["terminal_authorized"].as_bool() == Some(false) })
-        );
+        assert_eq!(direct_finals.len(), 1);
+        assert!(direct_finals[0].success);
+        assert!(direct_finals[0].error.is_none());
         assert!(
             records
                 .iter()
@@ -2930,7 +3664,7 @@ mod tests {
 
     #[tokio::test]
     async fn eligible_direct_final_is_preserved_without_terminal_or_second_generation() {
-        let answer = "数据时间：北京时间 2026-07-18 21:08；行情口径：本轮网页关系证据\n\nCoreWeave 与 NVIDIA 的关系以本轮网页来源为准。";
+        let answer = "数据时间：北京时间 2026-07-19 09:31；行情口径：报价源时间：北京时间 2026-07-18 04:00（最新可得、非逐笔）\n\nCoreWeave 与 NVIDIA 的关系仅按本轮网页来源直接支持的范围表述。";
         let llm = StreamingMockLlmProvider::with_rounds(vec![
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
@@ -2966,9 +3700,9 @@ mod tests {
             ],
             vec![
                 ChatStreamEvent::ToolChoiceMetadata {
-                    requested: ToolChoiceMode::Required,
+                    requested: ToolChoiceMode::Auto,
                     effective: ToolChoiceMode::Auto,
-                    fallback: true,
+                    fallback: false,
                 },
                 ChatStreamEvent::ReasoningDelta("未采用的隐藏关系推演不能进入后续会话".to_string()),
                 ChatStreamEvent::ContentDelta(answer.to_string()),
@@ -2977,6 +3711,7 @@ mod tests {
             ],
         ]);
         let seen_tool_counts = llm.seen_tool_counts.clone();
+        let seen_messages = llm.seen_messages.clone();
         let audit = Arc::new(RecordingAuditSink::default());
         let observer = Arc::new(RecordingStreamObserver::default());
         let mut registry = ToolRegistry::new();
@@ -2992,8 +3727,20 @@ mod tests {
         .with_finish_research_terminal_synthesis(true)
         .with_stream_observer(Some(observer.clone()));
         let mut context = AgentContext::new("eligible-direct-final".to_string());
+        context.add_user_message("旧问题：NBIS 的估值");
+        context.add_assistant_message("旧答案：NBIS 价格是 15 USD", None);
 
-        let response = agent.run("crwv和英伟达有什么关系", &mut context).await;
+        let response = agent
+            .run(
+                concat!(
+                    "【Session 上下文】\n当前时间：2026-07-19 09:31:42 (北京时间)\n\n",
+                    "【本轮用户输入】\ncrwv和英伟达有什么关系\n\n",
+                    "【本轮最终回答契约：由主 Agent 一次完成】\n",
+                    "第一条非空行必须严格以 `数据时间：北京时间 2026-07-19 09:31；行情口径：` 开头。"
+                ),
+                &mut context,
+            )
+            .await;
 
         assert!(response.success, "{:?}", response.error);
         assert_eq!(response.content, answer);
@@ -3041,6 +3788,27 @@ mod tests {
             records
                 .iter()
                 .all(|record| record.operation != "chat_terminal_without_tools")
+        );
+        drop(records);
+        let requests = seen_messages.lock().expect("stream messages lock");
+        let direct_request = requests.last().expect("direct final request");
+        let last_reminder = direct_request
+            .last()
+            .and_then(|message| message.content.as_deref())
+            .expect("last-mile reminder");
+        assert!(last_reminder.contains(
+            "第一条非空行必须逐字以 `数据时间：北京时间 2026-07-19 09:31；行情口径：` 开头"
+        ));
+        assert!(last_reminder.contains("不得由交易事实推导排名"));
+        let serialized = serde_json::to_string(direct_request).expect("serialize direct request");
+        assert!(serialized.contains("历史用户请求，仅用于理解本轮指代"));
+        assert!(!serialized.contains("15 USD"));
+        assert!(serialized.contains("CoreWeave NVIDIA relationship filing"));
+        assert!(serialized.contains("$6.3B of unused capacity"));
+        assert!(serialized.contains("most-favored-nation relationship"));
+        assert!(serialized.contains("‘采购未使用容量’不能推出‘最大客户’"));
+        assert!(
+            serialized.contains("‘most-favored-nation relationship’不能推出‘保证供货’或‘优先供货’")
         );
     }
 
@@ -3145,7 +3913,7 @@ mod tests {
                 ToolChoiceMode::Auto,
                 ToolChoiceMode::Required,
                 ToolChoiceMode::Required,
-                ToolChoiceMode::Required,
+                ToolChoiceMode::Auto,
                 ToolChoiceMode::Auto,
             ]
         );
@@ -3176,6 +3944,9 @@ mod tests {
             r#"\"data_type\":\"quote\""#,
             r#"\"data_type\":\"profile\""#,
             "CoreWeave NVIDIA relationship filing",
+            "$6.3B of unused capacity",
+            "most-favored-nation relationship",
+            "‘采购未使用容量’不能推出‘最大客户’",
         ] {
             assert!(
                 terminal_transcript.contains(required),
@@ -3276,12 +4047,20 @@ mod tests {
                 name: Some("data_fetch".to_string()),
                 arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
             }],
-            vec![ChatStreamEvent::ToolCallDelta {
-                index: 0,
-                id: Some("tc_quote".to_string()),
-                name: Some("data_fetch".to_string()),
-                arguments: r#"{"data_type":"quote","ticker":"CRWV"}"#.to_string(),
-            }],
+            vec![
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_quote".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"quote","ticker":"CRWV"}"#.to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 1,
+                    id: Some("tc_profile".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"profile","ticker":"CRWV"}"#.to_string(),
+                },
+            ],
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
                 id: Some("tc_malformed_finish".to_string()),
@@ -3314,7 +4093,7 @@ mod tests {
         assert!(response.success, "{:?}", response.error);
         assert_eq!(response.content, "malformed finish 后的唯一终稿");
         assert_eq!(response.iterations, 5);
-        assert_eq!(response.tool_calls_made.len(), 2);
+        assert_eq!(response.tool_calls_made.len(), 3);
         assert_eq!(
             seen_tool_counts
                 .lock()
@@ -3485,6 +4264,196 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn initial_stream_respects_one_overall_agent_deadline() {
+        let llm = StreamingMockLlmProvider::with_rounds(vec![vec![]]).pending_on_stream_calls(&[1]);
+        let stream_calls = llm.stream_calls.clone();
+        let observer = Arc::new(RecordingStreamObserver::default());
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(EchoTool));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 4, None)
+                .with_overall_timeout(Some(Duration::from_millis(10)))
+                .with_stream_observer(Some(observer.clone()));
+        let mut context = AgentContext::new("initial-overall-timeout".to_string());
+
+        let response = agent.run("hello", &mut context).await;
+
+        assert!(!response.success);
+        assert!(
+            response
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains(AGENT_OVERALL_TIMEOUT_ERROR)),
+            "{:?}",
+            response.error
+        );
+        assert!(response.content.is_empty());
+        assert!(response.tool_calls_made.is_empty());
+        assert_eq!(response.iterations, 1);
+        assert_eq!(stream_calls.load(Ordering::SeqCst), 1);
+        assert!(
+            observer
+                .events
+                .lock()
+                .expect("stream events lock")
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn initial_stream_respects_configured_step_deadline() {
+        let llm = StreamingMockLlmProvider::with_rounds(vec![vec![]]).pending_on_stream_calls(&[1]);
+        let stream_calls = llm.stream_calls.clone();
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(EchoTool));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 4, None)
+                .with_step_timeout(Some(Duration::from_millis(10)))
+                .with_overall_timeout(Some(Duration::from_secs(1)));
+        let mut context = AgentContext::new("initial-step-timeout".to_string());
+
+        let response = agent.run("hello", &mut context).await;
+
+        assert!(!response.success);
+        assert!(response.content.is_empty());
+        assert!(
+            response
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains(AGENT_STEP_TIMEOUT_ERROR)),
+            "{:?}",
+            response.error
+        );
+        assert_eq!(response.iterations, 1);
+        assert_eq!(stream_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn hanging_tool_observer_is_bounded_before_execution() {
+        let llm =
+            StreamingMockLlmProvider::with_rounds(vec![vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_count".to_string()),
+                name: Some("counting_tool".to_string()),
+                arguments: "{}".to_string(),
+            }]]);
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(CountingTool {
+            calls: calls.clone(),
+        }));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 4, None)
+                .with_tool_observer(Some(Arc::new(HangingStartObserver)))
+                .with_step_timeout(Some(Duration::from_millis(10)))
+                .with_overall_timeout(Some(Duration::from_secs(1)));
+        let mut context = AgentContext::new("hanging-tool-observer".to_string());
+
+        let response = agent.run("count once", &mut context).await;
+
+        assert!(!response.success);
+        assert_eq!(response.error.as_deref(), Some(AGENT_STEP_TIMEOUT_ERROR));
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        assert!(response.tool_calls_made.is_empty());
+    }
+
+    #[tokio::test]
+    async fn persistent_tool_error_stops_same_loop_replay() {
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_portfolio_add_1".to_string()),
+                name: Some("portfolio".to_string()),
+                arguments: r#"{"action":"add","ticker":"CRWV"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_portfolio_add_2".to_string()),
+                name: Some("portfolio".to_string()),
+                arguments: r#"{"action":"add","ticker":"CRWV"}"#.to_string(),
+            }],
+        ]);
+        let stream_calls = llm.stream_calls.clone();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(FailingPortfolioTool {
+            calls: calls.clone(),
+        }));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 4, None);
+        let mut context = AgentContext::new("persistent-tool-error".to_string());
+
+        let response = agent.run("把 CRWV 加入持仓", &mut context).await;
+
+        assert!(!response.success);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(stream_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(response.tool_calls_made.len(), 1);
+        assert_eq!(response.tool_calls_made[0].result["status"], "failed");
+        assert_eq!(response.tool_calls_made[0].result["timeout"], false);
+        assert_eq!(
+            response.error.as_deref(),
+            Some(
+                "persistent_tool_failure: execution state is uncertain; automatic replay suppressed"
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn persistent_tool_timeout_keeps_uncertain_trace_and_stops_the_agent() {
+        let llm =
+            StreamingMockLlmProvider::with_rounds(vec![vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_portfolio_add".to_string()),
+                name: Some("portfolio".to_string()),
+                arguments: r#"{"action":"add","ticker":"CRWV"}"#.to_string(),
+            }]]);
+        let stream_calls = llm.stream_calls.clone();
+        let observer = Arc::new(MockToolObserver::default());
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(HangingPortfolioTool));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 4, None)
+                .with_overall_timeout(Some(Duration::from_millis(10)))
+                .with_tool_observer(Some(observer.clone()));
+        let mut context = AgentContext::new("persistent-tool-overall-timeout".to_string());
+
+        let response = agent.run("把 CRWV 加入持仓", &mut context).await;
+
+        assert!(!response.success);
+        assert_eq!(response.error.as_deref(), Some(AGENT_OVERALL_TIMEOUT_ERROR));
+        assert_eq!(response.iterations, 1);
+        assert_eq!(stream_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(response.tool_calls_made.len(), 1);
+        let call = &response.tool_calls_made[0];
+        assert_eq!(call.name, "portfolio");
+        assert_eq!(call.arguments["action"], "add");
+        assert_eq!(call.result["status"], "failed");
+        assert_eq!(call.result["isError"], true);
+        assert_eq!(call.result["timeout"], true);
+        assert!(
+            call.result["error"]
+                .as_str()
+                .is_some_and(|error| error.contains(AGENT_OVERALL_TIMEOUT_ERROR))
+        );
+        assert_eq!(
+            observer
+                .events
+                .lock()
+                .expect("tool observer lock")
+                .as_slice(),
+            ["start:portfolio", "done:portfolio:false"]
+        );
+        assert!(context.messages.iter().any(|message| {
+            message.role == "tool"
+                && message
+                    .content
+                    .as_deref()
+                    .is_some_and(|content| content.contains(AGENT_OVERALL_TIMEOUT_ERROR))
+        }));
+    }
+
+    #[tokio::test]
     async fn successful_tools_reset_the_consecutive_active_failure_counter() {
         let first_business_empty = vec![ChatStreamEvent::ReasoningDelta(
             "first hidden-only business thought".to_string(),
@@ -3590,7 +4559,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn premature_fallback_direct_final_never_authorizes_terminal_synthesis() {
+    async fn fallback_direct_final_is_preserved_without_terminal_synthesis() {
         let llm = StreamingMockLlmProvider::with_rounds(vec![
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
@@ -3608,9 +4577,6 @@ mod tests {
                 ChatStreamEvent::Finish(ChatStreamFinishReason::Stop),
                 ChatStreamEvent::Done,
             ],
-            vec![ChatStreamEvent::ContentDelta(
-                "基于已有数据正常回答".to_string(),
-            )],
         ]);
         let seen_messages = llm.seen_messages.clone();
         let audit = Arc::new(RecordingAuditSink::default());
@@ -3630,9 +4596,9 @@ mod tests {
 
         let response = agent.run("research", &mut context).await;
 
-        assert!(!response.success);
-        assert!(response.content.is_empty());
-        assert_eq!(response.iterations, 3);
+        assert!(response.success);
+        assert_eq!(response.content, "finite active draft");
+        assert_eq!(response.iterations, 2);
         assert_eq!(response.tool_calls_made.len(), 1);
         assert!(
             observer
@@ -3645,44 +4611,31 @@ mod tests {
             context
                 .messages
                 .iter()
-                .all(|message| { message.content.as_deref() != Some("finite active draft") })
+                .any(|message| { message.content.as_deref() == Some("finite active draft") })
         );
-        assert_eq!(seen_messages.lock().expect("stream messages lock").len(), 3);
+        assert_eq!(seen_messages.lock().expect("stream messages lock").len(), 2);
 
         let records = audit.records.lock().expect("audit records lock");
-        let premature_finals = records
+        let direct_finals = records
             .iter()
             .filter(|record| {
-                record.metadata["active_business_outcome"].as_str()
-                    == Some("premature_direct_final")
+                record.metadata["active_business_outcome"].as_str() == Some("direct_final")
             })
             .collect::<Vec<_>>();
-        assert_eq!(premature_finals.len(), 2);
-        let premature_final = premature_finals[0];
-        assert!(!premature_final.success);
+        assert_eq!(direct_finals.len(), 1);
+        let direct_final = direct_finals[0];
+        assert!(direct_final.success);
+        assert!(direct_final.error.is_none());
         assert_eq!(
-            premature_final.error.as_deref(),
-            Some("active business stream returned final content before post-identity evidence")
-        );
-        assert_eq!(
-            premature_final.metadata["terminal_authorized"].as_bool(),
-            Some(false)
-        );
-        assert_eq!(premature_final.metadata["retrying"].as_bool(), Some(true));
-        assert_eq!(
-            premature_finals[1].metadata["retrying"].as_bool(),
-            Some(false)
-        );
-        assert_eq!(
-            premature_final.metadata["requested_tool_choice"].as_str(),
+            direct_final.metadata["requested_tool_choice"].as_str(),
             Some("required")
         );
         assert_eq!(
-            premature_final.metadata["effective_tool_choice"].as_str(),
+            direct_final.metadata["effective_tool_choice"].as_str(),
             Some("auto")
         );
         assert_eq!(
-            premature_final.metadata["tool_choice_fallback"].as_bool(),
+            direct_final.metadata["tool_choice_fallback"].as_bool(),
             Some(true)
         );
         assert!(
@@ -3779,6 +4732,114 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn completion_auto_empty_retries_once_then_preserves_direct_final() {
+        let answer = "数据时间：北京时间 2026-07-19 09:31；行情口径：最新可得、非逐笔\n\n正常终稿";
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_search".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"search","query":"CRWV,NVIDIA"}"#.to_string(),
+            }],
+            vec![
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_quote".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"quote","ticker":"CRWV,NVDA"}"#.to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 1,
+                    id: Some("tc_snapshot".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"snapshot","ticker":"CRWV,NVDA"}"#.to_string(),
+                },
+            ],
+            vec![ChatStreamEvent::ReasoningDelta(
+                "provider returned no visible payload on the first Auto completion".to_string(),
+            )],
+            vec![ChatStreamEvent::ContentDelta(answer.to_string())],
+        ]);
+        let seen_tool_counts = llm.seen_tool_counts.clone();
+        let seen_tool_choice_modes = llm.seen_tool_choice_modes.clone();
+        let audit = Arc::new(RecordingAuditSink::default());
+        let observer = Arc::new(RecordingStreamObserver::default());
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(FinanceEvidenceTool));
+        let agent = FunctionCallingAgent::new(
+            Arc::new(llm),
+            Arc::new(registry),
+            String::new(),
+            5,
+            Some(audit.clone()),
+        )
+        .with_finish_research_terminal_synthesis(true)
+        .with_stream_observer(Some(observer.clone()));
+        let mut context = AgentContext::new("completion-auto-empty".to_string());
+
+        let response = agent.run("crwv和英伟达有什么关系", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, answer);
+        assert_eq!(response.iterations, 4);
+        assert_eq!(response.tool_calls_made.len(), 3);
+        assert_eq!(
+            seen_tool_choice_modes
+                .lock()
+                .expect("stream tool choice modes lock")
+                .as_slice(),
+            [
+                ToolChoiceMode::Auto,
+                ToolChoiceMode::Required,
+                ToolChoiceMode::Auto,
+                ToolChoiceMode::Auto,
+            ]
+        );
+        assert_eq!(
+            seen_tool_counts
+                .lock()
+                .expect("stream tool counts lock")
+                .as_slice(),
+            [1, 1, 2, 2]
+        );
+        assert!(
+            observer
+                .events
+                .lock()
+                .expect("stream events lock")
+                .is_empty(),
+            "the empty Auto attempt and completed DirectFinal must remain one deferred answer"
+        );
+        assert_eq!(
+            context
+                .messages
+                .iter()
+                .filter(|message| message.role == "assistant" && message.tool_calls.is_none())
+                .count(),
+            1
+        );
+        let records = audit.records.lock().expect("audit records lock");
+        let empty = records
+            .iter()
+            .find(|record| record.metadata["active_business_outcome"].as_str() == Some("empty"))
+            .expect("empty Auto audit");
+        assert_eq!(empty.metadata["tool_choice_mode"].as_str(), Some("auto"));
+        assert_eq!(
+            empty.metadata["requested_tool_choice"].as_str(),
+            Some("auto")
+        );
+        assert_eq!(empty.metadata["retrying"].as_bool(), Some(true));
+        assert!(records.iter().any(|record| {
+            record.metadata["active_business_outcome"].as_str() == Some("direct_final")
+        }));
+        assert!(
+            records
+                .iter()
+                .all(|record| record.operation != "chat_terminal_without_tools")
+        );
+    }
+
+    #[tokio::test]
     async fn active_provider_error_fails_immediately_without_terminal() {
         let llm = StreamingMockLlmProvider::with_rounds(vec![
             vec![ChatStreamEvent::ToolCallDelta {
@@ -3858,19 +4919,27 @@ mod tests {
                     arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
                 },
             ],
-            vec![ChatStreamEvent::ToolCallDelta {
-                index: 0,
-                id: Some("tc_quote".to_string()),
-                name: Some("data_fetch".to_string()),
-                arguments: r#"{"data_type":"quote","ticker":"CRWV"}"#.to_string(),
-            }],
+            vec![
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_quote".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"quote","ticker":"CRWV"}"#.to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 1,
+                    id: Some("tc_profile".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"profile","ticker":"CRWV"}"#.to_string(),
+                },
+            ],
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
                 id: Some("tc_finish".to_string()),
                 name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
                 arguments: "{}".to_string(),
             }],
-            vec![ChatStreamEvent::ContentDelta("关系分析终稿".to_string())],
+            vec![ChatStreamEvent::ContentDelta("行情分析终稿".to_string())],
         ]);
         let seen_tool_counts = llm.seen_tool_counts.clone();
         let mut registry = ToolRegistry::new();
@@ -3880,14 +4949,15 @@ mod tests {
                 .with_finish_research_terminal_synthesis(true);
         let mut context = AgentContext::new("data-fetch-starts-agent-research".to_string());
 
-        let response = agent.run("relationship research", &mut context).await;
+        let response = agent.run("CRWV 最新行情", &mut context).await;
 
         assert!(response.success, "{:?}", response.error);
-        assert_eq!(response.content, "关系分析终稿");
+        assert_eq!(response.content, "行情分析终稿");
         assert_eq!(response.iterations, 4);
-        assert_eq!(response.tool_calls_made.len(), 2);
+        assert_eq!(response.tool_calls_made.len(), 3);
         assert_eq!(response.tool_calls_made[0].name, "data_fetch");
         assert_eq!(response.tool_calls_made[1].name, "data_fetch");
+        assert_eq!(response.tool_calls_made[2].name, "data_fetch");
         assert_eq!(
             seen_tool_counts
                 .lock()
@@ -4232,8 +5302,8 @@ mod tests {
             }],
             vec![
                 ChatStreamEvent::ToolChoiceMetadata {
-                    requested: ToolChoiceMode::Required,
-                    effective: ToolChoiceMode::Required,
+                    requested: ToolChoiceMode::Auto,
+                    effective: ToolChoiceMode::Auto,
                     fallback: false,
                 },
                 ChatStreamEvent::ToolCallDelta {
@@ -4318,8 +5388,8 @@ mod tests {
             }],
             vec![
                 ChatStreamEvent::ToolChoiceMetadata {
-                    requested: ToolChoiceMode::Required,
-                    effective: ToolChoiceMode::Required,
+                    requested: ToolChoiceMode::Auto,
+                    effective: ToolChoiceMode::Auto,
                     fallback: false,
                 },
                 ChatStreamEvent::ToolCallDelta {
@@ -4749,7 +5819,13 @@ mod tests {
 
         assert!(response.success, "{:?}", response.error);
         assert_eq!(response.content, "本轮财务源不可用；以下仅分析已核验部分。");
-        assert!(response.tool_calls_made.is_empty());
+        assert_eq!(response.tool_calls_made.len(), 2);
+        assert!(response.tool_calls_made.iter().all(|call| {
+            call.name == "data_fetch"
+                && call.result["status"] == "failed"
+                && call.result["isError"] == true
+                && call.result["timeout"] == false
+        }));
         assert_eq!(
             seen_tool_counts
                 .lock()
@@ -4765,7 +5841,7 @@ mod tests {
             [
                 ToolChoiceMode::Auto,
                 ToolChoiceMode::Required,
-                ToolChoiceMode::Required,
+                ToolChoiceMode::Auto,
                 ToolChoiceMode::Auto,
             ]
         );
@@ -4847,9 +5923,9 @@ mod tests {
             [
                 ToolChoiceMode::Auto,
                 ToolChoiceMode::Required,
-                ToolChoiceMode::Required,
-                ToolChoiceMode::Required,
-                ToolChoiceMode::Required,
+                ToolChoiceMode::Auto,
+                ToolChoiceMode::Auto,
+                ToolChoiceMode::Auto,
                 ToolChoiceMode::Auto,
             ]
         );

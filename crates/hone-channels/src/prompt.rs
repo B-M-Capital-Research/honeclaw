@@ -1,5 +1,6 @@
 //! Prompt helpers for channel-specific guidance.
 
+use chrono::{DateTime, FixedOffset};
 use hone_core::config::HoneConfig;
 use hone_memory::SessionStorage;
 use hone_memory::session::SessionPromptState;
@@ -102,6 +103,10 @@ impl Default for PromptOptions {
 pub struct PromptBundle {
     pub static_system: String,
     pub session_context: String,
+    /// One timestamp generated with the Session context and reused by every
+    /// current-turn answer contract. Keeping it structured prevents a
+    /// cross-minute second clock read from changing the required first line.
+    pub answer_time_beijing: String,
     pub conversation_context: Option<String>,
 }
 
@@ -154,7 +159,26 @@ pub fn build_prompt_bundle(
     _prompt_state: &SessionPromptState,
     options: &PromptOptions,
 ) -> PromptBundle {
-    let now = hone_core::beijing_now();
+    build_prompt_bundle_at(
+        config,
+        storage,
+        channel,
+        session_id,
+        _prompt_state,
+        options,
+        hone_core::beijing_now(),
+    )
+}
+
+pub(crate) fn build_prompt_bundle_at(
+    config: &HoneConfig,
+    storage: &SessionStorage,
+    channel: &str,
+    session_id: &str,
+    _prompt_state: &SessionPromptState,
+    options: &PromptOptions,
+    now: DateTime<FixedOffset>,
+) -> PromptBundle {
     let mut static_system = config
         .agent
         .system_prompt
@@ -250,6 +274,7 @@ pub fn build_prompt_bundle(
     PromptBundle {
         static_system,
         session_context,
+        answer_time_beijing: now.format("%Y-%m-%d %H:%M").to_string(),
         conversation_context,
     }
 }
@@ -648,6 +673,7 @@ mod tests {
                     .to_string(),
             ),
             session_context: "【Session 上下文】\n当前时间：2026-05-01 12:00:00".to_string(),
+            answer_time_beijing: "2026-05-01 12:00".to_string(),
         };
 
         let composed = bundle.compose_user_input("AMD的电脑CPU是什么名字");
@@ -695,6 +721,13 @@ mod tests {
         let composed = bundle.compose_user_input("今天公布的非农数据怎么样");
         assert!(!composed.contains("2026-03-17 22:01:00"));
         assert!(composed.contains(&hone_core::beijing_now().format("%Y-%m-%d").to_string()));
+        assert!(
+            bundle
+                .session_context
+                .contains(&format!("当前时间：{}:", bundle.answer_time_beijing)),
+            "the answer contract anchor must be derived from the exact same clock read as Session context: {:?}",
+            bundle
+        );
 
         let _ = fs::remove_dir_all(&data_dir);
     }
