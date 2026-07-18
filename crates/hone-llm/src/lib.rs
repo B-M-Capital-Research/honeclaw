@@ -11,5 +11,6 @@ pub use openai_compatible::OpenAiCompatibleProvider;
 pub use openrouter::OpenRouterProvider;
 pub use provider::{
     ChatResponse, ChatStreamEvent, FunctionCall, LlmProvider, LlmRequestOptions, Message, ToolCall,
+    ToolChoiceMode,
 };
 pub use resolver::{CreatedLlmProvider, LlmResolver};

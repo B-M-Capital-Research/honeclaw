@@ -529,7 +529,7 @@ impl InvestmentResponseContract {
                 "\n\n【本轮代码级投研路由：ETF / 基金深度分析，必须完整执行】\n已确认实体：{entity_map}。该标的是 ETF 或基金，不得套用单一公司的商业模式、利润表或 DCF 口径。最终答案的首行时间由服务端统一写入，模型正文不得自行生成或重复数据时间。按以下九个编号章节逐项回答，不得合并或省略：\n1. 结论（必须写出本轮已核验同代码现价）\n2. 基金目标、策略与跟踪对象\n3. 持仓、集中度与主要暴露\n4. 地域、行业与货币风险\n5. 流动性、规模与交易特征\n6. 费用、跟踪误差与底层资产估值口径\n7. Bull / Bear / Base Case\n8. 催化剂、风险点、证伪条件\n9. 动作建议（买、等、减、卖、观察之一，并给触发条件）\n明确区分本轮已核验事实、推断和动作。持仓数字只能逐行复述本轮已核验持仓字段；基金规模/AUM、费率和跟踪误差本轮没有结构化字段，必须在对应第 5/6 节逐项写“本轮未核验”，不得从历史对话或模型记忆补数。{recent_event_requirement}"
             ),
             DeepAnalysisKind::Equity => format!(
-                "\n\n【本轮代码级投研路由：单股深度分析，必须完整执行】\n已确认实体：{entity_map}。这不是简短行情问答。最终答案的首行时间由服务端统一写入，模型正文不得自行生成或重复数据时间。按以下九个编号章节逐项回答，不得合并或省略：\n1. 结论（必须写出本轮已核验同代码现价）\n2. 公司是什么、靠什么赚钱\n3. 护城河与竞争壁垒\n4. 行业位置与关键对手\n5. 财务质量\n6. 估值（至少两种适配方法或“倍数法 + 情景法”，写清假设）\n7. Bull / Bear / Base Case\n8. 催化剂、风险点、证伪条件\n9. 动作建议（买、等、减、卖、观察之一，并给触发条件）\n明确区分本轮已核验事实、推断和动作。证据没有的数字明确写“本轮未核验”，不得从历史对话或模型记忆补数。{recent_event_requirement}"
+                "\n\n【本轮代码级投研路由：单股深度分析，必须完整执行】\n已确认实体：{entity_map}。这不是简短行情问答。最终答案的首行时间由服务端统一写入，模型正文不得自行生成或重复数据时间。按以下九个编号章节逐项回答，不得合并或省略：\n1. 结论（必须写出本轮已核验同代码现价）\n2. 公司是什么、靠什么赚钱\n3. 护城河与竞争壁垒\n4. 行业位置与关键对手\n5. 财务质量\n6. 估值（本轮输入完整时至少两种适配方法；输入不完整时使用一种可严谨计算的方法并明确披露缺项，禁止补数）\n7. Bull / Bear / Base Case\n8. 催化剂、风险点、证伪条件\n9. 动作建议（买、等、减、卖、观察之一，并给触发条件）\n明确区分本轮已核验事实、推断和动作。证据没有的数字明确写“本轮未核验”，不得从历史对话或模型记忆补数。{recent_event_requirement}"
             ),
             DeepAnalysisKind::Crypto => format!(
                 "\n\n【本轮代码级投研路由：加密资产深度分析，必须完整执行】\n已确认实体：{entity_map}。该标的是加密资产，不得套用公司利润表、公司财报日历、ETF 持仓或单一公司 DCF 口径。最终答案的首行时间由服务端统一写入，模型正文不得自行生成或重复数据时间。按以下九个编号章节逐项回答，不得合并或省略：\n1. 结论（必须写出本轮已核验同代码现价）\n2. 资产、网络与核心用途\n3. 供给机制、代币经济与集中度\n4. 采用、流动性与市场结构\n5. 链上、网络与生态数据\n6. 估值框架与关键假设\n7. Bull / Bear / Base Case\n8. 催化剂、监管与风险、证伪条件\n9. 动作建议（买、等、减、卖、观察之一，并给触发条件）\n明确区分本轮已核验事实、推断和动作。链上、供给或生态数据未提供时必须逐项写“本轮未核验”，不得从模型记忆补数。{recent_event_requirement}"
@@ -3861,7 +3861,8 @@ pub(crate) fn missing_deep_single_stock_sections(content: &str) -> Vec<&'static 
         .iter()
         .filter(|aliases| aliases.iter().any(|alias| section_6.contains(alias)))
         .count();
-    if valuation_method_count < 2 {
+    let disclosed_valuation_gap = section_discloses_unverified(&section_6);
+    if valuation_method_count == 0 || (valuation_method_count < 2 && !disclosed_valuation_gap) {
         missing.push("至少两种估值方法");
     }
     missing
@@ -13416,6 +13417,15 @@ mod tests {
         assert!(
             missing_investment_response_sections(&contract, &pe_only).contains(&"至少两种估值方法"),
             "Forward PE、Forward P/E、目标 PE 与 PE 40x 都只能计为同一种 P/E 方法"
+        );
+
+        let pe_only_with_gap = complete.replace(
+            "方法二采用 EV/EBITDA，在保守假设下对应股价 $126",
+            "第二种方法所需的净债务与企业价值本轮未核验，因此本轮只保留上述 P/E 方法，不补造第二套估值",
+        );
+        assert!(
+            missing_investment_response_sections(&contract, &pe_only_with_gap).is_empty(),
+            "输入不足时，一种严谨方法加明确缺项必须正常通过，不能诱导补造第二套估值"
         );
 
         let conflicting = complete.replacen(

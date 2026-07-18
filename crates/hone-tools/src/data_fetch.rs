@@ -547,6 +547,43 @@ fn extended_hours_session(time: NaiveTime) -> &'static str {
     }
 }
 
+fn normalize_quote_timestamp_metadata(mut value: Value) -> Value {
+    match &mut value {
+        Value::Array(items) => {
+            for item in items {
+                attach_quote_timestamp_metadata(item);
+            }
+        }
+        Value::Object(_) => attach_quote_timestamp_metadata(&mut value),
+        _ => {}
+    }
+    value
+}
+
+fn attach_quote_timestamp_metadata(value: &mut Value) {
+    let Value::Object(fields) = value else {
+        return;
+    };
+    let Some(timestamp) = fields.get("timestamp").and_then(Value::as_i64) else {
+        return;
+    };
+    let Some(utc) = DateTime::from_timestamp(timestamp, 0) else {
+        return;
+    };
+    let new_york = utc.with_timezone(&chrono_tz::America::New_York);
+    let beijing = utc.with_timezone(&chrono_tz::Asia::Shanghai);
+    fields.insert(
+        "hone_quote_time".to_string(),
+        serde_json::json!({
+            "unix_seconds": timestamp,
+            "new_york": new_york.format("%Y-%m-%d %H:%M:%S %:z").to_string(),
+            "beijing": beijing.format("%Y-%m-%d %H:%M:%S %:z").to_string(),
+            "market_date_new_york": new_york.format("%Y-%m-%d").to_string(),
+            "source": "provider Unix timestamp converted by Hone; use `beijing` for the user-visible quote time; this metadata does not establish a market session"
+        }),
+    );
+}
+
 fn has_meaningful_fmp_value(value: &Value) -> bool {
     match value {
         Value::Null => false,
@@ -742,7 +779,7 @@ impl Tool for DataFetchTool {
     }
 
     fn description(&self) -> &str {
-        "获取金融数据（股票/ETF/加密货币的实体、行情、基本面和新闻等）。公司或证券分析必须先用 search 按公司名、别名或代码解析标准实体，再用返回的 symbol 查询其它数据。支持的数据类型：search（实体搜索，返回 symbol/name/exchange/currency 候选）、quote（实时行情）、quote_short（低带宽简版批量行情）、extended_hours（最新一条盘前/正常时段/盘后分钟行情，返回有界规范化 bar）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、financials（财务数据）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历）。"
+        "获取金融数据（股票/ETF/加密货币的实体、行情、基本面和新闻等）。公司或证券分析必须先用 search 按公司名、别名或代码解析标准实体，再用返回的 symbol 查询其它数据。search 结果只证明实体候选，不能单独证明客户、供应商、合同或新闻因果。quote/crypto_quote 中的 `hone_quote_time.beijing` 是 Hone 从 provider Unix timestamp 规范化得到的用户可见北京时间，应优先原样使用；普通 quote 的该字段不证明盘前/盘后时段，只有 `extended_hours` 的规范化 bar 可以核验美股扩展时段。支持的数据类型：search（实体搜索，返回 symbol/name/exchange/currency 候选）、quote（实时行情）、quote_short（低带宽简版批量行情）、extended_hours（最新一条盘前/正常时段/盘后分钟行情，返回有界规范化 bar）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、financials（财务数据）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历）。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -841,7 +878,10 @@ impl Tool for DataFetchTool {
         }
 
         if data_type == "snapshot" {
-            let quote = self.fetch_data_type("quote", ticker).await;
+            let quote = self
+                .fetch_data_type("quote", ticker)
+                .await
+                .map(normalize_quote_timestamp_metadata);
             let profile = self.fetch_data_type("profile", ticker).await;
             let news = self.fetch_data_type("news", ticker).await;
             return Ok(self.build_snapshot_response(ticker, quote, profile, news));
@@ -882,6 +922,8 @@ impl Tool for DataFetchTool {
                         Ok(bar) => bar,
                         Err(err) => return Ok(serde_json::json!({ "error": err })),
                     }
+                } else if matches!(data_type, "quote" | "quote_short" | "crypto_quote") {
+                    normalize_quote_timestamp_metadata(data)
                 } else {
                     data
                 };
@@ -900,12 +942,12 @@ impl Tool for DataFetchTool {
 mod tests {
     use super::{
         DataFetchTool, extended_hours_session, nonempty_fmp_error_message,
-        normalize_extended_hours_bar, sanitize_fmp_error_detail, should_cache_fmp_value,
-        ttl_for_data_type,
+        normalize_extended_hours_bar, normalize_quote_timestamp_metadata,
+        sanitize_fmp_error_detail, should_cache_fmp_value, ttl_for_data_type,
     };
     use crate::base::Tool;
     use crate::test_support::{assert_text_contains_all, assert_text_contains_none};
-    use chrono::{Duration, NaiveDate};
+    use chrono::{DateTime, Duration, NaiveDate};
     use serde_json::json;
     use std::net::SocketAddr;
     use std::sync::{
@@ -914,6 +956,28 @@ mod tests {
     };
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
+
+    #[test]
+    fn quote_timestamp_metadata_exposes_unambiguous_new_york_and_beijing_times() {
+        let timestamp = DateTime::parse_from_rfc3339("2026-07-17T20:00:00Z")
+            .expect("valid quote timestamp")
+            .timestamp();
+        let normalized = normalize_quote_timestamp_metadata(json!([{
+            "symbol": "CRWV",
+            "price": 73.21,
+            "timestamp": timestamp
+        }]));
+        let quote_time = &normalized[0]["hone_quote_time"];
+
+        assert_eq!(quote_time["unix_seconds"], timestamp);
+        assert_eq!(quote_time["new_york"], "2026-07-17 16:00:00 -04:00");
+        assert_eq!(quote_time["beijing"], "2026-07-18 04:00:00 +08:00");
+        assert_eq!(quote_time["market_date_new_york"], "2026-07-17");
+        assert!(
+            quote_time.get("session").is_none(),
+            "a regular quote timestamp must not be promoted into extended-hours session evidence"
+        );
+    }
 
     fn tool_with_test_key() -> DataFetchTool {
         DataFetchTool::new(vec!["test_key".to_string()], "https://example.com/api", 30)
@@ -1417,7 +1481,10 @@ mod tests {
             ("401 Unauthorized", "not-json"),
             ("403 Forbidden", "still-not-json"),
             ("429 Too Many Requests", "quota exhausted"),
-            ("200 OK", r#"[{"symbol":"AAPL","price":100.0}]"#),
+            (
+                "200 OK",
+                r#"[{"symbol":"AAPL","price":100.0,"timestamp":1784318400}]"#,
+            ),
         ])
         .await;
         let tool = DataFetchTool::new(
@@ -1438,7 +1505,59 @@ mod tests {
 
         assert_eq!(payload["data"][0]["symbol"], "AAPL");
         assert_eq!(payload["data"][0]["price"], 100.0);
+        assert_eq!(
+            payload["data"][0]["hone_quote_time"]["beijing"],
+            "2026-07-18 04:00:00 +08:00"
+        );
+        assert!(
+            payload["data"][0]["hone_quote_time"]
+                .get("session")
+                .is_none()
+        );
         assert_eq!(request_count.load(Ordering::SeqCst), 4);
+    }
+
+    #[tokio::test]
+    async fn quote_short_and_crypto_quote_convert_time_without_inventing_sessions() {
+        let (addr, request_count) = spawn_scripted_http_server(vec![
+            (
+                "200 OK",
+                r#"[{"symbol":"AAPL","price":100.0,"timestamp":1784318400}]"#,
+            ),
+            (
+                "200 OK",
+                r#"[{"symbol":"BTCUSD","price":120000.0,"timestamp":1784318400}]"#,
+            ),
+        ])
+        .await;
+        let tool = DataFetchTool::new(
+            vec!["working_key".to_string()],
+            &format!("http://{addr}/api"),
+            30,
+        );
+
+        let quote_short = tool
+            .execute(json!({"data_type": "quote_short", "ticker": "AAPL"}))
+            .await
+            .expect("short quote payload");
+        let crypto_quote = tool
+            .execute(json!({"data_type": "crypto_quote", "ticker": "BTCUSD"}))
+            .await
+            .expect("crypto quote payload");
+
+        for payload in [&quote_short, &crypto_quote] {
+            assert_eq!(
+                payload["data"][0]["hone_quote_time"]["beijing"],
+                "2026-07-18 04:00:00 +08:00"
+            );
+            assert!(
+                payload["data"][0]["hone_quote_time"]
+                    .get("session")
+                    .is_none(),
+                "ordinary and continuously traded quotes must not inherit US extended-hours labels"
+            );
+        }
+        assert_eq!(request_count.load(Ordering::SeqCst), 2);
     }
 
     #[tokio::test]
@@ -1605,7 +1724,7 @@ mod tests {
                     } else if request.contains("/stock_news") {
                         r#"[{"title":"Apple headline"}]"#
                     } else {
-                        r#"[{"symbol":"AAPL","price":100.0}]"#
+                        r#"[{"symbol":"AAPL","price":100.0,"timestamp":1784318400}]"#
                     };
                     let response = format!(
                         "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
@@ -1634,6 +1753,15 @@ mod tests {
             .expect("second snapshot");
 
         assert_eq!(first["data"]["quote"][0]["symbol"], "AAPL");
+        assert_eq!(
+            first["data"]["quote"][0]["hone_quote_time"]["beijing"],
+            "2026-07-18 04:00:00 +08:00"
+        );
+        assert!(
+            first["data"]["quote"][0]["hone_quote_time"]
+                .get("session")
+                .is_none()
+        );
         assert_eq!(second["data"]["profile"][0]["companyName"], "Apple Inc.");
         assert_eq!(request_count.load(Ordering::SeqCst), 3);
     }

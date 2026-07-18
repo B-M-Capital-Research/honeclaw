@@ -8,7 +8,9 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use hone_core::agent::{Agent, AgentContext, AgentResponse, ToolCallMade};
 use hone_core::{LlmAuditRecord, LlmAuditSink, ToolExecutionObserver};
-use hone_llm::{ChatResponse, ChatStreamEvent, FunctionCall, LlmProvider, Message, ToolCall};
+use hone_llm::{
+    ChatResponse, ChatStreamEvent, FunctionCall, LlmProvider, Message, ToolCall, ToolChoiceMode,
+};
 use hone_tools::ToolRegistry;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
@@ -16,9 +18,9 @@ use std::sync::Arc;
 
 const REASONING_CONTENT_METADATA_KEY: &str = "reasoning_content";
 const FINISH_RESEARCH_TOOL_NAME: &str = "finish_research";
-const FINISH_RESEARCH_SYSTEM_INSTRUCTION: &str = "【内部终态流控制】如果当前请求属于公司、证券、市场或板块投研，并且当前请求所需的实体核验、行情与其它证据工具调用已经全部完成，请不要在仍可调用工具的轮次直接展开长篇最终回答；必须单独调用 `finish_research`，由同一 Agent 和同一上下文进入无工具终稿阶段。不得把它与任何其它工具一起调用。它只是流式终态信号，不是拒答、审查或改写授权。";
+const FINISH_RESEARCH_SYSTEM_INSTRUCTION: &str = "【内部终态流控制】当前轮已实际进入金融数据工具链。如果当前请求所需的合理工具尝试已经完成（包括已明确确认某项数据暂不可得），请不要在仍可调用工具的轮次直接展开长篇最终回答；必须单独调用 `finish_research`，由同一 Agent 和同一上下文进入无工具终稿阶段。不得把它与任何其它工具一起调用。缺失证据应在终稿中如实披露，不构成拒答。它只是流式终态信号，不是审查、改写或阻止正常回答的授权。";
 const TERMINAL_SYNTHESIS_PROMPT: &str = "【终局回答阶段】\n\
-你已经明确表示本轮所需研究与工具调用全部完成。当前阶段不再提供任何工具；请只基于同一轮对话中已有的用户请求和工具结果，直接生成一次完整、可见的最终回答。不要提及 finish_research、内部协议、工具循环或这条提示。";
+你已经明确表示本轮合理的研究与工具尝试已经完成。当前阶段不再提供任何工具；请只基于同一轮对话中已有的用户请求和工具结果，直接生成一次完整、可见的最终回答。逐项复核所有公司关系、新闻因果、日期、行情、财务与估值数字：工具结果没有明确支持的事实必须标为未核验，不得用模型记忆补齐；年度数据不得写成 TTM，未取得净债务或企业价值时不得把市值/EBITDA 写成 EV/EBITDA；报价时间优先原样采用工具返回的 Hone 规范化北京时间字段，普通 quote 不得自行推断盘前/盘后时段。某项证据不可得时，披露缺项并继续完成能够被当前证据支持的分析，不得因此拒绝整个问题。不要提及 finish_research、内部协议、工具循环或这条提示。";
 
 #[async_trait]
 pub trait FunctionCallingStreamObserver: Send + Sync {
@@ -123,11 +125,15 @@ impl FunctionCallingAgent {
     }
 
     /// 构建完整消息列表（system prompt + context messages）
-    fn build_messages(&self, context: &AgentContext) -> Vec<Message> {
+    fn build_messages(
+        &self,
+        context: &AgentContext,
+        finish_research_available: bool,
+    ) -> Vec<Message> {
         let mut messages = Vec::with_capacity(context.messages.len() + 1);
 
         if !self.system_prompt.is_empty() {
-            let system_prompt = if self.finish_research_terminal_synthesis {
+            let system_prompt = if finish_research_available {
                 format!(
                     "{}\n\n{}",
                     self.system_prompt, FINISH_RESEARCH_SYSTEM_INSTRUCTION
@@ -213,8 +219,11 @@ impl FunctionCallingAgent {
         &self,
         messages: &[Message],
         tools: &[Value],
+        tool_choice_mode: ToolChoiceMode,
     ) -> hone_core::HoneResult<ChatResponse> {
-        let mut stream = self.llm.chat_with_tools_stream(messages, tools, None);
+        let mut stream = self
+            .llm
+            .chat_with_tools_stream(messages, tools, None, tool_choice_mode);
         let mut content = String::new();
         let mut reasoning_content = String::new();
         let mut tool_calls = BTreeMap::<u32, PendingToolCall>::new();
@@ -296,9 +305,9 @@ impl FunctionCallingAgent {
         messages: &[Message],
     ) -> hone_core::HoneResult<ChatResponse> {
         let empty_tools = Vec::<Value>::new();
-        let mut stream = self
-            .llm
-            .chat_with_tools_stream(messages, &empty_tools, None);
+        let mut stream =
+            self.llm
+                .chat_with_tools_stream(messages, &empty_tools, None, ToolChoiceMode::Auto);
         let mut content = String::new();
         let mut reasoning_content = String::new();
         let mut usage = None;
@@ -349,7 +358,7 @@ fn finish_research_tool_schema() -> Value {
         "type": "function",
         "function": {
             "name": FINISH_RESEARCH_TOOL_NAME,
-            "description": "Internal control signal. Call this function by itself only after all required research and tool calls are complete and no further tool result is needed. Hone will then ask you for the final answer with tools disabled. Never call it together with another function.",
+            "description": "Internal control signal. Call this function by itself after all reasonable research attempts for the user's question are complete, including when a required source is unavailable and that gap must be disclosed. Company relationships and current causal claims require current web/news evidence; valuation labels require their actual denominator period and inputs. Hone will then ask you for the final answer with tools disabled. Never call it together with another function.",
             "parameters": {
                 "type": "object",
                 "properties": {},
@@ -361,6 +370,10 @@ fn finish_research_tool_schema() -> Value {
 
 fn is_finish_research_call(tool_call: &ToolCall) -> bool {
     tool_call.function.name == FINISH_RESEARCH_TOOL_NAME
+}
+
+fn starts_investment_terminal_protocol(tool_call: &ToolCall) -> bool {
+    tool_call.function.name == "data_fetch"
 }
 
 // Keep the agent crate independent from channel presentation code while using
@@ -484,15 +497,12 @@ impl Agent for FunctionCallingAgent {
     async fn run(&self, user_input: &str, context: &mut AgentContext) -> AgentResponse {
         context.add_user_message(user_input);
 
-        let mut tools: Vec<Value> = self.tools.get_tools_schema();
-        if self.finish_research_terminal_synthesis {
-            tools.push(finish_research_tool_schema());
-        }
-        let has_tools = !tools.is_empty();
+        let business_tools: Vec<Value> = self.tools.get_tools_schema();
         let mut tool_calls_made: Vec<ToolCallMade> = Vec::new();
         let mut tool_call_counts: HashMap<String, u32> = HashMap::new();
         let mut total_tool_calls = 0u32;
         let mut iterations: u32 = 0;
+        let mut investment_research_started = false;
 
         self.dbg(&format!(
             "[Agent] start tools={:?}",
@@ -512,16 +522,32 @@ impl Agent for FunctionCallingAgent {
             iterations += 1;
             self.dbg(&format!("[Agent] iter={iterations}"));
 
-            let messages = self.build_messages(context);
+            let finish_research_available =
+                self.finish_research_terminal_synthesis && investment_research_started;
+            let mut round_tools = business_tools.clone();
+            if finish_research_available {
+                round_tools.push(finish_research_tool_schema());
+            }
+            let has_tools = !round_tools.is_empty();
+            let tool_choice_mode = if finish_research_available {
+                ToolChoiceMode::Required
+            } else {
+                ToolChoiceMode::Auto
+            };
+            let messages = self.build_messages(context, finish_research_available);
             let request_payload = serde_json::json!({
                 "messages": messages.clone(),
-                "tools": if has_tools { Some(tools.clone()) } else { None }
+                "tools": if has_tools { Some(round_tools.clone()) } else { None },
+                "tool_choice_mode": format!("{tool_choice_mode:?}"),
             });
             let call_started = std::time::Instant::now();
 
             // 如果有工具，使用 chat_with_tools；否则使用 chat
             let result: ChatResponse = if has_tools {
-                match self.chat_with_tools_streaming(&messages, &tools).await {
+                match self
+                    .chat_with_tools_streaming(&messages, &round_tools, tool_choice_mode)
+                    .await
+                {
                     Ok(r) => r,
                     Err(e) => {
                         self.record_audit(
@@ -593,9 +619,8 @@ impl Agent for FunctionCallingAgent {
                 if !tcs.is_empty() {
                     self.dbg(&format!("[Agent] tool_calls n={}", tcs.len()));
 
-                    let sole_finish_research = self.finish_research_terminal_synthesis
-                        && tcs.len() == 1
-                        && is_finish_research_call(&tcs[0]);
+                    let sole_finish_research =
+                        finish_research_available && tcs.iter().all(is_finish_research_call);
                     if sole_finish_research {
                         // Keep the control protocol ephemeral: it selects the
                         // terminal phase but is not persisted as a business
@@ -693,11 +718,16 @@ impl Agent for FunctionCallingAgent {
                         })
                         .collect::<Vec<_>>();
 
+                    investment_research_started |= actionable_tool_calls
+                        .iter()
+                        .any(|tool_call| starts_investment_terminal_protocol(tool_call));
+
                     if actionable_tool_calls.is_empty() {
-                        // Multiple finish_research calls are not a valid sole
-                        // terminal signal. Preserve the direct-answer fallback
-                        // below without starting a second generation.
-                        self.dbg("[Agent] ignored non-sole finish_research calls");
+                        // The control was hallucinated before the finance
+                        // terminal phase exposed it. Ignore the unavailable
+                        // control and preserve any direct content without
+                        // starting a second generation.
+                        self.dbg("[Agent] ignored unavailable finish_research call");
                     } else {
                         // 记录 assistant 消息（只含真实业务 tool_calls）
                         let tc_values: Vec<Value> = actionable_tool_calls
@@ -820,6 +850,13 @@ impl Agent for FunctionCallingAgent {
 
             // 没有工具调用 — 最终回复
             self.dbg("[Agent] done (no more tool_calls)");
+            if finish_research_available {
+                tracing::warn!(
+                    iterations,
+                    business_tool_calls = tool_calls_made.len(),
+                    "function_calling provider bypassed required terminal signal; preserving the Agent's direct answer without rewrite"
+                );
+            }
             let metadata = result.reasoning_content.as_ref().map(|reasoning| {
                 std::collections::HashMap::from([(
                     REASONING_CONTENT_METADATA_KEY.to_string(),
@@ -857,6 +894,7 @@ mod tests {
     struct StreamingMockLlmProvider {
         rounds: Arc<Mutex<VecDeque<Vec<ChatStreamEvent>>>>,
         seen_tool_counts: Arc<Mutex<Vec<usize>>>,
+        seen_tool_choice_modes: Arc<Mutex<Vec<ToolChoiceMode>>>,
         seen_messages: Arc<Mutex<Vec<Vec<Message>>>>,
     }
 
@@ -865,6 +903,7 @@ mod tests {
             Self {
                 rounds: Arc::new(Mutex::new(rounds.into())),
                 seen_tool_counts: Arc::new(Mutex::new(Vec::new())),
+                seen_tool_choice_modes: Arc::new(Mutex::new(Vec::new())),
                 seen_messages: Arc::new(Mutex::new(Vec::new())),
             }
         }
@@ -894,11 +933,16 @@ mod tests {
             messages: &'a [Message],
             tools: &'a [Value],
             _model: Option<&'a str>,
+            tool_choice_mode: ToolChoiceMode,
         ) -> BoxStream<'a, hone_core::HoneResult<ChatStreamEvent>> {
             self.seen_tool_counts
                 .lock()
                 .expect("stream tool counts lock")
                 .push(tools.len());
+            self.seen_tool_choice_modes
+                .lock()
+                .expect("stream tool choice modes lock")
+                .push(tool_choice_mode);
             self.seen_messages
                 .lock()
                 .expect("stream messages lock")
@@ -1063,6 +1107,59 @@ mod tests {
         }
     }
 
+    struct FinanceEvidenceTool;
+
+    #[async_trait]
+    impl Tool for FinanceEvidenceTool {
+        fn name(&self) -> &str {
+            "data_fetch"
+        }
+
+        fn description(&self) -> &str {
+            "finance evidence"
+        }
+
+        fn parameters(&self) -> Vec<ToolParameter> {
+            vec![ToolParameter {
+                name: "text".to_string(),
+                param_type: "string".to_string(),
+                description: "text".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            }]
+        }
+
+        async fn execute(&self, args: Value) -> hone_core::HoneResult<Value> {
+            Ok(json!({
+                "evidence": args.get("text").and_then(|v| v.as_str()).unwrap_or_default()
+            }))
+        }
+    }
+
+    struct FailingFinanceEvidenceTool;
+
+    #[async_trait]
+    impl Tool for FailingFinanceEvidenceTool {
+        fn name(&self) -> &str {
+            "data_fetch"
+        }
+
+        fn description(&self) -> &str {
+            "unavailable finance evidence"
+        }
+
+        fn parameters(&self) -> Vec<ToolParameter> {
+            vec![]
+        }
+
+        async fn execute(&self, _args: Value) -> hone_core::HoneResult<Value> {
+            Err(hone_core::HoneError::Tool(
+                "finance provider unavailable".to_string(),
+            ))
+        }
+    }
+
     struct CountingTool {
         calls: Arc<AtomicUsize>,
     }
@@ -1210,6 +1307,7 @@ mod tests {
                 ],
             ]))),
             seen_tool_counts: Arc::new(Mutex::new(Vec::new())),
+            seen_tool_choice_modes: Arc::new(Mutex::new(Vec::new())),
             seen_messages: Arc::new(Mutex::new(Vec::new())),
         };
         let mut registry = ToolRegistry::new();
@@ -1241,8 +1339,8 @@ mod tests {
         let llm = StreamingMockLlmProvider::with_rounds(vec![
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
-                id: Some("tc_echo".to_string()),
-                name: Some("echo_tool".to_string()),
+                id: Some("tc_data_fetch".to_string()),
+                name: Some("data_fetch".to_string()),
                 arguments: r#"{"text":"abc"}"#.to_string(),
             }],
             vec![ChatStreamEvent::ToolCallDelta {
@@ -1258,9 +1356,10 @@ mod tests {
             ],
         ]);
         let seen_tool_counts = llm.seen_tool_counts.clone();
+        let seen_tool_choice_modes = llm.seen_tool_choice_modes.clone();
         let seen_messages = llm.seen_messages.clone();
         let mut registry = ToolRegistry::new();
-        registry.register(Box::new(EchoTool));
+        registry.register(Box::new(FinanceEvidenceTool));
         let stream_observer = Arc::new(RecordingStreamObserver::default());
         let tool_observer = Arc::new(MockToolObserver::default());
         let agent = FunctionCallingAgent::new(
@@ -1281,14 +1380,26 @@ mod tests {
         assert_eq!(response.content, "最终答案");
         assert_eq!(response.iterations, 3);
         assert_eq!(response.tool_calls_made.len(), 1);
-        assert_eq!(response.tool_calls_made[0].name, "echo_tool");
+        assert_eq!(response.tool_calls_made[0].name, "data_fetch");
         assert_eq!(
             seen_tool_counts
                 .lock()
                 .expect("stream tool counts lock")
                 .as_slice(),
-            [2, 2, 0],
-            "the terminal synthesis must use the same provider with an empty tool list"
+            [1, 2, 0],
+            "finish_research must appear only after finance research starts, then terminal synthesis must use an empty tool list"
+        );
+        assert_eq!(
+            seen_tool_choice_modes
+                .lock()
+                .expect("stream tool choice modes lock")
+                .as_slice(),
+            [
+                ToolChoiceMode::Auto,
+                ToolChoiceMode::Required,
+                ToolChoiceMode::Auto,
+            ],
+            "the first turn must permit direct non-investment answers; only an active finance research loop requires a tool decision"
         );
         assert_eq!(
             stream_observer
@@ -1304,7 +1415,7 @@ mod tests {
                 .lock()
                 .expect("tool observer lock")
                 .as_slice(),
-            ["start:echo_tool", "done:echo_tool:true"]
+            ["start:data_fetch", "done:data_fetch:true"]
         );
         assert!(context.messages.iter().all(|message| {
             message.tool_calls.as_ref().is_none_or(|tool_calls| {
@@ -1343,6 +1454,7 @@ mod tests {
             "直接答案".to_string(),
         )]]);
         let seen_tool_counts = llm.seen_tool_counts.clone();
+        let seen_tool_choice_modes = llm.seen_tool_choice_modes.clone();
         let mut registry = ToolRegistry::new();
         registry.register(Box::new(EchoTool));
         let observer = Arc::new(RecordingStreamObserver::default());
@@ -1363,8 +1475,16 @@ mod tests {
                 .lock()
                 .expect("stream tool counts lock")
                 .as_slice(),
-            [2],
-            "a direct answer must not be followed by an empty-tools rewrite"
+            [1],
+            "a direct answer must not see finish_research or be followed by an empty-tools rewrite"
+        );
+        assert_eq!(
+            seen_tool_choice_modes
+                .lock()
+                .expect("stream tool choice modes lock")
+                .as_slice(),
+            [ToolChoiceMode::Auto],
+            "a turn that has not entered the finance tool chain must preserve ordinary direct answers"
         );
         assert_eq!(
             observer
@@ -1374,6 +1494,108 @@ mod tests {
                 .as_slice(),
             ["delta:直接答案"]
         );
+    }
+
+    #[tokio::test]
+    async fn unavailable_finance_evidence_can_finish_with_a_disclosed_gap() {
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_data_fetch_failed".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_finish_after_gap".to_string()),
+                name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![ChatStreamEvent::ContentDelta(
+                "本轮财务源不可用；以下仅分析已核验部分。".to_string(),
+            )],
+        ]);
+        let seen_tool_counts = llm.seen_tool_counts.clone();
+        let seen_tool_choice_modes = llm.seen_tool_choice_modes.clone();
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(FailingFinanceEvidenceTool));
+        let observer = Arc::new(RecordingStreamObserver::default());
+        let agent = FunctionCallingAgent::new(
+            Arc::new(llm),
+            Arc::new(registry),
+            "system".to_string(),
+            4,
+            None,
+        )
+        .with_finish_research_terminal_synthesis(true)
+        .with_stream_observer(Some(observer));
+        let mut context = AgentContext::new("finish-research-after-gap".to_string());
+
+        let response = agent
+            .run("research with unavailable evidence", &mut context)
+            .await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, "本轮财务源不可用；以下仅分析已核验部分。");
+        assert!(response.tool_calls_made.is_empty());
+        assert_eq!(
+            seen_tool_counts
+                .lock()
+                .expect("stream tool counts lock")
+                .as_slice(),
+            [1, 2, 0]
+        );
+        assert_eq!(
+            seen_tool_choice_modes
+                .lock()
+                .expect("stream tool choice modes lock")
+                .as_slice(),
+            [
+                ToolChoiceMode::Auto,
+                ToolChoiceMode::Required,
+                ToolChoiceMode::Auto,
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn duplicate_finish_calls_are_normalized_to_one_terminal_generation() {
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_data_fetch".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_finish_1".to_string()),
+                    name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
+                    arguments: "{}".to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 1,
+                    id: Some("tc_finish_2".to_string()),
+                    name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
+                    arguments: "{}".to_string(),
+                },
+            ],
+            vec![ChatStreamEvent::ContentDelta("唯一终稿".to_string())],
+        ]);
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(FinanceEvidenceTool));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 4, None)
+                .with_finish_research_terminal_synthesis(true);
+        let mut context = AgentContext::new("duplicate-finish".to_string());
+
+        let response = agent.run("research", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, "唯一终稿");
+        assert_eq!(response.iterations, 3);
+        assert_eq!(response.tool_calls_made.len(), 1);
     }
 
     #[tokio::test]
@@ -1421,8 +1643,8 @@ mod tests {
                 .lock()
                 .expect("stream tool counts lock")
                 .as_slice(),
-            [2, 2],
-            "mixed finish_research must not enter terminal synthesis"
+            [1, 1],
+            "an unavailable hallucinated finish_research must be ignored and must not activate terminal synthesis for a non-finance tool"
         );
         assert_eq!(
             tool_observer

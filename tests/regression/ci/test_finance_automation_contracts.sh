@@ -65,7 +65,7 @@ AGENT_DISCOVERY_IMPL="$(sed -n '/pub(crate) fn build_agent_discovered_investment
 AGENT_DISCOVERY_CONTEXT_IMPL="$(sed -n '/fn append_agent_entity_discovery_context(/,/^fn explicit_dollar_mentions(/p' "$INVESTMENT_GUARD")"
 INTERACTIVE_OBSERVATION_IMPL="$(sed -n '/Interactive entity discovery is owned/,/let Some(contract) = contract else/p' "$AGENT_CORE")"
 
-echo "[finance-automation-contracts] fixed sample count: 28"
+echo "[finance-automation-contracts] fixed sample count: 29"
 
 if contains '"snapshot".into()' "$DATA_FETCH" && contains 'data_fetch(data_type="snapshot"' "$STOCK_RESEARCH"; then
   record success "1.stock_research->snapshot" "tool enum and skill contract are aligned"
@@ -205,7 +205,7 @@ else
   record fail "23.full-sector-template" "the sector template or representative-security evidence contract is incomplete"
 fi
 
-if contains '本轮公司财务数据未核验' "$SOUL" && contains '本轮公司财务数据未核验' "$STOCK_RESEARCH" && contains '不得从记忆编造收入、利润率、现金流或估值倍数' "$SOUL" && contains 'data_fetch(data_type="quote", ticker="comma-separated exact symbols")' "$MARKET_ANALYSIS" && ! contains 'data_fetch(data_type="market")' "$MARKET_ANALYSIS"; then
+if contains '本轮公司财务数据未核验' "$SOUL" && contains '本轮公司财务数据未核验' "$STOCK_RESEARCH" && contains '不得从记忆编造收入、利润率、现金流、净债务或估值倍数' "$SOUL" && contains 'data_fetch(data_type="quote", ticker="comma-separated exact symbols")' "$MARKET_ANALYSIS" && ! contains 'data_fetch(data_type="market")' "$MARKET_ANALYSIS"; then
   record success "24.layered-missing-data-disclosure" "financial gaps are disclosed without fabrication or a nonexistent market endpoint"
 else
   record fail "24.layered-missing-data-disclosure" "missing financials can still be fabricated or widened into a false market-data outage"
@@ -235,11 +235,17 @@ else
   record fail "28.agent-signaled-terminal-stream" "terminal streaming can regress into speculative draft exposure, tool-bearing final synthesis, prefix rewrite, or retry after visible output"
 fi
 
+if contains 'investment_research_started' "$FUNCTION_AGENT" && contains 'ToolChoiceMode::Required' "$FUNCTION_AGENT" && contains 'tool_choice_mode == ToolChoiceMode::Required' "$OPENROUTER" && contains 'tool_choice_mode == ToolChoiceMode::Required' "$OPENAI_COMPATIBLE" && contains 'provider bypassed required terminal signal; preserving the Agent' "$FUNCTION_AGENT" && contains '包括已明确确认某项数据暂不可得' "$FUNCTION_AGENT" && contains '关系、事件与估值证据纪律' "$PROMPT_FILE" && contains '搜索摘要明确陈述的有限事实只能按原范围使用' "$SOUL" && contains '未取得资产负债表中的现金、债务或可直接使用的企业价值' "$SOUL" && contains 'this metadata does not establish a market session' "$DATA_FETCH" && contains '只有 `extended_hours` 的规范化 bar 可以核验美股扩展时段' "$DATA_FETCH" && contains '年度数据不得写成 TTM' "$FUNCTION_AGENT" && contains '输入不完整时使用一种可严谨计算的方法并明确披露缺项，禁止补数' "$INVESTMENT_GUARD" && contains 'disclosed_valuation_gap' "$INVESTMENT_GUARD"; then
+  record success "29.required-terminal-and-evidence-ledger" "only an observed finance tool chain requires an Agent terminal decision, unavailable evidence may be disclosed, and relationship/valuation/time claims are grounded without inventing quote sessions"
+else
+  record fail "29.required-terminal-and-evidence-ledger" "the Agent can bypass terminal streaming or fabricate relationship, valuation, or quote-time claims from incomplete evidence"
+fi
+
 echo
 echo "summary: success=$success review=$review fail=$fail total=$((success + review + fail))"
 
-if [ "$success" -lt 28 ]; then
-  echo "[ERROR] acceptance failed: expected all 28 successes"
+if [ "$success" -lt 29 ]; then
+  echo "[ERROR] acceptance failed: expected all 29 successes"
   exit 1
 fi
 

@@ -21,7 +21,7 @@ use serde_json::{Map, Value};
 
 use crate::provider::{
     ChatResponse, ChatResult, ChatStreamEvent, FunctionCall, LlmProvider, LlmRequestOptions,
-    Message, ToolCall, chat_stream_events_from_value,
+    Message, ToolCall, ToolChoiceMode, chat_stream_events_from_value,
 };
 
 fn remove_tool_fields_without_tools(body: &mut Map<String, Value>, has_tools: bool) {
@@ -31,6 +31,44 @@ fn remove_tool_fields_without_tools(body: &mut Map<String, Value>, has_tools: bo
     body.remove("tools");
     body.remove("tool_choice");
     body.remove("parallel_tool_calls");
+}
+
+/// Whether a provider has explicitly rejected the `tool_choice=required`
+/// capability rather than the request failing for an unrelated reason.
+///
+/// Keep this deliberately narrow: an automatic fallback changes the Agent's
+/// wire-level constraint, so network errors, authentication failures, rate
+/// limits, 5xx responses, and unrelated validation errors must not trigger it.
+fn rejects_required_tool_choice(status: reqwest::StatusCode, response_body: &str) -> bool {
+    if status.as_u16() != 400 && status.as_u16() != 422 {
+        return false;
+    }
+
+    let message = response_body.to_ascii_lowercase();
+    let names_tool_choice = message.contains("tool_choice")
+        || message.contains("tool choice")
+        || message.contains("tool-choice");
+    let reports_incompatibility = [
+        "not supported",
+        "unsupported",
+        "does not support",
+        "doesn't support",
+        "invalid",
+        "not allowed",
+        "not permitted",
+        "unrecognized",
+        "unknown",
+        "unexpected",
+        "must be",
+        "should be",
+        "only support",
+        "valid option",
+        "requires --",
+    ]
+    .iter()
+    .any(|marker| message.contains(marker));
+
+    names_tool_choice && reports_incompatibility
 }
 
 #[derive(Clone)]
@@ -414,6 +452,36 @@ mod tests {
 
     use super::*;
 
+    async fn read_json_request(socket: &mut tokio::net::TcpStream) -> Value {
+        let mut request = Vec::new();
+        loop {
+            let mut chunk = [0_u8; 4096];
+            let n = socket.read(&mut chunk).await.expect("read request");
+            assert!(n > 0, "connection closed before request body completed");
+            request.extend_from_slice(&chunk[..n]);
+
+            let Some(header_end) = request.windows(4).position(|window| window == b"\r\n\r\n")
+            else {
+                continue;
+            };
+            let headers = String::from_utf8_lossy(&request[..header_end]);
+            let content_length = headers
+                .lines()
+                .find_map(|line| {
+                    let (name, value) = line.split_once(':')?;
+                    name.eq_ignore_ascii_case("content-length")
+                        .then(|| value.trim().parse::<usize>().expect("content length"))
+                })
+                .expect("content-length header");
+            let body_start = header_end + 4;
+            if request.len() < body_start + content_length {
+                continue;
+            }
+            return serde_json::from_slice(&request[body_start..body_start + content_length])
+                .expect("json request body");
+        }
+    }
+
     #[test]
     fn extracts_numeric_provider_error_code_without_serde_shape_failure() {
         let body = r#"{"error":{"message":"maximum context length exceeded","code":400}}"#;
@@ -427,6 +495,30 @@ mod tests {
     fn extracts_alt_error_message_fields() {
         let body = r#"{"msg":"bad request","code":999}"#;
         assert_eq!(extract_error_message(body), "bad request (code: 999)");
+    }
+
+    #[test]
+    fn required_tool_choice_fallback_only_accepts_explicit_client_validation_errors() {
+        assert!(rejects_required_tool_choice(
+            reqwest::StatusCode::BAD_REQUEST,
+            r#"{"error":{"message":"tool_choice=required is not supported"}}"#
+        ));
+        assert!(rejects_required_tool_choice(
+            reqwest::StatusCode::UNPROCESSABLE_ENTITY,
+            r#"{"detail":[{"loc":["body","tool_choice"],"msg":"Input should be 'none' or 'auto'","input":"required"}]}"#
+        ));
+        assert!(!rejects_required_tool_choice(
+            reqwest::StatusCode::BAD_REQUEST,
+            r#"{"error":{"message":"maximum context length exceeded"}}"#
+        ));
+        assert!(!rejects_required_tool_choice(
+            reqwest::StatusCode::UNAUTHORIZED,
+            r#"{"error":{"message":"tool_choice=required is not supported"}}"#
+        ));
+        assert!(!rejects_required_tool_choice(
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+            r#"{"error":{"message":"tool_choice=required is not supported"}}"#
+        ));
     }
 
     #[tokio::test]
@@ -595,6 +687,7 @@ mod tests {
                     .expect("stream request json");
             assert_eq!(payload["stream"], true);
             assert_eq!(payload["tools"][0]["function"]["name"], "demo_tool");
+            assert_eq!(payload["tool_choice"], "required");
 
             let body = concat!(
                 "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"demo_tool\",\"arguments\":\"{\\\"symbol\\\":\"}}]}}]}\n\n",
@@ -638,6 +731,7 @@ mod tests {
                     }
                 })],
                 None,
+                ToolChoiceMode::Required,
             )
             .collect::<Vec<_>>()
             .await
@@ -667,6 +761,106 @@ mod tests {
             &events[2],
             ChatStreamEvent::Usage(usage) if usage.total_tokens == Some(11)
         ));
+    }
+
+    #[tokio::test]
+    async fn required_stream_retries_same_client_once_without_required_when_unsupported() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test server");
+        let addr = listener.local_addr().expect("read local addr");
+        let requests = Arc::new(AtomicUsize::new(0));
+        let requests_for_task = requests.clone();
+        tokio::spawn(async move {
+            let (mut first_socket, _) = listener.accept().await.expect("accept required request");
+            let first_payload = read_json_request(&mut first_socket).await;
+            requests_for_task.fetch_add(1, Ordering::SeqCst);
+            assert_eq!(first_payload["stream"], true);
+            assert_eq!(first_payload["tool_choice"], "required");
+            assert_eq!(first_payload["tools"][0]["function"]["name"], "demo_tool");
+            let rejection =
+                r#"{"error":{"message":"tool_choice=required is not supported by this endpoint"}}"#;
+            let response = format!(
+                "HTTP/1.1 422 Unprocessable Entity\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                rejection.len(),
+                rejection
+            );
+            first_socket
+                .write_all(response.as_bytes())
+                .await
+                .expect("write required rejection");
+            first_socket.shutdown().await.expect("close first socket");
+
+            let (mut second_socket, _) = listener.accept().await.expect("accept Auto retry");
+            let second_payload = read_json_request(&mut second_socket).await;
+            requests_for_task.fetch_add(1, Ordering::SeqCst);
+            assert_eq!(second_payload["stream"], true);
+            assert!(
+                second_payload.get("tool_choice").is_none(),
+                "Auto retry must not carry the injected required constraint: {second_payload}"
+            );
+            assert_eq!(second_payload["tools"][0]["function"]["name"], "demo_tool");
+
+            let stream_body = concat!(
+                "data: {\"choices\":[{\"delta\":{\"content\":\"fallback-ok\"}}]}\n\n",
+                "data: [DONE]\n\n"
+            );
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                stream_body.len(),
+                stream_body
+            );
+            second_socket
+                .write_all(response.as_bytes())
+                .await
+                .expect("write Auto stream");
+            second_socket.shutdown().await.expect("close second socket");
+        });
+
+        let provider = OpenAiCompatibleProvider::new(
+            "test-key",
+            &format!("http://{addr}"),
+            "test-model",
+            30,
+            64,
+        )
+        .expect("provider")
+        .with_request_options(LlmRequestOptions {
+            tool_choice: Some(serde_json::json!("required")),
+            ..LlmRequestOptions::default()
+        });
+        let events = provider
+            .chat_with_tools_stream(
+                &[Message {
+                    role: "user".to_string(),
+                    content: Some("lookup".to_string()),
+                    reasoning_content: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                }],
+                &[serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": "demo_tool",
+                        "description": "demo",
+                        "parameters": { "type": "object", "properties": {} }
+                    }
+                })],
+                None,
+                ToolChoiceMode::Required,
+            )
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .collect::<hone_core::HoneResult<Vec<_>>>()
+            .expect("Auto fallback stream events");
+
+        assert_eq!(
+            events,
+            vec![ChatStreamEvent::ContentDelta("fallback-ok".to_string())]
+        );
+        assert_eq!(requests.load(Ordering::SeqCst), 2);
     }
 
     #[tokio::test]
@@ -735,6 +929,7 @@ mod tests {
                 }],
                 &[],
                 None,
+                ToolChoiceMode::Auto,
             )
             .collect::<Vec<_>>()
             .await
@@ -1028,6 +1223,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
         messages: &'a [Message],
         tools: &'a [Value],
         model: Option<&'a str>,
+        tool_choice_mode: ToolChoiceMode,
     ) -> BoxStream<'a, hone_core::HoneResult<ChatStreamEvent>> {
         let fut = async move {
             if self.clients.is_empty() {
@@ -1040,11 +1236,38 @@ impl LlmProvider for OpenAiCompatibleProvider {
                 (!tools.is_empty()).then_some(tools),
                 model.unwrap_or(&self.model),
             )?;
-            let body = request.as_object_mut().ok_or_else(|| {
-                hone_core::HoneError::Llm("stream request body must be an object".to_string())
-            })?;
-            remove_tool_fields_without_tools(body, !tools.is_empty());
-            body.insert("stream".to_string(), Value::Bool(true));
+            {
+                let body = request.as_object_mut().ok_or_else(|| {
+                    hone_core::HoneError::Llm("stream request body must be an object".to_string())
+                })?;
+                remove_tool_fields_without_tools(body, !tools.is_empty());
+                body.insert("stream".to_string(), Value::Bool(true));
+            }
+            let use_required_tool_choice =
+                !tools.is_empty() && tool_choice_mode == ToolChoiceMode::Required;
+            // Preserve the request that Auto mode would have sent. If a
+            // profile redundantly configured `required`, drop that capability
+            // too; otherwise the compatibility retry would be identical to
+            // the rejected request.
+            let auto_request = use_required_tool_choice.then(|| {
+                let mut auto_request = request.clone();
+                if auto_request.get("tool_choice").and_then(Value::as_str) == Some("required") {
+                    auto_request
+                        .as_object_mut()
+                        .expect("stream request body was checked above")
+                        .remove("tool_choice");
+                }
+                auto_request
+            });
+            if use_required_tool_choice {
+                request
+                    .as_object_mut()
+                    .expect("stream request body was checked above")
+                    .insert(
+                        "tool_choice".to_string(),
+                        Value::String("required".to_string()),
+                    );
+            }
 
             let mut last_error = String::new();
             let mut successful_response = None;
@@ -1073,6 +1296,44 @@ impl LlmProvider for OpenAiCompatibleProvider {
                     "upstream HTTP {}: {}",
                     status.as_u16(),
                     extract_error_message(&body)
+                );
+
+                let Some(auto_request) = auto_request
+                    .as_ref()
+                    .filter(|_| rejects_required_tool_choice(status, &body))
+                else {
+                    continue;
+                };
+                tracing::warn!(
+                    "[openai_compatible] endpoint rejected tool_choice=required with HTTP {}; retrying the same client once in Auto mode",
+                    status.as_u16()
+                );
+                let fallback_response = match client
+                    .http_client
+                    .post(format!("{}/chat/completions", client.base_url))
+                    .bearer_auth(&client.api_key)
+                    .json(auto_request)
+                    .send()
+                    .await
+                {
+                    Ok(response) => response,
+                    Err(error) => {
+                        // Do not recursively retry or reinterpret transport
+                        // errors as a capability mismatch.
+                        last_error = error.to_string();
+                        continue;
+                    }
+                };
+                let fallback_status = fallback_response.status();
+                if fallback_status.is_success() {
+                    successful_response = Some(fallback_response);
+                    break;
+                }
+                let fallback_body = fallback_response.text().await.unwrap_or_default();
+                last_error = format!(
+                    "upstream HTTP {} after Auto fallback: {}",
+                    fallback_status.as_u16(),
+                    extract_error_message(&fallback_body)
                 );
             }
             let response = successful_response.ok_or_else(|| {

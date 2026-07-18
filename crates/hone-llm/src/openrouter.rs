@@ -25,7 +25,7 @@ use serde_json::{Map, Value};
 
 use crate::provider::{
     ChatResponse, ChatResult, ChatStreamEvent, FunctionCall, LlmProvider, LlmRequestOptions,
-    Message, ToolCall, chat_stream_events_from_value,
+    Message, ToolCall, ToolChoiceMode, chat_stream_events_from_value,
 };
 
 const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
@@ -708,6 +708,7 @@ impl LlmProvider for OpenRouterProvider {
         messages: &'a [Message],
         tools: &'a [Value],
         model: Option<&'a str>,
+        tool_choice_mode: ToolChoiceMode,
     ) -> BoxStream<'a, hone_core::HoneResult<ChatStreamEvent>> {
         let fut = async move {
             if self.clients.is_empty() {
@@ -731,6 +732,12 @@ impl LlmProvider for OpenRouterProvider {
             self.request_options
                 .apply_to_body(&mut body, self.max_tokens);
             remove_tool_fields_without_tools(&mut body, !tools.is_empty());
+            if !tools.is_empty() && tool_choice_mode == ToolChoiceMode::Required {
+                body.insert(
+                    "tool_choice".to_string(),
+                    Value::String("required".to_string()),
+                );
+            }
             body.insert("stream".to_string(), Value::Bool(true));
 
             let mut last_error = String::new();
@@ -972,6 +979,82 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn required_tool_stream_overrides_auto_request_option() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test server");
+        let addr = listener.local_addr().expect("read local addr");
+        tokio::spawn(async move {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                return;
+            };
+            let mut buf = vec![0_u8; 65536];
+            let n = socket.read(&mut buf).await.expect("read request");
+            let request = String::from_utf8_lossy(&buf[..n]);
+            let payload: Value =
+                serde_json::from_str(request.split("\r\n\r\n").nth(1).expect("request body"))
+                    .expect("stream request json");
+            assert_eq!(payload["stream"], true);
+            assert_eq!(payload["tools"][0]["function"]["name"], "finish_research");
+            assert_eq!(payload["tool_choice"], "required");
+
+            let body = concat!(
+                "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_finish\",\"function\":{\"name\":\"finish_research\",\"arguments\":\"{}\"}}]}}]}\n\n",
+                "data: [DONE]\n\n"
+            );
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            let _ = socket.write_all(response.as_bytes()).await;
+            let _ = socket.shutdown().await;
+        });
+
+        let provider = OpenRouterProvider::new_with_base_url(
+            "test-key",
+            &format!("http://{addr}"),
+            "test-model",
+            64,
+        )
+        .with_request_options(LlmRequestOptions {
+            tool_choice: Some(serde_json::json!("auto")),
+            ..LlmRequestOptions::default()
+        });
+        let events = provider
+            .chat_with_tools_stream(
+                &[Message {
+                    role: "user".to_string(),
+                    content: Some("finish".to_string()),
+                    reasoning_content: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                }],
+                &[serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": "finish_research",
+                        "description": "finish",
+                        "parameters": { "type": "object", "properties": {} }
+                    }
+                })],
+                None,
+                ToolChoiceMode::Required,
+            )
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .collect::<hone_core::HoneResult<Vec<_>>>()
+            .expect("stream events");
+
+        assert!(matches!(
+            &events[0],
+            ChatStreamEvent::ToolCallDelta { name: Some(name), .. } if name == "finish_research"
+        ));
+    }
+
+    #[tokio::test]
     async fn empty_tool_stream_omits_tool_controls_and_keeps_generation_options() {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
@@ -1035,6 +1118,7 @@ mod tests {
                 }],
                 &[],
                 None,
+                ToolChoiceMode::Auto,
             )
             .collect::<Vec<_>>()
             .await

@@ -76,6 +76,18 @@ pub enum ChatStreamEvent {
     Usage(TokenUsage),
 }
 
+/// Per-round tool selection mode for native function-calling streams.
+///
+/// `Required` is used only by Agent protocols that expose an explicit terminal
+/// control tool. It constrains the wire protocol (the model must choose a
+/// tool), but does not choose which business tool the Agent should call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ToolChoiceMode {
+    #[default]
+    Auto,
+    Required,
+}
+
 pub fn chat_stream_events_from_value(value: &Value) -> Vec<ChatStreamEvent> {
     let mut events = Vec::new();
     if let Some(usage) = value.get("usage") {
@@ -246,6 +258,7 @@ pub trait LlmProvider: Send + Sync {
         messages: &'a [Message],
         tools: &'a [Value],
         model: Option<&'a str>,
+        _tool_choice_mode: ToolChoiceMode,
     ) -> BoxStream<'a, hone_core::HoneResult<ChatStreamEvent>> {
         stream::once(async move { self.chat_with_tools(messages, tools, model).await })
             .flat_map(|result| match result {
