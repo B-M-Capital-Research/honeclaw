@@ -4,7 +4,7 @@ use std::sync::Arc;
 use chrono::TimeZone;
 use futures::future::join_all;
 use hone_core::ActorIdentity;
-use hone_core::agent::{AgentMessage, ToolCallMade};
+use hone_core::agent::ToolCallMade;
 use hone_llm::Message;
 use regex::Regex;
 use serde::Deserialize;
@@ -232,19 +232,6 @@ enum EntityResolutionScope {
 pub(crate) struct AgentDiscoveredInvestment {
     pub(crate) contract: InvestmentResponseContract,
     pub(crate) runtime_suffix: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AgentDiscoveryDisposition {
-    /// No security search was selected by the Agent for this turn.
-    NotApplicable,
-    /// The Agent actually searched, but the provider returned no authoritative
-    /// coverage or more than one equally verified entity. Keep its own
-    /// clarification instead of replacing it with a canned server sentence.
-    SafeClarification,
-    /// A security could have been verified, but the Agent omitted a named seed
-    /// or stopped before exact quote/timestamp verification.
-    UnsafeIncomplete,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1235,86 +1222,14 @@ fn data_fetch_call_type(call: &ToolCallMade) -> Option<&str> {
         .flatten()
 }
 
-fn first_agent_discovery_call_ids(context_messages: Option<&[AgentMessage]>) -> HashSet<String> {
-    let Some(messages) = context_messages else {
-        return HashSet::new();
-    };
-    for message in messages {
-        if message.role != "assistant" {
-            continue;
-        }
-        let ids = message
-            .tool_calls
-            .as_deref()
-            .into_iter()
-            .flatten()
-            .filter_map(|tool_call| {
-                let function = tool_call.get("function")?;
-                let name = function.get("name")?.as_str()?;
-                if canonical_hone_tool_name(name) != Some("data_fetch") {
-                    return None;
-                }
-                let arguments = match function.get("arguments") {
-                    Some(Value::String(arguments)) => serde_json::from_str::<Value>(arguments).ok(),
-                    Some(arguments) => Some(arguments.clone()),
-                    None => None,
-                }?;
-                arguments
-                    .get("data_type")
-                    .and_then(Value::as_str)
-                    .is_some_and(|data_type| data_type.eq_ignore_ascii_case("search"))
-                    .then(|| {
-                        tool_call
-                            .get("id")
-                            .and_then(Value::as_str)
-                            .map(str::to_string)
-                    })
-                    .flatten()
-            })
-            .collect::<HashSet<_>>();
-        if !ids.is_empty() {
-            return ids;
-        }
-    }
-    HashSet::new()
-}
-
-fn first_agent_discovery_calls<'a>(
-    calls: &'a [ToolCallMade],
-    context_messages: Option<&[AgentMessage]>,
-) -> Vec<&'a ToolCallMade> {
-    let ids = first_agent_discovery_call_ids(context_messages);
-    if !ids.is_empty() {
-        let discovered = calls
-            .iter()
-            .filter(|call| {
-                data_fetch_call_type(call)
-                    .is_some_and(|data_type| data_type.eq_ignore_ascii_case("search"))
-                    && call
-                        .tool_call_id
-                        .as_ref()
-                        .is_some_and(|call_id| ids.contains(call_id))
-            })
-            .collect::<Vec<_>>();
-        if !discovered.is_empty() {
-            return discovered;
-        }
-    }
-
-    let mut discovered = Vec::new();
-    let mut discovery_started = false;
-    for call in calls {
-        let Some(data_type) = data_fetch_call_type(call) else {
-            continue;
-        };
-        if data_type.eq_ignore_ascii_case("search") {
-            discovery_started = true;
-            discovered.push(call);
-        } else if discovery_started {
-            break;
-        }
-    }
-    discovered
+fn current_agent_discovery_calls(calls: &[ToolCallMade]) -> Vec<&ToolCallMade> {
+    calls
+        .iter()
+        .filter(|call| {
+            data_fetch_call_type(call)
+                .is_some_and(|data_type| data_type.eq_ignore_ascii_case("search"))
+        })
+        .collect()
 }
 
 fn required_agent_seed_symbols(user_input: &str) -> Vec<String> {
@@ -1356,24 +1271,55 @@ fn required_agent_seed_symbols(user_input: &str) -> Vec<String> {
     })
 }
 
+fn agent_contract_seed_symbols(user_input: &str, calls: &[ToolCallMade]) -> Vec<String> {
+    let mut symbols = required_agent_seed_symbols(user_input);
+    for identifier in scan_security_identifiers(user_input) {
+        let letters = identifier
+            .raw
+            .chars()
+            .filter(|character| character.is_ascii_alphabetic())
+            .collect::<String>();
+        let code_shape = identifier.kind != SecurityIdentifierKind::Bare
+            || (!letters.is_empty()
+                && letters.len() <= 5
+                && (letters
+                    .chars()
+                    .all(|character| character.is_ascii_uppercase())
+                    || letters
+                        .chars()
+                        .all(|character| character.is_ascii_lowercase())));
+        if !code_shape
+            || !current_agent_discovery_calls(calls)
+                .iter()
+                .any(|discovery| {
+                    successful_data_fetch_result(&discovery.result)
+                        && exact_candidate_from_result(&discovery.result, &identifier.normalized)
+                            .is_some()
+                })
+        {
+            continue;
+        }
+        if !symbols
+            .iter()
+            .any(|existing| provider_symbols_equivalent(existing, &identifier.normalized))
+        {
+            symbols.push(identifier.normalized);
+        }
+    }
+    symbols
+}
+
 pub(crate) fn missing_required_agent_seed_symbols(
     user_input: &str,
     calls: &[ToolCallMade],
-    context_messages: Option<&[AgentMessage]>,
 ) -> Vec<String> {
-    let discovery_calls = first_agent_discovery_calls(calls, context_messages);
+    let discovery_calls = current_agent_discovery_calls(calls);
     required_agent_seed_symbols(user_input)
         .into_iter()
         .filter(|required| {
             !discovery_calls.iter().any(|discovery| {
-                discovery
-                    .arguments
-                    .get("query")
-                    .or_else(|| discovery.arguments.get("ticker"))
-                    .or_else(|| discovery.arguments.get("symbol"))
-                    .and_then(Value::as_str)
-                    .and_then(normalize_security_identifier)
-                    .is_some_and(|query| provider_symbols_equivalent(required, &query))
+                successful_data_fetch_result(&discovery.result)
+                    && exact_candidate_from_result(&discovery.result, required).is_some()
             })
         })
         .collect()
@@ -1550,22 +1496,57 @@ fn agent_discovery_query_is_explicit_symbol(query: &str, required_seeds: &[Strin
                 .all(|character| character.is_ascii_lowercase()))
 }
 
-pub(crate) fn agent_discovery_disposition(
+fn agent_discovery_query_is_named_in_user_input(user_input: &str, query: &str) -> bool {
+    let query = query.trim().to_ascii_lowercase();
+    if query.is_empty() {
+        return false;
+    }
+    let input = user_input.to_ascii_lowercase();
+    if !query
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric())
+    {
+        return input.contains(&query);
+    }
+    input.match_indices(&query).any(|(start, matched)| {
+        let end = start + matched.len();
+        let before_is_identifier = input[..start]
+            .chars()
+            .next_back()
+            .is_some_and(|character| character.is_ascii_alphanumeric());
+        let after_is_identifier = input[end..]
+            .chars()
+            .next()
+            .is_some_and(|character| character.is_ascii_alphanumeric());
+        !before_is_identifier && !after_is_identifier
+    })
+}
+
+pub(crate) fn build_agent_discovered_investment(
     user_input: &str,
+    origin: AgentTurnOrigin,
     calls: &[ToolCallMade],
-    context_messages: Option<&[AgentMessage]>,
-) -> AgentDiscoveryDisposition {
-    let discovery_calls = first_agent_discovery_calls(calls, context_messages);
+) -> Option<AgentDiscoveredInvestment> {
+    if origin != AgentTurnOrigin::Interactive {
+        return None;
+    }
+    let discovery_calls = current_agent_discovery_calls(calls);
     if discovery_calls.is_empty() {
-        return AgentDiscoveryDisposition::NotApplicable;
+        return None;
     }
-    if !missing_required_agent_seed_symbols(user_input, calls, context_messages).is_empty() {
-        return AgentDiscoveryDisposition::UnsafeIncomplete;
+    if !missing_required_agent_seed_symbols(user_input, calls).is_empty() {
+        return None;
     }
-    let required_seed_symbols = required_agent_seed_symbols(user_input);
+    let required_seed_symbols = agent_contract_seed_symbols(user_input, calls);
+
+    let mut entities = Vec::new();
+    let mut seen_symbols = HashSet::new();
     for discovery in discovery_calls {
         if !successful_data_fetch_result(&discovery.result) {
-            return AgentDiscoveryDisposition::SafeClarification;
+            // Search is iterative inside the Agent loop. An empty or failed
+            // broad/enriched attempt may be followed by an exact-symbol
+            // refinement, so it cannot invalidate later authoritative facts.
+            continue;
         }
         let Some(query) = discovery
             .arguments
@@ -1576,96 +1557,69 @@ pub(crate) fn agent_discovery_disposition(
             .map(str::trim)
             .filter(|query| !query.is_empty())
         else {
-            return AgentDiscoveryDisposition::UnsafeIncomplete;
+            continue;
         };
         let explicit_symbol_query =
             agent_discovery_query_is_explicit_symbol(query, &required_seed_symbols);
-        let candidates =
+        let mut candidates =
             filtered_agent_discovery_candidates(query, &discovery.result, explicit_symbol_query);
-        if candidates.is_empty() {
-            return AgentDiscoveryDisposition::SafeClarification;
-        }
-        let verified_count = candidates
-            .iter()
-            .filter(|candidate| matching_quote_from_calls(calls, &candidate.symbol).is_some())
-            .count();
-        if verified_count > 1 || (verified_count == 0 && candidates.len() > 1) {
-            return AgentDiscoveryDisposition::SafeClarification;
-        }
-        if verified_count == 0 {
-            return AgentDiscoveryDisposition::UnsafeIncomplete;
-        }
-    }
-    // Every search entity has exactly one exact quote/timestamp. If contract
-    // construction still failed, a later baseline fact such as asset routing
-    // is incomplete and the draft must not be published as verified analysis.
-    AgentDiscoveryDisposition::UnsafeIncomplete
-}
-
-pub(crate) fn build_agent_discovered_investment(
-    user_input: &str,
-    origin: AgentTurnOrigin,
-    calls: &[ToolCallMade],
-    context_messages: Option<&[AgentMessage]>,
-) -> Option<AgentDiscoveredInvestment> {
-    if origin != AgentTurnOrigin::Interactive {
-        return None;
-    }
-    let discovery_calls = first_agent_discovery_calls(calls, context_messages);
-    if discovery_calls.is_empty() {
-        return None;
-    }
-    if !missing_required_agent_seed_symbols(user_input, calls, context_messages).is_empty() {
-        return None;
-    }
-    let required_seed_symbols = required_agent_seed_symbols(user_input);
-
-    let mut entities = Vec::new();
-    let mut seen_symbols = HashSet::new();
-    for discovery in discovery_calls {
-        if !successful_data_fetch_result(&discovery.result) {
-            return None;
-        }
-        let query = discovery
-            .arguments
-            .get("query")
-            .or_else(|| discovery.arguments.get("ticker"))
-            .or_else(|| discovery.arguments.get("symbol"))
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|query| !query.is_empty())?;
-        let explicit_symbol_query =
-            agent_discovery_query_is_explicit_symbol(query, &required_seed_symbols);
-        let verified =
-            filtered_agent_discovery_candidates(query, &discovery.result, explicit_symbol_query)
-                .into_iter()
-                .filter_map(|candidate| {
-                    matching_quote_from_calls(calls, &candidate.symbol)
-                        .map(|quote| (candidate, quote))
-                })
-                .collect::<Vec<_>>();
-        let [(candidate, quote)] = verified.as_slice() else {
-            return None;
-        };
-        let canonical_symbol = provider_canonical_key(&candidate.symbol)
-            .unwrap_or_else(|| candidate.symbol.to_ascii_uppercase());
-        if !seen_symbols.insert(canonical_symbol) {
+        let targets_required_seed = candidates.iter().any(|candidate| {
+            required_seed_symbols
+                .iter()
+                .any(|required| provider_symbols_equivalent(required, &candidate.symbol))
+        });
+        if targets_required_seed {
+            candidates.retain(|candidate| {
+                required_seed_symbols
+                    .iter()
+                    .any(|required| provider_symbols_equivalent(required, &candidate.symbol))
+            });
+        } else if !agent_discovery_query_is_named_in_user_input(user_input, query) {
+            // A later comparable/ETF/benchmark search may inform the Agent's
+            // reasoning without becoming part of the user-requested strong
+            // truth contract.
             continue;
         }
-        let mention = EntityMention {
-            mention: query.to_string(),
-            search_query: query.to_string(),
-            explicit_symbol: None,
-            tentative_symbol: false,
-            context: EntityMentionContext::default(),
-        };
-        let mut entity = resolved_entity(&mention, candidate.clone());
-        entity.verified_price = Some(quote.price.to_string());
-        entity.verified_change_percentage = quote.change_percentage.map(|value| value.to_string());
-        entity.quote_timestamp = quote.timestamp;
-        entities.push(entity);
+        let mut verified = candidates
+            .into_iter()
+            .filter_map(|candidate| {
+                matching_quote_from_calls(calls, &candidate.symbol).map(|quote| (candidate, quote))
+            })
+            .collect::<Vec<_>>();
+        if !targets_required_seed && verified.len() != 1 {
+            // For a name/alias search without explicit ticker seeds, an
+            // equally verified multi-candidate result remains ambiguous. A
+            // later exact refinement can still contribute one entity.
+            continue;
+        }
+        for (candidate, quote) in verified.drain(..) {
+            let canonical_symbol = provider_canonical_key(&candidate.symbol)
+                .unwrap_or_else(|| candidate.symbol.to_ascii_uppercase());
+            if !seen_symbols.insert(canonical_symbol) {
+                continue;
+            }
+            let mention = EntityMention {
+                mention: query.to_string(),
+                search_query: query.to_string(),
+                explicit_symbol: None,
+                tentative_symbol: false,
+                context: EntityMentionContext::default(),
+            };
+            let mut entity = resolved_entity(&mention, candidate);
+            entity.verified_price = Some(quote.price.to_string());
+            entity.verified_change_percentage =
+                quote.change_percentage.map(|value| value.to_string());
+            entity.quote_timestamp = quote.timestamp;
+            entities.push(entity);
+        }
     }
-    if entities.is_empty() {
+    if entities.is_empty()
+        || required_seed_symbols.iter().any(|required| {
+            !entities
+                .iter()
+                .any(|entity| provider_symbols_equivalent(required, &entity.symbol))
+        })
+    {
         return None;
     }
 
@@ -10985,7 +10939,7 @@ mod tests {
     };
     use crate::agent_session::AgentTurnOrigin;
     use chrono::{TimeZone, Utc};
-    use hone_core::agent::{AgentMessage, ToolCallMade};
+    use hone_core::agent::ToolCallMade;
     use serde_json::{Value, json};
 
     fn recorded_tool_call(name: &str, id: &str, arguments: Value, result: Value) -> ToolCallMade {
@@ -10994,31 +10948,6 @@ mod tests {
             arguments,
             result,
             tool_call_id: Some(id.into()),
-        }
-    }
-
-    fn assistant_tool_round(calls: &[&ToolCallMade]) -> AgentMessage {
-        AgentMessage {
-            role: "assistant".into(),
-            content: None,
-            tool_calls: Some(
-                calls
-                    .iter()
-                    .map(|call| {
-                        json!({
-                            "id": call.tool_call_id.as_deref().expect("tool call id"),
-                            "type": "function",
-                            "function": {
-                                "name": call.name,
-                                "arguments": call.arguments.to_string(),
-                            }
-                        })
-                    })
-                    .collect(),
-            ),
-            tool_call_id: None,
-            name: None,
-            metadata: None,
         }
     }
 
@@ -11048,7 +10977,7 @@ mod tests {
     }
 
     #[test]
-    fn agent_discovery_uses_first_search_round_and_exact_quote_to_select_crwv() {
+    fn agent_discovery_uses_explicit_seed_across_search_refinements_without_absorbing_cwy() {
         let timestamp = Utc::now().timestamp() - 60;
         let search_crwv = recorded_tool_call(
             "Tool: hone/data_fetch",
@@ -11126,10 +11055,6 @@ mod tests {
             json!({"query":"CoreWeave CRWV latest"}),
             json!({"results":[]}),
         );
-        let context = vec![
-            assistant_tool_round(&[&search_crwv]),
-            assistant_tool_round(&[&later_search_cwy]),
-        ];
         let calls = vec![
             search_crwv,
             later_search_cwy,
@@ -11145,7 +11070,6 @@ mod tests {
             "分析下 crwv",
             AgentTurnOrigin::Interactive,
             &calls,
-            Some(&context),
         )
         .expect("the exact CRWV quote must disambiguate the search result");
 
@@ -11208,7 +11132,6 @@ mod tests {
                 "isFund":true
             }]}),
         );
-        let context = vec![assistant_tool_round(&[&search_crwv])];
         let calls = vec![search_crwv, quote_cwy, profile_cwy];
 
         assert!(
@@ -11216,7 +11139,6 @@ mod tests {
                 "CRWV 现在多少钱",
                 AgentTurnOrigin::Interactive,
                 &calls,
-                Some(&context),
             )
             .is_none(),
             "a CRWV search result must not be satisfied by only verifying the CWY ETF"
@@ -11314,7 +11236,6 @@ mod tests {
                 "url":"https://www.reuters.com/technology/nebius-expansion"
             }]}),
         );
-        let context = vec![assistant_tool_round(&[&search_crwv, &search_nbis])];
         let calls = vec![
             search_crwv,
             search_nbis,
@@ -11331,9 +11252,8 @@ mod tests {
             "分析下crwv和nbis的估值",
             AgentTurnOrigin::Interactive,
             &calls,
-            Some(&context),
         )
-        .expect("both first-round entities have exact quote and profile evidence");
+        .expect("both Agent-loop entities have exact quote and profile evidence");
 
         assert_eq!(
             discovered
@@ -11422,6 +11342,117 @@ mod tests {
     }
 
     #[test]
+    fn agent_discovery_uses_later_exact_searches_after_empty_enriched_attempts() {
+        let crwv_timestamp = Utc::now().timestamp() - 120;
+        let nbis_timestamp = Utc::now().timestamp() - 60;
+        let empty_crwv = recorded_tool_call(
+            "data_fetch",
+            "search-crwv-enriched",
+            json!({"data_type":"search","query":"CRWV CoreWeave"}),
+            json!({"data":[]}),
+        );
+        let empty_nbis = recorded_tool_call(
+            "data_fetch",
+            "search-nbis-enriched",
+            json!({"data_type":"search","query":"NBIS Nebius"}),
+            json!({"data":[]}),
+        );
+        let exact_crwv = recorded_tool_call(
+            "data_fetch",
+            "search-crwv-exact",
+            json!({"data_type":"search","query":"CRWV"}),
+            json!({"data":[
+                {"symbol":"CRWV","name":"CoreWeave, Inc.","exchangeShortName":"NASDAQ"},
+                {"symbol":"CWY","name":"GraniteShares YieldBOOST CRWV ETF","exchangeShortName":"NASDAQ"}
+            ]}),
+        );
+        let exact_nbis = recorded_tool_call(
+            "data_fetch",
+            "search-nbis-exact",
+            json!({"data_type":"search","query":"NBIS"}),
+            json!({"data":[
+                {"symbol":"NBIS","name":"Nebius Group N.V.","exchangeShortName":"NASDAQ"},
+                {"symbol":"NBIZ","name":"T-Rex 2X Long NBIS Daily Target ETF","exchangeShortName":"CBOE"}
+            ]}),
+        );
+        let quote_crwv = recorded_tool_call(
+            "data_fetch",
+            "quote-crwv",
+            json!({"data_type":"quote","symbol":"CRWV"}),
+            json!({"data":[{"symbol":"CRWV","price":73.21,"timestamp":crwv_timestamp}]}),
+        );
+        let quote_nbis = recorded_tool_call(
+            "data_fetch",
+            "quote-nbis",
+            json!({"data_type":"quote","symbol":"NBIS"}),
+            json!({"data":[{"symbol":"NBIS","price":177.71,"timestamp":nbis_timestamp}]}),
+        );
+        let calls = vec![
+            empty_crwv,
+            empty_nbis,
+            exact_crwv,
+            exact_nbis,
+            quote_crwv,
+            quote_nbis,
+            recorded_tool_call(
+                "data_fetch",
+                "profile-crwv",
+                json!({"data_type":"profile","symbol":"CRWV"}),
+                equity_profile("CRWV", "CoreWeave, Inc."),
+            ),
+            recorded_tool_call(
+                "data_fetch",
+                "profile-nbis",
+                json!({"data_type":"profile","symbol":"NBIS"}),
+                equity_profile("NBIS", "Nebius Group N.V."),
+            ),
+            recorded_tool_call(
+                "data_fetch",
+                "financials-crwv",
+                json!({"data_type":"financials","symbol":"CRWV"}),
+                equity_financials("CRWV"),
+            ),
+            recorded_tool_call(
+                "data_fetch",
+                "financials-nbis",
+                json!({"data_type":"financials","symbol":"NBIS"}),
+                equity_financials("NBIS"),
+            ),
+        ];
+
+        assert!(
+            super::missing_required_agent_seed_symbols("分析下crwv和nbis的估值", &calls,)
+                .is_empty(),
+            "later exact provider rows must satisfy both explicit ticker seeds"
+        );
+        let discovered = super::build_agent_discovered_investment(
+            "分析下crwv和nbis的估值",
+            AgentTurnOrigin::Interactive,
+            &calls,
+        )
+        .expect("empty exploratory searches must not hide later exact-symbol evidence");
+
+        assert_eq!(
+            discovered
+                .contract
+                .entities
+                .iter()
+                .map(|entity| entity.symbol.as_str())
+                .collect::<Vec<_>>(),
+            ["CRWV", "NBIS"]
+        );
+        assert_eq!(
+            discovered
+                .contract
+                .entities
+                .iter()
+                .map(|entity| entity.verified_price.as_deref())
+                .collect::<Vec<_>>(),
+            [Some("73.21"), Some("177.71")]
+        );
+    }
+
+    #[test]
     fn agent_discovery_rejects_partial_quote_coverage() {
         let timestamp = Utc::now().timestamp() - 60;
         let search_crwv = recorded_tool_call(
@@ -11442,7 +11473,6 @@ mod tests {
             json!({"data_type":"quote","ticker":"CRWV"}),
             json!({"data":[{"symbol":"CRWV","price":73.21,"timestamp":timestamp}]}),
         );
-        let context = vec![assistant_tool_round(&[&search_crwv, &search_nbis])];
         let calls = vec![search_crwv, search_nbis, quote_crwv];
 
         assert!(
@@ -11450,10 +11480,9 @@ mod tests {
                 "比较 CRWV 和 NBIS",
                 AgentTurnOrigin::Interactive,
                 &calls,
-                Some(&context),
             )
             .is_none(),
-            "one verified quote cannot satisfy a two-entity first search round"
+            "one verified quote cannot satisfy a two-entity Agent-loop trace"
         );
     }
 
@@ -11493,14 +11522,12 @@ mod tests {
             json!({"data_type":"profile","ticker":"NBIS"}),
             equity_profile("NBIS", "Nebius Group N.V."),
         );
-        let context = vec![assistant_tool_round(&[&search_crwv, &search_nbis])];
         let calls = vec![search_crwv, search_nbis, quote, profile_crwv, profile_nbis];
 
         let discovered = super::build_agent_discovered_investment(
             "分析下 CRWV 和 NBIS 的估值",
             AgentTurnOrigin::Interactive,
             &calls,
-            Some(&context),
         )
         .expect("search/quote/profile evidence is a valid shallow Agent-selected scope");
         assert_eq!(discovered.contract.deep_analysis, DeepAnalysisKind::None);
@@ -11516,7 +11543,7 @@ mod tests {
     }
 
     #[test]
-    fn agent_discovery_rejects_first_search_round_that_omits_named_nbis() {
+    fn agent_discovery_rejects_current_trace_that_omits_named_nbis() {
         let timestamp = Utc::now().timestamp() - 60;
         let search_crwv = recorded_tool_call(
             "data_fetch",
@@ -11545,7 +11572,6 @@ mod tests {
             json!({"data_type":"profile","ticker":"CRWV"}),
             equity_profile("CRWV", "CoreWeave, Inc."),
         );
-        let context = vec![assistant_tool_round(&[&search_crwv])];
         let calls = vec![search_crwv, quote_crwv, profile_crwv];
 
         assert!(
@@ -11553,10 +11579,9 @@ mod tests {
                 "CRWV 和 NBIS 现在分别多少钱",
                 AgentTurnOrigin::Interactive,
                 &calls,
-                Some(&context),
             )
             .is_none(),
-            "the first search round must cover every explicitly named ticker"
+            "the current Agent trace must cover every explicitly named ticker"
         );
     }
 
@@ -11568,14 +11593,11 @@ mod tests {
             json!({"path":"README.md"}),
             json!({"content":"honeclaw"}),
         );
-        let context = vec![assistant_tool_round(&[&non_security_call])];
-
         assert!(
             super::build_agent_discovered_investment(
                 "说一下动一下也不行",
                 AgentTurnOrigin::Interactive,
                 &[non_security_call],
-                Some(&context),
             )
             .is_none(),
             "generic wording must not be classified as a security by phrase grammar"
@@ -11640,7 +11662,6 @@ mod tests {
                 "content":"CoreWeave CRWV filing"
             }]}),
         );
-        let context = vec![assistant_tool_round(&[&search])];
         let input = "CRWV 给我捋一捋";
 
         let shallow_calls = vec![search.clone(), quote.clone(), profile.clone()];
@@ -11648,7 +11669,6 @@ mod tests {
             input,
             AgentTurnOrigin::Interactive,
             &shallow_calls,
-            Some(&context),
         )
         .expect("search + exact quote/profile must remain a valid shallow Agent result");
         assert_eq!(shallow.contract.deep_analysis, DeepAnalysisKind::None);
@@ -11664,7 +11684,6 @@ mod tests {
             input,
             AgentTurnOrigin::Interactive,
             &financial_calls,
-            Some(&context),
         )
         .expect("an observed financials call must establish financial evidence on its own");
         assert_eq!(
@@ -11682,7 +11701,6 @@ mod tests {
             input,
             AgentTurnOrigin::Interactive,
             &news_calls,
-            Some(&context),
         )
         .expect("an observed news call must establish recent evidence without financials");
         assert_eq!(
@@ -11698,7 +11716,6 @@ mod tests {
             input,
             AgentTurnOrigin::Interactive,
             &web_calls,
-            Some(&context),
         )
         .expect("an observed web search must establish recent evidence without financials/news");
         assert_eq!(

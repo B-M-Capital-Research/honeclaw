@@ -1,7 +1,7 @@
 # CRWV Exact-Ticker Entity Resolution Repair
 
 - title: CRWV exact-ticker versus embedded-product entity resolution repair
-- status: done
+- status: in_progress
 - created_at: 2026-07-18
 - updated_at: 2026-07-18
 - owner: Codex
@@ -53,12 +53,12 @@ The production turn `分析下crwv和nbis的估值` failed at 2026-07-18 15:03 B
 
 - Removed the current-turn blocking auxiliary entity extraction, timeout, generic availability error, and `NeedsClarification` pre-run outcome.
 - Lexical results are now explicitly candidate seeds. For interactive traffic they never close the scope, trigger clarification, or start a DataFetch/portfolio preflight; every nonempty wording becomes `AgentToolDiscovery` so the configured main runner reads the complete query. Portfolio membership is loaded by the Agent's own `portfolio(view)` call in that same loop.
-- If the Agent finds named securities, its first tool group searches every candidate—including explicit tickers—and the next group exact-verifies all selected symbols with quote/profile before problem-specific evidence. High-confidence explicit code seeds are checked only after the run as a minimum that cannot be silently omitted; they are not a closed entity list. Ordinary finance or non-security turns can simply continue without an irrelevant DataFetch call.
-- After the same run completes, the service derives the entity scope from that first search group and structured tool trace. Every resolved entity must intersect a later positive same-symbol quote with a usable provider timestamp. The actual financials, holdings, news, web, earnings, sector, market, or extended-hours results selected by the Agent remain in its context for synthesis; user wording does not select a server-side depth route, and tool presence does not authorize a fixed chapter parser.
-- DataFetch response envelopes are excluded from candidate rows, fixing the Chinese-name case where the wrapper query `英伟达` previously hid the returned provider symbol `NVDA`. CRWV/CWY is resolved only when CRWV itself has later exact quote evidence; quoting only CWY fails. A first search group that omits named NBIS or later lacks any exact quote cannot create a one-sided comparison contract.
+- If the Agent finds named securities, its tool loop searches every candidate—including explicit tickers—and exact-verifies all selected symbols with quote/profile before problem-specific evidence. High-confidence explicit code seeds are checked only after the run as a minimum that cannot be silently omitted; they are not a closed entity list. Search may refine across multiple assistant rounds, and an earlier empty broad query cannot hide later exact evidence. Ordinary finance or non-security turns can simply continue without an irrelevant DataFetch call.
+- After the same run completes, the service derives an optional entity contract from all current-run search/refinement calls and structured tool facts. Every contracted entity must intersect a later positive same-symbol quote with a usable provider timestamp. The actual financials, holdings, news, web, earnings, sector, market, or extended-hours results selected by the Agent remain in its context for synthesis; user wording does not select a server-side depth route, and tool presence does not authorize a fixed chapter parser.
+- DataFetch response envelopes are excluded from candidate rows, fixing the Chinese-name case where the wrapper query `英伟达` previously hid the returned provider symbol `NVDA`. CRWV/CWY is resolved only when CRWV itself has later exact quote evidence; quoting only CWY fails. A complete current trace must cover named NBIS and later exact quote evidence before it can create a two-sided verified comparison contract.
 - Dynamic contracts follow observed search/quote scope only. The service no longer infers tool calls from “估值”, “最近”, “盘前”, or any other wording vocabulary, and it does not force a fixed comparison/deep template. Financials, holdings, news, and web results are evidence in Agent context, not cues for parsing its natural-language chapters.
 - Dynamic interactive validation is limited to deterministic boundaries: server time, resolved entity, exact current quote/provider time, exact extended-session identity/session/freshness when present, false market-data denial, and one session/history/SSE result. The Agent retains control of scope, depth, structure, length, and priorities. Typed scheduled/heartbeat contracts retain their deterministic formats and strict field-aware validators. Any future strict validation of individual financial, holding, valuation, or event claims requires structured provenance tied to tool results.
-- Genuine provider no-coverage/failure or equal-candidate ambiguity preserves the Agent's concrete explanation. Omitted explicit seeds or a unique candidate without exact quote/time are unsafe incomplete and may receive one hidden read-only continuation; the generic “entity recognition incomplete” response is not used for safe clarification.
+- Genuine provider no-coverage/failure, equal-candidate ambiguity, omitted explicit seeds, and missing exact quote/time all preserve a successful Agent response. Omitted seeds may receive one hidden read-only continuation, but failure to build the optional contract afterward is diagnostic only and never authorizes a fixed refusal.
 - All interactive drafts use the deferred output boundary. Tool progress remains visible, but draft deltas/resets are withheld; one deterministic-fact, read-only repair may preserve and correct the Agent answer, and the dynamic path never replaces it with a service-authored whole-answer fallback. Exactly one final answer is published.
 - Repair retains the initial and retry tool traces in execution order and rejects unknown or persistent repair calls before accepting a revised answer.
 - Programmatic `FmpConfig::default()` now matches serde defaults (`base_url` plus a 60-second timeout). This closes a separate zero-timeout path exposed by the strict tool-loop regression fixture; credentialed live checks continued to show the production FMP provider itself was healthy.
@@ -66,7 +66,7 @@ The production turn `分析下crwv和nbis的估值` failed at 2026-07-18 15:03 B
 
 ### Verification So Far
 
-- Focused pure tests cover first-search-group scoping, CRWV/CWY exact disambiguation, CWY-only rejection, explicit NBIS omission, CRWV+NBIS provider timestamps, per-equity financial/news tool-trace capture, tool aliases, partial quote rejection, and a generic no-search turn.
+- Focused pure tests cover whole-trace search refinement, CRWV/CWY exact disambiguation, CWY-only rejection, explicit NBIS omission, CRWV+NBIS provider timestamps, per-equity financial/news tool-trace capture, tool aliases, partial quote rejection, contract-none answer preservation, and a generic no-search turn.
 - AgentSession tests prove arbitrary surrounding wording, the exact production phrase, Chinese company names, and the dedicated financial-evidence round reach the real function-calling tool loop with `chat_calls() == 0`; exact DataFetch results produce a provider-time prefix and one visible answer. Repair tests cover merged traces plus unknown/persistent retry rejection.
 - `FmpConfig::default()` is regression-covered against empty serde deserialization, including the nonzero timeout.
 - Finance CI contract = 27/27, including a guard that rejects restoration of the auxiliary timeout/failure path.
@@ -83,3 +83,32 @@ The production turn `分析下crwv和nbis的估值` failed at 2026-07-18 15:03 B
 - A fresh production Web actor replayed the exact query `分析下crwv和nbis的估值` after the hotfix deployment. The main Agent made 10 DataFetch calls: independent search, quote, profile, financials, and news calls for both CRWV and NBIS. The log recorded `contract_built=true entities=CRWV,NBIS`.
 - Run `8da0538d-8bad-42f0-a700-373f0a9edb83` completed successfully in 78.405 seconds. Its visible answer began with server Beijing time, named both verified entities, and included exact current quotes `73.21 USD` and `177.71 USD`. SSE contained exactly one `run_started`, one `assistant_delta`, and one successful `run_finished`, with no `assistant_reset`, `run_error`, or generic `error`.
 - Persisted history contained exactly `user,assistant`; the user text matched byte-for-byte, and active chat count returned to zero. This closes the Interactive CRWV+NBIS phase. The umbrella ticker plan remains active only for the separately documented scheduler task-prose P2.
+
+## Phase 3 — Remove The Unrequested Interactive Publication Ban
+
+### Reopened Incident
+
+At 20:06 Beijing time, production received `分析下crwv和nbis的估值` again. This was not an FMP/DataFetch outage: the retry trace contained empty exploratory searches for `CRWV CoreWeave` and `NBIS Nebius`, followed by successful exact `CRWV` and `NBIS` searches, exact quotes `73.21` and `177.71` with provider timestamps, both profiles and financial statements, and two web searches. The model completed a 6037-character valuation answer.
+
+The response was lost locally. Commit `2d6b4be8` had introduced two coupled assumptions: dynamic reconstruction selected only the first assistant search group, and `AgentDiscoveryDisposition::UnsafeIncomplete` then converted an otherwise successful Interactive result into failure and replaced its content with a fixed “cannot safely publish” sentence. The first assumption ignored the Agent's successful refinement; the second was an unrequested publication ban that did not exist in the product prompt or configuration.
+
+### Architecture Correction
+
+- Interactive search evidence is now collected from the entire current runner trace. Earlier empty/failed broad or enriched attempts are skipped; later exact-symbol refinements remain authoritative when joined to positive same-symbol quotes and usable provider timestamps.
+- Explicit ticker seeds bound the strong dynamic-contract scope. A CRWV request can use later CRWV refinement evidence without absorbing a separately researched CWY ETF; a CRWV+NBIS request must retain both exact seeds.
+- The `UnsafeIncomplete` enum, fixed refusal constant, and success-to-failure response mutation are deleted. `contract_built=false` is logged as `answer_preserved=true`, then the existing normal path returns the successful Agent body unchanged.
+- A dynamic Interactive contract is optional server fact enhancement, not permission to answer. Typed scheduled/heartbeat contracts, real runner/auth/quota errors, persistent-side-effect protection, and deterministic checks on a contract that was successfully built remain unchanged.
+- The hidden omitted-seed continuation now explicitly tells the Agent to search an explicit ticker using the original code alone rather than concatenating a company name. The implementation still does not depend on prompt compliance: all later search refinements are considered structurally.
+- Finance CI now rejects restoration of first-search freezing, `AgentDiscoveryDisposition`, or `UNSAFE_AGENT_DISCOVERY_MESSAGE` and requires both production-shape refinement coverage and contract-none answer preservation.
+
+### Regression Evidence
+
+- Guard coverage reproduces `CRWV CoreWeave` / `NBIS Nebius` empty results followed by exact CRWV/NBIS results, quotes, profiles, and financials; the rebuilt contract contains exactly CRWV and NBIS with `73.21` / `177.71`.
+- AgentSession coverage starts with a no-tool historical draft, triggers the bounded seed retry, performs both empty enriched searches and later exact searches, builds the two-entity contract, drops the stale draft, and emits one successful final body.
+- A separate AgentSession regression deliberately returns a CRWV quote without a usable timestamp so the optional contract cannot build; the Agent's concrete valuation/data-gap answer remains `success=true`, byte-for-byte intact, with one visible delta and no error.
+- Existing Agent-owned no-coverage and equal-candidate clarification tests continue to pass. Finance automation contracts pass 27/27.
+- `cargo test -p hone-channels --all-targets` passes 614/614; workspace `cargo check` and `cargo test` pass with the existing unrelated Feishu dead-code warning only. Web tests pass 265/265 and `tests/regression/run_ci.sh` passes every CI-safe contract.
+
+### Remaining Acceptance
+
+The implementation and focused regressions are complete. Before marking this reopened phase done, run the full repository gates, push `main`, rebuild the five runtime binaries, drain active chats, restart the supervisor, verify Postgres/S3 and ports 8077/8088, and replay both `分析下crwv和nbis的估值` and `crwv和nbis的估值怎么看` with fresh actors. Each production run must yield a normal answer, one successful terminal event, no fixed refusal/reset/error, and zero active chats afterward. First-visible-text latency remains a separate follow-up because the current Interactive path still defers body deltas until the tool loop and optional contract handling finish.

@@ -4258,6 +4258,114 @@ async fn agent_owned_equal_candidate_clarification_is_not_replaced_and_is_emitte
 }
 
 #[tokio::test]
+async fn optional_agent_contract_failure_preserves_completed_interactive_answer() {
+    let root = make_temp_dir("hone_channels_optional_agent_contract_failure");
+    std::fs::create_dir_all(&root).expect("create root");
+    let (fmp_base_url, fmp_stub) = spawn_fmp_route_stub(vec![
+        (
+            "query=CRWV".to_string(),
+            serde_json::json!([{
+                "symbol":"CRWV",
+                "name":"CoreWeave, Inc.",
+                "exchangeShortName":"NASDAQ"
+            }]),
+        ),
+        (
+            "/v3/quote/CRWV".to_string(),
+            serde_json::json!([{
+                "symbol":"CRWV",
+                "price":73.21
+            }]),
+        ),
+    ]);
+    let answer = "DataFetch 已确认 CRWV 对应 CoreWeave；但本轮报价缺少可用的报价源时间，所以我不把 73.21 称为实时价。估值仍可从收入增速、毛利率、资本开支、融资成本和 Forward P/S 情景入手，并把数据缺口明确列为限制。";
+    let llm = MockLlmProvider::with_tool_responses(vec![
+        ChatResponse {
+            content: String::new(),
+            reasoning_content: Some("先核验显式 ticker".to_string()),
+            tool_calls: Some(vec![ToolCall {
+                id: "call_crwv_search_optional_contract".to_string(),
+                call_type: "function".to_string(),
+                function: FunctionCall {
+                    name: "data_fetch".to_string(),
+                    arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
+                },
+            }]),
+            usage: None,
+        },
+        ChatResponse {
+            content: String::new(),
+            reasoning_content: Some("候选已确认，读取同代码报价".to_string()),
+            tool_calls: Some(vec![ToolCall {
+                id: "call_crwv_quote_without_timestamp".to_string(),
+                call_type: "function".to_string(),
+                function: FunctionCall {
+                    name: "data_fetch".to_string(),
+                    arguments: r#"{"data_type":"quote","ticker":"CRWV"}"#.to_string(),
+                },
+            }]),
+            usage: None,
+        },
+        ChatResponse {
+            content: answer.to_string(),
+            reasoning_content: None,
+            tool_calls: None,
+            usage: None,
+        },
+    ]);
+    let core = make_strict_tool_loop_test_core_with_config(&root, llm.clone(), |config| {
+        config.fmp.api_keys = vec!["test-key".to_string()];
+        config.fmp.base_url = fmp_base_url;
+    });
+    let actor =
+        ActorIdentity::new("web", "optional-agent-contract", None::<String>).expect("actor");
+    let listener = Arc::new(RecordingListener::default());
+    let mut session = AgentSession::new(core.clone(), actor.clone(), "direct");
+    session.add_listener(listener.clone());
+
+    let result = session
+        .run("CRWV 估值怎么看", AgentRunOptions::default())
+        .await;
+    fmp_stub.join().expect("join FMP stub");
+
+    assert!(result.response.success, "{:?}", result.response.error);
+    assert_eq!(result.response.content, answer);
+    assert_eq!(result.response.error, None);
+    assert_eq!(result.response.tool_calls_made.len(), 2);
+    assert_eq!(llm.chat_with_tools_calls(), 3);
+    let messages = core
+        .session_storage
+        .get_messages(&actor.session_id(), None)
+        .expect("messages");
+    assert_eq!(
+        messages
+            .iter()
+            .map(|message| message.role.as_str())
+            .collect::<Vec<_>>(),
+        ["user", "assistant"]
+    );
+    assert_eq!(messages[1].content[0].text.as_deref(), Some(answer));
+    assert_ne!(
+        messages[1]
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("run_failed"))
+            .and_then(|value| value.as_bool()),
+        Some(true)
+    );
+    let events = listener.events.lock().await;
+    let visible_deltas = events
+        .iter()
+        .filter_map(|event| match event {
+            AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => Some(content.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(visible_deltas, vec![answer]);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
 async fn interactive_tickers_enter_the_main_agent_loop_without_preflight_blocking() {
     let root = make_temp_dir("hone_channels_rklb_exact_entity_fast_path");
     std::fs::create_dir_all(&root).expect("create root");
@@ -4693,6 +4801,187 @@ async fn omitted_explicit_seed_retries_agent_loop_builds_from_retry_trace_and_em
 }
 
 #[tokio::test]
+async fn retry_loop_accepts_later_exact_searches_after_empty_enriched_searches() {
+    let root = make_temp_dir("hone_channels_agent_search_refinement_retry");
+    std::fs::create_dir_all(&root).expect("create root");
+    let quote_timestamp = chrono::Utc::now().timestamp() - 60;
+    let (fmp_base_url, fmp_stub) = spawn_fmp_route_stub(vec![
+        ("query=CRWV+CoreWeave".to_string(), serde_json::json!([])),
+        ("query=NBIS+Nebius".to_string(), serde_json::json!([])),
+        (
+            "query=CRWV".to_string(),
+            serde_json::json!([
+                {"symbol":"CRWV","name":"CoreWeave, Inc.","exchangeShortName":"NASDAQ"},
+                {"symbol":"CWY","name":"GraniteShares YieldBOOST CRWV ETF","exchangeShortName":"NASDAQ"}
+            ]),
+        ),
+        (
+            "query=NBIS".to_string(),
+            serde_json::json!([
+                {"symbol":"NBIS","name":"Nebius Group N.V.","exchangeShortName":"NASDAQ"},
+                {"symbol":"NBIZ","name":"T-Rex 2X Long NBIS Daily Target ETF","exchangeShortName":"CBOE"}
+            ]),
+        ),
+        (
+            "/v3/quote/CRWV,NBIS".to_string(),
+            serde_json::json!([
+                {"symbol":"CRWV","price":73.21,"timestamp":quote_timestamp},
+                {"symbol":"NBIS","price":177.71,"timestamp":quote_timestamp}
+            ]),
+        ),
+        (
+            "/v3/profile/CRWV".to_string(),
+            serde_json::json!([{
+                "symbol":"CRWV","companyName":"CoreWeave, Inc.",
+                "exchangeShortName":"NASDAQ","currency":"USD",
+                "isEtf":false,"isFund":false
+            }]),
+        ),
+        (
+            "/v3/profile/NBIS".to_string(),
+            serde_json::json!([{
+                "symbol":"NBIS","companyName":"Nebius Group N.V.",
+                "exchangeShortName":"NASDAQ","currency":"USD",
+                "isEtf":false,"isFund":false
+            }]),
+        ),
+    ]);
+    let discarded_initial = "基于历史上下文的草率回答，不应发布。";
+    let accepted_answer = "## 估值结论\nCRWV 当前价 73.21 USD；NBIS 当前价 177.71 USD。两者应分别结合增长、毛利、资本开支和 Forward P/S 情景比较。";
+    let llm = MockLlmProvider::with_tool_responses(vec![
+        ChatResponse {
+            content: discarded_initial.to_string(),
+            reasoning_content: None,
+            tool_calls: None,
+            usage: None,
+        },
+        ChatResponse {
+            content: String::new(),
+            reasoning_content: Some("先尝试带公司名的探索搜索".to_string()),
+            tool_calls: Some(vec![
+                ToolCall {
+                    id: "retry_search_crwv_enriched".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"search","query":"CRWV CoreWeave"}"#.to_string(),
+                    },
+                },
+                ToolCall {
+                    id: "retry_search_nbis_enriched".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"search","query":"NBIS Nebius"}"#.to_string(),
+                    },
+                },
+            ]),
+            usage: None,
+        },
+        ChatResponse {
+            content: String::new(),
+            reasoning_content: Some("探索结果为空，改用原始 ticker 精确搜索".to_string()),
+            tool_calls: Some(vec![
+                ToolCall {
+                    id: "retry_search_crwv_exact".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
+                    },
+                },
+                ToolCall {
+                    id: "retry_search_nbis_exact".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"search","query":"NBIS"}"#.to_string(),
+                    },
+                },
+            ]),
+            usage: None,
+        },
+        ChatResponse {
+            content: String::new(),
+            reasoning_content: Some("精确候选已返回，核验同代码行情与资产类型".to_string()),
+            tool_calls: Some(vec![
+                ToolCall {
+                    id: "retry_quote_crwv_nbis".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"quote","ticker":"CRWV,NBIS"}"#.to_string(),
+                    },
+                },
+                ToolCall {
+                    id: "retry_profile_crwv".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"profile","ticker":"CRWV"}"#.to_string(),
+                    },
+                },
+                ToolCall {
+                    id: "retry_profile_nbis".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"profile","ticker":"NBIS"}"#.to_string(),
+                    },
+                },
+            ]),
+            usage: None,
+        },
+        ChatResponse {
+            content: accepted_answer.to_string(),
+            reasoning_content: None,
+            tool_calls: None,
+            usage: None,
+        },
+    ]);
+    let core = make_strict_tool_loop_test_core_with_config(&root, llm.clone(), |config| {
+        config.fmp.api_keys = vec!["test-key".to_string()];
+        config.fmp.base_url = fmp_base_url;
+    });
+    let actor =
+        ActorIdentity::new("web", "agent-search-refinement", None::<String>).expect("actor");
+    let listener = Arc::new(RecordingListener::default());
+    let mut session = AgentSession::new(core, actor, "direct");
+    session.add_listener(listener.clone());
+
+    let result = session
+        .run("分析下crwv和nbis的估值", AgentRunOptions::default())
+        .await;
+    fmp_stub.join().expect("join FMP stub");
+
+    assert!(result.response.success, "{:?}", result.response.error);
+    assert!(result.response.content.starts_with("数据时间：北京时间 "));
+    assert!(result.response.content.contains("CRWV 当前价 73.21 USD"));
+    assert!(result.response.content.contains("NBIS 当前价 177.71 USD"));
+    assert!(!result.response.content.contains(discarded_initial));
+    assert_eq!(llm.chat_with_tools_calls(), 5);
+    assert_eq!(result.response.tool_calls_made.len(), 7);
+    assert!(
+        build_agent_discovered_investment(
+            "分析下crwv和nbis的估值",
+            AgentTurnOrigin::Interactive,
+            &result.response.tool_calls_made,
+        )
+        .is_some()
+    );
+    let events = listener.events.lock().await;
+    let visible_deltas = events
+        .iter()
+        .filter_map(|event| match event {
+            AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => Some(content),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(visible_deltas, vec![&result.response.content]);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
 async fn scheduled_cross_market_tickers_bypass_auxiliary_entity_chat() {
     let root = make_temp_dir("hone_channels_scheduled_cross_market_entity_fast_path");
     std::fs::create_dir_all(&root).expect("create root");
@@ -4831,7 +5120,6 @@ async fn named_entity_scope_is_delegated_to_the_main_agent_instead_of_preflight_
             "英伟达当前价",
             AgentTurnOrigin::Interactive,
             &result.response.tool_calls_made,
-            None,
         )
         .is_some(),
         "direct dynamic contract build failed: {:?}",

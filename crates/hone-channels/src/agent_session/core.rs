@@ -20,8 +20,7 @@ use crate::execution::{
     ExecutionMode, ExecutionRequest, ExecutionRunnerSelection, ExecutionService, PreparedExecution,
 };
 use crate::investment_response_guard::{
-    AgentDiscoveryDisposition, InvestmentResponseContract, agent_discovery_disposition,
-    build_agent_discovered_investment, contract_failure_message,
+    InvestmentResponseContract, build_agent_discovered_investment, contract_failure_message,
     deterministic_investment_fallback_response, enforce_server_data_time_prefix,
     forbidden_investment_tool_calls, investment_contract_failure_message,
     investment_preflight_failure_message, missing_agent_discovered_truth_violations,
@@ -59,8 +58,6 @@ use super::types::{
     AgentSessionEvent, AgentSessionListener, AgentSessionResult, GeminiStreamOptions,
     MessageMetadata, session_error_event, session_progress_event,
 };
-
-const UNSAFE_AGENT_DISCOVERY_MESSAGE: &str = "本轮 Agent 已找到证券候选，但尚未完成同代码正价格、报价源时间与资产类型核验，因此不能安全发布涉及该证券的事实分析。";
 
 #[derive(Clone)]
 struct PreparedInvestmentContext {
@@ -711,11 +708,8 @@ impl AgentSession {
             && !response_has_persistent_side_effect(&result.response.tool_calls_made)
             && let Some(input) = agent_discovery_input
         {
-            let missing_seed_symbols = missing_required_agent_seed_symbols(
-                input,
-                &result.response.tool_calls_made,
-                result.context_messages.as_deref(),
-            );
+            let missing_seed_symbols =
+                missing_required_agent_seed_symbols(input, &result.response.tool_calls_made);
             if !missing_seed_symbols.is_empty() {
                 tracing::warn!(
                     session_id,
@@ -734,7 +728,7 @@ impl AgentSession {
                 );
                 let mut discovery_retry_request = request.clone();
                 discovery_retry_request.runtime_input.push_str(&format!(
-                    "\n\n【主 Agent 实体发现自检】上一轮工具轨迹静默漏掉了当前原话中的显式代码候选：{}。这些只是必须覆盖的最小种子，不是完整实体集合。重新完整阅读用户原话，并在第一组工具调用中并行 search 全部候选（包括这些种子），随后为每个选中实体取得 exact-symbol quote/profile 和用户问题所需证据。若权威工具确实无覆盖或仍有多个同等候选，直接向用户具体说明工具所见，不要猜测，也不要输出内部检查过程。",
+                    "\n\n【主 Agent 实体发现自检】上一轮工具轨迹静默漏掉了当前原话中的显式代码候选：{}。这些只是必须覆盖的最小种子，不是完整实体集合。重新完整阅读用户原话，并在工具循环中 search 全部候选（包括这些种子）；对每个显式代码，data_fetch(search) 的 query 必须原样只传该代码（例如 CRWV），不要拼接公司名或其他词。随后为每个选中实体取得 exact-symbol quote/profile 和用户问题所需证据。若权威工具确实无覆盖或仍有多个同等候选，直接向用户具体说明工具所见，不要猜测，也不要输出内部检查过程。",
                     missing_seed_symbols.join("、")
                 ));
                 discovery_previous_tool_calls = result.response.tool_calls_made.clone();
@@ -758,18 +752,6 @@ impl AgentSession {
                     input,
                     crate::agent_session::AgentTurnOrigin::Interactive,
                     &result.response.tool_calls_made,
-                    result.context_messages.as_deref(),
-                )
-            })
-        } else {
-            None
-        };
-        let discovery_disposition = if contract.is_none() && agent_discovery_input.is_some() {
-            agent_discovery_input.map(|input| {
-                agent_discovery_disposition(
-                    input,
-                    &result.response.tool_calls_made,
-                    result.context_messages.as_deref(),
                 )
             })
         } else {
@@ -803,20 +785,10 @@ impl AgentSession {
                 &self.actor.user_id,
                 session_id,
                 "entity_resolution.agent_loop",
-                "contract_built=false",
+                "contract_built=false answer_preserved=true",
                 self.message_id.as_deref(),
                 None,
             );
-        }
-        if contract.is_none()
-            && agent_discovered.is_none()
-            && result.response.success
-            && discovery_disposition == Some(AgentDiscoveryDisposition::UnsafeIncomplete)
-        {
-            result.response.success = false;
-            result.response.content = UNSAFE_AGENT_DISCOVERY_MESSAGE.to_string();
-            result.response.error = Some(UNSAFE_AGENT_DISCOVERY_MESSAGE.to_string());
-            return result;
         }
         let Some(contract) = contract.or_else(|| {
             agent_discovered
