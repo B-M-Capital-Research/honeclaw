@@ -1,13 +1,13 @@
 # CRWV Exact-Ticker Entity Resolution Repair
 
 - title: CRWV exact-ticker versus embedded-product entity resolution repair
-- status: in_progress
+- status: done
 - created_at: 2026-07-18
 - updated_at: 2026-07-18
 - owner: Codex
 - related_files: `crates/hone-channels/src/investment_response_guard.rs`, `crates/hone-channels/src/agent_session/core.rs`, `crates/hone-channels/src/agent_session/tests.rs`, `crates/hone-channels/src/tool_trace.rs`, `crates/hone-channels/src/prompt.rs`, `crates/hone-core/src/config/server.rs`, `crates/hone-core/src/config/tests.rs`, `soul.md`, `skills/stock_research/SKILL.md`, `tests/regression/ci/test_finance_automation_contracts.sh`, `tests/regression/manual/test_entity_search_live.sh`
 - related_docs: `docs/current-plans/ticker-resolution-architecture.md`, `docs/decisions.md#d-2026-07-17-04-resolve-securities-through-a-span-aware-exact-first-pipeline`, `docs/decisions.md#d-2026-07-18-01-keep-entity-discovery-inside-the-main-agent-tool-loop`, `docs/invariants.md`, `docs/repo-map.md`, `docs/bugs/scheduler_finance_entity_guard_misclassifies_instruction_words.md`, `docs/runbooks/backend-deployment.md`
-- related_prs: commits `4d419770`, `b87c4cb7`, `2d6b4be8`, `8d4fcdd6`
+- related_prs: commits `4d419770`, `b87c4cb7`, `2d6b4be8`, `8d4fcdd6`, `fcca5a35`, `54b14068`
 
 ## Summary
 
@@ -108,8 +108,13 @@ The response was lost locally. Commit `2d6b4be8` had introduced two coupled assu
 - AgentSession coverage starts with a no-tool historical draft, triggers the bounded seed retry, performs both empty enriched searches and later exact searches, builds the two-entity contract, drops the stale draft, and emits one successful final body.
 - A separate AgentSession regression deliberately returns a CRWV quote without a usable timestamp so the optional contract cannot build; the Agent's concrete valuation/data-gap answer remains `success=true`, byte-for-byte intact, with one visible delta and no error.
 - Existing Agent-owned no-coverage and equal-candidate clarification tests continue to pass. Finance automation contracts pass 27/27.
-- `cargo test -p hone-channels --all-targets` passes 614/614; workspace `cargo check` and `cargo test` pass with the existing unrelated Feishu dead-code warning only. Web tests pass 265/265 and `tests/regression/run_ci.sh` passes every CI-safe contract.
+- `cargo test -p hone-channels --all-targets` passes 615/615; workspace `cargo check` and `cargo test` pass with the existing unrelated Feishu dead-code warning only. Web tests pass 265/265 and `tests/regression/run_ci.sh` passes every CI-safe contract.
 
-### Remaining Acceptance
+### Final Production Acceptance
 
-The implementation and focused regressions are complete. Before marking this reopened phase done, run the full repository gates, push `main`, rebuild the five runtime binaries, drain active chats, restart the supervisor, verify Postgres/S3 and ports 8077/8088, and replay both `分析下crwv和nbis的估值` and `crwv和nbis的估值怎么看` with fresh actors. Each production run must yield a normal answer, one successful terminal event, no fixed refusal/reset/error, and zero active chats afterward. First-visible-text latency remains a separate follow-up because the current Interactive path still defers body deltas until the tool loop and optional contract handling finish.
+- Commits `fcca5a35` and `54b14068` were pushed to `main`. The latter closes the independent review finding where `CRWV + 英伟达` plus `search(NVIDIA)` could otherwise build a CRWV-only subset contract; an unlinked verified alias/comparable now yields contract-none and preserves the full Agent answer, while embedded products such as CWY remain safely ignorable.
+- Rebuilt `hone-cli`, `hone-console-page`, `hone-discord`, `hone-feishu`, and `hone-mcp`. With active chat count zero, supervisor `78710` received SIGINT and exited with its children in two seconds; no child was killed individually. The new screen `62798` runs supervisor `62801`, backend `62812`, Discord `63047`, and Feishu `63065`.
+- Post-restart health passed: 8077/8088 listen from backend `62812`; `/api/meta` reports Postgres and S3 connected; local/public auth probes return 401 as expected, local/public `/chat` returns 200, and active chats are zero.
+- Fresh actor `codex-regression-54b14068-a-1784378834` replayed `分析下crwv和nbis的估值`. The trace logged `contract_built=true entities=CRWV,NBIS`; history contained exactly `user,assistant`; the 3349-character time-first answer used verified prices `73.21` and `177.71`. SSE contained one `run_started`, one `assistant_delta`, one successful `run_finished`, no reset/error, and no fixed refusal.
+- Fresh actor `codex-regression-54b14068-b-1784378953` replayed `crwv和nbis的估值怎么看` with the same verified entity/price outcome. Its 4059-character time-first answer, SSE terminal counts, two-message history, forbidden-copy audit, and zero-active-chat check all passed.
+- First-visible-text latency remains a separate follow-up because Interactive body deltas are still deferred until the tool loop and optional contract handling finish. That optimization must preserve the no-flicker one-answer boundary and must not restore a service-owned publication veto.
