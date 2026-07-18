@@ -1,14 +1,16 @@
 # ADR 0003: Isolate Interactive Agent Research Control From Business Tools
 
 - title: Isolate Interactive Agent research control from business tools
-- status: Accepted
+- status: Superseded
 - created_at: 2026-07-19
 - updated_at: 2026-07-19
 - owner: HONE maintainers
 - related_files: `agents/function_calling/src/lib.rs`, `crates/hone-llm/src/provider.rs`, `crates/hone-llm/src/openrouter.rs`, `crates/hone-llm/src/openai_compatible.rs`, `crates/hone-channels/src/runners/tool_reasoning.rs`, `crates/hone-channels/src/agent_session/{core.rs,tests.rs}`, `crates/hone-web-api/src/routes/public.rs`, `tests/regression/ci/test_finance_automation_contracts.sh`
-- related_docs: `docs/current-plans/ticker-resolution-architecture.md`, `docs/handoffs/2026-07-18-crwv-entity-resolution-repair.md`, `docs/decisions.md#d-2026-07-18-03-use-an-agent-signaled-tool-free-terminal-stream`, `docs/invariants.md`, `docs/repo-map.md`
+- related_docs: `docs/adr/0004-agent-owned-research-loop.md`, `docs/current-plans/ticker-resolution-architecture.md`, `docs/handoffs/2026-07-18-crwv-entity-resolution-repair.md`, `docs/decisions.md#d-2026-07-18-03-use-an-agent-signaled-tool-free-terminal-stream`, `docs/invariants.md`, `docs/repo-map.md`
 - supersedes: The sole/mixed `finish_research` routing and absolute no-recovery-after-prefix rule in `D-2026-07-18-03`; its same-Agent evidence context, speculative-output boundary, tool-free terminal, exact visible/persisted body, and no post-run Interactive publication review remain in force.
-- superseded_by: N/A
+- superseded_by: `docs/adr/0004-agent-owned-research-loop.md`
+
+> Superseded on 2026-07-19 by ADR 0004. The Decision, Consequences, Verification, and Risks below describe historical architecture only: the isolated `continue_research` / `finish_research` completion and every implicit/degraded control-error-to-terminal transition are no longer valid. ADR 0004 keeps research and finish ownership in one business-tool loop, accepts an eligible complete `Stop + Done` body as the same Agent's DirectFinal, and reserves the empty-tools terminal for one valid sole `finish_research({})`. It carries forward this ADR's provider stream lifecycle, current-turn terminal evidence boundary, committed-prefix recovery, exact visible/persisted body, and no post-run Interactive publication review.
 
 ## Context
 

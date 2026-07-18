@@ -19,7 +19,7 @@
 - **跨市场 ticker 解析架构修复**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/ticker-resolution-architecture.md`
-  - 摘要：系统审计并统一修复普通美股、缩写冲突、share class、数字开头国际代码、交易所后缀和指数/加密代码的提取、规范化、DataFetch 精确解析与失败语义；Interactive 发布否决已移除。当前阶段把金融工具轮改造成隔离的 `control → business-tools → terminal` Agent 状态机，明确 provider `Required` 降级与 SSE 完整生命周期，并加入 committed-prefix 的一次无工具局部恢复，目标是同时消除固定拒答、草稿误发、错误闪烁和分钟级首字延迟；完整部署/生产验收后继续收口 scheduler 800G/NAND/AST/SEC P2
+  - 摘要：系统审计并统一修复普通美股、缩写冲突、share class、数字开头国际代码、交易所后缀和指数/加密代码的提取、规范化、DataFetch 精确解析与失败语义；Interactive 发布否决已移除。当前阶段按 ADR 0004 把研究与结束权统一回同一个 Agent business+finish loop：`data_fetch(search)` 只算实体识别，至少一次 post-identity 证据尝试后才开放 finish；floor 后完整 `Stop + Done` 可作为同一 Agent DirectFinal 原样完成且不进入 terminal/二次生成，只有合法 sole `finish_research({})` 才进入无工具 terminal，floor 前直答只允许一次有界重试后失败。Interactive 服务端仅做协议/路径安全清洗与媒体稳定化，不做市场文案改写、完整性拒答或工具结果重构，并保证可见正文与持久化一致；公司关系问题必须加载各标的 quote/profile 加 Web/news/filing 证据。Provider 完整生命周期与 committed-prefix 局部恢复继续保留；完整回归、部署/生产验收后再收口 scheduler 800G/NAND/AST/SEC P2
 
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`

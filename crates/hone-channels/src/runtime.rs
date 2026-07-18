@@ -195,25 +195,26 @@ static RE_NL: LazyLock<regex::Regex> =
     LazyLock::new(|| regex::Regex::new(r"\n[ \t\n]*\n").expect("valid regex"));
 static RE_INTERNAL_BLOCK: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
-        r"(?is)<think\b[^>]*>.*?</think>|<tool_code\b[^>]*>.*?</tool_code>|</?(tool_call|tool_result|tool_use)\b[^>]*>",
+        r"(?is)<think\b[^>]*>.*?</think>|<tool_code\b[^>]*>.*?</tool_code>|<tool_call\b[^>]*>.*?</tool_call>|<tool_result\b[^>]*>.*?</tool_result>|<tool_use\b[^>]*>.*?</tool_use>|</?(tool_call|tool_result|tool_use)\b[^>]*>",
     )
     .expect("valid regex")
 });
 static RE_BRACKET_INTERNAL_BLOCK: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r"(?is)\[(?:/)?TOOL_(?:CALL|RESULT|USE)[^\]]*\]").expect("valid regex")
+    regex::Regex::new(
+        r"(?is)\[TOOL_CALL[^\]]*\].*?\[/TOOL_CALL[^\]]*\]|\[TOOL_RESULT[^\]]*\].*?\[/TOOL_RESULT[^\]]*\]|\[TOOL_USE[^\]]*\].*?\[/TOOL_USE[^\]]*\]|\[(?:/)?TOOL_(?:CALL|RESULT|USE)[^\]]*\]",
+    )
+    .expect("valid regex")
 });
 static RE_INTERNAL_PROTOCOL_LINE: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
         r#"(?ix)
-        ^
+        ^\s*
         (
             <(?:tool_call|tool_result|tool_use|parameter)\b
             |
             </(?:tool_call|tool_result|tool_use|parameter)>
             |
             \[(?:/)?TOOL_(?:CALL|RESULT|USE)[^\]]*\]
-            |
-            \{[^{}]*(?:"name"\s*:\s*"[^"]+"|"parameters"\s*:|"queryType"\s*:|"maxResults"\s*:)[^{}]*\}
         )
         "#,
     )
@@ -440,7 +441,7 @@ pub fn sanitize_user_visible_output(text: &str) -> SanitizedUserVisibleOutput {
             kept_lines.push(String::new());
             continue;
         }
-        if RE_INTERNAL_PROTOCOL_LINE.is_match(trimmed) || is_tool_call_content(trimmed) {
+        if is_unambiguous_internal_protocol_line(trimmed) || is_tool_call_content(trimmed) {
             removed_internal = true;
             continue;
         }
@@ -473,6 +474,55 @@ pub fn sanitize_user_visible_output(text: &str) -> SanitizedUserVisibleOutput {
     }
 }
 
+/// Security-only cleanup for a completed Interactive Agent answer.
+///
+/// The ordinary sanitizer also normalizes operational copy and removes
+/// planning-like preludes for legacy runners. Those transformations are not a
+/// publication contract for the open Interactive Agent loop: after that Agent
+/// has completed, the service must not reinterpret market-data wording or turn
+/// a valid clarification into a fixed fallback. This narrower path removes
+/// only internal protocol payloads and local filesystem details, preserving the
+/// Agent's business prose and layout otherwise.
+pub fn sanitize_agent_owned_user_visible_output(text: &str) -> SanitizedUserVisibleOutput {
+    if text.trim().is_empty() {
+        return SanitizedUserVisibleOutput {
+            content: String::new(),
+            removed_internal: false,
+            only_internal: false,
+        };
+    }
+
+    let (mut sanitized, mut removed_internal) =
+        strip_internal_protocol_blocks(text.replace("\r\n", "\n"));
+    let mut kept_lines = Vec::new();
+    for line in sanitized.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            kept_lines.push(String::new());
+            continue;
+        }
+        if is_unambiguous_internal_protocol_line(trimmed) {
+            removed_internal = true;
+            continue;
+        }
+        if RE_COMPACT_MARKER_LINE.is_match(trimmed) {
+            removed_internal = true;
+            continue;
+        }
+        kept_lines.push(line.to_string());
+    }
+    sanitized = kept_lines.join("\n");
+    let (path_sanitized, removed_paths) = redact_user_visible_local_paths(&sanitized);
+    sanitized = path_sanitized.trim().to_string();
+    removed_internal |= removed_paths;
+
+    SanitizedUserVisibleOutput {
+        only_internal: removed_internal && sanitized.is_empty(),
+        removed_internal,
+        content: sanitized,
+    }
+}
+
 fn is_hone_mcp_binary_missing_error(text: &str) -> bool {
     let normalized = text.trim().to_ascii_lowercase();
     normalized.contains("hone-mcp binary not found")
@@ -495,6 +545,23 @@ fn strip_internal_protocol_blocks(mut value: String) -> (String, bool) {
     }
 
     (value, removed_internal)
+}
+
+fn is_unambiguous_internal_protocol_line(line: &str) -> bool {
+    if RE_INTERNAL_PROTOCOL_LINE.is_match(line) {
+        return true;
+    }
+
+    let Ok(serde_json::Value::Object(object)) = serde_json::from_str(line) else {
+        return false;
+    };
+    let named_tool_call = object.get("name").is_some_and(|name| name.is_string())
+        && (object.contains_key("parameters") || object.contains_key("arguments"));
+    let correlated_tool_result = object
+        .get("tool_call_id")
+        .is_some_and(|tool_call_id| tool_call_id.is_string())
+        && (object.contains_key("result") || object.contains_key("output"));
+    named_tool_call || correlated_tool_result
 }
 
 fn redact_user_visible_local_paths(text: &str) -> (String, bool) {
@@ -824,6 +891,16 @@ fn looks_internal_error_detail(sanitized: &str, lowered: &str) -> bool {
         || lowered.contains("terminal synthesis")
         || lowered.contains("terminal recovery")
         || lowered.contains("research control")
+        || lowered.contains("active business stream")
+        || lowered.contains("active business round")
+        || lowered.contains("stream returned duplicate")
+        || lowered.contains("stream tool choice")
+        || lowered.contains("stream completion was")
+        || lowered.contains("stream completion ended")
+        || lowered.contains("stream finish mismatch")
+        || lowered.contains("stream ended before done")
+        || lowered.contains("stream reached done")
+        || lowered.contains("stream emitted payload")
 }
 
 fn strip_internal_workflow_prelude(text: &str) -> Option<String> {
@@ -1203,6 +1280,63 @@ mod tests {
             "最终结论：公司今日上涨主要因为财报超预期。"
         );
         assert!(!sanitized.only_internal);
+    }
+
+    #[test]
+    fn agent_owned_sanitizer_preserves_market_copy_without_semantic_rewrite() {
+        let raw = "<think>hidden</think>\n数据时间：北京时间 2026-07-18 21:08；行情口径：本轮使用 data_fetch: quote 校验\n\n主行情工具本轮未返回逐笔字段；这是 Agent 对证据边界的原始表述。";
+
+        let sanitized = sanitize_agent_owned_user_visible_output(raw);
+
+        assert!(sanitized.removed_internal);
+        assert!(!sanitized.only_internal);
+        assert_eq!(
+            sanitized.content,
+            "数据时间：北京时间 2026-07-18 21:08；行情口径：本轮使用 data_fetch: quote 校验\n\n主行情工具本轮未返回逐笔字段；这是 Agent 对证据边界的原始表述。"
+        );
+        assert!(!sanitized.content.contains("hidden"));
+        assert!(!sanitized.content.contains("已完成校验"));
+        assert!(!sanitized.content.contains("公开页面"));
+    }
+
+    #[test]
+    fn agent_owned_sanitizer_removes_entire_tagged_tool_payload() {
+        let raw = "<tool_call>{\"foo\":\"bar\"}</tool_call>\n[TOOL_RESULT]{\"baz\":\"qux\"}[/TOOL_RESULT]\n数据时间：北京时间 2026-07-18 21:08；行情口径：本轮工具结果";
+
+        let sanitized = sanitize_agent_owned_user_visible_output(raw);
+
+        assert!(sanitized.removed_internal);
+        assert!(!sanitized.only_internal);
+        assert_eq!(
+            sanitized.content,
+            "数据时间：北京时间 2026-07-18 21:08；行情口径：本轮工具结果"
+        );
+        assert!(!sanitized.content.contains("foo"));
+        assert!(!sanitized.content.contains("bar"));
+        assert!(!sanitized.content.contains("baz"));
+        assert!(!sanitized.content.contains("qux"));
+    }
+
+    #[test]
+    fn agent_owned_sanitizer_preserves_plain_business_name_json() {
+        let raw = "公司实体：\n{\"name\":\"CoreWeave\"}";
+
+        let sanitized = sanitize_agent_owned_user_visible_output(raw);
+
+        assert!(!sanitized.removed_internal);
+        assert!(!sanitized.only_internal);
+        assert_eq!(sanitized.content, raw);
+    }
+
+    #[test]
+    fn agent_owned_sanitizer_removes_unambiguous_untagged_tool_envelope() {
+        let raw = "{\"name\":\"web_search\",\"parameters\":{\"query\":\"CRWV NVIDIA relationship\"}}\n已核验关系证据。";
+
+        let sanitized = sanitize_agent_owned_user_visible_output(raw);
+
+        assert!(sanitized.removed_internal);
+        assert!(!sanitized.only_internal);
+        assert_eq!(sanitized.content, "已核验关系证据。");
     }
 
     #[test]
@@ -1764,6 +1898,29 @@ mod tests {
         assert_eq!(err, GENERIC_USER_ERROR_MESSAGE);
         assert!(!err.contains("terminal"));
         assert!(!err.contains("committed visible prefix"));
+    }
+
+    #[test]
+    fn user_visible_error_message_hides_agent_business_protocol_failures() {
+        for raw in [
+            "active business stream returned content without a business tool or explicit finish",
+            "active business stream returned no tool call",
+            "active business round returned no actionable tool",
+            "stream returned duplicate finish reason",
+            "stream returned duplicate tool choice metadata",
+            "stream tool choice metadata mismatch: requested required, expected auto",
+            "stream completion was truncated (finish reason: length)",
+            "stream completion ended with unsupported finish reason: weird",
+            "stream finish mismatch: expected ToolCalls, got Stop",
+            "stream ended before Done",
+            "stream reached Done without a finish reason",
+            "stream emitted payload before tool choice metadata",
+        ] {
+            let err = user_visible_error_message(Some(raw));
+            assert_eq!(err, GENERIC_USER_ERROR_MESSAGE, "raw={raw}");
+            assert!(!err.contains("business"));
+            assert!(!err.contains("finish"));
+        }
     }
 
     #[test]

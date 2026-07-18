@@ -411,14 +411,14 @@ impl Tool for WebSearchTool {
     }
 
     fn description(&self) -> &str {
-        "搜索互联网获取最新信息。当需要查找实时新闻、股票消息、公司动态或任何需要最新数据的问题时使用。"
+        "搜索互联网获取最新信息。当需要查找实时新闻、股票消息、公司动态、公司之间的客户/供应商/投资/合作关系，或任何需要当前来源的问题时使用。实体 search/profile 只能证明身份，不能替代关系或事件证据；否定某种关系也需要明确来源，未搜到不等于不存在。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
         vec![ToolParameter {
             name: "query".to_string(),
             param_type: "string".to_string(),
-            description: "搜索关键词（英文效果更好），例如 'AAPL latest news' 或 'Bitcoin price prediction 2024'".to_string(),
+            description: "搜索关键词（英文效果更好），例如 'AAPL latest news'、'CoreWeave NVIDIA customer supplier partnership filing' 或 'Bitcoin market news'；关系核验应同时包含双方标准名称和具体关系词".to_string(),
             required: true,
             r#enum: None,
             items: None,
@@ -545,6 +545,21 @@ mod tests {
         let tool = WebSearchTool::new(vec![], 5);
         assert!(tool.keys.is_empty());
         assert_eq!(tool.max_results, 3);
+    }
+
+    #[test]
+    fn description_routes_relationship_claims_to_current_sources() {
+        let tool = WebSearchTool::new(vec![], 3);
+        assert_text_contains_all(
+            tool.description(),
+            &["客户/供应商/投资/合作关系", "未搜到不等于不存在"],
+        );
+        let query = tool
+            .parameters()
+            .into_iter()
+            .find(|parameter| parameter.name == "query")
+            .expect("query parameter");
+        assert_text_contains_all(&query.description, &["双方标准名称", "具体关系词"]);
     }
 
     #[test]

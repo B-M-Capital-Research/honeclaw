@@ -7,7 +7,10 @@ use serde_json::Value;
 
 use crate::HoneBotCore;
 use crate::outbound::{ResponseContentSegment, split_response_content_segments};
-use crate::runtime::{is_transitional_planning_sentence, sanitize_user_visible_output};
+use crate::runtime::{
+    is_transitional_planning_sentence, sanitize_agent_owned_user_visible_output,
+    sanitize_user_visible_output,
+};
 use crate::sandbox::sandbox_base_dir;
 
 pub(crate) const EMPTY_SUCCESS_FALLBACK_MESSAGE: &str =
@@ -120,6 +123,63 @@ pub(crate) fn finalize_agent_response(
         response.content = sanitized.content;
     }
 
+    sync_company_profiles_to_cloud(core, session_id);
+    response.content = normalize_local_image_references(core, session_id, &response.content);
+    outcome
+}
+
+/// Finalize a completed Interactive Agent body without applying legacy
+/// business-copy normalization, planning-sentence vetoes, or tool-result
+/// reconstruction. The Agent owns the answer; this boundary is limited to
+/// system-prompt/protocol/path safety and local media stabilization.
+pub(crate) fn finalize_agent_owned_interactive_response(
+    core: &HoneBotCore,
+    session_id: &str,
+    runner_name: &str,
+    response: &mut AgentResponse,
+) -> FinalizeResponseOutcome {
+    let outcome = FinalizeResponseOutcome::default();
+    if !response.success {
+        return outcome;
+    }
+
+    if response_leaks_system_prompt(&response.content) {
+        tracing::error!(
+            "[AgentSession] blocked echoed system prompt runner={} session_id={}",
+            runner_name,
+            session_id
+        );
+        response.success = false;
+        response.error = Some("agent returned leaked system instructions".to_string());
+        response.content.clear();
+        return outcome;
+    }
+
+    let sanitized = sanitize_agent_owned_user_visible_output(&response.content);
+    if sanitized.only_internal {
+        tracing::error!(
+            "[AgentSession] blocked internal-only Interactive Agent output runner={} session_id={}",
+            runner_name,
+            session_id
+        );
+        response.success = false;
+        response.error = Some("agent returned internal-only output".to_string());
+        response.content.clear();
+        return outcome;
+    }
+    if sanitized.content.trim().is_empty() {
+        tracing::warn!(
+            "[AgentSession] empty Interactive Agent output after security cleanup runner={} session_id={}",
+            runner_name,
+            session_id
+        );
+        response.success = false;
+        response.error = Some("agent returned empty user-visible output".to_string());
+        response.content.clear();
+        return outcome;
+    }
+
+    response.content = sanitized.content;
     sync_company_profiles_to_cloud(core, session_id);
     response.content = normalize_local_image_references(core, session_id, &response.content);
     outcome

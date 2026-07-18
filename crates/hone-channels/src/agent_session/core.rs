@@ -32,7 +32,10 @@ use crate::investment_response_guard::{
 };
 use crate::prompt::PromptOptions;
 use crate::prompt_audit::PromptAuditMetadata;
-use crate::response_finalizer::{EMPTY_SUCCESS_FALLBACK_MESSAGE, finalize_agent_response};
+use crate::response_finalizer::{
+    EMPTY_SUCCESS_FALLBACK_MESSAGE, finalize_agent_owned_interactive_response,
+    finalize_agent_response,
+};
 use crate::runners::{
     AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
     TerminalStreamPolicy,
@@ -713,6 +716,18 @@ impl AgentSession {
         }
         normalize_execute_once_failure(&mut result, reexecution_policy);
         normalize_persistent_trace_failure(&mut result);
+        if contract.is_some_and(|contract| contract.origin == AgentTurnOrigin::Interactive) {
+            // Defense in depth: Interactive answers are Agent-owned even if an
+            // upstream regression accidentally constructs a typed contract.
+            // Never let that contract authorize repair, deterministic fallback,
+            // normalization, or a fixed publication refusal.
+            tracing::warn!(
+                session_id,
+                runner = runner_name,
+                "ignored strict Interactive investment contract at publication boundary"
+            );
+            return result;
+        }
         // Interactive entity discovery is owned by the configured Agent. The
         // service may reconstruct a provider-backed scope from the completed
         // read-only trace for diagnostics, but that observation must never
@@ -2067,6 +2082,7 @@ impl AgentSession {
                 return self.fail_run(session_id, kind, err).await;
             }
         };
+        let agent_owned_interactive_output = options.turn_origin == AgentTurnOrigin::Interactive;
 
         self.core.log_message_step(
             &self.actor.channel,
@@ -2084,7 +2100,8 @@ impl AgentSession {
         .await;
         let started = Instant::now();
         let run_started_at = SystemTime::now();
-        let defer_validated_output = investment_context.contract.is_some()
+        let defer_validated_output = agent_owned_interactive_output
+            || investment_context.contract.is_some()
             || investment_context
                 .main_agent_entity_discovery_input
                 .is_some()
@@ -2239,12 +2256,21 @@ impl AgentSession {
         {
             response.error = Some(CONTEXT_OVERFLOW_FALLBACK_MESSAGE.to_string());
         }
-        let finalize_outcome = finalize_agent_response(
-            &self.core,
-            &session_id,
-            &execution.runner_name,
-            &mut response,
-        );
+        let finalize_outcome = if agent_owned_interactive_output {
+            finalize_agent_owned_interactive_response(
+                &self.core,
+                &session_id,
+                &execution.runner_name,
+                &mut response,
+            )
+        } else {
+            finalize_agent_response(
+                &self.core,
+                &session_id,
+                &execution.runner_name,
+                &mut response,
+            )
+        };
         if let Some(reason) = finalize_outcome.fallback_reason {
             self.core.log_message_step(
                 &self.actor.channel,
@@ -2319,11 +2345,22 @@ impl AgentSession {
                 } else {
                     // Attempt-local draft/reset/error events were intentionally
                     // hidden. Publish the completed Agent answer exactly once.
-                    self.runner_emitter(execution.runner_request.working_directory.clone())
-                        .emit(AgentRunnerEvent::StreamDelta {
-                            content: response.content.clone(),
+                    if agent_owned_interactive_output {
+                        // Security cleanup has already run exactly once. Do not
+                        // send the completed Agent body back through the runner
+                        // event sanitizer, whose legacy market-copy rewriting
+                        // could diverge from the body persisted below.
+                        self.emit(AgentSessionEvent::Segment {
+                            text: response.content.clone(),
                         })
                         .await;
+                    } else {
+                        self.runner_emitter(execution.runner_request.working_directory.clone())
+                            .emit(AgentRunnerEvent::StreamDelta {
+                                content: response.content.clone(),
+                            })
+                            .await;
+                    }
                 }
                 streamed_output = true;
             }
