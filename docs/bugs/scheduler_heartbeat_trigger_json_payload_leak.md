@@ -7,6 +7,14 @@
 
 ## 最新进展
 
+- `2026-07-18 11:00-15:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-18`
+    - 同窗有 19 条 heartbeat `deliver_preview`、59 条 raw `<think>` 与 5 条 fenced JSON 信号。
+    - 12:00 CST `TEM大事件心跳监控` / `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 的 deliver preview 仍带 `noop` 结论、表格和内部数据源口径混合；15:00 CST `美股黄金坑信号心跳检测` raw preview 以 `<think>` 后接市场指标表述，落成 `JsonMalformed` 失败。
+    - 15:00 CST `小米30港元破位预警` raw preview 明确判断 `26.88 <= 30` 已满足触发条件，但最终 parse 为 `JsonNoop` 并未发送，说明模型输出协议仍未稳定收敛到用户态正文 / 状态字段。
+  - 会话质量对照：同窗 `data/sessions.sqlite3` 新增 11 条 user / 11 条 assistant，未确认 JSON 载荷进入 ordinary direct assistant final；未见错投、全渠道不可用或数据安全证据。
+  - 判断：这些样本说明缺陷仍是 heartbeat 出站格式化退化；当前没有主功能链路阻断，主要影响提醒格式质量，因此维持质量性 `P3 / New`，非 P1。
+
 - `2026-07-18 07:00-11:01 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-18`
     - 同窗有 13 条 heartbeat `deliver_preview`、44 条 raw `<think>` 与 6 条 fenced JSON 信号。

@@ -7,6 +7,19 @@
 
 ## 修复进展
 
+- `2026-07-18 11:00-15:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-18`
+    - 同窗继续出现 379 条 `[HeartbeatDiag]` 诊断、83 条 `parse_kind`、59 条 raw `<think>`、332 条 `runner_error` 与 173 条定时任务执行失败。
+    - 可分类 `parse_kind` 分布为 `PlainTextTriggered=36`、`JsonNoop=31`、`JsonMalformed=8`、`JsonTriggered=2`、`PlainTextSuppressed=2`、`JsonUnknownStatus=2`、`JsonEmptyStatus=1`、`PlainTextNoop=1`。
+    - 代表样本包括 12:00 CST `TEM大事件心跳监控` / `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 以 `<think>` + 自然语言 noop 进入 `PlainTextTriggered` 并 deliver，15:00 CST `美股黄金坑信号心跳检测` 以 `<think>` + 市场表述落成 `JsonMalformed` 并标记失败，15:00 CST `小米30港元破位预警` 判断条件满足但落成 `JsonNoop` 而未发送。
+    - 同窗多条 heartbeat 因实体 / evidence guard fail-closed 落成失败 / 跳过发送，说明结构化状态漂移仍与调度失败归因耦合。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 同窗新增 11 条 user / 11 条 assistant，近期 session 均以 assistant 收口；未见全渠道不可用、错投或 assistant final 污染。
+    - 本地 `cron_job_runs.max(executed_at)` 仍停在 `2026-07-10T14:01:27.621121+08:00`，当前 heartbeat 运行态继续以 runtime web log 判断。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题继续影响 heartbeat 监控判断、送达语义和失败 / 跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-18 07:00-11:01 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-18`
     - 同窗继续出现 281 条 `[HeartbeatDiag]` 诊断、57 条 `parse_kind`、44 条 raw `<think>`、262 条 `runner_error` 与 135 条定时任务执行失败。

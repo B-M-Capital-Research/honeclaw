@@ -22,6 +22,18 @@
 
 ## 最新进展
 
+- 本轮 2026-07-18 15:02 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-18`
+    - 11:00-15:02 CST 同窗继续记录 379 条 `HeartbeatDiag` 和 19 条 `deliver_preview`，其中多条 heartbeat raw / deliver preview 继续把异常或高风险行情锚用于触发判断。
+    - 11:00 CST `持仓财报与重大新闻心跳提醒` deliver preview 继续使用 `SNDK 常规时段昨收 $1,411.08` 与 `现价 $1,354.82`。
+    - 12:00 / 15:00 CST `美股黄金坑信号心跳检测` raw preview 继续使用 `SPY $743.29`、`QQQ $695.33` 等市场行情锚进入回撤、均线和触发判断；15:00 同任务又因 `JsonMalformed` 标记失败。
+    - 12:00 / 15:00 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 等继续在工具预算或 heartbeat 协议退化背景下输出行情表格，说明异常价格 sanity check 仍未在出站前形成可靠保护。
+  - `data/sessions.sqlite3`
+    - 同窗有 11 条 user / 11 条 assistant，近期 Web direct / regression session 均以 assistant 收口；未见错投、投递失败、空回复、敏感信息外泄或全渠道不可用。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check 缺口：异常或高风险数量级价格进入 heartbeat 判断上下文和用户可见 preview。
+    - 本窗没有错投、投递失败、空回复、数据破坏或全渠道不可用；因此仍按质量性 `P3 / New`。该问题不影响主功能链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-18 11:01 CST 真实运行态继续出现同根异常 / 高风险价格信号，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-18`
     - 11:00 CST `持仓财报与重大新闻心跳提醒` deliver preview 继续使用 `SNDK 常规时段昨收 $1,411.08` 与 `现价 $1,354.82`，并据此计算 `-3.99%` 进入用户可见表格。

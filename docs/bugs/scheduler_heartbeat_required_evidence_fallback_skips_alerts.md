@@ -23,6 +23,13 @@ New
 ## 证据来源
 
 - `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-18`
+  - 巡检时间窗：2026-07-18 11:00-15:02 CST。
+  - `data/sessions.sqlite3` 同窗新增 11 条 user / 11 条 assistant，近期 Web direct / regression session 均以 assistant 收口；没有 user-only 悬挂、错投、敏感信息泄露或全渠道不可用证据。
+  - 12:49-12:52 CST Web direct session `Actor_web__direct__web-user-4d761588537b` 连续对 `Cohr` / `Coherent Corp` 只返回实体无法确认或实体解析暂时未能确认；12:52 后同一 session 对 `Acls` 可成功核验并输出行情与技术分析，说明 evidence / entity guard 仍会让部分真实投研请求 fail-closed。
+  - `data/runtime/logs/web.log.2026-07-18` 同窗继续出现 332 条 `runner_error`、173 条定时任务执行失败和 256 条“证券实体解析暂时未能确认”信号，覆盖 Feishu / Web heartbeat 与普通 scheduler。
+  - 15:00 CST 代表任务包括 AAOI、ASTS、ORCL、TSLA、RKLB、NVDA、闪迪、中际旭创、光迅科技、存储板块、绿田机械、Monitor_Watchlist_11、Cerebras、SIVE 等，均在实体解析、多候选或行情覆盖门禁阶段 fail-closed，用户侧只能看到任务失败或不发送。
+  - 判断：该样本仍属于同根投研完整性 / evidence 门禁 fail-closed，用户只看到实体解析失败、候选澄清、scheduler 失败提示或无发送；由于同窗没有错投、数据破坏、敏感信息泄露或全渠道不可用，维持功能性 `P2 / New`，不升级为 P1，不创建 GitHub Issue。
+- `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-18`
   - 巡检时间窗：2026-07-18 07:00-11:01 CST。
   - `data/sessions.sqlite3` 同窗新增 16 条 user / 17 条 assistant，覆盖 11 个近期 Web / Feishu / Discord direct 或 scheduler session，全部以 assistant 收口；没有 user-only 悬挂、错投、敏感信息泄露或全渠道不可用证据。
   - `data/runtime/logs/web.log.2026-07-18` 同窗继续出现 262 条 `runner_error`、135 条定时任务执行失败和 207 条“证券实体解析暂时未能确认”信号，覆盖 Feishu / Web heartbeat 与普通 scheduler。

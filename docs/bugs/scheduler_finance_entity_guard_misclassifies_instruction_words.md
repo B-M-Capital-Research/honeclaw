@@ -6,6 +6,16 @@
 - **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
 
+## 运行态复核（2026-07-18 15:02 CST）
+
+- `b87c4cb7` / `9d030286` 已修复并记录 direct `CRWV` 被 CWY 引用型产品制造假歧义的问题；14:00-14:02 CST 两条 Web regression direct 均能精确核验 CoreWeave/CRWV 并成功收口。
+- 但本轮 2026-07-18 11:00-15:02 CST 真实运行态仍复发，状态维持 `New/P2`：
+  - `data/sessions.sqlite3` 同窗新增 11 条 user / 11 条 assistant，近期 Web direct / regression session 均以 assistant 收口，`last_message_role=user` 为 0；assistant final 污染扫描未命中内部路径、raw tool、`data_fetch`、`cron_job`、SQLite、panic、provider 原始错误或 `<think>`。
+  - Web direct session `Actor_web__direct__web-user-4d761588537b` 在 12:49-12:52 CST 连续对 `Cohr`、`美国公司coherent corp`、`Coherent`、`Cohr` 只返回“无法确认对应哪家上市公司或证券 / 证券实体解析暂时未能确认”，随后同一 session 对 `Acls` 可核验 Axcelis 并成功输出行情 / 技术分析，说明故障是部分实体解析 fail-closed，不是 direct 全链路不可用。
+  - `data/runtime/logs/web.log.2026-07-18` 同窗继续有 332 条 `runner_error`、173 条定时任务执行失败和 256 条“证券实体解析暂时未能确认”信号。15:00 CST 代表 heartbeat 仍包括 AAOI 被误识别为 `SEC`、ASTS 被截成 `AST`、ORCL 多上市地候选，以及 TSLA/RKLB/绿田机械/Monitor_Watchlist_11/Cerebras/SIVE/NVDA/闪迪/光模块/存储板块等 fail-closed。
+  - 判断：CRWV 的引用型产品修复已生效，但 scheduler / heartbeat 与部分 direct 公司名仍会被实体 guard / resolver 拦截或误抽任务上下文词，仍是同一链路，不新建重复缺陷。
+  - 严重等级维持 `P2`：问题直接阻断部分投研 direct / scheduler / heartbeat 正文生成，但同窗 CRWV、ACLS 等 direct 可成功收口，未见错投、数据破坏、敏感信息泄露或全渠道停摆，因此不是 `P1`，不创建 GitHub Issue。
+
 ## 运行态复核（2026-07-18 14:02 CST）
 
 - `b87c4cb7` 已修复并部署 direct `CRWV` 被 CWY 引用型产品制造假歧义的问题；生产 `crwv当前价` 与 `crwv预计估值多少` 均精确核验 CoreWeave/CRWV 并成功收口，说明 FMP/DataFetch 和 direct 精确 ticker 主链路健康。
