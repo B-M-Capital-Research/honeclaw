@@ -25,7 +25,8 @@ use serde_json::{Map, Value};
 
 use crate::provider::{
     ChatResponse, ChatResult, ChatStreamEvent, FunctionCall, LlmProvider, LlmRequestOptions,
-    Message, ToolCall, ToolChoiceMode, chat_stream_events_from_value,
+    Message, ToolCall, ToolChoiceMode, chat_stream_events_from_sse_data,
+    effective_tool_choice_mode_from_body, explicit_provider_error_text,
 };
 
 const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
@@ -37,6 +38,43 @@ fn remove_tool_fields_without_tools(body: &mut Map<String, Value>, has_tools: bo
     body.remove("tools");
     body.remove("tool_choice");
     body.remove("parallel_tool_calls");
+}
+
+/// Whether OpenRouter (or its selected upstream) explicitly rejected the
+/// `tool_choice=required` capability. Keep this narrow because changing to
+/// Auto weakens the wire-level Agent constraint and must never be triggered by
+/// authentication, rate-limit, server, transport, or unrelated input errors.
+fn rejects_required_tool_choice(status: reqwest::StatusCode, response_body: &str) -> bool {
+    if status.as_u16() != 400 && status.as_u16() != 422 {
+        return false;
+    }
+
+    let message = explicit_provider_error_text(response_body).to_ascii_lowercase();
+    let names_tool_choice = message.contains("tool_choice")
+        || message.contains("tool choice")
+        || message.contains("tool-choice");
+    let names_required = message.contains("required");
+    let reports_incompatibility = [
+        "not supported",
+        "unsupported",
+        "does not support",
+        "doesn't support",
+        "invalid",
+        "not allowed",
+        "not permitted",
+        "unrecognized",
+        "unknown",
+        "unexpected",
+        "must be",
+        "should be",
+        "only support",
+        "valid option",
+        "requires --",
+    ]
+    .iter()
+    .any(|marker| message.contains(marker));
+
+    names_tool_choice && names_required && reports_incompatibility
 }
 
 fn normalize_base_url(configured: &str, fallback: &str) -> String {
@@ -732,13 +770,24 @@ impl LlmProvider for OpenRouterProvider {
             self.request_options
                 .apply_to_body(&mut body, self.max_tokens);
             remove_tool_fields_without_tools(&mut body, !tools.is_empty());
-            if !tools.is_empty() && tool_choice_mode == ToolChoiceMode::Required {
+            body.insert("stream".to_string(), Value::Bool(true));
+            let use_required_tool_choice =
+                !tools.is_empty() && tool_choice_mode == ToolChoiceMode::Required;
+            let auto_body = use_required_tool_choice.then(|| {
+                let mut auto_body = body.clone();
+                // Remove both scalar and named profile choices so the retry is
+                // genuinely Auto and its lifecycle metadata remains truthful.
+                auto_body.remove("tool_choice");
+                auto_body
+            });
+            if use_required_tool_choice {
                 body.insert(
                     "tool_choice".to_string(),
                     Value::String("required".to_string()),
                 );
             }
-            body.insert("stream".to_string(), Value::Bool(true));
+            let initial_effective_tool_choice =
+                effective_tool_choice_mode_from_body(&body, !tools.is_empty());
 
             let mut last_error = String::new();
             let mut successful_response = None;
@@ -759,7 +808,7 @@ impl LlmProvider for OpenRouterProvider {
                 };
                 let status = response.status();
                 if status.is_success() {
-                    successful_response = Some(response);
+                    successful_response = Some((response, initial_effective_tool_choice, false));
                     break;
                 }
                 let error_body = response.text().await.unwrap_or_default();
@@ -768,28 +817,55 @@ impl LlmProvider for OpenRouterProvider {
                     status.as_u16(),
                     extract_error_message(&error_body)
                 );
+
+                let Some(auto_body) = auto_body
+                    .as_ref()
+                    .filter(|_| rejects_required_tool_choice(status, &error_body))
+                else {
+                    continue;
+                };
+                tracing::warn!(
+                    "[openrouter] upstream rejected tool_choice=required with HTTP {}; retrying the same client once in Auto mode",
+                    status.as_u16()
+                );
+                let fallback_response = match client
+                    .http_client
+                    .post(format!("{}/chat/completions", client.base_url))
+                    .bearer_auth(&client.api_key)
+                    .json(&Value::Object(auto_body.clone()))
+                    .send()
+                    .await
+                {
+                    Ok(response) => response,
+                    Err(error) => {
+                        last_error = error.to_string();
+                        continue;
+                    }
+                };
+                let fallback_status = fallback_response.status();
+                if fallback_status.is_success() {
+                    successful_response = Some((fallback_response, ToolChoiceMode::Auto, true));
+                    break;
+                }
+                let fallback_body = fallback_response.text().await.unwrap_or_default();
+                last_error = format!(
+                    "upstream HTTP {} after Auto fallback: {}",
+                    fallback_status.as_u16(),
+                    extract_error_message(&fallback_body)
+                );
             }
-            let response = successful_response.ok_or_else(|| {
-                hone_core::HoneError::Llm(format!(
-                    "所有 OpenRouter API Key 的流式请求均失败：{last_error}"
-                ))
-            })?;
-            let stream = response
+            let (response, effective_tool_choice, used_fallback) =
+                successful_response.ok_or_else(|| {
+                    hone_core::HoneError::Llm(format!(
+                        "所有 OpenRouter API Key 的流式请求均失败：{last_error}"
+                    ))
+                })?;
+            let provider_stream = response
                 .bytes_stream()
                 .eventsource()
                 .filter_map(|result| async move {
                     match result {
-                        Ok(event) if event.data.trim() == "[DONE]" => None,
-                        Ok(event) if event.data.trim().is_empty() => None,
-                        Ok(event) => Some(
-                            serde_json::from_str::<Value>(&event.data)
-                                .map(|value| chat_stream_events_from_value(&value))
-                                .map_err(|error| {
-                                    hone_core::HoneError::Llm(format!(
-                                        "invalid streaming response: {error}"
-                                    ))
-                                }),
-                        ),
+                        Ok(event) => chat_stream_events_from_sse_data(&event.data),
                         Err(error) => Some(Err(hone_core::HoneError::Llm(format!(
                             "stream transport error: {error}"
                         )))),
@@ -799,6 +875,14 @@ impl LlmProvider for OpenRouterProvider {
                     Ok(events) => futures::stream::iter(events.into_iter().map(Ok)).boxed(),
                     Err(error) => futures::stream::once(async move { Err(error) }).boxed(),
                 })
+                .boxed();
+            let metadata = ChatStreamEvent::ToolChoiceMetadata {
+                requested: tool_choice_mode,
+                effective: effective_tool_choice,
+                fallback: used_fallback,
+            };
+            let stream = futures::stream::once(async move { Ok(metadata) })
+                .chain(provider_stream)
                 .boxed();
             Ok::<_, hone_core::HoneError>(stream)
         };
@@ -877,7 +961,78 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
+    use crate::provider::ChatStreamFinishReason;
+
     use super::*;
+
+    async fn read_json_request(socket: &mut tokio::net::TcpStream) -> Value {
+        let mut request = Vec::new();
+        loop {
+            let mut chunk = [0_u8; 4096];
+            let n = socket.read(&mut chunk).await.expect("read request");
+            assert!(n > 0, "connection closed before request body completed");
+            request.extend_from_slice(&chunk[..n]);
+
+            let Some(header_end) = request.windows(4).position(|window| window == b"\r\n\r\n")
+            else {
+                continue;
+            };
+            let headers = String::from_utf8_lossy(&request[..header_end]);
+            let content_length = headers
+                .lines()
+                .find_map(|line| {
+                    let (name, value) = line.split_once(':')?;
+                    name.eq_ignore_ascii_case("content-length")
+                        .then(|| value.trim().parse::<usize>().expect("content length"))
+                })
+                .expect("content-length header");
+            let body_start = header_end + 4;
+            if request.len() < body_start + content_length {
+                continue;
+            }
+            return serde_json::from_slice(&request[body_start..body_start + content_length])
+                .expect("json request body");
+        }
+    }
+
+    #[test]
+    fn required_fallback_only_accepts_explicit_capability_validation_errors() {
+        assert!(rejects_required_tool_choice(
+            reqwest::StatusCode::BAD_REQUEST,
+            r#"{"error":{"message":"tool_choice=required is unsupported"}}"#,
+        ));
+        assert!(rejects_required_tool_choice(
+            reqwest::StatusCode::UNPROCESSABLE_ENTITY,
+            r#"{"error":{"message":"invalid tool choice: required"}}"#,
+        ));
+
+        for status in [
+            reqwest::StatusCode::UNAUTHORIZED,
+            reqwest::StatusCode::TOO_MANY_REQUESTS,
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+        ] {
+            assert!(!rejects_required_tool_choice(
+                status,
+                r#"{"error":{"message":"tool_choice=required is unsupported"}}"#,
+            ));
+        }
+        assert!(!rejects_required_tool_choice(
+            reqwest::StatusCode::BAD_REQUEST,
+            r#"{"error":{"message":"model is not available"}}"#,
+        ));
+        assert!(!rejects_required_tool_choice(
+            reqwest::StatusCode::BAD_REQUEST,
+            r#"{"error":{"message":"tool_choice=required"}}"#,
+        ));
+        assert!(!rejects_required_tool_choice(
+            reqwest::StatusCode::BAD_REQUEST,
+            r#"{"error":{"message":"invalid model identifier"},"request":{"tool_choice":"required"}}"#,
+        ));
+        assert!(!rejects_required_tool_choice(
+            reqwest::StatusCode::BAD_REQUEST,
+            r#"{"detail":[{"loc":["body","model"],"msg":"invalid model identifier"}],"request":{"tool_choice":"required"}}"#,
+        ));
+    }
 
     #[test]
     fn extracts_numeric_provider_error_code_without_serde_shape_failure() {
@@ -1000,6 +1155,7 @@ mod tests {
 
             let body = concat!(
                 "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_finish\",\"function\":{\"name\":\"finish_research\",\"arguments\":\"{}\"}}]}}]}\n\n",
+                "data: {\"choices\":[{\"finish_reason\":\"tool_calls\"}]}\n\n",
                 "data: [DONE]\n\n"
             );
             let response = format!(
@@ -1048,10 +1204,138 @@ mod tests {
             .collect::<hone_core::HoneResult<Vec<_>>>()
             .expect("stream events");
 
+        assert_eq!(
+            events[0],
+            ChatStreamEvent::ToolChoiceMetadata {
+                requested: ToolChoiceMode::Required,
+                effective: ToolChoiceMode::Required,
+                fallback: false,
+            }
+        );
         assert!(matches!(
-            &events[0],
+            &events[1],
             ChatStreamEvent::ToolCallDelta { name: Some(name), .. } if name == "finish_research"
         ));
+        assert_eq!(
+            events[2],
+            ChatStreamEvent::Finish(ChatStreamFinishReason::ToolCalls)
+        );
+        assert_eq!(events[3], ChatStreamEvent::Done);
+    }
+
+    #[tokio::test]
+    async fn required_stream_retries_same_client_once_in_auto_on_capability_rejection() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test server");
+        let addr = listener.local_addr().expect("read local addr");
+        let requests = Arc::new(AtomicUsize::new(0));
+        let requests_for_task = requests.clone();
+        tokio::spawn(async move {
+            let (mut required_socket, _) =
+                listener.accept().await.expect("accept Required request");
+            let required_payload = read_json_request(&mut required_socket).await;
+            requests_for_task.fetch_add(1, Ordering::SeqCst);
+            assert_eq!(required_payload["stream"], true);
+            assert_eq!(required_payload["tool_choice"], "required");
+            assert_eq!(
+                required_payload["tools"][0]["function"]["name"],
+                "demo_tool"
+            );
+            let rejection =
+                r#"{"error":{"message":"tool_choice=required is unsupported by this model"}}"#;
+            let response = format!(
+                "HTTP/1.1 400 Bad Request\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                rejection.len(),
+                rejection
+            );
+            required_socket
+                .write_all(response.as_bytes())
+                .await
+                .expect("write Required rejection");
+            required_socket
+                .shutdown()
+                .await
+                .expect("close first socket");
+
+            let (mut auto_socket, _) = listener.accept().await.expect("accept Auto retry");
+            let auto_payload = read_json_request(&mut auto_socket).await;
+            requests_for_task.fetch_add(1, Ordering::SeqCst);
+            assert_eq!(auto_payload["stream"], true);
+            assert!(
+                auto_payload.get("tool_choice").is_none(),
+                "Auto retry must remove every profile tool choice: {auto_payload}"
+            );
+            assert_eq!(auto_payload["tools"][0]["function"]["name"], "demo_tool");
+
+            let body = concat!(
+                "data: {\"choices\":[{\"delta\":{\"content\":\"fallback-ok\"}}]}\n\n",
+                "data: {\"choices\":[{\"finish_reason\":\"stop\"}]}\n\n",
+                "data: [DONE]\n\n"
+            );
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            auto_socket
+                .write_all(response.as_bytes())
+                .await
+                .expect("write Auto stream");
+            auto_socket.shutdown().await.expect("close second socket");
+        });
+
+        let provider = OpenRouterProvider::new_with_base_url(
+            "test-key",
+            &format!("http://{addr}"),
+            "test-model",
+            64,
+        )
+        .with_request_options(LlmRequestOptions {
+            tool_choice: Some(serde_json::json!({
+                "type": "function",
+                "function": { "name": "demo_tool" }
+            })),
+            ..LlmRequestOptions::default()
+        });
+        let messages = [Message {
+            role: "user".to_string(),
+            content: Some("lookup".to_string()),
+            reasoning_content: None,
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+        }];
+        let tools = [serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": "demo_tool",
+                "description": "demo",
+                "parameters": { "type": "object", "properties": {} }
+            }
+        })];
+        let events = provider
+            .chat_with_tools_stream(&messages, &tools, None, ToolChoiceMode::Required)
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .collect::<hone_core::HoneResult<Vec<_>>>()
+            .expect("Auto fallback stream events");
+
+        assert_eq!(
+            events,
+            vec![
+                ChatStreamEvent::ToolChoiceMetadata {
+                    requested: ToolChoiceMode::Required,
+                    effective: ToolChoiceMode::Auto,
+                    fallback: true,
+                },
+                ChatStreamEvent::ContentDelta("fallback-ok".to_string()),
+                ChatStreamEvent::Finish(ChatStreamFinishReason::Stop),
+                ChatStreamEvent::Done,
+            ]
+        );
+        assert_eq!(requests.load(Ordering::SeqCst), 2);
     }
 
     #[tokio::test]
@@ -1081,6 +1365,7 @@ mod tests {
 
             let body = concat!(
                 "data: {\"choices\":[{\"delta\":{\"content\":\"done\"}}]}\n\n",
+                "data: {\"choices\":[{\"finish_reason\":\"stop\"}]}\n\n",
                 "data: [DONE]\n\n"
             );
             let response = format!(
@@ -1128,8 +1413,143 @@ mod tests {
 
         assert_eq!(
             events,
-            vec![ChatStreamEvent::ContentDelta("done".to_string())]
+            vec![
+                ChatStreamEvent::ToolChoiceMetadata {
+                    requested: ToolChoiceMode::Auto,
+                    effective: ToolChoiceMode::Auto,
+                    fallback: false,
+                },
+                ChatStreamEvent::ContentDelta("done".to_string()),
+                ChatStreamEvent::Finish(ChatStreamFinishReason::Stop),
+                ChatStreamEvent::Done,
+            ]
         );
+    }
+
+    #[tokio::test]
+    async fn stream_eof_without_done_remains_detectable() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test server");
+        let addr = listener.local_addr().expect("read local addr");
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.expect("accept request");
+            let mut buf = [0_u8; 8192];
+            let _ = socket.read(&mut buf).await.expect("read request");
+            let body = concat!(
+                "data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\n",
+                "data: {\"choices\":[{\"finish_reason\":\"stop\"}]}\n\n"
+            );
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            socket
+                .write_all(response.as_bytes())
+                .await
+                .expect("write incomplete stream");
+            socket.shutdown().await.expect("close stream");
+        });
+
+        let provider = OpenRouterProvider::new_with_base_url(
+            "test-key",
+            &format!("http://{addr}"),
+            "test-model",
+            64,
+        );
+        let messages = [Message {
+            role: "user".to_string(),
+            content: Some("answer".to_string()),
+            reasoning_content: None,
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+        }];
+        let events = provider
+            .chat_with_tools_stream(&messages, &[], None, ToolChoiceMode::Auto)
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .collect::<hone_core::HoneResult<Vec<_>>>()
+            .expect("transport closes cleanly");
+
+        assert_eq!(
+            events,
+            vec![
+                ChatStreamEvent::ToolChoiceMetadata {
+                    requested: ToolChoiceMode::Auto,
+                    effective: ToolChoiceMode::Auto,
+                    fallback: false,
+                },
+                ChatStreamEvent::ContentDelta("partial".to_string()),
+                ChatStreamEvent::Finish(ChatStreamFinishReason::Stop),
+            ]
+        );
+        assert!(!events.contains(&ChatStreamEvent::Done));
+    }
+
+    #[tokio::test]
+    async fn top_level_sse_error_is_forwarded_as_an_error_event() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test server");
+        let addr = listener.local_addr().expect("read local addr");
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.expect("accept request");
+            let mut buf = [0_u8; 8192];
+            let _ = socket.read(&mut buf).await.expect("read request");
+            let body = concat!(
+                "data: {\"error\":{\"message\":\"rate limit exceeded\",\"code\":429,\"metadata\":{\"authorization\":\"secret-token\"}}}\n\n",
+                "data: [DONE]\n\n"
+            );
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            socket
+                .write_all(response.as_bytes())
+                .await
+                .expect("write error stream");
+            socket.shutdown().await.expect("close stream");
+        });
+
+        let provider = OpenRouterProvider::new_with_base_url(
+            "test-key",
+            &format!("http://{addr}"),
+            "test-model",
+            64,
+        );
+        let messages = [Message {
+            role: "user".to_string(),
+            content: Some("answer".to_string()),
+            reasoning_content: None,
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+        }];
+        let events = provider
+            .chat_with_tools_stream(&messages, &[], None, ToolChoiceMode::Auto)
+            .collect::<Vec<_>>()
+            .await;
+
+        assert!(matches!(
+            &events[0],
+            Ok(ChatStreamEvent::ToolChoiceMetadata {
+                requested: ToolChoiceMode::Auto,
+                effective: ToolChoiceMode::Auto,
+                fallback: false,
+            })
+        ));
+        let error = events[1]
+            .as_ref()
+            .expect_err("top-level error payload must become Err")
+            .to_string();
+        assert!(error.contains("rate limit exceeded"), "{error}");
+        assert!(error.contains("code: 429"), "{error}");
+        assert!(!error.contains("secret-token"), "{error}");
+        assert!(matches!(events.last(), Some(Ok(ChatStreamEvent::Done))));
     }
 
     async fn spawn_numeric_error_server() -> (String, Arc<AtomicUsize>) {

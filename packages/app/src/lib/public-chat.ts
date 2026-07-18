@@ -298,6 +298,28 @@ export function isPublicChatTerminalStreamEvent(event: string) {
   return event === "run_finished" || event === "error" || event === "done";
 }
 
+/**
+ * Maps the authoritative run_finished payload without turning an explicitly
+ * partial committed stream into an error card. `partial` never means success;
+ * it only says that already-rendered bytes must remain stable.
+ */
+export function publicChatTerminalEventPatch(
+  event: { success?: boolean; partial?: boolean },
+  lastRunError: string | undefined,
+  fallbackError: string,
+): Pick<PublicChatMessage, "phase" | "statusText"> {
+  if (event.partial === true) {
+    return { phase: "done", statusText: undefined };
+  }
+  if (event.success === false) {
+    return {
+      phase: "error",
+      statusText: lastRunError ?? fallbackError,
+    };
+  }
+  return { phase: "done", statusText: undefined };
+}
+
 export function shouldPreventPublicChatPinch(input: {
   touchCount: number;
   insideControlledSurface: boolean;

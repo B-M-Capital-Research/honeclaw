@@ -1,6 +1,6 @@
 # Current Plan Index
 
-最后更新：2026-07-18
+最后更新：2026-07-19
 状态：有 7 个活跃任务
 
 ## 说明
@@ -19,7 +19,7 @@
 - **跨市场 ticker 解析架构修复**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/ticker-resolution-architecture.md`
-  - 摘要：系统审计并统一修复普通美股、缩写冲突、share class、数字开头国际代码、交易所后缀和指数/加密代码的提取、规范化、DataFetch 精确解析与失败语义；20:06 的 CRWV+NBIS 回归已确认不是 FMP 故障，而是 `2d6b4be8` 新增的首轮 search 冻结与 Interactive 固定禁答覆盖了完整正文。`fcca5a35`/`54b14068` 已删除发布否决、聚合本轮全部 search refinement、阻止混合别名单边契约，并完成全仓验证、优雅重启及两种 CRWV+NBIS 问法的生产 SSE/历史验收；当前继续收口 scheduler 800G/NAND/AST/SEC P2
+  - 摘要：系统审计并统一修复普通美股、缩写冲突、share class、数字开头国际代码、交易所后缀和指数/加密代码的提取、规范化、DataFetch 精确解析与失败语义；Interactive 发布否决已移除。当前阶段把金融工具轮改造成隔离的 `control → business-tools → terminal` Agent 状态机，明确 provider `Required` 降级与 SSE 完整生命周期，并加入 committed-prefix 的一次无工具局部恢复，目标是同时消除固定拒答、草稿误发、错误闪烁和分钟级首字延迟；完整部署/生产验收后继续收口 scheduler 800G/NAND/AST/SEC P2
 
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`

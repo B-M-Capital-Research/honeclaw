@@ -4,7 +4,10 @@
 //! restore / progress 这些零件组合成「一次完整对话」的 pipeline。
 //! 详细的 pipeline 步骤见 [`AgentSession::run`] 顶部的分节注释。
 
-use hone_core::agent::{AgentContext, AgentMessage, AgentResponse, ToolCallMade};
+use hone_core::agent::{
+    AgentContext, AgentMessage, AgentResponse, NormalizedConversationMessage,
+    NormalizedConversationPart, ToolCallMade,
+};
 use hone_core::{ActorIdentity, SessionIdentity};
 use hone_memory::{
     ConversationQuotaReservation, ConversationQuotaReserveResult, session_message_from_normalized,
@@ -1239,17 +1242,28 @@ impl AgentSession {
         content: &str,
         metadata_extra: HashMap<String, Value>,
     ) {
-        let response = AgentResponse {
-            content: content.to_string(),
-            tool_calls_made: Vec::new(),
-            iterations: 0,
-            success: false,
-            error: None,
-        };
+        if content.trim().is_empty() {
+            return;
+        }
         let metadata =
             merge_message_metadata(self.message_metadata.assistant.clone(), metadata_extra);
-        let Some(message) = persistable_turn_from_response(&response, metadata) else {
-            return;
+        // Failure-facing text has already crossed a user-visible boundary or
+        // been sanitized by the caller. Preserve its exact bytes, including a
+        // committed terminal prefix's trailing newline, so refresh/history can
+        // never disagree with the live stream.
+        let message = NormalizedConversationMessage {
+            role: "assistant".to_string(),
+            content: vec![NormalizedConversationPart {
+                part_type: "final".to_string(),
+                text: Some(content.to_string()),
+                id: None,
+                name: None,
+                args: None,
+                result: None,
+                metadata: None,
+            }],
+            status: Some("completed".to_string()),
+            metadata,
         };
         let _ = self.core.session_storage.append_session_messages(
             session_id,
@@ -1747,7 +1761,10 @@ impl AgentSession {
         self.persist_failed_assistant_turn_if_needed(&session_id, kind, &persisted_message);
         let error = AgentSessionError {
             kind,
-            message: message.clone(),
+            // Session error events cross channel/Web boundaries. Preserve the
+            // raw diagnostic in the returned response and logs, but never put
+            // provider/Agent protocol details on a user-visible event.
+            message: persisted_message,
         };
         self.emit(session_error_event(error.clone())).await;
         let response = AgentResponse {
@@ -2351,19 +2368,63 @@ impl AgentSession {
                 elapsed_ms,
                 self.message_id.as_deref(),
             );
-            if !terminal_error_emitted {
+            if let Some(prefix) = committed_visible_prefix.as_deref() {
+                // The runner still returns/logs the real failure, but the Web
+                // stream has crossed an irreversible user-visible boundary.
+                // Close that public stream normally and persist exactly the
+                // bytes already shown; a failed Done would make the UI flash an
+                // error card, while persisting a synthetic error would make a
+                // refresh disagree with the visible transcript.
+                tracing::warn!(
+                    session_id,
+                    "closing user-visible stream normally after committed terminal prefix failure"
+                );
+                let mut metadata = HashMap::new();
+                metadata.insert("run_failed".to_string(), Value::Bool(true));
+                metadata.insert("error_kind".to_string(), Value::String(format!("{kind:?}")));
+                metadata.insert("terminal_stream_incomplete".to_string(), Value::Bool(true));
+                self.persist_assistant_text_turn(&session_id, prefix, metadata);
+                self.core.log_message_step(
+                    &self.actor.channel,
+                    &self.actor.user_id,
+                    &session_id,
+                    "session.persist_assistant",
+                    "committed_prefix_after_terminal_failure",
+                    self.message_id.as_deref(),
+                    None,
+                );
+                let partial_response = AgentResponse {
+                    content: prefix.to_string(),
+                    tool_calls_made: response.tool_calls_made.clone(),
+                    iterations: response.iterations,
+                    success: false,
+                    error: None,
+                };
+                self.emit(AgentSessionEvent::PartialDone {
+                    response: partial_response,
+                })
+                .await;
+            } else if !terminal_error_emitted {
+                let public_error = user_visible_error_message(Some(err.as_str()));
                 self.emit(session_error_event(AgentSessionError {
                     kind,
-                    message: err,
+                    message: public_error,
                 }))
                 .await;
+                let persisted_message = user_visible_error_message(response.error.as_deref());
+                self.persist_failed_assistant_turn_if_needed(&session_id, kind, &persisted_message);
+                self.emit(AgentSessionEvent::Done {
+                    response: response.clone(),
+                })
+                .await;
+            } else {
+                let persisted_message = user_visible_error_message(response.error.as_deref());
+                self.persist_failed_assistant_turn_if_needed(&session_id, kind, &persisted_message);
+                self.emit(AgentSessionEvent::Done {
+                    response: response.clone(),
+                })
+                .await;
             }
-            let persisted_message = user_visible_error_message(response.error.as_deref());
-            self.persist_failed_assistant_turn_if_needed(&session_id, kind, &persisted_message);
-            self.emit(AgentSessionEvent::Done {
-                response: response.clone(),
-            })
-            .await;
         }
 
         AgentSessionResult {

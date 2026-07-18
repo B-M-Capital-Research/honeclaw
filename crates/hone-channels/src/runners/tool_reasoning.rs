@@ -194,6 +194,13 @@ impl FunctionCallingStreamObserver for RunnerStreamObserver {
         }
     }
 
+    fn committed_visible_prefix(&self) -> Option<String> {
+        self.committed_visible_prefix
+            .lock()
+            .expect("committed visible prefix")
+            .clone()
+    }
+
     async fn on_content_reset(&self) {
         self.streamed_output.store(false, Ordering::Relaxed);
         self.emitter.emit(AgentRunnerEvent::StreamReset).await;
@@ -645,6 +652,11 @@ mod terminal_stream_tests {
                 .expect("committed visible prefix")
                 .as_deref(),
             Some(header)
+        );
+        assert_eq!(
+            observer.committed_visible_prefix().as_deref(),
+            Some(header),
+            "the Agent must be able to read the exact irreversible prefix for terminal-only recovery"
         );
     }
 

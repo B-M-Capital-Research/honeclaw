@@ -23,6 +23,7 @@ use hone_channels::attachments::{
 };
 use hone_channels::prompt::PromptOptions;
 use hone_channels::run_event::RunEvent;
+use hone_channels::runtime::user_visible_error_message;
 use hone_core::{ActorIdentity, HoneError};
 use hone_memory::WebSessionAuthResult;
 
@@ -85,17 +86,23 @@ struct OpenAiStreamListener {
     created: i64,
 }
 
+fn public_api_failure_message(raw: Option<&str>) -> String {
+    user_visible_error_message(raw)
+}
+
+fn public_api_finish_reason(success: bool) -> &'static str {
+    if success { "stop" } else { "error" }
+}
+
 #[async_trait]
 impl AgentSessionListener for OpenAiStreamListener {
     async fn on_event(&self, event: AgentSessionEvent) {
         let content = match event {
             AgentSessionEvent::Segment { text } => Some(text),
             AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => Some(content),
-            AgentSessionEvent::Done { response } if !response.success => Some(
-                response
-                    .error
-                    .unwrap_or_else(|| "Hone Cloud run failed".to_string()),
-            ),
+            AgentSessionEvent::Done { response } if !response.success => {
+                Some(public_api_failure_message(response.error.as_deref()))
+            }
             _ => None,
         };
         if let Some(content) = content.filter(|value| !value.is_empty()) {
@@ -1226,10 +1233,7 @@ async fn run_public_api_chat_once(
     } else {
         Err(crate::routes::json_error(
             StatusCode::BAD_GATEWAY,
-            result
-                .response
-                .error
-                .unwrap_or_else(|| "Hone Cloud run failed".to_string()),
+            public_api_failure_message(result.response.error.as_deref()),
         ))
     }
 }
@@ -1292,11 +1296,7 @@ fn build_openai_chat_sse(
             ..AgentRunOptions::default()
         };
         let result = session.run(&message, run_options).await;
-        let finish = if result.response.success {
-            "stop"
-        } else {
-            "error"
-        };
+        let finish = public_api_finish_reason(result.response.success);
         let _ = tx
             .send(openai_stream_chunk(
                 &id,
@@ -1519,18 +1519,97 @@ fn to_public_auth_user(
 #[cfg(test)]
 mod tests {
     use super::{
-        PUBLIC_ACTIVE_STATE_CACHE_CONTROL, WEB_SESSION_MAX_AGE_LONG_SECS,
+        OpenAiStreamListener, PUBLIC_ACTIVE_STATE_CACHE_CONTROL, WEB_SESSION_MAX_AGE_LONG_SECS,
         WEB_SESSION_MAX_AGE_SHORT_SECS, aliyun_sms_phone_number, build_public_chat_user_input,
         build_session_cookie, clear_session_cookie, has_unanswered_interactive_turn,
-        public_active_state_response, public_attachment_filename, public_client_key,
-        public_sms_phone_candidates, validate_public_upload_path,
+        public_active_state_response, public_api_failure_message, public_api_finish_reason,
+        public_attachment_filename, public_client_key, public_sms_phone_candidates,
+        validate_public_upload_path,
     };
     use axum::http::{HeaderMap, HeaderValue, header};
+    use hone_channels::agent_session::{AgentSessionEvent, AgentSessionListener};
     use hone_channels::attachments::{AttachmentKind, ReceivedAttachment};
+    use hone_core::agent::AgentResponse;
     use std::fs;
 
     use crate::types::{HistoryMsg, HistoryScheduledPush};
     const SECURE_COOKIE_ENV: &str = "HONE_PUBLIC_SECURE_COOKIE";
+
+    #[test]
+    fn public_openai_failures_never_expose_terminal_protocol_details() {
+        let message = public_api_failure_message(Some(
+            "terminal synthesis recovery failed: stream ended before explicit done sentinel",
+        ));
+
+        assert_eq!(message, "抱歉，这次处理失败了。请稍后再试。");
+        assert!(!message.contains("terminal"));
+        assert!(!message.contains("done sentinel"));
+    }
+
+    #[tokio::test]
+    async fn public_openai_stream_sanitizes_failed_done_payload() {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+        let listener = OpenAiStreamListener {
+            tx,
+            id: "chatcmpl-test".to_string(),
+            model: "test-model".to_string(),
+            created: 1,
+        };
+
+        listener
+            .on_event(AgentSessionEvent::Done {
+                response: AgentResponse {
+                    content: String::new(),
+                    tool_calls_made: Vec::new(),
+                    iterations: 1,
+                    success: false,
+                    error: Some(
+                        "terminal synthesis recovery failed: internal provider payload".to_string(),
+                    ),
+                },
+            })
+            .await;
+
+        let chunk = rx.recv().await.expect("sanitized failure chunk");
+        let chunk: serde_json::Value = serde_json::from_str(&chunk).expect("OpenAI chunk JSON");
+        let content = chunk
+            .pointer("/choices/0/delta/content")
+            .and_then(serde_json::Value::as_str)
+            .expect("failure content");
+        assert_eq!(content, "抱歉，这次处理失败了。请稍后再试。");
+        assert!(!content.contains("terminal"));
+        assert!(!content.contains("provider"));
+    }
+
+    #[tokio::test]
+    async fn public_openai_partial_done_does_not_become_success_or_a_second_content_chunk() {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+        let listener = OpenAiStreamListener {
+            tx,
+            id: "chatcmpl-test".to_string(),
+            model: "test-model".to_string(),
+            created: 1,
+        };
+
+        listener
+            .on_event(AgentSessionEvent::PartialDone {
+                response: AgentResponse {
+                    content: "已提交首行\n".to_string(),
+                    tool_calls_made: Vec::new(),
+                    iterations: 1,
+                    success: false,
+                    error: None,
+                },
+            })
+            .await;
+
+        assert!(
+            rx.try_recv().is_err(),
+            "partial terminal emitted a second chunk"
+        );
+        assert_eq!(public_api_finish_reason(false), "error");
+        assert_eq!(public_api_finish_reason(true), "stop");
+    }
 
     fn test_history_message(role: &str, scheduled: bool) -> HistoryMsg {
         HistoryMsg {

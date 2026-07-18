@@ -21,7 +21,8 @@ use serde_json::{Map, Value};
 
 use crate::provider::{
     ChatResponse, ChatResult, ChatStreamEvent, FunctionCall, LlmProvider, LlmRequestOptions,
-    Message, ToolCall, ToolChoiceMode, chat_stream_events_from_value,
+    Message, ToolCall, ToolChoiceMode, chat_stream_events_from_sse_data,
+    effective_tool_choice_mode_from_body, explicit_provider_error_text,
 };
 
 fn remove_tool_fields_without_tools(body: &mut Map<String, Value>, has_tools: bool) {
@@ -44,10 +45,11 @@ fn rejects_required_tool_choice(status: reqwest::StatusCode, response_body: &str
         return false;
     }
 
-    let message = response_body.to_ascii_lowercase();
+    let message = explicit_provider_error_text(response_body).to_ascii_lowercase();
     let names_tool_choice = message.contains("tool_choice")
         || message.contains("tool choice")
         || message.contains("tool-choice");
+    let names_required = message.contains("required");
     let reports_incompatibility = [
         "not supported",
         "unsupported",
@@ -68,7 +70,7 @@ fn rejects_required_tool_choice(status: reqwest::StatusCode, response_body: &str
     .iter()
     .any(|marker| message.contains(marker));
 
-    names_tool_choice && reports_incompatibility
+    names_tool_choice && names_required && reports_incompatibility
 }
 
 #[derive(Clone)]
@@ -450,6 +452,8 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
+    use crate::provider::ChatStreamFinishReason;
+
     use super::*;
 
     async fn read_json_request(socket: &mut tokio::net::TcpStream) -> Value {
@@ -518,6 +522,14 @@ mod tests {
         assert!(!rejects_required_tool_choice(
             reqwest::StatusCode::INTERNAL_SERVER_ERROR,
             r#"{"error":{"message":"tool_choice=required is not supported"}}"#
+        ));
+        assert!(!rejects_required_tool_choice(
+            reqwest::StatusCode::BAD_REQUEST,
+            r#"{"error":{"message":"invalid model identifier"},"request":{"tool_choice":"required"}}"#
+        ));
+        assert!(!rejects_required_tool_choice(
+            reqwest::StatusCode::BAD_REQUEST,
+            r#"{"detail":[{"loc":["body","model"],"msg":"invalid model identifier"}],"request":{"tool_choice":"required"}}"#
         ));
     }
 
@@ -692,6 +704,7 @@ mod tests {
             let body = concat!(
                 "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"demo_tool\",\"arguments\":\"{\\\"symbol\\\":\"}}]}}]}\n\n",
                 "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\"NVDA\\\"}\"}}]}}]}\n\n",
+                "data: {\"choices\":[{\"finish_reason\":\"tool_calls\"}]}\n\n",
                 "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":8,\"completion_tokens\":3,\"total_tokens\":11}}\n\n",
                 "data: [DONE]\n\n"
             );
@@ -741,6 +754,14 @@ mod tests {
 
         assert_eq!(
             events[0],
+            ChatStreamEvent::ToolChoiceMetadata {
+                requested: ToolChoiceMode::Required,
+                effective: ToolChoiceMode::Required,
+                fallback: false,
+            }
+        );
+        assert_eq!(
+            events[1],
             ChatStreamEvent::ToolCallDelta {
                 index: 0,
                 id: Some("call_1".to_string()),
@@ -749,7 +770,7 @@ mod tests {
             }
         );
         assert_eq!(
-            events[1],
+            events[2],
             ChatStreamEvent::ToolCallDelta {
                 index: 0,
                 id: None,
@@ -757,10 +778,15 @@ mod tests {
                 arguments: "\"NVDA\"}".to_string(),
             }
         );
+        assert_eq!(
+            events[3],
+            ChatStreamEvent::Finish(ChatStreamFinishReason::ToolCalls)
+        );
         assert!(matches!(
-            &events[2],
+            &events[4],
             ChatStreamEvent::Usage(usage) if usage.total_tokens == Some(11)
         ));
+        assert_eq!(events[5], ChatStreamEvent::Done);
     }
 
     #[tokio::test]
@@ -803,6 +829,7 @@ mod tests {
 
             let stream_body = concat!(
                 "data: {\"choices\":[{\"delta\":{\"content\":\"fallback-ok\"}}]}\n\n",
+                "data: {\"choices\":[{\"finish_reason\":\"stop\"}]}\n\n",
                 "data: [DONE]\n\n"
             );
             let response = format!(
@@ -826,7 +853,12 @@ mod tests {
         )
         .expect("provider")
         .with_request_options(LlmRequestOptions {
-            tool_choice: Some(serde_json::json!("required")),
+            // A profile-level named choice must also be removed by the
+            // compatibility retry; otherwise effective=Auto would be false.
+            tool_choice: Some(serde_json::json!({
+                "type": "function",
+                "function": { "name": "demo_tool" }
+            })),
             ..LlmRequestOptions::default()
         });
         let events = provider
@@ -858,7 +890,16 @@ mod tests {
 
         assert_eq!(
             events,
-            vec![ChatStreamEvent::ContentDelta("fallback-ok".to_string())]
+            vec![
+                ChatStreamEvent::ToolChoiceMetadata {
+                    requested: ToolChoiceMode::Required,
+                    effective: ToolChoiceMode::Auto,
+                    fallback: true,
+                },
+                ChatStreamEvent::ContentDelta("fallback-ok".to_string()),
+                ChatStreamEvent::Finish(ChatStreamFinishReason::Stop),
+                ChatStreamEvent::Done,
+            ]
         );
         assert_eq!(requests.load(Ordering::SeqCst), 2);
     }
@@ -890,6 +931,7 @@ mod tests {
 
             let body = concat!(
                 "data: {\"choices\":[{\"delta\":{\"content\":\"done\"}}]}\n\n",
+                "data: {\"choices\":[{\"finish_reason\":\"stop\"}]}\n\n",
                 "data: [DONE]\n\n"
             );
             let response = format!(
@@ -939,7 +981,16 @@ mod tests {
 
         assert_eq!(
             events,
-            vec![ChatStreamEvent::ContentDelta("done".to_string())]
+            vec![
+                ChatStreamEvent::ToolChoiceMetadata {
+                    requested: ToolChoiceMode::Auto,
+                    effective: ToolChoiceMode::Auto,
+                    fallback: false,
+                },
+                ChatStreamEvent::ContentDelta("done".to_string()),
+                ChatStreamEvent::Finish(ChatStreamFinishReason::Stop),
+                ChatStreamEvent::Done,
+            ]
         );
     }
 
@@ -1245,18 +1296,16 @@ impl LlmProvider for OpenAiCompatibleProvider {
             }
             let use_required_tool_choice =
                 !tools.is_empty() && tool_choice_mode == ToolChoiceMode::Required;
-            // Preserve the request that Auto mode would have sent. If a
-            // profile redundantly configured `required`, drop that capability
-            // too; otherwise the compatibility retry would be identical to
-            // the rejected request.
+            // Build the concrete request that Auto mode sends. The retry must
+            // not retain a profile-level named/required tool choice, otherwise
+            // the lifecycle metadata would claim Auto while the wire request
+            // still requires a tool.
             let auto_request = use_required_tool_choice.then(|| {
                 let mut auto_request = request.clone();
-                if auto_request.get("tool_choice").and_then(Value::as_str) == Some("required") {
-                    auto_request
-                        .as_object_mut()
-                        .expect("stream request body was checked above")
-                        .remove("tool_choice");
-                }
+                auto_request
+                    .as_object_mut()
+                    .expect("stream request body was checked above")
+                    .remove("tool_choice");
                 auto_request
             });
             if use_required_tool_choice {
@@ -1268,6 +1317,12 @@ impl LlmProvider for OpenAiCompatibleProvider {
                         Value::String("required".to_string()),
                     );
             }
+            let initial_effective_tool_choice = effective_tool_choice_mode_from_body(
+                request
+                    .as_object()
+                    .expect("stream request body was checked above"),
+                !tools.is_empty(),
+            );
 
             let mut last_error = String::new();
             let mut successful_response = None;
@@ -1288,7 +1343,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
                 };
                 let status = response.status();
                 if status.is_success() {
-                    successful_response = Some(response);
+                    successful_response = Some((response, initial_effective_tool_choice, false));
                     break;
                 }
                 let body = response.text().await.unwrap_or_default();
@@ -1326,7 +1381,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
                 };
                 let fallback_status = fallback_response.status();
                 if fallback_status.is_success() {
-                    successful_response = Some(fallback_response);
+                    successful_response = Some((fallback_response, ToolChoiceMode::Auto, true));
                     break;
                 }
                 let fallback_body = fallback_response.text().await.unwrap_or_default();
@@ -1336,28 +1391,19 @@ impl LlmProvider for OpenAiCompatibleProvider {
                     extract_error_message(&fallback_body)
                 );
             }
-            let response = successful_response.ok_or_else(|| {
-                hone_core::HoneError::Llm(format!(
-                    "所有 OpenAI-compatible API Key 的流式请求均失败：{last_error}"
-                ))
-            })?;
+            let (response, effective_tool_choice, used_fallback) =
+                successful_response.ok_or_else(|| {
+                    hone_core::HoneError::Llm(format!(
+                        "所有 OpenAI-compatible API Key 的流式请求均失败：{last_error}"
+                    ))
+                })?;
 
-            let stream = response
+            let provider_stream = response
                 .bytes_stream()
                 .eventsource()
                 .filter_map(|result| async move {
                     match result {
-                        Ok(event) if event.data.trim() == "[DONE]" => None,
-                        Ok(event) if event.data.trim().is_empty() => None,
-                        Ok(event) => Some(
-                            serde_json::from_str::<Value>(&event.data)
-                                .map(|value| chat_stream_events_from_value(&value))
-                                .map_err(|error| {
-                                    hone_core::HoneError::Llm(format!(
-                                        "invalid streaming response: {error}"
-                                    ))
-                                }),
-                        ),
+                        Ok(event) => chat_stream_events_from_sse_data(&event.data),
                         Err(error) => Some(Err(hone_core::HoneError::Llm(format!(
                             "stream transport error: {error}"
                         )))),
@@ -1367,6 +1413,14 @@ impl LlmProvider for OpenAiCompatibleProvider {
                     Ok(events) => futures::stream::iter(events.into_iter().map(Ok)).boxed(),
                     Err(error) => futures::stream::once(async move { Err(error) }).boxed(),
                 })
+                .boxed();
+            let metadata = ChatStreamEvent::ToolChoiceMetadata {
+                requested: tool_choice_mode,
+                effective: effective_tool_choice,
+                fallback: used_fallback,
+            };
+            let stream = futures::stream::once(async move { Ok(metadata) })
+                .chain(provider_stream)
                 .boxed();
             Ok::<_, hone_core::HoneError>(stream)
         };

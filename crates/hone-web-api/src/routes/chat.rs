@@ -38,8 +38,10 @@ pub(crate) struct SseSessionListener {
 #[async_trait]
 impl AgentSessionListener for SseSessionListener {
     async fn on_event(&self, event: AgentSessionEvent) {
-        if !matches!(&event, AgentSessionEvent::Done { .. })
-            && self.terminal_sent.load(Ordering::Acquire)
+        if !matches!(
+            &event,
+            AgentSessionEvent::Done { .. } | AgentSessionEvent::PartialDone { .. }
+        ) && self.terminal_sent.load(Ordering::Acquire)
         {
             return;
         }
@@ -168,6 +170,34 @@ impl AgentSessionListener for SseSessionListener {
                     .send((
                         "run_finished".into(),
                         json!({ "success": response.success }),
+                    ))
+                    .await;
+            }
+            AgentSessionEvent::PartialDone { response } => {
+                if self.terminal_sent.swap(true, Ordering::AcqRel) {
+                    return;
+                }
+                if let Some(active_run) = &self.active_run {
+                    active_run.finish();
+                }
+                let sent = *self.sent_segments.lock().await;
+                if sent == 0 {
+                    let cleaned = clean_msg_markers(&response.content);
+                    if !cleaned.is_empty() && !should_skip_buffer(&cleaned) {
+                        let _ = self
+                            .tx
+                            .send(("assistant_delta".into(), json!({ "content": cleaned })))
+                            .await;
+                    }
+                }
+                // Honest partial completion: keep the already-rendered bytes,
+                // but do not mark the underlying run as successful or display
+                // a second error card over them.
+                let _ = self
+                    .tx
+                    .send((
+                        "run_finished".into(),
+                        json!({ "success": false, "partial": true }),
                     ))
                     .await;
             }
@@ -527,6 +557,44 @@ mod tests {
         assert!(
             rx.try_recv().is_err(),
             "unexpected duplicate terminal event"
+        );
+    }
+
+    #[tokio::test]
+    async fn partial_done_preserves_streamed_content_without_claiming_success_or_flashing_error() {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(2);
+        let terminal_sent = Arc::new(AtomicBool::new(false));
+        let listener = SseSessionListener {
+            tx,
+            user_id: "u1".to_string(),
+            sent_segments: Arc::new(tokio::sync::Mutex::new(1)),
+            active_run: None,
+            terminal_sent: terminal_sent.clone(),
+        };
+
+        listener
+            .on_event(AgentSessionEvent::PartialDone {
+                response: AgentResponse {
+                    content: "已提交首行\n".to_string(),
+                    tool_calls_made: Vec::new(),
+                    iterations: 1,
+                    success: false,
+                    error: None,
+                },
+            })
+            .await;
+
+        assert_eq!(
+            rx.recv().await,
+            Some((
+                "run_finished".to_string(),
+                json!({ "success": false, "partial": true })
+            ))
+        );
+        assert!(terminal_sent.load(Ordering::Acquire));
+        assert!(
+            rx.try_recv().is_err(),
+            "partial completion emitted extra UI copy"
         );
     }
 

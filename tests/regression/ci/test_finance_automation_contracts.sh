@@ -52,20 +52,24 @@ AGENT_TYPES="crates/hone-channels/src/agent_session/types.rs"
 AGENT_CORE="crates/hone-channels/src/agent_session/core.rs"
 AGENT_EMITTER="crates/hone-channels/src/agent_session/emitter.rs"
 AGENT_TESTS="crates/hone-channels/src/agent_session/tests.rs"
+CLI_PROBE="bins/hone-cli/src/probe.rs"
 FUNCTION_AGENT="agents/function_calling/src/lib.rs"
 RUN_EVENT="crates/hone-channels/src/run_event.rs"
 TOOL_REASONING_RUNNER="crates/hone-channels/src/runners/tool_reasoning.rs"
 OPENROUTER="crates/hone-llm/src/openrouter.rs"
 OPENAI_COMPATIBLE="crates/hone-llm/src/openai_compatible.rs"
+LLM_PROVIDER="crates/hone-llm/src/provider.rs"
 WEB_CHAT="crates/hone-web-api/src/routes/chat.rs"
 WEB_PUBLIC="crates/hone-web-api/src/routes/public.rs"
+PUBLIC_CHAT_STATE="packages/app/src/lib/public-chat.ts"
+PUBLIC_CHAT_TYPES="packages/app/src/lib/types.ts"
 SCHEDULER="crates/hone-channels/src/scheduler.rs"
 SOUL="soul.md"
 AGENT_DISCOVERY_IMPL="$(sed -n '/pub(crate) fn build_agent_discovered_investment(/,/^fn tool_call_targets_entity(/p' "$INVESTMENT_GUARD")"
 AGENT_DISCOVERY_CONTEXT_IMPL="$(sed -n '/fn append_agent_entity_discovery_context(/,/^fn explicit_dollar_mentions(/p' "$INVESTMENT_GUARD")"
 INTERACTIVE_OBSERVATION_IMPL="$(sed -n '/Interactive entity discovery is owned/,/let Some(contract) = contract else/p' "$AGENT_CORE")"
 
-echo "[finance-automation-contracts] fixed sample count: 29"
+echo "[finance-automation-contracts] fixed sample count: 32"
 
 if contains '"snapshot".into()' "$DATA_FETCH" && contains 'data_fetch(data_type="snapshot"' "$STOCK_RESEARCH"; then
   record success "1.stock_research->snapshot" "tool enum and skill contract are aligned"
@@ -230,22 +234,40 @@ else
 fi
 
 if contains 'finish_research' "$FUNCTION_AGENT" && contains 'chat_terminal_streaming' "$FUNCTION_AGENT" && contains 'on_final_content_delta' "$FUNCTION_AGENT" && contains 'with_finish_research_terminal_synthesis' "$TOOL_REASONING_RUNNER" && contains 'TerminalStreamPolicy::CanonicalInvestmentHeader' "$TOOL_REASONING_RUNNER" && contains 'CommittedStreamDelta' "$RUN_EVENT" && contains 'CommittedStreamDelta' "$AGENT_EMITTER" && contains 'committed_visible_prefix.is_some()' "$AGENT_CORE" && contains 'committed_visible_prefix.is_none()' "$AGENT_CORE" && contains 'committed_terminal_prefix_makes_runner_attempt_irreversible_and_suppresses_retry' "$AGENT_TESTS" && contains 'the early committed header plus the terminal tail must exactly equal the persisted answer' "$AGENT_TESTS" && contains 'remove_tool_fields_without_tools' "$OPENROUTER" && contains 'remove_tool_fields_without_tools' "$OPENAI_COMPATIBLE"; then
-  record success "28.agent-signaled-terminal-stream" "tool-capable drafts remain deferred while a sole Agent finish signal enables one empty-tools terminal stream, one canonical committed line, exact persisted suffix, and no retry/replay after commit"
+  record success "28.agent-signaled-terminal-stream" "tool-capable drafts remain deferred while an isolated Agent finish decision enables one empty-tools terminal stream, one canonical committed line, exact persisted suffix, and no outer retry/replay after commit"
 else
   record fail "28.agent-signaled-terminal-stream" "terminal streaming can regress into speculative draft exposure, tool-bearing final synthesis, prefix rewrite, or retry after visible output"
 fi
 
-if contains 'investment_research_started' "$FUNCTION_AGENT" && contains 'ToolChoiceMode::Required' "$FUNCTION_AGENT" && contains 'tool_choice_mode == ToolChoiceMode::Required' "$OPENROUTER" && contains 'tool_choice_mode == ToolChoiceMode::Required' "$OPENAI_COMPATIBLE" && contains 'provider bypassed required terminal signal; preserving the Agent' "$FUNCTION_AGENT" && contains '包括已明确确认某项数据暂不可得' "$FUNCTION_AGENT" && contains '关系、事件与估值证据纪律' "$PROMPT_FILE" && contains '搜索摘要明确陈述的有限事实只能按原范围使用' "$SOUL" && contains '未取得资产负债表中的现金、债务或可直接使用的企业价值' "$SOUL" && contains 'this metadata does not establish a market session' "$DATA_FETCH" && contains '只有 `extended_hours` 的规范化 bar 可以核验美股扩展时段' "$DATA_FETCH" && contains '年度数据不得写成 TTM' "$FUNCTION_AGENT" && contains '输入不完整时使用一种可严谨计算的方法并明确披露缺项，禁止补数' "$INVESTMENT_GUARD" && contains 'disclosed_valuation_gap' "$INVESTMENT_GUARD"; then
-  record success "29.required-terminal-and-evidence-ledger" "only an observed finance tool chain requires an Agent terminal decision, unavailable evidence may be disclosed, and relationship/valuation/time claims are grounded without inventing quote sessions"
+if contains 'investment_research_started' "$FUNCTION_AGENT" && contains 'starts_investment_research_protocol' "$FUNCTION_AGENT" && contains 'eq_ignore_ascii_case("data_fetch")' "$FUNCTION_AGENT" && contains 'non_finance_web_search_does_not_activate_the_investment_terminal_protocol' "$FUNCTION_AGENT" && contains 'ToolChoiceMode::Required' "$FUNCTION_AGENT" && contains 'tool_choice_mode == ToolChoiceMode::Required' "$OPENROUTER" && contains 'tool_choice_mode == ToolChoiceMode::Required' "$OPENAI_COMPATIBLE" && contains 'CONTINUE_RESEARCH_TOOL_NAME' "$FUNCTION_AGENT" && contains 'chat_research_control_decision' "$FUNCTION_AGENT" && contains 'content_bypass' "$FUNCTION_AGENT" && contains 'ACTIVE_BUSINESS_TIMEOUT' "$FUNCTION_AGENT" && contains 'requested_tool_choice = tool_choice_mode_name(telemetry.requested)' "$FUNCTION_AGENT" && contains 'session_id = %context.session_id' "$FUNCTION_AGENT" && contains 'active_business_timeout' "$FUNCTION_AGENT" && contains 'active_business_provider_error_degrades_to_terminal_from_existing_evidence' "$FUNCTION_AGENT" && contains 'data_fetch_in_an_eligible_turn_activates_the_control_protocol' "$FUNCTION_AGENT" && contains '必要证据已明确不可得且可在答案中如实披露' "$FUNCTION_AGENT" && contains '数据时间：北京时间 YYYY-MM-DD HH:MM；行情口径：' "$FUNCTION_AGENT" && contains '未明确标注 forward 时不得称为 Forward PE' "$FUNCTION_AGENT" && contains '关系、事件与估值证据纪律' "$PROMPT_FILE" && contains '搜索摘要明确陈述的有限事实只能按原范围使用' "$SOUL" && contains '未取得资产负债表中的现金、债务或可直接使用的企业价值' "$SOUL" && contains 'this metadata does not establish a market session' "$DATA_FETCH" && contains '只有 `extended_hours` 的规范化 bar 可以核验美股扩展时段' "$DATA_FETCH" && contains '年度数据不得写成 TTM' "$FUNCTION_AGENT" && contains '输入不完整时使用一种可严谨计算的方法并明确披露缺项，禁止补数' "$INVESTMENT_GUARD" && contains 'disclosed_valuation_gap' "$INVESTMENT_GUARD"; then
+  record success "29.required-terminal-and-evidence-ledger" "eligible investment tool use alternates isolated control and bounded business rounds, provider bypasses converge on terminal synthesis, and relationship/valuation/time claims stay evidence-grounded"
 else
   record fail "29.required-terminal-and-evidence-ledger" "the Agent can bypass terminal streaming or fabricate relationship, valuation, or quote-time claims from incomplete evidence"
+fi
+
+if contains 'ToolChoiceMetadata {' "$LLM_PROVIDER" && contains 'Finish(ChatStreamFinishReason)' "$LLM_PROVIDER" && contains 'Done,' "$LLM_PROVIDER" && contains 'top_level_stream_error' "$LLM_PROVIDER" && contains 'null_top_level_error_is_not_treated_as_a_provider_failure' "$LLM_PROVIDER" && contains 'stream_eof_without_done_remains_detectable' "$OPENROUTER" && contains 'required_stream_retries_same_client_once_in_auto_on_capability_rejection' "$OPENROUTER" && contains 'required_stream_retries_same_client_once_without_required_when_unsupported' "$OPENAI_COMPATIBLE" && contains 'control_stream_missing_done_degrades_with_control_error_reason' "$FUNCTION_AGENT" && contains 'active_stream_missing_done_degrades_with_active_error_reason' "$FUNCTION_AGENT" && contains 'terminal_stream_requires_stop_and_done' "$FUNCTION_AGENT" && contains 'non_success_stream_finish_reasons_are_errors' "$FUNCTION_AGENT" && contains 'effective_tool_choice' "$FUNCTION_AGENT" && contains 'tool_choice_fallback' "$FUNCTION_AGENT"; then
+  record success "30.native-stream-lifecycle" "provider tool-choice fallback, finish reason, top-level errors, and DONE are explicit protocol events consumed by every Agent phase"
+else
+  record fail "30.native-stream-lifecycle" "an incomplete, downgraded, or provider-error stream can again be accepted as a completed Agent round"
+fi
+
+if contains 'visible_control_preamble_followed_by_continue_is_silently_accepted' "$FUNCTION_AGENT" && contains 'visible_control_preamble_followed_by_finish_is_silently_accepted' "$FUNCTION_AGENT" && contains 'terminal reasoning must not persist into cross-turn context' "$FUNCTION_AGENT" && contains 'turn_message_start' "$FUNCTION_AGENT" && contains 'stale prior-turn ticker/price evidence reached terminal synthesis' "$FUNCTION_AGENT" && contains 'terminal_scrubs_tool_round_drafts_that_precede_data_fetch_activation' "$FUNCTION_AGENT" && contains 'terminal_content_rejects_header_only_and_duplicate_committed_prefix' "$FUNCTION_AGENT" && contains 'committed_terminal_prefix_recovers_once_without_restreaming_or_rerunning_tools' "$FUNCTION_AGENT" && contains 'committed_terminal_prefix_recovery_mismatch_fails_after_exactly_one_attempt' "$FUNCTION_AGENT" && contains 'chat_terminal_recovery_without_tools' "$FUNCTION_AGENT" && contains 'committed_visible_prefix(&self) -> Option<String>' "$FUNCTION_AGENT" && contains 'committed_visible_prefix(&self) -> Option<String>' "$TOOL_REASONING_RUNNER" && contains 'explicit_provider_error_text' "$LLM_PROVIDER" && contains 'committed_terminal_header_recovers_in_place_and_session_emits_only_the_tail' "$AGENT_TESTS" && contains 'committed_terminal_header_double_failure_emits_honest_partial_and_persists_visible_prefix' "$AGENT_TESTS" && contains 'PartialDone {' "$AGENT_TYPES" && contains 'response: AgentResponse' "$AGENT_TYPES" && contains 'AgentSessionEvent::PartialDone' "$AGENT_CORE" && contains 'terminal_stream_incomplete' "$AGENT_CORE" && contains 'partial_done_preserves_streamed_content_without_claiming_success_or_flashing_error' "$WEB_CHAT" && contains 'publicChatTerminalEventPatch' "$PUBLIC_CHAT_STATE" && contains 'public_api_failure_message' "$WEB_PUBLIC" && contains 'public_api_finish_reason' "$WEB_PUBLIC" && contains 'public_openai_partial_done_does_not_become_success_or_a_second_content_chunk' "$WEB_PUBLIC" && contains 'committed_visible_prefix.is_none()' "$AGENT_CORE"; then
+  record success "31.isolated-control-and-terminal-recovery" "control/tool drafts stay outside terminal evidence, provider request echoes cannot widen Required fallback, and committed-prefix failures recover once or end as an honest exact-byte partial without UI flash or API success"
+else
+  record fail "31.isolated-control-and-terminal-recovery" "research control, provider fallback, terminal evidence, or committed-prefix recovery can regress into draft pollution, tool reruns, duplicate headers, raw errors, refresh mismatch, or error flicker"
+fi
+
+if contains 'AgentSessionEvent::PartialDone { response }' "$CLI_PROBE" && contains '[partial_done] success=false' "$CLI_PROBE" && contains 'partial?: boolean' "$PUBLIC_CHAT_TYPES"; then
+  record success "32.partial-terminal-consumer-contract" "CLI diagnostics and Browser event types consume a partial terminal without presenting it as success"
+else
+  record fail "32.partial-terminal-consumer-contract" "a typed PartialDone can again break a workspace consumer or be mistaken for a successful Browser completion"
 fi
 
 echo
 echo "summary: success=$success review=$review fail=$fail total=$((success + review + fail))"
 
-if [ "$success" -lt 29 ]; then
-  echo "[ERROR] acceptance failed: expected all 29 successes"
+if [ "$success" -lt 32 ]; then
+  echo "[ERROR] acceptance failed: expected all 32 successes"
   exit 1
 fi
 

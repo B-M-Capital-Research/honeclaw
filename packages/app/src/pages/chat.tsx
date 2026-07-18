@@ -93,6 +93,7 @@ import {
   publicAttachmentFileLabel,
   publicChatRunEventPatch,
   publicChatRunStartedAtLabel,
+  publicChatTerminalEventPatch,
   publicChatToolStatusText,
   publicRestoreRetryDelay,
   rekeyTrailingOptimisticIds,
@@ -3323,14 +3324,14 @@ export default function PublicChatPage() {
             flushAssistantDelta();
             const index = messages.findIndex((m) => m.id === assistantId);
             if (index >= 0) {
-              setMessages(index, {
-                phase: ev.data.success === false ? "error" : "done",
-                statusText:
-                  ev.data.success === false
-                    ? lastRunErrorMessage ??
-                      CONTENT.chat_page.status.fallback_error
-                    : undefined,
-              });
+              setMessages(
+                index,
+                publicChatTerminalEventPatch(
+                  ev.data,
+                  lastRunErrorMessage,
+                  CONTENT.chat_page.status.fallback_error,
+                ),
+              );
             }
             pinToBottom(1400);
           }

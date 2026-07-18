@@ -821,6 +821,9 @@ fn looks_internal_error_detail(sanitized: &str, lowered: &str) -> bool {
         || lowered.contains("stream disconnected before completion")
         || lowered.contains("stream closed before response")
         || lowered.contains("acp stream")
+        || lowered.contains("terminal synthesis")
+        || lowered.contains("terminal recovery")
+        || lowered.contains("research control")
 }
 
 fn strip_internal_workflow_prelude(text: &str) -> Option<String> {
@@ -1751,6 +1754,16 @@ mod tests {
         assert_eq!(err, GENERIC_USER_ERROR_MESSAGE);
         assert!(!err.contains("bad_request_error"));
         assert!(!err.contains("tool_call_id"));
+    }
+
+    #[test]
+    fn user_visible_error_message_rewrites_terminal_recovery_protocol_errors() {
+        let err = user_visible_error_message(Some(
+            "terminal synthesis recovery failed: terminal recovery content does not start with the committed visible prefix",
+        ));
+        assert_eq!(err, GENERIC_USER_ERROR_MESSAGE);
+        assert!(!err.contains("terminal"));
+        assert!(!err.contains("committed visible prefix"));
     }
 
     #[test]

@@ -1,0 +1,57 @@
+# ADR 0003: Isolate Interactive Agent Research Control From Business Tools
+
+- title: Isolate Interactive Agent research control from business tools
+- status: Accepted
+- created_at: 2026-07-19
+- updated_at: 2026-07-19
+- owner: HONE maintainers
+- related_files: `agents/function_calling/src/lib.rs`, `crates/hone-llm/src/provider.rs`, `crates/hone-llm/src/openrouter.rs`, `crates/hone-llm/src/openai_compatible.rs`, `crates/hone-channels/src/runners/tool_reasoning.rs`, `crates/hone-channels/src/agent_session/{core.rs,tests.rs}`, `crates/hone-web-api/src/routes/public.rs`, `tests/regression/ci/test_finance_automation_contracts.sh`
+- related_docs: `docs/current-plans/ticker-resolution-architecture.md`, `docs/handoffs/2026-07-18-crwv-entity-resolution-repair.md`, `docs/decisions.md#d-2026-07-18-03-use-an-agent-signaled-tool-free-terminal-stream`, `docs/invariants.md`, `docs/repo-map.md`
+- supersedes: The sole/mixed `finish_research` routing and absolute no-recovery-after-prefix rule in `D-2026-07-18-03`; its same-Agent evidence context, speculative-output boundary, tool-free terminal, exact visible/persisted body, and no post-run Interactive publication review remain in force.
+- superseded_by: N/A
+
+## Context
+
+Interactive finance turns need an open Agent loop: the model must identify every security named in arbitrary user wording, call DataFetch or Web tools, load current evidence into the same context, and synthesize an answer in the established time-first format. A service-side classifier, ticker exception, Markdown validator, or post-run completeness veto cannot safely decide that open-ended scope.
+
+Production exposed a separate protocol bug after those publication vetoes were removed. The configured OpenAI-compatible model could ignore `tool_choice=required` and emit a long direct draft from a round that was still allowed to call business tools. The legacy loop accepted that draft as final. It contained unsupported company-relationship and valuation claims; trying to catch them after generation recreated the fixed refusal and error-flash behavior the architecture was intended to remove.
+
+The first terminal-stream design also declared every committed prefix unrecoverable. That prevented duplicate answers, but a provider EOF/error after the canonical first line had already reached the user left only a header followed by an error. The safe recovery unit is the terminal transport, not the whole Agent or its business tools.
+
+## Decision
+
+- Keep every nonempty Interactive completion open-ended with the actor-bound registry and `Auto`. Activate the finance research protocol only after the Agent actually attempts DataFetch, the structural current-finance-evidence step required by the investment prompt; do not use ticker lists or question templates as the switch, and do not force unrelated Web/file/skill tool turns into the investment format.
+- Once active, alternate isolated phases inside the same `Agent::run` and `AgentContext`:
+  - the control phase exposes only ephemeral `continue_research` and `finish_research` schemas and requests `Required`;
+  - a continue decision starts a bounded business phase that exposes only actor-bound business tools and requests `Required`;
+  - a finish decision starts one tool-free terminal completion.
+- Never send the control completion through the business registry, budget, execution observer, progress stream, `ToolCallMade`, or ordinary LLM audit body. Record only a structured transition containing actor/session identity, decision/outcome, latency, next state, and requested/effective/fallback tool-choice telemetry.
+- Treat a provider control/business content-only bypass, timeout, empty response, or protocol failure as a degraded transition to terminal synthesis from earlier successful tool evidence. It must not authorize a fixed refusal, post-run rewrite, or claim that research completed. The terminal answer discloses the actual evidence gap and continues with what is supportable.
+- Make native stream completion explicit. Every successful stream begins with `ToolChoiceMetadata`, carries a typed finish reason, and ends with `Done`. Control/business tool rounds require a tool-call finish; a direct or terminal answer requires stop; missing metadata, wrong/non-success finish, top-level error, or EOF without DONE is a protocol failure.
+- Allow generic OpenAI-compatible and OpenRouter providers to retry `Required` once with `Auto` only after an explicit 400/422 capability/validation rejection naming required tool choice. Parse only provider-designated error/detail fields once a response is valid JSON; never scan an echoed request body. Remove every configured `tool_choice` override on that retry and report `requested=Required`, `effective=Auto`, `fallback=true`. Do not downgrade auth, rate-limit, invalid-model, 5xx, transport, or unrelated 400 responses.
+- Record the current run's starting message index before appending its user input. Initial/control/business phases may retain bounded prior conversation to understand follow-ups, but build terminal messages only from this run's user message, assistant tool calls, and tool results. Remove every terminal message's hidden reasoning and blank the content of every assistant message that carries tool calls, including a Web/search round before DataFetch; preserve the actual tool results. Persist terminal assistant content without reasoning metadata. Earlier assistant prose/tool rows, hidden reasoning, discarded drafts, control text, and model memory are never current fact evidence.
+- Keep every tool-capable delta speculative. In the empty-tools terminal, allow the Runner to commit only one complete canonical first line. The Session remembers that exact byte prefix and publishes only the finalized suffix so the visible body and durable assistant message remain identical.
+- If the terminal stream fails after that prefix commits—or completes with only the header—allow exactly one terminal-only recovery. It receives the same evidence/messages plus the exact required prefix, exposes no tools, remains fully buffered, must finish with stop plus DONE, must reproduce the prefix byte-for-byte exactly once, and must include a nonempty tail. Publish only the recovered tail. Do not reset, restream recovery, rerun business tools, or invoke outer Agent/session retry. Audit the recovery separately. If recovery also fails, emit an explicit `PartialDone` presentation event while keeping the returned `AgentSessionResult` failed. Browser SSE maps that event to `run_finished { success:false, partial:true }` and keeps the exact already-visible bytes without an error card. Public OpenAI ignores it as a success/content event and ends from the failed run result (`finish_reason=error` or sanitized non-stream failure). Durable assistant text preserves the prefix's trailing newline and attaches `run_failed=true` / `terminal_stream_incomplete=true` metadata. Keep the raw failure in logs/audit only; other public errors use the shared sanitizer.
+- Keep Interactive post-run entity/quote reconstruction observational. It may log coverage but cannot compose, normalize, validate, retry, reject, or replace the Agent's successful answer. Caller-supplied typed scheduled/heartbeat contracts retain their separate strict path.
+
+## Consequences
+
+- Arbitrary ticker/company wording remains an Agent problem rather than a growing parser or exception table.
+- A provider that cannot guarantee `Required` still works through a truthful, observable compatibility path; its content bypass cannot silently become a final tool-round draft.
+- The user sees one normal answer rather than a service-authored completeness refusal. Missing evidence reduces claim scope, not answer permission.
+- Normal terminal first-line streaming is not delayed by recovery buffering. Recovery adds one model request only after an already-committed terminal transport failure.
+- A double terminal-transport failure can leave a timestamp/header-only assistant row, explicitly marked incomplete in durable metadata. This is preferable to contradicting already-visible bytes with an error card, a raw protocol message, or different content after refresh; it is still a failed/partial outcome to API and internal callers and does not authorize a second answer or service-authored refusal.
+- Control and active-business phases are bounded, but the initial open-ended round and normal terminal generation still rely on provider streaming progress. Production acceptance must measure first committed delta separately from completion; a future phase-level idle watchdog may be added only if it preserves the same evidence and one-output boundaries.
+- No durable-data migration is required. The state machine, telemetry, terminal prefix, and recovery are request-local; terminal reasoning simply stops entering new assistant metadata.
+
+## Verification / Adoption
+
+- Focused tests cover isolated tool schemas, control preambles followed by valid decisions, content/empty/error/timeout terminal reasons, Required fallback boundaries, metadata/finish/DONE enforcement, reasoning removal, empty-tools payload normalization, exact canonical prefix capture, one buffered recovery, recovery mismatch, suffix-only Session publication, and no business replay.
+- The finance CI contract statically rejects restoration of mixed control/business publication behavior, hidden stream completion, cross-turn terminal reasoning, or prefix recovery that can rerun tools or duplicate output.
+- Adoption requires full repository gates, a clean exact-commit build, zero-active-chat supervisor restart, health/auth/process checks, and fresh production CRWV/NVIDIA plus non-finance replays. Finance acceptance must verify evidence coverage and claim labels as well as one-run/one-answer/no-reset/no-fixed-refusal behavior and first-visible latency.
+
+## Risks
+
+- Provider implementations can encode capability errors differently; the fallback classifier is deliberately narrow, so a new explicit rejection shape may first degrade to terminal rather than silently widening the retry rule.
+- A terminal recovery is model-generated again, so exact-prefix and nonempty-tail validation are necessary but not sufficient proof of claim quality; it remains constrained to the same successful tool evidence and normal finance prompt.
+- Adding a crude total timeout to the initial or terminal phase could cut off valid long reasoning and recreate partial/error output. Any future watchdog should be based on phase progress/idle evidence and must be regression-tested against the committed-prefix boundary.

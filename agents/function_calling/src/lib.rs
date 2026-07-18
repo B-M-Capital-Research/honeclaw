@@ -8,6 +8,7 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use hone_core::agent::{Agent, AgentContext, AgentResponse, ToolCallMade};
 use hone_core::{LlmAuditRecord, LlmAuditSink, ToolExecutionObserver};
+use hone_llm::provider::ChatStreamFinishReason;
 use hone_llm::{
     ChatResponse, ChatStreamEvent, FunctionCall, LlmProvider, Message, ToolCall, ToolChoiceMode,
 };
@@ -15,12 +16,33 @@ use hone_tools::ToolRegistry;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
+use std::time::Duration;
 
 const REASONING_CONTENT_METADATA_KEY: &str = "reasoning_content";
+#[cfg(not(test))]
+const RESEARCH_CONTROL_TIMEOUT: Duration = Duration::from_secs(8);
+#[cfg(test)]
+const RESEARCH_CONTROL_TIMEOUT: Duration = Duration::from_millis(25);
+#[cfg(not(test))]
+const ACTIVE_BUSINESS_TIMEOUT: Duration = Duration::from_secs(20);
+#[cfg(test)]
+const ACTIVE_BUSINESS_TIMEOUT: Duration = Duration::from_millis(25);
+const CONTINUE_RESEARCH_TOOL_NAME: &str = "continue_research";
 const FINISH_RESEARCH_TOOL_NAME: &str = "finish_research";
-const FINISH_RESEARCH_SYSTEM_INSTRUCTION: &str = "【内部终态流控制】当前轮已实际进入金融数据工具链。如果当前请求所需的合理工具尝试已经完成（包括已明确确认某项数据暂不可得），请不要在仍可调用工具的轮次直接展开长篇最终回答；必须单独调用 `finish_research`，由同一 Agent 和同一上下文进入无工具终稿阶段。不得把它与任何其它工具一起调用。缺失证据应在终稿中如实披露，不构成拒答。它只是流式终态信号，不是审查、改写或阻止正常回答的授权。";
-const TERMINAL_SYNTHESIS_PROMPT: &str = "【终局回答阶段】\n\
-你已经明确表示本轮合理的研究与工具尝试已经完成。当前阶段不再提供任何工具；请只基于同一轮对话中已有的用户请求和工具结果，直接生成一次完整、可见的最终回答。逐项复核所有公司关系、新闻因果、日期、行情、财务与估值数字：工具结果没有明确支持的事实必须标为未核验，不得用模型记忆补齐；年度数据不得写成 TTM，未取得净债务或企业价值时不得把市值/EBITDA 写成 EV/EBITDA；报价时间优先原样采用工具返回的 Hone 规范化北京时间字段，普通 quote 不得自行推断盘前/盘后时段。某项证据不可得时，披露缺项并继续完成能够被当前证据支持的分析，不得因此拒绝整个问题。不要提及 finish_research、内部协议、工具循环或这条提示。";
+const ACTIVE_RESEARCH_SYSTEM_INSTRUCTION: &str = "【内部研究工具轮】当前已进入金融数据工具链。本轮只暴露业务工具：请调用当前最需要的一个或多个工具补齐证据，不要在本轮输出最终答案。工具结果返回后，系统会另行进行继续/完成决策。";
+const CONTROL_DECISION_SYSTEM_INSTRUCTION: &str = "【内部研究状态决策】你只需判断当前同一轮上下文中的证据是否足以回答用户。如果仍需要可合理获得的业务数据，只调用 `continue_research`；如果合理的研究尝试已完成，或必要证据已明确不可得且可在答案中如实披露，只调用 `finish_research`。不要输出用户可见文本，不要调用任何业务工具。这只是同一 Agent 内部的状态转移，不是审查、改写或拒答授权。";
+const FINISH_RESEARCH_SYSTEM_INSTRUCTION: &str = "【显式完成后的终稿阶段】Agent 已显式确认本轮合理的研究与工具尝试完成，现由同一 Agent 和同一上下文进入无工具终稿阶段。只能使用用户请求与此前已成功返回的业务工具结果；`reasoning_content`、隐藏思考、未采用草稿和控制文本都不是事实证据。缺失证据应如实披露但不构成拒答。";
+const DEGRADED_TERMINAL_SYSTEM_INSTRUCTION: &str = "【降级终稿阶段】最近一次研究步骤没有产出可用的新事实证据，不得假设合理研究已经完成。现由同一 Agent 仅基于用户请求和此前已成功返回的业务工具结果正常作答；必须披露未覆盖部分，但不得因缺项拒答。`reasoning_content`、隐藏思考、未采用草稿和控制文本都不是事实证据。不得向用户描述本次内部降级原因。";
+const TERMINAL_SYNTHESIS_PROMPT: &str = concat!(
+    "当前阶段不再提供任何工具；请只基于同一轮对话中已有的用户请求和此前已成功返回的业务工具结果，直接生成一次完整、可见的最终回答。",
+    "`reasoning_content`、隐藏思考、未采用草稿、控制轮文本以及模型记忆都不是事实证据，不得从中提取或补齐关系、日期、行情、财务或估值事实。",
+    "第一个可见行必须严格使用“数据时间：北京时间 YYYY-MM-DD HH:MM；行情口径：…”，且时间与口径只能来自已有工具上下文；没有行情证据时仍使用“行情口径”字段名并说明数据范围，不得伪造报价时间或盘前/盘后时段。",
+    "逐项复核所有公司关系、新闻因果、日期、行情、财务与估值数字：实体 search/profile 只证明标的身份，不证明公司关系；关系、事件与因果结论必须有当前 web/news/公告或工具原文明确支持，搜索摘要只能按其明确表述的有限范围使用，其他事实必须标为未核验。",
+    "年度数据不得写成 TTM；单季数据必须标明季度与报告期，年化时必须显示是“单季×4”还是“最近四季求和”及算术、分子分母口径，并披露季节性限制。",
+    "未取得净债务或企业价值时不得使用 EV 或 EV/EBITDA 标签，也不得把市值/EBITDA 写成 EV/EBITDA。quote 返回的 PE 未明确标注 forward 时不得称为 Forward PE；已核验期间 EBITDA 为正时不得声称公司需到未来才转正。",
+    "没有直接证据与完整输入时，不得给出目标价、概率、仓位比例、止损位或精确支撑位；第三方分析师目标价必须标注为第三方聚合口径与对应时间，不得直接作为交易锚点。",
+    "某项证据不可得时，披露缺项并继续完成能够被当前证据支持的分析，不得因此拒绝整个问题。不要提及 continue_research、finish_research、内部协议、工具循环、终态原因或这条提示。"
+);
 
 #[async_trait]
 pub trait FunctionCallingStreamObserver: Send + Sync {
@@ -34,6 +56,14 @@ pub trait FunctionCallingStreamObserver: Send + Sync {
         self.on_content_delta(content).await;
     }
 
+    /// Returns an exact user-visible prefix that has already crossed an
+    /// irreversible channel boundary. Most observers buffer/reset all output
+    /// and therefore return `None`; canonical terminal observers use this to
+    /// permit a terminal-only transport recovery without rerunning tools.
+    fn committed_visible_prefix(&self) -> Option<String> {
+        None
+    }
+
     async fn on_content_reset(&self);
 }
 
@@ -42,6 +72,112 @@ struct PendingToolCall {
     id: String,
     name: String,
     arguments: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct StreamToolChoiceTelemetry {
+    requested: ToolChoiceMode,
+    effective: Option<ToolChoiceMode>,
+    fallback: Option<bool>,
+}
+
+impl StreamToolChoiceTelemetry {
+    fn new(requested: ToolChoiceMode) -> Self {
+        Self {
+            requested,
+            effective: None,
+            fallback: None,
+        }
+    }
+
+    fn observe(
+        &mut self,
+        requested: ToolChoiceMode,
+        effective: ToolChoiceMode,
+        fallback: bool,
+    ) -> hone_core::HoneResult<()> {
+        if self.effective.is_some() {
+            return Err(hone_core::HoneError::Llm(
+                "stream returned duplicate tool choice metadata".to_string(),
+            ));
+        }
+        if requested != self.requested {
+            return Err(hone_core::HoneError::Llm(format!(
+                "stream tool choice metadata mismatch: requested {}, expected {}",
+                tool_choice_mode_name(requested),
+                tool_choice_mode_name(self.requested),
+            )));
+        }
+        self.effective = Some(effective);
+        self.fallback = Some(fallback);
+        Ok(())
+    }
+}
+
+fn tool_choice_mode_name(mode: ToolChoiceMode) -> &'static str {
+    match mode {
+        ToolChoiceMode::Auto => "auto",
+        ToolChoiceMode::Required => "required",
+    }
+}
+
+fn observe_stream_finish(
+    finish: &mut Option<ChatStreamFinishReason>,
+    reason: ChatStreamFinishReason,
+) -> hone_core::HoneResult<()> {
+    if finish.is_some() {
+        return Err(hone_core::HoneError::Llm(
+            "stream returned duplicate finish reason".to_string(),
+        ));
+    }
+    match reason {
+        ChatStreamFinishReason::Stop | ChatStreamFinishReason::ToolCalls => {
+            *finish = Some(reason);
+            Ok(())
+        }
+        ChatStreamFinishReason::Length => Err(hone_core::HoneError::Llm(
+            "stream completion was truncated (finish reason: length)".to_string(),
+        )),
+        ChatStreamFinishReason::ContentFilter => Err(hone_core::HoneError::Llm(
+            "stream completion was blocked (finish reason: content_filter)".to_string(),
+        )),
+        ChatStreamFinishReason::Error => Err(hone_core::HoneError::Llm(
+            "stream completion failed (finish reason: error)".to_string(),
+        )),
+        ChatStreamFinishReason::Other(reason) => Err(hone_core::HoneError::Llm(format!(
+            "stream completion ended with unsupported finish reason: {reason}"
+        ))),
+    }
+}
+
+fn require_complete_stream(
+    telemetry: &StreamToolChoiceTelemetry,
+    finish: Option<ChatStreamFinishReason>,
+    done: bool,
+    expected_finish: ChatStreamFinishReason,
+    operation: &str,
+) -> hone_core::HoneResult<()> {
+    if telemetry.effective.is_none() {
+        return Err(hone_core::HoneError::Llm(format!(
+            "{operation} stream ended without tool choice metadata"
+        )));
+    }
+    if !done {
+        return Err(hone_core::HoneError::Llm(format!(
+            "{operation} stream ended before Done"
+        )));
+    }
+    let Some(actual_finish) = finish else {
+        return Err(hone_core::HoneError::Llm(format!(
+            "{operation} stream reached Done without a finish reason"
+        )));
+    };
+    if actual_finish != expected_finish {
+        return Err(hone_core::HoneError::Llm(format!(
+            "{operation} stream finish mismatch: expected {expected_finish:?}, got {actual_finish:?}"
+        )));
+    }
+    Ok(())
 }
 
 /// Function Calling Agent
@@ -109,10 +245,18 @@ impl FunctionCallingAgent {
         self
     }
 
-    /// Enable the internal `finish_research` control tool. When the model emits
-    /// that tool as the sole call in a round, this Agent performs one final
-    /// tool-free streamed completion using the same in-memory context. Direct
-    /// answers remain valid and do not trigger an additional completion.
+    /// Enable the internal research control protocol. Once the Agent has
+    /// actually attempted DataFetch in an eligible turn, it alternates an
+    /// ephemeral required continue/finish decision with business-tool-only
+    /// rounds. DataFetch is the structural finance-evidence boundary already
+    /// required by the investment prompt; using it avoids a question-phrase
+    /// classifier and does not force unrelated Web/file/skill tool turns into
+    /// the canonical investment answer format. Finish (including a provider
+    /// content-only bypass) performs one final tool-free streamed completion
+    /// using the same in-memory context.
+    /// Ephemeral control decisions are excluded from `AgentResponse::iterations`;
+    /// that counter continues to represent business/final generation rounds.
+    /// Direct answers before finance research remain exact one-shot answers.
     pub fn with_finish_research_terminal_synthesis(mut self, enabled: bool) -> Self {
         self.finish_research_terminal_synthesis = enabled;
         self
@@ -124,22 +268,45 @@ impl FunctionCallingAgent {
         }
     }
 
+    async fn reset_emitted_content(&self, emitted: bool) {
+        if emitted && let Some(observer) = &self.stream_observer {
+            // A committed canonical prefix is irreversible. Resetting after it
+            // would make a successful buffered recovery impossible to append
+            // byte-for-byte and can cause visible flicker in non-deferred
+            // adapters.
+            if observer.committed_visible_prefix().is_none() {
+                observer.on_content_reset().await;
+            }
+        }
+    }
+
     /// 构建完整消息列表（system prompt + context messages）
     fn build_messages(
         &self,
         context: &AgentContext,
-        finish_research_available: bool,
+        additional_system_instruction: Option<&str>,
     ) -> Vec<Message> {
-        let mut messages = Vec::with_capacity(context.messages.len() + 1);
+        self.build_messages_from_index(context, additional_system_instruction, 0)
+    }
 
-        if !self.system_prompt.is_empty() {
-            let system_prompt = if finish_research_available {
-                format!(
-                    "{}\n\n{}",
-                    self.system_prompt, FINISH_RESEARCH_SYSTEM_INSTRUCTION
-                )
-            } else {
-                self.system_prompt.clone()
+    fn build_messages_from_index(
+        &self,
+        context: &AgentContext,
+        additional_system_instruction: Option<&str>,
+        message_start: usize,
+    ) -> Vec<Message> {
+        let message_start = message_start.min(context.messages.len());
+        let mut messages =
+            Vec::with_capacity(context.messages.len().saturating_sub(message_start) + 1);
+
+        if !self.system_prompt.is_empty() || additional_system_instruction.is_some() {
+            let system_prompt = match (self.system_prompt.is_empty(), additional_system_instruction)
+            {
+                (false, Some(instruction)) => {
+                    format!("{}\n\n{}", self.system_prompt, instruction)
+                }
+                (true, Some(instruction)) => instruction.to_string(),
+                (_, None) => self.system_prompt.clone(),
             };
             messages.push(Message {
                 role: "system".to_string(),
@@ -151,7 +318,7 @@ impl FunctionCallingAgent {
             });
         }
 
-        for msg in &context.messages {
+        for msg in &context.messages[message_start..] {
             messages.push(Message {
                 role: msg.role.clone(),
                 content: msg.content.clone(),
@@ -220,6 +387,8 @@ impl FunctionCallingAgent {
         messages: &[Message],
         tools: &[Value],
         tool_choice_mode: ToolChoiceMode,
+        emit_speculative_content: bool,
+        telemetry: &mut StreamToolChoiceTelemetry,
     ) -> hone_core::HoneResult<ChatResponse> {
         let mut stream = self
             .llm
@@ -230,16 +399,45 @@ impl FunctionCallingAgent {
         let mut usage = None;
         let mut formatter = hone_channels_compat::HiddenStreamFormatter::default();
         let mut emitted_visible_content = false;
+        let mut finish = None;
+        let mut done = false;
 
         while let Some(event) = stream.next().await {
-            match event? {
+            let event = match event {
+                Ok(event) => event,
+                Err(error) => {
+                    self.reset_emitted_content(emitted_visible_content).await;
+                    return Err(error);
+                }
+            };
+            if !matches!(event, ChatStreamEvent::ToolChoiceMetadata { .. })
+                && telemetry.effective.is_none()
+            {
+                return Err(hone_core::HoneError::Llm(
+                    "chat_with_tools stream emitted payload before tool choice metadata"
+                        .to_string(),
+                ));
+            }
+            match event {
+                ChatStreamEvent::ToolChoiceMetadata {
+                    requested,
+                    effective,
+                    fallback,
+                } => {
+                    if let Err(error) = telemetry.observe(requested, effective, fallback) {
+                        self.reset_emitted_content(emitted_visible_content).await;
+                        return Err(error);
+                    }
+                }
                 ChatStreamEvent::ContentDelta(delta) => {
                     content.push_str(&delta);
-                    let visible = formatter.push(&delta);
-                    if !visible.is_empty() && tool_calls.is_empty() {
-                        if let Some(observer) = &self.stream_observer {
-                            observer.on_content_delta(&visible).await;
-                            emitted_visible_content = true;
+                    if emit_speculative_content {
+                        let visible = formatter.push(&delta);
+                        if !visible.is_empty() && tool_calls.is_empty() {
+                            if let Some(observer) = &self.stream_observer {
+                                observer.on_content_delta(&visible).await;
+                                emitted_visible_content = true;
+                            }
                         }
                     }
                 }
@@ -250,7 +448,8 @@ impl FunctionCallingAgent {
                     name,
                     arguments,
                 } => {
-                    if tool_calls.is_empty() && emitted_visible_content {
+                    if emit_speculative_content && tool_calls.is_empty() && emitted_visible_content
+                    {
                         if let Some(observer) = &self.stream_observer {
                             observer.on_content_reset().await;
                         }
@@ -266,10 +465,36 @@ impl FunctionCallingAgent {
                     pending.arguments.push_str(&arguments);
                 }
                 ChatStreamEvent::Usage(value) => usage = Some(value),
+                ChatStreamEvent::Finish(reason) => {
+                    if let Err(error) = observe_stream_finish(&mut finish, reason) {
+                        self.reset_emitted_content(emitted_visible_content).await;
+                        return Err(error);
+                    }
+                }
+                ChatStreamEvent::Done => {
+                    done = true;
+                    break;
+                }
             }
         }
 
-        if tool_calls.is_empty() {
+        let has_tool_calls = !tool_calls.is_empty();
+        if let Err(error) = require_complete_stream(
+            telemetry,
+            finish,
+            done,
+            if has_tool_calls {
+                ChatStreamFinishReason::ToolCalls
+            } else {
+                ChatStreamFinishReason::Stop
+            },
+            "chat_with_tools",
+        ) {
+            self.reset_emitted_content(emitted_visible_content).await;
+            return Err(error);
+        }
+
+        if emit_speculative_content && !has_tool_calls {
             let visible = formatter.finish();
             if !visible.is_empty()
                 && let Some(observer) = &self.stream_observer
@@ -300,57 +525,685 @@ impl FunctionCallingAgent {
         })
     }
 
+    async fn chat_research_control_decision(
+        &self,
+        messages: &[Message],
+        tools: &[Value],
+        telemetry: &mut StreamToolChoiceTelemetry,
+    ) -> hone_core::HoneResult<ResearchControlStreamOutcome> {
+        let mut stream =
+            self.llm
+                .chat_with_tools_stream(messages, tools, None, ToolChoiceMode::Required);
+        let mut tool_calls = BTreeMap::<u32, PendingToolCall>::new();
+        let mut formatter = hone_channels_compat::HiddenStreamFormatter::default();
+        let mut visible_content_seen = false;
+        let mut finish = None;
+        let mut done = false;
+
+        while let Some(event) = stream.next().await {
+            let event = event?;
+            if !matches!(event, ChatStreamEvent::ToolChoiceMetadata { .. })
+                && telemetry.effective.is_none()
+            {
+                return Err(hone_core::HoneError::Llm(
+                    "research control stream emitted payload before tool choice metadata"
+                        .to_string(),
+                ));
+            }
+            match event {
+                ChatStreamEvent::ToolChoiceMetadata {
+                    requested,
+                    effective,
+                    fallback,
+                } => telemetry.observe(requested, effective, fallback)?,
+                ChatStreamEvent::ContentDelta(delta) => {
+                    // Some providers emit a prose preamble even when Required
+                    // is honored later in the same completion. Keep it hidden
+                    // and continue through Finish + Done; the outer 8-second
+                    // timeout remains the bound for a genuinely hung bypass.
+                    visible_content_seen |= !formatter.push(&delta).trim().is_empty();
+                }
+                ChatStreamEvent::ReasoningDelta(_) | ChatStreamEvent::Usage(_) => {}
+                ChatStreamEvent::ToolCallDelta {
+                    index,
+                    id,
+                    name,
+                    arguments,
+                } => {
+                    let pending = tool_calls.entry(index).or_default();
+                    if let Some(id) = id {
+                        pending.id.push_str(&id);
+                    }
+                    if let Some(name) = name {
+                        pending.name.push_str(&name);
+                    }
+                    pending.arguments.push_str(&arguments);
+                }
+                ChatStreamEvent::Finish(reason) => observe_stream_finish(&mut finish, reason)?,
+                ChatStreamEvent::Done => {
+                    done = true;
+                    break;
+                }
+            }
+        }
+        visible_content_seen |= !formatter.finish().trim().is_empty();
+
+        if tool_calls.is_empty() {
+            require_complete_stream(
+                telemetry,
+                finish,
+                done,
+                ChatStreamFinishReason::Stop,
+                "research control",
+            )?;
+            if visible_content_seen {
+                return Ok(ResearchControlStreamOutcome::ContentBypass);
+            }
+            return Err(hone_core::HoneError::Llm(
+                "research control returned no decision".to_string(),
+            ));
+        }
+
+        require_complete_stream(
+            telemetry,
+            finish,
+            done,
+            ChatStreamFinishReason::ToolCalls,
+            "research control",
+        )?;
+
+        let response = ChatResponse {
+            content: String::new(),
+            reasoning_content: None,
+            tool_calls: Some(
+                tool_calls
+                    .into_values()
+                    .map(|pending| ToolCall {
+                        id: pending.id,
+                        call_type: "function".to_string(),
+                        function: FunctionCall {
+                            name: pending.name,
+                            arguments: pending.arguments,
+                        },
+                    })
+                    .collect(),
+            ),
+            usage: None,
+        };
+        Ok(ResearchControlStreamOutcome::Decision(
+            normalize_research_control_decision(&response)?,
+        ))
+    }
+
+    async fn chat_active_business_tools(
+        &self,
+        messages: &[Message],
+        tools: &[Value],
+        telemetry: &mut StreamToolChoiceTelemetry,
+    ) -> hone_core::HoneResult<ActiveBusinessStreamOutcome> {
+        let mut stream =
+            self.llm
+                .chat_with_tools_stream(messages, tools, None, ToolChoiceMode::Required);
+        let mut reasoning_content = String::new();
+        let mut tool_calls = BTreeMap::<u32, PendingToolCall>::new();
+        let mut usage = None;
+        let mut formatter = hone_channels_compat::HiddenStreamFormatter::default();
+        let mut visible_content_seen = false;
+        let mut finish = None;
+        let mut done = false;
+
+        while let Some(event) = stream.next().await {
+            let event = event?;
+            if !matches!(event, ChatStreamEvent::ToolChoiceMetadata { .. })
+                && telemetry.effective.is_none()
+            {
+                return Err(hone_core::HoneError::Llm(
+                    "active business stream emitted payload before tool choice metadata"
+                        .to_string(),
+                ));
+            }
+            match event {
+                ChatStreamEvent::ToolChoiceMetadata {
+                    requested,
+                    effective,
+                    fallback,
+                } => telemetry.observe(requested, effective, fallback)?,
+                // Some supported providers can still emit a short preamble
+                // before a timely tool call, including after Required falls
+                // back from a provider capability error. Keep it silent and
+                // out of context, but continue polling for the tool call. The
+                // outer ACTIVE_BUSINESS_TIMEOUT bounds a long/hung bypass.
+                ChatStreamEvent::ContentDelta(delta) => {
+                    visible_content_seen |= !formatter.push(&delta).trim().is_empty();
+                }
+                ChatStreamEvent::ReasoningDelta(delta) => reasoning_content.push_str(&delta),
+                ChatStreamEvent::ToolCallDelta {
+                    index,
+                    id,
+                    name,
+                    arguments,
+                } => {
+                    let pending = tool_calls.entry(index).or_default();
+                    if let Some(id) = id {
+                        pending.id.push_str(&id);
+                    }
+                    if let Some(name) = name {
+                        pending.name.push_str(&name);
+                    }
+                    pending.arguments.push_str(&arguments);
+                }
+                ChatStreamEvent::Usage(value) => usage = Some(value),
+                ChatStreamEvent::Finish(reason) => observe_stream_finish(&mut finish, reason)?,
+                ChatStreamEvent::Done => {
+                    done = true;
+                    break;
+                }
+            }
+        }
+        visible_content_seen |= !formatter.finish().trim().is_empty();
+
+        if tool_calls.is_empty() {
+            require_complete_stream(
+                telemetry,
+                finish,
+                done,
+                ChatStreamFinishReason::Stop,
+                "active business",
+            )?;
+            return Ok(if visible_content_seen {
+                ActiveBusinessStreamOutcome::ContentBypass
+            } else {
+                ActiveBusinessStreamOutcome::Empty
+            });
+        }
+
+        require_complete_stream(
+            telemetry,
+            finish,
+            done,
+            ChatStreamFinishReason::ToolCalls,
+            "active business",
+        )?;
+
+        let tool_calls = tool_calls
+            .into_values()
+            .map(|pending| ToolCall {
+                id: pending.id,
+                call_type: "function".to_string(),
+                function: FunctionCall {
+                    name: pending.name,
+                    arguments: pending.arguments,
+                },
+            })
+            .collect::<Vec<_>>();
+        if tool_calls.iter().all(is_research_control_call) {
+            return Ok(ActiveBusinessStreamOutcome::Empty);
+        }
+
+        Ok(ActiveBusinessStreamOutcome::Tools(ChatResponse {
+            content: String::new(),
+            reasoning_content: (!reasoning_content.is_empty()).then_some(reasoning_content),
+            tool_calls: Some(tool_calls),
+            usage,
+        }))
+    }
+
+    fn trace_research_control_transition(
+        &self,
+        context: &AgentContext,
+        outcome: &str,
+        decision: &str,
+        latency_ms: u128,
+        next_state: &str,
+        iteration: u32,
+        telemetry: &StreamToolChoiceTelemetry,
+    ) {
+        let actor = context.actor_identity();
+        let actor_channel = actor
+            .as_ref()
+            .map(|identity| identity.channel.as_str())
+            .unwrap_or("unknown");
+        let actor_user_id = actor
+            .as_ref()
+            .map(|identity| identity.user_id.as_str())
+            .unwrap_or("unknown");
+        let actor_scope = actor
+            .as_ref()
+            .and_then(|identity| identity.channel_scope.as_deref())
+            .unwrap_or("direct");
+        let effective_tool_choice = telemetry
+            .effective
+            .map(tool_choice_mode_name)
+            .unwrap_or("unknown");
+        let tool_choice_fallback = telemetry
+            .fallback
+            .map(|fallback| if fallback { "true" } else { "false" })
+            .unwrap_or("unknown");
+        tracing::info!(
+            target: "hone_agent::research_control",
+            session_id = %context.session_id,
+            actor_channel,
+            actor_user_id,
+            actor_scope,
+            outcome,
+            decision,
+            latency_ms = %latency_ms,
+            next_state,
+            requested_tool_choice = tool_choice_mode_name(telemetry.requested),
+            effective_tool_choice,
+            tool_choice_fallback,
+            iteration,
+            "function_calling research control transition"
+        );
+    }
+
     async fn chat_terminal_streaming(
         &self,
         messages: &[Message],
+        telemetry: &mut StreamToolChoiceTelemetry,
+        emit_to_observer: bool,
     ) -> hone_core::HoneResult<ChatResponse> {
         let empty_tools = Vec::<Value>::new();
         let mut stream =
             self.llm
                 .chat_with_tools_stream(messages, &empty_tools, None, ToolChoiceMode::Auto);
-        let mut content = String::new();
+        let mut visible_content = String::new();
         let mut reasoning_content = String::new();
         let mut usage = None;
         let mut formatter = hone_channels_compat::HiddenStreamFormatter::default();
         let mut unexpected_tool_call = false;
+        let mut emitted_visible_content = false;
+        let mut finish = None;
+        let mut done = false;
 
         while let Some(event) = stream.next().await {
-            match event? {
+            let event = match event {
+                Ok(event) => event,
+                Err(error) => {
+                    self.reset_emitted_content(emitted_visible_content).await;
+                    return Err(error);
+                }
+            };
+            if !matches!(event, ChatStreamEvent::ToolChoiceMetadata { .. })
+                && telemetry.effective.is_none()
+            {
+                return Err(hone_core::HoneError::Llm(
+                    "terminal stream emitted payload before tool choice metadata".to_string(),
+                ));
+            }
+            match event {
+                ChatStreamEvent::ToolChoiceMetadata {
+                    requested,
+                    effective,
+                    fallback,
+                } => {
+                    if let Err(error) = telemetry.observe(requested, effective, fallback) {
+                        self.reset_emitted_content(emitted_visible_content).await;
+                        return Err(error);
+                    }
+                }
                 ChatStreamEvent::ContentDelta(delta) => {
-                    content.push_str(&delta);
                     let visible = formatter.push(&delta);
-                    if !visible.is_empty()
+                    visible_content.push_str(&visible);
+                    if emit_to_observer
+                        && !visible.is_empty()
                         && let Some(observer) = &self.stream_observer
                     {
                         observer.on_final_content_delta(&visible).await;
+                        emitted_visible_content = true;
                     }
                 }
                 ChatStreamEvent::ReasoningDelta(delta) => reasoning_content.push_str(&delta),
                 ChatStreamEvent::ToolCallDelta { .. } => unexpected_tool_call = true,
                 ChatStreamEvent::Usage(value) => usage = Some(value),
+                ChatStreamEvent::Finish(reason) => {
+                    if let Err(error) = observe_stream_finish(&mut finish, reason) {
+                        self.reset_emitted_content(emitted_visible_content).await;
+                        return Err(error);
+                    }
+                }
+                ChatStreamEvent::Done => {
+                    done = true;
+                    break;
+                }
             }
         }
 
         if unexpected_tool_call {
+            self.reset_emitted_content(emitted_visible_content).await;
             return Err(hone_core::HoneError::Llm(
                 "tool-free terminal synthesis returned a tool call".to_string(),
             ));
         }
 
+        if let Err(error) = require_complete_stream(
+            telemetry,
+            finish,
+            done,
+            ChatStreamFinishReason::Stop,
+            "terminal synthesis",
+        ) {
+            self.reset_emitted_content(emitted_visible_content).await;
+            return Err(error);
+        }
+
         let visible = formatter.finish();
-        if !visible.is_empty()
+        visible_content.push_str(&visible);
+        if emit_to_observer
+            && !visible.is_empty()
             && let Some(observer) = &self.stream_observer
         {
             observer.on_final_content_delta(&visible).await;
         }
 
+        if emit_to_observer
+            && let Some(committed_prefix) = self
+                .stream_observer
+                .as_ref()
+                .and_then(|observer| observer.committed_visible_prefix())
+        {
+            // A header-only terminal is not a complete answer. Treat this as
+            // an interrupted terminal transport so run_terminal_synthesis can
+            // use its one buffered, empty-tools recovery rather than publish a
+            // bare timestamp line as success.
+            validate_terminal_recovery_content(&visible_content, &committed_prefix)?;
+        }
+
         Ok(ChatResponse {
-            content,
+            // Some compatible providers encode hidden reasoning inside the
+            // content stream as <think> blocks. Return the same formatter-
+            // reduced bytes that the observer sees so prefix validation,
+            // persistence, and terminal recovery operate on one canonical
+            // user-visible representation.
+            content: visible_content,
             reasoning_content: (!reasoning_content.is_empty()).then_some(reasoning_content),
             tool_calls: None,
             usage,
         })
     }
+
+    async fn run_terminal_synthesis(
+        &self,
+        context: &mut AgentContext,
+        tool_calls_made: Vec<ToolCallMade>,
+        completed_iterations: u32,
+        reason: TerminalReason,
+        turn_message_start: usize,
+    ) -> AgentResponse {
+        let iterations = completed_iterations.saturating_add(1);
+        let terminal_system_instruction = if reason == TerminalReason::ExplicitFinish {
+            FINISH_RESEARCH_SYSTEM_INSTRUCTION
+        } else {
+            DEGRADED_TERMINAL_SYSTEM_INSTRUCTION
+        };
+        // Initial/control/business rounds retain bounded conversation history
+        // so the Agent can understand follow-ups. Final factual synthesis must
+        // not let an older ticker, quote, or assistant draft masquerade as
+        // current-turn evidence, so its transcript begins at this run's user
+        // message and contains only this turn's tool calls/results.
+        let mut terminal_messages = self.build_messages_from_index(
+            context,
+            Some(terminal_system_instruction),
+            turn_message_start,
+        );
+        // Provider reasoning and assistant prose emitted alongside tool calls
+        // are useful at most as an intermediate draft; neither is fact
+        // evidence. Scrub both at the terminal boundary so synthesis can rely
+        // only on the user's request and actual tool results. This also covers
+        // an early Web/search round that precedes the DataFetch activation
+        // boundary for a finance turn.
+        for message in &mut terminal_messages {
+            message.reasoning_content = None;
+            if message.role == "assistant"
+                && message
+                    .tool_calls
+                    .as_ref()
+                    .is_some_and(|tool_calls| !tool_calls.is_empty())
+            {
+                message.content = Some(String::new());
+            }
+        }
+        let terminal_prompt = terminal_synthesis_prompt(reason);
+        terminal_messages.push(Message {
+            role: "user".to_string(),
+            content: Some(terminal_prompt),
+            reasoning_content: None,
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+        });
+        let terminal_request_payload = serde_json::json!({
+            "messages": terminal_messages.clone(),
+            "tools": Vec::<Value>::new(),
+        });
+        let terminal_started = std::time::Instant::now();
+        let mut terminal_tool_choice = StreamToolChoiceTelemetry::new(ToolChoiceMode::Auto);
+        let terminal_result = match self
+            .chat_terminal_streaming(&terminal_messages, &mut terminal_tool_choice, true)
+            .await
+        {
+            Ok(response) => {
+                self.record_audit(
+                    context,
+                    "chat_terminal_without_tools",
+                    terminal_request_payload,
+                    Some(serde_json::json!({
+                        "content": response.content.clone(),
+                        "tool_calls": response.tool_calls.clone(),
+                    })),
+                    None,
+                    terminal_started.elapsed().as_millis(),
+                    serde_json::json!({
+                        "iteration": iterations,
+                        "has_tools": false,
+                        "finish_research": true,
+                        "terminal_reason": reason.as_str(),
+                        "degraded_terminal": reason != TerminalReason::ExplicitFinish,
+                        "terminal_recovery_eligible": false,
+                        "requested_tool_choice": tool_choice_mode_name(terminal_tool_choice.requested),
+                        "effective_tool_choice": terminal_tool_choice.effective.map(tool_choice_mode_name),
+                        "tool_choice_fallback": terminal_tool_choice.fallback,
+                    }),
+                    response.usage.clone(),
+                );
+                response
+            }
+            Err(error) => {
+                let committed_prefix = self
+                    .stream_observer
+                    .as_ref()
+                    .and_then(|observer| observer.committed_visible_prefix());
+                self.record_audit(
+                    context,
+                    "chat_terminal_without_tools",
+                    terminal_request_payload.clone(),
+                    None,
+                    Some(error.to_string()),
+                    terminal_started.elapsed().as_millis(),
+                    serde_json::json!({
+                        "iteration": iterations,
+                        "has_tools": false,
+                        "finish_research": true,
+                        "terminal_reason": reason.as_str(),
+                        "degraded_terminal": reason != TerminalReason::ExplicitFinish,
+                        "terminal_recovery_eligible": committed_prefix.is_some(),
+                        "requested_tool_choice": tool_choice_mode_name(terminal_tool_choice.requested),
+                        "effective_tool_choice": terminal_tool_choice.effective.map(tool_choice_mode_name),
+                        "tool_choice_fallback": terminal_tool_choice.fallback,
+                    }),
+                    None,
+                );
+                let Some(committed_prefix) = committed_prefix else {
+                    return AgentResponse {
+                        content: String::new(),
+                        tool_calls_made,
+                        iterations,
+                        success: false,
+                        error: Some(error.to_string()),
+                    };
+                };
+
+                // The canonical header has already reached the user, so an
+                // outer Agent/runner retry would either duplicate it or rerun
+                // business tools. Retry this terminal transport exactly once,
+                // buffered, against the same evidence and with tools disabled.
+                let recovery_messages =
+                    terminal_recovery_messages(&terminal_messages, &committed_prefix);
+                let recovery_request_payload = serde_json::json!({
+                    "messages": recovery_messages.clone(),
+                    "tools": Vec::<Value>::new(),
+                });
+                let recovery_started = std::time::Instant::now();
+                let mut recovery_tool_choice = StreamToolChoiceTelemetry::new(ToolChoiceMode::Auto);
+                let recovery_result = self
+                    .chat_terminal_streaming(&recovery_messages, &mut recovery_tool_choice, false)
+                    .await
+                    .and_then(|response| {
+                        validate_terminal_recovery_content(&response.content, &committed_prefix)?;
+                        Ok(response)
+                    });
+
+                match recovery_result {
+                    Ok(response) => {
+                        self.record_audit(
+                            context,
+                            "chat_terminal_recovery_without_tools",
+                            recovery_request_payload,
+                            Some(serde_json::json!({
+                                "content": response.content.clone(),
+                                "tool_calls": response.tool_calls.clone(),
+                            })),
+                            None,
+                            recovery_started.elapsed().as_millis(),
+                            serde_json::json!({
+                                "iteration": iterations,
+                                "has_tools": false,
+                                "finish_research": true,
+                                "terminal_reason": reason.as_str(),
+                                "degraded_terminal": reason != TerminalReason::ExplicitFinish,
+                                "terminal_recovery": true,
+                                "recovery_attempt": 1,
+                                "committed_prefix_bytes": committed_prefix.len(),
+                                "requested_tool_choice": tool_choice_mode_name(recovery_tool_choice.requested),
+                                "effective_tool_choice": recovery_tool_choice.effective.map(tool_choice_mode_name),
+                                "tool_choice_fallback": recovery_tool_choice.fallback,
+                            }),
+                            response.usage.clone(),
+                        );
+                        response
+                    }
+                    Err(recovery_error) => {
+                        self.record_audit(
+                            context,
+                            "chat_terminal_recovery_without_tools",
+                            recovery_request_payload,
+                            None,
+                            Some(recovery_error.to_string()),
+                            recovery_started.elapsed().as_millis(),
+                            serde_json::json!({
+                                "iteration": iterations,
+                                "has_tools": false,
+                                "finish_research": true,
+                                "terminal_reason": reason.as_str(),
+                                "degraded_terminal": reason != TerminalReason::ExplicitFinish,
+                                "terminal_recovery": true,
+                                "recovery_attempt": 1,
+                                "committed_prefix_bytes": committed_prefix.len(),
+                                "initial_terminal_error": error.to_string(),
+                                "requested_tool_choice": tool_choice_mode_name(recovery_tool_choice.requested),
+                                "effective_tool_choice": recovery_tool_choice.effective.map(tool_choice_mode_name),
+                                "tool_choice_fallback": recovery_tool_choice.fallback,
+                            }),
+                            None,
+                        );
+                        return AgentResponse {
+                            content: String::new(),
+                            tool_calls_made,
+                            iterations,
+                            success: false,
+                            error: Some(format!(
+                                "terminal synthesis recovery failed: {recovery_error}"
+                            )),
+                        };
+                    }
+                }
+            }
+        };
+
+        // Terminal reasoning is neither user-visible output nor fact evidence.
+        // Do not persist it into context, where a later turn could replay it.
+        context.add_assistant_message_with_metadata(&terminal_result.content, None, None);
+        AgentResponse {
+            content: terminal_result.content,
+            tool_calls_made,
+            iterations,
+            success: true,
+            error: None,
+        }
+    }
+}
+
+fn terminal_recovery_messages(messages: &[Message], committed_prefix: &str) -> Vec<Message> {
+    let mut recovery_messages = messages.to_vec();
+    let encoded_prefix = Value::String(committed_prefix.to_string()).to_string();
+    let recovery_constraint = format!(
+        "\n【终稿传输恢复】上一次终稿流在已提交首行后中断。请基于完全相同的事实证据重新生成完整终稿；第一个字节起必须逐字输出以下 JSON 字符串解码后的已提交前缀，前面不得有任何字符：{encoded_prefix}。前缀后必须继续输出非空正文，其余事实边界与格式要求不变。不要提及本次传输恢复。"
+    );
+    if let Some(prompt) = recovery_messages
+        .last_mut()
+        .and_then(|message| message.content.as_mut())
+    {
+        prompt.push_str(&recovery_constraint);
+    } else {
+        recovery_messages.push(Message {
+            role: "user".to_string(),
+            content: Some(recovery_constraint),
+            reasoning_content: None,
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+        });
+    }
+    recovery_messages
+}
+
+fn validate_terminal_recovery_content(
+    content: &str,
+    committed_prefix: &str,
+) -> hone_core::HoneResult<()> {
+    let Some(tail) = content.strip_prefix(committed_prefix) else {
+        return Err(hone_core::HoneError::Llm(
+            "terminal recovery content does not start with the committed visible prefix"
+                .to_string(),
+        ));
+    };
+    if tail.trim().is_empty() {
+        return Err(hone_core::HoneError::Llm(
+            "terminal recovery content contains no body after the committed visible prefix"
+                .to_string(),
+        ));
+    }
+    if tail.trim_start().starts_with(committed_prefix) {
+        return Err(hone_core::HoneError::Llm(
+            "terminal recovery content repeats the committed visible prefix".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn continue_research_tool_schema() -> Value {
+    serde_json::json!({
+        "type": "function",
+        "function": {
+            "name": CONTINUE_RESEARCH_TOOL_NAME,
+            "description": "Internal control signal. Call this by itself when another business-tool round is reasonably needed before answering. This signal never executes as a business tool.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }
+        }
+    })
 }
 
 fn finish_research_tool_schema() -> Value {
@@ -368,12 +1221,139 @@ fn finish_research_tool_schema() -> Value {
     })
 }
 
+fn is_continue_research_call(tool_call: &ToolCall) -> bool {
+    tool_call.function.name == CONTINUE_RESEARCH_TOOL_NAME
+}
+
 fn is_finish_research_call(tool_call: &ToolCall) -> bool {
     tool_call.function.name == FINISH_RESEARCH_TOOL_NAME
 }
 
-fn starts_investment_terminal_protocol(tool_call: &ToolCall) -> bool {
-    tool_call.function.name == "data_fetch"
+fn is_research_control_call(tool_call: &ToolCall) -> bool {
+    is_continue_research_call(tool_call) || is_finish_research_call(tool_call)
+}
+
+fn starts_investment_research_protocol(tool_call: &ToolCall) -> bool {
+    tool_call.function.name.eq_ignore_ascii_case("data_fetch")
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TerminalReason {
+    ExplicitFinish,
+    ControlContentBypass,
+    ControlTimeout,
+    ControlError,
+    ActiveContentBypass,
+    ActiveEmpty,
+    ActiveTimeout,
+    ActiveError,
+    IterationLimit,
+}
+
+impl TerminalReason {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::ExplicitFinish => "explicit_finish",
+            Self::ControlContentBypass => "control_content_bypass",
+            Self::ControlTimeout => "control_timeout",
+            Self::ControlError => "control_error",
+            Self::ActiveContentBypass => "active_content_bypass",
+            Self::ActiveEmpty => "active_empty",
+            Self::ActiveTimeout => "active_timeout",
+            Self::ActiveError => "active_error",
+            Self::IterationLimit => "iteration_limit",
+        }
+    }
+
+    fn prompt_instruction(self) -> &'static str {
+        match self {
+            Self::ExplicitFinish => {
+                "Agent 已通过显式完成信号确认：本轮合理的研究与工具尝试已经完成。"
+            }
+            Self::ControlContentBypass => {
+                "最近一次状态判断只返回了未采用的可见草稿，没有产生可用的新工具证据。"
+            }
+            Self::ControlTimeout => {
+                "最近一次状态判断在时限内没有返回可用结果，没有产生可用的新工具证据。"
+            }
+            Self::ControlError => {
+                "最近一次状态判断发生协议或提供方错误，没有产生可用的新工具证据。"
+            }
+            Self::ActiveContentBypass => {
+                "本次业务工具步骤只返回了未采用的可见草稿，没有产生可用的新工具结果。"
+            }
+            Self::ActiveEmpty => "本次业务工具步骤结束时没有返回业务工具调用或可用的新工具结果。",
+            Self::ActiveTimeout => "本次业务工具步骤在时限内没有返回完整可用的工具结果。",
+            Self::ActiveError => {
+                "本次业务工具步骤发生提供方或流协议错误，没有产生可用的新工具结果。"
+            }
+            Self::IterationLimit => "本轮已达到业务工具迭代上限，边界检查未产生可用的新工具证据。",
+        }
+    }
+}
+
+fn terminal_synthesis_prompt(reason: TerminalReason) -> String {
+    let reason_boundary = if reason == TerminalReason::ExplicitFinish {
+        ""
+    } else {
+        "\n上一内部步骤未产出可用的新事实证据，这不表示合理研究已经完成。只能使用此前已成功返回的业务工具结果；对未覆盖部分明确披露缺项并继续正常回答，不得因此拒答。"
+    };
+    format!(
+        "【终局回答阶段】\n{}{}\n{}",
+        reason.prompt_instruction(),
+        reason_boundary,
+        TERMINAL_SYNTHESIS_PROMPT
+    )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ResearchControlDecision {
+    Continue,
+    Finish,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ResearchControlStreamOutcome {
+    Decision(ResearchControlDecision),
+    ContentBypass,
+}
+
+enum ActiveBusinessStreamOutcome {
+    Tools(ChatResponse),
+    ContentBypass,
+    Empty,
+}
+
+fn normalize_research_control_decision(
+    response: &ChatResponse,
+) -> hone_core::HoneResult<ResearchControlDecision> {
+    let Some(tool_calls) = response
+        .tool_calls
+        .as_ref()
+        .filter(|calls| !calls.is_empty())
+    else {
+        return Err(hone_core::HoneError::Llm(
+            "research control returned no tool decision".to_string(),
+        ));
+    };
+
+    if tool_calls.len() != 1 {
+        return Err(hone_core::HoneError::Llm(format!(
+            "research control returned {} decisions; expected exactly one",
+            tool_calls.len()
+        )));
+    }
+
+    let tool_call = &tool_calls[0];
+    if is_finish_research_call(tool_call) {
+        Ok(ResearchControlDecision::Finish)
+    } else if is_continue_research_call(tool_call) {
+        Ok(ResearchControlDecision::Continue)
+    } else {
+        Err(hone_core::HoneError::Llm(
+            "research control returned an unknown decision".to_string(),
+        ))
+    }
 }
 
 // Keep the agent crate independent from channel presentation code while using
@@ -495,6 +1475,7 @@ impl Agent for FunctionCallingAgent {
     /// 4. 将工具结果反馈给 LLM
     /// 5. 重复 2-4 直到 LLM 返回最终答案
     async fn run(&self, user_input: &str, context: &mut AgentContext) -> AgentResponse {
+        let turn_message_start = context.messages.len();
         context.add_user_message(user_input);
 
         let business_tools: Vec<Value> = self.tools.get_tools_schema();
@@ -510,6 +1491,124 @@ impl Agent for FunctionCallingAgent {
         ));
 
         loop {
+            let finance_protocol_active =
+                self.finish_research_terminal_synthesis && investment_research_started;
+
+            if finance_protocol_active && iterations >= self.max_iterations {
+                // A completed business round already left usable evidence in
+                // context. At the iteration boundary, synthesize it directly;
+                // do not spend another provider call on a control decision.
+                return self
+                    .run_terminal_synthesis(
+                        context,
+                        tool_calls_made,
+                        iterations,
+                        TerminalReason::IterationLimit,
+                        turn_message_start,
+                    )
+                    .await;
+            }
+
+            if finance_protocol_active {
+                // The control completion is deliberately isolated from the
+                // business-tool round. It receives only two internal schemas,
+                // is never persisted or LLM-audited, is traced only as a
+                // content-free structured transition, and cannot reach the
+                // registry, budget, business trace, or user-visible streaming.
+                let control_messages =
+                    self.build_messages(context, Some(CONTROL_DECISION_SYSTEM_INSTRUCTION));
+                let control_tools = vec![
+                    continue_research_tool_schema(),
+                    finish_research_tool_schema(),
+                ];
+                let control_started = std::time::Instant::now();
+                let mut control_tool_choice =
+                    StreamToolChoiceTelemetry::new(ToolChoiceMode::Required);
+                let (control_outcome, control_decision, terminal_reason) =
+                    match tokio::time::timeout(
+                        RESEARCH_CONTROL_TIMEOUT,
+                        self.chat_research_control_decision(
+                            &control_messages,
+                            &control_tools,
+                            &mut control_tool_choice,
+                        ),
+                    )
+                    .await
+                    {
+                        Ok(Ok(ResearchControlStreamOutcome::Decision(
+                            ResearchControlDecision::Continue,
+                        ))) => ("decision", ResearchControlDecision::Continue, None),
+                        Ok(Ok(ResearchControlStreamOutcome::Decision(
+                            ResearchControlDecision::Finish,
+                        ))) => (
+                            "decision",
+                            ResearchControlDecision::Finish,
+                            Some(TerminalReason::ExplicitFinish),
+                        ),
+                        Ok(Ok(ResearchControlStreamOutcome::ContentBypass)) => (
+                            "content_bypass",
+                            ResearchControlDecision::Finish,
+                            Some(TerminalReason::ControlContentBypass),
+                        ),
+                        Ok(Err(error)) => {
+                            // The accumulated business evidence is still usable.
+                            // A failed control hint must not turn into a refusal.
+                            self.dbg(&format!(
+                            "[Agent] research control failed; entering terminal synthesis: {error}"
+                        ));
+                            (
+                                "error",
+                                ResearchControlDecision::Finish,
+                                Some(TerminalReason::ControlError),
+                            )
+                        }
+                        Err(_) => {
+                            self.dbg(
+                                "[Agent] research control timed out; entering terminal synthesis",
+                            );
+                            (
+                                "timeout",
+                                ResearchControlDecision::Finish,
+                                Some(TerminalReason::ControlTimeout),
+                            )
+                        }
+                    };
+                let terminal_next = terminal_reason.is_some();
+                self.trace_research_control_transition(
+                    context,
+                    control_outcome,
+                    match control_decision {
+                        ResearchControlDecision::Continue => "continue",
+                        ResearchControlDecision::Finish
+                            if terminal_reason == Some(TerminalReason::ExplicitFinish) =>
+                        {
+                            "finish"
+                        }
+                        ResearchControlDecision::Finish => "implicit_finish",
+                    },
+                    control_started.elapsed().as_millis(),
+                    if terminal_next {
+                        "terminal_synthesis"
+                    } else {
+                        "business_tools"
+                    },
+                    iterations,
+                    &control_tool_choice,
+                );
+
+                if terminal_next {
+                    return self
+                        .run_terminal_synthesis(
+                            context,
+                            tool_calls_made,
+                            iterations,
+                            terminal_reason.expect("terminal transition reason"),
+                            turn_message_start,
+                        )
+                        .await;
+                }
+            }
+
             if iterations >= self.max_iterations {
                 return AgentResponse {
                     content: String::new(),
@@ -522,51 +1621,202 @@ impl Agent for FunctionCallingAgent {
             iterations += 1;
             self.dbg(&format!("[Agent] iter={iterations}"));
 
-            let finish_research_available =
-                self.finish_research_terminal_synthesis && investment_research_started;
-            let mut round_tools = business_tools.clone();
-            if finish_research_available {
-                round_tools.push(finish_research_tool_schema());
-            }
+            let active_business_round = finance_protocol_active;
+            let round_tools = business_tools.clone();
             let has_tools = !round_tools.is_empty();
-            let tool_choice_mode = if finish_research_available {
+            let tool_choice_mode = if active_business_round {
                 ToolChoiceMode::Required
             } else {
                 ToolChoiceMode::Auto
             };
-            let messages = self.build_messages(context, finish_research_available);
+            let messages = self.build_messages(
+                context,
+                active_business_round.then_some(ACTIVE_RESEARCH_SYSTEM_INSTRUCTION),
+            );
             let request_payload = serde_json::json!({
                 "messages": messages.clone(),
                 "tools": if has_tools { Some(round_tools.clone()) } else { None },
                 "tool_choice_mode": format!("{tool_choice_mode:?}"),
             });
             let call_started = std::time::Instant::now();
+            let mut stream_tool_choice = StreamToolChoiceTelemetry::new(tool_choice_mode);
 
             // 如果有工具，使用 chat_with_tools；否则使用 chat
             let result: ChatResponse = if has_tools {
-                match self
-                    .chat_with_tools_streaming(&messages, &round_tools, tool_choice_mode)
+                if active_business_round {
+                    match tokio::time::timeout(
+                        ACTIVE_BUSINESS_TIMEOUT,
+                        self.chat_active_business_tools(
+                            &messages,
+                            &round_tools,
+                            &mut stream_tool_choice,
+                        ),
+                    )
                     .await
-                {
-                    Ok(r) => r,
-                    Err(e) => {
-                        self.record_audit(
-                            context,
-                            "chat_with_tools",
-                            request_payload,
-                            None,
-                            Some(e.to_string()),
-                            call_started.elapsed().as_millis(),
-                            serde_json::json!({ "iteration": iterations, "has_tools": true }),
-                            None,
-                        );
-                        return AgentResponse {
-                            content: String::new(),
-                            tool_calls_made,
-                            iterations,
-                            success: false,
-                            error: Some(e.to_string()),
-                        };
+                    {
+                        Ok(Ok(ActiveBusinessStreamOutcome::Tools(response))) => response,
+                        Ok(Ok(ActiveBusinessStreamOutcome::ContentBypass)) => {
+                            self.record_audit(
+                                context,
+                                "chat_with_tools",
+                                request_payload,
+                                None,
+                                Some("active_business_content_bypass".to_string()),
+                                call_started.elapsed().as_millis(),
+                                serde_json::json!({
+                                    "iteration": iterations,
+                                    "has_tools": true,
+                                    "active_business_outcome": "content_bypass",
+                                    "terminal_reason": TerminalReason::ActiveContentBypass.as_str(),
+                                    "tool_choice_mode": "required",
+                                    "requested_tool_choice": tool_choice_mode_name(stream_tool_choice.requested),
+                                    "effective_tool_choice": stream_tool_choice.effective.map(tool_choice_mode_name),
+                                    "tool_choice_fallback": stream_tool_choice.fallback,
+                                }),
+                                None,
+                            );
+                            return self
+                                .run_terminal_synthesis(
+                                    context,
+                                    tool_calls_made,
+                                    iterations,
+                                    TerminalReason::ActiveContentBypass,
+                                    turn_message_start,
+                                )
+                                .await;
+                        }
+                        Ok(Ok(ActiveBusinessStreamOutcome::Empty)) => {
+                            self.record_audit(
+                                context,
+                                "chat_with_tools",
+                                request_payload,
+                                None,
+                                Some("active_business_empty".to_string()),
+                                call_started.elapsed().as_millis(),
+                                serde_json::json!({
+                                    "iteration": iterations,
+                                    "has_tools": true,
+                                    "active_business_outcome": "empty",
+                                    "terminal_reason": TerminalReason::ActiveEmpty.as_str(),
+                                    "tool_choice_mode": "required",
+                                    "requested_tool_choice": tool_choice_mode_name(stream_tool_choice.requested),
+                                    "effective_tool_choice": stream_tool_choice.effective.map(tool_choice_mode_name),
+                                    "tool_choice_fallback": stream_tool_choice.fallback,
+                                }),
+                                None,
+                            );
+                            return self
+                                .run_terminal_synthesis(
+                                    context,
+                                    tool_calls_made,
+                                    iterations,
+                                    TerminalReason::ActiveEmpty,
+                                    turn_message_start,
+                                )
+                                .await;
+                        }
+                        Ok(Err(error)) => {
+                            self.record_audit(
+                                context,
+                                "chat_with_tools",
+                                request_payload,
+                                None,
+                                Some(error.to_string()),
+                                call_started.elapsed().as_millis(),
+                                serde_json::json!({
+                                    "iteration": iterations,
+                                    "has_tools": true,
+                                    "active_business_outcome": "error",
+                                    "terminal_reason": TerminalReason::ActiveError.as_str(),
+                                    "tool_choice_mode": "required",
+                                    "requested_tool_choice": tool_choice_mode_name(stream_tool_choice.requested),
+                                    "effective_tool_choice": stream_tool_choice.effective.map(tool_choice_mode_name),
+                                    "tool_choice_fallback": stream_tool_choice.fallback,
+                                }),
+                                None,
+                            );
+                            self.dbg(&format!(
+                                "[Agent] active business stream failed; entering terminal synthesis: {error}"
+                            ));
+                            return self
+                                .run_terminal_synthesis(
+                                    context,
+                                    tool_calls_made,
+                                    iterations,
+                                    TerminalReason::ActiveError,
+                                    turn_message_start,
+                                )
+                                .await;
+                        }
+                        Err(_) => {
+                            self.record_audit(
+                                context,
+                                "chat_with_tools",
+                                request_payload,
+                                None,
+                                Some("active_business_timeout".to_string()),
+                                call_started.elapsed().as_millis(),
+                                serde_json::json!({
+                                    "iteration": iterations,
+                                    "has_tools": true,
+                                    "active_business_timeout": true,
+                                    "active_business_outcome": "timeout",
+                                    "terminal_reason": TerminalReason::ActiveTimeout.as_str(),
+                                    "tool_choice_mode": "required",
+                                    "requested_tool_choice": tool_choice_mode_name(stream_tool_choice.requested),
+                                    "effective_tool_choice": stream_tool_choice.effective.map(tool_choice_mode_name),
+                                    "tool_choice_fallback": stream_tool_choice.fallback,
+                                }),
+                                None,
+                            );
+                            return self
+                                .run_terminal_synthesis(
+                                    context,
+                                    tool_calls_made,
+                                    iterations,
+                                    TerminalReason::ActiveTimeout,
+                                    turn_message_start,
+                                )
+                                .await;
+                        }
+                    }
+                } else {
+                    match self
+                        .chat_with_tools_streaming(
+                            &messages,
+                            &round_tools,
+                            tool_choice_mode,
+                            true,
+                            &mut stream_tool_choice,
+                        )
+                        .await
+                    {
+                        Ok(response) => response,
+                        Err(error) => {
+                            self.record_audit(
+                                context,
+                                "chat_with_tools",
+                                request_payload,
+                                None,
+                                Some(error.to_string()),
+                                call_started.elapsed().as_millis(),
+                                serde_json::json!({
+                                    "iteration": iterations,
+                                    "has_tools": true,
+                                    "requested_tool_choice": tool_choice_mode_name(stream_tool_choice.requested),
+                                    "effective_tool_choice": stream_tool_choice.effective.map(tool_choice_mode_name),
+                                    "tool_choice_fallback": stream_tool_choice.fallback,
+                                }),
+                                None,
+                            );
+                            return AgentResponse {
+                                content: String::new(),
+                                tool_calls_made,
+                                iterations,
+                                success: false,
+                                error: Some(error.to_string()),
+                            };
+                        }
                     }
                 }
             } else {
@@ -609,7 +1859,14 @@ impl Agent for FunctionCallingAgent {
                 })),
                 None,
                 call_started.elapsed().as_millis(),
-                serde_json::json!({ "iteration": iterations, "has_tools": has_tools }),
+                serde_json::json!({
+                    "iteration": iterations,
+                    "has_tools": has_tools,
+                    "active_business_outcome": active_business_round.then_some("tools"),
+                    "requested_tool_choice": has_tools.then_some(tool_choice_mode_name(stream_tool_choice.requested)),
+                    "effective_tool_choice": stream_tool_choice.effective.map(tool_choice_mode_name),
+                    "tool_choice_fallback": stream_tool_choice.fallback,
+                }),
                 result.usage.clone(),
             );
 
@@ -619,115 +1876,27 @@ impl Agent for FunctionCallingAgent {
                 if !tcs.is_empty() {
                     self.dbg(&format!("[Agent] tool_calls n={}", tcs.len()));
 
-                    let sole_finish_research =
-                        finish_research_available && tcs.iter().all(is_finish_research_call);
-                    if sole_finish_research {
-                        // Keep the control protocol ephemeral: it selects the
-                        // terminal phase but is not persisted as a business
-                        // tool call or exposed to tool observers/budgets.
-                        let mut terminal_messages = messages.clone();
-                        terminal_messages.push(Message {
-                            role: "user".to_string(),
-                            content: Some(TERMINAL_SYNTHESIS_PROMPT.to_string()),
-                            reasoning_content: None,
-                            tool_calls: None,
-                            tool_call_id: None,
-                            name: None,
-                        });
-                        iterations = iterations.saturating_add(1);
-                        let terminal_request_payload = serde_json::json!({
-                            "messages": terminal_messages.clone(),
-                            "tools": Vec::<Value>::new(),
-                        });
-                        let terminal_started = std::time::Instant::now();
-                        let terminal_result =
-                            match self.chat_terminal_streaming(&terminal_messages).await {
-                                Ok(response) => response,
-                                Err(error) => {
-                                    self.record_audit(
-                                        context,
-                                        "chat_terminal_without_tools",
-                                        terminal_request_payload,
-                                        None,
-                                        Some(error.to_string()),
-                                        terminal_started.elapsed().as_millis(),
-                                        serde_json::json!({
-                                            "iteration": iterations,
-                                            "has_tools": false,
-                                            "finish_research": true,
-                                        }),
-                                        None,
-                                    );
-                                    return AgentResponse {
-                                        content: String::new(),
-                                        tool_calls_made,
-                                        iterations,
-                                        success: false,
-                                        error: Some(error.to_string()),
-                                    };
-                                }
-                            };
-                        self.record_audit(
-                            context,
-                            "chat_terminal_without_tools",
-                            terminal_request_payload,
-                            Some(serde_json::json!({
-                                "content": terminal_result.content.clone(),
-                                "tool_calls": terminal_result.tool_calls.clone(),
-                            })),
-                            None,
-                            terminal_started.elapsed().as_millis(),
-                            serde_json::json!({
-                                "iteration": iterations,
-                                "has_tools": false,
-                                "finish_research": true,
-                            }),
-                            terminal_result.usage.clone(),
-                        );
-
-                        let metadata =
-                            terminal_result.reasoning_content.as_ref().map(|reasoning| {
-                                std::collections::HashMap::from([(
-                                    REASONING_CONTENT_METADATA_KEY.to_string(),
-                                    Value::String(reasoning.clone()),
-                                )])
-                            });
-                        context.add_assistant_message_with_metadata(
-                            &terminal_result.content,
-                            None,
-                            metadata,
-                        );
-                        return AgentResponse {
-                            content: terminal_result.content,
-                            tool_calls_made,
-                            iterations,
-                            success: true,
-                            error: None,
-                        };
-                    }
-
-                    // A mixed finish_research call is only a malformed control
-                    // signal. Ignore it and continue executing the real calls;
-                    // it must never consume tool budget, reach ToolRegistry, be
-                    // persisted as ToolCallMade, or notify the business observer.
+                    // Internal controls are never valid in a business-tool
+                    // completion. Ignore hallucinated/mixed copies; they must
+                    // not consume budget, reach ToolRegistry, persist in
+                    // ToolCallMade, or notify the business observer.
                     let actionable_tool_calls = tcs
                         .iter()
-                        .filter(|tool_call| {
-                            !self.finish_research_terminal_synthesis
-                                || !is_finish_research_call(tool_call)
-                        })
+                        .filter(|tool_call| !is_research_control_call(tool_call))
                         .collect::<Vec<_>>();
 
+                    // Every nonempty Interactive turn enters the open Agent
+                    // discovery path, including non-finance questions that may
+                    // use Web/file/skill tools. Activate the canonical finance
+                    // protocol only at the structural DataFetch boundary that
+                    // the investment prompt requires for every security turn;
+                    // do not infer it from a closed question vocabulary.
                     investment_research_started |= actionable_tool_calls
                         .iter()
-                        .any(|tool_call| starts_investment_terminal_protocol(tool_call));
+                        .any(|tool_call| starts_investment_research_protocol(tool_call));
 
                     if actionable_tool_calls.is_empty() {
-                        // The control was hallucinated before the finance
-                        // terminal phase exposed it. Ignore the unavailable
-                        // control and preserve any direct content without
-                        // starting a second generation.
-                        self.dbg("[Agent] ignored unavailable finish_research call");
+                        self.dbg("[Agent] ignored unavailable research control call");
                     } else {
                         // 记录 assistant 消息（只含真实业务 tool_calls）
                         let tc_values: Vec<Value> = actionable_tool_calls
@@ -740,8 +1909,15 @@ impl Agent for FunctionCallingAgent {
                                 Value::String(reasoning.clone()),
                             )])
                         });
+                        let assistant_tool_content = if self.finish_research_terminal_synthesis
+                            && investment_research_started
+                        {
+                            ""
+                        } else {
+                            &result.content
+                        };
                         context.add_assistant_message_with_metadata(
-                            &result.content,
+                            assistant_tool_content,
                             Some(tc_values),
                             metadata,
                         );
@@ -848,15 +2024,24 @@ impl Agent for FunctionCallingAgent {
                 }
             }
 
-            // 没有工具调用 — 最终回复
-            self.dbg("[Agent] done (no more tool_calls)");
-            if finish_research_available {
-                tracing::warn!(
-                    iterations,
-                    business_tool_calls = tool_calls_made.len(),
-                    "function_calling provider bypassed required terminal signal; preserving the Agent's direct answer without rewrite"
+            if active_business_round {
+                self.dbg(
+                    "[Agent] active business round returned no actionable tool; entering terminal synthesis",
                 );
+                return self
+                    .run_terminal_synthesis(
+                        context,
+                        tool_calls_made,
+                        iterations,
+                        TerminalReason::ActiveEmpty,
+                        turn_message_start,
+                    )
+                    .await;
             }
+
+            // Before finance research starts, preserve ordinary direct answers
+            // exactly and do not add a control or terminal completion.
+            self.dbg("[Agent] done (no more tool_calls)");
             let metadata = result.reasoning_content.as_ref().map(|reasoning| {
                 std::collections::HashMap::from([(
                     REASONING_CONTENT_METADATA_KEY.to_string(),
@@ -894,8 +2079,14 @@ mod tests {
     struct StreamingMockLlmProvider {
         rounds: Arc<Mutex<VecDeque<Vec<ChatStreamEvent>>>>,
         seen_tool_counts: Arc<Mutex<Vec<usize>>>,
+        seen_tool_names: Arc<Mutex<Vec<Vec<String>>>>,
         seen_tool_choice_modes: Arc<Mutex<Vec<ToolChoiceMode>>>,
         seen_messages: Arc<Mutex<Vec<Vec<Message>>>>,
+        delivered_events: Arc<AtomicUsize>,
+        stream_calls: Arc<AtomicUsize>,
+        failed_stream_calls: Arc<Mutex<Vec<usize>>>,
+        pending_stream_calls: Arc<Mutex<Vec<usize>>>,
+        hang_after_first_event_stream_calls: Arc<Mutex<Vec<usize>>>,
     }
 
     impl StreamingMockLlmProvider {
@@ -903,9 +2094,39 @@ mod tests {
             Self {
                 rounds: Arc::new(Mutex::new(rounds.into())),
                 seen_tool_counts: Arc::new(Mutex::new(Vec::new())),
+                seen_tool_names: Arc::new(Mutex::new(Vec::new())),
                 seen_tool_choice_modes: Arc::new(Mutex::new(Vec::new())),
                 seen_messages: Arc::new(Mutex::new(Vec::new())),
+                delivered_events: Arc::new(AtomicUsize::new(0)),
+                stream_calls: Arc::new(AtomicUsize::new(0)),
+                failed_stream_calls: Arc::new(Mutex::new(Vec::new())),
+                pending_stream_calls: Arc::new(Mutex::new(Vec::new())),
+                hang_after_first_event_stream_calls: Arc::new(Mutex::new(Vec::new())),
             }
+        }
+
+        fn failing_on_stream_calls(self, calls: &[usize]) -> Self {
+            self.failed_stream_calls
+                .lock()
+                .expect("failed stream calls lock")
+                .extend_from_slice(calls);
+            self
+        }
+
+        fn pending_on_stream_calls(self, calls: &[usize]) -> Self {
+            self.pending_stream_calls
+                .lock()
+                .expect("pending stream calls lock")
+                .extend_from_slice(calls);
+            self
+        }
+
+        fn hanging_after_first_event_on_stream_calls(self, calls: &[usize]) -> Self {
+            self.hang_after_first_event_stream_calls
+                .lock()
+                .expect("hang after first event calls lock")
+                .extend_from_slice(calls);
+            self
         }
     }
 
@@ -939,6 +2160,20 @@ mod tests {
                 .lock()
                 .expect("stream tool counts lock")
                 .push(tools.len());
+            self.seen_tool_names
+                .lock()
+                .expect("stream tool names lock")
+                .push(
+                    tools
+                        .iter()
+                        .filter_map(|tool| {
+                            tool.get("function")
+                                .and_then(|function| function.get("name"))
+                                .and_then(Value::as_str)
+                                .map(ToString::to_string)
+                        })
+                        .collect(),
+                );
             self.seen_tool_choice_modes
                 .lock()
                 .expect("stream tool choice modes lock")
@@ -947,13 +2182,92 @@ mod tests {
                 .lock()
                 .expect("stream messages lock")
                 .push(messages.to_vec());
-            let events = self
+            let stream_call = self.stream_calls.fetch_add(1, Ordering::SeqCst) + 1;
+            let mut events = self
                 .rounds
                 .lock()
                 .expect("stream rounds lock")
                 .pop_front()
                 .expect("stream round");
-            Box::pin(stream::iter(events.into_iter().map(Ok)))
+            let should_fail = self
+                .failed_stream_calls
+                .lock()
+                .expect("failed stream calls lock")
+                .contains(&stream_call);
+            let should_pending = self
+                .pending_stream_calls
+                .lock()
+                .expect("pending stream calls lock")
+                .contains(&stream_call);
+            if should_pending {
+                return Box::pin(stream::pending());
+            }
+            // Most tests describe only payload deltas. Mirror the provider
+            // contract by adding the lifecycle envelope automatically. A
+            // round that contains any lifecycle event is intentionally kept
+            // raw so protocol-negative tests can model missing/mismatched
+            // Finish or Done boundaries precisely.
+            let explicit_lifecycle = events.iter().any(|event| {
+                matches!(
+                    event,
+                    ChatStreamEvent::ToolChoiceMetadata { .. }
+                        | ChatStreamEvent::Finish(_)
+                        | ChatStreamEvent::Done
+                )
+            });
+            if !explicit_lifecycle {
+                let finish_reason = if events
+                    .iter()
+                    .any(|event| matches!(event, ChatStreamEvent::ToolCallDelta { .. }))
+                {
+                    ChatStreamFinishReason::ToolCalls
+                } else {
+                    ChatStreamFinishReason::Stop
+                };
+                events.insert(
+                    0,
+                    ChatStreamEvent::ToolChoiceMetadata {
+                        requested: tool_choice_mode,
+                        effective: tool_choice_mode,
+                        fallback: false,
+                    },
+                );
+                events.push(ChatStreamEvent::Finish(finish_reason));
+                events.push(ChatStreamEvent::Done);
+            }
+            let hang_take = if matches!(
+                events.first(),
+                Some(ChatStreamEvent::ToolChoiceMetadata { .. })
+            ) {
+                2
+            } else {
+                1
+            };
+            let items: Vec<hone_core::HoneResult<ChatStreamEvent>> = if should_fail {
+                vec![Err(hone_core::HoneError::Llm(format!(
+                    "mock stream failure {stream_call}"
+                )))]
+            } else {
+                events.into_iter().map(Ok).collect()
+            };
+            let delivered_events = self.delivered_events.clone();
+            let should_hang_after_first = self
+                .hang_after_first_event_stream_calls
+                .lock()
+                .expect("hang after first event calls lock")
+                .contains(&stream_call);
+            if should_hang_after_first {
+                return Box::pin(
+                    stream::iter(items.into_iter().take(hang_take))
+                        .inspect(move |_| {
+                            delivered_events.fetch_add(1, Ordering::SeqCst);
+                        })
+                        .chain(stream::pending()),
+                );
+            }
+            Box::pin(stream::iter(items).inspect(move |_| {
+                delivered_events.fetch_add(1, Ordering::SeqCst);
+            }))
         }
 
         fn chat_stream<'a>(
@@ -984,6 +2298,58 @@ mod tests {
                 .lock()
                 .expect("stream events lock")
                 .push(format!("final:{content}"));
+        }
+
+        async fn on_content_reset(&self) {
+            self.events
+                .lock()
+                .expect("stream events lock")
+                .push("reset".to_string());
+        }
+    }
+
+    struct CommittedPrefixStreamObserver {
+        prefix: String,
+        accumulated: Mutex<String>,
+        events: Mutex<Vec<String>>,
+    }
+
+    impl CommittedPrefixStreamObserver {
+        fn new(prefix: impl Into<String>) -> Self {
+            Self {
+                prefix: prefix.into(),
+                accumulated: Mutex::new(String::new()),
+                events: Mutex::new(Vec::new()),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl FunctionCallingStreamObserver for CommittedPrefixStreamObserver {
+        async fn on_content_delta(&self, content: &str) {
+            self.events
+                .lock()
+                .expect("stream events lock")
+                .push(format!("delta:{content}"));
+        }
+
+        async fn on_final_content_delta(&self, content: &str) {
+            self.accumulated
+                .lock()
+                .expect("accumulated stream content")
+                .push_str(content);
+            self.events
+                .lock()
+                .expect("stream events lock")
+                .push(format!("final:{content}"));
+        }
+
+        fn committed_visible_prefix(&self) -> Option<String> {
+            self.accumulated
+                .lock()
+                .expect("accumulated stream content")
+                .starts_with(&self.prefix)
+                .then(|| self.prefix.clone())
         }
 
         async fn on_content_reset(&self) {
@@ -1160,6 +2526,27 @@ mod tests {
         }
     }
 
+    struct WebSearchEvidenceTool;
+
+    #[async_trait]
+    impl Tool for WebSearchEvidenceTool {
+        fn name(&self) -> &str {
+            "web_search"
+        }
+
+        fn description(&self) -> &str {
+            "relationship evidence"
+        }
+
+        fn parameters(&self) -> Vec<ToolParameter> {
+            vec![]
+        }
+
+        async fn execute(&self, _args: Value) -> hone_core::HoneResult<Value> {
+            Ok(json!({ "evidence": "relationship" }))
+        }
+    }
+
     struct CountingTool {
         calls: Arc<AtomicUsize>,
     }
@@ -1208,6 +2595,108 @@ mod tests {
                 .lock()
                 .expect("observer lock")
                 .push(format!("done:{tool_name}:{success}"));
+        }
+    }
+
+    #[derive(Default)]
+    struct RecordingAuditSink {
+        operations: Mutex<Vec<String>>,
+        records: Mutex<Vec<LlmAuditRecord>>,
+    }
+
+    impl LlmAuditSink for RecordingAuditSink {
+        fn record(&self, record: LlmAuditRecord) -> hone_core::HoneResult<()> {
+            self.operations
+                .lock()
+                .expect("audit operations lock")
+                .push(record.operation.clone());
+            self.records
+                .lock()
+                .expect("audit records lock")
+                .push(record);
+            Ok(())
+        }
+    }
+
+    fn assert_terminal_messages_for_reason(
+        seen_messages: &Arc<Mutex<Vec<Vec<Message>>>>,
+        reason: TerminalReason,
+    ) {
+        let terminal_messages = seen_messages
+            .lock()
+            .expect("stream messages lock")
+            .last()
+            .cloned()
+            .expect("terminal messages");
+        let system = terminal_messages
+            .first()
+            .and_then(|message| message.content.as_deref())
+            .expect("terminal system instruction");
+        let prompt = terminal_messages
+            .last()
+            .and_then(|message| message.content.as_deref())
+            .expect("terminal user prompt");
+
+        assert!(
+            terminal_messages
+                .iter()
+                .all(|message| message.reasoning_content.is_none()),
+            "hidden reasoning must be stripped at the terminal evidence boundary"
+        );
+        assert_eq!(prompt, terminal_synthesis_prompt(reason));
+        assert!(prompt.contains(reason.prompt_instruction()));
+        assert!(prompt.contains("`reasoning_content`、隐藏思考、未采用草稿"));
+        if reason == TerminalReason::ExplicitFinish {
+            assert!(system.contains(FINISH_RESEARCH_SYSTEM_INSTRUCTION));
+            assert!(!system.contains(DEGRADED_TERMINAL_SYSTEM_INSTRUCTION));
+            assert!(!prompt.contains("上一内部步骤未产出可用的新事实证据"));
+        } else {
+            assert!(system.contains(DEGRADED_TERMINAL_SYSTEM_INSTRUCTION));
+            assert!(!system.contains(FINISH_RESEARCH_SYSTEM_INSTRUCTION));
+            assert!(prompt.contains("上一内部步骤未产出可用的新事实证据"));
+            assert!(prompt.contains("这不表示合理研究已经完成"));
+            assert!(prompt.contains("只能使用此前已成功返回的业务工具结果"));
+            assert!(prompt.contains("继续正常回答，不得因此拒答"));
+            assert!(!prompt.contains("Agent 已通过显式完成信号确认"));
+        }
+    }
+
+    #[test]
+    fn terminal_reason_prompts_keep_explicit_completion_separate_from_degraded_paths() {
+        let explicit = terminal_synthesis_prompt(TerminalReason::ExplicitFinish);
+        assert!(explicit.contains("Agent 已通过显式完成信号确认"));
+        assert!(!explicit.contains("上一内部步骤未产出可用的新事实证据"));
+
+        for reason in [
+            TerminalReason::ControlContentBypass,
+            TerminalReason::ControlTimeout,
+            TerminalReason::ControlError,
+            TerminalReason::ActiveContentBypass,
+            TerminalReason::ActiveEmpty,
+            TerminalReason::ActiveTimeout,
+            TerminalReason::ActiveError,
+            TerminalReason::IterationLimit,
+        ] {
+            let prompt = terminal_synthesis_prompt(reason);
+            assert!(prompt.contains(reason.prompt_instruction()), "{reason:?}");
+            assert!(
+                prompt.contains("上一内部步骤未产出可用的新事实证据"),
+                "{reason:?}"
+            );
+            assert!(prompt.contains("这不表示合理研究已经完成"), "{reason:?}");
+            assert!(
+                prompt.contains("只能使用此前已成功返回的业务工具结果"),
+                "{reason:?}"
+            );
+            assert!(prompt.contains("继续正常回答，不得因此拒答"), "{reason:?}");
+            assert!(
+                prompt.contains("`reasoning_content`、隐藏思考、未采用草稿"),
+                "{reason:?}"
+            );
+            assert!(
+                !prompt.contains("Agent 已通过显式完成信号确认"),
+                "{reason:?}"
+            );
         }
     }
 
@@ -1307,8 +2796,14 @@ mod tests {
                 ],
             ]))),
             seen_tool_counts: Arc::new(Mutex::new(Vec::new())),
+            seen_tool_names: Arc::new(Mutex::new(Vec::new())),
             seen_tool_choice_modes: Arc::new(Mutex::new(Vec::new())),
             seen_messages: Arc::new(Mutex::new(Vec::new())),
+            delivered_events: Arc::new(AtomicUsize::new(0)),
+            stream_calls: Arc::new(AtomicUsize::new(0)),
+            failed_stream_calls: Arc::new(Mutex::new(Vec::new())),
+            pending_stream_calls: Arc::new(Mutex::new(Vec::new())),
+            hang_after_first_event_stream_calls: Arc::new(Mutex::new(Vec::new())),
         };
         let mut registry = ToolRegistry::new();
         registry.register(Box::new(EchoTool));
@@ -1337,12 +2832,17 @@ mod tests {
     #[tokio::test]
     async fn sole_finish_research_runs_one_tool_free_terminal_stream_in_the_same_agent_run() {
         let llm = StreamingMockLlmProvider::with_rounds(vec![
-            vec![ChatStreamEvent::ToolCallDelta {
-                index: 0,
-                id: Some("tc_data_fetch".to_string()),
-                name: Some("data_fetch".to_string()),
-                arguments: r#"{"text":"abc"}"#.to_string(),
-            }],
+            vec![
+                ChatStreamEvent::ReasoningDelta(
+                    "hidden draft must not become terminal evidence".to_string(),
+                ),
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_data_fetch".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"text":"CRWV,NVDA current evidence"}"#.to_string(),
+                },
+            ],
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
                 id: Some("tc_finish".to_string()),
@@ -1373,12 +2873,32 @@ mod tests {
         .with_stream_observer(Some(stream_observer.clone()))
         .with_tool_observer(Some(tool_observer.clone()));
         let mut context = AgentContext::new("finish-research-terminal".to_string());
+        context.add_user_message("旧问题：NBIS 估值");
+        context.add_assistant_message(
+            "旧草稿：NBIS 价格 15 USD；不要把它当成本轮事实。",
+            Some(vec![
+                serde_json::to_value(ToolCall {
+                    id: "tc_stale_nbis".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"ticker":"NBIS"}"#.to_string(),
+                    },
+                })
+                .expect("stale tool call"),
+            ]),
+        );
+        context.add_tool_result(
+            "tc_stale_nbis",
+            "data_fetch",
+            r#"{"symbol":"NBIS","price":15,"stale":true}"#,
+        );
 
-        let response = agent.run("research", &mut context).await;
+        let response = agent.run("crwv和英伟达有什么关系", &mut context).await;
 
         assert!(response.success, "{:?}", response.error);
         assert_eq!(response.content, "最终答案");
-        assert_eq!(response.iterations, 3);
+        assert_eq!(response.iterations, 2);
         assert_eq!(response.tool_calls_made.len(), 1);
         assert_eq!(response.tool_calls_made[0].name, "data_fetch");
         assert_eq!(
@@ -1387,7 +2907,7 @@ mod tests {
                 .expect("stream tool counts lock")
                 .as_slice(),
             [1, 2, 0],
-            "finish_research must appear only after finance research starts, then terminal synthesis must use an empty tool list"
+            "the isolated control decision must appear only after finance research starts, then terminal synthesis must use an empty tool list"
         );
         assert_eq!(
             seen_tool_choice_modes
@@ -1399,7 +2919,7 @@ mod tests {
                 ToolChoiceMode::Required,
                 ToolChoiceMode::Auto,
             ],
-            "the first turn must permit direct non-investment answers; only an active finance research loop requires a tool decision"
+            "the first turn permits direct non-investment answers; the isolated finance decision is required and terminal synthesis has no tools"
         );
         assert_eq!(
             stream_observer
@@ -1428,24 +2948,940 @@ mod tests {
                 })
             })
         }));
-        let terminal_messages = seen_messages
-            .lock()
-            .expect("stream messages lock")
-            .last()
-            .cloned()
-            .expect("terminal messages");
+        let terminal_assistant = context.messages.last().expect("terminal assistant message");
+        assert_eq!(terminal_assistant.role, "assistant");
+        assert_eq!(terminal_assistant.content.as_deref(), Some("最终答案"));
         assert!(
-            terminal_messages
-                .first()
-                .and_then(|message| message.content.as_deref())
-                .is_some_and(|content| content.contains(FINISH_RESEARCH_SYSTEM_INSTRUCTION))
+            terminal_assistant.metadata.is_none(),
+            "terminal reasoning must not persist into cross-turn context"
+        );
+        assert_terminal_messages_for_reason(&seen_messages, TerminalReason::ExplicitFinish);
+        let seen_messages = seen_messages.lock().expect("stream messages lock");
+        let terminal_messages = seen_messages.last().expect("terminal messages");
+        assert!(terminal_messages.iter().any(|message| {
+            message
+                .content
+                .as_deref()
+                .is_some_and(|content| content.contains("CRWV,NVDA current evidence"))
+        }));
+        assert!(
+            terminal_messages.iter().all(|message| {
+                message.content.as_deref().is_none_or(|content| {
+                    !content.contains("NBIS")
+                        && !content.contains("15 USD")
+                        && !content.contains("\"price\":15")
+                })
+            }),
+            "stale prior-turn ticker/price evidence reached terminal synthesis"
+        );
+    }
+
+    #[tokio::test]
+    async fn finance_loop_isolates_control_decisions_from_business_tools_and_history() {
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_data_fetch".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"text":"CRWV"}"#.to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 1,
+                    id: Some("tc_hallucinated_finish_with_data".to_string()),
+                    name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
+                    arguments: "{}".to_string(),
+                },
+            ],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_continue_1".to_string()),
+                name: Some(CONTINUE_RESEARCH_TOOL_NAME.to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![
+                ChatStreamEvent::ContentDelta("不应发布的业务轮草稿".to_string()),
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_echo".to_string()),
+                    name: Some("echo_tool".to_string()),
+                    arguments: r#"{"text":"relationship evidence"}"#.to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 1,
+                    id: Some("tc_hallucinated_finish_with_echo".to_string()),
+                    name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
+                    arguments: "{}".to_string(),
+                },
+            ],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_finish".to_string()),
+                name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![ChatStreamEvent::ContentDelta("最终研究答案".to_string())],
+        ]);
+        let seen_tool_names = llm.seen_tool_names.clone();
+        let seen_tool_choice_modes = llm.seen_tool_choice_modes.clone();
+        let stream_observer = Arc::new(RecordingStreamObserver::default());
+        let tool_observer = Arc::new(MockToolObserver::default());
+        let audit = Arc::new(RecordingAuditSink::default());
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(FinanceEvidenceTool));
+        registry.register(Box::new(EchoTool));
+        let agent = FunctionCallingAgent::new(
+            Arc::new(llm),
+            Arc::new(registry),
+            "system".to_string(),
+            5,
+            Some(audit.clone()),
+        )
+        .with_finish_research_terminal_synthesis(true)
+        .with_tool_call_budget(Some(2), HashMap::new())
+        .with_stream_observer(Some(stream_observer.clone()))
+        .with_tool_observer(Some(tool_observer.clone()));
+        let mut context = AgentContext::new("isolated-control-decisions".to_string());
+
+        let response = agent.run("research", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, "最终研究答案");
+        assert_eq!(response.iterations, 3);
+        assert_eq!(response.tool_calls_made.len(), 2);
+        assert_eq!(response.tool_calls_made[0].name, "data_fetch");
+        assert_eq!(response.tool_calls_made[1].name, "echo_tool");
+        assert_eq!(
+            seen_tool_choice_modes
+                .lock()
+                .expect("stream tool choice modes lock")
+                .as_slice(),
+            [
+                ToolChoiceMode::Auto,
+                ToolChoiceMode::Required,
+                ToolChoiceMode::Required,
+                ToolChoiceMode::Required,
+                ToolChoiceMode::Auto,
+            ]
+        );
+        let tool_names = seen_tool_names.lock().expect("stream tool names lock");
+        assert_eq!(
+            tool_names[1],
+            [CONTINUE_RESEARCH_TOOL_NAME, FINISH_RESEARCH_TOOL_NAME]
         );
         assert_eq!(
-            terminal_messages
-                .last()
-                .and_then(|message| message.content.as_deref()),
-            Some(TERMINAL_SYNTHESIS_PROMPT)
+            tool_names[3],
+            [CONTINUE_RESEARCH_TOOL_NAME, FINISH_RESEARCH_TOOL_NAME]
         );
+        assert!(tool_names[2].iter().any(|name| name == "data_fetch"));
+        assert!(tool_names[2].iter().any(|name| name == "echo_tool"));
+        assert!(
+            tool_names[2].iter().all(
+                |name| name != CONTINUE_RESEARCH_TOOL_NAME && name != FINISH_RESEARCH_TOOL_NAME
+            )
+        );
+        drop(tool_names);
+        assert_eq!(
+            stream_observer
+                .events
+                .lock()
+                .expect("stream events lock")
+                .as_slice(),
+            ["final:最终研究答案"],
+            "control content and active business drafts must remain invisible"
+        );
+        assert_eq!(
+            tool_observer
+                .events
+                .lock()
+                .expect("tool observer lock")
+                .as_slice(),
+            [
+                "start:data_fetch",
+                "done:data_fetch:true",
+                "start:echo_tool",
+                "done:echo_tool:true",
+            ],
+            "internal decisions must not enter the business tool trace"
+        );
+        assert_eq!(
+            audit
+                .operations
+                .lock()
+                .expect("audit operations lock")
+                .as_slice(),
+            [
+                "chat_with_tools",
+                "chat_with_tools",
+                "chat_terminal_without_tools",
+            ],
+            "ephemeral control completions must not be written to the LLM audit trace"
+        );
+        assert!(context.messages.iter().all(|message| {
+            message.content.as_deref() != Some("不应发布的业务轮草稿")
+                && message.tool_calls.as_ref().is_none_or(|tool_calls| {
+                    tool_calls.iter().all(|tool_call| {
+                        let name = tool_call
+                            .get("function")
+                            .and_then(|function| function.get("name"))
+                            .and_then(Value::as_str);
+                        name != Some(CONTINUE_RESEARCH_TOOL_NAME)
+                            && name != Some(FINISH_RESEARCH_TOOL_NAME)
+                    })
+                })
+        }));
+    }
+
+    #[tokio::test]
+    async fn control_content_only_bypass_is_an_implicit_finish_not_a_published_draft() {
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_data_fetch".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![ChatStreamEvent::ContentDelta(
+                "provider bypass draft".to_string(),
+            )],
+            vec![ChatStreamEvent::ContentDelta("终稿".to_string())],
+        ]);
+        let delivered_events = llm.delivered_events.clone();
+        let seen_messages = llm.seen_messages.clone();
+        let observer = Arc::new(RecordingStreamObserver::default());
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(FinanceEvidenceTool));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 4, None)
+                .with_finish_research_terminal_synthesis(true)
+                .with_stream_observer(Some(observer.clone()));
+        let mut context = AgentContext::new("control-content-bypass".to_string());
+
+        let response = agent.run("research", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, "终稿");
+        assert_eq!(response.iterations, 2);
+        assert_eq!(
+            delivered_events.load(Ordering::SeqCst),
+            12,
+            "the content-only control bypass must be read through Finish + Done before terminal synthesis"
+        );
+        assert_eq!(
+            observer
+                .events
+                .lock()
+                .expect("stream events lock")
+                .as_slice(),
+            ["final:终稿"]
+        );
+        assert!(
+            context
+                .messages
+                .iter()
+                .all(|message| { message.content.as_deref() != Some("provider bypass draft") })
+        );
+        assert_terminal_messages_for_reason(&seen_messages, TerminalReason::ControlContentBypass);
+    }
+
+    #[tokio::test]
+    async fn visible_control_preamble_followed_by_continue_is_silently_accepted() {
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_data_fetch_1".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![
+                ChatStreamEvent::ContentDelta("discarded continue preamble".to_string()),
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_continue".to_string()),
+                    name: Some(CONTINUE_RESEARCH_TOOL_NAME.to_string()),
+                    arguments: "{}".to_string(),
+                },
+            ],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_data_fetch_2".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"text":"more"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_finish".to_string()),
+                name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![ChatStreamEvent::ContentDelta(
+                "continue preamble terminal".to_string(),
+            )],
+        ]);
+        let seen_messages = llm.seen_messages.clone();
+        let observer = Arc::new(RecordingStreamObserver::default());
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(FinanceEvidenceTool));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 4, None)
+                .with_finish_research_terminal_synthesis(true)
+                .with_stream_observer(Some(observer.clone()));
+        let mut context = AgentContext::new("control-visible-preamble-continue".to_string());
+
+        let response = agent.run("research", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, "continue preamble terminal");
+        assert_eq!(response.tool_calls_made.len(), 2);
+        assert_terminal_messages_for_reason(&seen_messages, TerminalReason::ExplicitFinish);
+        assert_eq!(
+            observer
+                .events
+                .lock()
+                .expect("stream events lock")
+                .as_slice(),
+            ["final:continue preamble terminal"]
+        );
+        assert!(
+            context.messages.iter().all(|message| {
+                message.content.as_deref() != Some("discarded continue preamble")
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn visible_control_preamble_followed_by_finish_is_silently_accepted() {
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_data_fetch".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![
+                ChatStreamEvent::ContentDelta("discarded finish preamble".to_string()),
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_finish".to_string()),
+                    name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
+                    arguments: "{}".to_string(),
+                },
+            ],
+            vec![ChatStreamEvent::ContentDelta(
+                "finish preamble terminal".to_string(),
+            )],
+        ]);
+        let seen_messages = llm.seen_messages.clone();
+        let observer = Arc::new(RecordingStreamObserver::default());
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(FinanceEvidenceTool));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 4, None)
+                .with_finish_research_terminal_synthesis(true)
+                .with_stream_observer(Some(observer.clone()));
+        let mut context = AgentContext::new("control-visible-preamble-finish".to_string());
+
+        let response = agent.run("research", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, "finish preamble terminal");
+        assert_eq!(response.tool_calls_made.len(), 1);
+        assert_terminal_messages_for_reason(&seen_messages, TerminalReason::ExplicitFinish);
+        assert_eq!(
+            observer
+                .events
+                .lock()
+                .expect("stream events lock")
+                .as_slice(),
+            ["final:finish preamble terminal"]
+        );
+        assert!(
+            context
+                .messages
+                .iter()
+                .all(|message| { message.content.as_deref() != Some("discarded finish preamble") })
+        );
+    }
+
+    #[tokio::test]
+    async fn fragmented_hidden_thinking_does_not_turn_a_continue_control_into_a_bypass() {
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_data_fetch_1".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![
+                ChatStreamEvent::ContentDelta("<thi".to_string()),
+                ChatStreamEvent::ContentDelta("nk>private control thought</think>".to_string()),
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_continue".to_string()),
+                    name: Some(CONTINUE_RESEARCH_TOOL_NAME.to_string()),
+                    arguments: "{}".to_string(),
+                },
+            ],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_data_fetch_2".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"text":"more"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_finish".to_string()),
+                name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![ChatStreamEvent::ContentDelta(
+                "隐藏思考后的终稿".to_string(),
+            )],
+        ]);
+        let seen_tool_counts = llm.seen_tool_counts.clone();
+        let observer = Arc::new(RecordingStreamObserver::default());
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(FinanceEvidenceTool));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 4, None)
+                .with_finish_research_terminal_synthesis(true)
+                .with_stream_observer(Some(observer.clone()));
+        let mut context = AgentContext::new("hidden-control-thinking".to_string());
+
+        let response = agent.run("research", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, "隐藏思考后的终稿");
+        assert_eq!(response.tool_calls_made.len(), 2);
+        assert_eq!(
+            seen_tool_counts
+                .lock()
+                .expect("stream tool counts lock")
+                .as_slice(),
+            [1, 2, 1, 2, 0],
+            "fragmented hidden thinking must still allow continue -> business -> decision"
+        );
+        assert_eq!(
+            observer
+                .events
+                .lock()
+                .expect("stream events lock")
+                .as_slice(),
+            ["final:隐藏思考后的终稿"]
+        );
+        assert!(context.messages.iter().all(|message| {
+            message
+                .content
+                .as_deref()
+                .is_none_or(|content| !content.contains("private control thought"))
+        }));
+    }
+
+    #[tokio::test]
+    async fn control_timeout_enters_terminal_without_error_or_visible_draft() {
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_data_fetch".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![],
+            vec![ChatStreamEvent::ContentDelta(
+                "control timeout terminal".to_string(),
+            )],
+        ])
+        .pending_on_stream_calls(&[2]);
+        let seen_tool_counts = llm.seen_tool_counts.clone();
+        let seen_messages = llm.seen_messages.clone();
+        let observer = Arc::new(RecordingStreamObserver::default());
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(FinanceEvidenceTool));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 4, None)
+                .with_finish_research_terminal_synthesis(true)
+                .with_stream_observer(Some(observer.clone()));
+        let mut context = AgentContext::new("control-timeout".to_string());
+
+        let response = agent.run("research", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, "control timeout terminal");
+        assert_eq!(response.iterations, 2);
+        assert_eq!(
+            seen_tool_counts
+                .lock()
+                .expect("stream tool counts lock")
+                .as_slice(),
+            [1, 2, 0]
+        );
+        assert_eq!(
+            observer
+                .events
+                .lock()
+                .expect("stream events lock")
+                .as_slice(),
+            ["final:control timeout terminal"]
+        );
+        assert_terminal_messages_for_reason(&seen_messages, TerminalReason::ControlTimeout);
+    }
+
+    #[tokio::test]
+    async fn active_business_content_only_bypass_enters_terminal_without_flashing_or_rewrite() {
+        let long_business_bypass = vec![ChatStreamEvent::ContentDelta(
+            "required business bypass draft".to_string(),
+        )];
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_data_fetch".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_continue".to_string()),
+                name: Some(CONTINUE_RESEARCH_TOOL_NAME.to_string()),
+                arguments: "{}".to_string(),
+            }],
+            long_business_bypass,
+            vec![ChatStreamEvent::ContentDelta("唯一可见终稿".to_string())],
+        ])
+        .hanging_after_first_event_on_stream_calls(&[3]);
+        let delivered_events = llm.delivered_events.clone();
+        let seen_messages = llm.seen_messages.clone();
+        let observer = Arc::new(RecordingStreamObserver::default());
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(FinanceEvidenceTool));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 4, None)
+                .with_finish_research_terminal_synthesis(true)
+                .with_stream_observer(Some(observer.clone()));
+        let mut context = AgentContext::new("business-content-bypass".to_string());
+
+        let response = agent.run("research", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, "唯一可见终稿");
+        assert_eq!(response.iterations, 3);
+        assert_eq!(
+            delivered_events.load(Ordering::SeqCst),
+            14,
+            "the active-business timeout must cancel after metadata plus the first draft payload; completed rounds include lifecycle events"
+        );
+        assert_eq!(
+            observer
+                .events
+                .lock()
+                .expect("stream events lock")
+                .as_slice(),
+            ["final:唯一可见终稿"]
+        );
+        assert!(context.messages.iter().all(|message| {
+            message.content.as_deref() != Some("required business bypass draft")
+        }));
+        assert_terminal_messages_for_reason(&seen_messages, TerminalReason::ActiveTimeout);
+    }
+
+    #[tokio::test]
+    async fn finite_active_content_bypass_is_degraded_and_never_audited_as_success() {
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_data_fetch".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_continue".to_string()),
+                name: Some(CONTINUE_RESEARCH_TOOL_NAME.to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![
+                ChatStreamEvent::ToolChoiceMetadata {
+                    requested: ToolChoiceMode::Required,
+                    effective: ToolChoiceMode::Auto,
+                    fallback: true,
+                },
+                ChatStreamEvent::ContentDelta("finite active draft".to_string()),
+                ChatStreamEvent::Finish(ChatStreamFinishReason::Stop),
+                ChatStreamEvent::Done,
+            ],
+            vec![ChatStreamEvent::ContentDelta(
+                "基于已有数据正常回答".to_string(),
+            )],
+        ]);
+        let seen_messages = llm.seen_messages.clone();
+        let audit = Arc::new(RecordingAuditSink::default());
+        let observer = Arc::new(RecordingStreamObserver::default());
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(FinanceEvidenceTool));
+        let agent = FunctionCallingAgent::new(
+            Arc::new(llm),
+            Arc::new(registry),
+            String::new(),
+            4,
+            Some(audit.clone()),
+        )
+        .with_finish_research_terminal_synthesis(true)
+        .with_stream_observer(Some(observer.clone()));
+        let mut context = AgentContext::new("finite-active-content-bypass".to_string());
+
+        let response = agent.run("research", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, "基于已有数据正常回答");
+        assert_eq!(response.iterations, 3);
+        assert_eq!(
+            observer
+                .events
+                .lock()
+                .expect("stream events lock")
+                .as_slice(),
+            ["final:基于已有数据正常回答"]
+        );
+        assert!(
+            context
+                .messages
+                .iter()
+                .all(|message| { message.content.as_deref() != Some("finite active draft") })
+        );
+        assert_terminal_messages_for_reason(&seen_messages, TerminalReason::ActiveContentBypass);
+
+        let records = audit.records.lock().expect("audit records lock");
+        let bypass = records
+            .iter()
+            .find(|record| {
+                record.metadata["active_business_outcome"].as_str() == Some("content_bypass")
+            })
+            .expect("active content bypass audit");
+        assert!(!bypass.success);
+        assert_eq!(
+            bypass.error.as_deref(),
+            Some("active_business_content_bypass")
+        );
+        assert_eq!(
+            bypass.metadata["terminal_reason"].as_str(),
+            Some(TerminalReason::ActiveContentBypass.as_str())
+        );
+        assert_eq!(
+            bypass.metadata["requested_tool_choice"].as_str(),
+            Some("required")
+        );
+        assert_eq!(
+            bypass.metadata["effective_tool_choice"].as_str(),
+            Some("auto")
+        );
+        assert_eq!(
+            bypass.metadata["tool_choice_fallback"].as_bool(),
+            Some(true)
+        );
+    }
+
+    #[tokio::test]
+    async fn active_hidden_or_empty_completion_is_not_treated_as_successful_research() {
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_data_fetch".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_continue".to_string()),
+                name: Some(CONTINUE_RESEARCH_TOOL_NAME.to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![ChatStreamEvent::ReasoningDelta(
+                "hidden-only active thought".to_string(),
+            )],
+            vec![ChatStreamEvent::ContentDelta("正常终稿".to_string())],
+        ]);
+        let seen_messages = llm.seen_messages.clone();
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(FinanceEvidenceTool));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 4, None)
+                .with_finish_research_terminal_synthesis(true);
+        let mut context = AgentContext::new("active-empty".to_string());
+
+        let response = agent.run("research", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, "正常终稿");
+        assert_terminal_messages_for_reason(&seen_messages, TerminalReason::ActiveEmpty);
+        assert!(context.messages.iter().all(|message| {
+            message
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get(REASONING_CONTENT_METADATA_KEY))
+                .and_then(Value::as_str)
+                != Some("hidden-only active thought")
+        }));
+    }
+
+    #[tokio::test]
+    async fn active_business_provider_error_degrades_to_terminal_from_existing_evidence() {
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_data_fetch".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_continue".to_string()),
+                name: Some(CONTINUE_RESEARCH_TOOL_NAME.to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![],
+            vec![ChatStreamEvent::ContentDelta(
+                "基于已有证据的终稿".to_string(),
+            )],
+        ])
+        .failing_on_stream_calls(&[3]);
+        let seen_messages = llm.seen_messages.clone();
+        let observer = Arc::new(RecordingStreamObserver::default());
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(FinanceEvidenceTool));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 4, None)
+                .with_finish_research_terminal_synthesis(true)
+                .with_stream_observer(Some(observer.clone()));
+        let mut context = AgentContext::new("active-business-provider-error".to_string());
+
+        let response = agent.run("research", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, "基于已有证据的终稿");
+        assert_eq!(response.iterations, 3);
+        assert_eq!(response.tool_calls_made.len(), 1);
+        assert_eq!(
+            observer
+                .events
+                .lock()
+                .expect("stream events lock")
+                .as_slice(),
+            ["final:基于已有证据的终稿"]
+        );
+        assert_terminal_messages_for_reason(&seen_messages, TerminalReason::ActiveError);
+    }
+
+    #[tokio::test]
+    async fn data_fetch_in_an_eligible_turn_activates_the_control_protocol() {
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![
+                ChatStreamEvent::ContentDelta("首轮隐藏工具草稿".to_string()),
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_data_fetch".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: "{}".to_string(),
+                },
+            ],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_finish".to_string()),
+                name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![ChatStreamEvent::ContentDelta("关系分析终稿".to_string())],
+        ]);
+        let seen_tool_counts = llm.seen_tool_counts.clone();
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(FinanceEvidenceTool));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 4, None)
+                .with_finish_research_terminal_synthesis(true);
+        let mut context = AgentContext::new("data-fetch-activates-control".to_string());
+
+        let response = agent.run("relationship research", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, "关系分析终稿");
+        assert_eq!(response.tool_calls_made.len(), 1);
+        assert_eq!(response.tool_calls_made[0].name, "data_fetch");
+        assert_eq!(
+            seen_tool_counts
+                .lock()
+                .expect("stream tool counts lock")
+                .as_slice(),
+            [1, 2, 0],
+            "DataFetch is the structural investment-evidence boundary that activates isolated control"
+        );
+        assert!(
+            context
+                .messages
+                .iter()
+                .all(|message| { message.content.as_deref() != Some("首轮隐藏工具草稿") })
+        );
+    }
+
+    #[tokio::test]
+    async fn terminal_scrubs_tool_round_drafts_that_precede_data_fetch_activation() {
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![
+                ChatStreamEvent::ContentDelta(
+                    "未经证据支持的早期关系草稿：CRWV 是 NVIDIA 子公司。".to_string(),
+                ),
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_web_search".to_string()),
+                    name: Some("web_search".to_string()),
+                    arguments: "{}".to_string(),
+                },
+            ],
+            vec![
+                ChatStreamEvent::ContentDelta(
+                    "未经采用的行情草稿：CRWV 市值已经核验。".to_string(),
+                ),
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_data_fetch".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"text":"CRWV current quote"}"#.to_string(),
+                },
+            ],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_finish".to_string()),
+                name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![ChatStreamEvent::ContentDelta(
+                "基于两项工具证据的终稿".to_string(),
+            )],
+        ]);
+        let seen_messages = llm.seen_messages.clone();
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(WebSearchEvidenceTool));
+        registry.register(Box::new(FinanceEvidenceTool));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 5, None)
+                .with_finish_research_terminal_synthesis(true);
+        let mut context = AgentContext::new("pre-data-fetch-draft-scrub".to_string());
+
+        let response = agent.run("crwv和英伟达有什么关系", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, "基于两项工具证据的终稿");
+        assert_eq!(response.tool_calls_made.len(), 2);
+        assert_terminal_messages_for_reason(&seen_messages, TerminalReason::ExplicitFinish);
+        let seen_messages = seen_messages.lock().expect("stream messages lock");
+        let terminal_messages = seen_messages.last().expect("terminal messages");
+        assert!(terminal_messages.iter().any(|message| {
+            message
+                .content
+                .as_deref()
+                .is_some_and(|content| content.contains("relationship"))
+        }));
+        assert!(terminal_messages.iter().any(|message| {
+            message
+                .content
+                .as_deref()
+                .is_some_and(|content| content.contains("CRWV current quote"))
+        }));
+        assert!(terminal_messages.iter().all(|message| {
+            message.content.as_deref().is_none_or(|content| {
+                !content.contains("CRWV 是 NVIDIA 子公司") && !content.contains("CRWV 市值已经核验")
+            })
+        }));
+    }
+
+    #[tokio::test]
+    async fn non_finance_web_search_does_not_activate_the_investment_terminal_protocol() {
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_web_search".to_string()),
+                name: Some("web_search".to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![ChatStreamEvent::ContentDelta(
+                "这是普通网页检索后的直接回答。".to_string(),
+            )],
+        ]);
+        let seen_tool_counts = llm.seen_tool_counts.clone();
+        let seen_tool_names = llm.seen_tool_names.clone();
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(WebSearchEvidenceTool));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 4, None)
+                .with_finish_research_terminal_synthesis(true);
+        let mut context = AgentContext::new("non-finance-web-search".to_string());
+
+        let response = agent.run("查一下普通网页资料", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, "这是普通网页检索后的直接回答。");
+        assert_eq!(response.iterations, 2);
+        assert_eq!(response.tool_calls_made.len(), 1);
+        assert_eq!(response.tool_calls_made[0].name, "web_search");
+        assert_eq!(
+            seen_tool_counts
+                .lock()
+                .expect("stream tool counts lock")
+                .as_slice(),
+            [1, 1],
+            "non-finance tools must keep the ordinary Agent loop without a control or terminal completion"
+        );
+        assert!(
+            seen_tool_names
+                .lock()
+                .expect("stream tool names lock")
+                .iter()
+                .flatten()
+                .all(|name| !matches!(
+                    name.as_str(),
+                    CONTINUE_RESEARCH_TOOL_NAME | FINISH_RESEARCH_TOOL_NAME
+                ))
+        );
+    }
+
+    #[tokio::test]
+    async fn iteration_limit_enters_terminal_without_an_extra_control_call() {
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_data_fetch".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![ChatStreamEvent::ContentDelta("迭代边界终稿".to_string())],
+        ]);
+        let seen_tool_counts = llm.seen_tool_counts.clone();
+        let seen_tool_choice_modes = llm.seen_tool_choice_modes.clone();
+        let seen_messages = llm.seen_messages.clone();
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(FinanceEvidenceTool));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 1, None)
+                .with_finish_research_terminal_synthesis(true);
+        let mut context = AgentContext::new("iteration-limit-terminal".to_string());
+
+        let response = agent.run("research", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, "迭代边界终稿");
+        assert_eq!(response.iterations, 2);
+        assert_eq!(
+            seen_tool_counts
+                .lock()
+                .expect("stream tool counts lock")
+                .as_slice(),
+            [1, 0]
+        );
+        assert_eq!(
+            seen_tool_choice_modes
+                .lock()
+                .expect("stream tool choice modes lock")
+                .as_slice(),
+            [ToolChoiceMode::Auto, ToolChoiceMode::Auto]
+        );
+        assert_terminal_messages_for_reason(&seen_messages, TerminalReason::IterationLimit);
     }
 
     #[tokio::test]
@@ -1494,6 +3930,467 @@ mod tests {
                 .as_slice(),
             ["delta:直接答案"]
         );
+    }
+
+    #[tokio::test]
+    async fn direct_stream_requires_stop_and_done() {
+        let llm = StreamingMockLlmProvider::with_rounds(vec![vec![
+            ChatStreamEvent::ToolChoiceMetadata {
+                requested: ToolChoiceMode::Auto,
+                effective: ToolChoiceMode::Auto,
+                fallback: false,
+            },
+            ChatStreamEvent::ContentDelta("partial direct answer".to_string()),
+            ChatStreamEvent::Finish(ChatStreamFinishReason::Stop),
+        ]]);
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(EchoTool));
+        let observer = Arc::new(RecordingStreamObserver::default());
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 3, None)
+                .with_stream_observer(Some(observer.clone()));
+        let mut context = AgentContext::new("direct-missing-done".to_string());
+
+        let response = agent.run("answer", &mut context).await;
+
+        assert!(!response.success);
+        assert!(
+            response
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains("ended before Done"))
+        );
+        assert_eq!(
+            observer
+                .events
+                .lock()
+                .expect("stream events lock")
+                .as_slice(),
+            ["delta:partial direct answer", "reset"]
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_stream_requires_tool_calls_finish_reason() {
+        let llm = StreamingMockLlmProvider::with_rounds(vec![vec![
+            ChatStreamEvent::ToolChoiceMetadata {
+                requested: ToolChoiceMode::Auto,
+                effective: ToolChoiceMode::Auto,
+                fallback: false,
+            },
+            ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_wrong_finish".to_string()),
+                name: Some("echo_tool".to_string()),
+                arguments: r#"{"text":"never execute"}"#.to_string(),
+            },
+            ChatStreamEvent::Finish(ChatStreamFinishReason::Stop),
+            ChatStreamEvent::Done,
+        ]]);
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(EchoTool));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 3, None);
+        let mut context = AgentContext::new("tool-wrong-finish".to_string());
+
+        let response = agent.run("tool", &mut context).await;
+
+        assert!(!response.success);
+        assert!(response.tool_calls_made.is_empty());
+        assert!(
+            response
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains("expected ToolCalls, got Stop"))
+        );
+    }
+
+    #[tokio::test]
+    async fn control_stream_missing_done_degrades_with_control_error_reason() {
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_data_fetch".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![
+                ChatStreamEvent::ToolChoiceMetadata {
+                    requested: ToolChoiceMode::Required,
+                    effective: ToolChoiceMode::Required,
+                    fallback: false,
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_incomplete_finish".to_string()),
+                    name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
+                    arguments: "{}".to_string(),
+                },
+                ChatStreamEvent::Finish(ChatStreamFinishReason::ToolCalls),
+            ],
+            vec![ChatStreamEvent::ContentDelta(
+                "控制流不完整时仍基于已有证据回答".to_string(),
+            )],
+        ]);
+        let seen_messages = llm.seen_messages.clone();
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(FinanceEvidenceTool));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 4, None)
+                .with_finish_research_terminal_synthesis(true);
+        let mut context = AgentContext::new("control-missing-done".to_string());
+
+        let response = agent.run("research", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, "控制流不完整时仍基于已有证据回答");
+        assert_terminal_messages_for_reason(&seen_messages, TerminalReason::ControlError);
+    }
+
+    #[tokio::test]
+    async fn active_stream_missing_done_degrades_with_active_error_reason() {
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_data_fetch".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_continue".to_string()),
+                name: Some(CONTINUE_RESEARCH_TOOL_NAME.to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![
+                ChatStreamEvent::ToolChoiceMetadata {
+                    requested: ToolChoiceMode::Required,
+                    effective: ToolChoiceMode::Required,
+                    fallback: false,
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_incomplete_data".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"text":"incomplete"}"#.to_string(),
+                },
+                ChatStreamEvent::Finish(ChatStreamFinishReason::ToolCalls),
+            ],
+            vec![ChatStreamEvent::ContentDelta(
+                "业务流不完整时仍基于旧证据回答".to_string(),
+            )],
+        ]);
+        let seen_messages = llm.seen_messages.clone();
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(FinanceEvidenceTool));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 4, None)
+                .with_finish_research_terminal_synthesis(true);
+        let mut context = AgentContext::new("active-missing-done".to_string());
+
+        let response = agent.run("research", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, "业务流不完整时仍基于旧证据回答");
+        assert_eq!(response.tool_calls_made.len(), 1);
+        assert_terminal_messages_for_reason(&seen_messages, TerminalReason::ActiveError);
+    }
+
+    #[tokio::test]
+    async fn terminal_stream_requires_stop_and_done() {
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_data_fetch".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_finish".to_string()),
+                name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![
+                ChatStreamEvent::ToolChoiceMetadata {
+                    requested: ToolChoiceMode::Auto,
+                    effective: ToolChoiceMode::Auto,
+                    fallback: false,
+                },
+                ChatStreamEvent::ContentDelta("incomplete terminal".to_string()),
+                ChatStreamEvent::Finish(ChatStreamFinishReason::Stop),
+            ],
+        ]);
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(FinanceEvidenceTool));
+        let observer = Arc::new(RecordingStreamObserver::default());
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 4, None)
+                .with_finish_research_terminal_synthesis(true)
+                .with_stream_observer(Some(observer.clone()));
+        let mut context = AgentContext::new("terminal-missing-done".to_string());
+
+        let response = agent.run("research", &mut context).await;
+
+        assert!(!response.success);
+        assert!(
+            response
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains("terminal synthesis stream ended before Done"))
+        );
+        assert_eq!(
+            observer
+                .events
+                .lock()
+                .expect("stream events lock")
+                .as_slice(),
+            ["final:incomplete terminal", "reset"]
+        );
+    }
+
+    #[tokio::test]
+    async fn committed_terminal_prefix_recovers_once_without_restreaming_or_rerunning_tools() {
+        let prefix = concat!(
+            "数据时间：北京时间 2026-07-18 21:05；行情口径：",
+            "报价源最新可得、非逐笔\n"
+        );
+        let incomplete = format!("{prefix}未完成的正文");
+        let recovered = format!("{prefix}\n## 结论\n基于本轮工具证据完成回答。");
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_data_fetch".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_finish".to_string()),
+                name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![
+                ChatStreamEvent::ToolChoiceMetadata {
+                    requested: ToolChoiceMode::Auto,
+                    effective: ToolChoiceMode::Auto,
+                    fallback: false,
+                },
+                ChatStreamEvent::ContentDelta(incomplete.clone()),
+                ChatStreamEvent::Finish(ChatStreamFinishReason::Stop),
+            ],
+            vec![ChatStreamEvent::ContentDelta(format!(
+                "<think>recovery reasoning is not visible evidence</think>{recovered}"
+            ))],
+        ]);
+        let stream_calls = llm.stream_calls.clone();
+        let seen_tool_counts = llm.seen_tool_counts.clone();
+        let seen_messages = llm.seen_messages.clone();
+        let audit = Arc::new(RecordingAuditSink::default());
+        let observer = Arc::new(CommittedPrefixStreamObserver::new(prefix));
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(FinanceEvidenceTool));
+        let agent = FunctionCallingAgent::new(
+            Arc::new(llm),
+            Arc::new(registry),
+            String::new(),
+            4,
+            Some(audit.clone()),
+        )
+        .with_finish_research_terminal_synthesis(true)
+        .with_stream_observer(Some(observer.clone()));
+        let mut context = AgentContext::new("terminal-recovery-success".to_string());
+
+        let response = agent.run("research", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, recovered);
+        assert_eq!(response.iterations, 2);
+        assert_eq!(response.tool_calls_made.len(), 1);
+        assert_eq!(stream_calls.load(Ordering::SeqCst), 4);
+        assert_eq!(
+            seen_tool_counts
+                .lock()
+                .expect("stream tool counts lock")
+                .as_slice(),
+            [1, 2, 0, 0],
+            "recovery must stay in the same terminal phase with tools disabled"
+        );
+        assert_eq!(
+            observer
+                .events
+                .lock()
+                .expect("stream events lock")
+                .as_slice(),
+            [format!("final:{incomplete}")],
+            "the recovery response must remain buffered and must not reset the committed prefix"
+        );
+        let messages = seen_messages.lock().expect("stream messages lock");
+        assert_eq!(messages.len(), 4);
+        assert!(
+            messages[3]
+                .last()
+                .and_then(|message| message.content.as_deref())
+                .is_some_and(|prompt| {
+                    prompt.contains("【终稿传输恢复】")
+                        && prompt.contains("前缀后必须继续输出非空正文")
+                })
+        );
+        assert!(
+            messages[3]
+                .iter()
+                .all(|message| message.reasoning_content.is_none())
+        );
+        drop(messages);
+
+        let records = audit.records.lock().expect("audit records lock");
+        let initial = records
+            .iter()
+            .find(|record| record.operation == "chat_terminal_without_tools")
+            .expect("initial terminal audit");
+        assert!(!initial.success);
+        assert_eq!(
+            initial.metadata["terminal_recovery_eligible"],
+            Value::Bool(true)
+        );
+        let recovery = records
+            .iter()
+            .find(|record| record.operation == "chat_terminal_recovery_without_tools")
+            .expect("terminal recovery audit");
+        assert!(recovery.success, "{:?}", recovery.error);
+        assert_eq!(recovery.metadata["recovery_attempt"], 1);
+        assert_eq!(recovery.metadata["has_tools"], Value::Bool(false));
+        assert_eq!(
+            recovery.metadata["effective_tool_choice"],
+            Value::String("auto".to_string())
+        );
+        assert_eq!(
+            context
+                .messages
+                .last()
+                .and_then(|message| message.content.as_deref()),
+            Some(response.content.as_str())
+        );
+        assert!(
+            context
+                .messages
+                .last()
+                .expect("terminal message")
+                .metadata
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn committed_terminal_prefix_recovery_mismatch_fails_after_exactly_one_attempt() {
+        let prefix = "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
+        let incomplete = format!("{prefix}未完成的正文");
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_data_fetch".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_finish".to_string()),
+                name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![
+                ChatStreamEvent::ToolChoiceMetadata {
+                    requested: ToolChoiceMode::Auto,
+                    effective: ToolChoiceMode::Auto,
+                    fallback: false,
+                },
+                ChatStreamEvent::ContentDelta(incomplete.clone()),
+                ChatStreamEvent::Finish(ChatStreamFinishReason::Stop),
+            ],
+            vec![ChatStreamEvent::ContentDelta(
+                "数据时间：北京时间 2026-07-18 21:06；行情口径：不同前缀\n正文".to_string(),
+            )],
+        ]);
+        let stream_calls = llm.stream_calls.clone();
+        let audit = Arc::new(RecordingAuditSink::default());
+        let observer = Arc::new(CommittedPrefixStreamObserver::new(prefix));
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(FinanceEvidenceTool));
+        let agent = FunctionCallingAgent::new(
+            Arc::new(llm),
+            Arc::new(registry),
+            String::new(),
+            4,
+            Some(audit.clone()),
+        )
+        .with_finish_research_terminal_synthesis(true)
+        .with_stream_observer(Some(observer.clone()));
+        let mut context = AgentContext::new("terminal-recovery-mismatch".to_string());
+
+        let response = agent.run("research", &mut context).await;
+
+        assert!(!response.success);
+        assert!(
+            response
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains(
+                    "terminal recovery content does not start with the committed visible prefix"
+                )),
+            "{:?}",
+            response.error
+        );
+        assert_eq!(stream_calls.load(Ordering::SeqCst), 4);
+        assert_eq!(response.tool_calls_made.len(), 1);
+        assert_eq!(
+            observer
+                .events
+                .lock()
+                .expect("stream events lock")
+                .as_slice(),
+            [format!("final:{incomplete}")]
+        );
+        let records = audit.records.lock().expect("audit records lock");
+        let recovery_records = records
+            .iter()
+            .filter(|record| record.operation == "chat_terminal_recovery_without_tools")
+            .collect::<Vec<_>>();
+        assert_eq!(recovery_records.len(), 1);
+        assert!(!recovery_records[0].success);
+    }
+
+    #[test]
+    fn terminal_content_rejects_header_only_and_duplicate_committed_prefix() {
+        let prefix = "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
+        let header_only = validate_terminal_recovery_content(prefix, prefix)
+            .expect_err("a canonical header without a body is incomplete");
+        assert!(header_only.to_string().contains("contains no body"));
+
+        let duplicated = format!("{prefix}\n{prefix}正文");
+        let duplicate_error = validate_terminal_recovery_content(&duplicated, prefix)
+            .expect_err("replaying the committed header would duplicate visible output");
+        assert!(
+            duplicate_error
+                .to_string()
+                .contains("repeats the committed visible prefix")
+        );
+    }
+
+    #[test]
+    fn non_success_stream_finish_reasons_are_errors() {
+        for reason in [
+            ChatStreamFinishReason::Length,
+            ChatStreamFinishReason::ContentFilter,
+            ChatStreamFinishReason::Error,
+            ChatStreamFinishReason::Other("provider_specific".to_string()),
+        ] {
+            let mut finish = None;
+            assert!(
+                observe_stream_finish(&mut finish, reason).is_err(),
+                "non-success finish reason must fail"
+            );
+            assert!(finish.is_none());
+        }
     }
 
     #[tokio::test]
@@ -1559,7 +4456,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn duplicate_finish_calls_are_normalized_to_one_terminal_generation() {
+    async fn duplicate_finish_calls_degrade_instead_of_claiming_explicit_completion() {
         let llm = StreamingMockLlmProvider::with_rounds(vec![
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
@@ -1583,6 +4480,7 @@ mod tests {
             ],
             vec![ChatStreamEvent::ContentDelta("唯一终稿".to_string())],
         ]);
+        let seen_messages = llm.seen_messages.clone();
         let mut registry = ToolRegistry::new();
         registry.register(Box::new(FinanceEvidenceTool));
         let agent =
@@ -1594,12 +4492,13 @@ mod tests {
 
         assert!(response.success, "{:?}", response.error);
         assert_eq!(response.content, "唯一终稿");
-        assert_eq!(response.iterations, 3);
+        assert_eq!(response.iterations, 2);
         assert_eq!(response.tool_calls_made.len(), 1);
+        assert_terminal_messages_for_reason(&seen_messages, TerminalReason::ControlError);
     }
 
     #[tokio::test]
-    async fn mixed_finish_research_is_ignored_while_the_business_tool_executes_normally() {
+    async fn hallucinated_control_is_ignored_when_terminal_policy_is_disabled() {
         let llm = StreamingMockLlmProvider::with_rounds(vec![
             vec![
                 ChatStreamEvent::ToolCallDelta {
@@ -1624,7 +4523,6 @@ mod tests {
         let tool_observer = Arc::new(MockToolObserver::default());
         let agent =
             FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 3, None)
-                .with_finish_research_terminal_synthesis(true)
                 .with_tool_call_budget(Some(1), HashMap::new())
                 .with_stream_observer(Some(stream_observer.clone()))
                 .with_tool_observer(Some(tool_observer.clone()));
@@ -1644,7 +4542,7 @@ mod tests {
                 .expect("stream tool counts lock")
                 .as_slice(),
             [1, 1],
-            "an unavailable hallucinated finish_research must be ignored and must not activate terminal synthesis for a non-finance tool"
+            "a hallucinated internal control must be ignored when the terminal policy is disabled"
         );
         assert_eq!(
             tool_observer

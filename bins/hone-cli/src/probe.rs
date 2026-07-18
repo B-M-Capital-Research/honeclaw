@@ -107,6 +107,13 @@ impl AgentSessionListener for ProbeListener {
                     response.content.len()
                 );
             }
+            AgentSessionEvent::PartialDone { response } => {
+                println!(
+                    "[partial_done] success=false tool_calls={} content_len={}",
+                    response.tool_calls_made.len(),
+                    response.content.len()
+                );
+            }
             AgentSessionEvent::Run(
                 RunEvent::StreamDelta { content } | RunEvent::CommittedStreamDelta { content },
             ) => {

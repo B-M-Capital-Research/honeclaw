@@ -416,7 +416,10 @@ export type ChatStreamEvent =
       };
     }
   | { event: "run_error"; data: { message?: string } }
-  | { event: "run_finished"; data: { success?: boolean } }
+  | {
+      event: "run_finished";
+      data: { success?: boolean; partial?: boolean };
+    }
   /** actor 创建失败等路径（chat.rs 早期返回） */
   | { event: "error"; data: { text?: string } }
   /** 流结束标记（与 run_finished 二选一出现） */

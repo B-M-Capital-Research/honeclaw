@@ -36,9 +36,21 @@ pub struct AgentSessionError {
 #[derive(Debug, Clone)]
 pub enum AgentSessionEvent {
     Run(RunEvent),
-    UserMessage { content: String },
-    Segment { text: String },
-    Done { response: AgentResponse },
+    UserMessage {
+        content: String,
+    },
+    Segment {
+        text: String,
+    },
+    /// A user-visible prefix crossed an irreversible stream boundary, but the
+    /// underlying run did not complete. Browser adapters close without an
+    /// error flash while callers still receive the failed AgentSessionResult.
+    PartialDone {
+        response: AgentResponse,
+    },
+    Done {
+        response: AgentResponse,
+    },
 }
 
 #[async_trait]

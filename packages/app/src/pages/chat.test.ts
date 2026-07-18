@@ -23,6 +23,7 @@ import {
   publicAttachmentFileLabel,
   publicChatRunEventPatch,
   publicChatRunStartedAtLabel,
+  publicChatTerminalEventPatch,
   publicChatToolStatusText,
   rekeyTrailingOptimisticIds,
   resolvePublicChatRecovery,
@@ -228,6 +229,28 @@ describe("public chat run progress", () => {
         "HONE 执行中",
       ),
     ).toBe("HONE 执行中");
+  });
+});
+
+describe("public chat terminal result", () => {
+  it("keeps an explicitly partial committed answer stable without claiming success", () => {
+    expect(
+      publicChatTerminalEventPatch(
+        { success: false, partial: true },
+        "不应显示的运行错误",
+        "请求出错，请重试",
+      ),
+    ).toEqual({ phase: "done", statusText: undefined });
+  });
+
+  it("still renders an ordinary failed run as an error", () => {
+    expect(
+      publicChatTerminalEventPatch(
+        { success: false },
+        "运行失败",
+        "请求出错，请重试",
+      ),
+    ).toEqual({ phase: "error", statusText: "运行失败" });
   });
 });
 

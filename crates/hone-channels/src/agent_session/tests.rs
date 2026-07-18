@@ -14,8 +14,8 @@ use hone_core::ActorIdentity;
 use hone_core::SessionIdentity;
 use hone_core::agent::{AgentContext, AgentMessage, AgentResponse, ToolCallMade};
 use hone_core::config::HoneConfig;
-use hone_llm::provider::{ChatResult, FunctionCall, ToolCall};
-use hone_llm::{ChatResponse, LlmProvider, Message};
+use hone_llm::provider::{ChatResult, ChatStreamFinishReason, FunctionCall, ToolCall};
+use hone_llm::{ChatResponse, ChatStreamEvent, LlmProvider, Message, ToolChoiceMode};
 use hone_memory::session::{SessionRuntimeBackend, SessionStorageOptions};
 use hone_memory::{
     ConversationQuotaReserveResult, SessionStorage, assistant_tool_calls_from_metadata,
@@ -231,6 +231,7 @@ struct MockLlmProvider {
 struct MockLlmState {
     chat_calls: usize,
     chat_with_tools_calls: usize,
+    incomplete_stream_calls: Vec<usize>,
     chat_responses: std::collections::VecDeque<hone_core::HoneResult<ChatResult>>,
     responses: std::collections::VecDeque<hone_core::HoneResult<ChatResponse>>,
     last_chat_messages: Option<Vec<Message>>,
@@ -246,6 +247,7 @@ impl MockLlmProvider {
             state: Arc::new(Mutex::new(MockLlmState {
                 chat_calls: 0,
                 chat_with_tools_calls: 0,
+                incomplete_stream_calls: Vec::new(),
                 chat_responses: chat_responses.into(),
                 responses: responses.into(),
                 last_chat_messages: None,
@@ -259,6 +261,7 @@ impl MockLlmProvider {
             state: Arc::new(Mutex::new(MockLlmState {
                 chat_calls: 0,
                 chat_with_tools_calls: 0,
+                incomplete_stream_calls: Vec::new(),
                 chat_responses: responses.into_iter().map(Ok).collect(),
                 responses: Default::default(),
                 last_chat_messages: None,
@@ -272,6 +275,7 @@ impl MockLlmProvider {
             state: Arc::new(Mutex::new(MockLlmState {
                 chat_calls: 0,
                 chat_with_tools_calls: 0,
+                incomplete_stream_calls: Vec::new(),
                 chat_responses: Default::default(),
                 responses: responses.into_iter().map(Ok).collect(),
                 last_chat_messages: None,
@@ -289,6 +293,15 @@ impl MockLlmProvider {
             .lock()
             .expect("mock llm lock")
             .chat_with_tools_calls
+    }
+
+    fn incomplete_on_stream_calls(self, calls: &[usize]) -> Self {
+        self.state
+            .lock()
+            .expect("mock llm lock")
+            .incomplete_stream_calls
+            .extend_from_slice(calls);
+        self
     }
 
     fn last_chat_prompt(&self) -> Option<String> {
@@ -313,6 +326,97 @@ impl MockLlmProvider {
             .collect::<Vec<_>>()
             .join("\n")
     }
+}
+
+fn mock_tool_name(tool: &Value) -> Option<&str> {
+    tool.get("function")
+        .and_then(|function| function.get("name"))
+        .and_then(Value::as_str)
+}
+
+fn is_mock_research_control_name(name: &str) -> bool {
+    matches!(name, "continue_research" | "finish_research")
+}
+
+fn is_mock_research_control_round(tools: &[Value]) -> bool {
+    !tools.is_empty()
+        && tools
+            .iter()
+            .all(|tool| mock_tool_name(tool).is_some_and(is_mock_research_control_name))
+}
+
+fn mock_response_has_business_tool_calls(response: &ChatResponse) -> bool {
+    response.tool_calls.as_ref().is_some_and(|tool_calls| {
+        tool_calls
+            .iter()
+            .any(|tool_call| !is_mock_research_control_name(&tool_call.function.name))
+    })
+}
+
+fn mock_control_response(continue_research: bool) -> ChatResponse {
+    let name = if continue_research {
+        "continue_research"
+    } else {
+        "finish_research"
+    };
+    ChatResponse {
+        content: String::new(),
+        reasoning_content: None,
+        tool_calls: Some(vec![ToolCall {
+            id: format!("mock_{name}"),
+            call_type: "function".to_string(),
+            function: FunctionCall {
+                name: name.to_string(),
+                arguments: "{}".to_string(),
+            },
+        }]),
+        usage: None,
+    }
+}
+
+fn mock_stream_events(
+    response: ChatResponse,
+    tool_choice_mode: ToolChoiceMode,
+) -> Vec<hone_core::HoneResult<ChatStreamEvent>> {
+    let ChatResponse {
+        content,
+        reasoning_content,
+        tool_calls,
+        usage,
+    } = response;
+    let finish_reason = if tool_calls
+        .as_ref()
+        .is_some_and(|tool_calls| !tool_calls.is_empty())
+    {
+        ChatStreamFinishReason::ToolCalls
+    } else {
+        ChatStreamFinishReason::Stop
+    };
+    let mut events = vec![Ok(ChatStreamEvent::ToolChoiceMetadata {
+        requested: tool_choice_mode,
+        effective: tool_choice_mode,
+        fallback: false,
+    })];
+    if let Some(reasoning) = reasoning_content {
+        events.push(Ok(ChatStreamEvent::ReasoningDelta(reasoning)));
+    }
+    if !content.is_empty() {
+        events.push(Ok(ChatStreamEvent::ContentDelta(content)));
+    }
+    for (index, tool_call) in tool_calls.unwrap_or_default().into_iter().enumerate() {
+        events.push(Ok(ChatStreamEvent::ToolCallDelta {
+            index: index as u32,
+            id: Some(tool_call.id),
+            name: Some(tool_call.function.name),
+            arguments: tool_call.function.arguments,
+        }));
+    }
+    if let Some(usage) = usage {
+        events.push(Ok(ChatStreamEvent::Usage(usage)));
+    }
+    events.push(Ok(ChatStreamEvent::Finish(finish_reason)));
+    events.push(Ok(ChatStreamEvent::Done));
+    events
 }
 
 #[async_trait]
@@ -346,6 +450,52 @@ impl LlmProvider for MockLlmProvider {
                 "no more mock tool responses".to_string(),
             ))
         })
+    }
+
+    fn chat_with_tools_stream<'a>(
+        &'a self,
+        messages: &'a [Message],
+        tools: &'a [Value],
+        _model: Option<&'a str>,
+        tool_choice_mode: ToolChoiceMode,
+    ) -> BoxStream<'a, hone_core::HoneResult<ChatStreamEvent>> {
+        let (result, incomplete_stream) = {
+            let mut state = self.state.lock().expect("mock llm lock");
+            state.chat_with_tools_calls += 1;
+            let stream_call = state.chat_with_tools_calls;
+            state.last_tool_messages = Some(messages.to_vec());
+            let result = if is_mock_research_control_round(tools) {
+                let continue_research = state
+                    .responses
+                    .front()
+                    .and_then(|response| response.as_ref().ok())
+                    .is_some_and(mock_response_has_business_tool_calls);
+                Ok(mock_control_response(continue_research))
+            } else {
+                state.responses.pop_front().unwrap_or_else(|| {
+                    Err(hone_core::HoneError::Llm(
+                        "no more mock tool responses".to_string(),
+                    ))
+                })
+            };
+            let incomplete_stream = state.incomplete_stream_calls.contains(&stream_call);
+            (result, incomplete_stream)
+        };
+
+        match result {
+            Ok(response) => {
+                let mut events = mock_stream_events(response, tool_choice_mode);
+                if incomplete_stream {
+                    assert!(
+                        matches!(events.last(), Some(Ok(ChatStreamEvent::Done))),
+                        "mock incomplete stream requires a terminal Done event"
+                    );
+                    events.pop();
+                }
+                Box::pin(stream::iter(events))
+            }
+            Err(error) => Box::pin(stream::once(async move { Err(error) })),
+        }
     }
 
     fn chat_stream<'a>(
@@ -4239,7 +4389,7 @@ async fn incomplete_named_scope_enters_main_agent_tool_loop_without_auxiliary_ga
         0,
         "blocking auxiliary chat must be removed"
     );
-    assert_eq!(llm.chat_with_tools_calls(), 4);
+    assert_eq!(llm.chat_with_tools_calls(), 7);
     let runner_prompt = llm.last_tool_transcript();
     assert!(
         runner_prompt.contains("主 Agent 工具循环"),
@@ -4266,15 +4416,22 @@ async fn incomplete_named_scope_enters_main_agent_tool_loop_without_auxiliary_ga
             ..
         })
     )));
-    let visible_deltas = events
+    let visible_chunks = events
         .iter()
         .filter_map(|event| match event {
             AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => Some(content),
+            AgentSessionEvent::Segment { text } => Some(text),
             _ => None,
         })
         .collect::<Vec<_>>();
-    assert_eq!(visible_deltas.len(), 1, "{visible_deltas:?}");
-    assert_eq!(visible_deltas[0], &result.response.content);
+    assert_eq!(visible_chunks.len(), 2, "{visible_chunks:?}");
+    assert_eq!(
+        visible_chunks
+            .iter()
+            .map(|chunk| chunk.as_str())
+            .collect::<String>(),
+        result.response.content
+    );
     fmp_stub.join().expect("join FMP stub");
     let _ = std::fs::remove_dir_all(root);
 }
@@ -4337,7 +4494,7 @@ async fn agent_owned_no_coverage_clarification_is_not_replaced_and_is_emitted_on
             .map(Vec::len),
         Some(0)
     );
-    assert_eq!(llm.chat_with_tools_calls(), 2);
+    assert_eq!(llm.chat_with_tools_calls(), 3);
     let events = listener.events.lock().await;
     let visible_deltas = events
         .iter()
@@ -4421,7 +4578,7 @@ async fn agent_owned_equal_candidate_clarification_is_not_replaced_and_is_emitte
             .map(Vec::len),
         Some(2)
     );
-    assert_eq!(llm.chat_with_tools_calls(), 2);
+    assert_eq!(llm.chat_with_tools_calls(), 3);
     let events = listener.events.lock().await;
     let visible_deltas = events
         .iter()
@@ -4509,7 +4666,7 @@ async fn optional_agent_observation_preserves_completed_interactive_answer() {
     assert_eq!(result.response.content, answer);
     assert_eq!(result.response.error, None);
     assert_eq!(result.response.tool_calls_made.len(), 2);
-    assert_eq!(llm.chat_with_tools_calls(), 3);
+    assert_eq!(llm.chat_with_tools_calls(), 5);
     let messages = core
         .session_storage
         .get_messages(&actor.session_id(), None)
@@ -4531,14 +4688,276 @@ async fn optional_agent_observation_preserves_completed_interactive_answer() {
         Some(true)
     );
     let events = listener.events.lock().await;
-    let visible_deltas = events
+    let visible_chunks = events
         .iter()
         .filter_map(|event| match event {
-            AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => Some(content.as_str()),
+            AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => Some(content),
+            AgentSessionEvent::Segment { text } => Some(text),
             _ => None,
         })
         .collect::<Vec<_>>();
-    assert_eq!(visible_deltas, vec![answer]);
+    assert_eq!(visible_chunks.len(), 2, "{visible_chunks:?}");
+    assert_eq!(
+        visible_chunks
+            .iter()
+            .map(|chunk| chunk.as_str())
+            .collect::<String>(),
+        answer
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn committed_terminal_header_recovers_in_place_and_session_emits_only_the_tail() {
+    let root = make_temp_dir("hone_channels_terminal_header_recovery");
+    std::fs::create_dir_all(&root).expect("create root");
+    let (fmp_base_url, fmp_stub) = spawn_fmp_route_stub(vec![(
+        "query=CRWV".to_string(),
+        serde_json::json!([{
+            "symbol":"CRWV",
+            "name":"CoreWeave, Inc.",
+            "exchangeShortName":"NASDAQ"
+        }]),
+    )]);
+    let committed_header = concat!(
+        "数据时间：北京时间 2026-07-18 21:05；行情口径：",
+        "本轮仅核验证券实体，未查询行情\n"
+    );
+    let interrupted_answer = format!("{committed_header}\n这段终稿在传输结束前中断。");
+    let recovered_answer = format!(
+        "{committed_header}\n## 标的核验\nCRWV 对应 CoreWeave, Inc.；本轮未查询行情，因此不扩写未经工具核验的价格事实。"
+    );
+    let llm = MockLlmProvider::with_tool_responses(vec![
+        ChatResponse {
+            content: String::new(),
+            reasoning_content: Some("先用 DataFetch 核验显式 ticker".to_string()),
+            tool_calls: Some(vec![ToolCall {
+                id: "call_crwv_search_before_terminal_recovery".to_string(),
+                call_type: "function".to_string(),
+                function: FunctionCall {
+                    name: "data_fetch".to_string(),
+                    arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
+                },
+            }]),
+            usage: None,
+        },
+        ChatResponse {
+            content: interrupted_answer,
+            reasoning_content: None,
+            tool_calls: None,
+            usage: None,
+        },
+        ChatResponse {
+            content: recovered_answer.clone(),
+            reasoning_content: Some("recovery-only hidden reasoning".to_string()),
+            tool_calls: None,
+            usage: None,
+        },
+    ])
+    .incomplete_on_stream_calls(&[3]);
+    let core = make_strict_tool_loop_test_core_with_config(&root, llm.clone(), |config| {
+        config.fmp.api_keys = vec!["test-key".to_string()];
+        config.fmp.base_url = fmp_base_url;
+    });
+    let actor =
+        ActorIdentity::new("web", "terminal-header-recovery", None::<String>).expect("actor");
+    let listener = Arc::new(RecordingListener::default());
+    let mut session = AgentSession::new(core.clone(), actor.clone(), "direct");
+    session.add_listener(listener.clone());
+
+    let result = session
+        .run("CRWV 是什么公司", AgentRunOptions::default())
+        .await;
+    fmp_stub.join().expect("join FMP stub");
+
+    assert!(result.response.success, "{:?}", result.response.error);
+    assert_eq!(result.response.content, recovered_answer);
+    assert_eq!(result.response.tool_calls_made.len(), 1);
+    assert_eq!(llm.chat_calls(), 0);
+    assert_eq!(
+        llm.chat_with_tools_calls(),
+        4,
+        "initial business round + control finish + failed terminal + one buffered terminal recovery"
+    );
+
+    let events = listener.events.lock().await;
+    let visible_chunks = events
+        .iter()
+        .filter_map(|event| match event {
+            AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => Some(content),
+            AgentSessionEvent::Segment { text } => Some(text),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(visible_chunks.len(), 2, "{visible_chunks:?}");
+    assert_eq!(visible_chunks[0], committed_header);
+    assert_eq!(
+        visible_chunks
+            .iter()
+            .map(|chunk| chunk.as_str())
+            .collect::<String>(),
+        recovered_answer,
+        "the irreversible header must be followed only by the recovered tail"
+    );
+    assert_eq!(
+        recovered_answer.matches(committed_header).count(),
+        1,
+        "the canonical header must not be replayed"
+    );
+    assert!(!events.iter().any(|event| matches!(
+        event,
+        AgentSessionEvent::Run(RunEvent::StreamReset | RunEvent::Error { .. })
+    )));
+    drop(events);
+
+    let messages = core
+        .session_storage
+        .get_messages(&actor.session_id(), None)
+        .expect("persisted terminal messages");
+    assert_eq!(messages.len(), 2);
+    assert_eq!(
+        messages[1].content[0].text.as_deref(),
+        Some(recovered_answer.as_str())
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn committed_terminal_header_double_failure_emits_honest_partial_and_persists_visible_prefix()
+{
+    let root = make_temp_dir("hone_channels_terminal_header_double_failure");
+    std::fs::create_dir_all(&root).expect("create root");
+    let (fmp_base_url, fmp_stub) = spawn_fmp_route_stub(vec![(
+        "query=CRWV".to_string(),
+        serde_json::json!([{
+            "symbol":"CRWV",
+            "name":"CoreWeave, Inc.",
+            "exchangeShortName":"NASDAQ"
+        }]),
+    )]);
+    let committed_header = concat!(
+        "数据时间：北京时间 2026-07-18 21:05；行情口径：",
+        "本轮仅核验证券实体，未查询行情\n"
+    );
+    let interrupted_answer = format!("{committed_header}\n未完成正文");
+    let mismatched_recovery = concat!(
+        "数据时间：北京时间 2026-07-18 21:06；行情口径：不同前缀\n",
+        "恢复正文"
+    );
+    let llm = MockLlmProvider::with_tool_responses(vec![
+        ChatResponse {
+            content: String::new(),
+            reasoning_content: None,
+            tool_calls: Some(vec![ToolCall {
+                id: "call_crwv_search_before_terminal_double_failure".to_string(),
+                call_type: "function".to_string(),
+                function: FunctionCall {
+                    name: "data_fetch".to_string(),
+                    arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
+                },
+            }]),
+            usage: None,
+        },
+        ChatResponse {
+            content: interrupted_answer,
+            reasoning_content: None,
+            tool_calls: None,
+            usage: None,
+        },
+        ChatResponse {
+            content: mismatched_recovery.to_string(),
+            reasoning_content: None,
+            tool_calls: None,
+            usage: None,
+        },
+    ])
+    .incomplete_on_stream_calls(&[3]);
+    let core = make_strict_tool_loop_test_core_with_config(&root, llm.clone(), |config| {
+        config.fmp.api_keys = vec!["test-key".to_string()];
+        config.fmp.base_url = fmp_base_url;
+    });
+    let actor =
+        ActorIdentity::new("web", "terminal-header-double-failure", None::<String>).expect("actor");
+    let listener = Arc::new(RecordingListener::default());
+    let mut session = AgentSession::new(core.clone(), actor.clone(), "direct");
+    session.add_listener(listener.clone());
+
+    let result = session
+        .run("CRWV 是什么公司", AgentRunOptions::default())
+        .await;
+    fmp_stub.join().expect("join FMP stub");
+
+    assert!(!result.response.success);
+    assert!(
+        result
+            .response
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("terminal synthesis recovery failed"))
+    );
+    assert_eq!(result.response.tool_calls_made.len(), 1);
+    assert_eq!(llm.chat_with_tools_calls(), 4);
+
+    let events = listener.events.lock().await;
+    let visible_chunks = events
+        .iter()
+        .filter_map(|event| match event {
+            AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => Some(content.as_str()),
+            AgentSessionEvent::Segment { text } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(visible_chunks, [committed_header]);
+    assert!(!events.iter().any(|event| matches!(
+        event,
+        AgentSessionEvent::Run(RunEvent::StreamReset | RunEvent::Error { .. })
+    )));
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| matches!(event, AgentSessionEvent::PartialDone { .. }))
+            .count(),
+        1
+    );
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AgentSessionEvent::PartialDone { response }
+            if !response.success
+                && response.error.is_none()
+                && response.content == committed_header
+    )));
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, AgentSessionEvent::Done { .. }))
+    );
+    drop(events);
+
+    let messages = core
+        .session_storage
+        .get_messages(&actor.session_id(), None)
+        .expect("persisted partial terminal messages");
+    assert_eq!(messages.len(), 2);
+    assert_eq!(
+        messages[1].content[0].text.as_deref(),
+        Some(committed_header)
+    );
+    assert_eq!(
+        messages[1]
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("run_failed"))
+            .and_then(Value::as_bool),
+        Some(true)
+    );
+    assert_eq!(
+        messages[1]
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("terminal_stream_incomplete"))
+            .and_then(Value::as_bool),
+        Some(true)
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -4943,20 +5362,28 @@ async fn crwv_nbis_agent_loop_batches_the_first_datafetch_and_emits_one_answer()
     assert!(call.result["data"][0]["timestamp"].is_number());
     assert!(call.result["data"][1]["timestamp"].is_number());
     assert_eq!(llm.chat_calls(), 0);
-    assert_eq!(llm.chat_with_tools_calls(), 4);
+    assert_eq!(llm.chat_with_tools_calls(), 7);
     let runner_prompt = llm.last_tool_transcript();
     assert!(runner_prompt.contains("CRWV"), "{runner_prompt}");
     assert!(runner_prompt.contains("NBIS"), "{runner_prompt}");
 
     let events = listener.events.lock().await;
-    let visible_deltas = events
+    let visible_chunks = events
         .iter()
         .filter_map(|event| match event {
             AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => Some(content),
+            AgentSessionEvent::Segment { text } => Some(text),
             _ => None,
         })
         .collect::<Vec<_>>();
-    assert_eq!(visible_deltas, vec![&result.response.content]);
+    assert_eq!(visible_chunks.len(), 2, "{visible_chunks:?}");
+    assert_eq!(
+        visible_chunks
+            .iter()
+            .map(|chunk| chunk.as_str())
+            .collect::<String>(),
+        result.response.content
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -5011,7 +5438,7 @@ async fn omitted_explicit_seed_is_observational_and_does_not_rerun() {
     assert_eq!(result.response.content, original_answer);
     assert!(result.response.error.is_none());
     assert!(!result.response.content.contains("投研完整性检查"));
-    assert_eq!(llm.chat_with_tools_calls(), 2);
+    assert_eq!(llm.chat_with_tools_calls(), 3);
     let transcript = llm.last_tool_transcript();
     assert!(
         !transcript.contains("主 Agent 实体发现自检"),
@@ -5029,14 +5456,22 @@ async fn omitted_explicit_seed_is_observational_and_does_not_rerun() {
     );
 
     let events = listener.events.lock().await;
-    let visible_deltas = events
+    let visible_chunks = events
         .iter()
         .filter_map(|event| match event {
             AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => Some(content),
+            AgentSessionEvent::Segment { text } => Some(text),
             _ => None,
         })
         .collect::<Vec<_>>();
-    assert_eq!(visible_deltas, vec![&result.response.content]);
+    assert_eq!(visible_chunks.len(), 2, "{visible_chunks:?}");
+    assert_eq!(
+        visible_chunks
+            .iter()
+            .map(|chunk| chunk.as_str())
+            .collect::<String>(),
+        result.response.content
+    );
     assert!(!events.iter().any(|event| matches!(
         event,
         AgentSessionEvent::Run(RunEvent::StreamReset | RunEvent::Error { .. })
@@ -5170,19 +5605,6 @@ async fn single_agent_loop_accepts_later_exact_searches_after_empty_enriched_sea
             usage: None,
         },
         ChatResponse {
-            content: String::new(),
-            reasoning_content: Some("证据已齐，进入唯一终稿阶段".to_string()),
-            tool_calls: Some(vec![ToolCall {
-                id: "finish_refined_crwv_nbis_research".to_string(),
-                call_type: "function".to_string(),
-                function: FunctionCall {
-                    name: "finish_research".to_string(),
-                    arguments: "{}".to_string(),
-                },
-            }]),
-            usage: None,
-        },
-        ChatResponse {
             content: accepted_answer.to_string(),
             reasoning_content: None,
             tool_calls: None,
@@ -5209,7 +5631,7 @@ async fn single_agent_loop_accepts_later_exact_searches_after_empty_enriched_sea
     assert!(result.response.content.contains("CRWV 当前价 73.21 USD"));
     assert!(result.response.content.contains("NBIS 当前价 177.71 USD"));
     assert_eq!(result.response.content, accepted_answer);
-    assert_eq!(llm.chat_with_tools_calls(), 5);
+    assert_eq!(llm.chat_with_tools_calls(), 7);
     assert_eq!(result.response.tool_calls_made.len(), 7);
     assert!(
         build_agent_discovered_investment(
@@ -5404,7 +5826,7 @@ async fn named_entity_scope_is_delegated_to_the_main_agent_instead_of_preflight_
 
     assert!(result.response.success, "{:?}", result.response.error);
     assert_eq!(llm.chat_calls(), 0);
-    assert_eq!(llm.chat_with_tools_calls(), 3);
+    assert_eq!(llm.chat_with_tools_calls(), 5);
     assert_eq!(result.response.tool_calls_made.len(), 3);
     assert!(
         build_agent_discovered_investment(
