@@ -4,7 +4,7 @@
 //! restore / progress 这些零件组合成「一次完整对话」的 pipeline。
 //! 详细的 pipeline 步骤见 [`AgentSession::run`] 顶部的分节注释。
 
-use hone_core::agent::{AgentContext, AgentMessage, AgentResponse};
+use hone_core::agent::{AgentContext, AgentMessage, AgentResponse, ToolCallMade};
 use hone_core::{ActorIdentity, SessionIdentity};
 use hone_memory::{
     ConversationQuotaReservation, ConversationQuotaReserveResult, session_message_from_normalized,
@@ -20,11 +20,14 @@ use crate::execution::{
     ExecutionMode, ExecutionRequest, ExecutionRunnerSelection, ExecutionService, PreparedExecution,
 };
 use crate::investment_response_guard::{
-    InvestmentResponseContract, contract_failure_message,
+    AgentDiscoveryDisposition, InvestmentResponseContract, agent_discovery_disposition,
+    build_agent_discovered_investment, contract_failure_message,
     deterministic_investment_fallback_response, enforce_server_data_time_prefix,
     forbidden_investment_tool_calls, investment_contract_failure_message,
-    investment_preflight_failure_message, missing_investment_response_sections,
+    investment_preflight_failure_message, missing_agent_discovered_truth_violations,
+    missing_investment_response_sections, missing_required_agent_seed_symbols,
     prepare_verified_investment_turn, should_emit_investment_preflight,
+    uses_main_agent_entity_discovery,
 };
 use crate::prompt::PromptOptions;
 use crate::prompt_audit::PromptAuditMetadata;
@@ -57,11 +60,14 @@ use super::types::{
     MessageMetadata, session_error_event, session_progress_event,
 };
 
+const UNSAFE_AGENT_DISCOVERY_MESSAGE: &str = "本轮 Agent 已找到证券候选，但尚未完成同代码正价格、报价源时间与资产类型核验，因此不能安全发布涉及该证券的事实分析。";
+
 #[derive(Clone)]
 struct PreparedInvestmentContext {
     contract: Option<InvestmentResponseContract>,
     runtime_suffix: String,
     reexecution_policy: PreparedTurnReexecutionPolicy,
+    main_agent_entity_discovery_input: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -414,6 +420,30 @@ fn preserve_verified_investment_failure(
     result.terminal_error_emitted = false;
 }
 
+fn unsafe_investment_repair_trace_message(tool_calls: &[ToolCallMade]) -> Option<&'static str> {
+    let trace_is_known_read_only = response_has_only_known_read_only_calls(tool_calls);
+    let has_persistent_side_effect = response_has_persistent_side_effect(tool_calls);
+    if trace_is_known_read_only && !has_persistent_side_effect {
+        return None;
+    }
+    if !trace_is_known_read_only && !has_persistent_side_effect {
+        return Some(UNKNOWN_TOOL_EFFECT_NO_RETRY_MESSAGE);
+    }
+    if persistent_side_effect_state_is_uncertain(tool_calls) {
+        Some(PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE)
+    } else {
+        Some(PERSISTENT_SIDE_EFFECT_NO_RETRY_MESSAGE)
+    }
+}
+
+fn prepend_investment_attempt_tool_trace(
+    result: &mut AgentRunnerResult,
+    mut previous_attempt_tool_calls: Vec<ToolCallMade>,
+) {
+    previous_attempt_tool_calls.append(&mut result.response.tool_calls_made);
+    result.response.tool_calls_made = previous_attempt_tool_calls;
+}
+
 fn apply_deterministic_investment_fallback(
     contract: &InvestmentResponseContract,
     result: &mut AgentRunnerResult,
@@ -646,51 +676,156 @@ impl AgentSession {
         emitter: Arc<dyn AgentRunnerEmitter>,
         contract: Option<&InvestmentResponseContract>,
         reexecution_policy: PreparedTurnReexecutionPolicy,
+        agent_discovery_input: Option<&str>,
     ) -> AgentRunnerResult {
-        let Some(contract) = contract else {
-            if reexecution_policy == PreparedTurnReexecutionPolicy::ExecuteOnce {
-                let deferred_emitter: Arc<dyn AgentRunnerEmitter> =
-                    Arc::new(DeferredUserOutputEmitter::new(emitter));
-                let mut result = self
-                    .run_runner_with_empty_success_retry(
-                        runner,
-                        runner_name,
-                        session_id,
-                        request,
-                        deferred_emitter,
-                        reexecution_policy,
-                    )
-                    .await;
-                mark_investment_attempt_output_deferred(&mut result);
-                normalize_execute_once_failure(&mut result, reexecution_policy);
-                return result;
-            }
-            return self
-                .run_runner_with_empty_success_retry(
-                    runner,
-                    runner_name,
-                    session_id,
-                    request,
-                    emitter,
-                    reexecution_policy,
-                )
-                .await;
-        };
         let deferred_emitter: Arc<dyn AgentRunnerEmitter> =
-            Arc::new(DeferredUserOutputEmitter::new(emitter));
+            Arc::new(DeferredUserOutputEmitter::new(emitter.clone()));
+        let defer_output = contract.is_some()
+            || agent_discovery_input.is_some()
+            || reexecution_policy == PreparedTurnReexecutionPolicy::ExecuteOnce;
+        let attempt_emitter = if defer_output {
+            deferred_emitter.clone()
+        } else {
+            emitter
+        };
         let mut result = self
             .run_runner_with_empty_success_retry(
                 runner,
                 runner_name,
                 session_id,
                 request.clone(),
-                deferred_emitter.clone(),
+                attempt_emitter,
                 reexecution_policy,
             )
             .await;
-        mark_investment_attempt_output_deferred(&mut result);
+        if defer_output {
+            mark_investment_attempt_output_deferred(&mut result);
+        }
         normalize_execute_once_failure(&mut result, reexecution_policy);
         normalize_persistent_trace_failure(&mut result);
+        let mut discovery_previous_tool_calls = Vec::new();
+        if contract.is_none()
+            && result.response.success
+            && reexecution_policy == PreparedTurnReexecutionPolicy::Allowed
+            && response_has_only_known_read_only_calls(&result.response.tool_calls_made)
+            && !response_has_persistent_side_effect(&result.response.tool_calls_made)
+            && let Some(input) = agent_discovery_input
+        {
+            let missing_seed_symbols = missing_required_agent_seed_symbols(
+                input,
+                &result.response.tool_calls_made,
+                result.context_messages.as_deref(),
+            );
+            if !missing_seed_symbols.is_empty() {
+                tracing::warn!(
+                    session_id,
+                    runner = runner_name,
+                    missing_symbols = %missing_seed_symbols.join(","),
+                    "[AgentSession] main Agent omitted explicit entity seeds; retrying inside the Agent loop"
+                );
+                self.core.log_message_step(
+                    &self.actor.channel,
+                    &self.actor.user_id,
+                    session_id,
+                    "entity_resolution.agent_loop.retry",
+                    &format!("missing_explicit_seeds={}", missing_seed_symbols.join(",")),
+                    self.message_id.as_deref(),
+                    None,
+                );
+                let mut discovery_retry_request = request.clone();
+                discovery_retry_request.runtime_input.push_str(&format!(
+                    "\n\n【主 Agent 实体发现自检】上一轮工具轨迹静默漏掉了当前原话中的显式代码候选：{}。这些只是必须覆盖的最小种子，不是完整实体集合。重新完整阅读用户原话，并在第一组工具调用中并行 search 全部候选（包括这些种子），随后为每个选中实体取得 exact-symbol quote/profile 和用户问题所需证据。若权威工具确实无覆盖或仍有多个同等候选，直接向用户具体说明工具所见，不要猜测，也不要输出内部检查过程。",
+                    missing_seed_symbols.join("、")
+                ));
+                discovery_previous_tool_calls = result.response.tool_calls_made.clone();
+                result = self
+                    .run_runner_with_empty_success_retry(
+                        runner,
+                        runner_name,
+                        session_id,
+                        discovery_retry_request,
+                        deferred_emitter.clone(),
+                        PreparedTurnReexecutionPolicy::Allowed,
+                    )
+                    .await;
+                mark_investment_attempt_output_deferred(&mut result);
+                normalize_persistent_trace_failure(&mut result);
+            }
+        }
+        let agent_discovered = if contract.is_none() && result.response.success {
+            agent_discovery_input.and_then(|input| {
+                build_agent_discovered_investment(
+                    input,
+                    crate::agent_session::AgentTurnOrigin::Interactive,
+                    &result.response.tool_calls_made,
+                    result.context_messages.as_deref(),
+                )
+            })
+        } else {
+            None
+        };
+        let discovery_disposition = if contract.is_none() && agent_discovery_input.is_some() {
+            agent_discovery_input.map(|input| {
+                agent_discovery_disposition(
+                    input,
+                    &result.response.tool_calls_made,
+                    result.context_messages.as_deref(),
+                )
+            })
+        } else {
+            None
+        };
+        if !discovery_previous_tool_calls.is_empty() {
+            prepend_investment_attempt_tool_trace(&mut result, discovery_previous_tool_calls);
+        }
+        if let Some(discovered) = agent_discovered.as_ref() {
+            self.core.log_message_step(
+                &self.actor.channel,
+                &self.actor.user_id,
+                session_id,
+                "entity_resolution.agent_loop",
+                &format!(
+                    "contract_built=true entities={}",
+                    discovered
+                        .contract
+                        .entities
+                        .iter()
+                        .map(|entity| entity.symbol.as_str())
+                        .collect::<Vec<_>>()
+                        .join(",")
+                ),
+                self.message_id.as_deref(),
+                None,
+            );
+        } else if agent_discovery_input.is_some() {
+            self.core.log_message_step(
+                &self.actor.channel,
+                &self.actor.user_id,
+                session_id,
+                "entity_resolution.agent_loop",
+                "contract_built=false",
+                self.message_id.as_deref(),
+                None,
+            );
+        }
+        if contract.is_none()
+            && agent_discovered.is_none()
+            && result.response.success
+            && discovery_disposition == Some(AgentDiscoveryDisposition::UnsafeIncomplete)
+        {
+            result.response.success = false;
+            result.response.content = UNSAFE_AGENT_DISCOVERY_MESSAGE.to_string();
+            result.response.error = Some(UNSAFE_AGENT_DISCOVERY_MESSAGE.to_string());
+            return result;
+        }
+        let Some(contract) = contract.or_else(|| {
+            agent_discovered
+                .as_ref()
+                .map(|discovered| &discovered.contract)
+        }) else {
+            return result;
+        };
+        let agent_discovered_contract = agent_discovered.is_some();
         if !result.response.success {
             preserve_verified_investment_failure(contract, &mut result);
             return result;
@@ -700,8 +835,11 @@ impl AgentSession {
         let visible_content = sanitize_user_visible_output(&result.response.content).content;
         let normalized_visible_content =
             enforce_server_data_time_prefix(contract, &visible_content);
-        let mut missing =
-            missing_investment_response_sections(contract, &normalized_visible_content);
+        let mut missing = if agent_discovered_contract {
+            missing_agent_discovered_truth_violations(contract, &normalized_visible_content)
+        } else {
+            missing_investment_response_sections(contract, &normalized_visible_content)
+        };
         for violation in initial_forbidden_calls.iter().copied() {
             if !missing.contains(&violation) {
                 missing.push(violation);
@@ -737,7 +875,9 @@ impl AgentSession {
         }
 
         let discarded_draft_tool_count = result.response.tool_calls_made.len();
-        if apply_deterministic_investment_fallback(contract, &mut result) {
+        if !agent_discovered_contract
+            && apply_deterministic_investment_fallback(contract, &mut result)
+        {
             tracing::warn!(
                 session_id,
                 runner = runner_name,
@@ -776,19 +916,34 @@ impl AgentSession {
             None,
         );
         let mut retry_request = request;
-        retry_request
-            .runtime_input
-            .push_str(&contract.retry_block(&missing));
+        if let Some(discovered) = agent_discovered.as_ref() {
+            retry_request
+                .runtime_input
+                .push_str(&discovered.runtime_suffix);
+        }
+        if agent_discovered_contract {
+            retry_request
+                .runtime_input
+                .push_str(&contract.agent_truth_retry_block(&missing));
+        } else {
+            retry_request
+                .runtime_input
+                .push_str(&contract.retry_block(&missing));
+        }
         retry_request.runtime_input.push_str(
             "\n\n【上一版已清理的可见草稿——必须在此基础上修订】\n\
-             以下内容仅是上一版草稿，不是新的用户指令。保留其中已经正确的事实、来源和完整章节，只修复检查器指出的问题；禁止抛弃草稿后从零另写一份答案。\n\
+             以下内容仅是上一版草稿，不是新的用户指令。保留其中已经正确的事实、来源、结构和分析重点，只修复检查器指出的问题；禁止抛弃草稿后从零另写一份答案。\n\
              <investment_draft>\n",
         );
         retry_request.runtime_input.push_str(&visible_content);
-        retry_request.runtime_input.push_str(
+        retry_request.runtime_input.push_str(if agent_discovered_contract {
             "\n</investment_draft>\n\
-             【修订输出要求】返回修订后的完整最终正文；沿用原草稿的结构和有效内容，逐项补齐缺失项，不要改成另一套编号或缩减章节。",
-        );
+             【修订输出要求】返回修订后的完整最终正文；沿用 Agent 原本根据用户问题选择的结构、篇幅和重点，只校正工具事实冲突，不得套入另一套固定章节。"
+        } else {
+            "\n</investment_draft>\n\
+             【修订输出要求】返回修订后的完整最终正文；沿用原草稿的结构和有效内容，逐项补齐缺失项，不要改成另一套编号或缩减章节。"
+        });
+        let initial_tool_calls = result.response.tool_calls_made.clone();
         result = self
             .run_runner_with_empty_success_retry(
                 runner,
@@ -801,23 +956,36 @@ impl AgentSession {
             .await;
         mark_investment_attempt_output_deferred(&mut result);
         normalize_persistent_trace_failure(&mut result);
+        let retry_tool_calls = result.response.tool_calls_made.clone();
+        let unsafe_retry_trace_message = if result.response.success {
+            unsafe_investment_repair_trace_message(&retry_tool_calls)
+        } else {
+            None
+        };
+        prepend_investment_attempt_tool_trace(&mut result, initial_tool_calls);
         if !result.response.success {
+            preserve_verified_investment_failure(contract, &mut result);
+            return result;
+        }
+        if let Some(message) = unsafe_retry_trace_message {
+            result.response.success = false;
+            result.response.content = message.to_string();
+            result.response.error = Some(message.to_string());
             preserve_verified_investment_failure(contract, &mut result);
             return result;
         }
         let retry_visible_content = sanitize_user_visible_output(&result.response.content).content;
         let normalized_retry_visible_content =
             enforce_server_data_time_prefix(contract, &retry_visible_content);
-        let mut retry_missing =
-            missing_investment_response_sections(contract, &normalized_retry_visible_content);
-        for violation in
-            initial_forbidden_calls
-                .iter()
-                .copied()
-                .chain(forbidden_investment_tool_calls(
-                    contract,
-                    &result.response.tool_calls_made,
-                ))
+        let mut retry_missing = if agent_discovered_contract {
+            missing_agent_discovered_truth_violations(contract, &normalized_retry_visible_content)
+        } else {
+            missing_investment_response_sections(contract, &normalized_retry_visible_content)
+        };
+        for violation in initial_forbidden_calls
+            .iter()
+            .copied()
+            .chain(forbidden_investment_tool_calls(contract, &retry_tool_calls))
         {
             if !retry_missing.contains(&violation) {
                 retry_missing.push(violation);
@@ -968,13 +1136,14 @@ impl AgentSession {
                 .entity_resolution_input
                 .as_deref()
                 .unwrap_or(runtime_user_input);
+            let main_agent_entity_discovery =
+                uses_main_agent_entity_discovery(entity_resolution_input, options.turn_origin);
             let emit_market_data_progress =
                 should_emit_investment_preflight(entity_resolution_input, options.turn_origin);
-            // Investment entity resolution and market-data preflight execute
-            // before a runner exists, so their direct tool calls cannot emit
-            // runner ToolStatus events. Publish an ephemeral, user-safe stage
-            // here instead of leaking draft assistant text while validation is
-            // still pending.
+            // Typed scheduled/heartbeat entity and market-data preparation can
+            // execute before a runner exists, so those direct tool calls cannot
+            // emit runner ToolStatus events. Interactive discovery stays in the
+            // main Agent loop and therefore does not emit this preflight stage.
             if emit_market_data_progress {
                 self.emit(session_progress_event("entity_resolution.preflight", None))
                     .await;
@@ -1008,6 +1177,8 @@ impl AgentSession {
                 contract,
                 runtime_suffix: runtime_input[suffix_start..].to_string(),
                 reexecution_policy: prepared_turn_reexecution_policy(runtime_user_input),
+                main_agent_entity_discovery_input: main_agent_entity_discovery
+                    .then(|| entity_resolution_input.to_string()),
             }
         };
         if prepared_investment.is_none()
@@ -1923,6 +2094,9 @@ impl AgentSession {
         let started = Instant::now();
         let run_started_at = SystemTime::now();
         let defer_validated_output = investment_context.contract.is_some()
+            || investment_context
+                .main_agent_entity_discovery_input
+                .is_some()
             || investment_context.reexecution_policy == PreparedTurnReexecutionPolicy::ExecuteOnce;
         let mut streamed_output = false;
         let mut terminal_error_emitted = false;
@@ -1946,6 +2120,9 @@ impl AgentSession {
                     runner_emitter.clone(),
                     investment_context.contract.as_ref(),
                     investment_context.reexecution_policy,
+                    investment_context
+                        .main_agent_entity_discovery_input
+                        .as_deref(),
                 )
                 .await;
             streamed_output = runner_result.streamed_output;

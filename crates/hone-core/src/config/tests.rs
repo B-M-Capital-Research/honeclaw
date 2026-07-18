@@ -17,6 +17,17 @@ fn yaml_has_key(mapping: &serde_yaml::Mapping, key: &str) -> bool {
     mapping.contains_key(Value::String(key.to_string()))
 }
 
+#[test]
+fn fmp_default_matches_deserialization_defaults() {
+    let direct = FmpConfig::default();
+    let deserialized: FmpConfig = serde_yaml::from_str("{}").expect("deserialize empty FMP config");
+
+    assert_eq!(direct.base_url, deserialized.base_url);
+    assert_eq!(direct.timeout, deserialized.timeout);
+    assert_eq!(direct.timeout, 60);
+    assert!(!direct.base_url.is_empty());
+}
+
 fn assert_config_example_roots(root: &serde_yaml::Mapping) {
     let actual_roots = root
         .keys()

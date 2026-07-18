@@ -89,7 +89,7 @@ fn default_nb_model() -> String {
     "google/gemini-2.0-flash-exp".to_string()
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FmpConfig {
     /// 单 Key 向后兼容字段
     #[serde(default)]
@@ -101,6 +101,17 @@ pub struct FmpConfig {
     pub base_url: String,
     #[serde(default = "default_fmp_timeout")]
     pub timeout: u64,
+}
+
+impl Default for FmpConfig {
+    fn default() -> Self {
+        Self {
+            api_key: String::new(),
+            api_keys: Vec::new(),
+            base_url: default_fmp_base(),
+            timeout: default_fmp_timeout(),
+        }
+    }
 }
 
 impl FmpConfig {

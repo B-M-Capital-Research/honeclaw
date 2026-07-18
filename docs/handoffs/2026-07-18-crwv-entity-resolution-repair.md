@@ -1,12 +1,12 @@
 # CRWV Exact-Ticker Entity Resolution Repair
 
 - title: CRWV exact-ticker versus embedded-product entity resolution repair
-- status: done
+- status: in_progress
 - created_at: 2026-07-18
 - updated_at: 2026-07-18
 - owner: Codex
-- related_files: `crates/hone-channels/src/investment_response_guard.rs`, `tests/regression/ci/test_finance_automation_contracts.sh`, `tests/regression/manual/test_entity_search_live.sh`
-- related_docs: `docs/current-plans/ticker-resolution-architecture.md`, `docs/decisions.md#d-2026-07-17-04-resolve-securities-through-a-span-aware-exact-first-pipeline`, `docs/invariants.md`, `docs/repo-map.md`, `docs/bugs/scheduler_finance_entity_guard_misclassifies_instruction_words.md`, `docs/runbooks/backend-deployment.md`
+- related_files: `crates/hone-channels/src/investment_response_guard.rs`, `crates/hone-channels/src/agent_session/core.rs`, `crates/hone-channels/src/agent_session/tests.rs`, `crates/hone-channels/src/tool_trace.rs`, `crates/hone-channels/src/prompt.rs`, `crates/hone-core/src/config/server.rs`, `crates/hone-core/src/config/tests.rs`, `soul.md`, `skills/stock_research/SKILL.md`, `tests/regression/ci/test_finance_automation_contracts.sh`, `tests/regression/manual/test_entity_search_live.sh`
+- related_docs: `docs/current-plans/ticker-resolution-architecture.md`, `docs/decisions.md#d-2026-07-17-04-resolve-securities-through-a-span-aware-exact-first-pipeline`, `docs/decisions.md#d-2026-07-18-01-keep-entity-discovery-inside-the-main-agent-tool-loop`, `docs/invariants.md`, `docs/repo-map.md`, `docs/bugs/scheduler_finance_entity_guard_misclassifies_instruction_words.md`, `docs/runbooks/backend-deployment.md`
 - related_prs: commits `4d419770`, `b87c4cb7`
 
 ## Summary
@@ -42,3 +42,40 @@ The repair classifies exact ticker identity, strong natural-name relations, and 
 ## Next Entry Point
 
 For tentative ticker/name reconciliation, start at `resolve_tentative_named_match`, `reconcile_tentative_entity_match`, `candidate_is_embedded_ticker_reference`, and `tentative_name_candidate_score` in `crates/hone-channels/src/investment_response_guard.rs`. Continue the remaining scheduler/entity work from `docs/current-plans/ticker-resolution-architecture.md` and the linked P2 bug record.
+
+## Phase 2 — Multi-Ticker Agent-Loop Entity Discovery
+
+### Incident and Root Cause
+
+The production turn `分析下crwv和nbis的估值` failed at 2026-07-18 15:03 Beijing time after about 16.2 seconds. The lexical scanner had already captured both `CRWV` and `NBIS`, but residual-language deletion left `下`; the comparison-binding rule then treated `和` as evidence that the set was incomplete even though both sides were present. The request entered the auxiliary entity LLM, hit its fixed 15-second timeout, and returned the generic entity-recognition failure. Logs contained no DataFetch start, batch probe, or `agent.run start` for the turn. Same-window failures across unrelated symbols confirmed an architecture-level single point, while live FMP results showed both securities were healthy.
+
+### Architecture Change
+
+- Removed the current-turn blocking auxiliary entity extraction, timeout, generic availability error, and `NeedsClarification` pre-run outcome.
+- Lexical results are now explicitly candidate seeds. For interactive traffic they never close the scope, trigger clarification, or start a DataFetch/portfolio preflight; every nonempty wording becomes `AgentToolDiscovery` so the configured main runner reads the complete query. Portfolio membership is loaded by the Agent's own `portfolio(view)` call in that same loop.
+- If the Agent finds named securities, its first tool group searches every candidate—including explicit tickers—and the next group exact-verifies all selected symbols with quote/profile before problem-specific evidence. High-confidence explicit code seeds are checked only after the run as a minimum that cannot be silently omitted; they are not a closed entity list. Ordinary finance or non-security turns can simply continue without an irrelevant DataFetch call.
+- After the same run completes, the service derives the entity scope from that first search group and structured tool trace. Every resolved entity must intersect a later positive same-symbol quote with a usable provider timestamp. The actual financials, holdings, news, web, earnings, sector, market, or extended-hours tools selected by the Agent define which additional facts can be validated; user wording does not select a server-side depth route.
+- DataFetch response envelopes are excluded from candidate rows, fixing the Chinese-name case where the wrapper query `英伟达` previously hid the returned provider symbol `NVDA`. CRWV/CWY is resolved only when CRWV itself has later exact quote evidence; quoting only CWY fails. A first search group that omits named NBIS or later lacks any exact quote cannot create a one-sided comparison contract.
+- Dynamic contracts follow observed tools only: a financials call enables financial-number validation, a holdings call enables fund-holding validation, news/web calls enable dated-event validation, and an extended-hours call enables exact-session validation. The service no longer infers those calls from “估值”, “最近”, “盘前”, or any other wording vocabulary, and it does not force a fixed comparison/deep template.
+- Dynamic interactive validation is truth-only: server time and canonical quote facts are prepended, while exact entity/price/time consistency, selected-tool numbers, false market-data denial, and dated claims are checked. The Agent retains control of scope, depth, structure, length, and priorities. Typed scheduled/heartbeat contracts retain their deterministic formats.
+- Genuine provider no-coverage/failure or equal-candidate ambiguity preserves the Agent's concrete explanation. Omitted explicit seeds or a unique candidate without exact quote/time are unsafe incomplete and may receive one hidden read-only continuation; the generic “entity recognition incomplete” response is not used for safe clarification.
+- All interactive drafts use the deferred output boundary. Tool progress remains visible, but draft deltas/resets are withheld; one truth-only read-only repair may preserve and correct the Agent answer, and the dynamic path never replaces it with a service-authored whole-answer fallback. Exactly one final answer is published.
+- Repair retains the initial and retry tool traces in execution order and rejects unknown or persistent repair calls before accepting a revised answer.
+- Programmatic `FmpConfig::default()` now matches serde defaults (`base_url` plus a 60-second timeout). This closes a separate zero-timeout path exposed by the strict tool-loop regression fixture; credentialed live checks continued to show the production FMP provider itself was healthy.
+- The same main-agent-loop rule is now encoded in `soul.md`, the runtime finance policy, the canonical stock-research skill, repository invariants, repo map, and `D-2026-07-18-01`.
+
+### Verification So Far
+
+- Focused pure tests cover first-search-group scoping, CRWV/CWY exact disambiguation, CWY-only rejection, explicit NBIS omission, CRWV+NBIS provider timestamps, per-equity financial-call enforcement, tool aliases, partial quote rejection, and a generic no-search turn.
+- AgentSession tests prove arbitrary surrounding wording, the exact production phrase, Chinese company names, and the dedicated financial-evidence round reach the real function-calling tool loop with `chat_calls() == 0`; exact DataFetch results produce a provider-time prefix and one visible answer. Repair tests cover merged traces plus unknown/persistent retry rejection.
+- `FmpConfig::default()` is regression-covered against empty serde deserialization, including the nonzero timeout.
+- Finance CI contract = 27/27, including a guard that rejects restoration of the auxiliary timeout/failure path.
+- Credentialed live DataFetch regression passed. CRWV exact-resolved CoreWeave at `73.21`, NBIS exact-resolved Nebius at `177.71`, and one `CRWV,NBIS` batch quote returned fresh positive same-symbol records for both. Provider health was not the incident cause.
+- `cargo test -p hone-channels --all-targets` = 611 passed after the truth-only refactor. Added regressions preserve Agent-owned no-coverage and equal-candidate clarifications, emit one final delta, prove deliberately unmodeled wording derives shallow/financial/news/web depth solely from the observed trace, and cover omitted-seed read-only continuation building from the retry trace while retaining the complete audit trace.
+- `cargo check --workspace --all-targets --exclude hone-desktop --exclude hone-user-app` and `cargo test --workspace --all-targets --exclude hone-desktop --exclude hone-user-app` passed. The only compiler diagnostic was the pre-existing unused-function warning for `feishu_direct_actor_contact_targets_from_records`.
+- `PATH="$HOME/.bun/bin:$PATH" bun run test:web` passed 265/265; `bash tests/regression/run_ci.sh` passed every CI-safe regression, including finance contracts 27/27.
+
+### Pending Before Closing This Phase
+
+- Commit and push the repair, rebuild runtime binaries, drain/restart the supervisor, and run process/API/channel/storage health checks.
+- Replay the exact production query and varied closed/open entity cases through production Web/SSE; record batch lookup symbols, time-first output, single answer/terminal, latency, and final active-chat count.

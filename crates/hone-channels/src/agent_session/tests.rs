@@ -14,7 +14,7 @@ use hone_core::ActorIdentity;
 use hone_core::SessionIdentity;
 use hone_core::agent::{AgentContext, AgentMessage, AgentResponse, ToolCallMade};
 use hone_core::config::HoneConfig;
-use hone_llm::provider::ChatResult;
+use hone_llm::provider::{ChatResult, FunctionCall, ToolCall};
 use hone_llm::{ChatResponse, LlmProvider, Message};
 use hone_memory::session::{SessionRuntimeBackend, SessionStorageOptions};
 use hone_memory::{
@@ -31,7 +31,7 @@ use std::time::Duration;
 use crate::HoneBotCore;
 use crate::investment_response_guard::{
     DeepAnalysisKind, InvestmentResponseContract, ResolvedSecurityEntity,
-    prepare_verified_investment_turn,
+    build_agent_discovered_investment, prepare_verified_investment_turn,
 };
 use crate::response_finalizer::{
     EMPTY_SUCCESS_FALLBACK_MESSAGE, finalize_agent_response, normalize_local_image_references,
@@ -100,10 +100,18 @@ impl AgentRunner for MockLlmRunner {
 
     async fn run(
         &self,
-        _request: AgentRunnerRequest,
+        request: AgentRunnerRequest,
         _emitter: Arc<dyn AgentRunnerEmitter>,
     ) -> AgentRunnerResult {
-        let response = match self.llm.chat_with_tools(&[], &[], None).await {
+        let messages = vec![Message {
+            role: "user".to_string(),
+            content: Some(request.runtime_input),
+            reasoning_content: None,
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+        }];
+        let response = match self.llm.chat_with_tools(&messages, &[], None).await {
             Ok(reply) => AgentResponse {
                 content: reply.content,
                 tool_calls_made: Vec::new(),
@@ -224,6 +232,7 @@ struct MockLlmState {
     chat_responses: std::collections::VecDeque<hone_core::HoneResult<ChatResult>>,
     responses: std::collections::VecDeque<hone_core::HoneResult<ChatResponse>>,
     last_chat_messages: Option<Vec<Message>>,
+    last_tool_messages: Option<Vec<Message>>,
 }
 
 impl MockLlmProvider {
@@ -238,6 +247,7 @@ impl MockLlmProvider {
                 chat_responses: chat_responses.into(),
                 responses: responses.into(),
                 last_chat_messages: None,
+                last_tool_messages: None,
             })),
         }
     }
@@ -250,6 +260,7 @@ impl MockLlmProvider {
                 chat_responses: responses.into_iter().map(Ok).collect(),
                 responses: Default::default(),
                 last_chat_messages: None,
+                last_tool_messages: None,
             })),
         }
     }
@@ -262,6 +273,7 @@ impl MockLlmProvider {
                 chat_responses: Default::default(),
                 responses: responses.into_iter().map(Ok).collect(),
                 last_chat_messages: None,
+                last_tool_messages: None,
             })),
         }
     }
@@ -285,6 +297,19 @@ impl MockLlmProvider {
             .as_ref()
             .and_then(|messages| messages.first())
             .and_then(|message| message.content.clone())
+    }
+
+    fn last_tool_transcript(&self) -> String {
+        self.state
+            .lock()
+            .expect("mock llm lock")
+            .last_tool_messages
+            .as_ref()
+            .into_iter()
+            .flatten()
+            .filter_map(|message| message.content.as_deref())
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 }
 
@@ -313,6 +338,7 @@ impl LlmProvider for MockLlmProvider {
     ) -> hone_core::HoneResult<ChatResponse> {
         let mut state = self.state.lock().expect("mock llm lock");
         state.chat_with_tools_calls += 1;
+        state.last_tool_messages = Some(_messages.to_vec());
         state.responses.pop_front().unwrap_or_else(|| {
             Err(hone_core::HoneError::Llm(
                 "no more mock tool responses".to_string(),
@@ -363,6 +389,140 @@ fn make_test_core_with_config(
         })
     }));
     Arc::new(core)
+}
+
+fn make_strict_tool_loop_test_core_with_config(
+    root: &std::path::Path,
+    llm: MockLlmProvider,
+    configure: impl FnOnce(&mut HoneConfig),
+) -> Arc<HoneBotCore> {
+    let mut config = HoneConfig::default();
+    config.agent.runner = "codex_acp".to_string();
+    config.fmp.timeout = 5;
+    config.storage.sessions_dir = root.join("sessions").to_string_lossy().to_string();
+    config.storage.conversation_quota_dir = root
+        .join("conversation_quota")
+        .to_string_lossy()
+        .to_string();
+    config.storage.llm_audit_enabled = false;
+    config.storage.llm_audit_db_path = root.join("llm_audit.sqlite3").to_string_lossy().to_string();
+    config.storage.portfolio_dir = root.join("portfolio").to_string_lossy().to_string();
+    config.storage.cron_jobs_dir = root.join("cron_jobs").to_string_lossy().to_string();
+    config.storage.gen_images_dir = root.join("gen_images").to_string_lossy().to_string();
+    configure(&mut config);
+
+    let mut core = HoneBotCore::new(config);
+    let shared_llm = Arc::new(llm);
+    core.llm = Some(shared_llm.clone());
+    core.auxiliary_llm = Some(shared_llm);
+    Arc::new(core)
+}
+
+fn spawn_fmp_route_stub(routes: Vec<(String, Value)>) -> (String, std::thread::JoinHandle<()>) {
+    use std::collections::HashSet;
+    use std::net::TcpListener;
+    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Instant;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind FMP stub");
+    let address = listener.local_addr().expect("FMP stub address");
+    listener
+        .set_nonblocking(true)
+        .expect("set FMP stub nonblocking");
+    let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(0);
+    let handle = std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("build FMP stub runtime");
+        runtime.block_on(async move {
+            let listener = tokio::net::TcpListener::from_std(listener)
+                .expect("create async FMP stub listener");
+            ready_tx.send(()).expect("signal FMP stub ready");
+            let routes = Arc::new(routes);
+            let served_routes = Arc::new(Mutex::new(HashSet::new()));
+            let served_count = Arc::new(AtomicUsize::new(0));
+            let mut handlers = tokio::task::JoinSet::new();
+            let deadline = Instant::now() + Duration::from_secs(15);
+
+            while served_count.load(Ordering::SeqCst) < routes.len() && Instant::now() < deadline {
+                let Ok(accepted) =
+                    tokio::time::timeout(Duration::from_millis(100), listener.accept()).await
+                else {
+                    continue;
+                };
+                let (mut stream, _) = accepted.expect("accept FMP stub request");
+                let routes = routes.clone();
+                let served_routes = served_routes.clone();
+                let served_count = served_count.clone();
+                handlers.spawn(async move {
+                    let mut request = Vec::new();
+                    loop {
+                        let mut chunk = [0_u8; 8192];
+                        let Ok(read_result) = tokio::time::timeout(
+                            Duration::from_secs(5),
+                            stream.read(&mut chunk),
+                        )
+                        .await
+                        else {
+                            return;
+                        };
+                        match read_result.expect("read FMP stub request") {
+                            0 if request.is_empty() => return,
+                            0 => break,
+                            bytes => {
+                                request.extend_from_slice(&chunk[..bytes]);
+                                if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    let request = String::from_utf8_lossy(&request);
+                    let (route_index, value) = routes
+                        .iter()
+                        .enumerate()
+                        .find(|(_, (needle, _))| request.contains(needle))
+                        .map(|(index, (_, value))| (index, value))
+                        .unwrap_or_else(|| panic!("unmatched FMP stub request: {request}"));
+                    let body = value.to_string();
+                    let response = format!(
+                        "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    );
+                    stream
+                        .write_all(response.as_bytes())
+                        .await
+                        .expect("write FMP stub response");
+                    stream.shutdown().await.expect("shutdown FMP stub response");
+                    let mut served_routes = served_routes.lock().expect("lock served routes");
+                    if served_routes.insert(route_index) {
+                        served_count.fetch_add(1, Ordering::SeqCst);
+                    }
+                });
+            }
+
+            while let Some(handler) = handlers.join_next().await {
+                handler.expect("join FMP stub handler");
+            }
+            let served_routes = served_routes.lock().expect("lock final served routes");
+            let missing_routes = routes
+                .iter()
+                .enumerate()
+                .filter(|(index, _)| !served_routes.contains(index))
+                .map(|(_, (needle, _))| needle.as_str())
+                .collect::<Vec<_>>();
+            assert!(
+                missing_routes.is_empty(),
+                "FMP stub did not receive configured routes: {missing_routes:?}"
+            );
+        });
+    });
+    ready_rx.recv().expect("wait for FMP stub ready");
+    (format!("http://{address}/api"), handle)
 }
 
 #[cfg(unix)]
@@ -940,6 +1100,7 @@ async fn execute_once_intent_suppresses_empty_success_retry_even_without_trace()
             Arc::new(NoopEmitter),
             None,
             PreparedTurnReexecutionPolicy::ExecuteOnce,
+            None,
         )
         .await;
 
@@ -1023,6 +1184,7 @@ async fn portfolio_mutation_then_analysis_disconnect_does_not_retry_without_trac
             Arc::new(NoopEmitter),
             None,
             policy,
+            None,
         )
         .await;
 
@@ -1106,6 +1268,7 @@ async fn deep_research_start_disconnect_does_not_launch_a_second_task_without_tr
             Arc::new(NoopEmitter),
             None,
             policy,
+            None,
         )
         .await;
 
@@ -1203,11 +1366,17 @@ async fn post_quote_runner_failure_stays_failed_but_incomplete_success_uses_fall
             Arc::new(NoopEmitter),
             Some(&contract),
             PreparedTurnReexecutionPolicy::Allowed,
+            None,
         )
         .await;
 
     assert!(!result.response.success);
-    assert!(result.response.content.starts_with("数据时间：北京时间 "));
+    assert!(
+        result.response.content.starts_with("数据时间：北京时间 "),
+        "content={} calls={:?}",
+        result.response.content,
+        result.response.tool_calls_made
+    );
     assert!(
         result
             .response
@@ -1255,6 +1424,7 @@ async fn post_quote_runner_failure_stays_failed_but_incomplete_success_uses_fall
             Arc::new(NoopEmitter),
             Some(&contract),
             PreparedTurnReexecutionPolicy::Allowed,
+            None,
         )
         .await;
     assert!(fallback.response.success);
@@ -1387,6 +1557,7 @@ async fn investment_contract_uses_verified_fallback_for_incomplete_nbis_draft() 
             downstream.clone(),
             Some(&contract),
             PreparedTurnReexecutionPolicy::Allowed,
+            None,
         )
         .await;
 
@@ -1520,6 +1691,7 @@ async fn investment_fallback_fails_closed_for_unknown_tool_trace() {
             Arc::new(NoopEmitter),
             Some(&contract),
             PreparedTurnReexecutionPolicy::Allowed,
+            None,
         )
         .await;
 
@@ -1535,6 +1707,254 @@ async fn investment_fallback_fails_closed_for_unknown_tool_trace() {
     assert!(result.context_messages.is_some());
     assert!(results.lock().expect("results lock").is_empty());
     let _ = std::fs::remove_dir_all(root);
+}
+
+fn repair_trace_comparison_contract() -> InvestmentResponseContract {
+    let entity = |symbol: &str, name: &str, price: &str| ResolvedSecurityEntity {
+        mention: symbol.to_string(),
+        symbol: symbol.to_string(),
+        name: name.to_string(),
+        exchange: Some("NASDAQ".to_string()),
+        currency: Some("USD".to_string()),
+        asset_type: Some("stock".to_string()),
+        profile_verified: true,
+        verified_price: Some(price.to_string()),
+        verified_change_percentage: None,
+        quote_timestamp: None,
+        quote_session: None,
+        annual_financials_verified: Some(false),
+        verified_annual_financial_facts: Vec::new(),
+        fund_holdings_verified: None,
+        verified_fund_holding_facts: Vec::new(),
+    };
+    InvestmentResponseContract {
+        entities: vec![
+            entity("CRWV", "CoreWeave, Inc.", "73.21"),
+            entity("NBIS", "Nebius Group N.V.", "177.71"),
+        ],
+        verified_web_sources: Vec::new(),
+        verified_dated_web_sources: Vec::new(),
+        deep_analysis: DeepAnalysisKind::None,
+        deep_comparison: true,
+        requires_verified_price: true,
+        needs_outlook_evidence: false,
+        requires_recent_web_evidence: false,
+        comparison: true,
+        origin: AgentTurnOrigin::Interactive,
+    }
+}
+
+fn repair_trace_request(
+    session: &AgentSession,
+    root: &std::path::Path,
+    session_id: &str,
+) -> AgentRunnerRequest {
+    AgentRunnerRequest {
+        session_id: session_id.to_string(),
+        actor_label: format!("web:{session_id}"),
+        actor: session.actor.clone(),
+        channel_target: "direct".to_string(),
+        allow_cron: false,
+        config_path: String::new(),
+        runtime_dir: String::new(),
+        system_prompt: "system".to_string(),
+        runtime_input: "分析下 CRWV 和 NBIS".to_string(),
+        context: AgentContext::new(session_id.to_string()),
+        timeout: None,
+        gemini_stream: GeminiStreamOptions::default(),
+        session_metadata: HashMap::new(),
+        working_directory: root.display().to_string(),
+        allowed_tools: None,
+        max_tool_calls: None,
+        tool_call_limits: None,
+    }
+}
+
+fn repair_trace_call(name: &str, arguments: Value, id: &str) -> ToolCallMade {
+    ToolCallMade {
+        name: name.to_string(),
+        arguments,
+        result: serde_json::json!({"status":"success"}),
+        tool_call_id: Some(id.to_string()),
+    }
+}
+
+#[tokio::test]
+async fn investment_contract_repair_keeps_initial_and_retry_tool_traces() {
+    let root = make_temp_dir("hone_channels_investment_repair_trace_merge");
+    std::fs::create_dir_all(&root).expect("create root");
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let actor = ActorIdentity::new("web", "repair-trace-merge", None::<String>).expect("actor");
+    let session = AgentSession::new(core, actor, "direct");
+    let results = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: "只分析了 CRWV。".to_string(),
+                tool_calls_made: vec![repair_trace_call(
+                    "data_fetch",
+                    serde_json::json!({"data_type":"search", "query":"CRWV"}),
+                    "initial_search",
+                )],
+                iterations: 1,
+                success: true,
+                error: None,
+            },
+            streamed_output: true,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        },
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: "比较结论：以下区分已核验事实与情景推断。\n### CRWV\nCRWV 当前价 73.21 USD；年度财务本轮未核验，估值方法采用 P/S 情景法，相关输入仍未核验。\n### NBIS\nNBIS 当前价 177.71 USD；年度财务本轮未核验，估值方法采用 P/S 情景法，相关输入仍未核验。\n风险与证伪条件：若经营口径失效则判断失效。\n动作建议与触发条件：先观察，满足触发条件后再评估。".to_string(),
+                tool_calls_made: vec![repair_trace_call(
+                    "web_search",
+                    serde_json::json!({"query":"CRWV NBIS valuation"}),
+                    "retry_search",
+                )],
+                iterations: 1,
+                success: true,
+                error: None,
+            },
+            streamed_output: true,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        },
+    ])));
+    let runner = MockSequencedRunner {
+        results: results.clone(),
+    };
+    let contract = repair_trace_comparison_contract();
+
+    let result = session
+        .run_runner_with_investment_contract_retry(
+            &runner,
+            "mock_sequenced",
+            "repair-trace-merge-session",
+            repair_trace_request(&session, &root, "repair-trace-merge-session"),
+            Arc::new(NoopEmitter),
+            Some(&contract),
+            PreparedTurnReexecutionPolicy::Allowed,
+            None,
+        )
+        .await;
+
+    assert!(result.response.success, "{:?}", result.response.error);
+    assert_eq!(result.response.tool_calls_made.len(), 2);
+    assert_eq!(
+        result
+            .response
+            .tool_calls_made
+            .iter()
+            .map(|call| call.tool_call_id.as_deref())
+            .collect::<Vec<_>>(),
+        vec![Some("initial_search"), Some("retry_search")]
+    );
+    assert!(results.lock().expect("results lock").is_empty());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn investment_contract_repair_rejects_unknown_and_persistent_retry_traces() {
+    let cases = vec![
+        (
+            "unknown",
+            repair_trace_call(
+                "mcp__filesystem__write_file",
+                serde_json::json!({"path":"external-state", "content":"changed"}),
+                "retry_unknown_write",
+            ),
+            crate::tool_trace::UNKNOWN_TOOL_EFFECT_NO_RETRY_MESSAGE,
+        ),
+        (
+            "persistent",
+            repair_trace_call(
+                "portfolio",
+                serde_json::json!({"action":"add", "symbol":"NBIS"}),
+                "retry_portfolio_add",
+            ),
+            crate::tool_trace::PERSISTENT_SIDE_EFFECT_NO_RETRY_MESSAGE,
+        ),
+    ];
+
+    for (case_name, unsafe_retry_call, expected_message) in cases {
+        let root = make_temp_dir(&format!("hone_channels_investment_repair_{case_name}"));
+        std::fs::create_dir_all(&root).expect("create root");
+        let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+        let actor = ActorIdentity::new("web", format!("repair-{case_name}"), None::<String>)
+            .expect("actor");
+        let session = AgentSession::new(core, actor, "direct");
+        let results = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
+            AgentRunnerResult {
+                response: AgentResponse {
+                    content: "只分析了 CRWV。".to_string(),
+                    tool_calls_made: vec![repair_trace_call(
+                        "data_fetch",
+                        serde_json::json!({"data_type":"search", "query":"CRWV"}),
+                        "initial_search",
+                    )],
+                    iterations: 1,
+                    success: true,
+                    error: None,
+                },
+                streamed_output: true,
+                terminal_error_emitted: false,
+                session_metadata_updates: HashMap::new(),
+                context_messages: None,
+            },
+            AgentRunnerResult {
+                response: AgentResponse {
+                    content: "比较结论：以下区分已核验事实与情景推断。\n### CRWV\nCRWV 当前价 73.21 USD；年度财务本轮未核验，估值方法采用 P/S 情景法，相关输入仍未核验。\n### NBIS\nNBIS 当前价 177.71 USD；年度财务本轮未核验，估值方法采用 P/S 情景法，相关输入仍未核验。\n风险与证伪条件：若经营口径失效则判断失效。\n动作建议与触发条件：先观察，满足触发条件后再评估。".to_string(),
+                    tool_calls_made: vec![unsafe_retry_call],
+                    iterations: 1,
+                    success: true,
+                    error: None,
+                },
+                streamed_output: true,
+                terminal_error_emitted: false,
+                session_metadata_updates: HashMap::new(),
+                context_messages: None,
+            },
+        ])));
+        let runner = MockSequencedRunner {
+            results: results.clone(),
+        };
+        let contract = repair_trace_comparison_contract();
+        let session_id = format!("repair-{case_name}-session");
+
+        let result = session
+            .run_runner_with_investment_contract_retry(
+                &runner,
+                "mock_sequenced",
+                &session_id,
+                repair_trace_request(&session, &root, &session_id),
+                Arc::new(NoopEmitter),
+                Some(&contract),
+                PreparedTurnReexecutionPolicy::Allowed,
+                None,
+            )
+            .await;
+
+        assert!(!result.response.success, "{case_name}");
+        assert!(
+            result
+                .response
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains(expected_message)),
+            "{case_name}: {:?}",
+            result.response.error
+        );
+        assert_eq!(result.response.tool_calls_made.len(), 2, "{case_name}");
+        assert_eq!(
+            result.response.tool_calls_made[0].tool_call_id.as_deref(),
+            Some("initial_search"),
+            "{case_name}"
+        );
+        assert!(results.lock().expect("results lock").is_empty());
+        let _ = std::fs::remove_dir_all(root);
+    }
 }
 
 #[tokio::test]
@@ -1633,6 +2053,7 @@ async fn fund_contract_discards_forbidden_financial_call_and_uses_safe_fallback(
             Arc::new(NoopEmitter),
             Some(&contract),
             PreparedTurnReexecutionPolicy::Allowed,
+            None,
         )
         .await;
 
@@ -1735,6 +2156,7 @@ async fn investment_contract_sanitizes_and_server_normalizes_the_visible_text() 
             Arc::new(NoopEmitter),
             Some(&contract),
             PreparedTurnReexecutionPolicy::Allowed,
+            None,
         )
         .await;
 
@@ -3382,18 +3804,11 @@ async fn run_persists_failed_assistant_turn_when_strict_fallback_llm_is_missing(
         Some(true)
     );
     let events = listener.events.lock().await;
-    assert!(events.iter().any(|event| matches!(
+    assert!(!events.iter().any(|event| matches!(
         event,
         AgentSessionEvent::Run(RunEvent::Progress {
-            stage: "entity_resolution.preflight",
-            detail: None,
-        })
-    )));
-    assert!(events.iter().any(|event| matches!(
-        event,
-        AgentSessionEvent::Run(RunEvent::Progress {
-            stage: "entity_resolution.preflight.done",
-            detail: None,
+            stage: "entity_resolution.preflight" | "entity_resolution.preflight.done",
+            ..
         })
     )));
     let _ = std::fs::remove_dir_all(root);
@@ -3428,11 +3843,18 @@ async fn run_persists_failed_assistant_turn_for_runner_failure() {
     assert_eq!(messages[0].role, "user");
     assert_eq!(messages[1].role, "assistant");
     let events = listener.events.lock().await;
-    assert!(events.iter().any(|event| matches!(
+    assert!(!events.iter().any(|event| matches!(
         event,
         AgentSessionEvent::Run(RunEvent::Progress {
             stage: "entity_resolution.preflight",
             detail: None,
+        })
+    )));
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AgentSessionEvent::Run(RunEvent::Progress {
+            stage: "agent.run",
+            ..
         })
     )));
     let assistant_text = messages[1].content[0].text.as_deref().unwrap_or_default();
@@ -3453,17 +3875,164 @@ async fn run_persists_failed_assistant_turn_for_runner_failure() {
 }
 
 #[tokio::test]
-async fn malformed_auxiliary_entity_output_fails_closed_without_dropping_named_entities() {
-    let root = make_temp_dir("hone_channels_malformed_entity_output");
+async fn incomplete_named_scope_enters_main_agent_tool_loop_without_auxiliary_gate() {
+    let root = make_temp_dir("hone_channels_agent_entity_discovery");
     std::fs::create_dir_all(&root).expect("create root");
+    let quote_timestamp = chrono::Utc::now().timestamp() - 60;
+    let (fmp_base_url, fmp_stub) = spawn_fmp_route_stub(vec![
+        (
+            "query=NBIS".to_string(),
+            serde_json::json!([{
+                "symbol": "NBIS",
+                "name": "Nebius Group N.V.",
+                "exchangeShortName": "NASDAQ"
+            }]),
+        ),
+        (
+            "/v3/search?".to_string(),
+            serde_json::json!([{
+                "symbol": "NVDA",
+                "name": "NVIDIA Corporation",
+                "exchangeShortName": "NASDAQ"
+            }]),
+        ),
+        (
+            "/v3/quote/NBIS,NVDA".to_string(),
+            serde_json::json!([
+                {"symbol":"NBIS","price":177.71,"timestamp":quote_timestamp},
+                {"symbol":"NVDA","price":180.25,"timestamp":quote_timestamp}
+            ]),
+        ),
+        (
+            "/v3/profile/NBIS".to_string(),
+            serde_json::json!([{
+                "symbol":"NBIS","companyName":"Nebius Group N.V.",
+                "exchangeShortName":"NASDAQ","currency":"USD",
+                "isEtf":false,"isFund":false
+            }]),
+        ),
+        (
+            "/v3/profile/NVDA".to_string(),
+            serde_json::json!([{
+                "symbol":"NVDA","companyName":"NVIDIA Corporation",
+                "exchangeShortName":"NASDAQ","currency":"USD",
+                "isEtf":false,"isFund":false
+            }]),
+        ),
+        (
+            "/v3/income-statement/NBIS".to_string(),
+            serde_json::json!([{
+                "symbol":"NBIS","calendarYear":"2025","period":"FY",
+                "date":"2025-12-31","reportedCurrency":"USD",
+                "revenue":1000000000.0,"grossProfit":300000000.0,
+                "netIncome":100000000.0,"epsdiluted":1.25
+            }]),
+        ),
+        (
+            "/v3/income-statement/NVDA".to_string(),
+            serde_json::json!([{
+                "symbol":"NVDA","calendarYear":"2025","period":"FY",
+                "date":"2025-12-31","reportedCurrency":"USD",
+                "revenue":2000000000.0,"grossProfit":900000000.0,
+                "netIncome":600000000.0,"epsdiluted":2.5
+            }]),
+        ),
+    ]);
     let llm = MockLlmProvider::with_chat_and_tool_responses(
         vec![Ok(ChatResult {
             content: "not valid entity json".to_string(),
             usage: None,
         })],
-        vec![],
+        vec![
+            Ok(ChatResponse {
+                content: String::new(),
+                reasoning_content: Some("先在主循环核验全部当前标的".to_string()),
+                tool_calls: Some(vec![
+                    ToolCall {
+                        id: "call_nbis".to_string(),
+                        call_type: "function".to_string(),
+                        function: FunctionCall {
+                            name: "data_fetch".to_string(),
+                            arguments: r#"{"data_type":"search","query":"NBIS"}"#.to_string(),
+                        },
+                    },
+                    ToolCall {
+                        id: "call_nvidia".to_string(),
+                        call_type: "function".to_string(),
+                        function: FunctionCall {
+                            name: "data_fetch".to_string(),
+                            arguments: r#"{"data_type":"search","query":"英伟达"}"#.to_string(),
+                        },
+                    },
+                ]),
+                usage: None,
+            }),
+            Ok(ChatResponse {
+                content: String::new(),
+                reasoning_content: Some("实体 search 已返回，继续核验同代码行情和资产类型".to_string()),
+                tool_calls: Some(vec![
+                    ToolCall {
+                        id: "call_quote".to_string(),
+                        call_type: "function".to_string(),
+                        function: FunctionCall {
+                            name: "data_fetch".to_string(),
+                            arguments: r#"{"data_type":"quote","ticker":"NBIS,NVDA"}"#.to_string(),
+                        },
+                    },
+                    ToolCall {
+                        id: "call_nbis_profile".to_string(),
+                        call_type: "function".to_string(),
+                        function: FunctionCall {
+                            name: "data_fetch".to_string(),
+                            arguments: r#"{"data_type":"profile","ticker":"NBIS"}"#.to_string(),
+                        },
+                    },
+                    ToolCall {
+                        id: "call_nvda_profile".to_string(),
+                        call_type: "function".to_string(),
+                        function: FunctionCall {
+                            name: "data_fetch".to_string(),
+                            arguments: r#"{"data_type":"profile","ticker":"NVDA"}"#.to_string(),
+                        },
+                    },
+                ]),
+                usage: None,
+            }),
+            Ok(ChatResponse {
+                content: String::new(),
+                reasoning_content: Some("实体和行情已确认，按用户比较问题补齐逐标的年度财务".to_string()),
+                tool_calls: Some(vec![
+                    ToolCall {
+                        id: "call_nbis_financials".to_string(),
+                        call_type: "function".to_string(),
+                        function: FunctionCall {
+                            name: "data_fetch".to_string(),
+                            arguments: r#"{"data_type":"financials","ticker":"NBIS"}"#.to_string(),
+                        },
+                    },
+                    ToolCall {
+                        id: "call_nvda_financials".to_string(),
+                        call_type: "function".to_string(),
+                        function: FunctionCall {
+                            name: "data_fetch".to_string(),
+                            arguments: r#"{"data_type":"financials","ticker":"NVDA"}"#.to_string(),
+                        },
+                    },
+                ]),
+                usage: None,
+            }),
+            Ok(ChatResponse {
+                content: "比较结论：NBIS 与 NVDA 应按不同业务成熟度比较。以下区分已核验事实与情景推断。\n### NBIS\nNBIS 当前价 177.71 USD。已核验事实：年度营收与净利润字段由本轮利润表覆盖；估值方法采用 P/S 与情景法，经营兑现是假设推断。\n### NVDA\nNVDA 当前价 180.25 USD。已核验事实：年度营收与净利润字段由本轮利润表覆盖；估值方法采用 P/E 与情景法，增长持续性是假设推断。\n风险与证伪条件：若增长与现金流趋势恶化，当前判断失效。\n动作建议与触发条件：先观察，等待估值与经营数据同时满足条件。".to_string(),
+                reasoning_content: None,
+                tool_calls: None,
+                usage: None,
+            }),
+        ],
     );
-    let core = make_test_core(&root, llm.clone());
+    let core = make_strict_tool_loop_test_core_with_config(&root, llm.clone(), |config| {
+        config.fmp.api_keys = vec!["test-key".to_string()];
+        config.fmp.base_url = fmp_base_url;
+    });
     let actor = ActorIdentity::new("web", "entity-malformed", None::<String>).expect("actor");
     let listener = Arc::new(RecordingListener::default());
     let mut session = AgentSession::new(core, actor, "direct");
@@ -3473,36 +4042,223 @@ async fn malformed_auxiliary_entity_output_fails_closed_without_dropping_named_e
         .run("比较 NBIS 和英伟达", AgentRunOptions::default())
         .await;
 
-    assert!(!result.response.success);
-    let error = result.response.error.as_deref().unwrap_or_default();
-    assert!(error.starts_with("数据时间：北京时间"), "{error}");
-    assert!(error.contains("证券实体解析暂时未能确认"), "{error}");
-    assert_eq!(llm.chat_calls(), 1);
-    assert_eq!(
-        llm.chat_with_tools_calls(),
-        0,
-        "runner must not analyze only NBIS"
+    assert!(result.response.success, "{:?}", result.response.error);
+    assert!(
+        result.response.content.starts_with("数据时间：北京时间 "),
+        "{}; calls={:?}",
+        result.response.content,
+        result.response.tool_calls_made
     );
+    assert_eq!(result.response.tool_calls_made.len(), 7);
+    assert!(
+        result
+            .response
+            .tool_calls_made
+            .iter()
+            .all(|call| call.name.contains("data_fetch"))
+    );
+    assert_eq!(
+        llm.chat_calls(),
+        0,
+        "blocking auxiliary chat must be removed"
+    );
+    assert_eq!(llm.chat_with_tools_calls(), 4);
+    let runner_prompt = llm.last_tool_transcript();
+    assert!(
+        runner_prompt.contains("主 Agent 工具循环"),
+        "{runner_prompt}"
+    );
+    assert!(
+        runner_prompt.contains("data_fetch(search)"),
+        "{runner_prompt}"
+    );
+    assert!(runner_prompt.contains("NBIS"), "{runner_prompt}");
+    assert!(runner_prompt.contains("英伟达"), "{runner_prompt}");
     let events = listener.events.lock().await;
-    assert!(events.iter().any(|event| matches!(
-        event,
-        AgentSessionEvent::Run(RunEvent::Progress {
-            stage: "entity_resolution.preflight.failed",
-            detail: None,
-        })
-    )));
     assert!(!events.iter().any(|event| matches!(
         event,
         AgentSessionEvent::Run(RunEvent::Progress {
-            stage: "entity_resolution.preflight.done" | "market_data.preflight.done",
+            stage: "entity_resolution.preflight" | "entity_resolution.preflight.done",
             ..
         })
     )));
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AgentSessionEvent::Run(RunEvent::Progress {
+            stage: "agent.run",
+            ..
+        })
+    )));
+    let visible_deltas = events
+        .iter()
+        .filter_map(|event| match event {
+            AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => Some(content),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(visible_deltas.len(), 1, "{visible_deltas:?}");
+    assert_eq!(visible_deltas[0], &result.response.content);
+    fmp_stub.join().expect("join FMP stub");
     let _ = std::fs::remove_dir_all(root);
 }
 
 #[tokio::test]
-async fn explicit_rklb_phrasing_reaches_datafetch_without_auxiliary_entity_chat() {
+async fn agent_owned_no_coverage_clarification_is_not_replaced_and_is_emitted_once() {
+    let root = make_temp_dir("hone_channels_agent_no_coverage_clarification");
+    std::fs::create_dir_all(&root).expect("create root");
+    let (fmp_base_url, fmp_stub) =
+        spawn_fmp_route_stub(vec![("query=ZZZQ".to_string(), serde_json::json!([]))]);
+    let clarification = "我已用 DataFetch 搜索 ZZZQ，但本轮权威数据源没有返回可核验的证券候选，因此现在不能确认它对应哪家公司。请补充交易所或公司全名，我再继续核验。";
+    let llm = MockLlmProvider::with_tool_responses(vec![
+        ChatResponse {
+            content: String::new(),
+            reasoning_content: Some("先让证券数据源确认用户写的代码".to_string()),
+            tool_calls: Some(vec![ToolCall {
+                id: "call_zzzq_search".to_string(),
+                call_type: "function".to_string(),
+                function: FunctionCall {
+                    name: "data_fetch".to_string(),
+                    arguments: r#"{"data_type":"search","query":"ZZZQ"}"#.to_string(),
+                },
+            }]),
+            usage: None,
+        },
+        ChatResponse {
+            content: clarification.to_string(),
+            reasoning_content: None,
+            tool_calls: None,
+            usage: None,
+        },
+    ]);
+    let core = make_strict_tool_loop_test_core_with_config(&root, llm.clone(), |config| {
+        config.fmp.api_keys = vec!["test-key".to_string()];
+        config.fmp.base_url = fmp_base_url;
+    });
+    let actor = ActorIdentity::new("web", "agent-no-coverage", None::<String>).expect("actor");
+    let listener = Arc::new(RecordingListener::default());
+    let mut session = AgentSession::new(core, actor, "direct");
+    session.add_listener(listener.clone());
+
+    let result = session
+        .run("ZZZQ 这只到底是什么？", AgentRunOptions::default())
+        .await;
+    fmp_stub.join().expect("join FMP stub");
+
+    assert!(result.response.success, "{:?}", result.response.error);
+    assert_eq!(result.response.content, clarification);
+    assert!(
+        !result
+            .response
+            .content
+            .contains("本轮主 Agent 已进入证券核验流程"),
+        "the service must preserve the Agent's concrete no-coverage explanation"
+    );
+    assert_eq!(result.response.tool_calls_made.len(), 1);
+    assert_eq!(
+        result.response.tool_calls_made[0].result["data"]
+            .as_array()
+            .map(Vec::len),
+        Some(0)
+    );
+    assert_eq!(llm.chat_with_tools_calls(), 2);
+    let events = listener.events.lock().await;
+    let visible_deltas = events
+        .iter()
+        .filter_map(|event| match event {
+            AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => Some(content.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(visible_deltas, vec![clarification]);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn agent_owned_equal_candidate_clarification_is_not_replaced_and_is_emitted_once() {
+    let root = make_temp_dir("hone_channels_agent_equal_candidate_clarification");
+    std::fs::create_dir_all(&root).expect("create root");
+    let (fmp_base_url, fmp_stub) = spawn_fmp_route_stub(vec![(
+        "query=Alpha".to_string(),
+        serde_json::json!([
+            {
+                "symbol":"ALPH",
+                "name":"Alpha Group International plc",
+                "exchangeShortName":"LSE"
+            },
+            {
+                "symbol":"ALPHA",
+                "name":"Alpha Services and Holdings S.A.",
+                "exchangeShortName":"ATH"
+            }
+        ]),
+    )]);
+    let clarification = "DataFetch 对 Alpha 返回了两个同等可行候选：ALPH（伦敦）和 ALPHA（雅典）。你指的是哪一个？确认后我再拉取对应代码的行情。";
+    let llm = MockLlmProvider::with_tool_responses(vec![
+        ChatResponse {
+            content: String::new(),
+            reasoning_content: Some("先搜索用户给出的公司简称".to_string()),
+            tool_calls: Some(vec![ToolCall {
+                id: "call_alpha_search".to_string(),
+                call_type: "function".to_string(),
+                function: FunctionCall {
+                    name: "data_fetch".to_string(),
+                    arguments: r#"{"data_type":"search","query":"Alpha"}"#.to_string(),
+                },
+            }]),
+            usage: None,
+        },
+        ChatResponse {
+            content: clarification.to_string(),
+            reasoning_content: None,
+            tool_calls: None,
+            usage: None,
+        },
+    ]);
+    let core = make_strict_tool_loop_test_core_with_config(&root, llm.clone(), |config| {
+        config.fmp.api_keys = vec!["test-key".to_string()];
+        config.fmp.base_url = fmp_base_url;
+    });
+    let actor = ActorIdentity::new("web", "agent-equal-candidates", None::<String>).expect("actor");
+    let listener = Arc::new(RecordingListener::default());
+    let mut session = AgentSession::new(core, actor, "direct");
+    session.add_listener(listener.clone());
+
+    let result = session
+        .run("Alpha 这个标的帮我捋一捋", AgentRunOptions::default())
+        .await;
+    fmp_stub.join().expect("join FMP stub");
+
+    assert!(result.response.success, "{:?}", result.response.error);
+    assert_eq!(result.response.content, clarification);
+    assert!(
+        !result
+            .response
+            .content
+            .contains("本轮主 Agent 已进入证券核验流程"),
+        "the service must preserve the Agent's candidate-specific clarification"
+    );
+    assert_eq!(result.response.tool_calls_made.len(), 1);
+    assert_eq!(
+        result.response.tool_calls_made[0].result["data"]
+            .as_array()
+            .map(Vec::len),
+        Some(2)
+    );
+    assert_eq!(llm.chat_with_tools_calls(), 2);
+    let events = listener.events.lock().await;
+    let visible_deltas = events
+        .iter()
+        .filter_map(|event| match event {
+            AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => Some(content.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(visible_deltas, vec![clarification]);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn interactive_tickers_enter_the_main_agent_loop_without_preflight_blocking() {
     let root = make_temp_dir("hone_channels_rklb_exact_entity_fast_path");
     std::fs::create_dir_all(&root).expect("create root");
     let llm = MockLlmProvider::with_chat_and_tool_responses(vec![], vec![]);
@@ -3510,13 +4266,15 @@ async fn explicit_rklb_phrasing_reaches_datafetch_without_auxiliary_entity_chat(
     let actor = ActorIdentity::new("web", "rklb-exact", None::<String>).expect("actor");
 
     for input in [
+        "分析下crwv和nbis的估值",
+        "想看看 CRWV 与 NBIS 到底谁更贵",
         "现在rklb推荐的安全区间价格是多少，暂不考虑中子",
         "现在RKLB推荐的安全区间价格是多少，暂不考虑中子发射时间，是否成功",
         "RKLB 是前面提到的 火箭实验室",
         "rklb 是前面提到的 火箭实验室",
     ] {
         let mut runtime_input = input.to_string();
-        let result = prepare_verified_investment_turn(
+        let contract = prepare_verified_investment_turn(
             &core,
             &actor,
             "direct",
@@ -3525,24 +4283,412 @@ async fn explicit_rklb_phrasing_reaches_datafetch_without_auxiliary_entity_chat(
             AgentTurnOrigin::Interactive,
             &mut runtime_input,
         )
-        .await;
-        let error = result.expect_err("test config has no FMP key, so DataFetch must fail");
+        .await
+        .expect("interactive entity discovery must not fail before the runner");
         assert!(
-            error.contains("证券数据源本轮查询失败"),
-            "explicit ticker must reach DataFetch: {input}: {error}"
+            contract.is_none(),
+            "interactive entity discovery must remain inside the main agent loop: {input}"
         );
         assert!(
-            !error.contains("证券实体解析暂时未能确认"),
-            "explicit ticker must not fail at auxiliary extraction: {input}: {error}"
+            runtime_input.contains("主 Agent 工具循环")
+                && runtime_input.contains("第一轮工具调用")
+                && runtime_input.contains("data_fetch"),
+            "{input}: {runtime_input}"
         );
     }
 
     assert_eq!(
         llm.chat_calls(),
         0,
-        "all explicit RKLB forms must bypass auxiliary entity extraction"
+        "interactive entity discovery must not invoke an auxiliary model"
     );
     assert_eq!(llm.chat_with_tools_calls(), 0);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn crwv_nbis_agent_loop_batches_the_first_datafetch_and_emits_one_answer() {
+    let root = make_temp_dir("hone_channels_crwv_nbis_agent_loop");
+    std::fs::create_dir_all(&root).expect("create root");
+    let quote_timestamp = chrono::Utc::now().timestamp() - 60;
+    let (fmp_base_url, fmp_stub) = spawn_fmp_route_stub(vec![
+        (
+            "query=CRWV".to_string(),
+            serde_json::json!([
+                {"symbol":"CRWV","name":"CoreWeave, Inc.","exchangeShortName":"NASDAQ"},
+                {"symbol":"CWY","name":"GraniteShares YieldBOOST CRWV ETF","exchangeShortName":"NASDAQ","type":"etf"}
+            ]),
+        ),
+        (
+            "query=NBIS".to_string(),
+            serde_json::json!([{
+                "symbol":"NBIS","name":"Nebius Group N.V.","exchangeShortName":"NASDAQ"
+            }]),
+        ),
+        (
+            "/v3/quote/CRWV,NBIS".to_string(),
+            serde_json::json!([
+                {"symbol":"CRWV","price":73.21,"timestamp":quote_timestamp},
+                {"symbol":"NBIS","price":177.71,"timestamp":quote_timestamp}
+            ]),
+        ),
+        (
+            "/v3/profile/CRWV".to_string(),
+            serde_json::json!([{
+                "symbol":"CRWV","companyName":"CoreWeave, Inc.",
+                "exchangeShortName":"NASDAQ","currency":"USD",
+                "isEtf":false,"isFund":false
+            }]),
+        ),
+        (
+            "/v3/profile/NBIS".to_string(),
+            serde_json::json!([{
+                "symbol":"NBIS","companyName":"Nebius Group N.V.",
+                "exchangeShortName":"NASDAQ","currency":"USD",
+                "isEtf":false,"isFund":false
+            }]),
+        ),
+        (
+            "/v3/income-statement/CRWV".to_string(),
+            serde_json::json!([{
+                "symbol":"CRWV","calendarYear":"2025","period":"FY",
+                "date":"2025-12-31","reportedCurrency":"USD",
+                "revenue":1000000000.0,"grossProfit":300000000.0,
+                "netIncome":100000000.0,"epsdiluted":1.25
+            }]),
+        ),
+        (
+            "/v3/income-statement/NBIS".to_string(),
+            serde_json::json!([{
+                "symbol":"NBIS","calendarYear":"2025","period":"FY",
+                "date":"2025-12-31","reportedCurrency":"USD",
+                "revenue":1200000000.0,"grossProfit":360000000.0,
+                "netIncome":120000000.0,"epsdiluted":1.5
+            }]),
+        ),
+    ]);
+    let llm = MockLlmProvider::with_tool_responses(vec![
+        ChatResponse {
+            content: String::new(),
+            reasoning_content: Some("先并行搜索两个当前 ticker".to_string()),
+            tool_calls: Some(vec![
+                ToolCall {
+                    id: "call_crwv_search".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
+                    },
+                },
+                ToolCall {
+                    id: "call_nbis_search".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"search","query":"NBIS"}"#.to_string(),
+                    },
+                },
+            ]),
+            usage: None,
+        },
+        ChatResponse {
+            content: String::new(),
+            reasoning_content: Some("search 已确认候选，继续核验同代码行情和 profile".to_string()),
+            tool_calls: Some(vec![
+                ToolCall {
+                    id: "call_crwv_nbis_quote".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"quote","ticker":"CRWV,NBIS"}"#.to_string(),
+                    },
+                },
+                ToolCall {
+                    id: "call_crwv_profile".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"profile","ticker":"CRWV"}"#.to_string(),
+                    },
+                },
+                ToolCall {
+                    id: "call_nbis_profile".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"profile","ticker":"NBIS"}"#.to_string(),
+                    },
+                },
+            ]),
+            usage: None,
+        },
+        ChatResponse {
+            content: String::new(),
+            reasoning_content: Some("按估值问题补齐两个公司的年度财务证据".to_string()),
+            tool_calls: Some(vec![
+                ToolCall {
+                    id: "call_crwv_financials".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"financials","ticker":"CRWV"}"#.to_string(),
+                    },
+                },
+                ToolCall {
+                    id: "call_nbis_financials".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"financials","ticker":"NBIS"}"#.to_string(),
+                    },
+                },
+            ]),
+            usage: None,
+        },
+        ChatResponse {
+            content: "比较结论：CRWV 与 NBIS 的估值应结合各自增长和资本强度。以下区分已核验事实与情景推断。\n### CRWV\nCRWV 当前价 73.21 USD。已核验事实：年度营收与净利润字段由本轮利润表覆盖；估值方法采用 P/S 与情景法，订单兑现是假设推断。\n### NBIS\nNBIS 当前价 177.71 USD。已核验事实：年度营收与净利润字段由本轮利润表覆盖；估值方法采用 P/S 与情景法，算力利用率是假设推断。\n风险与证伪条件：若订单、增长或现金流明显恶化，当前判断失效。\n动作建议与触发条件：先观察，等待估值与经营数据同时满足条件。".to_string(),
+            reasoning_content: None,
+            tool_calls: None,
+            usage: None,
+        },
+    ]);
+    let core = make_strict_tool_loop_test_core_with_config(&root, llm.clone(), |config| {
+        config.fmp.api_keys = vec!["test-key".to_string()];
+        config.fmp.base_url = fmp_base_url;
+    });
+    let actor = ActorIdentity::new("web", "crwv-nbis-agent-loop", None::<String>).expect("actor");
+    let listener = Arc::new(RecordingListener::default());
+    let mut session = AgentSession::new(core, actor, "direct");
+    session.add_listener(listener.clone());
+
+    let result = session
+        .run("分析下crwv和nbis的估值", AgentRunOptions::default())
+        .await;
+    fmp_stub.join().expect("join FMP stub");
+
+    assert!(result.response.success, "{:?}", result.response.error);
+    assert!(
+        result.response.content.starts_with("数据时间：北京时间 "),
+        "content={} calls={:?}",
+        result.response.content,
+        result.response.tool_calls_made
+    );
+    assert_eq!(result.response.tool_calls_made.len(), 7);
+    let call = result
+        .response
+        .tool_calls_made
+        .iter()
+        .find(|call| call.arguments["data_type"] == "quote")
+        .expect("batch quote call");
+    assert!(call.name.contains("data_fetch"), "{}", call.name);
+    assert_eq!(call.arguments["data_type"], "quote");
+    assert_eq!(call.arguments["ticker"], "CRWV,NBIS");
+    assert_eq!(call.result["data"][0]["symbol"], "CRWV");
+    assert_eq!(call.result["data"][1]["symbol"], "NBIS");
+    assert_eq!(call.result["data"][0]["price"], 73.21);
+    assert_eq!(call.result["data"][1]["price"], 177.71);
+    assert!(call.result["data"][0]["timestamp"].is_number());
+    assert!(call.result["data"][1]["timestamp"].is_number());
+    assert_eq!(llm.chat_calls(), 0);
+    assert_eq!(llm.chat_with_tools_calls(), 4);
+    let runner_prompt = llm.last_tool_transcript();
+    assert!(runner_prompt.contains("CRWV"), "{runner_prompt}");
+    assert!(runner_prompt.contains("NBIS"), "{runner_prompt}");
+
+    let events = listener.events.lock().await;
+    let visible_deltas = events
+        .iter()
+        .filter_map(|event| match event {
+            AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => Some(content),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(visible_deltas, vec![&result.response.content]);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn omitted_explicit_seed_retries_agent_loop_builds_from_retry_trace_and_emits_once() {
+    let root = make_temp_dir("hone_channels_agent_seed_retry");
+    std::fs::create_dir_all(&root).expect("create root");
+    let quote_timestamp = chrono::Utc::now().timestamp() - 60;
+    let (fmp_base_url, fmp_stub) = spawn_fmp_route_stub(vec![
+        (
+            "query=CRWV".to_string(),
+            serde_json::json!([{
+                "symbol":"CRWV","name":"CoreWeave, Inc.","exchangeShortName":"NASDAQ"
+            }]),
+        ),
+        (
+            "query=NBIS".to_string(),
+            serde_json::json!([{
+                "symbol":"NBIS","name":"Nebius Group N.V.","exchangeShortName":"NASDAQ"
+            }]),
+        ),
+        (
+            "/v3/quote/CRWV,NBIS".to_string(),
+            serde_json::json!([
+                {"symbol":"CRWV","price":73.21,"timestamp":quote_timestamp},
+                {"symbol":"NBIS","price":177.71,"timestamp":quote_timestamp}
+            ]),
+        ),
+        (
+            "/v3/profile/CRWV".to_string(),
+            serde_json::json!([{
+                "symbol":"CRWV","companyName":"CoreWeave, Inc.",
+                "exchangeShortName":"NASDAQ","currency":"USD",
+                "isEtf":false,"isFund":false
+            }]),
+        ),
+        (
+            "/v3/profile/NBIS".to_string(),
+            serde_json::json!([{
+                "symbol":"NBIS","companyName":"Nebius Group N.V.",
+                "exchangeShortName":"NASDAQ","currency":"USD",
+                "isEtf":false,"isFund":false
+            }]),
+        ),
+    ]);
+    let first_attempt_draft =
+        "我只检查了 CRWV，尚未覆盖用户点名的全部标的，这不是可发布的最终比较。";
+    let llm = MockLlmProvider::with_tool_responses(vec![
+        ChatResponse {
+            content: String::new(),
+            reasoning_content: Some("首轮错误地只搜索了一个显式 ticker".to_string()),
+            tool_calls: Some(vec![ToolCall {
+                id: "initial_crwv_search".to_string(),
+                call_type: "function".to_string(),
+                function: FunctionCall {
+                    name: "data_fetch".to_string(),
+                    arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
+                },
+            }]),
+            usage: None,
+        },
+        ChatResponse {
+            content: first_attempt_draft.to_string(),
+            reasoning_content: None,
+            tool_calls: None,
+            usage: None,
+        },
+        ChatResponse {
+            content: String::new(),
+            reasoning_content: Some("收到实体发现自检，重新并行覆盖全部显式 ticker".to_string()),
+            tool_calls: Some(vec![
+                ToolCall {
+                    id: "retry_crwv_search".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
+                    },
+                },
+                ToolCall {
+                    id: "retry_nbis_search".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"search","query":"NBIS"}"#.to_string(),
+                    },
+                },
+            ]),
+            usage: None,
+        },
+        ChatResponse {
+            content: String::new(),
+            reasoning_content: Some("retry search 完整，核验两只标的的同代码行情与 profile".to_string()),
+            tool_calls: Some(vec![
+                ToolCall {
+                    id: "retry_quote".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"quote","ticker":"CRWV,NBIS"}"#.to_string(),
+                    },
+                },
+                ToolCall {
+                    id: "retry_crwv_profile".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"profile","ticker":"CRWV"}"#.to_string(),
+                    },
+                },
+                ToolCall {
+                    id: "retry_nbis_profile".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"profile","ticker":"NBIS"}"#.to_string(),
+                    },
+                },
+            ]),
+            usage: None,
+        },
+        ChatResponse {
+            content: "比较结论：两只标的已分别完成本轮实体与行情核验。\n### CRWV\nCRWV 当前价 73.21 USD。\n### NBIS\nNBIS 当前价 177.71 USD。"
+                .to_string(),
+            reasoning_content: None,
+            tool_calls: None,
+            usage: None,
+        },
+    ]);
+    let core = make_strict_tool_loop_test_core_with_config(&root, llm.clone(), |config| {
+        config.fmp.api_keys = vec!["test-key".to_string()];
+        config.fmp.base_url = fmp_base_url;
+    });
+    let actor = ActorIdentity::new("web", "agent-seed-retry", None::<String>).expect("actor");
+    let listener = Arc::new(RecordingListener::default());
+    let mut session = AgentSession::new(core, actor, "direct");
+    session.add_listener(listener.clone());
+
+    let result = session
+        .run("分析下 CRWV 和 NBIS", AgentRunOptions::default())
+        .await;
+    fmp_stub.join().expect("join FMP stub");
+
+    assert!(result.response.success, "{:?}", result.response.error);
+    assert!(
+        result.response.content.starts_with("数据时间：北京时间 "),
+        "{}",
+        result.response.content
+    );
+    assert!(result.response.content.contains("CRWV 当前价 73.21 USD"));
+    assert!(result.response.content.contains("NBIS 当前价 177.71 USD"));
+    assert!(!result.response.content.contains(first_attempt_draft));
+    assert_eq!(llm.chat_with_tools_calls(), 5);
+    let retry_transcript = llm.last_tool_transcript();
+    assert!(
+        retry_transcript.contains("主 Agent 实体发现自检") && retry_transcript.contains("NBIS"),
+        "{retry_transcript}"
+    );
+    assert_eq!(
+        result
+            .response
+            .tool_calls_made
+            .iter()
+            .map(|call| call.tool_call_id.as_deref())
+            .collect::<Vec<_>>(),
+        vec![
+            Some("initial_crwv_search"),
+            Some("retry_crwv_search"),
+            Some("retry_nbis_search"),
+            Some("retry_quote"),
+            Some("retry_crwv_profile"),
+            Some("retry_nbis_profile"),
+        ],
+        "the accepted response must retain the read-only first attempt before the complete retry trace"
+    );
+
+    let events = listener.events.lock().await;
+    let visible_deltas = events
+        .iter()
+        .filter_map(|event| match event {
+            AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => Some(content),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(visible_deltas, vec![&result.response.content]);
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -3586,31 +4732,130 @@ async fn scheduled_cross_market_tickers_bypass_auxiliary_entity_chat() {
 }
 
 #[tokio::test]
-async fn unresolved_named_entity_payload_is_a_clarification_not_provider_unavailability() {
-    let root = make_temp_dir("hone_channels_empty_entity_payload");
+async fn named_entity_scope_is_delegated_to_the_main_agent_instead_of_preflight_clarification() {
+    let root = make_temp_dir("hone_channels_named_entity_agent_discovery");
     std::fs::create_dir_all(&root).expect("create root");
+    let quote_timestamp = chrono::Utc::now().timestamp() - 60;
+    let (fmp_base_url, fmp_stub) = spawn_fmp_route_stub(vec![
+        (
+            "/v3/search?".to_string(),
+            serde_json::json!([{
+                "symbol": "NVDA",
+                "name": "NVIDIA Corporation",
+                "exchangeShortName": "NASDAQ"
+            }]),
+        ),
+        (
+            "/v3/quote/NVDA".to_string(),
+            serde_json::json!([{
+                "symbol":"NVDA","price":180.25,"timestamp":quote_timestamp
+            }]),
+        ),
+        (
+            "/v3/profile/NVDA".to_string(),
+            serde_json::json!([{
+                "symbol":"NVDA","companyName":"NVIDIA Corporation",
+                "exchangeShortName":"NASDAQ","currency":"USD",
+                "isEtf":false,"isFund":false
+            }]),
+        ),
+    ]);
     let llm = MockLlmProvider::with_chat_and_tool_responses(
         vec![Ok(ChatResult {
             content: r#"{"entities":[],"unresolved_mentions":["英伟达"]}"#.to_string(),
             usage: None,
         })],
-        vec![],
+        vec![
+            Ok(ChatResponse {
+                content: String::new(),
+                reasoning_content: Some("先核验中文公司名".to_string()),
+                tool_calls: Some(vec![ToolCall {
+                    id: "call_nvidia_name".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: r#"{"data_type":"search","query":"英伟达"}"#.to_string(),
+                    },
+                }]),
+                usage: None,
+            }),
+            Ok(ChatResponse {
+                content: String::new(),
+                reasoning_content: Some("search 已返回，继续核验 NVDA 行情和 profile".to_string()),
+                tool_calls: Some(vec![
+                    ToolCall {
+                        id: "call_nvda_quote".to_string(),
+                        call_type: "function".to_string(),
+                        function: FunctionCall {
+                            name: "data_fetch".to_string(),
+                            arguments: r#"{"data_type":"quote","ticker":"NVDA"}"#.to_string(),
+                        },
+                    },
+                    ToolCall {
+                        id: "call_nvda_profile".to_string(),
+                        call_type: "function".to_string(),
+                        function: FunctionCall {
+                            name: "data_fetch".to_string(),
+                            arguments: r#"{"data_type":"profile","ticker":"NVDA"}"#.to_string(),
+                        },
+                    },
+                ]),
+                usage: None,
+            }),
+            Ok(ChatResponse {
+                content: "NVDA 当前价 180.25 USD。".to_string(),
+                reasoning_content: None,
+                tool_calls: None,
+                usage: None,
+            }),
+        ],
     );
-    let core = make_test_core(&root, llm.clone());
+    let core = make_strict_tool_loop_test_core_with_config(&root, llm.clone(), |config| {
+        config.fmp.api_keys = vec!["test-key".to_string()];
+        config.fmp.base_url = fmp_base_url;
+    });
     let actor = ActorIdentity::new("web", "entity-empty", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
 
-    let result = session.run("英伟达", AgentRunOptions::default()).await;
+    let result = session
+        .run("英伟达当前价", AgentRunOptions::default())
+        .await;
+    fmp_stub.join().expect("join FMP stub");
 
-    assert!(!result.response.success);
-    let error = result.response.error.as_deref().unwrap_or_default();
+    assert!(result.response.success, "{:?}", result.response.error);
+    assert_eq!(llm.chat_calls(), 0);
+    assert_eq!(llm.chat_with_tools_calls(), 3);
+    assert_eq!(result.response.tool_calls_made.len(), 3);
     assert!(
-        error.contains("无法从当前问题中确认具体公司或证券"),
-        "{error}"
+        build_agent_discovered_investment(
+            "英伟达当前价",
+            AgentTurnOrigin::Interactive,
+            &result.response.tool_calls_made,
+            None,
+        )
+        .is_some(),
+        "direct dynamic contract build failed: {:?}",
+        result.response.tool_calls_made
     );
-    assert!(!error.contains("解析暂时未能确认"), "{error}");
-    assert_eq!(llm.chat_calls(), 1);
-    assert_eq!(llm.chat_with_tools_calls(), 0);
+    assert!(
+        result.response.content.starts_with("数据时间：北京时间 "),
+        "content={} calls={:?}",
+        result.response.content,
+        result.response.tool_calls_made
+    );
+    assert!(result.response.tool_calls_made.iter().any(|call| {
+        call.arguments["data_type"] == "quote" && call.result["data"][0]["symbol"] == "NVDA"
+    }));
+    let runner_prompt = llm.last_tool_transcript();
+    assert!(runner_prompt.contains("英伟达"), "{runner_prompt}");
+    assert!(
+        runner_prompt.contains("data_fetch(search)"),
+        "{runner_prompt}"
+    );
+    assert!(
+        !runner_prompt.contains("解析暂时未能确认"),
+        "{runner_prompt}"
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -3641,14 +4886,14 @@ async fn valid_empty_entity_payload_allows_an_ordinary_finance_question() {
     assert!(result.response.success, "{:?}", result.response.error);
     assert!(result.response.content.contains("安全边际"));
     assert!(!result.response.content.contains("补充公司全名或 ticker"));
-    assert_eq!(llm.chat_calls(), 1);
+    assert_eq!(llm.chat_calls(), 0);
     assert_eq!(llm.chat_with_tools_calls(), 1);
     let _ = std::fs::remove_dir_all(root);
 }
 
 #[tokio::test]
-async fn portfolio_scope_reads_the_server_truth_source_before_the_runner() {
-    let root = make_temp_dir("hone_channels_portfolio_scope_preflight");
+async fn interactive_portfolio_wording_stays_inside_the_main_agent_tool_loop() {
+    let root = make_temp_dir("hone_channels_portfolio_scope_agent_loop");
     std::fs::create_dir_all(&root).expect("create root");
     let llm = MockLlmProvider::with_chat_and_tool_responses(vec![], vec![]);
     let core = make_test_core(&root, llm.clone());
@@ -3665,23 +4910,18 @@ async fn portfolio_scope_reads_the_server_truth_source_before_the_runner() {
         &mut runtime_input,
     )
     .await
-    .expect("portfolio preflight");
+    .expect("interactive portfolio wording must reach the main agent");
 
     assert!(contract.is_none());
-    assert!(runtime_input.contains("服务端已经执行只读 portfolio view"));
     assert!(
-        runtime_input.contains("\"holdings_total\":0"),
+        runtime_input.contains("本轮证券实体发现：主 Agent 工具循环"),
         "{runtime_input}"
     );
     assert!(
-        runtime_input.contains("\"watchlist_total\":0"),
+        runtime_input.contains("完整阅读当前用户请求"),
         "{runtime_input}"
     );
-    assert!(
-        runtime_input.contains("\"truncated\":false"),
-        "{runtime_input}"
-    );
-    assert!(runtime_input.contains("本轮唯一持仓真相源"));
+    assert!(!runtime_input.contains("服务端已经执行只读 portfolio view"));
     assert_eq!(llm.chat_calls(), 0);
     assert_eq!(llm.chat_with_tools_calls(), 0);
     let _ = std::fs::remove_dir_all(root);

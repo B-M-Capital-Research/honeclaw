@@ -44,9 +44,9 @@ Prefer keeping these modes inside one skill so the model does not have to choose
 | `data_fetch(data_type="sector_performance")` | Sector strength context for screening or relative positioning |
 | `web_search(query="...")` | Search for news, analyst views, and recent events |
 
-### Mode Selection
+### Adapt To The Requested Outcome
 
-Choose the mode from the user's request before fetching data:
+Read the complete request and choose the evidence and answer shape that best fits it; these are reusable answer patterns, not a closed intent classifier or a grammar that the user's wording must match:
 
 - **Research mode**: the user asks about one company, ETF/fund, ticker, fundamentals, technicals, or recent developments
 - **Valuation mode**: the user asks whether a company looks rich, cheap, stretched, fairly priced, or wants a valuation bridge / peer view
@@ -54,7 +54,7 @@ Choose the mode from the user's request before fetching data:
 
 ### Non-negotiable Current-turn Pipeline
 
-1. Start every named-security request with `data_fetch(data_type="search", query="...")`. A plain ticker such as `NBIS`, `INTL`, or `RMBS` is normal user input: search it directly and require an exact-symbol result instead of asking the user to spell out the company.
+1. In the main agent loop, read the complete current user query and retain every possible named security before answering. Treat any pre-scanned ticker as a candidate seed, never as proof that the entity set is complete. Start every named-security request with one batch/parallel discovery round using `data_fetch(data_type="search", query="...")`; after those results return, use the next tool round for exact-symbol quote/profile. A plain ticker such as `NBIS`, `INTL`, or `RMBS` is normal user input: query it directly and require an exact-symbol result instead of asking the user to spell out the company. Only ask for clarification after current-turn tools still show genuine ambiguity or no authoritative coverage.
 2. After identity is confirmed, fetch the same-symbol `quote` and preserve its provider timestamp. Never establish identity, price, change, financials, or news from assistant history or model memory.
 3. Select the company, ETF/fund, or crypto route only from current-turn structured evidence. A named security takes precedence over broad market words in the same query.
 4. For every security answer, the first visible line is the server-provided `数据时间：北京时间 YYYY-MM-DD HH:MM` plus quote basis. Do not emit a preamble or a second model-authored time line before the body.
@@ -63,7 +63,7 @@ Choose the mode from the user's request before fetching data:
 
 ### Research Mode
 
-1. Resolve every named security with a current-turn `search` call. A ticker is a first-class search input but becomes an entity only after exact-symbol confirmation; names, aliases, Chinese names, multiple securities, and share classes must all produce explicit resolution results. Never take the first approximate result silently.
+1. Resolve every named security discovered from the complete current query with current-turn tools, preferably in one batch/parallel first round. A ticker is a first-class search input but becomes an entity only after exact-symbol confirmation; names, aliases, Chinese names, multiple securities, and share classes must all produce explicit resolution results. A pre-scan miss must fall through to this agent loop, not become a user-facing failure. Never take the first approximate result silently, and clarify only when tool evidence remains genuinely ambiguous.
 2. Verify the current-turn same-symbol `quote`, then select the route from structured exact-symbol evidence. A company uses `profile`, `financials`, and `news`; an ETF/fund confirmed by profile `isEtf/isFund` uses `etf_holdings` and `news`; a crypto asset confirmed by exact search market evidence such as `exchangeShortName=CRYPTO` uses the same-symbol quote and relevant news. Never request corporate financials or an earnings calendar for a confirmed ETF/fund, and never request corporate financials, an earnings calendar, or ETF holdings for crypto. Treat provider errors separately from a successful empty response. Do not infer an asset type from an empty response.
 3. A quote-only question may stay concise. A deep single-company, quarter-outlook, “can it take off”, fundamentals, valuation, or buyability question must use these nine numbered sections in order:
    1. Conclusion

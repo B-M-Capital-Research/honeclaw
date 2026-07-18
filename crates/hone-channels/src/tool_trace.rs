@@ -58,6 +58,7 @@ pub(crate) fn canonical_hone_tool_name(name: &str) -> Option<&'static str> {
 
     PERSISTENT_TOOL_NAMES
         .iter()
+        .chain(KNOWN_READ_ONLY_TOOL_NAMES)
         .copied()
         .find(|candidate| runner_tool_name_matches(&normalized, candidate))
 }

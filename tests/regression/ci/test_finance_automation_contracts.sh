@@ -50,10 +50,12 @@ SECURITY_IDENTIFIER="crates/hone-channels/src/security_identifier.rs"
 EXECUTION="crates/hone-channels/src/execution.rs"
 AGENT_TYPES="crates/hone-channels/src/agent_session/types.rs"
 AGENT_CORE="crates/hone-channels/src/agent_session/core.rs"
+AGENT_TESTS="crates/hone-channels/src/agent_session/tests.rs"
 SCHEDULER="crates/hone-channels/src/scheduler.rs"
 SOUL="soul.md"
+AGENT_DISCOVERY_IMPL="$(sed -n '/pub(crate) fn build_agent_discovered_investment(/,/^fn tool_call_targets_entity(/p' "$INVESTMENT_GUARD")"
 
-echo "[finance-automation-contracts] fixed sample count: 26"
+echo "[finance-automation-contracts] fixed sample count: 27"
 
 if contains '"snapshot".into()' "$DATA_FETCH" && contains 'data_fetch(data_type="snapshot"' "$STOCK_RESEARCH"; then
   record success "1.stock_research->snapshot" "tool enum and skill contract are aligned"
@@ -109,16 +111,16 @@ else
   record fail "9.runtime-finance-prompt" "global finance prompt injection is missing"
 fi
 
-if contains '我想了解Q3的时候NBIS能不能起飞' "$INVESTMENT_GUARD" && contains 'missing_deep_single_stock_sections' "$INVESTMENT_GUARD"; then
-  record success "10.deep-stock-response-contract" "NBIS-style outlook questions are intent-classified after entity resolution and validated in code"
+if contains 'missing_deep_single_stock_sections' "$INVESTMENT_GUARD" && contains 'missing_agent_discovered_truth_violations' "$INVESTMENT_GUARD" && contains 'if !agent_discovered_contract' "$AGENT_CORE"; then
+  record success "10.typed-deep-stock-response-contract" "typed scheduled/heartbeat work retains deep format validation while interactive Agent discovery uses truth-only validation"
 else
-  record fail "10.deep-stock-response-contract" "deep single-stock format enforcement is missing"
+  record fail "10.typed-deep-stock-response-contract" "typed deep validation and the interactive truth-only boundary are not both preserved"
 fi
 
-if contains 'name: "query".to_string()' "$DATA_FETCH" && contains '必须先用 search' "$DATA_FETCH" && contains '实体优先固定流程' "$PROMPT_FILE"; then
-  record success "13.entity-search-contract" "DataFetch and runtime prompt expose entity search as the first stage"
+if contains 'name: "query".to_string()' "$DATA_FETCH" && contains '必须先用 search' "$DATA_FETCH" && contains '实体发现与证据加载必须在主 agent loop 内完成' "$PROMPT_FILE" && contains '不要求把千变万化的问法硬塞进闭合标签' "$PROMPT_FILE"; then
+  record success "13.entity-search-contract" "DataFetch search and the open-ended main agent loop own first-stage entity discovery"
 else
-  record fail "13.entity-search-contract" "entity search is not a first-class DataFetch/runtime contract"
+  record fail "13.entity-search-contract" "first-stage entity discovery is not owned by DataFetch search and the open-ended main agent loop"
 fi
 
 if contains 'extract_security_hint' "$INVESTMENT_GUARD" || contains 'fallback_symbol_mentions' "$INVESTMENT_GUARD" || contains '"REPEAT",' "$INVESTMENT_GUARD" || contains 'return Some("NBIS".to_string())' "$INVESTMENT_GUARD"; then
@@ -163,10 +165,10 @@ else
   record fail "18.server-owned-time-first" "time-first response ownership is missing from a canonical prompt layer"
 fi
 
-if contains '证券实体识别是不可跳过的固定第一阶段' "$SOUL" && contains '用户直接输入 `NBIS`、`INTL`、`RMBS` 这类股票代码是正常用法' "$SOUL" && contains 'A plain ticker such as `NBIS`, `INTL`, or `RMBS` is normal user input' "$STOCK_RESEARCH" && contains 'require an exact-symbol result' "$STOCK_RESEARCH" && contains 'deterministic_ticker_scope_is_complete' "$INVESTMENT_GUARD" && contains 'RKLB 是前面提到的 火箭实验室' "$INVESTMENT_GUARD" && contains 'provider_lookup_variants' "$INVESTMENT_GUARD" && contains 'DEEP_VALUATION_DECISION_INTENT_MARKERS' "$INVESTMENT_GUARD" && contains 'valuation decision must not use the quote-only contract' "$INVESTMENT_GUARD"; then
-  record success "19.plain-ticker-entity-first" "plain tickers bypass auxiliary prose parsing, preserve exact-symbol lookup, and route valuation-decision phrases through the deep response contract"
+if contains '证券实体发现是不可跳过的证据阶段' "$SOUL" && contains '用户直接输入 `NBIS`、`INTL`、`RMBS` 这类股票代码是正常用法' "$SOUL" && contains 'A plain ticker such as `NBIS`, `INTL`, or `RMBS` is normal user input' "$STOCK_RESEARCH" && contains 'require an exact-symbol result' "$STOCK_RESEARCH" && contains 'agent_discovery_query_is_explicit_symbol' "$INVESTMENT_GUARD" && contains 'missing_required_agent_seed_symbols' "$INVESTMENT_GUARD" && contains 'provider_lookup_variants' "$INVESTMENT_GUARD"; then
+  record success "19.plain-ticker-agent-discovery" "plain tickers enter the open Agent loop, preserve exact-symbol lookup, and cannot be silently omitted from the observed search trace"
 else
-  record fail "19.plain-ticker-entity-first" "the prompt or runtime can regress into rejecting, rewriting, guessing, or under-validating ordinary ticker requests"
+  record fail "19.plain-ticker-agent-discovery" "the prompt or runtime can regress into rejecting, rewriting, guessing, or silently omitting ordinary ticker requests"
 fi
 
 if contains '每个公司或证券问题先调用 DataFetch `search`' "$SOUL" && contains 'DataFetch 本轮同代码 quote' "$SOUL" && contains '禁止声称“没有实时行情”' "$SOUL" && contains 'never claim that real-time/current market data was not requested' "$STOCK_RESEARCH"; then
@@ -211,11 +213,17 @@ else
   record fail "26.exact-ticker-beats-embedded-product-reference" "weak product-name or partial-word matches can again override provider-verified identity"
 fi
 
+if contains 'AgentToolDiscovery' "$INVESTMENT_GUARD" && contains '【本轮证券实体发现：主 Agent 工具循环】' "$INVESTMENT_GUARD" && contains 'build_agent_discovered_investment' "$INVESTMENT_GUARD" && contains 'first_agent_discovery_calls' "$INVESTMENT_GUARD" && contains 'agent_discovery_disposition' "$INVESTMENT_GUARD" && contains 'missing_agent_discovered_truth_violations' "$INVESTMENT_GUARD" && contains 'agent_owned_no_coverage_clarification_is_not_replaced_and_is_emitted_once' "$AGENT_TESTS" && contains 'agent_owned_equal_candidate_clarification_is_not_replaced_and_is_emitted_once' "$AGENT_TESTS" && contains '分析下crwv和nbis的估值' "$INVESTMENT_GUARD" && contains 'main_agent_entity_discovery_input' "$AGENT_CORE" && contains 'DeferredUserOutputEmitter' "$AGENT_CORE" && contains '!agent_discovered_contract' "$AGENT_CORE" && [[ "$AGENT_DISCOVERY_IMPL" != *'response_intent('* ]] && [[ "$AGENT_DISCOVERY_IMPL" != *'is_strict_quote_only_request('* ]] && [[ "$AGENT_DISCOVERY_IMPL" != *'response_requests_extended_hours_quote('* ]] && ! contains 'request_may_need_auxiliary_entity_extraction' "$INVESTMENT_GUARD" && ! contains 'ENTITY_EXTRACTION_TIMEOUT_SECS' "$INVESTMENT_GUARD" && ! contains 'entity_extraction_unavailable_message' "$INVESTMENT_GUARD"; then
+  record success "27.agent-loop-entity-discovery" "the main Agent owns open-ended scope and evidence depth; code keeps truth-only validation and one published answer"
+else
+  record fail "27.agent-loop-entity-discovery" "interactive discovery can regress into wording classification, canned clarification, format takeover, or replayed drafts"
+fi
+
 echo
 echo "summary: success=$success review=$review fail=$fail total=$((success + review + fail))"
 
-if [ "$success" -lt 26 ]; then
-  echo "[ERROR] acceptance failed: expected all 26 successes"
+if [ "$success" -lt 27 ]; then
+  echo "[ERROR] acceptance failed: expected all 27 successes"
   exit 1
 fi
 

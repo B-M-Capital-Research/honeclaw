@@ -141,6 +141,9 @@ read -r CRWV_QUOTE_LINE <&4
 printf '%s\n' '{"jsonrpc":"2.0","id":31,"method":"tools/call","params":{"name":"data_fetch","arguments":{"data_type":"profile","ticker":"CRWV"}}}' >&3
 read -r CRWV_PROFILE_LINE <&4
 
+printf '%s\n' '{"jsonrpc":"2.0","id":32,"method":"tools/call","params":{"name":"data_fetch","arguments":{"data_type":"quote","ticker":"CRWV,NBIS"}}}' >&3
+read -r CRWV_NBIS_BATCH_QUOTE_LINE <&4
+
 python3 - \
   "$SEARCH_LINE" \
   "$QUOTE_LINE" \
@@ -171,7 +174,8 @@ python3 - \
   "$CANONICAL_QUOTE_LINE" \
   "$CRWV_SEARCH_LINE" \
   "$CRWV_QUOTE_LINE" \
-  "$CRWV_PROFILE_LINE" <<'PY'
+  "$CRWV_PROFILE_LINE" \
+  "$CRWV_NBIS_BATCH_QUOTE_LINE" <<'PY'
 import json
 import sys
 import time
@@ -218,6 +222,7 @@ canonical_quote = structured(sys.argv[27])
 crwv_search = structured(sys.argv[28])
 crwv_quote = structured(sys.argv[29])
 crwv_profile = structured(sys.argv[30])
+crwv_nbis_batch_quote = structured(sys.argv[31])
 
 
 def matching_fresh_quote(payload, symbol):
@@ -362,6 +367,8 @@ crwv_reference_products = [
     if str(item.get("symbol", "")).upper() != "CRWV"
     and "CRWV" in str(item.get("name") or item.get("companyName", "")).upper().split()
 ]
+for symbol in ["CRWV", "NBIS"]:
+    matching_fresh_quote(crwv_nbis_batch_quote, symbol)
 
 print("[PASS] live US/short/share-class/A-share/HK/JP/KR/index/crypto entity and quote probes succeeded")
 print(f"NBIS company={exact[0].get('name') or exact[0].get('companyName')}")
@@ -379,6 +386,7 @@ print(f"RMBS financials_shape=list items={len(rmbs_financial_data)} news_items={
 print(f"RKLB company={rklb_exact[0].get('name')} quote_price={rklb_matching_quote['price']} change={rklb_matching_quote['changesPercentage']} timestamp={int(rklb_matching_quote['timestamp'])}")
 print(f"RKLB financials_shape=list items={len(rklb_financial_data)}")
 print(f"CRWV company={crwv_exact.get('name')} quote_price={crwv_matching_quote['price']} reference_products={len(crwv_reference_products)}")
+print("CRWV_NBIS batch_quote=exact_fresh_both")
 print(f"mixed_market_live_quotes={','.join(mixed_market_symbols)}")
 print(f"canonical_cross_market_quotes={','.join(canonical_symbols)}")
 PY
