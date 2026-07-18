@@ -23,6 +23,15 @@ New
 ## 证据来源
 
 - `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-18`
+  - 巡检时间窗：2026-07-19 03:00-07:01 CST。
+  - `data/sessions.sqlite3` 同窗新增 5 条 user / 6 条 assistant / 2 条 system compact；近期 Web direct canary 03:25 / 04:51 / 06:52 均可成功回答 CRWV/NVDA 关系，说明不是 direct 全链路不可用。
+  - 03:00 CST heartbeat 批量以 `chat_with_tools stream ended before Done` 落成 runner_error 并跳过发送，覆盖 TSLA、中际旭创、持仓重大事件、NVDA、NBIS、ASTS、Monitor_Watchlist_11、光模块板块、RKLB、TEM、原油、存储板块、SIVE、光迅科技、闪迪等任务；同批另有 `HTTP 529` provider 错误。
+  - 05:00 CST Web scheduler `盘后美股复盘与SNDK/MU存储产业链日报` 继续因 `PCE` 无行情覆盖预检失败，用户只看到执行出错。
+  - 06:44 CST Web direct canary 同题 CRWV/NVDA 在工具调用已完成后落成 `active business stream timed out`，用户只收到“抱歉，处理超时了。请稍后再试。”；06:52 CST 同题重试成功，说明该超时当前更像单次波动，不单独建档。
+  - 同窗统计命中 `runner_error=84`、`chat_with_tools stream ended before Done=63`、`active business stream timed out=2`、`context window exceeds limit=3`；运行态仍有批量 fail-closed 和降级，但后半窗同类 stream-ended 错误未继续批量复发。
+  - 判断：该样本仍属于同根 provider / evidence / entity / 输出契约 fail-closed，用户只看到执行出错、超时兜底或无发送；由于同窗 direct 有成功样本、原始 provider 错误未进入用户可见 final、未见错投、数据破坏、敏感信息泄露或全渠道不可用，维持功能性 `P2 / New`，不升级为 P1，不创建 GitHub Issue。
+
+- `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-18`
   - 巡检时间窗：2026-07-18 19:02-23:03 CST。
   - `data/sessions.sqlite3` 同窗新增 18 条 user / 11 条 assistant / 4 条 system compact，覆盖 Web regression direct、Web scheduler、Feishu direct 与 Feishu scheduler；近期会话均以 assistant 收口，没有 user-only 悬挂、错投、敏感信息泄露或全渠道不可用证据。
   - 20:40-22:49 CST 五个非文档修复提交后，20:47 / 20:49 CRWV/NBIS regression direct 与 21:51 / 22:10 / 22:52 CRWV/NVDA regression direct 均成功保留 agent answer，说明 interactive direct 的前窗 fail-closed 已明显止血。

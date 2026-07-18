@@ -22,6 +22,12 @@ Fixed
 
 ## 证据来源
 
+- 运行态复核（2026-07-19 07:01 CST）
+  - 本轮 2026-07-19 03:00-07:01 CST 继续检索同类错误：03:00 CST heartbeat 批量出现 `chat_with_tools stream ended before Done`，覆盖 TSLA、中际旭创、持仓重大事件、NVDA、NBIS、ASTS、Monitor_Watchlist_11、光模块板块、RKLB、TEM、原油、存储板块、SIVE、光迅科技、闪迪等任务，并落成 runner_error / 跳过发送。
+  - 03:24、04:49、06:43、06:50 CST runtime 有多次启动记录；06:43 后未再检出同类 `stream ended before Done` 批量复发。
+  - 06:44 CST Web direct canary 同题 CRWV/NVDA 在工具调用完成后落成 `active business stream timed out`，06:52 CST 同题重试成功；该现象先归入 `scheduler_heartbeat_required_evidence_fallback_skips_alerts.md` 观察，不作为本单 stream completion 同根复发证据。
+  - 判断：03:00 的批量失败晚于 02:56 代码提交但接近运行态重启前后，且后半窗未继续批量复发；本轮补充复核证据，状态暂维持代码级 `Fixed`，后续若重启后仍连续出现 `chat_with_tools stream ended before Done`，应从 `Fixed` 回退为 `New`。
+
 - `data/sessions.sqlite3`
   - 巡检窗口：2026-07-18 23:01-2026-07-19 03:01 CST。
   - `session_messages` 同窗新增 2 条 user / 2 条 assistant；两个 Web direct session 均以 assistant 收口，`last_message_role=user` 为 0。

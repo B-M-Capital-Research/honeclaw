@@ -22,6 +22,19 @@
 
 ## 最新进展
 
+- 本轮 2026-07-19 03:00-07:01 CST 真实运行态继续出现同根异常 / 高风险价格和任务主体错配信号，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-18`
+    - 03:00-07:01 CST 同窗 heartbeat 继续有 94 条 `deliver job_id`、186 条 `PlainTextTriggered`、46 条 duplicate suppression，异常或高风险行情锚继续进入触发判断和用户可见 preview。
+    - 05:30 / 06:30 / 07:00 CST `存储板块关键事件心跳提醒` 与 `光模块板块关键事件心跳提醒` 继续使用 `SNDK $1,354.82`、`AAOI $102.41` 等高风险行情锚，并多次把口径写成 `07-18 16:00 ET` 这类周末常规盘时间。
+    - 06:30 CST `光迅科技关键事件心跳提醒` 的用户可见 preview 直接输出 NBIS 投研，包含 `NBIS 从高点回撤约 41%`、`$177 附近进入可研究区间` 等，与任务主体 `光迅科技 002281.SZ` 错配。
+    - 07:01 CST `heartbeat_绿田机械基本面跟踪` 的用户可见 preview 输出 LULU 分析，包含 `LULU 近跌 3.4%` 和 NYSE 口径，与任务主体 `绿田机械 605259.SH` 错配。
+    - 07:00 CST `Cerebras IPO与业务进展心跳监控` deliver preview 中 `最新报价 $1...` 残片显示价格数量级 / 表格截断仍可能污染判断。
+  - `data/sessions.sqlite3`
+    - 同窗有 5 条 user / 6 条 assistant / 2 条 system compact；近期 Web direct canary 有成功回答，未见错投到其他用户、投递失败、空回复、敏感信息外泄或全渠道不可用。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check / 任务上下文错配缺口：异常或高风险数量级价格、错误交易日口径和错配标的继续进入 heartbeat 判断上下文和用户可见 preview。
+    - 本窗没有错投到其他用户、投递失败、空回复、数据破坏或全渠道不可用；因此仍按质量性 `P3 / New`。该问题不影响主消息投递链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-18 23:03 CST 真实运行态继续出现同根异常 / 高风险价格和时间口径信号，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-18`
     - 19:02-23:03 CST 同窗 heartbeat parse 分布为 `PlainTextTriggered=160`、`JsonNoop=72`、`PlainTextNoop=13`、`PlainTextSuppressed=8`、`JsonTriggered=5`、`JsonMalformed=4`、`JsonEmptyStatus=1`，多条 raw / deliver preview 继续把异常或高风险行情锚用于触发判断。

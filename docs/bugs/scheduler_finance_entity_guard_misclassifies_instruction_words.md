@@ -6,6 +6,16 @@
 - **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
 
+## 运行态复核（2026-07-19 07:01 CST）
+
+- 本轮 2026-07-19 03:00-07:01 CST 真实运行态继续复发，状态维持 `New/P2`：
+  - `data/sessions.sqlite3` 同窗新增 5 条 user / 6 条 assistant / 2 条 system compact，近期 Web direct / Web scheduler 会话均有 assistant 收口；`Actor_feishu__direct__ou_5fa7fc023b9aa2a550a3568c8ffc4d7cdc` 在 07:01 CST 边界新增 user turn，未纳入本轮 07:01 前完整收口判断。
+  - 05:00 CST Web scheduler session `Actor_web__direct__web-user-afc1cabadbf8` 的 `盘后美股复盘与SNDK/MU存储产业链日报` 连续第三个窗口把宏观指标 `PCE` 当作证券代码，返回“当前数据供应商没有返回同代码行情覆盖”，随后写入用户可见 `scheduler_failure=true` 执行出错。
+  - `data/runtime/logs/web.log.2026-07-18` 在 03:00 / 03:30 / 05:30 CST 继续记录 AAOI heartbeat 把任务上下文里的 `SEC` 当证券代码且无行情覆盖；ORCL heartbeat 仍落成 Oracle 多上市地候选。
+  - 同窗 06:30 CST `光迅科技关键事件心跳提醒` 可生成并投递正文，但内容主体漂移成 NBIS 投研；07:01 CST `heartbeat_绿田机械基本面跟踪` 又漂移成 LULU 分析，说明问题不只 fail-closed，也会在 heartbeat 上下文中选错实体并产出错配正文。
+  - 判断：这些样本仍是 scheduler / heartbeat 任务正文、历史 reminder 与行业词进入实体 guard / resolver 后误抽、误拦或错配实体；与既有缺陷同根，不新建重复文档。
+  - 严重等级维持 `P2`：它直接阻断部分 scheduler 正文并造成 heartbeat 标的错配，但同窗 Web direct canary 03:25 / 04:51 / 06:52 均可成功回答 CRWV/NVDA 关系，未见全渠道停摆、错投到其他用户、敏感信息泄露或持久化数据破坏，因此不是 `P1`，不创建 GitHub Issue。
+
 ## 运行态复核（2026-07-18 23:03 CST）
 
 - 20:40-22:49 CST 五个非文档提交已进一步止血 interactive direct 投研输出保留路径：

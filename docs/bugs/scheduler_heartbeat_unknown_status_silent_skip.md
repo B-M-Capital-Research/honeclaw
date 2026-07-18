@@ -7,6 +7,18 @@
 
 ## 修复进展
 
+- `2026-07-19 03:00-07:01 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-18`
+    - 同窗继续出现 `parse_kind=PlainTextTriggered=186`、`deliver job_id=94`、`duplicate_suppressed=46`、`parse_kind=PlainTextSuppressed=11`、`heartbeat 输出不是结构化 JSON=11`、`parse_kind=JsonMalformed=2`。
+    - 03:00 CST 批量 `chat_with_tools stream ended before Done` 让多条 heartbeat 直接跳过；后续 05:30-07:00 多条 heartbeat 又以 `<think>`、自然语言 noop、管理工具不可用说明或任务评估报告进入 `PlainTextTriggered`。
+    - 06:30 CST `heartbeat_绿田机械基本面跟踪` 以 `<think>` + 普通分析落成 `PlainTextSuppressed` 并标记“heartbeat 输出不是结构化 JSON”；07:00 CST `TSLA 正负触发条件心跳监控` deliver preview 变成“定时任务管理暂时不可用，请稍后再试”，不是应有的 TSLA 触发判断。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 同窗新增 5 条 user / 6 条 assistant / 2 条 system compact，Web direct canary 有成功回答，也有一次超时兜底；未见全渠道不可用、错投或 assistant final 原始错误外泄。
+    - 本地 `cron_job_runs.max(executed_at)` 仍停在 `2026-07-10T14:01:27.621121+08:00`，当前 heartbeat 运行态继续以 runtime web log 判断。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题继续影响 heartbeat 监控判断、送达语义和失败 / 跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-18 15:02-19:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-18`
     - 同窗继续出现 91 条 raw `<think>`、333 条 `runner_error`、120 条定时任务执行失败、29 条 `deliver_preview` 与 7 条“heartbeat 输出不是结构化 JSON”。
