@@ -1810,8 +1810,13 @@ pub(crate) fn build_agent_discovered_investment(
         origin,
     };
 
-    let mut runtime_suffix = contract.enforcement_block();
-    runtime_suffix.push_str("\n\n【主 Agent 本轮工具轨迹核验证据】\n");
+    // This suffix is used only when an interactive Agent answer needs a
+    // truth repair. Do not reuse the typed scheduled/heartbeat enforcement
+    // block here: it contains service-owned route and chapter requirements
+    // that would override the Agent's understanding of an open-ended query.
+    let mut runtime_suffix = String::from(
+        "\n\n【主 Agent 本轮工具轨迹核验证据】\n保持你根据用户完整问题自主选择的分析范围、结构、篇幅和重点；以下内容只用于校正本轮工具事实，不是固定回答模板。\n",
+    );
     for call in calls
         .iter()
         .filter(|call| canonical_hone_tool_name(&call.name) == Some("data_fetch"))
@@ -4258,36 +4263,13 @@ pub(crate) fn missing_agent_discovered_truth_violations(
             "历史、开收盘或高低价表格必须来自本轮专用历史行情证据",
         );
     }
-    for entity in &contract.entities {
-        let scoped_content = if contract.entities.len() > 1 {
-            symbol_section(content, &entity.symbol, &contract.entities)
-        } else {
-            Some(content)
-        };
-        let Some(scoped_content) = scoped_content else {
-            continue;
-        };
-        let violations = if entity_is_fund(entity) && entity.fund_holdings_verified.is_some() {
-            unsupported_fund_fact_claims(entity, scoped_content)
-        } else if entity_is_crypto(entity) || entity_is_index(entity) {
-            Vec::new()
-        } else if entity.annual_financials_verified.is_some() {
-            unsupported_financial_fact_claims(entity, scoped_content)
-        } else {
-            Vec::new()
-        };
-        for violation in violations {
-            push_missing(&mut missing, violation);
-        }
-    }
-    if contract.requires_recent_web_evidence
-        && unsupported_recent_event_fact(content, &contract.verified_dated_web_sources)
-    {
-        push_missing(
-            &mut missing,
-            "已发生事件事实必须匹配本轮真实日期与来源或明确标为推断",
-        );
-    }
+    // Arbitrary Agent prose has no structured claim provenance. Reusing the
+    // typed task's section/keyword parsers here would bind free-form valuation,
+    // financial, and event language to fixed headings and vocabularies. The
+    // dynamic path therefore validates only facts the service can identify
+    // deterministically. Financial/news/holding evidence remains in the same
+    // Agent tool context; future per-claim enforcement must use structured
+    // provenance rather than parsing presentation text.
     missing
 }
 
@@ -11310,6 +11292,28 @@ mod tests {
             json!({"data_type":"financials","ticker":"NBIS"}),
             equity_financials("NBIS"),
         );
+        let news_crwv = recorded_tool_call(
+            "data_fetch",
+            "news-crwv",
+            json!({"data_type":"news","ticker":"CRWV"}),
+            json!({"data":[{
+                "symbol":"CRWV",
+                "title":"CoreWeave expands its AI infrastructure footprint",
+                "publishedDate":"2026-07-17 08:30:00",
+                "url":"https://www.reuters.com/technology/coreweave-expansion"
+            }]}),
+        );
+        let news_nbis = recorded_tool_call(
+            "data_fetch",
+            "news-nbis",
+            json!({"data_type":"news","ticker":"NBIS"}),
+            json!({"data":[{
+                "symbol":"NBIS",
+                "title":"Nebius expands its AI infrastructure footprint",
+                "publishedDate":"2026-07-17 09:30:00",
+                "url":"https://www.reuters.com/technology/nebius-expansion"
+            }]}),
+        );
         let context = vec![assistant_tool_round(&[&search_crwv, &search_nbis])];
         let calls = vec![
             search_crwv,
@@ -11319,6 +11323,8 @@ mod tests {
             profile_nbis,
             financials_crwv,
             financials_nbis,
+            news_crwv,
+            news_nbis,
         ];
 
         let discovered = super::build_agent_discovered_investment(
@@ -11349,9 +11355,70 @@ mod tests {
         );
         assert!(discovered.contract.comparison);
         assert!(discovered.contract.deep_comparison);
+        assert!(discovered.contract.requires_recent_web_evidence);
+        assert!(
+            discovered
+                .contract
+                .entities
+                .iter()
+                .all(|entity| entity.annual_financials_verified == Some(true))
+        );
+        assert!(
+            !discovered.contract.verified_dated_web_sources.is_empty(),
+            "same-domain same-day sources may be deduplicated, but dated news evidence must remain"
+        );
         let data_time = discovered.contract.data_time_line();
         assert!(data_time.contains("报价源时间：北京时间"), "{data_time}");
         assert!(data_time.contains("至"), "{data_time}");
+
+        assert!(
+            discovered
+                .runtime_suffix
+                .contains("保持你根据用户完整问题自主选择的分析范围、结构、篇幅和重点")
+        );
+        assert!(
+            discovered.runtime_suffix.contains("CoreWeave expands")
+                && discovered.runtime_suffix.contains("Nebius expands"),
+            "truth-repair context must retain both entities' observed news evidence"
+        );
+        for typed_requirement in [
+            "多证券比较门禁",
+            "严格使用独立 Markdown 标题",
+            "必须完整执行",
+            "九个编号章节",
+        ] {
+            assert!(
+                !discovered.runtime_suffix.contains(typed_requirement),
+                "interactive truth repair must not inherit typed formatting: {typed_requirement}"
+            );
+        }
+
+        let free_form_answer = format!(
+            "{data_time}\n\n## CRWV vs NBIS：估值怎么看\n\
+             CRWV 当前价 73.21 USD，业务重点是 AI 算力基础设施。\n\
+             NBIS 当前价 177.71 USD，业务重点是 AI 云与基础设施。\n\
+             估值推导可用 6x / 8x / 10x Forward P/S 做情景假设，但这些数字不代表市场一致预期。\n\
+             两家公司近期进展、增长质量与风险应结合本轮财务和新闻工具结果判断。"
+        );
+        assert!(
+            super::missing_agent_discovered_truth_violations(
+                &discovered.contract,
+                &free_form_answer,
+            )
+            .is_empty(),
+            "interactive truth validation must be independent of headings, chapters, and arbitrary valuation prose: {:?}",
+            super::missing_agent_discovered_truth_violations(
+                &discovered.contract,
+                &free_form_answer,
+            )
+        );
+
+        let wrong_quote = free_form_answer.replace("CRWV 当前价 73.21 USD", "CRWV 当前价 15 USD");
+        assert!(
+            super::missing_agent_discovered_truth_violations(&discovered.contract, &wrong_quote)
+                .contains(&"逐标的已核验同代码现价"),
+            "removing prose parsers must not weaken exact-symbol quote truth"
+        );
     }
 
     #[test]
