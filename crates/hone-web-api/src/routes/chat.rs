@@ -320,7 +320,6 @@ pub(crate) fn build_chat_sse(
             actor_clone.clone(),
             actor_clone.user_id.clone(),
         )
-        .with_restore_max_messages(None)
         .with_message_id(Some(run_id))
         .with_prompt_options(prompt_options)
         .with_recv_extra(Some(recv_extra));

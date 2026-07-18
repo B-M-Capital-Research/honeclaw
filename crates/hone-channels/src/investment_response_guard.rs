@@ -231,7 +231,6 @@ enum EntityResolutionScope {
 #[derive(Debug, Clone)]
 pub(crate) struct AgentDiscoveredInvestment {
     pub(crate) contract: InvestmentResponseContract,
-    pub(crate) runtime_suffix: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -593,14 +592,6 @@ impl InvestmentResponseContract {
         format!(
             "\n\n【上一版草稿已被代码级完整性检查拒绝】\n缺失或不合格章节：{}。首行时间由服务端统一写入，模型正文不得生成或重复时间。重新生成完整最终答案，严格使用九个编号章节，并在第 1 节写出本轮已核验同代码现价；不得解释检查过程，不得用追问持仓成本代替动作建议。",
             missing.join("、")
-        )
-    }
-
-    pub(crate) fn agent_truth_retry_block(&self, violations: &[&'static str]) -> String {
-        format!(
-            "\n\n【本轮工具事实校正】上一版回答与本轮 exact-symbol 工具事实存在以下冲突：{}。保留你根据用户完整问题自主选择的结构、篇幅与分析重点，只修正这些事实冲突；不得新增未经本轮工具核验的价格、财务、持仓或事件数字，也不要解释内部检查过程。{}",
-            violations.join("、"),
-            self.canonical_fact_block()
         )
     }
 }
@@ -1798,31 +1789,7 @@ pub(crate) fn build_agent_discovered_investment(
         origin,
     };
 
-    // This suffix is used only when an interactive Agent answer needs a
-    // truth repair. Do not reuse the typed scheduled/heartbeat enforcement
-    // block here: it contains service-owned route and chapter requirements
-    // that would override the Agent's understanding of an open-ended query.
-    let mut runtime_suffix = String::from(
-        "\n\n【主 Agent 本轮工具轨迹核验证据】\n保持你根据用户完整问题自主选择的分析范围、结构、篇幅和重点；以下内容只用于校正本轮工具事实，不是固定回答模板。\n",
-    );
-    for call in calls
-        .iter()
-        .filter(|call| canonical_hone_tool_name(&call.name) == Some("data_fetch"))
-    {
-        runtime_suffix.push_str(&format!(
-            "- 参数={}；结果={}\n",
-            bounded_evidence_json(&call.arguments, 1_000),
-            bounded_evidence_json(&call.result, EVIDENCE_ITEM_CHAR_LIMIT)
-        ));
-    }
-    runtime_suffix.push_str(
-        "以上只读工具结果已在同一主 Agent loop 中返回；修订时只能使用 exact-symbol、同代码且带可用 provider timestamp 的事实，不得从记忆补数。\n",
-    );
-    runtime_suffix.push_str(&contract.canonical_fact_block());
-    Some(AgentDiscoveredInvestment {
-        contract,
-        runtime_suffix,
-    })
+    Some(AgentDiscoveredInvestment { contract })
 }
 
 fn tool_call_targets_entity(arguments: &Value, symbol: &str) -> bool {
@@ -4198,67 +4165,6 @@ fn append_recent_event_evidence_violations(
             push_missing(missing, "8. 每条事件事实均须同句日期与来源或标明推断");
         }
     }
-}
-
-/// Validate only provider-backed facts for an answer whose scope and evidence
-/// depth were selected by the interactive Agent itself.  This deliberately
-/// does not impose the server's numbered response templates: arbitrary user
-/// wording must not be reclassified after the Agent has already understood it.
-pub(crate) fn missing_agent_discovered_truth_violations(
-    contract: &InvestmentResponseContract,
-    content: &str,
-) -> Vec<&'static str> {
-    let mut missing = Vec::new();
-    if !content
-        .lines()
-        .find(|line| !line.trim().is_empty())
-        .is_some_and(|line| line.trim_start().starts_with("数据时间：北京时间"))
-    {
-        push_missing(&mut missing, "首行数据时间");
-    }
-    if contract
-        .entities
-        .iter()
-        .any(|entity| entity.verified_price.is_some())
-        && has_false_market_data_unavailability_claim(content)
-    {
-        push_missing(&mut missing, "与已核验行情矛盾的能力声明");
-    }
-    if contract.entities.iter().any(|entity| {
-        entity.verified_price.is_some() && !markdown_quote_rows_are_consistent(entity, content)
-    }) {
-        push_missing(&mut missing, "价格表逐标的已核验同代码现价");
-    }
-    if contract.entities.iter().any(|entity| {
-        entity.verified_price.is_some()
-            && if contract.entities.len() > 1 {
-                !entity_line_verified_price_appears(entity, &contract.entities, content)
-            } else {
-                !entity_verified_price_appears(entity, content)
-            }
-    }) {
-        push_missing(&mut missing, "逐标的已核验同代码现价");
-    }
-    if !extended_quote_claims_are_consistent(contract, content) {
-        push_missing(
-            &mut missing,
-            "盘前盘后价格必须匹配本轮已核验时段、同代码现价与币种",
-        );
-    }
-    if markdown_has_unverified_historical_price_rows(content) {
-        push_missing(
-            &mut missing,
-            "历史、开收盘或高低价表格必须来自本轮专用历史行情证据",
-        );
-    }
-    // Arbitrary Agent prose has no structured claim provenance. Reusing the
-    // typed task's section/keyword parsers here would bind free-form valuation,
-    // financial, and event language to fixed headings and vocabularies. The
-    // dynamic path therefore validates only facts the service can identify
-    // deterministically. Financial/news/holding evidence remains in the same
-    // Agent tool context; future per-claim enforcement must use structured
-    // provenance rather than parsing presentation text.
-    missing
 }
 
 pub(crate) fn missing_investment_response_sections(
@@ -11324,55 +11230,6 @@ mod tests {
         let data_time = discovered.contract.data_time_line();
         assert!(data_time.contains("报价源时间：北京时间"), "{data_time}");
         assert!(data_time.contains("至"), "{data_time}");
-
-        assert!(
-            discovered
-                .runtime_suffix
-                .contains("保持你根据用户完整问题自主选择的分析范围、结构、篇幅和重点")
-        );
-        assert!(
-            discovered.runtime_suffix.contains("CoreWeave expands")
-                && discovered.runtime_suffix.contains("Nebius expands"),
-            "truth-repair context must retain both entities' observed news evidence"
-        );
-        for typed_requirement in [
-            "多证券比较门禁",
-            "严格使用独立 Markdown 标题",
-            "必须完整执行",
-            "九个编号章节",
-        ] {
-            assert!(
-                !discovered.runtime_suffix.contains(typed_requirement),
-                "interactive truth repair must not inherit typed formatting: {typed_requirement}"
-            );
-        }
-
-        let free_form_answer = format!(
-            "{data_time}\n\n## CRWV vs NBIS：估值怎么看\n\
-             CRWV 当前价 73.21 USD，业务重点是 AI 算力基础设施。\n\
-             NBIS 当前价 177.71 USD，业务重点是 AI 云与基础设施。\n\
-             估值推导可用 6x / 8x / 10x Forward P/S 做情景假设，但这些数字不代表市场一致预期。\n\
-             两家公司近期进展、增长质量与风险应结合本轮财务和新闻工具结果判断。"
-        );
-        assert!(
-            super::missing_agent_discovered_truth_violations(
-                &discovered.contract,
-                &free_form_answer,
-            )
-            .is_empty(),
-            "interactive truth validation must be independent of headings, chapters, and arbitrary valuation prose: {:?}",
-            super::missing_agent_discovered_truth_violations(
-                &discovered.contract,
-                &free_form_answer,
-            )
-        );
-
-        let wrong_quote = free_form_answer.replace("CRWV 当前价 73.21 USD", "CRWV 当前价 15 USD");
-        assert!(
-            super::missing_agent_discovered_truth_violations(&discovered.contract, &wrong_quote)
-                .contains(&"逐标的已核验同代码现价"),
-            "removing prose parsers must not weaken exact-symbol quote truth"
-        );
     }
 
     #[test]

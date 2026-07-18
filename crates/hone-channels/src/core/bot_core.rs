@@ -640,6 +640,18 @@ impl HoneBotCore {
         )
     }
 
+    /// Whether a configured host-capable runner is replaced by the actor-safe
+    /// function-calling runner for this request.  Context ownership must use
+    /// this effective route rather than the static configured runner name.
+    pub(crate) fn actor_uses_strict_runner_fallback(&self, actor: &ActorIdentity) -> bool {
+        !self.is_admin_actor(actor) && self.configured_runner_requires_trusted_host_access()
+    }
+
+    pub(crate) fn effective_runner_manages_own_context(&self, actor: &ActorIdentity) -> bool {
+        !self.actor_uses_strict_runner_fallback(actor)
+            && self.config.agent.runner_kind().manages_own_context()
+    }
+
     pub(crate) fn create_strict_actor_runner(
         &self,
         system_prompt: &str,
@@ -668,12 +680,17 @@ impl HoneBotCore {
 
     /// 检查并压缩会话历史。
     ///
-    /// 对于自带上下文管理 / 内置 compact 的 runner（codex_acp / opencode_acp），
-    /// 直接短路返回 —— 不再触发 SessionCompactor，把 honeclaw 自己的
-    /// `session_messages` 完整保留，依赖 ACP runner 内部 session 自压。
+    /// 对于本轮实际使用且自带上下文管理 / 内置 compact 的 runner
+    ///（codex_acp / opencode_acp），直接短路返回。普通 Web actor 即使全局
+    /// 配置了 ACP，也会安全降级到 function-calling，因此仍必须由 Hone
+    /// 管理上下文。
     /// 见 `docs/bugs/session_compact_summary_report_hallucination.md` 2026-04-23 决策。
-    pub async fn maybe_compress_session(&self, session_id: &str) -> hone_core::HoneResult<()> {
-        if self.config.agent.runner_kind().manages_own_context() {
+    pub async fn maybe_compress_session(
+        &self,
+        session_id: &str,
+        actor: &ActorIdentity,
+    ) -> hone_core::HoneResult<()> {
+        if self.effective_runner_manages_own_context(actor) {
             tracing::debug!(
                 "[Compact] session={} runner={} 自管上下文，跳过 honeclaw 自动 compact",
                 session_id,
@@ -681,8 +698,8 @@ impl HoneBotCore {
             );
             return Ok(());
         }
-        let _ = self
-            .compact_session(session_id, "auto", false, None)
+        let _ = SessionCompactor::new(self)
+            .compact_session(session_id, "auto", false, None, true)
             .await?;
         Ok(())
     }
@@ -695,7 +712,7 @@ impl HoneBotCore {
         user_instructions: Option<&str>,
     ) -> hone_core::HoneResult<CompactSessionOutcome> {
         SessionCompactor::new(self)
-            .compact_session(session_id, trigger, force, user_instructions)
+            .compact_session(session_id, trigger, force, user_instructions, false)
             .await
     }
 }

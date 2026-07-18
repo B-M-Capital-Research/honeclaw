@@ -51,10 +51,12 @@ EXECUTION="crates/hone-channels/src/execution.rs"
 AGENT_TYPES="crates/hone-channels/src/agent_session/types.rs"
 AGENT_CORE="crates/hone-channels/src/agent_session/core.rs"
 AGENT_TESTS="crates/hone-channels/src/agent_session/tests.rs"
+WEB_CHAT="crates/hone-web-api/src/routes/chat.rs"
+WEB_PUBLIC="crates/hone-web-api/src/routes/public.rs"
 SCHEDULER="crates/hone-channels/src/scheduler.rs"
 SOUL="soul.md"
 AGENT_DISCOVERY_IMPL="$(sed -n '/pub(crate) fn build_agent_discovered_investment(/,/^fn tool_call_targets_entity(/p' "$INVESTMENT_GUARD")"
-AGENT_TRUTH_IMPL="$(sed -n '/pub(crate) fn missing_agent_discovered_truth_violations(/,/pub(crate) fn missing_investment_response_sections(/p' "$INVESTMENT_GUARD")"
+INTERACTIVE_OBSERVATION_IMPL="$(sed -n '/Interactive entity discovery is owned/,/let Some(contract) = contract else/p' "$AGENT_CORE")"
 
 echo "[finance-automation-contracts] fixed sample count: 27"
 
@@ -112,10 +114,10 @@ else
   record fail "9.runtime-finance-prompt" "global finance prompt injection is missing"
 fi
 
-if contains 'missing_deep_single_stock_sections' "$INVESTMENT_GUARD" && contains 'missing_agent_discovered_truth_violations' "$INVESTMENT_GUARD" && contains 'if !agent_discovered_contract' "$AGENT_CORE"; then
-  record success "10.typed-deep-stock-response-contract" "typed scheduled/heartbeat work retains deep format validation while interactive Agent discovery uses truth-only validation"
+if contains 'missing_deep_single_stock_sections' "$INVESTMENT_GUARD" && contains 'missing_deep_fund_sections' "$INVESTMENT_GUARD" && contains 'missing_deep_crypto_sections' "$INVESTMENT_GUARD" && contains 'let Some(contract) = contract else' "$AGENT_CORE" && contains 'missing_investment_response_sections' "$AGENT_CORE" && contains 'enforce_server_data_time_prefix' "$AGENT_CORE" && ! contains 'missing_agent_discovered_truth_violations' "$INVESTMENT_GUARD" && ! contains 'agent_discovered_contract' "$AGENT_CORE"; then
+  record success "10.typed-deep-stock-response-contract" "typed scheduled/heartbeat work retains strict asset-aware validation while Interactive observations stay outside that enforcement path"
 else
-  record fail "10.typed-deep-stock-response-contract" "typed deep validation and the interactive truth-only boundary are not both preserved"
+  record fail "10.typed-deep-stock-response-contract" "typed deep validation is missing or Interactive discovery can still enter the strict rewrite path"
 fi
 
 if contains 'name: "query".to_string()' "$DATA_FETCH" && contains '必须先用 search' "$DATA_FETCH" && contains '实体发现与证据加载必须在主 agent loop 内完成' "$PROMPT_FILE" && contains '不要求把千变万化的问法硬塞进闭合标签' "$PROMPT_FILE"; then
@@ -160,10 +162,10 @@ else
   record fail "12.full-prompt-and-safe-runner" "full prompt or strict actor runner regressed"
 fi
 
-if contains '所有证券、市场和板块回答的第一条可见内容必须是服务端提供的' "$SOUL" && contains 'first visible line is the server-provided' "$STOCK_RESEARCH" && contains 'first visible line is always the server-owned' "$MARKET_ANALYSIS"; then
-  record success "18.server-owned-time-first" "canonical prompt and finance skills keep the server data-time line first"
+if contains '服务端不会在成功后追加任何用户可见内容、改写答案、重跑主 Agent 或否决这个成功答案' "$SOUL" && contains '必须由主 Agent 自己把“数据时间：北京时间' "$PROMPT_FILE" && contains 'After success, the service will not append any user-visible content, rewrite the answer, rerun the main Agent, or reject that successful answer' "$STOCK_RESEARCH" && contains 'Time anchor first and Interactive answer ownership' "$MARKET_ANALYSIS" && contains 'first visible line' "$MARKET_ANALYSIS" && ! contains 'server-provided' "$STOCK_RESEARCH" && ! contains 'server-owned' "$STOCK_RESEARCH" && ! contains 'server-provided' "$MARKET_ANALYSIS" && ! contains 'server-owned' "$MARKET_ANALYSIS"; then
+  record success "18.agent-owned-time-first" "the main Agent authors the time-first Interactive answer and no finance skill delegates that line to a post-processor"
 else
-  record fail "18.server-owned-time-first" "time-first response ownership is missing from a canonical prompt layer"
+  record fail "18.agent-owned-time-first" "time-first ownership can regress to a server-authored prefix or disappear from a canonical prompt layer"
 fi
 
 if contains '证券实体发现是不可跳过的证据阶段' "$SOUL" && contains '用户直接输入 `NBIS`、`INTL`、`RMBS` 这类股票代码是正常用法' "$SOUL" && contains 'A plain ticker such as `NBIS`, `INTL`, or `RMBS` is normal user input' "$STOCK_RESEARCH" && contains 'require an exact-symbol result' "$STOCK_RESEARCH" && contains 'agent_discovery_query_is_explicit_symbol' "$INVESTMENT_GUARD" && contains 'missing_required_agent_seed_symbols' "$INVESTMENT_GUARD" && contains 'provider_lookup_variants' "$INVESTMENT_GUARD"; then
@@ -214,10 +216,10 @@ else
   record fail "26.exact-ticker-beats-embedded-product-reference" "weak product-name or partial-word matches can again override provider-verified identity"
 fi
 
-if contains 'AgentToolDiscovery' "$INVESTMENT_GUARD" && contains '【本轮证券实体发现：主 Agent 工具循环】' "$INVESTMENT_GUARD" && contains 'build_agent_discovered_investment' "$INVESTMENT_GUARD" && contains 'current_agent_discovery_calls' "$INVESTMENT_GUARD" && contains 'missing_agent_discovered_truth_violations' "$INVESTMENT_GUARD" && contains 'agent_discovery_uses_later_exact_searches_after_empty_enriched_attempts' "$INVESTMENT_GUARD" && contains 'agent_discovery_does_not_build_a_ticker_only_subset_for_unlinked_alias_search' "$INVESTMENT_GUARD" && contains 'agent_owned_no_coverage_clarification_is_not_replaced_and_is_emitted_once' "$AGENT_TESTS" && contains 'agent_owned_equal_candidate_clarification_is_not_replaced_and_is_emitted_once' "$AGENT_TESTS" && contains 'optional_agent_contract_failure_preserves_completed_interactive_answer' "$AGENT_TESTS" && contains 'retry_loop_accepts_later_exact_searches_after_empty_enriched_searches' "$AGENT_TESTS" && contains '分析下crwv和nbis的估值' "$INVESTMENT_GUARD" && contains 'main_agent_entity_discovery_input' "$AGENT_CORE" && contains 'DeferredUserOutputEmitter' "$AGENT_CORE" && contains 'contract_built=false answer_preserved=true' "$AGENT_CORE" && contains '!agent_discovered_contract' "$AGENT_CORE" && [[ "$AGENT_DISCOVERY_IMPL" != *'response_intent('* ]] && [[ "$AGENT_DISCOVERY_IMPL" != *'is_strict_quote_only_request('* ]] && [[ "$AGENT_DISCOVERY_IMPL" != *'response_requests_extended_hours_quote('* ]] && [[ "$AGENT_DISCOVERY_IMPL" != *'.enforcement_block()'* ]] && [[ "$AGENT_TRUTH_IMPL" != *'unsupported_financial_fact_claims('* ]] && [[ "$AGENT_TRUTH_IMPL" != *'unsupported_fund_fact_claims('* ]] && [[ "$AGENT_TRUTH_IMPL" != *'unsupported_recent_event_fact('* ]] && ! contains 'first_agent_discovery_calls' "$INVESTMENT_GUARD" && ! contains 'agent_discovery_disposition' "$INVESTMENT_GUARD" && ! contains 'UNSAFE_AGENT_DISCOVERY_MESSAGE' "$AGENT_CORE" && ! contains 'AgentDiscoveryDisposition' "$AGENT_CORE" && ! contains 'request_may_need_auxiliary_entity_extraction' "$INVESTMENT_GUARD" && ! contains 'ENTITY_EXTRACTION_TIMEOUT_SECS' "$INVESTMENT_GUARD" && ! contains 'entity_extraction_unavailable_message' "$INVESTMENT_GUARD"; then
-  record success "27.agent-loop-entity-discovery" "the main Agent owns open-ended scope and evidence depth; iterative search refinements are retained and an optional contract can never become a fixed refusal"
+if contains 'AgentToolDiscovery' "$INVESTMENT_GUARD" && contains '【本轮证券实体发现：主 Agent 工具循环】' "$INVESTMENT_GUARD" && contains 'build_agent_discovered_investment' "$INVESTMENT_GUARD" && contains 'current_agent_discovery_calls' "$INVESTMENT_GUARD" && contains 'agent_discovery_uses_later_exact_searches_after_empty_enriched_attempts' "$INVESTMENT_GUARD" && contains 'agent_discovery_does_not_build_a_ticker_only_subset_for_unlinked_alias_search' "$INVESTMENT_GUARD" && contains 'agent_owned_no_coverage_clarification_is_not_replaced_and_is_emitted_once' "$AGENT_TESTS" && contains 'agent_owned_equal_candidate_clarification_is_not_replaced_and_is_emitted_once' "$AGENT_TESTS" && contains 'optional_agent_observation_preserves_completed_interactive_answer' "$AGENT_TESTS" && contains 'omitted_explicit_seed_is_observational_and_does_not_rerun' "$AGENT_TESTS" && contains 'single_agent_loop_accepts_later_exact_searches_after_empty_enriched_searches' "$AGENT_TESTS" && contains 'interactive_observed_crwv_nvidia_answer_is_never_repaired_or_rewritten' "$AGENT_TESTS" && contains 'crwv和英伟达什么关系，估值怎么看' "$AGENT_TESTS" && contains 'quote-stale-nbis' "$AGENT_TESTS" && contains '73.21 USD' "$AGENT_TESTS" && contains '约 73 USD' "$AGENT_TESTS" && contains 'interactive_runtime_history_drops_scheduler_and_failed_turn_groups' "$AGENT_TESTS" && contains 'main_agent_entity_discovery_input' "$AGENT_CORE" && contains 'DeferredUserOutputEmitter' "$AGENT_CORE" && contains 'mode=observational' "$AGENT_CORE" && contains 'answer_preserved=true' "$AGENT_CORE" && [[ "$INTERACTIVE_OBSERVATION_IMPL" == *'return result;'* ]] && [[ "$INTERACTIVE_OBSERVATION_IMPL" != *'response.success = false'* ]] && [[ "$INTERACTIVE_OBSERVATION_IMPL" != *'enforce_server_data_time_prefix'* ]] && [[ "$INTERACTIVE_OBSERVATION_IMPL" != *'missing_investment_response_sections'* ]] && [[ "$INTERACTIVE_OBSERVATION_IMPL" != *'runtime_input.push_str'* ]] && [[ "$AGENT_DISCOVERY_IMPL" != *'response_intent('* ]] && [[ "$AGENT_DISCOVERY_IMPL" != *'is_strict_quote_only_request('* ]] && [[ "$AGENT_DISCOVERY_IMPL" != *'response_requests_extended_hours_quote('* ]] && [[ "$AGENT_DISCOVERY_IMPL" != *'.enforcement_block()'* ]] && ! contains 'missing_agent_discovered_truth_violations' "$INVESTMENT_GUARD" && ! contains 'agent_truth_retry_block' "$INVESTMENT_GUARD" && ! contains 'entity_resolution.agent_loop.retry' "$AGENT_CORE" && ! contains 'agent_discovered_contract' "$AGENT_CORE" && ! contains 'first_agent_discovery_calls' "$INVESTMENT_GUARD" && ! contains 'agent_discovery_disposition' "$INVESTMENT_GUARD" && ! contains 'UNSAFE_AGENT_DISCOVERY_MESSAGE' "$AGENT_CORE" && ! contains 'AgentDiscoveryDisposition' "$AGENT_CORE" && ! contains 'request_may_need_auxiliary_entity_extraction' "$INVESTMENT_GUARD" && ! contains 'ENTITY_EXTRACTION_TIMEOUT_SECS' "$INVESTMENT_GUARD" && ! contains 'entity_extraction_unavailable_message' "$INVESTMENT_GUARD" && ! contains '.with_restore_max_messages(None)' "$WEB_CHAT" && ! contains '.with_restore_max_messages(None)' "$WEB_PUBLIC"; then
+  record success "27.agent-loop-entity-discovery" "Interactive discovery is observational only: one Agent loop owns refinement and the original answer survives stale traces, formatting gaps, and attempt-local events without retry, rewrite, refusal, or unbounded Web restore"
 else
-  record fail "27.agent-loop-entity-discovery" "interactive discovery can regress into first-round freezing, a fixed refusal, wording classification, format takeover, or replayed drafts"
+  record fail "27.agent-loop-entity-discovery" "Interactive discovery can regress into a second runner, post-hoc validation/rewrite, fixed refusal, attempt-event flash, or unbounded polluted history"
 fi
 
 echo

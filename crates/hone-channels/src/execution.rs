@@ -102,8 +102,7 @@ impl ExecutionService {
         let use_strict_fallback = matches!(
             request.runner_selection,
             ExecutionRunnerSelection::Configured
-        ) && !self.core.is_admin_actor(&request.actor)
-            && self.core.configured_runner_requires_trusted_host_access();
+        ) && self.core.actor_uses_strict_runner_fallback(&request.actor);
         let runner: Box<dyn AgentRunner> = match request.runner_selection {
             ExecutionRunnerSelection::Configured if use_strict_fallback => {
                 tracing::warn!(

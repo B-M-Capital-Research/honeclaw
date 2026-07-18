@@ -14,7 +14,8 @@
 //! `AgentSession` / `HoneBotCore` 这类「带整个世界」的上下文。
 
 use hone_core::agent::{
-    AgentResponse, NormalizedConversationMessage, NormalizedConversationPart, ToolCallMade,
+    AgentMessage, AgentResponse, NormalizedConversationMessage, NormalizedConversationPart,
+    ToolCallMade,
 };
 use hone_core::{HoneConfig, SessionIdentity};
 use hone_memory::build_assistant_message_metadata;
@@ -52,6 +53,66 @@ pub(super) fn restore_limit_before_compaction(
     } else {
         Some(DIRECT_SESSION_PRE_COMPACT_RESTORE_LIMIT)
     }
+}
+
+fn restored_message_is_automation(message: &AgentMessage) -> bool {
+    let metadata = message.metadata.as_ref();
+    let tagged_source = metadata
+        .and_then(|metadata| metadata.get("source"))
+        .and_then(Value::as_str)
+        .is_some_and(|source| matches!(source, "scheduler" | "heartbeat"));
+    let tagged_job = metadata.is_some_and(|metadata| {
+        metadata.contains_key("job_id") || metadata.contains_key("web_push_id")
+    });
+    let scheduler_envelope = message.role == "user"
+        && message
+            .content
+            .as_deref()
+            .is_some_and(|content| content.trim_start().starts_with("[定时任务触发]"));
+    tagged_source || tagged_job || scheduler_envelope
+}
+
+fn restored_message_is_failed_terminal(message: &AgentMessage) -> bool {
+    message
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.get("run_failed"))
+        .and_then(Value::as_bool)
+        == Some(true)
+}
+
+/// Keep persisted Web history available to the UI while removing automation
+/// envelopes and failed answer pairs from an Interactive runner prompt. Those
+/// rows are operational history, not evidence for the user's current request;
+/// allowing them to dominate the model context caused old ticker scope to leak
+/// into later questions.
+pub(super) fn prune_interactive_runtime_history(
+    messages: &mut Vec<AgentMessage>,
+    current_user_input: &str,
+) -> usize {
+    let original_len = messages.len();
+    let mut groups = Vec::<Vec<AgentMessage>>::new();
+    for message in std::mem::take(messages) {
+        if message.role == "user" && groups.last().is_some_and(|group| !group.is_empty()) {
+            groups.push(Vec::new());
+        } else if groups.is_empty() {
+            groups.push(Vec::new());
+        }
+        groups.last_mut().expect("history group").push(message);
+    }
+
+    for group in groups {
+        let is_current_turn = group.iter().any(|message| {
+            message.role == "user" && message.content.as_deref() == Some(current_user_input)
+        });
+        let discard = !is_current_turn
+            && (group.iter().any(restored_message_is_automation)
+                || group.iter().any(restored_message_is_failed_terminal));
+        if !discard {
+            messages.extend(group);
+        }
+    }
+    original_len.saturating_sub(messages.len())
 }
 
 pub(super) fn should_return_runner_result(result: &AgentRunnerResult) -> bool {

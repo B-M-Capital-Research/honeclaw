@@ -112,6 +112,22 @@ fn telegram_admin_allowlist_is_honored() {
 }
 
 #[test]
+fn effective_context_owner_follows_actor_runner_route() {
+    let mut config = HoneConfig::default();
+    config.agent.runner = "codex_acp".to_string();
+    config.admins.discord_user_ids = vec!["admin".to_string()];
+    let core = HoneBotCore::new(config);
+    let public_actor =
+        ActorIdentity::new("discord", "public", None::<String>).expect("public actor");
+    let admin_actor = ActorIdentity::new("discord", "admin", None::<String>).expect("admin actor");
+
+    assert!(core.actor_uses_strict_runner_fallback(&public_actor));
+    assert!(!core.effective_runner_manages_own_context(&public_actor));
+    assert!(!core.actor_uses_strict_runner_fallback(&admin_actor));
+    assert!(core.effective_runner_manages_own_context(&admin_actor));
+}
+
+#[test]
 fn actor_scoped_registry_includes_local_file_tools() {
     let core = HoneBotCore::new(HoneConfig::default());
     let actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");

@@ -1211,7 +1211,6 @@ async fn run_public_api_chat_once(
         ..PromptOptions::default()
     };
     let session = AgentSession::new(state.core.clone(), actor.clone(), actor.user_id.clone())
-        .with_restore_max_messages(None)
         .with_prompt_options(prompt_options)
         .with_recv_extra(Some("openai_compatible_api=true".to_string()));
     let run_options = AgentRunOptions {
@@ -1277,7 +1276,6 @@ fn build_openai_chat_sse(
         };
         let mut session =
             AgentSession::new(state.core.clone(), actor.clone(), actor.user_id.clone())
-                .with_restore_max_messages(None)
                 .with_prompt_options(prompt_options)
                 .with_recv_extra(Some("openai_compatible_api=true".to_string()));
         session.add_listener(Arc::new(OpenAiStreamListener {

@@ -24,10 +24,11 @@ pub(super) struct SessionEventEmitter {
     pub(super) working_directory: String,
 }
 
-/// Buffers answer-bearing runner events while an investment response is still
-/// being validated. Progress and tool status remain visible, but draft text,
-/// resets, thoughts, and attempt-local errors must never reach the user: the
-/// session publishes exactly one validated answer after all retries finish.
+/// Buffers answer-bearing runner events until the Agent has completed the
+/// current tool loop. Progress and tool status remain visible, but draft text,
+/// resets, thoughts, and attempt-local errors must never flicker to the user.
+/// This emitter does not inspect or alter the completed answer; the session
+/// publishes that answer once at the terminal boundary.
 pub(super) struct DeferredUserOutputEmitter {
     inner: Arc<dyn AgentRunnerEmitter>,
 }

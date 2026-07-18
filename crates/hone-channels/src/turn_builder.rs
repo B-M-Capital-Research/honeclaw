@@ -81,7 +81,7 @@ impl<'a> PromptTurnBuilder<'a> {
             &Default::default(),
             &prompt_options,
         );
-        if self.core.config.agent.runner_kind().manages_own_context() {
+        if self.core.effective_runner_manages_own_context(self.actor) {
             bundle.conversation_context = None;
         }
         let runtime_user_input = if related_skills.is_empty() {

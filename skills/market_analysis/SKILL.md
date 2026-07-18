@@ -25,7 +25,7 @@ This skill must always anchor the analysis to the current session time before ma
 
 ### Analysis Framework
 
-1. **Time anchor first**: every market or sector answer starts with the server-provided Beijing data-time/quote-basis line; do not emit any preamble or duplicate model-authored time line before it
+1. **Time anchor first and Interactive answer ownership**: the main Agent completes one full final answer inside the current-turn tool loop. After success, the service will not append any user-visible content, rewrite the answer, rerun the main Agent, or reject that successful answer. The Agent itself starts every Interactive market or sector answer with `数据时间：北京时间 YYYY-MM-DD HH:MM；行情口径：...`, using the current Beijing time from the Session context and the current-turn quote provider timestamp, market session, and latest-available/non-tick-by-tick basis; do not emit any preamble before it
 2. **Subject and entity discovery first**: identify every requested market scope; broad-market turns resolve representative benchmarks, while sector turns discover listed representatives from current theme evidence and exact-resolve at least three same-theme securities
 3. **Current quote first**: fetch same-symbol quotes and provider timestamps for every representative before analyzing direction; never reuse prior assistant prices or let one market overwrite another in a mixed-scope request
 4. **Query rewrite first**: convert relative-time wording into absolute market-local civil dates before calling `web_search`; keep Beijing time as the user-visible anchor
@@ -35,7 +35,7 @@ This skill must always anchor the analysis to the current session time before ma
 
 ### Broad / Regional Market Output Contract
 
-Use exactly five substantive numbered sections after the server-owned time line:
+Use exactly five substantive numbered sections after the Agent-authored time and quote-basis line:
 
 1. Conclusion
 2. Verified market facts: one independent line per representative, with exact symbol, current-turn price, change, and quote timestamp basis
@@ -47,7 +47,7 @@ Do not ask “which stock?” as a substitute for a broad-market answer. In mixe
 
 ### Sector / Industry Output Contract
 
-Use exactly nine substantive numbered sections after the server-owned time line:
+Use exactly nine substantive numbered sections after the Agent-authored time and quote-basis line:
 
 1. What the technology or theme is
 2. Its core change versus alternatives
@@ -69,7 +69,7 @@ Never use SPY/QQQ or a previous-turn ticker merely to fill a sector list. Every 
 4. Example rewrite:
    User asks: "How was today's nonfarm payroll?"
    Search query should become: "2026-04-04 latest US nonfarm payroll release"
-5. The first visible line is always the server-owned Beijing data-time and quote-basis line for market and sector answers. Do not generate a second time line.
+5. For Interactive market and sector answers, the Agent-authored Beijing data-time and quote-basis line is always the first visible line. Do not emit a preamble or a second time line.
 
 ### Notes
 

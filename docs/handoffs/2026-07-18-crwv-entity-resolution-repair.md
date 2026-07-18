@@ -1,11 +1,11 @@
 # CRWV Exact-Ticker Entity Resolution Repair
 
 - title: CRWV exact-ticker versus embedded-product entity resolution repair
-- status: done
+- status: in_progress
 - created_at: 2026-07-18
 - updated_at: 2026-07-18
 - owner: Codex
-- related_files: `crates/hone-channels/src/investment_response_guard.rs`, `crates/hone-channels/src/agent_session/core.rs`, `crates/hone-channels/src/agent_session/tests.rs`, `crates/hone-channels/src/tool_trace.rs`, `crates/hone-channels/src/prompt.rs`, `crates/hone-core/src/config/server.rs`, `crates/hone-core/src/config/tests.rs`, `soul.md`, `skills/stock_research/SKILL.md`, `tests/regression/ci/test_finance_automation_contracts.sh`, `tests/regression/manual/test_entity_search_live.sh`
+- related_files: `crates/hone-channels/src/investment_response_guard.rs`, `crates/hone-channels/src/agent_session/core.rs`, `crates/hone-channels/src/agent_session/helpers.rs`, `crates/hone-channels/src/agent_session/tests.rs`, `crates/hone-channels/src/tool_trace.rs`, `crates/hone-channels/src/prompt.rs`, `crates/hone-web-api/src/routes/chat.rs`, `crates/hone-web-api/src/routes/public.rs`, `crates/hone-core/src/config/server.rs`, `crates/hone-core/src/config/tests.rs`, `soul.md`, `skills/stock_research/SKILL.md`, `tests/regression/ci/test_finance_automation_contracts.sh`, `tests/regression/manual/test_entity_search_live.sh`
 - related_docs: `docs/current-plans/ticker-resolution-architecture.md`, `docs/decisions.md#d-2026-07-17-04-resolve-securities-through-a-span-aware-exact-first-pipeline`, `docs/decisions.md#d-2026-07-18-01-keep-entity-discovery-inside-the-main-agent-tool-loop`, `docs/invariants.md`, `docs/repo-map.md`, `docs/bugs/scheduler_finance_entity_guard_misclassifies_instruction_words.md`, `docs/runbooks/backend-deployment.md`
 - related_prs: commits `4d419770`, `b87c4cb7`, `2d6b4be8`, `8d4fcdd6`, `fcca5a35`, `54b14068`
 
@@ -118,3 +118,34 @@ The response was lost locally. Commit `2d6b4be8` had introduced two coupled assu
 - Fresh actor `codex-regression-54b14068-a-1784378834` replayed `分析下crwv和nbis的估值`. The trace logged `contract_built=true entities=CRWV,NBIS`; history contained exactly `user,assistant`; the 3349-character time-first answer used verified prices `73.21` and `177.71`. SSE contained one `run_started`, one `assistant_delta`, one successful `run_finished`, no reset/error, and no fixed refusal.
 - Fresh actor `codex-regression-54b14068-b-1784378953` replayed `crwv和nbis的估值怎么看` with the same verified entity/price outcome. Its 4059-character time-first answer, SSE terminal counts, two-message history, forbidden-copy audit, and zero-active-chat check all passed.
 - First-visible-text latency remains a separate follow-up because Interactive body deltas are still deferred until the tool loop and optional contract handling finish. That optimization must preserve the no-flicker one-answer boundary and must not restore a service-owned publication veto.
+
+## Phase 4 — Remove Interactive Post-Run Publication Control
+
+### 21:05 Reopened Incident
+
+Production persisted `crwv和英伟达什么关系，估值怎么看` at 21:05:56 Beijing time and the failed assistant result at 21:08:00. The turn ran for about 123.3 seconds on the current deployed runtime; this was not a stale-deployment incident. DataFetch was healthy and spent only a small fraction of the turn, including a verified CRWV quote of `73.21`. Most latency came from the model's initial synthesis and a second post-run repair.
+
+The model request restored 653 messages totaling about 288,823 characters from a session with more than 650 rows. That context included many scheduler/heartbeat pairs, prior `run_failed=true` turns, and stale CRWV+NBIS analysis. Web chat had explicitly disabled the normal direct restore limit. The globally configured runner was `codex_acp`, so compaction was skipped as if the runner owned its context, but this non-admin Web actor actually used the strict in-process function-calling fallback. The resulting draft opened as a CRWV/NBIS comparison and only briefly covered NVIDIA.
+
+Post-run handling turned context contamination into a user-facing failure. Dynamic reconstruction observed CRWV but did not connect the Chinese NVIDIA mention to a current-run NVDA search. The draft also contained exact `73.21` and a rounded `73`, which the numeric truth checker treated as a conflicting current price. A second roughly 37.6-second repair still failed, and the backend replaced the answer with the fixed “投研完整性检查” sentence. The brief error styling followed that terminal backend failure and immediate history restoration; it was not evidence that the frontend independently launched another run.
+
+### Architecture Correction
+
+- Interactive entity resolution, evidence selection, and final synthesis remain one main Agent loop over the complete current query. The Agent itself owns the prompt-required first visible Beijing data-time line and the rest of the answer.
+- Agent-discovered investment reconstruction is now observational telemetry only. It may record current-run search/quote coverage, but it can never add a prefix, normalize the body, start an omitted-seed continuation or whole-run retry, invoke a truth repair, rewrite content, reject the answer, or turn `success=true` into failure. This rule applies whether the observation is complete, partial, ambiguous, or absent.
+- Caller-supplied typed scheduled/heartbeat contracts remain separate and strict: deterministic preparation, server-owned time/entity/quote fields, field-aware validation, safe repair/fallback, and fail-closed semantics are unchanged. Runner/auth/quota failures and persistent-side-effect protection also remain genuine failures.
+- Web direct-message restore returns to its bounded default. Before an Interactive runner request is assembled, complete prior scheduler/heartbeat/job groups and complete prior failed terminal groups are removed from model context only. Durable session history, UI bootstrap/history pagination, scheduler records, push rows, and audit evidence remain unchanged.
+- `DeferredUserOutputEmitter` stays in this correctness phase to preserve one final body and one terminal event without draft/reset/error flicker. It still delays first visible body text; a safe streaming design remains a separate latency follow-up and must not restore post-run publication control.
+
+### Verification Status
+
+- Required focused regression: reproduce the exact CRWV/NVIDIA wording with stale NBIS trace plus exact `73.21` and rounded `73`; assert the original successful body is byte-for-byte preserved, the runner is called once, and no fixed failure sentence is emitted.
+- Required context regression: prove prior automation/job and `run_failed=true` groups are absent from Interactive runner input while ordinary user/assistant groups and durable history remain intact; Web routes must not restore an unbounded message set.
+- Required gates: focused `hone-channels` tests, full channel/workspace check and test, Web tests, and every CI-safe regression.
+- Required production acceptance after rebuild and graceful zero-active-chat restart: the exact CRWV/NVIDIA query must independently resolve CRWV and NVDA in the Agent loop, return one complete time-first answer with one successful terminal event, show no reset/error/fixed refusal, persist one user/assistant pair, and leave active chats at zero. Record the new commit/process/health evidence here before returning this handoff to `done`.
+
+### Risks / Next Entry Point
+
+- Do not diagnose another occurrence as FMP/DataFetch failure without separating provider duration/results from restored-context size, Agent trace, and post-run response handling. This incident had healthy provider evidence and current binaries.
+- Do not “fix” first-visible-text latency by exposing draft deltas before tool-branch reset semantics are safe. Correctness first means one Agent-owned answer with no service-authored second pass; latency work continues immediately afterward as its own verified change.
+- Continue implementation and regression review from `run_runner_with_investment_contract_retry`, Interactive history restore/pruning, Web route restore limits, and `D-2026-07-18-02`.

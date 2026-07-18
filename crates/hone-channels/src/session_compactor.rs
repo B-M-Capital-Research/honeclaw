@@ -1,10 +1,12 @@
 use hone_core::{LlmAuditRecord, truncate_chars};
+use hone_memory::session::SessionMessage;
 use hone_memory::{
     build_compact_boundary_metadata, build_compact_skill_snapshot_metadata,
     build_compact_summary_metadata, invoked_skills_from_metadata,
     select_messages_after_compact_boundary, session::SessionSummary, session_message_from_text,
     session_message_text,
 };
+use serde_json::Value;
 
 use crate::HoneBotCore;
 use crate::core::CompactSessionOutcome;
@@ -33,6 +35,7 @@ impl<'a> SessionCompactor<'a> {
         trigger: &str,
         force: bool,
         user_instructions: Option<&str>,
+        filter_operational_history: bool,
     ) -> hone_core::HoneResult<CompactSessionOutcome> {
         let Some(session) = self.core.session_storage.load_session(session_id)? else {
             return Ok(CompactSessionOutcome {
@@ -88,22 +91,36 @@ impl<'a> SessionCompactor<'a> {
             .sum();
         let compact_window_size = active_messages.len().saturating_sub(retain_recent);
         let messages_to_summarize: Vec<_> = if compact_window_size > 0 {
-            active_messages.iter().take(compact_window_size).collect()
+            active_messages
+                .iter()
+                .take(compact_window_size)
+                .copied()
+                .collect()
         } else if force {
             let forced_window = active_messages
                 .len()
                 .saturating_sub(1)
                 .max(1)
                 .min(active_messages.len());
-            active_messages.iter().take(forced_window).collect()
+            active_messages
+                .iter()
+                .take(forced_window)
+                .copied()
+                .collect()
         } else {
             Vec::new()
+        };
+        let has_compact_window = !messages_to_summarize.is_empty();
+        let messages_to_summarize = if filter_operational_history && !is_group_session {
+            interactive_summary_messages(messages_to_summarize)
+        } else {
+            messages_to_summarize
         };
         let should_compress = force
             || active_messages.len() > compress_threshold
             || total_content_bytes > compress_byte_threshold;
 
-        if !should_compress || messages_to_summarize.is_empty() {
+        if !should_compress || !has_compact_window {
             return Ok(CompactSessionOutcome {
                 compacted: false,
                 summary: None,
@@ -148,6 +165,9 @@ impl<'a> SessionCompactor<'a> {
                 continue;
             }
             history_text.push_str(&format!("{}: {}\n\n", message.role, content));
+        }
+        if history_text.trim().is_empty() {
+            history_text.push_str("（过滤自动化与失败轮次后，无可保留的交互历史。）");
         }
 
         let prompt = if is_group_session {
@@ -388,5 +408,125 @@ impl<'a> SessionCompactor<'a> {
         {
             tracing::warn!("[LlmAudit] failed to persist record: {}", err);
         }
+    }
+}
+
+fn session_message_is_automation(message: &SessionMessage) -> bool {
+    let metadata = message.metadata.as_ref();
+    let tagged_source = metadata
+        .and_then(|metadata| metadata.get("source"))
+        .and_then(Value::as_str)
+        .is_some_and(|source| matches!(source, "scheduler" | "heartbeat"));
+    let tagged_job = metadata.is_some_and(|metadata| {
+        metadata.contains_key("job_id") || metadata.contains_key("web_push_id")
+    });
+    let scheduler_envelope = message.role == "user"
+        && session_message_text(message)
+            .trim_start()
+            .starts_with("[定时任务触发]");
+    tagged_source || tagged_job || scheduler_envelope
+}
+
+fn session_message_is_failed_terminal(message: &SessionMessage) -> bool {
+    message
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.get("run_failed"))
+        .and_then(Value::as_bool)
+        == Some(true)
+}
+
+/// Exclude complete automation and failed-answer groups from a direct-chat
+/// summary. They stay in persistence until compaction, but must not become
+/// semantic memory that can redirect a later user query to a stale ticker.
+fn interactive_summary_messages(messages: Vec<&SessionMessage>) -> Vec<&SessionMessage> {
+    let mut groups = Vec::<Vec<&SessionMessage>>::new();
+    for message in messages {
+        if message.role == "user" && groups.last().is_some_and(|group| !group.is_empty()) {
+            groups.push(Vec::new());
+        } else if groups.is_empty() {
+            groups.push(Vec::new());
+        }
+        groups
+            .last_mut()
+            .expect("summary history group")
+            .push(message);
+    }
+
+    groups
+        .into_iter()
+        .filter(|group| {
+            !group
+                .iter()
+                .any(|message| session_message_is_automation(message))
+                && !group
+                    .iter()
+                    .any(|message| session_message_is_failed_terminal(message))
+        })
+        .flatten()
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn interactive_summary_excludes_automation_and_failed_turn_groups() {
+        let automation = HashMap::from([("source".to_string(), json!("scheduler"))]);
+        let failed = HashMap::from([("run_failed".to_string(), json!(true))]);
+        let messages = vec![
+            session_message_from_text(
+                "user",
+                "[定时任务触发] 分析 NVDA",
+                "2026-07-18T20:00:00+08:00".to_string(),
+                Some(automation),
+            ),
+            session_message_from_text(
+                "assistant",
+                "NVDA scheduler answer",
+                "2026-07-18T20:01:00+08:00".to_string(),
+                None,
+            ),
+            session_message_from_text(
+                "user",
+                "分析 CRWV 和 NBIS",
+                "2026-07-18T20:02:00+08:00".to_string(),
+                None,
+            ),
+            session_message_from_text(
+                "assistant",
+                "投研完整性检查失败",
+                "2026-07-18T20:03:00+08:00".to_string(),
+                Some(failed),
+            ),
+            session_message_from_text(
+                "user",
+                "crwv和英伟达什么关系",
+                "2026-07-18T20:04:00+08:00".to_string(),
+                None,
+            ),
+            session_message_from_text(
+                "assistant",
+                "CRWV uses NVIDIA GPUs",
+                "2026-07-18T20:05:00+08:00".to_string(),
+                None,
+            ),
+        ];
+
+        let selected = interactive_summary_messages(messages.iter().collect());
+        let selected_text = selected
+            .iter()
+            .map(|message| session_message_text(message))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            selected_text,
+            vec!["crwv和英伟达什么关系", "CRWV uses NVIDIA GPUs"]
+        );
     }
 }
