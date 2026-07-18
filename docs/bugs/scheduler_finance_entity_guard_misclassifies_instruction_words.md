@@ -289,3 +289,16 @@
 - 本轮判断
   - 这不是新的根因，而是既有投研实体 guard 在 heartbeat / scheduler 链路中继续误拦显式监控对象或任务上下文。
   - 影响是部分定时监控跳过发送；同窗仍有 Feishu / Web scheduler 正常收口，因此维持功能性 `P2 / New`，非 P1。
+
+## 最新运行态复核（2026-07-19 03:01 CST）
+
+- `data/runtime/logs/web.log.2026-07-18`
+  - 巡检窗口：2026-07-18 23:01-2026-07-19 03:01 CST。
+  - 03:00 CST `AAOI 1.6T 光模块心跳检测` 继续把任务上下文里的 `SEC` 当证券代码核验，并因当前数据供应商没有返回同代码行情覆盖而落成 `runner_error`，本轮不发送。
+  - 03:00 CST `ORCL 大事件监控` 仍把 Oracle 解析为多个上市地候选：`ORCP.L`、`ORCL.SW`、`ORCL`、`ORC.DE`，要求补交易所后缀或公司全名，导致本轮不发送。
+  - 同批仍有多条显式监控对象 heartbeat 因实体 / 上下文核验失败或 runner error 跳过发送。
+- `data/sessions.sqlite3`
+  - 同窗 Web direct 23:50 CRWV/NVDA regression 成功输出完整业务正文，说明当前不是全链路投研不可用，而是 scheduler / heartbeat 的实体与上下文 guard 仍会在部分任务上 fail-closed。
+- 本轮判断
+  - 该样本继续落在既有实体 guard / context extraction 误拦范围，不新建重复缺陷。
+  - 用户影响仍是部分 heartbeat 监控缺口；同窗未见错投、敏感信息泄露或全渠道不可用，维持功能性 `P2 / New`，非 P1。

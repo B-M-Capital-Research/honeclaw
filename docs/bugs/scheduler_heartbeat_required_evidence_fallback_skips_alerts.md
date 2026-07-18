@@ -242,3 +242,17 @@ New
 - 本轮判断
   - 该样本仍落在“实时核验 / 完整性门禁 fail-closed 后只给产品化失败提示”的既有缺陷范围。
   - 任务没有产出用户原本请求的盘前简报，但同窗其他 scheduler 正常收口，未见错投、敏感信息泄露或全渠道不可用，因此维持功能性 `P2 / New`，非 P1。
+
+## 最新运行态复核（2026-07-19 03:01 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-07-18 23:01-2026-07-19 03:01 CST。
+  - 同窗新增 2 条 user / 2 条 assistant，覆盖 2 个 Web direct canary / regression session，均以 assistant 收口；23:50 CRWV/NVDA regression 已成功输出完整关系与估值分析。
+  - 02:38 Web direct canary 只返回通用失败，已另登记为 OpenAI-compatible stream completion 缺陷；本单不重复登记 direct provider stream 根因。
+- `data/runtime/logs/web.log.2026-07-18`
+  - 同窗继续记录真实 heartbeat 运行态；本轮关键词命中 1406 行，03:00 CST 多条 heartbeat 在 runner 层失败并跳过发送。
+  - 代表样本包括 `美股黄金坑信号心跳检测` 因上游 `HTTP 529` 落成 `provider_http_error`，以及 TSLA / NVDA / ASTS / RKLB / TEM / 存储板块 / 光迅科技等多条 heartbeat 命中 `chat_with_tools stream ended before Done` 后落成 `runner_error`。
+  - 同批仍有 AAOI `SEC` 无行情覆盖、ORCL 多上市地候选等实体 / evidence fail-closed 信号，说明 heartbeat 覆盖仍未稳定生成合法 noop / triggered 主体。
+- 本轮判断
+  - 这些样本继续落在 heartbeat / scheduler 因 runner、evidence 或实体核验失败而跳过发送的既有 P2 范围。
+  - 同窗仍有 Web direct 成功样本，且未见错投、敏感信息泄露、全渠道不可用或原始 provider 错误进入用户可见 final，因此维持 `P2 / New`，非 P1。
