@@ -22,9 +22,9 @@ use std::time::Duration;
 
 const REASONING_CONTENT_METADATA_KEY: &str = "reasoning_content";
 #[cfg(not(test))]
-const ACTIVE_BUSINESS_TIMEOUT: Duration = Duration::from_secs(20);
+const FALLBACK_ACTIVE_BUSINESS_TIMEOUT: Duration = Duration::from_secs(20);
 #[cfg(test)]
-const ACTIVE_BUSINESS_TIMEOUT: Duration = Duration::from_millis(25);
+const FALLBACK_ACTIVE_BUSINESS_TIMEOUT: Duration = Duration::from_millis(25);
 const FINISH_RESEARCH_TOOL_NAME: &str = "finish_research";
 const ACTIVE_BUSINESS_FAILURE_RETRY_LIMIT: u32 = 1;
 const AGENT_OVERALL_TIMEOUT_ERROR: &str =
@@ -1447,13 +1447,13 @@ fn active_business_deadline(
     overall_deadline: Option<tokio::time::Instant>,
     step_timeout: Option<Duration>,
 ) -> (tokio::time::Instant, &'static str) {
-    let phase_deadline = tokio::time::Instant::now() + ACTIVE_BUSINESS_TIMEOUT;
     let (configured_deadline, configured_error) = step_deadline(overall_deadline, step_timeout);
     match configured_deadline {
-        Some(configured_deadline) if configured_deadline <= phase_deadline => {
-            (configured_deadline, configured_error)
-        }
-        _ => (phase_deadline, "active business stream timed out"),
+        Some(configured_deadline) => (configured_deadline, configured_error),
+        None => (
+            tokio::time::Instant::now() + FALLBACK_ACTIVE_BUSINESS_TIMEOUT,
+            "active business stream timed out",
+        ),
     }
 }
 
@@ -4260,6 +4260,18 @@ mod tests {
             records
                 .iter()
                 .all(|record| record.operation != "chat_terminal_without_tools")
+        );
+    }
+
+    #[test]
+    fn configured_step_deadline_replaces_legacy_active_phase_cap() {
+        let before = tokio::time::Instant::now();
+        let (deadline, error) = active_business_deadline(None, Some(Duration::from_millis(100)));
+
+        assert_eq!(error, AGENT_STEP_TIMEOUT_ERROR);
+        assert!(
+            deadline.saturating_duration_since(before) >= Duration::from_millis(80),
+            "configured step deadline must not be shortened to the 25ms test fallback"
         );
     }
 
