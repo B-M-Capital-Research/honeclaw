@@ -19,7 +19,7 @@
 - **跨市场 ticker 解析架构修复**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/ticker-resolution-architecture.md`
-  - 摘要：系统审计并统一修复普通美股、缩写冲突、share class、数字开头国际代码、交易所后缀和指数/加密代码的提取、规范化、DataFetch 精确解析与失败语义，并阻止 CWY/RKLX 等名称内嵌底层 ticker 的产品覆盖 CRWV/RKLB 精确实体，避免逐 ticker 打补丁
+  - 摘要：系统审计并统一修复普通美股、缩写冲突、share class、数字开头国际代码、交易所后缀和指数/加密代码的提取、规范化、DataFetch 精确解析与失败语义；CRWV/CWY 直聊错误已部署止血，当前继续收口 scheduler 任务正文中的 800G/NAND/AST/SEC 等既有 P2 误识别
 
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`

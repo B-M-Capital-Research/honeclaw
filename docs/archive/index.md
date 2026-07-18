@@ -1639,3 +1639,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: `docs/runbooks/backend-deployment.md#drain-active-chats-before-a-controlled-restart`, 113 Web API tests, 14 CLI start tests, 263 Web tests, live disconnect/duplicate/NBIS/RMBS probes
 - Current conclusion: Public chat now recovers one real server-owned run id, start time and safe phase across refresh; quota reservations no longer fabricate activity, interrupted turns render terminally, guarded investment drafts remain hidden, same-session duplicates are rejected, and controlled CLI shutdown drains live Web turns before terminating the backend. The missed public deployment was corrected: local, 8088 and Cloudflare Pages use `index-DmyhjLnz.js`; production chat chunks expose the full active-run protocol and no longer contain the old local pending reconstruction.
 - Next entry point: `docs/handoffs/2026-07-16-chat-active-run-recovery.md`
+
+### CRWV Exact-Ticker Versus Embedded-Product Repair
+
+- Status: done
+- Date: 2026-07-18
+- Plan: `docs/current-plans/ticker-resolution-architecture.md` (umbrella plan remains active for the separate scheduler/entity P2)
+- Handoff: `docs/handoffs/2026-07-18-crwv-entity-resolution-repair.md`
+- Decision / ADR: `docs/decisions.md#d-2026-07-17-04-resolve-securities-through-a-span-aware-exact-first-pipeline`
+- Related PRs / commits: `4d419770`, `b87c4cb7`
+- Related runbooks / regressions: `tests/regression/ci/test_finance_automation_contracts.sh`, `tests/regression/manual/test_entity_search_live.sh`, `docs/runbooks/backend-deployment.md`
+- Current conclusion: the provider was healthy; weak semantic scoring incorrectly treated CWY's product name as a company-name alternative to exact CRWV. Exact ticker, genuine natural-name conflict, and embedded-product reference are now typed separately; production quote-only and deep CRWV requests resolve CoreWeave once and finish once.
+- Next entry point: `docs/handoffs/2026-07-18-crwv-entity-resolution-repair.md`; remaining scheduler false positives stay in `docs/bugs/scheduler_finance_entity_guard_misclassifies_instruction_words.md`.

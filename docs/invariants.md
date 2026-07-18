@@ -1,6 +1,6 @@
 # Invariants
 
-Last updated: 2026-07-17
+Last updated: 2026-07-18
 
 ## Source of Truth and Document Priority
 

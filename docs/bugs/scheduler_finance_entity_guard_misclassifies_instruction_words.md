@@ -6,6 +6,11 @@
 - **状态**: New
 - **GitHub Issue**: 无，当前不是 P1。
 
+## 运行态复核（2026-07-18 14:02 CST）
+
+- `b87c4cb7` 已修复并部署 direct `CRWV` 被 CWY 引用型产品制造假歧义的问题；生产 `crwv当前价` 与 `crwv预计估值多少` 均精确核验 CoreWeave/CRWV 并成功收口，说明 FMP/DataFetch 和 direct 精确 ticker 主链路健康。
+- 同一次重启后的 14:00-14:02 CST scheduler / heartbeat 窗口仍复现本 P2：光模块任务将 `800G` 送入行情覆盖，ASTS 任务出现截断 `AST`，AAOI 任务将 `SEC` 当证券代码，存储任务出现 `NAND`，ORCL 任务仍落成多上市地候选。状态维持 `New/P2`；CRWV 的关系分类修复不能作为关闭 scheduler 任务正文边界缺陷的证据。
+
 ## 运行态复核（2026-07-18 11:01 CST）
 
 - 运行态在 2026-07-18 07:01 CST 回退后继续复发，状态维持 `New`：
