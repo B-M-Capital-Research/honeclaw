@@ -1,13 +1,13 @@
 # CRWV Exact-Ticker Entity Resolution Repair
 
 - title: CRWV exact-ticker versus embedded-product entity resolution repair
-- status: in_progress
+- status: done
 - created_at: 2026-07-18
 - updated_at: 2026-07-18
 - owner: Codex
 - related_files: `crates/hone-channels/src/investment_response_guard.rs`, `crates/hone-channels/src/agent_session/core.rs`, `crates/hone-channels/src/agent_session/tests.rs`, `crates/hone-channels/src/tool_trace.rs`, `crates/hone-channels/src/prompt.rs`, `crates/hone-core/src/config/server.rs`, `crates/hone-core/src/config/tests.rs`, `soul.md`, `skills/stock_research/SKILL.md`, `tests/regression/ci/test_finance_automation_contracts.sh`, `tests/regression/manual/test_entity_search_live.sh`
 - related_docs: `docs/current-plans/ticker-resolution-architecture.md`, `docs/decisions.md#d-2026-07-17-04-resolve-securities-through-a-span-aware-exact-first-pipeline`, `docs/decisions.md#d-2026-07-18-01-keep-entity-discovery-inside-the-main-agent-tool-loop`, `docs/invariants.md`, `docs/repo-map.md`, `docs/bugs/scheduler_finance_entity_guard_misclassifies_instruction_words.md`, `docs/runbooks/backend-deployment.md`
-- related_prs: commits `4d419770`, `b87c4cb7`, `2d6b4be8`
+- related_prs: commits `4d419770`, `b87c4cb7`, `2d6b4be8`, `8d4fcdd6`
 
 ## Summary
 
@@ -71,14 +71,15 @@ The production turn `分析下crwv和nbis的估值` failed at 2026-07-18 15:03 B
 - `FmpConfig::default()` is regression-covered against empty serde deserialization, including the nonzero timeout.
 - Finance CI contract = 27/27, including a guard that rejects restoration of the auxiliary timeout/failure path.
 - Credentialed live DataFetch regression passed. CRWV exact-resolved CoreWeave at `73.21`, NBIS exact-resolved Nebius at `177.71`, and one `CRWV,NBIS` batch quote returned fresh positive same-symbol records for both. Provider health was not the incident cause.
-- `cargo test -p hone-channels --all-targets` = 611 passed after the initial Agent-loop refactor. Added regressions preserve Agent-owned no-coverage and equal-candidate clarifications, emit one final delta, prove deliberately unmodeled wording records financial/news/web evidence from the observed trace without phrase routing, and cover omitted-seed read-only continuation building from the retry trace while retaining the complete audit trace. These counts predate the pending output-boundary hotfix verification.
+- `cargo test -p hone-channels --all-targets` = 611 passed after the output-boundary hotfix. Added regressions preserve Agent-owned no-coverage and equal-candidate clarifications, emit one final delta, prove shared-heading/free-form CRWV+NBIS valuation prose passes with observed financial/news evidence, reject a forged CRWV `15 USD` current price, and cover omitted-seed read-only continuation while retaining the complete audit trace.
 - `cargo check --workspace --all-targets --exclude hone-desktop --exclude hone-user-app` and `cargo test --workspace --all-targets --exclude hone-desktop --exclude hone-user-app` passed. The only compiler diagnostic was the pre-existing unused-function warning for `feishu_direct_actor_contact_targets_from_records`.
 - `PATH="$HOME/.bun/bin:$PATH" bun run test:web` passed 265/265; `bash tests/regression/run_ci.sh` passed every CI-safe regression, including finance contracts 27/27.
-- Main-agent discovery commit `2d6b4be8` was pushed, the five runtime binaries were rebuilt, the supervisor was drained and restarted, and the API/storage/channel health checks passed before the first exact production replay. These deployment checks cover the initial architecture revision, not the pending output-boundary hotfix.
+- Main-agent discovery commit `2d6b4be8` and output-boundary commit `8d4fcdd6` were pushed. The five runtime binaries were rebuilt; with active chat count at zero, supervisor `62866` was stopped by SIGINT without killing children individually and replaced by supervisor `78710`, backend `78722`, Discord `78978`, and Feishu `78997`. Ports 8077/8088 returned HTTP 200, and `/api/meta` reported healthy Postgres and S3 connections.
 - The first deployed production replay of the exact phrase `分析下crwv和nbis的估值` reached the intended Agent loop. It searched, quoted, profiled, loaded financials, and loaded news independently for `CRWV` and `NBIS`; the log recorded `entity_resolution.agent_loop contract_built=true entities=CRWV,NBIS`. Provider/entity discovery therefore succeeded.
-- That replay is a failed acceptance result, not a completed E2E: legacy free-prose financial/event checks rejected the Agent answer, no final `assistant_delta` was published, and the run ended with one unsuccessful terminal event. Review also found the repair suffix indirectly reused the typed fixed comparison enforcement block. The interactive hotfix is not considered verified until the exact production replay succeeds after rebuild/restart.
+- That first replay was a failed acceptance result: legacy free-prose financial/event checks rejected the Agent answer, no final `assistant_delta` was published, and the run ended with one unsuccessful terminal event. Review also found the repair suffix indirectly reused the typed fixed comparison enforcement block. Commit `8d4fcdd6` removed both strong-interference paths while retaining exact quote/time/session checks.
 
-### Pending Before Closing This Phase
+### Final Production Acceptance
 
-- Complete focused and repository regression gates for the output-boundary hotfix, then commit/push it, rebuild runtime binaries, drain/restart the supervisor, and repeat process/API/channel/storage health checks.
-- Replay the exact production query through production Web/SSE and require time-first output, both resolved entities and exact quotes, Agent-owned valuation organization, one `assistant_delta`, one successful `run_finished`, no reset/error, exactly one user/assistant history pair, the expected `contract_built=true entities=CRWV,NBIS` log, and zero active chats afterward.
+- A fresh production Web actor replayed the exact query `分析下crwv和nbis的估值` after the hotfix deployment. The main Agent made 10 DataFetch calls: independent search, quote, profile, financials, and news calls for both CRWV and NBIS. The log recorded `contract_built=true entities=CRWV,NBIS`.
+- Run `8da0538d-8bad-42f0-a700-373f0a9edb83` completed successfully in 78.405 seconds. Its visible answer began with server Beijing time, named both verified entities, and included exact current quotes `73.21 USD` and `177.71 USD`. SSE contained exactly one `run_started`, one `assistant_delta`, and one successful `run_finished`, with no `assistant_reset`, `run_error`, or generic `error`.
+- Persisted history contained exactly `user,assistant`; the user text matched byte-for-byte, and active chat count returned to zero. This closes the Interactive CRWV+NBIS phase. The umbrella ticker plan remains active only for the separately documented scheduler task-prose P2.

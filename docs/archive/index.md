@@ -1647,7 +1647,7 @@ Use this file as the historical entry point for completed or paused work that sh
 - Plan: `docs/current-plans/ticker-resolution-architecture.md` (umbrella plan remains active for the separate scheduler/entity P2)
 - Handoff: `docs/handoffs/2026-07-18-crwv-entity-resolution-repair.md`
 - Decision / ADR: `docs/decisions.md#d-2026-07-17-04-resolve-securities-through-a-span-aware-exact-first-pipeline`
-- Related PRs / commits: `4d419770`, `b87c4cb7`
+- Related PRs / commits: `4d419770`, `b87c4cb7`, `2d6b4be8`, `8d4fcdd6`
 - Related runbooks / regressions: `tests/regression/ci/test_finance_automation_contracts.sh`, `tests/regression/manual/test_entity_search_live.sh`, `docs/runbooks/backend-deployment.md`
-- Current conclusion: the provider was healthy; weak semantic scoring incorrectly treated CWY's product name as a company-name alternative to exact CRWV. Exact ticker, genuine natural-name conflict, and embedded-product reference are now typed separately; production quote-only and deep CRWV requests resolve CoreWeave once and finish once.
+- Current conclusion: the provider was healthy. Exact ticker, genuine natural-name conflict, and embedded-product reference are now typed separately. Interactive requests read the complete query inside the main Agent loop, load all named entities and current tool facts into context, and keep Agent-owned scope/format behind deterministic time/entity/quote/session boundaries. The exact production `分析下crwv和nbis的估值` replay resolved both symbols, made all 10 expected DataFetch calls, emitted one successful answer with no reset/error, persisted one user/assistant pair, and returned active chats to zero; the umbrella plan remains active only for the separate scheduler task-prose P2.
 - Next entry point: `docs/handoffs/2026-07-18-crwv-entity-resolution-repair.md`; remaining scheduler false positives stay in `docs/bugs/scheduler_finance_entity_guard_misclassifies_instruction_words.md`.

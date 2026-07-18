@@ -19,7 +19,7 @@
 - **跨市场 ticker 解析架构修复**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/ticker-resolution-architecture.md`
-  - 摘要：系统审计并统一修复普通美股、缩写冲突、share class、数字开头国际代码、交易所后缀和指数/加密代码的提取、规范化、DataFetch 精确解析与失败语义；CRWV/CWY 直聊错误已部署止血，CRWV+NBIS 已改为完整问题驱动的主 Agent 多标的工具循环，后置服务仅做事实/时间/单次输出门禁而不再按措辞强制路由或格式，当前正在完成全仓验证和生产部署，随后继续收口 scheduler 任务正文中的 800G/NAND/AST/SEC 等既有 P2 误识别
+  - 摘要：系统审计并统一修复普通美股、缩写冲突、share class、数字开头国际代码、交易所后缀和指数/加密代码的提取、规范化、DataFetch 精确解析与失败语义；CRWV/CWY 与 CRWV+NBIS 直聊修复已完成全仓验证、生产部署及精确 SSE 回放，Interactive 请求现由完整问题驱动的主 Agent 多标的工具循环处理，后置服务仅守确定性事实/时间/会话边界而不按措辞强制路由或格式；当前继续收口 scheduler 任务正文中的 800G/NAND/AST/SEC 等既有 P2 误识别
 
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`
