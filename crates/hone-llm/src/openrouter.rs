@@ -30,6 +30,15 @@ use crate::provider::{
 
 const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
 
+fn remove_tool_fields_without_tools(body: &mut Map<String, Value>, has_tools: bool) {
+    if has_tools {
+        return;
+    }
+    body.remove("tools");
+    body.remove("tool_choice");
+    body.remove("parallel_tool_calls");
+}
+
 fn normalize_base_url(configured: &str, fallback: &str) -> String {
     let configured = configured.trim();
     if configured.is_empty() {
@@ -721,6 +730,7 @@ impl LlmProvider for OpenRouterProvider {
             }
             self.request_options
                 .apply_to_body(&mut body, self.max_tokens);
+            remove_tool_fields_without_tools(&mut body, !tools.is_empty());
             body.insert("stream".to_string(), Value::Bool(true));
 
             let mut last_error = String::new();
@@ -958,6 +968,83 @@ mod tests {
         assert!(
             requests.load(Ordering::SeqCst) >= 2,
             "SDK path plus raw HTTP fallback should both hit the mock server"
+        );
+    }
+
+    #[tokio::test]
+    async fn empty_tool_stream_omits_tool_controls_and_keeps_generation_options() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test server");
+        let addr = listener.local_addr().expect("read local addr");
+        tokio::spawn(async move {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                return;
+            };
+            let mut buf = vec![0_u8; 65536];
+            let n = socket.read(&mut buf).await.expect("read request");
+            let request = String::from_utf8_lossy(&buf[..n]);
+            let payload: Value =
+                serde_json::from_str(request.split("\r\n\r\n").nth(1).expect("request body"))
+                    .expect("stream request json");
+            let object = payload.as_object().expect("request object");
+            assert!(!object.contains_key("tools"), "{payload}");
+            assert!(!object.contains_key("tool_choice"), "{payload}");
+            assert!(!object.contains_key("parallel_tool_calls"), "{payload}");
+            assert_eq!(payload["max_tokens"], 321);
+            assert_eq!(payload["reasoning"]["effort"], "low");
+            assert_eq!(payload["temperature"], 0.25);
+            assert_eq!(payload["stream"], true);
+
+            let body = concat!(
+                "data: {\"choices\":[{\"delta\":{\"content\":\"done\"}}]}\n\n",
+                "data: [DONE]\n\n"
+            );
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            let _ = socket.write_all(response.as_bytes()).await;
+            let _ = socket.shutdown().await;
+        });
+
+        let provider = OpenRouterProvider::new_with_base_url(
+            "test-key",
+            &format!("http://{addr}"),
+            "test-model",
+            64,
+        )
+        .with_request_options(LlmRequestOptions {
+            max_tokens: Some(321),
+            temperature: Some(0.25),
+            reasoning: Some(serde_json::json!({ "effort": "low" })),
+            tool_choice: Some(serde_json::json!("required")),
+            parallel_tool_calls: Some(true),
+            ..LlmRequestOptions::default()
+        });
+        let events = provider
+            .chat_with_tools_stream(
+                &[Message {
+                    role: "user".to_string(),
+                    content: Some("write the final answer".to_string()),
+                    reasoning_content: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                }],
+                &[],
+                None,
+            )
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .collect::<hone_core::HoneResult<Vec<_>>>()
+            .expect("stream events");
+
+        assert_eq!(
+            events,
+            vec![ChatStreamEvent::ContentDelta("done".to_string())]
         );
     }
 

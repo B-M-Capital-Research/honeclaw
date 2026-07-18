@@ -107,7 +107,9 @@ impl AgentSessionListener for ProbeListener {
                     response.content.len()
                 );
             }
-            AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => {
+            AgentSessionEvent::Run(
+                RunEvent::StreamDelta { content } | RunEvent::CommittedStreamDelta { content },
+            ) => {
                 if !content.trim().is_empty() {
                     println!("[delta] {content}");
                 }

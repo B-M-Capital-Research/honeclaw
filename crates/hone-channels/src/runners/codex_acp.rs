@@ -141,6 +141,7 @@ impl AgentRunner for CodexAcpRunner {
             Ok((response, updates, context_messages)) => AgentRunnerResult {
                 response,
                 streamed_output: true,
+                committed_visible_prefix: None,
                 terminal_error_emitted: false,
                 session_metadata_updates: updates,
                 context_messages,

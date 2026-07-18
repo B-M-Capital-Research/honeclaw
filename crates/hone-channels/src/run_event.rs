@@ -10,6 +10,16 @@ pub enum RunEvent {
     StreamDelta {
         content: String,
     },
+    /// A runner-authored prefix that is safe to expose before the complete
+    /// response reaches the AgentSession terminal boundary.
+    ///
+    /// This is an internal runner/session control event. Session emitters map
+    /// it back to an ordinary `StreamDelta` before notifying user-facing
+    /// listeners, while deferred emitters use the distinct variant to keep
+    /// speculative model text hidden.
+    CommittedStreamDelta {
+        content: String,
+    },
     StreamReset,
     StreamThought {
         thought: String,

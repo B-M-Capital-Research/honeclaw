@@ -5,9 +5,9 @@
 - created_at: 2026-07-18
 - updated_at: 2026-07-18
 - owner: Codex
-- related_files: `crates/hone-channels/src/investment_response_guard.rs`, `crates/hone-channels/src/agent_session/core.rs`, `crates/hone-channels/src/agent_session/helpers.rs`, `crates/hone-channels/src/agent_session/tests.rs`, `crates/hone-channels/src/tool_trace.rs`, `crates/hone-channels/src/prompt.rs`, `crates/hone-web-api/src/routes/chat.rs`, `crates/hone-web-api/src/routes/public.rs`, `crates/hone-core/src/config/server.rs`, `crates/hone-core/src/config/tests.rs`, `soul.md`, `skills/stock_research/SKILL.md`, `tests/regression/ci/test_finance_automation_contracts.sh`, `tests/regression/manual/test_entity_search_live.sh`
-- related_docs: `docs/current-plans/ticker-resolution-architecture.md`, `docs/decisions.md#d-2026-07-17-04-resolve-securities-through-a-span-aware-exact-first-pipeline`, `docs/decisions.md#d-2026-07-18-01-keep-entity-discovery-inside-the-main-agent-tool-loop`, `docs/invariants.md`, `docs/repo-map.md`, `docs/bugs/scheduler_finance_entity_guard_misclassifies_instruction_words.md`, `docs/runbooks/backend-deployment.md`
-- related_prs: commits `4d419770`, `b87c4cb7`, `2d6b4be8`, `8d4fcdd6`, `fcca5a35`, `54b14068`
+- related_files: `crates/hone-channels/src/investment_response_guard.rs`, `crates/hone-channels/src/agent_session/{core.rs,emitter.rs,helpers.rs,tests.rs}`, `crates/hone-channels/src/{run_event.rs,tool_trace.rs,prompt.rs}`, `crates/hone-channels/src/runners/{types.rs,tool_reasoning.rs}`, `agents/function_calling/src/lib.rs`, `crates/hone-llm/src/{openrouter.rs,openai_compatible.rs}`, `crates/hone-web-api/src/routes/{chat.rs,public.rs}`, `crates/hone-core/src/config/{server.rs,tests.rs}`, `soul.md`, `skills/stock_research/SKILL.md`, `tests/regression/ci/test_finance_automation_contracts.sh`, `tests/regression/manual/test_entity_search_live.sh`
+- related_docs: `docs/current-plans/ticker-resolution-architecture.md`, `docs/decisions.md#d-2026-07-17-04-resolve-securities-through-a-span-aware-exact-first-pipeline`, `docs/decisions.md#d-2026-07-18-01-keep-entity-discovery-inside-the-main-agent-tool-loop`, `docs/decisions.md#d-2026-07-18-02-keep-interactive-observations-out-of-the-publication-path`, `docs/decisions.md#d-2026-07-18-03-use-an-agent-signaled-tool-free-terminal-stream`, `docs/invariants.md`, `docs/repo-map.md`, `docs/bugs/scheduler_finance_entity_guard_misclassifies_instruction_words.md`, `docs/runbooks/backend-deployment.md`
+- related_prs: commits `4d419770`, `b87c4cb7`, `2d6b4be8`, `8d4fcdd6`, `fcca5a35`, `54b14068`, `25090e88`, `8df08239`
 
 ## Summary
 
@@ -139,13 +139,34 @@ Post-run handling turned context contamination into a user-facing failure. Dynam
 
 ### Verification Status
 
-- Required focused regression: reproduce the exact CRWV/NVIDIA wording with stale NBIS trace plus exact `73.21` and rounded `73`; assert the original successful body is byte-for-byte preserved, the runner is called once, and no fixed failure sentence is emitted.
-- Required context regression: prove prior automation/job and `run_failed=true` groups are absent from Interactive runner input while ordinary user/assistant groups and durable history remain intact; Web routes must not restore an unbounded message set.
-- Required gates: focused `hone-channels` tests, full channel/workspace check and test, Web tests, and every CI-safe regression.
-- Required production acceptance after rebuild and graceful zero-active-chat restart: the exact CRWV/NVIDIA query must independently resolve CRWV and NVDA in the Agent loop, return one complete time-first answer with one successful terminal event, show no reset/error/fixed refusal, persist one user/assistant pair, and leave active chats at zero. Record the new commit/process/health evidence here before returning this handoff to `done`.
+- Commit `25090e88` makes all Agent-discovered Interactive contracts observational and adds bounded Web restore plus request-local pruning for historical automation and failed terminal groups. Commit `8df08239` strengthens the Agent-owned terminal format: when the Agent semantically identifies an investment request, its first visible character is `数` and its first nonempty line is the current Beijing data-time plus Agent-written quote basis. The service does not prepend or post-hoc normalize that line.
+- Regressions reproduce the exact CRWV/NVIDIA incident with stale NBIS context and the `73.21`/rounded-`73` text, preserve the successful answer byte-for-byte with one runner call, and prohibit fixed refusal copy. Context tests prove prior automation/job and `run_failed=true` groups are removed only from current Interactive model input while durable session rows remain intact.
+- All 620 `hone-channels` tests, workspace check/test, 265 Web tests, and every CI-safe regression passed. Five runtime binaries were rebuilt; with active chats at zero, supervisor `91431` started backend `91506`, Discord `92217`, and Feishu `92239`. Postgres/S3 health passed, authenticated endpoints returned the expected `401` without credentials, and active chats remained zero.
+- Fresh actor `codex-regression-8df08239-crwv-nvda-1784383806` replayed `crwv和英伟达什么关系，估值怎么看`. The same Agent run used three searches; exact CRWV and NVDA quotes and profiles; CRWV news and financials; relationship web evidence; and an actor-scoped portfolio view. It did not drift to NBIS. The log recorded `contract_built=false answer_preserved=true mode=observational` and completed successfully.
+- The visible answer's first code point was `数`; its first line was `数据时间：北京时间 2026-07-18 22:10；行情口径：NASDAQ 常规交易收盘价（2026-07-17），最新可得、非逐笔。`. SSE contained one `assistant_delta` and one successful `run_finished`, with no reset, run error, or fixed refusal. Persisted history was exactly `user,assistant`, active chats returned to zero, and the run took roughly 67 seconds end to end. This completes Phase 4 correctness acceptance; that duration is only the baseline for Phase 5 and is not a claimed latency result.
 
 ### Risks / Next Entry Point
 
 - Do not diagnose another occurrence as FMP/DataFetch failure without separating provider duration/results from restored-context size, Agent trace, and post-run response handling. This incident had healthy provider evidence and current binaries.
-- Do not “fix” first-visible-text latency by exposing draft deltas before tool-branch reset semantics are safe. Correctness first means one Agent-owned answer with no service-authored second pass; latency work continues immediately afterward as its own verified change.
-- Continue implementation and regression review from `run_runner_with_investment_contract_retry`, Interactive history restore/pruning, Web route restore limits, and `D-2026-07-18-02`.
+- Do not “fix” first-visible-text latency by exposing draft deltas from a tool-capable round. Correctness requires one Agent-owned answer with no service-authored second pass; Phase 5 uses an explicit tool-free terminal boundary instead.
+- Continue latency implementation and regression review from `agents/function_calling/src/lib.rs`, `runners/tool_reasoning.rs`, `agent_session/{emitter.rs,core.rs}`, and `D-2026-07-18-03`. The handoff remains `in_progress` until a rebuilt production runtime records first-visible timing separately from terminal completion.
+
+## Phase 5 — Agent-Signaled Tool-Free Terminal Streaming
+
+### Latency Root Cause
+
+Correctness deployment removed the repair/refusal loop, but first visible text remained late because `DeferredUserOutputEmitter` intentionally swallowed every ordinary content delta until the Agent tool loop and final synthesis had completely ended. Directly forwarding those deltas is unsafe: a function-calling model may emit a prose preamble and then a tool call in the same round, requiring `StreamReset`. Exposing that speculative branch would restore the exact flicker/second-answer behavior this incident removed.
+
+### Architecture In Progress
+
+- Interactive Web function-calling turns that are re-executable, use Agent discovery, and have no caller-supplied typed investment contract receive a narrow terminal-stream policy. Scheduled/heartbeat contracts, ACP runners, execute-once mutations, and other channels keep the existing behavior.
+- The function-calling Agent exposes an internal `finish_research` control tool. Only when it is the sole call after all required evidence is already in the same in-memory Agent context does the same `Agent::run` enter one terminal synthesis request. That request carries the accumulated current-turn context but sends an empty tool set; provider request builders remove `tools`, `tool_choice`, and `parallel_tool_calls` while preserving generation options and native SSE.
+- Tool-capable rounds remain speculative and fully deferred. In the tool-free terminal stream, the runner buffers until it has one complete, sanitized line matching `数据时间：北京时间 YYYY-MM-DD HH:MM；行情口径：...\n`. Only that exact line becomes an irreversible committed delta. The remaining terminal deltas stay behind `DeferredUserOutputEmitter`; after final sanitization and attachment handling, `AgentSession` emits exactly the persisted response suffix so the concatenated visible text and stored body are byte-for-byte equal.
+- A direct answer that never calls `finish_research` uses the old deferred one-shot publication and does not incur another model request. A mixed `finish_research` plus business-tool round ignores the control signal, executes the real tools normally, and does not consume business tool budget or expose the internal control call. Multiple non-sole finish calls likewise cannot enter terminal mode.
+- Once any canonical prefix is committed, transient/empty retries, context-overflow recovery, reset, and replay are prohibited. Finalization must preserve that exact prefix; a mismatch is a terminal error rather than authority to rewrite or replay the already visible text.
+
+### Verification Pending
+
+- Complete focused Agent, provider, runner/emitter, AgentSession, and CI contract tests for sole/mixed/direct control behavior, empty-tools wire payloads, fragmented/invalid headers, no retry after commit, and exact visible/persisted equality.
+- Run all repository gates, rebuild the five runtime binaries, drain/restart through the supervisor, and repeat storage/channel/API health checks.
+- Replay the exact CRWV/NVIDIA production query with a fresh actor. Record the first committed `assistant_delta` time separately from `run_finished`, along with tool/entity coverage, no reset/error/refusal, one terminal, exact history equality, and zero active chats. No production latency improvement is claimed until this evidence is added.

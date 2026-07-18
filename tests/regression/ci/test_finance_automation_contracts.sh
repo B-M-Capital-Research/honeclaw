@@ -50,7 +50,13 @@ SECURITY_IDENTIFIER="crates/hone-channels/src/security_identifier.rs"
 EXECUTION="crates/hone-channels/src/execution.rs"
 AGENT_TYPES="crates/hone-channels/src/agent_session/types.rs"
 AGENT_CORE="crates/hone-channels/src/agent_session/core.rs"
+AGENT_EMITTER="crates/hone-channels/src/agent_session/emitter.rs"
 AGENT_TESTS="crates/hone-channels/src/agent_session/tests.rs"
+FUNCTION_AGENT="agents/function_calling/src/lib.rs"
+RUN_EVENT="crates/hone-channels/src/run_event.rs"
+TOOL_REASONING_RUNNER="crates/hone-channels/src/runners/tool_reasoning.rs"
+OPENROUTER="crates/hone-llm/src/openrouter.rs"
+OPENAI_COMPATIBLE="crates/hone-llm/src/openai_compatible.rs"
 WEB_CHAT="crates/hone-web-api/src/routes/chat.rs"
 WEB_PUBLIC="crates/hone-web-api/src/routes/public.rs"
 SCHEDULER="crates/hone-channels/src/scheduler.rs"
@@ -59,7 +65,7 @@ AGENT_DISCOVERY_IMPL="$(sed -n '/pub(crate) fn build_agent_discovered_investment
 AGENT_DISCOVERY_CONTEXT_IMPL="$(sed -n '/fn append_agent_entity_discovery_context(/,/^fn explicit_dollar_mentions(/p' "$INVESTMENT_GUARD")"
 INTERACTIVE_OBSERVATION_IMPL="$(sed -n '/Interactive entity discovery is owned/,/let Some(contract) = contract else/p' "$AGENT_CORE")"
 
-echo "[finance-automation-contracts] fixed sample count: 27"
+echo "[finance-automation-contracts] fixed sample count: 28"
 
 if contains '"snapshot".into()' "$DATA_FETCH" && contains 'data_fetch(data_type="snapshot"' "$STOCK_RESEARCH"; then
   record success "1.stock_research->snapshot" "tool enum and skill contract are aligned"
@@ -223,11 +229,17 @@ else
   record fail "27.agent-loop-entity-discovery" "Interactive discovery can regress into a second runner, post-hoc validation/rewrite, fixed refusal, attempt-event flash, or unbounded polluted history"
 fi
 
+if contains 'finish_research' "$FUNCTION_AGENT" && contains 'chat_terminal_streaming' "$FUNCTION_AGENT" && contains 'on_final_content_delta' "$FUNCTION_AGENT" && contains 'with_finish_research_terminal_synthesis' "$TOOL_REASONING_RUNNER" && contains 'TerminalStreamPolicy::CanonicalInvestmentHeader' "$TOOL_REASONING_RUNNER" && contains 'CommittedStreamDelta' "$RUN_EVENT" && contains 'CommittedStreamDelta' "$AGENT_EMITTER" && contains 'committed_visible_prefix.is_some()' "$AGENT_CORE" && contains 'committed_visible_prefix.is_none()' "$AGENT_CORE" && contains 'committed_terminal_prefix_makes_runner_attempt_irreversible_and_suppresses_retry' "$AGENT_TESTS" && contains 'the early committed header plus the terminal tail must exactly equal the persisted answer' "$AGENT_TESTS" && contains 'remove_tool_fields_without_tools' "$OPENROUTER" && contains 'remove_tool_fields_without_tools' "$OPENAI_COMPATIBLE"; then
+  record success "28.agent-signaled-terminal-stream" "tool-capable drafts remain deferred while a sole Agent finish signal enables one empty-tools terminal stream, one canonical committed line, exact persisted suffix, and no retry/replay after commit"
+else
+  record fail "28.agent-signaled-terminal-stream" "terminal streaming can regress into speculative draft exposure, tool-bearing final synthesis, prefix rewrite, or retry after visible output"
+fi
+
 echo
 echo "summary: success=$success review=$review fail=$fail total=$((success + review + fail))"
 
-if [ "$success" -lt 27 ]; then
-  echo "[ERROR] acceptance failed: expected all 27 successes"
+if [ "$success" -lt 28 ]; then
+  echo "[ERROR] acceptance failed: expected all 28 successes"
   exit 1
 fi
 

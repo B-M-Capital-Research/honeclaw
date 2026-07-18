@@ -130,6 +130,7 @@ impl AgentRunner for MockLlmRunner {
         AgentRunnerResult {
             response,
             streamed_output: false,
+            committed_visible_prefix: None,
             terminal_error_emitted: false,
             session_metadata_updates: HashMap::new(),
             context_messages: None,
@@ -151,6 +152,7 @@ impl AgentRunner for MockEmptySuccessRunner {
         AgentRunnerResult {
             response: self.response.clone(),
             streamed_output: true,
+            committed_visible_prefix: None,
             terminal_error_emitted: false,
             session_metadata_updates: HashMap::new(),
             context_messages: None,
@@ -584,6 +586,7 @@ fn should_return_runner_result_ignores_streaming_flag_when_response_is_empty() {
             error: None,
         },
         streamed_output: true,
+        committed_visible_prefix: None,
         terminal_error_emitted: false,
         session_metadata_updates: HashMap::new(),
         context_messages: None,
@@ -612,6 +615,7 @@ fn should_return_runner_result_does_not_treat_tool_calls_only_as_success() {
             error: None,
         },
         streamed_output: true,
+        committed_visible_prefix: None,
         terminal_error_emitted: false,
         session_metadata_updates: HashMap::new(),
         context_messages: None,
@@ -705,6 +709,7 @@ async fn empty_success_with_tool_calls_uses_fallback_after_retries() {
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
+        terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
 
@@ -748,6 +753,7 @@ async fn transient_runner_failure_retries_once_before_returning_success() {
                     error: Some("codex acp session/prompt idle timeout (180s)".to_string()),
                 },
                 streamed_output: true,
+                committed_visible_prefix: None,
                 terminal_error_emitted: false,
                 session_metadata_updates: HashMap::new(),
                 context_messages: None,
@@ -761,6 +767,7 @@ async fn transient_runner_failure_retries_once_before_returning_success() {
                     error: None,
                 },
                 streamed_output: true,
+                committed_visible_prefix: None,
                 terminal_error_emitted: false,
                 session_metadata_updates: HashMap::new(),
                 context_messages: None,
@@ -784,6 +791,7 @@ async fn transient_runner_failure_retries_once_before_returning_success() {
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
+        terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
 
@@ -801,6 +809,85 @@ async fn transient_runner_failure_retries_once_before_returning_success() {
     assert!(result.response.success);
     assert_eq!(result.response.content, "重试后成功");
 
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn committed_terminal_prefix_makes_runner_attempt_irreversible_and_suppresses_retry() {
+    let root = make_temp_dir("hone_channels_committed_terminal_prefix_no_retry");
+    std::fs::create_dir_all(&root).expect("create root");
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let actor = ActorIdentity::new("web", "committed-no-retry", None::<String>).expect("actor");
+    let session = AgentSession::new(core, actor, "direct");
+    let committed = "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
+    let results = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: String::new(),
+                tool_calls_made: Vec::new(),
+                iterations: 3,
+                success: false,
+                error: Some("codex acp stream disconnected before completion".to_string()),
+            },
+            streamed_output: true,
+            committed_visible_prefix: Some(committed.to_string()),
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        },
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: "不应在已提交可见前缀后重跑".to_string(),
+                tool_calls_made: Vec::new(),
+                iterations: 1,
+                success: true,
+                error: None,
+            },
+            streamed_output: true,
+            committed_visible_prefix: None,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        },
+    ])));
+    let runner = MockSequencedRunner {
+        results: results.clone(),
+    };
+    let request = AgentRunnerRequest {
+        session_id: "committed-no-retry-session".to_string(),
+        actor_label: "web:committed-no-retry".to_string(),
+        actor: session.actor.clone(),
+        channel_target: "direct".to_string(),
+        allow_cron: false,
+        config_path: String::new(),
+        runtime_dir: String::new(),
+        system_prompt: "system".to_string(),
+        runtime_input: "CRWV 和 NVDA 有什么关系".to_string(),
+        context: AgentContext::new("committed-no-retry-session".to_string()),
+        timeout: None,
+        gemini_stream: GeminiStreamOptions::default(),
+        session_metadata: HashMap::new(),
+        working_directory: root.display().to_string(),
+        allowed_tools: None,
+        max_tool_calls: None,
+        terminal_stream_policy: Default::default(),
+        tool_call_limits: None,
+    };
+
+    let result = session
+        .run_runner_with_empty_success_retry(
+            &runner,
+            "mock_sequenced",
+            "committed-no-retry-session",
+            request,
+            Arc::new(NoopEmitter),
+            PreparedTurnReexecutionPolicy::Allowed,
+        )
+        .await;
+
+    assert!(!result.response.success);
+    assert_eq!(result.committed_visible_prefix.as_deref(), Some(committed));
+    assert_eq!(results.lock().expect("results lock").len(), 1);
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -895,6 +982,7 @@ async fn observed_persistent_tool_trace_suppresses_transient_retry() {
                 error: Some("codex acp stream disconnected before completion".to_string()),
             },
             streamed_output: false,
+            committed_visible_prefix: None,
             terminal_error_emitted: false,
             session_metadata_updates: HashMap::new(),
             context_messages: None,
@@ -908,6 +996,7 @@ async fn observed_persistent_tool_trace_suppresses_transient_retry() {
                 error: None,
             },
             streamed_output: true,
+            committed_visible_prefix: None,
             terminal_error_emitted: false,
             session_metadata_updates: HashMap::new(),
             context_messages: None,
@@ -933,6 +1022,7 @@ async fn observed_persistent_tool_trace_suppresses_transient_retry() {
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
+        terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
 
@@ -975,6 +1065,7 @@ async fn unknown_tool_trace_suppresses_transient_retry() {
                 error: Some("codex acp stream disconnected before completion".to_string()),
             },
             streamed_output: false,
+            committed_visible_prefix: None,
             terminal_error_emitted: false,
             session_metadata_updates: HashMap::new(),
             context_messages: None,
@@ -988,6 +1079,7 @@ async fn unknown_tool_trace_suppresses_transient_retry() {
                 error: None,
             },
             streamed_output: true,
+            committed_visible_prefix: None,
             terminal_error_emitted: false,
             session_metadata_updates: HashMap::new(),
             context_messages: None,
@@ -1013,6 +1105,7 @@ async fn unknown_tool_trace_suppresses_transient_retry() {
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
+        terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
 
@@ -1050,6 +1143,7 @@ async fn execute_once_intent_suppresses_empty_success_retry_even_without_trace()
                 error: None,
             },
             streamed_output: true,
+            committed_visible_prefix: None,
             terminal_error_emitted: false,
             session_metadata_updates: HashMap::new(),
             context_messages: None,
@@ -1063,6 +1157,7 @@ async fn execute_once_intent_suppresses_empty_success_retry_even_without_trace()
                 error: None,
             },
             streamed_output: true,
+            committed_visible_prefix: None,
             terminal_error_emitted: false,
             session_metadata_updates: HashMap::new(),
             context_messages: None,
@@ -1088,6 +1183,7 @@ async fn execute_once_intent_suppresses_empty_success_retry_even_without_trace()
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
+        terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
 
@@ -1131,6 +1227,7 @@ async fn portfolio_mutation_then_analysis_disconnect_does_not_retry_without_trac
                 error: Some("codex acp stream disconnected before completion".to_string()),
             },
             streamed_output: false,
+            committed_visible_prefix: None,
             terminal_error_emitted: false,
             session_metadata_updates: HashMap::new(),
             context_messages: None,
@@ -1144,6 +1241,7 @@ async fn portfolio_mutation_then_analysis_disconnect_does_not_retry_without_trac
                 error: None,
             },
             streamed_output: true,
+            committed_visible_prefix: None,
             terminal_error_emitted: false,
             session_metadata_updates: HashMap::new(),
             context_messages: None,
@@ -1172,6 +1270,7 @@ async fn portfolio_mutation_then_analysis_disconnect_does_not_retry_without_trac
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
+        terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
 
@@ -1215,6 +1314,7 @@ async fn deep_research_start_disconnect_does_not_launch_a_second_task_without_tr
                 error: Some("codex acp stream disconnected before completion".to_string()),
             },
             streamed_output: false,
+            committed_visible_prefix: None,
             terminal_error_emitted: false,
             session_metadata_updates: HashMap::new(),
             context_messages: None,
@@ -1228,6 +1328,7 @@ async fn deep_research_start_disconnect_does_not_launch_a_second_task_without_tr
                 error: None,
             },
             streamed_output: true,
+            committed_visible_prefix: None,
             terminal_error_emitted: false,
             session_metadata_updates: HashMap::new(),
             context_messages: None,
@@ -1256,6 +1357,7 @@ async fn deep_research_start_disconnect_does_not_launch_a_second_task_without_tr
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
+        terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
 
@@ -1301,6 +1403,7 @@ async fn post_quote_runner_failure_stays_failed_but_incomplete_success_uses_fall
                 error: Some("upstream model rejected the synthesis request".to_string()),
             },
             streamed_output: true,
+            committed_visible_prefix: None,
             terminal_error_emitted: true,
             session_metadata_updates: HashMap::new(),
             context_messages: None,
@@ -1326,6 +1429,7 @@ async fn post_quote_runner_failure_stays_failed_but_incomplete_success_uses_fall
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
+        terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
     let contract = InvestmentResponseContract {
@@ -1407,6 +1511,7 @@ async fn post_quote_runner_failure_stays_failed_but_incomplete_success_uses_fall
                 error: None,
             },
             streamed_output: true,
+            committed_visible_prefix: None,
             terminal_error_emitted: false,
             session_metadata_updates: HashMap::new(),
             context_messages: None,
@@ -1489,6 +1594,7 @@ async fn investment_contract_uses_verified_fallback_for_incomplete_nbis_draft() 
                     error: None,
                 },
                 streamed_output: true,
+                committed_visible_prefix: None,
                 terminal_error_emitted: true,
                 session_metadata_updates: HashMap::new(),
                 context_messages: None,
@@ -1517,6 +1623,7 @@ async fn investment_contract_uses_verified_fallback_for_incomplete_nbis_draft() 
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
+        terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
     let contract = InvestmentResponseContract {
@@ -1619,6 +1726,7 @@ async fn investment_fallback_fails_closed_for_unknown_tool_trace() {
                 error: None,
             },
             streamed_output: true,
+            committed_visible_prefix: None,
             terminal_error_emitted: false,
             session_metadata_updates: HashMap::new(),
             context_messages: Some(vec![AgentMessage {
@@ -1651,6 +1759,7 @@ async fn investment_fallback_fails_closed_for_unknown_tool_trace() {
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
+        terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
     let contract = InvestmentResponseContract {
@@ -1766,6 +1875,7 @@ fn repair_trace_request(
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
+        terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     }
 }
@@ -1800,6 +1910,7 @@ async fn investment_contract_repair_keeps_initial_and_retry_tool_traces() {
                 error: None,
             },
             streamed_output: true,
+            committed_visible_prefix: None,
             terminal_error_emitted: false,
             session_metadata_updates: HashMap::new(),
             context_messages: None,
@@ -1817,6 +1928,7 @@ async fn investment_contract_repair_keeps_initial_and_retry_tool_traces() {
                 error: None,
             },
             streamed_output: true,
+            committed_visible_prefix: None,
             terminal_error_emitted: false,
             session_metadata_updates: HashMap::new(),
             context_messages: None,
@@ -1899,6 +2011,7 @@ async fn investment_contract_repair_rejects_unknown_and_persistent_retry_traces(
                     error: None,
                 },
                 streamed_output: true,
+                committed_visible_prefix: None,
                 terminal_error_emitted: false,
                 session_metadata_updates: HashMap::new(),
                 context_messages: None,
@@ -1912,6 +2025,7 @@ async fn investment_contract_repair_rejects_unknown_and_persistent_retry_traces(
                     error: None,
                 },
                 streamed_output: true,
+                committed_visible_prefix: None,
                 terminal_error_emitted: false,
                 session_metadata_updates: HashMap::new(),
                 context_messages: None,
@@ -1981,6 +2095,7 @@ async fn fund_contract_discards_forbidden_financial_call_and_uses_safe_fallback(
                 error: None,
             },
             streamed_output: true,
+            committed_visible_prefix: None,
             terminal_error_emitted: false,
             session_metadata_updates: HashMap::new(),
             context_messages: Some(vec![AgentMessage {
@@ -2013,6 +2128,7 @@ async fn fund_contract_discards_forbidden_financial_call_and_uses_safe_fallback(
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
+        terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
     let contract = InvestmentResponseContract {
@@ -2091,6 +2207,7 @@ async fn investment_contract_sanitizes_and_server_normalizes_the_visible_text() 
                 error: None,
             },
             streamed_output: true,
+            committed_visible_prefix: None,
             terminal_error_emitted: false,
             session_metadata_updates: HashMap::new(),
             context_messages: None,
@@ -2116,6 +2233,7 @@ async fn investment_contract_sanitizes_and_server_normalizes_the_visible_text() 
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
+        terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
     let contract = InvestmentResponseContract {
@@ -4511,6 +4629,7 @@ async fn interactive_observed_crwv_nvidia_answer_is_never_repaired_or_rewritten(
                     error: None,
                 },
                 streamed_output: true,
+                committed_visible_prefix: None,
                 terminal_error_emitted: true,
                 session_metadata_updates: HashMap::new(),
                 context_messages: None,
@@ -4539,6 +4658,7 @@ async fn interactive_observed_crwv_nvidia_answer_is_never_repaired_or_rewritten(
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
+        terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
     let downstream = Arc::new(RecordingRunnerEmitter::default());
@@ -5050,6 +5170,19 @@ async fn single_agent_loop_accepts_later_exact_searches_after_empty_enriched_sea
             usage: None,
         },
         ChatResponse {
+            content: String::new(),
+            reasoning_content: Some("证据已齐，进入唯一终稿阶段".to_string()),
+            tool_calls: Some(vec![ToolCall {
+                id: "finish_refined_crwv_nbis_research".to_string(),
+                call_type: "function".to_string(),
+                function: FunctionCall {
+                    name: "finish_research".to_string(),
+                    arguments: "{}".to_string(),
+                },
+            }]),
+            usage: None,
+        },
+        ChatResponse {
             content: accepted_answer.to_string(),
             reasoning_content: None,
             tool_calls: None,
@@ -5063,7 +5196,7 @@ async fn single_agent_loop_accepts_later_exact_searches_after_empty_enriched_sea
     let actor =
         ActorIdentity::new("web", "agent-search-refinement", None::<String>).expect("actor");
     let listener = Arc::new(RecordingListener::default());
-    let mut session = AgentSession::new(core, actor, "direct");
+    let mut session = AgentSession::new(core.clone(), actor.clone(), "direct");
     session.add_listener(listener.clone());
 
     let result = session
@@ -5076,7 +5209,7 @@ async fn single_agent_loop_accepts_later_exact_searches_after_empty_enriched_sea
     assert!(result.response.content.contains("CRWV 当前价 73.21 USD"));
     assert!(result.response.content.contains("NBIS 当前价 177.71 USD"));
     assert_eq!(result.response.content, accepted_answer);
-    assert_eq!(llm.chat_with_tools_calls(), 4);
+    assert_eq!(llm.chat_with_tools_calls(), 5);
     assert_eq!(result.response.tool_calls_made.len(), 7);
     assert!(
         build_agent_discovered_investment(
@@ -5092,18 +5225,50 @@ async fn single_agent_loop_accepts_later_exact_searches_after_empty_enriched_sea
         "{transcript}"
     );
     let events = listener.events.lock().await;
-    let visible_deltas = events
+    let visible_chunks = events
         .iter()
         .filter_map(|event| match event {
             AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => Some(content),
+            AgentSessionEvent::Segment { text } => Some(text),
             _ => None,
         })
         .collect::<Vec<_>>();
-    assert_eq!(visible_deltas, vec![&result.response.content]);
+    let committed_header = format!(
+        "{}\n",
+        accepted_answer
+            .lines()
+            .next()
+            .expect("canonical answer header")
+    );
+    assert_eq!(visible_chunks.len(), 2, "{visible_chunks:?}");
+    assert_eq!(visible_chunks[0], &committed_header);
+    assert_eq!(
+        visible_chunks
+            .iter()
+            .map(|chunk| chunk.as_str())
+            .collect::<String>(),
+        result.response.content,
+        "the early committed header plus the terminal tail must exactly equal the persisted answer"
+    );
     assert!(!events.iter().any(|event| matches!(
         event,
         AgentSessionEvent::Run(RunEvent::StreamReset | RunEvent::Error { .. })
     )));
+    let messages = core
+        .session_storage
+        .get_messages(&actor.session_id(), None)
+        .expect("persisted terminal messages");
+    assert_eq!(
+        messages
+            .iter()
+            .map(|message| message.role.as_str())
+            .collect::<Vec<_>>(),
+        ["user", "assistant"]
+    );
+    assert_eq!(
+        messages[1].content[0].text.as_deref(),
+        Some(result.response.content.as_str())
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 

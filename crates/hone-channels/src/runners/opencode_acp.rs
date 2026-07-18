@@ -68,6 +68,7 @@ impl AgentRunner for OpencodeAcpRunner {
                 AgentRunnerResult {
                     response,
                     streamed_output: true,
+                    committed_visible_prefix: None,
                     terminal_error_emitted: false,
                     session_metadata_updates: metadata_updates,
                     context_messages,

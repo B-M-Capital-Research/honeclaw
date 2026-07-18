@@ -9,6 +9,18 @@ use std::time::Duration;
 use crate::agent_session::GeminiStreamOptions;
 pub(crate) use crate::run_event::RunEvent as AgentRunnerEvent;
 
+/// Controls whether a runner may publish a narrowly bounded, irreversible
+/// prefix while the rest of an Agent answer remains deferred.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum TerminalStreamPolicy {
+    /// Preserve the runner's ordinary streaming behavior.
+    #[default]
+    Disabled,
+    /// Commit only a complete canonical investment header beginning with
+    /// `数据时间：北京时间 ...；行情口径：...`.
+    CanonicalInvestmentHeader,
+}
+
 #[async_trait]
 pub trait AgentRunnerEmitter: Send + Sync {
     async fn emit(&self, event: AgentRunnerEvent);
@@ -39,11 +51,18 @@ pub struct AgentRunnerRequest {
     pub allowed_tools: Option<Vec<String>>,
     pub max_tool_calls: Option<u32>,
     pub tool_call_limits: Option<HashMap<String, u32>>,
+    pub terminal_stream_policy: TerminalStreamPolicy,
 }
 
 pub struct AgentRunnerResult {
     pub response: AgentResponse,
     pub streamed_output: bool,
+    /// Exact prefix already emitted through `CommittedStreamDelta`.
+    ///
+    /// AgentSession uses this value to publish only the remaining suffix at
+    /// the terminal boundary. `None` means no user-visible prefix was
+    /// committed by this runner attempt.
+    pub committed_visible_prefix: Option<String>,
     pub terminal_error_emitted: bool,
     pub session_metadata_updates: HashMap<String, Value>,
     pub context_messages: Option<Vec<AgentMessage>>,

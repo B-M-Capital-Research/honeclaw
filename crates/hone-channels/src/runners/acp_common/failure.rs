@@ -47,6 +47,7 @@ pub(crate) async fn acp_failure_to_runner_result(
             error: Some(message),
         },
         streamed_output: !has_persistent_side_effect,
+        committed_visible_prefix: None,
         terminal_error_emitted: !has_persistent_side_effect,
         session_metadata_updates: failure.metadata_updates,
         context_messages: Some(context_messages),

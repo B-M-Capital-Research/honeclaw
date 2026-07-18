@@ -30,7 +30,10 @@ use crate::investment_response_guard::{
 use crate::prompt::PromptOptions;
 use crate::prompt_audit::PromptAuditMetadata;
 use crate::response_finalizer::{EMPTY_SUCCESS_FALLBACK_MESSAGE, finalize_agent_response};
-use crate::runners::{AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult};
+use crate::runners::{
+    AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
+    TerminalStreamPolicy,
+};
 use crate::runtime::{sanitize_user_visible_output, user_visible_error_message};
 use crate::session_compactor::SessionCompactor;
 use crate::tool_trace::{
@@ -364,8 +367,9 @@ pub(super) fn prepared_turn_reexecution_policy(input: &str) -> PreparedTurnReexe
 
 fn mark_investment_attempt_output_deferred(result: &mut AgentRunnerResult) {
     // Runner flags describe what the attempt emitted. Investment attempts use a
-    // deferred emitter, so no answer or terminal error was user-visible yet.
-    result.streamed_output = false;
+    // deferred emitter. A typed committed prefix is the sole exception: it was
+    // already forwarded at an irreversible, tool-free Agent boundary.
+    result.streamed_output = result.committed_visible_prefix.is_some();
     result.terminal_error_emitted = false;
 }
 
@@ -380,6 +384,7 @@ fn normalize_execute_once_failure(
     result.response.error = Some(PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE.to_string());
     result.streamed_output = false;
     result.terminal_error_emitted = false;
+    result.committed_visible_prefix = None;
 }
 
 fn normalize_persistent_trace_failure(result: &mut AgentRunnerResult) {
@@ -392,6 +397,7 @@ fn normalize_persistent_trace_failure(result: &mut AgentRunnerResult) {
     result.response.error = Some(PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE.to_string());
     result.streamed_output = false;
     result.terminal_error_emitted = false;
+    result.committed_visible_prefix = None;
 }
 
 fn preserve_verified_investment_failure(
@@ -415,6 +421,7 @@ fn preserve_verified_investment_failure(
     result.response.error = Some(failure);
     result.streamed_output = false;
     result.terminal_error_emitted = false;
+    result.committed_visible_prefix = None;
 }
 
 fn unsafe_investment_repair_trace_message(tool_calls: &[ToolCallMade]) -> Option<&'static str> {
@@ -470,6 +477,7 @@ fn apply_deterministic_investment_fallback(
     result.context_messages = None;
     result.streamed_output = false;
     result.terminal_error_emitted = false;
+    result.committed_visible_prefix = None;
     true
 }
 
@@ -536,7 +544,8 @@ impl AgentSession {
         loop {
             let retry_blocked = reexecution_policy == PreparedTurnReexecutionPolicy::ExecuteOnce
                 || !response_has_only_known_read_only_calls(&last_result.response.tool_calls_made)
-                || response_has_persistent_side_effect(&last_result.response.tool_calls_made);
+                || response_has_persistent_side_effect(&last_result.response.tool_calls_made)
+                || last_result.committed_visible_prefix.is_some();
             if is_retryable_transient_runner_failure(&last_result)
                 && !retry_blocked
                 && transient_retry_count < TRANSIENT_RUNNER_FAILURE_RETRY_LIMIT
@@ -1140,7 +1149,7 @@ impl AgentSession {
                 None,
             );
         }
-        let execution = ExecutionService::new(self.core.clone())
+        let mut execution = ExecutionService::new(self.core.clone())
             .prepare(ExecutionRequest {
                 mode: ExecutionMode::PersistentConversation,
                 session_id: session_id.to_string(),
@@ -1179,6 +1188,19 @@ impl AgentSession {
                 };
                 (kind, err)
             })?;
+        execution.runner_request.terminal_stream_policy = if self.actor.channel == "web"
+            && options.turn_origin == AgentTurnOrigin::Interactive
+            && execution.runner_name == "function_calling"
+            && investment_context.contract.is_none()
+            && investment_context
+                .main_agent_entity_discovery_input
+                .is_some()
+            && investment_context.reexecution_policy == PreparedTurnReexecutionPolicy::Allowed
+        {
+            TerminalStreamPolicy::CanonicalInvestmentHeader
+        } else {
+            TerminalStreamPolicy::Disabled
+        };
         Ok((execution, investment_context))
     }
 
@@ -2037,6 +2059,7 @@ impl AgentSession {
             || investment_context.reexecution_policy == PreparedTurnReexecutionPolicy::ExecuteOnce;
         let mut streamed_output = false;
         let mut terminal_error_emitted = false;
+        let mut committed_visible_prefix: Option<String> = None;
         let mut context_messages: Option<Vec<AgentMessage>> = None;
         let mut response = AgentResponse {
             content: String::new(),
@@ -2064,6 +2087,7 @@ impl AgentSession {
                 .await;
             streamed_output = runner_result.streamed_output;
             terminal_error_emitted = runner_result.terminal_error_emitted;
+            committed_visible_prefix = runner_result.committed_visible_prefix;
             if !runner_result.session_metadata_updates.is_empty() {
                 let _ = self
                     .core
@@ -2081,6 +2105,7 @@ impl AgentSession {
                 && investment_context.reexecution_policy == PreparedTurnReexecutionPolicy::Allowed
                 && response_has_only_known_read_only_calls(&response.tool_calls_made)
                 && !response_has_persistent_side_effect(&response.tool_calls_made)
+                && committed_visible_prefix.is_none()
                 && recovery_idx < CONTEXT_OVERFLOW_RECOVERY_LIMIT;
             if !should_try_recovery {
                 break;
@@ -2223,6 +2248,20 @@ impl AgentSession {
                 );
             }
         }
+        if response.success
+            && let Some(prefix) = committed_visible_prefix.as_deref()
+            && !response.content.starts_with(prefix)
+        {
+            tracing::error!(
+                session_id,
+                runner = execution.runner_name,
+                "committed terminal prefix no longer matches the finalized response"
+            );
+            response.success = false;
+            response.content.clear();
+            response.error = Some("committed terminal prefix mismatch".to_string());
+            terminal_error_emitted = false;
+        }
         let elapsed_ms = started.elapsed().as_millis();
 
         if response.success {
@@ -2230,13 +2269,30 @@ impl AgentSession {
             // 后续 drop 再执行 release。
             quota_guard.commit();
             if defer_validated_output {
-                // Attempt-local draft/reset/error events were intentionally
-                // hidden. Publish the completed Agent answer exactly once now.
-                self.runner_emitter(execution.runner_request.working_directory.clone())
-                    .emit(AgentRunnerEvent::StreamDelta {
-                        content: response.content.clone(),
-                    })
-                    .await;
+                if let Some(prefix) = committed_visible_prefix.as_deref() {
+                    // The Agent already committed this exact canonical prefix
+                    // after entering a tool-free terminal phase. Only publish
+                    // the finalized tail so UI concatenation and persistence
+                    // remain byte-for-byte identical without a reset/replay.
+                    let tail = response
+                        .content
+                        .strip_prefix(prefix)
+                        .expect("committed prefix was verified above");
+                    if !tail.is_empty() {
+                        self.emit(AgentSessionEvent::Segment {
+                            text: tail.to_string(),
+                        })
+                        .await;
+                    }
+                } else {
+                    // Attempt-local draft/reset/error events were intentionally
+                    // hidden. Publish the completed Agent answer exactly once.
+                    self.runner_emitter(execution.runner_request.working_directory.clone())
+                        .emit(AgentRunnerEvent::StreamDelta {
+                            content: response.content.clone(),
+                        })
+                        .await;
+                }
                 streamed_output = true;
             }
             if !streamed_output {

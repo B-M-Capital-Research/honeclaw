@@ -10,7 +10,7 @@ use crate::HoneBotCore;
 use crate::agent_session::GeminiStreamOptions;
 use crate::core::runtime_config_path;
 use crate::prompt_audit::{PromptAuditMetadata, write_prompt_audit};
-use crate::runners::{AgentRunner, AgentRunnerRequest};
+use crate::runners::{AgentRunner, AgentRunnerRequest, TerminalStreamPolicy};
 use crate::sandbox::ensure_actor_sandbox;
 
 fn absolute_runtime_path(path: &str) -> String {
@@ -164,6 +164,7 @@ impl ExecutionService {
                 allowed_tools: request.allowed_tools,
                 max_tool_calls: request.max_tool_calls,
                 tool_call_limits: request.tool_call_limits,
+                terminal_stream_policy: TerminalStreamPolicy::Disabled,
             },
         })
     }
@@ -246,6 +247,7 @@ mod tests {
     use super::{ExecutionMode, ExecutionRequest, ExecutionRunnerSelection, ExecutionService};
     use crate::HoneBotCore;
     use crate::agent_session::GeminiStreamOptions;
+    use crate::runners::TerminalStreamPolicy;
     use async_trait::async_trait;
     use futures::stream::{self, BoxStream};
     use hone_core::agent::AgentContext;
@@ -359,6 +361,11 @@ mod tests {
             .expect("prepare should succeed");
 
         assert_eq!(prepared.runner_request.actor_label, actor.user_id);
+        assert_eq!(
+            prepared.runner_request.terminal_stream_policy,
+            TerminalStreamPolicy::Disabled,
+            "execution must default every runner to no committed terminal stream; AgentSession may opt in narrowly"
+        );
         let _ = std::fs::remove_dir_all(root);
     }
 

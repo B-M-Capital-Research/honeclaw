@@ -44,7 +44,8 @@ impl AgentRunnerEmitter for DeferredUserOutputEmitter {
     async fn emit(&self, event: AgentRunnerEvent) {
         match event {
             forward @ AgentRunnerEvent::Progress { .. }
-            | forward @ AgentRunnerEvent::ToolStatus { .. } => {
+            | forward @ AgentRunnerEvent::ToolStatus { .. }
+            | forward @ AgentRunnerEvent::CommittedStreamDelta { .. } => {
                 self.inner.emit(forward).await;
             }
             AgentRunnerEvent::StreamDelta { .. }
@@ -186,6 +187,23 @@ impl AgentRunnerEmitter for SessionEventEmitter {
                 };
                 AgentRunnerEvent::StreamDelta { content }
             }
+            AgentRunnerEvent::CommittedStreamDelta { content } => {
+                // This typed event is produced only after the runner has
+                // validated a complete canonical header. Preserve its exact
+                // bytes (notably the trailing newline). Silently filtering or
+                // rewriting it here would make the runner believe a prefix was
+                // committed when listeners never received those bytes.
+                tracing::info!(
+                    message_id = %self.message_id.as_deref().unwrap_or("-"),
+                    state = "runner_terminal_prefix_committed",
+                    channel = %self.channel,
+                    user = %self.user_id,
+                    session = %self.session_id,
+                    bytes = content.len(),
+                    "Agent committed the canonical terminal header"
+                );
+                AgentRunnerEvent::StreamDelta { content }
+            }
             AgentRunnerEvent::StreamReset => AgentRunnerEvent::StreamReset,
             AgentRunnerEvent::Error { mut error } => {
                 error.message =
@@ -249,6 +267,7 @@ impl AgentRunnerEmitter for SessionEventEmitter {
                 );
             }
             AgentRunnerEvent::StreamDelta { .. }
+            | AgentRunnerEvent::CommittedStreamDelta { .. }
             | AgentRunnerEvent::StreamReset
             | AgentRunnerEvent::StreamThought { .. } => {}
         }
@@ -258,5 +277,103 @@ impl AgentRunnerEmitter for SessionEventEmitter {
         for listener in &self.listeners {
             listener.on_event(mapped.clone()).await;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agent_session::{AgentSessionError, AgentSessionErrorKind};
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct CaptureRunnerEmitter {
+        events: Mutex<Vec<AgentRunnerEvent>>,
+    }
+
+    #[async_trait]
+    impl AgentRunnerEmitter for CaptureRunnerEmitter {
+        async fn emit(&self, event: AgentRunnerEvent) {
+            self.events.lock().expect("runner events").push(event);
+        }
+    }
+
+    #[derive(Default)]
+    struct CaptureSessionListener {
+        events: tokio::sync::Mutex<Vec<AgentSessionEvent>>,
+    }
+
+    #[async_trait]
+    impl AgentSessionListener for CaptureSessionListener {
+        async fn on_event(&self, event: AgentSessionEvent) {
+            self.events.lock().await.push(event);
+        }
+    }
+
+    #[tokio::test]
+    async fn deferred_output_forwards_only_committed_answer_content() {
+        let inner = Arc::new(CaptureRunnerEmitter::default());
+        let deferred = DeferredUserOutputEmitter::new(inner.clone());
+        let committed = "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
+
+        deferred
+            .emit(AgentRunnerEvent::StreamDelta {
+                content: "我先核验".to_string(),
+            })
+            .await;
+        deferred.emit(AgentRunnerEvent::StreamReset).await;
+        deferred
+            .emit(AgentRunnerEvent::StreamThought {
+                thought: "internal".to_string(),
+            })
+            .await;
+        deferred
+            .emit(AgentRunnerEvent::Error {
+                error: AgentSessionError {
+                    kind: AgentSessionErrorKind::AgentFailed,
+                    message: "attempt-local".to_string(),
+                },
+            })
+            .await;
+        deferred
+            .emit(AgentRunnerEvent::CommittedStreamDelta {
+                content: committed.to_string(),
+            })
+            .await;
+
+        let events = inner.events.lock().expect("runner events");
+        assert_eq!(events.len(), 1, "{events:?}");
+        assert!(matches!(
+            &events[0],
+            AgentRunnerEvent::CommittedStreamDelta { content } if content == committed
+        ));
+    }
+
+    #[tokio::test]
+    async fn session_emitter_preserves_committed_prefix_bytes_as_visible_delta() {
+        let listener = Arc::new(CaptureSessionListener::default());
+        let emitter = SessionEventEmitter {
+            listeners: vec![listener.clone()],
+            channel: "web".to_string(),
+            user_id: "committed-prefix".to_string(),
+            session_id: "web:committed-prefix".to_string(),
+            message_id: None,
+            working_directory: String::new(),
+        };
+        let committed = "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
+
+        emitter
+            .emit(AgentRunnerEvent::CommittedStreamDelta {
+                content: committed.to_string(),
+            })
+            .await;
+
+        let events = listener.events.lock().await;
+        assert_eq!(events.len(), 1, "{events:?}");
+        assert!(matches!(
+            &events[0],
+            AgentSessionEvent::Run(AgentRunnerEvent::StreamDelta { content })
+                if content == committed
+        ));
     }
 }

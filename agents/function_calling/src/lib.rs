@@ -15,10 +15,23 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 const REASONING_CONTENT_METADATA_KEY: &str = "reasoning_content";
+const FINISH_RESEARCH_TOOL_NAME: &str = "finish_research";
+const FINISH_RESEARCH_SYSTEM_INSTRUCTION: &str = "【内部终态流控制】如果当前请求属于公司、证券、市场或板块投研，并且当前请求所需的实体核验、行情与其它证据工具调用已经全部完成，请不要在仍可调用工具的轮次直接展开长篇最终回答；必须单独调用 `finish_research`，由同一 Agent 和同一上下文进入无工具终稿阶段。不得把它与任何其它工具一起调用。它只是流式终态信号，不是拒答、审查或改写授权。";
+const TERMINAL_SYNTHESIS_PROMPT: &str = "【终局回答阶段】\n\
+你已经明确表示本轮所需研究与工具调用全部完成。当前阶段不再提供任何工具；请只基于同一轮对话中已有的用户请求和工具结果，直接生成一次完整、可见的最终回答。不要提及 finish_research、内部协议、工具循环或这条提示。";
 
 #[async_trait]
 pub trait FunctionCallingStreamObserver: Send + Sync {
     async fn on_content_delta(&self, content: &str);
+
+    /// A delta from a tool-free terminal synthesis round. The default keeps
+    /// existing observers source-compatible; channel adapters may override it
+    /// when they need to distinguish draft-capable tool rounds from a final
+    /// stream that can no longer be followed by another tool call.
+    async fn on_final_content_delta(&self, content: &str) {
+        self.on_content_delta(content).await;
+    }
+
     async fn on_content_reset(&self);
 }
 
@@ -41,6 +54,7 @@ pub struct FunctionCallingAgent {
     pub stream_observer: Option<Arc<dyn FunctionCallingStreamObserver>>,
     pub max_tool_calls: Option<u32>,
     pub tool_call_limits: HashMap<String, u32>,
+    pub finish_research_terminal_synthesis: bool,
 }
 
 impl FunctionCallingAgent {
@@ -66,6 +80,7 @@ impl FunctionCallingAgent {
             stream_observer: None,
             max_tool_calls: None,
             tool_call_limits: HashMap::new(),
+            finish_research_terminal_synthesis: false,
         }
     }
 
@@ -92,6 +107,15 @@ impl FunctionCallingAgent {
         self
     }
 
+    /// Enable the internal `finish_research` control tool. When the model emits
+    /// that tool as the sole call in a round, this Agent performs one final
+    /// tool-free streamed completion using the same in-memory context. Direct
+    /// answers remain valid and do not trigger an additional completion.
+    pub fn with_finish_research_terminal_synthesis(mut self, enabled: bool) -> Self {
+        self.finish_research_terminal_synthesis = enabled;
+        self
+    }
+
     fn dbg(&self, msg: &str) {
         if self.debug_log {
             tracing::debug!("{msg}");
@@ -103,9 +127,17 @@ impl FunctionCallingAgent {
         let mut messages = Vec::with_capacity(context.messages.len() + 1);
 
         if !self.system_prompt.is_empty() {
+            let system_prompt = if self.finish_research_terminal_synthesis {
+                format!(
+                    "{}\n\n{}",
+                    self.system_prompt, FINISH_RESEARCH_SYSTEM_INSTRUCTION
+                )
+            } else {
+                self.system_prompt.clone()
+            };
             messages.push(Message {
                 role: "system".to_string(),
-                content: Some(self.system_prompt.clone()),
+                content: Some(system_prompt),
                 reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
@@ -258,6 +290,77 @@ impl FunctionCallingAgent {
             usage,
         })
     }
+
+    async fn chat_terminal_streaming(
+        &self,
+        messages: &[Message],
+    ) -> hone_core::HoneResult<ChatResponse> {
+        let empty_tools = Vec::<Value>::new();
+        let mut stream = self
+            .llm
+            .chat_with_tools_stream(messages, &empty_tools, None);
+        let mut content = String::new();
+        let mut reasoning_content = String::new();
+        let mut usage = None;
+        let mut formatter = hone_channels_compat::HiddenStreamFormatter::default();
+        let mut unexpected_tool_call = false;
+
+        while let Some(event) = stream.next().await {
+            match event? {
+                ChatStreamEvent::ContentDelta(delta) => {
+                    content.push_str(&delta);
+                    let visible = formatter.push(&delta);
+                    if !visible.is_empty()
+                        && let Some(observer) = &self.stream_observer
+                    {
+                        observer.on_final_content_delta(&visible).await;
+                    }
+                }
+                ChatStreamEvent::ReasoningDelta(delta) => reasoning_content.push_str(&delta),
+                ChatStreamEvent::ToolCallDelta { .. } => unexpected_tool_call = true,
+                ChatStreamEvent::Usage(value) => usage = Some(value),
+            }
+        }
+
+        if unexpected_tool_call {
+            return Err(hone_core::HoneError::Llm(
+                "tool-free terminal synthesis returned a tool call".to_string(),
+            ));
+        }
+
+        let visible = formatter.finish();
+        if !visible.is_empty()
+            && let Some(observer) = &self.stream_observer
+        {
+            observer.on_final_content_delta(&visible).await;
+        }
+
+        Ok(ChatResponse {
+            content,
+            reasoning_content: (!reasoning_content.is_empty()).then_some(reasoning_content),
+            tool_calls: None,
+            usage,
+        })
+    }
+}
+
+fn finish_research_tool_schema() -> Value {
+    serde_json::json!({
+        "type": "function",
+        "function": {
+            "name": FINISH_RESEARCH_TOOL_NAME,
+            "description": "Internal control signal. Call this function by itself only after all required research and tool calls are complete and no further tool result is needed. Hone will then ask you for the final answer with tools disabled. Never call it together with another function.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }
+        }
+    })
+}
+
+fn is_finish_research_call(tool_call: &ToolCall) -> bool {
+    tool_call.function.name == FINISH_RESEARCH_TOOL_NAME
 }
 
 // Keep the agent crate independent from channel presentation code while using
@@ -381,7 +484,10 @@ impl Agent for FunctionCallingAgent {
     async fn run(&self, user_input: &str, context: &mut AgentContext) -> AgentResponse {
         context.add_user_message(user_input);
 
-        let tools: Vec<Value> = self.tools.get_tools_schema();
+        let mut tools: Vec<Value> = self.tools.get_tools_schema();
+        if self.finish_research_terminal_synthesis {
+            tools.push(finish_research_tool_schema());
+        }
         let has_tools = !tools.is_empty();
         let mut tool_calls_made: Vec<ToolCallMade> = Vec::new();
         let mut tool_call_counts: HashMap<String, u32> = HashMap::new();
@@ -487,82 +593,145 @@ impl Agent for FunctionCallingAgent {
                 if !tcs.is_empty() {
                     self.dbg(&format!("[Agent] tool_calls n={}", tcs.len()));
 
-                    // 记录 assistant 消息（含 tool_calls）
-                    let tc_values: Vec<Value> = tcs
+                    let sole_finish_research = self.finish_research_terminal_synthesis
+                        && tcs.len() == 1
+                        && is_finish_research_call(&tcs[0]);
+                    if sole_finish_research {
+                        // Keep the control protocol ephemeral: it selects the
+                        // terminal phase but is not persisted as a business
+                        // tool call or exposed to tool observers/budgets.
+                        let mut terminal_messages = messages.clone();
+                        terminal_messages.push(Message {
+                            role: "user".to_string(),
+                            content: Some(TERMINAL_SYNTHESIS_PROMPT.to_string()),
+                            reasoning_content: None,
+                            tool_calls: None,
+                            tool_call_id: None,
+                            name: None,
+                        });
+                        iterations = iterations.saturating_add(1);
+                        let terminal_request_payload = serde_json::json!({
+                            "messages": terminal_messages.clone(),
+                            "tools": Vec::<Value>::new(),
+                        });
+                        let terminal_started = std::time::Instant::now();
+                        let terminal_result =
+                            match self.chat_terminal_streaming(&terminal_messages).await {
+                                Ok(response) => response,
+                                Err(error) => {
+                                    self.record_audit(
+                                        context,
+                                        "chat_terminal_without_tools",
+                                        terminal_request_payload,
+                                        None,
+                                        Some(error.to_string()),
+                                        terminal_started.elapsed().as_millis(),
+                                        serde_json::json!({
+                                            "iteration": iterations,
+                                            "has_tools": false,
+                                            "finish_research": true,
+                                        }),
+                                        None,
+                                    );
+                                    return AgentResponse {
+                                        content: String::new(),
+                                        tool_calls_made,
+                                        iterations,
+                                        success: false,
+                                        error: Some(error.to_string()),
+                                    };
+                                }
+                            };
+                        self.record_audit(
+                            context,
+                            "chat_terminal_without_tools",
+                            terminal_request_payload,
+                            Some(serde_json::json!({
+                                "content": terminal_result.content.clone(),
+                                "tool_calls": terminal_result.tool_calls.clone(),
+                            })),
+                            None,
+                            terminal_started.elapsed().as_millis(),
+                            serde_json::json!({
+                                "iteration": iterations,
+                                "has_tools": false,
+                                "finish_research": true,
+                            }),
+                            terminal_result.usage.clone(),
+                        );
+
+                        let metadata =
+                            terminal_result.reasoning_content.as_ref().map(|reasoning| {
+                                std::collections::HashMap::from([(
+                                    REASONING_CONTENT_METADATA_KEY.to_string(),
+                                    Value::String(reasoning.clone()),
+                                )])
+                            });
+                        context.add_assistant_message_with_metadata(
+                            &terminal_result.content,
+                            None,
+                            metadata,
+                        );
+                        return AgentResponse {
+                            content: terminal_result.content,
+                            tool_calls_made,
+                            iterations,
+                            success: true,
+                            error: None,
+                        };
+                    }
+
+                    // A mixed finish_research call is only a malformed control
+                    // signal. Ignore it and continue executing the real calls;
+                    // it must never consume tool budget, reach ToolRegistry, be
+                    // persisted as ToolCallMade, or notify the business observer.
+                    let actionable_tool_calls = tcs
                         .iter()
-                        .filter_map(|tc| serde_json::to_value(tc).ok())
-                        .collect();
-                    let metadata = result.reasoning_content.as_ref().map(|reasoning| {
-                        std::collections::HashMap::from([(
-                            REASONING_CONTENT_METADATA_KEY.to_string(),
-                            Value::String(reasoning.clone()),
-                        )])
-                    });
-                    context.add_assistant_message_with_metadata(
-                        &result.content,
-                        Some(tc_values),
-                        metadata,
-                    );
+                        .filter(|tool_call| {
+                            !self.finish_research_terminal_synthesis
+                                || !is_finish_research_call(tool_call)
+                        })
+                        .collect::<Vec<_>>();
 
-                    // 逐个执行工具
-                    for tc in tcs {
-                        let tool_name = &tc.function.name;
-                        let tool_call_id = &tc.id;
-                        let tool_args_str = &tc.function.arguments;
+                    if actionable_tool_calls.is_empty() {
+                        // Multiple finish_research calls are not a valid sole
+                        // terminal signal. Preserve the direct-answer fallback
+                        // below without starting a second generation.
+                        self.dbg("[Agent] ignored non-sole finish_research calls");
+                    } else {
+                        // 记录 assistant 消息（只含真实业务 tool_calls）
+                        let tc_values: Vec<Value> = actionable_tool_calls
+                            .iter()
+                            .filter_map(|tc| serde_json::to_value(*tc).ok())
+                            .collect();
+                        let metadata = result.reasoning_content.as_ref().map(|reasoning| {
+                            std::collections::HashMap::from([(
+                                REASONING_CONTENT_METADATA_KEY.to_string(),
+                                Value::String(reasoning.clone()),
+                            )])
+                        });
+                        context.add_assistant_message_with_metadata(
+                            &result.content,
+                            Some(tc_values),
+                            metadata,
+                        );
 
-                        match serde_json::from_str::<Value>(tool_args_str) {
-                            Ok(tool_args) => {
-                                self.dbg(&format!("[Agent] tool_call name={tool_name}"));
-                                if let Some(error_result) = tool_budget_error(
-                                    tool_name,
-                                    self.max_tool_calls,
-                                    &self.tool_call_limits,
-                                    total_tool_calls,
-                                    &tool_call_counts,
-                                ) {
-                                    let result_str =
-                                        serde_json::to_string(&error_result).unwrap_or_default();
-                                    context.add_tool_result(tool_call_id, tool_name, &result_str);
-                                    continue;
-                                }
-                                total_tool_calls += 1;
-                                *tool_call_counts.entry(tool_name.clone()).or_insert(0) += 1;
-                                if let Some(observer) = &self.tool_observer {
-                                    observer.on_tool_start(tool_name, &tool_args, None).await;
-                                }
+                        // 逐个执行真实业务工具
+                        for tc in actionable_tool_calls {
+                            let tool_name = &tc.function.name;
+                            let tool_call_id = &tc.id;
+                            let tool_args_str = &tc.function.arguments;
 
-                                match self.tools.execute_tool(tool_name, tool_args.clone()).await {
-                                    Ok(tool_result) => {
-                                        self.dbg(&format!("[Agent] tool_result name={tool_name}"));
-
-                                        let tr: Value = tool_result.clone();
-                                        tool_calls_made.push(ToolCallMade {
-                                            name: tool_name.clone(),
-                                            arguments: tool_args.clone(),
-                                            result: tr,
-                                            tool_call_id: Some(tool_call_id.clone()),
-                                        });
-
-                                        let result_str =
-                                            serde_json::to_string(&tool_result).unwrap_or_default();
-                                        context.add_tool_result(
-                                            tool_call_id,
-                                            tool_name,
-                                            &result_str,
-                                        );
-                                        if let Some(observer) = &self.tool_observer {
-                                            observer
-                                                .on_tool_finish(tool_name, &tool_args, true)
-                                                .await;
-                                        }
-                                    }
-                                    Err(e) => {
-                                        self.dbg(&format!(
-                                            "[Agent] tool_error name={tool_name} error={e}"
-                                        ));
-                                        let err_str = e.to_string();
-                                        let error_result: Value =
-                                            serde_json::json!({"error": err_str});
+                            match serde_json::from_str::<Value>(tool_args_str) {
+                                Ok(tool_args) => {
+                                    self.dbg(&format!("[Agent] tool_call name={tool_name}"));
+                                    if let Some(error_result) = tool_budget_error(
+                                        tool_name,
+                                        self.max_tool_calls,
+                                        &self.tool_call_limits,
+                                        total_tool_calls,
+                                        &tool_call_counts,
+                                    ) {
                                         let result_str = serde_json::to_string(&error_result)
                                             .unwrap_or_default();
                                         context.add_tool_result(
@@ -570,26 +739,82 @@ impl Agent for FunctionCallingAgent {
                                             tool_name,
                                             &result_str,
                                         );
-                                        if let Some(observer) = &self.tool_observer {
-                                            observer
-                                                .on_tool_finish(tool_name, &tool_args, false)
-                                                .await;
+                                        continue;
+                                    }
+                                    total_tool_calls += 1;
+                                    *tool_call_counts.entry(tool_name.clone()).or_insert(0) += 1;
+                                    if let Some(observer) = &self.tool_observer {
+                                        observer.on_tool_start(tool_name, &tool_args, None).await;
+                                    }
+
+                                    match self
+                                        .tools
+                                        .execute_tool(tool_name, tool_args.clone())
+                                        .await
+                                    {
+                                        Ok(tool_result) => {
+                                            self.dbg(&format!(
+                                                "[Agent] tool_result name={tool_name}"
+                                            ));
+
+                                            let tr: Value = tool_result.clone();
+                                            tool_calls_made.push(ToolCallMade {
+                                                name: tool_name.clone(),
+                                                arguments: tool_args.clone(),
+                                                result: tr,
+                                                tool_call_id: Some(tool_call_id.clone()),
+                                            });
+
+                                            let result_str = serde_json::to_string(&tool_result)
+                                                .unwrap_or_default();
+                                            context.add_tool_result(
+                                                tool_call_id,
+                                                tool_name,
+                                                &result_str,
+                                            );
+                                            if let Some(observer) = &self.tool_observer {
+                                                observer
+                                                    .on_tool_finish(tool_name, &tool_args, true)
+                                                    .await;
+                                            }
+                                        }
+                                        Err(e) => {
+                                            self.dbg(&format!(
+                                                "[Agent] tool_error name={tool_name} error={e}"
+                                            ));
+                                            let err_str = e.to_string();
+                                            let error_result: Value =
+                                                serde_json::json!({"error": err_str});
+                                            let result_str = serde_json::to_string(&error_result)
+                                                .unwrap_or_default();
+                                            context.add_tool_result(
+                                                tool_call_id,
+                                                tool_name,
+                                                &result_str,
+                                            );
+                                            if let Some(observer) = &self.tool_observer {
+                                                observer
+                                                    .on_tool_finish(tool_name, &tool_args, false)
+                                                    .await;
+                                            }
                                         }
                                     }
                                 }
-                            }
-                            Err(e) => {
-                                self.dbg(&format!("[Agent] json parse error for {tool_name}: {e}"));
-                                let err_str = format!("参数解析失败: {e}");
-                                let error_result: Value = serde_json::json!({"error": err_str});
-                                let result_str =
-                                    serde_json::to_string(&error_result).unwrap_or_default();
-                                context.add_tool_result(tool_call_id, tool_name, &result_str);
+                                Err(e) => {
+                                    self.dbg(&format!(
+                                        "[Agent] json parse error for {tool_name}: {e}"
+                                    ));
+                                    let err_str = format!("参数解析失败: {e}");
+                                    let error_result: Value = serde_json::json!({"error": err_str});
+                                    let result_str =
+                                        serde_json::to_string(&error_result).unwrap_or_default();
+                                    context.add_tool_result(tool_call_id, tool_name, &result_str);
+                                }
                             }
                         }
+                        // 继续循环 — 把真实工具结果送回 LLM
+                        continue;
                     }
-                    // 继续循环 — 把工具结果送回 LLM
-                    continue;
                 }
             }
 
@@ -631,6 +856,18 @@ mod tests {
     #[derive(Clone)]
     struct StreamingMockLlmProvider {
         rounds: Arc<Mutex<VecDeque<Vec<ChatStreamEvent>>>>,
+        seen_tool_counts: Arc<Mutex<Vec<usize>>>,
+        seen_messages: Arc<Mutex<Vec<Vec<Message>>>>,
+    }
+
+    impl StreamingMockLlmProvider {
+        fn with_rounds(rounds: Vec<Vec<ChatStreamEvent>>) -> Self {
+            Self {
+                rounds: Arc::new(Mutex::new(rounds.into())),
+                seen_tool_counts: Arc::new(Mutex::new(Vec::new())),
+                seen_messages: Arc::new(Mutex::new(Vec::new())),
+            }
+        }
     }
 
     #[async_trait]
@@ -654,10 +891,18 @@ mod tests {
 
         fn chat_with_tools_stream<'a>(
             &'a self,
-            _messages: &'a [Message],
-            _tools: &'a [Value],
+            messages: &'a [Message],
+            tools: &'a [Value],
             _model: Option<&'a str>,
         ) -> BoxStream<'a, hone_core::HoneResult<ChatStreamEvent>> {
+            self.seen_tool_counts
+                .lock()
+                .expect("stream tool counts lock")
+                .push(tools.len());
+            self.seen_messages
+                .lock()
+                .expect("stream messages lock")
+                .push(messages.to_vec());
             let events = self
                 .rounds
                 .lock()
@@ -688,6 +933,13 @@ mod tests {
                 .lock()
                 .expect("stream events lock")
                 .push(format!("delta:{content}"));
+        }
+
+        async fn on_final_content_delta(&self, content: &str) {
+            self.events
+                .lock()
+                .expect("stream events lock")
+                .push(format!("final:{content}"));
         }
 
         async fn on_content_reset(&self) {
@@ -957,6 +1209,8 @@ mod tests {
                     ChatStreamEvent::ContentDelta("答案".to_string()),
                 ],
             ]))),
+            seen_tool_counts: Arc::new(Mutex::new(Vec::new())),
+            seen_messages: Arc::new(Mutex::new(Vec::new())),
         };
         let mut registry = ToolRegistry::new();
         registry.register(Box::new(EchoTool));
@@ -980,6 +1234,224 @@ mod tests {
                 .as_slice(),
             ["delta:I will check", "reset", "delta:最终", "delta:答案"]
         );
+    }
+
+    #[tokio::test]
+    async fn sole_finish_research_runs_one_tool_free_terminal_stream_in_the_same_agent_run() {
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_echo".to_string()),
+                name: Some("echo_tool".to_string()),
+                arguments: r#"{"text":"abc"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_finish".to_string()),
+                name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
+                arguments: "{}".to_string(),
+            }],
+            vec![
+                ChatStreamEvent::ReasoningDelta("terminal reasoning".to_string()),
+                ChatStreamEvent::ContentDelta("最终".to_string()),
+                ChatStreamEvent::ContentDelta("答案".to_string()),
+            ],
+        ]);
+        let seen_tool_counts = llm.seen_tool_counts.clone();
+        let seen_messages = llm.seen_messages.clone();
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(EchoTool));
+        let stream_observer = Arc::new(RecordingStreamObserver::default());
+        let tool_observer = Arc::new(MockToolObserver::default());
+        let agent = FunctionCallingAgent::new(
+            Arc::new(llm),
+            Arc::new(registry),
+            "system".to_string(),
+            4,
+            None,
+        )
+        .with_finish_research_terminal_synthesis(true)
+        .with_stream_observer(Some(stream_observer.clone()))
+        .with_tool_observer(Some(tool_observer.clone()));
+        let mut context = AgentContext::new("finish-research-terminal".to_string());
+
+        let response = agent.run("research", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, "最终答案");
+        assert_eq!(response.iterations, 3);
+        assert_eq!(response.tool_calls_made.len(), 1);
+        assert_eq!(response.tool_calls_made[0].name, "echo_tool");
+        assert_eq!(
+            seen_tool_counts
+                .lock()
+                .expect("stream tool counts lock")
+                .as_slice(),
+            [2, 2, 0],
+            "the terminal synthesis must use the same provider with an empty tool list"
+        );
+        assert_eq!(
+            stream_observer
+                .events
+                .lock()
+                .expect("stream events lock")
+                .as_slice(),
+            ["final:最终", "final:答案"]
+        );
+        assert_eq!(
+            tool_observer
+                .events
+                .lock()
+                .expect("tool observer lock")
+                .as_slice(),
+            ["start:echo_tool", "done:echo_tool:true"]
+        );
+        assert!(context.messages.iter().all(|message| {
+            message.tool_calls.as_ref().is_none_or(|tool_calls| {
+                tool_calls.iter().all(|tool_call| {
+                    tool_call
+                        .get("function")
+                        .and_then(|function| function.get("name"))
+                        .and_then(Value::as_str)
+                        != Some(FINISH_RESEARCH_TOOL_NAME)
+                })
+            })
+        }));
+        let terminal_messages = seen_messages
+            .lock()
+            .expect("stream messages lock")
+            .last()
+            .cloned()
+            .expect("terminal messages");
+        assert!(
+            terminal_messages
+                .first()
+                .and_then(|message| message.content.as_deref())
+                .is_some_and(|content| content.contains(FINISH_RESEARCH_SYSTEM_INSTRUCTION))
+        );
+        assert_eq!(
+            terminal_messages
+                .last()
+                .and_then(|message| message.content.as_deref()),
+            Some(TERMINAL_SYNTHESIS_PROMPT)
+        );
+    }
+
+    #[tokio::test]
+    async fn direct_answer_fallback_does_not_start_a_second_terminal_generation() {
+        let llm = StreamingMockLlmProvider::with_rounds(vec![vec![ChatStreamEvent::ContentDelta(
+            "直接答案".to_string(),
+        )]]);
+        let seen_tool_counts = llm.seen_tool_counts.clone();
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(EchoTool));
+        let observer = Arc::new(RecordingStreamObserver::default());
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 3, None)
+                .with_finish_research_terminal_synthesis(true)
+                .with_stream_observer(Some(observer.clone()));
+        let mut context = AgentContext::new("finish-research-direct".to_string());
+
+        let response = agent.run("answer directly", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, "直接答案");
+        assert_eq!(response.iterations, 1);
+        assert!(response.tool_calls_made.is_empty());
+        assert_eq!(
+            seen_tool_counts
+                .lock()
+                .expect("stream tool counts lock")
+                .as_slice(),
+            [2],
+            "a direct answer must not be followed by an empty-tools rewrite"
+        );
+        assert_eq!(
+            observer
+                .events
+                .lock()
+                .expect("stream events lock")
+                .as_slice(),
+            ["delta:直接答案"]
+        );
+    }
+
+    #[tokio::test]
+    async fn mixed_finish_research_is_ignored_while_the_business_tool_executes_normally() {
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_finish_mixed".to_string()),
+                    name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
+                    arguments: "{}".to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 1,
+                    id: Some("tc_echo_mixed".to_string()),
+                    name: Some("echo_tool".to_string()),
+                    arguments: r#"{"text":"mixed"}"#.to_string(),
+                },
+            ],
+            vec![ChatStreamEvent::ContentDelta("完成".to_string())],
+        ]);
+        let seen_tool_counts = llm.seen_tool_counts.clone();
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(EchoTool));
+        let stream_observer = Arc::new(RecordingStreamObserver::default());
+        let tool_observer = Arc::new(MockToolObserver::default());
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 3, None)
+                .with_finish_research_terminal_synthesis(true)
+                .with_tool_call_budget(Some(1), HashMap::new())
+                .with_stream_observer(Some(stream_observer.clone()))
+                .with_tool_observer(Some(tool_observer.clone()));
+        let mut context = AgentContext::new("finish-research-mixed".to_string());
+
+        let response = agent.run("mixed", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, "完成");
+        assert_eq!(response.iterations, 2);
+        assert_eq!(response.tool_calls_made.len(), 1);
+        assert_eq!(response.tool_calls_made[0].name, "echo_tool");
+        assert_eq!(response.tool_calls_made[0].result["echo"], "mixed");
+        assert_eq!(
+            seen_tool_counts
+                .lock()
+                .expect("stream tool counts lock")
+                .as_slice(),
+            [2, 2],
+            "mixed finish_research must not enter terminal synthesis"
+        );
+        assert_eq!(
+            tool_observer
+                .events
+                .lock()
+                .expect("tool observer lock")
+                .as_slice(),
+            ["start:echo_tool", "done:echo_tool:true"],
+            "finish_research must not reach the business tool observer"
+        );
+        assert_eq!(
+            stream_observer
+                .events
+                .lock()
+                .expect("stream events lock")
+                .as_slice(),
+            ["delta:完成"]
+        );
+        assert!(context.messages.iter().all(|message| {
+            message.tool_calls.as_ref().is_none_or(|tool_calls| {
+                tool_calls.iter().all(|tool_call| {
+                    tool_call
+                        .get("function")
+                        .and_then(|function| function.get("name"))
+                        .and_then(Value::as_str)
+                        != Some(FINISH_RESEARCH_TOOL_NAME)
+                })
+            })
+        }));
     }
 
     #[tokio::test]
