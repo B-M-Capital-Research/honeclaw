@@ -69,7 +69,7 @@ AGENT_DISCOVERY_IMPL="$(sed -n '/pub(crate) fn build_agent_discovered_investment
 AGENT_DISCOVERY_CONTEXT_IMPL="$(sed -n '/fn append_agent_entity_discovery_context(/,/^fn explicit_dollar_mentions(/p' "$INVESTMENT_GUARD")"
 INTERACTIVE_OBSERVATION_IMPL="$(sed -n '/Interactive entity discovery is owned/,/let Some(contract) = contract else/p' "$AGENT_CORE")"
 
-echo "[finance-automation-contracts] fixed sample count: 32"
+echo "[finance-automation-contracts] fixed sample count: 33"
 
 if contains '"snapshot".into()' "$DATA_FETCH" && contains 'data_fetch(data_type="snapshot"' "$STOCK_RESEARCH"; then
   record success "1.stock_research->snapshot" "tool enum and skill contract are aligned"
@@ -263,11 +263,17 @@ else
   record fail "32.partial-terminal-consumer-contract" "a typed PartialDone can again break a workspace consumer or be mistaken for a successful Browser completion"
 fi
 
+if contains 'normalize_clean_eof_after_finish' "$OPENAI_COMPATIBLE" && contains 'clean_eof_after_tool_finish_synthesizes_done' "$OPENAI_COMPATIBLE" && contains 'clean_eof_after_stop_finish_synthesizes_done' "$OPENAI_COMPATIBLE" && contains 'clean_eof_without_finish_does_not_synthesize_done' "$OPENAI_COMPATIBLE" && contains 'duplicate_finish_does_not_synthesize_done' "$OPENAI_COMPATIBLE" && contains 'stream_error_after_finish_does_not_synthesize_done' "$OPENAI_COMPATIBLE" && contains 'stream_eof_without_done_remains_detectable' "$OPENROUTER" && contains 'stream ended before Done' "$FUNCTION_AGENT"; then
+  record success "33.compatible-clean-eof-terminal" "generic OpenAI-compatible streams normalize exactly one typed finish plus clean EOF, while incomplete/error streams and the Agent's strict lifecycle remain failures"
+else
+  record fail "33.compatible-clean-eof-terminal" "clean provider EOF can regress into a false failure, or incomplete/error streams can be accepted as complete"
+fi
+
 echo
 echo "summary: success=$success review=$review fail=$fail total=$((success + review + fail))"
 
-if [ "$success" -lt 32 ]; then
-  echo "[ERROR] acceptance failed: expected all 32 successes"
+if [ "$success" -lt 33 ]; then
+  echo "[ERROR] acceptance failed: expected all 33 successes"
   exit 1
 fi
 

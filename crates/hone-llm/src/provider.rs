@@ -85,8 +85,10 @@ pub enum ChatStreamEvent {
     /// transport reached its terminal sentinel; consumers that require a
     /// complete response must also observe [`ChatStreamEvent::Done`].
     Finish(ChatStreamFinishReason),
-    /// Explicit provider terminal sentinel (`data: [DONE]`) or the equivalent
-    /// synthetic boundary used by the non-native fallback implementation.
+    /// Explicit provider terminal sentinel (`data: [DONE]`) or an equivalent
+    /// adapter-validated boundary. Generic OpenAI-compatible streams may use
+    /// exactly one typed finish followed by error-free clean EOF; non-native
+    /// fallbacks synthesize the same internal boundary after full completion.
     Done,
 }
 

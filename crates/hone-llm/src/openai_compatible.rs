@@ -442,6 +442,51 @@ fn should_retry_with_raw_http(error: &async_openai::error::OpenAIError) -> bool 
     )
 }
 
+/// Normalize the clean terminal boundary used by some OpenAI-compatible
+/// providers (including MiniMax): they emit a typed `finish_reason` and then
+/// close the HTTP/SSE body cleanly without a literal `data: [DONE]` sentinel.
+///
+/// This remains deliberately strict. A synthetic internal `Done` is emitted
+/// only after exactly one typed finish and a clean EOF. Missing or duplicate
+/// finishes, parser/transport errors, and an explicit `Done` never take this
+/// compatibility path, so consumers can continue to reject incomplete streams.
+fn normalize_clean_eof_after_finish<'a>(
+    provider_stream: BoxStream<'a, hone_core::HoneResult<ChatStreamEvent>>,
+) -> BoxStream<'a, hone_core::HoneResult<ChatStreamEvent>> {
+    futures::stream::unfold(
+        (provider_stream, 0_u8, false),
+        |(mut provider_stream, finish_count, terminal)| async move {
+            if terminal {
+                return None;
+            }
+
+            match provider_stream.next().await {
+                Some(Ok(event)) => {
+                    let next_finish_count = finish_count
+                        .saturating_add(u8::from(matches!(&event, ChatStreamEvent::Finish(_))));
+                    let next_terminal = matches!(&event, ChatStreamEvent::Done);
+                    Some((
+                        Ok(event),
+                        (provider_stream, next_finish_count, next_terminal),
+                    ))
+                }
+                Some(Err(error)) => Some((Err(error), (provider_stream, finish_count, true))),
+                None if finish_count == 1 => {
+                    tracing::debug!(
+                        "[openai_compatible] normalized clean EOF after typed finish into Done"
+                    );
+                    Some((
+                        Ok(ChatStreamEvent::Done),
+                        (provider_stream, finish_count, true),
+                    ))
+                }
+                None => None,
+            }
+        },
+    )
+    .boxed()
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::{
@@ -787,6 +832,194 @@ mod tests {
             ChatStreamEvent::Usage(usage) if usage.total_tokens == Some(11)
         ));
         assert_eq!(events[5], ChatStreamEvent::Done);
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(event, ChatStreamEvent::Done))
+                .count(),
+            1,
+            "a literal [DONE] must never be duplicated by EOF normalization"
+        );
+    }
+
+    #[tokio::test]
+    async fn clean_eof_after_tool_finish_synthesizes_done() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test server");
+        let addr = listener.local_addr().expect("read local addr");
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.expect("accept request");
+            let payload = read_json_request(&mut socket).await;
+            assert_eq!(payload["stream"], true);
+            assert_eq!(payload["tool_choice"], "required");
+
+            // MiniMax's OpenAI-compatible stream ends this way in production:
+            // the final tool-argument fragment and typed finish are complete,
+            // then the HTTP body closes cleanly without `data: [DONE]`.
+            let body = concat!(
+                "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"data_fetch\",\"arguments\":\"{\\\"data_type\\\":\\\"search\\\",\"}}]}}]}\n\n",
+                "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\"query\\\":\\\"CRWV\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n"
+            );
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            socket
+                .write_all(response.as_bytes())
+                .await
+                .expect("write clean EOF stream");
+            socket.shutdown().await.expect("close stream");
+        });
+
+        let provider = OpenAiCompatibleProvider::new(
+            "test-key",
+            &format!("http://{addr}"),
+            "test-model",
+            30,
+            64,
+        )
+        .expect("provider");
+        let events = provider
+            .chat_with_tools_stream(
+                &[Message {
+                    role: "user".to_string(),
+                    content: Some("lookup CRWV".to_string()),
+                    reasoning_content: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                }],
+                &[serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": "data_fetch",
+                        "description": "fetch data",
+                        "parameters": { "type": "object", "properties": {} }
+                    }
+                })],
+                None,
+                ToolChoiceMode::Required,
+            )
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .collect::<hone_core::HoneResult<Vec<_>>>()
+            .expect("clean EOF stream events");
+
+        assert!(matches!(
+            &events[1],
+            ChatStreamEvent::ToolCallDelta {
+                id: Some(id),
+                name: Some(name),
+                arguments,
+                ..
+            } if id == "call_1" && name == "data_fetch" && arguments.contains("data_type")
+        ));
+        assert!(matches!(
+            &events[2],
+            ChatStreamEvent::ToolCallDelta { arguments, .. }
+                if arguments.contains("CRWV")
+        ));
+        assert_eq!(
+            events[3],
+            ChatStreamEvent::Finish(ChatStreamFinishReason::ToolCalls)
+        );
+        assert_eq!(events[4], ChatStreamEvent::Done);
+        assert_eq!(events.len(), 5);
+    }
+
+    #[tokio::test]
+    async fn clean_eof_without_finish_does_not_synthesize_done() {
+        let events = normalize_clean_eof_after_finish(
+            futures::stream::iter(vec![Ok(ChatStreamEvent::ContentDelta(
+                "partial".to_string(),
+            ))])
+            .boxed(),
+        )
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .collect::<hone_core::HoneResult<Vec<_>>>()
+        .expect("clean incomplete stream");
+
+        assert_eq!(
+            events,
+            vec![ChatStreamEvent::ContentDelta("partial".to_string())]
+        );
+        assert!(!events.contains(&ChatStreamEvent::Done));
+    }
+
+    #[tokio::test]
+    async fn clean_eof_after_stop_finish_synthesizes_done() {
+        let events = normalize_clean_eof_after_finish(
+            futures::stream::iter(vec![
+                Ok(ChatStreamEvent::ContentDelta("complete".to_string())),
+                Ok(ChatStreamEvent::Finish(ChatStreamFinishReason::Stop)),
+            ])
+            .boxed(),
+        )
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .collect::<hone_core::HoneResult<Vec<_>>>()
+        .expect("clean complete stream");
+
+        assert_eq!(
+            events,
+            vec![
+                ChatStreamEvent::ContentDelta("complete".to_string()),
+                ChatStreamEvent::Finish(ChatStreamFinishReason::Stop),
+                ChatStreamEvent::Done,
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn duplicate_finish_does_not_synthesize_done() {
+        let events = normalize_clean_eof_after_finish(
+            futures::stream::iter(vec![
+                Ok(ChatStreamEvent::Finish(ChatStreamFinishReason::ToolCalls)),
+                Ok(ChatStreamEvent::Finish(ChatStreamFinishReason::Stop)),
+            ])
+            .boxed(),
+        )
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .collect::<hone_core::HoneResult<Vec<_>>>()
+        .expect("duplicate finish stream events");
+
+        assert_eq!(events.len(), 2);
+        assert!(!events.contains(&ChatStreamEvent::Done));
+    }
+
+    #[tokio::test]
+    async fn stream_error_after_finish_does_not_synthesize_done() {
+        let events = normalize_clean_eof_after_finish(
+            futures::stream::iter(vec![
+                Ok(ChatStreamEvent::Finish(ChatStreamFinishReason::Stop)),
+                Err(hone_core::HoneError::Llm(
+                    "stream transport error: truncated body".to_string(),
+                )),
+            ])
+            .boxed(),
+        )
+        .collect::<Vec<_>>()
+        .await;
+
+        assert_eq!(events.len(), 2);
+        assert!(matches!(
+            events.first(),
+            Some(Ok(ChatStreamEvent::Finish(ChatStreamFinishReason::Stop)))
+        ));
+        assert!(events.get(1).is_some_and(Result::is_err));
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, Ok(ChatStreamEvent::Done)))
+        );
     }
 
     #[tokio::test]
@@ -1414,6 +1647,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
                     Err(error) => futures::stream::once(async move { Err(error) }).boxed(),
                 })
                 .boxed();
+            let provider_stream = normalize_clean_eof_after_finish(provider_stream);
             let metadata = ChatStreamEvent::ToolChoiceMetadata {
                 requested: tool_choice_mode,
                 effective: effective_tool_choice,
