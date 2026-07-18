@@ -13,6 +13,7 @@ pub mod error;
 pub mod heartbeat;
 pub mod logging;
 pub mod process_lock;
+pub mod provider_symbol;
 pub mod quiet;
 pub mod security;
 pub mod task_observer;
@@ -41,6 +42,9 @@ pub use process_lock::{
     acquire_process_lock, acquire_runtime_process_lock, enabled_process_lock_names,
     format_lock_failure_message, preflight_process_locks, preflight_process_locks_with_cleanup,
     process_lock_path, runtime_lock_dir, try_cleanup_conflicting_process,
+};
+pub use provider_symbol::{
+    provider_canonical_key, provider_lookup_variants, provider_symbols_equivalent,
 };
 pub use security::{harden_private_dir, harden_private_file};
 pub use task_observer::{

@@ -23,16 +23,76 @@ const FMP_TTL_FINANCIALS: StdDuration = StdDuration::from_secs(6 * 60 * 60);
 const FMP_TTL_EARNINGS: StdDuration = StdDuration::from_secs(60 * 60);
 const MAX_FMP_SYMBOL_INPUT_BYTES: usize = 512;
 
+/// Resolve the request exactly as `DataFetchTool::execute` does. Callers that
+/// observe DataFetch attempts must use these helpers instead of re-parsing
+/// aliases independently, otherwise a conflicting or wrongly typed field can
+/// make telemetry describe a different provider request than the executor.
+pub fn effective_data_fetch_data_type(args: &Value) -> &str {
+    args.get("data_type")
+        .and_then(Value::as_str)
+        .unwrap_or("quote")
+}
+
+pub fn effective_data_fetch_target(args: &Value) -> &str {
+    let data_type = effective_data_fetch_data_type(args);
+    args.get(if data_type == "search" {
+        "query"
+    } else {
+        "ticker"
+    })
+    .or_else(|| args.get("ticker"))
+    .or_else(|| args.get("symbol"))
+    .and_then(Value::as_str)
+    .unwrap_or("")
+}
+
+pub fn data_fetch_data_type_uses_security_target(data_type: &str) -> bool {
+    matches!(
+        data_type,
+        "search"
+            | "quote"
+            | "quote_short"
+            | "extended_hours"
+            | "profile"
+            | "snapshot"
+            | "financials"
+            | "news"
+            | "crypto_quote"
+            | "etf_holdings"
+    )
+}
+
+pub fn effective_data_fetch_security_target(args: &Value) -> Option<&str> {
+    let data_type = effective_data_fetch_data_type(args);
+    data_fetch_data_type_uses_security_target(data_type)
+        .then(|| effective_data_fetch_target(args).trim())
+        .filter(|target| !target.is_empty())
+}
+
 /// Encode every provider symbol as URL data before it is interpolated into an
 /// endpoint path or query parameter. Commas remain separators for the FMP
 /// batch endpoints, while characters such as `/`, `?`, `#`, `%`, and `^` are
 /// encoded inside each symbol rather than being allowed to change URL
 /// structure.
 fn encode_fmp_symbols(value: &str, allow_empty: bool) -> Result<String, String> {
+    validated_fmp_symbols(value, allow_empty)?
+        .into_iter()
+        .map(|symbol| {
+            Ok(url::form_urlencoded::byte_serialize(symbol.as_bytes()).collect::<String>())
+        })
+        .collect::<Result<Vec<_>, String>>()
+        .map(|symbols| symbols.join(","))
+}
+
+pub fn validated_data_fetch_symbols(value: &str) -> Result<Vec<String>, String> {
+    validated_fmp_symbols(value, false)
+}
+
+fn validated_fmp_symbols(value: &str, allow_empty: bool) -> Result<Vec<String>, String> {
     let value = value.trim();
     if value.is_empty() {
         return if allow_empty {
-            Ok(String::new())
+            Ok(Vec::new())
         } else {
             Err("证券代码不能为空".to_string())
         };
@@ -48,10 +108,20 @@ fn encode_fmp_symbols(value: &str, allow_empty: bool) -> Result<String, String> 
             if symbol.is_empty() {
                 return Err("证券代码格式无效".to_string());
             }
-            Ok(url::form_urlencoded::byte_serialize(symbol.as_bytes()).collect::<String>())
+            Ok(symbol.to_string())
         })
-        .collect::<Result<Vec<_>, _>>()
-        .map(|symbols| symbols.join(","))
+        .collect()
+}
+
+pub fn validated_data_fetch_search_query(value: &str) -> Result<String, String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err("search query 不能为空".to_string());
+    }
+    if value.len() > MAX_FMP_SYMBOL_INPUT_BYTES || value.chars().any(char::is_control) {
+        return Err("search query 无效或过长".to_string());
+    }
+    Ok(value.to_string())
 }
 
 #[derive(Clone)]
@@ -190,6 +260,7 @@ impl DataFetchTool {
                 encode_fmp_symbols(ticker, false)?
             )),
             "search" => {
+                let ticker = validated_data_fetch_search_query(ticker)?;
                 let query =
                     url::form_urlencoded::byte_serialize(ticker.as_bytes()).collect::<String>();
                 Ok(format!(
@@ -779,7 +850,7 @@ impl Tool for DataFetchTool {
     }
 
     fn description(&self) -> &str {
-        "获取金融数据（股票/ETF/加密货币的实体、行情、基本面和新闻等）。公司或证券分析必须先用 search 按公司名、别名或代码解析标准实体，再用返回的 symbol 查询其它数据。search 结果只证明实体候选，不能单独证明客户、供应商、合同或新闻因果。quote/crypto_quote 中的 `hone_quote_time.beijing` 是 Hone 从 provider Unix timestamp 规范化得到的用户可见北京时间，应优先原样使用；普通 quote 的该字段不证明盘前/盘后时段，只有 `extended_hours` 的规范化 bar 可以核验美股扩展时段。支持的数据类型：search（实体搜索，返回 symbol/name/exchange/currency 候选）、quote（实时行情）、quote_short（低带宽简版批量行情）、extended_hours（最新一条盘前/正常时段/盘后分钟行情，返回有界规范化 bar）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、financials（财务数据）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历）。"
+        "获取金融数据（股票/ETF/加密货币的实体、行情、基本面和新闻等）。公司或证券分析必须先用 search，并由主 Agent 完整分析用户点名的标的，为每个标的分配一个本轮稳定且互不复用的 `entity_route`；每个标的分别发起 search（可并行，禁止拼成一个 query），后续 refinement、quote、profile/snapshot 与其它该标的调用继续携带同一个 `entity_route`。每一次 search 都必须由 Agent 在该次调用中明示 call-scoped `identity_match=exact_symbol`（query 是 ticker）或 `name_or_alias`（query 是公司名/别名）；旧调用的声明不会继承，服务端也不按大小写、长度或分隔符猜测。显式 ticker 路线会持续受同代码约束，即使后来用公司名补查，也不能被名称中提及该 ticker 的其它产品替代；`BRK/B`、`BRK-B`、`BRK.B` 等有限 provider 分隔写法视为同代码。路线只是内部关联键，不是实体结论。中文名或别名搜索为空时，应在同一路线换用正式英文名或标准 ticker；可把原始空 query 逐字放进 `refines_query`。若早先 search 漏了路线键，后续显式路线 search 用 `supersedes_query` 逐字指向那个旧 query，服务端只迁移这一条，不猜别名关系。`refines_query` 与 `supersedes_query` 严格互斥、每次最多填写一个；二者同时出现会使本次实体 search 无效。search 结果只证明实体候选，不能单独证明客户、供应商、合同或新闻因果。quote/crypto_quote 中的 `hone_quote_time.beijing` 是 Hone 从 provider Unix timestamp 规范化得到的用户可见北京时间，应优先原样使用；普通 quote 的该字段不证明盘前/盘后时段，只有 `extended_hours` 的规范化 bar 可以核验美股扩展时段。支持的数据类型：search（实体搜索，返回 symbol/name/exchange/currency 候选）、quote（实时行情）、quote_short（低带宽简版批量行情）、extended_hours（最新一条盘前/正常时段/盘后分钟行情，返回有界规范化 bar）、profile（公司概况）、snapshot（聚合快照：quote + profile + news）、financials（财务数据）、news（新闻）、gainers_losers（涨跌榜）、sector_performance（板块表现）、crypto_quote（加密货币行情）、etf_holdings（ETF 持仓）、earnings_calendar（财报日历）。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -812,6 +883,38 @@ impl Tool for DataFetchTool {
                 description:
                     "仅 search 使用的公司名、别名或证券代码查询词（如 NVIDIA、英伟达、NVDA）"
                         .to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "entity_route".to_string(),
+                param_type: "string".to_string(),
+                description: "公司/证券研究的内部路线键。先完整分析用户点名的标的，为每个标的选一个稳定且不同的短键（如 coreweave、nvidia），并在该标的的 search/refinement/quote/profile/snapshot 等调用中原样复用；不得把两个标的共用一条路线。宽泛市场数据可省略。".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "identity_match".to_string(),
+                param_type: "string".to_string(),
+                description: "仅 search 使用且证券研究的每一次 search 都必须在该次调用中填写；它是 call-scoped，旧 search 的值不会继承。query 是明确 ticker 时填 exact_symbol；query 是公司名、中文名或别名时填 name_or_alias。由读完整问题的 Agent 决定，不得按字符串大小写或长度猜测。".to_string(),
+                required: false,
+                r#enum: Some(vec!["exact_symbol".into(), "name_or_alias".into()]),
+                items: None,
+            },
+            ToolParameter {
+                name: "refines_query".to_string(),
+                param_type: "string".to_string(),
+                description: "仅 refinement search 使用；逐字且区分大小写地填写本轮先前返回空结果、且当前调用正在补查的原始 query。实际 query 必须非空、与这里不同，并直接对应返回的 symbol/name；不得填写或查询其它实体。与 supersedes_query 严格互斥，每次最多填写一个。".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "supersedes_query".to_string(),
+                param_type: "string".to_string(),
+                description: "仅用于给早先漏写 entity_route 的 search 补路线键；逐字且区分大小写地填写那次旧 query。可用于非空或空结果，服务端最多只迁移该精确 query，不推断别名。与 refines_query 严格互斥，每次最多填写一个。".to_string(),
                 required: false,
                 r#enum: None,
                 items: None,
@@ -856,20 +959,8 @@ impl Tool for DataFetchTool {
     }
 
     async fn execute(&self, args: Value) -> hone_core::HoneResult<Value> {
-        let data_type = args
-            .get("data_type")
-            .and_then(|v| v.as_str())
-            .unwrap_or("quote");
-        let ticker = args
-            .get(if data_type == "search" {
-                "query"
-            } else {
-                "ticker"
-            })
-            .or_else(|| args.get("ticker"))
-            .or_else(|| args.get("symbol"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let data_type = effective_data_fetch_data_type(&args);
+        let ticker = effective_data_fetch_target(&args);
 
         if self.keys.is_empty() {
             return Ok(serde_json::json!({
@@ -941,9 +1032,11 @@ impl Tool for DataFetchTool {
 #[cfg(test)]
 mod tests {
     use super::{
-        DataFetchTool, extended_hours_session, nonempty_fmp_error_message,
-        normalize_extended_hours_bar, normalize_quote_timestamp_metadata,
-        sanitize_fmp_error_detail, should_cache_fmp_value, ttl_for_data_type,
+        DataFetchTool, data_fetch_data_type_uses_security_target, effective_data_fetch_data_type,
+        effective_data_fetch_security_target, effective_data_fetch_target, extended_hours_session,
+        nonempty_fmp_error_message, normalize_extended_hours_bar,
+        normalize_quote_timestamp_metadata, sanitize_fmp_error_detail, should_cache_fmp_value,
+        ttl_for_data_type, validated_data_fetch_search_query, validated_data_fetch_symbols,
     };
     use crate::base::Tool;
     use crate::test_support::{assert_text_contains_all, assert_text_contains_none};
@@ -1100,6 +1193,74 @@ mod tests {
     }
 
     #[test]
+    fn effective_request_parser_matches_executor_precedence_and_types() {
+        for (args, expected_type, expected_target) in [
+            (json!({}), "quote", ""),
+            (
+                json!({"data_type":"quote","ticker":"CWY","symbol":"CRWV"}),
+                "quote",
+                "CWY",
+            ),
+            (
+                json!({"data_type":"quote","ticker":["CRWV"],"symbol":"CRWV"}),
+                "quote",
+                "",
+            ),
+            (
+                json!({"data_type":"search","query":null,"ticker":"CRWV"}),
+                "search",
+                "",
+            ),
+            (
+                json!({"data_type":"search","ticker":"CRWV"}),
+                "search",
+                "CRWV",
+            ),
+        ] {
+            assert_eq!(effective_data_fetch_data_type(&args), expected_type);
+            assert_eq!(effective_data_fetch_target(&args), expected_target);
+        }
+
+        assert_eq!(
+            effective_data_fetch_security_target(&json!({
+                "data_type":"quote",
+                "ticker":" CRWV "
+            })),
+            Some("CRWV")
+        );
+        assert!(
+            effective_data_fetch_security_target(&json!({
+                "data_type":"gainers_losers",
+                "ticker":"CRWV"
+            }))
+            .is_none()
+        );
+        assert!(data_fetch_data_type_uses_security_target("search"));
+        assert!(!data_fetch_data_type_uses_security_target(
+            "sector_performance"
+        ));
+        assert_eq!(
+            validated_data_fetch_symbols(" CRWV,NVDA ").expect("valid symbols"),
+            ["CRWV", "NVDA"]
+        );
+        for invalid in ["CRWV,", ",CRWV", "CRWV\nNVDA"] {
+            assert!(
+                validated_data_fetch_symbols(invalid).is_err(),
+                "{invalid:?}"
+            );
+        }
+        assert_eq!(
+            validated_data_fetch_search_query(" CoreWeave ").expect("valid query"),
+            "CoreWeave"
+        );
+        assert!(validated_data_fetch_search_query("\n").is_err());
+
+        let tool = tool_with_test_key();
+        assert!(tool.build_url("search", "").is_err());
+        assert!(tool.build_url("search", "  ").is_err());
+    }
+
+    #[test]
     fn symbol_path_input_is_encoded_and_structural_injection_is_rejected() {
         let tool = tool_with_test_key();
         assert_eq!(
@@ -1191,6 +1352,24 @@ mod tests {
             tool.parameters()
                 .iter()
                 .any(|parameter| parameter.name == "query")
+        );
+        let identity_match = parameters
+            .iter()
+            .find(|parameter| parameter.name == "identity_match")
+            .expect("identity_match parameter");
+        assert_eq!(
+            identity_match.r#enum.as_deref(),
+            Some(["exact_symbol".to_string(), "name_or_alias".to_string()].as_slice())
+        );
+        assert!(
+            parameters
+                .iter()
+                .any(|parameter| parameter.name == "entity_route")
+        );
+        assert!(
+            parameters
+                .iter()
+                .any(|parameter| parameter.name == "supersedes_query")
         );
         assert!(tool.description().contains("必须先用 search"));
     }

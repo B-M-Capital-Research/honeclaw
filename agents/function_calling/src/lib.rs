@@ -8,12 +8,19 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use hone_core::agent::{Agent, AgentContext, AgentResponse, ToolCallMade};
 use hone_core::tool_effect::tool_call_has_persistent_side_effect;
-use hone_core::{LlmAuditRecord, LlmAuditSink, ToolExecutionObserver};
+use hone_core::{
+    LlmAuditRecord, LlmAuditSink, ToolExecutionObserver, provider_canonical_key,
+    provider_symbols_equivalent,
+};
 use hone_llm::provider::ChatStreamFinishReason;
 use hone_llm::{
     ChatResponse, ChatStreamEvent, FunctionCall, LlmProvider, Message, ToolCall, ToolChoiceMode,
 };
 use hone_tools::ToolRegistry;
+use hone_tools::data_fetch::{
+    effective_data_fetch_data_type, effective_data_fetch_security_target,
+    validated_data_fetch_search_query, validated_data_fetch_symbols,
+};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::future::Future;
@@ -30,7 +37,7 @@ const ACTIVE_BUSINESS_FAILURE_RETRY_LIMIT: u32 = 1;
 const AGENT_OVERALL_TIMEOUT_ERROR: &str =
     "agent_timeout: function-calling overall deadline exceeded";
 const AGENT_STEP_TIMEOUT_ERROR: &str = "agent_timeout: function-calling step deadline exceeded";
-const POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION: &str = "【内部研究取证轮】当前已通过 DataFetch 进入金融数据工具链，但证券实体、行情或资产路由证据仍未完整。继续使用真实业务工具：先用 search 解析全部点名标的，再对选中的每个标准 symbol 执行 exact-symbol quote/profile；crypto 使用 search 返回的结构化 CRYPTO 路由与 crypto_quote，不要求 stock profile。若别名仍未解析，可先精确 refinement search；随后按用户原始问题继续取得财务、新闻、网页、公告、持仓或其它业务证据。尽量在同一轮批量或并行调用互不依赖的工具。不得把 data_fetch(search) 或 profile 当成公司关系、事件或因果证据。内部完成信号只是 Agent 自己结束研究的方式，不是服务端事实审查；只有合理取证已完成或来源明确不可得并需披露时才使用。";
+const POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION: &str = "【内部研究取证轮】当前已通过 DataFetch 进入金融数据工具链，但证券实体、行情或资产路由证据仍未完整。先由你完整分析用户实际点名的全部公司/证券，不要依赖固定问法扫描器。为每个标的分配一个本轮稳定且互不复用的 `entity_route`（内部短键，不是用户可见结论）；每个标的分别发起一个 search（可在同一轮并行，禁止把多个标的拼成一个 query），并由你依据完整语义在每一次 search 调用里明确填写 call-scoped `identity_match`：query 是 ticker 时用 `exact_symbol`，是公司名、中文名或别名时用 `name_or_alias`；前一次声明不会授权后一次 search，也不要让服务端按大小写或长度猜。后续 refinement、quote、profile/snapshot 与其它该标的调用都原样携带同一路线键。显式 ticker 路线的同代码约束在后续公司名补查中仍持续有效，不能切换成名字里提到该代码的其它产品；有限 provider 分隔写法可等价。若此前调用缺少路线键，补查时重复原 query，或用 `supersedes_query` 逐字指向那次旧 query，以便只迁移该路线。`refines_query` 与 `supersedes_query` 严格互斥，每次 search 最多填写一个：前者只连接同路线的空结果补查，后者只迁移一条漏写路线键的旧 query。对每条路线选中的标准 symbol 执行同代码 quote/profile；crypto 使用 search 返回的结构化 CRYPTO 路由与 crypto_quote，不要求 stock profile。若中文名、别名或代码搜索为空，在同一 `entity_route` 下换用公司正式英文名或标准 ticker 做精确补查；可在 `refines_query` 中逐字填写原始空 query，但不得另建或复用其它实体的路线来抵消。随后按用户原始问题继续取得财务、新闻、网页、公告、持仓或其它业务证据。尽量在同一轮批量或并行调用互不依赖的工具。不得把 data_fetch(search) 或 profile 当成公司关系、事件或因果证据。内部完成信号只是 Agent 自己结束研究的方式，不是服务端事实审查；只有合理取证已完成或来源明确不可得并需披露时才使用。";
 const ACTIVE_RESEARCH_SYSTEM_INSTRUCTION: &str = "【内部研究工具轮】当前已进入金融数据工具链。本轮同时提供真实业务工具和 `finish_research`。请由同一 Agent 继续阅读用户原始问题与本轮真实工具结果：证据不足时调用当前最需要的一个或多个业务工具；合理的研究尝试已经完成，或必要来源已明确不可得并可如实披露时，优先单独调用 `finish_research`，以便直接进入可流式输出的同 Agent 终稿。不要把完成信号与业务工具混用。若 provider 本轮仍以完整自然语言正文结束，该正文就是同一 Agent 的最终回答，服务端会原样采用，不会另行审查、重写或补写，因此必须先完成下方最后一跳自检。实体 search/profile 只证明身份，不证明公司关系；关系、事件和因果结论必须先取得本轮 web/news/公告证据。";
 const FINISH_RESEARCH_SYSTEM_INSTRUCTION: &str = "【显式完成后的终稿阶段】Agent 已在同一业务工具循环中显式确认本轮合理的研究与工具尝试完成，现由同一 Agent 和同一上下文进入无工具终稿阶段。这是证据整理而不是新的研究规划：直接组织终稿，不要重新展开工具决策或冗长隐藏推演。只能使用用户请求与此前已成功返回的业务工具结果；`reasoning_content`、隐藏思考、未采用草稿和内部状态文本都不是事实证据。缺失证据应如实披露但不构成拒答。";
 const FINAL_ANSWER_EVIDENCE_CONTRACT: &str = concat!(
@@ -42,6 +49,7 @@ const FINAL_ANSWER_EVIDENCE_CONTRACT: &str = concat!(
     "没有直接证据与完整输入时，不得给出目标价、概率、仓位比例、止损位或精确支撑位；第三方分析师目标价必须标注为第三方聚合口径与对应时间，不得直接作为交易锚点。",
     "某项证据不可得时，披露缺项并继续完成能够被当前证据支持的分析，不得因此拒绝整个问题。不要提及 finish_research、内部协议、工具循环、终态原因或这条提示。"
 );
+const FINAL_RELATIONSHIP_DELETION_CHECK: &str = "【最后一步：关系结论删除式自检】逐句删除任何没有被本轮来源正文或摘要直接明示的公司关系表述。来源标题、‘合作’一词、采购事实或模型常识都不能单独证明：最大/之一、首选、核心客户、股权存在或不存在、交叉持股、独家、保证/优先供货、客户集中度、具体芯片型号、合同金额或双方角色。若当前来源只直接支持‘双方宣布加强合作’或‘关系预计扩展’，就只写到这个范围；不得为了显得完整而补齐更具体的故事。";
 
 #[async_trait]
 pub trait FunctionCallingStreamObserver: Send + Sync {
@@ -74,19 +82,353 @@ struct PendingToolCall {
 }
 
 #[derive(Debug, Default)]
+struct ResearchIdentityRouteEvidence {
+    explicit: bool,
+    identity_match_declared: bool,
+    search_attempts: u32,
+    empty_search_results: u32,
+    post_identity_attempts: u32,
+    query_aliases: BTreeSet<String>,
+    exact_symbol_constraint: Option<String>,
+    candidates: BTreeSet<String>,
+    quote_symbols: BTreeSet<String>,
+    asset_route_symbols: BTreeSet<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum IdentitySearchMatchMode {
+    ExactSymbol,
+    NameOrAlias,
+}
+
+impl ResearchIdentityRouteEvidence {
+    fn symbol_matches_constraint(&self, symbol: &str) -> bool {
+        self.exact_symbol_constraint
+            .as_deref()
+            .map_or(true, |constraint| {
+                provider_symbols_equivalent(constraint, symbol)
+            })
+    }
+
+    fn retain_symbols_matching_constraint(&mut self) {
+        let Some(constraint) = self.exact_symbol_constraint.clone() else {
+            return;
+        };
+        self.candidates
+            .retain(|symbol| provider_symbols_equivalent(&constraint, symbol));
+        self.quote_symbols
+            .retain(|symbol| provider_symbols_equivalent(&constraint, symbol));
+        self.asset_route_symbols
+            .retain(|symbol| provider_symbols_equivalent(&constraint, symbol));
+    }
+
+    fn retain_symbols_matching_candidates(&mut self) {
+        let candidates = self.candidates.clone();
+        self.quote_symbols.retain(|symbol| {
+            candidates
+                .iter()
+                .any(|candidate| provider_symbols_equivalent(candidate, symbol))
+        });
+        self.asset_route_symbols.retain(|symbol| {
+            candidates
+                .iter()
+                .any(|candidate| provider_symbols_equivalent(candidate, symbol))
+        });
+        self.retain_symbols_matching_constraint();
+    }
+
+    fn is_covered(&self) -> bool {
+        !self.candidates.is_empty()
+            && self.quote_symbols.iter().any(|quote_symbol| {
+                self.symbol_matches_constraint(quote_symbol)
+                    && self.asset_route_symbols.iter().any(|asset_symbol| {
+                        self.symbol_matches_constraint(asset_symbol)
+                            && provider_symbols_equivalent(quote_symbol, asset_symbol)
+                            && self.candidates.iter().any(|candidate| {
+                                self.symbol_matches_constraint(candidate)
+                                    && provider_symbols_equivalent(candidate, quote_symbol)
+                            })
+                    })
+            })
+    }
+
+    fn has_bounded_no_coverage(&self) -> bool {
+        self.candidates.is_empty()
+            && self.search_attempts >= 2
+            && self.empty_search_results >= 2
+            && self.post_identity_attempts > 0
+    }
+}
+
+#[derive(Debug, Default)]
 struct ResearchEvidenceLedger {
     identity_only_attempts: u32,
+    unscoped_identity_search_attempts: u32,
     broad_data_attempts: u32,
     symbol_scoped_attempts: u32,
     post_activation_attempts: u32,
     post_identity_attempts: u32,
     post_identity_quote_attempts: u32,
     post_identity_asset_route_attempts: u32,
-    post_identity_quote_symbols: BTreeSet<String>,
-    post_identity_asset_route_symbols: BTreeSet<String>,
+    identity_routes: BTreeMap<String, ResearchIdentityRouteEvidence>,
 }
 
 impl ResearchEvidenceLedger {
+    fn active_route_keys(&self) -> Vec<String> {
+        self.identity_routes.keys().cloned().collect()
+    }
+
+    fn register_pending_provisional_identity_query(&mut self, tool_call: &ToolCall) {
+        if data_fetch_explicit_entity_route_key(tool_call).is_some() {
+            return;
+        }
+        let Some(query) = data_fetch_search_query(tool_call) else {
+            return;
+        };
+        let already_names_explicit_route = self
+            .identity_routes
+            .values()
+            .any(|route| route.explicit && route.query_aliases.iter().any(|alias| alias == &query));
+        if !already_names_explicit_route {
+            self.identity_routes
+                .entry(format!("query:{query}"))
+                .or_default();
+        }
+    }
+
+    fn resolve_identity_route_key(&self, tool_call: &ToolCall) -> Option<(String, bool)> {
+        if !is_identity_only_search_call(tool_call) {
+            return None;
+        }
+        if let Some(route_key) = data_fetch_explicit_entity_route_key(tool_call) {
+            return Some((route_key, true));
+        }
+        // An untagged call may bind back to an explicit route only when its
+        // actual executed query is an exact known alias. Self-labelled
+        // refines/supersedes metadata cannot rewrite another explicit route.
+        let aliases = data_fetch_search_query(tool_call)
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        let matching_explicit_routes = self
+            .identity_routes
+            .iter()
+            .filter(|(_, route)| {
+                route.explicit
+                    && route
+                        .query_aliases
+                        .iter()
+                        .any(|alias| aliases.contains(alias))
+            })
+            .map(|(key, _)| key.clone())
+            .collect::<Vec<_>>();
+        if let [route_key] = matching_explicit_routes.as_slice() {
+            return Some((route_key.clone(), false));
+        }
+        data_fetch_identity_route_key(tool_call)
+    }
+
+    fn migrate_implicit_routes_for_explicit_search(
+        &mut self,
+        tool_call: &ToolCall,
+        explicit_route_key: &str,
+    ) {
+        if let Some(implicit_query) = data_fetch_identity_migration_source(tool_call) {
+            let implicit_key = format!("query:{implicit_query}");
+            let implicit = (implicit_key != explicit_route_key)
+                .then(|| self.identity_routes.remove(&implicit_key))
+                .flatten();
+            if let Some(implicit) = implicit {
+                let explicit = self
+                    .identity_routes
+                    .entry(explicit_route_key.to_string())
+                    .or_default();
+                explicit.explicit = true;
+                explicit.search_attempts = explicit
+                    .search_attempts
+                    .saturating_add(implicit.search_attempts);
+                explicit.empty_search_results = explicit
+                    .empty_search_results
+                    .saturating_add(implicit.empty_search_results);
+                // Migration carries attempt history, exact-text aliases, and a
+                // previously Agent-declared exact constraint. Candidate,
+                // quote/profile, and untyped follow-up evidence remain
+                // provisional; the explicit route must establish its own
+                // candidate and then collect route-correct evidence.
+                explicit.query_aliases.extend(implicit.query_aliases);
+                if explicit.exact_symbol_constraint.is_none() {
+                    explicit.exact_symbol_constraint = implicit.exact_symbol_constraint;
+                }
+                explicit.retain_symbols_matching_constraint();
+            }
+        }
+        let explicit = self
+            .identity_routes
+            .entry(explicit_route_key.to_string())
+            .or_default();
+        explicit.explicit = true;
+        explicit.query_aliases.extend(
+            data_fetch_search_query(tool_call)
+                .into_iter()
+                .chain(data_fetch_refines_query(tool_call))
+                .chain(data_fetch_supersedes_query(tool_call)),
+        );
+    }
+
+    fn observe_route_symbols(
+        &mut self,
+        tool_call: &ToolCall,
+        symbols: &BTreeSet<String>,
+        quote: bool,
+        asset_route: bool,
+    ) {
+        if symbols.is_empty() {
+            return;
+        }
+        if let Some(route_key) = data_fetch_explicit_entity_route_key(tool_call) {
+            let Some(route) = self.identity_routes.get_mut(&route_key) else {
+                return;
+            };
+            if route.search_attempts == 0
+                || !route.identity_match_declared
+                || route.candidates.is_empty()
+            {
+                return;
+            }
+            let matching_symbols = symbols
+                .iter()
+                .filter(|symbol| {
+                    route.symbol_matches_constraint(symbol)
+                        && route
+                            .candidates
+                            .iter()
+                            .any(|candidate| provider_symbols_equivalent(candidate, symbol))
+                })
+                .cloned()
+                .collect::<BTreeSet<_>>();
+            if quote {
+                route.quote_symbols.extend(matching_symbols.iter().cloned());
+            }
+            if asset_route {
+                route.asset_route_symbols.extend(matching_symbols);
+            }
+            return;
+        }
+
+        // Untagged calls are backward compatible only when a symbol belongs
+        // to exactly one active route. Provider noise or overlapping aliases
+        // cannot let one company's quote/profile unlock another route.
+        let active_route_keys = self.active_route_keys();
+        for symbol in symbols {
+            let matching_routes = active_route_keys
+                .iter()
+                .filter(|key| {
+                    self.identity_routes.get(*key).is_some_and(|route| {
+                        route
+                            .candidates
+                            .iter()
+                            .any(|candidate| provider_symbols_equivalent(candidate, symbol))
+                    })
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            if let [route_key] = matching_routes.as_slice() {
+                if let Some(route) = self.identity_routes.get_mut(route_key) {
+                    if quote {
+                        route.quote_symbols.insert(symbol.clone());
+                    }
+                    if asset_route {
+                        route.asset_route_symbols.insert(symbol.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    fn observe_route_non_search_attempt(
+        &mut self,
+        tool_call: &ToolCall,
+        symbols: &BTreeSet<String>,
+    ) {
+        if let Some(route_key) = data_fetch_explicit_entity_route_key(tool_call) {
+            let Some(route) = self.identity_routes.get_mut(&route_key) else {
+                return;
+            };
+            if route.search_attempts == 0 || !route.identity_match_declared {
+                return;
+            }
+            let symbol_matches_route = if route.candidates.is_empty() {
+                route.empty_search_results >= 2
+                    && !symbols.is_empty()
+                    && route
+                        .exact_symbol_constraint
+                        .as_deref()
+                        .map_or(true, |constraint| {
+                            symbols
+                                .iter()
+                                .any(|symbol| provider_symbols_equivalent(constraint, symbol))
+                        })
+            } else {
+                symbols.iter().any(|symbol| {
+                    route.symbol_matches_constraint(symbol)
+                        && route
+                            .candidates
+                            .iter()
+                            .any(|candidate| provider_symbols_equivalent(candidate, symbol))
+                })
+            };
+            if !symbol_matches_route {
+                return;
+            }
+            route.post_identity_attempts = route.post_identity_attempts.saturating_add(1);
+            return;
+        }
+        let active_route_keys = self.active_route_keys();
+        let matching_routes = active_route_keys
+            .iter()
+            .filter(|key| {
+                self.identity_routes.get(*key).is_some_and(|route| {
+                    symbols.iter().any(|symbol| {
+                        route
+                            .candidates
+                            .iter()
+                            .any(|candidate| provider_symbols_equivalent(candidate, symbol))
+                    })
+                })
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        if let [route_key] = matching_routes.as_slice() {
+            if let Some(route) = self.identity_routes.get_mut(route_key) {
+                route.post_identity_attempts = route.post_identity_attempts.saturating_add(1);
+            }
+            return;
+        }
+        if symbols.is_empty()
+            && active_route_keys.len() == 1
+            && tool_call.function.name == "web_search"
+        {
+            // An unscoped Web/news follow-up can be attributed only when
+            // exactly one route is still preparing bounded no-coverage. With
+            // two empty routes the service cannot guess which entity it serves.
+            let empty_routes = active_route_keys
+                .iter()
+                .filter(|key| {
+                    self.identity_routes.get(*key).is_some_and(|route| {
+                        route.candidates.is_empty()
+                            && route.search_attempts >= 2
+                            && route.empty_search_results >= 2
+                    })
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            if let [route_key] = empty_routes.as_slice() {
+                if let Some(route) = self.identity_routes.get_mut(route_key) {
+                    route.post_identity_attempts = route.post_identity_attempts.saturating_add(1);
+                }
+            }
+        }
+    }
+
     fn observe_business_call(&mut self, tool_call: &ToolCall, active_business_round: bool) {
         // A malformed function payload never counts as an evidence attempt.
         // The normal execution path will return its parse error to the Agent,
@@ -97,8 +439,64 @@ impl ResearchEvidenceLedger {
         if active_business_round {
             self.post_activation_attempts = self.post_activation_attempts.saturating_add(1);
         }
+        if let Some(route_key) = data_fetch_explicit_entity_route_key(tool_call) {
+            // Any explicit route mention is kept as pending even when this call
+            // is malformed or out of order. It therefore cannot disappear from
+            // the all-routes floor, but it carries no evidence until a valid
+            // search for this route has completed.
+            let route = self.identity_routes.entry(route_key).or_default();
+            route.explicit = true;
+        }
         if is_identity_only_search_call(tool_call) {
-            self.identity_only_attempts = self.identity_only_attempts.saturating_add(1);
+            if !data_fetch_identity_search_shape_is_valid(tool_call) {
+                self.register_pending_provisional_identity_query(tool_call);
+                return;
+            }
+            if let Some((route_key, explicit)) = self.resolve_identity_route_key(tool_call) {
+                // `identity_match` is call-scoped. This applies both to calls
+                // carrying `entity_route` and to later untagged calls that
+                // resolve back to an already-explicit route by exact alias.
+                let targets_explicit_route = explicit
+                    || self
+                        .identity_routes
+                        .get(&route_key)
+                        .is_some_and(|route| route.explicit);
+                if targets_explicit_route && data_fetch_identity_match_mode(tool_call).is_none() {
+                    return;
+                }
+                self.identity_only_attempts = self.identity_only_attempts.saturating_add(1);
+                if explicit {
+                    // An explicit route retires only the provisional route
+                    // named by this exact query/refines_query. One tagged
+                    // entity must never hide every other untagged entity.
+                    self.migrate_implicit_routes_for_explicit_search(tool_call, &route_key);
+                }
+                let route = self.identity_routes.entry(route_key).or_default();
+                route.explicit |= explicit;
+                if let Some(match_mode) = data_fetch_identity_match_mode(tool_call) {
+                    route.identity_match_declared = true;
+                    if match_mode == IdentitySearchMatchMode::ExactSymbol {
+                        if let Some(query) = data_fetch_search_query_raw(tool_call) {
+                            // The first explicit ticker fixes this route's
+                            // identity. A later different ticker cannot widen
+                            // it; bounded provider separator variants normalize
+                            // to the same value.
+                            if route.exact_symbol_constraint.is_none() {
+                                route.exact_symbol_constraint = provider_canonical_key(&query);
+                            }
+                            route.retain_symbols_matching_constraint();
+                        }
+                    }
+                }
+                if let Some(query) = data_fetch_search_query(tool_call) {
+                    route.query_aliases.insert(query);
+                }
+                route.search_attempts = route.search_attempts.saturating_add(1);
+            } else {
+                self.identity_only_attempts = self.identity_only_attempts.saturating_add(1);
+                self.unscoped_identity_search_attempts =
+                    self.unscoped_identity_search_attempts.saturating_add(1);
+            }
             return;
         }
 
@@ -117,11 +515,12 @@ impl ResearchEvidenceLedger {
         // then exact-symbol evidence calls.
         if self.identity_only_attempts > 0 {
             self.post_identity_attempts = self.post_identity_attempts.saturating_add(1);
+            self.observe_route_non_search_attempt(tool_call, &symbols);
             match data_type.as_deref() {
                 Some("quote" | "quote_short") => {
                     self.post_identity_quote_attempts =
                         self.post_identity_quote_attempts.saturating_add(1);
-                    self.post_identity_quote_symbols.extend(symbols);
+                    self.observe_route_symbols(tool_call, &symbols, true, false);
                 }
                 Some("crypto_quote") => {
                     // A structured crypto search followed by crypto_quote is
@@ -131,14 +530,12 @@ impl ResearchEvidenceLedger {
                         self.post_identity_quote_attempts.saturating_add(1);
                     self.post_identity_asset_route_attempts =
                         self.post_identity_asset_route_attempts.saturating_add(1);
-                    self.post_identity_quote_symbols
-                        .extend(symbols.iter().cloned());
-                    self.post_identity_asset_route_symbols.extend(symbols);
+                    self.observe_route_symbols(tool_call, &symbols, true, true);
                 }
                 Some("profile") => {
                     self.post_identity_asset_route_attempts =
                         self.post_identity_asset_route_attempts.saturating_add(1);
-                    self.post_identity_asset_route_symbols.extend(symbols);
+                    self.observe_route_symbols(tool_call, &symbols, false, true);
                 }
                 Some("snapshot") => {
                     // DataFetch snapshot is the canonical combined
@@ -149,9 +546,7 @@ impl ResearchEvidenceLedger {
                         self.post_identity_quote_attempts.saturating_add(1);
                     self.post_identity_asset_route_attempts =
                         self.post_identity_asset_route_attempts.saturating_add(1);
-                    self.post_identity_quote_symbols
-                        .extend(symbols.iter().cloned());
-                    self.post_identity_asset_route_symbols.extend(symbols);
+                    self.observe_route_symbols(tool_call, &symbols, true, true);
                 }
                 _ => {}
             }
@@ -159,7 +554,7 @@ impl ResearchEvidenceLedger {
     }
 
     fn completion_signal_available(&self, active_business_round: bool) -> bool {
-        active_business_round && self.post_activation_attempts > 0
+        self.evidence_floor_satisfied(active_business_round)
     }
 
     fn evidence_floor_satisfied(&self, active_business_round: bool) -> bool {
@@ -167,19 +562,111 @@ impl ResearchEvidenceLedger {
             return false;
         }
 
-        let security_path = self.identity_only_attempts > 0 || self.symbol_scoped_attempts > 0;
+        let route_keys = self.active_route_keys();
+        let security_path = self.identity_only_attempts > 0
+            || self.symbol_scoped_attempts > 0
+            || !route_keys.is_empty();
         if !security_path {
             return self.broad_data_attempts > 0;
         }
+        if self.identity_only_attempts == 0 || self.post_identity_attempts == 0 {
+            return false;
+        }
+        !route_keys.is_empty()
+            && route_keys.iter().all(|key| {
+                self.identity_routes.get(key).is_some_and(|route| {
+                    route.search_attempts > 0
+                        && (!route.explicit || route.identity_match_declared)
+                        && (route.is_covered() || route.has_bounded_no_coverage())
+                })
+            })
+    }
 
-        self.identity_only_attempts > 0
-            && self.post_identity_attempts > 0
-            && self.post_identity_quote_attempts > 0
-            && self.post_identity_asset_route_attempts > 0
-            && !self.post_identity_quote_symbols.is_empty()
-            && self
-                .post_identity_quote_symbols
-                .is_subset(&self.post_identity_asset_route_symbols)
+    fn observe_business_result(
+        &mut self,
+        tool_call: &ToolCall,
+        tool_result: &Value,
+        _active_business_round: bool,
+    ) {
+        if !is_identity_only_search_call(tool_call) {
+            return;
+        }
+        if !data_fetch_identity_search_shape_is_valid(tool_call) {
+            return;
+        }
+        let Some((route_key, explicit)) = self.resolve_identity_route_key(tool_call) else {
+            return;
+        };
+        let query = data_fetch_search_query_raw(tool_call).unwrap_or_default();
+        let match_mode = data_fetch_identity_match_mode(tool_call);
+        if (explicit
+            || self
+                .identity_routes
+                .get(&route_key)
+                .is_some_and(|route| route.explicit))
+            && match_mode.is_none()
+        {
+            return;
+        }
+        let exact_symbol_constraint = self
+            .identity_routes
+            .get(&route_key)
+            .and_then(|route| route.exact_symbol_constraint.clone());
+        let mut candidates = identity_search_route_candidates(tool_result, &query, match_mode);
+        if let Some(exact_symbol_constraint) = exact_symbol_constraint.as_deref() {
+            candidates
+                .retain(|symbol| provider_symbols_equivalent(exact_symbol_constraint, symbol));
+        }
+        let route = self.identity_routes.entry(route_key).or_default();
+        route.explicit |= explicit;
+        if candidates.is_empty() {
+            route.empty_search_results = route.empty_search_results.saturating_add(1);
+            // Bounded no-coverage requires a real follow-up after the latest
+            // unsuccessful identity attempt. Evidence collected for an older
+            // candidate (or between two empty attempts) cannot satisfy a later
+            // empty generation.
+            route.post_identity_attempts = 0;
+            if match_mode == Some(IdentitySearchMatchMode::ExactSymbol)
+                || exact_symbol_constraint.is_some()
+            {
+                route.candidates.clear();
+                route.quote_symbols.clear();
+                route.asset_route_symbols.clear();
+            }
+        } else {
+            // A later exact/refined result is authoritative for this declared
+            // route. Replace earlier broad/noisy candidates instead of unioning
+            // them into a permanently ambiguous set.
+            route.empty_search_results = 0;
+            route.candidates = candidates;
+            route.retain_symbols_matching_candidates();
+        }
+    }
+
+    fn observe_business_failure(&mut self, tool_call: &ToolCall) {
+        if !is_identity_only_search_call(tool_call) {
+            return;
+        }
+        if !data_fetch_identity_search_shape_is_valid(tool_call) {
+            return;
+        }
+        if let Some((route_key, explicit)) = self.resolve_identity_route_key(tool_call) {
+            if (explicit
+                || self
+                    .identity_routes
+                    .get(&route_key)
+                    .is_some_and(|route| route.explicit))
+                && data_fetch_identity_match_mode(tool_call).is_none()
+            {
+                return;
+            }
+            if let Some(route) = self.identity_routes.get_mut(&route_key) {
+                route.empty_search_results = route.empty_search_results.saturating_add(1);
+                if route.candidates.is_empty() {
+                    route.post_identity_attempts = 0;
+                }
+            }
+        }
     }
 }
 
@@ -1243,47 +1730,267 @@ fn is_valid_finish_research_call(tool_call: &ToolCall) -> bool {
 }
 
 fn is_identity_only_search_call(tool_call: &ToolCall) -> bool {
-    data_fetch_data_type(tool_call)
-        .is_some_and(|data_type| data_type.eq_ignore_ascii_case("search"))
+    data_fetch_data_type(tool_call).is_some_and(|data_type| data_type == "search")
 }
 
 fn data_fetch_data_type(tool_call: &ToolCall) -> Option<String> {
-    if !tool_call.function.name.eq_ignore_ascii_case("data_fetch") {
+    let arguments = data_fetch_arguments(tool_call)?;
+    Some(effective_data_fetch_data_type(&arguments).to_string())
+}
+
+fn data_fetch_arguments(tool_call: &ToolCall) -> Option<Value> {
+    tool_call
+        .function
+        .name
+        .eq("data_fetch")
+        .then(|| serde_json::from_str::<Value>(&tool_call.function.arguments).ok())
+        .flatten()
+}
+
+fn normalized_data_fetch_string_arg(tool_call: &ToolCall, keys: &[&str]) -> Option<String> {
+    data_fetch_string_arg_raw(tool_call, keys).map(|value| value.to_lowercase())
+}
+
+fn data_fetch_string_arg_raw(tool_call: &ToolCall, keys: &[&str]) -> Option<String> {
+    if tool_call.function.name != "data_fetch" {
         return None;
     }
-    serde_json::from_str::<Value>(&tool_call.function.arguments)
-        .ok()
-        .and_then(|arguments| {
-            arguments
-                .get("data_type")
-                .and_then(Value::as_str)
-                .map(|data_type| data_type.trim().to_ascii_lowercase())
+    let arguments = serde_json::from_str::<Value>(&tool_call.function.arguments).ok()?;
+    keys.iter()
+        .find_map(|key| arguments.get(*key).and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn data_fetch_search_query(tool_call: &ToolCall) -> Option<String> {
+    data_fetch_search_query_raw(tool_call)
+}
+
+fn data_fetch_refines_query(tool_call: &ToolCall) -> Option<String> {
+    is_identity_only_search_call(tool_call)
+        .then(|| data_fetch_string_arg_raw(tool_call, &["refines_query"]))
+        .flatten()
+}
+
+fn data_fetch_supersedes_query(tool_call: &ToolCall) -> Option<String> {
+    is_identity_only_search_call(tool_call)
+        .then(|| data_fetch_string_arg_raw(tool_call, &["supersedes_query"]))
+        .flatten()
+}
+
+fn data_fetch_identity_match_mode(tool_call: &ToolCall) -> Option<IdentitySearchMatchMode> {
+    if !is_identity_only_search_call(tool_call) {
+        return None;
+    }
+    match normalized_data_fetch_string_arg(tool_call, &["identity_match"])?.as_str() {
+        "exact_symbol" => Some(IdentitySearchMatchMode::ExactSymbol),
+        "name_or_alias" => Some(IdentitySearchMatchMode::NameOrAlias),
+        _ => None,
+    }
+}
+
+fn data_fetch_search_query_raw(tool_call: &ToolCall) -> Option<String> {
+    if !is_identity_only_search_call(tool_call) {
+        return None;
+    }
+    let arguments = data_fetch_arguments(tool_call)?;
+    let target = effective_data_fetch_security_target(&arguments)?;
+    validated_data_fetch_search_query(target).ok()
+}
+
+fn data_fetch_optional_metadata_string_is_valid(tool_call: &ToolCall, key: &str) -> bool {
+    let Some(arguments) = data_fetch_arguments(tool_call) else {
+        return false;
+    };
+    match arguments.get(key) {
+        None => true,
+        Some(Value::String(value)) => !value.trim().is_empty(),
+        Some(_) => false,
+    }
+}
+
+fn data_fetch_identity_search_shape_is_valid(tool_call: &ToolCall) -> bool {
+    if !is_identity_only_search_call(tool_call) {
+        return false;
+    }
+    if [
+        "entity_route",
+        "identity_match",
+        "refines_query",
+        "supersedes_query",
+    ]
+    .into_iter()
+    .any(|key| !data_fetch_optional_metadata_string_is_valid(tool_call, key))
+    {
+        return false;
+    }
+    if data_fetch_refines_query(tool_call).is_some()
+        && data_fetch_supersedes_query(tool_call).is_some()
+    {
+        return false;
+    }
+    let raw_match = data_fetch_string_arg_raw(tool_call, &["identity_match"]);
+    let match_mode = data_fetch_identity_match_mode(tool_call);
+    if raw_match.is_some() && match_mode.is_none() {
+        return false;
+    }
+    let Some(query) = data_fetch_search_query_raw(tool_call) else {
+        return false;
+    };
+    match match_mode {
+        Some(IdentitySearchMatchMode::ExactSymbol) => provider_canonical_key(&query).is_some(),
+        Some(IdentitySearchMatchMode::NameOrAlias) | None => {
+            !normalized_identity_search_text(&query).is_empty()
+        }
+    }
+}
+
+fn data_fetch_identity_migration_source(tool_call: &ToolCall) -> Option<String> {
+    data_fetch_supersedes_query(tool_call)
+        .or_else(|| data_fetch_refines_query(tool_call))
+        .or_else(|| data_fetch_search_query(tool_call))
+}
+
+fn data_fetch_explicit_entity_route_key(tool_call: &ToolCall) -> Option<String> {
+    if tool_call.function.name != "data_fetch" {
+        return None;
+    }
+    data_fetch_string_arg_raw(tool_call, &["entity_route"]).map(|route| format!("route:{route}"))
+}
+
+fn data_fetch_identity_route_key(tool_call: &ToolCall) -> Option<(String, bool)> {
+    if !is_identity_only_search_call(tool_call) {
+        return None;
+    }
+    if let Some(route_key) = data_fetch_explicit_entity_route_key(tool_call) {
+        return Some((route_key, true));
+    }
+    // `refines_query` links a legacy/unscoped refinement to the original
+    // query-derived route. Otherwise each separate Agent search call declares
+    // one provisional route without parsing the natural-language query.
+    data_fetch_refines_query(tool_call)
+        .or_else(|| data_fetch_search_query(tool_call))
+        .map(|query| (format!("query:{query}"), false))
+}
+
+fn normalized_identity_search_text(value: &str) -> String {
+    value
+        .chars()
+        .flat_map(char::to_lowercase)
+        .filter(|ch| ch.is_alphanumeric())
+        .collect()
+}
+
+fn identity_search_route_candidates(
+    tool_result: &Value,
+    query: &str,
+    match_mode: Option<IdentitySearchMatchMode>,
+) -> BTreeSet<String> {
+    let normalized_query = normalized_identity_search_text(query);
+    let rows = tool_result
+        .get("data")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+    let all_candidates = rows
+        .iter()
+        .filter_map(|row| row.get("symbol").and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|symbol| !symbol.is_empty())
+        .map(str::to_ascii_uppercase)
+        .collect::<BTreeSet<_>>();
+    if all_candidates.is_empty() {
+        return all_candidates;
+    }
+
+    if match_mode == Some(IdentitySearchMatchMode::ExactSymbol) {
+        return rows
+            .iter()
+            .filter_map(|row| row.get("symbol").and_then(Value::as_str))
+            .map(str::trim)
+            .filter(|symbol| provider_symbols_equivalent(query, symbol))
+            .map(str::to_ascii_uppercase)
+            .collect();
+    }
+    if normalized_query.is_empty() {
+        return BTreeSet::new();
+    }
+
+    let grounded = rows
+        .iter()
+        .filter(|row| {
+            identity_search_row_is_grounded_in_query(
+                row,
+                query,
+                match_mode != Some(IdentitySearchMatchMode::NameOrAlias),
+            )
         })
+        .filter_map(|row| row.get("symbol").and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|symbol| !symbol.is_empty())
+        .map(str::to_ascii_uppercase)
+        .collect::<BTreeSet<_>>();
+    if grounded.is_empty() && match_mode != Some(IdentitySearchMatchMode::NameOrAlias) {
+        all_candidates
+    } else {
+        // When at least one row directly matches the query, provider noise is
+        // excluded from the route instead of becoming an alternate symbol.
+        grounded
+    }
+}
+
+fn identity_search_ascii_tokens(value: &str) -> Vec<String> {
+    value
+        .split(|ch: char| !ch.is_ascii_alphanumeric())
+        .filter(|token| !token.is_empty())
+        .map(str::to_ascii_lowercase)
+        .collect()
+}
+
+fn identity_search_name_starts_with_query(name: &str, query: &str) -> bool {
+    if query.is_ascii() {
+        let query_tokens = identity_search_ascii_tokens(query);
+        let name_tokens = identity_search_ascii_tokens(name);
+        !query_tokens.is_empty()
+            && name_tokens.len() >= query_tokens.len()
+            && name_tokens[..query_tokens.len()] == query_tokens
+    } else {
+        let normalized_query = normalized_identity_search_text(query);
+        let normalized_name = normalized_identity_search_text(name);
+        normalized_query.len() >= 2
+            && (normalized_query == normalized_name
+                || normalized_name.starts_with(&normalized_query))
+    }
+}
+
+fn identity_search_row_is_grounded_in_query(
+    row: &Value,
+    query: &str,
+    allow_exact_symbol: bool,
+) -> bool {
+    let exact_symbol_match = allow_exact_symbol
+        && row
+            .get("symbol")
+            .and_then(Value::as_str)
+            .is_some_and(|symbol| provider_symbols_equivalent(query, symbol));
+    let name_match = ["name", "companyName"]
+        .into_iter()
+        .filter_map(|key| row.get(key).and_then(Value::as_str))
+        .any(|name| identity_search_name_starts_with_query(name, query));
+    exact_symbol_match || name_match
 }
 
 fn data_fetch_target_symbols(tool_call: &ToolCall) -> BTreeSet<String> {
-    if !tool_call.function.name.eq_ignore_ascii_case("data_fetch") {
-        return BTreeSet::new();
-    }
-    let Some(arguments) = serde_json::from_str::<Value>(&tool_call.function.arguments).ok() else {
+    let Some(arguments) = data_fetch_arguments(tool_call) else {
         return BTreeSet::new();
     };
-    ["ticker", "symbol"]
+    effective_data_fetch_security_target(&arguments)
+        .and_then(|target| validated_data_fetch_symbols(target).ok())
         .into_iter()
-        .filter_map(|key| arguments.get(key))
-        .flat_map(|value| match value {
-            Value::String(value) => value
-                .split([',', '，', '、', ';', '；'])
-                .map(str::to_string)
-                .collect::<Vec<_>>(),
-            Value::Array(values) => values
-                .iter()
-                .filter_map(Value::as_str)
-                .map(str::to_string)
-                .collect::<Vec<_>>(),
-            _ => Vec::new(),
-        })
-        .map(|symbol| symbol.trim().to_ascii_uppercase())
+        .flatten()
+        .map(|symbol| symbol.to_ascii_uppercase())
         .filter(|symbol| !symbol.is_empty())
         .collect()
 }
@@ -1296,7 +2003,7 @@ fn is_broad_data_type(data_type: &str) -> bool {
 }
 
 fn starts_investment_research_protocol(tool_call: &ToolCall) -> bool {
-    tool_call.function.name.eq_ignore_ascii_case("data_fetch")
+    tool_call.function.name == "data_fetch"
 }
 
 fn exact_final_answer_prefix(user_input: &str) -> Option<String> {
@@ -1320,11 +2027,12 @@ fn exact_prefix_instruction(required_prefix: Option<&str>) -> String {
 
 fn terminal_synthesis_prompt(required_prefix: Option<&str>) -> String {
     format!(
-        "【终局回答阶段】\n{}\n{}\n{}\n{}",
+        "【终局回答阶段】\n{}\n{}\n{}\n{}\n{}",
         "Agent 已通过显式完成信号确认：本轮合理的研究与工具尝试已经完成。",
         "当前阶段不再提供任何工具；请只基于同一轮对话中已有的用户请求和此前已成功返回的业务工具结果，直接生成一次完整、可见的最终回答。",
         exact_prefix_instruction(required_prefix),
-        FINAL_ANSWER_EVIDENCE_CONTRACT
+        FINAL_ANSWER_EVIDENCE_CONTRACT,
+        FINAL_RELATIONSHIP_DELETION_CHECK
     )
 }
 
@@ -1334,16 +2042,18 @@ fn active_business_turn_prompt(
 ) -> String {
     if evidence_floor_satisfied {
         format!(
-            "【本轮 Agent 最后一跳提醒】工具仍然可用：若当前证据还不足，继续调用真实业务工具；若研究已完成，优先单独调用 `finish_research` 进入可流式输出的同 Agent 终稿。若 provider 仍自然输出完整正文，该正文也会原样作为唯一终稿。无论采用哪种完成方式，最终正文都必须遵守同一份契约：\n{}\n{}",
+            "【本轮 Agent 最后一跳提醒】工具仍然可用：若当前证据还不足，继续调用真实业务工具；若研究已完成，优先单独调用 `finish_research` 进入可流式输出的同 Agent 终稿。若 provider 仍自然输出完整正文，该正文也会原样作为唯一终稿。无论采用哪种完成方式，最终正文都必须遵守同一份契约：\n{}\n{}\n{}",
             exact_prefix_instruction(required_prefix),
-            FINAL_ANSWER_EVIDENCE_CONTRACT
+            FINAL_ANSWER_EVIDENCE_CONTRACT,
+            FINAL_RELATIONSHIP_DELETION_CHECK
         )
     } else {
         format!(
-            "【本轮 Agent 取证提醒】{}\n服务端不会审查、拒绝、改写或补写一段完整自然语言正文；若 provider 未按工具选择继续取证而在本轮自然结束，该正文会原样成为最终回答，因此仍必须遵守以下最终契约：\n{}\n{}",
+            "【本轮 Agent 取证提醒】{}\n服务端不会审查、拒绝、改写或补写一段完整自然语言正文；若 provider 未按工具选择继续取证而在本轮自然结束，该正文会原样成为最终回答，因此仍必须遵守以下最终契约：\n{}\n{}\n{}",
             POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION,
             exact_prefix_instruction(required_prefix),
-            FINAL_ANSWER_EVIDENCE_CONTRACT
+            FINAL_ANSWER_EVIDENCE_CONTRACT,
+            FINAL_RELATIONSHIP_DELETION_CHECK
         )
     }
 }
@@ -1914,6 +2624,11 @@ impl Agent for FunctionCallingAgent {
                     "post_identity_attempts": research_evidence.post_identity_attempts,
                     "post_identity_quote_attempts": research_evidence.post_identity_quote_attempts,
                     "post_identity_asset_route_attempts": research_evidence.post_identity_asset_route_attempts,
+                    "identity_route_count": research_evidence.identity_routes.len(),
+                    "active_identity_route_count": research_evidence.active_route_keys().len(),
+                    "explicit_identity_route_count": research_evidence.identity_routes.values().filter(|route| route.explicit).count(),
+                    "unscoped_identity_search_attempts": research_evidence.unscoped_identity_search_attempts,
+                    "unresolved_identity_route_count": research_evidence.active_route_keys().iter().filter(|key| research_evidence.identity_routes.get(*key).is_some_and(|route| route.candidates.is_empty())).count(),
                     "requested_tool_choice": has_tools.then_some(tool_choice_mode_name(stream_tool_choice.requested)),
                     "effective_tool_choice": stream_tool_choice.effective.map(tool_choice_mode_name),
                     "tool_choice_fallback": stream_tool_choice.fallback,
@@ -2075,6 +2790,14 @@ impl Agent for FunctionCallingAgent {
                                                 "[Agent] tool_result name={tool_name}"
                                             ));
 
+                                            if investment_research_started {
+                                                research_evidence.observe_business_result(
+                                                    tc,
+                                                    &tool_result,
+                                                    active_business_round,
+                                                );
+                                            }
+
                                             let tr: Value = tool_result.clone();
                                             tool_calls_made.push(ToolCallMade {
                                                 name: tool_name.clone(),
@@ -2118,6 +2841,9 @@ impl Agent for FunctionCallingAgent {
                                             self.dbg(&format!(
                                                 "[Agent] tool_error name={tool_name} error={e}"
                                             ));
+                                            if investment_research_started {
+                                                research_evidence.observe_business_failure(tc);
+                                            }
                                             let err_str = e.to_string();
                                             let timeout_error = canonical_agent_timeout(&e);
                                             let error_result: Value = serde_json::json!({
@@ -2662,9 +3388,77 @@ mod tests {
         }
 
         async fn execute(&self, args: Value) -> hone_core::HoneResult<Value> {
+            if args.get("data_type").and_then(Value::as_str) == Some("search") {
+                let query = args
+                    .get("query")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_ascii_uppercase();
+                let data = if query.contains("NVIDIA") || query.contains("NVDA") {
+                    json!([{"symbol":"NVDA","name":"NVIDIA Corporation"}])
+                } else {
+                    json!([{"symbol":"CRWV","name":"CoreWeave, Inc."}])
+                };
+                return Ok(json!({"data_type":"search","data":data}));
+            }
             Ok(json!({
                 "evidence": args.get("text").and_then(|v| v.as_str()).unwrap_or_default()
             }))
+        }
+    }
+
+    struct EntityRouteFinanceEvidenceTool;
+
+    #[async_trait]
+    impl Tool for EntityRouteFinanceEvidenceTool {
+        fn name(&self) -> &str {
+            "data_fetch"
+        }
+
+        fn description(&self) -> &str {
+            "entity-route finance evidence"
+        }
+
+        fn parameters(&self) -> Vec<ToolParameter> {
+            vec![]
+        }
+
+        async fn execute(&self, args: Value) -> hone_core::HoneResult<Value> {
+            let data_type = args
+                .get("data_type")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if data_type == "search" {
+                let query = args
+                    .get("query")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_ascii_uppercase();
+                let data = match query.as_str() {
+                    "CRWV" => json!([
+                        {"symbol":"CRWV","name":"CoreWeave, Inc."},
+                        {"symbol":"CWY","name":"GraniteShares YieldBOOST CRWV ETF"}
+                    ]),
+                    "NVIDIA" | "NVDA" => json!([
+                        {"symbol":"NVDA","name":"NVIDIA Corporation"},
+                        {"symbol":"NVD.DE","name":"NVIDIA Corporation"}
+                    ]),
+                    _ => json!([]),
+                };
+                return Ok(json!({"data_type":"search","data":data}));
+            }
+
+            let symbols = args
+                .get("ticker")
+                .or_else(|| args.get("symbol"))
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .split(',')
+                .map(str::trim)
+                .filter(|symbol| !symbol.is_empty())
+                .map(|symbol| json!({"symbol":symbol.to_ascii_uppercase()}))
+                .collect::<Vec<_>>();
+            Ok(json!({"data_type":data_type,"data":symbols}))
         }
     }
 
@@ -2913,6 +3707,7 @@ mod tests {
         assert_eq!(prefix, "数据时间：北京时间 2026-07-19 09:31；行情口径：");
 
         let direct = active_business_turn_prompt(true, Some(&prefix));
+        let evidence_pending = active_business_turn_prompt(false, Some(&prefix));
         let explicit = terminal_synthesis_prompt(Some(&prefix));
         for required in [
             prefix.as_str(),
@@ -2921,12 +3716,19 @@ mod tests {
             "不得由交易事实推导排名",
             "‘采购未使用容量’不能推出‘最大客户’",
             "‘most-favored-nation relationship’不能推出‘保证供货’或‘优先供货’",
+            "逐句删除任何没有被本轮来源正文或摘要直接明示的公司关系表述",
+            "股权存在或不存在",
             "披露缺项并继续完成能够被当前证据支持的分析",
         ] {
             assert!(direct.contains(required), "direct missing {required}");
+            assert!(
+                evidence_pending.contains(required),
+                "evidence-pending direct final missing {required}"
+            );
             assert!(explicit.contains(required), "terminal missing {required}");
         }
         assert!(!direct.contains("数据时间：北京时间 2026-07-18 04:00；"));
+        assert!(!evidence_pending.contains("数据时间：北京时间 2026-07-18 04:00；"));
         assert!(!explicit.contains("数据时间：北京时间 2026-07-18 04:00；"));
     }
 
@@ -2956,25 +3758,1631 @@ mod tests {
                 arguments: r#"{"data_type":"profile","ticker":"CRWV"}"#.to_string(),
             },
         };
-        let second_profile = ToolCall {
-            id: "profile-nvda".to_string(),
-            call_type: "function".to_string(),
-            function: FunctionCall {
-                name: "data_fetch".to_string(),
-                arguments: r#"{"data_type":"profile","ticker":"NVDA"}"#.to_string(),
-            },
-        };
         let mut ledger = ResearchEvidenceLedger::default();
         ledger.observe_business_call(&search, false);
+        ledger.observe_business_result(
+            &search,
+            &json!({"data":[{"symbol":"CRWV"},{"symbol":"CWY"}]}),
+            false,
+        );
         ledger.observe_business_call(&quote, true);
         assert!(!ledger.evidence_floor_satisfied(true));
         ledger.observe_business_call(&profile, true);
+        assert!(ledger.evidence_floor_satisfied(true));
+    }
+
+    #[test]
+    fn every_successful_identity_candidate_set_needs_quote_and_profile_coverage() {
+        let crwv_search = evidence_call("search-crwv", r#"{"data_type":"search","query":"CRWV"}"#);
+        let nvda_search =
+            evidence_call("search-nvda", r#"{"data_type":"search","query":"NVIDIA"}"#);
+        let mut ledger = ResearchEvidenceLedger::default();
+        ledger.observe_business_call(&crwv_search, false);
+        ledger.observe_business_result(
+            &crwv_search,
+            &json!({"data":[{"symbol":"CRWV"},{"symbol":"CWY"}]}),
+            false,
+        );
+        ledger.observe_business_call(&nvda_search, false);
+        ledger.observe_business_result(
+            &nvda_search,
+            &json!({"data":[{"symbol":"NVDA"},{"symbol":"NVD.DE"}]}),
+            false,
+        );
+        ledger.observe_business_call(
+            &evidence_call("quote-crwv", r#"{"data_type":"quote","symbol":"CRWV"}"#),
+            true,
+        );
+        ledger.observe_business_call(
+            &evidence_call("profile-crwv", r#"{"data_type":"profile","symbol":"CRWV"}"#),
+            true,
+        );
+
+        assert!(!ledger.evidence_floor_satisfied(true));
+        assert!(!ledger.completion_signal_available(true));
+
+        ledger.observe_business_call(
+            &evidence_call("quote-nvda", r#"{"data_type":"quote","symbol":"NVDA"}"#),
+            true,
+        );
+        ledger.observe_business_call(
+            &evidence_call("profile-nvda", r#"{"data_type":"profile","symbol":"NVDA"}"#),
+            true,
+        );
+
+        assert!(ledger.evidence_floor_satisfied(true));
+        assert!(ledger.completion_signal_available(true));
+    }
+
+    #[test]
+    fn agent_declared_routes_prevent_cross_entity_and_wrong_product_unlocks() {
+        let crwv_search = evidence_call(
+            "search-crwv",
+            r#"{"data_type":"search","query":"CRWV","entity_route":"coreweave","identity_match":"exact_symbol"}"#,
+        );
+        let nvidia_search = evidence_call(
+            "search-nvidia",
+            r#"{"data_type":"search","query":"NVIDIA","entity_route":"nvidia","identity_match":"name_or_alias"}"#,
+        );
+        let mut ledger = ResearchEvidenceLedger::default();
+        ledger.observe_business_call(&crwv_search, false);
+        ledger.observe_business_result(
+            &crwv_search,
+            &json!({"data":[
+                {"symbol":"CRWV","name":"CoreWeave, Inc."},
+                {"symbol":"CWY","name":"GraniteShares YieldBOOST CRWV ETF"}
+            ]}),
+            false,
+        );
+        ledger.observe_business_call(&nvidia_search, false);
+        ledger.observe_business_result(
+            &nvidia_search,
+            &json!({"data":[
+                {"symbol":"CRWV","name":"unrelated provider noise"},
+                {"symbol":"CWY","name":"unrelated provider noise"},
+                {"symbol":"NVDA","name":"NVIDIA Corporation"},
+                {"symbol":"NVD.DE","name":"NVIDIA Corporation"}
+            ]}),
+            false,
+        );
+
+        let crwv_route = ledger
+            .identity_routes
+            .get("route:coreweave")
+            .expect("coreweave route");
+        assert_eq!(crwv_route.candidates, BTreeSet::from(["CRWV".to_string()]));
+        let nvidia_route = ledger
+            .identity_routes
+            .get("route:nvidia")
+            .expect("nvidia route");
+        assert_eq!(
+            nvidia_route.candidates,
+            BTreeSet::from(["NVDA".to_string(), "NVD.DE".to_string()])
+        );
+
+        // A complete CWY quote/profile pair is still the wrong asset for the
+        // exact CRWV route and must not unlock finish.
+        ledger.observe_business_call(
+            &evidence_call(
+                "quote-cwy",
+                r#"{"data_type":"quote","symbol":"CWY","entity_route":"coreweave"}"#,
+            ),
+            true,
+        );
+        ledger.observe_business_call(
+            &evidence_call(
+                "profile-cwy",
+                r#"{"data_type":"profile","symbol":"CWY","entity_route":"coreweave"}"#,
+            ),
+            true,
+        );
         assert!(
             !ledger.evidence_floor_satisfied(true),
-            "one profile must not cover a two-symbol quote"
+            "CWY evidence cannot satisfy the exact CRWV route"
         );
-        ledger.observe_business_call(&second_profile, true);
+
+        ledger.observe_business_call(
+            &evidence_call(
+                "quote-crwv",
+                r#"{"data_type":"quote","symbol":"CRWV","entity_route":"coreweave"}"#,
+            ),
+            true,
+        );
+        ledger.observe_business_call(
+            &evidence_call(
+                "profile-crwv",
+                r#"{"data_type":"profile","symbol":"CRWV","entity_route":"coreweave"}"#,
+            ),
+            true,
+        );
+        assert!(
+            !ledger.evidence_floor_satisfied(true),
+            "CoreWeave coverage cannot satisfy the separate NVIDIA route"
+        );
+
+        ledger.observe_business_call(
+            &evidence_call(
+                "quote-nvda",
+                r#"{"data_type":"quote","symbol":"NVDA","entity_route":"nvidia"}"#,
+            ),
+            true,
+        );
+        ledger.observe_business_call(
+            &evidence_call(
+                "profile-nvda",
+                r#"{"data_type":"profile","symbol":"NVDA","entity_route":"nvidia"}"#,
+            ),
+            true,
+        );
         assert!(ledger.evidence_floor_satisfied(true));
+
+        let only_wrong_product = evidence_call(
+            "search-only-cwy",
+            r#"{"data_type":"search","query":"crwv","entity_route":"coreweave","identity_match":"exact_symbol"}"#,
+        );
+        let mut exact_only = ResearchEvidenceLedger::default();
+        exact_only.observe_business_call(&only_wrong_product, false);
+        exact_only.observe_business_result(
+            &only_wrong_product,
+            &json!({"data":[{
+                "symbol":"CWY",
+                "name":"GraniteShares YieldBOOST CRWV ETF"
+            }]}),
+            false,
+        );
+        assert!(
+            exact_only
+                .identity_routes
+                .get("route:coreweave")
+                .expect("coreweave route")
+                .candidates
+                .is_empty(),
+            "an embedded-name CWY result cannot replace a missing exact CRWV result"
+        );
+        let name_refinement = evidence_call(
+            "search-coreweave-only-cwy",
+            r#"{"data_type":"search","query":"CoreWeave","entity_route":"coreweave","identity_match":"name_or_alias","refines_query":"crwv"}"#,
+        );
+        exact_only.observe_business_call(&name_refinement, true);
+        exact_only.observe_business_result(
+            &name_refinement,
+            &json!({"data":[{
+                "symbol":"CWY",
+                "name":"GraniteShares YieldBOOST CRWV ETF"
+            }]}),
+            true,
+        );
+        let wrong_exact_retry = evidence_call(
+            "search-cwy-wrong-exact",
+            r#"{"data_type":"search","query":"CWY","entity_route":"coreweave","identity_match":"exact_symbol"}"#,
+        );
+        exact_only.observe_business_call(&wrong_exact_retry, true);
+        exact_only.observe_business_result(
+            &wrong_exact_retry,
+            &json!({"data":[{"symbol":"CWY","name":"GraniteShares YieldBOOST CRWV ETF"}]}),
+            true,
+        );
+        let exact_route = exact_only
+            .identity_routes
+            .get("route:coreweave")
+            .expect("coreweave exact route");
+        assert_eq!(
+            exact_route.exact_symbol_constraint.as_deref(),
+            Some("CRWV"),
+            "a later different exact query cannot widen the first ticker constraint"
+        );
+        assert!(
+            exact_route.candidates.is_empty(),
+            "company-name refinement or a different exact ticker cannot revive CWY"
+        );
+        exact_only.observe_business_call(
+            &evidence_call(
+                "quote-only-cwy",
+                r#"{"data_type":"quote","symbol":"CWY","entity_route":"coreweave"}"#,
+            ),
+            true,
+        );
+        exact_only.observe_business_call(
+            &evidence_call(
+                "profile-only-cwy",
+                r#"{"data_type":"profile","symbol":"CWY","entity_route":"coreweave"}"#,
+            ),
+            true,
+        );
+        assert!(!exact_only.evidence_floor_satisfied(true));
+
+        let coreweave_name = evidence_call(
+            "search-coreweave-name",
+            r#"{"data_type":"search","query":"CoreWeave","entity_route":"coreweave","identity_match":"name_or_alias"}"#,
+        );
+        let mut explicit_name = ResearchEvidenceLedger::default();
+        explicit_name.observe_business_call(&coreweave_name, false);
+        explicit_name.observe_business_result(
+            &coreweave_name,
+            &json!({"data":[{
+                "symbol":"CWY",
+                "name":"GraniteShares YieldBOOST CRWV ETF"
+            }]}),
+            false,
+        );
+        assert!(
+            explicit_name
+                .identity_routes
+                .get("route:coreweave")
+                .expect("name route")
+                .candidates
+                .is_empty(),
+            "explicit name matching cannot fall back to an ungrounded product"
+        );
+
+        // Query strings are never split into entities, so legal names/share
+        // classes remain one Agent-declared route.
+        for query in [
+            "AT&T",
+            "S&P Global",
+            "M&T Bank",
+            "H&R Block",
+            "BRK/B",
+            "Berkshire Hathaway, Class B",
+            "NVIDIA and valuation",
+        ] {
+            let call = evidence_call(
+                "legal-name",
+                &json!({
+                    "data_type":"search",
+                    "query":query,
+                    "entity_route":"single-company",
+                    "identity_match":"name_or_alias"
+                })
+                .to_string(),
+            );
+            let mut single = ResearchEvidenceLedger::default();
+            single.observe_business_call(&call, false);
+            single.observe_business_result(
+                &call,
+                &json!({"data":[{"symbol":"T","name":"AT&T Inc."}]}),
+                false,
+            );
+            assert_eq!(single.identity_routes.len(), 1, "query: {query}");
+        }
+    }
+
+    #[test]
+    fn agent_declared_match_mode_preserves_short_company_names_and_provider_symbol_aliases() {
+        for (query, expected, rows) in [
+            (
+                "ford",
+                "F",
+                json!({"data":[
+                    {"symbol":"FORD","name":"Forward Industries, Inc."},
+                    {"symbol":"F","name":"Ford Motor Company"}
+                ]}),
+            ),
+            (
+                "apple",
+                "AAPL",
+                json!({"data":[
+                    {"symbol":"AAPL","name":"Apple Inc."},
+                    {"symbol":"APPLX","name":"Appleseed Fund"}
+                ]}),
+            ),
+            (
+                "tesla",
+                "TSLA",
+                json!({"data":[
+                    {"symbol":"TSLA","name":"Tesla, Inc."},
+                    {"symbol":"TSLZ","name":"T-Rex 2X Inverse Tesla Daily Target ETF"}
+                ]}),
+            ),
+        ] {
+            let call = evidence_call(
+                "short-name",
+                &json!({
+                    "data_type":"search",
+                    "query":query,
+                    "entity_route":"company",
+                    "identity_match":"name_or_alias"
+                })
+                .to_string(),
+            );
+            let mut ledger = ResearchEvidenceLedger::default();
+            ledger.observe_business_call(&call, false);
+            ledger.observe_business_result(&call, &rows, false);
+            assert_eq!(
+                ledger
+                    .identity_routes
+                    .get("route:company")
+                    .expect("company route")
+                    .candidates,
+                BTreeSet::from([expected.to_string()]),
+                "query: {query}"
+            );
+        }
+
+        let ford_ticker = evidence_call(
+            "ford-ticker",
+            r#"{"data_type":"search","query":"FORD","entity_route":"forward-industries","identity_match":"exact_symbol"}"#,
+        );
+        let mut exact_ford = ResearchEvidenceLedger::default();
+        exact_ford.observe_business_call(&ford_ticker, false);
+        exact_ford.observe_business_result(
+            &ford_ticker,
+            &json!({"data":[
+                {"symbol":"FORD","name":"Forward Industries, Inc."},
+                {"symbol":"F","name":"Ford Motor Company"}
+            ]}),
+            false,
+        );
+        assert_eq!(
+            exact_ford
+                .identity_routes
+                .get("route:forward-industries")
+                .expect("FORD route")
+                .candidates,
+            BTreeSet::from(["FORD".to_string()])
+        );
+
+        let brk = evidence_call(
+            "brk-class-b",
+            r#"{"data_type":"search","query":"BRK/B","entity_route":"berkshire-b","identity_match":"exact_symbol"}"#,
+        );
+        let mut share_class = ResearchEvidenceLedger::default();
+        share_class.observe_business_call(&brk, false);
+        share_class.observe_business_result(
+            &brk,
+            &json!({"data":[{"symbol":"BRK-B","name":"Berkshire Hathaway Inc."}]}),
+            false,
+        );
+        share_class.observe_business_call(
+            &evidence_call(
+                "brk-quote",
+                r#"{"data_type":"quote","symbol":"BRK/B","entity_route":"berkshire-b"}"#,
+            ),
+            true,
+        );
+        share_class.observe_business_call(
+            &evidence_call(
+                "brk-profile",
+                r#"{"data_type":"profile","symbol":"BRK.B","entity_route":"berkshire-b"}"#,
+            ),
+            true,
+        );
+        assert!(
+            share_class.evidence_floor_satisfied(true),
+            "bounded provider separators must preserve one BRK/B route"
+        );
+
+        let valid_nvidia = evidence_call(
+            "nvidia-valid-name",
+            r#"{"data_type":"search","query":"NVIDIA","entity_route":"nvidia","identity_match":"name_or_alias"}"#,
+        );
+        let missing_match_mode = evidence_call(
+            "same-route-missing-match-mode",
+            r#"{"data_type":"search","query":"CoreWeave","entity_route":"nvidia"}"#,
+        );
+        let mut call_scoped_mode = ResearchEvidenceLedger::default();
+        call_scoped_mode.observe_business_call(&valid_nvidia, false);
+        call_scoped_mode.observe_business_result(
+            &valid_nvidia,
+            &json!({"data":[{"symbol":"NVDA","name":"NVIDIA Corporation"}]}),
+            false,
+        );
+        call_scoped_mode.observe_business_call(&missing_match_mode, true);
+        call_scoped_mode.observe_business_result(
+            &missing_match_mode,
+            &json!({"data":[{"symbol":"CRWV","name":"CoreWeave, Inc."}]}),
+            true,
+        );
+        let route = call_scoped_mode
+            .identity_routes
+            .get("route:nvidia")
+            .expect("NVIDIA route");
+        assert_eq!(route.search_attempts, 1);
+        assert_eq!(route.candidates, BTreeSet::from(["NVDA".to_string()]));
+        call_scoped_mode.observe_business_call(
+            &evidence_call(
+                "wrong-quote-after-missing-mode",
+                r#"{"data_type":"quote","symbol":"CRWV","entity_route":"nvidia"}"#,
+            ),
+            true,
+        );
+        call_scoped_mode.observe_business_call(
+            &evidence_call(
+                "wrong-profile-after-missing-mode",
+                r#"{"data_type":"profile","symbol":"CRWV","entity_route":"nvidia"}"#,
+            ),
+            true,
+        );
+        assert!(
+            !call_scoped_mode.evidence_floor_satisfied(true),
+            "a sticky old match declaration cannot authorize a later malformed search"
+        );
+
+        let missing_mode_untagged_refinement = evidence_call(
+            "untagged-missing-mode-refinement",
+            r#"{"data_type":"search","query":"CoreWeave","refines_query":"NVIDIA"}"#,
+        );
+        call_scoped_mode.observe_business_call(&missing_mode_untagged_refinement, true);
+        call_scoped_mode.observe_business_result(
+            &missing_mode_untagged_refinement,
+            &json!({"data":[{"symbol":"CRWV","name":"CoreWeave, Inc."}]}),
+            true,
+        );
+        let route = call_scoped_mode
+            .identity_routes
+            .get("route:nvidia")
+            .expect("NVIDIA route after malformed untagged refinement");
+        assert_eq!(route.search_attempts, 1);
+        assert_eq!(route.candidates, BTreeSet::from(["NVDA".to_string()]));
+    }
+
+    #[test]
+    fn explicit_route_does_not_hide_an_unrelated_implicit_route() {
+        let crwv_search = evidence_call(
+            "search-crwv-legacy",
+            r#"{"data_type":"search","query":"CRWV"}"#,
+        );
+        let nvidia_search = evidence_call(
+            "search-nvidia",
+            r#"{"data_type":"search","query":"NVIDIA","entity_route":"nvidia","identity_match":"name_or_alias"}"#,
+        );
+        let mut ledger = ResearchEvidenceLedger::default();
+        ledger.observe_business_call(&crwv_search, false);
+        ledger.observe_business_result(
+            &crwv_search,
+            &json!({"data":[{"symbol":"CRWV","name":"CoreWeave, Inc."}]}),
+            false,
+        );
+        ledger.observe_business_call(&nvidia_search, false);
+        ledger.observe_business_result(
+            &nvidia_search,
+            &json!({"data":[{"symbol":"NVDA","name":"NVIDIA Corporation"}]}),
+            false,
+        );
+        ledger.observe_business_call(
+            &evidence_call(
+                "quote-nvda",
+                r#"{"data_type":"quote","symbol":"NVDA","entity_route":"nvidia"}"#,
+            ),
+            true,
+        );
+        ledger.observe_business_call(
+            &evidence_call(
+                "profile-nvda",
+                r#"{"data_type":"profile","symbol":"NVDA","entity_route":"nvidia"}"#,
+            ),
+            true,
+        );
+        assert!(
+            !ledger.evidence_floor_satisfied(true),
+            "one explicit NVIDIA route must not globally hide an untagged CRWV route"
+        );
+
+        ledger.observe_business_call(
+            &evidence_call("quote-crwv", r#"{"data_type":"quote","symbol":"CRWV"}"#),
+            true,
+        );
+        ledger.observe_business_call(
+            &evidence_call("profile-crwv", r#"{"data_type":"profile","symbol":"CRWV"}"#),
+            true,
+        );
+        assert!(ledger.evidence_floor_satisfied(true));
+
+        let explicit_crwv = evidence_call(
+            "search-crwv-explicit",
+            r#"{"data_type":"search","query":"CRWV","entity_route":"coreweave","identity_match":"exact_symbol"}"#,
+        );
+        ledger.observe_business_call(&explicit_crwv, true);
+        assert!(
+            !ledger.identity_routes.contains_key("query:CRWV"),
+            "only the exact provisional CRWV route should migrate"
+        );
+        assert!(ledger.identity_routes.contains_key("route:coreweave"));
+        assert!(ledger.identity_routes.contains_key("route:nvidia"));
+
+        let late_untagged_crwv = evidence_call(
+            "search-crwv-late-untagged",
+            r#"{"data_type":"search","query":"CRWV","identity_match":"exact_symbol"}"#,
+        );
+        ledger.observe_business_call(&late_untagged_crwv, true);
+        ledger.observe_business_result(
+            &late_untagged_crwv,
+            &json!({"data":[{"symbol":"CRWV","name":"CoreWeave, Inc."}]}),
+            true,
+        );
+        assert!(
+            !ledger.identity_routes.contains_key("query:CRWV"),
+            "a later untagged exact alias must bind back to the unique explicit route"
+        );
+
+        let legacy_alias = evidence_call(
+            "search-nvidia-legacy-cn",
+            r#"{"data_type":"search","query":"英伟达"}"#,
+        );
+        let explicit_alias = evidence_call(
+            "search-nvidia-explicit-en",
+            r#"{"data_type":"search","query":"NVIDIA","entity_route":"nvidia","identity_match":"name_or_alias","supersedes_query":"英伟达"}"#,
+        );
+        let mut alias_migration = ResearchEvidenceLedger::default();
+        alias_migration.observe_business_call(&legacy_alias, false);
+        alias_migration.observe_business_result(
+            &legacy_alias,
+            &json!({"data":[{"symbol":"NVDA","name":"NVIDIA Corporation"}]}),
+            false,
+        );
+        alias_migration.observe_business_call(&explicit_alias, true);
+        alias_migration.observe_business_result(
+            &explicit_alias,
+            &json!({"data":[{"symbol":"NVDA","name":"NVIDIA Corporation"}]}),
+            true,
+        );
+        assert!(
+            !alias_migration.identity_routes.contains_key("query:英伟达"),
+            "supersedes_query must migrate one successful provisional alias"
+        );
+        assert_eq!(alias_migration.identity_routes.len(), 1);
+        alias_migration.observe_business_call(
+            &evidence_call(
+                "quote-nvda-migrated",
+                r#"{"data_type":"quote","symbol":"NVDA","entity_route":"nvidia"}"#,
+            ),
+            true,
+        );
+        alias_migration.observe_business_call(
+            &evidence_call(
+                "profile-nvda-migrated",
+                r#"{"data_type":"profile","symbol":"NVDA","entity_route":"nvidia"}"#,
+            ),
+            true,
+        );
+        assert!(alias_migration.evidence_floor_satisfied(true));
+    }
+
+    #[test]
+    fn exact_route_migration_drops_wrong_provisional_evidence_even_when_retry_fails() {
+        let exact_crwv = evidence_call(
+            "search-crwv-exact-empty",
+            r#"{"data_type":"search","query":"CRWV","entity_route":"coreweave","identity_match":"exact_symbol"}"#,
+        );
+        let provisional_cwy = evidence_call(
+            "search-cwy-provisional",
+            r#"{"data_type":"search","query":"CWY"}"#,
+        );
+        let superseding_retry = evidence_call(
+            "search-coreweave-supersedes-cwy",
+            r#"{"data_type":"search","query":"CoreWeave","entity_route":"coreweave","identity_match":"name_or_alias","supersedes_query":"CWY"}"#,
+        );
+
+        let mut ledger = ResearchEvidenceLedger::default();
+        ledger.observe_business_call(&exact_crwv, false);
+        ledger.observe_business_result(&exact_crwv, &json!({"data":[]}), false);
+        ledger.observe_business_call(&provisional_cwy, true);
+        ledger.observe_business_result(
+            &provisional_cwy,
+            &json!({"data":[{"symbol":"CWY","name":"GraniteShares YieldBOOST CRWV ETF"}]}),
+            true,
+        );
+        ledger.observe_business_call(
+            &evidence_call(
+                "quote-cwy-provisional",
+                r#"{"data_type":"quote","symbol":"CWY"}"#,
+            ),
+            true,
+        );
+        ledger.observe_business_call(
+            &evidence_call(
+                "profile-cwy-provisional",
+                r#"{"data_type":"profile","symbol":"CWY"}"#,
+            ),
+            true,
+        );
+        assert!(
+            ledger
+                .identity_routes
+                .get("query:CWY")
+                .expect("provisional CWY route")
+                .is_covered()
+        );
+
+        ledger.observe_business_call(&superseding_retry, true);
+        ledger.observe_business_failure(&superseding_retry);
+
+        let route = ledger
+            .identity_routes
+            .get("route:coreweave")
+            .expect("migrated CoreWeave route");
+        assert_eq!(route.exact_symbol_constraint.as_deref(), Some("CRWV"));
+        assert!(route.candidates.is_empty());
+        assert!(route.quote_symbols.is_empty());
+        assert!(route.asset_route_symbols.is_empty());
+        assert_eq!(route.post_identity_attempts, 0);
+        assert!(!route.is_covered());
+        assert!(
+            !ledger.evidence_floor_satisfied(true),
+            "a failed superseding search cannot convert provisional CWY evidence into CRWV coverage"
+        );
+
+        let name_superseding_retry = evidence_call(
+            "search-coreweave-name-supersedes-cwy",
+            r#"{"data_type":"search","query":"CoreWeave","entity_route":"coreweave","identity_match":"name_or_alias","supersedes_query":"CWY"}"#,
+        );
+        let mut name_route = ResearchEvidenceLedger::default();
+        name_route.observe_business_call(&provisional_cwy, false);
+        name_route.observe_business_result(
+            &provisional_cwy,
+            &json!({"data":[{"symbol":"CWY","name":"GraniteShares YieldBOOST CRWV ETF"}]}),
+            false,
+        );
+        name_route.observe_business_call(
+            &evidence_call(
+                "quote-cwy-name-route",
+                r#"{"data_type":"quote","symbol":"CWY"}"#,
+            ),
+            true,
+        );
+        name_route.observe_business_call(
+            &evidence_call(
+                "profile-cwy-name-route",
+                r#"{"data_type":"profile","symbol":"CWY"}"#,
+            ),
+            true,
+        );
+        name_route.observe_business_call(&name_superseding_retry, true);
+        name_route.observe_business_failure(&name_superseding_retry);
+        let route = name_route
+            .identity_routes
+            .get("route:coreweave")
+            .expect("failed name route");
+        assert!(route.candidates.is_empty());
+        assert!(!route.is_covered());
+        assert!(
+            !name_route.evidence_floor_satisfied(true),
+            "a failed first explicit name search cannot inherit a provisional product candidate"
+        );
+    }
+
+    #[test]
+    fn explicit_refinement_inherits_only_a_declared_exact_constraint_from_provisional_route() {
+        let provisional_exact = evidence_call(
+            "search-crwv-provisional-exact",
+            r#"{"data_type":"search","query":"CRWV","identity_match":"exact_symbol"}"#,
+        );
+        let explicit_refinement = evidence_call(
+            "search-coreweave-explicit-refinement",
+            r#"{"data_type":"search","query":"CoreWeave","entity_route":"coreweave","identity_match":"name_or_alias","supersedes_query":"CRWV"}"#,
+        );
+        let mut ledger = ResearchEvidenceLedger::default();
+        ledger.observe_business_call(&provisional_exact, false);
+        ledger.observe_business_result(
+            &provisional_exact,
+            &json!({"data":[{"symbol":"CRWV","name":"CoreWeave, Inc."}]}),
+            false,
+        );
+        ledger.observe_business_call(
+            &evidence_call(
+                "quote-crwv-provisional",
+                r#"{"data_type":"quote","ticker":"CRWV"}"#,
+            ),
+            true,
+        );
+        ledger.observe_business_call(
+            &evidence_call(
+                "profile-crwv-provisional",
+                r#"{"data_type":"profile","ticker":"CRWV"}"#,
+            ),
+            true,
+        );
+        assert!(
+            ledger
+                .identity_routes
+                .get("query:CRWV")
+                .expect("provisional exact route")
+                .is_covered()
+        );
+
+        ledger.observe_business_call(&explicit_refinement, true);
+        ledger.observe_business_result(
+            &explicit_refinement,
+            &json!({"data":[{
+                "symbol":"CWY",
+                "name":"GraniteShares YieldBOOST CRWV ETF"
+            }]}),
+            true,
+        );
+
+        let route = ledger
+            .identity_routes
+            .get("route:coreweave")
+            .expect("explicit CoreWeave route");
+        assert_eq!(route.exact_symbol_constraint.as_deref(), Some("CRWV"));
+        assert!(route.candidates.is_empty());
+        assert!(route.quote_symbols.is_empty());
+        assert!(route.asset_route_symbols.is_empty());
+        assert_eq!(route.post_identity_attempts, 0);
+        assert!(
+            !ledger.evidence_floor_satisfied(true),
+            "migration may retain the Agent-declared ticker constraint, but never provisional candidates or coverage"
+        );
+    }
+
+    #[test]
+    fn ambiguous_migration_links_leave_every_provisional_route_and_a_pending_explicit_route() {
+        let provisional_crwv = evidence_call(
+            "search-crwv-provisional",
+            r#"{"data_type":"search","query":"CRWV","identity_match":"exact_symbol"}"#,
+        );
+        let provisional_nvidia = evidence_call(
+            "search-nvidia-provisional",
+            r#"{"data_type":"search","query":"NVIDIA","identity_match":"name_or_alias"}"#,
+        );
+        let invalid_multi_link = evidence_call(
+            "search-invalid-multi-link",
+            r#"{"data_type":"search","query":"CoreWeave","entity_route":"coreweave","identity_match":"name_or_alias","refines_query":"CRWV","supersedes_query":"NVIDIA"}"#,
+        );
+        let mut ledger = ResearchEvidenceLedger::default();
+        for (search, symbol, name) in [
+            (&provisional_crwv, "CRWV", "CoreWeave, Inc."),
+            (&provisional_nvidia, "NVDA", "NVIDIA Corporation"),
+        ] {
+            ledger.observe_business_call(search, false);
+            ledger.observe_business_result(
+                search,
+                &json!({"data":[{"symbol":symbol,"name":name}]}),
+                false,
+            );
+            ledger.observe_business_call(
+                &evidence_call(
+                    &format!("quote-{symbol}"),
+                    &json!({"data_type":"quote","ticker":symbol}).to_string(),
+                ),
+                true,
+            );
+            ledger.observe_business_call(
+                &evidence_call(
+                    &format!("profile-{symbol}"),
+                    &json!({"data_type":"profile","ticker":symbol}).to_string(),
+                ),
+                true,
+            );
+        }
+        assert!(ledger.evidence_floor_satisfied(true));
+
+        ledger.observe_business_call(&invalid_multi_link, true);
+        ledger.observe_business_result(
+            &invalid_multi_link,
+            &json!({"data":[{"symbol":"CRWV","name":"CoreWeave, Inc."}]}),
+            true,
+        );
+        assert!(ledger.identity_routes.contains_key("query:CRWV"));
+        assert!(ledger.identity_routes.contains_key("query:NVIDIA"));
+        let pending = ledger
+            .identity_routes
+            .get("route:coreweave")
+            .expect("invalid explicit call still declares a pending route");
+        assert_eq!(pending.search_attempts, 0);
+        assert!(pending.candidates.is_empty());
+        assert!(
+            !ledger.evidence_floor_satisfied(true),
+            "a call cannot retire two provisional entities or hide its own malformed route"
+        );
+
+        let same_text_double_link = evidence_call(
+            "search-invalid-same-text-double-link",
+            r#"{"data_type":"search","query":"CoreWeave","entity_route":"same-text","identity_match":"name_or_alias","refines_query":"CRWV","supersedes_query":"CRWV"}"#,
+        );
+        assert!(!data_fetch_identity_search_shape_is_valid(
+            &same_text_double_link
+        ));
+        let mut same_text = ResearchEvidenceLedger::default();
+        same_text.observe_business_call(&provisional_crwv, false);
+        same_text.observe_business_result(
+            &provisional_crwv,
+            &json!({"data":[{"symbol":"CRWV","name":"CoreWeave, Inc."}]}),
+            false,
+        );
+        same_text.observe_business_call(&same_text_double_link, true);
+        assert!(same_text.identity_routes.contains_key("query:CRWV"));
+        assert_eq!(
+            same_text
+                .identity_routes
+                .get("route:same-text")
+                .expect("same-text double link remains pending")
+                .search_attempts,
+            0
+        );
+    }
+
+    #[test]
+    fn exact_text_migration_keeps_ford_company_and_ford_ticker_routes_distinct() {
+        let ford_company = evidence_call(
+            "search-ford-company",
+            r#"{"data_type":"search","query":"Ford","identity_match":"name_or_alias"}"#,
+        );
+        let ford_ticker = evidence_call(
+            "search-ford-ticker",
+            r#"{"data_type":"search","query":"FORD","identity_match":"exact_symbol"}"#,
+        );
+        let explicit_company = evidence_call(
+            "search-ford-motor-explicit",
+            r#"{"data_type":"search","query":"Ford Motor","entity_route":"ford-motor","identity_match":"name_or_alias","supersedes_query":"Ford"}"#,
+        );
+        let mut ledger = ResearchEvidenceLedger::default();
+        ledger.observe_business_call(&ford_company, false);
+        ledger.observe_business_result(
+            &ford_company,
+            &json!({"data":[{"symbol":"F","name":"Ford Motor Company"}]}),
+            false,
+        );
+        ledger.observe_business_call(&ford_ticker, false);
+        ledger.observe_business_result(
+            &ford_ticker,
+            &json!({"data":[{"symbol":"FORD","name":"Forward Industries, Inc."}]}),
+            false,
+        );
+        assert!(ledger.identity_routes.contains_key("query:Ford"));
+        assert!(ledger.identity_routes.contains_key("query:FORD"));
+
+        ledger.observe_business_call(&explicit_company, true);
+        ledger.observe_business_result(
+            &explicit_company,
+            &json!({"data":[{"symbol":"F","name":"Ford Motor Company"}]}),
+            true,
+        );
+        assert!(!ledger.identity_routes.contains_key("query:Ford"));
+        assert!(
+            ledger.identity_routes.contains_key("query:FORD"),
+            "case-sensitive exact text linkage must not merge a company name with a different ticker"
+        );
+
+        let explicit_ford_company = evidence_call(
+            "search-explicit-ford-company",
+            r#"{"data_type":"search","query":"Ford","entity_route":"Ford","identity_match":"name_or_alias"}"#,
+        );
+        let explicit_ford_ticker = evidence_call(
+            "search-explicit-ford-ticker",
+            r#"{"data_type":"search","query":"FORD","entity_route":"FORD","identity_match":"exact_symbol"}"#,
+        );
+        let mut explicit_case = ResearchEvidenceLedger::default();
+        explicit_case.observe_business_call(&explicit_ford_company, false);
+        explicit_case.observe_business_result(
+            &explicit_ford_company,
+            &json!({"data":[{"symbol":"F","name":"Ford Motor Company"}]}),
+            false,
+        );
+        explicit_case.observe_business_call(&explicit_ford_ticker, false);
+        explicit_case.observe_business_result(
+            &explicit_ford_ticker,
+            &json!({"data":[{"symbol":"FORD","name":"Forward Industries, Inc."}]}),
+            false,
+        );
+        assert!(explicit_case.identity_routes.contains_key("route:Ford"));
+        assert!(explicit_case.identity_routes.contains_key("route:FORD"));
+        assert_eq!(explicit_case.identity_routes.len(), 2);
+    }
+
+    #[test]
+    fn stable_entity_route_refinement_replaces_empty_or_noisy_candidates() {
+        let crwv_search = evidence_call(
+            "search-crwv",
+            r#"{"data_type":"search","query":"CRWV","entity_route":"coreweave","identity_match":"exact_symbol"}"#,
+        );
+        let nvidia_alias_search = evidence_call(
+            "search-nvidia-cn",
+            r#"{"data_type":"search","query":"英伟达","entity_route":"nvidia","identity_match":"name_or_alias"}"#,
+        );
+        let wrong_nvidia_refinement = evidence_call(
+            "search-nvidia-wrong",
+            r#"{"data_type":"search","query":"CoreWeave","entity_route":"nvidia","identity_match":"name_or_alias"}"#,
+        );
+        let nvidia_refinement = evidence_call(
+            "search-nvidia",
+            r#"{"data_type":"search","query":"NVIDIA","entity_route":"nvidia","identity_match":"name_or_alias","refines_query":"英伟达"}"#,
+        );
+        let mut ledger = ResearchEvidenceLedger::default();
+        ledger.observe_business_call(&crwv_search, false);
+        ledger.observe_business_result(
+            &crwv_search,
+            &json!({"data":[{"symbol":"CRWV"},{"symbol":"CWY"}]}),
+            false,
+        );
+        ledger.observe_business_call(&nvidia_alias_search, false);
+        ledger.observe_business_result(&nvidia_alias_search, &json!({"data":[]}), false);
+        ledger.observe_business_call(
+            &evidence_call(
+                "quote-crwv",
+                r#"{"data_type":"quote","symbol":"CRWV","entity_route":"coreweave"}"#,
+            ),
+            true,
+        );
+        ledger.observe_business_call(
+            &evidence_call(
+                "profile-crwv",
+                r#"{"data_type":"profile","symbol":"CRWV","entity_route":"coreweave"}"#,
+            ),
+            true,
+        );
+        assert!(
+            !ledger.evidence_floor_satisfied(true),
+            "an empty NVIDIA route cannot disappear behind CoreWeave coverage"
+        );
+
+        ledger.observe_business_call(&wrong_nvidia_refinement, true);
+        ledger.observe_business_result(
+            &wrong_nvidia_refinement,
+            &json!({"data":[{"symbol":"CRWV","name":"CoreWeave, Inc."}]}),
+            true,
+        );
+        assert!(
+            !ledger.evidence_floor_satisfied(true),
+            "a noisy route result has no NVIDIA quote/profile coverage"
+        );
+
+        ledger.observe_business_call(&nvidia_refinement, true);
+        ledger.observe_business_result(
+            &nvidia_refinement,
+            &json!({"data":[
+                {"symbol":"NVDA","name":"NVIDIA Corporation"},
+                {"symbol":"NVD.DE","name":"NVIDIA Corporation"},
+                {"symbol":"TSLA","name":"unrelated provider noise"}
+            ]}),
+            true,
+        );
+        assert_eq!(
+            ledger
+                .identity_routes
+                .get("route:nvidia")
+                .expect("nvidia route")
+                .candidates,
+            BTreeSet::from(["NVDA".to_string(), "NVD.DE".to_string()])
+        );
+        ledger.observe_business_call(
+            &evidence_call(
+                "quote-nvda",
+                r#"{"data_type":"quote","symbol":"NVDA","entity_route":"nvidia"}"#,
+            ),
+            true,
+        );
+        ledger.observe_business_call(
+            &evidence_call(
+                "profile-nvda",
+                r#"{"data_type":"profile","symbol":"NVDA","entity_route":"nvidia"}"#,
+            ),
+            true,
+        );
+        assert!(ledger.evidence_floor_satisfied(true));
+    }
+
+    #[test]
+    fn each_identity_route_needs_one_same_symbol_quote_and_profile_pair() {
+        let search = evidence_call("search", r#"{"data_type":"search","query":"CRWV"}"#);
+        let mut ledger = ResearchEvidenceLedger::default();
+        ledger.observe_business_call(&search, false);
+        ledger.observe_business_result(
+            &search,
+            &json!({"data":[{"symbol":"CRWV"},{"symbol":"CWY"}]}),
+            false,
+        );
+        ledger.observe_business_call(
+            &evidence_call("quote", r#"{"data_type":"quote","symbol":"CRWV"}"#),
+            true,
+        );
+        ledger.observe_business_call(
+            &evidence_call("wrong-profile", r#"{"data_type":"profile","symbol":"CWY"}"#),
+            true,
+        );
+        assert!(!ledger.evidence_floor_satisfied(true));
+
+        ledger.observe_business_call(
+            &evidence_call(
+                "right-profile",
+                r#"{"data_type":"profile","symbol":"CRWV"}"#,
+            ),
+            true,
+        );
+        assert!(ledger.evidence_floor_satisfied(true));
+    }
+
+    #[test]
+    fn route_bound_evidence_before_that_routes_search_never_preloads_coverage() {
+        let search_a = evidence_call(
+            "search-a",
+            r#"{"data_type":"search","query":"AAAA","entity_route":"a","identity_match":"exact_symbol"}"#,
+        );
+        let search_b = evidence_call(
+            "search-b",
+            r#"{"data_type":"search","query":"BBBB","entity_route":"b","identity_match":"exact_symbol"}"#,
+        );
+        let pre_search_b = evidence_call(
+            "snapshot-b-before-search",
+            r#"{"data_type":"snapshot","ticker":"BBBB","entity_route":"b"}"#,
+        );
+        let mut ledger = ResearchEvidenceLedger::default();
+        ledger.observe_business_call(&search_a, false);
+        ledger.observe_business_result(
+            &search_a,
+            &json!({"data":[{"symbol":"AAAA","name":"AAAA Corp."}]}),
+            false,
+        );
+        ledger.observe_business_call(&pre_search_b, true);
+        let pending_b = ledger
+            .identity_routes
+            .get("route:b")
+            .expect("out-of-order evidence must leave a pending B route");
+        assert_eq!(pending_b.search_attempts, 0);
+        assert!(!pending_b.identity_match_declared);
+        assert!(pending_b.quote_symbols.is_empty());
+        assert!(pending_b.asset_route_symbols.is_empty());
+        ledger.observe_business_call(
+            &evidence_call(
+                "quote-a",
+                r#"{"data_type":"quote","symbol":"AAAA","entity_route":"a"}"#,
+            ),
+            true,
+        );
+        ledger.observe_business_call(
+            &evidence_call(
+                "profile-a",
+                r#"{"data_type":"profile","symbol":"AAAA","entity_route":"a"}"#,
+            ),
+            true,
+        );
+        assert!(
+            !ledger.evidence_floor_satisfied(true),
+            "a pending B route cannot disappear after A becomes covered"
+        );
+        ledger.observe_business_call(&search_b, true);
+        ledger.observe_business_result(
+            &search_b,
+            &json!({"data":[{"symbol":"BBBB","name":"BBBB Corp."}]}),
+            true,
+        );
+        let b = ledger
+            .identity_routes
+            .get("route:b")
+            .expect("searched B route");
+        assert!(b.quote_symbols.is_empty());
+        assert!(b.asset_route_symbols.is_empty());
+        assert_eq!(b.post_identity_attempts, 0);
+        assert!(
+            !b.is_covered(),
+            "B evidence observed before B search cannot become later B coverage"
+        );
+        ledger.observe_business_call(&pre_search_b, true);
+        assert!(ledger.evidence_floor_satisfied(true));
+
+        let mut empty_b = ResearchEvidenceLedger::default();
+        empty_b.observe_business_call(&search_a, false);
+        empty_b.observe_business_result(
+            &search_a,
+            &json!({"data":[{"symbol":"AAAA","name":"AAAA Corp."}]}),
+            false,
+        );
+        empty_b.observe_business_call(&pre_search_b, true);
+        for _ in 0..2 {
+            empty_b.observe_business_call(&search_b, true);
+            empty_b.observe_business_result(&search_b, &json!({"data":[]}), true);
+        }
+        let b = empty_b
+            .identity_routes
+            .get("route:b")
+            .expect("empty B route");
+        assert_eq!(b.post_identity_attempts, 0);
+        assert!(
+            !b.has_bounded_no_coverage(),
+            "pre-search evidence cannot satisfy an empty route's post-search attempt"
+        );
+
+        let mut before_any_search = ResearchEvidenceLedger::default();
+        before_any_search.observe_business_call(&pre_search_b, false);
+        before_any_search.observe_business_call(&search_a, true);
+        before_any_search.observe_business_result(
+            &search_a,
+            &json!({"data":[{"symbol":"AAAA","name":"AAAA Corp."}]}),
+            true,
+        );
+        before_any_search.observe_business_call(
+            &evidence_call(
+                "quote-a-after-pending-b",
+                r#"{"data_type":"quote","symbol":"AAAA","entity_route":"a"}"#,
+            ),
+            true,
+        );
+        before_any_search.observe_business_call(
+            &evidence_call(
+                "profile-a-after-pending-b",
+                r#"{"data_type":"profile","symbol":"AAAA","entity_route":"a"}"#,
+            ),
+            true,
+        );
+        assert!(before_any_search.identity_routes.contains_key("route:b"));
+        assert!(
+            !before_any_search.evidence_floor_satisfied(true),
+            "a route declared before the first search cannot be hidden by later A coverage"
+        );
+    }
+
+    #[test]
+    fn malformed_or_missing_mode_searches_remain_visible_as_pending_routes() {
+        let valid_a = evidence_call(
+            "search-a-valid",
+            r#"{"data_type":"search","query":"AAAA","entity_route":"a","identity_match":"exact_symbol"}"#,
+        );
+        let missing_query_b = evidence_call(
+            "search-b-null-query",
+            r#"{"data_type":"search","query":null,"ticker":"BBBB","entity_route":"b","identity_match":"exact_symbol"}"#,
+        );
+        let missing_mode_c = evidence_call(
+            "search-c-missing-mode",
+            r#"{"data_type":"search","query":"CCCC","entity_route":"c"}"#,
+        );
+        let invalid_untagged = evidence_call(
+            "search-d-invalid-mode",
+            r#"{"data_type":"search","query":"DDDD","identity_match":"tickerish"}"#,
+        );
+        let mut ledger = ResearchEvidenceLedger::default();
+        ledger.observe_business_call(&valid_a, false);
+        ledger.observe_business_result(
+            &valid_a,
+            &json!({"data":[{"symbol":"AAAA","name":"AAAA Corp."}]}),
+            false,
+        );
+        ledger.observe_business_call(
+            &evidence_call(
+                "snapshot-a",
+                r#"{"data_type":"snapshot","ticker":"AAAA","entity_route":"a"}"#,
+            ),
+            true,
+        );
+        assert!(ledger.evidence_floor_satisfied(true));
+
+        for invalid in [&missing_query_b, &missing_mode_c, &invalid_untagged] {
+            ledger.observe_business_call(invalid, true);
+            ledger.observe_business_result(
+                invalid,
+                &json!({"data":[{"symbol":"DDDD","name":"wrongly supplied row"}]}),
+                true,
+            );
+        }
+        for key in ["route:b", "route:c", "query:DDDD"] {
+            let route = ledger
+                .identity_routes
+                .get(key)
+                .unwrap_or_else(|| panic!("missing pending route {key}"));
+            assert_eq!(route.search_attempts, 0, "route {key}");
+            assert!(route.candidates.is_empty(), "route {key}");
+        }
+        assert!(
+            !ledger.evidence_floor_satisfied(true),
+            "malformed declarations must not disappear after another entity is covered"
+        );
+
+        let numeric_match_mode = evidence_call(
+            "numeric-match-mode",
+            r#"{"data_type":"search","query":"CRWV","identity_match":7}"#,
+        );
+        let mut malformed_metadata = ResearchEvidenceLedger::default();
+        malformed_metadata.observe_business_call(&numeric_match_mode, true);
+        malformed_metadata.observe_business_result(
+            &numeric_match_mode,
+            &json!({"data":[{
+                "symbol":"CWY",
+                "name":"GraniteShares YieldBOOST CRWV ETF"
+            }]}),
+            true,
+        );
+        malformed_metadata.observe_business_call(
+            &evidence_call("quote-cwy", r#"{"data_type":"quote","ticker":"CWY"}"#),
+            true,
+        );
+        malformed_metadata.observe_business_call(
+            &evidence_call("profile-cwy", r#"{"data_type":"profile","ticker":"CWY"}"#),
+            true,
+        );
+        let pending = malformed_metadata
+            .identity_routes
+            .get("query:CRWV")
+            .expect("malformed match mode leaves the executed query pending");
+        assert_eq!(pending.search_attempts, 0);
+        assert!(pending.candidates.is_empty());
+        assert!(
+            !malformed_metadata.evidence_floor_satisfied(true),
+            "wrongly typed identity metadata cannot downgrade exact CRWV into a legacy CWY route"
+        );
+
+        let provisional_nvidia = evidence_call(
+            "provisional-nvidia",
+            r#"{"data_type":"search","query":"NVIDIA","identity_match":"name_or_alias"}"#,
+        );
+        let malformed_link = evidence_call(
+            "malformed-link",
+            r#"{"data_type":"search","query":"CoreWeave","entity_route":"coreweave","identity_match":"name_or_alias","refines_query":7,"supersedes_query":"NVIDIA"}"#,
+        );
+        let mut malformed_migration = ResearchEvidenceLedger::default();
+        malformed_migration.observe_business_call(&provisional_nvidia, false);
+        malformed_migration.observe_business_result(
+            &provisional_nvidia,
+            &json!({"data":[{"symbol":"NVDA","name":"NVIDIA Corporation"}]}),
+            false,
+        );
+        malformed_migration.observe_business_call(&malformed_link, true);
+        assert!(
+            malformed_migration
+                .identity_routes
+                .contains_key("query:NVIDIA")
+        );
+        assert_eq!(
+            malformed_migration
+                .identity_routes
+                .get("route:coreweave")
+                .expect("malformed linked route remains pending")
+                .search_attempts,
+            0
+        );
+    }
+
+    #[test]
+    fn ledger_uses_the_executor_target_and_rejects_spoofed_or_malformed_symbol_fields() {
+        let search = evidence_call(
+            "search-crwv",
+            r#"{"data_type":"search","query":"CRWV","entity_route":"coreweave","identity_match":"exact_symbol"}"#,
+        );
+        let mut ledger = ResearchEvidenceLedger::default();
+        ledger.observe_business_call(&search, false);
+        ledger.observe_business_result(
+            &search,
+            &json!({"data":[{"symbol":"CRWV","name":"CoreWeave, Inc."}]}),
+            false,
+        );
+
+        for spoofed in [
+            evidence_call(
+                "ticker-wins-over-symbol",
+                r#"{"data_type":"quote","ticker":"CWY","symbol":"CRWV","entity_route":"coreweave"}"#,
+            ),
+            evidence_call(
+                "wrongly-typed-ticker-does-not-fall-through",
+                r#"{"data_type":"profile","ticker":["CRWV"],"symbol":"CRWV","entity_route":"coreweave"}"#,
+            ),
+            evidence_call(
+                "malformed-batch-symbol",
+                r#"{"data_type":"snapshot","ticker":"CRWV,","entity_route":"coreweave"}"#,
+            ),
+            evidence_call(
+                "broad-call-ignores-ticker",
+                r#"{"data_type":"gainers_losers","ticker":"CRWV","entity_route":"coreweave"}"#,
+            ),
+        ] {
+            ledger.observe_business_call(&spoofed, true);
+        }
+        let route = ledger
+            .identity_routes
+            .get("route:coreweave")
+            .expect("CoreWeave route");
+        assert!(route.quote_symbols.is_empty());
+        assert!(route.asset_route_symbols.is_empty());
+        assert!(!ledger.evidence_floor_satisfied(true));
+
+        ledger.observe_business_call(
+            &evidence_call(
+                "real-quote",
+                r#"{"data_type":"quote","ticker":"CRWV","entity_route":"coreweave"}"#,
+            ),
+            true,
+        );
+        ledger.observe_business_call(
+            &evidence_call(
+                "real-profile",
+                r#"{"data_type":"profile","ticker":"CRWV","entity_route":"coreweave"}"#,
+            ),
+            true,
+        );
+        assert!(ledger.evidence_floor_satisfied(true));
+    }
+
+    #[test]
+    fn evidence_for_an_old_candidate_cannot_preload_a_later_candidate_replacement() {
+        let first_search = evidence_call(
+            "search-nvidia",
+            r#"{"data_type":"search","query":"NVIDIA","entity_route":"company","identity_match":"name_or_alias"}"#,
+        );
+        let replacement_search = evidence_call(
+            "search-coreweave",
+            r#"{"data_type":"search","query":"CoreWeave","entity_route":"company","identity_match":"name_or_alias"}"#,
+        );
+        let mut ledger = ResearchEvidenceLedger::default();
+        ledger.observe_business_call(&first_search, false);
+        ledger.observe_business_result(
+            &first_search,
+            &json!({"data":[{"symbol":"NVDA","name":"NVIDIA Corporation"}]}),
+            false,
+        );
+        ledger.observe_business_call(
+            &evidence_call(
+                "wrong-quote-before-replacement",
+                r#"{"data_type":"quote","ticker":"CRWV","entity_route":"company"}"#,
+            ),
+            true,
+        );
+        ledger.observe_business_call(
+            &evidence_call(
+                "wrong-profile-before-replacement",
+                r#"{"data_type":"profile","ticker":"CRWV","entity_route":"company"}"#,
+            ),
+            true,
+        );
+        ledger.observe_business_call(&replacement_search, true);
+        ledger.observe_business_result(
+            &replacement_search,
+            &json!({"data":[{"symbol":"CRWV","name":"CoreWeave, Inc."}]}),
+            true,
+        );
+        let route = ledger
+            .identity_routes
+            .get("route:company")
+            .expect("replaced route");
+        assert_eq!(route.candidates, BTreeSet::from(["CRWV".to_string()]));
+        assert!(route.quote_symbols.is_empty());
+        assert!(route.asset_route_symbols.is_empty());
+        assert!(
+            !ledger.evidence_floor_satisfied(true),
+            "wrong-symbol calls made before replacement cannot become evidence for the new candidate"
+        );
+    }
+
+    #[test]
+    fn old_candidate_followup_cannot_satisfy_a_later_empty_identity_generation() {
+        let search = evidence_call(
+            "search-crwv",
+            r#"{"data_type":"search","query":"CRWV","entity_route":"coreweave","identity_match":"exact_symbol"}"#,
+        );
+        let mut ledger = ResearchEvidenceLedger::default();
+        ledger.observe_business_call(&search, false);
+        ledger.observe_business_result(
+            &search,
+            &json!({"data":[{"symbol":"CRWV","name":"CoreWeave, Inc."}]}),
+            false,
+        );
+        ledger.observe_business_call(
+            &evidence_call(
+                "old-snapshot",
+                r#"{"data_type":"snapshot","ticker":"CRWV","entity_route":"coreweave"}"#,
+            ),
+            true,
+        );
+        assert!(ledger.evidence_floor_satisfied(true));
+
+        for _ in 0..2 {
+            ledger.observe_business_call(&search, true);
+            ledger.observe_business_result(&search, &json!({"data":[]}), true);
+        }
+        let route = ledger
+            .identity_routes
+            .get("route:coreweave")
+            .expect("empty CoreWeave generation");
+        assert_eq!(route.empty_search_results, 2);
+        assert_eq!(route.post_identity_attempts, 0);
+        assert!(route.quote_symbols.is_empty());
+        assert!(route.asset_route_symbols.is_empty());
+        assert!(
+            !ledger.evidence_floor_satisfied(true),
+            "old candidate follow-up cannot satisfy the current empty generation"
+        );
+
+        ledger.observe_business_call(
+            &evidence_call(
+                "current-empty-followup",
+                r#"{"data_type":"snapshot","ticker":"CRWV","entity_route":"coreweave"}"#,
+            ),
+            true,
+        );
+        assert!(ledger.evidence_floor_satisfied(true));
+
+        // A later successful result starts a new streak. One subsequent empty
+        // result cannot reuse the two historical empties as bounded failure.
+        ledger.observe_business_call(&search, true);
+        ledger.observe_business_result(
+            &search,
+            &json!({"data":[{"symbol":"CRWV","name":"CoreWeave, Inc."}]}),
+            true,
+        );
+        assert_eq!(
+            ledger
+                .identity_routes
+                .get("route:coreweave")
+                .expect("successful generation")
+                .empty_search_results,
+            0
+        );
+        ledger.observe_business_call(&search, true);
+        ledger.observe_business_result(&search, &json!({"data":[]}), true);
+        ledger.observe_business_call(
+            &evidence_call(
+                "single-empty-followup",
+                r#"{"data_type":"snapshot","ticker":"CRWV","entity_route":"coreweave"}"#,
+            ),
+            true,
+        );
+        assert!(
+            !ledger.evidence_floor_satisfied(true),
+            "successful identity evidence must reset the empty-attempt streak"
+        );
+    }
+
+    #[test]
+    fn wrongly_cased_tool_names_never_activate_or_satisfy_the_research_ledger() {
+        let mut uppercase_data_fetch = evidence_call(
+            "uppercase-data-fetch",
+            r#"{"data_type":"search","query":"CRWV","entity_route":"coreweave","identity_match":"exact_symbol"}"#,
+        );
+        uppercase_data_fetch.function.name = "DATA_FETCH".to_string();
+        assert!(!starts_investment_research_protocol(&uppercase_data_fetch));
+        let mut ledger = ResearchEvidenceLedger::default();
+        ledger.observe_business_call(&uppercase_data_fetch, true);
+        ledger.observe_business_result(
+            &uppercase_data_fetch,
+            &json!({"data":[{"symbol":"CRWV","name":"CoreWeave, Inc."}]}),
+            true,
+        );
+        assert!(ledger.identity_routes.is_empty());
+        assert!(!ledger.evidence_floor_satisfied(true));
+
+        let empty_search = evidence_call(
+            "empty-search",
+            r#"{"data_type":"search","query":"UNKNOWN","identity_match":"exact_symbol"}"#,
+        );
+        for _ in 0..2 {
+            ledger.observe_business_call(&empty_search, true);
+            ledger.observe_business_result(&empty_search, &json!({"data":[]}), true);
+        }
+        let mut uppercase_web = ToolCall {
+            id: "uppercase-web-search".to_string(),
+            call_type: "function".to_string(),
+            function: FunctionCall {
+                name: "WEB_SEARCH".to_string(),
+                arguments: r#"{"query":"UNKNOWN company"}"#.to_string(),
+            },
+        };
+        ledger.observe_business_call(&uppercase_web, true);
+        assert!(!ledger.evidence_floor_satisfied(true));
+        uppercase_web.function.name = "web_search".to_string();
+        ledger.observe_business_call(&uppercase_web, true);
+        assert!(ledger.evidence_floor_satisfied(true));
+    }
+
+    #[test]
+    fn unrelated_extra_quote_does_not_block_a_covered_identity_route() {
+        let search = evidence_call("search", r#"{"data_type":"search","query":"CRWV"}"#);
+        let mut ledger = ResearchEvidenceLedger::default();
+        ledger.observe_business_call(&search, false);
+        ledger.observe_business_result(
+            &search,
+            &json!({"data":[{"symbol":"CRWV"},{"symbol":"CWY"}]}),
+            false,
+        );
+        ledger.observe_business_call(
+            &evidence_call(
+                "quotes",
+                r#"{"data_type":"quote","ticker":"CRWV,UNRELATED"}"#,
+            ),
+            true,
+        );
+        ledger.observe_business_call(
+            &evidence_call("profile", r#"{"data_type":"profile","ticker":"CRWV"}"#),
+            true,
+        );
+
+        assert!(ledger.evidence_floor_satisfied(true));
+    }
+
+    #[test]
+    fn empty_identity_coverage_requires_linked_refinement_and_a_real_followup() {
+        let search = evidence_call(
+            "search-unknown",
+            r#"{"data_type":"search","query":"UNKNOWN"}"#,
+        );
+        let refinement = evidence_call(
+            "search-unknown-name",
+            r#"{"data_type":"search","query":"Unknown Holdings Inc","refines_query":"UNKNOWN"}"#,
+        );
+        let web_followup = ToolCall {
+            id: "web-unknown".to_string(),
+            call_type: "function".to_string(),
+            function: FunctionCall {
+                name: "web_search".to_string(),
+                arguments: r#"{"query":"UNKNOWN company"}"#.to_string(),
+            },
+        };
+
+        let mut web_only = ResearchEvidenceLedger::default();
+        web_only.observe_business_call(&search, false);
+        web_only.observe_business_result(&search, &json!({"data":[]}), false);
+        web_only.observe_business_call(&web_followup, true);
+        assert!(
+            !web_only.evidence_floor_satisfied(true),
+            "a non-search follow-up cannot replace the linked refinement"
+        );
+
+        let mut refinement_only = ResearchEvidenceLedger::default();
+        refinement_only.observe_business_call(&search, false);
+        refinement_only.observe_business_result(&search, &json!({"data":[]}), false);
+        refinement_only.observe_business_call(&refinement, true);
+        refinement_only.observe_business_result(&refinement, &json!({"data":[]}), true);
+        assert!(
+            !refinement_only.evidence_floor_satisfied(true),
+            "the linked refinement cannot replace a real non-search follow-up"
+        );
+
+        refinement_only.observe_business_call(&web_followup, true);
+        assert!(refinement_only.evidence_floor_satisfied(true));
+        assert!(refinement_only.completion_signal_available(true));
+
+        let empty_a = evidence_call(
+            "empty-a",
+            r#"{"data_type":"search","query":"AAAA","entity_route":"a","identity_match":"exact_symbol"}"#,
+        );
+        let empty_b = evidence_call(
+            "empty-b",
+            r#"{"data_type":"search","query":"BBBB","entity_route":"b","identity_match":"exact_symbol"}"#,
+        );
+        let mut two_empty_routes = ResearchEvidenceLedger::default();
+        for call in [&empty_a, &empty_b, &empty_a, &empty_b] {
+            two_empty_routes.observe_business_call(call, true);
+            two_empty_routes.observe_business_result(call, &json!({"data":[]}), true);
+        }
+        two_empty_routes.observe_business_call(
+            &evidence_call(
+                "attempt-a",
+                r#"{"data_type":"snapshot","ticker":"AAAA","entity_route":"a"}"#,
+            ),
+            true,
+        );
+        assert!(
+            !two_empty_routes.evidence_floor_satisfied(true),
+            "a route-bound attempt for A cannot unlock empty route B"
+        );
+        two_empty_routes.observe_business_call(
+            &evidence_call(
+                "attempt-b",
+                r#"{"data_type":"snapshot","ticker":"BBBB","entity_route":"b"}"#,
+            ),
+            true,
+        );
+        assert!(two_empty_routes.evidence_floor_satisfied(true));
+
+        let covered_a = evidence_call(
+            "covered-a",
+            r#"{"data_type":"search","query":"AAAA","entity_route":"a","identity_match":"exact_symbol"}"#,
+        );
+        let mut covered_plus_empty = ResearchEvidenceLedger::default();
+        covered_plus_empty.observe_business_call(&covered_a, false);
+        covered_plus_empty.observe_business_result(
+            &covered_a,
+            &json!({"data":[{"symbol":"AAAA","name":"AAAA Corp."}]}),
+            false,
+        );
+        covered_plus_empty.observe_business_call(
+            &evidence_call(
+                "quote-covered-a",
+                r#"{"data_type":"quote","symbol":"AAAA","entity_route":"a"}"#,
+            ),
+            true,
+        );
+        covered_plus_empty.observe_business_call(
+            &evidence_call(
+                "profile-covered-a",
+                r#"{"data_type":"profile","symbol":"AAAA","entity_route":"a"}"#,
+            ),
+            true,
+        );
+        for _ in 0..2 {
+            covered_plus_empty.observe_business_call(&empty_b, true);
+            covered_plus_empty.observe_business_result(&empty_b, &json!({"data":[]}), true);
+        }
+        covered_plus_empty.observe_business_call(&web_followup, true);
+        assert!(
+            !covered_plus_empty.evidence_floor_satisfied(true),
+            "an unscoped Web call cannot be guessed as the only empty route while another route exists"
+        );
     }
 
     fn evidence_call(id: &str, arguments: &str) -> ToolCall {
@@ -3009,8 +5417,11 @@ mod tests {
             &evidence_call("early-quote", r#"{"data_type":"quote","ticker":"CRWV"}"#),
             true,
         );
-        ledger.observe_business_call(
-            &evidence_call("search", r#"{"data_type":"search","query":"CRWV"}"#),
+        let search = evidence_call("search", r#"{"data_type":"search","query":"CRWV"}"#);
+        ledger.observe_business_call(&search, true);
+        ledger.observe_business_result(
+            &search,
+            &json!({"data":[{"symbol":"CRWV","name":"CoreWeave, Inc."}]}),
             true,
         );
         ledger.observe_business_call(
@@ -3041,14 +5452,20 @@ mod tests {
     #[test]
     fn crypto_search_plus_crypto_quote_unlocks_without_stock_profile() {
         let mut ledger = ResearchEvidenceLedger::default();
-        ledger.observe_business_call(
-            &evidence_call("search", r#"{"data_type":"search","query":"BTCUSD"}"#),
+        let search = evidence_call(
+            "search",
+            r#"{"data_type":"search","query":"BTCUSD","entity_route":"bitcoin","identity_match":"exact_symbol"}"#,
+        );
+        ledger.observe_business_call(&search, false);
+        ledger.observe_business_result(
+            &search,
+            &json!({"data":[{"symbol":"BTCUSD","name":"Bitcoin USD"}]}),
             false,
         );
         ledger.observe_business_call(
             &evidence_call(
                 "crypto-quote",
-                r#"{"data_type":"crypto_quote","ticker":"BTCUSD"}"#,
+                r#"{"data_type":"crypto_quote","ticker":"BTCUSD","entity_route":"bitcoin"}"#,
             ),
             true,
         );
@@ -3227,9 +5644,15 @@ mod tests {
                 ),
                 ChatStreamEvent::ToolCallDelta {
                     index: 0,
-                    id: Some("tc_data_fetch".to_string()),
+                    id: Some("tc_search_crwv".to_string()),
                     name: Some("data_fetch".to_string()),
-                    arguments: r#"{"data_type":"search","query":"CRWV,NVIDIA"}"#.to_string(),
+                    arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 1,
+                    id: Some("tc_search_nvidia".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"search","query":"NVIDIA"}"#.to_string(),
                 },
             ],
             vec![
@@ -3315,18 +5738,19 @@ mod tests {
         assert!(response.success, "{:?}", response.error);
         assert_eq!(response.content, "最终答案");
         assert_eq!(response.iterations, 4);
-        assert_eq!(response.tool_calls_made.len(), 5);
+        assert_eq!(response.tool_calls_made.len(), 6);
         assert_eq!(response.tool_calls_made[0].name, "data_fetch");
-        assert_eq!(response.tool_calls_made[1].arguments["data_type"], "quote");
-        assert_eq!(
-            response.tool_calls_made[2].arguments["data_type"],
-            "profile"
-        );
+        assert_eq!(response.tool_calls_made[1].arguments["data_type"], "search");
+        assert_eq!(response.tool_calls_made[2].arguments["data_type"], "quote");
         assert_eq!(
             response.tool_calls_made[3].arguments["data_type"],
             "profile"
         );
-        assert_eq!(response.tool_calls_made[4].name, "web_search");
+        assert_eq!(
+            response.tool_calls_made[4].arguments["data_type"],
+            "profile"
+        );
+        assert_eq!(response.tool_calls_made[5].name, "web_search");
         assert_eq!(
             seen_tool_counts
                 .lock()
@@ -3363,6 +5787,8 @@ mod tests {
                 .expect("tool observer lock")
                 .as_slice(),
             [
+                "start:data_fetch",
+                "done:data_fetch:true",
                 "start:data_fetch",
                 "done:data_fetch:true",
                 "start:data_fetch",
@@ -3421,9 +5847,9 @@ mod tests {
             vec![
                 ChatStreamEvent::ToolCallDelta {
                     index: 0,
-                    id: Some("tc_data_fetch".to_string()),
+                    id: Some("tc_search_crwv".to_string()),
                     name: Some("data_fetch".to_string()),
-                    arguments: r#"{"data_type":"search","query":"CRWV,NVIDIA"}"#.to_string(),
+                    arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
                 },
                 ChatStreamEvent::ToolCallDelta {
                     index: 1,
@@ -3666,12 +6092,20 @@ mod tests {
     async fn eligible_direct_final_is_preserved_without_terminal_or_second_generation() {
         let answer = "数据时间：北京时间 2026-07-19 09:31；行情口径：报价源时间：北京时间 2026-07-18 04:00（最新可得、非逐笔）\n\nCoreWeave 与 NVIDIA 的关系仅按本轮网页来源直接支持的范围表述。";
         let llm = StreamingMockLlmProvider::with_rounds(vec![
-            vec![ChatStreamEvent::ToolCallDelta {
-                index: 0,
-                id: Some("tc_data_fetch".to_string()),
-                name: Some("data_fetch".to_string()),
-                arguments: r#"{"data_type":"search","query":"CRWV,NVIDIA"}"#.to_string(),
-            }],
+            vec![
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_search_crwv".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 1,
+                    id: Some("tc_search_nvidia".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"search","query":"NVIDIA"}"#.to_string(),
+                },
+            ],
             vec![
                 ChatStreamEvent::ToolCallDelta {
                     index: 0,
@@ -3745,7 +6179,7 @@ mod tests {
         assert!(response.success, "{:?}", response.error);
         assert_eq!(response.content, answer);
         assert_eq!(response.iterations, 3);
-        assert_eq!(response.tool_calls_made.len(), 5);
+        assert_eq!(response.tool_calls_made.len(), 6);
         assert_eq!(
             seen_tool_counts
                 .lock()
@@ -3813,14 +6247,116 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn relationship_search_does_not_offer_finish_until_post_identity_evidence() {
+    async fn finish_stays_hidden_until_each_nonempty_entity_route_is_covered() {
         let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_search_crwv".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 1,
+                    id: Some("tc_search_nvda".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"search","query":"NVIDIA"}"#.to_string(),
+                },
+            ],
+            vec![
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_quote_crwv".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"quote","ticker":"CRWV"}"#.to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 1,
+                    id: Some("tc_profile_crwv".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"profile","ticker":"CRWV"}"#.to_string(),
+                },
+            ],
+            vec![
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_quote_nvda".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"quote","ticker":"NVDA"}"#.to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 1,
+                    id: Some("tc_profile_nvda".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"profile","ticker":"NVDA"}"#.to_string(),
+                },
+            ],
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
-                id: Some("tc_data_fetch_1".to_string()),
-                name: Some("data_fetch".to_string()),
-                arguments: r#"{"data_type":"search","query":"CRWV,NVIDIA"}"#.to_string(),
+                id: Some("tc_finish".to_string()),
+                name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
+                arguments: "{}".to_string(),
             }],
+            vec![ChatStreamEvent::ContentDelta(
+                "CRWV 与 NVDA 均已按各自实体路线核验。".to_string(),
+            )],
+        ]);
+        let seen_tool_counts = llm.seen_tool_counts.clone();
+        let seen_tool_choice_modes = llm.seen_tool_choice_modes.clone();
+        let observer = Arc::new(RecordingStreamObserver::default());
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(EntityRouteFinanceEvidenceTool));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 5, None)
+                .with_finish_research_terminal_synthesis(true)
+                .with_stream_observer(Some(observer));
+        let mut context = AgentContext::new("per-entity-route-finish".to_string());
+
+        let response = agent.run("crwv和英伟达有什么关系", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, "CRWV 与 NVDA 均已按各自实体路线核验。");
+        assert_eq!(response.tool_calls_made.len(), 6);
+        assert_eq!(
+            seen_tool_counts
+                .lock()
+                .expect("stream tool counts lock")
+                .as_slice(),
+            [1, 1, 1, 2, 0],
+            "finish must stay hidden after CRWV-only coverage and appear only after NVDA is covered"
+        );
+        assert_eq!(
+            seen_tool_choice_modes
+                .lock()
+                .expect("stream tool choice modes lock")
+                .as_slice(),
+            [
+                ToolChoiceMode::Auto,
+                ToolChoiceMode::Required,
+                ToolChoiceMode::Required,
+                ToolChoiceMode::Auto,
+                ToolChoiceMode::Auto,
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn relationship_search_does_not_offer_finish_until_post_identity_evidence() {
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_search_crwv".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 1,
+                    id: Some("tc_search_nvidia".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"search","query":"NVIDIA"}"#.to_string(),
+                },
+            ],
             vec![
                 ChatStreamEvent::ContentDelta("discarded unavailable-finish preamble".to_string()),
                 ChatStreamEvent::ToolCallDelta {
@@ -3885,18 +6421,19 @@ mod tests {
         assert!(response.success, "{:?}", response.error);
         assert_eq!(response.content, "continue preamble terminal");
         assert_eq!(response.iterations, 5);
-        assert_eq!(response.tool_calls_made.len(), 5);
+        assert_eq!(response.tool_calls_made.len(), 6);
         assert_eq!(response.tool_calls_made[0].name, "data_fetch");
-        assert_eq!(response.tool_calls_made[1].arguments["data_type"], "quote");
-        assert_eq!(
-            response.tool_calls_made[2].arguments["data_type"],
-            "profile"
-        );
+        assert_eq!(response.tool_calls_made[1].arguments["data_type"], "search");
+        assert_eq!(response.tool_calls_made[2].arguments["data_type"], "quote");
         assert_eq!(
             response.tool_calls_made[3].arguments["data_type"],
             "profile"
         );
-        assert_eq!(response.tool_calls_made[4].name, "web_search");
+        assert_eq!(
+            response.tool_calls_made[4].arguments["data_type"],
+            "profile"
+        );
+        assert_eq!(response.tool_calls_made[5].name, "web_search");
         assert_eq!(
             seen_tool_counts
                 .lock()
@@ -3984,13 +6521,13 @@ mod tests {
                 index: 0,
                 id: Some("tc_data_fetch".to_string()),
                 name: Some("data_fetch".to_string()),
-                arguments: "{}".to_string(),
+                arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
             }],
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
                 id: Some("tc_post_identity_quote".to_string()),
                 name: Some("data_fetch".to_string()),
-                arguments: r#"{"data_type":"quote","ticker":"CRWV"}"#.to_string(),
+                arguments: r#"{"data_type":"snapshot","ticker":"CRWV"}"#.to_string(),
             }],
             vec![
                 ChatStreamEvent::ContentDelta("discarded finish preamble".to_string()),
@@ -4131,7 +6668,7 @@ mod tests {
                 index: 0,
                 id: Some("tc_data_fetch_1".to_string()),
                 name: Some("data_fetch".to_string()),
-                arguments: "{}".to_string(),
+                arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
             }],
             vec![
                 ChatStreamEvent::ContentDelta("<thi".to_string()),
@@ -4141,6 +6678,12 @@ mod tests {
                     id: Some("tc_web_relationship".to_string()),
                     name: Some("web_search".to_string()),
                     arguments: r#"{"query":"relationship evidence"}"#.to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 1,
+                    id: Some("tc_post_identity_snapshot".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"snapshot","ticker":"CRWV"}"#.to_string(),
                 },
             ],
             vec![ChatStreamEvent::ToolCallDelta {
@@ -4169,7 +6712,7 @@ mod tests {
         assert!(response.success, "{:?}", response.error);
         assert_eq!(response.content, "隐藏思考后的终稿");
         assert_eq!(response.iterations, 4);
-        assert_eq!(response.tool_calls_made.len(), 2);
+        assert_eq!(response.tool_calls_made.len(), 3);
         assert_eq!(
             seen_tool_counts
                 .lock()
@@ -4475,15 +7018,23 @@ mod tests {
                 index: 0,
                 id: Some("tc_data_fetch".to_string()),
                 name: Some("data_fetch".to_string()),
-                arguments: "{}".to_string(),
+                arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
             }],
             first_business_empty,
-            vec![ChatStreamEvent::ToolCallDelta {
-                index: 0,
-                id: Some("tc_web_relationship".to_string()),
-                name: Some("web_search".to_string()),
-                arguments: r#"{"query":"relationship evidence"}"#.to_string(),
-            }],
+            vec![
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_web_relationship".to_string()),
+                    name: Some("web_search".to_string()),
+                    arguments: r#"{"query":"relationship evidence"}"#.to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 1,
+                    id: Some("tc_post_identity_snapshot".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"snapshot","ticker":"CRWV"}"#.to_string(),
+                },
+            ],
             vec![ChatStreamEvent::ReasoningDelta(
                 "second hidden-only business thought".to_string(),
             )],
@@ -4519,11 +7070,11 @@ mod tests {
         assert!(response.success, "{:?}", response.error);
         assert_eq!(response.content, "唯一可见终稿");
         assert_eq!(response.iterations, 6);
-        assert_eq!(response.tool_calls_made.len(), 2);
+        assert_eq!(response.tool_calls_made.len(), 3);
         assert_eq!(response.tool_calls_made[1].name, "web_search");
         assert_eq!(
             delivered_events.load(Ordering::SeqCst),
-            24,
+            25,
             "all six completed streams must be consumed through their lifecycle boundaries"
         );
         assert_eq!(
@@ -4747,12 +7298,20 @@ mod tests {
     async fn completion_auto_empty_retries_once_then_preserves_direct_final() {
         let answer = "数据时间：北京时间 2026-07-19 09:31；行情口径：最新可得、非逐笔\n\n正常终稿";
         let llm = StreamingMockLlmProvider::with_rounds(vec![
-            vec![ChatStreamEvent::ToolCallDelta {
-                index: 0,
-                id: Some("tc_search".to_string()),
-                name: Some("data_fetch".to_string()),
-                arguments: r#"{"data_type":"search","query":"CRWV,NVIDIA"}"#.to_string(),
-            }],
+            vec![
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_search_crwv".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 1,
+                    id: Some("tc_search_nvidia".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"search","query":"NVIDIA"}"#.to_string(),
+                },
+            ],
             vec![
                 ChatStreamEvent::ToolCallDelta {
                     index: 0,
@@ -4794,7 +7353,7 @@ mod tests {
         assert!(response.success, "{:?}", response.error);
         assert_eq!(response.content, answer);
         assert_eq!(response.iterations, 4);
-        assert_eq!(response.tool_calls_made.len(), 3);
+        assert_eq!(response.tool_calls_made.len(), 4);
         assert_eq!(
             seen_tool_choice_modes
                 .lock()
@@ -5008,15 +7567,23 @@ mod tests {
                     index: 0,
                     id: Some("tc_data_fetch".to_string()),
                     name: Some("data_fetch".to_string()),
-                    arguments: r#"{"text":"CRWV current quote"}"#.to_string(),
+                    arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
                 },
             ],
-            vec![ChatStreamEvent::ToolCallDelta {
-                index: 0,
-                id: Some("tc_post_identity_web".to_string()),
-                name: Some("web_search".to_string()),
-                arguments: r#"{"query":"CoreWeave NVIDIA relationship filing"}"#.to_string(),
-            }],
+            vec![
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_post_identity_web".to_string()),
+                    name: Some("web_search".to_string()),
+                    arguments: r#"{"query":"CoreWeave NVIDIA relationship filing"}"#.to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 1,
+                    id: Some("tc_post_identity_snapshot".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"snapshot","ticker":"CRWV"}"#.to_string(),
+                },
+            ],
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
                 id: Some("tc_finish".to_string()),
@@ -5040,7 +7607,7 @@ mod tests {
 
         assert!(response.success, "{:?}", response.error);
         assert_eq!(response.content, "基于两项工具证据的终稿");
-        assert_eq!(response.tool_calls_made.len(), 3);
+        assert_eq!(response.tool_calls_made.len(), 4);
         assert_explicit_terminal_messages(&seen_messages);
         let seen_messages = seen_messages.lock().expect("stream messages lock");
         let terminal_messages = seen_messages.last().expect("terminal messages");
@@ -5050,12 +7617,9 @@ mod tests {
                 .as_deref()
                 .is_some_and(|content| content.contains("relationship"))
         }));
-        assert!(terminal_messages.iter().any(|message| {
-            message
-                .content
-                .as_deref()
-                .is_some_and(|content| content.contains("CRWV current quote"))
-        }));
+        let terminal_transcript =
+            serde_json::to_string(terminal_messages).expect("serialize terminal transcript");
+        assert!(terminal_transcript.contains(r#"\"query\":\"CRWV\""#));
         assert!(terminal_messages.iter().all(|message| {
             message.content.as_deref().is_none_or(|content| {
                 !content.contains("CRWV 是 NVIDIA 子公司") && !content.contains("CRWV 市值已经核验")
@@ -5304,13 +7868,13 @@ mod tests {
                 index: 0,
                 id: Some("tc_data_fetch".to_string()),
                 name: Some("data_fetch".to_string()),
-                arguments: "{}".to_string(),
+                arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
             }],
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
                 id: Some("tc_post_identity_quote".to_string()),
                 name: Some("data_fetch".to_string()),
-                arguments: r#"{"data_type":"quote","ticker":"CRWV"}"#.to_string(),
+                arguments: r#"{"data_type":"snapshot","ticker":"CRWV"}"#.to_string(),
             }],
             vec![
                 ChatStreamEvent::ToolChoiceMetadata {
@@ -5390,13 +7954,13 @@ mod tests {
                 index: 0,
                 id: Some("tc_data_fetch".to_string()),
                 name: Some("data_fetch".to_string()),
-                arguments: "{}".to_string(),
+                arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
             }],
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
                 id: Some("tc_post_identity_quote".to_string()),
                 name: Some("data_fetch".to_string()),
-                arguments: r#"{"data_type":"quote","ticker":"CRWV"}"#.to_string(),
+                arguments: r#"{"data_type":"snapshot","ticker":"CRWV"}"#.to_string(),
             }],
             vec![
                 ChatStreamEvent::ToolChoiceMetadata {
@@ -5476,13 +8040,13 @@ mod tests {
                 index: 0,
                 id: Some("tc_data_fetch".to_string()),
                 name: Some("data_fetch".to_string()),
-                arguments: "{}".to_string(),
+                arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
             }],
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
                 id: Some("tc_post_identity_quote".to_string()),
                 name: Some("data_fetch".to_string()),
-                arguments: r#"{"data_type":"quote","ticker":"CRWV"}"#.to_string(),
+                arguments: r#"{"data_type":"snapshot","ticker":"CRWV"}"#.to_string(),
             }],
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
@@ -5541,13 +8105,13 @@ mod tests {
                 index: 0,
                 id: Some("tc_data_fetch".to_string()),
                 name: Some("data_fetch".to_string()),
-                arguments: "{}".to_string(),
+                arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
             }],
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
                 id: Some("tc_post_identity_quote".to_string()),
                 name: Some("data_fetch".to_string()),
-                arguments: r#"{"data_type":"quote","ticker":"CRWV"}"#.to_string(),
+                arguments: r#"{"data_type":"snapshot","ticker":"CRWV"}"#.to_string(),
             }],
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
@@ -5675,13 +8239,13 @@ mod tests {
                 index: 0,
                 id: Some("tc_data_fetch".to_string()),
                 name: Some("data_fetch".to_string()),
-                arguments: "{}".to_string(),
+                arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
             }],
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
                 id: Some("tc_post_identity_quote".to_string()),
                 name: Some("data_fetch".to_string()),
-                arguments: r#"{"data_type":"quote","ticker":"CRWV"}"#.to_string(),
+                arguments: r#"{"data_type":"snapshot","ticker":"CRWV"}"#.to_string(),
             }],
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
@@ -5791,13 +8355,19 @@ mod tests {
                 index: 0,
                 id: Some("tc_data_fetch_failed".to_string()),
                 name: Some("data_fetch".to_string()),
-                arguments: "{}".to_string(),
+                arguments: r#"{"data_type":"search","query":"CRWV","entity_route":"coreweave","identity_match":"exact_symbol"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_data_fetch_refine_failed".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"search","query":"CoreWeave","entity_route":"coreweave","identity_match":"name_or_alias","refines_query":"CRWV"}"#.to_string(),
             }],
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
                 id: Some("tc_quote_failed".to_string()),
                 name: Some("data_fetch".to_string()),
-                arguments: r#"{"data_type":"quote","ticker":"CRWV"}"#.to_string(),
+                arguments: r#"{"data_type":"snapshot","ticker":"CRWV","entity_route":"coreweave"}"#.to_string(),
             }],
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
@@ -5818,7 +8388,7 @@ mod tests {
             Arc::new(llm),
             Arc::new(registry),
             "system".to_string(),
-            4,
+            5,
             None,
         )
         .with_finish_research_terminal_synthesis(true)
@@ -5831,7 +8401,7 @@ mod tests {
 
         assert!(response.success, "{:?}", response.error);
         assert_eq!(response.content, "本轮财务源不可用；以下仅分析已核验部分。");
-        assert_eq!(response.tool_calls_made.len(), 2);
+        assert_eq!(response.tool_calls_made.len(), 3);
         assert!(response.tool_calls_made.iter().all(|call| {
             call.name == "data_fetch"
                 && call.result["status"] == "failed"
@@ -5843,7 +8413,7 @@ mod tests {
                 .lock()
                 .expect("stream tool counts lock")
                 .as_slice(),
-            [1, 1, 2, 0]
+            [1, 1, 1, 2, 0]
         );
         assert_eq!(
             seen_tool_choice_modes
@@ -5852,6 +8422,7 @@ mod tests {
                 .as_slice(),
             [
                 ToolChoiceMode::Auto,
+                ToolChoiceMode::Required,
                 ToolChoiceMode::Required,
                 ToolChoiceMode::Auto,
                 ToolChoiceMode::Auto,
@@ -5866,13 +8437,13 @@ mod tests {
                 index: 0,
                 id: Some("tc_data_fetch".to_string()),
                 name: Some("data_fetch".to_string()),
-                arguments: "{}".to_string(),
+                arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
             }],
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
                 id: Some("tc_post_identity_quote".to_string()),
                 name: Some("data_fetch".to_string()),
-                arguments: r#"{"data_type":"quote","ticker":"CRWV"}"#.to_string(),
+                arguments: r#"{"data_type":"snapshot","ticker":"CRWV"}"#.to_string(),
             }],
             vec![
                 ChatStreamEvent::ToolCallDelta {

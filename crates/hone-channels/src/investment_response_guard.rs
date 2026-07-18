@@ -7479,8 +7479,8 @@ fn append_agent_entity_discovery_context(
         "\n\n【本轮证券实体发现：主 Agent 工具循环】\n\
          当前请求不能由前置扫描器可靠地封闭全部证券实体；扫描结果只能作为候选种子，不是实体事实：{}。\n\
          先完整阅读当前用户请求，判断其中是否真的点名公司、证券、基金、指数或加密资产，不得沿用历史 ticker，也不得为了满足流程硬凑标的。若当前文本没有点名证券实体，继续处理用户原本的问题，不做无关的 DataFetch 调用。\n\
-         若存在一个或多个可能标的，第一轮工具调用必须对当前文本中的全部候选并行执行 data_fetch(search)，显式 ticker 也要用原代码作为 query；这组 search query 是你基于完整原话做出的候选实体声明，但返回结果仍不是最终事实。不得只取第一个标的。\n\
-         search 返回后，在同一个 Agent loop 的下一轮对选中的全部标准 symbol 批量或并行执行 exact-symbol quote 与 profile，再结合用户问题继续调用财务、持仓、新闻或网页搜索工具。只有同代码 quote（正价格且带 provider timestamp）与资产类型核验完成后才可写证券分析。搜索第一条、近似 ticker、历史标的和模型记忆都不能替代本轮核验。只有当前工具结果确实仍有多个候选，或权威工具均无覆盖时，才向用户说明具体歧义或缺失；不得因为前置扫描不完整而直接停止。",
+         若存在一个或多个可能标的，第一轮工具调用必须对当前文本中的全部候选并行执行 data_fetch(search)，显式 ticker 也要用原代码作为 query；为每个标的分配一个稳定、互不复用且区分大小写的 entity_route，并在每一次 search 调用里填写 call-scoped identity_match（ticker 用 exact_symbol，公司名/别名用 name_or_alias）。这组 search query 是你基于完整原话做出的候选实体声明，但返回结果仍不是最终事实。不得只取第一个标的，也不得让服务端按字符串形状替你猜实体。\n\
+         search 返回后，在同一个 Agent loop 的下一轮对选中的全部标准 symbol 批量或并行执行同 entity_route 的 exact-symbol quote 与 profile，再结合用户问题继续调用财务、持仓、新闻或网页搜索工具。空结果补查可用 refines_query，给漏写路线键的旧 search 补键可用 supersedes_query；两者都必须逐字且区分大小写地指向一条旧 query，并严格二选一。只有同代码 quote（正价格且带 provider timestamp）与资产类型核验完成后才可写证券分析。搜索第一条、近似 ticker、历史标的和模型记忆都不能替代本轮核验。只有当前工具结果确实仍有多个候选，或权威工具均无覆盖时，才向用户说明具体歧义或缺失；不得因为前置扫描不完整而直接停止。",
         Value::Array(seed_snapshot)
     ));
     runtime_input.push_str(&format!(

@@ -6075,7 +6075,7 @@ async fn single_agent_loop_accepts_later_exact_searches_after_empty_enriched_sea
                     call_type: "function".to_string(),
                     function: FunctionCall {
                         name: "data_fetch".to_string(),
-                        arguments: r#"{"data_type":"search","query":"CRWV CoreWeave"}"#.to_string(),
+                        arguments: r#"{"data_type":"search","query":"CRWV CoreWeave","entity_route":"coreweave","identity_match":"name_or_alias"}"#.to_string(),
                     },
                 },
                 ToolCall {
@@ -6083,7 +6083,7 @@ async fn single_agent_loop_accepts_later_exact_searches_after_empty_enriched_sea
                     call_type: "function".to_string(),
                     function: FunctionCall {
                         name: "data_fetch".to_string(),
-                        arguments: r#"{"data_type":"search","query":"NBIS Nebius"}"#.to_string(),
+                        arguments: r#"{"data_type":"search","query":"NBIS Nebius","entity_route":"nebius","identity_match":"name_or_alias"}"#.to_string(),
                     },
                 },
             ]),
@@ -6098,7 +6098,7 @@ async fn single_agent_loop_accepts_later_exact_searches_after_empty_enriched_sea
                     call_type: "function".to_string(),
                     function: FunctionCall {
                         name: "data_fetch".to_string(),
-                        arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
+                        arguments: r#"{"data_type":"search","query":"CRWV","entity_route":"coreweave","identity_match":"exact_symbol","refines_query":"CRWV CoreWeave"}"#.to_string(),
                     },
                 },
                 ToolCall {
@@ -6106,7 +6106,7 @@ async fn single_agent_loop_accepts_later_exact_searches_after_empty_enriched_sea
                     call_type: "function".to_string(),
                     function: FunctionCall {
                         name: "data_fetch".to_string(),
-                        arguments: r#"{"data_type":"search","query":"NBIS"}"#.to_string(),
+                        arguments: r#"{"data_type":"search","query":"NBIS","entity_route":"nebius","identity_match":"exact_symbol","refines_query":"NBIS Nebius"}"#.to_string(),
                     },
                 },
             ]),
@@ -6129,7 +6129,7 @@ async fn single_agent_loop_accepts_later_exact_searches_after_empty_enriched_sea
                     call_type: "function".to_string(),
                     function: FunctionCall {
                         name: "data_fetch".to_string(),
-                        arguments: r#"{"data_type":"profile","ticker":"CRWV"}"#.to_string(),
+                        arguments: r#"{"data_type":"profile","ticker":"CRWV","entity_route":"coreweave"}"#.to_string(),
                     },
                 },
                 ToolCall {
@@ -6137,7 +6137,7 @@ async fn single_agent_loop_accepts_later_exact_searches_after_empty_enriched_sea
                     call_type: "function".to_string(),
                     function: FunctionCall {
                         name: "data_fetch".to_string(),
-                        arguments: r#"{"data_type":"profile","ticker":"NBIS"}"#.to_string(),
+                        arguments: r#"{"data_type":"profile","ticker":"NBIS","entity_route":"nebius"}"#.to_string(),
                     },
                 },
             ]),

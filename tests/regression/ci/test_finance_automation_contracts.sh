@@ -72,6 +72,8 @@ AGENT_EMITTER="crates/hone-channels/src/agent_session/emitter.rs"
 AGENT_TESTS="crates/hone-channels/src/agent_session/tests.rs"
 BOT_CORE="crates/hone-channels/src/core/bot_core.rs"
 CORE_TOOL_EFFECT="crates/hone-core/src/tool_effect.rs"
+CORE_LIB="crates/hone-core/src/lib.rs"
+CORE_PROVIDER_SYMBOL="crates/hone-core/src/provider_symbol.rs"
 RESPONSE_FINALIZER="crates/hone-channels/src/response_finalizer.rs"
 RUNTIME="crates/hone-channels/src/runtime.rs"
 CLI_PROBE="bins/hone-cli/src/probe.rs"
@@ -94,7 +96,7 @@ AGENT_DISCOVERY_IMPL="$(sed -n '/pub(crate) fn build_agent_discovered_investment
 AGENT_DISCOVERY_CONTEXT_IMPL="$(sed -n '/fn append_agent_entity_discovery_context(/,/^fn explicit_dollar_mentions(/p' "$INVESTMENT_GUARD")"
 INTERACTIVE_OBSERVATION_IMPL="$(sed -n '/Interactive entity discovery is owned/,/let Some(contract) = contract else/p' "$AGENT_CORE")"
 
-echo "[finance-automation-contracts] fixed sample count: 37"
+echo "[finance-automation-contracts] fixed sample count: 39"
 
 if contains '"snapshot".into()' "$DATA_FETCH" && contains 'data_fetch(data_type="snapshot"' "$STOCK_RESEARCH"; then
   record success "1.stock_research->snapshot" "tool enum and skill contract are aligned"
@@ -204,7 +206,7 @@ else
   record fail "18.agent-owned-time-first" "time-first ownership can regress to a server-authored prefix or disappear from a canonical prompt layer"
 fi
 
-if contains '证券实体发现是不可跳过的证据阶段' "$SOUL" && contains '用户直接输入 `NBIS`、`INTL`、`RMBS` 这类股票代码是正常用法' "$SOUL" && contains 'A plain ticker such as `NBIS`, `INTL`, or `RMBS` is normal user input' "$STOCK_RESEARCH" && contains 'require an exact-symbol result' "$STOCK_RESEARCH" && contains 'agent_discovery_query_is_explicit_symbol' "$INVESTMENT_GUARD" && contains 'missing_required_agent_seed_symbols' "$INVESTMENT_GUARD" && contains 'provider_lookup_variants' "$INVESTMENT_GUARD"; then
+if contains '证券实体发现是不可跳过的证据阶段' "$SOUL" && contains '用户直接输入 `NBIS`、`INTL`、`RMBS` 这类股票代码是正常用法' "$SOUL" && contains 'A plain ticker such as `NBIS`, `INTL`, `RMBS`, or `CRWV` is normal user input' "$STOCK_RESEARCH" && contains 'identity_match="exact_symbol"' "$STOCK_RESEARCH" && contains 'An exact-symbol route keeps its symbol constraint' "$STOCK_RESEARCH" && contains 'agent_discovery_query_is_explicit_symbol' "$INVESTMENT_GUARD" && contains 'missing_required_agent_seed_symbols' "$INVESTMENT_GUARD" && contains 'provider_lookup_variants' "$INVESTMENT_GUARD"; then
   record success "19.plain-ticker-agent-discovery" "plain tickers enter the open Agent loop, preserve exact-symbol lookup, and cannot be silently omitted from the observed search trace"
 else
   record fail "19.plain-ticker-agent-discovery" "the prompt or runtime can regress into rejecting, rewriting, guessing, or silently omitting ordinary ticker requests"
@@ -241,7 +243,7 @@ else
 fi
 
 if contains 'SecurityIdentifierKind' "$SECURITY_IDENTIFIER" && contains 'provider_lookup_variants' "$SECURITY_IDENTIFIER" && contains 'provider_symbols_equivalent' "$SECURITY_IDENTIFIER" && contains 'digit_leading_composite_is_consumed_without_suffix_rescan' "$SECURITY_IDENTIFIER" && contains 'encode_fmp_symbols' "$DATA_FETCH" && contains 'digit_leading_symbol_never_degrades_to_its_exchange_suffix' "$INVESTMENT_GUARD"; then
-  record success "25.cross-market-symbol-canonicalization" "one parser, bounded provider aliases, suffix-rescan prevention, and encoded provider URLs are regression-gated"
+  record success "25.cross-market-symbol-canonicalization" "lexical scanning, shared provider canonicalization, suffix-rescan prevention, and encoded provider URLs are regression-gated"
 else
   record fail "25.cross-market-symbol-canonicalization" "cross-market identifiers can regress into suffix truncation, fuzzy aliases, or unsafe provider URLs"
 fi
@@ -318,11 +320,149 @@ else
   record fail "37.function-calling-step-observer-and-replay-boundary" "a single function-calling phase or observer can hang, a failed write can replay inside the same loop, or failed progress can again be rendered as completed"
 fi
 
+if contains 'struct ResearchIdentityRouteEvidence' "$FUNCTION_AGENT" \
+  && contains 'identity_routes: BTreeMap<String, ResearchIdentityRouteEvidence>' "$FUNCTION_AGENT" \
+  && contains 'identity_match_declared: bool' "$FUNCTION_AGENT" \
+  && contains 'enum IdentitySearchMatchMode' "$FUNCTION_AGENT" \
+  && contains 'fn active_route_keys(&self)' "$FUNCTION_AGENT" \
+  && contains 'fn migrate_implicit_routes_for_explicit_search(' "$FUNCTION_AGENT" \
+  && contains 'fn retain_symbols_matching_constraint(&mut self)' "$FUNCTION_AGENT" \
+  && contains 'fn observe_route_symbols(' "$FUNCTION_AGENT" \
+  && contains 'fn observe_business_failure(&mut self, tool_call: &ToolCall)' "$FUNCTION_AGENT" \
+  && contains 'fn data_fetch_explicit_entity_route_key(tool_call: &ToolCall)' "$FUNCTION_AGENT" \
+  && contains 'fn data_fetch_identity_route_key(tool_call: &ToolCall)' "$FUNCTION_AGENT" \
+  && contains 'fn data_fetch_identity_match_mode(tool_call: &ToolCall)' "$FUNCTION_AGENT" \
+  && contains 'fn data_fetch_supersedes_query(tool_call: &ToolCall)' "$FUNCTION_AGENT" \
+  && contains 'fn identity_search_route_candidates(' "$FUNCTION_AGENT" \
+  && contains 'provider_canonical_key' "$FUNCTION_AGENT" \
+  && contains 'provider_symbols_equivalent' "$FUNCTION_AGENT" \
+  && contains 'pub fn provider_canonical_key(value: &str)' "$CORE_PROVIDER_SYMBOL" \
+  && contains 'pub fn provider_symbols_equivalent(requested: &str, candidate: &str)' "$CORE_PROVIDER_SYMBOL" \
+  && contains '("$BRK.B", "BRK-B")' "$CORE_PROVIDER_SYMBOL" \
+  && contains '("$BTC/USD", "BTCUSD")' "$CORE_PROVIDER_SYMBOL" \
+  && contains '("$600519.SH", "600519.SS")' "$CORE_PROVIDER_SYMBOL" \
+  && contains 'route.explicit |= explicit' "$FUNCTION_AGENT" \
+  && contains 'route.candidates = candidates' "$FUNCTION_AGENT" \
+  && contains 'route.empty_search_results = route.empty_search_results.saturating_add(1)' "$FUNCTION_AGENT" \
+  && contains 'self.search_attempts >= 2' "$FUNCTION_AGENT" \
+  && contains 'self.empty_search_results >= 2' "$FUNCTION_AGENT" \
+  && contains 'self.post_identity_attempts > 0' "$FUNCTION_AGENT" \
+  && contains 'matching_routes.as_slice()' "$FUNCTION_AGENT" \
+  && contains 'agent_declared_routes_prevent_cross_entity_and_wrong_product_unlocks' "$FUNCTION_AGENT" \
+  && contains 'agent_declared_match_mode_preserves_short_company_names_and_provider_symbol_aliases' "$FUNCTION_AGENT" \
+  && contains 'a sticky old match declaration cannot authorize a later malformed search' "$FUNCTION_AGENT" \
+  && contains 'exact_route_migration_drops_wrong_provisional_evidence_even_when_retry_fails' "$FUNCTION_AGENT" \
+  && contains 'stable_entity_route_refinement_replaces_empty_or_noisy_candidates' "$FUNCTION_AGENT" \
+  && contains 'explicit_route_does_not_hide_an_unrelated_implicit_route' "$FUNCTION_AGENT" \
+  && contains 'CWY evidence cannot satisfy the exact CRWV route' "$FUNCTION_AGENT" \
+  && contains 'an embedded-name CWY result cannot replace a missing exact CRWV result' "$FUNCTION_AGENT" \
+  && contains 'CoreWeave coverage cannot satisfy the separate NVIDIA route' "$FUNCTION_AGENT" \
+  && contains 'one explicit NVIDIA route must not globally hide an untagged CRWV route' "$FUNCTION_AGENT" \
+  && contains 'only the exact provisional CRWV route should migrate' "$FUNCTION_AGENT" \
+  && contains 'a failed superseding search cannot convert provisional CWY evidence into CRWV coverage' "$FUNCTION_AGENT" \
+  && contains 'an unscoped Web call cannot be guessed as the only empty route while another route exists' "$FUNCTION_AGENT" \
+  && contains 'BTreeSet::from(["NVDA".to_string(), "NVD.DE".to_string()])' "$FUNCTION_AGENT" \
+  && contains '"TSLA","name":"unrelated provider noise"' "$FUNCTION_AGENT" \
+  && contains '"ford"' "$FUNCTION_AGENT" \
+  && contains '"apple"' "$FUNCTION_AGENT" \
+  && contains '"Appleseed Fund"' "$FUNCTION_AGENT" \
+  && contains '"tesla"' "$FUNCTION_AGENT" \
+  && contains '"AT&T"' "$FUNCTION_AGENT" \
+  && contains '"S&P Global"' "$FUNCTION_AGENT" \
+  && contains '"M&T Bank"' "$FUNCTION_AGENT" \
+  && contains '"H&R Block"' "$FUNCTION_AGENT" \
+  && contains '"BRK/B"' "$FUNCTION_AGENT" \
+  && contains '"Berkshire Hathaway, Class B"' "$FUNCTION_AGENT" \
+  && contains '"NVIDIA and valuation"' "$FUNCTION_AGENT" \
+  && ! contains 'struct IdentitySearchRouteGrouping' "$FUNCTION_AGENT" \
+  && ! contains 'fn identity_search_query_routes(' "$FUNCTION_AGENT" \
+  && ! contains 'fn identity_search_query_is_explicit_ticker(' "$FUNCTION_AGENT" \
+  && ! contains 'fn normalized_identity_symbol_code(' "$FUNCTION_AGENT" \
+  && ! contains 'let has_explicit = self.identity_routes.values().any' "$FUNCTION_AGENT" \
+  && ! contains 'unresolved_merged_identity_queries' "$FUNCTION_AGENT" \
+  && ! contains 'identity_candidate_sets: Vec<BTreeSet<String>>' "$FUNCTION_AGENT" \
+  && contains 'each_identity_route_needs_one_same_symbol_quote_and_profile_pair' "$FUNCTION_AGENT" \
+  && contains 'unrelated_extra_quote_does_not_block_a_covered_identity_route' "$FUNCTION_AGENT" \
+  && contains 'finish_stays_hidden_until_each_nonempty_entity_route_is_covered' "$FUNCTION_AGENT" \
+  && contains 'const FINAL_RELATIONSHIP_DELETION_CHECK' "$FUNCTION_AGENT" \
+  && contains '逐句删除任何没有被本轮来源正文或摘要直接明示的公司关系表述' "$FUNCTION_AGENT" \
+  && contains '股权存在或不存在' "$FUNCTION_AGENT" \
+  && contains '若当前来源只直接支持‘双方宣布加强合作’或‘关系预计扩展’，就只写到这个范围' "$FUNCTION_AGENT" \
+  && contains '为每个标的分配一个本轮稳定且互不复用的 `entity_route`' "$DATA_FETCH" \
+  && contains '`identity_match=exact_symbol`' "$DATA_FETCH" \
+  && contains '`supersedes_query`' "$DATA_FETCH" \
+  && contains '不得把两个标的共用一条路线' "$DATA_FETCH" \
+  && contains '稳定且互不复用、区分大小写并原样复用的 `entity_route`' "$SOUL" \
+  && contains 'call-scoped `identity_match`' "$SOUL" \
+  && contains '`refines_query` 与 `supersedes_query` 严格互斥' "$SOUL" \
+  && contains '不要依赖服务端按逗号' "$SOUL" \
+  && contains 'stable, distinct, case-sensitive `entity_route` key' "$STOCK_RESEARCH" \
+  && contains '`identity_match` is call-scoped' "$STOCK_RESEARCH" \
+  && contains '`refines_query` and `supersedes_query` are strictly mutually exclusive' "$STOCK_RESEARCH" \
+  && contains 'identity_match="exact_symbol"' "$STOCK_RESEARCH" \
+  && contains 'Do not rely on a service-side grammar' "$STOCK_RESEARCH" \
+  && contains 'Reuse the exact same route key' "$STOCK_RESEARCH" \
+  && [[ "$(fixed_count 'FINAL_RELATIONSHIP_DELETION_CHECK' "$FUNCTION_AGENT")" == "4" ]]; then
+  record success "38.agent-entity-route-and-relationship-deletion-check" "Agent-declared stable routes replace natural-language splitting, exact tickers and overlapping provider candidates cannot cross-unlock, and all final paths retain the source-bounded relationship deletion check without a publication veto"
+else
+  record fail "38.agent-entity-route-and-relationship-deletion-check" "a service-side query splitter, cross-route evidence leak, wrong-product unlock, or publication-stage relationship rewrite can regress"
+fi
+
+if contains 'exact_symbol_constraint: Option<String>' "$FUNCTION_AGENT" \
+  && contains 'post_identity_attempts: u32' "$FUNCTION_AGENT" \
+  && contains 'fn retain_symbols_matching_candidates(&mut self)' "$FUNCTION_AGENT" \
+  && contains 'fn observe_route_non_search_attempt(' "$FUNCTION_AGENT" \
+  && contains 'fn register_pending_provisional_identity_query(' "$FUNCTION_AGENT" \
+  && contains 'fn data_fetch_identity_search_shape_is_valid(' "$FUNCTION_AGENT" \
+  && contains 'fn data_fetch_identity_migration_source(' "$FUNCTION_AGENT" \
+  && contains 'fn data_fetch_optional_metadata_string_is_valid(' "$FUNCTION_AGENT" \
+  && contains 'active_route_keys.len() == 1' "$FUNCTION_AGENT" \
+  && contains '|| !route_keys.is_empty()' "$FUNCTION_AGENT" \
+  && contains 'tool_call.function.name == "data_fetch"' "$FUNCTION_AGENT" \
+  && contains 'tool_call.function.name == "web_search"' "$FUNCTION_AGENT" \
+  && contains 'effective_data_fetch_data_type, effective_data_fetch_security_target' "$FUNCTION_AGENT" \
+  && contains 'validated_data_fetch_search_query, validated_data_fetch_symbols' "$FUNCTION_AGENT" \
+  && contains 'pub fn effective_data_fetch_data_type(args: &Value)' "$DATA_FETCH" \
+  && contains 'pub fn effective_data_fetch_target(args: &Value)' "$DATA_FETCH" \
+  && contains 'pub fn effective_data_fetch_security_target(args: &Value)' "$DATA_FETCH" \
+  && contains 'pub fn validated_data_fetch_symbols(value: &str)' "$DATA_FETCH" \
+  && contains 'pub fn validated_data_fetch_search_query(value: &str)' "$DATA_FETCH" \
+  && contains 'MAX_FMP_SYMBOL_INPUT_BYTES: usize = 512' "$DATA_FETCH" \
+  && contains 'effective_request_parser_matches_executor_precedence_and_types' "$DATA_FETCH" \
+  && contains 'pub mod provider_symbol;' "$CORE_LIB" \
+  && contains 'provider_canonical_key, provider_lookup_variants, provider_symbols_equivalent' "$CORE_LIB" \
+  && contains 'hone_core::provider_lookup_variants(value)' "$SECURITY_IDENTIFIER" \
+  && contains 'hone_core::provider_canonical_key(value)' "$SECURITY_IDENTIFIER" \
+  && contains 'hone_core::provider_symbols_equivalent(requested, candidate)' "$SECURITY_IDENTIFIER" \
+  && contains '("ABC.DEF", "ABC-DEF")' "$CORE_PROVIDER_SYMBOL" \
+  && contains 'explicit_refinement_inherits_only_a_declared_exact_constraint_from_provisional_route' "$FUNCTION_AGENT" \
+  && contains 'ambiguous_migration_links_leave_every_provisional_route_and_a_pending_explicit_route' "$FUNCTION_AGENT" \
+  && contains 'search-invalid-same-text-double-link' "$FUNCTION_AGENT" \
+  && contains 'exact_text_migration_keeps_ford_company_and_ford_ticker_routes_distinct' "$FUNCTION_AGENT" \
+  && contains 'malformed_or_missing_mode_searches_remain_visible_as_pending_routes' "$FUNCTION_AGENT" \
+  && contains 'wrongly typed identity metadata cannot downgrade exact CRWV into a legacy CWY route' "$FUNCTION_AGENT" \
+  && contains 'ledger_uses_the_executor_target_and_rejects_spoofed_or_malformed_symbol_fields' "$FUNCTION_AGENT" \
+  && contains 'evidence_for_an_old_candidate_cannot_preload_a_later_candidate_replacement' "$FUNCTION_AGENT" \
+  && contains 'old_candidate_followup_cannot_satisfy_a_later_empty_identity_generation' "$FUNCTION_AGENT" \
+  && contains 'wrongly_cased_tool_names_never_activate_or_satisfy_the_research_ledger' "$FUNCTION_AGENT" \
+  && contains 'route:Ford' "$FUNCTION_AGENT" \
+  && contains 'route:FORD' "$FUNCTION_AGENT" \
+  && contains '`refines_query` 与 `supersedes_query` 严格互斥' "$DATA_FETCH" \
+  && contains 'call-scoped `identity_match' "$DATA_FETCH" \
+  && ! contains 'explicit.candidates.extend(implicit.candidates)' "$FUNCTION_AGENT" \
+  && ! contains 'explicit.quote_symbols.extend(implicit.quote_symbols)' "$FUNCTION_AGENT" \
+  && ! contains 'explicit.asset_route_symbols.extend(implicit.asset_route_symbols)' "$FUNCTION_AGENT" \
+  && ! contains 'explicit.post_identity_attempts' "$FUNCTION_AGENT"; then
+  record success "39.route-ledger-executor-parity-and-pending-safety" "pending routes, current-generation evidence, single-source migration, shared DataFetch parsing, shared provider canonicalization, and exact registry tool names are regression-locked"
+else
+  record fail "39.route-ledger-executor-parity-and-pending-safety" "route migration/evidence generations can drift from the executor, provider aliases, or real registry calls"
+fi
+
 echo
 echo "summary: success=$success review=$review fail=$fail total=$((success + review + fail))"
 
-if [ "$success" -lt 37 ]; then
-  echo "[ERROR] acceptance failed: expected all 37 successes"
+if [ "$success" -lt 39 ]; then
+  echo "[ERROR] acceptance failed: expected all 39 successes"
   exit 1
 fi
 

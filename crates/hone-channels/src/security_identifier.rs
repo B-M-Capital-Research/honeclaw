@@ -258,61 +258,18 @@ pub(crate) fn normalize_security_identifier(value: &str) -> Option<String> {
 }
 
 pub(crate) fn provider_lookup_variants(value: &str) -> Vec<String> {
-    let Some((normalized, kind)) = normalize_and_classify(value.trim()) else {
-        return Vec::new();
-    };
-    let mut variants = Vec::new();
-    let provider = match kind {
-        SecurityIdentifierKind::CryptoPair => normalized.replace(['-', '/'], ""),
-        SecurityIdentifierKind::ShareClass if normalized.contains('.') => {
-            normalized.replace('.', "-")
-        }
-        SecurityIdentifierKind::ExchangeQualified => provider_exchange_symbol(&normalized),
-        SecurityIdentifierKind::Bare if is_known_unprefixed_index_alias(&normalized) => {
-            format!("^{normalized}")
-        }
-        _ => normalized.clone(),
-    };
-    push_unique(&mut variants, provider);
-    push_unique(&mut variants, normalized);
-    variants
+    hone_core::provider_lookup_variants(value)
 }
 
 pub(crate) fn provider_canonical_key(value: &str) -> Option<String> {
-    provider_lookup_variants(value).into_iter().next()
+    hone_core::provider_canonical_key(value)
 }
 
 /// Exact provider equivalence is intentionally bounded to audited provider
 /// dialects. Bare numeric identifiers are never globally equivalent to a
 /// suffixed symbol; they require a separate closed-market candidate probe.
 pub(crate) fn provider_symbols_equivalent(requested: &str, candidate: &str) -> bool {
-    let requested_variants = provider_lookup_variants(requested);
-    let candidate_variants = provider_lookup_variants(candidate);
-    if requested_variants.is_empty() || candidate_variants.is_empty() {
-        return false;
-    }
-    if requested_variants.iter().any(|left| {
-        candidate_variants
-            .iter()
-            .any(|right| left.eq_ignore_ascii_case(right))
-    }) {
-        return true;
-    }
-
-    let requested = requested_variants[0].as_str();
-    let candidate = candidate_variants[0].as_str();
-    if requested.strip_prefix('^').is_some_and(|index| {
-        index.eq_ignore_ascii_case(candidate) && is_known_unprefixed_index_alias(candidate)
-    }) {
-        return true;
-    }
-    if candidate.strip_prefix('^').is_some_and(|index| {
-        index.eq_ignore_ascii_case(requested) && is_known_unprefixed_index_alias(requested)
-    }) {
-        return true;
-    }
-
-    false
+    hone_core::provider_symbols_equivalent(requested, candidate)
 }
 
 fn normalize_and_classify(value: &str) -> Option<(String, SecurityIdentifierKind)> {
@@ -350,8 +307,11 @@ fn classify_normalized(value: &str) -> Option<SecurityIdentifierKind> {
     }
 
     if value.contains('/') {
-        let (base, quote) = split_once_exact(value, '/')?;
-        return is_crypto_pair(base, quote).then_some(SecurityIdentifierKind::CryptoPair);
+        let (base, suffix) = split_once_exact(value, '/')?;
+        if is_crypto_pair(base, suffix) {
+            return Some(SecurityIdentifierKind::CryptoPair);
+        }
+        return is_share_class(base, suffix).then_some(SecurityIdentifierKind::ShareClass);
     }
     if value.contains('-') {
         let (base, suffix) = split_once_exact(value, '-')?;
@@ -426,46 +386,6 @@ fn is_exchange_suffix_shape(suffix: &str) -> bool {
         && suffix
             .chars()
             .all(|character| character.is_ascii_alphabetic())
-}
-
-fn is_known_unprefixed_index_alias(value: &str) -> bool {
-    matches!(value, "GSPC" | "IXIC" | "DJI" | "RUT" | "VIX")
-}
-
-fn provider_exchange_symbol(value: &str) -> String {
-    let Some((base, suffix)) = value.rsplit_once('.') else {
-        return value.to_string();
-    };
-    if suffix == "US" {
-        return base.to_string();
-    }
-    let suffix = if suffix == "SH" { "SS" } else { suffix };
-    let base = if suffix == "HK" && base.chars().all(|character| character.is_ascii_digit()) {
-        canonical_hong_kong_base(base)
-    } else {
-        base.to_string()
-    };
-    format!("{base}.{suffix}")
-}
-
-fn canonical_hong_kong_base(value: &str) -> String {
-    let significant = value.trim_start_matches('0');
-    let significant = if significant.is_empty() {
-        "0"
-    } else {
-        significant
-    };
-    if significant.len() < 4 {
-        format!("{significant:0>4}")
-    } else {
-        significant.to_string()
-    }
-}
-
-fn push_unique(values: &mut Vec<String>, value: String) {
-    if !values.iter().any(|existing| existing == &value) {
-        values.push(value);
-    }
 }
 
 #[cfg(test)]
