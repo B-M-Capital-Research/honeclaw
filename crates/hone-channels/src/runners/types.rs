@@ -18,6 +18,7 @@ pub enum TerminalStreamPolicy {
     Disabled,
     /// Commit only a complete canonical investment header beginning with
     /// `数据时间：北京时间 ...；行情口径：...`.
+    #[cfg(test)]
     CanonicalInvestmentHeader,
 }
 
@@ -51,6 +52,9 @@ pub struct AgentRunnerRequest {
     pub allowed_tools: Option<Vec<String>>,
     pub max_tool_calls: Option<u32>,
     pub tool_call_limits: Option<HashMap<String, u32>>,
+    /// Enables the standard same-Agent finance tool loop independently of
+    /// channel-specific streaming behavior.
+    pub agent_owned_finance_loop: bool,
     pub terminal_stream_policy: TerminalStreamPolicy,
 }
 

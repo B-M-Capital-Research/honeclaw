@@ -891,6 +891,7 @@ mod tests {
             ]),
             max_tool_calls: Some(3),
             tool_call_limits: None,
+            agent_owned_finance_loop: false,
             terminal_stream_policy: Default::default(),
         }
     }

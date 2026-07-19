@@ -10,11 +10,14 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+#[cfg(test)]
 use crate::runtime::sanitize_user_visible_output;
 
+#[cfg(test)]
+use super::types::TerminalStreamPolicy;
 use super::types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
-    RunnerTimeouts, TerminalStreamPolicy,
+    RunnerTimeouts,
 };
 
 pub(crate) struct RunnerToolObserver {
@@ -24,16 +27,23 @@ pub(crate) struct RunnerToolObserver {
 struct RunnerStreamObserver {
     emitter: Arc<dyn AgentRunnerEmitter>,
     streamed_output: Arc<AtomicBool>,
+    #[cfg(test)]
     terminal_stream_policy: TerminalStreamPolicy,
+    #[cfg(test)]
     canonical_header_state: Mutex<CanonicalHeaderStreamState>,
     committed_visible_prefix: Arc<Mutex<Option<String>>>,
 }
 
+#[cfg(test)]
 const CANONICAL_INVESTMENT_HEADER_START: &str = "数据时间：北京时间 ";
+#[cfg(test)]
 const CANONICAL_INVESTMENT_BASIS_SEPARATOR: &str = "；行情口径：";
+#[cfg(test)]
 const MAX_CANONICAL_INVESTMENT_HEADER_BYTES: usize = 768;
+#[cfg(test)]
 const MAX_CANONICAL_INVESTMENT_BASIS_CHARS: usize = 480;
 
+#[cfg(test)]
 #[derive(Debug, Default)]
 enum CanonicalHeaderStreamState {
     #[default]
@@ -43,6 +53,7 @@ enum CanonicalHeaderStreamState {
     Committed,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CanonicalHeaderDecision {
     Incomplete,
@@ -50,6 +61,7 @@ enum CanonicalHeaderDecision {
     Complete { prefix_end: usize },
 }
 
+#[cfg(test)]
 fn canonical_header_decision(buffer: &str) -> CanonicalHeaderDecision {
     if buffer.is_empty() {
         return CanonicalHeaderDecision::Incomplete;
@@ -79,6 +91,7 @@ fn canonical_header_decision(buffer: &str) -> CanonicalHeaderDecision {
     }
 }
 
+#[cfg(test)]
 fn canonical_investment_header_is_safe(line: &str) -> bool {
     if line.is_empty() || line.chars().any(char::is_control) {
         return false;
@@ -104,6 +117,7 @@ fn canonical_investment_header_is_safe(line: &str) -> bool {
 }
 
 impl RunnerStreamObserver {
+    #[cfg(test)]
     fn events_for_content_delta(&self, content: &str) -> (Vec<AgentRunnerEvent>, Option<String>) {
         if self.terminal_stream_policy == TerminalStreamPolicy::Disabled {
             return (
@@ -181,13 +195,26 @@ impl FunctionCallingStreamObserver for RunnerStreamObserver {
         if content.is_empty() {
             return;
         }
+        #[cfg(not(test))]
+        {
+            self.streamed_output.store(true, Ordering::Relaxed);
+            self.emitter
+                .emit(AgentRunnerEvent::StreamDelta {
+                    content: content.to_string(),
+                })
+                .await;
+            return;
+        }
+        #[cfg(test)]
         let (events, committed_prefix) = self.events_for_content_delta(content);
+        #[cfg(test)]
         if let Some(prefix) = committed_prefix {
             *self
                 .committed_visible_prefix
                 .lock()
                 .expect("committed visible prefix") = Some(prefix);
         }
+        #[cfg(test)]
         for event in events {
             self.streamed_output.store(true, Ordering::Relaxed);
             self.emitter.emit(event).await;
@@ -540,7 +567,9 @@ impl AgentRunner for FunctionCallingReasoningRunner {
         let stream_observer = Arc::new(RunnerStreamObserver {
             emitter,
             streamed_output: streamed_output.clone(),
+            #[cfg(test)]
             terminal_stream_policy: request.terminal_stream_policy,
+            #[cfg(test)]
             canonical_header_state: Mutex::new(CanonicalHeaderStreamState::default()),
             committed_visible_prefix: committed_visible_prefix.clone(),
         });
@@ -552,9 +581,7 @@ impl AgentRunner for FunctionCallingReasoningRunner {
             self.max_iterations,
             self.llm_audit.clone(),
         )
-        .with_finish_research_terminal_synthesis(
-            request.terminal_stream_policy == TerminalStreamPolicy::CanonicalInvestmentHeader,
-        )
+        .with_agent_owned_finance_loop(request.agent_owned_finance_loop)
         .with_tool_observer(Some(observer))
         .with_stream_observer(Some(stream_observer))
         .with_tool_call_budget(

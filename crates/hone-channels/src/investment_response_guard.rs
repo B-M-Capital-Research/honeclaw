@@ -7479,16 +7479,16 @@ fn append_agent_entity_discovery_context(
         "\n\n【本轮证券实体发现：主 Agent 工具循环】\n\
          当前请求不能由前置扫描器可靠地封闭全部证券实体；扫描结果只能作为候选种子，不是实体事实：{}。\n\
          先完整阅读当前用户请求，判断其中是否真的点名公司、证券、基金、指数或加密资产，不得沿用历史 ticker，也不得为了满足流程硬凑标的。若当前文本没有点名证券实体，继续处理用户原本的问题，不做无关的 DataFetch 调用。\n\
-         若存在一个或多个可能标的，第一轮必须只返回工具调用，不写数据时间、摘要、草稿或终稿；对当前文本中的全部候选并行执行 data_fetch(search)，显式 ticker 也要用原代码作为 query。为每个标的分配一个稳定、互不复用且区分大小写的 entity_route，并在每一次 search 调用里填写 call-scoped identity_match（ticker 用 exact_symbol，公司名/别名用 name_or_alias）。这组 search query 是你基于完整原话做出的候选实体声明，但返回结果仍不是最终事实。不得只取第一个标的，也不得让服务端按字符串形状替你猜实体。\n\
+         若存在一个或多个可能标的，第一轮必须只返回工具调用，不写数据时间、摘要、草稿或终稿；对当前文本中的全部候选并行执行 data_fetch(search)。用户书写的 ticker 不要求大写：证券语境中的小写或混合大小写代码先规范成标准代码并走 exact_symbol，不能仅因大小写改走公司别名 refinement。为每个标的分配一个稳定、互不复用且区分大小写的 entity_route，并在每一次 search 调用里填写 call-scoped identity_match（ticker 用 exact_symbol，公司名/别名用 name_or_alias）。这组 search query 是你基于完整原话做出的候选实体声明，但返回结果仍不是最终事实。不得只取第一个标的，也不得让服务端按字符串形状替你猜实体。\n\
          search 返回后，在同一个 Agent loop 的下一轮对选中的全部标准 symbol 批量或并行执行同 entity_route 的 exact-symbol quote 与 profile，再结合用户问题继续调用财务、持仓、新闻或网页搜索工具。空结果补查可用 refines_query，给漏写路线键的旧 search 补键可用 supersedes_query；两者都必须逐字且区分大小写地指向一条旧 query，并严格二选一。只有同代码 quote（正价格且带 provider timestamp）与资产类型核验完成后才可写证券分析。搜索第一条、近似 ticker、历史标的和模型记忆都不能替代本轮核验。只有当前工具结果确实仍有多个候选，或权威工具均无覆盖时，才向用户说明具体歧义或缺失；不得因为前置扫描不完整而直接停止。",
         Value::Array(seed_snapshot)
     ));
     runtime_input.push_str(&format!(
         "\n\n【本轮最终回答契约：由主 Agent 一次完成】\n\
          先由主 Agent 根据完整当前原话判断这是否确属公司、证券、基金、指数、加密资产、市场或板块投研请求。只有确属时才执行下述时间首行和投研模板；否则忽略本节格式，正常回答用户原问题。\n\
-         对于确属的投研请求，仍提供业务工具的轮次只能继续调用工具，或在完整重读当前原话与每条工具结果后单独提交 finish_research 的结构化证据交接；不要在工具轮写终稿。交接列出 answer_scope、facts（只含 fact ID 与本轮 evidence refs：Web 用 tool_call_id、结果序号和逐字 excerpt，DataFetch 用 JSON Pointer）、只依赖 fact ID 的 inferences，以及 gaps。服务端只机械解析本轮原文/字段并从命中结果注入标题与 URL，不审查或改写答案；坏引用也不得整单打回或对用户拒答。随后不提供工具的完成阶段仍由同一主 Agent 一次生成当前用户可见回答；服务端不追加、改写、重跑或否决成功答案。\n\
+         对于确属的投研请求，保持标准的同一主 Agent function-calling loop：当前问题仍缺关键证据时只调用所需真实业务工具；合理取证完成，或必要来源经实际尝试后明确不可得时，直接返回一次完整自然终稿。工具结果原样留在当前上下文中；可能继续调用工具的轮次只形成工具调用，完整 Stop + Done 自然终稿一次发送并原样持久化。\n\
          本轮回答的时间锚点固定为北京时间 {answer_time}，它与上方 Session 上下文来自同一次时钟读取。完成当前请求所需的工具调用后，在生成最终回答前自行检查表达：第一可见字符必须是“数”，第一条非空行必须严格以 `数据时间：北京时间 {answer_time}；行情口径：` 开头。禁止在该行之前输出 `---`、Markdown 标题、代码围栏、问候、计划、免责声明或“结论”。\n\
-         `行情口径：` 后的报价事实也必须来自交接中本轮 quote 的已解析字段；有 provider timestamp 时明确报价源时间与“最新可得、非逐笔”口径，交易时段只有工具明确提供时才写。实体 search/profile 只证明身份，不证明客户、供应商、投资、持股、合同或合作。宽泛关系题由主 Agent 按完整语义自主枚举相关维度，通常分别核查商业/客户供应/技术合同与投资持股，优先 SEC、公司 IR 或双方公告，不得泛搜索后凭记忆收口。每条关系事实的数字、方向、排名、角色、权利义务、型号与估值标签都必须直接来自 facts 的 resolved evidence；终稿在事实旁内联服务端注入的标题与原始 URL。URL 只定位来源，不替代内容支持。超出原文的判断仅可来自 inferences，另起句以‘推断：’开头；缺失只能进 gaps，不能写成否定事实。首行之后按用户实际问题选择回答形状；关系问答保持最小充分，不套无关深度模板，不以流程性拒答代替分析。"
+         `行情口径：` 后的报价事实必须来自本轮 quote 字段；有 provider timestamp 时优先使用 hone_quote_time.beijing，并明确“最新可得、非逐笔”口径。market_date_new_york / new_york 只表示纽约时区日期 / 时间，不证明交易所、交易时段或已经收盘，禁止据此写‘纽交所’或‘收盘价’；交易所只取 exchange / exchangeShortName，交易时段只有工具明确提供时才写。实体 search/profile 只证明身份，不证明客户、供应商、投资、持股、合同或合作。宽泛关系题由主 Agent 按完整语义自主枚举相关维度，通常分别核查商业/客户供应/技术合同与投资持股，优先 SEC、公司 IR 或双方公告，不得泛搜索后凭记忆收口。每条关系事实的数字、方向、排名、角色、权利义务、型号与估值标签都必须直接来自本轮真实来源；终稿在事实旁内联来源标题与原始 URL。URL 只定位来源，不替代内容支持。超出原文的判断另起句以‘推断：’开头；缺失不能写成否定事实。没有足够原文前提时保持中性事实归纳，不扩写成核心、最大、大客户、高度依赖、锁定或多重绑定。首行之后按用户实际问题选择回答形状；关系问答保持最小充分，并继续完成当前证据能够支持的分析。"
     ));
 }
 
@@ -12711,21 +12711,22 @@ mod tests {
         assert!(answer_contract.contains("禁止在该行之前输出 `---`、Markdown 标题"));
         assert!(answer_contract.contains("只有确属时才执行下述时间首行和投研模板"));
         assert!(answer_contract.contains("否则忽略本节格式，正常回答用户原问题"));
-        assert!(answer_contract.contains("仍提供业务工具的轮次只能继续调用工具"));
-        assert!(answer_contract.contains("单独提交 finish_research 的结构化证据交接"));
-        assert!(answer_contract.contains("answer_scope"));
-        assert!(answer_contract.contains("JSON Pointer"));
-        assert!(answer_contract.contains("不要在工具轮写终稿"));
-        assert!(answer_contract.contains("服务端不追加、改写、重跑或否决成功答案"));
+        assert!(answer_contract.contains("标准的同一主 Agent function-calling loop"));
+        assert!(answer_contract.contains("直接返回一次完整自然终稿"));
+        assert!(answer_contract.contains("工具结果原样留在当前上下文中"));
+        assert!(answer_contract.contains("完整 Stop + Done 自然终稿一次发送并原样持久化"));
+        assert!(answer_contract.contains("完整 Stop + Done 自然终稿"));
         assert!(answer_contract.contains("实体 search/profile 只证明身份"));
         assert!(answer_contract.contains(
-            "每条关系事实的数字、方向、排名、角色、权利义务、型号与估值标签都必须直接来自 facts 的 resolved evidence"
+            "每条关系事实的数字、方向、排名、角色、权利义务、型号与估值标签都必须直接来自本轮真实来源"
         ));
-        assert!(answer_contract.contains("终稿在事实旁内联服务端注入的标题与原始 URL"));
+        assert!(answer_contract.contains("终稿在事实旁内联来源标题与原始 URL"));
         assert!(answer_contract.contains("URL 只定位来源，不替代内容支持"));
-        assert!(answer_contract.contains("超出原文的判断仅可来自 inferences"));
-        assert!(answer_contract.contains("缺失只能进 gaps，不能写成否定事实"));
-        assert!(answer_contract.ends_with("不以流程性拒答代替分析。"));
+        assert!(answer_contract.contains("超出原文的判断另起句以‘推断：’开头"));
+        assert!(answer_contract.contains("market_date_new_york / new_york"));
+        assert!(answer_contract.contains("禁止据此写‘纽交所’或‘收盘价’"));
+        assert!(answer_contract.contains("不扩写成核心、最大、大客户、高度依赖、锁定或多重绑定"));
+        assert!(answer_contract.ends_with("继续完成当前证据能够支持的分析。"));
     }
 
     #[test]

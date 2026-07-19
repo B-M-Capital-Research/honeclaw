@@ -37,10 +37,7 @@ use crate::response_finalizer::{
     EMPTY_SUCCESS_FALLBACK_MESSAGE, finalize_agent_owned_interactive_response,
     finalize_agent_response,
 };
-use crate::runners::{
-    AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
-    TerminalStreamPolicy,
-};
+use crate::runners::{AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult};
 use crate::runtime::{sanitize_user_visible_output, user_visible_error_message};
 use crate::session_compactor::SessionCompactor;
 use crate::tool_trace::{
@@ -71,7 +68,7 @@ use super::types::{
 };
 
 #[derive(Clone)]
-struct PreparedInvestmentContext {
+pub(super) struct PreparedInvestmentContext {
     contract: Option<InvestmentResponseContract>,
     runtime_suffix: String,
     prompt_time_beijing: DateTime<FixedOffset>,
@@ -1078,7 +1075,7 @@ impl AgentSession {
         context
     }
 
-    async fn prepare_execution_for_turn(
+    pub(super) async fn prepare_execution_for_turn(
         &self,
         session_id: &str,
         persisted_user_input: &str,
@@ -1236,19 +1233,14 @@ impl AgentSession {
                 };
                 (kind, err)
             })?;
-        execution.runner_request.terminal_stream_policy = if self.actor.channel == "web"
-            && options.turn_origin == AgentTurnOrigin::Interactive
+        execution.runner_request.agent_owned_finance_loop = options.turn_origin
+            == AgentTurnOrigin::Interactive
             && execution.runner_name == "function_calling"
             && investment_context.contract.is_none()
             && investment_context
                 .main_agent_entity_discovery_input
                 .is_some()
-            && investment_context.reexecution_policy == PreparedTurnReexecutionPolicy::Allowed
-        {
-            TerminalStreamPolicy::CanonicalInvestmentHeader
-        } else {
-            TerminalStreamPolicy::Disabled
-        };
+            && investment_context.reexecution_policy == PreparedTurnReexecutionPolicy::Allowed;
         Ok((execution, investment_context))
     }
 

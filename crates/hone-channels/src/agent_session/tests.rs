@@ -41,7 +41,7 @@ use crate::response_finalizer::{
 use crate::run_event::RunEvent;
 use crate::runners::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
-    stream_gemini_prompt,
+    TerminalStreamPolicy, stream_gemini_prompt,
 };
 use crate::runtime::sanitize_user_visible_output;
 use crate::sandbox::sandbox_base_dir;
@@ -435,41 +435,6 @@ fn mock_control_response(continue_research: bool) -> ChatResponse {
                     })
                     .to_string()
                 },
-            },
-        }]),
-        usage: None,
-    }
-}
-
-fn mock_data_control_response(references: &[(&str, &str)]) -> ChatResponse {
-    let facts = references
-        .iter()
-        .enumerate()
-        .map(|(index, (tool_call_id, json_pointer))| {
-            serde_json::json!({
-                "id": format!("F{}", index + 1),
-                "evidence": [{
-                    "tool_call_id": tool_call_id,
-                    "json_pointer": json_pointer
-                }]
-            })
-        })
-        .collect::<Vec<_>>();
-    ChatResponse {
-        content: String::new(),
-        reasoning_content: None,
-        tool_calls: Some(vec![ToolCall {
-            id: "mock_finish_research".to_string(),
-            call_type: "function".to_string(),
-            function: FunctionCall {
-                name: "finish_research".to_string(),
-                arguments: serde_json::json!({
-                    "answer_scope": "回答当前测试请求",
-                    "facts": facts,
-                    "inferences": [],
-                    "gaps": []
-                })
-                .to_string(),
             },
         }]),
         usage: None,
@@ -961,6 +926,7 @@ async fn empty_success_with_tool_calls_uses_fallback_after_retries() {
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
+        agent_owned_finance_loop: false,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
@@ -1043,6 +1009,7 @@ async fn transient_runner_failure_retries_once_before_returning_success() {
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
+        agent_owned_finance_loop: false,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
@@ -1122,6 +1089,7 @@ async fn committed_terminal_prefix_makes_runner_attempt_irreversible_and_suppres
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
+        agent_owned_finance_loop: false,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
@@ -1274,6 +1242,7 @@ async fn observed_persistent_tool_trace_suppresses_transient_retry() {
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
+        agent_owned_finance_loop: false,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
@@ -1357,6 +1326,7 @@ async fn unknown_tool_trace_suppresses_transient_retry() {
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
+        agent_owned_finance_loop: false,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
@@ -1435,6 +1405,7 @@ async fn execute_once_intent_suppresses_empty_success_retry_even_without_trace()
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
+        agent_owned_finance_loop: false,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
@@ -1522,6 +1493,7 @@ async fn portfolio_mutation_then_analysis_disconnect_does_not_retry_without_trac
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
+        agent_owned_finance_loop: false,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
@@ -1609,6 +1581,7 @@ async fn deep_research_start_disconnect_does_not_launch_a_second_task_without_tr
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
+        agent_owned_finance_loop: false,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
@@ -1681,6 +1654,7 @@ async fn post_quote_runner_failure_stays_failed_but_incomplete_success_uses_fall
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
+        agent_owned_finance_loop: false,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
@@ -1875,6 +1849,7 @@ async fn investment_contract_uses_verified_fallback_for_incomplete_nbis_draft() 
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
+        agent_owned_finance_loop: false,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
@@ -2011,6 +1986,7 @@ async fn investment_fallback_fails_closed_for_unknown_tool_trace() {
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
+        agent_owned_finance_loop: false,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
@@ -2127,6 +2103,7 @@ fn repair_trace_request(
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
+        agent_owned_finance_loop: false,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     }
@@ -2446,6 +2423,7 @@ async fn fund_contract_discards_forbidden_financial_call_and_uses_safe_fallback(
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
+        agent_owned_finance_loop: false,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
@@ -2551,6 +2529,7 @@ async fn investment_contract_sanitizes_and_server_normalizes_the_visible_text() 
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
+        agent_owned_finance_loop: false,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
@@ -4690,14 +4669,6 @@ async fn incomplete_named_scope_enters_main_agent_tool_loop_without_auxiliary_ga
                 ]),
                 usage: None,
             }),
-            Ok(mock_data_control_response(&[
-                ("call_quote", "/data/0/price"),
-                ("call_quote", "/data/1/price"),
-                ("call_nbis_financials", "/data/0/revenue"),
-                ("call_nbis_financials", "/data/0/netIncome"),
-                ("call_nvda_financials", "/data/0/revenue"),
-                ("call_nvda_financials", "/data/0/netIncome"),
-            ])),
             Ok(ChatResponse {
                 content: "数据时间：北京时间 2026-07-18 21:05；行情口径：报价源最新可得、非逐笔\n\n比较结论：NBIS 与 NVDA 应按不同业务成熟度比较。以下区分已核验事实与情景推断。\n### NBIS\nNBIS 当前价 177.71 USD。已核验事实：年度营收与净利润字段由本轮利润表覆盖；估值方法采用 P/S 与情景法，经营兑现是假设推断。\n### NVDA\nNVDA 当前价 180.25 USD。已核验事实：年度营收与净利润字段由本轮利润表覆盖；估值方法采用 P/E 与情景法，增长持续性是假设推断。\n风险与证伪条件：若增长与现金流趋势恶化，当前判断失效。\n动作建议与触发条件：先观察，等待估值与经营数据同时满足条件。".to_string(),
                 reasoning_content: None,
@@ -4739,7 +4710,7 @@ async fn incomplete_named_scope_enters_main_agent_tool_loop_without_auxiliary_ga
         0,
         "blocking auxiliary chat must be removed"
     );
-    assert_eq!(llm.chat_with_tools_calls(), 5);
+    assert_eq!(llm.chat_with_tools_calls(), 4);
     let runner_prompt = llm.last_tool_transcript();
     assert!(
         runner_prompt.contains("主 Agent 工具循环"),
@@ -4774,7 +4745,7 @@ async fn incomplete_named_scope_enters_main_agent_tool_loop_without_auxiliary_ga
             _ => None,
         })
         .collect::<Vec<_>>();
-    assert_eq!(visible_chunks.len(), 2, "{visible_chunks:?}");
+    assert_eq!(visible_chunks.len(), 1, "{visible_chunks:?}");
     assert_eq!(
         visible_chunks
             .iter()
@@ -4835,7 +4806,6 @@ async fn agent_owned_no_coverage_clarification_is_not_replaced_and_is_emitted_on
             ]),
             usage: None,
         },
-        mock_control_response(false),
         ChatResponse {
             content: clarification.to_string(),
             reasoning_content: None,
@@ -4879,7 +4849,7 @@ async fn agent_owned_no_coverage_clarification_is_not_replaced_and_is_emitted_on
             .all(|call| call.result["data"].as_array().is_some_and(Vec::is_empty)),
         true
     );
-    assert_eq!(llm.chat_with_tools_calls(), 4);
+    assert_eq!(llm.chat_with_tools_calls(), 3);
     let events = listener.events.lock().await;
     let visible_chunks = events
         .iter()
@@ -4964,7 +4934,6 @@ async fn agent_owned_equal_candidate_clarification_is_not_replaced_and_is_emitte
             ]),
             usage: None,
         },
-        mock_data_control_response(&[("call_alph_profile", "/data/0/companyName")]),
         ChatResponse {
             content: clarification.to_string(),
             reasoning_content: None,
@@ -5012,7 +4981,7 @@ async fn agent_owned_equal_candidate_clarification_is_not_replaced_and_is_emitte
             .collect::<Vec<_>>(),
         [Some("ALPH"), Some("ALPH")]
     );
-    assert_eq!(llm.chat_with_tools_calls(), 4);
+    assert_eq!(llm.chat_with_tools_calls(), 3);
     let events = listener.events.lock().await;
     let visible_chunks = events
         .iter()
@@ -5182,7 +5151,7 @@ async fn agent_owned_direct_final_preserves_completed_interactive_answer() {
 }
 
 #[tokio::test]
-async fn committed_terminal_header_recovers_in_place_and_session_emits_only_the_tail() {
+async fn incomplete_natural_direct_final_never_commits_a_header_or_runs_terminal_recovery() {
     let root = make_temp_dir("hone_channels_terminal_header_recovery");
     std::fs::create_dir_all(&root).expect("create root");
     let (fmp_base_url, fmp_stub) = spawn_fmp_route_stub(vec![
@@ -5251,10 +5220,6 @@ async fn committed_terminal_header_recovers_in_place_and_session_emits_only_the_
             ]),
             usage: None,
         },
-        mock_data_control_response(&[(
-            "call_crwv_profile_before_terminal_recovery",
-            "/data/0/companyName",
-        )]),
         ChatResponse {
             content: interrupted_answer,
             reasoning_content: None,
@@ -5268,7 +5233,7 @@ async fn committed_terminal_header_recovers_in_place_and_session_emits_only_the_
             usage: None,
         },
     ])
-    .incomplete_on_stream_calls(&[4]);
+    .incomplete_on_stream_calls(&[3]);
     let core = make_strict_tool_loop_test_core_with_config(&root, llm.clone(), |config| {
         config.fmp.api_keys = vec!["test-key".to_string()];
         config.fmp.base_url = fmp_base_url;
@@ -5284,14 +5249,20 @@ async fn committed_terminal_header_recovers_in_place_and_session_emits_only_the_
         .await;
     fmp_stub.join().expect("join FMP stub");
 
-    assert!(result.response.success, "{:?}", result.response.error);
-    assert_eq!(result.response.content, recovered_answer);
+    assert!(!result.response.success);
+    assert!(
+        result
+            .response
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("active business stream ended before Done"))
+    );
     assert_eq!(result.response.tool_calls_made.len(), 3);
     assert_eq!(llm.chat_calls(), 0);
     assert_eq!(
         llm.chat_with_tools_calls(),
-        5,
-        "identity discovery + post-identity profile + sole finish + failed terminal + one buffered terminal recovery"
+        3,
+        "identity discovery + post-identity evidence + one buffered incomplete natural final; no finish or recovery generation"
     );
 
     let events = listener.events.lock().await;
@@ -5303,42 +5274,35 @@ async fn committed_terminal_header_recovers_in_place_and_session_emits_only_the_
             _ => None,
         })
         .collect::<Vec<_>>();
-    assert_eq!(visible_chunks.len(), 2, "{visible_chunks:?}");
-    assert_eq!(visible_chunks[0], committed_header);
-    assert_eq!(
-        visible_chunks
+    assert!(visible_chunks.is_empty(), "{visible_chunks:?}");
+    assert!(
+        !events
             .iter()
-            .map(|chunk| chunk.as_str())
-            .collect::<String>(),
-        recovered_answer,
-        "the irreversible header must be followed only by the recovered tail"
+            .any(|event| matches!(event, AgentSessionEvent::Run(RunEvent::StreamReset)))
     );
-    assert_eq!(
-        recovered_answer.matches(committed_header).count(),
-        1,
-        "the canonical header must not be replayed"
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, AgentSessionEvent::PartialDone { .. }))
     );
-    assert!(!events.iter().any(|event| matches!(
-        event,
-        AgentSessionEvent::Run(RunEvent::StreamReset | RunEvent::Error { .. })
-    )));
     drop(events);
 
     let messages = core
         .session_storage
         .get_messages(&actor.session_id(), None)
         .expect("persisted terminal messages");
-    assert_eq!(messages.len(), 2);
-    assert_eq!(
-        messages[1].content[0].text.as_deref(),
-        Some(recovered_answer.as_str())
-    );
+    assert!(messages.iter().all(|message| {
+        message.content.iter().all(|part| {
+            part.text
+                .as_deref()
+                .is_none_or(|text| !text.contains(committed_header))
+        })
+    }));
     let _ = std::fs::remove_dir_all(root);
 }
 
 #[tokio::test]
-async fn committed_terminal_header_double_failure_emits_honest_partial_and_persists_visible_prefix()
-{
+async fn incomplete_natural_direct_final_never_persists_a_partial_terminal_prefix() {
     let root = make_temp_dir("hone_channels_terminal_header_double_failure");
     std::fs::create_dir_all(&root).expect("create root");
     let (fmp_base_url, fmp_stub) = spawn_fmp_route_stub(vec![
@@ -5408,10 +5372,6 @@ async fn committed_terminal_header_double_failure_emits_honest_partial_and_persi
             ]),
             usage: None,
         },
-        mock_data_control_response(&[(
-            "call_crwv_profile_before_terminal_double_failure",
-            "/data/0/companyName",
-        )]),
         ChatResponse {
             content: interrupted_answer,
             reasoning_content: None,
@@ -5425,7 +5385,7 @@ async fn committed_terminal_header_double_failure_emits_honest_partial_and_persi
             usage: None,
         },
     ])
-    .incomplete_on_stream_calls(&[4]);
+    .incomplete_on_stream_calls(&[3]);
     let core = make_strict_tool_loop_test_core_with_config(&root, llm.clone(), |config| {
         config.fmp.api_keys = vec!["test-key".to_string()];
         config.fmp.base_url = fmp_base_url;
@@ -5447,10 +5407,10 @@ async fn committed_terminal_header_double_failure_emits_honest_partial_and_persi
             .response
             .error
             .as_deref()
-            .is_some_and(|error| error.contains("terminal synthesis recovery failed"))
+            .is_some_and(|error| error.contains("active business stream ended before Done"))
     );
     assert_eq!(result.response.tool_calls_made.len(), 3);
-    assert_eq!(llm.chat_with_tools_calls(), 5);
+    assert_eq!(llm.chat_with_tools_calls(), 3);
 
     let events = listener.events.lock().await;
     let visible_chunks = events
@@ -5461,29 +5421,18 @@ async fn committed_terminal_header_double_failure_emits_honest_partial_and_persi
             _ => None,
         })
         .collect::<Vec<_>>();
-    assert_eq!(visible_chunks, [committed_header]);
-    assert!(!events.iter().any(|event| matches!(
-        event,
-        AgentSessionEvent::Run(RunEvent::StreamReset | RunEvent::Error { .. })
-    )));
+    assert!(visible_chunks.is_empty(), "{visible_chunks:?}");
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, AgentSessionEvent::Run(RunEvent::StreamReset)))
+    );
     assert_eq!(
         events
             .iter()
             .filter(|event| matches!(event, AgentSessionEvent::PartialDone { .. }))
             .count(),
-        1
-    );
-    assert!(events.iter().any(|event| matches!(
-        event,
-        AgentSessionEvent::PartialDone { response }
-            if !response.success
-                && response.error.is_none()
-                && response.content == committed_header
-    )));
-    assert!(
-        !events
-            .iter()
-            .any(|event| matches!(event, AgentSessionEvent::Done { .. }))
+        0
     );
     drop(events);
 
@@ -5491,27 +5440,21 @@ async fn committed_terminal_header_double_failure_emits_honest_partial_and_persi
         .session_storage
         .get_messages(&actor.session_id(), None)
         .expect("persisted partial terminal messages");
-    assert_eq!(messages.len(), 2);
-    assert_eq!(
-        messages[1].content[0].text.as_deref(),
-        Some(committed_header)
-    );
-    assert_eq!(
-        messages[1]
-            .metadata
-            .as_ref()
-            .and_then(|metadata| metadata.get("run_failed"))
-            .and_then(Value::as_bool),
-        Some(true)
-    );
-    assert_eq!(
-        messages[1]
+    assert!(messages.iter().all(|message| {
+        message.content.iter().all(|part| {
+            part.text
+                .as_deref()
+                .is_none_or(|text| !text.contains(committed_header))
+        })
+    }));
+    assert!(messages.iter().all(|message| {
+        message
             .metadata
             .as_ref()
             .and_then(|metadata| metadata.get("terminal_stream_incomplete"))
-            .and_then(Value::as_bool),
-        Some(true)
-    );
+            .and_then(Value::as_bool)
+            != Some(true)
+    }));
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -5631,6 +5574,7 @@ async fn interactive_observed_crwv_nvidia_answer_is_never_repaired_or_rewritten(
         working_directory: root.display().to_string(),
         allowed_tools: None,
         max_tool_calls: None,
+        agent_owned_finance_loop: false,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
@@ -5718,17 +5662,17 @@ async fn interactive_tickers_enter_the_main_agent_loop_without_preflight_blockin
                 && runtime_input.contains("data_fetch(search)")
                 && runtime_input.contains("entity_route")
                 && runtime_input.contains("identity_match")
-                && runtime_input.contains("仍提供业务工具的轮次只能继续调用工具")
-                && runtime_input.contains("单独提交 finish_research 的结构化证据交接")
-                && runtime_input.contains("answer_scope")
-                && runtime_input.contains("不要在工具轮写终稿")
-                && runtime_input.contains("服务端不追加、改写、重跑或否决成功答案")
+                && runtime_input.contains("标准的同一主 Agent function-calling loop")
+                && runtime_input.contains("直接返回一次完整自然终稿")
+                && runtime_input.contains("工具结果原样留在当前上下文中")
+                && runtime_input.contains("完整 Stop + Done 自然终稿一次发送并原样持久化")
                 && runtime_input.contains("第一可见字符必须是“数”")
                 && runtime_input.contains("数据时间：北京时间 2026-07-19 09:31；行情口径：")
                 && runtime_input.contains("禁止在该行之前输出 `---`、Markdown 标题")
-                && runtime_input.contains("终稿在事实旁内联服务端注入的标题与原始 URL")
+                && runtime_input.contains("终稿在事实旁内联来源标题与原始 URL")
                 && runtime_input.contains("以‘推断：’开头")
-                && runtime_input.ends_with("不以流程性拒答代替分析。"),
+                && runtime_input.contains("禁止据此写‘纽交所’或‘收盘价’")
+                && runtime_input.ends_with("继续完成当前证据能够支持的分析。"),
             "{input}: {runtime_input}"
         );
     }
@@ -5740,6 +5684,44 @@ async fn interactive_tickers_enter_the_main_agent_loop_without_preflight_blockin
     );
     assert_eq!(llm.chat_with_tools_calls(), 0);
     let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn interactive_finance_loop_mode_is_channel_independent_and_not_a_stream_policy() {
+    for channel in ["web", "discord", "telegram", "feishu"] {
+        let root = make_temp_dir(&format!("hone_channels_natural_loop_{channel}"));
+        std::fs::create_dir_all(&root).expect("create root");
+        let llm = MockLlmProvider::with_chat_and_tool_responses(vec![], vec![]);
+        let core = make_strict_tool_loop_test_core_with_config(&root, llm, |_| {});
+        let actor =
+            ActorIdentity::new(channel, "natural-loop-user", None::<String>).expect("actor");
+        let session = AgentSession::new(core, actor.clone(), "direct");
+        let options = AgentRunOptions::default();
+
+        let (execution, _investment_context) = session
+            .prepare_execution_for_turn(
+                &actor.session_id(),
+                "crwv和英伟达有什么关系",
+                "crwv和英伟达有什么关系",
+                &options,
+                None,
+                None,
+            )
+            .await
+            .unwrap_or_else(|(_, error)| panic!("{channel}: {error}"));
+
+        assert_eq!(execution.runner_name, "function_calling", "{channel}");
+        assert!(
+            execution.runner_request.agent_owned_finance_loop,
+            "{channel}"
+        );
+        assert_eq!(
+            execution.runner_request.terminal_stream_policy,
+            TerminalStreamPolicy::Disabled,
+            "{channel}"
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
 }
 
 #[tokio::test]
@@ -5881,14 +5863,6 @@ async fn crwv_nbis_agent_loop_batches_the_first_datafetch_and_emits_one_answer()
             ]),
             usage: None,
         },
-        mock_data_control_response(&[
-            ("call_crwv_nbis_quote", "/data/0/price"),
-            ("call_crwv_nbis_quote", "/data/1/price"),
-            ("call_crwv_financials", "/data/0/revenue"),
-            ("call_crwv_financials", "/data/0/netIncome"),
-            ("call_nbis_financials", "/data/0/revenue"),
-            ("call_nbis_financials", "/data/0/netIncome"),
-        ]),
         ChatResponse {
             content: "数据时间：北京时间 2026-07-18 21:05；行情口径：报价源最新可得、非逐笔\n\n比较结论：CRWV 与 NBIS 的估值应结合各自增长和资本强度。以下区分已核验事实与情景推断。\n### CRWV\nCRWV 当前价 73.21 USD。已核验事实：年度营收与净利润字段由本轮利润表覆盖；估值方法采用 P/S 与情景法，订单兑现是假设推断。\n### NBIS\nNBIS 当前价 177.71 USD。已核验事实：年度营收与净利润字段由本轮利润表覆盖；估值方法采用 P/S 与情景法，算力利用率是假设推断。\n风险与证伪条件：若订单、增长或现金流明显恶化，当前判断失效。\n动作建议与触发条件：先观察，等待估值与经营数据同时满足条件。".to_string(),
             reasoning_content: None,
@@ -5934,7 +5908,7 @@ async fn crwv_nbis_agent_loop_batches_the_first_datafetch_and_emits_one_answer()
     assert!(call.result["data"][0]["timestamp"].is_number());
     assert!(call.result["data"][1]["timestamp"].is_number());
     assert_eq!(llm.chat_calls(), 0);
-    assert_eq!(llm.chat_with_tools_calls(), 5);
+    assert_eq!(llm.chat_with_tools_calls(), 4);
     let runner_prompt = llm.last_tool_transcript();
     assert!(runner_prompt.contains("CRWV"), "{runner_prompt}");
     assert!(runner_prompt.contains("NBIS"), "{runner_prompt}");
@@ -5948,7 +5922,7 @@ async fn crwv_nbis_agent_loop_batches_the_first_datafetch_and_emits_one_answer()
             _ => None,
         })
         .collect::<Vec<_>>();
-    assert_eq!(visible_chunks.len(), 2, "{visible_chunks:?}");
+    assert_eq!(visible_chunks.len(), 1, "{visible_chunks:?}");
     assert_eq!(
         visible_chunks
             .iter()
@@ -6020,7 +5994,6 @@ async fn omitted_explicit_seed_is_observational_and_does_not_rerun() {
             ]),
             usage: None,
         },
-        mock_data_control_response(&[("post_identity_crwv_profile", "/data/0/companyName")]),
         ChatResponse {
             content: original_answer.to_string(),
             reasoning_content: None,
@@ -6047,7 +6020,7 @@ async fn omitted_explicit_seed_is_observational_and_does_not_rerun() {
     assert_eq!(result.response.content, original_answer);
     assert!(result.response.error.is_none());
     assert!(!result.response.content.contains("投研完整性检查"));
-    assert_eq!(llm.chat_with_tools_calls(), 4);
+    assert_eq!(llm.chat_with_tools_calls(), 3);
     let transcript = llm.last_tool_transcript();
     assert!(
         !transcript.contains("主 Agent 实体发现自检"),
@@ -6077,7 +6050,7 @@ async fn omitted_explicit_seed_is_observational_and_does_not_rerun() {
             _ => None,
         })
         .collect::<Vec<_>>();
-    assert_eq!(visible_chunks.len(), 2, "{visible_chunks:?}");
+    assert_eq!(visible_chunks.len(), 1, "{visible_chunks:?}");
     assert_eq!(
         visible_chunks
             .iter()
@@ -6217,10 +6190,6 @@ async fn single_agent_loop_accepts_later_exact_searches_after_empty_enriched_sea
             ]),
             usage: None,
         },
-        mock_data_control_response(&[
-            ("refine_quote_crwv_nbis", "/data/0/price"),
-            ("refine_quote_crwv_nbis", "/data/1/price"),
-        ]),
         ChatResponse {
             content: accepted_answer.to_string(),
             reasoning_content: None,
@@ -6248,7 +6217,7 @@ async fn single_agent_loop_accepts_later_exact_searches_after_empty_enriched_sea
     assert!(result.response.content.contains("CRWV 当前价 73.21 USD"));
     assert!(result.response.content.contains("NBIS 当前价 177.71 USD"));
     assert_eq!(result.response.content, accepted_answer);
-    assert_eq!(llm.chat_with_tools_calls(), 5);
+    assert_eq!(llm.chat_with_tools_calls(), 4);
     assert_eq!(result.response.tool_calls_made.len(), 7);
     assert!(
         build_agent_discovered_investment(
@@ -6272,22 +6241,14 @@ async fn single_agent_loop_accepts_later_exact_searches_after_empty_enriched_sea
             _ => None,
         })
         .collect::<Vec<_>>();
-    let committed_header = format!(
-        "{}\n",
-        accepted_answer
-            .lines()
-            .next()
-            .expect("canonical answer header")
-    );
-    assert_eq!(visible_chunks.len(), 2, "{visible_chunks:?}");
-    assert_eq!(visible_chunks[0], &committed_header);
+    assert_eq!(visible_chunks.len(), 1, "{visible_chunks:?}");
     assert_eq!(
         visible_chunks
             .iter()
             .map(|chunk| chunk.as_str())
             .collect::<String>(),
         result.response.content,
-        "the early committed header plus the terminal tail must exactly equal the persisted answer"
+        "the one natural DirectFinal must exactly equal the persisted answer"
     );
     assert!(!events.iter().any(|event| matches!(
         event,
@@ -6422,10 +6383,6 @@ async fn named_entity_scope_is_delegated_to_the_main_agent_instead_of_preflight_
                 ]),
                 usage: None,
             }),
-            Ok(mock_data_control_response(&[(
-                "call_nvda_quote",
-                "/data/0/price",
-            )])),
             Ok(ChatResponse {
                 content: "数据时间：北京时间 2026-07-18 21:05；行情口径：报价源最新可得、非逐笔\n\nNVDA 当前价 180.25 USD。".to_string(),
                 reasoning_content: None,
@@ -6448,7 +6405,7 @@ async fn named_entity_scope_is_delegated_to_the_main_agent_instead_of_preflight_
 
     assert!(result.response.success, "{:?}", result.response.error);
     assert_eq!(llm.chat_calls(), 0);
-    assert_eq!(llm.chat_with_tools_calls(), 4);
+    assert_eq!(llm.chat_with_tools_calls(), 3);
     assert_eq!(result.response.tool_calls_made.len(), 3);
     assert!(
         build_agent_discovered_investment(

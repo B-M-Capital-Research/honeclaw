@@ -164,6 +164,7 @@ impl ExecutionService {
                 allowed_tools: request.allowed_tools,
                 max_tool_calls: request.max_tool_calls,
                 tool_call_limits: request.tool_call_limits,
+                agent_owned_finance_loop: false,
                 terminal_stream_policy: TerminalStreamPolicy::Disabled,
             },
         })

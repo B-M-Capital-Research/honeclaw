@@ -21,6 +21,7 @@ use hone_tools::data_fetch::{
     effective_data_fetch_data_type, effective_data_fetch_security_target,
     validated_data_fetch_search_query, validated_data_fetch_symbols,
 };
+#[cfg(test)]
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -33,43 +34,67 @@ const REASONING_CONTENT_METADATA_KEY: &str = "reasoning_content";
 const FALLBACK_ACTIVE_BUSINESS_TIMEOUT: Duration = Duration::from_secs(20);
 #[cfg(test)]
 const FALLBACK_ACTIVE_BUSINESS_TIMEOUT: Duration = Duration::from_millis(25);
+#[cfg(test)]
 const FINISH_RESEARCH_TOOL_NAME: &str = "finish_research";
 const ACTIVE_BUSINESS_FAILURE_RETRY_LIMIT: u32 = 1;
+const MAX_AGENT_OWNED_HISTORY_USER_TURNS: usize = 4;
+const MAX_AGENT_OWNED_HISTORY_CHARS: usize = 4_000;
 const AGENT_OVERALL_TIMEOUT_ERROR: &str =
     "agent_timeout: function-calling overall deadline exceeded";
 const AGENT_STEP_TIMEOUT_ERROR: &str = "agent_timeout: function-calling step deadline exceeded";
-const OPEN_AGENT_ENTITY_DISCOVERY_SYSTEM_INSTRUCTION: &str = "【本轮 Agent 工具决策】先完整阅读本轮用户原话，再决定是否调用工具。若问题点名任何公司、证券、基金、指数或加密资产，第一轮先只调用真实工具，不写最终正文：为你识别出的每个点名标的分别并行调用一次 DataFetch search，每个调用都填写互不复用且后续原样复用的 `entity_route`，并填写本次调用自己的 `identity_match`（ticker 用 `exact_symbol`，公司名、中文名或别名用 `name_or_alias`）。不要只处理第一个标的，也不要等服务端按字符串拆分问题。若并非证券/公司研究问题，则按用户实际意图正常处理，不要生造证券实体。";
-const POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION: &str = "【内部研究取证轮】当前已通过 DataFetch 进入金融数据工具链，但证券实体、行情或资产路由证据仍未完整。先由你完整分析用户实际点名的全部公司/证券，不要依赖固定问法扫描器。为每个标的分配一个本轮稳定且互不复用的 `entity_route`（内部短键，不是用户可见结论）；每个标的分别发起一个 search（可在同一轮并行，禁止把多个标的拼成一个 query），并由你依据完整语义在每一次 search 调用里明确填写 call-scoped `identity_match`：query 是 ticker 时用 `exact_symbol`，是公司名、中文名或别名时用 `name_or_alias`；前一次声明不会授权后一次 search，也不要让服务端按大小写或长度猜。后续 refinement、quote、profile/snapshot 与其它该标的调用都原样携带同一路线键。显式 ticker 路线的同代码约束在后续公司名补查中仍持续有效，不能切换成名字里提到该代码的其它产品；有限 provider 分隔写法可等价。若此前调用缺少路线键，补查时重复原 query，或用 `supersedes_query` 逐字指向那次旧 query，以便只迁移该路线。`refines_query` 与 `supersedes_query` 严格互斥，每次 search 最多填写一个：前者只连接同路线的空结果补查，后者只迁移一条漏写路线键的旧 query。对每条路线选中的标准 symbol 执行同代码 quote/profile；crypto 使用 search 返回的结构化 CRYPTO 路由与 crypto_quote，不要求 stock profile。若中文名、别名或代码搜索为空，在同一 `entity_route` 下换用公司正式英文名或标准 ticker 做精确补查；可在 `refines_query` 中逐字填写原始空 query，但不得另建或复用其它实体的路线来抵消。随后按用户原始问题继续取得财务、新闻、网页、公告、持仓或其它业务证据。尽量在同一轮批量或并行调用互不依赖的工具。不得把 data_fetch(search) 或 profile 当成公司关系、事件或因果证据。内部完成信号只是 Agent 自己结束研究的方式，不是服务端事实审查；只有合理取证已完成或来源明确不可得并需披露时才使用。";
+const OPEN_AGENT_ENTITY_DISCOVERY_SYSTEM_INSTRUCTION: &str = "【本轮 Agent 工具决策】先完整阅读本轮用户原话，再决定是否调用工具。若问题点名任何公司、证券、基金、指数或加密资产，第一轮先只调用真实工具，不写最终正文：为你识别出的每个点名标的分别并行调用一次 DataFetch search，每个调用都填写互不复用且后续原样复用的 `entity_route`，并填写本次调用自己的 `identity_match`（ticker 用 `exact_symbol`，公司名、中文名或别名用 `name_or_alias`）。用户可能用小写、混合大小写或带市场常用分隔符书写 ticker；证券语境里的代码仍按 ticker 处理并用标准代码精确查询，不能因为写成小写就先改走公司别名搜索。不要只处理第一个标的，也不要等服务端按字符串拆分问题。若并非证券/公司研究问题，则按用户实际意图正常处理，不要生造证券实体。";
+const POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION: &str = "【内部研究取证轮】当前已通过 DataFetch 进入金融数据工具链，但证券实体、行情或资产路由证据仍未完整。先由你完整分析用户实际点名的全部公司/证券，不要依赖固定问法扫描器。为每个标的分配一个本轮稳定且互不复用的 `entity_route`（内部短键，不是用户可见结论）；每个标的分别发起一个 search（可在同一轮并行，禁止把多个标的拼成一个 query），并由你依据完整语义在每一次 search 调用里明确填写 call-scoped `identity_match`：query 是 ticker 时用 `exact_symbol`，是公司名、中文名或别名时用 `name_or_alias`；用户书写的 ticker 不要求大写，证券语境里的小写或混合大小写代码应先规范成标准代码并走 `exact_symbol`，不能仅因大小写改走别名 refinement；前一次声明不会授权后一次 search，也不要让服务端按大小写或长度猜。后续 refinement、quote、profile/snapshot 与其它该标的调用都原样携带同一路线键。显式 ticker 路线的同代码约束在后续公司名补查中仍持续有效，不能切换成名字里提到该代码的其它产品；有限 provider 分隔写法可等价。若此前调用缺少路线键，补查时重复原 query，或用 `supersedes_query` 逐字指向那次旧 query，以便只迁移该路线。`refines_query` 与 `supersedes_query` 严格互斥，每次 search 最多填写一个：前者只连接同路线的空结果补查，后者只迁移一条漏写路线键的旧 query。对每条路线选中的标准 symbol 执行同代码 quote/profile；crypto 使用 search 返回的结构化 CRYPTO 路由与 crypto_quote，不要求 stock profile。若中文名、别名或代码搜索为空，在同一 `entity_route` 下换用公司正式英文名或标准 ticker 做精确补查；可在 `refines_query` 中逐字填写原始空 query，但不得另建或复用其它实体的路线来抵消。随后按用户原始问题继续取得财务、新闻、网页、公告、持仓或其它业务证据。尽量在同一轮批量或并行调用互不依赖的工具。不得把 data_fetch(search) 或 profile 当成公司关系、事件或因果证据。合理取证已经完成或必要来源经实际尝试后明确不可得时，由同一 Agent 直接形成一次自然终稿。";
+const AGENT_OWNED_RESEARCH_SYSTEM_INSTRUCTION: &str = "【同一 Agent 自然研究轮】继续阅读完整用户原话和本轮真实工具结果，自主决定是补充当前问题真正需要的业务工具，还是直接形成一次完整终稿。证据不足时只调用当前需要的真实工具；合理取证已经完成，或必要来源经实际尝试后明确不可得并可如实披露时，直接返回自然语言最终回答。实体 search/profile 只证明身份或公司自述，不证明关系、事件和因果；宽泛关系问题通常分别核查商业/客户供应/技术合同与投资持股，优先 SEC、公司 IR 或双方公告。所有事实使用当前工具结果；单项数据缺失时如实披露，并继续完成当前证据能够支持的部分。";
+#[cfg(test)]
 const ACTIVE_RESEARCH_SYSTEM_INSTRUCTION: &str = "【内部研究工具轮】当前仍是工具轮，同时提供真实业务工具和 `finish_research`。请由同一 Agent 重新阅读完整用户原话与本轮真实工具结果；当前结构状态只覆盖 Agent 已声明的路线，不证明点名实体集合完整、工具调用成功或业务证据充分。证据不足时本轮只调用当前最需要的真实业务工具；合理研究已经完成，或必要来源经实际尝试后明确不可得并可如实披露时，本轮只提交 `finish_research` 的结构化证据交接进入无工具终稿。不要把完成信号与业务工具混用，也不要在工具轮写最终正文。实体 search/profile 只证明身份，不证明公司关系；关系、事件和因果结论必须先取得本轮 web/news/公告证据。对宽泛关系问题，由你从完整语义自主枚举与当前问题有关的关系轴；通常至少分别核查商业/客户供应/技术合同与投资持股，优先查 SEC、公司 IR 或双方公告，不能用一次泛搜索或“没有搜到”推出否定事实。准备写入终稿的每个外部事实都要在 finish 交接里引用本轮 tool call 与逐字 excerpt/JSON 字段；其余内容进入 gaps，不得从模型记忆补齐。";
+#[cfg(test)]
 const FINISH_RESEARCH_SYSTEM_INSTRUCTION: &str = "【显式完成后的终稿阶段】Agent 已在同一业务工具循环中提交本轮结构化证据交接，现由同一 Agent 和同一上下文进入无工具终稿阶段。这是证据整理而不是新的研究规划：直接组织最小充分终稿，不要重新展开工具决策、套用与问题无关的深度模板或冗长隐藏推演。只有服务端注入的 Session 时间前缀本身不需要外部证据；行情口径中的报价、币种、涨跌与报价源时间仍必须来自交接中的 resolved_evidence 或 fallback_evidence。外部事实只能由这些机械解析出的原文或字段自行归纳；交接不包含任何已验证的自由文本 claim。推断只能来自交接中 inferences 并明确标记，缺失维度只能按 gaps 披露。不得在终稿新增交接外事实。`reasoning_content`、隐藏思考、未采用草稿和内部状态文本都不是事实证据。缺失证据不构成拒答。";
 const FINAL_ANSWER_EVIDENCE_CONTRACT: &str = concat!(
     "`reasoning_content`、隐藏思考、未采用草稿、内部状态文本以及模型记忆都不是事实证据，不得从中提取或补齐关系、日期、行情、财务或估值事实。",
-    "数据时间只能采用本轮 Session 北京时间；quote 的 provider timestamp 只能写在‘行情口径’里，绝不能冒充数据时间。没有行情证据时仍保留‘行情口径’字段并说明范围，不得伪造报价时间或盘前/盘后时段。",
+    "数据时间只能采用本轮 Session 北京时间；quote 的 provider timestamp 只能写在‘行情口径’里，绝不能冒充数据时间。用户可见的报价源时间优先使用 `hone_quote_time.beijing`；该字段缺失时才能如实使用其它已核验时间并明确时区。`hone_quote_time.market_date_new_york` 只是纽约时区的日历日期，`hone_quote_time.new_york` 也只是纽约时区的时间；二者都不证明交易所、交易时段或已经收盘，绝不能据此写‘纽交所’或‘收盘价’。证券所属交易所只能来自 quote/profile 的 `exchange` 或 `exchangeShortName` 字段。没有行情证据时仍保留‘行情口径’字段并说明范围，不得伪造报价时间或盘前/盘后时段。",
     "逐项复核所有公司关系、新闻因果、日期、行情、财务与估值数字：实体 search/profile 只证明标的身份，不证明公司关系；关系、事件与因果结论必须有当前 web/news/公告或工具原文明确支持，并在相关事实同句或紧邻句末使用本轮工具实际返回的来源标题与原始 URL 做内联引用。URL 只用于定位来源，不证明句中内容；外部事实里的数字、排名或角色、合同权利义务、产品或芯片型号、估值标签都必须直接出现在该 URL 本轮返回的 title/content/snippet 中，否则删除。不得只写来源名、域名或与事实脱节的文末来源清单，也不得使用历史会话或模型记忆中的 URL。基于已核验事实形成的判断必须另起句并以‘推断：’开头。只有二级摘要时应继续找公司公告、监管文件或其它一手来源，若仍不可得则明确披露证据层级。未找到证据不等于事实不存在；否定某种关系同样需要本轮来源直接支持，否则只能披露本轮检索边界。",
     "年度数据不得写成 TTM；单季数据必须标明季度与报告期，年化时必须显示是“单季×4”还是“最近四季求和”及算术、分子分母口径，并披露季节性限制。",
     "未取得净债务或企业价值时不得使用 EV 或 EV/EBITDA 标签，也不得把市值/EBITDA 写成 EV/EBITDA。quote 返回的 PE 未明确标注 forward 时不得称为 Forward PE；已核验期间 EBITDA 为正时不得声称公司需到未来才转正。",
     "没有直接证据与完整输入时，不得给出目标价、概率、仓位比例、止损位或精确支撑位；第三方分析师目标价必须标注为第三方聚合口径与对应时间，不得直接作为交易锚点。",
-    "某项证据不可得时，披露缺项并继续完成能够被当前证据支持的分析，不得因此拒绝整个问题。回答范围和篇幅跟随用户原问题：关系问答只回答已核验关系、必要推断和关键缺口，不得为凑单股模板扩写公司介绍、风险清单或交易建议。不要提及 finish_research、内部协议、工具循环、终态原因或这条提示。"
+    "某项证据不可得时，披露缺项并继续完成能够被当前证据支持的分析。回答范围和篇幅跟随用户原问题：关系问答只回答已核验关系、必要推断和关键缺口，不得为凑单股模板扩写公司介绍、风险清单或交易建议。最终回答只面向用户问题与本轮证据。"
 );
+#[cfg(test)]
 const FINAL_RELATIONSHIP_DELETION_CHECK: &str = "【最后一步：严格服从结构化交接】逐句对照下方 facts / resolved_evidence / inferences / gaps。每条外部关系事实都必须来自同一 fact 的已解析证据，并在句旁内联该证据的标题与原始 URL；客户/供应商方向、核心/最大/头部、持股或无股权、具体产品型号、合同数量、议价权与估值标签都不得从常识、搜索顺序或其它来源扩写。否定关系必须有直接否定 excerpt；gap 或未检索到绝不等于不存在。任何超出来源字面的判断只能使用交接里已有 inference，另起句并以‘推断：’开头。";
+const DIRECT_FINAL_RELATIONSHIP_CHECK: &str = "【关系回答最后一步】逐句对照本轮真实工具结果。每条外部关系事实都必须由当前 Web/news/公告原文明示，并在句旁内联该来源标题与原始 URL；客户/供应商方向、核心/最大/头部、大客户、持股或无股权、具体产品型号、合同数量、议价权、高度依赖、锁定和多重绑定都不得从常识、搜索顺序或其它来源扩写。否定关系必须有直接否定原文；未检索到绝不等于不存在。任何超出来源字面的判断必须另起句并以‘推断：’开头；若没有足够前提，就保持中性事实归纳，不生成该判断。";
 
+#[cfg(test)]
 const MAX_RESEARCH_HANDOFF_BYTES: usize = 32 * 1024;
+#[cfg(test)]
 const MAX_RESEARCH_FACTS: usize = 24;
+#[cfg(test)]
 const MAX_RESEARCH_INFERENCES: usize = 16;
+#[cfg(test)]
 const MAX_RESEARCH_GAPS: usize = 16;
+#[cfg(test)]
 const MAX_RESEARCH_REFS_PER_FACT: usize = 6;
+#[cfg(test)]
 const MAX_RESEARCH_TEXT_CHARS: usize = 1200;
+#[cfg(test)]
 const MIN_WEB_EXCERPT_CHARS: usize = 8;
+#[cfg(test)]
 const MAX_FALLBACK_EVIDENCE_ITEMS: usize = 64;
+#[cfg(test)]
 const MAX_FALLBACK_SCANNED_SCALARS_PER_TOOL: usize = 256;
+#[cfg(test)]
 const MAX_FALLBACK_ITEMS_PER_TOOL: usize = 32;
+#[cfg(test)]
 const MAX_INTERNAL_VALIDATION_WARNINGS: usize = 8;
+#[cfg(test)]
 const MAX_UNAVAILABLE_FINISH_CORRECTIONS: u32 = 1;
+#[cfg(test)]
 const MAX_INVALID_FINISH_CORRECTIONS: u32 = 1;
+#[cfg(test)]
 const MAX_RESEARCH_SOURCE_CATALOG_ITEMS: usize = 32;
+#[cfg(test)]
 const EMPTY_TERMINAL_VISIBLE_CONTENT_ERROR: &str =
     "terminal synthesis returned empty visible content";
 
+#[cfg(test)]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct ResearchHandoff {
@@ -79,6 +104,7 @@ struct ResearchHandoff {
     gaps: Vec<String>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct ResearchHandoffFact {
@@ -86,6 +112,7 @@ struct ResearchHandoffFact {
     evidence: Vec<ResearchEvidenceRef>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct ResearchHandoffInference {
@@ -93,6 +120,7 @@ struct ResearchHandoffInference {
     premise_fact_ids: Vec<String>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct ResearchEvidenceRef {
@@ -102,6 +130,7 @@ struct ResearchEvidenceRef {
     json_pointer: Option<String>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ResearchEvidenceSource {
     tool_call_id: String,
@@ -109,6 +138,7 @@ struct ResearchEvidenceSource {
     description: String,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ResearchEvidenceSourceKind {
     DataFetch,
@@ -119,12 +149,14 @@ enum ResearchEvidenceSourceKind {
 /// Agent selected in its finish handoff. This is intentionally not an entity
 /// or answer-quality classifier: it only prevents unrelated current-turn tool
 /// results from being replayed merely because they happened to succeed.
+#[cfg(test)]
 #[derive(Debug, Clone, Default)]
 struct FallbackEvidenceScope {
     web_result_numbers: BTreeMap<String, BTreeSet<usize>>,
     data_json_pointers: BTreeMap<String, BTreeSet<String>>,
 }
 
+#[cfg(test)]
 impl FallbackEvidenceScope {
     fn observe_reference(&mut self, reference: &ResearchEvidenceRef) {
         let tool_call_id = reference.tool_call_id.trim();
@@ -156,6 +188,7 @@ impl FallbackEvidenceScope {
     }
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Serialize)]
 struct ValidatedResearchHandoff {
     answer_scope: String,
@@ -170,6 +203,7 @@ struct ValidatedResearchHandoff {
     unresolved_reference_count: usize,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Serialize)]
 struct ValidatedResearchFact {
     id: String,
@@ -755,6 +789,7 @@ impl ResearchEvidenceLedger {
         }
     }
 
+    #[cfg(test)]
     fn completion_signal_available(&self, active_business_round: bool) -> bool {
         self.evidence_floor_satisfied(active_business_round)
     }
@@ -990,6 +1025,8 @@ pub struct FunctionCallingAgent {
     pub stream_observer: Option<Arc<dyn FunctionCallingStreamObserver>>,
     pub max_tool_calls: Option<u32>,
     pub tool_call_limits: HashMap<String, u32>,
+    pub agent_owned_finance_loop: bool,
+    #[cfg(test)]
     pub finish_research_terminal_synthesis: bool,
     pub step_timeout: Option<Duration>,
     pub overall_timeout: Option<Duration>,
@@ -1018,6 +1055,8 @@ impl FunctionCallingAgent {
             stream_observer: None,
             max_tool_calls: None,
             tool_call_limits: HashMap::new(),
+            agent_owned_finance_loop: false,
+            #[cfg(test)]
             finish_research_terminal_synthesis: false,
             step_timeout: None,
             overall_timeout: None,
@@ -1047,7 +1086,7 @@ impl FunctionCallingAgent {
         self
     }
 
-    /// Enable the Agent-owned research terminal protocol. Once the Agent has
+    /// Test-only coverage for the retired research terminal protocol. Once the Agent has
     /// actually attempted DataFetch in an eligible turn, the same business
     /// loop first requires a post-identity evidence attempt, then exposes the
     /// real actor-bound tools together with a sole `finish_research` signal.
@@ -1057,8 +1096,32 @@ impl FunctionCallingAgent {
     /// canonical investment answer format. A sole finish signal performs one
     /// final tool-free streamed completion using the same in-memory context.
     /// Direct answers before finance research remain exact one-shot answers.
+    #[cfg(test)]
     pub fn with_finish_research_terminal_synthesis(mut self, enabled: bool) -> Self {
         self.finish_research_terminal_synthesis = enabled;
+        if enabled {
+            self.agent_owned_finance_loop = false;
+        }
+        self
+    }
+
+    #[cfg(test)]
+    fn finish_research_terminal_synthesis_enabled(&self) -> bool {
+        self.finish_research_terminal_synthesis
+    }
+
+    /// Keep Interactive finance research in the ordinary function-calling
+    /// loop. DataFetch activates the request-local entity/evidence ledger;
+    /// before its structural floor the Agent must keep using real tools, and
+    /// after the floor it may either use another real tool or return one
+    /// natural `Stop + Done` answer. This mode never exposes a retired control
+    /// tool and never starts a tool-free rewrite.
+    pub fn with_agent_owned_finance_loop(mut self, enabled: bool) -> Self {
+        self.agent_owned_finance_loop = enabled;
+        #[cfg(test)]
+        if enabled {
+            self.finish_research_terminal_synthesis = false;
+        }
         self
     }
 
@@ -1154,6 +1217,79 @@ impl FunctionCallingAgent {
             });
         }
 
+        messages
+    }
+
+    /// Preserve a small conversational window for follow-up references without
+    /// replaying historical assistant claims, tool protocol, prices, or
+    /// reasoning into a new research ledger. Previous user wording may explain
+    /// pronouns such as "它" or "第二个"; only the current runtime input defines
+    /// what must be researched in this turn.
+    fn build_agent_owned_messages(
+        &self,
+        context: &AgentContext,
+        additional_system_instruction: Option<&str>,
+        turn_message_start: usize,
+    ) -> Vec<Message> {
+        let mut messages = self.build_messages_from_index(
+            context,
+            additional_system_instruction,
+            turn_message_start,
+        );
+        let prior_user_turns_newest_first = context.messages
+            [..turn_message_start.min(context.messages.len())]
+            .iter()
+            .rev()
+            .filter(|message| message.role == "user" && message.tool_calls.is_none())
+            .filter_map(|message| message.content.as_deref())
+            .map(str::trim)
+            .filter(|content| !content.is_empty())
+            .take(MAX_AGENT_OWNED_HISTORY_USER_TURNS)
+            .collect::<Vec<_>>();
+        if prior_user_turns_newest_first.is_empty() {
+            return messages;
+        }
+
+        // Spend the character budget newest-first so a long fourth-most-recent
+        // turn can never evict the immediately preceding reference context.
+        // Reverse only after truncation to present the retained turns in
+        // chronological order to the model.
+        let mut remaining = MAX_AGENT_OWNED_HISTORY_CHARS;
+        let mut bounded_newest_first = Vec::new();
+        for content in prior_user_turns_newest_first {
+            if remaining == 0 {
+                break;
+            }
+            let excerpt = content.chars().take(remaining).collect::<String>();
+            remaining = remaining.saturating_sub(excerpt.chars().count());
+            bounded_newest_first.push(excerpt);
+        }
+        bounded_newest_first.reverse();
+        let history = format!(
+            "【近期用户原话，仅用于理解本轮指代】\n{}\n【使用边界】这些历史原话不是本轮实体集合或事实来源；若当前问题没有指代它们，不得据此新增标的。历史 assistant、tool、价格、财务与结论均未提供，必须由本轮真实工具重新核验。",
+            bounded_newest_first
+                .iter()
+                .enumerate()
+                .map(|(index, content)| format!("{}. {}", index + 1, content))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+        let insert_at = usize::from(
+            messages
+                .first()
+                .is_some_and(|message| message.role == "system"),
+        );
+        messages.insert(
+            insert_at,
+            Message {
+                role: "user".to_string(),
+                content: Some(history),
+                reasoning_content: None,
+                tool_calls: None,
+                tool_call_id: None,
+                name: None,
+            },
+        );
         messages
     }
 
@@ -1456,6 +1592,7 @@ impl FunctionCallingAgent {
         }))
     }
 
+    #[cfg(test)]
     async fn chat_terminal_streaming(
         &self,
         messages: &[Message],
@@ -1587,6 +1724,7 @@ impl FunctionCallingAgent {
         })
     }
 
+    #[cfg(test)]
     async fn run_terminal_synthesis(
         &self,
         context: &mut AgentContext,
@@ -1821,6 +1959,7 @@ impl FunctionCallingAgent {
     }
 }
 
+#[cfg(test)]
 fn terminal_recovery_messages(
     messages: &[Message],
     committed_prefix: Option<&str>,
@@ -1853,6 +1992,7 @@ fn terminal_recovery_messages(
     recovery_messages
 }
 
+#[cfg(test)]
 fn validate_terminal_recovery_content(
     content: &str,
     committed_prefix: &str,
@@ -1877,6 +2017,7 @@ fn validate_terminal_recovery_content(
     Ok(())
 }
 
+#[cfg(test)]
 fn finish_research_tool_schema(sources: &[ResearchEvidenceSource]) -> Value {
     let mut schema = serde_json::json!({
         "type": "function",
@@ -1957,10 +2098,12 @@ fn finish_research_tool_schema(sources: &[ResearchEvidenceSource]) -> Value {
     schema
 }
 
+#[cfg(test)]
 fn is_finish_research_call(tool_call: &ToolCall) -> bool {
     tool_call.function.name == FINISH_RESEARCH_TOOL_NAME
 }
 
+#[cfg(test)]
 fn parse_finish_research_handoff(tool_call: &ToolCall) -> Result<ResearchHandoff, String> {
     if !is_finish_research_call(tool_call) {
         return Err("not a finish_research call".to_string());
@@ -1974,6 +2117,7 @@ fn parse_finish_research_handoff(tool_call: &ToolCall) -> Result<ResearchHandoff
         .map_err(|error| format!("handoff JSON does not match the schema: {error}"))
 }
 
+#[cfg(test)]
 fn json_pointer_targets_error_field(json_pointer: &str) -> bool {
     json_pointer.split('/').skip(1).any(|segment| {
         matches!(
@@ -1983,6 +2127,7 @@ fn json_pointer_targets_error_field(json_pointer: &str) -> bool {
     })
 }
 
+#[cfg(test)]
 fn fallback_data_value_prefix(payload: &Value, json_pointer: &str) -> Option<String> {
     let pointer = json_pointer.trim();
     if !pointer.starts_with("/data/")
@@ -2009,6 +2154,7 @@ fn fallback_data_value_prefix(payload: &Value, json_pointer: &str) -> Option<Str
     Some(parent.to_string())
 }
 
+#[cfg(test)]
 fn fallback_scope_from_handoff(handoff: &ResearchHandoff) -> FallbackEvidenceScope {
     let mut scope = FallbackEvidenceScope::default();
     for fact in handoff.facts.iter().take(MAX_RESEARCH_FACTS) {
@@ -2019,6 +2165,7 @@ fn fallback_scope_from_handoff(handoff: &ResearchHandoff) -> FallbackEvidenceSco
     scope
 }
 
+#[cfg(test)]
 fn fallback_scope_from_unvalidated_value(value: &Value) -> FallbackEvidenceScope {
     let mut scope = FallbackEvidenceScope::default();
     let Some(facts) = value.get("facts").and_then(Value::as_array) else {
@@ -2050,6 +2197,7 @@ fn fallback_scope_from_unvalidated_value(value: &Value) -> FallbackEvidenceScope
     scope
 }
 
+#[cfg(test)]
 fn fallback_scope_from_finish_calls(finish_calls: &[&ToolCall]) -> FallbackEvidenceScope {
     for finish_call in finish_calls {
         if finish_call.function.arguments.len() > MAX_RESEARCH_HANDOFF_BYTES {
@@ -2069,6 +2217,7 @@ fn fallback_scope_from_finish_calls(finish_calls: &[&ToolCall]) -> FallbackEvide
     FallbackEvidenceScope::default()
 }
 
+#[cfg(test)]
 fn bounded_research_text(label: &str, value: &str, allow_empty: bool) -> Result<String, String> {
     let trimmed = value.trim();
     if !allow_empty && trimmed.is_empty() {
@@ -2082,6 +2231,7 @@ fn bounded_research_text(label: &str, value: &str, allow_empty: bool) -> Result<
     Ok(trimmed.to_string())
 }
 
+#[cfg(test)]
 fn current_turn_tool_result<'a>(
     context: &'a AgentContext,
     turn_message_start: usize,
@@ -2098,6 +2248,7 @@ fn current_turn_tool_result<'a>(
         .and_then(|message| Some((message.name.as_deref()?, message.content.as_deref()?)))
 }
 
+#[cfg(test)]
 fn current_turn_tool_call(
     context: &AgentContext,
     turn_message_start: usize,
@@ -2111,6 +2262,7 @@ fn current_turn_tool_call(
         .find(|tool_call| tool_call.id == tool_call_id)
 }
 
+#[cfg(test)]
 fn current_turn_data_fetch_type(
     context: &AgentContext,
     turn_message_start: usize,
@@ -2122,6 +2274,7 @@ fn current_turn_data_fetch_type(
         .flatten()
 }
 
+#[cfg(test)]
 fn value_contains_research_scalar(value: &Value, remaining_depth: usize) -> bool {
     if remaining_depth == 0 {
         return false;
@@ -2143,6 +2296,7 @@ fn value_contains_research_scalar(value: &Value, remaining_depth: usize) -> bool
     }
 }
 
+#[cfg(test)]
 fn current_turn_research_source_catalog(
     context: &AgentContext,
     turn_message_start: usize,
@@ -2251,6 +2405,7 @@ fn current_turn_research_source_catalog(
     sources
 }
 
+#[cfg(test)]
 fn research_source_catalog_prompt(sources: &[ResearchEvidenceSource]) -> String {
     if sources.is_empty() {
         return "本轮尚无可作为 finish facts 的成功来源；不要编造 tool_call_id，能确认的缺项写入 gaps。"
@@ -2272,6 +2427,7 @@ fn research_source_catalog_prompt(sources: &[ResearchEvidenceSource]) -> String 
     )
 }
 
+#[cfg(test)]
 fn validate_web_evidence_ref(
     tool_name: &str,
     tool_content: &str,
@@ -2339,6 +2495,7 @@ fn validate_web_evidence_ref(
     }))
 }
 
+#[cfg(test)]
 fn resolve_web_evidence_ref(
     context: &AgentContext,
     turn_message_start: usize,
@@ -2422,6 +2579,7 @@ fn resolve_web_evidence_ref(
     }
 }
 
+#[cfg(test)]
 fn validate_data_evidence_ref(
     tool_name: &str,
     tool_content: &str,
@@ -2483,6 +2641,7 @@ fn validate_data_evidence_ref(
     }))
 }
 
+#[cfg(test)]
 fn tool_result_is_failure(value: &Value) -> bool {
     if value.get("isError").and_then(Value::as_bool) == Some(true) {
         return true;
@@ -2508,20 +2667,24 @@ fn tool_result_is_failure(value: &Value) -> bool {
     })
 }
 
+#[cfg(test)]
 fn push_validation_warning(warnings: &mut Vec<String>, warning: impl Into<String>) {
     if warnings.len() < MAX_INTERNAL_VALIDATION_WARNINGS {
         warnings.push(warning.into());
     }
 }
 
+#[cfg(test)]
 fn truncate_research_text(value: &str) -> String {
     value.chars().take(MAX_RESEARCH_TEXT_CHARS).collect()
 }
 
+#[cfg(test)]
 fn json_pointer_segment(value: &str) -> String {
     value.replace('~', "~0").replace('/', "~1")
 }
 
+#[cfg(test)]
 fn collect_scalar_fallback_evidence(
     value: &Value,
     path: &str,
@@ -2574,6 +2737,7 @@ fn collect_scalar_fallback_evidence(
     }
 }
 
+#[cfg(test)]
 fn fallback_object_key_priority(key: &str) -> usize {
     match key {
         "quote" | "quotes" | "hone_quote_time" => 0,
@@ -2600,6 +2764,7 @@ fn fallback_object_key_priority(key: &str) -> usize {
     }
 }
 
+#[cfg(test)]
 fn fallback_data_field_priority(item: &Value) -> usize {
     let pointer = item
         .get("json_pointer")
@@ -2632,12 +2797,14 @@ fn fallback_data_field_priority(item: &Value) -> usize {
     }
 }
 
+#[cfg(test)]
 #[derive(Debug)]
 struct FallbackEvidenceCandidate {
     priority: usize,
     evidence: Value,
 }
 
+#[cfg(test)]
 fn fallback_data_candidate_priority(data_type: Option<&str>, item: &Value) -> usize {
     let pointer = item
         .get("json_pointer")
@@ -2667,6 +2834,7 @@ fn fallback_data_candidate_priority(data_type: Option<&str>, item: &Value) -> us
         .saturating_add(period_penalty)
 }
 
+#[cfg(test)]
 fn current_turn_fallback_evidence_catalog_excluding(
     context: &AgentContext,
     turn_message_start: usize,
@@ -2816,6 +2984,7 @@ fn current_turn_fallback_evidence_catalog_excluding(
     candidates.into_iter().map(|item| item.evidence).collect()
 }
 
+#[cfg(test)]
 fn current_turn_fallback_evidence_catalog(
     context: &AgentContext,
     turn_message_start: usize,
@@ -2829,6 +2998,7 @@ fn current_turn_fallback_evidence_catalog(
     )
 }
 
+#[cfg(test)]
 fn evidence_locator(item: &Value) -> Option<String> {
     let tool_call_id = item.get("tool_call_id")?.as_str()?;
     if let Some(pointer) = item.get("json_pointer").and_then(Value::as_str) {
@@ -2839,6 +3009,7 @@ fn evidence_locator(item: &Value) -> Option<String> {
         .map(|result_number| format!("web:{tool_call_id}:{result_number}"))
 }
 
+#[cfg(test)]
 fn fallback_research_handoff(
     context: &AgentContext,
     turn_message_start: usize,
@@ -2865,6 +3036,7 @@ fn fallback_research_handoff(
     }
 }
 
+#[cfg(test)]
 fn validate_finish_research_handoff(
     handoff: ResearchHandoff,
     context: &AgentContext,
@@ -3390,6 +3562,7 @@ fn exact_prefix_instruction(required_prefix: Option<&str>) -> String {
     }
 }
 
+#[cfg(test)]
 fn terminal_synthesis_prompt(
     required_prefix: Option<&str>,
     handoff: &ValidatedResearchHandoff,
@@ -3414,6 +3587,7 @@ fn terminal_synthesis_prompt(
     )
 }
 
+#[cfg(test)]
 fn active_business_turn_prompt(
     evidence_floor_satisfied: bool,
     route_guidance: &str,
@@ -3438,6 +3612,27 @@ fn active_business_turn_prompt(
             route_guidance, finish_feedback,
         )
     }
+}
+
+fn agent_owned_business_turn_prompt(
+    evidence_floor_satisfied: bool,
+    route_guidance: &str,
+    required_prefix: Option<&str>,
+) -> String {
+    if !evidence_floor_satisfied {
+        return format!(
+            "【本轮只取证，不作答】下面只是同一 Agent 当前建立的实体路线与结构调用状态，不证明工具结果成功或问题所需证据充分：\n{}\n重新阅读完整用户原话。本轮只返回一个或多个真实业务工具调用，不输出数据时间、摘要、解释、草稿或最终正文。先补齐各路线的 search、同代码 quote 与 profile/snapshot（crypto 用 crypto_quote），同时按用户真正的问题尽量并行补充财务、新闻、网页或公告证据。每个 search 都携带自己的 entity_route 与 identity_match；用户书写的 ticker 不要求大写，小写或混合大小写代码应先规范成标准代码并走 exact_symbol。关系题不能把 search/profile 当关系证据，应按完整语义核查商业/客户供应/技术合同与投资持股等相关维度。真实工具结果进入当前上下文后，由下一轮同一 Agent 继续取证或直接自然作答。",
+            route_guidance,
+        );
+    }
+
+    format!(
+        "【本轮由同一 Agent 自然收口】下面只是当前实体路线的结构调用状态，不证明所有业务证据均已取得：\n{}\n重新阅读完整用户原话与本轮每条真实 tool result。若当前问题仍缺少关键证据，本轮只调用需要的真实业务工具；若合理取证已经完成，或必要来源经实际尝试后明确不可得，本轮直接生成一次完整自然终稿，并让回答范围跟随用户原问题。\n{}\n{}\n{}",
+        route_guidance,
+        exact_prefix_instruction(required_prefix),
+        FINAL_ANSWER_EVIDENCE_CONTRACT,
+        DIRECT_FINAL_RELATIONSHIP_CHECK,
+    )
 }
 
 fn scrub_research_evidence_messages(messages: &mut [Message], strip_reasoning: bool) {
@@ -3687,6 +3882,12 @@ impl Agent for FunctionCallingAgent {
             .map(|timeout| tokio::time::Instant::now() + timeout);
 
         let business_tools: Vec<Value> = self.tools.get_tools_schema();
+        let registered_tool_names = self
+            .tools
+            .list_tool_names()
+            .into_iter()
+            .map(str::to_string)
+            .collect::<BTreeSet<_>>();
         let mut tool_calls_made: Vec<ToolCallMade> = Vec::new();
         let mut tool_call_counts: HashMap<String, u32> = HashMap::new();
         let mut total_tool_calls = 0u32;
@@ -3694,8 +3895,11 @@ impl Agent for FunctionCallingAgent {
         let mut investment_research_started = false;
         let mut research_evidence = ResearchEvidenceLedger::default();
         let mut active_business_failures = 0u32;
+        #[cfg(test)]
         let mut pending_finish_feedback: Option<String> = None;
+        #[cfg(test)]
         let mut unavailable_finish_corrections = 0u32;
+        #[cfg(test)]
         let mut invalid_finish_corrections = 0u32;
 
         self.dbg(&format!(
@@ -3711,8 +3915,14 @@ impl Agent for FunctionCallingAgent {
                     AGENT_OVERALL_TIMEOUT_ERROR,
                 );
             }
+            #[cfg(test)]
+            let legacy_finish_terminal = self.finish_research_terminal_synthesis_enabled();
+            #[cfg(test)]
+            let finance_protocol_active = (self.agent_owned_finance_loop || legacy_finish_terminal)
+                && investment_research_started;
+            #[cfg(not(test))]
             let finance_protocol_active =
-                self.finish_research_terminal_synthesis && investment_research_started;
+                self.agent_owned_finance_loop && investment_research_started;
 
             if iterations >= self.max_iterations {
                 // The iteration bound is a normal failed run, never implicit
@@ -3731,39 +3941,61 @@ impl Agent for FunctionCallingAgent {
             self.dbg(&format!("[Agent] iter={iterations}"));
 
             let active_business_round = finance_protocol_active;
-            let finish_research_available =
-                research_evidence.completion_signal_available(active_business_round);
+            #[cfg(test)]
+            let finish_research_available = legacy_finish_terminal
+                && research_evidence.completion_signal_available(active_business_round);
             let evidence_floor_satisfied =
                 research_evidence.evidence_floor_satisfied(active_business_round);
+            #[cfg(test)]
             let research_sources = finish_research_available
                 .then(|| current_turn_research_source_catalog(context, turn_message_start))
                 .unwrap_or_default();
+            #[cfg(test)]
             let mut round_tools = business_tools.clone();
+            #[cfg(not(test))]
+            let round_tools = business_tools.clone();
+            #[cfg(test)]
             if finish_research_available {
                 round_tools.push(finish_research_tool_schema(&research_sources));
             }
             let has_tools = !round_tools.is_empty();
-            let tool_choice_mode = if active_business_round && !finish_research_available {
+            let tool_choice_mode = if active_business_round && !evidence_floor_satisfied {
                 ToolChoiceMode::Required
             } else {
                 ToolChoiceMode::Auto
             };
             let round_instruction = Some(if active_business_round {
-                if finish_research_available {
-                    ACTIVE_RESEARCH_SYSTEM_INSTRUCTION
-                } else {
-                    POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION
+                #[cfg(not(test))]
+                {
+                    if evidence_floor_satisfied {
+                        AGENT_OWNED_RESEARCH_SYSTEM_INSTRUCTION
+                    } else {
+                        POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION
+                    }
+                }
+                #[cfg(test)]
+                {
+                    if self.agent_owned_finance_loop && !legacy_finish_terminal {
+                        if evidence_floor_satisfied {
+                            AGENT_OWNED_RESEARCH_SYSTEM_INSTRUCTION
+                        } else {
+                            POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION
+                        }
+                    } else if finish_research_available {
+                        ACTIVE_RESEARCH_SYSTEM_INSTRUCTION
+                    } else {
+                        POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION
+                    }
                 }
             } else {
                 OPEN_AGENT_ENTITY_DISCOVERY_SYSTEM_INSTRUCTION
             });
-            let mut messages = if active_business_round {
-                // Once current-turn DataFetch has identified a finance path,
-                // later research and DirectFinal generation must use the same
-                // evidence boundary as explicit terminal synthesis. Historical
-                // assistant claims and hidden tool-round reasoning are useful
-                // for neither current facts nor final prose.
-                self.build_messages_from_index(context, round_instruction, turn_message_start)
+            let mut messages = if active_business_round || self.agent_owned_finance_loop {
+                // Keep only bounded historical user wording for pronoun and
+                // follow-up resolution. Old assistant/tool traces never enter
+                // a new research ledger, so stale prices or entities cannot be
+                // mistaken for current-turn evidence.
+                self.build_agent_owned_messages(context, round_instruction, turn_message_start)
             } else {
                 self.build_messages(context, round_instruction)
             };
@@ -3775,20 +4007,39 @@ impl Agent for FunctionCallingAgent {
                 // as evidence; explicit terminal synthesis additionally
                 // strips it from the transcript altogether.
                 scrub_research_evidence_messages(&mut messages, false);
-                messages.push(Message {
-                    role: "user".to_string(),
-                    content: Some(active_business_turn_prompt(
+                #[cfg(not(test))]
+                let active_turn_prompt = agent_owned_business_turn_prompt(
+                    evidence_floor_satisfied,
+                    &research_evidence.agent_guidance_summary(),
+                    required_final_answer_prefix.as_deref(),
+                );
+                #[cfg(test)]
+                let active_turn_prompt = if self.agent_owned_finance_loop && !legacy_finish_terminal
+                {
+                    agent_owned_business_turn_prompt(
+                        evidence_floor_satisfied,
+                        &research_evidence.agent_guidance_summary(),
+                        required_final_answer_prefix.as_deref(),
+                    )
+                } else {
+                    active_business_turn_prompt(
                         evidence_floor_satisfied,
                         &research_evidence.agent_guidance_summary(),
                         &research_source_catalog_prompt(&research_sources),
                         pending_finish_feedback.as_deref(),
-                    )),
+                    )
+                };
+                messages.push(Message {
+                    role: "user".to_string(),
+                    content: Some(active_turn_prompt),
                     reasoning_content: None,
                     tool_calls: None,
                     tool_call_id: None,
                     name: None,
                 });
-            } else if let Some(feedback) = pending_finish_feedback.as_deref() {
+            }
+            #[cfg(test)]
+            if !active_business_round && let Some(feedback) = pending_finish_feedback.as_deref() {
                 messages.push(Message {
                     role: "user".to_string(),
                     content: Some(format!(
@@ -4006,6 +4257,57 @@ impl Agent for FunctionCallingAgent {
                 }
             };
 
+            #[cfg(test)]
+            let mut audit_metadata = serde_json::json!({
+                "iteration": iterations,
+                "has_tools": has_tools,
+                "active_business_outcome": active_business_outcome,
+                "evidence_floor_satisfied": evidence_floor_satisfied,
+                "identity_only_attempts": research_evidence.identity_only_attempts,
+                "broad_data_attempts": research_evidence.broad_data_attempts,
+                "symbol_scoped_attempts": research_evidence.symbol_scoped_attempts,
+                "post_activation_attempts": research_evidence.post_activation_attempts,
+                "post_identity_attempts": research_evidence.post_identity_attempts,
+                "post_identity_quote_attempts": research_evidence.post_identity_quote_attempts,
+                "post_identity_asset_route_attempts": research_evidence.post_identity_asset_route_attempts,
+                "identity_route_count": research_evidence.identity_routes.len(),
+                "active_identity_route_count": research_evidence.active_route_keys().len(),
+                "explicit_identity_route_count": research_evidence.identity_routes.values().filter(|route| route.explicit).count(),
+                "unscoped_identity_search_attempts": research_evidence.unscoped_identity_search_attempts,
+                "unresolved_identity_route_count": research_evidence.active_route_keys().iter().filter(|key| research_evidence.identity_routes.get(*key).is_some_and(|route| route.candidates.is_empty())).count(),
+                "requested_tool_choice": has_tools.then_some(tool_choice_mode_name(stream_tool_choice.requested)),
+                "effective_tool_choice": stream_tool_choice.effective.map(tool_choice_mode_name),
+                "tool_choice_fallback": stream_tool_choice.fallback,
+            });
+            #[cfg(not(test))]
+            let audit_metadata = serde_json::json!({
+                "iteration": iterations,
+                "has_tools": has_tools,
+                "active_business_outcome": active_business_outcome,
+                "evidence_floor_satisfied": evidence_floor_satisfied,
+                "identity_only_attempts": research_evidence.identity_only_attempts,
+                "broad_data_attempts": research_evidence.broad_data_attempts,
+                "symbol_scoped_attempts": research_evidence.symbol_scoped_attempts,
+                "post_activation_attempts": research_evidence.post_activation_attempts,
+                "post_identity_attempts": research_evidence.post_identity_attempts,
+                "post_identity_quote_attempts": research_evidence.post_identity_quote_attempts,
+                "post_identity_asset_route_attempts": research_evidence.post_identity_asset_route_attempts,
+                "identity_route_count": research_evidence.identity_routes.len(),
+                "active_identity_route_count": research_evidence.active_route_keys().len(),
+                "explicit_identity_route_count": research_evidence.identity_routes.values().filter(|route| route.explicit).count(),
+                "unscoped_identity_search_attempts": research_evidence.unscoped_identity_search_attempts,
+                "unresolved_identity_route_count": research_evidence.active_route_keys().iter().filter(|key| research_evidence.identity_routes.get(*key).is_some_and(|route| route.candidates.is_empty())).count(),
+                "requested_tool_choice": has_tools.then_some(tool_choice_mode_name(stream_tool_choice.requested)),
+                "effective_tool_choice": stream_tool_choice.effective.map(tool_choice_mode_name),
+                "tool_choice_fallback": stream_tool_choice.fallback,
+            });
+            #[cfg(test)]
+            if let Some(object) = audit_metadata.as_object_mut() {
+                object.insert(
+                    "finish_research_available".to_string(),
+                    Value::Bool(finish_research_available),
+                );
+            }
             self.record_audit(
                 context,
                 if has_tools { "chat_with_tools" } else { "chat" },
@@ -4016,28 +4318,7 @@ impl Agent for FunctionCallingAgent {
                 })),
                 None,
                 call_started.elapsed().as_millis(),
-                serde_json::json!({
-                    "iteration": iterations,
-                    "has_tools": has_tools,
-                    "active_business_outcome": active_business_outcome,
-                    "finish_research_available": finish_research_available,
-                    "evidence_floor_satisfied": evidence_floor_satisfied,
-                    "identity_only_attempts": research_evidence.identity_only_attempts,
-                    "broad_data_attempts": research_evidence.broad_data_attempts,
-                    "symbol_scoped_attempts": research_evidence.symbol_scoped_attempts,
-                    "post_activation_attempts": research_evidence.post_activation_attempts,
-                    "post_identity_attempts": research_evidence.post_identity_attempts,
-                    "post_identity_quote_attempts": research_evidence.post_identity_quote_attempts,
-                    "post_identity_asset_route_attempts": research_evidence.post_identity_asset_route_attempts,
-                    "identity_route_count": research_evidence.identity_routes.len(),
-                    "active_identity_route_count": research_evidence.active_route_keys().len(),
-                    "explicit_identity_route_count": research_evidence.identity_routes.values().filter(|route| route.explicit).count(),
-                    "unscoped_identity_search_attempts": research_evidence.unscoped_identity_search_attempts,
-                    "unresolved_identity_route_count": research_evidence.active_route_keys().iter().filter(|key| research_evidence.identity_routes.get(*key).is_some_and(|route| route.candidates.is_empty())).count(),
-                    "requested_tool_choice": has_tools.then_some(tool_choice_mode_name(stream_tool_choice.requested)),
-                    "effective_tool_choice": stream_tool_choice.effective.map(tool_choice_mode_name),
-                    "tool_choice_fallback": stream_tool_choice.fallback,
-                }),
+                audit_metadata,
                 result.usage.clone(),
             );
 
@@ -4047,14 +4328,23 @@ impl Agent for FunctionCallingAgent {
                 if !tcs.is_empty() {
                     self.dbg(&format!("[Agent] tool_calls n={}", tcs.len()));
 
+                    #[cfg(not(test))]
+                    let actionable_tool_calls = tcs.iter().collect::<Vec<_>>();
+                    #[cfg(test)]
                     let actionable_tool_calls = tcs
                         .iter()
-                        .filter(|tool_call| !is_finish_research_call(tool_call))
+                        .filter(|tool_call| {
+                            !legacy_finish_terminal || !is_finish_research_call(tool_call)
+                        })
                         .collect::<Vec<_>>();
-                    let finish_calls = tcs
-                        .iter()
-                        .filter(|tool_call| is_finish_research_call(tool_call))
-                        .collect::<Vec<_>>();
+                    #[cfg(test)]
+                    let finish_calls = if legacy_finish_terminal {
+                        tcs.iter()
+                            .filter(|tool_call| is_finish_research_call(tool_call))
+                            .collect::<Vec<_>>()
+                    } else {
+                        Vec::new()
+                    };
 
                     // A finish-only round can enter the terminal even when a
                     // compatible provider duplicates the internal control
@@ -4063,6 +4353,7 @@ impl Agent for FunctionCallingAgent {
                     // An unresolvable locator stays inside this same Agent loop
                     // for one bounded protocol correction; it never authorizes
                     // an unrestricted empty-evidence terminal.
+                    #[cfg(test)]
                     if finish_research_available
                         && actionable_tool_calls.is_empty()
                         && !finish_calls.is_empty()
@@ -4189,25 +4480,33 @@ impl Agent for FunctionCallingAgent {
                     // the investment prompt requires for every security turn;
                     // do not infer it from a closed question vocabulary.
                     if actionable_tool_calls.is_empty() {
-                        self.dbg("[Agent] ignored malformed or unavailable finish signal");
-                        if unavailable_finish_corrections < MAX_UNAVAILABLE_FINISH_CORRECTIONS {
-                            unavailable_finish_corrections =
-                                unavailable_finish_corrections.saturating_add(1);
-                            pending_finish_feedback = Some(
-                                "finish_research 当前尚不可用；先完成所需真实工具调用。"
-                                    .to_string(),
+                        #[cfg(test)]
+                        {
+                            self.dbg("[Agent] ignored malformed or unavailable finish signal");
+                            if unavailable_finish_corrections < MAX_UNAVAILABLE_FINISH_CORRECTIONS {
+                                unavailable_finish_corrections =
+                                    unavailable_finish_corrections.saturating_add(1);
+                                pending_finish_feedback = Some(
+                                    "finish_research 当前尚不可用；先完成所需真实工具调用。"
+                                        .to_string(),
+                                );
+                                continue;
+                            }
+                            return failed_agent_response(
+                                tool_calls_made,
+                                iterations,
+                                "unavailable_finish_research_repeated",
                             );
-                            continue;
                         }
-                        return failed_agent_response(
-                            tool_calls_made,
-                            iterations,
-                            "unavailable_finish_research_repeated",
-                        );
+                        #[cfg(not(test))]
+                        unreachable!("a nonempty provider tool-call list must remain actionable");
                     } else {
-                        pending_finish_feedback = None;
-                        unavailable_finish_corrections = 0;
-                        invalid_finish_corrections = 0;
+                        #[cfg(test)]
+                        {
+                            pending_finish_feedback = None;
+                            unavailable_finish_corrections = 0;
+                            invalid_finish_corrections = 0;
+                        }
                         // 记录 assistant 消息（只含真实业务 tool_calls）
                         let tc_values: Vec<Value> = actionable_tool_calls
                             .iter()
@@ -4225,7 +4524,12 @@ impl Agent for FunctionCallingAgent {
                                     && serde_json::from_str::<Value>(&tool_call.function.arguments)
                                         .is_ok()
                             });
-                        let assistant_tool_content = if self.finish_research_terminal_synthesis
+                        #[cfg(not(test))]
+                        let finance_round_owns_tool_content = self.agent_owned_finance_loop;
+                        #[cfg(test)]
+                        let finance_round_owns_tool_content =
+                            self.agent_owned_finance_loop || legacy_finish_terminal;
+                        let assistant_tool_content = if finance_round_owns_tool_content
                             && (investment_research_started || round_starts_investment_research)
                         {
                             ""
@@ -4243,6 +4547,7 @@ impl Agent for FunctionCallingAgent {
                             let tool_name = &tc.function.name;
                             let tool_call_id = &tc.id;
                             let tool_args_str = &tc.function.arguments;
+                            let notify_tool_observer = registered_tool_names.contains(tool_name);
 
                             match serde_json::from_str::<Value>(tool_args_str) {
                                 Ok(tool_args) => {
@@ -4285,7 +4590,9 @@ impl Agent for FunctionCallingAgent {
                                         research_evidence
                                             .observe_business_call(tc, active_business_round);
                                     }
-                                    if let Some(observer) = &self.tool_observer {
+                                    if notify_tool_observer
+                                        && let Some(observer) = &self.tool_observer
+                                    {
                                         let (observer_deadline, observer_timeout_error) =
                                             step_deadline(overall_deadline, self.step_timeout);
                                         if let Err(error) = await_unit_before_deadline(
@@ -4341,7 +4648,9 @@ impl Agent for FunctionCallingAgent {
                                                 tool_name,
                                                 &result_str,
                                             );
-                                            if let Some(observer) = &self.tool_observer {
+                                            if notify_tool_observer
+                                                && let Some(observer) = &self.tool_observer
+                                            {
                                                 let (observer_deadline, observer_timeout_error) =
                                                     step_deadline(
                                                         overall_deadline,
@@ -4393,7 +4702,9 @@ impl Agent for FunctionCallingAgent {
                                                 tool_name,
                                                 &result_str,
                                             );
-                                            if let Some(observer) = &self.tool_observer {
+                                            if notify_tool_observer
+                                                && let Some(observer) = &self.tool_observer
+                                            {
                                                 let (observer_deadline, observer_timeout_error) =
                                                     step_deadline(
                                                         overall_deadline,
@@ -4922,16 +5233,94 @@ mod tests {
                     .and_then(Value::as_str)
                     .unwrap_or_default()
                     .to_ascii_uppercase();
-                let data = if query.contains("NVIDIA") || query.contains("NVDA") {
-                    json!([{"symbol":"NVDA","name":"NVIDIA Corporation"}])
-                } else {
-                    json!([{"symbol":"CRWV","name":"CoreWeave, Inc."}])
+                let data = match query.as_str() {
+                    "CRWV" => json!([{"symbol":"CRWV","name":"CoreWeave, Inc."}]),
+                    "NVIDIA" | "NVDA" => {
+                        json!([{"symbol":"NVDA","name":"NVIDIA Corporation"}])
+                    }
+                    _ => json!([]),
                 };
                 return Ok(json!({"data_type":"search","data":data}));
             }
             Ok(json!({
                 "evidence": args.get("text").and_then(|v| v.as_str()).unwrap_or_default()
             }))
+        }
+    }
+
+    struct GroundedFinanceEvidenceTool;
+
+    #[async_trait]
+    impl Tool for GroundedFinanceEvidenceTool {
+        fn name(&self) -> &str {
+            "data_fetch"
+        }
+
+        fn description(&self) -> &str {
+            "entity-bound quote and profile evidence"
+        }
+
+        fn parameters(&self) -> Vec<ToolParameter> {
+            vec![]
+        }
+
+        async fn execute(&self, args: Value) -> hone_core::HoneResult<Value> {
+            let data_type = args
+                .get("data_type")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if data_type == "search" {
+                let query = args
+                    .get("query")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_ascii_uppercase();
+                let data = match query.as_str() {
+                    "CRWV" => json!([{"symbol":"CRWV","name":"CoreWeave, Inc."}]),
+                    "NVIDIA" | "NVDA" => {
+                        json!([{"symbol":"NVDA","name":"NVIDIA Corporation"}])
+                    }
+                    _ => json!([]),
+                };
+                return Ok(json!({"data_type":"search","data":data}));
+            }
+            let symbols = args
+                .get("ticker")
+                .or_else(|| args.get("symbol"))
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .split(',')
+                .map(str::trim)
+                .filter(|symbol| !symbol.is_empty())
+                .map(str::to_ascii_uppercase)
+                .collect::<Vec<_>>();
+            let data = symbols
+                .iter()
+                .map(|symbol| {
+                    if data_type == "quote" {
+                        json!({
+                            "symbol": symbol,
+                            "price": if symbol == "CRWV" { 73.21 } else { 172.05 },
+                            "currency": "USD",
+                            "exchange": "NASDAQ Global Market",
+                            "exchangeShortName": "NASDAQ",
+                            "hone_quote_time": {
+                                "beijing": "2026-07-18 04:00:00",
+                                "new_york": "2026-07-17 16:00:00",
+                                "market_date_new_york": "2026-07-17"
+                            }
+                        })
+                    } else {
+                        json!({
+                            "symbol": symbol,
+                            "companyName": if symbol == "CRWV" { "CoreWeave, Inc." } else { "NVIDIA Corporation" },
+                            "exchange": "NASDAQ Global Market",
+                            "exchangeShortName": "NASDAQ"
+                        })
+                    }
+                })
+                .collect::<Vec<_>>();
+            Ok(json!({"data_type":data_type,"data":data}))
         }
     }
 
@@ -4986,7 +5375,40 @@ mod tests {
                 .filter(|symbol| !symbol.is_empty())
                 .map(|symbol| json!({"symbol":symbol.to_ascii_uppercase()}))
                 .collect::<Vec<_>>();
-            Ok(json!({"data_type":data_type,"data":symbols}))
+            let data = match data_type {
+                "quote" => symbols
+                    .iter()
+                    .filter_map(|item| item.get("symbol").and_then(Value::as_str))
+                    .map(|symbol| {
+                        json!({
+                            "symbol": symbol,
+                            "price": if symbol == "CRWV" { 73.21 } else { 172.05 },
+                            "currency": "USD",
+                            "exchange": "NASDAQ Global Market",
+                            "exchangeShortName": "NASDAQ",
+                            "hone_quote_time": {
+                                "beijing": "2026-07-18 04:00:00",
+                                "new_york": "2026-07-17 16:00:00",
+                                "market_date_new_york": "2026-07-17"
+                            }
+                        })
+                    })
+                    .collect::<Vec<_>>(),
+                "profile" => symbols
+                    .iter()
+                    .filter_map(|item| item.get("symbol").and_then(Value::as_str))
+                    .map(|symbol| {
+                        json!({
+                            "symbol": symbol,
+                            "companyName": if symbol == "CRWV" { "CoreWeave, Inc." } else { "NVIDIA Corporation" },
+                            "exchange": "NASDAQ Global Market",
+                            "exchangeShortName": "NASDAQ"
+                        })
+                    })
+                    .collect::<Vec<_>>(),
+                _ => symbols,
+            };
+            Ok(json!({"data_type":data_type,"data":data}))
         }
     }
 
@@ -5041,6 +5463,40 @@ mod tests {
                         "title": "Most-favored-nation relationship",
                         "url": "https://example.test/mfn",
                         "content": "The filing describes a most-favored-nation relationship."
+                    }
+                ]
+            }))
+        }
+    }
+
+    struct GroundedRelationshipEvidenceTool;
+
+    #[async_trait]
+    impl Tool for GroundedRelationshipEvidenceTool {
+        fn name(&self) -> &str {
+            "web_search"
+        }
+
+        fn description(&self) -> &str {
+            "entity-bound relationship evidence"
+        }
+
+        fn parameters(&self) -> Vec<ToolParameter> {
+            vec![]
+        }
+
+        async fn execute(&self, _args: Value) -> hone_core::HoneResult<Value> {
+            Ok(json!({
+                "results": [
+                    {
+                        "title": "CoreWeave filing describes NVIDIA capacity purchase",
+                        "url": "https://example.test/capacity",
+                        "content": "CoreWeave disclosed that NVIDIA agreed to purchase $6.3B of unused CoreWeave capacity."
+                    },
+                    {
+                        "title": "CoreWeave filing describes NVIDIA investment terms",
+                        "url": "https://example.test/mfn",
+                        "content": "CoreWeave's filing describes NVIDIA as an investor and states that the parties have a most-favored-nation relationship."
                     }
                 ]
             }))
@@ -6656,6 +7112,35 @@ mod tests {
         assert!(!direct.contains("数据时间：北京时间 2026-07-18 04:00；"));
         assert!(!evidence_pending.contains("数据时间：北京时间 2026-07-18 04:00；"));
         assert!(!explicit.contains("数据时间：北京时间 2026-07-18 04:00；"));
+    }
+
+    #[test]
+    fn agent_owned_prompts_use_lowercase_tickers_and_natural_final_without_rewrite() {
+        let prefix = "数据时间：北京时间 2026-07-19 09:31；行情口径：";
+        let route_guidance =
+            "- entity_route=\"coreweave\": candidates=[\"CRWV\"]；结构调用已按同一候选代码成对尝试";
+        let pending = agent_owned_business_turn_prompt(false, route_guidance, Some(prefix));
+        let eligible = agent_owned_business_turn_prompt(true, route_guidance, Some(prefix));
+
+        assert!(
+            OPEN_AGENT_ENTITY_DISCOVERY_SYSTEM_INSTRUCTION
+                .contains("用户可能用小写、混合大小写或带市场常用分隔符书写 ticker")
+        );
+        assert!(pending.contains("小写或混合大小写代码应先规范成标准代码并走 exact_symbol"));
+        assert!(pending.contains("由下一轮同一 Agent 继续取证或直接自然作答"));
+        assert!(!pending.contains(prefix));
+        assert!(eligible.contains(prefix));
+        assert!(eligible.contains("直接生成一次完整自然终稿"));
+        assert!(eligible.contains("让回答范围跟随用户原问题"));
+        assert!(eligible.contains("`hone_quote_time.market_date_new_york`"));
+        assert!(eligible.contains("绝不能据此写‘纽交所’或‘收盘价’"));
+        assert!(eligible.contains("高度依赖、锁定和多重绑定"));
+        for internal_marker in ["finish_research", "locator 纠正", "固定拒答", "回写阶段"]
+        {
+            assert!(!pending.contains(internal_marker));
+            assert!(!eligible.contains(internal_marker));
+        }
+        assert!(!eligible.contains("answer_scope / facts / inferences / gaps"));
     }
 
     #[test]
@@ -9512,36 +9997,42 @@ mod tests {
                     index: 0,
                     id: Some("tc_search_crwv".to_string()),
                     name: Some("data_fetch".to_string()),
-                    arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
+                    arguments: r#"{"data_type":"search","query":"CRWV","entity_route":"crwv","identity_match":"exact_symbol"}"#.to_string(),
                 },
                 ChatStreamEvent::ToolCallDelta {
                     index: 1,
                     id: Some("tc_search_nvidia".to_string()),
                     name: Some("data_fetch".to_string()),
-                    arguments: r#"{"data_type":"search","query":"NVIDIA"}"#.to_string(),
+                    arguments: r#"{"data_type":"search","query":"NVIDIA","entity_route":"nvidia","identity_match":"name_or_alias"}"#.to_string(),
                 },
             ],
             vec![
                 ChatStreamEvent::ToolCallDelta {
                     index: 0,
-                    id: Some("tc_quote".to_string()),
+                    id: Some("tc_crwv_quote".to_string()),
                     name: Some("data_fetch".to_string()),
-                    arguments: r#"{"data_type":"quote","ticker":"CRWV,NVDA"}"#.to_string(),
+                    arguments: r#"{"data_type":"quote","symbol":"CRWV","entity_route":"crwv"}"#.to_string(),
                 },
                 ChatStreamEvent::ToolCallDelta {
                     index: 1,
                     id: Some("tc_crwv_profile".to_string()),
                     name: Some("data_fetch".to_string()),
-                    arguments: r#"{"data_type":"profile","ticker":"CRWV"}"#.to_string(),
+                    arguments: r#"{"data_type":"profile","symbol":"CRWV","entity_route":"crwv"}"#.to_string(),
                 },
                 ChatStreamEvent::ToolCallDelta {
                     index: 2,
-                    id: Some("tc_nvda_profile".to_string()),
+                    id: Some("tc_nvda_quote".to_string()),
                     name: Some("data_fetch".to_string()),
-                    arguments: r#"{"data_type":"profile","ticker":"NVDA"}"#.to_string(),
+                    arguments: r#"{"data_type":"quote","symbol":"NVDA","entity_route":"nvidia"}"#.to_string(),
                 },
                 ChatStreamEvent::ToolCallDelta {
                     index: 3,
+                    id: Some("tc_nvda_profile".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"profile","symbol":"NVDA","entity_route":"nvidia"}"#.to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 4,
                     id: Some("tc_web_relationship".to_string()),
                     name: Some("web_search".to_string()),
                     arguments: r#"{"query":"CoreWeave NVIDIA relationship filing"}"#.to_string(),
@@ -9560,12 +10051,13 @@ mod tests {
             ],
         ]);
         let seen_tool_counts = llm.seen_tool_counts.clone();
+        let seen_tool_names = llm.seen_tool_names.clone();
         let seen_messages = llm.seen_messages.clone();
         let audit = Arc::new(RecordingAuditSink::default());
         let observer = Arc::new(RecordingStreamObserver::default());
         let mut registry = ToolRegistry::new();
-        registry.register(Box::new(FinanceEvidenceTool));
-        registry.register(Box::new(WebSearchEvidenceTool));
+        registry.register(Box::new(GroundedFinanceEvidenceTool));
+        registry.register(Box::new(GroundedRelationshipEvidenceTool));
         let agent = FunctionCallingAgent::new(
             Arc::new(llm),
             Arc::new(registry),
@@ -9573,7 +10065,7 @@ mod tests {
             4,
             Some(audit.clone()),
         )
-        .with_finish_research_terminal_synthesis(true)
+        .with_agent_owned_finance_loop(true)
         .with_stream_observer(Some(observer.clone()));
         let mut context = AgentContext::new("eligible-direct-final".to_string());
         context.add_user_message("旧问题：NBIS 的估值");
@@ -9594,14 +10086,23 @@ mod tests {
         assert!(response.success, "{:?}", response.error);
         assert_eq!(response.content, answer);
         assert_eq!(response.iterations, 3);
-        assert_eq!(response.tool_calls_made.len(), 6);
+        assert_eq!(response.tool_calls_made.len(), 7);
         assert_eq!(
             seen_tool_counts
                 .lock()
                 .expect("stream tool counts lock")
                 .as_slice(),
-            [2, 2, 3],
-            "a natural final must not trigger an empty-tools terminal or second generation"
+            [2, 2, 2],
+            "production natural-final mode must expose only real business tools and never start an empty-tools second generation"
+        );
+        assert!(
+            seen_tool_names
+                .lock()
+                .expect("stream tool names lock")
+                .iter()
+                .flatten()
+                .all(|name| name != FINISH_RESEARCH_TOOL_NAME),
+            "finish_research must not be present in the production Interactive Agent loop"
         );
         assert!(
             observer
@@ -9640,22 +10141,208 @@ mod tests {
         );
         drop(records);
         let requests = seen_messages.lock().expect("stream messages lock");
+        let initial_request = serde_json::to_string(requests.first().expect("initial request"))
+            .expect("serialize initial request");
+        assert!(initial_request.contains("近期用户原话，仅用于理解本轮指代"));
+        assert!(initial_request.contains("旧问题：NBIS 的估值"));
+        assert!(!initial_request.contains("15 USD"));
         let direct_request = requests.last().expect("direct final request");
         let last_reminder = direct_request
             .last()
             .and_then(|message| message.content.as_deref())
             .expect("last-mile reminder");
-        assert!(last_reminder.contains("本轮仍是工具轮，不写终稿"));
-        assert!(last_reminder.contains("answer_scope / facts / inferences / gaps"));
-        assert!(!last_reminder.contains("数据时间：北京时间 2026-07-19 09:31；行情口径："));
+        assert!(last_reminder.contains("本轮由同一 Agent 自然收口"));
+        assert!(last_reminder.contains("直接生成一次完整自然终稿"));
+        assert!(last_reminder.contains("让回答范围跟随用户原问题"));
+        assert!(!last_reminder.contains("finish_research"));
+        assert!(!last_reminder.contains("固定拒答"));
+        assert!(last_reminder.contains("数据时间：北京时间 2026-07-19 09:31；行情口径："));
+        assert!(last_reminder.contains("`hone_quote_time.market_date_new_york`"));
+        assert!(last_reminder.contains("绝不能据此写‘纽交所’或‘收盘价’"));
+        assert!(last_reminder.contains("核心/最大/头部、大客户"));
+        assert!(last_reminder.contains("高度依赖、锁定和多重绑定"));
         let serialized = serde_json::to_string(direct_request).expect("serialize direct request");
-        assert!(!serialized.contains("历史用户请求，仅用于理解本轮指代"));
-        assert!(!serialized.contains("NBIS"));
+        assert!(serialized.contains("近期用户原话，仅用于理解本轮指代"));
+        assert!(serialized.contains("历史 assistant、tool、价格、财务与结论均未提供"));
         assert!(!serialized.contains("15 USD"));
         assert!(serialized.contains("CoreWeave NVIDIA relationship filing"));
-        assert!(serialized.contains("$6.3B of unused capacity"));
+        assert!(serialized.contains("2026-07-18 04:00:00"));
+        assert!(serialized.contains("NASDAQ Global Market"));
+        assert!(
+            serialized.contains("NVIDIA agreed to purchase $6.3B of unused CoreWeave capacity")
+        );
+        assert!(serialized.contains("NVIDIA as an investor"));
         assert!(serialized.contains("most-favored-nation relationship"));
         assert!(!last_reminder.contains("若 provider 仍自然输出完整正文"));
+    }
+
+    #[test]
+    fn agent_owned_history_prioritizes_nearest_user_turns_before_budgeting() {
+        let agent = FunctionCallingAgent::new(
+            Arc::new(StreamingMockLlmProvider::with_rounds(vec![])),
+            Arc::new(ToolRegistry::new()),
+            String::new(),
+            1,
+            None,
+        );
+        let mut context = AgentContext::new("bounded-history-priority".to_string());
+        context.add_user_message("excluded-fifth-most-recent");
+        context.add_assistant_message("旧助手错误行情：NBIS 15 USD", None);
+        context.add_user_message(&format!("long-fourth-most-recent:{}", "x".repeat(4_100)));
+        context.add_user_message("third-most-recent");
+        context.add_user_message("second-most-recent");
+        context.add_user_message("nearest-reference: 第二个呢");
+        let turn_message_start = context.messages.len();
+        context.add_user_message("它和英伟达是什么关系？");
+
+        let messages = agent.build_agent_owned_messages(&context, None, turn_message_start);
+        let history = messages
+            .iter()
+            .filter_map(|message| message.content.as_deref())
+            .find(|content| content.contains("近期用户原话，仅用于理解本轮指代"))
+            .expect("bounded prior-user context");
+
+        assert!(history.contains("nearest-reference: 第二个呢"));
+        assert!(history.contains("second-most-recent"));
+        assert!(history.contains("third-most-recent"));
+        assert!(history.contains("long-fourth-most-recent:"));
+        assert!(!history.contains("excluded-fifth-most-recent"));
+        assert!(!history.contains("15 USD"));
+        let long_index = history
+            .find("long-fourth-most-recent:")
+            .expect("fourth-most-recent marker");
+        let third_index = history.find("third-most-recent").expect("third marker");
+        let second_index = history.find("second-most-recent").expect("second marker");
+        let nearest_index = history
+            .find("nearest-reference: 第二个呢")
+            .expect("nearest marker");
+        assert!(long_index < third_index);
+        assert!(third_index < second_index);
+        assert!(second_index < nearest_index);
+    }
+
+    #[tokio::test]
+    async fn natural_mode_treats_unregistered_tools_as_unknown_without_rewrite_or_status() {
+        const INVENTED_TOOL_NAME: &str = "invented_research_gate";
+        let answer = "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮报价最新可得、非逐笔\n\nCRWV 的关系结论仅按本轮证据表述。";
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_search_crwv".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"search","query":"crwv","entity_route":"crwv","identity_match":"exact_symbol"}"#.to_string(),
+            }],
+            vec![
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_quote_crwv".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"quote","symbol":"CRWV","entity_route":"crwv"}"#.to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 1,
+                    id: Some("tc_profile_crwv".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"profile","symbol":"CRWV","entity_route":"crwv"}"#.to_string(),
+                },
+            ],
+            vec![
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_hallucinated_finish".to_string()),
+                    name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
+                    arguments: "{}".to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 1,
+                    id: Some("tc_invented_gate".to_string()),
+                    name: Some(INVENTED_TOOL_NAME.to_string()),
+                    arguments: "{}".to_string(),
+                },
+            ],
+            vec![
+                ChatStreamEvent::ToolChoiceMetadata {
+                    requested: ToolChoiceMode::Auto,
+                    effective: ToolChoiceMode::Auto,
+                    fallback: false,
+                },
+                ChatStreamEvent::ContentDelta(answer.to_string()),
+                ChatStreamEvent::Finish(ChatStreamFinishReason::Stop),
+                ChatStreamEvent::Done,
+            ],
+        ]);
+        let seen_tool_names = llm.seen_tool_names.clone();
+        let seen_messages = llm.seen_messages.clone();
+        let tool_observer = Arc::new(MockToolObserver::default());
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(FinanceEvidenceTool));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 5, None)
+                .with_finish_research_terminal_synthesis(true)
+                .with_agent_owned_finance_loop(true)
+                .with_tool_observer(Some(tool_observer.clone()));
+        let mut context = AgentContext::new("natural-hallucinated-finish".to_string());
+
+        let response = agent
+            .run(
+                "【本轮用户输入】crwv和英伟达有什么关系\n【本轮最终回答契约：由主 Agent 一次完成】第一条非空行必须严格以 `数据时间：北京时间 2026-07-19 09:31；行情口径：` 开头。",
+                &mut context,
+            )
+            .await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, answer);
+        assert_eq!(response.iterations, 4);
+        assert_eq!(response.tool_calls_made.len(), 5);
+        assert_eq!(response.tool_calls_made[0].arguments["query"], "crwv");
+        assert_eq!(
+            response.tool_calls_made[0].arguments["identity_match"],
+            "exact_symbol"
+        );
+        assert_eq!(
+            response.tool_calls_made[0].result["data"][0]["symbol"],
+            "CRWV"
+        );
+        assert!(response.tool_calls_made.iter().any(|call| {
+            call.name == FINISH_RESEARCH_TOOL_NAME && call.result["isError"] == true
+        }));
+        assert!(
+            response
+                .tool_calls_made
+                .iter()
+                .any(|call| { call.name == INVENTED_TOOL_NAME && call.result["isError"] == true })
+        );
+        let observer_events = tool_observer.events.lock().expect("tool observer events");
+        assert!(
+            observer_events
+                .iter()
+                .all(|event| !event.contains(FINISH_RESEARCH_TOOL_NAME)
+                    && !event.contains(INVENTED_TOOL_NAME)),
+            "an unregistered model-invented tool must not flash progress or failure status"
+        );
+        assert!(
+            observer_events
+                .iter()
+                .any(|event| event == "start:data_fetch")
+        );
+        drop(observer_events);
+        assert!(
+            seen_tool_names
+                .lock()
+                .expect("tool schemas")
+                .iter()
+                .flatten()
+                .all(|name| name != FINISH_RESEARCH_TOOL_NAME),
+            "natural mode must never expose the retired control schema"
+        );
+        let requests = seen_messages.lock().expect("requests");
+        let final_request = serde_json::to_string(requests.last().expect("final request"))
+            .expect("serialize request");
+        assert!(final_request.contains("tc_hallucinated_finish"));
+        assert!(final_request.contains("tc_invented_gate"));
+        assert!(final_request.contains(INVENTED_TOOL_NAME));
+        assert!(!final_request.contains("内部工具协议纠正"));
+        assert!(!final_request.contains("finish_research 当前尚不可用"));
     }
 
     #[tokio::test]
@@ -12021,7 +12708,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unavailable_sole_finish_gets_one_hidden_correction_and_never_returns_empty_success() {
+    async fn hallucinated_unknown_finish_uses_standard_tool_error_without_hidden_correction() {
         let llm = StreamingMockLlmProvider::with_rounds(vec![
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
@@ -12043,41 +12730,31 @@ mod tests {
         assert!(response.success, "{:?}", response.error);
         assert_eq!(response.content, "自然非空回答");
         assert_eq!(response.iterations, 2);
-        assert!(response.tool_calls_made.is_empty());
+        assert_eq!(response.tool_calls_made.len(), 1);
+        assert_eq!(response.tool_calls_made[0].name, FINISH_RESEARCH_TOOL_NAME);
+        assert_eq!(response.tool_calls_made[0].result["isError"], true);
         let seen_messages = seen_messages.lock().expect("stream messages lock");
-        assert!(seen_messages[1].iter().any(|message| {
-            message
-                .content
-                .as_deref()
-                .is_some_and(|content| content.contains("finish_research 当前尚不可用"))
-        }));
-        assert!(context.messages.iter().all(|message| {
-            message.tool_calls.as_ref().is_none_or(|calls| {
-                calls.iter().all(|call| {
-                    call.get("function")
-                        .and_then(|function| function.get("name"))
-                        .and_then(Value::as_str)
-                        != Some(FINISH_RESEARCH_TOOL_NAME)
-                })
-            })
-        }));
+        let followup = serde_json::to_string(&seen_messages[1]).expect("followup transcript");
+        assert!(followup.contains("tc_unavailable_finish"));
+        assert!(!followup.contains("内部工具协议纠正"));
+        assert!(!followup.contains("finish_research 当前尚不可用"));
     }
 
     #[tokio::test]
-    async fn hallucinated_finish_is_ignored_when_terminal_policy_is_disabled() {
+    async fn unknown_finish_name_follows_ordinary_tool_budget_when_policy_is_disabled() {
         let llm = StreamingMockLlmProvider::with_rounds(vec![
             vec![
                 ChatStreamEvent::ToolCallDelta {
                     index: 0,
-                    id: Some("tc_finish_mixed".to_string()),
-                    name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
-                    arguments: test_finish_arguments(),
-                },
-                ChatStreamEvent::ToolCallDelta {
-                    index: 1,
                     id: Some("tc_echo_mixed".to_string()),
                     name: Some("echo_tool".to_string()),
                     arguments: r#"{"text":"mixed"}"#.to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 1,
+                    id: Some("tc_finish_mixed".to_string()),
+                    name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
+                    arguments: test_finish_arguments(),
                 },
             ],
             vec![ChatStreamEvent::ContentDelta("完成".to_string())],
@@ -12108,7 +12785,7 @@ mod tests {
                 .expect("stream tool counts lock")
                 .as_slice(),
             [1, 1],
-            "a hallucinated internal finish signal must be ignored when the terminal policy is disabled"
+            "the retired name is absent from the schema and follows the ordinary tool budget if hallucinated"
         );
         assert_eq!(
             tool_observer
@@ -12117,7 +12794,7 @@ mod tests {
                 .expect("tool observer lock")
                 .as_slice(),
             ["start:echo_tool", "done:echo_tool:true"],
-            "finish_research must not reach the business tool observer"
+            "the budgeted real tool executes normally"
         );
         assert_eq!(
             stream_observer
@@ -12127,14 +12804,14 @@ mod tests {
                 .as_slice(),
             ["delta:完成"]
         );
-        assert!(context.messages.iter().all(|message| {
-            message.tool_calls.as_ref().is_none_or(|tool_calls| {
-                tool_calls.iter().all(|tool_call| {
+        assert!(context.messages.iter().any(|message| {
+            message.tool_calls.as_ref().is_some_and(|tool_calls| {
+                tool_calls.iter().any(|tool_call| {
                     tool_call
                         .get("function")
                         .and_then(|function| function.get("name"))
                         .and_then(Value::as_str)
-                        != Some(FINISH_RESEARCH_TOOL_NAME)
+                        == Some(FINISH_RESEARCH_TOOL_NAME)
                 })
             })
         }));
