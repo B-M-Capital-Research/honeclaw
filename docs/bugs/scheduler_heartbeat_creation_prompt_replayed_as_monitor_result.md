@@ -14,9 +14,20 @@
 
 ## 状态
 
-- Fixed
+- New
 
 ## 修复进展
+
+- `2026-07-20 03:02 CST` 运行态复核确认代码级 `Fixed` 后同根复发，状态从 `Fixed` 回退为 `New`：
+  - `data/runtime/logs/web.log.2026-07-19`
+    - 03:00 CST `heartbeat_绿田机械基本面跟踪` 已作为现有 heartbeat job 周期触发，runner raw preview 却写出 `cron_job` 工具当前不在可用函数列表中、`hone_admin` 技能仅含重启与配置查看能力，不含定时任务创建`。
+    - 同一轮落成 `parse_kind=PlainTextTriggered`，并生成 350 字 deliver preview，向用户解释工具不可用、建议手动设置 / 调整 `notification_prefs`，而不是执行 605259.SH 基本面 heartbeat 判断。
+  - 会话质量对照：
+    - 2026-07-19 23:02-2026-07-20 03:02 CST `data/sessions.sqlite3` 只有 3 条 scheduler user turn / 3 条 assistant final，均来自 `AAOI/TEM/RKLB 每日动态监控`，同一 session 以 assistant 收口；未见直聊 user-only 残留、空回复、错投或 assistant final 原始错误外泄。
+    - 同窗 `cron_job_runs.max(executed_at)` 仍停在 `2026-07-19T13:31:15.040172+08:00`，但 runtime 日志有 716 条 `[HeartbeatDiag]`、95 条 `deliver job_id` 和 49 条 `duplicate_suppressed`，说明 heartbeat live 仍在运行，本地 cron mirror 继续失真。
+  - 判断：
+    - 该样本仍是已创建 heartbeat job 的执行意图被“创建 / 管理定时任务”语义污染，只是话术从“无法创建定时任务”变成了“`cron_job` / `hone_admin` 工具不可用”。
+    - 这是功能性监控链路缺陷，定级仍为 P2；当前影响单个 heartbeat 任务输出和信噪比，未见全渠道停摆、跨用户错投、数据破坏或敏感信息泄露，因此不升级 P1，不创建 GitHub Issue。
 
 - `2026-07-15 03:04 CST` 代码级修复补强，状态更新为 `Fixed`：
   - `crates/hone-channels/src/scheduler.rs`

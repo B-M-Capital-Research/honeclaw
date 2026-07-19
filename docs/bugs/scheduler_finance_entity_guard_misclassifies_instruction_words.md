@@ -8,6 +8,13 @@
 
 ## 运行态复核（2026-07-19 07:01 CST）
 
+- 本轮 2026-07-19 23:02-2026-07-20 03:02 CST 真实运行态继续复发，状态维持 `New/P2`：
+  - `data/sessions.sqlite3` 同窗新增 3 条 user / 3 条 assistant，均来自 Feishu scheduler `AAOI/TEM/RKLB 每日动态监控`，同一 session 以 assistant 收口，未见直聊 user-only 残留或 assistant final 原始错误外泄。
+  - `data/runtime/logs/web.log.2026-07-19` 同窗有 38 条 `runner_error`，实体 / 候选相关代表样本继续出现：03:00 CST `AAOI 1.6T 光模块心跳检测` 把任务上下文里的 `SEC` 当证券代码并因无行情覆盖失败；03:00 CST `ORCL 大事件监控` 仍因 Oracle 多上市地候选 fail-closed。
+  - 同窗还出现 18 条 OpenAI-compatible upstream HTTP 529 失败，但这些是 provider 负载错误，不改变本缺陷的实体 guard 根因判断。
+  - 判断：最新样本仍是 scheduler / heartbeat 任务正文、历史 reminder 与行业词进入实体 guard / resolver 后误抽、误拦或错配实体；与既有缺陷同根，不新建重复缺陷。
+  - 严重等级维持 `P2`：它直接阻断部分 scheduler / heartbeat 正文生成，但同窗 scheduler session 仍有 AAOI/TEM/RKLB assistant final 收口，未见全渠道停摆、错投到其他用户、敏感信息泄露或持久化数据破坏，因此不是 `P1`，不创建 GitHub Issue。
+
 - 本轮 2026-07-19 11:00-15:03 CST 真实运行态继续复发，状态维持 `New/P2`：
   - `data/sessions.sqlite3` 同窗新增 69 条 user / 27 条 assistant / 26 条 system compact，近期 Feishu direct / scheduler、Web direct / canary session 均以 assistant 收口，`last_message_role=user` 为 0。
   - 11:10 CST `cron_job_runs.run_id=48133` / Feishu scheduler `美股与A股重点标的跟踪晨报` 把任务上下文里的 `SEC` 当证券代码，返回“当前数据供应商没有返回同代码行情覆盖”，并以 `execution_failed + sent + delivered=1` 进入用户可见失败。
