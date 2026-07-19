@@ -384,3 +384,14 @@
 - 本轮判断
   - 这仍是既有 heartbeat JSON / 协议字段外露质量缺陷复发，不是新的链路根因。
   - 触发与投递链路本身仍可运行，问题主要是用户可见格式和产品感退化，因此维持质量性 `P3 / New`，非 P1。
+
+## 最新运行态复核（2026-07-19 23:01 CST）
+
+- `data/runtime/logs/web.log.2026-07-19`
+  - 巡检窗口：2026-07-19 19:23-23:01 CST。
+  - 19:30 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 的 `deliver_preview` 以反引号残片开头：`` `的状态。报价源时间仍为北京时间...``，说明协议 / markdown 清理仍可能留下用户可见残片。
+  - 23:00 CST 同一任务 raw preview 仍是 `<think>` 后接 fenced JSON `{"status":"noop"}`；虽然本轮该样本未确认最终送达 raw JSON，但协议输出仍进入解析前内容。
+  - 同窗还有多条 noop 正文先进入 `PlainTextTriggered` deliver preview，再由 duplicate suppression 压掉，说明协议输出和用户可见正文边界仍不稳。
+- 本轮判断
+  - 最新证据仍是既有 heartbeat JSON / 协议字段外露质量缺陷复发，不是新的链路根因。
+  - 本轮没有确认大面积用户已收到原始 JSON，也没有错投或系统级失败；主风险仍是用户可见格式和产品感退化，因此维持质量性 `P3 / New`，非 P1。

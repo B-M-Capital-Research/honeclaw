@@ -321,3 +321,15 @@
 - 本轮判断
   - 该样本继续落在既有实体 guard / context extraction 误拦范围，不新建重复缺陷。
   - 用户影响仍是部分 heartbeat 监控缺口；同窗未见错投、敏感信息泄露或全渠道不可用，维持功能性 `P2 / New`，非 P1。
+
+## 最新运行态复核（2026-07-19 23:01 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-07-19 19:01-23:01 CST。
+  - 21:00 CST Web scheduler `盘前美股要闻与SNDK/MU存储产业链日报` 继续把宏观指标 `PCE` 当证券代码核验，assistant final 写出“已识别证券代码 `PCE`，但当前数据供应商没有返回同代码行情覆盖”，随后落成用户可见定时任务执行出错提示。
+- `data/runtime/logs/web.log.2026-07-19`
+  - 19:30 / 20:30 / 23:00 CST `AAOI 1.6T 光模块心跳检测` 继续把任务正文里的 `SEC` 当证券代码并 fail-closed。
+  - 19:30 / 20:30 / 23:00 CST `ORCL 大事件监控` 继续把 Oracle 解析为多个上市地候选：`ORCP.L`、`ORCL.SW`、`ORCL`、`ORC.DE`，要求补充交易所后缀或公司全名。
+- 本轮判断
+  - 这些样本仍落在既有实体 guard / scheduler context extraction 误拦范围，不新建重复缺陷。
+  - 影响是部分 Web / Feishu scheduler 和 heartbeat 监控任务跳过或发送失败提示；同窗仍有 direct 和 scheduler 成功收口样本，因此维持功能性 `P2 / New`，非 P1。

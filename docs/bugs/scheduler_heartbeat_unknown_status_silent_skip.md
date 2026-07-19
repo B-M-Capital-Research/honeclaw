@@ -6258,3 +6258,16 @@
 - 本轮判断
   - 最新证据仍是 heartbeat 模型输出未稳定遵守结构化协议，解析层在 `PlainText*`、`Json*` 与 execution_failed 之间漂移。
   - 本轮未见全渠道不可用或错投，维持功能性 `P2 / New`，非 P1。
+
+## 最新运行态复核（2026-07-19 23:01 CST）
+
+- `data/runtime/logs/web.log.2026-07-19`
+  - 巡检窗口：2026-07-19 19:23-23:01 CST。
+  - 同窗记录 `HeartbeatDiag=597`；可分类 `parse_kind` 继续漂移：`PlainTextTriggered=158`、`JsonNoop=47`、`PlainTextSuppressed=19`、`PlainTextNoop=8`、`JsonMalformed=2`。
+  - 代表样本包括 19:30 / 20:30 / 23:00 多条 heartbeat 以自然语言、`<think>` 或 fenced JSON 开头，随后落成 `PlainTextTriggered`、`JsonNoop`、`PlainTextSuppressed` 或“heartbeat 输出不是结构化 JSON”。
+  - 23:00 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` raw preview 仍是 `<think>` 后接 fenced JSON `{"status":"noop"}`，说明模型输出协议和解析器期望仍未稳定对齐。
+- `data/sessions.sqlite3`
+  - 同窗新增 10 条 user / 8 条 assistant / 2 条 system compact，近期更新 session 均以 assistant 收口，未见全渠道未回复或错投。
+- 本轮判断
+  - 最新证据仍是 heartbeat 结构化协议退化 / 解析边界不稳定，没有新的独立根因。
+  - 坏态影响 heartbeat 是否稳定得出 `triggered/noop`、是否误送达或被 duplicate suppression；普通 direct / scheduler 主链路仍可收口，维持功能性 `P2 / New`，非 P1。
