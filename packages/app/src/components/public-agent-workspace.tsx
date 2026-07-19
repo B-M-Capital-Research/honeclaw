@@ -15,6 +15,7 @@ type IconName =
   | "calendar"
   | "compare"
   | "history"
+  | "home"
   | "insight"
   | "invest"
   | "me"
@@ -52,6 +53,7 @@ export function AgentWorkspaceIcon(props: {
         <Match when={props.name === "calendar"}><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18M8 14h.01M12 14h.01M16 14h.01" /></Match>
         <Match when={props.name === "compare"}><path d="M4 20V10h5v10M10 20V4h5v16M16 20v-7h4v7M2 20h20" /></Match>
         <Match when={props.name === "history"}><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2" /></Match>
+        <Match when={props.name === "home"}><path d="m4 10 8-6 8 6v9a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1Z" /></Match>
         <Match when={props.name === "insight"}><path d="M9 18h6M10 22h4M8.6 14.8A7 7 0 1 1 15.4 14.8C14.5 15.5 14 16.5 14 18h-4c0-1.5-.5-2.5-1.4-3.2Z" /></Match>
         <Match when={props.name === "invest"}><path d="M4 19V9M10 19V5M16 19v-7M22 19V3M2 19h22" /></Match>
         <Match when={props.name === "me"}><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></Match>
@@ -73,9 +75,9 @@ export function AgentWorkspaceSidebar(props: {
   communityUnread: boolean;
   onNewResearch: () => void;
   onSelectResearch: (id: string) => void;
+  onHome: () => void;
   onInvest: () => void;
   onInsights: () => void;
-  onTracking: () => void;
   onAccount: () => void;
   onLogout: () => void;
 }) {
@@ -96,9 +98,9 @@ export function AgentWorkspaceSidebar(props: {
       </button>
       <div class="agent-workspace-nav-label">工作台</div>
       <nav class="agent-workspace-nav">
-        <button type="button" classList={{ "is-active": props.activeSection === "invest" }} onClick={props.onInvest}><AgentWorkspaceIcon name="invest" /><span>投资</span></button>
+        <button type="button" onClick={props.onHome}><AgentWorkspaceIcon name="home" /><span>首页</span></button>
         <button type="button" onClick={props.onInsights} class="agent-workspace-nav-with-dot" classList={{ "is-active": props.activeSection === "insights" }}><AgentWorkspaceIcon name="insight" /><span>洞察</span><Show when={props.communityUnread}><i /></Show></button>
-        <button type="button" classList={{ "is-active": props.activeSection === "tracking" }} onClick={props.onTracking}><AgentWorkspaceIcon name="track" /><span>跟踪</span></button>
+        <button type="button" classList={{ "is-active": props.activeSection === "invest" || props.activeSection === "tracking" }} onClick={props.onInvest}><AgentWorkspaceIcon name="invest" /><span>投资</span></button>
       </nav>
       <div class="agent-workspace-sidebar-rule" />
       <div class="agent-workspace-nav-label">AI 研究</div>
@@ -339,17 +341,17 @@ export function AgentWorkspaceMobileNav(props: {
   activeMode: "overview" | "conversation";
   activeSection?: "agent" | "invest" | "insights" | "tracking" | "me";
   communityUnread: boolean;
+  onHome: () => void;
   onInvest: () => void;
   onInsights: () => void;
   onAgent: () => void;
-  onTracking: () => void;
   onAccount: () => void;
 }) {
   return <nav class="agent-workspace-mobile-nav" aria-label="主要导航">
-    <button type="button" classList={{ "is-active": props.activeSection === "invest" }} onClick={props.onInvest}><AgentWorkspaceIcon name="invest" /><span>投资</span></button>
+    <button type="button" onClick={props.onHome}><AgentWorkspaceIcon name="home" /><span>首页</span></button>
     <button type="button" onClick={props.onInsights} class="agent-workspace-mobile-has-dot" classList={{ "is-active": props.activeSection === "insights" }}><AgentWorkspaceIcon name="insight" /><span>洞察</span><Show when={props.communityUnread}><i /></Show></button>
     <button type="button" class="is-agent" classList={{ "is-active": props.activeSection === "agent" }} onClick={props.onAgent}><b><AgentWorkspaceIcon name="agent" size={27} /></b><span>Agent</span></button>
-    <button type="button" classList={{ "is-active": props.activeSection === "tracking" }} onClick={props.onTracking}><AgentWorkspaceIcon name="track" /><span>跟踪</span></button>
+    <button type="button" classList={{ "is-active": props.activeSection === "invest" || props.activeSection === "tracking" }} onClick={props.onInvest}><AgentWorkspaceIcon name="invest" /><span>投资</span></button>
     <button type="button" classList={{ "is-active": props.activeSection === "me" }} onClick={props.onAccount}><AgentWorkspaceIcon name="me" /><span>我的</span></button>
   </nav>;
 }

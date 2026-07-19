@@ -20,6 +20,58 @@ function AccountRow(props: { label: string; value: string }) {
   return <div class="public-account-row"><span>{props.label}</span><strong>{props.value}</strong></div>;
 }
 
+const VIP_BENEFITS = [
+  "每周四主理人深度公司讲解，在线直播可任意提问",
+  "VIP 群与 500+ 高手畅聊，禁言群持续分享深度投研资料与实时动态",
+  "知识星球 & 社区：完整的公司研报、估值和投资策略分享",
+  "HONE 畅享：任何问题在社区都能得到及时反馈",
+];
+
+/* 会员身份卡：能登录 HONE 即为年度付费会员，陈列权益并给出客服入口。 */
+function MembershipCard() {
+  const [qrOpen, setQrOpen] = createSignal(false);
+  return (
+    <section class="public-workspace-panel public-vip-card">
+      <div class="public-vip-main">
+        <div class="public-vip-head">
+          <span class="public-vip-badge">年度付费会员 · 生效中</span>
+        </div>
+        <h2>你已解锁 B&M 完整服务</h2>
+        <p>能登录 HONE 即代表你是年度付费会员，以下权益均已生效：</p>
+        <ul class="public-vip-list">
+          {VIP_BENEFITS.map((benefit) => (
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>
+              <span>{benefit}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div class="public-vip-side">
+        <button type="button" class="public-vip-qr" onClick={() => setQrOpen(true)}>
+          <img src="/membership_wechat.jpg" alt="企业微信客服二维码" loading="lazy" />
+        </button>
+        <span class="public-vip-side-copy">
+          <strong>有疑问？加客服微信</strong>
+          <small>扫码添加企业微信客服，会员与使用问题随时咨询。</small>
+        </span>
+      </div>
+      <Show when={qrOpen()}>
+        <div class="public-vip-qr-pop" onClick={() => setQrOpen(false)}>
+          <figure onClick={(event) => event.stopPropagation()}>
+            <figcaption>
+              <strong>企业微信客服</strong>
+              <button type="button" aria-label="关闭" onClick={() => setQrOpen(false)}>×</button>
+            </figcaption>
+            <img src="/membership_wechat.jpg" alt="企业微信客服二维码" />
+            <small>长按或右键保存图片，扫码添加客服。</small>
+          </figure>
+        </div>
+      </Show>
+    </section>
+  );
+}
+
 function AccountView(props: {
   user: PublicAuthUserInfo;
   onLogout: () => void;
@@ -35,6 +87,7 @@ function AccountView(props: {
             <p>管理你的 HONE 账户与研究入口。持仓、洞察和会话数据仍由各自的安全存储维护。</p>
           </div>
         </header>
+        <MembershipCard />
         <div class="public-account-grid">
           <section class="public-workspace-panel public-account-card">
             <h2>账户信息</h2>

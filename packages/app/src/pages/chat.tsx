@@ -3517,9 +3517,9 @@ export default function PublicChatPage() {
                     setDraft("");
                   }}
                   onSelectResearch={openWorkspaceResearch}
+                  onHome={() => navigate("/")}
                   onInvest={() => navigate("/invest")}
                   onInsights={() => navigate("/community")}
-                  onTracking={openWorkspaceTracking}
                   onAccount={() => navigate("/me")}
                   onLogout={logoutPublicChat}
                 />
@@ -3611,7 +3611,7 @@ export default function PublicChatPage() {
                             insightCount={workspaceInsights().length}
                             searchQuery={workspaceSearch()}
                             onPrompt={beginWorkspacePrompt}
-                            onTracking={openWorkspaceTracking}
+                            onTracking={() => navigate("/portfolio")}
                             onInsights={() => navigate("/community")}
                             onCalendar={openWorkspaceCalendar}
                           />
@@ -3662,10 +3662,10 @@ export default function PublicChatPage() {
                   activeMode={workspaceMode()}
                   activeSection="agent"
                   communityUnread={communityUnread()}
+                  onHome={() => navigate("/")}
                   onInvest={() => navigate("/invest")}
                   onInsights={() => navigate("/community")}
                   onAgent={() => setWorkspaceMode("overview")}
-                  onTracking={openWorkspaceTracking}
                   onAccount={() => navigate("/me")}
                 />
                 <AgentWorkspaceHistoryDrawer

@@ -33,7 +33,6 @@ export function PublicWorkspaceShell(
     setQuery(value);
     props.onSearch?.(value);
   };
-  const goTracking = () => navigate("/portfolio");
   const goAgent = () => navigate("/chat");
   return (
     <div class="public-chat-page public-chat-page--ready public-workspace-page">
@@ -45,9 +44,9 @@ export function PublicWorkspaceShell(
         communityUnread={props.communityUnread ?? false}
         onNewResearch={goAgent}
         onSelectResearch={goAgent}
+        onHome={() => navigate("/")}
         onInvest={() => navigate("/invest")}
         onInsights={() => navigate("/community")}
-        onTracking={goTracking}
         onAccount={() => navigate("/me")}
         onLogout={() => navigate("/me")}
       />
@@ -72,10 +71,10 @@ export function PublicWorkspaceShell(
         activeMode="conversation"
         activeSection={props.active}
         communityUnread={props.communityUnread ?? false}
+        onHome={() => navigate("/")}
         onInvest={() => navigate("/invest")}
         onInsights={() => navigate("/community")}
         onAgent={goAgent}
-        onTracking={goTracking}
         onAccount={() => navigate("/me")}
       />
     </div>

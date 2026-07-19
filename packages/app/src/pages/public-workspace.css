@@ -180,6 +180,28 @@
 .public-profile-modal-error { color: #a43b32; }
 .public-profile-modal-foot { padding: 12px 20px; border-top: 1px solid #ecece9; background: #f7f7f5; color: #777b76; font-size: 12px; }
 
+/* Account: annual-membership card. */
+.public-vip-card { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 190px; gap: 22px; margin-bottom: 18px; padding: 24px; border-color: color-mix(in srgb, #f06449 36%, #e6e7e3); background: linear-gradient(180deg, color-mix(in srgb, #f06449 4%, #fff), #fff 58%); }
+.public-vip-badge { display: inline-flex; align-items: center; padding: 4px 11px; border-radius: 999px; background: #f06449; color: #fff; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.public-vip-main h2 { margin: 13px 0 0; color: #111311; font-size: 19px; letter-spacing: -.02em; }
+.public-vip-main > p { margin: 8px 0 0; color: #777b76; font-size: 12px; line-height: 1.6; }
+.public-vip-list { display: grid; gap: 9px; margin: 16px 0 0; padding: 16px 0 0; border-top: 1px solid #ecece9; list-style: none; }
+.public-vip-list li { display: flex; align-items: flex-start; gap: 9px; color: #2f332f; font-size: 12px; line-height: 1.6; }
+.public-vip-list svg { width: 13px; height: 13px; flex: 0 0 13px; margin-top: 2px; color: #f06449; }
+.public-vip-side { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; padding: 16px 14px; border: 1px solid #ecece9; border-radius: 13px; background: #fff; text-align: center; }
+.public-vip-qr { padding: 0; border: 1px solid #e6e7e3; border-radius: 10px; background: #fff; overflow: hidden; cursor: zoom-in; }
+.public-vip-qr img { width: 118px; height: 118px; display: block; object-fit: cover; }
+.public-vip-side-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.public-vip-side strong { color: #111311; font-size: 12px; font-weight: 700; }
+.public-vip-side small { color: #8b8e89; font-size: 10px; line-height: 1.5; }
+.public-vip-qr-pop { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 20px; background: rgba(17, 19, 17, 0.45); backdrop-filter: blur(5px); }
+.public-vip-qr-pop figure { width: min(360px, 100%); margin: 0; padding: 16px 16px 13px; border: 1px solid #e6e7e3; border-radius: 17px; background: #fff; box-shadow: 0 40px 110px rgba(17, 19, 17, 0.3); }
+.public-vip-qr-pop figcaption { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.public-vip-qr-pop figcaption strong { color: #111311; font-size: 14px; }
+.public-vip-qr-pop figcaption button { width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid #e6e7e3; border-radius: 50%; background: #fff; color: #777b76; cursor: pointer; font-size: 16px; line-height: 1; }
+.public-vip-qr-pop img { width: 100%; height: auto; border: 1px solid #ecece9; border-radius: 11px; -webkit-touch-callout: default; user-select: auto; }
+.public-vip-qr-pop small { display: block; margin-top: 9px; color: #777b76; font-size: 11px; text-align: center; }
+
 /* Account. */
 .public-account-grid { display: grid; grid-template-columns: minmax(0,1.2fr) minmax(260px,.8fr); gap: 18px; }
 .public-account-card { padding: 22px; }
@@ -221,6 +243,11 @@
   .public-tracking-agenda strong { font-size: 13px; }
   .public-tracking-agenda small { margin-top: 5px; color: #8b8e89; font-size: 11px; line-height: 1.45; }
   .public-account-grid { grid-template-columns: 1fr; }
+  .public-vip-card { grid-template-columns: 1fr; gap: 16px; padding: 18px 16px; }
+  .public-vip-side { flex-direction: row; justify-content: flex-start; gap: 14px; padding: 13px 14px; text-align: left; }
+  .public-vip-side-copy { text-align: left; }
+  .public-vip-qr { flex: 0 0 auto; }
+  .public-vip-qr img { width: 84px; height: 84px; }
   .public-invest-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 18px; }
   .public-invest-stats > div { padding: 13px 14px; }
   .public-invest-stats strong { font-size: 19px; }
