@@ -4768,6 +4768,18 @@ mod tests {
     }
 
     #[test]
+    fn scheduler_delivery_text_rewrites_raw_table_component_copy() {
+        let raw = "POET 心跳检查如下：\n<table columns={[{\"title\":\"Ticker\",\"dataIndex\":\"ticker\"},{\"title\":\"状态\",\"dataIndex\":\"status\"}]} data={[{\"ticker\":\"POET\",\"status\":\"触发\"}]}/>";
+        let sanitized = sanitize_scheduler_delivery_text(raw);
+        assert_eq!(
+            sanitized,
+            "POET 心跳检查如下：\n表格内容展示异常，请稍后重试。"
+        );
+        assert!(!sanitized.contains("<table"));
+        assert!(!sanitized.contains("dataIndex"));
+    }
+
+    #[test]
     fn scheduler_delivery_text_rewrites_market_data_source_copy() {
         let raw =
             "本轮最新价格来自 data_fetch quote_short；该口径未返回逐笔时间戳和盘前/盘后字段。";

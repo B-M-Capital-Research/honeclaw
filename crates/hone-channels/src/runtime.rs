@@ -309,6 +309,12 @@ static RE_CRON_TOOL_UNAVAILABLE_COPY_SENTENCE: LazyLock<regex::Regex> = LazyLock
     )
     .expect("valid regex")
 });
+static RE_RAW_TABLE_COMPONENT_COPY: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r#"(?is)(?:<table\b[^>]*columns\s*=[^>]*(?:/>|>.*?</table>)|<table\b[^>]*dataIndex\s*=[^>]*(?:/>|>.*?</table>)|<table\b[^>]*data\s*=\{[^>]*(?:/>|>.*?</table>))"#,
+    )
+    .expect("valid regex")
+});
 static RE_COMPANY_PROFILE_COPY_GLITCH: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
         r#"(?:路径是[:：]?\s*公司画像(?:公司画像)?|本地画像[:：]?\s*公司画像|本地公司画像[:：]?\s*公司画像|画像已更新[:：]?\s*公司画像(?:公司画像)?)"#,
@@ -652,6 +658,13 @@ fn rewrite_user_visible_internal_copy(text: &str) -> (String, bool) {
     if cron_tool_unavailable != rewritten {
         removed = true;
         rewritten = cron_tool_unavailable.into_owned();
+    }
+
+    let raw_table_component =
+        RE_RAW_TABLE_COMPONENT_COPY.replace_all(&rewritten, "表格内容展示异常，请稍后重试。");
+    if raw_table_component != rewritten {
+        removed = true;
+        rewritten = raw_table_component.into_owned();
     }
 
     for re in [
@@ -1820,6 +1833,19 @@ mod tests {
         );
         assert!(!sanitized.content.contains("data_fetch"));
         assert!(!sanitized.content.contains("行情数据工具"));
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_rewrites_raw_table_component_copy() {
+        let raw = "核心观察池如下：\n<table columns={[{\"title\":\"Ticker\",\"dataIndex\":\"ticker\"},{\"title\":\"状态\",\"dataIndex\":\"status\"}]} data={[{\"ticker\":\"POET\",\"status\":\"触发\"}]}/>\n其余结论不变。";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(sanitized.removed_internal);
+        assert_eq!(
+            sanitized.content,
+            "核心观察池如下：\n表格内容展示异常，请稍后重试。\n其余结论不变。"
+        );
+        assert!(!sanitized.content.contains("<table"));
+        assert!(!sanitized.content.contains("dataIndex"));
     }
 
     #[test]

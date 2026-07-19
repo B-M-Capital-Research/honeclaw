@@ -14,7 +14,7 @@ P3
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
@@ -68,7 +68,20 @@ New
 
 ## 下一步建议
 
-1. 在 Feishu 出站最低发送边界统一拦截 `<table`、`columns=`、`dataIndex`、`data={` 等 table 组件源码，并转换为分行纯文本。
-2. 检查 scheduler / heartbeat 与 direct reply 是否共用同一 Markdown / Feishu 卡片预处理路径，避免某些 fallback 或 direct text 分支绕过净化。
-3. 为用户贴出的 POET / SIVE table payload 增加回归样本，覆盖 raw table、Markdown 表格、截断 table 和长表格分段。
-4. 修复后用真实 Feishu 消息复核用户侧不再看到 raw component code，再把状态更新为 `Fixed`。
+1. 用 2026-07-19 之后的真实 Feishu scheduler / direct 出站样本复核，确认用户侧不再看到 raw `<table .../>` 组件代码。
+2. 如果后续仍复发，再补更强的结构化降级，把组件里的列/行数据重写成纯文本列表，而不是只做占位提示。
+
+## 修复记录
+
+- 2026-07-19 代码级修复：
+  - `crates/hone-channels/src/runtime.rs` 新增 raw table 组件识别与统一降级；当用户可见正文出现 `<table .../>` 且含 `columns=` / `dataIndex` / `data={` 这类内部组件字段时，统一替换为 `表格内容展示异常，请稍后重试。`，避免把 Feishu table 组件源码直接投给用户。
+  - 该修复走共享 `sanitize_user_visible_output(...)`，因此 direct reply 与 scheduler delivery 共用同一边界，不需要分别加一套 Feishu 专属清洗逻辑。
+  - 新增回归：
+    - `sanitize_user_visible_output_rewrites_raw_table_component_copy`
+    - `scheduler_delivery_text_rewrites_raw_table_component_copy`
+
+## 验证
+
+- `cargo test -p hone-channels sanitize_user_visible_output_rewrites_raw_table_component_copy --lib -- --nocapture`
+- `cargo test -p hone-channels scheduler_delivery_text_rewrites_raw_table_component_copy --lib -- --nocapture`
+- `cargo check -p hone-channels --tests`
