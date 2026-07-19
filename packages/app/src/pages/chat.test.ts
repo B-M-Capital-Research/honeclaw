@@ -11,6 +11,7 @@ import {
   findPendingPublicAssistantMessage,
   formatPublicAttachmentBytes,
   isPublicChatBusy,
+  isPublicChatRestoreCurrent,
   isPublicChatTerminalStreamEvent,
   isPublicChatQuotaExhausted,
   latestUnreadPushId,
@@ -27,6 +28,7 @@ import {
   publicChatToolStatusText,
   rekeyTrailingOptimisticIds,
   resolvePublicChatRecovery,
+  resolvePublicChatStreamInterruption,
   resolvePublicChatView,
   shouldRetryPublicRestore,
   shouldPollPublicChatRecovery,
@@ -62,6 +64,37 @@ describe("public assistant stream events", () => {
     expect(
       applyPublicAssistantStreamEvent(content, "assistant_delta", "最终答案"),
     ).toBe("最终答案");
+  });
+});
+
+describe("public chat restore fence", () => {
+  it("rejects a previous-turn bootstrap after a newer local send starts", () => {
+    const requested = {
+      requestedSyncGeneration: 7,
+      requestedSendGeneration: 3,
+    };
+
+    expect(
+      isPublicChatRestoreCurrent({
+        ...requested,
+        currentSyncGeneration: 7,
+        currentSendGeneration: 3,
+      }),
+    ).toBe(true);
+    expect(
+      isPublicChatRestoreCurrent({
+        ...requested,
+        currentSyncGeneration: 8,
+        currentSendGeneration: 4,
+      }),
+    ).toBe(false);
+    expect(
+      isPublicChatRestoreCurrent({
+        ...requested,
+        currentSyncGeneration: 7,
+        currentSendGeneration: 4,
+      }),
+    ).toBe(false);
   });
 });
 
@@ -369,6 +402,35 @@ describe("public chat restore retry policy", () => {
         sawTerminalEvent: false,
       }),
     ).toBe(false);
+  });
+
+  it("keeps a non-Abort stream disconnect pending until restore is exhausted", () => {
+    expect(
+      resolvePublicChatStreamInterruption({
+        aborted: false,
+        recoveringText: "连接中断，正在恢复任务状态",
+        stoppedText: "已停止",
+      }),
+    ).toEqual({
+      shouldRecover: true,
+      patch: {
+        phase: "thinking",
+        statusText: "连接中断，正在恢复任务状态",
+      },
+    });
+  });
+
+  it("preserves the explicit stop state without entering disconnect recovery", () => {
+    expect(
+      resolvePublicChatStreamInterruption({
+        aborted: true,
+        recoveringText: "连接中断，正在恢复任务状态",
+        stoppedText: "已停止",
+      }),
+    ).toEqual({
+      shouldRecover: false,
+      patch: { phase: "error", statusText: "已停止" },
+    });
   });
 
   it("treats only authoritative completion frames as terminal", () => {

@@ -24,6 +24,18 @@ export const PUBLIC_CHAT_CONTROLLED_PINCH_SELECTOR =
 export const PUBLIC_CHAT_VIEWPORT_CONTENT =
   "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content";
 
+export function isPublicChatRestoreCurrent(input: {
+  requestedSyncGeneration: number;
+  currentSyncGeneration: number;
+  requestedSendGeneration: number;
+  currentSendGeneration: number;
+}): boolean {
+  return (
+    input.requestedSyncGeneration === input.currentSyncGeneration &&
+    input.requestedSendGeneration === input.currentSendGeneration
+  );
+}
+
 export type PublicChatAttachment = {
   /** Absolute server-side path returned by `/api/public/upload` or carried in history. */
   path: string;
@@ -287,6 +299,26 @@ export function shouldRecoverPublicChatAfterEof(input: {
   sawTerminalEvent: boolean;
 }) {
   return input.reachedEof && !input.sawTerminalEvent;
+}
+
+export function resolvePublicChatStreamInterruption(input: {
+  aborted: boolean;
+  recoveringText: string;
+  stoppedText: string;
+}): {
+  shouldRecover: boolean;
+  patch: Pick<PublicChatMessage, "phase" | "statusText">;
+} {
+  if (input.aborted) {
+    return {
+      shouldRecover: false,
+      patch: { phase: "error", statusText: input.stoppedText },
+    };
+  }
+  return {
+    shouldRecover: true,
+    patch: { phase: "thinking", statusText: input.recoveringText },
+  };
 }
 
 /**

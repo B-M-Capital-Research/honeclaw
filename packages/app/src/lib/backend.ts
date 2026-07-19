@@ -18,7 +18,7 @@ const TRANSIENT_BACKEND_STATUSES = new Set([408, 502, 503, 504])
 const API_FETCH_MAX_ATTEMPTS = 2
 export const API_FETCH_RETRY_DELAY_MS = 2500
 export const FRIENDLY_BACKEND_UNAVAILABLE_MESSAGE =
-  "服务暂时不可用，已自动重试一次。请稍后再试。"
+  "服务暂时不可用，请稍后再试。"
 
 let apiFetchRetryDelayMs = API_FETCH_RETRY_DELAY_MS
 
@@ -140,6 +140,11 @@ export function isTransientBackendStatus(status: number) {
   return TRANSIENT_BACKEND_STATUSES.has(status)
 }
 
+export function isApiFetchRetryableMethod(method?: string) {
+  const normalized = (method ?? "GET").trim().toUpperCase()
+  return normalized === "GET" || normalized === "HEAD"
+}
+
 export function friendlyBackendErrorMessage(status?: number) {
   if (status == null || isTransientBackendStatus(status)) {
     return FRIENDLY_BACKEND_UNAVAILABLE_MESSAGE
@@ -176,12 +181,15 @@ export async function apiFetch(path: string, init: RequestInit = {}) {
     ...init,
     headers: buildAuthHeaders(init.headers),
   } satisfies RequestInit
+  const maxAttempts = isApiFetchRetryableMethod(init.method)
+    ? API_FETCH_MAX_ATTEMPTS
+    : 1
 
-  for (let attempt = 1; attempt <= API_FETCH_MAX_ATTEMPTS; attempt++) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const response = await fetch(buildApiUrl(path), request)
       if (
-        attempt < API_FETCH_MAX_ATTEMPTS &&
+        attempt < maxAttempts &&
         isTransientBackendStatus(response.status) &&
         !init.signal?.aborted
       ) {
@@ -193,7 +201,7 @@ export async function apiFetch(path: string, init: RequestInit = {}) {
       if (isAbortError(error) || init.signal?.aborted) {
         throw error
       }
-      if (attempt < API_FETCH_MAX_ATTEMPTS) {
+      if (attempt < maxAttempts) {
         await waitForRetryDelay(init.signal)
         continue
       }

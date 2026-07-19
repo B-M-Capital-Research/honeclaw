@@ -8,6 +8,7 @@ hone-core = { workspace = true }
 hone-llm = { workspace = true }
 hone-tools = { workspace = true }
 async-trait = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 futures = { workspace = true }

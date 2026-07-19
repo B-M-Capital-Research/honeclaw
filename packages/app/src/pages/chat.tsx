@@ -98,7 +98,9 @@ import {
   publicRestoreRetryDelay,
   rekeyTrailingOptimisticIds,
   resolvePublicChatRecovery,
+  resolvePublicChatStreamInterruption,
   isPublicChatBusy,
+  isPublicChatRestoreCurrent,
   isPublicChatTerminalStreamEvent,
   mergePublicHistoryWindow,
   mergePublicPushItems,
@@ -2395,6 +2397,7 @@ export default function PublicChatPage() {
   let scrollRef: HTMLDivElement | undefined;
   let messagesInnerRef: HTMLDivElement | undefined;
   let sessionSyncGeneration = 0;
+  let localSendGeneration = 0;
   let stickToBottom = true;
   let lastScrollTop = 0;
   let suppressScrollUntil = 0;
@@ -2819,6 +2822,7 @@ export default function PublicChatPage() {
   ) => {
     clearRestoreRetry();
     const generation = ++sessionSyncGeneration;
+    const sendGeneration = localSendGeneration;
     const attempt = options.attempt ?? 1;
     const retryOnFailure =
       options.retryOnFailure ??
@@ -2838,7 +2842,15 @@ export default function PublicChatPage() {
     }
     try {
       const bootstrap = await getPublicChatBootstrap(controller.signal);
-      if (generation !== sessionSyncGeneration) return;
+      if (
+        !isPublicChatRestoreCurrent({
+          requestedSyncGeneration: generation,
+          currentSyncGeneration: sessionSyncGeneration,
+          requestedSendGeneration: sendGeneration,
+          currentSendGeneration: localSendGeneration,
+        })
+      )
+        return;
       const user = bootstrap.user;
       const history = bootstrap.messages ?? [];
       const latest = toPublicChatMessages(history, bootstrap.history_start);
@@ -2909,7 +2921,15 @@ export default function PublicChatPage() {
         return current?.runId === next?.runId ? current : next;
       });
     } catch (error) {
-      if (generation !== sessionSyncGeneration) return;
+      if (
+        !isPublicChatRestoreCurrent({
+          requestedSyncGeneration: generation,
+          currentSyncGeneration: sessionSyncGeneration,
+          requestedSendGeneration: sendGeneration,
+          currentSendGeneration: localSendGeneration,
+        })
+      )
+        return;
       if (isUnauthorizedApiError(error)) {
         setRestoreStatus(null);
         setAuthState("logged_out");
@@ -3179,6 +3199,15 @@ export default function PublicChatPage() {
     )
       return;
 
+    // A bootstrap begun for the preceding turn must never reconcile over the
+    // optimistic pair created below. Fence and abort every older restore
+    // before the new local send becomes visible; this also prevents its retry
+    // timer from reviving after the POST has started.
+    localSendGeneration += 1;
+    sessionSyncGeneration += 1;
+    restoreController?.abort();
+    clearRestoreRetry();
+
     setWorkspaceMode("conversation");
     const assistantId = messageId();
     setDraft("");
@@ -3207,7 +3236,7 @@ export default function PublicChatPage() {
     activeController = controller;
     let reachedStreamEof = false;
     let sawTerminalEvent = false;
-    let recoverAfterEof = false;
+    let recoverAfterDisconnect = false;
     let lastRunErrorMessage: string | undefined;
     try {
       const stream = await sendPublicChat(
@@ -3362,11 +3391,11 @@ export default function PublicChatPage() {
       }
       if (deltaFrame !== undefined) cancelAnimationFrame(deltaFrame);
       flushAssistantDelta();
-      recoverAfterEof = shouldRecoverPublicChatAfterEof({
+      recoverAfterDisconnect = shouldRecoverPublicChatAfterEof({
         reachedEof: reachedStreamEof,
         sawTerminalEvent,
       });
-      if (recoverAfterEof) {
+      if (recoverAfterDisconnect) {
         const index = messages.findIndex((m) => m.id === assistantId);
         if (index >= 0) {
           setMessages(index, {
@@ -3377,14 +3406,16 @@ export default function PublicChatPage() {
       }
     } catch (e) {
       const index = messages.findIndex((m) => m.id === assistantId);
-      const aborted = e instanceof DOMException && e.name === "AbortError";
+      const interrupted = resolvePublicChatStreamInterruption({
+        aborted:
+          controller.signal.aborted ||
+          (e instanceof Error && e.name === "AbortError"),
+        recoveringText: "连接中断，正在恢复任务状态",
+        stoppedText: CONTENT.chat_page.status.stopped,
+      });
+      recoverAfterDisconnect = interrupted.shouldRecover;
       if (index >= 0) {
-        setMessages(index, {
-          phase: "error",
-          statusText: aborted
-            ? CONTENT.chat_page.status.stopped
-            : CONTENT.chat_page.status.fallback_error,
-        });
+        setMessages(index, interrupted.patch);
       }
     } finally {
       const shouldStayAtBottom =
@@ -3393,8 +3424,8 @@ export default function PublicChatPage() {
       setIsSending(false);
       void restoreSession({
         keepAtBottom: shouldStayAtBottom,
-        retryOnFailure: recoverAfterEof,
-        onExhausted: recoverAfterEof
+        retryOnFailure: recoverAfterDisconnect,
+        onExhausted: recoverAfterDisconnect
           ? () => {
               const index = messages.findIndex((m) => m.id === assistantId);
               if (

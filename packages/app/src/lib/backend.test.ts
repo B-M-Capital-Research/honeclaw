@@ -7,6 +7,7 @@ import {
   defaultBackendConfig,
   friendlyBackendErrorMessage,
   hasRuntimeCapability,
+  isApiFetchRetryableMethod,
   resetApiFetchRetryDelayForTests,
   normalizeBaseUrl,
   resolveBaseUrl,
@@ -181,6 +182,30 @@ describe("backend runtime helpers", () => {
     expect(calls).toBe(2)
   })
 
+  test("apiFetch only considers GET and HEAD safe to retry", () => {
+    expect(isApiFetchRetryableMethod()).toBe(true)
+    expect(isApiFetchRetryableMethod("get")).toBe(true)
+    expect(isApiFetchRetryableMethod("HEAD")).toBe(true)
+    expect(isApiFetchRetryableMethod("POST")).toBe(false)
+    expect(isApiFetchRetryableMethod("DELETE")).toBe(false)
+  })
+
+  test("apiFetch never replays a POST after a transient response", async () => {
+    let calls = 0
+    globalThis.fetch = ((_: RequestInfo | URL, __?: RequestInit) => {
+      calls += 1
+      return Promise.resolve(new Response("{}", { status: 503 }))
+    }) as typeof fetch
+
+    const response = await apiFetch("/api/public/chat", {
+      method: "POST",
+      body: JSON.stringify({ message: "hello" }),
+    })
+
+    expect(response.status).toBe(503)
+    expect(calls).toBe(1)
+  })
+
   test("apiFetch retries transport failures before showing friendly error", async () => {
     let calls = 0
     globalThis.fetch = ((_: RequestInfo | URL, __?: RequestInit) => {
@@ -192,6 +217,22 @@ describe("backend runtime helpers", () => {
       FRIENDLY_BACKEND_UNAVAILABLE_MESSAGE,
     )
     expect(calls).toBe(2)
+  })
+
+  test("apiFetch never replays a POST after a transport failure", async () => {
+    let calls = 0
+    globalThis.fetch = ((_: RequestInfo | URL, __?: RequestInit) => {
+      calls += 1
+      return Promise.reject(new TypeError("Failed to fetch"))
+    }) as typeof fetch
+
+    await expect(
+      apiFetch("/api/public/chat", {
+        method: "POST",
+        body: JSON.stringify({ message: "hello" }),
+      }),
+    ).rejects.toThrow(FRIENDLY_BACKEND_UNAVAILABLE_MESSAGE)
+    expect(calls).toBe(1)
   })
 
   test("friendlyBackendErrorMessage only rewrites temporary backend failures", () => {

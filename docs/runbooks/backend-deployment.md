@@ -1,6 +1,6 @@
 # Runbook: Backend Deployment
 
-Last updated: 2026-07-17
+Last updated: 2026-07-19
 
 ## When to Use
 
@@ -99,6 +99,32 @@ curl -i https://origin.hone-claw.com/api/public/auth/me
 ```
 
 Expected unauthenticated result is `401` with an application JSON error. A Cloudflare error page, HTML SPA response, or connection failure means the origin path is not healthy.
+
+The CLI loads an ignored `.env` relative to its startup working directory. A
+supervisor must therefore start `hone-cli` with the repository root as its
+working directory, or explicitly export the complete reviewed runtime
+environment before launch. Starting an immutable binary from a temporary build
+worktree without setting the working directory can silently omit cloud
+credentials and fall back to local authority. The child processes may use an
+immutable runtime-root directory; the CLI supervisor working directory is the
+important load boundary.
+
+When the intended production authority is cloud, restart is not complete until
+the live `/api/meta` response confirms all of the following:
+
+```text
+cloud_mode=cloud
+cloud_storage_authoritative=true
+cloud_postgres_health.ok=true
+cloud_oss_health.ok=true
+local_durable_dependency_count=0
+```
+
+Also compare the supervisor's actual working directory with the intended
+repository root and fail the deployment if they differ. Do not infer authority
+from a separate `cloud doctor` command launched in a different working
+directory; that command may have loaded a different `.env` from the live
+process.
 
 ## Public Auth Runtime Env
 

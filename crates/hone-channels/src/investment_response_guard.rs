@@ -7486,9 +7486,9 @@ fn append_agent_entity_discovery_context(
     runtime_input.push_str(&format!(
         "\n\n【本轮最终回答契约：由主 Agent 一次完成】\n\
          先由主 Agent 根据完整当前原话判断这是否确属公司、证券、基金、指数、加密资产、市场或板块投研请求。只有确属时才执行下述时间首行和投研模板；否则忽略本节格式，正常回答用户原问题。\n\
-         对于确属的投研请求，仍提供业务工具的轮次只能继续调用工具，或在完整重读当前原话与每条工具结果后单独调用 finish_research；不要在工具轮写终稿。随后不提供工具的完成阶段仍由同一主 Agent 根据本轮证据一次生成当前用户可见回答；服务端不会在成功后追加用户可见内容、改写答案、重跑主 Agent 或否决这个成功答案。\n\
+         对于确属的投研请求，仍提供业务工具的轮次只能继续调用工具，或在完整重读当前原话与每条工具结果后单独提交 finish_research 的结构化证据交接；不要在工具轮写终稿。交接列出 answer_scope、facts（只含 fact ID 与本轮 evidence refs：Web 用 tool_call_id、结果序号和逐字 excerpt，DataFetch 用 JSON Pointer）、只依赖 fact ID 的 inferences，以及 gaps。服务端只机械解析本轮原文/字段并从命中结果注入标题与 URL，不审查或改写答案；坏引用也不得整单打回或对用户拒答。随后不提供工具的完成阶段仍由同一主 Agent 一次生成当前用户可见回答；服务端不追加、改写、重跑或否决成功答案。\n\
          本轮回答的时间锚点固定为北京时间 {answer_time}，它与上方 Session 上下文来自同一次时钟读取。完成当前请求所需的工具调用后，在生成最终回答前自行检查表达：第一可见字符必须是“数”，第一条非空行必须严格以 `数据时间：北京时间 {answer_time}；行情口径：` 开头。禁止在该行之前输出 `---`、Markdown 标题、代码围栏、问候、计划、免责声明或“结论”。\n\
-         `行情口径：` 后的内容必须由你基于本轮 quote 工具证据写出：有 provider timestamp 时明确报价源时间、交易时段与“最新可得、非逐笔”口径；工具未提供的字段不得编造。实体 search/profile 只证明身份，不证明客户、供应商、投资、持股、合同或合作关系。每条外部关系事实中的数字、方向、排名、角色、权利义务、产品型号与估值标签都必须直接出现在本轮同一来源的 title/content/snippet 中，并在该事实旁内联标注这条结果的标题与原始 URL；URL 只用于定位，不能替代内容支持。超出来源字面陈述的判断另起句并以‘推断：’开头；没有直接支持的细节删除，未找到证据只能披露本轮检索边界。首行之后，再按系统大 Prompt 中与用户当前意图匹配的完整模板组织事实、推断、估值、风险与触发条件，不得以流程性拒答代替用户要的分析。"
+         `行情口径：` 后的报价事实也必须来自交接中本轮 quote 的已解析字段；有 provider timestamp 时明确报价源时间与“最新可得、非逐笔”口径，交易时段只有工具明确提供时才写。实体 search/profile 只证明身份，不证明客户、供应商、投资、持股、合同或合作。宽泛关系题由主 Agent 按完整语义自主枚举相关维度，通常分别核查商业/客户供应/技术合同与投资持股，优先 SEC、公司 IR 或双方公告，不得泛搜索后凭记忆收口。每条关系事实的数字、方向、排名、角色、权利义务、型号与估值标签都必须直接来自 facts 的 resolved evidence；终稿在事实旁内联服务端注入的标题与原始 URL。URL 只定位来源，不替代内容支持。超出原文的判断仅可来自 inferences，另起句以‘推断：’开头；缺失只能进 gaps，不能写成否定事实。首行之后按用户实际问题选择回答形状；关系问答保持最小充分，不套无关深度模板，不以流程性拒答代替分析。"
     ));
 }
 
@@ -12712,20 +12712,20 @@ mod tests {
         assert!(answer_contract.contains("只有确属时才执行下述时间首行和投研模板"));
         assert!(answer_contract.contains("否则忽略本节格式，正常回答用户原问题"));
         assert!(answer_contract.contains("仍提供业务工具的轮次只能继续调用工具"));
-        assert!(answer_contract.contains("单独调用 finish_research"));
+        assert!(answer_contract.contains("单独提交 finish_research 的结构化证据交接"));
+        assert!(answer_contract.contains("answer_scope"));
+        assert!(answer_contract.contains("JSON Pointer"));
         assert!(answer_contract.contains("不要在工具轮写终稿"));
-        assert!(answer_contract.contains(
-            "服务端不会在成功后追加用户可见内容、改写答案、重跑主 Agent 或否决这个成功答案"
-        ));
+        assert!(answer_contract.contains("服务端不追加、改写、重跑或否决成功答案"));
         assert!(answer_contract.contains("实体 search/profile 只证明身份"));
         assert!(answer_contract.contains(
-            "每条外部关系事实中的数字、方向、排名、角色、权利义务、产品型号与估值标签都必须直接出现在本轮同一来源的 title/content/snippet 中"
+            "每条关系事实的数字、方向、排名、角色、权利义务、型号与估值标签都必须直接来自 facts 的 resolved evidence"
         ));
-        assert!(answer_contract.contains("在该事实旁内联标注这条结果的标题与原始 URL"));
-        assert!(answer_contract.contains("URL 只用于定位，不能替代内容支持"));
-        assert!(answer_contract.contains("超出来源字面陈述的判断另起句并以‘推断：’开头"));
-        assert!(answer_contract.contains("未找到证据只能披露本轮检索边界"));
-        assert!(answer_contract.ends_with("不得以流程性拒答代替用户要的分析。"));
+        assert!(answer_contract.contains("终稿在事实旁内联服务端注入的标题与原始 URL"));
+        assert!(answer_contract.contains("URL 只定位来源，不替代内容支持"));
+        assert!(answer_contract.contains("超出原文的判断仅可来自 inferences"));
+        assert!(answer_contract.contains("缺失只能进 gaps，不能写成否定事实"));
+        assert!(answer_contract.ends_with("不以流程性拒答代替分析。"));
     }
 
     #[test]

@@ -5661,17 +5661,16 @@ async fn interactive_tickers_enter_the_main_agent_loop_without_preflight_blockin
                 && runtime_input.contains("entity_route")
                 && runtime_input.contains("identity_match")
                 && runtime_input.contains("仍提供业务工具的轮次只能继续调用工具")
-                && runtime_input.contains("单独调用 finish_research")
+                && runtime_input.contains("单独提交 finish_research 的结构化证据交接")
+                && runtime_input.contains("answer_scope")
                 && runtime_input.contains("不要在工具轮写终稿")
-                && runtime_input.contains(
-                    "服务端不会在成功后追加用户可见内容、改写答案、重跑主 Agent 或否决这个成功答案"
-                )
+                && runtime_input.contains("服务端不追加、改写、重跑或否决成功答案")
                 && runtime_input.contains("第一可见字符必须是“数”")
                 && runtime_input.contains("数据时间：北京时间 2026-07-19 09:31；行情口径：")
                 && runtime_input.contains("禁止在该行之前输出 `---`、Markdown 标题")
-                && runtime_input.contains("在该事实旁内联标注这条结果的标题与原始 URL")
+                && runtime_input.contains("终稿在事实旁内联服务端注入的标题与原始 URL")
                 && runtime_input.contains("以‘推断：’开头")
-                && runtime_input.ends_with("不得以流程性拒答代替用户要的分析。"),
+                && runtime_input.ends_with("不以流程性拒答代替分析。"),
             "{input}: {runtime_input}"
         );
     }

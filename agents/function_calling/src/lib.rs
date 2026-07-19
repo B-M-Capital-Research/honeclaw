@@ -21,6 +21,7 @@ use hone_tools::data_fetch::{
     effective_data_fetch_data_type, effective_data_fetch_security_target,
     validated_data_fetch_search_query, validated_data_fetch_symbols,
 };
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::future::Future;
@@ -39,8 +40,8 @@ const AGENT_OVERALL_TIMEOUT_ERROR: &str =
 const AGENT_STEP_TIMEOUT_ERROR: &str = "agent_timeout: function-calling step deadline exceeded";
 const OPEN_AGENT_ENTITY_DISCOVERY_SYSTEM_INSTRUCTION: &str = "【本轮 Agent 工具决策】先完整阅读本轮用户原话，再决定是否调用工具。若问题点名任何公司、证券、基金、指数或加密资产，第一轮先只调用真实工具，不写最终正文：为你识别出的每个点名标的分别并行调用一次 DataFetch search，每个调用都填写互不复用且后续原样复用的 `entity_route`，并填写本次调用自己的 `identity_match`（ticker 用 `exact_symbol`，公司名、中文名或别名用 `name_or_alias`）。不要只处理第一个标的，也不要等服务端按字符串拆分问题。若并非证券/公司研究问题，则按用户实际意图正常处理，不要生造证券实体。";
 const POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION: &str = "【内部研究取证轮】当前已通过 DataFetch 进入金融数据工具链，但证券实体、行情或资产路由证据仍未完整。先由你完整分析用户实际点名的全部公司/证券，不要依赖固定问法扫描器。为每个标的分配一个本轮稳定且互不复用的 `entity_route`（内部短键，不是用户可见结论）；每个标的分别发起一个 search（可在同一轮并行，禁止把多个标的拼成一个 query），并由你依据完整语义在每一次 search 调用里明确填写 call-scoped `identity_match`：query 是 ticker 时用 `exact_symbol`，是公司名、中文名或别名时用 `name_or_alias`；前一次声明不会授权后一次 search，也不要让服务端按大小写或长度猜。后续 refinement、quote、profile/snapshot 与其它该标的调用都原样携带同一路线键。显式 ticker 路线的同代码约束在后续公司名补查中仍持续有效，不能切换成名字里提到该代码的其它产品；有限 provider 分隔写法可等价。若此前调用缺少路线键，补查时重复原 query，或用 `supersedes_query` 逐字指向那次旧 query，以便只迁移该路线。`refines_query` 与 `supersedes_query` 严格互斥，每次 search 最多填写一个：前者只连接同路线的空结果补查，后者只迁移一条漏写路线键的旧 query。对每条路线选中的标准 symbol 执行同代码 quote/profile；crypto 使用 search 返回的结构化 CRYPTO 路由与 crypto_quote，不要求 stock profile。若中文名、别名或代码搜索为空，在同一 `entity_route` 下换用公司正式英文名或标准 ticker 做精确补查；可在 `refines_query` 中逐字填写原始空 query，但不得另建或复用其它实体的路线来抵消。随后按用户原始问题继续取得财务、新闻、网页、公告、持仓或其它业务证据。尽量在同一轮批量或并行调用互不依赖的工具。不得把 data_fetch(search) 或 profile 当成公司关系、事件或因果证据。内部完成信号只是 Agent 自己结束研究的方式，不是服务端事实审查；只有合理取证已完成或来源明确不可得并需披露时才使用。";
-const ACTIVE_RESEARCH_SYSTEM_INSTRUCTION: &str = "【内部研究工具轮】当前仍是工具轮，同时提供真实业务工具和 `finish_research`。请由同一 Agent 重新阅读完整用户原话与本轮真实工具结果；当前结构状态只覆盖 Agent 已声明的路线，不证明点名实体集合完整、工具调用成功或业务证据充分。证据不足时本轮只调用当前最需要的真实业务工具；合理研究已经完成，或必要来源经实际尝试后明确不可得并可如实披露时，本轮只调用 `finish_research` 进入无工具终稿。不要把完成信号与业务工具混用，也不要在工具轮写最终正文。实体 search/profile 只证明身份，不证明公司关系；关系、事件和因果结论必须先取得本轮 web/news/公告证据。";
-const FINISH_RESEARCH_SYSTEM_INSTRUCTION: &str = "【显式完成后的终稿阶段】Agent 已在同一业务工具循环中显式确认本轮合理的研究与工具尝试完成，现由同一 Agent 和同一上下文进入无工具终稿阶段。这是证据整理而不是新的研究规划：直接组织终稿，不要重新展开工具决策或冗长隐藏推演。只能使用用户请求与此前已成功返回的业务工具结果；`reasoning_content`、隐藏思考、未采用草稿和内部状态文本都不是事实证据。缺失证据应如实披露但不构成拒答。";
+const ACTIVE_RESEARCH_SYSTEM_INSTRUCTION: &str = "【内部研究工具轮】当前仍是工具轮，同时提供真实业务工具和 `finish_research`。请由同一 Agent 重新阅读完整用户原话与本轮真实工具结果；当前结构状态只覆盖 Agent 已声明的路线，不证明点名实体集合完整、工具调用成功或业务证据充分。证据不足时本轮只调用当前最需要的真实业务工具；合理研究已经完成，或必要来源经实际尝试后明确不可得并可如实披露时，本轮只提交 `finish_research` 的结构化证据交接进入无工具终稿。不要把完成信号与业务工具混用，也不要在工具轮写最终正文。实体 search/profile 只证明身份，不证明公司关系；关系、事件和因果结论必须先取得本轮 web/news/公告证据。对宽泛关系问题，由你从完整语义自主枚举与当前问题有关的关系轴；通常至少分别核查商业/客户供应/技术合同与投资持股，优先查 SEC、公司 IR 或双方公告，不能用一次泛搜索或“没有搜到”推出否定事实。准备写入终稿的每个外部事实都要在 finish 交接里引用本轮 tool call 与逐字 excerpt/JSON 字段；其余内容进入 gaps，不得从模型记忆补齐。";
+const FINISH_RESEARCH_SYSTEM_INSTRUCTION: &str = "【显式完成后的终稿阶段】Agent 已在同一业务工具循环中提交本轮结构化证据交接，现由同一 Agent 和同一上下文进入无工具终稿阶段。这是证据整理而不是新的研究规划：直接组织最小充分终稿，不要重新展开工具决策、套用与问题无关的深度模板或冗长隐藏推演。只有服务端注入的 Session 时间前缀本身不需要外部证据；行情口径中的报价、币种、涨跌与报价源时间仍必须来自交接中的 resolved_evidence 或 fallback_evidence。外部事实只能由这些机械解析出的原文或字段自行归纳；交接不包含任何已验证的自由文本 claim。推断只能来自交接中 inferences 并明确标记，缺失维度只能按 gaps 披露。不得在终稿新增交接外事实。`reasoning_content`、隐藏思考、未采用草稿和内部状态文本都不是事实证据。缺失证据不构成拒答。";
 const FINAL_ANSWER_EVIDENCE_CONTRACT: &str = concat!(
     "`reasoning_content`、隐藏思考、未采用草稿、内部状态文本以及模型记忆都不是事实证据，不得从中提取或补齐关系、日期、行情、财务或估值事实。",
     "数据时间只能采用本轮 Session 北京时间；quote 的 provider timestamp 只能写在‘行情口径’里，绝不能冒充数据时间。没有行情证据时仍保留‘行情口径’字段并说明范围，不得伪造报价时间或盘前/盘后时段。",
@@ -48,9 +49,115 @@ const FINAL_ANSWER_EVIDENCE_CONTRACT: &str = concat!(
     "年度数据不得写成 TTM；单季数据必须标明季度与报告期，年化时必须显示是“单季×4”还是“最近四季求和”及算术、分子分母口径，并披露季节性限制。",
     "未取得净债务或企业价值时不得使用 EV 或 EV/EBITDA 标签，也不得把市值/EBITDA 写成 EV/EBITDA。quote 返回的 PE 未明确标注 forward 时不得称为 Forward PE；已核验期间 EBITDA 为正时不得声称公司需到未来才转正。",
     "没有直接证据与完整输入时，不得给出目标价、概率、仓位比例、止损位或精确支撑位；第三方分析师目标价必须标注为第三方聚合口径与对应时间，不得直接作为交易锚点。",
-    "某项证据不可得时，披露缺项并继续完成能够被当前证据支持的分析，不得因此拒绝整个问题。不要提及 finish_research、内部协议、工具循环、终态原因或这条提示。"
+    "某项证据不可得时，披露缺项并继续完成能够被当前证据支持的分析，不得因此拒绝整个问题。回答范围和篇幅跟随用户原问题：关系问答只回答已核验关系、必要推断和关键缺口，不得为凑单股模板扩写公司介绍、风险清单或交易建议。不要提及 finish_research、内部协议、工具循环、终态原因或这条提示。"
 );
-const FINAL_RELATIONSHIP_DELETION_CHECK: &str = "【最后一步：逐句建立关系 claim ledger】每条外部关系事实都必须能逐字指向本轮同一条搜索结果的 title/content/snippet，并在该事实旁内联标注这条结果的标题与原始 URL；URL 中没有直接出现的数字、关系方向、排名、角色、权利义务、产品型号或估值标签一律删除。任何超出来源字面陈述的判断另起句并以‘推断：’开头；无法建立这种一一对应时，只披露本轮来源实际写到的有限范围。";
+const FINAL_RELATIONSHIP_DELETION_CHECK: &str = "【最后一步：严格服从结构化交接】逐句对照下方 facts / resolved_evidence / inferences / gaps。每条外部关系事实都必须来自同一 fact 的已解析证据，并在句旁内联该证据的标题与原始 URL；客户/供应商方向、核心/最大/头部、持股或无股权、具体产品型号、合同数量、议价权与估值标签都不得从常识、搜索顺序或其它来源扩写。否定关系必须有直接否定 excerpt；gap 或未检索到绝不等于不存在。任何超出来源字面的判断只能使用交接里已有 inference，另起句并以‘推断：’开头。";
+
+const MAX_RESEARCH_HANDOFF_BYTES: usize = 32 * 1024;
+const MAX_RESEARCH_FACTS: usize = 24;
+const MAX_RESEARCH_INFERENCES: usize = 16;
+const MAX_RESEARCH_GAPS: usize = 16;
+const MAX_RESEARCH_REFS_PER_FACT: usize = 6;
+const MAX_RESEARCH_TEXT_CHARS: usize = 1200;
+const MIN_WEB_EXCERPT_CHARS: usize = 8;
+const MAX_FALLBACK_EVIDENCE_ITEMS: usize = 64;
+const MAX_FALLBACK_SCANNED_SCALARS_PER_TOOL: usize = 256;
+const MAX_FALLBACK_ITEMS_PER_TOOL: usize = 32;
+const MAX_INTERNAL_VALIDATION_WARNINGS: usize = 8;
+const MAX_UNAVAILABLE_FINISH_CORRECTIONS: u32 = 1;
+const EMPTY_TERMINAL_VISIBLE_CONTENT_ERROR: &str =
+    "terminal synthesis returned empty visible content";
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ResearchHandoff {
+    answer_scope: String,
+    facts: Vec<ResearchHandoffFact>,
+    inferences: Vec<ResearchHandoffInference>,
+    gaps: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ResearchHandoffFact {
+    id: String,
+    evidence: Vec<ResearchEvidenceRef>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ResearchHandoffInference {
+    claim: String,
+    premise_fact_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ResearchEvidenceRef {
+    tool_call_id: String,
+    result_number: Option<usize>,
+    exact_excerpt: Option<String>,
+    json_pointer: Option<String>,
+}
+
+/// Mechanically narrows fallback extraction to the source locations that the
+/// Agent selected in its finish handoff. This is intentionally not an entity
+/// or answer-quality classifier: it only prevents unrelated current-turn tool
+/// results from being replayed merely because they happened to succeed.
+#[derive(Debug, Clone, Default)]
+struct FallbackEvidenceScope {
+    web_result_numbers: BTreeMap<String, BTreeSet<usize>>,
+    data_json_pointers: BTreeMap<String, BTreeSet<String>>,
+}
+
+impl FallbackEvidenceScope {
+    fn observe_reference(&mut self, reference: &ResearchEvidenceRef) {
+        let tool_call_id = reference.tool_call_id.trim();
+        if tool_call_id.is_empty() {
+            return;
+        }
+        match (reference.result_number, reference.json_pointer.as_deref()) {
+            (Some(result_number), None) if result_number > 0 => {
+                self.web_result_numbers
+                    .entry(tool_call_id.to_string())
+                    .or_default()
+                    .insert(result_number);
+            }
+            (None, Some(json_pointer))
+                if json_pointer.trim().starts_with("/data/")
+                    && json_pointer.trim().chars().count() <= MAX_RESEARCH_TEXT_CHARS =>
+            {
+                self.data_json_pointers
+                    .entry(tool_call_id.to_string())
+                    .or_default()
+                    .insert(json_pointer.trim().to_string());
+            }
+            _ => {}
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.web_result_numbers.is_empty() && self.data_json_pointers.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ValidatedResearchHandoff {
+    answer_scope: String,
+    facts: Vec<ValidatedResearchFact>,
+    inferences: Vec<ResearchHandoffInference>,
+    gaps: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    fallback_evidence: Vec<Value>,
+    #[serde(skip)]
+    validation_warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ValidatedResearchFact {
+    id: String,
+    resolved_evidence: Vec<Value>,
+}
 
 #[async_trait]
 pub trait FunctionCallingStreamObserver: Send + Sync {
@@ -1033,51 +1140,6 @@ impl FunctionCallingAgent {
         messages
     }
 
-    fn build_current_research_messages(
-        &self,
-        context: &AgentContext,
-        additional_system_instruction: Option<&str>,
-        message_start: usize,
-    ) -> Vec<Message> {
-        let mut messages =
-            self.build_messages_from_index(context, additional_system_instruction, message_start);
-        let message_start = message_start.min(context.messages.len());
-        let mut prior_user_requests = context.messages[..message_start]
-            .iter()
-            .rev()
-            .filter(|message| message.role == "user")
-            .filter_map(|message| message.content.as_deref())
-            .filter(|content| !content.trim().is_empty())
-            .take(3)
-            .map(|content| content.chars().take(2_000).collect::<String>())
-            .collect::<Vec<_>>();
-        prior_user_requests.reverse();
-        if !prior_user_requests.is_empty() {
-            let reference = Message {
-                role: "user".to_string(),
-                content: Some(format!(
-                    "【历史用户请求，仅用于理解本轮指代与用户指定的分析口径，不是当前事实证据】\n{}",
-                    prior_user_requests
-                        .iter()
-                        .map(|request| format!("- {request}"))
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                )),
-                reasoning_content: None,
-                tool_calls: None,
-                tool_call_id: None,
-                name: None,
-            };
-            let insert_at = usize::from(
-                messages
-                    .first()
-                    .is_some_and(|message| message.role == "system"),
-            );
-            messages.insert(insert_at, reference);
-        }
-        messages
-    }
-
     fn record_audit(
         &self,
         context: &AgentContext,
@@ -1489,6 +1551,12 @@ impl FunctionCallingAgent {
             validate_terminal_recovery_content(&visible_content, &committed_prefix)?;
         }
 
+        if visible_content.trim().is_empty() {
+            return Err(hone_core::HoneError::Llm(
+                EMPTY_TERMINAL_VISIBLE_CONTENT_ERROR.to_string(),
+            ));
+        }
+
         Ok(ChatResponse {
             // Some compatible providers encode hidden reasoning inside the
             // content stream as <think> blocks. Return the same formatter-
@@ -1508,28 +1576,29 @@ impl FunctionCallingAgent {
         tool_calls_made: Vec<ToolCallMade>,
         completed_iterations: u32,
         turn_message_start: usize,
+        handoff: &ValidatedResearchHandoff,
         required_prefix: Option<&str>,
         overall_deadline: Option<tokio::time::Instant>,
     ) -> AgentResponse {
         let iterations = completed_iterations.saturating_add(1);
-        // Initial and business rounds retain bounded conversation history
-        // so the Agent can understand follow-ups. Final factual synthesis must
-        // not let an older ticker, quote, or assistant draft masquerade as
-        // current-turn evidence. Keep only a bounded, explicitly non-evidence
-        // digest of prior user requests for follow-up pronouns/analysis
-        // constraints, followed by this turn's user message and tool results.
-        let mut terminal_messages = self.build_current_research_messages(
+        // The initial discovery round may use bounded conversation history to
+        // resolve a follow-up pronoun. Once this turn has produced concrete
+        // entity routes and evidence, neither business follow-ups nor terminal
+        // synthesis need old user requests. Starting at turn_message_start
+        // prevents a stale ticker or old requested format from contaminating
+        // the current answer.
+        let mut terminal_messages = self.build_messages_from_index(
             context,
             Some(FINISH_RESEARCH_SYSTEM_INSTRUCTION),
             turn_message_start,
         );
-        // Provider-issued reasoning signatures may be required to replay a
-        // tool-result follow-up on MiniMax/Mimo-compatible APIs. Preserve them
-        // on the wire but keep assistant prose beside tool calls blank; the
-        // terminal contract explicitly declares reasoning non-evidence, and
-        // the final persisted turn never stores it.
-        scrub_research_evidence_messages(&mut terminal_messages, false);
-        let terminal_prompt = terminal_synthesis_prompt(required_prefix);
+        // The validated handoff is the compact current-turn evidence boundary.
+        // Do not replay assistant drafts, tool-call protocol frames, or full raw
+        // tool payloads into the terminal model: doing so both weakens that
+        // boundary and duplicates the largest part of the prompt. Retain only
+        // system/user intent; resolved evidence is appended below.
+        terminal_messages.retain(|message| matches!(message.role.as_str(), "system" | "user"));
+        let terminal_prompt = terminal_synthesis_prompt(required_prefix, handoff);
         terminal_messages.push(Message {
             role: "user".to_string(),
             content: Some(terminal_prompt),
@@ -1595,14 +1664,18 @@ impl FunctionCallingAgent {
                         "has_tools": false,
                         "finish_research": true,
                         "terminal_reason": "explicit_finish",
-                        "terminal_recovery_eligible": committed_prefix.is_some(),
+                        "terminal_recovery_eligible": committed_prefix.is_some()
+                            || error.to_string().contains(EMPTY_TERMINAL_VISIBLE_CONTENT_ERROR),
                         "requested_tool_choice": tool_choice_mode_name(terminal_tool_choice.requested),
                         "effective_tool_choice": terminal_tool_choice.effective.map(tool_choice_mode_name),
                         "tool_choice_fallback": terminal_tool_choice.fallback,
                     }),
                     None,
                 );
-                let Some(committed_prefix) = committed_prefix else {
+                let empty_terminal = error
+                    .to_string()
+                    .contains(EMPTY_TERMINAL_VISIBLE_CONTENT_ERROR);
+                if committed_prefix.is_none() && !empty_terminal {
                     return AgentResponse {
                         content: String::new(),
                         tool_calls_made,
@@ -1610,7 +1683,7 @@ impl FunctionCallingAgent {
                         success: false,
                         error: Some(error.to_string()),
                     };
-                };
+                }
 
                 if canonical_agent_timeout(&error).is_some() {
                     return AgentResponse {
@@ -1627,7 +1700,7 @@ impl FunctionCallingAgent {
                 // business tools. Retry this terminal transport exactly once,
                 // buffered, against the same evidence and with tools disabled.
                 let recovery_messages =
-                    terminal_recovery_messages(&terminal_messages, &committed_prefix);
+                    terminal_recovery_messages(&terminal_messages, committed_prefix.as_deref());
                 let recovery_request_payload = serde_json::json!({
                     "messages": recovery_messages.clone(),
                     "tools": Vec::<Value>::new(),
@@ -1647,7 +1720,9 @@ impl FunctionCallingAgent {
                 )
                 .await
                 .and_then(|response| {
-                    validate_terminal_recovery_content(&response.content, &committed_prefix)?;
+                    if let Some(committed_prefix) = committed_prefix.as_deref() {
+                        validate_terminal_recovery_content(&response.content, committed_prefix)?;
+                    }
                     Ok(response)
                 });
 
@@ -1670,7 +1745,7 @@ impl FunctionCallingAgent {
                                 "terminal_reason": "explicit_finish",
                                 "terminal_recovery": true,
                                 "recovery_attempt": 1,
-                                "committed_prefix_bytes": committed_prefix.len(),
+                                "committed_prefix_bytes": committed_prefix.as_deref().map_or(0, str::len),
                                 "requested_tool_choice": tool_choice_mode_name(recovery_tool_choice.requested),
                                 "effective_tool_choice": recovery_tool_choice.effective.map(tool_choice_mode_name),
                                 "tool_choice_fallback": recovery_tool_choice.fallback,
@@ -1694,7 +1769,7 @@ impl FunctionCallingAgent {
                                 "terminal_reason": "explicit_finish",
                                 "terminal_recovery": true,
                                 "recovery_attempt": 1,
-                                "committed_prefix_bytes": committed_prefix.len(),
+                                "committed_prefix_bytes": committed_prefix.as_deref().map_or(0, str::len),
                                 "initial_terminal_error": error.to_string(),
                                 "requested_tool_choice": tool_choice_mode_name(recovery_tool_choice.requested),
                                 "effective_tool_choice": recovery_tool_choice.effective.map(tool_choice_mode_name),
@@ -1729,12 +1804,20 @@ impl FunctionCallingAgent {
     }
 }
 
-fn terminal_recovery_messages(messages: &[Message], committed_prefix: &str) -> Vec<Message> {
+fn terminal_recovery_messages(
+    messages: &[Message],
+    committed_prefix: Option<&str>,
+) -> Vec<Message> {
     let mut recovery_messages = messages.to_vec();
-    let encoded_prefix = Value::String(committed_prefix.to_string()).to_string();
-    let recovery_constraint = format!(
-        "\n【终稿传输恢复】上一次终稿流在已提交首行后中断。请基于完全相同的事实证据重新生成完整终稿；第一个字节起必须逐字输出以下 JSON 字符串解码后的已提交前缀，前面不得有任何字符：{encoded_prefix}。前缀后必须继续输出非空正文，其余事实边界与格式要求不变。不要提及本次传输恢复。"
-    );
+    let recovery_constraint = match committed_prefix {
+        Some(committed_prefix) => {
+            let encoded_prefix = Value::String(committed_prefix.to_string()).to_string();
+            format!(
+                "\n【终稿传输恢复】上一次终稿流在已提交首行后中断。请基于完全相同的事实证据重新生成完整终稿；第一个字节起必须逐字输出以下 JSON 字符串解码后的已提交前缀，前面不得有任何字符：{encoded_prefix}。前缀后必须继续输出非空正文，其余事实边界与格式要求不变。不要提及本次传输恢复。"
+            )
+        }
+        None => "\n【终稿传输恢复】上一次终稿流正常结束但没有可见正文。请基于完全相同的用户问题与事实证据直接生成一次非空完整终稿；不得调用工具、重新研究或提及本次传输恢复。".to_string(),
+    };
     if let Some(prompt) = recovery_messages
         .last_mut()
         .and_then(|message| message.content.as_mut())
@@ -1782,10 +1865,65 @@ fn finish_research_tool_schema() -> Value {
         "type": "function",
         "function": {
             "name": FINISH_RESEARCH_TOOL_NAME,
-            "description": "Agent-owned terminal signal available in the same business-tool loop. After all reasonable research attempts for the user's original question are complete, prefer calling this signal by itself over writing a long final body in a tool-capable round; Hone will immediately ask the same Agent for the streamable final answer with tools disabled. A required source may be explicitly unavailable when that gap will be disclosed. Identity search/profile is never enough for company-relationship, event, or causal claims: those require current web/news/filing evidence. Valuation labels require the actual denominator period and inputs. Never call it together with another function.",
+            "description": "Agent-owned structured evidence handoff. Call it by itself only after rereading the complete original question and all current tool results. Group current-turn evidence in facts without writing a claim: web evidence cites the exact tool_call_id, 1-based result_number, and verbatim excerpt; Hone injects the title and URL from that result. Structured DataFetch evidence cites the tool_call_id and one scalar JSON Pointer. Put only evidence-derived judgments in inferences and reference their premise fact IDs. Put attempted but unresolved dimensions in gaps; absence is never a negative fact. For a broad relationship question, first investigate the relevant commercial/customer-supplier/technology-contract and investment/ownership dimensions, preferably through SEC, company IR, or both parties' announcements. Hone checks only this provenance protocol, never the semantic answer, and then asks the same Agent for one tool-free final. Never mix this call with another function and never place final prose in the tool round.",
             "parameters": {
                 "type": "object",
-                "properties": {},
+                "properties": {
+                    "answer_scope": {
+                        "type": "string",
+                        "maxLength": MAX_RESEARCH_TEXT_CHARS,
+                        "description": "Concise description of exactly what the user's original question asks; use it to keep the final answer minimal and on-scope."
+                    },
+                    "facts": {
+                        "type": "array",
+                        "maxItems": MAX_RESEARCH_FACTS,
+                        "description": "Evidence groups available to the final answer; do not put a free-text factual claim here.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {"type": "string", "maxLength": 64, "description": "Unique short evidence-group ID such as F1; this is not a factual claim."},
+                                "evidence": {
+                                    "type": "array",
+                                    "maxItems": MAX_RESEARCH_REFS_PER_FACT,
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "tool_call_id": {"type": "string", "maxLength": 512},
+                                            "result_number": {"type": "integer", "minimum": 1, "description": "Required only for web_excerpt."},
+                                            "exact_excerpt": {"type": "string", "maxLength": MAX_RESEARCH_TEXT_CHARS, "description": "For Web evidence: a verbatim substring from that result's title/content/snippet. Use this together with result_number and omit json_pointer."},
+                                            "json_pointer": {"type": "string", "maxLength": MAX_RESEARCH_TEXT_CHARS, "description": "For DataFetch evidence: RFC 6901 pointer to one scalar field, for example /data/0/price. Omit result_number and exact_excerpt."}
+                                        },
+                                        "required": ["tool_call_id"],
+                                        "additionalProperties": false
+                                    }
+                                }
+                            },
+                            "required": ["id", "evidence"],
+                            "additionalProperties": false
+                        }
+                    },
+                    "inferences": {
+                        "type": "array",
+                        "maxItems": MAX_RESEARCH_INFERENCES,
+                        "description": "Judgments derived only from submitted fact IDs; these will be labeled as inference.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "claim": {"type": "string", "maxLength": MAX_RESEARCH_TEXT_CHARS},
+                                "premise_fact_ids": {"type": "array", "maxItems": MAX_RESEARCH_FACTS, "items": {"type": "string", "maxLength": 64}}
+                            },
+                            "required": ["claim", "premise_fact_ids"],
+                            "additionalProperties": false
+                        }
+                    },
+                    "gaps": {
+                        "type": "array",
+                        "maxItems": MAX_RESEARCH_GAPS,
+                        "description": "Material dimensions actually attempted but not verified; never convert a gap into a negative fact.",
+                        "items": {"type": "string", "maxLength": MAX_RESEARCH_TEXT_CHARS}
+                    }
+                },
+                "required": ["answer_scope", "facts", "inferences", "gaps"],
                 "additionalProperties": false
             }
         }
@@ -1796,15 +1934,903 @@ fn is_finish_research_call(tool_call: &ToolCall) -> bool {
     tool_call.function.name == FINISH_RESEARCH_TOOL_NAME
 }
 
-fn is_valid_finish_research_call(tool_call: &ToolCall) -> bool {
-    is_finish_research_call(tool_call)
-        && serde_json::from_str::<Value>(&tool_call.function.arguments)
-            .ok()
-            .is_some_and(|arguments| {
-                arguments
-                    .as_object()
-                    .is_some_and(|arguments| arguments.is_empty())
-            })
+fn parse_finish_research_handoff(tool_call: &ToolCall) -> Result<ResearchHandoff, String> {
+    if !is_finish_research_call(tool_call) {
+        return Err("not a finish_research call".to_string());
+    }
+    if tool_call.function.arguments.len() > MAX_RESEARCH_HANDOFF_BYTES {
+        return Err(format!(
+            "handoff exceeds {MAX_RESEARCH_HANDOFF_BYTES} bytes"
+        ));
+    }
+    serde_json::from_str::<ResearchHandoff>(&tool_call.function.arguments)
+        .map_err(|error| format!("handoff JSON does not match the schema: {error}"))
+}
+
+fn json_pointer_targets_error_field(json_pointer: &str) -> bool {
+    json_pointer.split('/').skip(1).any(|segment| {
+        matches!(
+            segment.to_ascii_lowercase().as_str(),
+            "error" | "errors" | "iserror"
+        ) || segment.to_ascii_lowercase().ends_with("_error")
+    })
+}
+
+fn fallback_data_value_prefix(payload: &Value, json_pointer: &str) -> Option<String> {
+    let pointer = json_pointer.trim();
+    if !pointer.starts_with("/data/")
+        || pointer.chars().count() > MAX_RESEARCH_TEXT_CHARS
+        || json_pointer_targets_error_field(pointer)
+    {
+        return None;
+    }
+    match payload.pointer(pointer) {
+        Some(Value::Object(_)) => return Some(pointer.to_string()),
+        Some(Value::Bool(_) | Value::Number(_) | Value::String(_)) | None => {}
+        // An explicitly selected array or null is not a leaf typo and must
+        // never widen to its parent object. In particular, `/data/quote`
+        // cannot authorize unrelated `/data/profile` or `/data/news` fields.
+        Some(Value::Array(_) | Value::Null) => return None,
+    }
+    let parent = pointer.rsplit_once('/').map(|(parent, _)| parent)?;
+    if parent.is_empty() || !payload.pointer(parent).is_some_and(Value::is_object) {
+        return None;
+    }
+    // A selected scalar, or a misspelled leaf beneath a real selected object,
+    // may recover sibling fields from that exact object. Arrays and roots are
+    // never expanded, which isolates batched entities and financial periods.
+    Some(parent.to_string())
+}
+
+fn fallback_scope_from_handoff(handoff: &ResearchHandoff) -> FallbackEvidenceScope {
+    let mut scope = FallbackEvidenceScope::default();
+    for fact in handoff.facts.iter().take(MAX_RESEARCH_FACTS) {
+        for reference in fact.evidence.iter().take(MAX_RESEARCH_REFS_PER_FACT) {
+            scope.observe_reference(reference);
+        }
+    }
+    scope
+}
+
+fn fallback_scope_from_unvalidated_value(value: &Value) -> FallbackEvidenceScope {
+    let mut scope = FallbackEvidenceScope::default();
+    let Some(facts) = value.get("facts").and_then(Value::as_array) else {
+        return scope;
+    };
+    for fact in facts.iter().take(MAX_RESEARCH_FACTS) {
+        let Some(evidence) = fact.get("evidence").and_then(Value::as_array) else {
+            continue;
+        };
+        for reference in evidence.iter().take(MAX_RESEARCH_REFS_PER_FACT) {
+            let Some(tool_call_id) = reference.get("tool_call_id").and_then(Value::as_str) else {
+                continue;
+            };
+            let recovered = ResearchEvidenceRef {
+                tool_call_id: tool_call_id.to_string(),
+                result_number: reference
+                    .get("result_number")
+                    .and_then(Value::as_u64)
+                    .and_then(|number| usize::try_from(number).ok()),
+                exact_excerpt: None,
+                json_pointer: reference
+                    .get("json_pointer")
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string),
+            };
+            scope.observe_reference(&recovered);
+        }
+    }
+    scope
+}
+
+fn fallback_scope_from_finish_calls(finish_calls: &[&ToolCall]) -> FallbackEvidenceScope {
+    for finish_call in finish_calls {
+        if finish_call.function.arguments.len() > MAX_RESEARCH_HANDOFF_BYTES {
+            continue;
+        }
+        let Ok(value) = serde_json::from_str::<Value>(&finish_call.function.arguments) else {
+            continue;
+        };
+        let recovered = fallback_scope_from_unvalidated_value(&value);
+        if !recovered.is_empty() {
+            // Duplicated provider controls are alternatives, not additive
+            // evidence authority. Use the first syntactically readable scoped
+            // submission and never union mutually inconsistent duplicates.
+            return recovered;
+        }
+    }
+    FallbackEvidenceScope::default()
+}
+
+fn bounded_research_text(label: &str, value: &str, allow_empty: bool) -> Result<String, String> {
+    let trimmed = value.trim();
+    if !allow_empty && trimmed.is_empty() {
+        return Err(format!("{label} is empty"));
+    }
+    if trimmed.chars().count() > MAX_RESEARCH_TEXT_CHARS {
+        return Err(format!(
+            "{label} exceeds {MAX_RESEARCH_TEXT_CHARS} characters"
+        ));
+    }
+    Ok(trimmed.to_string())
+}
+
+fn current_turn_tool_result<'a>(
+    context: &'a AgentContext,
+    turn_message_start: usize,
+    tool_call_id: &str,
+) -> Option<(&'a str, &'a str)> {
+    context.messages[turn_message_start.min(context.messages.len())..]
+        .iter()
+        .find(|message| {
+            message.role == "tool"
+                && message.tool_call_id.as_deref() == Some(tool_call_id)
+                && message.name.as_deref().is_some()
+                && message.content.as_deref().is_some()
+        })
+        .and_then(|message| Some((message.name.as_deref()?, message.content.as_deref()?)))
+}
+
+fn current_turn_tool_call(
+    context: &AgentContext,
+    turn_message_start: usize,
+    tool_call_id: &str,
+) -> Option<ToolCall> {
+    context.messages[turn_message_start.min(context.messages.len())..]
+        .iter()
+        .filter_map(|message| message.tool_calls.as_ref())
+        .flatten()
+        .filter_map(|tool_call| serde_json::from_value::<ToolCall>(tool_call.clone()).ok())
+        .find(|tool_call| tool_call.id == tool_call_id)
+}
+
+fn current_turn_data_fetch_type(
+    context: &AgentContext,
+    turn_message_start: usize,
+    tool_call_id: &str,
+) -> Option<String> {
+    let tool_call = current_turn_tool_call(context, turn_message_start, tool_call_id)?;
+    (tool_call.function.name == "data_fetch")
+        .then(|| data_fetch_data_type(&tool_call))
+        .flatten()
+}
+
+fn validate_web_evidence_ref(
+    tool_name: &str,
+    tool_content: &str,
+    tool_call_id: &str,
+    result_number: usize,
+    exact_excerpt: &str,
+) -> Result<Value, String> {
+    if tool_name != "web_search" {
+        return Err(format!(
+            "tool_call_id {tool_call_id} is {tool_name}, not web_search"
+        ));
+    }
+    let parsed: Value = serde_json::from_str(tool_content)
+        .map_err(|_| format!("tool_call_id {tool_call_id} did not return JSON"))?;
+    let results = parsed
+        .get("results")
+        .and_then(Value::as_array)
+        .ok_or_else(|| format!("tool_call_id {tool_call_id} has no results array"))?;
+    let result_index = result_number
+        .checked_sub(1)
+        .ok_or_else(|| "result_number is 1-based and must be at least 1".to_string())?;
+    let result = results.get(result_index).ok_or_else(|| {
+        format!("tool_call_id {tool_call_id} has no result_number {result_number}")
+    })?;
+    let actual_url = result
+        .get("url")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            format!("tool_call_id {tool_call_id} result_number {result_number} has no citable URL")
+        })?;
+    let excerpt = bounded_research_text("exact_excerpt", exact_excerpt, false)?;
+    if excerpt.chars().count() < MIN_WEB_EXCERPT_CHARS {
+        return Err(format!(
+            "exact_excerpt must contain at least {MIN_WEB_EXCERPT_CHARS} characters"
+        ));
+    }
+    let matching_field = ["title", "content", "snippet"]
+        .into_iter()
+        .find(|field| {
+            result
+                .get(*field)
+                .and_then(Value::as_str)
+                .is_some_and(|value| value.contains(&excerpt))
+        })
+        .ok_or_else(|| {
+            format!(
+                "exact_excerpt is not a verbatim substring of tool_call_id {tool_call_id} result_number {result_number} title/content/snippet"
+            )
+        })?;
+    Ok(serde_json::json!({
+        "source_kind": "web_excerpt",
+        "tool_call_id": tool_call_id,
+        "result_number": result_number,
+        "field": matching_field,
+        "title": result.get("title").and_then(Value::as_str),
+        "url": actual_url,
+        "exact_excerpt": excerpt,
+    }))
+}
+
+fn validate_data_evidence_ref(
+    tool_name: &str,
+    tool_content: &str,
+    tool_call_id: &str,
+    json_pointer: &str,
+    data_type: &str,
+) -> Result<Value, String> {
+    if tool_name != "data_fetch" {
+        return Err(format!(
+            "tool_call_id {tool_call_id} is {tool_name}, not data_fetch"
+        ));
+    }
+    if data_type == "search" {
+        return Err(
+            "DataFetch search results are identity candidates and cannot be terminal facts"
+                .to_string(),
+        );
+    }
+    let pointer = bounded_research_text("json_pointer", json_pointer, false)?;
+    if !pointer.starts_with('/') {
+        return Err("json_pointer must be a non-root RFC 6901 pointer".to_string());
+    }
+    let parsed: Value = serde_json::from_str(tool_content)
+        .map_err(|_| format!("tool_call_id {tool_call_id} did not return JSON"))?;
+    if tool_result_is_failure(&parsed) {
+        return Err(format!(
+            "tool_call_id {tool_call_id} returned a failed/error result"
+        ));
+    }
+    if json_pointer_targets_error_field(&pointer) {
+        return Err("json_pointer must not resolve an error field".to_string());
+    }
+    let resolved = parsed.pointer(&pointer).ok_or_else(|| {
+        format!("json_pointer {pointer} does not exist in tool_call_id {tool_call_id}")
+    })?;
+    if !matches!(
+        resolved,
+        Value::Bool(_) | Value::Number(_) | Value::String(_)
+    ) || resolved
+        .as_str()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err(format!(
+            "json_pointer {pointer} must resolve to one non-null scalar field"
+        ));
+    }
+    let encoded = serde_json::to_string(resolved).unwrap_or_default();
+    if encoded.chars().count() > MAX_RESEARCH_TEXT_CHARS {
+        return Err(format!(
+            "json_pointer {pointer} resolves to more than {MAX_RESEARCH_TEXT_CHARS} characters; point to a narrower field"
+        ));
+    }
+    Ok(serde_json::json!({
+        "source_kind": "data_field",
+        "tool_call_id": tool_call_id,
+        "tool_name": tool_name,
+        "json_pointer": pointer,
+        "value": resolved,
+    }))
+}
+
+fn tool_result_is_failure(value: &Value) -> bool {
+    if value.get("isError").and_then(Value::as_bool) == Some(true) {
+        return true;
+    }
+    if value
+        .get("status")
+        .and_then(Value::as_str)
+        .is_some_and(|status| {
+            matches!(
+                status.trim().to_ascii_lowercase().as_str(),
+                "failed" | "failure" | "error"
+            )
+        })
+    {
+        return true;
+    }
+    value.get("error").is_some_and(|error| match error {
+        Value::Null => false,
+        Value::String(text) => !text.trim().is_empty(),
+        Value::Array(items) => !items.is_empty(),
+        Value::Object(map) => !map.is_empty(),
+        _ => true,
+    })
+}
+
+fn push_validation_warning(warnings: &mut Vec<String>, warning: impl Into<String>) {
+    if warnings.len() < MAX_INTERNAL_VALIDATION_WARNINGS {
+        warnings.push(warning.into());
+    }
+}
+
+fn truncate_research_text(value: &str) -> String {
+    value.chars().take(MAX_RESEARCH_TEXT_CHARS).collect()
+}
+
+fn json_pointer_segment(value: &str) -> String {
+    value.replace('~', "~0").replace('/', "~1")
+}
+
+fn collect_scalar_fallback_evidence(
+    value: &Value,
+    path: &str,
+    tool_call_id: &str,
+    output: &mut Vec<Value>,
+) {
+    if output.len() >= MAX_FALLBACK_SCANNED_SCALARS_PER_TOOL {
+        return;
+    }
+    match value {
+        Value::Bool(_) | Value::Number(_) => output.push(serde_json::json!({
+            "source_kind": "data_field",
+            "tool_call_id": tool_call_id,
+            "json_pointer": path,
+            "value": value,
+        })),
+        Value::String(text) if !text.trim().is_empty() => {
+            output.push(serde_json::json!({
+                "source_kind": "data_field",
+                "tool_call_id": tool_call_id,
+                "json_pointer": path,
+                "value": truncate_research_text(text.trim()),
+            }));
+        }
+        Value::Array(values) => {
+            for (index, item) in values.iter().enumerate() {
+                let child = format!("{path}/{index}");
+                collect_scalar_fallback_evidence(item, &child, tool_call_id, output);
+                if output.len() >= MAX_FALLBACK_SCANNED_SCALARS_PER_TOOL {
+                    break;
+                }
+            }
+        }
+        Value::Object(values) => {
+            // DataFetch snapshots can contain large profile/news branches.
+            // Traverse quote/time/valuation branches and important scalar
+            // leaves first so the bounded scan cannot lose a quote merely
+            // because the provider serialized `news` before `quote`.
+            let mut entries = values.iter().collect::<Vec<_>>();
+            entries.sort_by_key(|(key, _)| fallback_object_key_priority(key));
+            for (key, item) in entries {
+                let child = format!("{path}/{}", json_pointer_segment(key));
+                collect_scalar_fallback_evidence(item, &child, tool_call_id, output);
+                if output.len() >= MAX_FALLBACK_SCANNED_SCALARS_PER_TOOL {
+                    break;
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn fallback_object_key_priority(key: &str) -> usize {
+    match key {
+        "quote" | "quotes" | "hone_quote_time" => 0,
+        "symbol" => 1,
+        "beijing" => 2,
+        "price" => 3,
+        "currency" => 4,
+        "marketCap" | "pe" | "enterpriseValue" => 5,
+        "revenue"
+        | "ebitda"
+        | "netIncome"
+        | "operatingIncome"
+        | "freeCashFlow"
+        | "operatingCashFlow"
+        | "cashAndCashEquivalents"
+        | "totalDebt" => 6,
+        "profile" | "metrics" | "keyMetrics" | "ratios" => 7,
+        "date" | "period" | "calendarYear" | "reportedCurrency" => 8,
+        "changesPercentage" | "change" => 9,
+        "exchange" | "exchangeShortName" | "name" => 10,
+        "financials" | "incomeStatement" | "balanceSheet" | "cashFlow" => 11,
+        "news" | "articles" => 1_000,
+        _ => 100,
+    }
+}
+
+fn fallback_data_field_priority(item: &Value) -> usize {
+    let pointer = item
+        .get("json_pointer")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let leaf = pointer.rsplit('/').next().unwrap_or_default();
+    match leaf {
+        "symbol" => 0,
+        "beijing" => 1,
+        "price" => 2,
+        "currency" => 3,
+        "marketCap" => 4,
+        "pe"
+        | "enterpriseValue"
+        | "enterpriseValueOverEBITDA"
+        | "enterpriseValueOverRevenue"
+        | "priceToSalesRatio"
+        | "priceToBookRatio"
+        | "priceEarningsRatio" => 5,
+        "revenue" => 6,
+        "ebitda" | "operatingIncome" => 7,
+        "netIncome" | "freeCashFlow" | "operatingCashFlow" => 8,
+        "cashAndCashEquivalents" | "cashAndShortTermInvestments" | "totalDebt" => 9,
+        "date" | "period" | "calendarYear" | "reportedCurrency" => 10,
+        "changesPercentage" => 11,
+        "change" => 12,
+        "exchange" | "exchangeShortName" => 13,
+        "name" => 14,
+        _ => 100,
+    }
+}
+
+#[derive(Debug)]
+struct FallbackEvidenceCandidate {
+    priority: usize,
+    evidence: Value,
+}
+
+fn fallback_data_candidate_priority(data_type: Option<&str>, item: &Value) -> usize {
+    let pointer = item
+        .get("json_pointer")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let base: usize = match data_type {
+        Some("quote" | "quote_short" | "crypto_quote" | "extended_hours" | "snapshot") => 5,
+        Some("financials") | None => 20,
+        Some("news") => 50,
+        Some("profile") => 80,
+        Some("search") => 1_000,
+        Some(_) => 30,
+    };
+    let nested_news_penalty = usize::from(pointer.contains("/news/")) * 150;
+    let period_penalty = if data_type == Some("financials") {
+        pointer
+            .strip_prefix("/data/")
+            .and_then(|remainder| remainder.split('/').next())
+            .and_then(|index| index.parse::<usize>().ok())
+            .unwrap_or_default()
+            .saturating_mul(20)
+    } else {
+        0
+    };
+    base.saturating_add(fallback_data_field_priority(item))
+        .saturating_add(nested_news_penalty)
+        .saturating_add(period_penalty)
+}
+
+fn current_turn_fallback_evidence_catalog_excluding(
+    context: &AgentContext,
+    turn_message_start: usize,
+    scope: &FallbackEvidenceScope,
+    covered_locators: &BTreeSet<String>,
+) -> Vec<Value> {
+    if scope.is_empty() {
+        return Vec::new();
+    }
+    let mut candidates = Vec::new();
+    for message in context.messages[turn_message_start.min(context.messages.len())..]
+        .iter()
+        .rev()
+    {
+        if message.role != "tool" {
+            continue;
+        }
+        let (Some(tool_name), Some(tool_call_id), Some(content)) = (
+            message.name.as_deref(),
+            message.tool_call_id.as_deref(),
+            message.content.as_deref(),
+        ) else {
+            continue;
+        };
+        let Ok(parsed) = serde_json::from_str::<Value>(content) else {
+            continue;
+        };
+        if tool_result_is_failure(&parsed) {
+            continue;
+        }
+        match tool_name {
+            "web_search" => {
+                let Some(result_numbers) = scope.web_result_numbers.get(tool_call_id) else {
+                    continue;
+                };
+                let Some(results) = parsed.get("results").and_then(Value::as_array) else {
+                    continue;
+                };
+                for result_number in result_numbers
+                    .iter()
+                    .copied()
+                    .take(MAX_FALLBACK_ITEMS_PER_TOOL)
+                {
+                    let Some(index) = result_number.checked_sub(1) else {
+                        continue;
+                    };
+                    let Some(result) = results.get(index) else {
+                        continue;
+                    };
+                    let Some(url) = result
+                        .get("url")
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    else {
+                        continue;
+                    };
+                    let Some(excerpt) = ["content", "snippet", "title"]
+                        .into_iter()
+                        .find_map(|field| result.get(field).and_then(Value::as_str))
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    else {
+                        continue;
+                    };
+                    candidates.push(FallbackEvidenceCandidate {
+                        priority: 0,
+                        evidence: serde_json::json!({
+                            "source_kind": "web_result",
+                            "tool_call_id": tool_call_id,
+                            "result_number": result_number,
+                            "title": result.get("title").and_then(Value::as_str).map(truncate_research_text),
+                            "url": url,
+                            "exact_excerpt": truncate_research_text(excerpt),
+                        }),
+                    });
+                }
+            }
+            "data_fetch" => {
+                let Some(json_pointers) = scope.data_json_pointers.get(tool_call_id) else {
+                    continue;
+                };
+                let Some(data_type) =
+                    current_turn_data_fetch_type(context, turn_message_start, tool_call_id)
+                else {
+                    continue;
+                };
+                // Search results are an identity candidate list, not a selected
+                // company fact. Letting a malformed handoff replay that list
+                // can revive derivative/near matches such as CWY for CRWV.
+                if data_type == "search" {
+                    continue;
+                }
+                let mut tool_catalog = Vec::new();
+                for json_pointer in json_pointers {
+                    let Some(prefix) = fallback_data_value_prefix(&parsed, json_pointer) else {
+                        continue;
+                    };
+                    let Some(value) = parsed.pointer(&prefix) else {
+                        continue;
+                    };
+                    collect_scalar_fallback_evidence(
+                        value,
+                        &prefix,
+                        tool_call_id,
+                        &mut tool_catalog,
+                    );
+                    if tool_catalog.len() >= MAX_FALLBACK_SCANNED_SCALARS_PER_TOOL {
+                        break;
+                    }
+                }
+                // Scope selection happens before traversal, so unrelated
+                // batched entities and older financial rows cannot consume the
+                // scan/output bounds. Within that scope, retain quote identity,
+                // price, time and valuation fields ahead of descriptive noise.
+                tool_catalog.sort_by_key(fallback_data_field_priority);
+                let mut seen_locators = BTreeSet::new();
+                candidates.extend(
+                    tool_catalog
+                        .into_iter()
+                        .filter(|evidence| {
+                            evidence_locator(evidence)
+                                .is_some_and(|locator| seen_locators.insert(locator))
+                        })
+                        .take(MAX_FALLBACK_ITEMS_PER_TOOL)
+                        .map(|evidence| FallbackEvidenceCandidate {
+                            priority: fallback_data_candidate_priority(
+                                Some(data_type.as_str()),
+                                &evidence,
+                            ),
+                            evidence,
+                        }),
+                );
+            }
+            _ => {}
+        }
+    }
+    // Select across all successful tools only after every tool had a chance to
+    // contribute. A large late financial/news payload therefore cannot evict
+    // an earlier batched quote, and dual-ticker marketCap/PE fields survive the
+    // same global bound as relationship excerpts and period-tagged financials.
+    candidates.retain(|item| {
+        evidence_locator(&item.evidence).is_none_or(|locator| !covered_locators.contains(&locator))
+    });
+    candidates.sort_by_key(|item| item.priority);
+    candidates.truncate(MAX_FALLBACK_EVIDENCE_ITEMS);
+    candidates.into_iter().map(|item| item.evidence).collect()
+}
+
+fn current_turn_fallback_evidence_catalog(
+    context: &AgentContext,
+    turn_message_start: usize,
+    scope: &FallbackEvidenceScope,
+) -> Vec<Value> {
+    current_turn_fallback_evidence_catalog_excluding(
+        context,
+        turn_message_start,
+        scope,
+        &BTreeSet::new(),
+    )
+}
+
+fn evidence_locator(item: &Value) -> Option<String> {
+    let tool_call_id = item.get("tool_call_id")?.as_str()?;
+    if let Some(pointer) = item.get("json_pointer").and_then(Value::as_str) {
+        return Some(format!("data:{tool_call_id}:{pointer}"));
+    }
+    item.get("result_number")
+        .and_then(Value::as_u64)
+        .map(|result_number| format!("web:{tool_call_id}:{result_number}"))
+}
+
+fn fallback_research_handoff(
+    context: &AgentContext,
+    turn_message_start: usize,
+    scope: &FallbackEvidenceScope,
+    warning: impl Into<String>,
+) -> ValidatedResearchHandoff {
+    let fallback_evidence =
+        current_turn_fallback_evidence_catalog(context, turn_message_start, scope);
+    let gaps = fallback_evidence.is_empty().then(|| {
+        vec![
+            "本轮工具结果未包含可机械提取的成功事实字段；仅披露具体缺项并回答仍可回答的部分。"
+                .to_string(),
+        ]
+    });
+    ValidatedResearchHandoff {
+        answer_scope: "回答用户当前问题".to_string(),
+        facts: Vec::new(),
+        inferences: Vec::new(),
+        gaps: gaps.unwrap_or_default(),
+        fallback_evidence,
+        validation_warnings: vec![warning.into()],
+    }
+}
+
+fn validate_finish_research_handoff(
+    handoff: ResearchHandoff,
+    context: &AgentContext,
+    turn_message_start: usize,
+) -> ValidatedResearchHandoff {
+    let fallback_scope = fallback_scope_from_handoff(&handoff);
+    let mut warnings = Vec::new();
+    let answer_scope = match bounded_research_text("answer_scope", &handoff.answer_scope, false) {
+        Ok(value) => value,
+        Err(warning) => {
+            push_validation_warning(&mut warnings, warning);
+            "回答用户当前问题".to_string()
+        }
+    };
+    if handoff.facts.len() > MAX_RESEARCH_FACTS {
+        push_validation_warning(
+            &mut warnings,
+            format!("facts exceeds {MAX_RESEARCH_FACTS} items; extra items were dropped"),
+        );
+    }
+    if handoff.inferences.len() > MAX_RESEARCH_INFERENCES {
+        push_validation_warning(
+            &mut warnings,
+            format!("inferences exceeds {MAX_RESEARCH_INFERENCES} items; extra items were dropped"),
+        );
+    }
+    if handoff.gaps.len() > MAX_RESEARCH_GAPS {
+        push_validation_warning(
+            &mut warnings,
+            format!("gaps exceeds {MAX_RESEARCH_GAPS} items; extra items were dropped"),
+        );
+    }
+
+    let mut valid_fact_ids = BTreeSet::new();
+    let mut facts = Vec::new();
+    for (fact_index, fact) in handoff
+        .facts
+        .into_iter()
+        .take(MAX_RESEARCH_FACTS)
+        .enumerate()
+    {
+        let label = format!("facts[{fact_index}]");
+        let id = match bounded_research_text(&format!("{label}.id"), &fact.id, false) {
+            Ok(value) => value,
+            Err(warning) => {
+                push_validation_warning(&mut warnings, warning);
+                continue;
+            }
+        };
+        if valid_fact_ids.contains(&id) {
+            push_validation_warning(&mut warnings, format!("duplicate fact id {id}"));
+            continue;
+        }
+        if fact.evidence.is_empty() {
+            push_validation_warning(&mut warnings, format!("{label}.evidence is empty"));
+            continue;
+        }
+        if fact.evidence.len() > MAX_RESEARCH_REFS_PER_FACT {
+            push_validation_warning(
+                &mut warnings,
+                format!(
+                    "{label}.evidence exceeds {MAX_RESEARCH_REFS_PER_FACT} items; extra items were dropped"
+                ),
+            );
+        }
+        let mut resolved_evidence = Vec::new();
+        for (reference_index, reference) in fact
+            .evidence
+            .into_iter()
+            .take(MAX_RESEARCH_REFS_PER_FACT)
+            .enumerate()
+        {
+            let tool_call_id = reference.tool_call_id;
+            let resolved = match (
+                reference.result_number,
+                reference.exact_excerpt.as_deref(),
+                reference.json_pointer.as_deref(),
+            ) {
+                (Some(result_number), Some(exact_excerpt), None) => {
+                    current_turn_tool_result(context, turn_message_start, tool_call_id.trim())
+                        .ok_or_else(|| {
+                            format!(
+                                "tool_call_id {} is not a current-turn result",
+                                tool_call_id.trim()
+                            )
+                        })
+                        .and_then(|(tool_name, content)| {
+                            validate_web_evidence_ref(
+                                tool_name,
+                                content,
+                                tool_call_id.trim(),
+                                result_number,
+                                exact_excerpt,
+                            )
+                        })
+                }
+                (None, None, Some(json_pointer)) => {
+                    current_turn_tool_result(context, turn_message_start, tool_call_id.trim())
+                        .ok_or_else(|| {
+                            format!(
+                                "tool_call_id {} is not a current-turn result",
+                                tool_call_id.trim()
+                            )
+                        })
+                        .and_then(|(tool_name, content)| {
+                            let data_type = current_turn_data_fetch_type(
+                        context,
+                        turn_message_start,
+                        tool_call_id.trim(),
+                    )
+                    .ok_or_else(|| {
+                        format!(
+                            "tool_call_id {} has no matching current-turn DataFetch invocation",
+                            tool_call_id.trim()
+                        )
+                    })?;
+                            validate_data_evidence_ref(
+                                tool_name,
+                                content,
+                                tool_call_id.trim(),
+                                json_pointer,
+                                &data_type,
+                            )
+                        })
+                }
+                _ => Err(
+                    "evidence must provide either result_number + exact_excerpt or json_pointer"
+                        .to_string(),
+                ),
+            };
+            match resolved {
+                Ok(value) => resolved_evidence.push(value),
+                Err(warning) => push_validation_warning(
+                    &mut warnings,
+                    format!("{label}.evidence[{reference_index}] ({tool_call_id}): {warning}"),
+                ),
+            }
+        }
+        if !resolved_evidence.is_empty() {
+            valid_fact_ids.insert(id.clone());
+            facts.push(ValidatedResearchFact {
+                id,
+                resolved_evidence,
+            });
+        }
+    }
+
+    let mut inferences = Vec::new();
+    for (index, inference) in handoff
+        .inferences
+        .into_iter()
+        .take(MAX_RESEARCH_INFERENCES)
+        .enumerate()
+    {
+        let claim = match bounded_research_text(
+            &format!("inferences[{index}].claim"),
+            &inference.claim,
+            false,
+        ) {
+            Ok(value) => value,
+            Err(warning) => {
+                push_validation_warning(&mut warnings, warning);
+                continue;
+            }
+        };
+        if inference.premise_fact_ids.is_empty() {
+            push_validation_warning(
+                &mut warnings,
+                format!("inferences[{index}].premise_fact_ids is empty"),
+            );
+            continue;
+        }
+        let missing = inference
+            .premise_fact_ids
+            .iter()
+            .filter(|id| !valid_fact_ids.contains(id.trim()))
+            .cloned()
+            .collect::<Vec<_>>();
+        if !missing.is_empty() {
+            push_validation_warning(
+                &mut warnings,
+                format!(
+                    "inferences[{index}] references unresolved fact IDs: {}",
+                    missing.join(", ")
+                ),
+            );
+            continue;
+        }
+        inferences.push(ResearchHandoffInference {
+            claim,
+            premise_fact_ids: inference.premise_fact_ids,
+        });
+    }
+
+    let mut gaps = Vec::new();
+    for (index, gap) in handoff.gaps.into_iter().take(MAX_RESEARCH_GAPS).enumerate() {
+        match bounded_research_text(&format!("gaps[{index}]"), &gap, false) {
+            Ok(value) => gaps.push(value),
+            Err(warning) => push_validation_warning(&mut warnings, warning),
+        }
+    }
+
+    // The handoff is a compact Agent-authored grouping, not an all-or-nothing
+    // gate. Supplement only source locations the Agent explicitly selected,
+    // including a selected object/result whose submitted leaf/excerpt was
+    // malformed. Never scan every successful current-turn tool result: an
+    // earlier wrong-entity call is still current-turn data but is not part of
+    // the Agent's final evidence scope. De-duplicate provider-owned locators.
+    let covered_locators = facts
+        .iter()
+        .flat_map(|fact| fact.resolved_evidence.iter())
+        .filter_map(evidence_locator)
+        .collect::<BTreeSet<_>>();
+    let fallback_evidence = current_turn_fallback_evidence_catalog_excluding(
+        context,
+        turn_message_start,
+        &fallback_scope,
+        &covered_locators,
+    );
+    if facts.is_empty() && fallback_evidence.is_empty() && gaps.is_empty() {
+        gaps.push(
+            "本轮工具结果未包含可机械提取的成功事实字段；仅披露具体缺项并回答仍可回答的部分。"
+                .to_string(),
+        );
+    }
+    ValidatedResearchHandoff {
+        answer_scope,
+        facts,
+        inferences,
+        gaps,
+        fallback_evidence,
+        validation_warnings: warnings,
+    }
 }
 
 fn is_identity_only_search_call(tool_call: &ToolCall) -> bool {
@@ -2103,27 +3129,51 @@ fn exact_prefix_instruction(required_prefix: Option<&str>) -> String {
     }
 }
 
-fn terminal_synthesis_prompt(required_prefix: Option<&str>) -> String {
+fn terminal_synthesis_prompt(
+    required_prefix: Option<&str>,
+    handoff: &ValidatedResearchHandoff,
+) -> String {
+    let handoff_json = serde_json::to_string(handoff).unwrap_or_else(|_| {
+        "{\"facts\":[],\"inferences\":[],\"gaps\":[\"证据交接序列化失败\"]}".to_string()
+    });
+    let internal_warning_constraint = if handoff.validation_warnings.is_empty() {
+        ""
+    } else {
+        "内部来源定位时已有无法解析的候选项被机械丢弃；它们不属于证据。不要向用户提及校验、协议、交接、丢弃或内部错误，也绝不能因此拒绝回答。"
+    };
     format!(
-        "【终局回答阶段】\n{}\n{}\n{}\n{}\n{}",
-        "Agent 已通过显式完成信号确认：本轮合理的研究与工具尝试已经完成。",
-        "当前阶段不再提供任何工具；请只基于同一轮对话中已有的用户请求和此前已成功返回的业务工具结果，直接生成一次完整、可见的最终回答。",
+        "【终局回答阶段】\n{}\n{}\n{}\n{}\n{}\n{}\n【Agent 本轮结构化证据交接；只有 resolved_evidence / fallback_evidence 是已机械定位的外部证据】\n{}",
+        "Agent 已结束本轮合理的研究与工具尝试；服务端没有审核或否决答案语义。",
+        "当前阶段不再提供任何工具；请直接生成一次完整、可见的最终回答。facts 只是证据分组，必须由其中 resolved_evidence 的逐字原文/标量字段自行归纳，不存在可照抄的自由文本 claim。fallback_evidence 是服务端从本轮成功工具结果机械压缩出的同等级证据目录。只有 Session 时间前缀可直接使用；行情口径中的价格、币种、涨跌和报价源时间也必须来自上述证据。inferences 必须明确写‘推断：’；gaps 只能披露未知，不能写成否定事实。",
         exact_prefix_instruction(required_prefix),
         FINAL_ANSWER_EVIDENCE_CONTRACT,
-        FINAL_RELATIONSHIP_DELETION_CHECK
+        FINAL_RELATIONSHIP_DELETION_CHECK,
+        internal_warning_constraint,
+        handoff_json
     )
 }
 
-fn active_business_turn_prompt(evidence_floor_satisfied: bool, route_guidance: &str) -> String {
+fn active_business_turn_prompt(
+    evidence_floor_satisfied: bool,
+    route_guidance: &str,
+    finish_feedback: Option<&str>,
+) -> String {
+    let finish_feedback = finish_feedback
+        .map(|feedback| {
+            format!(
+                "\n上一次内部 finish_research 交接未通过协议级来源定位，请在同一 Agent 内修正后继续；这不是用户可见错误，也不是答案审查：\n{feedback}"
+            )
+        })
+        .unwrap_or_default();
     if evidence_floor_satisfied {
         format!(
-            "【本轮仍是工具轮，不写终稿】下面仅是 Agent 已声明路线的结构调用状态，不证明用户点名实体已经完整、工具调用成功或问题所需业务证据充分：\n{}\n重新阅读完整用户原话与每条 tool result。若仍需更多业务证据，本轮只调用所需真实工具；若合理取证已经完成，本轮唯一动作是单独调用 `finish_research({{}})`。不要在这个仍提供工具的轮次输出数据时间、摘要、解释或最终正文；完成信号后的无工具阶段会生成唯一可见终稿。",
-            route_guidance
+            "【本轮仍是工具轮，不写终稿】下面仅是 Agent 已声明路线的结构调用状态，不证明用户点名实体已经完整、工具调用成功或问题所需业务证据充分：\n{}\n重新阅读完整用户原话与每条 tool result。若仍需更多业务证据，本轮只调用所需真实工具；若合理取证已经完成，本轮唯一动作是单独提交带 answer_scope / facts / inferences / gaps 的 `finish_research` 结构化交接。fact 不写 claim，只把相关证据分组：Web 使用本轮 tool_call_id + result_number + 逐字 excerpt（标题和 URL 由服务端注入），DataFetch 使用 tool_call_id + 标量 JSON Pointer。未核验内容写入 gaps，绝不能由缺失推出否定事实。宽泛公司关系须由你按完整语义分别核查相关的商业/客户供应/技术合同与投资持股维度，优先一手来源，不得一次泛搜索后凭记忆收口。不要在这个仍提供工具的轮次输出数据时间、摘要、解释或最终正文；交接后的无工具阶段会生成唯一可见终稿。{}",
+            route_guidance, finish_feedback,
         )
     } else {
         format!(
-            "【本轮只取证，不作答】下面仅是 Agent 已声明路线的结构调用状态，不证明用户点名实体已经完整、工具调用成功或问题所需业务证据充分：\n{}\n重新阅读完整用户原话。本轮必须只返回一个或多个真实业务工具调用，禁止输出数据时间、摘要、解释、草稿或最终正文。先补齐上面逐路线列出的 search / quote / profile（crypto 用 crypto_quote）缺项，并按用户原始问题补关系、财务、新闻、网页或公告证据。每个 search 都重新填写本次调用自己的 entity_route 与 identity_match；关系问题的 Web 结果只是摘要证据，不能靠模型记忆补故事。完成这些调用并读取结果后，再由下一轮决定继续取证还是提交 finish_research。",
-            route_guidance
+            "【本轮只取证，不作答】下面仅是 Agent 已声明路线的结构调用状态，不证明用户点名实体已经完整、工具调用成功或问题所需业务证据充分：\n{}\n重新阅读完整用户原话。本轮必须只返回一个或多个真实业务工具调用，禁止输出数据时间、摘要、解释、草稿或最终正文。先补齐上面逐路线列出的 search / quote / profile（crypto 用 crypto_quote）缺项，并按用户原始问题补关系、财务、新闻、网页或公告证据。每个 search 都重新填写本次调用自己的 entity_route 与 identity_match；关系问题的 Web 结果只是摘要证据，不能靠模型记忆补故事。宽泛关系要由你自主拆出相关的商业/客户供应/技术合同与投资持股待证维度，并尽量并行查一手来源。完成这些调用并读取结果后，再由下一轮决定继续取证还是提交结构化 finish_research。{}",
+            route_guidance, finish_feedback,
         )
     }
 }
@@ -2382,6 +3432,8 @@ impl Agent for FunctionCallingAgent {
         let mut investment_research_started = false;
         let mut research_evidence = ResearchEvidenceLedger::default();
         let mut active_business_failures = 0u32;
+        let mut pending_finish_feedback: Option<String> = None;
+        let mut unavailable_finish_corrections = 0u32;
 
         self.dbg(&format!(
             "[Agent] start tools={:?}",
@@ -2445,7 +3497,7 @@ impl Agent for FunctionCallingAgent {
                 // evidence boundary as explicit terminal synthesis. Historical
                 // assistant claims and hidden tool-round reasoning are useful
                 // for neither current facts nor final prose.
-                self.build_current_research_messages(context, round_instruction, turn_message_start)
+                self.build_messages_from_index(context, round_instruction, turn_message_start)
             } else {
                 self.build_messages(context, round_instruction)
             };
@@ -2462,6 +3514,18 @@ impl Agent for FunctionCallingAgent {
                     content: Some(active_business_turn_prompt(
                         evidence_floor_satisfied,
                         &research_evidence.agent_guidance_summary(),
+                        pending_finish_feedback.as_deref(),
+                    )),
+                    reasoning_content: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                });
+            } else if let Some(feedback) = pending_finish_feedback.as_deref() {
+                messages.push(Message {
+                    role: "user".to_string(),
+                    content: Some(format!(
+                        "【内部工具协议纠正】{feedback} 不要向用户提及这条内部纠正；请继续正常调用可用业务工具，或直接给出非空的自然回答。"
                     )),
                     reasoning_content: None,
                     tool_calls: None,
@@ -2716,31 +3780,102 @@ impl Agent for FunctionCallingAgent {
                 if !tcs.is_empty() {
                     self.dbg(&format!("[Agent] tool_calls n={}", tcs.len()));
 
-                    let sole_finish_research = finish_research_available
-                        && tcs.len() == 1
-                        && tcs.first().is_some_and(is_valid_finish_research_call);
-                    if sole_finish_research {
+                    let actionable_tool_calls = tcs
+                        .iter()
+                        .filter(|tool_call| !is_finish_research_call(tool_call))
+                        .collect::<Vec<_>>();
+                    let finish_calls = tcs
+                        .iter()
+                        .filter(|tool_call| is_finish_research_call(tool_call))
+                        .collect::<Vec<_>>();
+
+                    // A finish-only round enters the terminal even when a
+                    // compatible provider duplicates the internal control
+                    // call. Select the first parseable handoff; if none parse,
+                    // fall back to mechanically compacted current-turn
+                    // evidence. Provider framing quirks must not start another
+                    // research model loop or become a user-visible refusal.
+                    if finish_research_available
+                        && actionable_tool_calls.is_empty()
+                        && !finish_calls.is_empty()
+                    {
+                        let mut parse_warnings = Vec::new();
+                        let parsed_handoff = finish_calls.iter().find_map(|finish_call| {
+                            match parse_finish_research_handoff(finish_call) {
+                                Ok(handoff) => Some(handoff),
+                                Err(warning) => {
+                                    push_validation_warning(&mut parse_warnings, warning);
+                                    None
+                                }
+                            }
+                        });
+                        let mut handoff = match parsed_handoff {
+                            Some(handoff) => validate_finish_research_handoff(
+                                handoff,
+                                context,
+                                turn_message_start,
+                            ),
+                            None => {
+                                let warning = if parse_warnings.is_empty() {
+                                    "finish_research handoff was unavailable".to_string()
+                                } else {
+                                    parse_warnings.join("; ")
+                                };
+                                let fallback_scope =
+                                    fallback_scope_from_finish_calls(&finish_calls);
+                                tracing::warn!(
+                                    session_id = %context.session_id,
+                                    selected_fallback_sources = fallback_scope
+                                        .web_result_numbers
+                                        .len()
+                                        .saturating_add(fallback_scope.data_json_pointers.len()),
+                                    "finish_research handoff could not be parsed; using only mechanically recoverable referenced evidence: {warning}"
+                                );
+                                fallback_research_handoff(
+                                    context,
+                                    turn_message_start,
+                                    &fallback_scope,
+                                    warning,
+                                )
+                            }
+                        };
+                        if finish_calls.len() > 1 {
+                            push_validation_warning(
+                                &mut handoff.validation_warnings,
+                                format!(
+                                    "provider emitted {} finish_research calls; used the first parseable handoff",
+                                    finish_calls.len()
+                                ),
+                            );
+                        }
+                        for warning in parse_warnings {
+                            push_validation_warning(&mut handoff.validation_warnings, warning);
+                        }
+                        if !handoff.validation_warnings.is_empty() {
+                            tracing::warn!(
+                                session_id = %context.session_id,
+                                dropped_handoff_items = handoff.validation_warnings.len(),
+                                "finish_research handoff contained unresolved items; continuing with valid evidence"
+                            );
+                        }
                         return self
                             .run_terminal_synthesis(
                                 context,
                                 tool_calls_made,
                                 iterations,
                                 turn_message_start,
+                                &handoff,
                                 required_final_answer_prefix.as_deref(),
                                 overall_deadline,
                             )
                             .await;
                     }
 
-                    // A mixed, duplicate, or not-yet-available finish signal
-                    // never substitutes for research. Ignore it while keeping
-                    // every real business call in the same Agent loop; the
-                    // internal signal must not consume budget, reach the
-                    // registry, persist in ToolCallMade, or notify observers.
-                    let actionable_tool_calls = tcs
-                        .iter()
-                        .filter(|tool_call| !is_finish_research_call(tool_call))
-                        .collect::<Vec<_>>();
+                    // A mixed finish never substitutes for real business calls.
+                    // An unavailable finish-only hallucination gets one hidden,
+                    // bounded correction and can never become an empty success.
+                    // The internal signal does not consume tool budget or notify
+                    // business-tool observers.
 
                     // Every nonempty Interactive turn enters the open Agent
                     // discovery path, including non-finance questions that may
@@ -2750,10 +3885,23 @@ impl Agent for FunctionCallingAgent {
                     // do not infer it from a closed question vocabulary.
                     if actionable_tool_calls.is_empty() {
                         self.dbg("[Agent] ignored malformed or unavailable finish signal");
-                        if active_business_round {
+                        if unavailable_finish_corrections < MAX_UNAVAILABLE_FINISH_CORRECTIONS {
+                            unavailable_finish_corrections =
+                                unavailable_finish_corrections.saturating_add(1);
+                            pending_finish_feedback = Some(
+                                "finish_research 当前尚不可用；先完成所需真实工具调用。"
+                                    .to_string(),
+                            );
                             continue;
                         }
+                        return failed_agent_response(
+                            tool_calls_made,
+                            iterations,
+                            "unavailable_finish_research_repeated",
+                        );
                     } else {
+                        pending_finish_feedback = None;
+                        unavailable_finish_corrections = 0;
                         // 记录 assistant 消息（只含真实业务 tool_calls）
                         let tc_values: Vec<Value> = actionable_tool_calls
                             .iter()
@@ -3727,6 +4875,57 @@ mod tests {
         }
     }
 
+    fn test_finish_arguments() -> String {
+        json!({
+            "answer_scope": "回答当前测试请求",
+            "facts": [],
+            "inferences": [],
+            "gaps": ["测试夹具未声明外部事实"]
+        })
+        .to_string()
+    }
+
+    fn relationship_finish_arguments(tool_call_id: &str) -> String {
+        json!({
+            "answer_scope": "回答 CoreWeave 与 NVIDIA 的已核验关系",
+            "facts": [
+                {
+                    "id": "F1",
+                    "evidence": [{
+                        "tool_call_id": tool_call_id,
+                        "result_number": 1,
+                        "exact_excerpt": "The buyer agreed to purchase $6.3B of unused capacity."
+                    }]
+                },
+                {
+                    "id": "F2",
+                    "evidence": [{
+                        "tool_call_id": tool_call_id,
+                        "result_number": 2,
+                        "exact_excerpt": "The filing describes a most-favored-nation relationship."
+                    }]
+                }
+            ],
+            "inferences": [{
+                "claim": "该关系不只是单向 GPU 采购。",
+                "premise_fact_ids": ["F1", "F2"]
+            }],
+            "gaps": ["本轮测试来源未核验双方持股关系，不能写成无股权关系"]
+        })
+        .to_string()
+    }
+
+    fn test_validated_handoff() -> ValidatedResearchHandoff {
+        ValidatedResearchHandoff {
+            answer_scope: "回答当前测试请求".to_string(),
+            facts: Vec::new(),
+            inferences: Vec::new(),
+            gaps: vec!["测试夹具未声明外部事实".to_string()],
+            fallback_evidence: Vec::new(),
+            validation_warnings: Vec::new(),
+        }
+    }
+
     fn assert_explicit_terminal_messages(seen_messages: &Arc<Mutex<Vec<Vec<Message>>>>) {
         let terminal_messages = seen_messages
             .lock()
@@ -3754,8 +4953,15 @@ mod tests {
             }),
             "provider reasoning may only survive as a tool-followup wire signature"
         );
-        assert_eq!(prompt, terminal_synthesis_prompt(None));
-        assert!(prompt.contains("Agent 已通过显式完成信号确认"));
+        assert!(
+            terminal_messages
+                .iter()
+                .all(|message| matches!(message.role.as_str(), "system" | "user")),
+            "terminal synthesis must receive only system/user intent plus the compact handoff"
+        );
+        assert!(prompt.starts_with("【终局回答阶段】"));
+        assert!(prompt.contains("【Agent 本轮结构化证据交接"));
+        assert!(prompt.contains("Agent 已结束本轮合理的研究与工具尝试"));
         assert!(prompt.contains("`reasoning_content`、隐藏思考、未采用草稿"));
         assert!(system.contains(FINISH_RESEARCH_SYSTEM_INSTRUCTION));
         assert!(!prompt.contains("上一内部步骤未产出可用的新事实证据"));
@@ -3763,10 +4969,1057 @@ mod tests {
 
     #[test]
     fn terminal_prompt_is_authorized_only_by_explicit_finish() {
-        let explicit = terminal_synthesis_prompt(None);
-        assert!(explicit.contains("Agent 已通过显式完成信号确认"));
+        let explicit = terminal_synthesis_prompt(None, &test_validated_handoff());
+        assert!(explicit.contains("Agent 已结束本轮合理的研究与工具尝试"));
         assert!(!explicit.contains("上一内部步骤未产出可用的新事实证据"));
-        assert!(explicit.contains("此前已成功返回的业务工具结果"));
+        assert!(explicit.contains("resolved_evidence"));
+    }
+
+    #[test]
+    fn structured_finish_schema_is_flat_and_contains_no_free_text_fact_claim_or_url() {
+        let schema = finish_research_tool_schema();
+        let fact_properties =
+            &schema["function"]["parameters"]["properties"]["facts"]["items"]["properties"];
+        assert!(fact_properties.get("claim").is_none());
+        assert!(fact_properties.get("proposed_claim").is_none());
+        let evidence_schema = &fact_properties["evidence"]["items"];
+        assert!(evidence_schema.get("oneOf").is_none());
+        assert!(evidence_schema["properties"].get("url").is_none());
+        assert_eq!(evidence_schema["required"], json!(["tool_call_id"]));
+    }
+
+    fn test_fallback_scope(
+        data_refs: &[(&str, &str)],
+        web_refs: &[(&str, usize)],
+    ) -> FallbackEvidenceScope {
+        let mut scope = FallbackEvidenceScope::default();
+        for (tool_call_id, json_pointer) in data_refs {
+            scope.observe_reference(&ResearchEvidenceRef {
+                tool_call_id: (*tool_call_id).to_string(),
+                result_number: None,
+                exact_excerpt: None,
+                json_pointer: Some((*json_pointer).to_string()),
+            });
+        }
+        for (tool_call_id, result_number) in web_refs {
+            scope.observe_reference(&ResearchEvidenceRef {
+                tool_call_id: (*tool_call_id).to_string(),
+                result_number: Some(*result_number),
+                exact_excerpt: None,
+                json_pointer: None,
+            });
+        }
+        scope
+    }
+
+    fn add_test_data_fetch_calls(context: &mut AgentContext, calls: &[(&str, &str)]) {
+        let tool_calls = calls
+            .iter()
+            .map(|(tool_call_id, data_type)| {
+                serde_json::to_value(ToolCall {
+                    id: (*tool_call_id).to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: json!({"data_type": data_type}).to_string(),
+                    },
+                })
+                .expect("serialize test DataFetch call")
+            })
+            .collect();
+        context.add_assistant_message("", Some(tool_calls));
+    }
+
+    #[test]
+    fn data_field_provenance_accepts_only_successful_scalar_data_fetch_values() {
+        let failed = validate_data_evidence_ref(
+            "data_fetch",
+            r#"{"error":"provider unavailable"}"#,
+            "tc_failed",
+            "/error",
+            "quote",
+        )
+        .expect_err("failed DataFetch must not become evidence");
+        assert!(failed.contains("failed/error"));
+
+        let partial_error = validate_data_evidence_ref(
+            "data_fetch",
+            r#"{"data":{"price":73.21},"errors":{"profile":"unavailable"}}"#,
+            "tc_partial",
+            "/errors/profile",
+            "quote",
+        )
+        .expect_err("an error field in a partially successful payload is not fact evidence");
+        assert!(partial_error.contains("must not resolve an error field"));
+
+        let object = validate_data_evidence_ref(
+            "data_fetch",
+            r#"{"data":{"quote":{"price":73.21}}}"#,
+            "tc_object",
+            "/data/quote",
+            "quote",
+        )
+        .expect_err("object-valued pointers must be narrowed to a scalar");
+        assert!(object.contains("non-null scalar"));
+
+        let wrong_tool = validate_data_evidence_ref(
+            "echo_tool",
+            r#"{"data":{"price":73.21}}"#,
+            "tc_echo",
+            "/data/price",
+            "quote",
+        )
+        .expect_err("non-DataFetch tools must not satisfy data_field provenance");
+        assert!(wrong_tool.contains("not data_fetch"));
+
+        let scalar = validate_data_evidence_ref(
+            "data_fetch",
+            r#"{"data":{"price":73.21}}"#,
+            "tc_scalar",
+            "/data/price",
+            "quote",
+        )
+        .expect("successful scalar DataFetch value");
+        assert_eq!(scalar["value"], 73.21);
+
+        let search_candidate = validate_data_evidence_ref(
+            "data_fetch",
+            r#"{"data":[{"symbol":"CRWV"},{"symbol":"CWY"}]}"#,
+            "tc_search",
+            "/data/1/symbol",
+            "search",
+        )
+        .expect_err("identity search candidates must never become terminal facts");
+        assert!(search_candidate.contains("identity candidates"));
+    }
+
+    #[test]
+    fn structured_data_search_reference_is_never_terminal_evidence() {
+        let mut context = AgentContext::new("structured-search-rejection".to_string());
+        let turn_message_start = context.messages.len();
+        context.add_user_message("CRWV 怎么看");
+        add_test_data_fetch_calls(&mut context, &[("tc_search", "search")]);
+        context.add_tool_result(
+            "tc_search",
+            "data_fetch",
+            r#"{"data":[{"symbol":"CRWV","name":"CoreWeave"},{"symbol":"CWY","name":"YieldBOOST CRWV ETF"}]}"#,
+        );
+        let handoff = ResearchHandoff {
+            answer_scope: "回答 CRWV".to_string(),
+            facts: vec![ResearchHandoffFact {
+                id: "F1".to_string(),
+                evidence: vec![ResearchEvidenceRef {
+                    tool_call_id: "tc_search".to_string(),
+                    result_number: None,
+                    exact_excerpt: None,
+                    json_pointer: Some("/data/1/symbol".to_string()),
+                }],
+            }],
+            inferences: Vec::new(),
+            gaps: Vec::new(),
+        };
+
+        let validated = validate_finish_research_handoff(handoff, &context, turn_message_start);
+        assert!(validated.facts.is_empty());
+        assert!(validated.fallback_evidence.is_empty());
+        assert!(
+            validated
+                .validation_warnings
+                .iter()
+                .any(|warning| { warning.contains("identity candidates") })
+        );
+        let serialized = serde_json::to_string(&validated).expect("serialize rejected search");
+        assert!(!serialized.contains("CWY"));
+    }
+
+    #[test]
+    fn data_reference_without_matching_invocation_is_rejected() {
+        let mut context = AgentContext::new("missing-data-invocation".to_string());
+        let turn_message_start = context.messages.len();
+        context.add_user_message("CRWV 怎么看");
+        context.add_tool_result(
+            "tc_spoofed_quote",
+            "data_fetch",
+            r#"{"data":[{"symbol":"CRWV","price":73.21}]}"#,
+        );
+        let handoff = ResearchHandoff {
+            answer_scope: "回答 CRWV".to_string(),
+            facts: vec![ResearchHandoffFact {
+                id: "F1".to_string(),
+                evidence: vec![ResearchEvidenceRef {
+                    tool_call_id: "tc_spoofed_quote".to_string(),
+                    result_number: None,
+                    exact_excerpt: None,
+                    json_pointer: Some("/data/0/price".to_string()),
+                }],
+            }],
+            inferences: Vec::new(),
+            gaps: Vec::new(),
+        };
+
+        let validated = validate_finish_research_handoff(handoff, &context, turn_message_start);
+        assert!(validated.facts.is_empty());
+        assert!(validated.fallback_evidence.is_empty());
+        assert!(
+            validated.validation_warnings.iter().any(|warning| {
+                warning.contains("no matching current-turn DataFetch invocation")
+            })
+        );
+    }
+
+    #[test]
+    fn gaps_only_handoff_does_not_replay_unselected_current_turn_evidence() {
+        let mut context = AgentContext::new("gap-fallback".to_string());
+        let turn_message_start = context.messages.len();
+        context.add_user_message("CRWV 怎么看");
+        add_test_data_fetch_calls(
+            &mut context,
+            &[("tc_failed", "quote"), ("tc_quote", "quote")],
+        );
+        context.add_tool_result(
+            "tc_failed",
+            "data_fetch",
+            r#"{"error":"provider unavailable"}"#,
+        );
+        context.add_tool_result(
+            "tc_quote",
+            "data_fetch",
+            r#"{"data":[{"symbol":"CRWV","price":73.21}]}"#,
+        );
+        let handoff = ResearchHandoff {
+            answer_scope: "回答 CRWV 当前情况".to_string(),
+            facts: Vec::new(),
+            inferences: Vec::new(),
+            gaps: vec!["估值分母期间未核验".to_string()],
+        };
+
+        let validated = validate_finish_research_handoff(handoff, &context, turn_message_start);
+
+        assert!(validated.facts.is_empty());
+        assert!(validated.fallback_evidence.is_empty());
+        let encoded = serde_json::to_string(&validated).expect("serialize fallback handoff");
+        assert!(!encoded.contains("tc_quote"));
+        assert!(!encoded.contains("73.21"));
+        assert!(!encoded.contains("tc_failed"));
+    }
+
+    #[test]
+    fn compact_fallback_prioritizes_quote_identity_price_and_source_time() {
+        let mut context = AgentContext::new("quote-fallback-priority".to_string());
+        let turn_message_start = context.messages.len();
+        context.add_user_message("CRWV 怎么看");
+        add_test_data_fetch_calls(&mut context, &[("tc_quote", "quote")]);
+        context.add_tool_result(
+            "tc_quote",
+            "data_fetch",
+            r#"{"data":[{"avgVolume":100,"change":0.3,"changesPercentage":0.41,"dayHigh":74,"dayLow":71,"earningsAnnouncement":"2026-08-01","eps":1.1,"exchange":"NASDAQ","exchangeShortName":"NASDAQ","hone_quote_time":{"beijing":"2026-07-18 04:00"},"marketCap":35000000000,"name":"CoreWeave","open":72,"pe":55,"previousClose":72.91,"price":73.21,"sharesOutstanding":470000000,"symbol":"CRWV","timestamp":1784328000,"volume":1234567,"yearHigh":187,"yearLow":33}]}"#,
+        );
+
+        let scope = test_fallback_scope(&[("tc_quote", "/data/0/price")], &[]);
+        let catalog = current_turn_fallback_evidence_catalog(&context, turn_message_start, &scope);
+        let pointers = catalog
+            .iter()
+            .filter_map(|item| item.get("json_pointer").and_then(Value::as_str))
+            .collect::<Vec<_>>();
+
+        assert!(pointers.contains(&"/data/0/symbol"));
+        assert!(pointers.contains(&"/data/0/price"));
+        assert!(pointers.contains(&"/data/0/hone_quote_time/beijing"));
+        assert!(catalog.len() <= MAX_FALLBACK_ITEMS_PER_TOOL);
+    }
+
+    #[test]
+    fn batched_dual_ticker_quote_fallback_keeps_market_cap_and_pe_for_both() {
+        let mut context = AgentContext::new("dual-quote-fallback".to_string());
+        let turn_message_start = context.messages.len();
+        context.add_user_message("CRWV 和 NVDA 的估值怎么看");
+        add_test_data_fetch_calls(&mut context, &[("tc_dual_quote", "quote")]);
+        context.add_tool_result(
+            "tc_dual_quote",
+            "data_fetch",
+            r#"{"data":[{"symbol":"CRWV","hone_quote_time":{"beijing":"2026-07-18 04:00"},"price":73.21,"currency":"USD","changesPercentage":0.41,"change":0.30,"marketCap":35000000000,"pe":55},{"symbol":"NVDA","hone_quote_time":{"beijing":"2026-07-18 04:00"},"price":172.00,"currency":"USD","changesPercentage":1.25,"change":2.12,"marketCap":4200000000000,"pe":48}]}"#,
+        );
+
+        let scope = test_fallback_scope(
+            &[
+                ("tc_dual_quote", "/data/0/price"),
+                ("tc_dual_quote", "/data/1/price"),
+            ],
+            &[],
+        );
+        let catalog = current_turn_fallback_evidence_catalog(&context, turn_message_start, &scope);
+        let pointers = catalog
+            .iter()
+            .filter_map(|item| item.get("json_pointer").and_then(Value::as_str))
+            .collect::<BTreeSet<_>>();
+
+        for pointer in [
+            "/data/0/symbol",
+            "/data/0/price",
+            "/data/0/marketCap",
+            "/data/0/pe",
+            "/data/1/symbol",
+            "/data/1/price",
+            "/data/1/marketCap",
+            "/data/1/pe",
+        ] {
+            assert!(pointers.contains(pointer), "missing {pointer}: {catalog:?}");
+        }
+    }
+
+    #[test]
+    fn batched_quote_fallback_does_not_cross_the_selected_object() {
+        let mut context = AgentContext::new("single-object-quote-fallback".to_string());
+        let turn_message_start = context.messages.len();
+        context.add_user_message("CRWV 怎么看");
+        add_test_data_fetch_calls(&mut context, &[("tc_dual_quote", "quote")]);
+        context.add_tool_result(
+            "tc_dual_quote",
+            "data_fetch",
+            r#"{"data":[{"symbol":"CRWV","price":73.21,"marketCap":35000000000},{"symbol":"NBIS","price":52.40,"marketCap":12600000000}]}"#,
+        );
+
+        let scope = test_fallback_scope(&[("tc_dual_quote", "/data/0/missing_pe")], &[]);
+        let catalog = current_turn_fallback_evidence_catalog(&context, turn_message_start, &scope);
+
+        assert!(catalog.iter().any(|item| item["value"] == "CRWV"));
+        assert!(catalog.iter().all(|item| {
+            item["json_pointer"]
+                .as_str()
+                .is_some_and(|pointer| pointer.starts_with("/data/0/"))
+        }));
+        let serialized = serde_json::to_string(&catalog).expect("serialize selected quote row");
+        assert!(!serialized.contains("NBIS"));
+        assert!(!serialized.contains("12600000000"));
+    }
+
+    #[test]
+    fn snapshot_array_or_null_pointer_does_not_expand_the_parent_object() {
+        let mut context = AgentContext::new("snapshot-container-fallback".to_string());
+        let turn_message_start = context.messages.len();
+        context.add_user_message("CRWV 怎么看");
+        add_test_data_fetch_calls(&mut context, &[("tc_snapshot", "snapshot")]);
+        context.add_tool_result(
+            "tc_snapshot",
+            "data_fetch",
+            r#"{"data":{"quote":[{"symbol":"CRWV","price":73.21}],"profile":null,"news":[{"symbol":"NBIS","title":"unselected sibling"}]}}"#,
+        );
+
+        for pointer in ["/data/quote", "/data/profile"] {
+            let scope = test_fallback_scope(&[("tc_snapshot", pointer)], &[]);
+            let catalog =
+                current_turn_fallback_evidence_catalog(&context, turn_message_start, &scope);
+            assert!(
+                catalog.is_empty(),
+                "{pointer} widened fallback: {catalog:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn error_field_pointer_produces_no_fallback_evidence() {
+        let mut context = AgentContext::new("error-field-fallback".to_string());
+        let turn_message_start = context.messages.len();
+        context.add_user_message("CRWV 怎么看");
+        add_test_data_fetch_calls(&mut context, &[("tc_partial", "profile")]);
+        context.add_tool_result(
+            "tc_partial",
+            "data_fetch",
+            r#"{"data":{"symbol":"CRWV","price":73.21,"errors":{"profile":"unavailable"},"provider_error":"slow"}}"#,
+        );
+
+        let scope = test_fallback_scope(
+            &[
+                ("tc_partial", "/data/errors/profile"),
+                ("tc_partial", "/data/provider_error"),
+            ],
+            &[],
+        );
+        let catalog = current_turn_fallback_evidence_catalog(&context, turn_message_start, &scope);
+
+        assert!(
+            catalog.is_empty(),
+            "error paths widened fallback: {catalog:?}"
+        );
+    }
+
+    #[test]
+    fn four_period_financial_fallback_uses_only_the_selected_row() {
+        let mut context = AgentContext::new("selected-financial-row".to_string());
+        let turn_message_start = context.messages.len();
+        context.add_user_message("CRWV 估值怎么看");
+        add_test_data_fetch_calls(&mut context, &[("tc_financials", "financials")]);
+        context.add_tool_result(
+            "tc_financials",
+            "data_fetch",
+            r#"{"data":[{"period":"FY","calendarYear":"2025","revenue":5000},{"period":"FY","calendarYear":"2024","revenue":4000},{"period":"FY","calendarYear":"2023","revenue":3000},{"period":"FY","calendarYear":"2022","revenue":2000}]}"#,
+        );
+
+        let scope = test_fallback_scope(&[("tc_financials", "/data/2/missing_ebitda")], &[]);
+        let catalog = current_turn_fallback_evidence_catalog(&context, turn_message_start, &scope);
+
+        assert!(catalog.iter().any(|item| item["value"] == "2023"));
+        assert!(catalog.iter().any(|item| item["value"] == 3000));
+        assert!(catalog.iter().all(|item| {
+            item["json_pointer"]
+                .as_str()
+                .is_some_and(|pointer| pointer.starts_with("/data/2/"))
+        }));
+    }
+
+    #[test]
+    fn invalid_web_excerpt_falls_back_to_only_the_selected_result_number() {
+        let mut context = AgentContext::new("selected-web-result".to_string());
+        let turn_message_start = context.messages.len();
+        context.add_user_message("CRWV 和 NVIDIA 有什么关系");
+        context.add_tool_result(
+            "tc_web",
+            "web_search",
+            r#"{"results":[{"title":"Unselected one","url":"https://example.test/1","content":"first unrelated result"},{"title":"Selected two","url":"https://example.test/2","content":"second selected relationship result"},{"title":"Unselected three","url":"https://example.test/3","content":"third unrelated result"}]}"#,
+        );
+
+        let scope = test_fallback_scope(&[], &[("tc_web", 2)]);
+        let catalog = current_turn_fallback_evidence_catalog(&context, turn_message_start, &scope);
+
+        assert_eq!(catalog.len(), 1);
+        assert_eq!(catalog[0]["result_number"], 2);
+        assert_eq!(catalog[0]["title"], "Selected two");
+        let serialized = serde_json::to_string(&catalog).expect("serialize selected web result");
+        assert!(!serialized.contains("Unselected one"));
+        assert!(!serialized.contains("Unselected three"));
+    }
+
+    #[test]
+    fn schema_invalid_finish_recovers_only_fixed_path_references() {
+        let mut context = AgentContext::new("schema-invalid-scoped-fallback".to_string());
+        let turn_message_start = context.messages.len();
+        context.add_user_message("CRWV 怎么看");
+        add_test_data_fetch_calls(
+            &mut context,
+            &[
+                ("tc_selected_quote", "quote"),
+                ("tc_unselected_nbis", "quote"),
+            ],
+        );
+        context.add_tool_result(
+            "tc_selected_quote",
+            "data_fetch",
+            r#"{"data":[{"symbol":"CRWV","price":73.21}]}"#,
+        );
+        context.add_tool_result(
+            "tc_unselected_nbis",
+            "data_fetch",
+            r#"{"data":[{"symbol":"NBIS","price":52.40}]}"#,
+        );
+        let finish = ToolCall {
+            id: "tc_finish".to_string(),
+            call_type: "function".to_string(),
+            function: FunctionCall {
+                name: FINISH_RESEARCH_TOOL_NAME.to_string(),
+                // Valid JSON but intentionally missing the typed handoff's
+                // required top-level fields. A stray root locator must not be
+                // discovered recursively.
+                arguments: json!({
+                    "facts": [{
+                        "id": "F1",
+                        "evidence": [{
+                            "tool_call_id": "tc_selected_quote",
+                            "json_pointer": "/data/0/missing_pe"
+                        }]
+                    }],
+                    "tool_call_id": "tc_unselected_nbis",
+                    "json_pointer": "/data/0/price"
+                })
+                .to_string(),
+            },
+        };
+        assert!(parse_finish_research_handoff(&finish).is_err());
+
+        let scope = fallback_scope_from_finish_calls(&[&finish]);
+        let catalog = current_turn_fallback_evidence_catalog(&context, turn_message_start, &scope);
+        let serialized = serde_json::to_string(&catalog).expect("serialize recovered scope");
+        assert!(serialized.contains("tc_selected_quote"));
+        assert!(serialized.contains("CRWV"));
+        assert!(!serialized.contains("tc_unselected_nbis"));
+        assert!(!serialized.contains("NBIS"));
+    }
+
+    #[test]
+    fn multi_tool_dual_ticker_valuation_fallback_keeps_each_entitys_core_inputs() {
+        let mut context = AgentContext::new("multi-tool-valuation-fallback".to_string());
+        let turn_message_start = context.messages.len();
+        context.add_user_message("CRWV 和 NBIS 的估值怎么看");
+        add_test_data_fetch_calls(
+            &mut context,
+            &[
+                ("tc_quote", "quote"),
+                ("tc_crwv_financials", "financials"),
+                ("tc_nbis_financials", "financials"),
+            ],
+        );
+        context.add_tool_result(
+            "tc_quote",
+            "data_fetch",
+            r#"{"data":[{"symbol":"CRWV","price":73.21,"marketCap":35000000000,"pe":55},{"symbol":"NBIS","price":52.40,"marketCap":12600000000,"pe":-8}]}"#,
+        );
+        context.add_tool_result(
+            "tc_crwv_financials",
+            "data_fetch",
+            r#"{"data":[{"symbol":"CRWV","date":"2025-12-31","period":"FY","reportedCurrency":"USD","revenue":5100000000,"ebitda":620000000,"netIncome":-410000000,"freeCashFlow":-1200000000}]}"#,
+        );
+        context.add_tool_result(
+            "tc_nbis_financials",
+            "data_fetch",
+            r#"{"data":[{"symbol":"NBIS","date":"2025-12-31","period":"FY","reportedCurrency":"USD","revenue":920000000,"ebitda":-450000000,"netIncome":-610000000,"freeCashFlow":-700000000}]}"#,
+        );
+
+        let scope = test_fallback_scope(
+            &[
+                ("tc_quote", "/data/0/marketCap"),
+                ("tc_quote", "/data/1/marketCap"),
+                ("tc_crwv_financials", "/data/0/revenue"),
+                ("tc_nbis_financials", "/data/0/revenue"),
+            ],
+            &[],
+        );
+        let catalog = current_turn_fallback_evidence_catalog(&context, turn_message_start, &scope);
+        for (tool_call_id, pointer, expected) in [
+            ("tc_quote", "/data/0/marketCap", json!(35000000000_u64)),
+            ("tc_quote", "/data/1/marketCap", json!(12600000000_u64)),
+            (
+                "tc_crwv_financials",
+                "/data/0/revenue",
+                json!(5100000000_u64),
+            ),
+            ("tc_crwv_financials", "/data/0/ebitda", json!(620000000_u64)),
+            (
+                "tc_nbis_financials",
+                "/data/0/revenue",
+                json!(920000000_u64),
+            ),
+            (
+                "tc_nbis_financials",
+                "/data/0/ebitda",
+                json!(-450000000_i64),
+            ),
+        ] {
+            assert!(
+                catalog.iter().any(|item| {
+                    item["tool_call_id"] == tool_call_id
+                        && item["json_pointer"] == pointer
+                        && item["value"] == expected
+                }),
+                "missing {tool_call_id} {pointer}: {catalog:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn realistic_dual_valuation_fallback_excludes_search_candidates_and_keeps_latest_inputs() {
+        let mut context = AgentContext::new("realistic-dual-valuation-fallback".to_string());
+        let turn_message_start = context.messages.len();
+        context.add_user_message("CRWV 和 NBIS 的估值怎么看");
+        let data_call = |id: &str, arguments: Value| {
+            serde_json::to_value(ToolCall {
+                id: id.to_string(),
+                call_type: "function".to_string(),
+                function: FunctionCall {
+                    name: "data_fetch".to_string(),
+                    arguments: arguments.to_string(),
+                },
+            })
+            .expect("serialize DataFetch call")
+        };
+        let web_call = |id: &str, query: &str| {
+            serde_json::to_value(ToolCall {
+                id: id.to_string(),
+                call_type: "function".to_string(),
+                function: FunctionCall {
+                    name: "web_search".to_string(),
+                    arguments: json!({"query": query}).to_string(),
+                },
+            })
+            .expect("serialize Web call")
+        };
+        context.add_assistant_message(
+            "",
+            Some(vec![
+                data_call(
+                    "tc_search_crwv",
+                    json!({"data_type":"search","query":"CRWV","entity_route":"crwv","identity_match":"exact_symbol"}),
+                ),
+                data_call(
+                    "tc_search_nbis",
+                    json!({"data_type":"search","query":"NBIS","entity_route":"nbis","identity_match":"exact_symbol"}),
+                ),
+                data_call(
+                    "tc_quote",
+                    json!({"data_type":"quote","ticker":"CRWV,NBIS"}),
+                ),
+                data_call(
+                    "tc_profile_crwv",
+                    json!({"data_type":"profile","ticker":"CRWV"}),
+                ),
+                data_call(
+                    "tc_profile_nbis",
+                    json!({"data_type":"profile","ticker":"NBIS"}),
+                ),
+                data_call(
+                    "tc_crwv_financials",
+                    json!({"data_type":"financials","ticker":"CRWV"}),
+                ),
+                data_call(
+                    "tc_nbis_financials",
+                    json!({"data_type":"financials","ticker":"NBIS"}),
+                ),
+                web_call("tc_web_business", "CoreWeave NBIS business relationship"),
+                web_call("tc_web_ownership", "CoreWeave NBIS investment ownership"),
+            ]),
+        );
+        context.add_tool_result(
+            "tc_search_crwv",
+            "data_fetch",
+            r#"{"data":[{"symbol":"CRWV","name":"CoreWeave"},{"symbol":"CWY","name":"YieldBOOST CRWV ETF"}]}"#,
+        );
+        context.add_tool_result(
+            "tc_search_nbis",
+            "data_fetch",
+            r#"{"data":[{"symbol":"NBIS","name":"Nebius Group"},{"symbol":"NBIX","name":"Neurocrine Biosciences"}]}"#,
+        );
+        context.add_tool_result(
+            "tc_quote",
+            "data_fetch",
+            r#"{"data":[{"symbol":"CRWV","hone_quote_time":{"beijing":"2026-07-18 04:00"},"price":73.21,"currency":"USD","changesPercentage":0.41,"change":0.30,"marketCap":35000000000,"pe":55},{"symbol":"NBIS","hone_quote_time":{"beijing":"2026-07-18 04:00"},"price":52.40,"currency":"USD","changesPercentage":-0.8,"change":-0.42,"marketCap":12600000000,"pe":-8}]}"#,
+        );
+        context.add_tool_result(
+            "tc_profile_crwv",
+            "data_fetch",
+            r#"{"data":[{"symbol":"CRWV","name":"CoreWeave","currency":"USD","exchange":"NASDAQ","industry":"Software - Infrastructure","description":"Cloud infrastructure profile text","price":73.21,"marketCap":35000000000}]}"#,
+        );
+        context.add_tool_result(
+            "tc_profile_nbis",
+            "data_fetch",
+            r#"{"data":[{"symbol":"NBIS","name":"Nebius Group","currency":"USD","exchange":"NASDAQ","industry":"Information Technology Services","description":"AI infrastructure profile text","price":52.40,"marketCap":12600000000}]}"#,
+        );
+        context.add_tool_result(
+            "tc_crwv_financials",
+            "data_fetch",
+            r#"{"data":[{"symbol":"CRWV","date":"2025-12-31","calendarYear":"2025","period":"FY","reportedCurrency":"USD","revenue":5100000000,"ebitda":620000000,"netIncome":-410000000},{"symbol":"CRWV","date":"2024-12-31","calendarYear":"2024","period":"FY","reportedCurrency":"USD","revenue":1900000000,"ebitda":180000000,"netIncome":-860000000},{"symbol":"CRWV","date":"2023-12-31","calendarYear":"2023","period":"FY","reportedCurrency":"USD","revenue":1200000000,"ebitda":90000000,"netIncome":-590000000},{"symbol":"CRWV","date":"2022-12-31","calendarYear":"2022","period":"FY","reportedCurrency":"USD","revenue":500000000,"ebitda":20000000,"netIncome":-300000000}]}"#,
+        );
+        context.add_tool_result(
+            "tc_nbis_financials",
+            "data_fetch",
+            r#"{"data":[{"symbol":"NBIS","date":"2025-12-31","calendarYear":"2025","period":"FY","reportedCurrency":"USD","revenue":920000000,"ebitda":-450000000,"netIncome":-610000000},{"symbol":"NBIS","date":"2024-12-31","calendarYear":"2024","period":"FY","reportedCurrency":"USD","revenue":550000000,"ebitda":-370000000,"netIncome":-641400000},{"symbol":"NBIS","date":"2023-12-31","calendarYear":"2023","period":"FY","reportedCurrency":"USD","revenue":300000000,"ebitda":-250000000,"netIncome":-500000000},{"symbol":"NBIS","date":"2022-12-31","calendarYear":"2022","period":"FY","reportedCurrency":"USD","revenue":180000000,"ebitda":-180000000,"netIncome":-400000000}]}"#,
+        );
+        for (tool_call_id, topic) in [
+            ("tc_web_business", "business"),
+            ("tc_web_ownership", "ownership"),
+        ] {
+            let results = (1..=3)
+                .map(|index| {
+                    json!({
+                        "title": format!("{topic} source {index}"),
+                        "url": format!("https://example.test/{topic}/{index}"),
+                        "content": format!("Current sourced {topic} excerpt number {index}.")
+                    })
+                })
+                .collect::<Vec<_>>();
+            context.add_tool_result(
+                tool_call_id,
+                "web_search",
+                &json!({"results": results}).to_string(),
+            );
+        }
+
+        let mut scope = test_fallback_scope(
+            &[
+                ("tc_search_crwv", "/data/1/symbol"),
+                ("tc_search_nbis", "/data/1/symbol"),
+                ("tc_quote", "/data/0/marketCap"),
+                ("tc_quote", "/data/1/marketCap"),
+                ("tc_profile_crwv", "/data/0/name"),
+                ("tc_profile_nbis", "/data/0/name"),
+            ],
+            &[
+                ("tc_web_business", 1),
+                ("tc_web_business", 2),
+                ("tc_web_business", 3),
+                ("tc_web_ownership", 1),
+                ("tc_web_ownership", 2),
+                ("tc_web_ownership", 3),
+            ],
+        );
+        for tool_call_id in ["tc_crwv_financials", "tc_nbis_financials"] {
+            for row in 0..4 {
+                scope.observe_reference(&ResearchEvidenceRef {
+                    tool_call_id: tool_call_id.to_string(),
+                    result_number: None,
+                    exact_excerpt: None,
+                    json_pointer: Some(format!("/data/{row}/revenue")),
+                });
+            }
+        }
+        let catalog = current_turn_fallback_evidence_catalog(&context, turn_message_start, &scope);
+        assert_eq!(catalog.len(), MAX_FALLBACK_EVIDENCE_ITEMS);
+        let serialized = serde_json::to_string(&catalog).expect("serialize realistic fallback");
+        assert!(!serialized.contains("CWY"));
+        assert!(!serialized.contains("NBIX"));
+        assert!(catalog.iter().all(|item| {
+            !matches!(
+                item["tool_call_id"].as_str(),
+                Some("tc_search_crwv" | "tc_search_nbis")
+            )
+        }));
+        for (tool_call_id, pointer) in [
+            ("tc_quote", "/data/0/marketCap"),
+            ("tc_quote", "/data/0/pe"),
+            ("tc_quote", "/data/1/marketCap"),
+            ("tc_quote", "/data/1/pe"),
+            ("tc_crwv_financials", "/data/0/date"),
+            ("tc_crwv_financials", "/data/0/period"),
+            ("tc_crwv_financials", "/data/0/revenue"),
+            ("tc_crwv_financials", "/data/0/ebitda"),
+            ("tc_nbis_financials", "/data/0/date"),
+            ("tc_nbis_financials", "/data/0/period"),
+            ("tc_nbis_financials", "/data/0/revenue"),
+            ("tc_nbis_financials", "/data/0/ebitda"),
+        ] {
+            assert!(
+                catalog.iter().any(|item| {
+                    item["tool_call_id"] == tool_call_id && item["json_pointer"] == pointer
+                }),
+                "missing {tool_call_id} {pointer}: {catalog:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn covered_fallback_locators_are_removed_before_the_global_cap() {
+        let mut context = AgentContext::new("fallback-exclusion-before-cap".to_string());
+        let turn_message_start = context.messages.len();
+        context.add_user_message("CRWV 怎么看");
+        add_test_data_fetch_calls(&mut context, &[("tc_older_quote", "quote")]);
+        context.add_tool_result(
+            "tc_older_quote",
+            "data_fetch",
+            r#"{"data":[{"symbol":"CRWV","price":73.21,"marketCap":35000000000,"pe":55}]}"#,
+        );
+        let mut covered = BTreeSet::new();
+        let mut scope = test_fallback_scope(&[("tc_older_quote", "/data/0/price")], &[]);
+        for tool_index in 0..3 {
+            let tool_call_id = format!("tc_covered_{tool_index}");
+            add_test_data_fetch_calls(&mut context, &[(tool_call_id.as_str(), "financials")]);
+            let data = (0..MAX_FALLBACK_ITEMS_PER_TOOL)
+                .map(|item_index| json!({"symbol": format!("NOISE_{tool_index}_{item_index}")}))
+                .collect::<Vec<_>>();
+            let payload = json!({"data": data}).to_string();
+            context.add_tool_result(&tool_call_id, "data_fetch", &payload);
+            for item_index in 0..MAX_FALLBACK_ITEMS_PER_TOOL {
+                scope.observe_reference(&ResearchEvidenceRef {
+                    tool_call_id: tool_call_id.clone(),
+                    result_number: None,
+                    exact_excerpt: None,
+                    json_pointer: Some(format!("/data/{item_index}/symbol")),
+                });
+                covered.insert(format!("data:{tool_call_id}:/data/{item_index}/symbol"));
+            }
+        }
+
+        let catalog = current_turn_fallback_evidence_catalog_excluding(
+            &context,
+            turn_message_start,
+            &scope,
+            &covered,
+        );
+
+        assert!(
+            catalog.iter().any(|item| {
+                item["tool_call_id"] == "tc_older_quote"
+                    && item["json_pointer"] == "/data/0/price"
+                    && item["value"] == 73.21
+            }),
+            "covered recent items consumed the cap before exclusion: {catalog:?}"
+        );
+        assert!(catalog.iter().all(|item| {
+            item["tool_call_id"]
+                .as_str()
+                .is_none_or(|tool_call_id| !tool_call_id.starts_with("tc_covered_"))
+        }));
+    }
+
+    #[test]
+    fn snapshot_fallback_scans_quote_before_a_large_news_branch() {
+        let mut context = AgentContext::new("snapshot-quote-first".to_string());
+        let turn_message_start = context.messages.len();
+        context.add_user_message("CRWV 怎么看");
+        add_test_data_fetch_calls(&mut context, &[("tc_snapshot", "snapshot")]);
+        let news = (0..300)
+            .map(|index| {
+                json!({
+                    "date": format!("2026-07-{:02}", (index % 28) + 1),
+                    "title": format!("unrelated news item {index}"),
+                    "text": format!("large branch scalar {index}")
+                })
+            })
+            .collect::<Vec<_>>();
+        let payload = json!({
+            "data": {
+                "news": news,
+                "quote": [{
+                    "symbol": "CRWV",
+                    "price": 73.21,
+                    "currency": "USD",
+                    "hone_quote_time": {"beijing": "2026-07-18 04:00"}
+                }]
+            }
+        })
+        .to_string();
+        context.add_tool_result("tc_snapshot", "data_fetch", &payload);
+
+        let scope = test_fallback_scope(&[("tc_snapshot", "/data/quote/0/price")], &[]);
+        let catalog = current_turn_fallback_evidence_catalog(&context, turn_message_start, &scope);
+        let pointers = catalog
+            .iter()
+            .filter_map(|item| item.get("json_pointer").and_then(Value::as_str))
+            .collect::<Vec<_>>();
+
+        assert!(pointers.contains(&"/data/quote/0/symbol"));
+        assert!(pointers.contains(&"/data/quote/0/price"));
+        assert!(pointers.contains(&"/data/quote/0/hone_quote_time/beijing"));
+    }
+
+    #[test]
+    fn valid_web_fact_is_supplemented_when_a_quote_reference_is_bad() {
+        let mut context = AgentContext::new("partial-handoff-fallback".to_string());
+        let turn_message_start = context.messages.len();
+        context.add_user_message("CRWV 和 NVIDIA 有什么关系");
+        add_test_data_fetch_calls(
+            &mut context,
+            &[("tc_stale_nbis", "quote"), ("tc_quote", "quote")],
+        );
+        context.add_tool_result(
+            "tc_stale_nbis",
+            "data_fetch",
+            r#"{"data":[{"symbol":"NBIS","price":52.40,"marketCap":12600000000}]}"#,
+        );
+        context.add_tool_result(
+            "tc_web",
+            "web_search",
+            r#"{"results":[{"title":"Commercial agreement","url":"https://example.test/agreement","content":"NVIDIA and CoreWeave announced a commercial agreement."}]}"#,
+        );
+        context.add_tool_result(
+            "tc_quote",
+            "data_fetch",
+            r#"{"data":[{"symbol":"CRWV","price":73.21,"currency":"USD"}]}"#,
+        );
+        let handoff = ResearchHandoff {
+            answer_scope: "回答双方关系".to_string(),
+            facts: vec![
+                ResearchHandoffFact {
+                    id: "F1".to_string(),
+                    evidence: vec![ResearchEvidenceRef {
+                        tool_call_id: "tc_web".to_string(),
+                        result_number: Some(1),
+                        exact_excerpt: Some(
+                            "NVIDIA and CoreWeave announced a commercial agreement.".to_string(),
+                        ),
+                        json_pointer: None,
+                    }],
+                },
+                ResearchHandoffFact {
+                    id: "F2".to_string(),
+                    evidence: vec![ResearchEvidenceRef {
+                        tool_call_id: "tc_quote".to_string(),
+                        result_number: None,
+                        exact_excerpt: None,
+                        json_pointer: Some("/data/0/missing_price".to_string()),
+                    }],
+                },
+            ],
+            inferences: Vec::new(),
+            gaps: Vec::new(),
+        };
+
+        let validated = validate_finish_research_handoff(handoff, &context, turn_message_start);
+
+        assert_eq!(validated.facts.len(), 1);
+        assert!(validated.validation_warnings.iter().any(|warning| {
+            warning.contains("json_pointer /data/0/missing_price does not exist")
+        }));
+        assert!(validated.fallback_evidence.iter().any(|item| {
+            item["tool_call_id"] == "tc_quote"
+                && item["json_pointer"] == "/data/0/price"
+                && item["value"] == 73.21
+        }));
+        let serialized = serde_json::to_string(&validated).expect("serialize scoped handoff");
+        assert!(!serialized.contains("tc_stale_nbis"));
+        assert!(!serialized.contains("NBIS"));
+    }
+
+    #[test]
+    fn structured_finish_handoff_resolves_only_current_turn_exact_provenance() {
+        let mut context = AgentContext::new("structured-handoff".to_string());
+        context.add_tool_result(
+            "tc_old_web",
+            "web_search",
+            r#"{"results":[{"title":"Old","url":"https://old.test","content":"old relationship"}]}"#,
+        );
+        let turn_message_start = context.messages.len();
+        context.add_user_message("CRWV 和 NVIDIA 有什么关系");
+        add_test_data_fetch_calls(&mut context, &[("tc_quote", "quote")]);
+        context.add_tool_result(
+            "tc_quote",
+            "data_fetch",
+            r#"{"data":[{"symbol":"CRWV","price":73.21}]}"#,
+        );
+        context.add_tool_result(
+            "tc_web_relationship",
+            "web_search",
+            r#"{"results":[{"title":"Capacity purchase announcement","url":"https://example.test/capacity","content":"The buyer agreed to purchase $6.3B of unused capacity."},{"title":"Most-favored-nation relationship","url":"https://example.test/mfn","content":"The filing describes a most-favored-nation relationship."}]}"#,
+        );
+        let call = ToolCall {
+            id: "tc_finish".to_string(),
+            call_type: "function".to_string(),
+            function: FunctionCall {
+                name: FINISH_RESEARCH_TOOL_NAME.to_string(),
+                arguments: json!({
+                    "answer_scope": "回答双方关系",
+                    "facts": [
+                        {
+                            "id": "F1",
+                            "evidence": [
+                                {
+                                    "tool_call_id": "tc_web_relationship",
+                                    "result_number": 1,
+                                    "exact_excerpt": "The buyer agreed to purchase $6.3B of unused capacity."
+                                },
+                                {
+                                    "tool_call_id": "tc_web_relationship",
+                                    "result_number": 2,
+                                    "exact_excerpt": "fabricated second excerpt"
+                                }
+                            ]
+                        },
+                        {
+                            "id": "F2",
+                            "evidence": [{
+                                "tool_call_id": "tc_quote",
+                                "json_pointer": "/data/0/price"
+                            }]
+                        }
+                    ],
+                    "inferences": [{
+                        "claim": "双方关系不止一个维度。",
+                        "premise_fact_ids": ["F1", "F2"]
+                    }],
+                    "gaps": ["持股比例未核验"]
+                })
+                .to_string(),
+            },
+        };
+
+        let handoff = parse_finish_research_handoff(&call).expect("parse handoff");
+        let validated = validate_finish_research_handoff(handoff, &context, turn_message_start);
+        assert_eq!(validated.facts.len(), 2);
+        assert_eq!(validated.facts[0].resolved_evidence[0]["result_number"], 1);
+        assert_eq!(validated.facts[0].resolved_evidence.len(), 1);
+        assert_eq!(validated.facts[1].resolved_evidence[0]["value"], 73.21);
+        assert!(
+            validated
+                .validation_warnings
+                .iter()
+                .any(|warning| warning.contains("not a verbatim substring")),
+            "one bad reference must be dropped without rejecting the good reference or handoff"
+        );
+
+        let stale = ToolCall {
+            id: "tc_finish_stale".to_string(),
+            call_type: "function".to_string(),
+            function: FunctionCall {
+                name: FINISH_RESEARCH_TOOL_NAME.to_string(),
+                arguments: json!({
+                    "answer_scope": "回答双方关系",
+                    "facts": [{
+                        "id": "F1",
+                        "evidence": [{
+                            "tool_call_id": "tc_old_web",
+                            "result_number": 1,
+                            "exact_excerpt": "old relationship"
+                        }]
+                    }],
+                    "inferences": [],
+                    "gaps": []
+                })
+                .to_string(),
+            },
+        };
+        let stale_validated = validate_finish_research_handoff(
+            parse_finish_research_handoff(&stale).expect("parse stale handoff"),
+            &context,
+            turn_message_start,
+        );
+        assert!(stale_validated.facts.is_empty());
+        assert!(
+            stale_validated
+                .validation_warnings
+                .iter()
+                .any(|warning| warning.contains("not a current-turn result"))
+        );
+    }
+
+    #[test]
+    fn structured_finish_handoff_rejects_empty_or_fabricated_web_provenance() {
+        let empty = ToolCall {
+            id: "tc_empty".to_string(),
+            call_type: "function".to_string(),
+            function: FunctionCall {
+                name: FINISH_RESEARCH_TOOL_NAME.to_string(),
+                arguments: "{}".to_string(),
+            },
+        };
+        assert!(parse_finish_research_handoff(&empty).is_err());
+
+        let mut context = AgentContext::new("fabricated-handoff".to_string());
+        let turn_message_start = context.messages.len();
+        context.add_tool_result(
+            "tc_web",
+            "web_search",
+            r#"{"results":[{"title":"Partnership","url":"https://example.test/partnership","content":"The companies announced a collaboration."}]}"#,
+        );
+        let fabricated = ToolCall {
+            id: "tc_finish".to_string(),
+            call_type: "function".to_string(),
+            function: FunctionCall {
+                name: FINISH_RESEARCH_TOOL_NAME.to_string(),
+                arguments: json!({
+                    "answer_scope": "回答双方关系",
+                    "facts": [{
+                        "id": "F1",
+                        "evidence": [{
+                            "tool_call_id": "tc_web",
+                            "result_number": 1,
+                            "exact_excerpt": "no equity relationship"
+                        }]
+                    }],
+                    "inferences": [],
+                    "gaps": []
+                })
+                .to_string(),
+            },
+        };
+        let validated = validate_finish_research_handoff(
+            parse_finish_research_handoff(&fabricated).expect("parse fabricated handoff"),
+            &context,
+            turn_message_start,
+        );
+        assert!(validated.facts.is_empty());
+        assert!(!validated.fallback_evidence.is_empty());
+        assert!(
+            validated
+                .validation_warnings
+                .iter()
+                .any(|warning| warning.contains("not a verbatim substring"))
+        );
     }
 
     #[test]
@@ -3781,11 +6034,11 @@ mod tests {
         assert_eq!(prefix, "数据时间：北京时间 2026-07-19 09:31；行情口径：");
 
         let route_guidance = "- entity_route=\"coreweave\": candidates=CRWV；结构取证已覆盖";
-        let direct = active_business_turn_prompt(true, route_guidance);
-        let evidence_pending = active_business_turn_prompt(false, route_guidance);
-        let explicit = terminal_synthesis_prompt(Some(&prefix));
+        let direct = active_business_turn_prompt(true, route_guidance, None);
+        let evidence_pending = active_business_turn_prompt(false, route_guidance, None);
+        let explicit = terminal_synthesis_prompt(Some(&prefix), &test_validated_handoff());
         assert!(direct.contains("本轮仍是工具轮，不写终稿"));
-        assert!(direct.contains("finish_research({})"));
+        assert!(direct.contains("answer_scope / facts / inferences / gaps"));
         assert!(direct.contains(route_guidance));
         assert!(evidence_pending.contains("本轮只取证，不作答"));
         assert!(evidence_pending.contains("本轮必须只返回一个或多个真实业务工具调用"));
@@ -3800,7 +6053,7 @@ mod tests {
             "不得使用历史会话或模型记忆中的 URL",
             "以‘推断：’开头",
             "否定某种关系同样需要本轮来源直接支持",
-            "逐句建立关系 claim ledger",
+            "严格服从结构化交接",
             "披露缺项并继续完成能够被当前证据支持的分析",
         ] {
             assert!(explicit.contains(required), "terminal missing {required}");
@@ -5862,7 +8115,7 @@ mod tests {
                 index: 0,
                 id: Some("tc_finish".to_string()),
                 name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
-                arguments: "{}".to_string(),
+                arguments: relationship_finish_arguments("tc_web_relationship"),
             }],
             vec![
                 ChatStreamEvent::ReasoningDelta("terminal reasoning".to_string()),
@@ -6010,11 +8263,10 @@ mod tests {
                 message.content.as_deref().is_none_or(|content| {
                     !content.contains("15 USD")
                         && !content.contains("\"price\":15")
-                        && (!content.contains("NBIS")
-                            || content.starts_with("【历史用户请求，仅用于理解本轮指代"))
+                        && !content.contains("NBIS")
                 })
             }),
-            "stale prior-turn assistant/price evidence reached terminal synthesis"
+            "any stale prior-turn ticker, request, assistant draft, or price reached terminal synthesis"
         );
     }
 
@@ -6032,7 +8284,7 @@ mod tests {
                     index: 1,
                     id: Some("tc_hallucinated_finish_with_data".to_string()),
                     name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
-                    arguments: "{}".to_string(),
+                    arguments: test_finish_arguments(),
                 },
             ],
             vec![ChatStreamEvent::ToolCallDelta {
@@ -6053,14 +8305,14 @@ mod tests {
                     index: 1,
                     id: Some("tc_hallucinated_finish_with_echo".to_string()),
                     name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
-                    arguments: "{}".to_string(),
+                    arguments: test_finish_arguments(),
                 },
             ],
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
                 id: Some("tc_finish".to_string()),
                 name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
-                arguments: "{}".to_string(),
+                arguments: test_finish_arguments(),
             }],
             vec![ChatStreamEvent::ContentDelta("最终研究答案".to_string())],
         ]);
@@ -6428,10 +8680,11 @@ mod tests {
             .and_then(|message| message.content.as_deref())
             .expect("last-mile reminder");
         assert!(last_reminder.contains("本轮仍是工具轮，不写终稿"));
-        assert!(last_reminder.contains("finish_research({})"));
+        assert!(last_reminder.contains("answer_scope / facts / inferences / gaps"));
         assert!(!last_reminder.contains("数据时间：北京时间 2026-07-19 09:31；行情口径："));
         let serialized = serde_json::to_string(direct_request).expect("serialize direct request");
-        assert!(serialized.contains("历史用户请求，仅用于理解本轮指代"));
+        assert!(!serialized.contains("历史用户请求，仅用于理解本轮指代"));
+        assert!(!serialized.contains("NBIS"));
         assert!(!serialized.contains("15 USD"));
         assert!(serialized.contains("CoreWeave NVIDIA relationship filing"));
         assert!(serialized.contains("$6.3B of unused capacity"));
@@ -6488,7 +8741,7 @@ mod tests {
                 index: 0,
                 id: Some("tc_finish".to_string()),
                 name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
-                arguments: "{}".to_string(),
+                arguments: test_finish_arguments(),
             }],
             vec![ChatStreamEvent::ContentDelta(
                 "CRWV 与 NVDA 均已按各自实体路线核验。".to_string(),
@@ -6556,7 +8809,7 @@ mod tests {
                     index: 0,
                     id: Some("tc_unavailable_finish".to_string()),
                     name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
-                    arguments: "{}".to_string(),
+                    arguments: test_finish_arguments(),
                 },
             ],
             vec![
@@ -6589,7 +8842,7 @@ mod tests {
                 index: 0,
                 id: Some("tc_finish".to_string()),
                 name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
-                arguments: "{}".to_string(),
+                arguments: relationship_finish_arguments("tc_web_relationship"),
             }],
             vec![ChatStreamEvent::ContentDelta(
                 "continue preamble terminal".to_string(),
@@ -6671,14 +8924,11 @@ mod tests {
         )
         .expect("serialize terminal transcript");
         for required in [
-            r#"\"data_type\":\"quote\""#,
-            r#"\"data_type\":\"profile\""#,
-            "CoreWeave NVIDIA relationship filing",
             "$6.3B of unused capacity",
             "most-favored-nation relationship",
             "https://example.test/capacity",
             "https://example.test/mfn",
-            "逐句建立关系 claim ledger",
+            "严格服从结构化交接",
             "URL 只用于定位来源，不证明句中内容",
         ] {
             assert!(
@@ -6686,6 +8936,9 @@ mod tests {
                 "missing {required}: {terminal_transcript}"
             );
         }
+        assert!(!terminal_transcript.contains(r#"\"data_type\":\"quote\""#));
+        assert!(!terminal_transcript.contains(r#"\"data_type\":\"profile\""#));
+        assert!(!terminal_transcript.contains("CoreWeave NVIDIA relationship filing"));
         assert_eq!(
             observer
                 .events
@@ -6731,7 +8984,7 @@ mod tests {
                     index: 0,
                     id: Some("tc_finish".to_string()),
                     name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
-                    arguments: "{}".to_string(),
+                    arguments: test_finish_arguments(),
                 },
             ],
             vec![ChatStreamEvent::ContentDelta(
@@ -6772,7 +9025,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn malformed_finish_is_ignored_until_a_later_valid_sole_finish() {
+    async fn malformed_finish_enters_once_without_scanning_current_turn_results() {
         let llm = StreamingMockLlmProvider::with_rounds(vec![
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
@@ -6800,12 +9053,6 @@ mod tests {
                 name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
                 arguments: "{bad".to_string(),
             }],
-            vec![ChatStreamEvent::ToolCallDelta {
-                index: 0,
-                id: Some("tc_valid_finish".to_string()),
-                name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
-                arguments: "{}".to_string(),
-            }],
             vec![ChatStreamEvent::ContentDelta(
                 "malformed finish 后的唯一终稿".to_string(),
             )],
@@ -6825,17 +9072,25 @@ mod tests {
 
         assert!(response.success, "{:?}", response.error);
         assert_eq!(response.content, "malformed finish 后的唯一终稿");
-        assert_eq!(response.iterations, 5);
+        assert_eq!(response.iterations, 4);
         assert_eq!(response.tool_calls_made.len(), 3);
         assert_eq!(
             seen_tool_counts
                 .lock()
                 .expect("stream tool counts lock")
                 .as_slice(),
-            [1, 1, 2, 2, 0],
-            "the malformed signal must not enter terminal synthesis"
+            [1, 1, 2, 0],
+            "malformed handoff JSON must enter one terminal without scanning current-turn results or starting another repair round"
         );
         assert_explicit_terminal_messages(&seen_messages);
+        let seen_messages = seen_messages.lock().expect("stream messages lock");
+        let terminal_transcript =
+            serde_json::to_string(seen_messages.last().expect("terminal messages"))
+                .expect("serialize terminal transcript");
+        assert!(!terminal_transcript.contains("tc_quote"));
+        assert!(!terminal_transcript.contains("tc_profile"));
+        assert!(terminal_transcript.contains("本轮工具结果未包含可机械提取"));
+        drop(seen_messages);
         assert_eq!(
             observer
                 .events
@@ -6886,7 +9141,7 @@ mod tests {
                 index: 0,
                 id: Some("tc_finish".to_string()),
                 name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
-                arguments: "{}".to_string(),
+                arguments: test_finish_arguments(),
             }],
             vec![ChatStreamEvent::ContentDelta(
                 "隐藏思考后的终稿".to_string(),
@@ -7238,7 +9493,7 @@ mod tests {
                 index: 0,
                 id: Some("tc_finish".to_string()),
                 name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
-                arguments: "{}".to_string(),
+                arguments: test_finish_arguments(),
             }],
             vec![ChatStreamEvent::ContentDelta("唯一可见终稿".to_string())],
         ]);
@@ -7704,7 +9959,7 @@ mod tests {
                 index: 0,
                 id: Some("tc_finish".to_string()),
                 name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
-                arguments: "{}".to_string(),
+                arguments: test_finish_arguments(),
             }],
             vec![ChatStreamEvent::ContentDelta("行情分析终稿".to_string())],
         ]);
@@ -7784,7 +10039,7 @@ mod tests {
                 index: 0,
                 id: Some("tc_finish".to_string()),
                 name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
-                arguments: "{}".to_string(),
+                arguments: relationship_finish_arguments("tc_post_identity_web"),
             }],
             vec![ChatStreamEvent::ContentDelta(
                 "基于两项工具证据的终稿".to_string(),
@@ -7815,7 +10070,9 @@ mod tests {
         }));
         let terminal_transcript =
             serde_json::to_string(terminal_messages).expect("serialize terminal transcript");
-        assert!(terminal_transcript.contains(r#"\"query\":\"CRWV\""#));
+        assert!(!terminal_transcript.contains(r#"\"query\":\"CRWV\""#));
+        assert!(terminal_transcript.contains("fallback_evidence"));
+        assert!(terminal_transcript.contains("Capacity purchase announcement"));
         assert!(terminal_messages.iter().all(|message| {
             message.content.as_deref().is_none_or(|content| {
                 !content.contains("CRWV 是 NVIDIA 子公司") && !content.contains("CRWV 市值已经核验")
@@ -8082,7 +10339,7 @@ mod tests {
                     index: 0,
                     id: Some("tc_incomplete_finish".to_string()),
                     name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
-                    arguments: "{}".to_string(),
+                    arguments: test_finish_arguments(),
                 },
                 ChatStreamEvent::Finish(ChatStreamFinishReason::ToolCalls),
             ],
@@ -8248,7 +10505,7 @@ mod tests {
                 index: 0,
                 id: Some("tc_finish".to_string()),
                 name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
-                arguments: "{}".to_string(),
+                arguments: test_finish_arguments(),
             }],
             vec![
                 ChatStreamEvent::ToolChoiceMetadata {
@@ -8289,6 +10546,96 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn empty_completed_terminal_recovers_once_without_rerunning_business_tools() {
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_data_fetch".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_post_identity_quote".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"snapshot","ticker":"CRWV"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_finish".to_string()),
+                name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
+                arguments: test_finish_arguments(),
+            }],
+            Vec::new(),
+            vec![ChatStreamEvent::ContentDelta(
+                "同一证据生成的唯一非空终稿".to_string(),
+            )],
+        ]);
+        let stream_calls = llm.stream_calls.clone();
+        let seen_tool_counts = llm.seen_tool_counts.clone();
+        let seen_messages = llm.seen_messages.clone();
+        let audit = Arc::new(RecordingAuditSink::default());
+        let observer = Arc::new(RecordingStreamObserver::default());
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(FinanceEvidenceTool));
+        let agent = FunctionCallingAgent::new(
+            Arc::new(llm),
+            Arc::new(registry),
+            String::new(),
+            4,
+            Some(audit.clone()),
+        )
+        .with_finish_research_terminal_synthesis(true)
+        .with_stream_observer(Some(observer.clone()));
+        let mut context = AgentContext::new("empty-terminal-recovery".to_string());
+
+        let response = agent.run("research", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, "同一证据生成的唯一非空终稿");
+        assert_eq!(response.iterations, 4);
+        assert_eq!(response.tool_calls_made.len(), 2);
+        assert_eq!(stream_calls.load(Ordering::SeqCst), 5);
+        assert_eq!(
+            seen_tool_counts
+                .lock()
+                .expect("stream tool counts lock")
+                .as_slice(),
+            [1, 1, 2, 0, 0],
+            "empty terminal recovery must reuse the same evidence with tools disabled"
+        );
+        assert!(
+            observer
+                .events
+                .lock()
+                .expect("stream events lock")
+                .is_empty(),
+            "an empty first terminal and buffered recovery must not flash or reset"
+        );
+        let messages = seen_messages.lock().expect("stream messages lock");
+        assert!(
+            messages[4]
+                .last()
+                .and_then(|message| message.content.as_deref())
+                .is_some_and(|prompt| prompt.contains("正常结束但没有可见正文"))
+        );
+        drop(messages);
+        let records = audit.records.lock().expect("audit records lock");
+        let initial = records
+            .iter()
+            .find(|record| record.operation == "chat_terminal_without_tools")
+            .expect("initial terminal audit");
+        assert!(!initial.success);
+        assert_eq!(initial.metadata["terminal_recovery_eligible"], true);
+        let recovery = records
+            .iter()
+            .find(|record| record.operation == "chat_terminal_recovery_without_tools")
+            .expect("terminal recovery audit");
+        assert!(recovery.success, "{:?}", recovery.error);
+        assert_eq!(recovery.metadata["committed_prefix_bytes"], 0);
+    }
+
+    #[tokio::test]
     async fn committed_terminal_prefix_recovers_once_without_restreaming_or_rerunning_tools() {
         let prefix = concat!(
             "数据时间：北京时间 2026-07-18 21:05；行情口径：",
@@ -8313,7 +10660,7 @@ mod tests {
                 index: 0,
                 id: Some("tc_finish".to_string()),
                 name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
-                arguments: "{}".to_string(),
+                arguments: test_finish_arguments(),
             }],
             vec![
                 ChatStreamEvent::ToolChoiceMetadata {
@@ -8447,7 +10794,7 @@ mod tests {
                 index: 0,
                 id: Some("tc_finish".to_string()),
                 name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
-                arguments: "{}".to_string(),
+                arguments: test_finish_arguments(),
             }],
             vec![
                 ChatStreamEvent::ToolChoiceMetadata {
@@ -8569,7 +10916,7 @@ mod tests {
                 index: 0,
                 id: Some("tc_finish_after_gap".to_string()),
                 name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
-                arguments: "{}".to_string(),
+                arguments: test_finish_arguments(),
             }],
             vec![ChatStreamEvent::ContentDelta(
                 "本轮财务源不可用；以下仅分析已核验部分。".to_string(),
@@ -8627,7 +10974,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn duplicate_finish_calls_are_ignored_until_a_later_sole_finish() {
+    async fn duplicate_finish_calls_use_the_first_parseable_handoff_without_a_model_retry() {
         let llm = StreamingMockLlmProvider::with_rounds(vec![
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
@@ -8652,21 +10999,9 @@ mod tests {
                     index: 1,
                     id: Some("tc_finish_2".to_string()),
                     name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
-                    arguments: "{}".to_string(),
+                    arguments: test_finish_arguments(),
                 },
             ],
-            vec![ChatStreamEvent::ToolCallDelta {
-                index: 0,
-                id: Some("tc_web_after_duplicate".to_string()),
-                name: Some("web_search".to_string()),
-                arguments: r#"{"query":"relationship evidence"}"#.to_string(),
-            }],
-            vec![ChatStreamEvent::ToolCallDelta {
-                index: 0,
-                id: Some("tc_sole_finish".to_string()),
-                name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
-                arguments: "{}".to_string(),
-            }],
             vec![ChatStreamEvent::ContentDelta("唯一终稿".to_string())],
         ]);
         let seen_tool_counts = llm.seen_tool_counts.clone();
@@ -8684,15 +11019,14 @@ mod tests {
 
         assert!(response.success, "{:?}", response.error);
         assert_eq!(response.content, "唯一终稿");
-        assert_eq!(response.iterations, 6);
-        assert_eq!(response.tool_calls_made.len(), 3);
-        assert_eq!(response.tool_calls_made[2].name, "web_search");
+        assert_eq!(response.iterations, 4);
+        assert_eq!(response.tool_calls_made.len(), 2);
         assert_eq!(
             seen_tool_counts
                 .lock()
                 .expect("stream tool counts lock")
                 .as_slice(),
-            [2, 2, 3, 3, 3, 0]
+            [2, 2, 3, 0]
         );
         assert_eq!(
             seen_tool_choice_modes
@@ -8702,8 +11036,6 @@ mod tests {
             [
                 ToolChoiceMode::Auto,
                 ToolChoiceMode::Required,
-                ToolChoiceMode::Auto,
-                ToolChoiceMode::Auto,
                 ToolChoiceMode::Auto,
                 ToolChoiceMode::Auto,
             ]
@@ -8723,6 +11055,49 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn unavailable_sole_finish_gets_one_hidden_correction_and_never_returns_empty_success() {
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_unavailable_finish".to_string()),
+                name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
+                arguments: test_finish_arguments(),
+            }],
+            vec![ChatStreamEvent::ContentDelta("自然非空回答".to_string())],
+        ]);
+        let seen_messages = llm.seen_messages.clone();
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(EchoTool));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 3, None);
+        let mut context = AgentContext::new("unavailable-sole-finish".to_string());
+
+        let response = agent.run("普通问题", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, "自然非空回答");
+        assert_eq!(response.iterations, 2);
+        assert!(response.tool_calls_made.is_empty());
+        let seen_messages = seen_messages.lock().expect("stream messages lock");
+        assert!(seen_messages[1].iter().any(|message| {
+            message
+                .content
+                .as_deref()
+                .is_some_and(|content| content.contains("finish_research 当前尚不可用"))
+        }));
+        assert!(context.messages.iter().all(|message| {
+            message.tool_calls.as_ref().is_none_or(|calls| {
+                calls.iter().all(|call| {
+                    call.get("function")
+                        .and_then(|function| function.get("name"))
+                        .and_then(Value::as_str)
+                        != Some(FINISH_RESEARCH_TOOL_NAME)
+                })
+            })
+        }));
+    }
+
+    #[tokio::test]
     async fn hallucinated_finish_is_ignored_when_terminal_policy_is_disabled() {
         let llm = StreamingMockLlmProvider::with_rounds(vec![
             vec![
@@ -8730,7 +11105,7 @@ mod tests {
                     index: 0,
                     id: Some("tc_finish_mixed".to_string()),
                     name: Some(FINISH_RESEARCH_TOOL_NAME.to_string()),
-                    arguments: "{}".to_string(),
+                    arguments: test_finish_arguments(),
                 },
                 ChatStreamEvent::ToolCallDelta {
                     index: 1,

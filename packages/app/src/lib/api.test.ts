@@ -91,18 +91,35 @@ describe("public API errors", () => {
 
   test("streaming public chat uses the same friendly backend failure", async () => {
     setApiFetchRetryDelayForTests(0);
-    globalThis.fetch = ((() =>
-      Promise.resolve(
+    let calls = 0;
+    globalThis.fetch = ((() => {
+      calls += 1;
+      return Promise.resolve(
         new Response("nginx gateway failure\nwith stack details", {
           status: 503,
           statusText: "Service Unavailable",
         }),
-      )) as unknown) as typeof fetch;
+      );
+    }) as unknown) as typeof fetch;
 
     const error = await expectApiError(() => sendPublicChat("hello"));
 
+    expect(calls).toBe(1);
     expect(error.status).toBe(503);
     expect(error.message).toBe(FRIENDLY_BACKEND_UNAVAILABLE_MESSAGE);
+  });
+
+  test("streaming public chat never replays a POST after transport failure", async () => {
+    let calls = 0;
+    globalThis.fetch = ((() => {
+      calls += 1;
+      return Promise.reject(new TypeError("Failed to fetch"));
+    }) as unknown) as typeof fetch;
+
+    await expect(sendPublicChat("hello")).rejects.toThrow(
+      FRIENDLY_BACKEND_UNAVAILABLE_MESSAGE,
+    );
+    expect(calls).toBe(1);
   });
 });
 

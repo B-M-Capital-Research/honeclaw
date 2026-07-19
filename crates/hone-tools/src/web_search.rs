@@ -469,14 +469,14 @@ impl Tool for WebSearchTool {
     }
 
     fn description(&self) -> &str {
-        "搜索互联网获取最新信息。当需要查找实时新闻、股票消息、公司动态、公司之间的客户/供应商/投资/合作关系，或任何需要当前来源的问题时使用。当前工具使用 basic search，最多返回 3 条标题、URL 与结果摘要，不返回网页正文；摘要只能按字面有限使用，重要关系结论应继续优先寻找公司公告、监管文件或其它一手来源。实体 search/profile 只能证明身份，不能替代关系或事件证据；否定某种关系也需要明确来源，未搜到不等于不存在。"
+        "搜索互联网获取最新信息。当需要查找实时新闻、股票消息、公司动态、公司之间的客户/供应商/投资/持股/合同/技术合作关系，或任何需要当前来源的问题时使用。当前工具使用 basic search，最多返回 3 条标题、URL 与结果摘要，不返回网页正文；摘要只能按字面有限使用，重要关系结论应继续优先寻找 SEC、公司 IR、公司公告或其它一手来源。宽泛的‘A 与 B 什么关系’不能只做一次泛搜索：由 Agent 依据完整语义自主拆解相关维度，通常至少分别查询商业/客户供应/技术合同，以及投资/持股/beneficial ownership；可在同一轮并行。实体 search/profile 只能证明身份，不能替代关系或事件证据；否定某种关系也需要直接来源，未搜到不等于不存在。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
         vec![ToolParameter {
             name: "query".to_string(),
             param_type: "string".to_string(),
-            description: "搜索关键词（英文效果更好），例如 'AAPL latest news'、'CoreWeave NVIDIA customer supplier partnership filing' 或 'Bitcoin market news'；关系核验应同时包含双方标准名称和具体关系词".to_string(),
+            description: "搜索关键词（英文效果更好），例如 'AAPL latest news'、'CoreWeave NVIDIA customer supplier cloud capacity contract SEC'、'CoreWeave NVIDIA investment ownership beneficial owner 13G' 或 'Bitcoin market news'；关系核验应同时包含双方标准名称和本次待证的具体关系维度，宽泛关系问题通常需要多条不同维度查询".to_string(),
             required: true,
             r#enum: None,
             items: None,
@@ -674,11 +674,12 @@ mod tests {
         assert_text_contains_all(
             tool.description(),
             &[
-                "客户/供应商/投资/合作关系",
+                "客户/供应商/投资/持股/合同/技术合作关系",
                 "basic search",
                 "最多返回 3 条",
                 "不返回网页正文",
-                "公司公告、监管文件",
+                "SEC、公司 IR、公司公告",
+                "不能只做一次泛搜索",
                 "未搜到不等于不存在",
             ],
         );
@@ -687,7 +688,10 @@ mod tests {
             .into_iter()
             .find(|parameter| parameter.name == "query")
             .expect("query parameter");
-        assert_text_contains_all(&query.description, &["双方标准名称", "具体关系词"]);
+        assert_text_contains_all(
+            &query.description,
+            &["双方标准名称", "具体关系维度", "多条不同维度查询"],
+        );
     }
 
     #[test]

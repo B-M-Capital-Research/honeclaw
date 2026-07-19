@@ -2775,6 +2775,7 @@ dependencies = [
  "hone-core",
  "hone-llm",
  "hone-tools",
+ "serde",
  "serde_json",
  "tokio",
  "tracing",
