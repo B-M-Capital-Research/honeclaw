@@ -83,6 +83,8 @@ const CONTENT_ZH = {
 
   plan: {
     eyebrow: "PLAN 与定价",
+    share_title: "巴芒投研会员邀请",
+    share_sub: "六张海报看懂完整服务：原创研报、财报前瞻、每周直播与高手社群。把这一页直接发给想加入的朋友就行。",
     title: "两个版本，简单直接",
     sub: "核心永远开源免费、可自托管；完整服务把直播、社群与研报一次打通。",
     free: {
@@ -1744,6 +1746,8 @@ const CONTENT_EN: typeof CONTENT_ZH = {
 
   plan: {
     eyebrow: "PLAN & PRICING",
+    share_title: "B&M Research Membership",
+    share_sub: "Six posters that explain the full service: original research notes, earnings previews, weekly live sessions, and the investor community. Share this page with anyone who wants in.",
     title: "Two editions, plain and simple",
     sub: "The core stays open source and self-hostable; Full Access bundles the live sessions, community, and research notes.",
     free: {
