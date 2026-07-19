@@ -11,10 +11,10 @@ Last updated: 2026-07-19
 - Plan: `docs/archive/plans/public-community-edge-delivery.md`
 - Handoff: `docs/handoffs/2026-07-19-public-community-edge-delivery.md`
 - Decision / ADR: `docs/decisions.md#d-2026-07-19-09-deliver-authenticated-community-archives-from-private-r2-at-the-edge`
-- Related PRs / commits: this local change set; not pushed
+- Related PRs / commits: `385e35b0`, `100f5608`; docs-only follow-up `cb796cce`
 - Related runbooks / regressions: `docs/runbooks/backend-deployment.md#public-community-private-r2-edge-rollout`; workspace check/test excluding Apple clients; CI-safe regressions; Web `280/280`, typecheck, and discovery-off/on builds; Worker `45/45`, typecheck, frozen install, and Wrangler dry-run; publisher `8/8`; production snapshot dry-run/apply/idempotent dry-run
-- Current conclusion: the authenticated community edge path is implemented behind backend, Worker, and Pages gates while every legacy API remains available. The private production R2 snapshot contains `662` contents, `833` resources, `719` edge descriptors, `34` feed pages, and `754` publication objects; the final dry-run reports `existing_objects=754`, `would_write=0`, `no_op=true`, and zero conflicts. No Worker/Pages deployment, secret/variable mutation, traffic switch, backend restart, or Git push occurred.
-- Next entry point: `docs/runbooks/backend-deployment.md#public-community-private-r2-edge-rollout`; Step 5 is complete unless the canonical archive changes.
+- Current conclusion: the authenticated community edge path is implemented behind backend, Worker, and Pages gates while every legacy API remains available. The private production R2 snapshot contains `662` contents, `833` resources, `719` edge descriptors, `34` feed pages, and `754` publication objects; the final dry-run reports `existing_objects=754`, `would_write=0`, `no_op=true`, and zero conflicts. The exact-route Worker is deployed as version `e01c1603-7c34-476a-b63b-33ac74244108` with private `honeclaw` binding, no secret, and fail-closed `503`. Commits are pushed and Pages rebuilt automatically with discovery compiled out. Exact backend build `100f5608` is staged but not running; backend configuration, user traffic, and the old process remain unchanged.
+- Next entry point: let the external supervisor restart the prepared `target/deploy-100f5608` build, require the Step 1 cloud-health and `mode=off` `200 enabled=false` probes, and only then proceed to Step 4. Step 5 is complete unless the canonical archive changes.
 
 ## 2026-07-17
 

@@ -16,7 +16,7 @@
   - `docs/archive/plans/public-community-edge-delivery.md`
   - `docs/runbooks/backend-deployment.md#public-community-private-r2-edge-rollout`
   - `docs/decisions.md#d-2026-07-19-09-deliver-authenticated-community-archives-from-private-r2-at-the-edge`
-- related_prs: none; local change set is not pushed
+- related_prs: none; commits `385e35b0`, `100f5608`
 
 ## Summary
 
@@ -52,3 +52,14 @@ The authorized source delta was also reconciled before this delivery work: produ
 ## Next Entry Point
 
 Start at Step 1 of `docs/runbooks/backend-deployment.md#public-community-private-r2-edge-rollout`. Step 5 is already complete for the `662`-content snapshot and only needs repeating if the canonical archive changes before activation.
+
+## 2026-07-19 Disabled Infrastructure And Pre-Restart Phase
+
+- Wrangler OAuth was authorized for Cloudflare account `52dfc1420d779b403c08196b792ce926`; no repository credential or optional Cloudflare AI skill package was added.
+- A remote preflight confirmed that `hone-public-community-edge` did not exist, so there was no preserved `EDGE_DISABLED=false` value under `keep_vars=true`. Frozen install made no changes; TypeScript passed; Worker tests passed `45/45`; Wrangler dry-run reported `22.93 KiB` uploaded (`5.86 KiB` gzip) and only the reviewed bindings.
+- The disabled first deployment succeeded as Worker version `e01c1603-7c34-476a-b63b-33ac74244108`, with exact route `hone-claw.com/_community/v1/*`, `COMMUNITY_BUCKET -> honeclaw`, `workers_dev=false`, and `preview_urls=false`. `EDGE_DISABLED` remains absent and the Worker secret list is empty.
+- The public edge probe returned `503` with `{"error":"community_edge_unavailable"}`, `Cache-Control: private, no-store`, and `Vary: Cookie`, proving the route is Worker-owned and fail-closed before R2 or origin access. Anonymous legacy feed and resource probes remained backend JSON `401`.
+- Upstream `main` advanced during delivery, so the implementation was replayed without conflict in an isolated worktree on top of `33f7d4b8`. Gitleaks, Rust formatting, Web typecheck/tests/public build, Worker checks, and the full runtime-binary build passed; commits `385e35b0` and `100f5608` were pushed by fast-forward. Later `cb796cce` is docs-only.
+- Cloudflare Pages automatically deployed `100f5608` and the docs-only follow-up. The current production entry is `index-o0hmDXxE.js`; neither it nor `public-community-Cc9Av8gA.js` contains `_community`, `edge-session`, or `community_edge`, proving the compile-time discovery gate remains off.
+- Exact source `100f5608` was assembled as a new immutable `target/deploy-100f5608` runtime with all five production binaries, discovery-off public assets, exact skills/soul, the existing config symlink, and a fully verified `DEPLOYMENT_MANIFEST`. Assembly observed `origin/main=cb796cce` and recorded that the follow-up is docs-only.
+- The old backend was not restarted or overwritten. It remains cloud-authoritative with healthy PostgreSQL/R2, zero local durable dependencies, and zero active chats; local `POST /api/public/community/edge-session` still returns `404`. The external service must restart into the prepared directory, then require `200` with `enabled=false`, `mode="off"`, no token/user identifier, healthy `/api/meta`, and unchanged legacy behavior before any secret installation.

@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-07-19
-状态：有 7 个活跃任务
+状态：有 8 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **Public Community Edge 生产分阶段上线**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/public-community-edge-production-rollout.md`
+  - 摘要：私有 R2 快照已发布；全新的 `hone-public-community-edge` 已部署到精确路由并保持无 secret、无启用变量的 fail-closed `503`。实现提交 `385e35b0` / `100f5608` 已推到 `main`；自动 Pages 构建仍将 edge discovery 编译移除。精确 `100f5608` 的五个运行二进制、public bundle、skills/soul 和哈希 manifest 已准备在独立不可变目录，当前旧后端仍运行 `d58ef12b` 且新 edge-session 为 `404`。下一步只由外部服务执行受控重启，先验证 `mode=off` 的 `200 enabled=false`；共享 secret、backend `shadow/prefer`、Worker 激活和 Pages discovery 均未开始
 
 - **跨市场 ticker 解析架构修复**
   - 状态：`in_progress`
