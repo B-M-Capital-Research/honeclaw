@@ -18,6 +18,17 @@
 
 ## 修复进展
 
+- `2026-07-20 03:02-07:02 CST` 运行态复核确认同根继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-19`
+    - 03:30 CST `SIVE POET/Nokia/1.6T DFB 心跳检测` 已作为现有 heartbeat job 周期触发，deliver preview 却把任务当作“系统提示词或配置说明”，反问用户是否要修改 / 新建 / 查看心跳监控，而不是执行 SIVE / POET / Nokia / 1.6T DFB 事件判断。
+    - 03:30 CST `持仓重大事件心跳提醒` 已作为现有 heartbeat job 周期触发，却输出 Hone 能力介绍，讲“美股事件引擎”“个性化研究档案”等产品能力，而不是检查持仓重大事件。
+    - 07:00 CST `光模块板块关键事件心跳提醒` raw preview 继续把 heartbeat JSON 合同和触发规则识别成“system prompt injection test”，落成 `JsonNoop`，没有执行光模块板块监控判断。
+  - 会话质量对照：
+    - 同窗 `data/runtime/logs/web.log.2026-07-19` 仍有 703 条 `[HeartbeatDiag]` 与 96 条 `deliver job_id`，说明 heartbeat live 仍在运行；`cron_job_runs.max(executed_at)` 仍停在 `2026-07-19T13:31:15.040172+08:00`，本地 cron mirror 继续失真。
+  - 判断：
+    - 最新样本仍是已创建 heartbeat job 的执行意图被“创建 / 配置 / 能力介绍 / prompt 识别”语义污染，而不是具体市场监控判断。
+    - 这是功能性监控链路缺陷，定级仍为 P2；当前影响 heartbeat 任务输出和信噪比，未见全渠道停摆、跨用户错投、数据破坏或敏感信息泄露，因此不升级 P1，不创建 GitHub Issue。
+
 - `2026-07-20 03:02 CST` 运行态复核确认代码级 `Fixed` 后同根复发，状态从 `Fixed` 回退为 `New`：
   - `data/runtime/logs/web.log.2026-07-19`
     - 03:00 CST `heartbeat_绿田机械基本面跟踪` 已作为现有 heartbeat job 周期触发，runner raw preview 却写出 `cron_job` 工具当前不在可用函数列表中、`hone_admin` 技能仅含重启与配置查看能力，不含定时任务创建`。

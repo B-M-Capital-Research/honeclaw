@@ -7,6 +7,18 @@
 
 ## 修复进展
 
+- `2026-07-20 03:02-07:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-19`
+    - 同窗继续出现 703 条 `[HeartbeatDiag]`、182 条 raw `<think>`、96 条 `deliver job_id`、46 条 `duplicate_suppressed`、32 条 `runner_error`、19 条 `execution_failed`、385 条 function-calling 工具预算拒绝、4 条 `max_iterations_exceeded` 与 2 条 context window 信号。
+    - `parse_kind` 分布为 `PlainTextTriggered=192`、`JsonNoop=53`、`PlainTextSuppressed=16`、`PlainTextNoop=4`、`JsonMalformed=6`、`JsonTriggered=4`。
+    - 03:30 CST `全天原油价格3小时播报` 输出“03:30 不满足分钟<30，保持静默”却先进入 `PlainTextTriggered` deliver preview；03:30 CST `TSLA 正负触发条件心跳监控` 与 `heartbeat_绿田机械基本面跟踪` 均以 `<think>` + 自由文本落成 `JsonMalformed / execution_failed`；07:00 CST `Monitor_Watchlist_11` 因数据接口并发上限把“无法完成价格核验”作为 triggered deliver preview；多条 noop 语义继续依赖 duplicate suppression 或失败分支收口。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 同窗新增 23 条 user / 10 条 assistant / 8 条 system compact；除 07:00 Feishu scheduler 在 07:02 仍运行、随后 07:03 收口外，其余更新 session 均有 assistant 终态。
+    - `cron_job_runs.max(executed_at)` 仍停在 `2026-07-19T13:31:15.040172+08:00`，当前 heartbeat 运行态继续以 runtime web log 判断。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题继续影响 heartbeat 监控判断、送达语义和失败 / 跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-19 23:02-2026-07-20 03:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-19`
     - 同窗继续出现 716 条 `[HeartbeatDiag]`、170 条 raw `<think>`、95 条 `deliver job_id`、49 条 `duplicate_suppressed`、38 条 `runner_error`、12 条 `execution_failed`。

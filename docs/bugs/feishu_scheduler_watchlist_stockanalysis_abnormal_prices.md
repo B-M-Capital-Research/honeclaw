@@ -22,6 +22,17 @@
 
 ## 最新进展
 
+- 本轮 2026-07-20 03:02-07:02 CST 真实运行态继续出现同根异常 / 高风险价格和任务主体错配信号，状态维持 `New`：
+  - `data/sessions.sqlite3`
+    - 07:03 CST Feishu scheduler `美股持仓收盘后早报` `session_id=Actor_feishu__direct__ou_5f85509d35510291f93cd79a3b1c9eebf3` 正常收口，但 final 先输出一长串 `已核验事实` 流水，多个标的写成 `币种未标注`，并继续使用 `MU 848.95`、`SNDK` 等高风险数量级行情锚。
+    - 同窗新增 23 条 user / 10 条 assistant / 8 条 system compact；未见错投、投递失败、空回复、敏感信息外泄或全渠道不可用。
+  - `data/runtime/logs/web.log.2026-07-19`
+    - 03:30 CST `持仓财报与重大新闻心跳提醒` deliver preview 继续使用 `SNDK $1,354.82` 与 `AAOI` 行情锚；03:30 CST `闪迪关键事件心跳提醒` deliver preview 却分析中际旭创（300308.SZ），与任务主体闪迪错配。
+    - 03:30 CST `光迅科技关键事件心跳提醒` deliver preview 把 SNDK 判成无效 ticker 并讨论 WDC，任务主体与光迅科技错配；03:30 CST `中际旭创关键事件心跳提醒` 使用 `¥979.46（-12.00%）` 和 `建军节连休` 等高风险口径进入用户可见 preview。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check / 任务上下文错配缺口：异常数量级价格、币种缺失、错误时间口径和错配标的继续进入 scheduler final 或 heartbeat 用户可见 preview。
+    - 本窗没有错投到其他用户、投递失败、空回复、数据破坏或全渠道不可用；因此仍按质量性 `P3 / New`。该问题不影响主消息投递链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-19 11:00-15:03 CST 真实运行态继续出现同根异常 / 高风险价格和任务主体错配信号，状态维持 `New`：
   - `data/sessions.sqlite3`
     - 同窗新增 69 条 user / 27 条 assistant / 26 条 system compact，近期 session 均以 assistant 收口，未见错投、投递失败、空回复、敏感信息外泄或全渠道不可用。
