@@ -6234,3 +6234,14 @@
 - 本轮判断
   - 最新证据仍是 heartbeat 模型输出未稳定遵守结构化协议，解析层在 `PlainText*`、`Json*` 与 execution_failed 之间漂移。
   - 多数失败停留在 heartbeat 内部或跳过发送路径；未见进入普通 assistant final 的原始 provider 错误或敏感信息，因此维持 `P2 / New`。
+
+## 最新运行态复核（2026-07-19 11:01 CST）
+
+- `data/runtime/logs/web.log.2026-07-18/19`
+  - 巡检窗口：2026-07-19 07:01-11:01 CST。
+  - 同窗 heartbeat 结构化协议继续漂移：`PlainTextTriggered=194`、`PlainTextSuppressed=16`、`JsonNoop=47`、`PlainTextNoop=9`，raw `<think>` preview 170 条。
+  - 同窗还有 `failure_kind=execution_failed=16` 与“heartbeat 输出不是结构化 JSON=16”，代表部分任务仍在自然语言 / 思考稿 / 非法结构之间漂移后跳过发送或降级处理。
+  - 代表样本包括 11:00 CST `全天原油价格3小时播报` 因 `PlainTextSuppressed` 落成“heartbeat 输出不是结构化 JSON，任务已标记失败”；多条 Feishu / Web heartbeat raw preview 仍以 `<think>` 开头后接自然语言分析。
+- 本轮判断
+  - 最新证据仍是 heartbeat 模型输出未稳定遵守结构化协议，解析层在 `PlainText*`、`Json*` 与 execution_failed 之间漂移。
+  - 本轮未见全渠道不可用或错投，维持功能性 `P2 / New`，非 P1。
