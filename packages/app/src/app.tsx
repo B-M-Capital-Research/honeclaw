@@ -21,6 +21,7 @@ const HomePage = lazy(() => import("@/pages/home"))
 const PublicChatPage = lazy(() => import("@/pages/chat"))
 const PublicSiteHomePage = lazy(() => import("@/pages/public-home"))
 const PublicSiteRoadmapPage = lazy(() => import("@/pages/public-roadmap"))
+const PublicSitePlanPage = lazy(() => import("@/pages/public-plan"))
 const PublicBlogPage = lazy(() => import("@/pages/public-blog"))
 const PublicBlogPostPage = lazy(() => import("@/pages/public-blog-post"))
 const PublicSiteMePage = lazy(() => import("@/pages/public-me"))
@@ -29,6 +30,7 @@ const PublicSitePrivacyPage = lazy(() => import("@/pages/public-privacy"))
 const PublicSitePortfolioPage = lazy(() => import("@/pages/public-portfolio"))
 const PublicCommunityPage = lazy(() => import("@/pages/public-community"))
 const SharePreviewPage = lazy(() => import("@/pages/__share-preview"))
+const PublicSiteInvestPage = lazy(() => import("@/pages/public-invest"))
 const DashboardPage = lazy(() => import("@/pages/dashboard"))
 const SessionsPage = lazy(() => import("@/pages/sessions"))
 const SkillsPage = lazy(() => import("@/pages/skills"))
@@ -117,10 +119,12 @@ function PublicSurface() {
           <Router>
             <Route path="/" component={PublicSiteHomePage} />
             <Route path="/roadmap" component={PublicSiteRoadmapPage} />
+            <Route path="/plan" component={PublicSitePlanPage} />
             <Route path="/blog" component={PublicBlogPage} />
             <Route path="/blog/:slug" component={PublicBlogPostPage} />
             <Route path="/me" component={PublicSiteMePage} />
             <Route path="/portfolio" component={PublicSitePortfolioPage} />
+            <Route path="/invest" component={PublicSiteInvestPage} />
             <Route path="/community" component={PublicCommunityPage} />
             <Route path="/terms" component={PublicSiteTermsPage} />
             <Route path="/privacy" component={PublicSitePrivacyPage} />

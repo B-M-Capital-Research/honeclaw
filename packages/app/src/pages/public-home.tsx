@@ -1,6 +1,9 @@
-// public-home.tsx — HONE Public Site Homepage (v4.2 - Refined Proportions & Balanced Layout)
+// public-home.tsx — HONE 首页（v5 · Agent 工作台同源视觉）
+// 编辑式排版 + hone 令牌：mono eyebrow、双行主标题、工作台窗口式演示框、
+// 卖点/案例面板、Plan 预告与统一页脚。文案全部走 CONTENT（中英双语）。
 
 import {
+  createResource,
   createSignal,
   onCleanup,
   onMount,
@@ -11,72 +14,53 @@ import { useNavigate } from "@solidjs/router"
 import { CONTENT } from "@/lib/public-content"
 import { latestPublicBlogPost } from "@/lib/public-blog"
 import { useLocale } from "@/lib/i18n"
-import {
-  PUBLIC_BILIBILI_URL,
-  PUBLIC_YOUTUBE_URL,
-} from "@/components/public-contact-menu"
-import { PublicNav } from "@/components/public-nav"
+import { displayGithubStars, fetchGithubStars } from "@/lib/github-stars"
+import { PublicFooter, PublicNav } from "@/components/public-nav"
 import { HoneBrand } from "@/components/hone-brand"
 import "./public-site.css"
 
-// ── Icons ────────────────────────────────────────────────────────────────────
 const ICONS = {
   Chat: () => (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
   ),
   Github: () => (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
-  ),
-  Youtube: () => (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.016 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.016 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
-  ),
-  Bilibili: () => (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.813 4.653h.854c1.51.054 2.769.578 3.773 1.574 1.004.995 1.524 2.249 1.56 3.76v7.36c-.036 1.51-.556 2.769-1.56 3.773s-2.262 1.524-3.773 1.56H5.333c-1.51-.036-2.769-.556-3.773-1.56S.036 18.883 0 17.373v-7.36c.036-1.51.556-2.765 1.56-3.76 1.004-.996 2.262-1.52 3.773-1.574h.774l-1.174-1.12a1.277 1.277 0 0 1-.388-.933c0-.346.138-.64.414-.88a1.277 1.277 0 0 1 .906-.36c.345 0 .647.127.906.38l2.227 2.12h4.72l2.227-2.12c.27-.253.57-.38.906-.38.365 0 .65.12.853.36.277.24.414.534.414.88 0 .346-.13.653-.387.92zm-12.48 5.387c-.331.03-.593.15-.786.36-.193.21-.29.473-.29.787v3.507c0 .313.097.576.29.786.193.21.455.33.786.36.331-.03.593-.15.786-.36.193-.21.29-.473.29-.786v-3.507c0-.314-.097-.577-.29-.787-.193-.21-.455-.33-.786-.36zm10.707 0c-.331.03-.593.15-.786.36-.193.21-.29.473-.29.787v3.507c0 .313.097.576.29.786.193.21.455.33.786.36.345-.03.607-.15.786-.36.193-.21.29-.473.29-.786v-3.507c0-.314-.097-.577-.29-.787-.193-.21-.455-.33-.786-.36zM18 19.04H6.013c-.113 0-.17.053-.17.16 0 .12.057.18.17.18H18c.113 0 .17-.06.17-.18 0-.107-.057-.16-.17-.16z"/></svg>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
   ),
   ArrowRight: () => (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-  )
-}
-
-// ── Components ───────────────────────────────────────────────────────────────
-
-function AnimatedBackground() {
-  return (
-    <div class="animated-bg">
-      <div class="circle circle-1"></div>
-      <div class="circle circle-2"></div>
-      <div class="circle circle-3"></div>
-    </div>
-  )
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+  ),
 }
 
 export default function PublicHomePage() {
   const [index, setIndex] = createSignal(0)
   const [enlargeImg, setEnlargeImg] = createSignal<string | null>(null)
+  const [stars] = createResource(fetchGithubStars)
   const navigate = useNavigate()
+  const C = CONTENT
 
   const slides = () => [
-    ...CONTENT.cases.items.filter(i => i.image).map(i => ({
+    ...C.cases.items.filter((i) => i.image).map((i) => ({
       tag: i.tag,
       title: i.title,
       body: i.body,
       image: i.image,
-      link: null,
+      link: null as string | null,
     })),
     {
-      tag: CONTENT.home_page.roadmap_slide_tag,
-      title: CONTENT.roadmap.hero_title,
-      body: CONTENT.roadmap.hero_sub,
+      tag: C.home_page.roadmap_slide_tag,
+      title: C.roadmap.hero_title,
+      body: C.roadmap.hero_sub,
       image: useLocale() === "zh" ? "/hone_solution_zh.jpg" : "/hone_solution.jpg",
       link: "/roadmap",
-    }
+    },
   ]
 
-  const videoUrl = () => useLocale() === "zh"
-    ? "https://player.bilibili.com/player.html?bvid=BV1ByXNBGET5&page=1&high_quality=1&danmaku=0&autoplay=0"
-    : "https://www.youtube.com/embed/hJr-81OdYcQ?autoplay=0"
+  const videoUrl = () =>
+    useLocale() === "zh"
+      ? "https://player.bilibili.com/player.html?bvid=BV1ByXNBGET5&page=1&high_quality=1&danmaku=0&autoplay=0"
+      : "https://www.youtube.com/embed/hJr-81OdYcQ?autoplay=0"
 
-  let timer: any
+  let timer: ReturnType<typeof setInterval> | undefined
   const startTimer = () => {
     clearInterval(timer)
     timer = setInterval(() => {
@@ -91,302 +75,704 @@ export default function PublicHomePage() {
 
   const current = () => slides()[index()]
   const featuredPost = () => latestPublicBlogPost()
+  const stats = () => [C.hero.stat_1, C.hero.stat_2, C.hero.stat_3]
 
   return (
-    <div class="hone-landing-v4">
-      <AnimatedBackground />
+    <div class="pub-page hone-home">
+      <div class="hone-home-bg" aria-hidden="true" />
       <PublicNav />
-      
-      {/* Lightbox */}
+
       <Show when={enlargeImg()}>
-        <div class="lightbox-overlay" onClick={() => setEnlargeImg(null)}>
-          <img src={enlargeImg()!} class="lightbox-img" />
-          <button class="lightbox-close">×</button>
+        <div class="hone-home-lightbox" onClick={() => setEnlargeImg(null)}>
+          <img src={enlargeImg()!} alt="" />
+          <button type="button" aria-label="Close">×</button>
         </div>
       </Show>
 
-      <main class="main-content">
-        {/* HERO SECTION */}
-        <section class="hero-section">
-          <div class="hero-logo-tag">
-            <HoneBrand class="hero-logo" />
-            <h1 class="hero-tagline">
-              {CONTENT.home_page.hero_slogan}
-            </h1>
-          </div>
-
-          <div class="hero-btns">
-            <button onClick={() => navigate("/chat")} class="btn-primary refined">
+      <main class="hone-home-main">
+        {/* ── Hero ── */}
+        <section class="hone-home-hero">
+          <div class="hone-home-eyebrow">{C.hero.eyebrow}</div>
+          <h1>
+            <span>{C.hero.headline_1}</span>
+            <em>{C.hero.headline_2}</em>
+          </h1>
+          <p class="hone-home-hero-desc">{C.hero.description}</p>
+          <div class="hone-home-hero-actions">
+            <button type="button" class="hone-home-cta" onClick={() => navigate("/chat")}>
               <ICONS.Chat />
-              <span>{CONTENT.home_page.start_trial}</span>
+              <span>{C.hero.cta_primary}</span>
             </button>
-            <a href="https://github.com/B-M-Capital-Research/honeclaw" target="_blank" class="btn-secondary refined">
+            <a
+              class="hone-home-cta is-ghost"
+              href={C.nav.github_url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               <ICONS.Github />
               <span>GitHub</span>
-            </a>
-            <a href={PUBLIC_BILIBILI_URL} target="_blank" class="btn-secondary refined bilibili-btn mobile-hide">
-              <ICONS.Bilibili />
-              <span>Bilibili</span>
-            </a>
-            <a href={PUBLIC_YOUTUBE_URL} target="_blank" class="btn-secondary refined youtube-btn mobile-hide">
-              <ICONS.Youtube />
-              <span>YouTube</span>
+              <Show when={displayGithubStars(stars())}>
+                <small>★ {displayGithubStars(stars())}</small>
+              </Show>
             </a>
           </div>
-
-          <div class="video-container">
-            <div class="video-label">{CONTENT.home_page.video_demo}</div>
-            <div class="video-wrapper">
-              <iframe src={videoUrl()} allowfullscreen />
-            </div>
-          </div>
-
-          <section class="home-blog-feature" onClick={() => navigate(`/blog/${featuredPost().slug}`)}>
-            <div class="home-blog-copy">
-              <div class="home-blog-eyebrow">{CONTENT.home_page.blog_eyebrow}</div>
-              <h2>{CONTENT.home_page.blog_title}</h2>
-              <p>{CONTENT.home_page.blog_desc}</p>
-              <button type="button">
-                {CONTENT.home_page.blog_cta}
-                <ICONS.ArrowRight />
-              </button>
-            </div>
-            <div class="home-blog-image">
-              <img src={featuredPost().heroImage} alt={featuredPost().title} loading="lazy" />
-            </div>
-          </section>
-        </section>
-
-        <div class="section-separator">
-          <div class="line"></div>
-          <div class="carousel-nav">
-            <For each={slides()}>
-              {(s, i) => (
-                <button 
-                  onClick={() => { setIndex(i()); startTimer(); }}
-                  class={`nav-item ${i() === index() ? 'active' : ''}`}
-                >
-                  {s.tag}
-                </button>
+          <div class="hone-home-stats" role="list">
+            <For each={stats()}>
+              {(stat) => (
+                <div role="listitem">
+                  <strong>{stat.value}</strong>
+                  <small>{stat.label}</small>
+                </div>
               )}
             </For>
           </div>
-          <div class="line"></div>
-        </div>
+        </section>
 
-        {/* FEATURES CAROUSEL */}
-        <section class="carousel-section">
-          <div class="carousel-container">
-            <div class="carousel-text">
-              <h2 class="feature-title">{current().title}</h2>
-              <p class="feature-body">{current().body}</p>
-              
-              <Show when={current().link}>
-                <button 
-                  onClick={() => navigate(current().link!)}
-                  class="btn-feature-link"
-                >
-                  <span>{CONTENT.home_page.view_full_roadmap}</span>
-                  <ICONS.ArrowRight />
-                </button>
-              </Show>
-
-              <div class="carousel-progress">
-                <div class="progress-bar" style={{ width: `${((index() + 1) / slides().length) * 100}%` }}></div>
-              </div>
-            </div>
-
-            <div class="carousel-image" onClick={() => current().image && setEnlargeImg(current().image)}>
-              <img src={current().image || undefined} class="feature-img" />
-              <div class="zoom-hint">{CONTENT.home_page.zoom_hint}</div>
+        {/* ── 视频演示：工作台窗口式外框 ── */}
+        <section class="hone-home-demo">
+          <div class="hone-home-window">
+            <header>
+              <i /><i /><i />
+              <span>{C.home_page.video_demo}</span>
+            </header>
+            <div class="hone-home-window-body">
+              <iframe src={videoUrl()} allowfullscreen title={C.home_page.video_demo} />
             </div>
           </div>
         </section>
+
+        {/* ── 为什么是 HONE ── */}
+        <section class="hone-home-section">
+          <header class="hone-home-section-head">
+            <div class="hone-home-eyebrow">{C.trust.section_label}</div>
+          </header>
+          <div class="hone-home-trust">
+            <For each={C.trust.items}>
+              {(item) => (
+                <article>
+                  <span aria-hidden="true">{item.symbol}</span>
+                  <h3>{item.title}</h3>
+                  <p>{item.body}</p>
+                </article>
+              )}
+            </For>
+          </div>
+        </section>
+
+        {/* ── 真实工作流轮播 ── */}
+        <section class="hone-home-section">
+          <header class="hone-home-section-head">
+            <div class="hone-home-eyebrow">{C.cases.section_label}</div>
+            <p>{C.cases.section_sub}</p>
+          </header>
+          <div class="hone-home-cases">
+            <nav class="hone-home-case-tabs" aria-label={C.cases.section_label}>
+              <For each={slides()}>
+                {(slide, i) => (
+                  <button
+                    type="button"
+                    classList={{ "is-active": i() === index() }}
+                    onClick={() => {
+                      setIndex(i())
+                      startTimer()
+                    }}
+                  >
+                    {slide.tag}
+                  </button>
+                )}
+              </For>
+            </nav>
+            <div class="hone-home-case-body">
+              <div class="hone-home-case-copy">
+                <h2>{current().title}</h2>
+                <p>{current().body}</p>
+                <Show when={current().link}>
+                  <button
+                    type="button"
+                    class="hone-home-case-link"
+                    onClick={() => navigate(current().link!)}
+                  >
+                    <span>{C.home_page.view_full_roadmap}</span>
+                    <ICONS.ArrowRight />
+                  </button>
+                </Show>
+                <div class="hone-home-case-progress" aria-hidden="true">
+                  <div style={{ width: `${((index() + 1) / slides().length) * 100}%` }} />
+                </div>
+              </div>
+              <button
+                type="button"
+                class="hone-home-case-shot"
+                onClick={() => current().image && setEnlargeImg(current().image)}
+              >
+                <img src={current().image || undefined} alt={current().title} />
+                <span>{C.home_page.zoom_hint}</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* ── 博客精选 ── */}
+        <section
+          class="hone-home-blog"
+          onClick={() => navigate(`/blog/${featuredPost().slug}`)}
+        >
+          <div class="hone-home-blog-copy">
+            <div class="hone-home-eyebrow">{C.home_page.blog_eyebrow}</div>
+            <h2>{C.home_page.blog_title}</h2>
+            <p>{C.home_page.blog_desc}</p>
+            <button type="button">
+              <span>{C.home_page.blog_cta}</span>
+              <ICONS.ArrowRight />
+            </button>
+          </div>
+          <div class="hone-home-blog-shot">
+            <img src={featuredPost().heroImage} alt={featuredPost().title} loading="lazy" />
+          </div>
+        </section>
+
+        {/* ── Plan 预告 ── */}
+        <section class="hone-home-plan">
+          <div>
+            <div class="hone-home-eyebrow">{C.home_page.plan_eyebrow}</div>
+            <h2>{C.home_page.plan_title}</h2>
+            <p>{C.home_page.plan_desc}</p>
+          </div>
+          <button type="button" onClick={() => navigate("/plan")}>
+            <span>{C.home_page.plan_cta}</span>
+            <ICONS.ArrowRight />
+          </button>
+        </section>
       </main>
 
+      <PublicFooter />
+
       <style>{`
-        .hone-landing-v4 {
-          background: var(--hone-paper-50); color: var(--hone-ink-800);
+        .hone-home {
+          position: relative;
+          min-height: 100vh;
+          display: flex;
+          flex-direction: column;
+          overflow-x: clip;
+          background: var(--hone-paper-50);
+          color: var(--hone-ink-800);
           font-family: var(--hone-font-body);
-          min-height: 100vh; overflow-x: hidden; position: relative;
-          display: flex; flex-direction: column;
+        }
+        .hone-home-bg {
+          position: absolute;
+          inset: 0 0 auto;
+          height: 860px;
+          background:
+            radial-gradient(760px 420px at 78% -80px, color-mix(in srgb, var(--hone-coral-500) 10%, transparent), transparent 68%),
+            radial-gradient(640px 380px at 12% 120px, color-mix(in srgb, var(--hone-sage-100) 70%, transparent), transparent 70%);
+          pointer-events: none;
+        }
+        .hone-home-main {
+          position: relative;
+          z-index: 1;
+          width: min(1060px, calc(100% - 40px));
+          margin: 0 auto;
+          flex: 1;
         }
 
-        /* Animated Background */
-        .animated-bg { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
-        .circle { position: absolute; border-radius: 50%; filter: blur(100px); opacity: 0.12; animation: float 30s infinite alternate ease-in-out; }
-        .circle-1 { width: 800px; height: 800px; background: var(--hone-coral-500); top: -200px; left: -100px; }
-        .circle-2 { width: 900px; height: 900px; background: #3b82f6; bottom: -200px; right: -100px; animation-delay: -5s; }
-        .circle-3 { width: 500px; height: 500px; background: #ec4899; top: 40%; left: 50%; animation-delay: -10s; }
-        @keyframes float { 0% { transform: translate(0, 0) scale(1); } 100% { transform: translate(50px, 100px) scale(1.1); } }
-
-        /* Header */
-        .page-header {
-          position: fixed; top: 0; left: 0; right: 0; height: 72px;
-          display: flex; align-items: center; justify-content: space-between;
-          padding: 0 40px; background: rgba(255, 255, 255, 0.85);
-          backdrop-filter: blur(16px); border-bottom: 1px solid rgba(0,0,0,0.04); z-index: 100;
+        /* Eyebrow：全站统一的 mono 小标 */
+        .hone-home-eyebrow {
+          color: var(--hone-coral-600);
+          font-family: var(--hone-font-label);
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 0.16em;
+          text-transform: uppercase;
         }
-        .header-logo { display: flex; align-items: center; gap: 12px; cursor: pointer; }
-        .header-logo img { height: 32px; }
-        .header-logo span { font-weight: 800; font-size: 20px; color: var(--hone-ink-950); letter-spacing: -0.01em; }
-        .header-actions { display: flex; align-items: center; gap: 24px; }
-        .header-socials { display: flex; align-items: center; gap: 12px; }
-        .icon-btn-ghost { color: var(--hone-ink-600); padding: 8px; border-radius: var(--hone-radius-sm); display: flex; transition: all 0.2s; }
-        .icon-btn-ghost:hover { background: var(--hone-paper-200); color: var(--hone-ink-950); }
-        .star-badge { display: flex; align-items: center; gap: 6px; color: var(--hone-ink-800); text-decoration: none; font-size: 14px; font-weight: 700; background: var(--hone-paper-100); padding: 6px 12px; border-radius: var(--hone-radius-sm); transition: all 0.2s; }
-        .star-badge:hover { background: var(--hone-paper-200); }
-        .divider-v { width: 1px; height: 20px; background: var(--hone-line); }
-        .lang-switch { display: inline-flex; align-items: center; background: rgba(255,255,255,0.72); border: 1px solid var(--hone-line); padding: 3px; border-radius: 999px; gap: 2px; }
-        .lang-switch button { min-width: 34px; min-height: 28px; padding: 0 12px; border: none; border-radius: 999px; background: transparent; cursor: pointer; font-size: 12px; font-weight: 700; color: var(--hone-ink-600); }
-        .lang-switch button.active { background: var(--hone-ink-950); color: #fff; border-radius: 999px; }
-        .btn-chat-nav { background: var(--hone-ink-950); color: #fff; border: none; padding: 8px 20px; border-radius: 100px; font-size: 14px; font-weight: 700; cursor: pointer; }
-        .btn-roadmap-nav { background: transparent; color: var(--hone-ink-600); border: 1.5px solid var(--hone-line); padding: 8px 20px; border-radius: 100px; font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
-        .btn-roadmap-nav:hover { background: var(--hone-paper-100); border-color: var(--hone-line-strong); color: var(--hone-ink-800); }
 
-        /* Main */
-        .main-content { position: relative; z-index: 1; padding: 72px 20px 80px; display: flex; flex-direction: column; align-items: center; max-width: 1400px; margin: 0 auto; width: 100%; }
-
-        /* Hero */
-        .hero-section { padding: 80px 0 40px; display: flex; flex-direction: column; align-items: center; gap: 32px; width: 100%; }
-        .hero-logo-tag { display: flex; flex-direction: column; align-items: center; gap: 16px; }
-        .hero-logo { flex-direction: column; gap: 14px; filter: drop-shadow(0 10px 30px rgba(23,32,31,0.06)); }
-        .hero-logo .hone-brand-mark { width: 112px; height: 112px; border-radius: 32px; }
-        .hero-logo .hone-brand-word { font-size: 28px; letter-spacing: 0.28em; padding-left: 0.28em; }
-        .hero-tagline { font-size: 38px; font-weight: 800; color: var(--hone-ink-800); text-align: center; max-width: 800px; line-height: 1.2; letter-spacing: -0.02em; }
-        .hero-btns { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
-        
-        .btn-primary.refined { background: var(--hone-ink-950); color: #fff; border: none; padding: 14px 32px; border-radius: 100px; font-size: 16px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 8px 20px rgba(23,32,31,0.12); }
-        .btn-secondary.refined { background: #fff; color: var(--hone-ink-950); border: 1.5px solid var(--hone-line); padding: 14px 28px; border-radius: 100px; font-size: 16px; font-weight: 700; cursor: pointer; text-decoration: none; display: flex; align-items: center; gap: 10px; transition: all 0.2s; }
-        .btn-primary.refined:hover { transform: translateY(-2px); box-shadow: 0 12px 25px rgba(23,32,31,0.18); }
-        .btn-secondary.refined:hover { border-color: var(--hone-line-strong); background: var(--hone-paper-100); transform: translateY(-1px); }
-        .bilibili-btn:hover { color: #fb7299; border-color: #fb7299; }
-        .youtube-btn:hover { color: #ff0000; border-color: #ff0000; }
-
-        .video-container { width: 100%; max-width: 960px; display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 20px; }
-        .video-label {
+        /* ── Hero ── */
+        .hone-home-hero {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          padding: 158px 0 0;
+          text-align: center;
+        }
+        .hone-home-hero h1 {
+          margin: 16px 0 0;
+          color: var(--hone-ink-950);
+          font-size: clamp(34px, 5.4vw, 58px);
+          font-weight: 800;
+          line-height: 1.07;
+          letter-spacing: -0.045em;
+        }
+        .hone-home-hero h1 span,
+        .hone-home-hero h1 em {
+          display: block;
+          font-style: normal;
+        }
+        .hone-home-hero h1 em {
+          color: var(--hone-coral-600);
+        }
+        .hone-home-hero-desc {
+          max-width: 560px;
+          margin: 18px 0 0;
+          color: var(--hone-ink-600);
+          font-size: 14px;
+          line-height: 1.8;
+        }
+        .hone-home-hero-actions {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+          justify-content: center;
+          margin-top: 28px;
+        }
+        .hone-home-cta {
           display: inline-flex;
           align-items: center;
           gap: 8px;
-          padding: 6px 14px;
+          min-height: 46px;
+          padding: 0 22px;
+          border: 1px solid var(--hone-ink-950);
           border-radius: 999px;
           background: var(--hone-ink-950);
-          color: var(--hone-paper-100);
-          font-size: 12px;
+          color: #fff;
+          cursor: pointer;
+          font-size: 13px;
           font-weight: 700;
-          letter-spacing: 0.12em;
+          text-decoration: none;
+          transition: transform 0.18s var(--hone-ease), box-shadow 0.18s var(--hone-ease), background 0.18s ease, border-color 0.18s ease;
+          box-shadow: 0 10px 26px rgba(23, 32, 31, 0.14);
+        }
+        .hone-home-cta:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 14px 32px rgba(23, 32, 31, 0.18);
+        }
+        .hone-home-cta.is-ghost {
+          border-color: var(--hone-line-strong);
+          background: rgba(255, 255, 255, 0.88);
+          color: var(--hone-ink-950);
+          box-shadow: none;
+        }
+        .hone-home-cta.is-ghost:hover {
+          border-color: var(--hone-ink-950);
+          background: #fff;
+          box-shadow: var(--hone-shadow-sm);
+        }
+        .hone-home-cta small {
+          padding: 2px 8px;
+          border-radius: 999px;
+          background: color-mix(in srgb, var(--hone-coral-500) 10%, transparent);
+          color: var(--hone-coral-600);
+          font-size: 11px;
+          font-weight: 700;
+          font-variant-numeric: tabular-nums;
+        }
+        .hone-home-stats {
+          display: flex;
+          align-items: stretch;
+          gap: 0;
+          margin-top: 34px;
+        }
+        .hone-home-stats > div {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          padding: 0 26px;
+          border-left: 1px solid var(--hone-line);
+        }
+        .hone-home-stats > div:first-child { border-left: 0; }
+        .hone-home-stats strong {
+          color: var(--hone-ink-950);
+          font-family: var(--hone-font-label);
+          font-size: 17px;
+          font-weight: 700;
+          letter-spacing: -0.01em;
+        }
+        .hone-home-stats small {
+          color: var(--hone-ink-400);
+          font-size: 10px;
+          font-weight: 650;
+          letter-spacing: 0.08em;
           text-transform: uppercase;
         }
-        .video-label::before {
-          content: '';
-          display: inline-block;
-          width: 0;
-          height: 0;
-          border-left: 7px solid var(--hone-coral-500);
-          border-top: 4px solid transparent;
-          border-bottom: 4px solid transparent;
-        }
-        .video-wrapper { width: 100%; aspect-ratio: 16/9; background: var(--hone-ink-950); border-radius: 28px; overflow: hidden; box-shadow: 0 30px 60px rgba(23,32,31,0.1); border: 1px solid var(--hone-line); }
-        .video-wrapper iframe { width: 100%; height: 100%; border: none; }
 
-        .home-blog-feature {
-          width: 100%;
-          max-width: 960px;
-          display: grid;
-          grid-template-columns: minmax(0, 0.92fr) minmax(280px, 1fr);
-          gap: 24px;
-          align-items: stretch;
-          margin-top: 18px;
-          padding: 18px;
+        /* ── 工作台窗口式演示框 ── */
+        .hone-home-demo { margin-top: 54px; }
+        .hone-home-window {
+          overflow: hidden;
           border: 1px solid var(--hone-line);
-          border-radius: 28px;
-          background: rgba(255,255,255,0.82);
-          box-shadow: 0 24px 70px rgba(23,32,31,0.08);
-          cursor: pointer;
-          transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+          border-radius: 17px;
+          background: #fff;
+          box-shadow: 0 30px 80px rgba(23, 32, 31, 0.1);
         }
-        .home-blog-feature:hover {
-          transform: translateY(-2px);
-          border-color: var(--hone-coral-500);
-          box-shadow: 0 32px 90px rgba(23,32,31,0.12);
-        }
-        .home-blog-copy { padding: 18px 10px 18px 18px; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; }
-        .home-blog-eyebrow { color: var(--hone-coral-600); font-size: 12px; font-weight: 900; letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 12px; }
-        .home-blog-copy h2 { margin: 0 0 12px; color: var(--hone-ink-950); font-size: 32px; line-height: 1.12; letter-spacing: -0.03em; }
-        .home-blog-copy p { margin: 0 0 20px; color: var(--hone-ink-800); font-size: 16px; line-height: 1.65; }
-        .home-blog-copy button { display: inline-flex; align-items: center; gap: 8px; border: none; background: var(--hone-ink-950); color: #fff; border-radius: 999px; padding: 11px 18px; font-size: 14px; font-weight: 800; cursor: pointer; }
-        .home-blog-image { border-radius: var(--hone-radius-lg); overflow: hidden; background: var(--hone-paper-100); border: 1px solid var(--hone-line); }
-        .home-blog-image img { width: 100%; height: 100%; min-height: 230px; object-fit: cover; display: block; }
-
-        /* Carousel Nav */
-        .section-separator { width: 100%; margin: 80px 0 48px; display: flex; align-items: center; gap: 32px; }
-        .section-separator .line { flex: 1; height: 1px; background: var(--hone-line); }
-        .carousel-nav {
+        .hone-home-window > header {
           display: flex;
-          gap: 24px;
-          overflow-x: auto;
-          padding: 4px;
-          scrollbar-width: none;
-          scroll-snap-type: x proximity;
-          -webkit-mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 calc(100% - 24px), transparent 100%);
-          mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 calc(100% - 24px), transparent 100%);
+          align-items: center;
+          gap: 6px;
+          padding: 11px 14px;
+          border-bottom: 1px solid var(--hone-line);
+          background: var(--hone-paper-100);
         }
-        .carousel-nav::-webkit-scrollbar { display: none; }
-        .nav-item { scroll-snap-align: center; }
-        .nav-item { border: none; background: transparent; color: var(--hone-ink-400); font-size: 14px; font-weight: 800; cursor: pointer; white-space: nowrap; transition: all 0.2s; position: relative; padding: 4px 0; }
-        .nav-item:hover { color: var(--hone-ink-600); }
-        .nav-item.active { color: var(--hone-ink-950); }
-        .nav-item.active::after { content: ''; position: absolute; bottom: -4px; left: 0; right: 0; height: 2px; background: var(--hone-coral-500); border-radius: 2px; }
+        .hone-home-window > header i {
+          width: 9px;
+          height: 9px;
+          border-radius: 50%;
+          background: var(--hone-paper-200);
+          border: 1px solid var(--hone-line);
+        }
+        .hone-home-window > header i:first-child {
+          background: color-mix(in srgb, var(--hone-coral-500) 55%, #fff);
+          border-color: color-mix(in srgb, var(--hone-coral-500) 40%, var(--hone-line));
+        }
+        .hone-home-window > header span {
+          margin-left: 8px;
+          color: var(--hone-ink-400);
+          font-family: var(--hone-font-label);
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0.14em;
+        }
+        .hone-home-window-body { aspect-ratio: 16 / 9; background: var(--hone-ink-950); }
+        .hone-home-window-body iframe { width: 100%; height: 100%; border: 0; display: block; }
 
-        /* Carousel Content */
-        .carousel-section { width: 100%; max-width: 1100px; margin-bottom: 60px; }
-        .carousel-container { display: flex; align-items: center; gap: 64px; }
-        .carousel-text { flex: 1; display: flex; flex-direction: column; align-items: flex-start; }
-        .feature-title { font-size: 44px; font-weight: 800; color: var(--hone-ink-950); margin-bottom: 20px; line-height: 1.2; letter-spacing: -0.01em; }
-        .feature-body { font-size: 18px; color: var(--hone-ink-800); line-height: 1.6; margin-bottom: 32px; }
-        .btn-feature-link { display: flex; align-items: center; gap: 8px; background: var(--hone-ink-950); color: #fff; border: none; padding: 12px 24px; border-radius: var(--hone-radius-md); font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.2s; margin-bottom: 32px; }
-        .btn-feature-link:hover { transform: translateX(4px); }
+        /* ── 区块通用 ── */
+        .hone-home-section { margin-top: 84px; }
+        .hone-home-section-head p {
+          margin: 8px 0 0;
+          color: var(--hone-ink-600);
+          font-size: 13px;
+        }
 
-        .carousel-progress { height: 4px; width: 100%; background: var(--hone-paper-200); border-radius: 2px; overflow: hidden; }
-        .progress-bar { height: 100%; background: var(--hone-ink-950); transition: width 0.3s; }
+        /* 卖点三联 */
+        .hone-home-trust {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 14px;
+          margin-top: 18px;
+        }
+        .hone-home-trust article {
+          padding: 24px 22px 26px;
+          border: 1px solid var(--hone-line);
+          border-radius: 17px;
+          background: #fff;
+          transition: transform 0.18s var(--hone-ease), border-color 0.18s ease, box-shadow 0.18s var(--hone-ease);
+        }
+        .hone-home-trust article:hover {
+          transform: translateY(-3px);
+          border-color: var(--hone-line-strong);
+          box-shadow: var(--hone-shadow-md);
+        }
+        .hone-home-trust span {
+          display: grid;
+          place-items: center;
+          width: 34px;
+          height: 34px;
+          border-radius: 10px;
+          background: color-mix(in srgb, var(--hone-coral-500) 9%, transparent);
+          color: var(--hone-coral-600);
+          font-size: 15px;
+        }
+        .hone-home-trust h3 {
+          margin: 14px 0 0;
+          color: var(--hone-ink-950);
+          font-size: 15px;
+          font-weight: 700;
+          letter-spacing: -0.02em;
+        }
+        .hone-home-trust p {
+          margin: 8px 0 0;
+          color: var(--hone-ink-600);
+          font-size: 12px;
+          line-height: 1.7;
+        }
 
-        .carousel-image { flex: 1.4; aspect-ratio: 16/10; border-radius: var(--hone-radius-lg); overflow: hidden; border: 1.5px solid var(--hone-line); box-shadow: 0 20px 50px rgba(23,32,31,0.04); cursor: zoom-in; position: relative; }
-        .carousel-image:hover .zoom-hint { opacity: 1; }
-        .zoom-hint { position: absolute; inset: 0; background: rgba(23,32,31,0.1); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 14px; opacity: 0; transition: opacity 0.3s; backdrop-filter: blur(4px); }
-        .feature-img { width: 100%; height: 100%; object-fit: cover; animation: fade-up 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
+        /* 案例面板 */
+        .hone-home-cases {
+          overflow: hidden;
+          margin-top: 18px;
+          border: 1px solid var(--hone-line);
+          border-radius: 17px;
+          background: #fff;
+        }
+        .hone-home-case-tabs {
+          display: flex;
+          gap: 2px;
+          padding: 8px 10px;
+          border-bottom: 1px solid var(--hone-line);
+          background: var(--hone-paper-100);
+          overflow-x: auto;
+          scrollbar-width: none;
+        }
+        .hone-home-case-tabs::-webkit-scrollbar { display: none; }
+        .hone-home-case-tabs button {
+          flex: 0 0 auto;
+          min-height: 32px;
+          padding: 0 13px;
+          border: 0;
+          border-radius: 9px;
+          background: transparent;
+          color: var(--hone-ink-600);
+          cursor: pointer;
+          font-size: 12px;
+          font-weight: 650;
+          white-space: nowrap;
+          transition: background 0.15s ease, color 0.15s ease;
+        }
+        .hone-home-case-tabs button:hover { color: var(--hone-ink-950); }
+        .hone-home-case-tabs button.is-active {
+          background: #fff;
+          color: var(--hone-ink-950);
+          box-shadow: var(--hone-shadow-sm);
+        }
+        .hone-home-case-body {
+          display: grid;
+          grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+          gap: 30px;
+          align-items: center;
+          padding: 30px;
+        }
+        .hone-home-case-copy h2 {
+          margin: 0;
+          color: var(--hone-ink-950);
+          font-size: clamp(20px, 2.6vw, 27px);
+          line-height: 1.22;
+          letter-spacing: -0.03em;
+        }
+        .hone-home-case-copy > p {
+          margin: 12px 0 0;
+          color: var(--hone-ink-600);
+          font-size: 13px;
+          line-height: 1.75;
+        }
+        .hone-home-case-link {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          min-height: 38px;
+          margin-top: 18px;
+          padding: 0 16px;
+          border: 1px solid var(--hone-ink-950);
+          border-radius: var(--hone-radius-sm);
+          background: var(--hone-ink-950);
+          color: #fff;
+          cursor: pointer;
+          font-size: 12px;
+          font-weight: 700;
+          transition: transform 0.16s var(--hone-ease);
+        }
+        .hone-home-case-link:hover { transform: translateX(3px); }
+        .hone-home-case-progress {
+          height: 3px;
+          margin-top: 24px;
+          border-radius: 2px;
+          background: var(--hone-paper-200);
+          overflow: hidden;
+        }
+        .hone-home-case-progress > div {
+          height: 100%;
+          background: var(--hone-coral-500);
+          transition: width 0.3s var(--hone-ease);
+        }
+        .hone-home-case-shot {
+          position: relative;
+          padding: 0;
+          border: 1px solid var(--hone-line);
+          border-radius: 13px;
+          background: var(--hone-paper-100);
+          overflow: hidden;
+          cursor: zoom-in;
+          aspect-ratio: 16 / 10;
+        }
+        .hone-home-case-shot img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+          animation: hone-home-fade 0.5s var(--hone-ease);
+        }
+        .hone-home-case-shot span {
+          position: absolute;
+          inset: 0;
+          display: grid;
+          place-items: center;
+          background: rgba(23, 32, 31, 0.24);
+          color: #fff;
+          font-size: 12px;
+          font-weight: 700;
+          opacity: 0;
+          transition: opacity 0.2s ease;
+          backdrop-filter: blur(2px);
+        }
+        .hone-home-case-shot:hover span { opacity: 1; }
+
+        /* 博客精选 */
+        .hone-home-blog {
+          display: grid;
+          grid-template-columns: minmax(0, 0.92fr) minmax(0, 1fr);
+          gap: 26px;
+          margin-top: 84px;
+          padding: 26px;
+          border: 1px solid var(--hone-line);
+          border-radius: 17px;
+          background: #fff;
+          cursor: pointer;
+          transition: transform 0.18s var(--hone-ease), border-color 0.18s ease, box-shadow 0.18s var(--hone-ease);
+        }
+        .hone-home-blog:hover {
+          transform: translateY(-3px);
+          border-color: color-mix(in srgb, var(--hone-coral-500) 38%, var(--hone-line));
+          box-shadow: var(--hone-shadow-md);
+        }
+        .hone-home-blog-copy {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          justify-content: center;
+        }
+        .hone-home-blog-copy h2 {
+          margin: 12px 0 0;
+          color: var(--hone-ink-950);
+          font-size: clamp(21px, 2.8vw, 28px);
+          line-height: 1.18;
+          letter-spacing: -0.03em;
+        }
+        .hone-home-blog-copy p {
+          margin: 12px 0 20px;
+          color: var(--hone-ink-600);
+          font-size: 13px;
+          line-height: 1.7;
+        }
+        .hone-home-blog-copy button {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          min-height: 38px;
+          padding: 0 16px;
+          border: 1px solid var(--hone-ink-950);
+          border-radius: var(--hone-radius-sm);
+          background: var(--hone-ink-950);
+          color: #fff;
+          cursor: pointer;
+          font-size: 12px;
+          font-weight: 700;
+        }
+        .hone-home-blog-shot {
+          overflow: hidden;
+          border: 1px solid var(--hone-line);
+          border-radius: 13px;
+          background: var(--hone-paper-100);
+        }
+        .hone-home-blog-shot img {
+          width: 100%;
+          height: 100%;
+          min-height: 220px;
+          object-fit: cover;
+          display: block;
+        }
+
+        /* Plan 预告 */
+        .hone-home-plan {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 26px;
+          margin: 84px 0 96px;
+          padding: 30px;
+          border: 1px solid color-mix(in srgb, var(--hone-coral-500) 30%, var(--hone-line));
+          border-radius: 17px;
+          background:
+            radial-gradient(420px 200px at 90% 0, color-mix(in srgb, var(--hone-coral-500) 9%, transparent), transparent 70%),
+            #fff;
+        }
+        .hone-home-plan h2 {
+          margin: 12px 0 0;
+          color: var(--hone-ink-950);
+          font-size: clamp(19px, 2.4vw, 24px);
+          letter-spacing: -0.03em;
+        }
+        .hone-home-plan p {
+          max-width: 560px;
+          margin: 10px 0 0;
+          color: var(--hone-ink-600);
+          font-size: 13px;
+          line-height: 1.7;
+        }
+        .hone-home-plan > button {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          flex: 0 0 auto;
+          min-height: 44px;
+          padding: 0 20px;
+          border: 1px solid var(--hone-ink-950);
+          border-radius: 999px;
+          background: var(--hone-ink-950);
+          color: #fff;
+          cursor: pointer;
+          font-size: 13px;
+          font-weight: 700;
+          transition: transform 0.16s var(--hone-ease), box-shadow 0.16s var(--hone-ease);
+        }
+        .hone-home-plan > button:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 12px 26px rgba(23, 32, 31, 0.16);
+        }
 
         /* Lightbox */
-        .lightbox-overlay { position: fixed; inset: 0; background: rgba(255,255,255,0.96); backdrop-filter: blur(20px); z-index: 1000; display: flex; align-items: center; justify-content: center; cursor: zoom-out; animation: fade-in 0.3s; }
-        .lightbox-img { max-width: 92%; max-height: 88vh; border-radius: var(--hone-radius-md); box-shadow: 0 40px 100px rgba(23,32,31,0.2); border: 1px solid var(--hone-line); }
-        .lightbox-close { position: absolute; top: 32px; right: 48px; font-size: 64px; border: none; background: transparent; cursor: pointer; color: var(--hone-ink-400); line-height: 1; }
-
-        @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes fade-up { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-
-        /* Responsive */
-        @media (max-width: 1024px) {
-          .carousel-container { flex-direction: column; gap: 40px; }
-          .carousel-text { text-align: center; width: 100%; align-items: center; }
-          .carousel-image { width: 100%; }
-          .feature-title { font-size: 32px; }
-          .home-blog-feature { grid-template-columns: 1fr; }
-          .home-blog-copy { padding: 18px; }
+        .hone-home-lightbox {
+          position: fixed;
+          inset: 0;
+          z-index: 1000;
+          display: grid;
+          place-items: center;
+          background: rgba(255, 253, 248, 0.96);
+          backdrop-filter: blur(18px);
+          cursor: zoom-out;
+          animation: hone-home-fade 0.25s ease;
         }
-        @media (max-width: 640px) {
-          .hero-logo .hone-brand-mark { width: 84px; height: 84px; border-radius: 25px; }
-          .hero-logo .hone-brand-word { font-size: 22px; }
-          .hero-tagline { font-size: 26px; }
-          .hero-btns { display: grid; grid-template-columns: 1fr 1fr; width: 100%; gap: 10px; }
-          .btn-primary.refined, .btn-secondary.refined { width: 100%; padding: 14px 24px; font-size: 16px; }
-          .page-header { padding: 0 20px; }
-          .carousel-nav { gap: 16px; }
-          .nav-item { font-size: 13px; }
-          .feature-title { font-size: 28px; }
-          .feature-body { font-size: 16px; }
+        .hone-home-lightbox img {
+          max-width: 92%;
+          max-height: 88vh;
+          border: 1px solid var(--hone-line);
+          border-radius: var(--hone-radius-md);
+          box-shadow: 0 40px 100px rgba(23, 32, 31, 0.2);
+        }
+        .hone-home-lightbox button {
+          position: absolute;
+          top: 26px;
+          right: 34px;
+          border: 0;
+          background: transparent;
+          color: var(--hone-ink-400);
+          cursor: pointer;
+          font-size: 44px;
+          line-height: 1;
+        }
+
+        @keyframes hone-home-fade {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ── 响应式 ── */
+        @media (max-width: 900px) {
+          .hone-home-main { width: calc(100% - 32px); }
+          .hone-home-hero { padding-top: 122px; text-align: left; align-items: flex-start; }
+          .hone-home-hero-desc { font-size: 13px; }
+          .hone-home-hero-actions { justify-content: flex-start; }
+          .hone-home-stats { flex-wrap: wrap; gap: 12px 0; }
+          .hone-home-stats > div { padding: 0 18px; }
+          .hone-home-trust { grid-template-columns: 1fr; gap: 10px; }
+          .hone-home-case-body { grid-template-columns: 1fr; gap: 20px; padding: 20px 16px; }
+          .hone-home-blog { grid-template-columns: 1fr; gap: 16px; margin-top: 60px; padding: 18px 16px; }
+          .hone-home-blog-shot img { min-height: 180px; }
+          .hone-home-plan { flex-direction: column; align-items: flex-start; margin: 60px 0 72px; padding: 22px 18px; }
+          .hone-home-section { margin-top: 60px; }
+          .hone-home-demo { margin-top: 40px; }
+          .hone-home-window { border-radius: 14px; }
         }
         @media (max-width: 480px) {
-          .hero-btns { grid-template-columns: 1fr; }
-          .page-header { padding: 0 14px; }
+          .hone-home-hero h1 { font-size: 31px; }
+          .hone-home-cta { width: 100%; justify-content: center; }
+          .hone-home-hero-actions { width: 100%; flex-direction: column; align-items: stretch; }
         }
       `}</style>
     </div>

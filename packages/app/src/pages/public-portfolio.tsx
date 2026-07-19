@@ -1,21 +1,12 @@
-// public-portfolio.tsx — 用户的"投资上下文"页:展示并刷新系统蒸馏的投资主线、
-// 整体投资风格和 sandbox 里的只读公司画像列表。编辑画像走 /chat 与 agent 对话(company_portrait skill)。
+// public-portfolio.tsx — 「跟踪」工作台页：财经日历、持仓财报与持续任务。
+// 投资主线与公司画像已迁往 /invest（public-invest.tsx）。
 
-import { createEffect, createMemo, createSignal, For, onMount, Show } from "solid-js"
+import { createMemo, createSignal, For, onMount, Show } from "solid-js"
 import { useNavigate } from "@solidjs/router"
-import { marked } from "marked"
-import DOMPurify from "dompurify"
 import { PublicChatStartup } from "@/components/public-chat-startup"
 import { PublicLoginForm } from "@/components/public-login-form"
 import { PublicWorkspaceShell } from "@/components/public-workspace-shell"
-import {
-  getDigestContext,
-  getCompanyProfileMarkdown,
-  refreshDigestContext,
-  getPublicAuthMe,
-  getPublicFinanceCalendar,
-  type DigestContext,
-} from "@/lib/api"
+import { getPublicAuthMe, getPublicFinanceCalendar } from "@/lib/api"
 import {
   defaultFinanceCalendarMonth,
   financeCalendarMonthGrid,
@@ -24,16 +15,6 @@ import {
 } from "@/lib/finance-calendar"
 import { workspaceUserName } from "@/lib/public-agent-workspace"
 import type { FinanceCalendarPayload, PublicAuthUserInfo } from "@/lib/types"
-import {
-  mainlineHoldingCardState,
-  profileInventoryRowState,
-  profileTickerSet,
-} from "@/lib/mainline-context-model"
-import {
-  canRefreshPublicMainline,
-  formatPublicMainlineTimestamp,
-  publicRefreshMessage,
-} from "./public-portfolio-model"
 import "./public-site.css"
 
 const TRACKING_WEEKDAYS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
@@ -117,163 +98,9 @@ function TrackingCalendar(props: { view: TrackingView }) {
   )
 }
 
-function MainlineCard(props: {
-  ticker: string
-  mainline: string | undefined
-  hasProfile: boolean
-  onView: () => void
-  isSkipped: boolean
-}) {
-  return (
-    <div class="public-mainline-card" classList={{ "is-pending": !props.mainline }}>
-      <div class="public-mainline-card-head">
-        <div class="public-mainline-ticker">{props.ticker}</div>
-        <Show when={props.hasProfile}>
-          <button type="button" class="public-profile-view-btn" onClick={props.onView}>
-            查看画像
-          </button>
-        </Show>
-      </div>
-      <Show
-        when={props.mainline}
-        fallback={
-          <div class="public-mainline-fallback">
-            <Show
-              when={props.hasProfile}
-              fallback={
-                <>
-                  <strong>暂无公司画像</strong> —— 跟 HONE 说
-                  “建立 {props.ticker} 的公司画像”，立即更新或下一次自动检查后就会带上它。
-                </>
-              }
-            >
-              <strong>画像存在，但投资主线生成失败 / 跳过</strong>
-              {props.isSkipped ? "（上次跳过）" : ""}—— 可立即更新重试，或等下一次自动检查。
-            </Show>
-          </div>
-        }
-      >
-        <div class="public-mainline-text">{props.mainline}</div>
-      </Show>
-    </div>
-  )
-}
-
-function ProfileModal(props: { open: boolean; ticker: string | null; onClose: () => void }) {
-  const [markdown, setMarkdown] = createSignal<string | null>(null)
-  const [loading, setLoading] = createSignal(false)
-  const [error, setError] = createSignal<string | null>(null)
-
-  const fetchProfile = async (ticker: string) => {
-    setLoading(true)
-    setError(null)
-    setMarkdown(null)
-    try {
-      const profile = await getCompanyProfileMarkdown(ticker)
-      setMarkdown(profile.markdown)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  let lastTicker = ""
-  createEffect(() => {
-    const selectedTicker = props.ticker
-    if (!props.open) {
-      lastTicker = ""
-      return
-    }
-    if (selectedTicker && selectedTicker !== lastTicker) {
-      lastTicker = selectedTicker
-      void fetchProfile(selectedTicker)
-    }
-  })
-
-  const renderedHtml = () => {
-    const md = markdown()
-    if (!md) return ""
-    const raw = marked.parse(md, { gfm: true, breaks: false }) as string
-    return DOMPurify.sanitize(raw)
-  }
-
-  return (
-    <Show when={props.open}>
-      <div class="public-profile-modal-overlay" onClick={props.onClose}>
-        <div class="public-profile-modal" onClick={(e) => e.stopPropagation()}>
-          <div class="public-profile-modal-head">
-            <div class="public-profile-modal-title">{props.ticker} · 公司画像（只读）</div>
-            <button type="button" class="public-profile-modal-close" onClick={props.onClose}>
-              ×
-            </button>
-          </div>
-          <div class="public-profile-modal-body">
-            <Show when={loading()}>
-              <div class="public-profile-modal-muted">加载中…</div>
-            </Show>
-            <Show when={error()}>
-              <div class="public-profile-modal-error">{error()}</div>
-            </Show>
-            <Show when={markdown() && !loading()}>
-              <div class="profile-md" innerHTML={renderedHtml()}></div>
-            </Show>
-          </div>
-          <div class="public-profile-modal-foot">
-            画像由 HONE 维护。如需修改，请回到对话页跟 HONE 说一声。
-          </div>
-        </div>
-      </div>
-    </Show>
-  )
-}
-
 function PortfolioContextView() {
   const navigate = useNavigate()
-  const [digestContext, setDigestContext] = createSignal<DigestContext | null>(null)
-  const [loading, setLoading] = createSignal(true)
-  const [error, setError] = createSignal<string | null>(null)
-  const [refreshing, setRefreshing] = createSignal(false)
-  const [refreshMsg, setRefreshMsg] = createSignal<string | null>(null)
-  const [modalOpen, setModalOpen] = createSignal(false)
-  const [modalTicker, setModalTicker] = createSignal<string | null>(null)
   const [trackingView, setTrackingView] = createSignal<TrackingView>("calendar")
-
-  const load = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const context = await getDigestContext()
-      setDigestContext(context)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  onMount(load)
-
-  const handleRefresh = async () => {
-    setRefreshing(true)
-    setRefreshMsg(null)
-    try {
-      const refreshResult = await refreshDigestContext()
-      setRefreshMsg(publicRefreshMessage(refreshResult))
-      await load()
-    } catch (e) {
-      setRefreshMsg(`更新失败：${e instanceof Error ? e.message : String(e)}`)
-    } finally {
-      setRefreshing(false)
-    }
-  }
-
-  const openProfile = (ticker: string) => {
-    setModalTicker(ticker)
-    setModalOpen(true)
-  }
-
-  const profileTickers = createMemo(() => profileTickerSet(digestContext()))
 
   return (
     <div class="public-workspace-inner">
@@ -287,144 +114,10 @@ function PortfolioContextView() {
         </header>
         <nav class="public-workspace-tabs" aria-label="跟踪视图"><button type="button" classList={{ "is-active": trackingView() === "today" }} onClick={() => setTrackingView("today")}>今日</button><button type="button" classList={{ "is-active": trackingView() === "calendar" }} onClick={() => setTrackingView("calendar")}>日历</button><button type="button" classList={{ "is-active": trackingView() === "tasks" }} onClick={() => setTrackingView("tasks")}>任务</button><button type="button" classList={{ "is-active": trackingView() === "history" }} onClick={() => setTrackingView("history")}>历史</button></nav>
         <TrackingCalendar view={trackingView()} />
-        <section class="public-tracking-context">
-          <h2>投资主线与公司画像</h2>
-
-        <Show when={loading()}>
-          <div class="public-workspace-state">加载中…</div>
-        </Show>
-        <Show when={error()}>
-          <div class="public-mainline-notice is-error">加载失败：{error()}</div>
-        </Show>
-
-        <Show when={digestContext()}>
-          {(context) => (
-            <>
-              {/* Meta + 操作 */}
-              <div class="public-mainline-meta">
-                <div class="public-mainline-meta-info">
-                  上次更新：<strong>{formatPublicMainlineTimestamp(context().last_mainline_distilled_at)}</strong>
-                  <Show when={context().mainline_distill_skipped.length > 0}>
-                    <span class="public-mainline-skipped">
-                      跳过 {context().mainline_distill_skipped.length} 只：
-                      <span>{context().mainline_distill_skipped.join(", ")}</span>
-                    </span>
-                  </Show>
-                </div>
-                <button
-                  type="button"
-                  class="public-mainline-refresh"
-                  onClick={handleRefresh}
-                  disabled={refreshing() || !canRefreshPublicMainline(context().profile_list.length)}
-                  title={
-                    !canRefreshPublicMainline(context().profile_list.length)
-                      ? "先建立至少 1 个公司画像才能更新"
-                      : ""
-                  }
-                >
-                  {refreshing() ? "更新中…" : "立即更新"}
-                </button>
-              </div>
-              <Show when={refreshMsg()}>
-                <div class="public-mainline-notice is-success">{refreshMsg()}</div>
-              </Show>
-
-              {/* 整体投资风格 */}
-              <div class="public-mainline-style-card">
-                <div class="public-mainline-style-label">整体投资风格</div>
-                <div class="public-mainline-style-body">
-                  <Show
-                    when={context().mainline_style}
-                    fallback={<span class="public-mainline-empty-text">暂无数据 —— 需要先建立至少 1 个公司画像。</span>}
-                  >
-                    {context().mainline_style}
-                  </Show>
-                </div>
-              </div>
-
-              {/* Per-ticker mainline */}
-              <h2 class="public-mainline-heading">各持仓投资主线（{context().holdings.length} 只）</h2>
-              <Show
-                when={context().holdings.length > 0}
-                fallback={
-                  <div class="public-mainline-empty">
-                    <span>暂无持仓。跟 HONE 说一声你持有什么就行。</span>
-                    <button type="button" onClick={() => navigate("/chat")}>去对话 →</button>
-                  </div>
-                }
-              >
-                <div class="public-mainline-grid">
-                  <For each={context().holdings}>
-                    {(ticker) => {
-                      const card = createMemo(() =>
-                        mainlineHoldingCardState(context(), ticker, profileTickers()),
-                      )
-                      return (
-                        <MainlineCard
-                          ticker={card().ticker}
-                          mainline={card().mainline}
-                          hasProfile={card().hasProfile}
-                          isSkipped={card().isSkipped}
-                          onView={() => openProfile(ticker)}
-                        />
-                      )
-                    }}
-                  </For>
-                </div>
-              </Show>
-
-              {/* 公司画像列表 */}
-              <h2 class="public-mainline-heading">公司画像 ({context().profile_list.length})</h2>
-              <Show
-                when={context().profile_list.length > 0}
-                fallback={
-                  <div class="public-mainline-empty">
-                    <span>还没有公司画像。跟 HONE 说「建立 X 的公司画像」就能开始。</span>
-                    <button type="button" onClick={() => navigate("/chat")}>去对话 →</button>
-                  </div>
-                }
-              >
-                <div class="public-profile-list">
-                  <For each={context().profile_list}>
-                    {(profile) => {
-                      const row = createMemo(() => profileInventoryRowState(profile))
-                      return (
-                        <div class="public-profile-row">
-                          <div class="public-profile-row-main">
-                            <div class="public-profile-title">
-                              {row().title}
-                              <span class="public-profile-ticker">{row().tickerLabel}</span>
-                            </div>
-                            <div class="public-profile-sub">
-                              {row().sizeLabel} · {row().dir}
-                            </div>
-                          </div>
-                          <Show when={row().viewTicker}>
-                            {(ticker) => (
-                              <button type="button" class="public-profile-view-btn" onClick={() => openProfile(ticker())}>
-                                查看
-                              </button>
-                            )}
-                          </Show>
-                        </div>
-                      )
-                    }}
-                  </For>
-                </div>
-              </Show>
-
-              <ProfileModal
-                open={modalOpen()}
-                ticker={modalTicker()}
-                onClose={() => {
-                  setModalOpen(false)
-                  setModalTicker(null)
-                }}
-              />
-            </>
-          )}
-        </Show>
-        </section>
+        <div class="public-tracking-invest-link">
+          <span>投资主线与公司画像已有独立页面。</span>
+          <button type="button" onClick={() => navigate("/invest")}>前往投资 →</button>
+        </div>
     </div>
   )
 }

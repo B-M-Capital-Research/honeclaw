@@ -12,6 +12,7 @@ const startup = readFileSync(
 const css = readFileSync(new URL("./public-workspace.css", import.meta.url), "utf8");
 const community = readFileSync(new URL("./public-community.tsx", import.meta.url), "utf8");
 const portfolio = readFileSync(new URL("./public-portfolio.tsx", import.meta.url), "utf8");
+const invest = readFileSync(new URL("./public-invest.tsx", import.meta.url), "utf8");
 const me = readFileSync(new URL("./public-me.tsx", import.meta.url), "utf8");
 
 describe("public workspace page contract", () => {
@@ -21,6 +22,7 @@ describe("public workspace page contract", () => {
     expect(shell).toContain("<AgentWorkspaceMobileNav");
     expect(community).toContain('<PublicWorkspaceShell\n          active="insights"');
     expect(portfolio).toContain('<PublicWorkspaceShell active="tracking"');
+    expect(invest).toContain('<PublicWorkspaceShell active="invest"');
     expect(me).toContain('<PublicWorkspaceShell active="me"');
   });
 
@@ -35,11 +37,22 @@ describe("public workspace page contract", () => {
     expect(css).toContain(".public-tracking-agenda { display: grid; }");
   });
 
+  it("gives invest its own workspace page with overview, mainlines, and profiles", () => {
+    expect(invest).toContain('class="public-invest-stats"');
+    expect(invest).toContain('class="public-mainline-grid"');
+    expect(invest).toContain("即将到来的持仓财报");
+    expect(invest).toContain("<ProfileModal");
+    expect(portfolio).not.toContain("public-mainline-grid");
+    expect(portfolio).toContain('onClick={() => navigate("/invest")}');
+    expect(css).toContain(".public-invest-stats");
+  });
+
   it("keeps restoration inside the Agent visual language", () => {
     expect(startup).toContain("HONE AGENT");
     expect(startup).not.toContain("HONE CONVERSATION");
     expect(startup).toContain('class="public-chat-startup-tabs"');
     expect(me).toContain("正在加载个人空间");
     expect(portfolio).toContain("正在加载跟踪");
+    expect(invest).toContain("正在加载投资");
   });
 });

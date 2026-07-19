@@ -194,6 +194,24 @@
   border-top: 1px solid var(--hone-line);
 }
 
+/* 菜单微交互：箭头随 hover 位移，CTA 箭头斜向抬升 */
+.pub-nav-more-links a small,
+.pub-mobile-menu-links a small {
+  transition: transform 0.16s var(--hone-ease), color 0.16s ease;
+}
+.pub-nav-more-links a:hover small,
+.pub-mobile-menu-links a:hover small {
+  transform: translateX(3px);
+  color: var(--hone-coral-600);
+}
+.pub-nav-cta span[aria-hidden="true"] {
+  display: inline-block;
+  transition: transform 0.16s var(--hone-ease);
+}
+.pub-nav-cta:hover span[aria-hidden="true"] {
+  transform: translate(2px, -2px);
+}
+
 .pub-mobile-tabs {
   display: none;
 }

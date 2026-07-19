@@ -3517,7 +3517,7 @@ export default function PublicChatPage() {
                     setDraft("");
                   }}
                   onSelectResearch={openWorkspaceResearch}
-                  onInvest={() => navigate("/portfolio")}
+                  onInvest={() => navigate("/invest")}
                   onInsights={() => navigate("/community")}
                   onTracking={openWorkspaceTracking}
                   onAccount={() => navigate("/me")}
@@ -3662,7 +3662,7 @@ export default function PublicChatPage() {
                   activeMode={workspaceMode()}
                   activeSection="agent"
                   communityUnread={communityUnread()}
-                  onInvest={() => navigate("/portfolio")}
+                  onInvest={() => navigate("/invest")}
                   onInsights={() => navigate("/community")}
                   onAgent={() => setWorkspaceMode("overview")}
                   onTracking={openWorkspaceTracking}

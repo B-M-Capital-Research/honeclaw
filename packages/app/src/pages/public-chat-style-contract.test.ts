@@ -21,7 +21,7 @@ describe("public chat visual contract", () => {
     expect(chat).toContain("<AgentWorkspaceSidebar");
     expect(chat).toContain("<AgentWorkspaceRightRail");
     expect(chat).toContain("<AgentWorkspaceMobileNav");
-    expect(chat).toContain('onInvest={() => navigate("/portfolio")}');
+    expect(chat).toContain('onInvest={() => navigate("/invest")}');
     expect(chat).toContain('onInsights={() => navigate("/community")}');
     expect(workspace).toContain("今日研究线索");
     expect(workspace).toContain("重要事件");

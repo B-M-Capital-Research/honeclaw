@@ -113,8 +113,28 @@
 .public-tracking-task-empty strong { font-size: 15px; }
 .public-tracking-task-empty p { max-width: 480px; margin: 9px auto 16px; color: #8b8e89; font-size: 12px; line-height: 1.6; }
 .public-tracking-task-empty button { padding: 9px 14px; border: 0; border-radius: 9px; background: #111; color: #fff; cursor: pointer; font-size: 11px; }
-.public-tracking-context { margin-top: 28px; padding-top: 24px; border-top: 1px solid #e6e7e3; }
-.public-tracking-context > h2 { margin: 0 0 16px; font-size: 17px; }
+.public-tracking-invest-link { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 18px; padding: 15px 18px; border: 1px dashed #d5d6d2; border-radius: 13px; color: #777b76; font-size: 12px; }
+.public-tracking-invest-link button { padding: 7px 12px; border: 1px solid #e1e2df; border-radius: 9px; background: #fff; color: #333; cursor: pointer; font-size: 11px; font-weight: 650; }
+.public-tracking-invest-link button:hover { border-color: #aeb1ab; }
+
+/* Invest overview. */
+.public-invest-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 22px; }
+.public-invest-stats > div { display: flex; flex-direction: column; gap: 5px; padding: 16px 18px; border: 1px solid #e6e7e3; border-radius: 13px; background: #fff; }
+.public-invest-stats strong { color: #111311; font-size: 22px; font-weight: 750; letter-spacing: -.02em; line-height: 1.1; }
+.public-invest-stats strong em { color: #a1a39f; font-size: 13px; font-style: normal; font-weight: 650; }
+.public-invest-stats strong.is-text { font-size: 13px; line-height: 1.4; }
+.public-invest-stats small { color: #8b8e89; font-size: 10px; font-weight: 650; letter-spacing: .06em; }
+.public-invest-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.public-invest-section-head button { border: 0; background: transparent; color: #777b76; cursor: pointer; font-size: 11px; font-weight: 650; }
+.public-invest-section-head button:hover { color: #111311; }
+.public-invest-earnings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.public-invest-earnings > button { display: flex; align-items: center; gap: 13px; padding: 13px 15px; border: 1px solid #e6e7e3; border-radius: 13px; background: #fff; color: #222522; cursor: pointer; text-align: left; transition: border-color .15s ease, background .15s ease; }
+.public-invest-earnings > button:hover { border-color: #cfd1cc; background: #fafaf8; }
+.public-invest-earnings time { flex: 0 0 auto; color: #686c67; font-size: 11px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.public-invest-earnings time.is-today { color: #b0443b; }
+.public-invest-earnings strong { display: block; font-size: 12px; }
+.public-invest-earnings small { display: block; margin-top: 3px; color: #969994; font-size: 10px; }
+.public-invest-earnings-empty { padding: 20px; border: 1px dashed #d5d6d2; border-radius: 13px; color: #8b8e89; font-size: 12px; line-height: 1.6; }
 
 /* Mainline & company-profile context. */
 .public-mainline-meta { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; }
@@ -201,7 +221,11 @@
   .public-tracking-agenda strong { font-size: 13px; }
   .public-tracking-agenda small { margin-top: 5px; color: #8b8e89; font-size: 11px; line-height: 1.45; }
   .public-account-grid { grid-template-columns: 1fr; }
-  .public-tracking-context { margin-top: 22px; padding-top: 20px; }
+  .public-invest-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 18px; }
+  .public-invest-stats > div { padding: 13px 14px; }
+  .public-invest-stats strong { font-size: 19px; }
+  .public-invest-earnings { grid-template-columns: 1fr; }
+  .public-tracking-invest-link { flex-direction: column; align-items: flex-start; gap: 10px; }
   .public-mainline-meta { margin-bottom: 18px; }
   .public-mainline-grid { grid-template-columns: 1fr; margin-bottom: 26px; }
   .public-mainline-style-card { padding: 17px; border-radius: 15px; }

@@ -27,6 +27,7 @@ const NAV_LINKS = [
   { labelKey: "home", path: "/" },
   { labelKey: "community", path: "/community" },
   { labelKey: "blog", path: "/blog" },
+  { labelKey: "plan", path: "/plan" },
 ] as const;
 
 const MOBILE_TABS = [
@@ -284,6 +285,7 @@ export function PublicNav(
           <div class="pub-mobile-menu-links">
             <For
               each={[
+                { labelKey: "plan" as const, path: "/plan" },
                 { labelKey: "roadmap" as const, path: "/roadmap" },
                 { labelKey: "blog" as const, path: "/blog" },
               ]}

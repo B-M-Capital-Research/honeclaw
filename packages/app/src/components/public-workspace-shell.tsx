@@ -45,7 +45,7 @@ export function PublicWorkspaceShell(
         communityUnread={props.communityUnread ?? false}
         onNewResearch={goAgent}
         onSelectResearch={goAgent}
-        onInvest={() => navigate("/portfolio")}
+        onInvest={() => navigate("/invest")}
         onInsights={() => navigate("/community")}
         onTracking={goTracking}
         onAccount={() => navigate("/me")}
@@ -72,7 +72,7 @@ export function PublicWorkspaceShell(
         activeMode="conversation"
         activeSection={props.active}
         communityUnread={props.communityUnread ?? false}
-        onInvest={() => navigate("/portfolio")}
+        onInvest={() => navigate("/invest")}
         onInsights={() => navigate("/community")}
         onAgent={goAgent}
         onTracking={goTracking}
