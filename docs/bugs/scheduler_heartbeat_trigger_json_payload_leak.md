@@ -7,6 +7,15 @@
 
 ## 最新进展
 
+- `2026-07-19 15:03-19:01 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-19`
+    - 同窗有 85 条 `deliver job_id`、46 条 `duplicate_suppressed`、184 条 raw `<think>`、170 条 `PlainTextTriggered`、6 条 `JsonMalformed` 与 9 条“heartbeat 输出不是结构化 JSON”信号。
+    - 15:30 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` raw preview 以 `<think>` 后接 fenced JSON noop；该类输出虽然最终可被解析为 noop，但仍说明 heartbeat 协议层继续暴露代码块 / 协议状态形态。
+    - 19:00 CST `持仓重大事件心跳提醒`、`RKLB异动监控`、`ASTS 重大异动心跳监控`、`光模块板块关键事件心跳提醒`、`存储板块关键事件心跳提醒` 等多条 noop 或低权重检查以 `PlainTextTriggered` 进入 deliver preview，随后又被 duplicate suppression 压掉，用户态正文仍混合 `状态：noop`、协议化标题或检查表格。
+  - `data/sessions.sqlite3`
+    - 同窗新增 14 条 user / 6 条 assistant / 4 条 system compact，近期 session 均以 assistant 收口；assistant final 污染扫描未确认 fenced JSON 进入 ordinary direct final。
+  - 判断：这些样本说明 heartbeat 出站格式化仍会在 raw / deliver preview 层混入内部结构化协议或状态词；当前没有错投、全渠道不可用、敏感信息泄露或 ordinary direct final 污染证据，主要影响提醒结构和可读性，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-19 11:00-15:03 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/sessions.sqlite3`
     - 同窗新增 69 条 user / 27 条 assistant / 26 条 system compact，近期 session 均以 assistant 收口，`last_message_role=user` 为 0；assistant final 污染扫描未确认 fenced JSON 进入 ordinary direct final。

@@ -5,6 +5,15 @@
 - **严重等级**: P2
 - **状态**: New
 - **证据来源**:
+  - `2026-07-19 19:01 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
+    - `data/runtime/logs/web.log.2026-07-19`
+      - 15:03-19:01 CST 检出 2 条 `context window exceeds limit` 相关 heartbeat 信号。
+      - 15:30 CST Web `AI与科技持仓观察关键事件心跳提醒` 首轮 `Primary` 路径失败，错误包含 `upstream HTTP 400: invalid params, context window exceeds limit (2013)`。
+      - 同窗 runtime 仍有 695 条 `HeartbeatDiag` 与 184 条 raw `<think>`，说明超窗失败继续与结构化输出退化共存；本轮没有证据显示该类失败进入 ordinary direct assistant final。
+    - 会话质量对照：
+      - 同窗 SQLite 有 14 条 user / 6 条 assistant / 4 条 system compact，6 个更新 session 均以 assistant 收口，`last_message_role=user` 为 0。
+    - 判断：当前运行态已有预算恢复分支，但首轮超窗仍在 heartbeat 任务间复发，恢复结果仍可能进入 noop / 结构化退化链路。该问题仍导致 heartbeat 本轮降级 / 不稳定，严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
   - `2026-07-19 15:03 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
     - `data/runtime/logs/web.log.2026-07-19`
       - 11:00-15:03 CST 检出 7 条 `context window exceeds limit` 相关 heartbeat 信号。
