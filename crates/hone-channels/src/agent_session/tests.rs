@@ -424,7 +424,52 @@ fn mock_control_response(continue_research: bool) -> ChatResponse {
             call_type: "function".to_string(),
             function: FunctionCall {
                 name: name.to_string(),
-                arguments: "{}".to_string(),
+                arguments: if continue_research {
+                    "{}".to_string()
+                } else {
+                    serde_json::json!({
+                        "answer_scope": "回答当前测试请求",
+                        "facts": [],
+                        "inferences": [],
+                        "gaps": ["测试夹具没有可引用的成功来源"]
+                    })
+                    .to_string()
+                },
+            },
+        }]),
+        usage: None,
+    }
+}
+
+fn mock_data_control_response(references: &[(&str, &str)]) -> ChatResponse {
+    let facts = references
+        .iter()
+        .enumerate()
+        .map(|(index, (tool_call_id, json_pointer))| {
+            serde_json::json!({
+                "id": format!("F{}", index + 1),
+                "evidence": [{
+                    "tool_call_id": tool_call_id,
+                    "json_pointer": json_pointer
+                }]
+            })
+        })
+        .collect::<Vec<_>>();
+    ChatResponse {
+        content: String::new(),
+        reasoning_content: None,
+        tool_calls: Some(vec![ToolCall {
+            id: "mock_finish_research".to_string(),
+            call_type: "function".to_string(),
+            function: FunctionCall {
+                name: "finish_research".to_string(),
+                arguments: serde_json::json!({
+                    "answer_scope": "回答当前测试请求",
+                    "facts": facts,
+                    "inferences": [],
+                    "gaps": []
+                })
+                .to_string(),
             },
         }]),
         usage: None,
@@ -4645,7 +4690,14 @@ async fn incomplete_named_scope_enters_main_agent_tool_loop_without_auxiliary_ga
                 ]),
                 usage: None,
             }),
-            Ok(mock_control_response(false)),
+            Ok(mock_data_control_response(&[
+                ("call_quote", "/data/0/price"),
+                ("call_quote", "/data/1/price"),
+                ("call_nbis_financials", "/data/0/revenue"),
+                ("call_nbis_financials", "/data/0/netIncome"),
+                ("call_nvda_financials", "/data/0/revenue"),
+                ("call_nvda_financials", "/data/0/netIncome"),
+            ])),
             Ok(ChatResponse {
                 content: "数据时间：北京时间 2026-07-18 21:05；行情口径：报价源最新可得、非逐笔\n\n比较结论：NBIS 与 NVDA 应按不同业务成熟度比较。以下区分已核验事实与情景推断。\n### NBIS\nNBIS 当前价 177.71 USD。已核验事实：年度营收与净利润字段由本轮利润表覆盖；估值方法采用 P/S 与情景法，经营兑现是假设推断。\n### NVDA\nNVDA 当前价 180.25 USD。已核验事实：年度营收与净利润字段由本轮利润表覆盖；估值方法采用 P/E 与情景法，增长持续性是假设推断。\n风险与证伪条件：若增长与现金流趋势恶化，当前判断失效。\n动作建议与触发条件：先观察，等待估值与经营数据同时满足条件。".to_string(),
                 reasoning_content: None,
@@ -4912,7 +4964,7 @@ async fn agent_owned_equal_candidate_clarification_is_not_replaced_and_is_emitte
             ]),
             usage: None,
         },
-        mock_control_response(false),
+        mock_data_control_response(&[("call_alph_profile", "/data/0/companyName")]),
         ChatResponse {
             content: clarification.to_string(),
             reasoning_content: None,
@@ -5154,11 +5206,11 @@ async fn committed_terminal_header_recovers_in_place_and_session_emits_only_the_
     ]);
     let committed_header = concat!(
         "数据时间：北京时间 2026-07-18 21:05；行情口径：",
-        "本轮仅核验证券实体，未查询行情\n"
+        "本轮行情查询未获得可用报价\n"
     );
     let interrupted_answer = format!("{committed_header}\n这段终稿在传输结束前中断。");
     let recovered_answer = format!(
-        "{committed_header}\n## 标的核验\nCRWV 对应 CoreWeave, Inc.；本轮未查询行情，因此不扩写未经工具核验的价格事实。"
+        "{committed_header}\n## 标的核验\nCRWV 对应 CoreWeave, Inc.；本轮行情查询未获得可用报价，因此不扩写未经工具核验的价格事实。"
     );
     let llm = MockLlmProvider::with_tool_responses(vec![
         ChatResponse {
@@ -5199,7 +5251,10 @@ async fn committed_terminal_header_recovers_in_place_and_session_emits_only_the_
             ]),
             usage: None,
         },
-        mock_control_response(false),
+        mock_data_control_response(&[(
+            "call_crwv_profile_before_terminal_recovery",
+            "/data/0/companyName",
+        )]),
         ChatResponse {
             content: interrupted_answer,
             reasoning_content: None,
@@ -5307,7 +5362,7 @@ async fn committed_terminal_header_double_failure_emits_honest_partial_and_persi
     ]);
     let committed_header = concat!(
         "数据时间：北京时间 2026-07-18 21:05；行情口径：",
-        "本轮仅核验证券实体，未查询行情\n"
+        "本轮行情查询未获得可用报价\n"
     );
     let interrupted_answer = format!("{committed_header}\n未完成正文");
     let mismatched_recovery = concat!(
@@ -5353,7 +5408,10 @@ async fn committed_terminal_header_double_failure_emits_honest_partial_and_persi
             ]),
             usage: None,
         },
-        mock_control_response(false),
+        mock_data_control_response(&[(
+            "call_crwv_profile_before_terminal_double_failure",
+            "/data/0/companyName",
+        )]),
         ChatResponse {
             content: interrupted_answer,
             reasoning_content: None,
@@ -5823,7 +5881,14 @@ async fn crwv_nbis_agent_loop_batches_the_first_datafetch_and_emits_one_answer()
             ]),
             usage: None,
         },
-        mock_control_response(false),
+        mock_data_control_response(&[
+            ("call_crwv_nbis_quote", "/data/0/price"),
+            ("call_crwv_nbis_quote", "/data/1/price"),
+            ("call_crwv_financials", "/data/0/revenue"),
+            ("call_crwv_financials", "/data/0/netIncome"),
+            ("call_nbis_financials", "/data/0/revenue"),
+            ("call_nbis_financials", "/data/0/netIncome"),
+        ]),
         ChatResponse {
             content: "数据时间：北京时间 2026-07-18 21:05；行情口径：报价源最新可得、非逐笔\n\n比较结论：CRWV 与 NBIS 的估值应结合各自增长和资本强度。以下区分已核验事实与情景推断。\n### CRWV\nCRWV 当前价 73.21 USD。已核验事实：年度营收与净利润字段由本轮利润表覆盖；估值方法采用 P/S 与情景法，订单兑现是假设推断。\n### NBIS\nNBIS 当前价 177.71 USD。已核验事实：年度营收与净利润字段由本轮利润表覆盖；估值方法采用 P/S 与情景法，算力利用率是假设推断。\n风险与证伪条件：若订单、增长或现金流明显恶化，当前判断失效。\n动作建议与触发条件：先观察，等待估值与经营数据同时满足条件。".to_string(),
             reasoning_content: None,
@@ -5955,7 +6020,7 @@ async fn omitted_explicit_seed_is_observational_and_does_not_rerun() {
             ]),
             usage: None,
         },
-        mock_control_response(false),
+        mock_data_control_response(&[("post_identity_crwv_profile", "/data/0/companyName")]),
         ChatResponse {
             content: original_answer.to_string(),
             reasoning_content: None,
@@ -6152,7 +6217,10 @@ async fn single_agent_loop_accepts_later_exact_searches_after_empty_enriched_sea
             ]),
             usage: None,
         },
-        mock_control_response(false),
+        mock_data_control_response(&[
+            ("refine_quote_crwv_nbis", "/data/0/price"),
+            ("refine_quote_crwv_nbis", "/data/1/price"),
+        ]),
         ChatResponse {
             content: accepted_answer.to_string(),
             reasoning_content: None,
@@ -6354,7 +6422,10 @@ async fn named_entity_scope_is_delegated_to_the_main_agent_instead_of_preflight_
                 ]),
                 usage: None,
             }),
-            Ok(mock_control_response(false)),
+            Ok(mock_data_control_response(&[(
+                "call_nvda_quote",
+                "/data/0/price",
+            )])),
             Ok(ChatResponse {
                 content: "数据时间：北京时间 2026-07-18 21:05；行情口径：报价源最新可得、非逐笔\n\nNVDA 当前价 180.25 USD。".to_string(),
                 reasoning_content: None,
