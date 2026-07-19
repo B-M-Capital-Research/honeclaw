@@ -12,6 +12,7 @@ import {
 } from "solid-js";
 
 import { HoneBrand } from "@/components/hone-brand";
+import { PublicMembershipModal } from "@/components/public-membership-modal";
 import {
   PUBLIC_BILIBILI_URL,
   PUBLIC_YOUTUBE_URL,
@@ -72,6 +73,7 @@ export function PublicNav(
   const [scrolled, setScrolled] = createSignal(false);
   const [menuOpen, setMenuOpen] = createSignal(false);
   const [moreOpen, setMoreOpen] = createSignal(false);
+  const [buyOpen, setBuyOpen] = createSignal(false);
   const [stars] = createResource(fetchGithubStars);
   const location = useLocation();
   const C = CONTENT.nav;
@@ -244,6 +246,17 @@ export function PublicNav(
                 </section>
               </Show>
             </div>
+            <button
+              type="button"
+              class="pub-nav-buy"
+              onClick={() => {
+                setMenuOpen(false);
+                setMoreOpen(false);
+                setBuyOpen(true);
+              }}
+            >
+              {C.buy}
+            </button>
             <A
               href="/chat"
               onClick={() => closeAfterNavigation("/chat")}
@@ -303,6 +316,17 @@ export function PublicNav(
               )}
             </For>
           </div>
+          <button
+            type="button"
+            class="pub-mobile-menu-buy"
+            onClick={() => {
+              setMenuOpen(false);
+              setBuyOpen(true);
+            }}
+          >
+            <span>{C.buy}</span>
+            <small aria-hidden="true">¥100↓</small>
+          </button>
           {utilityLinks()}
           <div class="pub-mobile-menu-meta">
             <span>{C.contact_title}</span>
@@ -332,6 +356,8 @@ export function PublicNav(
           )}
         </For>
       </nav>
+
+      <PublicMembershipModal open={buyOpen()} onClose={() => setBuyOpen(false)} />
     </>
   );
 }

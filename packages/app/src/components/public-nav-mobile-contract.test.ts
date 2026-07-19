@@ -20,10 +20,11 @@ describe("public mobile navigation contract", () => {
     expect(polish).toContain("grid-template-columns: repeat(4, minmax(0, 1fr))");
   });
 
-  it("anchors the secondary menu below the header and the tabs above the safe area", () => {
-    expect(polish).toContain(
-      "top: calc(max(8px, env(safe-area-inset-top)) + 66px)",
-    );
+  it("anchors the flat header, its drawer, and the tabs above the safe area", () => {
+    // 通栏扁平导航：吸顶、细分割线、无圆角；抽屉紧贴导航条下方展开。
+    expect(polish).toContain("height: calc(56px + env(safe-area-inset-top))");
+    expect(polish).toContain("top: calc(56px + env(safe-area-inset-top))");
+    expect(polish).toContain("border-bottom: 1px solid var(--hone-line)");
     expect(polish).toContain("width: auto");
     expect(polish).toContain("bottom: max(7px, env(safe-area-inset-bottom))");
     expect(polish).not.toContain(".pub-mobile-menu {\n    top: 0;");

@@ -29,6 +29,7 @@ const CONTENT_ZH = {
     me: "个人",
     chat: "对话",
     plan: "定价",
+    buy: "购买完整服务",
     more: "更多",
     back_home: "返回首页",
     menu_aria: "菜单",
@@ -78,6 +79,39 @@ const CONTENT_ZH = {
     plan_title: "开源免费，云端计划筹备中",
     plan_desc: "HONE 核心永远 MIT 开源、可自托管。免部署的云端 Pro 与团队计划正在打磨，先看看会有什么。",
     plan_cta: "查看 Plan",
+  },
+
+  membership: {
+    eyebrow: "B&M 完整服务",
+    title: "购买完整服务",
+    sub: "主理人直播、VIP 社群、知识星球研报与 HONE 畅享，一次订阅全部打通。",
+    table_head_item: "服务项目",
+    table_head_desc: "包含内容",
+    items: [
+      {
+        name: "每周四深度直播",
+        desc: "主理人进行深度的公司讲解，在线直播可以任意提问。",
+      },
+      {
+        name: "VIP 群 · 500+ 高手畅聊",
+        desc: "禁言群持续分享深度投研资料与实时动态。",
+      },
+      {
+        name: "知识星球 & 社区",
+        desc: "完整的公司研报、估值和投资策略分享。",
+      },
+      {
+        name: "HONE 畅享",
+        desc: "任何问题在社区都可以得到及时反馈。",
+      },
+    ],
+    join_title: "扫码付费加入",
+    join_hint: "长按 / 扫码加入知识星球",
+    join_coupon: "新人立减 ¥100",
+    service_title: "联系客服",
+    service_hint: "扫码添加企业微信，任何疑问随时咨询",
+    foot: "加入后凭星球记录进 VIP 群；服务由 B&M Capital Research 提供。",
+    close_aria: "关闭",
   },
 
   plan: {
@@ -1685,6 +1719,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     me: "Account",
     chat: "Chat",
     plan: "Pricing",
+    buy: "Get Full Access",
     more: "More",
     back_home: "Home",
     menu_aria: "Menu",
@@ -1735,6 +1770,39 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     plan_title: "Open source forever, cloud plans in the works",
     plan_desc: "The HONE core stays MIT-licensed and self-hostable. Zero-deploy cloud Pro and Team plans are being polished — take a look at what's coming.",
     plan_cta: "View plans",
+  },
+
+  membership: {
+    eyebrow: "B&M FULL ACCESS",
+    title: "Get Full Access",
+    sub: "Weekly live deep dives, the VIP community, Zhishixingqiu research notes, and unlimited HONE — one subscription.",
+    table_head_item: "What's included",
+    table_head_desc: "Details",
+    items: [
+      {
+        name: "Thursday live deep dives",
+        desc: "The host walks through companies in depth every week — ask anything, live.",
+      },
+      {
+        name: "VIP group · 500+ investors",
+        desc: "A broadcast group with in-depth research material and real-time updates.",
+      },
+      {
+        name: "Zhishixingqiu & community",
+        desc: "Full company reports, valuations, and strategy write-ups.",
+      },
+      {
+        name: "Unlimited HONE",
+        desc: "Every question gets a timely answer in the community.",
+      },
+    ],
+    join_title: "Scan to join",
+    join_hint: "Scan the code to join on Zhishixingqiu",
+    join_coupon: "¥100 off for new members",
+    service_title: "Contact support",
+    service_hint: "Scan to add our WeCom support — ask us anything",
+    foot: "VIP group access is verified via your Zhishixingqiu record. Service provided by B&M Capital Research.",
+    close_aria: "Close",
   },
 
   plan: {
