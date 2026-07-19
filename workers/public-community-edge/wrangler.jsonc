@@ -13,7 +13,7 @@
   "r2_buckets": [
     {
       "binding": "COMMUNITY_BUCKET",
-      "bucket_name": "replace-with-existing-r2-bucket"
+      "bucket_name": "honeclaw"
     }
   ],
   "vars": {

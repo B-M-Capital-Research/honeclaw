@@ -43,7 +43,7 @@ The authorized source delta was also reconciled before this delivery work: produ
 
 ## Risks / Follow-ups
 
-- Follow `docs/runbooks/backend-deployment.md#public-community-private-r2-edge-rollout` in order. The R2 bucket placeholder in Worker config must be replaced with the exact active bucket name before deploy.
+- Follow `docs/runbooks/backend-deployment.md#public-community-private-r2-edge-rollout` in order. Worker config is already bound to the verified active R2 bucket `honeclaw`; confirm that production `HONE_OSS_BUCKET` has not changed before deploy.
 - Keep `EDGE_DISABLED=true` explicitly deployed for an existing/restored Worker. A brand-new Worker may omit it only after confirming no remote value exists; `keep_vars=true` can preserve a stale remote `false`.
 - Generate one 32..1024-byte secret in the approved secret manager and install the exact value at backend and Worker. Do not commit, log, or paste it into Pages/R2/chat.
 - Backend mode changes require the operator-managed restart that the user explicitly reserved for another service. Pages discovery stays `0` until the authenticated Worker canary and backend `prefer` checks pass.

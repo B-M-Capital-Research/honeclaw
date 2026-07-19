@@ -334,7 +334,7 @@ curl -i -X POST https://hone-claw.com/api/public/community/edge-session
 Use the same R2 bucket already selected by the backend's active `HONE_OSS_*` settings. Do not create a public duplicate bucket and do not give the browser a bucket URL.
 
 1. In Cloudflare R2, verify that the `r2.dev` development URL is disabled, no custom domain exposes the bucket, existing `community/zsxq/51115212285814/resources/` objects are private, and the backend publisher's S3-compatible credentials can read/write the bucket.
-2. In `workers/public-community-edge/wrangler.jsonc`, replace `replace-with-existing-r2-bucket` with the exact active `HONE_OSS_BUCKET` name. Keep the binding name `COMMUNITY_BUCKET`.
+2. Confirm `workers/public-community-edge/wrangler.jsonc` still binds `COMMUNITY_BUCKET` to `bucket_name = honeclaw`, which is the active 2026-07-19 `HONE_OSS_BUCKET`. If the backend bucket changes later, stop and update this reviewed binding before deploying; do not silently create or bind a duplicate bucket.
 3. Keep these fixed boundaries unchanged unless a new delivery version is deliberately designed:
 
    ```text
