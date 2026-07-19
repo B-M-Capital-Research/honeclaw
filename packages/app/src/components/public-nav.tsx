@@ -12,7 +12,6 @@ import {
 } from "solid-js";
 
 import { HoneBrand } from "@/components/hone-brand";
-import { PublicMembershipModal } from "@/components/public-membership-modal";
 import {
   PUBLIC_BILIBILI_URL,
   PUBLIC_YOUTUBE_URL,
@@ -73,9 +72,9 @@ export function PublicNav(
   const [scrolled, setScrolled] = createSignal(false);
   const [menuOpen, setMenuOpen] = createSignal(false);
   const [moreOpen, setMoreOpen] = createSignal(false);
-  const [buyOpen, setBuyOpen] = createSignal(false);
   const [stars] = createResource(fetchGithubStars);
   const location = useLocation();
+  const navigate = useNavigate();
   const C = CONTENT.nav;
   let moreMenuEl: HTMLDivElement | undefined;
 
@@ -153,13 +152,6 @@ export function PublicNav(
         <span>{C.contact_email_label}</span>
         <small>{C.contact_email}</small>
       </a>
-      <div
-        class="pub-nav-utility-item"
-        title={`${C.contact_wechat_label}: ${C.contact_wechat}`}
-      >
-        <span>{C.contact_wechat_group}</span>
-        <small>{C.contact_wechat}</small>
-      </div>
     </div>
   );
 
@@ -252,7 +244,8 @@ export function PublicNav(
               onClick={() => {
                 setMenuOpen(false);
                 setMoreOpen(false);
-                setBuyOpen(true);
+                navigate("/plan");
+                window.scrollTo({ top: 0, left: 0, behavior: "auto" });
               }}
             >
               {C.buy}
@@ -321,7 +314,8 @@ export function PublicNav(
             class="pub-mobile-menu-buy"
             onClick={() => {
               setMenuOpen(false);
-              setBuyOpen(true);
+              navigate("/plan");
+              window.scrollTo({ top: 0, left: 0, behavior: "auto" });
             }}
           >
             <span>{C.buy}</span>
@@ -356,8 +350,6 @@ export function PublicNav(
           )}
         </For>
       </nav>
-
-      <PublicMembershipModal open={buyOpen()} onClose={() => setBuyOpen(false)} />
     </>
   );
 }

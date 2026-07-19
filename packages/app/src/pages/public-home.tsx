@@ -16,7 +16,6 @@ import { latestPublicBlogPost } from "@/lib/public-blog"
 import { useLocale } from "@/lib/i18n"
 import { displayGithubStars, fetchGithubStars } from "@/lib/github-stars"
 import { PublicFooter, PublicNav } from "@/components/public-nav"
-import { PublicMembershipModal } from "@/components/public-membership-modal"
 import { HoneBrand } from "@/components/hone-brand"
 import "./public-site.css"
 
@@ -36,7 +35,6 @@ export default function PublicHomePage() {
   const [index, setIndex] = createSignal(0)
   const [enlargeImg, setEnlargeImg] = createSignal<string | null>(null)
   const [stars] = createResource(fetchGithubStars)
-  const [buyOpen, setBuyOpen] = createSignal(false)
   const navigate = useNavigate()
   const C = CONTENT
 
@@ -105,7 +103,7 @@ export default function PublicHomePage() {
               <ICONS.Chat />
               <span>{C.hero.cta_primary}</span>
             </button>
-            <button type="button" class="hone-home-cta is-buy" onClick={() => setBuyOpen(true)}>
+            <button type="button" class="hone-home-cta is-buy" onClick={() => navigate("/plan")}>
               <span>{C.nav.buy}</span>
               <small>¥100↓</small>
             </button>
@@ -250,8 +248,6 @@ export default function PublicHomePage() {
           </button>
         </section>
       </main>
-
-      <PublicMembershipModal open={buyOpen()} onClose={() => setBuyOpen(false)} />
 
       <PublicFooter />
 
