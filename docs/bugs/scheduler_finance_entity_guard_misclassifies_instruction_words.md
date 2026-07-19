@@ -8,6 +8,15 @@
 
 ## 运行态复核（2026-07-19 07:01 CST）
 
+- 本轮 2026-07-19 11:00-15:03 CST 真实运行态继续复发，状态维持 `New/P2`：
+  - `data/sessions.sqlite3` 同窗新增 69 条 user / 27 条 assistant / 26 条 system compact，近期 Feishu direct / scheduler、Web direct / canary session 均以 assistant 收口，`last_message_role=user` 为 0。
+  - 11:10 CST `cron_job_runs.run_id=48133` / Feishu scheduler `美股与A股重点标的跟踪晨报` 把任务上下文里的 `SEC` 当证券代码，返回“当前数据供应商没有返回同代码行情覆盖”，并以 `execution_failed + sent + delivered=1` 进入用户可见失败。
+  - 11:11 CST `Actor_feishu__direct__ou_5fe40dc70caa78ad6cb0185c21b53c4732` 在 `每日SemiAnalysis与Citrini文章追踪` 同一触发窗口先写出“本轮未能发现足够的可核验代表证券，不会用通用标的凑数”，随后同 session 在 11:13 CST 才输出文章追踪正文；说明 scheduler 金融实体预检仍可能抢先生成与用户任务不匹配的失败/短答。
+  - `data/runtime/logs/web.log.2026-07-19` 11:00-15:03 CST 继续记录 18 条 `runner_error`，代表包括 15:00 CST `ORCL 大事件监控` 落成 Oracle 多上市地候选，`AAOI 1.6T 光模块心跳检测` 把 `SEC` 当作证券代码且无行情覆盖，多个 heartbeat 因实体/候选/结构化问题跳过发送。
+  - 15:01 CST `NBIS关键事件心跳提醒` deliver preview 输出 `NVIDIA 当前 $202.81` 分析，与任务主体 NBIS 错配；15:00 CST `ASTS 重大异动心跳监控` deliver preview 的行情口径误写为 `TEM 报价源`，说明问题仍包含 fail-open 的实体/任务主体漂移。
+  - 判断：最新样本仍是 scheduler / heartbeat 任务正文、历史 reminder 与行业词进入实体 guard / resolver 后误抽、误拦或错配实体；与既有缺陷同根，不新建重复文档。
+  - 严重等级维持 `P2`：它直接阻断部分 scheduler 正文并造成 heartbeat 标的错配，但同窗 Web direct canary 13:51 / 14:51 / 14:54 均有 assistant 收口，未见全渠道停摆、错投到其他用户、敏感信息泄露或持久化数据破坏，因此不是 `P1`，不创建 GitHub Issue。
+
 - 本轮 2026-07-19 03:00-07:01 CST 真实运行态继续复发，状态维持 `New/P2`：
   - `data/sessions.sqlite3` 同窗新增 5 条 user / 6 条 assistant / 2 条 system compact，近期 Web direct / Web scheduler 会话均有 assistant 收口；`Actor_feishu__direct__ou_5fa7fc023b9aa2a550a3568c8ffc4d7cdc` 在 07:01 CST 边界新增 user turn，未纳入本轮 07:01 前完整收口判断。
   - 05:00 CST Web scheduler session `Actor_web__direct__web-user-afc1cabadbf8` 的 `盘后美股复盘与SNDK/MU存储产业链日报` 连续第三个窗口把宏观指标 `PCE` 当作证券代码，返回“当前数据供应商没有返回同代码行情覆盖”，随后写入用户可见 `scheduler_failure=true` 执行出错。

@@ -7,6 +7,17 @@
 
 ## 最新进展
 
+- `2026-07-19 11:00-15:03 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3`
+    - 同窗新增 69 条 user / 27 条 assistant / 26 条 system compact，近期 session 均以 assistant 收口，`last_message_role=user` 为 0；assistant final 污染扫描未确认 fenced JSON 进入 ordinary direct final。
+    - `cron_job_runs` 同窗新增 145 条 run，其中 heartbeat `completed + sent + delivered=13`、heartbeat `execution_failed + skipped_error=10`、heartbeat `noop + skipped_noop=102`。
+    - 13:30 CST `run_id=48256` / `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 用户可见 `response_preview` 在自然语言数据头后直接进入 fenced JSON，包含 `status`、`data_time_beijing`、`triggered`、`symbol`、`type`、`severity` 等协议字段。
+    - 13:30 CST `run_id=48152` / `RKLB 全面心跳检测` 用户可见 `response_preview` 直接以 fenced JSON 开头，包含 `status`、`symbol`、`event`、`price_data`、`facts` 等协议字段。
+  - `data/runtime/logs/web.log.2026-07-19`
+    - 11:00-15:03 CST 同窗有 759 条 `HeartbeatDiag`、65 条 `deliver job_id`、217 条 raw `<think>`、10 条 heartbeat `execution_failed + skipped_error` 运行态信号。
+    - 15:00 CST 多条 raw preview 仍以 `<think>` 后接协议状态、表格或自然语言，解析器继续在 `PlainTextTriggered` / `JsonNoop` / `JsonTriggered` 间漂移。
+  - 判断：这些样本说明 heartbeat 出站格式化仍会把内部结构化协议直接送入用户可见 preview；当前没有错投、全渠道不可用、敏感信息泄露或 ordinary direct final 污染证据，主要影响提醒结构和可读性，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-18 15:02-19:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-18`
     - 同窗有 29 条 heartbeat `deliver_preview`、91 条 raw `<think>`、2 条 `JsonMalformed` 与 7 条“heartbeat 输出不是结构化 JSON”信号。

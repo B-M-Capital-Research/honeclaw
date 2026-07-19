@@ -22,6 +22,19 @@
 
 ## 最新进展
 
+- 本轮 2026-07-19 11:00-15:03 CST 真实运行态继续出现同根异常 / 高风险价格和任务主体错配信号，状态维持 `New`：
+  - `data/sessions.sqlite3`
+    - 同窗新增 69 条 user / 27 条 assistant / 26 条 system compact，近期 session 均以 assistant 收口，未见错投、投递失败、空回复、敏感信息外泄或全渠道不可用。
+    - `cron_job_runs` 同窗新增 145 条 run，heartbeat 仍有 13 条 `completed + sent + delivered=1` 和 65 条 runtime `deliver job_id` 预览信号。
+  - `data/runtime/logs/web.log.2026-07-19`
+    - 13:30 / 15:00 CST `持仓财报与重大新闻心跳提醒` raw preview 继续使用 `SNDK $1,354.82`、`AAOI $102.41` 作为判断锚；15:01 CST 同任务落成 `JsonNoop` 并跳过发送，但异常价格仍进入判断上下文。
+    - 15:01 CST `闪迪关键事件心跳提醒` deliver preview 继续使用 `SNDK quote: $1,354.82`，并把数据时间头重复输出两次；该任务随后被 duplicate suppression 压下，但用户可见 preview 已进入出站链路。
+    - 15:00 CST `AI与科技持仓观察关键事件心跳提醒` deliver preview 仍围绕 2025-11-15 TSLA 旧数据核验展开，与 2026-07-19 15:00 heartbeat 触发窗口不匹配。
+    - 15:01 CST `NBIS关键事件心跳提醒` deliver preview 输出 NVIDIA 分析；15:00 CST `ASTS 重大异动心跳监控` deliver preview 的行情口径误写为 `TEM 报价源`。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check / 任务上下文错配缺口：异常数量级价格、错误时间口径和错配标的继续进入 heartbeat 判断上下文和用户可见 preview。
+    - 本窗没有错投到其他用户、投递失败、空回复、数据破坏或全渠道不可用；因此仍按质量性 `P3 / New`。该问题不影响主消息投递链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-19 03:00-07:01 CST 真实运行态继续出现同根异常 / 高风险价格和任务主体错配信号，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-18`
     - 03:00-07:01 CST 同窗 heartbeat 继续有 94 条 `deliver job_id`、186 条 `PlainTextTriggered`、46 条 duplicate suppression，异常或高风险行情锚继续进入触发判断和用户可见 preview。

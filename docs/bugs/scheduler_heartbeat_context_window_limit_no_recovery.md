@@ -5,6 +5,15 @@
 - **严重等级**: P2
 - **状态**: New
 - **证据来源**:
+  - `2026-07-19 15:03 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
+    - `data/runtime/logs/web.log.2026-07-19`
+      - 11:00-15:03 CST 检出 7 条 `context window exceeds limit` 相关 heartbeat 信号。
+      - 15:00 CST Web `持仓重大事件心跳提醒` 首轮 `Primary` 路径失败，错误包含 `upstream HTTP 400: invalid params, context window exceeds limit (2013)`，随后进入 `retry_with_budget_recovery` / `BudgetRecovery { reason: ContextOverflow }`。
+      - 15:01 CST 同 job 的恢复分支成功收口为 `JsonNoop` 并跳过发送；这说明恢复分支能避免直接失败，但恢复后的任务覆盖和输出质量仍依赖更小预算与有限工具调用。
+    - 会话质量对照：
+      - 同窗 SQLite 有 69 条 user / 27 条 assistant / 26 条 system compact，近期 session 均以 assistant 收口，`last_message_role=user` 为 0；普通 scheduler 16 条 `completed + sent + delivered=1`。
+    - 判断：当前运行态已有预算恢复分支，但首轮超窗仍在 heartbeat 任务间复发，恢复结果仍可能进入 noop / 结构化退化链路。该问题仍导致 heartbeat 本轮降级 / 不稳定，严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
   - `2026-07-06 11:02 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
     - `data/runtime/logs/backend_screen.log` / `data/runtime/logs/feishu_screen.log`
       - 07:02-11:02 CST 仍检出 5 条明确 `context window exceeds limit (2013)` heartbeat 首轮失败信号，覆盖 `NVDA 关键事件心跳提醒`、`持仓财报与重大新闻心跳提醒`、`持仓重大事件心跳提醒`、`TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`、`heartbeat_绿田机械基本面跟踪`。
