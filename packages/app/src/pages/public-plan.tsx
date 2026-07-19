@@ -257,8 +257,10 @@ export default function PublicPlanPage() {
           line-height: 1.7;
         }
         @media (max-width: 900px) {
-          .hone-plan-main { width: calc(100% - 32px); padding-top: 118px; }
-          .hone-plan-grid { grid-template-columns: 1fr; gap: 12px; }
+          .hone-plan-main { width: calc(100% - 36px); padding-top: 100px; }
+          .hone-plan-hero p { font-size: 13px; }
+          .hone-plan-grid { grid-template-columns: 1fr; gap: 12px; margin-top: 32px; }
+          .hone-plan-card { padding: 22px 18px 20px; }
           .hone-plan-card.is-featured { order: -1; }
         }
       `}</style>

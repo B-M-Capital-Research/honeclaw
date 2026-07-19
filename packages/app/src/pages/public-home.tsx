@@ -16,6 +16,7 @@ import { latestPublicBlogPost } from "@/lib/public-blog"
 import { useLocale } from "@/lib/i18n"
 import { displayGithubStars, fetchGithubStars } from "@/lib/github-stars"
 import { PublicFooter, PublicNav } from "@/components/public-nav"
+import { PublicMembershipModal } from "@/components/public-membership-modal"
 import { HoneBrand } from "@/components/hone-brand"
 import "./public-site.css"
 
@@ -35,6 +36,7 @@ export default function PublicHomePage() {
   const [index, setIndex] = createSignal(0)
   const [enlargeImg, setEnlargeImg] = createSignal<string | null>(null)
   const [stars] = createResource(fetchGithubStars)
+  const [buyOpen, setBuyOpen] = createSignal(false)
   const navigate = useNavigate()
   const C = CONTENT
 
@@ -102,6 +104,10 @@ export default function PublicHomePage() {
             <button type="button" class="hone-home-cta" onClick={() => navigate("/chat")}>
               <ICONS.Chat />
               <span>{C.hero.cta_primary}</span>
+            </button>
+            <button type="button" class="hone-home-cta is-buy" onClick={() => setBuyOpen(true)}>
+              <span>{C.nav.buy}</span>
+              <small>¥100↓</small>
             </button>
             <a
               class="hone-home-cta is-ghost"
@@ -245,6 +251,8 @@ export default function PublicHomePage() {
         </section>
       </main>
 
+      <PublicMembershipModal open={buyOpen()} onClose={() => setBuyOpen(false)} />
+
       <PublicFooter />
 
       <style>{`
@@ -344,6 +352,24 @@ export default function PublicHomePage() {
         .hone-home-cta:hover {
           transform: translateY(-2px);
           box-shadow: 0 14px 32px rgba(23, 32, 31, 0.18);
+        }
+        .hone-home-cta.is-buy {
+          border-color: var(--hone-coral-500);
+          background: var(--hone-coral-500);
+          box-shadow: 0 10px 26px color-mix(in srgb, var(--hone-coral-500) 30%, transparent);
+        }
+        .hone-home-cta.is-buy:hover {
+          border-color: var(--hone-coral-600);
+          background: var(--hone-coral-600);
+          box-shadow: 0 14px 32px color-mix(in srgb, var(--hone-coral-500) 38%, transparent);
+        }
+        .hone-home-cta.is-buy small {
+          padding: 2px 8px;
+          border-radius: 999px;
+          background: rgba(255, 255, 255, 0.22);
+          color: #fff;
+          font-size: 11px;
+          font-weight: 700;
         }
         .hone-home-cta.is-ghost {
           border-color: var(--hone-line-strong);
@@ -752,27 +778,76 @@ export default function PublicHomePage() {
           to { opacity: 1; transform: translateY(0); }
         }
 
-        /* ── 响应式 ── */
+        /* ── 响应式：移动端做整体减负——少边框、少盒子、松弛的纵向节奏 ── */
         @media (max-width: 900px) {
-          .hone-home-main { width: calc(100% - 32px); }
-          .hone-home-hero { padding-top: 122px; text-align: left; align-items: flex-start; }
-          .hone-home-hero-desc { font-size: 13px; }
-          .hone-home-hero-actions { justify-content: flex-start; }
-          .hone-home-stats { flex-wrap: wrap; gap: 12px 0; }
-          .hone-home-stats > div { padding: 0 18px; }
-          .hone-home-trust { grid-template-columns: 1fr; gap: 10px; }
-          .hone-home-case-body { grid-template-columns: 1fr; gap: 20px; padding: 20px 16px; }
-          .hone-home-blog { grid-template-columns: 1fr; gap: 16px; margin-top: 60px; padding: 18px 16px; }
-          .hone-home-blog-shot img { min-height: 180px; }
-          .hone-home-plan { flex-direction: column; align-items: flex-start; margin: 60px 0 72px; padding: 22px 18px; }
-          .hone-home-section { margin-top: 60px; }
-          .hone-home-demo { margin-top: 40px; }
+          .hone-home-main { width: calc(100% - 36px); }
+          .hone-home-hero { padding-top: 104px; text-align: left; align-items: flex-start; }
+          .hone-home-hero h1 { margin-top: 14px; }
+          .hone-home-hero-desc { margin-top: 14px; font-size: 13px; line-height: 1.75; }
+          .hone-home-hero-actions { justify-content: flex-start; margin-top: 24px; }
+
+          /* 统计行：去竖分割线，改为轻量行内标注，弱化盒子感 */
+          .hone-home-stats { flex-wrap: wrap; gap: 8px 26px; margin-top: 28px; }
+          .hone-home-stats > div {
+            flex-direction: row;
+            align-items: baseline;
+            gap: 7px;
+            padding: 0;
+            border-left: 0;
+          }
+          .hone-home-stats strong { font-size: 14px; }
+
+          /* 卖点三卡合并为一块单面板，卡片间用细分隔线，消除三层描边堆叠 */
+          .hone-home-trust {
+            grid-template-columns: 1fr;
+            gap: 0;
+            overflow: hidden;
+            border: 1px solid var(--hone-line);
+            border-radius: 16px;
+            background: #fff;
+          }
+          .hone-home-trust article {
+            display: grid;
+            grid-template-columns: 34px minmax(0, 1fr);
+            gap: 4px 14px;
+            padding: 18px 16px;
+            border: 0;
+            border-bottom: 1px solid var(--hone-line);
+            border-radius: 0;
+          }
+          .hone-home-trust article:last-child { border-bottom: 0; }
+          .hone-home-trust article:hover { transform: none; box-shadow: none; }
+          .hone-home-trust span { width: 34px; height: 34px; grid-row: 1 / 3; }
+          .hone-home-trust h3 { margin: 0; align-self: center; font-size: 14px; }
+          .hone-home-trust p { grid-column: 2; margin: 2px 0 0; font-size: 12px; line-height: 1.65; }
+
+          .hone-home-section { margin-top: 56px; }
+          .hone-home-section-head p { font-size: 12px; }
+          .hone-home-demo { margin-top: 36px; }
           .hone-home-window { border-radius: 14px; }
+          .hone-home-window > header { padding: 10px 12px; }
+
+          .hone-home-cases { border-radius: 15px; }
+          .hone-home-case-tabs { padding: 7px 8px; }
+          .hone-home-case-body { grid-template-columns: 1fr; gap: 18px; padding: 18px 16px 20px; }
+          .hone-home-case-copy > p { font-size: 12px; }
+          .hone-home-case-progress { margin-top: 18px; }
+
+          .hone-home-blog { grid-template-columns: 1fr; gap: 14px; margin-top: 56px; padding: 16px 16px 20px; border-radius: 15px; }
+          .hone-home-blog-shot { order: -1; }
+          .hone-home-blog-shot img { min-height: 0; aspect-ratio: 16 / 9; }
+          .hone-home-blog-copy p { margin-bottom: 16px; font-size: 12px; }
+
+          .hone-home-plan { flex-direction: column; align-items: flex-start; gap: 18px; margin: 56px 0 64px; padding: 20px 16px; border-radius: 15px; }
+          .hone-home-plan p { font-size: 12px; }
+          .hone-home-plan > button { width: 100%; justify-content: center; }
         }
         @media (max-width: 480px) {
-          .hone-home-hero h1 { font-size: 31px; }
-          .hone-home-cta { width: 100%; justify-content: center; }
-          .hone-home-hero-actions { width: 100%; flex-direction: column; align-items: stretch; }
+          .hone-home-hero { padding-top: 96px; }
+          .hone-home-hero h1 { font-size: 29px; letter-spacing: -0.035em; }
+          .hone-home-hero-actions { width: 100%; flex-direction: column; align-items: stretch; gap: 9px; }
+          .hone-home-cta { width: 100%; justify-content: center; min-height: 48px; }
+          .hone-home-stats { gap: 6px 22px; }
         }
       `}</style>
     </div>
