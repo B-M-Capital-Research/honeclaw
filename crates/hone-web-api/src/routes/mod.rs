@@ -286,6 +286,14 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
         .route("/history", get(public::handle_history))
         .route("/community", get(public_community::handle_list_community))
         .route(
+            "/community/state",
+            get(public_community::handle_community_state),
+        )
+        .route(
+            "/community/edge-session",
+            post(public_community::handle_community_edge_session),
+        )
+        .route(
             "/community/seen",
             post(public_community::handle_mark_community_seen),
         )

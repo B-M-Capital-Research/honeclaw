@@ -49,6 +49,8 @@ pub(crate) struct PublicHistoryQuery {
 }
 
 const WEB_SESSION_COOKIE: &str = "hone_web_session";
+pub(crate) const COMMUNITY_EDGE_COOKIE: &str = "hone_community_edge";
+pub(crate) const COMMUNITY_EDGE_COOKIE_PATH: &str = "/_community/v1/";
 const WEB_SESSION_MAX_AGE_LONG_SECS: i64 = 30 * 24 * 60 * 60;
 const WEB_SESSION_MAX_AGE_SHORT_SECS: i64 = 24 * 60 * 60;
 
@@ -407,10 +409,17 @@ pub(crate) async fn handle_logout(
         let _ = state.web_auth.delete_session(&token);
     }
 
+    logout_success_response(&headers)
+}
+
+fn logout_success_response(headers: &HeaderMap) -> Response {
     let mut response = Json(json!({ "ok": true })).into_response();
     response
         .headers_mut()
-        .append(header::SET_COOKIE, clear_session_cookie(&headers));
+        .append(header::SET_COOKIE, clear_session_cookie(headers));
+    response
+        .headers_mut()
+        .append(header::SET_COOKIE, clear_community_edge_cookie());
     response
 }
 
@@ -1365,6 +1374,19 @@ fn clear_session_cookie(headers: &HeaderMap) -> HeaderValue {
     .expect("valid clear session cookie")
 }
 
+pub(crate) fn build_community_edge_cookie(edge_token: &str, max_age_secs: u64) -> HeaderValue {
+    HeaderValue::from_str(&format!(
+        "{COMMUNITY_EDGE_COOKIE}={edge_token}; Path={COMMUNITY_EDGE_COOKIE_PATH}; HttpOnly; Secure; SameSite=Strict; Max-Age={max_age_secs}"
+    ))
+    .expect("base64url edge session always forms a valid cookie")
+}
+
+pub(crate) fn clear_community_edge_cookie() -> HeaderValue {
+    HeaderValue::from_static(
+        "hone_community_edge=; Path=/_community/v1/; HttpOnly; Secure; SameSite=Strict; Max-Age=0",
+    )
+}
+
 /// Determine whether the Secure flag should be set on session cookies.
 ///
 /// Checks `HONE_PUBLIC_SECURE_COOKIE` env var first (accepts "true"/"1"/"yes"
@@ -1522,9 +1544,9 @@ mod tests {
         OpenAiStreamListener, PUBLIC_ACTIVE_STATE_CACHE_CONTROL, WEB_SESSION_MAX_AGE_LONG_SECS,
         WEB_SESSION_MAX_AGE_SHORT_SECS, aliyun_sms_phone_number, build_public_chat_user_input,
         build_session_cookie, clear_session_cookie, has_unanswered_interactive_turn,
-        public_active_state_response, public_api_failure_message, public_api_finish_reason,
-        public_attachment_filename, public_client_key, public_sms_phone_candidates,
-        validate_public_upload_path,
+        logout_success_response, public_active_state_response, public_api_failure_message,
+        public_api_finish_reason, public_attachment_filename, public_client_key,
+        public_sms_phone_candidates, validate_public_upload_path,
     };
     use axum::http::{HeaderMap, HeaderValue, header};
     use hone_channels::agent_session::{AgentSessionEvent, AgentSessionListener};
@@ -1704,6 +1726,32 @@ mod tests {
         assert!(cookie.contains("Secure"));
         assert!(cookie.contains("SameSite=Strict"));
         assert!(cleared.contains("Secure"));
+    }
+
+    #[test]
+    fn logout_clears_web_and_community_edge_cookies_without_a_session() {
+        let response = logout_success_response(&HeaderMap::new());
+        let cookies = response
+            .headers()
+            .get_all(header::SET_COOKIE)
+            .iter()
+            .map(|value| value.to_str().expect("ASCII cookie"))
+            .collect::<Vec<_>>();
+
+        assert_eq!(cookies.len(), 2);
+        assert!(cookies.iter().any(|cookie| {
+            cookie.starts_with("hone_web_session=;")
+                && cookie.contains("Path=/;")
+                && cookie.contains("Max-Age=0")
+        }));
+        assert!(cookies.iter().any(|cookie| {
+            cookie.starts_with("hone_community_edge=;")
+                && cookie.contains("Path=/_community/v1/")
+                && cookie.contains("HttpOnly")
+                && cookie.contains("Secure")
+                && cookie.contains("SameSite=Strict")
+                && cookie.contains("Max-Age=0")
+        }));
     }
 
     #[test]

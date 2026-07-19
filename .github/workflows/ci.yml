@@ -92,3 +92,15 @@ jobs:
 
       - name: Frontend unit tests
         run: bun run test:web
+
+      - name: Install public community edge Worker dependencies
+        working-directory: workers/public-community-edge
+        run: bun install --frozen-lockfile
+
+      - name: Public community edge Worker typecheck
+        working-directory: workers/public-community-edge
+        run: bun run typecheck
+
+      - name: Public community edge Worker unit tests
+        working-directory: workers/public-community-edge
+        run: bun run test

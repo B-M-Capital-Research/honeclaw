@@ -1,17 +1,17 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use clap::{Args, Subcommand};
 use futures::{StreamExt, stream};
 use hone_core::cloud_runtime::{
-    CloudCommunityReconcileCandidate, CloudCommunityResourceBackfillOutcome,
-    CloudCommunityResourceBackfillTarget, CloudCommunityResourceBackfillUpdate,
-    CloudCompanyProfileFileRecord, CloudConversationQuotaImport, CloudCronJobRecord,
-    CloudDocumentIndex, CloudLlmAuditRecord, CloudNotificationPrefsRecord, CloudPgRuntime,
-    CloudPortfolioRecord, CloudSessionRecord, OssObjectStore, RuntimeRole,
-    local_durable_dependencies, sanitize_key_component, sha256_hex,
+    CloudCommunityPublishLock, CloudCommunityReconcileCandidate,
+    CloudCommunityResourceBackfillOutcome, CloudCommunityResourceBackfillTarget,
+    CloudCommunityResourceBackfillUpdate, CloudCompanyProfileFileRecord,
+    CloudConversationQuotaImport, CloudCronJobRecord, CloudDocumentIndex, CloudLlmAuditRecord,
+    CloudNotificationPrefsRecord, CloudPgRuntime, CloudPortfolioRecord, CloudSessionRecord,
+    OssObjectStore, RuntimeRole, local_durable_dependencies, sanitize_key_component, sha256_hex,
 };
 use hone_core::config::OssConfig;
 use hone_core::{ActorIdentity, HoneError, HoneResult};
@@ -34,6 +34,8 @@ pub(crate) enum CloudCommands {
     CommunityAssets(CommunityAssetsArgs),
     /// 对账完整社区时间线，并在单事务中补齐缺失的内容/资源元数据（默认 dry-run）。
     CommunityContents(CommunityContentsArgs),
+    /// 将社区只读时间线发布为 private-R2 edge snapshot（默认 dry-run）。
+    CommunityPublish(CommunityPublishArgs),
 }
 
 #[derive(Args, Debug)]
@@ -128,6 +130,32 @@ pub(crate) struct CommunityContentsArgs {
     #[arg(long = "external-id", default_value = "51115212285814")]
     pub(crate) external_id: String,
     /// Insert all missing contents/resources in one PostgreSQL transaction.
+    #[arg(long)]
+    pub(crate) apply: bool,
+}
+
+#[derive(Args, Debug)]
+pub(crate) struct CommunityPublishArgs {
+    #[arg(long, default_value = "zsxq")]
+    pub(crate) source: String,
+    #[arg(long = "external-id", default_value = "51115212285814")]
+    pub(crate) external_id: String,
+    /// Number of contents in each edge feed page.
+    #[arg(long = "page-size", default_value_t = 20)]
+    pub(crate) page_size: usize,
+    /// Private R2 prefix containing the published feed and descriptors.
+    #[arg(
+        long = "feed-prefix",
+        default_value = "community/zsxq/51115212285814/delivery/v1"
+    )]
+    pub(crate) feed_prefix: String,
+    /// Private R2 prefix containing the already-managed original resources.
+    #[arg(
+        long = "asset-prefix",
+        default_value = "community/zsxq/51115212285814/resources"
+    )]
+    pub(crate) asset_prefix: String,
+    /// Write descriptors/pages and update latest.json last. Omit for read-only dry-run.
     #[arg(long)]
     pub(crate) apply: bool,
 }
@@ -308,6 +336,156 @@ struct ValidatedCommunityAsset {
     captured_at: Option<String>,
 }
 
+const COMMUNITY_PUBLISH_AUTHOR: &str = "HONE 官方";
+const COMMUNITY_PUBLISH_JSON_CONTENT_TYPE: &str = "application/json; charset=utf-8";
+// Publisher verification downloads and hashes archived assets before exposing
+// them to the edge. Keep this deliberately low: historical resources may be
+// as large as the 128 MiB community backfill ceiling.
+const COMMUNITY_PUBLISH_RESOURCE_CONCURRENCY: usize = 2;
+const COMMUNITY_PUBLISH_MAX_FEED_BYTES: usize = 8 * 1024 * 1024;
+const COMMUNITY_PUBLISH_MAX_DESCRIPTOR_BYTES: usize = 64 * 1024;
+const COMMUNITY_PUBLISH_MAX_ACTIVE_INDEX_BYTES: usize = 1024 * 1024;
+const COMMUNITY_PUBLISH_MAX_ASSET_BYTES: i64 = 128 * 1024 * 1024;
+const COMMUNITY_PUBLISH_OSS_ATTEMPTS: usize = 3;
+const COMMUNITY_PUBLISH_OSS_RETRY_BASE_DELAY_MS: u64 = 200;
+const MAX_JAVASCRIPT_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
+
+#[derive(Debug, Serialize)]
+struct CommunityPublishReport {
+    ok: bool,
+    mode: &'static str,
+    source: String,
+    external_id: String,
+    page_size: usize,
+    feed_prefix: String,
+    asset_prefix: String,
+    latest_key: String,
+    content_count: usize,
+    page_count: usize,
+    resource_count: usize,
+    edge_resource_count: usize,
+    legacy_resource_count: usize,
+    descriptor_count: usize,
+    planned_objects: usize,
+    existing_objects: usize,
+    would_write: usize,
+    written: usize,
+    latest_updated: bool,
+    no_op: bool,
+    legacy_resources: Vec<CommunityPublishLegacyResource>,
+    conflicts: Vec<CommunityPublishConflict>,
+    resource_verification: &'static str,
+    verification_hint: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct CommunityPublishLegacyResource {
+    resource_id: i64,
+    reason: String,
+}
+
+#[derive(Debug, Serialize)]
+struct CommunityPublishConflict {
+    resource_id: Option<i64>,
+    object_key: Option<String>,
+    reason: String,
+}
+
+#[derive(Debug)]
+struct CommunityPublishRawPage {
+    before: Option<i64>,
+    items: Vec<hone_core::cloud_runtime::CloudCommunityContentRecord>,
+}
+
+#[derive(Debug, Serialize)]
+struct PublishedCommunityPage {
+    community: PublishedCommunityIdentity,
+    items: Vec<PublishedCommunityContent>,
+    next_before: Option<i64>,
+    unread: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    latest_content_id: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+struct PublishedCommunityIdentity {
+    id: String,
+    name: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct PublishedCommunityContent {
+    content_id: i64,
+    author_name: &'static str,
+    published_at: Option<String>,
+    published_at_raw: Option<String>,
+    content_type: String,
+    body_text: String,
+    body_blocks: serde_json::Value,
+    crawl_status: String,
+    resources: Vec<PublishedCommunityResource>,
+}
+
+#[derive(Debug, Serialize)]
+struct PublishedCommunityResource {
+    resource_id: i64,
+    ordinal: i32,
+    resource_kind: String,
+    display_name: Option<String>,
+    content_type: Option<String>,
+    byte_size: Option<i64>,
+    version: Option<String>,
+    access_state: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    delivery_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct CommunityResourceDescriptor {
+    resource_id: i64,
+    version: String,
+    sha256: String,
+    object_key: String,
+    content_type: String,
+    byte_size: i64,
+    display_name: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct CommunityResourceActiveIndex {
+    v: u8,
+    resources: BTreeMap<i64, String>,
+}
+
+#[derive(Debug)]
+enum CommunityEdgeResourceCheck {
+    Eligible(CommunityResourceDescriptor),
+    Legacy { resource_id: i64, reason: String },
+    Conflict { resource_id: i64, reason: String },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CommunityPublishObjectKind {
+    Descriptor,
+    Page,
+    ActiveIndex,
+    Latest,
+}
+
+#[derive(Debug)]
+struct PlannedCommunityPublishObject {
+    kind: CommunityPublishObjectKind,
+    key: String,
+    bytes: Vec<u8>,
+}
+
+#[derive(Debug)]
+struct PreflightCommunityPublishObject {
+    planned: PlannedCommunityPublishObject,
+    existed: bool,
+    should_write: bool,
+}
+
 pub(crate) async fn run_cloud_command(
     config_path: Option<&Path>,
     command: CloudCommands,
@@ -318,7 +496,1103 @@ pub(crate) async fn run_cloud_command(
         CloudCommands::ObjectBench(args) => run_object_bench(config_path, args).await,
         CloudCommands::CommunityAssets(args) => run_community_assets(config_path, args).await,
         CloudCommands::CommunityContents(args) => run_community_contents(config_path, args).await,
+        CloudCommands::CommunityPublish(args) => run_community_publish(config_path, args).await,
     }
+}
+
+fn validate_community_publish_scope(source: &str, external_id: &str) -> Result<(), String> {
+    if source.is_empty() || external_id.is_empty() {
+        return Err("--source 和 --external-id 不能为空".to_string());
+    }
+    if sanitize_key_component(source) != source
+        || sanitize_key_component(external_id) != external_id
+        || matches!(source, "." | "..")
+        || matches!(external_id, "." | "..")
+    {
+        return Err(
+            "--source 和 --external-id 只能包含 ASCII 字母、数字、点、横线和下划线，且不能是 . 或 .."
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn validate_community_publish_provider(raw: &str) -> Result<(), String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "r2" | "cloudflare_r2" => Ok(()),
+        _ => Err(
+            "community-publish 只允许 active OSS provider 明确设为 r2 或 cloudflare_r2".to_string(),
+        ),
+    }
+}
+
+fn validate_community_publish_page_size(page_size: usize) -> Result<(), String> {
+    if (1..=50).contains(&page_size) {
+        Ok(())
+    } else {
+        Err("--page-size 必须在 1..=50 范围内".to_string())
+    }
+}
+
+fn normalize_community_publish_prefix(raw: &str, label: &str) -> Result<String, String> {
+    let prefix = raw.trim().trim_matches('/');
+    if prefix.is_empty() {
+        return Err(format!("{label} 不能为空"));
+    }
+    validate_community_object_key(prefix).map_err(|reason| format!("{label} 无效: {reason}"))?;
+    Ok(prefix.to_string())
+}
+
+fn validate_community_publish_scoped_prefix(
+    prefix: &str,
+    source: &str,
+    external_id: &str,
+    label: &str,
+) -> Result<(), String> {
+    let root = format!("community/{source}/{external_id}");
+    if prefix == root || prefix.starts_with(&format!("{root}/")) {
+        Ok(())
+    } else {
+        Err(format!("{label} 必须位于 {root}/ 下"))
+    }
+}
+
+fn validate_community_object_key(key: &str) -> Result<(), String> {
+    if key.starts_with('/') || key.ends_with('/') || key.contains('\\') || key.contains('\0') {
+        return Err("object key 不能含首尾斜线、反斜线或 NUL".to_string());
+    }
+    if key
+        .split('/')
+        .any(|segment| segment.is_empty() || segment == "." || segment == "..")
+    {
+        return Err("object key 不能含空段、. 或 .. 段".to_string());
+    }
+    if key.chars().any(char::is_control) {
+        return Err("object key 不能含控制字符".to_string());
+    }
+    Ok(())
+}
+
+fn community_publish_latest_key(feed_prefix: &str) -> String {
+    format!("{feed_prefix}/feed/latest.json")
+}
+
+fn community_publish_page_key(feed_prefix: &str, before: i64) -> String {
+    format!("{feed_prefix}/feed/pages/{before}.json")
+}
+
+fn community_publish_descriptor_key(feed_prefix: &str, resource_id: i64, version: &str) -> String {
+    format!("{feed_prefix}/resources/{resource_id}/{version}.json")
+}
+
+fn community_publish_active_index_key(feed_prefix: &str) -> String {
+    format!("{feed_prefix}/resources/active.json")
+}
+
+fn community_publish_delivery_path(resource_id: i64, version: &str) -> String {
+    format!("/_community/v1/resources/{resource_id}/{version}")
+}
+
+fn normalized_community_publish_sha256(raw: Option<&str>) -> Option<String> {
+    let sha256 = raw?.trim();
+    (sha256.len() == 64 && sha256.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .then(|| sha256.to_ascii_lowercase())
+}
+
+fn validate_non_empty_community_publish_archive(
+    pages: &[CommunityPublishRawPage],
+) -> Result<(), String> {
+    if pages.first().is_some_and(|page| !page.items.is_empty()) {
+        Ok(())
+    } else {
+        Err("community archive 为空，拒绝发布或覆盖 latest.json".to_string())
+    }
+}
+
+async fn load_community_publish_pages(
+    pg: &CloudPgRuntime,
+    source: &str,
+    external_id: &str,
+    page_size: usize,
+) -> Result<Vec<CommunityPublishRawPage>, String> {
+    let mut pages = Vec::new();
+    let mut before = None;
+    let mut seen_cursors = BTreeSet::new();
+    loop {
+        let items = pg
+            .list_community_contents(source, external_id, before, page_size)
+            .await
+            .map_err(|_| "读取 Postgres community timeline 失败".to_string())?;
+        if items.is_empty() {
+            break;
+        }
+        for item in &items {
+            if item.content_id <= 0 || item.content_id > MAX_JAVASCRIPT_SAFE_INTEGER {
+                return Err(format!(
+                    "community content_id={} 超出安全正整数范围",
+                    item.content_id
+                ));
+            }
+        }
+        let next_before = (items.len() == page_size)
+            .then(|| items.last().map(|item| item.content_id))
+            .flatten();
+        pages.push(CommunityPublishRawPage { before, items });
+        let Some(next_before) = next_before else {
+            break;
+        };
+        if !seen_cursors.insert(next_before) {
+            return Err(format!(
+                "community timeline cursor={next_before} 重复，拒绝生成循环分页"
+            ));
+        }
+        before = Some(next_before);
+    }
+    validate_non_empty_community_publish_archive(&pages)?;
+    Ok(pages)
+}
+
+fn validate_community_resource_descriptor(
+    descriptor: &CommunityResourceDescriptor,
+    asset_prefix: &str,
+) -> Result<(), String> {
+    if descriptor.resource_id <= 0 || descriptor.resource_id > MAX_JAVASCRIPT_SAFE_INTEGER {
+        return Err("resource_id 必须是 JavaScript 安全正整数".to_string());
+    }
+    if descriptor.version.len() != 12
+        || !descriptor
+            .version
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err("version 必须是 12 位小写十六进制".to_string());
+    }
+    if descriptor.sha256.len() != 64
+        || !descriptor
+            .sha256
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err("sha256 必须是 64 位小写十六进制".to_string());
+    }
+    if descriptor.version != descriptor.sha256[..12] {
+        return Err("version 必须等于 sha256 前 12 位".to_string());
+    }
+    validate_community_object_key(&descriptor.object_key)?;
+    validate_community_publish_asset_key(descriptor, asset_prefix)?;
+    let content_type = descriptor.content_type.trim();
+    if content_type.is_empty()
+        || content_type.len() > 255
+        || content_type.chars().any(char::is_control)
+    {
+        return Err("content_type 无效".to_string());
+    }
+    if !(1..=COMMUNITY_PUBLISH_MAX_ASSET_BYTES).contains(&descriptor.byte_size) {
+        return Err(format!(
+            "byte_size 必须在 1..={COMMUNITY_PUBLISH_MAX_ASSET_BYTES} 范围内"
+        ));
+    }
+    if descriptor.display_name.as_deref().is_some_and(|name| {
+        name.len() > 1_024 || name.contains('\0') || name.contains('\r') || name.contains('\n')
+    }) {
+        return Err("display_name 含不安全字符或超过 1024 UTF-8 bytes".to_string());
+    }
+    Ok(())
+}
+
+fn normalized_community_publish_content_type(raw: &str) -> String {
+    let normalized = raw
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    if normalized == "image/jpg" {
+        "image/jpeg".to_string()
+    } else {
+        normalized
+    }
+}
+
+fn validate_community_publish_asset_key(
+    descriptor: &CommunityResourceDescriptor,
+    asset_prefix: &str,
+) -> Result<(), String> {
+    let prefix = format!("{asset_prefix}/");
+    let Some(basename) = descriptor.object_key.strip_prefix(&prefix) else {
+        return Err("object_key 不在 exact asset-prefix 下".to_string());
+    };
+    if basename.contains('/') {
+        return Err("object_key 必须直接位于 asset-prefix 下，不能含额外子目录".to_string());
+    }
+    let immutable_stem = format!("{}-{}.", descriptor.resource_id, descriptor.sha256);
+    let Some(extension) = basename.strip_prefix(&immutable_stem) else {
+        return Err(
+            "object_key basename 必须匹配 {resource_id}-{full_sha256}.<safe ext>".to_string(),
+        );
+    };
+    if extension.is_empty()
+        || extension.len() > 10
+        || !extension
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+    {
+        return Err("object_key 扩展名必须是安全的小写字母数字".to_string());
+    }
+    let expected_content_type = content_type_for_extension(extension)
+        .ok_or_else(|| format!("object_key 扩展名 .{extension} 不在 community asset allowlist"))?;
+    let descriptor_content_type =
+        normalized_community_publish_content_type(&descriptor.content_type);
+    if descriptor_content_type != expected_content_type {
+        return Err(format!(
+            "object_key 扩展名 .{extension} 与 descriptor content_type 不一致"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_community_publish_asset_bytes(
+    descriptor: &CommunityResourceDescriptor,
+    bytes: &[u8],
+    object_content_type: &str,
+) -> Result<(), String> {
+    let actual_size = i64::try_from(bytes.len())
+        .map_err(|_| "R2 immutable object 大小无法转换为 i64".to_string())?;
+    if actual_size != descriptor.byte_size {
+        return Err(format!(
+            "R2 immutable object 大小冲突: expected={} actual={actual_size}",
+            descriptor.byte_size
+        ));
+    }
+    let actual_sha256 = sha256_hex(bytes);
+    if actual_sha256 != descriptor.sha256 {
+        return Err(format!(
+            "R2 immutable object sha256 冲突: expected={} actual={actual_sha256}",
+            descriptor.sha256
+        ));
+    }
+    let actual_content_type = normalized_community_publish_content_type(object_content_type);
+    let expected_content_type = normalized_community_publish_content_type(&descriptor.content_type);
+    if actual_content_type != expected_content_type {
+        return Err(format!(
+            "R2 immutable object content_type 冲突: expected={expected_content_type} actual={actual_content_type}"
+        ));
+    }
+    Ok(())
+}
+
+async fn community_publish_with_retry<T, Operation, OperationFuture>(
+    attempts: usize,
+    retry_base_delay_ms: u64,
+    empty_error: &str,
+    mut operation: Operation,
+) -> Result<T, String>
+where
+    Operation: FnMut() -> OperationFuture,
+    OperationFuture: std::future::Future<Output = Result<T, String>>,
+{
+    let mut last_error = None;
+    for attempt in 1..=attempts {
+        match operation().await {
+            Ok(value) => return Ok(value),
+            Err(error) => last_error = Some(error),
+        }
+        if attempt < attempts {
+            tokio::time::sleep(Duration::from_millis(
+                retry_base_delay_ms.saturating_mul(attempt as u64),
+            ))
+            .await;
+        }
+    }
+    Err(last_error.unwrap_or_else(|| empty_error.to_string()))
+}
+
+async fn community_publish_object_exists_with_retry(
+    oss: &OssObjectStore,
+    key: &str,
+) -> Result<bool, String> {
+    community_publish_with_retry(
+        COMMUNITY_PUBLISH_OSS_ATTEMPTS,
+        COMMUNITY_PUBLISH_OSS_RETRY_BASE_DELAY_MS,
+        "R2 HEAD 未返回结果",
+        || oss.object_exists(key),
+    )
+    .await
+}
+
+async fn community_publish_get_object_with_retry(
+    oss: &OssObjectStore,
+    key: &str,
+    max_bytes: usize,
+) -> Result<hone_core::cloud_runtime::OssObject, String> {
+    community_publish_with_retry(
+        COMMUNITY_PUBLISH_OSS_ATTEMPTS,
+        COMMUNITY_PUBLISH_OSS_RETRY_BASE_DELAY_MS,
+        "R2 GET 未返回结果",
+        || oss.get_object_limited(key, max_bytes),
+    )
+    .await
+}
+
+async fn community_publish_put_object_with_retry(
+    oss: &OssObjectStore,
+    key: &str,
+    bytes: &[u8],
+) -> Result<(), String> {
+    community_publish_with_retry(
+        COMMUNITY_PUBLISH_OSS_ATTEMPTS,
+        COMMUNITY_PUBLISH_OSS_RETRY_BASE_DELAY_MS,
+        "R2 PUT 未返回结果",
+        || oss.put_object(key, bytes.to_vec(), COMMUNITY_PUBLISH_JSON_CONTENT_TYPE),
+    )
+    .await
+}
+
+async fn verify_community_publish_asset_object(
+    oss: &OssObjectStore,
+    descriptor: &CommunityResourceDescriptor,
+) -> Result<(), String> {
+    let max_bytes = usize::try_from(descriptor.byte_size)
+        .map_err(|_| "descriptor byte_size 无法转换为本机 usize".to_string())?;
+    let object = community_publish_get_object_with_retry(oss, &descriptor.object_key, max_bytes)
+        .await
+        .map_err(|_| "R2 immutable object GET 预检失败（endpoint 已隐藏）".to_string())?;
+    validate_community_publish_asset_bytes(descriptor, &object.bytes, &object.content_type)
+}
+
+async fn inspect_community_edge_resource(
+    oss: &OssObjectStore,
+    asset_prefix: &str,
+    resource: hone_core::cloud_runtime::CloudCommunityResourceRecord,
+    verify_bytes: bool,
+) -> CommunityEdgeResourceCheck {
+    let resource_id = resource.resource_id;
+    if resource.access_state != "stored" {
+        return CommunityEdgeResourceCheck::Legacy {
+            resource_id,
+            reason: "access_state 不是 stored".to_string(),
+        };
+    }
+    let Some(sha256) = normalized_community_publish_sha256(resource.sha256.as_deref()) else {
+        return CommunityEdgeResourceCheck::Legacy {
+            resource_id,
+            reason: "缺少有效 sha256".to_string(),
+        };
+    };
+    let Some(object_key) = resource
+        .oss_uri
+        .as_deref()
+        .and_then(|uri| oss.parse_managed_uri(uri))
+        .map(str::to_string)
+    else {
+        return CommunityEdgeResourceCheck::Legacy {
+            resource_id,
+            reason: "缺少当前 R2 bucket 的 managed URI".to_string(),
+        };
+    };
+    let Some(content_type) = resource
+        .content_type
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+    else {
+        return CommunityEdgeResourceCheck::Legacy {
+            resource_id,
+            reason: "缺少 content_type".to_string(),
+        };
+    };
+    let Some(byte_size) = resource.byte_size else {
+        return CommunityEdgeResourceCheck::Legacy {
+            resource_id,
+            reason: "缺少 byte_size".to_string(),
+        };
+    };
+    if !(1..=COMMUNITY_PUBLISH_MAX_ASSET_BYTES).contains(&byte_size) {
+        return CommunityEdgeResourceCheck::Legacy {
+            resource_id,
+            reason: format!(
+                "byte_size 不在 edge delivery 1..={COMMUNITY_PUBLISH_MAX_ASSET_BYTES} 范围内"
+            ),
+        };
+    }
+    let descriptor = CommunityResourceDescriptor {
+        resource_id,
+        version: sha256[..12].to_string(),
+        sha256,
+        object_key,
+        content_type,
+        byte_size,
+        display_name: resource.display_name,
+    };
+    if let Err(reason) = validate_community_resource_descriptor(&descriptor, asset_prefix) {
+        return CommunityEdgeResourceCheck::Conflict {
+            resource_id,
+            reason: format!("descriptor 无效: {reason}"),
+        };
+    }
+    let verification = if verify_bytes {
+        verify_community_publish_asset_object(oss, &descriptor).await
+    } else {
+        match community_publish_object_exists_with_retry(oss, &descriptor.object_key).await {
+            Ok(true) => Ok(()),
+            Ok(false) => Err("R2 immutable object HEAD 预检发现对象不存在".to_string()),
+            Err(_) => Err("R2 immutable object HEAD 预检失败（endpoint 已隐藏）".to_string()),
+        }
+    };
+    match verification {
+        Ok(()) => CommunityEdgeResourceCheck::Eligible(descriptor),
+        Err(reason) => CommunityEdgeResourceCheck::Conflict {
+            resource_id,
+            reason,
+        },
+    }
+}
+
+fn community_edge_resource_check_id(check: &CommunityEdgeResourceCheck) -> i64 {
+    match check {
+        CommunityEdgeResourceCheck::Eligible(descriptor) => descriptor.resource_id,
+        CommunityEdgeResourceCheck::Legacy { resource_id, .. }
+        | CommunityEdgeResourceCheck::Conflict { resource_id, .. } => *resource_id,
+    }
+}
+
+fn build_published_community_pages(
+    raw_pages: Vec<CommunityPublishRawPage>,
+    external_id: &str,
+    descriptors: &BTreeMap<i64, CommunityResourceDescriptor>,
+) -> Vec<(Option<i64>, PublishedCommunityPage)> {
+    let latest_content_id = raw_pages
+        .first()
+        .and_then(|page| page.items.first())
+        .map(|item| item.content_id);
+    let page_cursors = raw_pages.iter().map(|page| page.before).collect::<Vec<_>>();
+    raw_pages
+        .into_iter()
+        .enumerate()
+        .map(|(page_index, page)| {
+            let next_before = page_cursors.get(page_index + 1).copied().flatten();
+            let items = page
+                .items
+                .into_iter()
+                .map(|item| PublishedCommunityContent {
+                    content_id: item.content_id,
+                    author_name: COMMUNITY_PUBLISH_AUTHOR,
+                    published_at: item.published_at,
+                    published_at_raw: item.published_at_raw,
+                    content_type: item.content_type,
+                    body_text: item.body_text,
+                    body_blocks: item.body_blocks,
+                    crawl_status: item.crawl_status,
+                    resources: item
+                        .resources
+                        .into_iter()
+                        .map(|resource| {
+                            let version =
+                                normalized_community_publish_sha256(resource.sha256.as_deref())
+                                    .map(|sha256| sha256[..12].to_string());
+                            let delivery_path =
+                                descriptors.get(&resource.resource_id).map(|descriptor| {
+                                    community_publish_delivery_path(
+                                        descriptor.resource_id,
+                                        &descriptor.version,
+                                    )
+                                });
+                            PublishedCommunityResource {
+                                resource_id: resource.resource_id,
+                                ordinal: resource.ordinal,
+                                resource_kind: resource.resource_kind,
+                                display_name: resource.display_name,
+                                content_type: resource.content_type,
+                                byte_size: resource.byte_size,
+                                version,
+                                access_state: resource.access_state,
+                                delivery_path,
+                            }
+                        })
+                        .collect(),
+                })
+                .collect();
+            (
+                page.before,
+                PublishedCommunityPage {
+                    community: PublishedCommunityIdentity {
+                        id: external_id.to_string(),
+                        name: "HONE 官方社区",
+                    },
+                    items,
+                    next_before,
+                    unread: false,
+                    latest_content_id: (page_index == 0).then_some(latest_content_id).flatten(),
+                },
+            )
+        })
+        .collect()
+}
+
+fn order_community_publish_objects(
+    mut descriptors: Vec<PlannedCommunityPublishObject>,
+    active_index: PlannedCommunityPublishObject,
+    pages: Vec<PlannedCommunityPublishObject>,
+) -> Result<Vec<PlannedCommunityPublishObject>, String> {
+    if descriptors
+        .iter()
+        .any(|object| object.kind != CommunityPublishObjectKind::Descriptor)
+    {
+        return Err("community descriptor publication plan 类型无效".to_string());
+    }
+    if active_index.kind != CommunityPublishObjectKind::ActiveIndex {
+        return Err("community active index publication plan 类型无效".to_string());
+    }
+    descriptors.sort_by(|left, right| left.key.cmp(&right.key));
+    let mut immutable_pages = Vec::new();
+    let mut latest = None;
+    for page in pages {
+        match page.kind {
+            CommunityPublishObjectKind::Page => immutable_pages.push(page),
+            CommunityPublishObjectKind::Latest if latest.is_none() => latest = Some(page),
+            CommunityPublishObjectKind::Latest => {
+                return Err("community publication plan 出现多个 latest.json".to_string());
+            }
+            CommunityPublishObjectKind::Descriptor | CommunityPublishObjectKind::ActiveIndex => {
+                return Err("community page publication plan 类型无效".to_string());
+            }
+        }
+    }
+    let latest = latest.ok_or_else(|| "community publication plan 缺少 latest.json".to_string())?;
+    descriptors.push(active_index);
+    descriptors.extend(immutable_pages);
+    descriptors.push(latest);
+    Ok(descriptors)
+}
+
+fn plan_community_publish_objects(
+    feed_prefix: &str,
+    descriptors: &BTreeMap<i64, CommunityResourceDescriptor>,
+    pages: Vec<(Option<i64>, PublishedCommunityPage)>,
+) -> Result<Vec<PlannedCommunityPublishObject>, String> {
+    let descriptor_objects = descriptors
+        .values()
+        .map(|descriptor| {
+            let bytes = serialize_community_publish_json(
+                descriptor,
+                "community resource descriptor",
+                COMMUNITY_PUBLISH_MAX_DESCRIPTOR_BYTES,
+            )?;
+            Ok(PlannedCommunityPublishObject {
+                kind: CommunityPublishObjectKind::Descriptor,
+                key: community_publish_descriptor_key(
+                    feed_prefix,
+                    descriptor.resource_id,
+                    &descriptor.version,
+                ),
+                bytes,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let active_index = CommunityResourceActiveIndex {
+        v: 1,
+        resources: descriptors
+            .iter()
+            .map(|(resource_id, descriptor)| (*resource_id, descriptor.version.clone()))
+            .collect(),
+    };
+    let active_index_object = PlannedCommunityPublishObject {
+        kind: CommunityPublishObjectKind::ActiveIndex,
+        key: community_publish_active_index_key(feed_prefix),
+        bytes: serialize_community_publish_json(
+            &active_index,
+            "community resource active index",
+            COMMUNITY_PUBLISH_MAX_ACTIVE_INDEX_BYTES,
+        )?,
+    };
+    let page_objects = pages
+        .into_iter()
+        .map(|(before, page)| {
+            let bytes = serialize_community_publish_json(
+                &page,
+                "community feed page",
+                COMMUNITY_PUBLISH_MAX_FEED_BYTES,
+            )?;
+            Ok(match before {
+                Some(before) => PlannedCommunityPublishObject {
+                    kind: CommunityPublishObjectKind::Page,
+                    key: community_publish_page_key(feed_prefix, before),
+                    bytes,
+                },
+                None => PlannedCommunityPublishObject {
+                    kind: CommunityPublishObjectKind::Latest,
+                    key: community_publish_latest_key(feed_prefix),
+                    bytes,
+                },
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    order_community_publish_objects(descriptor_objects, active_index_object, page_objects)
+}
+
+fn serialize_community_publish_json<T: Serialize>(
+    value: &T,
+    label: &str,
+    max_bytes: usize,
+) -> Result<Vec<u8>, String> {
+    let bytes = serde_json::to_vec(value).map_err(|_| format!("序列化 {label} 失败"))?;
+    if bytes.len() > max_bytes {
+        return Err(format!("{label} 超过 {max_bytes}B 发布上限"));
+    }
+    Ok(bytes)
+}
+
+fn community_publish_object_max_bytes(kind: CommunityPublishObjectKind) -> usize {
+    match kind {
+        CommunityPublishObjectKind::Descriptor => COMMUNITY_PUBLISH_MAX_DESCRIPTOR_BYTES,
+        CommunityPublishObjectKind::Page | CommunityPublishObjectKind::Latest => {
+            COMMUNITY_PUBLISH_MAX_FEED_BYTES
+        }
+        CommunityPublishObjectKind::ActiveIndex => COMMUNITY_PUBLISH_MAX_ACTIVE_INDEX_BYTES,
+    }
+}
+
+fn community_publish_object_is_mutable(kind: CommunityPublishObjectKind) -> bool {
+    matches!(
+        kind,
+        CommunityPublishObjectKind::ActiveIndex | CommunityPublishObjectKind::Latest
+    )
+}
+
+async fn preflight_community_publish_objects(
+    oss: &OssObjectStore,
+    planned: Vec<PlannedCommunityPublishObject>,
+) -> (
+    Vec<PreflightCommunityPublishObject>,
+    Vec<CommunityPublishConflict>,
+) {
+    let mut objects = Vec::with_capacity(planned.len());
+    let mut conflicts = Vec::new();
+    for planned in planned {
+        let exists = match community_publish_object_exists_with_retry(oss, &planned.key).await {
+            Ok(exists) => exists,
+            Err(_) => {
+                conflicts.push(CommunityPublishConflict {
+                    resource_id: None,
+                    object_key: Some(planned.key.clone()),
+                    reason: "R2 destination HEAD 预检失败（endpoint 已隐藏）".to_string(),
+                });
+                objects.push(PreflightCommunityPublishObject {
+                    planned,
+                    existed: false,
+                    should_write: false,
+                });
+                continue;
+            }
+        };
+        if !exists {
+            objects.push(PreflightCommunityPublishObject {
+                planned,
+                existed: false,
+                should_write: true,
+            });
+            continue;
+        }
+        let existing = match community_publish_get_object_with_retry(
+            oss,
+            &planned.key,
+            community_publish_object_max_bytes(planned.kind),
+        )
+        .await
+        {
+            Ok(existing) => existing,
+            Err(_) => {
+                conflicts.push(CommunityPublishConflict {
+                    resource_id: None,
+                    object_key: Some(planned.key.clone()),
+                    reason: "R2 destination GET 预检失败（endpoint 已隐藏）".to_string(),
+                });
+                objects.push(PreflightCommunityPublishObject {
+                    planned,
+                    existed: true,
+                    should_write: false,
+                });
+                continue;
+            }
+        };
+        if existing.bytes == planned.bytes {
+            objects.push(PreflightCommunityPublishObject {
+                planned,
+                existed: true,
+                should_write: false,
+            });
+        } else if community_publish_object_is_mutable(planned.kind) {
+            objects.push(PreflightCommunityPublishObject {
+                planned,
+                existed: true,
+                should_write: true,
+            });
+        } else {
+            conflicts.push(CommunityPublishConflict {
+                resource_id: None,
+                object_key: Some(planned.key.clone()),
+                reason: "immutable publication key 已存在但内容不同；请修正 archive 或提升 feed-prefix 版本"
+                    .to_string(),
+            });
+            objects.push(PreflightCommunityPublishObject {
+                planned,
+                existed: true,
+                should_write: false,
+            });
+        }
+    }
+    (objects, conflicts)
+}
+
+async fn write_community_publish_object(
+    oss: &OssObjectStore,
+    object: &PreflightCommunityPublishObject,
+) -> Result<bool, String> {
+    if !object.should_write {
+        return Ok(false);
+    }
+    if !community_publish_object_is_mutable(object.planned.kind) {
+        let exists = community_publish_object_exists_with_retry(oss, &object.planned.key)
+            .await
+            .map_err(|_| {
+                format!(
+                    "写入前复检 R2 object 失败（endpoint 已隐藏）: {}",
+                    object.planned.key
+                )
+            })?;
+        if exists {
+            let existing = community_publish_get_object_with_retry(
+                oss,
+                &object.planned.key,
+                community_publish_object_max_bytes(object.planned.kind),
+            )
+            .await
+            .map_err(|_| {
+                format!(
+                    "写入前读取 R2 object 失败（endpoint 已隐藏）: {}",
+                    object.planned.key
+                )
+            })?;
+            if existing.bytes == object.planned.bytes {
+                return Ok(false);
+            }
+            return Err(format!(
+                "immutable publication key 在预检后被并发写入不同内容: {}",
+                object.planned.key
+            ));
+        }
+    }
+    community_publish_put_object_with_retry(oss, &object.planned.key, &object.planned.bytes)
+        .await
+        .map_err(|_| {
+            format!(
+                "写入 R2 publication object 失败（endpoint 已隐藏）: {}",
+                object.planned.key
+            )
+        })?;
+    let stored = community_publish_get_object_with_retry(
+        oss,
+        &object.planned.key,
+        community_publish_object_max_bytes(object.planned.kind),
+    )
+    .await
+    .map_err(|_| {
+        format!(
+            "写入后回读 R2 object 失败（endpoint 已隐藏）: {}",
+            object.planned.key
+        )
+    })?;
+    if stored.bytes != object.planned.bytes {
+        return Err(format!(
+            "写入后 R2 object 内容校验失败: {}",
+            object.planned.key
+        ));
+    }
+    Ok(true)
+}
+
+async fn run_community_publish(
+    config_path: Option<&Path>,
+    args: CommunityPublishArgs,
+) -> Result<(), String> {
+    let source = args.source.trim().to_string();
+    let external_id = args.external_id.trim().to_string();
+    validate_community_publish_scope(&source, &external_id)?;
+    validate_community_publish_page_size(args.page_size)?;
+    let feed_prefix = normalize_community_publish_prefix(&args.feed_prefix, "--feed-prefix")?;
+    let asset_prefix = normalize_community_publish_prefix(&args.asset_prefix, "--asset-prefix")?;
+    validate_community_publish_scoped_prefix(&feed_prefix, &source, &external_id, "--feed-prefix")?;
+    validate_community_publish_scoped_prefix(
+        &asset_prefix,
+        &source,
+        &external_id,
+        "--asset-prefix",
+    )?;
+    if feed_prefix == asset_prefix {
+        return Err("--feed-prefix 和 --asset-prefix 不能相同".to_string());
+    }
+
+    let (config, _) = load_cli_config(config_path, false).map_err(|err| err.to_string())?;
+    validate_community_publish_provider(&config.cloud.oss.resolved_provider())?;
+    let pg = CloudPgRuntime::from_cloud_config(&config.cloud)
+        .ok_or_else(|| "Postgres 未配置，不能发布 community snapshot".to_string())?;
+    let oss = OssObjectStore::from_config(&config.cloud.oss)
+        .ok_or_else(|| "R2 未完整配置，不能发布 community snapshot".to_string())?;
+
+    let mut publish_lock = if args.apply {
+        Some(
+            pg.acquire_community_publish_lock(&source, &external_id)
+                .await
+                .map_err(|error| {
+                    if error.to_string().contains("已有 community publisher") {
+                        "已有 community publisher 正在运行；本次 apply 未执行任何 R2 写入"
+                            .to_string()
+                    } else {
+                        "获取 Postgres community publish lock 失败（连接细节已隐藏）".to_string()
+                    }
+                })?,
+        )
+    } else {
+        None
+    };
+    let operation = async {
+        let raw_pages = if let Some(lock) = publish_lock.as_mut() {
+            lock.load_snapshot_pages(&source, &external_id, args.page_size)
+                .await
+                .map_err(|error| {
+                    tracing::warn!("community publisher snapshot read failed: {error}");
+                    "在 Postgres repeatable-read snapshot 中读取 community timeline 失败"
+                        .to_string()
+                })?
+                .into_iter()
+                .map(|page| CommunityPublishRawPage {
+                    before: page.before,
+                    items: page.items,
+                })
+                .collect()
+        } else {
+            load_community_publish_pages(&pg, &source, &external_id, args.page_size).await?
+        };
+        run_community_publish_inner(
+            &oss,
+            &source,
+            &external_id,
+            args.page_size,
+            &feed_prefix,
+            &asset_prefix,
+            args.apply,
+            raw_pages,
+            publish_lock.as_ref(),
+        )
+        .await
+    }
+    .await;
+
+    let release_error = if let Some(publish_lock) = publish_lock {
+        publish_lock.release().await.err().map(|error| {
+            tracing::warn!("community publisher advisory lock explicit release failed: {error}");
+            "Postgres community publish advisory lock 显式释放失败；本次不得报告成功".to_string()
+        })
+    } else {
+        None
+    };
+    match (operation, release_error) {
+        (Ok(report), None) => print_json(&report),
+        (Ok(_), Some(release_error)) => Err(release_error),
+        (Err(error), None) => Err(error),
+        (Err(error), Some(release_error)) => Err(format!("{error}; {release_error}")),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_community_publish_inner(
+    oss: &OssObjectStore,
+    source: &str,
+    external_id: &str,
+    page_size: usize,
+    feed_prefix: &str,
+    asset_prefix: &str,
+    apply: bool,
+    raw_pages: Vec<CommunityPublishRawPage>,
+    publish_lock: Option<&CloudCommunityPublishLock>,
+) -> Result<CommunityPublishReport, String> {
+    validate_non_empty_community_publish_archive(&raw_pages)?;
+    for item in raw_pages.iter().flat_map(|page| page.items.iter()) {
+        if item.content_id <= 0 || item.content_id > MAX_JAVASCRIPT_SAFE_INTEGER {
+            return Err(format!(
+                "community content_id={} 超出安全正整数范围",
+                item.content_id
+            ));
+        }
+    }
+    let content_count = raw_pages.iter().map(|page| page.items.len()).sum();
+    let page_count = raw_pages.len();
+    let mut report = CommunityPublishReport {
+        ok: false,
+        mode: if apply { "apply" } else { "dry-run" },
+        source: source.to_string(),
+        external_id: external_id.to_string(),
+        page_size,
+        feed_prefix: feed_prefix.to_string(),
+        asset_prefix: asset_prefix.to_string(),
+        latest_key: community_publish_latest_key(feed_prefix),
+        content_count,
+        page_count,
+        resource_count: 0,
+        edge_resource_count: 0,
+        legacy_resource_count: 0,
+        descriptor_count: 0,
+        planned_objects: 0,
+        existing_objects: 0,
+        would_write: 0,
+        written: 0,
+        latest_updated: false,
+        no_op: false,
+        legacy_resources: Vec::new(),
+        conflicts: Vec::new(),
+        resource_verification: if apply {
+            "full_bytes_sha256"
+        } else {
+            "head_exists_only"
+        },
+        verification_hint: "apply 成功后请用相同参数去掉 --apply 再跑一次；预期 no_op=true 且 would_write=0",
+    };
+
+    let mut resource_records = BTreeMap::new();
+    for page in &raw_pages {
+        for item in &page.items {
+            for resource in &item.resources {
+                report.resource_count += 1;
+                if resource.resource_id <= 0 || resource.resource_id > MAX_JAVASCRIPT_SAFE_INTEGER {
+                    report.conflicts.push(CommunityPublishConflict {
+                        resource_id: Some(resource.resource_id),
+                        object_key: None,
+                        reason: "resource_id 超出 JavaScript 安全正整数范围".to_string(),
+                    });
+                    continue;
+                }
+                if resource_records
+                    .insert(resource.resource_id, resource.clone())
+                    .is_some()
+                {
+                    report.conflicts.push(CommunityPublishConflict {
+                        resource_id: Some(resource.resource_id),
+                        object_key: None,
+                        reason: "timeline 中 resource_id 重复".to_string(),
+                    });
+                }
+            }
+        }
+    }
+
+    let mut checks =
+        stream::iter(
+            resource_records.into_values().map(|resource| {
+                let oss = oss.clone();
+                let asset_prefix = asset_prefix.to_string();
+                async move {
+                    inspect_community_edge_resource(&oss, &asset_prefix, resource, apply).await
+                }
+            }),
+        )
+        .buffer_unordered(COMMUNITY_PUBLISH_RESOURCE_CONCURRENCY)
+        .collect::<Vec<_>>()
+        .await;
+    checks.sort_by_key(community_edge_resource_check_id);
+    let mut descriptors = BTreeMap::new();
+    for check in checks {
+        match check {
+            CommunityEdgeResourceCheck::Eligible(descriptor) => {
+                descriptors.insert(descriptor.resource_id, descriptor);
+            }
+            CommunityEdgeResourceCheck::Legacy {
+                resource_id,
+                reason,
+            } => report
+                .legacy_resources
+                .push(CommunityPublishLegacyResource {
+                    resource_id,
+                    reason,
+                }),
+            CommunityEdgeResourceCheck::Conflict {
+                resource_id,
+                reason,
+            } => report.conflicts.push(CommunityPublishConflict {
+                resource_id: Some(resource_id),
+                object_key: None,
+                reason,
+            }),
+        }
+    }
+    report.edge_resource_count = descriptors.len();
+    report.legacy_resource_count = report.legacy_resources.len();
+    report.descriptor_count = descriptors.len();
+
+    let published_pages = build_published_community_pages(raw_pages, external_id, &descriptors);
+    let planned = plan_community_publish_objects(feed_prefix, &descriptors, published_pages)?;
+    report.planned_objects = planned.len();
+    let (preflight, preflight_conflicts) = preflight_community_publish_objects(oss, planned).await;
+    report.conflicts.extend(preflight_conflicts);
+    report.existing_objects = preflight.iter().filter(|object| object.existed).count();
+    report.would_write = preflight
+        .iter()
+        .filter(|object| object.should_write)
+        .count();
+
+    if !report.conflicts.is_empty() {
+        print_json(&report)?;
+        return Err("community snapshot 预检失败，未执行任何 R2 写入".to_string());
+    }
+    if !apply {
+        report.ok = true;
+        report.no_op = report.would_write == 0;
+        return Ok(report);
+    }
+
+    let mut checked_lock_before_first_write = false;
+    for object in &preflight {
+        if object.should_write
+            && (!checked_lock_before_first_write
+                || community_publish_object_is_mutable(object.planned.kind))
+        {
+            let lock = publish_lock.ok_or_else(|| {
+                "apply 写入前缺少 Postgres community publish advisory lock".to_string()
+            })?;
+            lock.assert_held().await.map_err(|error| {
+                tracing::warn!("community publisher advisory lock liveness check failed: {error}");
+                format!(
+                    "R2 写入前 Postgres community publish advisory lock 已失效: {}",
+                    object.planned.key
+                )
+            })?;
+            checked_lock_before_first_write = true;
+        }
+        match write_community_publish_object(oss, object).await {
+            Ok(false) => {}
+            Ok(true) => {
+                report.written += 1;
+                if object.planned.kind == CommunityPublishObjectKind::Latest {
+                    report.latest_updated = true;
+                }
+            }
+            Err(reason) => {
+                report.conflicts.push(CommunityPublishConflict {
+                    resource_id: None,
+                    object_key: Some(object.planned.key.clone()),
+                    reason,
+                });
+                print_json(&report)?;
+                return Err(
+                    "community snapshot 写入失败；latest.json 未确认更新，可安全幂等重试"
+                        .to_string(),
+                );
+            }
+        }
+    }
+    report.ok = true;
+    report.no_op = report.would_write == 0;
+    Ok(report)
 }
 
 async fn run_community_contents(
@@ -2481,5 +3755,342 @@ mod tests {
         for key in ["uploaded", "reused", "updated", "skipped", "conflicts"] {
             assert!(value.get(key).is_some(), "missing report field {key}");
         }
+    }
+
+    fn publish_content(content_id: i64) -> hone_core::cloud_runtime::CloudCommunityContentRecord {
+        hone_core::cloud_runtime::CloudCommunityContentRecord {
+            content_id,
+            author_name: Some("source author".to_string()),
+            published_at: Some("2026-07-19 00:00:00+00".to_string()),
+            published_at_raw: Some("2026-07-19 08:00".to_string()),
+            content_type: "post".to_string(),
+            body_text: format!("content {content_id}"),
+            body_blocks: serde_json::json!([]),
+            crawl_status: "complete".to_string(),
+            resources: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn community_publish_keys_and_page_cursor_match_worker_contract() {
+        let prefix = "community/zsxq/51115212285814/delivery/v1";
+        assert_eq!(
+            community_publish_latest_key(prefix),
+            format!("{prefix}/feed/latest.json")
+        );
+        assert_eq!(
+            community_publish_page_key(prefix, 42),
+            format!("{prefix}/feed/pages/42.json")
+        );
+        assert_eq!(
+            community_publish_descriptor_key(prefix, 9, "abcdef012345"),
+            format!("{prefix}/resources/9/abcdef012345.json")
+        );
+        assert_eq!(
+            community_publish_active_index_key(prefix),
+            format!("{prefix}/resources/active.json")
+        );
+
+        let pages = build_published_community_pages(
+            vec![
+                CommunityPublishRawPage {
+                    before: None,
+                    items: vec![publish_content(50)],
+                },
+                CommunityPublishRawPage {
+                    before: Some(42),
+                    items: vec![publish_content(41)],
+                },
+            ],
+            "51115212285814",
+            &BTreeMap::new(),
+        );
+        let latest = serde_json::to_value(&pages[0].1).expect("serialize latest");
+        assert_eq!(latest["next_before"], 42);
+        assert_eq!(latest["latest_content_id"], 50);
+        let older = serde_json::to_value(&pages[1].1).expect("serialize older");
+        assert!(older["next_before"].is_null());
+        assert!(older.get("latest_content_id").is_none());
+    }
+
+    #[test]
+    fn community_publish_descriptor_validation_is_fail_closed() {
+        let asset_prefix = "community/zsxq/51115212285814/resources";
+        let sha256 = "abcdef012345".to_string() + &"0".repeat(52);
+        let mut descriptor = CommunityResourceDescriptor {
+            resource_id: 7,
+            version: "abcdef012345".to_string(),
+            object_key: format!("{asset_prefix}/7-{sha256}.png"),
+            sha256: sha256.clone(),
+            content_type: "image/png".to_string(),
+            byte_size: 123,
+            display_name: Some("chart.png".to_string()),
+        };
+        validate_community_resource_descriptor(&descriptor, asset_prefix)
+            .expect("valid descriptor");
+
+        descriptor.object_key = format!("community/other/resources/7-{sha256}.png");
+        assert!(
+            validate_community_resource_descriptor(&descriptor, asset_prefix)
+                .expect_err("cross-prefix key rejected")
+                .contains("asset-prefix")
+        );
+        descriptor.object_key = format!("{asset_prefix}/7-{sha256}.png");
+        descriptor.version = "ABCDEF012345".to_string();
+        assert!(validate_community_resource_descriptor(&descriptor, asset_prefix).is_err());
+        descriptor.version = "abcdef012345".to_string();
+        descriptor.byte_size = COMMUNITY_PUBLISH_MAX_ASSET_BYTES + 1;
+        assert!(
+            validate_community_resource_descriptor(&descriptor, asset_prefix)
+                .expect_err("oversized edge asset rejected")
+                .contains("byte_size")
+        );
+        descriptor.byte_size = 123;
+        descriptor.display_name = Some("密".repeat(342));
+        assert!(
+            validate_community_resource_descriptor(&descriptor, asset_prefix)
+                .expect_err("display name above 1024 UTF-8 bytes rejected")
+                .contains("1024")
+        );
+    }
+
+    #[test]
+    fn community_publish_asset_key_binds_exact_prefix_resource_sha_and_safe_extension() {
+        let asset_prefix = "community/zsxq/51115212285814/resources";
+        let sha256 = "a".repeat(64);
+        let valid = CommunityResourceDescriptor {
+            resource_id: 42,
+            version: sha256[..12].to_string(),
+            object_key: format!("{asset_prefix}/42-{sha256}.pdf"),
+            sha256: sha256.clone(),
+            content_type: "application/pdf".to_string(),
+            byte_size: 10,
+            display_name: Some("report.pdf".to_string()),
+        };
+        validate_community_publish_asset_key(&valid, asset_prefix)
+            .expect("historical immutable key contract accepted");
+        for (extension, content_type) in [
+            ("png", "image/png"),
+            ("jpg", "image/jpeg"),
+            ("pdf", "application/pdf"),
+            (
+                "docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ),
+            (
+                "xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ),
+            (
+                "pptx",
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            ),
+        ] {
+            let mut historical = valid.clone();
+            historical.object_key = format!("{asset_prefix}/42-{sha256}.{extension}");
+            historical.content_type = content_type.to_string();
+            validate_community_publish_asset_key(&historical, asset_prefix)
+                .unwrap_or_else(|error| panic!("historical .{extension} rejected: {error}"));
+        }
+
+        let mut wrong_resource = valid.clone();
+        wrong_resource.object_key = format!("{asset_prefix}/41-{sha256}.pdf");
+        assert!(
+            validate_community_publish_asset_key(&wrong_resource, asset_prefix)
+                .expect_err("wrong resource id rejected")
+                .contains("resource_id")
+        );
+
+        let mut wrong_sha = valid.clone();
+        wrong_sha.object_key = format!("{asset_prefix}/42-{}.pdf", "b".repeat(64));
+        assert!(validate_community_publish_asset_key(&wrong_sha, asset_prefix).is_err());
+
+        let mut nested = valid.clone();
+        nested.object_key = format!("{asset_prefix}/nested/42-{sha256}.pdf");
+        assert!(
+            validate_community_publish_asset_key(&nested, asset_prefix)
+                .expect_err("nested object rejected")
+                .contains("额外子目录")
+        );
+
+        let mut unsafe_extension = valid.clone();
+        unsafe_extension.object_key = format!("{asset_prefix}/42-{sha256}.svg");
+        unsafe_extension.content_type = "image/svg+xml".to_string();
+        assert!(
+            validate_community_publish_asset_key(&unsafe_extension, asset_prefix)
+                .expect_err("unsafe extension rejected")
+                .contains("allowlist")
+        );
+
+        let mut mismatched_type = valid;
+        mismatched_type.content_type = "image/png".to_string();
+        assert!(
+            validate_community_publish_asset_key(&mismatched_type, asset_prefix)
+                .expect_err("content type mismatch rejected")
+                .contains("content_type")
+        );
+    }
+
+    #[test]
+    fn community_publish_asset_bytes_require_exact_size_sha_and_content_type() {
+        let bytes = b"verified-payload";
+        let sha256 = sha256_hex(bytes);
+        let descriptor = CommunityResourceDescriptor {
+            resource_id: 88,
+            version: sha256[..12].to_string(),
+            object_key: format!("community/zsxq/51115212285814/resources/88-{sha256}.png"),
+            sha256,
+            content_type: "image/png".to_string(),
+            byte_size: bytes.len() as i64,
+            display_name: Some("chart.png".to_string()),
+        };
+        validate_community_publish_asset_bytes(&descriptor, bytes, "image/png; charset=binary")
+            .expect("exact archived bytes accepted");
+
+        let same_size_wrong_bytes = b"tampered-payload";
+        assert_eq!(same_size_wrong_bytes.len(), bytes.len());
+        assert!(
+            validate_community_publish_asset_bytes(&descriptor, same_size_wrong_bytes, "image/png")
+                .expect_err("same-size wrong object rejected")
+                .contains("sha256")
+        );
+        assert!(
+            validate_community_publish_asset_bytes(&descriptor, b"short", "image/png")
+                .expect_err("wrong size rejected")
+                .contains("大小冲突")
+        );
+        assert!(
+            validate_community_publish_asset_bytes(&descriptor, bytes, "application/pdf")
+                .expect_err("object content type mismatch rejected")
+                .contains("content_type")
+        );
+    }
+
+    #[test]
+    fn community_publish_rejects_generic_s3_and_empty_archive() {
+        validate_community_publish_provider("r2").expect("r2 accepted");
+        validate_community_publish_provider("cloudflare_r2").expect("cloudflare r2 accepted");
+        assert!(validate_community_publish_provider("s3").is_err());
+        assert!(validate_community_publish_provider("aliyun_oss").is_err());
+        assert!(validate_non_empty_community_publish_archive(&[]).is_err());
+        assert!(validate_community_publish_page_size(0).is_err());
+        assert!(validate_community_publish_page_size(51).is_err());
+    }
+
+    #[tokio::test]
+    async fn community_publish_retry_stops_on_success_and_returns_last_error() {
+        let first_attempts = std::cell::Cell::new(0);
+        let first = community_publish_with_retry(3, 0, "empty", || {
+            first_attempts.set(first_attempts.get() + 1);
+            std::future::ready(Ok::<_, String>("first"))
+        })
+        .await
+        .expect("first attempt succeeds");
+        assert_eq!(first, "first");
+        assert_eq!(first_attempts.get(), 1);
+
+        let eventual_attempts = std::cell::Cell::new(0);
+        let eventual = community_publish_with_retry(3, 0, "empty", || {
+            let attempt = eventual_attempts.get() + 1;
+            eventual_attempts.set(attempt);
+            std::future::ready(if attempt < 3 {
+                Err(format!("transient {attempt}"))
+            } else {
+                Ok("eventual")
+            })
+        })
+        .await
+        .expect("third attempt succeeds");
+        assert_eq!(eventual, "eventual");
+        assert_eq!(eventual_attempts.get(), 3);
+
+        let failed_attempts = std::cell::Cell::new(0);
+        let failure = community_publish_with_retry::<(), _, _>(3, 0, "empty", || {
+            let attempt = failed_attempts.get() + 1;
+            failed_attempts.set(attempt);
+            std::future::ready(Err(format!("failure {attempt}")))
+        })
+        .await
+        .expect_err("all attempts fail");
+        assert_eq!(failure, "failure 3");
+        assert_eq!(failed_attempts.get(), 3);
+    }
+
+    #[test]
+    fn community_publish_plan_always_places_latest_last() {
+        let object = |kind, key: &str| PlannedCommunityPublishObject {
+            kind,
+            key: key.to_string(),
+            bytes: Vec::new(),
+        };
+        let ordered = order_community_publish_objects(
+            vec![
+                object(CommunityPublishObjectKind::Descriptor, "descriptor-b"),
+                object(CommunityPublishObjectKind::Descriptor, "descriptor-a"),
+            ],
+            object(CommunityPublishObjectKind::ActiveIndex, "active"),
+            vec![
+                object(CommunityPublishObjectKind::Latest, "latest"),
+                object(CommunityPublishObjectKind::Page, "page"),
+            ],
+        )
+        .expect("valid plan");
+        assert_eq!(
+            ordered
+                .iter()
+                .map(|object| object.key.as_str())
+                .collect::<Vec<_>>(),
+            vec!["descriptor-a", "descriptor-b", "active", "page", "latest"]
+        );
+        assert_eq!(
+            ordered.last().map(|object| object.kind),
+            Some(CommunityPublishObjectKind::Latest)
+        );
+    }
+
+    #[test]
+    fn community_publish_active_index_is_mutable_and_tombstones_removed_resources() {
+        let prefix = "community/zsxq/51115212285814/delivery/v1";
+        let sha256 = "a".repeat(64);
+        let descriptor = CommunityResourceDescriptor {
+            resource_id: 42,
+            version: sha256[..12].to_string(),
+            sha256: sha256.clone(),
+            object_key: format!("community/zsxq/51115212285814/resources/42-{sha256}.png"),
+            content_type: "image/png".to_string(),
+            byte_size: 9,
+            display_name: Some("chart.png".to_string()),
+        };
+        let pages = || {
+            build_published_community_pages(
+                vec![CommunityPublishRawPage {
+                    before: None,
+                    items: vec![publish_content(50)],
+                }],
+                "51115212285814",
+                &BTreeMap::new(),
+            )
+        };
+        let active_bytes = |descriptors: &BTreeMap<i64, CommunityResourceDescriptor>| {
+            plan_community_publish_objects(prefix, descriptors, pages())
+                .expect("publication plan")
+                .into_iter()
+                .find(|object| object.kind == CommunityPublishObjectKind::ActiveIndex)
+                .expect("active index")
+                .bytes
+        };
+
+        let with_resource = BTreeMap::from([(42, descriptor)]);
+        let active: serde_json::Value =
+            serde_json::from_slice(&active_bytes(&with_resource)).expect("active JSON");
+        assert_eq!(active["v"], 1);
+        assert_eq!(active["resources"]["42"], sha256[..12]);
+
+        let tombstone: serde_json::Value =
+            serde_json::from_slice(&active_bytes(&BTreeMap::new())).expect("empty active JSON");
+        assert_eq!(tombstone["resources"], serde_json::json!({}));
+        assert!(community_publish_object_is_mutable(
+            CommunityPublishObjectKind::ActiveIndex
+        ));
     }
 }

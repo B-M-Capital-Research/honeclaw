@@ -305,10 +305,16 @@ export async function publicSmsLogin(input: {
 }
 
 export async function publicLogout() {
-  const response = await apiFetch("/api/public/auth/logout", {
-    method: "POST",
-  });
-  await parseJson<{ ok: boolean }>(response);
+  try {
+    const response = await apiFetch("/api/public/auth/logout", {
+      method: "POST",
+    });
+    await parseJson<{ ok: boolean }>(response);
+  } finally {
+    // A later login must always obtain a grant for that session instead of
+    // reusing the in-memory edge choice from the account that just logged out.
+    resetPublicCommunityEdgeState();
+  }
 }
 
 export async function getPublicAuthMe(signal?: AbortSignal) {
@@ -530,11 +536,167 @@ export async function connectPublicEvents() {
   return createEventSource("/api/public/events");
 }
 
+type PublicCommunityEdgeSession = {
+  enabled: boolean;
+  mode: "off" | "shadow" | "prefer" | string;
+  base_path?: string | null;
+  expires_at?: number | null;
+};
+
+type PublicCommunityState = {
+  unread: boolean;
+  latest_content_id?: number | null;
+};
+
+type ActiveCommunityEdge = {
+  basePath: "/_community/v1";
+  expiresAt: number;
+};
+
+const PUBLIC_COMMUNITY_EDGE_BASE_PATH = "/_community/v1" as const;
+const PUBLIC_COMMUNITY_EDGE_RETRY_DELAY_MS = 30_000;
+let publicCommunityEdgeDiscoveryEnabled =
+  import.meta.env.VITE_HONE_APP_COMMUNITY_EDGE_DISCOVERY === "1";
+let activePublicCommunityEdge: ActiveCommunityEdge | null = null;
+let publicCommunityEdgeRetryAt = 0;
+
+function resetPublicCommunityEdgeState() {
+  activePublicCommunityEdge = null;
+  publicCommunityEdgeRetryAt = 0;
+}
+
+/** Test-only override; production behavior remains a compile-time flag. */
+export function setPublicCommunityEdgeDiscoveryForTests(enabled: boolean) {
+  publicCommunityEdgeDiscoveryEnabled = enabled;
+  resetPublicCommunityEdgeState();
+}
+
+export function resetPublicCommunityEdgeDiscoveryForTests() {
+  publicCommunityEdgeDiscoveryEnabled =
+    import.meta.env.VITE_HONE_APP_COMMUNITY_EDGE_DISCOVERY === "1";
+  resetPublicCommunityEdgeState();
+}
+
+function normalizedPublicCommunityEdgeSession(
+  payload: PublicCommunityEdgeSession,
+): ActiveCommunityEdge | null {
+  const now = Math.floor(Date.now() / 1_000);
+  const expiresAt = Number(payload.expires_at);
+  if (
+    !payload.enabled ||
+    payload.mode !== "prefer" ||
+    payload.base_path !== PUBLIC_COMMUNITY_EDGE_BASE_PATH ||
+    !Number.isSafeInteger(expiresAt) ||
+    expiresAt <= now + 5
+  ) {
+    return null;
+  }
+  return { basePath: PUBLIC_COMMUNITY_EDGE_BASE_PATH, expiresAt };
+}
+
+async function discoverPublicCommunityEdge(signal?: AbortSignal) {
+  if (!publicCommunityEdgeDiscoveryEnabled) return null;
+  const now = Date.now();
+  if (
+    activePublicCommunityEdge &&
+    activePublicCommunityEdge.expiresAt * 1_000 > now + 5_000
+  ) {
+    return activePublicCommunityEdge;
+  }
+  if (now < publicCommunityEdgeRetryAt) return null;
+
+  try {
+    const response = await apiFetch("/api/public/community/edge-session", {
+      method: "POST",
+      signal,
+    });
+    const payload = await parseJson<PublicCommunityEdgeSession>(response);
+    activePublicCommunityEdge = normalizedPublicCommunityEdgeSession(payload);
+    if (!activePublicCommunityEdge) {
+      publicCommunityEdgeRetryAt = now + PUBLIC_COMMUNITY_EDGE_RETRY_DELAY_MS;
+    }
+    return activePublicCommunityEdge;
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    activePublicCommunityEdge = null;
+    publicCommunityEdgeRetryAt = now + PUBLIC_COMMUNITY_EDGE_RETRY_DELAY_MS;
+    return null;
+  }
+}
+
+function publicCommunityEdgeFeedPath(
+  edge: ActiveCommunityEdge,
+  before?: number,
+) {
+  if (before && Number.isSafeInteger(before) && before > 0) {
+    return `${edge.basePath}/feed/pages/${before}.json`;
+  }
+  return `${edge.basePath}/feed/latest.json`;
+}
+
+async function fetchPublicCommunityEdge(path: string, init: RequestInit = {}) {
+  return fetch(buildApiUrl(path), {
+    credentials: "include",
+    ...init,
+  });
+}
+
+function verifiedPublicCommunityDeliveryPath(
+  resourceId: number,
+  version?: string | null,
+  deliveryPath?: string | null,
+) {
+  const normalizedVersion = version?.trim().toLowerCase();
+  if (
+    !activePublicCommunityEdge ||
+    !Number.isSafeInteger(resourceId) ||
+    resourceId <= 0 ||
+    !normalizedVersion ||
+    !/^[a-f0-9]{12}$/.test(normalizedVersion)
+  ) {
+    return null;
+  }
+  const expected = `${activePublicCommunityEdge.basePath}/resources/${resourceId}/${normalizedVersion}`;
+  return deliveryPath === expected ? expected : null;
+}
+
 export async function getPublicCommunity(input: {
   before?: number;
   limit?: number;
   signal?: AbortSignal;
 } = {}) {
+  const edge =
+    input.limit == null || input.limit === 20
+      ? await discoverPublicCommunityEdge(input.signal)
+      : null;
+  if (edge) {
+    try {
+      const [feedResponse, stateResponse] = await Promise.all([
+        fetchPublicCommunityEdge(publicCommunityEdgeFeedPath(edge, input.before), {
+          signal: input.signal,
+        }),
+        fetch(buildApiUrl("/api/public/community/state"), {
+          credentials: "include",
+          signal: input.signal,
+        }),
+      ]);
+      const [page, state] = await Promise.all([
+        parseJson<PublicCommunityPage>(feedResponse),
+        parseJson<PublicCommunityState>(stateResponse),
+      ]);
+      return {
+        ...page,
+        unread: state.unread,
+        latest_content_id: state.latest_content_id,
+      };
+    } catch (error) {
+      if (input.signal?.aborted) throw error;
+      activePublicCommunityEdge = null;
+      publicCommunityEdgeRetryAt =
+        Date.now() + PUBLIC_COMMUNITY_EDGE_RETRY_DELAY_MS;
+    }
+  }
+
   const query = new URLSearchParams();
   if (input.before) query.set("before", String(input.before));
   if (input.limit) query.set("limit", String(input.limit));
@@ -562,8 +724,35 @@ function publicCommunityResourcePath(resourceId: number, version?: string | null
   return `/api/public/community/resources/${resourceId}${suffix}`;
 }
 
-export function publicCommunityResourceUrl(resourceId: number, version?: string | null) {
-  return buildApiUrl(publicCommunityResourcePath(resourceId, version));
+export function publicCommunityResourceUrl(
+  resourceId: number,
+  version?: string | null,
+  deliveryPath?: string | null,
+) {
+  return buildApiUrl(
+    verifiedPublicCommunityDeliveryPath(resourceId, version, deliveryPath) ??
+      publicCommunityResourcePath(resourceId, version),
+  );
+}
+
+export async function resolvePublicCommunityResourceUrl(
+  resourceId: number,
+  version?: string | null,
+  deliveryPath?: string | null,
+) {
+  const legacyUrl = buildApiUrl(publicCommunityResourcePath(resourceId, version));
+  const edgePath = verifiedPublicCommunityDeliveryPath(
+    resourceId,
+    version,
+    deliveryPath,
+  );
+  if (!edgePath) return legacyUrl;
+  try {
+    const response = await fetchPublicCommunityEdge(edgePath, { method: "HEAD" });
+    return response.ok ? buildApiUrl(edgePath) : legacyUrl;
+  } catch {
+    return legacyUrl;
+  }
 }
 
 export function publicCommunityResourceDownloadName(
@@ -588,7 +777,21 @@ export function publicCommunityResourceDownloadName(
 export async function getPublicCommunityResourceBlob(
   resourceId: number,
   version?: string | null,
+  deliveryPath?: string | null,
 ) {
+  const edgePath = verifiedPublicCommunityDeliveryPath(
+    resourceId,
+    version,
+    deliveryPath,
+  );
+  if (edgePath) {
+    try {
+      const edgeResponse = await fetchPublicCommunityEdge(edgePath);
+      if (edgeResponse.ok) return edgeResponse.blob();
+    } catch {
+      // The legacy authenticated API remains the per-resource safety net.
+    }
+  }
   const response = await apiFetch(publicCommunityResourcePath(resourceId, version));
   if (!response.ok) throw await apiErrorFromResponse(response);
   return response.blob();

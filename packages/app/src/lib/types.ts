@@ -115,6 +115,8 @@ export type PublicCommunityResource = {
   content_type?: string | null;
   byte_size?: number | null;
   version?: string | null;
+  /** Same-origin private edge path; legacy API responses intentionally omit it. */
+  delivery_path?: string | null;
   access_state: "stored" | "protected_in_app" | "metadata_only" | string;
 };
 

@@ -10,6 +10,9 @@ use axum::body::Body;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
+use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use hmac::{Hmac, Mac};
 use hone_core::ActorIdentity;
 use hone_core::cloud_runtime::{
     CloudCommunityContentRecord, CloudCommunityResourceRecord, CloudPgRuntime, OssObjectStore,
@@ -17,8 +20,10 @@ use hone_core::cloud_runtime::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha2::Sha256;
 
 use crate::routes::json_error;
+use crate::routes::public::{build_community_edge_cookie, clear_community_edge_cookie};
 use crate::state::AppState;
 
 const COMMUNITY_SOURCE: &str = "zsxq";
@@ -31,6 +36,37 @@ const COMMUNITY_RESOURCE_MAX_BYTES: usize = 128 * 1024 * 1024;
 const COMMUNITY_RESOURCE_VERSION_LEN: usize = 12;
 const COMMUNITY_RESOURCE_IMMUTABLE_CACHE_CONTROL: &str = "private, max-age=31536000, immutable";
 const COMMUNITY_RESOURCE_REVALIDATE_CACHE_CONTROL: &str = "private, no-cache";
+const COMMUNITY_EDGE_BASE_PATH: &str = "/_community/v1";
+const COMMUNITY_EDGE_AUDIENCE: &str = "hone-community-edge-v1";
+const COMMUNITY_EDGE_TOKEN_VERSION: u8 = 1;
+const COMMUNITY_EDGE_SECRET_MIN_BYTES: usize = 32;
+const COMMUNITY_EDGE_SECRET_MAX_BYTES: usize = 1024;
+
+type HmacSha256 = Hmac<Sha256>;
+
+#[derive(Debug, Serialize)]
+struct CommunityStateProjection {
+    unread: bool,
+    latest_content_id: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+struct CommunityEdgeSessionProjection<'a> {
+    enabled: bool,
+    mode: &'a str,
+    base_path: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expires_at: Option<i64>,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+struct CommunityEdgeClaims {
+    v: u8,
+    aud: String,
+    sub: String,
+    iat: i64,
+    exp: i64,
+}
 
 #[derive(Debug, Serialize)]
 struct PublicCommunityContent {
@@ -204,6 +240,127 @@ fn public_actor_storage_key(
                 format!("构造社区用户身份失败: {error}"),
             )
         })
+}
+
+fn community_personal_json_response<T: Serialize>(value: T) -> Response {
+    let mut response = Json(value).into_response();
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, no-store"),
+    );
+    response
+        .headers_mut()
+        .insert(header::VARY, HeaderValue::from_static("Cookie"));
+    response
+}
+
+fn encode_community_edge_session(
+    subject: &str,
+    issued_at: i64,
+    ttl_secs: u64,
+    secret: &[u8],
+) -> (String, i64) {
+    let expires_at = issued_at.saturating_add(ttl_secs as i64);
+    let claims = CommunityEdgeClaims {
+        v: COMMUNITY_EDGE_TOKEN_VERSION,
+        aud: COMMUNITY_EDGE_AUDIENCE.to_string(),
+        sub: subject.to_string(),
+        iat: issued_at,
+        exp: expires_at,
+    };
+    let payload = URL_SAFE_NO_PAD.encode(
+        serde_json::to_vec(&claims).expect("community edge claims always serialize as JSON"),
+    );
+    let mut signer = HmacSha256::new_from_slice(secret)
+        .expect("HMAC-SHA256 accepts signing secrets of any length");
+    signer.update(payload.as_bytes());
+    let signature = URL_SAFE_NO_PAD.encode(signer.finalize().into_bytes());
+    (format!("{payload}.{signature}"), expires_at)
+}
+
+fn valid_community_edge_secret(secret: &str) -> bool {
+    (COMMUNITY_EDGE_SECRET_MIN_BYTES..=COMMUNITY_EDGE_SECRET_MAX_BYTES)
+        .contains(&secret.trim().as_bytes().len())
+}
+
+fn edge_session_response(
+    enabled: bool,
+    mode: &str,
+    expires_at: Option<i64>,
+    cookie: HeaderValue,
+) -> Response {
+    let mut response = community_personal_json_response(CommunityEdgeSessionProjection {
+        enabled,
+        mode,
+        base_path: COMMUNITY_EDGE_BASE_PATH,
+        expires_at,
+    });
+    response.headers_mut().append(header::SET_COOKIE, cookie);
+    response
+}
+
+fn with_cleared_community_edge_cookie(mut response: Response) -> Response {
+    response
+        .headers_mut()
+        .append(header::SET_COOKIE, clear_community_edge_cookie());
+    response
+}
+
+/// GET /api/public/community/state
+pub(crate) async fn handle_community_state(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+) -> Response {
+    let actor_storage_key = match public_actor_storage_key(&state, &headers) {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let runtime = match community_runtime(&state) {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    match runtime
+        .community_unread_state(COMMUNITY_SOURCE, COMMUNITY_EXTERNAL_ID, &actor_storage_key)
+        .await
+    {
+        Ok(unread) => community_personal_json_response(CommunityStateProjection {
+            unread: unread.unread,
+            latest_content_id: unread.latest_content_id,
+        }),
+        Err(error) => json_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
+    }
+}
+
+/// POST /api/public/community/edge-session
+pub(crate) async fn handle_community_edge_session(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+) -> Response {
+    let delivery = &state.core.config.cloud.community_delivery;
+    let mode = delivery.effective_mode();
+    if !mode.issues_edge_session() {
+        return edge_session_response(false, mode.as_str(), None, clear_community_edge_cookie());
+    }
+
+    let secret = delivery.resolved_secret();
+    if !valid_community_edge_secret(&secret) {
+        return edge_session_response(false, mode.as_str(), None, clear_community_edge_cookie());
+    }
+
+    let actor_storage_key = match public_actor_storage_key(&state, &headers) {
+        Ok(value) => value,
+        Err(response) => return with_cleared_community_edge_cookie(response),
+    };
+    let issued_at = chrono::Utc::now().timestamp();
+    let ttl_secs = delivery.effective_token_ttl_secs();
+    let (token, expires_at) =
+        encode_community_edge_session(&actor_storage_key, issued_at, ttl_secs, secret.as_bytes());
+    edge_session_response(
+        true,
+        mode.as_str(),
+        Some(expires_at),
+        build_community_edge_cookie(&token, ttl_secs),
+    )
 }
 
 /// GET /api/public/community?before=<content_id>&limit=20
@@ -418,6 +575,132 @@ pub(crate) async fn handle_community_resource_preview(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn edge_session_matches_cross_language_golden_vector() {
+        const EXPECTED_TOKEN: &str = "eyJ2IjoxLCJhdWQiOiJob25lLWNvbW11bml0eS1lZGdlLXYxIiwic3ViIjoid2ViOnVzZXItMTIzIiwiaWF0IjoxNzAwMDAwMDAwLCJleHAiOjE3MDAwMDA5MDB9.2TlI3FNyPYD4yUZeH31lyy2p3obnWcICpICJOzTz7V4";
+        let secret = b"edge-secret-test-vector-32-bytes";
+        let (token, expires_at) =
+            encode_community_edge_session("web:user-123", 1_700_000_000, 900, secret);
+        assert_eq!(expires_at, 1_700_000_900);
+        assert_eq!(token, EXPECTED_TOKEN);
+
+        let (payload, signature) = token.split_once('.').expect("two token segments");
+        assert!(!payload.contains('='));
+        assert!(!signature.contains('='));
+        let claims: CommunityEdgeClaims = serde_json::from_slice(
+            &URL_SAFE_NO_PAD
+                .decode(payload)
+                .expect("base64url claims payload"),
+        )
+        .expect("JSON claims payload");
+        assert_eq!(
+            claims,
+            CommunityEdgeClaims {
+                v: 1,
+                aud: "hone-community-edge-v1".to_string(),
+                sub: "web:user-123".to_string(),
+                iat: 1_700_000_000,
+                exp: 1_700_000_900,
+            }
+        );
+
+        let signature = URL_SAFE_NO_PAD
+            .decode(signature)
+            .expect("base64url HMAC signature");
+        let mut verifier = HmacSha256::new_from_slice(secret).expect("HMAC key");
+        verifier.update(payload.as_bytes());
+        verifier
+            .verify_slice(&signature)
+            .expect("signature covers the encoded payload segment");
+
+        let mut wrong_verifier = HmacSha256::new_from_slice(b"wrong-secret").expect("HMAC key");
+        wrong_verifier.update(payload.as_bytes());
+        assert!(wrong_verifier.verify_slice(&signature).is_err());
+    }
+
+    #[test]
+    fn edge_session_secret_uses_trimmed_utf8_byte_boundaries() {
+        assert!(!valid_community_edge_secret(&"x".repeat(31)));
+        assert!(valid_community_edge_secret(&"x".repeat(32)));
+        assert!(valid_community_edge_secret(&"x".repeat(1024)));
+        assert!(!valid_community_edge_secret(&"x".repeat(1025)));
+        assert!(!valid_community_edge_secret(&"密".repeat(342)));
+        assert!(valid_community_edge_secret(&format!(
+            "  {}\n",
+            "x".repeat(32)
+        )));
+    }
+
+    #[test]
+    fn edge_cookie_is_narrow_secure_and_short_lived() {
+        let cookie = build_community_edge_cookie("payload.signature", 900);
+        let cookie = cookie.to_str().expect("ASCII cookie");
+        assert!(cookie.starts_with("hone_community_edge=payload.signature;"));
+        assert!(cookie.contains("Path=/_community/v1/"));
+        assert!(cookie.contains("HttpOnly"));
+        assert!(cookie.contains("Secure"));
+        assert!(cookie.contains("SameSite=Strict"));
+        assert!(cookie.contains("Max-Age=900"));
+
+        let cleared = clear_community_edge_cookie();
+        let cleared = cleared.to_str().expect("ASCII cookie");
+        assert!(cleared.starts_with("hone_community_edge=;"));
+        assert!(cleared.contains("Path=/_community/v1/"));
+        assert!(cleared.contains("Max-Age=0"));
+    }
+
+    #[test]
+    fn edge_auth_failure_preserves_status_and_clears_stale_cookie() {
+        let mut original = Response::new(Body::empty());
+        *original.status_mut() = StatusCode::UNAUTHORIZED;
+
+        let response = with_cleared_community_edge_cookie(original);
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let cookie = response
+            .headers()
+            .get(header::SET_COOKIE)
+            .expect("auth failure clears edge cookie")
+            .to_str()
+            .expect("ASCII cookie");
+        assert!(cookie.starts_with("hone_community_edge=;"));
+        assert!(cookie.contains("Path=/_community/v1/"));
+        assert!(cookie.contains("Max-Age=0"));
+    }
+
+    #[test]
+    fn edge_and_state_projections_do_not_leak_credentials_or_identity() {
+        let edge = serde_json::to_value(CommunityEdgeSessionProjection {
+            enabled: true,
+            mode: "shadow",
+            base_path: COMMUNITY_EDGE_BASE_PATH,
+            expires_at: Some(1_700_000_900),
+        })
+        .expect("edge projection serializes");
+        assert_eq!(edge["enabled"], true);
+        assert_eq!(edge["mode"], "shadow");
+        assert_eq!(edge["base_path"], "/_community/v1");
+        assert_eq!(edge["expires_at"], 1_700_000_900_i64);
+        let edge = edge.as_object().expect("edge object");
+        assert_eq!(edge.len(), 4);
+        for forbidden in ["token", "secret", "cookie", "sub", "user_id"] {
+            assert!(!edge.contains_key(forbidden));
+        }
+
+        let state = serde_json::to_value(CommunityStateProjection {
+            unread: true,
+            latest_content_id: Some(42),
+        })
+        .expect("state projection serializes");
+        let state = state.as_object().expect("state object");
+        assert_eq!(state.len(), 2);
+        assert!(state.contains_key("unread"));
+        assert!(state.contains_key("latest_content_id"));
+        for forbidden in ["token", "secret", "cookie", "sub", "user_id"] {
+            assert!(!state.contains_key(forbidden));
+        }
+    }
 
     #[test]
     fn inline_preview_only_allows_passive_image_types_and_pdf() {

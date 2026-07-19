@@ -477,6 +477,18 @@ cloud:
   # Set cloud.strict_no_local_storage true only after all storage backends have PG / OSS implementations.
   # HONE_CLOUD_STRICT_NO_LOCAL_STORAGE=true has the same startup-fail effect.
   strict_no_local_storage: false
+  # Private-R2 public-community delivery is opt-in. Keep `off` until the edge
+  # Worker, private bucket binding, and shared signing secret are ready.
+  community_delivery:
+    # off | shadow | prefer. Both shadow/prefer may issue the short-lived edge
+    # cookie; clients continue using the legacy API unless separately enabled.
+    mode: "off"
+    # Runtime clamps this value to 60..3600 seconds.
+    token_ttl_secs: 900
+    # Name of the environment variable containing the HMAC secret. After
+    # trimming whitespace it must be 32..1024 UTF-8 bytes. Never put the
+    # secret bytes themselves in this YAML file.
+    secret_env: "HONE_COMMUNITY_EDGE_HMAC_SECRET"
   postgres:
     database_url: ""
     database_url_env: "DATABASE_URL"

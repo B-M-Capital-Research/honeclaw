@@ -6,6 +6,7 @@ const backend = process.env.HONE_WEB_BACKEND_URL ?? "http://127.0.0.1:8077"
 const port = Number(process.env.HONE_APP_PORT ?? "3000")
 const outDir = process.env.HONE_APP_OUT_DIR ?? "dist"
 const appSurface = process.env.HONE_APP_SURFACE ?? process.env.VITE_HONE_APP_SURFACE ?? "admin"
+const communityEdgeDiscovery = process.env.HONE_APP_COMMUNITY_EDGE_DISCOVERY ?? "0"
 const desktopRelativeBase =
   process.env.HONE_APP_RELATIVE_BASE === "1" || Boolean(process.env.TAURI_ENV_PLATFORM)
 
@@ -13,6 +14,9 @@ export default defineConfig({
   base: desktopRelativeBase ? "./" : "/",
   define: {
     "import.meta.env.VITE_HONE_APP_SURFACE": JSON.stringify(appSurface),
+    "import.meta.env.VITE_HONE_APP_COMMUNITY_EDGE_DISCOVERY": JSON.stringify(
+      communityEdgeDiscovery,
+    ),
   },
   plugins: [solid(), tailwindcss()],
   esbuild: {

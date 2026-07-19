@@ -20,6 +20,7 @@ import {
   markPublicCommunitySeen,
   publicCommunityResourceDownloadName,
   publicCommunityResourceUrl,
+  resolvePublicCommunityResourceUrl,
 } from "@/lib/api";
 import {
   clampFinanceCalendarPan,
@@ -75,7 +76,11 @@ function resourceCanInlinePreview(resource: PublicCommunityResource) {
 }
 
 async function downloadCommunityResource(resource: PublicCommunityResource) {
-  const blob = await getPublicCommunityResourceBlob(resource.resource_id, resource.version);
+  const blob = await getPublicCommunityResourceBlob(
+    resource.resource_id,
+    resource.version,
+    resource.delivery_path,
+  );
   const objectUrl = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = objectUrl;
@@ -96,7 +101,14 @@ function CommunityMediaPreview(props: {
   const [fitSize, setFitSize] = createSignal({ width: 0, height: 0 });
   const [interacting, setInteracting] = createSignal(false);
   const [downloadState, setDownloadState] = createSignal<"idle" | "working" | "error">("idle");
+  const [documentSource, setDocumentSource] = createSignal<string | null>(null);
   const source = () =>
+    publicCommunityResourceUrl(
+      props.resource.resource_id,
+      props.resource.version,
+      props.resource.delivery_path,
+    );
+  const legacySource = () =>
     publicCommunityResourceUrl(props.resource.resource_id, props.resource.version);
   const isImage = () => resourceIsImage(props.resource);
   const titleId = `community-preview-title-${props.resource.resource_id}`;
@@ -107,6 +119,7 @@ function CommunityMediaPreview(props: {
   let resizeObserver: ResizeObserver | undefined;
   let removeGestures: (() => void) | undefined;
   let viewFrame = 0;
+  let disposed = false;
   let pendingView: { zoom: number; x: number; y: number } | undefined;
 
   const boundedView = (nextZoom: number, x: number, y: number) => {
@@ -312,6 +325,16 @@ function CommunityMediaPreview(props: {
   };
 
   onMount(() => {
+    if (!isImage()) {
+      void resolvePublicCommunityResourceUrl(
+        props.resource.resource_id,
+        props.resource.version,
+        props.resource.delivery_path,
+      ).then((url) => {
+        if (!disposed) setDocumentSource(url);
+      });
+    }
+
     const previousFocus = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : undefined;
@@ -359,6 +382,7 @@ function CommunityMediaPreview(props: {
   });
 
   onCleanup(() => {
+    disposed = true;
     removeGestures?.();
     resizeObserver?.disconnect();
     if (viewFrame) cancelAnimationFrame(viewFrame);
@@ -391,12 +415,17 @@ function CommunityMediaPreview(props: {
           <Show
             when={isImage()}
             fallback={
-              <iframe
-                title={props.resource.display_name || "社区文件预览"}
-                src={source()}
-                sandbox="allow-downloads"
-                referrerPolicy="no-referrer"
-              />
+              <Show
+                when={documentSource()}
+                fallback={<div class="public-workspace-state" role="status">正在准备安全预览…</div>}
+              >
+                <iframe
+                  title={props.resource.display_name || "社区文件预览"}
+                  src={documentSource()!}
+                  sandbox="allow-downloads"
+                  referrerPolicy="no-referrer"
+                />
+              </Show>
             }
           >
             <div
@@ -415,6 +444,12 @@ function CommunityMediaPreview(props: {
                   src={source()}
                   alt={props.resource.display_name || "社区图片"}
                   onLoad={fitImageToViewport}
+                  onError={(event) => {
+                    const fallback = legacySource();
+                    if (event.currentTarget.src !== fallback) {
+                      event.currentTarget.src = fallback;
+                    }
+                  }}
                 />
               </div>
             </div>
@@ -598,9 +633,19 @@ export default function PublicCommunityPage() {
                                         src={publicCommunityResourceUrl(
                                           resource.resource_id,
                                           resource.version,
+                                          resource.delivery_path,
                                         )}
                                         alt={resource.display_name || "社区图片"}
                                         loading="lazy"
+                                        onError={(event) => {
+                                          const fallback = publicCommunityResourceUrl(
+                                            resource.resource_id,
+                                            resource.version,
+                                          );
+                                          if (event.currentTarget.src !== fallback) {
+                                            event.currentTarget.src = fallback;
+                                          }
+                                        }}
                                       />
                                     </Show>
                                   </button>

@@ -10,11 +10,15 @@ import {
   markPublicCommunitySeen,
   publicCommunityResourceDownloadName,
   publicCommunityResourceUrl,
+  resetPublicCommunityEdgeDiscoveryForTests,
+  resolvePublicCommunityResourceUrl,
+  setPublicCommunityEdgeDiscoveryForTests,
   getPublicPushes,
   isUnauthorizedApiError,
   sendPublicChat,
   sendPublicFinanceCalendar,
   openPublicPush,
+  publicLogout,
 } from "./api";
 import {
   FRIENDLY_BACKEND_UNAVAILABLE_MESSAGE,
@@ -27,6 +31,7 @@ const originalFetch = globalThis.fetch;
 afterEach(() => {
   globalThis.fetch = originalFetch;
   resetApiFetchRetryDelayForTests();
+  resetPublicCommunityEdgeDiscoveryForTests();
 });
 
 function mockFetch(response: Response) {
@@ -200,6 +205,239 @@ describe("public community API", () => {
     expect(payload.unread).toBe(true);
   });
 
+  test("uses the private edge feed only after a prefer grant", async () => {
+    setPublicCommunityEdgeDiscoveryForTests(true);
+    const requested: string[] = [];
+    globalThis.fetch = ((url: RequestInfo | URL) => {
+      requested.push(String(url));
+      if (String(url).includes("/edge-session")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              enabled: true,
+              mode: "prefer",
+              base_path: "/_community/v1",
+              expires_at: Math.floor(Date.now() / 1_000) + 900,
+            }),
+            { headers: { "content-type": "application/json" } },
+          ),
+        );
+      }
+      if (String(url).includes("/api/public/community/state")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ unread: true, latest_content_id: 42 }),
+            { headers: { "content-type": "application/json" } },
+          ),
+        );
+      }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            community: { id: "51115212285814", name: "HONE 官方社区" },
+            items: [
+              {
+                content_id: 42,
+                body_text: "edge",
+                resources: [
+                  {
+                    resource_id: 99,
+                    version: "0123456789ab",
+                    delivery_path:
+                      "/_community/v1/resources/99/0123456789ab",
+                  },
+                ],
+              },
+            ],
+            next_before: null,
+            unread: false,
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      );
+    }) as typeof fetch;
+
+    const payload = await getPublicCommunity();
+
+    expect(requested).toHaveLength(3);
+    expect(requested[0]).toContain("/api/public/community/edge-session");
+    expect(requested).toContainEqual(
+      expect.stringContaining("/_community/v1/feed/latest.json"),
+    );
+    expect(requested).toContainEqual(
+      expect.stringContaining("/api/public/community/state"),
+    );
+    expect(payload.items[0]?.body_text).toBe("edge");
+    expect(payload.unread).toBe(true);
+    expect(payload.latest_content_id).toBe(42);
+    expect(
+      publicCommunityResourceUrl(
+        99,
+        "0123456789ab",
+        payload.items[0]?.resources[0]?.delivery_path,
+      ),
+    ).toContain("/_community/v1/resources/99/0123456789ab");
+  });
+
+  test("falls back immediately to the legacy feed when the edge is unavailable", async () => {
+    setPublicCommunityEdgeDiscoveryForTests(true);
+    const requested: string[] = [];
+    globalThis.fetch = ((url: RequestInfo | URL) => {
+      const raw = String(url);
+      requested.push(raw);
+      if (raw.includes("/edge-session")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              enabled: true,
+              mode: "prefer",
+              base_path: "/_community/v1",
+              expires_at: Math.floor(Date.now() / 1_000) + 900,
+            }),
+            { headers: { "content-type": "application/json" } },
+          ),
+        );
+      }
+      if (raw.includes("/_community/v1/")) {
+        return Promise.resolve(
+          new Response("edge unavailable", {
+            status: 503,
+            statusText: "Service Unavailable",
+          }),
+        );
+      }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            community: { id: "51115212285814", name: "HONE 官方社区" },
+            items: [{ content_id: 41, body_text: "legacy", resources: [] }],
+            next_before: null,
+            unread: true,
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      );
+    }) as typeof fetch;
+
+    const payload = await getPublicCommunity();
+
+    expect(
+      requested.filter((url) => url.includes("/_community/v1/feed/latest.json")),
+    ).toHaveLength(1);
+    expect(requested.at(-1)).toContain("/api/public/community");
+    expect(payload.items[0]?.body_text).toBe("legacy");
+  });
+
+  test("falls back to the legacy feed when personal state is unavailable", async () => {
+    setPublicCommunityEdgeDiscoveryForTests(true);
+    const requested: string[] = [];
+    globalThis.fetch = ((url: RequestInfo | URL) => {
+      const raw = String(url);
+      requested.push(raw);
+      if (raw.includes("/edge-session")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              enabled: true,
+              mode: "prefer",
+              base_path: "/_community/v1",
+              expires_at: Math.floor(Date.now() / 1_000) + 900,
+            }),
+            { headers: { "content-type": "application/json" } },
+          ),
+        );
+      }
+      if (raw.includes("/_community/v1/")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              community: { id: "51115212285814", name: "HONE 官方社区" },
+              items: [{ content_id: 42, body_text: "edge", resources: [] }],
+              next_before: null,
+              unread: false,
+            }),
+            { headers: { "content-type": "application/json" } },
+          ),
+        );
+      }
+      if (raw.includes("/api/public/community/state")) {
+        return Promise.resolve(new Response("state unavailable", { status: 503 }));
+      }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            community: { id: "51115212285814", name: "HONE 官方社区" },
+            items: [{ content_id: 41, body_text: "legacy", resources: [] }],
+            next_before: null,
+            unread: true,
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      );
+    }) as typeof fetch;
+
+    const payload = await getPublicCommunity();
+
+    expect(
+      requested.filter((url) => url.endsWith("/api/public/community")),
+    ).toHaveLength(1);
+    expect(payload.items[0]?.body_text).toBe("legacy");
+    expect(payload.unread).toBe(true);
+  });
+
+  test("discovers a fresh edge grant after logout", async () => {
+    setPublicCommunityEdgeDiscoveryForTests(true);
+    let grants = 0;
+    globalThis.fetch = ((url: RequestInfo | URL) => {
+      const raw = String(url);
+      if (raw.includes("/edge-session")) {
+        grants += 1;
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              enabled: true,
+              mode: "prefer",
+              base_path: "/_community/v1",
+              expires_at: Math.floor(Date.now() / 1_000) + 900,
+            }),
+            { headers: { "content-type": "application/json" } },
+          ),
+        );
+      }
+      if (raw.includes("/auth/logout")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ ok: true }), {
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      if (raw.includes("/community/state")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ unread: false, latest_content_id: 42 }), {
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            community: { id: "51115212285814", name: "HONE 官方社区" },
+            items: [],
+            next_before: null,
+            unread: false,
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      );
+    }) as typeof fetch;
+
+    await getPublicCommunity();
+    await publicLogout();
+    await getPublicCommunity();
+
+    expect(grants).toBe(2);
+  });
+
   test("marks the latest community content as seen without sending a social action", async () => {
     let body = "";
     globalThis.fetch = ((_: RequestInfo | URL, init?: RequestInit) => {
@@ -246,6 +484,69 @@ describe("public community API", () => {
     expect(publicCommunityResourceUrl(99, "0123456789ab")).toContain(
       "/api/public/community/resources/99?v=0123456789ab",
     );
+  });
+
+  test("rejects mismatched edge paths and preflights document fallback", async () => {
+    setPublicCommunityEdgeDiscoveryForTests(true);
+    const requested: Array<{ url: string; method: string }> = [];
+    globalThis.fetch = ((url: RequestInfo | URL, init?: RequestInit) => {
+      const raw = String(url);
+      requested.push({ url: raw, method: init?.method ?? "GET" });
+      if (raw.includes("/edge-session")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              enabled: true,
+              mode: "prefer",
+              base_path: "/_community/v1",
+              expires_at: Math.floor(Date.now() / 1_000) + 900,
+            }),
+            { headers: { "content-type": "application/json" } },
+          ),
+        );
+      }
+      if (raw.includes("/feed/latest.json")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              community: { id: "51115212285814", name: "HONE 官方社区" },
+              items: [],
+              next_before: null,
+              unread: false,
+            }),
+            { headers: { "content-type": "application/json" } },
+          ),
+        );
+      }
+      if (raw.includes("/api/public/community/state")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ unread: false, latest_content_id: null }), {
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      return Promise.resolve(new Response("edge unavailable", { status: 503 }));
+    }) as typeof fetch;
+    await getPublicCommunity();
+
+    expect(
+      publicCommunityResourceUrl(
+        99,
+        "0123456789ab",
+        "/_community/v1/resources/100/0123456789ab",
+      ),
+    ).toContain("/api/public/community/resources/99?v=0123456789ab");
+    expect(
+      publicCommunityResourceUrl(99, "0123456789ab", "https://evil.example/x"),
+    ).toContain("/api/public/community/resources/99?v=0123456789ab");
+
+    const resolved = await resolvePublicCommunityResourceUrl(
+      99,
+      "0123456789ab",
+      "/_community/v1/resources/99/0123456789ab",
+    );
+    expect(requested.at(-1)?.method).toBe("HEAD");
+    expect(resolved).toContain("/api/public/community/resources/99?v=0123456789ab");
   });
 
   test("corrects a source-mislabeled OOXML workbook download extension", () => {

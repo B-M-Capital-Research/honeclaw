@@ -28,6 +28,64 @@ fn fmp_default_matches_deserialization_defaults() {
     assert!(!direct.base_url.is_empty());
 }
 
+#[test]
+fn community_delivery_defaults_are_off_and_short_lived() {
+    let direct = CommunityDeliveryConfig::default();
+    let deserialized: CommunityDeliveryConfig =
+        serde_yaml::from_str("{}").expect("deserialize empty community delivery config");
+
+    for config in [direct, deserialized] {
+        assert_eq!(config.effective_mode(), CommunityDeliveryMode::Off);
+        assert!(!config.effective_mode().issues_edge_session());
+        assert_eq!(config.effective_token_ttl_secs(), 900);
+        assert_eq!(config.secret_env, "HONE_COMMUNITY_EDGE_HMAC_SECRET");
+    }
+}
+
+#[test]
+fn community_delivery_modes_fail_closed_and_ttl_is_bounded() {
+    for (raw, expected) in [
+        ("off", CommunityDeliveryMode::Off),
+        (" SHADOW ", CommunityDeliveryMode::Shadow),
+        ("Prefer", CommunityDeliveryMode::Prefer),
+        ("unexpected", CommunityDeliveryMode::Off),
+        ("", CommunityDeliveryMode::Off),
+    ] {
+        assert_eq!(CommunityDeliveryMode::from_config_value(raw), expected);
+    }
+
+    let mut config = CommunityDeliveryConfig {
+        token_ttl_secs: 0,
+        ..CommunityDeliveryConfig::default()
+    };
+    assert_eq!(
+        config.effective_token_ttl_secs(),
+        CommunityDeliveryConfig::MIN_TOKEN_TTL_SECS
+    );
+    config.token_ttl_secs = u64::MAX;
+    assert_eq!(
+        config.effective_token_ttl_secs(),
+        CommunityDeliveryConfig::MAX_TOKEN_TTL_SECS
+    );
+}
+
+#[test]
+fn community_delivery_secret_is_environment_only() {
+    let env_name = format!(
+        "HONE_TEST_COMMUNITY_EDGE_SECRET_{}",
+        uuid::Uuid::new_v4().simple()
+    );
+    unsafe { std::env::set_var(&env_name, "test-secret") };
+    let config = CommunityDeliveryConfig {
+        secret_env: env_name.clone(),
+        ..CommunityDeliveryConfig::default()
+    };
+    assert_eq!(config.resolved_secret(), "test-secret");
+    let encoded = serde_yaml::to_string(&config).expect("serialize community delivery config");
+    assert!(!encoded.contains("test-secret"));
+    unsafe { std::env::remove_var(env_name) };
+}
+
 fn assert_config_example_roots(root: &serde_yaml::Mapping) {
     let actual_roots = root
         .keys()
@@ -277,6 +335,13 @@ fn assert_config_example_storage_defaults(config: &HoneConfig) {
         config.storage.conversation_quota_dir,
         "./data/conversation_quota"
     );
+}
+
+fn assert_config_example_community_delivery_defaults(config: &HoneConfig) {
+    let delivery = &config.cloud.community_delivery;
+    assert_eq!(delivery.effective_mode(), CommunityDeliveryMode::Off);
+    assert_eq!(delivery.effective_token_ttl_secs(), 900);
+    assert_eq!(delivery.secret_env, "HONE_COMMUNITY_EDGE_HMAC_SECRET");
 }
 
 fn assert_config_example_llm_profiles(config: &HoneConfig) {
@@ -783,6 +848,7 @@ fn config_example_yaml_matches_current_schema() {
 
     assert_config_example_agent_defaults(&config);
     assert_config_example_storage_defaults(&config);
+    assert_config_example_community_delivery_defaults(&config);
     assert_config_example_llm_profiles(&config);
     assert_config_example_event_engine_defaults(&config, &raw);
 }

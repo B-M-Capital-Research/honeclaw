@@ -1,0 +1,27 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "hone-public-community-edge",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-19",
+  "workers_dev": false,
+  "preview_urls": false,
+  "keep_vars": true,
+  "route": {
+    "pattern": "hone-claw.com/_community/v1/*",
+    "zone_name": "hone-claw.com"
+  },
+  "r2_buckets": [
+    {
+      "binding": "COMMUNITY_BUCKET",
+      "bucket_name": "replace-with-existing-r2-bucket"
+    }
+  ],
+  "vars": {
+    // EDGE_DISABLED is deliberately absent: absence disables the Worker. Set it to
+    // the string "false" only during activation; keep_vars preserves that runtime switch.
+    "COMMUNITY_FEED_PREFIX": "community/zsxq/51115212285814/delivery/v1",
+    "COMMUNITY_RESOURCE_PREFIX": "community/zsxq/51115212285814/delivery/v1/resources",
+    "COMMUNITY_ASSET_PREFIX": "community/zsxq/51115212285814/resources",
+    "LEGACY_ORIGIN_URL": "https://origin.hone-claw.com"
+  }
+}

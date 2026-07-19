@@ -48,8 +48,9 @@ pub use mutation::{
     read_config_path_value, redact_sensitive_value,
 };
 pub use server::{
-    CloudConfig, CloudMode, FmpConfig, LoggingConfig, NanoBananaConfig, OssConfig, PostgresConfig,
-    SearchConfig, SecurityConfig, StorageConfig, ToolGuardConfig, WebConfig,
+    CloudConfig, CloudMode, CommunityDeliveryConfig, CommunityDeliveryMode, FmpConfig,
+    LoggingConfig, NanoBananaConfig, OssConfig, PostgresConfig, SearchConfig, SecurityConfig,
+    StorageConfig, ToolGuardConfig, WebConfig,
 };
 pub use yaml::{
     diff_yaml_value, merge_yaml_value, read_merged_yaml_value, read_yaml_value,

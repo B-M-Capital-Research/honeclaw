@@ -97,6 +97,173 @@ pub struct CloudPgRuntime {
     config: PostgresConfig,
 }
 
+/// A session-scoped lock held on a dedicated PostgreSQL connection so two
+/// community publishers cannot race to replace the mutable latest pointer.
+pub struct CloudCommunityPublishLock {
+    client: Option<PgClient>,
+    lock_name: String,
+}
+
+impl CloudCommunityPublishLock {
+    /// Confirm that the dedicated PostgreSQL session is still alive and still
+    /// owns the advisory lock. The re-entrant try-lock/unlock pair leaves the
+    /// original session lock count unchanged.
+    pub async fn assert_held(&self) -> HoneResult<()> {
+        let client = self.client.as_ref().ok_or_else(|| {
+            HoneError::Config("community publish advisory lock 已释放".to_string())
+        })?;
+        let acquired = client
+            .query_one(
+                "SELECT pg_try_advisory_lock(hashtextextended($1, 0))",
+                &[&self.lock_name],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!(
+                    "Postgres community publish lock 存活检查失败: {err}"
+                ))
+            })?
+            .get::<_, bool>(0);
+        if !acquired {
+            return Err(HoneError::Config(
+                "Postgres community publish lock 已被其他 session 持有".to_string(),
+            ));
+        }
+        let balanced = client
+            .query_one(
+                "SELECT pg_advisory_unlock(hashtextextended($1, 0))",
+                &[&self.lock_name],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!(
+                    "Postgres community publish lock 存活检查回退失败: {err}"
+                ))
+            })?
+            .get::<_, bool>(0);
+        if !balanced {
+            return Err(HoneError::Config(
+                "Postgres community publish lock 存活检查未能保持锁计数".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Load every cursor page through the same repeatable-read, read-only
+    /// transaction on the dedicated session that owns the publisher lock.
+    /// The transaction is committed after materializing the snapshot while
+    /// the session-level advisory lock remains held until `release`.
+    pub async fn load_snapshot_pages(
+        &mut self,
+        source: &str,
+        external_id: &str,
+        page_size: usize,
+    ) -> HoneResult<Vec<CloudCommunityPublishSnapshotPage>> {
+        if community_publish_lock_name(source, external_id)? != self.lock_name {
+            return Err(HoneError::Config(
+                "community publish snapshot scope 与 advisory lock 不一致".to_string(),
+            ));
+        }
+        if !(1..=50).contains(&page_size) {
+            return Err(HoneError::Config(
+                "community publish snapshot page_size 必须在 1..=50 范围内".to_string(),
+            ));
+        }
+        let client = self.client.as_ref().ok_or_else(|| {
+            HoneError::Config("community publish advisory lock 已释放".to_string())
+        })?;
+        client
+            .batch_execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!(
+                    "Postgres community publish snapshot transaction 创建失败: {err}"
+                ))
+            })?;
+
+        let snapshot = async {
+            let mut pages = Vec::new();
+            let mut before = None;
+            let mut seen_cursors = BTreeSet::new();
+            loop {
+                let items = query_community_contents_with_client(
+                    client,
+                    source,
+                    external_id,
+                    before,
+                    page_size,
+                )
+                .await?;
+                if items.is_empty() {
+                    break;
+                }
+                let next_before = (items.len() == page_size)
+                    .then(|| items.last().map(|item| item.content_id))
+                    .flatten();
+                pages.push(CloudCommunityPublishSnapshotPage { before, items });
+                let Some(next_before) = next_before else {
+                    break;
+                };
+                if !seen_cursors.insert(next_before) {
+                    return Err(HoneError::Config(format!(
+                        "Postgres community publish snapshot cursor={next_before} 重复"
+                    )));
+                }
+                before = Some(next_before);
+            }
+            Ok(pages)
+        }
+        .await;
+
+        match snapshot {
+            Ok(pages) => {
+                client.batch_execute("COMMIT").await.map_err(|err| {
+                    HoneError::Config(format!(
+                        "Postgres community publish snapshot transaction 提交失败: {err}"
+                    ))
+                })?;
+                Ok(pages)
+            }
+            Err(error) => match client.batch_execute("ROLLBACK").await {
+                Ok(()) => Err(error),
+                Err(rollback_error) => Err(HoneError::Config(format!(
+                    "{error}; snapshot transaction 回滚失败: {rollback_error}"
+                ))),
+            },
+        }
+    }
+
+    pub async fn release(mut self) -> HoneResult<()> {
+        let Some(client) = self.client.take() else {
+            return Ok(());
+        };
+        let row = client
+            .query_one(
+                "SELECT pg_advisory_unlock(hashtextextended($1, 0))",
+                &[&self.lock_name],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres community publish lock 释放失败: {err}"))
+            })?;
+        let released: bool = row.get(0);
+        if !released {
+            return Err(HoneError::Config(
+                "Postgres community publish lock 已不属于当前 session".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl Drop for CloudCommunityPublishLock {
+    fn drop(&mut self) {
+        // Dropping the dedicated client closes its PostgreSQL session, which
+        // releases the advisory lock even when an early return skips release().
+        self.client.take();
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct CloudDocumentIndex {
     pub actor_storage_key: String,
@@ -134,6 +301,12 @@ pub struct CloudCommunityResourceRecord {
     pub sha256: Option<String>,
     pub oss_uri: Option<String>,
     pub access_state: String,
+}
+
+#[derive(Debug)]
+pub struct CloudCommunityPublishSnapshotPage {
+    pub before: Option<i64>,
+    pub items: Vec<CloudCommunityContentRecord>,
 }
 
 /// Internal snapshot used by the explicit community asset backfill workflow.
@@ -765,10 +938,141 @@ pub struct CloudSessionListEntry {
 static PG_CLIENT_CACHE: LazyLock<Mutex<BTreeMap<String, Arc<PgClient>>>> =
     LazyLock::new(|| Mutex::new(BTreeMap::new()));
 
+fn community_publish_lock_name(source: &str, external_id: &str) -> HoneResult<String> {
+    let source = source.trim();
+    let external_id = external_id.trim();
+    if source.is_empty()
+        || external_id.is_empty()
+        || sanitize_key_component(source) != source
+        || sanitize_key_component(external_id) != external_id
+        || matches!(source, "." | "..")
+        || matches!(external_id, "." | "..")
+    {
+        return Err(HoneError::Config(
+            "community publish lock source/external_id 无效".to_string(),
+        ));
+    }
+    Ok(format!("hone:community-publish:{source}:{external_id}"))
+}
+
+async fn query_community_contents_with_client(
+    client: &PgClient,
+    source: &str,
+    external_id: &str,
+    before_content_id: Option<i64>,
+    limit: usize,
+) -> HoneResult<Vec<CloudCommunityContentRecord>> {
+    let limit = i64::try_from(limit.clamp(1, 50))
+        .map_err(|_| HoneError::Config("community page limit invalid".to_string()))?;
+    let rows = client
+        .query(
+            r#"
+WITH target_space AS (
+  SELECT community_id FROM community_spaces
+  WHERE source = $1 AND external_id = $2
+), page AS (
+  SELECT c.*
+  FROM community_contents c
+  JOIN target_space s ON s.community_id = c.community_id
+  WHERE $3::bigint IS NULL
+     OR (c.published_at, c.content_id) < (
+       SELECT published_at, content_id FROM community_contents WHERE content_id = $3
+     )
+  ORDER BY c.published_at DESC NULLS LAST, c.content_id DESC
+  LIMIT $4
+)
+SELECT
+  p.content_id,
+  p.author_name,
+  p.published_at::text,
+  p.published_at_raw,
+  p.content_type,
+  p.body_text,
+  p.body_blocks,
+  p.crawl_status,
+  COALESCE(
+    jsonb_agg(jsonb_build_object(
+      'resource_id', r.resource_id,
+      'ordinal', r.ordinal,
+      'resource_kind', r.resource_kind,
+      'display_name', r.display_name,
+      'content_type', r.content_type,
+      'byte_size', r.byte_size,
+      'sha256', r.sha256,
+      'oss_uri', r.oss_uri,
+      'access_state', r.access_state
+    ) ORDER BY r.ordinal) FILTER (WHERE r.resource_id IS NOT NULL),
+    '[]'::jsonb
+  ) AS resources
+FROM page p
+LEFT JOIN community_content_resources r ON r.content_id = p.content_id
+GROUP BY
+  p.content_id,
+  p.author_name,
+  p.published_at,
+  p.published_at_raw,
+  p.content_type,
+  p.body_text,
+  p.body_blocks,
+  p.crawl_status
+ORDER BY p.published_at DESC NULLS LAST, p.content_id DESC
+"#,
+            &[&source, &external_id, &before_content_id, &limit],
+        )
+        .await
+        .map_err(|err| HoneError::Config(format!("Postgres community timeline 读取失败: {err}")))?;
+
+    rows.into_iter()
+        .map(|row| {
+            let resources: serde_json::Value = row.get(8);
+            Ok(CloudCommunityContentRecord {
+                content_id: row.get(0),
+                author_name: row.get(1),
+                published_at: row.get(2),
+                published_at_raw: row.get(3),
+                content_type: row.get(4),
+                body_text: row.get(5),
+                body_blocks: row.get(6),
+                crawl_status: row.get(7),
+                resources: serde_json::from_value(resources)
+                    .map_err(|err| HoneError::Serialization(err.to_string()))?,
+            })
+        })
+        .collect()
+}
+
 impl CloudPgRuntime {
     pub fn from_cloud_config(config: &CloudConfig) -> Option<Self> {
         config.postgres.is_configured().then(|| Self {
             config: config.postgres.clone(),
+        })
+    }
+
+    pub async fn acquire_community_publish_lock(
+        &self,
+        source: &str,
+        external_id: &str,
+    ) -> HoneResult<CloudCommunityPublishLock> {
+        let lock_name = community_publish_lock_name(source, external_id)?;
+        let client = self.connect_new_client().await?;
+        let row = client
+            .query_one(
+                "SELECT pg_try_advisory_lock(hashtextextended($1, 0))",
+                &[&lock_name],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres community publish lock 获取失败: {err}"))
+            })?;
+        let acquired: bool = row.get(0);
+        if !acquired {
+            return Err(HoneError::Config(format!(
+                "已有 community publisher 正在运行: {source}/{external_id}"
+            )));
+        }
+        Ok(CloudCommunityPublishLock {
+            client: Some(client),
+            lock_name,
         })
     }
 
@@ -1114,85 +1418,14 @@ ON CONFLICT (version) DO NOTHING;
         limit: usize,
     ) -> HoneResult<Vec<CloudCommunityContentRecord>> {
         let client = self.connect_cached_client().await?;
-        let limit = i64::try_from(limit.clamp(1, 50))
-            .map_err(|_| HoneError::Config("community page limit invalid".to_string()))?;
-        let rows = client
-            .query(
-                r#"
-WITH target_space AS (
-  SELECT community_id FROM community_spaces
-  WHERE source = $1 AND external_id = $2
-), page AS (
-  SELECT c.*
-  FROM community_contents c
-  JOIN target_space s ON s.community_id = c.community_id
-  WHERE $3::bigint IS NULL
-     OR (c.published_at, c.content_id) < (
-       SELECT published_at, content_id FROM community_contents WHERE content_id = $3
-     )
-  ORDER BY c.published_at DESC NULLS LAST, c.content_id DESC
-  LIMIT $4
-)
-SELECT
-  p.content_id,
-  p.author_name,
-  p.published_at::text,
-  p.published_at_raw,
-  p.content_type,
-  p.body_text,
-  p.body_blocks,
-  p.crawl_status,
-  COALESCE(
-    jsonb_agg(jsonb_build_object(
-      'resource_id', r.resource_id,
-      'ordinal', r.ordinal,
-      'resource_kind', r.resource_kind,
-      'display_name', r.display_name,
-      'content_type', r.content_type,
-      'byte_size', r.byte_size,
-      'sha256', r.sha256,
-      'oss_uri', r.oss_uri,
-      'access_state', r.access_state
-    ) ORDER BY r.ordinal) FILTER (WHERE r.resource_id IS NOT NULL),
-    '[]'::jsonb
-  ) AS resources
-FROM page p
-LEFT JOIN community_content_resources r ON r.content_id = p.content_id
-GROUP BY
-  p.content_id,
-  p.author_name,
-  p.published_at,
-  p.published_at_raw,
-  p.content_type,
-  p.body_text,
-  p.body_blocks,
-  p.crawl_status
-ORDER BY p.published_at DESC NULLS LAST, p.content_id DESC
-"#,
-                &[&source, &external_id, &before_content_id, &limit],
-            )
-            .await
-            .map_err(|err| {
-                HoneError::Config(format!("Postgres community timeline 读取失败: {err}"))
-            })?;
-
-        rows.into_iter()
-            .map(|row| {
-                let resources: serde_json::Value = row.get(8);
-                Ok(CloudCommunityContentRecord {
-                    content_id: row.get(0),
-                    author_name: row.get(1),
-                    published_at: row.get(2),
-                    published_at_raw: row.get(3),
-                    content_type: row.get(4),
-                    body_text: row.get(5),
-                    body_blocks: row.get(6),
-                    crawl_status: row.get(7),
-                    resources: serde_json::from_value(resources)
-                        .map_err(|err| HoneError::Serialization(err.to_string()))?,
-                })
-            })
-            .collect()
+        query_community_contents_with_client(
+            client.as_ref(),
+            source,
+            external_id,
+            before_content_id,
+            limit,
+        )
+        .await
     }
 
     pub async fn get_community_resource(
@@ -4681,6 +4914,16 @@ mod tests {
     use bytes::BytesMut;
     use tokio_postgres::types::Json;
     use tokio_postgres::types::{ToSql, Type};
+
+    #[test]
+    fn community_publish_lock_key_is_stable_and_scoped() {
+        assert_eq!(
+            community_publish_lock_name("zsxq", "51115212285814").expect("valid lock key"),
+            "hone:community-publish:zsxq:51115212285814"
+        );
+        assert!(community_publish_lock_name("zsxq", "../other").is_err());
+        assert!(community_publish_lock_name("", "51115212285814").is_err());
+    }
 
     #[test]
     fn runtime_role_defaults_to_all() {

@@ -192,6 +192,7 @@
   - Rust 编译检查（`cargo check --workspace --all-targets --exclude hone-desktop --exclude hone-user-app`）
   - Rust 测试（`cargo test --workspace --all-targets --exclude hone-desktop --exclude hone-user-app`）
   - 前端单元测试（`bun run test:web`）
+  - Public Community Edge Worker 类型检查与单元测试（`cd workers/public-community-edge && bun run typecheck && bun run test`）
   - CI-safe 回归脚本（`bash tests/regression/run_ci.sh`）
 - 任何需要外部账号凭证的检查都必须放到 `tests/regression/manual/`，不阻塞主干合并
 - `hone-desktop` 依赖桌面 sidecar 资源与打包环境，`hone-user-app` 是 macOS 专用远程用户端；两者都不属于默认 Linux PR / push 逻辑门禁，相关检查保留在各自的桌面构建或 release 流程中处理

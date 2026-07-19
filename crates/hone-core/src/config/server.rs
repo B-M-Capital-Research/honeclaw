@@ -375,6 +375,80 @@ pub struct CloudConfig {
     pub postgres: PostgresConfig,
     #[serde(default)]
     pub oss: OssConfig,
+    #[serde(default)]
+    pub community_delivery: CommunityDeliveryConfig,
+}
+
+/// Opt-in delivery controls for the public community edge path.
+///
+/// The legacy backend remains authoritative unless operators explicitly move
+/// this setting away from `off`. The signing secret itself is intentionally
+/// environment-only and is never deserialized from the YAML configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommunityDeliveryConfig {
+    #[serde(default = "default_community_delivery_mode")]
+    pub mode: String,
+    #[serde(default = "default_community_delivery_token_ttl_secs")]
+    pub token_ttl_secs: u64,
+    #[serde(default = "default_community_delivery_secret_env")]
+    pub secret_env: String,
+}
+
+impl Default for CommunityDeliveryConfig {
+    fn default() -> Self {
+        Self {
+            mode: default_community_delivery_mode(),
+            token_ttl_secs: default_community_delivery_token_ttl_secs(),
+            secret_env: default_community_delivery_secret_env(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommunityDeliveryMode {
+    Off,
+    Shadow,
+    Prefer,
+}
+
+impl CommunityDeliveryMode {
+    pub fn from_config_value(raw: &str) -> Self {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "shadow" => Self::Shadow,
+            "prefer" => Self::Prefer,
+            _ => Self::Off,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Shadow => "shadow",
+            Self::Prefer => "prefer",
+        }
+    }
+
+    pub fn issues_edge_session(self) -> bool {
+        matches!(self, Self::Shadow | Self::Prefer)
+    }
+}
+
+impl CommunityDeliveryConfig {
+    pub const MIN_TOKEN_TTL_SECS: u64 = 60;
+    pub const MAX_TOKEN_TTL_SECS: u64 = 3_600;
+
+    pub fn effective_mode(&self) -> CommunityDeliveryMode {
+        CommunityDeliveryMode::from_config_value(&self.mode)
+    }
+
+    pub fn effective_token_ttl_secs(&self) -> u64 {
+        self.token_ttl_secs
+            .clamp(Self::MIN_TOKEN_TTL_SECS, Self::MAX_TOKEN_TTL_SECS)
+    }
+
+    pub fn resolved_secret(&self) -> String {
+        env_value(&self.secret_env)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -740,6 +814,18 @@ fn env_bool(env_name: &str) -> bool {
 
 fn default_cloud_mode() -> String {
     "local".to_string()
+}
+
+fn default_community_delivery_mode() -> String {
+    "off".to_string()
+}
+
+fn default_community_delivery_token_ttl_secs() -> u64 {
+    900
+}
+
+fn default_community_delivery_secret_env() -> String {
+    "HONE_COMMUNITY_EDGE_HMAC_SECRET".to_string()
 }
 
 fn default_database_url_env() -> String {
