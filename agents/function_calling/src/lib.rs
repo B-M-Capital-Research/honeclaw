@@ -37,19 +37,20 @@ const ACTIVE_BUSINESS_FAILURE_RETRY_LIMIT: u32 = 1;
 const AGENT_OVERALL_TIMEOUT_ERROR: &str =
     "agent_timeout: function-calling overall deadline exceeded";
 const AGENT_STEP_TIMEOUT_ERROR: &str = "agent_timeout: function-calling step deadline exceeded";
+const OPEN_AGENT_ENTITY_DISCOVERY_SYSTEM_INSTRUCTION: &str = "【本轮 Agent 工具决策】先完整阅读本轮用户原话，再决定是否调用工具。若问题点名任何公司、证券、基金、指数或加密资产，第一轮先只调用真实工具，不写最终正文：为你识别出的每个点名标的分别并行调用一次 DataFetch search，每个调用都填写互不复用且后续原样复用的 `entity_route`，并填写本次调用自己的 `identity_match`（ticker 用 `exact_symbol`，公司名、中文名或别名用 `name_or_alias`）。不要只处理第一个标的，也不要等服务端按字符串拆分问题。若并非证券/公司研究问题，则按用户实际意图正常处理，不要生造证券实体。";
 const POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION: &str = "【内部研究取证轮】当前已通过 DataFetch 进入金融数据工具链，但证券实体、行情或资产路由证据仍未完整。先由你完整分析用户实际点名的全部公司/证券，不要依赖固定问法扫描器。为每个标的分配一个本轮稳定且互不复用的 `entity_route`（内部短键，不是用户可见结论）；每个标的分别发起一个 search（可在同一轮并行，禁止把多个标的拼成一个 query），并由你依据完整语义在每一次 search 调用里明确填写 call-scoped `identity_match`：query 是 ticker 时用 `exact_symbol`，是公司名、中文名或别名时用 `name_or_alias`；前一次声明不会授权后一次 search，也不要让服务端按大小写或长度猜。后续 refinement、quote、profile/snapshot 与其它该标的调用都原样携带同一路线键。显式 ticker 路线的同代码约束在后续公司名补查中仍持续有效，不能切换成名字里提到该代码的其它产品；有限 provider 分隔写法可等价。若此前调用缺少路线键，补查时重复原 query，或用 `supersedes_query` 逐字指向那次旧 query，以便只迁移该路线。`refines_query` 与 `supersedes_query` 严格互斥，每次 search 最多填写一个：前者只连接同路线的空结果补查，后者只迁移一条漏写路线键的旧 query。对每条路线选中的标准 symbol 执行同代码 quote/profile；crypto 使用 search 返回的结构化 CRYPTO 路由与 crypto_quote，不要求 stock profile。若中文名、别名或代码搜索为空，在同一 `entity_route` 下换用公司正式英文名或标准 ticker 做精确补查；可在 `refines_query` 中逐字填写原始空 query，但不得另建或复用其它实体的路线来抵消。随后按用户原始问题继续取得财务、新闻、网页、公告、持仓或其它业务证据。尽量在同一轮批量或并行调用互不依赖的工具。不得把 data_fetch(search) 或 profile 当成公司关系、事件或因果证据。内部完成信号只是 Agent 自己结束研究的方式，不是服务端事实审查；只有合理取证已完成或来源明确不可得并需披露时才使用。";
-const ACTIVE_RESEARCH_SYSTEM_INSTRUCTION: &str = "【内部研究工具轮】当前已进入金融数据工具链。本轮同时提供真实业务工具和 `finish_research`。请由同一 Agent 继续阅读用户原始问题与本轮真实工具结果：证据不足时调用当前最需要的一个或多个业务工具；合理的研究尝试已经完成，或必要来源已明确不可得并可如实披露时，优先单独调用 `finish_research`，以便直接进入可流式输出的同 Agent 终稿。不要把完成信号与业务工具混用。若 provider 本轮仍以完整自然语言正文结束，该正文就是同一 Agent 的最终回答，服务端会原样采用，不会另行审查、重写或补写，因此必须先完成下方最后一跳自检。实体 search/profile 只证明身份，不证明公司关系；关系、事件和因果结论必须先取得本轮 web/news/公告证据。";
+const ACTIVE_RESEARCH_SYSTEM_INSTRUCTION: &str = "【内部研究工具轮】当前仍是工具轮，同时提供真实业务工具和 `finish_research`。请由同一 Agent 重新阅读完整用户原话与本轮真实工具结果；当前结构状态只覆盖 Agent 已声明的路线，不证明点名实体集合完整、工具调用成功或业务证据充分。证据不足时本轮只调用当前最需要的真实业务工具；合理研究已经完成，或必要来源经实际尝试后明确不可得并可如实披露时，本轮只调用 `finish_research` 进入无工具终稿。不要把完成信号与业务工具混用，也不要在工具轮写最终正文。实体 search/profile 只证明身份，不证明公司关系；关系、事件和因果结论必须先取得本轮 web/news/公告证据。";
 const FINISH_RESEARCH_SYSTEM_INSTRUCTION: &str = "【显式完成后的终稿阶段】Agent 已在同一业务工具循环中显式确认本轮合理的研究与工具尝试完成，现由同一 Agent 和同一上下文进入无工具终稿阶段。这是证据整理而不是新的研究规划：直接组织终稿，不要重新展开工具决策或冗长隐藏推演。只能使用用户请求与此前已成功返回的业务工具结果；`reasoning_content`、隐藏思考、未采用草稿和内部状态文本都不是事实证据。缺失证据应如实披露但不构成拒答。";
 const FINAL_ANSWER_EVIDENCE_CONTRACT: &str = concat!(
     "`reasoning_content`、隐藏思考、未采用草稿、内部状态文本以及模型记忆都不是事实证据，不得从中提取或补齐关系、日期、行情、财务或估值事实。",
     "数据时间只能采用本轮 Session 北京时间；quote 的 provider timestamp 只能写在‘行情口径’里，绝不能冒充数据时间。没有行情证据时仍保留‘行情口径’字段并说明范围，不得伪造报价时间或盘前/盘后时段。",
-    "逐项复核所有公司关系、新闻因果、日期、行情、财务与估值数字：实体 search/profile 只证明标的身份，不证明公司关系；关系、事件与因果结论必须有当前 web/news/公告或工具原文明确支持，并在相关结论旁说明来源名称及其直接支持的有限事实。搜索摘要只能按其字面范围使用；只有二级摘要时应继续找公司公告、监管文件或其它一手来源，若仍不可得则明确披露证据层级。不得把关系标签扩写成来源未明示的权利义务，也不得由交易事实推导排名、最大/唯一、重要性、排他性、保证、优先权、客户集中度或未明示的角色关系。例如，‘采购未使用容量’不能推出‘最大客户’，‘most-favored-nation relationship’不能推出‘保证供货’或‘优先供货’。未找到证据不等于事实不存在；‘无股权关系’、‘不是客户/供应商’、‘没有合同/合作’等否定结论同样必须有明确来源，否则只能说本轮未找到支持该关系的证据。",
+    "逐项复核所有公司关系、新闻因果、日期、行情、财务与估值数字：实体 search/profile 只证明标的身份，不证明公司关系；关系、事件与因果结论必须有当前 web/news/公告或工具原文明确支持，并在相关事实同句或紧邻句末使用本轮工具实际返回的来源标题与原始 URL 做内联引用。URL 只用于定位来源，不证明句中内容；外部事实里的数字、排名或角色、合同权利义务、产品或芯片型号、估值标签都必须直接出现在该 URL 本轮返回的 title/content/snippet 中，否则删除。不得只写来源名、域名或与事实脱节的文末来源清单，也不得使用历史会话或模型记忆中的 URL。基于已核验事实形成的判断必须另起句并以‘推断：’开头。只有二级摘要时应继续找公司公告、监管文件或其它一手来源，若仍不可得则明确披露证据层级。未找到证据不等于事实不存在；否定某种关系同样需要本轮来源直接支持，否则只能披露本轮检索边界。",
     "年度数据不得写成 TTM；单季数据必须标明季度与报告期，年化时必须显示是“单季×4”还是“最近四季求和”及算术、分子分母口径，并披露季节性限制。",
     "未取得净债务或企业价值时不得使用 EV 或 EV/EBITDA 标签，也不得把市值/EBITDA 写成 EV/EBITDA。quote 返回的 PE 未明确标注 forward 时不得称为 Forward PE；已核验期间 EBITDA 为正时不得声称公司需到未来才转正。",
     "没有直接证据与完整输入时，不得给出目标价、概率、仓位比例、止损位或精确支撑位；第三方分析师目标价必须标注为第三方聚合口径与对应时间，不得直接作为交易锚点。",
     "某项证据不可得时，披露缺项并继续完成能够被当前证据支持的分析，不得因此拒绝整个问题。不要提及 finish_research、内部协议、工具循环、终态原因或这条提示。"
 );
-const FINAL_RELATIONSHIP_DELETION_CHECK: &str = "【最后一步：关系结论删除式自检】逐句删除任何没有被本轮来源正文或摘要直接明示的公司关系表述。来源标题、‘合作’一词、采购事实或模型常识都不能单独证明：最大/之一、首选、核心客户、股权存在或不存在、交叉持股、独家、保证/优先供货、客户集中度、具体芯片型号、合同金额或双方角色。若当前来源只直接支持‘双方宣布加强合作’或‘关系预计扩展’，就只写到这个范围；不得为了显得完整而补齐更具体的故事。";
+const FINAL_RELATIONSHIP_DELETION_CHECK: &str = "【最后一步：逐句建立关系 claim ledger】每条外部关系事实都必须能逐字指向本轮同一条搜索结果的 title/content/snippet，并在该事实旁内联标注这条结果的标题与原始 URL；URL 中没有直接出现的数字、关系方向、排名、角色、权利义务、产品型号或估值标签一律删除。任何超出来源字面陈述的判断另起句并以‘推断：’开头；无法建立这种一一对应时，只披露本轮来源实际写到的有限范围。";
 
 #[async_trait]
 pub trait FunctionCallingStreamObserver: Send + Sync {
@@ -176,6 +177,83 @@ struct ResearchEvidenceLedger {
 impl ResearchEvidenceLedger {
     fn active_route_keys(&self) -> Vec<String> {
         self.identity_routes.keys().cloned().collect()
+    }
+
+    fn agent_guidance_summary(&self) -> String {
+        if self.identity_routes.is_empty() {
+            return "尚未建立任何证券实体路线：重新阅读完整用户原话，并为每个点名标的分别执行带 entity_route 与 identity_match 的 search。"
+                .to_string();
+        }
+
+        self.identity_routes
+            .iter()
+            .map(|(key, route)| {
+                let mut pending = Vec::new();
+                if route.is_covered() {
+                    pending.push("结构调用已按同一候选代码成对尝试；成功、空结果、失败与证据质量仍须读取 tool result 判断");
+                } else if route.has_bounded_no_coverage() {
+                    pending.push("有界无覆盖调用已尝试；须读取 tool result 并在终稿准确披露具体缺口");
+                } else {
+                    if !route.explicit {
+                        pending.push("需要用显式 entity_route 绑定该 search（必要时用逐字 supersedes_query）");
+                    }
+                    if route.search_attempts == 0
+                        || (route.explicit && !route.identity_match_declared)
+                    {
+                        pending.push("缺少带 call-scoped identity_match 的有效 search");
+                    } else if route.candidates.is_empty() {
+                        pending.push("当前 search 无有效候选，需要在同一路线 refinement 或完成有界无覆盖尝试");
+                    } else {
+                        let has_candidate_quote = route.quote_symbols.iter().any(|symbol| {
+                            route.symbol_matches_constraint(symbol)
+                                && route.candidates.iter().any(|candidate| {
+                                    provider_symbols_equivalent(candidate, symbol)
+                                })
+                        });
+                        let has_candidate_asset_route =
+                            route.asset_route_symbols.iter().any(|symbol| {
+                                route.symbol_matches_constraint(symbol)
+                                    && route.candidates.iter().any(|candidate| {
+                                        provider_symbols_equivalent(candidate, symbol)
+                                    })
+                            });
+                        if !has_candidate_quote {
+                            pending.push("缺同路线同代码 quote");
+                        }
+                        if !has_candidate_asset_route {
+                            pending.push("缺同路线同代码 profile/snapshot（crypto 用 crypto_quote）");
+                        }
+                        if has_candidate_quote
+                            && has_candidate_asset_route
+                            && !route.is_covered()
+                        {
+                            pending.push("quote 与 profile/asset-route 尚未落在同一候选代码");
+                        }
+                    }
+                }
+
+                let candidates = serde_json::to_string(
+                    &route.candidates.iter().cloned().collect::<Vec<_>>(),
+                )
+                .unwrap_or_else(|_| "[]".to_string());
+                let state = pending.join("；");
+                let route_label = if let Some(raw_route) = key.strip_prefix("route:") {
+                    format!(
+                        "entity_route={}",
+                        serde_json::to_string(raw_route).unwrap_or_else(|_| "\"\"".to_string())
+                    )
+                } else if let Some(query) = key.strip_prefix("query:") {
+                    format!(
+                        "未绑定的 provisional query={}",
+                        serde_json::to_string(query).unwrap_or_else(|_| "\"\"".to_string())
+                    )
+                } else {
+                    "未知内部路线".to_string()
+                };
+                format!("- {route_label}: candidates={candidates}；{state}")
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     fn register_pending_provisional_identity_query(&mut self, tool_call: &ToolCall) {
@@ -2036,24 +2114,16 @@ fn terminal_synthesis_prompt(required_prefix: Option<&str>) -> String {
     )
 }
 
-fn active_business_turn_prompt(
-    evidence_floor_satisfied: bool,
-    required_prefix: Option<&str>,
-) -> String {
+fn active_business_turn_prompt(evidence_floor_satisfied: bool, route_guidance: &str) -> String {
     if evidence_floor_satisfied {
         format!(
-            "【本轮 Agent 最后一跳提醒】工具仍然可用：若当前证据还不足，继续调用真实业务工具；若研究已完成，优先单独调用 `finish_research` 进入可流式输出的同 Agent 终稿。若 provider 仍自然输出完整正文，该正文也会原样作为唯一终稿。无论采用哪种完成方式，最终正文都必须遵守同一份契约：\n{}\n{}\n{}",
-            exact_prefix_instruction(required_prefix),
-            FINAL_ANSWER_EVIDENCE_CONTRACT,
-            FINAL_RELATIONSHIP_DELETION_CHECK
+            "【本轮仍是工具轮，不写终稿】下面仅是 Agent 已声明路线的结构调用状态，不证明用户点名实体已经完整、工具调用成功或问题所需业务证据充分：\n{}\n重新阅读完整用户原话与每条 tool result。若仍需更多业务证据，本轮只调用所需真实工具；若合理取证已经完成，本轮唯一动作是单独调用 `finish_research({{}})`。不要在这个仍提供工具的轮次输出数据时间、摘要、解释或最终正文；完成信号后的无工具阶段会生成唯一可见终稿。",
+            route_guidance
         )
     } else {
         format!(
-            "【本轮 Agent 取证提醒】{}\n服务端不会审查、拒绝、改写或补写一段完整自然语言正文；若 provider 未按工具选择继续取证而在本轮自然结束，该正文会原样成为最终回答，因此仍必须遵守以下最终契约：\n{}\n{}\n{}",
-            POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION,
-            exact_prefix_instruction(required_prefix),
-            FINAL_ANSWER_EVIDENCE_CONTRACT,
-            FINAL_RELATIONSHIP_DELETION_CHECK
+            "【本轮只取证，不作答】下面仅是 Agent 已声明路线的结构调用状态，不证明用户点名实体已经完整、工具调用成功或问题所需业务证据充分：\n{}\n重新阅读完整用户原话。本轮必须只返回一个或多个真实业务工具调用，禁止输出数据时间、摘要、解释、草稿或最终正文。先补齐上面逐路线列出的 search / quote / profile（crypto 用 crypto_quote）缺项，并按用户原始问题补关系、财务、新闻、网页或公告证据。每个 search 都重新填写本次调用自己的 entity_route 与 identity_match；关系问题的 Web 结果只是摘要证据，不能靠模型记忆补故事。完成这些调用并读取结果后，再由下一轮决定继续取证还是提交 finish_research。",
+            route_guidance
         )
     }
 }
@@ -2360,10 +2430,14 @@ impl Agent for FunctionCallingAgent {
             } else {
                 ToolChoiceMode::Auto
             };
-            let round_instruction = active_business_round.then_some(if finish_research_available {
-                ACTIVE_RESEARCH_SYSTEM_INSTRUCTION
+            let round_instruction = Some(if active_business_round {
+                if finish_research_available {
+                    ACTIVE_RESEARCH_SYSTEM_INSTRUCTION
+                } else {
+                    POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION
+                }
             } else {
-                POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION
+                OPEN_AGENT_ENTITY_DISCOVERY_SYSTEM_INSTRUCTION
             });
             let mut messages = if active_business_round {
                 // Once current-turn DataFetch has identified a finance path,
@@ -2387,7 +2461,7 @@ impl Agent for FunctionCallingAgent {
                     role: "user".to_string(),
                     content: Some(active_business_turn_prompt(
                         evidence_floor_satisfied,
-                        required_final_answer_prefix.as_deref(),
+                        &research_evidence.agent_guidance_summary(),
                     )),
                     reasoning_content: None,
                     tool_calls: None,
@@ -3696,7 +3770,7 @@ mod tests {
     }
 
     #[test]
-    fn direct_final_and_explicit_finish_share_exact_final_contract() {
+    fn tool_rounds_defer_prose_and_explicit_finish_owns_exact_final_contract() {
         let runtime_input = concat!(
             "【Session 上下文】\n当前时间：2026-07-19 09:31:42 (北京时间)\n\n",
             "【本轮用户输入】\ncrwv和英伟达有什么关系\n\n",
@@ -3706,30 +3780,133 @@ mod tests {
         let prefix = exact_final_answer_prefix(runtime_input).expect("exact runtime prefix");
         assert_eq!(prefix, "数据时间：北京时间 2026-07-19 09:31；行情口径：");
 
-        let direct = active_business_turn_prompt(true, Some(&prefix));
-        let evidence_pending = active_business_turn_prompt(false, Some(&prefix));
+        let route_guidance = "- entity_route=\"coreweave\": candidates=CRWV；结构取证已覆盖";
+        let direct = active_business_turn_prompt(true, route_guidance);
+        let evidence_pending = active_business_turn_prompt(false, route_guidance);
         let explicit = terminal_synthesis_prompt(Some(&prefix));
+        assert!(direct.contains("本轮仍是工具轮，不写终稿"));
+        assert!(direct.contains("finish_research({})"));
+        assert!(direct.contains(route_guidance));
+        assert!(evidence_pending.contains("本轮只取证，不作答"));
+        assert!(evidence_pending.contains("本轮必须只返回一个或多个真实业务工具调用"));
+        assert!(evidence_pending.contains("禁止输出数据时间、摘要、解释、草稿或最终正文"));
+        assert!(evidence_pending.contains(route_guidance));
         for required in [
             prefix.as_str(),
             "quote 的 provider timestamp 只能写在‘行情口径’里",
-            "不得把关系标签扩写成来源未明示的权利义务",
-            "不得由交易事实推导排名",
-            "‘采购未使用容量’不能推出‘最大客户’",
-            "‘most-favored-nation relationship’不能推出‘保证供货’或‘优先供货’",
-            "逐句删除任何没有被本轮来源正文或摘要直接明示的公司关系表述",
-            "股权存在或不存在",
+            "来源标题与原始 URL 做内联引用",
+            "URL 只用于定位来源，不证明句中内容",
+            "title/content/snippet",
+            "不得使用历史会话或模型记忆中的 URL",
+            "以‘推断：’开头",
+            "否定某种关系同样需要本轮来源直接支持",
+            "逐句建立关系 claim ledger",
             "披露缺项并继续完成能够被当前证据支持的分析",
         ] {
-            assert!(direct.contains(required), "direct missing {required}");
-            assert!(
-                evidence_pending.contains(required),
-                "evidence-pending direct final missing {required}"
-            );
             assert!(explicit.contains(required), "terminal missing {required}");
         }
+        assert!(!direct.contains(prefix.as_str()));
+        assert!(!evidence_pending.contains(prefix.as_str()));
+        assert!(!direct.contains("不得由交易事实推导排名"));
+        assert!(!evidence_pending.contains("不得由交易事实推导排名"));
         assert!(!direct.contains("数据时间：北京时间 2026-07-18 04:00；"));
         assert!(!evidence_pending.contains("数据时间：北京时间 2026-07-18 04:00；"));
         assert!(!explicit.contains("数据时间：北京时间 2026-07-18 04:00；"));
+    }
+
+    #[test]
+    fn route_guidance_uses_raw_agent_keys_and_reports_same_symbol_gaps() {
+        let mut ledger = ResearchEvidenceLedger::default();
+        ledger.identity_routes.insert(
+            "route:coreweave".to_string(),
+            ResearchIdentityRouteEvidence {
+                explicit: true,
+                identity_match_declared: true,
+                search_attempts: 1,
+                candidates: ["CRWV".to_string(), "CWY".to_string()]
+                    .into_iter()
+                    .collect(),
+                quote_symbols: ["CRWV".to_string()].into_iter().collect(),
+                asset_route_symbols: ["CWY".to_string()].into_iter().collect(),
+                ..ResearchIdentityRouteEvidence::default()
+            },
+        );
+        ledger.identity_routes.insert(
+            "query:Ford".to_string(),
+            ResearchIdentityRouteEvidence {
+                search_attempts: 1,
+                candidates: ["F".to_string()].into_iter().collect(),
+                ..ResearchIdentityRouteEvidence::default()
+            },
+        );
+        ledger.identity_routes.insert(
+            "route:missing".to_string(),
+            ResearchIdentityRouteEvidence {
+                explicit: true,
+                identity_match_declared: true,
+                search_attempts: 2,
+                empty_search_results: 2,
+                post_identity_attempts: 1,
+                ..ResearchIdentityRouteEvidence::default()
+            },
+        );
+
+        let summary = ledger.agent_guidance_summary();
+
+        assert!(summary.contains("entity_route=\"coreweave\""));
+        assert!(!summary.contains("entity_route=\"route:coreweave\""));
+        assert!(summary.contains("quote 与 profile/asset-route 尚未落在同一候选代码"));
+        assert!(summary.contains("未绑定的 provisional query=\"Ford\""));
+        assert!(summary.contains("需要用显式 entity_route 绑定该 search"));
+        assert!(summary.contains("entity_route=\"missing\""));
+        assert!(summary.contains("有界无覆盖调用已尝试"));
+        let missing_line = summary
+            .lines()
+            .find(|line| line.contains("entity_route=\"missing\""))
+            .expect("bounded no-coverage route line");
+        assert!(!missing_line.contains("需要在同一路线 refinement"));
+    }
+
+    #[test]
+    fn route_guidance_replays_crwv_nvidia_canary_missing_calls_concretely() {
+        let mut ledger = ResearchEvidenceLedger::default();
+        ledger.identity_routes.insert(
+            "route:coreweave".to_string(),
+            ResearchIdentityRouteEvidence {
+                explicit: true,
+                identity_match_declared: true,
+                search_attempts: 1,
+                candidates: ["CRWV".to_string()].into_iter().collect(),
+                quote_symbols: ["CRWV".to_string()].into_iter().collect(),
+                ..ResearchIdentityRouteEvidence::default()
+            },
+        );
+        ledger.identity_routes.insert(
+            "route:nvidia".to_string(),
+            ResearchIdentityRouteEvidence {
+                explicit: true,
+                identity_match_declared: true,
+                search_attempts: 1,
+                candidates: ["NVDA".to_string()].into_iter().collect(),
+                ..ResearchIdentityRouteEvidence::default()
+            },
+        );
+
+        let summary = ledger.agent_guidance_summary();
+        let crwv = summary
+            .lines()
+            .find(|line| line.contains("entity_route=\"coreweave\""))
+            .expect("CRWV route");
+        let nvidia = summary
+            .lines()
+            .find(|line| line.contains("entity_route=\"nvidia\""))
+            .expect("NVIDIA route");
+
+        assert!(!crwv.contains("缺同路线同代码 quote"));
+        assert!(crwv.contains("缺同路线同代码 profile/snapshot"));
+        assert!(nvidia.contains("缺同路线同代码 quote"));
+        assert!(nvidia.contains("缺同路线同代码 profile/snapshot"));
+        assert!(!ledger.evidence_floor_satisfied(true));
     }
 
     #[test]
@@ -6022,6 +6199,7 @@ mod tests {
         let delivered_events = llm.delivered_events.clone();
         let seen_tool_counts = llm.seen_tool_counts.clone();
         let seen_messages = llm.seen_messages.clone();
+        let seen_tool_choice_modes = llm.seen_tool_choice_modes.clone();
         let audit = Arc::new(RecordingAuditSink::default());
         let observer = Arc::new(RecordingStreamObserver::default());
         let mut registry = ToolRegistry::new();
@@ -6070,7 +6248,26 @@ mod tests {
                 .iter()
                 .any(|message| message.content.as_deref() == Some("provider bypass draft"))
         );
-        assert_eq!(seen_messages.lock().expect("stream messages lock").len(), 2);
+        let requests = seen_messages.lock().expect("stream messages lock");
+        assert_eq!(requests.len(), 2);
+        let pending_reminder = requests
+            .last()
+            .and_then(|messages| messages.last())
+            .and_then(|message| message.content.as_deref())
+            .expect("evidence-pending reminder");
+        assert!(pending_reminder.contains("本轮只取证，不作答"));
+        assert!(pending_reminder.contains("本轮必须只返回一个或多个真实业务工具调用"));
+        assert!(pending_reminder.contains("禁止输出数据时间、摘要、解释、草稿或最终正文"));
+        assert!(!pending_reminder.contains("自然输出完整正文"));
+        assert!(!pending_reminder.contains("该正文会原样成为最终回答"));
+        assert_eq!(
+            seen_tool_choice_modes
+                .lock()
+                .expect("tool choice modes lock")
+                .as_slice(),
+            [ToolChoiceMode::Auto, ToolChoiceMode::Required]
+        );
+        drop(requests);
         let records = audit.records.lock().expect("audit records lock");
         let direct_finals = records
             .iter()
@@ -6230,20 +6427,16 @@ mod tests {
             .last()
             .and_then(|message| message.content.as_deref())
             .expect("last-mile reminder");
-        assert!(last_reminder.contains(
-            "第一条非空行必须逐字以 `数据时间：北京时间 2026-07-19 09:31；行情口径：` 开头"
-        ));
-        assert!(last_reminder.contains("不得由交易事实推导排名"));
+        assert!(last_reminder.contains("本轮仍是工具轮，不写终稿"));
+        assert!(last_reminder.contains("finish_research({})"));
+        assert!(!last_reminder.contains("数据时间：北京时间 2026-07-19 09:31；行情口径："));
         let serialized = serde_json::to_string(direct_request).expect("serialize direct request");
         assert!(serialized.contains("历史用户请求，仅用于理解本轮指代"));
         assert!(!serialized.contains("15 USD"));
         assert!(serialized.contains("CoreWeave NVIDIA relationship filing"));
         assert!(serialized.contains("$6.3B of unused capacity"));
         assert!(serialized.contains("most-favored-nation relationship"));
-        assert!(serialized.contains("‘采购未使用容量’不能推出‘最大客户’"));
-        assert!(
-            serialized.contains("‘most-favored-nation relationship’不能推出‘保证供货’或‘优先供货’")
-        );
+        assert!(!last_reminder.contains("若 provider 仍自然输出完整正文"));
     }
 
     #[tokio::test]
@@ -6483,7 +6676,10 @@ mod tests {
             "CoreWeave NVIDIA relationship filing",
             "$6.3B of unused capacity",
             "most-favored-nation relationship",
-            "‘采购未使用容量’不能推出‘最大客户’",
+            "https://example.test/capacity",
+            "https://example.test/mfn",
+            "逐句建立关系 claim ledger",
+            "URL 只用于定位来源，不证明句中内容",
         ] {
             assert!(
                 terminal_transcript.contains(required),

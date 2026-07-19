@@ -1644,10 +1644,10 @@ Use this file as the historical entry point for completed or paused work that sh
 
 - Status: done
 - Date: 2026-07-18
-- Plan: `docs/current-plans/ticker-resolution-architecture.md` (umbrella plan remains active for the separate scheduler/entity P2)
+- Plan: `docs/current-plans/ticker-resolution-architecture.md` (this exact-ticker/CWY subrepair is done; Agent research-loop content acceptance and scheduler/entity P2 remain active)
 - Handoff: `docs/handoffs/2026-07-18-crwv-entity-resolution-repair.md`
 - Decision / ADR: `docs/decisions.md#d-2026-07-17-04-resolve-securities-through-a-span-aware-exact-first-pipeline`
 - Related PRs / commits: `4d419770`, `b87c4cb7`, `2d6b4be8`, `8d4fcdd6`, `fcca5a35`, `54b14068`
 - Related runbooks / regressions: `tests/regression/ci/test_finance_automation_contracts.sh`, `tests/regression/manual/test_entity_search_live.sh`, `docs/runbooks/backend-deployment.md`
-- Current conclusion: the provider was healthy. Exact ticker, genuine natural-name conflict, embedded-product reference, iterative search refinement, and unlinked translated aliases are now handled without a service-owned publication ban. `fcca5a35`/`54b14068` removed the fixed refusal and first-group freeze; both fresh CRWV+NBIS phrasings passed production with verified `73.21`/`177.71`, one answer/terminal, two-message history, and zero active chats. The umbrella plan remains active only for the separate scheduler task-prose P2 and first-visible-text follow-up.
+- Current conclusion: the provider was healthy. Exact ticker, genuine natural-name conflict, embedded-product reference, iterative search refinement, and unlinked translated aliases are handled without a service-owned publication ban. `fcca5a35`/`54b14068` removed the fixed refusal and first-group freeze; both fresh CRWV+NBIS phrasings passed with verified `73.21`/`177.71`, one answer/terminal, two-message history, and zero active chats. This archived entry closes only that exact-ticker/CWY subrepair. The same umbrella plan is active again for Agent research-loop/content acceptance after later CRWV/NVIDIA canaries, in addition to scheduler task-prose P2 and first-visible latency.
 - Next entry point: `docs/handoffs/2026-07-18-crwv-entity-resolution-repair.md`; remaining scheduler false positives stay in `docs/bugs/scheduler_finance_entity_guard_misclassifies_instruction_words.md`.

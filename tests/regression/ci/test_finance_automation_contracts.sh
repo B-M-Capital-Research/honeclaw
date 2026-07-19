@@ -200,13 +200,13 @@ else
   record fail "12.full-prompt-and-safe-runner" "full prompt or strict actor runner regressed"
 fi
 
-if contains '服务端不会在成功后追加任何用户可见内容、改写答案、重跑主 Agent 或否决这个成功答案' "$SOUL" && contains '必须由主 Agent 自己把“数据时间：北京时间' "$PROMPT_FILE" && contains 'pub answer_time_beijing: String' "$PROMPT_FILE" && contains 'answer_time_beijing: now.format("%Y-%m-%d %H:%M").to_string()' "$PROMPT_FILE" && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" == *'answer_time: &str'* ]] && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" != *'hone_core::beijing_now()'* ]] && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" == *'与上方 Session 上下文来自同一次时钟读取'* ]] && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" == *'【本轮最终回答契约：由主 Agent 一次完成】'* ]] && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" == *'第一可见字符必须是“数”'* ]] && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" == *'禁止在该行之前输出 `---`、Markdown 标题'* ]] && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" == *'否则忽略本节格式，正常回答用户原问题'* ]] && contains 'After success, the service will not append any user-visible content, rewrite the answer, rerun the main Agent, or reject that successful answer' "$STOCK_RESEARCH" && contains 'Time anchor first and Interactive answer ownership' "$MARKET_ANALYSIS" && contains 'first visible line' "$MARKET_ANALYSIS" && ! contains 'server-provided' "$STOCK_RESEARCH" && ! contains 'server-owned' "$STOCK_RESEARCH" && ! contains 'server-provided' "$MARKET_ANALYSIS" && ! contains 'server-owned' "$MARKET_ANALYSIS"; then
+if contains '服务端不会在成功后追加任何用户可见内容、改写答案、重跑主 Agent 或否决这个成功答案' "$SOUL" && contains '必须由主 Agent 自己把“数据时间：北京时间' "$PROMPT_FILE" && contains 'pub answer_time_beijing: String' "$PROMPT_FILE" && contains 'answer_time_beijing: now.format("%Y-%m-%d %H:%M").to_string()' "$PROMPT_FILE" && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" == *'answer_time: &str'* ]] && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" != *'hone_core::beijing_now()'* ]] && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" == *'与上方 Session 上下文来自同一次时钟读取'* ]] && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" == *'【本轮最终回答契约：由主 Agent 一次完成】'* ]] && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" == *'第一可见字符必须是“数”'* ]] && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" == *'禁止在该行之前输出 `---`、Markdown 标题'* ]] && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" == *'否则忽略本节格式，正常回答用户原问题'* ]] && contains 'the service will not append, rewrite, rerun, or reject it' "$STOCK_RESEARCH" && contains 'Time anchor first and Interactive answer ownership' "$MARKET_ANALYSIS" && contains 'first visible line' "$MARKET_ANALYSIS" && ! contains 'server-provided' "$STOCK_RESEARCH" && ! contains 'server-owned' "$STOCK_RESEARCH" && ! contains 'server-provided' "$MARKET_ANALYSIS" && ! contains 'server-owned' "$MARKET_ANALYSIS"; then
   record success "18.agent-owned-time-first" "one Session timestamp anchors the main Agent's time-first answer and no post-processor owns that line"
 else
   record fail "18.agent-owned-time-first" "time-first ownership can regress to a server-authored prefix or disappear from a canonical prompt layer"
 fi
 
-if contains '证券实体发现是不可跳过的证据阶段' "$SOUL" && contains '用户直接输入 `NBIS`、`INTL`、`RMBS` 这类股票代码是正常用法' "$SOUL" && contains 'A plain ticker such as `NBIS`, `INTL`, `RMBS`, or `CRWV` is normal user input' "$STOCK_RESEARCH" && contains 'identity_match="exact_symbol"' "$STOCK_RESEARCH" && contains 'An exact-symbol route keeps its symbol constraint' "$STOCK_RESEARCH" && contains 'agent_discovery_query_is_explicit_symbol' "$INVESTMENT_GUARD" && contains 'missing_required_agent_seed_symbols' "$INVESTMENT_GUARD" && contains 'provider_lookup_variants' "$INVESTMENT_GUARD"; then
+if contains '证券实体发现不可跳过，须在主 agent loop 内完成' "$SOUL" && contains '用户直接输入 `NBIS`、`INTL`、`RMBS` 这类股票代码是正常用法' "$SOUL" && contains 'A plain ticker such as `NBIS`, `INTL`, `RMBS`, or `CRWV` is normal user input' "$STOCK_RESEARCH" && contains 'identity_match="exact_symbol"' "$STOCK_RESEARCH" && contains 'An exact-symbol route keeps its symbol constraint' "$STOCK_RESEARCH" && contains 'agent_discovery_query_is_explicit_symbol' "$INVESTMENT_GUARD" && contains 'missing_required_agent_seed_symbols' "$INVESTMENT_GUARD" && contains 'provider_lookup_variants' "$INVESTMENT_GUARD"; then
   record success "19.plain-ticker-agent-discovery" "plain tickers enter the open Agent loop, preserve exact-symbol lookup, and cannot be silently omitted from the observed search trace"
 else
   record fail "19.plain-ticker-agent-discovery" "the prompt or runtime can regress into rejecting, rewriting, guessing, or silently omitting ordinary ticker requests"
@@ -266,7 +266,7 @@ else
   record fail "28.sole-finish-authorized-terminal-stream" "a non-finish path can again authorize terminal synthesis, or research can regress into a separate control model, speculative draft exposure, prefix rewrite, or retry after visible output"
 fi
 
-if contains 'struct ResearchEvidenceLedger' "$FUNCTION_AGENT" && contains 'identity_only_attempts: u32' "$FUNCTION_AGENT" && contains 'post_identity_quote_attempts: u32' "$FUNCTION_AGENT" && contains 'post_identity_asset_route_attempts: u32' "$FUNCTION_AGENT" && contains 'fn completion_signal_available' "$FUNCTION_AGENT" && contains 'fn evidence_floor_satisfied' "$FUNCTION_AGENT" && contains 'unsearched_symbol_scoped_data_fetch_does_not_unlock_finish' "$FUNCTION_AGENT" && contains 'pre_search_quote_does_not_satisfy_post_search_floor' "$FUNCTION_AGENT" && contains 'broad_market_data_fetch_can_finish_without_security_search' "$FUNCTION_AGENT" && contains 'crypto_search_plus_crypto_quote_unlocks_without_stock_profile' "$FUNCTION_AGENT" && contains 'web_only_after_identity_search_does_not_unlock_finish' "$FUNCTION_AGENT" && contains 'natural_direct_final_before_finish_signal_is_preserved_without_service_veto' "$FUNCTION_AGENT" && contains 'it is never a service-side publication' "$FUNCTION_AGENT" && contains 'if active_business_round && !finish_research_available' "$FUNCTION_AGENT" && contains 'POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION' "$FUNCTION_AGENT" && contains 'ACTIVE_RESEARCH_SYSTEM_INSTRUCTION' "$FUNCTION_AGENT" && contains 'ToolChoiceMode::Required' "$FUNCTION_AGENT" && contains 'tool_choice_mode == ToolChoiceMode::Required' "$OPENROUTER" && contains 'tool_choice_mode == ToolChoiceMode::Required' "$OPENAI_COMPATIBLE" && contains '必要来源已明确不可得并可如实披露' "$FUNCTION_AGENT" && contains '未明确标注 forward 时不得称为 Forward PE' "$FUNCTION_AGENT" && contains '关系、事件与估值证据纪律' "$PROMPT_FILE" && contains '搜索摘要明确陈述的有限事实只能按原范围使用' "$SOUL" && contains '未取得资产负债表中的现金、债务或可直接使用的企业价值' "$SOUL" && contains 'this metadata does not establish a market session' "$DATA_FETCH" && contains '只有 `extended_hours` 的规范化 bar 可以核验美股扩展时段' "$DATA_FETCH" && contains '年度数据不得写成 TTM' "$FUNCTION_AGENT" && contains '输入不完整时使用一种可严谨计算的方法并明确披露缺项，禁止补数' "$INVESTMENT_GUARD" && contains 'disclosed_valuation_gap' "$INVESTMENT_GUARD"; then
+if contains 'struct ResearchEvidenceLedger' "$FUNCTION_AGENT" && contains 'identity_only_attempts: u32' "$FUNCTION_AGENT" && contains 'post_identity_quote_attempts: u32' "$FUNCTION_AGENT" && contains 'post_identity_asset_route_attempts: u32' "$FUNCTION_AGENT" && contains 'fn completion_signal_available' "$FUNCTION_AGENT" && contains 'fn evidence_floor_satisfied' "$FUNCTION_AGENT" && contains 'unsearched_symbol_scoped_data_fetch_does_not_unlock_finish' "$FUNCTION_AGENT" && contains 'pre_search_quote_does_not_satisfy_post_search_floor' "$FUNCTION_AGENT" && contains 'broad_market_data_fetch_can_finish_without_security_search' "$FUNCTION_AGENT" && contains 'crypto_search_plus_crypto_quote_unlocks_without_stock_profile' "$FUNCTION_AGENT" && contains 'web_only_after_identity_search_does_not_unlock_finish' "$FUNCTION_AGENT" && contains 'natural_direct_final_before_finish_signal_is_preserved_without_service_veto' "$FUNCTION_AGENT" && contains 'it is never a service-side publication' "$FUNCTION_AGENT" && contains 'if active_business_round && !finish_research_available' "$FUNCTION_AGENT" && contains 'POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION' "$FUNCTION_AGENT" && contains 'ACTIVE_RESEARCH_SYSTEM_INSTRUCTION' "$FUNCTION_AGENT" && contains 'ToolChoiceMode::Required' "$FUNCTION_AGENT" && contains 'tool_choice_mode == ToolChoiceMode::Required' "$OPENROUTER" && contains 'tool_choice_mode == ToolChoiceMode::Required' "$OPENAI_COMPATIBLE" && contains '必要来源经实际尝试后明确不可得并可如实披露' "$FUNCTION_AGENT" && contains '未明确标注 forward 时不得称为 Forward PE' "$FUNCTION_AGENT" && contains '关系、事件与估值证据纪律' "$PROMPT_FILE" && contains '搜索摘要明确陈述的有限事实只能按原范围使用' "$SOUL" && contains '未取得资产负债表中的现金、债务或可直接使用的企业价值' "$SOUL" && contains 'this metadata does not establish a market session' "$DATA_FETCH" && contains '只有 `extended_hours` 的规范化 bar 可以核验美股扩展时段' "$DATA_FETCH" && contains '年度数据不得写成 TTM' "$FUNCTION_AGENT" && contains '输入不完整时使用一种可严谨计算的方法并明确披露缺项，禁止补数' "$INVESTMENT_GUARD" && contains 'disclosed_valuation_gap' "$INVESTMENT_GUARD"; then
   record success "29.same-agent-evidence-stage-advisory" "the Agent receives entity/quote/asset-route sequencing, while the structural ledger stays advisory and never vetoes a complete natural answer"
 else
   record fail "29.same-agent-evidence-stage-advisory" "security sequencing can regress into a no-search/crypto dead end, or the runtime can again turn its ledger into a publication veto"
@@ -296,8 +296,8 @@ else
   record fail "33.compatible-clean-eof-terminal" "clean provider EOF can regress into a false failure, or incomplete/error streams can be accepted as complete"
 fi
 
-if contains 'const FINAL_ANSWER_EVIDENCE_CONTRACT' "$FUNCTION_AGENT" && contains 'fn exact_final_answer_prefix' "$FUNCTION_AGENT" && contains 'fn active_business_turn_prompt' "$FUNCTION_AGENT" && contains 'terminal_synthesis_prompt(required_prefix)' "$FUNCTION_AGENT" && contains 'required_final_answer_prefix.as_deref()' "$FUNCTION_AGENT" && contains 'self.build_current_research_messages(context, round_instruction, turn_message_start)' "$FUNCTION_AGENT" && contains 'scrub_research_evidence_messages(&mut messages, false)' "$FUNCTION_AGENT" && contains 'direct_final_and_explicit_finish_share_exact_final_contract' "$FUNCTION_AGENT" && contains 'quote 的 provider timestamp 只能写在‘行情口径’里' "$FUNCTION_AGENT" && contains '‘采购未使用容量’不能推出‘最大客户’' "$FUNCTION_AGENT" && contains '‘most-favored-nation relationship’不能推出‘保证供货’或‘优先供货’' "$FUNCTION_AGENT" && contains '$6.3B of unused capacity' "$FUNCTION_AGENT" && contains 'basic search' "$WEB_SEARCH" && contains '最多返回 3 条' "$WEB_SEARCH" && contains '不返回网页正文' "$WEB_SEARCH" && contains 'agent_owned_interactive_finalizer_does_not_rewrite_or_veto_business_copy' "$AGENT_TESTS"; then
-  record success "34.shared-last-mile-evidence-contract" "DirectFinal and explicit finish share one exact Session-time and source-bounded last-mile contract without restoring a service-side semantic interceptor"
+if contains 'const FINAL_ANSWER_EVIDENCE_CONTRACT' "$FUNCTION_AGENT" && contains 'fn exact_final_answer_prefix' "$FUNCTION_AGENT" && contains 'fn active_business_turn_prompt' "$FUNCTION_AGENT" && contains 'terminal_synthesis_prompt(required_prefix)' "$FUNCTION_AGENT" && contains 'required_final_answer_prefix.as_deref()' "$FUNCTION_AGENT" && contains 'self.build_current_research_messages(context, round_instruction, turn_message_start)' "$FUNCTION_AGENT" && contains 'scrub_research_evidence_messages(&mut messages, false)' "$FUNCTION_AGENT" && contains 'tool_rounds_defer_prose_and_explicit_finish_owns_exact_final_contract' "$FUNCTION_AGENT" && contains '本轮只取证，不作答' "$FUNCTION_AGENT" && contains '本轮仍是工具轮，不写终稿' "$FUNCTION_AGENT" && contains 'quote 的 provider timestamp 只能写在‘行情口径’里' "$FUNCTION_AGENT" && contains 'URL 只用于定位来源，不证明句中内容' "$FUNCTION_AGENT" && contains '以‘推断：’开头' "$FUNCTION_AGENT" && contains '$6.3B of unused capacity' "$FUNCTION_AGENT" && contains 'basic search' "$WEB_SEARCH" && contains '最多返回 3 条' "$WEB_SEARCH" && contains '不返回网页正文' "$WEB_SEARCH" && contains 'fn annotate_basic_search_evidence' "$WEB_SEARCH" && contains 'search_order_or_score_is_not_real_world_rank' "$WEB_SEARCH" && contains 'agent_owned_interactive_finalizer_does_not_rewrite_or_veto_business_copy' "$AGENT_TESTS"; then
+  record success "34.shared-last-mile-evidence-contract" "tool rounds defer prose, while the same Agent's terminal uses exact Session time, inline current-source claims, and no service-side semantic interceptor"
 else
   record fail "34.shared-last-mile-evidence-contract" "one completion path can again swap quote time for Session time, expand weak relationship summaries, replay stale turns, or rely on a post-hoc rewrite"
 fi
@@ -385,9 +385,9 @@ if contains 'struct ResearchIdentityRouteEvidence' "$FUNCTION_AGENT" \
   && contains 'unrelated_extra_quote_does_not_block_a_covered_identity_route' "$FUNCTION_AGENT" \
   && contains 'finish_stays_hidden_until_each_nonempty_entity_route_is_covered' "$FUNCTION_AGENT" \
   && contains 'const FINAL_RELATIONSHIP_DELETION_CHECK' "$FUNCTION_AGENT" \
-  && contains '逐句删除任何没有被本轮来源正文或摘要直接明示的公司关系表述' "$FUNCTION_AGENT" \
-  && contains '股权存在或不存在' "$FUNCTION_AGENT" \
-  && contains '若当前来源只直接支持‘双方宣布加强合作’或‘关系预计扩展’，就只写到这个范围' "$FUNCTION_AGENT" \
+  && contains '逐句建立关系 claim ledger' "$FUNCTION_AGENT" \
+  && contains 'URL 中没有直接出现的数字、关系方向、排名、角色、权利义务、产品型号或估值标签一律删除' "$FUNCTION_AGENT" \
+  && contains '任何超出来源字面陈述的判断另起句并以‘推断：’开头' "$FUNCTION_AGENT" \
   && contains '为每个标的分配一个本轮稳定且互不复用的 `entity_route`' "$DATA_FETCH" \
   && contains '`identity_match=exact_symbol`' "$DATA_FETCH" \
   && contains '`supersedes_query`' "$DATA_FETCH" \
@@ -402,7 +402,7 @@ if contains 'struct ResearchIdentityRouteEvidence' "$FUNCTION_AGENT" \
   && contains 'identity_match="exact_symbol"' "$STOCK_RESEARCH" \
   && contains 'Do not rely on a service-side grammar' "$STOCK_RESEARCH" \
   && contains 'Reuse the exact same route key' "$STOCK_RESEARCH" \
-  && [[ "$(fixed_count 'FINAL_RELATIONSHIP_DELETION_CHECK' "$FUNCTION_AGENT")" == "4" ]]; then
+  && [[ "$(fixed_count 'FINAL_RELATIONSHIP_DELETION_CHECK' "$FUNCTION_AGENT")" == "2" ]]; then
   record success "38.agent-entity-route-and-relationship-deletion-check" "Agent-declared stable routes replace natural-language splitting, exact tickers and overlapping provider candidates cannot cross-unlock, and all final paths retain the source-bounded relationship deletion check without a publication veto"
 else
   record fail "38.agent-entity-route-and-relationship-deletion-check" "a service-side query splitter, cross-route evidence leak, wrong-product unlock, or publication-stage relationship rewrite can regress"
@@ -445,6 +445,18 @@ if contains 'exact_symbol_constraint: Option<String>' "$FUNCTION_AGENT" \
   && contains 'evidence_for_an_old_candidate_cannot_preload_a_later_candidate_replacement' "$FUNCTION_AGENT" \
   && contains 'old_candidate_followup_cannot_satisfy_a_later_empty_identity_generation' "$FUNCTION_AGENT" \
   && contains 'wrongly_cased_tool_names_never_activate_or_satisfy_the_research_ledger' "$FUNCTION_AGENT" \
+  && contains 'const OPEN_AGENT_ENTITY_DISCOVERY_SYSTEM_INSTRUCTION' "$FUNCTION_AGENT" \
+  && contains 'fn agent_guidance_summary(&self)' "$FUNCTION_AGENT" \
+  && contains 'route_guidance_replays_crwv_nvidia_canary_missing_calls_concretely' "$FUNCTION_AGENT" \
+  && contains 'route_guidance_uses_raw_agent_keys_and_reports_same_symbol_gaps' "$FUNCTION_AGENT" \
+  && contains '本轮必须只返回一个或多个真实业务工具调用' "$FUNCTION_AGENT" \
+  && contains '结构调用已按同一候选代码成对尝试；成功、空结果、失败与证据质量仍须读取 tool result 判断' "$FUNCTION_AGENT" \
+  && ! contains '若 provider 本轮仍以完整自然语言正文结束' "$FUNCTION_AGENT" \
+  && contains 'basic_search_contract_caps_and_annotates_results' "$WEB_SEARCH" \
+  && contains 'basic_search_contract_overwrites_spoofed_metadata' "$WEB_SEARCH" \
+  && contains 'hone_search_contract' "$WEB_SEARCH" \
+  && contains 'this tool-enabled round returns only tool calls' "$STOCK_RESEARCH" \
+  && contains '第一轮必须只返回工具调用，不写数据时间、摘要、草稿或终稿' "$INVESTMENT_GUARD" \
   && contains 'route:Ford' "$FUNCTION_AGENT" \
   && contains 'route:FORD' "$FUNCTION_AGENT" \
   && contains '`refines_query` 与 `supersedes_query` 严格互斥' "$DATA_FETCH" \
@@ -453,7 +465,7 @@ if contains 'exact_symbol_constraint: Option<String>' "$FUNCTION_AGENT" \
   && ! contains 'explicit.quote_symbols.extend(implicit.quote_symbols)' "$FUNCTION_AGENT" \
   && ! contains 'explicit.asset_route_symbols.extend(implicit.asset_route_symbols)' "$FUNCTION_AGENT" \
   && ! contains 'explicit.post_identity_attempts' "$FUNCTION_AGENT"; then
-  record success "39.route-ledger-executor-parity-and-pending-safety" "pending routes, current-generation evidence, single-source migration, shared DataFetch parsing, shared provider canonicalization, and exact registry tool names are regression-locked"
+  record success "39.route-ledger-executor-parity-and-pending-safety" "pending routes, current-generation evidence, concrete Agent guidance, snippet provenance, shared parsers/canonicalization, and exact registry tool names are regression-locked"
 else
   record fail "39.route-ledger-executor-parity-and-pending-safety" "route migration/evidence generations can drift from the executor, provider aliases, or real registry calls"
 fi

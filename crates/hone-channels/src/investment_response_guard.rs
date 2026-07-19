@@ -7479,16 +7479,16 @@ fn append_agent_entity_discovery_context(
         "\n\n【本轮证券实体发现：主 Agent 工具循环】\n\
          当前请求不能由前置扫描器可靠地封闭全部证券实体；扫描结果只能作为候选种子，不是实体事实：{}。\n\
          先完整阅读当前用户请求，判断其中是否真的点名公司、证券、基金、指数或加密资产，不得沿用历史 ticker，也不得为了满足流程硬凑标的。若当前文本没有点名证券实体，继续处理用户原本的问题，不做无关的 DataFetch 调用。\n\
-         若存在一个或多个可能标的，第一轮工具调用必须对当前文本中的全部候选并行执行 data_fetch(search)，显式 ticker 也要用原代码作为 query；为每个标的分配一个稳定、互不复用且区分大小写的 entity_route，并在每一次 search 调用里填写 call-scoped identity_match（ticker 用 exact_symbol，公司名/别名用 name_or_alias）。这组 search query 是你基于完整原话做出的候选实体声明，但返回结果仍不是最终事实。不得只取第一个标的，也不得让服务端按字符串形状替你猜实体。\n\
+         若存在一个或多个可能标的，第一轮必须只返回工具调用，不写数据时间、摘要、草稿或终稿；对当前文本中的全部候选并行执行 data_fetch(search)，显式 ticker 也要用原代码作为 query。为每个标的分配一个稳定、互不复用且区分大小写的 entity_route，并在每一次 search 调用里填写 call-scoped identity_match（ticker 用 exact_symbol，公司名/别名用 name_or_alias）。这组 search query 是你基于完整原话做出的候选实体声明，但返回结果仍不是最终事实。不得只取第一个标的，也不得让服务端按字符串形状替你猜实体。\n\
          search 返回后，在同一个 Agent loop 的下一轮对选中的全部标准 symbol 批量或并行执行同 entity_route 的 exact-symbol quote 与 profile，再结合用户问题继续调用财务、持仓、新闻或网页搜索工具。空结果补查可用 refines_query，给漏写路线键的旧 search 补键可用 supersedes_query；两者都必须逐字且区分大小写地指向一条旧 query，并严格二选一。只有同代码 quote（正价格且带 provider timestamp）与资产类型核验完成后才可写证券分析。搜索第一条、近似 ticker、历史标的和模型记忆都不能替代本轮核验。只有当前工具结果确实仍有多个候选，或权威工具均无覆盖时，才向用户说明具体歧义或缺失；不得因为前置扫描不完整而直接停止。",
         Value::Array(seed_snapshot)
     ));
     runtime_input.push_str(&format!(
         "\n\n【本轮最终回答契约：由主 Agent 一次完成】\n\
          先由主 Agent 根据完整当前原话判断这是否确属公司、证券、基金、指数、加密资产、市场或板块投研请求。只有确属时才执行下述时间首行和投研模板；否则忽略本节格式，正常回答用户原问题。\n\
-         对于确属的投研请求，当前用户可见回答必须由你在本 Agent loop 内根据已获得的工具证据一次完成；服务端不会因为投研格式或本轮动态实体观察结果而在成功后追加用户可见内容、改写答案、重跑主 Agent 或否决这个成功答案。\n\
+         对于确属的投研请求，仍提供业务工具的轮次只能继续调用工具，或在完整重读当前原话与每条工具结果后单独调用 finish_research；不要在工具轮写终稿。随后不提供工具的完成阶段仍由同一主 Agent 根据本轮证据一次生成当前用户可见回答；服务端不会在成功后追加用户可见内容、改写答案、重跑主 Agent 或否决这个成功答案。\n\
          本轮回答的时间锚点固定为北京时间 {answer_time}，它与上方 Session 上下文来自同一次时钟读取。完成当前请求所需的工具调用后，在生成最终回答前自行检查表达：第一可见字符必须是“数”，第一条非空行必须严格以 `数据时间：北京时间 {answer_time}；行情口径：` 开头。禁止在该行之前输出 `---`、Markdown 标题、代码围栏、问候、计划、免责声明或“结论”。\n\
-         `行情口径：` 后的内容必须由你基于本轮 quote 工具证据写出：有 provider timestamp 时明确报价源时间、交易时段与“最新可得、非逐笔”口径；工具未提供的字段不得编造。实体 search/profile 只证明身份，不证明客户、供应商、投资、持股、合同或合作关系；关系结论和‘不存在某关系’这类否定结论都必须有本轮网页、新闻或公告来源，未找到只能表述为‘本轮未找到支持该关系的证据’。首行之后，再按系统大 Prompt 中与用户当前意图匹配的完整模板组织事实、推断、估值、风险与触发条件，不得以流程性拒答代替用户要的分析。"
+         `行情口径：` 后的内容必须由你基于本轮 quote 工具证据写出：有 provider timestamp 时明确报价源时间、交易时段与“最新可得、非逐笔”口径；工具未提供的字段不得编造。实体 search/profile 只证明身份，不证明客户、供应商、投资、持股、合同或合作关系。每条外部关系事实中的数字、方向、排名、角色、权利义务、产品型号与估值标签都必须直接出现在本轮同一来源的 title/content/snippet 中，并在该事实旁内联标注这条结果的标题与原始 URL；URL 只用于定位，不能替代内容支持。超出来源字面陈述的判断另起句并以‘推断：’开头；没有直接支持的细节删除，未找到证据只能披露本轮检索边界。首行之后，再按系统大 Prompt 中与用户当前意图匹配的完整模板组织事实、推断、估值、风险与触发条件，不得以流程性拒答代替用户要的分析。"
     ));
 }
 
@@ -12711,15 +12711,20 @@ mod tests {
         assert!(answer_contract.contains("禁止在该行之前输出 `---`、Markdown 标题"));
         assert!(answer_contract.contains("只有确属时才执行下述时间首行和投研模板"));
         assert!(answer_contract.contains("否则忽略本节格式，正常回答用户原问题"));
+        assert!(answer_contract.contains("仍提供业务工具的轮次只能继续调用工具"));
+        assert!(answer_contract.contains("单独调用 finish_research"));
+        assert!(answer_contract.contains("不要在工具轮写终稿"));
         assert!(answer_contract.contains(
-            "服务端不会因为投研格式或本轮动态实体观察结果而在成功后追加用户可见内容、改写答案、重跑主 Agent 或否决这个成功答案"
+            "服务端不会在成功后追加用户可见内容、改写答案、重跑主 Agent 或否决这个成功答案"
         ));
         assert!(answer_contract.contains("实体 search/profile 只证明身份"));
-        assert!(
-            answer_contract
-                .contains("关系结论和‘不存在某关系’这类否定结论都必须有本轮网页、新闻或公告来源")
-        );
-        assert!(answer_contract.contains("本轮未找到支持该关系的证据"));
+        assert!(answer_contract.contains(
+            "每条外部关系事实中的数字、方向、排名、角色、权利义务、产品型号与估值标签都必须直接出现在本轮同一来源的 title/content/snippet 中"
+        ));
+        assert!(answer_contract.contains("在该事实旁内联标注这条结果的标题与原始 URL"));
+        assert!(answer_contract.contains("URL 只用于定位，不能替代内容支持"));
+        assert!(answer_contract.contains("超出来源字面陈述的判断另起句并以‘推断：’开头"));
+        assert!(answer_contract.contains("未找到证据只能披露本轮检索边界"));
         assert!(answer_contract.ends_with("不得以流程性拒答代替用户要的分析。"));
     }
 
