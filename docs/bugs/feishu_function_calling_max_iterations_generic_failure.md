@@ -8,6 +8,11 @@
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `session_messages`
+  - `2026-07-20 15:05-19:02 CST` 复核新增 1 条同根样本，状态维持 `New/P2`：
+    - `session_id=Actor_web__direct__web-user-400794904801`
+      - `2026-07-20T17:09:01.711385+08:00` Web direct 用户在 TSLA 走势讨论后追问“人形机器人会不会是突破口啊”。
+      - `2026-07-20T17:11:33.085813+08:00` assistant final 仅为通用失败提示。
+      - `2026-07-20T17:12:18.630836+08:00` 用户同题补全为“特斯拉的人形机器人会不会是突破口啊”，`2026-07-20T17:13:19.843380+08:00` assistant 成功输出 2642 字回答，说明链路可恢复，但首轮仍丢弃了已取得的工具结果。
   - `2026-07-20 11:01-15:05 CST` 复核新增 3 条同根样本，状态维持 `New/P2`：
     - `session_id=Actor_web__direct__web-user-5bb05078acd4`
       - `2026-07-20T11:38:48.738262+08:00` Web direct 用户要求判断 A 股沪电股份走势、亏损时是否割肉或补仓。
@@ -28,6 +33,7 @@
     - `2026-07-20T10:51:38.781641+08:00` 用户询问中国铝业历史大分红及分红后股价走势。
     - `2026-07-20T10:54:18.789500+08:00` assistant final 仅为通用失败提示。
 - `data/runtime/logs/web.log.2026-07-20`
+  - `17:11:33` Web direct 特斯拉人形机器人追问在多轮工具执行后，`MsgFlow/web failed ... error="max_iterations_exceeded:10"`，最终持久化 failure assistant；同一会话 17:12 重试成功收口。
   - `11:41:02` Web direct 沪电股份走势判断在多轮 `data_fetch` / `web_search` 成功后，`MsgFlow/web failed ... error="max_iterations_exceeded:10"`，最终持久化 failure assistant。
   - `12:39:19` Feishu direct 中国铝业胜率判断在多轮 `data_fetch` / `web_search` 成功后，`MsgFlow/feishu failed ... error="max_iterations_exceeded:10"`，最终发送 failure fallback。
   - `13:32:53` Web direct 510880 ETF 止盈判断在多轮 `data_fetch` / `web_search` 成功后，`MsgFlow/web failed ... error="max_iterations_exceeded:10"`；同题 13:33 重试以 5 次迭代 / 6 个工具调用成功收口。

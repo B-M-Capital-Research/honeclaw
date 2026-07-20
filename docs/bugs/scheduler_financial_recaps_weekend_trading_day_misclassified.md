@@ -9,6 +9,11 @@
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `session_messages`
+  - `2026-07-20T17:31:09.746120+08:00`
+    - `session_id=Actor_feishu__direct__ou_5f636d6d7c80d333e41b86ae79d07adca8`
+    - Feishu scheduler `A股港股收盘后跨市场复盘` 正常收口，但 assistant final 开头外露 `数据充分（部分行情本轮 quote，部分来自新闻报道）。现在整理完整终稿。` 过渡句，并写出 `今天是周日（7月20日），A股和港股均休市。最近实际交易日为 2026年7月18日（周五）`、`美股7月17日（周四）夜盘收盘`。
+    - 实际 2026-07-20 是周一，2026-07-18 是周六，2026-07-17 是周五；回复把 A股/港股开市日错判为休市，并据此生成跨市场复盘和美股预判。
+    - 同窗对照：15:05-19:02 CST `session_messages` 新增 7 条 user / 6 条 assistant / 2 条 system compact，覆盖 3 个更新 session，全部以 assistant 收口；assistant final 污染扫描未见 `<think>`、本机路径、raw tool、provider 原始错误或 fenced JSON 外泄。该样本调度、生成、落库和投递均完成，问题主要影响金融复盘时间口径与正文 polish；不影响直聊 / 调度 / 投递主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
   - `2026-07-20T05:11:16.131461+08:00`
     - `session_id=Actor_feishu__direct__ou_5fea712445d905e8418bde07dbcf2cbfb2`
     - Feishu scheduler `美股收盘资金流向简报` 正常收口，但 assistant final 写出 `当前为周六（美东 2026-07-19 17:10 ET）`，又把上一交易日写成 `2026-07-18 周五`。实际 2026-07-19 是美东周日，2026-07-18 是周六；最近实际美股交易日应为 2026-07-17 周五。
