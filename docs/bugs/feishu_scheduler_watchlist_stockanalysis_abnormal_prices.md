@@ -22,6 +22,18 @@
 
 ## 最新进展
 
+- 本轮 2026-07-21 03:02-07:03 CST 真实运行态继续出现同根异常 / 高风险价格和未核验事件信号，状态维持 `New`：
+  - `data/sessions.sqlite3`
+    - 04:32 CST Feishu scheduler `OWALERT_PostMarket` `session_id=Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595` 正常收口，但 final 继续使用 `MU $865.46`、`GEV $1,079.18`、`SNDK $1,390.95` 等高风险数量级行情锚，并据此写入持仓表现、破位和明日关注重点。
+    - 06:30 CST Web scheduler `1亿美元AI科技组合每日跟踪` `session_id=Actor_web__direct__web-user-14f4cadb069f` 正常收口，但 final 使用 `IBM $208.80`、`AMD $491.52`、`MU $844.70` 等高风险数量级行情锚，还把 `CRCL 因 Circle 宣布战略转型...申请自愿停牌` 写成已发生的重大事件并给出权重动作建议。
+    - 07:02 CST Feishu scheduler `美股持仓收盘后早报` `session_id=Actor_feishu__direct__ou_5f85509d35510291f93cd79a3b1c9eebf3` 正常收口，但开头连续输出 `已核验事实` 流水，多个标的写成 `币种未标注`，并继续使用 `AMD 503.3`、`MU 871.2885`、`GOOGL 352.14` 等高风险价格。
+    - 同窗新增 15 条 user / 9 条 assistant / 4 条 system compact，覆盖 7 个更新 session；采样点 07:00 Feishu scheduler 后续已 assistant 收口，未见错投、投递失败、空回复、敏感信息外泄或全渠道不可用。
+  - `data/runtime/logs/web.log.2026-07-20`
+    - 03:02-07:03 CST 仍有 `HeartbeatDiag=667`、`PlainTextTriggered=180`、`JsonNoop=51`、`deliver job_id=91`、`duplicate_suppressed=25`，多批 heartbeat raw / deliver preview 继续把异常或高风险行情锚、任务上下文和结构化状态混入出站判断。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check / 用户态事件核验缺口：异常数量级价格、币种缺失和未确认事件继续进入 scheduler final 或 heartbeat 用户可见 preview。
+    - 本窗没有错投到其他用户、投递失败、空回复、数据破坏或全渠道不可用；因此仍按质量性 `P3 / New`。该问题不影响主消息投递链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-20 03:02-07:02 CST 真实运行态继续出现同根异常 / 高风险价格和任务主体错配信号，状态维持 `New`：
   - `data/sessions.sqlite3`
     - 07:03 CST Feishu scheduler `美股持仓收盘后早报` `session_id=Actor_feishu__direct__ou_5f85509d35510291f93cd79a3b1c9eebf3` 正常收口，但 final 先输出一长串 `已核验事实` 流水，多个标的写成 `币种未标注`，并继续使用 `MU 848.95`、`SNDK` 等高风险数量级行情锚。

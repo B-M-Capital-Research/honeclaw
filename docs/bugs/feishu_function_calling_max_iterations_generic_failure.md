@@ -8,6 +8,11 @@
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `session_messages`
+  - `2026-07-21 03:02-07:03 CST` 修复后运行态复核，状态维持 `Fixed`：
+    - 最近非文档提交 `39fe6e59 fix strict actor iteration budget` 发生在 `2026-07-21T03:09:07+08:00`，与本单 2026-07-20 代码级修复一致。
+    - 同窗 `data/sessions.sqlite3` 新增 15 条 user / 9 条 assistant / 4 条 system compact，覆盖 7 个更新 session；采样点 07:00 Feishu scheduler 后续已在 07:02 assistant 收口。
+    - assistant final 污染扫描未命中 `max_iterations`；`data/runtime/logs/web.log.2026-07-20` 同窗未再出现 `max_iterations_exceeded:10`。05:00 Web scheduler 的用户可见“执行出错”经 runtime 观察更接近实体 guard / 任务词误抽问题，已归入 `scheduler_finance_entity_guard_misclassifies_instruction_words.md`，不作为本单回退证据。
+    - 结论：本轮未见 strict runner 10 次迭代上限复发，继续按代码级 / 运行态初步止血 `Fixed` 记录；后续若出现 `max_iterations_exceeded:18`，应另按恢复策略不足评估，不直接等同于本单的 `10` 次预算回退。
   - `2026-07-20 15:05-19:02 CST` 复核新增 1 条同根样本，状态维持 `New/P2`：
     - `session_id=Actor_web__direct__web-user-400794904801`
       - `2026-07-20T17:09:01.711385+08:00` Web direct 用户在 TSLA 走势讨论后追问“人形机器人会不会是突破口啊”。

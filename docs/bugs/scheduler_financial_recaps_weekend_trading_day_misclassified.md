@@ -9,6 +9,19 @@
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `session_messages`
+  - `2026-07-21T05:11:11.316706+08:00`
+    - `session_id=Actor_feishu__direct__ou_5fea712445d905e8418bde07dbcf2cbfb2`
+    - Feishu scheduler / direct actor 的 `美股收盘资金流向简报` 正常收口，但 assistant final 写出 `美东 2026-07-20 周日 17:10 ET`、`当前为周日傍晚`、`美股已于周五收盘休市`，并把数据口径落到 `周五 2026-07-18 收盘价`。
+    - 实际北京时间 2026-07-21 05:10 对应美东 2026-07-20 周一 17:10，已经是周一盘后窗口；不应把 2026-07-20 写成周日，也不应把 2026-07-18 写成周五。
+  - `2026-07-21T06:02:45.990872+08:00`
+    - `session_id=Actor_feishu__direct__ou_5f11da38ad70c47cf87c0b106b6408b190`
+    - Feishu scheduler `每日美股盘后收盘复盘` 正常收口，但 assistant final 写出 `对应美股最近交易日 2026-07-17（周五）收盘`，并按旧周五数据生成指数、板块、AI/半导体和次日观察框架。
+    - 实际该窗口已经是北京时间 2026-07-21 06:00 / 美东 2026-07-20 周一 18:00，若美股正常交易，应复盘 2026-07-20 周一收盘，而不是回退到 2026-07-17 周五。
+  - `2026-07-21T06:30:54.315173+08:00`
+    - `session_id=Actor_web__direct__web-user-14f4cadb069f`
+    - Web scheduler `1亿美元AI科技组合每日跟踪` 正常收口，但 assistant final 写出 `行情口径：2026-07-18 常规收盘` 和 `2026-07-18 周五 vs. 2026-07-17 周四`，并据此计算组合市值、权重漂移与操作建议。
+    - 实际 2026-07-18 是周六，且该窗口对应美东 2026-07-20 周一盘后；这会把不存在的周六常规收盘或旧数据包装成组合复盘依据。
+  - 本轮 2026-07-21 03:02-07:03 CST 对照：`session_messages` 新增 15 条 user / 9 条 assistant / 4 条 system compact，覆盖 7 个更新 session，采样点 07:00 Feishu scheduler 已在 07:02 assistant 收口。assistant final 污染扫描未见 `<think>`、本机路径、raw tool、provider 原始错误或 fenced JSON 外泄。上述样本调度、生成、落库和投递均完成，问题主要影响金融复盘时间口径与正文可信度；不影响直聊 / 调度 / 投递主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
   - `2026-07-20T20:31:37.425525+08:00`
     - `session_id=Actor_feishu__direct__ou_5f79ee8185333e5db4a55e5eca0d8d2f7e`
     - Feishu scheduler `每日美股大盘风险仪表盘` 正常收口，但 assistant final 开头外露 `现在整合搜索结果，准备生成最终报告。` 过渡句，并写出 `周五（7/17）三大指数大幅回调后，本周美股未开市（周一为7月20日），无新收盘数据可核验`。

@@ -22,6 +22,12 @@ New
 
 ## 最新进展
 
+- 2026-07-21 07:03 CST 运行态继续复发，状态维持 `New`：
+  - 03:02-07:03 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 15 条 user / 9 条 assistant / 4 条 system compact，覆盖 7 个更新 session；采样点 07:00 Feishu scheduler 后续已在 07:02 assistant 收口。
+  - assistant final 污染扫描未命中空回复、`<think>`、本机路径、SQLite、panic、provider 原始错误、raw tool、`cron_job`、fenced JSON、transport fallback 或 model metadata；本轮命中的是 scheduler 用户可见执行进度句。
+  - 05:11 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5fea712445d905e8418bde07dbcf2cbfb2` 的 `美股收盘资金流向简报` 正常收口，但 final 开头写出 `现在并行核验主要标的收盘行情`，随后展示 `核验中 / 搜索中` 状态表，又写出 `数据加载完成后，正在补充搜索今日最新市场驱动。`
+  - 该消息业务主体已完成资金流向、指数、板块和市场驱动输出并送达，没有投递失败、空回复、错投、原始工具 JSON 或数据安全证据；问题仍只影响用户可见执行过程 / 中间稿边界和产品感，不影响主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-07-20 23:02 CST 运行态继续复发，状态维持 `New`：
   - 19:01-23:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 74 条 user / 44 条 assistant / 18 条 system compact；近期 Web direct、Feishu direct 和 Feishu scheduler 会话均以 assistant 收口。
   - assistant final 污染扫描未命中空回复、`<think>`、本机路径、SQLite、panic、provider 原始错误、raw tool、`cron_job` 或 fenced JSON；本轮命中的是 scheduler 用户可见执行进度句。
