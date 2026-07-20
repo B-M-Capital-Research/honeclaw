@@ -3,7 +3,7 @@
 - **发现时间**: 2026-07-20 11:01 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 
 ## 证据来源
 
@@ -69,13 +69,25 @@
 
 ## 根因判断
 
-- 直接根因为 function-calling agent loop 缺少普通直聊 / 普通 scheduler 的 max-iteration 恢复策略。
-- 现有 heartbeat 有 `BudgetRecovery { reason: MaxIterationsExceeded }` 相关分支，但本轮 Feishu / Web direct 与普通 scheduler 样本仍直接以 `max_iterations_exceeded:10` 失败收口，说明该恢复没有覆盖这些链路或没有强制模型在预算耗尽前停止工具调用。
+- 直接根因为普通用户 fallback 到 strict `function_calling` runner 时，被单独压到 `STRICT_ACTOR_MAX_ITERATIONS=10`；这低于当前仓库其它 agent 路径默认使用的 `18`，导致复杂直聊 / 普通 scheduler 在已有多轮有效 `data_fetch` / `web_search` 结果时仍被过早截断成 `max_iterations_exceeded:10`。
+- 现有 heartbeat 有 `BudgetRecovery { reason: MaxIterationsExceeded }` 相关分支，但本轮 Feishu / Web direct 与普通 scheduler 样本仍直接以 strict runner 的 `10` 次上限失败收口，说明至少有一层问题是普通 strict runner 的预算明显偏紧，而不是 heartbeat 恢复逻辑本身。
 - 这不同于既有 `scheduler_heartbeat_iteration_exhaustion_skips_alert.md`：本单影响的是普通 direct / 普通 scheduler 回复生成，不是 heartbeat 专用触发提醒解析。
+
+## 修复记录
+
+- 2026-07-20 代码级修复：
+  - `crates/hone-channels/src/core/bot_core.rs`
+    - 将普通用户 strict fallback `function_calling` runner 的 `STRICT_ACTOR_MAX_ITERATIONS` 从 `10` 对齐到仓库当前标准预算 `18`，避免 Web / Feishu direct 与普通 scheduler 在已取得多轮有效工具结果后被过早截断。
+  - `crates/hone-channels/src/core/tests.rs`
+    - 新增 `strict_actor_runner_uses_the_standard_iteration_budget`，锁定 strict fallback runner 使用标准迭代预算，避免后续再次无意回落到更低上限。
+
+## 验证
+
+- `cargo test -p hone-channels strict_actor_runner_uses_the_standard_iteration_budget --lib -- --nocapture`
+- `cargo test -p hone-channels effective_context_owner_follows_actor_runner_route --lib -- --nocapture`
+- `cargo check -p hone-channels --tests`
 
 ## 下一步建议
 
-1. 给 function-calling direct / ordinary scheduler 增加 max-iteration recovery：二次运行时禁止或强限制工具调用，并要求只基于已有 tool result 生成回答。
-2. 在达到工具 / 迭代预算前插入“必须总结”的停止条件，避免模型继续发起低收益搜索。
-3. 将 `max_iterations_exceeded` 的失败文案从通用失败改成可操作提示，同时保留内部错误不外泄。
-4. 补回归：模拟多次工具结果已可回答但模型继续请求工具，验证最终能生成部分答案而不是 failure fallback。
+1. 后续巡检重点看 2026-07-20 之后的新样本是否还出现 `max_iterations_exceeded:10`；若 strict runner 已不再报 `10`，说明这次预算对齐已至少止血一层活跃坏态。
+2. 如果后续仍在 `18` 次上限触顶，则再继续补 function-calling 的“基于已有 tool result 直接总结”恢复策略，而不是再次单纯抬高上限。

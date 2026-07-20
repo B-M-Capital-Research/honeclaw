@@ -43,7 +43,7 @@ use crate::session_compactor::SessionCompactor;
 
 use super::logging::printable_or_default;
 
-const STRICT_ACTOR_MAX_ITERATIONS: u32 = 10;
+pub(super) const STRICT_ACTOR_MAX_ITERATIONS: u32 = 18;
 
 #[derive(Debug, Clone)]
 pub struct CompactSessionOutcome {

@@ -9,7 +9,7 @@
 use hone_core::{ActorIdentity, HoneConfig};
 use serde_json::json;
 
-use super::bot_core::HoneBotCore;
+use super::bot_core::{HoneBotCore, STRICT_ACTOR_MAX_ITERATIONS};
 use super::intercept::{
     REGISTER_ADMIN_INTERCEPT_ACK, REGISTER_ADMIN_INTERCEPT_DENY_ACK,
     REGISTER_ADMIN_INTERCEPT_DISABLED_ACK, REGISTER_ADMIN_INTERCEPT_INVALID_ACK,
@@ -125,6 +125,11 @@ fn effective_context_owner_follows_actor_runner_route() {
     assert!(!core.effective_runner_manages_own_context(&public_actor));
     assert!(!core.actor_uses_strict_runner_fallback(&admin_actor));
     assert!(core.effective_runner_manages_own_context(&admin_actor));
+}
+
+#[test]
+fn strict_actor_runner_uses_the_standard_iteration_budget() {
+    assert_eq!(STRICT_ACTOR_MAX_ITERATIONS, 18);
 }
 
 #[test]
