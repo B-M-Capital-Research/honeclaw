@@ -9,6 +9,11 @@
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `session_messages`
+  - `2026-07-20T20:31:37.425525+08:00`
+    - `session_id=Actor_feishu__direct__ou_5f79ee8185333e5db4a55e5eca0d8d2f7e`
+    - Feishu scheduler `每日美股大盘风险仪表盘` 正常收口，但 assistant final 开头外露 `现在整合搜索结果，准备生成最终报告。` 过渡句，并写出 `周五（7/17）三大指数大幅回调后，本周美股未开市（周一为7月20日），无新收盘数据可核验`。
+    - 实际 2026-07-20 是周一美股交易日，北京时间 20:30 对应美东盘前，不应写成“本周美股未开市”；这会把可核验的盘前 / 盘中风险口径错误降级成周末旧数据口径。
+    - 同窗对照：19:01-23:02 CST `session_messages` 新增 74 条 user / 44 条 assistant / 18 条 system compact，27 个更新 session 全部以 assistant 收口；assistant final 污染扫描未见 `<think>`、本机路径、raw tool、provider 原始错误或 fenced JSON 外泄。该样本调度、生成、落库和投递均完成，问题主要影响金融复盘时间口径与正文 polish；不影响直聊 / 调度 / 投递主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
   - `2026-07-20T17:31:09.746120+08:00`
     - `session_id=Actor_feishu__direct__ou_5f636d6d7c80d333e41b86ae79d07adca8`
     - Feishu scheduler `A股港股收盘后跨市场复盘` 正常收口，但 assistant final 开头外露 `数据充分（部分行情本轮 quote，部分来自新闻报道）。现在整理完整终稿。` 过渡句，并写出 `今天是周日（7月20日），A股和港股均休市。最近实际交易日为 2026年7月18日（周五）`、`美股7月17日（周四）夜盘收盘`。

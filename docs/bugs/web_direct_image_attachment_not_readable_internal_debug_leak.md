@@ -9,6 +9,11 @@
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `session_messages`
+  - 巡检时间窗：2026-07-20 19:01-23:02 CST。
+  - 22:22 CST Web direct session `Actor_web__direct__web-user-c394f2531362` 收到 Schwab Mobile 截图附件，附件行显示 `分类=图片`、`类型=image/jpeg`、`下载状态=成功`，且有本地路径；assistant 首轮能基于截图和历史持仓口径给出“现金保留，不要加仓”的建议，说明附件/上下文链路并非全局不可用。
+  - 22:28 CST 用户强调“我是H，不要把我跟之前的仓弄混了”，22:31 CST assistant 只返回通用失败；22:32 CST 用户重试同句后，assistant 虽承认本轮附件是一张 Schwab 账户截图，但又写出“图片分析工具目前没有返回可视内容”，要求用户手动确认截图内容或粘贴持仓文字。
+  - 判断：同一 Web direct 图片会话内出现先能依据截图回答、后续又声称图片工具没有可视内容并要求手动粘贴，说明图片/OCR/附件上下文在多轮续聊中仍不稳定；本轮未外露 OSS、数据库或本机路径，但功能链路仍可能迫使用户绕路。无错投、敏感信息泄露、全渠道不可用或批量失败证据，维持 `P2 / New`，非 P1。
+- `data/sessions.sqlite3` -> `session_messages`
   - 巡检时间窗：2026-07-15 19:01-23:01 CST。
   - 19:56 CST Web direct session `Actor_web__direct__web-user-400794904801` 正常以 assistant 收口，但 assistant final 仍回复：`图片我这边暂时无法稳定读取到内容。请把图里的关键信息用文字描述给我：1. 图表标题或标的是什么标的 2. X轴和Y轴的含义 3. 关键数字或走势特征`。
   - 本轮没有继续外露 OSS、数据库、本机绝对路径或内部 skill 状态；文案净化比历史样本更产品化。

@@ -22,6 +22,12 @@ New
 
 ## 最新进展
 
+- 2026-07-20 23:02 CST 运行态继续复发，状态维持 `New`：
+  - 19:01-23:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 74 条 user / 44 条 assistant / 18 条 system compact；近期 Web direct、Feishu direct 和 Feishu scheduler 会话均以 assistant 收口。
+  - assistant final 污染扫描未命中空回复、`<think>`、本机路径、SQLite、panic、provider 原始错误、raw tool、`cron_job` 或 fenced JSON；本轮命中的是 scheduler 用户可见执行进度句。
+  - 20:31 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f79ee8185333e5db4a55e5eca0d8d2f7e` 的 `每日美股大盘风险仪表盘` 正常收口，但 final 开头写出 `现在整合搜索结果，准备生成最终报告。`，继续把内部执行进度 / 中间稿作为用户可见前言。
+  - 该消息业务主体已完成指数、VIX、Fear & Greed 和 Forward PE 风险仪表盘输出并送达，没有投递失败、空回复、错投、原始工具 JSON 或数据安全证据；问题仍只影响用户可见文案边界和产品感，不影响主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-07-18 23:03 CST 运行态继续复发，状态维持 `New`：
   - 19:02-23:03 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 18 条 user / 11 条 assistant / 4 条 system compact；近期 Web regression direct、Web scheduler、Feishu direct 和 Feishu scheduler 会话均以 assistant 收口。
   - assistant final 污染扫描未命中空回复、`<think>`、本机路径、SQLite、panic、provider 原始错误、raw tool、`cron_job` 或 fenced JSON；本轮命中 2 条 `data_fetch` 用户态工具名。
