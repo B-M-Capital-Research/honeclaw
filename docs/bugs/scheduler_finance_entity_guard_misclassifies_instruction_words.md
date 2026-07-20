@@ -8,6 +8,13 @@
 
 ## 运行态复核（2026-07-19 07:01 CST）
 
+- 本轮 2026-07-20 11:01-15:05 CST 真实运行态继续复发，状态维持 `New/P2`：
+  - `data/sessions.sqlite3` 同窗新增 19 条 user / 15 条 assistant / 6 条 system compact，6 个更新 session 均以 assistant 收口；未见直聊全局不可用、错投或敏感信息外泄。
+  - `data/runtime/logs/web.log.2026-07-20` 同窗继续记录 32 条 `runner_error`，实体 / 候选相关代表样本包括 11:30 和 12:00 CST `AAOI 1.6T 光模块心跳检测` 把任务上下文里的 `SEC` 当证券代码且无行情覆盖；同窗 `ORCL 大事件监控` 仍因 Oracle 多上市地候选失败。
+  - 同窗还出现 11:30 CST `光迅科技关键事件心跳提醒` deliver preview 漂移成 NIO 分析、12:00 CST `光迅科技关键事件心跳提醒` 漂移成 SK Hynix / NVIDIA 关系分析，说明问题继续包含 fail-open 的任务主体错配。
+  - 判断：最新样本仍是 scheduler / heartbeat 任务正文、历史 reminder 与行业词进入实体 guard / resolver 后误抽、误拦或错配实体；与既有缺陷同根，不新建重复缺陷。
+  - 严重等级维持 `P2`：它直接阻断部分 scheduler / heartbeat 正文生成或造成 heartbeat 标的错配，但同窗 Web / Feishu direct 有正常 assistant 收口，未见全渠道停摆、错投到其他用户、敏感信息泄露或持久化数据破坏，因此不是 `P1`，不创建 GitHub Issue。
+
 - 本轮 2026-07-20 03:02-07:02 CST 真实运行态继续复发，状态维持 `New/P2`：
   - `data/sessions.sqlite3` 同窗新增 23 条 user / 10 条 assistant / 8 条 system compact；除 07:00 Feishu scheduler 在巡检采样点仍运行、随后 07:03 收口外，其余近期 session 均以 assistant 收口，未见直聊全局不可用、错投或敏感信息外泄。
   - 05:00 CST Web scheduler session `Actor_web__direct__web-user-afc1cabadbf8` 的 `盘后美股复盘与SNDK/MU存储产业链日报` 再次把宏观指标 `PCE` 当作证券代码，返回“当前数据供应商没有返回同代码行情覆盖”，随后写入用户可见 `scheduler_failure=true` 执行出错。

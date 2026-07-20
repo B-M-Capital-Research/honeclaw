@@ -7,6 +7,18 @@
 
 ## 修复进展
 
+- `2026-07-20 11:01-15:05 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-20`
+    - 同窗继续出现 686 条 `[HeartbeatDiag]`、184 条 raw `<think>`、83 条 `deliver job_id`、38 条 `duplicate_suppressed`、32 条 `runner_error`、20 条 `execution_failed`、228 条 function-calling 工具预算拒绝、5 条 `max_iterations_exceeded` 与 2 条 context window 信号。
+    - `parse_kind` 分布为 `PlainTextTriggered=164`、`JsonNoop=62`、`PlainTextSuppressed=18`、`PlainTextNoop=13`、`JsonMalformed=4`、`JsonTriggered=4`。
+    - 11:01 CST `TSLA 正负触发条件心跳监控` 明确写“本轮无全新独立触发”但先进入 `PlainTextTriggered` deliver preview，再被 duplicate suppression 压掉；11:30 CST `全天原油价格3小时播报` 以 `<think>` + 自由文本落成 `PlainTextSuppressed` 并标记“heartbeat 输出不是结构化 JSON”；12:00 CST 多条 Web / Feishu heartbeat 在配置文本、ticker 单字或工具额度耗尽后仍进入 triggered / suppressed / duplicate 分支漂移。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 同窗新增 19 条 user / 15 条 assistant / 6 条 system compact，6 个更新 session 均以 assistant 收口；assistant final 未见 `<think>`、raw tool、本机路径、provider 原始错误或 fenced JSON 外泄。
+    - `cron_job_runs.max(executed_at)` 仍停在 `2026-07-19T13:31:15.040172+08:00`，当前 heartbeat 运行态继续以 runtime web log 判断。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题继续影响 heartbeat 监控判断、送达语义和失败 / 跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-20 03:02-07:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-19`
     - 同窗继续出现 703 条 `[HeartbeatDiag]`、182 条 raw `<think>`、96 条 `deliver job_id`、46 条 `duplicate_suppressed`、32 条 `runner_error`、19 条 `execution_failed`、385 条 function-calling 工具预算拒绝、4 条 `max_iterations_exceeded` 与 2 条 context window 信号。

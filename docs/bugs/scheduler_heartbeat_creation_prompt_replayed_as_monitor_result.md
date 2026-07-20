@@ -18,6 +18,17 @@
 
 ## 修复进展
 
+- `2026-07-20 11:01-15:05 CST` 运行态复核确认同根继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-20`
+    - 11:30 CST `NVDA 关键事件心跳提醒` 已作为现有 heartbeat job 周期触发，deliver preview 却把上游 heartbeat 配置 / 系统级文本当作“配置文本与近期监控说明”，反问用户“你现在想做什么”，没有执行 NVDA 关键事件判断。
+    - 12:00 CST `存储板块关键事件心跳提醒` 已作为现有 heartbeat job 周期触发，deliver preview 写成“这是市场事件监控的设置/确认问题”，并外露 `cron_job` 工具、事件推送优先级等设置说明，而不是执行存储板块事件监控。
+    - 12:00 CST `heartbeat_绿田机械基本面跟踪` 已作为现有 heartbeat job 周期触发，deliver preview 继续写出 `cron_job` 工具不在可用函数列表、`notification_prefs` 替代方案等任务管理漂移文本。
+  - 会话质量对照：
+    - 同窗 `data/runtime/logs/web.log.2026-07-20` 仍有 686 条 `[HeartbeatDiag]` 与 83 条 `deliver job_id`，说明 heartbeat live 仍在运行；`cron_job_runs.max(executed_at)` 仍停在 `2026-07-19T13:31:15.040172+08:00`，本地 cron mirror 继续失真。
+  - 判断：
+    - 最新样本仍是已创建 heartbeat job 的执行意图被“创建 / 配置 / 能力介绍 / prompt 识别”语义污染，而不是具体市场监控判断。
+    - 这是功能性监控链路缺陷，定级仍为 P2；当前影响 heartbeat 任务输出和信噪比，未见全渠道停摆、跨用户错投、数据破坏或敏感信息泄露，因此不升级 P1，不创建 GitHub Issue。
+
 - `2026-07-20 03:02-07:02 CST` 运行态复核确认同根继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-19`
     - 03:30 CST `SIVE POET/Nokia/1.6T DFB 心跳检测` 已作为现有 heartbeat job 周期触发，deliver preview 却把任务当作“系统提示词或配置说明”，反问用户是否要修改 / 新建 / 查看心跳监控，而不是执行 SIVE / POET / Nokia / 1.6T DFB 事件判断。
