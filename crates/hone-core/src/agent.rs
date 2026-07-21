@@ -9,6 +9,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 
+/// Runtime-only marker for an invoked-skill prompt restored from durable
+/// Session metadata. Agent implementations use it to keep explicit skill
+/// context separate from bounded conversational user references.
+pub const RESTORED_INVOKED_SKILL_PROMPT_METADATA_KEY: &str = "skill_runtime.restored_prompt";
+
 /// 已执行的工具调用记录
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCallMade {

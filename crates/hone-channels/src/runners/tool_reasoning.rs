@@ -10,14 +10,12 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-#[cfg(test)]
-use crate::runtime::sanitize_user_visible_output;
+use crate::response_finalizer::response_leaks_system_prompt;
+use crate::runtime::{sanitize_agent_owned_user_visible_output, sanitize_user_visible_output};
 
-#[cfg(test)]
-use super::types::TerminalStreamPolicy;
 use super::types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
-    RunnerTimeouts,
+    RunnerTimeouts, TerminalStreamPolicy,
 };
 
 pub(crate) struct RunnerToolObserver {
@@ -27,41 +25,34 @@ pub(crate) struct RunnerToolObserver {
 struct RunnerStreamObserver {
     emitter: Arc<dyn AgentRunnerEmitter>,
     streamed_output: Arc<AtomicBool>,
-    #[cfg(test)]
     terminal_stream_policy: TerminalStreamPolicy,
-    #[cfg(test)]
     canonical_header_state: Mutex<CanonicalHeaderStreamState>,
     committed_visible_prefix: Arc<Mutex<Option<String>>>,
 }
 
-#[cfg(test)]
 const CANONICAL_INVESTMENT_HEADER_START: &str = "数据时间：北京时间 ";
-#[cfg(test)]
 const CANONICAL_INVESTMENT_BASIS_SEPARATOR: &str = "；行情口径：";
-#[cfg(test)]
 const MAX_CANONICAL_INVESTMENT_HEADER_BYTES: usize = 768;
-#[cfg(test)]
 const MAX_CANONICAL_INVESTMENT_BASIS_CHARS: usize = 480;
 
-#[cfg(test)]
 #[derive(Debug, Default)]
 enum CanonicalHeaderStreamState {
     #[default]
     Buffering,
     Candidate(String),
-    Passthrough,
-    Committed,
+    Rejected,
+    Committed {
+        pending_body: String,
+    },
 }
 
-#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CanonicalHeaderDecision {
     Incomplete,
     Invalid,
-    Complete { prefix_end: usize },
+    Complete { header_end: usize },
 }
 
-#[cfg(test)]
 fn canonical_header_decision(buffer: &str) -> CanonicalHeaderDecision {
     if buffer.is_empty() {
         return CanonicalHeaderDecision::Incomplete;
@@ -84,16 +75,18 @@ fn canonical_header_decision(buffer: &str) -> CanonicalHeaderDecision {
     let line = &buffer[..line_end];
     if canonical_investment_header_is_safe(line) {
         CanonicalHeaderDecision::Complete {
-            prefix_end: line_end + '\n'.len_utf8(),
+            header_end: line_end,
         }
     } else {
         CanonicalHeaderDecision::Invalid
     }
 }
 
-#[cfg(test)]
 fn canonical_investment_header_is_safe(line: &str) -> bool {
     if line.is_empty() || line.chars().any(char::is_control) {
+        return false;
+    }
+    if response_leaks_system_prompt(line) {
         return false;
     }
     let Some(rest) = line.strip_prefix(CANONICAL_INVESTMENT_HEADER_START) else {
@@ -116,16 +109,86 @@ fn canonical_investment_header_is_safe(line: &str) -> bool {
     !sanitized.only_internal && !sanitized.removed_internal && sanitized.content == line
 }
 
+fn canonical_body_line_is_safe(line: &str) -> bool {
+    if line.contains('\r') {
+        return false;
+    }
+    if line.is_empty() {
+        return true;
+    }
+    if response_leaks_system_prompt(line) {
+        return false;
+    }
+
+    // The completed response passes through this same security-only
+    // sanitizer before persistence. Stream only complete lines which it would
+    // preserve byte-for-byte; anything suspicious falls back to the deferred
+    // final tail instead of becoming irreversible output.
+    let lower = line.to_ascii_lowercase();
+    if [
+        "<think",
+        "</think",
+        "<tool_code",
+        "</tool_code",
+        "<tool_call",
+        "</tool_call",
+        "<tool_result",
+        "</tool_result",
+        "<tool_use",
+        "</tool_use",
+        "[tool_call",
+        "[/tool_call",
+        "[tool_result",
+        "[/tool_result",
+        "[tool_use",
+        "[/tool_use",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker))
+    {
+        return false;
+    }
+
+    let sanitized = sanitize_agent_owned_user_visible_output(line);
+    !sanitized.only_internal && !sanitized.removed_internal && sanitized.content == line
+}
+
+/// Drain only through the content of a complete, nonempty, security-clean
+/// line. Its terminating newline remains buffered until a later complete safe
+/// line exists, so the emitted prefix can never end in whitespace that the
+/// completed-response sanitizer's final `trim()` might remove.
+fn drain_stable_canonical_body_prefix(pending: &mut String) -> (String, bool) {
+    let mut line_start = 0;
+    let mut safe_end = 0;
+    for newline in pending.match_indices('\n').map(|(index, _)| index) {
+        let visible_line = &pending[line_start..newline];
+        if !canonical_body_line_is_safe(visible_line) {
+            let safe = pending.drain(..safe_end).collect();
+            return (safe, true);
+        }
+        if visible_line.chars().any(|ch| !ch.is_whitespace()) {
+            // Include every separator before this line, but retain this line's
+            // own terminator until another complete safe line follows.
+            safe_end = newline;
+        }
+        line_start = newline + '\n'.len_utf8();
+    }
+
+    (pending.drain(..safe_end).collect(), false)
+}
+
 impl RunnerStreamObserver {
-    #[cfg(test)]
-    fn events_for_content_delta(&self, content: &str) -> (Vec<AgentRunnerEvent>, Option<String>) {
+    fn event_for_final_content_delta(
+        &self,
+        content: &str,
+    ) -> Option<(AgentRunnerEvent, Option<String>)> {
         if self.terminal_stream_policy == TerminalStreamPolicy::Disabled {
-            return (
-                vec![AgentRunnerEvent::StreamDelta {
+            return Some((
+                AgentRunnerEvent::StreamDelta {
                     content: content.to_string(),
-                }],
+                },
                 None,
-            );
+            ));
         }
 
         let mut state = self
@@ -137,38 +200,63 @@ impl RunnerStreamObserver {
                 *state = CanonicalHeaderStreamState::Candidate(content.to_string());
             }
             CanonicalHeaderStreamState::Candidate(buffer) => buffer.push_str(content),
-            CanonicalHeaderStreamState::Passthrough | CanonicalHeaderStreamState::Committed => {
-                return (
-                    vec![AgentRunnerEvent::StreamDelta {
-                        content: content.to_string(),
-                    }],
-                    None,
-                );
+            CanonicalHeaderStreamState::Rejected => {
+                return None;
+            }
+            CanonicalHeaderStreamState::Committed { pending_body } => {
+                pending_body.push_str(content);
+                let (safe_body, rejected) = drain_stable_canonical_body_prefix(pending_body);
+                if rejected {
+                    *state = CanonicalHeaderStreamState::Rejected;
+                }
+                return (!safe_body.is_empty()).then(|| {
+                    (
+                        AgentRunnerEvent::CommittedStreamDelta {
+                            content: safe_body.clone(),
+                        },
+                        Some(safe_body),
+                    )
+                });
             }
         }
 
         let CanonicalHeaderStreamState::Candidate(buffer) = &mut *state else {
             unreachable!("buffering state becomes a candidate before classification");
         };
+        let leading_whitespace_bytes = buffer
+            .char_indices()
+            .find_map(|(index, ch)| (!ch.is_whitespace()).then_some(index))
+            .unwrap_or(buffer.len());
+        if leading_whitespace_bytes > 0 {
+            buffer.drain(..leading_whitespace_bytes);
+        }
         match canonical_header_decision(buffer) {
-            CanonicalHeaderDecision::Incomplete => (Vec::new(), None),
+            CanonicalHeaderDecision::Incomplete => None,
             CanonicalHeaderDecision::Invalid => {
-                let content = std::mem::take(buffer);
-                *state = CanonicalHeaderStreamState::Passthrough;
-                (vec![AgentRunnerEvent::StreamDelta { content }], None)
+                *state = CanonicalHeaderStreamState::Rejected;
+                None
             }
-            CanonicalHeaderDecision::Complete { prefix_end } => {
+            CanonicalHeaderDecision::Complete { header_end } => {
                 let complete = std::mem::take(buffer);
-                let prefix = complete[..prefix_end].to_string();
-                let remainder = complete[prefix_end..].to_string();
-                *state = CanonicalHeaderStreamState::Committed;
-                let mut events = vec![AgentRunnerEvent::CommittedStreamDelta {
-                    content: prefix.clone(),
-                }];
-                if !remainder.is_empty() {
-                    events.push(AgentRunnerEvent::StreamDelta { content: remainder });
-                }
-                (events, Some(prefix))
+                // Commit the canonical line without its terminator. If the
+                // model stops after the header or the entire body is removed
+                // by final security cleanup, the finalized response still
+                // begins with these exact bytes.
+                let mut committed_delta = complete[..header_end].to_string();
+                let mut pending_body = complete[header_end..].to_string();
+                let (safe_body, rejected) = drain_stable_canonical_body_prefix(&mut pending_body);
+                committed_delta.push_str(&safe_body);
+                *state = if rejected {
+                    CanonicalHeaderStreamState::Rejected
+                } else {
+                    CanonicalHeaderStreamState::Committed { pending_body }
+                };
+                Some((
+                    AgentRunnerEvent::CommittedStreamDelta {
+                        content: committed_delta.clone(),
+                    },
+                    Some(committed_delta),
+                ))
             }
         }
     }
@@ -195,29 +283,32 @@ impl FunctionCallingStreamObserver for RunnerStreamObserver {
         if content.is_empty() {
             return;
         }
-        #[cfg(not(test))]
-        {
-            self.streamed_output.store(true, Ordering::Relaxed);
-            self.emitter
-                .emit(AgentRunnerEvent::StreamDelta {
-                    content: content.to_string(),
-                })
-                .await;
+        let Some((event, committed_prefix)) = self.event_for_final_content_delta(content) else {
+            return;
+        };
+
+        // A committed prefix becomes irreversible only after the downstream
+        // emitter has accepted it. If this future is cancelled while the
+        // emitter is blocked, neither the prefix nor streamed-output state may
+        // claim that the user saw bytes which never left this observer.
+        if !self.emitter.emit_committed(event).await {
+            *self
+                .canonical_header_state
+                .lock()
+                .expect("canonical header stream state") = CanonicalHeaderStreamState::Rejected;
             return;
         }
-        #[cfg(test)]
-        let (events, committed_prefix) = self.events_for_content_delta(content);
-        #[cfg(test)]
-        if let Some(prefix) = committed_prefix {
-            *self
+        self.streamed_output.store(true, Ordering::Relaxed);
+        if let Some(delta) = committed_prefix {
+            let mut committed = self
                 .committed_visible_prefix
                 .lock()
-                .expect("committed visible prefix") = Some(prefix);
-        }
-        #[cfg(test)]
-        for event in events {
-            self.streamed_output.store(true, Ordering::Relaxed);
-            self.emitter.emit(event).await;
+                .expect("committed visible prefix");
+            if let Some(prefix) = committed.as_mut() {
+                prefix.push_str(&delta);
+            } else {
+                *committed = Some(delta);
+            }
         }
     }
 
@@ -229,8 +320,25 @@ impl FunctionCallingStreamObserver for RunnerStreamObserver {
     }
 
     async fn on_content_reset(&self) {
-        self.streamed_output.store(false, Ordering::Relaxed);
-        self.emitter.emit(AgentRunnerEvent::StreamReset).await;
+        if self.terminal_stream_policy == TerminalStreamPolicy::CanonicalInvestmentHeader {
+            // A committed header is irreversible. Otherwise clear any
+            // incomplete/rejected final candidate so the next model round can
+            // start from a fresh canonical header.
+            if self.committed_visible_prefix().is_some() {
+                return;
+            }
+            *self
+                .canonical_header_state
+                .lock()
+                .expect("canonical header stream state") = CanonicalHeaderStreamState::default();
+        }
+
+        // An uncommitted final candidate never crossed the emitter, so its
+        // reset is internal-only. Speculative ordinary deltas still receive
+        // the public reset required to remove bytes they actually emitted.
+        if self.streamed_output.swap(false, Ordering::Relaxed) {
+            self.emitter.emit(AgentRunnerEvent::StreamReset).await;
+        }
     }
 }
 
@@ -567,9 +675,7 @@ impl AgentRunner for FunctionCallingReasoningRunner {
         let stream_observer = Arc::new(RunnerStreamObserver {
             emitter,
             streamed_output: streamed_output.clone(),
-            #[cfg(test)]
             terminal_stream_policy: request.terminal_stream_policy,
-            #[cfg(test)]
             canonical_header_state: Mutex::new(CanonicalHeaderStreamState::default()),
             committed_visible_prefix: committed_visible_prefix.clone(),
         });
@@ -649,7 +755,7 @@ mod terminal_stream_tests {
     }
 
     #[tokio::test]
-    async fn canonical_investment_header_commits_exact_prefix_across_chunks() {
+    async fn canonical_investment_answer_streams_safe_stable_lines_after_header_commit() {
         let (observer, emitter, committed_prefix) =
             stream_observer(TerminalStreamPolicy::CanonicalInvestmentHeader);
         let header = concat!(
@@ -657,6 +763,7 @@ mod terminal_stream_tests {
             "报价源时间：北京时间 2026-07-18 04:00（最新可得，非逐笔）\n"
         );
 
+        observer.on_final_content_delta(" \n\t").await;
         observer.on_final_content_delta("数据时间：北京").await;
         observer
             .on_final_content_delta("时间 2026-07-18 21:05；行情口径：报价源时间：北京")
@@ -670,32 +777,80 @@ mod terminal_stream_tests {
             .on_final_content_delta("\nCRWV 与英伟达关系紧密。")
             .await;
 
+        let header_line = header.trim_end_matches('\n');
+        let committed = format!("{header_line}\n\n## 结论");
+        assert_eq!(
+            sanitize_agent_owned_user_visible_output(header).content,
+            header_line,
+            "a header-only final must still begin with every committed byte"
+        );
         let events = emitter.events.lock().expect("captured events");
-        assert_eq!(events.len(), 3, "{events:?}");
+        assert_eq!(events.len(), 2, "{events:?}");
         assert!(matches!(
             &events[0],
-            AgentRunnerEvent::CommittedStreamDelta { content } if content == header
+            AgentRunnerEvent::CommittedStreamDelta { content } if content == header_line
         ));
         assert!(matches!(
             &events[1],
-            AgentRunnerEvent::StreamDelta { content } if content == "\n## 结论"
-        ));
-        assert!(matches!(
-            &events[2],
-            AgentRunnerEvent::StreamDelta { content } if content == "\nCRWV 与英伟达关系紧密。"
+            AgentRunnerEvent::CommittedStreamDelta { content } if content == "\n\n## 结论"
         ));
         assert_eq!(
             committed_prefix
                 .lock()
                 .expect("committed visible prefix")
                 .as_deref(),
-            Some(header)
+            Some(committed.as_str())
         );
         assert_eq!(
             observer.committed_visible_prefix().as_deref(),
-            Some(header),
-            "the Agent must be able to read the exact irreversible prefix for terminal-only recovery"
+            Some(committed.as_str()),
+            "the Agent must read every exact irreversible byte for terminal-only recovery"
         );
+    }
+
+    #[tokio::test]
+    async fn unsafe_body_line_stops_early_streaming_without_losing_accepted_prefix() {
+        let (observer, emitter, committed_prefix) =
+            stream_observer(TerminalStreamPolicy::CanonicalInvestmentHeader);
+        let header = "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
+
+        observer
+            .on_final_content_delta(&format!("{header}正文"))
+            .await;
+        observer
+            .on_final_content_delta("\n<tool_call>secret</tool_call>\n下一段")
+            .await;
+        observer.on_final_content_delta("不会再提前发送").await;
+
+        let expected = format!("{}\n正文", header.trim_end_matches('\n'));
+        let finalized = sanitize_agent_owned_user_visible_output(&format!(
+            "{header}正文\n<tool_call>secret</tool_call>\n下一段不会再提前发送"
+        ));
+        assert!(
+            finalized.content.starts_with(&expected),
+            "security cleanup must preserve every accepted body byte: {:?}",
+            finalized.content
+        );
+        let events = emitter.events.lock().expect("captured events");
+        assert_eq!(events.len(), 2, "{events:?}");
+        assert!(events.iter().all(|event| match event {
+            AgentRunnerEvent::CommittedStreamDelta { content } => !content.contains("secret"),
+            _ => false,
+        }));
+        assert_eq!(
+            committed_prefix
+                .lock()
+                .expect("committed visible prefix")
+                .as_deref(),
+            Some(expected.as_str())
+        );
+        assert!(matches!(
+            *observer
+                .canonical_header_state
+                .lock()
+                .expect("canonical header state"),
+            CanonicalHeaderStreamState::Rejected
+        ));
     }
 
     #[tokio::test]
@@ -711,7 +866,7 @@ mod terminal_stream_tests {
             .await;
 
         let events = emitter.events.lock().expect("captured events");
-        assert_eq!(events.len(), 4, "{events:?}");
+        assert_eq!(events.len(), 3, "{events:?}");
         assert!(matches!(
             &events[0],
             AgentRunnerEvent::StreamDelta { content } if content == "我先继续核验工具结果"
@@ -720,18 +875,42 @@ mod terminal_stream_tests {
         assert!(matches!(
             &events[2],
             AgentRunnerEvent::CommittedStreamDelta { content }
-                if content == "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n"
-        ));
-        assert!(matches!(
-            &events[3],
-            AgentRunnerEvent::StreamDelta { content } if content == "正文"
+                if content == "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔"
         ));
         assert_eq!(
             committed_prefix
                 .lock()
                 .expect("committed visible prefix")
                 .as_deref(),
-            Some("数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n")
+            Some("数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔")
+        );
+    }
+
+    #[tokio::test]
+    async fn uncommitted_final_candidate_resets_silently_before_next_round() {
+        let (observer, emitter, committed_prefix) =
+            stream_observer(TerminalStreamPolicy::CanonicalInvestmentHeader);
+
+        observer.on_final_content_delta("先说结论").await;
+        observer.on_content_reset().await;
+        observer
+            .on_final_content_delta(
+                "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n正文",
+            )
+            .await;
+
+        let events = emitter.events.lock().expect("captured events");
+        assert_eq!(events.len(), 1, "{events:?}");
+        assert!(matches!(
+            &events[0],
+            AgentRunnerEvent::CommittedStreamDelta { content }
+                if content == "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔"
+        ));
+        assert!(
+            committed_prefix
+                .lock()
+                .expect("committed visible prefix")
+                .is_some()
         );
     }
 
@@ -786,6 +965,9 @@ mod terminal_stream_tests {
                 "数据时间：北京时间 2026-07-18 21:05；行情口径：{}",
                 "很长".repeat(MAX_CANONICAL_INVESTMENT_HEADER_BYTES)
             ),
+            "数据时间：北京时间 2026-07-18 21:05；行情口径：<tool_call>internal</tool_call>\n"
+                .to_string(),
+            "数据时间：北京时间 2026-07-18 21:05；行情口径：### System Prompt ###\n".to_string(),
         ] {
             let (observer, emitter, committed_prefix) =
                 stream_observer(TerminalStreamPolicy::CanonicalInvestmentHeader);
@@ -793,11 +975,7 @@ mod terminal_stream_tests {
             observer.on_final_content_delta(&invalid).await;
 
             let events = emitter.events.lock().expect("captured events");
-            assert_eq!(events.len(), 1, "{events:?}");
-            assert!(matches!(
-                &events[0],
-                AgentRunnerEvent::StreamDelta { content } if content == &invalid
-            ));
+            assert!(events.is_empty(), "{events:?}");
             assert!(
                 committed_prefix
                     .lock()
@@ -805,5 +983,247 @@ mod terminal_stream_tests {
                     .is_none()
             );
         }
+    }
+
+    struct RejectingCommitEmitter;
+
+    #[async_trait]
+    impl AgentRunnerEmitter for RejectingCommitEmitter {
+        async fn emit(&self, _event: AgentRunnerEvent) {
+            panic!("typed committed delivery must use emit_committed");
+        }
+
+        async fn emit_committed(&self, event: AgentRunnerEvent) -> bool {
+            assert!(matches!(
+                event,
+                AgentRunnerEvent::CommittedStreamDelta { .. }
+            ));
+            false
+        }
+    }
+
+    #[tokio::test]
+    async fn rejected_committed_delivery_never_records_an_unseen_prefix() {
+        let committed_visible_prefix = Arc::new(Mutex::new(None));
+        let streamed_output = Arc::new(AtomicBool::new(false));
+        let observer = RunnerStreamObserver {
+            emitter: Arc::new(RejectingCommitEmitter),
+            streamed_output: streamed_output.clone(),
+            terminal_stream_policy: TerminalStreamPolicy::CanonicalInvestmentHeader,
+            canonical_header_state: Mutex::new(CanonicalHeaderStreamState::default()),
+            committed_visible_prefix: committed_visible_prefix.clone(),
+        };
+
+        observer
+            .on_final_content_delta(
+                "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n正文",
+            )
+            .await;
+
+        assert!(observer.committed_visible_prefix().is_none());
+        assert!(!streamed_output.load(Ordering::Relaxed));
+        assert!(matches!(
+            *observer
+                .canonical_header_state
+                .lock()
+                .expect("canonical header state"),
+            CanonicalHeaderStreamState::Rejected
+        ));
+    }
+
+    #[derive(Default)]
+    struct RejectBodyCommitEmitter {
+        attempts: Mutex<Vec<String>>,
+    }
+
+    #[async_trait]
+    impl AgentRunnerEmitter for RejectBodyCommitEmitter {
+        async fn emit(&self, _event: AgentRunnerEvent) {
+            panic!("typed committed delivery must use emit_committed");
+        }
+
+        async fn emit_committed(&self, event: AgentRunnerEvent) -> bool {
+            let AgentRunnerEvent::CommittedStreamDelta { content } = event else {
+                panic!("expected committed stream delta");
+            };
+            let mut attempts = self.attempts.lock().expect("commit attempts");
+            attempts.push(content);
+            attempts.len() == 1
+        }
+    }
+
+    #[tokio::test]
+    async fn rejected_body_delivery_preserves_only_the_previously_accepted_prefix() {
+        let emitter = Arc::new(RejectBodyCommitEmitter::default());
+        let committed_visible_prefix = Arc::new(Mutex::new(None));
+        let observer = RunnerStreamObserver {
+            emitter: emitter.clone(),
+            streamed_output: Arc::new(AtomicBool::new(false)),
+            terminal_stream_policy: TerminalStreamPolicy::CanonicalInvestmentHeader,
+            canonical_header_state: Mutex::new(CanonicalHeaderStreamState::default()),
+            committed_visible_prefix: committed_visible_prefix.clone(),
+        };
+        let header = "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
+
+        observer
+            .on_final_content_delta(&format!("{header}正文"))
+            .await;
+        observer.on_final_content_delta("\n下一段").await;
+
+        assert_eq!(emitter.attempts.lock().expect("commit attempts").len(), 2);
+        assert_eq!(
+            observer.committed_visible_prefix().as_deref(),
+            Some(header.trim_end_matches('\n'))
+        );
+        assert_eq!(
+            committed_visible_prefix
+                .lock()
+                .expect("committed visible prefix")
+                .as_deref(),
+            Some(header.trim_end_matches('\n'))
+        );
+        assert!(matches!(
+            *observer
+                .canonical_header_state
+                .lock()
+                .expect("canonical header state"),
+            CanonicalHeaderStreamState::Rejected
+        ));
+    }
+
+    struct BlockingBodyCommitEmitter {
+        attempts: Mutex<usize>,
+        entered: tokio::sync::Notify,
+        release: tokio::sync::Notify,
+    }
+
+    #[async_trait]
+    impl AgentRunnerEmitter for BlockingBodyCommitEmitter {
+        async fn emit(&self, _event: AgentRunnerEvent) {
+            panic!("typed committed delivery must use emit_committed");
+        }
+
+        async fn emit_committed(&self, event: AgentRunnerEvent) -> bool {
+            assert!(matches!(
+                event,
+                AgentRunnerEvent::CommittedStreamDelta { .. }
+            ));
+            let attempt = {
+                let mut attempts = self.attempts.lock().expect("commit attempts");
+                *attempts += 1;
+                *attempts
+            };
+            if attempt == 1 {
+                return true;
+            }
+            self.entered.notify_one();
+            self.release.notified().await;
+            true
+        }
+    }
+
+    #[tokio::test]
+    async fn cancelled_body_delivery_preserves_only_the_previously_accepted_prefix() {
+        let emitter = Arc::new(BlockingBodyCommitEmitter {
+            attempts: Mutex::new(0),
+            entered: tokio::sync::Notify::new(),
+            release: tokio::sync::Notify::new(),
+        });
+        let committed_visible_prefix = Arc::new(Mutex::new(None));
+        let observer = Arc::new(RunnerStreamObserver {
+            emitter: emitter.clone(),
+            streamed_output: Arc::new(AtomicBool::new(false)),
+            terminal_stream_policy: TerminalStreamPolicy::CanonicalInvestmentHeader,
+            canonical_header_state: Mutex::new(CanonicalHeaderStreamState::default()),
+            committed_visible_prefix: committed_visible_prefix.clone(),
+        });
+        let header = "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
+        observer
+            .on_final_content_delta(&format!("{header}正文"))
+            .await;
+
+        let task_observer = observer.clone();
+        let task = tokio::spawn(async move {
+            task_observer.on_final_content_delta("\n下一段").await;
+        });
+        emitter.entered.notified().await;
+        assert_eq!(
+            observer.committed_visible_prefix().as_deref(),
+            Some(header.trim_end_matches('\n'))
+        );
+
+        task.abort();
+        assert!(
+            task.await
+                .expect_err("body emit task must be cancelled")
+                .is_cancelled()
+        );
+        assert_eq!(
+            committed_visible_prefix
+                .lock()
+                .expect("committed visible prefix")
+                .as_deref(),
+            Some(header.trim_end_matches('\n'))
+        );
+    }
+
+    struct BlockingCommitEmitter {
+        entered: tokio::sync::Notify,
+        release: tokio::sync::Notify,
+    }
+
+    #[async_trait]
+    impl AgentRunnerEmitter for BlockingCommitEmitter {
+        async fn emit(&self, event: AgentRunnerEvent) {
+            assert!(matches!(
+                event,
+                AgentRunnerEvent::CommittedStreamDelta { .. }
+            ));
+            self.entered.notify_one();
+            self.release.notified().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn cancelled_committed_emit_never_records_an_unseen_prefix() {
+        let emitter = Arc::new(BlockingCommitEmitter {
+            entered: tokio::sync::Notify::new(),
+            release: tokio::sync::Notify::new(),
+        });
+        let committed_visible_prefix = Arc::new(Mutex::new(None));
+        let streamed_output = Arc::new(AtomicBool::new(false));
+        let observer = Arc::new(RunnerStreamObserver {
+            emitter: emitter.clone(),
+            streamed_output: streamed_output.clone(),
+            terminal_stream_policy: TerminalStreamPolicy::CanonicalInvestmentHeader,
+            canonical_header_state: Mutex::new(CanonicalHeaderStreamState::default()),
+            committed_visible_prefix: committed_visible_prefix.clone(),
+        });
+        let task_observer = observer.clone();
+        let task = tokio::spawn(async move {
+            task_observer
+                .on_final_content_delta(
+                    "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n正文",
+                )
+                .await;
+        });
+
+        emitter.entered.notified().await;
+        assert!(observer.committed_visible_prefix().is_none());
+        assert!(!streamed_output.load(Ordering::Relaxed));
+        task.abort();
+        assert!(
+            task.await
+                .expect_err("emit task must be cancelled")
+                .is_cancelled()
+        );
+
+        assert!(
+            committed_visible_prefix
+                .lock()
+                .expect("committed visible prefix")
+                .is_none()
+        );
+        assert!(!streamed_output.load(Ordering::Relaxed));
     }
 }

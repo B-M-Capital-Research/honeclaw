@@ -777,8 +777,22 @@ fn weekday_label(value: u64) -> Option<&'static str> {
 }
 
 pub(crate) fn response_leaks_system_prompt(content: &str) -> bool {
-    let trimmed = content.trim_start_matches(char::is_whitespace);
-    trimmed.starts_with("### System Instructions ###")
+    const INTERNAL_PROMPT_ECHO_MARKERS: &[&str] = &[
+        "### System Instructions ###",
+        "### System Prompt ###",
+        "### Skill Context ###",
+        "### Conversation Context ###",
+        "### User Prompt ###",
+        "### Available Skills ###",
+        "【Session 上下文】",
+        "【Invoked Skill Context】",
+        "turn-0 可用技能索引",
+        "Base directory for this skill:",
+    ];
+
+    INTERNAL_PROMPT_ECHO_MARKERS
+        .iter()
+        .any(|marker| content.contains(marker))
 }
 
 pub(crate) fn normalize_local_image_references(

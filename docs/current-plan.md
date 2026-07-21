@@ -1,6 +1,6 @@
 # Current Plan Index
 
-最后更新：2026-07-19
+最后更新：2026-07-22
 状态：有 8 个活跃任务
 
 ## 说明
@@ -25,6 +25,7 @@
   - 状态：`in_progress`
   - 计划：`docs/current-plans/ticker-resolution-architecture.md`
   - 摘要：系统按更新后的 ADR 0004 / D-2026-07-19-08 收口跨市场 ticker 与 Interactive 自然 Agent 循环。主 Agent 从完整原话识别全部点名标的，为每个标的声明稳定 `entity_route` 和 call-scoped `identity_match`，普通小写/混合大小写 ticker 仍走 normalized exact-symbol；实体与证据 ledger 只驱动真实业务工具的 `Required → Auto`，不再暴露 `finish_research`，也不再执行 handoff、opaque locator 纠正、tool-free terminal、终稿审计、第二次生成、固定拒答或答案回写。工具轮继续缓冲以避免 preamble/reset/闪烁；同一 Agent 在同一上下文加载 DataFetch/Web 结果后自然输出唯一 DirectFinal，服务端只做安全清理并保证可见/持久化字节一致。最多四条/4000 字的近期用户原话仅用于追问指代，历史 assistant/tool/行情不会进入本轮事实链；未知模型工具也不会再闪 ToolStatus 错误。报价源时间优先使用 `hone_quote_time.beijing`；`market_date_new_york` 不能推出“纽交所/收盘价”，交易所只能来自结构化 exchange 字段；关系强度没有当前证据时必须中性表述。精确 `d4d44735` 的失败 canary 中十次 DataFetch/Web 均成功，但整轮仍有七次模型调用、耗时 92.435 秒，说明根因是 finish/correction/terminal 完成链而非 FMP/DataFetch/Tavily。自然 DirectFinal 实现与完整本地门禁已通过，并已无冲突 rebase 最新 Web 主干；精确构建部署和 relationship/valuation/single-ticker/non-finance canary 仍 pending。umbrella 任务之后仍需处理 scheduler 800G/NAND/AST/SEC P2，因此保持 `in_progress`、不归档
+  - 2026-07-21 TTFT 跟进：原问题 `大A有没有类似CRWV、Nebius这样的数据中心的标的` 约 `99.45s` 才完成，含 `14.377s` 同步预压缩与约 `39.45s` 被完整缓冲的最终模型流。D-2026-07-21-01 将无 compact/summary 的快路径限定为本轮自包含且带显式证券种子的请求，从同一 Session 快照恢复最多四条 user-only 指代及独立的 active invoked-skill prompt，并要求模型把独立候选发现放进同一 tool-call batch（执行仍串行）。Web 仅在 canonical 头及后续正文安全完整行被唯一发布 sink 成功接收后逐段累加 committed prefix；精确构建、重部署和原问题 fresh-actor canary 正在执行，umbrella 仍因 scheduler P2 保持 `in_progress`
 
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`

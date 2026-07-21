@@ -12,6 +12,7 @@ const PERSISTENT_TOOL_NAMES: &[&str] = &[
     "portfolio_tool",
     "notification_prefs",
     "restart_hone",
+    "skill_tool",
 ];
 
 const KNOWN_READ_ONLY_TOOL_NAMES: &[&str] = &[
@@ -75,6 +76,10 @@ pub fn tool_call_has_persistent_side_effect(name: &str, arguments: &Value) -> bo
             !matches!(tool_action(arguments), Some("get" | "get_overview"))
         }
         Some("restart_hone") => true,
+        Some("skill_tool") => arguments
+            .get("execute_script")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
         _ => false,
     }
 }
@@ -92,6 +97,12 @@ pub fn tool_call_is_known_read_only(name: &str, arguments: &Value) -> bool {
             matches!(tool_action(arguments), Some("get" | "get_overview"))
         }
         Some("restart_hone") => false,
+        // Loading a skill may update invoked-skill Session metadata, and
+        // execute_script=true can perform arbitrary declared script effects.
+        // Treat it as unknown/non-read-only even when script execution is off;
+        // the persistent classifier above specifically blocks the executable
+        // form at finance read-only boundaries.
+        Some("skill_tool") => false,
         _ => {
             let normalized = normalized_runner_tool_name(name);
             KNOWN_READ_ONLY_TOOL_NAMES
@@ -131,6 +142,18 @@ mod tests {
         assert!(!tool_call_is_known_read_only(
             "external_unknown_tool",
             &json!({})
+        ));
+        assert!(tool_call_has_persistent_side_effect(
+            "hone/skill_tool",
+            &json!({"skill":"stock_research","execute_script":true})
+        ));
+        assert!(!tool_call_has_persistent_side_effect(
+            "mcp__hone__skill_tool",
+            &json!({"skill":"stock_research","execute_script":false})
+        ));
+        assert!(!tool_call_is_known_read_only(
+            "skill_tool",
+            &json!({"skill":"stock_research"})
         ));
     }
 }

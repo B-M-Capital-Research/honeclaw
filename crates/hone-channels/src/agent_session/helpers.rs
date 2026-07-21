@@ -55,8 +55,11 @@ pub(super) fn restore_limit_before_compaction(
     }
 }
 
-fn restored_message_is_automation(message: &AgentMessage) -> bool {
-    let metadata = message.metadata.as_ref();
+pub(super) fn history_message_is_automation(
+    role: &str,
+    content: Option<&str>,
+    metadata: Option<&HashMap<String, Value>>,
+) -> bool {
     let tagged_source = metadata
         .and_then(|metadata| metadata.get("source"))
         .and_then(Value::as_str)
@@ -64,21 +67,30 @@ fn restored_message_is_automation(message: &AgentMessage) -> bool {
     let tagged_job = metadata.is_some_and(|metadata| {
         metadata.contains_key("job_id") || metadata.contains_key("web_push_id")
     });
-    let scheduler_envelope = message.role == "user"
-        && message
-            .content
-            .as_deref()
-            .is_some_and(|content| content.trim_start().starts_with("[定时任务触发]"));
+    let scheduler_envelope = role == "user"
+        && content.is_some_and(|content| content.trim_start().starts_with("[定时任务触发]"));
     tagged_source || tagged_job || scheduler_envelope
 }
 
-fn restored_message_is_failed_terminal(message: &AgentMessage) -> bool {
-    message
-        .metadata
-        .as_ref()
+pub(super) fn history_message_is_failed_terminal(
+    metadata: Option<&HashMap<String, Value>>,
+) -> bool {
+    metadata
         .and_then(|metadata| metadata.get("run_failed"))
         .and_then(Value::as_bool)
         == Some(true)
+}
+
+fn restored_message_is_automation(message: &AgentMessage) -> bool {
+    history_message_is_automation(
+        &message.role,
+        message.content.as_deref(),
+        message.metadata.as_ref(),
+    )
+}
+
+fn restored_message_is_failed_terminal(message: &AgentMessage) -> bool {
+    history_message_is_failed_terminal(message.metadata.as_ref())
 }
 
 /// Keep persisted Web history available to the UI while removing automation
@@ -91,6 +103,15 @@ pub(super) fn prune_interactive_runtime_history(
     current_user_input: &str,
 ) -> usize {
     let original_len = messages.len();
+    // The current turn is the final durable user row, not every historical row
+    // whose bytes happen to equal the current input. Detach that final group
+    // before filtering so an older scheduler/failed turn with identical text
+    // cannot receive a text-based exemption.
+    let current_group = messages
+        .iter()
+        .rposition(|message| message.role == "user")
+        .filter(|index| messages[*index].content.as_deref() == Some(current_user_input))
+        .map(|index| messages.split_off(index));
     let mut groups = Vec::<Vec<AgentMessage>>::new();
     for message in std::mem::take(messages) {
         if message.role == "user" && groups.last().is_some_and(|group| !group.is_empty()) {
@@ -102,15 +123,14 @@ pub(super) fn prune_interactive_runtime_history(
     }
 
     for group in groups {
-        let is_current_turn = group.iter().any(|message| {
-            message.role == "user" && message.content.as_deref() == Some(current_user_input)
-        });
-        let discard = !is_current_turn
-            && (group.iter().any(restored_message_is_automation)
-                || group.iter().any(restored_message_is_failed_terminal));
+        let discard = group.iter().any(restored_message_is_automation)
+            || group.iter().any(restored_message_is_failed_terminal);
         if !discard {
             messages.extend(group);
         }
+    }
+    if let Some(current_group) = current_group {
+        messages.extend(current_group);
     }
     original_len.saturating_sub(messages.len())
 }

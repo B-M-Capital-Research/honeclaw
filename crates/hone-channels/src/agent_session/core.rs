@@ -26,10 +26,11 @@ use crate::execution::{
 use crate::investment_response_guard::{
     InvestmentResponseContract, build_agent_discovered_investment, contract_failure_message,
     deterministic_investment_fallback_response, enforce_server_data_time_prefix,
-    forbidden_investment_tool_calls, investment_contract_failure_message,
-    investment_preflight_failure_message, missing_investment_response_sections,
-    missing_required_agent_seed_symbols, prepare_verified_investment_turn,
-    should_emit_investment_preflight, uses_main_agent_entity_discovery,
+    forbidden_investment_tool_calls, has_main_agent_entity_discovery_seed,
+    investment_contract_failure_message, investment_preflight_failure_message,
+    missing_investment_response_sections, missing_required_agent_seed_symbols,
+    prepare_verified_investment_turn, should_emit_investment_preflight,
+    uses_main_agent_entity_discovery,
 };
 use crate::prompt::PromptOptions;
 use crate::prompt_audit::PromptAuditMetadata;
@@ -37,7 +38,10 @@ use crate::response_finalizer::{
     EMPTY_SUCCESS_FALLBACK_MESSAGE, finalize_agent_owned_interactive_response,
     finalize_agent_response,
 };
-use crate::runners::{AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult};
+use crate::runners::{
+    AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
+    TerminalStreamPolicy,
+};
 use crate::runtime::{sanitize_user_visible_output, user_visible_error_message};
 use crate::session_compactor::SessionCompactor;
 use crate::tool_trace::{
@@ -60,7 +64,7 @@ use super::helpers::{
     should_return_runner_result,
 };
 use super::progress::{progress_watchdog_tick, run_with_progress_ticks};
-use super::restore::restore_context;
+use super::restore::{restore_context_from_snapshot, restore_recent_interactive_user_references};
 use super::types::{
     AgentRunOptions, AgentRunQuotaMode, AgentSessionError, AgentSessionErrorKind,
     AgentSessionEvent, AgentSessionListener, AgentSessionResult, AgentTurnOrigin,
@@ -74,6 +78,11 @@ pub(super) struct PreparedInvestmentContext {
     prompt_time_beijing: DateTime<FixedOffset>,
     reexecution_policy: PreparedTurnReexecutionPolicy,
     main_agent_entity_discovery_input: Option<String>,
+}
+
+struct RestoredRuntimeContext {
+    context: AgentContext,
+    session_metadata: HashMap<String, Value>,
 }
 
 pub(super) fn prompt_time_for_attempt(
@@ -395,12 +404,11 @@ fn normalize_execute_once_failure(
     }
     result.response.content = PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE.to_string();
     result.response.error = Some(PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE.to_string());
-    result.streamed_output = false;
+    result.streamed_output = result.committed_visible_prefix.is_some();
     result.terminal_error_emitted = false;
-    result.committed_visible_prefix = None;
 }
 
-fn normalize_persistent_trace_failure(result: &mut AgentRunnerResult) {
+pub(super) fn normalize_persistent_trace_failure(result: &mut AgentRunnerResult) {
     if result.response.success
         || !response_has_persistent_side_effect(&result.response.tool_calls_made)
     {
@@ -408,9 +416,8 @@ fn normalize_persistent_trace_failure(result: &mut AgentRunnerResult) {
     }
     result.response.content = PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE.to_string();
     result.response.error = Some(PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE.to_string());
-    result.streamed_output = false;
+    result.streamed_output = result.committed_visible_prefix.is_some();
     result.terminal_error_emitted = false;
-    result.committed_visible_prefix = None;
 }
 
 fn preserve_verified_investment_failure(
@@ -432,9 +439,8 @@ fn preserve_verified_investment_failure(
     let failure = investment_contract_failure_message(contract, message);
     result.response.content = failure.clone();
     result.response.error = Some(failure);
-    result.streamed_output = false;
+    result.streamed_output = result.committed_visible_prefix.is_some();
     result.terminal_error_emitted = false;
-    result.committed_visible_prefix = None;
 }
 
 fn unsafe_investment_repair_trace_message(tool_calls: &[ToolCallMade]) -> Option<&'static str> {
@@ -461,10 +467,13 @@ fn prepend_investment_attempt_tool_trace(
     result.response.tool_calls_made = previous_attempt_tool_calls;
 }
 
-fn apply_deterministic_investment_fallback(
+pub(super) fn apply_deterministic_investment_fallback(
     contract: &InvestmentResponseContract,
     result: &mut AgentRunnerResult,
 ) -> bool {
+    if result.committed_visible_prefix.is_some() {
+        return false;
+    }
     if !response_has_only_known_read_only_calls(&result.response.tool_calls_made) {
         return false;
     }
@@ -490,7 +499,6 @@ fn apply_deterministic_investment_fallback(
     result.context_messages = None;
     result.streamed_output = false;
     result.terminal_error_emitted = false;
-    result.committed_visible_prefix = None;
     true
 }
 
@@ -1042,17 +1050,38 @@ impl AgentSession {
         persisted_user_input: &str,
         restore_max_override: Option<usize>,
         turn_origin: AgentTurnOrigin,
-    ) -> AgentContext {
+        user_references_only: bool,
+    ) -> RestoredRuntimeContext {
         let restore_limit = restore_max_override.or(self.restore_max_messages);
-        let mut context = restore_context(
-            &self.core.session_storage,
-            session_id,
-            restore_limit,
-            Some(&self.build_skill_runtime()),
-        );
+        let session_snapshot = self
+            .core
+            .session_storage
+            .load_session(session_id)
+            .ok()
+            .flatten();
+        let skill_runtime = self.build_skill_runtime();
+        let mut context = if user_references_only {
+            session_snapshot
+                .as_ref()
+                .map(|session| {
+                    restore_recent_interactive_user_references(
+                        session,
+                        persisted_user_input,
+                        Some(&skill_runtime),
+                    )
+                })
+                .unwrap_or_else(|| AgentContext::new(session_id.to_string()))
+        } else {
+            session_snapshot
+                .as_ref()
+                .map(|session| {
+                    restore_context_from_snapshot(session, restore_limit, Some(&skill_runtime))
+                })
+                .unwrap_or_else(|| AgentContext::new(session_id.to_string()))
+        };
         context.set_actor_identity(&self.actor);
 
-        if turn_origin == AgentTurnOrigin::Interactive {
+        if turn_origin == AgentTurnOrigin::Interactive && !user_references_only {
             let removed =
                 prune_interactive_runtime_history(&mut context.messages, persisted_user_input);
             if removed > 0 {
@@ -1065,14 +1094,43 @@ impl AgentSession {
                 );
             }
         }
-
-        if let Some(last) = context.messages.last() {
-            if last.role == "user" && last.content.as_deref() == Some(persisted_user_input) {
-                context.messages.pop();
+        if !user_references_only {
+            if let Some(last) = context.messages.last() {
+                if last.role == "user" && last.content.as_deref() == Some(persisted_user_input) {
+                    context.messages.pop();
+                }
             }
         }
 
-        context
+        RestoredRuntimeContext {
+            context,
+            session_metadata: session_snapshot
+                .map(|session| session.metadata)
+                .unwrap_or_default(),
+        }
+    }
+
+    fn uses_initial_strict_interactive_research_context(
+        &self,
+        runtime_user_input: &str,
+        options: &AgentRunOptions,
+        restore_max_override: Option<usize>,
+        prepared_investment: Option<&PreparedInvestmentContext>,
+    ) -> bool {
+        if restore_max_override.is_some()
+            || prepared_investment.is_some()
+            || options.turn_origin != AgentTurnOrigin::Interactive
+            || !self.core.actor_uses_strict_runner_fallback(&self.actor)
+            || prepared_turn_reexecution_policy(runtime_user_input)
+                != PreparedTurnReexecutionPolicy::Allowed
+        {
+            return false;
+        }
+        let entity_resolution_input = options
+            .entity_resolution_input
+            .as_deref()
+            .unwrap_or(runtime_user_input);
+        has_main_agent_entity_discovery_seed(entity_resolution_input, options.turn_origin)
     }
 
     pub(super) async fn prepare_execution_for_turn(
@@ -1085,12 +1143,20 @@ impl AgentSession {
         prepared_investment: Option<&PreparedInvestmentContext>,
     ) -> Result<(PreparedExecution, PreparedInvestmentContext), (AgentSessionErrorKind, String)>
     {
-        let mut context = self.restore_runtime_context(
+        let use_fast_interactive_context = self.uses_initial_strict_interactive_research_context(
+            runtime_user_input,
+            options,
+            restore_max_override,
+            prepared_investment,
+        );
+        let restored = self.restore_runtime_context(
             session_id,
             persisted_user_input,
             restore_max_override,
             options.turn_origin,
+            use_fast_interactive_context,
         );
+        let mut context = restored.context;
         if options.turn_origin == AgentTurnOrigin::Interactive
             && restore_max_override == Some(CONTEXT_OVERFLOW_POST_COMPACT_RESTORE_LIMIT)
         {
@@ -1109,8 +1175,12 @@ impl AgentSession {
             prepared_investment.map(|prepared| prepared.prompt_time_beijing),
             hone_core::beijing_now(),
         );
-        let (system_prompt, mut runtime_input, answer_time_beijing) =
-            self.resolve_prompt_input_at(session_id, runtime_user_input, prompt_time_beijing);
+        let (system_prompt, mut runtime_input, answer_time_beijing) = self.resolve_prompt_input_at(
+            session_id,
+            runtime_user_input,
+            prompt_time_beijing,
+            !use_fast_interactive_context,
+        );
         let investment_context = if let Some(prepared) = prepared_investment {
             runtime_input.push_str(&prepared.runtime_suffix);
             prepared.clone()
@@ -1206,7 +1276,7 @@ impl AgentSession {
                 context,
                 timeout: options.timeout,
                 gemini_stream: self.default_gemini_stream_options(options.timeout),
-                session_metadata: self.load_session_metadata(session_id),
+                session_metadata: restored.session_metadata,
                 model_override: options.model_override.clone(),
                 runner_selection: ExecutionRunnerSelection::Configured,
                 allowed_tools: None,
@@ -1241,6 +1311,10 @@ impl AgentSession {
                 .main_agent_entity_discovery_input
                 .is_some()
             && investment_context.reexecution_policy == PreparedTurnReexecutionPolicy::Allowed;
+        if execution.runner_request.agent_owned_finance_loop && self.actor.channel == "web" {
+            execution.runner_request.terminal_stream_policy =
+                TerminalStreamPolicy::CanonicalInvestmentHeader;
+        }
         Ok((execution, investment_context))
     }
 
@@ -1479,7 +1553,7 @@ impl AgentSession {
         session_id: &str,
         user_input: &str,
     ) -> (String, String, String) {
-        self.resolve_prompt_input_at(session_id, user_input, hone_core::beijing_now())
+        self.resolve_prompt_input_at(session_id, user_input, hone_core::beijing_now(), true)
     }
 
     fn resolve_prompt_input_at(
@@ -1487,6 +1561,7 @@ impl AgentSession {
         session_id: &str,
         user_input: &str,
         prompt_time_beijing: DateTime<FixedOffset>,
+        include_conversation_context: bool,
     ) -> (String, String, String) {
         let turn = PromptTurnBuilder::new(
             &self.core,
@@ -1496,7 +1571,11 @@ impl AgentSession {
             self.allow_cron,
             self.recv_extra.as_deref(),
         )
-        .resolve_prompt_input_at(user_input, prompt_time_beijing);
+        .resolve_prompt_input_at(
+            user_input,
+            prompt_time_beijing,
+            include_conversation_context,
+        );
         (
             turn.system_prompt,
             turn.runtime_input,
@@ -1792,16 +1871,6 @@ impl AgentSession {
         })
     }
 
-    fn load_session_metadata(&self, session_id: &str) -> HashMap<String, Value> {
-        self.core
-            .session_storage
-            .load_session(session_id)
-            .ok()
-            .flatten()
-            .map(|session| session.metadata)
-            .unwrap_or_default()
-    }
-
     async fn fail_run(
         &self,
         session_id: String,
@@ -2044,36 +2113,51 @@ impl AgentSession {
             self.message_id.as_deref(),
         );
 
-        self.emit(session_progress_event(
-            "session.compress",
-            Some("start".to_string()),
-        ))
-        .await;
-
-        if let Err(err) = self
-            .core
-            .maybe_compress_session(&session_id, &self.actor)
-            .await
-        {
-            tracing::error!(
+        let skip_initial_compaction = self.uses_initial_strict_interactive_research_context(
+            runtime_user_input,
+            &options,
+            None,
+            None,
+        );
+        if skip_initial_compaction {
+            tracing::debug!(
                 session_id = %session_id,
                 channel = %self.actor.channel,
                 user_id = %self.actor.user_id,
-                channel_target = %self.channel_target,
-                "[AgentSession] compress failed: {}",
-                err
+                "skipping synchronous pre-run compaction for initial strict Interactive research"
             );
-            self.emit(session_progress_event(
-                "session.compress",
-                Some("failed".to_string()),
-            ))
-            .await;
         } else {
             self.emit(session_progress_event(
                 "session.compress",
-                Some("done".to_string()),
+                Some("start".to_string()),
             ))
             .await;
+
+            if let Err(err) = self
+                .core
+                .maybe_compress_session(&session_id, &self.actor)
+                .await
+            {
+                tracing::error!(
+                    session_id = %session_id,
+                    channel = %self.actor.channel,
+                    user_id = %self.actor.user_id,
+                    channel_target = %self.channel_target,
+                    "[AgentSession] compress failed: {}",
+                    err
+                );
+                self.emit(session_progress_event(
+                    "session.compress",
+                    Some("failed".to_string()),
+                ))
+                .await;
+            } else {
+                self.emit(session_progress_event(
+                    "session.compress",
+                    Some("done".to_string()),
+                ))
+                .await;
+            }
         }
 
         self.core.log_message_step(

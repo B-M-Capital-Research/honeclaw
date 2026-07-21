@@ -52,6 +52,7 @@ impl<'a> PromptTurnBuilder<'a> {
         &self,
         user_input: &str,
         prompt_time_beijing: DateTime<FixedOffset>,
+        include_conversation_context: bool,
     ) -> PromptTurnInput {
         let mut prompt_options = self.prompt_options.clone();
         if self.allow_cron {
@@ -88,6 +89,7 @@ impl<'a> PromptTurnBuilder<'a> {
             &Default::default(),
             &prompt_options,
             prompt_time_beijing,
+            include_conversation_context,
         );
         if self.core.effective_runner_manages_own_context(self.actor) {
             bundle.conversation_context = None;

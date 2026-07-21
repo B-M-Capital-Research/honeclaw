@@ -56,6 +56,21 @@ pub enum AgentSessionEvent {
 #[async_trait]
 pub trait AgentSessionListener: Send + Sync {
     async fn on_event(&self, event: AgentSessionEvent);
+
+    /// Whether this listener is the unique publication sink capable of
+    /// accepting an irreversible prefix and the later Segment/PartialDone
+    /// continuation. Observers and non-streaming channel adapters stay false.
+    fn supports_committed_delivery(&self) -> bool {
+        false
+    }
+
+    /// Typed delivery acknowledgement for the unique publication sink. The
+    /// default fails closed; callers must check `supports_committed_delivery`
+    /// before invoking it.
+    async fn on_committed_event(&self, event: AgentSessionEvent) -> bool {
+        let _ = event;
+        false
+    }
 }
 
 /// 构造一个 `Run(Progress)` 事件。放在 types 里而不是 core 里,

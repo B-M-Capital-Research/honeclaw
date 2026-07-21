@@ -167,6 +167,7 @@ pub fn build_prompt_bundle(
         _prompt_state,
         options,
         hone_core::beijing_now(),
+        true,
     )
 }
 
@@ -178,6 +179,7 @@ pub(crate) fn build_prompt_bundle_at(
     _prompt_state: &SessionPromptState,
     options: &PromptOptions,
     now: DateTime<FixedOffset>,
+    include_conversation_context: bool,
 ) -> PromptBundle {
     let mut static_system = config
         .agent
@@ -252,24 +254,28 @@ pub(crate) fn build_prompt_bundle_at(
         session_id
     );
 
-    let conversation_context = storage
-        .load_session(session_id)
-        .ok()
-        .flatten()
-        .and_then(|session| {
-            hone_memory::latest_compact_summary(&session.messages)
-                .map(|message| {
-                    hone_memory::session_message_text(message)
-                        .trim()
-                        .to_string()
-                })
-                .or_else(|| {
-                    session
-                        .summary
-                        .map(|summary| format!("【历史会话总结】\n{}", summary.content.trim()))
-                })
-        })
-        .filter(|value| !value.trim().is_empty());
+    let conversation_context = if include_conversation_context {
+        storage
+            .load_session(session_id)
+            .ok()
+            .flatten()
+            .and_then(|session| {
+                hone_memory::latest_compact_summary(&session.messages)
+                    .map(|message| {
+                        hone_memory::session_message_text(message)
+                            .trim()
+                            .to_string()
+                    })
+                    .or_else(|| {
+                        session
+                            .summary
+                            .map(|summary| format!("【历史会话总结】\n{}", summary.content.trim()))
+                    })
+            })
+            .filter(|value| !value.trim().is_empty())
+    } else {
+        None
+    };
 
     PromptBundle {
         static_system,
@@ -731,6 +737,46 @@ mod tests {
             bundle
         );
 
+        let _ = fs::remove_dir_all(&data_dir);
+    }
+
+    #[test]
+    fn prompt_bundle_can_skip_compact_summary_loading_at_the_source() {
+        let data_dir = std::env::temp_dir().join(format!(
+            "hone-prompt-no-conversation-context-{}-{}",
+            std::process::id(),
+            hone_core::beijing_now()
+                .timestamp_nanos_opt()
+                .unwrap_or_default()
+        ));
+        fs::create_dir_all(&data_dir).expect("session storage dir should init");
+        let storage = SessionStorage::new(data_dir.join("sessions"));
+        let session_id = storage
+            .create_session(Some("session-no-summary-load"), None, None)
+            .expect("create session");
+        storage
+            .add_message(
+                &session_id,
+                "system",
+                "【Compact Summary】\nsummary-that-must-stay-unloaded",
+                Some(hone_memory::build_compact_summary_metadata("auto")),
+            )
+            .expect("add compact summary");
+        let config = HoneConfig::default();
+        let prompt_state = SessionPromptState::default();
+
+        let bundle = build_prompt_bundle_at(
+            &config,
+            &storage,
+            "web",
+            &session_id,
+            &prompt_state,
+            &PromptOptions::default(),
+            hone_core::beijing_now(),
+            false,
+        );
+
+        assert!(bundle.conversation_context.is_none());
         let _ = fs::remove_dir_all(&data_dir);
     }
 

@@ -98,6 +98,10 @@ fn public_api_finish_reason(success: bool) -> &'static str {
 
 #[async_trait]
 impl AgentSessionListener for OpenAiStreamListener {
+    fn supports_committed_delivery(&self) -> bool {
+        true
+    }
+
     async fn on_event(&self, event: AgentSessionEvent) {
         let content = match event {
             AgentSessionEvent::Segment { text } => Some(text),
@@ -119,6 +123,26 @@ impl AgentSessionListener for OpenAiStreamListener {
                 ))
                 .await;
         }
+    }
+
+    async fn on_committed_event(&self, event: AgentSessionEvent) -> bool {
+        let AgentSessionEvent::Run(RunEvent::StreamDelta { content }) = event else {
+            self.on_event(event).await;
+            return true;
+        };
+        if content.is_empty() {
+            return true;
+        }
+        self.tx
+            .send(openai_stream_chunk(
+                &self.id,
+                &self.model,
+                self.created,
+                Some(&content),
+                None,
+            ))
+            .await
+            .is_ok()
     }
 }
 

@@ -35,8 +35,43 @@ pub(crate) struct SseSessionListener {
     terminal_sent: Arc<AtomicBool>,
 }
 
+impl SseSessionListener {
+    async fn emit_assistant_delta(&self, content: String) -> bool {
+        let content_chars = content.chars().count();
+        // Hold the counter guard before the transport await so a successful
+        // queue send is the final cancellation point. Once send returns Ok,
+        // the visible-byte accounting is updated synchronously and cannot be
+        // cancelled into a phantom negative acknowledgement.
+        let mut guard = self.sent_segments.lock().await;
+        let first = *guard == 0;
+        if self
+            .tx
+            .send(("assistant_delta".into(), json!({ "content": content })))
+            .await
+            .is_err()
+        {
+            return false;
+        }
+
+        *guard = (*guard).saturating_add(1);
+        drop(guard);
+        if first {
+            info!(
+                user_id = %self.user_id,
+                content_chars,
+                "[Console] first assistant delta queued for SSE"
+            );
+        }
+        true
+    }
+}
+
 #[async_trait]
 impl AgentSessionListener for SseSessionListener {
+    fn supports_committed_delivery(&self) -> bool {
+        true
+    }
+
     async fn on_event(&self, event: AgentSessionEvent) {
         if !matches!(
             &event,
@@ -47,26 +82,18 @@ impl AgentSessionListener for SseSessionListener {
         }
         match event {
             AgentSessionEvent::Segment { text } => {
-                if let Some(active_run) = &self.active_run {
+                if self.emit_assistant_delta(text).await
+                    && let Some(active_run) = &self.active_run
+                {
                     let _ = active_run.update("running", "正在输出最终回答");
                 }
-                let _ = self
-                    .tx
-                    .send(("assistant_delta".into(), json!({ "content": text })))
-                    .await;
-                let mut guard = self.sent_segments.lock().await;
-                *guard += 1;
             }
             AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => {
-                if let Some(active_run) = &self.active_run {
+                if self.emit_assistant_delta(content).await
+                    && let Some(active_run) = &self.active_run
+                {
                     let _ = active_run.update("running", "正在输出最终回答");
                 }
-                let _ = self
-                    .tx
-                    .send(("assistant_delta".into(), json!({ "content": content })))
-                    .await;
-                let mut guard = self.sent_segments.lock().await;
-                *guard += 1;
             }
             AgentSessionEvent::Run(RunEvent::StreamReset) => {
                 if let Some(active_run) = &self.active_run {
@@ -149,10 +176,7 @@ impl AgentSessionListener for SseSessionListener {
                 if response.success && sent == 0 {
                     let cleaned = clean_msg_markers(&response.content);
                     if !cleaned.is_empty() && !should_skip_buffer(&cleaned) {
-                        let _ = self
-                            .tx
-                            .send(("assistant_delta".into(), json!({ "content": cleaned })))
-                            .await;
+                        self.emit_assistant_delta(cleaned).await;
                     }
                 }
                 if !response.success {
@@ -184,10 +208,7 @@ impl AgentSessionListener for SseSessionListener {
                 if sent == 0 {
                     let cleaned = clean_msg_markers(&response.content);
                     if !cleaned.is_empty() && !should_skip_buffer(&cleaned) {
-                        let _ = self
-                            .tx
-                            .send(("assistant_delta".into(), json!({ "content": cleaned })))
-                            .await;
+                        self.emit_assistant_delta(cleaned).await;
                     }
                 }
                 // Honest partial completion: keep the already-rendered bytes,
@@ -202,6 +223,25 @@ impl AgentSessionListener for SseSessionListener {
                     .await;
             }
             _ => {}
+        }
+    }
+
+    async fn on_committed_event(&self, event: AgentSessionEvent) -> bool {
+        if self.terminal_sent.load(Ordering::Acquire) {
+            return false;
+        }
+        match event {
+            AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => {
+                let accepted = self.emit_assistant_delta(content).await;
+                if accepted && let Some(active_run) = &self.active_run {
+                    let _ = active_run.update("running", "正在输出最终回答");
+                }
+                accepted
+            }
+            other => {
+                self.on_event(other).await;
+                true
+            }
         }
     }
 }
@@ -525,6 +565,30 @@ mod tests {
             "unexpected duplicate or reset event"
         );
         assert_eq!(*sent_segments.lock().await, 1);
+    }
+
+    #[tokio::test]
+    async fn closed_sse_receiver_does_not_record_an_unseen_delta() {
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+        drop(rx);
+        let sent_segments = Arc::new(tokio::sync::Mutex::new(0));
+        let listener = SseSessionListener {
+            tx,
+            user_id: "u1".to_string(),
+            sent_segments: sent_segments.clone(),
+            active_run: None,
+            terminal_sent: Arc::new(AtomicBool::new(false)),
+        };
+
+        assert!(listener.supports_committed_delivery());
+        let accepted = listener
+            .on_committed_event(AgentSessionEvent::Run(RunEvent::StreamDelta {
+                content: "没有接收端看到这段文字".to_string(),
+            }))
+            .await;
+
+        assert!(!accepted);
+        assert_eq!(*sent_segments.lock().await, 0);
     }
 
     #[tokio::test]

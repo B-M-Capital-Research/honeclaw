@@ -7480,7 +7480,8 @@ fn append_agent_entity_discovery_context(
          当前请求不能由前置扫描器可靠地封闭全部证券实体；扫描结果只能作为候选种子，不是实体事实：{}。\n\
          先完整阅读当前用户请求，判断其中是否真的点名公司、证券、基金、指数或加密资产，不得沿用历史 ticker，也不得为了满足流程硬凑标的。若当前文本没有点名证券实体，继续处理用户原本的问题，不做无关的 DataFetch 调用。\n\
          若存在一个或多个可能标的，第一轮必须只返回工具调用，不写数据时间、摘要、草稿或终稿；对当前文本中的全部候选并行执行 data_fetch(search)。用户书写的 ticker 不要求大写：证券语境中的小写或混合大小写代码先规范成标准代码并走 exact_symbol，不能仅因大小写改走公司别名 refinement。为每个标的分配一个稳定、互不复用且区分大小写的 entity_route，并在每一次 search 调用里填写 call-scoped identity_match（ticker 用 exact_symbol，公司名/别名用 name_or_alias）。这组 search query 是你基于完整原话做出的候选实体声明，但返回结果仍不是最终事实。不得只取第一个标的，也不得让服务端按字符串形状替你猜实体。\n\
-         search 返回后，在同一个 Agent loop 的下一轮对选中的全部标准 symbol 批量或并行执行同 entity_route 的 exact-symbol quote 与 profile，再结合用户问题继续调用财务、持仓、新闻或网页搜索工具。空结果补查可用 refines_query，给漏写路线键的旧 search 补键可用 supersedes_query；两者都必须逐字且区分大小写地指向一条旧 query，并严格二选一。只有同代码 quote（正价格且带 provider timestamp）与资产类型核验完成后才可写证券分析。搜索第一条、近似 ticker、历史标的和模型记忆都不能替代本轮核验。只有当前工具结果确实仍有多个候选，或权威工具均无覆盖时，才向用户说明具体歧义或缺失；不得因为前置扫描不完整而直接停止。",
+         若用户还要求寻找同类公司、地域市场映射、产业链标的或比较候选，第一轮同一个 assistant tool-call batch 还必须并行发出所有不依赖标准 ticker 的 Web、新闻、公告/filing 与行业候选发现查询；这些独立查询不得等 DataFetch search 返回后才开始。任何依赖标准 symbol 的 quote、profile/snapshot、financials 或 ticker-news 必须等对应 search 返回并选定 symbol 后再调用；不得根据公司名、简称、模型记忆或搜索首条自行猜 ticker。\n\
+         search 返回后，在同一个 Agent loop 的下一轮对选中的全部标准 symbol 批量或并行执行同 entity_route 的 exact-symbol quote 与 profile，并把其它依赖 symbol 且彼此独立的财务、持仓、新闻工具放进同一批次；已在首轮开始的 Web、公告与行业查询不得无理由重复。空结果补查可用 refines_query，给漏写路线键的旧 search 补键可用 supersedes_query；两者都必须逐字且区分大小写地指向一条旧 query，并严格二选一。只有同代码 quote（正价格且带 provider timestamp）与资产类型核验完成后才可写证券分析。搜索第一条、近似 ticker、历史标的和模型记忆都不能替代本轮核验。只有当前工具结果确实仍有多个候选，或权威工具均无覆盖时，才向用户说明具体歧义或缺失；不得因为前置扫描不完整而直接停止。",
         Value::Array(seed_snapshot)
     ));
     runtime_input.push_str(&format!(
@@ -9173,6 +9174,17 @@ pub(crate) fn uses_main_agent_entity_discovery(input: &str, origin: AgentTurnOri
     matches!(
         extract_entity_scope(input, origin),
         EntityResolutionScope::AgentToolDiscovery(_)
+    )
+}
+
+/// Whether an Interactive discovery turn is self-contained enough for the
+/// user-only fast restore path. A nonempty deterministic seed means the current
+/// text itself names at least one explicit security identifier; referential
+/// follow-ups such as “第二个呢” intentionally fall back to full history.
+pub(crate) fn has_main_agent_entity_discovery_seed(input: &str, origin: AgentTurnOrigin) -> bool {
+    matches!(
+        extract_entity_scope(input, origin),
+        EntityResolutionScope::AgentToolDiscovery(seeds) if !seeds.is_empty()
     )
 }
 
@@ -10875,7 +10887,8 @@ mod tests {
         deterministic_ticker_scope_is_complete, enforce_server_data_time_prefix, entity_is_crypto,
         entity_is_fund, explicit_dollar_mentions, extract_entity_scope,
         filter_entity_news_evidence, forbidden_investment_tool_calls, has_data_time_context,
-        has_matching_financial_data, has_matching_symbol_data, investment_contract_failure_message,
+        has_main_agent_entity_discovery_seed, has_matching_financial_data,
+        has_matching_symbol_data, investment_contract_failure_message,
         investment_preflight_failure_message, is_portfolio_scope_request,
         is_strict_quote_only_request, market_benchmark_symbols, market_search_date_at,
         matching_quote_fact, matching_symbol_objects_or_error, missing_deep_crypto_sections,
@@ -11720,6 +11733,21 @@ mod tests {
             extract_entity_scope("AI 行业未来怎么看", AgentTurnOrigin::Interactive),
             EntityResolutionScope::AgentToolDiscovery(_)
         ));
+    }
+
+    #[test]
+    fn fast_restore_requires_a_self_contained_explicit_security_seed() {
+        assert!(has_main_agent_entity_discovery_seed(
+            "大A有没有类似CRWV、Nebius这样的数据中心的标的",
+            AgentTurnOrigin::Interactive,
+        ));
+        for referential in ["第二个再详细点", "你刚提到的第二家公司呢", "继续分析它"]
+        {
+            assert!(
+                !has_main_agent_entity_discovery_seed(referential, AgentTurnOrigin::Interactive,),
+                "{referential}"
+            );
+        }
     }
 
     #[test]
@@ -12727,6 +12755,28 @@ mod tests {
         assert!(answer_contract.contains("禁止据此写‘纽交所’或‘收盘价’"));
         assert!(answer_contract.contains("不扩写成核心、最大、大客户、高度依赖、锁定或多重绑定"));
         assert!(answer_contract.ends_with("继续完成当前证据能够支持的分析。"));
+    }
+
+    #[test]
+    fn interactive_comparable_discovery_batches_independent_evidence_before_symbol_tools() {
+        let mut runtime_input = "大A有没有类似CRWV、Nebius这样的数据中心的标的".to_string();
+        let seed_mentions = plain_ticker_mentions(&runtime_input, AgentTurnOrigin::Interactive);
+
+        append_agent_entity_discovery_context(
+            &mut runtime_input,
+            &seed_mentions,
+            "2026-07-21 19:50",
+        );
+
+        let discovery = runtime_input
+            .split("【本轮最终回答契约：由主 Agent 一次完成】")
+            .next()
+            .expect("discovery contract");
+        assert!(discovery.contains("第一轮同一个 assistant tool-call batch"));
+        assert!(discovery.contains("Web、新闻、公告/filing 与行业候选发现查询"));
+        assert!(discovery.contains("这些独立查询不得等 DataFetch search 返回后才开始"));
+        assert!(discovery.contains("必须等对应 search 返回并选定 symbol 后再调用"));
+        assert!(discovery.contains("不得根据公司名、简称、模型记忆或搜索首条自行猜 ticker"));
     }
 
     #[test]

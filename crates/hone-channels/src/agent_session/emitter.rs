@@ -54,6 +54,18 @@ impl AgentRunnerEmitter for DeferredUserOutputEmitter {
             | AgentRunnerEvent::Error { .. } => {}
         }
     }
+
+    async fn emit_committed(&self, event: AgentRunnerEvent) -> bool {
+        match event {
+            forward @ AgentRunnerEvent::CommittedStreamDelta { .. } => {
+                self.inner.emit_committed(forward).await
+            }
+            other => {
+                self.emit(other).await;
+                true
+            }
+        }
+    }
 }
 
 fn truncate_event_detail(detail: &str, max_chars: usize) -> String {
@@ -189,10 +201,10 @@ impl AgentRunnerEmitter for SessionEventEmitter {
             }
             AgentRunnerEvent::CommittedStreamDelta { content } => {
                 // This typed event is produced only after the runner has
-                // validated a complete canonical header. Preserve its exact
-                // bytes (notably the trailing newline). Silently filtering or
-                // rewriting it here would make the runner believe a prefix was
-                // committed when listeners never received those bytes.
+                // validated a canonical header or a byte-stable continuation
+                // line. Preserve its exact bytes. Silently filtering or
+                // rewriting it here would make the runner believe answer bytes
+                // were committed when listeners never received them.
                 tracing::info!(
                     message_id = %self.message_id.as_deref().unwrap_or("-"),
                     state = "runner_terminal_prefix_committed",
@@ -200,7 +212,7 @@ impl AgentRunnerEmitter for SessionEventEmitter {
                     user = %self.user_id,
                     session = %self.session_id,
                     bytes = content.len(),
-                    "Agent committed the canonical terminal header"
+                    "Agent committed a terminal answer delta"
                 );
                 AgentRunnerEvent::StreamDelta { content }
             }
@@ -278,6 +290,62 @@ impl AgentRunnerEmitter for SessionEventEmitter {
             listener.on_event(mapped.clone()).await;
         }
     }
+
+    async fn emit_committed(&self, event: AgentRunnerEvent) -> bool {
+        let AgentRunnerEvent::CommittedStreamDelta { content } = event else {
+            self.emit(event).await;
+            return true;
+        };
+
+        tracing::info!(
+            message_id = %self.message_id.as_deref().unwrap_or("-"),
+            state = "runner_terminal_prefix_commit_attempt",
+            channel = %self.channel,
+            user = %self.user_id,
+            session = %self.session_id,
+            bytes = content.len(),
+            "Agent is attempting to commit an irreversible terminal answer delta"
+        );
+        let mapped = AgentSessionEvent::Run(AgentRunnerEvent::StreamDelta { content });
+        let mut sinks = self
+            .listeners
+            .iter()
+            .filter(|listener| listener.supports_committed_delivery());
+        let Some(sink) = sinks.next() else {
+            tracing::warn!(
+                message_id = %self.message_id.as_deref().unwrap_or("-"),
+                state = "runner_terminal_prefix_commit_unsupported",
+                channel = %self.channel,
+                user = %self.user_id,
+                session = %self.session_id,
+                "no listener supports committed terminal answer delivery"
+            );
+            return false;
+        };
+        if sinks.next().is_some() {
+            tracing::error!(
+                message_id = %self.message_id.as_deref().unwrap_or("-"),
+                state = "runner_terminal_prefix_commit_ambiguous",
+                channel = %self.channel,
+                user = %self.user_id,
+                session = %self.session_id,
+                "multiple listeners claim committed terminal answer delivery"
+            );
+            return false;
+        }
+        let accepted = sink.on_committed_event(mapped).await;
+        if !accepted {
+            tracing::warn!(
+                message_id = %self.message_id.as_deref().unwrap_or("-"),
+                state = "runner_terminal_prefix_commit_rejected",
+                channel = %self.channel,
+                user = %self.user_id,
+                session = %self.session_id,
+                "downstream transport rejected the terminal answer delta"
+            );
+        }
+        accepted
+    }
 }
 
 #[cfg(test)]
@@ -308,6 +376,46 @@ mod tests {
         async fn on_event(&self, event: AgentSessionEvent) {
             self.events.lock().await.push(event);
         }
+    }
+
+    struct RejectingCommittedSessionListener;
+
+    #[async_trait]
+    impl AgentSessionListener for RejectingCommittedSessionListener {
+        async fn on_event(&self, _event: AgentSessionEvent) {}
+
+        fn supports_committed_delivery(&self) -> bool {
+            true
+        }
+
+        async fn on_committed_event(&self, event: AgentSessionEvent) -> bool {
+            assert!(matches!(
+                event,
+                AgentSessionEvent::Run(AgentRunnerEvent::StreamDelta { .. })
+            ));
+            false
+        }
+    }
+
+    #[tokio::test]
+    async fn committed_delivery_rejection_propagates_to_the_runner() {
+        let emitter = SessionEventEmitter {
+            listeners: vec![Arc::new(RejectingCommittedSessionListener)],
+            channel: "web".to_string(),
+            user_id: "closed-sse".to_string(),
+            session_id: "session".to_string(),
+            message_id: None,
+            working_directory: ".".to_string(),
+        };
+
+        assert!(
+            !emitter
+                .emit_committed(AgentRunnerEvent::CommittedStreamDelta {
+                    content: "数据时间：北京时间 2026-07-22 10:00；行情口径：最新可得\n"
+                        .to_string(),
+                })
+                .await
+        );
     }
 
     #[tokio::test]

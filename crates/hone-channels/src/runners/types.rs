@@ -10,21 +10,30 @@ use crate::agent_session::GeminiStreamOptions;
 pub(crate) use crate::run_event::RunEvent as AgentRunnerEvent;
 
 /// Controls whether a runner may publish a narrowly bounded, irreversible
-/// prefix while the rest of an Agent answer remains deferred.
+/// answer prefix while the rest of an Agent answer remains deferred.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum TerminalStreamPolicy {
     /// Preserve the runner's ordinary streaming behavior.
     #[default]
     Disabled,
-    /// Commit only a complete canonical investment header beginning with
-    /// `数据时间：北京时间 ...；行情口径：...`.
-    #[cfg(test)]
+    /// Commit only after a complete canonical investment header beginning
+    /// with `数据时间：北京时间 ...；行情口径：...`; subsequent security-clean,
+    /// stable lines from that same tool-free final may extend the prefix.
     CanonicalInvestmentHeader,
 }
 
 #[async_trait]
 pub trait AgentRunnerEmitter: Send + Sync {
     async fn emit(&self, event: AgentRunnerEvent);
+
+    /// Deliver an irreversible typed answer delta and report whether the
+    /// downstream transport accepted it. Ordinary emitters keep legacy
+    /// behavior; the Session/Web bridge overrides this so a closed SSE receiver
+    /// cannot create phantom committed bytes.
+    async fn emit_committed(&self, event: AgentRunnerEvent) -> bool {
+        self.emit(event).await;
+        true
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -61,7 +70,8 @@ pub struct AgentRunnerRequest {
 pub struct AgentRunnerResult {
     pub response: AgentResponse,
     pub streamed_output: bool,
-    /// Exact prefix already emitted through `CommittedStreamDelta`.
+    /// Exact prefix already emitted through one or more
+    /// `CommittedStreamDelta` events.
     ///
     /// AgentSession uses this value to publish only the remaining suffix at
     /// the terminal boundary. `None` means no user-visible prefix was

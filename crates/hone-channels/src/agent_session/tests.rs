@@ -47,8 +47,8 @@ use crate::runtime::sanitize_user_visible_output;
 use crate::sandbox::sandbox_base_dir;
 
 use super::core::{
-    AgentSession, PreparedTurnReexecutionPolicy, prepared_turn_reexecution_policy,
-    prompt_time_for_attempt,
+    AgentSession, PreparedTurnReexecutionPolicy, apply_deterministic_investment_fallback,
+    normalize_persistent_trace_failure, prepared_turn_reexecution_policy, prompt_time_for_attempt,
 };
 use super::emitter::SessionEventEmitter;
 use super::helpers::{
@@ -57,7 +57,7 @@ use super::helpers::{
     non_finance_boundary_reply, persistable_turn_from_response, prune_interactive_runtime_history,
     sanitize_assistant_context_content, should_persist_tool_result, should_return_runner_result,
 };
-use super::restore::restore_context;
+use super::restore::{restore_context, restore_recent_interactive_user_references};
 use super::types::{
     AgentRunOptions, AgentRunQuotaMode, AgentSessionErrorKind, AgentSessionEvent,
     AgentSessionListener, AgentTurnOrigin, GeminiStreamOptions,
@@ -1112,6 +1112,69 @@ async fn committed_terminal_prefix_makes_runner_attempt_irreversible_and_suppres
 }
 
 #[test]
+fn post_run_normalizers_preserve_a_committed_prefix_and_block_fallback_rewrite() {
+    let committed = "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
+    let mut persistent_failure = AgentRunnerResult {
+        response: AgentResponse {
+            content: String::new(),
+            tool_calls_made: vec![ToolCallMade {
+                name: "mcp__hone__portfolio".to_string(),
+                arguments: serde_json::json!({"action":"watch", "ticker":"NBIS"}),
+                result: serde_json::json!({"status":"unknown_after_acp_failure"}),
+                tool_call_id: Some("committed_watch".to_string()),
+            }],
+            iterations: 1,
+            success: false,
+            error: Some("transport disconnected".to_string()),
+        },
+        streamed_output: true,
+        committed_visible_prefix: Some(committed.to_string()),
+        terminal_error_emitted: true,
+        session_metadata_updates: HashMap::new(),
+        context_messages: None,
+    };
+
+    normalize_persistent_trace_failure(&mut persistent_failure);
+
+    assert_eq!(
+        persistent_failure.committed_visible_prefix.as_deref(),
+        Some(committed)
+    );
+    assert!(persistent_failure.streamed_output);
+    assert!(!persistent_failure.terminal_error_emitted);
+    assert_eq!(
+        persistent_failure.response.error.as_deref(),
+        Some(crate::tool_trace::PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE)
+    );
+
+    let original_content = "must remain the runner-owned draft";
+    let mut committed_draft = AgentRunnerResult {
+        response: AgentResponse {
+            content: original_content.to_string(),
+            tool_calls_made: Vec::new(),
+            iterations: 1,
+            success: true,
+            error: None,
+        },
+        streamed_output: true,
+        committed_visible_prefix: Some(committed.to_string()),
+        terminal_error_emitted: false,
+        session_metadata_updates: HashMap::new(),
+        context_messages: None,
+    };
+
+    assert!(!apply_deterministic_investment_fallback(
+        &repair_trace_comparison_contract(),
+        &mut committed_draft,
+    ));
+    assert_eq!(committed_draft.response.content, original_content);
+    assert_eq!(
+        committed_draft.committed_visible_prefix.as_deref(),
+        Some(committed)
+    );
+}
+
+#[test]
 fn explicit_persistent_operations_are_execute_once_but_research_context_is_not() {
     for input in [
         "帮我关注 NVDA",
@@ -1261,6 +1324,123 @@ async fn observed_persistent_tool_trace_suppresses_transient_retry() {
     assert!(!result.response.success);
     assert_eq!(result.response.tool_calls_made.len(), 1);
     assert_eq!(results.lock().expect("results lock").len(), 1);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn persistent_trace_failure_closes_with_the_exact_committed_prefix() {
+    let root = make_temp_dir("hone_channels_persistent_trace_committed_prefix");
+    std::fs::create_dir_all(&root).expect("create root");
+    let committed = "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
+    let runs = Arc::new(Mutex::new(VecDeque::from([MockStreamingRun {
+        events: vec![AgentRunnerEvent::CommittedStreamDelta {
+            content: committed.to_string(),
+        }],
+        result: AgentRunnerResult {
+            response: AgentResponse {
+                content: String::new(),
+                tool_calls_made: vec![ToolCallMade {
+                    name: "mcp__hone__portfolio".to_string(),
+                    arguments: serde_json::json!({"action":"watch", "ticker":"NBIS"}),
+                    result: serde_json::json!({
+                        "status":"unknown_after_acp_failure",
+                        "isError":true
+                    }),
+                    tool_call_id: Some("committed_watch".to_string()),
+                }],
+                iterations: 2,
+                success: false,
+                error: Some("codex acp stream disconnected before completion".to_string()),
+            },
+            streamed_output: true,
+            committed_visible_prefix: Some(committed.to_string()),
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        },
+    }])));
+    let runtime_inputs = Arc::new(Mutex::new(Vec::new()));
+    let mut core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    {
+        let core_mut = Arc::get_mut(&mut core).expect("unique test core");
+        let runs = runs.clone();
+        let runtime_inputs = runtime_inputs.clone();
+        core_mut.test_runner_factory = Some(Arc::new(move || {
+            Box::new(MockStreamingSequencedRunner {
+                runs: runs.clone(),
+                runtime_inputs: runtime_inputs.clone(),
+            })
+        }));
+    }
+    let actor = ActorIdentity::new("web", "persistent-prefix", None::<String>).expect("actor");
+    let listener = Arc::new(RecordingListener::default());
+    let mut session = AgentSession::new(core.clone(), actor.clone(), "direct");
+    session.add_listener(listener.clone());
+
+    let result = session
+        .run("把 NBIS 加入自选然后分析", AgentRunOptions::default())
+        .await;
+
+    assert!(!result.response.success);
+    assert_eq!(
+        result.response.error.as_deref(),
+        Some(crate::tool_trace::PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE)
+    );
+    assert_eq!(result.response.tool_calls_made.len(), 1);
+    assert!(runs.lock().expect("runs").is_empty());
+    assert_eq!(runtime_inputs.lock().expect("runtime inputs").len(), 1);
+
+    let events = listener.events.lock().await;
+    let visible = events
+        .iter()
+        .filter_map(|event| match event {
+            AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => Some(content.as_str()),
+            AgentSessionEvent::Segment { text } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<String>();
+    assert_eq!(visible, committed);
+    let partials = events
+        .iter()
+        .filter_map(|event| match event {
+            AgentSessionEvent::PartialDone { response } => Some(response),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(partials.len(), 1, "{events:?}");
+    assert_eq!(partials[0].content, committed);
+    assert!(!partials[0].success);
+    assert!(partials[0].error.is_none());
+    assert!(!events.iter().any(|event| matches!(
+        event,
+        AgentSessionEvent::Run(RunEvent::Error { .. }) | AgentSessionEvent::Done { .. }
+    )));
+    drop(events);
+
+    let messages = core
+        .session_storage
+        .get_messages(&actor.session_id(), None)
+        .expect("persisted messages");
+    let assistant = messages
+        .iter()
+        .rev()
+        .find(|message| message.role == "assistant")
+        .expect("persisted assistant prefix");
+    assert_eq!(
+        assistant
+            .content
+            .iter()
+            .find_map(|part| part.text.as_deref()),
+        Some(committed)
+    );
+    assert_eq!(
+        assistant
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("terminal_stream_incomplete"))
+            .and_then(Value::as_bool),
+        Some(true)
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -2880,6 +3060,47 @@ fn interactive_runtime_history_drops_scheduler_and_failed_turn_groups() {
 }
 
 #[test]
+fn interactive_runtime_history_does_not_exempt_historical_same_text_groups() {
+    let message =
+        |role: &str, content: &str, metadata: Option<HashMap<String, Value>>| AgentMessage {
+            role: role.to_string(),
+            content: Some(content.to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+            metadata,
+        };
+    let current = "大A有没有类似CRWV、Nebius这样的数据中心的标的";
+    let mut messages = vec![
+        message(
+            "user",
+            current,
+            Some(HashMap::from([(
+                "source".to_string(),
+                Value::String("heartbeat".to_string()),
+            )])),
+        ),
+        message("assistant", "historical automation", None),
+        message("user", current, None),
+        message(
+            "assistant",
+            "historical failed answer",
+            Some(HashMap::from([(
+                "run_failed".to_string(),
+                Value::Bool(true),
+            )])),
+        ),
+        message("user", current, None),
+    ];
+
+    let removed = prune_interactive_runtime_history(&mut messages, current);
+
+    assert_eq!(removed, 4);
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].content.as_deref(), Some(current));
+}
+
+#[test]
 fn session_restore_limit_does_not_roll_before_compact_threshold() {
     let root = make_temp_dir("hone_channels_restore_limit_floor");
     std::fs::create_dir_all(&root).expect("create root");
@@ -3106,6 +3327,12 @@ fn resolve_prompt_input_places_recv_extra_before_compact_summary() {
 fn response_leaks_system_prompt_detects_prefixed_echo() {
     assert!(response_leaks_system_prompt(
         "\n### System Instructions ###\nsecret"
+    ));
+    assert!(response_leaks_system_prompt(
+        "数据时间：北京时间 2026-07-22 10:00；行情口径：最新可得\n\n### System Prompt ###\nsecret"
+    ));
+    assert!(response_leaks_system_prompt(
+        "正常开头\n【Invoked Skill Context】\nsecret"
     ));
     assert!(!response_leaks_system_prompt("正常回复"));
 }
@@ -4025,6 +4252,110 @@ fn restore_context_uses_only_messages_after_latest_compact_boundary() {
         .collect();
     // compact_summary is skipped from message history; summary is injected via conversation_context
     assert_eq!(contents, vec!["after-compact"]);
+}
+
+#[test]
+fn recent_interactive_user_references_cross_compact_boundary_and_filter_same_text_noise() {
+    let root = make_temp_dir("hone_channels_recent_user_refs_across_compact");
+    std::fs::create_dir_all(&root).expect("create root");
+    let storage = hone_memory::SessionStorage::new(root.join("sessions"));
+    let actor = ActorIdentity::new("web", "recent-user-refs", None::<String>).expect("actor");
+    let session_id = storage
+        .create_session_for_actor(&actor)
+        .expect("create session");
+    for index in 1..=7 {
+        storage
+            .add_message(&session_id, "user", &format!("prior-user-{index}"), None)
+            .expect("add pre-compact user");
+    }
+    storage
+        .add_message(
+            &session_id,
+            "system",
+            "Conversation compacted",
+            Some(hone_memory::build_compact_boundary_metadata("auto", 7, 9)),
+        )
+        .expect("add boundary");
+    storage
+        .add_message(
+            &session_id,
+            "system",
+            "【Compact Summary】\nsummary-must-not-be-a-reference",
+            Some(hone_memory::build_compact_summary_metadata("auto")),
+        )
+        .expect("add summary");
+    for index in 8..=9 {
+        storage
+            .add_message(&session_id, "user", &format!("prior-user-{index}"), None)
+            .expect("add post-compact user");
+    }
+    storage
+        .add_message(
+            &session_id,
+            "user",
+            "/old-skill ignored",
+            Some(HashMap::from([(
+                hone_memory::SLASH_SKILL_METADATA_KEY.to_string(),
+                Value::String("old-skill".to_string()),
+            )])),
+        )
+        .expect("add slash user");
+
+    let current = "大A有没有类似CRWV、Nebius这样的数据中心的标的";
+    storage
+        .add_message(
+            &session_id,
+            "user",
+            current,
+            Some(HashMap::from([(
+                "source".to_string(),
+                Value::String("scheduler".to_string()),
+            )])),
+        )
+        .expect("add same-text automation user");
+    storage
+        .add_message(&session_id, "assistant", "automation result", None)
+        .expect("add automation assistant");
+    storage
+        .add_message(&session_id, "user", current, None)
+        .expect("add same-text failed user");
+    storage
+        .add_message(
+            &session_id,
+            "assistant",
+            "failed result",
+            Some(HashMap::from([(
+                "run_failed".to_string(),
+                Value::Bool(true),
+            )])),
+        )
+        .expect("add failed assistant");
+    storage
+        .add_message(&session_id, "user", current, None)
+        .expect("add current user");
+
+    let snapshot = storage
+        .load_session(&session_id)
+        .expect("load session")
+        .expect("session");
+    let restored = restore_recent_interactive_user_references(&snapshot, current, None);
+    let contents = restored
+        .messages
+        .iter()
+        .filter_map(|message| message.content.as_deref())
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        contents,
+        vec![
+            "prior-user-6",
+            "prior-user-7",
+            "prior-user-8",
+            "prior-user-9"
+        ]
+    );
+    assert_eq!(restored.actor_identity(), Some(actor));
+    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -5687,7 +6018,7 @@ async fn interactive_tickers_enter_the_main_agent_loop_without_preflight_blockin
 }
 
 #[tokio::test]
-async fn interactive_finance_loop_mode_is_channel_independent_and_not_a_stream_policy() {
+async fn interactive_finance_loop_is_channel_independent_but_early_commit_is_web_only() {
     for channel in ["web", "discord", "telegram", "feishu"] {
         let root = make_temp_dir(&format!("hone_channels_natural_loop_{channel}"));
         std::fs::create_dir_all(&root).expect("create root");
@@ -5717,11 +6048,238 @@ async fn interactive_finance_loop_mode_is_channel_independent_and_not_a_stream_p
         );
         assert_eq!(
             execution.runner_request.terminal_stream_policy,
-            TerminalStreamPolicy::Disabled,
+            if channel == "web" {
+                TerminalStreamPolicy::CanonicalInvestmentHeader
+            } else {
+                TerminalStreamPolicy::Disabled
+            },
             "{channel}"
         );
         let _ = std::fs::remove_dir_all(root);
     }
+}
+
+#[tokio::test]
+async fn initial_strict_interactive_research_skips_compaction_and_uses_user_only_references() {
+    let root = make_temp_dir("hone_channels_strict_initial_fast_context");
+    std::fs::create_dir_all(&root).expect("create root");
+    let system_skills_dir = root.join("system_skills");
+    std::fs::create_dir_all(system_skills_dir.join("stock_research"))
+        .expect("create stock research test skill");
+    std::fs::write(
+        system_skills_dir.join("stock_research/SKILL.md"),
+        "---\nname: Stock Research\ndescription: fast restore fixture\n---\n\nFixture body.",
+    )
+    .expect("write stock research test skill");
+    let answer = "数据时间：北京时间 2026-07-22 10:00；行情口径：本轮未调用行情工具\n\n先给出数据中心产业链筛选框架。";
+    let llm = MockLlmProvider::with_tool_responses(vec![ChatResponse {
+        content: answer.to_string(),
+        reasoning_content: None,
+        tool_calls: None,
+        usage: None,
+    }]);
+    let core = make_strict_tool_loop_test_core_with_config(&root, llm.clone(), |config| {
+        config.extra.insert(
+            "skills_dir".to_string(),
+            serde_yaml::Value::String(system_skills_dir.to_string_lossy().to_string()),
+        );
+        config.group_context.compress_threshold_messages = 1;
+        config.group_context.compress_threshold_bytes = 1024;
+        config.group_context.retain_recent_after_compress = 1;
+        config.group_context.recent_context_limit = 6;
+    });
+    let actor = ActorIdentity::new(
+        "discord",
+        "strict-initial-fast-context",
+        Some("room-fast-context".to_string()),
+    )
+    .expect("actor");
+    let identity = SessionIdentity::group(
+        &actor.channel,
+        actor.channel_scope.clone().expect("group scope"),
+    )
+    .expect("group identity");
+    core.session_storage
+        .create_session_for_identity(&identity, Some(&actor))
+        .expect("create session");
+    let session_id = identity.session_id();
+    let invoked_skill_prompt =
+        "FAST_PATH_INVOKED_SKILL_PROMPT：继续使用用户此前显式选择的研究模板。";
+    core.session_storage
+        .update_metadata(
+            &session_id,
+            HashMap::from([(
+                hone_memory::INVOKED_SKILLS_METADATA_KEY.to_string(),
+                serde_json::json!([{
+                    "skill_name": "stock_research",
+                    "display_name": "Stock Research",
+                    "path": "slash:stock_research",
+                    "prompt": invoked_skill_prompt,
+                    "execution_context": "inline",
+                    "allowed_tools": [],
+                    "model": null,
+                    "effort": null,
+                    "agent": null,
+                    "loaded_from": "slash",
+                    "updated_at": hone_core::beijing_now_rfc3339()
+                }]),
+            )]),
+        )
+        .expect("seed invoked skill metadata");
+    for index in 1..=7 {
+        core.session_storage
+            .add_message(&session_id, "user", &format!("prior-user-{index}"), None)
+            .expect("add pre-compact user");
+    }
+    core.session_storage
+        .add_message(
+            &session_id,
+            "system",
+            "Conversation compacted",
+            Some(hone_memory::build_compact_boundary_metadata("auto", 7, 9)),
+        )
+        .expect("add boundary");
+    core.session_storage
+        .add_message(
+            &session_id,
+            "system",
+            "【Compact Summary】\nsummary-that-must-not-load",
+            Some(hone_memory::build_compact_summary_metadata("auto")),
+        )
+        .expect("add summary");
+    for index in 8..=9 {
+        core.session_storage
+            .add_message(&session_id, "user", &format!("prior-user-{index}"), None)
+            .expect("add post-compact user");
+    }
+
+    let listener = Arc::new(RecordingListener::default());
+    let mut session =
+        AgentSession::new(core, actor, "room-fast-context").with_session_identity(identity);
+    session.add_listener(listener.clone());
+    let result = session
+        .run(
+            "大A有没有类似CRWV、Nebius这样的数据中心的标的",
+            AgentRunOptions::default(),
+        )
+        .await;
+
+    assert!(result.response.success, "{:?}", result.response.error);
+    assert_eq!(result.response.content, answer);
+    assert_eq!(llm.chat_calls(), 0, "initial run must not compact");
+    assert_eq!(llm.chat_with_tools_calls(), 1);
+    let transcript = llm.last_tool_transcript();
+    assert!(
+        transcript.contains(invoked_skill_prompt),
+        "fast restore lost invoked skill prompt: {transcript}"
+    );
+    for expected in [
+        "prior-user-6",
+        "prior-user-7",
+        "prior-user-8",
+        "prior-user-9",
+    ] {
+        assert!(
+            transcript.contains(expected),
+            "missing {expected}: {transcript}"
+        );
+    }
+    assert!(!transcript.contains("prior-user-5"), "{transcript}");
+    assert!(
+        !transcript.contains("summary-that-must-not-load"),
+        "{transcript}"
+    );
+    let events = listener.events.lock().await;
+    assert!(!events.iter().any(|event| matches!(
+        event,
+        AgentSessionEvent::Run(RunEvent::Progress {
+            stage: "session.compress",
+            ..
+        })
+    )));
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn strict_initial_research_force_compacts_and_loads_summary_after_overflow() {
+    let root = make_temp_dir("hone_channels_strict_overflow_forced_compact");
+    std::fs::create_dir_all(&root).expect("create root");
+    let answer = "数据时间：北京时间 2026-07-22 10:00；行情口径：本轮未调用行情工具\n\n压缩恢复后继续给出数据中心产业链筛选框架。";
+    let llm = MockLlmProvider::with_chat_and_tool_responses(
+        vec![Ok(ChatResult {
+            content: "overflow-summary-must-load-on-retry".to_string(),
+            usage: None,
+        })],
+        vec![
+            Err(hone_core::HoneError::Llm(
+                "codex_error_info=context_window_exceeded".to_string(),
+            )),
+            Ok(ChatResponse {
+                content: answer.to_string(),
+                reasoning_content: None,
+                tool_calls: None,
+                usage: None,
+            }),
+        ],
+    );
+    let core = make_strict_tool_loop_test_core_with_config(&root, llm.clone(), |config| {
+        config.group_context.compress_threshold_messages = 1;
+        config.group_context.compress_threshold_bytes = 1024;
+        config.group_context.retain_recent_after_compress = 1;
+        config.group_context.recent_context_limit = 6;
+    });
+    let actor = ActorIdentity::new(
+        "discord",
+        "strict-overflow-forced-compact",
+        Some("room-overflow-forced-compact".to_string()),
+    )
+    .expect("actor");
+    let identity = SessionIdentity::group(
+        &actor.channel,
+        actor.channel_scope.clone().expect("group scope"),
+    )
+    .expect("group identity");
+    core.session_storage
+        .create_session_for_identity(&identity, Some(&actor))
+        .expect("create session");
+    let session_id = identity.session_id();
+    for index in 1..=5 {
+        core.session_storage
+            .add_message(&session_id, "user", &format!("older-user-{index}"), None)
+            .expect("seed old user");
+        core.session_storage
+            .add_message(
+                &session_id,
+                "assistant",
+                &format!("older-answer-{index}"),
+                None,
+            )
+            .expect("seed old assistant");
+    }
+
+    let session = AgentSession::new(core, actor, "room-overflow-forced-compact")
+        .with_session_identity(identity);
+    let result = session
+        .run(
+            "大A有没有类似CRWV、Nebius这样的数据中心的标的",
+            AgentRunOptions::default(),
+        )
+        .await;
+
+    assert!(result.response.success, "{:?}", result.response.error);
+    assert_eq!(result.response.content, answer);
+    assert_eq!(
+        llm.chat_calls(),
+        1,
+        "initial fast path must skip pre-run compact; overflow must force exactly one compact"
+    );
+    assert_eq!(llm.chat_with_tools_calls(), 2);
+    assert!(
+        llm.last_tool_transcript()
+            .contains("overflow-summary-must-load-on-retry"),
+        "post-overflow retry must restore the forced compact summary"
+    );
+    let _ = std::fs::remove_dir_all(root);
 }
 
 #[tokio::test]
@@ -7302,8 +7860,17 @@ struct RecordingListener {
 
 #[async_trait]
 impl AgentSessionListener for RecordingListener {
+    fn supports_committed_delivery(&self) -> bool {
+        true
+    }
+
     async fn on_event(&self, event: AgentSessionEvent) {
         self.events.lock().await.push(event);
+    }
+
+    async fn on_committed_event(&self, event: AgentSessionEvent) -> bool {
+        self.on_event(event).await;
+        true
     }
 }
 
