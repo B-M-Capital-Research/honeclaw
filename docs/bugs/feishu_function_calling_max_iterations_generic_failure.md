@@ -8,6 +8,14 @@
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `session_messages`
+  - `2026-07-21 19:01-23:01 CST` 运行态复核补充同根 Web direct 连续失败样本，状态维持 `New/P2`：
+    - `session_id=Actor_web__direct__web-user-0545ade83537`
+      - `2026-07-21T21:13:18.115453+08:00` 用户请求“交换机 概念A股和美股的核心标的”，`2026-07-21T21:16:17.176346+08:00` assistant final 仅为通用失败提示。
+      - `2026-07-21T21:21:14.813446+08:00` 用户同题重试，`2026-07-21T21:23:49.051338+08:00` assistant final 再次仅为通用失败提示。
+      - `2026-07-21T22:33:16.454049+08:00` 用户第三次同题重试，`2026-07-21T22:36:23.777791+08:00` assistant final 仍仅为通用失败提示。
+    - 同窗 runtime 日志显示第三次请求在 22:33-22:36 已成功执行多轮 `data_fetch search`、`data_fetch quote`、`data_fetch snapshot` 和 `web_search`，覆盖 688702.SS、002396.SZ、000063.SZ、000938.SZ、JNPR 等交换机 / 网络设备相关标的；`2026-07-21 22:36:23` 仍以 `error="max_iterations_exceeded:10"` 失败并持久化 failure assistant。
+    - 同一简单主题连续三次失败，说明当前 live Web direct strict function-calling 路径仍会在已有工具结果时耗尽 10 次迭代并丢弃答案；与本缺陷同根，不新建重复缺陷。
+    - 严重等级维持 `P2`：它阻断用户明确提出的投研任务，但同窗其它 Web / Feishu direct 与 scheduler 仍有正常 assistant 收口，未见跨用户错投、数据破坏、敏感信息泄露或全渠道停摆，因此不是 `P1`。
   - `2026-07-21 11:02-15:02 CST` 运行态复核补充同根普通 scheduler 样本，状态维持 `New/P2`：
     - `session_id=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5`
       - `2026-07-21T12:00:01.666687+08:00` Feishu scheduler `每日公司资讯与分析总结` 触发，要求汇总 TEM / CAI / NBIS / CRWV / NVDA / GOOGL / TSM 的最新资讯、分析师摘要和下次财报日期。
