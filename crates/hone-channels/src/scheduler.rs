@@ -2959,6 +2959,61 @@ pub(crate) fn has_skip_delivery_signal(text: &str) -> bool {
         .any(|pat| text.contains(pat) || normalized.contains(pat))
 }
 
+fn normalize_scheduler_skip_signal_text(text: &str) -> String {
+    text.chars()
+        .filter(|ch| {
+            !ch.is_whitespace()
+                && !matches!(
+                    ch,
+                    '，' | ',' | '。' | '.' | '：' | ':' | '；' | ';' | '！' | '!' | '？' | '?'
+                )
+        })
+        .collect::<String>()
+}
+
+fn scheduler_task_requires_silent_noop(task_prompt: &str) -> bool {
+    let normalized = normalize_scheduler_skip_signal_text(task_prompt);
+    let patterns = [
+        "若未触发则保持静默",
+        "如果未触发则保持静默",
+        "未触发则保持静默",
+        "若未触发则静默",
+        "如果未触发则静默",
+        "未触发则静默",
+        "未触发请保持静默",
+        "未触发保持静默",
+        "若无触发则保持静默",
+        "若无触发则静默",
+    ];
+    patterns
+        .iter()
+        .any(|pat| task_prompt.contains(pat) || normalized.contains(pat))
+}
+
+fn ordinary_scheduler_silent_noop_signal(task_prompt: &str, text: &str) -> bool {
+    if !scheduler_task_requires_silent_noop(task_prompt) {
+        return false;
+    }
+    let normalized = normalize_scheduler_skip_signal_text(text);
+    let no_trigger_markers = [
+        "未触发",
+        "未破",
+        "没有触发",
+        "无纪律触发",
+        "均未触发",
+        "未命中",
+        "条件未满足",
+    ];
+    let silent_markers = ["静默", "不推送", "跳过推送", "跳过正式推送", "无需推送"];
+    let indicates_no_trigger = no_trigger_markers
+        .iter()
+        .any(|pat| text.contains(pat) || normalized.contains(pat));
+    let indicates_silence = silent_markers
+        .iter()
+        .any(|pat| text.contains(pat) || normalized.contains(pat));
+    indicates_no_trigger && indicates_silence
+}
+
 fn scheduled_prompt_needs_stable_local_context(event: &SchedulerEvent) -> bool {
     let haystack = format!("{} {}", event.job_name, event.task_prompt).to_ascii_lowercase();
     let has_hit_zone = event.job_name.contains("击球区")
@@ -3411,7 +3466,9 @@ pub async fn execute_scheduler_event(
                     }),
                     session_id: Some(session_id),
                 }
-            } else if has_skip_delivery_signal(&sanitized) {
+            } else if has_skip_delivery_signal(&sanitized)
+                || ordinary_scheduler_silent_noop_signal(&event.task_prompt, &sanitized)
+            {
                 tracing::info!(
                     "[SchedulerDiag] skip_signal job_id={} job={} chars={}",
                     event.job_id,
@@ -5744,6 +5801,26 @@ mod tests {
         assert!(has_skip_delivery_signal("当前行情平稳，跳过本次推送。"));
         assert!(!has_skip_delivery_signal("AAOI 今日出现重大利好，建议关注"));
         assert!(!has_skip_delivery_signal(""));
+    }
+
+    #[test]
+    fn silent_noop_signal_detected_when_task_requires_silence() {
+        let task_prompt = "校验 BE / RKLB / TEM / MSFT 的触发位，若未触发，则保持静默。";
+        let final_text = "TEM - $40 未破，静默\nRKLB - $60 未破，静默\nMSFT - $380 未破，静默\n无纪律触发，全部静默";
+        assert!(super::ordinary_scheduler_silent_noop_signal(
+            task_prompt,
+            final_text
+        ));
+    }
+
+    #[test]
+    fn silent_noop_signal_does_not_fire_without_silent_task_contract() {
+        let task_prompt = "给我一份 TEM / RKLB / MSFT 的日内复盘和观察结论。";
+        let final_text = "TEM - $40 未破，静默\nRKLB - $60 未破，静默\nMSFT - $380 未破，静默\n无纪律触发，全部静默";
+        assert!(!super::ordinary_scheduler_silent_noop_signal(
+            task_prompt,
+            final_text
+        ));
     }
 
     #[test]

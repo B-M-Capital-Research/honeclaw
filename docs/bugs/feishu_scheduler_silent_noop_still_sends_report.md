@@ -14,7 +14,7 @@ P2
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
@@ -44,7 +44,7 @@ New
 
 ## 当前实现效果
 
-模型能识别未触发条件，但输出层没有把“全部静默 / 未触发”转成跳过发送，仍把完整分析正文作为 final 落库并面向用户可见。
+截至 2026-07-21 的代码修复前，模型能识别未触发条件，但输出层没有把“全部静默 / 未触发”转成跳过发送，仍把完整分析正文作为 final 落库并面向用户可见。
 
 ## 用户影响
 
@@ -63,3 +63,12 @@ New
 1. 在普通 scheduler 出站前增加 skip-delivery 判定，识别“未触发 / 保持静默 / 全部静默 / 今日跳过推送”等明确 no-op 语义。
 2. 区分用户要求的“静默不推送”和普通报告任务的“无重大更新但仍需简报”，避免误杀日常摘要。
 3. 为 Feishu 普通 scheduler 增加回归：当任务正文包含“若未触发则保持静默”且 final 判断“全部静默”时，应记录 no-op 或 skipped，不发送用户可见正文。
+
+## 修复记录
+
+- 2026-07-21：普通 scheduler 出站链路已补“静默 no-op”判定。
+  - 代码位置：`crates/hone-channels/src/scheduler.rs`
+  - 修复内容：当任务正文明确要求“若未触发则保持静默/静默不推送”时，若 final 同时表达“未触发/未破/无纪律触发”与“静默/不推送”，出站层会回滚本轮 assistant 持久化并按 `should_deliver=false` 收口，不再向用户发送完整报告。
+  - 回归覆盖：新增正反两条单元测试，覆盖“静默任务 + 全部静默”命中 skip，以及普通复盘任务不被误判为 skip。
+  - 验证：`cargo test -p hone-channels silent_noop_signal_ --lib -- --nocapture`、`cargo test -p hone-channels skip_delivery_signal_detected --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过。
+  - 说明：本轮未重启当前 Feishu / scheduler live 服务，因此状态先记为代码级 `Fixed`；若后续 2026-07-21 之后的真实运行窗仍出现同类“全部静默但照样投递”样本，再按新证据重新打开。
