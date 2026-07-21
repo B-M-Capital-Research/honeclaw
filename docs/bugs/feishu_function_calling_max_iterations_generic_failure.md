@@ -8,6 +8,12 @@
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `session_messages`
+  - `2026-07-21 11:02-15:02 CST` 运行态复核补充同根普通 scheduler 样本，状态维持 `New/P2`：
+    - `session_id=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5`
+      - `2026-07-21T12:00:01.666687+08:00` Feishu scheduler `每日公司资讯与分析总结` 触发，要求汇总 TEM / CAI / NBIS / CRWV / NVDA / GOOGL / TSM 的最新资讯、分析师摘要和下次财报日期。
+      - `2026-07-21T12:01:37.421899+08:00` assistant final 仅返回通用失败提示；随后同 session 追加 `scheduler_failure=true` 的失败补偿消息。
+    - 同窗 runtime 日志显示本轮已成功执行多轮 `data_fetch quote`（TSM / NBIS / CRWV / RKLB / TEM / CAI / NVDA）和 `web_search`，最后仍在 `2026-07-21 12:01:37` 以 `error="max_iterations_exceeded:10"` 失败，`SchedulerDiag` 将其压成 `internal_error_suppressed` 并跳过 Feishu 外发。
+    - 该样本晚于 `2026-07-21T03:09:07+08:00` 的 `39fe6e59 fix strict actor iteration budget` 与 10:31 复发样本，说明当前 live 普通 scheduler 路由仍可能保留 10 次 strict function-calling 上限或修复未生效；不新建重复缺陷。
   - `2026-07-21 07:03-11:02 CST` 运行态复核回退为 `New/P2`：
     - `session_id=Actor_feishu__direct__ou_5f49e2e252460a05eee0ff98f685cf9f16`
       - `2026-07-21T10:29:06.193184+08:00` Feishu direct 用户要求从 PE 估值和增长潜力角度推荐本轮暴跌后错杀的 A 股 AI 产业链股票。
@@ -43,7 +49,10 @@
   - `session_id=Actor_feishu__direct__ou_5fce891d255ae588dde3bd7b1494a28d1e`
     - `2026-07-20T10:51:38.781641+08:00` 用户询问中国铝业历史大分红及分红后股价走势。
     - `2026-07-20T10:54:18.789500+08:00` assistant final 仅为通用失败提示。
-- `data/runtime/logs/web.log.2026-07-20`
+- Runtime logs:
+  - `data/runtime/logs/web.log.2026-07-21`
+  - `12:01:37` Feishu scheduler `每日公司资讯与分析总结` 在多轮 `data_fetch` / `web_search` 成功后，`MsgFlow/feishu failed ... error="max_iterations_exceeded:10"`；随后记录 `suppressed internal failure fallback`，Feishu 本轮不发送业务正文。
+  - `data/runtime/logs/web.log.2026-07-20`
   - `17:11:33` Web direct 特斯拉人形机器人追问在多轮工具执行后，`MsgFlow/web failed ... error="max_iterations_exceeded:10"`，最终持久化 failure assistant；同一会话 17:12 重试成功收口。
   - `11:41:02` Web direct 沪电股份走势判断在多轮 `data_fetch` / `web_search` 成功后，`MsgFlow/web failed ... error="max_iterations_exceeded:10"`，最终持久化 failure assistant。
   - `12:39:19` Feishu direct 中国铝业胜率判断在多轮 `data_fetch` / `web_search` 成功后，`MsgFlow/feishu failed ... error="max_iterations_exceeded:10"`，最终发送 failure fallback。
