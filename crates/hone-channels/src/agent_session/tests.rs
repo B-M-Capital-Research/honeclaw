@@ -48,8 +48,8 @@ use crate::sandbox::sandbox_base_dir;
 
 use super::core::{
     AgentSession, PreparedTurnReexecutionPolicy, SERVICE_OWNED_PREFIX_FAILURE_SUFFIX,
-    apply_deterministic_investment_fallback, normalize_persistent_trace_failure,
-    prepared_turn_reexecution_policy, prompt_time_for_attempt,
+    align_response_to_committed_prefix, apply_deterministic_investment_fallback,
+    normalize_persistent_trace_failure, prepared_turn_reexecution_policy, prompt_time_for_attempt,
 };
 use super::emitter::SessionEventEmitter;
 use super::helpers::{
@@ -275,7 +275,10 @@ impl AgentRunner for ServicePrefixRunner {
             }
         } else {
             AgentResponse {
-                content: format!("{prefix}{}", self.final_tail),
+                // Hidden provider reasoning can leave blank bytes before the
+                // canonical answer. The Session must remove only those bytes
+                // because the service prefix is already visible and ACKed.
+                content: format!("\n \t{prefix}{}", self.final_tail),
                 tool_calls_made: Vec::new(),
                 iterations: 1,
                 success: true,
@@ -1640,6 +1643,31 @@ async fn service_prefix_and_final_tail_are_visible_and_persisted_byte_identicall
         .expect("persisted assistant");
     assert_eq!(persisted, expected);
     let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn committed_prefix_alignment_strips_only_provider_leading_whitespace() {
+    let prefix = "数据时间：北京时间 2026-07-22 03:41；行情口径：本轮仅使用可核验资料";
+    let mut aligned = AgentResponse {
+        content: format!("\n\u{3000}\t{prefix}\n\n候选结论"),
+        tool_calls_made: Vec::new(),
+        iterations: 1,
+        success: true,
+        error: None,
+    };
+    assert!(align_response_to_committed_prefix(&mut aligned, prefix));
+    assert_eq!(aligned.content, format!("{prefix}\n\n候选结论"));
+
+    let mut wrong = AgentResponse {
+        content: format!("\n草稿：{prefix}\n\n候选结论"),
+        tool_calls_made: Vec::new(),
+        iterations: 1,
+        success: true,
+        error: None,
+    };
+    let original = wrong.content.clone();
+    assert!(!align_response_to_committed_prefix(&mut wrong, prefix));
+    assert_eq!(wrong.content, original);
 }
 
 #[tokio::test]

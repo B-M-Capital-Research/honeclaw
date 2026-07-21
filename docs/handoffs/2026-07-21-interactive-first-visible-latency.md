@@ -8,7 +8,7 @@
 - related_files: `agents/function_calling/src/lib.rs`, `crates/hone-core/src/{agent.rs,tool_effect.rs}`, `crates/hone-channels/src/agent_session/{core.rs,emitter.rs,helpers.rs,restore.rs,tests.rs,types.rs}`, `crates/hone-channels/src/{investment_response_guard.rs,prompt.rs,turn_builder.rs}`, `crates/hone-channels/src/runners/{types.rs,tool_reasoning.rs}`, `crates/hone-web-api/src/routes/{chat.rs,public.rs}`, `tests/regression/ci/test_finance_automation_contracts.sh`
 - related_docs: `docs/adr/0004-agent-owned-research-loop.md`, `docs/decisions.md#d-2026-07-21-01-commit-only-delivered-interactive-prefixes-and-remove-synchronous-ttft-work`, `docs/decisions.md#d-2026-07-22-01-bound-interactive-finance-fan-out-and-ack-a-typed-web-prefix`, `docs/current-plans/ticker-resolution-architecture.md`, `docs/runbooks/backend-deployment.md`
 - related_prs: N/A
-- verification: first-phase exact build/deploy completed and its exact-query canary exposed unbounded finance fan-out; second-phase complete local Rust/Web/Worker/CI-safe gates pass, while exact commit/build/redeployment and production acceptance remain in progress
+- verification: first-phase exact build/deploy exposed unbounded finance fan-out; second-phase `820a7240` passed complete local gates and achieved `182ms` production TTFT, but its first exact-query canary exposed provider-leading-whitespace/prefix alignment and was rolled back; the minimal follow-up and complete repository gates pass while its commit, exact rebuild, redeployment, and production acceptance remain in progress
 - risks: phantom prefix recording, post-ACK admission of an unregistered/read-write/malformed call, invalid DataFetch activating deferred ACK, explicit identity routes bypassing the first-batch six-route ceiling, a model final that does not preserve the typed prefix, incomplete research at a hard budget, and a deployment that does not use the exact verified revision
 
 ## Incident
@@ -48,7 +48,22 @@ The first-phase fast context path worked, but batching guidance and final-only s
 - Web finance configures exactly one typed line: `数据时间：北京时间 {answer_time}；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露`. It contains no market conclusion. A deterministic explicit-security seed may request ACK before the first model call. A name-only finance turn waits until a budget-accepted batch includes a registered DataFetch call with supported `data_type`, every required target, and valid identity shape, while every call in that batch is registered, structurally valid, and known read-only. Unsupported/missing-target/malformed/rejected DataFetch never activates research or deferred ACK. Ordinary non-finance turns never ACK it, and the Agent final must reproduce it byte-for-byte.
 - The prefix becomes committed only after the unique downstream sink accepts it. Cancellation, a closed/rejected receiver, ambiguity, or backpressure creates no visible/persisted bytes. After ACK, every call in a batch must name an active registered tool, have parseable structurally valid arguments, and be classified known read-only; otherwise the whole batch fails before assistant tool framing, observer notification, registry execution, or network access.
 - A successful final publishes only the suffix after the already visible prefix. A later failure appends `本轮研究未能完成，暂未形成可供参考的标的结论。`, persists exactly the prefix plus suffix with partial/failure metadata, and closes once without reset or an error-card flash.
+- Hidden-reasoning stripping may leave provider whitespace before an otherwise exact final prefix. The Session removes only such leading Unicode whitespace when the first non-whitespace content begins with the byte-exact ACKed prefix; any non-whitespace preamble or real prefix mismatch remains a failure.
 - Separate telemetry records first provider delta, first runner commitment, first successful Web delta send, and final completion.
+
+## Second-Phase First Deployment And Rollback
+
+Commit `820a724023c86cb6bce387cebf69f91bd8eaf0b9` was pushed to `main`, built from a clean detached worktree into immutable `target/deploy-820a7240`, verified against a deployment manifest, and gracefully deployed after two zero-active-chat checks. Process cwd/executables, ports `8077/8088`, PostgreSQL, OSS, cloud authority, static entry hash, and local/origin/public anonymous auth boundaries were healthy.
+
+Fresh direct actor `codex-canary-820a7240-exact-1784662888`, run `c751af17-7e21-4f68-a755-217663cab319`, replayed the exact incident query:
+
+- first `assistant_delta` arrived `182ms` after POST and contained the exact typed line, reducing the old roughly two-minute first-visible delay to sub-second;
+- the loop stayed inside the intended bounds: four model calls, three finance tool batches, ten tools total (four DataFetch and six Web), two accepted identity routes, and no route/tool-budget overflow;
+- the fourth same-Agent model call completed a substantive 1,948-character direct final, but its provider body began with two newline bytes before the exact typed prefix;
+- the Agent stream compatibility check had used `trim_start()` while the Session's irreversible-prefix check still required raw `starts_with`, so the otherwise valid final failed byte alignment at the Session boundary;
+- the user saw the already ACKed prefix plus the explicit research-failure suffix at `89.415s`, persisted history matched those visible bytes, and the stream closed once as partial with no reset/error flash.
+
+Because the exact-query correctness gate failed, the new CLI supervisor was drained and SIGINT-stopped immediately. Production was restored to immutable `target/deploy-b06de76a`; its new CLI PID was `46752`, ports and cloud authority were healthy, and active chats returned to zero. The follow-up strips only leading Unicode whitespace when the first non-whitespace content begins with the exact committed prefix; an arbitrary preamble or true mismatch still fails closed.
 
 ## Verification
 
@@ -69,10 +84,10 @@ Keep both `target/deploy-b06de76a` and `target/deploy-100f5608` intact. If the f
 
 First-phase complete repository gates and exact deployment are retained as evidence, but its production canary failed the latency requirement. The second-phase implementation and local verification are complete:
 
-- workspace `cargo check` passed; workspace `cargo test` passed, including Agent `119/119`, Channels `667/667`, Web API `128/128` with two credentialed tests ignored by contract, Core `124/124`, and Tools `143` passed with one optional renderer test ignored;
+- workspace `cargo check` passed; workspace `cargo test` passed, including Agent `124/124`, Channels `670/670`, Web API `128/128` with two credentialed tests ignored by contract, Core `124/124`, and Tools `143` passed with one optional renderer test ignored;
 - Web tests passed `280/280`; Public Community Edge typecheck and tests passed `45/45`;
 - finance static contracts passed `39/39`; the complete `tests/regression/run_ci.sh`, changed-file rustfmt, shell syntax, and `git diff --check` passed;
 - regressions include forced bounded final, T0 Web-only/intrinsic Web caps, first-batch route admission/merge, invalid identity zero-network/non-poisoning, post-ACK registered/read-only/shape safety, unsupported/missing-target/budget-rejected DataFetch no-ACK, exact success-tail equality, and explicit failure-suffix partial equality;
-- no second-phase commit, push, immutable build, restart, or production canary has been claimed yet.
+- second-phase `820a7240` was pushed, exactly built, deployed, canaried, and rolled back as recorded above; the follow-up prefix-alignment fix has focused positive/negative and end-to-end byte-equality coverage and has passed the complete repository gates, but has not yet been committed, rebuilt, or redeployed.
 
-Next entry point: finish the channel suite, run every repository gate, review the exact diff/docs, commit and push, build `target/deploy-<sha>`, drain/restart, then replay the exact query with a fresh actor. The umbrella ticker plan remains `in_progress` after this latency phase because the separately tracked scheduler `800G` / `NAND` / `AST` / `SEC` entity-guard P2 is still open; do not archive that plan when this deployment completes.
+Next entry point: run the follow-up channel/workspace and CI-safe gates, commit and push it, build `target/deploy-<sha>` from a clean detached worktree, drain/restart, then replay the exact query with a fresh actor. The umbrella ticker plan remains `in_progress` after this latency phase because the separately tracked scheduler `800G` / `NAND` / `AST` / `SEC` entity-guard P2 is still open; do not archive that plan when this deployment completes.

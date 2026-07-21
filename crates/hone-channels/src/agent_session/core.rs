@@ -399,6 +399,27 @@ fn mark_investment_attempt_output_deferred(result: &mut AgentRunnerResult) {
     result.terminal_error_emitted = false;
 }
 
+/// Keep the finalized response byte-aligned with an already ACKed prefix.
+/// Providers may leave whitespace behind after hidden reasoning is stripped;
+/// only that leading whitespace is removable. Any non-whitespace content or
+/// a genuinely different prefix must still fail closed.
+pub(super) fn align_response_to_committed_prefix(
+    response: &mut AgentResponse,
+    prefix: &str,
+) -> bool {
+    if response.content.starts_with(prefix) {
+        return true;
+    }
+    let leading_whitespace_bytes = response.content.len() - response.content.trim_start().len();
+    if leading_whitespace_bytes == 0
+        || !response.content[leading_whitespace_bytes..].starts_with(prefix)
+    {
+        return false;
+    }
+    response.content.drain(..leading_whitespace_bytes);
+    true
+}
+
 fn normalize_execute_once_failure(
     result: &mut AgentRunnerResult,
     reexecution_policy: PreparedTurnReexecutionPolicy,
@@ -2443,7 +2464,7 @@ impl AgentSession {
         }
         if response.success
             && let Some(prefix) = committed_visible_prefix.as_deref()
-            && !response.content.starts_with(prefix)
+            && !align_response_to_committed_prefix(&mut response, prefix)
         {
             tracing::error!(
                 session_id,
