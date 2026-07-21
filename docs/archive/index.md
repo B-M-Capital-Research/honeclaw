@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-07-19
+Last updated: 2026-07-22
+
+## 2026-07-22
+
+### Interactive Finance First-Visible Latency Repair
+
+- Status: done
+- Date: 2026-07-22
+- Plan: `docs/current-plans/ticker-resolution-architecture.md` (shared umbrella remains active for scheduler entity-guard P2)
+- Handoff: `docs/handoffs/2026-07-21-interactive-first-visible-latency.md`
+- Decision / ADR: `D-2026-07-21-01`, `D-2026-07-22-01`, and `docs/adr/0004-agent-owned-research-loop.md`
+- Related PRs / commits: `b06de76a`, `820a7240`, `2563f7ad`
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`; Agent `124/124`; Channels `670/670`; Web API `128/128` with two credentialed tests ignored; Tools `143` with one optional test ignored; Web `280/280`; Edge Worker `45/45`; finance contracts `39/39`; complete workspace check/test, CI-safe regressions, formatting/diff checks; immutable deployment manifest and exact production replay
+- Current conclusion: the exact incident query previously withheld all visible text for about two minutes because synchronous context work and an unbounded Agent research fan-out preceded a buffered final. Production now ACKs one neutral typed Web-finance line at a safe irreversible boundary, enforces three finance batches plus 24-total/20-DataFetch/6-Web/6-route ceilings, and gives the same Agent a tool-disabled natural final at exhaustion. Exact deployment `2563f7ad` passed cloud/runtime/auth/static health and replayed the query with the first exact line at `179ms`; four model calls, 14 executed tools and two routes ended once at `117.189s`, with no reset/error/partial/failure suffix and byte-identical 8,167-byte visible/persisted output.
+- Next entry point: the latency subtask is closed. Continue the shared ticker plan only for the scheduler `800G` / `NAND` / `AST` / `SEC` entity-guard P2; immutable `target/deploy-b06de76a` remains the immediate runtime rollback.
 
 ## 2026-07-19
 

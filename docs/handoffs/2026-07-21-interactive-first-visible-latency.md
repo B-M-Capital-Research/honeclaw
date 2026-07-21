@@ -1,14 +1,14 @@
 # Interactive First-Visible Latency Repair
 
 - title: Interactive first-visible latency repair and production redeployment
-- status: in_progress
+- status: done
 - created_at: 2026-07-21
 - updated_at: 2026-07-22
 - owner: Codex
 - related_files: `agents/function_calling/src/lib.rs`, `crates/hone-core/src/{agent.rs,tool_effect.rs}`, `crates/hone-channels/src/agent_session/{core.rs,emitter.rs,helpers.rs,restore.rs,tests.rs,types.rs}`, `crates/hone-channels/src/{investment_response_guard.rs,prompt.rs,turn_builder.rs}`, `crates/hone-channels/src/runners/{types.rs,tool_reasoning.rs}`, `crates/hone-web-api/src/routes/{chat.rs,public.rs}`, `tests/regression/ci/test_finance_automation_contracts.sh`
 - related_docs: `docs/adr/0004-agent-owned-research-loop.md`, `docs/decisions.md#d-2026-07-21-01-commit-only-delivered-interactive-prefixes-and-remove-synchronous-ttft-work`, `docs/decisions.md#d-2026-07-22-01-bound-interactive-finance-fan-out-and-ack-a-typed-web-prefix`, `docs/current-plans/ticker-resolution-architecture.md`, `docs/runbooks/backend-deployment.md`
 - related_prs: N/A
-- verification: first-phase exact build/deploy exposed unbounded finance fan-out; second-phase `820a7240` passed complete local gates and achieved `182ms` production TTFT, but its first exact-query canary exposed provider-leading-whitespace/prefix alignment and was rolled back; the minimal follow-up and complete repository gates pass while its commit, exact rebuild, redeployment, and production acceptance remain in progress
+- verification: first-phase exact build/deploy exposed unbounded finance fan-out; second-phase `820a7240` achieved `182ms` TTFT but exposed provider-leading-whitespace/prefix alignment and was rolled back; follow-up `2563f7ad` passed the complete repository gates, immutable-build manifest, zero-active-chat restart, runtime health checks, and exact-query production acceptance with `179ms` TTFT and byte-identical successful persistence
 - risks: phantom prefix recording, post-ACK admission of an unregistered/read-write/malformed call, invalid DataFetch activating deferred ACK, explicit identity routes bypassing the first-batch six-route ceiling, a model final that does not preserve the typed prefix, incomplete research at a hard budget, and a deployment that does not use the exact verified revision
 
 ## Incident
@@ -65,9 +65,24 @@ Fresh direct actor `codex-canary-820a7240-exact-1784662888`, run `c751af17-7e21-
 
 Because the exact-query correctness gate failed, the new CLI supervisor was drained and SIGINT-stopped immediately. Production was restored to immutable `target/deploy-b06de76a`; its new CLI PID was `46752`, ports and cloud authority were healthy, and active chats returned to zero. The follow-up strips only leading Unicode whitespace when the first non-whitespace content begins with the exact committed prefix; an arbitrary preamble or true mismatch still fails closed.
 
+## Follow-up Deployment And Successful Canary
+
+Follow-up commit `2563f7ad7db7129d82479653dc91644f0b33dafd` was pushed to `main`, built from a clean detached worktree into immutable `target/deploy-2563f7ad`, and verified against its manifest. The manifest pins that source revision plus the five runtime binary hashes, 27 skill files, `soul.md`, ignored production config, public `index.html`, and `/assets/index-o0hmDXxE.js`. After two zero-active-chat checks, the `b06de76a` supervisor was drained and SIGINT-stopped; the new CLI started from the repository root so it loaded the reviewed ignored `.env`. CLI PID `65914`, console PID `65917`, ports `8077/8088`, runtime-root child cwd, PostgreSQL, OSS, cloud authority, static hash, and local/origin/public anonymous `401` JSON boundaries were healthy.
+
+Fresh direct actor `codex-canary-2563f7ad-exact-1784664084`, run `8d0fdad9-0b76-4bec-a386-345f7c109c18`, replayed the exact incident query:
+
+- the exact typed first line arrived `179ms` after POST;
+- four model calls and three finance tool batches completed; 14 calls actually executed—eight DataFetch and six Web—with two accepted identity routes, while the Web ceiling rejected further execution and the fourth same-Agent call received `tools=[]`;
+- the provider again began its valid natural final with two newline bytes before the exact prefix, proving the follow-up path was exercised rather than merely covered by a unit fixture;
+- the Session removed only those leading whitespace bytes, emitted the final suffix once, and closed with exactly one `run_finished success=true`; there was no partial, reset, error, second generation, or research-failure suffix;
+- completion arrived at `117.189s`, but first-visible latency remained `179ms` throughout the research window;
+- concatenated SSE deltas and the persisted assistant were byte-identical at 8,167 bytes with SHA-256 `f0c2279619a70c79366c6d723b53f7c07875381d605aaa0a17b6d4e8c1fe3621`; history contained exactly the user and assistant rows, and active chats returned to zero.
+
+The latency subtask is therefore accepted in production. Immutable `target/deploy-b06de76a` remains available as the immediate rollback artifact.
+
 ## Verification
 
-Required before production acceptance:
+Completed acceptance evidence:
 
 - focused Agent/channel tests for the three-batch tools-disabled final including T0 Web-only batches, intrinsic total/DataFetch/Web limits without caller budgets, first-batch six-route admission, missing/invalid `identity_match` pre-network rejection and non-poisoning, unique-symbol merge, unsupported/missing-target/zero-budget DataFetch no-ACK, pre-model/deferred/rejected ACK, post-ACK registered + structurally-valid + known-read-only enforcement, exact success-tail equality, and exact failure-suffix partial persistence;
 - finance static contract suite plus complete workspace Rust/Web/Worker/CI-safe gates;
@@ -88,6 +103,6 @@ First-phase complete repository gates and exact deployment are retained as evide
 - Web tests passed `280/280`; Public Community Edge typecheck and tests passed `45/45`;
 - finance static contracts passed `39/39`; the complete `tests/regression/run_ci.sh`, changed-file rustfmt, shell syntax, and `git diff --check` passed;
 - regressions include forced bounded final, T0 Web-only/intrinsic Web caps, first-batch route admission/merge, invalid identity zero-network/non-poisoning, post-ACK registered/read-only/shape safety, unsupported/missing-target/budget-rejected DataFetch no-ACK, exact success-tail equality, and explicit failure-suffix partial equality;
-- second-phase `820a7240` was pushed, exactly built, deployed, canaried, and rolled back as recorded above; the follow-up prefix-alignment fix has focused positive/negative and end-to-end byte-equality coverage and has passed the complete repository gates, but has not yet been committed, rebuilt, or redeployed.
+- second-phase `820a7240` was pushed, exactly built, deployed, canaried, and rolled back as recorded above; follow-up `2563f7ad` passed focused positive/negative and end-to-end byte-equality coverage, complete repository gates, exact immutable build verification, controlled production deployment, and the successful exact-query canary.
 
-Next entry point: run the follow-up channel/workspace and CI-safe gates, commit and push it, build `target/deploy-<sha>` from a clean detached worktree, drain/restart, then replay the exact query with a fresh actor. The umbrella ticker plan remains `in_progress` after this latency phase because the separately tracked scheduler `800G` / `NAND` / `AST` / `SEC` entity-guard P2 is still open; do not archive that plan when this deployment completes.
+Next entry point: the latency subtask needs no further deployment work. The umbrella ticker plan remains `in_progress` because the separately tracked scheduler `800G` / `NAND` / `AST` / `SEC` entity-guard P2 is still open; do not archive that plan or this shared plan file until that remaining work is complete.
