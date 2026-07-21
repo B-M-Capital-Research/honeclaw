@@ -3,7 +3,19 @@
 - **发现时间**: 2026-04-18 00:20 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
+
+## 2026-07-21 状态回退结论
+
+- 状态从 `Fixed` 回退为 `New`，严重等级维持 `P2`。
+- `2026-07-21 10:49-10:54 CST`，Feishu direct 旧会话 `Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b` 连续两次收到很短的新问题：
+  - `2026-07-21T10:49:10.769196+08:00` 用户问“谷歌财报是什么时候”。
+  - `2026-07-21T10:50:19.087095+08:00` assistant final 仍返回“当前会话上下文过长...仍无法继续”，且落库文本把建议命令写成 `发送 <absolute-path>/compact`。
+  - `2026-07-21T10:53:26.208866+08:00` 用户几乎同题重试“谷歌财报是什么时候？”。
+  - `2026-07-21T10:54:33.206495+08:00` assistant 再次返回同一失败文案和 `<absolute-path>/compact` 占位符。
+- `data/runtime/logs/web.log.2026-07-21` 同窗显示第一轮先主动 compact 旧会话，然后执行 `data_fetch earnings_calendar`，检测到 `context overflow` 后又执行 `context_overflow_recovery` 强制 compact；重试阶段继续执行 `data_fetch search` 与 `data_fetch earnings_calendar GOOGL`，最终仍失败。第二轮同题重试也再次触发 context overflow recovery，成功执行 `data_fetch search` / `data_fetch earnings_calendar GOOGL` 后仍失败。
+- 这晚于 2026-07-18 代码级修复，说明 compact 后剥离历史 tool transcript 的修复不足以稳定恢复旧 Feishu direct 会话的新话题短问答；同时 `<absolute-path>` 占位符外泄仍在用户可见 final 中复发。
+- 这是功能性缺陷：用户提出的是单句财报日期查询，工具结果已经执行，但最终没有回答问题；有新会话绕行路径，未见错投、数据破坏或敏感信息泄露，因此维持 `P2`，非 `P1`，不创建 GitHub Issue。
 
 ## 2026-07-18 代码级修复
 
@@ -126,6 +138,8 @@
 
 ## 当前实现效果
 
+- `2026-07-21` 运行态显示，自动 compact / context-overflow recovery 均确实执行，但两次短问题仍只给失败 fallback，没有消费已执行的 `data_fetch` 结果回答财报日期。
+- 用户可见 fallback 仍包含 `<absolute-path>/compact` 占位符，说明失败文案净化或常量替换仍有运行态漏网。
 - 旧的“底层报错外泄”问题已经修复，最新会话里用户看到的是产品化提示，而不是 provider 原始错误。
 - 但这轮真实样本证明，自动 compact 只是把失败文案变得可接受，并没有稳定恢复主功能链路。
 - 同一个 `UNH` 话题在 `19:22`、`22:13`、`23:54` 三次尝试中都没有产出答案，说明这不是单次 provider 抖动。
@@ -142,6 +156,8 @@
 
 ## 根因判断
 
+- 最新样本更集中地指向 context-overflow recovery 后的 retry 上下文仍过大或工具结果再次膨胀：两轮都能进入工具调用并拿到 earnings calendar / search 结果，但在 answer 前后仍被统一失败路径吞掉。
+- `<absolute-path>/compact` 复发说明一部分旧 fallback 文案或落库净化链路仍没有使用 2026-04-26 之后的用户态 `/compact` 文案。
 - 旧缺陷修复后，`AgentSession` 已能识别超窗并自动 compact；当前问题更像是 compact 粒度和保留窗口仍不足以让新话题顺利脱离旧上下文负担。
 - 最新日志里 compact 后仍保留 6 条 recent items，且重试 search 继续携带画像读取与多次工具调用，说明 prompt 体积或上下文噪声在 retry 后仍可能超出可用预算。
 - `company_profiles` 路径错误同时出现在这轮重试前，说明无效工具尝试也在放大 search 阶段的上下文和耗时，但它更像放大器，不足以单独解释“连续三次都无法完成回答”。
@@ -151,8 +167,9 @@
 
 ## 下一步建议
 
-- 优先审视 `context_overflow_recovery` 在 direct session 中的保留窗口、summary 长度与重试策略，确认“开启新话题”时是否应更激进地丢弃旧活跃窗口。
+- 优先审视 `context_overflow_recovery` 在 direct session 中的保留窗口、summary 长度与重试策略，确认简单新问题是否应丢弃更多旧活跃窗口和旧 skill context。
 - 为“compact 成功但 retry 仍失败”的路径补独立可观测标记，区分是真正再次超窗、search 早停，还是 answer 阶段被短路。
+- 修正所有用户可见 overflow fallback 来源，确保不再出现 `<absolute-path>/compact` 占位符。
 - 给直聊场景补一条回归验证：同一 session 在长历史后切到新话题时，自动 compact 后仍应能完成至少一条新问题答复，而不是长期卡在统一 fallback。
 
 ## 2026-04-26 状态回退结论

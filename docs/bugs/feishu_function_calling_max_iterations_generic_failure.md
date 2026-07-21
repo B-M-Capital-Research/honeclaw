@@ -3,11 +3,17 @@
 - **发现时间**: 2026-07-20 11:01 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `session_messages`
+  - `2026-07-21 07:03-11:02 CST` 运行态复核回退为 `New/P2`：
+    - `session_id=Actor_feishu__direct__ou_5f49e2e252460a05eee0ff98f685cf9f16`
+      - `2026-07-21T10:29:06.193184+08:00` Feishu direct 用户要求从 PE 估值和增长潜力角度推荐本轮暴跌后错杀的 A 股 AI 产业链股票。
+      - `2026-07-21T10:31:41.614577+08:00` assistant final 仅返回通用失败提示，用户没有拿到推荐、排序、估值框架或降级摘要。
+    - 同窗 runtime 日志显示本轮已成功执行多轮 `web_search`、`data_fetch search` 和 `data_fetch quote`，覆盖光模块 / AI 算力 / 相关 A 股 ticker 的搜索与报价；`2026-07-21 10:31:41` 最终仍以 `error="max_iterations_exceeded:10"` 失败并发送 failure fallback。
+    - 这晚于 `2026-07-21T03:09:07+08:00` 的 `39fe6e59 fix strict actor iteration budget`，说明 live 路径仍存在 `10` 次预算复发或修复未在当前运行态生效；状态从 `Fixed` 回退为 `New`。
   - `2026-07-21 03:02-07:03 CST` 修复后运行态复核，状态维持 `Fixed`：
     - 最近非文档提交 `39fe6e59 fix strict actor iteration budget` 发生在 `2026-07-21T03:09:07+08:00`，与本单 2026-07-20 代码级修复一致。
     - 同窗 `data/sessions.sqlite3` 新增 15 条 user / 9 条 assistant / 4 条 system compact，覆盖 7 个更新 session；采样点 07:00 Feishu scheduler 后续已在 07:02 assistant 收口。
@@ -74,6 +80,8 @@
 
 ## 根因判断
 
+- `2026-07-21 10:31` 新样本证明，至少当前 live function-calling strict runner 仍会把普通 Feishu direct 投研请求截断在 `max_iterations_exceeded:10`，即使日志已显示多轮工具成功且 `answer_preserved=true`。
+- 当前无法仅凭台账判断是 03:09 代码修复未部署到 live、某条 Feishu direct 路由仍使用旧预算常量，还是 recovery 后又落回旧的 10 次限制；但对用户来说表现仍是同一功能链路失败，因此按同根因文档回退，不另建重复文档。
 - 直接根因为普通用户 fallback 到 strict `function_calling` runner 时，被单独压到 `STRICT_ACTOR_MAX_ITERATIONS=10`；这低于当前仓库其它 agent 路径默认使用的 `18`，导致复杂直聊 / 普通 scheduler 在已有多轮有效 `data_fetch` / `web_search` 结果时仍被过早截断成 `max_iterations_exceeded:10`。
 - 现有 heartbeat 有 `BudgetRecovery { reason: MaxIterationsExceeded }` 相关分支，但本轮 Feishu / Web direct 与普通 scheduler 样本仍直接以 strict runner 的 `10` 次上限失败收口，说明至少有一层问题是普通 strict runner 的预算明显偏紧，而不是 heartbeat 恢复逻辑本身。
 - 这不同于既有 `scheduler_heartbeat_iteration_exhaustion_skips_alert.md`：本单影响的是普通 direct / 普通 scheduler 回复生成，不是 heartbeat 专用触发提醒解析。
@@ -94,5 +102,6 @@
 
 ## 下一步建议
 
-1. 后续巡检重点看 2026-07-20 之后的新样本是否还出现 `max_iterations_exceeded:10`；若 strict runner 已不再报 `10`，说明这次预算对齐已至少止血一层活跃坏态。
-2. 如果后续仍在 `18` 次上限触顶，则再继续补 function-calling 的“基于已有 tool result 直接总结”恢复策略，而不是再次单纯抬高上限。
+1. 优先确认当前 live Feishu direct strict runner 是否已经加载 `39fe6e59` 后的预算配置；如果未部署，先重启 / 部署后复核同类复杂投研请求。
+2. 若已部署仍出现 `max_iterations_exceeded:10`，检查是否有其它 strict runner 路由、恢复分支或环境变量覆盖仍保留 10 次上限。
+3. 补 function-calling 的“基于已有 tool result 直接总结”恢复策略，避免即便触顶也丢弃已成功取得的数据。
