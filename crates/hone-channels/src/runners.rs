@@ -19,7 +19,7 @@ pub(crate) use opencode_acp::OpencodeAcpRunner;
 pub(crate) use tool_reasoning::{CodexCliReasoningRunner, FunctionCallingReasoningRunner};
 pub(crate) use types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
-    RunnerTimeouts, TerminalStreamPolicy,
+    RunnerTimeouts, ServiceOwnedInitialPrefix, TerminalStreamPolicy,
 };
 
 #[cfg(test)]

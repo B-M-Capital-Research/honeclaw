@@ -178,6 +178,42 @@ fn drain_stable_canonical_body_prefix(pending: &mut String) -> (String, bool) {
 }
 
 impl RunnerStreamObserver {
+    /// Commit a typed, server-owned finance header before the first model
+    /// request. Unlike a provider draft, this prefix is part of the final
+    /// response contract and remains valid while later read-only research
+    /// tools run. State changes only after the unique downstream sink ACKs.
+    async fn commit_service_owned_prefix(&self, prefix: &str) -> bool {
+        if self.terminal_stream_policy != TerminalStreamPolicy::CanonicalInvestmentHeader
+            || prefix.contains(['\r', '\n'])
+            || !canonical_investment_header_is_safe(prefix)
+            || self.committed_visible_prefix().is_some()
+        {
+            return false;
+        }
+        if !self
+            .emitter
+            .emit_committed(AgentRunnerEvent::CommittedStreamDelta {
+                content: prefix.to_string(),
+            })
+            .await
+        {
+            return false;
+        }
+
+        *self
+            .canonical_header_state
+            .lock()
+            .expect("canonical header stream state") = CanonicalHeaderStreamState::Committed {
+            pending_body: String::new(),
+        };
+        *self
+            .committed_visible_prefix
+            .lock()
+            .expect("committed visible prefix") = Some(prefix.to_string());
+        self.streamed_output.store(true, Ordering::Relaxed);
+        true
+    }
+
     fn event_for_final_content_delta(
         &self,
         content: &str,
@@ -317,6 +353,10 @@ impl FunctionCallingStreamObserver for RunnerStreamObserver {
             .lock()
             .expect("committed visible prefix")
             .clone()
+    }
+
+    async fn commit_service_owned_prefix(&self, prefix: &str) -> bool {
+        RunnerStreamObserver::commit_service_owned_prefix(self, prefix).await
     }
 
     async fn on_content_reset(&self) {
@@ -679,6 +719,19 @@ impl AgentRunner for FunctionCallingReasoningRunner {
             canonical_header_state: Mutex::new(CanonicalHeaderStreamState::default()),
             committed_visible_prefix: committed_visible_prefix.clone(),
         });
+        let service_owned_initial_prefix = request.service_owned_initial_prefix.clone();
+        let service_owned_prefix_content = service_owned_initial_prefix
+            .as_ref()
+            .map(|prefix| prefix.content.clone());
+        let precommitted_service_prefix = match service_owned_initial_prefix.as_ref() {
+            Some(prefix) if request.agent_owned_finance_loop && prefix.commit_before_model => {
+                stream_observer
+                    .commit_service_owned_prefix(&prefix.content)
+                    .await
+                    .then(|| prefix.content.clone())
+            }
+            _ => None,
+        };
         let original_len = request.context.messages.len();
         let agent = FunctionCallingAgent::new(
             self.llm.clone(),
@@ -688,6 +741,10 @@ impl AgentRunner for FunctionCallingReasoningRunner {
             self.llm_audit.clone(),
         )
         .with_agent_owned_finance_loop(request.agent_owned_finance_loop)
+        .with_service_owned_initial_prefix(
+            service_owned_prefix_content,
+            precommitted_service_prefix,
+        )
         .with_tool_observer(Some(observer))
         .with_stream_observer(Some(stream_observer))
         .with_tool_call_budget(
@@ -752,6 +809,64 @@ mod terminal_stream_tests {
             emitter,
             committed_visible_prefix,
         )
+    }
+
+    #[tokio::test]
+    async fn service_owned_prefix_ack_records_exact_irreversible_bytes_once() {
+        let (observer, emitter, committed_prefix) =
+            stream_observer(TerminalStreamPolicy::CanonicalInvestmentHeader);
+        let prefix = "数据时间：北京时间 2026-07-22 10:30；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露";
+
+        assert!(observer.commit_service_owned_prefix(prefix).await);
+        assert!(!observer.commit_service_owned_prefix(prefix).await);
+
+        let events = emitter.events.lock().expect("captured events");
+        assert_eq!(events.len(), 1, "{events:?}");
+        assert!(matches!(
+            &events[0],
+            AgentRunnerEvent::CommittedStreamDelta { content } if content == prefix
+        ));
+        assert_eq!(
+            committed_prefix
+                .lock()
+                .expect("committed visible prefix")
+                .as_deref(),
+            Some(prefix)
+        );
+        assert!(observer.streamed_output.load(Ordering::Relaxed));
+        assert!(matches!(
+            *observer
+                .canonical_header_state
+                .lock()
+                .expect("canonical header state"),
+            CanonicalHeaderStreamState::Committed { ref pending_body }
+                if pending_body.is_empty()
+        ));
+    }
+
+    #[tokio::test]
+    async fn rejected_service_owned_prefix_ack_never_becomes_visible_state() {
+        let committed_visible_prefix = Arc::new(Mutex::new(None));
+        let streamed_output = Arc::new(AtomicBool::new(false));
+        let observer = RunnerStreamObserver {
+            emitter: Arc::new(RejectingCommitEmitter),
+            streamed_output: streamed_output.clone(),
+            terminal_stream_policy: TerminalStreamPolicy::CanonicalInvestmentHeader,
+            canonical_header_state: Mutex::new(CanonicalHeaderStreamState::default()),
+            committed_visible_prefix: committed_visible_prefix.clone(),
+        };
+        let prefix = "数据时间：北京时间 2026-07-22 10:30；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露";
+
+        assert!(!observer.commit_service_owned_prefix(prefix).await);
+        assert!(observer.committed_visible_prefix().is_none());
+        assert!(!streamed_output.load(Ordering::Relaxed));
+        assert!(matches!(
+            *observer
+                .canonical_header_state
+                .lock()
+                .expect("canonical header state"),
+            CanonicalHeaderStreamState::Buffering
+        ));
     }
 
     #[tokio::test]

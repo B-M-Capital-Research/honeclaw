@@ -40,7 +40,7 @@ use crate::response_finalizer::{
 };
 use crate::runners::{
     AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
-    TerminalStreamPolicy,
+    ServiceOwnedInitialPrefix, TerminalStreamPolicy,
 };
 use crate::runtime::{sanitize_user_visible_output, user_visible_error_message};
 use crate::session_compactor::SessionCompactor;
@@ -97,6 +97,9 @@ pub(super) enum PreparedTurnReexecutionPolicy {
     Allowed,
     ExecuteOnce,
 }
+
+pub(super) const SERVICE_OWNED_PREFIX_FAILURE_SUFFIX: &str =
+    "\n\n本轮研究未能完成，暂未形成可供参考的标的结论。";
 
 /// Persistent mutations are deliberately classified conservatively before the
 /// runner starts. Observed tool traces are a second defense, but an ACP
@@ -390,7 +393,8 @@ pub(super) fn prepared_turn_reexecution_policy(input: &str) -> PreparedTurnReexe
 fn mark_investment_attempt_output_deferred(result: &mut AgentRunnerResult) {
     // Runner flags describe what the attempt emitted. Investment attempts use a
     // deferred emitter. A typed committed prefix is the sole exception: it was
-    // already forwarded at an irreversible, tool-free Agent boundary.
+    // already ACKed at an irreversible Web boundary; only known-read-only
+    // finance work may continue afterward.
     result.streamed_output = result.committed_visible_prefix.is_some();
     result.terminal_error_emitted = false;
 }
@@ -1311,9 +1315,35 @@ impl AgentSession {
                 .main_agent_entity_discovery_input
                 .is_some()
             && investment_context.reexecution_policy == PreparedTurnReexecutionPolicy::Allowed;
+        let bounded_finance_turn = execution.runner_request.agent_owned_finance_loop
+            && investment_context
+                .main_agent_entity_discovery_input
+                .as_deref()
+                .is_some_and(|input| {
+                    has_main_agent_entity_discovery_seed(input, options.turn_origin)
+                });
+        if bounded_finance_turn {
+            // A shortlist question must not turn one user turn into an
+            // unbounded market crawl. These are request-local safety limits;
+            // reaching one moves the same Agent to a tools-disabled natural
+            // final rather than feeding budget errors through many rounds.
+            execution.runner_request.max_tool_calls = Some(24);
+            execution.runner_request.tool_call_limits = Some(HashMap::from([
+                ("data_fetch".to_string(), 20),
+                ("web_search".to_string(), 6),
+            ]));
+        }
         if execution.runner_request.agent_owned_finance_loop && self.actor.channel == "web" {
             execution.runner_request.terminal_stream_policy =
                 TerminalStreamPolicy::CanonicalInvestmentHeader;
+            execution.runner_request.service_owned_initial_prefix = Some(
+                ServiceOwnedInitialPrefix {
+                    content: format!(
+                        "数据时间：北京时间 {answer_time_beijing}；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露"
+                    ),
+                    commit_before_model: bounded_finance_turn,
+                },
+            );
         }
         Ok((execution, investment_context))
     }
@@ -2434,9 +2464,9 @@ impl AgentSession {
             if defer_validated_output {
                 if let Some(prefix) = committed_visible_prefix.as_deref() {
                     // The Agent already committed this exact canonical prefix
-                    // after entering a tool-free terminal phase. Only publish
-                    // the finalized tail so UI concatenation and persistence
-                    // remain byte-for-byte identical without a reset/replay.
+                    // through the unique Web sink. Only publish the finalized
+                    // tail so UI concatenation and persistence remain
+                    // byte-for-byte identical without a reset/replay.
                     let tail = response
                         .content
                         .strip_prefix(prefix)
@@ -2536,11 +2566,30 @@ impl AgentSession {
                     session_id,
                     "closing user-visible stream normally after committed terminal prefix failure"
                 );
+                let service_owned_prefix = execution
+                    .runner_request
+                    .service_owned_initial_prefix
+                    .as_ref()
+                    .map(|configured| configured.content.as_str())
+                    == Some(prefix);
+                let visible_partial = if service_owned_prefix {
+                    self.emit(AgentSessionEvent::Segment {
+                        text: SERVICE_OWNED_PREFIX_FAILURE_SUFFIX.to_string(),
+                    })
+                    .await;
+                    format!("{prefix}{SERVICE_OWNED_PREFIX_FAILURE_SUFFIX}")
+                } else {
+                    prefix.to_string()
+                };
                 let mut metadata = HashMap::new();
                 metadata.insert("run_failed".to_string(), Value::Bool(true));
                 metadata.insert("error_kind".to_string(), Value::String(format!("{kind:?}")));
                 metadata.insert("terminal_stream_incomplete".to_string(), Value::Bool(true));
-                self.persist_assistant_text_turn(&session_id, prefix, metadata);
+                metadata.insert(
+                    "service_owned_initial_prefix".to_string(),
+                    Value::Bool(service_owned_prefix),
+                );
+                self.persist_assistant_text_turn(&session_id, &visible_partial, metadata);
                 self.core.log_message_step(
                     &self.actor.channel,
                     &self.actor.user_id,
@@ -2551,7 +2600,7 @@ impl AgentSession {
                     None,
                 );
                 let partial_response = AgentResponse {
-                    content: prefix.to_string(),
+                    content: visible_partial,
                     tool_calls_made: response.tool_calls_made.clone(),
                     iterations: response.iterations,
                     success: false,

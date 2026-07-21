@@ -47,8 +47,9 @@ use crate::runtime::sanitize_user_visible_output;
 use crate::sandbox::sandbox_base_dir;
 
 use super::core::{
-    AgentSession, PreparedTurnReexecutionPolicy, apply_deterministic_investment_fallback,
-    normalize_persistent_trace_failure, prepared_turn_reexecution_policy, prompt_time_for_attempt,
+    AgentSession, PreparedTurnReexecutionPolicy, SERVICE_OWNED_PREFIX_FAILURE_SUFFIX,
+    apply_deterministic_investment_fallback, normalize_persistent_trace_failure,
+    prepared_turn_reexecution_policy, prompt_time_for_attempt,
 };
 use super::emitter::SessionEventEmitter;
 use super::helpers::{
@@ -233,6 +234,65 @@ struct MockStreamingSequencedRunner {
     runtime_inputs: Arc<Mutex<Vec<String>>>,
 }
 
+#[derive(Clone)]
+struct ServicePrefixRunner {
+    fail_after_commit: bool,
+    final_tail: String,
+    seen_prefixes: Arc<Mutex<Vec<String>>>,
+}
+
+#[async_trait]
+impl AgentRunner for ServicePrefixRunner {
+    fn name(&self) -> &'static str {
+        "function_calling"
+    }
+
+    async fn run(
+        &self,
+        request: AgentRunnerRequest,
+        emitter: Arc<dyn AgentRunnerEmitter>,
+    ) -> AgentRunnerResult {
+        let prefix = request
+            .service_owned_initial_prefix
+            .expect("eligible finance request prefix")
+            .content;
+        self.seen_prefixes
+            .lock()
+            .expect("seen prefixes")
+            .push(prefix.clone());
+        let accepted = emitter
+            .emit_committed(AgentRunnerEvent::CommittedStreamDelta {
+                content: prefix.clone(),
+            })
+            .await;
+        let response = if self.fail_after_commit {
+            AgentResponse {
+                content: String::new(),
+                tool_calls_made: Vec::new(),
+                iterations: 1,
+                success: false,
+                error: Some("agent_timeout: service-prefix fixture".to_string()),
+            }
+        } else {
+            AgentResponse {
+                content: format!("{prefix}{}", self.final_tail),
+                tool_calls_made: Vec::new(),
+                iterations: 1,
+                success: true,
+                error: None,
+            }
+        };
+        AgentRunnerResult {
+            response,
+            streamed_output: accepted,
+            committed_visible_prefix: accepted.then_some(prefix),
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        }
+    }
+}
+
 #[async_trait]
 impl AgentRunner for MockStreamingSequencedRunner {
     fn name(&self) -> &'static str {
@@ -293,6 +353,57 @@ struct MockLlmState {
     responses: std::collections::VecDeque<hone_core::HoneResult<ChatResponse>>,
     last_chat_messages: Option<Vec<Message>>,
     last_tool_messages: Option<Vec<Message>>,
+}
+
+const MOCK_SERVICE_OWNED_PREFIX_TOKEN: &str = "{{service_owned_initial_prefix}}";
+const SERVICE_OWNED_PREFIX_START: &str = "数据时间：北京时间 ";
+const SERVICE_OWNED_PREFIX_BASIS_SUFFIX: &str =
+    "；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露";
+
+fn service_owned_prefix_from_messages(messages: &[Message]) -> Option<String> {
+    messages.iter().rev().find_map(|message| {
+        let content = message.content.as_deref()?;
+        if let Some(suffix_start) = content.rfind(SERVICE_OWNED_PREFIX_BASIS_SUFFIX) {
+            let suffix_end = suffix_start + SERVICE_OWNED_PREFIX_BASIS_SUFFIX.len();
+            let prefix_start = content[..suffix_start].rfind(SERVICE_OWNED_PREFIX_START)?;
+            return Some(content[prefix_start..suffix_end].to_string());
+        }
+
+        // Below the evidence floor the Agent prompt intentionally remains a
+        // tools-only instruction, so it carries the Session's dynamic time
+        // anchor but not the already-ACKed fixed basis text. Reconstruct the
+        // exact typed prefix from that real anchor and the same fixed service
+        // contract used by the request fixture.
+        let prefix_start = content.rfind(SERVICE_OWNED_PREFIX_START)?;
+        let timestamp_start = prefix_start + SERVICE_OWNED_PREFIX_START.len();
+        let separator = content[timestamp_start..].find("；行情口径：")?;
+        let timestamp = &content[timestamp_start..timestamp_start + separator];
+        Some(format!(
+            "{SERVICE_OWNED_PREFIX_START}{timestamp}{SERVICE_OWNED_PREFIX_BASIS_SUFFIX}"
+        ))
+    })
+}
+
+fn mock_service_owned_answer(tail: &str) -> String {
+    assert!(
+        tail.starts_with('\n'),
+        "service-owned answer tail: {tail:?}"
+    );
+    format!("{MOCK_SERVICE_OWNED_PREFIX_TOKEN}{tail}")
+}
+
+fn resolve_mock_service_owned_answer(
+    mut response: ChatResponse,
+    messages: &[Message],
+) -> ChatResponse {
+    if response.content.contains(MOCK_SERVICE_OWNED_PREFIX_TOKEN) {
+        let prefix = service_owned_prefix_from_messages(messages)
+            .expect("tool prompt must contain the dynamic service-owned finance prefix");
+        response.content = response
+            .content
+            .replace(MOCK_SERVICE_OWNED_PREFIX_TOKEN, &prefix);
+    }
+    response
 }
 
 impl MockLlmProvider {
@@ -382,6 +493,15 @@ impl MockLlmProvider {
             .filter_map(|message| message.content.as_deref())
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    fn last_service_owned_prefix(&self) -> Option<String> {
+        self.state
+            .lock()
+            .expect("mock llm lock")
+            .last_tool_messages
+            .as_deref()
+            .and_then(service_owned_prefix_from_messages)
     }
 }
 
@@ -551,6 +671,7 @@ impl LlmProvider for MockLlmProvider {
 
         match result {
             Ok(response) => {
+                let response = resolve_mock_service_owned_answer(response, messages);
                 let mut events = mock_stream_events(response, tool_choice_mode);
                 if incomplete_stream {
                     assert!(
@@ -927,6 +1048,7 @@ async fn empty_success_with_tool_calls_uses_fallback_after_retries() {
         allowed_tools: None,
         max_tool_calls: None,
         agent_owned_finance_loop: false,
+        service_owned_initial_prefix: None,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
@@ -1010,6 +1132,7 @@ async fn transient_runner_failure_retries_once_before_returning_success() {
         allowed_tools: None,
         max_tool_calls: None,
         agent_owned_finance_loop: false,
+        service_owned_initial_prefix: None,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
@@ -1090,6 +1213,7 @@ async fn committed_terminal_prefix_makes_runner_attempt_irreversible_and_suppres
         allowed_tools: None,
         max_tool_calls: None,
         agent_owned_finance_loop: false,
+        service_owned_initial_prefix: None,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
@@ -1306,6 +1430,7 @@ async fn observed_persistent_tool_trace_suppresses_transient_retry() {
         allowed_tools: None,
         max_tool_calls: None,
         agent_owned_finance_loop: false,
+        service_owned_initial_prefix: None,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
@@ -1445,6 +1570,165 @@ async fn persistent_trace_failure_closes_with_the_exact_committed_prefix() {
 }
 
 #[tokio::test]
+async fn service_prefix_and_final_tail_are_visible_and_persisted_byte_identically() {
+    let root = make_temp_dir("hone_channels_service_prefix_success_bytes");
+    std::fs::create_dir_all(&root).expect("create root");
+    let tail = "\n\n已按本轮可核验证据完成数据中心候选筛选。";
+    let seen_prefixes = Arc::new(Mutex::new(Vec::new()));
+    let runner = ServicePrefixRunner {
+        fail_after_commit: false,
+        final_tail: tail.to_string(),
+        seen_prefixes: seen_prefixes.clone(),
+    };
+    let mut core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    Arc::get_mut(&mut core)
+        .expect("unique test core")
+        .test_runner_factory = Some(Arc::new(move || Box::new(runner.clone())));
+    let actor = ActorIdentity::new("web", "service-prefix-success", None::<String>).expect("actor");
+    let listener = Arc::new(RecordingListener::default());
+    let mut session = AgentSession::new(core.clone(), actor.clone(), "direct");
+    session.add_listener(listener.clone());
+
+    let result = session
+        .run(
+            "大A有没有类似CRWV、Nebius这样的数据中心的标的",
+            AgentRunOptions::default(),
+        )
+        .await;
+
+    assert!(result.response.success, "{:?}", result.response.error);
+    let prefix = seen_prefixes
+        .lock()
+        .expect("seen prefixes")
+        .first()
+        .cloned()
+        .expect("committed service prefix");
+    let expected = format!("{prefix}{tail}");
+    assert_eq!(result.response.content, expected);
+
+    let events = listener.events.lock().await;
+    let visible_chunks = events
+        .iter()
+        .filter_map(|event| match event {
+            AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => Some(content.clone()),
+            AgentSessionEvent::Segment { text } => Some(text.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(visible_chunks, [prefix.clone(), tail.to_string()]);
+    assert_eq!(visible_chunks.concat(), expected);
+    assert_eq!(expected.matches(&prefix).count(), 1);
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AgentSessionEvent::Done { response } if response.content == expected
+    )));
+    assert!(!events.iter().any(|event| matches!(
+        event,
+        AgentSessionEvent::PartialDone { .. } | AgentSessionEvent::Run(RunEvent::Error { .. })
+    )));
+    drop(events);
+
+    let messages = core
+        .session_storage
+        .get_messages(&actor.session_id(), None)
+        .expect("persisted messages");
+    let persisted = messages
+        .iter()
+        .rev()
+        .find(|message| message.role == "assistant")
+        .map(session_message_text)
+        .expect("persisted assistant");
+    assert_eq!(persisted, expected);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn failed_service_prefix_run_appends_and_persists_an_explicit_failure_tail() {
+    let root = make_temp_dir("hone_channels_service_prefix_failure_tail");
+    std::fs::create_dir_all(&root).expect("create root");
+    let seen_prefixes = Arc::new(Mutex::new(Vec::new()));
+    let runner = ServicePrefixRunner {
+        fail_after_commit: true,
+        final_tail: String::new(),
+        seen_prefixes: seen_prefixes.clone(),
+    };
+    let mut core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    Arc::get_mut(&mut core)
+        .expect("unique test core")
+        .test_runner_factory = Some(Arc::new(move || Box::new(runner.clone())));
+    let actor = ActorIdentity::new("web", "service-prefix-failure", None::<String>).expect("actor");
+    let listener = Arc::new(RecordingListener::default());
+    let mut session = AgentSession::new(core.clone(), actor.clone(), "direct");
+    session.add_listener(listener.clone());
+
+    let result = session
+        .run(
+            "大A有没有类似CRWV、Nebius这样的数据中心的标的",
+            AgentRunOptions::default(),
+        )
+        .await;
+
+    assert!(!result.response.success);
+    let prefix = seen_prefixes
+        .lock()
+        .expect("seen prefixes")
+        .first()
+        .cloned()
+        .expect("committed service prefix");
+    let expected = format!("{prefix}{SERVICE_OWNED_PREFIX_FAILURE_SUFFIX}");
+    let events = listener.events.lock().await;
+    let visible = events
+        .iter()
+        .filter_map(|event| match event {
+            AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => Some(content.as_str()),
+            AgentSessionEvent::Segment { text } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<String>();
+    assert_eq!(visible, expected);
+    let partial = events
+        .iter()
+        .find_map(|event| match event {
+            AgentSessionEvent::PartialDone { response } => Some(response),
+            _ => None,
+        })
+        .expect("partial done");
+    assert_eq!(partial.content, expected);
+    assert!(!partial.success);
+    assert!(partial.error.is_none());
+    assert!(!events.iter().any(|event| matches!(
+        event,
+        AgentSessionEvent::Done { .. } | AgentSessionEvent::Run(RunEvent::Error { .. })
+    )));
+    drop(events);
+
+    let messages = core
+        .session_storage
+        .get_messages(&actor.session_id(), None)
+        .expect("persisted messages");
+    let assistant = messages
+        .iter()
+        .rev()
+        .find(|message| message.role == "assistant")
+        .expect("persisted partial assistant");
+    assert_eq!(session_message_text(assistant), expected);
+    let metadata = assistant.metadata.as_ref().expect("partial metadata");
+    assert_eq!(
+        metadata
+            .get("service_owned_initial_prefix")
+            .and_then(Value::as_bool),
+        Some(true)
+    );
+    assert_eq!(
+        metadata
+            .get("terminal_stream_incomplete")
+            .and_then(Value::as_bool),
+        Some(true)
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
 async fn unknown_tool_trace_suppresses_transient_retry() {
     let root = make_temp_dir("hone_channels_unknown_tool_trace_no_retry");
     std::fs::create_dir_all(&root).expect("create root");
@@ -1507,6 +1791,7 @@ async fn unknown_tool_trace_suppresses_transient_retry() {
         allowed_tools: None,
         max_tool_calls: None,
         agent_owned_finance_loop: false,
+        service_owned_initial_prefix: None,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
@@ -1586,6 +1871,7 @@ async fn execute_once_intent_suppresses_empty_success_retry_even_without_trace()
         allowed_tools: None,
         max_tool_calls: None,
         agent_owned_finance_loop: false,
+        service_owned_initial_prefix: None,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
@@ -1674,6 +1960,7 @@ async fn portfolio_mutation_then_analysis_disconnect_does_not_retry_without_trac
         allowed_tools: None,
         max_tool_calls: None,
         agent_owned_finance_loop: false,
+        service_owned_initial_prefix: None,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
@@ -1762,6 +2049,7 @@ async fn deep_research_start_disconnect_does_not_launch_a_second_task_without_tr
         allowed_tools: None,
         max_tool_calls: None,
         agent_owned_finance_loop: false,
+        service_owned_initial_prefix: None,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
@@ -1835,6 +2123,7 @@ async fn post_quote_runner_failure_stays_failed_but_incomplete_success_uses_fall
         allowed_tools: None,
         max_tool_calls: None,
         agent_owned_finance_loop: false,
+        service_owned_initial_prefix: None,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
@@ -2030,6 +2319,7 @@ async fn investment_contract_uses_verified_fallback_for_incomplete_nbis_draft() 
         allowed_tools: None,
         max_tool_calls: None,
         agent_owned_finance_loop: false,
+        service_owned_initial_prefix: None,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
@@ -2167,6 +2457,7 @@ async fn investment_fallback_fails_closed_for_unknown_tool_trace() {
         allowed_tools: None,
         max_tool_calls: None,
         agent_owned_finance_loop: false,
+        service_owned_initial_prefix: None,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
@@ -2284,6 +2575,7 @@ fn repair_trace_request(
         allowed_tools: None,
         max_tool_calls: None,
         agent_owned_finance_loop: false,
+        service_owned_initial_prefix: None,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     }
@@ -2604,6 +2896,7 @@ async fn fund_contract_discards_forbidden_financial_call_and_uses_safe_fallback(
         allowed_tools: None,
         max_tool_calls: None,
         agent_owned_finance_loop: false,
+        service_owned_initial_prefix: None,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
@@ -2710,6 +3003,7 @@ async fn investment_contract_sanitizes_and_server_normalizes_the_visible_text() 
         allowed_tools: None,
         max_tool_calls: None,
         agent_owned_finance_loop: false,
+        service_owned_initial_prefix: None,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
@@ -4917,6 +5211,15 @@ async fn incomplete_named_scope_enters_main_agent_tool_loop_without_auxiliary_ga
             }]),
         ),
     ]);
+    let answer_tail = concat!(
+        "\n\n比较结论：NBIS 与 NVDA 应按不同业务成熟度比较。以下区分已核验事实与情景推断。\n",
+        "### NBIS\n",
+        "NBIS 当前价 177.71 USD。已核验事实：年度营收与净利润字段由本轮利润表覆盖；估值方法采用 P/S 与情景法，经营兑现是假设推断。\n",
+        "### NVDA\n",
+        "NVDA 当前价 180.25 USD。已核验事实：年度营收与净利润字段由本轮利润表覆盖；估值方法采用 P/E 与情景法，增长持续性是假设推断。\n",
+        "风险与证伪条件：若增长与现金流趋势恶化，当前判断失效。\n",
+        "动作建议与触发条件：先观察，等待估值与经营数据同时满足条件。",
+    );
     let llm = MockLlmProvider::with_chat_and_tool_responses(
         vec![Ok(ChatResult {
             content: "not valid entity json".to_string(),
@@ -4948,7 +5251,9 @@ async fn incomplete_named_scope_enters_main_agent_tool_loop_without_auxiliary_ga
             }),
             Ok(ChatResponse {
                 content: String::new(),
-                reasoning_content: Some("实体 search 已返回，继续核验同代码行情和资产类型".to_string()),
+                reasoning_content: Some(
+                    "实体 search 已返回，继续核验同代码行情和资产类型".to_string(),
+                ),
                 tool_calls: Some(vec![
                     ToolCall {
                         id: "call_quote".to_string(),
@@ -4979,7 +5284,9 @@ async fn incomplete_named_scope_enters_main_agent_tool_loop_without_auxiliary_ga
             }),
             Ok(ChatResponse {
                 content: String::new(),
-                reasoning_content: Some("实体和行情已确认，按用户比较问题补齐逐标的年度财务".to_string()),
+                reasoning_content: Some(
+                    "实体和行情已确认，按用户比较问题补齐逐标的年度财务".to_string(),
+                ),
                 tool_calls: Some(vec![
                     ToolCall {
                         id: "call_nbis_financials".to_string(),
@@ -5001,7 +5308,7 @@ async fn incomplete_named_scope_enters_main_agent_tool_loop_without_auxiliary_ga
                 usage: None,
             }),
             Ok(ChatResponse {
-                content: "数据时间：北京时间 2026-07-18 21:05；行情口径：报价源最新可得、非逐笔\n\n比较结论：NBIS 与 NVDA 应按不同业务成熟度比较。以下区分已核验事实与情景推断。\n### NBIS\nNBIS 当前价 177.71 USD。已核验事实：年度营收与净利润字段由本轮利润表覆盖；估值方法采用 P/S 与情景法，经营兑现是假设推断。\n### NVDA\nNVDA 当前价 180.25 USD。已核验事实：年度营收与净利润字段由本轮利润表覆盖；估值方法采用 P/E 与情景法，增长持续性是假设推断。\n风险与证伪条件：若增长与现金流趋势恶化，当前判断失效。\n动作建议与触发条件：先观察，等待估值与经营数据同时满足条件。".to_string(),
+                content: mock_service_owned_answer(answer_tail),
                 reasoning_content: None,
                 tool_calls: None,
                 usage: None,
@@ -5022,12 +5329,11 @@ async fn incomplete_named_scope_enters_main_agent_tool_loop_without_auxiliary_ga
         .await;
 
     assert!(result.response.success, "{:?}", result.response.error);
-    assert!(
-        result.response.content.starts_with("数据时间：北京时间 "),
-        "{}; calls={:?}",
-        result.response.content,
-        result.response.tool_calls_made
-    );
+    let service_prefix = llm
+        .last_service_owned_prefix()
+        .expect("dynamic service-owned prefix");
+    let expected_answer = format!("{service_prefix}{answer_tail}");
+    assert_eq!(result.response.content, expected_answer);
     assert_eq!(result.response.tool_calls_made.len(), 7);
     assert!(
         result
@@ -5071,18 +5377,19 @@ async fn incomplete_named_scope_enters_main_agent_tool_loop_without_auxiliary_ga
     let visible_chunks = events
         .iter()
         .filter_map(|event| match event {
-            AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => Some(content),
-            AgentSessionEvent::Segment { text } => Some(text),
+            AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => Some(content.as_str()),
+            AgentSessionEvent::Segment { text } => Some(text.as_str()),
             _ => None,
         })
         .collect::<Vec<_>>();
-    assert_eq!(visible_chunks.len(), 1, "{visible_chunks:?}");
     assert_eq!(
-        visible_chunks
-            .iter()
-            .map(|chunk| chunk.as_str())
-            .collect::<String>(),
-        result.response.content
+        visible_chunks,
+        [service_prefix.as_str(), answer_tail],
+        "{visible_chunks:?}"
+    );
+    assert_eq!(
+        visible_chunks.iter().copied().collect::<String>(),
+        expected_answer
     );
     fmp_stub.join().expect("join FMP stub");
     let _ = std::fs::remove_dir_all(root);
@@ -5098,6 +5405,7 @@ async fn agent_owned_no_coverage_clarification_is_not_replaced_and_is_emitted_on
         ("/v3/profile/ZZZQ".to_string(), serde_json::json!([])),
     ]);
     let clarification = "我已用 DataFetch 搜索 ZZZQ，但本轮权威数据源没有返回可核验的证券候选，因此现在不能确认它对应哪家公司。请补充交易所或公司全名，我再继续核验。";
+    let answer_tail = format!("\n\n{clarification}");
     let llm = MockLlmProvider::with_tool_responses(vec![
         ChatResponse {
             content: String::new(),
@@ -5138,7 +5446,7 @@ async fn agent_owned_no_coverage_clarification_is_not_replaced_and_is_emitted_on
             usage: None,
         },
         ChatResponse {
-            content: clarification.to_string(),
+            content: mock_service_owned_answer(&answer_tail),
             reasoning_content: None,
             tool_calls: None,
             usage: None,
@@ -5159,7 +5467,12 @@ async fn agent_owned_no_coverage_clarification_is_not_replaced_and_is_emitted_on
     fmp_stub.join().expect("join FMP stub");
 
     assert!(result.response.success, "{:?}", result.response.error);
-    assert_eq!(result.response.content, clarification);
+    let service_prefix = llm
+        .last_service_owned_prefix()
+        .expect("dynamic service-owned prefix");
+    let expected_answer = format!("{service_prefix}{answer_tail}");
+    assert_eq!(result.response.content, expected_answer);
+    assert!(result.response.content.ends_with(clarification));
     assert!(
         !result
             .response
@@ -5190,8 +5503,11 @@ async fn agent_owned_no_coverage_clarification_is_not_replaced_and_is_emitted_on
             _ => None,
         })
         .collect::<Vec<_>>();
-    assert_eq!(visible_chunks.concat(), result.response.content);
-    assert_eq!(visible_chunks, vec![clarification]);
+    assert_eq!(visible_chunks.concat(), expected_answer);
+    assert_eq!(
+        visible_chunks,
+        [service_prefix.as_str(), answer_tail.as_str()]
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -5226,6 +5542,7 @@ async fn agent_owned_equal_candidate_clarification_is_not_replaced_and_is_emitte
         ("/v3/quote/ALPH".to_string(), serde_json::json!([])),
     ]);
     let clarification = "DataFetch 对 Alpha 返回了两个同等可行候选：ALPH（伦敦）和 ALPHA（雅典）。你指的是哪一个？确认后我再拉取对应代码的行情。";
+    let answer_tail = format!("\n\n{clarification}");
     let llm = MockLlmProvider::with_tool_responses(vec![
         ChatResponse {
             content: String::new(),
@@ -5266,7 +5583,7 @@ async fn agent_owned_equal_candidate_clarification_is_not_replaced_and_is_emitte
             usage: None,
         },
         ChatResponse {
-            content: clarification.to_string(),
+            content: mock_service_owned_answer(&answer_tail),
             reasoning_content: None,
             tool_calls: None,
             usage: None,
@@ -5287,7 +5604,12 @@ async fn agent_owned_equal_candidate_clarification_is_not_replaced_and_is_emitte
     fmp_stub.join().expect("join FMP stub");
 
     assert!(result.response.success, "{:?}", result.response.error);
-    assert_eq!(result.response.content, clarification);
+    let service_prefix = llm
+        .last_service_owned_prefix()
+        .expect("dynamic service-owned prefix");
+    let expected_answer = format!("{service_prefix}{answer_tail}");
+    assert_eq!(result.response.content, expected_answer);
+    assert!(result.response.content.ends_with(clarification));
     assert!(
         !result
             .response
@@ -5322,8 +5644,11 @@ async fn agent_owned_equal_candidate_clarification_is_not_replaced_and_is_emitte
             _ => None,
         })
         .collect::<Vec<_>>();
-    assert_eq!(visible_chunks.concat(), result.response.content);
-    assert_eq!(visible_chunks, vec![clarification]);
+    assert_eq!(visible_chunks.concat(), expected_answer);
+    assert_eq!(
+        visible_chunks,
+        [service_prefix.as_str(), answer_tail.as_str()]
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -5356,7 +5681,7 @@ async fn agent_owned_direct_final_preserves_completed_interactive_answer() {
             }]),
         ),
     ]);
-    let answer = "数据时间：北京时间 2026-07-18 21:05；行情口径：本轮报价缺少报价源时间\n\n本轮使用 data_fetch quote 校验了 CRWV；DataFetch 已确认 CRWV 对应 CoreWeave，但本轮报价缺少可用的报价源时间，所以我不把 73.21 称为实时价。估值仍可从收入增速、毛利率、资本开支、融资成本和 Forward P/S 情景入手，并把数据缺口明确列为限制。";
+    let answer_tail = "\n\n本轮使用 data_fetch quote 校验了 CRWV；DataFetch 已确认 CRWV 对应 CoreWeave，但本轮报价缺少可用的报价源时间，所以我不把 73.21 称为实时价。估值仍可从收入增速、毛利率、资本开支、融资成本和 Forward P/S 情景入手，并把数据缺口明确列为限制。";
     let llm = MockLlmProvider::with_tool_responses(vec![
         ChatResponse {
             content: String::new(),
@@ -5395,7 +5720,7 @@ async fn agent_owned_direct_final_preserves_completed_interactive_answer() {
             usage: None,
         },
         ChatResponse {
-            content: answer.to_string(),
+            content: mock_service_owned_answer(answer_tail),
             reasoning_content: Some("DirectFinal hidden reasoning must never persist".to_string()),
             tool_calls: None,
             usage: None,
@@ -5417,7 +5742,11 @@ async fn agent_owned_direct_final_preserves_completed_interactive_answer() {
     fmp_stub.join().expect("join FMP stub");
 
     assert!(result.response.success, "{:?}", result.response.error);
-    assert_eq!(result.response.content, answer);
+    let service_prefix = llm
+        .last_service_owned_prefix()
+        .expect("dynamic service-owned prefix");
+    let expected_answer = format!("{service_prefix}{answer_tail}");
+    assert_eq!(result.response.content, expected_answer);
     assert_eq!(result.response.error, None);
     assert_eq!(result.response.tool_calls_made.len(), 3);
     assert_eq!(llm.chat_with_tools_calls(), 3);
@@ -5432,7 +5761,10 @@ async fn agent_owned_direct_final_preserves_completed_interactive_answer() {
             .collect::<Vec<_>>(),
         ["user", "assistant"]
     );
-    assert_eq!(messages[1].content[0].text.as_deref(), Some(answer));
+    assert_eq!(
+        messages[1].content[0].text.as_deref(),
+        Some(expected_answer.as_str())
+    );
     assert!(
         messages[1]
             .metadata
@@ -5459,13 +5791,20 @@ async fn agent_owned_direct_final_preserves_completed_interactive_answer() {
             _ => None,
         })
         .collect::<Vec<_>>();
-    assert_eq!(visible_chunks.len(), 1, "{visible_chunks:?}");
+    assert_eq!(
+        visible_chunks
+            .iter()
+            .map(|chunk| chunk.as_str())
+            .collect::<Vec<_>>(),
+        [service_prefix.as_str(), answer_tail],
+        "{visible_chunks:?}"
+    );
     assert_eq!(
         visible_chunks
             .iter()
             .map(|chunk| chunk.as_str())
             .collect::<String>(),
-        result.response.content
+        expected_answer
     );
     assert_eq!(
         events
@@ -5482,7 +5821,7 @@ async fn agent_owned_direct_final_preserves_completed_interactive_answer() {
 }
 
 #[tokio::test]
-async fn incomplete_natural_direct_final_never_commits_a_header_or_runs_terminal_recovery() {
+async fn incomplete_natural_direct_final_after_t0_ack_persists_failure_partial_without_retry() {
     let root = make_temp_dir("hone_channels_terminal_header_recovery");
     std::fs::create_dir_all(&root).expect("create root");
     let (fmp_base_url, fmp_stub) = spawn_fmp_route_stub(vec![
@@ -5600,40 +5939,74 @@ async fn incomplete_natural_direct_final_never_commits_a_header_or_runs_terminal
     let visible_chunks = events
         .iter()
         .filter_map(|event| match event {
-            AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => Some(content),
-            AgentSessionEvent::Segment { text } => Some(text),
+            AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => Some(content.as_str()),
+            AgentSessionEvent::Segment { text } => Some(text.as_str()),
             _ => None,
         })
         .collect::<Vec<_>>();
-    assert!(visible_chunks.is_empty(), "{visible_chunks:?}");
+    let service_prefix = visible_chunks
+        .first()
+        .copied()
+        .expect("T0 service-owned prefix");
+    assert!(service_prefix.starts_with("数据时间：北京时间 "));
+    assert!(service_prefix.ends_with(SERVICE_OWNED_PREFIX_BASIS_SUFFIX));
+    let expected_partial = format!("{service_prefix}{SERVICE_OWNED_PREFIX_FAILURE_SUFFIX}");
+    assert_eq!(
+        visible_chunks,
+        [service_prefix, SERVICE_OWNED_PREFIX_FAILURE_SUFFIX]
+    );
+    assert_eq!(visible_chunks.concat(), expected_partial);
     assert!(
         !events
             .iter()
             .any(|event| matches!(event, AgentSessionEvent::Run(RunEvent::StreamReset)))
     );
-    assert!(
-        !events
-            .iter()
-            .any(|event| matches!(event, AgentSessionEvent::PartialDone { .. }))
-    );
+    let partials = events
+        .iter()
+        .filter_map(|event| match event {
+            AgentSessionEvent::PartialDone { response } => Some(response),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(partials.len(), 1, "{events:?}");
+    assert_eq!(partials[0].content, expected_partial);
+    assert!(!partials[0].success);
+    assert!(partials[0].error.is_none());
+    assert!(!events.iter().any(|event| matches!(
+        event,
+        AgentSessionEvent::Done { .. } | AgentSessionEvent::Run(RunEvent::Error { .. })
+    )));
     drop(events);
 
     let messages = core
         .session_storage
         .get_messages(&actor.session_id(), None)
         .expect("persisted terminal messages");
-    assert!(messages.iter().all(|message| {
-        message.content.iter().all(|part| {
-            part.text
-                .as_deref()
-                .is_none_or(|text| !text.contains(committed_header))
-        })
-    }));
+    let assistant = messages
+        .iter()
+        .rev()
+        .find(|message| message.role == "assistant")
+        .expect("persisted service-owned partial");
+    assert_eq!(session_message_text(assistant), expected_partial);
+    assert!(!session_message_text(assistant).contains(committed_header));
+    let metadata = assistant.metadata.as_ref().expect("partial metadata");
+    assert_eq!(
+        metadata
+            .get("service_owned_initial_prefix")
+            .and_then(Value::as_bool),
+        Some(true)
+    );
+    assert_eq!(
+        metadata
+            .get("terminal_stream_incomplete")
+            .and_then(Value::as_bool),
+        Some(true)
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
 #[tokio::test]
-async fn incomplete_natural_direct_final_never_persists_a_partial_terminal_prefix() {
+async fn incomplete_natural_direct_final_ignores_queued_recovery_after_t0_ack() {
     let root = make_temp_dir("hone_channels_terminal_header_double_failure");
     std::fs::create_dir_all(&root).expect("create root");
     let (fmp_base_url, fmp_stub) = spawn_fmp_route_stub(vec![
@@ -5752,40 +6125,65 @@ async fn incomplete_natural_direct_final_never_persists_a_partial_terminal_prefi
             _ => None,
         })
         .collect::<Vec<_>>();
-    assert!(visible_chunks.is_empty(), "{visible_chunks:?}");
+    let service_prefix = visible_chunks
+        .first()
+        .copied()
+        .expect("T0 service-owned prefix");
+    assert!(service_prefix.starts_with("数据时间：北京时间 "));
+    assert!(service_prefix.ends_with(SERVICE_OWNED_PREFIX_BASIS_SUFFIX));
+    let expected_partial = format!("{service_prefix}{SERVICE_OWNED_PREFIX_FAILURE_SUFFIX}");
+    assert_eq!(
+        visible_chunks,
+        [service_prefix, SERVICE_OWNED_PREFIX_FAILURE_SUFFIX]
+    );
+    assert_eq!(visible_chunks.concat(), expected_partial);
     assert!(
         !events
             .iter()
             .any(|event| matches!(event, AgentSessionEvent::Run(RunEvent::StreamReset)))
     );
-    assert_eq!(
-        events
-            .iter()
-            .filter(|event| matches!(event, AgentSessionEvent::PartialDone { .. }))
-            .count(),
-        0
-    );
+    let partials = events
+        .iter()
+        .filter_map(|event| match event {
+            AgentSessionEvent::PartialDone { response } => Some(response),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(partials.len(), 1, "{events:?}");
+    assert_eq!(partials[0].content, expected_partial);
+    assert!(!partials[0].success);
+    assert!(partials[0].error.is_none());
+    assert!(!events.iter().any(|event| matches!(
+        event,
+        AgentSessionEvent::Done { .. } | AgentSessionEvent::Run(RunEvent::Error { .. })
+    )));
     drop(events);
 
     let messages = core
         .session_storage
         .get_messages(&actor.session_id(), None)
         .expect("persisted partial terminal messages");
-    assert!(messages.iter().all(|message| {
-        message.content.iter().all(|part| {
-            part.text
-                .as_deref()
-                .is_none_or(|text| !text.contains(committed_header))
-        })
-    }));
-    assert!(messages.iter().all(|message| {
-        message
-            .metadata
-            .as_ref()
-            .and_then(|metadata| metadata.get("terminal_stream_incomplete"))
-            .and_then(Value::as_bool)
-            != Some(true)
-    }));
+    let assistant = messages
+        .iter()
+        .rev()
+        .find(|message| message.role == "assistant")
+        .expect("persisted service-owned partial");
+    assert_eq!(session_message_text(assistant), expected_partial);
+    assert!(!session_message_text(assistant).contains(committed_header));
+    assert!(!session_message_text(assistant).contains(mismatched_recovery));
+    let metadata = assistant.metadata.as_ref().expect("partial metadata");
+    assert_eq!(
+        metadata
+            .get("service_owned_initial_prefix")
+            .and_then(Value::as_bool),
+        Some(true)
+    );
+    assert_eq!(
+        metadata
+            .get("terminal_stream_incomplete")
+            .and_then(Value::as_bool),
+        Some(true)
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -5906,6 +6304,7 @@ async fn interactive_observed_crwv_nvidia_answer_is_never_repaired_or_rewritten(
         allowed_tools: None,
         max_tool_calls: None,
         agent_owned_finance_loop: false,
+        service_owned_initial_prefix: None,
         terminal_stream_policy: Default::default(),
         tool_call_limits: None,
     };
@@ -6019,6 +6418,7 @@ async fn interactive_tickers_enter_the_main_agent_loop_without_preflight_blockin
 
 #[tokio::test]
 async fn interactive_finance_loop_is_channel_independent_but_early_commit_is_web_only() {
+    let input = "大A有没有类似CRWV、Nebius这样的数据中心的标的";
     for channel in ["web", "discord", "telegram", "feishu"] {
         let root = make_temp_dir(&format!("hone_channels_natural_loop_{channel}"));
         std::fs::create_dir_all(&root).expect("create root");
@@ -6030,14 +6430,7 @@ async fn interactive_finance_loop_is_channel_independent_but_early_commit_is_web
         let options = AgentRunOptions::default();
 
         let (execution, _investment_context) = session
-            .prepare_execution_for_turn(
-                &actor.session_id(),
-                "crwv和英伟达有什么关系",
-                "crwv和英伟达有什么关系",
-                &options,
-                None,
-                None,
-            )
+            .prepare_execution_for_turn(&actor.session_id(), input, input, &options, None, None)
             .await
             .unwrap_or_else(|(_, error)| panic!("{channel}: {error}"));
 
@@ -6055,8 +6448,85 @@ async fn interactive_finance_loop_is_channel_independent_but_early_commit_is_web
             },
             "{channel}"
         );
+        assert_eq!(
+            execution.runner_request.max_tool_calls,
+            Some(24),
+            "{channel}"
+        );
+        assert_eq!(
+            execution.runner_request.tool_call_limits,
+            Some(HashMap::from([
+                ("data_fetch".to_string(), 20),
+                ("web_search".to_string(), 6),
+            ])),
+            "{channel}"
+        );
+        if channel == "web" {
+            let configured = execution
+                .runner_request
+                .service_owned_initial_prefix
+                .as_ref()
+                .expect("eligible Web finance prefix");
+            assert!(configured.commit_before_model);
+            let prefix = configured.content.as_str();
+            assert!(prefix.starts_with("数据时间：北京时间 "), "{prefix}");
+            assert!(
+                prefix.ends_with(
+                    "；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露"
+                ),
+                "{prefix}"
+            );
+        } else {
+            assert!(
+                execution
+                    .runner_request
+                    .service_owned_initial_prefix
+                    .is_none(),
+                "{channel}"
+            );
+        }
         let _ = std::fs::remove_dir_all(root);
     }
+}
+
+#[tokio::test]
+async fn ordinary_interactive_web_turn_never_precommits_a_finance_prefix() {
+    let root = make_temp_dir("hone_channels_ordinary_web_no_finance_prefix");
+    std::fs::create_dir_all(&root).expect("create root");
+    let llm = MockLlmProvider::with_chat_and_tool_responses(vec![], vec![]);
+    let core = make_strict_tool_loop_test_core_with_config(&root, llm, |_| {});
+    let actor = ActorIdentity::new("web", "ordinary-web-user", None::<String>).expect("actor");
+    let session = AgentSession::new(core, actor.clone(), "direct");
+
+    let (execution, _) = session
+        .prepare_execution_for_turn(
+            &actor.session_id(),
+            "什么是安全边际",
+            "什么是安全边际",
+            &AgentRunOptions::default(),
+            None,
+            None,
+        )
+        .await
+        .unwrap_or_else(|(_, error)| panic!("ordinary Web turn: {error}"));
+
+    assert!(execution.runner_request.agent_owned_finance_loop);
+    assert_eq!(
+        execution.runner_request.terminal_stream_policy,
+        TerminalStreamPolicy::CanonicalInvestmentHeader
+    );
+    let configured = execution
+        .runner_request
+        .service_owned_initial_prefix
+        .as_ref()
+        .expect("deferred finance prefix configuration");
+    assert!(
+        !configured.commit_before_model,
+        "ordinary Web text must not publish a finance prefix before a DataFetch activation"
+    );
+    assert_eq!(execution.runner_request.max_tool_calls, None);
+    assert_eq!(execution.runner_request.tool_call_limits, None);
+    let _ = std::fs::remove_dir_all(root);
 }
 
 #[tokio::test]
@@ -6343,6 +6813,15 @@ async fn crwv_nbis_agent_loop_batches_the_first_datafetch_and_emits_one_answer()
             }]),
         ),
     ]);
+    let answer_tail = concat!(
+        "\n\n比较结论：CRWV 与 NBIS 的估值应结合各自增长和资本强度。以下区分已核验事实与情景推断。\n",
+        "### CRWV\n",
+        "CRWV 当前价 73.21 USD。已核验事实：年度营收与净利润字段由本轮利润表覆盖；估值方法采用 P/S 与情景法，订单兑现是假设推断。\n",
+        "### NBIS\n",
+        "NBIS 当前价 177.71 USD。已核验事实：年度营收与净利润字段由本轮利润表覆盖；估值方法采用 P/S 与情景法，算力利用率是假设推断。\n",
+        "风险与证伪条件：若订单、增长或现金流明显恶化，当前判断失效。\n",
+        "动作建议与触发条件：先观察，等待估值与经营数据同时满足条件。",
+    );
     let llm = MockLlmProvider::with_tool_responses(vec![
         ChatResponse {
             content: String::new(),
@@ -6422,7 +6901,7 @@ async fn crwv_nbis_agent_loop_batches_the_first_datafetch_and_emits_one_answer()
             usage: None,
         },
         ChatResponse {
-            content: "数据时间：北京时间 2026-07-18 21:05；行情口径：报价源最新可得、非逐笔\n\n比较结论：CRWV 与 NBIS 的估值应结合各自增长和资本强度。以下区分已核验事实与情景推断。\n### CRWV\nCRWV 当前价 73.21 USD。已核验事实：年度营收与净利润字段由本轮利润表覆盖；估值方法采用 P/S 与情景法，订单兑现是假设推断。\n### NBIS\nNBIS 当前价 177.71 USD。已核验事实：年度营收与净利润字段由本轮利润表覆盖；估值方法采用 P/S 与情景法，算力利用率是假设推断。\n风险与证伪条件：若订单、增长或现金流明显恶化，当前判断失效。\n动作建议与触发条件：先观察，等待估值与经营数据同时满足条件。".to_string(),
+            content: mock_service_owned_answer(answer_tail),
             reasoning_content: None,
             tool_calls: None,
             usage: None,
@@ -6443,12 +6922,11 @@ async fn crwv_nbis_agent_loop_batches_the_first_datafetch_and_emits_one_answer()
     fmp_stub.join().expect("join FMP stub");
 
     assert!(result.response.success, "{:?}", result.response.error);
-    assert!(
-        result.response.content.starts_with("数据时间：北京时间 "),
-        "content={} calls={:?}",
-        result.response.content,
-        result.response.tool_calls_made
-    );
+    let service_prefix = llm
+        .last_service_owned_prefix()
+        .expect("dynamic service-owned prefix");
+    let expected_answer = format!("{service_prefix}{answer_tail}");
+    assert_eq!(result.response.content, expected_answer);
     assert_eq!(result.response.tool_calls_made.len(), 7);
     let call = result
         .response
@@ -6480,13 +6958,20 @@ async fn crwv_nbis_agent_loop_batches_the_first_datafetch_and_emits_one_answer()
             _ => None,
         })
         .collect::<Vec<_>>();
-    assert_eq!(visible_chunks.len(), 1, "{visible_chunks:?}");
+    assert_eq!(
+        visible_chunks
+            .iter()
+            .map(|chunk| chunk.as_str())
+            .collect::<Vec<_>>(),
+        [service_prefix.as_str(), answer_tail],
+        "{visible_chunks:?}"
+    );
     assert_eq!(
         visible_chunks
             .iter()
             .map(|chunk| chunk.as_str())
             .collect::<String>(),
-        result.response.content
+        expected_answer
     );
     let _ = std::fs::remove_dir_all(root);
 }
@@ -6512,7 +6997,8 @@ async fn omitted_explicit_seed_is_observational_and_does_not_rerun() {
         ),
         ("/v3/quote/CRWV".to_string(), serde_json::json!([])),
     ]);
-    let original_answer = "数据时间：北京时间 2026-07-18 21:05；行情口径：本轮尚未完成报价核验\n\n我只检查了 CRWV，尚未覆盖用户点名的 NBIS；这是本轮 Agent 的原始回答。";
+    let original_answer_tail =
+        "\n\n我只检查了 CRWV，尚未覆盖用户点名的 NBIS；这是本轮 Agent 的原始回答。";
     let llm = MockLlmProvider::with_tool_responses(vec![
         ChatResponse {
             content: String::new(),
@@ -6553,7 +7039,7 @@ async fn omitted_explicit_seed_is_observational_and_does_not_rerun() {
             usage: None,
         },
         ChatResponse {
-            content: original_answer.to_string(),
+            content: mock_service_owned_answer(original_answer_tail),
             reasoning_content: None,
             tool_calls: None,
             usage: None,
@@ -6575,6 +7061,10 @@ async fn omitted_explicit_seed_is_observational_and_does_not_rerun() {
     fmp_stub.join().expect("join FMP stub");
 
     assert!(result.response.success, "{:?}", result.response.error);
+    let service_prefix = llm
+        .last_service_owned_prefix()
+        .expect("dynamic service-owned prefix");
+    let original_answer = format!("{service_prefix}{original_answer_tail}");
     assert_eq!(result.response.content, original_answer);
     assert!(result.response.error.is_none());
     assert!(!result.response.content.contains("投研完整性检查"));
@@ -6608,7 +7098,14 @@ async fn omitted_explicit_seed_is_observational_and_does_not_rerun() {
             _ => None,
         })
         .collect::<Vec<_>>();
-    assert_eq!(visible_chunks.len(), 1, "{visible_chunks:?}");
+    assert_eq!(
+        visible_chunks
+            .iter()
+            .map(|chunk| chunk.as_str())
+            .collect::<Vec<_>>(),
+        [service_prefix.as_str(), original_answer_tail],
+        "{visible_chunks:?}"
+    );
     assert_eq!(
         visible_chunks
             .iter()
@@ -6669,7 +7166,7 @@ async fn single_agent_loop_accepts_later_exact_searches_after_empty_enriched_sea
             }]),
         ),
     ]);
-    let accepted_answer = "数据时间：北京时间 2026-07-18 21:05；行情口径：报价源最新可得、非逐笔\n\n## 估值结论\nCRWV 当前价 73.21 USD；NBIS 当前价 177.71 USD。两者应分别结合增长、毛利、资本开支和 Forward P/S 情景比较。";
+    let accepted_answer_tail = "\n\n## 估值结论\nCRWV 当前价 73.21 USD；NBIS 当前价 177.71 USD。两者应分别结合增长、毛利、资本开支和 Forward P/S 情景比较。";
     let llm = MockLlmProvider::with_tool_responses(vec![
         ChatResponse {
             content: String::new(),
@@ -6749,7 +7246,7 @@ async fn single_agent_loop_accepts_later_exact_searches_after_empty_enriched_sea
             usage: None,
         },
         ChatResponse {
-            content: accepted_answer.to_string(),
+            content: mock_service_owned_answer(accepted_answer_tail),
             reasoning_content: None,
             tool_calls: None,
             usage: None,
@@ -6771,7 +7268,11 @@ async fn single_agent_loop_accepts_later_exact_searches_after_empty_enriched_sea
     fmp_stub.join().expect("join FMP stub");
 
     assert!(result.response.success, "{:?}", result.response.error);
-    assert!(result.response.content.starts_with("数据时间：北京时间 "));
+    let service_prefix = llm
+        .last_service_owned_prefix()
+        .expect("dynamic service-owned prefix");
+    let accepted_answer = format!("{service_prefix}{accepted_answer_tail}");
+    assert!(result.response.content.starts_with(&service_prefix));
     assert!(result.response.content.contains("CRWV 当前价 73.21 USD"));
     assert!(result.response.content.contains("NBIS 当前价 177.71 USD"));
     assert_eq!(result.response.content, accepted_answer);
@@ -6799,7 +7300,14 @@ async fn single_agent_loop_accepts_later_exact_searches_after_empty_enriched_sea
             _ => None,
         })
         .collect::<Vec<_>>();
-    assert_eq!(visible_chunks.len(), 1, "{visible_chunks:?}");
+    assert_eq!(
+        visible_chunks
+            .iter()
+            .map(|chunk| chunk.as_str())
+            .collect::<Vec<_>>(),
+        [service_prefix.as_str(), accepted_answer_tail],
+        "{visible_chunks:?}"
+    );
     assert_eq!(
         visible_chunks
             .iter()

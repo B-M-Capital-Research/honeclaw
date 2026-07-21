@@ -9,7 +9,7 @@ use futures::StreamExt;
 use hone_core::agent::{
     Agent, AgentContext, AgentResponse, RESTORED_INVOKED_SKILL_PROMPT_METADATA_KEY, ToolCallMade,
 };
-use hone_core::tool_effect::tool_call_has_persistent_side_effect;
+use hone_core::tool_effect::{tool_call_has_persistent_side_effect, tool_call_is_known_read_only};
 use hone_core::{
     LlmAuditRecord, LlmAuditSink, ToolExecutionObserver, provider_canonical_key,
     provider_symbols_equivalent,
@@ -20,8 +20,9 @@ use hone_llm::{
 };
 use hone_tools::ToolRegistry;
 use hone_tools::data_fetch::{
-    effective_data_fetch_data_type, effective_data_fetch_security_target,
-    validated_data_fetch_search_query, validated_data_fetch_symbols,
+    data_fetch_data_type_uses_security_target, effective_data_fetch_data_type,
+    effective_data_fetch_security_target, validated_data_fetch_search_query,
+    validated_data_fetch_symbols,
 };
 #[cfg(test)]
 use serde::{Deserialize, Serialize};
@@ -41,10 +42,19 @@ const FINISH_RESEARCH_TOOL_NAME: &str = "finish_research";
 const ACTIVE_BUSINESS_FAILURE_RETRY_LIMIT: u32 = 1;
 const MAX_AGENT_OWNED_HISTORY_USER_TURNS: usize = 4;
 const MAX_AGENT_OWNED_HISTORY_CHARS: usize = 4_000;
+const MAX_AGENT_OWNED_FINANCE_TOOL_ROUNDS: u32 = 3;
+const MAX_AGENT_OWNED_SCREENING_CANDIDATE_ROUTES: usize = 4;
+const MAX_AGENT_OWNED_FINANCE_IDENTITY_ROUTES: usize = 6;
+const MAX_AGENT_OWNED_FINANCE_TOOL_CALLS: u32 = 24;
+const MAX_AGENT_OWNED_FINANCE_DATA_FETCH_CALLS: u32 = 20;
+const MAX_AGENT_OWNED_FINANCE_WEB_SEARCH_CALLS: u32 = 6;
 const AGENT_OVERALL_TIMEOUT_ERROR: &str =
     "agent_timeout: function-calling overall deadline exceeded";
 const AGENT_STEP_TIMEOUT_ERROR: &str = "agent_timeout: function-calling step deadline exceeded";
 const AGENT_OWNED_FINANCE_PERSISTENT_TOOL_ERROR: &str = "agent_owned_finance_persistent_tool_error";
+const AGENT_OWNED_FINANCE_FORCED_FINAL_TOOL_ERROR: &str =
+    "agent_owned_finance_forced_final_returned_tool_call";
+const AGENT_OWNED_FINANCE_FORCED_FINAL_SYSTEM_INSTRUCTION: &str = "【本轮研究预算已完成】当前轮次不再提供工具。请由同一 Agent 仅根据本轮已经取得的真实工具结果，直接生成一次完整自然终稿；已有证据不足的项目如实披露具体缺口，不得补写模型记忆、不得要求用户重试，也不要提及预算、内部轮次或工具已关闭。";
 const OPEN_AGENT_ENTITY_DISCOVERY_SYSTEM_INSTRUCTION: &str = "【本轮 Agent 工具决策】先完整阅读本轮用户原话，再决定是否调用工具。若问题点名任何公司、证券、基金、指数或加密资产，第一轮先只调用真实工具，不写最终正文，并把互不依赖的候选发现放进同一批工具调用：(1) 为你识别出的每个点名标的分别并行调用一次 DataFetch search，每个调用都填写互不复用且后续原样复用的 `entity_route`，并填写本次调用自己的 `identity_match`（ticker 用 `exact_symbol`，公司名、中文名或别名用 `name_or_alias`）；(2) 同时按用户原始公司名与问题主题并行发起可用的 Web/news/filing/industry 候选来源检索，优先发现公司公告、监管文件或其它一手来源。这类候选来源检索不依赖标准 ticker，可以和 DataFetch search 同轮并行；quote/profile/snapshot 等依赖标准 ticker 的调用必须等待 search 返回标准 symbol 后再执行，禁止猜测、补全或凭记忆构造代码。用户可能用小写、混合大小写或带市场常用分隔符书写 ticker；证券语境里的代码仍按 ticker 处理并用标准代码精确查询，不能因为写成小写就先改走公司别名搜索。不要只处理第一个标的，也不要等服务端按字符串拆分问题。若并非证券/公司研究问题，则按用户实际意图正常处理，不要生造证券实体。";
 const POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION: &str = "【内部研究取证轮】当前已通过 DataFetch 进入金融数据工具链，但证券实体、行情或资产路由证据仍未完整。先由你完整分析用户实际点名的全部公司/证券，不要依赖固定问法扫描器。为每个标的分配一个本轮稳定且互不复用的 `entity_route`（内部短键，不是用户可见结论）；每个标的分别发起一个 search（可在同一轮并行，禁止把多个标的拼成一个 query），并由你依据完整语义在每一次 search 调用里明确填写 call-scoped `identity_match`：query 是 ticker 时用 `exact_symbol`，是公司名、中文名或别名时用 `name_or_alias`；用户书写的 ticker 不要求大写，证券语境里的小写或混合大小写代码应先规范成标准代码并走 `exact_symbol`，不能仅因大小写改走别名 refinement；前一次声明不会授权后一次 search，也不要让服务端按大小写或长度猜。只使用用户原始公司名与问题主题、不依赖标准 symbol 的 Web/news/filing/industry 候选来源检索，可以与这些 search 同轮并行。quote/profile/snapshot 等依赖某条路线标准 symbol 的调用必须等待该路线 search 结果返回；若当前上下文已经有该路线的标准 symbol，可在本轮并行执行，否则禁止猜测、补全或凭记忆构造代码。后续 refinement、quote、profile/snapshot 与其它该标的调用都原样携带同一路线键。显式 ticker 路线的同代码约束在后续公司名补查中仍持续有效，不能切换成名字里提到该代码的其它产品；有限 provider 分隔写法可等价。若此前调用缺少路线键，补查时重复原 query，或用 `supersedes_query` 逐字指向那次旧 query，以便只迁移该路线。`refines_query` 与 `supersedes_query` 严格互斥，每次 search 最多填写一个：前者只连接同路线的空结果补查，后者只迁移一条漏写路线键的旧 query。对每条路线选中的标准 symbol 执行同代码 quote/profile；crypto 使用 search 返回的结构化 CRYPTO 路由与 crypto_quote，不要求 stock profile。若中文名、别名或代码搜索为空，在同一 `entity_route` 下换用公司正式英文名或标准 ticker 做精确补查；可在 `refines_query` 中逐字填写原始空 query，但不得另建或复用其它实体的路线来抵消。随后按用户原始问题继续取得财务、新闻、网页、公告、持仓或其它业务证据。尽量在同一轮批量或并行调用互不依赖的工具。不得把 data_fetch(search) 或 profile 当成公司关系、事件或因果证据。合理取证已经完成或必要来源经实际尝试后明确不可得时，由同一 Agent 直接形成一次自然终稿。";
 const AGENT_OWNED_RESEARCH_SYSTEM_INSTRUCTION: &str = "【同一 Agent 自然研究轮】继续阅读完整用户原话和本轮真实工具结果，自主决定是补充当前问题真正需要的业务工具，还是直接形成一次完整终稿。证据不足时只调用当前需要的真实工具；合理取证已经完成，或必要来源经实际尝试后明确不可得并可如实披露时，直接返回自然语言最终回答。实体 search/profile 只证明身份或公司自述，不证明关系、事件和因果；宽泛关系问题通常分别核查商业/客户供应/技术合同与投资持股，优先 SEC、公司 IR 或双方公告。所有事实使用当前工具结果；单项数据缺失时如实披露，并继续完成当前证据能够支持的部分。";
@@ -233,6 +243,13 @@ pub trait FunctionCallingStreamObserver: Send + Sync {
         None
     }
 
+    /// Ask the unique downstream sink to ACK a typed service-owned finance
+    /// prefix after a read-only DataFetch batch has mechanically activated the
+    /// protocol. Ordinary observers fail closed.
+    async fn commit_service_owned_prefix(&self, _prefix: &str) -> bool {
+        false
+    }
+
     async fn on_content_reset(&self);
 }
 
@@ -333,11 +350,55 @@ struct ResearchEvidenceLedger {
     post_identity_quote_attempts: u32,
     post_identity_asset_route_attempts: u32,
     identity_routes: BTreeMap<String, ResearchIdentityRouteEvidence>,
+    identity_route_limit: Option<usize>,
+    rejected_identity_routes: u32,
 }
 
 impl ResearchEvidenceLedger {
+    fn with_identity_route_limit(limit: Option<usize>) -> Self {
+        Self {
+            identity_route_limit: limit,
+            ..Self::default()
+        }
+    }
+
     fn active_route_keys(&self) -> Vec<String> {
         self.identity_routes.keys().cloned().collect()
+    }
+
+    /// Only a valid identity-search route may enter the evidence floor. The
+    /// complete turn has a hard route ceiling: the service cannot prove that
+    /// every search in the first model batch came from the user rather than
+    /// model-memory screening, so initial and later routes share one bound.
+    fn identity_search_admission_error(&mut self, tool_call: &ToolCall) -> Option<Value> {
+        if !is_identity_only_search_call(tool_call) {
+            return None;
+        }
+        if !data_fetch_identity_search_shape_is_valid(tool_call) {
+            self.rejected_identity_routes = self.rejected_identity_routes.saturating_add(1);
+            return Some(serde_json::json!({
+                "error": "invalid_identity_search_shape",
+                "message": "DataFetch search 必须包含有效 query；显式 entity_route 还必须在本次调用声明 exact_symbol 或 name_or_alias，且 refines_query/supersedes_query 不能并用"
+            }));
+        }
+        let limit = self.identity_route_limit?;
+        let (route_key, _) = self.resolve_identity_route_key(tool_call)?;
+        if self.identity_routes.contains_key(&route_key) {
+            return None;
+        }
+        let migrates_existing = data_fetch_identity_migration_source(tool_call)
+            .map(|query| self.identity_routes.contains_key(&format!("query:{query}")))
+            .unwrap_or(false);
+        if migrates_existing || self.identity_routes.len() < limit {
+            return None;
+        }
+        self.rejected_identity_routes = self.rejected_identity_routes.saturating_add(1);
+        Some(serde_json::json!({
+            "error": "identity_route_limit_reached",
+            "limit": limit,
+            "screening_candidate_limit": MAX_AGENT_OWNED_SCREENING_CANDIDATE_ROUTES,
+            "message": "本轮实体路线已达上限；优先保留用户点名标的，复用已接纳的 entity_route 并完成其 snapshot/证据，不要新增候选"
+        }))
     }
 
     fn agent_guidance_summary(&self) -> String {
@@ -415,24 +476,6 @@ impl ResearchEvidenceLedger {
             })
             .collect::<Vec<_>>()
             .join("\n")
-    }
-
-    fn register_pending_provisional_identity_query(&mut self, tool_call: &ToolCall) {
-        if data_fetch_explicit_entity_route_key(tool_call).is_some() {
-            return;
-        }
-        let Some(query) = data_fetch_search_query(tool_call) else {
-            return;
-        };
-        let already_names_explicit_route = self
-            .identity_routes
-            .values()
-            .any(|route| route.explicit && route.query_aliases.iter().any(|alias| alias == &query));
-        if !already_names_explicit_route {
-            self.identity_routes
-                .entry(format!("query:{query}"))
-                .or_default();
-        }
     }
 
     fn resolve_identity_route_key(&self, tool_call: &ToolCall) -> Option<(String, bool)> {
@@ -523,10 +566,9 @@ impl ResearchEvidenceLedger {
         if symbols.is_empty() {
             return;
         }
-        if let Some(route_key) = data_fetch_explicit_entity_route_key(tool_call) {
-            let Some(route) = self.identity_routes.get_mut(&route_key) else {
-                return;
-            };
+        if let Some(route_key) = data_fetch_explicit_entity_route_key(tool_call)
+            && let Some(route) = self.identity_routes.get_mut(&route_key)
+        {
             if route.search_attempts == 0
                 || !route.identity_match_declared
                 || route.candidates.is_empty()
@@ -588,10 +630,9 @@ impl ResearchEvidenceLedger {
         tool_call: &ToolCall,
         symbols: &BTreeSet<String>,
     ) {
-        if let Some(route_key) = data_fetch_explicit_entity_route_key(tool_call) {
-            let Some(route) = self.identity_routes.get_mut(&route_key) else {
-                return;
-            };
+        if let Some(route_key) = data_fetch_explicit_entity_route_key(tool_call)
+            && let Some(route) = self.identity_routes.get_mut(&route_key)
+        {
             if route.search_attempts == 0 || !route.identity_match_declared {
                 return;
             }
@@ -678,17 +719,8 @@ impl ResearchEvidenceLedger {
         if active_business_round {
             self.post_activation_attempts = self.post_activation_attempts.saturating_add(1);
         }
-        if let Some(route_key) = data_fetch_explicit_entity_route_key(tool_call) {
-            // Any explicit route mention is kept as pending even when this call
-            // is malformed or out of order. It therefore cannot disappear from
-            // the all-routes floor, but it carries no evidence until a valid
-            // search for this route has completed.
-            let route = self.identity_routes.entry(route_key).or_default();
-            route.explicit = true;
-        }
         if is_identity_only_search_call(tool_call) {
             if !data_fetch_identity_search_shape_is_valid(tool_call) {
-                self.register_pending_provisional_identity_query(tool_call);
                 return;
             }
             if let Some((route_key, explicit)) = self.resolve_identity_route_key(tool_call) {
@@ -1029,6 +1061,8 @@ pub struct FunctionCallingAgent {
     pub max_tool_calls: Option<u32>,
     pub tool_call_limits: HashMap<String, u32>,
     pub agent_owned_finance_loop: bool,
+    pub service_owned_initial_prefix: Option<String>,
+    pub precommitted_service_prefix: Option<String>,
     #[cfg(test)]
     pub finish_research_terminal_synthesis: bool,
     pub step_timeout: Option<Duration>,
@@ -1059,6 +1093,8 @@ impl FunctionCallingAgent {
             max_tool_calls: None,
             tool_call_limits: HashMap::new(),
             agent_owned_finance_loop: false,
+            service_owned_initial_prefix: None,
+            precommitted_service_prefix: None,
             #[cfg(test)]
             finish_research_terminal_synthesis: false,
             step_timeout: None,
@@ -1125,6 +1161,19 @@ impl FunctionCallingAgent {
         if enabled {
             self.finish_research_terminal_synthesis = false;
         }
+        self
+    }
+
+    /// Attach a trusted service-owned first line and separately record whether
+    /// the Web publication sink ACKed it. An unacknowledged prefix still
+    /// constrains the final model output, but never counts as visible bytes.
+    pub fn with_service_owned_initial_prefix(
+        mut self,
+        required: Option<String>,
+        precommitted: Option<String>,
+    ) -> Self {
+        self.service_owned_initial_prefix = required;
+        self.precommitted_service_prefix = precommitted;
         self
     }
 
@@ -1525,6 +1574,7 @@ impl FunctionCallingAgent {
         session_id: &str,
         iteration: u32,
         telemetry: &mut StreamToolChoiceTelemetry,
+        precommitted_service_prefix: Option<&str>,
     ) -> hone_core::HoneResult<ActiveBusinessStreamOutcome> {
         let mut stream = self
             .llm
@@ -1611,7 +1661,9 @@ impl FunctionCallingAgent {
                             forwarded_final_delta = false;
                             eligible_visible_candidate.clear();
                             early_final_rejected = true;
-                        } else if let Some(observer) = &self.stream_observer {
+                        } else if precommitted_service_prefix.is_none()
+                            && let Some(observer) = &self.stream_observer
+                        {
                             observer.on_final_content_delta(&visible).await;
                             forwarded_final_delta = true;
                             if first_committed_prefix_ms.is_none()
@@ -1645,6 +1697,7 @@ impl FunctionCallingAgent {
                             .stream_observer
                             .as_ref()
                             .and_then(|observer| observer.committed_visible_prefix())
+                            .filter(|prefix| precommitted_service_prefix != Some(prefix.as_str()))
                         {
                             tracing::error!(
                                 target: "hone_agent::ttft",
@@ -1703,7 +1756,9 @@ impl FunctionCallingAgent {
                 self.reset_emitted_content(forwarded_final_delta).await;
                 forwarded_final_delta = false;
                 eligible_visible_candidate.clear();
-            } else if let Some(observer) = &self.stream_observer {
+            } else if precommitted_service_prefix.is_none()
+                && let Some(observer) = &self.stream_observer
+            {
                 observer.on_final_content_delta(&tail).await;
                 forwarded_final_delta = true;
                 if first_committed_prefix_ms.is_none()
@@ -3571,6 +3626,9 @@ fn data_fetch_identity_search_shape_is_valid(tool_call: &ToolCall) -> bool {
     if raw_match.is_some() && match_mode.is_none() {
         return false;
     }
+    if data_fetch_explicit_entity_route_key(tool_call).is_some() && match_mode.is_none() {
+        return false;
+    }
     let Some(query) = data_fetch_search_query_raw(tool_call) else {
         return false;
     };
@@ -3738,8 +3796,72 @@ fn is_broad_data_type(data_type: &str) -> bool {
     )
 }
 
+fn explicit_data_fetch_data_type(arguments: &Value) -> Option<&str> {
+    let data_type = arguments.get("data_type")?.as_str()?;
+    (!data_type.is_empty() && data_type.trim() == data_type).then_some(data_type)
+}
+
+/// Validate the same coarse request shape that the DataFetch registry tool
+/// will consume. This is deliberately structural: a provider no-coverage or
+/// transport error remains a real research attempt, while an unsupported type,
+/// malformed identity declaration, or unusable security target never opens the
+/// finance protocol or crosses an already-visible prefix boundary.
+fn data_fetch_call_is_structurally_valid(tool_call: &ToolCall) -> bool {
+    let Some(arguments) = data_fetch_arguments(tool_call) else {
+        return false;
+    };
+    let Some(data_type) = explicit_data_fetch_data_type(&arguments) else {
+        return false;
+    };
+
+    match data_type {
+        "search" => data_fetch_identity_search_shape_is_valid(tool_call),
+        "news" => {
+            let selected_target = arguments.get("ticker").or_else(|| arguments.get("symbol"));
+            match selected_target {
+                None => true,
+                Some(Value::String(target)) if target.trim().is_empty() => true,
+                Some(Value::String(_)) => effective_data_fetch_security_target(&arguments)
+                    .is_some_and(|target| validated_data_fetch_symbols(target).is_ok()),
+                Some(_) => false,
+            }
+        }
+        "gainers_losers" | "sector_performance" | "earnings_calendar" => true,
+        data_type if data_fetch_data_type_uses_security_target(data_type) => {
+            effective_data_fetch_security_target(&arguments)
+                .is_some_and(|target| validated_data_fetch_symbols(target).is_ok())
+        }
+        _ => false,
+    }
+}
+
 fn starts_investment_research_protocol(tool_call: &ToolCall) -> bool {
-    tool_call.function.name == "data_fetch"
+    if !data_fetch_call_is_structurally_valid(tool_call) {
+        return false;
+    }
+    let Some(arguments) = data_fetch_arguments(tool_call) else {
+        return false;
+    };
+    let Some(data_type) = explicit_data_fetch_data_type(&arguments) else {
+        return false;
+    };
+    // An unscoped news feed is a valid DataFetch request but does not prove
+    // that an ordinary Interactive turn is security research.
+    data_type != "news" || effective_data_fetch_security_target(&arguments).is_some()
+}
+
+fn registered_read_only_tool_call_is_well_formed(
+    tool_call: &ToolCall,
+    registered_tool_names: &BTreeSet<String>,
+) -> bool {
+    if !registered_tool_names.contains(&tool_call.function.name) {
+        return false;
+    }
+    serde_json::from_str::<Value>(&tool_call.function.arguments).is_ok_and(|arguments| {
+        tool_call_is_known_read_only(&tool_call.function.name, &arguments)
+            && (tool_call.function.name != "data_fetch"
+                || data_fetch_call_is_structurally_valid(tool_call))
+    })
 }
 
 fn exact_final_answer_prefix(user_input: &str) -> Option<String> {
@@ -3817,7 +3939,20 @@ fn agent_owned_business_turn_prompt(
     evidence_floor_satisfied: bool,
     route_guidance: &str,
     required_prefix: Option<&str>,
+    force_final: bool,
 ) -> String {
+    if force_final {
+        return format!(
+            "【本轮由同一 Agent 有界收口】研究工具批次已经完整结束，本轮没有任何可用工具。重新阅读完整用户原话和本轮真实 tool result，直接生成一次完整自然终稿。只使用已经取得的证据；未覆盖的候选、行情或业务事实如实写入缺口，不得继续规划工具、凭模型记忆补齐或提及内部预算。\n{}\n{}\n{}\n{}",
+            exact_prefix_instruction(required_prefix),
+            FINAL_ANSWER_EVIDENCE_CONTRACT,
+            DIRECT_FINAL_RELATIONSHIP_CHECK,
+            route_guidance,
+        );
+    }
+    let route_guidance = format!(
+        "{route_guidance}\n【有界筛选约束】本轮最多接纳 {MAX_AGENT_OWNED_FINANCE_IDENTITY_ROUTES} 条实体路线，优先用户明确点名标的，筛选结果通常最多保留 {MAX_AGENT_OWNED_SCREENING_CANDIDATE_ROUTES} 条新候选；达到上限后只完成已接纳路线，不再扩展公司清单。已有 Web 结果能命名候选时，当前批次直接为候选执行 identity search，不要重复泛搜。后续 snapshot / quote / profile 的 entity_route 必须逐字复制上方 guidance 中的原键，不得翻译、缩写或重命名；支持 snapshot 时优先一次完成行情与资产路由。同一工具与相同参数已有成功结果时不得重复调用。"
+    );
     if !evidence_floor_satisfied {
         return format!(
             "【本轮只取证，不作答】下面只是同一 Agent 当前建立的实体路线与结构调用状态，不证明工具结果成功或问题所需证据充分：\n{}\n重新阅读完整用户原话。本轮只返回一个或多个真实业务工具调用，不输出数据时间、摘要、解释、草稿或最终正文。把互不依赖的候选发现放在同一批：为尚缺身份候选的每条路线分别调用 search，同时按用户原始公司名与问题主题并行调用可用的 Web/news/filing/industry 检索，优先发现一手来源。每个 search 都携带自己的 entity_route 与 identity_match；用户书写的 ticker 不要求大写，小写或混合大小写代码应先规范成标准代码并走 exact_symbol。quote、profile/snapshot（crypto 用 crypto_quote）等依赖标准 symbol 的调用必须等待对应 search 结果返回；当前上下文已有该路线标准 symbol 时才可并行执行，禁止猜测、补全或凭记忆构造代码。关系题不能把 search/profile 当关系证据，应按完整语义核查商业/客户供应/技术合同与投资持股等相关维度。真实工具结果进入当前上下文后，由下一轮同一 Agent 继续取证或直接自然作答。",
@@ -4075,7 +4210,15 @@ impl Agent for FunctionCallingAgent {
     async fn run(&self, user_input: &str, context: &mut AgentContext) -> AgentResponse {
         let turn_message_start = context.messages.len();
         context.add_user_message(user_input);
-        let required_final_answer_prefix = exact_final_answer_prefix(user_input);
+        let required_final_answer_prefix = self
+            .service_owned_initial_prefix
+            .clone()
+            .or_else(|| exact_final_answer_prefix(user_input));
+        let mut precommitted_service_prefix = self
+            .precommitted_service_prefix
+            .as_ref()
+            .filter(|prefix| Some(*prefix) == required_final_answer_prefix.as_ref())
+            .cloned();
         let overall_deadline = self
             .overall_timeout
             .map(|timeout| tokio::time::Instant::now() + timeout);
@@ -4089,10 +4232,31 @@ impl Agent for FunctionCallingAgent {
             .collect::<BTreeSet<_>>();
         let mut tool_calls_made: Vec<ToolCallMade> = Vec::new();
         let mut tool_call_counts: HashMap<String, u32> = HashMap::new();
+        let finance_max_tool_calls = Some(
+            self.max_tool_calls
+                .unwrap_or(MAX_AGENT_OWNED_FINANCE_TOOL_CALLS)
+                .min(MAX_AGENT_OWNED_FINANCE_TOOL_CALLS),
+        );
+        let mut finance_tool_call_limits = self.tool_call_limits.clone();
+        for (name, cap) in [
+            ("data_fetch", MAX_AGENT_OWNED_FINANCE_DATA_FETCH_CALLS),
+            ("web_search", MAX_AGENT_OWNED_FINANCE_WEB_SEARCH_CALLS),
+        ] {
+            finance_tool_call_limits
+                .entry(name.to_string())
+                .and_modify(|limit| *limit = (*limit).min(cap))
+                .or_insert(cap);
+        }
         let mut total_tool_calls = 0u32;
         let mut iterations: u32 = 0;
         let mut investment_research_started = false;
-        let mut research_evidence = ResearchEvidenceLedger::default();
+        let mut research_evidence = ResearchEvidenceLedger::with_identity_route_limit(
+            self.agent_owned_finance_loop
+                .then_some(MAX_AGENT_OWNED_FINANCE_IDENTITY_ROUTES),
+        );
+        let mut finance_tool_rounds = 0u32;
+        let mut tool_budget_exhausted = false;
+        let mut service_prefix_commit_eligible = true;
         let mut active_business_failures = 0u32;
         #[cfg(test)]
         let mut pending_finish_feedback: Option<String> = None;
@@ -4122,11 +4286,16 @@ impl Agent for FunctionCallingAgent {
             #[cfg(not(test))]
             let finance_protocol_active =
                 self.agent_owned_finance_loop && investment_research_started;
+            let bounded_finance_research_active = self.agent_owned_finance_loop
+                && (finance_protocol_active || precommitted_service_prefix.is_some());
+            let force_finance_final = bounded_finance_research_active
+                && (finance_tool_rounds >= MAX_AGENT_OWNED_FINANCE_TOOL_ROUNDS
+                    || tool_budget_exhausted);
 
             if iterations >= self.max_iterations {
                 // The iteration bound is a normal failed run, never implicit
-                // finish authority. Only the Agent's eligible sole finish call
-                // can enter the tool-free terminal completion.
+                // finish authority. A bounded finance final receives its own
+                // tools-disabled iteration before reaching this guard.
                 return AgentResponse {
                     content: String::new(),
                     tool_calls_made,
@@ -4139,7 +4308,11 @@ impl Agent for FunctionCallingAgent {
             iterations += 1;
             self.dbg(&format!("[Agent] iter={iterations}"));
 
-            let active_business_round = finance_protocol_active;
+            // A T0 prefix starts the delivery/budget boundary immediately, but
+            // does not force finance-specific discovery instructions onto the
+            // first Web-only rounds. The same Agent enters the active final path
+            // only once DataFetch activates or the bounded final is due.
+            let active_business_round = finance_protocol_active || force_finance_final;
             #[cfg(test)]
             let finish_research_available = legacy_finish_terminal
                 && research_evidence.completion_signal_available(active_business_round);
@@ -4149,21 +4322,24 @@ impl Agent for FunctionCallingAgent {
             let research_sources = finish_research_available
                 .then(|| current_turn_research_source_catalog(context, turn_message_start))
                 .unwrap_or_default();
-            #[cfg(test)]
             let mut round_tools = business_tools.clone();
-            #[cfg(not(test))]
-            let round_tools = business_tools.clone();
             #[cfg(test)]
             if finish_research_available {
                 round_tools.push(finish_research_tool_schema(&research_sources));
             }
+            if force_finance_final {
+                round_tools.clear();
+            }
             let has_tools = !round_tools.is_empty();
-            let tool_choice_mode = if active_business_round && !evidence_floor_satisfied {
-                ToolChoiceMode::Required
-            } else {
-                ToolChoiceMode::Auto
-            };
-            let round_instruction = Some(if active_business_round {
+            let tool_choice_mode =
+                if active_business_round && !evidence_floor_satisfied && !force_finance_final {
+                    ToolChoiceMode::Required
+                } else {
+                    ToolChoiceMode::Auto
+                };
+            let round_instruction = Some(if force_finance_final {
+                AGENT_OWNED_FINANCE_FORCED_FINAL_SYSTEM_INSTRUCTION
+            } else if active_business_round {
                 #[cfg(not(test))]
                 {
                     if evidence_floor_satisfied {
@@ -4211,6 +4387,7 @@ impl Agent for FunctionCallingAgent {
                     evidence_floor_satisfied,
                     &research_evidence.agent_guidance_summary(),
                     required_final_answer_prefix.as_deref(),
+                    force_finance_final,
                 );
                 #[cfg(test)]
                 let active_turn_prompt = if self.agent_owned_finance_loop && !legacy_finish_terminal
@@ -4219,6 +4396,7 @@ impl Agent for FunctionCallingAgent {
                         evidence_floor_satisfied,
                         &research_evidence.agent_guidance_summary(),
                         required_final_answer_prefix.as_deref(),
+                        force_finance_final,
                     )
                 } else {
                     active_business_turn_prompt(
@@ -4252,7 +4430,7 @@ impl Agent for FunctionCallingAgent {
             }
             let request_payload = serde_json::json!({
                 "messages": messages.clone(),
-                "tools": if has_tools { Some(round_tools.clone()) } else { None },
+                "tools": if has_tools || force_finance_final { Some(round_tools.clone()) } else { None },
                 "tool_choice_mode": format!("{tool_choice_mode:?}"),
             });
             let call_started = std::time::Instant::now();
@@ -4260,13 +4438,13 @@ impl Agent for FunctionCallingAgent {
             let mut active_business_outcome = active_business_round.then_some("tools");
             let eligible_active_final_prefix = (active_business_round
                 && self.agent_owned_finance_loop
-                && evidence_floor_satisfied
+                && (evidence_floor_satisfied || force_finance_final)
                 && tool_choice_mode == ToolChoiceMode::Auto)
                 .then_some(required_final_answer_prefix.as_deref())
                 .flatten();
 
             // 如果有工具，使用 chat_with_tools；否则使用 chat
-            let result: ChatResponse = if has_tools {
+            let result: ChatResponse = if has_tools || force_finance_final {
                 if active_business_round {
                     let (active_deadline, active_timeout_error) =
                         active_business_deadline(overall_deadline, self.step_timeout);
@@ -4280,6 +4458,7 @@ impl Agent for FunctionCallingAgent {
                             &context.session_id,
                             iterations,
                             &mut stream_tool_choice,
+                            precommitted_service_prefix.as_deref(),
                         ),
                     )
                     .await
@@ -4483,6 +4662,11 @@ impl Agent for FunctionCallingAgent {
                 "explicit_identity_route_count": research_evidence.identity_routes.values().filter(|route| route.explicit).count(),
                 "unscoped_identity_search_attempts": research_evidence.unscoped_identity_search_attempts,
                 "unresolved_identity_route_count": research_evidence.active_route_keys().iter().filter(|key| research_evidence.identity_routes.get(*key).is_some_and(|route| route.candidates.is_empty())).count(),
+                "finance_tool_rounds": finance_tool_rounds,
+                "force_finance_final": force_finance_final,
+                "tool_budget_exhausted": tool_budget_exhausted,
+                "identity_route_limit": research_evidence.identity_route_limit,
+                "rejected_identity_routes": research_evidence.rejected_identity_routes,
                 "requested_tool_choice": has_tools.then_some(tool_choice_mode_name(stream_tool_choice.requested)),
                 "effective_tool_choice": stream_tool_choice.effective.map(tool_choice_mode_name),
                 "tool_choice_fallback": stream_tool_choice.fallback,
@@ -4505,6 +4689,11 @@ impl Agent for FunctionCallingAgent {
                 "explicit_identity_route_count": research_evidence.identity_routes.values().filter(|route| route.explicit).count(),
                 "unscoped_identity_search_attempts": research_evidence.unscoped_identity_search_attempts,
                 "unresolved_identity_route_count": research_evidence.active_route_keys().iter().filter(|key| research_evidence.identity_routes.get(*key).is_some_and(|route| route.candidates.is_empty())).count(),
+                "finance_tool_rounds": finance_tool_rounds,
+                "force_finance_final": force_finance_final,
+                "tool_budget_exhausted": tool_budget_exhausted,
+                "identity_route_limit": research_evidence.identity_route_limit,
+                "rejected_identity_routes": research_evidence.rejected_identity_routes,
                 "requested_tool_choice": has_tools.then_some(tool_choice_mode_name(stream_tool_choice.requested)),
                 "effective_tool_choice": stream_tool_choice.effective.map(tool_choice_mode_name),
                 "tool_choice_fallback": stream_tool_choice.fallback,
@@ -4518,7 +4707,11 @@ impl Agent for FunctionCallingAgent {
             }
             self.record_audit(
                 context,
-                if has_tools { "chat_with_tools" } else { "chat" },
+                if has_tools || force_finance_final {
+                    "chat_with_tools"
+                } else {
+                    "chat"
+                },
                 request_payload,
                 Some(serde_json::json!({
                     "content": result.content.clone(),
@@ -4536,6 +4729,14 @@ impl Agent for FunctionCallingAgent {
                 if !tcs.is_empty() {
                     self.dbg(&format!("[Agent] tool_calls n={}", tcs.len()));
 
+                    if force_finance_final {
+                        return failed_agent_response(
+                            tool_calls_made,
+                            iterations,
+                            AGENT_OWNED_FINANCE_FORCED_FINAL_TOOL_ERROR,
+                        );
+                    }
+
                     // The stream path rejects this as soon as the first late
                     // tool delta arrives. Keep a second guard at the registry
                     // boundary so a future provider adapter cannot execute a
@@ -4546,6 +4747,9 @@ impl Agent for FunctionCallingAgent {
                             .stream_observer
                             .as_ref()
                             .and_then(|observer| observer.committed_visible_prefix())
+                            .filter(|prefix| {
+                                precommitted_service_prefix.as_deref() != Some(prefix.as_str())
+                            })
                     {
                         tracing::error!(
                             target: "hone_agent::ttft",
@@ -4578,12 +4782,38 @@ impl Agent for FunctionCallingAgent {
                     } else {
                         Vec::new()
                     };
+
+                    // Once a service-owned line has crossed the Web boundary,
+                    // every later tool must be explicitly classified as
+                    // read-only. Reject an entire mixed batch before adding an
+                    // assistant tool frame, notifying observers, or entering
+                    // the registry; unknown tools are not treated as safe.
+                    if precommitted_service_prefix.is_some()
+                        && actionable_tool_calls.iter().any(|tool_call| {
+                            !registered_read_only_tool_call_is_well_formed(
+                                tool_call,
+                                &registered_tool_names,
+                            )
+                        })
+                    {
+                        return failed_agent_response(
+                            tool_calls_made,
+                            iterations,
+                            AGENT_OWNED_FINANCE_PERSISTENT_TOOL_ERROR,
+                        );
+                    }
                     let round_starts_investment_research =
                         actionable_tool_calls.iter().any(|tool_call| {
-                            starts_investment_research_protocol(tool_call)
-                                && serde_json::from_str::<Value>(&tool_call.function.arguments)
-                                    .is_ok()
+                            registered_tool_names.contains(&tool_call.function.name)
+                                && starts_investment_research_protocol(tool_call)
                         });
+                    if self.agent_owned_finance_loop
+                        && (precommitted_service_prefix.is_some()
+                            || investment_research_started
+                            || round_starts_investment_research)
+                    {
+                        finance_tool_rounds = finance_tool_rounds.saturating_add(1);
+                    }
 
                     // Once DataFetch has made this a finance-research loop, it
                     // is read-only. Reject write-capable calls before adding a
@@ -4591,7 +4821,19 @@ impl Agent for FunctionCallingAgent {
                     // registry. An initial non-finance portfolio/cron request
                     // remains unaffected until the DataFetch boundary exists.
                     let finance_round_is_read_only = self.agent_owned_finance_loop
-                        && (investment_research_started || round_starts_investment_research);
+                        && (precommitted_service_prefix.is_some()
+                            || investment_research_started
+                            || round_starts_investment_research);
+                    let finance_round_is_known_read_only =
+                        actionable_tool_calls.iter().all(|tool_call| {
+                            registered_read_only_tool_call_is_well_formed(
+                                tool_call,
+                                &registered_tool_names,
+                            )
+                        });
+                    if finance_round_is_read_only && !finance_round_is_known_read_only {
+                        service_prefix_commit_eligible = false;
+                    }
                     if finance_round_is_read_only
                         && let Some(tool_call) = actionable_tool_calls.iter().find(|tool_call| {
                             serde_json::from_str::<Value>(&tool_call.function.arguments).is_ok_and(
@@ -4795,13 +5037,12 @@ impl Agent for FunctionCallingAgent {
                         #[cfg(test)]
                         let finance_round_owns_tool_content =
                             self.agent_owned_finance_loop || legacy_finish_terminal;
-                        let assistant_tool_content = if finance_round_owns_tool_content
-                            && (investment_research_started || round_starts_investment_research)
-                        {
-                            ""
-                        } else {
-                            &result.content
-                        };
+                        let assistant_tool_content =
+                            if finance_round_owns_tool_content && finance_round_is_read_only {
+                                ""
+                            } else {
+                                &result.content
+                            };
                         context.add_assistant_message_with_metadata(
                             assistant_tool_content,
                             Some(tc_values),
@@ -4818,13 +5059,34 @@ impl Agent for FunctionCallingAgent {
                             match serde_json::from_str::<Value>(tool_args_str) {
                                 Ok(tool_args) => {
                                     self.dbg(&format!("[Agent] tool_call name={tool_name}"));
+                                    let (effective_max_tool_calls, effective_tool_call_limits) =
+                                        if finance_round_is_read_only {
+                                            (finance_max_tool_calls, &finance_tool_call_limits)
+                                        } else {
+                                            (self.max_tool_calls, &self.tool_call_limits)
+                                        };
                                     if let Some(error_result) = tool_budget_error(
                                         tool_name,
-                                        self.max_tool_calls,
-                                        &self.tool_call_limits,
+                                        effective_max_tool_calls,
+                                        effective_tool_call_limits,
                                         total_tool_calls,
                                         &tool_call_counts,
                                     ) {
+                                        tool_budget_exhausted = true;
+                                        let result_str = serde_json::to_string(&error_result)
+                                            .unwrap_or_default();
+                                        context.add_tool_result(
+                                            tool_call_id,
+                                            tool_name,
+                                            &result_str,
+                                        );
+                                        continue;
+                                    }
+                                    if self.agent_owned_finance_loop
+                                        && is_identity_only_search_call(tc)
+                                        && let Some(error_result) =
+                                            research_evidence.identity_search_admission_error(tc)
+                                    {
                                         let result_str = serde_json::to_string(&error_result)
                                             .unwrap_or_default();
                                         context.add_tool_result(
@@ -4836,7 +5098,9 @@ impl Agent for FunctionCallingAgent {
                                     }
                                     total_tool_calls += 1;
                                     *tool_call_counts.entry(tool_name.clone()).or_insert(0) += 1;
-                                    if starts_investment_research_protocol(tc) {
+                                    if notify_tool_observer
+                                        && starts_investment_research_protocol(tc)
+                                    {
                                         // Activate only at the same boundary as
                                         // a syntactically valid, budget-accepted
                                         // registry attempt. A malformed or
@@ -5030,6 +5294,19 @@ impl Agent for FunctionCallingAgent {
                                     context.add_tool_result(tool_call_id, tool_name, &result_str);
                                 }
                             }
+                        }
+                        if finance_round_is_read_only
+                            && investment_research_started
+                            && service_prefix_commit_eligible
+                            && precommitted_service_prefix.is_none()
+                            && let (Some(prefix), Some(observer)) = (
+                                self.service_owned_initial_prefix.as_deref(),
+                                self.stream_observer.as_ref(),
+                            )
+                            && observer.commit_service_owned_prefix(prefix).await
+                            && observer.committed_visible_prefix().as_deref() == Some(prefix)
+                        {
+                            precommitted_service_prefix = Some(prefix.to_string());
                         }
                         // 继续循环 — 把真实工具结果送回 LLM
                         continue;
@@ -5346,6 +5623,21 @@ mod tests {
                 .expect("accumulated stream content")
                 .starts_with(&self.prefix)
                 .then(|| self.prefix.clone())
+        }
+
+        async fn commit_service_owned_prefix(&self, prefix: &str) -> bool {
+            if prefix != self.prefix {
+                return false;
+            }
+            let mut accumulated = self.accumulated.lock().expect("accumulated stream content");
+            if accumulated.is_empty() {
+                accumulated.push_str(prefix);
+                self.events
+                    .lock()
+                    .expect("stream events lock")
+                    .push(format!("commit:{prefix}"));
+            }
+            true
         }
 
         async fn on_content_reset(&self) {
@@ -5837,6 +6129,30 @@ mod tests {
         async fn execute(&self, _args: Value) -> hone_core::HoneResult<Value> {
             let calls = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
             Ok(json!({ "calls": calls }))
+        }
+    }
+
+    struct CountingDataFetchTool {
+        calls: Arc<AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl Tool for CountingDataFetchTool {
+        fn name(&self) -> &str {
+            "data_fetch"
+        }
+
+        fn description(&self) -> &str {
+            "count DataFetch registry executions"
+        }
+
+        fn parameters(&self) -> Vec<ToolParameter> {
+            vec![]
+        }
+
+        async fn execute(&self, _args: Value) -> hone_core::HoneResult<Value> {
+            let calls = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
+            Ok(json!({ "calls": calls, "data": [] }))
         }
     }
 
@@ -7409,8 +7725,8 @@ mod tests {
         let prefix = "数据时间：北京时间 2026-07-19 09:31；行情口径：";
         let route_guidance =
             "- entity_route=\"coreweave\": candidates=[\"CRWV\"]；结构调用已按同一候选代码成对尝试";
-        let pending = agent_owned_business_turn_prompt(false, route_guidance, Some(prefix));
-        let eligible = agent_owned_business_turn_prompt(true, route_guidance, Some(prefix));
+        let pending = agent_owned_business_turn_prompt(false, route_guidance, Some(prefix), false);
+        let eligible = agent_owned_business_turn_prompt(true, route_guidance, Some(prefix), false);
 
         assert!(
             OPEN_AGENT_ENTITY_DISCOVERY_SYSTEM_INSTRUCTION
@@ -8313,7 +8629,7 @@ mod tests {
     }
 
     #[test]
-    fn ambiguous_migration_links_leave_every_provisional_route_and_a_pending_explicit_route() {
+    fn ambiguous_migration_links_leave_every_provisional_route_untouched() {
         let provisional_crwv = evidence_call(
             "search-crwv-provisional",
             r#"{"data_type":"search","query":"CRWV","identity_match":"exact_symbol"}"#,
@@ -8362,15 +8678,10 @@ mod tests {
         );
         assert!(ledger.identity_routes.contains_key("query:CRWV"));
         assert!(ledger.identity_routes.contains_key("query:NVIDIA"));
-        let pending = ledger
-            .identity_routes
-            .get("route:coreweave")
-            .expect("invalid explicit call still declares a pending route");
-        assert_eq!(pending.search_attempts, 0);
-        assert!(pending.candidates.is_empty());
+        assert!(!ledger.identity_routes.contains_key("route:coreweave"));
         assert!(
-            !ledger.evidence_floor_satisfied(true),
-            "a call cannot retire two provisional entities or hide its own malformed route"
+            ledger.evidence_floor_satisfied(true),
+            "a malformed route declaration must neither migrate nor poison covered entities"
         );
 
         let same_text_double_link = evidence_call(
@@ -8389,14 +8700,8 @@ mod tests {
         );
         same_text.observe_business_call(&same_text_double_link, true);
         assert!(same_text.identity_routes.contains_key("query:CRWV"));
-        assert_eq!(
-            same_text
-                .identity_routes
-                .get("route:same-text")
-                .expect("same-text double link remains pending")
-                .search_attempts,
-            0
-        );
+        assert!(!same_text.identity_routes.contains_key("route:same-text"));
+        assert_eq!(same_text.identity_routes.len(), 1);
     }
 
     #[test]
@@ -8590,6 +8895,82 @@ mod tests {
     }
 
     #[test]
+    fn finance_identity_route_limit_applies_to_the_first_batch_and_rejects_without_poisoning() {
+        let mut ledger = ResearchEvidenceLedger::with_identity_route_limit(Some(6));
+        let mut rejected = Vec::new();
+
+        for index in 0..10 {
+            let symbol = format!("SYM{index}");
+            let route = format!("candidate-{index}");
+            let call = evidence_call(
+                &format!("search-{index}"),
+                &json!({
+                    "data_type": "search",
+                    "query": symbol,
+                    "entity_route": route,
+                    "identity_match": "exact_symbol"
+                })
+                .to_string(),
+            );
+            if let Some(error) = ledger.identity_search_admission_error(&call) {
+                rejected.push((route, error));
+                continue;
+            }
+            ledger.observe_business_call(&call, false);
+            ledger.observe_business_result(&call, &json!({"data":[{"symbol":symbol}]}), false);
+        }
+
+        assert_eq!(ledger.identity_routes.len(), 6);
+        assert_eq!(ledger.rejected_identity_routes, 4);
+        assert_eq!(rejected.len(), 4);
+        for (route, error) in rejected {
+            assert_eq!(error["error"], "identity_route_limit_reached");
+            assert_eq!(error["limit"], 6);
+            assert!(
+                !ledger
+                    .identity_routes
+                    .contains_key(&format!("route:{route}"))
+            );
+        }
+    }
+
+    #[test]
+    fn unknown_route_aliases_merge_by_unique_symbol_without_creating_orphans() {
+        let search = evidence_call(
+            "search-runze",
+            r#"{"data_type":"search","query":"润泽科技","entity_route":"润泽科技","identity_match":"name_or_alias"}"#,
+        );
+        let mut ledger = ResearchEvidenceLedger::default();
+        ledger.observe_business_call(&search, false);
+        ledger.observe_business_result(
+            &search,
+            &json!({"data":[{"symbol":"300442.SZ","name":"润泽科技"}]}),
+            false,
+        );
+
+        ledger.observe_business_call(
+            &evidence_call(
+                "quote-runze-alias",
+                r#"{"data_type":"quote","ticker":"300442.SZ","entity_route":"runze_tech"}"#,
+            ),
+            true,
+        );
+        ledger.observe_business_call(
+            &evidence_call(
+                "profile-runze-alias",
+                r#"{"data_type":"profile","ticker":"300442.SZ","entity_route":"runze"}"#,
+            ),
+            true,
+        );
+
+        assert_eq!(ledger.identity_routes.len(), 1);
+        assert!(ledger.identity_routes.contains_key("route:润泽科技"));
+        assert!(!ledger.identity_routes.contains_key("route:runze_tech"));
+        assert!(!ledger.identity_routes.contains_key("route:runze"));
+        assert!(ledger.evidence_floor_satisfied(true));
+    }
+
+    #[test]
     fn route_bound_evidence_before_that_routes_search_never_preloads_coverage() {
         let search_a = evidence_call(
             "search-a",
@@ -8611,14 +8992,10 @@ mod tests {
             false,
         );
         ledger.observe_business_call(&pre_search_b, true);
-        let pending_b = ledger
-            .identity_routes
-            .get("route:b")
-            .expect("out-of-order evidence must leave a pending B route");
-        assert_eq!(pending_b.search_attempts, 0);
-        assert!(!pending_b.identity_match_declared);
-        assert!(pending_b.quote_symbols.is_empty());
-        assert!(pending_b.asset_route_symbols.is_empty());
+        assert!(
+            !ledger.identity_routes.contains_key("route:b"),
+            "out-of-order evidence must not create an orphan route"
+        );
         ledger.observe_business_call(
             &evidence_call(
                 "quote-a",
@@ -8634,8 +9011,8 @@ mod tests {
             true,
         );
         assert!(
-            !ledger.evidence_floor_satisfied(true),
-            "a pending B route cannot disappear after A becomes covered"
+            ledger.evidence_floor_satisfied(true),
+            "unknown route evidence cannot poison a covered route"
         );
         ledger.observe_business_call(&search_b, true);
         ledger.observe_business_result(
@@ -8654,6 +9031,7 @@ mod tests {
             !b.is_covered(),
             "B evidence observed before B search cannot become later B coverage"
         );
+        assert!(!ledger.evidence_floor_satisfied(true));
         ledger.observe_business_call(&pre_search_b, true);
         assert!(ledger.evidence_floor_satisfied(true));
 
@@ -8701,15 +9079,15 @@ mod tests {
             ),
             true,
         );
-        assert!(before_any_search.identity_routes.contains_key("route:b"));
+        assert!(!before_any_search.identity_routes.contains_key("route:b"));
         assert!(
-            !before_any_search.evidence_floor_satisfied(true),
-            "a route declared before the first search cannot be hidden by later A coverage"
+            before_any_search.evidence_floor_satisfied(true),
+            "only a valid identity search may create a route in the evidence floor"
         );
     }
 
     #[test]
-    fn malformed_or_missing_mode_searches_remain_visible_as_pending_routes() {
+    fn malformed_or_missing_mode_searches_do_not_create_routes_or_poison_floor() {
         let valid_a = evidence_call(
             "search-a-valid",
             r#"{"data_type":"search","query":"AAAA","entity_route":"a","identity_match":"exact_symbol"}"#,
@@ -8751,16 +9129,14 @@ mod tests {
             );
         }
         for key in ["route:b", "route:c", "query:DDDD"] {
-            let route = ledger
-                .identity_routes
-                .get(key)
-                .unwrap_or_else(|| panic!("missing pending route {key}"));
-            assert_eq!(route.search_attempts, 0, "route {key}");
-            assert!(route.candidates.is_empty(), "route {key}");
+            assert!(
+                !ledger.identity_routes.contains_key(key),
+                "malformed search created {key}"
+            );
         }
         assert!(
-            !ledger.evidence_floor_satisfied(true),
-            "malformed declarations must not disappear after another entity is covered"
+            ledger.evidence_floor_satisfied(true),
+            "malformed declarations must not poison another covered entity"
         );
 
         let numeric_match_mode = evidence_call(
@@ -8785,15 +9161,10 @@ mod tests {
             &evidence_call("profile-cwy", r#"{"data_type":"profile","ticker":"CWY"}"#),
             true,
         );
-        let pending = malformed_metadata
-            .identity_routes
-            .get("query:CRWV")
-            .expect("malformed match mode leaves the executed query pending");
-        assert_eq!(pending.search_attempts, 0);
-        assert!(pending.candidates.is_empty());
+        assert!(malformed_metadata.identity_routes.is_empty());
         assert!(
             !malformed_metadata.evidence_floor_satisfied(true),
-            "wrongly typed identity metadata cannot downgrade exact CRWV into a legacy CWY route"
+            "wrongly typed identity metadata cannot establish a security evidence floor"
         );
 
         let provisional_nvidia = evidence_call(
@@ -8817,13 +9188,10 @@ mod tests {
                 .identity_routes
                 .contains_key("query:NVIDIA")
         );
-        assert_eq!(
-            malformed_migration
+        assert!(
+            !malformed_migration
                 .identity_routes
-                .get("route:coreweave")
-                .expect("malformed linked route remains pending")
-                .search_attempts,
-            0
+                .contains_key("route:coreweave")
         );
     }
 
@@ -10194,7 +10562,7 @@ mod tests {
                 index: 0,
                 id: Some("tc_data_fetch".to_string()),
                 name: Some("data_fetch".to_string()),
-                arguments: "{}".to_string(),
+                arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
             }],
             vec![ChatStreamEvent::ContentDelta(
                 "provider bypass draft".to_string(),
@@ -10476,6 +10844,1009 @@ mod tests {
         assert!(serialized.contains("NVIDIA as an investor"));
         assert!(serialized.contains("most-favored-nation relationship"));
         assert!(!last_reminder.contains("若 provider 仍自然输出完整正文"));
+    }
+
+    #[tokio::test]
+    async fn finance_loop_forces_same_agent_natural_final_after_three_tool_batches() {
+        let answer = "数据时间：北京时间 2026-07-19 09:31；行情口径：最新可得、非逐笔\n\n只根据三轮已取得证据完成回答。";
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_search_crwv".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"search","query":"CRWV","entity_route":"crwv","identity_match":"exact_symbol"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_snapshot_crwv".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"snapshot","ticker":"CRWV","entity_route":"crwv"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_web_crwv".to_string()),
+                name: Some("web_search".to_string()),
+                arguments: r#"{"query":"CoreWeave data center filing"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ContentDelta(answer.to_string())],
+        ]);
+        let seen_tool_counts = llm.seen_tool_counts.clone();
+        let seen_tool_names = llm.seen_tool_names.clone();
+        let seen_tool_choice_modes = llm.seen_tool_choice_modes.clone();
+        let seen_messages = llm.seen_messages.clone();
+        let audit = Arc::new(RecordingAuditSink::default());
+        let observer = Arc::new(RecordingStreamObserver::default());
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(GroundedFinanceEvidenceTool));
+        registry.register(Box::new(GroundedRelationshipEvidenceTool));
+        let agent = FunctionCallingAgent::new(
+            Arc::new(llm),
+            Arc::new(registry),
+            String::new(),
+            5,
+            Some(audit.clone()),
+        )
+        .with_agent_owned_finance_loop(true)
+        .with_stream_observer(Some(observer.clone()));
+        let mut context = AgentContext::new("bounded-finance-final".to_string());
+
+        let response = agent
+            .run(
+                "【本轮用户输入】CRWV 怎么看\n【本轮最终回答契约：由主 Agent 一次完成】第一条非空行必须严格以 `数据时间：北京时间 2026-07-19 09:31；行情口径：` 开头。",
+                &mut context,
+            )
+            .await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, answer);
+        assert_eq!(response.iterations, 4);
+        assert_eq!(response.tool_calls_made.len(), 3);
+        assert_eq!(
+            seen_tool_counts
+                .lock()
+                .expect("stream tool counts")
+                .as_slice(),
+            [2, 2, 2, 0]
+        );
+        assert!(
+            seen_tool_names
+                .lock()
+                .expect("stream tool names")
+                .last()
+                .expect("forced-final tool list")
+                .is_empty()
+        );
+        assert_eq!(
+            seen_tool_choice_modes
+                .lock()
+                .expect("tool choice modes")
+                .as_slice(),
+            [
+                ToolChoiceMode::Auto,
+                ToolChoiceMode::Required,
+                ToolChoiceMode::Auto,
+                ToolChoiceMode::Auto,
+            ]
+        );
+        assert_eq!(
+            observer.events.lock().expect("stream events").as_slice(),
+            [format!("final:{answer}")]
+        );
+        let requests = seen_messages.lock().expect("stream messages");
+        let forced_prompt = requests
+            .last()
+            .and_then(|messages| messages.last())
+            .and_then(|message| message.content.as_deref())
+            .expect("forced-final prompt");
+        assert!(forced_prompt.contains("本轮由同一 Agent 有界收口"));
+        assert!(forced_prompt.contains("本轮没有任何可用工具"));
+        drop(requests);
+        let records = audit.records.lock().expect("audit records");
+        assert_eq!(records.len(), 4);
+        assert!(
+            records
+                .iter()
+                .all(|record| record.operation == "chat_with_tools")
+        );
+        let forced = records.last().expect("forced-final audit");
+        assert_eq!(forced.request["tools"], json!([]));
+        assert_eq!(forced.metadata["has_tools"], false);
+        assert_eq!(forced.metadata["force_finance_final"], true);
+        assert_eq!(forced.metadata["active_business_outcome"], "direct_final");
+    }
+
+    #[tokio::test]
+    async fn finance_loop_enforces_intrinsic_web_limit_without_request_budget_then_forces_final() {
+        let answer = "数据时间：北京时间 2026-07-19 09:31；行情口径：最新可得、非逐笔\n\n只使用已取得的六次网页证据完成回答。";
+        let web_calls = (0..7)
+            .map(|index| ChatStreamEvent::ToolCallDelta {
+                index,
+                id: Some(format!("tc_web_{}", index + 1)),
+                name: Some("web_search".to_string()),
+                arguments: json!({"query": format!("CoreWeave evidence {}", index + 1)})
+                    .to_string(),
+            })
+            .collect::<Vec<_>>();
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_search_crwv".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"search","query":"CRWV","entity_route":"crwv","identity_match":"exact_symbol"}"#.to_string(),
+            }],
+            web_calls,
+            vec![ChatStreamEvent::ContentDelta(answer.to_string())],
+        ]);
+        let seen_tool_counts = llm.seen_tool_counts.clone();
+        let seen_tool_names = llm.seen_tool_names.clone();
+        let seen_tool_choice_modes = llm.seen_tool_choice_modes.clone();
+        let seen_messages = llm.seen_messages.clone();
+        let audit = Arc::new(RecordingAuditSink::default());
+        let observer = Arc::new(RecordingStreamObserver::default());
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(GroundedFinanceEvidenceTool));
+        registry.register(Box::new(GroundedRelationshipEvidenceTool));
+        let agent = FunctionCallingAgent::new(
+            Arc::new(llm),
+            Arc::new(registry),
+            String::new(),
+            4,
+            Some(audit.clone()),
+        )
+        .with_agent_owned_finance_loop(true)
+        .with_stream_observer(Some(observer.clone()));
+        let mut context = AgentContext::new("intrinsic-web-budget".to_string());
+
+        let response = agent
+            .run(
+                "【本轮用户输入】分析 CRWV\n【本轮最终回答契约：由主 Agent 一次完成】第一条非空行必须严格以 `数据时间：北京时间 2026-07-19 09:31；行情口径：` 开头。",
+                &mut context,
+            )
+            .await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, answer);
+        assert_eq!(response.iterations, 3);
+        assert_eq!(response.tool_calls_made.len(), 7);
+        assert_eq!(
+            response
+                .tool_calls_made
+                .iter()
+                .filter(|call| call.name == "web_search")
+                .count(),
+            MAX_AGENT_OWNED_FINANCE_WEB_SEARCH_CALLS as usize
+        );
+        let rejected = context
+            .messages
+            .iter()
+            .find(|message| message.tool_call_id.as_deref() == Some("tc_web_7"))
+            .expect("seventh Web call budget result");
+        assert!(
+            rejected
+                .content
+                .as_deref()
+                .is_some_and(|content| content.contains("call limit reached (6)"))
+        );
+        assert_eq!(
+            seen_tool_counts
+                .lock()
+                .expect("stream tool counts")
+                .as_slice(),
+            [2, 2, 0]
+        );
+        assert!(
+            seen_tool_names
+                .lock()
+                .expect("stream tool names")
+                .last()
+                .expect("forced-final tool list")
+                .is_empty()
+        );
+        assert_eq!(
+            seen_tool_choice_modes
+                .lock()
+                .expect("tool choice modes")
+                .as_slice(),
+            [
+                ToolChoiceMode::Auto,
+                ToolChoiceMode::Required,
+                ToolChoiceMode::Auto,
+            ]
+        );
+        assert_eq!(
+            observer.events.lock().expect("stream events").as_slice(),
+            [format!("final:{answer}")]
+        );
+        let requests = seen_messages.lock().expect("stream messages");
+        let forced_prompt = requests
+            .last()
+            .and_then(|messages| messages.last())
+            .and_then(|message| message.content.as_deref())
+            .expect("forced-final prompt");
+        assert!(forced_prompt.contains("本轮由同一 Agent 有界收口"));
+        drop(requests);
+        let records = audit.records.lock().expect("audit records");
+        let forced = records.last().expect("forced-final audit");
+        assert_eq!(forced.request["tools"], json!([]));
+        assert_eq!(forced.metadata["tool_budget_exhausted"], true);
+        assert_eq!(forced.metadata["force_finance_final"], true);
+        assert_eq!(forced.metadata["active_business_outcome"], "direct_final");
+    }
+
+    #[tokio::test]
+    async fn precommitted_prefix_forces_empty_tools_final_after_three_web_only_rounds() {
+        let prefix = "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露".to_string();
+        let answer = format!("{prefix}\n\n连续三轮网页取证后的同 Agent 自然终稿。");
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_web_1".to_string()),
+                name: Some("web_search".to_string()),
+                arguments: r#"{"query":"CoreWeave data center filing"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_web_2".to_string()),
+                name: Some("web_search".to_string()),
+                arguments: r#"{"query":"Nebius data center filing"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_web_3".to_string()),
+                name: Some("web_search".to_string()),
+                arguments: r#"{"query":"China listed data center operators filing"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ContentDelta(answer.clone())],
+        ]);
+        let seen_tool_counts = llm.seen_tool_counts.clone();
+        let seen_tool_names = llm.seen_tool_names.clone();
+        let seen_tool_choice_modes = llm.seen_tool_choice_modes.clone();
+        let seen_messages = llm.seen_messages.clone();
+        let stream_calls = llm.stream_calls.clone();
+        let audit = Arc::new(RecordingAuditSink::default());
+        let tool_observer = Arc::new(MockToolObserver::default());
+        let stream_observer = Arc::new(CommittedPrefixStreamObserver {
+            prefix: prefix.clone(),
+            accumulated: Mutex::new(prefix.clone()),
+            events: Mutex::new(Vec::new()),
+        });
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(GroundedRelationshipEvidenceTool));
+        let agent = FunctionCallingAgent::new(
+            Arc::new(llm),
+            Arc::new(registry),
+            String::new(),
+            5,
+            Some(audit.clone()),
+        )
+        .with_agent_owned_finance_loop(true)
+        .with_service_owned_initial_prefix(Some(prefix.clone()), Some(prefix.clone()))
+        .with_tool_observer(Some(tool_observer.clone()))
+        .with_stream_observer(Some(stream_observer.clone()));
+        let mut context = AgentContext::new("precommitted-web-only-budget".to_string());
+
+        let response = agent.run("筛选数据中心标的", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, answer);
+        assert_eq!(response.iterations, 4);
+        assert_eq!(response.tool_calls_made.len(), 3);
+        assert_eq!(stream_calls.load(Ordering::SeqCst), 4);
+        assert_eq!(
+            seen_tool_counts
+                .lock()
+                .expect("stream tool counts")
+                .as_slice(),
+            [1, 1, 1, 0]
+        );
+        assert!(
+            seen_tool_names
+                .lock()
+                .expect("stream tool names")
+                .last()
+                .expect("forced-final tool list")
+                .is_empty()
+        );
+        assert_eq!(
+            seen_tool_choice_modes
+                .lock()
+                .expect("tool choice modes")
+                .as_slice(),
+            [
+                ToolChoiceMode::Auto,
+                ToolChoiceMode::Auto,
+                ToolChoiceMode::Auto,
+                ToolChoiceMode::Auto,
+            ]
+        );
+        assert_eq!(
+            tool_observer
+                .events
+                .lock()
+                .expect("tool observer events")
+                .len(),
+            6
+        );
+        assert!(
+            stream_observer
+                .events
+                .lock()
+                .expect("stream events")
+                .is_empty(),
+            "the T0 prefix is already visible and the natural final must not restream it"
+        );
+        assert_eq!(
+            stream_observer.committed_visible_prefix(),
+            Some(prefix.clone())
+        );
+        let requests = seen_messages.lock().expect("stream messages");
+        let forced_prompt = requests
+            .last()
+            .and_then(|messages| messages.last())
+            .and_then(|message| message.content.as_deref())
+            .expect("forced-final prompt");
+        assert!(forced_prompt.contains("本轮由同一 Agent 有界收口"));
+        drop(requests);
+        let records = audit.records.lock().expect("audit records");
+        let forced = records.last().expect("forced-final audit");
+        assert_eq!(forced.request["tools"], json!([]));
+        assert_eq!(forced.metadata["finance_tool_rounds"], 3);
+        assert_eq!(forced.metadata["force_finance_final"], true);
+        assert_eq!(forced.metadata["active_business_outcome"], "direct_final");
+    }
+
+    #[tokio::test]
+    async fn precommitted_prefix_rejects_unregistered_mcp_datafetch_before_frames_or_execution() {
+        let prefix = "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露".to_string();
+        let llm = StreamingMockLlmProvider::with_rounds(vec![vec![
+            ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_unregistered_mcp_datafetch".to_string()),
+                name: Some("mcp__hone__data_fetch".to_string()),
+                arguments: r#"{"data_type":"search","query":"CRWV","entity_route":"crwv","identity_match":"exact_symbol"}"#.to_string(),
+            },
+        ]]);
+        let registry_calls = Arc::new(AtomicUsize::new(0));
+        let tool_observer = Arc::new(MockToolObserver::default());
+        let stream_observer = Arc::new(CommittedPrefixStreamObserver {
+            prefix: prefix.clone(),
+            accumulated: Mutex::new(prefix.clone()),
+            events: Mutex::new(Vec::new()),
+        });
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(CountingTool {
+            calls: registry_calls.clone(),
+        }));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 2, None)
+                .with_agent_owned_finance_loop(true)
+                .with_service_owned_initial_prefix(Some(prefix.clone()), Some(prefix.clone()))
+                .with_tool_observer(Some(tool_observer.clone()))
+                .with_stream_observer(Some(stream_observer.clone()));
+        let mut context = AgentContext::new("precommitted-unregistered-mcp-datafetch".to_string());
+
+        let response = agent.run("分析 CRWV", &mut context).await;
+
+        assert!(!response.success);
+        assert_eq!(
+            response.error.as_deref(),
+            Some(AGENT_OWNED_FINANCE_PERSISTENT_TOOL_ERROR)
+        );
+        assert_eq!(response.iterations, 1);
+        assert!(response.tool_calls_made.is_empty());
+        assert_eq!(registry_calls.load(Ordering::SeqCst), 0);
+        assert!(
+            tool_observer
+                .events
+                .lock()
+                .expect("tool observer events")
+                .is_empty()
+        );
+        assert!(
+            stream_observer
+                .events
+                .lock()
+                .expect("stream events")
+                .is_empty()
+        );
+        assert_eq!(
+            stream_observer.committed_visible_prefix(),
+            Some(prefix.clone())
+        );
+        assert!(context.messages.iter().all(|message| {
+            message.role != "tool"
+                && message.tool_calls.as_ref().is_none_or(|tool_calls| {
+                    tool_calls.iter().all(|tool_call| {
+                        tool_call.get("id").and_then(Value::as_str)
+                            != Some("tc_unregistered_mcp_datafetch")
+                    })
+                })
+        }));
+    }
+
+    #[tokio::test]
+    async fn deferred_prefix_ignores_structurally_invalid_datafetch_activation() {
+        for (case, arguments) in [
+            (
+                "unsupported-data-type",
+                r#"{"data_type":"unsupported_type","ticker":"CRWV"}"#,
+            ),
+            ("missing-security-target", r#"{"data_type":"quote"}"#),
+        ] {
+            let prefix =
+                format!("数据时间：北京时间 2026-07-19 09:31；行情口径：{case} 仅使用可核验资料");
+            let llm =
+                StreamingMockLlmProvider::with_rounds(vec![vec![ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some(format!("tc_{case}")),
+                    name: Some("data_fetch".to_string()),
+                    arguments: arguments.to_string(),
+                }]]);
+            let seen_tool_choice_modes = llm.seen_tool_choice_modes.clone();
+            let audit = Arc::new(RecordingAuditSink::default());
+            let stream_observer = Arc::new(CommittedPrefixStreamObserver::new(prefix.clone()));
+            let calls = Arc::new(AtomicUsize::new(0));
+            let mut registry = ToolRegistry::new();
+            registry.register(Box::new(CountingDataFetchTool {
+                calls: calls.clone(),
+            }));
+            let agent = FunctionCallingAgent::new(
+                Arc::new(llm),
+                Arc::new(registry),
+                String::new(),
+                1,
+                Some(audit.clone()),
+            )
+            .with_agent_owned_finance_loop(true)
+            .with_service_owned_initial_prefix(Some(prefix), None)
+            .with_stream_observer(Some(stream_observer.clone()));
+            let mut context = AgentContext::new(format!("deferred-{case}"));
+
+            let response = agent.run("分析 CRWV", &mut context).await;
+
+            assert!(!response.success, "{case}");
+            assert_eq!(
+                response.error.as_deref(),
+                Some("max_iterations_exceeded:1"),
+                "{case}"
+            );
+            assert_eq!(calls.load(Ordering::SeqCst), 1, "{case}");
+            assert_eq!(
+                seen_tool_choice_modes
+                    .lock()
+                    .expect("tool choice modes")
+                    .as_slice(),
+                [ToolChoiceMode::Auto],
+                "{case}"
+            );
+            assert!(
+                stream_observer
+                    .events
+                    .lock()
+                    .expect("stream events")
+                    .is_empty(),
+                "{case} must not ACK the deferred prefix"
+            );
+            assert!(
+                stream_observer.committed_visible_prefix().is_none(),
+                "{case}"
+            );
+            let records = audit.records.lock().expect("audit records");
+            let attempt = records.last().expect("DataFetch attempt audit");
+            assert_eq!(attempt.metadata["finance_tool_rounds"], 0, "{case}");
+            assert_eq!(attempt.metadata["force_finance_final"], false, "{case}");
+            assert_eq!(
+                attempt.metadata["active_business_outcome"],
+                Value::Null,
+                "{case}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn first_batch_identity_route_limit_executes_only_six_valid_routes() {
+        let identity_calls = (0..7)
+            .map(|index| ChatStreamEvent::ToolCallDelta {
+                index,
+                id: Some(format!("tc_route_{index}")),
+                name: Some("data_fetch".to_string()),
+                arguments: json!({
+                    "data_type": "search",
+                    "query": format!("SYM{index}"),
+                    "entity_route": format!("candidate-{index}"),
+                    "identity_match": "exact_symbol"
+                })
+                .to_string(),
+            })
+            .collect::<Vec<_>>();
+        let llm = StreamingMockLlmProvider::with_rounds(vec![identity_calls]);
+        let registry_calls = Arc::new(AtomicUsize::new(0));
+        let tool_observer = Arc::new(MockToolObserver::default());
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(CountingDataFetchTool {
+            calls: registry_calls.clone(),
+        }));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 1, None)
+                .with_agent_owned_finance_loop(true)
+                .with_tool_observer(Some(tool_observer.clone()));
+        let mut context = AgentContext::new("first-batch-route-limit".to_string());
+
+        let response = agent.run("筛选七个合法候选", &mut context).await;
+
+        assert!(!response.success);
+        assert_eq!(response.error.as_deref(), Some("max_iterations_exceeded:1"));
+        assert_eq!(
+            registry_calls.load(Ordering::SeqCst),
+            MAX_AGENT_OWNED_FINANCE_IDENTITY_ROUTES
+        );
+        assert_eq!(
+            response.tool_calls_made.len(),
+            MAX_AGENT_OWNED_FINANCE_IDENTITY_ROUTES
+        );
+        assert_eq!(
+            tool_observer
+                .events
+                .lock()
+                .expect("tool observer events")
+                .len(),
+            MAX_AGENT_OWNED_FINANCE_IDENTITY_ROUTES * 2
+        );
+        let rejected = context
+            .messages
+            .iter()
+            .find(|message| message.tool_call_id.as_deref() == Some("tc_route_6"))
+            .expect("seventh route rejection");
+        let rejected: Value = serde_json::from_str(
+            rejected
+                .content
+                .as_deref()
+                .expect("seventh route rejection content"),
+        )
+        .expect("parse seventh route rejection");
+        assert_eq!(rejected["error"], "identity_route_limit_reached");
+        assert_eq!(rejected["limit"], MAX_AGENT_OWNED_FINANCE_IDENTITY_ROUTES);
+        assert!(
+            response
+                .tool_calls_made
+                .iter()
+                .all(|call| { call.tool_call_id.as_deref() != Some("tc_route_6") })
+        );
+    }
+
+    #[tokio::test]
+    async fn invalid_explicit_identity_searches_never_execute_or_ack_deferred_prefix() {
+        for (case, arguments) in [
+            (
+                "missing-identity-match",
+                r#"{"data_type":"search","query":"CRWV","entity_route":"crwv"}"#,
+            ),
+            (
+                "invalid-identity-match",
+                r#"{"data_type":"search","query":"CRWV","entity_route":"crwv","identity_match":"tickerish"}"#,
+            ),
+        ] {
+            let prefix =
+                format!("数据时间：北京时间 2026-07-19 09:31；行情口径：{case} 仅使用可核验资料");
+            let llm =
+                StreamingMockLlmProvider::with_rounds(vec![vec![ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some(format!("tc_{case}")),
+                    name: Some("data_fetch".to_string()),
+                    arguments: arguments.to_string(),
+                }]]);
+            let registry_calls = Arc::new(AtomicUsize::new(0));
+            let tool_observer = Arc::new(MockToolObserver::default());
+            let stream_observer = Arc::new(CommittedPrefixStreamObserver::new(prefix.clone()));
+            let mut registry = ToolRegistry::new();
+            registry.register(Box::new(CountingDataFetchTool {
+                calls: registry_calls.clone(),
+            }));
+            let agent = FunctionCallingAgent::new(
+                Arc::new(llm),
+                Arc::new(registry),
+                String::new(),
+                1,
+                None,
+            )
+            .with_agent_owned_finance_loop(true)
+            .with_service_owned_initial_prefix(Some(prefix), None)
+            .with_tool_observer(Some(tool_observer.clone()))
+            .with_stream_observer(Some(stream_observer.clone()));
+            let mut context = AgentContext::new(format!("invalid-explicit-{case}"));
+
+            let response = agent.run("分析 CRWV", &mut context).await;
+
+            assert!(!response.success, "{case}");
+            assert_eq!(
+                response.error.as_deref(),
+                Some("max_iterations_exceeded:1"),
+                "{case}"
+            );
+            assert!(response.tool_calls_made.is_empty(), "{case}");
+            assert_eq!(registry_calls.load(Ordering::SeqCst), 0, "{case}");
+            assert!(
+                tool_observer
+                    .events
+                    .lock()
+                    .expect("tool observer events")
+                    .is_empty(),
+                "{case}"
+            );
+            assert!(
+                stream_observer
+                    .events
+                    .lock()
+                    .expect("stream events")
+                    .is_empty(),
+                "{case} must not ACK the deferred prefix"
+            );
+            assert!(
+                stream_observer.committed_visible_prefix().is_none(),
+                "{case}"
+            );
+            let rejected = context
+                .messages
+                .iter()
+                .find(|message| message.tool_call_id.as_deref() == Some(&format!("tc_{case}")))
+                .expect("invalid identity rejection");
+            let rejected: Value = serde_json::from_str(
+                rejected
+                    .content
+                    .as_deref()
+                    .expect("invalid identity rejection content"),
+            )
+            .expect("parse invalid identity rejection");
+            assert_eq!(rejected["error"], "invalid_identity_search_shape", "{case}");
+        }
+    }
+
+    #[tokio::test]
+    async fn precommitted_service_prefix_allows_known_read_only_finance_tools() {
+        let prefix = "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露".to_string();
+        let answer = format!("{prefix}\n\nCRWV 的本轮核验结果。");
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_search_crwv".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"search","query":"CRWV","entity_route":"crwv","identity_match":"exact_symbol"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_snapshot_crwv".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"snapshot","ticker":"CRWV","entity_route":"crwv"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ContentDelta(answer.clone())],
+        ]);
+        let tool_observer = Arc::new(MockToolObserver::default());
+        let stream_observer = Arc::new(CommittedPrefixStreamObserver {
+            prefix: prefix.clone(),
+            accumulated: Mutex::new(prefix.clone()),
+            events: Mutex::new(Vec::new()),
+        });
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(GroundedFinanceEvidenceTool));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 4, None)
+                .with_agent_owned_finance_loop(true)
+                .with_service_owned_initial_prefix(Some(prefix.clone()), Some(prefix.clone()))
+                .with_tool_observer(Some(tool_observer.clone()))
+                .with_stream_observer(Some(stream_observer.clone()));
+        let mut context = AgentContext::new("precommitted-read-only".to_string());
+
+        let response = agent.run("分析 CRWV", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, answer);
+        assert_eq!(response.iterations, 3);
+        assert_eq!(response.tool_calls_made.len(), 2);
+        assert_eq!(
+            tool_observer
+                .events
+                .lock()
+                .expect("tool observer events")
+                .as_slice(),
+            [
+                "start:data_fetch",
+                "done:data_fetch:true",
+                "start:data_fetch",
+                "done:data_fetch:true",
+            ]
+        );
+        assert!(
+            stream_observer
+                .events
+                .lock()
+                .expect("stream events")
+                .is_empty(),
+            "the runner already published the prefix; model body remains deferred until the final suffix"
+        );
+        assert_eq!(
+            stream_observer.committed_visible_prefix(),
+            Some(prefix.clone())
+        );
+    }
+
+    #[tokio::test]
+    async fn deferred_service_prefix_commits_after_first_valid_datafetch_batch() {
+        let prefix = "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露".to_string();
+        let answer = format!("{prefix}\n\nNebius 的本轮核验结果。");
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_search_nebius".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"search","query":"NVIDIA","entity_route":"nebius","identity_match":"name_or_alias"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_snapshot_nebius".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"snapshot","ticker":"NVDA","entity_route":"nebius"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ContentDelta(answer.clone())],
+        ]);
+        let stream_observer = Arc::new(CommittedPrefixStreamObserver::new(prefix.clone()));
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(GroundedFinanceEvidenceTool));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 4, None)
+                .with_agent_owned_finance_loop(true)
+                .with_service_owned_initial_prefix(Some(prefix.clone()), None)
+                .with_stream_observer(Some(stream_observer.clone()));
+        let mut context = AgentContext::new("deferred-service-prefix".to_string());
+
+        let response = agent.run("Nebius 有哪些大A类似标的", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, answer);
+        assert_eq!(response.iterations, 3);
+        assert_eq!(response.tool_calls_made.len(), 2);
+        assert_eq!(
+            stream_observer
+                .events
+                .lock()
+                .expect("stream events")
+                .as_slice(),
+            [format!("commit:{prefix}")],
+            "the service prefix is ACKed after DataFetch activation and the later model body stays deferred"
+        );
+        assert_eq!(
+            stream_observer.committed_visible_prefix(),
+            Some(prefix.clone())
+        );
+    }
+
+    #[tokio::test]
+    async fn zero_budget_datafetch_does_not_execute_or_commit_deferred_service_prefix() {
+        let prefix = "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露".to_string();
+        let llm = StreamingMockLlmProvider::with_rounds(vec![vec![
+            ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_budget_zero".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"search","query":"CRWV","entity_route":"crwv","identity_match":"exact_symbol"}"#.to_string(),
+            },
+        ]]);
+        let seen_tool_counts = llm.seen_tool_counts.clone();
+        let stream_observer = Arc::new(CommittedPrefixStreamObserver::new(prefix.clone()));
+        let tool_observer = Arc::new(MockToolObserver::default());
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(GroundedFinanceEvidenceTool));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 1, None)
+                .with_agent_owned_finance_loop(true)
+                .with_tool_call_budget(Some(0), HashMap::new())
+                .with_service_owned_initial_prefix(Some(prefix), None)
+                .with_tool_observer(Some(tool_observer.clone()))
+                .with_stream_observer(Some(stream_observer.clone()));
+        let mut context = AgentContext::new("zero-budget-deferred-prefix".to_string());
+
+        let response = agent.run("分析 CRWV", &mut context).await;
+
+        assert!(!response.success);
+        assert_eq!(response.error.as_deref(), Some("max_iterations_exceeded:1"));
+        assert_eq!(response.iterations, 1);
+        assert!(response.tool_calls_made.is_empty());
+        assert_eq!(
+            seen_tool_counts
+                .lock()
+                .expect("stream tool counts")
+                .as_slice(),
+            [1]
+        );
+        assert!(
+            tool_observer
+                .events
+                .lock()
+                .expect("tool observer events")
+                .is_empty(),
+            "a budget-rejected DataFetch must never enter registry execution"
+        );
+        assert!(
+            stream_observer
+                .events
+                .lock()
+                .expect("stream events")
+                .is_empty(),
+            "a budget-rejected DataFetch must not publish the deferred prefix"
+        );
+        assert!(stream_observer.committed_visible_prefix().is_none());
+        let rejected = context
+            .messages
+            .iter()
+            .find(|message| message.tool_call_id.as_deref() == Some("tc_budget_zero"))
+            .expect("budget rejection tool result");
+        assert!(
+            rejected
+                .content
+                .as_deref()
+                .is_some_and(|content| content.contains("tool call limit reached (0)"))
+        );
+    }
+
+    #[tokio::test]
+    async fn deferred_service_prefix_blocks_unknown_tool_after_commit() {
+        let prefix = "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露".to_string();
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_search".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"search","query":"CRWV","entity_route":"crwv","identity_match":"exact_symbol"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_unknown_after_commit".to_string()),
+                name: Some("counting_tool".to_string()),
+                arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
+            }],
+        ]);
+        let unknown_calls = Arc::new(AtomicUsize::new(0));
+        let stream_observer = Arc::new(CommittedPrefixStreamObserver::new(prefix.clone()));
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(GroundedFinanceEvidenceTool));
+        registry.register(Box::new(CountingTool {
+            calls: unknown_calls.clone(),
+        }));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 3, None)
+                .with_agent_owned_finance_loop(true)
+                .with_service_owned_initial_prefix(Some(prefix.clone()), None)
+                .with_stream_observer(Some(stream_observer.clone()));
+        let mut context = AgentContext::new("deferred-prefix-unknown-after".to_string());
+
+        let response = agent.run("分析 CoreWeave", &mut context).await;
+
+        assert!(!response.success);
+        assert_eq!(
+            response.error.as_deref(),
+            Some(AGENT_OWNED_FINANCE_PERSISTENT_TOOL_ERROR)
+        );
+        assert_eq!(response.tool_calls_made.len(), 1);
+        assert_eq!(unknown_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            stream_observer
+                .events
+                .lock()
+                .expect("stream events")
+                .as_slice(),
+            [format!("commit:{prefix}")]
+        );
+        assert!(context.messages.iter().all(|message| {
+            message.tool_calls.as_ref().is_none_or(|tool_calls| {
+                tool_calls.iter().all(|tool_call| {
+                    tool_call.get("id").and_then(Value::as_str) != Some("tc_unknown_after_commit")
+                })
+            })
+        }));
+    }
+
+    #[tokio::test]
+    async fn unknown_tool_in_initial_finance_batch_disables_deferred_prefix_commit() {
+        let prefix = "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露".to_string();
+        let llm = StreamingMockLlmProvider::with_rounds(vec![vec![
+            ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_search".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"search","query":"CRWV","entity_route":"crwv","identity_match":"exact_symbol"}"#.to_string(),
+            },
+            ChatStreamEvent::ToolCallDelta {
+                index: 1,
+                id: Some("tc_unknown_same_batch".to_string()),
+                name: Some("counting_tool".to_string()),
+                arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
+            },
+        ]]);
+        let unknown_calls = Arc::new(AtomicUsize::new(0));
+        let stream_observer = Arc::new(CommittedPrefixStreamObserver::new(prefix.clone()));
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(GroundedFinanceEvidenceTool));
+        registry.register(Box::new(CountingTool {
+            calls: unknown_calls.clone(),
+        }));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 1, None)
+                .with_agent_owned_finance_loop(true)
+                .with_service_owned_initial_prefix(Some(prefix), None)
+                .with_stream_observer(Some(stream_observer.clone()));
+        let mut context = AgentContext::new("deferred-prefix-mixed-initial".to_string());
+
+        let response = agent.run("分析 CoreWeave", &mut context).await;
+
+        assert!(!response.success);
+        assert_eq!(response.error.as_deref(), Some("max_iterations_exceeded:1"));
+        assert_eq!(response.tool_calls_made.len(), 2);
+        assert_eq!(unknown_calls.load(Ordering::SeqCst), 1);
+        assert!(
+            stream_observer
+                .events
+                .lock()
+                .expect("stream events")
+                .is_empty()
+        );
+        assert!(stream_observer.committed_visible_prefix().is_none());
+    }
+
+    #[tokio::test]
+    async fn precommitted_service_prefix_rejects_unknown_first_batch_before_execution() {
+        let prefix = "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露".to_string();
+        let llm =
+            StreamingMockLlmProvider::with_rounds(vec![vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_unknown".to_string()),
+                name: Some("counting_tool".to_string()),
+                arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
+            }]]);
+        let calls = Arc::new(AtomicUsize::new(0));
+        let tool_observer = Arc::new(MockToolObserver::default());
+        let stream_observer = Arc::new(CommittedPrefixStreamObserver {
+            prefix: prefix.clone(),
+            accumulated: Mutex::new(prefix.clone()),
+            events: Mutex::new(Vec::new()),
+        });
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(CountingTool {
+            calls: calls.clone(),
+        }));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 2, None)
+                .with_agent_owned_finance_loop(true)
+                .with_service_owned_initial_prefix(
+                    Some(prefix),
+                    Some(stream_observer.prefix.clone()),
+                )
+                .with_tool_observer(Some(tool_observer.clone()))
+                .with_stream_observer(Some(stream_observer));
+        let mut context = AgentContext::new("precommitted-unknown-tool".to_string());
+
+        let response = agent.run("分析 CRWV", &mut context).await;
+
+        assert!(!response.success);
+        assert_eq!(
+            response.error.as_deref(),
+            Some(AGENT_OWNED_FINANCE_PERSISTENT_TOOL_ERROR)
+        );
+        assert_eq!(response.iterations, 1);
+        assert!(response.tool_calls_made.is_empty());
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        assert!(
+            tool_observer
+                .events
+                .lock()
+                .expect("tool observer events")
+                .is_empty()
+        );
+        assert!(context.messages.iter().all(|message| {
+            message.tool_calls.as_ref().is_none_or(|tool_calls| {
+                tool_calls.iter().all(|tool_call| {
+                    tool_call.get("id").and_then(Value::as_str) != Some("tc_unknown")
+                })
+            })
+        }));
     }
 
     #[tokio::test]
@@ -11485,7 +12856,7 @@ mod tests {
                 index: 0,
                 id: Some("tc_data_fetch".to_string()),
                 name: Some("data_fetch".to_string()),
-                arguments: "{}".to_string(),
+                arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
             }],
             vec![],
         ])
@@ -11869,7 +13240,7 @@ mod tests {
                 index: 0,
                 id: Some("tc_data_fetch".to_string()),
                 name: Some("data_fetch".to_string()),
-                arguments: "{}".to_string(),
+                arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
             }],
             vec![
                 ChatStreamEvent::ToolChoiceMetadata {
@@ -11956,7 +13327,7 @@ mod tests {
                 index: 0,
                 id: Some("tc_data_fetch".to_string()),
                 name: Some("data_fetch".to_string()),
-                arguments: "{}".to_string(),
+                arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
             }],
             vec![ChatStreamEvent::ReasoningDelta(
                 "hidden-only active thought".to_string(),
@@ -12158,7 +13529,7 @@ mod tests {
                 index: 0,
                 id: Some("tc_data_fetch".to_string()),
                 name: Some("data_fetch".to_string()),
-                arguments: "{}".to_string(),
+                arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
             }],
             vec![],
         ])
@@ -12278,12 +13649,9 @@ mod tests {
             [1, 1, 2, 0],
             "the same Agent must complete a post-identity business round before finish becomes available"
         );
-        assert!(
-            context
-                .messages
-                .iter()
-                .all(|message| { message.content.as_deref() != Some("首轮隐藏工具草稿") })
-        );
+        // Keep this fixture on the retired finish-only protocol: its contract
+        // is finish availability after same-Agent evidence rounds, while draft
+        // ownership/scrubbing belongs to the separate agent-owned finance path.
     }
 
     #[tokio::test]

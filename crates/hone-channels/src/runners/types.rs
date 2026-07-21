@@ -16,9 +16,9 @@ pub enum TerminalStreamPolicy {
     /// Preserve the runner's ordinary streaming behavior.
     #[default]
     Disabled,
-    /// Commit only after a complete canonical investment header beginning
-    /// with `数据时间：北京时间 ...；行情口径：...`; subsequent security-clean,
-    /// stable lines from that same tool-free final may extend the prefix.
+    /// Permit one ACKed canonical investment header beginning with
+    /// `数据时间：北京时间 ...；行情口径：...`. It may be the typed service-owned
+    /// Web prefix or a complete header from an eligible natural final.
     CanonicalInvestmentHeader,
 }
 
@@ -64,7 +64,18 @@ pub struct AgentRunnerRequest {
     /// Enables the standard same-Agent finance tool loop independently of
     /// channel-specific streaming behavior.
     pub agent_owned_finance_loop: bool,
+    /// Typed, service-owned first line for a Web finance turn. Explicit ticker
+    /// seeds may commit it before the first model call; otherwise the Agent may
+    /// commit it only after a valid read-only DataFetch batch activates the
+    /// finance protocol. This is never parsed from user text.
+    pub service_owned_initial_prefix: Option<ServiceOwnedInitialPrefix>,
     pub terminal_stream_policy: TerminalStreamPolicy,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServiceOwnedInitialPrefix {
+    pub content: String,
+    pub commit_before_model: bool,
 }
 
 pub struct AgentRunnerResult {
