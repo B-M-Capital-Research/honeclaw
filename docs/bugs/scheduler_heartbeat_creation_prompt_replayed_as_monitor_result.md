@@ -18,6 +18,18 @@
 
 ## 修复进展
 
+- `2026-07-21 23:01-2026-07-22 03:03 CST` 运行态复核确认同根继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-21`
+    - 03:00 CST 多个已创建 heartbeat job 的 raw / deliver preview 被近期直聊中的“涨超 5% 尾盘卖出、跌回再买”投资方法论问题污染，而不是执行各自标的的关键事件监控判断。
+    - `闪迪关键事件心跳提醒` 已作为现有 heartbeat job 周期触发，`parse_kind=PlainTextTriggered` 后投递正文却写成“本轮为投资方法论分析，不涉及特定标的市场报价”，并展开“涨超 5% -> 尾盘卖出 -> 等跌回再买”的策略评价；日志随后记录 `定时任务完成`。
+    - `NBIS关键事件心跳提醒`、`中际旭创关键事件心跳提醒` 也生成同一无关投资方法论正文，但被 duplicate suppression 压掉；`NVDA 关键事件心跳提醒` 仍把配置 / 指令文本识别成 system-level injection，未执行 NVDA 关键事件判断。
+  - 会话质量对照：
+    - 2026-07-21 23:01-2026-07-22 03:03 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 2 条 user / 2 条 assistant / 2 条 system compact，覆盖 2 个更新 session，均以 assistant 收口；assistant final 未见 `<think>`、本机路径、`data_fetch`、panic、provider 原始错误或 `max_iterations` 污染。
+    - 同窗 runtime 仍有 `HeartbeatDiag=723`、`deliver job_id=94`、`duplicate_suppressed=28`、`runner_error=37`、`heartbeat 输出不是结构化 JSON=18`；`cron_job_runs.max(executed_at)` 仍停在 `2026-07-19T13:31:15.040172+08:00`，当前 heartbeat 运行态继续以 runtime web log 判断。
+  - 判断：
+    - 这次话术不再是“无法创建定时任务”，但同属已创建 heartbeat job 的执行期语义被非监控上下文 / 原始 prompt 污染，导致模型没有执行当前 job 的监控判断。
+    - 因已有 heartbeat job 被标记完成并对用户投递了无关内容，影响 heartbeat 功能链路和信噪比，严重等级维持 `P2 / New`；未见全渠道停摆、跨用户错投、数据破坏或敏感信息泄露，因此不升级 P1，不创建 GitHub Issue。
+
 - `2026-07-20 11:01-15:05 CST` 运行态复核确认同根继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-20`
     - 11:30 CST `NVDA 关键事件心跳提醒` 已作为现有 heartbeat job 周期触发，deliver preview 却把上游 heartbeat 配置 / 系统级文本当作“配置文本与近期监控说明”，反问用户“你现在想做什么”，没有执行 NVDA 关键事件判断。
