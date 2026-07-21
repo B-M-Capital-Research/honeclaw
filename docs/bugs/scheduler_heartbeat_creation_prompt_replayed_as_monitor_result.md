@@ -18,6 +18,20 @@
 
 ## 修复进展
 
+- `2026-07-22 03:01-07:03 CST` 运行态复核确认同根继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-21`
+    - 同窗仍有 `HeartbeatDiag=600`、`deliver job_id=72`、`duplicate_suppressed=34`、`runner_error=33`、`heartbeat 输出不是结构化 JSON=17`，parse 分布为 `PlainTextTriggered=144`、`JsonNoop=51`、`PlainTextSuppressed=17`、`PlainTextNoop=6`、`JsonUnknownStatus=2`、`JsonTriggered=1`、`JsonEmptyStatus=1`。
+    - 03:31 / 05:01 CST `AI与科技持仓观察关键事件心跳提醒` deliver preview 仍以 fenced JSON 开头，并被 duplicate suppression 用旧 JSON preview 压制，说明 heartbeat 仍会把协议 / 结构化输出内容直接带入出站候选。
+    - 06:00 / 07:00 CST `闪迪关键事件心跳提醒`、`NBIS关键事件心跳提醒` 继续把近期直聊中的“涨超 5% 尾盘卖出、跌回再买”投资方法论问题当成本轮监控内容；部分落成投递，部分被去重压制。
+    - 07:00 CST `光模块板块关键事件心跳提醒` 已作为现有 heartbeat job 周期触发，deliver preview 却写成“光模块板块心跳监控已理解，条款确认如下”，偏向配置确认而不是执行监控判断。
+    - 07:00 CST `持仓重大事件心跳提醒` deliver preview 还写出 `SpaceX 已整体打包以 SPCX 在纳斯达克上市，这是目前唯一上市载体` 这类与任务主体和可核验市场事实均不可靠的叙事，说明 heartbeat 执行期仍会吸入无关上下文并外发。
+  - 会话质量对照：
+    - 同窗 `data/sessions.sqlite3` 按真实 `timestamp` 新增 14 条 user / 10 条 assistant / 2 条 system compact，覆盖 9 个更新 session；07:00 Feishu scheduler 边界触发已在 07:02 assistant 收口，未见长期 user-only 残留、错投、空回复、本机路径、provider 原始错误或全渠道不可用。
+    - `cron_job_runs.max(executed_at)` 仍停在 `2026-07-19T13:31:15.040172+08:00`，当前 heartbeat 运行态继续以 runtime web log 判断。
+  - 判断：
+    - 最新样本仍是已创建 heartbeat job 的执行期语义被非监控上下文、协议输出或配置确认语义污染，导致模型没有执行当前 job 的监控判断。
+    - 因已有 heartbeat job 被标记完成并可能对用户投递无关内容，影响 heartbeat 功能链路和信噪比，严重等级维持 `P2 / New`；未见全渠道停摆、跨用户错投、数据破坏或敏感信息泄露，因此不升级 P1，不创建 GitHub Issue。
+
 - `2026-07-21 23:01-2026-07-22 03:03 CST` 运行态复核确认同根继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-21`
     - 03:00 CST 多个已创建 heartbeat job 的 raw / deliver preview 被近期直聊中的“涨超 5% 尾盘卖出、跌回再买”投资方法论问题污染，而不是执行各自标的的关键事件监控判断。

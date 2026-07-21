@@ -22,6 +22,18 @@
 
 ## 最新进展
 
+- 本轮 2026-07-22 03:01-07:03 CST 真实运行态继续出现同根异常 / 高风险价格和未核验事件信号，状态维持 `New`：
+  - `data/sessions.sqlite3`
+    - 04:33 CST Feishu scheduler `OWALERT_PostMarket` `session_id=Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595` 正常收口，但 final 继续使用 `MU +12.17% 创历史新高（$982.88盘中...）` 等高风险数量级行情锚，并据此写入持仓表现和盘后扫描结论。
+    - 06:31 CST Web scheduler `1亿美元AI科技组合每日跟踪` `session_id=Actor_web__direct__web-user-14f4cadb069f` 正常收口，但 final 使用 `AMD +8.11%`、`MU +12.17%`、`CRCL 恢复交易后大涨 +8.60%` 等高风险或未核验事件锚进入组合市值和权重动作判断。
+    - 07:02 CST Feishu scheduler `美股持仓收盘后早报` `session_id=Actor_feishu__direct__ou_5f85509d35510291f93cd79a3b1c9eebf3` 正常收口，但开头标的核验仍给出 `AMD 503.3`、`GOOGL 352.14` 等高风险数量级行情锚，继续作为持仓和关注列表分析依据。
+    - 同窗新增 14 条 user / 10 条 assistant / 2 条 system compact，覆盖 9 个更新 session；未见错投、投递失败、空回复、敏感信息外泄或全渠道不可用。
+  - `data/runtime/logs/web.log.2026-07-21`
+    - 03:01-07:03 CST 仍有 `HeartbeatDiag=600`、`PlainTextTriggered=144`、`JsonNoop=51`、`deliver job_id=72`、`duplicate_suppressed=34`，多批 heartbeat raw / deliver preview 继续把异常或高风险行情锚、任务上下文和结构化状态混入出站判断。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check / 用户态事件核验缺口：异常数量级价格和未确认事件继续进入 scheduler final 或 heartbeat 用户可见 preview。
+    - 本窗没有错投到其他用户、投递失败、空回复、数据破坏或全渠道不可用；因此仍按质量性 `P3 / New`。该问题不影响主消息投递链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-21 03:02-07:03 CST 真实运行态继续出现同根异常 / 高风险价格和未核验事件信号，状态维持 `New`：
   - `data/sessions.sqlite3`
     - 04:32 CST Feishu scheduler `OWALERT_PostMarket` `session_id=Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595` 正常收口，但 final 继续使用 `MU $865.46`、`GEV $1,079.18`、`SNDK $1,390.95` 等高风险数量级行情锚，并据此写入持仓表现、破位和明日关注重点。
