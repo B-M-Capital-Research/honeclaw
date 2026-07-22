@@ -18,6 +18,18 @@
 
 ## 修复进展
 
+- `2026-07-22 11:03-15:03 CST` 运行态复核确认同根继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-22`
+    - 11:30 CST `NVDA 关键事件心跳提醒` 已作为现有 heartbeat job 周期触发，deliver preview 却把上游 JSON 配置、触发规则和输出契约识别成“系统级指令文本”，没有执行 NVDA 关键事件判断。
+    - 12:00、14:00、15:00 CST 多个 Web / Feishu heartbeat 继续把近期直聊里的“涨超 5% 尾盘卖出、跌回再买”投资方法论问题当成本轮监控内容；`中际旭创关键事件心跳提醒`、`NBIS关键事件心跳提醒` 等任务生成方法论正文，部分进入 deliver / duplicate suppression 路径。
+    - 12:00 CST `TEM大事件心跳监控` deliver preview 漂移成 `POET` / `ASTS` 心跳检查；14:30 CST `SIVE POET/Nokia/1.6T DFB 心跳检测` raw preview 又回到 `cron_job skill` 不存在、只收到 `POET` 的任务管理漂移文本。
+  - 会话质量对照：
+    - 同窗 `data/sessions.sqlite3` 新增 7 条 user / 4 条 assistant / 2 条 system compact，覆盖 3 个更新 session；用户可见 assistant final 均已收口，未见全渠道停摆、错投、空回复、本机路径或 provider 原始错误。
+    - `cron_job_runs.max(executed_at)` 仍停在 `2026-07-19T13:31:15.040172+08:00`，本轮 heartbeat 运行态继续以 runtime web log 判断。
+  - 判断：
+    - 最新样本仍是已创建 heartbeat job 的执行期语义被非监控上下文、协议输出、旧用户短问或配置确认语义污染，导致模型没有执行当前 job 的监控判断。
+    - 因已有 heartbeat job 可能投递无关内容并污染 duplicate suppression 基线，影响 heartbeat 功能链路和信噪比，严重等级维持 `P2 / New`；未见全渠道停摆、跨用户错投、数据破坏或敏感信息泄露，因此不升级 P1，不创建 GitHub Issue。
+
 - `2026-07-22 03:01-07:03 CST` 运行态复核确认同根继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-21`
     - 同窗仍有 `HeartbeatDiag=600`、`deliver job_id=72`、`duplicate_suppressed=34`、`runner_error=33`、`heartbeat 输出不是结构化 JSON=17`，parse 分布为 `PlainTextTriggered=144`、`JsonNoop=51`、`PlainTextSuppressed=17`、`PlainTextNoop=6`、`JsonUnknownStatus=2`、`JsonTriggered=1`、`JsonEmptyStatus=1`。

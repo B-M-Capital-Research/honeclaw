@@ -22,6 +22,17 @@
 
 ## 最新进展
 
+- 本轮 2026-07-22 11:03-15:03 CST 真实运行态继续出现同根异常 / 高风险价格和未核验事件信号，状态维持 `New`：
+  - `data/sessions.sqlite3`
+    - 12:02 CST Feishu scheduler `每日公司资讯与分析总结` `session_id=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5` 正常收口，但 final 继续使用 `NBIS单日暴涨+18.78%`、`CRWV+8.92%` 等高风险行情锚，并把这些锚点作为 AI 基础设施资金共识和持仓事件风险判断依据。
+    - 同窗新增 7 条 user / 4 条 assistant / 2 条 system compact，覆盖 3 个更新 session；未见错投、投递失败、空回复、敏感信息外泄或全渠道不可用。
+  - `data/runtime/logs/web.log.2026-07-22`
+    - 11:30-15:00 CST 多批 heartbeat raw / deliver preview 继续使用异常或高风险行情锚：`SNDK $1,589.40`、`MU $970.82`、`CBRS $208.57`、`NBIS $216.92`、`SNDK $1,589.40（+14.27%）` 等进入触发判断、noop 报告或 duplicate suppression 基线。
+    - 15:00 CST `存储板块关键事件心跳提醒` deliver preview 继续把 `SNDK $1,589.40` 和 Morgan Stanley 需求侧催化作为 triggered 事件，但随后被 duplicate suppression 压掉；说明异常行情锚仍会进入出站候选。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check / 用户态事件核验缺口：异常数量级价格和未确认事件继续进入 scheduler final 或 heartbeat 用户可见 preview。
+    - 本窗没有错投到其他用户、投递失败、空回复、数据破坏或全渠道不可用；因此仍按质量性 `P3 / New`。该问题不影响主消息投递链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-22 03:01-07:03 CST 真实运行态继续出现同根异常 / 高风险价格和未核验事件信号，状态维持 `New`：
   - `data/sessions.sqlite3`
     - 04:33 CST Feishu scheduler `OWALERT_PostMarket` `session_id=Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595` 正常收口，但 final 继续使用 `MU +12.17% 创历史新高（$982.88盘中...）` 等高风险数量级行情锚，并据此写入持仓表现和盘后扫描结论。

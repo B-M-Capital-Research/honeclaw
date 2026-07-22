@@ -22,6 +22,11 @@ New
 
 ## 最新进展
 
+- 2026-07-22 15:03 CST 运行态复核未在本轮 assistant final 中复现用户可见 `data_fetch` / 内部工具名外露，状态仍维持 `New`：
+  - 11:03-15:03 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 7 条 user / 4 条 assistant / 2 条 system compact，覆盖 3 个更新 session；用户可见 assistant final 均已收口。
+  - 本轮 assistant final 污染扫描未命中空回复、`<think>`、本机路径、SQLite、panic、provider 原始错误、raw tool、`cron_job`、fenced JSON、transport fallback、model metadata、`data_fetch`、`web_search`、`StockAnalysis`、`Hone` 或 `<absolute-path>`。
+  - 由于 heartbeat runtime 日志仍多次在 deliver preview 中出现 `data_fetch` / `web_search` 工具口径，但这些样本属于 heartbeat 出站候选和既有结构化 / 执行意图污染缺陷，本轮不把本单关闭或降级；后续需要继续观察 Feishu scheduler final 是否还会外露内部工具名。
+
 - 2026-07-22 07:03 CST 运行态继续复发，状态维持 `New`：
   - 03:01-07:03 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 14 条 user / 10 条 assistant / 2 条 system compact，覆盖 9 个更新 session；07:00 Feishu scheduler 边界触发已在 07:02 assistant 收口。
   - assistant final 污染扫描未命中空回复、`<think>`、本机路径、SQLite、panic、provider 原始错误、raw tool、`cron_job`、fenced JSON、transport fallback 或 model metadata；本轮命中的是 scheduler 用户可见英文中间进度句和工具口径词。

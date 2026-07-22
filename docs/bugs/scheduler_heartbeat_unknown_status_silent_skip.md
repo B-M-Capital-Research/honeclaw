@@ -7,6 +7,18 @@
 
 ## 修复进展
 
+- `2026-07-22 11:03-15:03 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-22`
+    - 同窗继续出现 `HeartbeatDiag=650`、`deliver job_id=76`、`duplicate_suppressed=38`、`runner_error=32`、`heartbeat 输出不是结构化 JSON=15`、`context window exceeds limit=1`、`max_iterations_exceeded=2` 与 284 条 function-calling 工具预算拒绝。
+    - `parse_kind` 分布为 `PlainTextTriggered=152`、`JsonNoop=56`、`PlainTextSuppressed=15`、`PlainTextNoop=11`、`JsonTriggered=3`、`JsonUnknownStatus=8`、`JsonMalformed=4`。
+    - 11:30 CST `美股黄金坑信号心跳检测` 与 `Monitor_Watchlist_11` 以 `<think>` / 工具 schema 排障开头后落成 `JsonMalformed`；14:00 CST `Monitor_Watchlist_11` 因工具上限输出自然语言并落成 `JsonUnknownStatus`；14:30 CST `SIVE POET/Nokia/1.6T DFB 心跳检测` 以 `PlainTextSuppressed` 落成“heartbeat 输出不是结构化 JSON”。
+  - 会话质量对照：
+    - `data/sessions.sqlite3` 同窗新增 7 条 user / 4 条 assistant / 2 条 system compact，覆盖 3 个更新 session；assistant final 未见 `<think>`、raw tool、本机路径、provider 原始错误、`data_fetch`、fenced JSON 或 `<absolute-path>` 外泄。
+    - `cron_job_runs.max(executed_at)` 仍停在 `2026-07-19T13:31:15.040172+08:00`，当前 heartbeat 运行态继续以 runtime web log 判断。
+  - 判断：
+    - 最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。
+    - 该问题继续影响 heartbeat 监控判断、送达语义和失败 / 跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-20 11:01-15:05 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-20`
     - 同窗继续出现 686 条 `[HeartbeatDiag]`、184 条 raw `<think>`、83 条 `deliver job_id`、38 条 `duplicate_suppressed`、32 条 `runner_error`、20 条 `execution_failed`、228 条 function-calling 工具预算拒绝、5 条 `max_iterations_exceeded` 与 2 条 context window 信号。
