@@ -22,6 +22,15 @@ New
 
 ## 证据来源
 
+- `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-22`
+  - 巡检时间窗：2026-07-22 19:01-23:02 CST。
+  - `session_id=Actor_web__direct__web-user-0545ade83537`
+    - 22:17 CST 用户粘贴 A 股复盘长文并要求回答“周四关注方向，反弹结束还是正常分歧如何理解”，assistant final 只返回“本轮研究未能完成，暂未形成可供参考的标的结论。”
+    - 22:18 CST 用户原文重试，assistant 再次只返回同一失败提示。
+    - runtime 两轮均记录 `entity_resolution.agent_loop ... contract_built=false answer_preserved=true ... missing_explicit_seeds=456`，随后 `failed ... error="committed terminal prefix mismatch"` 并 `session.persist_assistant ... detail=committed_prefix_after_terminal_failure`。
+    - 22:19 用户追问后自动 compact，22:22 同会话成功输出长正文，说明不是 Web direct 全链路不可用。
+  - 判断：该样本与本单同属“已有材料或答案信号后，finalization / evidence 门禁 fail-closed，用户只看到产品化失败提示”的表现；但直接根因是新发现的 terminal prefix mismatch，已单独建档为 [`web_direct_terminal_prefix_mismatch_commits_generic_failure.md`](./web_direct_terminal_prefix_mismatch_commits_generic_failure.md)。本单仅记录其对 required-evidence / fail-closed 用户体验的关联影响，不调整严重等级。由于同窗其它 direct / scheduler 正常收口，未见错投、数据破坏、敏感信息泄露或全渠道不可用，维持功能性 `P2 / New`，非 P1。
+
 - `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-18`
   - 巡检时间窗：2026-07-19 03:00-07:01 CST。
   - `data/sessions.sqlite3` 同窗新增 5 条 user / 6 条 assistant / 2 条 system compact；近期 Web direct canary 03:25 / 04:51 / 06:52 均可成功回答 CRWV/NVDA 关系，说明不是 direct 全链路不可用。

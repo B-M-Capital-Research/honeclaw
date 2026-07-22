@@ -401,3 +401,15 @@
 - 本轮判断
   - `NAND` 是行业 / 技术名词，不是本轮用户要求分析的证券标的；该样本与此前 `PCE`、`SEC`、`REPEAT`、`EBITDA` 同属 guard 扫描完整 scheduler/heartbeat 文本导致的误拦。
   - 影响是部分 scheduler / heartbeat 任务跳过或给用户失败提示；同窗 direct 与多个 scheduler 仍正常收口，未见错投、敏感信息泄露或全渠道不可用，维持功能性 `P2 / New`，非 P1。
+
+## 最新运行态复核（2026-07-22 23:02 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-07-22 19:01-23:02 CST。
+  - 21:00 CST Web scheduler `盘前美股要闻与SNDK/MU存储产业链日报` 的任务正文要求汇总宏观数据，包含 `PCE` 指标；assistant final 先返回“已识别证券代码 `PCE`，但当前数据供应商没有返回同代码行情覆盖”，随后写入用户可见 `定时任务「盘前美股要闻与SNDK/MU存储产业链日报」执行出错，请稍后重试。`
+- `data/runtime/logs/web.log.2026-07-22`
+  - 同窗 AAOI `SEC` 误抽日志继续出现 18 行，代表样本为 `AAOI 1.6T 光模块心跳检测` 把任务上下文里的 `SEC` 当证券代码并 fail-closed。
+  - 同窗 ORCL 多候选日志继续出现 18 行，`ORCL 大事件监控` 仍要求补充交易所后缀或公司全名，本轮不发送。
+- 本轮判断
+  - 最新样本仍是 scheduler / heartbeat 任务正文、宏观指标和监管公告词被实体 guard 当作证券实体，或把公司名解析成多上市地候选后 fail-closed。
+  - 影响是部分 Web / Feishu scheduler 和 heartbeat 监控任务失败或跳过；同窗 28 个更新 session 没有长期 user-only 残留、错投、敏感信息泄露或全渠道不可用，维持功能性 `P2 / New`，非 P1，不创建 GitHub Issue。
