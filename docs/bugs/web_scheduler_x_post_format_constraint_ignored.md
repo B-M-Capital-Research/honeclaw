@@ -9,6 +9,14 @@
 ## 证据来源
 
 - `data/sessions.sqlite3`
+  - `2026-07-22 19:02 CST` 复核同一任务复发：
+    - session_id：`Actor_web__direct__web-user-ba50cb9401c0`
+    - 时间窗：2026-07-22 18:00-18:02 CST
+    - user turn：`2026-07-22T18:00:00.710058+08:00`
+    - assistant final：`2026-07-22T18:01:50.724964+08:00`
+    - 用户任务仍要求英文、适合直接发 X、每条约 140 英文字符以内、直接给结果、不写长解释、优先 5-8 条。
+    - 实际 assistant final 长度约 3876 字符，继续输出长标题、分隔线、主题长段和市场背景；第一条以 `GOOG EARNINGS TONIGHT` 开头，单条正文仍远超 140 英文字符。
+    - 本轮 Web scheduler 触发、生成、落库均完成，没有 send_failed、空回复、原始工具报错、`<think>`、本机路径或 JSON/Markdown 结构损坏证据；问题仍是显式格式契约未被遵守，不影响主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
   - `2026-07-21 19:02 CST` 复核同一任务复发：
     - session_id：`Actor_web__direct__web-user-ba50cb9401c0`
     - 时间窗：2026-07-21 18:00-18:02 CST

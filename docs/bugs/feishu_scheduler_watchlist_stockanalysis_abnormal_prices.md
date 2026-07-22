@@ -22,6 +22,18 @@
 
 ## 最新进展
 
+- 本轮 2026-07-22 15:02-19:02 CST 真实运行态继续出现同根异常 / 高风险价格和未核验事件信号，状态维持 `New`：
+  - `data/sessions.sqlite3`
+    - 15:47 CST Web direct `session_id=Actor_web__direct__web-user-cdff88db6d9d` 在用户追问 `MU存储上涨情况` 后正常收口，但 final 继续使用 `MU当前报价 $970.82`、单日 `+12.17%`、报价时间为北京时间 `2026-07-22 04:00:01` 的高风险数量级行情锚，并据此解释上涨情况。
+    - 18:18 CST Feishu direct `session_id=Actor_feishu__direct__ou_5f64ee7ca7af22d44a83a31054e6fb92a3` 在 `ASTS 和 AAOI 二选一` 投资请求中正常收口，但 final 使用 `AAOI $119.26`、当日 `+15.76%` 等高风险行情锚进入投资偏好结论。
+    - 同窗新增 15 条 user / 12 条 assistant / 4 条 system compact，覆盖 6 个更新 session；未见错投、投递失败、空回复、敏感信息外泄或全渠道不可用。
+  - `data/runtime/logs/web.log.2026-07-22`
+    - 15:02-19:02 CST heartbeat raw / deliver preview 继续使用异常或高风险行情锚：`SNDK $1,589.40`、`MU $970.82`、`CBRS $208.57`、`NBIS $216.92` 等进入触发判断、noop 报告或 duplicate suppression 基线。
+    - 18:30 CST `持仓财报与重大新闻心跳提醒` deliver preview 写出工具调用受限，只能基于最近上下文锚点整合，并继续引用 `SNDK $1,589.40` / `AAOI`；19:01 CST `光模块板块关键事件心跳提醒` 又以 `SNDK $1,589.40` 输出显著高估和操作风险判断，说明异常行情锚仍会进入出站候选。
+  - 判断：
+    - 最新证据仍是同一行情源 / 数值 sanity check / 用户态事件核验缺口：异常数量级价格和未确认事件继续进入 direct、scheduler final 或 heartbeat 用户可见 preview。
+    - 本窗没有错投到其他用户、投递失败、空回复、数据破坏或全渠道不可用；因此仍按质量性 `P3 / New`。该问题不影响主消息投递链路，因此不升级为 P2/P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-22 11:03-15:03 CST 真实运行态继续出现同根异常 / 高风险价格和未核验事件信号，状态维持 `New`：
   - `data/sessions.sqlite3`
     - 12:02 CST Feishu scheduler `每日公司资讯与分析总结` `session_id=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5` 正常收口，但 final 继续使用 `NBIS单日暴涨+18.78%`、`CRWV+8.92%` 等高风险行情锚，并把这些锚点作为 AI 基础设施资金共识和持仓事件风险判断依据。

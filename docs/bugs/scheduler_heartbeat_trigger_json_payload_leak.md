@@ -7,6 +7,15 @@
 
 ## 最新进展
 
+- `2026-07-22 15:02-19:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-22`
+    - 同窗有 84 条 `deliver job_id`、43 条 `duplicate_suppressed`、17 条“heartbeat 输出不是结构化 JSON”，parse 分布为 `PlainTextTriggered=168`、`JsonNoop=52`、`PlainTextSuppressed=17`、`PlainTextNoop=9`、`JsonUnknownStatus=4`、`JsonTriggered=3`、`JsonMalformed=2`。
+    - 18:30-19:01 CST 多条 heartbeat raw preview 继续以 `<think>` 开头，再接自然语言、状态词、表格或协议化 `noop / triggered` 结论；部分低权重或 noop 正文仍先进入 `PlainTextTriggered` deliver preview，再由 duplicate suppression 压掉。
+    - 19:00 CST `持仓重大事件心跳检测` deliver preview 直接暴露“本轮 `data_fetch` 接口已达调用上限”并要求用户说明只发 ticker 的意图；19:01 CST `光模块板块关键事件心跳提醒` deliver preview 又把高风险价格锚和投资结论当作触发正文发送，说明出站格式仍混合协议状态、工具口径和用户态内容。
+  - `data/sessions.sqlite3`
+    - 同窗新增 15 条 user / 12 条 assistant / 4 条 system compact，近期 ordinary direct session 均以 assistant 收口；未确认 fenced JSON 进入 ordinary direct final。
+  - 判断：这些样本说明 heartbeat 出站格式化仍会在 raw / deliver preview 层混入内部结构化协议、工具口径或状态词；当前没有错投、全渠道不可用、敏感信息泄露或 ordinary direct final 污染证据，主要影响提醒结构和可读性，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-19 15:03-19:01 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-19`
     - 同窗有 85 条 `deliver job_id`、46 条 `duplicate_suppressed`、184 条 raw `<think>`、170 条 `PlainTextTriggered`、6 条 `JsonMalformed` 与 9 条“heartbeat 输出不是结构化 JSON”信号。
