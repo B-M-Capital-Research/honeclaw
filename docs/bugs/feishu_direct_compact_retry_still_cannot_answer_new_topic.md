@@ -5,6 +5,15 @@
 - **严重等级**: P2
 - **状态**: New
 
+## 2026-07-23 运行态复核
+
+- 状态维持 `New`，严重等级维持 `P2`。
+- `2026-07-23 06:35-06:36 CST`，Feishu direct 旧会话 `Actor_feishu__direct__ou_5fa7fc023b9aa2a550a3568c8ffc4d7cdc` 收到短问 `分析一下谷歌最新财报`。
+- runtime 首轮已执行 `data_fetch search` 与 `data_fetch earnings_calendar`，随后记录 `context overflow detected, compacting and retrying`，并强制 compact 12 条历史消息。
+- compact 后重试继续成功执行 `data_fetch search`、`data_fetch earnings_calendar GOOGL` 与 `web_search query="Alphabet Google GOOGL Q2 2026 earnings results financial performance"`。
+- `2026-07-23 06:36:24` 日志记录 `entity_resolution.agent_loop ... answer_preserved=true` 后，仍以 `upstream HTTP 400: invalid params, request entity too large (2013)` 失败；assistant final 只返回 `抱歉，这次处理失败了。请稍后再试。`
+- 判断：这是同一 compact / 旧上下文恢复路径复发，不新建重复缺陷。用户短问没有得到财报分析，但同窗其它会话可正常收口，未见错投、敏感信息泄露或全渠道不可用，因此仍为功能性 `P2`，非 P1。
+
 ## 2026-07-21 状态回退结论
 
 - 状态从 `Fixed` 回退为 `New`，严重等级维持 `P2`。

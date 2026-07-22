@@ -14,13 +14,23 @@ P2
 
 ## 状态
 
-Fixed
+New
 
 ## GitHub Issue
 
-无，修复提交已在同窗落地；当前不是活跃 P1。
+无，当前不是 P1。
 
 ## 证据来源
+
+- 运行态回退（2026-07-23 07:01 CST）
+  - `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-22`
+    - 巡检窗口：2026-07-23 03:01-07:01 CST。
+    - `session_id=Actor_feishu__direct__ou_5fea712445d905e8418bde07dbcf2cbfb2`
+    - `2026-07-23T05:10:01.266650+08:00` Feishu scheduler 触发 `美股收盘资金流向简报`。
+    - runtime 已成功执行多轮 `data_fetch quote/sector_performance/crypto_quote` 与 `web_search`，覆盖 QQQ、SPY、GLD、GDX、SMH、XLE、BTC、ETH、GOOGL、NVDA、META、AVGO、XLU、TSLA、MSFT 等数据源。
+    - `2026-07-23 05:14:03` 日志记录 `entity_resolution.agent_loop ... answer_preserved=true` 后，整轮落成 `LLM 错误: stream transport error ... error decoding response body`。
+    - assistant final 只落库 `抱歉，这次处理失败了。请稍后再试。`，随后 scheduler failure 补偿为 `本轮定时任务未能完成，系统已记录失败并将在下一次触发时重试。`；用户没有拿到已执行工具结果的降级摘要。
+  - 判断：该样本晚于 2026-07-19 的代码级修复，且仍发生在 OpenAI-compatible 流式收口 / 响应体解码边界，用户可见表现仍是通用失败。单个 Feishu scheduler 任务失败，同窗其它会话可正常收口，未见错投、敏感信息泄露、全渠道不可用或活跃 P1 证据，严重等级维持 P2。
 
 - 运行态复核（2026-07-19 07:01 CST）
   - 本轮 2026-07-19 03:00-07:01 CST 继续检索同类错误：03:00 CST heartbeat 批量出现 `chat_with_tools stream ended before Done`，覆盖 TSLA、中际旭创、持仓重大事件、NVDA、NBIS、ASTS、Monitor_Watchlist_11、光模块板块、RKLB、TEM、原油、存储板块、SIVE、光迅科技、闪迪等任务，并落成 runner_error / 跳过发送。
@@ -58,14 +68,14 @@ Fixed
 ## 当前实现效果
 
 - 修复前，Web direct canary 用户请求没有得到业务答案，只收到通用失败文案。
-- 错误净化有效，用户没有看到 `chat_with_tools stream ended before Done` 原文。
-- 同窗 03:00 heartbeat 批量出现相同错误，说明该问题不仅影响单条 Web direct，也可能让 heartbeat 覆盖跳过发送。
-- 02:56 CST 已有代码提交针对 compatible stream completion 做规范化修复，本轮不将该缺陷列入活跃待修复。
+- 2026-07-23 运行态又出现 Feishu scheduler 在 `answer_preserved=true` 后因 stream transport / response body decode 失败而只返回通用失败。
+- 错误净化有效，用户没有看到 `chat_with_tools stream ended before Done`、`stream transport error` 或 `error decoding response body` 原文。
+- 该问题当前重新列入活跃待修复；需要区分 2026-07-19 的 `Done` 缺失修复是否覆盖不足，还是另一个 OpenAI-compatible 流式响应体解码失败分支缺少恢复。
 
 ## 用户影响
 
 - 这是功能性缺陷，不是单纯文案问题：用户明确提出的问题没有被完成。
-- 当前证据显示同窗仍有 Web direct 成功样本，且原始错误未外泄、无错投、无数据破坏、无全渠道不可用；因此定级为 P2，而不是 P1。
+- 当前证据显示同窗仍有 Web / Feishu 成功样本，且原始错误未外泄、无错投、无数据破坏、无全渠道不可用；因此定级为 P2，而不是 P1。
 
 ## 根因判断
 
@@ -75,11 +85,11 @@ Fixed
 
 ## 下一步建议
 
-- 后续巡检继续检索 `chat_with_tools stream ended before Done`，确认 `f959cecb` 后 live 运行态是否收敛。
-- 若仍复发，优先补 provider 层流式事件状态机回归，覆盖 final chunk、finish reason、tool call 收尾与 Done 缺失的组合。
+- 后续巡检继续检索 `chat_with_tools stream ended before Done`、`stream transport error`、`error decoding response body`，确认 live 运行态是否收敛。
+- 优先补 provider 层流式事件状态机 / 响应体解码失败恢复回归，覆盖 final chunk、finish reason、tool call 收尾、Done 缺失和 body decode failure 的组合。
 - 维持现有错误净化，禁止 runner 原始错误进入用户可见回复。
 
 ## 验证
 
 - 本轮为缺陷台账维护任务，未修改业务代码、测试代码或配置代码，未运行代码测试。
-- 已验证范围：`data/sessions.sqlite3` 最近四小时消息收口、`data/runtime/logs/web.log.2026-07-18` 运行错误、最近四小时非文档代码提交。
+- 已验证范围：`data/sessions.sqlite3` 最近四小时消息收口、`data/runtime/logs/web.log.2026-07-22` 运行错误、最近四小时非文档代码提交。

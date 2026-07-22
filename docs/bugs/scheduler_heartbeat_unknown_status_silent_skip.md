@@ -7,6 +7,14 @@
 
 ## 修复进展
 
+- `2026-07-23 03:01-07:01 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-22`
+    - 同窗继续出现 `HeartbeatDiag=664`、`deliver job_id=89`、`duplicate_suppressed=41`、`runner_error=34`、结构化 / 状态解析相关失败 19 条、`context window exceeds limit=1`。
+    - `parse_kind` 分布为 `PlainTextTriggered=178`、`JsonNoop=52`、`PlainTextSuppressed=10`、`PlainTextNoop=9`、`JsonTriggered=5`、`JsonUnknownStatus=4`、`JsonMalformed=2`、`JsonEmptyStatus=2`。
+    - 03:30 / 07:00 CST `美股黄金坑信号心跳检测` 以 `<think>` + 市场分析正文落成 `JsonMalformed` 并标记失败；`Monitor_Watchlist_11` 与 `中际旭创关键事件心跳提醒` 继续出现 `JsonUnknownStatus` / `JsonEmptyStatus`；多条 noop 语义仍先进入 `PlainTextTriggered` 再靠 duplicate suppression 压掉。
+  - 会话质量对照：`data/sessions.sqlite3` 同窗按真实 `timestamp` 新增 20 条 user / 10 条 assistant / 6 条 system compact，覆盖 8 个更新 session；ordinary assistant final 未见 `<think>`、本机路径、原始 provider 错误、panic 或 raw tool JSON 外泄。
+  - 判断：最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。该问题继续影响 heartbeat 监控判断、送达语义和失败 / 跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-22 23:02-2026-07-23 03:01 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-22`
     - 同窗继续出现 `HeartbeatDiag=588`、`deliver job_id=72`、`duplicate_suppressed=36`、`runner_error=30`、`parse_failure=4`、`context window exceeds limit=9`。
