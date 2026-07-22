@@ -14,13 +14,23 @@ P2
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
 无，当前不是 P1。
 
 ## 证据来源
+
+- `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-22`
+  - 2026-07-23 03:01 CST 复核窗口继续复发，状态维持 `New / P2`。
+  - `session_id=Actor_web__direct__web-user-5bb05078acd4`
+    - `2026-07-22T23:48:49.234724+08:00` 用户问 `LITE Call 20261218 750 成本116，我今天要卖出止盈么？`。
+    - `2026-07-22T23:49:53.052662+08:00` assistant final 只返回“本轮研究未能完成，暂未形成可供参考的标的结论。”
+    - `2026-07-23T00:14:16.434306+08:00` 用户原问题重试。
+    - `2026-07-23T00:15:10.970046+08:00` assistant 再次只返回同一失败提示。
+  - runtime 两轮均已完成 `data_fetch search` / `data_fetch quote LITE`，第二轮还完成 `data_fetch snapshot LITE` 与 `web_search`；随后均记录 `entity_resolution.agent_loop ... contract_built=true entities=LITE answer_preserved=true`，再因 `committed terminal prefix mismatch` 写入 `committed_prefix_after_terminal_failure`。
+  - 本轮问题直接阻断 LITE 期权止盈决策回答，但同窗其它 Web / Feishu 会话仍有正常 assistant 收口，未见错投、敏感信息外泄或全渠道不可用；严重等级仍为 P2，非 P1，不创建 GitHub Issue。
 
 - `data/sessions.sqlite3`
   - 巡检窗口：2026-07-22 19:01-23:02 CST。
@@ -52,9 +62,28 @@ New
 
 ## 当前实现效果
 
+- 2026-07-23 03:01 CST 复核：LITE 期权止盈请求连续两轮复发同类 `committed terminal prefix mismatch`，且两轮都已有 `answer_preserved=true` 与 LITE 实体 contract。
 - `answer_preserved=true` 后仍被 `committed terminal prefix mismatch` 改写成失败 final。
 - 失败文案没有解释用户如何调整问题，也没有给出已有材料的部分结论。
 - 同一会话连续两次复发，直到 compact 后才恢复。
+
+## 修复情况
+
+- 已在 `crates/hone-channels/src/agent_session/core.rs` 为 committed prefix 收口新增恢复分支：
+  - 终稿仍带已提交 prefix 时，继续只做原有前导空白对齐。
+  - 终稿只剩非空正文 tail、未携带 prefix 时，改为恢复成 `committed prefix + 正文`，不再直接降级成通用研究失败。
+  - 若正文为空或正文里已出现冲突 prefix，仍保持 fail-closed。
+- 已在 `crates/hone-channels/src/agent_session/tests.rs` 补回归，覆盖：
+  - committed prefix + tail-only 终稿恢复；
+  - 恢复后 Web direct 正常持久化 / 投递，不再落成 generic failure；
+  - 既有 committed prefix 成功路径不回归。
+
+## 验证
+
+- `cargo test -p hone-channels committed_prefix_recovery_prepends_a_missing_prefix_only_for_tail_only_content --lib -- --nocapture`
+- `cargo test -p hone-channels service_prefix_tail_only_final_response_is_recovered_without_generic_failure --lib -- --nocapture`
+- `cargo test -p hone-channels service_prefix_and_final_tail_are_visible_and_persisted_byte_identically --lib -- --nocapture`
+- `cargo check -p hone-channels --tests`
 
 ## 用户影响
 
@@ -68,8 +97,7 @@ New
 - `missing_explicit_seeds=456` 可能说明该轮被 entity / evidence contract 判定为缺少显式证券种子，但用户任务本身是文章观点解读，不一定需要强制证券实体 contract。
 - 该缺陷不同于 `feishu_function_calling_max_iterations_generic_failure.md`：本轮没有 `max_iterations_exceeded:10`，失败发生在 terminal prefix / finalization 阶段。
 
-## 下一步建议
+## 后续观察
 
-1. 检查 `committed terminal prefix mismatch` 的触发条件，确认它为何会覆盖 `answer_preserved=true`。
-2. 对 answer-preserved 路径增加恢复策略：terminal prefix mismatch 时直接提交保留答案，或进入一次无工具总结。
-3. 为“长文观点解读 / 无显式 ticker”补回归，避免 entity contract 把非标的复盘问题压成研究失败。
+1. 继续观察同类 Web direct 长文解读 / 期权止盈问答，确认 live 路径不再把 answer-preserved 终稿降级成通用失败。
+2. 若后续仍出现 `committed terminal prefix mismatch` 且正文为空，再单独排查上游 terminal synthesis / recovery 何时丢失正文。

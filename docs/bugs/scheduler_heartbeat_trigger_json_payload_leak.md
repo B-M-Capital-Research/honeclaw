@@ -7,6 +7,15 @@
 
 ## 最新进展
 
+- `2026-07-22 23:02-2026-07-23 03:01 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-22`
+    - 同窗有 `deliver job_id=72`、`duplicate_suppressed=36`、`parse_failure=4`，parse 分布为 `PlainTextTriggered=144`、`JsonNoop=57`、`PlainTextSuppressed=8`、`JsonUnknownStatus=8`、`PlainTextNoop=3`、`JsonTriggered=1`。
+    - 00:00 CST `TSLA 正负触发条件心跳监控` raw preview 以 `<think>` 后接 `{"status":"noop"}`；03:00 CST `Monitor_Watchlist_11` raw preview 以 `<think>` 开头并落成 `JsonUnknownStatus` / parse failure。
+    - 00:00-03:00 多条 heartbeat deliver preview 继续把 `noop` 状态、协议化标题、工具额度口径或检查表格混入用户态内容。
+  - `data/sessions.sqlite3`
+    - 同窗未确认协议 JSON 进入 ordinary direct assistant final；主功能链路未整体阻断。
+  - 判断：这些样本说明 heartbeat 出站格式化仍会在 raw / deliver preview 层混入内部结构化协议、工具口径或状态词；当前主要影响提醒结构和可读性，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-22 15:02-19:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-22`
     - 同窗有 84 条 `deliver job_id`、43 条 `duplicate_suppressed`、17 条“heartbeat 输出不是结构化 JSON”，parse 分布为 `PlainTextTriggered=168`、`JsonNoop=52`、`PlainTextSuppressed=17`、`PlainTextNoop=9`、`JsonUnknownStatus=4`、`JsonTriggered=3`、`JsonMalformed=2`。

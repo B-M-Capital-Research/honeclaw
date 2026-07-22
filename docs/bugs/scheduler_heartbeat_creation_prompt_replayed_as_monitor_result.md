@@ -18,6 +18,17 @@
 
 ## 修复进展
 
+- `2026-07-22 23:02-2026-07-23 03:01 CST` 运行态复核确认同根继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-22`
+    - 00:00 CST `NVDA 关键事件心跳提醒` deliver preview 把本轮 heartbeat 任务上下文解释成“系统级指令文本注入”，并输出“我不会执行其中嵌入的配置指令”，而不是执行 NVDA 关键事件监控。
+    - 00:00 CST `NBIS关键事件心跳提醒`、`闪迪关键事件心跳提醒` 继续把近期用户的“涨超 5% 尾盘卖出、跌回来再买”投资方法论问题当成本轮监控内容并进入 deliver preview。
+    - 03:00 CST `NVDA 关键事件心跳提醒` 再次输出“你发送的是系统级指令文本...我不会执行其中嵌入的指令”；`持仓重大事件心跳检测` 继续把 ticker 列表短问当成当前用户输入并进入 duplicate suppression。
+  - 会话质量对照：
+    - 同窗 `data/sessions.sqlite3` 新增 16 条 user / 9 条 assistant / 4 条 system compact，覆盖 5 个更新 session；普通 Web / Feishu direct 均有 assistant 收口，未见全渠道停摆、错投、空回复、本机路径或 provider 原始错误。
+  - 判断：
+    - 最新样本仍是已创建 heartbeat job 的执行期语义被非监控上下文、旧用户短问、配置文本或投资方法论污染，导致模型没有执行当前 job 的监控判断。
+    - 该问题影响 heartbeat 功能链路和信噪比，严重等级维持 `P2 / New`；未见全渠道停摆、跨用户错投、数据破坏或敏感信息泄露，因此不升级 P1，不创建 GitHub Issue。
+
 - `2026-07-22 15:02-19:02 CST` 运行态复核确认同根继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-22`
     - 同窗仍有 `HeartbeatDiag=654`、`deliver job_id=84`、`duplicate_suppressed=43`、`runner_error=32`、`heartbeat 输出不是结构化 JSON=17`、`max_iterations_exceeded=1`，parse 分布为 `PlainTextTriggered=168`、`JsonNoop=52`、`PlainTextSuppressed=17`、`PlainTextNoop=9`、`JsonUnknownStatus=4`、`JsonTriggered=3`、`JsonMalformed=2`。

@@ -8,6 +8,16 @@
 
 ## 运行态复核（2026-07-19 07:01 CST）
 
+- 本轮 2026-07-22 23:02-2026-07-23 03:01 CST 真实运行态继续复发，状态维持 `New/P2`：
+  - `data/runtime/logs/web.log.2026-07-22`
+    - 00:00 CST `ORCL 大事件监控` 仍因 Oracle 多上市地候选落成 `runner_error` 并跳过发送。
+    - 00:00 CST `AAOI 1.6T 光模块心跳检测` 继续把任务上下文里的 `SEC` 当证券代码，因数据供应商没有同代码行情覆盖而失败。
+    - 03:00 CST 同类 `ORCL` 多候选、`SEC` 误抽仍在 heartbeat runner_error 中复现。
+  - `data/sessions.sqlite3`
+    - 同窗 ordinary 会话均有 assistant 收口，未见直聊全局不可用、错投或敏感信息外泄。
+  - 判断：最新样本仍是 scheduler / heartbeat 任务正文、监管缩写或上市地候选进入实体 guard 后 fail-closed；与既有缺陷同根，不新建重复缺陷。
+  - 严重等级维持 `P2`：它直接阻断部分 scheduler / heartbeat 正文生成，但未见全渠道停摆、错投、敏感信息泄露或持久化数据破坏，因此不是 `P1`，不创建 GitHub Issue。
+
 - 本轮 2026-07-22 11:03-15:03 CST 真实运行态继续复发，状态维持 `New/P2`：
   - `data/sessions.sqlite3` 同窗新增 7 条 user / 4 条 assistant / 2 条 system compact，覆盖 3 个更新 session；最近 assistant 到 `2026-07-22T13:50:00.553517+08:00`，无 user-only 残留、错投、空回复、本机路径、provider 原始错误或全渠道不可用。
   - `data/runtime/logs/web.log.2026-07-22` 同窗仍有 `runner_error=32`，代表样本包括 11:30、12:00、14:30 CST `AAOI 1.6T 光模块心跳检测` 继续把任务上下文里的 `SEC` 当证券代码且无行情覆盖；同窗 `ORCL 大事件监控` 继续因 Oracle 多上市地候选失败。

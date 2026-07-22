@@ -22,6 +22,15 @@
 
 ## 最新进展
 
+- 本轮 2026-07-22 23:02-2026-07-23 03:01 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-22`
+    - 00:00 CST `持仓财报与重大新闻心跳提醒` deliver preview 继续引用 `SNDK $1,573.61`、`AAOI $119.26` 作为前轮行情锚，并以此生成 noop 报告。
+    - 03:00 CST `闪迪关键事件心跳提醒` deliver preview 使用 `SNDK $1,603.87`，`光模块板块关键事件心跳提醒` / `存储板块关键事件心跳提醒` 继续引用 `SNDK $1,573.61` 与 `AAOI $119.26`。
+    - 03:00 CST `Cerebras IPO与业务进展心跳监控` deliver preview 继续把 `NASDAQ CBRS $205.83` 当作 Cerebras 公开交易价格锚。
+  - `data/sessions.sqlite3`
+    - 同窗新增 16 条 user / 9 条 assistant / 4 条 system compact，覆盖 5 个更新 session；未见错投、投递失败、空回复、敏感信息外泄或全渠道不可用。
+  - 判断：最新证据仍是行情源 / 数值 sanity check / 未核验事件缺口。它会污染 scheduler / heartbeat 判断质量，但未阻断主投递链路，因此保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-22 15:02-19:02 CST 真实运行态继续出现同根异常 / 高风险价格和未核验事件信号，状态维持 `New`：
   - `data/sessions.sqlite3`
     - 15:47 CST Web direct `session_id=Actor_web__direct__web-user-cdff88db6d9d` 在用户追问 `MU存储上涨情况` 后正常收口，但 final 继续使用 `MU当前报价 $970.82`、单日 `+12.17%`、报价时间为北京时间 `2026-07-22 04:00:01` 的高风险数量级行情锚，并据此解释上涨情况。

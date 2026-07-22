@@ -6,6 +6,11 @@
 - **状态**: New
 - **GitHub Issue**: 无
 - **修复结论复核**:
+- `2026-07-23 03:01 CST` 运行态部分复发继续存在，状态维持 `New`：
+  - `data/sessions.sqlite3` 在 2026-07-22 23:02-2026-07-23 03:01 CST 按真实 `timestamp` 新增 16 条 user / 9 条 assistant / 4 条 system compact，覆盖 5 个更新 session；近期 direct / scheduler session 均以 assistant 收口，`sessions.last_message_role=user` 新增为 0。
+  - 同窗 assistant final 污染扫描未命中 `<think>`、本机路径、`data/sessions.sqlite3`、panic、provider 原始错误、raw tool 字段、`cron_job` 或 fenced JSON；用户可见候选问题已归入 Feishu scheduler answer-preserved failure、Web direct terminal prefix mismatch、实体 guard、heartbeat 语义污染、协议载荷和异常行情锚缺陷。
+  - 但同一库 `cron_job_runs.max(executed_at)` 仍停在 `2026-07-19T13:31:15.040172+08:00`，查询 2026-07-22 23:02 CST 后没有新增 run；`data/runtime/logs/web.log.2026-07-22` 同窗继续记录 588 条 `[HeartbeatDiag]`、72 条 `deliver job_id`、36 条 `duplicate_suppressed`、30 条 `runner_error`、4 条 `parse_failure` 和 9 条 `context window exceeds limit`。
+  - 结论：会话 transcript mirror 能追入当前 direct / scheduler transcript，但本地调度运行台账 `cron_job_runs` 继续未随真实 heartbeat / scheduler 运行态推进。该问题影响巡检、调度审计、补发判断和运行态复核，严重等级维持功能性 `P2`；当前用户态消息仍在生成，不等同于 scheduler 全局漏跑 P1，非 P1，不创建 GitHub Issue。
 - `2026-07-21 07:03 CST` 运行态部分复发继续存在，状态维持 `New`：
   - `data/sessions.sqlite3` 在 2026-07-21 03:02-07:03 CST 按真实 `timestamp` 新增 15 条 user / 9 条 assistant / 4 条 system compact，覆盖 7 个更新 session；采样点 07:00 Feishu scheduler 后续已在 `2026-07-21T07:02:31.973645+08:00` assistant 收口，`sessions.last_message_role=user` 新增为 0。
   - 同窗 assistant final 污染扫描未命中 `<think>`、本机路径、`data/sessions.sqlite3`、panic、provider 原始错误、raw tool 字段、`cron_job`、fenced JSON、transport fallback、model metadata 或 `max_iterations`；用户可见候选问题均已归入既有实体 guard、原油 scheduler、scheduler 时间口径、内部进度文案和异常行情锚缺陷。

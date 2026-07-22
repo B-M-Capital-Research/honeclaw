@@ -5,6 +5,15 @@
 - **严重等级**: P2
 - **状态**: New
 - **证据来源**:
+  - `2026-07-23 03:01 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
+    - `data/runtime/logs/web.log.2026-07-22`
+      - 2026-07-22 23:02-2026-07-23 03:01 CST 检出 9 条 `context window exceeds limit` 相关 heartbeat 信号。
+      - 00:00 CST `TSLA 正负触发条件心跳监控` 首轮 `Primary` 路径失败，错误包含 `upstream HTTP 400: invalid params, context window exceeds limit (2013)`，随后进入 `retry_with_budget_recovery` / `BudgetRecovery { reason: ContextOverflow }` 并收口为 `JsonNoop`。
+      - 03:00 CST `AI与科技持仓观察关键事件心跳提醒` 与 `持仓重大事件心跳提醒` 再次首轮命中同类超窗；前者恢复为 `JsonNoop`，后者恢复后仍以 `context_window_overflow` 跳过发送。
+    - `data/sessions.sqlite3`
+      - 同窗按真实 `timestamp` 新增 16 条 user / 9 条 assistant / 4 条 system compact，覆盖 5 个更新 session；近期 ordinary direct / scheduler 会话均以 assistant 收口，未见全渠道不可用。
+    - 判断：当前运行态已有预算恢复分支，但首轮超窗仍复发，且至少一条恢复后仍失败跳过发送。严重等级维持 P2，非 P1，不创建 GitHub Issue。
+
   - `2026-07-19 19:01 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
     - `data/runtime/logs/web.log.2026-07-19`
       - 15:03-19:01 CST 检出 2 条 `context window exceeds limit` 相关 heartbeat 信号。
