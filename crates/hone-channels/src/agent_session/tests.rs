@@ -30,6 +30,9 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use crate::HoneBotCore;
+use crate::agent_session::core::{
+    align_response_to_committed_prefix, recover_response_with_committed_prefix,
+};
 use crate::investment_response_guard::{
     DeepAnalysisKind, InvestmentResponseContract, ResolvedSecurityEntity,
     build_agent_discovered_investment, prepare_verified_investment_turn,
@@ -48,8 +51,8 @@ use crate::sandbox::sandbox_base_dir;
 
 use super::core::{
     AgentSession, PreparedTurnReexecutionPolicy, SERVICE_OWNED_PREFIX_FAILURE_SUFFIX,
-    align_response_to_committed_prefix, apply_deterministic_investment_fallback,
-    normalize_persistent_trace_failure, prepared_turn_reexecution_policy, prompt_time_for_attempt,
+    apply_deterministic_investment_fallback, normalize_persistent_trace_failure,
+    prepared_turn_reexecution_policy, prompt_time_for_attempt,
 };
 use super::emitter::SessionEventEmitter;
 use super::helpers::{
@@ -238,6 +241,7 @@ struct MockStreamingSequencedRunner {
 struct ServicePrefixRunner {
     fail_after_commit: bool,
     final_tail: String,
+    omit_prefix_from_final_response: bool,
     seen_prefixes: Arc<Mutex<Vec<String>>>,
 }
 
@@ -274,11 +278,16 @@ impl AgentRunner for ServicePrefixRunner {
                 error: Some("agent_timeout: service-prefix fixture".to_string()),
             }
         } else {
+            let final_content = if self.omit_prefix_from_final_response {
+                self.final_tail.clone()
+            } else {
+                format!("\n \t{prefix}{}", self.final_tail)
+            };
             AgentResponse {
                 // Hidden provider reasoning can leave blank bytes before the
                 // canonical answer. The Session must remove only those bytes
                 // because the service prefix is already visible and ACKed.
-                content: format!("\n \t{prefix}{}", self.final_tail),
+                content: final_content,
                 tool_calls_made: Vec::new(),
                 iterations: 1,
                 success: true,
@@ -1581,6 +1590,7 @@ async fn service_prefix_and_final_tail_are_visible_and_persisted_byte_identicall
     let runner = ServicePrefixRunner {
         fail_after_commit: false,
         final_tail: tail.to_string(),
+        omit_prefix_from_final_response: false,
         seen_prefixes: seen_prefixes.clone(),
     };
     let mut core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
@@ -1670,6 +1680,110 @@ fn committed_prefix_alignment_strips_only_provider_leading_whitespace() {
     assert_eq!(wrong.content, original);
 }
 
+#[test]
+fn committed_prefix_recovery_prepends_a_missing_prefix_only_for_tail_only_content() {
+    let prefix = "数据时间：北京时间 2026-07-22 03:41；行情口径：本轮仅使用可核验资料";
+    let mut tail_only = AgentResponse {
+        content: "\n\n候选结论".to_string(),
+        tool_calls_made: Vec::new(),
+        iterations: 1,
+        success: true,
+        error: None,
+    };
+    assert!(recover_response_with_committed_prefix(
+        &mut tail_only,
+        prefix
+    ));
+    assert_eq!(tail_only.content, format!("{prefix}\n\n候选结论"));
+
+    let mut conflicting = AgentResponse {
+        content: format!("草稿：{prefix}\n\n候选结论"),
+        tool_calls_made: Vec::new(),
+        iterations: 1,
+        success: true,
+        error: None,
+    };
+    let original = conflicting.content.clone();
+    assert!(!recover_response_with_committed_prefix(
+        &mut conflicting,
+        prefix
+    ));
+    assert_eq!(conflicting.content, original);
+}
+
+#[tokio::test]
+async fn service_prefix_tail_only_final_response_is_recovered_without_generic_failure() {
+    let root = make_temp_dir("hone_channels_service_prefix_tail_only");
+    std::fs::create_dir_all(&root).expect("create root");
+    let tail = "\n\n已按本轮可核验证据完成数据中心候选筛选。";
+    let seen_prefixes = Arc::new(Mutex::new(Vec::new()));
+    let runner = ServicePrefixRunner {
+        fail_after_commit: false,
+        final_tail: tail.to_string(),
+        omit_prefix_from_final_response: true,
+        seen_prefixes: seen_prefixes.clone(),
+    };
+    let mut core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    Arc::get_mut(&mut core)
+        .expect("unique test core")
+        .test_runner_factory = Some(Arc::new(move || Box::new(runner.clone())));
+    let actor =
+        ActorIdentity::new("web", "service-prefix-tail-only", None::<String>).expect("actor");
+    let listener = Arc::new(RecordingListener::default());
+    let mut session = AgentSession::new(core.clone(), actor.clone(), "direct");
+    session.add_listener(listener.clone());
+
+    let result = session
+        .run(
+            "大A有没有类似CRWV、Nebius这样的数据中心的标的",
+            AgentRunOptions::default(),
+        )
+        .await;
+
+    assert!(result.response.success, "{:?}", result.response.error);
+    let prefix = seen_prefixes
+        .lock()
+        .expect("seen prefixes")
+        .first()
+        .cloned()
+        .expect("committed service prefix");
+    let expected = format!("{prefix}{tail}");
+    assert_eq!(result.response.content, expected);
+
+    let events = listener.events.lock().await;
+    let visible_chunks = events
+        .iter()
+        .filter_map(|event| match event {
+            AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => Some(content.clone()),
+            AgentSessionEvent::Segment { text } => Some(text.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(visible_chunks, [prefix.clone(), tail.to_string()]);
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AgentSessionEvent::Done { response } if response.content == expected
+    )));
+    assert!(!events.iter().any(|event| matches!(
+        event,
+        AgentSessionEvent::PartialDone { .. } | AgentSessionEvent::Run(RunEvent::Error { .. })
+    )));
+    drop(events);
+
+    let messages = core
+        .session_storage
+        .get_messages(&actor.session_id(), None)
+        .expect("persisted messages");
+    let persisted = messages
+        .iter()
+        .rev()
+        .find(|message| message.role == "assistant")
+        .map(session_message_text)
+        .expect("persisted assistant");
+    assert_eq!(persisted, expected);
+    let _ = std::fs::remove_dir_all(root);
+}
+
 #[tokio::test]
 async fn failed_service_prefix_run_appends_and_persists_an_explicit_failure_tail() {
     let root = make_temp_dir("hone_channels_service_prefix_failure_tail");
@@ -1678,6 +1792,7 @@ async fn failed_service_prefix_run_appends_and_persists_an_explicit_failure_tail
     let runner = ServicePrefixRunner {
         fail_after_commit: true,
         final_tail: String::new(),
+        omit_prefix_from_final_response: false,
         seen_prefixes: seen_prefixes.clone(),
     };
     let mut core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));

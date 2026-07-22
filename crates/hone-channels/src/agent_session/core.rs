@@ -420,6 +420,25 @@ pub(super) fn align_response_to_committed_prefix(
     true
 }
 
+pub(super) fn recover_response_with_committed_prefix(
+    response: &mut AgentResponse,
+    prefix: &str,
+) -> bool {
+    if align_response_to_committed_prefix(response, prefix) {
+        return true;
+    }
+    if response.content.trim().is_empty() || response.content.contains(prefix) {
+        return false;
+    }
+    let separator = if response.content.starts_with(char::is_whitespace) {
+        ""
+    } else {
+        "\n\n"
+    };
+    response.content = format!("{prefix}{separator}{}", response.content);
+    true
+}
+
 fn normalize_execute_once_failure(
     result: &mut AgentRunnerResult,
     reexecution_policy: PreparedTurnReexecutionPolicy,
@@ -2464,7 +2483,7 @@ impl AgentSession {
         }
         if response.success
             && let Some(prefix) = committed_visible_prefix.as_deref()
-            && !align_response_to_committed_prefix(&mut response, prefix)
+            && !recover_response_with_committed_prefix(&mut response, prefix)
         {
             tracing::error!(
                 session_id,

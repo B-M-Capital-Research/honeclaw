@@ -23,12 +23,12 @@ Fixed
 ## 证据来源
 
 - `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-22`
-  - 2026-07-23 03:01 CST 复核窗口继续复发，状态维持 `New / P2`。
+  - 后续本地夜间窗口继续复发，状态一度维持 `New / P2`。
   - `session_id=Actor_web__direct__web-user-5bb05078acd4`
     - `2026-07-22T23:48:49.234724+08:00` 用户问 `LITE Call 20261218 750 成本116，我今天要卖出止盈么？`。
     - `2026-07-22T23:49:53.052662+08:00` assistant final 只返回“本轮研究未能完成，暂未形成可供参考的标的结论。”
-    - `2026-07-23T00:14:16.434306+08:00` 用户原问题重试。
-    - `2026-07-23T00:15:10.970046+08:00` assistant 再次只返回同一失败提示。
+    - 同一夜间窗口里用户原问题重试。
+    - 重试轮 assistant 再次只返回同一失败提示。
   - runtime 两轮均已完成 `data_fetch search` / `data_fetch quote LITE`，第二轮还完成 `data_fetch snapshot LITE` 与 `web_search`；随后均记录 `entity_resolution.agent_loop ... contract_built=true entities=LITE answer_preserved=true`，再因 `committed terminal prefix mismatch` 写入 `committed_prefix_after_terminal_failure`。
   - 本轮问题直接阻断 LITE 期权止盈决策回答，但同窗其它 Web / Feishu 会话仍有正常 assistant 收口，未见错投、敏感信息外泄或全渠道不可用；严重等级仍为 P2，非 P1，不创建 GitHub Issue。
 
@@ -62,7 +62,7 @@ Fixed
 
 ## 当前实现效果
 
-- 2026-07-23 03:01 CST 复核：LITE 期权止盈请求连续两轮复发同类 `committed terminal prefix mismatch`，且两轮都已有 `answer_preserved=true` 与 LITE 实体 contract。
+- LITE 期权止盈请求曾在后续夜间窗口连续两轮复发同类 `committed terminal prefix mismatch`，且两轮都已有 `answer_preserved=true` 与 LITE 实体 contract。
 - `answer_preserved=true` 后仍被 `committed terminal prefix mismatch` 改写成失败 final。
 - 失败文案没有解释用户如何调整问题，也没有给出已有材料的部分结论。
 - 同一会话连续两次复发，直到 compact 后才恢复。
