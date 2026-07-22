@@ -382,3 +382,16 @@
 - 本轮判断
   - 这些样本仍落在既有实体 guard / scheduler context extraction 误拦范围，不新建重复缺陷。
   - 影响是部分 Web / Feishu scheduler 和 heartbeat 监控任务跳过或发送失败提示；同窗仍有 direct 和 scheduler 成功收口样本，因此维持功能性 `P2 / New`，非 P1。
+
+## 最新运行态复核（2026-07-22 11:03 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-07-22 07:03-11:03 CST。
+  - 08:30 CST Feishu scheduler `闪迪(SNDK)每日行情与行业简报` 的任务正文包含存储行业词 `NAND`，assistant final 返回“已识别证券代码 `NAND`，但当前数据供应商没有返回同代码行情覆盖”，没有生成 SNDK 行情与行业简报。
+  - 08:30 CST Web scheduler `187只关注股临近财报日提醒` 写入用户可见 `执行出错` 补偿消息；本轮未确认该条同样来自实体 guard，暂不作为新根因建档。
+- `data/runtime/logs/web.log.2026-07-22`
+  - 08:00-11:00 CST heartbeat 仍有 14 行 `SEC` 误抽日志，代表样本为 `AAOI 1.6T 光模块心跳检测` 把任务上下文里的 `SEC` 当证券代码并 fail-closed。
+  - 同窗还有 14 行 Oracle 多候选日志，`ORCL 大事件监控` 继续要求补充交易所后缀或公司全名，导致本轮不发送。
+- 本轮判断
+  - `NAND` 是行业 / 技术名词，不是本轮用户要求分析的证券标的；该样本与此前 `PCE`、`SEC`、`REPEAT`、`EBITDA` 同属 guard 扫描完整 scheduler/heartbeat 文本导致的误拦。
+  - 影响是部分 scheduler / heartbeat 任务跳过或给用户失败提示；同窗 direct 与多个 scheduler 仍正常收口，未见错投、敏感信息泄露或全渠道不可用，维持功能性 `P2 / New`，非 P1。

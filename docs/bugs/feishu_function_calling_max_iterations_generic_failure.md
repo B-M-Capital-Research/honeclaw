@@ -122,3 +122,14 @@
 1. 优先确认当前 live Feishu direct strict runner 是否已经加载 `39fe6e59` 后的预算配置；如果未部署，先重启 / 部署后复核同类复杂投研请求。
 2. 若已部署仍出现 `max_iterations_exceeded:10`，检查是否有其它 strict runner 路由、恢复分支或环境变量覆盖仍保留 10 次上限。
 3. 补 function-calling 的“基于已有 tool result 直接总结”恢复策略，避免即便触顶也丢弃已成功取得的数据。
+
+## 最新运行态复核（2026-07-22 11:03 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-07-22 07:03-11:03 CST。
+  - 09:00 CST Feishu scheduler `核心观察池早间简报` 的用户任务要求“使用最新美股市场价格，不要用过时数据”，assistant final 仅返回“抱歉，这次处理失败了。请稍后再试。”，随后又写入 scheduler failure 补偿“本轮定时任务未能完成，系统已记录失败并将在下一次触发时重试。”
+- `data/runtime/logs/web.log.2026-07-22`
+  - 同窗未命中 `max_iterations_exceeded`，因此本轮不能确认该样本仍是 10 次预算上限复发。
+- 本轮判断
+  - 这条样本只证明普通 scheduler 仍会在复杂投研 / 观察池任务中退化成通用失败，用户没有拿到降级摘要或部分结果；但根因尚未确认为本单原始的 `max_iterations_exceeded:10`。
+  - 暂按既有 function-calling 通用失败链路追加待查证据，不新建重复缺陷、不调整严重等级或状态。影响仍是单轮 scheduler 任务失败；同窗 direct 与多个 scheduler 正常收口，未见错投、数据破坏或全渠道不可用，维持功能性 `P2 / New`，非 P1。

@@ -183,3 +183,14 @@
 
 - 后续 `bug` 巡检优先复核 `美股黄金坑信号心跳检测` 是否仍有旧 prompt 残留；若 runtime 仍把任务当创建请求，再把问题下沉到 heartbeat job 创建/持久化时的 prompt 规范化或迁移工具。
 - 若其它 heartbeat job 也复发“无法创建 / 不能设置 / 已配置监控”类话术，应复用本次 `management_drift` 路径继续扩展样本，而不是新建重复缺陷。
+
+## 最新运行态复核（2026-07-22 11:03 CST）
+
+- `data/runtime/logs/web.log.2026-07-22`
+  - 巡检窗口：2026-07-22 07:03-11:03 CST。
+  - 08:00 CST `ASTS 重大异动心跳监控` 的 raw preview 把本轮 heartbeat 执行理解成“用户只发了 ASTS，没有附问题”，deliver preview 也按“你只发了 ASTS”回复；这不是执行已有监控条件的干净判断。
+  - 08:00 / 11:00 CST `SIVE POET/Nokia/1.6T DFB 心跳检测` 多次把本轮 heartbeat 执行解释成“用户只发了 POET，没有附问题”，并生成让用户选择持仓诊断 / 新闻追踪等操作的回复。
+  - 11:00 CST `闪迪关键事件心跳提醒`、`NBIS关键事件心跳提醒` 又把近期直聊里的投资方法论问题当作本轮 heartbeat 结果，deliver preview 输出“卖出赢家效应 / 截断盈利、持有亏损”的长文，而不是 SNDK / NBIS 关键事件监控结论。
+- 本轮判断
+  - 这些样本与“已创建 heartbeat job 的执行意图被旧用户输入、创建/配置语义或非监控直聊上下文污染”同属一条功能性监控链路缺陷。
+  - 影响是部分 heartbeat 会发送与监控条件无关的内容，或被 duplicate suppression 用坏基线压掉；同窗普通 direct / scheduler 仍可收口，未见全渠道停摆、错对象投递或数据安全泄露，维持 `P2 / New`，非 P1。

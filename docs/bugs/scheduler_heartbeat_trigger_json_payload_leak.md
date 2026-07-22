@@ -395,3 +395,13 @@
 - 本轮判断
   - 最新证据仍是既有 heartbeat JSON / 协议字段外露质量缺陷复发，不是新的链路根因。
   - 本轮没有确认大面积用户已收到原始 JSON，也没有错投或系统级失败；主风险仍是用户可见格式和产品感退化，因此维持质量性 `P3 / New`，非 P1。
+
+## 最新运行态复核（2026-07-22 11:03 CST）
+
+- `data/runtime/logs/web.log.2026-07-22`
+  - 巡检窗口：2026-07-22 07:03-11:03 CST。
+  - 11:00 CST `Monitor_Watchlist_11` `parse_kind=PlainTextTriggered`，`deliver_preview` 直接以 fenced JSON 开头，包含 `"status": "heartbeat_check_complete"`、`"checked"`、`"limited"` 等协议字段，而不是面向用户的自然语言提醒。
+  - 同窗 heartbeat 仍有 168 条 `PlainTextTriggered`、6 条 `PlainTextSuppressed` 与 6 条“heartbeat 输出不是结构化 JSON”失败日志，说明结构化协议与用户可见正文边界仍不稳定。
+- 本轮判断
+  - 最新样本仍是既有 heartbeat JSON / 协议字段外露质量缺陷复发，不是新的链路根因。
+  - 为何不影响功能链路，因此定级为 P3：该样本仍经过 heartbeat 执行与投递路径，用户能看到核心检查数据；问题主要是格式退化和协议字段外露，没有错投、漏投或系统级失败证据。状态维持质量性 `P3 / New`，非 P1。

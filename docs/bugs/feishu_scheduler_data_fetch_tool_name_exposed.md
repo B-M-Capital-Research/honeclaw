@@ -774,3 +774,14 @@ New
   - 这是既有 Feishu scheduler 内部工具名 / 数据源实现词外露复发。
   - 问题只影响用户可见文案边界和产品感，不阻断 scheduler 主功能链路；为何不影响功能链路，因此定级为 P3：调度触发、生成和最终回复均完成，用户仍收到观察池内容，只是看到了不应暴露的内部工具名。
   - 状态维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
+## 最新运行态复核（2026-07-22 11:03 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-07-22 07:03-11:03 CST。
+  - 09:03 CST Feishu direct `Actor_feishu__direct__ou_5f49e2e252460a05eee0ff98f685cf9f16` 回答 AEHR A股映射分析时，用户可见 final 开头外露英文中间进度句“现在我已经收集到足够的信息，可以为用户撰写完整的AEHR A股映射分析报告”。
+  - 09:31 CST Feishu scheduler `美股收盘资金流复盘` final 写出 `gainers_losers / sector_performance provider timestamp 未标注时段`，把内部 provider / 工具口径直接暴露给用户。
+  - 两条回复均有业务正文并以 assistant 收口，没有投递失败、空回复、错投、会话悬挂或链路级数据破坏证据。
+- 本轮判断
+  - 这是既有 Feishu scheduler / direct 内部流程、工具名和 provider 口径外露的同根复发，不新建重复缺陷。
+  - 为何不影响功能链路，因此定级为 P3：调度 / 直聊生成和回复均完成，用户仍收到分析内容；问题主要是用户可见文案边界、产品感和可信度退化。状态维持质量性 `P3 / New`，非 P1。
