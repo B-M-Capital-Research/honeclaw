@@ -14,13 +14,23 @@ P2
 
 ## 状态
 
-Fixed
+New
 
 ## GitHub Issue
 
 无，当前不是 P1。
 
 ## 证据来源
+
+- `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-23`
+  - `2026-07-24 03:02 CST` 巡检确认本缺陷在代码级 `Fixed` 后真实运行态复发，状态回退为 `New/P2`。
+  - `session_id=Actor_web__direct__web-user-266454c88ed6`
+    - `2026-07-24T02:50:16.904767+08:00` 用户问 `CIFR基本面怎么样，为什么连续四天大涨`。
+    - runtime 已完成 `data_fetch search`、`web_search "CIFR C3.ai stock news July 2026 four day rally"`、`data_fetch snapshot CIFR`、`data_fetch news CIFR`、`web_search "Cipher Mining CIFR stock rally July 2026"`、`data_fetch financials CIFR`。
+    - `2026-07-24 02:51:48` runtime 记录 `entity_resolution.agent_loop ... contract_built=false answer_preserved=true mode=observational`，随后 `failed ... error="committed terminal prefix mismatch"`，并 `session.persist_assistant ... detail=committed_prefix_after_terminal_failure`。
+    - `2026-07-24T02:51:48.710306+08:00` assistant final 只返回“本轮研究未能完成，暂未形成可供参考的标的结论。”，`metadata_json` 为 `run_failed=true`、`terminal_stream_incomplete=true`、`error_kind=AgentFailed`。
+  - 同窗 `data/sessions.sqlite3` 按真实 `timestamp` 新增 6 条 user / 6 条 assistant，覆盖 4 个更新 session；未见全渠道不可用、错投、敏感信息泄露或数据破坏，因此维持功能性 P2，非 P1，不创建 GitHub Issue。
+  - 判断：这仍是已保留答案后被 terminal prefix mismatch 覆盖成通用研究失败的同一根因，不新建重复缺陷；本次复发说明 2026-07-22 的 tail-only 恢复未覆盖 `contract_built=false + observational answer_preserved=true` 形态。
 
 - `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-22`
   - 后续本地夜间窗口继续复发，状态一度维持 `New / P2`。
@@ -62,6 +72,7 @@ Fixed
 
 ## 当前实现效果
 
+- 2026-07-24 02:50 CST CIFR 投研请求说明：即便工具调用已经完成、`answer_preserved=true`，仍可能因 `committed terminal prefix mismatch` 被覆盖成通用研究失败。
 - LITE 期权止盈请求曾在后续夜间窗口连续两轮复发同类 `committed terminal prefix mismatch`，且两轮都已有 `answer_preserved=true` 与 LITE 实体 contract。
 - `answer_preserved=true` 后仍被 `committed terminal prefix mismatch` 改写成失败 final。
 - 失败文案没有解释用户如何调整问题，也没有给出已有材料的部分结论。
@@ -69,6 +80,7 @@ Fixed
 
 ## 修复情况
 
+- `2026-07-24 03:02 CST` 真实运行态复发，状态已从 `Fixed` 回退为 `New`。
 - 已在 `crates/hone-channels/src/agent_session/core.rs` 为 committed prefix 收口新增恢复分支：
   - 终稿仍带已提交 prefix 时，继续只做原有前导空白对齐。
   - 终稿只剩非空正文 tail、未携带 prefix 时，改为恢复成 `committed prefix + 正文`，不再直接降级成通用研究失败。
@@ -89,7 +101,7 @@ Fixed
 
 - 用户明确要求回答思考题，却连续两次没有得到答案，需要额外追问。
 - 这是功能性缺陷：单轮 Web direct 任务被 terminal finalization 失败阻断。
-- 定级为 `P2`：它阻断当前用户任务，但同窗 28 个更新 session 中没有长期 user-only 残留、错投、敏感信息泄露或全渠道不可用；同一会话第三轮可恢复，因此不是 P1。
+- 定级为 `P2`：它阻断当前用户任务，但同窗未见长期 user-only 残留、错投、敏感信息泄露或全渠道不可用；仍不是 P1。
 
 ## 根因判断
 

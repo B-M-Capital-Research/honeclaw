@@ -7,6 +7,15 @@
 
 ## 最新进展
 
+- `2026-07-23 23:02-2026-07-24 03:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-23`
+    - 同窗有 `deliver job_id=77`、`duplicate_suppressed=14`、`parse_kind` 242 条，parse 分布为 `PlainTextTriggered=152`、`JsonNoop=44`、`JsonMalformed=2`、`JsonTriggered=12`、`JsonUnknownStatus=2`、`PlainTextSuppressed=18`、`PlainTextNoop=12`。
+    - 03:01 CST `AI与科技持仓观察关键事件心跳提醒` deliver preview 在数据时间行后直接进入 fenced JSON，包含 `status`、`triggered`、`symbol`、`event`、`severity` 等协议字段。
+    - 00:00 / 02:30 CST 多条 raw preview 仍以 `<think>` 后接 fenced JSON `{"status":"noop"}`，说明 heartbeat 协议层继续暴露代码块 / 协议状态形态。
+  - `data/sessions.sqlite3`
+    - 同窗未确认协议 JSON 进入 ordinary direct assistant final；主功能链路未整体阻断。
+  - 判断：这些样本说明 heartbeat 出站格式化仍会在 raw / deliver preview 层混入内部结构化协议、工具口径或状态词；当前主要影响提醒结构和可读性，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-22 23:02-2026-07-23 03:01 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-22`
     - 同窗有 `deliver job_id=72`、`duplicate_suppressed=36`、`parse_failure=4`，parse 分布为 `PlainTextTriggered=144`、`JsonNoop=57`、`PlainTextSuppressed=8`、`JsonUnknownStatus=8`、`PlainTextNoop=3`、`JsonTriggered=1`。
