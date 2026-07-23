@@ -6350,3 +6350,17 @@
 - 本轮判断
   - 最新证据仍是 heartbeat 模型输出未稳定遵守结构化协议，解析层在 `PlainText*`、`Json*` 与 execution_failed 之间漂移；没有新的独立根因。
   - 坏态影响 heartbeat 是否稳定得出 `triggered/noop`、是否误送达、漏送或被 duplicate suppression；普通 direct / scheduler 主链路仍可收口，未见错投或全渠道不可用，维持功能性 `P2 / New`，非 P1。
+
+## 最新运行态复核（2026-07-23 11:02 CST）
+
+- `data/runtime/logs/web.log.2026-07-23`
+  - 巡检窗口：2026-07-23 07:01-11:02 CST。
+  - 同窗可分类 heartbeat `parse_kind` 继续漂移：`PlainTextTriggered=132`、`JsonNoop=43`、`PlainTextSuppressed=8`、`PlainTextNoop=7`、`JsonUnknownStatus=2`、`JsonMalformed=2`。
+  - 同窗有 `deliver` 66 条、`duplicate_suppressed` 31 条、runner / 结构化 / context / max-iterations 相关失败信号 41 条。
+  - 代表样本包括 08:00 CST `全天原油价格3小时播报`、09:00 / 09:30 / 10:00 / 10:30 CST 多个 Feishu / Web heartbeat 因“heartbeat 输出不是结构化 JSON / 不是合法 JSON”跳过发送；多条 raw preview 仍以 `<think>` 开头后接自然语言或协议内容。
+- `data/sessions.sqlite3`
+  - 同窗新增 49 条 user / 32 条 assistant / 12 条 system compact，覆盖 20 个更新 session；最近 assistant 到 10:52 CST。
+  - 普通 assistant final 污染扫描未见 `<think>`、本机绝对路径、provider 原始错误或 raw tool JSON 大面积进入直聊 final。
+- 本轮判断
+  - 最新证据仍是 heartbeat 模型输出未稳定遵守结构化协议，解析层在自然语言、JSON、失败和去重之间漂移；没有新的独立根因。
+  - 该问题影响 heartbeat 是否稳定触发、跳过或投递；普通 direct / scheduler 主链路仍可收口，未见错投或全渠道不可用，维持功能性 `P2 / New`，非 P1。

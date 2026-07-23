@@ -133,3 +133,17 @@
 - 本轮判断
   - 这条样本只证明普通 scheduler 仍会在复杂投研 / 观察池任务中退化成通用失败，用户没有拿到降级摘要或部分结果；但根因尚未确认为本单原始的 `max_iterations_exceeded:10`。
   - 暂按既有 function-calling 通用失败链路追加待查证据，不新建重复缺陷、不调整严重等级或状态。影响仍是单轮 scheduler 任务失败；同窗 direct 与多个 scheduler 正常收口，未见错投、数据破坏或全渠道不可用，维持功能性 `P2 / New`，非 P1。
+
+## 最新运行态复核（2026-07-23 11:02 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-07-23 07:01-11:02 CST。
+  - `session_id=Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7`
+  - 08:30 CST Feishu scheduler `美股AI产业链盘后报告` 触发，任务要求生成美股盘后全产业链景气报告。
+  - 08:31 CST assistant final 只返回“抱歉，这次处理失败了。请稍后再试。”，随后追加 scheduler failure 补偿“本轮定时任务未能完成，系统已记录失败并将在下一次触发时重试。”
+- `data/runtime/logs/web.log.2026-07-23`
+  - 同一 session 在 08:31 前已执行多轮 `web_search` / `data_fetch`，包括 Tesla / Alphabet 财报与 TSLA quote。
+  - 08:31:22 CST 记录 `answer_preserved=true`，随后 `MsgFlow/feishu failed ... error="max_iterations_exceeded:18"`，`SchedulerDiag` 将其压成 `internal_error_suppressed` 并跳过本轮 Feishu 外发。
+- 本轮判断
+  - 这是同一 function-calling 在已取得工具结果后仍耗尽迭代、最终只给通用失败的链路；与旧样本的 `10` 次预算不同，本窗已触到 `18` 次上限，说明单纯提高预算不足以保证复杂 scheduler 收口。
+  - 影响是单轮普通 scheduler 业务正文缺失；同窗其它 direct / scheduler 可正常收口，未见错投、数据破坏或全渠道不可用，维持功能性 `P2 / New`，非 P1。

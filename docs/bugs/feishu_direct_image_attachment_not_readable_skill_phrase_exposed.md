@@ -14,7 +14,7 @@
 
 ## 状态
 
-- Fixed
+- New
 
 ## GitHub Issue
 
@@ -39,6 +39,20 @@
   - heartbeat 仍有 30 条 `PlainTextSuppressed`、4 条 `ContextOverflowError`、2 条 `JsonMalformed`、2 条 `JsonUnknownStatus` 等旧/已知运行态信号；这些未进入用户可见 assistant final，落在既有 heartbeat 结构化/context overflow 文档范围。
 - 最近四小时无非文档代码提交。
 
+### 2026-07-23 11:02 CST 运行态回退
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-07-23 07:01-11:02 CST。
+  - `session_id=Actor_feishu__direct__ou_5f49e2e252460a05eee0ff98f685cf9f16`
+  - 09:20 CST Feishu direct 用户上传 / 引用图片后，assistant final 只返回“当前环境无法直接解析您上传的图片内容”，并要求用户描述图片或粘贴关键数据；没有完成图片内容分析。
+  - 同窗该 session 前后均可正常收口，10:52 CST 又完成普通 A 股估值回答，说明不是 Feishu direct 全链路不可用。
+- `data/runtime/logs/web.log.2026-07-23`
+  - 09:20 CST 同一 session 记录 `local_read_file path="<absolute-path>/..." status=failed`，随后 `answer_preserved=true` 并持久化产品化失败提示。
+  - 本轮未再外露“图片理解工具 / 图片分析技能未激活”等旧内部技能措辞，本机绝对路径也已脱敏；但图片附件仍未稳定进入可读链路。
+- 本轮判断
+  - 这是同一 Feishu direct 图片附件读取链路在 2026-06-10 代码级修复后的真实复发，状态从 `Fixed` 回退为 `New`。
+  - 严重等级维持 `P2`：图片分析主任务没有完成，属于功能性 bug；但本窗只有单个 Feishu direct 图片样本，同用户普通文本问答可恢复，未见错投、数据破坏、敏感路径外泄或全渠道不可用，因此不是 `P1`。
+
 ## 端到端链路
 
 1. Feishu direct 用户发送带附件上下文的图片分析请求。
@@ -55,7 +69,8 @@
 
 ## 当前实现效果
 
-- 2026-06-10 00:11 CST 已修复。
+- 2026-07-23 11:02 CST 运行态复核显示，图片附件仍可能无法进入可读链路；当前状态回退为 `New`。
+- 2026-06-10 00:11 CST 曾完成代码级修复。
 - Feishu 图片下载在上游未返回 `content_type` 时会兜底标记为 `image/unknown`，避免 `image_<key>.bin` 被共享附件分类误判为普通文件，导致图片附件策略和相关图片处理能力不稳定。
 - 共享附件 prompt 明确要求：附件分类为图片时，即使文件名后缀是 `.bin` 也应按图片处理；读取失败时不得列举目录、OSS、数据库、工具链或技能加载状态，只能给产品化重传/粘贴文字提示。
 - 共享用户可见净化层会剥离“图片理解工具没有成功激活”“图片分析技能没成功加载”等中文内部能力状态，防止同类 runner 输出继续外露给 Feishu / Web / scheduler 用户。

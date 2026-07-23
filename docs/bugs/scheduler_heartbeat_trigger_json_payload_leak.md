@@ -434,3 +434,14 @@
 - 本轮判断
   - 最新样本仍是既有 heartbeat JSON / 协议字段外露质量缺陷复发，不是新的链路根因。
   - 为何不影响功能链路，因此定级为 P3：该样本仍经过 heartbeat 执行与投递 / 去重路径，用户或去重基线能看到核心触发数据；问题主要是格式退化和协议字段外露，没有错投、漏投或系统级失败证据。状态维持质量性 `P3 / New`，非 P1。
+
+## 最新运行态复核（2026-07-23 11:02 CST）
+
+- `data/runtime/logs/web.log.2026-07-23`
+  - 巡检窗口：2026-07-23 07:01-11:02 CST。
+  - 09:30 CST `AI与科技持仓观察关键事件心跳提醒` 的 `deliver_preview` 继续以 fenced JSON 开头，包含 `"status": "triggered"`、`"triggered"`、`"event_type": "earnings_released"` 等协议字段，而不是产品化自然语言提醒。
+  - 10:31 CST `TSLA 正负触发条件心跳监控` 的 `deliver_preview` 再次以 fenced JSON 开头，包含 `"status": "triggered"`、`"trigger": "mixed"`、`"symbol": "TSLA"`、`"events"` 等结构化字段；随后进入 duplicate suppression。
+  - 同窗仍有 `deliver=66`、`duplicate_suppressed=31`，说明这些协议化正文可能进入用户可见投递或成为去重基线。
+- 本轮判断
+  - 最新样本仍是既有 heartbeat JSON / 协议字段外露质量缺陷复发，不是新的链路根因。
+  - 为何不影响功能链路，因此定级为 P3：heartbeat 执行和投递 / 去重路径仍在工作，用户或去重基线能看到核心触发数据；问题主要是格式退化和内部协议字段外露，没有错投、漏投、数据破坏或系统级失败证据。状态维持质量性 `P3 / New`，非 P1。
