@@ -36,7 +36,7 @@ use crate::prompt::PromptOptions;
 use crate::prompt_audit::PromptAuditMetadata;
 use crate::response_finalizer::{
     EMPTY_SUCCESS_FALLBACK_MESSAGE, finalize_agent_owned_interactive_response,
-    finalize_agent_response,
+    finalize_agent_response, recover_failed_read_only_user_visible_output,
 };
 use crate::runners::{
     AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
@@ -462,6 +462,11 @@ pub(super) fn normalize_persistent_trace_failure(result: &mut AgentRunnerResult)
     result.response.error = Some(PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE.to_string());
     result.streamed_output = result.committed_visible_prefix.is_some();
     result.terminal_error_emitted = false;
+}
+
+pub(super) fn failed_assistant_persisted_message(response: &AgentResponse) -> String {
+    recover_failed_read_only_user_visible_output(response)
+        .unwrap_or_else(|| user_visible_error_message(response.error.as_deref()))
 }
 
 fn preserve_verified_investment_failure(
@@ -2657,14 +2662,14 @@ impl AgentSession {
                     message: public_error,
                 }))
                 .await;
-                let persisted_message = user_visible_error_message(response.error.as_deref());
+                let persisted_message = failed_assistant_persisted_message(&response);
                 self.persist_failed_assistant_turn_if_needed(&session_id, kind, &persisted_message);
                 self.emit(AgentSessionEvent::Done {
                     response: response.clone(),
                 })
                 .await;
             } else {
-                let persisted_message = user_visible_error_message(response.error.as_deref());
+                let persisted_message = failed_assistant_persisted_message(&response);
                 self.persist_failed_assistant_turn_if_needed(&session_id, kind, &persisted_message);
                 self.emit(AgentSessionEvent::Done {
                     response: response.clone(),

@@ -12,6 +12,10 @@ use crate::runtime::{
     sanitize_user_visible_output,
 };
 use crate::sandbox::sandbox_base_dir;
+use crate::tool_trace::{
+    PERSISTENT_SIDE_EFFECT_NO_RETRY_MESSAGE, PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE,
+    UNKNOWN_TOOL_EFFECT_NO_RETRY_MESSAGE, response_has_only_known_read_only_calls,
+};
 
 pub(crate) const EMPTY_SUCCESS_FALLBACK_MESSAGE: &str =
     "这次没有成功产出完整回复。我已经自动重试过了，请再发一次，或换个问法。";
@@ -126,6 +130,30 @@ pub(crate) fn finalize_agent_response(
     sync_company_profiles_to_cloud(core, session_id);
     response.content = normalize_local_image_references(core, session_id, &response.content);
     outcome
+}
+
+pub(crate) fn recover_failed_read_only_user_visible_output(
+    response: &AgentResponse,
+) -> Option<String> {
+    if response.success
+        || response.tool_calls_made.is_empty()
+        || !response_has_only_known_read_only_calls(&response.tool_calls_made)
+    {
+        return None;
+    }
+
+    let sanitized = sanitize_user_visible_output(&response.content);
+    if sanitized.only_internal {
+        return None;
+    }
+    let content = sanitized.content.trim().to_string();
+    if content.is_empty()
+        || is_transitional_planning_sentence(&content)
+        || looks_like_failed_response_fallback_copy(&content)
+    {
+        return None;
+    }
+    Some(content)
 }
 
 /// Finalize a completed Interactive Agent body without applying legacy
@@ -325,6 +353,21 @@ fn recover_user_facing_tool_outcome(tool_calls: &[ToolCallMade]) -> Option<Strin
             "portfolio" => recover_portfolio_confirmation(call),
             _ => None,
         })
+}
+
+fn looks_like_failed_response_fallback_copy(text: &str) -> bool {
+    let trimmed = text.trim();
+    trimmed == EMPTY_SUCCESS_FALLBACK_MESSAGE
+        || trimmed == CRON_TASK_MANAGEMENT_UNAVAILABLE_USER_MESSAGE
+        || trimmed == PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE
+        || trimmed == PERSISTENT_SIDE_EFFECT_NO_RETRY_MESSAGE
+        || trimmed == UNKNOWN_TOOL_EFFECT_NO_RETRY_MESSAGE
+        || trimmed == "抱歉，这次处理失败了。请稍后再试。"
+        || trimmed == "抱歉，处理超时了。请稍后再试。"
+        || trimmed == "当前执行额度已用尽，暂时无法继续处理。请稍后再试。"
+        || trimmed.contains("当前状态无法确定")
+        || trimmed.contains("没有自动重试")
+        || trimmed.contains("系统已记录失败并将在下一次触发时重试")
 }
 
 fn recover_cron_job_confirmation(call: &ToolCallMade) -> Option<String> {

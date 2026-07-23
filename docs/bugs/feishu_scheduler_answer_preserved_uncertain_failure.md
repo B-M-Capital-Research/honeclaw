@@ -14,7 +14,7 @@ P2
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
@@ -65,13 +65,26 @@ New
 - 与 `web_direct_terminal_prefix_mismatch_commits_generic_failure.md` 同属“已保留答案未恢复”问题族，但本轮受影响链路是 Feishu scheduler，错误终态不是 `committed terminal prefix mismatch`，而是面向写操作的不确定状态提示，因此单独建档。
 - 与 `codex_acp_transport_disconnect_request_failure.md` 不同：本轮没有 ACP transport 断连或 scheduler runner timeout 证据。
 
-## 下一步建议
+## 修复记录
 
-1. 为 Feishu scheduler observational 请求增加 answer-preserved 恢复路径，优先提交保留答案。
-2. 将“可能已经执行 / 状态无法确定”限制在实际发生写操作或任务管理动作的场景。
-3. 增加回归：只读 scheduler 在 `answer_preserved=true + contract_built=false` 时不得提交管理型失败提示。
+- 2026-07-23
+  - `crates/hone-channels/src/response_finalizer.rs` 新增 `recover_failed_read_only_user_visible_output(...)`：只在已保留可见正文、且本轮工具调用全部属于显式已知只读工具时，允许从失败结果中恢复用户正文；继续显式排除“状态无法确定”、通用失败、额度/超时兜底和内部流程文案。
+  - `crates/hone-channels/src/agent_session/core.rs` 失败持久化改为优先写入上述可恢复正文，避免 scheduler transcript 被通用失败或“状态无法确定”覆盖。
+  - `crates/hone-channels/src/scheduler.rs` 普通 scheduler 失败分支新增只读正文恢复：当 `answer_preserved=true` 但最终确认失败时，优先外发已保留的业务正文；保留 skip-signal 和 commodity guard 约束，避免把恢复路径变成放宽校验。
+  - 新增回归：
+    - `failed_assistant_persisted_message_prefers_preserved_read_only_answer`
+    - `failed_assistant_persisted_message_keeps_generic_failure_for_nonrecoverable_copy`
+    - `scheduler_recovers_preserved_read_only_failure_answer`
+    - `scheduler_does_not_recover_generic_failure_copy`
+
+## 剩余风险
+
+1. 这是代码级 `Fixed`，仍需后续真实运行态复核 `Feishu scheduler + answer_preserved=true` 样本，确认 live 进程加载后不再外发“状态无法确定”。
+2. 该修复只覆盖“失败时已保留只读正文”的恢复；若 provider 在保留答案前就中断、或本轮存在未知/非只读工具，则仍会保持失败闭口，不在本单范围内。
 
 ## 验证
 
-- 本轮为缺陷台账维护任务，未修改业务代码、测试代码或配置代码，未运行代码测试。
-- 已验证范围：`data/sessions.sqlite3` 最近四小时 Feishu scheduler transcript、`data/runtime/logs/web.log.2026-07-22` 同 session 工具调用与 finalization 日志、最近四小时非文档代码提交。
+- `cargo test -p hone-channels failed_assistant_persisted_message_ --lib -- --nocapture`
+- `cargo test -p hone-channels scheduler_recovers_preserved_read_only_failure_answer --lib -- --nocapture`
+- `cargo test -p hone-channels scheduler_does_not_recover_generic_failure_copy --lib -- --nocapture`
+- `cargo check -p hone-channels --tests`

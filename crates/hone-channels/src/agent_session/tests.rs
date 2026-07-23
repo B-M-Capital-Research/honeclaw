@@ -39,7 +39,8 @@ use crate::investment_response_guard::{
 };
 use crate::response_finalizer::{
     EMPTY_SUCCESS_FALLBACK_MESSAGE, finalize_agent_owned_interactive_response,
-    finalize_agent_response, normalize_local_image_references, response_leaks_system_prompt,
+    finalize_agent_response, normalize_local_image_references,
+    recover_failed_read_only_user_visible_output, response_leaks_system_prompt,
 };
 use crate::run_event::RunEvent;
 use crate::runners::{
@@ -51,8 +52,8 @@ use crate::sandbox::sandbox_base_dir;
 
 use super::core::{
     AgentSession, PreparedTurnReexecutionPolicy, SERVICE_OWNED_PREFIX_FAILURE_SUFFIX,
-    apply_deterministic_investment_fallback, normalize_persistent_trace_failure,
-    prepared_turn_reexecution_policy, prompt_time_for_attempt,
+    apply_deterministic_investment_fallback, failed_assistant_persisted_message,
+    normalize_persistent_trace_failure, prepared_turn_reexecution_policy, prompt_time_for_attempt,
 };
 use super::emitter::SessionEventEmitter;
 use super::helpers::{
@@ -69,6 +70,61 @@ use super::types::{
 
 fn make_temp_dir(prefix: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!("{prefix}_{}", uuid::Uuid::new_v4()))
+}
+
+#[test]
+fn failed_assistant_persisted_message_prefers_preserved_read_only_answer() {
+    let response = AgentResponse {
+        content: "北京时间 2026年7月23日 08:31。\n\nTEM：本轮未见 AACR、合作或财报催化触发，继续跟踪价格与公告窗口。".to_string(),
+        tool_calls_made: vec![
+            ToolCallMade {
+                name: "data_fetch".to_string(),
+                arguments: serde_json::json!({"data_type":"quote","ticker":"TEM"}),
+                result: serde_json::json!({"data":[{"symbol":"TEM","price":52.4}]}),
+                tool_call_id: Some("quote-tem".to_string()),
+            },
+            ToolCallMade {
+                name: "web_search".to_string(),
+                arguments: serde_json::json!({"query":"TEM AACR news"}),
+                result: serde_json::json!({"results":[]}),
+                tool_call_id: Some("web-tem".to_string()),
+            },
+        ],
+        iterations: 18,
+        success: false,
+        error: Some("max_iterations_exceeded:18".to_string()),
+    };
+
+    assert_eq!(
+        recover_failed_read_only_user_visible_output(&response),
+        Some(response.content.clone())
+    );
+    assert_eq!(
+        failed_assistant_persisted_message(&response),
+        response.content
+    );
+}
+
+#[test]
+fn failed_assistant_persisted_message_keeps_generic_failure_for_nonrecoverable_copy() {
+    let response = AgentResponse {
+        content: "这次操作可能已经执行，但执行器在返回最终确认前中断，当前状态无法确定。为避免重复写入或重复启动研究任务，我没有自动重试；请先查看当前持仓、关注、提醒、研究任务或服务状态，再决定是否重试。".to_string(),
+        tool_calls_made: vec![ToolCallMade {
+            name: "data_fetch".to_string(),
+            arguments: serde_json::json!({"data_type":"quote","ticker":"TEM"}),
+            result: serde_json::json!({"data":[{"symbol":"TEM","price":52.4}]}),
+            tool_call_id: Some("quote-tem".to_string()),
+        }],
+        iterations: 4,
+        success: false,
+        error: Some("LLM 错误: stream transport error: truncated body".to_string()),
+    };
+
+    assert!(recover_failed_read_only_user_visible_output(&response).is_none());
+    assert_eq!(
+        failed_assistant_persisted_message(&response),
+        "抱歉，这次处理失败了。请稍后再试。"
+    );
 }
 
 #[test]

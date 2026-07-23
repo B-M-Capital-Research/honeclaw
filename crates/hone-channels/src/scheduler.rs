@@ -18,7 +18,9 @@ use crate::execution::{
 };
 use crate::investment_response_guard::prepare_verified_investment_turn;
 use crate::prompt::{PromptOptions, build_prompt_bundle};
-use crate::response_finalizer::EMPTY_SUCCESS_FALLBACK_MESSAGE;
+use crate::response_finalizer::{
+    EMPTY_SUCCESS_FALLBACK_MESSAGE, recover_failed_read_only_user_visible_output,
+};
 use crate::runners::{AgentRunnerEmitter, AgentRunnerEvent};
 use crate::runtime::{
     is_context_overflow_error, sanitize_user_visible_output, strip_internal_reasoning_blocks,
@@ -2841,6 +2843,20 @@ fn is_empty_success_fallback(text: &str) -> bool {
     text.trim() == EMPTY_SUCCESS_FALLBACK_MESSAGE
 }
 
+fn recover_scheduler_delivery_from_failed_response(
+    response: &hone_core::agent::AgentResponse,
+) -> Option<String> {
+    let recovered = recover_failed_read_only_user_visible_output(response)?;
+    let sanitized = sanitize_scheduler_delivery_text(&recovered);
+    if sanitized.trim().is_empty()
+        || is_empty_success_fallback(&sanitized)
+        || is_stale_market_data_success_fallback(&sanitized)
+    {
+        return None;
+    }
+    Some(sanitized)
+}
+
 fn is_stale_market_data_success_fallback(text: &str) -> bool {
     let normalized = text
         .chars()
@@ -3517,9 +3533,56 @@ pub async fn execute_scheduler_event(
                 }
             }
         } else {
-            let sanitized_error = user_visible_error_message_or_none(response.error.as_deref());
             let suppressed_failure_kind =
                 scheduler_suppressed_failure_kind(response.error.as_deref());
+            if let Some(recovered_content) =
+                recover_scheduler_delivery_from_failed_response(&response)
+            {
+                tracing::warn!(
+                    "[SchedulerDiag] recovered read-only failure answer job_id={} job={} failure_kind={} chars={}",
+                    event.job_id,
+                    event.job_name,
+                    suppressed_failure_kind,
+                    recovered_content.chars().count(),
+                );
+                if has_skip_delivery_signal(&recovered_content)
+                    || ordinary_scheduler_silent_noop_signal(&event.task_prompt, &recovered_content)
+                {
+                    return ScheduledTaskExecution {
+                        should_deliver: false,
+                        content: recovered_content,
+                        error: None,
+                        metadata: json!({
+                            "recovered_from_failure_kind": suppressed_failure_kind,
+                        }),
+                        session_id: Some(session_id),
+                    };
+                }
+                if let Some(guarded_content) =
+                    guard_commodity_causality_for_event(&recovered_content, event)
+                {
+                    return ScheduledTaskExecution {
+                        should_deliver: true,
+                        content: guarded_content.clone(),
+                        error: None,
+                        metadata: scheduler_metadata_with_commodity_guard(
+                            &recovered_content,
+                            &guarded_content,
+                        ),
+                        session_id: Some(session_id),
+                    };
+                }
+                return ScheduledTaskExecution {
+                    should_deliver: true,
+                    content: recovered_content,
+                    error: None,
+                    metadata: json!({
+                        "recovered_from_failure_kind": suppressed_failure_kind,
+                    }),
+                    session_id: Some(session_id),
+                };
+            }
+            let sanitized_error = user_visible_error_message_or_none(response.error.as_deref());
             if sanitized_error.is_none() {
                 tracing::warn!(
                     "[SchedulerDiag] suppressed internal failure fallback job_id={} job={} failure_kind={} error=\"{}\"",
@@ -4898,6 +4961,53 @@ mod tests {
             EMPTY_SUCCESS_FALLBACK_MESSAGE
         )));
         assert!(!is_empty_success_fallback("这是正常的定时任务输出"));
+    }
+
+    #[test]
+    fn scheduler_recovers_preserved_read_only_failure_answer() {
+        let response = hone_core::agent::AgentResponse {
+            content: "北京时间 2026年7月23日 00:00。\n\nTEM：本轮未见 AACR/合作/财报新增催化，维持继续跟踪。".to_string(),
+            tool_calls_made: vec![
+                hone_core::agent::ToolCallMade {
+                    name: "data_fetch".to_string(),
+                    arguments: serde_json::json!({"data_type":"quote","ticker":"TEM"}),
+                    result: serde_json::json!({"data":[{"symbol":"TEM","price":52.4}]}),
+                    tool_call_id: Some("quote-tem".to_string()),
+                },
+                hone_core::agent::ToolCallMade {
+                    name: "web_search".to_string(),
+                    arguments: serde_json::json!({"query":"TEM AACR news"}),
+                    result: serde_json::json!({"results":[]}),
+                    tool_call_id: Some("web-tem".to_string()),
+                },
+            ],
+            iterations: 18,
+            success: false,
+            error: Some("max_iterations_exceeded:18".to_string()),
+        };
+
+        assert_eq!(
+            super::recover_scheduler_delivery_from_failed_response(&response),
+            Some(response.content)
+        );
+    }
+
+    #[test]
+    fn scheduler_does_not_recover_generic_failure_copy() {
+        let response = hone_core::agent::AgentResponse {
+            content: "抱歉，这次处理失败了。请稍后再试。".to_string(),
+            tool_calls_made: vec![hone_core::agent::ToolCallMade {
+                name: "data_fetch".to_string(),
+                arguments: serde_json::json!({"data_type":"quote","ticker":"TEM"}),
+                result: serde_json::json!({"data":[{"symbol":"TEM","price":52.4}]}),
+                tool_call_id: Some("quote-tem".to_string()),
+            }],
+            iterations: 18,
+            success: false,
+            error: Some("max_iterations_exceeded:18".to_string()),
+        };
+
+        assert!(super::recover_scheduler_delivery_from_failed_response(&response).is_none());
     }
 
     #[test]
