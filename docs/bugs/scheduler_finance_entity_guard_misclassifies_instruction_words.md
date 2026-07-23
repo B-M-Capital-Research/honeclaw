@@ -8,6 +8,14 @@
 
 ## 运行态复核（2026-07-23 07:01 CST）
 
+- 本轮 2026-07-23 15:02-19:02 CST 真实运行态继续复发，状态维持 `New/P2`：
+  - `data/runtime/logs/web.log.2026-07-23`
+    - 15:30-19:00 CST `AAOI 1.6T 光模块心跳检测` 每半小时继续把任务上下文里的 `SEC` 当证券代码，因数据供应商没有同代码行情覆盖而落成 `runner_error` / 不发送。
+    - 15:30-19:00 CST `ORCL 大事件监控` 每半小时继续因 Oracle 多上市地候选落成 `runner_error`，要求补交易所后缀或公司全名。
+  - `data/sessions.sqlite3` 同窗新增 3 条 user / 3 条 assistant，覆盖 3 个更新 session；Feishu direct 与 Web scheduler 均有 assistant 收口，未见全渠道停摆、错投或敏感信息泄露。
+  - 判断：最新样本仍是 scheduler / heartbeat 任务正文、监管缩写或上市地候选进入实体 guard / resolver 后误抽或多候选拦截；与既有缺陷同根，不新建重复缺陷。
+  - 严重等级维持 `P2`：它直接阻断部分 scheduler / heartbeat 正文生成，但同窗 direct / scheduler 用户可见 final 正常收口，未见全渠道停摆、错投、敏感信息泄露或持久化数据破坏，因此不是 `P1`，不创建 GitHub Issue。
+
 - 状态维持 `New/P2`。
 - `data/runtime/logs/web.log.2026-07-22` 在 2026-07-23 03:01-07:01 CST 继续复发：
   - 05:00 CST Web scheduler `盘后美股复盘与SNDK/MU存储产业链日报` 任务正文要求复盘宏观数据，仍把 `PCE` 识别为证券代码并返回“当前数据供应商没有返回同代码行情覆盖”，用户侧只看到 scheduler 执行出错。

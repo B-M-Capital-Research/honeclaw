@@ -22,6 +22,15 @@
 
 ## 最新进展
 
+- 本轮 2026-07-23 15:02-19:02 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-23`
+    - 15:00-19:00 CST heartbeat preview 继续引用 `SNDK $1,599.27`、`SNDK $1,573.61`、`AAOI $119.26`、`NBIS $218.16`、`CBRS $209.80` 等高风险行情锚。
+    - `持仓财报与重大新闻心跳提醒`、`存储板块关键事件心跳提醒`、`闪迪关键事件心跳提醒` 多次在工具额度耗尽或引用前轮上下文时继续使用上述锚点生成 noop / triggered 判断、拆股判断或 duplicate suppression 基线。
+    - 18:00 CST `AI与科技持仓观察关键事件心跳提醒` 还在用户可见 preview 中写出 `BE` 本轮 `quote` 字段和 `Stock US Radar` 等来源口径，说明行情源 / 出站 sanity check 仍未稳定隔离高风险锚点。
+  - `data/sessions.sqlite3`
+    - 同窗新增 3 条 user / 3 条 assistant，覆盖 3 个更新 session；未见错投、投递失败、空回复、敏感信息外泄或全渠道不可用。
+  - 判断：最新证据仍是行情源 / 数值 sanity check / 未核验事件缺口。它会污染 scheduler / heartbeat 判断质量，但未阻断主投递链路，因此保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-23 03:01-07:01 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-22`
     - 03:30-07:00 CST heartbeat preview 继续引用 `SNDK $1,573.61 / $1,599.27`、`AAOI $119.26`、`CBRS $205.83 / $209.80` 等高风险行情锚。
