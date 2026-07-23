@@ -790,3 +790,14 @@ New
 - 本轮判断
   - 这是既有 Feishu scheduler / direct 内部流程、工具名和 provider 口径外露的同根复发，不新建重复缺陷。
   - 为何不影响功能链路，因此定级为 P3：调度 / 直聊生成和回复均完成，用户仍收到分析内容；问题主要是用户可见文案边界、产品感和可信度退化。状态维持质量性 `P3 / New`，非 P1。
+
+## 最新运行态复核（2026-07-23 23:01 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-07-23 19:02-23:01 CST。
+  - 20:04 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7` 的 `A股盘后高景气产业链推演` 正常收口，但 final 开头外露英文中间稿 `Now I have enough data to write the comprehensive post-market analysis. Let me compile the full report.`
+  - 20:33 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f79ee8185333e5db4a55e5eca0d8d2f7e` 的 `每日美股大盘风险仪表盘` 正常收口，但 final 开头写出“现在整合所有搜索结果，准备生成最终报告。”
+  - 两条回复均有完整业务正文并以 assistant 收口，没有投递失败、空回复、错投、会话悬挂、原始工具 JSON 或数据安全证据。
+- 本轮判断
+  - 这是既有 Feishu scheduler / direct 内部流程、中间稿和工具执行过程外露的同根复发，不新建重复缺陷。
+  - 为何不影响功能链路，因此定级为 P3：调度生成和回复均完成，用户仍收到报告主体；问题主要是用户可见文案边界、产品感和可信度退化。状态维持质量性 `P3 / New`，非 P1。

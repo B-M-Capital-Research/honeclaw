@@ -6372,3 +6372,17 @@
 - 本轮判断
   - 最新证据仍是 heartbeat 模型输出未稳定遵守结构化协议，解析层在自然语言、JSON、失败和去重之间漂移；没有新的独立根因。
   - 该问题影响 heartbeat 是否稳定触发、跳过或投递；普通 direct / scheduler 主链路仍可收口，未见错投或全渠道不可用，维持功能性 `P2 / New`，非 P1。
+
+## 最新运行态复核（2026-07-23 23:01 CST）
+
+- `data/runtime/logs/web.log.2026-07-23`
+  - 巡检窗口：2026-07-23 19:02-23:01 CST。
+  - 同窗 heartbeat parse 分布为 `PlainTextTriggered=196`、`JsonNoop=49`、`PlainTextSuppressed=7`、`PlainTextNoop=7`、`JsonTriggered=6`、`JsonUnknownStatus=2`、`JsonEmptyStatus=1`。
+  - 同窗还有 `deliver job_id=99`、`duplicate_suppressed=42`、`runner_error=32`、`heartbeat 输出不是结构化 JSON=7`，以及大量 `function_calling tool call rejected by per-tool/global budget`。
+  - 23:00 CST `NBIS关键事件心跳提醒` raw preview 以 `<think>` 开头后落成 `PlainTextSuppressed`，随后记录“heartbeat 输出不是结构化 JSON，任务已标记失败”。
+  - 23:01 CST `闪迪关键事件心跳提醒` raw preview 以 `<think>` 开头并落成 `JsonEmptyStatus`，说明状态字段仍可能为空或不可解析。
+- `data/sessions.sqlite3`
+  - 同窗普通 direct / scheduler assistant final 多数正常收口，未确认该类结构化状态错误进入 ordinary direct final。
+- 本轮判断
+  - 最新样本仍是 heartbeat 输出协议、状态解析和异常收口在真实运行中漂移，不是新的链路根因。
+  - 影响是部分 heartbeat 静默跳过、发送失败提示或错误进入投递候选；同窗 direct / scheduler 普通会话仍可收口，未见全渠道不可用、错投或敏感信息泄露，维持功能性 `P2 / New`，非 P1。

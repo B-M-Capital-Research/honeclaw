@@ -242,3 +242,14 @@
 - 本轮判断
   - 最新样本仍是已创建 heartbeat job 的执行期语义被系统配置、旧用户短问、投资方法论或任务确认语义污染；不是新的独立根因。
   - 因已有 heartbeat job 可能发送无关内容并污染 duplicate suppression 基线，影响 heartbeat 功能链路和信噪比，维持 `P2 / New`；同窗未见全渠道停摆、错对象投递或敏感信息泄露，非 P1。
+
+## 最新运行态复核（2026-07-23 23:01 CST）
+
+- `data/runtime/logs/web.log.2026-07-23`
+  - 巡检窗口：2026-07-23 19:02-23:01 CST。
+  - 20:30 CST `持仓财报与重大新闻心跳提醒` raw preview 把缺少 `heartbeat_monitor` 技能当作 noop 理由，而不是只执行持仓财报与重大新闻检查。
+  - 22:00 CST `Monitor_Watchlist_11` `parse_kind=PlainTextTriggered`，deliver preview 输出 Hone 的能力介绍、数据源和用户偏好说明，而不是执行观察池心跳检查。
+  - 23:00 CST `SIVE POET/Nokia/1.6T DFB 心跳检测` deliver preview 写“本轮未获取 SIVE / POET 实时报价（工具调用受限）”，并沿用旧参考价生成 noop；同窗多条 heartbeat 因工具限额或旧上下文转成非监控正文。
+- 本轮判断
+  - 最新样本仍是已创建 heartbeat job 的执行期语义被系统技能上下文、旧用户短问、工具限额叙事或任务确认语义污染；不是新的独立根因。
+  - 因已有 heartbeat job 可能发送无关内容并污染 duplicate suppression 基线，影响 heartbeat 功能链路和信噪比，维持 `P2 / New`；同窗未见全渠道停摆、错对象投递或敏感信息泄露，非 P1。

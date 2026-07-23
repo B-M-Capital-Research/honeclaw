@@ -445,3 +445,14 @@
 - 本轮判断
   - 最新样本仍是既有 heartbeat JSON / 协议字段外露质量缺陷复发，不是新的链路根因。
   - 为何不影响功能链路，因此定级为 P3：heartbeat 执行和投递 / 去重路径仍在工作，用户或去重基线能看到核心触发数据；问题主要是格式退化和内部协议字段外露，没有错投、漏投、数据破坏或系统级失败证据。状态维持质量性 `P3 / New`，非 P1。
+
+## 最新运行态复核（2026-07-23 23:01 CST）
+
+- `data/runtime/logs/web.log.2026-07-23`
+  - 巡检窗口：2026-07-23 19:02-23:01 CST。
+  - 23:01 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` `parse_kind=PlainTextTriggered` 的 `deliver_preview` 直接以 fenced JSON 开头，包含 `"status": "triggered"`、`"triggered"`、`"symbol": "RKLB"`、`"condition_type": "price_magnitude"` 等协议字段，而不是产品化自然语言提醒。
+  - 23:00 CST `TSLA 正负触发条件心跳监控` duplicate suppression 的匹配基线仍是 fenced JSON，包含 `"status": "triggered"`、`"trigger": "negative"`、`"symbol": "TSLA"` 等字段，说明坏格式仍可能成为去重基线。
+  - 同窗仍有 `deliver job_id=99`、`duplicate_suppressed=42`、`JsonTriggered=6`，说明 heartbeat 出站内容仍可能把协议载荷当作用户消息或坏基线。
+- 本轮判断
+  - 最新样本仍是既有 heartbeat JSON / 协议字段外露质量缺陷复发，不是新的链路根因。
+  - 为何不影响功能链路，因此定级为 P3：该样本仍经过 heartbeat 执行与投递 / 去重路径，用户或去重基线能看到核心触发数据；问题主要是格式退化和内部协议字段外露，没有错投、漏投、数据破坏或系统级失败证据。状态维持质量性 `P3 / New`，非 P1。

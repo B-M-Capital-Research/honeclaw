@@ -453,3 +453,17 @@
 - 本轮判断
   - `187只关注股` 被抽成 `0187.HK`，与 `PCE`、`SEC`、`NAND`、`REPEAT`、`EBITDA` 一样，仍属于 scheduler / heartbeat guard 扫描完整任务标题或正文而非真实待分析证券集合的同根问题。
   - 影响是部分 scheduler / heartbeat 任务失败或跳过；同窗 20 个更新 session 中其它直聊和定时报告可正常收口，未见错投、敏感信息泄露或全渠道不可用，维持功能性 `P2 / New`，非 P1。
+
+## 最新运行态复核（2026-07-23 23:01 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-07-23 19:02-23:01 CST。
+  - 20:00 CST Feishu scheduler 任务 `每日美股大盘晚报` 之前的同 actor final 返回“已识别证券代码 `Nancy`，但当前数据供应商没有返回同代码行情覆盖”，把人物名误当证券代码。
+  - 20:01 CST Feishu scheduler 任务 `每日名人基金美股操作跟踪` final 返回“已识别证券代码 `ARK`，但当前数据供应商没有返回同代码行情覆盖”，把机构 / ETF 语境词抢先当证券代码，未生成基金操作跟踪正文。
+  - 21:00 CST Web scheduler `盘前美股要闻与SNDK/MU存储产业链日报` 继续把宏观指标 `PCE` 当证券代码，随后写入用户可见 `定时任务...执行出错，请稍后重试。`
+- `data/runtime/logs/web.log.2026-07-23`
+  - 19:30-23:00 CST `AAOI 1.6T 光模块心跳检测` 每半小时继续把任务正文中的 `SEC` 当证券代码，并因数据供应商无覆盖落成 `runner_error` / 本轮不发送。
+  - 同窗 `ORCL 大事件监控` 每半小时继续因 Oracle 多上市地候选 fail-closed，要求补充交易所后缀或公司全名。
+- 本轮判断
+  - 最新样本仍是 scheduler / heartbeat 任务正文、人物名、宏观指标或监管缩写被实体 guard 当作证券实体，或公司名被解析成多上市地候选后 fail-closed；不新建重复缺陷。
+  - 影响是部分 Web / Feishu scheduler 和 heartbeat 监控任务失败或跳过；同窗 25 个更新 session 没有长期 user-only 残留、错投、敏感信息泄露或全渠道不可用，维持功能性 `P2 / New`，非 P1。

@@ -1457,3 +1457,16 @@
 - 本轮判断
   - 最新证据仍落在 scheduler / heartbeat 批量行情数值 sanity check 缺失和未核验行情锚进入投研正文的范围内，没有新的独立根因。
   - 本窗异常价格继续进入用户可见 final 或 heartbeat 出站候选并影响判断；但会话正常收口、未见投递失败、错对象或数据写入破坏，问题主要削弱投研质量和价格判断可信度，因此维持质量性 `P3 / New`，非 P1。
+
+## 最新运行态复核（2026-07-23 23:01 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-07-23 19:02-23:01 CST。
+  - 19:54 CST Feishu direct Google 深度分析 final 使用 `GOOGL $342.09`，并围绕财报后低点和估值给出判断；该价格数量级和上下文仍缺少 sanity check。
+  - 21:02 CST Feishu scheduler `美股盘前分析与个股推荐` final 继续使用 `AMD $552.33`、`VRT $301.16` 等高风险数量级行情锚，并据此给出 AI 服务器订单验证和个股机会判断。
+- `data/runtime/logs/web.log.2026-07-23`
+  - 20:30 / 23:00 CST heartbeat preview 继续使用 `SNDK $1,599.27`、`CBRS $209.80`、`SNDK 50-day MA $1,728.91`、`year high $2,354.39` 等异常或高风险行情锚。
+  - 23:00 CST `中际旭创关键事件心跳提醒` raw preview 还显式注意到 `300308.SZ` quote `1072.52` 与稍早 `¥189.36` 不一致，但仍进入后续 heartbeat 处理链路，说明 sanity check 没有稳定阻断异常数量级。
+- 本轮判断
+  - 最新证据仍落在 scheduler / heartbeat 批量行情数值 sanity check 缺失和未核验行情锚进入投研正文的范围内，没有新的独立根因。
+  - 本窗异常价格继续进入用户可见 final 或 heartbeat 出站候选并影响判断；但会话正常收口、未见投递失败、错对象或数据写入破坏，问题主要削弱投研质量和价格判断可信度，因此维持质量性 `P3 / New`，非 P1。
