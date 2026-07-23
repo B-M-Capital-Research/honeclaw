@@ -8,6 +8,13 @@
 
 ## 证据来源
 
+- `data/sessions.sqlite3` -> `session_messages`；`data/runtime/logs/web.log.2026-07-23`
+  - 巡检时间窗：2026-07-23 11:01-15:02 CST。
+  - 11:44 CST Web direct session `Actor_web__direct__web-user-cb0c3ef59f8d`，用户上传 `IMG_1307.png` 并要求分析持仓；附件行显示 `分类=图片`、`类型=image/png`、`下载状态=成功`，且包含本地可读路径。
+  - 11:44 CST assistant final 只返回“本轮研究未能完成，暂未形成可供参考的标的结论。”；`metadata_json` 标记 `error_kind=AgentFailed`、`run_failed=true`、`terminal_stream_incomplete=true`。
+  - 11:45 CST 用户重试并一次上传 `IMG_1309.png`、`IMG_1308.png`、`IMG_1307.png` 三张图片，附件行同样显示图片下载成功；assistant 再次只返回同一通用研究失败，`metadata_json` 仍为 `AgentFailed` / `terminal_stream_incomplete=true`。
+  - runtime 同两轮均记录 `entity_resolution.agent_loop ... answer_preserved=true mode=observational`，随后 `failed ... error="agent_owned_finance_persistent_tool_error"`，并以 `detail=committed_prefix_after_terminal_failure` 持久化失败前缀。
+  - 11:45 后同一 session 改问 Google 财报，11:47 assistant 成功执行 `data_fetch` / `web_search` 并输出完整分析，说明 Web direct 文本投研链路可用，问题集中在图片持仓附件任务失败。未见错投、敏感信息泄露、全渠道不可用或批量投递失败，维持 `P2 / New`，非 P1。
 - `data/sessions.sqlite3` -> `session_messages`
   - 巡检时间窗：2026-07-20 19:01-23:02 CST。
   - 22:22 CST Web direct session `Actor_web__direct__web-user-c394f2531362` 收到 Schwab Mobile 截图附件，附件行显示 `分类=图片`、`类型=image/jpeg`、`下载状态=成功`，且有本地路径；assistant 首轮能基于截图和历史持仓口径给出“现金保留，不要加仓”的建议，说明附件/上下文链路并非全局不可用。
