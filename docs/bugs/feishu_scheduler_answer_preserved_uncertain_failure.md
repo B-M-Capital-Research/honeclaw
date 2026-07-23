@@ -67,6 +67,12 @@ Fixed
 
 ## 修复记录
 
+- 2026-07-24 07:01 CST 运行态复核：
+  - 最近四小时唯一非文档代码提交为 `2c8cb316 fix scheduler preserved-answer failure fallback`，与本缺陷修复范围一致。
+  - `data/runtime/logs/web.log.2026-07-23` 在 05:00、05:11、06:02 CST 出现 3 条 Feishu scheduler `answer_preserved=true`，对应 session 均随后 `session.persist_assistant detail=done` / `success=true`，没有再落成“状态无法确定”失败提示。
+  - 同窗 06:31 CST Web scheduler 也出现 `answer_preserved=true` 并成功持久化；未检出 `执行器在返回最终确认前中断` 或 `状态无法确定`。
+  - 因本窗没有复现失败覆盖，状态继续保持代码级 `Fixed`；仍需后续多窗口观察 live scheduler 是否持续加载该修复。
+
 - 2026-07-23
   - `crates/hone-channels/src/response_finalizer.rs` 新增 `recover_failed_read_only_user_visible_output(...)`：只在已保留可见正文、且本轮工具调用全部属于显式已知只读工具时，允许从失败结果中恢复用户正文；继续显式排除“状态无法确定”、通用失败、额度/超时兜底和内部流程文案。
   - `crates/hone-channels/src/agent_session/core.rs` 失败持久化改为优先写入上述可恢复正文，避免 scheduler transcript 被通用失败或“状态无法确定”覆盖。

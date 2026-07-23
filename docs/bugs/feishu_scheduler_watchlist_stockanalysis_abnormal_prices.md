@@ -22,6 +22,17 @@
 
 ## 最新进展
 
+- 本轮 2026-07-24 03:02-07:01 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `New`：
+  - `data/sessions.sqlite3`
+    - 06:31 CST Web scheduler `1亿美元AI科技组合每日跟踪` `session_id=Actor_web__direct__web-user-14f4cadb069f` 正常收口，但 final 使用 `MU` 约 `$1011` 的异常数量级价格作为组合最大正贡献，并把 `ORCL` 跌破关键支撑等行情判断写入组合复盘。
+    - 同窗新增 12 条 user / 8 条 assistant / 4 条 system compact，覆盖 7 个更新 session；未见错投、投递失败、空回复、敏感信息外泄或全渠道不可用。
+  - `data/runtime/logs/web.log.2026-07-23`
+    - 05:00 CST `持仓财报与重大新闻心跳提醒` deliver preview 在行情接口达到调用上限后继续沿用 `SNDK $1,667.77` 作为最新有效锚点。
+    - 05:00 / 07:00 CST `闪迪关键事件心跳提醒`、`存储板块关键事件心跳提醒` 继续使用 `SNDK $1,610-$1,627` 区间价格进入 noop / triggered 判断。
+    - 05:00 / 07:00 CST `Cerebras IPO与业务进展心跳监控` 继续把 `NASDAQ CBRS $220.00` 当作 Cerebras 公开交易价格锚。
+    - 07:00 CST `中际旭创关键事件心跳提醒` 在工具额度受限时继续引用 `¥1,072.52` 深交所价格锚进入用户可见 preview。
+  - 判断：最新证据仍是行情源 / 数值 sanity check / 未核验事件缺口。它会污染 scheduler / heartbeat 判断质量，但未阻断主投递链路，因此保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-23 23:02-2026-07-24 03:02 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-23`
     - 01:30 / 03:00 CST `Monitor_Watchlist_11` raw preview 继续引用 `MU $1000.86`，并在工具额度耗尽后把该价格作为 noop 判断依据。

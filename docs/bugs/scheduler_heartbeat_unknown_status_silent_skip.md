@@ -7,6 +7,15 @@
 
 ## 修复进展
 
+- `2026-07-24 03:02-07:01 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-23`
+    - 同窗继续出现 `HeartbeatDiag=401`、`deliver job_id=54`、`duplicate_suppressed=18`、`runner_error=20`、`heartbeat 输出不是结构化 JSON=8`。
+    - `parse_kind` 分布约为 `PlainTextTriggered=106`、`JsonNoop=31`、`JsonTriggered=8`、`PlainTextSuppressed=8`、`PlainTextNoop=6`；未检出新的 `JsonMalformed` / `JsonUnknownStatus`，但 noop / triggered 语义仍大量落入自然语言分支。
+    - 05:00 CST `持仓重大事件心跳检测` 和 `SIVE POET/Nokia/1.6T DFB 心跳检测` 以 `<think>` / 自然语言 noop 落成“heartbeat 输出不是结构化 JSON”，失败跳过发送。
+    - 07:00 CST `ASTS 重大异动心跳监控`、`AI与科技持仓观察关键事件心跳提醒`、`NVDA 关键事件心跳提醒` 继续因非结构化 heartbeat 输出失败跳过发送；同窗 `SIVE POET/Nokia/1.6T DFB 心跳检测` 又把“收到，当前心跳监控正常运行中”作为 `PlainTextTriggered` deliver，说明 noop / 普通话术仍可能被误当触发提醒。
+  - 会话质量对照：`data/sessions.sqlite3` 同窗按真实 `timestamp` 新增 12 条 user / 8 条 assistant / 4 条 system compact，覆盖 7 个更新 session；ordinary assistant final 未见 `<think>`、本机路径、原始 provider 错误、panic 或 raw tool JSON 外泄。07:00 Feishu 早报在采样点仍为 user-only，距触发不足两分钟，按在途观察。
+  - 判断：最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。该问题继续影响 heartbeat 监控判断、送达语义和失败 / 跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-23 23:02-2026-07-24 03:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-23`
     - 同窗继续出现 `HeartbeatDiag=621`、`deliver job_id=77`、`duplicate_suppressed=14`、`runner_error=37`、`heartbeat 输出不是结构化 JSON=18`、`function_calling tool call rejected=316`。
