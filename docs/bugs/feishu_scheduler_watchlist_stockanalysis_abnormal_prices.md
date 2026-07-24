@@ -22,6 +22,16 @@
 
 ## 最新进展
 
+- 本轮 2026-07-24 23:02-2026-07-25 03:02 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-24`
+    - 23:30 CST `存储板块关键事件心跳提醒` deliver preview 使用 `SNDK $1,494.90`、昨收 `$1,610.33`、年高 `$2,354.39` 等异常数量级价格作为触发判断依据。
+    - 23:30 CST `Cerebras IPO与业务进展心跳监控` deliver preview 把 `NASDAQ CBRS $197.17` 当作 Cerebras 公开交易行情锚。
+    - 02:30 CST `Cerebras IPO与业务进展心跳监控` 在报价源受限时继续沿用 `CBRS` 约 `$220` 作为参考价；02:30 / 03:00 `NVDA 关键事件心跳提醒` 继续引用 `AMD $539.69` 作为对照价格锚。
+    - 03:00 CST `存储板块关键事件心跳提醒` 沿用 `SNDK $1,574.76 / AAOI $112.02` 作为近期有效核验价；03:00 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 使用 `AAOI $100.89-$112.02` 进入跌幅判断。
+  - `data/sessions.sqlite3`
+    - 同窗新增 16 条 user / 9 条 assistant / 6 条 system compact，覆盖 5 个更新 session；未见错投、投递失败、空回复、敏感信息外泄或全渠道不可用。
+  - 判断：最新证据仍是行情源 / 数值 sanity check / 未核验事件缺口。它会污染 heartbeat 判断质量，但未阻断主消息投递链路，因此保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-24 19:01-23:02 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `New`：
   - `data/sessions.sqlite3`
     - 19:53 CST Web direct `session_id=Actor_web__direct__web-user-ba50cb9401c0` 正常收口，但持仓处理建议继续使用 `MU $990.21`、`ARM $283.04`、`DELL $439`、`BE $217.3`、`AMD $539.69` 等高风险数量级行情锚，并据此拆解存储、光通信、芯片算力和电力仓位。

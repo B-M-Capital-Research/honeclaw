@@ -6,6 +6,11 @@
 - **状态**: New
 - **GitHub Issue**: 无
 - **修复结论复核**:
+- `2026-07-25 03:02 CST` 运行态部分复发继续存在，状态维持 `New`：
+  - `data/sessions.sqlite3` 在 2026-07-24 23:02-2026-07-25 03:02 CST 按真实 `timestamp` 新增 16 条 user / 9 条 assistant / 6 条 system compact，覆盖 5 个更新 session；近期 direct / scheduler session 仍有 assistant 收口，`sessions.max(last_message_at)=2026-07-25T01:33:51.962041+08:00`。
+  - 同窗 assistant final 污染扫描未命中 `<think>`、本机路径、`data/sessions.sqlite3`、panic、provider 原始错误、raw tool 字段、`cron_job`、fenced JSON 或内部画像词；用户可见候选问题已归入 Web direct terminal failure、实体 guard、heartbeat 结构化状态、heartbeat JSON 载荷和异常行情锚缺陷。
+  - 但同一库 `cron_job_runs.max(executed_at)` 仍停在 `2026-07-19T13:31:15.040172+08:00`，查询 2026-07-24 23:02 CST 后没有新增 run；`data/runtime/logs/web.log.2026-07-24` 同窗继续记录 643 条 `HeartbeatDiag`、79 条 `deliver job_id`、37 条 `duplicate_suppressed`、34 条 `runner_error`、10 条“heartbeat 输出不是结构化 JSON”和 1 条“heartbeat 输出不是合法 JSON”。
+  - 结论：会话 transcript mirror 能追入当前 direct / scheduler transcript，但本地调度运行台账 `cron_job_runs` 继续未随真实 heartbeat / scheduler 运行态推进。该问题影响巡检、调度审计、补发判断和运行态复核，严重等级维持功能性 `P2`；当前用户态消息仍在生成，不等同于 scheduler 全局漏跑 P1，非 P1，不创建 GitHub Issue。
 - `2026-07-24 19:01 CST` 运行态部分复发继续存在，状态维持 `New`：
   - `data/sessions.sqlite3` 在 2026-07-24 15:01-19:01 CST 按真实 `timestamp` 新增 11 条 user / 3 条 assistant / 6 条 system compact，覆盖 3 个更新 session；近期 direct / scheduler session 均以 assistant 收口，`sessions.max(last_message_at)=2026-07-24T18:48:25.384597+08:00`。
   - 同窗 assistant final 污染扫描未命中 `<think>`、本机路径、`data/sessions.sqlite3`、panic、provider 原始错误、raw tool 字段、`cron_job` 或 fenced JSON；用户可见候选问题已归入 compact retry、X 帖格式、实体 guard、heartbeat 结构化状态、heartbeat JSON 载荷和异常行情锚缺陷。

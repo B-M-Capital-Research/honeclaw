@@ -23,6 +23,20 @@ New
 ## 证据来源
 
 - `data/sessions.sqlite3`
+  - `2026-07-25 03:02 CST` 巡检确认本缺陷继续在 Web direct 普通投研 / 宏观问题上复发，状态维持 `New/P2`。
+  - `session_id=Actor_web__direct__web-user-5bb05078acd4`
+    - `2026-07-25T01:24:09.809730+08:00` 用户问 `HIMS怎么回事？为什么大跌？财报前还会反弹么？`。
+    - `2026-07-25T01:25:32.678801+08:00` assistant final 只返回“本轮研究未能完成，暂未形成可供参考的标的结论。”，`metadata_json` 为 `service_owned_initial_prefix=true`、`error_kind=AgentFailed`、`terminal_stream_incomplete=true`、`run_failed=true`。
+  - `session_id=Actor_web__direct__web-user-be13e1f84d14`
+    - `2026-07-25T01:28:15.353224+08:00` 用户询问宏观环境、加息影响和特斯拉下跌原因。
+    - `2026-07-25T01:29:34.952182+08:00` assistant final 只返回同一通用研究失败，`metadata_json` 同样标记 `AgentFailed / terminal_stream_incomplete=true`。
+    - `2026-07-25T01:30:10.720715+08:00` 用户拆短为美股宏观 / 加息问题，`2026-07-25T01:31:11.555710+08:00` assistant 再次只返回同一通用研究失败。
+    - `2026-07-25T01:31:35.961296+08:00` / `2026-07-25T01:32:55.792933+08:00` 用户进一步拆成更短问题后，01:32 / 01:33 才恢复正文输出，说明不是 Web direct 全局不可用，而是较复杂 direct 轮次 terminal stream / finalization 收口失败。
+  - 同窗 `data/sessions.sqlite3` 按真实 `timestamp` 新增 16 条 user / 9 条 assistant / 6 条 system compact，覆盖 5 个更新 session；ordinary assistant final 污染扫描未见 `<think>`、本机路径、raw tool JSON、panic 或 provider 原始错误。
+  - 判断：最新样本未直接暴露 `committed terminal prefix mismatch` 字符串，但用户可见症状与 metadata 仍是 Web direct terminal stream incomplete 后提交通用研究失败；与本缺陷同一 Web direct terminal failure 收口链路相邻，先补入原文档，不新建重复缺陷。
+  - 严重等级维持 `P2`：连续阻断多个明确 Web direct 问题，但同窗 Feishu scheduler / Web direct 短问仍有成功收口，未见全渠道停摆、错投、敏感信息泄露或持久化数据破坏，因此不是 `P1`，不创建 GitHub Issue。
+
+- `data/sessions.sqlite3`
   - `2026-07-24 23:02 CST` 巡检确认本缺陷继续在 Web direct 普通投研问题上复发，状态维持 `New/P2`。
   - `session_id=Actor_web__direct__web-user-400794904801`
     - `2026-07-24T22:57:33.921840+08:00` 用户问 `美股ai科技股盘中为什么暴跌`。
