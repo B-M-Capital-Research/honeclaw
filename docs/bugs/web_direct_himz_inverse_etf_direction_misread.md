@@ -14,7 +14,7 @@ P2
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
@@ -66,13 +66,20 @@ New
 - 初步判断 answer 阶段缺少杠杆 / 反向 ETF 产品方向 sanity check：工具或来源中存在 `Long` 与 `+200%` 证据，模型仍根据高波动或杠杆 ETF 的泛化知识 hallucinate 成 inverse。
 - 金融产品类型识别没有在出站前校验 `fund objective`、`long/inverse`、`daily target` 与最终操作建议之间的一致性。
 
-## 下一步建议
+## 修复情况
 
-- 在金融系统 prompt 或出站 guard 中增加杠杆 / 反向 ETF 约束：产品方向必须从 `fund objective` / 官方名称抽取，若正文出现 `Long` 与 `inverse`、`+200%` 与 `-200%` 矛盾，必须阻断或改为澄清。
-- 增加回归样本：`HIMZ` 应识别为 `Defiance Daily Target 2X Long HIMS ETF`，不得把它描述成 `2x 空头反向 ETF` 或建议用户按空头对冲逻辑处理。
-- 对含 ETF / ETN / leveraged / inverse / option 的操作建议，加入一条产品方向一致性检查后再允许输出减仓、清仓、对冲、加仓等动作框架。
+- `2026-07-24 23:45 CST` 代码级修复：`crates/hone-channels/src/investment_response_guard.rs` 的 ETF / 基金深度分析 enforcement block 新增产品方向一致性硬约束。
+  - 若本轮已核验的基金名称、目标或正文证据明确写有 `Long / Bull / +2X / 200%` 或 `Short / Bear / Inverse / -1X / -2X`，最终回答不得改写成相反暴露。
+  - 若方向未核验，必须明确写“本轮未核验”，不能直接给对冲、清仓或反向仓位建议。
+- 已在现有基金合约回归中补检查，确保 ETF / 基金 prompt contract 明确包含这条方向一致性约束。
 
 ## 验证
 
-- 本轮为缺陷台账维护任务，未修改业务代码、测试代码或配置代码，未运行代码测试。
-- 已验证范围：`data/sessions.sqlite3` 2026-07-24 11:00-15:01 CST Web direct 会话；`docs/bugs/` 既有文档去重检索；Defiance 官方 HIMZ 产品页与公开 ETF 页面核对产品方向。
+- `cargo test -p hone-channels fund_contract_uses_fund_sections_and_rejects_company_template --lib -- --nocapture`
+- `cargo check -p hone-channels --tests`
+- 证据核对范围：`data/sessions.sqlite3` 2026-07-24 11:00-15:01 CST Web direct 会话；`docs/bugs/` 既有文档去重检索；Defiance 官方 HIMZ 产品页与公开 ETF 页面核对产品方向。
+
+## 后续观察
+
+1. 继续观察同类 Web / Feishu 直聊里带杠杆 ETF、反向 ETF、期权和正股的混合持仓问答，确认 live 路径不再把产品方向写反。
+2. 若后续仍出现名称中明确写有 `Long` / `Inverse` 但 final 方向相反，再升级为更强的出站 guard，而不是只停留在 prompt contract。

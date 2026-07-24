@@ -14,7 +14,7 @@ P2
 
 ## 状态
 
-New
+Fixed
 
 ## GitHub Issue
 
@@ -104,20 +104,25 @@ New
 
 ## 修复情况
 
-- `2026-07-24 03:02 CST` 真实运行态复发，状态已从 `Fixed` 回退为 `New`。
+- `2026-07-24 03:02 CST` 真实运行态复发，状态曾从 `Fixed` 回退为 `New`。
+- `2026-07-24 23:30 CST` 代码级补强：`crates/hone-channels/src/agent_session/core.rs` 的 `recover_response_with_committed_prefix(...)` 现在除了原有“tail-only 正文补回已提交 prefix”外，还会识别并替换冲突的首行 `数据时间：...；行情口径：...` header，避免模型重新写了一条时间首行时被直接降级成通用研究失败。
 - 已在 `crates/hone-channels/src/agent_session/core.rs` 为 committed prefix 收口新增恢复分支：
   - 终稿仍带已提交 prefix 时，继续只做原有前导空白对齐。
   - 终稿只剩非空正文 tail、未携带 prefix 时，改为恢复成 `committed prefix + 正文`，不再直接降级成通用研究失败。
-  - 若正文为空或正文里已出现冲突 prefix，仍保持 fail-closed。
+  - 终稿首行若是另一条冲突的 `数据时间：...；行情口径：...`，则用已提交 prefix 替换该首行并保留正文 tail。
+  - 若正文为空，或正文里出现无法安全归一的冲突 prefix，仍保持 fail-closed。
 - 已在 `crates/hone-channels/src/agent_session/tests.rs` 补回归，覆盖：
   - committed prefix + tail-only 终稿恢复；
+  - committed prefix + 冲突时间首行恢复；
   - 恢复后 Web direct 正常持久化 / 投递，不再落成 generic failure；
   - 既有 committed prefix 成功路径不回归。
 
 ## 验证
 
 - `cargo test -p hone-channels committed_prefix_recovery_prepends_a_missing_prefix_only_for_tail_only_content --lib -- --nocapture`
+- `cargo test -p hone-channels committed_prefix_recovery_replaces_a_conflicting_time_first_header --lib -- --nocapture`
 - `cargo test -p hone-channels service_prefix_tail_only_final_response_is_recovered_without_generic_failure --lib -- --nocapture`
+- `cargo test -p hone-channels service_prefix_conflicting_time_header_is_recovered_without_generic_failure --lib -- --nocapture`
 - `cargo test -p hone-channels service_prefix_and_final_tail_are_visible_and_persisted_byte_identically --lib -- --nocapture`
 - `cargo check -p hone-channels --tests`
 
