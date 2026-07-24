@@ -22,6 +22,15 @@
 
 ## 最新进展
 
+- 本轮 2026-07-24 07:01-11:02 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-24`
+    - 08:00-11:01 CST heartbeat / scheduler preview 继续使用 `SNDK $1,610-$1,667` 作为拆股、noop 或 duplicate suppression 的行情锚。
+    - 10:00 CST Feishu scheduler `Citrini AI 供应链文章跟踪` 正常收口，但开头行情口径继续使用 `MU $990.21`、`AMD $539.69` 等高风险数量级价格作为已核验代表证券。
+    - 11:00 CST `Cerebras IPO与业务进展心跳监控` 继续把 `CBRS` 约 `$220` 当作 Cerebras 公开交易价格锚；`美股黄金坑信号心跳检测` raw preview 使用 `SPY $738.18`；`中际旭创关键事件心跳提醒` raw / deliver 内容漂移到 `NBIS $220.97`。
+  - `data/sessions.sqlite3`
+    - 同窗新增 45 条 user / 32 条 assistant / 12 条 system compact，覆盖 20 个更新 session；未见错投、投递失败、空回复、敏感信息外泄或全渠道不可用。
+  - 判断：最新证据仍是行情源 / 数值 sanity check / 未核验事件缺口。它会污染 scheduler / heartbeat 判断质量，但未阻断主投递链路，因此保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-24 03:02-07:01 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `New`：
   - `data/sessions.sqlite3`
     - 06:31 CST Web scheduler `1亿美元AI科技组合每日跟踪` `session_id=Actor_web__direct__web-user-14f4cadb069f` 正常收口，但 final 使用 `MU` 约 `$1011` 的异常数量级价格作为组合最大正贡献，并把 `ORCL` 跌破关键支撑等行情判断写入组合复盘。

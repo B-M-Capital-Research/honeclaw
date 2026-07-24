@@ -8,6 +8,16 @@
 
 ## 运行态复核（2026-07-23 07:01 CST）
 
+- 本轮 2026-07-24 07:01-11:02 CST 真实运行态继续复发，状态维持 `New/P2`：
+  - `data/runtime/logs/web.log.2026-07-24`
+    - 08:00-11:00 CST `AAOI 1.6T 光模块心跳检测` 每半小时继续把任务上下文里的 `SEC` 当证券代码，因数据供应商没有同代码行情覆盖而落成 `runner_error` / 不发送。
+    - 08:00-11:00 CST `ORCL 大事件监控` 每半小时继续因 Oracle 多上市地候选落成 `runner_error`，要求补交易所后缀或公司全名。
+  - `data/sessions.sqlite3`
+    - 同窗新增 45 条 user / 32 条 assistant / 12 条 system compact，覆盖 20 个更新 session；近期 direct / scheduler 多数以 assistant 收口，未见全渠道停摆、错投或敏感信息泄露。
+    - 08:30 CST Web scheduler `187只关注股临近财报日提醒` 仍出现与用户任务不匹配的 `0187.HK` 标的核验正文，随后写入用户可见执行出错，说明误抽 / 错配实体不只发生在 heartbeat。
+  - 判断：最新样本仍是 scheduler / heartbeat 任务正文、监管缩写或上市地候选进入实体 guard / resolver 后误抽、误拦或错配实体；与既有缺陷同根，不新建重复缺陷。
+  - 严重等级维持 `P2`：它直接阻断部分 scheduler / heartbeat 正文生成，但同窗 direct / scheduler 用户可见 final 正常收口，未见全渠道停摆、错投、敏感信息泄露或持久化数据破坏，因此不是 `P1`，不创建 GitHub Issue。
+
 - 本轮 2026-07-24 03:02-07:01 CST 真实运行态继续复发，状态维持 `New/P2`：
   - `data/sessions.sqlite3`
     - 同窗新增 12 条 user / 8 条 assistant / 4 条 system compact，覆盖 7 个更新 session。

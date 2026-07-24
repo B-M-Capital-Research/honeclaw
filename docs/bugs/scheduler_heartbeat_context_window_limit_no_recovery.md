@@ -5,6 +5,15 @@
 - **严重等级**: P2
 - **状态**: New
 - **证据来源**:
+  - `2026-07-24 11:02 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
+    - `data/runtime/logs/web.log.2026-07-24`
+      - 07:01-11:02 CST 检出 3 条 `context window exceeds limit` heartbeat 信号。
+      - 11:00 CST Web `存储板块关键事件心跳提醒` 首轮 `Primary` 路径失败，错误包含 `upstream HTTP 400: invalid params, context window exceeds limit (2013)`，随后进入 `retry_with_budget_recovery` / `BudgetRecovery { reason: ContextOverflow }`。
+      - 11:00:43 CST 同 job 的恢复分支成功收口为 `JsonNoop` 并跳过发送；这说明恢复分支可避免直接失败，但首轮超窗仍复发，恢复后的任务覆盖仍受更小预算与有限工具调用影响。
+    - `data/sessions.sqlite3`
+      - 同窗按真实 `timestamp` 新增 45 条 user / 32 条 assistant / 12 条 system compact，覆盖 20 个更新 session；近期 ordinary direct / scheduler 会话均以 assistant 收口，未见全渠道不可用。
+    - 判断：当前运行态已有预算恢复分支，但首轮超窗仍在 heartbeat 任务间复发，并与结构化输出退化共存。严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
   - `2026-07-23 03:01 CST` 本轮确认当前 runtime 继续复发，状态维持 `New`：
     - `data/runtime/logs/web.log.2026-07-22`
       - 2026-07-22 23:02-2026-07-23 03:01 CST 检出 9 条 `context window exceeds limit` 相关 heartbeat 信号。

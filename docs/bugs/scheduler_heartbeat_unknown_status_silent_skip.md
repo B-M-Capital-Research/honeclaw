@@ -7,6 +7,15 @@
 
 ## 修复进展
 
+- `2026-07-24 07:01-11:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-24`
+    - 同窗继续出现 `HeartbeatDiag=569`、`deliver job_id=76`、`duplicate_suppressed=33`、`runner_error=28`、`heartbeat 输出不是结构化 JSON=10`、`function_calling tool call rejected=300`。
+    - `parse_kind` 分布为 `PlainTextTriggered=150`、`JsonNoop=46`、`JsonTriggered=7`、`PlainTextSuppressed=10`、`PlainTextNoop=8`、`JsonEmptyStatus=1`。
+    - 11:00 CST `SIVE POET/Nokia/1.6T DFB 心跳检测` 把“收到。当前各标的均无触发，心跳在后台正常运行中”解析为 `PlainTextTriggered` deliver，随后又被 duplicate suppression 压下；同批 `Cerebras IPO与业务进展心跳监控` 因自然语言 suppressed 落成“heartbeat 输出不是结构化 JSON”失败。
+    - 多条 raw preview 仍以 `<think>` 开头，说明结构化协议仍依赖后置解析 / 猜测，而不是稳定 JSON contract。
+  - 会话质量对照：`data/sessions.sqlite3` 同窗按真实 `timestamp` 新增 45 条 user / 32 条 assistant / 12 条 system compact，覆盖 20 个更新 session；ordinary assistant final 未见 `<think>`、本机路径、原始 provider 错误、panic 或 raw tool JSON 外泄。
+  - 判断：最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。该问题继续影响 heartbeat 监控判断、送达语义和失败 / 跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-24 03:02-07:01 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-23`
     - 同窗继续出现 `HeartbeatDiag=401`、`deliver job_id=54`、`duplicate_suppressed=18`、`runner_error=20`、`heartbeat 输出不是结构化 JSON=8`。

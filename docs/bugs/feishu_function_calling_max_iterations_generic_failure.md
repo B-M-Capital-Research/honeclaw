@@ -8,6 +8,14 @@
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `session_messages`
+  - `2026-07-24 07:01-11:02 CST` 运行态复核补充同根普通 scheduler 样本，状态维持 `New/P2`：
+    - `session_id=Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21`
+      - `2026-07-24T10:30:02.309769+08:00` Feishu scheduler `SemiAnalysis 新文章跟踪` 触发，任务要求检查 SemiAnalysis 是否有新发文章并总结标题、核心事实、产业链和投资含义。
+      - `2026-07-24T10:33:37.214402+08:00` assistant final 仅返回“抱歉，这次处理失败了。请稍后再试。”；随后追加 `scheduler_failure=true` 的“本轮定时任务未能完成，系统已记录失败并将在下一次触发时重试。”
+    - `data/runtime/logs/web.log.2026-07-24` 同一 session 在 10:31-10:33 记录 agent still running 到 180s，最终 `MsgFlow/feishu failed ... error="max_iterations_exceeded:18"`，`SchedulerDiag` 将其压成 `internal_error_suppressed` 并跳过 Feishu 外发。
+    - 同一 session 在 10:00 `Citrini AI 供应链文章跟踪` 可正常输出完整文章追踪报告，说明不是 Feishu scheduler 全局不可用，而是复杂文章追踪任务在 function-calling 迭代耗尽后仍缺少可用降级摘要。
+    - 同窗另有 09:00 `核心观察池早间简报` 因 OpenAI-compatible `HTTP 529` 高峰失败只落通用失败；该样本先按 provider 短时负载观察，不作为本缺陷根因证据。
+    - 严重等级维持 `P2`：它阻断单轮普通 scheduler 正文生成，但同窗 direct / scheduler 仍有多条正常 assistant 收口，未见错投、数据破坏、敏感信息泄露或全渠道停摆，因此不是 `P1`。
   - `2026-07-21 19:01-23:01 CST` 运行态复核补充同根 Web direct 连续失败样本，状态维持 `New/P2`：
     - `session_id=Actor_web__direct__web-user-0545ade83537`
       - `2026-07-21T21:13:18.115453+08:00` 用户请求“交换机 概念A股和美股的核心标的”，`2026-07-21T21:16:17.176346+08:00` assistant final 仅为通用失败提示。
