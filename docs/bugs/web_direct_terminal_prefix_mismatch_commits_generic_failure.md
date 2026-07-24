@@ -22,6 +22,16 @@ New
 
 ## 证据来源
 
+- `data/sessions.sqlite3`
+  - `2026-07-24 23:02 CST` 巡检确认本缺陷继续在 Web direct 普通投研问题上复发，状态维持 `New/P2`。
+  - `session_id=Actor_web__direct__web-user-400794904801`
+    - `2026-07-24T22:57:33.921840+08:00` 用户问 `美股ai科技股盘中为什么暴跌`。
+    - `2026-07-24T22:59:02.988003+08:00` assistant final 只返回“本轮研究未能完成，暂未形成可供参考的标的结论。”，`metadata_json` 为 `service_owned_initial_prefix=true`、`error_kind=AgentFailed`、`terminal_stream_incomplete=true`、`run_failed=true`。
+    - `2026-07-24T22:59:36.375119+08:00` 用户 follow-up `盘中走势分析`，assistant 只要求补充具体标的，没有结合上一轮“美股 AI 科技股盘中暴跌”的上下文继续分析。
+  - 同窗 `data/sessions.sqlite3` 按真实 `timestamp` 新增 72 条 user / 42 条 assistant / 9 条 system compact，覆盖 26 个更新 session；未见全渠道不可用、长期 user-only 残留、错投、敏感信息泄露或数据破坏。
+  - 判断：最新样本未直接暴露 `committed terminal prefix mismatch` 字符串，但用户可见症状与 metadata 仍是 Web direct agent finalization / terminal stream incomplete 后提交通用研究失败；与本缺陷同一 Web direct terminal failure 收口链路相邻，先补入原文档，不新建重复缺陷。
+  - 严重等级维持 `P2`：单轮 Web direct 明确问题没有完成，后续 follow-up 也未自动恢复上下文；但同窗其它会话正常收口，非 P1，不创建 GitHub Issue。
+
 - `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-23`
   - `2026-07-24 03:02 CST` 巡检确认本缺陷在代码级 `Fixed` 后真实运行态复发，状态回退为 `New/P2`。
   - `session_id=Actor_web__direct__web-user-266454c88ed6`

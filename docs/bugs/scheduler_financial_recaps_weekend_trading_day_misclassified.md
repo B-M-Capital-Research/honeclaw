@@ -9,6 +9,13 @@
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `session_messages`
+  - `2026-07-24T21:45:49.994446+08:00`
+    - `session_id=Actor_feishu__direct__ou_5fea712445d905e8418bde07dbcf2cbfb2`
+    - Feishu scheduler `每日美股大盘风控简报` 的权威触发配置是北京时间 21:45，任务正文要求“纳斯达克/QQQ、标普/SPY 作为美股开盘后早盘参考”，且要求避免混用时间点。
+    - assistant final 正常收口，但开头写出 `行情口径：美股收盘（NY 2026-07-24 16:00 ET，报价截至同日 04:00 北京时间）`，核心数据表也写 `QQQ / SPY / DJI` 数据时间为 `16:00 ET 07/24`。
+    - 实际北京时间 2026-07-24 21:45 对应美东 09:45，正处开盘后早盘，不可能已有同日 16:00 ET 收盘；回复把早盘风控任务错误包装成未来收盘复盘，随后据此给出 QQQ / SPY / VIX 与仓位建议。
+  - 本轮 2026-07-24 19:01-23:02 CST 对照：`session_messages` 新增 72 条 user / 42 条 assistant / 9 条 system compact，覆盖 26 个更新 session，均有 assistant 终态；assistant final 污染扫描未见 `<think>`、本机路径、provider 原始错误或 raw tool JSON 外泄。该样本调度、生成、落库和投递均完成，问题主要影响金融复盘时间口径与正文可信度；不影响直聊 / 调度 / 投递主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
   - `2026-07-21T05:11:11.316706+08:00`
     - `session_id=Actor_feishu__direct__ou_5fea712445d905e8418bde07dbcf2cbfb2`
     - Feishu scheduler / direct actor 的 `美股收盘资金流向简报` 正常收口，但 assistant final 写出 `美东 2026-07-20 周日 17:10 ET`、`当前为周日傍晚`、`美股已于周五收盘休市`，并把数据口径落到 `周五 2026-07-18 收盘价`。

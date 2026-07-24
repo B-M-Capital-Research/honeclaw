@@ -22,6 +22,15 @@
 
 ## 最新进展
 
+- 本轮 2026-07-24 19:01-23:02 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `New`：
+  - `data/sessions.sqlite3`
+    - 19:53 CST Web direct `session_id=Actor_web__direct__web-user-ba50cb9401c0` 正常收口，但持仓处理建议继续使用 `MU $990.21`、`ARM $283.04`、`DELL $439`、`BE $217.3`、`AMD $539.69` 等高风险数量级行情锚，并据此拆解存储、光通信、芯片算力和电力仓位。
+    - 20:04 / 20:47 CST Feishu scheduler `美股盘后AI及高景气产业链推演` 正常收口，两轮都继续使用 `MU $990.21`、`SNDK $1,610.33`、`STX $913.36`、`WDC $558.30`、`AMD $539.69`、`GEV $1,031.19`、`LITE $833.64`、`COHR $313.22` 等高风险价格锚。
+    - 21:31 CST Feishu scheduler `彩票组合风险监控与买卖点提醒` 正常收口，但使用 `MU $954.05`、`LITE $816.45`、`BE $210.87` 等数量级异常价格进入纪律校验和操作建议。
+  - `data/runtime/logs/web.log.2026-07-24`
+    - 19:01-23:02 CST heartbeat / scheduler 继续有 `HeartbeatDiag=676`、`deliver=305`、`duplicate_suppressed=49`、`runner_error=36`；异常价格仍会进入出站候选和 duplicate suppression 判断上下文。
+  - 判断：最新证据仍是行情源 / 数值 sanity check / 未核验事件缺口。它会污染 direct、scheduler 和 heartbeat 判断质量，但未阻断主消息投递链路，因此保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-24 15:01-19:01 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-24`
     - 15:30-19:01 CST heartbeat / scheduler preview 继续使用 `SNDK $1,610.33`、`AAOI $112.02-$116.61`、`NVDA $207.68-$208.76`、`AMD $539.69`、`CBRS $220.00`、`NBIS $220.97` 等高风险数量级价格作为最新有效行情锚。

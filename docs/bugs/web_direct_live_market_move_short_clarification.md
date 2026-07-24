@@ -23,6 +23,14 @@ New
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `session_messages`
+  - 巡检时间窗：2026-07-24 19:01-23:02 CST。
+  - 22:57 CST Web direct session `Actor_web__direct__web-user-400794904801`，用户问 `美股ai科技股盘中为什么暴跌`，assistant 先因 `AgentFailed / terminal_stream_incomplete=true` 只返回通用研究失败。
+  - 22:59 CST 用户继续说 `盘中走势分析`；由于上一轮已经明确限定了“美股 AI 科技股盘中暴跌”，assistant final 却只回复“没有指明具体标的”，要求用户再提供股票、ETF 或指数，没有按上一轮上下文默认 QQQ / Nasdaq / AI 科技股篮子继续给盘中走势分析。
+  - 该样本与 2026-07-14 `Hynix` 样本表现相同：日内走势 / 涨跌归因问题可以从上下文推断研究对象，但 Web direct 用短澄清阻塞核心回答。
+  - 同窗新增 72 条 user / 42 条 assistant / 9 条 system compact，覆盖 26 个更新 session；未见错投、长期 user-only、敏感信息泄露或投递主链路中断。
+  - 该问题不影响消息投递、会话收口或数据写入，主要是用户明确的盘中走势分析没有被完成，因此仍按质量性 `P3 / New` 处理，非 P1，不创建 GitHub Issue。
+
+- `data/sessions.sqlite3` -> `session_messages`
   - 巡检时间窗：2026-07-14 19:02-23:02 CST。
   - 19:23 CST Web direct session `Actor_web__direct__web-user-e05f5e5f74a3`，用户问 `今天Hynix为什么涨涨跌跌的`。
   - assistant row `ordinal=603` 在 `metadata_json` 中没有 `assistant.tool_calls`，未留下本轮网页、行情或新闻核验证据。
