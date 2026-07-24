@@ -9,6 +9,14 @@
 ## 证据来源
 
 - `data/sessions.sqlite3`
+  - `2026-07-24 19:01 CST` 复核同一任务复发：
+    - session_id：`Actor_web__direct__web-user-ba50cb9401c0`
+    - 时间窗：2026-07-24 18:00-18:01 CST
+    - user turn：`2026-07-24T18:00:01.668918+08:00`
+    - assistant final：`2026-07-24T18:01:05.902528+08:00`
+    - 用户任务仍要求英文、适合直接发 X、每条约 140 英文字符以内、直接给结果、不写长解释、优先 5-8 条。
+    - 实际 assistant final 长度 2239 字符，继续输出 7 段粗体长主题分析；第一条 AVGO 段落本身约数百英文字符，远超 140 英文字符。
+    - 本轮 Web scheduler 触发、生成、落库均完成，没有 send_failed、空回复、原始工具报错、`<think>`、本机路径或 JSON/Markdown 结构损坏证据；问题仍是显式格式契约未被遵守，不影响主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
   - `2026-07-23 19:02 CST` 复核同一任务复发：
     - session_id：`Actor_web__direct__web-user-ba50cb9401c0`
     - 时间窗：2026-07-23 18:00-18:01 CST

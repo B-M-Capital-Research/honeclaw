@@ -7,6 +7,14 @@
 
 ## 修复进展
 
+- `2026-07-24 15:01-19:01 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-24`
+    - 同窗继续出现 `deliver job_id=98`、`duplicate_suppressed=36`、`runner_error=34`、`heartbeat 输出不是结构化 JSON / 不是合法 JSON=8`、`function_calling tool call rejected=313`。
+    - `parse_kind` 分布为 `PlainTextTriggered=196`、`JsonNoop=51`、`PlainTextNoop=10`、`PlainTextSuppressed=8`、`JsonTriggered=3`。
+    - 15:30-19:00 CST 多条 Web / Feishu heartbeat 继续在工具预算耗尽、自然语言 noop、协议化正文和 duplicate suppression 间漂移；19:00 CST `SIVE POET/Nokia/1.6T DFB 心跳检测` 因自然语言输出落成“heartbeat 输出不是结构化 JSON”失败。
+  - 会话质量对照：`data/sessions.sqlite3` 同窗按真实 `timestamp` 新增 11 条 user / 3 条 assistant / 6 条 system compact，覆盖 3 个更新 session；ordinary assistant final 未见空回复、错投、本机路径、provider 原始错误、panic、`<think>` 或 raw tool JSON 外泄。
+  - 判断：最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。该问题继续影响 heartbeat 监控判断、送达语义和失败 / 跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-24 11:00-15:01 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-24`
     - 同窗继续出现 `HeartbeatDiag=748`、`run_finish=192`、`deliver job_id=104`、`duplicate_suppressed=47`、`runner_error=36`、`heartbeat 输出不是结构化 JSON=9`、`heartbeat 输出不是合法 JSON=1`、`function_calling tool call rejected=396`。

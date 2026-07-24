@@ -5,6 +5,14 @@
 - **严重等级**: P2
 - **状态**: New
 
+## 2026-07-24 运行态复核
+
+- 状态维持 `New`，严重等级维持 `P2`。
+- `2026-07-24 16:47-16:48 CST`，Feishu direct 旧会话 `Actor_feishu__direct__ou_5fa7fc023b9aa2a550a3568c8ffc4d7cdc` 收到短问 `分析一下INTC最新财报，并出操作建议`。
+- `data/sessions.sqlite3` 显示本轮先写入 `Conversation compacted` 和 compact summary，并恢复多条 skill context；assistant final 于 `2026-07-24T16:48:52.779937+08:00` 仍只返回 `当前会话上下文过长。我已经自动尝试压缩历史，但这次仍无法继续。请直接继续提问重点、发送 <absolute-path>/compact，或开启一个新会话后再试。`
+- 用户没有得到 INTC 财报分析或操作建议；`<absolute-path>/compact` 占位符仍进入用户可见失败文案。
+- 判断：这是同一 Feishu direct 旧会话 compact / context-overflow recovery 路径复发，不新建重复缺陷。同窗其它 Web / Feishu direct 有 assistant 收口，未见错投、敏感信息泄露或全渠道不可用，因此仍为功能性 `P2`，非 P1。
+
 ## 2026-07-23 运行态复核
 
 - 状态维持 `New`，严重等级维持 `P2`。
