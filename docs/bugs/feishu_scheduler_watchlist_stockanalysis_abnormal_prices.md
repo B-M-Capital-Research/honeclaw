@@ -22,6 +22,16 @@
 
 ## 最新进展
 
+- 本轮 2026-07-25 03:01-07:02 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-24`
+    - 07:00 CST `存储板块关键事件心跳提醒` deliver preview 沿用 `SNDK $1,610.33`、`AAOI $112.02` 作为 2026-07-23 纽约收盘的最新有效核验价。
+    - 07:00 CST `闪迪关键事件心跳提醒` deliver preview 又引用 `SNDK $1,436.56` 作为最近一轮稳定报价，继续把明显高风险数量级行情当判断锚。
+    - 07:00 CST `Monitor_Watchlist_11` raw preview 继续使用 `MU ~$990.21`，并在工具额度受限时将其作为距离触发价的上下文。
+    - 07:01 CST `中际旭创关键事件心跳提醒` deliver preview 实际写成 NVIDIA 推理芯片分析，并使用 `NVDA $206.84`，说明 heartbeat 行情锚和任务主体仍会发生串线。
+  - `data/sessions.sqlite3`
+    - 同窗新增 15 条 user / 8 条 assistant / 6 条 system compact，覆盖 4 个更新 session；未见错投、投递失败、空回复、敏感信息外泄或全渠道不可用。
+  - 判断：最新证据仍是行情源 / 数值 sanity check / 未核验事件缺口，并伴随 heartbeat 任务主体串线。它会污染 scheduler / heartbeat 判断质量，但未阻断主投递链路，因此保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-24 23:02-2026-07-25 03:02 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-24`
     - 23:30 CST `存储板块关键事件心跳提醒` deliver preview 使用 `SNDK $1,494.90`、昨收 `$1,610.33`、年高 `$2,354.39` 等异常数量级价格作为触发判断依据。

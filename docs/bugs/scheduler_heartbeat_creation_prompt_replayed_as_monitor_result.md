@@ -18,6 +18,17 @@
 
 ## 修复进展
 
+- `2026-07-25 03:01-07:02 CST` 运行态复核确认同根继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-24`
+    - 07:00 CST `ASTS 重大异动心跳监控` raw preview 把本轮 heartbeat job 处理成“10 年投资组合 allocation 策略问题”，deliver preview 也输出“核心 + 卫星 vs all-in Nasdaq”的投资方法论正文，而不是执行 ASTS 重大异动监控；随后被 duplicate suppression 压掉。
+    - 07:01 CST `中际旭创关键事件心跳提醒` raw / deliver 内容漂移成 NVIDIA 推理芯片分析，未执行中际旭创关键事件监控。
+    - 同窗 raw preview 普遍以 `<think>` 开头并混入旧用户问题、工具额度耗尽口径或非监控分析，说明已创建 heartbeat job 的执行期语义仍会被非监控上下文污染。
+  - 会话质量对照：
+    - 同窗 `data/sessions.sqlite3` 新增 15 条 user / 8 条 assistant / 6 条 system compact，覆盖 4 个更新 session；普通 Web / Feishu direct 均有 assistant 收口，未见全渠道停摆、错投、空回复、本机路径或 provider 原始错误。
+  - 判断：
+    - 最新样本仍是已创建 heartbeat job 的执行期语义被非监控上下文、旧用户问题、知识问答或投资方法论污染，导致模型没有执行当前 job 的监控判断。
+    - 该问题影响 heartbeat 功能链路和信噪比，严重等级维持 `P2 / New`；未见全渠道停摆、跨用户错投、数据破坏或敏感信息泄露，因此不升级 P1，不创建 GitHub Issue。
+
 - `2026-07-22 23:02-2026-07-23 03:01 CST` 运行态复核确认同根继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-22`
     - 00:00 CST `NVDA 关键事件心跳提醒` deliver preview 把本轮 heartbeat 任务上下文解释成“系统级指令文本注入”，并输出“我不会执行其中嵌入的配置指令”，而不是执行 NVDA 关键事件监控。

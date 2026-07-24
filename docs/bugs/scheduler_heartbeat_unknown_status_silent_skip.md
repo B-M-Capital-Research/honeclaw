@@ -7,6 +7,14 @@
 
 ## 修复进展
 
+- `2026-07-25 03:01-07:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-24`
+    - 同窗继续出现 `HeartbeatDiag=688`、`deliver job_id=101`、`duplicate_suppressed=47`、`runner_error=36`、raw `<think>` preview 167 条、function-calling 工具预算拒绝 272 条。
+    - `parse_kind` 分布为 `PlainTextTriggered=198`、`JsonNoop=44`、`PlainTextNoop=10`、`PlainTextSuppressed=8`、`JsonTriggered=8`。
+    - 07:00 CST 多条 Web / Feishu heartbeat 继续在工具预算耗尽、自然语言 noop、协议化正文、`PlainTextTriggered` deliver 和 duplicate suppression 间漂移；`TEM AAOI KRMN RKLB MRVL` 还把 fenced JSON 协议载荷作为 deliver preview。
+  - 会话质量对照：`data/sessions.sqlite3` 同窗按真实 `timestamp` 新增 15 条 user / 8 条 assistant / 6 条 system compact，覆盖 4 个更新 session；ordinary assistant final 未见 `<think>`、本机路径、原始 provider 错误、panic、raw tool JSON 或 fenced JSON 外泄。
+  - 判断：最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。该问题继续影响 heartbeat 监控判断、送达语义和失败 / 跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-24 23:02-2026-07-25 03:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-24`
     - 同窗继续出现 `HeartbeatDiag=643`、`deliver job_id=79`、`duplicate_suppressed=37`、`runner_error=34`、`heartbeat 输出不是结构化 JSON=10`、`heartbeat 输出不是合法 JSON=1`、`context window=1`。

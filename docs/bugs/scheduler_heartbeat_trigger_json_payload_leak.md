@@ -7,6 +7,15 @@
 
 ## 最新进展
 
+- `2026-07-25 03:01-07:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-24`
+    - 同窗有 `deliver job_id=101`、`duplicate_suppressed=47`、`runner_error=36`，parse 分布为 `PlainTextTriggered=198`、`JsonNoop=44`、`PlainTextNoop=10`、`PlainTextSuppressed=8`、`JsonTriggered=8`。
+    - 07:00 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` deliver preview 直接以 fenced JSON 开头，包含 `status`、`triggered`、`symbol`、`condition`、`detail` 等协议字段。
+    - 同窗多条 raw preview 仍以 `<think>` 开头后接状态、工具额度耗尽口径、协议化标题或表格检查项，部分先进入 `PlainTextTriggered` 再由 duplicate suppression 压掉。
+  - `data/sessions.sqlite3`
+    - 同窗未确认协议 JSON 进入 ordinary direct assistant final；主功能链路未整体阻断。
+  - 判断：这些样本说明 heartbeat 出站格式化仍会在 deliver preview 层混入内部结构化协议字段；当前主要影响提醒结构和可读性，因此仍按质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-24 23:02-2026-07-25 03:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-24`
     - 同窗有 `deliver job_id=79`、`duplicate_suppressed=37`、`runner_error=34`，parse 分布为 `PlainTextTriggered=156`、`JsonNoop=62`、`PlainTextSuppressed=10`、`PlainTextNoop=10`、`JsonTriggered=6`、`JsonMalformed=2`。

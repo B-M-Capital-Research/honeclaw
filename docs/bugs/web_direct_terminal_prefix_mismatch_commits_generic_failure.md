@@ -14,13 +14,24 @@ P2
 
 ## 状态
 
-Fixed
+New
 
 ## GitHub Issue
 
 无，当前不是 P1。
 
 ## 证据来源
+
+- `data/sessions.sqlite3`
+  - `2026-07-25 07:02 CST` 巡检确认 2026-07-24 23:30 代码级修复后，同一 Web direct terminal failure 链路仍在普通宏观问题上复发；状态从 `Fixed` 回退为 `New/P2`。
+  - `session_id=Actor_web__direct__web-user-be13e1f84d14`
+    - `2026-07-25T06:54:21.677033+08:00` 用户追问“近期美股科技板块已经连续下跌一段时间了，结合上面说的加息背景，你预计本轮回调会持续多久”。
+    - `2026-07-25T06:55:35.326267+08:00` assistant final 只返回“本轮研究未能完成，暂未形成可供参考的标的结论。”，`metadata_json` 为 `service_owned_initial_prefix=true`、`error_kind=AgentFailed`、`terminal_stream_incomplete=true`、`run_failed=true`。
+    - `2026-07-25T06:56:59.526419+08:00` 用户补充科技股、光模块、存储、AI 等上下文；`2026-07-25T06:58:26.790930+08:00` assistant 再次只返回同一通用研究失败，metadata 仍为 `AgentFailed / terminal_stream_incomplete=true`。
+    - `2026-07-25T07:00:18.100694+08:00` 用户进一步拆短为“你预计加息导致的本轮回调会持续多久”，触发 auto compact 后 `2026-07-25T07:01:29.956863+08:00` 才恢复正文输出，说明不是 Web direct 全局不可用，而是较复杂 direct 轮次 terminal stream / finalization 收口失败。
+  - 同窗 `data/sessions.sqlite3` 按真实 `timestamp` 新增 15 条 user / 8 条 assistant / 6 条 system compact，覆盖 4 个更新 session；最近 assistant 到 07:01，普通 assistant final 污染扫描未见 `<think>`、本机路径、raw tool JSON、panic 或 provider 原始错误。
+  - 判断：最新样本未直接暴露 `committed terminal prefix mismatch` 字符串，但用户可见症状与 metadata 仍是 Web direct terminal stream incomplete 后提交通用研究失败；与本缺陷同一 Web direct terminal failure 收口链路相邻，先补入原文档，不新建重复缺陷。
+  - 严重等级维持 `P2`：连续阻断同一 Web direct 明确问题多轮回答，但同窗 Feishu direct / scheduler 与同会话短问仍有成功收口，未见全渠道停摆、错投、敏感信息泄露或持久化数据破坏，因此不是 `P1`，不创建 GitHub Issue。
 
 - `data/sessions.sqlite3`
   - `2026-07-25 03:02 CST` 巡检确认本缺陷继续在 Web direct 普通投研 / 宏观问题上复发，状态维持 `New/P2`。
@@ -96,6 +107,7 @@ Fixed
 
 ## 当前实现效果
 
+- 2026-07-25 06:54-06:58 CST 同一 Web direct 宏观回调问题连续两轮落成 `AgentFailed / terminal_stream_incomplete=true`，只给通用研究失败；07:00 用户拆短并触发 compact 后才恢复正文输出。
 - 2026-07-24 02:50 CST CIFR 投研请求说明：即便工具调用已经完成、`answer_preserved=true`，仍可能因 `committed terminal prefix mismatch` 被覆盖成通用研究失败。
 - LITE 期权止盈请求曾在后续夜间窗口连续两轮复发同类 `committed terminal prefix mismatch`，且两轮都已有 `answer_preserved=true` 与 LITE 实体 contract。
 - `answer_preserved=true` 后仍被 `committed terminal prefix mismatch` 改写成失败 final。
@@ -104,6 +116,7 @@ Fixed
 
 ## 修复情况
 
+- `2026-07-25 07:02 CST` 真实运行态在 2026-07-24 23:30 代码级补强后复发，状态从 `Fixed` 回退为 `New`。最新样本未直接记录 `committed terminal prefix mismatch`，但 metadata 与用户可见症状仍是同一 Web direct terminal stream incomplete / finalization failure 家族，需要继续修复或拆分更精确根因。
 - `2026-07-24 03:02 CST` 真实运行态复发，状态曾从 `Fixed` 回退为 `New`。
 - `2026-07-24 23:30 CST` 代码级补强：`crates/hone-channels/src/agent_session/core.rs` 的 `recover_response_with_committed_prefix(...)` 现在除了原有“tail-only 正文补回已提交 prefix”外，还会识别并替换冲突的首行 `数据时间：...；行情口径：...` header，避免模型重新写了一条时间首行时被直接降级成通用研究失败。
 - 已在 `crates/hone-channels/src/agent_session/core.rs` 为 committed prefix 收口新增恢复分支：
