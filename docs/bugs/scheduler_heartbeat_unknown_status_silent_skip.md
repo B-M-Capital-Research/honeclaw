@@ -7,6 +7,14 @@
 
 ## 修复进展
 
+- `2026-07-24 11:00-15:01 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-24`
+    - 同窗继续出现 `HeartbeatDiag=748`、`run_finish=192`、`deliver job_id=104`、`duplicate_suppressed=47`、`runner_error=36`、`heartbeat 输出不是结构化 JSON=9`、`heartbeat 输出不是合法 JSON=1`、`function_calling tool call rejected=396`。
+    - `parse_kind` 分布为 `PlainTextTriggered=206`、`JsonNoop=56`、`JsonTriggered=11`、`PlainTextSuppressed=9`、`PlainTextNoop=9`、`JsonMalformed=2`、`JsonEmptyStatus=1`。
+    - 15:00 CST `美股黄金坑信号心跳检测` 以 `<think>` + 市场分析正文落成 `JsonMalformed` 并标记失败；`全天原油价格3小时播报` 以自然语言 suppressed 落成“heartbeat 输出不是结构化 JSON”；多条 Web / Feishu heartbeat 继续在工具预算耗尽后由自由文本进入 triggered / noop / duplicate suppression 分支。
+  - 会话质量对照：`data/sessions.sqlite3` 同窗按真实 `timestamp` 新增 9 条 user / 6 条 assistant / 2 条 system compact，覆盖 3 个更新 session；ordinary assistant final 未见空回复、错投、本机路径、provider 原始错误、panic、`<think>` 或 raw tool JSON 外泄。
+  - 判断：最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。该问题继续影响 heartbeat 监控判断、送达语义和失败 / 跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-24 07:01-11:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-24`
     - 同窗继续出现 `HeartbeatDiag=569`、`deliver job_id=76`、`duplicate_suppressed=33`、`runner_error=28`、`heartbeat 输出不是结构化 JSON=10`、`function_calling tool call rejected=300`。

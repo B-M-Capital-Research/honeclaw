@@ -22,6 +22,15 @@
 
 ## 最新进展
 
+- 本轮 2026-07-24 11:00-15:01 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-24`
+    - 15:00 CST `存储板块关键事件心跳提醒` deliver preview 继续沿用 `SNDK $1,610.33` 作为最新有效行情锚，并用它生成 noop 报告。
+    - 15:00 CST `持仓财报与重大新闻心跳提醒` deliver preview 继续沿用 `SNDK $1,610.33`、`AAOI $116.61`，且明确因 quote 工具调用上限改用近期会话参考价。
+    - 15:00 CST `NVDA 关键事件心跳提醒` deliver preview 在工具调用上限后引用近期会话参考价 `NVDA $207.68`、`AMD $539.69`；`美股黄金坑信号心跳检测` raw preview 继续使用 `SPY $738.18`、`QQQ $69...` 等高风险数量级锚点。
+  - `data/sessions.sqlite3`
+    - 同窗新增 9 条 user / 6 条 assistant / 2 条 system compact，覆盖 3 个更新 session；未见错投、投递失败、空回复、敏感信息外泄或全渠道不可用。
+  - 判断：最新证据仍是行情源 / 数值 sanity check / 未核验事件缺口。它会污染 scheduler / heartbeat 判断质量，但未阻断主投递链路，因此保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-24 07:01-11:02 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-24`
     - 08:00-11:01 CST heartbeat / scheduler preview 继续使用 `SNDK $1,610-$1,667` 作为拆股、noop 或 duplicate suppression 的行情锚。
