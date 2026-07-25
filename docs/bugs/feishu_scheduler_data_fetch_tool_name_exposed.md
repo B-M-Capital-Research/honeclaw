@@ -22,6 +22,12 @@ New
 
 ## 最新进展
 
+- 2026-07-26 07:05 CST 运行态继续复发，状态维持 `New`：
+  - 03:01-07:05 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 3 条 user / 4 条 assistant，覆盖 3 个更新 session；近期 Web scheduler、Feishu scheduler 和 Feishu direct 均有 assistant 收口。
+  - assistant final 污染扫描未命中空回复、`<think>`、本机路径、provider 原始错误、panic、stream 原始错误或 raw tool JSON 正文外泄；本轮命中的是 scheduler 用户可见英文中间稿和内部工具 / 字段口径。
+  - 06:02 CST Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f11da38ad70c47cf87c0b106b6408b190` 的 `每日美股盘后收盘复盘` 正常收口，但 final 开头写出 `Now I have all necessary data. Let me compile the final analysis.`，随后把 `quote/gainers_losers`、`hone_quote_time.beijing`、`quote_short` 等内部工具或字段名作为用户态行情口径。
+  - 该消息业务主体已完成指数、板块、VIX、美债收益率、美元指数和科技股复盘输出并送达，没有投递失败、空回复、错投、原始工具 JSON 或数据安全证据；问题仍只影响用户可见执行过程 / 工具字段口径和产品感，不影响主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-07-25 23:05 CST 运行态继续复发，状态维持 `New`：
   - 19:01-23:05 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 21 条 user / 20 条 assistant / 4 条 system compact，覆盖 13 个更新 session；近期 Web / Feishu direct 和 scheduler 会话均以 assistant 收口。
   - assistant final 污染扫描未命中空回复、`<think>`、本机路径、provider 原始错误、panic、原始工具 JSON 或 fenced JSON；本轮命中的是 scheduler 用户可见内部工具 / 中间进度句。

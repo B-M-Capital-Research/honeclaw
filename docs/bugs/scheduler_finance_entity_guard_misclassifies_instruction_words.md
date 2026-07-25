@@ -8,6 +8,15 @@
 
 ## 运行态复核（2026-07-25 07:02 CST）
 
+- 本轮 2026-07-26 03:01-07:05 CST 真实运行态继续复发，状态维持 `New/P2`：
+  - `data/sessions.sqlite3`
+    - 本窗按真实 `timestamp` 新增 3 条 user / 4 条 assistant，覆盖 3 个更新 session；最近 assistant 到 06:17。assistant final 污染扫描未命中 `<think>`、本机路径、provider 原始错误、panic、stream 原始错误或 raw tool JSON 正文外泄。
+    - 05:00 CST Web scheduler `盘后美股复盘与SNDK/MU存储产业链日报` 的任务正文要求复盘美国宏观数据与政策事件，包含 `PCE`；assistant 先返回“已识别证券代码“PCE”，但当前数据供应商没有返回同代码行情覆盖”，随后写入用户可见 `定时任务「盘后美股复盘与SNDK/MU存储产业链日报」执行出错，请稍后重试。`
+    - 06:00 / 06:15 Feishu direct / scheduler 仍有 assistant 正常收口，未见全渠道停摆、错投或敏感信息泄露。
+  - `cron_job_runs.max(executed_at)` 仍停在 `2026-07-19T13:31:15.040172+08:00`，本窗没有新增 cron run；该现象归入既有本地调度台账停滞缺陷，不在本单重复登记。
+  - 判断：最新样本仍是 scheduler 任务正文中的宏观指标词进入实体 guard / resolver 后被误抽为证券代码，导致任务正文生成被阻断；与既有 `PCE` / `ARK` / `Nancy` / `SEC` 误抽同根，不新建重复缺陷。
+  - 严重等级维持 `P2`：它直接阻断该 scheduler 正文生成，但同窗其它 direct / scheduler 仍正常收口，未见全渠道停摆、错投、敏感信息泄露或数据破坏，因此不是 `P1`，不创建 GitHub Issue。
+
 - 本轮 2026-07-25 19:01-23:05 CST 真实运行态继续复发，状态维持 `New/P2`：
   - `data/sessions.sqlite3`
     - 同窗按真实 `timestamp` 新增 21 条 user / 20 条 assistant / 4 条 system compact，覆盖 13 个更新 session；近期 direct / scheduler 多数仍有 assistant 终态，未见全渠道停摆、错投或敏感信息泄露。
