@@ -22,6 +22,15 @@
 
 ## 最新进展
 
+- 本轮 2026-07-25 11:02-15:03 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `New`：
+  - `data/sessions.sqlite3`
+    - 12:00 CST Feishu scheduler `每日公司资讯与分析总结` `session_id=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5` 正常收口，但 final 继续使用 `NBIS $187.77 / 昨收 $220.97`、`CRWV $71.88`、`RKLB $63.91`、`GOOGL $319.74`、`TSM $403.41`、`S&P 500 7411.98`、`NASDAQ 24975.824` 等高风险数量级价格，并据此计算持仓市值、浮盈亏和减仓 / 止损触发条件。
+    - 同窗按真实 `timestamp` 只有 1 条 user 与 1 条 assistant；消息成功送达，未见错投、投递失败、空回复、敏感信息外泄或全渠道不可用。
+  - `data/runtime/logs/web.log.2026-07-25`
+    - 11:02-15:03 CST heartbeat 继续记录 `HeartbeatDiag=745`、`deliver job_id=104`、`duplicate_suppressed=51`、`runner_error=54`、`heartbeat 输出不是结构化 JSON=16`、工具预算拒绝 379 条。
+    - 15:00 CST 多条 heartbeat preview 继续使用 `SNDK $1,436.56`、`AAOI $100.15`、`NVDA $206.84`、`CBRS $199.12` 等高风险行情锚。
+  - 判断：最新证据仍是行情源 / 数值 sanity check / 历史锚点复用缺口。它会污染 scheduler / heartbeat 判断质量，但主投递链路未整体阻断，因此保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-25 07:02-11:02 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-25`
     - 08:00 CST `闪迪关键事件心跳提醒` deliver preview 使用 `SNDK $1,436.56` 作为最近稳定报价；`存储板块关键事件心跳提醒` 仍沿用 `SNDK $1,610.33`、`AAOI $112.02`。
