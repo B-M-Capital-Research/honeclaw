@@ -1841,6 +1841,83 @@ async fn service_prefix_tail_only_final_response_is_recovered_without_generic_fa
 }
 
 #[tokio::test]
+async fn service_prefix_conflicting_time_header_is_recovered_without_generic_failure() {
+    let root = make_temp_dir("hone_channels_service_prefix_conflicting_header");
+    std::fs::create_dir_all(&root).expect("create root");
+    let recovered = concat!(
+        "数据时间：北京时间 2026-07-25 02:59；行情口径：另一条首行\n\n",
+        "已按本轮可核验证据完成数据中心候选筛选。"
+    );
+    let seen_prefixes = Arc::new(Mutex::new(Vec::new()));
+    let runner = ServicePrefixRunner {
+        fail_after_commit: false,
+        final_tail: recovered.to_string(),
+        omit_prefix_from_final_response: true,
+        seen_prefixes: seen_prefixes.clone(),
+    };
+    let mut core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    Arc::get_mut(&mut core)
+        .expect("unique test core")
+        .test_runner_factory = Some(Arc::new(move || Box::new(runner.clone())));
+    let actor = ActorIdentity::new("web", "service-prefix-conflicting-header", None::<String>)
+        .expect("actor");
+    let listener = Arc::new(RecordingListener::default());
+    let mut session = AgentSession::new(core.clone(), actor.clone(), "direct");
+    session.add_listener(listener.clone());
+
+    let result = session
+        .run(
+            "大A有没有类似CRWV、Nebius这样的数据中心的标的",
+            AgentRunOptions::default(),
+        )
+        .await;
+
+    assert!(result.response.success, "{:?}", result.response.error);
+    let prefix = seen_prefixes
+        .lock()
+        .expect("seen prefixes")
+        .first()
+        .cloned()
+        .expect("committed service prefix");
+    let tail = "\n\n已按本轮可核验证据完成数据中心候选筛选。";
+    let expected = format!("{prefix}{tail}");
+    assert_eq!(result.response.content, expected);
+
+    let events = listener.events.lock().await;
+    let visible_chunks = events
+        .iter()
+        .filter_map(|event| match event {
+            AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => Some(content.clone()),
+            AgentSessionEvent::Segment { text } => Some(text.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(visible_chunks, [prefix.clone(), tail.to_string()]);
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AgentSessionEvent::Done { response } if response.content == expected
+    )));
+    assert!(!events.iter().any(|event| matches!(
+        event,
+        AgentSessionEvent::PartialDone { .. } | AgentSessionEvent::Run(RunEvent::Error { .. })
+    )));
+    drop(events);
+
+    let messages = core
+        .session_storage
+        .get_messages(&actor.session_id(), None)
+        .expect("persisted messages");
+    let persisted = messages
+        .iter()
+        .rev()
+        .find(|message| message.role == "assistant")
+        .map(session_message_text)
+        .expect("persisted assistant");
+    assert_eq!(persisted, expected);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
 async fn failed_service_prefix_run_appends_and_persists_an_explicit_failure_tail() {
     let root = make_temp_dir("hone_channels_service_prefix_failure_tail");
     std::fs::create_dir_all(&root).expect("create root");

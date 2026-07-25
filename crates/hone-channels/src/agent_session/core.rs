@@ -100,6 +100,8 @@ pub(super) enum PreparedTurnReexecutionPolicy {
 
 pub(super) const SERVICE_OWNED_PREFIX_FAILURE_SUFFIX: &str =
     "\n\n本轮研究未能完成，暂未形成可供参考的标的结论。";
+const SERVICE_OWNED_PREFIX_START: &str = "数据时间：北京时间 ";
+const SERVICE_OWNED_PREFIX_SEPARATOR: &str = "；行情口径：";
 
 /// Persistent mutations are deliberately classified conservatively before the
 /// runner starts. Observed tool traces are a second defense, but an ACP
@@ -429,6 +431,22 @@ pub(super) fn recover_response_with_committed_prefix(
     }
     if response.content.trim().is_empty() || response.content.contains(prefix) {
         return false;
+    }
+    let trimmed_start = response.content.trim_start_matches(char::is_whitespace);
+    if trimmed_start.starts_with(SERVICE_OWNED_PREFIX_START) {
+        let Some(first_newline) = trimmed_start.find('\n') else {
+            return false;
+        };
+        let first_line = trimmed_start[..first_newline].trim_end_matches('\r');
+        if !first_line.contains(SERVICE_OWNED_PREFIX_SEPARATOR) {
+            return false;
+        }
+        let tail = &trimmed_start[first_newline..];
+        if tail.trim().is_empty() {
+            return false;
+        }
+        response.content = format!("{prefix}{tail}");
+        return true;
     }
     let separator = if response.content.starts_with(char::is_whitespace) {
         ""
