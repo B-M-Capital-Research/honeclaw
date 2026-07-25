@@ -22,6 +22,15 @@ New
 
 ## 证据来源
 
+- `data/sessions.sqlite3`
+  - `2026-07-26 03:02 CST` 巡检确认本缺陷继续在 Web direct 普通投研问题上复发，状态维持 `New/P2`。
+  - `session_id=Actor_web__direct__web-user-400794904801`
+    - `2026-07-26T00:15:10.961807+08:00` 用户问三星电子 / SK 海力士官宣与美国科技巨头达成 9500 亿美元 5 年芯片合作，对周一美股有什么影响、哪些个股会受影响。
+    - `2026-07-26T00:16:55.859176+08:00` assistant final 只返回“本轮研究未能完成，暂未形成可供参考的标的结论。”，`metadata_json` 为 `service_owned_initial_prefix=true`、`error_kind=AgentFailed`、`terminal_stream_incomplete=true`、`run_failed=true`。
+  - 同窗 `data/sessions.sqlite3` 按真实 `timestamp` 新增 4 条 user / 4 条 assistant，覆盖 2 个更新 session；Feishu scheduler 同窗 3 条任务均有 assistant final 收口，ordinary assistant final 污染扫描未见 `<think>`、本机路径、provider 原始错误、panic、raw tool JSON 或 `reasoning_content` 进入用户可见正文。
+  - 判断：最新样本未直接暴露 `committed terminal prefix mismatch` 字符串，但用户可见症状与 metadata 仍是 Web direct terminal stream incomplete 后提交通用研究失败；与本缺陷同一 Web direct terminal failure 收口链路相邻，先补入原文档，不新建重复缺陷。
+  - 严重等级维持 `P2`：单轮明确 Web direct 投研问题没有完成，但同窗 Feishu scheduler 可正常收口，未见全渠道停摆、错投、敏感信息泄露或持久化数据破坏，因此不是 `P1`，不创建 GitHub Issue。
+
 - `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-25`
   - `2026-07-25 11:02 CST` 巡检确认本缺陷继续在 Web direct 普通短问上复发，状态维持 `New/P2`。
   - `session_id=Actor_web__direct__web-user-ba50cb9401c0`
@@ -118,6 +127,7 @@ New
 
 ## 当前实现效果
 
+- 2026-07-26 00:15 CST Web direct 芯片合作影响分析请求落成 `AgentFailed / terminal_stream_incomplete=true`，只给通用研究失败，没有给出用户要求的周一美股影响与相关个股。
 - 2026-07-25 10:02-10:05 CST 同一 Web direct 用户短问“美股股价下跌原因”连续两轮已执行数据与搜索工具、`answer_preserved=true` 后仍因 `committed terminal prefix mismatch` 只返回通用研究失败。
 - 2026-07-25 06:54-06:58 CST 同一 Web direct 宏观回调问题连续两轮落成 `AgentFailed / terminal_stream_incomplete=true`，只给通用研究失败；07:00 用户拆短并触发 compact 后才恢复正文输出。
 - 2026-07-24 02:50 CST CIFR 投研请求说明：即便工具调用已经完成、`answer_preserved=true`，仍可能因 `committed terminal prefix mismatch` 被覆盖成通用研究失败。

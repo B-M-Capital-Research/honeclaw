@@ -9,6 +9,13 @@
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `session_messages`
+  - `2026-07-26T00:02:49.395716+08:00`
+    - `session_id=Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b`
+    - Feishu scheduler `RKLB 每日动态监控` 的权威触发配置是北京时间 00:00，任务要求监控 RKLB 最新动态、发射 / 合同公告、产能扩张和财报公告。
+    - assistant final 正常收口，但写出 `行情口径：2026-07-25 NASDAQ 收盘价，报 $63.91（hone_quote_time.beijing 2026-07-25 04:00:00）`。
+    - 实际北京时间 2026-07-26 00:02 是周日凌晨；`hone_quote_time.beijing=2026-07-25 04:00:00` 对应的是 2026-07-24 美股收盘时间，不是 2026-07-25 的 NASDAQ 收盘价。该回复把周末日期包装成美股收盘日，并继续用该口径给出跌幅、日内区间和 52 周高点距离等判断。
+  - 本轮 2026-07-25 23:05-2026-07-26 03:02 CST 对照：`session_messages` 新增 4 条 user / 4 条 assistant，覆盖 2 个更新 session；assistant final 污染扫描未见 `<think>`、本机路径、原始 provider 错误、panic、raw tool JSON 或 `reasoning_content` 进入用户可见正文。该样本调度、生成、落库和投递均完成，问题主要影响金融复盘时间口径与正文可信度；不影响直聊 / 调度 / 投递主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
   - `2026-07-25T21:45:55.661226+08:00`
     - `session_id=Actor_feishu__direct__ou_5fea712445d905e8418bde07dbcf2cbfb2`
     - Feishu scheduler `每日美股大盘风控简报` 的权威触发配置是北京时间 21:45，任务正文要求用纳指 / QQQ、标普 / SPY 作为美股开盘后早盘参考，并标明数据时间与口径。
@@ -140,6 +147,7 @@
 
 - 调度、生成和落库链路正常，用户收到了完整可读的复盘。
 - 但用户可见 final 的日期 / 星期 / 交易日口径不一致：
+  - Feishu scheduler 在 2026-07-26 周日凌晨把 `hone_quote_time.beijing=2026-07-25 04:00:00` 对应的 2026-07-24 美股收盘写成 `2026-07-25 NASDAQ 收盘价`。
   - Web scheduler 明确说 `2026-07-12` 是美股正常交易日。
   - Feishu / Web scheduler 多次把 `2026-07-11` 写成周五或常规收盘日。
 - 这些错误随后被用于解释市场、计算组合涨跌和给出观察框架，降低金融复盘可信度。
