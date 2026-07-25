@@ -7,6 +7,15 @@
 
 ## 修复进展
 
+- `2026-07-25 19:01-23:05 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-25`
+    - 同窗继续出现 `HeartbeatDiag=649`、`deliver job_id=65`、`duplicate_suppressed=32`、`runner_error=41`、`execution_failed=24`、`heartbeat 输出不是结构化 JSON=22`、`heartbeat 输出不是合法 JSON=2`、function-calling 工具预算拒绝 270 条。
+    - `parse_kind` 分布为 `PlainTextTriggered=126`、`JsonNoop=62`、`PlainTextSuppressed=22`、`PlainTextNoop=11`、`JsonTriggered=4`、`JsonMalformed=4`。
+    - 19:30 CST `美股黄金坑信号心跳检测` 以 `<think>` + 市场分析正文落成 `JsonMalformed` 并标记“heartbeat 输出不是合法 JSON”；23:00 CST `NBIS关键事件心跳提醒` 同样以 `<think>` + 自然语言价格分析落成 `JsonMalformed` 后跳过发送。
+    - 23:00 CST 多条 heartbeat raw preview 仍以 `<think>` 开头，随后进入自然语言 noop、`PlainTextTriggered` deliver、`JsonNoop`、`JsonMalformed` failure 或 duplicate suppression 分支。
+  - 会话质量对照：`data/sessions.sqlite3` 同窗按真实 `timestamp` 新增 21 条 user / 20 条 assistant / 4 条 system compact，覆盖 13 个更新 session；ordinary assistant final 未见 `<think>`、本机路径、原始 provider 错误、panic 或 raw tool JSON 大面积外泄。
+  - 判断：最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。该问题继续影响 heartbeat 监控判断、送达语义和失败 / 跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-25 15:01-19:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-25`
     - 同窗继续出现 `HeartbeatDiag=668`、`deliver job_id=88`、`duplicate_suppressed=45`、`runner_error / execution_failed=44`、结构化 / 合法 JSON 失败 13 条、function-calling 工具预算拒绝 249 条。

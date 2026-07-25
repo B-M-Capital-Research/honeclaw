@@ -22,6 +22,16 @@
 
 ## 最新进展
 
+- 本轮 2026-07-25 19:01-23:05 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `New`：
+  - `data/sessions.sqlite3`
+    - 21:35 CST Feishu scheduler `科技核心股池 · 晚间击球区快报` 正常收口，但继续输出 `MU $920.95`、`SNDK $1,436.56`、`STX $851.69`、`WDC $519.80`、`AMD $521.95` 等明显高风险数量级价格；任务正文已有价格 sanity 约束，要求数量级异常时写“最新行情未完成稳定校验”，但 final 仍给出精确价格、涨跌幅和距离击球区计算。
+    - 23:00 CST 同 actor 的 `核心观察股池晚间快报` 又写成 `美东 2026-07-25 日内交易时段`，并继续使用 `MU $921.11`、`SNDK $1,436.79`、`STX $851.65`、`WDC $519.70`、`AMD $521.92` 等价格进入排序和判断。
+    - 同窗按真实 `timestamp` 新增 21 条 user / 20 条 assistant / 4 条 system compact，覆盖 13 个更新 session；未见错投、投递失败、空回复、敏感信息外泄或全渠道不可用。
+  - `data/runtime/logs/web.log.2026-07-25`
+    - 19:01-23:05 CST heartbeat 继续记录 `HeartbeatDiag=649`、`deliver job_id=65`、`duplicate_suppressed=32`、`runner_error=41`、`execution_failed=24`。
+    - 同窗 heartbeat preview 继续使用 `NBIS $187.77 / $220.97`、`SNDK $1,436.56`、`AAOI $100.15`、`RKLB $63.91` 等高风险行情锚进入判断、noop 报告、出站候选或 duplicate suppression 基线。
+  - 判断：最新证据仍是行情源 / 数值 sanity check / 历史锚点复用缺口。它会污染 scheduler / heartbeat 判断质量，但主投递链路未整体阻断，因此保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-25 15:01-19:02 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `New`：
   - `data/sessions.sqlite3`
     - 18:00 CST Web scheduler `18:00 美股盘前 X 英文帖` 正常落库，但继续使用 `GOOGL $319 +0.65%`、`INTC +13%`、`VRT -4.50%`、`NUAI $5.315 -8.52%` 等精确价格 / 涨跌幅，且用户任务明确要求不要给未经核验的精确价格或涨跌幅。

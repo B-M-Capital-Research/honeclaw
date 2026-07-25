@@ -8,6 +8,18 @@
 
 ## 运行态复核（2026-07-25 07:02 CST）
 
+- 本轮 2026-07-25 19:01-23:05 CST 真实运行态继续复发，状态维持 `New/P2`：
+  - `data/sessions.sqlite3`
+    - 同窗按真实 `timestamp` 新增 21 条 user / 20 条 assistant / 4 条 system compact，覆盖 13 个更新 session；近期 direct / scheduler 多数仍有 assistant 终态，未见全渠道停摆、错投或敏感信息泄露。
+    - 20:00 CST Feishu scheduler `每日名人基金美股操作跟踪` 任务正文要求跟踪 Nancy Pelosi、Cathie Wood / ARK Invest、Berkshire、Li Lu、Dan Bin 等公开披露，assistant 只返回“已识别证券代码 `ARK`，但当前数据供应商没有返回同代码行情覆盖”，业务正文未生成。
+    - 20:01 CST Feishu scheduler `每日名人基金操作追踪` 同类任务又把 `Nancy` 当证券代码，返回无行情覆盖提示，未完成名人 / 机构披露追踪。
+    - 21:00 CST Web scheduler `盘前美股要闻与SNDK/MU存储产业链日报` 再次把宏观指标 `PCE` 当证券代码，随后向用户写入 `定时任务...执行出错，请稍后重试。`
+  - `data/runtime/logs/web.log.2026-07-25`
+    - 19:30-23:00 CST `AAOI 1.6T 光模块心跳检测` 继续把任务上下文里的 `SEC` 当证券代码并因无行情覆盖失败。
+    - 同窗 `ORCL 大事件监控` 继续因 Oracle 多上市地候选 fail-closed；runtime 统计仍有 `runner_error=41`、`execution_failed=24`。
+  - 判断：最新样本仍是 scheduler / heartbeat 任务正文、宏观词、机构名、人物名或监管缩写进入实体 guard / resolver 后误抽、误拦或多候选拦截；与既有缺陷同根，不新建重复缺陷。
+  - 严重等级维持 `P2`：它直接阻断部分 scheduler / heartbeat 正文生成，但同窗其它 direct / scheduler 仍正常收口，未见全渠道停摆、错投、敏感信息泄露或数据破坏，因此不是 `P1`，不创建 GitHub Issue。
+
 - 本轮 2026-07-25 15:01-19:02 CST 真实运行态继续复发，状态维持 `New/P2`：
   - `data/runtime/logs/web.log.2026-07-25`
     - 15:30 / 16:00 / 16:30 / 17:00 / 17:30 / 18:00 / 18:30 / 19:00 CST `AAOI 1.6T 光模块心跳检测` 继续把任务上下文里的 `SEC` 当证券代码，因数据供应商没有同代码行情覆盖而落成 `runner_error` / 不发送。

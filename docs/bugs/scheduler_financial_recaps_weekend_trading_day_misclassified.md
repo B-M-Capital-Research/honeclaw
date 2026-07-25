@@ -9,6 +9,18 @@
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `session_messages`
+  - `2026-07-25T21:45:55.661226+08:00`
+    - `session_id=Actor_feishu__direct__ou_5fea712445d905e8418bde07dbcf2cbfb2`
+    - Feishu scheduler `每日美股大盘风控简报` 的权威触发配置是北京时间 21:45，任务正文要求用纳指 / QQQ、标普 / SPY 作为美股开盘后早盘参考，并标明数据时间与口径。
+    - assistant final 正常收口，但写出 `行情口径：美东盘中（NY 2026-07-25 09:45 ET，盘中最新可得）`，并继续给出 QQQ / SPY / DJI 盘中价格、NVDA 财报前夜和 Alphabet 财报传导判断。
+    - 实际 2026-07-25 是星期六，不存在美东 09:45 常规盘中窗口；回复把周末包装成美股盘中行情，继续用该口径组织风控结论。
+  - `2026-07-25T23:00:37.868933+08:00`
+    - `session_id=Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773`
+    - Feishu scheduler `核心观察股池晚间快报` 要求使用最新美股市场价格、列出观察池价格 / 击球区 / 财报时间。
+    - assistant final 写出 `行情口径：美东 2026-07-25 日内交易时段`，并称 `MSFT / META 今夜盘后发财报`、`建议盘中密切跟踪盘后动态`，随后给出 25 支股票盘中价格和涨跌幅。
+    - 实际北京时间 2026-07-25 23:00 对应美东 2026-07-25 周六上午，不能声称日内交易时段或今夜盘后财报；该样本与本缺陷同根。
+  - 本轮 2026-07-25 19:01-23:05 CST 对照：`session_messages` 新增 21 条 user / 20 条 assistant / 4 条 system compact，覆盖 13 个更新 session；assistant final 污染扫描未见 `<think>`、本机路径、原始 provider 错误、panic 或 raw tool JSON 大面积外泄。上述样本调度、生成、落库和投递均完成，问题主要影响金融复盘时间口径与正文可信度；不影响直聊 / 调度 / 投递主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
   - `2026-07-24T21:45:49.994446+08:00`
     - `session_id=Actor_feishu__direct__ou_5fea712445d905e8418bde07dbcf2cbfb2`
     - Feishu scheduler `每日美股大盘风控简报` 的权威触发配置是北京时间 21:45，任务正文要求“纳斯达克/QQQ、标普/SPY 作为美股开盘后早盘参考”，且要求避免混用时间点。
