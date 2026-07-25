@@ -22,6 +22,14 @@
 
 ## 最新进展
 
+- 本轮 2026-07-25 15:01-19:02 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `New`：
+  - `data/sessions.sqlite3`
+    - 18:00 CST Web scheduler `18:00 美股盘前 X 英文帖` 正常落库，但继续使用 `GOOGL $319 +0.65%`、`INTC +13%`、`VRT -4.50%`、`NUAI $5.315 -8.52%` 等精确价格 / 涨跌幅，且用户任务明确要求不要给未经核验的精确价格或涨跌幅。
+  - `data/runtime/logs/web.log.2026-07-25`
+    - 15:01-19:02 CST heartbeat 继续记录 `HeartbeatDiag=668`、`deliver job_id=88`、`duplicate_suppressed=45`、`runner_error / execution_failed=44`。
+    - 同窗 heartbeat / scheduler preview 继续使用 `RKLB $63.91`、`AVGO $381.92`、`COHR $282.39`、`NVDA $206.84`、`HIMS $28.09`、`MU $920.95`、`ASTS` CNN 片段价等高风险行情锚进入判断、noop 报告、出站候选或 duplicate suppression 基线。
+  - 判断：最新证据仍是行情源 / 数值 sanity check / 历史锚点复用缺口。它会污染 scheduler / heartbeat 判断质量，但主投递链路未整体阻断，因此保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-25 11:02-15:03 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `New`：
   - `data/sessions.sqlite3`
     - 12:00 CST Feishu scheduler `每日公司资讯与分析总结` `session_id=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5` 正常收口，但 final 继续使用 `NBIS $187.77 / 昨收 $220.97`、`CRWV $71.88`、`RKLB $63.91`、`GOOGL $319.74`、`TSM $403.41`、`S&P 500 7411.98`、`NASDAQ 24975.824` 等高风险数量级价格，并据此计算持仓市值、浮盈亏和减仓 / 止损触发条件。

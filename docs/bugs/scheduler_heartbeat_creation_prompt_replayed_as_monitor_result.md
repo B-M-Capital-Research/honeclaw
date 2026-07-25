@@ -18,6 +18,18 @@
 
 ## 修复进展
 
+- `2026-07-25 15:01-19:02 CST` 运行态复核确认同根继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-25`
+    - 19:00 CST `中际旭创关键事件心跳提醒` 已作为 heartbeat job 周期触发，deliver preview 却写成“事件监控参数已更新”，偏向配置更新确认，而不是执行中际旭创关键事件监控。
+    - 19:00 CST `持仓重大事件心跳检测` deliver preview 漂移成 10 年期组合的股债 / 久期配置框架分析；同轮 duplicate suppression 还匹配到 08:30 的同类“组合框架分析”坏基线。
+    - 19:00 CST `闪迪关键事件心跳提醒` 与 `NBIS关键事件心跳提醒` deliver preview 漂移成 NAND Flash 技术解释；`ASTS 重大异动心跳监控` 漂移成宏观滞胀压力分析；`光迅科技关键事件心跳提醒` 漂移成 NVIDIA 推理芯片竞争分析。
+    - 同窗 raw preview 普遍以 `<think>` 开头并混入旧用户问题、技术科普、宏观问答、工具额度耗尽口径或配置确认语义，说明已创建 heartbeat job 的执行期语义仍会被非监控上下文污染。
+  - 会话质量对照：
+    - 同窗 `data/sessions.sqlite3` 新增 8 条 user / 5 条 assistant / 2 条 system compact，覆盖 2 个更新 session；普通 Feishu direct 与 Web scheduler 均有 assistant 收口，未见全渠道停摆、错投、本机路径或 provider 原始错误外泄。
+  - 判断：
+    - 最新样本仍是已创建 heartbeat job 的执行期语义被非监控上下文、旧用户问题、配置更新确认、技术科普或宏观问答污染，导致模型没有执行当前 job 的监控判断。
+    - 该问题影响 heartbeat 功能链路和信噪比，严重等级维持 `P2 / New`；未见全渠道停摆、跨用户错投、数据破坏或敏感信息泄露，因此不升级 P1，不创建 GitHub Issue。
+
 - `2026-07-25 07:02-11:02 CST` 运行态复核确认同根继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-25`
     - 08:01 CST `AI与科技持仓观察关键事件心跳提醒` 已作为 heartbeat job 周期触发，raw preview 却把本轮处理成“修改全天候监控配置 / cron_job 工具不可用”能力边界说明，deliver preview 也在讲“可以改，从交易时段改成全天候监控”，而不是执行关键事件监控。

@@ -13,6 +13,15 @@
 - 用户没有得到 INTC 财报分析或操作建议；`<absolute-path>/compact` 占位符仍进入用户可见失败文案。
 - 判断：这是同一 Feishu direct 旧会话 compact / context-overflow recovery 路径复发，不新建重复缺陷。同窗其它 Web / Feishu direct 有 assistant 收口，未见错投、敏感信息泄露或全渠道不可用，因此仍为功能性 `P2`，非 P1。
 
+## 2026-07-25 运行态复核
+
+- 状态维持 `New`，严重等级维持 `P2`。
+- `2026-07-25 15:22-15:23 CST`，Feishu direct 旧会话 `Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b` 在已确认 `CAI = Caris Life Sciences` 并完成一次财报 / 估值分析后，用户继续追问 `预测财报如何呢`。
+- `data/sessions.sqlite3` 显示本轮先写入 `Conversation compacted`、compact summary 和多条 skill context，然后 assistant final 于 `2026-07-25T15:23:11.714442+08:00` 仍只返回 `当前会话上下文过长。我已经自动尝试压缩历史，但这次仍无法继续。请直接继续提问重点、发送 <absolute-path>/compact，或开启一个新会话后再试。`
+- 同一用户 `2026-07-25T15:23:28+08:00` 原样重试 `预测财报如何呢` 后，assistant 于 `15:24:31` 成功恢复并输出 CAI Q2 FY2026 财报预测，说明不是 Feishu direct 全链路停摆，而是 compact / context-overflow recovery 首轮仍会吞掉当前问题。
+- 质量对照：本窗 `data/sessions.sqlite3` 共新增 8 条 user / 5 条 assistant / 2 条 system compact，覆盖 2 个更新 session；ordinary assistant final 未见 `<think>`、本机路径、provider 原始错误、panic 或 raw tool JSON 外泄。
+- 判断：这是同一 Feishu direct 旧会话 compact / context-overflow recovery 路径复发，不新建重复缺陷。用户首轮没有得到当前财报预测答案，且 `<absolute-path>/compact` 占位符继续进入用户可见失败文案；但同窗重试可恢复、无错投或全渠道不可用，因此仍为功能性 `P2`，非 P1。
+
 ## 2026-07-23 运行态复核
 
 - 状态维持 `New`，严重等级维持 `P2`。
