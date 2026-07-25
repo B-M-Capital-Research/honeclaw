@@ -7,6 +7,15 @@
 
 ## 修复进展
 
+- `2026-07-25 07:02-11:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-25`
+    - 同窗继续出现 `HeartbeatDiag=585`、`deliver job_id=80`、`duplicate_suppressed=44`、`runner_error=28`、`heartbeat 输出不是结构化 JSON=13`、function-calling 工具预算拒绝 141 条。
+    - `parse_kind` 分布为 `PlainTextTriggered=160`、`JsonNoop=41`、`PlainTextSuppressed=13`、`PlainTextNoop=6`、`JsonTriggered=6`、`JsonUnknownStatus=2`。
+    - 08:00-11:00 CST 多条 heartbeat raw preview 仍以 `<think>` 开头，随后进入自然语言 noop、协议化正文、`PlainTextTriggered` deliver、`JsonNoop`、`JsonUnknownStatus` 与 duplicate suppression 分支。
+    - 10:30 / 11:00 CST AAOI / ORCL heartbeat 仍以 `runner_error` 跳过；同窗还有多条 noop 内容先进入 deliver preview 再被 duplicate suppression 压下。
+  - 会话质量对照：`data/sessions.sqlite3` 同窗按真实 `timestamp` 新增 38 条 user / 23 条 assistant / 10 条 system compact，覆盖 13 个更新 session；ordinary assistant final 未见 `<think>`、本机路径、原始 provider 错误、panic 或 raw tool JSON 外泄。
+  - 判断：最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。该问题继续影响 heartbeat 监控判断、送达语义和失败 / 跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-25 03:01-07:02 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-24`
     - 同窗继续出现 `HeartbeatDiag=688`、`deliver job_id=101`、`duplicate_suppressed=47`、`runner_error=36`、raw `<think>` preview 167 条、function-calling 工具预算拒绝 272 条。

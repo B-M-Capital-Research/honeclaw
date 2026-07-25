@@ -22,6 +22,23 @@ New
 
 ## 证据来源
 
+- 运行态复核（2026-07-25 11:02 CST）
+  - `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-25`
+    - 巡检窗口：2026-07-25 07:02-11:02 CST。
+    - `session_id=Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7`
+      - `2026-07-25T08:00:02.853649+08:00` Feishu scheduler `AI硬件涨价环节挖掘与标的推荐` 触发。
+      - runtime 先自动 compact，随后进入 function-calling runner；`2026-07-25 08:02:49` 记录 `entity_resolution.agent_loop ... answer_preserved=true` 后，整轮落成 `LLM 错误: stream transport error ... error decoding response body`。
+      - assistant final 只落库 `抱歉，这次处理失败了。请稍后再试。`，随后追加 `scheduler_failure=true / internal_error_suppressed` 的补偿消息，用户没有拿到已保留答案的降级摘要。
+    - `session_id=Actor_feishu__direct__ou_5fe31244b1208749f16773dce0c822801a`
+      - `2026-07-25T08:00:59.647359+08:00` Feishu scheduler `每日宏观与AI早报` 触发。
+      - runtime 已执行 `data_fetch quote / gainers_losers` 与多轮 `web_search`，`2026-07-25 08:06:00` 仍因同类 `stream transport error ... error decoding response body` 失败。
+      - assistant final 只落库通用失败，并追加 scheduler failure 补偿。
+  - 同窗对照：
+    - `data/sessions.sqlite3` 同窗新增 38 条 user / 23 条 assistant / 10 条 system compact，覆盖 13 个更新 session；同窗其它 Feishu / Web scheduler 与 direct 多条正常收口，未见原始 provider 错误外泄、错投、敏感信息泄露或全渠道不可用。
+  - 判断：
+    - 最新样本仍是 OpenAI-compatible / function-calling 流式响应体解码失败后，已保留或已获取的工具结果未被恢复为可用正文；与既有缺陷同根，不新建重复缺陷。
+    - 影响是两轮普通 scheduler 业务正文缺失，严重等级维持功能性 `P2 / New`；非 P1，不创建 GitHub Issue。
+
 - 运行态回退（2026-07-23 07:01 CST）
   - `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-22`
     - 巡检窗口：2026-07-23 03:01-07:01 CST。

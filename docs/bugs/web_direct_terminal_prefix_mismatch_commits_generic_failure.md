@@ -22,6 +22,17 @@ New
 
 ## 证据来源
 
+- `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-25`
+  - `2026-07-25 11:02 CST` 巡检确认本缺陷继续在 Web direct 普通短问上复发，状态维持 `New/P2`。
+  - `session_id=Actor_web__direct__web-user-ba50cb9401c0`
+    - `2026-07-25T10:02:34.854443+08:00` 用户问 `美股股价下跌原因`。
+    - runtime 已完成多次 `data_fetch quote` 与 `web_search`，并在 `10:03:05` 提交 user-visible terminal delta；`10:03:57` 记录 `entity_resolution.agent_loop ... answer_preserved=true` 后报 `committed terminal prefix mismatch`，随后持久化 `committed_prefix_after_terminal_failure`。
+    - `2026-07-25T10:03:57.304920+08:00` assistant final 只返回“本轮研究未能完成，暂未形成可供参考的标的结论。”，`metadata_json` 为 `service_owned_initial_prefix=true`、`error_kind=AgentFailed`、`terminal_stream_incomplete=true`、`run_failed=true`。
+    - `2026-07-25T10:04:39.646185+08:00` 用户同题重试；runtime 再次完成 `data_fetch quote SPY/QQQ/DIA` 与 `web_search`，`10:05:19` 再次因 `committed terminal prefix mismatch` 持久化同类失败。
+    - `2026-07-25T10:05:19.994345+08:00` assistant final 再次只返回同一通用研究失败。
+  - 同窗 `data/sessions.sqlite3` 新增 38 条 user / 23 条 assistant / 10 条 system compact，覆盖 13 个更新 session；同一 session 09:00 Web scheduler 曾正常输出，说明不是 Web 全局不可用。
+  - 判断：本轮明确复现 `committed terminal prefix mismatch + answer_preserved=true + committed_prefix_after_terminal_failure`，与本缺陷同根。它连续阻断同一 Web direct 明确问题两轮，但同窗其它 direct / scheduler 可收口，未见错投、敏感信息泄露或数据破坏；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `data/sessions.sqlite3`
   - `2026-07-25 07:02 CST` 巡检确认 2026-07-24 23:30 代码级修复后，同一 Web direct terminal failure 链路仍在普通宏观问题上复发；状态从 `Fixed` 回退为 `New/P2`。
   - `session_id=Actor_web__direct__web-user-be13e1f84d14`
@@ -107,6 +118,7 @@ New
 
 ## 当前实现效果
 
+- 2026-07-25 10:02-10:05 CST 同一 Web direct 用户短问“美股股价下跌原因”连续两轮已执行数据与搜索工具、`answer_preserved=true` 后仍因 `committed terminal prefix mismatch` 只返回通用研究失败。
 - 2026-07-25 06:54-06:58 CST 同一 Web direct 宏观回调问题连续两轮落成 `AgentFailed / terminal_stream_incomplete=true`，只给通用研究失败；07:00 用户拆短并触发 compact 后才恢复正文输出。
 - 2026-07-24 02:50 CST CIFR 投研请求说明：即便工具调用已经完成、`answer_preserved=true`，仍可能因 `committed terminal prefix mismatch` 被覆盖成通用研究失败。
 - LITE 期权止盈请求曾在后续夜间窗口连续两轮复发同类 `committed terminal prefix mismatch`，且两轮都已有 `answer_preserved=true` 与 LITE 实体 contract。

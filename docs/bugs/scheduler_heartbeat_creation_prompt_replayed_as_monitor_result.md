@@ -18,6 +18,17 @@
 
 ## 修复进展
 
+- `2026-07-25 07:02-11:02 CST` 运行态复核确认同根继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-25`
+    - 08:01 CST `AI与科技持仓观察关键事件心跳提醒` 已作为 heartbeat job 周期触发，raw preview 却把本轮处理成“修改全天候监控配置 / cron_job 工具不可用”能力边界说明，deliver preview 也在讲“可以改，从交易时段改成全天候监控”，而不是执行关键事件监控。
+    - 09:30 CST `SIVE POET/Nokia/1.6T DFB 心跳检测` deliver preview 漂移成 10 年组合的股债配置框架分析；同窗多个 heartbeat 的 duplicate suppression baseline 也匹配到这类“组合框架分析”正文。
+    - 10:00 CST `ASTS 重大异动心跳监控` deliver preview 在工具受限后输出“ASTS 持仓更新：数据受限，框架参考”，随后 duplicate suppression 又匹配 08:30 的“组合框架分析”坏基线。
+  - 会话质量对照：
+    - 同窗 `data/sessions.sqlite3` 新增 38 条 user / 23 条 assistant / 10 条 system compact，覆盖 13 个更新 session；普通 Web / Feishu direct 与多个 scheduler 均有 assistant 收口，未见全渠道停摆、错投、本机路径或 provider 原始错误外泄。
+  - 判断：
+    - 最新样本仍是已创建 heartbeat job 的执行期语义被非监控上下文、旧用户问题、组合配置问答或任务管理话术污染，导致模型没有执行当前 job 的监控判断。
+    - 该问题影响 heartbeat 功能链路和信噪比，严重等级维持 `P2 / New`；未见全渠道停摆、跨用户错投、数据破坏或敏感信息泄露，因此不升级 P1，不创建 GitHub Issue。
+
 - `2026-07-25 03:01-07:02 CST` 运行态复核确认同根继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-24`
     - 07:00 CST `ASTS 重大异动心跳监控` raw preview 把本轮 heartbeat job 处理成“10 年投资组合 allocation 策略问题”，deliver preview 也输出“核心 + 卫星 vs all-in Nasdaq”的投资方法论正文，而不是执行 ASTS 重大异动监控；随后被 duplicate suppression 压掉。
