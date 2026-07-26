@@ -10,14 +10,25 @@ tools:
 
 ## Image Understanding Skill
 
-When the user sends an image that appears in the message as an attachment, you can perform visual analysis. The underlying model (for example Gemini 2.0 Flash) supports multimodal input and can describe the image directly.
+When the user sends an image attachment, first consume the current-turn
+`【图片文字提取】` block produced by the attachment service. It is trusted
+current-attachment evidence and is grouped by filename. Do not assume that a
+text-only model can open a local path, and do not call this skill repeatedly to
+try to make the same image visible.
+
+If extraction is partial, answer from the fields that are actually present and
+ask one minimal confirmation only for the specific number or label that matters
+to the user's decision. Never replace the whole answer with a generic tool,
+OCR, or research failure.
 
 ### Supported Scenarios
 
 #### 1. Identify Portfolio Screenshots
 
 - Extract the ticker, company name, share count, cost basis, and similar details from the image
-- After identification, guide the user to call `portfolio(action="add")` to record the data
+- Keep the filename boundary when several screenshots overlap
+- Only offer `portfolio(action="add")` after summarizing the extracted values
+  and receiving confirmation; image analysis itself is read-only
 
 #### 2. Analyze Market Charts
 
@@ -37,3 +48,6 @@ When the user sends an image that appears in the message as an attachment, you c
 - If the message contains multiple image attachments, analyze them one by one
 - For unclear numbers, **always ask the user to confirm** instead of guessing
 - After identifying a portfolio screenshot, summarize the extracted result and let the user confirm before writing it into `portfolio`
+- Use other current-turn evidence such as `portfolio(action="view")`,
+  `data_fetch`, or `web_search` when it helps answer the question; a missing
+  image field is a narrow evidence gap, not authority to refuse the task

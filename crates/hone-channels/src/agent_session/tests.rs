@@ -51,16 +51,16 @@ use crate::runtime::sanitize_user_visible_output;
 use crate::sandbox::sandbox_base_dir;
 
 use super::core::{
-    AgentSession, PreparedTurnReexecutionPolicy, SERVICE_OWNED_PREFIX_FAILURE_SUFFIX,
-    apply_deterministic_investment_fallback, failed_assistant_persisted_message,
-    normalize_persistent_trace_failure, prepared_turn_reexecution_policy, prompt_time_for_attempt,
+    AgentSession, PreparedTurnReexecutionPolicy, apply_deterministic_investment_fallback,
+    failed_assistant_persisted_message, normalize_persistent_trace_failure,
+    prepared_turn_reexecution_policy, prompt_time_for_attempt,
 };
 use super::emitter::SessionEventEmitter;
 use super::helpers::{
     CONTEXT_OVERFLOW_FALLBACK_MESSAGE, DIRECT_SESSION_PRE_COMPACT_RESTORE_LIMIT,
-    NON_FINANCE_BOUNDARY_REPLY, is_retryable_transient_runner_error_text,
-    non_finance_boundary_reply, persistable_turn_from_response, prune_interactive_runtime_history,
-    sanitize_assistant_context_content, should_persist_tool_result, should_return_runner_result,
+    is_retryable_transient_runner_error_text, persistable_turn_from_response,
+    prune_interactive_runtime_history, sanitize_assistant_context_content,
+    should_persist_tool_result, should_return_runner_result,
 };
 use super::restore::{restore_context, restore_recent_interactive_user_references};
 use super::types::{
@@ -1047,30 +1047,6 @@ fn retryable_transient_runner_error_text_matches_acp_disconnect_and_idle_timeout
 }
 
 #[test]
-fn non_finance_boundary_rejects_obvious_consumer_topics_without_finance_anchor() {
-    assert_eq!(
-        non_finance_boundary_reply("Hi hone，你了解深圳楼市吗？我现在是否适合买房？"),
-        Some(NON_FINANCE_BOUNDARY_REPLY)
-    );
-    assert_eq!(
-        non_finance_boundary_reply("AMD的电脑CPU是什么名字"),
-        Some(NON_FINANCE_BOUNDARY_REPLY)
-    );
-}
-
-#[test]
-fn non_finance_boundary_allows_finance_framed_adjacent_topics() {
-    assert_eq!(
-        non_finance_boundary_reply("深圳楼市会影响哪些地产股？"),
-        None
-    );
-    assert_eq!(
-        non_finance_boundary_reply("AMD CPU业务对股价和财报有什么影响？"),
-        None
-    );
-}
-
-#[test]
 fn sanitize_user_visible_output_whitespace_only_success_needs_fallback() {
     let sanitized = sanitize_user_visible_output("   ");
     assert!(sanitized.content.is_empty());
@@ -1918,7 +1894,7 @@ async fn service_prefix_conflicting_time_header_is_recovered_without_generic_fai
 }
 
 #[tokio::test]
-async fn failed_service_prefix_run_appends_and_persists_an_explicit_failure_tail() {
+async fn failed_committed_prefix_run_never_appends_canned_business_refusal_copy() {
     let root = make_temp_dir("hone_channels_service_prefix_failure_tail");
     std::fs::create_dir_all(&root).expect("create root");
     let seen_prefixes = Arc::new(Mutex::new(Vec::new()));
@@ -1951,7 +1927,7 @@ async fn failed_service_prefix_run_appends_and_persists_an_explicit_failure_tail
         .first()
         .cloned()
         .expect("committed service prefix");
-    let expected = format!("{prefix}{SERVICE_OWNED_PREFIX_FAILURE_SUFFIX}");
+    let expected = prefix;
     let events = listener.events.lock().await;
     let visible = events
         .iter()
@@ -5660,7 +5636,7 @@ async fn incomplete_named_scope_enters_main_agent_tool_loop_without_auxiliary_ga
         .collect::<Vec<_>>();
     assert_eq!(
         visible_chunks,
-        [service_prefix.as_str(), answer_tail],
+        [expected_answer.as_str()],
         "{visible_chunks:?}"
     );
     assert_eq!(
@@ -5780,10 +5756,7 @@ async fn agent_owned_no_coverage_clarification_is_not_replaced_and_is_emitted_on
         })
         .collect::<Vec<_>>();
     assert_eq!(visible_chunks.concat(), expected_answer);
-    assert_eq!(
-        visible_chunks,
-        [service_prefix.as_str(), answer_tail.as_str()]
-    );
+    assert_eq!(visible_chunks, [expected_answer.as_str()]);
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -5921,10 +5894,7 @@ async fn agent_owned_equal_candidate_clarification_is_not_replaced_and_is_emitte
         })
         .collect::<Vec<_>>();
     assert_eq!(visible_chunks.concat(), expected_answer);
-    assert_eq!(
-        visible_chunks,
-        [service_prefix.as_str(), answer_tail.as_str()]
-    );
+    assert_eq!(visible_chunks, [expected_answer.as_str()]);
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -6072,7 +6042,7 @@ async fn agent_owned_direct_final_preserves_completed_interactive_answer() {
             .iter()
             .map(|chunk| chunk.as_str())
             .collect::<Vec<_>>(),
-        [service_prefix.as_str(), answer_tail],
+        [expected_answer.as_str()],
         "{visible_chunks:?}"
     );
     assert_eq!(
@@ -6097,7 +6067,7 @@ async fn agent_owned_direct_final_preserves_completed_interactive_answer() {
 }
 
 #[tokio::test]
-async fn incomplete_natural_direct_final_after_t0_ack_persists_failure_partial_without_retry() {
+async fn incomplete_natural_direct_final_recovers_before_whole_answer_publication() {
     let root = make_temp_dir("hone_channels_terminal_header_recovery");
     std::fs::create_dir_all(&root).expect("create root");
     let (fmp_base_url, fmp_stub) = spawn_fmp_route_stub(vec![
@@ -6195,20 +6165,14 @@ async fn incomplete_natural_direct_final_after_t0_ack_persists_failure_partial_w
         .await;
     fmp_stub.join().expect("join FMP stub");
 
-    assert!(!result.response.success);
-    assert!(
-        result
-            .response
-            .error
-            .as_deref()
-            .is_some_and(|error| error.contains("active business stream ended before Done"))
-    );
+    assert!(result.response.success, "{:?}", result.response.error);
+    assert_eq!(result.response.content, recovered_answer);
     assert_eq!(result.response.tool_calls_made.len(), 3);
     assert_eq!(llm.chat_calls(), 0);
     assert_eq!(
         llm.chat_with_tools_calls(),
-        3,
-        "identity discovery + post-identity evidence + one buffered incomplete natural final; no finish or recovery generation"
+        4,
+        "identity discovery + evidence + incomplete final + one tools-disabled same-Agent recovery"
     );
 
     let events = listener.events.lock().await;
@@ -6220,38 +6184,26 @@ async fn incomplete_natural_direct_final_after_t0_ack_persists_failure_partial_w
             _ => None,
         })
         .collect::<Vec<_>>();
-    let service_prefix = visible_chunks
-        .first()
-        .copied()
-        .expect("T0 service-owned prefix");
-    assert!(service_prefix.starts_with("数据时间：北京时间 "));
-    assert!(service_prefix.ends_with(SERVICE_OWNED_PREFIX_BASIS_SUFFIX));
-    let expected_partial = format!("{service_prefix}{SERVICE_OWNED_PREFIX_FAILURE_SUFFIX}");
-    assert_eq!(
-        visible_chunks,
-        [service_prefix, SERVICE_OWNED_PREFIX_FAILURE_SUFFIX]
-    );
-    assert_eq!(visible_chunks.concat(), expected_partial);
+    assert_eq!(visible_chunks.concat(), recovered_answer);
     assert!(
         !events
             .iter()
             .any(|event| matches!(event, AgentSessionEvent::Run(RunEvent::StreamReset)))
     );
-    let partials = events
-        .iter()
-        .filter_map(|event| match event {
-            AgentSessionEvent::PartialDone { response } => Some(response),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(partials.len(), 1, "{events:?}");
-    assert_eq!(partials[0].content, expected_partial);
-    assert!(!partials[0].success);
-    assert!(partials[0].error.is_none());
-    assert!(!events.iter().any(|event| matches!(
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, AgentSessionEvent::PartialDone { .. }))
+    );
+    assert!(events.iter().any(|event| matches!(
         event,
-        AgentSessionEvent::Done { .. } | AgentSessionEvent::Run(RunEvent::Error { .. })
+        AgentSessionEvent::Done { response } if response.success
     )));
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, AgentSessionEvent::Run(RunEvent::Error { .. })))
+    );
     drop(events);
 
     let messages = core
@@ -6262,27 +6214,13 @@ async fn incomplete_natural_direct_final_after_t0_ack_persists_failure_partial_w
         .iter()
         .rev()
         .find(|message| message.role == "assistant")
-        .expect("persisted service-owned partial");
-    assert_eq!(session_message_text(assistant), expected_partial);
-    assert!(!session_message_text(assistant).contains(committed_header));
-    let metadata = assistant.metadata.as_ref().expect("partial metadata");
-    assert_eq!(
-        metadata
-            .get("service_owned_initial_prefix")
-            .and_then(Value::as_bool),
-        Some(true)
-    );
-    assert_eq!(
-        metadata
-            .get("terminal_stream_incomplete")
-            .and_then(Value::as_bool),
-        Some(true)
-    );
+        .expect("persisted recovered answer");
+    assert_eq!(session_message_text(assistant), recovered_answer);
     let _ = std::fs::remove_dir_all(root);
 }
 
 #[tokio::test]
-async fn incomplete_natural_direct_final_ignores_queued_recovery_after_t0_ack() {
+async fn double_incomplete_natural_final_emits_no_canned_business_partial() {
     let root = make_temp_dir("hone_channels_terminal_header_double_failure");
     std::fs::create_dir_all(&root).expect("create root");
     let (fmp_base_url, fmp_stub) = spawn_fmp_route_stub(vec![
@@ -6365,7 +6303,7 @@ async fn incomplete_natural_direct_final_ignores_queued_recovery_after_t0_ack() 
             usage: None,
         },
     ])
-    .incomplete_on_stream_calls(&[3]);
+    .incomplete_on_stream_calls(&[3, 4]);
     let core = make_strict_tool_loop_test_core_with_config(&root, llm.clone(), |config| {
         config.fmp.api_keys = vec!["test-key".to_string()];
         config.fmp.base_url = fmp_base_url;
@@ -6390,7 +6328,7 @@ async fn incomplete_natural_direct_final_ignores_queued_recovery_after_t0_ack() 
             .is_some_and(|error| error.contains("active business stream ended before Done"))
     );
     assert_eq!(result.response.tool_calls_made.len(), 3);
-    assert_eq!(llm.chat_with_tools_calls(), 3);
+    assert_eq!(llm.chat_with_tools_calls(), 4);
 
     let events = listener.events.lock().await;
     let visible_chunks = events
@@ -6401,65 +6339,37 @@ async fn incomplete_natural_direct_final_ignores_queued_recovery_after_t0_ack() 
             _ => None,
         })
         .collect::<Vec<_>>();
-    let service_prefix = visible_chunks
-        .first()
-        .copied()
-        .expect("T0 service-owned prefix");
-    assert!(service_prefix.starts_with("数据时间：北京时间 "));
-    assert!(service_prefix.ends_with(SERVICE_OWNED_PREFIX_BASIS_SUFFIX));
-    let expected_partial = format!("{service_prefix}{SERVICE_OWNED_PREFIX_FAILURE_SUFFIX}");
-    assert_eq!(
-        visible_chunks,
-        [service_prefix, SERVICE_OWNED_PREFIX_FAILURE_SUFFIX]
+    assert!(
+        visible_chunks.is_empty(),
+        "no model/business partial may cross whole-answer buffering: {visible_chunks:?}"
     );
-    assert_eq!(visible_chunks.concat(), expected_partial);
     assert!(
         !events
             .iter()
             .any(|event| matches!(event, AgentSessionEvent::Run(RunEvent::StreamReset)))
     );
-    let partials = events
-        .iter()
-        .filter_map(|event| match event {
-            AgentSessionEvent::PartialDone { response } => Some(response),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(partials.len(), 1, "{events:?}");
-    assert_eq!(partials[0].content, expected_partial);
-    assert!(!partials[0].success);
-    assert!(partials[0].error.is_none());
-    assert!(!events.iter().any(|event| matches!(
-        event,
-        AgentSessionEvent::Done { .. } | AgentSessionEvent::Run(RunEvent::Error { .. })
-    )));
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, AgentSessionEvent::PartialDone { .. }))
+    );
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, AgentSessionEvent::Run(RunEvent::Error { .. })))
+    );
     drop(events);
 
     let messages = core
         .session_storage
         .get_messages(&actor.session_id(), None)
         .expect("persisted partial terminal messages");
-    let assistant = messages
-        .iter()
-        .rev()
-        .find(|message| message.role == "assistant")
-        .expect("persisted service-owned partial");
-    assert_eq!(session_message_text(assistant), expected_partial);
-    assert!(!session_message_text(assistant).contains(committed_header));
-    assert!(!session_message_text(assistant).contains(mismatched_recovery));
-    let metadata = assistant.metadata.as_ref().expect("partial metadata");
-    assert_eq!(
-        metadata
-            .get("service_owned_initial_prefix")
-            .and_then(Value::as_bool),
-        Some(true)
-    );
-    assert_eq!(
-        metadata
-            .get("terminal_stream_incomplete")
-            .and_then(Value::as_bool),
-        Some(true)
-    );
+    assert!(messages.iter().all(|message| {
+        message.role != "assistant"
+            || (!session_message_text(message).contains(committed_header)
+                && !session_message_text(message).contains(mismatched_recovery)
+                && !session_message_text(message).contains("本轮研究未能完成"))
+    }));
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -6693,7 +6603,7 @@ async fn interactive_tickers_enter_the_main_agent_loop_without_preflight_blockin
 }
 
 #[tokio::test]
-async fn interactive_finance_loop_is_channel_independent_but_early_commit_is_web_only() {
+async fn interactive_finance_loop_is_channel_independent_and_web_buffers_the_whole_answer() {
     let input = "大A有没有类似CRWV、Nebius这样的数据中心的标的";
     for channel in ["web", "discord", "telegram", "feishu"] {
         let root = make_temp_dir(&format!("hone_channels_natural_loop_{channel}"));
@@ -6717,11 +6627,7 @@ async fn interactive_finance_loop_is_channel_independent_but_early_commit_is_web
         );
         assert_eq!(
             execution.runner_request.terminal_stream_policy,
-            if channel == "web" {
-                TerminalStreamPolicy::CanonicalInvestmentHeader
-            } else {
-                TerminalStreamPolicy::Disabled
-            },
+            TerminalStreamPolicy::Disabled,
             "{channel}"
         );
         assert_eq!(
@@ -6743,7 +6649,7 @@ async fn interactive_finance_loop_is_channel_independent_but_early_commit_is_web
                 .service_owned_initial_prefix
                 .as_ref()
                 .expect("eligible Web finance prefix");
-            assert!(configured.commit_before_model);
+            assert!(!configured.commit_before_model);
             let prefix = configured.content.as_str();
             assert!(prefix.starts_with("数据时间：北京时间 "), "{prefix}");
             assert!(
@@ -6789,7 +6695,7 @@ async fn ordinary_interactive_web_turn_never_precommits_a_finance_prefix() {
     assert!(execution.runner_request.agent_owned_finance_loop);
     assert_eq!(
         execution.runner_request.terminal_stream_policy,
-        TerminalStreamPolicy::CanonicalInvestmentHeader
+        TerminalStreamPolicy::Disabled
     );
     let configured = execution
         .runner_request
@@ -6802,6 +6708,58 @@ async fn ordinary_interactive_web_turn_never_precommits_a_finance_prefix() {
     );
     assert_eq!(execution.runner_request.max_tool_calls, None);
     assert_eq!(execution.runner_request.tool_call_limits, None);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn web_image_finance_turn_preserves_the_header_format_with_whole_answer_buffering() {
+    let root = make_temp_dir("hone_channels_image_finance_deferred_prefix");
+    std::fs::create_dir_all(&root).expect("create root");
+    let llm = MockLlmProvider::with_chat_and_tool_responses(vec![], vec![]);
+    let core = make_strict_tool_loop_test_core_with_config(&root, llm, |_| {});
+    let actor = ActorIdentity::new("web", "image-finance-user", None::<String>).expect("actor");
+    let session = AgentSession::new(core, actor.clone(), "direct");
+    let input = "分析 CRWV 持仓\n\n用户上传了附件：\n1. 文件名=positions.png 分类=图片 大小=1024B 类型=image/png URL=oss://positions 本地路径=/tmp/positions.png 下载状态=成功\n\n【图片文字提取】\n### positions.png\nCRWV | 72.07 | 持仓 139";
+
+    let (execution, _) = session
+        .prepare_execution_for_turn(
+            &actor.session_id(),
+            input,
+            input,
+            &AgentRunOptions::default(),
+            None,
+            None,
+        )
+        .await
+        .unwrap_or_else(|(_, error)| panic!("image finance turn: {error}"));
+
+    assert!(execution.runner_request.agent_owned_finance_loop);
+    assert_eq!(execution.runner_request.max_tool_calls, Some(24));
+    assert_eq!(
+        execution.runner_request.terminal_stream_policy,
+        TerminalStreamPolicy::Disabled
+    );
+    let configured = execution
+        .runner_request
+        .service_owned_initial_prefix
+        .as_ref()
+        .expect("image finance prefix configuration");
+    assert!(
+        !configured.commit_before_model,
+        "an image-dependent turn must consume attachment evidence before any irreversible header"
+    );
+    assert!(
+        configured.content.starts_with("数据时间：北京时间 "),
+        "{}",
+        configured.content
+    );
+    assert!(
+        configured
+            .content
+            .ends_with("；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露"),
+        "{}",
+        configured.content
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -7239,7 +7197,7 @@ async fn crwv_nbis_agent_loop_batches_the_first_datafetch_and_emits_one_answer()
             .iter()
             .map(|chunk| chunk.as_str())
             .collect::<Vec<_>>(),
-        [service_prefix.as_str(), answer_tail],
+        [expected_answer.as_str()],
         "{visible_chunks:?}"
     );
     assert_eq!(
@@ -7379,7 +7337,7 @@ async fn omitted_explicit_seed_is_observational_and_does_not_rerun() {
             .iter()
             .map(|chunk| chunk.as_str())
             .collect::<Vec<_>>(),
-        [service_prefix.as_str(), original_answer_tail],
+        [result.response.content.as_str()],
         "{visible_chunks:?}"
     );
     assert_eq!(
@@ -7581,7 +7539,7 @@ async fn single_agent_loop_accepts_later_exact_searches_after_empty_enriched_sea
             .iter()
             .map(|chunk| chunk.as_str())
             .collect::<Vec<_>>(),
-        [service_prefix.as_str(), accepted_answer_tail],
+        [result.response.content.as_str()],
         "{visible_chunks:?}"
     );
     assert_eq!(
@@ -7887,11 +7845,11 @@ async fn run_zero_daily_conversation_limit_bypasses_quota() {
 }
 
 #[tokio::test]
-async fn run_short_circuits_obvious_non_finance_direct_query_without_llm_or_quota() {
+async fn ordinary_non_finance_direct_query_reaches_the_agent_and_gets_an_answer() {
     let root = make_temp_dir("hone_channels_domain_boundary");
     std::fs::create_dir_all(&root).expect("create root");
     let llm = MockLlmProvider::with_tool_responses(vec![ChatResponse {
-        content: "should not be called".to_string(),
+        content: "可以。我会先看你的预算、持有年限、通勤和现金流，再比较买与租。".to_string(),
         reasoning_content: None,
         tool_calls: None,
         usage: None,
@@ -7908,16 +7866,25 @@ async fn run_short_circuits_obvious_non_finance_direct_query_without_llm_or_quot
         .await;
 
     assert!(result.response.success, "{:?}", result.response.error);
-    assert_eq!(result.response.content, NON_FINANCE_BOUNDARY_REPLY);
+    assert_eq!(
+        result.response.content,
+        "可以。我会先看你的预算、持有年限、通勤和现金流，再比较买与租。"
+    );
     assert_eq!(llm.chat_calls(), 0);
-    assert_eq!(llm.chat_with_tools_calls(), 0);
+    assert_eq!(llm.chat_with_tools_calls(), 1);
 
     let today = hone_core::beijing_now().format("%F").to_string();
     let snapshot = core
         .conversation_quota_storage
         .snapshot_for_date(&actor, &today)
         .expect("snapshot");
-    assert!(snapshot.is_none());
+    assert_eq!(
+        snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.success_count)
+            .unwrap_or_default(),
+        1
+    );
 
     let messages = core
         .session_storage
@@ -7932,7 +7899,7 @@ async fn run_short_circuits_obvious_non_finance_direct_query_without_llm_or_quot
     );
     assert_eq!(
         session_message_text(&messages[1]),
-        NON_FINANCE_BOUNDARY_REPLY
+        "可以。我会先看你的预算、持有年限、通勤和现金流，再比较买与租。"
     );
 
     let _ = std::fs::remove_dir_all(root);

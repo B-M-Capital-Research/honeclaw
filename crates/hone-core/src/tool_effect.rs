@@ -76,6 +76,11 @@ pub fn tool_call_has_persistent_side_effect(name: &str, arguments: &Value) -> bo
             !matches!(tool_action(arguments), Some("get" | "get_overview"))
         }
         Some("restart_hone") => true,
+        // Loading a skill prompt and refreshing the same skill's invocation
+        // metadata is idempotent bookkeeping, not a durable business
+        // mutation. Executable skill scripts remain conservatively
+        // persistent because repository-declared code may have arbitrary
+        // effects.
         Some("skill_tool") => arguments
             .get("execute_script")
             .and_then(Value::as_bool)
@@ -97,12 +102,14 @@ pub fn tool_call_is_known_read_only(name: &str, arguments: &Value) -> bool {
             matches!(tool_action(arguments), Some("get" | "get_overview"))
         }
         Some("restart_hone") => false,
-        // Loading a skill may update invoked-skill Session metadata, and
-        // execute_script=true can perform arbitrary declared script effects.
-        // Treat it as unknown/non-read-only even when script execution is off;
-        // the persistent classifier above specifically blocks the executable
-        // form at finance read-only boundaries.
-        Some("skill_tool") => false,
+        // A non-executable skill invocation returns repository instructions
+        // and idempotently refreshes invoked-skill metadata. It is safe at a
+        // read-only continuation/retry boundary. `execute_script=true` stays
+        // unknown and persistent.
+        Some("skill_tool") => !arguments
+            .get("execute_script")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
         _ => {
             let normalized = normalized_runner_tool_name(name);
             KNOWN_READ_ONLY_TOOL_NAMES
@@ -151,9 +158,17 @@ mod tests {
             "mcp__hone__skill_tool",
             &json!({"skill":"stock_research","execute_script":false})
         ));
-        assert!(!tool_call_is_known_read_only(
+        assert!(tool_call_is_known_read_only(
             "skill_tool",
-            &json!({"skill":"stock_research"})
+            &json!({"skill_name":"stock_research"})
+        ));
+        assert!(tool_call_is_known_read_only(
+            "mcp__hone__skill_tool",
+            &json!({"skill_name":"image_understanding","execute_script":false})
+        ));
+        assert!(!tool_call_is_known_read_only(
+            "hone/skill_tool",
+            &json!({"skill_name":"image_understanding","execute_script":true})
         ));
     }
 }

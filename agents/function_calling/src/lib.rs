@@ -55,10 +55,10 @@ const MAX_MARKET_MOVE_DRAFT_FEEDBACK_CHARS: usize = 3_000;
 const AGENT_OVERALL_TIMEOUT_ERROR: &str =
     "agent_timeout: function-calling overall deadline exceeded";
 const AGENT_STEP_TIMEOUT_ERROR: &str = "agent_timeout: function-calling step deadline exceeded";
-const AGENT_OWNED_FINANCE_PERSISTENT_TOOL_ERROR: &str = "agent_owned_finance_persistent_tool_error";
 const AGENT_OWNED_FINANCE_FORCED_FINAL_TOOL_ERROR: &str =
     "agent_owned_finance_forced_final_returned_tool_call";
 const AGENT_OWNED_FINANCE_FORCED_FINAL_SYSTEM_INSTRUCTION: &str = "【本轮研究预算已完成】当前轮次不再提供工具。请由同一 Agent 仅根据本轮已经取得的真实工具结果，直接生成一次完整自然终稿；已有证据不足的项目如实披露具体缺口，不得补写模型记忆、不得要求用户重试，也不要提及预算、内部轮次或工具已关闭。";
+const BLOCKED_TOOL_FINALIZATION_INSTRUCTION: &str = "【内部安全收口】上一批工具调用没有执行，也没有形成任何工具结果。当前轮次不再提供工具。请由同一 Agent 继续回答用户原问题：只使用本轮已经取得的真实证据；缺少的数据做最小、具体披露或确认，不得把整轮改写成“研究未完成”“请稍后再试”或其它通用拒答；不得声称被拦截的查询或操作已经执行，也不要向用户提及工具、安全边界、内部轮次或本说明。";
 const OPEN_AGENT_ENTITY_DISCOVERY_SYSTEM_INSTRUCTION: &str = "【本轮 Agent 工具决策】先完整阅读本轮用户原话，再决定是否调用工具。若问题点名任何公司、证券、基金、指数或加密资产，第一轮先只调用真实工具，不写最终正文，并把互不依赖的候选发现放进同一批工具调用：(1) 为你识别出的每个点名标的分别并行调用一次 DataFetch search，每个调用都填写互不复用且后续原样复用的 `entity_route`，并填写本次调用自己的 `identity_match`（ticker 用 `exact_symbol`，公司名、中文名或别名用 `name_or_alias`）；(2) 同时按用户原始公司名与问题主题并行发起可用的 Web/news/filing/industry 候选来源检索，优先发现公司公告、监管文件或其它一手来源。这类候选来源检索不依赖标准 ticker，可以和 DataFetch search 同轮并行；quote/profile/snapshot 等依赖标准 ticker 的调用必须等待 search 返回标准 symbol 后再执行，禁止猜测、补全或凭记忆构造代码。用户可能用小写、混合大小写或带市场常用分隔符书写 ticker；证券语境里的代码仍按 ticker 处理并用标准代码精确查询，不能因为写成小写就先改走公司别名搜索。不要只处理第一个标的，也不要等服务端按字符串拆分问题。若并非证券/公司研究问题，则按用户实际意图正常处理，不要生造证券实体。";
 const POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION: &str = "【内部研究取证轮】当前已通过 DataFetch 进入金融数据工具链，但证券实体、行情或资产路由证据仍未完整。先由你完整分析用户实际点名的全部公司/证券，不要依赖固定问法扫描器。为每个标的分配一个本轮稳定且互不复用的 `entity_route`（内部短键，不是用户可见结论）；每个标的分别发起一个 search（可在同一轮并行，禁止把多个标的拼成一个 query），并由你依据完整语义在每一次 search 调用里明确填写 call-scoped `identity_match`：query 是 ticker 时用 `exact_symbol`，是公司名、中文名或别名时用 `name_or_alias`；用户书写的 ticker 不要求大写，证券语境里的小写或混合大小写代码应先规范成标准代码并走 `exact_symbol`，不能仅因大小写改走别名 refinement；前一次声明不会授权后一次 search，也不要让服务端按大小写或长度猜。只使用用户原始公司名与问题主题、不依赖标准 symbol 的 Web/news/filing/industry 候选来源检索，可以与这些 search 同轮并行。quote/profile/snapshot 等依赖某条路线标准 symbol 的调用必须等待该路线 search 结果返回；若当前上下文已经有该路线的标准 symbol，可在本轮并行执行，否则禁止猜测、补全或凭记忆构造代码。后续 refinement、quote、profile/snapshot 与其它该标的调用都原样携带同一路线键。显式 ticker 路线的同代码约束在后续公司名补查中仍持续有效，不能切换成名字里提到该代码的其它产品；有限 provider 分隔写法可等价。若此前调用缺少路线键，补查时重复原 query，或用 `supersedes_query` 逐字指向那次旧 query，以便只迁移该路线。`refines_query` 与 `supersedes_query` 严格互斥，每次 search 最多填写一个：前者只连接同路线的空结果补查，后者只迁移一条漏写路线键的旧 query。对每条路线选中的标准 symbol 执行同代码 quote/profile；crypto 使用 search 返回的结构化 CRYPTO 路由与 crypto_quote，不要求 stock profile。若中文名、别名或代码搜索为空，在同一 `entity_route` 下换用公司正式英文名或标准 ticker 做精确补查；可在 `refines_query` 中逐字填写原始空 query，但不得另建或复用其它实体的路线来抵消。随后按用户原始问题继续取得财务、新闻、网页、公告、持仓或其它业务证据。尽量在同一轮批量或并行调用互不依赖的工具。不得把 data_fetch(search) 或 profile 当成公司关系、事件或因果证据。合理取证已经完成或必要来源经实际尝试后明确不可得时，由同一 Agent 直接形成一次自然终稿。";
 const AGENT_OWNED_RESEARCH_SYSTEM_INSTRUCTION: &str = "【同一 Agent 自然研究轮】继续阅读完整用户原话和本轮真实工具结果，自主决定是补充当前问题真正需要的业务工具，还是直接形成一次完整终稿。证据不足时只调用当前需要的真实工具；合理取证已经完成，或必要来源经实际尝试后明确不可得并可如实披露时，直接返回自然语言最终回答。实体 search/profile 只证明身份或公司自述，不证明关系、事件和因果；宽泛关系问题通常分别核查商业/客户供应/技术合同与投资持股，优先 SEC、公司 IR 或双方公告。所有事实使用当前工具结果；单项数据缺失时如实披露，并继续完成当前证据能够支持的部分。";
@@ -5093,6 +5093,7 @@ impl Agent for FunctionCallingAgent {
         let mut active_business_failures = 0u32;
         let mut pending_market_move_final_correction: Option<String> = None;
         let mut market_move_final_corrections = 0u32;
+        let mut blocked_tool_finalization: Option<String> = None;
         #[cfg(test)]
         let mut pending_finish_feedback: Option<String> = None;
         #[cfg(test)]
@@ -5122,7 +5123,9 @@ impl Agent for FunctionCallingAgent {
             let finance_protocol_active =
                 self.agent_owned_finance_loop && investment_research_started;
             let bounded_finance_research_active = self.agent_owned_finance_loop
-                && (finance_protocol_active || precommitted_service_prefix.is_some());
+                && (finance_protocol_active
+                    || precommitted_service_prefix.is_some()
+                    || blocked_tool_finalization.is_some());
             let market_move_bounded_final_ready = bounded_finance_research_active
                 && research_evidence.broad_market_mode
                 && finance_tool_rounds >= 1
@@ -5135,9 +5138,10 @@ impl Agent for FunctionCallingAgent {
             let force_finance_final = bounded_finance_research_active
                 && (finance_tool_rounds >= MAX_AGENT_OWNED_FINANCE_TOOL_ROUNDS
                     || tool_budget_exhausted
-                    || market_move_bounded_final_ready);
+                    || market_move_bounded_final_ready
+                    || blocked_tool_finalization.is_some());
 
-            if iterations >= self.max_iterations {
+            if iterations >= self.max_iterations && blocked_tool_finalization.is_none() {
                 // The iteration bound is a normal failed run, never implicit
                 // finish authority. A bounded finance final receives its own
                 // tools-disabled iteration before reaching this guard.
@@ -5266,6 +5270,19 @@ impl Agent for FunctionCallingAgent {
                 messages.push(Message {
                     role: "user".to_string(),
                     content: Some(feedback.to_string()),
+                    reasoning_content: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                });
+            }
+            if force_finance_final && let Some(blocked_call) = blocked_tool_finalization.as_deref()
+            {
+                messages.push(Message {
+                    role: "user".to_string(),
+                    content: Some(format!(
+                        "{BLOCKED_TOOL_FINALIZATION_INSTRUCTION}\n内部未完成步骤（不要对用户披露）：{blocked_call}"
+                    )),
                     reasoning_content: None,
                     tool_calls: None,
                     tool_call_id: None,
@@ -5440,10 +5457,17 @@ impl Agent for FunctionCallingAgent {
                             if retrying {
                                 continue;
                             }
+                            if self.agent_owned_finance_loop && blocked_tool_finalization.is_none()
+                            {
+                                blocked_tool_finalization = Some(error.to_string());
+                                continue;
+                            }
                             return failed_agent_response(tool_calls_made, iterations, error);
                         }
                         Ok(Err(error)) => {
                             let error = error.to_string();
+                            let retrying = self.agent_owned_finance_loop
+                                && blocked_tool_finalization.is_none();
                             self.record_audit(
                                 context,
                                 "chat_with_tools",
@@ -5456,7 +5480,8 @@ impl Agent for FunctionCallingAgent {
                                     "has_tools": true,
                                     "active_business_outcome": "error",
                                     "terminal_authorized": false,
-                                    "retrying": false,
+                                    "retrying": retrying,
+                                    "tools_disabled_recovery": retrying,
                                     "tool_choice_mode": tool_choice_mode_name(tool_choice_mode),
                                     "requested_tool_choice": tool_choice_mode_name(stream_tool_choice.requested),
                                     "effective_tool_choice": stream_tool_choice.effective.map(tool_choice_mode_name),
@@ -5467,10 +5492,17 @@ impl Agent for FunctionCallingAgent {
                             self.dbg(&format!(
                                 "[Agent] active business stream failed without terminal authorization: {error}"
                             ));
+                            if retrying {
+                                blocked_tool_finalization = Some(error);
+                                continue;
+                            }
                             return failed_agent_response(tool_calls_made, iterations, error);
                         }
                         Err(_) => {
                             let error = active_timeout_error;
+                            let retrying = self.agent_owned_finance_loop
+                                && error != AGENT_OVERALL_TIMEOUT_ERROR
+                                && blocked_tool_finalization.is_none();
                             self.record_audit(
                                 context,
                                 "chat_with_tools",
@@ -5485,7 +5517,8 @@ impl Agent for FunctionCallingAgent {
                                     "overall_timeout": error == AGENT_OVERALL_TIMEOUT_ERROR,
                                     "active_business_outcome": "timeout",
                                     "terminal_authorized": false,
-                                    "retrying": false,
+                                    "retrying": retrying,
+                                    "tools_disabled_recovery": retrying,
                                     "tool_choice_mode": tool_choice_mode_name(tool_choice_mode),
                                     "requested_tool_choice": tool_choice_mode_name(stream_tool_choice.requested),
                                     "effective_tool_choice": stream_tool_choice.effective.map(tool_choice_mode_name),
@@ -5493,6 +5526,10 @@ impl Agent for FunctionCallingAgent {
                                 }),
                                 None,
                             );
+                            if retrying {
+                                blocked_tool_finalization = Some(error.to_string());
+                                continue;
+                            }
                             return failed_agent_response(tool_calls_made, iterations, error);
                         }
                     }
@@ -5711,25 +5748,6 @@ impl Agent for FunctionCallingAgent {
                         Vec::new()
                     };
 
-                    // Once a service-owned line has crossed the Web boundary,
-                    // every later tool must be explicitly classified as
-                    // read-only. Reject an entire mixed batch before adding an
-                    // assistant tool frame, notifying observers, or entering
-                    // the registry; unknown tools are not treated as safe.
-                    if visible_service_prefix_committed
-                        && actionable_tool_calls.iter().any(|tool_call| {
-                            !registered_read_only_tool_call_is_well_formed(
-                                tool_call,
-                                &registered_tool_names,
-                            )
-                        })
-                    {
-                        return failed_agent_response(
-                            tool_calls_made,
-                            iterations,
-                            AGENT_OWNED_FINANCE_PERSISTENT_TOOL_ERROR,
-                        );
-                    }
                     let round_starts_investment_research =
                         actionable_tool_calls.iter().any(|tool_call| {
                             registered_tool_names.contains(&tool_call.function.name)
@@ -5762,30 +5780,40 @@ impl Agent for FunctionCallingAgent {
                     if finance_round_is_read_only && !finance_round_is_known_read_only {
                         service_prefix_commit_eligible = false;
                     }
-                    if finance_round_is_read_only
-                        && let Some(tool_call) = actionable_tool_calls.iter().find(|tool_call| {
-                            serde_json::from_str::<Value>(&tool_call.function.arguments).is_ok_and(
-                                |arguments| {
-                                    tool_call_has_persistent_side_effect(
-                                        &tool_call.function.name,
-                                        &arguments,
-                                    )
-                                },
-                            )
-                        })
-                    {
-                        tracing::error!(
+
+                    // A finance/read-only turn must never execute an
+                    // unregistered, malformed, unknown-effect, or
+                    // write-capable batch. Blocking the tool is not authority
+                    // to refuse the user's business question: keep the batch
+                    // outside the assistant frame/observer/registry/network,
+                    // then give the same Agent one tools-disabled natural
+                    // continuation from evidence already in context.
+                    if finance_round_is_read_only && !finance_round_is_known_read_only {
+                        let blocked_calls = actionable_tool_calls
+                            .iter()
+                            .filter(|tool_call| {
+                                !registered_read_only_tool_call_is_well_formed(
+                                    tool_call,
+                                    &registered_tool_names,
+                                )
+                            })
+                            .map(|tool_call| tool_call.function.name.as_str())
+                            .collect::<Vec<_>>()
+                            .join(",");
+                        tracing::warn!(
                             target: "hone_agent::ttft",
                             session_id = %context.session_id,
                             iteration = iterations,
-                            tool_name = %tool_call.function.name,
-                            "agent-owned finance blocked persistent tool before registry execution"
+                            blocked_tools = %blocked_calls,
+                            visible_service_prefix_committed,
+                            "agent-owned finance blocked unsafe tool batch before execution and will continue with a tools-disabled answer"
                         );
-                        return failed_agent_response(
-                            tool_calls_made,
-                            iterations,
-                            AGENT_OWNED_FINANCE_PERSISTENT_TOOL_ERROR,
-                        );
+                        blocked_tool_finalization = Some(if blocked_calls.is_empty() {
+                            "unknown".to_string()
+                        } else {
+                            blocked_calls
+                        });
+                        continue;
                     }
 
                     // A finish-only round can enter the terminal even when a
@@ -12466,16 +12494,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn precommitted_prefix_rejects_unregistered_mcp_datafetch_before_frames_or_execution() {
+    async fn precommitted_prefix_blocks_unregistered_mcp_datafetch_and_still_answers() {
         let prefix = "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露".to_string();
-        let llm = StreamingMockLlmProvider::with_rounds(vec![vec![
-            ChatStreamEvent::ToolCallDelta {
+        let answer =
+            format!("{prefix}\n\nCRWV：未执行未注册的数据请求；仅按当前已有信息给出风险框架。");
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
                 id: Some("tc_unregistered_mcp_datafetch".to_string()),
                 name: Some("mcp__hone__data_fetch".to_string()),
                 arguments: r#"{"data_type":"search","query":"CRWV","entity_route":"crwv","identity_match":"exact_symbol"}"#.to_string(),
-            },
-        ]]);
+            }],
+            vec![ChatStreamEvent::ContentDelta(answer.clone())],
+        ]);
         let registry_calls = Arc::new(AtomicUsize::new(0));
         let tool_observer = Arc::new(MockToolObserver::default());
         let stream_observer = Arc::new(CommittedPrefixStreamObserver {
@@ -12497,12 +12528,9 @@ mod tests {
 
         let response = agent.run("分析 CRWV", &mut context).await;
 
-        assert!(!response.success);
-        assert_eq!(
-            response.error.as_deref(),
-            Some(AGENT_OWNED_FINANCE_PERSISTENT_TOOL_ERROR)
-        );
-        assert_eq!(response.iterations, 1);
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, answer);
+        assert_eq!(response.iterations, 2);
         assert!(response.tool_calls_made.is_empty());
         assert_eq!(registry_calls.load(Ordering::SeqCst), 0);
         assert!(
@@ -12840,6 +12868,62 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn precommitted_service_prefix_allows_non_executable_image_skill_loading() {
+        let prefix = "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露".to_string();
+        let answer = format!(
+            "{prefix}\n\n已读取本轮图片文字，先按截图中可确认的持仓和盈亏给出风险处置顺序。"
+        );
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_image_skill".to_string()),
+                name: Some("skill_tool".to_string()),
+                arguments: r#"{"skill_name":"image_understanding","execute_script":false}"#
+                    .to_string(),
+            }],
+            vec![ChatStreamEvent::ContentDelta(answer.clone())],
+        ]);
+        let skill_calls = Arc::new(AtomicUsize::new(0));
+        let tool_observer = Arc::new(MockToolObserver::default());
+        let stream_observer = Arc::new(CommittedPrefixStreamObserver {
+            prefix: prefix.clone(),
+            accumulated: Mutex::new(prefix.clone()),
+            events: Mutex::new(Vec::new()),
+        });
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(CountingSkillTool {
+            calls: skill_calls.clone(),
+        }));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 3, None)
+                .with_agent_owned_finance_loop(true)
+                .with_service_owned_initial_prefix(Some(prefix.clone()), Some(prefix.clone()))
+                .with_tool_observer(Some(tool_observer.clone()))
+                .with_stream_observer(Some(stream_observer.clone()));
+        let mut context = AgentContext::new("precommitted-image-skill".to_string());
+
+        let response = agent.run("分析持仓截图", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, answer);
+        assert_eq!(response.iterations, 2);
+        assert_eq!(response.tool_calls_made.len(), 1);
+        assert_eq!(skill_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            tool_observer
+                .events
+                .lock()
+                .expect("tool observer events")
+                .as_slice(),
+            ["start:skill_tool", "done:skill_tool:true"]
+        );
+        assert_eq!(
+            stream_observer.committed_visible_prefix(),
+            Some(prefix.clone())
+        );
+    }
+
+    #[tokio::test]
     async fn deferred_service_prefix_commits_after_first_valid_datafetch_batch() {
         let prefix = "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露".to_string();
         let answer = format!("{prefix}\n\nNebius 的本轮核验结果。");
@@ -12958,8 +13042,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn deferred_service_prefix_blocks_unknown_tool_after_commit() {
+    async fn deferred_service_prefix_blocks_unknown_tool_after_commit_and_still_answers() {
         let prefix = "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露".to_string();
+        let answer = format!("{prefix}\n\nCoreWeave：未知工具未执行；以下仅使用已取得的实体证据。");
         let llm = StreamingMockLlmProvider::with_rounds(vec![
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
@@ -12973,6 +13058,7 @@ mod tests {
                 name: Some("counting_tool".to_string()),
                 arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
             }],
+            vec![ChatStreamEvent::ContentDelta(answer.clone())],
         ]);
         let unknown_calls = Arc::new(AtomicUsize::new(0));
         let stream_observer = Arc::new(CommittedPrefixStreamObserver::new(prefix.clone()));
@@ -12990,11 +13076,9 @@ mod tests {
 
         let response = agent.run("分析 CoreWeave", &mut context).await;
 
-        assert!(!response.success);
-        assert_eq!(
-            response.error.as_deref(),
-            Some(AGENT_OWNED_FINANCE_PERSISTENT_TOOL_ERROR)
-        );
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, answer);
+        assert_eq!(response.iterations, 3);
         assert_eq!(response.tool_calls_made.len(), 1);
         assert_eq!(unknown_calls.load(Ordering::SeqCst), 0);
         assert_eq!(
@@ -13015,22 +13099,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unknown_tool_in_initial_finance_batch_disables_deferred_prefix_commit() {
+    async fn unknown_tool_in_initial_finance_batch_is_blocked_before_all_execution_and_answers() {
         let prefix = "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露".to_string();
-        let llm = StreamingMockLlmProvider::with_rounds(vec![vec![
-            ChatStreamEvent::ToolCallDelta {
+        let answer = format!("{prefix}\n\nCoreWeave：本轮没有执行不安全批次，先给出信息核对清单。");
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![
+                ChatStreamEvent::ToolCallDelta {
                 index: 0,
                 id: Some("tc_search".to_string()),
                 name: Some("data_fetch".to_string()),
                 arguments: r#"{"data_type":"search","query":"CRWV","entity_route":"crwv","identity_match":"exact_symbol"}"#.to_string(),
-            },
-            ChatStreamEvent::ToolCallDelta {
-                index: 1,
-                id: Some("tc_unknown_same_batch".to_string()),
-                name: Some("counting_tool".to_string()),
-                arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
-            },
-        ]]);
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 1,
+                    id: Some("tc_unknown_same_batch".to_string()),
+                    name: Some("counting_tool".to_string()),
+                    arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
+                },
+            ],
+            vec![ChatStreamEvent::ContentDelta(answer.clone())],
+        ]);
         let unknown_calls = Arc::new(AtomicUsize::new(0));
         let stream_observer = Arc::new(CommittedPrefixStreamObserver::new(prefix.clone()));
         let mut registry = ToolRegistry::new();
@@ -13041,36 +13129,44 @@ mod tests {
         let agent =
             FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 1, None)
                 .with_agent_owned_finance_loop(true)
-                .with_service_owned_initial_prefix(Some(prefix), None)
+                .with_service_owned_initial_prefix(Some(prefix.clone()), None)
                 .with_stream_observer(Some(stream_observer.clone()));
         let mut context = AgentContext::new("deferred-prefix-mixed-initial".to_string());
 
         let response = agent.run("分析 CoreWeave", &mut context).await;
 
-        assert!(!response.success);
-        assert_eq!(response.error.as_deref(), Some("max_iterations_exceeded:1"));
-        assert_eq!(response.tool_calls_made.len(), 2);
-        assert_eq!(unknown_calls.load(Ordering::SeqCst), 1);
-        assert!(
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, answer);
+        assert_eq!(response.iterations, 2);
+        assert!(response.tool_calls_made.is_empty());
+        assert_eq!(unknown_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(
             stream_observer
                 .events
                 .lock()
                 .expect("stream events")
-                .is_empty()
+                .as_slice(),
+            [format!("final:{prefix}")]
         );
-        assert!(stream_observer.committed_visible_prefix().is_none());
+        assert_eq!(
+            stream_observer.committed_visible_prefix(),
+            Some(prefix.clone())
+        );
     }
 
     #[tokio::test]
-    async fn precommitted_service_prefix_rejects_unknown_first_batch_before_execution() {
+    async fn precommitted_service_prefix_blocks_unknown_first_batch_and_still_answers() {
         let prefix = "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露".to_string();
-        let llm =
-            StreamingMockLlmProvider::with_rounds(vec![vec![ChatStreamEvent::ToolCallDelta {
+        let answer = format!("{prefix}\n\nCRWV：未知工具没有执行；当前证据不足处已单独标出。");
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
                 id: Some("tc_unknown".to_string()),
                 name: Some("counting_tool".to_string()),
                 arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
-            }]]);
+            }],
+            vec![ChatStreamEvent::ContentDelta(answer.clone())],
+        ]);
         let calls = Arc::new(AtomicUsize::new(0));
         let tool_observer = Arc::new(MockToolObserver::default());
         let stream_observer = Arc::new(CommittedPrefixStreamObserver {
@@ -13095,12 +13191,9 @@ mod tests {
 
         let response = agent.run("分析 CRWV", &mut context).await;
 
-        assert!(!response.success);
-        assert_eq!(
-            response.error.as_deref(),
-            Some(AGENT_OWNED_FINANCE_PERSISTENT_TOOL_ERROR)
-        );
-        assert_eq!(response.iterations, 1);
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, answer);
+        assert_eq!(response.iterations, 2);
         assert!(response.tool_calls_made.is_empty());
         assert_eq!(calls.load(Ordering::SeqCst), 0);
         assert!(
@@ -13167,7 +13260,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn agent_owned_tool_round_resets_an_uncommitted_final_candidate() {
+    async fn agent_owned_tool_round_blocks_unknown_call_and_resets_uncommitted_candidate() {
         let required_prefix = "数据时间：北京时间 2026-07-19 09:31；行情口径：";
         let compatible_fragment = "数据时间：北京时间 2026-07-19 09:";
         let answer = format!("{required_prefix}最新可得、非逐笔\n\n最终回答");
@@ -13227,8 +13320,8 @@ mod tests {
         assert!(response.success, "{:?}", response.error);
         assert_eq!(response.content, answer);
         assert_eq!(response.iterations, 4);
-        assert_eq!(response.tool_calls_made.len(), 4);
-        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(response.tool_calls_made.len(), 3);
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
         assert_eq!(
             observer.events.lock().expect("stream events").as_slice(),
             [
@@ -13774,10 +13867,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn committed_finance_header_rejects_a_late_tool_before_execution() {
+    async fn committed_finance_header_blocks_a_late_tool_and_still_answers() {
         let required_prefix = "数据时间：北京时间 2026-07-19 09:31；行情口径：";
         let basis = "最新可得、非逐笔\n";
         let committed_header = required_prefix.to_string();
+        let answer = format!(
+            "{required_prefix}{basis}\nCRWV：未执行未知工具；以下结论仅使用已取得的行情与实体证据。"
+        );
         let llm = StreamingMockLlmProvider::with_rounds(vec![
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
@@ -13809,6 +13905,7 @@ mod tests {
                     arguments: "{}".to_string(),
                 },
             ],
+            vec![ChatStreamEvent::ContentDelta(answer.clone())],
         ]);
         let calls = Arc::new(AtomicUsize::new(0));
         let observer = Arc::new(CommittedPrefixStreamObserver::new(committed_header.clone()));
@@ -13830,12 +13927,9 @@ mod tests {
             )
             .await;
 
-        assert!(!response.success);
-        assert_eq!(
-            response.error.as_deref(),
-            Some(AGENT_OWNED_FINANCE_PERSISTENT_TOOL_ERROR)
-        );
-        assert_eq!(response.iterations, 3);
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, answer);
+        assert_eq!(response.iterations, 4);
         assert_eq!(response.tool_calls_made.len(), 3);
         assert_eq!(calls.load(Ordering::SeqCst), 0);
         assert_eq!(observer.committed_visible_prefix(), Some(committed_header));
@@ -13858,7 +13952,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn agent_owned_finance_loop_rejects_persistent_tool_before_execution() {
+    async fn agent_owned_finance_loop_blocks_persistent_tool_and_still_answers() {
+        let answer = "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮只使用已取得的实体证据\n\nCRWV 尚未加入持仓；先核对标的和数量，再执行写入。";
         let llm = StreamingMockLlmProvider::with_rounds(vec![
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
@@ -13872,6 +13967,7 @@ mod tests {
                 name: Some("portfolio".to_string()),
                 arguments: r#"{"action":"add","ticker":"CRWV"}"#.to_string(),
             }],
+            vec![ChatStreamEvent::ContentDelta(answer.to_string())],
         ]);
         let stream_calls = llm.stream_calls.clone();
         let portfolio_calls = Arc::new(AtomicUsize::new(0));
@@ -13889,13 +13985,10 @@ mod tests {
 
         let response = agent.run("研究 CRWV 后把它加入持仓", &mut context).await;
 
-        assert!(!response.success);
-        assert_eq!(
-            response.error.as_deref(),
-            Some(AGENT_OWNED_FINANCE_PERSISTENT_TOOL_ERROR)
-        );
-        assert_eq!(response.iterations, 2);
-        assert_eq!(stream_calls.load(Ordering::SeqCst), 2);
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, answer);
+        assert_eq!(response.iterations, 3);
+        assert_eq!(stream_calls.load(Ordering::SeqCst), 3);
         assert_eq!(response.tool_calls_made.len(), 1);
         assert_eq!(portfolio_calls.load(Ordering::SeqCst), 0);
         assert_eq!(
@@ -13917,22 +14010,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn finance_discovery_round_rejects_executable_skill_before_any_tool_execution() {
-        let llm = StreamingMockLlmProvider::with_rounds(vec![vec![
-            ChatStreamEvent::ToolCallDelta {
-                index: 0,
-                id: Some("tc_search_crwv".to_string()),
-                name: Some("data_fetch".to_string()),
-                arguments: r#"{"data_type":"search","query":"CRWV","entity_route":"crwv","identity_match":"exact_symbol"}"#.to_string(),
-            },
-            ChatStreamEvent::ToolCallDelta {
-                index: 1,
-                id: Some("tc_executable_skill".to_string()),
-                name: Some("skill_tool".to_string()),
-                arguments: r#"{"skill_name":"stock_research","execute_script":true}"#
-                    .to_string(),
-            },
-        ]]);
+    async fn finance_discovery_round_blocks_executable_skill_and_still_answers() {
+        let answer = "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮没有执行脚本\n\nCRWV：先给出不依赖脚本的核对框架。";
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_search_crwv".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"search","query":"CRWV","entity_route":"crwv","identity_match":"exact_symbol"}"#.to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 1,
+                    id: Some("tc_executable_skill".to_string()),
+                    name: Some("skill_tool".to_string()),
+                    arguments: r#"{"skill_name":"stock_research","execute_script":true}"#
+                        .to_string(),
+                },
+            ],
+            vec![ChatStreamEvent::ContentDelta(answer.to_string())],
+        ]);
         let skill_calls = Arc::new(AtomicUsize::new(0));
         let tool_observer = Arc::new(MockToolObserver::default());
         let mut registry = ToolRegistry::new();
@@ -13948,12 +14045,9 @@ mod tests {
 
         let response = agent.run("研究 CRWV", &mut context).await;
 
-        assert!(!response.success);
-        assert_eq!(
-            response.error.as_deref(),
-            Some(AGENT_OWNED_FINANCE_PERSISTENT_TOOL_ERROR)
-        );
-        assert_eq!(response.iterations, 1);
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, answer);
+        assert_eq!(response.iterations, 2);
         assert!(response.tool_calls_made.is_empty());
         assert_eq!(skill_calls.load(Ordering::SeqCst), 0);
         assert!(
@@ -14033,7 +14127,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn natural_mode_treats_unregistered_tools_as_unknown_without_rewrite_or_status() {
+    async fn production_natural_mode_blocks_unregistered_batch_and_still_answers() {
         const INVENTED_TOOL_NAME: &str = "invented_research_gate";
         let answer = "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮报价最新可得、非逐笔\n\nCRWV 的关系结论仅按本轮证据表述。";
         let llm = StreamingMockLlmProvider::with_rounds(vec![
@@ -14104,7 +14198,7 @@ mod tests {
         assert!(response.success, "{:?}", response.error);
         assert_eq!(response.content, answer);
         assert_eq!(response.iterations, 4);
-        assert_eq!(response.tool_calls_made.len(), 5);
+        assert_eq!(response.tool_calls_made.len(), 3);
         assert_eq!(response.tool_calls_made[0].arguments["query"], "crwv");
         assert_eq!(
             response.tool_calls_made[0].arguments["identity_match"],
@@ -14114,14 +14208,12 @@ mod tests {
             response.tool_calls_made[0].result["data"][0]["symbol"],
             "CRWV"
         );
-        assert!(response.tool_calls_made.iter().any(|call| {
-            call.name == FINISH_RESEARCH_TOOL_NAME && call.result["isError"] == true
-        }));
         assert!(
             response
                 .tool_calls_made
                 .iter()
-                .any(|call| { call.name == INVENTED_TOOL_NAME && call.result["isError"] == true })
+                .all(|call| call.name != FINISH_RESEARCH_TOOL_NAME
+                    && call.name != INVENTED_TOOL_NAME)
         );
         let observer_events = tool_observer.events.lock().expect("tool observer events");
         assert!(
@@ -14149,8 +14241,8 @@ mod tests {
         let requests = seen_messages.lock().expect("requests");
         let final_request = serde_json::to_string(requests.last().expect("final request"))
             .expect("serialize request");
-        assert!(final_request.contains("tc_hallucinated_finish"));
-        assert!(final_request.contains("tc_invented_gate"));
+        assert!(!final_request.contains("tc_hallucinated_finish"));
+        assert!(!final_request.contains("tc_invented_gate"));
         assert!(final_request.contains(INVENTED_TOOL_NAME));
         assert!(!final_request.contains("内部工具协议纠正"));
         assert!(!final_request.contains("finish_research 当前尚不可用"));
@@ -14653,7 +14745,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn active_timeout_fails_immediately_without_terminal_or_visible_draft() {
+    async fn active_step_timeout_recovers_with_a_tools_disabled_answer() {
+        let answer =
+            "数据时间：北京时间 2026-07-26 20:00；行情口径：已取得资料\n\n基于现有证据的回答";
         let llm = StreamingMockLlmProvider::with_rounds(vec![
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
@@ -14662,6 +14756,7 @@ mod tests {
                 arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
             }],
             vec![],
+            vec![ChatStreamEvent::ContentDelta(answer.to_string())],
         ])
         .pending_on_stream_calls(&[2]);
         let seen_tool_counts = llm.seen_tool_counts.clone();
@@ -14677,26 +14772,22 @@ mod tests {
             4,
             Some(audit.clone()),
         )
-        .with_finish_research_terminal_synthesis(true)
+        .with_agent_owned_finance_loop(true)
         .with_stream_observer(Some(observer.clone()));
         let mut context = AgentContext::new("active-timeout".to_string());
 
         let response = agent.run("research", &mut context).await;
 
-        assert!(!response.success);
-        assert!(response.content.is_empty());
-        assert_eq!(response.iterations, 2);
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, answer);
+        assert_eq!(response.iterations, 3);
         assert_eq!(response.tool_calls_made.len(), 1);
-        assert_eq!(
-            response.error.as_deref(),
-            Some("active business stream timed out")
-        );
         assert_eq!(
             seen_tool_counts
                 .lock()
                 .expect("stream tool counts lock")
                 .as_slice(),
-            [1, 1]
+            [1, 1, 0]
         );
         assert!(
             observer
@@ -14705,19 +14796,21 @@ mod tests {
                 .expect("stream events lock")
                 .is_empty()
         );
-        assert_eq!(seen_messages.lock().expect("stream messages lock").len(), 2);
+        assert_eq!(seen_messages.lock().expect("stream messages lock").len(), 3);
         let records = audit.records.lock().expect("audit records lock");
-        let timeout = records.last().expect("timeout audit");
+        let timeout = records
+            .iter()
+            .find(|record| record.metadata["active_business_outcome"] == "timeout")
+            .expect("timeout audit");
         assert_eq!(timeout.metadata["active_business_outcome"], "timeout");
-        assert_eq!(timeout.metadata["retrying"].as_bool(), Some(false));
+        assert_eq!(timeout.metadata["retrying"].as_bool(), Some(true));
+        assert_eq!(
+            timeout.metadata["tools_disabled_recovery"].as_bool(),
+            Some(true)
+        );
         assert_eq!(
             timeout.metadata["terminal_authorized"].as_bool(),
             Some(false)
-        );
-        assert!(
-            records
-                .iter()
-                .all(|record| record.operation != "chat_terminal_without_tools")
         );
     }
 
@@ -15124,7 +15217,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn active_empty_retries_once_then_fails_without_terminal() {
+    async fn active_empty_retries_once_then_recovers_with_a_tools_disabled_answer() {
+        let answer = "数据时间：北京时间 2026-07-26 20:00；行情口径：已取得资料\n\n继续回答";
         let llm = StreamingMockLlmProvider::with_rounds(vec![
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
@@ -15138,6 +15232,7 @@ mod tests {
             vec![ChatStreamEvent::ReasoningDelta(
                 "second hidden-only active thought".to_string(),
             )],
+            vec![ChatStreamEvent::ContentDelta(answer.to_string())],
         ]);
         let seen_tool_counts = llm.seen_tool_counts.clone();
         let seen_messages = llm.seen_messages.clone();
@@ -15152,26 +15247,22 @@ mod tests {
             4,
             Some(audit.clone()),
         )
-        .with_finish_research_terminal_synthesis(true)
+        .with_agent_owned_finance_loop(true)
         .with_stream_observer(Some(observer.clone()));
         let mut context = AgentContext::new("active-empty".to_string());
 
         let response = agent.run("research", &mut context).await;
 
-        assert!(!response.success);
-        assert!(response.content.is_empty());
-        assert_eq!(response.iterations, 3);
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, answer);
+        assert_eq!(response.iterations, 4);
         assert_eq!(response.tool_calls_made.len(), 1);
-        assert_eq!(
-            response.error.as_deref(),
-            Some("active business stream returned no tool call")
-        );
         assert_eq!(
             seen_tool_counts
                 .lock()
                 .expect("stream tool counts lock")
                 .as_slice(),
-            [1, 1, 1]
+            [1, 1, 1, 0]
         );
         assert!(
             observer
@@ -15180,7 +15271,7 @@ mod tests {
                 .expect("stream events lock")
                 .is_empty()
         );
-        assert_eq!(seen_messages.lock().expect("stream messages lock").len(), 3);
+        assert_eq!(seen_messages.lock().expect("stream messages lock").len(), 4);
         assert!(context.messages.iter().all(|message| {
             message
                 .metadata
@@ -15326,7 +15417,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn active_provider_error_fails_immediately_without_terminal() {
+    async fn active_provider_error_recovers_with_a_tools_disabled_answer() {
+        let answer = "数据时间：北京时间 2026-07-26 20:00；行情口径：已取得资料\n\n继续回答";
         let llm = StreamingMockLlmProvider::with_rounds(vec![
             vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
@@ -15335,6 +15427,7 @@ mod tests {
                 arguments: r#"{"data_type":"search","query":"CRWV"}"#.to_string(),
             }],
             vec![],
+            vec![ChatStreamEvent::ContentDelta(answer.to_string())],
         ])
         .failing_on_stream_calls(&[2]);
         let seen_tool_counts = llm.seen_tool_counts.clone();
@@ -15350,28 +15443,22 @@ mod tests {
             4,
             Some(audit.clone()),
         )
-        .with_finish_research_terminal_synthesis(true)
+        .with_agent_owned_finance_loop(true)
         .with_stream_observer(Some(observer.clone()));
         let mut context = AgentContext::new("active-business-provider-error".to_string());
 
         let response = agent.run("research", &mut context).await;
 
-        assert!(!response.success);
-        assert!(response.content.is_empty());
-        assert_eq!(response.iterations, 2);
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, answer);
+        assert_eq!(response.iterations, 3);
         assert_eq!(response.tool_calls_made.len(), 1);
-        assert!(
-            response
-                .error
-                .as_deref()
-                .is_some_and(|error| error.contains("mock stream failure 2"))
-        );
         assert_eq!(
             seen_tool_counts
                 .lock()
                 .expect("stream tool counts lock")
                 .as_slice(),
-            [1, 1]
+            [1, 1, 0]
         );
         assert!(
             observer
@@ -15380,17 +15467,19 @@ mod tests {
                 .expect("stream events lock")
                 .is_empty()
         );
-        assert_eq!(seen_messages.lock().expect("stream messages lock").len(), 2);
+        assert_eq!(seen_messages.lock().expect("stream messages lock").len(), 3);
         let records = audit.records.lock().expect("audit records lock");
-        let error = records.last().expect("active error audit");
+        let error = records
+            .iter()
+            .find(|record| record.metadata["active_business_outcome"] == "error")
+            .expect("active error audit");
         assert_eq!(error.metadata["active_business_outcome"], "error");
-        assert_eq!(error.metadata["retrying"].as_bool(), Some(false));
-        assert_eq!(error.metadata["terminal_authorized"].as_bool(), Some(false));
-        assert!(
-            records
-                .iter()
-                .all(|record| record.operation != "chat_terminal_without_tools")
+        assert_eq!(error.metadata["retrying"].as_bool(), Some(true));
+        assert_eq!(
+            error.metadata["tools_disabled_recovery"].as_bool(),
+            Some(true)
         );
+        assert_eq!(error.metadata["terminal_authorized"].as_bool(), Some(false));
     }
 
     #[tokio::test]

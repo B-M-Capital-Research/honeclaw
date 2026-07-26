@@ -40,7 +40,7 @@ use crate::response_finalizer::{
 };
 use crate::runners::{
     AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
-    ServiceOwnedInitialPrefix, TerminalStreamPolicy,
+    ServiceOwnedInitialPrefix,
 };
 use crate::runtime::{sanitize_user_visible_output, user_visible_error_message};
 use crate::session_compactor::SessionCompactor;
@@ -58,10 +58,9 @@ use super::helpers::{
     CONTEXT_OVERFLOW_FALLBACK_MESSAGE, CONTEXT_OVERFLOW_POST_COMPACT_RESTORE_LIMIT,
     CONTEXT_OVERFLOW_RECOVERY_LIMIT, CompactCommand, EMPTY_SUCCESS_RETRY_LIMIT,
     TRANSIENT_RUNNER_FAILURE_RETRY_LIMIT, is_context_overflow_error_text,
-    is_retryable_transient_runner_failure, merge_message_metadata, non_finance_boundary_reply,
-    persistable_turn_from_response, prune_historical_tool_protocol,
-    prune_interactive_runtime_history, restore_limit_before_compaction,
-    should_return_runner_result,
+    is_retryable_transient_runner_failure, merge_message_metadata, persistable_turn_from_response,
+    prune_historical_tool_protocol, prune_interactive_runtime_history,
+    restore_limit_before_compaction, should_return_runner_result,
 };
 use super::progress::{progress_watchdog_tick, run_with_progress_ticks};
 use super::restore::{restore_context_from_snapshot, restore_recent_interactive_user_references};
@@ -98,8 +97,6 @@ pub(super) enum PreparedTurnReexecutionPolicy {
     ExecuteOnce,
 }
 
-pub(super) const SERVICE_OWNED_PREFIX_FAILURE_SUFFIX: &str =
-    "\n\n本轮研究未能完成，暂未形成可供参考的标的结论。";
 const SERVICE_OWNED_PREFIX_START: &str = "数据时间：北京时间 ";
 const SERVICE_OWNED_PREFIX_SEPARATOR: &str = "；行情口径：";
 
@@ -1397,14 +1394,16 @@ impl AgentSession {
             ]));
         }
         if execution.runner_request.agent_owned_finance_loop && self.actor.channel == "web" {
-            execution.runner_request.terminal_stream_policy =
-                TerminalStreamPolicy::CanonicalInvestmentHeader;
             execution.runner_request.service_owned_initial_prefix = Some(
                 ServiceOwnedInitialPrefix {
                     content: format!(
                         "数据时间：北京时间 {answer_time_beijing}；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露"
                     ),
-                    commit_before_model: bounded_finance_turn,
+                    // Preserve the established first-line format, but publish
+                    // it only with a completed usable answer. Whole-answer
+                    // buffering prevents a later model/tool failure from
+                    // turning an irreversible header into canned refusal copy.
+                    commit_before_model: false,
                 },
             );
         }
@@ -1862,89 +1861,6 @@ impl AgentSession {
         }
     }
 
-    async fn run_domain_boundary_short_circuit(
-        &self,
-        session_id: String,
-        raw_input: &str,
-        reply: &str,
-    ) -> AgentSessionResult {
-        let started = Instant::now();
-        let _ = self.core.session_storage.add_message(
-            &session_id,
-            "user",
-            raw_input,
-            self.message_metadata.user.clone(),
-        );
-        self.emit(AgentSessionEvent::UserMessage {
-            content: raw_input.to_string(),
-        })
-        .await;
-        self.core.log_message_step(
-            &self.actor.channel,
-            &self.actor.user_id,
-            &session_id,
-            "session.persist_user",
-            "domain_boundary",
-            self.message_id.as_deref(),
-            None,
-        );
-        self.core.log_message_received(
-            &self.actor.channel,
-            &self.actor.user_id,
-            &self.channel_target,
-            &session_id,
-            raw_input,
-            self.recv_extra.as_deref(),
-            self.message_id.as_deref(),
-        );
-
-        let response = AgentResponse {
-            content: reply.to_string(),
-            tool_calls_made: Vec::new(),
-            iterations: 0,
-            success: true,
-            error: None,
-        };
-        self.core.log_message_step(
-            &self.actor.channel,
-            &self.actor.user_id,
-            &session_id,
-            "agent.domain_boundary",
-            "short_circuit_non_finance",
-            self.message_id.as_deref(),
-            None,
-        );
-        self.persist_successful_assistant_turn(&session_id, &response, None);
-        self.core.log_message_step(
-            &self.actor.channel,
-            &self.actor.user_id,
-            &session_id,
-            "session.persist_assistant",
-            "domain_boundary",
-            self.message_id.as_deref(),
-            None,
-        );
-        let elapsed_ms = started.elapsed().as_millis();
-        self.core.log_message_finished(
-            &self.actor.channel,
-            &self.actor.user_id,
-            &session_id,
-            &response,
-            elapsed_ms,
-            self.message_id.as_deref(),
-        );
-        self.emit(AgentSessionEvent::Done {
-            response: response.clone(),
-        })
-        .await;
-
-        AgentSessionResult {
-            response,
-            elapsed_ms,
-            session_id,
-        }
-    }
-
     fn default_gemini_stream_options(&self, timeout: Option<Duration>) -> GeminiStreamOptions {
         GeminiStreamOptions {
             max_iterations: 18,
@@ -2065,16 +1981,6 @@ impl AgentSession {
             return self
                 .run_manual_compact(session_id, user_input, command)
                 .await;
-        }
-
-        if options.quota_mode != AgentRunQuotaMode::ScheduledTask
-            && !self.core.is_admin_actor(&self.actor)
-        {
-            if let Some(reply) = non_finance_boundary_reply(user_input) {
-                return self
-                    .run_domain_boundary_short_circuit(session_id, user_input, reply)
-                    .await;
-            }
         }
 
         // 配额预留；后续任何失败分支都靠 guard 在 drop 时自动把预留释放掉,
@@ -2653,15 +2559,7 @@ impl AgentSession {
                     .as_ref()
                     .map(|configured| configured.content.as_str())
                     == Some(prefix);
-                let visible_partial = if service_owned_prefix {
-                    self.emit(AgentSessionEvent::Segment {
-                        text: SERVICE_OWNED_PREFIX_FAILURE_SUFFIX.to_string(),
-                    })
-                    .await;
-                    format!("{prefix}{SERVICE_OWNED_PREFIX_FAILURE_SUFFIX}")
-                } else {
-                    prefix.to_string()
-                };
+                let visible_partial = prefix.to_string();
                 let mut metadata = HashMap::new();
                 metadata.insert("run_failed".to_string(), Value::Bool(true));
                 metadata.insert("error_kind".to_string(), Value::String(format!("{kind:?}")));

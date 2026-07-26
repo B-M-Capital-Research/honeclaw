@@ -1981,7 +1981,9 @@ mod tests {
         assert!(input.contains("用户上传了附件"));
         assert!(input.contains("文件名=portfolio.png"));
         assert!(input.contains("本地路径="));
-        assert!(input.contains("优先基于附件行里的本地可读路径理解截图/图表"));
+        assert!(input.contains("【图片文字提取】"));
+        assert!(input.contains("未提取到可读文字；不得据此猜测图片中的代码或数字"));
+        assert!(input.contains("不需要为了读取同一图片再调用 skill_tool"));
         assert!(!input.contains("[附件:"));
         assert!(!input.contains("当前工具链"));
         assert!(!input.contains("会话数据库"));

@@ -463,7 +463,19 @@ pub async fn enrich_attachment_with_extract_dir(
     };
     let path = PathBuf::from(local_path);
 
-    if attachment.kind == AttachmentKind::Archive {
+    if attachment.kind == AttachmentKind::Image {
+        match super::vision::extract_image_text(&path).await {
+            Ok(preview) => {
+                attachment.extracted_files.push(ExtractedFileInfo {
+                    path: path.to_string_lossy().to_string(),
+                    size: u64::from(attachment.size),
+                    kind: AttachmentKind::Text,
+                    preview: Some(preview),
+                });
+            }
+            Err(err) => attachment.extraction_error = Some(err),
+        }
+    } else if attachment.kind == AttachmentKind::Archive {
         let target_dir = extract_dir.unwrap_or_else(|| {
             path.parent()
                 .unwrap_or_else(|| Path::new("."))
@@ -512,6 +524,9 @@ pub fn build_user_input_with_label(
             lines.push(att.as_prompt_line(i + 1));
         }
         parts.push(lines.join("\n"));
+        if let Some(image_note) = build_image_extraction_note_from_refs(&accepted_attachments) {
+            parts.push(image_note);
+        }
         if let Some(pdf_note) = build_pdf_extraction_note_from_refs(&accepted_attachments) {
             parts.push(pdf_note);
         }
@@ -743,7 +758,7 @@ fn build_attachment_strategy_note_from_refs(attachments: &[&ReceivedAttachment])
 
     if has_image {
         lines.push(
-            "- 图片：优先基于附件行里的本地可读路径理解截图/图表；若当前阶段明确暴露 `image_understanding` skill，可调用 `skill_tool(skill_name=\"image_understanding\")`。不要因为图片文件名后缀是 `.bin` 就忽略它，附件分类为图片时应按图片处理。如果既不能读取图片也没有可用 OCR，不要列举目录、OSS、数据库、工具链或技能加载状态，只简短请用户重新上传或粘贴文字。"
+            "- 图片：先使用本轮【图片文字提取】中的真实内容回答；它属于当前附件证据，不需要为了读取同一图片再调用 skill_tool。不要因为图片文件名后缀是 `.bin` 就忽略它，附件分类为图片时应按图片处理。文字提取为空时，仍可结合用户问题和其它本轮权威工具给出可执行框架，并只对图片中无法确认的数字做一句最小确认；不要列举目录、OSS、数据库、工具链或技能加载状态。"
                 .to_string(),
         );
     }
@@ -779,6 +794,32 @@ fn build_attachment_strategy_note_from_refs(attachments: &[&ReceivedAttachment])
     }
 
     lines.join("\n")
+}
+
+fn build_image_extraction_note_from_refs(attachments: &[&ReceivedAttachment]) -> Option<String> {
+    let images = attachment_refs_by_kind(attachments, AttachmentKind::Image);
+    if images.is_empty() {
+        return None;
+    }
+
+    let mut lines = vec![
+        "【图片文字提取】".to_string(),
+        "以下内容由服务端直接从本轮图片提取；按文件分别使用，不要与历史附件混淆：".to_string(),
+    ];
+    for image in images {
+        let preview = image
+            .extracted_files
+            .iter()
+            .find_map(|file| file.preview.as_deref())
+            .map(str::trim)
+            .filter(|preview| !preview.is_empty());
+        lines.push(format!("### {}", image.filename));
+        match preview {
+            Some(preview) => lines.push(preview.to_string()),
+            None => lines.push("未提取到可读文字；不得据此猜测图片中的代码或数字。".to_string()),
+        }
+    }
+    Some(lines.join("\n"))
 }
 
 fn build_pdf_extraction_note_from_refs(attachments: &[&ReceivedAttachment]) -> Option<String> {
@@ -1161,7 +1202,12 @@ mod tests {
             kind: AttachmentKind::Image,
             local_path: Some("/tmp/uploads/image_key.bin".to_string()),
             error: None,
-            extracted_files: vec![],
+            extracted_files: vec![ExtractedFileInfo {
+                path: "/tmp/uploads/image_key.bin".to_string(),
+                size: 12,
+                kind: AttachmentKind::Text,
+                preview: Some("净清算价值 | 1,489,974\nCRWV | 72.07 | 持仓 139".to_string()),
+            }],
             extraction_error: None,
             pdf_text_preview: None,
             pdf_extract_error: None,
@@ -1169,6 +1215,9 @@ mod tests {
         let prompt = build_user_input("用大白话分析给我看", &attachments);
         assert!(prompt.contains("分类=图片"));
         assert!(prompt.contains("本地路径=/tmp/uploads/image_key.bin"));
+        assert!(prompt.contains("【图片文字提取】"));
+        assert!(prompt.contains("CRWV | 72.07 | 持仓 139"));
+        assert!(prompt.contains("不需要为了读取同一图片再调用 skill_tool"));
         assert!(prompt.contains("不要因为图片文件名后缀是 `.bin` 就忽略它"));
         assert!(prompt.contains("不要列举目录、OSS、数据库、工具链或技能加载状态"));
     }

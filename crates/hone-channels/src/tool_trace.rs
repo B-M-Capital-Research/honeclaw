@@ -145,6 +145,15 @@ mod tests {
             call("portfolio", Some("view"), json!({})),
             call("notification_prefs", Some("get_overview"), json!({})),
             call("cron_job", Some("list"), json!({})),
+            ToolCallMade {
+                name: "skill_tool".to_string(),
+                arguments: json!({
+                    "skill_name": "image_understanding",
+                    "execute_script": false
+                }),
+                result: json!({}),
+                tool_call_id: Some("skill_read".to_string()),
+            },
         ] {
             assert!(is_known_read_only_call(&read_only), "{}", read_only.name);
         }
@@ -152,7 +161,15 @@ mod tests {
         for unsafe_call in [
             call("portfolio", Some("add"), json!({})),
             call("deep_research", None, json!({"task_id":"research-1"})),
-            call("skill_tool", None, json!({})),
+            ToolCallMade {
+                name: "skill_tool".to_string(),
+                arguments: json!({
+                    "skill_name": "image_understanding",
+                    "execute_script": true
+                }),
+                result: json!({}),
+                tool_call_id: Some("skill_write".to_string()),
+            },
             call("mcp__filesystem__write_file", None, json!({})),
             call("external/create_order", None, json!({})),
         ] {
