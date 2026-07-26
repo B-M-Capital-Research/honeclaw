@@ -9,7 +9,7 @@ import { useLocale } from "@/lib/i18n"
 import { PublicFooter, PublicNav } from "@/components/public-nav"
 import "./public-site.css"
 
-const WHOP_URL = "https://whop.com/edda1183-b297-4502-811f-339ae5e773be/vip-copy-18/"
+const WHOP_URL = "https://whop.com/edda1183-b297-4502-811f-339ae5e773be/bm-research-membership/"
 const YOUTUBE_URL = "https://www.youtube.com/@Hari%E8%80%81%E7%8E%8B/videos"
 const BILIBILI_URL = "https://www.bilibili.com/video/BV1ByXNBGET5/"
 const GITHUB_URL = "https://github.com/B-M-Capital-Research/honeclaw"

@@ -1,6 +1,6 @@
 # Archive Index
 
-Last updated: 2026-07-22
+Last updated: 2026-07-26
 
 ## 2026-07-22
 
@@ -1679,3 +1679,27 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: `tests/regression/ci/test_finance_automation_contracts.sh`, `tests/regression/manual/test_entity_search_live.sh`, `docs/runbooks/backend-deployment.md`
 - Current conclusion: the provider was healthy. Exact ticker, genuine natural-name conflict, embedded-product reference, iterative search refinement, and unlinked translated aliases are handled without a service-owned publication ban. `fcca5a35`/`54b14068` removed the fixed refusal and first-group freeze; both fresh CRWV+NBIS phrasings passed with verified `73.21`/`177.71`, one answer/terminal, two-message history, and zero active chats. This archived entry closes only that exact-ticker/CWY subrepair. The same umbrella plan is active again for Agent research-loop/content acceptance after later CRWV/NVIDIA canaries, in addition to scheduler task-prose P2 and first-visible latency.
 - Next entry point: `docs/handoffs/2026-07-18-crwv-entity-resolution-repair.md`; remaining scheduler false positives stay in `docs/bugs/scheduler_finance_entity_guard_misclassifies_instruction_words.md`.
+
+### Whop Product Alignment With Knowledge Planet Membership
+
+- Status: done
+- Date: 2026-07-26
+- Plan: `docs/archive/plans/whop-product-alignment.md`
+- Handoff: `docs/handoffs/2026-07-26-whop-product-alignment.md`
+- Decision / ADR: N/A
+- Related PRs / commits: this change set
+- Related runbooks / regressions: Whop CLI product/plan readback, authenticated dashboard and public-page browser QA, `bun run typecheck`, `bun run test:web`
+- Current conclusion: one canonical visible Whop membership now offers the same four benefits as the Knowledge Planet membership at the repository-declared international price of USD 199.99/year, without a free trial or stale Discord fulfillment instructions. The English purchase page now links to the new route. All historical products remain archived because every attached historical plan is locked by Whop as non-deletable.
+- Next entry point: `docs/handoffs/2026-07-26-whop-product-alignment.md`
+
+### Whop Purchase To Discord VIP Fulfillment
+
+- Status: done
+- Date: 2026-07-26
+- Plan: `docs/archive/plans/whop-discord-fulfillment.md`
+- Handoff: `docs/handoffs/2026-07-26-whop-discord-fulfillment.md`
+- Decision / ADR: `docs/decisions.md#d-2026-07-26-04-let-whop-own-discord-membership-fulfillment`
+- Related PRs / commits: this change set
+- Related runbooks / regressions: `docs/runbooks/whop-discord-fulfillment.md`; authenticated Whop product/settings readback; Whop member-preview claim-flow QA; repository Whop/Discord role-lifecycle audit; `git diff --check`
+- Current conclusion: the canonical Whop product now includes the native Discord app connected to `巴芒投研美股社群`, includes `VIP 付费用户`, logs to `#whop`, and removes the role on cancellation. Whop—not a custom webhook or the HONE bot—owns Discord account linking and role lifecycle. A non-owner test membership remains required to prove the real join/grant/revoke/reactivation sequence because creator preview intentionally simulates rather than mutates access.
+- Next entry point: `docs/runbooks/whop-discord-fulfillment.md`

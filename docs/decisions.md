@@ -551,3 +551,33 @@ Last updated: 2026-07-26
 - Mechanical checks: The checker activates only when the runtime contains the server-generated market-move calendar anchor. It validates every adjacent absolute-date/Chinese-weekday pair; resolves the target in priority order from an explicit absolute date, an explicit-weekday civil candidate, the modal/latest current-turn quote `market_date_new_york`, and only then the draft; requires a broad US-market answer to cover at least two representative broad/style index groups instead of substituting one sector or stock; and inspects paragraphs that use deterministic causal language. Each such cause paragraph must contain the target absolute date and an original URL actually present in a current-turn tool result, and that URL's current result record must itself carry that date. Source-date recognition includes ordinary numeric/Chinese forms and English forms such as `July 24, 2026`. Scenario, inference, candidate-cause, and explicit evidence-gap paragraphs are not treated as confirmed causes. These checks do not decide which event caused a move, grade investment prose, infer a trading calendar, or authorize facts from a URL alone.
 - Correction and fallback: One invalid body may receive one hidden, bounded correction inside the same `Agent::run`, using the same context and existing evidence. The correction is constrained to a short answer and an enumerated set of current-result URLs that mechanically carry the target date. If a definitive cause failed locality and no such URL exists, the correction cannot improve the evidence and is skipped. The durable header remains precommitted. A final failure returns a deterministic narrow answer reconstructed only from current-turn structured quote fields: it preserves the exact header, the quote-anchored date, provider time, per-symbol changes and broad-versus-style scope mismatch, then says `原因本轮未完全核验`. It never uses the rejected draft's date/cause paragraphs or the generic research-failure suffix. This is the sole Interactive server-authored market-move fallback and must not expand into a general semantic reviewer, entity parser, format gate, or second terminal role.
 - Verification and rollout: Exact `f0281adb00b58a89aa07f584321f1092b57daef2` passed repository gates, was pushed, manifest-verified and deployed with cloud storage/auth/channel health intact. Fresh actor `codex-canary-f0281adb-broad-20260726-1655` proved the invalid long-form causes stayed hidden, one successful terminal matched two-row history byte-for-byte, and active chats returned to zero; it also disproved the first fallback because the rejected draft's `2026-07-26（周日）` leaked into the target line while verified `2026-07-24` SPY/QQQ/DIA/IWM quote facts were discarded. Follow-up regressions now prove quote-date priority, English source dates, `SPY +0.10% / QQQ -1.12% / DIA +0.48% / IWM -0.31%` preservation, explicit broad-market premise correction, and shorter correction guidance; Agent `128/128`, targeted Channels `3/3`, and finance CI `42/42` pass. Production acceptance still requires full gates, a replacement exact build/deploy, and fresh `美股为什么大跌`, `周五美股为什么暴跌`, single-stock Friday decline, and insufficient-cause canaries with correct date/scope, no unsupported confirmed cause, one terminal, no reset/error/generic failure, byte-identical two-row history, acceptable latency, and zero active chats afterward.
+
+## D-2026-07-26-04 Let Whop Own Discord Membership Fulfillment
+
+- Status: Accepted
+- Context: The canonical international membership is sold by Whop, and the
+  target Discord server already has a dedicated paid-member role and a Whop
+  integration. The repository has no implemented Whop webhook or billing
+  entitlement ledger, while `hone-discord` is a messaging/agent bot rather than
+  a role-lifecycle service.
+- Decision: Include Whop's native Discord app in product
+  `prod_9jQsUKaifh6ZA`. Connect it to Discord guild
+  `1391380994182877205`, include role `VIP 付费用户`, log to channel
+  `1423211147674517537`, and use Whop's `Remove Role` cancellation action.
+  Whop owns Discord account linking, claim access, join, grant, and removal.
+  Do not add a custom billing webhook or make the HONE bot a second Discord
+  role source merely to duplicate this lifecycle.
+- Boundary: HONE application entitlements are not granted by this integration.
+  If paid application features are required, build a separate verified
+  entitlement ledger/webhook flow with its own idempotency, signature,
+  reconciliation, refund/dispute, and audit contracts.
+- Operations: Keep the Whop integration role above the managed VIP role, grant
+  the VIP role no administrative permissions, restrict the Whop event-log
+  channel, and troubleshoot from Whop membership state plus event logs before
+  applying a manual Discord role. Archived Whop products do not inherit this
+  access unless explicitly migrated.
+- Verification: The authenticated product editor shows Discord included; the
+  native app settings show the target server, included VIP role, event log, and
+  cancellation removal; member preview shows the linked-account selector and
+  `Claim Access`. A separate non-owner membership remains the required proof
+  for a real grant/revoke lifecycle.

@@ -74,4 +74,21 @@ describe("public content key parity", () => {
       expect(text).toContain("HONE");
     }
   });
+
+  it("keeps the membership pricing strategy and benefits localized", () => {
+    setLocale("zh");
+    expect(CONTENT.plan.full.price).toBe("¥1299");
+    expect(CONTENT.plan.full.period).toBe("/ 年");
+    expect(CONTENT.plan.full.promos).toEqual([
+      "新加入立减 ¥100",
+      "老带新再减 ¥100",
+    ]);
+    expect(CONTENT.plan.full.features).toHaveLength(4);
+
+    setLocale("en");
+    expect(CONTENT.plan.full.price).toBe("$199.99");
+    expect(CONTENT.plan.full.period).toBe("/ year");
+    expect(CONTENT.plan.full.promos).toEqual(["USD · via Whop"]);
+    expect(CONTENT.plan.full.features).toHaveLength(4);
+  });
 });
