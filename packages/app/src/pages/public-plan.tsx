@@ -1,14 +1,17 @@
-// public-plan.tsx — 会员分享海报页：六张 9:16 竖版海报（bm1 邀请函 → bm6 社群
-// 好评）+ 购买/客服动作。别人问“哪里买会员”时直接丢这个链接，手机 PC 通用。
+// public-plan.tsx — 品牌聚合落地页：这一页回答「我们是谁、去哪看内容、
+// 付费能得到什么」。结构：主理人身份区（Hari老王 × HONE）→ 免费内容入口
+// （YouTube / Bilibili / HONE / 免费群）→ 完整服务卡片 → 六张海报 → 购买。
 // 中文「立即购买」弹知识星球二维码（可长按/右键保存），英文跳 Whop。
 
-import { createSignal, For, Show, onCleanup, createEffect } from "solid-js"
+import { createSignal, For, Show, onCleanup, createEffect, type JSX } from "solid-js"
 import { CONTENT } from "@/lib/public-content"
 import { useLocale } from "@/lib/i18n"
 import { PublicFooter, PublicNav } from "@/components/public-nav"
 import "./public-site.css"
 
 const WHOP_URL = "https://whop.com/edda1183-b297-4502-811f-339ae5e773be/vip-copy-18/"
+const YOUTUBE_URL = "https://www.youtube.com/@Hari%E8%80%81%E7%8E%8B/videos"
+const BILIBILI_URL = "https://www.bilibili.com/video/BV1ByXNBGET5/"
 
 /* 六张海报：1052×1870（9:16）。bm1 是邀请函总览，放在首位。 */
 const POSTERS = [
@@ -53,6 +56,44 @@ function Lightbox(props: {
   )
 }
 
+function LinkCard(props: {
+  mark: string
+  markClass?: string
+  title: string
+  desc: string
+  href?: string
+  onClick?: () => void
+}) {
+  const inner = (
+    <>
+      <span class={`hone-hub-link-mark ${props.markClass ?? ""}`}>{props.mark}</span>
+      <span class="hone-hub-link-copy">
+        <strong>{props.title}</strong>
+        <small>{props.desc}</small>
+      </span>
+      <span class="hone-hub-link-arrow" aria-hidden="true">→</span>
+    </>
+  )
+  if (props.href) {
+    const external = props.href.startsWith("http")
+    return (
+      <a
+        class="hone-hub-link"
+        href={props.href}
+        target={external ? "_blank" : undefined}
+        rel={external ? "noopener noreferrer" : undefined}
+      >
+        {inner}
+      </a>
+    )
+  }
+  return (
+    <button type="button" class="hone-hub-link" onClick={() => props.onClick?.()}>
+      {inner}
+    </button>
+  )
+}
+
 export default function PublicPlanPage() {
   const C = () => CONTENT.plan
   const [lightbox, setLightbox] = createSignal<
@@ -73,19 +114,35 @@ export default function PublicPlanPage() {
     return state?.kind === "poster" ? POSTERS[state.index] : null
   }
 
+  const buyButton = (extraClass = ""): JSX.Element => (
+    <button type="button" class={`hone-share-buy ${extraClass}`} onClick={buy}>
+      <span>{C().full.cta}</span>
+      <b>{C().full.price}{C().full.period}</b>
+    </button>
+  )
+
   return (
     <div class="pub-page hone-share-page">
       <PublicNav />
       <main class="hone-share-main">
-        <header class="hone-share-head">
+        {/* ── 主理人身份区 ── */}
+        <header class="hone-hub-hero">
           <div class="hone-share-eyebrow">{C().eyebrow}</div>
-          <h1>{C().share_title}</h1>
-          <p>{C().share_sub}</p>
+          <h1>{C().host.headline}</h1>
+          <p>{C().host.bio}</p>
+          <div class="hone-hub-stats">
+            <For each={C().host.stats}>
+              {(stat) => (
+                <div>
+                  <strong>{stat.value}</strong>
+                  <small>{stat.label}</small>
+                </div>
+              )}
+            </For>
+          </div>
+          <p class="hone-hub-stats-note">{C().host.stats_note}</p>
           <div class="hone-share-actions">
-            <button type="button" class="hone-share-buy" onClick={buy}>
-              <span>{C().full.cta}</span>
-              <b>{C().full.price}{C().full.period}</b>
-            </button>
+            {buyButton()}
             <button type="button" class="hone-share-service" onClick={() => setLightbox({ kind: "support" })}>
               {C().support.title}
             </button>
@@ -97,34 +154,90 @@ export default function PublicPlanPage() {
           </Show>
         </header>
 
-        <section class="hone-share-wall" aria-label={C().share_title}>
-          <For each={POSTERS}>
-            {(poster, i) => (
-              <button
-                type="button"
-                class="hone-share-poster"
-                onClick={() => setLightbox({ kind: "poster", index: i() })}
-              >
-                <img
-                  src={poster.src}
-                  alt={poster.alt}
-                  loading={i() === 0 ? "eager" : "lazy"}
-                  decoding="async"
-                />
-              </button>
-            )}
-          </For>
+        {/* ── 免费内容与入口 ── */}
+        <section class="hone-hub-section" aria-label={C().links_label}>
+          <div class="hone-hub-label">{C().links_label}</div>
+          <div class="hone-hub-links">
+            <LinkCard
+              mark="▶"
+              markClass="is-youtube"
+              title={C().links.youtube.title}
+              desc={C().links.youtube.desc}
+              href={YOUTUBE_URL}
+            />
+            <LinkCard
+              mark="b"
+              markClass="is-bilibili"
+              title={C().links.bilibili.title}
+              desc={C().links.bilibili.desc}
+              href={BILIBILI_URL}
+            />
+            <LinkCard
+              mark="H"
+              markClass="is-hone"
+              title={C().links.product.title}
+              desc={C().links.product.desc}
+              href="/chat"
+            />
+            <LinkCard
+              mark="＋"
+              markClass="is-trial"
+              title={C().links.trial.title}
+              desc={C().links.trial.desc}
+              onClick={() => setLightbox({ kind: "support" })}
+            />
+          </div>
+        </section>
+
+        {/* ── 完整服务 ── */}
+        <section class="hone-hub-section" aria-label={C().services_label}>
+          <div class="hone-hub-label">{C().services_label}</div>
+          <div class="hone-hub-services">
+            <For each={C().services}>
+              {(service, i) => (
+                <div class="hone-hub-service">
+                  <span>{String(i() + 1).padStart(2, "0")}</span>
+                  <strong>{service.title}</strong>
+                  <p>{service.desc}</p>
+                </div>
+              )}
+            </For>
+          </div>
+        </section>
+
+        {/* ── 海报墙 ── */}
+        <section class="hone-hub-section" aria-label={C().posters_label}>
+          <div class="hone-hub-label">{C().posters_label}</div>
+          <div class="hone-share-wall">
+            <For each={POSTERS}>
+              {(poster, i) => (
+                <button
+                  type="button"
+                  class="hone-share-poster"
+                  onClick={() => setLightbox({ kind: "poster", index: i() })}
+                >
+                  <img
+                    src={poster.src}
+                    alt={poster.alt}
+                    loading={i() === 0 ? "eager" : "lazy"}
+                    decoding="async"
+                  />
+                </button>
+              )}
+            </For>
+          </div>
         </section>
 
         <aside class="hone-share-bottom">
           <div>
             <strong>{C().share_title}</strong>
             <p>{C().foot}</p>
+            <p class="hone-hub-trial-line">
+              {C().trial_line}
+              <button type="button" onClick={() => setLightbox({ kind: "support" })}>{C().support.title}</button>
+            </p>
           </div>
-          <button type="button" class="hone-share-buy" onClick={buy}>
-            <span>{C().full.cta}</span>
-            <b>{C().full.price}{C().full.period}</b>
-          </button>
+          {buyButton()}
         </aside>
         <p class="hone-share-disclaimer">
           海报为会员服务介绍。过往表现不代表未来收益，所有内容仅供研究参考，不构成投资建议；市场有风险，投资决策需独立判断。
@@ -133,10 +246,7 @@ export default function PublicPlanPage() {
 
       {/* 移动端吸附购买栏 */}
       <div class="hone-share-dock">
-        <button type="button" class="hone-share-buy" onClick={buy}>
-          <span>{C().full.cta}</span>
-          <b>{C().full.price}{C().full.period}</b>
-        </button>
+        {buyButton()}
         <button type="button" class="hone-share-service" onClick={() => setLightbox({ kind: "support" })}>
           {C().support.title}
         </button>
@@ -187,7 +297,7 @@ export default function PublicPlanPage() {
           padding: 128px 0 88px;
           flex: 1;
         }
-        .hone-share-head { max-width: 720px; }
+        .hone-hub-hero { max-width: 760px; }
         .hone-share-eyebrow {
           color: var(--hone-coral-600);
           font-family: var(--hone-font-label);
@@ -195,18 +305,50 @@ export default function PublicPlanPage() {
           font-weight: 700;
           letter-spacing: 0.16em;
         }
-        .hone-share-head h1 {
+        .hone-hub-hero h1 {
           margin: 14px 0 0;
           color: var(--hone-ink-950);
           font-size: clamp(30px, 4vw, 42px);
           line-height: 1.08;
           letter-spacing: -0.04em;
         }
-        .hone-share-head > p {
+        .hone-hub-hero > p {
           margin: 14px 0 0;
           color: var(--hone-ink-600);
           font-size: 14px;
           line-height: 1.75;
+        }
+        .hone-hub-stats {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          margin-top: 20px;
+        }
+        .hone-hub-stats > div {
+          min-width: 128px;
+          padding: 13px 16px;
+          border: 1px solid var(--hone-line);
+          border-radius: 13px;
+          background: #fff;
+        }
+        .hone-hub-stats strong {
+          display: block;
+          color: var(--hone-ink-950);
+          font-size: 20px;
+          font-weight: 750;
+          letter-spacing: -0.02em;
+          font-variant-numeric: tabular-nums;
+        }
+        .hone-hub-stats small {
+          display: block;
+          margin-top: 3px;
+          color: var(--hone-ink-600);
+          font-size: 11px;
+        }
+        .hone-hub-stats-note {
+          margin: 8px 2px 0;
+          color: var(--hone-ink-400, #a3a6a1);
+          font-size: 10px;
         }
         .hone-share-actions {
           display: flex;
@@ -278,12 +420,103 @@ export default function PublicPlanPage() {
           white-space: nowrap;
         }
 
+        /* ── 分区标题 ── */
+        .hone-hub-section { margin-top: 42px; }
+        .hone-hub-label {
+          margin-bottom: 14px;
+          color: var(--hone-ink-400, #9aa09b);
+          font-family: var(--hone-font-label);
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 0.14em;
+          text-transform: uppercase;
+        }
+
+        /* ── 免费入口卡 ── */
+        .hone-hub-links {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+        }
+        .hone-hub-link {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          padding: 16px 18px;
+          border: 1px solid var(--hone-line);
+          border-radius: 15px;
+          background: #fff;
+          color: var(--hone-ink-950);
+          cursor: pointer;
+          text-align: left;
+          text-decoration: none;
+          transition: transform 0.16s var(--hone-ease), border-color 0.16s ease, box-shadow 0.16s ease;
+        }
+        .hone-hub-link:hover {
+          transform: translateY(-2px);
+          border-color: color-mix(in srgb, var(--hone-coral-500) 36%, var(--hone-line));
+          box-shadow: var(--hone-shadow-md);
+        }
+        .hone-hub-link-mark {
+          width: 42px;
+          height: 42px;
+          flex: 0 0 42px;
+          display: grid;
+          place-items: center;
+          border-radius: 12px;
+          background: var(--hone-paper-100);
+          color: var(--hone-ink-950);
+          font-size: 17px;
+          font-weight: 800;
+        }
+        .hone-hub-link-mark.is-youtube { background: #fdecec; color: #d0312d; }
+        .hone-hub-link-mark.is-bilibili { background: #e9f4fd; color: #1a9ad6; font-family: var(--hone-font-label); }
+        .hone-hub-link-mark.is-hone { background: #171917; color: #fff; }
+        .hone-hub-link-mark.is-trial { background: #eef7ef; color: #2c7a44; }
+        .hone-hub-link-copy { min-width: 0; flex: 1; }
+        .hone-hub-link-copy strong { display: block; font-size: 14px; font-weight: 700; letter-spacing: -0.01em; }
+        .hone-hub-link-copy small { display: block; margin-top: 3px; color: var(--hone-ink-600); font-size: 12px; line-height: 1.5; }
+        .hone-hub-link-arrow { color: var(--hone-ink-400, #a3a6a1); font-size: 15px; }
+
+        /* ── 完整服务卡 ── */
+        .hone-hub-services {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 12px;
+        }
+        .hone-hub-service {
+          padding: 17px 18px;
+          border: 1px solid var(--hone-line);
+          border-radius: 15px;
+          background: #fff;
+        }
+        .hone-hub-service span {
+          color: color-mix(in srgb, var(--hone-coral-500) 75%, var(--hone-ink-400, #a3a6a1));
+          font-family: var(--hone-font-label);
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 0.1em;
+        }
+        .hone-hub-service strong {
+          display: block;
+          margin-top: 8px;
+          color: var(--hone-ink-950);
+          font-size: 15px;
+          font-weight: 750;
+          letter-spacing: -0.01em;
+        }
+        .hone-hub-service p {
+          margin: 7px 0 0;
+          color: var(--hone-ink-600);
+          font-size: 12px;
+          line-height: 1.65;
+        }
+
         /* 海报墙：桌面 3 列（9:16 原比例），点击放大 */
         .hone-share-wall {
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 14px;
-          margin-top: 34px;
         }
         .hone-share-poster {
           padding: 0;
@@ -321,7 +554,7 @@ export default function PublicPlanPage() {
           align-items: center;
           justify-content: space-between;
           gap: 22px;
-          margin-top: 26px;
+          margin-top: 34px;
           padding: 22px 24px;
           border: 1px solid color-mix(in srgb, var(--hone-coral-500) 32%, var(--hone-line));
           border-radius: 17px;
@@ -340,6 +573,18 @@ export default function PublicPlanPage() {
           color: var(--hone-ink-600);
           font-size: 11px;
           line-height: 1.6;
+        }
+        .hone-hub-trial-line button {
+          margin-left: 6px;
+          padding: 0;
+          border: 0;
+          background: transparent;
+          color: var(--hone-coral-600);
+          cursor: pointer;
+          font: inherit;
+          font-weight: 700;
+          text-decoration: underline;
+          text-underline-offset: 3px;
         }
 
         /* 移动端吸附购买栏（桌面隐藏） */
@@ -425,15 +670,20 @@ export default function PublicPlanPage() {
           to { opacity: 1; transform: translateY(0) scale(1); }
         }
 
-        /* ── 移动端：海报全宽串读 + 吸附购买栏 ── */
+        /* ── 移动端：单列 + 吸附购买栏 ── */
         @media (max-width: 900px) {
           .hone-share-main { width: calc(100% - 32px); padding: 96px 0 24px; }
-          .hone-share-head > p { font-size: 13px; }
+          .hone-hub-hero > p { font-size: 13px; }
+          .hone-hub-stats > div { flex: 1 1 calc(33% - 8px); min-width: 96px; padding: 11px 12px; }
+          .hone-hub-stats strong { font-size: 17px; }
           .hone-share-actions { display: none; }
           .hone-share-promos { margin-top: 16px; }
-          .hone-share-wall { grid-template-columns: 1fr; gap: 14px; margin-top: 20px; }
+          .hone-hub-section { margin-top: 30px; }
+          .hone-hub-links { grid-template-columns: 1fr; gap: 10px; }
+          .hone-hub-services { grid-template-columns: 1fr; gap: 10px; }
+          .hone-share-wall { grid-template-columns: 1fr; gap: 14px; }
           .hone-share-poster { border-radius: 16px; }
-          .hone-share-bottom { flex-direction: column; align-items: flex-start; gap: 14px; margin-top: 20px; padding: 18px 16px; }
+          .hone-share-bottom { flex-direction: column; align-items: flex-start; gap: 14px; margin-top: 24px; padding: 18px 16px; }
           .hone-share-bottom .hone-share-buy { width: 100%; justify-content: center; }
 
           .hone-share-dock {

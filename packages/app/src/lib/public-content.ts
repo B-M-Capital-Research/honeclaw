@@ -82,11 +82,37 @@ const CONTENT_ZH = {
   },
 
   plan: {
-    eyebrow: "PLAN 与定价",
+    eyebrow: "HONE · 巴芒投研",
     share_title: "巴芒投研会员邀请",
     share_sub: "六张海报看懂完整服务：原创研报、财报前瞻、每周直播与高手社群。把这一页直接发给想加入的朋友就行。",
     title: "两个版本，简单直接",
     sub: "核心永远开源免费、可自托管；完整服务把直播、社群与研报一次打通。",
+    host: {
+      headline: "认识 Hari老王，和他的美股投研工作台",
+      bio: "Hari老王，美股主理人，深耕美股二十年。视频免费看，研报与社群按年订阅，HONE 投研助手开源可自托管——这一页汇总了所有入口。",
+      stats: [
+        { value: "20 年", label: "深耕美股" },
+        { value: "100%+", label: "近几年年化收益*" },
+        { value: "300+", label: "每年原创研报" },
+      ],
+      stats_note: "* 为主理人历史业绩，过往表现不代表未来收益。",
+    },
+    links_label: "免费内容与入口",
+    links: {
+      youtube: { title: "YouTube · Hari老王", desc: "每周美股深度视频与市场观察" },
+      bilibili: { title: "Bilibili · Hari老王", desc: "B 站同步更新，中文社区互动" },
+      product: { title: "HONE 投研助手", desc: "开源 AI 投研工作台，即刻开始对话" },
+      trial: { title: "免费体验群", desc: "加客服微信，先进免费群感受氛围" },
+    },
+    services_label: "完整服务包含什么",
+    services: [
+      { title: "知识星球", desc: "每年 300+ 份美股公司原创万字研报、每季 100+ 份财报前瞻，估值与策略完整分享。" },
+      { title: "每周直播", desc: "每周四主理人深度讲解精选公司，在线直播可任意提问。" },
+      { title: "VIP 群聊", desc: "与 500+ 高手实时探讨，交易时段的市场动态与观点碰撞。" },
+      { title: "禁言精选群", desc: "主理人精选各类资料并标注重点，只推送高信噪比内容。" },
+    ],
+    posters_label: "六张海报看懂完整服务",
+    trial_line: "想先体验？联系客服加入免费群。",
     free: {
       name: "开源免费版",
       price: "免费",
@@ -106,7 +132,7 @@ const CONTENT_ZH = {
       badge: "推荐",
       price: "¥1299",
       period: "/ 年",
-      promos: ["目前 -¥100 优惠", "拉新人额外 -¥100"],
+      promos: ["新加入立减 ¥100", "老带新再减 ¥100"],
       desc: "直播、社群、研报与 HONE 畅享，一次订阅全部打通。",
       features: [
         "每周四主理人深度公司讲解，在线直播可任意提问",
@@ -1729,11 +1755,37 @@ const CONTENT_EN: typeof CONTENT_ZH = {
   },
 
   plan: {
-    eyebrow: "PLAN & PRICING",
+    eyebrow: "HONE · B&M RESEARCH",
     share_title: "B&M Research Membership",
     share_sub: "Six posters that explain the full service: original research notes, earnings previews, weekly live sessions, and the investor community. Share this page with anyone who wants in.",
     title: "Two editions, plain and simple",
     sub: "The core stays open source and self-hostable; Full Access bundles the live sessions, community, and research notes.",
+    host: {
+      headline: "Meet Hari, and his U.S. equity research workbench",
+      bio: "Hari has researched U.S. equities for twenty years. Videos are free, research notes and the community are a yearly subscription, and the HONE research assistant is open source — this page gathers every entry point.",
+      stats: [
+        { value: "20 yrs", label: "in U.S. equities" },
+        { value: "100%+", label: "recent annual returns*" },
+        { value: "300+", label: "original notes / year" },
+      ],
+      stats_note: "* The host's historical performance. Past performance does not guarantee future results.",
+    },
+    links_label: "Free content & entry points",
+    links: {
+      youtube: { title: "YouTube · Hari", desc: "Weekly U.S. equity deep dives and market notes" },
+      bilibili: { title: "Bilibili · Hari", desc: "Synced uploads for the Chinese community" },
+      product: { title: "HONE research assistant", desc: "Open-source AI research workbench — start chatting" },
+      trial: { title: "Free community", desc: "Add support on WeChat to join the free group first" },
+    },
+    services_label: "What Full Access includes",
+    services: [
+      { title: "Zhishixingqiu", desc: "300+ original long-form company notes a year and 100+ earnings previews a quarter, with full valuation and strategy write-ups." },
+      { title: "Weekly live sessions", desc: "Thursday deep dives on selected companies — ask anything live." },
+      { title: "VIP group", desc: "Discuss in real time with 500+ experienced investors during market hours." },
+      { title: "Curated feed", desc: "A quiet, read-only group where the host shares hand-picked material with the key points highlighted." },
+    ],
+    posters_label: "Six posters that explain the full service",
+    trial_line: "Want a taste first? Contact support to join the free group.",
     free: {
       name: "Open Source",
       price: "Free",
