@@ -3522,7 +3522,7 @@ export default function PublicChatPage() {
                     setDraft("");
                   }}
                   onSelectResearch={openWorkspaceResearch}
-                  onHome={() => navigate("/")}
+                  onHome={() => setWorkspaceMode("overview")}
                   onInvest={() => navigate("/invest")}
                   onInsights={() => navigate("/community")}
                   onAccount={() => navigate("/me")}
@@ -3652,6 +3652,7 @@ export default function PublicChatPage() {
                           trackingOpenRequest={trackingOpenRequest()}
                           calendarOpenRequest={calendarOpenRequest()}
                         />
+                        <p class="public-chat-disclaimer">HONE 可能出错。内容仅供研究参考，不构成投资建议。</p>
                       </div>
                     </div>
                     <AgentWorkspaceRightRail
@@ -3666,7 +3667,7 @@ export default function PublicChatPage() {
                   activeMode={workspaceMode()}
                   activeSection="agent"
                   communityUnread={communityUnread()}
-                  onHome={() => navigate("/")}
+                  onHome={() => setWorkspaceMode("overview")}
                   onInvest={() => navigate("/invest")}
                   onInsights={() => navigate("/community")}
                   onAgent={() => setWorkspaceMode("overview")}
@@ -3688,7 +3689,10 @@ export default function PublicChatPage() {
                     setWorkspaceMode("overview");
                     setDraft("");
                   }}
-                  onHome={() => navigate("/")}
+                  onHome={() => {
+                    setHistoryDrawerOpen(false);
+                    setWorkspaceMode("overview");
+                  }}
                   onInvest={() => navigate("/invest")}
                   onInsights={() => navigate("/community")}
                   onAccount={() => navigate("/me")}

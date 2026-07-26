@@ -573,11 +573,6 @@ export default function PublicCommunityPage() {
                 <h1>社区</h1>
                 <p>来自 HONE 社区的研究判断、市场观察与关键资料，按发生时间连续沉淀。</p>
               </div>
-              <div class="public-insights-filter" aria-label="社区筛选">
-                <button type="button" class="is-active">最新</button>
-                <button type="button">持仓相关</button>
-                <button type="button">已保存</button>
-              </div>
             </header>
             <main class="public-community-shell">
 
@@ -715,6 +710,7 @@ export default function PublicCommunityPage() {
             </Match>
           </Switch>
             </main>
+            <p class="public-workspace-disclaimer">社区内容为研究分享，仅供参考，不构成投资建议。</p>
           </div>
         </PublicWorkspaceShell>
       </Show>

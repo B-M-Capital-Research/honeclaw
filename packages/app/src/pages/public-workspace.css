@@ -81,9 +81,6 @@
 .public-workspace-page .public-community-image-grid { max-width: 760px; border-radius: 13px; }
 .public-workspace-page .public-community-image-grid.is-single .public-community-image { aspect-ratio: 16 / 8.5; border-radius: 13px; }
 .public-workspace-page .public-community-more { margin: 16px auto 0; }
-.public-insights-filter { display: flex; gap: 8px; }
-.public-insights-filter button { min-height: 32px; padding: 0 11px; border: 1px solid #e6e7e3; border-radius: 9px; background: #fff; color: #777b76; cursor: pointer; font-size: 11px; }
-.public-insights-filter button.is-active { border-color: #111; color: #111; }
 
 /* Tracking calendar. */
 .public-tracking-calendar { overflow: hidden; }
@@ -215,6 +212,11 @@
 .public-account-actions button.is-primary { border-color: #111; background: #111; color: #fff; }
 .public-account-actions button.is-danger { margin-top: 12px; color: #b0443b; }
 .public-account-note { margin-top: 16px; padding: 16px; border-radius: 12px; background: #f7f7f5; color: #777b76; font-size: 11px; line-height: 1.6; }
+.public-workspace-disclaimer { margin: 30px 0 0; color: #a3a6a1; font-size: 11px; line-height: 1.6; text-align: center; }
+.public-account-links { margin-top: 18px; }
+.public-account-links nav { display: flex; flex-wrap: wrap; gap: 8px; }
+.public-account-links nav a { padding: 9px 14px; border: 1px solid #e1e2df; border-radius: 10px; background: #fff; color: #333; font-size: 12px; text-decoration: none; }
+.public-account-links nav a:hover { border-color: #cfd1cc; color: #111; }
 
 @media (max-width: 820px) {
   .public-workspace-page { --agent-mobile-nav-height: 56px; --agent-mobile-safe-bottom: env(safe-area-inset-bottom, 0px); padding: 0 !important; }
@@ -230,7 +232,6 @@
   .public-workspace-page .public-community-card { padding: 18px 16px; }
   .public-workspace-page .public-community-timeline { margin: 0 -16px; border-right: 0; border-left: 0; border-radius: 0; }
   .public-workspace-page .public-community-body { font-size: 14px; }
-  .public-insights-filter { display: none; }
   .public-tracking-weekdays,.public-tracking-grid { display: none; }
   .public-tracking-calendar { border-radius: 15px; }
   .public-tracking-calendar-head { padding: 17px; }

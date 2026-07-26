@@ -44,7 +44,7 @@ export function PublicWorkspaceShell(
         communityUnread={props.communityUnread ?? false}
         onNewResearch={goAgent}
         onSelectResearch={goAgent}
-        onHome={() => navigate("/")}
+        onHome={goAgent}
         onInvest={() => navigate("/invest")}
         onInsights={() => navigate("/community")}
         onAccount={() => navigate("/me")}
@@ -56,6 +56,7 @@ export function PublicWorkspaceShell(
           unreadPushCount={0}
           label={props.topbarLabel ?? "长期研究，理性决策，复利为王。"}
           placeholder={props.searchPlaceholder}
+          showSearch={props.onSearch !== undefined}
           onQueryChange={updateQuery}
           onPushes={goAgent}
         />
@@ -71,7 +72,7 @@ export function PublicWorkspaceShell(
         activeMode="conversation"
         activeSection={props.active}
         communityUnread={props.communityUnread ?? false}
-        onHome={() => navigate("/")}
+        onHome={goAgent}
         onInvest={() => navigate("/invest")}
         onInsights={() => navigate("/community")}
         onAgent={goAgent}

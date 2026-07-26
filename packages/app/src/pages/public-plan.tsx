@@ -126,6 +126,9 @@ export default function PublicPlanPage() {
             <b>{C().full.price}{C().full.period}</b>
           </button>
         </aside>
+        <p class="hone-share-disclaimer">
+          海报为会员服务介绍。过往表现不代表未来收益，所有内容仅供研究参考，不构成投资建议；市场有风险，投资决策需独立判断。
+        </p>
       </main>
 
       {/* 移动端吸附购买栏 */}
@@ -302,6 +305,14 @@ export default function PublicPlanPage() {
           height: auto;
           display: block;
           object-fit: cover;
+        }
+
+        .hone-share-disclaimer {
+          margin: 18px 4px 0;
+          color: var(--hone-ink-400, #a3a6a1);
+          font-size: 11px;
+          line-height: 1.7;
+          text-align: center;
         }
 
         /* 底部再购卡 */

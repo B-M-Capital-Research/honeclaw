@@ -146,7 +146,9 @@ export function isApiFetchRetryableMethod(method?: string) {
 }
 
 export function friendlyBackendErrorMessage(status?: number) {
-  if (status == null || isTransientBackendStatus(status)) {
+  // 5xx 一律给用户可读的中文，避免把 "Internal Server Error" 之类的
+  // 原始状态文案直接暴露在页面上。
+  if (status == null || status >= 500 || isTransientBackendStatus(status)) {
     return FRIENDLY_BACKEND_UNAVAILABLE_MESSAGE
   }
   return null

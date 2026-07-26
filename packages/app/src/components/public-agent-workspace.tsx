@@ -145,6 +145,7 @@ export function AgentWorkspaceTopbar(props: {
   unreadPushCount: number;
   label?: string;
   placeholder?: string;
+  showSearch?: boolean;
   onQueryChange: (value: string) => void;
   onPushes: () => void;
 }) {
@@ -152,7 +153,7 @@ export function AgentWorkspaceTopbar(props: {
     <header class="agent-workspace-topbar">
       <span>{props.label ?? "你的投资研究智能体"}</span>
       <div class="agent-workspace-topbar-actions">
-        <label><AgentWorkspaceIcon name="search" size={17} /><input value={props.query} onInput={(event) => props.onQueryChange(event.currentTarget.value)} placeholder={props.placeholder ?? "搜索公司、主题或社区内容"} /></label>
+        <Show when={props.showSearch !== false}><label><AgentWorkspaceIcon name="search" size={17} /><input value={props.query} onInput={(event) => props.onQueryChange(event.currentTarget.value)} placeholder={props.placeholder ?? "搜索公司、主题或社区内容"} /></label></Show>
         <button type="button" onClick={props.onPushes} aria-label="打开通知">
           <AgentWorkspaceIcon name="bell" />
           <Show when={props.unreadPushCount > 0}><i /></Show>
@@ -204,7 +205,6 @@ export function AgentWorkspaceOverview(props: {
     <main class="agent-workspace-overview">
       <div class="agent-workspace-title-row">
         <div><h1>Agent</h1><div class="agent-workspace-context">正在基于：<span>我的组合</span><span>今日事件</span></div></div>
-        <div class="agent-workspace-modes"><span>快速问答</span><strong>深度研究</strong><span>任务</span></div>
       </div>
       <section class="agent-workspace-greeting">
         <span class="agent-workspace-agent-mark"><AgentWorkspaceIcon name="agent" size={25} /></span>

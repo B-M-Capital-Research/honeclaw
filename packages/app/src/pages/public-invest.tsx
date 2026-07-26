@@ -199,7 +199,7 @@ function UpcomingEarnings() {
   )
 }
 
-function InvestContextView() {
+function InvestContextView(props: { search: string }) {
   const navigate = useNavigate()
   const [digestContext, setDigestContext] = createSignal<DigestContext | null>(null)
   const [loading, setLoading] = createSignal(true)
@@ -256,6 +256,30 @@ function InvestContextView() {
     const context = digestContext()
     if (!context) return 0
     return context.holdings.filter((ticker) => mainlineHoldingCardState(context, ticker, profileTickers()).mainline).length
+  })
+
+  // 顶栏搜索：过滤持仓主线卡片与画像列表。
+  const searchQuery = () => props.search.trim().toLowerCase()
+  const visibleHoldings = createMemo(() => {
+    const context = digestContext()
+    if (!context) return []
+    const query = searchQuery()
+    if (!query) return context.holdings
+    return context.holdings.filter((ticker) => {
+      const mainline = context.mainline_by_ticker[ticker] ?? ""
+      return `${ticker} ${mainline}`.toLowerCase().includes(query)
+    })
+  })
+  const visibleProfiles = createMemo(() => {
+    const context = digestContext()
+    if (!context) return []
+    const query = searchQuery()
+    if (!query) return context.profile_list
+    return context.profile_list.filter((profile) =>
+      `${profile.ticker ?? ""} ${(profile.tickers ?? []).join(" ")} ${profile.title ?? ""} ${profile.dir} ${profile.preview ?? ""}`
+        .toLowerCase()
+        .includes(query),
+    )
   })
 
   return (
@@ -343,16 +367,23 @@ function InvestContextView() {
             {/* 各持仓投资主线 */}
             <h2 class="public-mainline-heading">各持仓投资主线（{context().holdings.length} 只）</h2>
             <Show
-              when={context().holdings.length > 0}
+              when={visibleHoldings().length > 0}
               fallback={
-                <div class="public-mainline-empty">
-                  <span>暂无持仓。跟 HONE 说一声你持有什么就行。</span>
-                  <button type="button" onClick={() => navigate("/chat")}>去对话 →</button>
-                </div>
+                <Show
+                  when={searchQuery()}
+                  fallback={
+                    <div class="public-mainline-empty">
+                      <span>暂无持仓。跟 HONE 说一声你持有什么就行。</span>
+                      <button type="button" onClick={() => navigate("/chat")}>去对话 →</button>
+                    </div>
+                  }
+                >
+                  <div class="public-mainline-empty"><span>没有匹配「{props.search.trim()}」的持仓。</span></div>
+                </Show>
               }
             >
               <div class="public-mainline-grid">
-                <For each={context().holdings}>
+                <For each={visibleHoldings()}>
                   {(ticker) => {
                     const card = createMemo(() =>
                       mainlineHoldingCardState(context(), ticker, profileTickers()),
@@ -377,16 +408,23 @@ function InvestContextView() {
             {/* 公司画像列表 */}
             <h2 class="public-mainline-heading">公司画像 ({context().profile_list.length})</h2>
             <Show
-              when={context().profile_list.length > 0}
+              when={visibleProfiles().length > 0}
               fallback={
-                <div class="public-mainline-empty">
-                  <span>还没有公司画像。跟 HONE 说「建立 X 的公司画像」就能开始。</span>
-                  <button type="button" onClick={() => navigate("/chat")}>去对话 →</button>
-                </div>
+                <Show
+                  when={searchQuery()}
+                  fallback={
+                    <div class="public-mainline-empty">
+                      <span>还没有公司画像。跟 HONE 说「建立 X 的公司画像」就能开始。</span>
+                      <button type="button" onClick={() => navigate("/chat")}>去对话 →</button>
+                    </div>
+                  }
+                >
+                  <div class="public-mainline-empty"><span>没有匹配「{props.search.trim()}」的画像。</span></div>
+                </Show>
               }
             >
               <div class="public-profile-list">
-                <For each={context().profile_list}>
+                <For each={visibleProfiles()}>
                   {(profile) => {
                     const row = createMemo(() => profileInventoryRowState(profile))
                     const previewText = () =>
@@ -430,6 +468,7 @@ function InvestContextView() {
           </>
         )}
       </Show>
+      <p class="public-workspace-disclaimer">内容仅供研究参考，不构成投资建议。市场有风险，决策需独立判断。</p>
     </div>
   )
 }
@@ -438,6 +477,7 @@ export default function PublicInvestPage() {
   const navigate = useNavigate()
   const [loggedIn, setLoggedIn] = createSignal<boolean | null>(null)
   const [user, setUser] = createSignal<PublicAuthUserInfo | null>(null)
+  const [search, setSearch] = createSignal("")
 
   onMount(async () => {
     try {
@@ -458,7 +498,7 @@ export default function PublicInvestPage() {
         }
       >
         <Show when={loggedIn()} fallback={<PublicLoginForm onLogin={() => navigate("/invest")} />}>
-          <PublicWorkspaceShell active="invest" userName={workspaceUserName(user()?.user_id ?? "")} searchPlaceholder="搜索持仓、主线或画像"><InvestContextView /></PublicWorkspaceShell>
+          <PublicWorkspaceShell active="invest" userName={workspaceUserName(user()?.user_id ?? "")} searchPlaceholder="搜索持仓、主线或画像" onSearch={setSearch}><InvestContextView search={search()} /></PublicWorkspaceShell>
         </Show>
       </Show>
     </div>

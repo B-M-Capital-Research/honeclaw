@@ -106,6 +106,19 @@ function AccountView(props: {
             <p class="public-account-note">账户页不展示内部已读状态、运行配置或系统权限。需要修改持仓、提醒和研究偏好时，直接在 Agent 对话中说明即可。</p>
           </section>
         </div>
+        {/* 登录后工作台内不再直达营销站，官网/协议等入口收敛在这里。 */}
+        <section class="public-workspace-panel public-account-card public-account-links">
+          <h2>关于与帮助</h2>
+          <nav aria-label="关于与帮助">
+            <a href="/">官网首页</a>
+            <a href="/plan">会员与定价</a>
+            <a href="/blog">Blog</a>
+            <a href="/roadmap">路线图与文档</a>
+            <a href="/terms">用户协议</a>
+            <a href="/privacy">隐私政策</a>
+          </nav>
+          <p class="public-account-note">内容仅供研究参考，不构成投资建议。市场有风险，决策需独立判断。</p>
+        </section>
       </div>
     </PublicWorkspaceShell>
   );
