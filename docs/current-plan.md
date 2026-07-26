@@ -1,6 +1,6 @@
 # Current Plan Index
 
-最后更新：2026-07-22
+最后更新：2026-07-26
 状态：有 8 个活跃任务
 
 ## 说明
@@ -26,6 +26,7 @@
   - 计划：`docs/current-plans/ticker-resolution-architecture.md`
   - 摘要：系统按更新后的 ADR 0004 / D-2026-07-19-08 / D-2026-07-22-01 收口跨市场 ticker 与 Interactive 自然 Agent 循环。主 Agent 从完整原话识别本轮有界覆盖的点名标的，为每个接纳标的声明稳定 `entity_route` 和 call-scoped `identity_match`，普通小写/混合大小写 ticker 仍走 normalized exact-symbol；任何显式 route 缺失/非法 call-scoped match 都在 observer/registry/provider-network 前拒绝且不污染 ledger，6 路线上限从第一批 admission 即生效。实体与证据 ledger 驱动真实业务工具的 `Required → Auto`，研究最多 3 个金融工具批次、24 次总调用、20 次 DataFetch、6 次 Web，不再暴露 `finish_research`，也不执行 handoff、opaque locator 纠正、独立 terminal、终稿审计、第二次生成、固定拒答或答案回写。T0 prefix 一旦 ACK，即使 DataFetch 尚未激活、批次只有 Web，也立即计入 3/24/6 上限；耗尽后同一 Agent 下一轮以 `tools=[]` 从现有证据自然收口。同一 Agent 在同一上下文加载 DataFetch/Web 结果后自然输出唯一 DirectFinal；最多四条/4000 字的近期用户原话仅用于追问指代，历史 assistant/tool/行情不会进入本轮事实链。prefix ACK 后只有“工具已注册 + 参数可解析且结构有效 + 已知只读”的整批调用能在 frame/observer/registry 前放行，未知别名也不能进入 registry。报价源时间优先使用 `hone_quote_time.beijing`；`market_date_new_york` 不能推出“纽交所/收盘价”，交易所只能来自结构化 exchange 字段；关系强度没有当前证据时必须中性表述。umbrella 任务之后仍需处理 scheduler 800G/NAND/AST/SEC P2，因此保持 `in_progress`、不归档
   - 2026-07-22 TTFT 跟进：首轮 `b06de76a` 灰度暴露无界金融研究 fan-out，第二阶段 `820a7240` 首词已到 `182ms`，但因 provider 终稿在精确前缀前遗留换行而触发严格失败边界并立即回滚。最小修复 `2563f7ad` 只在首个非空白内容确实以 byte-exact 已 ACK 前缀开头时删除 leading Unicode whitespace；全仓门禁、精确不可变构建/manifest、零活跃会话重启和云存储/鉴权/静态资源健康检查均通过。原问题 fresh actor 最终在 `179ms` 收到精确首行，四次模型、三批、14 次实际工具（8 DataFetch/6 Web）、两条 route 后由同一 Agent `tools=[]` 自然终稿，`117.189s` 单次成功结束，无 partial/reset/error/失败尾句，8,167 字节可见内容与两行历史完全一致，active chats 回到 0。TTFT 子阶段已完成；umbrella 仅因 scheduler `800G` / `NAND` / `AST` / `SEC` P2 继续保持 `in_progress`，不归档
+  - 2026-07-26 涨跌归因跟进：真实 Web 样本“美股股价下跌原因”已完成 quote/Web 取证却被旧生产 build 的 committed-prefix mismatch 覆盖成通用失败；Feishu 样本“周五暴跌”则把用户指定的周五静默改答成波动更大的周四。当前阶段为 Interactive Agent 注入同一 Session 时钟派生的民用日历提示，强制先锁定对象/范围和目标时段、核验波动，再用同对象同绝对市场本地日期解释原因；latest quote、宽基、板块、个股和不同交易日不得互相替代。代码与完整本地门禁已通过，精确部署及 fresh actor 线上样本仍待完成
 
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`

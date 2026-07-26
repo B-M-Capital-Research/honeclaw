@@ -28,10 +28,11 @@ This skill must always anchor the analysis to the current session time before ma
 1. **Time anchor first and Interactive answer ownership**: the main Agent completes one full final answer inside the current-turn tool loop and publishes that completed body once. The Agent itself starts every Interactive market or sector answer with `数据时间：北京时间 YYYY-MM-DD HH:MM；行情口径：...`, using the current Beijing time from the Session context and the current-turn quote provider timestamp, market session, and latest-available/non-tick-by-tick basis; do not emit any preamble before it
 2. **Subject and entity discovery first**: identify every requested market scope; broad-market turns resolve representative benchmarks, while sector turns discover listed representatives from current theme evidence and exact-resolve at least three same-theme securities
 3. **Current quote first**: fetch same-symbol quotes and provider timestamps for every representative before analyzing direction; never reuse prior assistant prices or let one market overwrite another in a mixed-scope request
-4. **Query rewrite first**: convert relative-time wording into absolute market-local civil dates before calling `web_search`; keep Beijing time as the user-visible anchor
-5. **Macro and policy**: interest rates, inflation, employment, central-bank, fiscal, and regulatory evidence only when relevant
-6. **Industry and breadth**: sector trends, representative-company dispersion, and capital flows
-7. **Fact/inference split**: dated source facts and causal inference must be visibly separate
+4. **Target session before cause**: for a decline/rally explanation, preserve the user's explicit date, weekday, and session; verify whether the named market/security actually made that move in that exact interval before explaining it. A latest quote cannot prove another historical session, and a broad index, sector, and single stock are different scopes
+5. **Query rewrite first**: convert relative-time wording into absolute market-local civil dates before calling `web_search`; keep Beijing time as the user-visible anchor. Civil-calendar hints do not prove that an exchange was open or that the quote is a close
+6. **Macro and policy**: interest rates, inflation, employment, central-bank, fiscal, and regulatory evidence only when relevant
+7. **Industry and breadth**: sector trends, representative-company dispersion, and capital flows
+8. **Fact/inference split**: dated source facts and causal inference must be visibly separate
 
 ### Broad / Regional Market Output Contract
 
@@ -70,6 +71,8 @@ Never use SPY/QQQ or a previous-turn ticker merely to fill a sector list. Every 
    User asks: "How was today's nonfarm payroll?"
    Search query should become: "2026-04-04 latest US nonfarm payroll release"
 5. For Interactive market and sector answers, the Agent-authored Beijing data-time and quote-basis line is always the first visible line. Do not emit a preamble or a second time line.
+6. For "why did the market/stock fall" questions, the absolute search date must be the verified target-session date, not merely the current market-local calendar date. If the quote snapshot belongs to a different date, do not silently move the question to that date.
+7. If broad benchmarks do not support the user's "crash/selloff" premise, state the scope mismatch and check the named sector/security or ask one minimal clarification. Never substitute a larger move from another day. If same-date causal evidence remains weak, report the verified move and say `原因本轮未完全核验`.
 
 ### Notes
 

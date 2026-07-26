@@ -114,7 +114,7 @@ AGENT_DISCOVERY_IMPL="$(sed -n '/pub(crate) fn build_agent_discovered_investment
 AGENT_DISCOVERY_CONTEXT_IMPL="$(sed -n '/fn append_agent_entity_discovery_context(/,/^fn explicit_dollar_mentions(/p' "$INVESTMENT_GUARD")"
 INTERACTIVE_OBSERVATION_IMPL="$(sed -n '/Interactive entity discovery is owned/,/let Some(contract) = contract else/p' "$AGENT_CORE")"
 
-echo "[finance-automation-contracts] fixed sample count: 39"
+echo "[finance-automation-contracts] fixed sample count: 40"
 
 if contains '"snapshot".into()' "$DATA_FETCH" && contains 'data_fetch(data_type="snapshot"' "$STOCK_RESEARCH"; then
   record success "1.stock_research->snapshot" "tool enum and skill contract are aligned"
@@ -246,6 +246,19 @@ if contains 'C.1 大盘 / 区域市场 / 跨市场分析' "$SOUL" && contains '2
   record success "22.full-market-template" "broad and mixed-market answers keep their five-section current-evidence template"
 else
   record fail "22.full-market-template" "the broad-market response template is incomplete"
+fi
+
+if contains '先锁定用户所指市场或证券与目标时段' "$SOUL" \
+  && contains 'Target session before cause' "$MARKET_ANALYSIS" \
+  && contains 'Never substitute a larger move from another day' "$MARKET_ANALYSIS" \
+  && contains 'fn market_move_temporal_context(' "$INVESTMENT_GUARD" \
+  && contains '【本轮涨跌归因日期锚点：只指导主 Agent 取证，不是行情或交易日事实】' "$INVESTMENT_GUARD" \
+  && contains 'market_move_context_anchors_weekend_and_named_weekday_without_claiming_a_session' "$INVESTMENT_GUARD" \
+  && contains '不得擅自挑另一天的大跌替换问题' "$FUNCTION_AGENT" \
+  && contains '原因本轮未完全核验' "$FUNCTION_AGENT"; then
+  record success "40.market-move-target-session-evidence" "decline explanations preserve the requested scope/session, carry a deterministic civil-calendar hint, and require same-date evidence without turning that hint into a trading-session fact"
+else
+  record fail "40.market-move-target-session-evidence" "market-move answers can again switch dates/scopes or present a civil-calendar/latest-quote hint as proof of the requested session"
 fi
 
 if contains 'C. 板块 / 技术 / 产业链分析' "$SOUL" && contains '精确核验至少三个相关代表证券' "$SOUL" && contains '6. 主要上市公司对比：每个代表证券独立写出本轮同代码现价与数据时间口径' "$SOUL" && contains '### Sector / Industry Output Contract' "$MARKET_ANALYSIS"; then

@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use chrono::TimeZone;
+use chrono::{Datelike, Duration, NaiveDateTime, TimeZone, Weekday};
 use futures::future::join_all;
 use hone_core::ActorIdentity;
 use hone_core::agent::ToolCallMade;
@@ -2865,6 +2865,7 @@ pub(crate) async fn prepare_verified_investment_turn(
         EntityResolutionScope::AgentToolDiscovery(seed_mentions) => {
             append_agent_entity_discovery_context(
                 runtime_input,
+                user_input,
                 &seed_mentions,
                 answer_time_beijing,
             );
@@ -7462,6 +7463,7 @@ fn extract_entity_scope(input: &str, origin: AgentTurnOrigin) -> EntityResolutio
 
 fn append_agent_entity_discovery_context(
     runtime_input: &mut String,
+    user_input: &str,
     seed_mentions: &[EntityMention],
     answer_time: &str,
 ) {
@@ -7482,8 +7484,11 @@ fn append_agent_entity_discovery_context(
          若存在一个或多个可能标的，第一轮必须只返回工具调用，不写数据时间、摘要、草稿或终稿；对当前文本中的全部候选并行执行 data_fetch(search)。用户书写的 ticker 不要求大写：证券语境中的小写或混合大小写代码先规范成标准代码并走 exact_symbol，不能仅因大小写改走公司别名 refinement。为每个标的分配一个稳定、互不复用且区分大小写的 entity_route，并在每一次 search 调用里填写 call-scoped identity_match（ticker 用 exact_symbol，公司名/别名用 name_or_alias）。这组 search query 是你基于完整原话做出的候选实体声明，但返回结果仍不是最终事实。不得只取第一个标的，也不得让服务端按字符串形状替你猜实体。\n\
          若用户还要求寻找同类公司、地域市场映射、产业链标的或比较候选，第一轮同一个 assistant tool-call batch 还必须并行发出所有不依赖标准 ticker 的 Web、新闻、公告/filing 与行业候选发现查询；这些独立查询不得等 DataFetch search 返回后才开始。任何依赖标准 symbol 的 quote、profile/snapshot、financials 或 ticker-news 必须等对应 search 返回并选定 symbol 后再调用；不得根据公司名、简称、模型记忆或搜索首条自行猜 ticker。\n\
          search 返回后，在同一个 Agent loop 的下一轮对选中的全部标准 symbol 批量或并行执行同 entity_route 的 exact-symbol quote 与 profile，并把其它依赖 symbol 且彼此独立的财务、持仓、新闻工具放进同一批次；已在首轮开始的 Web、公告与行业查询不得无理由重复。空结果补查可用 refines_query，给漏写路线键的旧 search 补键可用 supersedes_query；两者都必须逐字且区分大小写地指向一条旧 query，并严格二选一。只有同代码 quote（正价格且带 provider timestamp）与资产类型核验完成后才可写证券分析。搜索第一条、近似 ticker、历史标的和模型记忆都不能替代本轮核验。只有当前工具结果确实仍有多个候选，或权威工具均无覆盖时，才向用户说明具体歧义或缺失；不得因为前置扫描不完整而直接停止。",
-        Value::Array(seed_snapshot)
+         Value::Array(seed_snapshot)
     ));
+    if let Some(context) = market_move_temporal_context(user_input, answer_time) {
+        runtime_input.push_str(&context);
+    }
     runtime_input.push_str(&format!(
         "\n\n【本轮最终回答契约：由主 Agent 一次完成】\n\
          先由主 Agent 根据完整当前原话判断这是否确属公司、证券、基金、指数、加密资产、市场或板块投研请求。只有确属时才执行下述时间首行和投研模板；否则忽略本节格式，正常回答用户原问题。\n\
@@ -7491,6 +7496,185 @@ fn append_agent_entity_discovery_context(
          本轮回答的时间锚点固定为北京时间 {answer_time}，它与上方 Session 上下文来自同一次时钟读取。完成当前请求所需的工具调用后，在生成最终回答前自行检查表达：第一可见字符必须是“数”，第一条非空行必须严格以 `数据时间：北京时间 {answer_time}；行情口径：` 开头。禁止在该行之前输出 `---`、Markdown 标题、代码围栏、问候、计划、免责声明或“结论”。\n\
          `行情口径：` 后的报价事实必须来自本轮 quote 字段；有 provider timestamp 时优先使用 hone_quote_time.beijing，并明确“最新可得、非逐笔”口径。market_date_new_york / new_york 只表示纽约时区日期 / 时间，不证明交易所、交易时段或已经收盘，禁止据此写‘纽交所’或‘收盘价’；交易所只取 exchange / exchangeShortName，交易时段只有工具明确提供时才写。实体 search/profile 只证明身份，不证明客户、供应商、投资、持股、合同或合作。宽泛关系题由主 Agent 按完整语义自主枚举相关维度，通常分别核查商业/客户供应/技术合同与投资持股，优先 SEC、公司 IR 或双方公告，不得泛搜索后凭记忆收口。每条关系事实的数字、方向、排名、角色、权利义务、型号与估值标签都必须直接来自本轮真实来源；终稿在事实旁内联来源标题与原始 URL。URL 只定位来源，不替代内容支持。超出原文的判断另起句以‘推断：’开头；缺失不能写成否定事实。没有足够原文前提时保持中性事实归纳，不扩写成核心、最大、大客户、高度依赖、锁定或多重绑定。首行之后按用户实际问题选择回答形状；关系问答保持最小充分，并继续完成当前证据能够支持的分析。"
     ));
+}
+
+fn is_time_sensitive_price_move_question(input: &str) -> bool {
+    let normalized = input.to_ascii_lowercase();
+    [
+        "大跌",
+        "暴跌",
+        "大涨",
+        "暴涨",
+        "下跌原因",
+        "上涨原因",
+        "跌的原因",
+        "涨的原因",
+        "为什么跌",
+        "为什么涨",
+        "为何跌",
+        "为何涨",
+        "怎么跌",
+        "怎么涨",
+        "跳水",
+        "拉升",
+        "selloff",
+        "sell-off",
+        "sold off",
+        "plunge",
+        "slump",
+        "crash",
+        "rally",
+        "surge",
+        "market down",
+        "stocks down",
+        "stock down",
+        "market fall",
+        "stocks fall",
+        "stock fall",
+        "fell sharply",
+        "dropped sharply",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker))
+}
+
+fn market_calendar_scope(input: &str) -> (chrono_tz::Tz, &'static str, bool) {
+    let normalized = input.to_ascii_lowercase();
+    if normalized.contains("港股") || normalized.contains("香港") || normalized.contains(".hk")
+    {
+        return (chrono_tz::Asia::Hong_Kong, "Asia/Hong_Kong", true);
+    }
+    if normalized.contains("a股")
+        || normalized.contains("中国股市")
+        || normalized.contains(".sh")
+        || normalized.contains(".ss")
+        || normalized.contains(".sz")
+    {
+        return (chrono_tz::Asia::Shanghai, "Asia/Shanghai", true);
+    }
+    if normalized.contains("日股")
+        || normalized.contains("日本股市")
+        || normalized.contains(".t ")
+        || normalized.ends_with(".t")
+    {
+        return (chrono_tz::Asia::Tokyo, "Asia/Tokyo", true);
+    }
+    if normalized.contains("欧股") || normalized.contains("欧洲股市") {
+        return (chrono_tz::Europe::Berlin, "Europe/Berlin", true);
+    }
+    let explicit_us = [
+        "美股",
+        "美国股市",
+        "us market",
+        "u.s. market",
+        "s&p",
+        "nasdaq",
+        "dow jones",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    (
+        chrono_tz::America::New_York,
+        "America/New_York",
+        explicit_us,
+    )
+}
+
+fn chinese_weekday(weekday: Weekday) -> &'static str {
+    match weekday {
+        Weekday::Mon => "周一",
+        Weekday::Tue => "周二",
+        Weekday::Wed => "周三",
+        Weekday::Thu => "周四",
+        Weekday::Fri => "周五",
+        Weekday::Sat => "周六",
+        Weekday::Sun => "周日",
+    }
+}
+
+fn mentioned_weekday(input: &str) -> Option<Weekday> {
+    let normalized = input.to_ascii_lowercase();
+    [
+        (Weekday::Mon, ["周一", "星期一", "礼拜一", "monday"]),
+        (Weekday::Tue, ["周二", "星期二", "礼拜二", "tuesday"]),
+        (Weekday::Wed, ["周三", "星期三", "礼拜三", "wednesday"]),
+        (Weekday::Thu, ["周四", "星期四", "礼拜四", "thursday"]),
+        (Weekday::Fri, ["周五", "星期五", "礼拜五", "friday"]),
+        (Weekday::Sat, ["周六", "星期六", "礼拜六", "saturday"]),
+        (Weekday::Sun, ["周日", "星期日", "礼拜日", "sunday"]),
+    ]
+    .into_iter()
+    .find_map(|(weekday, markers)| {
+        markers
+            .iter()
+            .any(|marker| normalized.contains(marker))
+            .then_some(weekday)
+    })
+}
+
+fn nearest_past_or_current_weekday(date: chrono::NaiveDate, weekday: Weekday) -> chrono::NaiveDate {
+    let days_back =
+        (date.weekday().num_days_from_monday() + 7 - weekday.num_days_from_monday()) % 7;
+    date - Duration::days(i64::from(days_back))
+}
+
+fn market_move_temporal_context(user_input: &str, answer_time: &str) -> Option<String> {
+    if !is_time_sensitive_price_move_question(user_input) {
+        return None;
+    }
+    let naive = NaiveDateTime::parse_from_str(answer_time, "%Y-%m-%d %H:%M").ok()?;
+    let beijing_offset = chrono::FixedOffset::east_opt(8 * 60 * 60)?;
+    let beijing = beijing_offset.from_local_datetime(&naive).single()?;
+    let (market_timezone, market_timezone_name, explicit_market_scope) =
+        market_calendar_scope(user_input);
+    let market_local = beijing.with_timezone(&market_timezone);
+    let recent_dates = (0..8)
+        .map(|days_back| {
+            let date = market_local.date_naive() - Duration::days(days_back);
+            format!(
+                "{} {}",
+                date.format("%Y-%m-%d"),
+                chinese_weekday(date.weekday())
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("；");
+    let weekday_candidate = mentioned_weekday(user_input)
+        .map(|weekday| {
+            let date = nearest_past_or_current_weekday(market_local.date_naive(), weekday);
+            format!(
+                "当前原话提到{}；不晚于当前市场本地日历的最近同名候选日期是 {} {}。这只是候选民用日期，仍须用本轮证据确认它是否开市以及用户是否确指该交易时段。\n",
+                chinese_weekday(weekday),
+                date.format("%Y-%m-%d"),
+                chinese_weekday(date.weekday())
+            )
+        })
+        .unwrap_or_default();
+    let scope_note = if explicit_market_scope {
+        format!("当前原话明确指向 {market_timezone_name}")
+    } else {
+        format!(
+            "当前原话未明确市场；下列 {market_timezone_name} 日期只作为美股/美股证券候选，必须结合当前原话与近期用户原话确认范围，不能据此默认用户在问美股"
+        )
+    };
+
+    Some(format!(
+        "\n\n【本轮涨跌归因日期锚点：只指导主 Agent 取证，不是行情或交易日事实】\n\
+         Session 北京时间：{} {}；{}；对应市场本地民用时间：{} {}。\n\
+         最近八个市场本地民用日期：{}。\n\
+         {}\
+         上述日期与星期由 Session 时钟确定，只证明民用日历，不证明开市、休市、半日市、盘前/盘中/盘后、收盘或实际涨跌。\n\
+         涨跌归因必须先锁定“对象 / 市场范围 + 用户所指目标时段”，再核验该对象在目标时段是否真的发生用户所说的跌幅，最后才搜索同一绝对市场本地日期的事件原因。用户明确说出的日期、星期或时段优先，不能因为最新 quote 属于另一日期，就把问题静默改答成前一日、后一日或别的波动。\n\
+         大盘题先用当前轮代表指数或 ETF 区分整体、成长/科技、小盘与具体板块；单股题使用同代码证据。latest quote 的涨跌幅只证明其自身 provider timestamp 对应的快照，不能证明另一个历史交易日。若用户说“大跌”而宽基指数不支持，应明确指出“宽基与用户观察范围不一致”，继续核验板块/个股范围或做最小澄清，不能擅自挑另一天的大跌来替换问题。\n\
+         原因结论只使用明确覆盖同一对象与目标日期的当前 Web/news/公告原文；标题相关但日期、对象或方向不一致时不算因果证据。证据不足仍要先回答已核验的实际涨跌与范围，并写“原因本轮未完全核验”，不得只返回通用失败，也不得把推断写成已确认触发因素。",
+        beijing.format("%Y-%m-%d %H:%M"),
+        chinese_weekday(beijing.weekday()),
+        scope_note,
+        market_local.format("%Y-%m-%d %H:%M"),
+        chinese_weekday(market_local.weekday()),
+        recent_dates,
+        weekday_candidate,
+    ))
 }
 
 fn explicit_dollar_mentions(input: &str) -> Vec<EntityMention> {
@@ -10890,19 +11074,20 @@ mod tests {
         has_main_agent_entity_discovery_seed, has_matching_financial_data,
         has_matching_symbol_data, investment_contract_failure_message,
         investment_preflight_failure_message, is_portfolio_scope_request,
-        is_strict_quote_only_request, market_benchmark_symbols, market_search_date_at,
-        matching_quote_fact, matching_symbol_objects_or_error, missing_deep_crypto_sections,
-        missing_deep_fund_sections, missing_deep_single_stock_sections,
-        missing_investment_response_sections, normalized_company_financial_evidence,
-        normalized_dated_event_evidence, normalized_fund_holdings_evidence,
-        normalized_portfolio_snapshot, numeric_probe_symbols, parse_entity_extraction,
-        parse_representative_symbols, plain_ticker_mentions, portfolio_request_needs_market_data,
-        profile_without_conflicting_quote_fields, quote_has_positive_matching_price,
-        quote_timestamp_is_usable, resolve_entity_match, resolve_numeric_probe_result,
-        response_intent, response_requires_verified_price, set_verified_asset_type,
-        should_fetch_earnings_calendar, should_run_entity_stage, text_contains_source_domain,
-        ticker_mentions_cover_request, unsupported_financial_fact_claims, verified_dated_sources,
-        verified_financial_facts, web_source_markers,
+        is_strict_quote_only_request, market_benchmark_symbols, market_move_temporal_context,
+        market_search_date_at, matching_quote_fact, matching_symbol_objects_or_error,
+        missing_deep_crypto_sections, missing_deep_fund_sections,
+        missing_deep_single_stock_sections, missing_investment_response_sections,
+        normalized_company_financial_evidence, normalized_dated_event_evidence,
+        normalized_fund_holdings_evidence, normalized_portfolio_snapshot, numeric_probe_symbols,
+        parse_entity_extraction, parse_representative_symbols, plain_ticker_mentions,
+        portfolio_request_needs_market_data, profile_without_conflicting_quote_fields,
+        quote_has_positive_matching_price, quote_timestamp_is_usable, resolve_entity_match,
+        resolve_numeric_probe_result, response_intent, response_requires_verified_price,
+        set_verified_asset_type, should_fetch_earnings_calendar, should_run_entity_stage,
+        text_contains_source_domain, ticker_mentions_cover_request,
+        unsupported_financial_fact_claims, verified_dated_sources, verified_financial_facts,
+        web_source_markers,
     };
     use crate::agent_session::AgentTurnOrigin;
     use chrono::{TimeZone, Utc};
@@ -12719,6 +12904,7 @@ mod tests {
 
         append_agent_entity_discovery_context(
             &mut runtime_input,
+            "crwv和英伟达什么关系，估值怎么看",
             &seed_mentions,
             "2026-07-19 09:31",
         );
@@ -12764,6 +12950,7 @@ mod tests {
 
         append_agent_entity_discovery_context(
             &mut runtime_input,
+            "大A有没有类似CRWV、Nebius这样的数据中心的标的",
             &seed_mentions,
             "2026-07-21 19:50",
         );
@@ -12777,6 +12964,56 @@ mod tests {
         assert!(discovery.contains("这些独立查询不得等 DataFetch search 返回后才开始"));
         assert!(discovery.contains("必须等对应 search 返回并选定 symbol 后再调用"));
         assert!(discovery.contains("不得根据公司名、简称、模型记忆或搜索首条自行猜 ticker"));
+    }
+
+    #[test]
+    fn market_move_context_anchors_weekend_and_named_weekday_without_claiming_a_session() {
+        let context = market_move_temporal_context("美股周五为什么暴跌", "2026-07-26 06:15")
+            .expect("time-sensitive move context");
+
+        assert!(context.contains("Session 北京时间：2026-07-26 06:15 周日"));
+        assert!(context.contains("当前原话明确指向 America/New_York"));
+        assert!(context.contains("对应市场本地民用时间：2026-07-25 18:15 周六"));
+        assert!(context.contains("2026-07-24 周五"));
+        assert!(context.contains("2026-07-23 周四"));
+        assert!(context.contains("当前原话提到周五"));
+        assert!(context.contains("最近同名候选日期是 2026-07-24 周五"));
+        assert!(context.contains("只证明民用日历，不证明开市、休市"));
+        assert!(context.contains("不能因为最新 quote 属于另一日期"));
+        assert!(context.contains("不能擅自挑另一天的大跌来替换问题"));
+        assert!(context.contains("原因本轮未完全核验"));
+    }
+
+    #[test]
+    fn market_move_context_keeps_unspecified_scope_explicitly_unresolved() {
+        let context = market_move_temporal_context("周五暴跌", "2026-07-26 06:15")
+            .expect("time-sensitive move context");
+
+        assert!(context.contains("当前原话未明确市场"));
+        assert!(context.contains("不能据此默认用户在问美股"));
+        assert!(context.contains("2026-07-24 周五"));
+        assert!(market_move_temporal_context("crwv和英伟达什么关系", "2026-07-26 06:15").is_none());
+    }
+
+    #[test]
+    fn interactive_market_move_runtime_adds_target_session_evidence_ordering() {
+        let input = "美股为什么大跌";
+        let mut runtime_input = input.to_string();
+        let seed_mentions = plain_ticker_mentions(input, AgentTurnOrigin::Interactive);
+
+        append_agent_entity_discovery_context(
+            &mut runtime_input,
+            input,
+            &seed_mentions,
+            "2026-07-26 06:15",
+        );
+
+        assert!(runtime_input.contains("【本轮涨跌归因日期锚点"));
+        assert!(runtime_input.contains("对象 / 市场范围 + 用户所指目标时段"));
+        assert!(runtime_input.contains("大盘题先用当前轮代表指数或 ETF"));
+        assert!(runtime_input.contains("latest quote 的涨跌幅只证明其自身 provider timestamp"));
+        assert!(runtime_input.contains("不得只返回通用失败"));
+        assert!(runtime_input.contains("【本轮最终回答契约：由主 Agent 一次完成】"));
     }
 
     #[test]

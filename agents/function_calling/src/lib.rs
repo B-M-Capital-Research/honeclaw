@@ -65,6 +65,7 @@ const FINISH_RESEARCH_SYSTEM_INSTRUCTION: &str = "【显式完成后的终稿阶
 const FINAL_ANSWER_EVIDENCE_CONTRACT: &str = concat!(
     "`reasoning_content`、隐藏思考、未采用草稿、内部状态文本以及模型记忆都不是事实证据，不得从中提取或补齐关系、日期、行情、财务或估值事实。",
     "数据时间只能采用本轮 Session 北京时间；quote 的 provider timestamp 只能写在‘行情口径’里，绝不能冒充数据时间。用户可见的报价源时间优先使用 `hone_quote_time.beijing`；该字段缺失时才能如实使用其它已核验时间并明确时区。`hone_quote_time.market_date_new_york` 只是纽约时区的日历日期，`hone_quote_time.new_york` 也只是纽约时区的时间；二者都不证明交易所、交易时段或已经收盘，绝不能据此写‘纽交所’或‘收盘价’。证券所属交易所只能来自 quote/profile 的 `exchange` 或 `exchangeShortName` 字段。没有行情证据时仍保留‘行情口径’字段并说明范围，不得伪造报价时间或盘前/盘后时段。",
+    "回答“为什么大跌/暴跌/下跌”前，先锁定用户所指对象或市场范围与目标时段，并先核验该对象在该时段是否真的发生所述波动。用户明确给出的日期、星期或时段优先；不得因为 latest quote、当前日历日或另一日新闻更容易取得，就静默改答前一日、后一日或其它波动。latest quote 的涨跌幅只证明其 provider timestamp 对应的快照，不能证明另一历史交易日。宽基指数、行业板块与单只证券必须分开；若宽基不支持用户的“大跌”前提，明确说明观察范围不一致并继续核验板块/个股或做最小澄清，不得擅自挑另一天的大跌替换问题。原因事实必须由本轮明确覆盖同一对象与同一绝对市场本地日期的 Web/news/公告原文支持；否则先回答已核验的实际波动与范围，再写“原因本轮未完全核验”。",
     "逐项复核所有公司关系、新闻因果、日期、行情、财务与估值数字：实体 search/profile 只证明标的身份，不证明公司关系；关系、事件与因果结论必须有当前 web/news/公告或工具原文明确支持，并在相关事实同句或紧邻句末使用本轮工具实际返回的来源标题与原始 URL 做内联引用。URL 只用于定位来源，不证明句中内容；外部事实里的数字、排名或角色、合同权利义务、产品或芯片型号、估值标签都必须直接出现在该 URL 本轮返回的 title/content/snippet 中，否则删除。不得只写来源名、域名或与事实脱节的文末来源清单，也不得使用历史会话或模型记忆中的 URL。基于已核验事实形成的判断必须另起句并以‘推断：’开头。只有二级摘要时应继续找公司公告、监管文件或其它一手来源，若仍不可得则明确披露证据层级。未找到证据不等于事实不存在；否定某种关系同样需要本轮来源直接支持，否则只能披露本轮检索边界。",
     "年度数据不得写成 TTM；单季数据必须标明季度与报告期，年化时必须显示是“单季×4”还是“最近四季求和”及算术、分子分母口径，并披露季节性限制。",
     "未取得净债务或企业价值时不得使用 EV 或 EV/EBITDA 标签，也不得把市值/EBITDA 写成 EV/EBITDA。quote 返回的 PE 未明确标注 forward 时不得称为 Forward PE；已核验期间 EBITDA 为正时不得声称公司需到未来才转正。",
@@ -7727,6 +7728,7 @@ mod tests {
             "- entity_route=\"coreweave\": candidates=[\"CRWV\"]；结构调用已按同一候选代码成对尝试";
         let pending = agent_owned_business_turn_prompt(false, route_guidance, Some(prefix), false);
         let eligible = agent_owned_business_turn_prompt(true, route_guidance, Some(prefix), false);
+        let forced = agent_owned_business_turn_prompt(true, route_guidance, Some(prefix), true);
 
         assert!(
             OPEN_AGENT_ENTITY_DISCOVERY_SYSTEM_INSTRUCTION
@@ -7752,6 +7754,13 @@ mod tests {
         assert!(eligible.contains("`hone_quote_time.market_date_new_york`"));
         assert!(eligible.contains("绝不能据此写‘纽交所’或‘收盘价’"));
         assert!(eligible.contains("高度依赖、锁定和多重绑定"));
+        for final_prompt in [&eligible, &forced] {
+            assert!(final_prompt.contains("先锁定用户所指对象或市场范围与目标时段"));
+            assert!(final_prompt.contains("不得因为 latest quote"));
+            assert!(final_prompt.contains("宽基指数、行业板块与单只证券必须分开"));
+            assert!(final_prompt.contains("不得擅自挑另一天的大跌替换问题"));
+            assert!(final_prompt.contains("原因本轮未完全核验"));
+        }
         for internal_marker in ["finish_research", "locator 纠正", "固定拒答", "回写阶段"]
         {
             assert!(!pending.contains(internal_marker));
