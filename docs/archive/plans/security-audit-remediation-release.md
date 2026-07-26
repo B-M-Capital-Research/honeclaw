@@ -21,6 +21,7 @@ Close every reportable item from the authorized 2026-07-27 repository and non-de
 - Bound anonymous authentication limiter cardinality, successful SMS resend behavior, and invitation-membership response differences.
 - Bound attachment-reference count, duplicate expansion, cumulative extracted bytes, and successful extraction lifecycle for ZIP and TAR-family archives.
 - Prevent cloud Web API-key plaintext from entering persistent records or later list responses, including compatibility cleanup of existing records.
+- Treat any dependency-security alert returned by the release push as an additional tag gate: upgrade reachable packages, verify exact dependency/feature/target reachability, and dismiss only alerts whose vulnerable path is absent from shipped artifacts.
 - Preserve the user's unrelated event-engine working-tree edits and exclude them from the release commit.
 - Update version metadata, user-facing bilingual release notes, handoff/archive context, then push `main` and an annotated release tag.
 
@@ -51,6 +52,7 @@ Close every reportable item from the authorized 2026-07-27 repository and non-de
 
 - Codex Security scan `c771f7ab-01ee-4f83-9a14-19e6df35834b` completed with full repository coverage, 12 validated findings (6 Medium, 6 Low), individual validation/attack-path/write-up artifacts, a structural hardening portfolio, and a sealed canonical report.
 - Every validated finding has a targeted implementation and automated regression in the release change set.
+- The push surfaced four additional Dependabot alerts. Patched QUIC/Serde versions and current compatible Tauri/Telegram releases were locked and tested; the remaining Tauri-transitive `rand` and target-specific `glib` alerts were verified non-reachable before dismissal.
 - The workspace version, desktop Tauri versions, user-app Tauri version, iOS marketing version, bilingual release notes, durable invariants, deployment runbook, handoff, and archive index are synchronized for `v0.15.1`.
 - The four pre-existing event-engine working-tree files remain outside the release scope and are preserved byte-for-byte across the remote rebase.
 - Local full gates and post-rebase verification are required to pass before the release commit and tag; remote workflow and live Pages headers are the final acceptance gates.

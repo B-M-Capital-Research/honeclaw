@@ -72,6 +72,7 @@ Last updated: 2026-07-26
 
 - Do not hardcode secrets in docs, scripts, or tests
 - Do not add flows that depend on external account credentials to the default CI gate
+- Before a release tag is created, every open dependency-security alert must be triaged against the exact locked version, feature graph, target graph, and shipped artifacts. Reachable alerts must be patched and retested; an alert may be dismissed as not used only with recorded evidence that the vulnerable API/features or target are absent from every shipped path.
 - Diagnostic scripts should avoid mutating business data
 - Treat iMessage features as local privileged capabilities; do not assume they can run in generic environments
 - Tool calls must go through a security guard that blocks risky command fragments by default

@@ -7,7 +7,7 @@
 - owner: Codex
 - related_files: `packages/app/public/_worker.js`, `crates/hone-web-api/src/public_auth.rs`, `crates/hone-web-api/src/routes/public.rs`, `crates/hone-channels/src/attachments/ingest.rs`, `crates/hone-tools/src/skill_tool.rs`, `skills/chart_visualization/scripts/render_chart.py`, `crates/hone-core/src/config/`, `crates/hone-core/src/cloud_runtime.rs`, `memory/src/web_auth.rs`, `bins/hone-cli/src/`, `docs/releases/v0.15.1.md`
 - related_docs: `docs/archive/plans/security-audit-remediation-release.md`, `docs/invariants.md`, `docs/runbooks/backend-deployment.md`
-- related_prs: release commit containing this handoff; annotated tag `v0.15.1`
+- related_prs: security release commit `a24ba01b` plus the dependency-advisory follow-up; annotated tag `v0.15.1`
 
 ## Summary
 
@@ -21,6 +21,7 @@ The authorized repository scan and bounded, non-destructive production checks co
 - Chart rendering validates bounded argument bytes and semantic complexity before expensive imports and terminates child processes on timeout/drop.
 - Credential YAML writes are atomic and owner-only; existing local canonical/effective config files were repaired to `0600`; administrator-token changes require full restart; Discord token prompts are hidden.
 - One-time cloud Web API keys are digest-only after issuance, and cloud schema initialization removes the legacy plaintext JSON field.
+- Post-push Dependabot feedback was treated as a release gate: `quinn-proto` is updated to `0.11.15`, `serde_with` to `3.21.0`, Teloxide to `0.17.0`, and the Tauri stack to its latest compatible patch releases. Telegram's new typed media/file identifiers are carried end-to-end instead of converted back to weak strings.
 - Workspace, desktop, user-app, and iOS version sources are synchronized to `0.15.1`. The architecture SVG did not change because this patch adjusts enforcement, thresholds, headers, and serialization without changing documented topology or module boundaries.
 
 ## Verification
@@ -33,6 +34,8 @@ The authorized repository scan and bounded, non-destructive production checks co
 - `cd workers/public-community-edge && bun install --frozen-lockfile && bun run typecheck && bun run test`
 - `bash tests/regression/run_ci.sh`
 - `bash scripts/prepare_release_notes.sh v0.15.1 /tmp/release-notes-v0.15.1.md`
+- `cargo check -p hone-telegram` and `cargo test -p hone-telegram` after the Teloxide migration.
+- Dependabot follow-up: the QUIC and Serde advisories are removed by locked-version upgrades. The remaining `rand 0.7.3` alert is confined to Tauri's compile-time HTML parser with neither advisory-required `log` nor `thread_rng` features; the `glib 0.18.5` affected `VariantStrIter` API has no caller in the locked Tauri/GTK stack and is absent from Apple/release CLI target graphs. Both non-reachable alerts are dismissed only after recording those dependency, feature, API-use, and target checks.
 - Built `packages/app/dist-public/_worker.js` contains the reviewed response-header policy.
 - The four unrelated event-engine diffs were excluded from staging; their patch digest stayed unchanged across the required rebase onto `origin/main`.
 - Final release acceptance requires the release commit and annotated tag on the remote, the tag-triggered Release workflow, and the live `hone-claw.com` header probe.
@@ -43,6 +46,7 @@ The authorized repository scan and bounded, non-destructive production checks co
 - The tactical resource limits close the validated chart/archive paths. A shared admission-lease API or isolated conversion worker is a future structural option if production load justifies the added operational boundary.
 - Backend fixes become active only after the established external process supervisor deploys/restarts the release. Do not start an ad-hoc second backend process.
 - Cloud schema cleanup is idempotent, but operators should confirm the migration marker and cloud health during the supervised backend rollout.
+- Tauri upstream still carries target-specific GTK 0.18 packages in `Cargo.lock`; re-open the dismissed `glib` alert immediately if Hone begins shipping the Linux desktop or any dependency starts calling `Variant::array_iter_str`.
 
 ## Next Entry Point
 

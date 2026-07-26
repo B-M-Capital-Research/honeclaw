@@ -25,7 +25,7 @@ use serde_json::Value;
 use teloxide::dispatching::UpdateFilterExt;
 use teloxide::net::Download;
 use teloxide::prelude::*;
-use teloxide::types::{ChatKind, Message, User};
+use teloxide::types::{ChatKind, FileId, Message, User};
 use teloxide::update_listeners;
 use teloxide::utils::html;
 use tokio::io::AsyncWriteExt;
@@ -274,7 +274,7 @@ async fn handle_message(
     let is_private = matches!(msg.chat.kind, ChatKind::Private(_));
     let direct_mention = !is_private && is_direct_mention_message(&msg, &bot_username, bot_id);
     let reply_to_bot = is_reply_to_bot(&msg, bot_id);
-    let media_group_id = msg.media_group_id().map(str::to_string);
+    let media_group_id = msg.media_group_id().map(ToString::to_string);
 
     info!(
         chat_id = msg.chat.id.0,
@@ -401,7 +401,7 @@ async fn process_telegram_message_batch(
         .iter()
         .any(|message| is_reply_to_bot(message, bot_id));
     let raw_text = collect_message_text(&messages);
-    let media_group_id = first_msg.media_group_id().map(str::to_string);
+    let media_group_id = first_msg.media_group_id().map(ToString::to_string);
     let text = raw_text.trim();
 
     let (actor, target, chat_mode) = if is_private {
@@ -891,7 +891,7 @@ async fn collect_raw_attachments(bot: &Bot, messages: &[Message]) -> Vec<RawAtta
 
 async fn download_telegram_attachment(
     bot: &Bot,
-    file_id: String,
+    file_id: FileId,
     filename: String,
     content_type: Option<String>,
     size: Option<u32>,

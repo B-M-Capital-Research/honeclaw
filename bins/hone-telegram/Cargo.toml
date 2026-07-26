@@ -17,4 +17,4 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 chrono = { workspace = true }
 serde_json = { workspace = true }
-teloxide = { version = "0.13", features = ["macros"] }
+teloxide = { version = "0.17", features = ["macros"] }
