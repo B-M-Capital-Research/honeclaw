@@ -51,7 +51,7 @@ const MAX_AGENT_OWNED_FINANCE_TOOL_CALLS: u32 = 24;
 const MAX_AGENT_OWNED_FINANCE_DATA_FETCH_CALLS: u32 = 20;
 const MAX_AGENT_OWNED_FINANCE_WEB_SEARCH_CALLS: u32 = 6;
 const MAX_MARKET_MOVE_FINAL_CORRECTIONS: u32 = 1;
-const MAX_MARKET_MOVE_DRAFT_FEEDBACK_CHARS: usize = 8_000;
+const MAX_MARKET_MOVE_DRAFT_FEEDBACK_CHARS: usize = 3_000;
 const AGENT_OVERALL_TIMEOUT_ERROR: &str =
     "agent_timeout: function-calling overall deadline exceeded";
 const AGENT_STEP_TIMEOUT_ERROR: &str = "agent_timeout: function-calling step deadline exceeded";
@@ -3962,6 +3962,13 @@ fn anchored_market_move_date(runtime_input: &str) -> Option<NaiveDate> {
         .and_then(|date| NaiveDate::parse_from_str(date.as_str(), "%Y-%m-%d").ok())
 }
 
+fn first_absolute_market_date(content: &str) -> Option<NaiveDate> {
+    let re = Regex::new(r"([0-9]{4})(?:年|-|/)([0-9]{1,2})(?:月|-|/)([0-9]{1,2})日?")
+        .expect("absolute market date regex");
+    re.captures_iter(content)
+        .find_map(|captures| date_from_capture(&captures, 1, 2, 3))
+}
+
 fn date_from_capture(
     captures: &regex::Captures<'_>,
     year: usize,
@@ -3976,21 +3983,151 @@ fn date_from_capture(
 
 fn first_body_market_date(content: &str) -> Option<NaiveDate> {
     let body = content.split_once('\n').map(|(_, body)| body).unwrap_or("");
-    let re = Regex::new(r"([0-9]{4})(?:年|-|/)([0-9]{1,2})(?:月|-|/)([0-9]{1,2})日?")
-        .expect("absolute market date regex");
-    re.captures_iter(body)
-        .find_map(|captures| date_from_capture(&captures, 1, 2, 3))
+    first_absolute_market_date(body)
 }
 
 fn content_contains_date(content: &str, date: NaiveDate) -> bool {
+    let normalized = content.to_ascii_lowercase();
+    let month_name = [
+        "january",
+        "february",
+        "march",
+        "april",
+        "may",
+        "june",
+        "july",
+        "august",
+        "september",
+        "october",
+        "november",
+        "december",
+    ][date.month0() as usize];
     [
         date.format("%Y-%m-%d").to_string(),
         date.format("%Y/%m/%d").to_string(),
         date.format("%m/%d/%Y").to_string(),
         format!("{}年{}月{}日", date.year(), date.month(), date.day()),
+        format!("{month_name} {}, {}", date.day(), date.year()),
+        format!("{month_name} {} {}", date.day(), date.year()),
+        format!("{} {month_name} {}", date.day(), date.year()),
     ]
     .iter()
-    .any(|candidate| content.contains(candidate))
+    .any(|candidate| normalized.contains(candidate))
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct MarketMoveQuoteEvidence {
+    symbol: String,
+    change_percentage: f64,
+    market_date: NaiveDate,
+    beijing_time: Option<String>,
+}
+
+fn collect_market_move_quote_evidence(value: &Value, evidence: &mut Vec<MarketMoveQuoteEvidence>) {
+    match value {
+        Value::Array(items) => {
+            for item in items {
+                collect_market_move_quote_evidence(item, evidence);
+            }
+        }
+        Value::Object(fields) => {
+            let quote_time = fields.get("hone_quote_time").and_then(Value::as_object);
+            let quote = fields
+                .get("symbol")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|symbol| !symbol.is_empty())
+                .zip(fields.get("changesPercentage").and_then(|value| {
+                    value
+                        .as_f64()
+                        .or_else(|| value.as_str()?.parse::<f64>().ok())
+                }))
+                .zip(
+                    quote_time
+                        .and_then(|time| time.get("market_date_new_york"))
+                        .and_then(Value::as_str)
+                        .and_then(|date| NaiveDate::parse_from_str(date, "%Y-%m-%d").ok()),
+                );
+            if let Some(((symbol, change_percentage), market_date)) = quote {
+                evidence.push(MarketMoveQuoteEvidence {
+                    symbol: symbol.to_ascii_uppercase(),
+                    change_percentage,
+                    market_date,
+                    beijing_time: quote_time
+                        .and_then(|time| time.get("beijing"))
+                        .and_then(Value::as_str)
+                        .map(str::to_string),
+                });
+            }
+            for value in fields.values() {
+                collect_market_move_quote_evidence(value, evidence);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn current_turn_market_move_quotes(
+    context: &AgentContext,
+    turn_message_start: usize,
+) -> Vec<MarketMoveQuoteEvidence> {
+    let mut by_symbol_and_date = BTreeMap::new();
+    for message in &context.messages[turn_message_start.min(context.messages.len())..] {
+        if message.role != "tool" || message.name.as_deref() != Some("data_fetch") {
+            continue;
+        }
+        let Some(content) = message.content.as_deref() else {
+            continue;
+        };
+        let Ok(value) = serde_json::from_str::<Value>(content) else {
+            continue;
+        };
+        let mut evidence = Vec::new();
+        collect_market_move_quote_evidence(&value, &mut evidence);
+        for quote in evidence {
+            by_symbol_and_date.insert((quote.symbol.clone(), quote.market_date), quote);
+        }
+    }
+    let mut evidence = by_symbol_and_date.into_values().collect::<Vec<_>>();
+    evidence.sort_by_key(|quote| {
+        let rank = match quote.symbol.as_str() {
+            "SPY" => 0,
+            "QQQ" => 1,
+            "DIA" => 2,
+            "IWM" => 3,
+            _ => 4,
+        };
+        (rank, quote.symbol.clone(), quote.market_date)
+    });
+    evidence
+}
+
+fn current_turn_market_move_quote_date(
+    context: &AgentContext,
+    turn_message_start: usize,
+) -> Option<NaiveDate> {
+    let mut counts = BTreeMap::<NaiveDate, usize>::new();
+    for quote in current_turn_market_move_quotes(context, turn_message_start) {
+        *counts.entry(quote.market_date).or_default() += 1;
+    }
+    counts
+        .into_iter()
+        .max_by(|(date_a, count_a), (date_b, count_b)| {
+            count_a.cmp(count_b).then_with(|| date_a.cmp(date_b))
+        })
+        .map(|(date, _)| date)
+}
+
+fn resolved_market_move_date(
+    runtime_input: &str,
+    content: &str,
+    context: &AgentContext,
+    turn_message_start: usize,
+) -> Option<NaiveDate> {
+    first_absolute_market_date(original_market_move_request(runtime_input))
+        .or_else(|| anchored_market_move_date(runtime_input))
+        .or_else(|| current_turn_market_move_quote_date(context, turn_message_start))
+        .or_else(|| first_body_market_date(content))
 }
 
 fn append_date_weekday_violations(content: &str, violations: &mut Vec<String>) {
@@ -4015,6 +4152,31 @@ fn append_date_weekday_violations(content: &str, violations: &mut Vec<String>) {
                 date.format("%Y-%m-%d"),
                 chinese_weekday_label(date.weekday()),
                 label
+            ));
+        }
+    }
+}
+
+fn append_declared_target_date_violations(
+    content: &str,
+    target_date: NaiveDate,
+    violations: &mut Vec<String>,
+) {
+    for paragraph in content.split("\n\n").skip(1) {
+        if !["目标时段", "目标日期", "解释日期", "本轮解释"]
+            .iter()
+            .any(|marker| paragraph.contains(marker))
+        {
+            continue;
+        }
+        let Some(declared_date) = first_absolute_market_date(paragraph) else {
+            continue;
+        };
+        if declared_date != target_date {
+            violations.push(format!(
+                "终稿声明的目标日期 {} 与本轮证据锚定日期 {} 不一致",
+                declared_date.format("%Y-%m-%d"),
+                target_date.format("%Y-%m-%d")
             ));
         }
     }
@@ -4065,6 +4227,17 @@ fn current_turn_tool_result_urls(
         }
     }
     urls
+}
+
+fn current_turn_source_urls_for_date(
+    context: &AgentContext,
+    turn_message_start: usize,
+    date: NaiveDate,
+) -> Vec<String> {
+    current_turn_tool_result_urls(context, turn_message_start)
+        .into_iter()
+        .filter_map(|(url, evidence)| content_contains_date(&evidence, date).then_some(url))
+        .collect()
 }
 
 fn paragraph_has_definitive_market_cause(paragraph: &str) -> bool {
@@ -4132,6 +4305,13 @@ fn broad_us_market_scope_coverage(content: &str) -> usize {
     .count()
 }
 
+fn is_broad_us_market_request(runtime_input: &str) -> bool {
+    let original = original_market_move_request(runtime_input).to_ascii_lowercase();
+    ["美股", "美国股市", "u.s. market", "us market"]
+        .iter()
+        .any(|marker| original.contains(marker))
+}
+
 fn market_move_final_violations(
     runtime_input: &str,
     content: &str,
@@ -4146,10 +4326,13 @@ fn market_move_final_violations(
     append_date_weekday_violations(content, &mut violations);
 
     let target_date =
-        anchored_market_move_date(runtime_input).or_else(|| first_body_market_date(content));
+        resolved_market_move_date(runtime_input, content, context, turn_message_start);
+    if let Some(target_date) = target_date {
+        append_declared_target_date_violations(content, target_date, &mut violations);
+    }
     match target_date {
         Some(date) if !content_contains_date(content, date) => violations.push(format!(
-            "终稿没有保留用户星期表述对应的候选日期 {} {}",
+            "终稿没有保留本轮证据锚定的目标日期 {} {}",
             date.format("%Y-%m-%d"),
             chinese_weekday_label(date.weekday())
         )),
@@ -4157,12 +4340,7 @@ fn market_move_final_violations(
         _ => {}
     }
 
-    let original = original_market_move_request(runtime_input).to_ascii_lowercase();
-    if ["美股", "美国股市", "u.s. market", "us market"]
-        .iter()
-        .any(|marker| original.contains(marker))
-        && broad_us_market_scope_coverage(content) < 2
-    {
+    if is_broad_us_market_request(runtime_input) && broad_us_market_scope_coverage(content) < 2 {
         violations.push(
             "美股宽基问题至少要分开核验两个代表性宽基/风格指数，不能用单一板块或个股替代"
                 .to_string(),
@@ -4206,38 +4384,130 @@ fn bounded_market_move_draft(content: &str) -> String {
         .collect()
 }
 
-fn market_move_final_correction_prompt(violations: &[String], draft: &str) -> String {
+fn market_move_final_correction_prompt_with_sources(
+    violations: &[String],
+    draft: &str,
+    target_date: Option<NaiveDate>,
+    eligible_source_urls: &[String],
+) -> String {
+    let target = target_date.map_or_else(
+        || "未形成唯一绝对日期".to_string(),
+        |date| {
+            format!(
+                "{}（{}）",
+                date.format("%Y-%m-%d"),
+                chinese_weekday_label(date.weekday())
+            )
+        },
+    );
+    let sources = if eligible_source_urls.is_empty() {
+        "无".to_string()
+    } else {
+        eligible_source_urls.join("、")
+    };
     format!(
-        "【内部终稿机械一致性纠正】上一版终稿尚未发布正文，只保留了服务端精确首行。请由同一 Agent 根据已有真实工具结果修订完整终稿，不要向用户提及本检查。逐项修正：{}。日期与星期必须按本轮民用日历锚点一致；宽基、板块、个股不可互换；确定性原因必须在同一段同时出现目标绝对日期和本轮工具结果中的原始 URL，而且该 URL 的当前结果记录本身也必须带目标日期。若现有证据做不到，就保留已核验行情范围并明确写“原因本轮未完全核验”，不要把标题、摘要、较早日期或推断升级成已确认原因。修订稿仍须从精确数据时间首行开始。\n<unpublished_draft>\n{}\n</unpublished_draft>",
+        "【内部终稿机械一致性纠正】上一版终稿尚未发布正文，只保留了服务端精确首行。请由同一 Agent 根据已有真实工具结果重写一份简短终稿，不要向用户提及本检查。逐项修正：{}。机械目标日期：{target}。当前工具结果中记录本身覆盖该日期的可用原始 URL 仅限：{sources}。正文控制在首行后约 350 个汉字：先列已核验 quote 的对象、涨跌幅和 provider 时间，明确宽基/风格/个股范围；再只用上述可用 URL 写 1—2 条同日确定性因素，每条都在同一段写出目标绝对日期和 URL。不得写其它日期的原因、无来源数字、收盘断言、Bull/Bear/Base Case、点位预测或交易建议。若可用 URL 为“无”或不足以支持原因，就保留行情范围并明确写“原因本轮未完全核验”。修订稿仍须从精确数据时间首行开始。\n<unpublished_draft>\n{}\n</unpublished_draft>",
         violations.join("；"),
         bounded_market_move_draft(draft)
     )
+}
+
+fn format_market_move_change(change_percentage: f64) -> String {
+    if change_percentage >= 0.0 {
+        format!("+{change_percentage:.2}%")
+    } else {
+        format!("{change_percentage:.2}%")
+    }
 }
 
 fn deterministic_market_move_gap_response(
     runtime_input: &str,
     rejected_content: &str,
     required_prefix: &str,
+    context: &AgentContext,
+    turn_message_start: usize,
 ) -> String {
     let first_line = if required_prefix.ends_with("；行情口径：") {
         format!("{required_prefix}本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露")
     } else {
         required_prefix.to_string()
     };
-    let target_date = anchored_market_move_date(runtime_input)
-        .or_else(|| first_body_market_date(rejected_content));
+    let target_date =
+        resolved_market_move_date(runtime_input, rejected_content, context, turn_message_start);
+    let quotes = current_turn_market_move_quotes(context, turn_message_start)
+        .into_iter()
+        .filter(|quote| target_date.is_none_or(|date| quote.market_date == date))
+        .collect::<Vec<_>>();
     let target_line = target_date.map_or_else(
         || "目标时段：当前原话未形成可安全发布的唯一绝对市场日期。".to_string(),
         |date| {
+            let target_kind = if first_absolute_market_date(original_market_move_request(
+                runtime_input,
+            ))
+            .is_some()
+                || anchored_market_move_date(runtime_input).is_some()
+            {
+                "用户原话对应的市场本地民用日期候选"
+            } else if quotes.iter().any(|quote| quote.market_date == date) {
+                "本轮最近可得 quote 的纽约日历日期"
+            } else {
+                "市场本地民用日期候选"
+            };
             format!(
-                "目标时段：{}（{}，市场本地民用日期候选；是否开市及具体交易时段仍以本轮行情证据为准）。",
+                "目标时段：{}（{}，{}；是否开市及具体交易时段仍以本轮行情证据为准）。",
                 date.format("%Y-%m-%d"),
-                chinese_weekday_label(date.weekday())
+                chinese_weekday_label(date.weekday()),
+                target_kind
             )
         },
     );
+    let quote_line = if quotes.is_empty() {
+        "本轮没有取得与该日期一致、可安全复述的 quote 快照。".to_string()
+    } else {
+        let changes = quotes
+            .iter()
+            .map(|quote| {
+                format!(
+                    "{} {}",
+                    quote.symbol,
+                    format_market_move_change(quote.change_percentage)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("、");
+        let quote_time = quotes
+            .iter()
+            .filter_map(|quote| quote.beijing_time.as_deref())
+            .next()
+            .map_or_else(
+                || "provider 未返回可统一复述的北京时间".to_string(),
+                |time| format!("provider 北京时间 {time}"),
+            );
+        format!(
+            "本轮最近可得 quote（{quote_time}；该时间字段本身不额外证明交易时段）显示：{changes}。"
+        )
+    };
+    let scope_line = if is_broad_us_market_request(runtime_input) && quotes.len() >= 2 {
+        let positive = quotes
+            .iter()
+            .filter(|quote| quote.change_percentage > 0.0)
+            .count();
+        let negative = quotes
+            .iter()
+            .filter(|quote| quote.change_percentage < 0.0)
+            .count();
+        if positive > 0 && negative > 0 {
+            "按这组代表性宽基/风格 ETF，本轮可核验范围呈分化，不支持“美股宽基全面大跌”的前提；若你观察的是科技或其它具体板块，需要按那个范围另行归因。"
+        } else if negative == quotes.len() {
+            "按这组代表性宽基/风格 ETF，本轮可核验方向一致偏弱；“大跌”的程度仍以各自披露的具体幅度为准。"
+        } else {
+            "按这组代表性宽基/风格 ETF，本轮可核验范围不支持“美股宽基全面大跌”的前提。"
+        }
+    } else {
+        "以上只回答本轮 quote 实际覆盖的对象，不把单股、板块与宽基市场互相替代。"
+    };
     format!(
-        "{first_line}\n\n{target_line}\n\n本轮原因证据未能同时满足同一对象、同一目标日期和当前来源原文核对，因此不把候选新闻、标题摘要或其它交易日叙事写成已确认触发因素。**原因本轮未完全核验。**"
+        "{first_line}\n\n{target_line}\n\n{quote_line}\n\n{scope_line}\n\n本轮原因证据未能同时满足同一对象、同一目标日期和当前来源原文核对，因此不把候选新闻、标题摘要或其它交易日叙事写成已确认触发因素。**原因本轮未完全核验。**"
     )
 }
 
@@ -4893,15 +5163,37 @@ impl Agent for FunctionCallingAgent {
                                 turn_message_start,
                             );
                             if !violations.is_empty() {
+                                let target_date = resolved_market_move_date(
+                                    user_input,
+                                    &response.content,
+                                    context,
+                                    turn_message_start,
+                                );
+                                let eligible_source_urls =
+                                    target_date.map_or_else(Vec::new, |date| {
+                                        current_turn_source_urls_for_date(
+                                            context,
+                                            turn_message_start,
+                                            date,
+                                        )
+                                    });
+                                let cause_evidence_missing = violations.iter().any(|violation| {
+                                    violation
+                                        .contains("每个确定性原因段落都必须在同一段内给出目标日期")
+                                }) && eligible_source_urls.is_empty();
                                 tracing::warn!(
                                     session_id = %context.session_id,
                                     iteration = iterations,
                                     violations = %violations.join(" | "),
                                     market_move_final_corrections,
+                                    target_date = ?target_date,
+                                    eligible_source_count = eligible_source_urls.len(),
+                                    cause_evidence_missing,
                                     "agent-owned market-move final failed mechanical pre-publication checks"
                                 );
                                 if market_move_final_corrections < MAX_MARKET_MOVE_FINAL_CORRECTIONS
                                     && iterations < self.max_iterations
+                                    && !cause_evidence_missing
                                 {
                                     if precommitted_service_prefix.is_none()
                                         && let Some(prefix) = self
@@ -4922,9 +5214,11 @@ impl Agent for FunctionCallingAgent {
                                     market_move_final_corrections =
                                         market_move_final_corrections.saturating_add(1);
                                     pending_market_move_final_correction =
-                                        Some(market_move_final_correction_prompt(
+                                        Some(market_move_final_correction_prompt_with_sources(
                                             &violations,
                                             &response.content,
+                                            target_date,
+                                            &eligible_source_urls,
                                         ));
                                     continue;
                                 }
@@ -4933,6 +5227,8 @@ impl Agent for FunctionCallingAgent {
                                         user_input,
                                         &response.content,
                                         prefix,
+                                        context,
+                                        turn_message_start,
                                     );
                                 }
                             }
@@ -12597,6 +12893,91 @@ mod tests {
         );
     }
 
+    #[test]
+    fn market_move_final_uses_quote_date_and_preserves_verified_scope_in_gap_response() {
+        let runtime_input = "美股为什么大跌\n\n\
+            【本轮涨跌归因日期锚点：只指导主 Agent 取证，不是行情或交易日事实】\n\
+            Session 北京时间：2026-07-26 16:51 周日；对应市场本地民用时间：2026-07-26 04:51 周日。\n\n\
+            【本轮最终回答契约：由主 Agent 一次完成】";
+        let mut context = AgentContext::new("market-move-quote-date".to_string());
+        for (call_id, symbol, change) in [
+            ("tc_spy", "SPY", 0.1016),
+            ("tc_qqq", "QQQ", -1.11712),
+            ("tc_dia", "DIA", 0.48425),
+            ("tc_iwm", "IWM", -0.31497),
+        ] {
+            context.add_tool_result(
+                call_id,
+                "data_fetch",
+                &json!({
+                    "data": [{
+                        "symbol": symbol,
+                        "changesPercentage": change,
+                        "hone_quote_time": {
+                            "beijing": "2026-07-25 04:00:00 +08:00",
+                            "market_date_new_york": "2026-07-24"
+                        }
+                    }]
+                })
+                .to_string(),
+            );
+        }
+        context.add_tool_result(
+            "tc_same_day",
+            "web_search",
+            &json!({
+                "results": [{
+                    "title": "Markets News, July 24, 2026",
+                    "url": "https://example.test/july-24",
+                    "content": "Mixed session on Friday as chip stocks dropped."
+                }]
+            })
+            .to_string(),
+        );
+
+        assert_eq!(
+            current_turn_market_move_quote_date(&context, 0),
+            NaiveDate::from_ymd_opt(2026, 7, 24)
+        );
+        assert!(content_contains_date(
+            "Markets News, July 24, 2026",
+            NaiveDate::from_ymd_opt(2026, 7, 24).expect("valid date")
+        ));
+        assert_eq!(
+            current_turn_source_urls_for_date(
+                &context,
+                0,
+                NaiveDate::from_ymd_opt(2026, 7, 24).expect("valid date")
+            ),
+            ["https://example.test/july-24"]
+        );
+
+        let invalid = "数据时间：北京时间 2026-07-26 16:51；行情口径：可核验\n\n\
+            目标时段：2026-07-26（周日）。SPY 与 QQQ 走势分化。\n\n\
+            本轮 quote 证据的纽约日历日期为 2026-07-24。\n\n\
+            原因本轮未完全核验。";
+        let violations = market_move_final_violations(runtime_input, invalid, &context, 0);
+        assert!(violations.iter().any(|violation| {
+            violation.contains("声明的目标日期 2026-07-26 与本轮证据锚定日期 2026-07-24 不一致")
+        }));
+
+        let gap = deterministic_market_move_gap_response(
+            runtime_input,
+            invalid,
+            "数据时间：北京时间 2026-07-26 16:51；行情口径：",
+            &context,
+            0,
+        );
+        assert!(gap.contains("2026-07-24（周五，本轮最近可得 quote 的纽约日历日期"));
+        assert!(gap.contains("SPY +0.10%"));
+        assert!(gap.contains("QQQ -1.12%"));
+        assert!(gap.contains("DIA +0.48%"));
+        assert!(gap.contains("IWM -0.31%"));
+        assert!(gap.contains("不支持“美股宽基全面大跌”的前提"));
+        assert!(gap.contains("原因本轮未完全核验"));
+        assert!(!gap.contains("目标时段：2026-07-26"));
+    }
+
     #[tokio::test]
     async fn market_move_final_correction_keeps_only_header_visible_until_acceptance() {
         let prefix = "数据时间：北京时间 2026-07-26 16:00；行情口径：";
@@ -12687,6 +13068,8 @@ mod tests {
             .expect("correction prompt");
         assert!(correction_prompt.contains("内部终稿机械一致性纠正"));
         assert!(correction_prompt.contains("2026-07-24 的星期应为周五"));
+        assert!(correction_prompt.contains("https://example.test/capacity"));
+        assert!(correction_prompt.contains("约 350 个汉字"));
         assert!(
             context
                 .messages

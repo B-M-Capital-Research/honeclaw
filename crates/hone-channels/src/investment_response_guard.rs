@@ -7665,7 +7665,7 @@ fn market_move_temporal_context(user_input: &str, answer_time: &str) -> Option<S
          {}\
          上述日期与星期由 Session 时钟确定，只证明民用日历，不证明开市、休市、半日市、盘前/盘中/盘后、收盘或实际涨跌。\n\
          涨跌归因必须先锁定“对象 / 市场范围 + 用户所指目标时段”，再核验该对象在目标时段是否真的发生用户所说的跌幅，最后才搜索同一绝对市场本地日期的事件原因。用户明确说出的日期、星期或时段优先，不能因为最新 quote 属于另一日期，就把问题静默改答成前一日、后一日或别的波动。\n\
-         大盘题先用当前轮代表指数或 ETF 区分整体、成长/科技、小盘与具体板块；单股题使用同代码证据。latest quote 的涨跌幅只证明其自身 provider timestamp 对应的快照，不能证明另一个历史交易日。若用户说“大跌”而宽基指数不支持，应明确指出“宽基与用户观察范围不一致”，继续核验板块/个股范围或做最小澄清，不能擅自挑另一天的大跌来替换问题。\n\
+         大盘题先用当前轮代表指数或 ETF 区分整体、成长/科技、小盘与具体板块；需要直接取代表 ETF 行情时，按 DataFetch 真实 schema 使用 data_type=\"quote\" + symbol（或 ticker）字段，不要把 SPY / QQQ / DIA / IWM 放进仅用于 search 的 query 字段。单股题使用同代码证据。latest quote 的涨跌幅只证明其自身 provider timestamp 对应的快照，不能证明另一个历史交易日。若用户说“大跌”而宽基指数不支持，应明确指出“宽基与用户观察范围不一致”，继续核验板块/个股范围或做最小澄清，不能擅自挑另一天的大跌来替换问题。\n\
          原因结论只使用明确覆盖同一对象与目标日期的当前 Web/news/公告原文；标题相关但日期、对象或方向不一致时不算因果证据。证据不足仍要先回答已核验的实际涨跌与范围，并写“原因本轮未完全核验”，不得只返回通用失败，也不得把推断写成已确认触发因素。",
         beijing.format("%Y-%m-%d %H:%M"),
         chinese_weekday(beijing.weekday()),
@@ -12979,6 +12979,8 @@ mod tests {
         assert!(context.contains("当前原话提到周五"));
         assert!(context.contains("最近同名候选日期是 2026-07-24 周五"));
         assert!(context.contains("只证明民用日历，不证明开市、休市"));
+        assert!(context.contains("data_type=\"quote\" + symbol（或 ticker）字段"));
+        assert!(context.contains("不要把 SPY / QQQ / DIA / IWM 放进仅用于 search 的 query 字段"));
         assert!(context.contains("不能因为最新 quote 属于另一日期"));
         assert!(context.contains("不能擅自挑另一天的大跌来替换问题"));
         assert!(context.contains("原因本轮未完全核验"));

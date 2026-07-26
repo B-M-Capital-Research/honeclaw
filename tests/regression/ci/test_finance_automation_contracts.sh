@@ -254,6 +254,8 @@ if contains '先锁定用户所指市场或证券与目标时段' "$SOUL" \
   && contains 'fn market_move_temporal_context(' "$INVESTMENT_GUARD" \
   && contains '【本轮涨跌归因日期锚点：只指导主 Agent 取证，不是行情或交易日事实】' "$INVESTMENT_GUARD" \
   && contains 'market_move_context_anchors_weekend_and_named_weekday_without_claiming_a_session' "$INVESTMENT_GUARD" \
+  && contains 'data_type=\"quote\" + symbol（或 ticker）字段' "$INVESTMENT_GUARD" \
+  && contains '不要把 SPY / QQQ / DIA / IWM 放进仅用于 search 的 query 字段' "$INVESTMENT_GUARD" \
   && contains '不得擅自挑另一天的大跌替换问题' "$FUNCTION_AGENT" \
   && contains '原因本轮未完全核验' "$FUNCTION_AGENT"; then
   record success "40.market-move-target-session-evidence" "decline explanations preserve the requested scope/session, carry a deterministic civil-calendar hint, and require same-date evidence without turning that hint into a trading-session fact"
@@ -273,15 +275,23 @@ fi
 
 if contains 'fn market_move_final_violations(' "$FUNCTION_AGENT" \
   && contains 'fn append_date_weekday_violations(' "$FUNCTION_AGENT" \
+  && contains 'fn append_declared_target_date_violations(' "$FUNCTION_AGENT" \
   && contains 'fn current_turn_tool_result_urls(' "$FUNCTION_AGENT" \
+  && contains 'fn current_turn_market_move_quotes(' "$FUNCTION_AGENT" \
+  && contains 'fn current_turn_market_move_quote_date(' "$FUNCTION_AGENT" \
+  && contains 'fn resolved_market_move_date(' "$FUNCTION_AGENT" \
+  && contains 'fn current_turn_source_urls_for_date(' "$FUNCTION_AGENT" \
+  && contains 'cause_evidence_missing' "$FUNCTION_AGENT" \
+  && contains '本轮最近可得 quote 的纽约日历日期' "$FUNCTION_AGENT" \
   && contains 'fn canonical_prefix_delta(' "$FUNCTION_AGENT" \
   && contains 'MAX_MARKET_MOVE_FINAL_CORRECTIONS' "$FUNCTION_AGENT" \
   && contains '原因本轮未完全核验' "$FUNCTION_AGENT" \
   && contains 'market_move_final_check_rejects_wrong_weekday_and_unlocalized_cause' "$FUNCTION_AGENT" \
+  && contains 'market_move_final_uses_quote_date_and_preserves_verified_scope_in_gap_response' "$FUNCTION_AGENT" \
   && contains 'market_move_final_correction_keeps_only_header_visible_until_acceptance' "$FUNCTION_AGENT"; then
-  record success "42.market-move-prepublication-consistency" "market-move bodies stay buffered until civil dates, broad scope, and same-target-date current source URLs pass; one same-Agent correction otherwise degrades to an explicit cause-evidence gap"
+  record success "42.market-move-prepublication-consistency" "market-move bodies stay buffered until quote-anchored civil dates, broad scope, and same-target-date current source URLs pass; English source dates are recognized, unrepairable cause gaps skip correction, and deterministic fallback preserves verified quote scope"
 else
-  record fail "42.market-move-prepublication-consistency" "an impossible weekday, substituted narrow scope, unsupported cause, or rejected draft can again cross the visible terminal boundary"
+  record fail "42.market-move-prepublication-consistency" "an impossible/quote-inconsistent date, substituted narrow scope, unsupported cause, discarded quote fact, or rejected draft can again cross the visible terminal boundary"
 fi
 
 if contains 'C. 板块 / 技术 / 产业链分析' "$SOUL" && contains '精确核验至少三个相关代表证券' "$SOUL" && contains '6. 主要上市公司对比：每个代表证券独立写出本轮同代码现价与数据时间口径' "$SOUL" && contains '### Sector / Industry Output Contract' "$MARKET_ANALYSIS"; then
