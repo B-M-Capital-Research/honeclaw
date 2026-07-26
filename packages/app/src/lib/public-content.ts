@@ -128,6 +128,9 @@ const CONTENT_ZH = {
       trial_hint: "加客服微信，先进免费群感受氛围，合适再付费。",
     },
     posters_label: "六张海报看懂完整服务",
+    posters_hint: "点击任意海报可放大查看，长按或右键即可保存转发。",
+    socials_label: "平台入口",
+    socials: { zsxq: "知识星球", wechat: "客服微信" },
     trial_line: "想先体验？联系客服加入免费群。",
     free: {
       name: "开源免费版",
@@ -1817,6 +1820,9 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       trial_hint: "Add support on WeChat to try the free group before you pay.",
     },
     posters_label: "Six posters that explain the full service",
+    posters_hint: "Tap any poster to enlarge; long-press or right-click to save and share.",
+    socials_label: "Channels",
+    socials: { zsxq: "Zhishixingqiu", wechat: "WeChat" },
     trial_line: "Want a taste first? Contact support to join the free group.",
     free: {
       name: "Open Source",

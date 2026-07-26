@@ -3,7 +3,7 @@
 // 缩略图 + Bilibili + HONE 工具）｜右栏会员转化（价格 + 权益 + 免费体验群）
 // → 六张海报横滑条。中文「立即购买」弹知识星球二维码，英文跳 Whop。
 
-import { createSignal, For, Show, onCleanup, createEffect } from "solid-js"
+import { createSignal, For, Match, Show, Switch, onCleanup, createEffect } from "solid-js"
 import { CONTENT } from "@/lib/public-content"
 import { useLocale } from "@/lib/i18n"
 import { PublicFooter, PublicNav } from "@/components/public-nav"
@@ -30,6 +30,37 @@ const POSTERS = [
   { src: "/bm5.webp", alt: "星球内容：每周主理人亲自直播讲解精选公司" },
   { src: "/bm6.webp", alt: "星球内容：社群内和数百优质会员实时探讨分享" },
 ]
+
+/* 平台图标：内联 SVG 而非 favicon —— 各站 favicon 只有 16/32px，放大发虚，
+   矢量图标任意尺寸都清晰，也不依赖外站资源。 */
+function BrandIcon(props: { name: "youtube" | "bilibili" | "zsxq" | "wechat" }) {
+  return (
+    <Switch>
+      <Match when={props.name === "youtube"}>
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M23.5 6.9a3 3 0 0 0-2.1-2.1C19.5 4.3 12 4.3 12 4.3s-7.5 0-9.4.5A3 3 0 0 0 .5 6.9C0 8.8 0 12 0 12s0 3.2.5 5.1a3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1c.5-1.9.5-5.1.5-5.1s0-3.2-.5-5.1ZM9.6 15.6V8.4l6.2 3.6-6.2 3.6Z" />
+        </svg>
+      </Match>
+      <Match when={props.name === "bilibili"}>
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M18.2 3.4a1.4 1.4 0 0 1 0 2l-1.6 1.5h1.6A4.2 4.2 0 0 1 22.4 11v6.3a4.2 4.2 0 0 1-4.2 4.2H5.8a4.2 4.2 0 0 1-4.2-4.2V11a4.2 4.2 0 0 1 4.2-4.2h1.5L5.8 5.4a1.4 1.4 0 1 1 2-2l2.6 2.6q.2.2.3.4h2.6q.1-.2.3-.4l2.6-2.6a1.4 1.4 0 0 1 2 0ZM18.2 9.5H5.8a1.4 1.4 0 0 0-1.4 1.4v6.3a1.4 1.4 0 0 0 1.4 1.4h12.4a1.4 1.4 0 0 0 1.4-1.4V11a1.4 1.4 0 0 0-1.4-1.4Zm-9.8 2.6a1.3 1.3 0 0 1 1.3 1.3v1.3a1.3 1.3 0 0 1-2.6 0v-1.3a1.3 1.3 0 0 1 1.3-1.3Zm7.2 0a1.3 1.3 0 0 1 1.3 1.3v1.3a1.3 1.3 0 1 1-2.6 0v-1.3a1.3 1.3 0 0 1 1.3-1.3Z" />
+        </svg>
+      </Match>
+      <Match when={props.name === "zsxq"}>
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="12" cy="12" r="8.6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="40 12" />
+          <circle cx="12" cy="12" r="3" fill="currentColor" />
+        </svg>
+      </Match>
+      <Match when={props.name === "wechat"}>
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M8.7 3C4.5 3 1.1 5.9 1.1 9.4c0 2 1.1 3.8 2.9 5L3.2 16.6l2.6-1.3q.7.2 1.4.3a5.6 5.6 0 0 1-.2-1.4c0-3.2 3.1-5.8 6.9-5.8h.6C14 5.2 11.6 3 8.7 3ZM6.2 8.3a.9.9 0 1 1 0-1.9.9.9 0 0 1 0 1.9Zm5 0a.9.9 0 1 1 0-1.9.9.9 0 0 1 0 1.9Z" />
+          <path d="M22.9 14.1c0-2.9-2.9-5.3-6.4-5.3s-6.4 2.4-6.4 5.3 2.9 5.3 6.4 5.3q.9 0 1.7-.2l2.2 1.1-.6-1.8c1.9-1 3.1-2.6 3.1-4.4Zm-8.5-.9a.8.8 0 1 1 0-1.6.8.8 0 0 1 0 1.6Zm4.2 0a.8.8 0 1 1 0-1.6.8.8 0 0 1 0 1.6Z" />
+        </svg>
+      </Match>
+    </Switch>
+  )
+}
 
 function Lightbox(props: {
   open: boolean
@@ -106,54 +137,49 @@ export default function PublicPlanPage() {
               </For>
             </div>
             <p class="hone-hub-stats-note">{C().host.stats_note}</p>
+            {/* 平台入口：视频站直接外链，星球 / 微信弹对应二维码。 */}
+            <nav class="hone-hub-socials" aria-label={C().socials_label}>
+              <a class="hone-hub-social is-youtube" href={YOUTUBE_URL} target="_blank" rel="noopener noreferrer" title="YouTube">
+                <BrandIcon name="youtube" /><span>YouTube</span>
+              </a>
+              <a class="hone-hub-social is-bilibili" href={BILIBILI_URL} target="_blank" rel="noopener noreferrer" title="Bilibili">
+                <BrandIcon name="bilibili" /><span>Bilibili</span>
+              </a>
+              <button type="button" class="hone-hub-social is-zsxq" onClick={buy} title={C().full.qr_title}>
+                <BrandIcon name="zsxq" /><span>{C().socials.zsxq}</span>
+              </button>
+              <button type="button" class="hone-hub-social is-wechat" onClick={() => setLightbox({ kind: "support" })} title={C().support.title}>
+                <BrandIcon name="wechat" /><span>{C().socials.wechat}</span>
+              </button>
+            </nav>
           </div>
         </header>
 
         {/* ── 双栏：左内容 / 右转化 ── */}
         <div class="hone-hub-grid">
           <div class="hone-hub-content">
-            {/* 免费内容：YouTube 频道 + 近期视频 + Bilibili */}
-            <section class="hone-hub-card" aria-label={C().channel.label}>
-              <div class="hone-hub-label">{C().channel.label}</div>
-              <div class="hone-hub-channel">
-                <img src="/hari-avatar.jpg" alt="" width="46" height="46" />
-                <div>
-                  <strong>{C().channel.title}</strong>
-                  <small>{C().channel.handle}</small>
-                </div>
-                <a class="hone-hub-ghost-btn" href={YOUTUBE_URL} target="_blank" rel="noopener noreferrer">
-                  {C().channel.cta} →
-                </a>
-              </div>
-              <div class="hone-hub-videos-label">{C().channel.videos_label}</div>
-              <div class="hone-hub-videos">
-                <For each={CHANNEL_VIDEOS}>
-                  {(video) => (
-                    <a
-                      class="hone-hub-video"
-                      href={`https://www.youtube.com/watch?v=${video.id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
+            {/* 会员海报：信息密度最高，紧邻右侧会员卡 */}
+            <section class="hone-hub-card" aria-label={C().posters_label}>
+              <div class="hone-hub-label">{C().posters_label}</div>
+              <div class="hone-share-wall">
+                <For each={POSTERS}>
+                  {(poster, i) => (
+                    <button
+                      type="button"
+                      class="hone-share-poster"
+                      onClick={() => setLightbox({ kind: "poster", index: i() })}
                     >
-                      <span class="hone-hub-video-thumb">
-                        <img src={`https://i.ytimg.com/vi/${video.id}/mqdefault.jpg`} alt="" loading="lazy" />
-                        <i aria-hidden="true">▶</i>
-                      </span>
-                      <strong>{video.title}</strong>
-                    </a>
+                      <img
+                        src={poster.src}
+                        alt={poster.alt}
+                        loading={i() < 3 ? "eager" : "lazy"}
+                        decoding="async"
+                      />
+                    </button>
                   )}
                 </For>
               </div>
-              <div class="hone-hub-channel is-bilibili">
-                <span class="hone-hub-bili-mark" aria-hidden="true">b</span>
-                <div>
-                  <strong>{C().channel.bilibili_title}</strong>
-                  <small>{C().channel.bilibili_desc}</small>
-                </div>
-                <a class="hone-hub-ghost-btn" href={BILIBILI_URL} target="_blank" rel="noopener noreferrer">
-                  {C().channel.bilibili_cta} →
-                </a>
-              </div>
+              <p class="hone-hub-posters-hint">{C().posters_hint}</p>
             </section>
 
             {/* HONE 工具 */}
@@ -213,26 +239,47 @@ export default function PublicPlanPage() {
           </aside>
         </div>
 
-        {/* ── 海报横滑条 ── */}
-        <section class="hone-hub-posters" aria-label={C().posters_label}>
-          <div class="hone-hub-label">{C().posters_label}</div>
-          <div class="hone-share-wall">
-            <For each={POSTERS}>
-              {(poster, i) => (
-                <button
-                  type="button"
-                  class="hone-share-poster"
-                  onClick={() => setLightbox({ kind: "poster", index: i() })}
+        {/* ── 免费内容：YouTube 频道 + 近期视频 + Bilibili ── */}
+        <section class="hone-hub-card hone-hub-channel-section" aria-label={C().channel.label}>
+          <div class="hone-hub-label">{C().channel.label}</div>
+          <div class="hone-hub-channel">
+            <img src="/hari-avatar.jpg" alt="" width="46" height="46" />
+            <div>
+              <strong>{C().channel.title}</strong>
+              <small>{C().channel.handle}</small>
+            </div>
+            <a class="hone-hub-ghost-btn" href={YOUTUBE_URL} target="_blank" rel="noopener noreferrer">
+              {C().channel.cta} →
+            </a>
+          </div>
+          <div class="hone-hub-videos-label">{C().channel.videos_label}</div>
+          <div class="hone-hub-videos">
+            <For each={CHANNEL_VIDEOS}>
+              {(video) => (
+                <a
+                  class="hone-hub-video"
+                  href={`https://www.youtube.com/watch?v=${video.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
                 >
-                  <img
-                    src={poster.src}
-                    alt={poster.alt}
-                    loading={i() === 0 ? "eager" : "lazy"}
-                    decoding="async"
-                  />
-                </button>
+                  <span class="hone-hub-video-thumb">
+                    <img src={`https://i.ytimg.com/vi/${video.id}/mqdefault.jpg`} alt="" loading="lazy" />
+                    <i aria-hidden="true">▶</i>
+                  </span>
+                  <strong>{video.title}</strong>
+                </a>
               )}
             </For>
+          </div>
+          <div class="hone-hub-channel is-bilibili">
+            <span class="hone-hub-bili-mark" aria-hidden="true"><BrandIcon name="bilibili" /></span>
+            <div>
+              <strong>{C().channel.bilibili_title}</strong>
+              <small>{C().channel.bilibili_desc}</small>
+            </div>
+            <a class="hone-hub-ghost-btn" href={BILIBILI_URL} target="_blank" rel="noopener noreferrer">
+              {C().channel.bilibili_cta} →
+            </a>
           </div>
         </section>
 
@@ -379,6 +426,46 @@ export default function PublicPlanPage() {
           font-size: 10px;
         }
 
+        /* 平台入口图标行 */
+        .hone-hub-socials {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-top: 16px;
+        }
+        .hone-hub-social {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          min-height: 38px;
+          padding: 0 14px 0 11px;
+          border: 1px solid var(--hone-line);
+          border-radius: 999px;
+          background: #fff;
+          color: var(--hone-ink-950);
+          cursor: pointer;
+          font-family: inherit;
+          font-size: 12px;
+          font-weight: 700;
+          text-decoration: none;
+          white-space: nowrap;
+          transition: border-color 0.16s ease, transform 0.14s var(--hone-ease), box-shadow 0.16s ease;
+        }
+        .hone-hub-social:hover {
+          transform: translateY(-1px);
+          box-shadow: var(--hone-shadow-md);
+        }
+        .hone-hub-social svg { width: 17px; height: 17px; flex: 0 0 17px; }
+        .hone-hub-social.is-youtube { color: #d0312d; }
+        .hone-hub-social.is-youtube:hover { border-color: color-mix(in srgb, #d0312d 45%, var(--hone-line)); }
+        .hone-hub-social.is-bilibili { color: #1a9ad6; }
+        .hone-hub-social.is-bilibili:hover { border-color: color-mix(in srgb, #1a9ad6 45%, var(--hone-line)); }
+        .hone-hub-social.is-zsxq { color: #17a35a; }
+        .hone-hub-social.is-zsxq:hover { border-color: color-mix(in srgb, #17a35a 45%, var(--hone-line)); }
+        .hone-hub-social.is-wechat { color: #09b83e; }
+        .hone-hub-social.is-wechat:hover { border-color: color-mix(in srgb, #09b83e 45%, var(--hone-line)); }
+        .hone-hub-social span { color: var(--hone-ink-950); }
+
         /* ── 双栏 ── */
         .hone-hub-grid {
           display: grid;
@@ -447,10 +534,8 @@ export default function PublicPlanPage() {
           border-radius: 50%;
           background: #e9f4fd;
           color: #1a9ad6;
-          font-family: var(--hone-font-label);
-          font-size: 21px;
-          font-weight: 800;
         }
+        .hone-hub-bili-mark svg { width: 24px; height: 24px; }
         .hone-hub-ghost-btn {
           flex: 0 0 auto;
           display: inline-flex;
@@ -729,17 +814,18 @@ export default function PublicPlanPage() {
         }
         .hone-share-service:hover { border-color: var(--hone-ink-950); }
 
-        /* ── 海报横滑条 ── */
-        .hone-hub-posters { margin-top: 34px; }
+        /* ── 海报墙（左栏，3 列 × 2 行） ── */
         .hone-share-wall {
           display: grid;
-          grid-auto-flow: column;
-          grid-auto-columns: 196px;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 12px;
-          overflow-x: auto;
-          padding-bottom: 8px;
-          scrollbar-width: thin;
         }
+        .hone-hub-posters-hint {
+          margin: 12px 0 0;
+          color: var(--hone-ink-400, #a3a6a1);
+          font-size: 11px;
+        }
+        .hone-hub-channel-section { margin-top: 16px; }
         .hone-share-poster {
           padding: 0;
           border: 1px solid var(--hone-line);
@@ -869,8 +955,11 @@ export default function PublicPlanPage() {
           .hone-hub-videos { grid-template-columns: repeat(3, 200px); max-width: 100%; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
           .hone-hub-videos::-webkit-scrollbar { display: none; }
           .hone-hub-channel .hone-hub-ghost-btn { padding: 0 11px; font-size: 11px; }
-          .hone-share-wall { grid-auto-columns: 160px; }
-          .hone-hub-posters { margin-top: 24px; }
+          /* 海报：移动端横滑，避免 3 列挤成缩略图 */
+          .hone-share-wall { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 156px; max-width: 100%; overflow-x: auto; padding-bottom: 6px; scrollbar-width: none; }
+          .hone-share-wall::-webkit-scrollbar { display: none; }
+          .hone-hub-socials { gap: 6px; margin-top: 14px; }
+          .hone-hub-social { min-height: 34px; padding: 0 12px 0 10px; font-size: 11px; }
 
           .hone-share-dock {
             position: fixed;
