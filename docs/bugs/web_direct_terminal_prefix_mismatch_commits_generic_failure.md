@@ -14,7 +14,7 @@ P2
 
 ## 状态
 
-Fixed
+New
 
 ## GitHub Issue
 
@@ -22,6 +22,9 @@ Fixed
 
 ## 修复记录
 
+- `2026-07-26 16:05 CST` 精确提交 `27ea2f536ce16aab71c8cf2cfe48a92a13f89fb4` 已推送、构建、manifest 校验并部署；原 `committed terminal prefix mismatch` 恢复代码已进入生产，但 fresh actor `codex-canary-27ea2f53-broad-1785052687` 的 `美股为什么大跌` 仍只得到规范首行加通用研究失败。
+- 新样本的直接错误已收窄为相邻但不同的 `agent_owned_finance_persistent_tool_error`：provider 先输出 byte-exact canonical header，随后在同一 stream 继续请求已注册的只读 quote/Web 取证；adapter 在完整工具批次进入既有“注册 + 可解析 + 结构合法 + 已知只读”校验前就提前失败。
+- 当前代码修复不再把 exact header 本身视为 `Stop`：首行一旦投递即不可重置，但只有完整非空 `Stop + Done` 才是终稿；同流后续工具先组装完整批次再走既有安全校验。安全只读调用继续且不重复提交首行，未知/坏参数/非法 DataFetch/写调用仍在 frame、observer、registry 和 network 前零执行失败。正反 Agent 回归与财经契约 sample 41 已通过；在替换精确版本通过 live canary 前，本缺陷维持 `New/P2`。
 - `2026-07-25 03:10 CST` `bug-2` 代码级修复：`crates/hone-channels/src/agent_session/core.rs` 的 `recover_response_with_committed_prefix(...)` 现在只在两类安全形态下恢复已提交的 service-owned prefix：
   - 终稿只剩非空正文 tail、未携带 prefix 时，恢复成 `committed prefix + 正文`。
   - 终稿首行若是另一条冲突的 `数据时间：...；行情口径：...`，则用已提交 prefix 替换该首行并保留正文 tail。

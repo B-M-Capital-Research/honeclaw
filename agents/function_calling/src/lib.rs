@@ -1592,6 +1592,7 @@ impl FunctionCallingAgent {
         let mut forwarded_final_delta = false;
         let mut eligible_visible_candidate = String::new();
         let mut early_final_rejected = false;
+        let mut canonical_prefix_committed = precommitted_service_prefix.is_some();
         let mut first_provider_delta_ms = None;
         let mut first_committed_prefix_ms = None;
 
@@ -1669,7 +1670,9 @@ impl FunctionCallingAgent {
                             forwarded_final_delta = true;
                             if first_committed_prefix_ms.is_none()
                                 && let Some(prefix) = observer.committed_visible_prefix()
+                                && committed_prefix_matches_required(&prefix, eligible_final_prefix)
                             {
+                                canonical_prefix_committed = true;
                                 let elapsed_ms =
                                     u64::try_from(stream_started.elapsed().as_millis())
                                         .unwrap_or(u64::MAX);
@@ -1694,24 +1697,17 @@ impl FunctionCallingAgent {
                     arguments,
                 } => {
                     if early_final_eligible {
-                        if let Some(prefix) = self
+                        if self
                             .stream_observer
                             .as_ref()
                             .and_then(|observer| observer.committed_visible_prefix())
-                            .filter(|prefix| precommitted_service_prefix != Some(prefix.as_str()))
+                            .is_some_and(|prefix| {
+                                committed_prefix_matches_required(&prefix, eligible_final_prefix)
+                            })
                         {
-                            tracing::error!(
-                                target: "hone_agent::ttft",
-                                session_id = %session_id,
-                                iteration,
-                                prefix_bytes = prefix.len(),
-                                "agent-owned finance provider emitted a tool call after canonical header commit"
-                            );
-                            return Err(hone_core::HoneError::Other(
-                                AGENT_OWNED_FINANCE_PERSISTENT_TOOL_ERROR.to_string(),
-                            ));
+                            canonical_prefix_committed = true;
                         }
-                        if forwarded_final_delta {
+                        if forwarded_final_delta && !canonical_prefix_committed {
                             self.reset_emitted_content(true).await;
                             forwarded_final_delta = false;
                         }
@@ -1764,6 +1760,7 @@ impl FunctionCallingAgent {
                 forwarded_final_delta = true;
                 if first_committed_prefix_ms.is_none()
                     && let Some(prefix) = observer.committed_visible_prefix()
+                    && committed_prefix_matches_required(&prefix, eligible_final_prefix)
                 {
                     let elapsed_ms =
                         u64::try_from(stream_started.elapsed().as_millis()).unwrap_or(u64::MAX);
@@ -3865,6 +3862,10 @@ fn registered_read_only_tool_call_is_well_formed(
     })
 }
 
+fn committed_prefix_matches_required(committed: &str, required: Option<&str>) -> bool {
+    required.is_some_and(|required| committed == required || committed.starts_with(required))
+}
+
 fn exact_final_answer_prefix(user_input: &str) -> Option<String> {
     const REQUIREMENT: &str = "第一条非空行必须严格以 `";
     let start = user_input.rfind(REQUIREMENT)? + REQUIREMENT.len();
@@ -4738,33 +4739,23 @@ impl Agent for FunctionCallingAgent {
                         );
                     }
 
-                    // The stream path rejects this as soon as the first late
-                    // tool delta arrives. Keep a second guard at the registry
-                    // boundary so a future provider adapter cannot execute a
-                    // tool after an irreversible canonical prefix.
-                    if self.agent_owned_finance_loop
-                        && active_business_round
-                        && let Some(prefix) = self
+                    // The provider may finish the exact canonical first line
+                    // and then decide that one more read-only lookup is needed
+                    // in the same stream. Treat that line as an irreversible
+                    // service boundary, not as a terminal decision. The full
+                    // completed tool batch is still validated below before any
+                    // assistant frame, observer notification, or execution.
+                    let visible_service_prefix_committed = precommitted_service_prefix.is_some()
+                        || self
                             .stream_observer
                             .as_ref()
                             .and_then(|observer| observer.committed_visible_prefix())
-                            .filter(|prefix| {
-                                precommitted_service_prefix.as_deref() != Some(prefix.as_str())
-                            })
-                    {
-                        tracing::error!(
-                            target: "hone_agent::ttft",
-                            session_id = %context.session_id,
-                            iteration = iterations,
-                            prefix_bytes = prefix.len(),
-                            "agent-owned finance blocked tool execution after canonical header commit"
-                        );
-                        return failed_agent_response(
-                            tool_calls_made,
-                            iterations,
-                            AGENT_OWNED_FINANCE_PERSISTENT_TOOL_ERROR,
-                        );
-                    }
+                            .is_some_and(|prefix| {
+                                committed_prefix_matches_required(
+                                    &prefix,
+                                    required_final_answer_prefix.as_deref(),
+                                )
+                            });
 
                     #[cfg(not(test))]
                     let actionable_tool_calls = tcs.iter().collect::<Vec<_>>();
@@ -4789,7 +4780,7 @@ impl Agent for FunctionCallingAgent {
                     // read-only. Reject an entire mixed batch before adding an
                     // assistant tool frame, notifying observers, or entering
                     // the registry; unknown tools are not treated as safe.
-                    if precommitted_service_prefix.is_some()
+                    if visible_service_prefix_committed
                         && actionable_tool_calls.iter().any(|tool_call| {
                             !registered_read_only_tool_call_is_well_formed(
                                 tool_call,
@@ -4809,7 +4800,7 @@ impl Agent for FunctionCallingAgent {
                                 && starts_investment_research_protocol(tool_call)
                         });
                     if self.agent_owned_finance_loop
-                        && (precommitted_service_prefix.is_some()
+                        && (visible_service_prefix_committed
                             || investment_research_started
                             || round_starts_investment_research)
                     {
@@ -4822,7 +4813,7 @@ impl Agent for FunctionCallingAgent {
                     // registry. An initial non-finance portfolio/cron request
                     // remains unaffected until the DataFetch boundary exists.
                     let finance_round_is_read_only = self.agent_owned_finance_loop
-                        && (precommitted_service_prefix.is_some()
+                        && (visible_service_prefix_committed
                             || investment_research_started
                             || round_starts_investment_research);
                     let finance_round_is_known_read_only =
@@ -5304,10 +5295,18 @@ impl Agent for FunctionCallingAgent {
                                 self.service_owned_initial_prefix.as_deref(),
                                 self.stream_observer.as_ref(),
                             )
-                            && observer.commit_service_owned_prefix(prefix).await
-                            && observer.committed_visible_prefix().as_deref() == Some(prefix)
                         {
-                            precommitted_service_prefix = Some(prefix.to_string());
+                            let already_committed = observer
+                                .committed_visible_prefix()
+                                .as_deref()
+                                .is_some_and(|committed| committed == prefix);
+                            if already_committed
+                                || (observer.commit_service_owned_prefix(prefix).await
+                                    && observer.committed_visible_prefix().as_deref()
+                                        == Some(prefix))
+                            {
+                                precommitted_service_prefix = Some(prefix.to_string());
+                            }
                         }
                         // 继续循环 — 把真实工具结果送回 LLM
                         continue;
@@ -11977,6 +11976,105 @@ mod tests {
             ],
             "a wrong Session timestamp must reset the uncommitted candidate and stop early forwarding"
         );
+    }
+
+    #[tokio::test]
+    async fn committed_finance_header_allows_registered_read_only_continuation_without_reset() {
+        let required_prefix = "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露";
+        let header_lead = "数据时间：北京时间 2026-07-19 09:31；行情口径：";
+        let header_basis = "本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露";
+        let answer = format!("{required_prefix}\n\nCRWV 的同日行情与原因核验结果。");
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_search_crwv".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"search","query":"CRWV","entity_route":"crwv","identity_match":"exact_symbol"}"#.to_string(),
+            }],
+            vec![
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_quote_crwv".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"quote","symbol":"CRWV","entity_route":"crwv"}"#.to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 1,
+                    id: Some("tc_profile_crwv".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"profile","symbol":"CRWV","entity_route":"crwv"}"#.to_string(),
+                },
+            ],
+            vec![
+                ChatStreamEvent::ContentDelta(header_lead.to_string()),
+                ChatStreamEvent::ContentDelta(header_basis.to_string()),
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_late_web".to_string()),
+                    name: Some("web_search".to_string()),
+                    arguments: r#"{"query":"CRWV same-day move cause"}"#.to_string(),
+                },
+            ],
+            vec![ChatStreamEvent::ContentDelta(answer.clone())],
+        ]);
+        let tool_observer = Arc::new(MockToolObserver::default());
+        let stream_observer = Arc::new(CommittedPrefixStreamObserver::new(
+            required_prefix.to_string(),
+        ));
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(GroundedFinanceEvidenceTool));
+        registry.register(Box::new(WebSearchEvidenceTool));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 5, None)
+                .with_agent_owned_finance_loop(true)
+                .with_service_owned_initial_prefix(Some(required_prefix.to_string()), None)
+                .with_tool_observer(Some(tool_observer.clone()))
+                .with_stream_observer(Some(stream_observer.clone()));
+        let mut context = AgentContext::new("committed-header-read-only-tool".to_string());
+
+        let response = agent.run("CRWV 周五为什么大跌", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, answer);
+        assert_eq!(response.iterations, 4);
+        assert_eq!(response.tool_calls_made.len(), 4);
+        assert_eq!(
+            tool_observer
+                .events
+                .lock()
+                .expect("tool observer events")
+                .as_slice(),
+            [
+                "start:data_fetch",
+                "done:data_fetch:true",
+                "start:data_fetch",
+                "done:data_fetch:true",
+                "start:data_fetch",
+                "done:data_fetch:true",
+                "start:web_search",
+                "done:web_search:true",
+            ]
+        );
+        assert_eq!(
+            stream_observer.committed_visible_prefix(),
+            Some(required_prefix.to_string())
+        );
+        assert!(
+            stream_observer
+                .events
+                .lock()
+                .expect("stream events")
+                .iter()
+                .all(|event| event != "reset"),
+            "an irreversible header must remain visible across the safe continuation"
+        );
+        assert!(context.messages.iter().any(|message| {
+            message.tool_calls.as_ref().is_some_and(|tool_calls| {
+                tool_calls.iter().any(|tool_call| {
+                    tool_call.get("id").and_then(Value::as_str) == Some("tc_late_web")
+                })
+            })
+        }));
     }
 
     #[tokio::test]

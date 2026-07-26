@@ -114,7 +114,7 @@ AGENT_DISCOVERY_IMPL="$(sed -n '/pub(crate) fn build_agent_discovered_investment
 AGENT_DISCOVERY_CONTEXT_IMPL="$(sed -n '/fn append_agent_entity_discovery_context(/,/^fn explicit_dollar_mentions(/p' "$INVESTMENT_GUARD")"
 INTERACTIVE_OBSERVATION_IMPL="$(sed -n '/Interactive entity discovery is owned/,/let Some(contract) = contract else/p' "$AGENT_CORE")"
 
-echo "[finance-automation-contracts] fixed sample count: 40"
+echo "[finance-automation-contracts] fixed sample count: 41"
 
 if contains '"snapshot".into()' "$DATA_FETCH" && contains 'data_fetch(data_type="snapshot"' "$STOCK_RESEARCH"; then
   record success "1.stock_research->snapshot" "tool enum and skill contract are aligned"
@@ -259,6 +259,16 @@ if contains '先锁定用户所指市场或证券与目标时段' "$SOUL" \
   record success "40.market-move-target-session-evidence" "decline explanations preserve the requested scope/session, carry a deterministic civil-calendar hint, and require same-date evidence without turning that hint into a trading-session fact"
 else
   record fail "40.market-move-target-session-evidence" "market-move answers can again switch dates/scopes or present a civil-calendar/latest-quote hint as proof of the requested session"
+fi
+
+if contains 'fn committed_prefix_matches_required(' "$FUNCTION_AGENT" \
+  && contains 'let visible_service_prefix_committed =' "$FUNCTION_AGENT" \
+  && contains 'if visible_service_prefix_committed' "$FUNCTION_AGENT" \
+  && contains 'committed_finance_header_allows_registered_read_only_continuation_without_reset' "$FUNCTION_AGENT" \
+  && contains 'committed_finance_header_rejects_a_late_tool_before_execution' "$FUNCTION_AGENT"; then
+  record success "41.committed-header-read-only-continuation" "an exact committed finance header survives a same-stream registered read-only continuation while unsafe late tools remain fail-closed before execution"
+else
+  record fail "41.committed-header-read-only-continuation" "a safe late lookup can again erase the canonical header or an unsafe late tool can cross the irreversible publication boundary"
 fi
 
 if contains 'C. 板块 / 技术 / 产业链分析' "$SOUL" && contains '精确核验至少三个相关代表证券' "$SOUL" && contains '6. 主要上市公司对比：每个代表证券独立写出本轮同代码现价与数据时间口径' "$SOUL" && contains '### Sector / Industry Output Contract' "$MARKET_ANALYSIS"; then
@@ -521,8 +531,8 @@ fi
 echo
 echo "summary: success=$success review=$review fail=$fail total=$((success + review + fail))"
 
-if [ "$success" -lt 39 ]; then
-  echo "[ERROR] acceptance failed: expected all 39 successes"
+if [ "$success" -lt 40 ]; then
+  echo "[ERROR] acceptance failed: expected all 40 successes"
   exit 1
 fi
 
