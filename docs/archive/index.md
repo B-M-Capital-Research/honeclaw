@@ -4,6 +4,18 @@ Last updated: 2026-07-26
 
 ## 2026-07-26
 
+### Interactive Business No-Refusal Finalization
+
+- Status: done
+- Date: 2026-07-26
+- Plan: `docs/archive/plans/interactive-business-no-refusal-finalization.md`
+- Handoff: `docs/handoffs/2026-07-26-interactive-business-no-refusal-finalization.md`
+- Decision / ADR: `D-2026-07-26-06` and `docs/adr/0004-agent-owned-research-loop.md`
+- Related PRs / commits: `75ca1957`
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`; workspace check/test excluding Apple clients; Agent `135/135`; Channels `680 passed` plus one ignored; Web API `140 passed` plus two ignored; Web `294/294`; Edge Worker `45/45`; finance contracts `43/43`; complete CI-safe regressions; real-host Apple Vision OCR; 501-file immutable deployment manifest and three production replays
+- Current conclusion: repeated generic failures came from irreversible early finance-header publication, fixed failure-tail synthesis, non-executable skill misclassification, a path-only text model receiving no image bytes, and a separate non-finance hard refusal. Exact `75ca1957` keeps the answer format but publishes only a complete usable final, gives blocked/read-only failures one same-Agent no-tools answer, supplies local OCR text, removes canned failure copy, and lets ordinary questions answer directly. Production Web/Feishu, cloud authority, storage, ports and auth are healthy; market, CPU and OCR attachment-block canaries each ended once with byte-identical two-row history and zero active chats.
+- Next entry point: use the handoff and D-2026-07-26-06. Reopen the fixed image bug on any generic refusal or missing production OCR block; otherwise continue only the independent scheduler entity-guard P2 in the shared ticker plan.
+
 ### Interactive Market-Move Explanation Reliability
 
 - Status: done

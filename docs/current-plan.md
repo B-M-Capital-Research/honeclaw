@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-07-26
-状态：有 9 个活跃任务
+状态：有 8 个活跃任务
 
 ## 说明
 
@@ -15,11 +15,6 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
-
-- **Interactive 业务问答无通用拒答收口**
-  - 状态：`in_progress`
-  - 计划：`docs/current-plans/interactive-business-no-refusal-finalization.md`
-  - 摘要：2026-07-26 Web direct 连续三轮持仓截图分析在精确时间头已送达后，把无脚本 `skill_tool(image_understanding)` 误判为未知/持久副作用，整轮被替换成固定研究失败句；同一已知图片链路此前也多次复发。本任务保留现有投资回答首行与正文格式，改为 Apple Vision OCR 先把截图文字送入可信附件上下文；危险/未知工具仍在执行前零执行拦截，但同一 Agent 获得一次 tools-disabled 证据内回答；空流、单步超时和单次协议错误也先走同 Agent 有界恢复。Web 财经撤销首行提前 ACK、整答成功后一次发布，生产代码删除固定研究失败尾句；普通非金融问题也不再被领域硬拒绝。待完成精确部署与真实截图回放。
 
 - **Public Community Edge 生产分阶段上线**
   - 状态：`in_progress`

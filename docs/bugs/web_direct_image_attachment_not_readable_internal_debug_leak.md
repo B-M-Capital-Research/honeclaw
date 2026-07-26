@@ -3,7 +3,7 @@
 - **发现时间**: 2026-06-06 19:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Fixing
+- **状态**: Fixed
 - **GitHub Issue**: 无；本单不是 P1，暂不创建。
 
 ## 证据来源
@@ -13,7 +13,8 @@
   - runtime 在精确首行提交后记录 `agent_owned_finance_persistent_tool_error`。模型为读取当前图片调用了 `skill_tool(image_understanding)`，但无脚本 skill prompt 加载被效果分类器当成未知/持久副作用，整批在执行前失败；Session 因首行已经不可逆，只能追加固定失败尾句。
   - 第二层根因是附件上下文只向文本模型提供本地路径；`image_understanding` 又错误声称底层模型能直接看到图片，但实际 OpenRouter/MiniMax 文本请求没有发送任何图片字节。真实附件因此既没有视觉输入，也没有 OCR 文本。
   - 本轮修复改为：macOS 入站附件先用 Apple Vision OCR 生成可信 `【图片文字提取】`；无脚本 `skill_tool` 明确为已知只读，脚本执行仍不安全；任何危险/未知批次保持零执行但由同 Agent 做一次无工具证据内回答；空流、单步超时和单次协议错误同样有界恢复；Web 财经整答缓冲且删除固定研究失败尾句；普通非金融问题不再被领域硬拒绝。既有财经首行与回答结构未改。
-  - 真实 `IMG_1348` Apple Vision 测试已读出 `CRWV`、`NBIS`、`ARM`、`MU`、持仓/现金等字段；Agent `135/135`、Channels `680/680`（1 个显式忽略的宿主 OCR 测试）、finance CI `43/43` 已通过。精确构建、重启和生产截图回放完成前保持 `Fixing`。
+  - 真实 `IMG_1348` Apple Vision 测试已读出 `CRWV`、`NBIS`、`ARM`、`MU`、持仓/现金等字段；用户本轮反馈截图也被真实 OCR 逐字读出。Agent `135/135`、Channels `680 passed`（1 个显式忽略的宿主 OCR 测试）、Web API `140 passed`（2 个凭证类测试忽略）、Web `294/294`、Edge `45/45`、finance CI `43/43` 与完整 workspace/CI-safe 门禁通过。
+  - 精确提交 `75ca1957` 已组装为 501 文件 immutable manifest，并在两次零活跃会话检查后替换生产 Web/Feishu。云 PG/OSS、端口和三层 auth 边界健康。生产 `美股为什么大跌`、普通 CPU 问题和真实 OCR 附件块回放均唯一成功终止、两行历史与 SSE 字节一致、无固定研究失败尾句；本缺陷关闭为 `Fixed`。
 - `data/sessions.sqlite3` -> `session_messages`；`data/runtime/logs/web.log.2026-07-23`
   - 巡检时间窗：2026-07-23 11:01-15:02 CST。
   - 11:44 CST Web direct session `Actor_web__direct__web-user-cb0c3ef59f8d`，用户上传 `IMG_1307.png` 并要求分析持仓；附件行显示 `分类=图片`、`类型=image/png`、`下载状态=成功`，且包含本地可读路径。
