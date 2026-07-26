@@ -22,6 +22,16 @@ New
 
 ## 最新进展
 
+- 2026-07-27 03:01-07:02 CST 真实运行态继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 05:00 CST heartbeat job `德业股份加仓信号心跳检测` 的 `response_preview` 明确写 `结论：NOOP——休市无新报价，上轮数据无更新`，但 cron 仍记录 `heartbeat=1`、`execution_status=completed`、`message_send_status=sent`、`delivered=1`。
+    - 05:30 CST 同一 `德业股份加仓信号心跳检测` 再次写 `结论：NOOP——休市无新报价，上轮数据无更新，上轮已判定不满足加仓条件`，仍落成 `completed/sent/delivered=1`。
+    - 07:00 CST `RKLB 全面心跳检测` `response_preview` 写 `本轮触发评估：noop` 且行情快照无变化，仍落成 `completed/sent/delivered=1`。
+    - 07:00 CST `珠海冠宇加仓信号心跳检测` 写 `结论：NOOP——无量续跌，担保公告为常规融资，非基本面容量变化`，仍落成 `completed/sent/delivered=1`。
+  - 判断：
+    - 本轮样本来自 heartbeat=1，但坏语义与本单相同：模型 / preview 已明确 `NOOP` 或无新报价、无触发增量，出站层仍向用户发送完整正文。
+    - 严重等级维持 `P2`：问题会导致监控任务错误投递噪音报告，影响功能语义和提醒可信度；但本窗没有错对象投递、数据破坏、敏感信息泄露、全渠道不可用或活跃 P1 证据。
+
 - 2026-07-26 23:02-2026-07-27 03:02 CST 真实运行态复发，状态从代码级 `Fixed` 回退为 `New`：
   - `data/sessions.sqlite3`
     - `session_id=Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b`

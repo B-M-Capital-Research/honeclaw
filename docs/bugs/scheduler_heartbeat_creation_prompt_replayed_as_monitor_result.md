@@ -18,6 +18,18 @@
 
 ## 修复进展
 
+- `2026-07-27 03:01-07:02 CST` 运行态复核确认同根继续复发，状态维持 `New`：
+  - `data/sessions.sqlite3` / `cron_job_runs`
+    - 03:30 CST `AAOI 全面心跳检测` 已作为 heartbeat job 周期触发，preview 却使用 `ASML 最新可得报价 $1,757.09` 并输出 ASML 公司介绍和持仓建议，没有执行 AAOI 监控判断。
+    - 05:00 CST `ASTS 全面心跳检测` 已作为 heartbeat job 周期触发，preview 却围绕 `RKLB 报价 $63.91`、200 日均线和加仓建议展开，任务主体从 ASTS 串到 RKLB。
+    - 06:00 / 06:30 CST `ASTS 全面心跳检测` preview 把当前消息解释成 ASTS 心跳监控契约 / 现有心跳状态确认，偏向配置说明，不是本轮 ASTS 事件监控结论。
+    - 06:30 CST `AAOI 全面心跳检测` preview 明确写“你发来的内容主体是一份心跳监控契约文本”，随后只抽取契约背景信息，没有稳定执行 AAOI 事件判断。
+  - 会话质量对照：
+    - 同窗普通 Feishu scheduler / direct 有 assistant 收口，未见全渠道停摆、错投、数据破坏或敏感信息泄露。
+  - 判断：
+    - 最新样本仍是已创建 heartbeat job 的执行期语义被系统契约、旧上下文、其它标的或任务配置说明污染，导致模型没有执行当前 job 的监控判断。
+    - 该问题影响 heartbeat 功能链路和信噪比，严重等级维持 `P2 / New`；未见全渠道停摆、跨用户错投、数据破坏或敏感信息泄露，因此不升级 P1，不创建 GitHub Issue。
+
 - `2026-07-26 23:02-2026-07-27 03:02 CST` 运行态复核确认同根继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-26` / `cron_job_runs`
     - 03:00 CST `AAOI 全面心跳检测` 已作为 heartbeat job 周期触发，deliver preview 却引用 `RKLB 报价 $63.91`，随后写“这不是一个新问题。你发来的内容主体是一份心跳监控契约”，没有执行 AAOI 监控判断。

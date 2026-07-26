@@ -22,6 +22,13 @@ New
 
 ## 最新进展
 
+- 2026-07-27 03:01-07:02 CST 运行态继续复发，状态维持 `New`：
+  - 03:01-07:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 18 条 user / 6 条 assistant / 6 条 system compact，覆盖 5 个更新 session；近期 Feishu scheduler 会话均有 assistant 收口。
+  - assistant final 污染扫描未命中空回复、`<think>`、本机路径、panic、provider 原始错误或 raw tool JSON；本轮命中的是 scheduler 用户可见内部 skill / 字段口径。
+  - 05:00 CST Feishu scheduler `科技成长赛道大盘极值与情绪监控` 正常收口，但 final 写出 `本轮触发 market_analysis 与 stock_research 技能，先读取 ARKK 报价`，把内部 skill 名和执行过程作为用户态说明。
+  - 05:32 CST Feishu scheduler `美股收盘后跨市场复盘` 正常收口，但 final 写出 `来自本轮 quote 字段`，继续把内部字段名作为行情口径。
+  - 这些消息业务主体已完成并送达，没有投递失败、空回复、错投、原始工具 JSON 或数据安全证据；问题仍只影响用户可见来源 / 工具口径边界和产品感，不影响主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-07-26 11:02 CST 运行态继续复发，状态维持 `New`：
   - 07:02-11:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 24 条 user / 19 条 assistant / 4 条 system compact，覆盖 12 个更新 session；ordinary assistant final 未见空回复、`<think>`、本机路径、panic、provider 原始错误或 raw tool JSON 正文外泄。
   - 09:00 CST Feishu scheduler `核心观察池早间简报` 正常收口，但 final 开头写出 `数据来自 hone_quote_time.beijing 04:00-04:02`，继续把内部行情时间字段作为用户态来源 / 执行口径。
