@@ -11,11 +11,7 @@ import "@/pages/public-site.css";
 import "@/pages/public-agent-workspace.css";
 import "@/pages/public-workspace.css";
 
-export type PublicWorkspaceSection =
-  | "invest"
-  | "insights"
-  | "tracking"
-  | "me";
+export type PublicWorkspaceSection = "insights" | "me";
 
 export function PublicWorkspaceShell(
   props: ParentProps<{
@@ -45,7 +41,6 @@ export function PublicWorkspaceShell(
         onNewResearch={goAgent}
         onSelectResearch={goAgent}
         onHome={goAgent}
-        onInvest={() => navigate("/invest")}
         onInsights={() => navigate("/community")}
         onAccount={() => navigate("/me")}
         onLogout={() => navigate("/me")}
@@ -73,7 +68,6 @@ export function PublicWorkspaceShell(
         activeSection={props.active}
         communityUnread={props.communityUnread ?? false}
         onHome={goAgent}
-        onInvest={() => navigate("/invest")}
         onInsights={() => navigate("/community")}
         onAgent={goAgent}
         onAccount={() => navigate("/me")}

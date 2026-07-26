@@ -827,6 +827,8 @@ mod tests {
                 holding_horizon: None,
                 strategy_notes: None,
                 notes: None,
+                weight: None,
+                name: None,
                 tracking_only: None,
             },
             Holding {
@@ -842,6 +844,8 @@ mod tests {
                 holding_horizon: None,
                 strategy_notes: None,
                 notes: None,
+                weight: None,
+                name: None,
                 tracking_only: Some(true),
             },
             Holding {
@@ -857,6 +861,8 @@ mod tests {
                 holding_horizon: None,
                 strategy_notes: None,
                 notes: None,
+                weight: None,
+                name: None,
                 tracking_only: Some(true),
             },
         ];

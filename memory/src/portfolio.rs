@@ -75,11 +75,66 @@ pub struct Holding {
     pub strategy_notes: Option<String>,
     #[serde(default)]
     pub notes: Option<String>,
+    /// 仓位占比(%)。用户端 2026-07 起以比例而非股数管理持仓：新写入直接给
+    /// `weight`；历史数据只有 `shares`/`avg_cost` 时由 [`holdings_with_weights`]
+    /// 按成本市值折算，不改动原始字段。`None` = 未设置(自选或待折算)。
+    #[serde(default, alias = "weight_pct", skip_serializing_if = "Option::is_none")]
+    pub weight: Option<f64>,
+    /// 公司名称，便于前端在列表里展示中文/英文名而不是只有代码。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     /// 关注标的标记：`Some(true)` → 仅关注(无持仓,shares/avg_cost 约定为 0)；
     /// `None` / `Some(false)` → 真实持仓。
     /// 下游若要按持仓真实市值/股数聚合,应显式 `filter(|h| !h.tracking_only.unwrap_or(false))`。
     #[serde(default, skip_serializing_if = "is_false_or_none")]
     pub tracking_only: Option<bool>,
+}
+
+/// 持仓列表的有效仓位占比(%)。
+///
+/// 优先取显式 `weight`；剩余没有 `weight` 的真实持仓按成本市值
+/// (`shares * avg_cost`) 在**这部分持仓**内折算，并让两部分之和不超过 100%：
+/// 已显式声明的占比先扣掉，剩余额度再按成本比例分配。自选(tracking_only)
+/// 与成本为 0 的条目返回 `None`，前端按「自选」展示。
+pub fn holdings_with_weights(holdings: &[Holding]) -> Vec<Option<f64>> {
+    let is_position = |h: &Holding| !h.tracking_only.unwrap_or(false);
+    let explicit_total: f64 = holdings
+        .iter()
+        .filter(|h| is_position(h))
+        .filter_map(|h| h.weight)
+        .filter(|w| w.is_finite() && *w > 0.0)
+        .sum();
+    let derived_basis: f64 = holdings
+        .iter()
+        .filter(|h| is_position(h) && h.weight.is_none())
+        .map(|h| (h.shares * h.avg_cost).max(0.0))
+        .filter(|value| value.is_finite())
+        .sum();
+    // 显式占比已占满时不再给折算项分配额度，避免总和超过 100%。
+    let remaining = (100.0 - explicit_total).max(0.0);
+
+    holdings
+        .iter()
+        .map(|holding| {
+            if !is_position(holding) {
+                return None;
+            }
+            if let Some(weight) = holding.weight
+                && weight.is_finite()
+                && weight > 0.0
+            {
+                return Some(weight);
+            }
+            if derived_basis <= 0.0 || remaining <= 0.0 {
+                return None;
+            }
+            let basis = (holding.shares * holding.avg_cost).max(0.0);
+            if !basis.is_finite() || basis <= 0.0 {
+                return None;
+            }
+            Some(basis / derived_basis * remaining)
+        })
+        .collect()
 }
 
 fn default_asset_type() -> String {
@@ -371,6 +426,8 @@ impl PortfolioStorage {
                 holding_horizon: None,
                 strategy_notes: None,
                 notes: None,
+                weight: None,
+                name: None,
                 tracking_only: Some(true),
             });
             portfolio.updated_at = chrono::Utc::now().to_rfc3339();
@@ -510,6 +567,8 @@ mod tests {
                 holding_horizon: Some(HOLDING_HORIZON_LONG_TERM.to_string()),
                 strategy_notes: Some("核心仓位".to_string()),
                 notes: Some("long term".to_string()),
+                weight: None,
+                name: None,
                 tracking_only: None,
             }],
             updated_at: chrono::Utc::now().to_rfc3339(),
@@ -555,6 +614,8 @@ mod tests {
                     holding_horizon: Some(HOLDING_HORIZON_LONG_TERM.to_string()),
                     strategy_notes: Some("逢跌加仓".to_string()),
                     notes: Some("long".to_string()),
+                    weight: None,
+                    name: None,
                     tracking_only: None,
                 },
             )
@@ -577,6 +638,8 @@ mod tests {
                     holding_horizon: Some(HOLDING_HORIZON_SHORT_TERM.to_string()),
                     strategy_notes: Some("事件驱动".to_string()),
                     notes: None,
+                    weight: None,
+                    name: None,
                     tracking_only: None,
                 },
             )
@@ -623,6 +686,8 @@ mod tests {
                     holding_horizon: None,
                     strategy_notes: None,
                     notes: None,
+                    weight: None,
+                    name: None,
                     tracking_only: None,
                 },
             )
@@ -643,6 +708,8 @@ mod tests {
                     holding_horizon: None,
                     strategy_notes: None,
                     notes: None,
+                    weight: None,
+                    name: None,
                     tracking_only: None,
                 },
             )
@@ -683,6 +750,8 @@ mod tests {
                     holding_horizon: Some(HOLDING_HORIZON_SHORT_TERM.to_string()),
                     strategy_notes: Some("卖波动率".to_string()),
                     notes: Some("swing trade".to_string()),
+                    weight: None,
+                    name: None,
                     tracking_only: None,
                 },
             )
@@ -729,6 +798,8 @@ mod tests {
                     holding_horizon: Some(HOLDING_HORIZON_SHORT_TERM.to_string()),
                     strategy_notes: Some("现金担保卖沽，权利金净流入".to_string()),
                     notes: Some("credit position".to_string()),
+                    weight: None,
+                    name: None,
                     tracking_only: None,
                 },
             )

@@ -15,7 +15,7 @@ import {
 } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import { Portal } from "solid-js/web";
-import { useNavigate } from "@solidjs/router";
+import { useNavigate, useSearchParams } from "@solidjs/router";
 import { PublicLoginForm } from "@/components/public-login-form";
 import { PublicNav } from "@/components/public-nav";
 import { ChatShareModal } from "@/components/chat-share-modal";
@@ -23,8 +23,6 @@ import {
   AgentWorkspaceHistoryDrawer,
   AgentWorkspaceMobileHeader,
   AgentWorkspaceMobileNav,
-  AgentWorkspaceOverview,
-  AgentWorkspaceRightRail,
   AgentWorkspaceSidebar,
   AgentWorkspaceTopbar,
 } from "@/components/public-agent-workspace";
@@ -118,10 +116,7 @@ import {
 } from "@/lib/public-chat";
 import { parseSseChunks } from "@/lib/stream";
 import {
-  calendarToWorkspaceEvents,
-  communityToWorkspaceInsights,
   daySeparatorLabel,
-  workspaceGreeting,
   workspaceUserName,
 } from "@/lib/public-agent-workspace";
 import type {
@@ -2371,11 +2366,7 @@ export default function PublicChatPage() {
   const [pushDetailError, setPushDetailError] = createSignal<string>();
   const [pushDetail, setPushDetail] = createSignal<PublicPushDetail>();
   const [communityUnread, setCommunityUnread] = createSignal(false);
-  const [workspaceMode, setWorkspaceMode] = createSignal<
-    "overview" | "conversation"
-  >("conversation");
   const [historyDrawerOpen, setHistoryDrawerOpen] = createSignal(false);
-  const [workspaceSearch, setWorkspaceSearch] = createSignal("");
   const [workspaceCommunity, setWorkspaceCommunity] = createSignal<
     PublicCommunityContent[]
   >([]);
@@ -2492,20 +2483,8 @@ export default function PublicChatPage() {
         CONTENT.chat_page.sidebar.history_attachment,
     })),
   );
-  const workspaceInsights = createMemo(() =>
-    communityToWorkspaceInsights(workspaceCommunity()),
-  );
-  const workspaceEvents = createMemo(() => {
-    const calendar = workspaceCalendar();
-    return calendar
-      ? calendarToWorkspaceEvents(calendar.events, calendar.today)
-      : [];
-  });
   const workspaceDisplayName = createMemo(() =>
     workspaceUserName(currentUser()?.user_id ?? ""),
-  );
-  const workspaceGreetingText = createMemo(() =>
-    workspaceGreeting(new Date().getHours(), workspaceDisplayName()),
   );
   const hasOlderMessages = () => historyNextBefore() !== undefined;
   const pendingAssistantMessage = createMemo(() => {
@@ -2519,7 +2498,6 @@ export default function PublicChatPage() {
     });
 
   createEffect(() => {
-    workspaceMode();
     const ready = authState() === "ready";
     const messageCount = messages.length;
     if (!ready || messageCount === 0 || !initialBottomPending) return;
@@ -2750,7 +2728,6 @@ export default function PublicChatPage() {
   // When the inner messages content grows (streaming, new message), keep the
   // viewport glued to the bottom unless the user has explicitly scrolled away.
   createEffect(() => {
-    workspaceMode();
     if (!messagesInnerRef || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(() => {
       if (stickToBottom) scrollToBottom();
@@ -2789,23 +2766,28 @@ export default function PublicChatPage() {
     });
   };
 
-  const beginWorkspacePrompt = (prompt: string) => {
-    setDraft(prompt);
+  /* 从「我的 · 持仓」等入口跳来时用 ?q= 预填提问，填好后立即从地址栏擦掉，
+     免得刷新或分享链接又把同一句问题灌回输入框。 */
+  const [searchParams, setSearchParams] = useSearchParams();
+  createEffect(() => {
+    const prefill = searchParams.q;
+    if (typeof prefill !== "string" || !prefill.trim()) return;
+    setDraft(prefill);
+    setSearchParams({ q: undefined }, { replace: true });
+    focusWorkspaceComposer();
+  });
+
+  /* 「新对话」：清空草稿、回到最新消息并聚焦输入框。后端目前是单会话模型，
+     这里不新建 session，只把界面复位到「可以开始问」的状态。 */
+  const startNewConversation = () => {
+    setDraft("");
+    settleAtBottom();
     focusWorkspaceComposer();
   };
 
   const openWorkspaceResearch = (id: string) => {
     setHistoryDrawerOpen(false);
-    setWorkspaceMode("conversation");
     requestAnimationFrame(() => scrollToMessage(id));
-  };
-
-  const openWorkspaceTracking = () => {
-    setTrackingOpenRequest((request) => request + 1);
-  };
-
-  const openWorkspaceCalendar = () => {
-    setCalendarOpenRequest((request) => request + 1);
   };
 
   const clearRestoreRetry = () => {
@@ -2901,7 +2883,6 @@ export default function PublicChatPage() {
         setAuthState("ready");
         setRestoreStatus(null);
         if (options.resetWindow) {
-          setWorkspaceMode(merged.messages.length > 0 ? "conversation" : "overview");
         }
       });
       void refreshCommunityUnread();
@@ -3212,7 +3193,6 @@ export default function PublicChatPage() {
     restoreController?.abort();
     clearRestoreRetry();
 
-    setWorkspaceMode("conversation");
     const assistantId = messageId();
     setDraft("");
     setIsSending(true);
@@ -3513,28 +3493,25 @@ export default function PublicChatPage() {
                 <AgentWorkspaceSidebar
                   userName={workspaceDisplayName()}
                   research={workspaceResearch()}
-                  activeMode={workspaceMode()}
+                  activeMode="conversation"
                   activeSection="agent"
                   communityUnread={communityUnread()}
                   hasOlder={hasOlderMessages()}
                   loadingOlder={loadingOlderMessages()}
                   onLoadOlder={() => void loadOlderMessages()}
-                  onNewResearch={() => {
-                    setWorkspaceMode("overview");
-                    setDraft("");
-                  }}
+                  onNewResearch={startNewConversation}
                   onSelectResearch={openWorkspaceResearch}
-                  onHome={() => setWorkspaceMode("overview")}
-                  onInvest={() => navigate("/invest")}
+                  onHome={startNewConversation}
                   onInsights={() => navigate("/community")}
                   onAccount={() => navigate("/me")}
                   onLogout={logoutPublicChat}
                 />
                 <div class="agent-workspace-stage">
                   <AgentWorkspaceTopbar
-                    query={workspaceSearch()}
+                    query=""
                     unreadPushCount={pushUnreadCount()}
-                    onQueryChange={setWorkspaceSearch}
+                    showSearch={false}
+                    onQueryChange={() => {}}
                     onPushes={openPushCenter}
                   />
                   <AgentWorkspaceMobileHeader
@@ -3552,7 +3529,7 @@ export default function PublicChatPage() {
                   </Show>
                   <div class="agent-workspace-body">
                     <div
-                      class={`public-chat-shell ${workspaceMode() === "overview" ? "is-overview" : "is-conversation"}`}
+                      class="public-chat-shell is-conversation"
                       style={{
                         flex: "1",
                         display: "flex",
@@ -3562,10 +3539,7 @@ export default function PublicChatPage() {
                         overflow: "hidden",
                       }}
                     >
-                      <Show
-                        when={workspaceMode() === "overview"}
-                        fallback={
-                          <div
+                      <div
                             ref={scrollRef}
                             class="public-chat-messages"
                             onScroll={handleMessagesScroll}
@@ -3610,24 +3584,8 @@ export default function PublicChatPage() {
                               </For>
                             </div>
                           </div>
-                        }
-                      >
-                        <div class="agent-workspace-overview-scroll">
-                          <AgentWorkspaceOverview
-                            greeting={workspaceGreetingText()}
-                            insights={workspaceInsights()}
-                            events={workspaceEvents()}
-                            insightCount={workspaceInsights().length}
-                            searchQuery={workspaceSearch()}
-                            onPrompt={beginWorkspacePrompt}
-                            onTracking={() => navigate("/portfolio")}
-                            onInsights={() => navigate("/community")}
-                            onCalendar={openWorkspaceCalendar}
-                          />
-                        </div>
-                      </Show>
                       <div class="public-chat-composer-dock" style={{ position: "relative" }}>
-                        <Show when={workspaceMode() === "conversation" && awayFromBottom()}>
+                        <Show when={awayFromBottom()}>
                           <button type="button" class="public-chat-scroll-down" aria-label={CONTENT.chat_page.actions.scroll_to_bottom_aria} title={CONTENT.chat_page.actions.scroll_to_bottom_aria} onClick={settleAtBottom}>
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M19 12l-7 7-7-7" /></svg>
                           </button>
@@ -3660,22 +3618,15 @@ export default function PublicChatPage() {
                         <p class="public-chat-disclaimer">HONE 可能出错。内容仅供研究参考，不构成投资建议。</p>
                       </div>
                     </div>
-                    <AgentWorkspaceRightRail
-                      events={workspaceEvents()}
-                      research={workspaceResearch()}
-                      onCalendar={openWorkspaceCalendar}
-                      onSelectResearch={openWorkspaceResearch}
-                    />
                   </div>
                 </div>
                 <AgentWorkspaceMobileNav
-                  activeMode={workspaceMode()}
+                  activeMode="conversation"
                   activeSection="agent"
                   communityUnread={communityUnread()}
-                  onHome={() => setWorkspaceMode("overview")}
-                  onInvest={() => navigate("/invest")}
+                  onHome={startNewConversation}
                   onInsights={() => navigate("/community")}
-                  onAgent={() => setWorkspaceMode("overview")}
+                  onAgent={startNewConversation}
                   onAccount={() => navigate("/me")}
                 />
                 <AgentWorkspaceHistoryDrawer
@@ -3691,14 +3642,12 @@ export default function PublicChatPage() {
                   onLoadOlder={() => void loadOlderMessages()}
                   onNewResearch={() => {
                     setHistoryDrawerOpen(false);
-                    setWorkspaceMode("overview");
-                    setDraft("");
+                    startNewConversation();
                   }}
                   onHome={() => {
                     setHistoryDrawerOpen(false);
-                    setWorkspaceMode("overview");
+                    startNewConversation();
                   }}
-                  onInvest={() => navigate("/invest")}
                   onInsights={() => navigate("/community")}
                   onAccount={() => navigate("/me")}
                 />

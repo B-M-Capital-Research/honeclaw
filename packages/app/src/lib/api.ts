@@ -407,6 +407,96 @@ export async function getPublicQuotes(): Promise<PublicQuotesResponse> {
   return parseJson<PublicQuotesResponse>(response);
 }
 
+// ── 我的：自选与持仓 ───────────────────────────────────────────────────────
+
+export type PublicHolding = {
+  symbol: string;
+  name?: string | null;
+  /** 仓位占比(%)，自选条目为 null。 */
+  weight?: number | null;
+  avg_cost?: number | null;
+  notes?: string | null;
+  tracking_only: boolean;
+};
+
+export type PublicPortfolioResponse = {
+  holdings: PublicHolding[];
+  limit: number;
+};
+
+export type PublicHoldingInput = {
+  symbol: string;
+  name?: string;
+  weight?: number;
+  avg_cost?: number;
+};
+
+export async function getPublicPortfolio(): Promise<PublicPortfolioResponse> {
+  const response = await apiFetch("/api/public/portfolio");
+  return parseJson<PublicPortfolioResponse>(response);
+}
+
+export async function createPublicHolding(
+  input: PublicHoldingInput,
+): Promise<PublicPortfolioResponse> {
+  const response = await apiFetch("/api/public/portfolio/holdings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return parseJson<PublicPortfolioResponse>(response);
+}
+
+export async function updatePublicHolding(
+  symbol: string,
+  input: PublicHoldingInput,
+): Promise<PublicPortfolioResponse> {
+  const response = await apiFetch(
+    `/api/public/portfolio/holdings/${encodeURIComponent(symbol)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+  return parseJson<PublicPortfolioResponse>(response);
+}
+
+export async function deletePublicHolding(
+  symbol: string,
+): Promise<PublicPortfolioResponse> {
+  const response = await apiFetch(
+    `/api/public/portfolio/holdings/${encodeURIComponent(symbol)}`,
+    { method: "DELETE" },
+  );
+  return parseJson<PublicPortfolioResponse>(response);
+}
+
+// ── 我的：设置 ────────────────────────────────────────────────────────────
+
+export type PublicSettings = {
+  style: string | null;
+  distilled_style: string | null;
+  user_edited: boolean;
+  last_distilled_at?: string | null;
+};
+
+export async function getPublicSettings(): Promise<PublicSettings> {
+  const response = await apiFetch("/api/public/settings");
+  return parseJson<PublicSettings>(response);
+}
+
+export async function putPublicInvestorStyle(
+  style: string,
+): Promise<PublicSettings> {
+  const response = await apiFetch("/api/public/settings/investor-style", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ style }),
+  });
+  return parseJson<PublicSettings>(response);
+}
+
 // ── Admin: mainline context for any actor ─────────────────────────────────
 
 export type AdminMainlineContext = DigestContext & {

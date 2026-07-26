@@ -3,6 +3,8 @@ import { useNavigate } from "@solidjs/router";
 import { PublicChatStartup } from "@/components/public-chat-startup";
 import { PublicLoginForm } from "@/components/public-login-form";
 import { PublicWorkspaceShell } from "@/components/public-workspace-shell";
+import { PublicHoldingsPanel } from "@/components/public-holdings-panel";
+import { PublicSettingsPanel } from "@/components/public-settings-panel";
 import { getPublicAuthMe, publicLogout } from "@/lib/api";
 import { workspaceUserName } from "@/lib/public-agent-workspace";
 import type { PublicAuthUserInfo } from "@/lib/types";
@@ -84,9 +86,11 @@ function AccountView(props: {
           <div>
             <span class="public-workspace-eyebrow">个人研究空间</span>
             <h1>我的</h1>
-            <p>管理你的 HONE 账户与研究入口。持仓、社区和会话数据仍由各自的安全存储维护。</p>
+            <p>自选与持仓、投资画像风格、账户信息都在这里管理。</p>
           </div>
         </header>
+        <PublicHoldingsPanel />
+        <PublicSettingsPanel />
         <MembershipCard />
         <div class="public-account-grid">
           <section class="public-workspace-panel public-account-card">
@@ -99,7 +103,6 @@ function AccountView(props: {
           <section>
             <div class="public-account-actions">
               <button type="button" class="is-primary" onClick={() => navigate("/chat")}>进入 Agent</button>
-              <button type="button" onClick={() => navigate("/portfolio")}>查看跟踪与财经日历</button>
               <button type="button" onClick={() => navigate("/community")}>去社区看看</button>
               <button type="button" class="is-danger" onClick={props.onLogout}>退出登录</button>
             </div>

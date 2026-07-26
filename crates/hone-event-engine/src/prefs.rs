@@ -103,6 +103,11 @@ pub struct NotificationPrefs {
     /// LLM 会按此风格剔除用户视角下的噪音。`None` → 走 baseline 排序,不做风格过滤。
     #[serde(alias = "investment_global_style")]
     pub mainline_style: Option<String>,
+    /// 用户在「我的 · 设置」里手写的投资风格。存在时**优先于**系统蒸馏出来的
+    /// `mainline_style`（见 [`NotificationPrefs::effective_mainline_style`]），
+    /// 且后台蒸馏不会覆盖它 —— 用户显式表达的偏好不该被自动流程改写。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mainline_style_user: Option<String>,
     /// 每个 ticker 的投资主线。LLM 在 personalize 时按此重排:印证主线的优先,
     /// 证伪保留并标注,主线视角下的噪音剔除。例如 `MU → "看 NAND/DRAM 长期
     /// 稀缺性,噪音是估值过热/单日大涨大跌"`。`None` / 空 map → 不做 per-ticker 重排。
@@ -152,6 +157,7 @@ impl Default for NotificationPrefs {
             price_high_pct_down_override: None,
             large_position_weight_pct: None,
             mainline_style: None,
+            mainline_style_user: None,
             mainline_by_ticker: None,
             last_mainline_distilled_at: None,
             mainline_distill_skipped: Vec::new(),
@@ -161,6 +167,20 @@ impl Default for NotificationPrefs {
 }
 
 impl NotificationPrefs {
+    /// 个性化推送实际使用的投资风格：用户手写的优先，其次是系统蒸馏的。
+    pub fn effective_mainline_style(&self) -> Option<&str> {
+        self.mainline_style_user
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .or_else(|| {
+                self.mainline_style
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+            })
+    }
+
     /// 按偏好判断是否应推送该事件。
     pub fn should_deliver(&self, event: &MarketEvent) -> bool {
         if !self.enabled {
@@ -641,6 +661,7 @@ mod tests {
             price_high_pct_down_override: Some(5.0),
             large_position_weight_pct: Some(20.0),
             mainline_style: Some("长期叙事派".into()),
+            mainline_style_user: None,
             mainline_by_ticker: Some({
                 let mut mainlines_by_ticker = HashMap::new();
                 mainlines_by_ticker.insert("AAPL".into(), "看现金流 + 回购".into());

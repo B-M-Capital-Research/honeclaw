@@ -27,10 +27,8 @@ const PublicBlogPostPage = lazy(() => import("@/pages/public-blog-post"))
 const PublicSiteMePage = lazy(() => import("@/pages/public-me"))
 const PublicSiteTermsPage = lazy(() => import("@/pages/public-terms"))
 const PublicSitePrivacyPage = lazy(() => import("@/pages/public-privacy"))
-const PublicSitePortfolioPage = lazy(() => import("@/pages/public-portfolio"))
 const PublicCommunityPage = lazy(() => import("@/pages/public-community"))
 const SharePreviewPage = lazy(() => import("@/pages/__share-preview"))
-const PublicSiteInvestPage = lazy(() => import("@/pages/public-invest"))
 const DashboardPage = lazy(() => import("@/pages/dashboard"))
 const SessionsPage = lazy(() => import("@/pages/sessions"))
 const SkillsPage = lazy(() => import("@/pages/skills"))
@@ -123,8 +121,9 @@ function PublicSurface() {
             <Route path="/blog" component={PublicBlogPage} />
             <Route path="/blog/:slug" component={PublicBlogPostPage} />
             <Route path="/me" component={PublicSiteMePage} />
-            <Route path="/portfolio" component={PublicSitePortfolioPage} />
-            <Route path="/invest" component={PublicSiteInvestPage} />
+            {/* 投资与跟踪已并入「我的」，旧链接保留跳转 */}
+            <Route path="/portfolio" component={() => <Navigate href="/me" />} />
+            <Route path="/invest" component={() => <Navigate href="/me" />} />
             <Route path="/community" component={PublicCommunityPage} />
             <Route path="/terms" component={PublicSiteTermsPage} />
             <Route path="/privacy" component={PublicSitePrivacyPage} />

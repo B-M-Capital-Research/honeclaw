@@ -19,16 +19,14 @@ const workspaceCss = readFileSync(
 describe("public chat visual contract", () => {
   it("uses one responsive Agent workspace with real product destinations", () => {
     expect(chat).toContain("<AgentWorkspaceSidebar");
-    expect(chat).toContain("<AgentWorkspaceRightRail");
     expect(chat).toContain("<AgentWorkspaceMobileNav");
-    expect(chat).toContain('onInvest={() => navigate("/invest")}');
     expect(chat).toContain('onInsights={() => navigate("/community")}');
-    expect(workspace).toContain("今日研究线索");
-    expect(workspace).toContain("重要事件");
-    expect(workspaceCss).toContain(
-      "grid-template-columns: minmax(520px, 1fr) 270px",
-    );
-    expect(workspaceCss).toContain("grid-template-columns: repeat(5,1fr)");
+    // 三项导航：Agent / 洞察 / 我的
+    expect(workspace).toContain("<span>Agent</span>");
+    expect(workspace).toContain("<span>洞察</span>");
+    expect(workspace).toContain("<span>我的</span>");
+    expect(workspaceCss).toContain("grid-template-columns: minmax(0, 1fr)");
+    expect(workspaceCss).toContain("grid-template-columns: repeat(3,1fr)");
     expect(workspaceCss).toContain("env(safe-area-inset-bottom, 0px)");
   });
 
@@ -67,8 +65,8 @@ describe("public chat visual contract", () => {
     expect(workspaceCss).toContain("--agent-mobile-composer-gap: 4px");
     expect(workspaceCss).toContain("grid-template-rows: 30px 14px");
     expect(workspaceCss).toContain("grid-row: 2");
-    expect(workspaceCss).toContain("width: 42px; height: 42px");
-    expect(workspaceCss).toContain("position: absolute; top: -7px");
+    // 三项导航后不再有中间凸起的 Agent 悬浮按钮
+    expect(workspaceCss).not.toContain("button.is-agent");
     expect(workspaceCss).toContain(
       ".public-chat-page--ready { --agent-mobile-safe-bottom: 0px; }",
     );
@@ -83,8 +81,9 @@ describe("public chat visual contract", () => {
 
   it("restores inside the chat shell and exposes mobile conversation history", () => {
     expect(chat).not.toContain('<Match when={authState() === "loading"}>');
-    expect(chat).toContain('>("conversation")');
-    expect(chat).toContain("merged.messages.length > 0 ? \"conversation\" : \"overview\"");
+    // Agent 页只有对话视图，不再有 overview 分支
+    expect(chat).not.toContain("AgentWorkspaceOverview");
+    expect(chat).toContain('class="public-chat-shell is-conversation"');
     expect(chat).toContain("<AgentWorkspaceHistoryDrawer");
     expect(workspace).toContain('aria-label="会话历史"');
     expect(workspaceCss).toContain("agent-workspace-history-drawer");
@@ -139,7 +138,7 @@ describe("public chat visual contract", () => {
     );
     expect(workspaceCss).toContain("height: 100% !important; max-height: 100%");
     expect(workspaceCss).toContain(
-      ".agent-workspace-body { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(520px, 1fr) 270px; overflow: hidden; }",
+      ".agent-workspace-body { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr); overflow: hidden; }",
     );
   });
 });

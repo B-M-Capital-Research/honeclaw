@@ -394,7 +394,7 @@ impl UnifiedDigestScheduler {
                 {
                     let cache = global_cache.as_ref().unwrap();
                     let mainline = UserMainline {
-                        style: user_prefs.mainline_style.as_deref(),
+                        style: user_prefs.effective_mainline_style(),
                         by_ticker: user_prefs.mainline_by_ticker.as_ref(),
                     };
                     let floor_macro = slot.floor_macro.unwrap_or(DEFAULT_FLOOR_MACRO_PICKS);

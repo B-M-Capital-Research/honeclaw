@@ -93,6 +93,98 @@ pub(crate) struct ProfileQuery {
     pub ticker: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub(crate) struct InvestorStyleRequest {
+    pub style: Option<String>,
+}
+
+/// GET /api/public/settings — 用户可见 / 可编辑的偏好。
+///
+/// `style` 是当前生效值（用户手写优先），`distilled_style` 是系统从公司画像
+/// 蒸馏出来的版本，供前端展示「系统建议」与「恢复默认」。
+pub(crate) async fn handle_get_settings(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Response {
+    let actor = match require_public_actor(&state, &headers) {
+        Ok(actor) => actor,
+        Err(response) => return response,
+    };
+    let prefs_storage = match hone_event_engine::prefs::FilePrefsStorage::new(
+        &state.core.config.storage.notif_prefs_dir,
+    ) {
+        Ok(storage) => storage,
+        Err(error) => {
+            return json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("打开 prefs 失败: {error}"),
+            );
+        }
+    };
+    use hone_event_engine::prefs::PrefsProvider;
+    let prefs = prefs_storage.load(&actor);
+    Json(json!({
+        "style": prefs.effective_mainline_style(),
+        "distilled_style": prefs.mainline_style,
+        "user_edited": prefs.mainline_style_user.is_some(),
+        "last_distilled_at": prefs.last_mainline_distilled_at,
+    }))
+    .into_response()
+}
+
+/// PUT /api/public/settings/investor-style — 保存或清空用户手写的投资风格。
+///
+/// 传空字符串 = 恢复使用系统蒸馏结果。
+pub(crate) async fn handle_put_investor_style(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(request): Json<InvestorStyleRequest>,
+) -> Response {
+    let actor = match require_public_actor(&state, &headers) {
+        Ok(actor) => actor,
+        Err(response) => return response,
+    };
+    let style = request
+        .style
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    if let Some(value) = style.as_deref()
+        && value.chars().count() > 600
+    {
+        return json_error(StatusCode::BAD_REQUEST, "投资风格描述请控制在 600 字以内");
+    }
+
+    let prefs_storage = match hone_event_engine::prefs::FilePrefsStorage::new(
+        &state.core.config.storage.notif_prefs_dir,
+    ) {
+        Ok(storage) => storage,
+        Err(error) => {
+            return json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("打开 prefs 失败: {error}"),
+            );
+        }
+    };
+    use hone_event_engine::prefs::PrefsProvider;
+    let mut prefs = prefs_storage.load(&actor);
+    prefs.mainline_style_user = style;
+    if let Err(error) = prefs_storage.save(&actor, &prefs) {
+        return json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("保存偏好失败: {error}"),
+        );
+    }
+    Json(json!({
+        "ok": true,
+        "style": prefs.effective_mainline_style(),
+        "distilled_style": prefs.mainline_style,
+        "user_edited": prefs.mainline_style_user.is_some(),
+    }))
+    .into_response()
+}
+
 /// GET /api/public/company-profile?ticker=XXX
 pub(crate) async fn handle_get_company_profile(
     State(state): State<Arc<AppState>>,

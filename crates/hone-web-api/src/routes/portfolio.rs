@@ -141,6 +141,8 @@ pub(crate) async fn handle_create_holding(
             holding_horizon: normalize_optional_holding_horizon(req.holding_horizon),
             strategy_notes: normalize_optional_string(req.strategy_notes),
             notes: normalize_optional_string(req.notes),
+            weight: None,
+            name: None,
             tracking_only: if req.tracking_only.unwrap_or(false) {
                 Some(true)
             } else {
@@ -234,6 +236,8 @@ pub(crate) async fn handle_update_holding(
             holding_horizon: normalize_optional_holding_horizon(holding_horizon),
             strategy_notes: normalize_optional_string(strategy_notes),
             notes: normalize_optional_string(notes),
+            weight: existing_holding.weight,
+            name: existing_holding.name,
             tracking_only,
         },
     ) {
@@ -454,6 +458,8 @@ mod tests {
             holding_horizon: Some(HOLDING_HORIZON_SHORT_TERM.to_string()),
             strategy_notes: Some("期权指派后遗留成本".to_string()),
             notes: Some("existing".to_string()),
+            weight: None,
+            name: None,
             tracking_only: None,
         };
 
@@ -526,6 +532,8 @@ mod tests {
                     holding_horizon: None,
                     strategy_notes: None,
                     notes: None,
+                    weight: None,
+                    name: None,
                     tracking_only: None,
                 },
                 Holding {
@@ -541,6 +549,8 @@ mod tests {
                     holding_horizon: None,
                     strategy_notes: None,
                     notes: None,
+                    weight: None,
+                    name: None,
                     tracking_only: Some(true),
                 },
                 Holding {
@@ -556,6 +566,8 @@ mod tests {
                     holding_horizon: None,
                     strategy_notes: None,
                     notes: None,
+                    weight: None,
+                    name: None,
                     tracking_only: None,
                 },
             ],

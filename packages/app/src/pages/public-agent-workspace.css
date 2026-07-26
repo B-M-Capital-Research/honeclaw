@@ -109,7 +109,7 @@
 .agent-workspace-topbar input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 11px; color: var(--agent-ink); }
 .agent-workspace-topbar-actions > button { width: 34px; height: 34px; display: grid; place-items: center; position: relative; border: 1px solid var(--agent-line); border-radius: 10px; background: #fff; color: #4d514d; cursor: pointer; }
 .agent-workspace-topbar-actions > button i { width: 6px; height: 6px; position: absolute; top: 6px; right: 6px; border: 1px solid #fff; border-radius: 50%; background: #f04f3d; }
-.agent-workspace-body { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(520px, 1fr) 270px; overflow: hidden; }
+.agent-workspace-body { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr); overflow: hidden; }
 .public-chat-page.public-chat-page--ready .agent-workspace-body > .public-chat-shell { width: 100%; height: 100% !important; max-height: 100%; min-width: 0; min-height: 0; overflow: hidden; padding: 0 !important; background: #fff !important; }
 .public-chat-page--ready .public-chat-shell.is-overview { display: flex; flex-direction: column; }
 .agent-workspace-overview-scroll { min-height: 0; flex: 1; overflow: auto; }
@@ -179,7 +179,6 @@
 
 @media (max-width: 1100px) {
   .agent-workspace-sidebar { width: 210px; flex-basis: 210px; }
-  .agent-workspace-body { grid-template-columns: minmax(500px, 1fr) 235px; }
   .agent-workspace-overview { width: calc(100% - 34px); }
 }
 
@@ -229,14 +228,11 @@
   .agent-workspace-drawer-user strong { font-size: 13px; }
   .agent-workspace-drawer-user small { margin-top: 2px; color: #9a9d98; font-size: 10px; }
   .agent-workspace-restore-notice { width: calc(100% - 28px); top: calc(70px + env(safe-area-inset-top, 0px)); justify-content: space-between; }
-  .agent-workspace-mobile-nav { height: calc(var(--agent-mobile-nav-height) + var(--agent-mobile-safe-bottom)); display: grid; grid-template-columns: repeat(5,1fr); align-items: start; padding: 1px 8px var(--agent-mobile-safe-bottom); position: fixed; z-index: 50; right: 0; bottom: 0; left: 0; border-top: 1px solid #e7e9e6; background: #fff; }
+  .agent-workspace-mobile-nav { height: calc(var(--agent-mobile-nav-height) + var(--agent-mobile-safe-bottom)); display: grid; grid-template-columns: repeat(3,1fr); align-items: start; padding: 1px 8px var(--agent-mobile-safe-bottom); position: fixed; z-index: 50; right: 0; bottom: 0; left: 0; border-top: 1px solid #e7e9e6; background: #fff; }
   .agent-workspace-mobile-nav button { min-width: 0; height: 54px; display: grid; grid-template-rows: 30px 14px; align-content: center; justify-items: center; row-gap: 3px; position: relative; padding: 0; border: 0; background: transparent; color: #757974; cursor: pointer; font-family: inherit; font-size: 10px; font-weight: 500; letter-spacing: 0; line-height: 14px; }
-  .agent-workspace-mobile-nav button.is-agent { color: #171917; font-weight: 650; }
-  .agent-workspace-mobile-nav button.is-active:not(.is-agent) { color: #171917; font-weight: 600; }
+  .agent-workspace-mobile-nav button.is-active { color: #171917; font-weight: 650; }
   .agent-workspace-mobile-nav button > span { height: 14px; display: flex; grid-row: 2; align-items: center; justify-content: center; margin: 0; line-height: 14px; }
-  .agent-workspace-mobile-nav button.is-agent b { width: 42px; height: 42px; display: grid; place-items: center; position: absolute; top: -7px; left: 50%; margin: 0; border: 4px solid #fff; border-radius: 50%; background: #111; color: #fff; box-shadow: 0 4px 12px rgba(18,20,18,.15); transform: translateX(-50%); }
-  .agent-workspace-mobile-nav button:not(.is-agent) > svg { width: 18px; height: 18px; grid-row: 1; align-self: center; }
-  .agent-workspace-mobile-nav button.is-agent b svg { width: 21px; height: 21px; }
+  .agent-workspace-mobile-nav button > svg { width: 19px; height: 19px; grid-row: 1; align-self: center; }
   .agent-workspace-mobile-has-dot i { width: 5px; height: 5px; position: absolute; top: 5px; left: calc(50% + 8px); border-radius: 50%; background: #f04f3d; }
   .public-chat-page--ready .public-chat-shell { width: 100%; height: 100% !important; }
   .agent-workspace-overview { width: 100%; padding: 22px 20px 18px; }

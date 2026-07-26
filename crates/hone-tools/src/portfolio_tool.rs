@@ -221,6 +221,8 @@ impl Tool for PortfolioTool {
                         }) {
                         let was_watchlist = existing.tracking_only.unwrap_or(false);
                         *existing = Holding {
+                            weight: None,
+                            name: None,
                             tracking_only: None,
                             ..holding.clone()
                         };
@@ -529,6 +531,8 @@ fn parse_holdings_from_args(args: &Value) -> hone_core::HoneResult<Vec<Holding>>
             holding_horizon: input.holding_horizon,
             strategy_notes: input.strategy_notes,
             notes: input.notes,
+            weight: None,
+            name: None,
             tracking_only: None,
         })
         .collect())

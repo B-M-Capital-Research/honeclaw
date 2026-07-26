@@ -1095,6 +1095,8 @@ async fn live_social_engine_e2e() {
             holding_horizon: None,
             strategy_notes: None,
             notes: None,
+            weight: None,
+            name: None,
             tracking_only: None,
         }],
         updated_at: "2026-04-22".into(),
