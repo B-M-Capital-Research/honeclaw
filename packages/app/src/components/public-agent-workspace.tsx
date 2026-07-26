@@ -19,6 +19,7 @@ type IconName =
   | "insight"
   | "invest"
   | "me"
+  | "menu"
   | "new"
   | "paper"
   | "search"
@@ -57,6 +58,7 @@ export function AgentWorkspaceIcon(props: {
         <Match when={props.name === "insight"}><path d="M9 18h6M10 22h4M8.6 14.8A7 7 0 1 1 15.4 14.8C14.5 15.5 14 16.5 14 18h-4c0-1.5-.5-2.5-1.4-3.2Z" /></Match>
         <Match when={props.name === "invest"}><path d="M4 19V9M10 19V5M16 19v-7M22 19V3M2 19h22" /></Match>
         <Match when={props.name === "me"}><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></Match>
+        <Match when={props.name === "menu"}><path d="M4 7h16M4 12h16M4 17h16" /></Match>
         <Match when={props.name === "new"}><path d="M12 5v14M5 12h14" /></Match>
         <Match when={props.name === "paper"}><path d="M6 2h9l4 4v16H6zM14 2v5h5M9 12h7M9 16h7" /></Match>
         <Match when={props.name === "search"}><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></Match>
@@ -73,6 +75,9 @@ export function AgentWorkspaceSidebar(props: {
   activeMode: "overview" | "conversation";
   activeSection?: "agent" | "invest" | "insights" | "tracking" | "me";
   communityUnread: boolean;
+  hasOlder?: boolean;
+  loadingOlder?: boolean;
+  onLoadOlder?: () => void;
   onNewResearch: () => void;
   onSelectResearch: (id: string) => void;
   onHome: () => void;
@@ -99,7 +104,7 @@ export function AgentWorkspaceSidebar(props: {
       <div class="agent-workspace-nav-label">工作台</div>
       <nav class="agent-workspace-nav">
         <button type="button" onClick={props.onHome}><AgentWorkspaceIcon name="home" /><span>首页</span></button>
-        <button type="button" onClick={props.onInsights} class="agent-workspace-nav-with-dot" classList={{ "is-active": props.activeSection === "insights" }}><AgentWorkspaceIcon name="insight" /><span>洞察</span><Show when={props.communityUnread}><i /></Show></button>
+        <button type="button" onClick={props.onInsights} class="agent-workspace-nav-with-dot" classList={{ "is-active": props.activeSection === "insights" }}><AgentWorkspaceIcon name="insight" /><span>社区</span><Show when={props.communityUnread}><i /></Show></button>
         <button type="button" classList={{ "is-active": props.activeSection === "invest" || props.activeSection === "tracking" }} onClick={props.onInvest}><AgentWorkspaceIcon name="invest" /><span>投资</span></button>
       </nav>
       <div class="agent-workspace-sidebar-rule" />
@@ -117,6 +122,11 @@ export function AgentWorkspaceSidebar(props: {
           <For each={filteredResearch()}>{(item) => (
             <button type="button" onClick={() => props.onSelectResearch(item.id)}>{item.title}</button>
           )}</For>
+        </Show>
+        <Show when={props.hasOlder && props.onLoadOlder && !query().trim()}>
+          <button type="button" class="agent-workspace-history-older" disabled={props.loadingOlder} onClick={() => props.onLoadOlder?.()}>
+            {props.loadingOlder ? "正在加载…" : "加载更早记录"}
+          </button>
         </Show>
       </section>
       <div class="agent-workspace-user">
@@ -142,7 +152,7 @@ export function AgentWorkspaceTopbar(props: {
     <header class="agent-workspace-topbar">
       <span>{props.label ?? "你的投资研究智能体"}</span>
       <div class="agent-workspace-topbar-actions">
-        <label><AgentWorkspaceIcon name="search" size={17} /><input value={props.query} onInput={(event) => props.onQueryChange(event.currentTarget.value)} placeholder={props.placeholder ?? "搜索公司、主题或洞察"} /></label>
+        <label><AgentWorkspaceIcon name="search" size={17} /><input value={props.query} onInput={(event) => props.onQueryChange(event.currentTarget.value)} placeholder={props.placeholder ?? "搜索公司、主题或社区内容"} /></label>
         <button type="button" onClick={props.onPushes} aria-label="打开通知">
           <AgentWorkspaceIcon name="bell" />
           <Show when={props.unreadPushCount > 0}><i /></Show>
@@ -212,7 +222,7 @@ export function AgentWorkspaceOverview(props: {
         </div>
       </section>
       <section class="agent-workspace-section agent-workspace-insights">
-        <div class="agent-workspace-section-heading"><h2>今日研究线索</h2><button type="button" onClick={props.onInsights}>查看洞察 <AgentWorkspaceIcon name="arrow" size={16} /></button></div>
+        <div class="agent-workspace-section-heading"><h2>今日研究线索</h2><button type="button" onClick={props.onInsights}>逛逛社区 <AgentWorkspaceIcon name="arrow" size={16} /></button></div>
         <div class="agent-workspace-insight-list">
           <Show when={visibleInsights().length > 0} fallback={<div class="agent-workspace-empty">没有匹配的研究线索，换一个关键词试试。</div>}>
             <For each={visibleInsights()}>{(item) => (
@@ -281,24 +291,48 @@ export function AgentWorkspaceMobileHeader(props: {
   historyCount?: number;
   onPushes: () => void;
   onHistory?: () => void;
+  onMenu?: () => void;
   onAccount: () => void;
 }) {
   const avatar = () =>
     props.userName === "HONE 用户" || props.userName.startsWith("用户 ")
       ? "H"
       : props.userName.slice(-1);
-  return <header class="agent-workspace-mobile-header"><HoneBrand /><div><Show when={props.onHistory}>{(onHistory) => <button type="button" onClick={onHistory()} aria-label="会话历史" class="agent-workspace-mobile-history-trigger"><AgentWorkspaceIcon name="history" /><Show when={(props.historyCount ?? 0) > 0}><span>{Math.min(props.historyCount ?? 0, 99)}</span></Show></button>}</Show><button type="button" onClick={props.onPushes} aria-label="通知"><AgentWorkspaceIcon name="bell" /><Show when={props.unreadPushCount > 0}><i /></Show></button><button type="button" onClick={props.onAccount} class="agent-workspace-mobile-avatar">{avatar()}</button></div></header>;
+  return <header class="agent-workspace-mobile-header"><div class="agent-workspace-mobile-header-left"><Show when={props.onMenu}>{(onMenu) => <button type="button" onClick={onMenu()} aria-label="打开菜单" class="agent-workspace-mobile-menu-trigger"><AgentWorkspaceIcon name="menu" /></button>}</Show><HoneBrand /></div><div><Show when={props.onHistory}>{(onHistory) => <button type="button" onClick={onHistory()} aria-label="会话历史" class="agent-workspace-mobile-history-trigger"><AgentWorkspaceIcon name="history" /><Show when={(props.historyCount ?? 0) > 0}><span>{Math.min(props.historyCount ?? 0, 99)}</span></Show></button>}</Show><button type="button" onClick={props.onPushes} aria-label="通知"><AgentWorkspaceIcon name="bell" /><Show when={props.unreadPushCount > 0}><i /></Show></button><button type="button" onClick={props.onAccount} class="agent-workspace-mobile-avatar">{avatar()}</button></div></header>;
 }
 
+/**
+ * 移动端左侧抽屉（ChatGPT 式）：左上角菜单按钮或从屏幕左缘右滑拉出，
+ * 上半部分是主要菜单，下半部分是聊天记录；点背景、左滑或 Esc 关闭。
+ */
 export function AgentWorkspaceHistoryDrawer(props: {
   open: boolean;
+  userName: string;
   research: ResearchItem[];
   hasOlder: boolean;
   loadingOlder: boolean;
+  communityUnread: boolean;
+  onOpen: () => void;
   onClose: () => void;
   onSelectResearch: (id: string) => void;
   onLoadOlder: () => void;
+  onNewResearch: () => void;
+  onHome: () => void;
+  onInvest: () => void;
+  onInsights: () => void;
+  onAccount: () => void;
 }) {
+  const [query, setQuery] = createSignal("");
+  const avatar = () =>
+    props.userName === "HONE 用户" || props.userName.startsWith("用户 ")
+      ? "H"
+      : props.userName.slice(-1);
+  const filteredResearch = createMemo(() => {
+    const normalized = query().trim().toLowerCase();
+    if (!normalized) return props.research;
+    return props.research.filter((item) => item.title.toLowerCase().includes(normalized));
+  });
+
   createEffect(() => {
     if (!props.open) return;
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -308,30 +342,98 @@ export function AgentWorkspaceHistoryDrawer(props: {
     onCleanup(() => document.removeEventListener("keydown", closeOnEscape));
   });
 
+  // 左缘右滑打开 / 抽屉上左滑关闭（仅移动端布局生效）。
+  createEffect(() => {
+    const isMobileLayout = () => window.matchMedia("(max-width: 820px)").matches;
+    let startX = 0;
+    let startY = 0;
+    let tracking: "open" | "close" | null = null;
+    const onTouchStart = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (!touch || event.touches.length > 1 || !isMobileLayout()) {
+        tracking = null;
+        return;
+      }
+      if (!props.open && touch.clientX <= 26) {
+        tracking = "open";
+      } else if (props.open) {
+        tracking = "close";
+      } else {
+        tracking = null;
+        return;
+      }
+      startX = touch.clientX;
+      startY = touch.clientY;
+    };
+    const onTouchMove = (event: TouchEvent) => {
+      if (!tracking) return;
+      const touch = event.touches[0];
+      if (!touch) return;
+      const deltaX = touch.clientX - startX;
+      const deltaY = touch.clientY - startY;
+      if (Math.abs(deltaY) > 70) {
+        tracking = null;
+        return;
+      }
+      if (tracking === "open" && deltaX > 48) {
+        tracking = null;
+        props.onOpen();
+      } else if (tracking === "close" && deltaX < -48) {
+        tracking = null;
+        props.onClose();
+      }
+    };
+    const onTouchEnd = () => {
+      tracking = null;
+    };
+    document.addEventListener("touchstart", onTouchStart, { passive: true });
+    document.addEventListener("touchmove", onTouchMove, { passive: true });
+    document.addEventListener("touchend", onTouchEnd, { passive: true });
+    onCleanup(() => {
+      document.removeEventListener("touchstart", onTouchStart);
+      document.removeEventListener("touchmove", onTouchMove);
+      document.removeEventListener("touchend", onTouchEnd);
+    });
+  });
+
   return (
     <Show when={props.open}>
       <div class="agent-workspace-history-backdrop" onClick={props.onClose} />
       <aside class="agent-workspace-history-drawer" aria-label="会话历史" aria-modal="true" role="dialog">
         <header>
-          <div><strong>会话历史</strong><span>最近的研究与提问</span></div>
-          <button type="button" onClick={props.onClose} aria-label="关闭会话历史">×</button>
+          <HoneBrand />
+          <button type="button" onClick={props.onClose} aria-label="关闭菜单">×</button>
         </header>
+        <nav class="agent-workspace-drawer-nav" aria-label="主要菜单">
+          <button type="button" class="agent-workspace-drawer-new" onClick={props.onNewResearch}><AgentWorkspaceIcon name="new" /><span>新研究</span></button>
+          <button type="button" onClick={props.onHome}><AgentWorkspaceIcon name="home" /><span>首页</span></button>
+          <button type="button" onClick={props.onInsights} class="agent-workspace-drawer-with-dot"><AgentWorkspaceIcon name="insight" /><span>社区</span><Show when={props.communityUnread}><i /></Show></button>
+          <button type="button" onClick={props.onInvest}><AgentWorkspaceIcon name="invest" /><span>投资</span></button>
+        </nav>
+        <label class="agent-workspace-history-search agent-workspace-drawer-search">
+          <AgentWorkspaceIcon name="search" size={16} />
+          <input value={query()} onInput={(event) => setQuery(event.currentTarget.value)} placeholder="搜索聊天记录" />
+        </label>
+        <div class="agent-workspace-history-drawer-label">聊天记录</div>
         <div class="agent-workspace-history-drawer-list">
-          <Show when={props.research.length > 0} fallback={<p>开始对话后，历史记录会出现在这里。</p>}>
-            <For each={props.research}>{(item, index) => (
+          <Show when={filteredResearch().length > 0} fallback={<p>开始对话后，历史记录会出现在这里。</p>}>
+            <For each={filteredResearch()}>{(item) => (
               <button type="button" onClick={() => props.onSelectResearch(item.id)}>
-                <span>{String(index() + 1).padStart(2, "0")}</span>
                 <strong>{item.title}</strong>
                 <AgentWorkspaceIcon name="arrow" size={16} />
               </button>
             )}</For>
           </Show>
+          <Show when={props.hasOlder && !query().trim()}>
+            <button type="button" class="agent-workspace-history-more" disabled={props.loadingOlder} onClick={props.onLoadOlder}>
+              {props.loadingOlder ? "正在加载…" : "加载更早记录"}
+            </button>
+          </Show>
         </div>
-        <Show when={props.hasOlder}>
-          <button type="button" class="agent-workspace-history-more" disabled={props.loadingOlder} onClick={props.onLoadOlder}>
-            {props.loadingOlder ? "正在加载…" : "加载更早记录"}
-          </button>
-        </Show>
+        <button type="button" class="agent-workspace-drawer-user" onClick={props.onAccount}>
+          <span class="agent-workspace-avatar">{avatar()}</span>
+          <span><strong>{props.userName}</strong><small>个人研究空间</small></span>
+        </button>
       </aside>
     </Show>
   );
@@ -349,7 +451,7 @@ export function AgentWorkspaceMobileNav(props: {
 }) {
   return <nav class="agent-workspace-mobile-nav" aria-label="主要导航">
     <button type="button" onClick={props.onHome}><AgentWorkspaceIcon name="home" /><span>首页</span></button>
-    <button type="button" onClick={props.onInsights} class="agent-workspace-mobile-has-dot" classList={{ "is-active": props.activeSection === "insights" }}><AgentWorkspaceIcon name="insight" /><span>洞察</span><Show when={props.communityUnread}><i /></Show></button>
+    <button type="button" onClick={props.onInsights} class="agent-workspace-mobile-has-dot" classList={{ "is-active": props.activeSection === "insights" }}><AgentWorkspaceIcon name="insight" /><span>社区</span><Show when={props.communityUnread}><i /></Show></button>
     <button type="button" class="is-agent" classList={{ "is-active": props.activeSection === "agent" }} onClick={props.onAgent}><b><AgentWorkspaceIcon name="agent" size={27} /></b><span>Agent</span></button>
     <button type="button" classList={{ "is-active": props.activeSection === "invest" || props.activeSection === "tracking" }} onClick={props.onInvest}><AgentWorkspaceIcon name="invest" /><span>投资</span></button>
     <button type="button" classList={{ "is-active": props.activeSection === "me" }} onClick={props.onAccount}><AgentWorkspaceIcon name="me" /><span>我的</span></button>

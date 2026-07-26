@@ -563,17 +563,17 @@ export default function PublicCommunityPage() {
         <PublicWorkspaceShell
           active="insights"
           communityUnread={false}
-          searchPlaceholder="搜索洞察、公司或主题"
+          searchPlaceholder="搜索社区、公司或主题"
           onSearch={setQuery}
         >
           <div class="public-workspace-inner">
             <header class="public-workspace-page-heading">
               <div>
                 <span class="public-workspace-eyebrow">社区研究 · 只读</span>
-                <h1>洞察</h1>
+                <h1>社区</h1>
                 <p>来自 HONE 社区的研究判断、市场观察与关键资料，按发生时间连续沉淀。</p>
               </div>
-              <div class="public-insights-filter" aria-label="洞察筛选">
+              <div class="public-insights-filter" aria-label="社区筛选">
                 <button type="button" class="is-active">最新</button>
                 <button type="button">持仓相关</button>
                 <button type="button">已保存</button>
@@ -583,7 +583,7 @@ export default function PublicCommunityPage() {
 
           <Switch>
             <Match when={state() === "loading"}>
-              <div class="public-workspace-state" role="status">正在加载洞察…</div>
+              <div class="public-workspace-state" role="status">正在加载社区内容…</div>
             </Match>
             <Match when={state() === "error"}>
               <div class="public-workspace-state is-error" role="alert">
@@ -593,7 +593,7 @@ export default function PublicCommunityPage() {
             </Match>
             <Match when={state() === "ready"}>
               <section class="public-community-timeline" aria-label="HONE 官方社区动态">
-                <Show when={filteredItems().length > 0} fallback={<div class="public-workspace-state">没有匹配的洞察。</div>}>
+                <Show when={filteredItems().length > 0} fallback={<div class="public-workspace-state">没有匹配的社区内容。</div>}>
                   <For each={filteredItems()}>
                     {(item) => {
                       const images = item.resources.filter(resourceIsImage);

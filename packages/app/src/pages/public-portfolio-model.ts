@@ -1,6 +1,6 @@
 type PublicRefreshResult = {
   mainline_count: number
-  skipped_tickers: string[]
+  skipped_tickers?: string[] | null
 }
 
 export function formatPublicMainlineTimestamp(
@@ -28,10 +28,11 @@ export function formatPublicMainlineTimestamp(
 }
 
 export function publicRefreshMessage(result: PublicRefreshResult): string {
-  if (result.skipped_tickers.length === 0) {
+  const skipped = result.skipped_tickers ?? []
+  if (skipped.length === 0) {
     return `更新完成：${result.mainline_count} 条投资主线`
   }
-  return `更新完成：${result.mainline_count} 条投资主线，${result.skipped_tickers.length} 只跳过`
+  return `更新完成：${result.mainline_count} 条投资主线，${skipped.length} 只跳过`
 }
 
 export function canRefreshPublicMainline(profileCount: number): boolean {

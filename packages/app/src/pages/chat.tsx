@@ -171,7 +171,9 @@ const ICONS = {
 
 const PUBLIC_IMAGE_ENDPOINT = "/api/public/image";
 const PUBLIC_FILE_ENDPOINT = "/api/public/file";
-const SIDEBAR_HISTORY_LIMIT = 6;
+// 侧栏/抽屉聊天记录上限:要能覆盖“加载更早”翻出来的历史,太小会让记录
+// 看起来永远只有最近几条。
+const SIDEBAR_HISTORY_LIMIT = 80;
 
 function AnimatedBackground() {
   return (
@@ -3512,6 +3514,9 @@ export default function PublicChatPage() {
                   activeMode={workspaceMode()}
                   activeSection="agent"
                   communityUnread={communityUnread()}
+                  hasOlder={hasOlderMessages()}
+                  loadingOlder={loadingOlderMessages()}
+                  onLoadOlder={() => void loadOlderMessages()}
                   onNewResearch={() => {
                     setWorkspaceMode("overview");
                     setDraft("");
@@ -3533,8 +3538,7 @@ export default function PublicChatPage() {
                   <AgentWorkspaceMobileHeader
                     userName={workspaceDisplayName()}
                     unreadPushCount={pushUnreadCount()}
-                    historyCount={workspaceResearch().length}
-                    onHistory={() => setHistoryDrawerOpen(true)}
+                    onMenu={() => setHistoryDrawerOpen(true)}
                     onPushes={openPushCenter}
                     onAccount={() => navigate("/me")}
                   />
@@ -3670,12 +3674,24 @@ export default function PublicChatPage() {
                 />
                 <AgentWorkspaceHistoryDrawer
                   open={historyDrawerOpen()}
+                  userName={workspaceDisplayName()}
                   research={workspaceResearch()}
                   hasOlder={hasOlderMessages()}
                   loadingOlder={loadingOlderMessages()}
+                  communityUnread={communityUnread()}
+                  onOpen={() => setHistoryDrawerOpen(true)}
                   onClose={() => setHistoryDrawerOpen(false)}
                   onSelectResearch={openWorkspaceResearch}
                   onLoadOlder={() => void loadOlderMessages()}
+                  onNewResearch={() => {
+                    setHistoryDrawerOpen(false);
+                    setWorkspaceMode("overview");
+                    setDraft("");
+                  }}
+                  onHome={() => navigate("/")}
+                  onInvest={() => navigate("/invest")}
+                  onInsights={() => navigate("/community")}
+                  onAccount={() => navigate("/me")}
                 />
               </>
         </Match>

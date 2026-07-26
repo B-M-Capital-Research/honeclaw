@@ -80,4 +80,30 @@ describe("mainline-context-model", () => {
       }).viewTicker,
     ).toBeNull()
   })
+
+  it("survives the legacy server payload without tickers/bytes/title", () => {
+    // 旧版服务端 profile_list 只有 { ticker, dir, preview }——投资页曾因
+    // 遍历 undefined tickers 整页崩溃。
+    const legacyProfile = { ticker: "NVDA", dir: "nvda-profile" }
+    const context = {
+      holdings: ["NVDA"],
+      profile_list: [legacyProfile],
+    }
+
+    expect([...profileTickerSet(context)]).toEqual(["NVDA"])
+    expect(firstProfileTicker(legacyProfile)).toBe("NVDA")
+    expect(mainlineHoldingCardState(context, "NVDA")).toEqual({
+      ticker: "NVDA",
+      mainline: undefined,
+      hasProfile: true,
+      isSkipped: false,
+    })
+    expect(profileInventoryRowState(legacyProfile)).toEqual({
+      title: "nvda-profile",
+      tickerLabel: "NVDA",
+      sizeLabel: "—",
+      dir: "nvda-profile",
+      viewTicker: "NVDA",
+    })
+  })
 })

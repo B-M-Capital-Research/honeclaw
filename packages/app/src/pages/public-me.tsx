@@ -84,7 +84,7 @@ function AccountView(props: {
           <div>
             <span class="public-workspace-eyebrow">个人研究空间</span>
             <h1>我的</h1>
-            <p>管理你的 HONE 账户与研究入口。持仓、洞察和会话数据仍由各自的安全存储维护。</p>
+            <p>管理你的 HONE 账户与研究入口。持仓、社区和会话数据仍由各自的安全存储维护。</p>
           </div>
         </header>
         <MembershipCard />
@@ -100,7 +100,7 @@ function AccountView(props: {
             <div class="public-account-actions">
               <button type="button" class="is-primary" onClick={() => navigate("/chat")}>进入 Agent</button>
               <button type="button" onClick={() => navigate("/portfolio")}>查看跟踪与财经日历</button>
-              <button type="button" onClick={() => navigate("/community")}>查看洞察</button>
+              <button type="button" onClick={() => navigate("/community")}>去社区看看</button>
               <button type="button" class="is-danger" onClick={props.onLogout}>退出登录</button>
             </div>
             <p class="public-account-note">账户页不展示内部已读状态、运行配置或系统权限。需要修改持仓、提醒和研究偏好时，直接在 Agent 对话中说明即可。</p>

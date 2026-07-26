@@ -365,18 +365,19 @@ export async function openPublicPush(
 
 export type ProfileSummary = {
   dir: string;
-  tickers: string[];
-  title: string;
-  preview: string;
-  bytes: number;
+  ticker?: string;
+  tickers?: string[];
+  title?: string;
+  preview?: string;
+  bytes?: number;
 };
 
 export type DigestContext = {
   actor: { channel: string; user_id: string };
   mainline_style: string | null;
   mainline_by_ticker: Record<string, string>;
-  global_digest_enabled: boolean;
-  global_digest_floor_macro_picks: number;
+  global_digest_enabled?: boolean;
+  global_digest_floor_macro_picks?: number;
   last_mainline_distilled_at: string | null;
   mainline_distill_skipped: string[];
   holdings: string[];

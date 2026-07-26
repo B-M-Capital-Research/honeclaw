@@ -35,7 +35,7 @@ export function communityToWorkspaceInsights(
     const summarySource = splitAt > 8 ? body.slice(splitAt + 1) : body;
     return {
       id: String(item.content_id),
-      eyebrow: index === 0 ? "新洞察" : "社区动态",
+      eyebrow: index === 0 ? "社区新帖" : "社区动态",
       title: compactText(titleSource || item.author_name, 34),
       summary: compactText(
         summarySource || `${item.author_name} 发布了新的研究内容`,

@@ -214,7 +214,15 @@ function InvestContextView() {
     setError(null)
     try {
       const context = await getDigestContext()
-      setDigestContext(context)
+      // 服务端不同版本的字段可能缺省;这里统一兜底,任何字段缺失都不能
+      // 让整页白屏。
+      setDigestContext({
+        ...context,
+        mainline_by_ticker: context.mainline_by_ticker ?? {},
+        mainline_distill_skipped: context.mainline_distill_skipped ?? [],
+        holdings: context.holdings ?? [],
+        profile_list: context.profile_list ?? [],
+      })
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -381,6 +389,8 @@ function InvestContextView() {
                 <For each={context().profile_list}>
                   {(profile) => {
                     const row = createMemo(() => profileInventoryRowState(profile))
+                    const previewText = () =>
+                      (profile.preview ?? "").replace(/^#.*$/m, "").replace(/[#*`>\-]/g, "").replace(/\s+/g, " ").trim()
                     return (
                       <div class="public-profile-row">
                         <div class="public-profile-row-main">
@@ -388,9 +398,12 @@ function InvestContextView() {
                             {row().title}
                             <span class="public-profile-ticker">{row().tickerLabel}</span>
                           </div>
-                          <div class="public-profile-sub">
-                            {row().sizeLabel} · {row().dir}
-                          </div>
+                          <Show
+                            when={previewText()}
+                            fallback={<div class="public-profile-sub">{row().sizeLabel} · {row().dir}</div>}
+                          >
+                            <div class="public-profile-sub public-profile-preview">{previewText()}</div>
+                          </Show>
                         </div>
                         <Show when={row().viewTicker}>
                           {(ticker) => (

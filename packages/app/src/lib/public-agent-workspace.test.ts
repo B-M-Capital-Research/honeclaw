@@ -21,7 +21,7 @@ describe("public Agent workspace helpers", () => {
     ]);
     expect(insights[0]).toEqual({
       id: "8",
-      eyebrow: "新洞察",
+      eyebrow: "社区新帖",
       title: "老王更新了 HBM 深度解读",
       summary: "已经匹配到 NVDA、AMD 与 TSMC 投资主线。",
     });
