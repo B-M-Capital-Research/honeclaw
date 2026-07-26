@@ -6480,3 +6480,16 @@
 - 本轮判断
   - 最新样本仍是 heartbeat 输出协议、状态解析和异常收口在真实运行中漂移，不是新的链路根因。
   - 影响是部分 heartbeat 静默跳过、发送失败提示或错误进入投递候选；同窗 direct / scheduler 普通会话仍可收口，未见全渠道不可用、错投或敏感信息泄露，维持功能性 `P2 / New`，非 P1。
+
+## 最新运行态复核（2026-07-26 15:02 CST）
+
+- `data/runtime/logs/web.log.2026-07-26`
+  - 巡检窗口：2026-07-26 11:00-15:00 CST。
+  - 同窗记录 `HeartbeatDiag=722`、`deliver=86`、`duplicate_suppressed=39`、失败信号 68、工具预算拒绝 218、raw `<think>` preview 184。
+  - 可分类 `parse_kind` 继续漂移：`PlainTextTriggered=172`、`JsonNoop=60`、`PlainTextSuppressed=27`、`PlainTextNoop=8`、`JsonMalformed=6`。
+  - 代表样本包括 14:30 `美股黄金坑信号心跳检测` 以 `<think>` + 市场分析正文落成 `JsonMalformed` 并标记失败；15:00 `AI与科技持仓观察关键事件心跳提醒` 以 `PlainTextSuppressed` 落成“heartbeat 输出不是结构化 JSON”；同批 `全天原油价格3小时播报` 也因非结构化输出跳过发送。
+- `data/sessions.sqlite3`
+  - 同窗普通直聊仅覆盖 2 个更新 session，最近 assistant 到 14:48 CST；除新增登记的 Feishu 取消关注 raw error 外，未见全渠道无回复、错投、panic 或 provider 原始错误批量进入普通 final。
+- 本轮判断
+  - 最新证据仍是 heartbeat 模型输出未稳定遵守结构化协议，解析层在自然语言、JSON、失败和去重之间漂移；没有新的独立根因。
+  - 该问题影响 heartbeat 是否稳定触发、跳过或投递；同窗仍有普通 Feishu direct 成功收口，未见错投或全渠道不可用，维持功能性 `P2 / New`，非 P1。

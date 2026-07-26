@@ -592,3 +592,13 @@
 - 本轮判断
   - 最新样本仍是 scheduler / heartbeat 任务正文、人物名、宏观指标或监管缩写被实体 guard 当作证券实体，或公司名被解析成多上市地候选后 fail-closed；不新建重复缺陷。
   - 影响是部分 Web / Feishu scheduler 和 heartbeat 监控任务失败或跳过；同窗 25 个更新 session 没有长期 user-only 残留、错投、敏感信息泄露或全渠道不可用，维持功能性 `P2 / New`，非 P1。
+
+## 最新运行态复核（2026-07-26 15:02 CST）
+
+- `data/runtime/logs/web.log.2026-07-26`
+  - 巡检窗口：2026-07-26 11:00-15:00 CST。
+  - 同窗 `AAOI 1.6T 光模块心跳检测` 继续把任务上下文中的 `SEC` 当证券代码，出现 39 行相关日志，并因供应商无同代码行情覆盖落成 `runner_error` / 不发送。
+  - 同窗 `ORCL 大事件监控` 继续把 Oracle 解析成多个上市地候选，出现 18 行相关日志，要求补充交易所后缀或公司全名，导致本轮不发送。
+- 本轮判断
+  - 最新样本仍是 scheduler / heartbeat 任务正文、监管缩写或公司名候选解析被实体 guard fail-closed 的同根问题。
+  - 影响是部分 heartbeat 监控任务失败或跳过；同窗 Feishu direct ORCL 问答可通过 `data_fetch quote/news/snapshot/financials` 正常收口，说明不是全局 ORCL 数据不可用，维持功能性 `P2 / New`，非 P1。

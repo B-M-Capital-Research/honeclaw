@@ -1601,3 +1601,15 @@
 - 本轮判断
   - 最新证据仍落在 scheduler / heartbeat 批量行情数值 sanity check 缺失和未核验行情锚进入投研正文的范围内，没有新的独立根因。
   - 本窗异常价格继续进入用户可见 final 或 heartbeat 出站候选并影响判断；但会话正常收口、未见投递失败、错对象或数据写入破坏，问题主要削弱投研质量和价格判断可信度，因此维持质量性 `P3 / New`，非 P1。
+
+## 最新运行态复核（2026-07-26 15:02 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-07-26 11:00-15:00 CST。
+  - 12:01 Feishu scheduler / direct actor session `Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5` 的 `每日公司资讯与分析总结` final 继续使用 `TEM $42.69`、`NBIS $187.77/$220.97`、`CRWV $71.88`、`GOOGL $319.74` 等高风险行情锚，并据此组织持仓亏损、击球区和操作建议。
+  - 14:48 Feishu direct ORCL 问答 final 使用 `ORCL $114.99`、52 周高点 `$345.72`、50 日均线 `$172.98`、200 日均线 `$188.28` 等数量级可疑行情锚，并据此判断“跌去近 2/3”和估值位置。
+- `data/runtime/logs/web.log.2026-07-26`
+  - 同窗 heartbeat / scheduler 出站候选继续出现 `MU $920.95`、`SNDK $1,436.56`、`AMD $521.95`、`SPY $738.93`、`QQQ $684.23`、`CBRS $199.12`、`RKLB $63.91` 等高风险数量级行情锚。
+- 本轮判断
+  - 最新证据仍落在 scheduler / direct / heartbeat 批量行情数值 sanity check 缺失和未核验行情锚进入投研正文的范围内，没有新的独立根因。
+  - 本窗异常价格继续进入用户可见 final 或 heartbeat 出站候选并影响判断；但会话正常收口、未见投递失败、错对象或数据写入破坏，问题主要削弱投研质量和价格判断可信度，因此维持质量性 `P3 / New`，非 P1。

@@ -828,3 +828,15 @@ New
 - 本轮判断
   - 这是既有 Feishu scheduler / direct 内部流程、中间稿和工具执行过程外露的同根复发，不新建重复缺陷。
   - 为何不影响功能链路，因此定级为 P3：调度生成和回复均完成，用户仍收到报告主体；问题主要是用户可见文案边界、产品感和可信度退化。状态维持质量性 `P3 / New`，非 P1。
+
+## 最新运行态复核（2026-07-26 15:02 CST）
+
+- `data/sessions.sqlite3`
+  - 巡检窗口：2026-07-26 11:00-15:00 CST。
+  - 14:48 Feishu direct ORCL 问答 final 在行情口径中写出 `数据源 Unix timestamp 1784923200`，把 provider 字段 / 原始时间戳口径暴露给用户。
+- `data/runtime/logs/web.log.2026-07-26`
+  - 12:01 `AI与科技持仓观察关键事件心跳提醒` deliver preview 写出 `provider Unix timestamp`。
+  - 14:30 `NBIS关键事件心跳提醒` deliver preview 写出 `hone_quote_time.beijing`；多条 heartbeat 候选继续把 `data_fetch`、`quote` 工具预算或 provider 时间戳作为用户态行情口径。
+- 本轮判断
+  - 这是既有 Feishu scheduler / direct 内部工具名、provider 字段和行情实现口径外露的同根复发，不新建重复缺陷。
+  - 为何不影响功能链路，因此定级为 P3：调度 / 直聊生成和回复多数完成，用户仍收到分析内容；问题主要是用户可见文案边界、产品感和可信度退化。状态维持质量性 `P3 / New`，非 P1。
