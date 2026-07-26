@@ -64,6 +64,9 @@ pub struct PublicUploadedAttachment {
 pub struct HistoryMsg {
     pub role: String,
     pub content: String,
+    /// 消息时间戳（RFC3339），前端用于聊天记录分组与日期分隔。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subtype: Option<String>,
     #[serde(default)]

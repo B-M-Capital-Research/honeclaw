@@ -1661,6 +1661,7 @@ mod tests {
         HistoryMsg {
             role: role.to_string(),
             content: String::new(),
+            at: None,
             subtype: scheduled.then(|| "scheduled_push".to_string()),
             synthetic: false,
             transcript_only: false,

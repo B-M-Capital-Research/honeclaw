@@ -162,6 +162,7 @@ fn project_public_history(
             history.push(HistoryMsg {
                 role: "assistant".to_string(),
                 content: String::new(),
+                at: history_message_timestamp(message),
                 subtype: Some("scheduled_push".to_string()),
                 synthetic: false,
                 transcript_only: false,
@@ -197,6 +198,7 @@ fn plain_history_message(
         } else {
             message.role.clone()
         },
+        at: history_message_timestamp(message),
         content: session_message_text(message),
         subtype: if compact_boundary {
             Some("compact_boundary".to_string())
@@ -212,6 +214,11 @@ fn plain_history_message(
         scheduled_push: None,
         finance_calendar: history_finance_calendar(message, prefer_mobile),
     }
+}
+
+fn history_message_timestamp(message: &hone_memory::session::SessionMessage) -> Option<String> {
+    let trimmed = message.timestamp.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
 pub(crate) fn public_client_prefers_mobile(headers: &HeaderMap) -> bool {

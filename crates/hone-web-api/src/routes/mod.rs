@@ -19,6 +19,7 @@ pub(crate) mod public_community;
 pub(crate) mod public_digest;
 pub(crate) mod public_finance_calendar;
 pub(crate) mod public_pushes;
+pub(crate) mod public_quotes;
 pub(crate) mod research;
 pub(crate) mod schedule;
 pub(crate) mod skills;
@@ -323,6 +324,7 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
             "/pushes/{push_id}/open",
             post(public_pushes::handle_open_push),
         )
+        .route("/quotes", get(public_quotes::handle_get_quotes))
         .route(
             "/digest-context",
             get(public_digest::handle_get_digest_context),
