@@ -153,7 +153,13 @@
 .public-mainline-card { display: flex; flex-direction: column; gap: 10px; padding: 20px 22px; border: 1px solid #e6e7e3; border-radius: 12px; background: #fff; }
 .public-mainline-card.is-pending { border-style: dashed; border-color: #d5d6d2; background: #fafaf8; }
 .public-mainline-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.public-mainline-ticker { color: #111311; font-family: ui-monospace, "JetBrains Mono", monospace; font-size: 16px; font-weight: 700; }
+.public-mainline-ticker { display: flex; align-items: center; gap: 9px; color: #111311; font-family: ui-monospace, "JetBrains Mono", monospace; font-size: 16px; font-weight: 700; }
+/* 行情快照徽标：红涨绿跌，无涨跌数据时保持中性灰。 */
+.public-quote-badge { display: inline-flex; align-items: baseline; gap: 5px; color: #777b76; font-size: 12px; font-weight: 650; }
+.public-quote-badge strong { font-size: 13px; font-weight: 700; }
+.public-quote-badge em { font-size: 11px; font-style: normal; }
+.public-quote-badge.is-up { color: #c2453a; }
+.public-quote-badge.is-down { color: #1f7a4d; }
 .public-mainline-text { color: #111311; font-size: 14px; line-height: 1.7; }
 .public-mainline-fallback { color: #8b8e89; font-size: 13px; line-height: 1.6; }
 .public-mainline-fallback strong { color: #333; }

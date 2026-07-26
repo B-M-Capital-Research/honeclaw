@@ -1,11 +1,12 @@
 import { createEffect, createMemo, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js";
 import { HoneBrand } from "@/components/hone-brand";
+import { groupResearchByDate } from "@/lib/public-agent-workspace";
 import type {
   AgentWorkspaceEvent,
   AgentWorkspaceInsight,
 } from "@/lib/public-agent-workspace";
 
-type ResearchItem = { id: string; title: string };
+type ResearchItem = { id: string; title: string; at?: string };
 
 type IconName =
   | "agent"
@@ -117,10 +118,14 @@ export function AgentWorkspaceSidebar(props: {
         <input value={query()} onInput={(event) => setQuery(event.currentTarget.value)} placeholder="搜索研究记录" />
       </label>
       <section class="agent-workspace-history">
-        <div class="agent-workspace-history-label">最近</div>
-        <Show when={filteredResearch().length > 0} fallback={<p>你的研究记录会出现在这里。</p>}>
-          <For each={filteredResearch()}>{(item) => (
-            <button type="button" onClick={() => props.onSelectResearch(item.id)}>{item.title}</button>
+        <Show when={filteredResearch().length > 0} fallback={<><div class="agent-workspace-history-label">最近</div><p>你的研究记录会出现在这里。</p></>}>
+          <For each={groupResearchByDate(filteredResearch())}>{(group) => (
+            <>
+              <div class="agent-workspace-history-label">{group.label}</div>
+              <For each={group.items}>{(item) => (
+                <button type="button" onClick={() => props.onSelectResearch(item.id)}>{item.title}</button>
+              )}</For>
+            </>
           )}</For>
         </Show>
         <Show when={props.hasOlder && props.onLoadOlder && !query().trim()}>
@@ -417,11 +422,16 @@ export function AgentWorkspaceHistoryDrawer(props: {
         <div class="agent-workspace-history-drawer-label">聊天记录</div>
         <div class="agent-workspace-history-drawer-list">
           <Show when={filteredResearch().length > 0} fallback={<p>开始对话后，历史记录会出现在这里。</p>}>
-            <For each={filteredResearch()}>{(item) => (
-              <button type="button" onClick={() => props.onSelectResearch(item.id)}>
-                <strong>{item.title}</strong>
-                <AgentWorkspaceIcon name="arrow" size={16} />
-              </button>
+            <For each={groupResearchByDate(filteredResearch())}>{(group) => (
+              <>
+                <div class="agent-workspace-history-drawer-group">{group.label}</div>
+                <For each={group.items}>{(item) => (
+                  <button type="button" onClick={() => props.onSelectResearch(item.id)}>
+                    <strong>{item.title}</strong>
+                    <AgentWorkspaceIcon name="arrow" size={16} />
+                  </button>
+                )}</For>
+              </>
             )}</For>
           </Show>
           <Show when={props.hasOlder && !query().trim()}>

@@ -53,6 +53,8 @@ export type PublicChatMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
+  /** 消息时间（RFC3339），历史消息才有；用于记录分组与日期分隔。 */
+  at?: string;
   phase?: "thinking" | "running" | "streaming" | "done" | "error";
   statusText?: string;
   startedAt?: number;
@@ -371,6 +373,7 @@ export function toPublicChatMessages(
       id: message.id,
       role: message.kind,
       content: message.content,
+      at: message.kind === "user" || message.kind === "assistant" ? message.at : undefined,
       phase: "done" as const,
       steps: [],
       attachments: toPublicAttachments(message.attachments ?? []),

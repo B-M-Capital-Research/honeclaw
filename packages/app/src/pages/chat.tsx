@@ -120,6 +120,7 @@ import { parseSseChunks } from "@/lib/stream";
 import {
   calendarToWorkspaceEvents,
   communityToWorkspaceInsights,
+  daySeparatorLabel,
   workspaceGreeting,
   workspaceUserName,
 } from "@/lib/public-agent-workspace";
@@ -2485,6 +2486,7 @@ export default function PublicChatPage() {
   const workspaceResearch = createMemo(() =>
     sidebarHistoryMessages().map((message) => ({
       id: message.id,
+      at: message.at,
       title:
         stripAttachmentMarkers(message.content).replace(/\s+/g, " ").trim() ||
         CONTENT.chat_page.sidebar.history_attachment,
@@ -3583,6 +3585,9 @@ export default function PublicChatPage() {
                               <For each={visibleMessages()}>
                                 {(msg, i) => (
                                   <div id={`public-chat-message-${msg.id}`}>
+                                    <Show when={daySeparatorLabel(i() > 0 ? visibleMessages()[i() - 1]?.at : undefined, msg.at)}>
+                                      {(label) => <div class="public-chat-date-chip"><span>{label()}</span></div>}
+                                    </Show>
                                     <Switch>
                                       <Match when={msg.role === "user"}>
                                         <UserBubble content={msg.content} attachments={msg.attachments} onOpenImage={(imgs, index) => setLightbox({ images: imgs, index })} />

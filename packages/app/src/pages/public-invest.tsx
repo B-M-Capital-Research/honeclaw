@@ -15,7 +15,9 @@ import {
   refreshDigestContext,
   getPublicAuthMe,
   getPublicFinanceCalendar,
+  getPublicQuotes,
   type DigestContext,
+  type PublicQuote,
 } from "@/lib/api"
 import { defaultFinanceCalendarMonth } from "@/lib/finance-calendar"
 import { workspaceUserName } from "@/lib/public-agent-workspace"
@@ -32,17 +34,52 @@ import {
 } from "./public-portfolio-model"
 import "./public-site.css"
 
+function formatQuotePrice(price: number) {
+  return price >= 1000
+    ? price.toLocaleString("en-US", { maximumFractionDigits: 0 })
+    : price.toFixed(2)
+}
+
+function QuoteBadge(props: { quote: PublicQuote | undefined }) {
+  return (
+    <Show when={props.quote}>
+      {(quote) => {
+        const pct = () => quote().change_percent
+        const direction = () => {
+          const value = pct()
+          if (value === undefined || value === 0) return "flat"
+          return value > 0 ? "up" : "down"
+        }
+        return (
+          <span
+            class="public-quote-badge"
+            classList={{ "is-up": direction() === "up", "is-down": direction() === "down" }}
+          >
+            <strong>{formatQuotePrice(quote().price)}</strong>
+            <Show when={pct() !== undefined}>
+              <em>
+                {(pct()! > 0 ? "+" : "") + pct()!.toFixed(2)}%
+              </em>
+            </Show>
+          </span>
+        )
+      }}
+    </Show>
+  )
+}
+
 function MainlineCard(props: {
   ticker: string
   mainline: string | undefined
   hasProfile: boolean
+  quote: PublicQuote | undefined
   onView: () => void
   isSkipped: boolean
 }) {
   return (
     <div class="public-mainline-card" classList={{ "is-pending": !props.mainline }}>
       <div class="public-mainline-card-head">
-        <div class="public-mainline-ticker">{props.ticker}</div>
+        <div class="public-mainline-ticker">{props.ticker}<QuoteBadge quote={props.quote} /></div>
         <Show when={props.hasProfile}>
           <button type="button" class="public-profile-view-btn" onClick={props.onView}>
             查看画像
@@ -208,6 +245,20 @@ function InvestContextView(props: { search: string }) {
   const [refreshMsg, setRefreshMsg] = createSignal<string | null>(null)
   const [modalOpen, setModalOpen] = createSignal(false)
   const [modalTicker, setModalTicker] = createSignal<string | null>(null)
+  const [quotes, setQuotes] = createSignal<Map<string, PublicQuote>>(new Map())
+
+  // 行情快照独立加载:失败或未配置数据源时静默降级,不影响页面其余内容。
+  const loadQuotes = async () => {
+    try {
+      const payload = await getPublicQuotes()
+      if (!payload.available) return
+      const next = new Map<string, PublicQuote>()
+      for (const quote of payload.quotes ?? []) next.set(quote.symbol.toUpperCase(), quote)
+      setQuotes(next)
+    } catch {
+      // 行情不可用不打断投资页。
+    }
+  }
 
   const load = async () => {
     setLoading(true)
@@ -230,7 +281,10 @@ function InvestContextView(props: { search: string }) {
     }
   }
 
-  onMount(load)
+  onMount(() => {
+    void load()
+    void loadQuotes()
+  })
 
   const handleRefresh = async () => {
     setRefreshing(true)
@@ -393,6 +447,7 @@ function InvestContextView(props: { search: string }) {
                         ticker={card().ticker}
                         mainline={card().mainline}
                         hasProfile={card().hasProfile}
+                        quote={quotes().get(ticker.toUpperCase())}
                         isSkipped={card().isSkipped}
                         onView={() => openProfile(ticker)}
                       />

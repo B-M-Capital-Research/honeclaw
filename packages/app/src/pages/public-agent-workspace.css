@@ -168,6 +168,8 @@
 .agent-workspace-restore-notice button { padding: 4px 8px; border: 0; border-radius: 7px; background: #191b19; color: #fff; cursor: pointer; font: inherit; font-weight: 700; }
 .public-chat-page--ready .public-chat-composer { padding: 10px 24px 8px !important; background: #fff !important; }
 .public-chat-disclaimer { margin: 0; padding: 0 24px 10px; background: #fff; color: #a3a6a1; font-size: 10px; line-height: 1.5; text-align: center; }
+.public-chat-date-chip { display: flex; justify-content: center; margin: 18px 0 10px; }
+.public-chat-date-chip span { padding: 4px 11px; border-radius: 999px; background: var(--agent-soft); color: #8b8e89; font-size: 10px; font-weight: 650; letter-spacing: .04em; }
 .public-chat-page--ready .public-chat-composer-box { border: 1px solid var(--agent-line) !important; border-radius: 15px !important; box-shadow: 0 5px 18px rgba(20,22,20,.05) !important; }
 .public-chat-page--ready .public-chat-proactive-tip-wrap { width: min(900px, 100%); margin: 0 auto 7px; }
 .public-chat-page--ready .public-chat-proactive-tip { border-color: var(--agent-line) !important; background: #fff !important; color: #555955 !important; box-shadow: none !important; }
@@ -213,6 +215,7 @@
   .agent-workspace-drawer-with-dot i { width: 6px; height: 6px; margin-left: auto; border-radius: 50%; background: #f04f3d; }
   .agent-workspace-drawer-search { margin: 8px 16px 0; }
   .agent-workspace-history-drawer-label { margin: 12px 22px 2px; color: #a1a39f; font-size: 10px; font-weight: 700; letter-spacing: .12em; }
+  .agent-workspace-history-drawer-group { margin: 10px 12px 3px; color: #b0b3ae; font-size: 10px; font-weight: 700; }
   .agent-workspace-history-drawer-list { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 10px; }
   .agent-workspace-history-drawer-list > p { margin: 0; padding: 34px 18px; color: #979a95; font-size: 12px; line-height: 1.6; text-align: center; }
   .agent-workspace-history-drawer-list > button:not(.agent-workspace-history-more) { width: 100%; min-height: 46px; display: flex; align-items: center; justify-content: space-between; gap: 9px; padding: 10px 12px; border: 0; border-radius: 11px; background: transparent; color: #242724; cursor: pointer; text-align: left; }

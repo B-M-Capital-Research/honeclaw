@@ -38,6 +38,8 @@ export type SkillDetailInfo = {
 export type HistoryMsg = {
   role: "user" | "assistant" | "system" | string;
   content: string;
+  /** RFC3339 时间戳，用于聊天记录分组与日期分隔。 */
+  at?: string;
   subtype?:
     | "compact_boundary"
     | "compact_summary"
@@ -450,6 +452,7 @@ export type TimelineMessage =
       id: string;
       kind: "user";
       content: string;
+      at?: string;
       subtype?: string;
       synthetic?: boolean;
       transcriptOnly?: boolean;
@@ -461,6 +464,7 @@ export type TimelineMessage =
       id: string;
       kind: "assistant";
       content: string;
+      at?: string;
       subtype?: string;
       synthetic?: boolean;
       transcriptOnly?: boolean;
@@ -472,6 +476,7 @@ export type TimelineMessage =
       id: string;
       kind: "system";
       content: string;
+      at?: string;
       subtype?: string;
       synthetic?: boolean;
       transcriptOnly?: boolean;

@@ -59,6 +59,7 @@ export function historyToTimeline(
       return {
         id: stableHistoryId(historyStart + index, message.role, content),
         kind: message.role === "user" || message.role === "assistant" ? message.role : "system",
+        at: message.at,
         content,
         subtype: message.subtype,
         synthetic: message.synthetic,

@@ -389,6 +389,24 @@ export async function getDigestContext(): Promise<DigestContext> {
   return parseJson<DigestContext>(response);
 }
 
+export type PublicQuote = {
+  symbol: string;
+  name?: string;
+  price: number;
+  change?: number;
+  change_percent?: number;
+};
+
+export type PublicQuotesResponse = {
+  available: boolean;
+  quotes: PublicQuote[];
+};
+
+export async function getPublicQuotes(): Promise<PublicQuotesResponse> {
+  const response = await apiFetch("/api/public/quotes");
+  return parseJson<PublicQuotesResponse>(response);
+}
+
 // ── Admin: mainline context for any actor ─────────────────────────────────
 
 export type AdminMainlineContext = DigestContext & {
