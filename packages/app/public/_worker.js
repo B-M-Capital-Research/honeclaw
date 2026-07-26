@@ -11,6 +11,8 @@ const BLOG_META = {
   },
 };
 
+const STRICT_TRANSPORT_SECURITY = "max-age=31536000";
+
 function isStaticResourceRequest(pathname) {
   return STATIC_RESOURCE_PATH.test(pathname);
 }
@@ -23,6 +25,22 @@ function requestWantsHtml(request) {
   const fetchMode = request.headers.get("sec-fetch-mode");
   if (fetchMode === "navigate") return true;
   return (request.headers.get("accept") || "").includes("text/html");
+}
+
+export function withSecurityHeaders(response) {
+  const headers = new Headers(response.headers);
+  headers.set("strict-transport-security", STRICT_TRANSPORT_SECURITY);
+  headers.set("x-content-type-options", "nosniff");
+  headers.set("referrer-policy", "strict-origin-when-cross-origin");
+  if (responseLooksLikeHtml(response)) {
+    headers.set("content-security-policy", "frame-ancestors 'none'");
+    headers.set("x-frame-options", "DENY");
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
 
 function cloneAsIndexRequest(request, url) {
@@ -95,16 +113,18 @@ export default {
 
     if (isStaticResourceRequest(url.pathname)) {
       if (response.status === 404 || responseLooksLikeHtml(response)) {
-        return new Response("", {
-          status: 404,
-          headers: {
-            "cache-control": "no-store",
-            "x-content-type-options": "nosniff",
-            "x-robots-tag": "noindex",
-          },
-        });
+        return withSecurityHeaders(
+          new Response("", {
+            status: 404,
+            headers: {
+              "cache-control": "no-store",
+              "x-content-type-options": "nosniff",
+              "x-robots-tag": "noindex",
+            },
+          }),
+        );
       }
-      return response;
+      return withSecurityHeaders(response);
     }
 
     const blogMeta = blogMetaForPath(url.pathname);
@@ -115,11 +135,11 @@ export default {
       response.status !== 404 &&
       responseLooksLikeHtml(response)
     ) {
-      return injectArticleMeta(response, blogMeta);
+      return withSecurityHeaders(await injectArticleMeta(response, blogMeta));
     }
 
     if (response.status !== 404) {
-      return response;
+      return withSecurityHeaders(response);
     }
 
     if (
@@ -128,11 +148,11 @@ export default {
     ) {
       const indexResponse = await env.ASSETS.fetch(cloneAsIndexRequest(request, url));
       if (blogMeta && request.method === "GET") {
-        return injectArticleMeta(indexResponse, blogMeta);
+        return withSecurityHeaders(await injectArticleMeta(indexResponse, blogMeta));
       }
-      return indexResponse;
+      return withSecurityHeaders(indexResponse);
     }
 
-    return response;
+    return withSecurityHeaders(response);
   },
 };

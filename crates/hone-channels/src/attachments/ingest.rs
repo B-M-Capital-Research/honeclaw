@@ -3,7 +3,7 @@ use std::fs;
 use std::io::{Read, Write};
 use std::path::Component;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
@@ -22,13 +22,16 @@ use crate::sandbox::actor_upload_dir;
 pub(crate) use super::vision::validate_image_shape_blocking;
 
 const MAX_ARCHIVE_EXTRACTED_FILES: usize = 80;
-const MAX_ARCHIVE_TOTAL_BYTES: u64 = 120 * 1024 * 1024;
+const MAX_ARCHIVE_TOTAL_BYTES: u64 = 32 * 1024 * 1024;
+const MAX_ARCHIVE_EXPANSION_RATIO: u64 = 20;
+const MIN_ARCHIVE_EXPANSION_BUDGET_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_ARCHIVE_SINGLE_FILE_BYTES: u64 = 20 * 1024 * 1024;
 const MAX_ARCHIVE_PROMPT_FILES: usize = 25;
 const MAX_ARCHIVE_PREVIEW_BYTES: u64 = 128 * 1024;
 const MAX_ARCHIVE_PREVIEW_CHARS: usize = 500;
 const MAX_ATTACHMENT_BYTES: u64 = 5 * 1024 * 1024;
 const MAX_IMAGE_BYTES: u64 = 3 * 1024 * 1024;
+const MAX_ACTOR_UPLOAD_STORAGE_BYTES: u64 = 256 * 1024 * 1024;
 const ATTACHMENT_POLICY_REJECT_PREFIX: &str = "附件未通过准入限制";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -161,6 +164,7 @@ pub async fn ingest_raw_attachments(
         None
     };
     for (index, attachment) in request.attachments.into_iter().enumerate() {
+        let _storage_guard = attachment_storage_quota_lock().lock().await;
         let mut received = ingest_one_raw_attachment(&upload_dir, index, attachment).await;
         if received.error.is_none()
             && let (Some(oss), Some(local_path)) = (&cloud_oss, received.local_path.as_ref())
@@ -248,6 +252,15 @@ async fn ingest_one_raw_attachment(
         pdf_extract_error: None,
     };
 
+    if actor_upload_storage_bytes(upload_dir) >= MAX_ACTOR_UPLOAD_STORAGE_BYTES {
+        cleanup_raw_attachment_staging_file(&attachment).await;
+        received.error = Some(format!(
+            "{ATTACHMENT_POLICY_REJECT_PREFIX}：用户附件存储已达到 {}MB 上限",
+            MAX_ACTOR_UPLOAD_STORAGE_BYTES / 1024 / 1024
+        ));
+        return received;
+    }
+
     if let Some(reason) = validate_attachment_policy(kind, attachment.size) {
         cleanup_raw_attachment_staging_file(&attachment).await;
         received.error = Some(reason);
@@ -287,10 +300,53 @@ async fn ingest_one_raw_attachment(
         } else {
             None
         };
-        received = enrich_attachment_with_extract_dir(received, extract_dir).await;
+        received = enrich_attachment_with_extract_dir(received, extract_dir.clone()).await;
+        if actor_upload_storage_bytes(upload_dir) > MAX_ACTOR_UPLOAD_STORAGE_BYTES {
+            if let Some(local_path) = received.local_path.take() {
+                let _ = tokio::fs::remove_file(local_path).await;
+            }
+            if let Some(extract_dir) = extract_dir {
+                let _ = tokio::fs::remove_dir_all(extract_dir).await;
+            }
+            received.extracted_files.clear();
+            received.extraction_error = None;
+            received.error = Some(format!(
+                "{ATTACHMENT_POLICY_REJECT_PREFIX}：处理后将超过用户附件存储 {}MB 上限",
+                MAX_ACTOR_UPLOAD_STORAGE_BYTES / 1024 / 1024
+            ));
+        }
     }
 
     received
+}
+
+fn attachment_storage_quota_lock() -> &'static tokio::sync::Mutex<()> {
+    static LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
+}
+
+fn actor_upload_storage_bytes(upload_dir: &Path) -> u64 {
+    let actor_upload_root = upload_dir.parent().unwrap_or(upload_dir);
+    directory_storage_bytes(actor_upload_root)
+}
+
+fn directory_storage_bytes(path: &Path) -> u64 {
+    let Ok(entries) = fs::read_dir(path) else {
+        return 0;
+    };
+    entries
+        .filter_map(Result::ok)
+        .map(|entry| {
+            let path = entry.path();
+            match entry.file_type() {
+                Ok(file_type) if file_type.is_dir() => directory_storage_bytes(&path),
+                Ok(file_type) if file_type.is_file() => {
+                    entry.metadata().map(|metadata| metadata.len()).unwrap_or(0)
+                }
+                _ => 0,
+            }
+        })
+        .fold(0u64, u64::saturating_add)
 }
 
 async fn materialize_raw_attachment(
@@ -929,6 +985,7 @@ fn extract_archive_with_limits_blocking(
     extract_dir: &Path,
 ) -> Result<Vec<ExtractedFileInfo>, String> {
     fs::create_dir_all(extract_dir).map_err(|e| format!("创建解压目录失败: {e}"))?;
+    let total_bytes_limit = archive_expansion_budget(archive_path)?;
     let filename_lower = archive_path
         .file_name()
         .and_then(|n| n.to_str())
@@ -936,22 +993,33 @@ fn extract_archive_with_limits_blocking(
         .to_ascii_lowercase();
 
     if filename_lower.ends_with(".zip") {
-        extract_zip_archive(archive_path, extract_dir)
+        extract_zip_archive(archive_path, extract_dir, total_bytes_limit)
     } else if filename_lower.ends_with(".tar.gz") || filename_lower.ends_with(".tgz") {
         let file = fs::File::open(archive_path).map_err(|e| format!("打开压缩包失败: {e}"))?;
         let gz = GzDecoder::new(file);
-        extract_tar_archive(gz, extract_dir)
+        extract_tar_archive(gz, extract_dir, total_bytes_limit)
     } else if filename_lower.ends_with(".tar") {
         let file = fs::File::open(archive_path).map_err(|e| format!("打开压缩包失败: {e}"))?;
-        extract_tar_archive(file, extract_dir)
+        extract_tar_archive(file, extract_dir, total_bytes_limit)
     } else {
         Err("暂不支持该压缩格式自动解压（仅支持 zip/tar/tar.gz/tgz）".to_string())
     }
 }
 
+fn archive_expansion_budget(archive_path: &Path) -> Result<u64, String> {
+    let compressed_bytes = fs::metadata(archive_path)
+        .map_err(|e| format!("读取压缩包大小失败: {e}"))?
+        .len();
+    Ok(compressed_bytes
+        .saturating_mul(MAX_ARCHIVE_EXPANSION_RATIO)
+        .max(MIN_ARCHIVE_EXPANSION_BUDGET_BYTES)
+        .min(MAX_ARCHIVE_TOTAL_BYTES))
+}
+
 fn extract_zip_archive(
     archive_path: &Path,
     extract_dir: &Path,
+    total_bytes_limit: u64,
 ) -> Result<Vec<ExtractedFileInfo>, String> {
     let file = fs::File::open(archive_path).map_err(|e| format!("打开 zip 失败: {e}"))?;
     let mut archive = ZipArchive::new(file).map_err(|e| format!("读取 zip 失败: {e}"))?;
@@ -971,7 +1039,7 @@ fn extract_zip_archive(
             .ok_or_else(|| format!("zip 包含非法路径: {}", entry.name()))?;
         let rel = sanitize_relative_path(enclosed)?;
         let (target, written) = write_archive_entry(&mut entry, extract_dir, &rel)?;
-        add_archive_total_bytes(&mut total_bytes, written)?;
+        add_archive_total_bytes(&mut total_bytes, written, total_bytes_limit)?;
         files.push(build_extracted_file_info(&target, written));
     }
 
@@ -981,6 +1049,7 @@ fn extract_zip_archive(
 fn extract_tar_archive<R: Read>(
     reader: R,
     extract_dir: &Path,
+    total_bytes_limit: u64,
 ) -> Result<Vec<ExtractedFileInfo>, String> {
     let mut archive = Archive::new(reader);
     let mut total_bytes: u64 = 0;
@@ -1002,7 +1071,7 @@ fn extract_tar_archive<R: Read>(
             .map_err(|e| format!("读取 tar 路径失败: {e}"))?;
         let rel = sanitize_relative_path(&rel_raw)?;
         let (target, written) = write_archive_entry(&mut entry, extract_dir, &rel)?;
-        add_archive_total_bytes(&mut total_bytes, written)?;
+        add_archive_total_bytes(&mut total_bytes, written, total_bytes_limit)?;
         files.push(build_extracted_file_info(&target, written));
     }
 
@@ -1033,12 +1102,17 @@ fn write_archive_entry<R: Read>(
     Ok((target, written))
 }
 
-fn add_archive_total_bytes(total_bytes: &mut u64, written: u64) -> Result<(), String> {
+fn add_archive_total_bytes(
+    total_bytes: &mut u64,
+    written: u64,
+    total_bytes_limit: u64,
+) -> Result<(), String> {
     *total_bytes = total_bytes.saturating_add(written);
-    if *total_bytes > MAX_ARCHIVE_TOTAL_BYTES {
+    if *total_bytes > total_bytes_limit {
         return Err(format!(
-            "压缩包解压总大小超过限制（>{}MB）",
-            MAX_ARCHIVE_TOTAL_BYTES / 1024 / 1024
+            "压缩包解压总大小超过本次限制（>{}MB，最大膨胀比 {}x）",
+            total_bytes_limit / 1024 / 1024,
+            MAX_ARCHIVE_EXPANSION_RATIO
         ));
     }
     Ok(())
@@ -1302,6 +1376,71 @@ mod tests {
     }
 
     #[test]
+    fn zip_extraction_rejects_high_expansion_ratio() {
+        let base = std::env::temp_dir().join(format!(
+            "hone-attach-zip-ratio-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("epoch")
+                .as_millis()
+        ));
+        fs::create_dir_all(&base).expect("create temp dir");
+        let zip_path = base.join("expanded.zip");
+        let out_dir = base.join("out");
+        {
+            let file = fs::File::create(&zip_path).expect("create zip");
+            let mut zip = zip::ZipWriter::new(file);
+            let options = zip::write::FileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated);
+            zip.start_file("large.txt", options).expect("start file");
+            zip.write_all(&vec![
+                b'x';
+                (MIN_ARCHIVE_EXPANSION_BUDGET_BYTES + 8192) as usize
+            ])
+            .expect("write repetitive content");
+            zip.finish().expect("finish zip");
+        }
+
+        let error = extract_archive_with_limits_blocking(&zip_path, &out_dir)
+            .expect_err("high-ratio zip must be rejected");
+        assert!(error.contains("最大膨胀比"));
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn tar_gz_extraction_rejects_high_expansion_ratio() {
+        let base = std::env::temp_dir().join(format!(
+            "hone-attach-tar-ratio-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("epoch")
+                .as_millis()
+        ));
+        fs::create_dir_all(&base).expect("create temp dir");
+        let archive_path = base.join("expanded.tar.gz");
+        let out_dir = base.join("out");
+        {
+            let file = fs::File::create(&archive_path).expect("create tar.gz");
+            let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::best());
+            let mut builder = tar::Builder::new(encoder);
+            let content = vec![b'x'; (MIN_ARCHIVE_EXPANSION_BUDGET_BYTES + 8192) as usize];
+            let mut header = tar::Header::new_gnu();
+            header.set_size(content.len() as u64);
+            header.set_mode(0o600);
+            header.set_cksum();
+            builder
+                .append_data(&mut header, "large.txt", content.as_slice())
+                .expect("append tar entry");
+            builder.finish().expect("finish tar");
+        }
+
+        let error = extract_archive_with_limits_blocking(&archive_path, &out_dir)
+            .expect_err("high-ratio tar.gz must be rejected");
+        assert!(error.contains("最大膨胀比"));
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
     fn archive_note_contains_extracted_file_list() {
         let attachments = [ReceivedAttachment {
             filename: "pack.zip".to_string(),
@@ -1550,6 +1689,47 @@ mod tests {
         assert!(enriched.extraction_error.is_some());
         assert!(!out_dir.exists());
 
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[tokio::test]
+    async fn attachment_ingest_rejects_actor_storage_over_quota() {
+        let base = std::env::temp_dir().join(format!(
+            "hone-attach-storage-quota-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("epoch")
+                .as_millis()
+        ));
+        let upload_dir = base.join("uploads").join("session");
+        fs::create_dir_all(&upload_dir).expect("create upload dir");
+        let quota_file = base.join("uploads").join("existing.bin");
+        let file = fs::File::create(&quota_file).expect("create quota file");
+        file.set_len(MAX_ACTOR_UPLOAD_STORAGE_BYTES)
+            .expect("set sparse quota size");
+
+        let received = ingest_one_raw_attachment(
+            &upload_dir,
+            0,
+            RawAttachment {
+                filename: "small.txt".to_string(),
+                content_type: Some("text/plain".to_string()),
+                size: Some(5),
+                url: "memory://small.txt".to_string(),
+                local_path: None,
+                data: Some(b"small".to_vec()),
+                error: None,
+            },
+        )
+        .await;
+
+        assert!(
+            received
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains("存储已达到"))
+        );
+        assert!(received.local_path.is_none());
         let _ = fs::remove_dir_all(&base);
     }
 

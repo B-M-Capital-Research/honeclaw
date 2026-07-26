@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import sys
@@ -27,20 +28,6 @@ def failure(error: str, fallback_message: str) -> int:
     )
 
 
-try:
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-except Exception as exc:  # pragma: no cover - runtime dependency probe
-    sys.exit(
-        failure(
-            f"matplotlib unavailable: {exc}",
-            "图表渲染环境不可用，改为文字说明。",
-        )
-    )
-
-
 DEFAULT_PALETTE = [
     "#1f3c88",
     "#0f766e",
@@ -49,6 +36,32 @@ DEFAULT_PALETTE = [
     "#b91c1c",
     "#475569",
 ]
+MAX_SERIES = 12
+MAX_POINTS_PER_SERIES = 5_000
+MAX_TOTAL_POINTS = 20_000
+MAX_HISTOGRAM_BINS = 200
+MAX_TEXT_CHARS = 2_000
+ALLOWED_HISTOGRAM_BIN_STRATEGIES = {
+    "auto",
+    "fd",
+    "doane",
+    "scott",
+    "stone",
+    "rice",
+    "sturges",
+    "sqrt",
+}
+
+
+def load_pyplot():
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except Exception as exc:  # pragma: no cover - runtime dependency probe
+        raise RuntimeError(f"matplotlib unavailable: {exc}") from exc
+    return plt
 
 
 def sanitize_output_name(raw: str) -> str:
@@ -81,26 +94,47 @@ def require_string(spec: dict, key: str) -> str:
     value = spec.get(key)
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{key} is required and must be a non-empty string")
-    return value.strip()
+    normalized = value.strip()
+    if len(normalized) > MAX_TEXT_CHARS:
+        raise ValueError(f"{key} exceeds {MAX_TEXT_CHARS} characters")
+    return normalized
 
 
 def require_series(spec: dict) -> list[dict]:
     series = spec.get("series")
     if not isinstance(series, list) or not series:
         raise ValueError("series is required and must be a non-empty list")
+    if len(series) > MAX_SERIES:
+        raise ValueError(f"series must contain at most {MAX_SERIES} items")
     normalized = []
+    total_points = 0
     for index, item in enumerate(series):
         if not isinstance(item, dict):
             raise ValueError(f"series[{index}] must be an object")
         values = item.get("values")
         if not isinstance(values, list) or not values:
             raise ValueError(f"series[{index}].values must be a non-empty list")
+        if len(values) > MAX_POINTS_PER_SERIES:
+            raise ValueError(
+                f"series[{index}].values must contain at most "
+                f"{MAX_POINTS_PER_SERIES} points"
+            )
+        total_points += len(values)
+        if total_points > MAX_TOTAL_POINTS:
+            raise ValueError(
+                f"all series together must contain at most {MAX_TOTAL_POINTS} points"
+            )
         name = item.get("name")
         if name is None:
             name = f"Series {index + 1}"
+        name = str(name)
+        if len(name) > MAX_TEXT_CHARS:
+            raise ValueError(
+                f"series[{index}].name exceeds {MAX_TEXT_CHARS} characters"
+            )
         normalized.append(
             {
-                "name": str(name),
+                "name": name,
                 "values": values,
                 "color": item.get("color"),
             }
@@ -112,10 +146,28 @@ def coerce_numbers(values: list, field: str) -> list[float]:
     numbers = []
     for index, value in enumerate(values):
         try:
-            numbers.append(float(value))
+            number = float(value)
         except Exception as exc:
             raise ValueError(f"{field}[{index}] must be numeric: {exc}") from exc
+        if not math.isfinite(number):
+            raise ValueError(f"{field}[{index}] must be finite")
+        numbers.append(number)
     return numbers
+
+
+def require_histogram_bins(spec: dict):
+    bins = spec.get("bins", 10)
+    if isinstance(bins, bool):
+        raise ValueError("bins must be an integer or a supported strategy")
+    if isinstance(bins, int):
+        if not 1 <= bins <= MAX_HISTOGRAM_BINS:
+            raise ValueError(
+                f"bins must be between 1 and {MAX_HISTOGRAM_BINS}"
+            )
+        return bins
+    if isinstance(bins, str) and bins in ALLOWED_HISTOGRAM_BIN_STRATEGIES:
+        return bins
+    raise ValueError("bins must be an integer or a supported strategy")
 
 
 def build_x_positions(spec: dict, series: list[dict]) -> tuple[list, list]:
@@ -259,7 +311,7 @@ def plot_bar(ax, spec: dict, series: list[dict], palette: list[str], horizontal:
 
 
 def plot_histogram(ax, spec: dict, series: list[dict], palette: list[str]) -> None:
-    bins = spec.get("bins", 10)
+    bins = require_histogram_bins(spec)
     for index, item in enumerate(series):
         values = coerce_numbers(item["values"], f"series[{index}].values")
         color = item["color"] if isinstance(item.get("color"), str) else palette[index % len(palette)]
@@ -269,12 +321,22 @@ def plot_histogram(ax, spec: dict, series: list[dict], palette: list[str]) -> No
 def render(spec: dict) -> Path:
     chart_type = require_string(spec, "chart_type").lower()
     series = require_series(spec)
+    if chart_type == "histogram":
+        require_histogram_bins(spec)
+    x_values = spec.get("x_values")
+    if isinstance(x_values, list) and len(x_values) > MAX_POINTS_PER_SERIES:
+        raise ValueError(
+            f"x_values must contain at most {MAX_POINTS_PER_SERIES} points"
+        )
     palette = spec.get("palette")
     if isinstance(palette, list) and palette:
+        if len(palette) > MAX_SERIES:
+            raise ValueError(f"palette must contain at most {MAX_SERIES} colors")
         colors = [str(item) for item in palette]
     else:
         colors = DEFAULT_PALETTE
 
+    plt = load_pyplot()
     fig, ax = plt.subplots(figsize=(16, 9), dpi=100)
     apply_common_style(fig, ax, spec)
 

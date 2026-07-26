@@ -4,6 +4,18 @@ Last updated: 2026-07-27
 
 ## 2026-07-27
 
+### Security Audit Remediation And v0.15.1 Release
+
+- Status: done
+- Date: 2026-07-27
+- Plan: `docs/archive/plans/security-audit-remediation-release.md`
+- Handoff: `docs/handoffs/2026-07-27-security-audit-remediation-release.md`
+- Decision / ADR: N/A; the release strengthens existing browser, auth, archive, tool-process, config, and secret-lifecycle boundaries without changing module topology or storage authority
+- Related PRs / commits: release commit containing this entry; annotated tag `v0.15.1`
+- Related runbooks / regressions: sealed Codex Security scan `c771f7ab-01ee-4f83-9a14-19e6df35834b`; full workspace check/test excluding Apple clients; Web tests and public build; Edge Worker typecheck plus `45/45`; complete CI-safe regressions; release-note validation; live Pages security-header probe
+- Current conclusion: all 12 validated findings (6 Medium, 6 Low) have targeted code fixes and regression proof. The release adds browser framing/transport headers, bounded SMS admission and uniform membership responses, chart/archive resource budgets, owner-only credential files and truthful token rotation, hidden Discord token entry, and digest-only cloud API-key persistence with legacy cleanup. No Critical or High finding was validated.
+- Next entry point: `docs/handoffs/2026-07-27-security-audit-remediation-release.md`, `docs/releases/v0.15.1.md`, and `docs/runbooks/backend-deployment.md`; backend activation remains an external-supervisor rollout step after the formal release.
+
 ### Public Workspace Visual Acceptance Fixes
 
 - Status: done

@@ -1287,6 +1287,10 @@ CREATE TABLE IF NOT EXISTS cloud_web_invite_users (
   record JSONB NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+UPDATE cloud_web_invite_users
+SET record = record - 'api_key_plaintext',
+    updated_at = now()
+WHERE record ? 'api_key_plaintext';
 CREATE TABLE IF NOT EXISTS cloud_web_auth_sessions (
   session_hash TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
@@ -1399,6 +1403,9 @@ VALUES ('20260529_pg_oss_runtime_foundation')
 ON CONFLICT (version) DO NOTHING;
 INSERT INTO cloud_schema_migrations(version)
 VALUES ('20260712_community_content_archive')
+ON CONFLICT (version) DO NOTHING;
+INSERT INTO cloud_schema_migrations(version)
+VALUES ('20260727_remove_web_invite_plaintext_api_keys')
 ON CONFLICT (version) DO NOTHING;
 "#,
             )
@@ -4934,6 +4941,13 @@ mod tests {
     use bytes::BytesMut;
     use tokio_postgres::types::Json;
     use tokio_postgres::types::{ToSql, Type};
+
+    #[test]
+    fn cloud_schema_scrubs_legacy_plaintext_web_api_keys() {
+        let source = include_str!("cloud_runtime.rs");
+        assert!(source.contains("SET record = record - 'api_key_plaintext'"));
+        assert!(source.contains("20260727_remove_web_invite_plaintext_api_keys"));
+    }
 
     #[test]
     fn community_publish_lock_key_is_stable_and_scoped() {

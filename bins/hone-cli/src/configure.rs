@@ -272,13 +272,9 @@ pub(crate) fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> 
                     path: "discord.enabled".to_string(),
                     value: Value::Bool(discord_enabled),
                 });
-                if let Some(token) = prompt_optional_discord_token(
-                    &theme,
-                    lang,
-                    "Discord bot token",
-                    &config.discord.bot_token,
-                    true,
-                )? {
+                if let Some(token) =
+                    prompt_optional_discord_token(&theme, lang, "Discord bot token", true)?
+                {
                     mutations.push(ConfigMutation::Set {
                         path: "discord.bot_token".to_string(),
                         value: Value::String(token),

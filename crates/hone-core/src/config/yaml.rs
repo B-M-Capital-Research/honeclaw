@@ -11,7 +11,8 @@
 //!   发生变化时整段覆盖，避免「半个数组」的歧义
 
 use serde_yaml::{Mapping, Value};
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 pub(super) fn config_io_error(
@@ -365,14 +366,31 @@ pub(super) fn atomic_write_yaml(path: &Path, yaml: &str) -> crate::HoneResult<()
         .unwrap_or("config");
     let tmp_path = parent.join(format!(".{file_name}.{stamp}.tmp"));
 
-    fs::write(&tmp_path, yaml)
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut tmp_file = options
+        .open(&tmp_path)
+        .map_err(|e| config_io_error("创建配置临时文件失败", &tmp_path, e))?;
+    tmp_file
+        .write_all(yaml.as_bytes())
         .map_err(|e| config_io_error("写入配置临时文件失败", &tmp_path, e))?;
+    tmp_file
+        .sync_all()
+        .map_err(|e| config_io_error("同步配置临时文件失败", &tmp_path, e))?;
+    drop(tmp_file);
     match fs::rename(&tmp_path, path) {
-        Ok(()) => Ok(()),
+        Ok(()) => crate::harden_private_file(path)
+            .map_err(|e| config_io_error("收紧配置文件权限失败", path, e)),
         Err(first_err) => {
             let _ = fs::remove_file(path);
             match fs::rename(&tmp_path, path) {
-                Ok(()) => Ok(()),
+                Ok(()) => crate::harden_private_file(path)
+                    .map_err(|e| config_io_error("收紧配置文件权限失败", path, e)),
                 Err(second_err) => {
                     let _ = fs::remove_file(&tmp_path);
                     Err(crate::HoneError::Config(format!(
@@ -382,6 +400,30 @@ pub(super) fn atomic_write_yaml(path: &Path, yaml: &str) -> crate::HoneResult<()
                 }
             }
         }
+    }
+}
+
+#[cfg(all(test, unix))]
+mod private_write_tests {
+    use super::atomic_write_yaml;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn atomic_yaml_write_is_owner_only_before_any_reload() {
+        let root = std::env::temp_dir().join(format!(
+            "hone_atomic_yaml_private_{}_{}",
+            std::process::id(),
+            crate::beijing_now()
+                .timestamp_nanos_opt()
+                .unwrap_or_default()
+        ));
+        let path = root.join("config.yaml");
+
+        atomic_write_yaml(&path, "discord:\n  bot_token: secret\n").unwrap();
+
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+        let _ = std::fs::remove_dir_all(root);
     }
 }
 

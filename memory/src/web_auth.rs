@@ -27,6 +27,7 @@ pub struct WebInviteUser {
     pub api_key_created_at: Option<String>,
     pub api_key_last_used_at: Option<String>,
     /// One-time plaintext key returned only by create/generate/reset flows.
+    #[serde(default, skip_serializing, skip_deserializing)]
     pub api_key_plaintext: Option<String>,
 }
 
@@ -1578,8 +1579,9 @@ fn ensure_column(conn: &Connection, table: &str, column: &str, definition: &str)
 #[cfg(test)]
 mod tests {
     use super::{
-        SESSION_TTL_DAYS_LONG, SESSION_TTL_DAYS_SHORT, WebAuthStorage, WebSessionAuthResult,
-        generate_api_key, generate_invite_code, generate_session_token, hash_session_token,
+        CloudWebInviteRecord, SESSION_TTL_DAYS_LONG, SESSION_TTL_DAYS_SHORT, WebAuthStorage,
+        WebSessionAuthResult, generate_api_key, generate_invite_code, generate_session_token,
+        hash_session_token,
     };
     use hone_core::beijing_now;
     use rusqlite::{Connection, params};
@@ -1619,6 +1621,28 @@ mod tests {
         let key = generate_api_key();
         assert!(key.starts_with("hck_"));
         assert_eq!(key.len(), 68);
+    }
+
+    #[test]
+    fn cloud_invite_records_never_serialize_or_restore_plaintext_api_keys() {
+        let storage = test_storage();
+        let created = storage.create_invite_user("13800138000").expect("create");
+        assert!(created.api_key_plaintext.is_some());
+
+        let record = CloudWebInviteRecord {
+            user: created,
+            api_key_hash: Some("hashed-key".to_string()),
+        };
+        let mut value = serde_json::to_value(&record).expect("serialize cloud invite");
+        assert!(value.get("api_key_plaintext").is_none());
+
+        value.as_object_mut().expect("object").insert(
+            "api_key_plaintext".to_string(),
+            serde_json::json!("legacy-secret"),
+        );
+        let restored: CloudWebInviteRecord =
+            serde_json::from_value(value).expect("deserialize legacy cloud invite");
+        assert!(restored.user.api_key_plaintext.is_none());
     }
 
     #[test]

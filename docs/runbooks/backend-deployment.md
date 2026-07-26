@@ -1,6 +1,6 @@
 # Runbook: Backend Deployment
 
-Last updated: 2026-07-19
+Last updated: 2026-07-27
 
 ## When to Use
 
@@ -45,7 +45,17 @@ Normal update flow:
 curl -fsS https://hone-claw.com/ >/dev/null
 curl -fsS https://hone-claw.com/chat >/dev/null
 curl -fsS https://hone-claw.com/roadmap >/dev/null
+curl -fsSI https://hone-claw.com/ | \
+  rg -i 'strict-transport-security|content-security-policy|x-frame-options|x-content-type-options|referrer-policy'
 ```
+
+For the HTML response, require `Strict-Transport-Security: max-age=31536000`,
+`Content-Security-Policy: frame-ancestors 'none'`, and
+`X-Frame-Options: DENY`. All public responses must also include
+`X-Content-Type-Options: nosniff` and
+`Referrer-Policy: strict-origin-when-cross-origin`. `_worker.js` is part of the
+public security boundary; do not mark a frontend deployment healthy when these
+headers are missing or duplicated with a weaker value.
 
 The deployment is not complete merely because the source tree changed, the backend restarted, or a Vite development server shows the new behavior. Before reporting a public Web fix as live, compare all three served layers:
 
@@ -128,7 +138,31 @@ process.
 
 ## Public Auth Runtime Env
 
-Public SMS login and optional captcha are runtime env configuration, not `config.yaml` fields. Keep real values in the backend host environment or supervisor, never in committed files. The active admin-created Web invite users remain the public-login invite-list admission source before any SMS send/check.
+Public SMS login and optional captcha are runtime env configuration, not
+`config.yaml` fields. Keep real values in the backend host environment or
+supervisor, never in committed files. The active, non-revoked admin-created Web
+invite user list remains the public-login invite-list admission source and the
+final admission decision, but public responses must not disclose membership.
+Provider delivery may run only after all server-side
+guards pass; the HTTP response path must remain generic and independent of
+provider latency. Code verification precedes the invite lookup during login,
+and non-members still fail closed without a session.
+
+The application-enforced abuse limits are:
+
+- at most one successful send per phone per 60 seconds;
+- at most 10 successful sends per phone per rolling day;
+- at most 60 send attempts per source IP per rolling hour;
+- at most 16,384 tracked limiter identities process-wide, with unseen
+  identities rejected while full instead of growing the map.
+
+These are security invariants. Browser cooldowns, Aliyun quotas, captcha, and
+Cloudflare WAF rules are additional layers and must not replace them. A
+production canary must use a designated test invite/number and must never send
+bulk SMS. Verify that repeated sends return the same generic public response,
+that the second accepted delivery is not possible inside 60 seconds, and that
+uninvited or invalid-code login attempts return the same generic `401` shape
+without revealing membership.
 
 Required for SMS send/check:
 

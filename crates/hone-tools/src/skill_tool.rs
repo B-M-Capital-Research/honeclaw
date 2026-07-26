@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use tokio::process::Command;
 
 use crate::base::{Tool, ToolParameter};
@@ -12,6 +13,9 @@ use crate::skill_runtime::{SkillRuntime, SkillStageConstraints};
 const INVOKED_SKILLS_METADATA_KEY: &str = "skill_runtime.invoked_skills";
 const SUPPORTED_IMAGE_ARTIFACT_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "gif"];
 const SKILL_SCRIPT_STDERR_CHARS: usize = 1000;
+const MAX_SKILL_SCRIPT_ARGUMENTS: usize = 64;
+const MAX_SKILL_SCRIPT_ARGUMENT_BYTES: usize = 256 * 1024;
+const SKILL_SCRIPT_TIMEOUT: Duration = Duration::from_secs(120);
 
 pub struct SkillTool {
     system_dir: PathBuf,
@@ -92,6 +96,7 @@ impl SkillTool {
             args.get("script_arguments"),
             args.get("args").and_then(|value| value.as_str()),
         )?;
+        validate_script_argument_budget(&script_arguments)?;
 
         let mut command = if let Some(shell) = skill.shell.as_deref() {
             let mut command = Command::new(shell);
@@ -120,10 +125,16 @@ impl SkillTool {
         if let Ok(gen_images_dir) = resolve_gen_images_dir() {
             command.env("HONE_GEN_IMAGES_DIR", gen_images_dir);
         }
+        command.kill_on_drop(true);
 
-        let output = command
-            .output()
+        let output = tokio::time::timeout(SKILL_SCRIPT_TIMEOUT, command.output())
             .await
+            .map_err(|_| {
+                format!(
+                    "skill script 执行超时（>{} 秒），子进程已终止",
+                    SKILL_SCRIPT_TIMEOUT.as_secs()
+                )
+            })?
             .map_err(|err| format!("执行 skill script 失败: {err}"))?;
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -174,6 +185,27 @@ impl SkillTool {
                 .unwrap_or(Value::Null),
         })))
     }
+}
+
+fn validate_script_argument_budget(arguments: &[String]) -> Result<(), String> {
+    if arguments.len() > MAX_SKILL_SCRIPT_ARGUMENTS {
+        return Err(format!(
+            "skill script 参数数量超过限制（>{MAX_SKILL_SCRIPT_ARGUMENTS}）"
+        ));
+    }
+    let total_bytes = arguments
+        .iter()
+        .try_fold(0usize, |total, argument| {
+            total.checked_add(argument.len()).ok_or(())
+        })
+        .unwrap_or(usize::MAX);
+    if total_bytes > MAX_SKILL_SCRIPT_ARGUMENT_BYTES {
+        return Err(format!(
+            "skill script 参数总大小超过限制（>{} KiB）",
+            MAX_SKILL_SCRIPT_ARGUMENT_BYTES / 1024
+        ));
+    }
+    Ok(())
 }
 
 fn sanitize_skill_script_stderr(stderr: &str) -> String {
@@ -789,6 +821,61 @@ mod tests {
                 .is_some_and(|value| value.contains("artifact.path 不在允许目录内"))
         );
         clear_test_env();
+    }
+
+    #[test]
+    fn skill_script_argument_budget_is_bounded() {
+        assert!(
+            validate_script_argument_budget(&vec!["arg".to_string(); MAX_SKILL_SCRIPT_ARGUMENTS])
+                .is_ok()
+        );
+        assert!(
+            validate_script_argument_budget(&vec![
+                "arg".to_string();
+                MAX_SKILL_SCRIPT_ARGUMENTS + 1
+            ])
+            .is_err()
+        );
+        assert!(
+            validate_script_argument_budget(&[String::from_utf8(vec![
+                b'x';
+                MAX_SKILL_SCRIPT_ARGUMENT_BYTES
+                    + 1
+            ])
+            .expect("ascii")])
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn chart_visualization_rejects_oversized_bins_before_rendering() {
+        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .expect("repo root");
+        let script = repo_root.join("skills/chart_visualization/scripts/render_chart.py");
+        let output = std::process::Command::new("python3")
+            .arg(script)
+            .arg(
+                serde_json::json!({
+                    "chart_type": "histogram",
+                    "title": "bounded histogram",
+                    "bins": 1_000_000,
+                    "series": [{"name": "values", "values": [1, 2, 3]}]
+                })
+                .to_string(),
+            )
+            .output()
+            .expect("run chart renderer");
+        assert!(output.status.success(), "{:?}", output.status);
+        let payload: Value =
+            serde_json::from_slice(&output.stdout).expect("structured renderer output");
+        assert_eq!(payload["success"], Value::Bool(false));
+        assert!(
+            payload["error"]
+                .as_str()
+                .is_some_and(|error| error.contains("between 1 and 200"))
+        );
     }
 
     #[tokio::test]

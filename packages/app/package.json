@@ -7,7 +7,7 @@
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "bun test --preload ./happydom.ts ./src",
+    "test": "bun test --preload ./happydom.ts ./src ./public",
     "test:e2e": "playwright test"
   },
   "dependencies": {

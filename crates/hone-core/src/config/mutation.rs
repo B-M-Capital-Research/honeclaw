@@ -60,6 +60,7 @@ pub fn classify_config_paths(paths: &[String]) -> ConfigApplyPlan {
         let root = path.split('.').next().unwrap_or_default();
         let logging_full_restart = root == "logging" && path.trim() != "logging.level";
         let full_restart = root == "storage"
+            || path.trim() == "web.auth_token"
             || path.trim() == "security.kb_actor_isolation"
             || logging_full_restart;
 
@@ -280,4 +281,26 @@ pub(super) fn validate_channel_chat_scope(
         )));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::classify_config_paths;
+
+    #[test]
+    fn web_auth_token_rotation_requires_process_restart() {
+        let plan = classify_config_paths(&["web.auth_token".to_string()]);
+
+        assert!(plan.restart_required);
+        assert!(!plan.applied_live);
+        assert!(plan.restarted_components.is_empty());
+    }
+
+    #[test]
+    fn non_credential_web_settings_remain_live() {
+        let plan = classify_config_paths(&["web.research_api_base".to_string()]);
+
+        assert!(!plan.restart_required);
+        assert!(plan.applied_live);
+    }
 }

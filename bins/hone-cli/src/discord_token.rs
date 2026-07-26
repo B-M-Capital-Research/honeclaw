@@ -12,7 +12,7 @@ use dialoguer::theme::ColorfulTheme;
 
 use crate::display::{fail_line, ok_line, warn_line};
 use crate::i18n::{Lang, t, tpl};
-use crate::prompts::{normalize_credential_value, prompt_bool, prompt_visible_credential};
+use crate::prompts::{normalize_credential_value, prompt_bool, prompt_secret};
 use crate::reports::DoctorCheck;
 
 /// Discord token 的格式校验结论。`Warn` 表示可能有问题但仍允许保存。
@@ -98,12 +98,10 @@ pub(crate) fn prompt_optional_discord_token(
     theme: &ColorfulTheme,
     lang: Lang,
     prompt: &str,
-    current: &str,
     keep_note: bool,
 ) -> Result<Option<String>, String> {
     loop {
-        let Some(token) = prompt_visible_credential(theme, lang, prompt, keep_note, current)?
-        else {
+        let Some(token) = prompt_secret(theme, lang, prompt, keep_note)? else {
             return Ok(None);
         };
         let normalized_token = normalize_credential_value(&token);
@@ -176,5 +174,14 @@ mod tests {
         assert_eq!(check.name, "discord-token-format");
         assert_eq!(check.status, "warn");
         assert!(check.detail.contains("长度异常偏长"));
+    }
+
+    #[test]
+    fn discord_token_prompt_uses_hidden_secret_input() {
+        let source = include_str!("discord_token.rs");
+        let visible_prompt_name = ["prompt_visible", "_credential"].concat();
+
+        assert!(source.contains("prompt_secret(theme, lang, prompt, keep_note)"));
+        assert!(!source.contains(&visible_prompt_name));
     }
 }

@@ -160,12 +160,11 @@ pub(crate) async fn handle_sms_send_code(
 
     let ip_key = public_client_key(&headers);
     let phone_key = format!("sms-send:{sms_phone_number}");
-    for key in [&ip_key, &phone_key] {
-        if let PublicAuthLimitStatus::Blocked { retry_after_secs } =
-            state.public_auth_limiter.check(key)
-        {
-            return json_rate_limited(retry_after_secs);
-        }
+    if let PublicAuthLimitStatus::Blocked { retry_after_secs } = state
+        .public_auth_limiter
+        .consume_sms_send(&ip_key, &phone_key)
+    {
+        return json_rate_limited(retry_after_secs);
     }
 
     if crate::aliyun_captcha::AliyunCaptchaConfig::public_config_from_env().enabled {
@@ -184,8 +183,8 @@ pub(crate) async fn handle_sms_send_code(
         }
     }
 
-    let user = match find_active_invite_user_by_sms_phone(&state, &phone_number) {
-        Ok(value) => value,
+    let should_send = match find_active_invite_user_by_sms_phone(&state, &phone_number) {
+        Ok(value) => value.is_some(),
         Err(error) => {
             return crate::routes::json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -193,21 +192,16 @@ pub(crate) async fn handle_sms_send_code(
             );
         }
     };
-    if user.is_none() {
-        let _ = state.public_auth_limiter.record_failure(&phone_key);
-        return crate::routes::json_error(
-            StatusCode::FORBIDDEN,
-            "目前是邀请制，请联系 bm@hone-claw.com 加入邀请名单",
-        );
-    }
-
-    match crate::aliyun_sms::send_verify_code(&state.http_client, &sms_phone_number).await {
-        Ok(()) => {
-            state.public_auth_limiter.record_success(&phone_key);
-            Json(json!({ "ok": true })).into_response()
+    let http_client = state.http_client.clone();
+    tokio::spawn(async move {
+        if should_send
+            && let Err(error) =
+                crate::aliyun_sms::send_verify_code(&http_client, &sms_phone_number).await
+        {
+            warn!("SMS verification send failed after generic acceptance: {error}");
         }
-        Err(error) => sms_provider_error_response("发送验证码失败", error),
-    }
+    });
+    sms_send_accepted_response()
 }
 
 pub(crate) async fn handle_sms_login(
@@ -251,23 +245,6 @@ pub(crate) async fn handle_sms_login(
         }
     }
 
-    let user = match find_active_invite_user_by_sms_phone(&state, &phone_number) {
-        Ok(Some(user)) => user,
-        Ok(None) => {
-            let _ = state.public_auth_limiter.record_failure(&phone_key);
-            return crate::routes::json_error(
-                StatusCode::FORBIDDEN,
-                "目前是邀请制，请联系 bm@hone-claw.com 加入邀请名单",
-            );
-        }
-        Err(error) => {
-            return crate::routes::json_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("查询邀请资格失败: {error}"),
-            );
-        }
-    };
-
     let verified = match crate::aliyun_sms::check_verify_code(
         &state.http_client,
         &sms_phone_number,
@@ -281,6 +258,19 @@ pub(crate) async fn handle_sms_login(
     if !verified {
         return sms_login_failed(&state, &ip_key, &phone_key);
     }
+
+    let user = match find_active_invite_user_by_sms_phone(&state, &phone_number) {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return sms_login_failed(&state, &ip_key, &phone_key);
+        }
+        Err(error) => {
+            return crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("查询邀请资格失败: {error}"),
+            );
+        }
+    };
 
     if let Err(error) = state
         .web_auth
@@ -344,6 +334,14 @@ pub(crate) async fn handle_sms_login(
     response
 }
 
+fn sms_send_accepted_response() -> Response {
+    Json(json!({
+        "ok": true,
+        "message": "如果该手机号具备登录资格，验证码将很快送达"
+    }))
+    .into_response()
+}
+
 fn aliyun_sms_phone_number(phone_number: &str) -> String {
     strip_china_country_code(phone_number).unwrap_or_else(|| phone_number.to_string())
 }
@@ -389,9 +387,11 @@ fn sms_login_failed(state: &AppState, ip_key: &str, phone_key: &str) -> Response
             rate_limited = Some(json_rate_limited(retry_after_secs));
         }
     }
-    rate_limited.unwrap_or_else(|| {
-        crate::routes::json_error(StatusCode::UNAUTHORIZED, "验证码不正确或已过期")
-    })
+    rate_limited.unwrap_or_else(sms_login_rejected_response)
+}
+
+fn sms_login_rejected_response() -> Response {
+    crate::routes::json_error(StatusCode::UNAUTHORIZED, "验证码不正确或已过期")
 }
 
 fn sms_provider_error_response(prefix: &str, error: crate::aliyun_sms::AliyunSmsError) -> Response {
@@ -1570,7 +1570,8 @@ mod tests {
         build_session_cookie, clear_session_cookie, has_unanswered_interactive_turn,
         logout_success_response, public_active_state_response, public_api_failure_message,
         public_api_finish_reason, public_attachment_filename, public_client_key,
-        public_sms_phone_candidates, validate_public_upload_path,
+        public_sms_phone_candidates, sms_login_rejected_response, sms_send_accepted_response,
+        validate_public_upload_path,
     };
     use axum::http::{HeaderMap, HeaderValue, header};
     use hone_channels::agent_session::{AgentSessionEvent, AgentSessionListener};
@@ -1801,6 +1802,57 @@ mod tests {
         );
         assert_eq!(aliyun_sms_phone_number("+8613871396421"), "13871396421");
         assert_eq!(aliyun_sms_phone_number("13871396421"), "13871396421");
+    }
+
+    #[tokio::test]
+    async fn public_sms_responses_do_not_disclose_invite_membership() {
+        let login = sms_login_rejected_response();
+        assert_eq!(login.status(), axum::http::StatusCode::UNAUTHORIZED);
+        let login_body = axum::body::to_bytes(login.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let login_body = String::from_utf8(login_body.to_vec()).unwrap();
+        assert!(login_body.contains("验证码不正确或已过期"));
+        assert!(!login_body.contains("邀请"));
+
+        let send = sms_send_accepted_response();
+        assert_eq!(send.status(), axum::http::StatusCode::OK);
+        let send_body = axum::body::to_bytes(send.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let send_body = String::from_utf8(send_body.to_vec()).unwrap();
+        assert!(send_body.contains("验证码将很快送达"));
+        assert!(!send_body.contains("邀请"));
+    }
+
+    #[test]
+    fn public_sms_flow_closes_membership_timing_oracles() {
+        let source = include_str!("public.rs");
+        let send_start = source
+            .find("async fn handle_sms_send_code")
+            .expect("send handler");
+        let login_start = source
+            .find("async fn handle_sms_login")
+            .expect("login handler");
+        let send_handler = &source[send_start..login_start];
+        assert!(send_handler.contains("tokio::spawn(async move"));
+        assert!(send_handler.contains("if should_send"));
+
+        let login_end = source[login_start..]
+            .find("\nfn sms_send_accepted_response")
+            .map(|offset| login_start + offset)
+            .expect("login handler end");
+        let login_handler = &source[login_start..login_end];
+        let verify_position = login_handler
+            .find("check_verify_code")
+            .expect("provider verification");
+        let invite_position = login_handler
+            .find("find_active_invite_user_by_sms_phone")
+            .expect("invite lookup");
+        assert!(
+            verify_position < invite_position,
+            "provider verification must precede invite membership lookup"
+        );
     }
 
     #[test]

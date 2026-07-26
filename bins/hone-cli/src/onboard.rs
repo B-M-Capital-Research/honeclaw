@@ -439,8 +439,7 @@ fn prompt_onboard_required_discord_token(
     current: &str,
 ) -> Result<Option<String>, String> {
     loop {
-        let attempted =
-            prompt_visible_credential(theme, lang, prompt, !current.trim().is_empty(), current)?;
+        let attempted = prompt_secret(theme, lang, prompt, !current.trim().is_empty())?;
         let resolution = resolve_required_secret_attempt(attempted, current, || {
             prompt_channel_recovery_action(theme, lang, channel_label, prompt)
         })?;
@@ -1260,6 +1259,21 @@ mod tests {
                 .iter()
                 .any(|spec| spec.kind.config_value() == "codex_acp")
         );
+    }
+
+    #[test]
+    fn discord_onboarding_uses_hidden_token_input_without_prefill() {
+        let source = include_str!("onboard.rs");
+        let start = source
+            .find("fn prompt_onboard_required_discord_token")
+            .expect("discord prompt function");
+        let end = source[start..]
+            .find("\nfn ")
+            .map(|offset| start + offset)
+            .unwrap_or(source.len());
+        let function = &source[start..end];
+        assert!(function.contains("prompt_secret(theme, lang, prompt"));
+        assert!(!function.contains(&["prompt", "_visible_credential"].concat()));
     }
 }
 
