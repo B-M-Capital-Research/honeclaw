@@ -267,7 +267,8 @@ if contains 'fn committed_prefix_matches_required(' "$FUNCTION_AGENT" \
   && contains 'let visible_service_prefix_committed =' "$FUNCTION_AGENT" \
   && contains 'if visible_service_prefix_committed' "$FUNCTION_AGENT" \
   && contains 'committed_finance_header_allows_registered_read_only_continuation_without_reset' "$FUNCTION_AGENT" \
-  && contains 'committed_finance_header_rejects_a_late_tool_before_execution' "$FUNCTION_AGENT"; then
+  && contains 'committed_finance_header_rejects_a_late_tool_before_execution' "$FUNCTION_AGENT" \
+  && contains 'exact_symbol_query_alias_rejects_missing_or_non_exact_match_modes' "$FUNCTION_AGENT"; then
   record success "41.committed-header-read-only-continuation" "an exact committed finance header survives a same-stream registered read-only continuation while unsafe late tools remain fail-closed before execution"
 else
   record fail "41.committed-header-read-only-continuation" "a safe late lookup can again erase the canonical header or an unsafe late tool can cross the irreversible publication boundary"
@@ -288,7 +289,12 @@ if contains 'fn market_move_final_violations(' "$FUNCTION_AGENT" \
   && contains '原因本轮未完全核验' "$FUNCTION_AGENT" \
   && contains 'market_move_final_check_rejects_wrong_weekday_and_unlocalized_cause' "$FUNCTION_AGENT" \
   && contains 'market_move_final_uses_quote_date_and_preserves_verified_scope_in_gap_response' "$FUNCTION_AGENT" \
-  && contains 'market_move_final_correction_keeps_only_header_visible_until_acceptance' "$FUNCTION_AGENT"; then
+  && contains 'market_move_final_correction_keeps_only_header_visible_until_acceptance' "$FUNCTION_AGENT" \
+  && contains 'broad_market_mode: bool' "$FUNCTION_AGENT" \
+  && contains 'broad_market_quote_groups: BTreeSet<String>' "$FUNCTION_AGENT" \
+  && contains 'fn broad_us_market_symbol_group(' "$FUNCTION_AGENT" \
+  && contains 'broad_market_exact_symbol_query_quotes_open_floor_after_two_groups' "$FUNCTION_AGENT" \
+  && contains 'broad_market_query_alias_batch_executes_and_can_finish_naturally' "$FUNCTION_AGENT"; then
   record success "42.market-move-prepublication-consistency" "market-move bodies stay buffered until quote-anchored civil dates, broad scope, and same-target-date current source URLs pass; English source dates are recognized, unrepairable cause gaps skip correction, and deterministic fallback preserves verified quote scope"
 else
   record fail "42.market-move-prepublication-consistency" "an impossible/quote-inconsistent date, substituted narrow scope, unsupported cause, discarded quote fact, or rejected draft can again cross the visible terminal boundary"
@@ -500,6 +506,8 @@ if contains 'exact_symbol_constraint: Option<String>' "$FUNCTION_AGENT" \
   && contains 'pub fn validated_data_fetch_search_query(value: &str)' "$DATA_FETCH" \
   && contains 'MAX_FMP_SYMBOL_INPUT_BYTES: usize = 512' "$DATA_FETCH" \
   && contains 'effective_request_parser_matches_executor_precedence_and_types' "$DATA_FETCH" \
+  && contains 'Some OpenAI-compatible providers keep an exact-symbol' "$DATA_FETCH" \
+  && contains 'exact_symbol_query_alias_rejects_missing_or_non_exact_match_modes' "$FUNCTION_AGENT" \
   && contains 'pub mod provider_symbol;' "$CORE_LIB" \
   && contains 'provider_canonical_key, provider_lookup_variants, provider_symbols_equivalent' "$CORE_LIB" \
   && contains 'hone_core::provider_lookup_variants(value)' "$SECURITY_IDENTIFIER" \

@@ -350,6 +350,8 @@ struct ResearchEvidenceLedger {
     unscoped_identity_search_attempts: u32,
     broad_data_attempts: u32,
     symbol_scoped_attempts: u32,
+    broad_market_mode: bool,
+    broad_market_quote_groups: BTreeSet<String>,
     post_activation_attempts: u32,
     post_identity_attempts: u32,
     post_identity_quote_attempts: u32,
@@ -408,6 +410,23 @@ impl ResearchEvidenceLedger {
 
     fn agent_guidance_summary(&self) -> String {
         if self.identity_routes.is_empty() {
+            if self.broad_market_mode {
+                if self.broad_market_quote_groups.len() >= 2 {
+                    return format!(
+                        "宽市场代表性行情已覆盖 {} 组（{}）：无需为宽基 ETF/指数补证券身份 search；读取实际 quote 结果，并只在需要解释目标日期原因时补同日 Web 来源后完成回答。",
+                        self.broad_market_quote_groups.len(),
+                        self.broad_market_quote_groups
+                            .iter()
+                            .cloned()
+                            .collect::<Vec<_>>()
+                            .join("、")
+                    );
+                }
+                return format!(
+                    "这是宽市场问题：已尝试 {} 组代表性行情，至少用 data_fetch quote 的 symbol/ticker（或带 identity_match=exact_symbol 的 query 兼容形态）覆盖两个不同宽基/风格组；无需为宽基 ETF/指数执行证券身份 search。",
+                    self.broad_market_quote_groups.len()
+                );
+            }
             return "尚未建立任何证券实体路线：重新阅读完整用户原话，并为每个点名标的分别执行带 entity_route 与 identity_match 的 search。"
                 .to_string();
         }
@@ -778,6 +797,19 @@ impl ResearchEvidenceLedger {
 
         let data_type = data_fetch_data_type(tool_call);
         let symbols = data_fetch_target_symbols(tool_call);
+        if self.broad_market_mode
+            && matches!(
+                data_type.as_deref(),
+                Some("quote" | "quote_short" | "snapshot")
+            )
+        {
+            self.broad_market_quote_groups.extend(
+                symbols
+                    .iter()
+                    .filter_map(|symbol| broad_us_market_symbol_group(symbol))
+                    .map(str::to_string),
+            );
+        }
         if !symbols.is_empty() {
             self.symbol_scoped_attempts = self.symbol_scoped_attempts.saturating_add(1);
         } else if data_type.as_deref().is_some_and(is_broad_data_type) {
@@ -837,6 +869,10 @@ impl ResearchEvidenceLedger {
     fn evidence_floor_satisfied(&self, active_business_round: bool) -> bool {
         if !active_business_round {
             return false;
+        }
+
+        if self.broad_market_mode && self.broad_market_quote_groups.len() >= 2 {
+            return true;
         }
 
         let route_keys = self.active_route_keys();
@@ -4305,6 +4341,16 @@ fn broad_us_market_scope_coverage(content: &str) -> usize {
     .count()
 }
 
+fn broad_us_market_symbol_group(symbol: &str) -> Option<&'static str> {
+    match symbol.trim().to_ascii_uppercase().as_str() {
+        "SPY" | "SPX" | "^SPX" | "GSPC" | "^GSPC" => Some("标普500"),
+        "QQQ" | "NDX" | "^NDX" | "IXIC" | "^IXIC" | "COMP" | "^COMP" => Some("纳斯达克"),
+        "DIA" | "DJI" | "^DJI" => Some("道琼斯"),
+        "IWM" | "RUT" | "^RUT" => Some("罗素2000"),
+        _ => None,
+    }
+}
+
 fn is_broad_us_market_request(runtime_input: &str) -> bool {
     let original = original_market_move_request(runtime_input).to_ascii_lowercase();
     ["美股", "美国股市", "u.s. market", "us market"]
@@ -4918,6 +4964,8 @@ impl Agent for FunctionCallingAgent {
             self.agent_owned_finance_loop
                 .then_some(MAX_AGENT_OWNED_FINANCE_IDENTITY_ROUTES),
         );
+        research_evidence.broad_market_mode = is_market_move_final_check_enabled(user_input)
+            && is_broad_us_market_request(user_input);
         let mut finance_tool_rounds = 0u32;
         let mut tool_budget_exhausted = false;
         let mut service_prefix_commit_eligible = true;
@@ -5408,6 +5456,8 @@ impl Agent for FunctionCallingAgent {
                 "identity_only_attempts": research_evidence.identity_only_attempts,
                 "broad_data_attempts": research_evidence.broad_data_attempts,
                 "symbol_scoped_attempts": research_evidence.symbol_scoped_attempts,
+                "broad_market_mode": research_evidence.broad_market_mode,
+                "broad_market_quote_groups": research_evidence.broad_market_quote_groups.iter().cloned().collect::<Vec<_>>(),
                 "post_activation_attempts": research_evidence.post_activation_attempts,
                 "post_identity_attempts": research_evidence.post_identity_attempts,
                 "post_identity_quote_attempts": research_evidence.post_identity_quote_attempts,
@@ -5435,6 +5485,8 @@ impl Agent for FunctionCallingAgent {
                 "identity_only_attempts": research_evidence.identity_only_attempts,
                 "broad_data_attempts": research_evidence.broad_data_attempts,
                 "symbol_scoped_attempts": research_evidence.symbol_scoped_attempts,
+                "broad_market_mode": research_evidence.broad_market_mode,
+                "broad_market_quote_groups": research_evidence.broad_market_quote_groups.iter().cloned().collect::<Vec<_>>(),
                 "post_activation_attempts": research_evidence.post_activation_attempts,
                 "post_identity_attempts": research_evidence.post_identity_attempts,
                 "post_identity_quote_attempts": research_evidence.post_identity_quote_attempts,
@@ -10384,6 +10436,149 @@ mod tests {
             true,
         );
         assert!(ledger.evidence_floor_satisfied(true));
+    }
+
+    #[test]
+    fn broad_market_exact_symbol_query_quotes_open_floor_after_two_groups() {
+        let spy = evidence_call(
+            "spy",
+            r#"{"data_type":"quote","query":"SPY","identity_match":"exact_symbol"}"#,
+        );
+        let qqq = evidence_call(
+            "qqq",
+            r#"{"data_type":"quote","query":"QQQ","identity_match":"exact_symbol"}"#,
+        );
+        let registered = BTreeSet::from(["data_fetch".to_string()]);
+        assert!(data_fetch_call_is_structurally_valid(&spy));
+        assert!(registered_read_only_tool_call_is_well_formed(
+            &spy,
+            &registered
+        ));
+
+        let mut ledger = ResearchEvidenceLedger {
+            broad_market_mode: true,
+            ..ResearchEvidenceLedger::default()
+        };
+        ledger.observe_business_call(&spy, true);
+        assert!(!ledger.evidence_floor_satisfied(true));
+        let pending_guidance = ledger.agent_guidance_summary();
+        assert!(pending_guidance.contains("至少"));
+        assert!(!pending_guidance.contains("每个点名标的"));
+
+        ledger.observe_business_call(&qqq, true);
+        assert!(ledger.evidence_floor_satisfied(true));
+        assert_eq!(
+            ledger.broad_market_quote_groups,
+            BTreeSet::from(["标普500".to_string(), "纳斯达克".to_string()])
+        );
+        let complete_guidance = ledger.agent_guidance_summary();
+        assert!(complete_guidance.contains("无需为宽基 ETF/指数补证券身份 search"));
+        assert!(!complete_guidance.contains("每个点名标的"));
+
+        let mut ordinary_security_ledger = ResearchEvidenceLedger::default();
+        ordinary_security_ledger.observe_business_call(&spy, true);
+        ordinary_security_ledger.observe_business_call(&qqq, true);
+        assert!(
+            !ordinary_security_ledger.evidence_floor_satisfied(true),
+            "ordinary securities still require identity-search coverage"
+        );
+    }
+
+    #[test]
+    fn exact_symbol_query_alias_rejects_missing_or_non_exact_match_modes() {
+        for arguments in [
+            r#"{"data_type":"quote","query":"SPY"}"#,
+            r#"{"data_type":"quote","query":"SPY","identity_match":"name_or_alias"}"#,
+            r#"{"data_type":"quote","query":["SPY"],"identity_match":"exact_symbol"}"#,
+        ] {
+            assert!(!data_fetch_call_is_structurally_valid(&evidence_call(
+                "invalid-query-alias",
+                arguments
+            )));
+        }
+    }
+
+    #[tokio::test]
+    async fn broad_market_query_alias_batch_executes_and_can_finish_naturally() {
+        let answer = concat!(
+            "数据时间：北京时间 2026-07-26 17:30；行情口径：本轮用两组宽基行情尝试核验\n\n",
+            "目标时段：2026-07-24（周五，美东市场日）。标普500（SPY）与纳斯达克100（QQQ）应分别判断，不能把单一风格回撤写成整个美股同步大跌。\n\n",
+            "原因本轮未完全核验：本测试仅证明宽市场代表性行情调用可以完成，不补写没有同日来源的原因。"
+        );
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_spy_query_alias".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments:
+                        r#"{"data_type":"quote","query":"SPY","identity_match":"exact_symbol"}"#
+                            .to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 1,
+                    id: Some("tc_qqq_query_alias".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments:
+                        r#"{"data_type":"quote","query":"QQQ","identity_match":"exact_symbol"}"#
+                            .to_string(),
+                },
+            ],
+            vec![ChatStreamEvent::ContentDelta(answer.to_string())],
+        ]);
+        let seen_tool_choice_modes = llm.seen_tool_choice_modes.clone();
+        let audit = Arc::new(RecordingAuditSink::default());
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(CountingDataFetchTool {
+            calls: calls.clone(),
+        }));
+        let agent = FunctionCallingAgent::new(
+            Arc::new(llm),
+            Arc::new(registry),
+            String::new(),
+            3,
+            Some(audit.clone()),
+        )
+        .with_agent_owned_finance_loop(true);
+        let mut context = AgentContext::new("broad-market-query-alias".to_string());
+        let response = agent
+            .run(
+                concat!(
+                    "【Session 上下文】\n当前时间：2026-07-26 17:30:00 (北京时间)\n\n",
+                    "【本轮用户输入】\n美股为什么大跌\n\n",
+                    "【本轮涨跌归因日期锚点：只指导主 Agent 取证，不是行情或交易日事实】\n",
+                    "最近同名候选日期是 2026-07-24 周五。\n\n",
+                    "【本轮最终回答契约：由主 Agent 一次完成】\n",
+                    "第一条非空行必须严格以 `数据时间：北京时间 2026-07-26 17:30；行情口径：` 开头。"
+                ),
+                &mut context,
+            )
+            .await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, answer);
+        assert_eq!(response.iterations, 2);
+        assert_eq!(response.tool_calls_made.len(), 2);
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert_eq!(
+            seen_tool_choice_modes
+                .lock()
+                .expect("tool choice modes")
+                .as_slice(),
+            [ToolChoiceMode::Auto, ToolChoiceMode::Auto],
+            "two representative broad-market groups must open natural-final mode without identity-search deadlock"
+        );
+        let records = audit.records.lock().expect("audit records");
+        let direct_final = records.last().expect("direct final audit");
+        assert_eq!(direct_final.metadata["evidence_floor_satisfied"], true);
+        assert_eq!(direct_final.metadata["broad_market_mode"], true);
+        assert_eq!(
+            direct_final.metadata["broad_market_quote_groups"]
+                .as_array()
+                .map(Vec::len),
+            Some(2)
+        );
     }
 
     #[test]

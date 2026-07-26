@@ -35,15 +35,26 @@ pub fn effective_data_fetch_data_type(args: &Value) -> &str {
 
 pub fn effective_data_fetch_target(args: &Value) -> &str {
     let data_type = effective_data_fetch_data_type(args);
-    args.get(if data_type == "search" {
-        "query"
+    let selected = if data_type == "search" {
+        args.get("query")
+            .or_else(|| args.get("ticker"))
+            .or_else(|| args.get("symbol"))
     } else {
-        "ticker"
-    })
-    .or_else(|| args.get("ticker"))
-    .or_else(|| args.get("symbol"))
-    .and_then(Value::as_str)
-    .unwrap_or("")
+        args.get("ticker")
+            .or_else(|| args.get("symbol"))
+            .or_else(|| {
+                // Some OpenAI-compatible providers keep an exact-symbol
+                // lookup in `query` even after switching from search to a
+                // symbol-scoped data type. Accept that alias only when the
+                // same call explicitly declares exact_symbol; natural names,
+                // missing match modes, and conflicting typed fields still
+                // fail closed.
+                (args.get("identity_match").and_then(Value::as_str) == Some("exact_symbol"))
+                    .then(|| args.get("query"))
+                    .flatten()
+            })
+    };
+    selected.and_then(Value::as_str).unwrap_or("")
 }
 
 pub fn data_fetch_data_type_uses_security_target(data_type: &str) -> bool {
@@ -1207,6 +1218,55 @@ mod tests {
                 "",
             ),
             (
+                json!({
+                    "data_type":"quote",
+                    "query":"SPY",
+                    "identity_match":"exact_symbol"
+                }),
+                "quote",
+                "SPY",
+            ),
+            (json!({"data_type":"quote","query":"SPY"}), "quote", ""),
+            (
+                json!({
+                    "data_type":"quote",
+                    "query":"SPY",
+                    "identity_match":"name_or_alias"
+                }),
+                "quote",
+                "",
+            ),
+            (
+                json!({
+                    "data_type":"quote",
+                    "ticker":"QQQ",
+                    "symbol":"DIA",
+                    "query":"SPY",
+                    "identity_match":"exact_symbol"
+                }),
+                "quote",
+                "QQQ",
+            ),
+            (
+                json!({
+                    "data_type":"quote",
+                    "ticker":["QQQ"],
+                    "query":"SPY",
+                    "identity_match":"exact_symbol"
+                }),
+                "quote",
+                "",
+            ),
+            (
+                json!({
+                    "data_type":"quote",
+                    "query":["SPY"],
+                    "identity_match":"exact_symbol"
+                }),
+                "quote",
+                "",
+            ),
+            (
                 json!({"data_type":"search","query":null,"ticker":"CRWV"}),
                 "search",
                 "",
@@ -1227,6 +1287,14 @@ mod tests {
                 "ticker":" CRWV "
             })),
             Some("CRWV")
+        );
+        assert_eq!(
+            effective_data_fetch_security_target(&json!({
+                "data_type":"quote",
+                "query":" SPY ",
+                "identity_match":"exact_symbol"
+            })),
+            Some("SPY")
         );
         assert!(
             effective_data_fetch_security_target(&json!({
