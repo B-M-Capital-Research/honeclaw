@@ -797,12 +797,7 @@ impl ResearchEvidenceLedger {
 
         let data_type = data_fetch_data_type(tool_call);
         let symbols = data_fetch_target_symbols(tool_call);
-        if self.broad_market_mode
-            && matches!(
-                data_type.as_deref(),
-                Some("quote" | "quote_short" | "snapshot")
-            )
-        {
+        if self.broad_market_mode && matches!(data_type.as_deref(), Some("quote" | "snapshot")) {
             self.broad_market_quote_groups.extend(
                 symbols
                     .iter()
@@ -4145,6 +4140,16 @@ fn current_turn_market_move_quotes(
     evidence
 }
 
+fn current_turn_verified_broad_market_quote_groups(
+    context: &AgentContext,
+    turn_message_start: usize,
+) -> BTreeSet<String> {
+    current_turn_market_move_quotes(context, turn_message_start)
+        .into_iter()
+        .filter_map(|quote| broad_us_market_symbol_group(&quote.symbol).map(str::to_string))
+        .collect()
+}
+
 fn current_turn_market_move_quote_date(
     context: &AgentContext,
     turn_message_start: usize,
@@ -4364,9 +4369,17 @@ fn append_market_move_quote_fact_violations(
         return;
     }
 
-    if ["收盘价", "收市价", "常规交易收盘"]
+    let normalized_content = content.to_ascii_lowercase();
+    let close_value_claim = Regex::new(r"(?:收报|收于|收在|收)\s*[$¥€£]?\s*[0-9]")
+        .expect("market-move close value regex")
+        .is_match(content);
+    if ["收盘", "收市", "常规交易收盘"]
         .iter()
         .any(|marker| content.contains(marker))
+        || ["closing price", "closed at", "close price"]
+            .iter()
+            .any(|marker| normalized_content.contains(marker))
+        || close_value_claim
     {
         violations.push(
             "普通 quote 的时间字段不证明交易时段或收盘，不能把其 price 写成收盘价".to_string(),
@@ -5110,9 +5123,19 @@ impl Agent for FunctionCallingAgent {
                 self.agent_owned_finance_loop && investment_research_started;
             let bounded_finance_research_active = self.agent_owned_finance_loop
                 && (finance_protocol_active || precommitted_service_prefix.is_some());
+            let market_move_bounded_final_ready = bounded_finance_research_active
+                && research_evidence.broad_market_mode
+                && finance_tool_rounds >= 1
+                && tool_call_counts
+                    .get("web_search")
+                    .is_some_and(|attempts| *attempts >= 1)
+                && current_turn_verified_broad_market_quote_groups(context, turn_message_start)
+                    .len()
+                    >= 2;
             let force_finance_final = bounded_finance_research_active
                 && (finance_tool_rounds >= MAX_AGENT_OWNED_FINANCE_TOOL_ROUNDS
-                    || tool_budget_exhausted);
+                    || tool_budget_exhausted
+                    || market_move_bounded_final_ready);
 
             if iterations >= self.max_iterations {
                 // The iteration bound is a normal failed run, never implicit
@@ -10669,6 +10692,25 @@ mod tests {
             !ordinary_security_ledger.evidence_floor_satisfied(true),
             "ordinary securities still require identity-search coverage"
         );
+
+        let mut short_quote_ledger = ResearchEvidenceLedger {
+            broad_market_mode: true,
+            ..ResearchEvidenceLedger::default()
+        };
+        for (id, symbol) in [("spy-short", "SPY"), ("qqq-short", "QQQ")] {
+            short_quote_ledger.observe_business_call(
+                &evidence_call(
+                    id,
+                    &format!(r#"{{"data_type":"quote_short","ticker":"{symbol}"}}"#),
+                ),
+                true,
+            );
+        }
+        assert!(
+            !short_quote_ledger.evidence_floor_satisfied(true),
+            "quote_short can omit percentage, exchange, and timestamp, so it cannot open a target-date market-move floor"
+        );
+        assert!(short_quote_ledger.broad_market_quote_groups.is_empty());
     }
 
     #[test]
@@ -10762,6 +10804,90 @@ mod tests {
         assert_eq!(direct_final.metadata["broad_market_mode"], true);
         assert_eq!(
             direct_final.metadata["broad_market_quote_groups"]
+                .as_array()
+                .map(Vec::len),
+            Some(2)
+        );
+    }
+
+    #[tokio::test]
+    async fn broad_market_verified_quotes_and_one_web_attempt_force_bounded_final() {
+        let answer = concat!(
+            "数据时间：北京时间 2026-07-26 18:30；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露\n\n",
+            "目标时段：2026-07-24（周五）。SPY +0.10%，QQQ -1.12%；两组宽基/风格代表走势分化，不支持“美股全面暴跌”的前提。\n\n",
+            "本轮搜索只返回标题摘要，没有取得目标日期的来源原文，因此不写成已确认触发因素。**原因本轮未完全核验。**"
+        );
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_spy".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments:
+                        r#"{"data_type":"quote","query":"SPY","identity_match":"exact_symbol"}"#
+                            .to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 1,
+                    id: Some("tc_qqq".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments:
+                        r#"{"data_type":"quote","query":"QQQ","identity_match":"exact_symbol"}"#
+                            .to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 2,
+                    id: Some("tc_web".to_string()),
+                    name: Some("web_search".to_string()),
+                    arguments: r#"{"query":"US stock market selloff July 24 2026 reasons"}"#
+                        .to_string(),
+                },
+            ],
+            vec![ChatStreamEvent::ContentDelta(answer.to_string())],
+        ]);
+        let seen_messages = llm.seen_messages.clone();
+        let audit = Arc::new(RecordingAuditSink::default());
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(MarketMoveCanaryFinanceTool));
+        registry.register(Box::new(SnippetOnlyMarketMoveWebTool));
+        let agent = FunctionCallingAgent::new(
+            Arc::new(llm),
+            Arc::new(registry),
+            String::new(),
+            3,
+            Some(audit.clone()),
+        )
+        .with_agent_owned_finance_loop(true);
+        let mut context = AgentContext::new("broad-market-bounded-final".to_string());
+        let response = agent
+            .run(
+                concat!(
+                    "【Session 上下文】\n当前时间：2026-07-26 18:30:00 (北京时间)\n\n",
+                    "【本轮用户输入】\n周五美股为什么暴跌\n\n",
+                    "【本轮涨跌归因日期锚点：只指导主 Agent 取证，不是行情或交易日事实】\n",
+                    "最近同名候选日期是 2026-07-24 周五。\n\n",
+                    "【本轮最终回答契约：由主 Agent 一次完成】\n",
+                    "第一条非空行必须严格以 `数据时间：北京时间 2026-07-26 18:30；行情口径：` 开头。"
+                ),
+                &mut context,
+            )
+            .await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, answer);
+        assert_eq!(response.iterations, 2);
+        assert_eq!(response.tool_calls_made.len(), 3);
+        assert_eq!(
+            seen_messages.lock().expect("seen messages").len(),
+            2,
+            "one source attempt plus two verified broad-market quote groups must go directly to a tools-disabled final instead of spending another network-search round"
+        );
+        let records = audit.records.lock().expect("audit records");
+        let final_record = records.last().expect("forced final audit");
+        assert_eq!(final_record.metadata["force_finance_final"], true);
+        assert_eq!(final_record.metadata["finance_tool_rounds"], 1);
+        assert_eq!(
+            final_record.metadata["broad_market_quote_groups"]
                 .as_array()
                 .map(Vec::len),
             Some(2)
@@ -13410,9 +13536,11 @@ mod tests {
 
         let invalid = "数据时间：北京时间 2026-07-26 17:56；行情口径：本轮仅使用可核验资料\n\n\
             目标时段：2026-07-24（周五）。SPY 与 QQQ 走势分化。\n\n\
+            本轮普通 quote 被错误写成纽约收盘报价。\n\n\
             | 标的 | 收盘价 | 涨跌幅 |\n\
             | SPY | $738.93 | +0.75% |\n\
             | QQQ | $684.23 | -1.12% |\n\n\
+            SPY 收 $738.93，QQQ 收于 $684.23。\n\n\
             DataFetch SPY/QQQ quote 的 timestamp 对应纽交所 2026-07-24 16:00。\n\n\
             **2026-07-24 下跌原因的已核验新闻来源**：地缘风险与油价冲击。\
             https://example.test/july-24-snippet";

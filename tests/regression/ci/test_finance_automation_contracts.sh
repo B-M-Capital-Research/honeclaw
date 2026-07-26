@@ -292,13 +292,15 @@ if contains 'fn market_move_final_violations(' "$FUNCTION_AGENT" \
   && contains 'market_move_final_uses_quote_date_and_preserves_verified_scope_in_gap_response' "$FUNCTION_AGENT" \
   && contains 'market_move_final_rejects_quote_field_confusion_and_snippet_only_causes' "$FUNCTION_AGENT" \
   && contains 'snippet_only_market_cause_uses_verified_quote_gap_without_another_generation' "$FUNCTION_AGENT" \
+  && contains 'broad_market_verified_quotes_and_one_web_attempt_force_bounded_final' "$FUNCTION_AGENT" \
+  && contains 'quote_short can omit percentage, exchange, and timestamp' "$FUNCTION_AGENT" \
   && contains 'market_move_final_correction_keeps_only_header_visible_until_acceptance' "$FUNCTION_AGENT" \
   && contains 'broad_market_mode: bool' "$FUNCTION_AGENT" \
   && contains 'broad_market_quote_groups: BTreeSet<String>' "$FUNCTION_AGENT" \
   && contains 'fn broad_us_market_symbol_group(' "$FUNCTION_AGENT" \
   && contains 'broad_market_exact_symbol_query_quotes_open_floor_after_two_groups' "$FUNCTION_AGENT" \
   && contains 'broad_market_query_alias_batch_executes_and_can_finish_naturally' "$FUNCTION_AGENT"; then
-  record success "42.market-move-prepublication-consistency" "market-move bodies stay buffered until quote-anchored civil dates, broad scope, exact changesPercentage/exchange/session wording, and same-target-date original-source URLs pass; snippet-only causes and unrepairable gaps select the deterministic verified-quote response"
+  record success "42.market-move-prepublication-consistency" "market-move bodies stay buffered until full quote-anchored civil dates, broad scope, exact changesPercentage/exchange/session wording, and same-target-date original-source URLs pass; quote_short cannot open the floor, and one source attempt plus verified broad quotes goes straight to a bounded final"
 else
   record fail "42.market-move-prepublication-consistency" "an impossible date, change-vs-percentage mixup, false exchange/session claim, snippet-only cause, substituted scope, or rejected draft can again cross the visible terminal boundary"
 fi
