@@ -14,11 +14,25 @@ P2
 
 ## 状态
 
-Fixed
+New
 
 ## GitHub Issue
 
 无，非 P1
+
+## 最新进展
+
+- 2026-07-26 23:02-2026-07-27 03:02 CST 真实运行态复发，状态从代码级 `Fixed` 回退为 `New`：
+  - `data/sessions.sqlite3`
+    - `session_id=Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b`
+    - `ordinal=10` / `timestamp=2026-07-27T00:00:00.622286+08:00`：Feishu scheduler 任务 `RKLB 每日动态监控` 明确要求“发现实质性催化或风险证伪信号时，第一时间推送简报；若当日无重要更新，可跳过不推送”。
+    - `ordinal=11` / `timestamp=2026-07-27T00:00:57.028818+08:00`：assistant final 自行判断“今日无新增实质变化，跳过主动推送”，但仍输出完整 `RKLB 每日动态监控简报`。
+    - `ordinal=12-15`：`AAOI 每日动态监控` 与 `TEM 每日动态监控` 同样包含“若当日无重要更新，可跳过不推送”，assistant final 分别写“今日跳过主动推送”，但仍发送完整长报告。
+  - `cron_job_runs`
+    - `run_id=48486` (`RKLB 每日动态监控`)、`run_id=48488` (`AAOI 每日动态监控`)、`run_id=48497` (`TEM 每日动态监控`) 均记录 `heartbeat=0`、`execution_status=completed`、`message_send_status=sent`、`delivered=1`。
+  - 判断：
+    - 这是普通 scheduler 的静默 / no-op 语义在 live 链路中的同根复发；模型已明确判断应跳过主动推送，但出站层仍按完成发送处理。
+    - 严重等级维持 `P2`：问题会导致监控任务错误投递噪音报告，影响功能语义和用户决策提醒可信度；但本窗没有错对象投递、数据破坏、敏感信息泄露、全渠道不可用或活跃 P1 证据。
 
 ## 证据来源
 
