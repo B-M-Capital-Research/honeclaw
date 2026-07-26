@@ -598,6 +598,7 @@ fi
 if contains 'CONTEXT_OVERFLOW_FINALIZATION_INSTRUCTION' "$FUNCTION_AGENT" \
   && contains 'bounded_context_overflow_tool_evidence' "$FUNCTION_AGENT" \
   && contains 'context_overflow_after_oversized_read_only_results_uses_bounded_same_agent_final' "$FUNCTION_AGENT" \
+  && contains 'bounded_context_overflow_large_calendar_is_fast_and_bounded' "$FUNCTION_AGENT" \
   && contains 'CONTEXT_OVERFLOW_CURRENT_TURN_ONLY_RESTORE_LIMIT' "$AGENT_CORE" \
   && contains 'use_current_turn_only_context' "$AGENT_CORE" \
   && contains 'context_overflow_compact_retry_then_current_turn_only_recovers_successfully' "$AGENT_TESTS" \
@@ -606,10 +607,11 @@ if contains 'CONTEXT_OVERFLOW_FINALIZATION_INSTRUCTION' "$FUNCTION_AGENT" \
   && contains 'pub fn is_context_overflow_error' "$CORE_CONTEXT_WINDOW" \
   && ! contains 'CONTEXT_OVERFLOW_FALLBACK_MESSAGE' "$AGENT_CORE" \
   && ! contains 'CONTEXT_OVERFLOW_FALLBACK_MESSAGE' "$AGENT_HELPERS" \
-  && ! contains 'CONTEXT_OVERFLOW_FALLBACK_MESSAGE' "$FUNCTION_AGENT"; then
-  record success "44.invisible-current-turn-aware-context-overflow-recovery" "oversized read-only evidence is bounded inside the same Agent, history recovery falls through to a current-turn-only attempt, and context/compact guidance cannot cross public error boundaries"
+  && ! contains 'CONTEXT_OVERFLOW_FALLBACK_MESSAGE' "$FUNCTION_AGENT" \
+  && ! contains 'pop_context_json_array_tail' "$FUNCTION_AGENT"; then
+  record success "44.invisible-current-turn-aware-context-overflow-recovery" "oversized read-only evidence is bounded in fixed linear passes inside the same Agent, history recovery falls through to a current-turn-only attempt, and context/compact guidance cannot cross public error boundaries"
 else
-  record fail "44.invisible-current-turn-aware-context-overflow-recovery" "context overflow can again replay oversized evidence, depend only on history compaction, or expose manual compact/new-session guidance"
+  record fail "44.invisible-current-turn-aware-context-overflow-recovery" "context overflow can again quadratically trim/replay oversized evidence, depend only on history compaction, or expose manual compact/new-session guidance"
 fi
 
 echo

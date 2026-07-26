@@ -4890,34 +4890,25 @@ fn truncate_context_json_strings(value: &Value, max_chars: usize) -> Value {
     }
 }
 
-fn pop_context_json_array_tail(value: &mut Value) -> bool {
-    match value {
-        Value::Array(items) => {
-            if items.len() > 1 {
-                items.pop();
-                true
-            } else {
-                items.iter_mut().any(pop_context_json_array_tail)
-            }
-        }
-        Value::Object(map) => map.values_mut().any(pop_context_json_array_tail),
-        _ => false,
-    }
-}
-
 fn bounded_context_json_value(value: &Value, max_chars: usize) -> (Value, bool) {
-    let original_chars = value.to_string().chars().count();
+    let serialized = value.to_string();
+    let original_chars = serialized.chars().count();
     if original_chars <= max_chars {
         return (value.clone(), false);
     }
 
-    for string_limit in [1_000, 512, 256, 128, 64] {
-        let mut compact = truncate_context_json_strings(value, string_limit);
-        while compact.to_string().chars().count() > max_chars
-            && pop_context_json_array_tail(&mut compact)
-        {}
-        if compact.to_string().chars().count() <= max_chars {
-            return (compact, true);
+    // Never trim a large result one array element at a time. Serializing the
+    // complete value after every pop makes calendar/search payloads O(n²) and
+    // can monopolize a Tokio worker for minutes exactly when overflow recovery
+    // needs to remain cheap. Values far beyond the budget go directly to one
+    // bounded preview; near-budget values may still retain their structure by
+    // shortening strings in a fixed number of linear passes.
+    if original_chars <= max_chars.saturating_mul(4) {
+        for string_limit in [1_000, 512, 256, 128, 64] {
+            let compact = truncate_context_json_strings(value, string_limit);
+            if compact.to_string().chars().count() <= max_chars {
+                return (compact, true);
+            }
         }
     }
 
@@ -4926,7 +4917,7 @@ fn bounded_context_json_value(value: &Value, max_chars: usize) -> (Value, bool) 
         let fallback = serde_json::json!({
             "status": "tool_result_compacted",
             "original_chars": original_chars,
-            "preview": truncate_chars(&value.to_string(), preview_chars),
+            "preview": truncate_chars(&serialized, preview_chars),
         });
         if fallback.to_string().chars().count() <= max_chars || preview_chars == 0 {
             return (fallback, true);
@@ -15913,6 +15904,32 @@ mod tests {
             records
                 .iter()
                 .any(|record| record["result_compacted"].as_bool() == Some(true))
+        );
+    }
+
+    #[test]
+    fn bounded_context_overflow_large_calendar_is_fast_and_bounded() {
+        let calendar = json!({
+            "data": (0..12_000)
+                .map(|row| json!({
+                    "symbol": format!("AI{row}"),
+                    "date": "2026-08-01",
+                    "description": "large earnings calendar evidence row ".repeat(8),
+                }))
+                .collect::<Vec<_>>()
+        });
+        let started = std::time::Instant::now();
+
+        let (bounded, compacted) =
+            bounded_context_json_value(&calendar, CONTEXT_OVERFLOW_RECOVERY_MAX_RESULT_CHARS);
+
+        assert!(compacted);
+        assert_eq!(bounded["status"], "tool_result_compacted");
+        assert!(bounded.to_string().chars().count() <= CONTEXT_OVERFLOW_RECOVERY_MAX_RESULT_CHARS);
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "large-result recovery compaction must stay linear and non-blocking; elapsed={:?}",
+            started.elapsed()
         );
     }
 
