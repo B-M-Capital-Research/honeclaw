@@ -4057,6 +4057,7 @@ struct MarketMoveQuoteEvidence {
     change_percentage: f64,
     market_date: NaiveDate,
     beijing_time: Option<String>,
+    exchange: Option<String>,
 }
 
 fn collect_market_move_quote_evidence(value: &Value, evidence: &mut Vec<MarketMoveQuoteEvidence>) {
@@ -4093,6 +4094,12 @@ fn collect_market_move_quote_evidence(value: &Value, evidence: &mut Vec<MarketMo
                         .and_then(|time| time.get("beijing"))
                         .and_then(Value::as_str)
                         .map(str::to_string),
+                    exchange: fields
+                        .get("exchange")
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .filter(|exchange| !exchange.is_empty())
+                        .map(str::to_ascii_uppercase),
                 });
             }
             for value in fields.values() {
@@ -4259,6 +4266,18 @@ fn current_turn_tool_result_urls(
             continue;
         };
         if let Ok(value) = serde_json::from_str::<Value>(content) {
+            let snippet_only = message.name.as_deref() == Some("web_search")
+                && (value
+                    .pointer("/hone_search_contract/evidence_scope/full_page_content")
+                    .and_then(Value::as_bool)
+                    == Some(false)
+                    || value
+                        .pointer("/hone_search_contract/evidence_scope/kind")
+                        .and_then(Value::as_str)
+                        == Some("search_snippets"));
+            if snippet_only {
+                continue;
+            }
             collect_tool_result_urls(&value, &mut urls);
         }
     }
@@ -4308,10 +4327,16 @@ fn paragraph_has_definitive_market_cause(paragraph: &str) -> bool {
         "原因(已核验",
         "主要原因",
         "直接原因",
+        "下跌原因",
+        "上涨原因",
+        "已核验新闻",
         "原因是",
         "原因包括",
         "核心驱动",
+        "主要驱动",
         "最强驱动",
+        "公开新闻指向",
+        "公开归因",
         "导致",
         "直接导致",
         "直接压制",
@@ -4326,6 +4351,88 @@ fn paragraph_has_definitive_market_cause(paragraph: &str) -> bool {
     ]
     .iter()
     .any(|marker| normalized.contains(marker))
+}
+
+fn append_market_move_quote_fact_violations(
+    content: &str,
+    context: &AgentContext,
+    turn_message_start: usize,
+    violations: &mut Vec<String>,
+) {
+    let quotes = current_turn_market_move_quotes(context, turn_message_start);
+    if quotes.is_empty() {
+        return;
+    }
+
+    if ["收盘价", "收市价", "常规交易收盘"]
+        .iter()
+        .any(|marker| content.contains(marker))
+    {
+        violations.push(
+            "普通 quote 的时间字段不证明交易时段或收盘，不能把其 price 写成收盘价".to_string(),
+        );
+    }
+
+    for quote in &quotes {
+        let escaped_symbol = regex::escape(&quote.symbol);
+        let symbol_pattern = format!(r"(?i)(?:^|[^A-Z0-9]){escaped_symbol}(?:[^A-Z0-9]|$)");
+        let Ok(symbol_regex) = Regex::new(&symbol_pattern) else {
+            continue;
+        };
+        let percentage_pattern = format!(
+            r"(?i)(?:^|[^A-Z0-9]){escaped_symbol}(?:[^A-Z0-9]|$)[^%A-Z\n]{{0,80}}?([+-]?[0-9]+(?:\.[0-9]+)?)\s*%"
+        );
+        if let Ok(percentage_regex) = Regex::new(&percentage_pattern) {
+            for line in content.lines() {
+                let verified_symbols_on_line = quotes
+                    .iter()
+                    .filter(|candidate| {
+                        Regex::new(&format!(
+                            r"(?i)(?:^|[^A-Z0-9]){}(?:[^A-Z0-9]|$)",
+                            regex::escape(&candidate.symbol)
+                        ))
+                        .is_ok_and(|candidate_regex| candidate_regex.is_match(line))
+                    })
+                    .count();
+                if line.contains("分别") && verified_symbols_on_line > 1 {
+                    continue;
+                }
+                for captures in percentage_regex.captures_iter(line) {
+                    let Some(displayed) = captures
+                        .get(1)
+                        .and_then(|value| value.as_str().parse::<f64>().ok())
+                    else {
+                        continue;
+                    };
+                    if (displayed - quote.change_percentage).abs() > 0.015 {
+                        violations.push(format!(
+                            "{} 的涨跌幅应来自 changesPercentage（约 {:+.2}%），不能把 change 等其它字段写成百分比",
+                            quote.symbol, quote.change_percentage
+                        ));
+                    }
+                }
+            }
+        }
+
+        let Some(exchange) = quote.exchange.as_deref() else {
+            continue;
+        };
+        for line in content.lines().filter(|line| symbol_regex.is_match(line)) {
+            let normalized = line.to_ascii_lowercase();
+            let wrong_exchange = (normalized.contains("纽交所") || normalized.contains("nyse"))
+                && !exchange.contains("NYSE")
+                || (normalized.contains("纳斯达克") || normalized.contains("nasdaq"))
+                    && !exchange.contains("NASDAQ")
+                || (normalized.contains("美交所") || normalized.contains("amex"))
+                    && !exchange.contains("AMEX");
+            if wrong_exchange {
+                violations.push(format!(
+                    "{} 的交易所声明与本轮 quote 的 exchange={} 不一致",
+                    quote.symbol, exchange
+                ));
+            }
+        }
+    }
 }
 
 fn broad_us_market_scope_coverage(content: &str) -> usize {
@@ -4370,6 +4477,7 @@ fn market_move_final_violations(
 
     let mut violations = Vec::new();
     append_date_weekday_violations(content, &mut violations);
+    append_market_move_quote_fact_violations(content, context, turn_message_start, &mut violations);
 
     let target_date =
         resolved_market_move_date(runtime_input, content, context, turn_message_start);
@@ -6829,6 +6937,85 @@ mod tests {
                         "content": "The filing describes a most-favored-nation relationship."
                     }
                 ]
+            }))
+        }
+    }
+
+    struct MarketMoveCanaryFinanceTool;
+
+    #[async_trait]
+    impl Tool for MarketMoveCanaryFinanceTool {
+        fn name(&self) -> &str {
+            "data_fetch"
+        }
+
+        fn description(&self) -> &str {
+            "broad-market quote evidence"
+        }
+
+        fn parameters(&self) -> Vec<ToolParameter> {
+            vec![]
+        }
+
+        async fn execute(&self, args: Value) -> hone_core::HoneResult<Value> {
+            let symbol = args
+                .get("ticker")
+                .or_else(|| args.get("symbol"))
+                .or_else(|| args.get("query"))
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_ascii_uppercase();
+            let (change, change_percentage, exchange) = match symbol.as_str() {
+                "SPY" => (0.75, 0.1016, "AMEX"),
+                "QQQ" => (-7.73, -1.11712, "NASDAQ"),
+                _ => (0.0, 0.0, "UNKNOWN"),
+            };
+            Ok(json!({
+                "data_type": "quote",
+                "ticker": symbol,
+                "data": [{
+                    "symbol": symbol,
+                    "change": change,
+                    "changesPercentage": change_percentage,
+                    "exchange": exchange,
+                    "hone_quote_time": {
+                        "beijing": "2026-07-25 04:00:00 +08:00",
+                        "market_date_new_york": "2026-07-24"
+                    }
+                }]
+            }))
+        }
+    }
+
+    struct SnippetOnlyMarketMoveWebTool;
+
+    #[async_trait]
+    impl Tool for SnippetOnlyMarketMoveWebTool {
+        fn name(&self) -> &str {
+            "web_search"
+        }
+
+        fn description(&self) -> &str {
+            "snippet-only market news"
+        }
+
+        fn parameters(&self) -> Vec<ToolParameter> {
+            vec![]
+        }
+
+        async fn execute(&self, _args: Value) -> hone_core::HoneResult<Value> {
+            Ok(json!({
+                "hone_search_contract": {
+                    "evidence_scope": {
+                        "full_page_content": false,
+                        "kind": "search_snippets"
+                    }
+                },
+                "results": [{
+                    "title": "Why Is Stock Market Down Today, July 24, 2026?",
+                    "url": "https://example.test/july-24-snippet",
+                    "content": "renewed geopolitical tensions and a spike in oil"
+                }]
             }))
         }
     }
@@ -13171,6 +13358,190 @@ mod tests {
         assert!(gap.contains("不支持“美股宽基全面大跌”的前提"));
         assert!(gap.contains("原因本轮未完全核验"));
         assert!(!gap.contains("目标时段：2026-07-26"));
+    }
+
+    #[test]
+    fn market_move_final_rejects_quote_field_confusion_and_snippet_only_causes() {
+        let runtime_input = "周五美股大跌是不是因为一个没有来源的市场传言？只说本轮能核验的\n\n\
+            【本轮涨跌归因日期锚点：只指导主 Agent 取证，不是行情或交易日事实】\n\
+            当前原话提到周五；不晚于当前市场本地日历的最近同名候选日期是 2026-07-24 周五。\n\n\
+            【本轮最终回答契约：由主 Agent 一次完成】";
+        let mut context = AgentContext::new("market-move-snippet-cause".to_string());
+        for (call_id, symbol, change, exchange) in [
+            ("tc_spy", "SPY", 0.1016, "AMEX"),
+            ("tc_qqq", "QQQ", -1.11712, "NASDAQ"),
+        ] {
+            context.add_tool_result(
+                call_id,
+                "data_fetch",
+                &json!({
+                    "data": [{
+                        "symbol": symbol,
+                        "change": if symbol == "SPY" { 0.75 } else { -7.73 },
+                        "changesPercentage": change,
+                        "exchange": exchange,
+                        "hone_quote_time": {
+                            "beijing": "2026-07-25 04:00:00 +08:00",
+                            "market_date_new_york": "2026-07-24"
+                        }
+                    }]
+                })
+                .to_string(),
+            );
+        }
+        context.add_tool_result(
+            "tc_snippets",
+            "web_search",
+            &json!({
+                "hone_search_contract": {
+                    "evidence_scope": {
+                        "full_page_content": false,
+                        "kind": "search_snippets"
+                    }
+                },
+                "results": [{
+                    "title": "Why Is Stock Market Down Today, July 24, 2026?",
+                    "url": "https://example.test/july-24-snippet",
+                    "content": "renewed geopolitical tensions and a spike in oil"
+                }]
+            })
+            .to_string(),
+        );
+
+        let invalid = "数据时间：北京时间 2026-07-26 17:56；行情口径：本轮仅使用可核验资料\n\n\
+            目标时段：2026-07-24（周五）。SPY 与 QQQ 走势分化。\n\n\
+            | 标的 | 收盘价 | 涨跌幅 |\n\
+            | SPY | $738.93 | +0.75% |\n\
+            | QQQ | $684.23 | -1.12% |\n\n\
+            DataFetch SPY/QQQ quote 的 timestamp 对应纽交所 2026-07-24 16:00。\n\n\
+            **2026-07-24 下跌原因的已核验新闻来源**：地缘风险与油价冲击。\
+            https://example.test/july-24-snippet";
+        let violations = market_move_final_violations(runtime_input, invalid, &context, 0);
+
+        assert!(violations.iter().any(|violation| {
+            violation.contains("SPY 的涨跌幅应来自 changesPercentage（约 +0.10%）")
+        }));
+        assert!(violations.iter().any(|violation| {
+            violation.contains("普通 quote 的时间字段不证明交易时段或收盘")
+        }));
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("SPY 的交易所声明")
+                    && violation.contains("exchange=AMEX"))
+        );
+        assert!(violations.iter().any(|violation| {
+            violation.contains("目标日期和本轮工具实际返回的原始 URL")
+        }));
+        assert!(
+            current_turn_source_urls_for_date(
+                &context,
+                0,
+                NaiveDate::from_ymd_opt(2026, 7, 24).expect("valid date")
+            )
+            .is_empty(),
+            "snippet-only search results must not satisfy original-source cause evidence"
+        );
+
+        let gap = deterministic_market_move_gap_response(
+            runtime_input,
+            invalid,
+            "数据时间：北京时间 2026-07-26 17:56；行情口径：",
+            &context,
+            0,
+        );
+        assert!(gap.contains("SPY +0.10%"));
+        assert!(gap.contains("QQQ -1.12%"));
+        assert!(gap.contains("原因本轮未完全核验"));
+        assert!(!gap.contains("july-24-snippet"));
+        assert!(!gap.contains("收盘价"));
+        assert!(!gap.contains("纽交所"));
+
+        let mut paired_percentage_violations = Vec::new();
+        append_market_move_quote_fact_violations(
+            "SPY 与 QQQ 分别 +0.10% 和 -1.12%。",
+            &context,
+            0,
+            &mut paired_percentage_violations,
+        );
+        assert!(
+            paired_percentage_violations.is_empty(),
+            "a compact ordered comparison is ambiguous to the per-symbol parser and must not be falsely rejected: {paired_percentage_violations:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn snippet_only_market_cause_uses_verified_quote_gap_without_another_generation() {
+        let prefix = "数据时间：北京时间 2026-07-26 17:56；行情口径：";
+        let invalid = format!(
+            "{prefix}本轮仅使用可核验资料\n\n\
+             目标时段：2026-07-24（周五）。SPY 与 QQQ 走势分化。\n\n\
+             | 标的 | 收盘价 | 涨跌幅 |\n\
+             | SPY | $738.93 | +0.75% |\n\
+             | QQQ | $684.23 | -1.12% |\n\n\
+             DataFetch SPY/QQQ quote 的 timestamp 对应纽交所 2026-07-24 16:00。\n\n\
+             **2026-07-24 下跌原因的已核验新闻来源**：地缘风险与油价冲击。\
+             https://example.test/july-24-snippet"
+        );
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_spy".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"quote","query":"SPY","entity_route":"spy","identity_match":"exact_symbol"}"#.to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 1,
+                    id: Some("tc_qqq".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"quote","query":"QQQ","entity_route":"qqq","identity_match":"exact_symbol"}"#.to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 2,
+                    id: Some("tc_web".to_string()),
+                    name: Some("web_search".to_string()),
+                    arguments: r#"{"query":"US stock market selloff July 24 2026 reasons"}"#
+                        .to_string(),
+                },
+            ],
+            vec![ChatStreamEvent::ContentDelta(invalid)],
+        ]);
+        let calls = llm.seen_messages.clone();
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(MarketMoveCanaryFinanceTool));
+        registry.register(Box::new(SnippetOnlyMarketMoveWebTool));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 4, None)
+                .with_agent_owned_finance_loop(true);
+        let mut context = AgentContext::new("market-move-snippet-gap-e2e".to_string());
+        let runtime_input = format!(
+            "周五美股大跌是不是因为一个没有来源的市场传言？只说本轮能核验的\n\n\
+             【本轮涨跌归因日期锚点：只指导主 Agent 取证，不是行情或交易日事实】\n\
+             当前原话提到周五；不晚于当前市场本地日历的最近同名候选日期是 2026-07-24 周五。\n\n\
+             【本轮最终回答契约：由主 Agent 一次完成】\
+             第一条非空行必须严格以 `{prefix}` 开头。"
+        );
+
+        let response = agent.run(&runtime_input, &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.iterations, 2);
+        assert_eq!(response.tool_calls_made.len(), 3);
+        assert_eq!(
+            calls.lock().expect("seen calls").len(),
+            2,
+            "missing original-source cause evidence must select the deterministic quote gap instead of asking the model to rewrite"
+        );
+        assert!(response.content.starts_with(prefix));
+        assert!(response.content.contains("2026-07-24（周五"));
+        assert!(response.content.contains("SPY +0.10%"));
+        assert!(response.content.contains("QQQ -1.12%"));
+        assert!(response.content.contains("原因本轮未完全核验"));
+        assert!(!response.content.contains("+0.75%"));
+        assert!(!response.content.contains("收盘价"));
+        assert!(!response.content.contains("纽交所"));
+        assert!(!response.content.contains("july-24-snippet"));
     }
 
     #[tokio::test]

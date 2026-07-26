@@ -276,6 +276,7 @@ fi
 
 if contains 'fn market_move_final_violations(' "$FUNCTION_AGENT" \
   && contains 'fn append_date_weekday_violations(' "$FUNCTION_AGENT" \
+  && contains 'fn append_market_move_quote_fact_violations(' "$FUNCTION_AGENT" \
   && contains 'fn append_declared_target_date_violations(' "$FUNCTION_AGENT" \
   && contains 'fn current_turn_tool_result_urls(' "$FUNCTION_AGENT" \
   && contains 'fn current_turn_market_move_quotes(' "$FUNCTION_AGENT" \
@@ -289,15 +290,17 @@ if contains 'fn market_move_final_violations(' "$FUNCTION_AGENT" \
   && contains '原因本轮未完全核验' "$FUNCTION_AGENT" \
   && contains 'market_move_final_check_rejects_wrong_weekday_and_unlocalized_cause' "$FUNCTION_AGENT" \
   && contains 'market_move_final_uses_quote_date_and_preserves_verified_scope_in_gap_response' "$FUNCTION_AGENT" \
+  && contains 'market_move_final_rejects_quote_field_confusion_and_snippet_only_causes' "$FUNCTION_AGENT" \
+  && contains 'snippet_only_market_cause_uses_verified_quote_gap_without_another_generation' "$FUNCTION_AGENT" \
   && contains 'market_move_final_correction_keeps_only_header_visible_until_acceptance' "$FUNCTION_AGENT" \
   && contains 'broad_market_mode: bool' "$FUNCTION_AGENT" \
   && contains 'broad_market_quote_groups: BTreeSet<String>' "$FUNCTION_AGENT" \
   && contains 'fn broad_us_market_symbol_group(' "$FUNCTION_AGENT" \
   && contains 'broad_market_exact_symbol_query_quotes_open_floor_after_two_groups' "$FUNCTION_AGENT" \
   && contains 'broad_market_query_alias_batch_executes_and_can_finish_naturally' "$FUNCTION_AGENT"; then
-  record success "42.market-move-prepublication-consistency" "market-move bodies stay buffered until quote-anchored civil dates, broad scope, and same-target-date current source URLs pass; English source dates are recognized, unrepairable cause gaps skip correction, and deterministic fallback preserves verified quote scope"
+  record success "42.market-move-prepublication-consistency" "market-move bodies stay buffered until quote-anchored civil dates, broad scope, exact changesPercentage/exchange/session wording, and same-target-date original-source URLs pass; snippet-only causes and unrepairable gaps select the deterministic verified-quote response"
 else
-  record fail "42.market-move-prepublication-consistency" "an impossible/quote-inconsistent date, substituted narrow scope, unsupported cause, discarded quote fact, or rejected draft can again cross the visible terminal boundary"
+  record fail "42.market-move-prepublication-consistency" "an impossible date, change-vs-percentage mixup, false exchange/session claim, snippet-only cause, substituted scope, or rejected draft can again cross the visible terminal boundary"
 fi
 
 if contains 'C. 板块 / 技术 / 产业链分析' "$SOUL" && contains '精确核验至少三个相关代表证券' "$SOUL" && contains '6. 主要上市公司对比：每个代表证券独立写出本轮同代码现价与数据时间口径' "$SOUL" && contains '### Sector / Industry Output Contract' "$MARKET_ANALYSIS"; then
