@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-07-26
-状态：有 9 个活跃任务
+状态：有 8 个活跃任务
 
 ## 说明
 
@@ -15,11 +15,6 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
-
-- **v0.15.0 正式发布**
-  - 状态：`in_progress`
-  - 计划：`docs/current-plans/v0.15.0-formal-release.md`
-  - 摘要：基于当前 `main` 发布 `v0.15.0`，同步 workspace/Tauri/Xcode 版本、双语 release notes 与架构海报，完成核心门禁及 Apple 客户端验证，推送 release commit 和 annotated tag，并等待 GitHub Release 生成 Universal macOS DMG、iOS Simulator/Xcode 包、校验文件和多平台 CLI 资产
 
 - **Public Community Edge 生产分阶段上线**
   - 状态：`in_progress`

@@ -4,6 +4,18 @@ Last updated: 2026-07-26
 
 ## 2026-07-26
 
+### v0.15.0 Formal Release
+
+- Status: done
+- Date: 2026-07-26
+- Plan: `docs/archive/plans/v0.15.0-formal-release.md`
+- Handoff: `docs/handoffs/2026-07-26-v0.15.0-formal-release.md`
+- Decision / ADR: N/A; existing release and Apple artifact contracts remain unchanged
+- Related PRs / commits: release commit `a96425bad98ffc08c64c35718bd8b85245d43e51`; annotated tag `v0.15.0`; GitHub Actions run `30207643379`
+- Related runbooks / regressions: `docs/runbooks/desktop-release-app-runtime.md`; full workspace check/test excluding Apple clients; Web `294/294`; Edge Worker `45/45`; finance contracts `44/44`; complete CI-safe regressions; user-app test/check; iOS contract; local and CI Apple builds; Release asset/checksum inspection
+- Current conclusion: HONE `v0.15.0` is published as a non-draft, non-prerelease GitHub Release with all eight expected assets. The downloaded Apple manifest verified the Universal macOS DMG, iOS Simulator App, and Xcode archive; the DMG passed image/signature checks and both downloaded Apps report `0.15.0` arm64/x86_64 executables. macOS remains ad-hoc signed/not notarized, and iOS remains a Simulator/Xcode distribution because Developer ID and iOS provisioning credentials are not configured.
+- Next entry point: `https://github.com/B-M-Capital-Research/honeclaw/releases/tag/v0.15.0`, then `docs/handoffs/2026-07-26-v0.15.0-formal-release.md` for validation evidence and Apple signing limitations.
+
 ### Interactive Business No-Refusal Finalization
 
 - Status: done
