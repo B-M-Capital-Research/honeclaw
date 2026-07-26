@@ -22,6 +22,12 @@ New
 
 ## 最新进展
 
+- 2026-07-26 11:02 CST 运行态继续复发，状态维持 `New`：
+  - 07:02-11:02 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 24 条 user / 19 条 assistant / 4 条 system compact，覆盖 12 个更新 session；ordinary assistant final 未见空回复、`<think>`、本机路径、panic、provider 原始错误或 raw tool JSON 正文外泄。
+  - 09:00 CST Feishu scheduler `核心观察池早间简报` 正常收口，但 final 开头写出 `数据来自 hone_quote_time.beijing 04:00-04:02`，继续把内部行情时间字段作为用户态来源 / 执行口径。
+  - `data/runtime/logs/web.log.2026-07-25` / `data/runtime/logs/web.log.2026-07-26` 同窗 heartbeat 出站候选也继续外露 `hone_quote_time.beijing`；例如 07:30 CST `ASTS 重大异动心跳监控` 与 `Cerebras IPO与业务进展心跳监控` deliver preview 均把 `hone_quote_time` 作为行情口径。
+  - 这些消息业务主体已完成或进入出站候选，没有投递失败、空回复、错投、原始工具 JSON 或数据安全证据；问题仍只影响用户可见来源 / 工具口径边界和产品感，不影响主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 2026-07-26 07:05 CST 运行态继续复发，状态维持 `New`：
   - 03:01-07:05 CST `data/sessions.sqlite3` 按真实 `timestamp` 新增 3 条 user / 4 条 assistant，覆盖 3 个更新 session；近期 Web scheduler、Feishu scheduler 和 Feishu direct 均有 assistant 收口。
   - assistant final 污染扫描未命中空回复、`<think>`、本机路径、provider 原始错误、panic、stream 原始错误或 raw tool JSON 正文外泄；本轮命中的是 scheduler 用户可见英文中间稿和内部工具 / 字段口径。

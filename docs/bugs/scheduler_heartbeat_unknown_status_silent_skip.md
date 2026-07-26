@@ -7,6 +7,15 @@
 
 ## 修复进展
 
+- `2026-07-26 07:02-11:02 CST` 真实运行态继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-25` / `data/runtime/logs/web.log.2026-07-26`
+    - 同窗继续出现 `HeartbeatDiag=650`、`deliver job_id=82`、`duplicate_suppressed=38`、`runner_error=47`、`execution_failed/任务失败=56`、`heartbeat 输出不是结构化 JSON=24`、function-calling 工具预算拒绝 222 条、raw `<think>` preview 156 条。
+    - `parse_kind` 分布为 `PlainTextTriggered=162`、`JsonNoop=41`、`PlainTextSuppressed=24`、`PlainTextNoop=4`、`JsonTriggered=4`、`JsonUnknownStatus=2`、`JsonEmptyStatus=1`。
+    - 07:30 CST 多条 heartbeat raw preview 仍以 `<think>` 开头，随后进入自然语言 noop、`PlainTextTriggered` deliver、`PlainTextSuppressed` failure、`JsonNoop`、`JsonUnknownStatus` 或 duplicate suppression 分支。
+    - 07:30 CST `ASTS 重大异动心跳监控`、`持仓重大事件心跳检测`、`Cerebras IPO与业务进展心跳监控` 等样本继续先产出自然语言，再由后置解析猜测触发 / noop 语义；部分失败被标记“heartbeat 输出不是结构化 JSON”。
+  - 会话质量对照：`data/sessions.sqlite3` 同窗按真实 `timestamp` 新增 24 条 user / 19 条 assistant / 4 条 system compact，覆盖 12 个更新 session；ordinary assistant final 未见 `<think>`、本机路径、panic、raw tool JSON 或 provider 原始错误正文外泄。
+  - 判断：最新证据仍落在既有 heartbeat 结构化状态输出退化范围内，没有新的独立根因。该问题继续影响 heartbeat 监控判断、送达语义和失败 / 跳过归因；严重等级维持 `P2`，非 P1，不创建 GitHub Issue。
+
 - `2026-07-25 19:01-23:05 CST` 真实运行态继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-25`
     - 同窗继续出现 `HeartbeatDiag=649`、`deliver job_id=65`、`duplicate_suppressed=32`、`runner_error=41`、`execution_failed=24`、`heartbeat 输出不是结构化 JSON=22`、`heartbeat 输出不是合法 JSON=2`、function-calling 工具预算拒绝 270 条。

@@ -22,6 +22,17 @@
 
 ## 最新进展
 
+- 本轮 2026-07-26 07:02-11:02 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `New`：
+  - `data/sessions.sqlite3`
+    - 08:00 CST Feishu scheduler `HoneClaw每日使用Tips` 本应只发送 30 字以内使用技巧，但 final 前置大段 `标的核验`，并继续使用 `SNDK 1436.56`、`RKLB 63.91`、`BE 184.89`、`COHR 282.39` 等高风险数量级价格。
+    - 08:01 CST Feishu scheduler `每日美股收盘与持仓早报` 正常收口，但继续使用 `MU $920.95`、`AMD $521.95`、`BE $184.89`、`SNDK $1436.56` 等数量级异常价格，并据此写出清仓 / 止损纪律提醒。
+    - 09:00 CST Web scheduler `09:00 美股AI与航空科技晨报` 使用 `AMD $521.95`、`VRT $290.36` 等高风险行情锚；09:00 Feishu scheduler `核心观察池早间简报` 使用 `MU $920.95`、`SNDK $1,436.56`、`STX $851.69`、`WDC $519.80`、`AMD $521.95` 等价格进入击球区排序。
+    - 09:31 CST Discord scheduler `每日美股降息概率推送` 使用 `S&P 500 7411.98`、`NASDAQ 24975.824` 等高风险指数锚；10:30 CST `SemiAnalysis 新文章跟踪` 又用 `AMD 521.95`、`VRT 290.36`、`NVDA 206.84` 组织板块行情速览。
+    - 同窗按真实 `timestamp` 新增 24 条 user / 19 条 assistant / 4 条 system compact，覆盖 12 个更新 session；未见错投、投递失败、空回复、敏感信息外泄或全渠道不可用。
+  - `data/runtime/logs/web.log.2026-07-25` / `data/runtime/logs/web.log.2026-07-26`
+    - 07:30 CST heartbeat preview 继续使用 `SNDK $1,436.56`、`AAOI $100.15`、`TEM $42.69`、`ASTS $56.20`、`CBRS $199.12` 等高风险行情锚进入判断、noop 报告、出站候选或 duplicate suppression 基线。
+  - 判断：最新证据仍是行情源 / 数值 sanity check / 历史锚点复用缺口。它会污染 scheduler / heartbeat / Discord 金融判断质量，但主投递链路未整体阻断，因此保持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
 - 本轮 2026-07-26 03:01-07:05 CST 真实运行态继续出现同根异常 / 高风险价格锚，状态维持 `New`：
   - `data/sessions.sqlite3`
     - 06:02 CST Feishu scheduler `每日美股盘后收盘复盘` 正常收口，但继续使用 `SPY $738.93`、`QQQ $684.23`、`MU $920.95`、`SOXL $136.81`、`AAPL $333.02`、`INTC $92.32` 等高风险数量级价格，并据此组织指数、半导体板块、财报和下周触发点判断。

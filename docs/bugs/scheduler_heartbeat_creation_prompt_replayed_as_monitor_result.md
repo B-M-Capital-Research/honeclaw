@@ -18,6 +18,18 @@
 
 ## 修复进展
 
+- `2026-07-26 07:02-11:02 CST` 运行态复核确认同根继续复发，状态维持 `New`：
+  - `data/runtime/logs/web.log.2026-07-25` / `data/runtime/logs/web.log.2026-07-26`
+    - 07:30 CST `持仓重大事件心跳检测` 已作为 heartbeat job 周期触发，raw preview 却把本轮处理成“10 年投资组合核心 + 卫星配置框架”问答，deliver preview 也输出组合比例方法论，而不是执行持仓重大事件监控。
+    - 07:30 CST `Cerebras IPO与业务进展心跳监控` deliver preview 写成 `CBRS 已存在于关注列表，无需重复添加` 和心跳监控状态确认，偏向配置 / 任务管理确认，而不是执行当轮 Cerebras 业务进展核验。
+    - 07:30 CST `光迅科技关键事件心跳提醒` 与 `中际旭创关键事件心跳提醒` 漂移成 WDC / SK Hynix 关系分析；`持仓财报与重大新闻心跳提醒` 在工具预算耗尽后沿用 SNDK / AAOI 近期价格生成非当前 job 的 noop 报告。
+    - 同窗 raw preview 普遍以 `<think>` 开头并混入旧用户问题、配置确认、组合框架、关系分析或工具额度耗尽口径，说明已创建 heartbeat job 的执行期语义仍会被非监控上下文污染。
+  - 会话质量对照：
+    - 同窗 `data/sessions.sqlite3` 新增 24 条 user / 19 条 assistant / 4 条 system compact，覆盖 12 个更新 session；普通 Feishu / Web direct 与多个 scheduler 均有 assistant 收口，未见全渠道停摆、错投、本机路径或 provider 原始错误正文外泄。
+  - 判断：
+    - 最新样本仍是已创建 heartbeat job 的执行期语义被非监控上下文、旧用户问题、配置确认或关系分析污染，导致模型没有执行当前 job 的监控判断。
+    - 该问题影响 heartbeat 功能链路和信噪比，严重等级维持 `P2 / New`；未见全渠道停摆、跨用户错投、数据破坏或敏感信息泄露，因此不升级 P1，不创建 GitHub Issue。
+
 - `2026-07-25 15:01-19:02 CST` 运行态复核确认同根继续复发，状态维持 `New`：
   - `data/runtime/logs/web.log.2026-07-25`
     - 19:00 CST `中际旭创关键事件心跳提醒` 已作为 heartbeat job 周期触发，deliver preview 却写成“事件监控参数已更新”，偏向配置更新确认，而不是执行中际旭创关键事件监控。

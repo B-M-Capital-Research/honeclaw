@@ -9,6 +9,15 @@
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `session_messages`
+  - `2026-07-26T09:01:55.060900+08:00`
+    - `session_id=Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773`
+    - Feishu scheduler `核心观察池早间简报` 的权威触发配置是北京时间 09:00，任务要求使用最新美股市场价格并列出观察池价格 / 击球区 / 财报时间。
+    - assistant final 正常收口，但在北京时间 2026-07-26 周日写出 `MSFT / META 今夜 7/29 盘后发财报，AAPL / AMZN 明日 7/30 盘后发财报`；实际 `7/29`、`7/30` 并非当日 / 明日，`今夜`、`明日` 的相对时间口径错误。
+  - `2026-07-26T10:30:51.751873+08:00`
+    - `session_id=Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21`
+    - Feishu scheduler `SemiAnalysis 新文章跟踪` 正常收口，但附加行情速览写出 `今日（2026-07-24）科技板块整体承压`，并把 `7月30日（周四）` 写作 AMD 财报关注节点；在本轮北京时间 2026-07-26 周日执行时，该相对日期 / 星期表达会误导用户理解交易日与事件窗口。
+  - 本轮 2026-07-26 07:02-11:02 CST 对照：`session_messages` 新增 24 条 user / 19 条 assistant / 4 条 system compact，覆盖 12 个更新 session；ordinary assistant final 未见 `<think>`、本机路径、panic、raw tool JSON 或 provider 原始错误正文外泄。上述样本调度、生成、落库和投递均完成，问题主要影响金融复盘时间口径与正文可信度；不影响直聊 / 调度 / 投递主功能链路，因此维持质量性 `P3 / New`，非 P1，不创建 GitHub Issue。
+
   - `2026-07-26T06:02:32.887683+08:00`
     - `session_id=Actor_feishu__direct__ou_5f11da38ad70c47cf87c0b106b6408b190`
     - Feishu scheduler `每日美股盘后收盘复盘` 的权威触发配置是北京时间 06:00，任务要求先核验当日美股收盘数据与日期口径。

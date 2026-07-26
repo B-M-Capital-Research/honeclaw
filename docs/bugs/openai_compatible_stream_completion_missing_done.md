@@ -22,6 +22,20 @@ New
 
 ## 证据来源
 
+- 运行态复核（2026-07-26 11:02 CST）
+  - `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-26`
+    - 巡检窗口：2026-07-26 07:02-11:02 CST。
+    - `session_id=Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7`
+      - `2026-07-26T08:00:03.110337+08:00` Feishu scheduler `AI硬件涨价环节挖掘与标的推荐` 触发。
+      - runtime 在 `2026-07-26 08:02:03` 记录 `entity_resolution.agent_loop ... answer_preserved=true`，随后整轮落成 `LLM 错误: stream transport error ... error decoding response body`。
+      - assistant final 只落库 `抱歉，这次处理失败了。请稍后再试。`，随后追加 `scheduler_failure=true / internal_error_suppressed` 的补偿消息，用户没有拿到已保留答案的降级摘要。
+    - 同窗另有 `session_id=Actor_feishu__direct__ou_5f95ab3697246ded86446fcc260e27e1e2` 的 09:00 `特斯拉与火箭实验室新闻日报` 因 OpenAI-compatible `HTTP 529` 高峰失败只落通用失败；该样本更像 provider 短时负载，先作为同窗对照，不拆新缺陷。
+  - 同窗对照：
+    - `data/sessions.sqlite3` 同窗新增 24 条 user / 19 条 assistant / 4 条 system compact，覆盖 12 个更新 session；ordinary assistant final 未见 `<think>`、本机路径、panic、raw tool JSON 或 provider 原始错误正文外泄。
+  - 判断：
+    - 最新样本仍是 OpenAI-compatible / function-calling 流式响应体解码失败后，已保留或已获取的工具结果未被恢复为可用正文；与既有缺陷同根，不新建重复缺陷。
+    - 影响是单轮普通 scheduler 业务正文缺失，严重等级维持功能性 `P2 / New`；同窗仍有多个 scheduler / direct 成功样本，非 P1，不创建 GitHub Issue。
+
 - 运行态复核（2026-07-25 11:02 CST）
   - `data/sessions.sqlite3` / `data/runtime/logs/web.log.2026-07-25`
     - 巡检窗口：2026-07-25 07:02-11:02 CST。
